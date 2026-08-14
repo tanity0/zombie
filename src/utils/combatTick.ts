@@ -51,6 +51,7 @@ import {
 } from '../store/gameStore';
 import { distToSegment } from './levelUpGate';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
+import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect, applyGhostReflectCounterFx } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流 / v0.25.2525: 弾反射の成立演出
@@ -354,6 +355,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       // CRIT-UNIFY §9.3(社長裁定F): パリィ反撃は確定クリ。ボスは①の効果(半減+CD2倍+紫蓄積)が
       // damageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
       const parryKilled = useGameStore.getState().damageEnemy(hit.id, dmg, false, true, false, 'other', 'player', 'counter');
+      recordCritHit('guaranteed', boss); // §7-11c(4): カウンター反撃(確定クリ)
       if (!parryKilled && !boss) {
         const stunMs = STUN_DURATION_MS * (bp.stunDurationMult ?? 1);
         useGameStore.getState().stunEnemy(hit.id, useGameStore.getState().gameTime + stunMs);
@@ -1144,6 +1146,7 @@ export const applyContactDamage = (
       // CRIT-UNIFY §9.3(社長裁定F): 突進/気絶パリィの反撃も確定クリ。ボスは①の効果(半減+CD2倍+
       // 紫蓄積)がdamageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
       const dashParryKilled = useGameStore.getState().damageEnemy(eid, dmg, false, true, false, 'other', 'player', 'counter');
+      recordCritHit('guaranteed', boss); // §7-11c(4): カウンター反撃(確定クリ)
       counterKill = dashParryKilled || counterKill;
       if (!dashParryKilled && !boss) {
         const stunMs = STUN_DURATION_MS * (collPlayer.stunDurationMult ?? 1);

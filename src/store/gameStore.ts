@@ -45,7 +45,7 @@ import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/bomberScatter';
 import {
   recordSubUse, recordOverclockProc, resetBotTelemetry,
-  recordDamageDealt, recordFinisherKill, recordMeleeSwing,
+  recordDamageDealt, recordFinisherKill, recordMeleeSwing, recordCritHit,
 } from '../utils/botTelemetry';
 import {
   resetPlayerTraits,
@@ -206,6 +206,9 @@ import {
   applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal, isBossPostureBroken,
   tickBossPosture, type BossPostureImpact,
 } from '../utils/bossPosture';
+// PACING_PUZZLE.md §7-11c(3): 手動レール(実機テスト用ツマミ)。ドロップバイアス(弾/トレジャー)側の
+// 掛け先はここから読む。スキル抽選側の掛け先はrunSkillDraft.ts(rail/railMultを引数で受け取る)。
+import { parseRailKind, parseRailMult, railAmmoDropMult, railTreasureDropMult, type RailKind } from '../utils/railBias';
 // PACING_PUZZLE.md §6.33(LASER-TRACK): ミーミルのレーザー弱点窓=近接ヒットで中断(近接3経路が呼ぶ)。
 import {
   mimirLaserBreakOnMeleeHit,
@@ -370,6 +373,14 @@ export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 40, shotgun: 10,
 // フィニッシャー1.5倍(既存)が乗る。
 const AMMO_PICKUP_KEY = 'zombie:ammoPickupAmounts';
 export const DEFAULT_MELEE_DROP_PCT = 10;
+// PACING_PUZZLE.md §7-11c(3): `?rail=judge|elite|dps` + `?railmult=<倍率>`(既定1.5)。未指定=null=
+// 完全に現行どおり(railAmmoDropMult/railTreasureDropMultが1を返す)。
+const RAIL_KIND: RailKind | null = typeof window === 'undefined'
+  ? null
+  : parseRailKind(new URLSearchParams(window.location.search).get('rail'));
+const RAIL_MULT: number = typeof window === 'undefined'
+  ? 1.5
+  : parseRailMult(new URLSearchParams(window.location.search).get('railmult'));
 const CASTLE_MIN_DISTANCE = 900;
 const CASTLE_MAX_DISTANCE = 1300;
 // 建物1.5倍に合わせ足元判定も拡大(社長指示): 横×1.5 / 縦は上へ×1.2。
@@ -3185,7 +3196,10 @@ const grantMeleeKillRewards = (
           enemyCount: get().enemies.length,
         })
       : get().meleeAmmoDropPercent;
-    const baseRate = Math.max(0, Math.min(1, dirPct / 100 + (player.ammoDropBonus ?? 0) + (player.equipBonus?.ammoDropBonus ?? 0)));
+    const baseRateRaw = Math.max(0, Math.min(1, dirPct / 100 + (player.ammoDropBonus ?? 0) + (player.equipBonus?.ammoDropBonus ?? 0)));
+    // PACING_PUZZLE.md §7-11c(3): レール(judge/dps)のドロップバイアス=弾。既定(rail未指定)は
+    // railAmmoDropMultが1を返すため無改変。近接キル全般(grantMeleeKillRewards)が唯一の掛け先。
+    const baseRate = Math.max(0, Math.min(1, baseRateRaw * railAmmoDropMult(RAIL_KIND, RAIL_MULT)));
     const ammoChance = ammoChanceOverride !== undefined
       ? ammoChanceOverride
       : (finisher ? Math.min(1, baseRate * 1.5) : baseRate);
@@ -6037,6 +6051,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const dmg = fatal?.damage ?? stunnedHit.dmg;
         if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+        recordCritHit('guaranteed', stunnedHit.kind === 'boss'); // §7-11c(4): meleeExecuteの紫中フィニッシュ
         // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
         // そのもの(finisher:trueの即時処刑に相当)。
         const newHealth = Math.max(0, enemy.health - dmg);
@@ -6066,6 +6081,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
+      recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
         killed.push({ enemy, finisher: false });
@@ -6413,6 +6429,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          if (!isGhost) recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ(プレイヤー起因のみ)
           cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
           // §5.21-追補4: スタン中ボスへの5×近接=ボスのフィニッシュ経路そのものなのでclampしない。
           const nh = Math.max(0, enemy.health - dmg);
@@ -6425,6 +6442,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           const dmg = meleeDamage * ELITE_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
           const nh = Math.max(0, enemy.health - dmg);
           if (nh <= 0) killed.push({ enemy, finisher: false });
@@ -6437,6 +6455,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
+      if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
       const nh = Math.max(0, enemy.health - dmg);
       if (nh <= 0) { killed.push({ enemy, finisher: false }); continue; }
@@ -7027,6 +7046,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const dmg = fatal?.damage ?? baseDamage * damageMult * BOSS_MELEE_STUN_MULT;
           if (fatal) katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          if (!isGhost) recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ(プレイヤー起因のみ)
           // §5.21-追補4: スタン中ボスへの5×一閃=ボスのフィニッシュ経路そのものなのでclampしない。
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
@@ -7048,6 +7068,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           const dmg = baseDamage * damageMult * ELITE_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
             killed.push({ enemy, finisher: false });
@@ -7071,6 +7092,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
+      if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
         killed.push({ enemy, finisher: false });
@@ -7300,6 +7322,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const dmg = fatal?.damage ?? meleeBase * whipMult * BOSS_MELEE_STUN_MULT;
           if (fatal) whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ
           // §5.21-追補4: スタン中ボスへの5×鞭打ち=ボスのフィニッシュ経路そのものなのでclampしない。
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) killed.push({ enemy, finisher: false });
@@ -7311,6 +7334,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           const dmg = meleeBase * whipMult * ELITE_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
             killed.push({ enemy, finisher: false });
@@ -7326,6 +7350,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
       const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
+      recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
       if (crit) critStunAt.push({ x: ecx, y: ecy });
@@ -8471,7 +8496,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         grenadeEquipped: player.subWeapons.includes('heavy-grenade'),
         activeConsumables: activeConsumableKeys(player, state.gameTime), // §23-2条件1/条件3
       };
-      const upgradeOptions = generateSkillUpgradeChoices(draftInput);
+      const upgradeOptions = generateSkillUpgradeChoices(draftInput, 3, Math.random, RAIL_KIND, RAIL_MULT);
 
       // No automatic ammo resupply on level-up — ammo is managed entirely
       // through reserves/reloads and scarce pickups. Level-ups grant upgrades.
@@ -8839,7 +8864,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       grenadeEquipped: state.player.subWeapons.includes('heavy-grenade'),
       activeConsumables: activeConsumableKeys(state.player, state.gameTime), // §23-2条件1/条件3
     };
-    const nextOptions = generateSkillUpgradeChoices(draftInput);
+    const nextOptions = generateSkillUpgradeChoices(draftInput, 3, Math.random, RAIL_KIND, RAIL_MULT);
     recordScrapExpense('reroll', price);
     set(s => ({
       player: { ...s.player, straps: s.player.straps - price },
@@ -8874,7 +8899,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       grenadeEquipped: state.player.subWeapons.includes('heavy-grenade'),
       activeConsumables: activeConsumableKeys(state.player, state.gameTime), // §23-2条件1/条件3
     };
-    const replacement = generateReplacementSkillOption(draftInput, otherKeys, otherConsumables);
+    const replacement = generateReplacementSkillOption(draftInput, otherKeys, otherConsumables, Math.random, RAIL_KIND, RAIL_MULT);
     const nextOptions = state.upgradeOptions
       .filter(o => !(o.type === 'skill' && o.skillKey === key))
       .concat(replacement ? [replacement] : []);
@@ -13124,7 +13149,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   dropEnemyCurrency: (enemy, x, y) => {
-    const treasureChance = treasureDropChance(enemy.difficultyRank);
+    // PACING_PUZZLE.md §7-11c(3): レール(elite)のドロップバイアス=トレジャー。既定(rail未指定)は
+    // railTreasureDropMultが1を返すため無改変。トレジャー抽選の唯一の出どころ(dropEnemyCurrency)に乗算。
+    const treasureChance = Math.max(0, Math.min(1,
+      treasureDropChance(enemy.difficultyRank) * railTreasureDropMult(RAIL_KIND, RAIL_MULT)));
     // チュートリアル(M0訓練)ではトレジャーを落とさない(社長指示v0.25.2428)。
     // 訓練は「操作を覚える場」で、持ち帰りの報酬を配る場ではない(スコア/ゴールドの導線が別物になる)。
     // 判定は既存の `farBackdrop === 'tutorial'`(城の当たり判定スキップ等と同じ signal)を流用する。

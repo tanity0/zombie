@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   recordSubUse, recordOverclockProc, getBotTelemetry, snapshotBotTelemetry, resetBotTelemetry,
   recordDamageDealt, recordFinisherKill, recordMeleeSwing, classifyProjectileDamageChannel,
+  recordCritHit,
 } from './botTelemetry';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
@@ -145,5 +146,49 @@ describe('botTelemetry (M46: 与ダメ/即死/近接ペース計測・§6.21)', 
     // ゲーム挙動(HP減少)自体はchannel引数に関わらず不変であることも確認(計測のみ=挙動不変の裏付け)。
     const hpAfter = useGameStore.getState().enemies[0].health;
     expect(hpAfter).toBe(1000 - 10 - 7 - 99);
+  });
+});
+
+describe('botTelemetry (PACING_PUZZLE.md §7-11c(4): クリ計測口)', () => {
+  beforeEach(() => resetBotTelemetry());
+
+  it('recordCritHit: 全ヒットがtotal.hitsへ、rng/guaranteedはそれぞれのカウンタへ、noneはhitsのみ', () => {
+    recordCritHit('rng', false);
+    recordCritHit('guaranteed', false);
+    recordCritHit('none', false);
+    const t = getBotTelemetry();
+    expect(t.critStats.total.hits).toBe(3);
+    expect(t.critStats.total.rngCrits).toBe(1);
+    expect(t.critStats.total.guaranteedCrits).toBe(1);
+  });
+
+  it('対ボス/対雑魚の内訳が独立して積まれ、totalは両方の合計になる', () => {
+    recordCritHit('rng', true);       // ボスへのRNGクリ
+    recordCritHit('guaranteed', true); // ボスへの確定クリ
+    recordCritHit('rng', false);      // 雑魚へのRNGクリ
+    recordCritHit('none', false);     // 雑魚への非クリ命中
+    const t = getBotTelemetry();
+    expect(t.critStats.vsBoss).toEqual({ rngCrits: 1, guaranteedCrits: 1, hits: 2 });
+    expect(t.critStats.vsTrash).toEqual({ rngCrits: 1, guaranteedCrits: 0, hits: 2 });
+    expect(t.critStats.total).toEqual({ rngCrits: 2, guaranteedCrits: 1, hits: 4 });
+  });
+
+  it('resetBotTelemetryで0に戻る', () => {
+    recordCritHit('rng', true);
+    recordCritHit('guaranteed', false);
+    resetBotTelemetry();
+    const t = getBotTelemetry();
+    expect(t.critStats.total).toEqual({ rngCrits: 0, guaranteedCrits: 0, hits: 0 });
+    expect(t.critStats.vsBoss).toEqual({ rngCrits: 0, guaranteedCrits: 0, hits: 0 });
+    expect(t.critStats.vsTrash).toEqual({ rngCrits: 0, guaranteedCrits: 0, hits: 0 });
+  });
+
+  it('snapshotBotTelemetry: critStatsもディープコピー(以後の加算が漏れない=規律3)', () => {
+    recordCritHit('rng', true);
+    const snap = snapshotBotTelemetry();
+    recordCritHit('rng', true);
+    recordCritHit('guaranteed', false);
+    expect(snap.critStats.total.hits).toBe(1);
+    expect(getBotTelemetry().critStats.total.hits).toBe(3);
   });
 });

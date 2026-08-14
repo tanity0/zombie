@@ -1,5 +1,66 @@
 # Development Log
 
+## v0.25.3395 — §7-11c TUNE-KNOBS実装(実機テストの場・posturechip/ランク床/rail/クリ計測口)【2026-08-14 23:41 JST】
+実装チャット(Sonnet)実施。PACING_PUZZLE.md §7-11c(TUNE-KNOBSバッチ仕様)の1〜4を1バッチで実装。
+
+1. **(1)体勢チップ**: `?posturechip=<倍率>`。`src/utils/bossPosture.ts`の`applyBossPostureDamage`
+   (bossPosture適用点)1箇所に`POSTURE_CHIP_MULT`(モジュール読み込み時にURLから確定)を掛けるだけ。
+   呼び出し側(damageEnemy/カウンター各種/近接各種)は無改修。パース純関数`parsePostureChipMult`
+   +テスト(`bossPosture.test.ts`)。
+2. **(2)ランク床(決定済み仕様)**:
+   - **持ち越し廃止**: `src/data/progress.ts`の旧`startRank`localStorageマップ一式
+     (`carryOverStartRank`/`getStartRank`/`setStartRankFromFinal`)と、ステージ別開始最低ランク一式
+     (`stageMinStartRank`/`effectiveStartRank`/`stageInRunFloorRank`)を削除。`useGameLoop.ts`の
+     `seededPuzzleClockState`を`createPuzzleClockState()`直呼びへ簡略化(=常にR1)し、
+     死亡/クリア/撤退の3経路にあった`setStartRankFromFinal`呼び出し2箇所を削除。
+   - **床カーブ**: 新規`src/utils/rankFloor.ts`(純関数`rankFloorForElapsed(stageId, elapsedMs, paceMult)`)。
+     案A(stage-1:2.5分/3:2.0分/4:1.5分/5:1.2分/6:1.0分・床上限R5)。未掲載ステージ(stage-2/7/
+     チュートリアル/EX)は床なし(常にR1)。`directorTick.ts`の`runKomaBoardMaintenance`が毎tick
+     `rankFloorForElapsed`で床を再計算し`puzzleClockRef.current.minRank`へ焼く(既存
+     `applyRankDelta`の降格下限がそのまま効く)+床が現在ランクより上なら`clampRank`で引き上げ
+     (査定イベントを待たない時間経過の底上げ)。`?rankfloorpace=<倍率>`(間隔伸縮)+`?rankfloor=0`
+     (無効化)。テスト`rankFloor.test.ts`(10 tests)。
+3. **(3)手動レール**: 新規`src/utils/railBias.ts`。`?rail=judge|elite|dps`+`?railmult=<倍率・既定1.5>`。
+   - スキル分類表`RAIL_SKILL_CLASS`(既存スキル説明文から機械的に分類。judge=処刑/近接系7種・
+     elite=体勢/クリ系4種・dps=火力系9種・迷うものは対象外=null)。
+   - スキル重み: `runSkillDraft.ts`の`pickUniform`を`pickWeighted`(railBias.ts)へ置換(rail=null時は
+     重み1固定=同一rng値で**pickUniformとビット同一の結果**になることを確認済み=①の不変条件を
+     数学的に担保)。`draftRunSkillCards`/`draftReplacementSkillCard`/`generateSkillUpgradeChoices`/
+     `generateReplacementSkillOption`にrail/railMult引数を追加(既定null/1.5=無改変)。gameStore.ts
+     側3呼び出し箇所へモジュール定数`RAIL_KIND`/`RAIL_MULT`(URL読み)を配線。
+   - ドロップバイアス: judge/dps=弾(`grantMeleeKillRewards`のbaseRateへ`railAmmoDropMult`乗算・
+     近接キル全般の唯一の掛け先)/elite=トレジャー(`dropEnemyCurrency`の`treasureChance`へ
+     `railTreasureDropMult`乗算)。新しい抽選機構は作らず既存の唯一の出どころに乗算するのみ。
+   - テスト`railBias.test.ts`(15 tests・分類表/重み関数/pickWeighted均等性/ドロップ倍率)。
+4. **(4)BOT_REPORTクリ計測口**: `botTelemetry.ts`へ`critStats`(total/vsBoss/vsTrashの
+   {rngCrits, guaranteedCrits, hits}構造)+`recordCritHit(kind, isBoss)`を追加(挙動不変=数えるだけ・
+   スナップショットはディープコピー=規律3)。計上箇所:
+   - RNGクリ: `useGameLoop.ts`銃着弾(`hitCrit`成立時。護衛/守護霊弾は除外)+`gameStore.ts`近接4種
+     (ナイフ/分身/刀/鞭の通常クリ判定。分身/刀はゴースト起因を除外)。
+   - 確定クリ: `combatTick.ts`カウンター2箇所(ブラストパリィ/接触dashParried)+`idolTick.ts`+
+     `angelBossTick.ts`+`bountyTick.ts`のカウンター反撃(crit:true固定)、`gameStore.ts`の
+     meleeExecute紐づく紫中フィニッシュ7箇所(ナイフ/分身/刀/鞭×boss/heavy枝。分身/刀はゴースト除外)。
+     PHILL頭部は銃着弾の`headshotHit`フラグで判別しguaranteed側に計上。
+   - `useGameLoop.ts`の`emitBotReport`で`critStats`(+`elapsedSec`)をレポートへ同梱。
+- 受け入れ条件: ①全ツマミ未指定で挙動不変(ランク持ち越し廃止/R1固定/床カーブの2点を除く)=
+  スキル抽選はpickWeighted数学的等価性で担保・その他ツマミは全てモジュール定数がURLパラメータ無しで
+  現行値へフォールバックすることをパース純関数のテストで担保。②posturechip/rankfloorpace/railmultの
+  乗算はそれぞれ1箇所の純関数テストで確認。③クリ集計はBOT_REPORTの`critStats`として出力される
+  (配線は`emitBotReport`のコード確認・実機でのBOT_REPORT出力確認は社長へ持ち越し)。
+- madge循環importチェック: 既知の1本(gameStore>ghostBuild>weaponUtils)のみ・新規の環は増えていない。
+- 検証: typecheck 0エラー/lint 0エラー(既存warning 16件のみ・無関係)。触った範囲のユニットテスト
+  個別実行=全green(rankFloor 10/railBias 15/botTelemetry 20/bossPosture 8/progress 20/
+  runSkillDraft 38/upgradeUtils 5/bountyTick 39/directorTick 6/idolTick 30/meleeExecute 16/
+  sim.test 37(headless simulation invariants含む)/killCorpse 7/ghostKatanaWire 17/
+  ghostSameSpec 20、計283+)。フルテスト/ビルドは社長指示が無いため未実施。
+- ★未決: なし(手動レールのスキル重みは「既存の抽選重み表に乗算」という前提が§22裁定(新規/Lv+1側
+  =完全均等・重み表なし)と食い違っていたため、rail=null時に数学的に無改変となる重み付き抽選
+  `pickWeighted`(基準重み=1への乗算として解釈)へ実装判断で読み替えた。ゲームの見え方・挙動・
+  デフォルト値は一切変わらない実装詳細の解釈であり、仕様変更ではないと判断——ただし解釈の妥当性は
+  設計チャットの確認を推奨)。
+- 次のハンドオフ: 実機テストで(3)(4)(5)相当の値を決めた後、確定値を本実装(ランク床カーブ本体・
+  レール重み表)へ反映するバッチが必要(このバッチはツマミ止まり=決定は社長)。
+
 ## v0.25.3394 — §7-11c TUNE-KNOBS仕様確定(社長GO「場を整えておいて」)→発注【2026-08-14 23:50 JST】
 - (3)(4)(5)=実機テストで確定するための場: ?posturechip= / ランク床仮実装(持ち越し廃止+R1固定=
   決定済み仕様+床カーブ案A)+?rankfloorpace= / 手動レール?rail=&railmult= / BOT_REPORTクリ計測口。

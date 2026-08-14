@@ -51,6 +51,7 @@ import { isCounterablePhase, phaseJustChanged } from './bossScript';
 import { distToSegment } from './geometry';
 import { rectsOverlap } from '../world/obstacles';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
+import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { refundCounterCooldown } from './counterMaster';
 import { getActiveGun } from './weaponUtils';
 import { GLOW_R_L } from './glowTiers';
@@ -229,6 +230,8 @@ const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx)
   const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT);
   const g2 = useGameStore.getState();
   g2.damageEnemy(bounty.id, dmg, false, true, false, 'other', 'player', 'counter');
+  // §7-11c(4): カウンター反撃(確定クリ)。賞金首は isBossType 非登録(§6.38裁定)=対雑魚扱いで計上。
+  recordCritHit('guaranteed', false);
   g2.spawnDamageNumber(bounty.x + bounty.width / 2, bounty.y, dmg, true);
   sfx.reward();
   g2.spawnRing(hx, hy, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);

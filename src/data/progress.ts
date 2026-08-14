@@ -281,76 +281,11 @@ export const setWallMeta = (stageId: string, meta: WallMeta): void => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// ランク持ち越し(社長決定v0.25.1844→再調整v0.25.1847): 各ステージごとに「そのランの最終ランク」を
-// **そのまま**次ランの開始ランクとして保持する(旧・−1は廃止)。死亡/クリア/撤退(商人帰還)すべて同じ扱い。
-// 下限R1・上限R7。次ランでは最初の査定サイクル(通常=仮査定+ピーク=検証)が通常どおり走るので、
-// 維持できなければそこで−1降格、余裕なら+1昇格する(=開始値は信用しつつ毎ランちゃんと再試験される)。
-const START_RANK_KEY = 'zombie.progress.startRank';
-type StartRankMap = Record<string, number>;
-
-const loadStartRankMap = (): StartRankMap => {
-  if (typeof localStorage === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(START_RANK_KEY);
-    const obj = raw ? JSON.parse(raw) : {};
-    return obj && typeof obj === 'object' ? obj as StartRankMap : {};
-  } catch {
-    return {};
-  }
-};
-
-const saveStartRankMap = (m: StartRankMap): void => {
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(START_RANK_KEY, JSON.stringify(m)); } catch { /* ignore */ }
-};
-
-// 純関数: 最終ランク→次ランの開始ランク(そのまま保持・クランプ1..7)。
-export const carryOverStartRank = (finalRank: number): number =>
-  Math.max(1, Math.min(7, Math.round(finalRank)));
-
-export const getStartRank = (stageId: string): number => {
-  const v = loadStartRankMap()[stageId];
-  return typeof v === 'number' && Number.isFinite(v) ? Math.max(1, Math.min(7, Math.round(v))) : 1;
-};
-
-export const setStartRankFromFinal = (stageId: string, finalRank: number): void => {
-  if (!stageId) return;
-  const m = loadStartRankMap();
-  m[stageId] = carryOverStartRank(finalRank);
-  saveStartRankMap(m);
-};
-
-// ステージ毎の「開始最低ランク」(社長決定v0.25.1986)。持ち越し値(getStartRank)を優先するが、それが
-// この最低ランク未満なら最低ランクからスタートする(=開始のフロア)。ラン中はこの下限を割ってよい
-// (例: ステージ3=最低2で、ランク1まで落ちて死んでも、次ランはまた2から)。
-// - stage-1/2=1(=フロアなし相当)/ stage-3=2 / stage-4=3 / stage-5=4 / stage-6=5。
-// - stage-7=1(ボス専用だが攻撃パターン切替に別軸で使う予定・社長メモ)。
-// - チュートリアル(stage-tutorial)・EX・未指定=フロアなし(=1)。
-const STAGE_MIN_START_RANK: Record<string, number> = {
-  'stage-1': 1,
-  'stage-2': 1,
-  'stage-3': 2,
-  'stage-4': 3,
-  'stage-5': 4,
-  'stage-6': 5,
-  'stage-7': 1,
-};
-
-// 純関数: ステージ毎の開始最低ランク(未指定=1・クランプ1..7)。
-export const stageMinStartRank = (stageId: string): number => {
-  const v = STAGE_MIN_START_RANK[stageId];
-  return typeof v === 'number' ? Math.max(1, Math.min(7, v)) : 1;
-};
-
-// 実際の開始ランク=持ち越し値(保持値=優先)と、ステージ最低ランク(下限)の大きい方。
-export const effectiveStartRank = (stageId: string): number =>
-  Math.max(getStartRank(stageId), stageMinStartRank(stageId));
-
-// ラン中の降格の絶対下限(社長決定v0.25.1988): 開始最低ランクの「1つ下」まで落ちられる(それ以下には
-// 降格しない)。例: stage-6(最低5)はラン中は4まで/ stage-3(最低2)は1まで。全体下限はR1。
-export const stageInRunFloorRank = (stageId: string): number =>
-  Math.max(1, stageMinStartRank(stageId) - 1);
-
+// ランク持ち越し=廃止(PACING_PUZZLE.md §7-11c(2)・決定済み仕様)。旧・startRankマップ
+// (carryOverStartRank/getStartRank/setStartRankFromFinal)とステージ別開始最低ランク
+// (stageMinStartRank/effectiveStartRank/stageInRunFloorRank)はここにあったが、「全ランR1固定
+// スタート+時間経過で上がる床(rankFloor.ts)」へ置換されたため削除した。旧localStorageキー
+// 'zombie.progress.startRank' は以後書き込まれない(読み出しも無し=残っていても無害な死蔵データ)。
 // ───────────────────────────────────────────────────────────────────────────
 // バッチM20(§5.21): 囲いゲート(1/2)の恒久解除メタ。ステージ毎に個別保持(WallMetaと同じ方針)。
 // 社長決定v0.25.1518: クリアし、そのランを死亡以外(クリア/撤退)で終えると以後のランで出現しなくなる。

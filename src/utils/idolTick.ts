@@ -26,6 +26,7 @@ import { isCounterablePhase, phaseJustChanged } from './bossScript';
 import { neutralVerb, pickStringScript, restMsFor, punishTrigger, advanceLingerMs, type NeutralVerb } from './bossSkeleton';
 import { resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from './bossHate';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
+import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { refundCounterCooldown } from './counterMaster';
 import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter';
 import { npcSfxDistGain } from './npcSfx';
@@ -309,6 +310,7 @@ export const runIdolTick = (
       } }));
       const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT);
       useGameStore.getState().damageEnemy(idol.id, dmg, false, true, false, 'other', 'player', 'counter');
+      recordCritHit('guaranteed', true); // §7-11c(4): カウンター反撃(確定クリ・idolは常にボス)
       useGameStore.getState().spawnDamageNumber(icx, idol.y, dmg, true);
       sfx.reward();
       useGameStore.getState().spawnRing(hx, hy, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);

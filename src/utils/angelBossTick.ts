@@ -29,6 +29,7 @@ import { airHopEase01 } from './airHop';
 import { distToSegment } from './levelUpGate';
 import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY, isBossCounterableNowApprox } from './bossScript';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
+import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの合流
 import { npcSfxDistGain } from './npcSfx'; // v0.25.2480: 守護霊カウンターSEの距離減衰
@@ -359,6 +360,7 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   const counterBase = getActiveGun(cp)?.damage ?? 12;
   const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
   useGameStore.getState().damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter');
+  recordCritHit('guaranteed', true); // §7-11c(4): カウンター反撃(確定クリ・天使6体は常にボス)
   useGameStore.getState().spawnDamageNumber(bcx, boss.y, dmg, true);
   sfx.reward();
   useGameStore.getState().spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);

@@ -313,7 +313,7 @@ import {
   getKillTotals, resetKillTelemetry, setPhaseKillDebug, resetPhaseKillDebug, getCurrentStyle, getLastKillAt,
   getPhaseKillDebug, snapshotKillTotals, snapshotSpawns
 } from '../utils/killTelemetryState';
-import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
+import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel, recordCritHit } from '../utils/botTelemetry';
 // SKILL_BUILD_REDESIGN.md §15(B0発注文): 計測台帳の最終記録(読むだけ)+ボット購買ポリシー(実機オートパイロット側)。
 import { recordRunFinal, getRunTelemetrySnapshot } from '../utils/runTelemetry';
 import { decideBotShopPurchase } from '../utils/botShopPolicy';
@@ -331,7 +331,7 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
-import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChronicle, recordChronicleGlobalFirst, effectiveStartRank, stageInRunFloorRank, setStartRankFromFinal, updateStoryFlags } from '../data/progress';
+import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChronicle, recordChronicleGlobalFirst, updateStoryFlags } from '../data/progress';
 import { exposeKomaLog, logKomaSummary } from '../utils/komaLog';
 // 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
 import {
@@ -673,20 +673,11 @@ const syncWallDepth = (dist: number): void => {
 // - kind='death': 自己最深/自己最高ランクの「記録」だけをコミット(実際に到達した記録は残す)。
 //   踏破/ランク到達フラグ・ゲート恒久解除はコミットしない(死亡は解除しない=v0.25.1517則)。
 // 途中リロード/クラッシュはこの関数自体が一度も呼ばれないため、何も永続しない(症状の根治)。
-// ランク持ち越し(社長決定v0.25.1844→v0.25.1847=最終ランクそのまま保持): 開始ランク=そのステージの
-// 前ラン最終ランク。さらに社長決定v0.25.1986で、ステージ毎の開始最低ランク(effectiveStartRank)を下限に
-// する(持ち越し値を優先しつつ、それ未満なら最低ランクから)。選択ステージ未確定(ダンス練習/ベンチ等)はR1。
-const seededPuzzleClockState = (): PuzzleClockState => {
-  const s = createPuzzleClockState();
-  const stageId = getSelectedStageId();
-  // 開始ランク=持ち越し値を優先しつつ、ステージ毎の最低ランクを下限にする(社長決定v0.25.1986)。
-  // さらにラン中の降格の絶対下限=開始最低ランクの1つ下(社長決定v0.25.1988)。例: 最低5→ラン中は4まで。
-  if (stageId) {
-    s.rank = clampRank(effectiveStartRank(stageId));
-    s.minRank = stageInRunFloorRank(stageId);
-  }
-  return s;
-};
+// ランク持ち越し=廃止(PACING_PUZZLE.md §7-11c(2)・決定済み仕様)。全ランR1固定スタート
+// (createPuzzleClockStateの既定がそのままR1・minRank=1)。時間経過で上がる「床」は
+// runKomaBoardMaintenance側(directorTick.ts)が毎tick rankFloorForElapsed で計算し、
+// minRank/rank を継続的に更新する(ここでは初期化のみ)。
+const seededPuzzleClockState = (): PuzzleClockState => createPuzzleClockState();
 
 const commitRunEndProgress = (kind: 'death' | 'clear'): void => {
   const stageId = getSelectedStageId();
@@ -1683,6 +1674,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       finisherKills: botTele.finisherKills,
       meleeSwings: botTele.meleeSwings,
       meleeHits: botTele.meleeHits,
+      // PACING_PUZZLE.md §7-11c(4): クリ計測口(開発用。RNGクリ/確定クリ/総ヒット数を対ボス・対雑魚
+      // 内訳付きで出す。挙動は一切変えない=数えるだけ)。elapsedSecはクリ/秒の算出用。
+      critStats: { ...botTele.critStats, elapsedSec: Math.round(s.gameTime / 1000) },
       // SKILL_BUILD_REDESIGN.md §15-1(B0発注文): B0計測器の10出力(§12-2#6+§13-4)を丸ごと同梱。
       runTelemetry: getRunTelemetrySnapshot(),
     };
@@ -1699,8 +1693,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     if (WALL_ENABLED) syncWallDepth(runDeepestDistRef.current);
     // §5.21 M20追補(v0.25.1534): 死亡は「記録」のみコミット(踏破フラグはコミットしない)。
     if (WALL_ENABLED) commitRunEndProgress('death');
-    // ランク持ち越し(社長決定v0.25.1844): 死亡でも最終ランク−1を保存(下限R1)。
-    { const sid = getSelectedStageId(); if (sid) setStartRankFromFinal(sid, puzzleClockRef.current.rank); }
+    // ランク持ち越しは廃止(PACING_PUZZLE.md §7-11c(2))。旧: 死亡時に最終ランク-1を保存していた。
     setHurricaneRumble(false); // 死亡で鳴動を止める(ループが回り続けても残響しない)
     setHeartbeatLoop(false); // 心音ループも死亡で止める
     setPeakLayer(false); // PEAK重ねSEも死亡で止める
@@ -3589,8 +3582,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (rs.gameWon || rs.gameReturned) {
             runEndCommittedRef.current = true;
             commitRunEndProgress('clear');
-            // ランク持ち越し(社長決定v0.25.1844): クリア/撤退(帰還)でも最終ランク−1を保存(死亡と同じ)。
-            { const sid = getSelectedStageId(); if (sid) setStartRankFromFinal(sid, puzzleClockRef.current.rank); }
+            // ランク持ち越しは廃止(PACING_PUZZLE.md §7-11c(2))。旧: クリア/撤退でも最終ランク-1を保存していた。
           }
         }
 
@@ -9658,6 +9650,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             projectile?.reflected ? 'reflect' : directPlayerGun && hitCrit ? 'gun-crit' : null,
             projectile?.postureMult ?? 1,
           );
+          // PACING_PUZZLE.md §7-11c(4): クリ計測口(挙動は変えない=数えるだけ)。護衛NPC/守護霊の弾は
+          // プレイヤー起因ではないため除外(botTelemetryの他の計測=classifyProjectileDamageChannelと
+          // 同じ除外方針)。headshotHit=PHILL頭部の確定クリ、それ以外のhitCrit成立はRNGクリ。
+          if (!isGhostShot && !isEscortShot) {
+            recordCritHit(hitCrit ? (headshotHit ? 'guaranteed' : 'rng') : 'none', isBoss);
+          }
           // 護衛NPC/守護霊(ghost-gun・v0.25.2525で反射弾'ghost-reflect'も)の弾の被弾音も、発砲音と
           // 同じ距離減衰をかける(遠い味方の攻撃は被弾音も小さく/画面外は無音)。プレイヤー自身の弾は等倍(gain=1)。
           let hitSfxGain = 1;

@@ -58,7 +58,7 @@ import { pickFixedGuardianForGhostMode, shouldPickFixedGuardian } from '../data/
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
 import {
-  capForState,
+  capForState, clampRank,
   assessKomaDelta, applyRankDelta, combineCycleDelta,
   createKomaAccumulator, stepKomaAccumulator, finalizeKomaAssessmentInput,
   stepSoften, SOFTEN_TARGET_MULT, SOFTEN_TARGET_MIN,
@@ -67,6 +67,7 @@ import {
   type PuzzleClockState, type KomaAccumulatorState, type SoftenState, type RankDelta,
   type KomaAssessmentInput, type RankPaceState, type PuzzleRank,
 } from './rankAssessor';
+import { rankFloorForElapsed, parseRankFloorPaceMult } from './rankFloor'; // PACING_PUZZLE.md §7-11c(2)
 import {
   nuisanceTarget, decideNextSpawn,
   ZERO_NUISANCE, NUISANCE_TYPES,
@@ -173,6 +174,16 @@ const BOSS_RELAX_ENABLED = typeof window === 'undefined'
 // 交戦判定のヒステリシス用に前フレームの結果を保持する。距離だけから毎フレーム再計算するので、
 // ラン跨ぎで残っても最悪1フレーム余分に交戦中と見なすだけ(実害なし)。
 let bossRelaxPrev = false;
+
+// PACING_PUZZLE.md §7-11c(2): ランク床(決定済み仕様)。既定ON。?rankfloor=0で無効化(比較用)。
+const RANK_FLOOR_ENABLED = typeof window === 'undefined'
+  ? true
+  : new URLSearchParams(window.location.search).get('rankfloor') !== '0';
+// ?rankfloorpace=<倍率>(既定1・大きいほど床の上昇間隔が伸びる=遅くなる)。パースはrankFloor.ts側の
+// 純関数(parseRankFloorPaceMult)に集約(異常値のフォールバックを1箇所にする)。
+const RANK_FLOOR_PACE_MULT = typeof window === 'undefined'
+  ? 1
+  : parseRankFloorPaceMult(new URLSearchParams(window.location.search).get('rankfloorpace'));
 
 // PACING_PUZZLE.md §5.17 M14: ランクの壁演出(銘打ちバナー+SE+年表記録/降格は静かに)。
 // 旧経路(コマ境界の確定査定)・新経路(M50連続査定)の両方から呼ぶ共通処理として抽出したもの
@@ -322,6 +333,13 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     bossRelaxPrev,
   );
   bossRelaxPrev = bossRelax;
+  // PACING_PUZZLE.md §7-11c(2): ランク床(案A)。ステージ×経過msから現在の床を毎tick再計算し、
+  // minRankへ焼く(査定側のapplyRankDeltaはstate.minRankを下限として読むので、降格もこれより下へは
+  // 落ちない)。?rankfloor=0で無効化(常に1=床なし)。
+  const rankFloorNow = RANK_FLOOR_ENABLED
+    ? rankFloorForElapsed(getSelectedStageId() ?? '', gameTime, RANK_FLOOR_PACE_MULT)
+    : 1;
+  puzzleClockRef.current = { ...puzzleClockRef.current, minRank: rankFloorNow };
   const rankPaceResult = tickRankPace(rankPaceRef.current.state, {
     dtMs: deltaTime * 1000,
     killsThisFrame,
@@ -352,6 +370,13 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   if (RANK2_ENABLED && rankPaceResult.delta !== 0) {
     const prevRank = puzzleClockRef.current.rank;
     puzzleClockRef.current = applyRankDelta(puzzleClockRef.current, rankPaceResult.delta);
+    announceRankChange(prevRank, puzzleClockRef.current.rank);
+  }
+  // 床が現在ランクより上に来たら引き上げる(査定イベントを待たない純粋な時間経過の底上げ。
+  // 「圧は時間で必ず来る」=§7-11(4)の意図)。査定で既に床より上にいる場合は何もしない。
+  if (puzzleClockRef.current.rank < rankFloorNow) {
+    const prevRank = puzzleClockRef.current.rank;
+    puzzleClockRef.current = { ...puzzleClockRef.current, rank: clampRank(rankFloorNow) };
     announceRankChange(prevRank, puzzleClockRef.current.rank);
   }
 

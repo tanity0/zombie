@@ -17,6 +17,22 @@ export const BOSS_POSTURE_RECOVERY_PER_SEC = 0.03;
 export const BOSS_POSTURE_REBREAK_LOCK_MS = 6000;
 export const BOSS_BREAK_REWARD_HP_RATIO = 0.25;
 
+// PACING_PUZZLE.md §7-11c-1: 体勢チップの実機テスト用ツマミ。`?posturechip=<倍率>`で全発生源
+// (カウンター/強攻撃/銃クリ/打返し/近接)へ一括で乗算する。適用点はここ(bossPosture適用点)1箇所
+// のみ=呼び出し側(damageEnemy/カウンター各種/近接各種)は無改修。既定=1(現行どおり)。
+export const DEFAULT_POSTURE_CHIP_MULT = 1;
+
+/** 純関数: URLパラメータ生値→体勢チップ倍率(空/NaN/負値は既定1へフォールバック)。 */
+export const parsePostureChipMult = (raw: string | null | undefined): number => {
+  if (raw === null || raw === undefined || raw === '') return DEFAULT_POSTURE_CHIP_MULT;
+  const v = Number(raw);
+  return Number.isFinite(v) && v >= 0 ? v : DEFAULT_POSTURE_CHIP_MULT;
+};
+
+const POSTURE_CHIP_MULT = typeof window === 'undefined'
+  ? DEFAULT_POSTURE_CHIP_MULT
+  : parsePostureChipMult(new URLSearchParams(window.location.search).get('posturechip'));
+
 const IMPACT_RATIO: Record<BossPostureImpact, number> = {
   counter: 0.20,
   melee: 0.04,
@@ -59,7 +75,7 @@ export const applyBossPostureDamage = (
   if (gameTime < (enemy.bossPostureLockUntil ?? 0)) return null;
   const max = bossPostureMax(enemy.type);
   const before = bossPostureNow(enemy);
-  const after = Math.max(0, before - max * IMPACT_RATIO[impact] * impactMult);
+  const after = Math.max(0, before - max * IMPACT_RATIO[impact] * impactMult * POSTURE_CHIP_MULT);
   let recoveryCap = enemy.bossPostureRecoveryCap ?? max;
   for (const checkpoint of [0.75, 0.50, 0.25]) {
     const value = max * checkpoint;

@@ -6,6 +6,7 @@ import {
 import { SKILLS, skillDescForLevel } from '../data/campaign';
 import { CONSUMABLES, consumableCardDescription } from '../data/consumables';
 import { draftRunSkillCards, draftReplacementSkillCard, type DraftedCard, type RunSkillDraftInput } from './runSkillDraft';
+import type { RailKind } from './railBias'; // PACING_PUZZLE.md §7-11c(3): 手動レール(実機テスト用ツマミ)
 // v0.25.3212(社長指示「取り急ぎ、ナイフは武器箱に移す」): レベルアップ3枠目のナイフ提示
 // (旧: Tier5未満なら25%で次Tierナイフ)は廃止し、ナイフ強化は武器箱(weaponDrop.openCrate)へ移した。
 // 3枠目は常設スクラップ+50に戻る。
@@ -123,8 +124,10 @@ const cardToUpgradeOption = (card: DraftedCard): UpgradeOption => {
  * 埋め合わせの複製スクラップカードは作らない=常設4枚目1枚だけを追加する)。 */
 export const generateSkillUpgradeChoices = (
   input: RunSkillDraftInput, count = 3, rng: () => number = Math.random,
+  // PACING_PUZZLE.md §7-11c(3): 手動レール(実機テスト用ツマミ)。既定null=完全に現行どおり。
+  rail: RailKind | null = null, railMult = 1.5,
 ): UpgradeOption[] => {
-  const cards = draftRunSkillCards(input, count, rng);
+  const cards = draftRunSkillCards(input, count, rng, rail, railMult);
   const options = cards.map(cardToUpgradeOption);
   options.push(scrapOption());
   return options;
@@ -137,8 +140,9 @@ export const generateReplacementSkillOption = (
   dealtSeed: readonly SkillKey[],
   dealtConsumableSeed: readonly ConsumableKey[] = [],
   rng: () => number = Math.random,
+  rail: RailKind | null = null, railMult = 1.5,
 ): UpgradeOption | null => {
-  const card = draftReplacementSkillCard(input, dealtSeed, dealtConsumableSeed, rng);
+  const card = draftReplacementSkillCard(input, dealtSeed, dealtConsumableSeed, rng, rail, railMult);
   return card ? cardToUpgradeOption(card) : null;
 };
 // selectUpgrade 側の passive 分岐は型網羅のため残置(この経路は今後生成されない)。

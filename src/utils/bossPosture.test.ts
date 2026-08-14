@@ -3,8 +3,26 @@ import type { Enemy, EnemyType } from '../types/game';
 import {
   applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal,
   bossPostureMax, tickBossPosture, usesPostureSystem, POSTURE_ELITE_TYPES, BOSS_POSTURE_BREAK_MS, BOSS_POSTURE_REBREAK_LOCK_MS,
-  BOSS_FATAL_DAZE_MS,
+  BOSS_FATAL_DAZE_MS, parsePostureChipMult, DEFAULT_POSTURE_CHIP_MULT,
 } from './bossPosture';
+
+// PACING_PUZZLE.md §7-11c-1: `?posturechip=<倍率>`のパース(純関数)。実際の乗算はモジュール読み込み
+// 時に一度だけ確定するURL値を使うため(テスト環境はwindow未定義=常に既定1)、ここでは
+// パース関数そのものだけを検算する(適用点=applyBossPostureDamageの動作は既存のテストで担保済み)。
+describe('parsePostureChipMult(§7-11c-1・体勢チップ実機テストツマミ)', () => {
+  it('正の数値はそのまま倍率になる', () => {
+    expect(parsePostureChipMult('2')).toBe(2);
+    expect(parsePostureChipMult('0.5')).toBe(0.5);
+    expect(parsePostureChipMult('0')).toBe(0); // 0=完全無効化も許容(体勢が一切削れない検証用)
+  });
+  it('空/null/undefined/負値/NaNは既定1へフォールバック', () => {
+    expect(parsePostureChipMult(null)).toBe(DEFAULT_POSTURE_CHIP_MULT);
+    expect(parsePostureChipMult(undefined)).toBe(DEFAULT_POSTURE_CHIP_MULT);
+    expect(parsePostureChipMult('')).toBe(DEFAULT_POSTURE_CHIP_MULT);
+    expect(parsePostureChipMult('-1')).toBe(DEFAULT_POSTURE_CHIP_MULT);
+    expect(parsePostureChipMult('junk')).toBe(DEFAULT_POSTURE_CHIP_MULT);
+  });
+});
 
 const boss = (type: EnemyType = 'giantbat', over: Partial<Enemy> = {}): Enemy => ({
   id: 'boss', type, x: 0, y: 0, width: 100, height: 100,

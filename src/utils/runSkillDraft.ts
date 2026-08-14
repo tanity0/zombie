@@ -10,6 +10,9 @@
 import type { SkillKey, ConsumableKey } from '../types/game';
 import { SKILLS, type SkillRarity, skillMaxLevel, NEW_SLEEPING_SKILLS, RETIRED_SKILLS } from '../data/campaign';
 import { CONSUMABLE_KEYS } from '../data/consumables';
+// PACING_PUZZLE.md §7-11c(3): 手動レール(実機テスト用ツマミ)。新規/Lv+1側の抽選(§22裁定=完全均等)に
+// スキル分類の重みを乗算するだけ(新しい抽選機構は作らない・railが空ならpickWeightedは均等抽選と等価)。
+import { pickWeighted, railSkillWeight, type RailKind } from './railBias';
 
 // ---- 1. 枠(§1-1・社長指定・確定) -------------------------------------------------------
 export const RUN_BUILD_CAPACITY: Record<SkillRarity, number> = { super: 1, rare: 2, normal: 3 };
@@ -212,8 +215,16 @@ const consumableCard = (key: ConsumableKey): DraftedConsumableCard => ({ key, ca
  *   消費カード側(consumableCandidates)も均等抽選。
  * ③3枚は重複なし(同一スキル/同一消費カードを2枚並べない)。
  */
+// PACING_PUZZLE.md §7-11c(3): スキル側(新規/Lv+1)の1枚選抜。rail=null(既定=未指定)なら
+// railSkillWeightが全スキルへ1を返すため pickWeighted は pickUniform と**同じrng消費・同じ結果**
+// になる(重み1固定の重み付き抽選=一様抽選と数学的に等価)。①の「未指定=完全に現行どおり」はここで担保する。
+const pickSkillKey = (
+  pool: readonly SkillKey[], rail: RailKind | null, railMult: number, rng: () => number,
+): SkillKey => pickWeighted(pool, k => railSkillWeight(k, rail, railMult), rng);
+
 export const draftRunSkillCards = (
   input: RunSkillDraftInput, count: number, rng: () => number = Math.random,
+  rail: RailKind | null = null, railMult = 1.5,
 ): DraftedCard[] => {
   const cards: DraftedCard[] = [];
   const dealt: SkillKey[] = [];
@@ -231,7 +242,7 @@ export const draftRunSkillCards = (
     if (category === null) break; // 全プール枯渇=このドラフトはここで打ち切り
 
     if (category === 'levelup') {
-      const key = pickUniform(lvPool, rng);
+      const key = pickSkillKey(lvPool, rail, railMult, rng);
       cards.push(levelUpCard(key, input));
       dealt.push(key);
     } else if (category === 'consumable') {
@@ -239,7 +250,7 @@ export const draftRunSkillCards = (
       cards.push(consumableCard(key));
       dealtConsumables.push(key);
     } else {
-      const key = pickUniform(newPool, rng);
+      const key = pickSkillKey(newPool, rail, railMult, rng);
       cards.push(newCard(key));
       dealt.push(key);
     }
@@ -254,6 +265,7 @@ export const draftReplacementSkillCard = (
   dealtSeed: readonly SkillKey[],
   dealtConsumableSeed: readonly ConsumableKey[] = [],
   rng: () => number = Math.random,
+  rail: RailKind | null = null, railMult = 1.5,
 ): DraftedCard | null => {
   const dealt = [...dealtSeed];
   const dealtConsumables = [...dealtConsumableSeed];
@@ -264,9 +276,9 @@ export const draftReplacementSkillCard = (
   const consumableCapped = dealtConsumables.length >= MAX_CONSUMABLES_PER_DRAFT && (newPool.length + lvPool.length > 0);
   const category = rollCategory(newPool.length, lvPool.length, consumableCapped ? 0 : cPool.length, rng);
   if (category === null) return null;
-  if (category === 'levelup') return levelUpCard(pickUniform(lvPool, rng), input);
+  if (category === 'levelup') return levelUpCard(pickSkillKey(lvPool, rail, railMult, rng), input);
   if (category === 'consumable') return consumableCard(pickUniform(cPool, rng));
-  return newCard(pickUniform(newPool, rng));
+  return newCard(pickSkillKey(newPool, rail, railMult, rng));
 };
 
 // ---- 8. リロール価格(社長裁定2026-08-13「20にして」=一律20・値上がり廃止) --------------------

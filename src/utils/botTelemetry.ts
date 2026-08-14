@@ -16,6 +16,10 @@
 //    (即死はHPを経由しない=件数のみ)。
 //  - recordMeleeSwing(§6.21 M46): 近接カウンター振り1回ごとに呼ぶ(hitCount=その振りで当てた敵数)。
 //    累計 meleeSwings(振り回数)/meleeHits(命中数合計)。
+//  - recordCritHit(PACING_PUZZLE.md §7-11c(4)): クリ計測口。挙動は一切変えない=数えるだけ。
+//    kind='rng'=確率抽選で成立したクリ(銃の着弾ロール/近接クリ)/'guaranteed'=確定クリ
+//    (カウンター反撃/meleeExecuteの紐づく紫中フィニッシュ/PHILLヘッドショット)/'none'=非クリ命中。
+//    isBoss=対象がisBossType(ボスとして扱われる型)か(=対ボス/対雑魚の内訳)。
 //  - リセット: gameStore.resetGame(ラン開始)で全カウンタ0(実機/ヘッドレス両ハーネスをカバー)。
 import type { SubWeaponKey } from '../types/game';
 
@@ -25,6 +29,20 @@ export interface BotDamageDealt {
   other: number;
 }
 
+export interface BotCritBucket {
+  rngCrits: number;
+  guaranteedCrits: number;
+  hits: number;
+}
+
+export interface BotCritStats {
+  total: BotCritBucket;
+  vsBoss: BotCritBucket;
+  vsTrash: BotCritBucket;
+}
+
+export type CritKind = 'rng' | 'guaranteed' | 'none';
+
 export interface BotTelemetry {
   subUses: Partial<Record<SubWeaponKey, number>>;
   overclockProcs: number;
@@ -32,7 +50,14 @@ export interface BotTelemetry {
   finisherKills: number;
   meleeSwings: number;
   meleeHits: number;
+  critStats: BotCritStats;
 }
+
+const createCritBucket = (): BotCritBucket => ({ rngCrits: 0, guaranteedCrits: 0, hits: 0 });
+const createCritStats = (): BotCritStats => ({ total: createCritBucket(), vsBoss: createCritBucket(), vsTrash: createCritBucket() });
+const copyCritBucket = (b: BotCritBucket): BotCritBucket => ({ ...b });
+const copyCritStats = (s: BotCritStats): BotCritStats =>
+  ({ total: copyCritBucket(s.total), vsBoss: copyCritBucket(s.vsBoss), vsTrash: copyCritBucket(s.vsTrash) });
 
 const createTelemetry = (): BotTelemetry => ({
   subUses: {},
@@ -41,6 +66,7 @@ const createTelemetry = (): BotTelemetry => ({
   finisherKills: 0,
   meleeSwings: 0,
   meleeHits: 0,
+  critStats: createCritStats(),
 });
 
 let telemetry: BotTelemetry = createTelemetry();
@@ -66,6 +92,21 @@ export const recordMeleeSwing = (hitCount: number): void => {
   telemetry.meleeHits += hitCount;
 };
 
+// PACING_PUZZLE.md §7-11c(4): クリ計測口。挙動は一切変えない=数えるだけ(呼び出し側のダメージ計算/
+// クリ判定そのものには一切影響しない)。hit=1回のヒット判定ごとに1回呼ぶ想定。
+export const recordCritHit = (kind: CritKind, isBoss: boolean): void => {
+  const bucket = isBoss ? telemetry.critStats.vsBoss : telemetry.critStats.vsTrash;
+  bucket.hits += 1;
+  telemetry.critStats.total.hits += 1;
+  if (kind === 'rng') {
+    bucket.rngCrits += 1;
+    telemetry.critStats.total.rngCrits += 1;
+  } else if (kind === 'guaranteed') {
+    bucket.guaranteedCrits += 1;
+    telemetry.critStats.total.guaranteedCrits += 1;
+  }
+};
+
 export const getBotTelemetry = (): Readonly<BotTelemetry> => telemetry;
 
 // アンカー保存用ディープコピー(実装精度の規律3: 生きた参照を保存すると差分が常に0になる)。
@@ -76,6 +117,7 @@ export const snapshotBotTelemetry = (): BotTelemetry => ({
   finisherKills: telemetry.finisherKills,
   meleeSwings: telemetry.meleeSwings,
   meleeHits: telemetry.meleeHits,
+  critStats: copyCritStats(telemetry.critStats),
 });
 
 export const resetBotTelemetry = (): void => {
