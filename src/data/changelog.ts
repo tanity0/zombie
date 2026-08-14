@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3415',
+    items: [
+      'ゲーム内容の変更はありません(金箱B3の検収記録。残るは賞金首の自然出現=B4のみ)。',
+    ],
+  },
+  {
     version: '0.25.3414',
     items: [
       '賞金首を倒すと金の宝箱をドロップするようになりました(開けると宝物×2とスクラップが手に入ります。武器は入っていません)。',

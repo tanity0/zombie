@@ -6323,8 +6323,13 @@ DPSの並走は**スキルに背負わせない**: 床=武器Tier(時間追従�
   ①リーパー波及applyMeleeFinishSkillSpread(gameStore.ts:3352近辺)②bombピックアップ
   (gameStore.ts:13215/13218近辺)——いずれも賞金首を非ボス扱いで即死させうる(v2受け入れ条件
   「リーパー波及で即死せず」の対象)。不変条件テストに追加。
+- **B3【実装済み v0.25.3414・検収良】**: 金箱=bounty-chestピックアップ(近接/銃の両死亡経路・
+  クランプ・マグネット・閃光開封・中身=トレジャー×2+スクラップ・価値=開封時の実効ランク計算)+
+  E-1完遂(ELITE_EXECUTE_HP_RATIO撤去=強個体は全HP帯heavy・雑魚不変)。即死経路2件(リーパー波及/
+  ボム)はB-Rebuild(isBossType編入)で自動解消済み。※金箱の価値式がgameStore/bountyTickで二重定義
+  (循環回避・ドリフト検知テストつき)→B4で葉モジュールへ一本化する。
 - **B4**: ローテーション+頻度ゲート+自然湧きproducer配線+E-5先送り3系統配線(bountyEngagedNow)+
-  退場通知+変異体対策室掲載(掲載裁定の5点)。
+  退場通知+変異体対策室掲載(掲載裁定の5点)。※掲載5点は前倒し実装済み(v0.25.3391)。
   - **掲載裁定5点のみ【済 v0.25.3391】**(実装チャット前倒し): PRACTICE_SLOTS4枠追記/
     `?bountynow`のpracticeForces相乗り/遭遇解放(既存isEngageableBoss+bossStyleSlotKeyで無配線動作を
     確認)/bossHints4種追記/BossRush種別表示「賞金首」追加。**ローテーション・頻度ゲート・自然湧き
