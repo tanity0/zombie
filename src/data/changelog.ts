@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3331',
+    items: [
+      'ゲーム内容の変更はありません(設計メモ更新: 賞金首3種へのエルデンリング未使用パターン割り当て私案・体勢スキル拡張方針)。',
+    ],
+  },
+  {
     version: '0.25.3330',
     items: [
       'ゲーム内容の変更はありません(バランス再設計メモの更新: 賞金首は専用新規3種のローテーションに決定・裁定パッケージの詳細化)。',
