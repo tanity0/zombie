@@ -9076,12 +9076,8 @@ export class PixiScene {
           && e.aiTargetX !== undefined && e.aiTargetY !== undefined) {
         const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
         const tx = e.aiTargetX, ty = e.aiTargetY; // dash の狙い点は中心座標
-        const a = 0.45 + 0.4 * pulse;
-        // 太い半透明の下地＋細い明るい芯のラインで「突進経路」を強調。
-        g.moveTo(ex, ey).lineTo(tx, ty).stroke({ width: 6, color: 0xff2a2a, alpha: a * 0.4, cap: 'round' });
-        g.moveTo(ex, ey).lineTo(tx, ty).stroke({ width: 2, color: 0xff5a5a, alpha: a, cap: 'round' });
-        // 終点に着弾リング。
-        g.circle(tx, ty, 9 + 3 * pulse).stroke({ width: 2, color: 0xff5a5a, alpha: a });
+        // v0.25.3339: 流星ライン(drawAngelDashLine)へ統一(下地+終点リング+流れる芯)。
+        this.drawAngelDashLine(g, ex, ey, tx, ty, now);
       }
     }
   }
@@ -16521,12 +16517,9 @@ export class PixiScene {
         else o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * gprog) + 0.15 * gPulse });
         o.moveTo(gfx, gfy).lineTo(gtx, gty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: 0.35 + 0.35 * gprog, cap: 'round' });
       } else if (gph === 'g-dash-windup') {
-        // T1(赤ライン+終点リング)。既存の犬/パンプキン用と同じ意匠。
+        // T1(赤ライン+終点リング)。v0.25.3339: 流星ライン(drawAngelDashLine)へ統一(意匠は全ダッシュ共通)。
         const gtx = e.aiTargetX ?? cx, gty = e.aiTargetY ?? cy;
-        const ga = 0.45 + 0.4 * gPulse;
-        o.moveTo(cx, cy).lineTo(gtx, gty).stroke({ width: 6, color: 0xff2a2a, alpha: ga * 0.4, cap: 'round' });
-        o.moveTo(cx, cy).lineTo(gtx, gty).stroke({ width: 2, color: 0xff5a5a, alpha: ga, cap: 'round' });
-        o.circle(gtx, gty, 9 + 3 * gPulse).stroke({ width: 2, color: 0xff5a5a, alpha: ga });
+        this.drawAngelDashLine(o, cx, cy, gtx, gty, now);
       } else if (gph === 'g-jump-windup' || gph === 'g-jump-air') {
         // T2(赤円・着地点)。溜め開始からロック済みの着地点(社長裁定6.26-9 #1)。着地AoE半径の生値は
         // PUMPKIN_EXPLOSION_RADIUS(6.26-6「現行不変」=定数そのものは変えない)。M65: windup開始時に
@@ -17071,12 +17064,37 @@ export class PixiScene {
   }
 
   // §6.28共通(T1): 赤ライン+終点リング(ジャイアント突進と同じ意匠)。ミゲル踏み込み/ウリ踏み込み突きで再利用。
+  // 社長指示v0.25.3339「赤のライン系(帯・カラオケレーザー以外)を、スタート→ゴールへグラデーションで
+  // フェードイン/アウトしながら流星のように流れる予兆にしてみたい。ダッシュとかのやつ」。
+  // ①危険を伝える絵の掟: 経路全体の下地ライン+終点リングは従来どおり常時表示(判定の読みは不変)。
+  // 変えたのは「明るい芯」だけ=点滅する静止線 → 流星(頭+グラデーションの尾)が周回する動きへ。
+  // 頭の透明度は sin(π·t) の包絡=スタートでフェードイン・ゴールでフェードアウト。
+  // 負荷1/10: 1本あたり+約12ストローク(ダッシュ予告中のみ)。対象=裏ボスdash/ミゲル踏み込み/
+  // ウリ突き/城ボスg-dash/犬・ハンター等のcharge(「同じ動作を持つ全員に」)。
   private drawAngelDashLine(o: Graphics, fx: number, fy: number, tx: number, ty: number, now: number) {
     const pulse = 0.5 + 0.5 * Math.sin(now / 110);
     const a = 0.45 + 0.4 * pulse;
+    // 下地(経路全体)+終点リング=従来どおり(危険域の読みを絶やさない)。
     o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 6, color: 0xff2a2a, alpha: a * 0.4, cap: 'round' });
-    o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 2, color: 0xff5a5a, alpha: a, cap: 'round' });
     o.circle(tx, ty, 9 + 3 * pulse).stroke({ width: 2, color: 0xff5a5a, alpha: a });
+    // 流星の芯。1周 METEOR_PERIOD_MS で頭がスタート→ゴールへ流れ、後ろに尾を引く。
+    const METEOR_PERIOD_MS = 900;
+    const TAIL_FRAC = 0.32; // 尾の長さ=線の32%
+    const SEGS = 10;
+    const t = (now % METEOR_PERIOD_MS) / METEOR_PERIOD_MS;
+    const env = Math.sin(Math.PI * t); // フェードイン→アウトの包絡
+    const dx = tx - fx, dy = ty - fy;
+    for (let i = 0; i < SEGS; i++) {
+      const t1 = t - (TAIL_FRAC * i) / SEGS;
+      const t0 = t - (TAIL_FRAC * (i + 1)) / SEGS;
+      if (t1 <= 0) break;
+      const c0 = Math.max(0, t0);
+      const k = 1 - i / SEGS; // 頭ほど濃く太く
+      o.moveTo(fx + dx * c0, fy + dy * c0).lineTo(fx + dx * t1, fy + dy * t1)
+        .stroke({ width: 1.5 + 2.5 * k, color: 0xff5a5a, alpha: env * (0.25 + 0.65 * k * k), cap: 'round' });
+    }
+    // 頭の輝点(白寄り)。
+    o.circle(fx + dx * t, fy + dy * t, 2.5 + 1.5 * env).fill({ color: 0xffe3e3, alpha: 0.85 * env });
   }
 
   // §6.28共通(T6): 溜めで太くなる赤ライン(ミーミルのレーザーと同じ意匠)。スリィエル環の射出/
