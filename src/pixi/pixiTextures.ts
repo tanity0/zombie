@@ -576,6 +576,11 @@ export const ensureTextures = (): Promise<void> => {
       // 金箱(社長支給v0.25.3369・424×256・金+黒の重厚チェスト・閉)。賞金首討伐の報酬pickup(§6.38 B3)。
       // 開き絵が届いたら gold-chest-open として追加登録する。
       { name: 'gold-chest', scaleMode: 'nearest' as const },
+      // 鞭のしなりスミア3コマ(社長支給v0.25.3372・各456×264・赤)。馬乗り(変異)の3段コンボ/突進の
+      // 振り軌跡: 0=小さいC字 → 1=S字のしなり → 2=直線の振り抜き(§6.38発注リスト④)。
+      { name: 'fx/whip-smear-0', scaleMode: 'nearest' as const },
+      { name: 'fx/whip-smear-1', scaleMode: 'nearest' as const },
+      { name: 'fx/whip-smear-2', scaleMode: 'nearest' as const },
       // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。同じくグレースケール+透過で tint 着色。
       // 帯は技ごとに縦横比が違う(薙ぎ払い3.9:1 / 噛みつき1.2:1 / のしかかり2.1:1)ので伸縮前提=linear。
       { name: 'fx/telegraph-band', scaleMode: 'linear' as const },
