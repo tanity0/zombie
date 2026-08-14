@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3408',
+    items: [
+      'ゲーム内容の変更はありません(賞金首の武器表示の仕様を「技の間だけ表示」=ボス共通規約に確定し、修正バッチへ反映指示)。',
+    ],
+  },
+  {
     version: '0.25.3407',
     items: [
       'ゲーム内容の変更はありません(検討メモの状態を訂正: スキルのデッキ化は保留=レールの実機評価後に判断)。',
