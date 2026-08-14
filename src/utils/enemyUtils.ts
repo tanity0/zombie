@@ -164,10 +164,16 @@ export const isGate2AngelBoss = (t: EnemyType): boolean => t === 'miguel' || t =
 
 // Big set-piece enemies. They use a different crit ruleset (no instant melee
 // finisher; crits hit much harder instead).
+// PACING_PUZZLE.md §6.38 v7(社長裁定2026-08-15「改めて城ボスをコピーして作り直して」): 賞金首4種
+// (bounty-*)をフル編入。「ボスの一部だけ借りる」特例パッチ構成(v2/v6)が埋め漏れ(致命の一撃不発・
+// 紫解除されず・クリ絞り対象外・ボム/リーパー波及で即死しうる…)を量産したため、**この1テーブルへ
+// 入れるだけでボス系の全既定が付く形**に統一する(v7の方針転換)。isBountyType(=isEliteType/
+// isArenaSweepProtected/getsDramaticDeath/corpseEligible等で個別に足していた賞金首専用の
+// 迂回路)は本表へ入れたことで大半が自動的に不要になる=各所の重複を撤去した(v7実装ログ参照)。
 export const isBossType = (t: EnemyType): boolean =>
   t === 'pumpkin' || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
   t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' ||
-  t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter';
+  t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter' || isBountyType(t);
 
 /**
  * 囲い/救助イベント開始時の周辺一掃(`beginArenaEvent`/`beginRescueEvent`)で残す(=消さない)個体か。
@@ -215,9 +221,12 @@ export const getsDeathAttention = (t: EnemyType): boolean => isBossType(t) && t 
 // 討伐(KILL)時に「FF風クランブル」統一演出(triggerDramaticDeath・gameStore.ts)を出す対象か。
 // ボス系は全員対象。ネームド/クエスト対象も従来どおり劇的な討伐を維持する。
 // isNamed は型ではなく個体フラグなので Enemy を受け取る(isHiddenBoss/isBossTypeはEnemyType引数)。
-// §6.38 v6 A-5(賞金首): getsDramaticDeath=入れる(討伐SE=ボス討伐SE流用と整合させるため劇的死亡を出す)。
+// §6.38 v7(賞金首): 旧v6 A-5では`|| isBountyType(enemy.type)`を個別に足していたが、
+// v7でisBossTypeへ賞金首がフル編入されたため`isBossType(enemy.type) && enemy.type !== 'pumpkin'`
+// だけで自動的にtrueになる(賞金首はpumpkinではない)。重複登録なので撤去(討伐SE=ボス討伐SE流用
+// との整合=劇的死亡を出す、という結論自体は不変)。
 export const getsDramaticDeath = (enemy: Enemy): boolean =>
-  !!enemy.isNamed || !!enemy.questTarget || (isBossType(enemy.type) && enemy.type !== 'pumpkin') || isBountyType(enemy.type);
+  !!enemy.isNamed || !!enemy.questTarget || (isBossType(enemy.type) && enemy.type !== 'pumpkin');
 
 // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26): この個体が「死体」(corpseUntil付き)か。
 // これが唯一の判定=AI/攻撃/照準/被弾/対象選定の全経路がこの1関数で除外する(§26-2)。
@@ -226,9 +235,12 @@ export const isCorpse = (e: Pick<Enemy, 'corpseUntil'>): boolean => e.corpseUnti
 // KILLされた通常敵が「死体化」の対象になり得るか(ボス系/ネームド/クエスト対象=getsDramaticDeath系は
 // 従来どおり対象外・§26-1)。判定は「型」ではなく getsDramaticDeath と同じ安全側の合わせ技:
 // isBossType は pumpkin(getsDramaticDeathは false)も含むため、ボス系は型だけで丸ごと除外する。
-// §6.38 v6 A-5(賞金首): corpseEligible=除外(ボス系と同様、討伐時は死体化させず即除去=劇的死亡演出と整合)。
+// §6.38 v7(賞金首): 旧v6 A-5では`&& !isBountyType(enemy.type)`を個別に足していたが、
+// v7でisBossTypeへ賞金首がフル編入されたため`!isBossType(enemy.type)`だけで自動的にfalse
+// (=対象外)になる。重複登録なので撤去(討伐時は死体化させず即除去=劇的死亡演出と整合、という
+// 結論自体は不変)。
 export const corpseEligible = (enemy: Pick<Enemy, 'type' | 'isNamed' | 'questTarget'>): boolean =>
-  !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget && !isBountyType(enemy.type);
+  !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget;
 // ★社長指示v0.25.3168「パンプキンは厳密にはボスではないので討伐イベントいらない」:
 // pumpkin を**討伐イベントごと**除外する(崩壊/バナー「◯◯を討伐」/閃光/リング/シェイク/スロー)。
 // 旧: v0.25.2879 では「時間停止+カメラ寄り(getsDeathAttention)」だけを外し、崩壊やバナーは残していた。

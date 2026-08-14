@@ -245,6 +245,9 @@ const BOSS_TYPES: EnemyType[] = [
   'mimir', 'jormungand', 'skadi', 'thor',
   'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel',
   'idol', 'hunter',
+  // §6.38 v7(社長裁定「isBossTypeへフル編入」): 賞金首4型もisBossTypeに入ったので
+  // 「全ボス型で共通の既定」を確認するこのリストにも加える(自動的に効くことの回帰網)。
+  'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
 ];
 
 describe('boss defeat cinematic eligibility', () => {
@@ -286,26 +289,40 @@ describe('getsDeathAttention (討伐時の時間停止+カメラ寄り・社長�
   });
 });
 
-// PACING_PUZZLE.md §6.38 v6 A-5(賞金首): isBossType代理分岐の個別登録(isBossTypeそのものには入れない)。
-describe('isBountyType / 賞金首のisBossType代理分岐(§6.38 v6 A-5)', () => {
+// PACING_PUZZLE.md §6.38 v7(社長裁定2026-08-15「改めて城ボスをコピーして作り直して」): 賞金首4型を
+// isBossTypeへフル編入(v6 A-5の個別代理登録=isBountyTypeを都度足す方式は撤去=このテストが更新元)。
+describe('isBountyType / 賞金首のisBossTypeフル編入(§6.38 v7)', () => {
   const BOUNTY_TYPES: EnemyType[] = ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'];
-  it('isBossTypeには入らない(v6 A確定)', () => {
-    for (const type of BOUNTY_TYPES) expect(isBossType(type), type).toBe(false);
+  it('★v7: isBossTypeに入る(v6 A「入らない」から反転)', () => {
+    for (const type of BOUNTY_TYPES) expect(isBossType(type), type).toBe(true);
   });
-  it('isBountyTypeは4型だけtrue', () => {
+  it('isBountyTypeは4型だけtrue(型集合そのものは不変)', () => {
     for (const type of BOUNTY_TYPES) expect(isBountyType(type), type).toBe(true);
     expect(isBountyType('zombie')).toBe(false);
     expect(isBountyType('pumpkin')).toBe(false);
   });
-  it('getsDramaticDeath=入れる(討伐SE=ボス討伐SE流用と整合)', () => {
+  // 以下はisBossType編入により**自動的に**同じ結論になることの固定(個別のisBountyType特例は撤去済み)。
+  it('getsDramaticDeath=入れる(isBossType && type!==pumpkinで自動的にtrue)', () => {
     for (const type of BOUNTY_TYPES) expect(getsDramaticDeath({ type } as Enemy), type).toBe(true);
   });
-  it('corpseEligible=除外(死体化させない・ボス系と同様に即除去)', () => {
+  it('corpseEligible=除外(!isBossTypeで自動的にfalse)', () => {
     for (const type of BOUNTY_TYPES) expect(corpseEligible({ type }), type).toBe(false);
   });
-  it('isArenaSweepProtected=保護(囲い/救助イベントの周辺一掃で消えない)', () => {
+  it('isArenaSweepProtected=保護(こちらは個別登録のまま=isBossType非依存・不変)', () => {
     for (const type of BOUNTY_TYPES) {
       expect(isArenaSweepProtected({ type, fixed: false, questTarget: false }), type).toBe(true);
+    }
+  });
+  it('usesBossCrit=trueになる(クリは移動半減窓を受ける・雑魚と同じ5秒完全気絶ではなくなる=旧FB8の根治)', () => {
+    for (const type of BOUNTY_TYPES) expect(usesBossCrit(type), type).toBe(true);
+  });
+  // isScoreBoss(gameStore.ts内のprivate関数・bossKills集計の母数)はgiantbat/mimir/jormungand/skadi/
+  // thor/hunterのみを直接列挙した独立リストでisBossTypeを参照しない。賞金首がisBossTypeに入っても
+  // 無関係=維持リストの「isScoreBossに入れない」はコード変更なしで既に満たされている
+  // (private関数のためこのテストファイルからは直接検証できない=実装ログに確認結果を記録)。
+  it('isEngageableBoss/isGhostEligibleBossは既存どおり独立(isBossType非依存=v3以来不変)', () => {
+    for (const type of BOUNTY_TYPES) {
+      expect(isEngageableBoss(type), type).toBe(true); // v3から変更なし
     }
   });
 });

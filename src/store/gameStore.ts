@@ -6069,9 +6069,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           survivors.push({
             ...enemy,
             health: newHealth,
-            // §6.38実機FB4: keepStunは'boss'(裏ボス5x)と'heavy'(強個体/賞金首3x)の両kindが持つ
-            // (賞金首は紫=bossFullStunUntil中だけtrue。meleeExecute.resolveStunnedMeleeHit参照)。
-            stunUntil: (stunnedHit.kind === 'boss' || stunnedHit.kind === 'heavy') && stunnedHit.keepStun ? enemy.stunUntil : undefined,
+            // §6.38 v7: keepStunは'boss'kindだけが持つ(賞金首もv7でisBossType編入され'boss'枝を
+            // 通るため、FB4のkeepStun特例は'boss'枝1本に整理済み=meleeExecute.resolveStunnedMeleeHit参照)。
+            stunUntil: stunnedHit.kind === 'boss' && stunnedHit.keepStun ? enemy.stunUntil : undefined,
             lastHit: now,
             liftUntil: now + MELEE_STUN_LIFT_MS,
             ...(fatal?.patch ?? {}),
@@ -8171,8 +8171,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         enemies: s.enemies.map(e => e.id === enemyId
           ? {
             ...e,
-            // §6.38実機FB4: 守護霊の気絶敵フィニッシュもプレイヤーと同じ裁定(keepStunは'boss'/'heavy'共通)。
-            stunUntil: (hit.kind === 'boss' || hit.kind === 'heavy') && hit.keepStun ? e.stunUntil : undefined,
+            // §6.38 v7: 守護霊の気絶敵フィニッシュもプレイヤーと同じ裁定(keepStunは'boss'kindのみ)。
+            stunUntil: hit.kind === 'boss' && hit.keepStun ? e.stunUntil : undefined,
             liftUntil: now + MELEE_STUN_LIFT_MS,
           }
           : e),
@@ -9514,8 +9514,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.isNamed) namedFoeKilled = enemy; // §5.14 M13: 宿敵討伐
         // §6.24 M48「使役」: 通常敵(ボス/裏ボス/ネームド/エリートは対象外=D1)を倒した時だけ候補にする。
         // 実際の20%抽選/先着1体維持(D3)は set() の外側(post section)でownedの現在値を見て行う。
-        // §6.38 v6 A-5(賞金首): isBossTypeではないが同様に眷属化させない(除外条件へ追加)。
-        if (hasSkill(state.player, 'poi-thrall') && !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget && !isBountyType(enemy.type)) {
+        // §6.38 v7(賞金首): 旧v6 A-5では`&& !isBountyType(enemy.type)`を個別に足していたが、
+        // v7でisBossTypeへフル編入されたため`!isBossType(enemy.type)`だけで自動的に除外される
+        // (重複登録の撤去。眷属化させない、という結論自体は不変)。
+        if (hasSkill(state.player, 'poi-thrall') && !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget) {
           thrallCandidate = enemy;
         }
         // juice: FF風クランブル統一演出(ネームド/裏ボス/giantbat/hunter討伐)。銃/接触/爆発キル経路。

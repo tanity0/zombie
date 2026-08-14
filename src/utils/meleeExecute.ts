@@ -8,18 +8,17 @@
 // それだと pumpkin / lab-zombie-3 に強個体規定が永久に届かなかった。
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(実装精度の規律4)。
 import type { EnemyType } from '../types/game';
-import { isBossType, isBountyType } from './enemyUtils';
+import { isBossType } from './enemyUtils';
 
 export const ELITE_EXECUTE_HP_RATIO = 0.5;
 export const ELITE_MELEE_STUN_MULT = 3;
 
 // 強個体の定義: pumpkin/lab-zombie-3(タイプ) または isNamed/questTarget(個体フラグ)。
-// PACING_PUZZLE.md §6.38 v6 A-1(賞金首): 賞金首4型もここへ名指しで追加。isBossTypeでもisEliteTypeでも
-// ないと、現行の雑魚枝(stunnedMeleeOutcomeの!isElite分岐)で無条件即死してしまう(実バグ)。
-// ここに載ることで pumpkin/lab-zombie-3 と同じ「強個体」判定の対象に入る。ただし賞金首は
-// **HP閾値を見ない**(下のstunnedMeleeOutcomeで先に確定=B1.5-1)。E-1(強個体処刑の撤去=
-// パンプキン/lab-zombie-3側)はB3の別裁定=そちらは触らない。
-const isEliteType = (t: EnemyType): boolean => t === 'pumpkin' || t === 'lab-zombie-3' || isBountyType(t);
+// §6.38 v7(社長裁定「城ボスをコピーして作り直して」): 賞金首4型は旧v6 A-1でここへ名指し追加
+// されていたが、v7でisBossTypeへフル編入されたため撤去(=賞金首は下のusesBossStunnedMeleeで
+// 普通に「ボス」として扱われ、致命の一撃はboss式×BOSS_MELEE_STUN_MULT・keepStunもboss枝が担う。
+// 二重登録の解消)。E-1(強個体処刑の撤去=パンプキン/lab-zombie-3側)はB3の別裁定=そちらは触らない。
+const isEliteType = (t: EnemyType): boolean => t === 'pumpkin' || t === 'lab-zombie-3';
 
 /**
  * ★気絶中の近接を「ボス式」(=即死しない・近接×BOSS_MELEE_STUN_MULT)で受ける型か。
@@ -44,10 +43,10 @@ export interface StunnedMeleeEnemy {
 export type StunnedMeleeOutcome = 'execute' | 'heavy';
 
 export const stunnedMeleeOutcome = (enemy: StunnedMeleeEnemy): StunnedMeleeOutcome => {
-  // PACING_PUZZLE.md §6.38 B1.5-1(致命・確定済み範囲=社長再裁定不要): 賞金首は全HP帯でexecuteを
-  // 返さない(常に致命の一撃×ELITE_MELEE_STUN_MULT)。即死はHP0(通常のdamageEnemy死亡経路)のみ。
+  // §6.38 v7: 旧v6 B1.5-1の「賞金首は全HP帯でexecuteを返さない」早期returnは撤去。
+  // v7で賞金首はisBossType(=usesBossStunnedMelee)側へ入るため、この関数(強個体/雑魚の裁定)
+  // には到達しなくなった(呼び出し側は必ずusesBossStunnedMeleeを先に見る=下のコメントどおり)。
   // パンプキン/lab-zombie-3の50%閾値(下の行)はB3の別裁定=ここでは変更しない。
-  if (isBountyType(enemy.type)) return 'heavy';
   const isElite = isEliteType(enemy.type) || !!enemy.isNamed || !!enemy.questTarget;
   if (!isElite) return 'execute'; // 雑魚は無条件即死
   return enemy.health < enemy.maxHealth * ELITE_EXECUTE_HP_RATIO ? 'execute' : 'heavy';
@@ -64,15 +63,16 @@ export const stunnedMeleeOutcome = (enemy: StunnedMeleeEnemy): StunnedMeleeOutco
 
 /** 気絶中の敵に「フィニッシュ可能な近接」が当たった時の裁定。 */
 export type StunnedMeleeHit =
-  /** ボス: 即死しない=近接ダメージ×BOSS_MELEE_STUN_MULT。keepStun=完全気絶(紫)中は気絶を解除しない。 */
-  | { kind: 'boss'; dmg: number; keepStun: boolean }
   /**
-   * 強個体(HP50%以上)/賞金首: 即死せず近接ダメージ×ELITE_MELEE_STUN_MULT。
-   * keepStun=賞金首が体勢ブレイク(紫・bossFullStunUntil)中のときだけtrue(§6.38実機FB4)。
-   * 'boss'のkeepStunと同じ意味=紫が続く間は気絶を解除しない=何度でもこの致命の一撃を受け続けられる。
-   * パンプキン/lab-zombie-3(bossFullStunUntilを持たない)は常にfalse=挙動不変(1発で気絶解除・据え置き)。
+   * ボス(賞金首4型を含む・§6.38 v7): 即死しない=近接ダメージ×BOSS_MELEE_STUN_MULT。
+   * keepStun=完全気絶(紫・bossFullStunUntil)中は気絶を解除しない=何度でもこの致命の一撃を
+   * 受け続けられる(タイマー切れまで)。v6時代は賞金首だけ'heavy'kindにkeepStunを個別追加していた
+   * (§6.38実機FB4)が、v7でisBossType編入した結果この'boss'枝がそのまま賞金首にも適用されるように
+   * なったため、その特例パッチは撤去した(=このboss枝1本で全ボス共通に正しく動く)。
    */
-  | { kind: 'heavy'; dmg: number; keepStun: boolean }
+  | { kind: 'boss'; dmg: number; keepStun: boolean }
+  /** 強個体(pumpkin/lab-zombie-3・HP50%以上)/isNamed・questTarget: 即死せず近接ダメージ×ELITE_MELEE_STUN_MULT+気絶解除(1発で解除・keepStunなし)。 */
+  | { kind: 'heavy'; dmg: number }
   /** 雑魚/HP50%未満の強個体: 即時処刑(即死)。 */
   | { kind: 'execute' };
 
@@ -85,21 +85,14 @@ export const resolveStunnedMeleeHit = (
 ): StunnedMeleeHit | null => {
   const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
   if (!stunned) return null;
-  // 「完全気絶(紫・bossFullStunUntil)中か」はboss/heavyの両kindで共通に使う(下)。
-  const bossFull = enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
   if (usesBossStunnedMelee(enemy.type)) {
-    // 通常の気絶は1発で解除するが、裏ボスの「完全気絶(紫)」中は解除せずタイマー切れまで5×し放題。
+    // 通常の気絶は1発で解除するが、「完全気絶(紫)」中は解除せずタイマー切れまで5×し放題
+    // (§6.38 v7以降、賞金首もこの枝を通る=城ボス等と完全に同じ扱い)。
+    const bossFull = enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
     return { kind: 'boss', dmg: baseDamage * bossStunMult, keepStun: bossFull };
   }
   if (stunnedMeleeOutcome(enemy) === 'heavy') {
-    // §6.38実機FB4(致命の一撃が発動しない): 賞金首は紫(bossFullStunUntil)中もkeepStun=trueにして
-    // 'boss'kindと同じ「タイマー切れまで何度でも致命の一撃」を受けられるようにする(受け入れ条件
-    // 「keepStun同等の既存作法」)。旧実装は常にkeepStun相当=falseで、紫中の最初の1発でstunUntilが
-    // undefinedへ落ち、残り5秒弱は通常ダメージへ戻っていた(実機で「発動しない」と見える主因)。
-    // ★pumpkin/lab-zombie-3もPOSTURE_ELITE_TYPESでbossFullStunUntilを持つ(紫になる)ため、
-    // bossFullだけで判定すると2体の挙動まで変わってしまう(1発で気絶解除=既存仕様に触れない)。
-    // isBountyType限定で絞り、賞金首以外は従来どおりkeepStun=false(この2体はB3の別裁定=触らない)。
-    return { kind: 'heavy', dmg: baseDamage * ELITE_MELEE_STUN_MULT, keepStun: isBountyType(enemy.type) && bossFull };
+    return { kind: 'heavy', dmg: baseDamage * ELITE_MELEE_STUN_MULT };
   }
   return { kind: 'execute' };
 };

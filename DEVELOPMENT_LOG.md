@@ -1,5 +1,113 @@
 # Development Log
 
+## v0.25.3412 — §6.38 v7「B-Rebuild」: 賞金首をisBossTypeへフル編入(Sonnet実装バッチ)【2026-08-15 02:05 JST】
+PACING_PUZZLE.md「§6.38 v7: 器の作り直し=城ボスのコピー」節の実装。社長裁定「改めて城ボスをコピーして
+作り直して。色々細かくボス扱いになってなくて指示がしんどい」に対応。v2/v6の「isBossTypeに入れない
+エリート混成+特例パッチ」を撤去し、賞金首4種(bounty-ranged/melee/balance/maiko)を**isBossTypeへ
+フル編入**した。
+
+### 変更したファイル
+`src/utils/enemyUtils.ts`(isBossType本体+特例3件の重複撤去)/`src/utils/meleeExecute.ts`
+(isEliteType/stunnedMeleeOutcome/resolveStunnedMeleeHitのkeepStun特例を撤去=boss枝1本に整理)/
+`src/store/gameStore.ts`(keepStun条件の簡素化2箇所+poi-thrall重複条件の撤去)/`src/utils/bountyTick.ts`
+(bossSlowMultの movement 配線6箇所+isFrozenのコメント更新)/テスト3ファイル
+(`meleeExecute.test.ts`/`enemyUtils.test.ts`)。
+
+### 撤去した特例パッチ(v2/v6→v7)
+1. `enemyUtils.isBossType`: 賞金首4型を追加(`|| isBountyType(t)`)。
+2. `enemyUtils.getsDramaticDeath`: `|| isBountyType(enemy.type)`を撤去
+   (`isBossType(t) && t!=='pumpkin'`だけで自動的にtrueになるため=賞金首はpumpkinではない)。
+3. `enemyUtils.corpseEligible`: `&& !isBountyType(enemy.type)`を撤去(`!isBossType(t)`で自動的にfalse)。
+4. `meleeExecute.isEliteType`: `|| isBountyType(t)`を撤去(pumpkin/lab-zombie-3の2体のみに戻す)。
+   結果`usesBossStunnedMelee(bounty)=isBossType&&!isEliteType=true`になり、賞金首はもう
+   'heavy'ではなく城ボスと同じ**'boss'枝**(×BOSS_MELEE_STUN_MULT・keepStun=紫中は解除しない)で
+   裁定される。
+5. `meleeExecute.stunnedMeleeOutcome`: 「賞金首は全HP帯でheavyを返す」早期returnを撤去
+   (呼び出し側は必ずusesBossStunnedMeleeを先に見るため、実際にはこの関数へ到達しなくなった)。
+6. `meleeExecute.resolveStunnedMeleeHit`の`'heavy'`kind: 前バッチ(FB4)で追加した
+   `keepStun: isBountyType(enemy.type) && bossFull`特例を撤去。'heavy'kindは元の形
+   (`{kind:'heavy', dmg}`・keepStun概念なし=pumpkin/lab-zombie-3/isNamed/questTarget専用)に戻し、
+   賞金首のkeepStunは'boss'枝(既存のgiantbat等と共通コード)がそのまま担う。
+7. `gameStore.ts`の2箇所(プレイヤー近接フィニッシュ/守護霊フィニッシュ): `(kind==='boss'||
+   kind==='heavy') && keepStun`を`kind==='boss' && keepStun`へ簡素化(6の反映)。
+8. `gameStore.ts`のpoi-thrall(使役スキル)除外条件: `&& !isBountyType(enemy.type)`を撤去
+   (`!isBossType(enemy.type)`で自動的に除外)。
+
+### isBossType連鎖の全数grep(受け入れ条件④)
+`isBossType(`を全文grepし(約40箇所)、各所を賞金首への影響で分類した。
+
+**自動的に賞金首へ拡張され、かつ望ましい/v7の意図どおりのもの(コード変更不要)**:
+致命の一撃=boss式(上記4〜6)/クリ率絞り×0.5+floor(`critPenalty.ts`のapplyEnemyCritPenalty・
+projectileHitCritChance)/クリで移動半減(usesBossCrit→bossSlowUntil。**旧FB8「黄色サークル常時表示」
+の根治**=クリで雑魚と同じ5秒完全気絶を受けなくなった)/使役poi-thrall除外(重複撤去済み)/
+死体化corpse除外(重複撤去済み)/劇的死亡(重複撤去済み)/telemetry vsBoss(`recordCritHit`の
+isBoss引数)/討伐アテンション(getsDeathAttention・時間停止+カメラ寄り)/通常攻撃で吹き飛ばなくなる
+(`canShoveEnemy`・押し道具だけ効く)/氷弾のボス補正倍率/グラビティショットは吸引でなく移動半減/
+叫喚(screamer)バフの対象外/カウンター・ダッシュパリィの反撃ダメージがBOSS_CRIT_DAMAGE_MULT/
+シーカーで姿を隠せない対象になる/守護霊AIの「常時回避すべき体」扱い・非ボス反発の対象外化/
+罠(marksmanTrap)の距離計算が中心円でなく判定矩形の最近点になる(巨体の必中化を防ぐ・他の巨体ボスと
+同じ扱い)/敵separation(群れ分離)の対象外/**リーパー波及(applyMeleeFinishSkillSpread相当・
+gameStore.ts旧B3指摘①)が非致死のボス式ダメージに切り替わり即死しなくなる**/**ボム(パニックボタン)
+のkill全消しから除外される(旧B3指摘②)**——この2つは前回バッチ以前から「賞金首を非ボス扱いで
+即死させうる」既知の穴として記録されていたが、isBossType編入だけで**両方とも自動的に解消**した
+(個別パッチ不要)。
+
+**確認の結果、賞金首に影響しない/独立していて正しいもの(コード変更不要・維持リストと一致)**:
+`isEngageableBoss`/`isLeashableBoss`/`isGhostEligibleBoss`(bossEngagement.ts)=isBossType非依存の
+独立集合、v3から不変/`isScoreBoss`(gameStore.ts private)=giantbat/mimir/jormungand/skadi/thor/hunter
+のみの独立リストでisBossTypeを参照しない→賞金首は自動的に対象外のまま(**維持リスト「isScoreBossに
+入れない」は追加コード無しで満たされている**、と確認)/`isHateTrackedBossType`(bossHate.ts)=
+守護霊共闘ヘイトの独立Set、賞金首は元から不在(維持リスト「ゴースト系5系統除外」の一部)/
+`bossPostureMax`=90の賞金首専用分岐(bossPosture.ts)=isBossType非依存、無改修/`isArenaSweepProtected`
+=reaper/giantbat/pumpkin/isHiddenBoss/isBountyTypeの独立列挙(isBossTypeを経由しない設計。
+lab-zombie-3/hunterを意図的に除外しているためisBossTypeへ単純に置換できない=無改修が正しい)/
+directorTickのエリア外強制回収免除=賞金首はAREA_WEIGHTに登録が無くisValidForAreaが常にtrueを返す
+ため、isBossType追加は無害な二重防御(挙動は変わらない)/叫喚バフの対象外判定=既にisBossType経由
+だった(直書きの型リストではない)ため新規の穴なし。
+
+**★未決**: 無し(全数確認の結果、維持リスト以外に「賞金首では例外にすべき」と判断した項目は
+無かった)。
+
+### 手動で配線した項目(自動化されない部分)
+`bountyTick.ts`は専用コントローラ(idolTick等と同型)で、`gameStore.ts`の汎用`updateEnemies`AIを
+経由しない。そのため`usesBossCrit`化で新たにクリが`bossSlowUntil`(移動半減)を打つようになっても、
+**移動速度計算にbossSlowMultを掛けなければ見た目のリングだけで実際には減速しない**(=isBossType
+編入がまた「一部だけボス扱い」の穴を作るところだった)。全6箇所の移動計算
+(tickRanged引き撃ち×2方向/tickMelee直進/tickBalance直進/tickMaiko直進/bm-charge突進/帰巣の
+歩き)へ`bossSlowMult(bounty, newGameTime)`を掛けて実効化した。
+- 未配線のまま残した関連項目(範囲を広げすぎないための判断): `bossCritCdMult`(クリ窓中は次行動CDが
+  ×2になる仕組み)はbountyTick.ts側で消費していない。v7の受け入れ条件(①②③④)には含まれておらず、
+  実害は「クリ窓中の技の間隔がボスより短い」程度の軽微な体感差に留まるため、今回は見送り
+  (follow-up候補として記録のみ)。
+
+### 受け入れ条件(v7節)の確認
+①体勢ブレイク中の近接=boss式致命の一撃・即死しない: `meleeExecute.test.ts`に
+`★賞金首4型: isBossType編入によりboss式(×BOSS_MELEE_STUN_MULT・即死しない)で裁定される`を追加、
+green。②スタン明け復帰: 前バッチ(v0.25.3411)の`bountyTick.test.ts`の★FB5テストは無改修のまま
+green(bossFullStunUntil/stunUntilの2フィールド構造は不変)。③クリ絞り+critStats vsBoss:
+`usesBossCrit(bounty)===true`をenemyUtils.test.tsで固定、`recordCritHit`のisBoss引数は
+`isBossType(enemy.type)`を直接読むため自動的にtrueになることをコード確認(呼び出し側は無改修)。
+④連鎖列挙: 上記のとおり本ログに記録。
+
+### 検証
+`npm run typecheck`・`npm run lint`ともにエラー0(lint warningは既存分のみ)。`npx madge --circular`は
+既知の1本のみ(新規循環なし)。触れた範囲+isBossType連鎖のユニットテスト30ファイル
+(`enemyUtils.test.ts`/`meleeExecute.test.ts`/`bountyTick.test.ts`/`bossPosture.test.ts`/
+`bossFullStunCoverage.test.ts`/`bossEngagement.test.ts`/`bossHate.test.ts`/`bossMarker.test.ts`/
+`bossPractice.test.ts`/`bossTest.test.ts`/`critPenalty.test.ts`/`cameraZoom.test.ts`/
+`directorTick.test.ts`/`duoRecords.test.ts`/`ghostOnline.test.ts`/`levelUpGate.test.ts`/
+`playerTraits.test.ts`/`sim.test.ts`/`slasherChain.test.ts`/`killCorpse.test.ts`/
+`ghostReflectMeleeSubs.test.ts`/`punishWindow.test.ts`/`bountyEscortCleanup.test.ts`/
+`bountyEventSweep.test.ts`/`bountyMoveCollision.test.ts`ほか)は全green(既存の`isBossTypeには入らない`
+系アサーションはv7で反転する結果に合わせて更新済み)。test/buildフルは社長指示が無いため未実行
+(規約どおり)。
+
+### 引継ぎ
+- follow-up候補(未実装・findings記録のみ): `bossCritCdMult`のbountyTick.tsへの配線(クリ窓中の
+  次行動CD×2)。
+- v6/v2節の「賞金首はisBossTypeに入れない」という記述は本バッチにより歴史的経緯として残置
+  (PACING_PUZZLE.md本文の書き換えは設計チャットの担当領域のため実施していない)。
+
 ## v0.25.3411 — 賞金首 実機FB1〜8 一括修正(Sonnet実装バッチ)【2026-08-15 01:44 JST】
 PACING_PUZZLE.md §6.38「実機フィードバック」節1〜8番の修正。設計判断は加えていない
 (v7=isBossTypeフル編入の器作り直しは対象外=別バッチ「B-Rebuild」)。

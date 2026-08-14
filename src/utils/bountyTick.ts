@@ -21,6 +21,7 @@ import {
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, knockbackSpeedFor, enemyDeathLabel,
   WEREWOLF_WINDUP_MS, WEREWOLF_CHARGE_MAX_MS, WEREWOLF_CHARGE_SPEED_MULT,
   PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS,
+  bossSlowMult,
 } from '../store/gameStore';
 // ★予告寸法は依存ゼロの葉(bountyDims.ts)が正=ここでは使うだけ+従来の消費者(pixiScene/テスト)の
 // ために named re-export する。gameStoreから直接importしない理由はbountyDims.ts冒頭を読むこと
@@ -149,6 +150,16 @@ const resolveMove = (nx: number, ny: number, e: Enemy): { x: number; y: number }
  * 実バグになっていた。**体勢崩し→フィニッシュの正規ルート**が通るために必須。
  * bossFullStunUntil/stunUntil/rootUntilはgameTime基準、liftUntil/knockbackUntilはDate.now基準
  * (types/game.tsの既存注記+gameStore.tsの設定箇所に倣う)。
+ *
+ * §6.38 v7(社長裁定「isBossTypeへフル編入=城ボス式時計に一本化」)後の注記: 賞金首がisBossType編入
+ * された結果、通常のクリティカルはもう`stunUntil`(5秒完全気絶)を打たない(usesBossCritが
+ * trueになり、gameStore側がbossSlowUntil=移動半減の窓を渡すだけに切り替わる。半減の消化は下の
+ * movement各所のbossSlowMult呼び出しが担う=isFrozenの対象外)。よって`stunUntil`が実際に立つのは
+ * ①体勢ブレイク(紫・bossFullStunUntilと同時に打たれる)②applyBrokenMeleeFatalの致命後2秒ダゼ
+ * (bossFullStunUntilは無いままstunUntilだけ短時間立つ=BOSS_FATAL_DAZE_MS)の2パターンのみになり、
+ * どちらも「城ボスと同じ気絶時計」——これが「boss式時計だけ見る形へ簡素化」の実体で、コード自体
+ * (5つのORの構造)は変えていない(①②とも既にbossFullStunUntil/stunUntilの2フィールドで表現できて
+ * おり、②のためにstunUntilの個別チェックは引き続き必要=削ると致命ダゼ中に動いてしまう)。
  */
 const isFrozen = (bounty: Enemy, newGameTime: number, nowMs: number): boolean =>
   (bounty.bossFullStunUntil !== undefined && newGameTime < bounty.bossFullStunUntil)
@@ -369,7 +380,9 @@ const tickRanged = (
       return;
     }
     // 中立: kite(引き撃ち)+通常のポツポツ撃ち(§7-12除外=予兆不要)。
-    const dt = deltaTime * moveSpeedMult;
+    // §6.38 v7: isBossType編入でクリが移動半減(bossSlowUntil)を打つようになった=城ボス等と同じく
+    // bossSlowMultを移動速度へ掛ける(掛けないとリング表示だけ出て実際は減速しない見掛け倒しになる)。
+    const dt = deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime);
     if (dist < BR_KITE_MIN && dist > 1) {
       const ux = (bcx - pcx) / dist, uy = (bcy - pcy) / dist;
       const spd = bounty.speed * dt;
@@ -531,8 +544,9 @@ const tickMelee = (
       return;
     }
     // 中立: プレイヤーへ直進(主戦帯を作るほどの語彙は持たない=シンプルな肉薄型)。
+    // §6.38 v7: bossSlowMult(クリの移動半減窓)を掛ける(tickRangedと同じ理由)。
     if (dist > 1) {
-      const dt = deltaTime * moveSpeedMult;
+      const dt = deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime);
       const ux = (pcx - bcx) / dist, uy = (pcy - bcy) / dist;
       const spd = bounty.speed * dt;
       const c = resolveMove(bounty.x + ux * spd, bounty.y + uy * spd, bounty);
@@ -553,7 +567,7 @@ const tickMelee = (
     const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
     const dl = Math.hypot(tx - bcx, ty - bcy);
     if (dl > 2) {
-      const spd = bounty.speed * BM_CHARGE_SPEED_MULT * deltaTime * moveSpeedMult;
+      const spd = bounty.speed * BM_CHARGE_SPEED_MULT * deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime);
       const step = Math.min(spd, dl);
       const c = resolveMove(bounty.x + ((tx - bcx) / dl) * step, bounty.y + ((ty - bcy) / dl) * step, bounty);
       patch.x = c.x; patch.y = c.y;
@@ -687,8 +701,9 @@ const tickBalance = (
       return;
     }
     if (dist > 1) {
+      // §6.38 v7: bossSlowMult(クリの移動半減窓)を掛ける(tickRangedと同じ理由)。
       const ux = (pcx - bcx) / dist, uy = (pcy - bcy) / dist;
-      const spd = bounty.speed * deltaTime * moveSpeedMult;
+      const spd = bounty.speed * deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime);
       const c = resolveMove(bounty.x + ux * spd, bounty.y + uy * spd, bounty);
       patch.x = c.x; patch.y = c.y; patch.vx = ux * bounty.speed; patch.vy = uy * bounty.speed;
     }
@@ -848,8 +863,9 @@ const tickMaiko = (
       return;
     }
     if (dist > 1) {
+      // §6.38 v7: bossSlowMult(クリの移動半減窓)を掛ける(tickRangedと同じ理由)。
       const ux = (pcx - bcx) / dist, uy = (pcy - bcy) / dist;
-      const spd = bounty.speed * deltaTime * moveSpeedMult * 0.6; // 舞妓は他3体よりにじり寄りを控えめに
+      const spd = bounty.speed * deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime) * 0.6; // 舞妓は他3体よりにじり寄りを控えめに
       const c = resolveMove(bounty.x + ux * spd, bounty.y + uy * spd, bounty);
       patch.x = c.x; patch.y = c.y;
     }
@@ -1181,7 +1197,8 @@ export const runBountyTick = (
         const dl = Math.hypot(dhx, dhy);
         let nx = bounty.x, ny = bounty.y;
         if (dl > ARRIVE_EPS_PX) {
-          const mv = Math.min(bounty.speed * BOSS_LEASH_RETURN_SPEED_MULT * deltaTime * moveSpeedMult, dl);
+          // §6.38 v7: bossSlowMult(クリの移動半減窓)を掛ける(帰巣中も他ボスの帰巣と同じ規約)。
+          const mv = Math.min(bounty.speed * BOSS_LEASH_RETURN_SPEED_MULT * deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime), dl);
           nx = bounty.x + (dhx / dl) * mv;
           ny = bounty.y + (dhy / dl) * mv;
         } else {
