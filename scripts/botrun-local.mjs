@@ -60,7 +60,9 @@ for (const c of cfg.configs) {
     } catch { /* ignore */ }
   }, { subs: c.subs, skills: c.skills });
 
-  const url = `${baseUrl}?smoke=1&bot=${c.persona ?? 'standard'}&stage=stage-1`;
+  // extraQuery(任意): ラン別の追加URLパラメータ("bountynow=1&bountytype=melee" 等)。
+  // クリ計測のボス戦ラン(REQUEST 2026-08-15)のために追加。未指定なら従来と同一URL。
+  const url = `${baseUrl}?smoke=1&bot=${c.persona ?? 'standard'}&stage=stage-1${c.extraQuery ? `&${c.extraQuery}` : ''}`;
   const t0 = Date.now();
   console.log(`[run] ${c.name} → ${url}`);
   await page.goto(url, { waitUntil: 'load' });

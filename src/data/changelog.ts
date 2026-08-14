@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3397',
+    items: [
+      'ゲーム内容の変更はありません(クリティカル計測のテスト依頼を作成。ボットランナーにラン別URLパラメータ対応を追加=開発用)。',
+    ],
+  },
+  {
     version: '0.25.3396',
     items: [
       'ゲーム内容の変更はありません(実機テスト用ツマミ一式の検収記録のみ)。',

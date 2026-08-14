@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.3397 — クリ計測のテスト依頼(REQUEST.md)+botrun extraQuery対応【2026-08-15 01:00 JST】
+- TEST_HANDOFF/REQUEST.md を書き換え: §7-11(8)クリ頻度の実機計測。A=通常3ラン(crit-base-1〜3・対雑魚)
+  +B=ボス戦2ラン(crit-boss-1〜2・`?bountynow=1&bountytype=melee`・対ボスの絞りの実効)。
+  v0.25.3396以降でpull必須(critStatsが要る)・目安45〜70分。
+- scripts/botrun-local.mjs にラン別 `extraQuery`(任意・未指定なら従来と同一URL)を追加。
+  request.config.json を5ラン構成に更新。社長がテストチャットに「テストして」で回せる状態。
+
 ## v0.25.3396 — TUNE-KNOBS検収(良)+レール重みの読み替えを承認【2026-08-15 00:40 JST】
 - v0.25.3395検収: ツマミ3種+クリ計測口+持ち越し廃止/R1固定=仕様どおり。madge循環増なし・
   テスト個別実行全緑・typecheck/lint 0エラー。ツリークリーン確認。

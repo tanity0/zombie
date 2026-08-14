@@ -8,34 +8,36 @@
   },
   "configs": [
     {
-      "name": "baseline-1",
+      "name": "crit-base-1",
       "persona": "standard",
-      "subs": [
-        "heavy-grenade"
-      ],
-      "skills": [
-        "guardian-spirit"
-      ]
+      "subs": ["heavy-grenade"],
+      "skills": ["guardian-spirit"]
     },
     {
-      "name": "baseline-2",
+      "name": "crit-base-2",
       "persona": "standard",
-      "subs": [
-        "heavy-grenade"
-      ],
-      "skills": [
-        "guardian-spirit"
-      ]
+      "subs": ["heavy-grenade"],
+      "skills": ["guardian-spirit"]
     },
     {
-      "name": "baseline-3",
+      "name": "crit-base-3",
       "persona": "standard",
-      "subs": [
-        "heavy-grenade"
-      ],
-      "skills": [
-        "guardian-spirit"
-      ]
+      "subs": ["heavy-grenade"],
+      "skills": ["guardian-spirit"]
+    },
+    {
+      "name": "crit-boss-1",
+      "persona": "standard",
+      "subs": ["heavy-grenade"],
+      "skills": ["guardian-spirit"],
+      "extraQuery": "bountynow=1&bountytype=melee"
+    },
+    {
+      "name": "crit-boss-2",
+      "persona": "standard",
+      "subs": ["heavy-grenade"],
+      "skills": ["guardian-spirit"],
+      "extraQuery": "bountynow=1&bountytype=melee"
     }
   ]
 }
