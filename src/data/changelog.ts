@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3327',
+    items: [
+      '経験値・コイン・弾薬・回復などアイテム取得時のSE音量を少し上げました。',
+    ],
+  },
+  {
     version: '0.25.3326',
     items: [
       '武器商人のショップが開くまでのサークル滞在時間を3秒→2秒に短縮しました。',

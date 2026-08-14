@@ -210,11 +210,11 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   },
   pickup: {
     src: `${import.meta.env.BASE_URL}audio/sfx/pickup.wav`,
-    volume: 0.74,
+    volume: 0.9, // 拾得SEを少し上げる(社長指示v0.25.3327。0.74→0.9)
   },
   'ammo-pickup': {
     src: `${import.meta.env.BASE_URL}audio/sfx/ammo-pickup.wav`,
-    volume: 0.78,
+    volume: 0.95, // 拾得SEを少し上げる(社長指示v0.25.3327。0.78→0.95)
   },
   'weapon-pickup': {
     src: `${import.meta.env.BASE_URL}audio/sfx/weapon-pickup.wav`,
@@ -328,7 +328,7 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // Meat / health pickup ("eat").
   eat: {
     src: `${import.meta.env.BASE_URL}audio/sfx/eat.mp3`,
-    volume: 0.82,
+    volume: 1.0, // 拾得SEを少し上げる(社長指示v0.25.3327。0.82→1.0)
   },
   // Random zombie death grunts (1-4), chosen by playEnemyDeath().
   'zombie-1': { src: `${import.meta.env.BASE_URL}audio/sfx/zombie-1.mp3`, volume: 0.7, minIntervalMs: 50 },
