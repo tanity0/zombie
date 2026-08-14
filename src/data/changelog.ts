@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3363',
+    items: [
+      'ゲーム内容の変更はありません(賞金首「馬乗り(変異)」の武器素材=ワイヤー鞭を取り込みました。登場はまだ)。',
+    ],
+  },
+  {
     version: '0.25.3362',
     items: [
       'ゲーム内容の変更はありません(賞金首の裁定3件が確定し、実装バッチの発注を開始しました)。',
