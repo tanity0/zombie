@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3386',
+    items: [
+      'ゲーム内容の変更はありません(バランス裁定(6)敵スクラップ=15%で+1〜2s、(7)レスキュー・囲い=当面現状維持、で確定。適用は実装フェーズで)。',
+    ],
+  },
+  {
     version: '0.25.3385',
     items: [
       'ゲーム内容の変更はありません(賞金首B2の検収記録と、バランス裁定用のローカル実測ベースラインを設計書に記録)。',
