@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3396',
+    items: [
+      'ゲーム内容の変更はありません(実機テスト用ツマミ一式の検収記録のみ)。',
+    ],
+  },
+  {
     version: '0.25.3395',
     items: [
       'ランクの「持ち越し」を廃止し、毎回ランク1から出撃するようにしました。',
