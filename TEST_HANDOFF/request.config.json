@@ -1,6 +1,6 @@
 {
   "baseUrl": "local",
-  "runMs": 600000,
+  "runMs": 900000,
   "headless": true,
   "viewport": {
     "width": 1280,
@@ -8,7 +8,7 @@
   },
   "configs": [
     {
-      "name": "ghost-regression-a",
+      "name": "baseline-1",
       "persona": "standard",
       "subs": [
         "heavy-grenade"
@@ -18,10 +18,20 @@
       ]
     },
     {
-      "name": "ghost-regression-b",
+      "name": "baseline-2",
       "persona": "standard",
       "subs": [
-        "katana"
+        "heavy-grenade"
+      ],
+      "skills": [
+        "guardian-spirit"
+      ]
+    },
+    {
+      "name": "baseline-3",
+      "persona": "standard",
+      "subs": [
+        "heavy-grenade"
       ],
       "skills": [
         "guardian-spirit"
