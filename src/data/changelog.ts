@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3361',
+    items: [
+      'ゲーム内容の変更はありません(賞金首「バス停(変異)」の武器素材=停留所標識を取り込みました。登場はまだ)。',
+    ],
+  },
+  {
     version: '0.25.3360',
     items: [
       'ゲーム内容の変更はありません(賞金首の設計書を再監査19指摘にもとづき修正しました)。',

@@ -561,6 +561,9 @@ export const ensureTextures = (): Promise<void> => {
       // 舞妓の武器=手毬(社長支給v0.25.3359・248×256・花柄の毬)。舞妓の周りを飛び回り技を再現する
       // オービット武器スプライト(遠距離技も乱舞も毬が飛ぶ・§6.38 v5)。
       { name: 'bounty-maiko-temari', scaleMode: 'nearest' as const },
+      // バス停(変異)の武器=もぎ取った停留所標識(社長支給v0.25.3361・160×256・血染めの丸標識+柱)。
+      // 用途の割当は§6.38武器素材台帳(裁定待ち分は追記)。
+      { name: 'bounty-ranged-sign', scaleMode: 'nearest' as const },
       // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。同じくグレースケール+透過で tint 着色。
       // 帯は技ごとに縦横比が違う(薙ぎ払い3.9:1 / 噛みつき1.2:1 / のしかかり2.1:1)ので伸縮前提=linear。
       { name: 'fx/telegraph-band', scaleMode: 'linear' as const },
