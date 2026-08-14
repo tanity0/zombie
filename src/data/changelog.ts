@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3410',
+    items: [
+      'ゲーム内容の変更はありません(「the ONE」ストーリー全面改稿案を文書として追加)。',
+    ],
+  },
+  {
     version: '0.25.3409',
     items: [
       'ゲーム内容の変更はありません(賞金首の討伐時に武器が残る実測を記録し、修正条件に追加)。',
