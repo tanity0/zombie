@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.3379 — 予兆例外4件の裁定確定(全て例外承認=追加実装なし)【2026-08-14 22:50 JST】
+- 社長「予兆モーションの例外おけ」: ミゲルharai→tate/g-talon 3拍/g-nihil 3段詠唱/g-trijump 3連跳の
+  4件は**例外=段専用の追加モーション予兆不要**(赤予告は各段従来どおり)。TELL_MOTION_LEDGER.mdの
+  該当行・集計・未解決7を裁定済みに更新。追加実装ゼロで§7-12の例外候補は全消化。
+- 並走: B2(賞金首4体の技・Sonnet)実装中/ローカル指標テスト(社長)実行中/クラウド計測(参考値)実行中。
+
 ## v0.25.3378 — B1.5検収(良)+.claude/worktreesをgitignore【2026-08-14 22:20 JST】
 - B1.5(v0.25.3377)検収: ①execute遮断=isBountyTypeで全HP帯heavy(テストをHP1で復元) ②freeze
   ガード(フルスタン/root/lift/KBで移動・状態進行停止=idolTick同型) ③fromEvent撤去+一掃回帰テスト

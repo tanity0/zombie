@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3379',
+    items: [
+      'ゲーム内容の変更はありません(連続技の後段4件は追加の予兆モーション不要と確定=現状のままで完)。',
+    ],
+  },
+  {
     version: '0.25.3378',
     items: [
       'ゲーム内容の変更はありません(賞金首B1.5の検収完了。開発ツールの一時領域をgit管理から除外)。',
