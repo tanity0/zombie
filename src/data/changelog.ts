@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3374',
+    items: [
+      'ゲーム内容の変更はありません(賞金首B1の検収と実装ステータス更新。次バッチで塞ぐ即死経路2件を設計書に記録)。',
+    ],
+  },
+  {
     version: '0.25.3373',
     items: [
       'ゲーム内容の変更はありません(賞金首イベントの土台を実装しました。まだ通常プレイでは出現しません=デバッグ限定です)。',
