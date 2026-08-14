@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3367',
+    items: [
+      'ゲーム内容の変更はありません(賞金首の追加エフェクト素材の発注リストを設計書にまとめました)。',
+    ],
+  },
+  {
     version: '0.25.3366',
     items: [
       'ゲーム内容の変更はありません(賞金首の設計を訂正: バランス型の得物は錨ではなく鋏。技は各個体とも武器1本を使い回す方針を確定)。',
