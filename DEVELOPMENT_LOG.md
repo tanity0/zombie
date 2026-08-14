@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.3352 — 賞金首・バランス型の本体素材受領=3種完備【2026-08-14 16:05 JST】
+- 社長支給(uploads/IMG_7435・412×512)→ public/sprites/bounty-balance.png+pixiTextures登録(nearest)。
+  膝立ちで巨大な錨を持つスーツの個体。移動は前2体と同じグライド既定。錨=薙ぎ払い帯の得物として整合。
+- **賞金首3種(遠距離/近接/バランス)の素材が完備**→次工程=イベント一式の設計書化→Opus監査→実装バッチ。
+- 検証: typecheck 0 / lint 0エラー。
+
 ## v0.25.3351 — 賞金首・近接型の本体素材受領(下半身引きずり)【2026-08-14 15:58 JST】
 - 社長支給(uploads/IMG_7433・520×512)→ public/sprites/bounty-melee.png+pixiTextures登録(nearest)。
   移動=【済】「こっちも下半身を引きずって」=遠距離型と同じ1枚絵グライド方式。§7-9更新。
