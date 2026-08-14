@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.3360 — §6.38再監査(Opus・19指摘)の反映=監査反映v6【2026-08-14 18:05 JST】
+- 再監査の結論: v3「城ボス方式」反転の連鎖が未記載。**実バグ級を複数捕捉**——①賞金首が現行meleeExecuteの
+  雑魚枝で**即死する**(isEliteTypeに載らない限りE-1が効かない) ②E-5先送りは「bossFightNowで付く」が
+  事実誤認=読み手ゼロ・専用配線が必要 ③リーシュ待機化がaiPhaseしか見ずbossState技を中断
+  (「赤いのに当たらない」違反) ④使役スキルが賞金首を眷属化 ⑤bossTest.testがCI赤。
+- v6として全て名指しで確定(isEliteType4型追加/bountyEngagedNow純関数の3系統配線/待機化延期条件/
+  離脱バナー型ゲート除外/ゴースト・オンライン台帳5系統の除外集合/退場・帰巣・ローテ優先/ズーム
+  standard+labテーマ・corridor出現禁止/予告同期は状態導出・*_VIS複製禁止/AoE監査表/levelUpGateの
+  bossState拡張/moveReaction台帳/舞妓未決の確定/isLeashableBossのSet化/金リングはisNamed立てない)。
+  v2 A表の嘘になった3行もインライン訂正。
+- **★社長裁定待ち3件(F-1〜F-3)**: 賞金首交戦中の雑魚湧きリラックス可否/施設ロックの範囲/
+  水鳥着地円の色。+v5(手毬の技割当)の確認待ち。裁定が揃い次第B0+B1発注。文書のみ。
+
 ## v0.25.3359 — 舞妓の武器素材=手毬の取り込み+§6.38 v5案【2026-08-14 17:50 JST】
 - 社長支給(IMG_7441・248×256・花柄の毬・透過)→ public/sprites/bounty-maiko-temari.png+pixiTextures登録
   (nearest)。社長指示「舞妓の周りを飛び回って技を再現。遠距離だけでなく乱舞とかも」。

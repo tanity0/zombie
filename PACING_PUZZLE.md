@@ -6236,9 +6236,9 @@ DPSの並走は**スキルに背負わせない**: 床=武器Tier(時間追従�
   | 表 | 扱い |
   |---|---|
   | CONSTANT_STRENGTH_TYPES | 入れる(色・エリア倍率を受けない) |
-  | POSTURE_ELITE_TYPES | 入れる(体勢ゲージ) |
-  | usesBossCrit / usesBossStunnedMelee / meleeExecute.isEliteType | **パンプキンの現状と同一に写す**(実装時に3表のパンプキン登録状況を確認してコピー。※瀕死処刑の可否のみ★裁定待ち=下記E-1) |
-  | isEngageableBoss / isLeashableBoss | 入れない(専用の軽い機構=下記B) |
+  | POSTURE_ELITE_TYPES | ~~入れる~~ → **入れない(v6 D-2で訂正)**: usesPostureSystemはisEngageableBossで既に付く。入れるとbossPostureMaxが60分岐に当たり×1.5にならない。bossPostureMaxへ賞金首専用分岐(90)を足す |
+  | usesBossCrit / usesBossStunnedMelee / meleeExecute.isEliteType | ~~パンプキンの現状と同一に写す~~ → **v6 A-1で訂正: 「写す」は原理的に不可能**(パンプキンはisBossType入り)。**meleeExecute.isEliteTypeへ4型を名指しで追加**する |
+  | isEngageableBoss / isLeashableBoss | ~~入れない~~ → **v3で反転: 入れる(城ボス方式)**。付随する連鎖の扱いはv6 A/B節が正 |
 - **bountyTickの置き場**: useGameLoopの天使コントローラと同位置に専用呼び出し。`updateEnemies`は
   隠しボス同様に**早期return**(`isBountyType(e.type)`)で汎用chaseと排他。状態は**bossState系で統一**
   (跳躍はpumpkinの`aiPhase`機構を流用せず、`leap-windup/-air/-recover`としてbossState側に再実装。
@@ -6384,3 +6384,77 @@ DPSの並走は**スキルに背負わせない**: 床=武器Tier(時間追従�
   4. `bossHints` へ4種のヒント追記(bossHints.test「並ぶ全ボスにヒントがある」が落ちるため必須)。
   5. BossRush.tsx の種別表示に「賞金首」を追加(現状は ステージボス/固有ボス の2値)。
 - リザルト等の「ボスを選ぶ」文言は据え置き(指示は名称変更のみ。気になれば後日)。
+
+### §6.38 監査反映v6(再監査19指摘・2026-08-14。**v2〜v5と矛盾したら本節が勝つ**)
+再監査の結論: v3「城ボス方式」への反転が既存コードで引き起こす連鎖が未記載だった。以下で全て名指しに直す。
+★社長裁定待ち3件(F-1〜F-3)以外は設計の穴埋め=本節で確定。
+
+#### A. 致命の訂正(実コードとの食い違い)
+- **A-1 即死なし(E-1)の実装先を名指し**: 賞金首はisBossTypeでもisEliteTypeでもないため、現行
+  `meleeExecute.ts:45`の雑魚枝で**即死してしまう**。→ **`meleeExecute.isEliteType`へ4型を名指しで追加**
+  (B1)。E-1の「強個体処刑の撤去」(B3)はこの判定に載って初めて効く。
+  受け入れ条件: resolveStunnedMeleeHitが賞金首に`execute`を返さない不変条件テスト(B1時点から)。
+- **A-2 E-5先送りはbossFightNowでは付かない(v3の事実誤認を訂正)**: bossFightNowの読み手は
+  施設ロック・描画フェード・telemetryのみ。先送りの実体は別系統
+  (囲い/レスキュー=`useGameLoop.ts:3029-3036`、紅き夜=`:3365-3385`、叫喚=型名直リスト`:3802-3804`)。
+  → **専用の純関数`bountyEngagedNow(enemies)`を新設し、上記3系統のゲートへ明示的に配線**する(B4)。
+  受け入れ条件: 賞金首交戦中に囲い/紅き夜/叫喚が始まらないテスト。
+- **A-3 リーシュ待機化が技を中断する**: `gameStore.ts:10086`の待機化条件は`!enemy.aiPhase`のみ=
+  bossState系の賞金首は**技の最中にdormant化**し「赤いのに当たらない」に違反する。
+  → 待機化条件へ**「bossStateが技実行中なら満了を延期(技完走後にdormant化)」**を追加(B1)。
+  砲手の後退カイト等「自分から離れる技」は`leashSelfExiled`(`:10079`)同型の除外を登録。
+- **A-4 離脱警告バナーは賞金首を型ゲートで除外**(`gameStore.ts:10083`の設定箇所)。
+  「逃げてよい相手」に「危険:ボスが戦闘域を離れようとしている」を出さない(v2 Bの意図を実装可能に)。
+- **A-5 isBossType代理分岐の全数洗い**(B1。実装前にgrepで洗い、判明分は以下に確定):
+  使役スキルpoi-thrall(`gameStore.ts:9452`)=**賞金首は眷属化させない(除外条件へ追加)**/
+  死体化corpseEligible(`enemyUtils.ts:206`)=**除外**/劇的死亡getsDramaticDeath(`:195`)=**入れる**
+  (討伐SE=ボス討伐SE流用と整合)/critPenalty等その他=洗い出し結果を実装ログに列挙し
+  パンプキン相当の扱いへ寄せる(判断が要る新顔が出たら★未決に書いて止まる)。
+- **A-6 CI赤の予防+遭遇記録**: `bossTest.test.ts:30`「ENGAGEABLE全型がカタログ1件以上」が4型追加で
+  落ちる → B1でボステストカタログへ4件追加(`?bountynow`相乗り)。遭遇記録(`directorTick.ts:684`)は
+  掲載裁定(変異体対策室に並べる)が確定済みのため**走ってよい**=slotKeyは掲載枠(`bounty-*`)と同一に統一。
+
+#### B. 副作用の確定(v3で自動付随するものの裁定・登録)
+- **B-2 ゴースト/台帳系は賞金首を除外**: 守護霊召喚(`directorTick.ts:723-727`)・bossClock撃破タイム
+  (`:676-684`)・notifyBossClearソロ台帳・duoRecords・**ghostOnlineのpickスロット列(`ghostOnline.ts:154`)**
+  はいずれも**乗せない**。実装形=ENGAGEABLEから賞金首を絞る専用集合(例: `isGhostEligibleBoss`)を
+  1箇所作り全5系統で使う。※変異体対策室の討伐済みマーク(ghostAlbum由来)は当面付かない=許容(後日)。
+- **B-4 退場・帰巣・ローテの優先関係**: ①帰巣中に1分満了→**帰巣完了を待ってからフェード退場**
+  ②出現した個体は討伐/退場を問わず**回数(最大2)とローテ枠を消費** ③削られた個体の再出現はなし=
+  各出現は新規個体・フルHP。
+- **B-5 ズームと出現ステージ**: ボスズームクラス=4型とも**standard**(giant/compact登録なし)。
+  ズーム除外条件の実体は`stageTheme==='lab' || corridorMode`(indoorフラグではない)→ 抑止条件を
+  **「labテーマ・corridorModeのステージには出さない」と明記**(=stage-2/stage-6出現なし。
+  v3「引き画面が付くから寸法短縮不要」の前提を守る)。
+
+#### C. v4/v5舞妓+全体の実装規約
+- **C-1 予告同期の実装規約(B2受け入れ条件)**: 抽選したwindupは必ず敵の状態(`bossStateUntil`等)へ
+  書き、描画は`telegraphProgress01(now, start, end)`で**状態から導出**する。**`*_VIS`複製定数を作らない**
+  (BOSS_DASH_WINDUP_MS_VIS同型の写しは禁止=変則ディレイで確実にズレるため)。
+- **C-2 自己中心AoE監査表**: 袖打ち・水鳥乱舞の各着地円を`AOE_TELEGRAPH_AUDIT`へ登録。
+  変則ディレイ技のescapeMsは**短い方の値**で登録(B2)。
+- **C-3 levelUpGateのbossState対応拡張をB2に追加**: 現行はaiPhase文字列と型集合のみ=bossState系の
+  賞金首予告を拾えない。拡張の上で跳躍/突進/薙ぎ/レーザー+舞妓4技(扇薙ぎ・袖打ち・薙ぎ連・水鳥)を登録。
+- **C-4 moveReaction台帳**: `MOVE_REACTION_KEYS`/`BULLET_MOVE_KEYS`へ賞金首全技キーを登録(B2)。
+- **C-5 舞妓の未決の確定**: 変則ディレイの抽選=**技の発動ごとに毎回独立・連続同値も許す**(それ自体が
+  揺さぶり)。型切替=**実行中の技は完走してから**切替(中断しない)・切替時は舞い直しの構え=短硬直・
+  無敵なし。型Bの構成=**①'薙ぎ連+②袖打ち(継続)+③水鳥乱舞**(①単発は①'に置換されて消える。
+  カウンター可能技は①'各段・②で確保=共通ルール充足)。水鳥乱舞の着地点=プレイヤー追尾
+  (現在位置+抽選オフセット)・着地円に`clampRectToPlayableArea`適用・(v5承認後は)ホップ中の毬に
+  接触判定なし=着地円のみ。※着地円の色/カウンター可否は★F-3裁定待ち。
+- **D-3 isLeashableBossの実装形**: 等値比較(`bossEngagement.ts:161`)を**Set化**して4型追加。
+  homeX/homeY必須・isStoryBoss=false。
+- **D-4 金リングはisNamedを立てずに絵だけ流用**: NAMED_TINTの**色定数参照のみ**。isNamedを立てると
+  宿敵討伐処理・矢印・カリング免除・イベントビット等が芋づるで付くため禁止(処刑保護はA-1のisEliteType側で取る)。
+
+#### F. ★社長裁定待ち(3件・体験に触れるため設計書側で決めない)
+- **F-1 賞金首交戦中の雑魚湧きリラックス**: isEngageableBoss入りにより、賞金首を起こして交戦圏に
+  居るだけで雑魚湧きが自動でリラックスに落ちる(`directorTick.ts:298 bossRelax`)。「起こして距離を保つ=
+  湧きを止める操作」に使える。A=**賞金首はbossRelaxの対象外にする(通常湧きのまま)** / B=城ボス同様
+  リラックスさせる(一騎打ちの舞台を優先)。**推薦A**(倒す義務のない相手で湧き操作の抜け道を作らない)。
+- **F-2 施設ロックの範囲**: bossFightNowが立つ間、施設フェード・商人滞在リセット・拠点確保凍結が
+  自動で付く(城ボスの既存挙動)。A=**そのまま受け入れる**(交戦中は施設に用がない・実装ゼロ) /
+  B=賞金首はbossFightNowを立てない(施設系の巻き添えなし。ズーム・リーシュは別配線で維持)。
+  **推薦A**(交戦は自分から仕掛けた1分間のみ。実機で不快なら後からBへ)。
+- **F-3 水鳥乱舞の着地円の色**: A=**赤(既存T5式着地円=跳びかかりと同じ文法・回避対象)** /
+  B=紫(カウンター不可の明示)。**推薦A**(着地円は既に赤で学習済みの語彙。紫はレーザー系に温存)。
