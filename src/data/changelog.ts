@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3388',
+    items: [
+      'ゲーム内容の変更はありません(体勢削りの方針を組み直し: 今の速さは体勢ビルドの到達点に再定義し、基礎は絞る方向。実機テスト後に確定)。',
+    ],
+  },
+  {
     version: '0.25.3387',
     items: [
       'ゲーム内容の変更はありません(バランス裁定(2)XP=完全据え置きで確定。報酬レーン分離の設計思想を記録)。',
