@@ -3003,6 +3003,15 @@ const finishZoomTargetOf = (
   return e ? [e.x + e.width / 2, e.y + e.height / 2] : [undefined, undefined];
 };
 
+// 社長指示v0.25.3325「処刑の発火地点は敵にして」: このスイングでフィニッシュした敵(最初の1体)の
+// 中心座標。処刑(execution-shock)の爆発中心に使う。finisherが居なければnull。
+const meleeFinisherAt = (
+  killed: { enemy: Enemy; finisher: boolean }[]
+): { x: number; y: number } | null => {
+  const e = killed.find(k => k.finisher)?.enemy;
+  return e ? { x: e.x + e.width / 2, y: e.y + e.height / 2 } : null;
+};
+
 // ---------------------------------------------------------------------------
 // 主語(オーナー)の解決 — research/GHOST_PARITY_LEDGER.md 裁定2「共有方式」/
 // BOT_AND_GHOST.md §2.11補足「写すな、共通化しろ」(v0.25.2518・GHOST-KATANA-WIRE)。
@@ -3315,7 +3324,9 @@ const applyVampireMeleeHeal = (
 // 相当ダメージ(スタン中ボスへの近接と同じ ×BOSS_MELEE_STUN_MULT)。reaper型(特殊敵)は対象外。
 // SKILL_BUILD_REDESIGN.md §28(B7) スキル: 処刑の衝撃波(execution-shock、rare)も同じ合流点に乗せる
 // (近接4武器=ナイフ/刀/鞭/分身の全経路がこの1関数を通るため=CLAUDE.md「同じ動作を持つ全員に付ける」)。
-// 半径80/100/120(Lv)・近接表示ダメ(baseMeleeDamage)基準の30/40/50%・KB共通。プレイヤー中心。
+// 半径80/100/120(Lv)・近接表示ダメ(baseMeleeDamage)基準の30/40/50%・KB共通。
+// 社長指示v0.25.3325「処刑の発火地点は敵にして」: 処刑の爆発中心は**フィニッシュした敵の位置**
+// (finishAt)。リーパー波及の範囲判定は従来どおりスイング範囲=プレイヤー中心のまま(指示外は不変)。
 // finisherOccurred=このスイングで finisher:true が1体でも出たか。範囲内のみで有界。
 const applyMeleeFinishSkillSpread = (
   get: () => GameState,
@@ -3325,6 +3336,7 @@ const applyMeleeFinishSkillSpread = (
   pcy: number,
   range: number,
   baseMeleeDamage: number,
+  finishAt?: { x: number; y: number } | null,
 ) => {
   if (!finisherOccurred) return;
   if (hasSkill(player, 'reaper')) {
@@ -3364,17 +3376,20 @@ const applyMeleeFinishSkillSpread = (
     const radius = baseRadius * exMult;
     const dmg = Math.max(1, Math.round(baseMeleeDamage * pct * exMult));
     const r2 = radius * radius;
-    get().spawnRing(pcx, pcy, 8, radius, 'rgba(251,146,60,0.82)', 5, 440);
-    get().spawnBurst(pcx, pcy, '#f97316', 20);
-    get().spawnBurst(pcx, pcy, '#7f1d1d', 8);
-    get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(251,146,60,', 440);
-    get().spawnExplosionFx(pcx, pcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
+    // 社長指示v0.25.3325: 爆発中心=フィニッシュした敵の位置(複数同時フィニッシュ時は最初の1体。
+    // 爆発は従来どおり1スイング1発=威力仕様不変)。座標が取れない経路は従来のプレイヤー中心へフォールバック。
+    const fcx = finishAt?.x ?? pcx, fcy = finishAt?.y ?? pcy;
+    get().spawnRing(fcx, fcy, 8, radius, 'rgba(251,146,60,0.82)', 5, 440);
+    get().spawnBurst(fcx, fcy, '#f97316', 20);
+    get().spawnBurst(fcx, fcy, '#7f1d1d', 8);
+    get().spawnGlow(fcx, fcy, GLOW_R_S, 'rgba(251,146,60,', 440);
+    get().spawnExplosionFx(fcx, fcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
     for (const e of get().enemies) {
       if (e.type === 'reaper' && !e.reaperChaser) continue;
       if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象外
       const ecx = e.x + e.width / 2;
       const ecy = e.y + e.height / 2;
-      const dx = ecx - pcx, dy = ecy - pcy;
+      const dx = ecx - fcx, dy = ecy - fcy;
       const d2 = dx * dx + dy * dy;
       if (d2 > r2) continue;
       const killedE = get().damageEnemy(e.id, dmg, true); // 爆風系と同じくボス系には非致死
@@ -6280,7 +6295,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // スキル: リーパー(フィニッシュ波及=スイング範囲内の敵を全員フィニッシュ)/ カウンターマスター(成立時ノックバック)。
-    applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, meleeRange, meleeDamage);
+    applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, meleeRange, meleeDamage, meleeFinisherAt(killed));
     // スキル: 救難信号(近接ヒット時、一定確率で味方が援護攻撃=必中・倍率1)。
     applyRescueSignalProc(get, player, meleeDamage, meleeHitEnemyIds, pcx, pcy);
     // 吸血覚醒(Lv3・v0.25.3300): 近接ヒットでも1%回復(1スイング1回・控えめdrain)。
@@ -6478,7 +6493,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().triggerFinishImpact(ztx, zty);
     }
     // プレイヤーの装備スキル効果を分身の攻撃にも適用(リーパー波及/カウンターマスター/ヘビーガンナー)。
-    applyMeleeFinishSkillSpread(get, player, finisherHit, ccx, ccy, meleeRange, meleeDamage);
+    applyMeleeFinishSkillSpread(get, player, finisherHit, ccx, ccy, meleeRange, meleeDamage, meleeFinisherAt(killed));
     // ヘビーガンナー: 2体以上ヒットで爆発範囲バフ。**プレイヤーの分身だけ**が本人のバフを積む
     // (守護霊の分身で本人のバフ窓が伸びる=主語をまたぐ横取り。N HITSバナーもプレイヤー頭上=除外1)。
     if (!isGhost) get().registerMultiHit(slashAt.length);
@@ -7186,7 +7201,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().triggerFinishImpact(ztx, zty, katanaBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
     }
     // スキル: リーパー。刀の一閃フィニッシュ範囲(katanaRange)内の敵を全員フィニッシュ。
-    applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, katanaRange(player), baseDamage * damageMult);
+    applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, katanaRange(player), baseDamage * damageMult, meleeFinisherAt(killed));
     // スキル: 救難信号。刀装備時は通常近接の代わりに一閃(allowFinisher=trueのダッシュ斬り。
     // triggerKatanaDash経由のみ)がプレイヤーの「近接ヒット」に相当するため、ここで発動判定する。
     // オート斬撃(allowFinisher=false)は対象外(社長指示「一閃時」=ダッシュ斬りのみ)。
@@ -7391,7 +7406,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().triggerFinishImpact(ztx, zty, whipBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
     }
     // スキル: リーパー。鞭フィニッシュ範囲(WHIP_LENGTH)内の敵を全員フィニッシュ。
-    applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, WHIP_LENGTH_BY_LEVEL[1], meleeBase);
+    applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, WHIP_LENGTH_BY_LEVEL[1], meleeBase, meleeFinisherAt(killed));
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits };
   },

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3325',
+    items: [
+      'スキル「処刑」の爆発が、プレイヤーの位置ではなくフィニッシュした敵の位置で発生するようになりました。',
+    ],
+  },
+  {
     version: '0.25.3324',
     items: [
       'ボス戦で描画エラーが起きた際、敵の白いシルエット(被弾フラッシュ)が歪んだまま画面に残り続ける構造を修正しました(アクラシエル戦の報告対応・第2弾)。',
