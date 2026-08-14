@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3355',
+    items: [
+      'ゲーム内容の変更はありません(賞金首の裁定6件を確定: 即死なし・城ボス方式の交戦系・個体名=バス停/馬乗り/鋏(変異)。イレギュラー4種目「舞子(変異)」を追加設計中)。',
+    ],
+  },
+  {
     version: '0.25.3354',
     items: [
       'ゲーム内容の変更はありません(賞金首設計書にOpus監査24指摘を反映。社長裁定6件を提示中)。',
