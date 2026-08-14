@@ -3791,6 +3791,7 @@ const applySlasherChainStrike = (
   const jy = pcy + ly * SLASHER_LUNGE_PX;
   let killed = 0;
   let hit = false;
+  const hitIds: string[] = [];
   for (const e of get().enemies) {
     if (e.type === 'reaper' && !e.reaperChaser) continue;
     if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は追撃対象から除外
@@ -3802,6 +3803,7 @@ const applySlasherChainStrike = (
     // 厚みぶん届かない」帯域が生まれていた=2撃目以降が系統的に空振り。
     if (enemyMeleeDist(jx, jy, e) > meleeRange) continue;
     hit = true;
+    hitIds.push(e.id);
     const k = get().damageEnemy(e.id, dmg);
     get().spawnDamageNumber(ecx, e.y, dmg, false);
     get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.95)');
@@ -3815,17 +3817,24 @@ const applySlasherChainStrike = (
     }
   }
   get().spawnRing(jx, jy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200); // 追撃の一閃(踏み込み先で出す)
-  // v0.25.3258 社長指示「連続攻撃は20px前進(慣性入れて)」: 見た目の踏み込みスライドは従来どおり
-  // (減衰スライド=慣性)。判定は上で先取り済みなので、ここは絵と実座標の追いつきだけ。
-  if (lx !== 0 || ly !== 0) {
-    const lungeSpeed = knockbackSpeedFor(SLASHER_LUNGE_PX, SLASHER_LUNGE_MS);
-    useGameStore.setState(state => ({
-      player: {
-        ...state.player,
-        knockbackVx: lx * lungeSpeed, knockbackVy: ly * lungeSpeed,
-        knockbackUntil: Date.now() + SLASHER_LUNGE_MS, knockbackMs: SLASHER_LUNGE_MS,
-      },
-    }));
+  // v0.25.3258「連続攻撃は20px前進(慣性入れて)」→ ★v0.25.3400 社長指示
+  // 「相手がノックバックしてなかったら、こちらも(踏み込み)しない」:
+  // このスイングで当てた敵が**実際にノックバック(または死体吹き飛び)した時だけ**踏み込む。
+  // 空振り・KB無効の相手(ボス級等)には前進しない(旧: 空振りでも最寄りの敵へ前進していた=v3266は廃止)。
+  {
+    const nowMs = Date.now();
+    const kbHappened = hitIds.length > 0 && get().enemies.some(e =>
+      hitIds.includes(e.id) && ((e.knockbackUntil ?? 0) > nowMs || isCorpse(e)));
+    if (kbHappened && (lx !== 0 || ly !== 0)) {
+      const lungeSpeed = knockbackSpeedFor(SLASHER_LUNGE_PX, SLASHER_LUNGE_MS);
+      useGameStore.setState(state => ({
+        player: {
+          ...state.player,
+          knockbackVx: lx * lungeSpeed, knockbackVy: ly * lungeSpeed,
+          knockbackUntil: nowMs + SLASHER_LUNGE_MS, knockbackMs: SLASHER_LUNGE_MS,
+        },
+      }));
+    }
   }
   // スキル: ナイフマスターのコンボ加算(§6.10 M33⑧: スラッシャー追撃のヒットでも貯める。倍率は既に乗っている)。
   {

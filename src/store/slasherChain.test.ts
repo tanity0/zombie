@@ -100,4 +100,47 @@ describe('スラッシャーのチェーン追撃(距離規約)', () => {
     expect(damages[2] / damages[1]).toBeCloseTo(2 / 3, 2);
     spy.mockRestore();
   });
+
+  it('踏み込みは相手が実際にノックバックした時だけ(v0.25.3400社長指示)。空振り追撃では前進しない', () => {
+    let now = 3_000_000;
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    setupSlasherRun();
+    const p = useGameStore.getState().player;
+    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+    const z = spawnEnemyAt('zombie', 0, 0, useGameStore.getState().gameTime);
+    z.health = 100000; z.maxHealth = 100000;
+    z.x = pcx + 40 - z.width / 2; z.y = pcy - z.height / 2;
+    useGameStore.setState({ enemies: [z] });
+    const id = useGameStore.getState().enemies[0].id;
+
+    // 初撃(ヒット)→チェーン1撃目はヒット+KB=踏み込みが入る。
+    expect(useGameStore.getState().triggerCounter().hit).toBe(true);
+    let ready = useGameStore.getState().player.slasherChainReadyAt;
+    now += SLASHER_CHAIN_CD_MS + 50;
+    useGameStore.setState(s => ({ realGameTime: ready + 10, gameTime: s.gameTime + SLASHER_CHAIN_CD_MS + 50 }));
+    useGameStore.setState(s => ({
+      enemies: s.enemies.map(x => x.id === id
+        ? { ...x, x: pcx + 40 - x.width / 2, y: pcy - x.height / 2, knockbackVx: 0, knockbackVy: 0, knockbackUntil: 0 }
+        : x),
+    }));
+    const hitChain = useGameStore.getState().triggerCounter();
+    expect(hitChain.hit).toBe(true);
+    expect(useGameStore.getState().player.knockbackUntil).toBeGreaterThan(now); // 踏み込みが入った
+
+    // 次のチェーンは敵を遠くへ置いて空振りさせる → 踏み込みは入らない。
+    ready = useGameStore.getState().player.slasherChainReadyAt;
+    expect(ready).toBeGreaterThan(0);
+    now += SLASHER_CHAIN_CD_MS + 5000; // 前の踏み込みの残りを確実に切る
+    useGameStore.setState(s => ({ realGameTime: ready + 10, gameTime: s.gameTime + SLASHER_CHAIN_CD_MS + 5000, player: { ...s.player, knockbackVx: 0, knockbackVy: 0, knockbackUntil: 0 } }));
+    useGameStore.setState(s => ({
+      enemies: s.enemies.map(x => x.id === id
+        ? { ...x, x: pcx + 2000 - x.width / 2, y: pcy - x.height / 2, knockbackVx: 0, knockbackVy: 0, knockbackUntil: 0 }
+        : x),
+    }));
+    const whiff = useGameStore.getState().triggerCounter();
+    expect(whiff.swung).toBe(true);
+    expect(whiff.hit).toBe(false);
+    expect(useGameStore.getState().player.knockbackUntil).toBe(0); // ★空振り=踏み込み無し(旧v3266の前進は廃止)
+    spy.mockRestore();
+  });
 });

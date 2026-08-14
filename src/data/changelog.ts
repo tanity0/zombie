@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3400',
+    items: [
+      'スラッシャーの踏み込みを「相手が実際にノックバックした時だけ」に変更しました(空振りやノックバックしない相手には前進しません)。',
+    ],
+  },
+  {
     version: '0.25.3399',
     items: [
       'スラッシャーの連続攻撃を「踏み込んでから振る」順序に修正しました(ノックバックで離れた敵に追いついてから判定。押しながら切り進めます)。',
