@@ -6328,8 +6328,12 @@ DPSの並走は**スキルに背負わせない**: 床=武器Tier(時間追従�
   E-1完遂(ELITE_EXECUTE_HP_RATIO撤去=強個体は全HP帯heavy・雑魚不変)。即死経路2件(リーパー波及/
   ボム)はB-Rebuild(isBossType編入)で自動解消済み。※金箱の価値式がgameStore/bountyTickで二重定義
   (循環回避・ドリフト検知テストつき)→B4で葉モジュールへ一本化する。
-- **B4**: ローテーション+頻度ゲート+自然湧きproducer配線+E-5先送り3系統配線(bountyEngagedNow)+
-  退場通知+変異体対策室掲載(掲載裁定の5点)。※掲載5点は前倒し実装済み(v0.25.3391)。
+- **B4【実装済み v0.25.3416・検収良】=パイプライン完成**: 自然湧きproducer配線(初回5:00・最大2回/
+  ラン・CD90秒・同時1体・緩コマ告知なし・bountySpawnBlocked初配線・デバッグ経路とspawnBountyEncounter
+  共用)+4種重複なしローテ(store・resetGameリセット・出現時点で枠消費)+E-5先送り3系統配線
+  (anyBountyEngaged→囲い/紅き夜/叫喚)+退場通知(控えめバナー)+金箱価値式の葉一本化
+  (bountyValue.ts)。テスト77本緑・madge増なし・負荷1/10。※掲載5点は前倒し実装済み(v0.25.3391)。
+  **→ §6.38の実装は全て完了。残る確認=社長の実機通しラン(自然遭遇→交戦→金箱/見逃し)。**
   - **掲載裁定5点のみ【済 v0.25.3391】**(実装チャット前倒し): PRACTICE_SLOTS4枠追記/
     `?bountynow`のpracticeForces相乗り/遭遇解放(既存isEngageableBoss+bossStyleSlotKeyで無配線動作を
     確認)/bossHints4種追記/BossRush種別表示「賞金首」追加。**ローテーション・頻度ゲート・自然湧き

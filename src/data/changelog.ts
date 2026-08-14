@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3417',
+    items: [
+      'ゲーム内容の変更はありません(賞金首B4の検収記録=賞金首イベントの実装が完了しました)。',
+    ],
+  },
+  {
     version: '0.25.3416',
     items: [
       '賞金首が通常プレイでも出現するようになりました。5分以降・1ランに最大2回、逃げてもよく、倒せば金箱が手に入ります。',
