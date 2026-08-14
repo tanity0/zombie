@@ -57,6 +57,18 @@ describe('bossTestQuery(URL合成)', () => {
     expect(q.get('ghostlog')).toBe('1');
   });
 
+  // PACING_PUZZLE.md §6.38 B1(賞金首): param=bountynowの時だけbountytypeをURLへ載せる。
+  it('賞金首エントリはbountytypeをURLへ載せる(param!==bountynowでは載せない)', () => {
+    const q = new URLSearchParams(bossTestQuery(
+      { boss: 'bounty-melee', stageId: 'stage-1', param: 'bountynow', bountyType: 'melee' },
+      { characterClass: 'warrior', ghostMode: null, ghostlog: false },
+    ));
+    expect(q.get('bountynow')).toBe('1');
+    expect(q.get('bountytype')).toBe('melee');
+    // 通常エントリ(bountyType未指定)ではbountytypeを載せない。
+    expect(new URLSearchParams(bossTestQuery(entry, { characterClass: 'warrior', ghostMode: null, ghostlog: false })).get('bountytype')).toBeNull();
+  });
+
   it('3択を本番と同じスキルへ変換し、旧URLは守護霊へ戻す', () => {
     expect(bossTestGhostSkill('?ghost=1&ghostmode=own')).toBe('guardian-spirit');
     expect(bossTestGhostSkill('?ghost=1&ghostmode=random')).toBe('ghost-helper');

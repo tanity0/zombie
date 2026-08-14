@@ -6,6 +6,7 @@ import {
   advanceBossDisengageGrace, bossEngagementDistancePx, bossLeashDistancePx,
   facilitiesLocked, FACILITY_REENABLE_MS,
   isLeashableBoss, BOSS_DISENGAGE_GRACE_MS, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC,
+  isGhostEligibleBoss,
 } from './bossEngagement';
 
 // 近く(プレイヤーは原点)に居るボスとして呼ぶ短縮形。距離のテストは最後の describe で別に行う。
@@ -69,14 +70,38 @@ describe('bossEngagement', () => {
   it('雑魚に混ざっていてもボスが1体起きていれば交戦中', () => {
     expect(engaged([foe('zombie'), foe('thor'), foe('bat')])).toBe(true);
   });
+
+  // PACING_PUZZLE.md §6.38 v3(賞金首・社長裁定「城ボス方式に反転」): isEngageableBossへ追加=
+  // ズーム・リーシュじわ回復・bossFightNow経由の先送り・施設ロックを既存土管でまとめて受ける。
+  it('賞金首4型も交戦中として扱う(v3裁定=城ボス方式)', () => {
+    for (const t of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as EnemyType[]) {
+      expect(isEngageableBoss(t), t).toBe(true);
+      expect(engaged([foe(t, { dormant: true })]), t).toBe(false); // 起床前は非交戦
+      expect(engaged([foe(t, { dormant: false })]), t).toBe(true);
+    }
+  });
+
+  // PACING_PUZZLE.md §6.38 v6 B-2(賞金首): ゴースト週間5系統(守護霊召喚/bossClock/notifyBossClear/
+  // duoRecords/ghostOnline)には乗せない(倒す義務のない相手のため)。
+  it('isGhostEligibleBoss = ENGAGEABLE − 賞金首', () => {
+    expect(isGhostEligibleBoss('giantbat')).toBe(true);
+    expect(isGhostEligibleBoss('idol')).toBe(true);
+    for (const t of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as EnemyType[]) {
+      expect(isGhostEligibleBoss(t), t).toBe(false);
+    }
+    expect(isGhostEligibleBoss('zombie')).toBe(false);
+  });
 });
 
 // リーシュ(社長裁定v0.25.2418)。ここが崩れると「ワープが戻る」か「離れて一方的に削れる」。
 describe('リーシュ', () => {
-  it('待機へ戻すのはフィールドの城ボスだけ(裏ボス/ゲート2は専用コントローラ or 囲い戦なので対象外)', () => {
+  it('待機へ戻すのはフィールドの城ボス+賞金首4体(v6 D-3。裏ボス/ゲート2は専用コントローラ or 囲い戦なので対象外)', () => {
     expect(isLeashableBoss('giantbat')).toBe(true);
     for (const t of ['mimir', 'thor', 'miguel', 'uri', 'idol', 'reaper', 'zombie'] as EnemyType[]) {
       expect(isLeashableBoss(t)).toBe(false);
+    }
+    for (const t of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as EnemyType[]) {
+      expect(isLeashableBoss(t), t).toBe(true);
     }
   });
 

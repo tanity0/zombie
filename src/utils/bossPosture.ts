@@ -1,5 +1,6 @@
 import type { Enemy, EnemyType } from '../types/game';
 import { isEngageableBoss } from './bossEngagement';
+import { isBountyType } from './enemyUtils';
 
 // 社長指示v0.25.3295「パンプキンなどの強敵にも紫システムだけ追加」: 交戦ボスに加え、この強敵2体
 // (isBossTypeだがボス交戦システム=カメラ/湧き制御を持たない)も体勢値→紫の完全気絶を持つ。
@@ -31,6 +32,10 @@ export const bossPostureMax = (type: EnemyType): number => {
   if (POSTURE_ELITE_TYPES.has(type)) return 60; // 強敵2体(v0.25.3295叩き台・城ボス80より軽い)
   if (type === 'giantbat') return 80;
   if (type === 'mimir' || type === 'jormungand' || type === 'skadi' || type === 'thor') return 120;
+  // PACING_PUZZLE.md §6.38 v6 D-2(賞金首): パンプキン基準(60)×1.5=90(叩き台・実機調整前提)。
+  // POSTURE_ELITE_TYPESには入れない(usesPostureSystemはisEngageableBoss経由で既に付くため。
+  // 入れると60分岐に当たって×1.5にならない=このif分岐を専用に足す)。
+  if (isBountyType(type)) return 90;
   return 100;
 };
 

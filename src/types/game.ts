@@ -741,12 +741,19 @@ export interface Enemy {
     // v0.25.2613(バッチ3・idolのMAX化): 狙撃線/追尾弾/休符。詳細は src/utils/idolTick.ts。
     | 'idol-snipe-windup' | 'idol-snipe' | 'idol-snipe-recover'
     | 'idol-orb-windup' | 'idol-orb-recover'
-    | 'idol-rest';
+    | 'idol-rest'
+    // PACING_PUZZLE.md §6.38(賞金首・B1): 起床演出(holo-circle 1周)の間だけ立つ。技は無い(B2で追加)。
+    | 'bounty-wake';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   // 攻撃開始時に確定した短い連携台本の残り。各recoverで先頭を消費し、空になった時だけ通常硬直へ戻る。
   bossScriptQueue?: string[];
   bossLeashSince?: number;  // フィールドボスが離脱距離の外に出続けた起点(gameTime)。3秒予兆用
+  // PACING_PUZZLE.md §6.38(賞金首・B1): 直近で「交戦中」だった gameTime(bountyEngagedNow参照)。
+  // 滞在1分(BOUNTY_LINGER_MS)の起点=これ(未設定ならspawnedAt)。交戦中は毎フレーム現在時刻へ更新。
+  bountyLastEngagedAt?: number;
+  // 滞在満了→帰巣完了後にフェード退場を開始した gameTime。未設定=退場中でない。
+  bountyDepartAt?: number;
   bossBurstLeft?: number;    // 3連発の残弾
   bossBurstNextAt?: number;  // 次の1発の gameTime(ms)
   // PACING_PUZZLE.md §6.28-21(バッチM53/M55/M57・ロットL2): ミゲル/ジブリル/ラフィへ追加した新技1つずつの
@@ -1001,7 +1008,13 @@ export type EnemyType =
   | 'acrasiel'   // ゲート2ボス(天使名ボス6体目・EX): 「アクラシエル」。武器=紫の結晶の槍(acrasiel-spear)。脚が無く移動しない(speed:0)
   | 'idol'       // stage-2 隠しボス(反対方面最奥): オープニングでアイドルを撃ち殺した人物。武器絵は無し(本体絵にハンドガンを描き込み済み)
   | 'hunter'     // ハンター変異体: 3分以降・優勢時に出現。索敵→発見→拠点まで追跡→撤退する徘徊ストーカー(専用イベント制御)
-  | 'screamer';  // 変異体(叫喚型): 5分以降・同時1体。距離を保ち、溜め→叫喚で画面内の通常敵を一時強化(優先処理対象)
+  | 'screamer'   // 変異体(叫喚型): 5分以降・同時1体。距離を保ち、溜め→叫喚で画面内の通常敵を一時強化(優先処理対象)
+  // PACING_PUZZLE.md §6.38(賞金首「BOUNTY」・B1): 倒す必要のない小ボスイベント。ランダムで1体出現し、
+  // 交戦しない限り追ってこない・逃げれば見逃せる。texture名=type規約(getTexture(e.type))。
+  | 'bounty-ranged'  // バス停(変異): 遠距離(砲手)。バス停と同化
+  | 'bounty-melee'   // 馬乗り(変異): 近接(決闘者)。触手下半身+潜水兜の機械体
+  | 'bounty-balance' // 鋏(変異): バランス(教官)。膝立ち+巨大な錨(のち鋏に差し替え検討)
+  | 'bounty-maiko';  // 舞妓(変異): イレギュラー種。4本腕+手毬(オービット武器)
 
 // Weapon types
 export interface Weapon {

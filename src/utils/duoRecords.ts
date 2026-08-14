@@ -21,7 +21,7 @@
 // - store/React/PixiJS非依存(純関数+モジュールシングルトン=ヘッドレスでテスト可能)。
 import type { EnemyType } from '../types/game';
 import type { GhostAllySnapshot } from './playerBuild';
-import { isEngageableBoss } from './bossEngagement';
+import { isGhostEligibleBoss } from './bossEngagement';
 import { bossStyleSlotKey } from './playerTraits';
 import { bossClockDurationMs, closeBossClock } from './bossClock'; // v0.25.2577: ボスごと交戦時計(共有)
 
@@ -135,7 +135,8 @@ export const recordDuoBossClear = (
   stageId: string,
   ally: GhostAllySnapshot | null = null,
 ): void => {
-  if (!duoRunActive || !isEngageableBoss(bossType)) return;
+  // §6.38 v6 B-2(賞金首): 同行台帳にも賞金首を乗せない(isEngageableBoss − 賞金首 = isGhostEligibleBoss)。
+  if (!duoRunActive || !isGhostEligibleBoss(bossType)) return;
   const key = bossStyleSlotKey(bossType, stageId);
   // v0.25.2577: 撃破タイム=**そのボスの**交戦時計(bossClock.ts・交戦開始→撃破)。時計が無い
   // (非交戦=遠距離撃破等)は打刻しない(旧: 交戦窓が閉じていれば同じくno-op)。打刻後は時計を

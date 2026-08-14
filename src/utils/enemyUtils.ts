@@ -106,8 +106,20 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // 変異体(叫喚型・イベント専用=通常プールに入れない。useGameLoop のディレクターが同時1体だけ出す)。
   // 役割は周囲の通常敵の一時強化。直接火力は弱め(接触6)、HPも低め(社長指示で60→20)=叫ぶ前に
   // 素早く倒して阻止できる優先処理対象。
-  screamer:   { width: 36, height: 36, speed: 55, health: 20, damage: 6, experienceValue: 3 }
+  screamer:   { width: 36, height: 36, speed: 55, health: 20, damage: 6, experienceValue: 3 },
+  // PACING_PUZZLE.md §6.38(賞金首・B1): 体格=ヘビー級叩き台(パンプキン40〜lab-zombie-3 46帯)。
+  // health はここでは実質使わない(CONSTANT_STRENGTH_TYPES=hpMult固定+スポーン後パッチで
+  // 2000×timeDifficultyへ上書きされる。§3)。移動=1枚絵グライド(bob最小)なので速度は控えめ。
+  // damage(接触)は giantbat(19)基準の叩き台。experienceValue=0(討伐報酬は金箱が担う・§3)。
+  'bounty-ranged':  { width: 44, height: 44, speed: 50, health: 2000, damage: 18, experienceValue: 0 },
+  'bounty-melee':   { width: 44, height: 44, speed: 50, health: 2000, damage: 18, experienceValue: 0 },
+  'bounty-balance': { width: 44, height: 44, speed: 50, health: 2000, damage: 18, experienceValue: 0 },
+  'bounty-maiko':   { width: 44, height: 44, speed: 50, health: 2000, damage: 18, experienceValue: 0 },
 };
+
+/** PACING_PUZZLE.md §6.38(賞金首・B1): 4型の集合。texture名=type規約(getTexture(e.type))。 */
+export const BOUNTY_ENEMY_TYPES = new Set<EnemyType>(['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko']);
+export const isBountyType = (t: EnemyType): boolean => BOUNTY_ENEMY_TYPES.has(t);
 
 // 裏ボス共通判定(完全に同一仕様。stage で見た目/名前だけ変わる)。
 // miguel(ゲート2ボス)もここに含める: updateEnemies の通常追跡AIから除外(専用コントローラが座標を
@@ -158,6 +170,16 @@ export const isBossType = (t: EnemyType): boolean =>
   t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter';
 
 /**
+ * 囲い/救助イベント開始時の周辺一掃(`beginArenaEvent`/`beginRescueEvent`)で残す(=消さない)個体か。
+ * §6.38 v6 B(賞金首)の保護3箇所のうち③。両イベントが同じ条件を複製していたので1箇所へ集約
+ * (社長指示「一掃」= reaper/giantbat/pumpkin/裏ボス系/固定敵/クエスト対象は従来どおり残し、
+ * 賞金首もここへ追加登録する)。
+ */
+export const isArenaSweepProtected = (e: Pick<Enemy, 'type' | 'fixed' | 'questTarget'>): boolean =>
+  e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
+  isHiddenBoss(e.type) || isBountyType(e.type) || !!e.fixed || !!e.questTarget;
+
+/**
  * ★クリティカルを「ボス式」(=固まらず**移動半減+CD2倍**・v0.25.2422/CRIT-UNIFY §9.2)で受ける型か。
  *
  * 社長指示v0.25.3169「パンプキン、クリティカルもちゃんと固まるように。紫は無い。ボスでは無いので。
@@ -193,8 +215,9 @@ export const getsDeathAttention = (t: EnemyType): boolean => isBossType(t) && t 
 // 討伐(KILL)時に「FF風クランブル」統一演出(triggerDramaticDeath・gameStore.ts)を出す対象か。
 // ボス系は全員対象。ネームド/クエスト対象も従来どおり劇的な討伐を維持する。
 // isNamed は型ではなく個体フラグなので Enemy を受け取る(isHiddenBoss/isBossTypeはEnemyType引数)。
+// §6.38 v6 A-5(賞金首): getsDramaticDeath=入れる(討伐SE=ボス討伐SE流用と整合させるため劇的死亡を出す)。
 export const getsDramaticDeath = (enemy: Enemy): boolean =>
-  !!enemy.isNamed || !!enemy.questTarget || (isBossType(enemy.type) && enemy.type !== 'pumpkin');
+  !!enemy.isNamed || !!enemy.questTarget || (isBossType(enemy.type) && enemy.type !== 'pumpkin') || isBountyType(enemy.type);
 
 // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26): この個体が「死体」(corpseUntil付き)か。
 // これが唯一の判定=AI/攻撃/照準/被弾/対象選定の全経路がこの1関数で除外する(§26-2)。
@@ -203,8 +226,9 @@ export const isCorpse = (e: Pick<Enemy, 'corpseUntil'>): boolean => e.corpseUnti
 // KILLされた通常敵が「死体化」の対象になり得るか(ボス系/ネームド/クエスト対象=getsDramaticDeath系は
 // 従来どおり対象外・§26-1)。判定は「型」ではなく getsDramaticDeath と同じ安全側の合わせ技:
 // isBossType は pumpkin(getsDramaticDeathは false)も含むため、ボス系は型だけで丸ごと除外する。
+// §6.38 v6 A-5(賞金首): corpseEligible=除外(ボス系と同様、討伐時は死体化させず即除去=劇的死亡演出と整合)。
 export const corpseEligible = (enemy: Pick<Enemy, 'type' | 'isNamed' | 'questTarget'>): boolean =>
-  !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget;
+  !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget && !isBountyType(enemy.type);
 // ★社長指示v0.25.3168「パンプキンは厳密にはボスではないので討伐イベントいらない」:
 // pumpkin を**討伐イベントごと**除外する(崩壊/バナー「◯◯を討伐」/閃光/リング/シェイク/スロー)。
 // 旧: v0.25.2879 では「時間停止+カメラ寄り(getsDeathAttention)」だけを外し、崩壊やバナーは残していた。
@@ -349,7 +373,8 @@ export const areaIndexForPos = (x: number, y: number): number => {
 };
 
 // エリア基礎難易度倍率(社長指定)。最終倍率 = エリア基礎 × 色付き倍率(時間スケールは廃止)。
-const AREA_BASE_DIFFICULTY = [1.0, 1.2, 1.45, 1.75, 2.1];
+// export: §6.38(賞金首)のHPスポーン後パッチ(2000×実効難易度倍率)が同じ表を引くため。
+export const AREA_BASE_DIFFICULTY = [1.0, 1.2, 1.45, 1.75, 2.1];
 // エリア別の「速さ」倍率(社長指定v0.25.2317)。敵の移動速度と敵弾の弾速に掛ける。
 // 研究対象区域までは等速(1.0)、デンジャー以降で 1.2 → 1.5 → 2.0 と上がる。
 // HP/攻撃力(AREA_BASE_DIFFICULTY)とは別軸=「硬さ」ではなく「捌く難しさ」で深さを表現する。
@@ -396,7 +421,7 @@ const COLOR_TIER_SIZE_MULT: Record<EnemyColorTier, number> = RARE_TINT_ENABLED
   ? { blue: 1, purple: 1, red: 1 }
   : { blue: 1.1, purple: 1.2, red: 1.3 }; // 旧値(青1.1/紫1.2/赤1.3・+10%刻み)
 // 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
-const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol']);
+const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol', 'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko']);
 // ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
 const LAB_FIXED_TYPES = new Set<EnemyType>(['lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3']);
 // エリア → [青影, 紫影, 赤影] の出現確率(絶対値・社長指定)。残りは無色。

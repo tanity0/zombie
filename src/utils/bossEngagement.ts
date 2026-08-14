@@ -11,6 +11,7 @@
 // 掟: **ここは判定するだけの純関数**。どう使うか(湧きを落とす/コマ時計を止める)は directorTick 側。
 import type { Enemy, EnemyType } from '../types/game';
 import { BOSS_ZOOM_PROFILES, bossZoomClassFor, zoomCompensatedWorldDistance, ZOOM_MIN_ABS } from './cameraZoom';
+import { isBountyType } from './enemyUtils';
 
 /**
  * 「交戦中」として扱うボスの型。
@@ -28,9 +29,21 @@ export const ENGAGEABLE_BOSS_TYPES = new Set<EnemyType>([
   'mimir', 'jormungand', 'skadi', 'thor',       // 裏ボス4体
   'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', // ゲート2ボス6体
   'idol',                                       // stage-2 隠しボス
+  // PACING_PUZZLE.md §6.38 v3(賞金首・社長裁定「城ボス方式に反転」): ズーム・リーシュじわ回復・
+  // bossFightNow経由の先送り・施設ロックを既存土管でまとめて受けるため、城ボスと同じ交戦系に乗せる。
+  'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
 ]);
 
 export const isEngageableBoss = (type: EnemyType): boolean => ENGAGEABLE_BOSS_TYPES.has(type);
+
+/**
+ * PACING_PUZZLE.md §6.38 v6 B-2(賞金首): 守護霊召喚/bossClock撃破タイム/notifyBossClearソロ台帳/
+ * duoRecords/ghostOnlineのpickスロット列——この5系統は賞金首を**乗せない**(倒す義務のない相手を
+ * ゴースト週間の対象に混ぜない)。ENGAGEABLE から賞金首だけを絞った専用集合を1箇所に作り、
+ * 5系統全てがここを見る(個別に「賞金首を除く」条件を書き散らさない)。
+ */
+export const isGhostEligibleBoss = (type: EnemyType): boolean =>
+  ENGAGEABLE_BOSS_TYPES.has(type) && !isBountyType(type);
 
 // 交戦とみなす距離(社長質問v0.25.2416「ボスの画面外判定はハンターくらい広めならOK?」→ ハンター基準)。
 // 基準値は旧ハンター相当。実ワールド距離はボス戦の引きズームに合わせて拡張する。
@@ -154,11 +167,18 @@ export const advanceBossDisengageGrace = (
 };
 
 /**
- * 待機へ戻す(リーシュする)ボス。**フィールドに出る城ボス系だけ**。
+ * 待機へ戻す(リーシュする)ボス。**フィールドに出る城ボス系**+**賞金首4体**(v6 D-3・Set化)。
  * 裏ボスは専用コントローラが既に「深層外/画面外なら巣へ帰りつつ回復」を持っている(二重管理しない)。
  * ゲート2ボスは囲いの中の戦闘なので離脱の概念がない。
+ * **賞金首はここに乗るが、消費するのは`updateEnemies`のgiantbat専用インライン処理ではなく
+ * `bountyTick.ts`の専用コントローラ**(idolTick.ts と同じ「isHiddenBoss相当=専用コントローラで
+ * 動く」型のため。isLeashableBoss/bossLeashDistancePx/BOSS_LEASH_REGEN_PER_SEC/
+ * BOSS_LEASH_RETURN_SPEED_MULTという**同じ土管**をbountyTick側から直接読むことで、
+ * 「離脱距離・じわ回復・帰巣速度の値の出どころ」を城ボスと1本に保つ(homeX/homeY必須・
+ * isStoryBoss=falseが前提)。
  */
-export const isLeashableBoss = (type: EnemyType): boolean => type === 'giantbat';
+const LEASHABLE_BOSS_TYPES = new Set<EnemyType>(['giantbat', 'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko']);
+export const isLeashableBoss = (type: EnemyType): boolean => LEASHABLE_BOSS_TYPES.has(type);
 
 /**
  * 待機中のじわじわ回復(社長「もし回復するなら、じわじわ回復を条件付きで検討」)。

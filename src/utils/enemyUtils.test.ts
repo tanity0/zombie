@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit, aimEnemyDist2 } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit, aimEnemyDist2, isBountyType, corpseEligible, isArenaSweepProtected } from './enemyUtils';
 import { isEngageableBoss } from './bossEngagement';
 import type { Enemy, Player, Summon, GameBounds, EnemyType } from '../types/game';
 import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
@@ -283,6 +283,30 @@ describe('getsDeathAttention (討伐時の時間停止+カメラ寄り・社長�
   it('ただしネームド/クエスト対象なら演出は残る(型だけで切らない)', () => {
     expect(getsDramaticDeath({ type: 'pumpkin', isNamed: true } as Enemy)).toBe(true);
     expect(getsDramaticDeath({ type: 'pumpkin', questTarget: true } as Enemy)).toBe(true);
+  });
+});
+
+// PACING_PUZZLE.md §6.38 v6 A-5(賞金首): isBossType代理分岐の個別登録(isBossTypeそのものには入れない)。
+describe('isBountyType / 賞金首のisBossType代理分岐(§6.38 v6 A-5)', () => {
+  const BOUNTY_TYPES: EnemyType[] = ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'];
+  it('isBossTypeには入らない(v6 A確定)', () => {
+    for (const type of BOUNTY_TYPES) expect(isBossType(type), type).toBe(false);
+  });
+  it('isBountyTypeは4型だけtrue', () => {
+    for (const type of BOUNTY_TYPES) expect(isBountyType(type), type).toBe(true);
+    expect(isBountyType('zombie')).toBe(false);
+    expect(isBountyType('pumpkin')).toBe(false);
+  });
+  it('getsDramaticDeath=入れる(討伐SE=ボス討伐SE流用と整合)', () => {
+    for (const type of BOUNTY_TYPES) expect(getsDramaticDeath({ type } as Enemy), type).toBe(true);
+  });
+  it('corpseEligible=除外(死体化させない・ボス系と同様に即除去)', () => {
+    for (const type of BOUNTY_TYPES) expect(corpseEligible({ type }), type).toBe(false);
+  });
+  it('isArenaSweepProtected=保護(囲い/救助イベントの周辺一掃で消えない)', () => {
+    for (const type of BOUNTY_TYPES) {
+      expect(isArenaSweepProtected({ type, fixed: false, questTarget: false }), type).toBe(true);
+    }
   });
 });
 

@@ -44,6 +44,16 @@ describe('stunnedMeleeOutcome', () => {
     expect(ELITE_EXECUTE_HP_RATIO).toBe(0.5);
     expect(ELITE_MELEE_STUN_MULT).toBe(3);
   });
+
+  // PACING_PUZZLE.md §6.38 v6 A-1(賞金首): meleeExecute.isEliteTypeへ4型を名指しで追加。
+  // pumpkin/lab-zombie-3と同じ「強個体」裁定(境界50%)を受ける=B1時点の受け入れ条件。
+  it('賞金首4型: 境界50%の両側(pumpkin/lab-zombie-3と同じ強個体裁定)', () => {
+    for (const type of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as EnemyType[]) {
+      expect(stunnedMeleeOutcome(enemy({ type, health: 49, maxHealth: 100 })), type).toBe('execute');
+      expect(stunnedMeleeOutcome(enemy({ type, health: 50, maxHealth: 100 })), type).toBe('heavy');
+      expect(stunnedMeleeOutcome(enemy({ type, health: 51, maxHealth: 100 })), type).toBe('heavy');
+    }
+  });
 });
 
 // v0.25.2525(GHOST-REFLECT-MELEE-SUBS 発注B / 台帳§3-3): 気絶敵フィニッシュの裁定=プレイヤーの
@@ -90,6 +100,18 @@ describe('resolveStunnedMeleeHit(気絶敵フィニッシュの裁定・プレ�
     expect(usesBossStunnedMelee('pumpkin')).toBe(false);
     expect(usesBossStunnedMelee('lab-zombie-3')).toBe(false);
     expect(usesBossStunnedMelee('zombie')).toBe(false);
+    // 賞金首はisBossTypeではないのでusesBossStunnedMeleeもfalse(強個体=isEliteType側の裁定を受ける)。
+    expect(usesBossStunnedMelee('bounty-ranged')).toBe(false);
+  });
+
+  // ★B1受け入れ条件(PACING_PUZZLE.md §6.38 A-1): resolveStunnedMeleeHitが賞金首にexecuteを
+  // 返さない不変条件(=雑魚の無条件即死経路に落ちない。HP50%以上なら必ず'heavy')。
+  it('★賞金首4型: HP50%以上ではexecuteを返さない(強個体として裁定される)', () => {
+    for (const type of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as EnemyType[]) {
+      const r = resolveStunnedMeleeHit(stunned({ type, health: 60, maxHealth: 100 }), 10, 500, BOSS_MULT);
+      expect(r, type).toEqual({ kind: 'heavy', dmg: 30 });
+      expect(r?.kind, type).not.toBe('execute');
+    }
   });
 
   // 'heavy' には**非ボス型の強個体フラグ**(isNamed/questTarget)からも到達する。

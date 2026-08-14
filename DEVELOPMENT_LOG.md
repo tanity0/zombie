@@ -1,5 +1,59 @@
 # Development Log
 
+## v0.25.3373 — §6.38 B1: 賞金首(BOUNTY)の器一式(EnemyType4種+登録表+bountyTick.ts+デバッグ出現)【2026-08-14 18:49 JST】
+B0の続き。技は無し(B2)。実装のみ・数値は全て叩き台。詳細はPACING_PUZZLE.md §6.38(v6+F裁定)。
+
+- **EnemyType4種**: `bounty-ranged`(バス停)/`bounty-melee`(馬乗り)/`bounty-balance`(鋏)/`bounty-maiko`(舞妓)。
+  texture名=type規約(既に登録済みのtextureがそのまま使われる=drawEnemy側の追加コードなしで描画される)。
+  ENEMY_STATS叩き台(44×44・speed50・damage18・health2000=スポーン後パッチで上書き前提)。
+- **登録表**: CONSTANT_STRENGTH_TYPES追加/POSTURE_ELITE_TYPESには入れず`bossPostureMax`へ専用if分岐(90=
+  パンプキン60×1.5)/`meleeExecute.isEliteType`へ4型追加(v6 A-1・不変条件テスト付き=HP50%以上で
+  execute を返さない)/`isEngageableBoss`・`isLeashableBoss`(Set化)へ追加/`isBossType`には入れず。
+- **isBossType代理分岐の全数洗い(v6 A-5)**: grep全数(約40箇所)を確認。
+  - 修正: poi-thrall使役=除外(gameStore.ts) / corpseEligible=除外 / getsDramaticDeath=入れる(enemyUtils.ts)。
+  - **発見のみ・今回は未修正(発注書スコープ外・要フォローアップ)**: `applyMeleeFinishSkillSpread`
+    (リーパースキルの範囲フィニッシュ・gameStore.ts:3352)と`bomb`ピックアップ(gameStore.ts:13215/13218)の
+    isBossType分岐は賞金首を「非ボス」として即死させ得る(パンプキン等が受けている保護が届かない)。
+    頻度は低い(super級スキル/パニックボタン専用アイテム)が実バグ級。設計判断が要るため実装せず報告のみ。
+  - 残り(crit penalty −10%/氷スロー軽減/scream buff対象外/ghost hate方式/knockback shove窓/
+    trap円近似 等): いずれもバランス微差(数値変更ではなく「型がisBossTypeでないため既存のボス優遇を
+    受けない」side effect)で即死・消失の類ではないため、CLAUDE.md「仕様変更のルール」により無断で
+    触らず現状維持。
+- **isGhostEligibleBoss(v6 B-2)**: `bossEngagement.ts`に新設(ENGAGEABLE−賞金首)。5系統全てへ配線:
+  ①守護霊召喚の対象選定(directorTick.ts) ②notifyBossClearソロ台帳(playerTraits.ts)
+  ③recordDuoBossClear同行台帳(duoRecords.ts) ④ghostOnlineのpickスロット列(ghostOnline.ts)
+  ⑤bossClock(directorTick.ts) — ⑤は`tickBossClocks`自体は元のまま(engagedSlotKeysPrevは
+  markBossesEncountered=A-6で賞金首を乗せてよいため共用)。①〜④の読み出し側だけをゲートすれば
+  賞金首のクロック値は誰にも読まれず実害ゼロ(検討の上、engagedSlotKeysPrevの二重化は見送り)。
+- **bountyTick.ts(新規)**: idolTick.tsを手本にした専用コントローラ+純関数群。
+  `bountyEngagedNow`/`bountyLingerExpired`/`bountySpawnBlocked`/`pickActiveBounty`/`bountyMaxHealth`/
+  `runBountyTick`。B1の状態は休眠→起床(holo-circle演出700ms+バナー+SE)→追跡→リーシュ→帰巣(じわ回復)→
+  休眠(新しい1分)→満了後フェード退場、の6状態のみ(技なし)。`updateEnemies`は`isBountyType`で早期return
+  (idol同様、専用コントローラに任せる)。`bountySpawnBlocked`は用意+テストのみでB4まで未配線(受注どおり)。
+- **保護3箇所(v2 B)**: ①距離リサイクル免除=`isEngageableBoss`経由で既に自動的に付くことを確認
+  (directorTick.tsの既存分岐が`isEngageableBoss`を見ているため専用条件の追加は不要=コード変更なし)。
+  ②上限カリング=`directorTick.isEnemyCapProtected`をexport関数化して追加(旧: 呼び出し箇所の無名クロージャ)。
+  ③囲い/救助一掃=`enemyUtils.isArenaSweepProtected`を新設し、beginArenaEvent/beginRescueEventの重複した
+  インライン条件を1箇所へ集約+賞金首を追加(DRY化も兼ねる)。
+- **bossTestカタログ4件追加(v6 A-6)**: `BOSS_TEST_ENTRIES`へparam='bountynow'+bountyType副パラメータの
+  4件(stage-1)。ENGAGEABLE全型網羅テストが緑に。
+- **ボスズームクラス=standard確認**: `bossZoomClassFor`はgiant/compact未登録なら既定でstandardを返す
+  ため、賞金首を追加登録せずに済むことをテストで確認(コード変更なし・v6 B-5)。
+- **デバッグ出現**: `?bountynow=1`+`?bountytype=ranged|melee|balance|maiko`(useGameLoop.ts)。プレイヤーから
+  絶対700〜1000px+clampRectToPlayableArea/dormant:true+aggroRange(=GIANT_AGGRO_RANGE380流用)+homeX/Y/
+  HP=2000×実効難易度倍率。同時1体まで(既存賞金首を消してから出す)。
+- **金リング標識(v6 D-4)+起床演出**: pixiScene.tsへ追加。足元の金リング(NAMED_TINT色参照のみ・
+  isNamedは立てない・半径=体格幅×1.1・teleレイヤー)+holo-circle(全8コマ・約700ms)。退場フェードは
+  ハンター立ち去り(HUNTER_LEAVE_FADE_MS)と同型でcontainer.alphaに合成。**描画はテスト対象外(掟)**。
+- ★未決なし(全て確定済み裁定の範囲で実装。isBossType全数洗いの2件は「未決」ではなく「発見のみ・
+  スコープ外」として報告=仕様変更のルールにより無断実装しなかった)。
+- 検証: `npm run typecheck`(0)/`npm run lint`(0エラー・warning8=既存分のみ)/
+  新規・変更テストファイル11本を個別実行して全緑(bountyTick.test.ts 14 / directorTick.test.ts 4 /
+  enemyUtils.test.ts 56 / bossEngagement.test.ts 21 / bossPosture.test.ts 6 / meleeExecute.test.ts 16 /
+  cameraZoom.test.ts 43 / bossTest.test.ts 16 / constitution.test.ts 13 / playerTraits.test.ts 87 /
+  duoRecords.test.ts 14 / ghostOnline.test.ts 5)。
+- 次: B2(bountyTick.tsへ3体+舞妓の技を追加)。
+
 ## v0.25.3372 — 鞭のしなりスミア3コマの取り込み(発注リスト④)【2026-08-14 20:45 JST】
 - 社長支給(IMG_7454・1368×264シート→各456×264×3コマ・赤・透過)→ fx/whip-smear-0..2+
   pixiTextures登録(nearest)。C字→S字→直線振り抜きの順=馬乗りの3段コンボ(速速遅)・突進の振り軌跡。

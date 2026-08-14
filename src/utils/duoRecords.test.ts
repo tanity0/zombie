@@ -112,6 +112,13 @@ describe('duoRecords: 交戦時計と打刻', () => {
     expect(loadDuoAlbum()).toBeNull();
   });
 
+  // PACING_PUZZLE.md §6.38 v6 B-2(賞金首): isEngageableBossだがisGhostEligibleBossではないので無視。
+  it('賞金首は同行台帳にも記録されない(isGhostEligibleBoss=false)', () => {
+    engageFor('thor', 50_000, 10_000);
+    recordDuoBossClear('bounty-ranged', 'stage-1', ally());
+    expect(loadDuoAlbum()).toBeNull();
+  });
+
   it('同一交戦区間内の同スロット二重打刻は1回だけ記録される(打刻で時計が閉じる)', () => {
     engageFor('thor', 0, 30_000);
     recordDuoBossClear('thor', 'stage-3', ally());

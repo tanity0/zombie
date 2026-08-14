@@ -26,6 +26,7 @@ import {
   isValidForArea,
   selectLabEnemyType,
   OFFSCREEN_RECYCLE_MARGIN,
+  isBountyType,
 } from './enemyUtils';
 import { selectCullCandidates } from './enemyCulling';
 import { enemyCountCap, ENEMY_COUNT_CEIL, type PhaseKind } from './difficultyDirector';
@@ -35,7 +36,7 @@ import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDir
 import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
-import { bossEngagedNow, bossEngagementDistancePx, engagedBossSlotKeys, isEngageableBoss } from './bossEngagement';
+import { bossEngagedNow, bossEngagementDistancePx, engagedBossSlotKeys, isEngageableBoss, isGhostEligibleBoss } from './bossEngagement';
 import { markBossesEncountered } from './bossEncounter'; // BOSS_MAKER.md §20-5: ボスラッシュの解放記録
 import {
   tickPlayerTraits, loadPlayerProfile, effectiveGhostProfile, bossStyleSlotKey,
@@ -93,6 +94,25 @@ const DIRECTOR_EGG_DANGER_FULL = 3;       // この個数(近くに)でdanger最
 const WAVE_GRACE_MS = 10000;
 const LAB_RETURN_HOME_MARGIN = 140;
 const EVENT_BANNER_MS = 3500;             // イベント発生告知バナーの表示時間(gameTime ms)。useGameLoop.ts と同じ値。
+
+/**
+ * 上限カリング(runOffscreenRecycleAndCull)の保護表。PACING_PUZZLE.md §6.38 B1(賞金首)の
+ * 保護3箇所のうち②。named-export化してユニットテスト可能にした(旧: 呼び出し箇所のインライン
+ * クロージャ・実装精度の規律4)。判定・値は移設前と同一(挙動不変)。
+ */
+export const isEnemyCapProtected = (
+  e: Pick<Enemy, 'type' | 'fixed' | 'fromEvent' | 'isNamed' | 'questTarget' | 'isWave' | 'spawnedAt'>,
+  gameTime: number,
+): boolean =>
+  !!e.fixed ||
+  !!e.fromEvent ||
+  !!e.isNamed ||
+  !!e.questTarget ||
+  e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
+  e.type === 'lab-zombie-3' ||
+  isHiddenBoss(e.type) ||
+  isBountyType(e.type) ||
+  !!(e.isWave && gameTime - (e.spawnedAt ?? 0) < WAVE_GRACE_MS);
 
 // ============================================================================
 // Cap/target math (dirCountCap / enemyCap / normalSpawnCap)
@@ -721,8 +741,9 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     return; // 同時1体(既に居るなら新規召喚はしない)
   }
 
+  // §6.38 v6 B-2(賞金首): 守護霊召喚の対象からは賞金首を除く(倒す義務のない相手なので週間対象に混ぜない)。
   const boss = state.enemies.find(e =>
-    isEngageableBoss(e.type) && e.dormant !== true
+    isGhostEligibleBoss(e.type) && e.dormant !== true
     && Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy)
       <= bossEngagementDistancePx(e.type, false, e.isStoryBoss === true));
   if (!boss) return;
@@ -1079,15 +1100,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
   // deleted the instant it spawns under the low cap).
   const currentEnemiesForCap = useGameStore.getState().enemies;
   if (currentEnemiesForCap.length > enemyCap) {
-    const isProtected = (e: typeof currentEnemiesForCap[number]): boolean =>
-      !!e.fixed || // 屋内ステージの固定配置敵は数が多くてもカリングしない(遠い敵が消えない)
-      !!e.fromEvent || // 囲い系イベントの敵は終了判定に必要なのでカリングしない
-      !!e.isNamed || // §5.14 M13: 宿敵は上限カリング対象外(倒すかラン終了持ち越しの2択を保つ)
-      !!e.questTarget || // 二人組クエストの強制目標個体(討伐が条件=消えてはいけない)
-      e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
-      e.type === 'lab-zombie-3' || // 研究所Lv3はパンプキン相当のボス(着地爆発)。ランダム湧き個体がcap超過で消されないよう保護
-      isHiddenBoss(e.type) || // 裏ボスは専用コントローラ管理(帰巣/回復)。カリングすると討伐誤検出で「勝手に死ぬ」
-      !!(e.isWave && gameTime - (e.spawnedAt ?? 0) < WAVE_GRACE_MS);
+    const isProtected = (e: typeof currentEnemiesForCap[number]): boolean => isEnemyCapProtected(e, gameTime);
     // PACING_PUZZLE.md §5.7(M6追補2・実機バグ対処): パズルON時、査定でr7Cap/ランクが
     // 縮小して enemyCap が瞬時に下がっても、画面内の敵は消さない(仕様「在席は強制消去しない・
     // 自然消化」との矛盾=実バグだった)。cull候補を可視域外(リサイクルと同じ矩形・座標系=

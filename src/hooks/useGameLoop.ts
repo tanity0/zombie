@@ -145,6 +145,9 @@ import { stageBossHealthFor, STAGE_BOSS_HEALTH_BY_STAGE } from '../config/bossHe
 import { withRecoverFloor } from '../utils/bossTelegraph';
 import { canForceGateBossNow } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
+import {
+  runBountyTick, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT, type BountySfx,
+} from '../utils/bountyTick';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -201,7 +204,8 @@ import {
   areaIndexForPos,
   AREA_THRESHOLDS,
   OFFSCREEN_SPAWN_MARGIN,
-  isCorpse
+  isCorpse,
+  isBountyType
 } from '../utils/enemyUtils';
 import {
   isCounterablePhase, phaseJustChanged, BOSS_ALERT_SFX_KEY,
@@ -751,6 +755,8 @@ const IDOL_SFX: IdolSfx = {
   counter: (gain = 1) => playSfx('counter', gain),
   reward: (gain = 1) => playSfx('headshot', gain),
 };
+// 賞金首(§6.38 B1)の音。起床=既存ボス出現SEを流用(社長F節「音=出現boss-appear流用」)。
+const BOUNTY_SFX: BountySfx = { wake: () => playSfx('boss-appear') };
 const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
 const GATE_LIVE_TAU = 1.0;                             // 難易度④: 関所ライブ補正の平滑化時定数(秒)。
 const SCENES_ENABLED = evParam('scenes') !== '0';     // 沸きシーン(構成/速度)。?scenes=0 で無効化(素の分布・等速)。
@@ -1106,6 +1112,10 @@ const THOR_HARAI_RECOVER_MS = withRecoverFloor(700);
 // 側の既存テーマ判定=campaign.tsの再設計はしない)。実機/自動検証用に?idolnow=1で強制召喚できるように
 // するだけに留める(fromEvent的な単発デバッグ召喚。giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
 const FORCE_IDOL = evParam('idolnow') === '1';
+// PACING_PUZZLE.md §6.38 B1(賞金首): デバッグ出現専用(`?bountynow=1`+`?bountytype=ranged|melee|balance|maiko`)。
+// practiceForces相乗りはB4(PracticeParamに'bountynow'追加時)まで先送り=今はURL直読みのみ。
+const FORCE_BOUNTY = evParam('bountynow') === '1';
+const FORCE_BOUNTY_TYPE = evParam('bountytype'); // 'ranged'|'melee'|'balance'|'maiko'|null(=ranged既定)
 // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋。`?nospawn=1` と併用して湧きを止める。
 // **数値の受け渡しにURLは使わない**(社長明示「?パラメータは回りくどい」)。この1個は部屋への入口だけ。
 const BOSS_MAKER = evParam('bossmaker') === '1';
@@ -1121,6 +1131,7 @@ const IDOL_ACTION_MIN_MS = BOSS_ACTION_MIN_MS; // 既存の一般行動ゲート
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
 let idolCtrlErrLogged = false;                       // idol制御例外のログも初回だけ
 let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
+let bountyCtrlErrLogged = false;                     // 賞金首(§6.38)制御例外のログも初回だけ(本体はbountyTick.ts)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // (屋内の固定敵の「画面外」復帰余白 LAB_RETURN_HOME_MARGIN は src/utils/directorTick.ts へ移設)
 const PICKUP_HARD_CAP = 120;
@@ -1489,6 +1500,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const gatebossForceRef = useRef(false);
   // ?idolnow=1 診断(§6.28-20・バッチM64): ラン開始後に1回だけidolをforce-spawnしたかどうか。
   const idolForceRef = useRef(false);
+  // ?bountynow=1 診断(§6.38 B1): ラン開始後に1回だけ賞金首をforce-spawnしたかどうか。
+  const bountyForceRef = useRef(false);
   // 警察署アリーナ(§6.24 M48)の再発動ガード(社長報告v0.25.2389)。発動でfalse、警察署から
   // POLICE_REARM_RADIUS(360)より離れたらtrueへ戻る。失敗(時間切れ)直後はプレイヤーが必ず
   // 発動半径(240)の内側に居るため、これが無いと即再発動+円内クランプで抜け出せなくなる。
@@ -2525,6 +2538,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0, mimirAimVX: 0, mimirAimVY: 0, mimirLockSfxUntil: 0, mimirBrokenSfxUntil: 0 };
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
+          bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
           policeArmedRef.current = true; // 警察署アリーナの再発動ガードも新ランで解除(§6.24 M48・v0.25.2389)
           bossMakerReadyRef.current = false;
           idolStateRef.current = createIdolTickState(); // idolのストリング/懲罰タイマも新ランでリセット
@@ -5962,6 +5976,43 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             addEnemy(idolE);
             useGameStore.getState().triggerAttention(ix, iy, bossCutinPayload('idol')); // §6.36 監査指摘7: 練習出撃も実戦と同じカットイン
           }
+          // PACING_PUZZLE.md §6.38 B1(賞金首): デバッグ出現専用(`?bountynow=1`+`?bountytype=`)。
+          // 位置=プレイヤーから絶対700〜1000px(§2)+clampRectToPlayableArea。dormant:true+aggroRange+
+          // homeX/Y(=城ボスと同じdormant→交戦の経路)。HP=2000×スポーン時の実効難易度倍率(§3)。
+          // 抑止ゲート(bountySpawnBlocked)はB4で配線=デバッグ出現はここを経由せず常に出す(検証を止めない)。
+          if (FORCE_BOUNTY && !bountyForceRef.current) {
+            bountyForceRef.current = true;
+            const bountyTypeOf = (raw: string | null): 'bounty-ranged' | 'bounty-melee' | 'bounty-balance' | 'bounty-maiko' => {
+              if (raw === 'melee') return 'bounty-melee';
+              if (raw === 'balance') return 'bounty-balance';
+              if (raw === 'maiko') return 'bounty-maiko';
+              return 'bounty-ranged';
+            };
+            const bType = bountyTypeOf(FORCE_BOUNTY_TYPE);
+            const pcx1 = player.x + player.width / 2, pcy1 = player.y + player.height / 2;
+            const bAng = Math.random() * Math.PI * 2;
+            const bDist = 700 + Math.random() * 300; // 絶対700〜1000px(§2)
+            const bx0 = pcx1 + Math.cos(bAng) * bDist, by0 = pcy1 + Math.sin(bAng) * bDist;
+            const bountyE = spawnEnemyAt(bType, bx0 - 22, by0 - 22, newGameTime);
+            const bClamped = clampRectToPlayableArea(bountyE.x, bountyE.y, bountyE.width, bountyE.height, {
+              farBackdrop: useGameStore.getState().farBackdrop,
+              labTheme,
+              corridorMode: useGameStore.getState().corridorMode,
+              m0AdvanceLimitX: null,
+              corridorRunInActive: false,
+            });
+            bountyE.x = bClamped.x; bountyE.y = bClamped.y;
+            bountyE.fromEvent = true; // 賞金首も他のデバッグ召喚と同じ作法(×5は掛けない)
+            bountyE.dormant = true;
+            bountyE.aggroRange = BOUNTY_AGGRO_RANGE_DEFAULT;
+            bountyE.homeX = bountyE.x; bountyE.homeY = bountyE.y;
+            const bArea = areaIndexForPos(bountyE.x + bountyE.width / 2, bountyE.y + bountyE.height / 2);
+            const bHp = bountyMaxHealth(bArea, newGameTime);
+            bountyE.health = bHp; bountyE.maxHealth = bHp;
+            // 同時1体まで(§2)=既存の賞金首を消してから出す(idolの複数体対策と同じ作法)。
+            useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => !isBountyType(e.type)) }));
+            addEnemy(bountyE);
+          }
           // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋を立てて相手を1体だけ出す。休眠は使わない(即戦闘)。
           if (BOSS_MAKER && !bossMakerReadyRef.current) {
             bossMakerReadyRef.current = true;
@@ -6049,6 +6100,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          } catch (err) {
           if (!angelCtrlErrLogged) { angelCtrlErrLogged = true; console.error('[angel] controller error (suppressed after first):', err); }
           reportSuppressedError('angel', err); // v0.25.3324: 天使ボスの技全壊系(アクラシエル報告)の実例外源をここで捕まえる
+         }
+        }
+
+        // --- 賞金首(BOUNTY・§6.38 B1)コントローラ ---
+        // idolTick.tsを手本にした専用コントローラ(bountyTick.ts)。天使コントローラと同位置で呼ぶ
+        // (更新順序上の位置以外に意味は無い=どちらも他の敵から独立した専用制御)。
+        if (!danceTest && !useGameStore.getState().gameWon) {
+         try {
+          const activeBounty = pickActiveBounty(useGameStore.getState().enemies);
+          if (activeBounty) {
+            runBountyTick(activeBounty, newGameTime, deltaTime, MOVE_SPEED_MULT, Date.now(), BOUNTY_SFX);
+          }
+         } catch (err) {
+          if (!bountyCtrlErrLogged) { bountyCtrlErrLogged = true; console.error('[bounty] controller error (suppressed after first):', err); }
+          reportSuppressedError('bounty', err);
          }
         }
 

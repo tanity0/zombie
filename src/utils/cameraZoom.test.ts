@@ -58,6 +58,13 @@ describe('cameraZoom — context zoom target', () => {
     expect(bossZoomClassFor('jormungand')).toBe('giant');
   });
 
+  // PACING_PUZZLE.md §6.38 v6 B-5(賞金首): ズームクラスはstandardのまま(giant/compact登録なし)。
+  it('賞金首4型はstandard(giant/compactへ登録していないことの確認)', () => {
+    for (const t of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as const) {
+      expect(bossZoomClassFor(t), t).toBe('standard');
+    }
+  });
+
   it('足元=等倍、そこから最深まで距離に比例した一直線(v0.25.3013・社長指示「常に一定に離れていく」)', () => {
     const profile = BOSS_ZOOM_PROFILES.giant;
     const lin = (d: number) => BOSS_ZOOM_NEAR + (profile.far - BOSS_ZOOM_NEAR)

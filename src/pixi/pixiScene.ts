@@ -133,7 +133,8 @@ import {
 // 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
 const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(巨大ボス遠距離を含む)を基準にする
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
-import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType } from '../utils/enemyUtils';
+import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType } from '../utils/enemyUtils';
+import { BOUNTY_WAKE_FX_MS, BOUNTY_DEPART_FADE_MS } from '../utils/bountyTick';
 import { isMarkedBoss, isEngagedBoss, bossMarkFor, type MarkBox } from '../utils/bossMarker';
 import { CASTLE_FIGHT_MAX_DIST } from '../world/playableArea'; // v0.25.3055: 城ボス戦の移動制限ライン(描画は読むだけ)
 import {
@@ -3082,6 +3083,8 @@ export class PixiScene {
   private holoScanSprites = new Map<string, Sprite>();   // 弾発射(volley)構え: 本体に半透明で被せる
   private holoMiniSprites = new Map<string, Sprite>();   // ワープ(warp)構え: 足元
   private angelEyeSprites = new Map<string, Sprite>();   // 単眼の凝視(gaze)構え: 頭上〜中心
+  // PACING_PUZZLE.md §6.38 B1(賞金首): 起床演出(holo-circle・全8コマ)。足元に1周(約700ms)。
+  private bountyWakeSprites = new Map<string, Sprite>();
   // §6.28-18(バッチM62): スリィエルの環(suriel-ring)。待機中も頭上に浮遊描画するため、boss.idごとに
   // 環1本目/2本目(Phase2)の2枚のSpriteを持つ(常時表示=Container不要・単純な位置更新のみ)。
   private surielRingSprites = new Map<string, { ring1: Sprite; ring2: Sprite }>();
@@ -13694,6 +13697,9 @@ export class PixiScene {
       if (holoMiniSp) holoMiniSp.visible = false;
       const eyeSp = this.angelEyeSprites.get(e.id);
       if (eyeSp) eyeSp.visible = false;
+      // §6.38 B1(賞金首): 起床演出も同じ作法で既定OFF。
+      const bountyWakeSp = this.bountyWakeSprites.get(e.id);
+      if (bountyWakeSp) bountyWakeSp.visible = false;
     }
   }
 
@@ -13858,6 +13864,10 @@ export class PixiScene {
     const hunterLeaveFade = e.hunterLeavingAt !== undefined
       ? Math.max(0, 1 - (gameTime - e.hunterLeavingAt) / HUNTER_LEAVE_FADE_MS)
       : 1;
+    // PACING_PUZZLE.md §6.38 B1(賞金首): 滞在1分満了+帰巣完了後のフェード退場(hunterLeaveFadeと同型)。
+    const bountyDepartFade = e.bountyDepartAt !== undefined
+      ? Math.max(0, 1 - (gameTime - e.bountyDepartAt) / BOUNTY_DEPART_FADE_MS)
+      : 1;
     // フェードを2種類に分ける(社長指示v0.25.2405)。
     //  ・**位置の法則** (horizonAlpha / foreFade) = 「奥すぎる/手前すぎるから見えない」。
     //    アクターの絵・体力バーには掛けるが、予告レイヤー(tele)には掛けない
@@ -13866,16 +13876,16 @@ export class PixiScene {
     //    居ない相手の判定は無いので、予告も含めて container ごと消して正しい。
     const posFade = horizonAlpha * foreFade;
     view.container.alpha = TELEGRAPH_OWN_FADE
-      ? reaperWarpFade * hunterLeaveFade
-      : posFade * reaperWarpFade * hunterLeaveFade;
+      ? reaperWarpFade * hunterLeaveFade * bountyDepartFade
+      : posFade * reaperWarpFade * hunterLeaveFade * bountyDepartFade;
     // ?telefade=0 のときは従来どおり container 側で位置フェード済み=子には掛けない(旧挙動を完全維持)。
     const artFade = TELEGRAPH_OWN_FADE ? posFade : 1;
     view.reticle.alpha = artFade;
     view.overlay.alpha = artFade;
-    // §3-9-B v9裁定Q: 「存在の法則」(reaperWarpFade=死神ワープ/hunterLeaveFade=索敵タイムアウト立ち去り)
-    // だけを影へ渡す。posFade(=horizonAlpha×foreFade、位置の法則)は影側が別途持つため含めない
-    // (地平線フェードの二重掛け防止。裏回り透け(bossBehindAlpha)も含めない=裏に回っても影は薄くならない)。
-    view.shadowFade = reaperWarpFade * hunterLeaveFade;
+    // §3-9-B v9裁定Q: 「存在の法則」(reaperWarpFade=死神ワープ/hunterLeaveFade=索敵タイムアウト立ち去り/
+    // bountyDepartFade=賞金首の退場フェード)だけを影へ渡す。posFade(=horizonAlpha×foreFade、位置の法則)は
+    // 影側が別途持つため含めない(地平線フェードの二重掛け防止。裏回り透け(bossBehindAlpha)も含めない)。
+    view.shadowFade = reaperWarpFade * hunterLeaveFade * bountyDepartFade;
 
     if (bossFixed && tex) {
       // 裏ボス: 当たり判定=帯(AABB=e.width×e.height)。絵はそれより大きく、帯の上に伸ばす(見た目と判定を分離)。
@@ -14239,6 +14249,20 @@ export class PixiScene {
     // try/catch で包む**前**に必ず1回呼ぶ構造にして、本体側で例外が出ても既定OFFだけは
     // 必ず今フレーム分が反映されるようにした(残留描画の再発防止・詳細はそのメソッドのコメント)。
     const o = view.tele;
+    // PACING_PUZZLE.md §6.38 B1(賞金首): 足元の金リング標識(v6 D-4「isNamedを立てずに絵だけ流用」=
+    // NAMED_TINTの色定数参照のみ。半径=体格幅×1.1)+起床演出(holo-circle・v2 C裁定)。判定はテスト対象外。
+    if (isBountyType(e.type)) {
+      const bFootX = cx, bFootY = e.y + e.height;
+      const bR = Math.max(e.width, e.height) * 1.1;
+      const bDepAlpha = e.bountyDepartAt !== undefined
+        ? Math.max(0, 1 - (gameTime - e.bountyDepartAt) / BOUNTY_DEPART_FADE_MS)
+        : 1;
+      o.ellipse(bFootX, bFootY, bR, bR).stroke({ width: 2.5, color: NAMED_TINT, alpha: 0.85 * bDepAlpha });
+      if (e.bossState === 'bounty-wake') {
+        const bProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BOUNTY_WAKE_FX_MS));
+        this.drawBountyWakeCircle(e.id, bFootX, bFootY, bR * 2, bProg, 0.9);
+      }
+    }
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
     if (usesMimirLaser(e.type) && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
       // §6.33(監査指摘7): 新挙動では線の向きを判定と同じ式(aiTarget−現在のボス中心)で引く。
@@ -21651,6 +21675,24 @@ export class PixiScene {
     sp.visible = true;
   }
 
+  // PACING_PUZZLE.md §6.38 B1(賞金首): 起床(dormant→交戦)演出=出現魔法陣(holo-circle・全8コマ)を
+  // 足元に1周(BOUNTY_WAKE_FX_MS)。holo-mini(ワープ)と同じ「windup尺で1周」の作法。
+  private drawBountyWakeCircle(id: string, footX: number, footY: number, widthPx: number, prog: number, alpha: number) {
+    const frame = Math.max(0, Math.min(7, Math.floor(prog * 8)));
+    const tex = getTexture(`fx/holo-circle-${frame}`);
+    if (!tex) return;
+    let sp = this.bountyWakeSprites.get(id);
+    if (!sp) {
+      sp = new Sprite(tex); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
+      this.L.effectLayer.addChild(sp); this.bountyWakeSprites.set(id, sp);
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    sp.scale.set(widthPx / Math.max(1, tex.width));
+    sp.position.set(footX, footY);
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+
   // ★予兆一括バッチ(v0.25.3344・裁定済み単眼素材fx/angel-eye受領2026-08-14): 単眼の凝視(gaze)構え=
   // 目がボス頭上〜中心に現れて発光(フェードイン+微パルス)。窓は判定ゼロの②(派手側)なので、
   // 判定線(drawAngelBeamLine)より目立ってよい。
@@ -22740,6 +22782,7 @@ export class PixiScene {
     for (const o of this.holoScanSprites.values()) o.destroy();
     for (const o of this.holoMiniSprites.values()) o.destroy();
     for (const o of this.angelEyeSprites.values()) o.destroy();
+    for (const o of this.bountyWakeSprites.values()) o.destroy();
     for (const o of this.surielRingSprites.values()) { o.ring1.destroy(); o.ring2.destroy(); }
     for (const o of this.surielSweepStreakFx.values()) o.destroy();
     for (const o of this.acrasielSpearPool.values()) o.destroy();

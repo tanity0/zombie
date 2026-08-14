@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Enemy, EnemyType } from '../types/game';
 import {
   applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal,
-  bossPostureMax, tickBossPosture, BOSS_POSTURE_BREAK_MS, BOSS_POSTURE_REBREAK_LOCK_MS,
+  bossPostureMax, tickBossPosture, usesPostureSystem, POSTURE_ELITE_TYPES, BOSS_POSTURE_BREAK_MS, BOSS_POSTURE_REBREAK_LOCK_MS,
   BOSS_FATAL_DAZE_MS,
 } from './bossPosture';
 
@@ -26,6 +26,16 @@ describe('boss posture', () => {
       }
       expect(e.bossPosture).toBe(0);
       expect(e.bossBreakRewardRemaining).toBe(250);
+    }
+  });
+
+  // PACING_PUZZLE.md §6.38 v6 D-2(賞金首): パンプキン基準(60)×1.5=90。POSTURE_ELITE_TYPESには
+  // 入れない(isEngageableBoss経由でusesPostureSystemが既に付く)専用if分岐。
+  it('賞金首4型: max=90でPOSTURE_ELITE_TYPESには入っていない(isEngageableBoss経由でusesPostureSystem)', () => {
+    for (const type of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as EnemyType[]) {
+      expect(bossPostureMax(type), type).toBe(90);
+      expect(POSTURE_ELITE_TYPES.has(type), type).toBe(false);
+      expect(usesPostureSystem(type), type).toBe(true);
     }
   });
 

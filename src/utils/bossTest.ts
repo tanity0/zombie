@@ -15,9 +15,12 @@ export interface BossTestEntry {
   /**
    * 既存デバッグパラメータ: bossnow=そのステージの裏ボスをプレイヤー近く(画面外)へ即出現 /
    * idolnow=idol強制召喚 / gateboss=ゲート2天使を拘束サークル付きで即発動 /
-   * castlenow=城ボスを城へ即出現(城マーカーへ向かって戦う)。
+   * castlenow=城ボスを城へ即出現(城マーカーへ向かって戦う) /
+   * bountynow=賞金首(§6.38 B1)をプレイヤーから700〜1000pxへdormantで即出現。
    */
-  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow';
+  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow' | 'bountynow';
+  /** param==='bountynow'の時だけ意味を持つ副パラメータ(?bountytype=)。4種の型を選ぶ。 */
+  bountyType?: 'ranged' | 'melee' | 'balance' | 'maiko';
 }
 
 // 掲載順=裏ボス4 → idol → 天使6 → 城ボス。ステージ対応は campaign.ts の hiddenBoss と
@@ -36,6 +39,12 @@ export const BOSS_TEST_ENTRIES: readonly BossTestEntry[] = [
   { boss: 'suriel', stageId: 'stage-6', param: 'gateboss' },
   { boss: 'acrasiel', stageId: 'stage-ex1', param: 'gateboss' },
   { boss: 'giantbat', stageId: 'stage-1', param: 'castlenow' },
+  // PACING_PUZZLE.md §6.38 B1(賞金首): デバッグ出現のみ(?bountynow=1&bountytype=…)。
+  // stage-1(森・非labテーマ/非corridor)で統一=v6 B-5の抑止条件に抵触しない場所。
+  { boss: 'bounty-ranged', stageId: 'stage-1', param: 'bountynow', bountyType: 'ranged' },
+  { boss: 'bounty-melee', stageId: 'stage-1', param: 'bountynow', bountyType: 'melee' },
+  { boss: 'bounty-balance', stageId: 'stage-1', param: 'bountynow', bountyType: 'balance' },
+  { boss: 'bounty-maiko', stageId: 'stage-1', param: 'bountynow', bountyType: 'maiko' },
 ];
 
 export interface BossTestOptions {
@@ -71,6 +80,7 @@ export const bossTestQuery = (e: BossTestEntry, opts: BossTestOptions): string =
   p.set('smoke', '1');
   p.set('stage', e.stageId);
   p.set(e.param, '1');
+  if (e.param === 'bountynow' && e.bountyType) p.set('bountytype', e.bountyType);
   p.set('class', opts.characterClass);
   p.set('retry', '1');
   if (opts.ghostMode) {
@@ -84,7 +94,7 @@ export const bossTestQuery = (e: BossTestEntry, opts: BossTestOptions): string =
 // ---- 現在モードの表示(社長指示2026-07-31「いまどのモードになってるか出しといて」) ---------------
 // パラメータ残留事故(v0.25.2576で修正)の再発をその場で見抜くための可視化。強制出現フラグは
 // モジュールロード時定数なので、**ページ読込時のURL**が今セッションの真実=それを解析して表示する。
-export const FORCE_PARAMS = ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker'] as const;
+export const FORCE_PARAMS = ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker', 'bountynow'] as const;
 
 export interface BossTestModeInfo {
   active: boolean;                          // いずれかのテスト系パラメータが生きているか

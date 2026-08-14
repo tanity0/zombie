@@ -28,7 +28,7 @@ import type { AvatarId } from '../data/avatars';
 import { getBotTelemetry, snapshotBotTelemetry, type BotTelemetry } from './botTelemetry';
 // §2.11 裁定1: 計測時ビルドの写し(純関数・store非依存)/ §2.16 A: 同行守護霊の写し(共通の1枚)
 import { snapshotPlayerBuild, type GhostAllySnapshot } from './playerBuild';
-import { isEngageableBoss } from './bossEngagement';
+import { isEngageableBoss, isGhostEligibleBoss } from './bossEngagement';
 import { bossClockDurationMs } from './bossClock'; // v0.25.2577: 撃破タイム=ボスごと交戦時計(共有)
 import { isBossCounterableNowApprox } from './bossScript';
 import { isHiddenBoss } from './enemyUtils';
@@ -803,7 +803,8 @@ export const notifyMoveDamage = (moveKey: string): void => {
  * 全キル経路の合流点)。**セッション(ボス交戦計測)が開いている時だけ**記録する(セッション外の死亡は
  * 無視=狭い側)。ゴーストランは§2.7の既存ゲート(tickPlayerTraitsがghostActive/ghostRunActiveの間
  * session=null にする)により自動的に記録されない(劣化コピー防止・軸1と同じ理屈)。
- * 対象は `isEngageableBoss`(bossEngagement.tsが正本)の型のみ(reaper/hunter/pumpkin/lab-zombie-3等は無視)。
+ * 対象は `isGhostEligibleBoss`(bossEngagement.tsが正本=isEngageableBoss−賞金首)の型のみ
+ * (reaper/hunter/pumpkin/lab-zombie-3等は無視。§6.38 v6 B-2で賞金首も対象外に追加)。
  *
  * v0.25.2553(§2.16 A): 第3引数 `ally` = **撃破の瞬間に召喚中だった同行守護霊の写し**
  * (呼び出し側が `ghostAllySnapshot(findGhostAlly(summons))` で作る)。省略/nullなら「同行者なし」=未保存。
@@ -812,7 +813,8 @@ export const notifyBossClear = (
   bossType: EnemyType, stageId: string, ally: GhostAllySnapshot | null = null,
 ): void => {
   const s = session;
-  if (!s || !isEngageableBoss(bossType)) return;
+  // §6.38 v6 B-2(賞金首): ソロ台帳にも賞金首を乗せない(isEngageableBoss − 賞金首 = isGhostEligibleBoss)。
+  if (!s || !isGhostEligibleBoss(bossType)) return;
   const key = bossStyleSlotKey(bossType, stageId);
   // v0.25.2493: 撃破タイム=交戦開始→撃破(撃破の瞬間に確定=同tick精度)。
   // v0.25.2577(社長裁定「ボスごとのタイムにはしたいな」): 起点はそのまま、時計を**ボスごと**の

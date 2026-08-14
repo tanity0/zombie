@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3373',
+    items: [
+      'ゲーム内容の変更はありません(賞金首イベントの土台を実装しました。まだ通常プレイでは出現しません=デバッグ限定です)。',
+    ],
+  },
+  {
     version: '0.25.3372',
     items: [
       'ゲーム内容の変更はありません(賞金首「馬乗り(変異)」の鞭のしなりエフェクト素材3コマを取り込みました。登場はまだ)。',

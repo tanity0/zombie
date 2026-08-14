@@ -1,7 +1,7 @@
 import type { SkillKey } from '../types/game';
 import type { PlayerProfile } from './playerTraits';
 import { bossStyleSlotKey } from './ghostSlot';
-import { ENGAGEABLE_BOSS_TYPES } from './bossEngagement';
+import { isGhostEligibleBoss, ENGAGEABLE_BOSS_TYPES } from './bossEngagement';
 import { getAnonymousId } from '../online/id';
 import { displayNameFrom, loadPlayerName } from './playerName';
 import { loadGhostComments } from './ghostComment';
@@ -151,7 +151,8 @@ export const beginGhostOnlineRun = (skills: readonly SkillKey[], stageId: string
   if (!hasGhostOnlineConsent() || !apiBase() || !getAnonymousId()) return;
   runMode = mode;
   runPickPending = true;
-  const slots = [...ENGAGEABLE_BOSS_TYPES].map(type =>
+  // §6.38 v6 B-2(賞金首): pickスロット列にも賞金首を乗せない(isEngageableBoss − 賞金首)。
+  const slots = [...ENGAGEABLE_BOSS_TYPES].filter(isGhostEligibleBoss).map(type =>
     ghostNetworkSlotKey(bossStyleSlotKey(type, stageId)));
   void (async () => {
     try {

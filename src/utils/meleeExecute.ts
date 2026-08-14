@@ -8,13 +8,17 @@
 // それだと pumpkin / lab-zombie-3 に強個体規定が永久に届かなかった。
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(実装精度の規律4)。
 import type { EnemyType } from '../types/game';
-import { isBossType } from './enemyUtils';
+import { isBossType, isBountyType } from './enemyUtils';
 
 export const ELITE_EXECUTE_HP_RATIO = 0.5;
 export const ELITE_MELEE_STUN_MULT = 3;
 
 // 強個体の定義: pumpkin/lab-zombie-3(タイプ) または isNamed/questTarget(個体フラグ)。
-const isEliteType = (t: EnemyType): boolean => t === 'pumpkin' || t === 'lab-zombie-3';
+// PACING_PUZZLE.md §6.38 v6 A-1(賞金首): 賞金首4型もここへ名指しで追加。isBossTypeでもisEliteTypeでも
+// ないと、現行の雑魚枝(stunnedMeleeOutcomeの!isElite分岐)で無条件即死してしまう(実バグ)。
+// ここに載ることで pumpkin/lab-zombie-3 と同じ「強個体」裁定(HP50%以上=×3の致命の一撃・
+// HP50%未満=即死)を受ける。E-1(強個体処刑の撤去)はB3の別途裁定=ここでは変更しない。
+const isEliteType = (t: EnemyType): boolean => t === 'pumpkin' || t === 'lab-zombie-3' || isBountyType(t);
 
 /**
  * ★気絶中の近接を「ボス式」(=即死しない・近接×BOSS_MELEE_STUN_MULT)で受ける型か。

@@ -1065,6 +1065,17 @@ describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () =
     expect(loadPlayerProfile()).toBeNull(); // 撃破印なし=何も保存されない
   });
 
+  // PACING_PUZZLE.md §6.38 v6 B-2(賞金首): isEngageableBossではあるがisGhostEligibleBossではないので
+  // 同じく撃破と数えない(倒す義務のない相手をゴースト週間の対象に混ぜない)。
+  it('賞金首(isEngageableBossだがisGhostEligibleBoss=false)の撃破通知も撃破と数えない', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    notifyBossClear('bounty-ranged', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()).toBeNull();
+  });
+
   it('セッション外(session=null)でのnotifyBossClearは無視される=そのセッションは撃破なし扱い(v0.25.2493)', () => {
     notifyBossClear('thor', 'stage-1'); // まだ交戦していない=session無し
     tickPlayerTraits(baseInput({ gameTime: 0 }));

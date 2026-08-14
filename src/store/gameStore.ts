@@ -113,7 +113,7 @@ import {
 } from '../utils/eventQuest';
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
-import { isBossType, isHiddenBoss, usesBossCrit, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isArenaSweepProtected } from '../utils/enemyUtils';
 import { escortAdvance } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
@@ -9449,7 +9449,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.isNamed) namedFoeKilled = enemy; // §5.14 M13: 宿敵討伐
         // §6.24 M48「使役」: 通常敵(ボス/裏ボス/ネームド/エリートは対象外=D1)を倒した時だけ候補にする。
         // 実際の20%抽選/先着1体維持(D3)は set() の外側(post section)でownedの現在値を見て行う。
-        if (hasSkill(state.player, 'poi-thrall') && !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget) {
+        // §6.38 v6 A-5(賞金首): isBossTypeではないが同様に眷属化させない(除外条件へ追加)。
+        if (hasSkill(state.player, 'poi-thrall') && !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget && !isBountyType(enemy.type)) {
           thrallCandidate = enemy;
         }
         // juice: FF風クランブル統一演出(ネームド/裏ボス/giantbat/hunter討伐)。銃/接触/爆発キル経路。
@@ -9962,7 +9963,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 通常追跡AI)は従来どおり専用コントローラに任せて抜ける。
         // 注意: committed は aiPhase 基準なので、bossState系(裏ボス/天使/idol)の攻撃中は
         // このガードに掛からず、押し道具が攻撃中でも通る。押し道具は単発の意図的な技のため仕様として許容する。
-        if (isHiddenBoss(enemy.type)) return enemy;
+        // §6.38 B1(賞金首): idol等と同じ「専用コントローラ(bountyTick.ts)で動く」型なので同様に抜ける。
+        if (isHiddenBoss(enemy.type) || isBountyType(enemy.type)) return enemy;
 
         // Bosses pop up briefly when they take melee finisher-grade damage;
         // while airborne they should read as caught, not still advancing.
@@ -12518,7 +12520,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const clearR2 = (event.radius * 1.5) ** 2;
       const kept = state.enemies.filter(e => {
-        if (e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || isHiddenBoss(e.type) || e.fixed || e.questTarget) return true;
+        if (isArenaSweepProtected(e)) return true;
         const ecx = e.x + e.width / 2;
         const ecy = e.y + e.height / 2;
         return (ecx - event.x) ** 2 + (ecy - event.y) ** 2 > clearR2; // 範囲外だけ残す
@@ -12584,7 +12586,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const clearR2 = (event.radius * 1.5) ** 2;
       const kept = state.enemies.filter(e => {
-        if (e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || isHiddenBoss(e.type) || e.fixed || e.questTarget) return true;
+        if (isArenaSweepProtected(e)) return true;
         const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
         return (ecx - event.x) ** 2 + (ecy - event.y) ** 2 > clearR2;
       });
