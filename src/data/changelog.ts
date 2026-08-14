@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3368',
+    items: [
+      'ゲーム内容の変更はありません(桜の花びら素材を取り込みました。舞妓(変異)の演出用・登場はまだ)。',
+    ],
+  },
+  {
     version: '0.25.3367',
     items: [
       'ゲーム内容の変更はありません(賞金首の追加エフェクト素材の発注リストを設計書にまとめました)。',
