@@ -104,7 +104,7 @@ const MIGUEL_SLOW_WALK_MIN_GAP_MS = 4000;
 const MIGUEL_SLOW_WALK_MAX_GAP_MS = 9000;
 const MIGUEL_VOLLEY_CHANCE_LEGACY = 0.6; // 旧(?miguelscript=0)専用。新は miguelScript.ts の MIGUEL_VOLLEY_CHANCE。
 // §6.28-4(バッチM53): 新規windup/recover+踏み込み(dash)【新規】。
-const MIGUEL_VOLLEY_WINDUP_MS = 450;
+export const MIGUEL_VOLLEY_WINDUP_MS = 450; // export=描画(pixiScene・予兆一括バッチv0.25.3344)が同じ値を読む
 const MIGUEL_VOLLEY_RECOVER_MS = withRecoverFloor(300);
 const MIGUEL_TATE_RECOVER_MS = withRecoverFloor(800);
 export const MIGUEL_DASH_WINDUP_MS = 700;
@@ -165,16 +165,16 @@ const JIBRIL_FIRE_LIFE_MS = 2000;
 const JIBRIL_FIRE_DAMAGE = 30;
 const JIBRIL_FIRE_RADIUS = 22;
 // §6.28-6(バッチM55): 新規windup/recover+聖別【新規・Phase2】+転移の溜め【新設】。
-const JIBRIL_VOLLEY_WINDUP_MS = 450;
+export const JIBRIL_VOLLEY_WINDUP_MS = 450; // export=描画(pixiScene・予兆一括バッチv0.25.3344)が同じ値を読む
 const JIBRIL_VOLLEY_RECOVER_MS = withRecoverFloor(400);
 const JIBRIL_LANTERN_WINDUP_MS = 700;
 const JIBRIL_LANTERN_RECOVER_MS = withRecoverFloor(750);
-const JIBRIL_CONSECRATE_WINDUP_MS = 700;
+export const JIBRIL_CONSECRATE_WINDUP_MS = 700; // export=描画(同上)が同じ値を読む
 const JIBRIL_CONSECRATE_RECOVER_MS = withRecoverFloor(750);
 const JIBRIL_CONSECRATE_CD_MS = 8000;
 const JIBRIL_CONSECRATE_RING_RADIUS = 160; // §6.28-6: 自分を中心とした半径160pxのリング
 const JIBRIL_CONSECRATE_FIRE_COUNT = 6;    // 6個・隙間1箇所(=7分割の1つを空ける)
-const JIBRIL_WARP_WINDUP_MS = 450;
+export const JIBRIL_WARP_WINDUP_MS = 450; // export=描画(同上)が同じ値を読む
 // v0.25.2609(バッチ2): **硬直の床(withRecoverFloor)を意図的に適用しない**唯一の硬直。
 // 理由: ジブリルの転移はダメージ判定を持たない**純粋な移動**であり、'warp-recover' は
 // プレイヤーのカウンター分岐が存在しない州(takeGhostAngelCounterも明示除外している)。
@@ -273,7 +273,7 @@ const ACRASIEL_SPEAR_COUNT = 6;
 const ACRASIEL_SPEAR_RANGE_PX = 310;      // 着地距離(★未決事項: 設計書に無い・THOR_HARAI_RANGE流用)
 export const ACRASIEL_SPEAR_DETONATE_MS = 2000;
 export const ACRASIEL_SPEAR_RADIUS = 92;  // =GRENADE_BLAST_RADIUS(流用・★未決事項=設計書に無い半径)
-const ACRASIEL_WARP_WINDUP_MS = 800;
+export const ACRASIEL_WARP_WINDUP_MS = 800; // export=描画(pixiScene・予兆一括バッチv0.25.3344)が同じ値を読む
 // v0.25.2609(バッチ2・換算式②違反の是正): 旧800ms。転移先の赤円(半径92px)が見えてから実行までの
 // 猶予がこの値そのものなのに、800msでプレイヤーが歩ける距離は 800/1000×104.4 = **83.5px < 92px**。
 // ⇒ **見てから歩いても構造的に円から出られない**(=避けようが無い)状態だった。
