@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3370',
+    items: [
+      'ゲーム内容の変更はありません(扇の斬撃弧素材の詳細仕様を設計書に記録しました)。',
+    ],
+  },
+  {
     version: '0.25.3369',
     items: [
       'ゲーム内容の変更はありません(賞金首の報酬・金箱の素材を取り込みました。登場はまだ)。',
