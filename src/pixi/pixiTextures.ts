@@ -581,6 +581,11 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/whip-smear-0', scaleMode: 'nearest' as const },
       { name: 'fx/whip-smear-1', scaleMode: 'nearest' as const },
       { name: 'fx/whip-smear-2', scaleMode: 'nearest' as const },
+      // 鋏の交差閃3コマ(社長支給v0.25.3375・各304×264・赤)。鋏(変異)の薙ぎ・跳びかかり命中:
+      // 0=二筋の走り → 1=X交差 → 2=Xバースト(§6.38発注リスト⑤=これで発注素材オール受領)。
+      { name: 'fx/scissor-x-0', scaleMode: 'nearest' as const },
+      { name: 'fx/scissor-x-1', scaleMode: 'nearest' as const },
+      { name: 'fx/scissor-x-2', scaleMode: 'nearest' as const },
       // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。同じくグレースケール+透過で tint 着色。
       // 帯は技ごとに縦横比が違う(薙ぎ払い3.9:1 / 噛みつき1.2:1 / のしかかり2.1:1)ので伸縮前提=linear。
       { name: 'fx/telegraph-band', scaleMode: 'linear' as const },
