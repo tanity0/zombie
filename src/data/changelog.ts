@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3378',
+    items: [
+      'ゲーム内容の変更はありません(賞金首B1.5の検収完了。開発ツールの一時領域をgit管理から除外)。',
+    ],
+  },
+  {
     version: '0.25.3377',
     items: [
       'ゲーム内容の変更はありません(賞金首イベントの土台に監査で見つかった不具合の修正を反映しました。まだ通常プレイでは出現しません=デバッグ限定です)。',

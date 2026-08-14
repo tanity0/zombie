@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.3378 — B1.5検収(良)+.claude/worktreesをgitignore【2026-08-14 22:20 JST】
+- B1.5(v0.25.3377)検収: ①execute遮断=isBountyTypeで全HP帯heavy(テストをHP1で復元) ②freeze
+  ガード(フルスタン/root/lift/KBで移動・状態進行停止=idolTick同型) ③fromEvent撤去+一掃回帰テスト
+  ④resolveBountyMove=障害物衝突 ⑤出現時アテンション+バナー+SE・矢印1200px ⑥状態機械5本+
+  リサイクル免除明示+リーシュ警告型ゲート+nearestEngagedBossゲート ⑦定数一本化・VISUAL_SCALE 1.95・
+  clamp実値化——スポット確認良・typecheck/lint 0エラー・触ったテスト個別実行オール緑。★未決なし。
+- `.claude/worktrees/`(計測エージェントの一時ワークツリー)を.gitignoreへ。
+- **`?bountynow=1&bountytype=ranged|melee|balance|maiko` で器の実機確認が可能になった**(技はB2)。
+  次: 計測バッチ(§7指標)の結果待ち→裁定換算表→B2発注。
+
 ## v0.25.3377 — §6.38 B1.5: B1成果物監査の指摘7項目を反映(致命2件含む)【2026-08-14 19:37 JST】
 B0/B1(v0.25.3364/3373)へのOpus監査指摘をPACING_PUZZLE.md §6.38「B1.5」節どおりに反映。B2着手前の必須修正。
 
