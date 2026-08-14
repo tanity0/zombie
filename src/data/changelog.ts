@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3371',
+    items: [
+      'ゲーム内容の変更はありません(舞妓(変異)の技を全て毬による攻撃に統一する訂正を設計書へ反映。扇素材の依頼は撤回)。',
+    ],
+  },
+  {
     version: '0.25.3370',
     items: [
       'ゲーム内容の変更はありません(扇の斬撃弧素材の詳細仕様を設計書に記録しました)。',
