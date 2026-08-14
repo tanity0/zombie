@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3376',
+    items: [
+      'ゲーム内容の変更はありません(賞金首B1の品質監査で見つかった修正点を設計書に反映し、修正バッチを発注しました)。',
+    ],
+  },
+  {
     version: '0.25.3375',
     items: [
       'ゲーム内容の変更はありません(賞金首「鋏(変異)」の交差閃エフェクト素材3コマを取り込み、賞金首用の追加素材が全て揃いました。登場はまだ)。',

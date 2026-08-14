@@ -6219,8 +6219,27 @@ DPSの並走は**スキルに背負わせない**: 床=武器Tier(時間追従�
 ### 5. 実装順(バッチ分割)と検証
 - **B0【済 v0.25.3364】**: レーザー型ゲート一般化(usesMimirLaser)+linger純関数抽出(advanceLingerMs)+
   カプセル判定は共通化済みを確認。
-- **B1【済 v0.25.3373・検収済】**: EnemyType 4種+器一式(スポーン/dormant/リーシュ/1分/保護/
+- **B1【済 v0.25.3373】**: EnemyType 4種+器一式(スポーン/dormant/リーシュ/1分/保護/
   isEliteType即死保護/ゴースト系除外/金リング+holo-circle/デバッグ出現)。
+- **B1.5(修正バッチ・成果物監査の指摘反映。B2の前に必須)**:
+  1. **【致命】賞金首にexecuteを返さない分岐を前倒し実装**(meleeExecute: 賞金首は常に致命の一撃
+     (×ELITE_MELEE_STUN_MULT)・即死はHP0のみ。テストを「全HP帯でexecuteが返らない」に戻す)。
+     ※v6 A-1の「B1時点から」と「E-1撤去はB3」の矛盾は**「賞金首分岐=今・パンプキン/lab-zombie-3の
+     処刑撤去=B3」と確定**(賞金首の即死なしは裁定済み範囲=社長再裁定は不要。パンプキンには触らない)。
+  2. **【致命】気絶・拘束・浮き・ノックバックのガードをbountyTickへ**(idolTick.ts:228/236の教訓と同型:
+     bossFullStunUntil/stunUntil/rootUntil/liftUntil/knockbackUntil を毎tick確認し、立っていたら移動と
+     状態進行を止める。カウンターKBを上書きしない)。体勢崩し→フィニッシュの正規ルートが通ること。
+  3. **【重要】デバッグ出現の fromEvent=true を撤去**(イベント終了一掃で消える4経路目+救助の攻撃者
+     カウント/NPC逃走/射撃対象の混入+囲い円クランプとの綱引きの原因。保護はisEngageableBoss/
+     isEnemyCapProtectedで既に足りている)。
+  4. **【重要】障害物衝突を通す**(resolveMove相当=木/建物/壁に当たる。城ボスと同じ「当たる」側)。
+  5. 出現告知3点の配線(v2 C仕様・所属バッチ未定義だった穴): triggerAttention+出現時バナー
+     (起床時ではなくスポーン時)+矢印マーカー(isMarkedBoss拡張・有効距離1200px)。
+  6. 漏れの機械化: runBountyTick状態機械のテスト(1分退場・戦闘中リセット・帰巣→dormant→新1分)/
+     距離リサイクル免除の明示条件+テスト/離脱警告バナーの明示型ゲート(暗黙の早期return依存をやめる)/
+     nearestEngagedBoss(playerTraits.ts:394)をisGhostEligibleBossへ。
+  7. 小物: バナー表示時間の定数一本化/ENEMY_VISUAL_SCALEに4型登録(ヘビー級の見栄え・叩き台)/
+     spawn側clampのstore実値化。
 - **B2**: bountyTick.ts=4体の技(武器1本使い回し・v5.1)+予兆モーション+F-3=赤T5式。
 - **B3**: 体勢まわり仕上げ+金箱ドロップ・開封(gold-chest素材受領済み)+**E-1強個体処刑の撤去
   (パンプキン/lab-zombie-3含む)**+★B1洗い出しで発覚した即死経路2件を塞ぐ:
