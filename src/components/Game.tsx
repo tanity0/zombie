@@ -5,6 +5,7 @@ import PixiStage from '../pixi/PixiStage';
 import { isPixiRenderer, getAppliedResolution } from '../config/renderer';
 import { getAssistLightDebug } from '../pixi/pixiScene';
 import { getTexture } from '../pixi/pixiTextures';
+import { lastSuppressedError } from '../utils/errorBeacon';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
 import DebugOverlay from './DebugOverlay';
@@ -308,6 +309,7 @@ const Game: React.FC<GameProps> = ({
         {' · '}floor:{getTexture('lab-floor/lab-floor-stage2') ? 'S' : '-'}{getTexture('lab-floor/lab-floor-ground') ? 'G' : '-'}{getTexture('lab-floor/lab-floor-clean') ? 'C' : '-'}
         {' · '}res:{getAppliedResolution() || '?'}/{typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : '?'}
         {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('lightdbg') === '1' && <LightDebug />}
+        <ErrBeacon />
       </div>
     </div>
   );
@@ -332,6 +334,24 @@ const LightDebug: React.FC = () => {
     return () => cancelAnimationFrame(raf);
   }, []);
   return <span ref={ref} />;
+};
+
+/**
+ * v0.25.3324: 握り潰しtry/catch(drawEnemy/天使/裏ボス/アイドル/ループ本体)の例外要約を左下に赤字で出す。
+ * 実機ではconsoleが見えず、アクラシエルの「白く歪んだまま固まる」報告(3度目)の実例外源が
+ * 特定できないための観測装置。エラーが無ければ何も描かない。
+ * ★React再描画規律: stateを持たず refのtextContentを1秒間隔で書き換えるだけ(LightDebugと同じ作法)。
+ */
+const ErrBeacon: React.FC = () => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const iv = setInterval(() => {
+      const msg = lastSuppressedError();
+      if (ref.current && msg && ref.current.textContent !== `ERR ${msg}`) ref.current.textContent = `ERR ${msg}`;
+    }, 1000);
+    return () => clearInterval(iv);
+  }, []);
+  return <div ref={ref} style={{ color: 'rgba(255,80,80,0.9)', maxWidth: '90vw', whiteSpace: 'normal' }} />;
 };
 
 export default Game;

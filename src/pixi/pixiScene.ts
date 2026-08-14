@@ -96,6 +96,7 @@ import {
   JIBRIL_LANCE_MIN_WINDUP_MS, JIBRIL_LANCE_BEAM_MS, JIBRIL_LANCE_HALF_WIDTH_PX,
 } from '../utils/angelBossTick';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
+import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import { MOLOTOV_FIRE_RADIUS } from '../utils/molotov';
@@ -11566,6 +11567,9 @@ export class PixiScene {
       this.resetActorFxDefaults(view, e);
       try { this.drawEnemy(view, e, gameTime, now); } catch (err) {
         if (!PixiScene.enemyDrawErrLogged) { PixiScene.enemyDrawErrLogged = true; console.error('[pixiScene] drawEnemy error (suppressed):', err); }
+        // v0.25.3324: 実機ではconsoleが見えず例外源を特定できない(アクラシエル3度目の報告)。
+        // 左下バージョン表示に赤字で要約を出すビーコンへも渡す(storeは書かない=描画専門の掟は維持)。
+        reportSuppressedError(`draw:${e.type}`, err);
       }
     }
     for (const [id, view] of this.enemies) {
@@ -13589,6 +13593,11 @@ export class PixiScene {
     // 導入(v0.25.2918)から一度も画面に出ていなかった。既定OFFの役目は syncGlenParts 自身の先頭で
     // 果たしている(count=0で全消し)ので、ここから外して重複させない。
     if (view.shockwaves) for (const s of view.shockwaves) s.visible = false;
+    // v0.25.3324(v3207の残穴): 被弾フラッシュ(本体ポーズを写した白シルエット)も既定OFF。
+    // これがdrawEnemy内(try/catchの中)のOFF分岐頼みだと、例外時に**白く歪んだシルエットが
+    // 焼き付いたまま残る**(社長報告v0.25.3323「敵は白く歪んだまま」の一致候補)。
+    // 点け直しはdrawEnemyの被弾フラッシュ分岐(毎フレームvisible=trueにし直す)なので挙動不変。
+    view.hitFlash.visible = false;
     // FX-V3V4: 物理の攻撃絵(牙/爪/翼/触手/拳)も同じ作法で既定OFF。点けるのは各技の分岐だけ。
     if (view.atkArt) for (const s of view.atkArt) if (s) s.visible = false;
     // FX-V2b: アクラシエルの棘の突き上げ/爆ぜの破片も同じ作法で既定OFF。

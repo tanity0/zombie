@@ -89,6 +89,7 @@ import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
 import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2 } from '../utils/bossPractice';
+import { reportSuppressedError } from '../utils/errorBeacon';
 import { bossCutinPayload, glenForm2CutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
@@ -5916,6 +5917,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
          } catch (err) {
           if (!bossCtrlErrLogged) { bossCtrlErrLogged = true; console.error('[hiddenBoss] controller error (suppressed after first):', err); }
+          reportSuppressedError('hiddenBoss', err); // v0.25.3324: 実機で見えない握り潰し例外を左下に出す
          }
         }
 
@@ -6034,6 +6036,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
          } catch (err) {
           if (!idolCtrlErrLogged) { idolCtrlErrLogged = true; console.error('[idol] controller error (suppressed after first):', err); }
+          reportSuppressedError('idol', err); // v0.25.3324: 同上
          }
         }
 
@@ -6045,6 +6048,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           runAngelBossTick(angelStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT, ANGEL_SFX, triggerPlayerDeath);
          } catch (err) {
           if (!angelCtrlErrLogged) { angelCtrlErrLogged = true; console.error('[angel] controller error (suppressed after first):', err); }
+          reportSuppressedError('angel', err); // v0.25.3324: 天使ボスの技全壊系(アクラシエル報告)の実例外源をここで捕まえる
          }
         }
 
@@ -11800,6 +11804,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       const where = String(e?.stack ?? '').split('\n')[1]?.trim()?.slice(0, 90) ?? '';
       const msg = `${e?.name ?? 'Error'}: ${e?.message ?? err} @ ${where}`;
       if (!loopErrLogged) { loopErrLogged = true; console.error('[gameLoop] body error (loop kept alive):', err); }
+      reportSuppressedError('loop', err); // v0.25.3324: 同上
       try { useGameStore.setState({ debugLoopError: msg }); } catch { /* ignore */ }
       frameRef.current = requestAnimationFrame(gameLoop);
      }
