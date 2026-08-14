@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3391',
+    items: [
+      '変異体対策室に賞金首4種が並ぶようになりました(本編で遭遇すると解放)。',
+    ],
+  },
+  {
     version: '0.25.3390',
     items: [
       '起動直後に画面が真っ暗になり何も映らない不具合を修正しました(v0.25.3384で混入)。',

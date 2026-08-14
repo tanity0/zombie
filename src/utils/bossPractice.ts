@@ -13,6 +13,10 @@ import { getStage, STAGES } from '../data/campaign';
 import {
   STAGE_BOSS_HEALTH_BY_STAGE, GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH,
 } from '../config/bossHealth';
+import { isBountyType } from './enemyUtils';
+// ★HP基準値は依存ゼロの葉(bountyDims.ts)から直接読む。bountyTick.ts経由にすると
+// 「gameStore → bossPractice → bountyTick → gameStore」の循環importになる(v0.25.3390の教訓と同型)。
+import { BOUNTY_BASE_HP } from './bountyDims';
 
 // ---------------------------------------------------------------------------------------------
 // 出撃の種類(ランのフラグ)
@@ -95,7 +99,7 @@ export const isBossTestOrPracticeRun = (): boolean =>
 // 台帳: 守護霊メニューと同じ基礎台帳(GHOST_DOSSIER_SLOTS)+形態別の派生枠
 // ---------------------------------------------------------------------------------------------
 /** 出撃のさせ方。`param=null` = 強制出現パラメータ不要(ステージへ出撃すれば勝手に出る)。 */
-export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | null;
+export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | null;
 
 export interface PracticeSlot {
   slotKey: string;              // 基本はGHOST_DOSSIER_SLOTS.slotKeyと同一。形態別掲載だけ固有キー。
@@ -165,7 +169,7 @@ const toPracticeSlot = (slot: GhostDossierSlot): PracticeSlot => {
  */
 const BASE_PRACTICE_SLOTS = GHOST_DOSSIER_SLOTS.map(toPracticeSlot);
 export const GLEN_PHASE2_SLOT_KEY = 'giantbat@stage-7:phase2';
-export const PRACTICE_SLOTS: readonly PracticeSlot[] = BASE_PRACTICE_SLOTS.flatMap(slot =>
+const GHOST_DERIVED_SLOTS: readonly PracticeSlot[] = BASE_PRACTICE_SLOTS.flatMap(slot =>
   slot.slotKey === 'giantbat@stage-7'
     ? [slot, {
         ...slot,
@@ -176,6 +180,34 @@ export const PRACTICE_SLOTS: readonly PracticeSlot[] = BASE_PRACTICE_SLOTS.flatM
       }]
     : [slot],
 );
+
+// ---------------------------------------------------------------------------------------------
+// §6.38 掲載裁定: 賞金首4種(GHOST_DOSSIER_SLOTS由来ではない独立追記枠)。
+// 解放は本編遭遇と共有する既存規約に乗せる——encounterSlotKey=bossType文字列そのものは
+// bossStyleSlotKey()(src/utils/ghostSlot.ts)がgiantbat以外の型に対して返すキーと同一形式
+// (isEngageableBossに賞金首4型が既に入っているので、directorTick.tsのengagedBossSlotKeys→
+// markBossesEncounteredが本編交戦開始時にこのキーをそのまま記録する。追加配線は不要)。
+// 出撃先=stage-1(lab/corridorではない野外・v6 B-5)。デバッグ強制出現は`?bountynow=1`相乗り
+// (useGameLoop.tsのFORCE_BOUNTY判定がpracticeForces('bountynow')を見る)。
+const BOUNTY_PRACTICE_LABEL: Record<'bounty-ranged' | 'bounty-melee' | 'bounty-balance' | 'bounty-maiko', string> = {
+  'bounty-ranged': 'バス停(変異)',
+  'bounty-melee': '馬乗り(変異)',
+  'bounty-balance': '鋏(変異)',
+  'bounty-maiko': '舞妓(変異)',
+};
+const BOUNTY_PRACTICE_TYPES = ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as const;
+const BOUNTY_PRACTICE_SLOTS: readonly PracticeSlot[] = BOUNTY_PRACTICE_TYPES.map(t => ({
+  slotKey: `${t}@practice`,
+  encounterSlotKey: t,
+  bossType: t,
+  stageId: 'stage-1',
+  param: 'bountynow',
+  label: BOUNTY_PRACTICE_LABEL[t],
+  reachable: true,
+}));
+
+// 表示順=既存ボス群の後ろへ(掲載裁定)。
+export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...GHOST_DERIVED_SLOTS, ...BOUNTY_PRACTICE_SLOTS];
 
 export const practiceSlotByKey = (slotKey: string): PracticeSlot | undefined =>
   PRACTICE_SLOTS.find(s => s.slotKey === slotKey);
@@ -198,6 +230,9 @@ export const practiceBossHealth = (slot: PracticeSlot): number | null => {
     // 行が無い枠(stage-ex1)だけは実際のHPと表が違うので出さない。
     return STAGE_BOSS_HEALTH_BY_STAGE[slot.stageId] ?? null;
   }
+  // §6.38(賞金首): 実効HPは基準値(BOUNTY_BASE_HP)×スポーン時の実効難易度倍率(bountyMaxHealth)で
+  // 変動するため、台帳の固定値ではなく**基準値をそのまま**出す(掲載裁定「基準値2000を出す」)。
+  if (isBountyType(slot.bossType)) return BOUNTY_BASE_HP;
   const gate = (GATE_BOSS_HEALTH as Partial<Record<EnemyType, number>>)[slot.bossType];
   if (gate != null) return gate;
   const hidden = (HIDDEN_BOSS_HEALTH as Partial<Record<EnemyType, number>>)[slot.bossType];

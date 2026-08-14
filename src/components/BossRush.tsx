@@ -15,13 +15,19 @@ import { enemyDeathLabel } from '../store/gameStore';
 import { bossIconSrc } from '../utils/bossIcon';
 import { bossHintsFor } from '../data/bossHints';
 import { loadEncounteredBosses } from '../utils/bossEncounter';
-import { GHOST_DOSSIER_CATEGORY_LABEL } from '../utils/ghostDossier';
+import { GHOST_DOSSIER_CATEGORY_LABEL, type GhostDossierCategory } from '../utils/ghostDossier';
 import { GHOST_DOSSIER_SLOTS } from '../utils/ghostDossier';
 import { PRACTICE_SLOTS, practiceBossHealth, type PracticeSlot } from '../utils/bossPractice';
+import { isBountyType } from '../utils/enemyUtils';
 import type { CharacterClass } from '../types/game';
 
+// §6.38 掲載裁定: 賞金首4種はGHOST_DOSSIER_SLOTS由来ではないので、この画面だけの区分「bounty」を
+// 追加する(ghostDossier.tsのGhostDossierCategory自体は変えない=守護霊メニュー側は無関係のまま)。
+type PracticeCategory = GhostDossierCategory | 'bounty';
+const PRACTICE_CATEGORY_LABEL: Record<PracticeCategory, string> = { ...GHOST_DOSSIER_CATEGORY_LABEL, bounty: '賞金首' };
 const CATEGORY_OF = new Map(GHOST_DOSSIER_SLOTS.map(s => [s.slotKey, s.category]));
-const categoryOf = (slot: PracticeSlot) => CATEGORY_OF.get(slot.encounterSlotKey) ?? 'story';
+const categoryOf = (slot: PracticeSlot): PracticeCategory =>
+  CATEGORY_OF.get(slot.encounterSlotKey) ?? (isBountyType(slot.bossType) ? 'bounty' : 'story');
 
 const bossName = (slot: PracticeSlot): string => slot.label ?? enemyDeathLabel(slot.bossType);
 const bossIcon = (slot: PracticeSlot): string | null =>
@@ -73,7 +79,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
             </div>
             <div className="min-w-0">
               <div className="text-[9px] font-semibold tracking-[0.24em] text-purple-200/60">
-                {GHOST_DOSSIER_CATEGORY_LABEL[categoryOf(open)]}
+                {PRACTICE_CATEGORY_LABEL[categoryOf(open)]}
               </div>
               <div className="truncate text-[17px] font-semibold text-white">{bossName(open)}</div>
               <div className="mt-0.5 text-[10px] text-white/40">
@@ -86,7 +92,9 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
             <Row icon={<MapPin size={9} />} label="出現" value={stage?.locationTitle ?? open.stageId} />
             {/* storyBoss の城ボスは実HPと表が食い違うので出さない(BOSS_MAKER.md §20-8)。 */}
             <Row icon={<Heart size={9} />} label="体力" value={hp != null ? hp.toLocaleString() : '—'} />
-            <Row icon={<Swords size={9} />} label="種別" value={open.bossType === 'giantbat' ? 'ステージボス' : '固有ボス'} />
+            <Row icon={<Swords size={9} />} label="種別" value={
+              open.bossType === 'giantbat' ? 'ステージボス' : isBountyType(open.bossType) ? '賞金首' : '固有ボス'
+            } />
           </div>
         </section>
 
@@ -141,13 +149,13 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
         </span>
       </div>
 
-      {(['story', 'gate', 'hidden'] as const).map(cat => {
+      {(['story', 'gate', 'hidden', 'bounty'] as const).map(cat => {
         const slots = PRACTICE_SLOTS.filter(s => categoryOf(s) === cat);
         if (slots.length === 0) return null;
         return (
           <section key={cat}>
             <div className="mb-1 px-1 text-[9px] font-semibold tracking-[0.24em] text-purple-200/55">
-              {GHOST_DOSSIER_CATEGORY_LABEL[cat]}
+              {PRACTICE_CATEGORY_LABEL[cat]}
             </div>
             <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
               {slots.map(slot => {

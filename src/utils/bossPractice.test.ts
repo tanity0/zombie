@@ -5,12 +5,20 @@ import { GHOST_DOSSIER_SLOTS } from './ghostDossier';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 import { STAGE_BOSS_HEALTH_BY_STAGE } from '../config/bossHealth';
 import { STAGES, getStage } from '../data/campaign';
+import { BOUNTY_ENEMY_TYPES, isBountyType } from './enemyUtils';
+import { BOUNTY_BASE_HP } from './bountyDims';
+
+// §6.38 掲載裁定で追記した賞金首4枠(GHOST_DOSSIER_SLOTS由来ではない独立追記枠)。
+// 既存テストの「守護霊メニューと同じ台帳」比較から除いて扱う。
+const bountySlots = () => PRACTICE_SLOTS.filter(s => isBountyType(s.bossType));
+const ghostDerivedSlots = () => PRACTICE_SLOTS.filter(s => !isBountyType(s.bossType));
 
 describe('ボスラッシュの台帳', () => {
   it('守護霊メニューと同じ台帳を基礎にし、グレン第二形態だけ独立掲載する', () => {
-    const phaseSlots = PRACTICE_SLOTS.filter(s => s.slotKey !== GLEN_PHASE2_SLOT_KEY);
+    const phaseSlots = ghostDerivedSlots().filter(s => s.slotKey !== GLEN_PHASE2_SLOT_KEY);
     expect(phaseSlots.map(s => s.slotKey)).toEqual(GHOST_DOSSIER_SLOTS.map(s => s.slotKey));
-    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length + 1);
+    expect(ghostDerivedSlots()).toHaveLength(GHOST_DOSSIER_SLOTS.length + 1);
+    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length + 1 + BOUNTY_ENEMY_TYPES.size);
   });
 
   it('グレン第二形態は第一形態の遭遇を共有し、HP60%から始まる', () => {
@@ -79,7 +87,44 @@ describe('ボスラッシュの台帳', () => {
   it('本編で遭遇できない枠はちょうど3つ(台帳からは外さない)', () => {
     const unreachable = PRACTICE_SLOTS.filter(s => !s.reachable).map(s => s.slotKey).sort();
     expect(unreachable).toEqual(['acrasiel', 'giantbat@stage-2', 'suriel'].sort());
-    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length + 1); // 既存枠を外さず第二形態だけ追加
+    expect(ghostDerivedSlots()).toHaveLength(GHOST_DOSSIER_SLOTS.length + 1); // 既存枠を外さず第二形態だけ追加
+  });
+});
+
+// §6.38 掲載裁定: 賞金首4種(GHOST_DOSSIER_SLOTS由来ではない独立追記枠)。
+describe('賞金首の掲載枠', () => {
+  it('4種すべて並び、末尾(既存ボス群の後ろ)に置かれている', () => {
+    expect(bountySlots().map(s => s.bossType).sort()).toEqual([...BOUNTY_ENEMY_TYPES].sort());
+    const ghostIdxs = PRACTICE_SLOTS.map((s, i) => (!isBountyType(s.bossType) ? i : -1)).filter(i => i >= 0);
+    const bountyIdxs = PRACTICE_SLOTS.map((s, i) => (isBountyType(s.bossType) ? i : -1)).filter(i => i >= 0);
+    expect(Math.min(...bountyIdxs)).toBeGreaterThan(Math.max(...ghostIdxs));
+  });
+
+  it('出撃先はlab/corridorではないstage-1・強制出現は?bountynow相乗り・本編到達可能', () => {
+    for (const slot of bountySlots()) {
+      expect(slot.stageId, slot.slotKey).toBe('stage-1');
+      expect(slot.param, slot.slotKey).toBe('bountynow');
+      expect(slot.reachable, slot.slotKey).toBe(true);
+      const stage = getStage(slot.stageId)!;
+      expect(stage.theme, slot.slotKey).not.toBe('lab');
+    }
+  });
+
+  it('遭遇解放キー(encounterSlotKey)はbossType文字列そのもの(bossStyleSlotKeyの規約と一致)', () => {
+    for (const slot of bountySlots()) {
+      expect(slot.encounterSlotKey).toBe(slot.bossType);
+    }
+  });
+
+  it('個体名(バス停/馬乗り/鋏/舞妓)が付いている', () => {
+    const labels = bountySlots().map(s => s.label).sort();
+    expect(labels).toEqual(['バス停(変異)', '舞妓(変異)', '鋏(変異)', '馬乗り(変異)'].sort());
+  });
+
+  it('HP表示は基準値(BOUNTY_BASE_HP)を出す', () => {
+    for (const slot of bountySlots()) {
+      expect(practiceBossHealth(slot), slot.slotKey).toBe(BOUNTY_BASE_HP);
+    }
   });
 });
 

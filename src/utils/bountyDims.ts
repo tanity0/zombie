@@ -14,6 +14,11 @@
  * 旧: gameStore.ts 直書き54(66→54=社長指示)。値は不変・置き場所だけ移動。 */
 export const PUMPKIN_EXPLOSION_RADIUS = 54;
 
+/** §6.38 §3「HP: 基準値(叩き台)」。bountyMaxHealth(bountyTick.ts)がここへ実効難易度倍率を掛ける。
+ * 変異体対策室(bossPractice.ts)のHP表示もここを直接読む(掲載裁定・値は不変・置き場所だけ葉へ移動=
+ * bossPractice→bountyTick→gameStore→bossPractice の循環import防止。v0.25.3390の教訓と同じ理由)。 */
+export const BOUNTY_BASE_HP = 2000;
+
 // ---- 鋏(bounty-balance) ----
 /** 薙ぎ払いのカプセル半幅(px)。判定(bountyTick)と予告描画(pixiScene)と levelUpGate が共有。 */
 export const BB_SWEEP_HALFWIDTH = 40;

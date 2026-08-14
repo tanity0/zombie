@@ -15,6 +15,9 @@ const BOSS_ICON: Record<string, string> = {
   giantbat: 'atlas-px2/giantbat',
   mimir: 'mimir', jormungand: 'jormungand', skadi: 'skadi', thor: 'thor',
   idol: 'idol',
+  // §6.38 掲載裁定: 変異体対策室に並ぶ賞金首4種。本体スプライト(pixiTextures.ts登録済み)をそのまま流用。
+  'bounty-ranged': 'bounty-ranged', 'bounty-melee': 'bounty-melee',
+  'bounty-balance': 'bounty-balance', 'bounty-maiko': 'bounty-maiko',
 };
 
 // 城ボス(giantbat)だけは**全ステージに出る同じ敵**で、絵はステージごとに差し替わる

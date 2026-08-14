@@ -1,5 +1,32 @@
 # Development Log
 
+## v0.25.3391 — §6.38掲載裁定: 賞金首4種を変異体対策室へ掲載【2026-08-14 22:50 JST】
+- 実装チャット(Sonnet)実施。PACING_PUZZLE.md §6.38「掲載裁定」5点:
+  1. `bossPractice.ts`: `PRACTICE_SLOTS`へ賞金首4枠を独立追記(GHOST_DOSSIER_SLOTS由来ではない。
+     slotKey=`bounty-*@practice`・表示順=既存ボス群の後ろ)。label=個体名(バス停/馬乗り/鋏/舞妓・
+     いずれも「(変異)」)。出撃先=stage-1(lab/corridorではない野外=v6 B-5適合)。reachable=true。
+  2. `PracticeParam`へ`'bountynow'`追加。`useGameLoop.ts`のFORCE_BOUNTY判定を
+     `FORCE_BOUNTY || practiceForces('bountynow')`へ拡張し、練習枠の`bossType`(bounty-*)があれば
+     `?bountytype=`より優先して読む(既存URL経路は無変更)。
+  3. 遭遇解放: 確認のみ(実装済み)。`isEngageableBoss`に賞金首4型が既にv3で入っており、
+     `bossStyleSlotKey`はgiantbat以外の型でtype文字列をそのまま返すため、
+     `directorTick.ts`の`engagedBossSlotKeys→markBossesEncountered`が本編交戦開始時に
+     追加配線なしでそのまま拾う(練習ランは既存の`isBossTestOrPracticeRun`ガードで記録されない)。
+  4. `bossHints.ts`へ4種のヒントを追記(`bountyTick.ts`の実装済み技を基に執筆・半角数字なし)。
+  5. `BossRush.tsx`: Row種別に「賞金首」を追加。カテゴリ区分を`GhostDossierCategory`とは別に
+     画面ローカルの`'bounty'`区分で新設し、一覧の末尾セクションへ表示。HPは基準値(`BOUNTY_BASE_HP`=
+     2000・スポーン後パッチ前の基準)を表示。
+  - 付随: `bossIcon.ts`へ賞金首4種の本体スプライト(pixiTextures.ts登録済み・`bounty-*.png`)を
+    アイコンとして登録(一覧が「?」ではなく実絵で並ぶ)。
+  - 循環import対策: `BOUNTY_BASE_HP`(旧`bountyTick.ts`定義)を依存ゼロの葉`bountyDims.ts`へ移動
+    (v0.25.3390の教訓と同型。`bossPractice.ts`が`bountyTick.ts`経由で読むと
+    `gameStore→bossPractice→bountyTick→gameStore`の循環になるため)。`bountyTick.ts`はre-export継続。
+- 検証: `npx madge --circular`=既知の無害な1本のみ(増減なし)。typecheck 0エラー。
+  lint 0エラー(既存warning 16件のみ・無関係)。`bossPractice.test.ts`(16件・賞金首4件追加)/
+  `bossHints.test.ts`(2件)/`bountyTick.test.ts`/`bossEngagement.test.ts`/`bossTest.test.ts`
+  全緑(自己判断でフル`npm test`/buildは回していない=社長指示待ちの既定運用どおり)。
+- ★未決: なし(仕様変更に該当する判断は発生せず、既存の掲載裁定どおりに実装)。
+
 ## v0.25.3390 — 【緊急】起動全損(真っ暗)ホットフィックス=循環importのTDZ【2026-08-15 03:15 JST】
 - 社長報告「最初から真っ暗でなにも映らない」→ コンテナ内でビルド+headless起動して再現:
   `ReferenceError: Cannot access 'Qc' before initialization`(ページ例外)。madgeで循環4本を検出、

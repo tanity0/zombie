@@ -88,7 +88,7 @@ import { glenPartCountFull, glenRemovedPartAnchors } from '../utils/glenChain';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
-import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2 } from '../utils/bossPractice';
+import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2, practiceBossType } from '../utils/bossPractice';
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { bossCutinPayload, glenForm2CutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
 import { clampRectToPlayableArea } from '../world/playableArea';
@@ -1123,7 +1123,8 @@ const THOR_HARAI_RECOVER_MS = withRecoverFloor(700);
 // するだけに留める(fromEvent的な単発デバッグ召喚。giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
 const FORCE_IDOL = evParam('idolnow') === '1';
 // PACING_PUZZLE.md §6.38 B1(賞金首): デバッグ出現専用(`?bountynow=1`+`?bountytype=ranged|melee|balance|maiko`)。
-// practiceForces相乗りはB4(PracticeParamに'bountynow'追加時)まで先送り=今はURL直読みのみ。
+// §6.38 掲載裁定(B4): 練習出撃(変異体対策室)は`practiceForces('bountynow')`でこの経路へ相乗りする
+// (下の使用箇所で`FORCE_BOUNTY || practiceForces('bountynow')`として読む。既存URL経路はそのまま)。
 const FORCE_BOUNTY = evParam('bountynow') === '1';
 const FORCE_BOUNTY_TYPE = evParam('bountytype'); // 'ranged'|'melee'|'balance'|'maiko'|null(=ranged既定)
 // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋。`?nospawn=1` と併用して湧きを止める。
@@ -5996,7 +5997,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 抑止ゲート(bountySpawnBlocked)はB4で配線=デバッグ出現はここを経由せず常に出す(検証を止めない)。
           // B1.5-3(重要): fromEvent=true を撤去(イベント終了一掃/救助の攻撃者カウント/NPC逃走・射撃対象/
           // 囲い円クランプへの混入原因だった。保護は既存のisEngageableBoss/isEnemyCapProtectedで足りる)。
-          if (FORCE_BOUNTY && !bountyForceRef.current) {
+          if ((FORCE_BOUNTY || practiceForces('bountynow')) && !bountyForceRef.current) {
             bountyForceRef.current = true;
             const bountyTypeOf = (raw: string | null): 'bounty-ranged' | 'bounty-melee' | 'bounty-balance' | 'bounty-maiko' => {
               if (raw === 'melee') return 'bounty-melee';
@@ -6004,7 +6005,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (raw === 'maiko') return 'bounty-maiko';
               return 'bounty-ranged';
             };
-            const bType = bountyTypeOf(FORCE_BOUNTY_TYPE);
+            // 練習枠(変異体対策室)が型を指定していればそれを優先する(既存URL経路?bountytype=は
+            // 直リンク検証用にそのまま残す。practiceBossType()はactiveSlot.bossTypeを返す)。
+            const practiceType = practiceBossType();
+            const bType = (practiceType && isBountyType(practiceType)) ? practiceType : bountyTypeOf(FORCE_BOUNTY_TYPE);
             const pcx1 = player.x + player.width / 2, pcy1 = player.y + player.height / 2;
             const bAng = Math.random() * Math.PI * 2;
             const bDist = 700 + Math.random() * 300; // 絶対700〜1000px(§2)

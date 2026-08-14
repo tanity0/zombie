@@ -28,10 +28,12 @@ import {
 import {
   BB_SWEEP_HALFWIDTH, BB_LEAP_RADIUS,
   MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS, MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
+  BOUNTY_BASE_HP,
 } from './bountyDims';
 export {
   BB_SWEEP_HALFWIDTH, BB_LEAP_RADIUS,
   MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS, MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
+  BOUNTY_BASE_HP,
 };
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { isBountyType, AREA_BASE_DIFFICULTY, createEnemyProjectile, spawnEnemyAt } from './enemyUtils';
@@ -64,7 +66,6 @@ import {
  * buildEnemy自体は倍率を掛けない(色/距離/時間で自動スケールしない型のため)。ここでスポーン後パッチ
  * として明示的に計算する(AREA_BASE_DIFFICULTYは他の通常敵と同じ表=値の出どころを1つに保つ)。
  */
-export const BOUNTY_BASE_HP = 2000;
 export const bountyMaxHealth = (area: number, gameTimeMs: number): number =>
   Math.round(BOUNTY_BASE_HP * lerpAreaTable(AREA_BASE_DIFFICULTY, effectiveDifficultyArea(area, gameTimeMs)));
 
