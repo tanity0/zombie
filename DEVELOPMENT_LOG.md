@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.3385 — B2a/B2b検収(良)+ローカル実測ベースラインの記録【2026-08-15 01:00 JST】
+- B2a(v3383)+B2b(v3384)検収: 4体の技一式・武器スプライト4本配線(持ち越し①解消・花びらプール24)・
+  討伐時escort一掃+テスト・レーザー定数の実import化(geometry.ts抽出で循環回避)・levelUpGate/
+  moveReaction/AOE監査表の登録・変則ディレイのbossWindupStartAt同期(*_VIS複製なし)。テスト413本緑・
+  typecheck/lint 0エラー。副産物の実バグ修正1件(bountyWakeSpの消し忘れがGate2ガード内に居た)。
+- 開示済み簡略化2件(武器の握り軸=中心アンカー/水鳥着地円のフィルイン省略)は絵の磨き課題として容認。
+  規約どおり**B2成果物監査(Opus)を起動**——結果は次エントリ。
+- §7-11bにローカル実測ベースライン(n=3・キル45.3/ラン・150〜220秒死亡・ランク不動・kill scrap 0)と
+  弾薬供給過多(4.19倍・7割廃棄)の材料を記録。文書のみ。
+
 ## v0.25.3384 — §6.38 B2b: 賞金首鋏/舞妓の技+B2a持ち越し3点を実装【2026-08-14 21:04 JST】
 - **鋏(bounty-balance)**: ①薙ぎ払い(近距離・`bb-sweep-*`・drawAngelZoneCapsule+T3・カウンター可)
   ②跳びかかり(遠距離・輸入=pumpkin。`PUMPKIN_CROUCH_MS/JUMP_MS/RECOVER_MS/EXPLOSION_RADIUS`を
