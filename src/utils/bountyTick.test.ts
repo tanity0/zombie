@@ -15,11 +15,12 @@ import {
 } from './bountyTick';
 import { bossLeashDistancePx } from './bossEngagement';
 import { usesMimirLaser } from './mimirLaserTrack';
-import { AOE_TELEGRAPH_AUDIT, minWindupMs } from './bossTelegraph';
+import { AOE_TELEGRAPH_AUDIT, minWindupMs, PLAYER_WALK_PX_PER_SEC } from './bossTelegraph';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
+import { distToSegment } from './geometry';
 import type { Enemy, EnemyType } from '../types/game';
 
 describe('bountyEngagedNow — 交戦の定義(§2「dormant=falseかつ(距離<リーシュ半径 or 直近3秒被弾)」)', () => {
@@ -821,6 +822,108 @@ describe('runBountyTick — B2a 技の状態機械', () => {
         for (let i = 1; i < dists.length; i++) expect(dists[i]).toBeGreaterThanOrEqual(dists[i - 1] - 0.01);
         // 終盤は移動していること(止まったままではない=技として機能している)。
         expect(dists[dists.length - 1]).toBeGreaterThan(0);
+      });
+
+      // 社長指示2026-08-15「今の距離ではプレイヤーに届かない。もっと高速で近づいてから使う」で追加。
+      // REACH/HALF_WIDTH/STEP/選択距離(380〜460)/溜め(900ms)は変えていない(bountyTriple.test.ts側で
+      // 固定済み)。ここは「実際にtickRangedを回した時に、溜め中に接近し、届くようになったか」だけを見る。
+      describe('接近(社長指示2026-08-15「高速で近づいてから突く」)', () => {
+        it('溜め中は静止せず、プレイヤーへ高速で距離を詰める(逆流しない・加速→減速=瞬間停止しない)', () => {
+          // 選択上限(460)から開始=最も詰める距離が大きいケース。
+          const { id, step } = setupType('bounty-ranged', { x: 460 + 8, y: 8 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER });
+          step(16);
+          expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-triple-windup');
+          const start = useGameStore.getState().enemies.find(e => e.id === id)!;
+          const x0 = start.x, y0 = start.y;
+          const dists: number[] = [];
+          for (let i = 0; i < 60; i++) { // windup(900ms)を15ms刻みで消化
+            step(15);
+            const cur = useGameStore.getState().enemies.find(e => e.id === id);
+            if (!cur || cur.bossState !== 'br-triple-windup') break;
+            dists.push(Math.hypot(cur.x - x0, cur.y - y0));
+          }
+          expect(dists.length).toBeGreaterThan(10); // windup中に十分な回数観測できている
+          // 逆流しない(単調前進)。
+          for (let i = 1; i < dists.length; i++) expect(dists[i]).toBeGreaterThanOrEqual(dists[i - 1] - 0.01);
+          // 静止したまま溜めていない(=社長指摘の直し。旧実装はここが常に0だった)。
+          expect(dists[dists.length - 1]).toBeGreaterThan(50);
+          // 加速→減速(CLAUDE.md MUST): 1歩あたりの移動量(delta)が、序盤より中盤で大きく、
+          // 中盤より終盤で小さい(=等速でも瞬間停止でもない)。
+          const deltas = dists.map((d, i) => (i === 0 ? d : d - dists[i - 1]));
+          const early = deltas[1];
+          const midIdx = Math.floor(deltas.length / 2);
+          const late = deltas[deltas.length - 1];
+          expect(deltas[midIdx]).toBeGreaterThan(early);
+          expect(deltas[midIdx]).toBeGreaterThan(late);
+        });
+
+        // 判定=絵の一致(CLAUDE.md「赤いのに当たらない禁止」)を、実際にhitCapsuleへ積まれた帯の座標を
+        // combatTick.applyPumpkinBlastDamageと同じ式(distToSegment<=halfWidth+プレイヤー半径)で
+        // 検算する。「中央の突き(狙った方向)が棒立ちのプレイヤーに届くか」が受け入れ条件の核心
+        // (左右の突きは横の回避を防ぐための帯であり、正面に立ち止まったプレイヤーへ届く設計ではない
+        // =PACING_PUZZLE.md §6.38 v12「3本の帯が横を覆う」)。
+        const centerHitsStationaryPlayer = (startDist: number): boolean => {
+          const { id, step } = setupType(
+            'bounty-ranged', { x: startDist + 8, y: 8 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER },
+          );
+          step(16);
+          const before = useGameStore.getState().pumpkinBlasts.length;
+          for (let i = 0; i < 150; i++) {
+            step(15);
+            const cur = useGameStore.getState().enemies.find(e => e.id === id);
+            if (cur?.bossState === 'chase' && i > 80) break;
+          }
+          const pl = useGameStore.getState().player;
+          const pcx = pl.x + pl.width / 2, pcy = pl.y + pl.height / 2;
+          const pr = Math.max(pl.width, pl.height) / 2;
+          const tripleBlasts = useGameStore.getState().pumpkinBlasts.slice(before).filter(b => b.capsule?.halfWidth === 34);
+          expect(tripleBlasts.length).toBe(3); // 3段とも判定が積まれている(中断されていない)
+          const center = tripleBlasts[1]!; // 左→中→右の順で積まれる(brTripleAnglesと同順)
+          const d = distToSegment({ x: pcx, y: pcy }, { x: center.capsule!.fx, y: center.capsule!.fy }, { x: center.capsule!.tx, y: center.capsule!.ty });
+          return d <= center.capsule!.halfWidth + pr;
+        };
+
+        it('選択距離の下限(380px)で棒立ちのプレイヤーへ中央の突きが届く', () => {
+          expect(centerHitsStationaryPlayer(380)).toBe(true);
+        });
+        it('選択距離の上限(460px)で棒立ちのプレイヤーへ中央の突きが届く(旧実装はここで空振りしていた)', () => {
+          expect(centerHitsStationaryPlayer(460)).toBe(true);
+        });
+
+        // ★公平性の再計算(社長裁定「歩いて避けられない設計になってもよい・数字は報告に明記」)。
+        // 選択上限(460px=最も厳しいケース)から、溜め中(900ms)ずっとプレイヤーが実測の歩行速度
+        // (PLAYER_WALK_PX_PER_SEC=104.4px/s・bossTelegraph.tsの物差し)で直線に逃げ続けても、
+        // 中央の突きが届くかを実測する。届く=「もう歩くだけでは避けられない技になった」ことの実測。
+        it('選択上限(460px)から溜め中ずっと全力で逃げても、中央の突きは届く(=歩いて避けられない・数字は報告に明記)', () => {
+          const { id, step } = setupType('bounty-ranged', { x: 460 + 8, y: 8 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER });
+          step(16);
+          const before = useGameStore.getState().pumpkinBlasts.length;
+          for (let i = 0; i < 150; i++) {
+            step(15);
+            const cur = useGameStore.getState().enemies.find(e => e.id === id);
+            if (!cur) break;
+            if (cur.bossState === 'br-triple-windup') {
+              // プレイヤーの実測歩行速度で、ボスから直線に逃げ続ける(bossTelegraph.tsの物差し=
+              // 「見てから歩いて逃げる」の想定そのもの)。
+              const pl = useGameStore.getState().player;
+              const bcx = cur.x + cur.width / 2, bcy = cur.y + cur.height / 2;
+              const pcx = pl.x + pl.width / 2, pcy = pl.y + pl.height / 2;
+              const dist = Math.hypot(pcx - bcx, pcy - bcy) || 1;
+              const ux = (pcx - bcx) / dist, uy = (pcy - bcy) / dist;
+              const moveDist = PLAYER_WALK_PX_PER_SEC * 0.015; // 15ms刻み
+              useGameStore.setState(st => ({ player: { ...st.player, x: st.player.x + ux * moveDist, y: st.player.y + uy * moveDist } }));
+            }
+            if (cur.bossState === 'chase' && i > 80) break;
+          }
+          const pl = useGameStore.getState().player;
+          const pcx = pl.x + pl.width / 2, pcy = pl.y + pl.height / 2;
+          const pr = Math.max(pl.width, pl.height) / 2;
+          const tripleBlasts = useGameStore.getState().pumpkinBlasts.slice(before).filter(b => b.capsule?.halfWidth === 34);
+          expect(tripleBlasts.length).toBe(3);
+          const center = tripleBlasts[1]!;
+          const d = distToSegment({ x: pcx, y: pcy }, { x: center.capsule!.fx, y: center.capsule!.fy }, { x: center.capsule!.tx, y: center.capsule!.ty });
+          expect(d).toBeLessThanOrEqual(center.capsule!.halfWidth + pr);
+        });
       });
     });
   });

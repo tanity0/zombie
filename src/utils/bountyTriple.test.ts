@@ -8,7 +8,10 @@ import {
   BR_TRIPLE_THRUST_MS, BR_TRIPLE_RETURN_MS, BR_TRIPLE_GAP_MS,
   BR_TRIPLE_STEP_MS, BR_TRIPLE_LAST_STEP_MS, BR_TRIPLE_ACTIVE_MS,
   BR_TRIPLE_PLAYER_RADIUS_MIRROR,
+  BR_TRIPLE_APPROACH_SPEED_MULT, BR_TRIPLE_APPROACH_STOP_DIST,
+  BR_TRIPLE_APPROACH_RAMP_MS, BR_TRIPLE_APPROACH_SLOW_RADIUS,
   brTripleAngles, brTripleStepDurationMs, brTripleLungeEase01, brTripleEffectiveReachPx,
+  brTripleApproachAccelMult, brTripleApproachDecelMult,
 } from './bountyTriple';
 import { PLAYER_WALK_PX_PER_SEC } from './bossTelegraph';
 
@@ -119,5 +122,60 @@ describe('★受け入れ条件(社長裁定#2の検算式・機械化できる�
     // ただし帯の全長300pxのうち280.7pxまで(全長の約93.6%)は隙間なく連続する=
     // 「横に避けても3本の帯に引っかかる」という社長の狙いは実質的に成立している。
     expect(gapFreeUntilR / BR_TRIPLE_REACH).toBeGreaterThan(0.9);
+  });
+});
+
+// 社長指示2026-08-15「いまの突きはプレイヤーに届いてない。もっと高速で近づいてから使う」で追加。
+// REACH/HALF_WIDTH/STEP/選択距離/溜め時間は不変(bountyTriple.tsの他の定数は上のdescribeで検査済み=
+// 変えていないことをここでも再確認する)。
+describe('接近(社長指示2026-08-15「高速で近づいてから突く」)', () => {
+  it('REACH/選択距離/溜め時間は変えていない(既存値のまま)', () => {
+    expect(BR_TRIPLE_REACH).toBe(300);
+    expect(BR_TRIPLE_MIN).toBe(380);
+    expect(BR_TRIPLE_MAX).toBe(460);
+    expect(BR_TRIPLE_WINDUP_MS).toBe(900);
+  });
+  it('接近の目標停止距離=REACH(行き過ぎて重ならない・突きが届く距離で止まる)', () => {
+    expect(BR_TRIPLE_APPROACH_STOP_DIST).toBe(BR_TRIPLE_REACH);
+  });
+  it('接近速度倍率は馬乗りの突進(BM_CHARGE_SPEED_MULT=9)と同格', () => {
+    expect(BR_TRIPLE_APPROACH_SPEED_MULT).toBe(9);
+  });
+
+  // 速度=加速倍率(発進からの経過ms)×減速倍率(目標までの残り距離px)。時間の締切だけで減速を
+  // 作ると、プレイヤーが逃げ続けて残り距離が縮まらない時に「締切が近いから減速」で潰れて
+  // 詰め切れなくなる(実測で発見したバグ=距離ベースの減速に直した理由)。
+  describe('brTripleApproachAccelMult — 加速(経過msに対して線形ランプ・瞬間発進を作らない)', () => {
+    it('t=0で0(瞬間発進しない)・t>=RAMP_MSで1', () => {
+      expect(brTripleApproachAccelMult(0)).toBe(0);
+      expect(brTripleApproachAccelMult(BR_TRIPLE_APPROACH_RAMP_MS)).toBe(1);
+      expect(brTripleApproachAccelMult(BR_TRIPLE_APPROACH_RAMP_MS * 2)).toBe(1);
+    });
+    it('単調増加(逆流しない)・負は0にクランプ', () => {
+      expect(brTripleApproachAccelMult(-10)).toBe(0);
+      let prev = -1;
+      for (let t = 0; t <= BR_TRIPLE_APPROACH_RAMP_MS; t += 25) {
+        const v = brTripleApproachAccelMult(t);
+        expect(v).toBeGreaterThanOrEqual(prev);
+        prev = v;
+      }
+    });
+  });
+
+  describe('brTripleApproachDecelMult — 減速(残り距離pxに対して線形・瞬間停止を作らない)', () => {
+    it('残り距離0で0(瞬間停止しない)・SLOW_RADIUS以上で1', () => {
+      expect(brTripleApproachDecelMult(0)).toBe(0);
+      expect(brTripleApproachDecelMult(BR_TRIPLE_APPROACH_SLOW_RADIUS)).toBe(1);
+      expect(brTripleApproachDecelMult(BR_TRIPLE_APPROACH_SLOW_RADIUS * 2)).toBe(1);
+    });
+    it('単調増加(残り距離が大きいほど減速しない)・負は0にクランプ', () => {
+      expect(brTripleApproachDecelMult(-10)).toBe(0);
+      let prev = -1;
+      for (let d = 0; d <= BR_TRIPLE_APPROACH_SLOW_RADIUS; d += 10) {
+        const v = brTripleApproachDecelMult(d);
+        expect(v).toBeGreaterThanOrEqual(prev);
+        prev = v;
+      }
+    });
   });
 });

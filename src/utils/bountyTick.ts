@@ -43,14 +43,20 @@ import {
   BR_TRIPLE_REACH, BR_TRIPLE_HALF_WIDTH, BR_TRIPLE_STEP, BR_TRIPLE_DAMAGE,
   BR_TRIPLE_SPREAD_RAD, BR_TRIPLE_THRUST_MS, BR_TRIPLE_RETURN_MS, BR_TRIPLE_GAP_MS,
   BR_TRIPLE_STEP_MS, BR_TRIPLE_LAST_STEP_MS, BR_TRIPLE_ACTIVE_MS,
+  BR_TRIPLE_APPROACH_SPEED_MULT, BR_TRIPLE_APPROACH_STOP_DIST,
+  BR_TRIPLE_APPROACH_RAMP_MS, BR_TRIPLE_APPROACH_SLOW_RADIUS,
   brTripleAngles, brTripleStepDurationMs, brTripleLungeEase01,
+  brTripleApproachAccelMult, brTripleApproachDecelMult,
 } from './bountyTriple';
 export {
   BR_TRIPLE_MIN, BR_TRIPLE_MAX, BR_TRIPLE_CD_MS, BR_TRIPLE_WINDUP_MS,
   BR_TRIPLE_REACH, BR_TRIPLE_HALF_WIDTH, BR_TRIPLE_STEP, BR_TRIPLE_DAMAGE,
   BR_TRIPLE_SPREAD_RAD, BR_TRIPLE_THRUST_MS, BR_TRIPLE_RETURN_MS, BR_TRIPLE_GAP_MS,
   BR_TRIPLE_STEP_MS, BR_TRIPLE_LAST_STEP_MS, BR_TRIPLE_ACTIVE_MS,
+  BR_TRIPLE_APPROACH_SPEED_MULT, BR_TRIPLE_APPROACH_STOP_DIST,
+  BR_TRIPLE_APPROACH_RAMP_MS, BR_TRIPLE_APPROACH_SLOW_RADIUS,
   brTripleAngles, brTripleStepDurationMs, brTripleLungeEase01,
+  brTripleApproachAccelMult, brTripleApproachDecelMult,
 };
 // §6.38 v10「バス停の中立射撃に緩急」: 型3種(burst/fan/charge)のサイクル抽選・間隔・弾数の計算は
 // bountyShots.ts(依存ゼロの葉)へ一本化。tickRangedはここの関数を呼ぶだけ(#10)。
@@ -690,17 +696,50 @@ const tickRanged = (
 
   // ---- §6.38 v12: 三段突き(中距離の詰め技) -----------------------------------------------------
   if (st === 'br-triple-windup') {
+    // 社長指示2026-08-15「今の距離ではプレイヤーに届かない。もっと高速で近づいてから使う」:
+    // 溜め900msの間、静止する代わりにプレイヤーへ高速接近する(止まったまま溜めない)。
+    // REACH/HALF_WIDTH/STEP/選択距離/溜め時間は不変——実行フェーズ開始時点で距離を
+    // BR_TRIPLE_APPROACH_STOP_DIST(=REACH)まで詰めておくことで、実行フェーズのREACHだけで
+    // 確実に届くようにする(旧実装は溜め中静止=プレイヤーが歩くだけで上限側が届かなくなっていた)。
+    // 速度はプレイヤーの「現在」位置を毎フレーム追う(ライブ追尾)ので、途中で歩いて離れても
+    // 詰め切れる(社長裁定「歩いて避けられない設計になってもよい・数字は報告に明記」)。
+    // 加速→減速(CLAUDE.md MUST=瞬間停止禁止): 速度=「加速倍率(発進からの経過ms)」×
+    // 「減速倍率(目標までの残り距離px)」で作る(seek and arrive・brTripleApproach{Accel,Decel}Mult)。
+    // ★時間の締切(残り時間)だけで減速を作る実装は採らない——実測で破綻することを確認済み:
+    // プレイヤーが全力で逃げ続けると残り距離が縮み切らないまま締切が迫り、締切側の減速に速度が
+    // 潰されて「詰め切れない」(実行フェーズのREACH=300が届かず空振り)という実バグを作っていた。
+    // 距離ベースの減速なら、逃げられている間は高速巡航を続け、目標(STOP_DIST)に近づいた分だけ
+    // 自然に減速する=締切に関係なく詰め切れる。移動は resolveMove(=障害物+移動可能帯clamp)を通す。
+    const untilAt = bounty.bossStateUntil ?? (newGameTime + BR_TRIPLE_WINDUP_MS);
+    const windupStartAt = untilAt - BR_TRIPLE_WINDUP_MS;
+    const accelMult = brTripleApproachAccelMult(newGameTime - windupStartAt);
+    const remainDist = Math.max(0, dist - BR_TRIPLE_APPROACH_STOP_DIST);
+    const decelMult = brTripleApproachDecelMult(remainDist);
+    const approachSpeed = bounty.speed * BR_TRIPLE_APPROACH_SPEED_MULT * accelMult * decelMult;
+    let curBx = bounty.x, curBy = bounty.y;
+    if (remainDist > 0 && approachSpeed > 0) {
+      const dt = deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime);
+      const step = Math.min(approachSpeed * dt, remainDist); // 大きなdt(コマ落ち)でも行き過ぎない安全弁
+      const ux = (pcx - bcx) / dist, uy = (pcy - bcy) / dist;
+      const c = resolveMove(bounty.x + ux * step, bounty.y + uy * step, bounty);
+      curBx = c.x; curBy = c.y;
+      patch.x = c.x; patch.y = c.y;
+      patch.vx = ux * approachSpeed; patch.vy = uy * approachSpeed;
+    } else {
+      patch.vx = 0; patch.vy = 0;
+    }
     // 社長裁定#3「溜め明けに一括ロック」: 溜め中(900ms)は毎フレーム現在のプレイヤー方向を追い続け、
     // windupが明けた瞬間の1回だけ角度を確定する(以後は追尾しない=横に避けても構えが追ってくるので、
-    // 実質「後退するしかない」を作る狙い)。ボス自身は静止したまま(社長裁定「溜め中はボスを止める」
-    // =patch.x/y/vx/vyを一切書かない)。
-    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
-      const ang = Math.atan2(pcy - bcy, pcx - bcx);
+    // 実質「後退するしかない」を作る狙い)。
+    if (newGameTime >= untilAt) {
+      const curBcx = curBx + bounty.width / 2, curBcy = curBy + bounty.height / 2;
+      const ang = Math.atan2(pcy - curBcy, pcx - curBcx);
       patch.bountyTripleAng = ang; // ロック確定(以後の3段はこの角度だけを読む=単一の出どころ)
       s.tripleStepStartAt = newGameTime;
       s.tripleHitFired = false;
       // 踏み込み(3段通しの1つの弧)の起点/向き/開始時刻をここで焼き付ける(mk-spinと同型)。
-      s.tripleLungeX0 = bounty.x; s.tripleLungeY0 = bounty.y;
+      // 起点=接近後(=curBx/curBy)の位置(接近フェーズの続きとして自然につながる)。
+      s.tripleLungeX0 = curBx; s.tripleLungeY0 = curBy;
       s.tripleLungeUx = Math.cos(ang); s.tripleLungeUy = Math.sin(ang);
       s.tripleLungeStartAt = newGameTime;
       patch.bossState = 'br-triple-1';

@@ -81,3 +81,43 @@ export const brTripleEffectiveReachPx = (
   playerRadius: number = BR_TRIPLE_PLAYER_RADIUS_MIRROR,
   step: number = BR_TRIPLE_STEP,
 ): number => reach + halfWidth + playerRadius + step;
+
+// ---- 接近(社長指示2026-08-15「今の距離ではプレイヤーに届かない。もっと高速で近づいてから使う」で追加)
+// REACH/HALF_WIDTH/STEP/選択距離(MIN/MAX)/溜め(WINDUP_MS)は一切変更しない。溜め900msの間、静止する
+// 代わりにプレイヤーへ高速接近し、「実行フェーズ(3段・590ms)が始まる時点で距離を詰めておく」ことで
+// 到達性を担保する(旧実装は溜め中静止=プレイヤーが歩くだけで選択距離帯の上限側が届かなくなっていた)。
+/**
+ * 溜め中の接近速度倍率。馬乗り(bounty-melee)の突進 `BM_CHARGE_SPEED_MULT`(bountyTick.ts=
+ * `WEREWOLF_CHARGE_SPEED_MULT(3) × 3` = 9)の複製値(このファイルは依存ゼロの葉のためimportしない・
+ * 値の一致は bountyTriple.test.ts が実体をimportして機械検査する)。「同格」の参考値であって同一である
+ * 必要は無いが、詰め切れることを実測(bountyTick.test.ts)で確認した上でこの値を採用した。
+ */
+export const BR_TRIPLE_APPROACH_SPEED_MULT = 9;
+/**
+ * 接近の目標停止距離(px・ボス中心→プレイヤー中心)。「プレイヤーの現在位置からBR_TRIPLE_REACH手前」
+ * =REACHそのものを流用する(行き過ぎて重ならない・実行フェーズのREACHだけで届く距離まで詰める)。
+ */
+export const BR_TRIPLE_APPROACH_STOP_DIST = BR_TRIPLE_REACH;
+
+// 速度は「加速(発進からの経過ms)」×「減速(目標までの残り距離)」の2つの0..1倍率を掛けて作る
+// (ゲームAIの定番"seek and arrive"の作法)。**時間の締切だけで減速を作ると**(=溜めの残り時間が
+// 少ないほど強制的に減速)、プレイヤーが逃げ続けて残り距離がなかなか縮まらない場合に「締切が近いのに
+// まだ距離が残っている」状況で速度が上限側(時間ベース)に潰されて詰め切れなくなる
+// (実測: 900ms全力で逃げられると300px手前どころか350px前後までしか詰まらず、実行フェーズのREACH=300が
+// 届かずに空振りした=最初の実装のバグ)。距離ベースの減速に直せば、逃げられている間は高速巡航を続け、
+// 目標に近づいた分だけ自然に減速する=締切に関係なく詰め切れる。
+/** 加速(発進=windup開始からの経過ms→1)。0で発進(瞬間発進を作らない)。 */
+export const BR_TRIPLE_APPROACH_RAMP_MS = 250;
+/** 減速(目標=STOP_DISTまでの残り距離pxがこれ以下で減速開始)。0で到達(瞬間停止せず滑らかに止まる)。 */
+export const BR_TRIPLE_APPROACH_SLOW_RADIUS = 140;
+
+/** 加速倍率(0→1・windup開始からの経過msに対して線形ランプ)。瞬間発進を作らない。 */
+export const brTripleApproachAccelMult = (elapsedMs: number): number => {
+  if (BR_TRIPLE_APPROACH_RAMP_MS <= 0) return 1;
+  return Math.max(0, Math.min(1, elapsedMs / BR_TRIPLE_APPROACH_RAMP_MS));
+};
+/** 減速倍率(0→1・目標までの残り距離pxに対して線形)。目標到達=0で瞬間停止を作らない。 */
+export const brTripleApproachDecelMult = (remainDistPx: number): number => {
+  if (BR_TRIPLE_APPROACH_SLOW_RADIUS <= 0) return remainDistPx > 0 ? 1 : 0;
+  return Math.max(0, Math.min(1, remainDistPx / BR_TRIPLE_APPROACH_SLOW_RADIUS));
+};
