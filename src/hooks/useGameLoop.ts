@@ -496,7 +496,10 @@ const SHIELD_KNOCKBACK_MULT = 1.4;           // 接触した敵を外向きへ�
 // 全方位(ハンドガン=handgun-t1 相当/短射程の周囲対応)へ切替。通常弾の代わりに低確率で
 // グレネード弾(既存ヘビーグレネードを流用)。消滅時に小爆発。数値は実機調整前提(TODO)。
 const TURRET_COOLDOWN_MS = 10000;                       // 設置間隔(全Lv共通10秒)
-const TURRET_DURATION_BY_LEVEL = [0, 15000, 15000, 15000]; // 持続を3倍(5s→15s)。Lv2/3はTODO(暫定据置)
+// 社長裁定v0.25.3482「秒数を変えようかな。15秒+たまに爆発が3 / 13秒が2 / 10秒が1」:
+// Lv1=10秒 / Lv2=13秒 / Lv3=15秒。**Lv3だけ「たまに爆発」(グレネード弾10%)が付く**。
+// 旧: 全Lv 15000で「Lv2/3はTODO(暫定据置)」=買っても何も強くならない状態だった。
+const TURRET_DURATION_BY_LEVEL = [0, 10000, 13000, 15000];
 const TURRET_FOOT_W = 30;                               // 当たり判定幅(叩く判定/設置足元)
 const TURRET_FOOT_H = 18;                               // 当たり判定奥行(下辺=足元)
 const TURRET_PLACE_FORWARD = 24;                        // プレイヤー中心から進行方向へ置く距離
@@ -8919,7 +8922,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 10%でグレネードランチャー弾(rifle-t3 と同じ直進・着弾爆発=GRENADE_WEAPON_KEY)、
             // それ以外は通常弾。手榴弾(heavy-grenade)とは別物: fuse転がしではなく直進ランチャー弾。
             // 全方位モードでもランチャー弾は現在のターゲット方向へ撃つ。
-            if (Math.random() < TURRET_GRENADE_CHANCE) {
+            // ★Lv3だけ「たまに爆発」(社長裁定v0.25.3482)。**設置時の持続時間でLv3かを判定する**
+            //   (プレイヤーが後からLvを上げても、置いた時のタレットは置いた時の性能のまま=自然)。
+            const turretIsLv3 = (turret.duration ?? 0) >= TURRET_DURATION_BY_LEVEL[3];
+            if (turretIsLv3 && Math.random() < TURRET_GRENADE_CHANCE) {
               addProjectile({
                 id: `proj-turret-gl-${turret.id}-${nowMs}`,
                 x: tcx - 7, y: tcy - 7, width: 14, height: 14,
