@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3448',
+    items: [
+      'ゲーム内容の変更はありません(斬撃弧の適用ルール=「専用の振りエフェクトが無い振り技だけ」を仕様書に記録)。',
+    ],
+  },
+  {
     version: '0.25.3447',
     items: [
       '手榴弾(ボマーの子手榴弾・隠しボスの手榴弾含む)もグレネードガンの弾と同じく、転がり回転+信管の赤ランプ明滅になりました。',
