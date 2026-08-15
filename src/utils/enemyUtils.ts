@@ -201,6 +201,29 @@ export const isArenaSweepProtected = (e: Pick<Enemy, 'type' | 'fixed' | 'questTa
 export const usesBossCrit = (t: EnemyType): boolean =>
   isBossType(t) && t !== 'pumpkin' && t !== 'lab-zombie-3';
 
+/**
+ * ★弾・爆発の「小突きノックバック」で押されない型か(社長裁定v0.25.3494・案A)。
+ *
+ * 経緯(この関数が生まれた事故): 命中した全弾の共通ノックバック口(useGameLoop.ts)は
+ * `type !== 'reaper' && type !== 'giantbat' && type !== 'pumpkin'` という**型名のベタ書き**で
+ * 「重量級/ボスは弾では押されない」を表現していた(コメントにも "Heavies/bosses are immovable
+ * so they don't get shoved around by chip damage" と明記)。ところが賞金首(bounty-*)も裏ボスも
+ * **後から `isBossType` へ編入されたのにこのリストへ足されなかった**ため、実体は「城ボスだけ
+ * 押されない」だった。そこへ v0.25.3476「ノックバックしたら技は中断」が乗り、
+ * **小ボスは弾1発ごとに技が中断されて何も出せない**という実機バグになった(社長報告v0.25.3494)。
+ *
+ * ⇒ 型名リストをやめ、**「本当のボス(usesBossCrit)+パンプキン」**を唯一の出どころにする。
+ * `pumpkin` を明示で足しているのは、usesBossCrit が(クリの扱いを通常敵へ戻すという別の理由で)
+ * pumpkin/lab-zombie-3 を外しているため——**押されなさ**の観点ではパンプキンは従来どおり重量級側。
+ * `lab-zombie-3` は従来から押される側なので、ここでは足さない(挙動を勝手に変えない)。
+ *
+ * 対象は**弾と爆発だけ**(社長裁定の範囲)。シールドバッシュ/犬/救急鞄/踏み鳴らし/四神/
+ * スラッシャー追撃のような「押すことが目的の道具」は従来どおりボスも押す=そこで技が中断するのは
+ * 意図どおりの挙動。
+ */
+export const resistsChipKnockback = (t: EnemyType): boolean =>
+  usesBossCrit(t) || t === 'pumpkin';
+
 /** 「最終ボスを討伐した」扱いにしてよいキルか(v0.25.3029・社長裁定「二体」)。
  * グレン形態1(glenForm===1)の死はミッション進行を確定させない(討伐アテンションの後に形態2が湧く)。
  * 従来の散在パターン(type==='giantbat' && !fromEvent)の**唯一の後継**——finaleDefeated/bossKilled/

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit, aimEnemyDist2, isBountyType, corpseEligible, isArenaSweepProtected } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit, aimEnemyDist2, isBountyType, corpseEligible, isArenaSweepProtected, resistsChipKnockback } from './enemyUtils';
 import { isEngageableBoss } from './bossEngagement';
 import type { Enemy, Player, Summon, GameBounds, EnemyType } from '../types/game';
 import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
@@ -498,5 +498,34 @@ describe('isFinalBossKill — 二体構成(v0.25.3029)の最終ボス討伐判�
     expect(isFinalBossKill({ type: 'giantbat', fromEvent: undefined, glenForm: undefined })).toBe(true); // EX/通常城ボス
     expect(isFinalBossKill({ type: 'giantbat', fromEvent: true, glenForm: undefined })).toBe(false);
     expect(isFinalBossKill({ type: 'zombie', fromEvent: undefined, glenForm: undefined })).toBe(false);
+  });
+});
+
+// v0.25.3494(社長裁定・案A): 弾・爆発の小突きノックバックで押されない型。
+// 事故の再発防止=「型名のベタ書きに戻ると落ちる」不変条件をここへ固定する
+// (旧リストは reaper/giantbat/pumpkin の3型だけで、後から isBossType へ編入された
+//  賞金首・裏ボスが漏れ、小ボスが弾1発ごとに技を中断されていた)。
+describe('resistsChipKnockback(弾・爆発では押されない型)', () => {
+  it('城ボス・裏ボス・賞金首・ハンター・リーパーはすべて押されない(旧リストの取りこぼしを塞ぐ)', () => {
+    for (const t of ['giantbat', 'reaper', 'hunter', 'thor', 'mimir', 'skadi', 'idol',
+      'bounty-ranged', 'bounty-melee', 'bounty-balance'] as EnemyType[]) {
+      expect(resistsChipKnockback(t), t).toBe(true);
+    }
+  });
+  it('パンプキンは従来どおり押されない(usesBossCritから外れているので明示で足してある)', () => {
+    expect(resistsChipKnockback('pumpkin')).toBe(true);
+  });
+  it('通常敵と研究所レベル3は従来どおり押される(勝手に硬くしない)', () => {
+    for (const t of ['zombie', 'bat', 'skeleton', 'werewolf', 'plant', 'lab-zombie-3'] as EnemyType[]) {
+      expect(resistsChipKnockback(t), t).toBe(false);
+    }
+  });
+  it('「本当のボス」(usesBossCrit)は1体残らず対象に入る', () => {
+    const ALL: EnemyType[] = ['pumpkin', 'giantbat', 'reaper', 'lab-zombie-3', 'mimir', 'jormungand',
+      'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol', 'hunter',
+      'bounty-ranged', 'bounty-melee', 'bounty-balance'];
+    for (const t of ALL) {
+      if (usesBossCrit(t)) expect(resistsChipKnockback(t), t).toBe(true);
+    }
   });
 });

@@ -208,7 +208,8 @@ import {
   AREA_THRESHOLDS,
   OFFSCREEN_SPAWN_MARGIN,
   isCorpse,
-  isBountyType
+  isBountyType,
+  resistsChipKnockback
 } from '../utils/enemyUtils';
 import {
   isCounterablePhase, phaseJustChanged, BOSS_ALERT_SFX_KEY,
@@ -9004,7 +9005,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const dmg = Math.max(1, Math.round(decoy.damage * dExMult * (0.55 + falloff * 0.45)));
               const killed = damageEnemy(enemy.id, dmg, true); // 爆発=ボス系には非致死
               spawnDamageNumber(ex, enemy.y, dmg, false);
-              if (!killed && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
+              if (!killed && !resistsChipKnockback(enemy.type)) { // v0.25.3494(案A): 旧リストを一本化
                 const norm = Math.max(0.001, dist);
                 // エクスプローダー覚醒(Lv3・v0.25.3300): 爆発KB距離×1.5。
                 const dKbEx = skillExplosionKbMult(useGameStore.getState().player);
@@ -9129,8 +9130,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(ex, ey, '#b91c1c', 4);
             if (
               !killed &&
-              enemy.type !== 'giantbat' &&
-              enemy.type !== 'pumpkin'
+              !resistsChipKnockback(enemy.type) // v0.25.3494(案A): 旧リストを一本化
             ) {
               const norm = Math.max(0.001, dist);
               // エクスプローダー覚醒(Lv3・v0.25.3300): 爆発KB距離×1.5(maxStrengthも同率で引き上げ)。
@@ -9280,7 +9280,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 smHitCount += 1;
                 spawnDamageNumber(ex, enemy.y, splashDamage, false);
                 spawnBurst(ex, ey, '#b91c1c', 4);
-                if (!smKilled && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
+                if (!smKilled && !resistsChipKnockback(enemy.type)) { // v0.25.3494(案A): 旧リストを一本化
                   const norm = Math.max(0.001, dist);
                   // エクスプローダー覚醒(Lv3・v0.25.3300): 爆発KB距離×1.5(主語=置いた本人)。
                   const smKbEx = skillExplosionKbMult(smActor);
@@ -9371,7 +9371,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 fkHitCount += 1;
                 spawnDamageNumber(ex, enemy.y, splashDamage, false);
                 spawnBurst(ex, ey, '#b91c1c', 4);
-                if (!killed && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
+                if (!killed && !resistsChipKnockback(enemy.type)) { // v0.25.3494(案A): 旧リストを一本化
                   const norm = Math.max(0.001, dist);
                   {
                     // エクスプローダー覚醒(Lv3・v0.25.3300): 爆発KB距離×1.5。
@@ -10208,10 +10208,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // Light knockback on every connecting bullet — staggers normal
           // enemies along the shot line. Heavies/bosses are immovable so they
           // don't get shoved around by chip damage.
+          // v0.25.3494(社長裁定・案A): 型名のベタ書き(reaper/giantbat/pumpkin)をやめ
+          // resistsChipKnockback へ一本化。旧リストは賞金首・裏ボスが編入される前のもので、
+          // 実体は「城ボスだけ押されない」だった=小ボスが弾1発ごとに技を中断されていた。
           if (
             !enemyKilled && enemyForFx && projectile && dmg > 0 && // dmg 0(味方の演出射撃)は押さない=挙動に影響させない
-            enemyForFx.type !== 'reaper' && enemyForFx.type !== 'giantbat' &&
-            enemyForFx.type !== 'pumpkin'
+            !resistsChipKnockback(enemyForFx.type)
           ) {
             const hitCount = projectileHitCountsByEnemy.get(enemyId) ?? 1;
             const pelletKnockback = projectile.weaponType === 'shotgun' ? 1.35 : 1;
