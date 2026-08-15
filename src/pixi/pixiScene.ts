@@ -20743,29 +20743,32 @@ export class PixiScene {
       }
       case 'grenade': {
         const t = Math.max(0, Math.min(1, (Date.now() - p.createdAt) / Math.max(1, p.duration)));
-        const hopEnvelope = Math.max(0, 1 - t * 0.58);
-        const hop = Math.abs(Math.sin(t * Math.PI * 5.2)) * 9 * hopEnvelope;
+        // 社長指示v0.25.3447「手榴弾もグレネードの弾と同じ仕様に(転がりと点滅)」: 旧・影+跳ねアニメを
+        // 廃止し、グレネードガン転がり弾と同一の描き方=道のり同期の転がり回転+信管の赤ランプ明滅
+        // (信管が進むほど速い)へ統一。ボマーの子手榴弾・idolの手榴弾も同じ(同じ動作=同じ絵)。
+        // v0.25.2472: ownerGhost(守護霊が投げた手榴弾)は青白tint(視覚のみ・判定/挙動不変)。
         // 敵の手榴弾(idolの手榴弾技・v0.25.3442): 爆発範囲の赤円=判定(HEAVY_GRENADE_RADIUS・
-        // 「中心が円の内側なら当たる」)と厳密一致(分類1)。信管が進むほど濃く+締まる予告の文法。
+        // 「中心が円の内側なら当たる」)と厳密一致(分類1)。信管が進むほど濃く(円は回転対称なので
+        // g.rotationの影響を受けない)。
         if (p.hostile) {
           g.circle(0, 0, HEAVY_GRENADE_RADIUS).fill({ color: 0xef4444, alpha: 0.08 + 0.14 * t });
           g.circle(0, 0, HEAVY_GRENADE_RADIUS).stroke({ color: 0xef4444, alpha: 0.5 + 0.4 * t, width: 2 });
         }
-        g.ellipse(0, 4, Math.max(3, p.width * 0.48), Math.max(1.2, p.height * 0.14))
-          .fill({ color: 0x000000, alpha: 0.28 });
-        // 社長指示v0.25.3290「この弾の絵を手榴弾にも流用」: 支給ドット弾(fx/grenade-ball)を
-        // 跳ねアニメはそのままスタンプ。素材未ロード時は従来の手続き円へフォールバック。
-        // v0.25.2472: ownerGhost(守護霊が投げた手榴弾)は青白tint(視覚のみ・判定/挙動不変)。
         const ballTex = getTexture('fx/grenade-ball');
         const br = Math.max(4, p.width * 0.75);
+        g.rotation = (p.traveledPx ?? 0) / Math.max(4, br); // 半径ぶん進むと1rad=転がりと同期
         if (ballTex) {
           // v0.25.3293(社長報告「半透明になってる」): Graphics.texture()は直前のfillスタイルの
-          // alphaを引き継ぐ(上の影楕円のalpha 0.28が弾に乗っていた)。スタンプ前に必ずリセット。
+          // alphaを引き継ぐことがあるため、スタンプ前に必ずリセット。
           g.fillStyle = { color: 0xffffff, alpha: 1 };
-          g.texture(ballTex, p.ownerGhost ? 0x9fd8ff : 0xffffff, -br, -hop - br, br * 2, br * 2);
+          g.texture(ballTex, p.ownerGhost ? 0x9fd8ff : 0xffffff, -br, -br, br * 2, br * 2);
         } else {
-          g.circle(0, -hop, Math.max(3, p.width / 2)).fill({ color: p.ownerGhost ? 0x9fd8ff : 0x1f2937 });
-          g.circle(-1, -hop - 1, Math.max(1.5, p.width / 5)).fill({ color: p.ownerGhost ? 0xe0f2fe : 0x9ca3af, alpha: 0.55 });
+          g.circle(0, 0, Math.max(3, p.width / 2)).fill({ color: p.ownerGhost ? 0x9fd8ff : 0x1f2937 });
+          g.circle(-1, -1, Math.max(1.5, p.width / 5)).fill({ color: p.ownerGhost ? 0xe0f2fe : 0x9ca3af, alpha: 0.55 });
+        }
+        // 信管の赤ランプ(転がり弾と同じ式。手榴弾は時間信管なのでt=経過/信管で加速)。
+        if (Math.sin(Date.now() / (150 - 105 * t)) > 0) {
+          g.circle(br * 0.4, -br * 0.4, 1.6 + 1.4 * t).fill({ color: 0xff5252, alpha: 0.9 });
         }
         break;
       }
@@ -22116,15 +22119,9 @@ export class PixiScene {
     const streak = c.children[0] as Sprite;
     const burstSp = c.children[1] as Sprite;
     const katana = c.children[2] as Sprite;
-    // 社長指示v0.25.3446「剣の振りにも斬撃(白い弧)付けて」: 刀の振り全部の合流点であるこの関数に
-    // 白い弧(fx/slash-arc)を1枚足す=drawKatanaSlashを使う全員(トール/ミゲル/ウリ/ラフィ/城ボス系)へ
-    // 一括で効く(「同じ動作を持つ全員に付ける」)。軌道(判定ライン)に合わせて横に伸ばし縦を潰す。
-    // 旧プール(children3枚時代)のコンテナにも後付けできるようguard付きで生成する。
-    let arcSp = c.children[3] as Sprite | undefined;
-    if (!arcSp) {
-      arcSp = new Sprite(); arcSp.anchor.set(0.5, 0.5); arcSp.blendMode = 'add';
-      c.addChild(arcSp);
-    }
+    // v0.25.3447(社長指示「刀とかで専用の斬撃があるなら変えないで。突きなのに弧を描いたりしないで」):
+    // v3446で足した白い弧はここでは出さない(刀はslash-streakの専用斬撃が既にある。tsuki=突きにも
+    // この関数が使われるため弧は誤り)。白い弧は専用斬撃を持たない振り(賞金首の薙ぎ3種)だけ。
     const ref = getTexture('fx/slash-streak-4');
     if (!ref) { c.visible = false; return; }
     c.visible = true;
@@ -22140,20 +22137,6 @@ export class PixiScene {
     streak.rotation = angle;
     streak.scale.set(sc, vsc);
     streak.alpha = tt < 0.5 ? (0.35 + 0.5 * (tt / 0.5)) : (1 - Math.max(0, (tt - 0.85) / 0.15));
-    // 白い弧(v0.25.3446): 判定ラインの中点に、軌道へ沿わせて横伸ばし(長さ×1.2/太さ=半幅×4)。
-    // streakと同じtで生き死にする=キー管理不要・コンテナ破棄と一緒に片付く。
-    const arcTex = getTexture('fx/slash-arc');
-    if (arcTex) {
-      if (arcSp.texture !== arcTex) arcSp.texture = arcTex;
-      arcSp.rotation = angle + Math.PI; // 素材の膨らみ(-x側)を振る方向へ(drawSlashArcと同じ規約)
-      arcSp.width = Math.max(60, length * 1.2);
-      arcSp.height = Math.max(40, halfWidth * 4);
-      arcSp.position.set((fx + tx) / 2, (fy + ty) / 2);
-      arcSp.alpha = 0.9 * (tt < 0.5 ? (0.4 + 0.6 * (tt / 0.5)) : (1 - Math.max(0, (tt - 0.7) / 0.3)));
-      arcSp.visible = arcSp.alpha > 0.01;
-    } else {
-      arcSp.visible = false;
-    }
     if (burst) {
       const bref = getTexture('fx/slash-burst-4');
       const bidx = Math.max(0, Math.min(4, Math.floor(tt * 6)));

@@ -13183,9 +13183,9 @@ export const useGameStore = create<GameState>((set, get) => ({
               speed: Math.max(24, p.speed * Math.exp(-GRENADE_ROLL_DRAG * deltaTime)),
               x: nextX,
               y: nextY,
-              ...(p.rollDetonatePx !== undefined
-                ? { traveledPx: (p.traveledPx ?? 0) + Math.hypot(nextX - p.x, nextY - p.y) }
-                : {})
+              // 道のり累計: 転がり弾は爆発距離の判定に、手榴弾(weaponType'grenade')は転がり回転の描画に使う
+              // (社長指示v0.25.3447「手榴弾も同じ仕様に=転がりと点滅」)。
+              traveledPx: (p.traveledPx ?? 0) + Math.hypot(nextX - p.x, nextY - p.y)
             };
           }
           return {
