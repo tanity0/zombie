@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3460',
+    items: [
+      '舞妓(変異)の水鳥乱舞: 着地の範囲を2倍に(そのぶん各段の予告時間も伸びました)。',
+      '舞妓(変異)の手毬打ち: 飛ぶ距離と速さを2倍に。',
+    ],
+  },
+  {
     version: '0.25.3459',
     items: [
       'ゲーム内容の変更はありません(次の実装の仕様書のみ)。',

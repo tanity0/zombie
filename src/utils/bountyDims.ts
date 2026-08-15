@@ -36,7 +36,7 @@ export const BB_LEAP_RADIUS = PUMPKIN_EXPLOSION_RADIUS;
 export const MK_NAGINATA_HALFWIDTH = 30;
 /** 毬回し(自分中心円)の半径(px)。AOE_TELEGRAPH_AUDIT 登録対象。 */
 export const MK_SPIN_RADIUS = 90;
-/** 水鳥乱舞の各着地円の半径(px)。 */
-export const MK_SUIU_RADIUS = 50;
+/** 水鳥乱舞の各着地円の半径(px)。社長指示v0.25.3460「範囲狭すぎる。二倍くらいにして」で 50→100。 */
+export const MK_SUIU_RADIUS = 100;
 /** 水鳥乱舞・最終段の円の倍率。 */
 export const MK_SUIU_FINAL_RADIUS_MULT = 1.8;

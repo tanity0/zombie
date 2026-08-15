@@ -810,13 +810,21 @@ const MK_SPIN_RECOVER_MS = withRecoverFloor(900);
 // 水鳥乱舞(型B専用大技・毬3連バウンド・マレニア§2-4)。着地点=プレイヤー現在位置+抽選オフセット
 // (clampRectToPlayableArea適用)。ホップ間隔=2種ランダム(=各ホップの予告時間そのもの)。
 // 最終段のみ大円。ホップ中の毬に接触判定なし=着地円のみ(v5承認)。乱舞後は長め硬直(パニッシュ窓)。
-export const MK_SUIU_HOP_INTERVAL_CHOICES: readonly [number, number] = [400, 600]; // 予告(telegraph)分
+// 社長指示v0.25.3460「水鳥乱舞は範囲狭すぎる。二倍くらいにして」で着地円を50→100pxへ。
+// 半径を倍にすると**円から歩いて出るのに要る時間**も倍近くなるため(必要ms=(半径+自機14)/104.4*1000
+// =613→1092ms)、予告=ホップ間隔を [400,600]→[850,1050] へ伸ばして「見てから歩いて避けられる」
+// 公平の掟(bossTelegraph.minWindupMs・bountyTick.testで機械化)を維持する。
+// ※乱舞の総尺は約2.6秒→約3.2秒に伸びる(テンポ優先で戻す判断は社長裁定)。
+export const MK_SUIU_HOP_INTERVAL_CHOICES: readonly [number, number] = [850, 1050]; // 予告(telegraph)分
 export const MK_SUIU_HOP_TRAVEL_MS = 260; // 着地直前の移動(予告は継続表示=escapeMsに含む)
 const MK_SUIU_DAMAGE = 16;
 const MK_SUIU_OFFSET_RANGE = 90;
 const MK_SUIU_RECOVER_MS = withRecoverFloor(1500);
 // 手毬打ち(遠距離・打ち出し→戻るブーメラン軌道。判定=毬の絵に揃える=共通弾ではない)。
-export const MK_BOOM_RANGE = 500;
+// 社長指示v0.25.3460「手毬うちは遅すぎる、短すぎる。両方二倍にして」: 飛ぶ距離を2倍(500→1000)。
+// **往路/復路の時間(MK_BOOM_OUT_MS/BACK_MS)は据え置き**なので、同じ時間で倍の距離=**速さも2倍**になる
+// (距離と速さの両方が2倍。時間を縮めると往復が一瞬になり毬が読めなくなるため、時間ではなく距離で出す)。
+export const MK_BOOM_RANGE = 1000;
 export const MK_BOOM_HITRADIUS = 30;
 export const MK_BOOM_WINDUP_MS = 750;
 export const MK_BOOM_OUT_MS = 420;
