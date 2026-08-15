@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3453',
+    items: [
+      '城ボス(ステージ5)の咆哮弾(3連射・扇状とも)が、構えた銃口の位置から出るようになりました(以前は銃口より手前の体の中心から出ていました)。',
+    ],
+  },
+  {
     version: '0.25.3452',
     items: [
       '突き技に白い風圧のエフェクトが付きました(突き出しに合わせて伸び、切っ先から手元へ扇が広がります)。',

@@ -1993,6 +1993,12 @@ export const GIANT_BOLT_FAN_STEP_RAD = 12 * Math.PI / 180; // 隣の弾との角
 export const GIANT_BOLT_FAN_SPEED = 380;          // A案だけ弾速も上げる(素の300→380)
 export const GIANT_BOLT_BURST_SHOTS = 3;          // B案: 同方向への連射数
 export const GIANT_BOLT_BURST_GAP_MS = 216;       // 実効180ms(生値=実効×ENEMY_ATTACK_SPEED_MULT)
+// 銃口(社長指摘v0.25.3453「発射口と弾の位置が合ってない」): pixiScene の演出銃(fx/boss-gun-*)は
+// 発射の瞬間ボス中心から狙い方向へ GUN_OUT_PX(=この値)だけ前進した位置で構え切る
+// (pixiScene.ts の `GUN_OUT_PX` はこの値を読む=定義は1箇所)。弾の生成点も同じ値で前進させ、
+// 「銃口の絵」と「弾が生まれる座標」を一致させる。速度・ダメージ・射程・タイミングは不変
+// (狙い方向は据え置きで発射点だけ前へ寄せるため、着弾がわずかに早まる=idol/バス停と同じ扱い)。
+export const GIANT_BOLT_MUZZLE_OUT_PX = 74;
 export const GIANT_BOLT_CD_PHASE1_MS = 4200; // 実効3.5s
 export const GIANT_BOLT_CD_PHASE2_MS = 3000; // 実効2.5s
 // フェーズ移行(HP60%)の合図: HPバー色 Phase1=緑/Phase2=橙(0.3未満の赤は据え置き)+移行の瞬間だけ点滅
@@ -12489,20 +12495,31 @@ export const useGameStore = create<GameState>((set, get) => ({
           get().summons,
         );
         const tgt = utilityTgt.isSummon ? utilityTgt : hateTgt;
+        const bex = liveGe.x + liveGe.width / 2, bey = liveGe.y + liveGe.height / 2;
         if ((liveGe.gBoltPattern ?? 'fan') === 'burst') {
           // B案: 同じ方向へ1発ずつ(この関数は連射の1発ごとに呼ばれる)。弾速は素のまま=数で圧をかける。
-          get().addProjectile(createEnemyProjectile(liveGe, bp, tgt.x, tgt.y));
+          // 発射点=銃口(GIANT_BOLT_MUZZLE_OUT_PX・社長指摘v0.25.3453「発射口と弾の位置が合ってない」)。
+          // 狙い方向(tgt)は不変=着弾位置・軌道は変わらず、発射点だけ演出銃の先端へ寄せる。
+          const bd = Math.max(0.001, Math.hypot(tgt.x - bex, tgt.y - bey));
+          const bux = (tgt.x - bex) / bd, buy = (tgt.y - bey) / bd;
+          get().addProjectile(createEnemyProjectile(
+            liveGe, bp, tgt.x, tgt.y,
+            bex + bux * GIANT_BOLT_MUZZLE_OUT_PX, bey + buy * GIANT_BOLT_MUZZLE_OUT_PX,
+          ));
         } else {
           // A案: 扇状に同時発射。**真っ直ぐ逃げても外側の弾に当たる**ので、横取りの位置取りが要る。
           // 本数はPhase2で増える(HPしきい値は既存の giantPhaseForHealth と同じ値を読む=二重定義しない)。
-          const bex = liveGe.x + liveGe.width / 2, bey = liveGe.y + liveGe.height / 2;
           const baseA = Math.atan2(tgt.y - bey, tgt.x - bex);
           const reach = Math.max(1, Math.hypot(tgt.x - bex, tgt.y - bey));
           const phase2 = liveGe.maxHealth > 0 && (liveGe.health / liveGe.maxHealth) <= GIANT_PHASE_HP_THRESHOLD;
           const shots = phase2 ? GIANT_BOLT_FAN_SHOTS_PHASE2 : GIANT_BOLT_FAN_SHOTS;
           for (let i = 0; i < shots; i++) {
             const a = baseA + (i - (shots - 1) / 2) * GIANT_BOLT_FAN_STEP_RAD;
-            const proj = createEnemyProjectile(liveGe, bp, bex + Math.cos(a) * reach, bey + Math.sin(a) * reach);
+            // 各挺(この扇の各弾)の銃口も同じ規約(演出銃3挺がそれぞれの向きで構え切る位置=発射点)。
+            const proj = createEnemyProjectile(
+              liveGe, bp, bex + Math.cos(a) * reach, bey + Math.sin(a) * reach,
+              bex + Math.cos(a) * GIANT_BOLT_MUZZLE_OUT_PX, bey + Math.sin(a) * GIANT_BOLT_MUZZLE_OUT_PX,
+            );
             proj.speed = GIANT_BOLT_FAN_SPEED;
             get().addProjectile(proj);
           }

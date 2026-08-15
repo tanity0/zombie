@@ -46,6 +46,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   GLEN_TALON_SPREAD_RAD,
   GIANT_SWEEPBEAM_WINDUP_MS, GIANT_SWEEPBEAM_ACTIVE_MS, GIANT_SWEEPBEAM_LENGTH, GIANT_SWEEPBEAM_HALF_WIDTH, GIANT_SWEEPBEAM_INNER_RADIUS, GIANT_SWEEPBEAM_SWEEP_RAD,
   GIANT_BOLT_WINDUP_MS, GIANT_BOLT_BURST_GAP_MS, GIANT_BOLT_FAN_STEP_RAD, // v0.25.3034/3046: 掃射SMG/咆哮弾の銃の絵
+  GIANT_BOLT_MUZZLE_OUT_PX, // v0.25.3453: 銃口の前進量=弾の発射点(gameStore側)と同じ値を読む(定義は1箇所)
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
   GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH, GLEN_REACH_LENGTH, GLEN_REACH_SHOTS,
@@ -2487,7 +2488,11 @@ const NIHIL_ART_PUNCH_FRAC = 0.16; // 張り切るまでの割合(唱の頭16%�
 // 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
 const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
 const GUN_RECOIL_MS = 300;    // 撃った後に後ろへ下がりながら消える時間
-const GUN_OUT_PX = 74;        // 構え切った時の、ボス中心からの前進量
+// 構え切った時の、ボス中心からの前進量。**弾の発射点(gameStore.ts の GIANT_BOLT_MUZZLE_OUT_PX)と
+// 同じ値**(社長指摘v0.25.3453「発射口と弾の位置が合ってない」)。値そのものはgameStore側が正=
+// ここでは同じ参照を読むだけ(定義を2箇所に持たない)。他の銃演出(トライショット/掃射/裏ボス構え)も
+// 同じ「前進量」の見た目を共有しているため、この1本を変えれば全部揃って動く=挙動は従来どおり(値は不変)。
+const GUN_OUT_PX = GIANT_BOLT_MUZZLE_OUT_PX;
 const GUN_RECOIL_PX = 58;     // 反動で後ろへ下がる量
 const GUN_MUZZLE_FLASH_MS = 110; // 技表GO: マズルフラッシュ大の可視窓(発射直後だけ)
 const FX_RING_ENABLED = typeof window === 'undefined'
