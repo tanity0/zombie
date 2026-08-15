@@ -31,6 +31,11 @@ const NAMED_BOSS_CUTIN_NAME: Partial<Record<EnemyType, string>> = {
   uri: 'ウリ',
   suriel: 'スリィエル',
   acrasiel: 'アクラシエル',
+  // PACING_PUZZLE.md §6.38 v9(完全コピー原則): 賞金首4種も城ボスと同じ出現カットインを出す。
+  'bounty-ranged': 'バス停(変異)',
+  'bounty-melee': '馬乗り(変異)',
+  'bounty-balance': '鋏(変異)',
+  'bounty-maiko': '舞妓(変異)',
 };
 
 /**

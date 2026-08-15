@@ -1,5 +1,55 @@
 # Development Log
 
+## v0.25.3432 — §6.38 v9(賞金首=完全コピー原則)B6仕上げバッチ【2026-08-15 11:50 JST】
+- PACING_PUZZLE.md §6.38 v9(社長裁定「城ボスを完全にコピー。変わるのは倒した時にゴールが
+  出ないところだけ」)の撤去リスト3点+横断洗い出しを実装。
+  1. **金リング標識を撤去**: `pixiScene.ts`のisBountyType描画ブロックから`NAMED_TINT`色の
+     足元リング(`o.ellipse(...).stroke(...)`)を削除。NAMED_TINT自体は宿敵ラベル等の他用途で
+     残置(import継続)。
+  2. **出現カットインを追加**: `src/data/bossCutin.ts`の`NAMED_BOSS_CUTIN_NAME`へ4種
+     (bounty-ranged=バス停(変異)/bounty-melee=馬乗り(変異)/bounty-balance=鋏(変異)/
+     bounty-maiko=舞妓(変異))を追加。`spawnBountyEncounter`(useGameLoop.ts)が
+     `bossCutinPayload(bType)`を城ボスと同じ`triggerAttention`経由で発火。
+  3. **出現演出=城ボスの魔法陣に統一**: 旧・起床演出(holo-circle・dormant解除時に700ms)を
+     撤去(`bountyTick.ts`の`bounty-wake` bossState/`BOUNTY_WAKE_FX_MS`を削除し、起床は
+     城ボスのdormantブロックと同じ`{ dormant:false, vx:0, vy:0, bossLeashSince:undefined }`の
+     即chaseへ統一)。代わりに`pixiScene.ts`に`drawBountySummonCircle`(castleSummonCircleと
+     同寸法カーブ・色・尺=1100ms)を新設し、`e.spawnedAt`基準(スポーン時刻)で描画。
+     `spawnBountyEncounter`側も城ボス出現(2632-2664行)と同じ並び
+     (バナー→スポーン→flash/ring×2/glow/burst→950ms後にアテンション+カットイン)へ揃えた
+     (`bountyAttnRef`を`castleAttnRef`と同型で新設)。慣性の絶対ルール=城ボスの既存ease/
+     フェードをそのまま流用(新しい曲線を発明していない)。
+     holo-circleテクスチャ自体はpixiTextures.tsに残置(他用途のため)。
+- **④残差分の横断洗い出し(grep: isBountyType全呼び出し箇所)**:
+  | 箇所 | 内容 | 判定 |
+  |---|---|---|
+  | gameStore.ts:3284/9593 | 討伐時に金箱(bounty-chest)を1個ドロップ | 意図的に残す差分①(ゴール無し=金箱)そのもの |
+  | gameStore.ts:9623 | 討伐時に取り巻き(bountyEscortId一致)も一緒に除去 | イベントの器の一部(既存B2b決定・城ボスに無い取り巻き機構自体が既存仕様) |
+  | gameStore.ts:10120/10195/10232 | 汎用AI(dormant/leash)から早期return=専用コントローラ(bountyTick.ts)へ委譲 | 意図的に残す差分④(リーシュ帰巣は専用実装・v6 A裁定済み) |
+  | bossEngagement.ts:46 / bossMarker.ts:29,45 | ENGAGEABLE集合には入るが矢印マーカーは専用距離ゲート1200px | 意図的に残す差分⑧(矢印1200pxは発見手段として維持=城マーカーとの二重表示回避) |
+  | bossPosture.ts:54 | bossPostureMax=90 | 意図的に残す差分⑦(体勢90) |
+  | bossPractice.ts:235 | 練習HP=BOUNTY_BASE_HP | イベントの器(掲載時のHP式・城ボスと数値体系が違うのは通常仕様) |
+  | bountyTick.ts:136 | 自然湧きの同時1体判定 | イベントの器(3:00/7:00湧き) |
+  | directorTick.ts:116 | enemyCap保護に含める | 城ボス(giantbat)も同じ行で保護済み=**差分ではなく同型** |
+  | directorTick.ts:971 | 距離リサイクル対象外の早期return | line 977の`isEngageableBoss`保護と結果同一の冗長分岐(害はないが未使用化=触らず現状維持) |
+  | enemyUtils.ts各所 | isBossType/isEliteType系への編入(v7で完了済み) | 既に城ボスと同じ扱いに統一済み(A-1〜A-6・確認のみ) |
+  - **上記以外に新規の視覚・挙動差分は見つからず**(v6/v7/F1-F3で既に社長裁定済みの構造差=
+    イベントの器の一部か、v9の明示的keep-listに該当するもののみ)。isScoreBoss除外/ghost系5系統
+    除外(v6 B-2)も「討伐してもゴールが出ない」に付随する既存決定と判断し、今回は対象外扱い。
+- **★未決事項: なし**(4点とも設計書どおりに実装完了。判断が要る新顔は見つからなかった)。
+- 変更ファイル: `src/pixi/pixiScene.ts`(金リング撤去/drawBountySummonCircle新設・
+  bountyWakeSprites→bountySummonSprites改名)/`src/hooks/useGameLoop.ts`
+  (spawnBountyEncounter=城ボス同型の演出+bountyAttnRef新設)/`src/data/bossCutin.ts`
+  (4種名前追加)/`src/utils/bountyTick.ts`(起床演出撤去)/`src/types/game.ts`
+  ('bounty-wake' bossState型を削除)/`src/pixi/pixiTextures.ts`(コメント更新のみ)/
+  `src/utils/bountyTick.test.ts`(BOUNTY_WAKE_FX_MS参照を更新)。
+- テスト: `bountyTick.test.ts`(52件)/`attentionCutin.test.ts`(10件)/`bossTest.test.ts`/
+  `bossPractice.test.ts`/`bossHints.test.ts`/`directorTick.test.ts`/`bountyEscortCleanup.test.ts`/
+  `enemyUtils.test.ts`=全緑(190件)。typecheck 0エラー・lint 0エラー(既存warning16件のみ・
+  無関係)。madge循環=1件(既存の`gameStore→ghostBuild→weaponUtils`のみ・本バッチの変更ファイルは
+  非関与=増加なし)。
+- 次: 社長の実機通しラン確認待ち(自然遭遇→スポーン演出→カットイン→交戦→討伐)。
+
 ## v0.25.3431 — POI検収(良・★確認1点)+慣性台帳の登録【2026-08-15 14:40 JST】
 - POIバッチ(v3430)検収: サークル=建物の手前(+Y)に重なりゼロ(幾何学的証明+4セクタ×3散らしの
   機械テスト137本緑)・スケール=城基準188へ統一・追随3箇所(描画/警察アリーナ/ボット)。

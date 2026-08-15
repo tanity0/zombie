@@ -546,7 +546,8 @@ export const ensureTextures = (): Promise<void> => {
       // グレネード弾(社長支給ドット素材v0.25.3290・56×56)。手榴弾+グレネードガン(武器庫限定)の弾。
       { name: 'fx/grenade-ball', scaleMode: 'nearest' as const },
       // 魔法陣ホログラム(社長支給v0.25.3338・紫マゼンタ・304×264/コマ)。3アニメ:
-      // holo-circle 0-7=出現魔法陣(賞金首出現/warp着地/volleyの構え/異常動作・用途は§7裁定待ち)
+      // holo-circle 0-7=出現魔法陣(warp着地/volleyの構え/異常動作・用途は§7裁定待ち。
+      // §6.38 v9で賞金首の起床演出からは撤去=現在は他用途のため予約のみ・未使用でも登録は残す)
       // holo-scan   0-6=分析画面(ボスに半透明で被せるスキャン演出)
       // holo-mini   0-5=簡易出現(召喚・設置・瞬間移動ワープ等の頻用軽量枠・社長指示)
       ...Array.from({ length: 8 }, (_, i) => ({ name: `fx/holo-circle-${i}`, scaleMode: 'nearest' as const })),

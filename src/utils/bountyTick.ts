@@ -79,8 +79,6 @@ export const bountyMaxHealth = (area: number, gameTimeMs: number): number =>
 export const BOUNTY_LINGER_MS = 60000;
 /** 交戦の定義(v6 B「純関数化」)のうち「直近○秒以内に被弾」の窓。壁時計(enemy.lastHit=Date.now()基準)。 */
 export const BOUNTY_HIT_ENGAGE_MS = 3000;
-/** 起床演出(holo-circle 1周)の長さ。v2 C裁定の「約700ms」。 */
-export const BOUNTY_WAKE_FX_MS = 700;
 /** §6.38 B1.5-7: 手写しをやめEVENT_BANNER_MS(directorTick.ts)を直接参照する(値の出どころを1つに保つ)。
  * B1.5-5: 出現バナー「賞金首出現」はスポーン時(useGameLoop.ts)へ移設=ここでは退場バナーだけが使う。 */
 export const BOUNTY_DEPART_BANNER_MS = EVENT_BANNER_MS;
@@ -1099,7 +1097,8 @@ const tickMaiko = (
 /**
  * 賞金首1体を1tick進める。B1の状態(休眠/追跡/帰巣)に加え、B2a/B2bで4体全ての技を追加した。
  * §6.38 B1.5-5: 出現告知(triggerAttention+バナー「賞金首出現」+SE)はスポーン時(呼び出し側=
- * useGameLoop.ts)へ移設した。ここで残すのは**起床演出(holo-circle)の起点**のみ(見た目だけの合図)。
+ * useGameLoop.ts)へ移設した。§6.38 v9で起床演出(holo-circle)も撤去=起床は城ボスと同じ
+ * 「即chase」(見た目の合図はスポーン時の魔法陣だけ)。
  */
 export const runBountyTick = (
   bounty: Enemy,
@@ -1123,11 +1122,13 @@ export const runBountyTick = (
     resetBountyRunState(s);
     const ar = bounty.aggroRange ?? BOUNTY_AGGRO_RANGE_DEFAULT;
     if (dist <= ar) {
-      // 起床(§2「dormant→交戦」): holo-circleの起点だけ立てる(実際の見た目=pixiSceneが
-      // bossState==='bounty-wake'を読んで描く。判定はテスト対象外=描画側の掟どおり)。
+      // §6.38 v9(完全コピー原則): 起床演出(holo-circle)は撤去。城ボス(gameStore.ts dormantブロック
+      // `{ ...enemy, dormant: false, vx: 0, vy: 0, bossLeashSince: undefined }`)と全く同じ
+      // 「起きたら即chase」に揃える。見た目の合図はスポーン時の魔法陣(pixiScene)だけに一本化する。
       patch.dormant = false;
-      patch.bossState = 'bounty-wake';
-      patch.bossStateUntil = newGameTime + BOUNTY_WAKE_FX_MS;
+      patch.vx = 0;
+      patch.vy = 0;
+      patch.bossLeashSince = undefined;
       patch.bountyLastEngagedAt = newGameTime;
       patch.bountyDepartAt = undefined;
       applyPatch(bounty.id, patch);
@@ -1180,12 +1181,6 @@ export const runBountyTick = (
     return;
   }
 
-  // ---- 起きている: bounty-wake演出の終了 ----------------------------------------------------
-  if (bounty.bossState === 'bounty-wake' && newGameTime >= (bounty.bossStateUntil ?? 0)) {
-    patch.bossState = undefined;
-    patch.bossStateUntil = undefined;
-  }
-
   // ---- カウンター(W7: windup中/硬直中の接触=可。v3128の掟=成立で技中断+chase復帰) -----------------
   const stNow = patch.bossState !== undefined ? patch.bossState : (bounty.bossState ?? 'chase');
   const counterableNow = counterEnabled
@@ -1212,8 +1207,8 @@ export const runBountyTick = (
   }
 
   if (!countered && !engaged) {
-    // v6 A-3: bossStateが技実行中(=bounty-wake以外の何か)なら待機化を満了まで延期。
-    const midMove = (patch.bossState ?? bounty.bossState) !== undefined && (patch.bossState ?? bounty.bossState) !== 'bounty-wake' && (patch.bossState ?? bounty.bossState) !== 'chase';
+    // v6 A-3: bossStateが技実行中なら待機化を満了まで延期。
+    const midMove = (patch.bossState ?? bounty.bossState) !== undefined && (patch.bossState ?? bounty.bossState) !== 'chase';
     const grace = advanceBossDisengageGrace(true, bounty.bossLeashSince, newGameTime);
     if (grace.since !== bounty.bossLeashSince) patch.bossLeashSince = grace.since;
     if (grace.ready && !midMove) {

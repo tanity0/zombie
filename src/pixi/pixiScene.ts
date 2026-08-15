@@ -140,7 +140,7 @@ const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(巨大ボス遠
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType } from '../utils/enemyUtils';
 import {
-  BOUNTY_WAKE_FX_MS, BOUNTY_DEPART_FADE_MS,
+  BOUNTY_DEPART_FADE_MS,
   BR_PUSH_WINDUP_MS, BR_PUSH_HALFWIDTH, BR_SHOT_INTERVAL_MS, BR_SHOT_RECOIL_VIS_MS,
   BM_COMBO_WINDUP_MS, BM_COMBO_HALFWIDTH, BM_SNIPE_WINDUP_MS, BM_SNIPE_ACTIVE_MS, BM_SNIPE_HALFWIDTH,
   // §6.38 B2b: 鋏(bounty-balance)/舞妓(bounty-maiko)の技の寸法・タイミング。
@@ -2609,6 +2609,9 @@ const bossPositionAlpha = (a: number): number => Math.max(BOSS_MIN_VISIBLE_ALPHA
 // 距離アンカーは近接攻撃距離(gameStore の MELEE_RADIUS=74)に合わせた視覚用の複製値(描画は
 // ゲーム定数へ結合させない方針)。当たり判定/近接判定は不変=見た目の下限だけを足す。
 const BOSS_BEHIND_MELEE_PX = 74;
+// PACING_PUZZLE.md §6.38 v9(完全コピー原則): 賞金首の出現魔法陣の尺。城ボスのcastleSummonCircle
+// (syncCastle内SUMMON_MS)と同じ1100ms=「同じ機構」(値の出どころを分けない)。
+const BOUNTY_SUMMON_MS = 1100;
 // v0.25.2615: 「裏回り透け」を掛けてよい絵の大きさの判定は renderSpec.ts の純関数
 // (bossBehindFadeApplies)へ集約した。理由・実測値・閾値の根拠はそちらのコメントを参照。
 const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社長指示)。足元アンカーで上方向に拡大。
@@ -3100,8 +3103,10 @@ export class PixiScene {
   private holoScanSprites = new Map<string, Sprite>();   // 弾発射(volley)構え: 本体に半透明で被せる
   private holoMiniSprites = new Map<string, Sprite>();   // ワープ(warp)構え: 足元
   private angelEyeSprites = new Map<string, Sprite>();   // 単眼の凝視(gaze)構え: 頭上〜中心
-  // PACING_PUZZLE.md §6.38 B1(賞金首): 起床演出(holo-circle・全8コマ)。足元に1周(約700ms)。
-  private bountyWakeSprites = new Map<string, Sprite>();
+  // PACING_PUZZLE.md §6.38 v9(完全コピー原則): 出現演出=城ボスのcastleSummonCircleと同じ
+  // 魔法陣(拡大しながらフェードアウト・SUMMON_MS)。個体ごとに1枚のpooled sprite(id keyed)。
+  // 旧・起床演出(holo-circle・dormant解除時)は撤去=スポーン時のこの1本だけに一本化した。
+  private bountySummonSprites = new Map<string, Sprite>();
   // §6.38 B2b(持ち越し①・社長指摘「武器1本使い回し=判定が正しくても絵が出ていなければ未達」):
   // 賞金首4体の武器スプライト(バス停=標識/馬乗り=鞭/鋏=裁ち鋏/舞妓=毬)。boss.idごとに1枚のpooled
   // sprite=全技この1本を使い回す(§6.38武器素材台帳の原則どおり)。位置/角度/表示のON-OFFは
@@ -11707,8 +11712,8 @@ export class PixiScene {
         // 他のゲート2ボス専用スプライト(jibrilLanternSprites等・上のブロック)と同じく、退場・討伐の
         // 両方でここ(mark-and-sweep)を通るのに、賞金首の3プールだけ元々このループに入っていなかった
         // =討伐後も最後のフレームの表示状態(visible/位置)のまま残り続けていた欠落。
-        const bountyWakeSp = this.bountyWakeSprites.get(id);
-        if (bountyWakeSp) { bountyWakeSp.destroy(); this.bountyWakeSprites.delete(id); }
+        const bountySummonSp = this.bountySummonSprites.get(id);
+        if (bountySummonSp) { bountySummonSp.destroy(); this.bountySummonSprites.delete(id); }
         const bountyWeaponSp = this.bountyWeaponSprites.get(id);
         if (bountyWeaponSp) { bountyWeaponSp.destroy(); this.bountyWeaponSprites.delete(id); }
         const bountyWhipSp = this.bountyWhipSmearSprites.get(id);
@@ -13755,13 +13760,13 @@ export class PixiScene {
       const eyeSp = this.angelEyeSprites.get(e.id);
       if (eyeSp) eyeSp.visible = false;
     }
-    // §6.38 B1/B2b(賞金首): 起床演出+武器スプライト+鞭スミアも同じ作法で既定OFF。
+    // §6.38 B1/B2b(賞金首): 出現魔法陣+武器スプライト+鞭スミアも同じ作法で既定OFF。
     // ★v0.25.3383のバグ修正: この一群は元々isGate2AngelBoss(e.type)ブロックの中に置かれていたため、
-    // 賞金首(ゲート2天使ではない)には一度も適用されていなかった(=bounty-wake演出の輪が技終了後も
+    // 賞金首(ゲート2天使ではない)には一度も適用されていなかった(=絵が技終了後も
     // 消えずに残り続ける未発見バグ。社長指摘「絵が消えない/出ない」の類例として発見時に併修)。
     if (isBountyType(e.type)) {
-      const bountyWakeSp = this.bountyWakeSprites.get(e.id);
-      if (bountyWakeSp) bountyWakeSp.visible = false;
+      const bountySummonSp = this.bountySummonSprites.get(e.id);
+      if (bountySummonSp) bountySummonSp.visible = false;
       const weaponSp = this.bountyWeaponSprites.get(e.id);
       if (weaponSp) weaponSp.visible = false;
       const smearSp = this.bountyWhipSmearSprites.get(e.id);
@@ -14315,18 +14320,18 @@ export class PixiScene {
     // try/catch で包む**前**に必ず1回呼ぶ構造にして、本体側で例外が出ても既定OFFだけは
     // 必ず今フレーム分が反映されるようにした(残留描画の再発防止・詳細はそのメソッドのコメント)。
     const o = view.tele;
-    // PACING_PUZZLE.md §6.38 B1(賞金首): 足元の金リング標識(v6 D-4「isNamedを立てずに絵だけ流用」=
-    // NAMED_TINTの色定数参照のみ。半径=体格幅×1.1)+起床演出(holo-circle・v2 C裁定)。判定はテスト対象外。
+    // PACING_PUZZLE.md §6.38 v9(完全コピー原則): 足元の金リング標識(旧v6 D-4)は撤去
+    // (城ボスに無い差分=「謎の黄色いサークル」の正体)。旧・起床演出(holo-circle・dormant解除時)
+    // も撤去し、出現演出は城ボスのcastleSummonCircleと同じ魔法陣(拡大しながらフェードアウト)
+    // へ統一。トリガーはスポーン時刻(e.spawnedAt)基準=起床(dormant解除)時ではない。
     if (isBountyType(e.type)) {
       const bFootX = cx, bFootY = e.y + e.height;
-      const bR = Math.max(e.width, e.height) * 1.1;
-      const bDepAlpha = e.bountyDepartAt !== undefined
-        ? Math.max(0, 1 - (gameTime - e.bountyDepartAt) / BOUNTY_DEPART_FADE_MS)
-        : 1;
-      o.ellipse(bFootX, bFootY, bR, bR).stroke({ width: 2.5, color: NAMED_TINT, alpha: 0.85 * bDepAlpha });
-      if (e.bossState === 'bounty-wake') {
-        const bProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BOUNTY_WAKE_FX_MS));
-        this.drawBountyWakeCircle(e.id, bFootX, bFootY, bR * 2, bProg, 0.9);
+      const bSummonT = e.spawnedAt !== undefined ? (gameTime - e.spawnedAt) / BOUNTY_SUMMON_MS : 1;
+      if (bSummonT >= 0 && bSummonT < 1) {
+        this.drawBountySummonCircle(e.id, bFootX, bFootY, bSummonT, this.depthScaleEnemy(fb.footY));
+      } else {
+        const sp = this.bountySummonSprites.get(e.id);
+        if (sp) sp.visible = false;
       }
     }
     // PACING_PUZZLE.md §6.38 B2(バス停/馬乗り/鋏/舞妓)の技。判定と同じ2点(aiFromX/Y→aiTargetX/Y・
@@ -21900,21 +21905,24 @@ export class PixiScene {
     sp.visible = true;
   }
 
-  // PACING_PUZZLE.md §6.38 B1(賞金首): 起床(dormant→交戦)演出=出現魔法陣(holo-circle・全8コマ)を
-  // 足元に1周(BOUNTY_WAKE_FX_MS)。holo-mini(ワープ)と同じ「windup尺で1周」の作法。
-  private drawBountyWakeCircle(id: string, footX: number, footY: number, widthPx: number, prog: number, alpha: number) {
-    const frame = Math.max(0, Math.min(7, Math.floor(prog * 8)));
-    const tex = getTexture(`fx/holo-circle-${frame}`);
+  // PACING_PUZZLE.md §6.38 v9(完全コピー原則): 賞金首の出現魔法陣=城ボスのcastleSummonCircle
+  // (syncCastle内)と同じ機構(拡大しながらフェードアウト・ゆっくり回転)。個体ごとに1枚のpooled
+  // sprite。t=0..1(スポーンからの経過/BOUNTY_SUMMON_MS)、d=depthScaleEnemy(足元の遠近スケール)。
+  // サイズ・色・カーブは城ボスの値をそのまま流用する(「同じ機構」=新しい数字を発明しない)。
+  private drawBountySummonCircle(id: string, footX: number, footY: number, t: number, d: number) {
+    const tex = getTexture('magic-circle');
     if (!tex) return;
-    let sp = this.bountyWakeSprites.get(id);
+    let sp = this.bountySummonSprites.get(id);
     if (!sp) {
-      sp = new Sprite(tex); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
-      this.L.effectLayer.addChild(sp); this.bountyWakeSprites.set(id, sp);
+      sp = new Sprite(tex); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add'; sp.tint = 0xfca5a5;
+      this.L.effectLayer.addChild(sp); this.bountySummonSprites.set(id, sp);
     }
     if (sp.texture !== tex) sp.texture = tex;
-    sp.scale.set(widthPx / Math.max(1, tex.width));
+    const size = (160 + 120 * t) * d; // 城ボスのcastleSummonCircleと同じ寸法カーブ
     sp.position.set(footX, footY);
-    sp.alpha = alpha;
+    sp.width = sp.height = size;
+    sp.alpha = (1 - t) * 0.95;
+    sp.rotation = t * 1.2;
     sp.visible = true;
   }
 
@@ -23218,7 +23226,7 @@ export class PixiScene {
     for (const o of this.holoScanSprites.values()) o.destroy();
     for (const o of this.holoMiniSprites.values()) o.destroy();
     for (const o of this.angelEyeSprites.values()) o.destroy();
-    for (const o of this.bountyWakeSprites.values()) o.destroy();
+    for (const o of this.bountySummonSprites.values()) o.destroy();
     for (const o of this.bountyWeaponSprites.values()) o.destroy();
     for (const o of this.bountyWhipSmearSprites.values()) o.destroy();
     for (const p of this.petalPool) p.sp.destroy();

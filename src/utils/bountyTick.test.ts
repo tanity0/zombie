@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   bountyEngagedNow, bountyLingerExpired, bountySpawnBlocked, pickActiveBounty, bountyMaxHealth,
   runBountyTick, createBountyTickState, anyBountyEngaged, bountyNaturalSpawnReady,
-  BOUNTY_LINGER_MS, BOUNTY_HIT_ENGAGE_MS, BOUNTY_BASE_HP, BOUNTY_DEPART_FADE_MS, BOUNTY_WAKE_FX_MS,
+  BOUNTY_LINGER_MS, BOUNTY_HIT_ENGAGE_MS, BOUNTY_BASE_HP, BOUNTY_DEPART_FADE_MS,
   BOUNTY_NATURAL_FIRST_MS, BOUNTY_NATURAL_MAX_COUNT, BOUNTY_NATURAL_SPAWN_AT_MS,
   BR_ESCORT_COUNT as BR_ESCORT_COUNT_FOR_TEST,
   MK_REPOSE_MS, MK_SUIU_RADIUS, MK_SUIU_HOP_INTERVAL_CHOICES, MK_SUIU_HOP_TRAVEL_MS,
@@ -243,7 +243,7 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
     // 起床させて追跡させる(=通常は毎tick位置が動く状態を作る)。
     useGameStore.setState(s => ({ player: { ...s.player, x: 50000 + 100, y: 50000 } }));
     step(16); // 起床
-    step(16); // 追跡へ移行(bounty-wake演出はまだ残るが、フリーズ確認には無関係)
+    step(16); // 追跡へ移行(§6.38 v9で起床即chase=既に追跡中)
     const before = useGameStore.getState().enemies.find(e => e.id === id)!;
     expect(before.dormant).toBe(false);
     // 紫(完全気絶)を発生させる: bossFullStunUntil/stunUntilを現在gameTimeより先に設定
@@ -285,8 +285,7 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
     useGameStore.setState(s => ({ player: { ...s.player, x: 50000 + 100, y: 50000 } }));
     step(16); // 起床
     expect(useGameStore.getState().enemies.find(e => e.id === id)?.dormant).toBe(false);
-    // 起床演出(bounty-wake)を終わらせてからプレイヤーを大きく離す(リーシュ半径700pxの外)。
-    step(BOUNTY_WAKE_FX_MS + 16);
+    // §6.38 v9で起床演出は撤去=即chase。ここでプレイヤーを大きく離す(リーシュ半径700pxの外)。
     useGameStore.setState(s => ({ player: { ...s.player, x: 50000 + 5000, y: 50000 } }));
     // 猶予(1.2秒)+帰巣移動が完了するまで刻む(帰巣速度はBOSS_LEASH_RETURN_SPEED_MULT×speed)。
     for (let i = 0; i < 2000; i++) {

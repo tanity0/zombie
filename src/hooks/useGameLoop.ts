@@ -1541,6 +1541,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
   const castleAttnRef = useRef<{ at: number; x: number; y: number }>({ at: 0, x: 0, y: 0 });
+  // §6.38 v9(完全コピー原則): 賞金首も城ボスと同じ「出現エフェクトが消えてからカメラアテンション
+  // +カットイン」の並びにする(castleAttnRefと同型。null=予約なし)。
+  const bountyAttnRef = useRef<{ at: number; x: number; y: number; cutin: ReturnType<typeof bossCutinPayload> } | null>(null);
   // §6.36(監査指摘1): カットイン付きattentionの保留箱。素のattention(ハンター/救援/死神等)が
   // 生きている間にボスが出ると、first-winsで後着のカットインが丸ごと消える(=「毎回出す」違反+
   // 出現アテンション自体の退行)。attention生存中は発火せずここへ置き、空いた最初のフレームで撃つ。
@@ -3861,7 +3864,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // §6.38 B4: 賞金首(BOUNTY)の出現位置・演出を、デバッグ経路(`?bountynow=1`)と自然湧きの
         // 両方から共用する唯一の関数(二重実装しない)。中身は旧デバッグ経路の実装をそのまま関数化した
         // だけ(§2「告知」=RESCUE式の距離700〜1000px+アテンション+紫サークル相当の出現バナー)。
+        // §6.38 v9(完全コピー原則): 出現の並びを城ボス(2632-2664行)と揃える——
+        // バナー→スポーン+魔法陣ほかの演出(城ボスと同じ機構)→エフェクトが落ち着いてからアテンション
+        // +カットイン(下のディスパッチャが発火)。「パッと出さない」=城ボスが既に持つease/フェードを
+        // そのまま流用する(慣性の絶対ルール)。
         const spawnBountyEncounter = (bType: EnemyType, atGameTime: number): void => {
+          useGameStore.setState({ eventBannerText: '賞金首出現', eventBannerUntil: atGameTime + BOUNTY_APPEAR_BANNER_MS });
           const pcx1 = player.x + player.width / 2, pcy1 = player.y + player.height / 2;
           const bAng = Math.random() * Math.PI * 2;
           const bDist = 700 + Math.random() * 300; // 絶対700〜1000px(§2)
@@ -3884,11 +3892,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 同時1体まで(§2)=既存の賞金首を消してから出す(idolの複数体対策と同じ作法)。
           useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => !isBountyType(e.type)) }));
           addEnemy(bountyE);
-          // B1.5-5(v2 C仕様): 出現告知3点はスポーン時に発火する(起床時ではない)。カットインは無し。
-          playSfx('boss-appear');
-          useGameStore.getState().triggerAttention(bx0, by0);
-          useGameStore.setState({ eventBannerText: '賞金首出現', eventBannerUntil: atGameTime + BOUNTY_APPEAR_BANNER_MS });
+          // 出現演出=城ボスと同じ機構(魔法陣はpixiSceneがe.spawnedAt基準で描く。フラッシュ/リング/
+          // グロウ/バーストは城ボス出現(2648-2652行)と同じ色・尺をそのまま流用=「同じ機構」)。
+          spawnFlash('rgba(127,29,29,0.28)', 420);
+          spawnRing(bx0, by0, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
+          spawnRing(bx0, by0, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
+          useGameStore.getState().spawnGlow(bx0, by0, GLOW_R_XXL, 'rgba(239,68,68,', 900);
+          spawnBurst(bx0, by0 + 20, '#7f1d1d', 28);
+          // アテンション+カットインは出現エフェクトが消えてから(城ボスと同じ950ms・下のディスパッチャが発火)。
+          bountyAttnRef.current = { at: atGameTime + 950, x: bx0, y: by0, cutin: bossCutinPayload(bType) };
         };
+        // 賞金首の遅延アテンション発火(出現演出が落ち着いてからカメラを寄せる。城ボスと同じ並び)。
+        if (bountyAttnRef.current && newGameTime >= bountyAttnRef.current.at && !useGameStore.getState().attention) {
+          const { x, y, cutin } = bountyAttnRef.current;
+          bountyAttnRef.current = null;
+          useGameStore.getState().triggerAttention(x, y, cutin);
+          playSfx('boss-appear');
+        }
 
         // --- 賞金首(BOUNTY)自然湧き(§6.38 §2「頻度」・v2 F・B4) ---------------------------------
         // イベントproducer(eventGateOk相当)への相乗り=抑止ゲート(bountySpawnBlocked)+緩コマ不可

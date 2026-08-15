@@ -742,8 +742,6 @@ export interface Enemy {
     | 'idol-snipe-windup' | 'idol-snipe' | 'idol-snipe-recover'
     | 'idol-orb-windup' | 'idol-orb-recover'
     | 'idol-rest'
-    // PACING_PUZZLE.md §6.38(賞金首・B1): 起床演出(holo-circle 1周)の間だけ立つ。技は無い(B2で追加)。
-    | 'bounty-wake'
     // PACING_PUZZLE.md §6.38 B2: バス停(変異・bounty-ranged)の技。
     // laser-windup/laser-fire/laser-recover/laser-broken は usesMimirLaser 経由でミーミルと共有
     // (§6.38 B0のLASER-TRACK一般化。同じ状態名を使うことでgameStore側の中断/描画が両者へ自動で効く)。

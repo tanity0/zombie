@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3432',
+    items: [
+      '賞金首の出現が城ボスと同じ演出(カットイン+魔法陣)になり、足元の金の輪を廃止しました。',
+    ],
+  },
+  {
     version: '0.25.3431',
     items: [
       'ゲーム内容の変更はありません(POI修正の検収記録と、慣性違反の洗い出し台帳の登録)。',
