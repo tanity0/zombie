@@ -581,6 +581,11 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/whip-smear-0', scaleMode: 'nearest' as const },
       { name: 'fx/whip-smear-1', scaleMode: 'nearest' as const },
       { name: 'fx/whip-smear-2', scaleMode: 'nearest' as const },
+      // 鋏の交差閃3コマ(社長支給・v0.25.3422で取り込み漏れを回収・各304×264・X字の二重閃)。
+      // 鋏(変異)の薙ぎ・跳びかかり命中用(§6.38発注リスト⑤)。0=小→2=大の順。
+      { name: 'fx/scissor-x-0', scaleMode: 'nearest' as const },
+      { name: 'fx/scissor-x-1', scaleMode: 'nearest' as const },
+      { name: 'fx/scissor-x-2', scaleMode: 'nearest' as const },
       // 鋏の交差閃3コマ(社長支給v0.25.3375・各304×264・赤)。鋏(変異)の薙ぎ・跳びかかり命中:
       // 0=二筋の走り → 1=X交差 → 2=Xバースト(§6.38発注リスト⑤=これで発注素材オール受領)。
       { name: 'fx/scissor-x-0', scaleMode: 'nearest' as const },

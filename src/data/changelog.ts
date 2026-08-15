@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3422',
+    items: [
+      'ゲーム内容の変更はありません(鋏(変異)の命中エフェクト素材3コマを取り込みました。表示への配線は次バッチ)。',
+    ],
+  },
+  {
     version: '0.25.3421',
     items: [
       'ゲーム内容の変更はありません(中盤イベントの時間表を設計書に正本として固定)。',
