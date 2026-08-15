@@ -1174,6 +1174,27 @@ const SKATEBOARD_BASH_RANGE = 140;      // ヒット時バッシュの範囲(半
 // After being shoved by a melee counter, an enemy is immune to further melee
 // knockback for this long (damage still lands) so it can't be locked forever.
 export const KNOCKBACK_IMMUNE_MS = 1750;
+// 社長報告v0.25.3474「自動タレット/tier3サブマシンガンの連射でボスが完全に動けなくなる」対策。
+// 汎用の弾ノックバック(knockbackEnemy)はこれまでボス/CDの区別なく毎発 knockbackUntil を
+// 書き直しており、KNOCKBACK_DURATION(280ms)より短い間隔で連射されると knockbackUntil が
+// 途切れず、bountyTick.isFrozen()等の「止まっているか」判定が永久にtrueのままになって
+// ボスが完全に止まる=ハメになっていた。ボス系(isBossType)だけ、この既存の
+// knockbackImmuneUntil の仕組み(KNOCKBACK_IMMUNE_MSと同じ流用)でCDを掛け、CD中は
+// 「止め」(knockbackUntil更新)を出さない。被弾の揺れ/フラッシュはdamageEnemy側のlastHitが
+// 別に出すのでCD中も止まらない(社長指示「揺れはするけど止まらない時間」)。
+// 通常敵は現状維持(CD無し=手応えは意図的に強い仕様・不変)。1200msは叩き台の値(社長指示)で、
+// KNOCKBACK_DURATION(280ms)ぶん止めた後、次の「止め」まで920msの猶予を与える。
+export const BOSS_KNOCKBACK_STOP_IMMUNE_MS = 1200;
+
+/**
+ * 「止める」効果(ノックバックでその場に留める=knockbackUntilを進める)を今適用してよいか。
+ * ボス系(isBossType)だけ knockbackImmuneUntil のCDを見る。通常敵は常にtrue(不変)。
+ * knockbackEnemy(汎用の弾ノックバック入口)がこれを通す=呼び出し元を1本にまとめる。
+ */
+export const canApplyKnockbackStop = (
+  enemy: Pick<Enemy, 'type' | 'knockbackImmuneUntil'>,
+  now: number,
+): boolean => !isBossType(enemy.type) || now >= (enemy.knockbackImmuneUntil ?? 0);
 export const REFLECT_DAMAGE_MULTIPLIER = 10.0; // countered/reflected bullets hit 10× harder(社長指示で60→10)
 export const REFLECT_SPEED_MULTIPLIER = 2.0; // カウンター反射弾の速度倍率(社長指示v0.25.1731で1.8→2.0)
 
@@ -12627,13 +12648,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       // KILL吹き飛び(死体・§26-2): 死体の飛び方はKILL時に1回だけ決める(buildCorpseFromKill)。
       // 他の全ノックバック発生源(反射神経/救急鞄/ドッグ/しかりの汎用この関数の全呼び出し元)から
       // 死体を除外し、死体自身の吹き飛びを上書きさせない。
+      // v0.25.3476: ボス系だけ canApplyKnockbackStop でCD判定(社長報告「自動タレット/tier3
+      // サブマシンガン連射でボスが完全に動けなくなる」対策=この入口1本に集約)。CD中は
+      // 「止め」(knockbackVx/Vy/knockbackUntil)を書かない=揺れ(lastHit由来)は damageEnemy 側で
+      // 別に出るので止まらない。通常敵はCD無しで従来どおり(不変)。
       enemies: state.enemies.map(e =>
-        (e.id === id && !isCorpse(e))
+        (e.id === id && !isCorpse(e) && canApplyKnockbackStop(e, now))
           ? {
               ...e,
               knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength,
               knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength,
-              knockbackUntil: now + KNOCKBACK_DURATION
+              knockbackUntil: now + KNOCKBACK_DURATION,
+              ...(isBossType(e.type) ? { knockbackImmuneUntil: now + BOSS_KNOCKBACK_STOP_IMMUNE_MS } : {}),
             }
           : e
       )

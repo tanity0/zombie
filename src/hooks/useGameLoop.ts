@@ -4913,7 +4913,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 溜め1〜2秒の弾技(aim-burst/aim-radial)が一度も発射へ到達しなかった
               // (「SEは鳴ってるのに一切弾を打たない」の正体)。紫(完全気絶)/ワープの完全停止は従来どおり。
               const rootedNow = boss.rootUntil !== undefined && newGameTime < boss.rootUntil;
-              const frozen = warping || bossFullStun;
+              // v0.25.3476(社長確定指示「ノックバックしたら技は中断」・方針1採用): 気絶(stunUntil)・
+              // 浮き(liftUntil)・ノックバック(knockbackUntil)で止められている間も、紫(bossFullStun)
+              // と同じく技を中断してchaseへ戻す(bountyTick.tsのisFrozenと同じ4条件の並びへ揃える)。
+              // liftUntil/knockbackUntilはDate.now基準(bountyTick.tsの注記と同じ)。
+              // stunUntilは直下のコメントの通り現状ほぼ常にbossFullStunUntilと同時に立つため実質no-op
+              // だが、致命ダゼ(applyBrokenMeleeFatal)等の単独ケースに備えて明示的に含める。
+              // ★rootUntil(拘束)だけはこの4条件から意図的に外している: v0.25.3202社長裁定
+              // 「行動を止められるのはいいんだが、技は止まらない」でマークスマン自動トラップの
+              // 継続的な拘束が裏ボスの溜め技(aim-burst/aim-radial)を一度も発射させない事故
+              // (「SEは鳴ってるのに一切弾を打たない」)を直した経緯がある。自動トラップはCDの概念が
+              // 無く毎フレーム再発火しうるため、rootを技中断に含めると同じ事故が戻る。今回のCD修正
+              // (BOSS_KNOCKBACK_STOP_IMMUNE_MS)はノックバック側だけの対策で拘束には及ばない=
+              // rootを含めるのは今回の指示と past decision が食い違う。要相談(最終報告に明記)。
+              const stunnedNow = boss.stunUntil !== undefined && newGameTime < boss.stunUntil;
+              const liftedNow = boss.liftUntil !== undefined && Date.now() < boss.liftUntil;
+              const kbStoppedNow = boss.knockbackUntil !== undefined && Date.now() < boss.knockbackUntil;
+              const frozen = warping || bossFullStun || stunnedNow || liftedNow || kbStoppedNow;
               // v0.25.2895: 気絶中の歩行半減(旧walkMult/BOSS_STUN_SPEED_MULT)は死コードだったため削除。
               // 通常気絶(stunUntil)がボスに入る経路は既にbossSlowUntilへ置き換え済みで、唯一stunUntilを
               // 立てていた紫(完全気絶)はこの上のfrozenで先に全停止する——結果walkMultは常に1で、

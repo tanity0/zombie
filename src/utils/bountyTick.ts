@@ -265,6 +265,23 @@ const resetBrShotCycle = (s: BountyTickState): void => {
   s.brCycleEndAt = 0;
 };
 
+/**
+ * 進行中の技を中断してchaseへ戻す時の個体一時状態リセット(社長確定指示v0.25.3476
+ * 「ノックバックしたら技は中断」=方針1採用)。フルスタン(紫)と、気絶/拘束/浮き/ノックバック
+ * (isFrozen)の両方から呼ぶ——**どちらも「止められたら技を続けない」の同じ扱いに揃える**
+ * (旧実装はisFrozen側だけサイクルを持ち越していたが、それをやめる)。
+ * 溜め・残段・焼き付けたサイクル状態(バス停の射撃サイクル/馬乗りの3段コンボ/馬乗りの360度
+ * ムチ振り単発フラグ/舞妓の毬回し踏み込みの焼き付け)だけを捨てる。escortsSummoned等の
+ * 「1回だけ」フラグや aimVX/farMs/suiuHopIdx 等の間合い管理はここでは触らない
+ * (resetBountyRunStateより狭い=dormant/リーシュ帰巣専用のフルリセットとは別物)。
+ */
+const cancelBountyTechnique = (s: BountyTickState): void => {
+  s.comboStep = 0;
+  s.spinKey = 0; s.spinX0 = 0; s.spinY0 = 0; s.spinUx = 0; s.spinUy = 0;
+  s.whip360Hit = false;
+  resetBrShotCycle(s);
+};
+
 // ---- カウンター(全4体で共通の1本。W7=windup中/硬直中の接触=可) --------------------------------
 // レーザー('laser-*')はここに含めない: v0.25.2961裁定どおり紫=カウンター不可(近接中断は
 // mimirLaserBreakOnMeleeHitが別枠で処理する専用の「弱点を突いて壊す」機構=標準カウンターとは別物)。
@@ -1348,8 +1365,7 @@ export const runBountyTick = (
   // B1.5-2の掟のまま)。
   const fullStunNow = bounty.bossFullStunUntil !== undefined && newGameTime < bounty.bossFullStunUntil;
   if (fullStunNow) {
-    s.comboStep = 0; // 馬乗り3段コンボの進行も中断(=次にchaseへ戻ってからcomboStep=1で仕切り直す)
-    resetBrShotCycle(s); // §6.38 v10 #7: フルスタンからのchase復帰=バス停の射撃サイクルをクリア
+    cancelBountyTechnique(s); // 馬乗り3段コンボ/360度ムチ振り/舞妓の焼き付け/バス停射撃サイクルを中断
     applyPatch(bounty.id, {
       bossState: 'chase',
       bossStateUntil: undefined,
@@ -1360,16 +1376,23 @@ export const runBountyTick = (
   }
 
   // ---- 気絶・拘束・浮き・ノックバックのガード(B1.5-2・致命) ------------------------------------
-  // 座標もbossStateも一切書かない(カウンターのノックバック座標を上書きしない)。交戦中とみなして
-  // 滞在タイマーだけ更新する(戦っている最中に消えない=既存の「戦闘中リセット」と同じ扱い)。
+  // 社長確定指示v0.25.3476「ノックバックしたら技は中断」: フルスタン(紫)と同じ扱いに統一。
+  // x/yやknockbackVx/Vy等の座標系は一切書かない(カウンターのノックバック座標を上書きしない=
+  // B1.5-2の掟のまま)が、bossState/bossStateUntil/bossNextActionAtは毎フレーム'chase'へ押し出し
+  // 続ける(fullStunNowと同型)。理由もfullStunNowと同じ: ①進行中の予告/技がその場で消える
+  // (latchFxが最後まで描き切って消える=固まったまま残らない) ②解除された瞬間に真新しい
+  // bossNextActionAtから再開できる(まとめ撃ち・stale windup事故を防ぐ)。
+  // 旧実装(#7)は「サイクル自体は捨てず次弾時刻だけ押し出す」だったが、技を中断する以上サイクルも
+  // 一緒に捨てる=cancelBountyTechniqueに統一(bounty-rangedだけ別出口だったbossNextActionAtの
+  // 個別上書きも不要になった)。
   if (isFrozen(bounty, newGameTime, nowMs)) {
-    const frozenPatch: Partial<Enemy> = { bountyLastEngagedAt: newGameTime };
-    // §6.38 v10 #7「isFrozen中は時刻を進めず、解除時に次弾をnow+間隔へ再アンカー(凍結明けの
-    // まとめ撃ち防止)」: 進行中のサイクル(型・残弾)自体は捨てず、次弾時刻だけ毎フレーム
-    // 「今+1サイクル分」へ押し出し続ける。解除された瞬間に残っている値が常に「今に近い未来」に
-    // なるため、bossNextActionAtが過去のまま溜まって解除直後に即時連射する事故を防げる。
-    if (bounty.type === 'bounty-ranged') frozenPatch.bossNextActionAt = newGameTime + BR_SHOT_UNIT_MS;
-    applyPatch(bounty.id, frozenPatch);
+    cancelBountyTechnique(s);
+    applyPatch(bounty.id, {
+      bossState: 'chase',
+      bossStateUntil: undefined,
+      bossNextActionAt: newGameTime + BOUNTY_NEUTRAL_MS,
+      bountyLastEngagedAt: newGameTime,
+    });
     return;
   }
 

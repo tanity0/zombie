@@ -4,10 +4,11 @@
 // many ticks and asserts the sim never produces NaN/Infinity, never throws,
 // and keeps counts/health sane. The "auto-debug" net for the logic layer —
 // see CLAUDE.md Testing policy.
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   useGameStore, PUMPKIN_JUMP_MAX_DIST,
   bossCritCdMult, BOSS_CRIT_CD_MULT, STUN_DURATION_MS, canShoveEnemy,
+  canApplyKnockbackStop, BOSS_KNOCKBACK_STOP_IMMUNE_MS, KNOCKBACK_DURATION,
   migrateCompanionFromLegacy,
 } from './gameStore';
 import type { Enemy } from '../types/game';
@@ -773,6 +774,75 @@ describe('canShoveEnemy: ボスは押し道具でだけ押される', () => {
   it('押し道具の印は時刻で切れる(解除処理は要らない)', () => {
     expect(canShoveEnemy(e('giantbat', 1000), 1000)).toBe(false); // 期限ちょうど=もう押せない
     expect(canShoveEnemy(e('giantbat', 999), 1000)).toBe(false);
+  });
+});
+
+// v0.25.3476: 社長報告(自動タレット/tier3サブマシンガンの連射でボスが完全に動けなくなる)の回帰テスト。
+// 原因: knockbackEnemy(汎用の弾ノックバック入口)がボス/CDの区別なく毎発 knockbackUntil を書き直し、
+// KNOCKBACK_DURATIONより短い間隔で連射されると knockbackUntil が途切れず「止まっているか」判定
+// (bountyTick.isFrozen等)が永久にtrueのままになっていた。
+describe('canApplyKnockbackStop: ボスだけ「止め」にCDが掛かる(社長報告v0.25.3474のハメ対策)', () => {
+  const e = (type: string, immuneUntil?: number) =>
+    ({ type, knockbackImmuneUntil: immuneUntil } as unknown as Pick<Enemy, 'type' | 'knockbackImmuneUntil'>);
+
+  it('通常敵はCD無し(常にtrue・不変=手応えは意図的に強い仕様)', () => {
+    expect(canApplyKnockbackStop(e('zombie'), 1000)).toBe(true);
+    expect(canApplyKnockbackStop(e('zombie', 999999), 1000)).toBe(true); // 免疫期限が立っていても無関係
+  });
+
+  it('ボスはCD中は止められない、CD明けなら止められる', () => {
+    expect(canApplyKnockbackStop(e('giantbat'), 1000)).toBe(true); // 未設定=初回は通す
+    expect(canApplyKnockbackStop(e('giantbat', 1500), 1000)).toBe(false); // CD中
+    expect(canApplyKnockbackStop(e('giantbat', 1000), 1000)).toBe(true); // 期限ちょうど=もう止められる
+  });
+});
+
+describe('knockbackEnemy: 自動タレット/連射武器を模した高頻度呼び出しでもボスが永久停止しない', () => {
+  const realEpoch = 1_700_000_000_000;
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: false, toFake: ['Date'] });
+    vi.setSystemTime(realEpoch);
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('★KNOCKBACK_DURATIONより短い間隔で連射しても、knockbackUntilが途切れる瞬間が来る(=ハメない)', () => {
+    const boss = spawnEnemyAt('giantbat', 0, 0, 0);
+    useGameStore.setState({ enemies: [boss] });
+
+    const FIRE_INTERVAL_MS = 100; // KNOCKBACK_DURATION(280)より短い=毎発が上書きし得る間隔
+    let sawGapWhereNotStopped = false;
+    for (let i = 0; i < 60; i++) { // 60発 × 100ms = 6秒(=CD1200msを何周分も含む)
+      useGameStore.getState().knockbackEnemy(boss.id, 1, 0, 3);
+      const en = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
+      const now = Date.now();
+      if (en.knockbackUntil === undefined || now >= en.knockbackUntil) sawGapWhereNotStopped = true;
+      vi.setSystemTime(realEpoch + (i + 1) * FIRE_INTERVAL_MS);
+    }
+    expect(sawGapWhereNotStopped).toBe(true);
+  });
+
+  it('CD中はknockbackUntilを書き換えない(揺れは別経路=damageEnemyのlastHitが担うので対象外)', () => {
+    const boss = spawnEnemyAt('idol', 0, 0, 0);
+    useGameStore.setState({ enemies: [boss] });
+    useGameStore.getState().knockbackEnemy(boss.id, 1, 0, 3);
+    const afterFirst = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
+    expect(afterFirst.knockbackUntil).toBe(realEpoch + KNOCKBACK_DURATION);
+    expect(afterFirst.knockbackImmuneUntil).toBe(realEpoch + BOSS_KNOCKBACK_STOP_IMMUNE_MS);
+    // すぐ次弾(CD中)。knockbackUntilは伸びない。
+    vi.setSystemTime(realEpoch + 50);
+    useGameStore.getState().knockbackEnemy(boss.id, 1, 0, 3);
+    const afterSecond = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
+    expect(afterSecond.knockbackUntil).toBe(realEpoch + KNOCKBACK_DURATION); // 変わらない=CD中は止めを追加しない
+  });
+
+  it('通常敵はCD無しで従来どおり毎発 knockbackUntil が伸びる(不変)', () => {
+    const zomb = spawnEnemyAt('zombie', 0, 0, 0);
+    useGameStore.setState({ enemies: [zomb] });
+    useGameStore.getState().knockbackEnemy(zomb.id, 1, 0, 3);
+    vi.setSystemTime(realEpoch + 50);
+    useGameStore.getState().knockbackEnemy(zomb.id, 1, 0, 3);
+    const after = useGameStore.getState().enemies.find(x => x.id === zomb.id)!;
+    expect(after.knockbackUntil).toBe(realEpoch + 50 + KNOCKBACK_DURATION); // 通常敵はCD無しで毎回更新される
   });
 });
 

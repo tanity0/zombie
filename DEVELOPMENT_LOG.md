@@ -1,5 +1,49 @@
 # Development Log
 
+## v0.25.3477 — 自動タレット/連射武器のボスハメを修正+ノックバックで技を中断【2026-08-15 21:36 JST】
+- **社長報告**: 自動タレットの連射を浴び続けたボスが完全に動けなくなり(ハメ)、そのボスの攻撃
+  エフェクトも途中で止まったまま固まる。tier3サブマシンガンでも同条件で起きる。
+- **原因①(止まらせすぎ)**: 汎用の弾ノックバック入口 `knockbackEnemy`(`gameStore.ts`)が
+  ボス/CDの区別なく毎発 `knockbackUntil` を書き直していた。`KNOCKBACK_DURATION`(280ms)より
+  短い間隔で連射されると `knockbackUntil` が途切れず、`bountyTick.isFrozen()` 等の
+  「止まっているか」判定が永久にtrueのままになり、ボスが完全に止まっていた。
+- **原因②(止まっている間、技が固まる)**: `bountyTick.ts` の `isFrozen`(気絶/拘束/浮き/
+  ノックバック)分岐は、座標だけでなく `bossState` も一切書かずに `return` していた。凍結が
+  途切れないケース①と組み合わさると、進行中の技(windup)の見た目がその場で永久に止まる。
+- **社長確定指示「ノックバックしたら技は中断」(方針1採用)**: 止められたら進行中の技は必ず
+  中断してchaseへ戻す(latchFxが最後まで描き切って消えるので、固まったまま残らない)。
+- 修正:
+  1. `gameStore.ts`: `BOSS_KNOCKBACK_STOP_IMMUNE_MS=1200`(叩き台の値)を新設。
+     `canApplyKnockbackStop(enemy, now)` で「ボス系(isBossType)だけ `knockbackImmuneUntil` の
+     CDを見る」判定を1関数に集約し、`knockbackEnemy`(全ての弾ノックバック呼び出しが通る唯一の
+     入口)へ組み込んだ。CD中は「止め」(knockbackVx/Vy/knockbackUntil)を書かない=揺れ
+     (`lastHit`由来の被弾フラッシュ、`damageEnemy`側で別に出る)は止まらない。通常敵はCD無しで
+     従来どおり(手応えは意図的に強い仕様・不変)。
+  2. `bountyTick.ts`: `cancelBountyTechnique(s)` を新設し、フルスタン(紫)分岐と `isFrozen`
+     (気絶/拘束/浮き/ノックバック)分岐の両方から呼ぶ形に統一。中断時は3段コンボ/360度ムチ振り/
+     舞妓の踏み込み焼き付け/バス停の射撃サイクルも一緒に破棄する。旧実装(#7)の「isFrozen中は
+     サイクルを持ち越し、次弾時刻だけ再アンカー」はやめ、フルスタンと完全に同じ「毎フレーム
+     `bossState:'chase'` へ押し出す」形へ揃えた。
+  3. `useGameLoop.ts`(裏ボス/天使/idolの専用コントローラ): `frozen` に `stunUntil`(致命ダゼ等の
+     単独ケース向け・現状ほぼno-op)・`liftUntil`・`knockbackUntil` を追加し、bountyTickと同じ
+     4条件へ揃えた。**★`rootUntil`(拘束)だけは意図的に対象外のまま残した**: v0.25.3202社長裁定
+     「行動を止められるのはいいんだが、技は止まらない」(マークスマン自動トラップが裏ボスの
+     溜め技を一度も撃たせない事故を直した経緯)と衝突するため。自動トラップは今回のCD修正の
+     対象外(拘束用のCD概念は今回作っていない)で、rootを技中断に含めると同じ事故が戻る。
+     **要相談**——4条件どおり拘束も含めるべきか、この除外を維持するかは社長判断を仰ぎたい。
+  4. 城ボス(通常の`enemies.map`パス): 調査の結果、`knockbackUntil` は位置スライド
+     (`bossShoveOk`=押し道具ガード経由)にしか使われておらず、技(`bossState`)の進行を
+     ノックバックで止める箇所が元々無い=ハメの対象外だったため、**コード変更なし**(確認のみ)。
+- 追加テスト: `src/store/sim.test.ts`(`canApplyKnockbackStop`のCD判定+`knockbackEnemy`への
+  高頻度連射の回帰テスト3本)、`src/utils/bountyTick.test.ts`(ノックバック連打で技中断→chase
+  復帰の回帰テスト1本)。
+- 検証: typecheck・lint(自分が触ったファイルのみ・エラー0)・
+  `npx vitest run src/utils/bountyTick.test.ts src/store/skills.test.ts src/store/sim.test.ts`
+  (314 passed / 2 skipped)。
+- ※並行実行中の別バッチが `src/utils/playtestDriver.ts` を編集中(AI_DIRECTOR_METRICS計測・
+  v0.25.3477を名乗っている在庫コメントあり)だったため、そのファイルには一切触れていない
+  (共有ワークツリーでの衝突回避。前エントリ(v0.25.3476)にも同様の注記あり)。
+
 ## v0.25.3476 — 流星の「消えて当たる」文法を帯/線の全経路へ【2026-08-15 21:31 JST】
 - **社長指摘「この帯の動き、全ボスにまだ入ってないの?」**: 入っていなかった。v0.25.3472の実装は
   `zoneCapsuleTick`(5箇所)/`dashLineTick`(6箇所)の**ラッパー経由だけ**で、

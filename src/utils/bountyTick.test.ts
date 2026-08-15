@@ -280,6 +280,48 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
     expect(after.y).toBe(67890);
   });
 
+  // v0.25.3476回帰テスト(社長確定指示「ノックバックしたら技は中断」・方針1採用):
+  // 自動タレット/tier3サブマシンガンの連射を模し、技(windup)実行中に knockbackUntil を
+  // 毎フレーム押し出し続けても(=CDの無い旧gameStore.knockbackEnemyを模した最悪ケース)、
+  // ①技はその場で'chase'へ中断される(windupに固まらない=latchFxが描き切って消える前提)
+  // ②凍結が明けた瞬間、真新しいbossNextActionAtからすぐ再開できる(まとめ撃ち/永久停止しない)。
+  it('★ノックバック連打で技中断→chase復帰(ハメない・社長確定指示v0.25.3476)', () => {
+    const { id, step } = setup();
+    useGameStore.setState(s => ({ player: { ...s.player, x: 50000 + 100, y: 50000 } }));
+    step(16); // 起床
+    step(16); // 追跡へ
+    // 何らかの技のwindup中を模す(実際の型名は問わない=isFrozen/cancelBountyTechniqueは
+    // bossStateの中身を見ずに強制的にchaseへ戻す実装であることを確認する)。
+    useGameStore.setState(s => ({
+      enemies: s.enemies.map(e => e.id === id
+        ? { ...e, bossState: 'br-push-windup', bossStateUntil: useGameStore.getState().gameTime + 5000 }
+        : e),
+    }));
+    // 毎フレーム knockbackUntil を「今+500ms」で押し出し続ける(連射で毎発ノックバックが入り、
+    // KNOCKBACK_DURATIONより短い間隔で再発火し続ける最悪ケースを模す)。
+    for (let i = 0; i < 20; i++) {
+      const gt = useGameStore.getState().gameTime;
+      useGameStore.setState(s => ({
+        enemies: s.enemies.map(e => e.id === id ? { ...e, knockbackUntil: gt + 500 } : e),
+      }));
+      step(100); // 100ms刻み(500msの猶予より短い=毎回まだ凍結中のはずなのに技が進まない、を確認)
+      const during = useGameStore.getState().enemies.find(e => e.id === id)!;
+      // 凍結中でも技(windup)に固まったまま残らない=chaseへ強制的に戻され続ける。
+      expect(during.bossState, `i=${i}`).toBe('chase');
+      expect(during.bossStateUntil, `i=${i}`).toBeUndefined();
+    }
+    // 連射が止まる(knockbackUntilを更新しない)→凍結が自然に切れる。小刻みに進めて「切れた直後」を
+    // 直接観測する(大きく1tickで進めると、解除後すぐ次の技が選ばれて別のwindupへ入ることがあり、
+    // それ自体は正しい=「chaseに戻ってすぐ再開できる」の証拠なので、過去のstale windupに固まって
+    // いないことだけを見る)。
+    step(50);
+    const justAfter = useGameStore.getState().enemies.find(e => e.id === id)!;
+    // 凍結明け直後は'chase'から再開している(古いwindupに固まったまま残らない)。
+    expect(justAfter.bossState).toBe('chase');
+    // 次行動タイマーは現在時刻より未来(過去に溜まっていない=永久停止・まとめ撃ちしない)。
+    expect(justAfter.bossNextActionAt).toBeGreaterThan(useGameStore.getState().gameTime);
+  });
+
   it('★帰巣完了→dormant+新しい1分: 離脱→帰巣→到着でdormant化し、以後また1分カウントが始まる', () => {
     const { id, step } = setup();
     // 起床させ、直後に離れる(交戦解除→リーシュ発火)。
