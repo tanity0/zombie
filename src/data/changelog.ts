@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3424',
+    items: [
+      'ステージ3・4・5の城も新しい絵になりました(3=石造りの廃教会/4=雪の大聖堂/5=ステンドグラスの大聖堂)。ステージ1の絵の取り違いも修正しています。',
+    ],
+  },
+  {
     version: '0.25.3423',
     items: [
       'ステージ1の城が新しい絵(ゴシック様式の館)になりました。',
