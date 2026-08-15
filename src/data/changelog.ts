@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3456',
+    items: [
+      '斬撃(刀・近接の斬り)が、薄いまま先に出たり後に残ったりせず、斬った瞬間に最大で出てすぐ消えるようになりました。',
+    ],
+  },
+  {
     version: '0.25.3455',
     items: [
       '斬撃の弧が剣の振りに合った向き(切っ先が通る円弧)になりました。',

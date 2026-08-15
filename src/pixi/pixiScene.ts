@@ -22051,20 +22051,17 @@ export class PixiScene {
     const sign = (e.face ?? 1) < 0 ? -1 : 1;
     const sc = e.length / Math.max(1, ref.width);
     const halfW = (ref.width * sc) / 2, halfH = (ref.height * sc) / 2;
-    let idx: number;
-    if (t < 0.5) {
-      idx = Math.min(4, Math.floor((t / 0.5) * 5));      // 0→4 グロー(下の端から伸びる)
-      streak.anchor.set(0, 1);                            // 左下の端(bottom-left tip)を固定
-      streak.position.set(e.x - halfW * sign, e.y + halfH);
-    } else {
-      idx = Math.max(0, 4 - Math.floor(((t - 0.5) / 0.5) * 5)); // 4→0 シュリンク(上の端へ収束)
-      streak.anchor.set(1, 0);                            // 右上の端(top-right tip)を固定
-      streak.position.set(e.x + halfW * sign, e.y - halfH);
-    }
+    // ★社長指摘v0.25.3456「斬撃が薄く出てるのまだ残ってる。前の攻撃のが残ってる可能性もある」:
+    //   旧実装は前半(0→50%)でグローを0→4へ**育て**、後半で0へ縮めていた。前半の育ちが
+    //   「本番の前に薄い斬撃が先に出る」、後半の縮みが「前の攻撃の残り」に見えていた(実際は同じ1枚)。
+    //   斬撃の跡は現実でも**刃が通った瞬間が最大**なので、最大コマから始めて縮めながら消えるだけにする。
+    const idx = Math.max(0, 4 - Math.floor(t * 5));       // 4→0 シュリンク(上の端へ収束)
+    streak.anchor.set(1, 0);                              // 右上の端(top-right tip)を固定
+    streak.position.set(e.x + halfW * sign, e.y - halfH);
     const stex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
     if (streak.texture !== stex) streak.texture = stex;
     streak.scale.set(sc * sign, sc);                     // face=-1 で水平反転
-    streak.alpha = 1 - Math.max(0, (t - 0.75) / 0.25);   // 終盤フェード
+    streak.alpha = 1 - t * t;                            // ease-inで加速して消える(残り香を作らない)
     // burst: 斬撃中央で 0→4 にポップ→フェード。
     const bref = getTexture('fx/slash-burst-4');
     const bidx = Math.min(4, Math.floor(t * 6));
