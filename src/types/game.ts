@@ -663,6 +663,12 @@ export interface Enemy {
   bossBreakRewardRemaining?: number;
   // 体勢崩し(紫)の終了 gameTime(ms)。
   bossFullStunUntil?: number;
+  // PACING_PUZZLE.md「★ボスの「止める効果」の作り直し」①逓減(DR)。ノックバック/黄色クリの窓/
+  // 罠の拘束/気絶を1カテゴリとして数える共有状態(src/utils/bossStopDr.ts・Date.now()基準)。
+  // 紫(体勢崩し・bossFullStunUntil)は対象外=この3フィールドとは無関係。
+  bossStopDrStage?: number;       // 0/未設定=1回目待ち・1=2回目待ち・2=3回目以降(耐性)
+  bossStopDrLastAt?: number;      // 直近のDR判定(成功/ブロックとも)のDate.now()
+  bossStopDrImmuneUntil?: number; // 3回目で立つ完全耐性の終了時刻(Date.now()基準)
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。
   homeX?: number;
   homeY?: number;

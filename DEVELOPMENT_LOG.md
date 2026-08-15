@@ -1,5 +1,57 @@
 # Development Log
 
+## v0.25.3491 — ★ボスの「止める効果」の作り直し①逓減(DR)実装(社長裁定2026-08-15「スタンは1+2かな」)【2026-08-16 00:20 JST・push保留中=下記参照】
+- **背景**: 自動タレット連射でボスが永久に動けなくなる実機バグ(v0.25.3477で
+  `BOSS_KNOCKBACK_STOP_IMMUNE_MS`=1200ms一律CDのノックバック専用応急修正)。社長裁定「1+2」
+  (①逓減DR+②体勢/ポイズゲージ)が確定。②は`src/utils/bossPosture.ts`で実装済みのため、
+  本バッチは①のみ実装。PACING_PUZZLE.md「★ボスの「止める効果」の作り直し」参照。
+- **①統合したカテゴリ**: 「止める」効果を1つの共有DR状態(`bossStopDrStage/bossStopDrLastAt/
+  bossStopDrImmuneUntil`・Date.now基準)で数える。対象=
+  - ノックバック(弾/爆風=`knockbackEnemy`。v0.25.3477の固定CDをここで発展的に置換)
+  - 黄色クリの窓(`bossCritSlowPatch`。移動半減+次行動CD2倍の窓=`bossSlowUntil`)
+  - 罠の拘束(`rootEnemy`。マークスマン自動トラップの唯一の呼び出し元)
+  - 気絶(`stunEnemy`。現状ボスへは一度も呼ばれない=CRIT-UNIFY §9.2で置換済みのため無改修で
+    挙動不変だが、将来のため関門だけ先に揃えた)
+  - 加えて、`bossCritSlowPatch`の**素通し先**だった「pumpkin/lab-zombie-3(isBossTypeだが
+    usesBossCrit=false)への直書き5秒完全スタン」(近接4箇所=ナイフ/クローン/刀/鞭の共通
+    フォールバック)も同じ「気絶」枠に編入(`bossCritStopPatch`を新設)。**damageEnemy中央
+    (銃クリ等)経由のpumpkin/lab-zombie-3は意図的に対象外のまま**(旧CRIT-UNIFYの裁定=
+    「銃はstunEnemyで完全停止させない」を保持。ここに新しい効果を生やすと仕様変更になるため)。
+  - **対象外(紫)**: 体勢崩し(`bossFullStunUntil`)は既に6秒の再崩壊ロックを持つ別系統のため無関係。
+  - **浮き(liftUntil)は対象外**: 調査の結果、現行コードの全liftUntil書き込み(7箇所)は例外なく
+    「既に`stunUntil`が立っている(=紫直後の致命ダゼ、または旧stunEnemy経路)ボスへの追撃フィニッシュ」
+    でのみ発火し、単独で有効なボスへ新規に掛かる経路が無い(常に紫の再崩壊ロックの支配下)。
+    連射ハメの経路になり得ないためDR対象に含めなかった——CLAUDE.mdの対象一覧に明記されていた項目
+    なので、この判断を最終報告に明記した(設計チャットの確認待ち)。
+- **②逓減の実装**: `src/utils/bossStopDr.ts`(純関数・依存ゼロ)。
+  `evaluateBossStopDr(enemy: BossStopDrFields, now: number): { allowed, durationMult, patch }`。
+  - 段: 1回目=`durationMult=1`(満額) / 2回目=`durationMult=0.5`(半分) / 3回目=`allowed:false`
+    (無効化)+完全耐性`BOSS_STOP_DR_IMMUNE_MS=3000ms`を新規に立てる。
+  - リセット: 1〜2回目止まりなら最後の適用から`BOSS_STOP_DR_RESET_MS=15000ms`で1段目に戻る。
+    3回目まで進み耐性に入った場合は**耐性が明けた瞬間に1段目から再開**(体勢ゲージのrebreakロック
+    明け=満タン復帰、と同じ「耐性=次周回への明示的な区切り」に揃えた・詳細根拠はファイル内コメント)。
+    ★この解釈は叩き台の実装判断——社長裁定の原文は2通りに読めるため、最終報告で明記して確認を仰ぐ。
+  - 呼び出し元は「ボスか否か」を判定してから呼ぶ(このモジュール自体は判定しない)。
+- **③拘束(root)を技の中断対象に編入**: `useGameLoop.ts`の裏ボス(giantbat/mimir/jormungand/
+  skadi/thor)`frozen`判定に`rootedNow`を追加(旧: v0.25.3202〜3477は「罠で永久に止まる」再発を
+  恐れて意図的に除外していた。DRが入った今は3回目以降が無効化されるため構造的に再発しない=
+  社長裁定済み)。旧来の`moveToward`内の拘束専用早期returnは`frozen`に統合され到達不能になった
+  ため削除(挙動不変)。`bountyTick.ts`(賞金首)の`isFrozen`は元々rootUntilを含んでおり無改修。
+  idolTick.ts/angelBossTick.tsのroot扱い(chase状態のみ凍結・技は完走)は「裏ボス側のガード」
+  (今回名指しされたuseGameLoop.tsの5条件チョーク)とは別物として今回は触っていない——判断の理由を
+  最終報告に明記。
+- **④テスト**: `src/utils/bossStopDr.test.ts`(新規・9件・段の遷移/完全耐性/耐性明けリセット/
+  15秒リセット/回帰=連射し続けても3回目以降は止まらず耐性明けまで動き続ける)。
+  `src/store/sim.test.ts`の`knockbackEnemy`回帰テストを新DR挙動に合わせて更新(旧`canApplyKnockbackStop`
+  describeは関数ごと削除)。
+- **検証**: typecheck(エラー0)+lint(エラー0)+
+  `vitest run src/utils/bountyTick.test.ts src/store/sim.test.ts src/utils/bossStopDr.test.ts`
+  (全passed)+ 関連回帰確認として`combatCritParity.test.ts`/`bossSlowMult.test.ts`/`idolTick.test.ts`/
+  `ghostReflectMeleeSubs.test.ts`/`bossPosture.test.ts`も実行(全passed)。
+- **push保留**: 設計チャットより「社長実機のAIディレクター計測(条件A/C各15ラン)進行中のため、
+  計測完了の確認が取れるまでgit pushしないこと」との指示を受け、**commitのみ実施しpush未実施**。
+  設計チャットが計測完了を確認後にpushする。
+
 ## v0.25.3490 — 物差し②「当たるか」を新設(指標が壊れていた件)【2026-08-15 23:40 JST】
 - **社長指摘「毱打ちも、最初届かなかったし、指標がそもそも壊れてる可能性が高い」**: そのとおりだった。
   既存の `minWindupMs` は**「プレイヤーが逃げ切れるか」だけ**を測る物差しなのに、**技の設計にも使っていた**。

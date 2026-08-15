@@ -213,6 +213,9 @@ import {
   applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal, isBossPostureBroken,
   tickBossPosture, type BossPostureImpact,
 } from '../utils/bossPosture';
+// PACING_PUZZLE.md「★ボスの「止める効果」の作り直し」①逓減(DR)。「止める」効果
+// (ノックバック/黄色クリの窓/罠の拘束/気絶)を1カテゴリに統合して数える単一の関門(bossStopDr.ts参照)。
+import { evaluateBossStopDr } from '../utils/bossStopDr';
 // PACING_PUZZLE.md §7-11c(3): 手動レール(実機テスト用ツマミ)。ドロップバイアス(弾/トレジャー)側の
 // 掛け先はここから読む。スキル抽選側の掛け先はrunSkillDraft.ts(rail/railMultを引数で受け取る)。
 import { parseRailKind, parseRailMult, railAmmoDropMult, railTreasureDropMult, type RailKind } from '../utils/railBias';
@@ -992,8 +995,31 @@ export const BOSS_CRIT_SLOW_MULT = 0.5;            // 「動きが半減」(社�
 // v0.25.3169: 対象は `isBossType` ではなく **`usesBossCrit`**(=isBossType から pumpkin /
 // lab-zombie-3 を除いたもの)。この2体は紫にならないので「固まらない」だけを受けていた。理由は
 // enemyUtils.ts の usesBossCrit のコメントに集約してある。
-export const bossCritSlowPatch = (enemy: Enemy, gameTime: number): Partial<Enemy> | null =>
-  usesBossCrit(enemy.type) ? { bossSlowUntil: gameTime + BOSS_CRIT_SLOW_MS } : null;
+// v0.25.3491(★ボスの「止める効果」の作り直し・①逓減): 黄色クリの窓も「止める」カテゴリの一員
+// (社長整理「黄色クリの窓と罠の拘束は同じ効果」)なので、bossCritSlowPatchが単一の出どころである
+// ことを利用してここでDRを通す(呼び出し元=damageEnemy中央/近接4箇所とも無改修のまま恩恵を受ける)。
+export const bossCritSlowPatch = (enemy: Enemy, gameTime: number): Partial<Enemy> | null => {
+  if (!usesBossCrit(enemy.type)) return null;
+  const dr = evaluateBossStopDr(enemy, Date.now());
+  if (!dr.allowed) return { ...dr.patch }; // 完全耐性中/3回目: 半減窓は出さない(DR状態だけ進める)
+  return { bossSlowUntil: gameTime + BOSS_CRIT_SLOW_MS * dr.durationMult, ...dr.patch };
+};
+// v0.25.3491: 近接4箇所(ナイフ/クローン/刀/鞭)専用の広い版。**これらの呼び出し元は元々
+// 「bossCritSlowPatchがnullなら直書きで5秒スタン」という共通フォールバックを持っており、それは
+// isBossTypeでありさえすれば usesBossCrit=false(pumpkin/lab-zombie-3)にも無条件に効いていた**
+// (=元から「気絶」カテゴリでボスに掛かっていた効果。ここへDRを掛けるのは新しい効果の追加ではなく
+// 既存の無制限スタンにDRを掛けるだけ)。damageEnemy中央(gun-crit等)はこの関数を使わない——
+// pumpkin/lab-zombie-3はそちら側では意図的に「何も止めない」(旧バグ修正=銃はstunEnemyで5秒完全
+// 停止させない、のまま。bossCritSlowPatchだけを呼ぶ=新しい効果を生やさない)。
+export const bossCritStopPatch = (
+  enemy: Enemy, gameTime: number, stunDurationMult: number,
+): Partial<Enemy> | null => {
+  if (!isBossType(enemy.type)) return null;
+  if (usesBossCrit(enemy.type)) return bossCritSlowPatch(enemy, gameTime);
+  const dr = evaluateBossStopDr(enemy, Date.now());
+  if (!dr.allowed) return { ...dr.patch }; // 完全耐性中/3回目: 停止効果は出さない(DR状態だけ進める)
+  return { stunUntil: gameTime + STUN_DURATION_MS * stunDurationMult * dr.durationMult, ...dr.patch };
+};
 /** ボスの移動速度に掛ける倍率(半減中なら0.5)。ボス以外・非半減中は1。 */
 export const bossSlowMult = (enemy: Enemy, gameTime: number): number => {
   const crit = (enemy.bossSlowUntil !== undefined && gameTime < enemy.bossSlowUntil) ? BOSS_CRIT_SLOW_MULT : 1;
@@ -1175,26 +1201,11 @@ const SKATEBOARD_BASH_RANGE = 140;      // ヒット時バッシュの範囲(半
 // knockback for this long (damage still lands) so it can't be locked forever.
 export const KNOCKBACK_IMMUNE_MS = 1750;
 // 社長報告v0.25.3474「自動タレット/tier3サブマシンガンの連射でボスが完全に動けなくなる」対策。
-// 汎用の弾ノックバック(knockbackEnemy)はこれまでボス/CDの区別なく毎発 knockbackUntil を
-// 書き直しており、KNOCKBACK_DURATION(280ms)より短い間隔で連射されると knockbackUntil が
-// 途切れず、bountyTick.isFrozen()等の「止まっているか」判定が永久にtrueのままになって
-// ボスが完全に止まる=ハメになっていた。ボス系(isBossType)だけ、この既存の
-// knockbackImmuneUntil の仕組み(KNOCKBACK_IMMUNE_MSと同じ流用)でCDを掛け、CD中は
-// 「止め」(knockbackUntil更新)を出さない。被弾の揺れ/フラッシュはdamageEnemy側のlastHitが
-// 別に出すのでCD中も止まらない(社長指示「揺れはするけど止まらない時間」)。
-// 通常敵は現状維持(CD無し=手応えは意図的に強い仕様・不変)。1200msは叩き台の値(社長指示)で、
-// KNOCKBACK_DURATION(280ms)ぶん止めた後、次の「止め」まで920msの猶予を与える。
-export const BOSS_KNOCKBACK_STOP_IMMUNE_MS = 1200;
-
-/**
- * 「止める」効果(ノックバックでその場に留める=knockbackUntilを進める)を今適用してよいか。
- * ボス系(isBossType)だけ knockbackImmuneUntil のCDを見る。通常敵は常にtrue(不変)。
- * knockbackEnemy(汎用の弾ノックバック入口)がこれを通す=呼び出し元を1本にまとめる。
- */
-export const canApplyKnockbackStop = (
-  enemy: Pick<Enemy, 'type' | 'knockbackImmuneUntil'>,
-  now: number,
-): boolean => !isBossType(enemy.type) || now >= (enemy.knockbackImmuneUntil ?? 0);
+// v0.25.3477はここに固定CD(BOSS_KNOCKBACK_STOP_IMMUNE_MS=1200ms一律・canApplyKnockbackStop)を
+// 応急実装していたが、v0.25.3491(★ボスの「止める効果」の作り直し・①逓減=社長裁定「1+2」)で
+// 汎用DR(src/utils/bossStopDr.ts・evaluateBossStopDr)へ発展・置き換えた。「ノックバック/黄色
+// クリの窓/罠の拘束/気絶」を1カテゴリとして数える都合上、この関数専用のCD機構は廃止し
+// knockbackEnemy 側は evaluateBossStopDr を直接呼ぶ(定義はbossStopDr.ts参照)。
 export const REFLECT_DAMAGE_MULTIPLIER = 10.0; // countered/reflected bullets hit 10× harder(社長指示で60→10)
 export const REFLECT_SPEED_MULTIPLIER = 2.0; // カウンター反射弾の速度倍率(社長指示v0.25.1731で1.8→2.0)
 
@@ -6223,8 +6234,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 気絶時間アップ(パッシブ)も銃と同じくstunDurationMultを掛ける。
       if (crit) critStunAt.push({ x: ecx, y: ecy });
       // ボスはスタンさせず半減(v0.25.2422)。通常敵は従来どおり。
-      const bossSlow = crit ? bossCritSlowPatch(enemy, gameTime) : null;
-      const stunUntil = (crit && !bossSlow)
+      // v0.25.3491: isBossType(pumpkin/lab-zombie-3含む)はbossCritStopPatch側がDR込みで
+      // stunUntil/bossSlowUntilのどちらかを決める。通常敵だけこの場の直書き5秒スタンを使う(不変)。
+      const bossSlow = crit ? bossCritStopPatch(enemy, gameTime, player.stunDurationMult ?? 1) : null;
+      const stunUntil = (crit && !bossSlow && !isBossType(enemy.type))
         ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1)
         : enemy.stunUntil;
       // Knockback, unless this enemy was shoved recently (debounce to avoid
@@ -6585,8 +6598,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (nh <= 0) { killed.push({ enemy, finisher: false }); continue; }
       if (crit) critStunAt.push({ x: ecx, y: ecy });
       // CRIT-UNIFY §9.4(現行漏れの解消): 分身のクリも銃/ナイフ/刀と同じく裏ボスの完全気絶カウントに乗せる。
-      const bossSlow = crit ? bossCritSlowPatch(enemy, gameTime) : null; // ボスは半減(v0.25.2422)
-      const stunUntil = (crit && !bossSlow) ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil;
+      // v0.25.3491: bossCritSlowPatch→bossCritStopPatch(isBossType全体をDR込みで扱う。site1と同型)。
+      const bossSlow = crit ? bossCritStopPatch(enemy, gameTime, player.stunDurationMult ?? 1) : null; // ボスは半減(v0.25.2422)
+      const stunUntil = (crit && !bossSlow && !isBossType(enemy.type)) ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil;
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
         const norm = Math.max(0.001, dist);
         const falloff = 1 - dist / meleeRange;
@@ -7234,10 +7248,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       const laserBreak = !isGhost ? mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime) : null;
       if (laserBreak) mimirLaserBreakHits.push({ x: ecx, y: ecy });
       if (laserBreak?.postureTriggered) katanaBossFullStunHits.push({ x: ecx, y: ecy });
-      const bossSlow = critStun ? bossCritSlowPatch(enemy, gameTime) : null; // ボスは半減(v0.25.2422)
+      // v0.25.3491: bossCritSlowPatch→bossCritStopPatch(isBossType全体をDR込みで扱う。site1と同型)。
+      const bossSlow = critStun ? bossCritStopPatch(enemy, gameTime, player.stunDurationMult ?? 1) : null; // ボスは半減(v0.25.2422)
       // CRIT-UNIFY §9.2同梱修正: 刀のクリ気絶にだけstunDurationMult(気絶時間アップパッシブ)が
       // 乗っていなかった実装漏れを修正(ナイフ/鞭/分身は既に乗っている・銃も乗っている)。
-      const newStunUntil = (critStun && !bossSlow) ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil;
+      const newStunUntil = (critStun && !bossSlow && !isBossType(enemy.type)) ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil;
       const dx = ecx - pcx;
       const dy = ecy - pcy;
       const dist = Math.max(0.001, Math.hypot(dx, dy));
@@ -7493,8 +7508,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...enemy,
         health: newHealth,
         lastHit: now,
-        // ボスはスタンさせず半減(v0.25.2422)。
-        ...(crit ? (bossCritSlowPatch(enemy, gameTime) ?? { stunUntil: gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) }) : { stunUntil: enemy.stunUntil }),
+        // ボスはスタンさせず半減(v0.25.2422)。v0.25.3491: bossCritSlowPatch→bossCritStopPatch
+        // (isBossType全体をDR込みで扱う。nullは真の非ボスだけなので??の素通し先は不変)。
+        ...(crit ? (bossCritStopPatch(enemy, gameTime, player.stunDurationMult ?? 1) ?? { stunUntil: gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) }) : { stunUntil: enemy.stunUntil }),
         knockbackVx: side * nx * WHIP_KNOCKBACK_SPEED,
         knockbackVy: side * ny * WHIP_KNOCKBACK_SPEED,
         knockbackUntil: now + KNOCKBACK_DURATION,
@@ -12622,25 +12638,50 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
+  // v0.25.3491(★ボスの「止める効果」の作り直し・①逓減): 通常敵は現状維持(気絶は元々不変)。
+  // ボスは「気絶」カテゴリとしてDRを通す(現状stunEnemyはボスへは一度も呼ばれていない=CRIT-UNIFY
+  // §9.2でクリの気絶をbossSlowUntilへ置き換え済みのため無改修で挙動不変だが、将来ボスへ呼ばれても
+  // 単独ロックが起きないよう関門だけ先に揃える=「1カテゴリに統合」の対象一覧どおり)。
   stunEnemy: (id, until) => {
+    const now = Date.now();
     set(state => ({
-      enemies: state.enemies.map(e =>
-        e.id === id ? { ...e, stunUntil: until } : e
-      )
+      enemies: state.enemies.map(e => {
+        if (e.id !== id) return e;
+        if (!isBossType(e.type)) return { ...e, stunUntil: until };
+        const dr = evaluateBossStopDr(e, now);
+        if (!dr.allowed) return { ...e, ...dr.patch };
+        const base = until - state.gameTime;
+        return { ...e, stunUntil: state.gameTime + base * dr.durationMult, ...dr.patch };
+      })
     }));
   },
 
+  // v0.25.3491(★ボスの「止める効果」の作り直し・①逓減 #5): 罠の拘束もDRの対象に編入。
+  // v0.25.3477で「罠で永久に止まる」再発を恐れて技の中断対象から除外していたが(useGameLoop.ts
+  // 参照)、DRが入った今は連射されても3回目以降が無効化されるため構造的に永久ロックしない
+  // (社長裁定済み)。通常敵は従来どおりCD無し。
   rootEnemy: (id, until) => {
+    const now = Date.now();
     set(state => ({
-      enemies: state.enemies.map(e =>
-        e.id === id ? { ...e, rootUntil: until, vx: 0, vy: 0 } : e
-      )
+      enemies: state.enemies.map(e => {
+        if (e.id !== id) return e;
+        if (!isBossType(e.type)) return { ...e, rootUntil: until, vx: 0, vy: 0 };
+        const dr = evaluateBossStopDr(e, now);
+        if (!dr.allowed) return { ...e, ...dr.patch }; // 完全耐性中: 拘束を適用しない(vx/vyも触らない)
+        const base = until - state.gameTime;
+        return { ...e, rootUntil: state.gameTime + base * dr.durationMult, vx: 0, vy: 0, ...dr.patch };
+      })
     }));
   },
 
   // Light bullet knockback: nudge an enemy along the shot direction. Reuses the
   // same decay model as the melee shove (KNOCKBACK_DURATION) but at a much
   // lower speed so it only staggers, never launches.
+  // v0.25.3491(★ボスの「止める効果」の作り直し・①逓減): v0.25.3476/3477の固定CD
+  // (canApplyKnockbackStop/BOSS_KNOCKBACK_STOP_IMMUNE_MS=1200ms一律)を、汎用DR
+  // (evaluateBossStopDr・bossStopDr.ts)へ発展させた。「ノックバック/黄色クリの窓/罠の拘束/気絶」を
+  // 1カテゴリとして数えるため、この関数専用だった knockbackImmuneUntil への書き込みはやめ、
+  // 共有のDR状態(bossStopDr*)だけを進める。
   knockbackEnemy: (id, dirX, dirY, multiplier = 1, maxStrength = 3) => {
     const now = Date.now();
     const strength = Math.max(0, Math.min(maxStrength, multiplier));
@@ -12648,21 +12689,31 @@ export const useGameStore = create<GameState>((set, get) => ({
       // KILL吹き飛び(死体・§26-2): 死体の飛び方はKILL時に1回だけ決める(buildCorpseFromKill)。
       // 他の全ノックバック発生源(反射神経/救急鞄/ドッグ/しかりの汎用この関数の全呼び出し元)から
       // 死体を除外し、死体自身の吹き飛びを上書きさせない。
-      // v0.25.3476: ボス系だけ canApplyKnockbackStop でCD判定(社長報告「自動タレット/tier3
-      // サブマシンガン連射でボスが完全に動けなくなる」対策=この入口1本に集約)。CD中は
-      // 「止め」(knockbackVx/Vy/knockbackUntil)を書かない=揺れ(lastHit由来)は damageEnemy 側で
-      // 別に出るので止まらない。通常敵はCD無しで従来どおり(不変)。
-      enemies: state.enemies.map(e =>
-        (e.id === id && !isCorpse(e) && canApplyKnockbackStop(e, now))
-          ? {
-              ...e,
-              knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength,
-              knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength,
-              knockbackUntil: now + KNOCKBACK_DURATION,
-              ...(isBossType(e.type) ? { knockbackImmuneUntil: now + BOSS_KNOCKBACK_STOP_IMMUNE_MS } : {}),
-            }
-          : e
-      )
+      enemies: state.enemies.map(e => {
+        if (e.id !== id || isCorpse(e)) return e;
+        if (!isBossType(e.type)) {
+          // 通常敵はDR無し(手応えは意図的に強い仕様・不変)。
+          return {
+            ...e,
+            knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength,
+            knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength,
+            knockbackUntil: now + KNOCKBACK_DURATION,
+          };
+        }
+        const dr = evaluateBossStopDr(e, now);
+        if (!dr.allowed) {
+          // 完全耐性中/3回目: 「止め」(knockbackVx/Vy/knockbackUntil)を書かない=揺れ(lastHit由来)
+          // は damageEnemy 側で別に出るので止まらないだけで被弾リアクションは消えない。
+          return { ...e, ...dr.patch };
+        }
+        return {
+          ...e,
+          knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength,
+          knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength,
+          knockbackUntil: now + KNOCKBACK_DURATION * dr.durationMult,
+          ...dr.patch,
+        };
+      })
     }));
   },
 

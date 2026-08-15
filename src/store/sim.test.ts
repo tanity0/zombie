@@ -8,9 +8,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   useGameStore, PUMPKIN_JUMP_MAX_DIST,
   bossCritCdMult, BOSS_CRIT_CD_MULT, STUN_DURATION_MS, canShoveEnemy,
-  canApplyKnockbackStop, BOSS_KNOCKBACK_STOP_IMMUNE_MS, KNOCKBACK_DURATION,
+  KNOCKBACK_DURATION,
   migrateCompanionFromLegacy,
 } from './gameStore';
+import { BOSS_STOP_DR_IMMUNE_MS } from '../utils/bossStopDr';
 import type { Enemy } from '../types/game';
 
 // Minimal ambient declaration so the SIM_FUZZ env gate typechecks without
@@ -777,26 +778,12 @@ describe('canShoveEnemy: ボスは押し道具でだけ押される', () => {
   });
 });
 
-// v0.25.3476: 社長報告(自動タレット/tier3サブマシンガンの連射でボスが完全に動けなくなる)の回帰テスト。
-// 原因: knockbackEnemy(汎用の弾ノックバック入口)がボス/CDの区別なく毎発 knockbackUntil を書き直し、
-// KNOCKBACK_DURATIONより短い間隔で連射されると knockbackUntil が途切れず「止まっているか」判定
-// (bountyTick.isFrozen等)が永久にtrueのままになっていた。
-describe('canApplyKnockbackStop: ボスだけ「止め」にCDが掛かる(社長報告v0.25.3474のハメ対策)', () => {
-  const e = (type: string, immuneUntil?: number) =>
-    ({ type, knockbackImmuneUntil: immuneUntil } as unknown as Pick<Enemy, 'type' | 'knockbackImmuneUntil'>);
-
-  it('通常敵はCD無し(常にtrue・不変=手応えは意図的に強い仕様)', () => {
-    expect(canApplyKnockbackStop(e('zombie'), 1000)).toBe(true);
-    expect(canApplyKnockbackStop(e('zombie', 999999), 1000)).toBe(true); // 免疫期限が立っていても無関係
-  });
-
-  it('ボスはCD中は止められない、CD明けなら止められる', () => {
-    expect(canApplyKnockbackStop(e('giantbat'), 1000)).toBe(true); // 未設定=初回は通す
-    expect(canApplyKnockbackStop(e('giantbat', 1500), 1000)).toBe(false); // CD中
-    expect(canApplyKnockbackStop(e('giantbat', 1000), 1000)).toBe(true); // 期限ちょうど=もう止められる
-  });
-});
-
+// v0.25.3476/3490: 社長報告(自動タレット/tier3サブマシンガンの連射でボスが完全に動けなくなる)の
+// 回帰テスト。原因: knockbackEnemy(汎用の弾ノックバック入口)がボス/CDの区別なく毎発 knockbackUntil
+// を書き直し、KNOCKBACK_DURATIONより短い間隔で連射されると knockbackUntil が途切れず「止まっているか」
+// 判定(bountyTick.isFrozen等)が永久にtrueのままになっていた。v0.25.3477の固定CD(1200ms一律)は
+// v0.25.3491で汎用DR(evaluateBossStopDr・bossStopDr.ts)へ発展した——段の遷移そのものの単体テストは
+// src/utils/bossStopDr.test.ts、ここは knockbackEnemy 経由の配線(ストアへ正しく反映されるか)を見る。
 describe('knockbackEnemy: 自動タレット/連射武器を模した高頻度呼び出しでもボスが永久停止しない', () => {
   const realEpoch = 1_700_000_000_000;
   beforeEach(() => {
@@ -811,7 +798,7 @@ describe('knockbackEnemy: 自動タレット/連射武器を模した高頻度�
 
     const FIRE_INTERVAL_MS = 100; // KNOCKBACK_DURATION(280)より短い=毎発が上書きし得る間隔
     let sawGapWhereNotStopped = false;
-    for (let i = 0; i < 60; i++) { // 60発 × 100ms = 6秒(=CD1200msを何周分も含む)
+    for (let i = 0; i < 60; i++) { // 60発 × 100ms = 6秒(=完全耐性3000msを何周分も含む)
       useGameStore.getState().knockbackEnemy(boss.id, 1, 0, 3);
       const en = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
       const now = Date.now();
@@ -821,18 +808,38 @@ describe('knockbackEnemy: 自動タレット/連射武器を模した高頻度�
     expect(sawGapWhereNotStopped).toBe(true);
   });
 
-  it('CD中はknockbackUntilを書き換えない(揺れは別経路=damageEnemyのlastHitが担うので対象外)', () => {
+  it('★DRの段どおりに進む: 1発目=満額/2発目=半分/3発目は無効化されknockbackUntilが伸びない', () => {
     const boss = spawnEnemyAt('idol', 0, 0, 0);
     useGameStore.setState({ enemies: [boss] });
     useGameStore.getState().knockbackEnemy(boss.id, 1, 0, 3);
     const afterFirst = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
-    expect(afterFirst.knockbackUntil).toBe(realEpoch + KNOCKBACK_DURATION);
-    expect(afterFirst.knockbackImmuneUntil).toBe(realEpoch + BOSS_KNOCKBACK_STOP_IMMUNE_MS);
-    // すぐ次弾(CD中)。knockbackUntilは伸びない。
+    expect(afterFirst.knockbackUntil).toBe(realEpoch + KNOCKBACK_DURATION); // 1発目=満額
+    expect(afterFirst.bossStopDrStage).toBe(1);
+
     vi.setSystemTime(realEpoch + 50);
     useGameStore.getState().knockbackEnemy(boss.id, 1, 0, 3);
     const afterSecond = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
-    expect(afterSecond.knockbackUntil).toBe(realEpoch + KNOCKBACK_DURATION); // 変わらない=CD中は止めを追加しない
+    expect(afterSecond.knockbackUntil).toBe(realEpoch + 50 + KNOCKBACK_DURATION * 0.5); // 2発目=半分
+    expect(afterSecond.bossStopDrStage).toBe(2);
+
+    vi.setSystemTime(realEpoch + 100);
+    useGameStore.getState().knockbackEnemy(boss.id, 1, 0, 3);
+    const afterThird = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
+    expect(afterThird.knockbackUntil).toBe(afterSecond.knockbackUntil); // 3発目=無効化、伸びない
+    expect(afterThird.bossStopDrImmuneUntil).toBe(realEpoch + 100 + BOSS_STOP_DR_IMMUNE_MS);
+
+    // 完全耐性中はさらに連射しても状態が動かない。
+    vi.setSystemTime(realEpoch + 150);
+    useGameStore.getState().knockbackEnemy(boss.id, 1, 0, 3);
+    const duringImmune = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
+    expect(duringImmune.knockbackUntil).toBe(afterSecond.knockbackUntil);
+
+    // 完全耐性(3000ms)が明けたら1発目扱いに戻り、満額でまた止まる。
+    vi.setSystemTime(realEpoch + 100 + BOSS_STOP_DR_IMMUNE_MS);
+    useGameStore.getState().knockbackEnemy(boss.id, 1, 0, 3);
+    const afterImmuneEnds = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
+    expect(afterImmuneEnds.knockbackUntil).toBe(realEpoch + 100 + BOSS_STOP_DR_IMMUNE_MS + KNOCKBACK_DURATION);
+    expect(afterImmuneEnds.bossStopDrStage).toBe(1);
   });
 
   it('通常敵はCD無しで従来どおり毎発 knockbackUntil が伸びる(不変)', () => {

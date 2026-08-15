@@ -4910,29 +4910,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // ボスは updateEnemies を早期returnで素通りするため、ここで明示的に判定する。
               // 裏ボスの完全気絶(紫・5クリ)中は攻撃も移動も完全停止(通常の気絶=歩行半速のみ とは別・社長指示)。
               const bossFullStun = boss.bossFullStunUntil !== undefined && newGameTime < boss.bossFullStunUntil;
-              // v0.25.3202(社長裁定「行動を止められるのはいいんだが、技は止まらない」): トラップ拘束(root)は
-              // **移動だけ**止め、技(状態機械)は完走させる。旧実装はroot中も毎フレーム'chase'へ強制リセット
-              // +次行動2.6秒先送りだったため、マークスマンの自動トラップが巨体ボスへ掛かり続けると
-              // 溜め1〜2秒の弾技(aim-burst/aim-radial)が一度も発射へ到達しなかった
-              // (「SEは鳴ってるのに一切弾を打たない」の正体)。紫(完全気絶)/ワープの完全停止は従来どおり。
               const rootedNow = boss.rootUntil !== undefined && newGameTime < boss.rootUntil;
               // v0.25.3476(社長確定指示「ノックバックしたら技は中断」・方針1採用): 気絶(stunUntil)・
               // 浮き(liftUntil)・ノックバック(knockbackUntil)で止められている間も、紫(bossFullStun)
-              // と同じく技を中断してchaseへ戻す(bountyTick.tsのisFrozenと同じ4条件の並びへ揃える)。
+              // と同じく技を中断してchaseへ戻す(bountyTick.tsのisFrozenと同じ並びへ揃える)。
               // liftUntil/knockbackUntilはDate.now基準(bountyTick.tsの注記と同じ)。
               // stunUntilは直下のコメントの通り現状ほぼ常にbossFullStunUntilと同時に立つため実質no-op
               // だが、致命ダゼ(applyBrokenMeleeFatal)等の単独ケースに備えて明示的に含める。
-              // ★rootUntil(拘束)だけはこの4条件から意図的に外している: v0.25.3202社長裁定
-              // 「行動を止められるのはいいんだが、技は止まらない」でマークスマン自動トラップの
-              // 継続的な拘束が裏ボスの溜め技(aim-burst/aim-radial)を一度も発射させない事故
-              // (「SEは鳴ってるのに一切弾を打たない」)を直した経緯がある。自動トラップはCDの概念が
-              // 無く毎フレーム再発火しうるため、rootを技中断に含めると同じ事故が戻る。今回のCD修正
-              // (BOSS_KNOCKBACK_STOP_IMMUNE_MS)はノックバック側だけの対策で拘束には及ばない=
-              // rootを含めるのは今回の指示と past decision が食い違う。要相談(最終報告に明記)。
+              // v0.25.3491(★ボスの「止める効果」の作り直し・社長裁定済み): ★rootUntil(拘束)もこの
+              // 技中断の輪に編入した。v0.25.3202〜3477はここから意図的に外していた
+              // (マークスマン自動トラップはCDが無く毎フレーム再発火しうるため、含めると溜め技
+              // 「SEは鳴ってるのに一切弾を打たない」事故が戻る=「行動は止めてよいが技は止まらない」)。
+              // その後 rootEnemy 自体に汎用DR(evaluateBossStopDr・ノックバック/黄色クリの窓/罠の拘束/
+              // 気絶を1カテゴリとして数える)が入り、「連射されても3回目以降は無効化される」が
+              // 構造的に保証されたため、root を含めても「罠で永久に止まる」は再発しない(社長裁定済み)。
               const stunnedNow = boss.stunUntil !== undefined && newGameTime < boss.stunUntil;
               const liftedNow = boss.liftUntil !== undefined && Date.now() < boss.liftUntil;
               const kbStoppedNow = boss.knockbackUntil !== undefined && Date.now() < boss.knockbackUntil;
-              const frozen = warping || bossFullStun || stunnedNow || liftedNow || kbStoppedNow;
+              const frozen = warping || bossFullStun || stunnedNow || liftedNow || kbStoppedNow || rootedNow;
               // v0.25.2895: 気絶中の歩行半減(旧walkMult/BOSS_STUN_SPEED_MULT)は死コードだったため削除。
               // 通常気絶(stunUntil)がボスに入る経路は既にbossSlowUntilへ置き換え済みで、唯一stunUntilを
               // 立てていた紫(完全気絶)はこの上のfrozenで先に全停止する——結果walkMultは常に1で、
@@ -4963,8 +4958,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // (急な方向転換がぬるっと効く=慣性)。最高速は spd*mult のまま不変。
               // spd省略時は自身のspeed(mimir/jormungand/skadi/通常敵の既定)。トールの接近だけ
               // 社長指示でTHOR_APPROACH_SPEED(プレイヤーの1/2速度)を明示的に渡す。
+              // v0.25.3491: rootedNow は上の frozen 判定に編入済みのため、moveToward は
+              // (frozenでない=root中でもない)時だけ呼ばれる。旧来ここにあった拘束時の早期return
+              // (v0.25.3202)は frozen 側の分岐(bs.vx=bs.vy=0 & bossState='chase' 復帰)へ統合され
+              // 到達不能になったため削除した(挙動は不変=frozen分岐が同じ結果を出す)。
               const moveToward = (mult: number, spd: number = speed) => {
-                if (rootedNow) { bs.vx = 0; bs.vy = 0; return; } // v0.25.3202: 拘束中は歩かない(技のタイマーは進む)
                 const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
                 const dl = Math.hypot(dpx, dpy) || 1;
                 const desVx = (dpx / dl) * spd * mult;
