@@ -7207,7 +7207,10 @@ export class PixiScene {
     }
     this.syncMerchant(s.weaponMerchant, s.player, now, s.merchantDwellMs); // 商人は屋内でも(最初の部屋に)出す
     // v0.25.3054: 施設フェードの適用(コンテナ/影リクエストに外から乗算=各syncの内部alphaと独立)。
-    this.castleView.alpha = facFade;
+    // ★v0.25.3425修正: 城は「代入」だと syncCastle が lerp した内部alpha(裏回り透過・地平フェード)を
+    // 毎フレーム上書きして殺してしまう(社長報告「城の裏回っても透けない」の正体)。min合成にする=
+    // 通常時(facFade=1)は内部alphaが生き、ボス戦フェード時(facFade→0)はフェードが勝つ。
+    this.castleView.alpha = Math.min(this.castleView.alpha, facFade);
     if (this.castleShadow) this.castleShadow.alpha *= facFade;
     this.castleSummonCircle.alpha *= facFade;
     this.merchantView.alpha = facFade;
