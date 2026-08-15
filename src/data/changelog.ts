@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3451',
+    items: [
+      'ステージのボスの名前が、死因・討伐バナー・歴史年表など全ての表示で同じ個体名に揃いました。',
+    ],
+  },
+  {
     version: '0.25.3450',
     items: [
       '手榴弾とグレネードガンの弾が飛び跳ねながら転がるようになりました(信管の赤ランプは弾の縁を公転=転がって見える)。',

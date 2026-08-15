@@ -152,6 +152,8 @@ import {
   isKogarasuUnlocked, markKogarasuUnlocked,
   type WallMeta,
 } from '../data/progress';
+// 城ボスの個体名の正本(カットイン台帳)。死因・討伐バナー・年表など全UIが同じ名前を引く。
+import { CASTLE_BOSS_NAME_BY_STAGE } from '../data/bossCutin';
 import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgress';
 import type { KomaAssessmentInput } from '../utils/rankAssessor';
 import { getDirectorRewardMult } from '../utils/directorRankState';
@@ -1289,7 +1291,16 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   'bounty-balance': '鋏(変異)',
   'bounty-maiko': '舞妓(変異)',
 };
-export const enemyDeathLabel = (type: string): string => ENEMY_DEATH_LABELS[type] ?? '変異体';
+// 社長指示v0.25.3451「なぜUIによって名前の出し方を変えるの?全部の箇所で統一に決まってる」:
+// 城ボス(giantbat)もステージ別の台帳名(bossCutin=名前の正本)で表示する。死因・討伐バナー・歴史年表の
+// 全てがこの1関数を通るので、ここ1箇所で全UIが揃う。台帳に無いステージ(stage-2/ex1等)は従来の
+// 「変異体(飛行型)」へフォールバック(台帳の掟=新しい名前を発明しない)。
+export const enemyDeathLabel = (type: string): string => {
+  if (type === 'giantbat') {
+    return CASTLE_BOSS_NAME_BY_STAGE[getSelectedStageId() ?? ''] ?? ENEMY_DEATH_LABELS.giantbat;
+  }
+  return ENEMY_DEATH_LABELS[type] ?? '変異体';
+};
 
 export const hasKatana = (player: Player): boolean => player.subWeapons.includes('katana');
 // 村雨(むらさめ): 刀Lv3の上位。弾の打ち返し・一閃のクールダウンが無く連発可能。
@@ -2987,9 +2998,10 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     // 行の文言へ同行者名を添える(叩き台「CODE:◯◯を討伐(◯◯と共闘)」)。2回目以降はdedupで弾かれるので
     // ソロ初回討伐の後に同行で倒しても行は増えない・変わらない。
     const chronicleAlly = ghostAllySnapshot(findGhostAlly(get().summons));
+    // 社長指示v0.25.3451(名前の全箇所統一): 城ボスの年表特例「ストーリーボスを討伐」(v0.25.1658の文言・
+    // 当時は固有名なし)を廃止し、全ボス共通で台帳名(enemyDeathLabelが城ボスをステージ別名に解決)へ。
     const phrase =
-      (enemy.type === 'giantbat' ? 'ストーリーボスを討伐'
-        : `${enemyDeathLabel(enemy.type)}を討伐`)
+      `${enemyDeathLabel(enemy.type)}を討伐`
       + (chronicleAlly ? `(${chronicleAlly.name}と共闘)` : '');
     recordChronicle(
       getSelectedStageId(),
