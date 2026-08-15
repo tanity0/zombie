@@ -8,19 +8,19 @@
   },
   "configs": [
     {
-      "name": "crit-base-1",
+      "name": "new-base-1",
       "persona": "standard",
       "subs": ["heavy-grenade"],
       "skills": ["guardian-spirit"]
     },
     {
-      "name": "crit-base-2",
+      "name": "new-base-2",
       "persona": "standard",
       "subs": ["heavy-grenade"],
       "skills": ["guardian-spirit"]
     },
     {
-      "name": "crit-base-3",
+      "name": "new-base-3",
       "persona": "standard",
       "subs": ["heavy-grenade"],
       "skills": ["guardian-spirit"]
