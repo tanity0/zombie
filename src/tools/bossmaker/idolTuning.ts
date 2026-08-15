@@ -28,6 +28,7 @@ import type { NeutralVerb } from '../../utils/bossSkeleton';
 const MOVE_LABEL: Record<IdolCoreMove, string> = {
   aim: '狙い撃ち(aim)', fan: '連射扇(fan)', roll: '離脱ローリング(roll)',
   punch: '至近の殴り(punch)', snipe: '狙撃線(snipe)', orb: '追尾弾(orb)',
+  nade: '手榴弾(nade)', // v0.25.3442: プレイヤーの手榴弾と同じ仕様(速度118/信管2s/半径66/威力42)
 };
 
 /** 射撃枠の見出し。**固定文字列**にする(社長が付けた名前は `sectionLabel` で後から差し替える)。 */

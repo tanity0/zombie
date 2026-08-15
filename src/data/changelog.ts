@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3442',
+    items: [
+      '隠しボスが近〜中距離で手榴弾を投げるようになりました(転がって2秒後に赤円の範囲で爆発。'
+      + '赤円の外へ歩いて逃げられます)。',
+    ],
+  },
+  {
     version: '0.25.3441',
     items: [
       'グレネードガンⅠ・Ⅱ: 転がり中に敵へ触れるとその場で爆発するようになりました(直撃ダメージ復活)。',

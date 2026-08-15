@@ -31,9 +31,9 @@ describe('idolPhaseForHealth / idolFanCount(§6.28-20の確定値・不変)', ()
 
 // ==== 社長要件: 技は最低5パターン(§2-6は6本を下限) ====
 describe('技の本数と帯', () => {
-  it('技は6本ある(社長要件の最低5を満たす)', () => {
-    expect(IDOL_ALL_MOVES).toHaveLength(6);
-    expect([...IDOL_ALL_MOVES].sort()).toEqual(['aim', 'fan', 'orb', 'punch', 'roll', 'snipe']);
+  it('技は7本ある(社長要件の最低5を満たす。7本目=手榴弾・社長指示v0.25.3442)', () => {
+    expect(IDOL_ALL_MOVES).toHaveLength(7);
+    expect([...IDOL_ALL_MOVES].sort()).toEqual(['aim', 'fan', 'nade', 'orb', 'punch', 'roll', 'snipe']);
   });
   it('帯は§6.28-20の確定値(140/340)を維持している', () => {
     expect(IDOL_ZONE_EDGES.meleeMax).toBe(140);
@@ -117,13 +117,18 @@ describe('公平性: C分類は100%、決断の時刻より前にヒントが出
   it('第二波の遅れは公平性の下限を満たす(650ms=押してよい幅400ms)', () => {
     expect(fairnessViolations([{ key: 'wave', cls: 'C', telegraphMs: IDOL_TUNING.waveDelayMs }])).toEqual([]);
   });
-  it('MAX枠なのでC寄り: Phase1でCが過半、Phase2は全部C', () => {
-    const p1 = classMix(idolFairnessP1());
+  it('MAX枠なのでC寄り: Phase1でCが過半、Phase2は全部C(手榴弾は例外=社長指示v0.25.3442)', () => {
+    // 手榴弾(nade)は社長指示による追加で、赤円66px+信管2秒=歩いて出られる(B)が正直な分類。
+    // 「C寄り/P2全部C」の憲法は**nadeを除いた既存技**で維持し、nade自身はBであることを固定する。
+    const p1 = classMix(idolFairnessP1().filter(m => m.key !== 'nade'));
     expect(p1.C).toBeGreaterThanOrEqual(p1.A + p1.B - 1); // A1/B2/C2 = 拮抗以上
-    const p2 = classMix(idolFairnessP2());
+    const p2All = idolFairnessP2();
+    const p2 = classMix(p2All.filter(m => m.key !== 'nade'));
     expect(p2.A).toBe(0);
     expect(p2.B).toBe(0);
-    expect(p2.C).toBe(idolFairnessP2().length);
+    expect(p2.C).toBe(p2All.filter(m => m.key !== 'nade').length);
+    expect(p2All.find(m => m.key === 'nade')?.cls).toBe('B');
+    expect(idolFairnessP1().find(m => m.key === 'nade')?.cls).toBe('B');
   });
   it('公平性台帳が実際の秒数と同じ値を見ている(台帳だけ直して実装が置き去りになる事故の防止)', () => {
     const byKey = Object.fromEntries(idolFairnessP1().map((m: { key: string; telegraphMs: number }) => [m.key, m.telegraphMs]));
@@ -164,7 +169,7 @@ describe('IDOL_TUNING の既定値 = テーブル化前の実装値(挙動不変
     expect(IDOL_TUNING_DEFAULTS.fanCount).toEqual({ p1: 3, p2: 5 });
     expect(IDOL_TUNING_DEFAULTS.orbCount).toEqual({ p1: 2, p2: 3 });
   });
-  it('技の秒数(硬直は6技すべて900=withRecoverFloorの床が既定値になっている)', () => {
+  it('技の秒数(硬直は全技900=withRecoverFloorの床が既定値になっている)', () => {
     expect(IDOL_TUNING_DEFAULTS.timing).toEqual({
       aim:   { windup: 700,  active: 0,   recover: 900 },
       fan:   { windup: 900,  active: 0,   recover: 900 },
@@ -172,6 +177,7 @@ describe('IDOL_TUNING の既定値 = テーブル化前の実装値(挙動不変
       punch: { windup: 600,  active: 0,   recover: 900 },
       snipe: { windup: 1100, active: 200, recover: 900 },
       orb:   { windup: 800,  active: 0,   recover: 900 },
+      nade:  { windup: 600,  active: 0,   recover: 900 }, // v0.25.3442: 手榴弾(社長指示)
     });
   });
   it('図形(判定と厳密一致させる値)', () => {
@@ -194,12 +200,15 @@ describe('IDOL_TUNING の既定値 = テーブル化前の実装値(挙動不変
   it('台本(ゾーン・重み・並び)', () => {
     // v0.25.3030: 期待値を「技の因果連鎖化」コミット(fde7b2ea・2026-08-05)後の実装値へ更新。
     // 同コミットが台本を並べ替えた際にこの直値が未追従でCIが赤のままだった(実装が正)。
+    // v0.25.3442: 手榴弾入りの2本(melee/near)を追加(社長指示「近距離、中距離技に手榴弾を追加」)。
     expect(IDOL_TUNING_DEFAULTS.strings).toEqual([
       { zone: 'melee', weight: 55, moves: ['punch', 'snipe', 'roll', 'fan'] },
       { zone: 'melee', weight: 45, moves: ['roll', 'fan', 'punch', 'snipe'] },
+      { zone: 'melee', weight: 30, moves: ['nade', 'roll', 'fan', 'snipe'] },
       { zone: 'near', weight: 40, moves: ['fan', 'roll', 'snipe', 'orb'] },
       { zone: 'near', weight: 35, moves: ['orb', 'punch', 'snipe', 'fan'] },
       { zone: 'near', weight: 25, moves: ['fan', 'orb', 'punch', 'snipe'] },
+      { zone: 'near', weight: 30, moves: ['fan', 'nade', 'punch', 'snipe'] },
       { zone: 'mid', weight: 50, moves: ['aim', 'snipe', 'orb', 'roll'] },
       { zone: 'mid', weight: 50, moves: ['orb', 'aim', 'snipe', 'fan'] },
       { zone: 'far', weight: 45, moves: ['aim', 'snipe', 'orb', 'roll'] },
@@ -249,7 +258,7 @@ describe('射撃部品(shots)', () => {
     expect(idolEnabledShots()).toEqual([]);
     // 台本も公平性の台帳も、足していない限り**同じ配列の同じ参照**が返る。
     expect(idolStrings()).toBe(IDOL_TUNING.strings);
-    expect(idolFairnessP1().map(f => f.key)).toEqual(['aim', 'fan', 'snipe', 'punch', 'orb']);
+    expect(idolFairnessP1().map(f => f.key)).toEqual(['aim', 'fan', 'snipe', 'punch', 'orb', 'nade']);
   });
 
   it('中核6技と射撃枠を1つの関数で引ける(timing に居ない技を直接引かない)', () => {

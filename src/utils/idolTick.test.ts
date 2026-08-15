@@ -21,6 +21,7 @@ import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 import { IDOL_TUNING, idolGunMuzzle } from './idolScript';
+import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from './grenadeSpec';
 import type { Enemy } from '../types/game';
 
 const mk = (id: string, dormant: boolean): Enemy =>
@@ -350,6 +351,29 @@ describe('弾の性能は技ごとに効く', () => {
       expect(p.x + p.width / 2).toBeCloseTo(mz.x, 3);
       expect(p.y + p.height / 2).toBeCloseTo(mz.y, 3);
     } finally { Object.assign(IDOL_TUNING.bullet, JSON.parse(save)); }
+  });
+});
+
+// 社長指示v0.25.3442: 手榴弾技(nade)=プレイヤーの手榴弾と同じ仕様のhostile投擲。
+describe('手榴弾技(nade・v0.25.3442)', () => {
+  beforeEach(() => { clearIdolPlayback(); });
+  it('溜め明けにhostileな手榴弾(weaponType=grenade・速度118/威力42/信管2s)を1個投げる', () => {
+    const g = setup(250);
+    g.step();
+    requestIdolMovePlay('nade', { solo: false, loop: false });
+    for (let i = 0; i < 200; i++) {
+      g.step(20);
+      const nades = useGameStore.getState().projectiles.filter(p => p.weaponType === 'grenade' && p.hostile);
+      if (nades.length > 0) {
+        expect(nades).toHaveLength(1);
+        const p = nades[0];
+        expect(p.speed).toBe(HEAVY_GRENADE_SPEED);
+        expect(p.damage).toBe(HEAVY_GRENADE_DAMAGE);
+        expect(p.duration).toBe(HEAVY_GRENADE_FUSE_MS);
+        return;
+      }
+    }
+    throw new Error('手榴弾が投げられなかった');
   });
 });
 

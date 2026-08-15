@@ -188,7 +188,7 @@ put(LEDGER, [
   'bite-recover', 'bolt-recover', 'bone-recover', 'burst-recover', 'cage-recover', 'coil-recover',
   'consecrate-recover', 'dash-recover', 'downslash-recover', 'gaze-recover', 'harai-recover',
   'idol-aim-recover', 'idol-fan-recover', 'idol-punch-recover', 'idol-roll-recover',
-  'idol-snipe-recover', 'idol-orb-recover',
+  'idol-snipe-recover', 'idol-orb-recover', 'idol-nade-recover',
   'issen-recover', 'jump-recover', 'lance-recover', 'lantern-recover', 'laser-recover', 'laser-broken', 'mdash-recover',
   'radial-recover', 'ring-recover', 'ring-spin-recover', 'skadi-blade-recover', 'skadi-ice-recover',
   'spear-recover', 'spike-recover', 'sweep-recover', 'tate-recover', 'thrust-recover',
@@ -199,7 +199,9 @@ put(LEDGER, [
 });
 put(LEDGER, [
   'aim-burst', 'aim-radial', 'radial', 'volley', 'volley-windup', 'bolt', 'bolt-windup',
-  'gaze-windup', 'idol-aim-windup', 'idol-fan-windup', 'idol-orb-windup', 'g-bolt-windup', 'g-bolt-burst',
+  // idol-nade-windup(v0.25.3442): 投げ自体に図形なし。転がった手榴弾の赤円はprojectile側の危険=
+  // 弾避け(projectileDodge)系の圏内(手榴弾は接触ダメージ無し・爆発は信管2秒後)。
+  'gaze-windup', 'idol-aim-windup', 'idol-fan-windup', 'idol-orb-windup', 'idol-nade-windup', 'g-bolt-windup', 'g-bolt-burst',
   'g-tailslam-volley', // v0.25.3139: 叩きつけの後の弾連射(胴体弾と同じ弾)=地面に図形は出ない
 ], {
   coverage: 'none',

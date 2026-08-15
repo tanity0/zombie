@@ -37,6 +37,7 @@ import {
   idolStrings, idolShot, idolShotFireMs, idolMoveTiming, isIdolShot, idolGunMuzzle,
   type IdolMove, type IdolShotSlot, type IdolShotSpec,
 } from './idolScript';
+import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from './grenadeSpec';
 
 export interface IdolSfx {
   alert: () => void;
@@ -666,6 +667,26 @@ export const runIdolTick = (
       }
       for (const id of ids) s.homing.push({ id, move: 'orb', side: aim.side });
       toRecover('orb');
+    }
+  } else if (st === 'idol-nade-windup') {
+    // 手榴弾(社長指示v0.25.3442「プレイヤーの手榴弾と同じ仕様」): 溜め明けにプレイヤー方向へ投げる。
+    // 転がり(壁バウンド+減速)はgameStoreのgrenade物理、信管2秒の爆発(半径66・プレイヤーへ)は
+    // useGameLoopのhostile分岐が担う。接触ダメージ無し=判定は爆発の赤円のみ(collisionUtilsで除外)。
+    if (newGameTime >= (idol.bossStateUntil ?? 0)) {
+      const aim = hateAim();
+      const ndx = aim.x - icx, ndy = aim.y - icy;
+      const ndl = Math.hypot(ndx, ndy) || 1;
+      useGameStore.getState().addProjectile({
+        id: `proj-idol-nade-${idol.id}-${Math.floor(newGameTime)}`,
+        x: icx - 7, y: icy - 7, width: 14, height: 14,
+        speed: HEAVY_GRENADE_SPEED, damage: HEAVY_GRENADE_DAMAGE,
+        direction: { x: ndx / ndl, y: ndy / ndl },
+        weaponType: 'grenade', weaponKey: 'idol-heavy-grenade',
+        duration: HEAVY_GRENADE_FUSE_MS, createdAt: Date.now(),
+        passthrough: false, hitEnemies: [], hostile: true, reflected: false,
+      });
+      patch.hateTarget = aim.side;
+      toRecover('nade');
     }
   } else if (st === 'idol-snipe-windup') {
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {

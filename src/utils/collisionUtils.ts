@@ -178,7 +178,9 @@ export const checkProjectilePlayerCollisions = (
   player: Player
 ): Projectile[] => {
   const hit = playerHitbox(player);
-  return projectiles.filter(p => p.hostile && checkCollision(p, hit));
+  // 敵の手榴弾(idolの手榴弾技・v0.25.3442)は接触ダメージ無し=信管(useGameLoopのhostile爆発分岐)でのみ
+  // 爆発する(プレイヤーの手榴弾が敵に接触ダメージを与えないのと同じ仕様)。カウンター反射の対象からも外れる。
+  return projectiles.filter(p => p.hostile && p.weaponType !== 'grenade' && checkCollision(p, hit));
 };
 
 // Check collisions between player and enemies (uses the reduced damage hitbox)

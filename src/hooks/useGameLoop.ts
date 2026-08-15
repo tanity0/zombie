@@ -360,6 +360,7 @@ import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, g
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
+import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
 import { stepFollowChain, FOLLOW_SPEED_MULT } from '../utils/companionFollow';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
@@ -416,10 +417,7 @@ const GRENADE_BLAST_DAMAGE_MULT = 0.62;
 // 威力は反射神経の反撃爆発と同等のランチャー級フラット値(要実機調整)。
 const BOMB_COUNTER_BLAST_DAMAGE = 60;
 const HEAVY_GRENADE_COOLDOWN_MS = 5000;
-const HEAVY_GRENADE_FUSE_MS = 2000;
-const HEAVY_GRENADE_RADIUS = 66;
-const HEAVY_GRENADE_DAMAGE = 42;
-const HEAVY_GRENADE_SPEED = 118;
+// FUSE/RADIUS/DAMAGE/SPEED は grenadeSpec.ts(葉)へ移動(v0.25.3442: idolの手榴弾技が同じ値を読む)。
 const HEAVY_GRENADE_KNOCKBACK_MULT = 3.6;
 const MARKSMAN_TRAP_COOLDOWN_MS = 6500;
 const MARKSMAN_TRAP_DURATION_MS = 9000;
@@ -9012,6 +9010,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         for (const grenade of timedGrenades) {
           const gx = grenade.x + grenade.width / 2;
           const gy = grenade.y + grenade.height / 2;
+          // 社長指示v0.25.3442: idolの手榴弾技(hostile)=プレイヤーの手榴弾と同じ仕様の敵側爆発。
+          // 半径66・減衰式(0.55+0.45×falloff)・壁越し不可は同じ。スキル倍率(エクスプローダー等)と
+          // ボマー散布はプレイヤー側の道具なので通さない。判定=中心が赤円の内側(描画の赤円と厳密一致)。
+          if (grenade.hostile) {
+            removeProjectile(grenade.id);
+            playSfx('bomb');
+            spawnRing(gx, gy, 8, HEAVY_GRENADE_RADIUS, 'rgba(251,146,60,0.82)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            spawnBurst(gx, gy, '#f97316', 20);
+            spawnBurst(gx, gy, '#7f1d1d', 8);
+            useGameStore.getState().spawnGlow(gx, gy, GLOW_R_S, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            useGameStore.getState().spawnExplosionFx(gx, gy, HEAVY_GRENADE_RADIUS);
+            const hgPl = useGameStore.getState().player;
+            const hgPx = hgPl.x + hgPl.width / 2, hgPy = hgPl.y + hgPl.height / 2;
+            const hgDist = Math.hypot(hgPx - gx, hgPy - gy);
+            const hgWalls = aoeWalls(gx, gy);
+            if (hgDist <= HEAVY_GRENADE_RADIUS && !(hgWalls.length > 0 && segmentBlocked(gx, gy, hgPx, hgPy, hgWalls))) {
+              const falloff = 1 - hgDist / HEAVY_GRENADE_RADIUS;
+              const dmg = Math.max(1, Math.round(grenade.damage * (0.55 + falloff * 0.45)));
+              const died = useGameStore.getState().damagePlayer(dmg, '偶像の手榴弾', gx, gy);
+              if (died) triggerPlayerDeath(hgPx, hgPy);
+            }
+            continue;
+          }
           // スキル: ボマー = 手榴弾が起爆する前に一度だけ、周囲へ子グレネード3発を散布し
           // 親の信管を +1s 延長(再アームは1回のみ)。子は ×1/3 ダメージの小型手榴弾。
           // 周期/サブ武器の爆発なのでスロー無し(CLAUDE.md)。

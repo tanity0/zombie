@@ -177,8 +177,8 @@ describe('レジストリ + idolのスキーマ', () => {
     expect(out.map(f => f.path)).toEqual([]);
   });
 
-  it('技6本ぶんの秒数3種(予告/判定/硬直)が漏れなくある', () => {
-    for (const m of ['aim', 'fan', 'roll', 'punch', 'snipe', 'orb']) {
+  it('全技ぶんの秒数3種(予告/判定/硬直)が漏れなくある', () => {
+    for (const m of ['aim', 'fan', 'roll', 'punch', 'snipe', 'orb', 'nade']) {
       for (const k of ['windup', 'active', 'recover']) {
         expect(IDOL_TUNING_FIELDS.some(f => f.path === `timing.${m}.${k}`), `timing.${m}.${k}`).toBe(true);
       }
@@ -217,7 +217,7 @@ describe('個別再生: スキーマから生成できる形になっている',
     // 中核6技 + 射撃枠8つ(v0.25.2638)。射撃枠は**足していなければ見出しごと画面に出ない**ので、
     // ここに8つ並んでいても余計なボタンは現れない。
     expect(moves).toEqual([
-      'aim', 'fan', 'orb', 'punch', 'roll',
+      'aim', 'fan', 'nade', 'orb', 'punch', 'roll',
       's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8',
       'snipe',
     ]);
@@ -242,7 +242,7 @@ describe('個別再生: スキーマから生成できる形になっている',
     const e = getBossTuning('idol');
     expect(typeof e?.onPlay).toBe('function');
     expect(typeof e?.playState).toBe('function');
-    expect(e?.playables?.length).toBe(6 + 8 + 4); // 中核6 + 射撃8枠 + 移動語彙4
+    expect(e?.playables?.length).toBe(7 + 8 + 4); // 中核7(nade含む・v0.25.3442) + 射撃8枠 + 移動語彙4
   });
 });
 
@@ -589,9 +589,9 @@ describe('台本エディタ(BossScriptApi)', () => {
     expect(s.serialize()).toBeNull();
   });
 
-  it('段に置ける技 = 中核6技 + 有効な射撃枠(2便目と噛み合う)', () => {
+  it('段に置ける技 = 中核7技 + 有効な射撃枠(2便目と噛み合う)', () => {
     const { s } = api();
-    expect(s.moveChoices().map(m => m.key)).toEqual(['aim', 'fan', 'roll', 'punch', 'snipe', 'orb']);
+    expect(s.moveChoices().map(m => m.key)).toEqual(['aim', 'fan', 'roll', 'punch', 'snipe', 'orb', 'nade']);
     addIdolShot();
     IDOL_TUNING.shotLabels.s1 = 'ジャブ';
     const after = s.moveChoices();

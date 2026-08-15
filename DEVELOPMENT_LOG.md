@@ -1,5 +1,25 @@
 # Development Log
 
+## v0.25.3442 — idolの手榴弾技(近・中距離)を新設【2026-08-15 14:44 JST】
+- **社長指示**: 「裏ボスアイドルの近距離、中距離技に手榴弾を追加。(プレイヤーの手榴弾と同じ仕様)」
+- **仕様値の葉モジュール**: `src/utils/grenadeSpec.ts`新設(FUSE 2000/RADIUS 66/DAMAGE 42/SPEED 118を
+  useGameLoopのローカルconstから移動=値不変)。idolTick/idolScript/pixiScene/useGameLoopが同じ値を読む
+  (v3390循環import事故の再発防止ルール=依存ゼロの葉)。
+- **新コア技 `nade`**: IdolCoreMove 7本目。溜め600ms(震え+後ずさりの予兆自動適用)→プレイヤー方向へ投擲→
+  硬直900ms。台本=近(melee)と中(near)に手榴弾入りを各1本追加(重み30・4段)。溜め中カウンター可(既存の
+  WINDUP_STATES自動derive)。
+- **敵手榴弾の配管(hostile grenade=初出)**: ①転がり=gameStoreのgrenade物理を共有 ②接触ダメージ無し=
+  `checkProjectilePlayerCollisions`でweaponType'grenade'を除外(カウンター反射対象からも外れる)
+  ③信管2秒で爆発=useGameLoopのtimedGrenadesにhostile分岐(半径66・減衰式0.55+0.45×falloff・壁越し不可・
+  プレイヤーのみ・スキル倍率/ボマー散布は通さない)④**赤円=半径66と厳密一致**(drawProjectileのgrenade
+  ケースでhostileだけに描画・信管が進むほど濃く)。
+- **公平性・憲法**: 台帳にnade=B(信管2秒×歩速104.4=209px>66+16=歩いて出られる)。
+  憲法「P1はC優位/P2は全部C」は**nadeを除いた既存技で維持**にテストを更新(社長指示による追加のため。
+  nade自身がBであることもテストで固定)。ghostTelegraph台帳にも2状態を分類済み。
+- **検証**: typecheck+lint(エラー0)+idol/bossmaker/ghost関連16ファイル531テスト通過(旧前提の直値更新:
+  技6→7本・IDOL_PLAYABLES 18→19・timing/strings期待値)。実機は`?idolnow=1`で。
+- 負荷1/10(投擲は既存projectile経路・赤円は既存Graphicsへの円2個)。
+
 ## v0.25.3441 — グレネード接触爆発(直撃復活)+ボマー対応+バス停振り修正【2026-08-15 14:32 JST】
 - **社長指示(グレネード仕様変更)**: 「動きはいまのまま。転がり中に敵にぶつかるとその場で爆発。直撃を復活。
   もちろん時間でも爆発」。実装=collisionUtilsのv3438素通し除外を撤去し通常の弾衝突へ復帰。接触時は既存の

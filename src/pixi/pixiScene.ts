@@ -93,6 +93,7 @@ import {
   idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_TUNING, IDOL_ORB_SPREAD_RAD, IDOL_MOVES_ALL,
   idolShot, isIdolShot, idolFistReach, idolGunMuzzle, type IdolShotSlot, type IdolMove,
 } from '../utils/idolScript';
+import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
 import {
   MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
   ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS, ACRASIEL_WARP_TELEGRAPH_MS, ACRASIEL_BURST_WINDUP_MS,
@@ -15234,6 +15235,7 @@ export class PixiScene {
         else if (bs === 'idol-fan-windup') idolWindMs = idolFanWindupVis();
         else if (bs === 'idol-snipe-windup') idolWindMs = IDOL_TIMING.snipe.windup;
         else if (bs === 'idol-orb-windup') idolWindMs = IDOL_TIMING.orb.windup;
+        else if (bs === 'idol-nade-windup') idolWindMs = IDOL_TIMING.nade.windup; // 手榴弾(v0.25.3442)も同じ震え+後ずさり
         else if (bs === 'idol-punch-windup') idolWindMs = idolPunchWindupVis();
         else if (bs !== undefined && bs.startsWith('idol-s') && bs.endsWith('-windup')) {
           const slot = bs.slice('idol-'.length, bs.length - '-windup'.length) as IdolMove;
@@ -20573,6 +20575,12 @@ export class PixiScene {
         const t = Math.max(0, Math.min(1, (Date.now() - p.createdAt) / Math.max(1, p.duration)));
         const hopEnvelope = Math.max(0, 1 - t * 0.58);
         const hop = Math.abs(Math.sin(t * Math.PI * 5.2)) * 9 * hopEnvelope;
+        // 敵の手榴弾(idolの手榴弾技・v0.25.3442): 爆発範囲の赤円=判定(HEAVY_GRENADE_RADIUS・
+        // 「中心が円の内側なら当たる」)と厳密一致(分類1)。信管が進むほど濃く+締まる予告の文法。
+        if (p.hostile) {
+          g.circle(0, 0, HEAVY_GRENADE_RADIUS).fill({ color: 0xef4444, alpha: 0.08 + 0.14 * t });
+          g.circle(0, 0, HEAVY_GRENADE_RADIUS).stroke({ color: 0xef4444, alpha: 0.5 + 0.4 * t, width: 2 });
+        }
         g.ellipse(0, 4, Math.max(3, p.width * 0.48), Math.max(1.2, p.height * 0.14))
           .fill({ color: 0x000000, alpha: 0.28 });
         // 社長指示v0.25.3290「この弾の絵を手榴弾にも流用」: 支給ドット弾(fx/grenade-ball)を

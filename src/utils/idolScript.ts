@@ -18,12 +18,14 @@ import {
   type RestConfig, type PunishConfig, type MoveFairness, type BossZone,
 } from './bossSkeleton';
 import { PLAYER_WALK_PX_PER_SEC } from './bossTelegraph';
+import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS } from './grenadeSpec';
 import { deepCloneTuning } from './deepClone';
 import { registerEnemyFireProfile } from './enemyUtils';
 import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
 
 // v0.25.2613: 狙撃線(snipe)と追尾弾(orb)を新設。既存4技は消さず条件を与え直す(社長方針)。
-export type IdolCoreMove = 'aim' | 'fan' | 'roll' | 'punch' | 'snipe' | 'orb';
+// v0.25.3442: 手榴弾(nade)を新設(社長指示「近距離、中距離技に手榴弾を追加。プレイヤーの手榴弾と同じ仕様」)。
+export type IdolCoreMove = 'aim' | 'fan' | 'roll' | 'punch' | 'snipe' | 'orb' | 'nade';
 
 /**
  * **射撃スロット**(v0.25.2638・社長要望「通常弾とかも入れたい 連射の弾幕とか、何かの後に普通に撃つ
@@ -40,7 +42,7 @@ export type IdolShotSlot = 's1' | 's2' | 's3' | 's4' | 's5' | 's6' | 's7' | 's8'
 export type IdolMove = IdolCoreMove | IdolShotSlot;
 
 /** 中核6技(コードで台本を書いてある技)。**射撃スロットは含まない**。 */
-export const IDOL_ALL_MOVES: readonly IdolCoreMove[] = ['aim', 'fan', 'roll', 'punch', 'snipe', 'orb'];
+export const IDOL_ALL_MOVES: readonly IdolCoreMove[] = ['aim', 'fan', 'roll', 'punch', 'snipe', 'orb', 'nade'];
 export const IDOL_SHOT_SLOTS: readonly IdolShotSlot[] = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'];
 /** 中核6技+射撃8枠。状態名の一覧やCD表など「全ての技」が要る所で使う。 */
 export const IDOL_MOVES_ALL: readonly IdolMove[] = [...IDOL_ALL_MOVES, ...IDOL_SHOT_SLOTS];
@@ -216,6 +218,8 @@ export const IDOL_TUNING: IdolTuning = {
     punch: { windup: 600,  active: 0,   recover: 900 },
     snipe: { windup: 1100, active: 200, recover: 900 },
     orb:   { windup: 800,  active: 0,   recover: 900 },
+    // 手榴弾(v0.25.3442): 投げ自体は当たらない(判定は転がる手榴弾の信管2秒後の赤円)。溜めは短め。
+    nade:  { windup: 600,  active: 0,   recover: 900 },
   },
   // 図形(判定と厳密一致させる値。描画側=pixiScene も同じここを読む)。
   shape: {
@@ -238,10 +242,15 @@ export const IDOL_TUNING: IdolTuning = {
     // 拳で押し出した先へ狙撃線を通す。もう一方は離脱→射線で挟み、最後の拳から再び狙撃へ繋ぐ。
     { zone: 'melee', weight: 55, moves: ['punch', 'snipe', 'roll', 'fan'] },
     { zone: 'melee', weight: 45, moves: ['roll', 'fan', 'punch', 'snipe'] },
+    // 手榴弾入り(社長指示v0.25.3442「近距離、中距離技に手榴弾を追加」): 近=足元へ置いて離脱と
+    // 組み合わせ「置いてから下がる」。転がる手榴弾(赤円66・信管2秒)が場を割る。
+    { zone: 'melee', weight: 30, moves: ['nade', 'roll', 'fan', 'snipe'] },
     // 主戦帯(140〜340): 連射で崩して終端に追尾弾=「離れても解決しない」を教える帯。
     { zone: 'near', weight: 40, moves: ['fan', 'roll', 'snipe', 'orb'] },
     { zone: 'near', weight: 35, moves: ['orb', 'punch', 'snipe', 'fan'] },
     { zone: 'near', weight: 25, moves: ['fan', 'orb', 'punch', 'snipe'] },
+    // 手榴弾入り(中): 連射の合間に転がして面を制圧=横歩き一辺倒を崩す。
+    { zone: 'near', weight: 30, moves: ['fan', 'nade', 'punch', 'snipe'] },
     // 遠(340〜700): 狙撃線が主。ここが一番危ない=「近づけ」の圧。
     { zone: 'mid', weight: 50, moves: ['aim', 'snipe', 'orb', 'roll'] },
     { zone: 'mid', weight: 50, moves: ['orb', 'aim', 'snipe', 'fan'] },
@@ -403,6 +412,9 @@ export const idolFairnessP1 = (): MoveFairness[] => {
     { key: 'punch', cls: 'C', telegraphMs: T.timing.punch.windup },
     // 追尾弾: 速度155>プレイヤー104.4=走っても振り切れない。答えは「詰めて旋回を振り切る」。
     { key: 'orb', cls: 'C', telegraphMs: T.timing.orb.windup },
+    // 手榴弾(v0.25.3442): 赤円66pxが投擲から信管2秒後に爆ぜる=歩いて出られる(B)。
+    // ヒント=転がる手榴弾+赤円そのもの(投擲の瞬間から見えている)なので予告時間は信管の2秒。
+    { key: 'nade', cls: 'B', telegraphMs: HEAVY_GRENADE_FUSE_MS, escapePx: HEAVY_GRENADE_RADIUS + PLAYER_HALF },
     ...idolShotFairness(),
   ];
 };
@@ -416,6 +428,9 @@ export const idolFairnessP2 = (): MoveFairness[] => {
     { key: 'snipe+wave', cls: 'C', telegraphMs: T.waveDelayMs },
     { key: 'punch', cls: 'C', telegraphMs: T.timing.punch.windup },
     { key: 'orb', cls: 'C', telegraphMs: T.timing.orb.windup },
+    // 手榴弾はP2でも同じ仕様(第二波なし・B=歩いて出られる)。「P2は全部C」の憲法は
+    // nadeを除いた既存技で維持する(社長指示による追加=idolScript.test側も同じ形で機械化)。
+    { key: 'nade', cls: 'B', telegraphMs: HEAVY_GRENADE_FUSE_MS, escapePx: HEAVY_GRENADE_RADIUS + PLAYER_HALF },
     ...idolShotFairness(),
   ];
 };

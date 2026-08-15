@@ -741,6 +741,8 @@ export interface Enemy {
     // v0.25.2613(バッチ3・idolのMAX化): 狙撃線/追尾弾/休符。詳細は src/utils/idolTick.ts。
     | 'idol-snipe-windup' | 'idol-snipe' | 'idol-snipe-recover'
     | 'idol-orb-windup' | 'idol-orb-recover'
+    // v0.25.3442(社長指示): 手榴弾技(プレイヤーの手榴弾と同じ仕様の投擲)。
+    | 'idol-nade-windup' | 'idol-nade-recover'
     | 'idol-rest'
     // PACING_PUZZLE.md §6.38 B2: バス停(変異・bounty-ranged)の技。
     // laser-windup/laser-fire/laser-recover/laser-broken は usesMimirLaser 経由でミーミルと共有
