@@ -119,8 +119,12 @@ const ShopMenu: React.FC = () => {
     };
   });
   const skillEntries: SkillShopEntry[] = (Object.entries(unlockedShopSkillCards) as [SubWeaponKey, number][])
-    // キャラ固有サブウェポン(職スキル枠)はショップで扱わない(キャラ固有スキル化)。
-    .filter(([skillKey, unlockedLevel]) => unlockedLevel > 0 && !CHARACTER_SUBWEAPON_KEYS.includes(skillKey))
+    // キャラ固有サブウェポン(職スキル枠)は他クラスの分は扱わないが、**自分が装備している固定サブは陳列する**
+    // (社長指示v0.25.3322→v0.25.3440「最初から上限まで解放(ゲームプレイ中レベル上げれる)」。
+    //  v3322でrunShopUnlocksに陳列Lv3を積んだが、この除外フィルタが残っていて一度も商人に並んで
+    //  いなかった=ラン中に固定サブのLvを上げる手段が無かった)。
+    .filter(([skillKey, unlockedLevel]) => unlockedLevel > 0
+      && (!CHARACTER_SUBWEAPON_KEYS.includes(skillKey) || player.subWeapons.includes(skillKey)))
     .map(([skillKey, unlockedLevel]) => {
       const currentLevel = player.subWeaponLevels[skillKey] ?? 0;
       const cappedUnlock = Math.min(3, Math.max(0, unlockedLevel));
@@ -128,7 +132,10 @@ const ShopMenu: React.FC = () => {
       return {
         key: `skill-${skillKey}` as const,
         skillKey,
-        name: `${subWeaponDisplayName(skillKey)} ${maxedForStock ? 'MAX' : `Lv${currentLevel + 1}`}`,
+        // 社長指示v0.25.3440(表記): 陳列上限で頭打ちの時に「MAX」と書くと真の上限(Lv3)と紛らわしい。
+        // 本当のLv3だけMAX表記、陳列上限止まりは現在Lvをそのまま出す(グレーアウトで買えないのは見て分かる)。
+        name: `${subWeaponDisplayName(skillKey)} ${currentLevel >= 3 ? 'MAX'
+          : maxedForStock ? `Lv${currentLevel}` : `Lv${currentLevel + 1}`}`,
         description: maxedForStock ? `陳列Lv${cappedUnlock}まで購入済み` : `スキルカード 陳列Lv${cappedUnlock}`,
         cost: skillKey === 'dog' ? SHOP_DOG_COST : skillKey === 'katana' ? SHOP_KATANA_COST : SHOP_CLASS_SKILL_COST,
         disabled: maxedForStock

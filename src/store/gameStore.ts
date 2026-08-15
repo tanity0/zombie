@@ -15012,6 +15012,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const c = capturedThisFrame as { id: string; x: number; y: number; soldierIndex: number };
       get().spawnRing(c.x, c.y, 14, BASE_CAPTURE_RADIUS, 'rgba(251,191,36,0.9)', 4, 560);
       get().spawnGlow(c.x, c.y, GLOW_R_M, 'rgba(251,191,36,', 600);
+      // 社長指示v0.25.3440「拠点占拠したら、アテンションイベントで教えて」: 現地へカメラアテンション
+      // (時間停止で高速パン→ホールド→戻る)。バナー/SE/セリフは従来どおり併用。
+      get().triggerAttention(c.x, c.y);
       // 拠点解放時セリフ(Critical): 時間停止なしのHUDセリフに置換(管理表 baseCaptured)。バナー/SEは併用。
       const sol = BASE_SOLDIERS[c.soldierIndex % BASE_SOLDIERS.length];
       get().tryNpcLine(sol.name, 'baseCaptured', pickNpcLine(c.soldierIndex, 'baseCaptured', sol.baseCaptured), BASE_CAPTURED_CAT_CD_MS);
