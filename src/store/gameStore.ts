@@ -1264,21 +1264,30 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   'lab-zombie-1': '研究施設の変異体(Lv1)',
   'lab-zombie-2': '研究施設の変異体(Lv2)',
   'lab-zombie-3': '研究施設の変異体(Lv3)',
-  // v0.25.3199(社長指示「CODE削除」): 接頭辞CODE:を全廃し素のローマ字名に(正規化はnamedEnemy.ts)。
-  mimir: 'MIMIR',
-  jormungand: 'JORMUNGAND',
-  skadi: 'SKADI',
-  thor: 'THOR',
-  miguel: 'MIGUEL',
-  jibril: 'JIBRIL',
-  rafi: 'RAFI',
+  // UI名称統一バッチ(社長指示v0.25.3443「死因や資料室など他のUIも名前を揃える」): 固有名ボスの表示は
+  // カットイン台帳(src/data/bossCutin.ts)の和名に統一(名前の正本は台帳1箇所)。
+  // ※旧ローマ字表記(v0.25.3199 CODE削除後の素のローマ字)が焼き込まれた永続記録(年表等)は
+  //   namedEnemy.ts の読み時正規化が和名へ変換する。宿敵32名(ギリシャ神話)はローマ字のまま=対象外。
+  mimir: 'ミーミル',
+  jormungand: 'ヨルムンガルド',
+  skadi: 'スカジ',
+  thor: 'トール',
+  miguel: 'ミゲル',
+  jibril: 'ジブリル',
+  rafi: 'ラフィ',
   // PACING_PUZZLE.md §6.28-0★(バッチM52・ロットL1): ゲート2の天使ボス4〜6体目。
-  uri: 'URI',
-  suriel: 'SURIEL',
-  acrasiel: 'ACRASIEL',
-  idol: 'アイドル',
+  uri: 'ウリ',
+  suriel: 'スリィエル',
+  acrasiel: 'アクラシエル',
+  idol: '偶像',
   hunter: '変異体(狩猟型)',
   screamer: '変異体(叫喚型)',
+  // 賞金首4種(名称統一バッチ・社長指示v0.25.3443): 台帳(bossCutin.ts)と同名。従来はフォールバック「変異体」に落ちていて
+  // 死因・討伐バナー・被弾文言(「◯◯のレーザー」等)が個体名を出せていなかった。
+  'bounty-ranged': 'バス停(変異)',
+  'bounty-melee': '馬乗り(変異)',
+  'bounty-balance': '鋏(変異)',
+  'bounty-maiko': '舞妓(変異)',
 };
 export const enemyDeathLabel = (type: string): string => ENEMY_DEATH_LABELS[type] ?? '変異体';
 

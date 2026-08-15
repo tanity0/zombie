@@ -93,11 +93,11 @@ describe('ボスラッシュの台帳', () => {
 
 // §6.38 掲載裁定: 賞金首4種(GHOST_DOSSIER_SLOTS由来ではない独立追記枠)。
 describe('賞金首の掲載枠', () => {
-  it('4種すべて並び、末尾(既存ボス群の後ろ)に置かれている', () => {
+  it('4種すべて並び、先頭(既存ボス群の前)に置かれている(社長指示v0.25.3444「小ボスは一番上」)', () => {
     expect(bountySlots().map(s => s.bossType).sort()).toEqual([...BOUNTY_ENEMY_TYPES].sort());
     const ghostIdxs = PRACTICE_SLOTS.map((s, i) => (!isBountyType(s.bossType) ? i : -1)).filter(i => i >= 0);
     const bountyIdxs = PRACTICE_SLOTS.map((s, i) => (isBountyType(s.bossType) ? i : -1)).filter(i => i >= 0);
-    expect(Math.min(...bountyIdxs)).toBeGreaterThan(Math.max(...ghostIdxs));
+    expect(Math.max(...bountyIdxs)).toBeLessThan(Math.min(...ghostIdxs));
   });
 
   it('出撃先はlab/corridorではないstage-1・強制出現は?bountynow相乗り・本編到達可能', () => {

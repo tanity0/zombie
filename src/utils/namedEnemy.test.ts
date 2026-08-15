@@ -17,38 +17,50 @@ describe('NAMED_ENEMY_NAMES', () => {
   });
 });
 
-describe('normalizeNamedName (§6.20 M45 / v0.25.3199 CODE削除)', () => {
-  it('maps legacy katakana names (angels/hidden bosses/named foes) to the bare ROMAN display', () => {
-    expect(normalizeNamedName('ミゲル')).toBe('MIGUEL');
-    expect(normalizeNamedName('ジブリル')).toBe('JIBRIL');
-    expect(normalizeNamedName('ラフィ')).toBe('RAFI');
-    expect(normalizeNamedName('ミーミル')).toBe('MIMIR');
-    expect(normalizeNamedName('ヨルムンガルド')).toBe('JORMUNGAND');
-    expect(normalizeNamedName('スカジ')).toBe('SKADI');
-    expect(normalizeNamedName('トール')).toBe('THOR');
+describe('normalizeNamedName (§6.20 M45 / v0.25.3199 CODE削除 / 名称統一v3443 ボスは和名へ)', () => {
+  it('宿敵(ギリシャ神話32名)は旧カタカナ→素のローマ字のまま(v0.25.3199の正)', () => {
     expect(normalizeNamedName('ケルベロス')).toBe('CERBERUS');
     expect(normalizeNamedName('ヒュプノス')).toBe('HYPNOS');
+  });
+
+  it('固有名ボス(天使/裏ボス)は旧ローマ字→カットイン台帳の和名(名称統一v3443)', () => {
+    expect(normalizeNamedName('MIGUEL')).toBe('ミゲル');
+    expect(normalizeNamedName('JIBRIL')).toBe('ジブリル');
+    expect(normalizeNamedName('RAFI')).toBe('ラフィ');
+    expect(normalizeNamedName('MIMIR')).toBe('ミーミル');
+    expect(normalizeNamedName('JORMUNGAND')).toBe('ヨルムンガルド');
+    expect(normalizeNamedName('SKADI')).toBe('スカジ');
+    expect(normalizeNamedName('THOR')).toBe('トール');
+    expect(normalizeNamedName('CODE:MIMIR')).toBe('ミーミル');
   });
 
   it('strips the legacy CODE: prefix and returns unknown/already-new names unchanged', () => {
     expect(normalizeNamedName('CODE:CERBERUS')).toBe('CERBERUS');
     expect(normalizeNamedName('CERBERUS')).toBe('CERBERUS');
+    expect(normalizeNamedName('ミーミル')).toBe('ミーミル'); // 既に和名=そのまま
     expect(normalizeNamedName('未知の名前')).toBe('未知の名前');
     expect(normalizeNamedName('')).toBe('');
   });
 });
 
 describe('normalizeNamedNamesInText (§6.20追補: 年表など記録済み文言の表示時正規化)', () => {
-  it('文中の旧名を新表記へ置換し、「天使」接頭辞は接頭辞ごと外す(社長指示v0.25.1756)', () => {
-    expect(normalizeNamedNamesInText('天使ミゲルを討伐')).toBe('MIGUELを討伐');
-    expect(normalizeNamedNamesInText('ミーミルを討伐')).toBe('MIMIRを討伐');
-    expect(normalizeNamedNamesInText('ヨルムンガルドを討伐')).toBe('JORMUNGANDを討伐');
+  it('固有名ボスの旧表記(ローマ字/CODE:/天使接頭辞)を和名へ置換する(名称統一v3443)', () => {
+    expect(normalizeNamedNamesInText('MIMIRを討伐')).toBe('ミーミルを討伐');
+    expect(normalizeNamedNamesInText('CODE:MIGUELを討伐')).toBe('ミゲルを討伐');
+    expect(normalizeNamedNamesInText('天使ミゲルを討伐')).toBe('ミゲルを討伐');
+    expect(normalizeNamedNamesInText('アイドルを討伐')).toBe('偶像を討伐');
+    expect(normalizeNamedNamesInText('ミーミルを討伐')).toBe('ミーミルを討伐'); // 和名記録はそのまま
   });
 
-  it('複数の旧名・旧名なし・旧CODE:表記の文もそれぞれ正しく扱う', () => {
-    expect(normalizeNamedNamesInText('トールとスカジを討伐')).toBe('THORとSKADIを討伐');
+  it('SURIEL⊃URIの包含関係でも長い名前から置換される', () => {
+    expect(normalizeNamedNamesInText('SURIELを討伐')).toBe('スリィエルを討伐');
+    expect(normalizeNamedNamesInText('URIを討伐')).toBe('ウリを討伐');
+  });
+
+  it('複数の旧名・旧名なし・宿敵(ローマ字が正)の文もそれぞれ正しく扱う', () => {
+    expect(normalizeNamedNamesInText('THORとSKADIを討伐')).toBe('トールとスカジを討伐');
     expect(normalizeNamedNamesInText('ストーリーボスを討伐')).toBe('ストーリーボスを討伐');
-    expect(normalizeNamedNamesInText('CODE:MIGUELを討伐')).toBe('MIGUELを討伐');
+    expect(normalizeNamedNamesInText('ケルベロスを討伐')).toBe('CERBERUSを討伐');
     expect(normalizeNamedNamesInText('深層域に到達')).toBe('深層域に到達');
   });
 });

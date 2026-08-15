@@ -742,7 +742,8 @@ export interface Enemy {
     | 'idol-snipe-windup' | 'idol-snipe' | 'idol-snipe-recover'
     | 'idol-orb-windup' | 'idol-orb-recover'
     // v0.25.3442(社長指示): 手榴弾技(プレイヤーの手榴弾と同じ仕様の投擲)。
-    | 'idol-nade-windup' | 'idol-nade-recover'
+    // v0.25.3444(社長指示「バックロールしながら手榴弾を投げる」): 'idol-nade'=投擲と同時の後方ロール実行域。
+    | 'idol-nade-windup' | 'idol-nade' | 'idol-nade-recover'
     | 'idol-rest'
     // PACING_PUZZLE.md §6.38 B2: バス停(変異・bounty-ranged)の技。
     // laser-windup/laser-fire/laser-recover/laser-broken は usesMimirLaser 経由でミーミルと共有

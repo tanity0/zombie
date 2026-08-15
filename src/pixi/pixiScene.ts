@@ -3099,7 +3099,11 @@ export class PixiScene {
   private skateboardViews = new Map<string, { container: Container; sprite: Sprite; gfx: Graphics }>();
   // ドローンブーメラン投擲物: 3枚羽シュリケンのスプライトが常時回転しながら飛ぶ。
   // 停止中(boomPhase==='stop')の射程リングは従来どおり drawProjectile(Graphics)側が描く。
-  private droneBoomerangViews = new Map<string, { container: Container; sprite: Sprite }>();
+  // ★慣性バッチ(v0.25.3444・旧台帳#6の裁定=例外なし): 回転は角速度を積分して作る(常時等速を廃止)。
+  private droneBoomerangViews = new Map<string, {
+    container: Container; sprite: Sprite;
+    spinAng: number; spinVel: number; lastSpinAt: number;
+  }>();
   // 火炎瓶(molotov)の地面の火: 松明と同じ炎Graphics(drawFlameShape流用)+ 小さめの暖色ライト。
   // 状態(寿命/DoT)は gameStore.groundFires が持つ。ここは描画のみ(CLAUDE.md「Pixiは描画専門」)。
   private groundFireViews = new Map<string, { container: Container; flameArt: Sprite; flame: Graphics; light: Sprite }>();
@@ -3140,6 +3144,43 @@ export class PixiScene {
     }
     return weaponSpawnEase(now - st.appearAt, Infinity);
   }
+  // ★慣性バッチ(v0.25.3444・B7積み残しの消滅側): weaponAppearEase は出現しか保証できない
+  // (「呼ばれなくなった次のフレーム」を draw 呼び出し側の設計上ここでは捕まえられない)。
+  // そこで各drawXxxが毎フレーム「最後に描いた絵の状態(sprite・alpha・y)」をここへ登録し、
+  // フレーム末尾の flushWeaponVanish が「今フレーム描かれなかった=消えた」絵を見つけて、
+  // §7-15の逆再生(加速しながら沈む+フェードアウト・WEAPON_SPAWN_EASE_MS)を数フレーム描き足す。
+  // 登録は上書き式(Map1件/武器)=状態は太らない。判定・タイミングは一切変えない(絵のみ)。
+  private weaponVanishFx = new Map<string, {
+    lastDrawAt: number;
+    container?: Container; // katana系はコンテナごと既定OFFされるためコンテナも起こす
+    items: { sp: Sprite; alpha: number; y: number }[];
+  }>();
+  private trackWeaponVanish(
+    key: string, now: number,
+    items: { sp: Sprite; alpha: number; y: number }[], container?: Container,
+  ): void {
+    this.weaponVanishFx.set(key, { lastDrawAt: now, container, items });
+  }
+  private flushWeaponVanish(now: number): void {
+    for (const [key, st] of this.weaponVanishFx) {
+      if (st.lastDrawAt >= now) continue; // 今フレームも描かれている=消滅ではない
+      if ((st.container?.destroyed ?? false) || st.items.some(i => i.sp.destroyed)) {
+        this.weaponVanishFx.delete(key); continue;
+      }
+      // 既に他の分岐が同じスプライトを使って表示している(=別の絵に転用中)なら手を出さない。
+      const inUse = st.container ? st.container.visible : st.items.some(i => i.sp.visible);
+      if (inUse) { this.weaponVanishFx.delete(key); continue; }
+      const t = (now - st.lastDrawAt) / WEAPON_SPAWN_EASE_MS;
+      if (t >= 1) { this.weaponVanishFx.delete(key); continue; }
+      const outEased = t * t * t; // 出現(減速しながら上がる)の逆再生=加速しながら沈む
+      if (st.container) st.container.visible = true;
+      for (const i of st.items) {
+        i.sp.visible = true;
+        i.sp.alpha = i.alpha * (1 - outEased);
+        i.sp.position.y = i.y + WEAPON_SPAWN_DROP_PX * outEased;
+      }
+    }
+  }
   // §6.28-16: ジブリルのランタン(jibril-lantern)を常に手元に構えたまま表示する専用スプライト
   // (振り演出ではなく「掲げたまま」なのでKatanaSlash系とは別の単純な1枚Sprite)。
   private jibrilLanternSprites = new Map<string, Sprite>();
@@ -3178,7 +3219,12 @@ export class PixiScene {
   private lastPetalStepAt: number | null = null; // stepPetals用の簡易delta算出(タブ非表示等の飛びはクランプ)
   // §6.28-18(バッチM62): スリィエルの環(suriel-ring)。待機中も頭上に浮遊描画するため、boss.idごとに
   // 環1本目/2本目(Phase2)の2枚のSpriteを持つ(常時表示=Container不要・単純な位置更新のみ)。
-  private surielRingSprites = new Map<string, { ring1: Sprite; ring2: Sprite }>();
+  // ★慣性バッチ(v0.25.3444・旧台帳#5の裁定=例外なし): 環の回転は角速度を積分して作る
+  // (now/260 直読みの永続等速をやめる)。出現=スピンアップ/消滅=減速+フェード。
+  private surielRingSprites = new Map<string, {
+    ring1: Sprite; ring2: Sprite;
+    spinAng: number; spinVel: number; lastSpinAt: number; vanishAt: number | null;
+  }>();
   // FX-V2a(発注仕様v0.25.2974・社長方針2026-08-07更新): 薙ぎ(sweep)実行中だけ環の軌跡に添える
   // 斬撃ストリーク1枚(既存fx/slash-streak-*流用)。単純な1枚Sprite=thorSlashFx等のContainer3枚
   // 構成(streak+burst+katana)は要らない(武器絵は環そのものが担うため)。
@@ -7296,6 +7342,10 @@ export class PixiScene {
     const petalDtSec = this.lastPetalStepAt === null ? 0 : Math.min(0.1, Math.max(0, (now - this.lastPetalStepAt) / 1000));
     this.lastPetalStepAt = now;
     if (petalDtSec > 0) this.stepPetals(now, petalDtSec);
+    this.stepMaikoTrail(now); // ★慣性バッチ: 手毬打ちの射出残像pool更新(全体で1回)
+    // ★慣性バッチ: §7-15消滅側。syncActors(=resetActorFxDefaultsの既定OFF)の後に回し、
+    // 「今フレーム描かれなかった武器絵」へ沈み+フェードアウトを描き足す。
+    this.flushWeaponVanish(now);
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime, now);
     this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
@@ -7367,7 +7417,7 @@ export class PixiScene {
     this.syncFireKnives(s.projectiles, now);
     this.syncTurrets(s.projectiles, now);
     this.syncSkateboards(s.projectiles, now);
-    this.syncDroneBoomerangs(s.projectiles, now);
+    this.syncDroneBoomerangs(s.projectiles, s.player, now); // ★慣性バッチ: 帰還減速に手元(プレイヤー)距離を使う
     this.syncSummons(s.summons, now);
     this.syncEventBloom(s.effects, fxNow);
     this.syncEffects(s.effects, s.camera, fxNow); // v0.25.3038: 光系は停止中も進む
@@ -11741,6 +11791,10 @@ export class PixiScene {
         this.coilBodyState.delete(id);
         // §7-15出現ease(weaponAppearEase)の継続タイマーも個体退場と同時に片付ける(キー=`用途:${id}`)。
         for (const k of this.weaponHoldContinuity.keys()) if (k.endsWith(`:${id}`)) this.weaponHoldContinuity.delete(k);
+        // ★慣性バッチ: §7-15消滅側の登録(weaponVanishFx)と毬残像のレート記録も同時に片付ける。
+        // (登録が残っていてもsprite.destroyedガードで無害だが、辞書を太らせない)
+        for (const k of this.weaponVanishFx.keys()) if (k.endsWith(`:${id}`)) this.weaponVanishFx.delete(k);
+        this.maikoTrailLastAt.delete(id);
         // 技表GO(城ボス銃)のマズルフラッシュpoolも個体退場と同時に片付ける(キー=`${id}:gun:*`/`${id}:boltgun:*`)。
         for (const k of this.bossGunMuzzleSprites.keys()) {
           if (k.startsWith(`${id}:gun:`) || k.startsWith(`${id}:boltgun:`)) {
@@ -11772,8 +11826,8 @@ export class PixiScene {
         if (holoMiniSp) { holoMiniSp.destroy(); this.holoMiniSprites.delete(id); }
         const eyeSp = this.angelEyeSprites.get(id);
         if (eyeSp) { eyeSp.destroy(); this.angelEyeSprites.delete(id); }
-        const ringSp = this.surielRingSprites.get(id);
-        if (ringSp) { ringSp.ring1.destroy(); ringSp.ring2.destroy(); this.surielRingSprites.delete(id); }
+        // ★慣性バッチ: スリィエルの環はここで即destroyしない。syncSurielRingのsweepが
+        // 減速+フェードの消滅(RING_VANISH_MS)を描き切ってから自分でdestroyする(リーク無し)。
         const sweepStreakSp = this.surielSweepStreakFx.get(id);
         if (sweepStreakSp) { sweepStreakSp.destroy(); this.surielSweepStreakFx.delete(id); }
         const nameLabel = this.namedFoeLabels.get(id);
@@ -11794,6 +11848,10 @@ export class PixiScene {
         if (scissorFlashSp) { scissorFlashSp.destroy(); this.bountyScissorFlashSprites.delete(id); }
         this.bountyScissorFlashKey.delete(id);
         this.bountyScissorFlashBornAt.delete(id);
+        const slashArcSp = this.bountySlashArcSprites.get(id);
+        if (slashArcSp) { slashArcSp.destroy(); this.bountySlashArcSprites.delete(id); }
+        this.bountySlashArcKey.delete(id);
+        this.bountySlashArcBornAt.delete(id);
         this.bountyPetalFxKey.delete(id);
       }
     }
@@ -11990,6 +12048,13 @@ export class PixiScene {
   private syncSurielRing(enemies: Enemy[], gameTime: number, now: number) {
     const seen = new Set<string>();
     const tex = getTexture('suriel-ring');
+    // ★慣性バッチ(社長裁定v0.25.3443「物理の法則の中にいるなら動き始め・動き終わりで減速がある」):
+    // 旧実装は spin = now/260 の永続等速(開始も終了も瞬間)。角速度を状態に持って積分し、
+    // 出現=0から加速して定速へ(スピンアップ)/消滅=減速しながらフェードして止まる、へ変更。
+    // 定速回転そのものは維持(慣性は開始/終了に付く)。定常角速度 1/260 rad/ms は従来値と同一。
+    const SPIN_TARGET = 1 / 260;
+    const SPIN_TAU_MS = 240; // 加減速の時定数(~0.7秒で定速の95%)
+    const RING_VANISH_MS = 450;
     if (tex) {
       for (const e of enemies) {
         if (e.type !== 'suriel' || e.ringX === undefined || e.ringY === undefined) continue;
@@ -11999,10 +12064,17 @@ export class PixiScene {
           const ring1 = new Sprite(tex); ring1.anchor.set(0.5, 0.5);
           const ring2 = new Sprite(tex); ring2.anchor.set(0.5, 0.5);
           this.L.effectLayer.addChild(ring1, ring2);
-          views = { ring1, ring2 };
+          views = { ring1, ring2, spinAng: 0, spinVel: 0, lastSpinAt: now, vanishAt: null };
           this.surielRingSprites.set(e.id, views);
         }
-        const spin = now / 260;
+        views.vanishAt = null; // 再出現: 残っていた角速度から加速し直す(速度の持ち越し)
+        const sdt = Math.max(0, Math.min(100, now - views.lastSpinAt));
+        views.lastSpinAt = now;
+        views.spinVel += (SPIN_TARGET - views.spinVel) * (1 - Math.exp(-sdt / SPIN_TAU_MS));
+        views.spinAng = (views.spinAng + views.spinVel * sdt) % (Math.PI * 2);
+        views.ring1.alpha = 1;
+        views.ring2.alpha = 1;
+        const spin = views.spinAng;
         const sc = SURIEL_RING_VIS_D / Math.max(1, tex.width);
         // FX-V2a(社長方針2026-08-07): 薙ぎ(sweep)実行中だけ、環そのものを薙ぎの線分
         // (aiFrom→aiTarget)に沿って振り抜く。浮遊位置(ringX/Y)は使わず同じring1を動かすだけ
@@ -12034,7 +12106,22 @@ export class PixiScene {
       }
     }
     for (const [id, views] of this.surielRingSprites) {
-      if (!seen.has(id)) { views.ring1.destroy(); views.ring2.destroy(); this.surielRingSprites.delete(id); }
+      if (seen.has(id)) continue;
+      // ★慣性バッチ: 即destroy(瞬間消滅)をやめ、減速しながらフェードして止まってから片付ける。
+      // RING_VANISH_MS 後に必ずdestroyされる=リーク無し。
+      if (views.vanishAt === null) views.vanishAt = now;
+      const vt = (now - views.vanishAt) / RING_VANISH_MS;
+      if (vt >= 1) {
+        views.ring1.destroy(); views.ring2.destroy(); this.surielRingSprites.delete(id);
+        continue;
+      }
+      const sdt = Math.max(0, Math.min(100, now - views.lastSpinAt));
+      views.lastSpinAt = now;
+      views.spinVel += (0 - views.spinVel) * (1 - Math.exp(-sdt / SPIN_TAU_MS));
+      views.spinAng = (views.spinAng + views.spinVel * sdt) % (Math.PI * 2);
+      const fade = 1 - vt;
+      views.ring1.rotation = views.spinAng; views.ring1.alpha = fade;
+      views.ring2.rotation = -views.spinAng; views.ring2.alpha = fade;
     }
   }
 
@@ -12288,6 +12375,12 @@ export class PixiScene {
         g.circle(m.x, m.y - 2, 1.7).fill({ color: 0xfbbf24, alpha: 0.35 + 0.5 * lampPulse });
       } else {
         // 感知→起爆(2秒): 赤点滅テレグラフ。ランプ赤点滅+爆発範囲の赤円(ジブリル火の予告と同系の見せ方)。
+        // ★慣性バッチ(v0.25.3444・旧台帳#7の裁定): 矩形波を**現実基準で維持**する。
+        // 「現実はどんな動きをするか」の答え: これは電子ランプ(LED)の点滅で、LEDは慣性を持たず
+        // 実物が矩形波で明滅する=矩形波こそが物理に忠実。慣性ルールが禁じるのは「現実に存在しない
+        // 動き」であり、これは現実に存在する動きそのもの。加えて分類①(危険を伝える絵)の視認性
+        // (起爆間際の鋭い明滅=緊急信号)も矩形波が最も強い。同関数内の待機ランプ(sin)との差は
+        // 「待機=ゆっくり呼吸するインジケータ/感知=警報」という実在の機器と同じ使い分け。
         const blinkOn = Math.floor((gameTime - m.triggeredAt) / 90) % 2 === 0;
         const p = Math.max(0, Math.min(1, (gameTime - m.triggeredAt) / SENSOR_MINE_FUSE_MS));
         g.circle(m.x, m.y - 2, 2.4).fill({ color: 0xff3b3b, alpha: blinkOn ? 0.95 : 0.25 });
@@ -14523,6 +14616,12 @@ export class PixiScene {
           cx + Math.cos(swingAngle) * 55, cy - e.height * 0.15 + Math.sin(swingAngle) * 55,
           swingAngle + Math.PI / 2, 130, 0.9,
         );
+        // 斬撃弧(v0.25.3444): 薙ぎ抜きの軌道に沿って白い弧を1回スタンプ(横に伸ばして標識の振り幅に合わせる)。
+        this.triggerBountySlashArcOnce(
+          e.id, `push:${e.bossStateUntil ?? 0}`,
+          cx + Math.cos(aimAng) * 80, cy - e.height * 0.15 + Math.sin(aimAng) * 80,
+          aimAng, 300, 210, now,
+        );
       } else if (bs2 === 'br-push-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const ease = weaponSpawnEase(Infinity, remain);
@@ -14632,6 +14731,11 @@ export class PixiScene {
         // 閉じ切る=命中の瞬間(windup完了直前)に命中閃(fx/scissor-x-0)を初配線。
         if (sweepProg > 0.92) {
           this.triggerBountyScissorFlashOnce(e.id, `sweep:${e.bossStateUntil ?? 0}`, (bfx + btx) / 2, (bfy + bty) / 2, aimAng, 0, now);
+          // 斬撃弧(v0.25.3444): 薙ぎの帯(bf→bt)に沿って横に伸ばした白い弧を重ねる。
+          this.triggerBountySlashArcOnce(
+            e.id, `sweeparc:${e.bossStateUntil ?? 0}`, (bfx + btx) / 2, (bfy + bty) / 2,
+            Math.atan2(bty - bfy, btx - bfx), Math.hypot(btx - bfx, bty - bfy) * 1.1, BB_SWEEP_HALFWIDTH * 3.2, now,
+          );
         }
         this.tickBountyScissorFlash(e.id, now);
       } else if (bs2 === 'bb-sweep-recover') {
@@ -14670,6 +14774,8 @@ export class PixiScene {
       } else if (e.type === 'bounty-maiko' && !e.dormant) {
         this.drawMaikoState(view, o, e, bs2, cx, cy, bfx, bfy, btx, bty, gameTime, now);
       }
+      // 斬撃弧のフェードは状態に依らず毎フレーム進める(消し忘れ防止=v3383の教訓と同型)。
+      this.tickBountySlashArc(e.id, now);
     }
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
     if (usesMimirLaser(e.type) && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
@@ -15077,7 +15183,9 @@ export class PixiScene {
           // 閉じ切った瞬間だけ一瞬明るくして残像感を出す(afterの立ち上がり=噛み切った直後)。
           const snapFlash = after > 0 && after < 0.3 ? 1 + 0.4 * (1 - after / 0.3) : 1;
           this.drawBiteJaws(view, jx + jawTremorX, jy + jawTremorY, 0, MIMIR_BITE_RADIUS_VIS * 2,
-            MIMIR_BITE_RADIUS_VIS * 2 * open, Math.min(1, artFade * jawFade * snapFlash));
+            MIMIR_BITE_RADIUS_VIS * 2 * open, Math.min(1, artFade * jawFade * snapFlash),
+            `bite-jaws:${e.id}`, now); // ★慣性バッチ: §7-15消滅側
+
         }
       }
       // T3: ヨルムンガルド「うねり」(§6.28-7) = 赤い帯(トール払いと同じ意匠・角ばった四角ゾーン)。
@@ -15233,6 +15341,7 @@ export class PixiScene {
           this.drawIdolFist(
             view, pax + Math.cos(ang) * dist + nx * clench, pay + Math.sin(ang) * dist + ny * clench, ang,
             idolPunchHalfWidthVis() * 2 * (0.70 + 0.55 * reach), Math.min(1, artFade * fade * snapFlash),
+            `idol-fist:${e.id}`, now, // ★慣性バッチ: §7-15消滅側
           );
         }
       }
@@ -16099,7 +16208,8 @@ export class PixiScene {
       // idol 'idol-roll'(離脱ローリング)。既存: トール 'issen-dash'・'tsuki'。
       const dashBoss = e.bossState === 'issen-dash' || e.bossState === 'tsuki'
         || e.bossState === 'dash' || e.bossState === 'mdash-move'
-        || e.bossState === 'thrust' || e.bossState === 'idol-roll';
+        || e.bossState === 'thrust' || e.bossState === 'idol-roll'
+        || e.bossState === 'idol-nade'; // v0.25.3444: 手榴弾のバックロールも同じ蹴り出し土煙
       const dashing = dashPhase || dashBoss;
       // 蹴り出し: 突進の立ち上がりで、その場(足元)に一発。
       const kickL = this.latchFx(`${e.id}:dashkick`, dashing, DUST_MS, now,
@@ -16476,6 +16586,7 @@ export class PixiScene {
             // 帯の全長(前後へ半幅ぶん伸ばした形=drawTelegraphBand と同じ寸法)と、帯の太さぶんの開き。
             blen + GIANT_BITE_HALF_WIDTH * 2, GIANT_BITE_HALF_WIDTH * 2 * open,
             artFade * (bjL.t < closeF ? 1 : Math.max(0, 1 - after)),
+            `bite-jaws:${e.id}`, now, // ★慣性バッチ: §7-15消滅側(同じ動作=mimirと両経路へ)
           );
         }
       }
@@ -17874,42 +17985,45 @@ export class PixiScene {
     const nx = -ddy / ddl, ny = ddx / ddl;
     const ux = ddx / ddl, uy = ddy / ddl;
     const er = Math.max(0, Math.min(1, erase));
-    if (er <= 0) {
-      const zoneFill = (0.12 + 0.22 * prog) + 0.08 * pulse;
-      const pts = [
-        fx - ux * halfWidth + nx * halfWidth, fy - uy * halfWidth + ny * halfWidth,
-        tx + ux * halfWidth + nx * halfWidth, ty + uy * halfWidth + ny * halfWidth,
-        tx + ux * halfWidth - nx * halfWidth, ty + uy * halfWidth - ny * halfWidth,
-        fx - ux * halfWidth - nx * halfWidth, fy - uy * halfWidth - ny * halfWidth,
-      ];
-      const strokeA = (0.32 + 0.4 * prog) + 0.15 * pulse;
-      o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_FILL_MULT });
-      // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436・城ボスと同じ意匠を残りのボスへ横展開)。
-      // fill/判定/タイミングは無改変・alpha計算式もstroke分岐と同一(strokeA)のまま渡すだけ。
-      if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, strokeA, idx);
-      else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
-    }
-    // v0.25.3345(社長指摘「帯のラインが流星になってない」)+§6.38実機FB7(v0.25.34xx・帯版ラッチ):
-    // 中心ラインの流星化。進行(fx→tx)へ溜め同期で流れ、prog=1(技の出始め)で描き切る。
-    // erase>0の間はdrawAngelDashLineと同じ「[erase,1]区間だけ描く=始点側から消えていく」。
+    // 社長指示v0.25.3444「帯全体を流星の動きにする。赤ラインと同じく。白い線は追加しないで」:
+    // 旧実装(帯は全形で常時表示+中心に白い流星線)を撤回。**帯そのもの**が流星として
+    // 始点→終点へ溜め同期で押し出し(頭ほど明るい)、prog=1(技の出始め)で全形を描き切る。
+    // erase>0は完走後の消えアニメ=可視区間[erase,1]が始点側から失われていく(赤ラインと同じ文法)。
+    // 前後のキャップ(±halfWidthのはみ出し)は「尾端=erase 0の時だけ/頭端=完走度zpに比例」で持たせ、
+    // zp=1・erase=0の瞬間に従来の全形状(=判定と厳密一致)へ到達する。
     const zp = er > 0 ? 1 : Math.max(0, Math.min(1, prog));
     if (zp - er <= 0.001) return; // 消し切った(or まだ何も無い)
-    const Z_TAIL = 0.28;
-    const zDrawn = Math.max(er, zp - Z_TAIL);
-    if (zDrawn > er) {
-      o.moveTo(fx + ddx * er, fy + ddy * er).lineTo(fx + ddx * zDrawn, fy + ddy * zDrawn)
-        .stroke({ width: 1 + 2 * zp, color: 0xffe0e0, alpha: 0.3 + 0.3 * zp, cap: 'round' });
-    }
-    const Z_SEGS = 8;
-    for (let i = 0; i < Z_SEGS; i++) {
-      const s0 = zDrawn + (zp - zDrawn) * (i / Z_SEGS);
-      const s1 = zDrawn + (zp - zDrawn) * ((i + 1) / Z_SEGS);
+    const zoneFill = (0.12 + 0.22 * zp) + 0.08 * pulse;
+    const strokeA = (0.32 + 0.4 * zp) + 0.15 * pulse;
+    const SEGS = 8;
+    for (let i = 0; i < SEGS; i++) {
+      const s0 = er + (zp - er) * (i / SEGS);
+      const s1 = er + (zp - er) * ((i + 1) / SEGS);
       if (s1 - s0 <= 0.0005) continue;
-      const k = (i + 1) / Z_SEGS;
-      o.moveTo(fx + ddx * s0, fy + ddy * s0).lineTo(fx + ddx * s1, fy + ddy * s1)
-        .stroke({ width: 1 + 3 * k, color: 0xffe0e0, alpha: 0.25 + 0.55 * k * k, cap: 'round' });
+      const k = (i + 1) / SEGS; // 頭(進行方向側)ほど明るい=流星の頭
+      const backCap = i === 0 && er <= 0 ? halfWidth : 0;
+      const frontCap = i === SEGS - 1 ? halfWidth * zp : 0;
+      const ax = fx + ddx * s0, ay = fy + ddy * s0;
+      const bx = fx + ddx * s1, by = fy + ddy * s1;
+      o.poly([
+        ax - ux * backCap + nx * halfWidth, ay - uy * backCap + ny * halfWidth,
+        bx + ux * frontCap + nx * halfWidth, by + uy * frontCap + ny * halfWidth,
+        bx + ux * frontCap - nx * halfWidth, by + uy * frontCap - ny * halfWidth,
+        ax - ux * backCap - nx * halfWidth, ay - uy * backCap - ny * halfWidth,
+      ]).fill({ color: 0xff2a2a, alpha: zoneFill * (0.55 + 0.45 * k) * TELEGRAPH_FILL_MULT });
     }
-    o.circle(fx + ddx * zp, fy + ddy * zp, 2.5 + 1.5 * pulse).fill({ color: 0xffffff, alpha: 0.85 * (1 - er) });
+    // 縁取り(焼き済み素材A-2)は可視区間ぶんだけ張る(fill/判定/タイミングは無改変)。
+    const efx = fx + ddx * er, efy = fy + ddy * er;
+    const etx = fx + ddx * zp, ety = fy + ddy * zp;
+    if (FX_RING_ENABLED) this.drawTelegraphBand(view, efx, efy, etx, ety, halfWidth, 0xff3b3b, strokeA, idx);
+    else {
+      o.poly([
+        efx + nx * halfWidth, efy + ny * halfWidth,
+        etx + nx * halfWidth, ety + ny * halfWidth,
+        etx - nx * halfWidth, ety - ny * halfWidth,
+        efx - nx * halfWidth, efy - ny * halfWidth,
+      ]).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
+    }
   }
 
   // §6.38実機FB7(社長指示2026-08-15): drawAngelZoneCapsuleのdashLineTick相当ラッチ。
@@ -18663,7 +18777,7 @@ export class PixiScene {
   // 停止中(boomPhase==='stop')の射程リングは syncProjectiles/drawProjectile(Graphics)側が
   // 引き続き描く(ここはスプライト本体のみ・二重描画を避けるため drawProjectile 側からは
   // ブレード形状を削除済み)。
-  private syncDroneBoomerangs(projectiles: Projectile[], now: number) {
+  private syncDroneBoomerangs(projectiles: Projectile[], player: Player, now: number) {
     const seen = new Set<string>();
     for (const p of projectiles) {
       if (p.weaponType !== 'drone-boomerang-projectile') continue;
@@ -18677,10 +18791,10 @@ export class PixiScene {
         sprite.visible = false;
         container.addChild(sprite);
         this.L.frontObjectLayer.addChild(container);
-        v = { container, sprite };
+        v = { container, sprite, spinAng: 0, spinVel: 0, lastSpinAt: now };
         this.droneBoomerangViews.set(p.id, v);
       }
-      this.drawDroneBoomerangSprite(v, p, now);
+      this.drawDroneBoomerangSprite(v, p, now, player.x + player.width / 2, player.y + player.height / 2);
     }
     for (const [id, v] of this.droneBoomerangViews) {
       if (!seen.has(id)) {
@@ -18690,11 +18804,33 @@ export class PixiScene {
     }
   }
 
-  private drawDroneBoomerangSprite(v: { container: Container; sprite: Sprite }, p: Projectile, now: number) {
+  private drawDroneBoomerangSprite(
+    v: { container: Container; sprite: Sprite; spinAng: number; spinVel: number; lastSpinAt: number },
+    p: Projectile, now: number, playerCx: number, playerCy: number,
+  ) {
     const cx = p.x + p.width / 2;
     const cy = p.y + p.height / 2;
     v.container.position.set(cx, cy);
     v.container.zIndex = cy;
+    // ★慣性バッチ(社長裁定v0.25.3443=例外なし・現実基準): 旧「常時等速回転(停止中も同速)」を廃止。
+    // 角速度を積分し、発射=スピンアップ(0→定速)/停止(boomPhase='stop')=ゆっくり回る程度まで減速/
+    // 帰還(return)=再加速→手元へ近づくと減速(キャッチ)。最高速 1/90 rad/ms は従来の等速値と同一。
+    // 防衛ドローン(poi-guard)は常に飛行中の周回個体なので減速フェーズなし(発射スピンアップのみ)。
+    const DRONE_SPIN_FULL = 1 / 90;
+    const phase = p.boomPhase ?? 'out';
+    let spinTarget = DRONE_SPIN_FULL;
+    if (p.weaponKey !== 'poi-guard') {
+      if (phase === 'stop') {
+        spinTarget = DRONE_SPIN_FULL * 0.18; // 停止中: ゆっくり回る程度(止め切らない=ホバリング挙動)
+      } else if (phase === 'return' || phase === 'done') {
+        const distToHand = Math.hypot(playerCx - cx, playerCy - cy);
+        spinTarget = DRONE_SPIN_FULL * Math.max(0.30, Math.min(1, distToHand / 150)); // 手元に近づくほど減速
+      }
+    }
+    const sdt = Math.max(0, Math.min(100, now - v.lastSpinAt));
+    v.lastSpinAt = now;
+    v.spinVel += (spinTarget - v.spinVel) * (1 - Math.exp(-sdt / 150));
+    v.spinAng = (v.spinAng + v.spinVel * sdt) % (Math.PI * 2);
     const tex = getTexture('drone-boomerang');
     if (tex && tex.height > 0) {
       v.sprite.visible = true;
@@ -18702,8 +18838,7 @@ export class PixiScene {
       const targetW = Math.max(1, p.width) * DRONE_BOOMERANG_SPRITE_SCALE;
       const sc = targetW / tex.width;
       v.sprite.scale.set(sc);
-      // 常時回転(停止中も回り続ける=旧procedural描画と同じ演出)。
-      v.sprite.rotation = (now / 90) % (Math.PI * 2);
+      v.sprite.rotation = v.spinAng;
       // §6.24 M48「防衛」(C: 警察署アリーナ報酬)は常時周回する専用個体。ドローンブーメランの色違い
       // (社長仕様どおり)にするため、tint だけ変える(スプライト自体は共用=新規アセット不要)。
       v.sprite.tint = p.weaponKey === 'poi-guard' ? 0x38bdf8 : 0xffffff;
@@ -19945,7 +20080,11 @@ export class PixiScene {
    *  ・円の技(mimir bite): 中心=円の中心 / angle=0(向きが無い技) / span=gap最大=直径
    * を渡す。gap(顎の開き)が0になる瞬間 = ダメージが出る瞬間。
    */
-  private drawBiteJaws(view: ActorView, cx: number, cy: number, angle: number, span: number, gap: number, alpha: number): void {
+  private drawBiteJaws(
+    view: ActorView, cx: number, cy: number, angle: number, span: number, gap: number, alpha: number,
+    // ★慣性バッチ: §7-15消滅側の登録キー(''=登録しない従来挙動)と時計。
+    vanishKey = '', now = 0,
+  ): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) return;
     const up = this.atkArtSprite(view, ATK_ART_BITE_UPPER, 'fx/bite-jaw-upper');
     const lo = this.atkArtSprite(view, ATK_ART_BITE_LOWER, 'fx/bite-jaw-lower');
@@ -19962,6 +20101,12 @@ export class PixiScene {
       sp.rotation = angle;
       sp.position.set(cx + nx * half * sign, cy + ny * half * sign);
       sp.alpha = alpha;
+    }
+    // ★慣性バッチ: 消滅側(B7積み残し)。技が中断されて描画が途切れた場合も、上下顎とも
+    // flushWeaponVanishが沈み+フェードアウトを描き足す(latch完走時はalphaが既に0近傍=無害)。
+    if (vanishKey && now > 0) {
+      this.trackWeaponVanish(vanishKey, now,
+        pairs.map(([sp]) => ({ sp, alpha: sp.alpha, y: sp.position.y })));
     }
   }
 
@@ -20024,7 +20169,11 @@ export class PixiScene {
    * 拡大しながら迫る(正面構図が活きる使い方=台帳の指定)。素材はナックルが下端なので、
    * ローカル +y が突く方向 → rotation = 角度 - 90°。
    */
-  private drawIdolFist(view: ActorView, x: number, y: number, angle: number, width: number, alpha: number): void {
+  private drawIdolFist(
+    view: ActorView, x: number, y: number, angle: number, width: number, alpha: number,
+    // ★慣性バッチ: §7-15消滅側の登録キー(''=登録しない従来挙動)と時計。
+    vanishKey = '', now = 0,
+  ): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) return;
     const sp = this.atkArtSprite(view, ATK_ART_FIST, 'fx/idol-fist');
     if (!sp) return;
@@ -20034,6 +20183,11 @@ export class PixiScene {
     sp.rotation = angle - Math.PI / 2;
     sp.position.set(x, y);
     sp.alpha = alpha;
+    // ★慣性バッチ: 消滅側(B7積み残し)。描画が途切れた後にflushWeaponVanishが
+    // 沈み+フェードアウトを描き足す(latch完走時はalphaが既に0近傍=無害)。
+    if (vanishKey && now > 0) {
+      this.trackWeaponVanish(vanishKey, now, [{ sp, alpha: sp.alpha, y: sp.position.y }]);
+    }
   }
 
   /**
@@ -20512,14 +20666,25 @@ export class PixiScene {
 
     // 社長指示v0.25.3290: グレネードガン(武器庫限定glauncher系)の弾は支給ドット弾(fx/grenade-ball)。
     // weaponTypeはrifle(トレーサー用)だが、弾の絵だけ専用に差し替える。未ロード時は従来描画へ。
-    // 社長指示v0.25.3443「緑卵の爆発は、前のヴィジュアルに戻して」: v3439の手榴弾流用(影+跳ね)を撤回し、
-    // 転がり弾(t1/t2)も従来どおりの静止スタンプへ戻す(転がり挙動・爆発仕様は不変=絵のみ)。
+    // 社長指示v0.25.3444「なんでグレネードの弾が緑卵になるんだよ」: 転がり弾(t1/t2)が地面で丸まって
+    // いると地雷の緑卵と同じ読みになる事故。手榴弾流用(影+跳ね・v3439)は撤回し、**転がる砲弾**として描く=
+    // ①道のりに同期した回転(現実基準: 転がる球は回る) ②信管の赤ランプ明滅(残り道のりが減るほど速く)。
+    // 「置いてある卵」ではなく「回転しながら迫る爆発物」の記号で差別化する。t3(直進)は従来の静止スタンプ。
     if (p.weaponKey === 'glauncher-t1' || p.weaponKey === 'glauncher-t2' || p.weaponKey === 'glauncher-t3') {
       const ballTex = getTexture('fx/grenade-ball');
       if (ballTex) {
         const r = Math.max(5, p.width * 0.85);
         g.fillStyle = { color: 0xffffff, alpha: 1 }; // v0.25.3293: fillスタイルalphaの引き継ぎ対策(手榴弾と同じ)
-        g.texture(ballTex, 0xffffff, -r, -r, r * 2, r * 2);
+        if (p.rollDetonatePx !== undefined) {
+          g.rotation = (p.traveledPx ?? 0) / Math.max(4, r); // 半径ぶん進むと1rad=転がりと同期
+          g.texture(ballTex, 0xffffff, -r, -r, r * 2, r * 2);
+          const fu = Math.max(0, Math.min(1, (p.traveledPx ?? 0) / p.rollDetonatePx));
+          if (Math.sin(Date.now() / (150 - 105 * fu)) > 0) {
+            g.circle(r * 0.4, -r * 0.4, 1.6 + 1.4 * fu).fill({ color: 0xff5252, alpha: 0.9 });
+          }
+        } else {
+          g.texture(ballTex, 0xffffff, -r, -r, r * 2, r * 2);
+        }
         return;
       }
     }
@@ -22180,6 +22345,12 @@ export class PixiScene {
     katana.tint = 0xffffff;
     katana.alpha = alpha * ease.alphaMul;
     katana.visible = true;
+    // ★慣性バッチ: 消滅側(B7積み残し)。構えが呼ばれなくなった後、flushWeaponVanishが
+    // 沈み+フェードアウト(出現の逆再生)を数フレーム描き足す(コンテナごと起こす)。
+    if (now > 0) {
+      this.trackWeaponVanish(`katana-ready:${katanaTexName}:${id}`, now,
+        [{ sp: katana, alpha: katana.alpha, y: katana.position.y }], c);
+    }
   }
 
   private drawThorKatanaReady(
@@ -22258,6 +22429,10 @@ export class PixiScene {
     sp.tint = 0xffffff;
     sp.alpha = ease.alphaMul;
     sp.visible = true;
+    // ★慣性バッチ: 消滅側(B7積み残し)。掲げ続けが途切れた後(退場・状態外れ)に
+    // flushWeaponVanishが沈み+フェードアウトを描き足す(即時OFFのスナップ廃止)。
+    this.trackWeaponVanish(`jibril-lantern:${id}`, now,
+      [{ sp, alpha: sp.alpha, y: sp.position.y }]);
   }
 
   // §6.28-16: アクラシエルの結晶の槍(spear-windup中の構えプレビュー)。設置武器のため振らず、
@@ -22327,8 +22502,13 @@ export class PixiScene {
     const size = (160 + 120 * t) * d; // 城ボスのcastleSummonCircleと同じ寸法カーブ
     sp.position.set(footX, footY);
     sp.width = sp.height = size;
-    sp.alpha = (1 - t) * 0.95;
-    sp.rotation = t * 1.2;
+    // ★慣性バッチ(完全コピー原則の追従): 城ボス側(syncCastle)は台帳#4で出現ease-in+回転ease-outへ
+    // 修正済み。こちらだけ旧カーブ(t=0で即alpha0.95のスナップ出現+等速回転)のまま残っていたので
+    // 同じ曲線に揃える(最終角度1.2rad・消滅側(1-t)の意図は不変)。
+    const FADE_IN_T = 0.15;
+    const fadeIn = t < FADE_IN_T ? 1 - Math.pow(1 - t / FADE_IN_T, 2) : 1;
+    sp.alpha = fadeIn * (1 - t) * 0.95;
+    sp.rotation = 1.2 * (1 - Math.pow(1 - t, 2));
     sp.visible = true;
   }
 
@@ -22414,6 +22594,44 @@ export class PixiScene {
     sp.alpha = 1 - t * t; // ease-in で加速して消える
   }
 
+  // 社長指示v0.25.3444「バス停だけじゃなく、武器を振るうシーンに斬撃欲しい。白い弧(fx/slash-arc)を
+  // 横に伸ばすなり縮めるなりして軌道に合って見える様に工夫して使って」: 振り技の汎用斬撃弧。
+  // scissor閃と同じ「一撃1回スタンプ+短命フェード」型。lengthPx/widthPxで軌道に合わせて伸縮する。
+  // 分類②=派手さの絵(判定なし・判定より大きくてよい)。鞭コンボは専用スミアが既にあるため対象外。
+  private bountySlashArcSprites = new Map<string, Sprite>();
+  private bountySlashArcKey = new Map<string, string>();
+  private bountySlashArcBornAt = new Map<string, number>();
+  private triggerBountySlashArcOnce(
+    id: string, key: string, x: number, y: number, angle: number, lengthPx: number, widthPx: number, now: number,
+  ): void {
+    if (this.bountySlashArcKey.get(id) === key) return;
+    this.bountySlashArcKey.set(id, key);
+    const tex = getTexture('fx/slash-arc');
+    if (!tex) return;
+    let sp = this.bountySlashArcSprites.get(id);
+    if (!sp) {
+      sp = new Sprite(tex); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
+      this.L.effectLayer.addChild(sp); this.bountySlashArcSprites.set(id, sp);
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    sp.rotation = angle + Math.PI; // drawSlashArcと同じ規約(素材の膨らみ=-x側を振る方向へ)
+    sp.width = lengthPx;
+    sp.height = widthPx;
+    sp.position.set(x, y);
+    sp.alpha = 0.95;
+    sp.visible = true;
+    this.bountySlashArcBornAt.set(id, now);
+  }
+  // 260msで減速フェード(ease-in=最初は残って加速して消える)。毎フレーム呼ぶ(状態が変わっても消し切る)。
+  private tickBountySlashArc(id: string, now: number): void {
+    const sp = this.bountySlashArcSprites.get(id);
+    const born = this.bountySlashArcBornAt.get(id);
+    if (!sp || born === undefined || !sp.visible) return;
+    const t = Math.max(0, Math.min(1, (now - born) / 260));
+    if (t >= 1) { sp.visible = false; return; }
+    sp.alpha = 0.95 * (1 - t * t);
+  }
+
   // §6.38 B2b: 舞妓(bounty-maiko)専用の技描画。全技の得物=毬(v5.1)。待機中は毬をオービット
   // (判定なし・武器の存在を常時提示)、技中は毬を判定図形の位置へ合わせて飛ばす(v5「毬が技を再現」)。
   // 変則ディレイの技はbossWindupStartAtからtelegraphProgress01で進行度を導出する(v6 C-1)。
@@ -22461,6 +22679,11 @@ export class PixiScene {
     }
     if (bs === 'mk-naginata-recover' || bs === 'mk-naginata1-recover' || bs === 'mk-naginata2-recover') {
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', btx, bty, now / 100, 58, 0.9);
+      // 斬撃弧(v0.25.3444): 毬の薙ぎが振り抜けた瞬間(recover入り)に帯の軌道へ1回スタンプ。
+      this.triggerBountySlashArcOnce(
+        e.id, `naginata:${bs}:${e.bossStateUntil ?? 0}`, (bfx + btx) / 2, (bfy + bty) / 2,
+        Math.atan2(bty - bfy, btx - bfx), Math.hypot(btx - bfx, bty - bfy) * 1.1, MK_NAGINATA_HALFWIDTH * 3.6, now,
+      );
       return;
     }
     if (bs === 'mk-spin-windup' || bs === 'mk-spin') {
@@ -22527,6 +22750,9 @@ export class PixiScene {
       o.circle(px, py, MK_BOOM_HITRADIUS).fill({ color: 0xff2a2a, alpha: 0.35 * TELEGRAPH_FILL_MULT });
       o.circle(px, py, MK_BOOM_HITRADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.6 });
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', px, py, now / 30, 62, 0.98);
+      // ★慣性バッチ: 射出スピンの残像(motion trail)。往路・復路とも毬の軌跡へ約30ms間隔で
+      // 「その瞬間の毬」を置き去りにする(判定不変・分類②=派手側)。
+      this.spawnMaikoTrailPuff(e.id, px, py, now / 30, 62, now);
       if (bs === 'mk-boom-out' && t >= 0.98) this.triggerPetalOnce(e.id, `boom-out:${e.bossStateUntil ?? 0}`, px, py, 6, now);
       return;
     }
@@ -22582,6 +22808,54 @@ export class PixiScene {
       spawned++;
     }
   }
+  // ★慣性バッチ(v0.25.3443社長指示「全体的に武器もキャラも動きが小さい。もう少し大きく見せる」):
+  // 舞妓・手毬打ち(mk-boom-out/back)の射出に残像(motion trail)を敷く。分類②(派手さの絵・判定ゼロ)
+  // なので本体よりひと回り大きく置いてよい。固定サイズpool(petalPoolと同じ作法=毎フレームnewしない・
+  // 上限あり)。残像は「その瞬間の毬」を焼き付けて置き去りにし、減速感=フェード+緩やかな縮みで消える
+  // (残像自体は動かない=物理的に正しい置き去り)。
+  private static readonly MAIKO_TRAIL_POOL_SIZE = 12;
+  private static readonly MAIKO_TRAIL_LIFE_MS = 230;
+  private static readonly MAIKO_TRAIL_INTERVAL_MS = 30;
+  private maikoTrailPool: { sp: Sprite; active: boolean; bornAt: number; baseScale: number }[] = [];
+  private maikoTrailLastAt = new Map<string, number>();
+  private spawnMaikoTrailPuff(bossId: string, x: number, y: number, rot: number, sizePx: number, now: number): void {
+    if (now - (this.maikoTrailLastAt.get(bossId) ?? -1e9) < PixiScene.MAIKO_TRAIL_INTERVAL_MS) return;
+    const tex = getTexture('bounty-maiko-temari');
+    if (!tex) return;
+    this.maikoTrailLastAt.set(bossId, now);
+    if (this.maikoTrailPool.length === 0) {
+      for (let i = 0; i < PixiScene.MAIKO_TRAIL_POOL_SIZE; i++) {
+        const sp = new Sprite(); sp.anchor.set(0.5, 0.5); sp.visible = false;
+        this.L.effectLayer.addChild(sp);
+        this.maikoTrailPool.push({ sp, active: false, bornAt: 0, baseScale: 1 });
+      }
+    }
+    for (const t of this.maikoTrailPool) {
+      if (t.active) continue;
+      t.sp.texture = tex;
+      t.sp.position.set(x, y);
+      t.sp.rotation = rot;
+      // 「動きは大きく」: 残像は本体(sizePx)よりひと回り大きく(×1.15・派手側に倒す)。
+      t.baseScale = (sizePx * 1.15) / Math.max(1, tex.width);
+      t.sp.scale.set(t.baseScale);
+      t.sp.alpha = 0.5;
+      t.sp.visible = true;
+      t.active = true;
+      t.bornAt = now;
+      break;
+    }
+  }
+  /** 毎フレーム1回(メインsyncから呼ぶ)。残像のフェード+縮み更新。 */
+  private stepMaikoTrail(now: number): void {
+    for (const t of this.maikoTrailPool) {
+      if (!t.active) continue;
+      const u = (now - t.bornAt) / PixiScene.MAIKO_TRAIL_LIFE_MS;
+      if (u >= 1) { t.active = false; t.sp.visible = false; continue; }
+      t.sp.alpha = 0.5 * (1 - u);
+      t.sp.scale.set(t.baseScale * (1 - 0.25 * u)); // 勢いを失いながら少し縮んで消える
+    }
+  }
+
   /** 毎フレーム1回(syncActorsから呼ぶ)。花びらの物理+フェード更新。 */
   private stepPetals(now: number, deltaSec: number): void {
     for (const p of this.petalPool) {
@@ -23710,6 +23984,7 @@ export class PixiScene {
     for (const o of this.bountyScissorFlashSprites.values()) o.destroy();
     for (const o of this.bossGunMuzzleSprites.values()) o.destroy();
     for (const p of this.petalPool) p.sp.destroy();
+    for (const t of this.maikoTrailPool) t.sp.destroy(); // ★慣性バッチ: 毬残像pool
     for (const o of this.surielRingSprites.values()) { o.ring1.destroy(); o.ring2.destroy(); }
     for (const o of this.surielSweepStreakFx.values()) o.destroy();
     for (const o of this.acrasielSpearPool.values()) o.destroy();

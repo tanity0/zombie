@@ -130,6 +130,7 @@ put(LEDGER, [
   'downslash',     // ウリの振り下ろし
   'thrust',        // ウリの刺突(本体が線分上を移動する)
   'idol-roll',     // idolの転がり突進
+  'idol-nade',     // idolの手榴弾バックロール(v0.25.3444)。本体は後方へ転がるだけ=判定なしだが帯分類でOK(移動線)
   'idol-snipe', 'idol-snipe-windup', // idolの狙撃線(v0.25.2613)。溜めでロックした帯がそのまま判定。
 ], {
   coverage: 'ghost', ghostShape: { kind: 'band' },

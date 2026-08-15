@@ -206,8 +206,8 @@ const BOUNTY_PRACTICE_SLOTS: readonly PracticeSlot[] = BOUNTY_PRACTICE_TYPES.map
   reachable: true,
 }));
 
-// 表示順=既存ボス群の後ろへ(掲載裁定)。
-export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...GHOST_DERIVED_SLOTS, ...BOUNTY_PRACTICE_SLOTS];
+// 表示順=小ボス(賞金首)が一番上(社長指示v0.25.3444「小ボスは一番上だろ」。旧: 既存ボス群の後ろ)。
+export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, ...GHOST_DERIVED_SLOTS];
 
 export const practiceSlotByKey = (slotKey: string): PracticeSlot | undefined =>
   PRACTICE_SLOTS.find(s => s.slotKey === slotKey);

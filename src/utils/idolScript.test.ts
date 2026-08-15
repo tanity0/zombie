@@ -177,7 +177,7 @@ describe('IDOL_TUNING の既定値 = テーブル化前の実装値(挙動不変
       punch: { windup: 600,  active: 0,   recover: 900 },
       snipe: { windup: 1100, active: 200, recover: 900 },
       orb:   { windup: 800,  active: 0,   recover: 900 },
-      nade:  { windup: 600,  active: 0,   recover: 900 }, // v0.25.3442: 手榴弾(社長指示)
+      nade:  { windup: 600,  active: 180, recover: 900 }, // v0.25.3442手榴弾→v0.25.3444バックロール投げ(active=rollと同じ)
     });
   });
   it('図形(判定と厳密一致させる値)', () => {

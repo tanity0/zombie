@@ -432,7 +432,7 @@ export const applyGlenFloorDamage = (fx: CombatEffects): void => {
       const damageWasApplied = !player.invulnerable;
       // G4a: h.moveKey('g-boon')=記録専用タグ。技のエピソード終了から残響(linger)を過ぎた踏み直しは
       // 反応表側で自然に無視される(moveReaction.ts参照)。
-      const died = useGameStore.getState().damagePlayer(e.damage, 'グレン の血溜まり', h.x, h.y, undefined, undefined, h.moveKey);
+      const died = useGameStore.getState().damagePlayer(e.damage, 'グレンの血溜まり', h.x, h.y, undefined, undefined, h.moveKey);
       if (damageWasApplied) {
         fx.playSfx('player-damage');
         fx.spawnFlash('rgba(239,68,68,0.18)', 180);

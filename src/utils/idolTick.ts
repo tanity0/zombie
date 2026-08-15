@@ -381,7 +381,9 @@ export const runIdolTick = (
       patch.aiTargetX = mz.x + ((aim.x - mz.x) / dl) * IDOL_TUNING.shape.snipeRange;
       patch.aiTargetY = mz.y + ((aim.y - mz.y) / dl) * IDOL_TUNING.shape.snipeRange;
       patch.hateTarget = aim.side;
-    } else if (m === 'roll') {
+    } else if (m === 'roll' || m === 'nade') {
+      // nade(v0.25.3444・社長指示「バックロールしながら手榴弾を投げる」)もrollと同じ後方ロックを取る
+      // (距離=shape.rollDist・同じ動作は同じ数字)。投擲は溜め明け(idol-nade開始の瞬間)に行う。
       const aim = hateAim();
       const dl = Math.hypot(icx - aim.x, icy - aim.y) || 1;
       patch.aiFromX = icx; patch.aiFromY = icy;
@@ -669,7 +671,8 @@ export const runIdolTick = (
       toRecover('orb');
     }
   } else if (st === 'idol-nade-windup') {
-    // 手榴弾(社長指示v0.25.3442「プレイヤーの手榴弾と同じ仕様」): 溜め明けにプレイヤー方向へ投げる。
+    // 手榴弾(社長指示v0.25.3442「プレイヤーの手榴弾と同じ仕様」→v0.25.3444「バックロールしながら投げる」):
+    // 溜め明けの瞬間にプレイヤー方向へ投げ、同時に後方ロール('idol-nade'=rollと同じ移動)へ入る。
     // 転がり(壁バウンド+減速)はgameStoreのgrenade物理、信管2秒の爆発(半径66・プレイヤーへ)は
     // useGameLoopのhostile分岐が担う。接触ダメージ無し=判定は爆発の赤円のみ(collisionUtilsで除外)。
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
@@ -686,8 +689,17 @@ export const runIdolTick = (
         passthrough: false, hitEnemies: [], hostile: true, reflected: false,
       });
       patch.hateTarget = aim.side;
-      toRecover('nade');
+      patch.bossState = 'idol-nade';
+      patch.bossStateUntil = newGameTime + IDOL_TIMING.nade.active;
     }
+  } else if (st === 'idol-nade') {
+    // 後方ロール(rollと同じ・aiFrom→aiTargetをactiveで等分。無敵なし=rollと同じ掟)。
+    const fx = idol.aiFromX ?? icx, fy = idol.aiFromY ?? icy;
+    const tx = idol.aiTargetX ?? icx, ty = idol.aiTargetY ?? icy;
+    const t = Math.max(0, Math.min(1, 1 - ((idol.bossStateUntil ?? newGameTime) - newGameTime) / IDOL_TIMING.nade.active));
+    patch.x = (fx + (tx - fx) * t) - idol.width / 2;
+    patch.y = (fy + (ty - fy) * t) - idol.height / 2;
+    if (newGameTime >= (idol.bossStateUntil ?? 0)) toRecover('nade');
   } else if (st === 'idol-snipe-windup') {
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       patch.bossState = 'idol-snipe';

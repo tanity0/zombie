@@ -218,8 +218,9 @@ export const IDOL_TUNING: IdolTuning = {
     punch: { windup: 600,  active: 0,   recover: 900 },
     snipe: { windup: 1100, active: 200, recover: 900 },
     orb:   { windup: 800,  active: 0,   recover: 900 },
-    // 手榴弾(v0.25.3442): 投げ自体は当たらない(判定は転がる手榴弾の信管2秒後の赤円)。溜めは短め。
-    nade:  { windup: 600,  active: 0,   recover: 900 },
+    // 手榴弾(v0.25.3442→3444): 投げ自体は当たらない(判定は転がる手榴弾の信管2秒後の赤円)。
+    // 社長指示v0.25.3444「バックロールしながら投げる」: active=後方ロールの移動時間(rollと同じ180ms)。
+    nade:  { windup: 600,  active: 180, recover: 900 },
   },
   // 図形(判定と厳密一致させる値。描画側=pixiScene も同じここを読む)。
   shape: {

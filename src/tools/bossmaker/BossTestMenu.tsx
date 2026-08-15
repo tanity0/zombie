@@ -8,6 +8,7 @@ import {
   type BossTestEntry, type BossTestGhostMode,
 } from '../../utils/bossTest';
 import { enemyDeathLabel } from '../../store/gameStore';
+import { bossCutinName } from '../../data/bossCutin';
 import { getStage } from '../../data/campaign';
 
 const CLASSES = [
@@ -122,7 +123,9 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
                 className="mt-1 flex w-full items-baseline justify-between gap-2 bg-white/5 px-3 py-2 text-left hover:bg-purple-500/25"
                 onClick={() => sortie(e)}
               >
-                <span className="text-[12px] font-bold text-white/90">{enemyDeathLabel(e.boss)}</span>
+                {/* 名称統一バッチ(社長指示v0.25.3443): 城ボスは型が全部giantbatなので、ステージ別の呼び名は台帳(bossCutin.ts)を
+                    第一候補に引く(TitleScreenのモード表示v0.25.3166と同型)。台帳に無い=「?」。 */}
+                <span className="text-[12px] font-bold text-white/90">{bossCutinName(e.boss, e.stageId) ?? enemyDeathLabel(e.boss)}</span>
                 <span className="shrink-0 text-[10px] text-white/45">
                   {stage?.locationTitle ?? e.stageId}・{PARAM_NOTE[e.param]}
                 </span>

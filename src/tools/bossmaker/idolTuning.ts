@@ -362,7 +362,8 @@ export const registerIdolTuning = (): void => {
   // 変わらないが、**偶然に頼らない**ためにゲーム側へ移した。
   registerBossTuning({
     bossType: 'idol',
-    label: 'アイドル',
+    label: '偶像', // 名称統一バッチ(社長指示v0.25.3443): カットイン台帳(bossCutin.ts)の名前に統一
+
     table: IDOL_TUNING as unknown as Record<string, unknown>,
     defaults: IDOL_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: IDOL_TUNING_FIELDS,

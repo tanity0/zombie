@@ -79,7 +79,7 @@ const HIDDEN_BOSSES: CastEntry[] = [
   { tex: 'jormungand', label: 'ヨルムンガルド', spec: B_HOVER, targetH: 340, speed: 45 },
   { tex: 'skadi', label: 'スカジ', spec: B_HEAVY, targetH: 320, speed: 45 },
   { tex: 'thor', label: 'トール', spec: B_WALK, targetH: 300, speed: 60 },
-  { tex: 'idol', label: 'アイドル', spec: B_WALK, targetH: 280, speed: 70 },
+  { tex: 'idol', label: '偶像', spec: B_WALK, targetH: 280, speed: 70 },
 ];
 
 const TABS: { key: string; label: string; cast: CastEntry[] }[] = [
