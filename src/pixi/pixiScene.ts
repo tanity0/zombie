@@ -22163,6 +22163,29 @@ export class PixiScene {
     } else if (arcSp) {
       arcSp.visible = false;
     }
+    // 突き(thrust)の絵(社長指示v0.25.3452「その白いやつを突きに使って」): 弧の代わりに突進で使っている
+    // 白い風圧(fx/dash-wind)を突きの軸へ乗せる。素材の尖った先端が-x側=突きの切っ先側なので、
+    // anchor(0,0.5)+rotation=angle+PI で**先端を命中点(tx,ty)に置き、扇は手元(fx,fy)側へ後ろ向きに広がる**
+    // (drawDashWindと同じ規約)。判定なし=②派手さの絵なので判定線より少し長く出す。
+    // 慣性(CLAUDE.md・現実基準): 長さは伸び切りへ ease-out(突き出して減速)=瞬間出現させない。
+    let windSp = c.children[4] as Sprite | undefined;
+    if (!windSp) {
+      windSp = new Sprite(); windSp.anchor.set(0, 0.5); windSp.blendMode = 'add';
+      c.addChild(windSp);
+    }
+    const windTex = style === 'thrust' ? getTexture('fx/dash-wind') : undefined;
+    if (windTex && windSp) {
+      if (windSp.texture !== windTex) windSp.texture = windTex;
+      const we = 1 - Math.pow(1 - Math.min(1, tt / 0.45), 3); // 突き出し(0→45%)で減速しながら伸び切る
+      const wlen = Math.max(80, length * (0.55 + 0.75 * we)); // 伸び切りで判定長の1.3倍(はみ出してよい絵)
+      windSp.scale.set(wlen / Math.max(1, windTex.width)); // 縦横同倍率=素材の扇の比率を保つ
+      windSp.rotation = angle + Math.PI;
+      windSp.position.set(tx, ty);
+      windSp.alpha = 0.95 * (tt < 0.18 ? (tt / 0.18) : (1 - Math.max(0, (tt - 0.45) / 0.55)));
+      windSp.visible = windSp.alpha > 0.01;
+    } else if (windSp) {
+      windSp.visible = false;
+    }
     if (burst) {
       const bref = getTexture('fx/slash-burst-4');
       const bidx = Math.max(0, Math.min(4, Math.floor(tt * 6)));

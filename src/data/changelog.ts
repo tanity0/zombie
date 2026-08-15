@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3452',
+    items: [
+      '突き技に白い風圧のエフェクトが付きました(突き出しに合わせて伸び、切っ先から手元へ扇が広がります)。',
+    ],
+  },
+  {
     version: '0.25.3451',
     items: [
       'ステージのボスの名前が、死因・討伐バナー・歴史年表など全ての表示で同じ個体名に揃いました。',
