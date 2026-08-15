@@ -754,6 +754,8 @@ export interface Enemy {
     // bm-charge-* = 突進(werewolfのwindup→charge流用・流星ライン予告・カウンター可)。
     // bm-combo{1,2,3}-* = 3段コンボ(速→速→遅)。bm-snipe-* = 輸入=懲罰狙撃(idolのsnipe流用)。
     | 'bm-charge-windup' | 'bm-charge' | 'bm-charge-recover'
+    // 社長指示v0.25.3473: ダッシュ後の360度ムチ振り(突進の着地点でそのまま薙ぎ払う)。
+    | 'bm-whip360-windup' | 'bm-whip360'
     | 'bm-combo1-windup' | 'bm-combo1-recover' | 'bm-combo2-windup' | 'bm-combo2-recover'
     | 'bm-combo3-windup' | 'bm-combo3-recover'
     | 'bm-snipe-windup' | 'bm-snipe' | 'bm-snipe-recover'

@@ -148,6 +148,7 @@ import {
   BM_COMBO_WINDUP_MS, BM_COMBO_HALFWIDTH, BM_SNIPE_WINDUP_MS, BM_SNIPE_ACTIVE_MS, BM_SNIPE_HALFWIDTH,
   // §6.38 B2b: 鋏(bounty-balance)/舞妓(bounty-maiko)の技の寸法・タイミング。
   BB_SWEEP_HALFWIDTH, BB_SWEEP_WINDUP_MS, BB_LEAP_WINDUP_MS, BB_LEAP_AIR_MS, BB_LEAP_RADIUS,
+  BM_WHIP360_RADIUS, BM_WHIP360_ACTIVE_MS, // 社長指示v0.25.3473: ダッシュ後の360度ムチ振り
   MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS,
   MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
   MK_BOOM_HITRADIUS, MK_BOOM_WINDUP_MS, MK_BOOM_OUT_MS, MK_BOOM_BACK_MS,
@@ -14678,7 +14679,7 @@ export class PixiScene {
         const swingEased = 1 - Math.pow(1 - prog, 2);
         const swingAngle = aimAng - swingDir * Math.PI * 0.4 * (1 - swingEased);
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, swingAngle, 170, 0.95 * ease.alphaMul);
-        this.drawBountyWhipSmear(e.id, step as 0 | 1 | 2, bfx, bfy, btx, bty, 0.5 + 0.5 * prog);
+        this.drawBountyWhipSmear(e.id, prog, cx, cy, swingAngle, 170, 0.5 + 0.5 * prog);
       } else if (bs2 === 'bm-combo1-recover' || bs2 === 'bm-combo2-recover') {
         // 次段へ継続するだけの中継=消滅させない(コンボが繋がっている間は鞭を出しっぱなし)。
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9);
@@ -14721,6 +14722,25 @@ export class PixiScene {
         );
       } else if (bs2 === 'bm-charge') {
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, Math.atan2((e.vy ?? 0), (e.vx ?? 1) || 1), 170, 0.95);
+      } else if (bs2 === 'bm-whip360-windup') {
+        // 社長指示v0.25.3473「ダッシュ後に360度、ムチ振り攻撃。(慣性入れてね)」の予告。
+        // 判定=自分中心の円(BM_WHIP360_RADIUS)。赤円と判定は同じ値=厳密一致。
+        const prog = telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil);
+        const pulse = 0.5 + 0.5 * Math.sin(now / 90);
+        o.circle(cx, cy, BM_WHIP360_RADIUS).fill({ color: 0xff2a2a, alpha: (0.10 + 0.20 * prog) * TELEGRAPH_FILL_MULT * (0.7 + 0.3 * pulse) });
+        o.circle(cx, cy, BM_WHIP360_RADIUS).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.35 + 0.4 * prog });
+        // 振りかぶり: 角速度をprog^2で上げる(0からいきなり回さない=慣性)。
+        const windAng = prog * prog * 1.6 * Math.PI * 2;
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy - e.height * 0.2, windAng, 170 * (0.7 + 0.3 * prog), 0.9);
+      } else if (bs2 === 'bm-whip360') {
+        // 振り抜き: 1周を**加速→減速**(smoothstep)で回す。鞭は伸び切った長さで外周を薙ぐ。
+        const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BM_WHIP360_ACTIVE_MS));
+        const eased = t * t * (3 - 2 * t);
+        const ang = eased * Math.PI * 2;
+        o.circle(cx, cy, BM_WHIP360_RADIUS).stroke({ width: 3, color: 0xff5a5a, alpha: 0.5 * (1 - t) });
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, ang, BM_WHIP360_RADIUS, 0.98);
+        // スネア3枚を1振りの中で回す(しなり→伸び)。角度は鞭と同じ=揃える。
+        this.drawBountyWhipSmear(e.id, t, cx, cy, ang, BM_WHIP360_RADIUS, 0.85);
       } else if (bs2 === 'bm-charge-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const ease = weaponSpawnEase(Infinity, remain);
@@ -22655,22 +22675,29 @@ export class PixiScene {
 
   // 馬乗り3段コンボの鞭スミア(fx/whip-smear-0/1/2)。段(0/1/2)ごとに絵が変わる=「段対応」。
   // 攻撃の帯(fx→tx)に沿わせて置く簡易版(判定はcapsule・これは絵だけの派手さ担当=分類2)。
+  // ★社長指摘v0.25.3473「馬乗りのムチのスネアの使い方が違う。これ3つで1アニメーション。小さいのから中、
+  //   大が伸びきってる絵。これを一瞬で回せば鞭のしなり、伸び、に見える。角度は揃えてつかって。」
+  //   旧: **コンボの段(0/1/2)で絵を選び**、1振りにつき1枚しか出していなかった(=しなりに見えない)。
+  //   新: **1回の振りの中で 0→1→2 を一瞬で回す**(3枚で1アニメーション)。角度は3枚とも同じ
+  //   (振りの向き)で、**柄(画像の下端中央)を手元に置いて外へ伸びる**=伸びる方向が揃う。
+  //   素材は3枚とも同じ画布(456x264)で、下端中央から上へ伸びていく絵(bboxで確認)。
   private drawBountyWhipSmear(
-    id: string, step: 0 | 1 | 2, fx: number, fy: number, tx: number, ty: number, alpha: number,
+    id: string, t01: number, gripX: number, gripY: number, angleRad: number, lengthPx: number, alpha: number,
   ) {
-    const tex = getTexture(`fx/whip-smear-${step}`);
+    const f: 0 | 1 | 2 = t01 < 0.34 ? 0 : t01 < 0.67 ? 1 : 2; // 一瞬で回す=振りの進行で3コマ
+    const tex = getTexture(`fx/whip-smear-${f}`);
     if (!tex) return;
     let sp = this.bountyWhipSmearSprites.get(id);
     if (!sp) {
-      sp = new Sprite(tex); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
+      sp = new Sprite(tex); sp.anchor.set(0.5, 1); sp.blendMode = 'add';
       this.L.effectLayer.addChild(sp); this.bountyWhipSmearSprites.set(id, sp);
     }
     if (sp.texture !== tex) sp.texture = tex;
-    const dx = tx - fx, dy = ty - fy;
-    const len = Math.hypot(dx, dy) || 1;
-    sp.rotation = Math.atan2(dy, dx);
-    sp.scale.set(Math.max(60, len) / Math.max(1, tex.width));
-    sp.position.set((fx + tx) / 2, (fy + ty) / 2);
+    if (sp.anchor.y !== 1) sp.anchor.set(0.5, 1);
+    // 素材は上向き(-y)に伸びるので、+90°で「振りの向き」へ倒す(3枚とも同じ角度=角度を揃える)。
+    sp.rotation = angleRad + Math.PI / 2;
+    sp.scale.set(Math.max(60, lengthPx) / Math.max(1, tex.height));
+    sp.position.set(gripX, gripY);
     sp.alpha = alpha;
     sp.visible = true;
   }

@@ -237,17 +237,18 @@ export interface BountyTickState {
   // §6.38 v11: 舞妓「毬回し」の踏み込み(社長裁定「案Aで」)。実行開始時の足元と向きを焼き付け、
   // 実行中はそこからの**イーズ距離**で位置を決める(等速移動・瞬間停止を作らないため)。
   spinKey: number; spinX0: number; spinY0: number; spinUx: number; spinUy: number;
+  whip360Hit: boolean; // 馬乗り: 360度ムチ振りは1回の振りで1度だけ当てる(多段防止)
 }
 export const createBountyTickState = (): BountyTickState => ({
   activeId: null, aimVX: 0, aimVY: 0, farMs: 0, comboStep: 0, escortsSummoned: false,
   suiuHopIdx: 0, suiuTx: 0, suiuTy: 0,
   brPattern: null, brPrevPattern: null, brShotsRemaining: 0, brCycleEndAt: 0,
-  spinKey: 0, spinX0: 0, spinY0: 0, spinUx: 0, spinUy: 0,
+  spinKey: 0, spinX0: 0, spinY0: 0, spinUx: 0, spinUy: 0, whip360Hit: false,
 });
 const resetBountyRunState = (s: BountyTickState): void => {
   s.aimVX = 0; s.aimVY = 0; s.farMs = 0; s.comboStep = 0; s.escortsSummoned = false;
   s.suiuHopIdx = 0; s.suiuTx = 0; s.suiuTy = 0;
-  s.spinKey = 0; s.spinX0 = 0; s.spinY0 = 0; s.spinUx = 0; s.spinUy = 0;
+  s.spinKey = 0; s.spinX0 = 0; s.spinY0 = 0; s.spinUx = 0; s.spinUy = 0; s.whip360Hit = false;
   resetBrShotCycle(s);
 };
 /**
@@ -268,7 +269,7 @@ const resetBrShotCycle = (s: BountyTickState): void => {
 // レーザー('laser-*')はここに含めない: v0.25.2961裁定どおり紫=カウンター不可(近接中断は
 // mimirLaserBreakOnMeleeHitが別枠で処理する専用の「弱点を突いて壊す」機構=標準カウンターとは別物)。
 const BOUNTY_WINDUP_STATES: readonly string[] = [
-  'br-push-windup', 'bm-charge-windup', 'bm-combo1-windup', 'bm-combo2-windup', 'bm-combo3-windup', 'bm-snipe-windup',
+  'br-push-windup', 'bm-charge-windup', 'bm-whip360-windup', 'bm-combo1-windup', 'bm-combo2-windup', 'bm-combo3-windup', 'bm-snipe-windup',
   'bb-sweep-windup', 'leap-windup',
   'mk-naginata-windup', 'mk-naginata1-windup', 'mk-naginata2-windup', 'mk-spin-windup', 'mk-suiu-windup', 'mk-boom-windup',
 ];
@@ -347,9 +348,17 @@ const BM_FAR_MS = 2000;   // 遠距離2秒で懲罰狙撃発火(§4③「近寄�
 // 突進(輸入=werewolfのwindup→charge・§4①)。値はgameStore.tsのWEREWOLF_*定数の複製(完全同一)。
 const BM_CHARGE_WINDUP_MS = WEREWOLF_WINDUP_MS;
 const BM_CHARGE_MAX_MS = WEREWOLF_CHARGE_MAX_MS;
-const BM_CHARGE_SPEED_MULT = WEREWOLF_CHARGE_SPEED_MULT;
+// 社長指示v0.25.3473「馬乗りのダッシュ?めっちゃ遅い。三倍くらいでいいかも」: 狼の突進倍率(3)の**さらに3倍**。
+const BM_CHARGE_SPEED_MULT = WEREWOLF_CHARGE_SPEED_MULT * 3;
 const BM_CHARGE_REACH = 420; // 突進の狙い距離(px・werewolfのreach式の叩き台)
 const BM_CHARGE_RECOVER_MS = withRecoverFloor(700);
+// 社長指示v0.25.3473「ダッシュ後に360度、ムチ振り攻撃。(慣性入れてね)」
+// 判定=自分中心の円(鞭の長さ)。公平の物差し: 起点=近接がギリギリ届く位置(賞金首44x44の縦横平均22+74=96)
+// → 必要 (170-96)/104.4*1000 ≒ 709ms … 予告 BM_WHIP360_WINDUP_MS=750ms で合格(見てから離れられる)。
+export const BM_WHIP360_WINDUP_MS = 750;  // 予告(赤い円が後ろから消えて、消え切った瞬間に振り抜く)
+export const BM_WHIP360_ACTIVE_MS = 420;  // 振り抜き(慣性=加速→減速で1周する)
+export const BM_WHIP360_RADIUS = 170;     // 鞭の届く半径(描画の鞭長170pxと同値)
+const BM_WHIP360_DAMAGE = 12;
 // 3段コンボ(速→速→遅・bossSkeletonのミドラ規約=最大3段・終端パニッシュ窓の流儀。得物=鞭の連打)。
 const BM_COMBO_RANGE = 130;
 export const BM_COMBO_HALFWIDTH = 28;
@@ -711,7 +720,31 @@ const tickMelee = (
       patch.x = c.x; patch.y = c.y;
     }
     if (dl <= 2 || newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      // 社長指示v0.25.3473「ダッシュ後に360度、ムチ振り攻撃」: 突進の着地点でそのまま薙ぎ払いへ繋ぐ。
       patch.vx = 0; patch.vy = 0;
+      patch.bossWindupStartAt = newGameTime;
+      patch.bossState = 'bm-whip360-windup';
+      patch.bossStateUntil = newGameTime + BM_WHIP360_WINDUP_MS;
+    }
+    return;
+  }
+  // ---- ダッシュ後の360度ムチ振り(社長指示v0.25.3473) -------------------------------------------
+  if (st === 'bm-whip360-windup') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'bm-whip360';
+      patch.bossStateUntil = newGameTime + BM_WHIP360_ACTIVE_MS;
+      s.whip360Hit = false;
+    }
+    return;
+  }
+  if (st === 'bm-whip360') {
+    // 判定=自分中心の円(鞭の届く範囲)。**1回の振りで1度だけ**当たる(多段にしない)。
+    const pr = Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2;
+    if (!s.whip360Hit && Math.hypot(pcx - bcx, pcy - bcy) <= BM_WHIP360_RADIUS + pr) {
+      s.whip360Hit = true;
+      useGameStore.getState().damagePlayer(BM_WHIP360_DAMAGE, `${enemyDeathLabel(bounty.type)}の鞭薙ぎ`, pcx, pcy);
+    }
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'bm-charge-recover';
       patch.bossStateUntil = newGameTime + BM_CHARGE_RECOVER_MS;
     }
