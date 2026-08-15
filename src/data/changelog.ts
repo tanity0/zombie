@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3436',
+    items: [
+      'ゲーム内容の変更はありません(武器演出バッチの検収記録・進行ボード更新)。',
+    ],
+  },
+  {
     version: '0.25.3435',
     items: [
       '武器の出現・攻撃モーションが物理的な重みを持つようになりました(下からズレ上がりつつ登場/'
