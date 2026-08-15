@@ -348,6 +348,15 @@ export const RANGE_BY_CATEGORY: Record<AmmoType, number> = {
   glauncher: 312 // グレネードガン=rifle-t3(グレネードランチャー)と同じ自動射程(v0.25.3290叩き台)
 };
 
+// 社長指示v0.25.3438「t1-t2のグレネードは手榴弾と同様にころがって爆発に変更。t1はショットガン距離で
+// 爆発する距離、t2はハンドガンの距離。t3は転がらずに、いまの仕様のまま」:
+// 爆発する道のり(px)=そのまま実効射程なので、fireWeaponの射程ゲートもこの値で引く
+// (312のままだと爆発点より遠い敵に撃ち始めて一生届かない)。t3はこの表に無い=従来どおり。
+export const GLAUNCHER_ROLL_DETONATE_PX: Record<string, number> = {
+  'glauncher-t1': RANGE_BY_CATEGORY.shotgun,  // 120
+  'glauncher-t2': RANGE_BY_CATEGORY.handgun,  // 176
+};
+
 /**
  * ★射程のズーム補正(社長指示v0.25.3170「ズームが引になると明らかに射程距離が短く感じてしまうので、
  * 体感あまり変わらない様に調整したい」)。
@@ -505,7 +514,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   // Range gate: hold fire (and ammo) unless an enemy is within reach. Don't
   // advance lastFired here so the gun fires the instant a target enters range.
   // (マークスマンは射程UP→移動速度UPに変更したため、射程倍率は廃止)
-  const gunRange = zoomedGunRange(RANGE_BY_CATEGORY[weapon.ammoType]);
+  // グレネードガンt1/t2(転がり爆発)は爆発する道のり=実効射程(v0.25.3438)。
+  const rollDetonatePx = GLAUNCHER_ROLL_DETONATE_PX[weapon.key ?? ''];
+  const gunRange = zoomedGunRange(rollDetonatePx ?? RANGE_BY_CATEGORY[weapon.ammoType]);
   if (nearestEnemyDistance(player, enemies) > gunRange) {
     return [];
   }
@@ -591,6 +602,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       ...(skillLevel(player, 'last-magazine') >= 3 && (weapon.magazine ?? 0) === 1
         ? { bonusIncendiary: true }
         : {}),
+      // 社長指示v0.25.3438: グレネードガンt1/t2=転がり弾(手榴弾と同じバウンド+減速で転がり、
+      // この道のりに達したら爆発。敵への接触ダメージ無し=手榴弾と同様)。t3は付けない=着弾爆発のまま。
+      ...(rollDetonatePx !== undefined ? { rollDetonatePx, traveledPx: 0 } : {}),
     });
   }
 

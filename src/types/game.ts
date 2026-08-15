@@ -1484,6 +1484,11 @@ export interface Projectile {
   explodeDamageMult?: number;
   // ボマー: 手榴弾が一度だけ子グレネードを散布して再アーム済みであることを示す(再散布の防止)。
   bomberSpawned?: boolean;
+  // 社長指示v0.25.3438: グレネードガンt1/t2=手榴弾と同様に転がって、この道のり(px)に達したら爆発。
+  // 値はt1=ショットガン距離/t2=ハンドガン距離(RANGE_BY_CATEGORY)。t3と流用弾(タレット/朱雀/爆撃の
+  // 直進着弾爆発)には付けない=従来どおり。traveledPxは転がった道のりの累計(gameStoreの移動側が加算)。
+  rollDetonatePx?: number;
+  traveledPx?: number;
   // G2.6(BOT_AND_GHOST.md §2.8)+v0.25.2472「全てプレイヤーと同じく青白くして」:
   // ゴースト(守護霊)がオーナーとして発動したサブウェポンの生成物マーカー。**視覚専用**
   // (レンダラが青白tint/霊体αに使うだけ。判定・ダメージ・CD・挙動には一切使わない)。

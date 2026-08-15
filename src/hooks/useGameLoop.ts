@@ -9108,6 +9108,59 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().registerMultiHit(hgHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
         }
 
+        // 社長指示v0.25.3438: グレネードガンt1/t2=手榴弾と同様に転がって爆発(t3は従来の着弾爆発のまま)。
+        // 爆発する道のり=t1:ショットガン距離(120px)/t2:ハンドガン距離(176px)。rollDetonatePxを持つ弾だけが
+        // 対象(タレット/朱雀/爆撃がweaponKey='glauncher-t1'を名乗って流用する直進弾には付かない=従来どおり)。
+        // 爆発の中身はグレネードガンの着弾爆発と同一(半径GRENADE_BLAST_RADIUS・×GRENADE_BLAST_DAMAGE_MULT・
+        // エクスプローダー/ヘビーガンナー倍率・壁越し不可・ボマー散布・ボス非致死)。直撃枠は無い=全員
+        // スプラッシュ(手榴弾と同じ扱い・クリ無し)。duration経過は信管代わりのフォールバック起爆。
+        const rollShells = useGameStore.getState().projectiles
+          .filter(p => p.rollDetonatePx !== undefined && !p.hostile
+            && ((p.traveledPx ?? 0) >= p.rollDetonatePx || Date.now() - p.createdAt >= p.duration));
+        for (const shell of rollShells) {
+          const sx = shell.x + shell.width / 2;
+          const sy = shell.y + shell.height / 2;
+          removeProjectile(shell.id);
+          playSfx('bomb');
+          const rsPlayer = useGameStore.getState().player;
+          const exMult = skillExplosionMult(rsPlayer);
+          const exRadius = GRENADE_BLAST_RADIUS * exMult * heavyGunnerExplosionMult(rsPlayer, gameTime);
+          let glHitCount = 0;
+          spawnRing(sx, sy, 10, exRadius, 'rgba(251,146,60,0.82)', 5, GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
+          spawnBurst(sx, sy, '#f97316', 24);
+          spawnBurst(sx, sy, '#7f1d1d', 10);
+          useGameStore.getState().spawnExplosionFx(sx, sy, exRadius);
+          useGameStore.getState().spawnGlow(sx, sy, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
+          const splashBase = shell.damage * GRENADE_BLAST_DAMAGE_MULT * exMult;
+          const glWalls = aoeWalls(sx, sy);
+          for (const splashEnemy of useGameStore.getState().enemies) {
+            if (splashEnemy.type === 'reaper' && !splashEnemy.reaperChaser) continue;
+            const ex = splashEnemy.x + splashEnemy.width / 2;
+            const ey = splashEnemy.y + splashEnemy.height / 2;
+            const dist = Math.hypot(ex - sx, ey - sy);
+            if (dist > exRadius) continue;
+            if (glWalls.length > 0 && segmentBlocked(sx, sy, ex, ey, glWalls)) continue; // 壁越し不可
+            const falloff = 1 - dist / exRadius;
+            const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
+            const splashKilled = damageEnemy(splashEnemy.id, splashDamage, true); // 爆発=ボス系には非致死
+            glHitCount += 1;
+            spawnDamageNumber(ex, splashEnemy.y, splashDamage, false);
+            spawnBurst(ex, ey, '#b91c1c', 4);
+            if (splashKilled) {
+              playEnemyDeath();
+              spawnBurst(ex, ey, '#dc2626', 12);
+              useGameStore.getState().dropEnemyCurrency(splashEnemy, ex, ey);
+              dropEnemyXp(splashEnemy, ex, ey, 'pickup-xp-grenade');
+            }
+          }
+          useGameStore.getState().registerMultiHit(glHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
+          // §6.10 M33③: ボマー = 転がり弾の爆発でも子グレネードを散布(着弾爆発と同じ扱い・再散布なし)。
+          if (rollBomberScatter(rsPlayer)) {
+            for (const mini of buildBomberMinis(sx, sy, `glroll-${shell.id}`, undefined, undefined, bomberMiniCount(rsPlayer))) addProjectile(mini);
+            spawnBurst(sx, sy, '#fbbf24', 8);
+          }
+        }
+
         // センサー地雷(sensor-mine): 範囲(=爆発半径79)に敵が入ると2秒後に起爆(PACING_PUZZLE.md §6.4 M27)。
         // 感知/起爆の判定は純関数 tickSensorMines(src/utils/sensorMine.ts)、ここは結果の反映と爆発処理のみ。
         // 爆発は手榴弾と同じ経路(エクスプローダー倍率/ボマー子グレネード/減衰・ノックバック/ボス非致死/壁越し不可)。

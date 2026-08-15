@@ -13025,7 +13025,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       const updatedProjectiles = projectiles
         .filter(p => {
-          if (currentTime - p.createdAt > p.duration && p.weaponType !== 'grenade') return false;
+          // 転がり弾(rollDetonatePx=グレネードガンt1/t2)も手榴弾同様、失効での黙殺はしない
+          // (useGameLoop側が道のり到達 or duration経過で爆発させてから除去する)。
+          if (currentTime - p.createdAt > p.duration && p.weaponType !== 'grenade' && p.rollDetonatePx === undefined) return false;
           if (currentTime - p.createdAt > p.duration + 500) return false;
           if (p.weaponType === 'enemy_bolt' && p.ownerType === 'plant' && p.hostile && !p.reflected
               && !livePlantIds.has(p.ownerId ?? '')) return false; // 発射元プラントが消滅=在弾も消す
@@ -13145,7 +13147,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (p.gravity) {
             dir = { x: dir.x, y: dir.y + p.gravity * deltaTime };
           }
-          if (p.weaponType === 'grenade') {
+          // 手榴弾+転がり弾(グレネードガンt1/t2・rollDetonatePx持ち=v0.25.3438)は同じ転がり物理
+          // (壁バウンド+指数減速+下限速度)。転がり弾は移動した道のりをtraveledPxへ累計し、
+          // useGameLoop側が「道のり≥rollDetonatePx」で爆発させる(変位ではなく道のり=壁バウンドでも必ず届く)。
+          if (p.weaponType === 'grenade' || p.rollDetonatePx !== undefined) {
             let nextX = p.x + dir.x * p.speed * deltaTime;
             let nextY = p.y + dir.y * p.speed * deltaTime;
             const walls = grenadeWallsFor(p);
@@ -13164,7 +13169,10 @@ export const useGameStore = create<GameState>((set, get) => ({
               direction: dir,
               speed: Math.max(24, p.speed * Math.exp(-GRENADE_ROLL_DRAG * deltaTime)),
               x: nextX,
-              y: nextY
+              y: nextY,
+              ...(p.rollDetonatePx !== undefined
+                ? { traveledPx: (p.traveledPx ?? 0) + Math.hypot(nextX - p.x, nextY - p.y) }
+                : {})
             };
           }
           return {

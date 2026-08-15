@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3438',
+    items: [
+      'グレネードガンⅠ・Ⅱの弾が手榴弾のように転がって爆発するようになりました'
+      + '(Ⅰは近距離・Ⅱは中距離で爆発。Ⅲは従来どおり着弾爆発)。',
+    ],
+  },
+  {
     version: '0.25.3437',
     items: [
       '隠しボスが射撃の時にハンドガンを構えるようになりました(発射の反動つき)。',

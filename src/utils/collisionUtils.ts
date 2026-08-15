@@ -113,7 +113,10 @@ export const checkProjectileEnemyCollisions = (
       projectile.weaponType === 'shield' ||
       projectile.weaponType === 'turret' ||
       projectile.weaponType === 'fire-knife-projectile' ||
-      projectile.weaponType === 'drone-boomerang-projectile'
+      projectile.weaponType === 'drone-boomerang-projectile' ||
+      // 転がり弾(グレネードガンt1/t2・v0.25.3438): 手榴弾と同様、敵に触れてもダメージ無し=
+      // 転がり抜けて道のり到達で爆発する(useGameLoop側の専用パス)。
+      projectile.rollDetonatePx !== undefined
     ) return;
     // Scheduled-but-not-yet-active projectiles (e.g. the second slash of a
     // whip chain) shouldn't deal damage until their start time arrives.
