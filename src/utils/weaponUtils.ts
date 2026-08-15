@@ -602,8 +602,8 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       ...(skillLevel(player, 'last-magazine') >= 3 && (weapon.magazine ?? 0) === 1
         ? { bonusIncendiary: true }
         : {}),
-      // 社長指示v0.25.3438: グレネードガンt1/t2=転がり弾(手榴弾と同じバウンド+減速で転がり、
-      // この道のりに達したら爆発。敵への接触ダメージ無し=手榴弾と同様)。t3は付けない=着弾爆発のまま。
+      // 社長指示v0.25.3438/3441: グレネードガンt1/t2=転がり弾(手榴弾と同じバウンド+減速で転がり、
+      // 道のり到達 or 時間で爆発)。敵に触れたらその場で直撃爆発(v3441「直撃を復活」)。t3は従来のまま。
       ...(rollDetonatePx !== undefined ? { rollDetonatePx, traveledPx: 0 } : {}),
     });
   }

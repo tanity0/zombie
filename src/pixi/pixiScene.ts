@@ -14503,19 +14503,35 @@ export class PixiScene {
       if (bs2 === 'br-push-windup') {
         const ease = weaponSpawnEase(BR_PUSH_WINDUP_MS - pushRemain, Infinity);
         // 技表GO: 押しのけ=大振りの薙ぎ回転。溜め(ease-in=じわっと効いてくる)で振りかぶる。
+        // 社長指示v0.25.3441「剣みたいに振って。先端は看板が付いてる方」: 根元(ポール端)を手元に固定し、
+        // 看板の先端が外側を薙ぐ(素材は看板が上=+π/2で先端が振り方向を向く。中心は手元から55px先)。
         const windEase = pushProg * pushProg;
         const swingAngle = aimAng - Math.PI * 0.55 * windEase;
-        this.drawBountyWeapon(e.id, 'bounty-ranged-sign', cx, cy - e.height * 0.15 + ease.dy, swingAngle, 130, 0.95 * ease.alphaMul);
+        this.drawBountyWeapon(
+          e.id, 'bounty-ranged-sign',
+          cx + Math.cos(swingAngle) * 55, cy - e.height * 0.15 + Math.sin(swingAngle) * 55 + ease.dy,
+          swingAngle + Math.PI / 2, 130, 0.95 * ease.alphaMul,
+        );
       } else if (bs2 === 'br-push') {
         // 実行(bountyTick.tsのbr-push実行域=120ms固定と一致させる。振りかぶり位置から一気に薙ぎ抜く)。
         const pushT = Math.max(0, Math.min(1, 1 - pushRemain / 120));
         const swingEased = 1 - Math.pow(1 - pushT, 2); // ease-out: 速く始まり減速して止まる
         const swingAngle = (aimAng - Math.PI * 0.55) + Math.PI * 0.75 * swingEased;
-        this.drawBountyWeapon(e.id, 'bounty-ranged-sign', cx, cy - e.height * 0.15, swingAngle, 130, 0.9);
+        this.drawBountyWeapon(
+          e.id, 'bounty-ranged-sign',
+          cx + Math.cos(swingAngle) * 55, cy - e.height * 0.15 + Math.sin(swingAngle) * 55,
+          swingAngle + Math.PI / 2, 130, 0.9,
+        );
       } else if (bs2 === 'br-push-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const ease = weaponSpawnEase(Infinity, remain);
-        this.drawBountyWeapon(e.id, 'bounty-ranged-sign', cx, cy - e.height * 0.15 + ease.dy, aimAng, 130, 0.9 * ease.alphaMul);
+        // 振り抜き終端(+0.75π側)で構えたまま消える(剣式・v0.25.3441)。
+        const endAngle = aimAng + Math.PI * 0.2;
+        this.drawBountyWeapon(
+          e.id, 'bounty-ranged-sign',
+          cx + Math.cos(endAngle) * 55, cy - e.height * 0.15 + Math.sin(endAngle) * 55 + ease.dy,
+          endAngle + Math.PI / 2, 130, 0.9 * ease.alphaMul,
+        );
       } else if (bs2 === 'laser-windup' || bs2 === 'laser-fire' || bs2 === 'laser-recover') {
         // ビーム本体は下のusesMimirLaserブロック(このifチェーンの外)が描く。ここは武器(標識=構え)のみ。
         const holdAng = Math.atan2((e.aiTargetY ?? cy + 1) - cy, (e.aiTargetX ?? cx + 1) - cx);

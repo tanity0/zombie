@@ -9112,8 +9112,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 爆発する道のり=t1:ショットガン距離(120px)/t2:ハンドガン距離(176px)。rollDetonatePxを持つ弾だけが
         // 対象(タレット/朱雀/爆撃がweaponKey='glauncher-t1'を名乗って流用する直進弾には付かない=従来どおり)。
         // 爆発の中身はグレネードガンの着弾爆発と同一(半径GRENADE_BLAST_RADIUS・×GRENADE_BLAST_DAMAGE_MULT・
-        // エクスプローダー/ヘビーガンナー倍率・壁越し不可・ボマー散布・ボス非致死)。直撃枠は無い=全員
-        // スプラッシュ(手榴弾と同じ扱い・クリ無し)。duration経過は信管代わりのフォールバック起爆。
+        // エクスプローダー/ヘビーガンナー倍率・壁越し不可・ボマー散布・ボス非致死)。duration経過は信管代わりの
+        // フォールバック起爆。※v0.25.3441「直撃を復活」: 転がり中に敵へ触れた弾は通常の弾衝突
+        // (着弾爆発ハンドラ=直撃ダメージ+スプラッシュ)で爆発・除去されるので、ここへは来ない。
         const rollShells = useGameStore.getState().projectiles
           .filter(p => p.rollDetonatePx !== undefined && !p.hostile
             && ((p.traveledPx ?? 0) >= p.rollDetonatePx || Date.now() - p.createdAt >= p.duration));

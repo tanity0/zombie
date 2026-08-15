@@ -113,11 +113,11 @@ export const checkProjectileEnemyCollisions = (
       projectile.weaponType === 'shield' ||
       projectile.weaponType === 'turret' ||
       projectile.weaponType === 'fire-knife-projectile' ||
-      projectile.weaponType === 'drone-boomerang-projectile' ||
-      // 転がり弾(グレネードガンt1/t2・v0.25.3438): 手榴弾と同様、敵に触れてもダメージ無し=
-      // 転がり抜けて道のり到達で爆発する(useGameLoop側の専用パス)。
-      projectile.rollDetonatePx !== undefined
+      projectile.weaponType === 'drone-boomerang-projectile'
     ) return;
+    // 転がり弾(グレネードガンt1/t2)は敵に接触=その場で直撃爆発(社長指示v0.25.3441「直撃を復活」。
+    // v3438の「素通し」は撤回)。通常の弾衝突に乗せる=着弾爆発ハンドラ(isGrenadeGunKey)が直撃+
+    // スプラッシュを出し、弾は消える。転がり続けた場合の道のり/時間爆発はuseGameLoopの専用パスのまま。
     // Scheduled-but-not-yet-active projectiles (e.g. the second slash of a
     // whip chain) shouldn't deal damage until their start time arrives.
     if (projectile.createdAt > now) return;

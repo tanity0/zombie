@@ -8570,6 +8570,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         excluded: state.vanishedSkills,
         dogEquipped: player.subWeapons.includes('dog'),
         grenadeEquipped: player.subWeapons.includes('heavy-grenade'),
+        glauncherOwned: player.weapons.some(w => !w.isMelee && w.category === 'glauncher'), // v0.25.3441: bomberの発動源に数える
         activeConsumables: activeConsumableKeys(player, state.gameTime), // §23-2条件1/条件3
       };
       const upgradeOptions = generateSkillUpgradeChoices(draftInput, 3, Math.random, RAIL_KIND, RAIL_MULT);
@@ -8938,6 +8939,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       excluded: state.vanishedSkills,
       dogEquipped: state.player.subWeapons.includes('dog'),
       grenadeEquipped: state.player.subWeapons.includes('heavy-grenade'),
+      glauncherOwned: state.player.weapons.some(w => !w.isMelee && w.category === 'glauncher'), // v0.25.3441
       activeConsumables: activeConsumableKeys(state.player, state.gameTime), // §23-2条件1/条件3
     };
     const nextOptions = generateSkillUpgradeChoices(draftInput, 3, Math.random, RAIL_KIND, RAIL_MULT);
@@ -8973,6 +8975,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       excluded: nextVanished,
       dogEquipped: state.player.subWeapons.includes('dog'),
       grenadeEquipped: state.player.subWeapons.includes('heavy-grenade'),
+      glauncherOwned: state.player.weapons.some(w => !w.isMelee && w.category === 'glauncher'), // v0.25.3441
       activeConsumables: activeConsumableKeys(state.player, state.gameTime), // §23-2条件1/条件3
     };
     const replacement = generateReplacementSkillOption(draftInput, otherKeys, otherConsumables, Math.random, RAIL_KIND, RAIL_MULT);

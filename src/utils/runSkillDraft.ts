@@ -78,6 +78,9 @@ export interface RunSkillDraftInput {
   dogEquipped?: boolean;
   /** 手榴弾(heavy-grenade)装備か(§27-2★B: exploder/bomberの動的ゲート・v0.25.3267)。 */
   grenadeEquipped?: boolean;
+  /** グレネードガン(glauncher系)所持か(社長指示v0.25.3441「分裂スキルはグレネードにも効くように」:
+   * bomberの発動源としてグレネードガンの爆発も数える。散布側は着弾/転がり爆発の両経路が対応済み)。 */
+  glauncherOwned?: boolean;
   /** §23: 現在アクティブな消費カードのキー(同種は再提示しない・§23-1「同種バフ発動中は提示しない」)。
    * 個数はそのままノーマル枠の占有分(canAcquireRarityのextraNormalOccupied)としても使う。 */
   activeConsumables?: readonly ConsumableKey[];
@@ -92,8 +95,9 @@ const isDraftEligible = (input: RunSkillDraftInput, key: SkillKey): boolean => {
   // v0.25.3281: execution-shock(処刑の爆発)は爆発要素へ統一されたので爆発源に数える(社長指示の帰結)。
   if (key === 'exploder' && !(input.grenadeEquipped ||
     (['fire-shooter', 'bomb-counter', 'bomber', 'reflex', 'execution-shock'] as SkillKey[]).some(k => input.runSkills.includes(k)))) return false;
-  // bomber=トリガー(手榴弾装備 or ボムカウンター取得済み)がある時のみ。
-  if (key === 'bomber' && !(input.grenadeEquipped || input.runSkills.includes('bomb-counter'))) return false;
+  // bomber=トリガー(手榴弾装備 or グレネードガン所持 or ボムカウンター取得済み)がある時のみ
+  // (グレネードガンはv0.25.3441で追加=社長指示「分裂スキルはグレネードにも効くように」)。
+  if (key === 'bomber' && !(input.grenadeEquipped || input.glauncherOwned || input.runSkills.includes('bomb-counter'))) return false;
   return true;
 };
 

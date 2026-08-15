@@ -44,6 +44,16 @@ const baseInput = (over: Partial<RunSkillDraftInput> = {}): RunSkillDraftInput =
   ...over,
 });
 
+// 社長指示v0.25.3441「手榴弾が3つに分裂するスキルは、グレネードにも効くように」:
+// bomberの発動源にグレネードガン所持(glauncherOwned)を数える。
+describe('bomberのゲート(v0.25.3441: グレネードガンでも乗る)', () => {
+  it('手榴弾なし・グレネードガンなし=候補に出ない / グレネードガン所持=出る / 手榴弾装備=出る(従来)', () => {
+    expect(newSkillCandidates(baseInput({ grenadeEquipped: false }))).not.toContain('bomber');
+    expect(newSkillCandidates(baseInput({ grenadeEquipped: false, glauncherOwned: true }))).toContain('bomber');
+    expect(newSkillCandidates(baseInput({ grenadeEquipped: true }))).toContain('bomber');
+  });
+});
+
 describe('§1-1 枠(runBuildCapacity/canAcquireRunSkill)', () => {
   it('枠は超1/レア2/ノーマル3', () => {
     expect(runBuildCapacity('super')).toBe(1);
