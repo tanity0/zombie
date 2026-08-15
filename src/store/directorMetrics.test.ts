@@ -26,7 +26,7 @@ declare const require: (m: string) => { writeFileSync: (p: string, d: string) =>
 
 const DT = 1 / 60;
 const RUN_SECONDS = 300; // 1ランの尺=ゲーム内5分固定(死亡した場合はそこで打ち切り=survivedSecが短くなる)
-const TICKS = Math.round(RUN_SECONDS * 60 * 60) / 60 * 60; // 明示的に60fps換算(=RUN_SECONDS*60)
+const TICKS = RUN_SECONDS * 60; // 60fps換算(300秒×60=18000tick)
 const CLASS = 'warrior';
 const PERSONA = 'standard';
 
@@ -105,7 +105,7 @@ const runOne = (seed: number, directorApply: 'none' | 'relax' | 'all'): RunSumma
     let relaxEnteredAtSec: number | null = null;
 
     const intensity = new Stream();
-    const performance = new Stream();
+    const perfStream = new Stream();
     let ceilingMs = 0;
     const boardCount = new Stream();
     const nearEnemy = new Stream();
@@ -152,7 +152,7 @@ const runOne = (seed: number, directorApply: 'none' | 'relax' | 'all'): RunSumma
         macroSinceMs += DT * 1000;
       }
       intensity.push(ds.intensity);
-      performance.push(ds.performance);
+      perfStream.push(ds.performance);
       if (ds.intensity >= 0.9) ceilingMs += DT * 1000;
       nearEnemy.push(ds.nearEnemies);
 
@@ -188,7 +188,7 @@ const runOne = (seed: number, directorApply: 'none' | 'relax' | 'all'): RunSumma
       peakIntervalMeanSec: peakIntervals.length > 0 ? peakIntervals.reduce((a, b) => a + b, 0) / peakIntervals.length : null,
       relaxDwellMeanSec: relaxDwellsSec.length > 0 ? relaxDwellsSec.reduce((a, b) => a + b, 0) / relaxDwellsSec.length : null,
       intensityMean: intensity.mean(), intensitySD: intensity.sd(), ceilingFrac: ceilingMs / survivedMs,
-      performanceMean: performance.mean(), performanceSD: performance.sd(),
+      performanceMean: perfStream.mean(), performanceSD: perfStream.sd(),
       spawnsPerMin: spawnCount / survivedMin,
       boardCountMean: boardCount.mean(), boardCountMax: boardCount.max,
       nearEnemyMean: nearEnemy.mean(),
@@ -249,7 +249,9 @@ describe('AIディレクター計測バッチ(DIRECTOR_METRICS=1 の時だけ走
       const results: Record<Condition, RunSummary[]> = { A_off: [], B_relax: [], C_all: [] };
       for (let seed = 1; seed <= N; seed++) {
         for (const cond of CONDITIONS) {
+          const t0 = Date.now();
           const r = runOne(seed, cond.directorApply);
+          console.log(`[director-metrics] seed=${seed} cond=${cond.id} tookMs=${Date.now() - t0} survivedSec=${r.survivedSec.toFixed(1)} died=${r.died}`);
           results[cond.id].push(r);
         }
         if (seed % 5 === 0 || seed === N) console.log(`[director-metrics] ...seed ${seed}/${N} done`);
