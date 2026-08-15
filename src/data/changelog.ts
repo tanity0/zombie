@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3479',
+    items: [
+      '噛みつきや幅のある突進など、一部の技で赤い帯の予告が全長そのままだった不具合を直し、他のボスと同じ「消え切った瞬間に当たる」予告に揃えました。',
+    ],
+  },
+  {
     version: '0.25.3478',
     items: [
       '武器商人のスキルカードの説明を、「陳列Lv」という内部表記から「買うとどう強くなるか」が一目でわかる表示に変更しました。',

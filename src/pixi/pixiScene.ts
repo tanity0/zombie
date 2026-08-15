@@ -14918,7 +14918,8 @@ export class PixiScene {
         ];
         o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436)。
-        if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * pulse);
+        // v0.25.3477: 帯も赤ラインと同じ流星の描き→消し(このブロックはissen-windup限定=常にwindup中)。
+        if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * pulse, 0, prog);
         else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
         // 社長指示: 一閃の溜めは刀を腰に構えて(居合腰)ゆっくり溜める。方向はロック済み(fx,fy→tx,ty)。
         this.drawThorIaiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.32, tx - fx, ty - fy, prog, now);
@@ -14972,7 +14973,8 @@ export class PixiScene {
           ];
           o.poly(hpts).fill({ color: 0xff2a2a, alpha: hFill * TELEGRAPH_FILL_MULT });
           // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436)。
-          if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hhw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * pulse);
+          // v0.25.3477: 帯も赤ラインと同じ流星の描き→消し(このifはharai-windup限定=常にwindup中)。
+          if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hhw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * pulse, 0, prog);
           else o.poly(hpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
           o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' }); // 薙ぎの軸(白芯)
           // 柄を手元に置き、攻撃方向から140度引いた大薙ぎの開始姿勢へ構える。実行は同じ姿勢から
@@ -16366,7 +16368,12 @@ export class PixiScene {
       // 3回起きている)ので、**帯を描く関数そのものを唯一の出どころにする**。翼撃だけ左右2本なので配列。
       const bandsThisFrame: number[][] = [];
       // 共通ヘルパ(M66): 角ばった帯(既存sweepと同じ意匠=poly fill+stroke)。bite/slam/glide/wingで共用。
-      const drawGiantCapsuleZone = (fx: number, fy: number, tx: number, ty: number, halfWidth: number, fillA: number, strokeA: number) => {
+      // prog(v0.25.3477): windup呼び出しだけが「溜めの進行0→1」を渡す=drawTelegraphBandへそのまま
+      // 中継し、流星の描き→消しを効かせる。active呼び出しは渡さない(=従来どおり全形。実行中の
+      // 全形表示は壊さない)。
+      const drawGiantCapsuleZone = (
+        fx: number, fy: number, tx: number, ty: number, halfWidth: number, fillA: number, strokeA: number, prog?: number,
+      ) => {
         bandsThisFrame.push([fx, fy, tx, ty, halfWidth]);
         const ddx = tx - fx, ddy = ty - fy;
         const ddl = Math.hypot(ddx, ddy) || 1;
@@ -16381,7 +16388,7 @@ export class PixiScene {
         // 面(どこが危ないか)は据え置き。縁取りだけを素材A-2へ差し替える(円=A-1と同じ考え方)。
         // 素材は上の pts と同じ矩形にぴったり重なる(drawTelegraphBand が同じ式で寸法を出す)。
         o.poly(pts).fill({ color: 0xff2a2a, alpha: fillA * TELEGRAPH_FILL_MULT });
-        if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, Math.min(1, strokeA + 0.2));
+        if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, Math.min(1, strokeA + 0.2), 0, prog);
         else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
       };
       // 共通ヘルパ(M66): 扇形(帯が回転する技のwindup予告=最終的に薙ぐ全域を先出しする)。innerR>0で
@@ -17441,7 +17448,10 @@ export class PixiScene {
         ];
         bandsThisFrame.push([gfx, gfy, gtx, gty, ghw]); // 薙ぎ払いも「判定=直線の帯・絵=弧」=衝撃波の対象
         o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT });
-        if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, Math.min(1, (0.32 + 0.4 * gprog) + 0.15 * gPulse + 0.2));
+        // v0.25.3477: 帯の流星描き→消しはwindup限定(activeは全形のまま=従来どおり。gprogはactive中は
+        // 窓の異なる時計を流用しているだけの値なので、そのままmeteorPhaseへ渡さない)。
+        if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, Math.min(1, (0.32 + 0.4 * gprog) + 0.15 * gPulse + 0.2), 0,
+          gph === 'g-sweep-windup' ? gprog : undefined);
         else o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * gprog) + 0.15 * gPulse });
         o.moveTo(gfx, gfy).lineTo(gtx, gty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: 0.35 + 0.35 * gprog, cap: 'round' });
       } else if (gph === 'g-jump-windup' || gph === 'g-jump-air') {
@@ -17479,7 +17489,9 @@ export class PixiScene {
           ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_BITE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
           : 1;
         const bFill = gph === 'g-bite-active' ? 0.3 : (0.12 + 0.22 * bprog) + 0.08 * gPulse;
-        drawGiantCapsuleZone(bfx, bfy, btx, bty, GIANT_BITE_HALF_WIDTH, bFill, (0.32 + 0.4 * bprog) + 0.15 * gPulse);
+        // v0.25.3477: 帯の流星描き→消しはwindup限定(hold/activeは静止した全形のまま=従来どおり)。
+        drawGiantCapsuleZone(bfx, bfy, btx, bty, GIANT_BITE_HALF_WIDTH, bFill, (0.32 + 0.4 * bprog) + 0.15 * gPulse,
+          gph === 'g-bite-windup' ? bprog : undefined);
       } else if (gph === 'g-slam-windup' || gph === 'g-slam-active') {
         // M66 stage-1「のしかかり」(大技): 大きな帯がbiteと同じ意匠で前方へ伸びる(寸法違いのみ)。
         const sfx = e.aiFromX ?? cx, sfy = e.aiFromY ?? cy;
@@ -17488,7 +17500,8 @@ export class PixiScene {
           ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SLAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
           : 1;
         const sFill = gph === 'g-slam-active' ? 0.3 : (0.12 + 0.22 * sprog) + 0.08 * gPulse;
-        drawGiantCapsuleZone(sfx, sfy, stx, sty, GIANT_SLAM_HALF_WIDTH, sFill, (0.32 + 0.4 * sprog) + 0.15 * gPulse);
+        drawGiantCapsuleZone(sfx, sfy, stx, sty, GIANT_SLAM_HALF_WIDTH, sFill, (0.32 + 0.4 * sprog) + 0.15 * gPulse,
+          gph === 'g-slam-windup' ? sprog : undefined);
       } else if (gph === 'g-glide-windup' || gph === 'g-glide-active') {
         // M66 stage-3「滑空薙ぎ」: 長い帯(本体が通過して薙ぐ)。aiFromX/Yは左上座標系(jump-airと
         // 同じ流儀)なので中心へ変換してから描く。
@@ -17498,7 +17511,8 @@ export class PixiScene {
           ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_GLIDE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
           : 1;
         const gFill2 = gph === 'g-glide-active' ? 0.3 : (0.12 + 0.22 * gprog2) + 0.08 * gPulse;
-        drawGiantCapsuleZone(gfx2, gfy2, gtx2, gty2, GIANT_GLIDE_HALF_WIDTH, gFill2, (0.32 + 0.4 * gprog2) + 0.15 * gPulse);
+        drawGiantCapsuleZone(gfx2, gfy2, gtx2, gty2, GIANT_GLIDE_HALF_WIDTH, gFill2, (0.32 + 0.4 * gprog2) + 0.15 * gPulse,
+          gph === 'g-glide-windup' ? gprog2 : undefined);
       } else if (gph === 'g-dive-windup') {
         // M66 stage-3「急降下」(大技): T5フェードイン円。本体は既にstore側で場外へ退避済み=世界座標
         // (aiTargetX/Y)で地面の予告だけを描く(スカジ氷/ジブリル火と同じT5の意匠)。
@@ -17558,8 +17572,9 @@ export class PixiScene {
           : 1;
         const tFill = gph === 'g-trishot-active' ? 0.3 : (0.12 + 0.22 * tprog) + 0.08 * gPulse;
         const tStroke = (0.32 + 0.4 * tprog) + 0.15 * gPulse;
-        drawGiantCapsuleZone(tfx, tfy, tfx + leftX * GIANT_TRISHOT_LENGTH, tfy + leftY * GIANT_TRISHOT_LENGTH, GIANT_TRISHOT_HALF_WIDTH, tFill, tStroke);
-        drawGiantCapsuleZone(tfx, tfy, tfx + rightX * GIANT_TRISHOT_LENGTH, tfy + rightY * GIANT_TRISHOT_LENGTH, GIANT_TRISHOT_HALF_WIDTH, tFill, tStroke);
+        const tMeteorProg = gph === 'g-trishot-windup' ? tprog : undefined;
+        drawGiantCapsuleZone(tfx, tfy, tfx + leftX * GIANT_TRISHOT_LENGTH, tfy + leftY * GIANT_TRISHOT_LENGTH, GIANT_TRISHOT_HALF_WIDTH, tFill, tStroke, tMeteorProg);
+        drawGiantCapsuleZone(tfx, tfy, tfx + rightX * GIANT_TRISHOT_LENGTH, tfy + rightY * GIANT_TRISHOT_LENGTH, GIANT_TRISHOT_HALF_WIDTH, tFill, tStroke, tMeteorProg);
       } else if (gph === 'g-wing-windup' || gph === 'g-wing-active') {
         // 翼撃(ステージ1の大技・v0.25.2863): 羽を頭上に広げて**素早く360度ぶん回す**。
         // ⇒ 危険を伝える絵は判定に揃える(CLAUDE.md)。判定は円1つなので**予告も円**にする。
@@ -17607,7 +17622,8 @@ export class PixiScene {
           const rfx = cx, rfy = cy;
           const rtx = cx + Math.cos(rang) * GLEN_REACH_LENGTH, rty = cy + Math.sin(rang) * GLEN_REACH_LENGTH;
           const rFill = (0.12 + 0.22 * rprog) + 0.08 * gPulse;
-          drawGiantCapsuleZone(rfx, rfy, rtx, rty, GLEN_REACH_HALF_WIDTH, rFill, (0.32 + 0.4 * rprog) + 0.15 * gPulse);
+          // このブロックはg-reach-windup限定(sh.firedは上でcontinue済み)=常にwindup中。
+          drawGiantCapsuleZone(rfx, rfy, rtx, rty, GLEN_REACH_HALF_WIDTH, rFill, (0.32 + 0.4 * rprog) + 0.15 * gPulse, rprog);
           // ★v0.25.3147(社長指示「触手にもミーミルみたいに発射タイミングがわかるやつ入れて」):
           // カラオケの物差し。**ミーミルのレーザーと同じ作法**(§6.33・v0.25.2951社長指示):
           //  - 塗りが根元→**プレイヤーの足元**へ伸び、**先端(白い印)が自分に触れた瞬間=発動**。
@@ -17642,7 +17658,8 @@ export class PixiScene {
           ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GLEN_TAILSLAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
           : 1;
         const tFill = gph === 'g-tailslam-active' ? 0.32 : (0.12 + 0.22 * tprog) + 0.08 * gPulse;
-        drawGiantCapsuleZone(tfx, tfy, ttx, tty, GLEN_TAILSLAM_HALF_WIDTH, tFill, (0.32 + 0.4 * tprog) + 0.15 * gPulse);
+        drawGiantCapsuleZone(tfx, tfy, ttx, tty, GLEN_TAILSLAM_HALF_WIDTH, tFill, (0.32 + 0.4 * tprog) + 0.15 * gPulse,
+          gph === 'g-tailslam-windup' ? tprog : undefined);
       }
       // ★予兆一括バッチ(v0.25.3344): 専用モーションが無かった城ボスg-*大技のwindupに震え/しゃがみ/
       // 震え+後ずさりを追加(★要確認だった行の解消。g-glide/g-diveは専用モーション実装済みのため対象外・
@@ -19516,13 +19533,31 @@ export class PixiScene {
    * (この矩形はカプセル判定=`distToSegment <= halfWidth` の外接矩形で、**元の描画と1pxも変えていない**。)
    * 素材は端をフェードさせず硬く切り落とし、可視部がキャンバス一杯になるよう正規化済みなので、
    * 引き伸ばしても**帯の端＝図形の端**が保たれる。
+   *
+   * 社長指示v0.25.3477「帯は全部だよ、噛みつきとか幅のある突進とかも。帯状の予兆線は全て」:
+   * `prog`(溜めの進行 0→1・windup限定)を渡すと、`meteorPhase`(=赤ラインと同じ位相導出。計算を
+   * 二重に持たない)から可視区間[er, p]を導き、始点/終点をその区間へ`lerp`で縮めてから描く
+   * (=流星の頭が描き切り、後ろから消しが追いかける)。`eraseOverride`は中断時の消し切り専用
+   * (drawAngelZoneCapsule/drawAngelDashLineと同じ流儀)。**progを渡さない既存呼び出しは従来どおり
+   * fx/fy→tx/tyを全長で描く**(後方互換。実行中=全形表示の描画はここを経由しない/prog未指定のまま
+   * 呼ぶことで維持される)。
    */
   private drawTelegraphBand(
     view: ActorView, fx: number, fy: number, tx: number, ty: number, halfWidth: number, tint: number, alpha: number, idx = 0,
+    prog?: number, eraseOverride?: number,
   ): void {
     if (!FX_RING_ENABLED) return;
     const tex = getTexture('fx/telegraph-band');
     if (!tex) return;
+    let bfx = fx, bfy = fy, btx = tx, bty = ty;
+    if (prog !== undefined) {
+      const ph = eraseOverride === undefined
+        ? PixiScene.meteorPhase(prog)
+        : { p: Math.max(0, Math.min(1, prog)), er: Math.max(0, Math.min(1, eraseOverride)) };
+      if (ph.p - ph.er <= 0.001) return; // 消し切った(or まだ何も無い)。visible=falseは毎フレーム既定リセット済み。
+      bfx = fx + (tx - fx) * ph.er; bfy = fy + (ty - fy) * ph.er;
+      btx = fx + (tx - fx) * ph.p; bty = fy + (ty - fy) * ph.p;
+    }
     if (!view.bands) view.bands = [];
     let sp = view.bands[idx];
     if (!sp) {
@@ -19536,12 +19571,12 @@ export class PixiScene {
       view.bands[idx] = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;
-    const ddx = tx - fx, ddy = ty - fy;
+    const ddx = btx - bfx, ddy = bty - bfy;
     const len = Math.hypot(ddx, ddy) || 1;
     sp.rotation = Math.atan2(ddy, ddx);
     sp.width = len + halfWidth * 2;   // 既存の poly と同じく前後へ halfWidth ぶん伸ばす
     sp.height = halfWidth * 2;
-    sp.position.set((fx + tx) / 2, (fy + ty) / 2);
+    sp.position.set((bfx + btx) / 2, (bfy + bty) / 2);
     sp.tint = tint;
     sp.alpha = alpha;
     sp.visible = true;
