@@ -17969,7 +17969,7 @@ export class PixiScene {
   // 最後のフレームがprog<1のまま描画されずに消える」がまた起きる)。
   private drawAngelZoneCapsule(
     view: ActorView, o: Graphics, fx: number, fy: number, tx: number, ty: number, halfWidth: number,
-    prog: number, now: number, idx = 0, erase = 0,
+    prog: number, now: number, idx = 0, erase = 0, ghost = false,
   ) {
     const pulse = 0.55 + 0.45 * Math.sin(now / 80);
     const ddx = tx - fx, ddy = ty - fy;
@@ -17984,6 +17984,17 @@ export class PixiScene {
     // 前後のキャップ(±halfWidthのはみ出し)は「尾端=erase 0の時だけ/頭端=完走度zpに比例」で持たせ、
     // zp=1・erase=0の瞬間に従来の全形状(=判定と厳密一致)へ到達する。
     const zp = er > 0 ? 1 : Math.max(0, Math.min(1, prog));
+    // ★薄い下地(全形): 溜め中は「危険な範囲の形」を常に見せる(メーターが減っても形は読める)。
+    //   判定と同じ寸法(=はみ出さない)。ghost=false(中断後の消え)では出さない。
+    if (ghost) {
+      o.poly([
+        fx - ux * halfWidth + nx * halfWidth, fy - uy * halfWidth + ny * halfWidth,
+        tx + ux * halfWidth + nx * halfWidth, ty + uy * halfWidth + ny * halfWidth,
+        tx + ux * halfWidth - nx * halfWidth, ty + uy * halfWidth - ny * halfWidth,
+        fx - ux * halfWidth - nx * halfWidth, fy - uy * halfWidth - ny * halfWidth,
+      ]).fill({ color: 0xff2a2a, alpha: 0.07 * TELEGRAPH_FILL_MULT })
+        .stroke({ width: 1.5, color: 0xff3b3b, alpha: 0.22 });
+    }
     if (zp - er <= 0.001) return; // 消し切った(or まだ何も無い)
     const zoneFill = (0.12 + 0.22 * zp) + 0.08 * pulse;
     const strokeA = (0.32 + 0.4 * zp) + 0.15 * pulse;
@@ -18028,21 +18039,46 @@ export class PixiScene {
   // dashLineArmと同じMap形状(配列末尾にremainMsを積む)だが、キーの名前空間を分けて衝突を避ける
   // (drawAngelDashLine系とdrawAngelZoneCapsule系は別の技に使われるため共用しない)。
   private zoneCapsuleArm = new Map<string, number[]>();
+  // ★流星の「消え」で当たる瞬間を伝える(社長提案2026-08-15「後ろから追いかけてくる消える方の赤帯が
+  //   消えたと同時に当たり判定。今だとどのタイミングが当たり判定か分からない」)。
+  //   旧: 溜め全体で描き切り(=満タンで発火)→ 発火**後**に消える。満タンは変化が止まるので瞬間が読めない。
+  //   新: 溜めの前半で描き切り、**後半は後ろから消しが追いかけて、溜め終わり(=判定の瞬間)に消え切る**。
+  //   残っている赤の量 = 残り時間、という読み方になる(カラオケ塗りと同じ発想)。
+  //   ★危険の形が読めなくならないよう、**薄い下地(全形)は溜め中ずっと出す**(①危険を伝える絵の掟)。
+  private static readonly METEOR_DRAW_FRAC = 0.45; // 溜めのこの割合までで描き切り、残りで消し切る
+  /** 溜め進行(0→1)から「描き(p)」と「消し(er)」を導く。 */
+  private static meteorPhase(prog: number): { p: number; er: number } {
+    const t = Math.max(0, Math.min(1, prog));
+    const D = PixiScene.METEOR_DRAW_FRAC;
+    return t <= D
+      ? { p: t / D, er: 0 }
+      : { p: 1, er: (t - D) / (1 - D) };
+  }
+
   private zoneCapsuleTick(
     view: ActorView, o: Graphics, key: string, windupOn: boolean, remainMs: number,
     fx: number, fy: number, tx: number, ty: number, halfWidth: number, now: number, prog: number, idx = 0,
   ): void {
     if (windupOn) {
-      this.zoneCapsuleArm.set(key, [fx, fy, tx, ty, halfWidth, idx]);
-      this.zoneCapsuleArm.get(key)!.push(remainMs);
-      this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, halfWidth, prog, now, idx, 0);
+      const ph = PixiScene.meteorPhase(prog);
+      // arm[7]=最後の描き / arm[8]=最後の消し(中断された時、そこから続きを消すため)。
+      this.zoneCapsuleArm.set(key, [fx, fy, tx, ty, halfWidth, idx, remainMs, ph.p, ph.er]);
+      this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, halfWidth, ph.p, now, idx, ph.er, true);
       return;
     }
     const armed = this.zoneCapsuleArm.get(key);
-    const completed = armed !== undefined && (armed[6] ?? 1e9) < 60;
-    const el = this.latchFx(key, completed, PixiScene.DASHLINE_ERASE_MS, now, () => armed!);
+    // 完走(=溜めが明けて技が出た)なら、消しは既に溜めの中で終わっている=何も描かない。
+    // 中断(カウンター等)で途中終了した時だけ、残っている帯を最後まで消し切る。
+    const cut = armed !== undefined && (armed[6] ?? 1e9) >= 60 && (armed[8] ?? 1) < 1;
+    const el = this.latchFx(key, cut, PixiScene.DASHLINE_ERASE_MS, now, () => armed!);
     if (armed) this.zoneCapsuleArm.delete(key);
-    if (el) this.drawAngelZoneCapsule(view, o, el.d[0], el.d[1], el.d[2], el.d[3], el.d[4], 1, now, el.d[5], el.t);
+    if (el) {
+      const er0 = el.d[8] ?? 0;
+      this.drawAngelZoneCapsule(
+        view, o, el.d[0], el.d[1], el.d[2], el.d[3], el.d[4], el.d[7] ?? 1, now, el.d[5],
+        er0 + (1 - er0) * el.t, false,
+      );
+    }
   }
 
   // §6.28共通(T1): 赤ライン+終点リング(ジャイアント突進と同じ意匠)。ミゲル踏み込み/ウリ踏み込み突きで再利用。
@@ -18056,10 +18092,12 @@ export class PixiScene {
   // スタート地点から消えていかないと流星にならない」)。可視区間=[erase, prog]。
   private drawAngelDashLine(
     o: Graphics, fx: number, fy: number, tx: number, ty: number, now: number, prog: number,
-    erase = 0, base = 0xff2a2a, core = 0xff5a5a, head = 0xffe3e3,
+    erase = 0, base = 0xff2a2a, core = 0xff5a5a, head = 0xffe3e3, ghost = false,
   ) {
     const p = Math.max(0, Math.min(1, prog));
     const er = Math.max(0, Math.min(1, erase));
+    // ★薄い下地(経路の全形)。メーター(濃い線)が減っても「どこを通るか」は読めるままにする。
+    if (ghost) o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 3, color: base, alpha: 0.18, cap: 'round' });
     if (p - er <= 0.001) return; // 消し切った(or まだ何も無い)
     const pulse = 0.5 + 0.5 * Math.sin(now / 110);
     const dx = tx - fx, dy = ty - fy;
@@ -18100,17 +18138,24 @@ export class PixiScene {
     base = 0xff2a2a, core = 0xff5a5a, head = 0xffe3e3,
   ): void {
     if (windupOn) {
-      this.dashLineArm.set(key, [fx, fy, tx, ty]);
-      // 完走判定用に残りを控える(最後に見た残りが小さい=完走して技へ進んだ)。
-      this.dashLineArm.get(key)!.push(remainMs);
-      this.drawAngelDashLine(o, fx, fy, tx, ty, now, prog, 0, base, core, head);
+      const ph = PixiScene.meteorPhase(prog);
+      // arm[4]=残り / arm[5]=最後の描き / arm[6]=最後の消し(中断時に続きを消すため)。
+      this.dashLineArm.set(key, [fx, fy, tx, ty, remainMs, ph.p, ph.er]);
+      this.drawAngelDashLine(o, fx, fy, tx, ty, now, ph.p, ph.er, base, core, head, true);
       return;
     }
     const armed = this.dashLineArm.get(key);
-    const completed = armed !== undefined && (armed[4] ?? 1e9) < 60;
-    const el = this.latchFx(key, completed, PixiScene.DASHLINE_ERASE_MS, now, () => armed!);
+    // 完走なら消しは溜めの中で終わっている=何も描かない。中断された時だけ残りを消し切る。
+    const cut = armed !== undefined && (armed[4] ?? 1e9) >= 60 && (armed[6] ?? 1) < 1;
+    const el = this.latchFx(key, cut, PixiScene.DASHLINE_ERASE_MS, now, () => armed!);
     if (armed) this.dashLineArm.delete(key);
-    if (el) this.drawAngelDashLine(o, el.d[0], el.d[1], el.d[2], el.d[3], now, 1, el.t, base, core, head);
+    if (el) {
+      const er0 = el.d[6] ?? 0;
+      this.drawAngelDashLine(
+        o, el.d[0], el.d[1], el.d[2], el.d[3], now, el.d[5] ?? 1,
+        er0 + (1 - er0) * el.t, base, core, head, false,
+      );
+    }
   }
 
   // §6.28共通(T6): 溜めで太くなる赤ライン(ミーミルのレーザーと同じ意匠)。スリィエル環の射出/
