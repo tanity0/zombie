@@ -27,6 +27,8 @@ import { createEnemyProjectile, isGate2AngelBoss } from './enemyUtils';
 import { rectsOverlap } from '../world/obstacles';
 import { airHopEase01 } from './airHop';
 import { distToSegment } from './levelUpGate';
+// v0.25.3496: 帯(drawAngelZoneCapsule=四角)の判定は四角そのもの。ビーム/レーザー(線)はdistToSegmentのまま。
+import { distToBandRect } from './geometry';
 import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY, isBossCounterableNowApprox } from './bossScript';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
@@ -584,7 +586,7 @@ export const runMiguelTick = (
     const tx0 = miguel.aiTargetX ?? mcx, ty0 = miguel.aiTargetY ?? mcy;
     const pr = Math.max(player.width, player.height) / 2;
     let countered = false;
-    if (distToSegment({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= MIGUEL_HARAI_HALF_WIDTH + pr) {
+    if (distToBandRect({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, MIGUEL_HARAI_HALF_WIDTH) <= pr) {
       const cp = useGameStore.getState().player;
       if (Date.now() <= cp.counterWindowEnd) {
         miguelCounterHit((fx0 + tx0) / 2, (fy0 + ty0) / 2);
@@ -692,7 +694,7 @@ export const runMiguelTick = (
       const dl = Math.hypot(dirx, diry) || 1; dirx /= dl; diry /= dl;
       const sx = nx, sy = ny, ex = nx + dirx * MIGUEL_HARAI_RANGE, ey = ny + diry * MIGUEL_HARAI_RANGE;
       const pr = Math.max(player.width, player.height) / 2;
-      if (distToSegment({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }) <= MIGUEL_HARAI_HALF_WIDTH + pr) {
+      if (distToBandRect({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }, MIGUEL_HARAI_HALF_WIDTH) <= pr) {
         const cp = useGameStore.getState().player;
         if (Date.now() <= cp.counterWindowEnd) {
           dashCountered((sx + ex) / 2, (sy + ey) / 2);
@@ -1836,7 +1838,7 @@ export const runUriTick = (
     const fx0 = uri.aiFromX ?? ucx, fy0 = uri.aiFromY ?? ucy, tx0 = uri.aiTargetX ?? ucx, ty0 = uri.aiTargetY ?? ucy;
     const pr = Math.max(player.width, player.height) / 2;
     let countered = false;
-    if (distToSegment({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= URI_SWEEP_HALF_WIDTH_PX + pr) {
+    if (distToBandRect({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, URI_SWEEP_HALF_WIDTH_PX) <= pr) {
       const cp = useGameStore.getState().player;
       if (Date.now() <= cp.counterWindowEnd) { uriCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri); }
       else {
@@ -1865,7 +1867,7 @@ export const runUriTick = (
     const fx0 = uri.aiFromX ?? ucx, fy0 = uri.aiFromY ?? ucy, tx0 = uri.aiTargetX ?? ucx, ty0 = uri.aiTargetY ?? ucy;
     const pr = Math.max(player.width, player.height) / 2;
     let countered = false;
-    if (distToSegment({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= URI_DOWNSLASH_HALF_WIDTH_PX + pr) {
+    if (distToBandRect({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, URI_DOWNSLASH_HALF_WIDTH_PX) <= pr) {
       const cp = useGameStore.getState().player;
       if (Date.now() <= cp.counterWindowEnd) { uriCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri); }
       else {
@@ -1922,7 +1924,7 @@ export const runUriTick = (
       let dirx = tx0 - fx0, diry = ty0 - fy0; const dl = Math.hypot(dirx, diry) || 1; dirx /= dl; diry /= dl;
       const sx = nx, sy = ny, ex = nx + dirx * URI_THRUST_RANGE_PX, ey = ny + diry * URI_THRUST_RANGE_PX;
       const pr = Math.max(player.width, player.height) / 2;
-      if (distToSegment({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }) <= URI_THRUST_HALF_WIDTH_PX + pr) {
+      if (distToBandRect({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }, URI_THRUST_HALF_WIDTH_PX) <= pr) {
         const cp = useGameStore.getState().player;
         if (Date.now() <= cp.counterWindowEnd) {
           thrustCountered((sx + ex) / 2, (sy + ey) / 2); countered = true;
@@ -2195,7 +2197,7 @@ export const runSurielTick = (
     const fx0 = suriel.aiFromX ?? scx, fy0 = suriel.aiFromY ?? scy, tx0 = suriel.aiTargetX ?? scx, ty0 = suriel.aiTargetY ?? scy;
     const pr = Math.max(player.width, player.height) / 2;
     let countered = false;
-    if (distToSegment({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= SURIEL_SWEEP_HALF_WIDTH_PX + pr) {
+    if (distToBandRect({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, SURIEL_SWEEP_HALF_WIDTH_PX) <= pr) {
       const cp = useGameStore.getState().player;
       if (Date.now() <= cp.counterWindowEnd) { surielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel); }
       else {
@@ -2337,7 +2339,7 @@ export const runAcrasielTick = (
       if (isSpikeGapSector(mask, sector)) continue;
       const ang = sector * (Math.PI / 4);
       const ex = acx + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_PX, ey = acy + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_PX;
-      if (distToSegment({ x: pcx, y: pcy }, { x: acx, y: acy }, { x: ex, y: ey }) <= ACRASIEL_SPIKE_HALF_WIDTH_PX + pr) { hit = true; break; }
+      if (distToBandRect({ x: pcx, y: pcy }, { x: acx, y: acy }, { x: ex, y: ey }, ACRASIEL_SPIKE_HALF_WIDTH_PX) <= pr) { hit = true; break; }
     }
     let countered = false;
     if (hit) {

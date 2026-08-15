@@ -15005,17 +15005,22 @@ export class PixiScene {
         const ux = ddx / ddl, uy = ddy / ddl;  // 軸方向の単位ベクトル(両端の延長に使う)
         const hw = THOR_ISSEN_VIS_HALFWIDTH;
         const zoneFill = (0.12 + 0.22 * prog) + 0.08 * pulse;
+        // v0.25.3496: 面も流星の可視区間へ(縁だけ流星だと消しが面に隠れて読めない)。
+        const iMet = PixiScene.meteorPhase(prog);
+        const ivfx = fx + (tx - fx) * iMet.er, ivfy = fy + (ty - fy) * iMet.er;
+        const ivtx = fx + (tx - fx) * iMet.p, ivty = fy + (ty - fy) * iMet.p;
+        const iVisible = iMet.p - iMet.er > 0.001;
         const pts = [
-          fx - ux * hw + nx * hw, fy - uy * hw + ny * hw,
-          tx + ux * hw + nx * hw, ty + uy * hw + ny * hw,
-          tx + ux * hw - nx * hw, ty + uy * hw - ny * hw,
-          fx - ux * hw - nx * hw, fy - uy * hw - ny * hw,
+          ivfx - ux * hw + nx * hw, ivfy - uy * hw + ny * hw,
+          ivtx + ux * hw + nx * hw, ivty + uy * hw + ny * hw,
+          ivtx + ux * hw - nx * hw, ivty + uy * hw - ny * hw,
+          ivfx - ux * hw - nx * hw, ivfy - uy * hw - ny * hw,
         ];
-        o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_FILL_MULT });
+        if (iVisible) o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436)。
         // v0.25.3477: 帯も赤ラインと同じ流星の描き→消し(このブロックはissen-windup限定=常にwindup中)。
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * pulse, 0, prog);
-        else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
+        else if (iVisible) o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
         // 社長指示: 一閃の溜めは刀を腰に構えて(居合腰)ゆっくり溜める。方向はロック済み(fx,fy→tx,ty)。
         this.drawThorIaiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.32, tx - fx, ty - fy, prog, now);
       } else if (e.bossState === 'issen-dash') {
@@ -15060,18 +15065,23 @@ export class PixiScene {
           const hux = hdx / hdl, huy = hdy / hdl;  // 軸方向の単位ベクトル(両端の延長に使う)
           const hhw = THOR_HARAI_VIS_HALFWIDTH;
           const hFill = 0.12 + 0.22 * prog + 0.08 * pulse;
+          // v0.25.3496: 面・白芯も流星の可視区間へ(一閃と同じ直し)。
+          const hMet = PixiScene.meteorPhase(prog);
+          const hvfx = fx + (tx - fx) * hMet.er, hvfy = fy + (ty - fy) * hMet.er;
+          const hvtx = fx + (tx - fx) * hMet.p, hvty = fy + (ty - fy) * hMet.p;
+          const hVisible = hMet.p - hMet.er > 0.001;
           const hpts = [
-            fx - hux * hhw + hnx * hhw, fy - huy * hhw + hny * hhw,
-            tx + hux * hhw + hnx * hhw, ty + huy * hhw + hny * hhw,
-            tx + hux * hhw - hnx * hhw, ty + huy * hhw - hny * hhw,
-            fx - hux * hhw - hnx * hhw, fy - huy * hhw - hny * hhw,
+            hvfx - hux * hhw + hnx * hhw, hvfy - huy * hhw + hny * hhw,
+            hvtx + hux * hhw + hnx * hhw, hvty + huy * hhw + hny * hhw,
+            hvtx + hux * hhw - hnx * hhw, hvty + huy * hhw - hny * hhw,
+            hvfx - hux * hhw - hnx * hhw, hvfy - huy * hhw - hny * hhw,
           ];
-          o.poly(hpts).fill({ color: 0xff2a2a, alpha: hFill * TELEGRAPH_FILL_MULT });
+          if (hVisible) o.poly(hpts).fill({ color: 0xff2a2a, alpha: hFill * TELEGRAPH_FILL_MULT });
           // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436)。
           // v0.25.3477: 帯も赤ラインと同じ流星の描き→消し(このifはharai-windup限定=常にwindup中)。
           if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hhw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * pulse, 0, prog);
-          else o.poly(hpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
-          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' }); // 薙ぎの軸(白芯)
+          else if (hVisible) o.poly(hpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
+          if (hVisible) o.moveTo(hvfx, hvfy).lineTo(hvtx, hvty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' }); // 薙ぎの軸(白芯)
           // 柄を手元に置き、攻撃方向から140度引いた大薙ぎの開始姿勢へ構える。実行は同じ姿勢から
           // 200度振り切るため、構え→振り→残心が連続する。
           const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * THOR_HARAI_WINDUP_MS);
@@ -16469,22 +16479,29 @@ export class PixiScene {
       const drawGiantCapsuleZone = (
         fx: number, fy: number, tx: number, ty: number, halfWidth: number, fillA: number, strokeA: number, prog?: number,
       ) => {
-        bandsThisFrame.push([fx, fy, tx, ty, halfWidth]);
+        bandsThisFrame.push([fx, fy, tx, ty, halfWidth]); // 衝撃波の対象は**判定どおりの全長**(絵の縮みに引きずられない)
         const ddx = tx - fx, ddy = ty - fy;
         const ddl = Math.hypot(ddx, ddy) || 1;
         const nx = -ddy / ddl, ny = ddx / ddl;
         const ux = ddx / ddl, uy = ddy / ddl;
+        // ★v0.25.3496(社長指示「その上で、流星にして」): 溜め中は面も流星の可視区間[er,p]へ縮める。
+        // 従来は縁取り(drawTelegraphBand)だけが流星で、面は全長のまま=消しが面の下に隠れて
+        // 「消え切った瞬間が当たり」の文法が読めなかった。位相の導出は meteorPhase 1本のまま。
+        const met = prog === undefined ? null : PixiScene.meteorPhase(prog);
+        const vfx = met ? fx + ddx * met.er : fx, vfy = met ? fy + ddy * met.er : fy;
+        const vtx = met ? fx + ddx * met.p : tx, vty = met ? fy + ddy * met.p : ty;
+        const visible = !met || met.p - met.er > 0.001;
         const pts = [
-          fx - ux * halfWidth + nx * halfWidth, fy - uy * halfWidth + ny * halfWidth,
-          tx + ux * halfWidth + nx * halfWidth, ty + uy * halfWidth + ny * halfWidth,
-          tx + ux * halfWidth - nx * halfWidth, ty + uy * halfWidth - ny * halfWidth,
-          fx - ux * halfWidth - nx * halfWidth, fy - uy * halfWidth - ny * halfWidth,
+          vfx - ux * halfWidth + nx * halfWidth, vfy - uy * halfWidth + ny * halfWidth,
+          vtx + ux * halfWidth + nx * halfWidth, vty + uy * halfWidth + ny * halfWidth,
+          vtx + ux * halfWidth - nx * halfWidth, vty + uy * halfWidth - ny * halfWidth,
+          vfx - ux * halfWidth - nx * halfWidth, vfy - uy * halfWidth - ny * halfWidth,
         ];
-        // 面(どこが危ないか)は据え置き。縁取りだけを素材A-2へ差し替える(円=A-1と同じ考え方)。
+        // 縁取りだけを素材A-2へ差し替える(円=A-1と同じ考え方)。
         // 素材は上の pts と同じ矩形にぴったり重なる(drawTelegraphBand が同じ式で寸法を出す)。
-        o.poly(pts).fill({ color: 0xff2a2a, alpha: fillA * TELEGRAPH_FILL_MULT });
+        if (visible) o.poly(pts).fill({ color: 0xff2a2a, alpha: fillA * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, Math.min(1, strokeA + 0.2), 0, prog);
-        else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
+        else if (visible) o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
       };
       // 共通ヘルパ(M66): 扇形(帯が回転する技のwindup予告=最終的に薙ぐ全域を先出しする)。innerR>0で
       // 内径付き(懐が安全=ウリの内径修正と同じ考え方。図形は「くり抜き」ではなく環状の扇そのもの)。
@@ -17535,20 +17552,31 @@ export class PixiScene {
         const ghw = GIANT_SWEEP_HALF_WIDTH;
         const gprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
         const gZoneFill = gph === 'g-sweep-active' ? 0.3 : (0.12 + 0.22 * gprog) + 0.08 * gPulse;
+        // ★v0.25.3496(社長指示「その上で、流星にして」): 溜め中は**面と白芯も流星の可視区間へ縮める**。
+        // 従来は縁取り(drawTelegraphBand)だけが流星で、面と白芯は全長のまま描かれていたため、
+        // **消しが面の下に隠れて流星が読めなかった**(=「消え切った瞬間が当たり」の文法が伝わらない)。
+        // 位相の導出は meteorPhase 1本のまま=計算を二重に持たない。
+        const gMet = gph === 'g-sweep-windup' ? PixiScene.meteorPhase(gprog) : null;
+        const gvfx = gMet ? gfx + (gtx - gfx) * gMet.er : gfx;
+        const gvfy = gMet ? gfy + (gty - gfy) * gMet.er : gfy;
+        const gvtx = gMet ? gfx + (gtx - gfx) * gMet.p : gtx;
+        const gvty = gMet ? gfy + (gty - gfy) * gMet.p : gty;
+        const gVisible = !gMet || gMet.p - gMet.er > 0.001;
         const gpts = [
-          gfx - gux * ghw + gnx * ghw, gfy - guy * ghw + gny * ghw,
-          gtx + gux * ghw + gnx * ghw, gty + guy * ghw + gny * ghw,
-          gtx + gux * ghw - gnx * ghw, gty + guy * ghw - gny * ghw,
-          gfx - gux * ghw - gnx * ghw, gfy - guy * ghw - gny * ghw,
+          gvfx - gux * ghw + gnx * ghw, gvfy - guy * ghw + gny * ghw,
+          gvtx + gux * ghw + gnx * ghw, gvty + guy * ghw + gny * ghw,
+          gvtx + gux * ghw - gnx * ghw, gvty + guy * ghw - gny * ghw,
+          gvfx - gux * ghw - gnx * ghw, gvfy - guy * ghw - gny * ghw,
         ];
-        bandsThisFrame.push([gfx, gfy, gtx, gty, ghw]); // 薙ぎ払いも「判定=直線の帯・絵=弧」=衝撃波の対象
-        o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT });
+        bandsThisFrame.push([gfx, gfy, gtx, gty, ghw]); // 衝撃波の対象は**判定どおりの全長**(絵の縮みに引きずられない)
+        if (gVisible) o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT });
         // v0.25.3477: 帯の流星描き→消しはwindup限定(activeは全形のまま=従来どおり。gprogはactive中は
         // 窓の異なる時計を流用しているだけの値なので、そのままmeteorPhaseへ渡さない)。
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, Math.min(1, (0.32 + 0.4 * gprog) + 0.15 * gPulse + 0.2), 0,
           gph === 'g-sweep-windup' ? gprog : undefined);
-        else o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * gprog) + 0.15 * gPulse });
-        o.moveTo(gfx, gfy).lineTo(gtx, gty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: 0.35 + 0.35 * gprog, cap: 'round' });
+        else if (gVisible) o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * gprog) + 0.15 * gPulse });
+        // 白芯も可視区間だけ(面と同じ理由=流星の頭と消しを隠さない)。
+        if (gVisible) o.moveTo(gvfx, gvfy).lineTo(gvtx, gvty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: 0.35 + 0.35 * gprog, cap: 'round' });
       } else if (gph === 'g-jump-windup' || gph === 'g-jump-air') {
         // T2(赤円・着地点)。溜め開始からロック済みの着地点(社長裁定6.26-9 #1)。着地AoE半径の生値は
         // PUMPKIN_EXPLOSION_RADIUS(6.26-6「現行不変」=定数そのものは変えない)。M65: windup開始時に

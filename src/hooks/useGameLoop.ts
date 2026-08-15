@@ -211,6 +211,7 @@ import {
   isBountyType,
   resistsChipKnockback
 } from '../utils/enemyUtils';
+import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
 import {
   isCounterablePhase, phaseJustChanged, BOSS_ALERT_SFX_KEY,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
@@ -5813,7 +5814,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 let countered = false;
-                if (Math.hypot(pcx - cxp, pcy - cyp) <= THOR_ISSEN_HALF_WIDTH + pr) {
+                if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, THOR_ISSEN_HALF_WIDTH) <= pr) { // v0.25.3496: 描いてある四角
                   const cp = useGameStore.getState().player;
                   if (Date.now() <= cp.counterWindowEnd) {
                     thorCounterHit(cxp, cyp);
@@ -5908,7 +5909,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 let countered = false;
-                if (Math.hypot(pcx - cxp, pcy - cyp) <= THOR_HARAI_HALF_WIDTH + pr) {
+                if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, THOR_HARAI_HALF_WIDTH) <= pr) { // v0.25.3496: 描いてある四角
                   const cp = useGameStore.getState().player;
                   if (Date.now() <= cp.counterWindowEnd) {
                     thorCounterHit(cxp, cyp);

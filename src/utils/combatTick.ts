@@ -49,7 +49,8 @@ import {
   REFLECT_DAMAGE_MULTIPLIER, // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王の倍率計算に使う基準値
   counterMasterAwakenBuffPatch, // v0.25.3303 カウンターマスター覚醒(成立後3秒+30%)
 } from '../store/gameStore';
-import { distToSegment } from './levelUpGate';
+// v0.25.3496(社長指示「四角の帯に当たりも戻して」): 帯の判定は描いてある四角そのもの。
+import { distToBandRect } from './geometry';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
@@ -150,7 +151,7 @@ export const applyGhostAllyCapsuleHit = (
   if (!ghost) return;
   const gcx = ghost.x + ghost.width / 2, gcy = ghost.y + ghost.height / 2;
   const gr = Math.max(ghost.width, ghost.height) / 2;
-  if (distToSegment({ x: gcx, y: gcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= halfWidth + gr) {
+  if (distToBandRect({ x: gcx, y: gcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, halfWidth) <= gr) {
     // 被弾KBの源=技の起点(ボス側)=プレイヤー側のカプセル技被弾と同じ「飛んできた方から弾かれる」向き。
     damageGhostAllyByBossMove(ghost.id, damage, burst, fx0, fy0, source ?? 'capsule');
   }
@@ -207,7 +208,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     // M51: 薙ぎ払い(capsule付き)は円ではなく直線+半幅のカプセル判定(distToSegment流用)。
     // それ以外(パンプキン着地/スカジ氷等)は既存どおり円形(爆心からの距離<=半径+双方の当たり半径)。
     const inBlast = b.capsule
-      ? distToSegment({ x: bpcx, y: bpcy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }) <= b.capsule.halfWidth + pr
+      ? distToBandRect({ x: bpcx, y: bpcy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }, b.capsule.halfWidth) <= pr
       : Math.hypot(bpcx - b.x, bpcy - b.y) <= b.radius + pr;
     if (inBlast) {
       if (counterActive) {
@@ -246,7 +247,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       const owner = enemiesForGhost.find(e => e.id === b.enemyId);
       if (owner && isEngageableBoss(owner.type)) {
         const inBlastGhost = b.capsule
-          ? distToSegment({ x: gacx, y: gacy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }) <= b.capsule.halfWidth + gar
+          ? distToBandRect({ x: gacx, y: gacy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }, b.capsule.halfWidth) <= gar
           : Math.hypot(gacx - b.x, gacy - b.y) <= b.radius + gar;
         if (inBlastGhost) {
           // v0.25.2597: inAttackZone=この直上の `inBlastGhost` が「ゴーストが爆風/帯の中に居る」ことを
@@ -798,11 +799,12 @@ export const inGiantGlideBand = (
 ): boolean => {
   if (enemy.aiFromX === undefined || enemy.aiFromY === undefined
     || enemy.aiTargetX === undefined || enemy.aiTargetY === undefined) return true;
-  return distToSegment(
+  return distToBandRect(
     { x: actorCx, y: actorCy },
     { x: enemy.aiFromX + enemy.width / 2, y: enemy.aiFromY + enemy.height / 2 },
     { x: enemy.aiTargetX + enemy.width / 2, y: enemy.aiTargetY + enemy.height / 2 },
-  ) <= GIANT_GLIDE_HALF_WIDTH + actorRadius;
+    GIANT_GLIDE_HALF_WIDTH,
+  ) <= actorRadius;
 };
 
 /** ※ v0.25.2601: `g-jump-air` はこの述語を通ったうえで **inGiantJumpLandingZone** も要る

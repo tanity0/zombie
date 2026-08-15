@@ -21,7 +21,7 @@ import { rectsOverlap } from '../world/obstacles';
 // プレイヤーの移動クランプと**同じ純関数**を使う。`playableArea.ts` は「行ける帯」の唯一の出どころで、
 // プレイヤー移動・湧き制限・帯の外の減光が全てここから導かれている。ボスだけがこれを通っていなかった。
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
-import { distToSegment } from './levelUpGate';
+import { distToBandRect } from './geometry'; // v0.25.3496: 帯の判定=描いてある四角
 import { isCounterablePhase, phaseJustChanged } from './bossScript';
 import { neutralVerb, pickStringScript, restMsFor, punishTrigger, advanceLingerMs, type NeutralVerb } from './bossSkeleton';
 import { resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from './bossHate';
@@ -710,7 +710,7 @@ export const runIdolTick = (
     const fx = idol.aiFromX ?? icx, fy = idol.aiFromY ?? icy;
     const tx = idol.aiTargetX ?? icx, ty = idol.aiTargetY ?? icy;
     const pr = Math.max(player.width, player.height) / 2;
-    if (distToSegment({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }) <= IDOL_TUNING.shape.snipeHalfWidth + pr) {
+    if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, IDOL_TUNING.shape.snipeHalfWidth) <= pr) {
       const died = useGameStore.getState().damagePlayer(IDOL_TUNING.moveDamage.snipe, `${enemyDeathLabel(idol.type)}の狙撃`, pcx, pcy);
       if (died) onPlayerDeath(pcx, pcy);
     }

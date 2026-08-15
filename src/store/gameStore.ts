@@ -100,7 +100,8 @@ import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
 import { evaluateLabLoseSight, LAB_VISION_RANGE } from '../utils/labStealth';
 // distToSegment: M66(§6.26-11)の掃射/三連突進の吐息(回転帯)が毎フレーム自己検出するために使う純関数。
-import { isPlayerInAttackTelegraph, distToSegment } from '../utils/levelUpGate';
+import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
+import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
 import {
@@ -113,7 +114,7 @@ import {
 } from '../utils/eventQuest';
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
-import { isBossType, isHiddenBoss, usesBossCrit, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isArenaSweepProtected } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isArenaSweepProtected } from '../utils/enemyUtils';
 // §6.38 B4(クリーンアップ): 実効難易度倍率の式はbountyValue.ts(依存ゼロに近い葉。詳細はファイル冒頭の
 // コメント参照)へ一本化した。bountyTick.tsもここから同じ関数をimportする(=もう複製ではなく本物の
 // 共有import。旧B3コメントの「bountyTick.tsを直接importすると循環」は解消していない=それは今も避け、
@@ -3933,7 +3934,12 @@ const applySlasherChainStrike = (
       get().spawnBurst(ecx, ecy, '#bef264', 10);
     } else {
       const d = Math.max(0.001, Math.hypot(dx, dy));
-      get().knockbackEnemy(e.id, dx / d, dy / d, kbMult, kbMult); // 追撃が当たった敵のみノックバック(Lv3最終段のみ大)。maxStrengthも渡す(既定cap=3で頭打ちになる罠・v0.25.3257)
+      // ★社長指示v0.25.3496「スラッシャーではボスはノックバックしないで」: 追撃のKBも通常敵限定。
+      // (ボスへ効くと、下の「KBした時だけ踏み込む」判定も真になって前進してしまう=v0.25.3400の
+      //  「KB無効の相手には前進しない」意図とも噛み合わない。)
+      if (!resistsChipKnockback(e.type)) {
+        get().knockbackEnemy(e.id, dx / d, dy / d, kbMult, kbMult); // 追撃が当たった敵のみノックバック(Lv3最終段のみ大)。maxStrengthも渡す(既定cap=3で頭打ちになる罠・v0.25.3257)
+      }
     }
   }
   get().spawnRing(jx, jy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200); // 追撃の一閃(踏み込み先で出す)
@@ -6244,7 +6250,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // locking it in an infinite stagger). Damage still landed above.
       // 社長指示v0.25.3297「スラッシャーの時だけ25px強制ノックバック(CD無視)」: スラッシャー所持中の
       // 近接は免疫CD(1.75s)を無視して毎回、実距離25px固定で飛ばす(連撃の各段と初撃で手応えを揃える)。
-      const slasherForce = skillLevel(player, 'slasher') > 0;
+      // ★社長指示v0.25.3496「スラッシャーではボスはノックバックしないで」: 強制KB(免疫CD無視)は
+      // **通常敵限定**にする。ボス級に効いていると、免疫CDを無視して毎撃 knockbackUntil が立ち、
+      // ボスの技が永久に中断される(=はめ)。ボスは従来の免疫CD付きルールへ落ちる。
+      const slasherForce = skillLevel(player, 'slasher') > 0 && !resistsChipKnockback(enemy.type);
       if (slasherForce || now >= (enemy.knockbackImmuneUntil ?? 0)) {
         const norm = Math.max(0.001, dist);
         const falloff = 1 - dist / meleeRange;
@@ -11328,7 +11337,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               }
               const playerR = Math.max(player.width, player.height) / 2;
               const hitNow = !enemy.giantActiveHit &&
-                distToSegment({ x: pcx, y: pcy }, { x: bfx, y: bfy }, { x: farX, y: farY }) <= GIANT_QUAD_BREATH_HALF_WIDTH + playerR;
+                distToBandRect({ x: pcx, y: pcy }, { x: bfx, y: bfy }, { x: farX, y: farY }, GIANT_QUAD_BREATH_HALF_WIDTH) <= playerR;
               if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-quad' });
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 // 薙いだ跡に遅延起爆の氷を3つ(固定・学習装置①)。スカジの氷ハザード配管(pumpkinBlastsの
@@ -11535,7 +11544,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 farY = sbfy + Math.sin(curAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH);
               const playerR = Math.max(player.width, player.height) / 2;
               const hitNow = !enemy.giantActiveHit &&
-                distToSegment({ x: pcx, y: pcy }, { x: nearX, y: nearY }, { x: farX, y: farY }) <= GIANT_SWEEPBEAM_HALF_WIDTH + playerR;
+                distToBandRect({ x: pcx, y: pcy }, { x: nearX, y: nearY }, { x: farX, y: farY }, GIANT_SWEEPBEAM_HALF_WIDTH) <= playerR;
               if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-sweepbeam' });
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return {

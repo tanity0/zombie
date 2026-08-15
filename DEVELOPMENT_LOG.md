@@ -1,5 +1,63 @@
 # Development Log
 
+## v0.25.3496 — 帯の判定を「描いてある四角」へ全技統一 / 面も流星化 / スラッシャーはボスを押さない【2026-08-16 02:42 JST】
+社長指示4件(+調査1件)の同時着地。
+
+### 1. スラッシャーではボスをノックバックしない
+- `slasherForce`(v0.25.3297「スラッシャーの時だけ25px強制ノックバック(CD無視)」)が**ボスにも
+  効いていた**ため、免疫CD(1750ms)を無視して毎撃 `knockbackUntil` が立ち、ボスの技が事実上
+  永久に中断されていた。`!resistsChipKnockback(enemy.type)` を付けて**通常敵限定**へ。
+  ボスは従来の免疫CD付きルールへ落ちる。
+- 追撃(`slasherChainAttack`)の `knockbackEnemy` も同じ条件でスキップ。副次的に「KBした時だけ踏み込む」
+  (v0.25.3400)がボス相手に真にならなくなり、**元の意図(KB無効の相手には前進しない)とも整合**した。
+
+### 2〜3. 帯の判定=描いてある四角(全技) + 面の流星化
+- **原因は1技の不具合ではなく共通部品の形の食い違い**。帯の予告は全経路
+  (`drawTelegraphBand` / `drawAngelZoneCapsule` / `drawGiantCapsuleZone`)が
+  「始点/終点を halfWidth ぶん軸方向へ伸ばした**長方形**」で描いていたのに、判定側は一貫して
+  `distToSegment <= halfWidth`(=**両端が丸いカプセル**)だった。差は四隅=**「赤いのに当たらない」**。
+  旧コメントは「角のぶん丸より広く覆う=赤の外=安全は維持・判定は不変」と意図的に許容していたが、
+  社長裁定(「四角の帯に当たりも戻して」)で**判定を絵に合わせる**へ変更。
+- 新設: `src/utils/geometry.ts` の `distToBandRect(p, a, b, halfWidth)` = **描いてある四角への距離**。
+  呼び出し側は `<= playerRadius` と書くだけで「自機の円が四角に触れたか」の厳密判定になる
+  (四角+円のミンコフスキー和=角の丸い四角、が正しい形)。
+- **全技を洗って**、帯(四角)で描かれている判定を全て差し替えた:
+  トール一閃/払い、城ボス薙ぎ払い、城ボス吐息(quad-breath)/掃射(sweepbeam)、ミゲル払い、
+  ウリ 薙ぎ/振り下ろし/突き、スリィエル薙ぎ、アクラシエル棘、ジブリルのランス、ラファエル薙ぎ、
+  賞金首(bb-sweep / mk-naginata / bm-snipe / br-push / bm-combo / br-triple)、idol 狙撃/拳、
+  グレンの滑空帯、および汎用 `capsule` blast(combatTick)と守護霊側の同判定。
+  **線(stroke)で描かれている技=ミーミルのレーザー/スリィエルのビーム/突進予告線は対象外**
+  (線は halfWidth ぶんの延長を持たないので `distToSegment` が正しい)。
+- **面の流星化**: `drawGiantCapsuleZone` / トール一閃 / トール払い / 城ボス薙ぎ払いは、縁取りだけが
+  流星で**赤い面と白芯は全長のまま**描かれていた=消しが面の下に隠れて「消え切った瞬間が当たり」の
+  文法が読めなかった。面・白芯も `meteorPhase` の可視区間[er,p]へ縮めた(位相の導出は1本のまま)。
+  `drawAngelZoneCapsule` 系は元から区間描画なので変更なし。衝撃波の対象(bandsThisFrame)は
+  **判定どおりの全長**を積む(絵の縮みに引きずらせない)。
+
+### 4. ボス「はめ」の調査 + シミュレーション(社長質問への回答)
+- `src/store/bossLockSim.test.ts` を新設。20秒の窓を16ms刻みで回し、**ボスが止まっているフレームの
+  割合**(=技を出せない時間の割合)を実測する。各道具のCDは敢えてモデル化せず、**最悪ケース=毎フレーム
+  発火**で上界を取る方式(CDのある実際の道具は必ずこれ以下)。
+- 結果: **`knockbackEnemy` を通る道具(犬/救急鞄/踏み鳴らし/四神/シールドの押し戻しキュー)は
+  はめられない**——DR1周(満額280ms+半減140ms+無効化&完全耐性3000ms≒3.42秒)のうち止まるのは
+  0.42秒=**12%前後**。城ボス/賞金首/裏ボスすべて同じ。通常敵は従来どおり99%超(不変)。
+- ★**構造的な穴を発見**: DRが効くのは `knockbackEnemy` / `rootEnemy` / `stunEnemy` の3入口だけで、
+  **enemy へ直接 `knockbackUntil` を書く経路は全てDRの外側**。テストで20秒間100%停止を再現した。
+  該当: 近接の全命中(素手/刀/鞭)・シールドバッシュ・吸引系(重力弾/ハリケーン/錬金レア吸引)・
+  パニッシャー連鎖。**特に近接は「免疫CD中は代わりに `knockbackUntil = now+100` を書く」**ため、
+  殴り続けるだけでボスの技が出せない。**裁定待ち(このコミットでは直していない)。**
+
+- 検証: `npx vitest run src/utils/ src/store/`(6086 passed / 失敗0。※失敗1件は放置されていた
+  `.claude/worktrees/agent-aca60bd1f91a64e34` の複製で、本体ではない。停止中の同worktreeは削除した) /
+  `npm run typecheck`(0エラー) / `npm run lint`(0エラー)。実機確認は社長。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)への抵触なし(湧き・難易度・報酬は不変)。
+  判定は**四隅ぶんだけ広がる**が、これは「赤い予告と判定の厳密一致」(CLAUDE.md 攻撃ヴィジュアルの
+  2分類①)へ寄せる変更で、社長裁定済み。
+- ファイル: `src/utils/geometry.ts`(+test) / `src/utils/combatTick.ts` / `src/utils/levelUpGate.ts` /
+  `src/utils/angelBossTick.ts` / `src/utils/idolTick.ts` / `src/utils/bountyTick.ts` /
+  `src/store/gameStore.ts` / `src/hooks/useGameLoop.ts` / `src/pixi/pixiScene.ts` /
+  `src/store/bossLockSim.test.ts` / `src/data/changelog.ts` / `package.json` / `DEVELOPMENT_LOG.md`
+
 ## v0.25.3495 — RELAXの湧きレバー2本(間隔/上限)を本方式のスポーナーへ配線【2026-08-16 02:24 JST】
 - **社長指示**: 「リラックスさせて」(v0.25.3494の報告「RELAXの3レバーのうち2本が通常プレイでは
   死んでいます」への裁定)。

@@ -86,7 +86,7 @@ import { advanceLingerMs } from './bossSkeleton';
 import { isCounterablePhase, phaseJustChanged } from './bossScript';
 // §6.38 B2b: distToSegmentはgeometry.ts(依存ゼロ)から直接import(levelUpGate.ts経由をやめた)。
 // levelUpGate.tsが賞金首の技の実寸法をbountyTick.tsからimportする際、逆import(循環)を作らないため。
-import { distToSegment } from './geometry';
+import { distToBandRect } from './geometry';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { rectsOverlap } from '../world/obstacles';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
@@ -989,7 +989,7 @@ const tickMelee = (
     const player = useGameStore.getState().player;
     const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
     const pr = Math.max(player.width, player.height) / 2;
-    if (distToSegment({ x: ppx, y: ppy }, { x: fx, y: fy }, { x: tx, y: ty }) <= BM_SNIPE_HALFWIDTH + pr) {
+    if (distToBandRect({ x: ppx, y: ppy }, { x: fx, y: fy }, { x: tx, y: ty }, BM_SNIPE_HALFWIDTH) <= pr) {
       useGameStore.getState().damagePlayer(BM_SNIPE_DAMAGE, `${enemyDeathLabel(bounty.type)}の狙撃`, ppx, ppy);
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {

@@ -9,7 +9,8 @@
 import { MIMIR_LASER_HALF_WIDTH } from './mimirLaserTrack';
 // §6.38 B2b: distToSegmentはgeometry.ts(依存ゼロ)へ移設した(下のコメント参照)。既存の呼び出し側
 // (gameStore.ts/angelBossTick.ts/combatTick.ts/idolTick.ts)は変更不要=ここから引き続き再exportする。
-import { distToSegment } from './geometry';
+// v0.25.3496: 帯(四角)の判定は distToBandRect。突進線/レーザー(線)は従来どおり distToSegment。
+import { distToSegment, distToBandRect } from './geometry';
 export { distToSegment };
 // §6.38 B2b: 鋏(bounty-balance)/舞妓(bounty-maiko)の技の寸法は依存ゼロの葉bountyDims.tsが正
 // (単一の出どころ規約は不変)。★bountyTick.tsからimportしてはいけない——gameStore→levelUpGate→
@@ -103,7 +104,7 @@ export const isPlayerInAttackTelegraph = (
     ) {
       // 薙ぎ払いは aiFromX/Y・aiTargetX/Y の両方が中心座標(gameStore.ts の beginGiantMove('sweep'))。
       const fx = e.aiFromX ?? (e.x + e.width / 2), fy = e.aiFromY ?? (e.y + e.height / 2);
-      if (distToSegment({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: e.aiTargetX, y: e.aiTargetY }) <= giantSweepHalfWidth + pr) return true;
+      if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: e.aiTargetX, y: e.aiTargetY }, giantSweepHalfWidth) <= pr) return true;
     } else if (
       // PACING_PUZZLE.md §6.38 v6 C-3: 賞金首(bossState系)の突進/レーザーもここで拾う。
       e.bossState === 'bm-charge-windup' && BOUNTY_CHARGE_TELEGRAPH_TYPES.has(e.type) &&
@@ -130,14 +131,14 @@ export const isPlayerInAttackTelegraph = (
       e.aiTargetX !== undefined && e.aiTargetY !== undefined
     ) {
       const fx = e.aiFromX ?? (e.x + e.width / 2), fy = e.aiFromY ?? (e.y + e.height / 2);
-      if (distToSegment({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: e.aiTargetX, y: e.aiTargetY }) <= BB_SWEEP_HALFWIDTH + pr) return true;
+      if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: e.aiTargetX, y: e.aiTargetY }, BB_SWEEP_HALFWIDTH) <= pr) return true;
     } else if (
       // 舞妓の毬の薙ぎ(単発/2連いずれも同じ帯判定)。
       (e.bossState === 'mk-naginata-windup' || e.bossState === 'mk-naginata1-windup' || e.bossState === 'mk-naginata2-windup')
       && BOUNTY_NAGINATA_TELEGRAPH_TYPES.has(e.type) && e.aiTargetX !== undefined && e.aiTargetY !== undefined
     ) {
       const fx = e.aiFromX ?? (e.x + e.width / 2), fy = e.aiFromY ?? (e.y + e.height / 2);
-      if (distToSegment({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: e.aiTargetX, y: e.aiTargetY }) <= MK_NAGINATA_HALFWIDTH + pr) return true;
+      if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: e.aiTargetX, y: e.aiTargetY }, MK_NAGINATA_HALFWIDTH) <= pr) return true;
     } else if (
       // 舞妓の毬回し(自分中心円=敵の現在位置が中心。跳躍/レーザーと異なりaiTargetXを使わない)。
       e.bossState === 'mk-spin-windup' && BOUNTY_SPIN_TELEGRAPH_TYPES.has(e.type)
