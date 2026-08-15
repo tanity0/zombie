@@ -73,6 +73,7 @@ import {
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
+import { biteJawFrame } from '../utils/biteJawMotion';
 // PACING_PUZZLE.md §6.33(LASER-TRACK): カラオケ塗り/ロック/弱点窓の進行は純関数から引く(判定と同じ式)。
 import {
   mimirLaserFill01, mimirTrackEnabled, usesMimirLaser,
@@ -15157,8 +15158,12 @@ export class PixiScene {
           const jx = biteWind ? cx : biteL.d[0], jy = biteWind ? cy : biteL.d[1];
           const closeF = biteL.d[2];
           const u = closeF > 0 ? Math.min(1, biteL.t / closeF) : 1;
-          const open = 1 - u * u * u; // 終盤で一気に噛み合う(ゆっくり閉じると"間"が読めない)
           const after = closeF < 1 ? Math.max(0, (biteL.t - closeF) / (1 - closeF)) : 1;
+          // ★社長指示v0.25.3468「ゆっくり閉じるのが変。ブルブル震えて、一気にガツンと噛んで、
+          //   噛んだ時は反動で少し浮いてまた閉じる」: 曲線は純関数 biteJawMotion に集約(テスト付き)。
+          //   旧 `1 - u³` は溜め全体をかけて閉じる形で、①開いたままのキープ ③噛んだ反動 が無かった。
+          const jawF = biteJawFrame(biteL.t < closeF ? u : 1, biteL.t < closeF ? 0 : after);
+          const open = jawF.open;
           const jawFade = biteL.t < closeF ? 1 : Math.max(0, 1 - after);
           // 技表GO: 噛む前に限界まで開いて震える→閉じ残像。閉じ間際(u→1)ほど強く震える
           // (windupTremorPxのstartFrac=震え出す境目。位相をずらして2軸独立ジッタに)。
@@ -15166,7 +15171,7 @@ export class PixiScene {
           const jawTremorY = windupTremorPx(u, now + 137, 2.6, 0.55);
           // 閉じ切った瞬間だけ一瞬明るくして残像感を出す(afterの立ち上がり=噛み切った直後)。
           const snapFlash = after > 0 && after < 0.3 ? 1 + 0.4 * (1 - after / 0.3) : 1;
-          this.drawBiteJaws(view, jx + jawTremorX, jy + jawTremorY, 0, MIMIR_BITE_RADIUS_VIS * 2,
+          this.drawBiteJaws(view, jx + jawTremorX, jy + jawTremorY - jawF.liftPx, 0, MIMIR_BITE_RADIUS_VIS * 2,
             MIMIR_BITE_RADIUS_VIS * 2 * open, Math.min(1, artFade * jawFade * snapFlash),
             `bite-jaws:${e.id}`, now); // ★慣性バッチ: §7-15消滅側
 
@@ -16563,10 +16568,13 @@ export class PixiScene {
           const [bfx2, bfy2, btx2, bty2, closeF] = bjL.d;
           const blen = Math.hypot(btx2 - bfx2, bty2 - bfy2);
           const u = closeF > 0 ? Math.min(1, bjL.t / closeF) : 1;
-          const open = 1 - u * u * u; // 終盤で一気に噛み合う
           const after = closeF < 1 ? Math.max(0, (bjL.t - closeF) / (1 - closeF)) : 1;
+          // ★同じ動作を持つ全員に付ける(v0.25.2426の掟): 噛みつきの経路はmimirとここの2つ。
+          //   曲線は共通の純関数(溜め→急加速→噛んだ反動で浮く)。
+          const jawF = biteJawFrame(bjL.t < closeF ? u : 1, bjL.t < closeF ? 0 : after);
+          const open = jawF.open;
           this.drawBiteJaws(
-            view, (bfx2 + btx2) / 2, (bfy2 + bty2) / 2, Math.atan2(bty2 - bfy2, btx2 - bfx2),
+            view, (bfx2 + btx2) / 2, (bfy2 + bty2) / 2 - jawF.liftPx, Math.atan2(bty2 - bfy2, btx2 - bfx2),
             // 帯の全長(前後へ半幅ぶん伸ばした形=drawTelegraphBand と同じ寸法)と、帯の太さぶんの開き。
             blen + GIANT_BITE_HALF_WIDTH * 2, GIANT_BITE_HALF_WIDTH * 2 * open,
             artFade * (bjL.t < closeF ? 1 : Math.max(0, 1 - after)),

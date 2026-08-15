@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3471',
+    items: [
+      '舞妓の毬回しが、毬を回したままプレイヤーへ踏み込むようになりました(今までは届かず当たりませんでした)。',
+      '噛みつきの動きを作り直しました(口を開けたまま震え→一気に噛み切り→反動で少し浮いてから閉じる)。',
+    ],
+  },
+  {
     version: '0.25.3470',
     items: [
       'ゲーム内容の変更はありません(テストの不安定さの修正)。',

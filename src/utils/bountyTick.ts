@@ -234,15 +234,20 @@ export interface BountyTickState {
   brPrevPattern: BrShotPattern | null;  // 直前の型(#2「直前と同じ型は引かない」用)
   brShotsRemaining: number;             // 残弾: このサイクルで未発射の弾数
   brCycleEndAt: number;                 // 次弾時刻: 次サイクル1発目の発射予定時刻(gameTime基準・#3)
+  // §6.38 v11: 舞妓「毬回し」の踏み込み(社長裁定「案Aで」)。実行開始時の足元と向きを焼き付け、
+  // 実行中はそこからの**イーズ距離**で位置を決める(等速移動・瞬間停止を作らないため)。
+  spinKey: number; spinX0: number; spinY0: number; spinUx: number; spinUy: number;
 }
 export const createBountyTickState = (): BountyTickState => ({
   activeId: null, aimVX: 0, aimVY: 0, farMs: 0, comboStep: 0, escortsSummoned: false,
   suiuHopIdx: 0, suiuTx: 0, suiuTy: 0,
   brPattern: null, brPrevPattern: null, brShotsRemaining: 0, brCycleEndAt: 0,
+  spinKey: 0, spinX0: 0, spinY0: 0, spinUx: 0, spinUy: 0,
 });
 const resetBountyRunState = (s: BountyTickState): void => {
   s.aimVX = 0; s.aimVY = 0; s.farMs = 0; s.comboStep = 0; s.escortsSummoned = false;
   s.suiuHopIdx = 0; s.suiuTx = 0; s.suiuTy = 0;
+  s.spinKey = 0; s.spinX0 = 0; s.spinY0 = 0; s.spinUx = 0; s.spinUy = 0;
   resetBrShotCycle(s);
 };
 /**
@@ -909,6 +914,11 @@ const MK_NAGINATA_STEP_RECOVER_MS = 220;
 // 毬回し(自分中心円・windup=2択ランダム)。★AOE_TELEGRAPH_AUDIT登録対象(escapeMs=短い方=800)。
 export const MK_SPIN_WINDUP_CHOICES: readonly [number, number] = [800, 1300];
 export const MK_SPIN_ACTIVE_MS = 500;
+// §6.38 v11(社長裁定2026-08-15「毱回しは案Aで」): 毬回しは **dist>MK_NEAR_MAX(150) の中距離でしか
+// 選ばれない**のに判定は自分中心の円(180px)で、実行中もボスが動かなかった=**構造的に当たらない技**
+// だった(社長指摘「毱回しは絶対当たらない。つまりこのままだと意味がない」)。
+// 直し方: **回したままプレイヤー方向へ踏み込む**。判定円ごと前進するので中距離で出しても届く。
+export const MK_SPIN_LUNGE_PX = 220;   // 実行中に前進する距離(選択下限150+半径180の関係で届く)
 const MK_SPIN_DAMAGE = 14;
 const MK_SPIN_RECOVER_MS = withRecoverFloor(900);
 // 水鳥乱舞(型B専用大技・毬3連バウンド・マレニア§2-4)。着地点=プレイヤー現在位置+抽選オフセット
@@ -1090,6 +1100,32 @@ const tickMaiko = (
     return;
   }
   if (st === 'mk-spin') {
+    // §6.38 v11: 踏み込み。**加速→減速**(smoothstep)で前進し、終わりで自然に止まる(等速・瞬間停止禁止)。
+    // 位置は「焼き付けた起点 + 向き × イーズ距離」で決める(毎フレームの積算だと減速が崩れるため)。
+    {
+      // 踏み込みの起点と向きは**その1回の実行の最初のフレームで焼き付ける**(以後は追尾しない=
+      // 横に避ければ抜けられる)。鍵は bossStateUntil(実行ごとに変わる)。**windup側ではなくここで
+      // 焼くのは、練習モード等で mk-spin を直接叩き込む経路でも必ず初期化されるようにするため**
+      // (未初期化のまま使うと起点0,0へ飛ぶ)。
+      const spinKey = bounty.bossStateUntil ?? 0;
+      if (s.spinKey !== spinKey) {
+        const sdx = pcx - bcx, sdy = pcy - bcy;
+        const sdl = Math.hypot(sdx, sdy) || 1;
+        s.spinKey = spinKey; s.spinX0 = bounty.x; s.spinY0 = bounty.y;
+        s.spinUx = sdx / sdl; s.spinUy = sdy / sdl;
+      }
+      const remainSpin = Math.max(0, (bounty.bossStateUntil ?? newGameTime) - newGameTime);
+      const tSpin = Math.max(0, Math.min(1, 1 - remainSpin / MK_SPIN_ACTIVE_MS));
+      const eased = tSpin * tSpin * (3 - 2 * tSpin); // smoothstep=頭で加速・終わりで減速
+      const moved = MK_SPIN_LUNGE_PX * eased;
+      const c = resolveMove(s.spinX0 + s.spinUx * moved, s.spinY0 + s.spinUy * moved, bounty);
+      patch.x = c.x; patch.y = c.y;
+      // 速度は距離の微分(smoothstepの導関数=6t(1-t))。向き/歩きの絵がこれを読む。
+      const spd = (MK_SPIN_LUNGE_PX * 6 * tSpin * (1 - tSpin)) / (MK_SPIN_ACTIVE_MS / 1000);
+      patch.vx = s.spinUx * spd; patch.vy = s.spinUy * spd;
+      // 判定は**動いた後の中心**で取る(絵と判定を同じ位置に揃える)。
+      bcx = c.x + bounty.width / 2; bcy = c.y + bounty.height / 2;
+    }
     if (Math.hypot(pcx - bcx, pcy - bcy) <= MK_SPIN_RADIUS + Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2) {
       useGameStore.getState().damagePlayer(MK_SPIN_DAMAGE, `${enemyDeathLabel(bounty.type)}の毬回し`, pcx, pcy);
     }

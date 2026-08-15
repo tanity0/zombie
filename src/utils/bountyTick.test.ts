@@ -751,7 +751,10 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       const entry = AOE_TELEGRAPH_AUDIT.find(a => a.name.includes('毬回し'));
       expect(entry).toBeDefined();
       if (entry && entry.intentionallyUnavoidable === undefined) {
-        expect(entry.escapeMs).toBeGreaterThanOrEqual(minWindupMs(entry.radiusPx));
+        // ★起点(社長指示v0.25.3465/3466)を渡す。毬回しは **dist>150 の中距離でしか選ばれない**ので
+        // 起点=150(技の選択条件の下限)。ここを渡さないと「プレイヤーが円の中心に立っている」前提の
+        // 過大な必要msで測ってしまう(中央の監査テストと同じ式に揃える)。
+        expect(entry.escapeMs).toBeGreaterThanOrEqual(minWindupMs(entry.radiusPx, entry.standDistPx ?? 0));
       }
     });
 
