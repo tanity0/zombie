@@ -2792,6 +2792,10 @@ interface ActorView {
   // ボスが吹き飛ぶと拳が一緒に飛んでいく**。
   punchAnchorX?: number;
   punchAnchorY?: number;
+  // 社長裁定(v0.25.3437): idolのハンドガン(プレイヤーのhandgun-t1流用)。撃った後(fire/recover)は
+  // 最後の溜めの向きで固まる(punchAimと同じ作法)。idolGunFireAtは発射=溜め明けの時刻(gameTime系・反動の起点)。
+  idolGunAim?: number;
+  idolGunFireAt?: number;
   // v0.25.3044: 冷気ブレス本体の曲線ロープ(stage-4城ボスのみ生成・薙ぎ中だけ表示)。
   breathRope?: { rope: MeshRope; pts: Point[] };
   // ★§3-9-B v9: 影用の"退場・死亡由来のみ"のフェード係数(既定1)。地平線フェード/裏回り透け/
@@ -13860,6 +13864,12 @@ export class PixiScene {
       const smearSp = this.bountyWhipSmearSprites.get(e.id);
       if (smearSp) smearSp.visible = false;
     }
+    // 社長裁定(v0.25.3437): idolのハンドガン(bountyWeaponSpritesをキー=e.idで流用)も同じ作法で
+    // 既定OFF。点けるのはdrawEnemyのidol射撃分岐だけ(技中のみ表示=v3408と同じ扱い)。
+    if (e.type === 'idol') {
+      const gunSp = this.bountyWeaponSprites.get(e.id);
+      if (gunSp) gunSp.visible = false;
+    }
   }
 
   private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {
@@ -15065,8 +15075,9 @@ export class PixiScene {
       }
     }
     // PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)。★実機到達経路は未決(?idolnow=1の
-    // デバッグ召喚のみ)だが、台本自体は実装済みなので描画も揃える。武器絵は無し(本体絵にハンドガンを
-    // 描き込み済み)。銃口フラッシュはT6線の描画自体が担う(強glowは使わない・小glow相当の軽い描画)。
+    // デバッグ召喚のみ)だが、台本自体は実装済みなので描画も揃える。武器絵=プレイヤーのハンドガン
+    // (weapons/handgun-t1)を流用し射撃技中だけ構える(社長裁定v0.25.3437・下の射撃ブロック)。
+    // 銃口フラッシュはT6線の描画自体が担う(強glowは使わない・小glow相当の軽い描画)。
     if (e.type === 'idol') {
       const bs = e.bossState;
       // v0.25.2613: 狙撃線/追尾弾/休符を追加。休符(idol-rest)も青白tint=「いま殴っていい」の合図。
@@ -15209,6 +15220,57 @@ export class PixiScene {
           const al = Math.hypot(ax, ay) || 1;
           const off = windupBackstepOffset(prog, now, -ax / al, -ay / al, 6);
           view.sprite.position.x += off.x; view.sprite.position.y += off.y;
+        }
+        // 社長裁定(v0.25.3437): idolの武器=プレイヤーのハンドガン(weapons/handgun-t1)を流用し、
+        // 射撃技(aim/fan/snipe/orb/s1〜s8)の技中だけ構える(v3408「武器は技中のみ表示」と同じ扱い。
+        // punch/rollは素手のまま)。赤い線が別に出ているので長さ・持ち位置は判定に揃え切らなくてよい
+        // (CLAUDE.md 分類1の緩和)。判定・照準ロック・タイミングには一切触れない=絵のみ。
+        {
+          const gunMove = (() => {
+            if (bs === undefined || !bs.startsWith('idol-')) return undefined;
+            if (bs === 'idol-snipe') return 'snipe'; // 狙撃の発射中(suffixの無い唯一の射撃状態)
+            const m = bs.slice('idol-'.length).replace(/-(windup|fire|recover)$/, '');
+            if (m === bs.slice('idol-'.length)) return undefined; // idol-rest / idol-roll
+            return m === 'aim' || m === 'fan' || m === 'orb' || m === 'snipe' || isIdolShot(m as IdolMove)
+              ? m : undefined;
+          })();
+          if (gunMove !== undefined && bs !== undefined) {
+            const isWind = bs.endsWith('-windup');
+            let gunAng: number | undefined;
+            if (isWind) {
+              // 向きは赤い線と同じ出どころ: snipe/照準ロック済み射撃部品=ロックした2点、他=毎フレームのプレイヤー方向。
+              const locked = (gunMove === 'snipe'
+                || (isIdolShot(gunMove as IdolMove) && Math.round(idolShot(gunMove as IdolShotSlot).aimMode) === 1))
+                && e.aiTargetX !== undefined && e.aiTargetY !== undefined;
+              if (locked) {
+                gunAng = Math.atan2(e.aiTargetY! - (e.aiFromY ?? cy), e.aiTargetX! - (e.aiFromX ?? cx));
+              } else {
+                const pl = useGameStore.getState().player;
+                gunAng = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
+              }
+              view.idolGunAim = gunAng;                // 撃った後(fire/recover)は最後の向きで固まる(punchAimと同じ作法)
+              view.idolGunFireAt = e.bossStateUntil;   // 発射の瞬間=溜め明け(反動の起点)
+            } else {
+              gunAng = view.idolGunAim;
+            }
+            if (gunAng !== undefined) {
+              // §7-15: 出現=溜め中に下から慣性フェードイン/消滅=硬直の尻で沈みフェードアウト。
+              const remain = Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime);
+              const ease = isWind && idolWindMs !== undefined
+                ? weaponSpawnEase(Math.max(0, idolWindMs - remain), Infinity)
+                : bs.endsWith('-recover') ? weaponSpawnEase(Infinity, remain)
+                  : { dy: 0, alphaMul: 1 };
+              // 発射反動(慣性): 溜め明けの瞬間に手元へ蹴られ+銃口が跳ね上がり、減速しながら戻る。
+              const fdt = view.idolGunFireAt !== undefined ? gameTime - view.idolGunFireAt : -1;
+              const kickU = fdt >= 0 && fdt <= 240 ? (1 - fdt / 240) ** 2 : 0;
+              const flip = Math.cos(gunAng) < 0; // 左向きは上下反転して逆さ持ちを防ぐ
+              this.drawBountyWeapon(
+                e.id, 'weapons/handgun-t1',
+                cx + Math.cos(gunAng) * (20 - 8 * kickU), cy + Math.sin(gunAng) * (20 - 8 * kickU) + ease.dy,
+                gunAng + (flip ? 1 : -1) * 0.35 * kickU, 42, 0.95 * ease.alphaMul * artFade, 1, flip,
+              );
+            }
+          }
         }
       }
       // 離脱ローリング: T4のみ(図形なし・無敵も無し=詰めた側の報酬・§6.28-20)。
@@ -22227,6 +22289,8 @@ export class PixiScene {
     // 鋏の開閉擬似(2枚構成の素材が無いので回転+スケールで擬似する・CLAUDE.md「無ければ擬似」)。
     // 既定1=従来どおり均等スケール(呼び出し側の互換を壊さない)。
     widthMul = 1,
+    // idolのハンドガン(v0.25.3437): 左向きに構える時は上下反転して逆さ持ちを防ぐ(絵のみ)。
+    flipY = false,
   ) {
     const tex = getTexture(texName);
     if (!tex) return;
@@ -22238,7 +22302,7 @@ export class PixiScene {
     if (sp.texture !== tex) sp.texture = tex;
     const longSide = Math.max(1, Math.max(tex.width, tex.height));
     const s = lengthPx / longSide;
-    sp.scale.set(s * widthMul, s);
+    sp.scale.set(s * widthMul, flipY ? -s : s);
     sp.position.set(px, py);
     sp.rotation = angleRad;
     sp.alpha = alpha;

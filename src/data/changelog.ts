@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3437',
+    items: [
+      '隠しボスが射撃の時にハンドガンを構えるようになりました(発射の反動つき)。',
+    ],
+  },
+  {
     version: '0.25.3436',
     items: [
       'ゲーム内容の変更はありません(武器演出バッチの検収記録・進行ボード更新)。',
