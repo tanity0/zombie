@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3454',
+    items: [
+      '裏ボス(ミーミル・ヨルムンガルド・スカジ)の弾技の構えから、銃の絵を撤去しました(銃を持たない敵に銃は出しません)。',
+    ],
+  },
+  {
     version: '0.25.3453',
     items: [
       '城ボス(ステージ5)の咆哮弾(3連射・扇状とも)が、構えた銃口の位置から出るようになりました(以前は銃口より手前の体の中心から出ていました)。',

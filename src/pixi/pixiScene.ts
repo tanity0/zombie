@@ -1426,10 +1426,9 @@ const MIMIR_BITE_WINDUP_MS_VIS = 700;   // 噛みつきのwindup時間(useGameLo
 // 描画に届かず、**赤円92pxの外・216pxの内側で「赤くないのに当たる」**が常時発生していた(実バグ)。
 const MIMIR_BITE_RADIUS_VIS = MIMIR_BITE_RADIUS;
 const JORM_COIL_WINDUP_MS_VIS = 700;    // うねりのwindup時間(useGameLoop JORM_COIL_WINDUP_MSと一致)
-// ★予兆一括バッチ(v0.25.3344): 裏ボス共通の銃技(3連射/全方位弾)構え用(useGameLoop
-// BOSS_AIM_BURST_MS/BOSS_AIM_RADIAL_MSと一致)。
-const BOSS_AIM_BURST_MS_VIS = 1000;
-const BOSS_AIM_RADIAL_MS_VIS = 2000;
+// (v0.25.3454で撤去: 裏ボスの銃技構えに銃の絵を出すのをやめたため、その進行度に使っていた
+//  BOSS_AIM_BURST_MS_VIS/BOSS_AIM_RADIAL_MS_VIS も不要になった。判定側の溜め時間は
+//  useGameLoop の BOSS_AIM_BURST_MS/BOSS_AIM_RADIAL_MS が正で不変。)
 // スカジ 氷塊/氷刃/檻の設置前windup(useGameLoop SKADI_PRE_WINDUP_MS/SKADI_CAGE_WINDUP_MSと一致)。
 const SKADI_PRE_WINDUP_MS_VIS = 450;
 const SKADI_CAGE_WINDUP_MS_VIS = 1000;
@@ -2474,8 +2473,7 @@ const ATK_ART_NIHIL = ATK_ART_SWEEPBEAM_GUN + 1;                                
 // ★1枠を共有すると最後に描いた1本しか出ない。**本数ぶんの連番枠**を末尾に確保する
 //   (ATK_ART_TENTACLE(=5)の隣は既に拳/銃が使っているので、そこから連番にはできない)。
 const ATK_ART_TENTACLE_0 = ATK_ART_NIHIL + 1;
-// ★予兆一括バッチ(v0.25.3344): 裏ボス共通(mimir/jormungand/skadi)の銃技(aim-burst/aim-radial)構え。
-const ATK_ART_HB_GUN = ATK_ART_TENTACLE_0 + GLEN_REACH_SHOTS;
+// (v0.25.3454で撤去: 裏ボスの銃技構えに城ボスの銃を流用していた枠。裏ボスは銃を持たないので絵を出さない。)
 // 虚無の三唱の円形素材(社長支給v0.25.3123)。唱1/2/3で `fx/nihil-1` `-2` `-3` を差し替える。
 // **絵そのものが寄っていく**(1=広い墓地を遠くから → 2=近づいて大きくなる → 3=同じ構図が血で染まる)。
 // 社長「段々寄っていく感じ / どん!どん!どん!って」= 寄りは絵が担い、衝撃は下の踏み込み+画面揺れが担う。
@@ -15129,33 +15127,12 @@ export class PixiScene {
           view.sprite.position.x += off.x; view.sprite.position.y += off.y;
         }
       }
-      // ★予兆一括バッチ(v0.25.3344): 銃技(3連射aim-burst/全方位弾aim-radial)の構え=レシピ3
-      // 「銃構えテンプレ」(社長追加指示「銃を使う技(三連射・全方位発射…)も予兆の対象」)。
-      // mimir/jormungand/skadiはgiantbatのaiPhase駆動ではないため、g-bolt等が使う
-      // moveArtClock(aiPhaseUntil直読み)はそのまま使えない→bossStateUntilから自前でprogを出す
-      // (mimirの噛みつきと同じ作法)。得物はboss-gun-2を流用(牙/氷刃等ボス専用の絵は今回見送り=
-      // research/TELL_MOTION_LEDGER.mdに理由を記載)。実弾・銃口の見た目は既存のfireBullet経路の
-      // まま(「発射後は既存」の指示どおり触らない)=ここは構え(windup)の絵だけを足す。
-      if (bs === 'aim-burst' || bs === 'aim-radial') {
-        const gwMs = bs === 'aim-burst' ? BOSS_AIM_BURST_MS_VIS : BOSS_AIM_RADIAL_MS_VIS;
-        const gRemain = Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime);
-        const gProg = Math.max(0, Math.min(1, 1 - gRemain / gwMs));
-        const pl = useGameStore.getState().player;
-        const aimX = pl.x + pl.width / 2, aimY = pl.y + pl.height / 2;
-        const gAng = Math.atan2(aimY - cy, aimX - cx);
-        const sp = this.atkArtSprite(view, ATK_ART_HB_GUN, 'fx/boss-gun-2');
-        if (sp) {
-          sp.anchor.set(0.2, 0.5);
-          const out = 14 + (GUN_OUT_PX - 14) * gProg;
-          const tremor = windupTremorPx(gProg, now, 1.6);
-          const nx = -Math.sin(gAng), ny = Math.cos(gAng);
-          sp.rotation = gAng;
-          const glen = 90;
-          sp.scale.set(glen / (sp.texture.width || 1));
-          sp.position.set(cx + Math.cos(gAng) * out + nx * tremor, cy + Math.sin(gAng) * out + ny * tremor);
-          sp.alpha = artFade * gProg;
-        }
-      }
+      // ★銃の絵は出さない(社長指示v0.25.3454「裏ボスには銃の絵は出さないよ。明らかに銃を持たない敵に
+      //   銃の絵を出すのはおかしい」): v0.25.3344の予兆一括バッチが、裏ボス(mimir/jormungand/skadi)の
+      //   銃技(aim-burst/aim-radial)の構えに城ボスの得物(fx/boss-gun-2)を**流用**していたのを撤去した。
+      //   これらのボスは立ち絵に銃を持っていないので、持っていない物の絵を出してはいけない。
+      //   構えの予兆自体は本体の赤フラッシュ(HIDDEN_BOSS_FLASH_TAIL_STATESにaim-burst/aim-radialを含む)
+      //   とロックの白フラッシュが担っているので、撤去しても「テル無し」にはならない。
       // T2: ミーミル「群体の噛みつき」(§6.28-5/§6.28-15) = 足元の即時赤円(giant踏み鳴らしと同じ意匠)。
       if (e.type === 'mimir' && bs === 'bite-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIMIR_BITE_WINDUP_MS_VIS));
