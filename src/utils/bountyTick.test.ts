@@ -7,7 +7,7 @@ import {
   bountyEngagedNow, bountyLingerExpired, bountySpawnBlocked, pickActiveBounty, bountyMaxHealth,
   runBountyTick, createBountyTickState, anyBountyEngaged, bountyNaturalSpawnReady,
   BOUNTY_LINGER_MS, BOUNTY_HIT_ENGAGE_MS, BOUNTY_BASE_HP, BOUNTY_DEPART_FADE_MS, BOUNTY_WAKE_FX_MS,
-  BOUNTY_NATURAL_FIRST_MS, BOUNTY_NATURAL_MAX_COUNT, BOUNTY_NATURAL_CD_MS,
+  BOUNTY_NATURAL_FIRST_MS, BOUNTY_NATURAL_MAX_COUNT, BOUNTY_NATURAL_SPAWN_AT_MS,
   BR_ESCORT_COUNT as BR_ESCORT_COUNT_FOR_TEST,
   MK_REPOSE_MS, MK_SUIU_RADIUS, MK_SUIU_HOP_INTERVAL_CHOICES, MK_SUIU_HOP_TRAVEL_MS,
 } from './bountyTick';
@@ -105,25 +105,25 @@ describe('anyBountyEngaged — v6 A-2(B4): 3系統(囲い/紅き夜/叫喚)先�
   });
 });
 
-describe('bountyNaturalSpawnReady — 自然湧きの頻度ゲート(§2「頻度」・v2 F・B4)', () => {
+describe('bountyNaturalSpawnReady — 自然湧きの固定スケジュール(§2「頻度」・v8.3=3:00と7:00)', () => {
   const ok = (): Parameters<typeof bountyNaturalSpawnReady>[0] => ({
-    gameTime: BOUNTY_NATURAL_FIRST_MS, spawnCount: 0, nextEligibleAt: 0,
+    gameTime: BOUNTY_NATURAL_FIRST_MS, spawnCount: 0,
     bountyAlive: false, spawnBlocked: false, calmOk: true,
   });
   it('全条件クリアなら発火してよい', () => {
     expect(bountyNaturalSpawnReady(ok())).toBe(true);
   });
-  it('初回は5:00未満なら不可', () => {
+  it('初回は3:00未満なら不可(v8.3)', () => {
+    expect(BOUNTY_NATURAL_SPAWN_AT_MS[0]).toBe(180000);
     expect(bountyNaturalSpawnReady({ ...ok(), gameTime: BOUNTY_NATURAL_FIRST_MS - 1 })).toBe(false);
   });
   it('1ランに最大2回=spawnCountが上限に達したら不可', () => {
-    expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: BOUNTY_NATURAL_MAX_COUNT })).toBe(false);
-    expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: BOUNTY_NATURAL_MAX_COUNT - 1 })).toBe(true);
+    expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: BOUNTY_NATURAL_MAX_COUNT, gameTime: 10000000 })).toBe(false);
   });
-  it('2回目までのCD90秒が明けるまでは不可', () => {
-    expect(bountyNaturalSpawnReady({ ...ok(), nextEligibleAt: BOUNTY_NATURAL_FIRST_MS + 1 })).toBe(false);
-    expect(bountyNaturalSpawnReady({ ...ok(), nextEligibleAt: BOUNTY_NATURAL_FIRST_MS })).toBe(true);
-    expect(BOUNTY_NATURAL_CD_MS).toBe(90000);
+  it('2体目は7:00まで不可(v8.3・固定スケジュール)', () => {
+    expect(BOUNTY_NATURAL_SPAWN_AT_MS[1]).toBe(420000);
+    expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: 1, gameTime: 420000 - 1 })).toBe(false);
+    expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: 1, gameTime: 420000 })).toBe(true);
   });
   it('同時1体まで=既に賞金首が場に居るなら不可', () => {
     expect(bountyNaturalSpawnReady({ ...ok(), bountyAlive: true })).toBe(false);

@@ -1290,26 +1290,25 @@ export const bountySpawnBlocked = (input: BountySpawnBlockInput): boolean =>
 // 加えて確認する専用の回数/CD条件。producer側(useGameLoop.ts)がgameTime/回数/CD/同時数/抑止ゲート/
 // 緩コマ判定を集めてこの純関数へ渡すだけにし、判定ロジック自体はここへ1本化する。
 // ---------------------------------------------------------------------------------------------
-/** 初回は3:00(ゲーム内時計)以降。§6.38 v8.2(社長裁定2026-08-15「小ボスなので城ボスより前にも
- * 出さないと。3分あたり」)。旧5:00。※ペア出現案は検討の末に不採用=1回1体のまま(v8.2参照)。 */
-export const BOUNTY_NATURAL_FIRST_MS = 180000;
-/** 1ランに最大2回(叩き台)。 */
-export const BOUNTY_NATURAL_MAX_COUNT = 2;
-/** 2回目までのCD=90秒(叩き台)。1回目に消費した瞬間から数える。 */
-export const BOUNTY_NATURAL_CD_MS = 90000;
+/** 固定スケジュール=3:00と7:00(§6.38 v8.3・社長裁定2026-08-15「3分と7分にして」)。
+ * 旧: 初回5:00→3:00+CD90秒(v8.2)を、n回目の解禁時刻の表に置き換え。抑止ゲートで遅れた場合は
+ * 解禁済みのまま=ゲートが開き次第出る(時刻を過ぎたら失効はしない)。
+ * ※紅き夜は7:00→6:00へ移動(useGameLoop.RED_NIGHT_FIRE_AT_MS)=7:00の賞金首と重ならないように。 */
+export const BOUNTY_NATURAL_SPAWN_AT_MS: readonly number[] = [180000, 420000];
+export const BOUNTY_NATURAL_MAX_COUNT = BOUNTY_NATURAL_SPAWN_AT_MS.length;
+/** 互換: 初回の解禁時刻(テスト・既存参照用)。 */
+export const BOUNTY_NATURAL_FIRST_MS = BOUNTY_NATURAL_SPAWN_AT_MS[0];
 
 export interface BountyNaturalSpawnInput {
   gameTime: number;
   spawnCount: number;     // このランで自然湧きした回数(消費済み・討伐/退場を問わない=B-4裁定)
-  nextEligibleAt: number; // CD明け時刻(gameTime基準。1回目は0でよい=即時)
   bountyAlive: boolean;   // 同時1体まで(既に賞金首が場に居る)
   spawnBlocked: boolean;  // bountySpawnBlockedの結果(ボス戦中/初心者ゾーン等)
   calmOk: boolean;        // 緩コマでない(=告知してよいコマ。第5条「緩を荒らさない」)
 }
 export const bountyNaturalSpawnReady = (input: BountyNaturalSpawnInput): boolean =>
-  input.gameTime >= BOUNTY_NATURAL_FIRST_MS
-  && input.spawnCount < BOUNTY_NATURAL_MAX_COUNT
-  && input.gameTime >= input.nextEligibleAt
+  input.spawnCount < BOUNTY_NATURAL_MAX_COUNT
+  && input.gameTime >= BOUNTY_NATURAL_SPAWN_AT_MS[input.spawnCount]
   && !input.bountyAlive
   && !input.spawnBlocked
   && input.calmOk;

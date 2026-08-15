@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3420',
+    items: [
+      '賞金首の出現が3分と7分の固定スケジュールになりました。',
+      '紅き夜の開始が7分→6分になりました(7分の賞金首と重ならないように)。',
+    ],
+  },
+  {
     version: '0.25.3419',
     items: [
       '賞金首が最初に現れる時刻を5分→3分に早めました(城ボスより先に出会えるように)。1回に出るのは従来どおり1体です。',

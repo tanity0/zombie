@@ -149,7 +149,6 @@ import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, c
 import {
   runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
   bountySpawnBlocked, bountyNaturalSpawnReady, anyBountyEngaged,
-  BOUNTY_NATURAL_CD_MS,
   type BountySfx,
 } from '../utils/bountyTick';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -576,7 +575,7 @@ const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。�
 // 社長指示v0.25.3317: 紅き月は**7:00固定発動・毎ラン確定**(旧: 5〜9分ランダム判定×発生率30%を廃止)。
 // 城ボス(5:00)後の延長帯に入った者への洗礼という位置づけ。条件(デンジャーゾーン以深/緩コマ/
 // ボス・裏ボス中は延期)は従来どおり=満たすまで毎フレーム再判定で自然に遅延する。
-const RED_NIGHT_FIRE_AT_MS = 420000; // 7:00
+const RED_NIGHT_FIRE_AT_MS = 360000; // 6:00(v8.3・社長裁定2026-08-15「紅き月を6分に」。旧7:00=賞金首2体目と重なるため移動)
 // PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): 追補2の「円内10体burst配置(ambient)」は撤去。
 // ゲート1の基本沸きは通常沸き(koma maintenance)の無限流入方式へ置き換え(permeable=trueで境界を
 // 越えて流入)。§5.21-追補4(v0.25.1553): koma目標/CDをピーク・CD0に強制する分岐は撤回済み=
@@ -1512,7 +1511,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const bountyStateRef = useRef(createBountyTickState());
   // §6.38 v2 F(B4): 賞金首の自然湧き回数+CD(gameTime基準)。他producer(nextArenaAtRef等)と同じく
   // ephemeralなタイマー状態なのでrefに置く(rotationだけがstoreフィールド=ラン間で意味を持たない)。
-  const bountyNaturalRef = useRef({ count: 0, nextEligibleAt: 0 });
+  const bountyNaturalRef = useRef({ count: 0 }); // v8.3: 固定スケジュール化でCD(nextEligibleAt)廃止
   // 警察署アリーナ(§6.24 M48)の再発動ガード(社長報告v0.25.2389)。発動でfalse、警察署から
   // POLICE_REARM_RADIUS(360)より離れたらtrueへ戻る。失敗(時間切れ)直後はプレイヤーが必ず
   // 発動半径(240)の内側に居るため、これが無いと即再発動+円内クランプで抜け出せなくなる。
@@ -2553,7 +2552,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
           bountyStateRef.current = createBountyTickState(); // 賞金首のラン内状態も新ランでリセット(§6.38 B2a)
-          bountyNaturalRef.current = { count: 0, nextEligibleAt: 0 }; // 自然湧きの回数/CDも新ランでリセット(§6.38 B4)
+          bountyNaturalRef.current = { count: 0 }; // 自然湧きの回数も新ランでリセット(§6.38 B4/v8.3)
           policeArmedRef.current = true; // 警察署アリーナの再発動ガードも新ランで解除(§6.24 M48・v0.25.2389)
           bossMakerReadyRef.current = false;
           idolStateRef.current = createIdolTickState(); // idolのストリング/懲罰タイマも新ランでリセット
@@ -3914,10 +3913,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const bountyCalmOk = puzzleActiveNow
             ? puzzleKomaRef.current.kind === 'normal'
             : redNightPhaseGateOk(phaseAt(newGameTime).kind);
+          // v8.3(社長裁定2026-08-15「3分と7分にして」): CD方式を廃止し固定スケジュール
+          // (BOUNTY_NATURAL_SPAWN_AT_MS=[3:00,7:00])。n回目の解禁時刻はspawnCountで表を引く。
           const bReady = bountyNaturalSpawnReady({
             gameTime: newGameTime,
             spawnCount: bountyNaturalRef.current.count,
-            nextEligibleAt: bountyNaturalRef.current.nextEligibleAt,
             bountyAlive: bountyAliveNow,
             spawnBlocked: bBlocked,
             calmOk: bountyCalmOk,
@@ -3927,7 +3927,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState({ bountyRotation: rest });
             // B-4裁定: 出現した個体は討伐/退場を問わず回数とローテ枠を消費(=消費は出現の瞬間に確定)。
             bountyNaturalRef.current.count += 1;
-            bountyNaturalRef.current.nextEligibleAt = newGameTime + BOUNTY_NATURAL_CD_MS;
             spawnBountyEncounter(picked, newGameTime);
           }
         }
