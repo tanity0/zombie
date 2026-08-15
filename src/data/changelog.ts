@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3474',
+    items: [
+      '帯の赤い予告から薄い下地を外し、線の予告と同じ見え方に揃えました。',
+    ],
+  },
+  {
     version: '0.25.3473',
     items: [
       '馬乗り(変異)の突進が3倍速くなり、突進の後に360度の鞭薙ぎが出るようになりました。',

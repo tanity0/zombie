@@ -17989,7 +17989,7 @@ export class PixiScene {
   // 最後のフレームがprog<1のまま描画されずに消える」がまた起きる)。
   private drawAngelZoneCapsule(
     view: ActorView, o: Graphics, fx: number, fy: number, tx: number, ty: number, halfWidth: number,
-    prog: number, now: number, idx = 0, erase = 0, ghost = false,
+    prog: number, now: number, idx = 0, erase = 0,
   ) {
     const pulse = 0.55 + 0.45 * Math.sin(now / 80);
     const ddx = tx - fx, ddy = ty - fy;
@@ -18004,17 +18004,8 @@ export class PixiScene {
     // 前後のキャップ(±halfWidthのはみ出し)は「尾端=erase 0の時だけ/頭端=完走度zpに比例」で持たせ、
     // zp=1・erase=0の瞬間に従来の全形状(=判定と厳密一致)へ到達する。
     const zp = er > 0 ? 1 : Math.max(0, Math.min(1, prog));
-    // ★薄い下地(全形): 溜め中は「危険な範囲の形」を常に見せる(メーターが減っても形は読める)。
-    //   判定と同じ寸法(=はみ出さない)。ghost=false(中断後の消え)では出さない。
-    if (ghost) {
-      o.poly([
-        fx - ux * halfWidth + nx * halfWidth, fy - uy * halfWidth + ny * halfWidth,
-        tx + ux * halfWidth + nx * halfWidth, ty + uy * halfWidth + ny * halfWidth,
-        tx + ux * halfWidth - nx * halfWidth, ty + uy * halfWidth - ny * halfWidth,
-        fx - ux * halfWidth - nx * halfWidth, fy - uy * halfWidth - ny * halfWidth,
-      ]).fill({ color: 0xff2a2a, alpha: 0.07 * TELEGRAPH_FILL_MULT })
-        .stroke({ width: 1.5, color: 0xff3b3b, alpha: 0.22 });
-    }
+    // ★薄い下地は**出さない**(社長指示v0.25.3474「赤帯の薄い下地はいらない。ラインと同じ仕様にして」)。
+    //   帯は線と同じく「流星が描き→後ろから消え、消え切った瞬間に判定」だけで読ませる。
     if (zp - er <= 0.001) return; // 消し切った(or まだ何も無い)
     const zoneFill = (0.12 + 0.22 * zp) + 0.08 * pulse;
     const strokeA = (0.32 + 0.4 * zp) + 0.15 * pulse;
@@ -18083,7 +18074,7 @@ export class PixiScene {
       const ph = PixiScene.meteorPhase(prog);
       // arm[7]=最後の描き / arm[8]=最後の消し(中断された時、そこから続きを消すため)。
       this.zoneCapsuleArm.set(key, [fx, fy, tx, ty, halfWidth, idx, remainMs, ph.p, ph.er]);
-      this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, halfWidth, ph.p, now, idx, ph.er, true);
+      this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, halfWidth, ph.p, now, idx, ph.er);
       return;
     }
     const armed = this.zoneCapsuleArm.get(key);
@@ -18096,7 +18087,7 @@ export class PixiScene {
       const er0 = el.d[8] ?? 0;
       this.drawAngelZoneCapsule(
         view, o, el.d[0], el.d[1], el.d[2], el.d[3], el.d[4], el.d[7] ?? 1, now, el.d[5],
-        er0 + (1 - er0) * el.t, false,
+        er0 + (1 - er0) * el.t,
       );
     }
   }
