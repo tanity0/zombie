@@ -8,6 +8,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3485',
+    items: [
+      'ゲーム内容の変更はありません(ボスを止める効果の作り直し方針を確定として記録)。',
+    ],
+  },
+  {
+    version: '0.25.3484',
+    items: [
+      '賞金首「バス停」に中距離の新技「三段突き」を追加しました(中距離で発動、前に踏み込みながら3連続で突く技です)。',
+    ],
+  },
+  {
     version: '0.25.3483',
     items: [
       'ゲーム内容の変更はありません(タレットLv3の爆発仕様を確定として記録)。',
