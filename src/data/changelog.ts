@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3423',
+    items: [
+      'ステージ1の城が新しい絵(ゴシック様式の館)になりました。',
+    ],
+  },
+  {
     version: '0.25.3422',
     items: [
       'ゲーム内容の変更はありません(鋏(変異)の命中エフェクト素材3コマを取り込みました。表示への配線は次バッチ)。',

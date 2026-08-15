@@ -7872,9 +7872,14 @@ export class PixiScene {
       this.castleShadow = null;
       return;
     }
-    // ステージ3(廃都=farBackdrop 'city')は廃教会、それ以外(ステージ1の城など)は通常の城。
+    // ステージ別の城(社長支給2026-08-15〜)。届いた分から登録し、無いステージは従来の'castle'に
+    // フォールバック。ステージ3(廃都=farBackdrop 'city')は従来どおり廃教会。2/6/7は城なし(社長指示)。
+    const CASTLE_TEX_BY_STAGE: Record<string, string> = { 'stage-1': 'castle-s1' };
     const isCity = useGameStore.getState().farBackdrop === 'city';
-    const tex = (isCity ? getTexture('castle-church') : null) ?? getTexture('castle');
+    const stageTexName = CASTLE_TEX_BY_STAGE[getSelectedStageId()];
+    const tex = (stageTexName ? getTexture(stageTexName) : null)
+      ?? (isCity ? getTexture('castle-church') : null)
+      ?? getTexture('castle');
     if (!tex) {
       this.castleView.visible = false;
       this.castleShadow = null;

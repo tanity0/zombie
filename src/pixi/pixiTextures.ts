@@ -366,6 +366,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'props/flame', scaleMode: 'nearest' },
       { name: 'props/torch-stand', scaleMode: 'nearest' },
       { name: 'castle', scaleMode: 'nearest' },
+      // ステージ別の城(社長支給2026-08-15〜「ステージ1から順に(5まで)。2.6.7は無し」)。
+      // s1=ゴシック館(960×1024)。s4/s5は届き次第ここへ追加登録(syncCastleのCASTLE_TEX_BY_STAGEも更新)。
+      { name: 'castle-s1', scaleMode: 'nearest' },
       { name: 'hospital', scaleMode: 'nearest' }, // 通常ステージの廃病院(ワクチン入手・社長指示v0.25.2331)
       // §6.24 M48: 寄り道POIの一般化(社長支給素材v0.25.2352・アルファ透過あり)。
       { name: 'police', scaleMode: 'nearest' }, // 警察署(専用スキル入手・アリーナ方式)
