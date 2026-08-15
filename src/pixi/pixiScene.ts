@@ -22116,6 +22116,15 @@ export class PixiScene {
     const streak = c.children[0] as Sprite;
     const burstSp = c.children[1] as Sprite;
     const katana = c.children[2] as Sprite;
+    // 社長指示v0.25.3446「剣の振りにも斬撃(白い弧)付けて」: 刀の振り全部の合流点であるこの関数に
+    // 白い弧(fx/slash-arc)を1枚足す=drawKatanaSlashを使う全員(トール/ミゲル/ウリ/ラフィ/城ボス系)へ
+    // 一括で効く(「同じ動作を持つ全員に付ける」)。軌道(判定ライン)に合わせて横に伸ばし縦を潰す。
+    // 旧プール(children3枚時代)のコンテナにも後付けできるようguard付きで生成する。
+    let arcSp = c.children[3] as Sprite | undefined;
+    if (!arcSp) {
+      arcSp = new Sprite(); arcSp.anchor.set(0.5, 0.5); arcSp.blendMode = 'add';
+      c.addChild(arcSp);
+    }
     const ref = getTexture('fx/slash-streak-4');
     if (!ref) { c.visible = false; return; }
     c.visible = true;
@@ -22131,6 +22140,20 @@ export class PixiScene {
     streak.rotation = angle;
     streak.scale.set(sc, vsc);
     streak.alpha = tt < 0.5 ? (0.35 + 0.5 * (tt / 0.5)) : (1 - Math.max(0, (tt - 0.85) / 0.15));
+    // 白い弧(v0.25.3446): 判定ラインの中点に、軌道へ沿わせて横伸ばし(長さ×1.2/太さ=半幅×4)。
+    // streakと同じtで生き死にする=キー管理不要・コンテナ破棄と一緒に片付く。
+    const arcTex = getTexture('fx/slash-arc');
+    if (arcTex) {
+      if (arcSp.texture !== arcTex) arcSp.texture = arcTex;
+      arcSp.rotation = angle + Math.PI; // 素材の膨らみ(-x側)を振る方向へ(drawSlashArcと同じ規約)
+      arcSp.width = Math.max(60, length * 1.2);
+      arcSp.height = Math.max(40, halfWidth * 4);
+      arcSp.position.set((fx + tx) / 2, (fy + ty) / 2);
+      arcSp.alpha = 0.9 * (tt < 0.5 ? (0.4 + 0.6 * (tt / 0.5)) : (1 - Math.max(0, (tt - 0.7) / 0.3)));
+      arcSp.visible = arcSp.alpha > 0.01;
+    } else {
+      arcSp.visible = false;
+    }
     if (burst) {
       const bref = getTexture('fx/slash-burst-4');
       const bidx = Math.max(0, Math.min(4, Math.floor(tt * 6)));

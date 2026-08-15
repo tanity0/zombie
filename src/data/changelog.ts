@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3446',
+    items: [
+      '刀を振るうボス(トール・ミゲル・ウリ・ラフィ・城ボス系)の斬りにも白い斬撃の弧が出るようになりました。',
+    ],
+  },
+  {
     version: '0.25.3445',
     items: [
       'ゲーム内容の変更はありません(グレネード弾の表現=転がり回転+信管ランプ維持、の裁定を記録)。',
