@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3463',
+    items: [
+      'ゲーム内容の変更はありません(スキルアイコンを受け入れる準備=台帳のみ)。',
+    ],
+  },
+  {
     version: '0.25.3462',
     items: [
       '舞妓の手毬打ち: 技を中断させると、毬が消えずにその場へ落ちて転がって消えるようになりました。',
