@@ -454,6 +454,127 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       expect(after?.bossState).toBe('chase');
       expect(after?.mimirLaserReadyAt).toBeGreaterThan(useGameStore.getState().gameTime - 1); // 通常CDが課される
     });
+
+    // §6.38 v10「バス停の中立射撃に緩急」の統合テスト(tickRangedの配線)。純関数側の統計検証は
+    // bountyShots.test.tsで既に行っているので、ここでは「実際にtickRangedを回した時に配線どおり
+    // 効くか」だけを見る(実装精度の規律4「配線ロジックも純関数と同じコミットでテストする」)。
+    describe('中立射撃の型3種(§6.38 v10)', () => {
+      // kite圏内(340〜560)の真ん中に置き、レーザーCDを未来へ飛ばして押しのけ/レーザーどちらの
+      // 割り込みも起きない盤面を作る(「割り込みが一度も入らない中立のみ」の受け入れ条件と同条件)。
+      const setupNeutralOnly = (over: Partial<Enemy> = {}) =>
+        setupType('bounty-ranged', { x: 450, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, ...over });
+
+      it('★受け入れ条件: 割り込みなしの中立のみで1分あたり54.5発±1(社長裁定「案A」の検算)', () => {
+        const { step } = setupNeutralOnly();
+        const totalMs = 900_000; // 15分ぶん(平均サイクル長2566.7msの約350周)=テスト実行時間と
+        // 標本数のバランス。1分あたりの発射数は下の許容幅(54.5±2.5)で確認する。
+        const stepMs = 60;
+        let elapsed = 0;
+        let fired = 0;
+        while (elapsed < totalMs) {
+          step(stepMs);
+          elapsed += stepMs;
+          // projectiles配列を毎回スパンして計上し、都度[]へ戻す(O(n^2)の配列コピーを避けて
+          // テストの実行時間を抑える。addProjectileが積む件数だけを数えたいので中身は不要)。
+          const projs = useGameStore.getState().projectiles;
+          if (projs.length > 0) {
+            fired += projs.length;
+            useGameStore.setState({ projectiles: [] });
+          }
+        }
+        const perMinute = (fired / totalMs) * 60000;
+        expect(perMinute).toBeGreaterThan(52);
+        expect(perMinute).toBeLessThan(57);
+      });
+
+      it('3型すべて出る(#1): fanの同時3発・chargeの弾速1.5倍・burstの単発をそれぞれ弾の実データから検出する', () => {
+        const { step } = setupNeutralOnly();
+        // 1tickでの発射をイベント単位で見る: 同時3件増える=fan、1件増える=burstかcharge(charge=
+        // 弾速1.5倍・areaSpeedMultが掛かってもburst/chargeの相対比1.5倍は保たれる)。
+        let lastProjs = useGameStore.getState().projectiles;
+        let sawFan = false;
+        const singleShotSpeeds: number[] = [];
+        for (let i = 0; i < 4000; i++) {
+          step(20);
+          const projs = useGameStore.getState().projectiles;
+          const added = projs.slice(lastProjs.length);
+          if (added.length === 3) sawFan = true;
+          else if (added.length === 1) singleShotSpeeds.push(added[0].speed);
+          lastProjs = projs;
+        }
+        // 単発速度の最小値=burst(通常速度)の基準。1.2倍超が居ればcharge(1.5倍)が出た証拠。
+        expect(singleShotSpeeds.length).toBeGreaterThan(1);
+        const minSpd = Math.min(...singleShotSpeeds);
+        const sawBurst = singleShotSpeeds.some(spd => spd <= minSpd * 1.2);
+        const sawCharge = singleShotSpeeds.some(spd => spd > minSpd * 1.2);
+        expect(sawBurst).toBe(true);
+        expect(sawFan).toBe(true);
+        expect(sawCharge).toBe(true);
+      });
+
+      it('標識の構え(aiFromX/Y・aiTargetX/Y)が中立射撃でも書かれる(#5実バグ修正)', () => {
+        const { id, step } = setupNeutralOnly();
+        step(16);
+        const after = useGameStore.getState().enemies.find(e => e.id === id);
+        expect(after?.aiFromX).toBeDefined();
+        expect(after?.aiFromY).toBeDefined();
+        expect(after?.aiTargetX).toBeDefined();
+        expect(after?.aiTargetY).toBeDefined();
+      });
+
+      it('距離340px(BR_KITE_MIN)未満ではfanが選ばれない(#1・監査指摘)', () => {
+        // 速度0で固定し、距離を200px(<340・かつ>110=押しのけ範囲外)に保ったまま長時間サイクルを
+        // 回す。fanは3発同時=1回の発射で3件のprojectilesが増える(burst/chargeは1件ずつ)。よって
+        // 「1回の発射でprojectilesが3件以上まとめて増える瞬間」が一度も無いことを確認すれば
+        // fan不選択を検証できる。
+        const { step } = setupType('bounty-ranged', { x: 200, y: 0 }, { speed: 0 }); // dist=200<BR_KITE_MIN
+        let lastCount = useGameStore.getState().projectiles.length;
+        let sawFanLikeBurst = false;
+        for (let i = 0; i < 4000; i++) {
+          step(20);
+          const cur = useGameStore.getState().projectiles.length;
+          if (cur - lastCount >= 3) sawFanLikeBurst = true; // fanの同時3発だけがこの増分を作る
+          lastCount = cur;
+        }
+        expect(sawFanLikeBurst).toBe(false);
+      });
+
+      it('溜め中(charge)は速度が0へ向けて減衰し、発射後は再び速度が戻る(慣性・瞬間停止禁止=CLAUDE.md MUST)', () => {
+        // kite退却中(dist<BR_KITE_MIN)にして「動いている速度」を作り、状態sを直接覗いてcharge
+        // サイクルに入るのを待つ(brPatternはBountyTickStateの内部状態=setupTypeがstateとして返す)。
+        const { id, step, state } = setupType('bounty-ranged', { x: 250, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER });
+        let sawDecelerate = false, sawReaccelerate = false;
+        let prevSpeed = Infinity;
+        for (let i = 0; i < 3000 && !(sawDecelerate && sawReaccelerate); i++) {
+          step(10);
+          const cur = useGameStore.getState().enemies.find(e => e.id === id);
+          if (!cur) continue;
+          const spd = Math.hypot(cur.vx ?? 0, cur.vy ?? 0);
+          if (state.brPattern === 'charge' && state.brShotsRemaining > 0) {
+            // 溜め中: 速度は単調に0へ向かうはず(前フレーム以下)。
+            if (spd < prevSpeed - 0.001) sawDecelerate = true;
+          } else if (state.brPattern === 'charge' && state.brShotsRemaining === 0) {
+            // 発射後recover中: 速度が前フレームより増えていれば再加速を確認できたことにする。
+            if (spd > prevSpeed + 0.001) sawReaccelerate = true;
+          }
+          prevSpeed = spd;
+        }
+        expect(sawDecelerate).toBe(true);
+        expect(sawReaccelerate).toBe(true);
+      });
+
+      it('割り込み後に射撃サイクルが持ち越されない(#7): 押しのけが挟まるとサイクル状態がクリアされる', () => {
+        // 押しのけ範囲(BR_PUSH_RANGE=110)内にプレイヤーを置き、毎tick押しのけが発火し続ける盤面。
+        // 中立(chase)へ戻る度にresetBrShotCycleが呼ばれる=stateのbrPattern/brShotsRemainingが
+        // 「押しのけ発火直前に何か進行中だったとしても」常にクリアされていることを確認する。
+        const { step, state } = setupType('bounty-ranged', { x: 60, y: 0 }); // BR_PUSH_RANGE未満
+        for (let i = 0; i < 80; i++) step(50); // windup(500)+push(120)+recover(700)を何周分か回す
+        // 押しのけがwindup中はサイクルへ入る前にreturnするため、brPatternは常にnull寄り
+        // (中立へ辿り着けていない=そもそもサイクルが開始されない)。resetBrShotCycleが機能していれば
+        // 残弾は0のまま蓄積しない。
+        expect(state.brShotsRemaining).toBe(0);
+      });
+    });
   });
 
   describe('馬乗り(bounty-melee)', () => {

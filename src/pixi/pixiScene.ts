@@ -143,7 +143,7 @@ import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOA
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType } from '../utils/enemyUtils';
 import {
   BOUNTY_DEPART_FADE_MS,
-  BR_PUSH_WINDUP_MS, BR_PUSH_HALFWIDTH, BR_SHOT_INTERVAL_MS, BR_SHOT_RECOIL_VIS_MS,
+  BR_PUSH_WINDUP_MS, BR_PUSH_HALFWIDTH,
   BM_COMBO_WINDUP_MS, BM_COMBO_HALFWIDTH, BM_SNIPE_WINDUP_MS, BM_SNIPE_ACTIVE_MS, BM_SNIPE_HALFWIDTH,
   // §6.38 B2b: 鋏(bounty-balance)/舞妓(bounty-maiko)の技の寸法・タイミング。
   BB_SWEEP_HALFWIDTH, BB_SWEEP_WINDUP_MS, BB_LEAP_WINDUP_MS, BB_LEAP_AIR_MS, BB_LEAP_RADIUS,
@@ -14557,23 +14557,11 @@ export class PixiScene {
       // 「技スコープ表示」)。B2bの「常時携行」(bs2 !== windup系なら出す、というブラックリスト方式)は
       // 誤り=撤去。ここから下の各分岐が持つ場面だけが drawBountyWeapon を呼ぶ(=呼ばれなければ
       // resetActorFxDefaults の既定OFFのまま消えている)。例外は舞妓の毬(常時オービット・別枝)。
-      // バス停の通常射撃(専用bossStateを持たない=chaseのまま撃つ)だけは、発射直後の短い残心
-      // (BR_SHOT_RECOIL_VIS_MS)だけ標識を構えた絵にする=boss-gunの反動フェードと同じ考え方。
-      if (e.type === 'bounty-ranged' && !e.dormant && (bs2 === undefined || bs2 === 'chase')) {
-        const sinceShot = BR_SHOT_INTERVAL_MS - Math.max(0, Math.min(BR_SHOT_INTERVAL_MS, (e.bossNextActionAt ?? gameTime) - gameTime));
-        if (sinceShot >= 0 && sinceShot <= BR_SHOT_RECOIL_VIS_MS) {
-          const holdAng = Math.atan2((e.aiTargetY ?? cy + 1) - cy, (e.aiTargetX ?? cx + 1) - cx);
-          // 技表GO(§7-15): 射撃=標識が反動で後ろへキック。強く弾かれて→ease-outで戻る(慣性=瞬間停止禁止)。
-          const kickT = Math.max(0, Math.min(1, sinceShot / BR_SHOT_RECOIL_VIS_MS));
-          const kickEased = 1 - Math.pow(1 - kickT, 3);
-          const kickPx = 14 * (1 - kickEased);
-          this.drawBountyWeapon(
-            e.id, 'bounty-ranged-sign',
-            cx - Math.cos(holdAng) * kickPx, cy - e.height * 0.15 - Math.sin(holdAng) * kickPx,
-            holdAng, 130, 0.95 * (1 - sinceShot / BR_SHOT_RECOIL_VIS_MS),
-          );
-        }
-      }
+      // バス停の通常射撃(専用bossStateを持たない=chaseのまま撃つ)の反動は下のlastRangedShotAt基準の
+      // ブロック(§6.38実機FB1直後の`else if (e.type === 'bounty-ranged' ...)`)に統一している。
+      // §6.38 v10 #6(撤去): ここに以前あったBR_SHOT_INTERVAL_MSからの発射時刻逆算ブロックは、
+      // 間隔が可変になった型3種(burst/fan/charge)では破綻する上、現状も drawBountyWeapon の後勝ちで
+      // 一度も画面に出ていなかった(死んだコード)ため削除した。
       // §6.38実機FB7(社長指示2026-08-15・v0.25.34xx): 帯メテオ(中心流星)を赤ラインと同じ
       // 「完走→始点から消える」ラッチ(zoneCapsuleTick)に統一する。dashLineTickと同じ理由で
       // **if分岐の外=毎フレーム無条件で呼ぶ**(windupOn=falseへ落ちた1フレームをlatchに渡し損ねると

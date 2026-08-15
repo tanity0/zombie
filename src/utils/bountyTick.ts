@@ -36,6 +36,18 @@ export {
   MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS, MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
   BOUNTY_BASE_HP, BR_SIGN_TIP_PX,
 };
+// §6.38 v10「バス停の中立射撃に緩急」: 型3種(burst/fan/charge)のサイクル抽選・間隔・弾数の計算は
+// bountyShots.ts(依存ゼロの葉)へ一本化。tickRangedはここの関数を呼ぶだけ(#10)。
+import {
+  pickBrShotPattern, brShotCount, brCycleDurationMs,
+  brChargeWindupSpeedMult, brChargeRecoverSpeedMult,
+  BR_SHOT_UNIT_MS, BR_BURST_INTERVAL_MS, BR_FAN_ANGLE_OFFSETS_DEG,
+  BR_CHARGE_WINDUP_MS, BR_CHARGE_RECOVER_MS, BR_CHARGE_SPEED_MULT,
+  type BrShotPattern,
+} from './bountyShots';
+// #11改名(旧BR_SHOT_INTERVAL_MS): pixiScene側は§6.38 v10 #6の撤去でこの定数を使わなくなったため
+// re-exportは行わない(消費者が居ないまま残すと「どこで使われているか」が追いにくくなる)。
+export { BR_SHOT_UNIT_MS };
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { isBountyType, createEnemyProjectile, spawnEnemyAt } from './enemyUtils';
 import { EVENT_BANNER_MS } from './directorTick';
@@ -215,14 +227,36 @@ export interface BountyTickState {
   // 純スカラー状態で足りる=Enemyフィールドを増やさない)。
   suiuHopIdx: 0 | 1 | 2 | 3; // 現在ホップ(0=未開始)
   suiuTx: number; suiuTy: number; // 現ホップの着地点(playerPos+抽選オフセット・clamp済み)
+  // §6.38 v10: バス停(bounty-ranged)の中立射撃サイクル(型3種=burst/fan/charge・#10「activeIdで
+  // 切り替える単一の共有状態」)。「溜め中フラグ」はbrPattern==='charge'&&brShotsRemaining>0から
+  // 導出する(windup/recoverの境界が連続する=別フラグを持たなくても矛盾しないため)。
+  brPattern: BrShotPattern | null;      // 残弾: 現在のサイクルの型(未開始/次サイクル待ち=null)
+  brPrevPattern: BrShotPattern | null;  // 直前の型(#2「直前と同じ型は引かない」用)
+  brShotsRemaining: number;             // 残弾: このサイクルで未発射の弾数
+  brCycleEndAt: number;                 // 次弾時刻: 次サイクル1発目の発射予定時刻(gameTime基準・#3)
 }
 export const createBountyTickState = (): BountyTickState => ({
   activeId: null, aimVX: 0, aimVY: 0, farMs: 0, comboStep: 0, escortsSummoned: false,
   suiuHopIdx: 0, suiuTx: 0, suiuTy: 0,
+  brPattern: null, brPrevPattern: null, brShotsRemaining: 0, brCycleEndAt: 0,
 });
 const resetBountyRunState = (s: BountyTickState): void => {
   s.aimVX = 0; s.aimVY = 0; s.farMs = 0; s.comboStep = 0; s.escortsSummoned = false;
   s.suiuHopIdx = 0; s.suiuTx = 0; s.suiuTy = 0;
+  resetBrShotCycle(s);
+};
+/**
+ * §6.38 v10 #7: 割り込み(押しのけ/レーザー/laser-broken/フルスタン/カウンター/リーシュ帰巣)で
+ * chaseへ戻る/dormant化する際にバス停の射撃サイクルをクリアする。残弾・直前の型・サイクル終了時刻を
+ * 捨てることで、次の中立ではまっさらな抽選から始まる(持ち越しなし)。
+ * ※isFrozen(気絶/拘束/浮き/ノックバック)の解除はここに含まない——次弾時刻の再アンカーだけで足り、
+ * 進行中のサイクル自体(型・残弾)まで捨てる必要は無い(runBountyTickのisFrozen分岐側で個別対応)。
+ */
+const resetBrShotCycle = (s: BountyTickState): void => {
+  s.brPattern = null;
+  s.brPrevPattern = null;
+  s.brShotsRemaining = 0;
+  s.brCycleEndAt = 0;
 };
 
 // ---- カウンター(全4体で共通の1本。W7=windup中/硬直中の接触=可) --------------------------------
@@ -275,12 +309,11 @@ const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx)
 const BR_KITE_MIN = 340;  // これより近いと後退(引き撃ちの帯を保つ)
 const BR_KITE_MAX = 560;  // これより遠いと詰める(リーシュ圏内を保つ・遠すぎて発見されない事故の防止)
 const BR_PUSH_RANGE = 110; // 近接されたら押しのけの発動距離(§4「近接されたら押しのけ」)
-// 通常のポツポツ撃ち(§7-12「銃弾以外」の除外=予兆不要。共通弾)。
-// exportはpixiScene(FB1・武器スプライトの技スコープ表示)が発射直後の残心ウィンドウを
-// 算出するために読む(bossNextActionAtから逆算=新規フィールドを増やさない)。
-export const BR_SHOT_INTERVAL_MS = 1100;
-// 発射直後、標識を構えた絵を残す時間(boss-gunの反動フェードと同じ考え方。判定には無関係=見た目専用)。
-export const BR_SHOT_RECOIL_VIS_MS = 260;
+// 通常のポツポツ撃ち(§7-12「銃弾以外」の除外=予兆不要。共通弾)。§6.38 v10で型3種のサイクル抽選へ
+// 差し替え(BR_SHOT_UNIT_MS=旧BR_SHOT_INTERVAL_MSの改名・bountyShots.tsからimport&re-export済み)。
+// 旧BR_SHOT_RECOIL_VIS_MSは撤去(§6.38 v10 #6): pixiSceneの残心逆算ブロックが唯一の消費者で、
+// そのブロック自体が「後勝ちで一度も画面に出ていない」死んだコードだったため、ブロックごと削除した。
+// 反動の描画はlastRangedShotAt基準の既存ブロック(pixiScene側)に統一する。
 const BR_SHOT_PROFILE = { speed: 260, damage: 10, size: 10 } as const;
 // 押しのけ(小KB・カウンター可・分類1=判定に揃える。得物=標識の薙ぎ)
 export const BR_PUSH_WINDUP_MS = 500;
@@ -403,34 +436,103 @@ const tickRanged = (
       patch.bossStateUntil = newGameTime + 3000; // = mimirLaserTrack.MIMIR_LASER_WINDUP_MS(直接値。定数はimport済みで下のtestが一致検査)
       return;
     }
-    // 中立: kite(引き撃ち)+通常のポツポツ撃ち(§7-12除外=予兆不要)。
+    // 中立: kite(引き撃ち)+型3種(burst/fan/charge)のサイクル射撃(§6.38 v10「バス停の中立射撃に緩急」)。
     // §6.38 v7: isBossType編入でクリが移動半減(bossSlowUntil)を打つようになった=城ボス等と同じく
     // bossSlowMultを移動速度へ掛ける(掛けないとリング表示だけ出て実際は減速しない見掛け倒しになる)。
-    const dt = deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime);
+    // §6.38 v10 #8/慣性(CLAUDE.md MUST=瞬間停止禁止): chargeの溜め中/発射後の再加速をkite移動速度
+    // への倍率(0→1のease)として掛ける。既存のkite移動は毎フレームpatch.vx/vyを直書きしているだけ
+    // なので、速度自体を減衰させれば専用bossStateを作らずに慣性を満たせる。
+    let brSpeedMult = 1;
+    const nextActionAt = patch.bossNextActionAt ?? bounty.bossNextActionAt ?? 0;
+    if (s.brPattern === 'charge') {
+      if (s.brShotsRemaining > 0) {
+        // 溜め中(windup=350ms)。nextActionAt=このサイクルの発射時刻(#4)。
+        const p = 1 - Math.max(0, Math.min(1, (nextActionAt - newGameTime) / BR_CHARGE_WINDUP_MS));
+        brSpeedMult = brChargeWindupSpeedMult(p);
+      } else if (newGameTime < s.brCycleEndAt) {
+        // 発射後の再加速(recover=750ms)。
+        const recoverStart = s.brCycleEndAt - BR_CHARGE_RECOVER_MS;
+        const p = Math.max(0, Math.min(1, (newGameTime - recoverStart) / BR_CHARGE_RECOVER_MS));
+        brSpeedMult = brChargeRecoverSpeedMult(p);
+      }
+    }
+    const dt = deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime) * brSpeedMult;
     if (dist < BR_KITE_MIN && dist > 1) {
       const ux = (bcx - pcx) / dist, uy = (bcy - pcy) / dist;
       const spd = bounty.speed * dt;
       const c = resolveMove(bounty.x + ux * spd, bounty.y + uy * spd, bounty);
-      patch.x = c.x; patch.y = c.y; patch.vx = ux * bounty.speed; patch.vy = uy * bounty.speed;
+      patch.x = c.x; patch.y = c.y; patch.vx = ux * bounty.speed * brSpeedMult; patch.vy = uy * bounty.speed * brSpeedMult;
     } else if (dist > BR_KITE_MAX && dist > 1) {
       const ux = (pcx - bcx) / dist, uy = (pcy - bcy) / dist;
       const spd = bounty.speed * dt;
       const c = resolveMove(bounty.x + ux * spd, bounty.y + uy * spd, bounty);
-      patch.x = c.x; patch.y = c.y; patch.vx = ux * bounty.speed; patch.vy = uy * bounty.speed;
+      patch.x = c.x; patch.y = c.y; patch.vx = ux * bounty.speed * brSpeedMult; patch.vy = uy * bounty.speed * brSpeedMult;
     } else {
       patch.vx = 0; patch.vy = 0;
     }
-    if (newGameTime >= (bounty.bossNextActionAt ?? 0)) {
-      patch.bossNextActionAt = newGameTime + BR_SHOT_INTERVAL_MS;
-      // 社長指示v0.25.3443「弾飛ばす時もバス停の先から撃つ感じにして」: 発射起点=構えた標識の先端
-      // (BR_SIGN_TIP_PX・構えの高さ=身長比-0.15)。描画側(pixiScene)が同じ点に標識を構える。
-      const ang = Math.atan2(pcy - bcy, pcx - bcx);
-      const mzx = bcx + Math.cos(ang) * BR_SIGN_TIP_PX;
-      const mzy = bcy - bounty.height * 0.15 + Math.sin(ang) * BR_SIGN_TIP_PX;
-      patch.lastRangedShotAt = newGameTime; // 描画専用の合図(構えの標識を~0.9秒見せる)
-      useGameStore.getState().addProjectile(createEnemyProjectile(
-        bounty, useGameStore.getState().player, undefined, undefined, mzx, mzy, BR_SHOT_PROFILE,
-      ));
+
+    if (newGameTime >= nextActionAt) {
+      let justStartedCharge = false;
+      if (s.brPattern === null || s.brShotsRemaining <= 0) {
+        // §6.38 v10 #2: 新サイクル開始=型抽選(距離340px=BR_KITE_MIN未満ではfanを弾く=#1)。
+        const allowFan = dist >= BR_KITE_MIN;
+        const pattern = pickBrShotPattern(Math.random, s.brPrevPattern, allowFan);
+        s.brPattern = pattern;
+        s.brPrevPattern = pattern;
+        s.brShotsRemaining = brShotCount(pattern);
+        s.brCycleEndAt = newGameTime + brCycleDurationMs(pattern);
+        // §6.38 v10 #5(実バグ修正): 中立射撃でもaiFrom/aiTargetを書く(旧実装は書いておらず、標識の
+        // 構えの向きが直前の技の残りカス=未使用なら常に右、になっていた)。狙い=サイクル開始時の
+        // プレイヤー方向で固定(#1「狙いはサイクル開始時のプレイヤー方向で固定」)。
+        patch.aiFromX = bcx; patch.aiFromY = bcy;
+        patch.aiTargetX = pcx; patch.aiTargetY = pcy;
+        if (pattern === 'charge') {
+          sfx.alert(); // §6.38 v10 #9: 溜め開始のSE(burst/fanは現状どおり無音)。
+          patch.bossNextActionAt = newGameTime + BR_CHARGE_WINDUP_MS; // #4: 発射時刻=構えと溜めが重なる
+          justStartedCharge = true; // 溜め中はまだ撃たない(このtickでは発射しない)
+        }
+      }
+      if (!justStartedCharge) {
+        const fx = patch.aiFromX ?? bounty.aiFromX ?? bcx;
+        const fy = patch.aiFromY ?? bounty.aiFromY ?? bcy;
+        const tx = patch.aiTargetX ?? bounty.aiTargetX ?? pcx;
+        const ty = patch.aiTargetY ?? bounty.aiTargetY ?? pcy;
+        // サイクル開始時に固定した狙い(fx,fy→tx,ty)の向き。pixiScene側のaimAng算出(aiFromX/Y→
+        // aiTargetX/Y)と同じ式=絵と発射方向が一致する。以後この向きのまま(bcx/bcyは現在位置=
+        // 標識の"銃口"は動くが狙う方向は変わらない)。
+        const baseAng = Math.atan2(ty - fy, tx - fx);
+        // 社長指示v0.25.3443「弾飛ばす時もバス停の先から撃つ感じにして」: 発射起点=構えた標識の先端
+        // (BR_SIGN_TIP_PX・構えの高さ=身長比-0.15)。描画側(pixiScene)が同じ点に標識を構える。
+        const player = useGameStore.getState().player;
+        const fireOne = (offsetRad: number, profile: { speed: number; damage: number; size: number }): void => {
+          const a = baseAng + offsetRad;
+          const mzx = bcx + Math.cos(baseAng) * BR_SIGN_TIP_PX;
+          const mzy = bcy - bounty.height * 0.15 + Math.sin(baseAng) * BR_SIGN_TIP_PX;
+          const tgtX = bcx + Math.cos(a) * 300, tgtY = bcy + Math.sin(a) * 300;
+          useGameStore.getState().addProjectile(createEnemyProjectile(
+            bounty, player, tgtX, tgtY, mzx, mzy, profile,
+          ));
+        };
+        patch.lastRangedShotAt = newGameTime; // 描画専用の合図(構えの標識を~0.9秒見せる)
+        if (s.brPattern === 'burst') {
+          // #1: burst=200ms間隔で3発。狙い固定・弾は現状のまま。
+          fireOne(0, BR_SHOT_PROFILE);
+          s.brShotsRemaining -= 1;
+          // #4「burstの2/3発目もこれを更新する」。最後の1発は次サイクル開始時刻(cycleEndAt)へジャンプ
+          // する(最後の弾からの+間隔ではない=#3)。
+          patch.bossNextActionAt = s.brShotsRemaining > 0 ? newGameTime + BR_BURST_INTERVAL_MS : s.brCycleEndAt;
+        } else if (s.brPattern === 'fan') {
+          // #1: fan=同時3発・±12°。弾は現状のまま。
+          for (const deg of BR_FAN_ANGLE_OFFSETS_DEG) fireOne(deg * Math.PI / 180, BR_SHOT_PROFILE);
+          s.brShotsRemaining = 0;
+          patch.bossNextActionAt = s.brCycleEndAt;
+        } else if (s.brPattern === 'charge') {
+          // #1: charge=溜め済み→1発・弾速1.5倍(社長裁定「案ア」)。威力は現状のまま。
+          fireOne(0, { ...BR_SHOT_PROFILE, speed: BR_SHOT_PROFILE.speed * BR_CHARGE_SPEED_MULT });
+          s.brShotsRemaining = 0;
+          patch.bossNextActionAt = s.brCycleEndAt;
+        }
+      }
     }
     return;
   }
@@ -456,6 +558,7 @@ const tickRanged = (
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'chase';
       patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+      resetBrShotCycle(s); // §6.38 v10 #7: 押しのけからのchase復帰=射撃サイクルをクリア
     }
     return;
   }
@@ -499,6 +602,7 @@ const tickRanged = (
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'chase';
       patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+      resetBrShotCycle(s); // §6.38 v10 #7: レーザー(recover/broken)からのchase復帰=射撃サイクルをクリア
     }
     return;
   }
@@ -1176,6 +1280,7 @@ export const runBountyTick = (
   const fullStunNow = bounty.bossFullStunUntil !== undefined && newGameTime < bounty.bossFullStunUntil;
   if (fullStunNow) {
     s.comboStep = 0; // 馬乗り3段コンボの進行も中断(=次にchaseへ戻ってからcomboStep=1で仕切り直す)
+    resetBrShotCycle(s); // §6.38 v10 #7: フルスタンからのchase復帰=バス停の射撃サイクルをクリア
     applyPatch(bounty.id, {
       bossState: 'chase',
       bossStateUntil: undefined,
@@ -1189,7 +1294,13 @@ export const runBountyTick = (
   // 座標もbossStateも一切書かない(カウンターのノックバック座標を上書きしない)。交戦中とみなして
   // 滞在タイマーだけ更新する(戦っている最中に消えない=既存の「戦闘中リセット」と同じ扱い)。
   if (isFrozen(bounty, newGameTime, nowMs)) {
-    applyPatch(bounty.id, { bountyLastEngagedAt: newGameTime });
+    const frozenPatch: Partial<Enemy> = { bountyLastEngagedAt: newGameTime };
+    // §6.38 v10 #7「isFrozen中は時刻を進めず、解除時に次弾をnow+間隔へ再アンカー(凍結明けの
+    // まとめ撃ち防止)」: 進行中のサイクル(型・残弾)自体は捨てず、次弾時刻だけ毎フレーム
+    // 「今+1サイクル分」へ押し出し続ける。解除された瞬間に残っている値が常に「今に近い未来」に
+    // なるため、bossNextActionAtが過去のまま溜まって解除直後に即時連射する事故を防げる。
+    if (bounty.type === 'bounty-ranged') frozenPatch.bossNextActionAt = newGameTime + BR_SHOT_UNIT_MS;
+    applyPatch(bounty.id, frozenPatch);
     return;
   }
 
@@ -1205,6 +1316,7 @@ export const runBountyTick = (
       bountyCounterHit(bounty, bcx, bcy, sfx);
       countered = true;
       s.comboStep = 0;
+      resetBrShotCycle(s); // §6.38 v10 #7: カウンターからのchase復帰=バス停の射撃サイクルをクリア
       patch.bossState = 'chase';
       patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
     }
@@ -1249,12 +1361,14 @@ export const runBountyTick = (
           patch.bossLeashSince = undefined;
           patch.bossState = undefined;
           patch.bossStateUntil = undefined;
+          resetBrShotCycle(s); // §6.38 v10 #7: リーシュ帰巣(dormant化)=バス停の射撃サイクルをクリア
         }
       } else {
         // homeX/homeYが未設定(スポーン側の不備・防御的フォールバック): 現在地をそのまま巣として即帰巣扱い。
         patch.dormant = true;
         patch.bountyLastEngagedAt = newGameTime;
         patch.bossLeashSince = undefined;
+        resetBrShotCycle(s); // §6.38 v10 #7: リーシュ帰巣(dormant化)=バス停の射撃サイクルをクリア
       }
       applyPatch(bounty.id, patch);
       return;

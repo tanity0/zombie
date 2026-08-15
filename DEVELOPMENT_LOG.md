@@ -1,5 +1,44 @@
 # Development Log
 
+## v0.25.3469 — バス停の中立射撃に緩急(§6.38 v10・型3種burst/fan/charge)【2026-08-15 18:37 JST】
+- **実装対象**: PACING_PUZZLE.md §6.38 v10「バス停の中立射撃に緩急」。賞金首「バス停」
+  (bounty-ranged)の中立(chase中の"ポツポツ撃ち")を等間隔単発から型3種のサイクル抽選へ差し替え。
+  押しのけ/レーザーは不変(「ではない」条件どおり)。
+- **新規**: `src/utils/bountyShots.ts`(依存ゼロの葉・型表/抽選/間隔/弾数/慣性カーブの純関数)+
+  `bountyShots.test.ts`(14件・pickBrShotPattern統計検証で54.5発/分・3型均等・fan除外・no-repeatを機械化)。
+- **配線**: `src/utils/bountyTick.ts` の `tickRanged` をサイクル状態機械へ書き換え。
+  `BountyTickState` に `brPattern/brPrevPattern/brShotsRemaining/brCycleEndAt` を追加(activeIdで
+  切り替える単一の共有状態=`resetBountyRunState`が束ねてリセット)。割り込み(押しのけ/レーザー/
+  laser-broken/フルスタン/カウンター/リーシュ帰巣)の6箇所に `resetBrShotCycle` を追加し、
+  isFrozen(気絶/拘束/浮き/ノックバック)解除時は次弾時刻だけ`now+BR_SHOT_UNIT_MS`へ再アンカー
+  (凍結明けのまとめ撃ち防止・サイクル自体は保持=対象一覧に含まれないため)。
+- **実バグ修正×2**: ①中立射撃でも `aiFromX/aiFromY/aiTargetX/aiTargetY` を書くようにした(旧実装は
+  書いておらず、標識の構えの向きが直前の技の残りカスになっていた)。②`pixiScene.ts` の
+  `BR_SHOT_INTERVAL_MS` から発射時刻を逆算していた残心ブロックを撤去(間隔可変で破綻する上、
+  `drawBountyWeapon` の後勝ちで一度も画面に出ていなかった死んだコード。反動は既存の
+  `lastRangedShotAt` 基準ブロックに統一)。
+- **改名**: `BR_SHOT_INTERVAL_MS` → `BR_SHOT_UNIT_MS`(bountyShots.tsへ移設・値1100は不変)。
+  pixiScene側は撤去したブロックが唯一の消費者だったため、re-exportせずimportごと削除。
+- **慣性(CLAUDE.md MUST)**: chargeの溜め中(350ms)はkite移動速度を1→0のease-out(2乗)で減速して
+  止め、発射後の再加速(750ms)は0→1のease-in(2乗)で戻す。専用bossStateは作らず(#8)、既存の
+  kite移動(毎フレームpatch.vx/vy直書き)に速度倍率を掛けるだけで実現。windup終端とrecover始端が
+  両方0で連続する=瞬間停止しない。
+- **検算(受け入れ条件)**: 平均弾数(3+3+1)/3=2.333発・平均サイクル長1100×(3+3+1)/3=2566.7ms→
+  2.333/2566.7×60000=**54.5発/分**(現状と一致)。ユニットテストで20000サイクルのシミュレーションを
+  回し53.5〜55.5発/分に収まることを機械化。
+- **テスト**: `bountyShots.test.ts`(新規14件)+ `bountyTick.test.ts` に統合テスト6件を追加
+  (割り込みなし中立のみで54.5発/分±・3型すべて検出・距離340px未満でfan不選択・aiFrom/aiTarget付与・
+  charge減速再加速・押しのけ割り込み後の残弾非持ち越し)。既存の66件は変更なしで全通過
+  (舞妓「毬回し」1件のみ既存不合格=本batch着手前から存在する無関係の失敗。設計チャットが
+  §6.38 v11として並行対応中と確認済み=git stashで本diff適用前の状態でも同じ失敗を再現)。
+- **同時編集の注記**: 設計チャット(上のv0.25.3468エントリ)が同じ2ファイル
+  (`pixiScene.ts`/`bountyTick.ts`)への着手を本batchの着地待ちにしていたため、競合なく進行できた。
+- 変更: `src/utils/bountyShots.ts`(新規)/`bountyShots.test.ts`(新規)/`bountyTick.ts`/
+  `bountyTick.test.ts`/`src/pixi/pixiScene.ts`。
+- 検証: `npm run typecheck`・`npm run lint`(いずれもエラー0)+
+  `npx vitest run src/utils/bountyShots.test.ts src/utils/bountyTick.test.ts`(86件中85 passed・
+  1 failed=上記の無関係な既存失敗のみ)。
+
 ## v0.25.3468 — 噛みつきの顎モーション(純関数)+毬回し案Aの仕様化【2026-08-15 18:36 JST】
 - **社長裁定「毱回しは案Aで」**: 中距離で選ばれる毬回しを**回しながら踏み込む技**にする仕様を
   PACING_PUZZLE.md §6.38 v11 に確定(前進220px・加速→減速の慣性・狙いは実行開始時で固定=横に避ければ抜ける・
