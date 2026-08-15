@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3476',
+    items: [
+      '赤い帯・線の「消え切った瞬間に当たる」予告が、全てのボスの技に入りました(今までは一部だけでした)。',
+    ],
+  },
+  {
     version: '0.25.3475',
     items: [
       '馬乗り(変異)の鞭が、真ん中ではなく柄(根本)を軸に振られるようになりました。',

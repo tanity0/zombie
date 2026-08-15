@@ -15792,7 +15792,7 @@ export class PixiScene {
           const off = windupBackstepOffset(prog, now, -ddx / ddl, -ddy / ddl, 7);
           view.sprite.position.x += off.x; view.sprite.position.y += off.y;
         } else if (bs === 'sweep') {
-          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, 1, now);
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, 1, now, 0, 0); // 実行中=全形(消し0を明示)
         }
       }
       // ---- アクラシエル(§6.28-19・M63新規): 放射棘=T3帯を8方向(空きセクターは塗らない)。
@@ -16090,7 +16090,7 @@ export class PixiScene {
           if (elapsed + FX_IMPACT_TOLERANCE_MS < sweepL.d[0]) {
             this.fxLatches.delete(`${e.id}:suriel-sweep-complete`);
           } else if (elapsed < sweepL.d[0] + sweepL.d[1]) {
-            this.drawAngelZoneCapsule(view, o, sweepL.d[2], sweepL.d[3], sweepL.d[4], sweepL.d[5], THOR_HARAI_VIS_HALFWIDTH, 1, now);
+            this.drawAngelZoneCapsule(view, o, sweepL.d[2], sweepL.d[3], sweepL.d[4], sweepL.d[5], THOR_HARAI_VIS_HALFWIDTH, 1, now, 0, 0);
           }
         }
         // FX-V2a(社長方針2026-08-07): 実行の瞬間(sweep)だけ、環の振り(syncSurielRing)に添えて
@@ -16129,7 +16129,7 @@ export class PixiScene {
               const ang = sector * (Math.PI / 4);
               const ex = spikeL.d[2] + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_VIS;
               const ey = spikeL.d[3] + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_VIS;
-              this.drawAngelZoneCapsule(view, o, spikeL.d[2], spikeL.d[3], ex, ey, THOR_HARAI_VIS_HALFWIDTH, 1, now, sector);
+              this.drawAngelZoneCapsule(view, o, spikeL.d[2], spikeL.d[3], ex, ey, THOR_HARAI_VIS_HALFWIDTH, 1, now, sector, 0);
               this.drawAcrasielSpikeThrust(view, sector, spikeL.d[2] + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_VIS * 0.55,
                 spikeL.d[3] + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_VIS * 0.55, ang, spikeTailT);
             }
@@ -17999,21 +17999,29 @@ export class PixiScene {
   // 最後のフレームがprog<1のまま描画されずに消える」がまた起きる)。
   private drawAngelZoneCapsule(
     view: ActorView, o: Graphics, fx: number, fy: number, tx: number, ty: number, halfWidth: number,
-    prog: number, now: number, idx = 0, erase = 0,
+    prog: number, now: number, idx = 0, eraseOverride?: number,
   ) {
     const pulse = 0.55 + 0.45 * Math.sin(now / 80);
     const ddx = tx - fx, ddy = ty - fy;
     const ddl = Math.hypot(ddx, ddy) || 1;
     const nx = -ddy / ddl, ny = ddx / ddl;
     const ux = ddx / ddl, uy = ddy / ddl;
-    const er = Math.max(0, Math.min(1, erase));
+    // ★流星の位相はここ(=帯を描く唯一の場所)で導く(社長指摘v0.25.3476「この帯の動き、全ボスにまだ
+    //   入ってないの?」= zoneCapsuleTick 経由の11箇所にしか入っておらず、**直接この関数を呼ぶ13箇所**
+    //   (トールの払い/突き、ミゲルの払い、ジブリルのランス、idolの狙撃/拳、扇の各セクター等)が
+    //   旧挙動のままだった)。呼び出し側は**溜めの進行(0→1)をそのまま渡すだけ**でよい。
+    //   eraseOverride は「中断されて途中から消し切る」時だけ渡す(zoneCapsuleTickの中断経路)。
+    const ph = eraseOverride === undefined
+      ? PixiScene.meteorPhase(prog)
+      : { p: Math.max(0, Math.min(1, prog)), er: Math.max(0, Math.min(1, eraseOverride)) };
+    const er = ph.er;
     // 社長指示v0.25.3444「帯全体を流星の動きにする。赤ラインと同じく。白い線は追加しないで」:
     // 旧実装(帯は全形で常時表示+中心に白い流星線)を撤回。**帯そのもの**が流星として
     // 始点→終点へ溜め同期で押し出し(頭ほど明るい)、prog=1(技の出始め)で全形を描き切る。
     // erase>0は完走後の消えアニメ=可視区間[erase,1]が始点側から失われていく(赤ラインと同じ文法)。
     // 前後のキャップ(±halfWidthのはみ出し)は「尾端=erase 0の時だけ/頭端=完走度zpに比例」で持たせ、
     // zp=1・erase=0の瞬間に従来の全形状(=判定と厳密一致)へ到達する。
-    const zp = er > 0 ? 1 : Math.max(0, Math.min(1, prog));
+    const zp = er > 0 ? 1 : ph.p;
     // ★薄い下地は**出さない**(社長指示v0.25.3474「赤帯の薄い下地はいらない。ラインと同じ仕様にして」)。
     //   帯は線と同じく「流星が描き→後ろから消え、消え切った瞬間に判定」だけで読ませる。
     if (zp - er <= 0.001) return; // 消し切った(or まだ何も無い)
@@ -18084,7 +18092,7 @@ export class PixiScene {
       const ph = PixiScene.meteorPhase(prog);
       // arm[7]=最後の描き / arm[8]=最後の消し(中断された時、そこから続きを消すため)。
       this.zoneCapsuleArm.set(key, [fx, fy, tx, ty, halfWidth, idx, remainMs, ph.p, ph.er]);
-      this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, halfWidth, ph.p, now, idx, ph.er);
+      this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, halfWidth, prog, now, idx);
       return;
     }
     const armed = this.zoneCapsuleArm.get(key);
@@ -18113,10 +18121,15 @@ export class PixiScene {
   // スタート地点から消えていかないと流星にならない」)。可視区間=[erase, prog]。
   private drawAngelDashLine(
     o: Graphics, fx: number, fy: number, tx: number, ty: number, now: number, prog: number,
-    erase = 0, base = 0xff2a2a, core = 0xff5a5a, head = 0xffe3e3, ghost = false,
+    eraseOverride: number | undefined = undefined,
+    base = 0xff2a2a, core = 0xff5a5a, head = 0xffe3e3, ghost = false,
   ) {
-    const p = Math.max(0, Math.min(1, prog));
-    const er = Math.max(0, Math.min(1, erase));
+    // 帯と同じく**ここで流星の位相を導く**(直接呼ぶ経路にも自動で効く)。
+    const ph0 = eraseOverride === undefined
+      ? PixiScene.meteorPhase(prog)
+      : { p: Math.max(0, Math.min(1, prog)), er: Math.max(0, Math.min(1, eraseOverride)) };
+    const p = ph0.p;
+    const er = ph0.er;
     // ★薄い下地(経路の全形)。メーター(濃い線)が減っても「どこを通るか」は読めるままにする。
     if (ghost) o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 3, color: base, alpha: 0.18, cap: 'round' });
     if (p - er <= 0.001) return; // 消し切った(or まだ何も無い)
@@ -18162,7 +18175,7 @@ export class PixiScene {
       const ph = PixiScene.meteorPhase(prog);
       // arm[4]=残り / arm[5]=最後の描き / arm[6]=最後の消し(中断時に続きを消すため)。
       this.dashLineArm.set(key, [fx, fy, tx, ty, remainMs, ph.p, ph.er]);
-      this.drawAngelDashLine(o, fx, fy, tx, ty, now, ph.p, ph.er, base, core, head, true);
+      this.drawAngelDashLine(o, fx, fy, tx, ty, now, prog, undefined, base, core, head, true);
       return;
     }
     const armed = this.dashLineArm.get(key);
