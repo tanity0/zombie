@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3428',
+    items: [
+      'ゲーム内容の変更はありません(賞金首=城ボス完全コピー原則を確定。金リング撤去・カットイン追加等の仕上げを発注)。',
+    ],
+  },
+  {
     version: '0.25.3427',
     items: [
       'ゲーム内容の変更はありません(施設(POI)の配置・スケール修正の仕様を確定し、実装を発注)。',
