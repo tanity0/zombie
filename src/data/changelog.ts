@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3418',
+    items: [
+      'ゲーム内容の変更はありません(賞金首の出現改定=初回3分・両隣区画ペアを設計確定し、実装を発注)。',
+    ],
+  },
+  {
     version: '0.25.3417',
     items: [
       'ゲーム内容の変更はありません(賞金首B4の検収記録=賞金首イベントの実装が完了しました)。',
