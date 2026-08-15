@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3483',
+    items: [
+      'ゲーム内容の変更はありません(タレットLv3の爆発仕様を確定として記録)。',
+    ],
+  },
+  {
     version: '0.25.3482',
     items: [
       '自動タレットがレベルで強くなるようになりました(設置時間 Lv1=10秒 / Lv2=13秒 / Lv3=15秒、Lv3はたまに爆発弾を撃ちます)。',
