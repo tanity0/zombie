@@ -289,6 +289,12 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
 - **止まっている作業は「なぜ止まっているか」を必ず書く(社長指示v0.25.3392)**: 進行報告・状態整理で
   タスクを列挙する時、待ち/停止中の項目には**停止理由(何を待っているか・誰のボールか)を毎回明記**する。
   「実行中」「待ち」だけの箇条書きは禁止(理由が書けない停止は、段取りが説明できていないサイン)。
+- **進行ボードHTML(社長指示v0.25.3433)**: 未完のタスク・話は「zombie進行ボード」(Artifact)に
+  概要・状態(停止理由込み)・説明で載せ、**完了したらトルツメ**。**毎回同じアーティファクトを更新し、
+  毎回の返信にリンクを貼る**。URL(固定・設計チャットが更新):
+  https://claude.ai/code/artifact/195b5630-8606-4f35-8f1e-ee413ff34d4f
+  (更新方法: scratchpadのzombie-tasks.htmlを編集して同パスで再publish。別セッションからは
+  Artifactツールに`url`でこのURLを渡して更新=新規URLを作らない)。
 
 ## Branch lock (READ FIRST — overrides everything)
 - **The ONLY development branch is `claude/chat-context-continuity-saxlH`.**
