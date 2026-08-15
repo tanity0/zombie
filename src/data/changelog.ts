@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3421',
+    items: [
+      'ゲーム内容の変更はありません(中盤イベントの時間表を設計書に正本として固定)。',
+    ],
+  },
+  {
     version: '0.25.3420',
     items: [
       '賞金首の出現が3分と7分の固定スケジュールになりました。',
