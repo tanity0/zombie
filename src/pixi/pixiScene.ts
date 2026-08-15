@@ -11862,6 +11862,10 @@ export class PixiScene {
         this.bountySlashArcKey.delete(id);
         this.bountySlashArcBornAt.delete(id);
         this.bountyPetalFxKey.delete(id);
+        // 手毬打ちの中断落下(v0.25.3462・案B)。個体が消える時は落ちかけの毬も片付ける。
+        const ballDrop = this.maikoBallDrop.get(id);
+        if (ballDrop) { ballDrop.sp.destroy(); this.maikoBallDrop.delete(id); }
+        this.maikoBoomLast.delete(id);
       }
     }
   }
@@ -22724,6 +22728,19 @@ export class PixiScene {
     // 全員に付ける」の対になる「同じ判断軸を揃える」)。
     const spawnEase = weaponSpawnEase(gameTime - (e.spawnedAt ?? -1e9), Infinity);
 
+    // 手毬打ちの中断落下(社長裁定v0.25.3462「案B」): 飛んでいる最中に技が中断されたら、
+    // 毬は消えずに**その場へ落ちて転がって**消える。正常終了(復路を走り切ってrecover)は
+    // 手元へ戻っている扱いなので落とさない。毎フレーム無条件で進める(中断の1フレームを逃さない)。
+    {
+      const boomFlying = bs === 'mk-boom-out' || bs === 'mk-boom-back';
+      const last = this.maikoBoomLast.get(e.id);
+      if (!boomFlying && last) {
+        if (bs !== 'mk-boom-recover') this.triggerMaikoBallDrop(e.id, last.x, last.y, last.ux, last.uy, now);
+        this.maikoBoomLast.delete(e.id);
+      }
+      this.tickMaikoBallDrop(e.id, now);
+    }
+
     // §6.38実機FB2/FB7横断確認(社長指示「馬乗り/鋏/舞妓にも同型の穴が無いか確認」・v0.25.34xx):
     // 舞妓の毬の薙ぎ(変則ディレイ・naginata)/手毬打ち(boom)もbountyTick.tsの他3体と同じ「帯/線の
     // メテオが完走前に消える」穴を持っていた。毎フレーム無条件で呼ぶ(dashLineArm/zoneCapsuleArmと
@@ -22823,6 +22840,13 @@ export class PixiScene {
       // ★慣性バッチ: 射出スピンの残像(motion trail)。往路・復路とも毬の軌跡へ約30ms間隔で
       // 「その瞬間の毬」を置き去りにする(判定不変・分類②=派手側)。
       this.spawnMaikoTrailPuff(e.id, px, py, now / 30, 62, now);
+      // 中断落下(案B)用に「今の毬の位置と進む向き」を控える(中断された瞬間はもうこの分岐に来ない)。
+      {
+        const dxb = bs === 'mk-boom-out' ? btx - bfx : bfx - btx;
+        const dyb = bs === 'mk-boom-out' ? bty - bfy : bfy - bty;
+        const dlb = Math.hypot(dxb, dyb) || 1;
+        this.maikoBoomLast.set(e.id, { x: px, y: py, ux: dxb / dlb, uy: dyb / dlb });
+      }
       if (bs === 'mk-boom-out' && t >= 0.98) this.triggerPetalOnce(e.id, `boom-out:${e.bossStateUntil ?? 0}`, px, py, 6, now);
       return;
     }
@@ -22888,6 +22912,53 @@ export class PixiScene {
   private static readonly MAIKO_TRAIL_INTERVAL_MS = 30;
   private maikoTrailPool: { sp: Sprite; active: boolean; bornAt: number; baseScale: number }[] = [];
   private maikoTrailLastAt = new Map<string, number>();
+
+  // ---- 手毬打ちの中断落下(社長裁定v0.25.3462「案B」) -------------------------------------------
+  // 飛行中に技が中断(紫スタン/気絶/カウンター)されると、毬は**その場へ落ちて転がって消える**。
+  // 判定は中断と同時に消える(=これは絵だけ。ロジックは何も足していない)。
+  // ★慣性(CLAUDE.md MUST・社長注意「慣性気をつけてね」): 落下は重力で**加速**、前へ残った勢いは
+  //   **減速**しながら進み、着地で小さく弾んでから**転がって止まる**。止まってからフェード。
+  //   瞬間停止・瞬間消失はしない(回転も進んだ距離に比例=止まれば回転も止まる)。
+  private maikoBoomLast = new Map<string, { x: number; y: number; ux: number; uy: number }>();
+  private maikoBallDrop = new Map<string, { sp: Sprite; x: number; y: number; ux: number; uy: number; born: number }>();
+  private static readonly MAIKO_DROP_FALL_MS = 300;  // 落ちる(重力=ease-in)
+  private static readonly MAIKO_DROP_ROLL_MS = 520;  // 着地→転がって止まる(ease-out)
+  private static readonly MAIKO_DROP_FADE_MS = 320;  // 止まってから消える
+  private static readonly MAIKO_DROP_FWD_FALL_PX = 46; // 落ちるまでに前へ残る勢い
+  private static readonly MAIKO_DROP_FWD_ROLL_PX = 26; // 転がりで進む残り
+  private static readonly MAIKO_DROP_SIZE_PX = 62;     // 飛行中の毬と同寸から始める
+
+  private triggerMaikoBallDrop(id: string, x: number, y: number, ux: number, uy: number, now: number): void {
+    if (this.maikoBallDrop.has(id)) return; // 1回の中断につき1つ
+    const tex = getTexture('bounty-maiko-temari');
+    if (!tex) return;
+    const sp = new Sprite(tex);
+    sp.anchor.set(0.5, 0.5);
+    this.L.effectLayer.addChild(sp);
+    this.maikoBallDrop.set(id, { sp, x, y, ux, uy, born: now });
+  }
+
+  private tickMaikoBallDrop(id: string, now: number): void {
+    const d = this.maikoBallDrop.get(id);
+    if (!d) return;
+    const FALL = PixiScene.MAIKO_DROP_FALL_MS, ROLL = PixiScene.MAIKO_DROP_ROLL_MS, FADE = PixiScene.MAIKO_DROP_FADE_MS;
+    const el = now - d.born;
+    if (el >= FALL + ROLL + FADE) { d.sp.destroy(); this.maikoBallDrop.delete(id); return; }
+    const fT = Math.max(0, Math.min(1, el / FALL));
+    const rT = Math.max(0, Math.min(1, (el - FALL) / ROLL));
+    // 前進: 落下中は勢いが残って減速、着地後の転がりでさらにゆっくり止まる。
+    const fwd = PixiScene.MAIKO_DROP_FWD_FALL_PX * (1 - Math.pow(1 - fT, 2))
+      + PixiScene.MAIKO_DROP_FWD_ROLL_PX * (1 - Math.pow(1 - rT, 3));
+    const drop = 26 * fT * fT;                                   // 落下=加速(重力)
+    const bounce = Math.sin(Math.min(1, rT * 3) * Math.PI) * 7 * (1 - rT); // 着地の小さな弾み
+    d.sp.position.set(d.x + d.ux * fwd, d.y + d.uy * fwd + drop - bounce);
+    d.sp.rotation = fwd / PixiScene.MAIKO_DROP_FWD_ROLL_PX;      // 進んだ距離で回る=止まれば回転も止まる
+    const size = PixiScene.MAIKO_DROP_SIZE_PX * (1 - 0.18 * Math.min(1, el / (FALL + ROLL)));
+    d.sp.scale.set(size / Math.max(1, d.sp.texture.width));
+    const fadeT = Math.max(0, (el - FALL - ROLL) / FADE);
+    d.sp.alpha = 1 - fadeT * fadeT;
+    d.sp.visible = d.sp.alpha > 0.01;
+  }
   private spawnMaikoTrailPuff(bossId: string, x: number, y: number, rot: number, sizePx: number, now: number): void {
     if (now - (this.maikoTrailLastAt.get(bossId) ?? -1e9) < PixiScene.MAIKO_TRAIL_INTERVAL_MS) return;
     const tex = getTexture('bounty-maiko-temari');

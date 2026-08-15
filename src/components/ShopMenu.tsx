@@ -16,7 +16,8 @@ import {
 } from '../store/gameStore';
 import type { AmmoType, EquipSlot, ShopItemKey, SubWeaponKey } from '../types/game';
 import { CHARACTER_SUBWEAPON_KEYS } from '../data/campaign';
-import { merchantEquipShelf, equipmentById, equipmentDescription } from '../data/equipment';
+import { merchantEquipShelf, equipmentById, equipmentDescription, hasEquipIcon, equipIconName } from '../data/equipment';
+import { spritePath } from '../utils/spriteLoader';
 import { playSfx } from '../audio/audioManager';
 
 type ShopEntry = {
@@ -274,8 +275,24 @@ const ShopMenu: React.FC = () => {
                       : 'bg-purple-400/[0.03] border-purple-400/8 opacity-45'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
+                  {/* 社長指示v0.25.3462「装備が売ってるところ、ちゃんと装備の絵を表示して」:
+                      レベルアップ画面(UpgradeMenu)と同じ作法で、専用アイコンがあれば画像・
+                      無ければ絵文字(特殊=🏯/通常=🛡️)にフォールバックする。 */}
+                  <div className="flex items-start gap-2">
+                    <div className="w-11 h-11 shrink-0 flex items-center justify-center overflow-hidden bg-purple-400/10 text-xl">
+                      {entry.defId && hasEquipIcon(entry.defId)
+                        ? (
+                          <img
+                            src={spritePath(equipIconName(entry.defId))}
+                            alt=""
+                            className="w-full h-full object-contain"
+                            style={{ imageRendering: 'pixelated' }}
+                            draggable={false}
+                          />
+                        )
+                        : (equipmentById(entry.defId)?.special ? '🏯' : '🛡️')}
+                    </div>
+                    <div className="min-w-0 flex-1">
                       <div className="text-[13px] font-bold text-white truncate">{entry.name}</div>
                       <div className="text-[10px] leading-tight text-white/50">{entry.description}</div>
                     </div>

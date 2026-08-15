@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3462',
+    items: [
+      '舞妓の手毬打ち: 技を中断させると、毬が消えずにその場へ落ちて転がって消えるようになりました。',
+      '商人の装備の棚に、装備の絵(アイコン)が並ぶようになりました。',
+    ],
+  },
+  {
     version: '0.25.3461',
     items: [
       'トールの一閃が少し早く発動するようになりました(溜め3.0秒→2.4秒)。',
