@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3493',
+    items: [
+      'ゲーム内容の変更はありません(ヘッドレス計測の結果ファイルをN=30本番の数字へ更新)。',
+    ],
+  },
+  {
     version: '0.25.3492',
     items: [
       'ゲーム内容の変更はありません(ヘッドレス計測の結果ファイルを保存)。',

@@ -1,5 +1,27 @@
 # Development Log
 
+## v0.25.3493 — ヘッドレス計測(AI_DIRECTOR_METRICS)をN=30本番へ更新【2026-08-16 01:37 JST】
+- 社長指示「aiディレクター用の未定の項目を埋める目の指標を取るテストを、n数ある程度信用できる回数
+  ずつ取りたい」への対応。`research/DIRECTOR_METRICS.md`(前コミットのN=5参考値)を、指示どおりの
+  N=30(条件A=無効/B=relax/C=all、シードは条件間で共有=対応のある比較)へ更新。
+- **実行経路**: 既存のヘッドレスsim(`src/utils/playtestDriver.ts`の`createPlaytestRefs`/
+  `runPlaytestTick`)を再利用。RELAX/BUILDUPの適用(spawnEscへの反映)は`opts.directorApply`
+  (既定undefined=無効・既存の他計測テストは無影響)で有効化。新しいゲームループは書いていない。
+- **計測ツール自体の`src/store/directorMetrics.test.ts`/`src/utils/playtestDriver.ts`は前コミット
+  時点で既に主要部分がコミット済みだったため、本コミットでは`research/DIRECTOR_METRICS.md`のみ
+  更新している**(TICKS計算式の演算子優先順位バグ=`Math.round(300*60*60)/60*60`が意図せず
+  1,080,000tick=100分相当になっていた事故に気づいて既に修正済みの状態と合流。1ラン18000tick
+  =5分固定に修正)。
+- **結果概要(N=30・詳細はresearch/DIRECTOR_METRICS.md)**: 17指標×3比較(B-A/C-A/C-B)=51件の
+  対応のある比較のうち、統計的に有意な差は1件のみ(HP最低値の割合・B-A・+0.7ポイント=実用上小さい)。
+  他50件は「有意差なし」。配線調査(§4)と整合: RELAXのintervalMult/capMultは盤面構成パズル方式の
+  通常湧きには使われておらず(旧spawner専用の変数)、escMult/escBoostが効くspawnEscの土台
+  (`buildEsc`=戦力連動escalation)は戦力マージン1.1倍超で初めて動くため、5分の序盤ランでは
+  ほぼ0のままになりやすい——測定結果と配線の事実が一致する。
+- 追記した「5. 所見」節に、未定項目(既定ON化の可否・数値詰め)へつながる候補を4点(数値変更は
+  提案のみ・実装せず)。
+- 検証: typecheck+lint(エラー0)。
+
 ## v0.25.3492 — ヘッドレス計測の結果(N=5)を保存【2026-08-16 00:0x JST】
 - 廃止したヘッドレス計測バッチが最後に出力していた `research/DIRECTOR_METRICS.md`(N=5・ゲーム内300秒固定・
   A/B/Cでシード共有)を保存する。**本番の判断材料は社長側の実機AI計測(A/C各15ラン)**であり、
