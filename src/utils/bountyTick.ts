@@ -1290,8 +1290,9 @@ export const bountySpawnBlocked = (input: BountySpawnBlockInput): boolean =>
 // 加えて確認する専用の回数/CD条件。producer側(useGameLoop.ts)がgameTime/回数/CD/同時数/抑止ゲート/
 // 緩コマ判定を集めてこの純関数へ渡すだけにし、判定ロジック自体はここへ1本化する。
 // ---------------------------------------------------------------------------------------------
-/** 初回は5:00(ゲーム内時計)以降。 */
-export const BOUNTY_NATURAL_FIRST_MS = 300000;
+/** 初回は3:00(ゲーム内時計)以降。§6.38 v8.2(社長裁定2026-08-15「小ボスなので城ボスより前にも
+ * 出さないと。3分あたり」)。旧5:00。※ペア出現案は検討の末に不採用=1回1体のまま(v8.2参照)。 */
+export const BOUNTY_NATURAL_FIRST_MS = 180000;
 /** 1ランに最大2回(叩き台)。 */
 export const BOUNTY_NATURAL_MAX_COUNT = 2;
 /** 2回目までのCD=90秒(叩き台)。1回目に消費した瞬間から数える。 */
