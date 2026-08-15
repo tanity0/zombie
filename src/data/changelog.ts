@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3480',
+    items: [
+      'ゲーム内容の変更はありません(三段突きの仕様確定=社長裁定の反映)。',
+    ],
+  },
+  {
     version: '0.25.3479',
     items: [
       '噛みつきや幅のある突進など、一部の技で赤い帯の予告が全長そのままだった不具合を直し、他のボスと同じ「消え切った瞬間に当たる」予告に揃えました。',
