@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3461',
+    items: [
+      'トールの一閃が少し早く発動するようになりました(溜め3.0秒→2.4秒)。',
+    ],
+  },
+  {
     version: '0.25.3460',
     items: [
       '舞妓(変異)の水鳥乱舞: 着地の範囲を2倍に(そのぶん各段の予告時間も伸びました)。',

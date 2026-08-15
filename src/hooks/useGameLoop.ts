@@ -1007,7 +1007,9 @@ const THOR_SLOWWALK_MULT = 0.5;              // 更なる減速倍率(「さら�
 const THOR_SLOWWALK_MIN_INTERVAL_MS = 5000;  // 「たまに」の頻度(叩き台)
 const THOR_SLOWWALK_MAX_INTERVAL_MS = 9000;
 
-const THOR_ISSEN_WINDUP_MS = 3000;           // 一閃: 3秒溜め・赤く点滅して静止(社長指示)
+// 一閃の溜め。社長指示v0.25.3461「トールの一閃、もう少し発動早くていい」で 3000→2400。
+// 公平の掟(bossTelegraph): 帯の半幅80+自機14=94px → 必要900ms。2400msは十分上(=見てから避けられる)。
+const THOR_ISSEN_WINDUP_MS = 2400;           // 一閃: 溜め・赤く点滅して静止(旧3000)
 const THOR_ISSEN_DASH_MS = 280;              // 高速移動そのものの所要時間
 // 社長修正指示(v0.25.1321〜): 長さを半分(620→310)・幅を2倍(60→120)に変更。溜め中はプレイヤーを
 // 追わない(方向は溜め開始時点で固定・行動選択側でロック)。

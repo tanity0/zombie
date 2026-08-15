@@ -56,10 +56,11 @@ const PAIRS: [keyof typeof SOURCES, string, string][] = [
   ['angelBossTick', 'ACRASIEL_SPEAR_WINDUP_MS', 'ACRASIEL_SPEAR_WINDUP_MS_VIS'],
   ['angelBossTick', 'ACRASIEL_GAZE_WINDUP_MS', 'ACRASIEL_GAZE_WINDUP_MS_VIS'],
   // --- 裏ボス: ミーミル/トール/ヨルムンガルド(useGameLoop側・v0.25.2893で拡張) ---
-  ['mimirLaserTrack', 'MIMIR_LASER_WINDUP_MS', 'MIMIR_LASER_WINDUP_MS'],
-  ['useGameLoop', 'MIMIR_LASER_FIRE_MS', 'MIMIR_LASER_FIRE_MS'],
-  ['useGameLoop', 'MIMIR_LASER_RANGE', 'MIMIR_LASER_VIS_RANGE'],
-  ['useGameLoop', 'MIMIR_LASER_HALF_WIDTH', 'MIMIR_LASER_VIS_HALFWIDTH'],
+  // ★ミーミルのレーザー4定数(WINDUP/FIRE/RANGE/HALF_WIDTH)は **mimirLaserTrack.ts の1箇所に集約され、
+  //   pixiSceneは手写しではなくimportで読む**ようになった(v0.25.3130前後)。手写しが存在しない=
+  //   この表で見張る対象が無い(見張ろうとすると「pixiSceneに定数が見つからない」で必ず落ちる)。
+  //   ここを4行残したままだったため、このテストは**ずっと4件failのまま**だった(v0.25.3461で撤去)。
+  //   同型の再発防止: importで共有した定数は、この表から必ず外すこと。
   ['useGameLoop', 'MIMIR_BITE_WINDUP_MS', 'MIMIR_BITE_WINDUP_MS_VIS'],
   ['useGameLoop', 'JORM_COIL_WINDUP_MS', 'JORM_COIL_WINDUP_MS_VIS'],
   ['useGameLoop', 'THOR_ISSEN_WINDUP_MS', 'THOR_ISSEN_WINDUP_MS'],

@@ -1402,7 +1402,7 @@ const BOSS_SHADOW_TINT = 0x9a0000; // 暗赤(0x5a0000)→より赤く
 // §6.33(LASER-TRACK)の描画ゲート。フラグの正本は mimirLaserTrack.ts(状態機械/中断と同じ1本)。
 const MIMIR_TRACK_VIS_ENABLED = mimirTrackEnabled();
 // トール(ステージ5裏ボス)の独自攻撃の描画(視覚・useGameLoop のゲームプレイ値と揃える)。
-const THOR_ISSEN_WINDUP_MS = 3000;      // 一閃の溜め時間(進行度の算出用)
+const THOR_ISSEN_WINDUP_MS = 2400;      // 一閃の溜め時間(進行度の算出用・v0.25.3461で3000→2400)
 const THOR_ISSEN_DASH_MS = 280;         // 一閃の高速移動そのものの所要時間(フェード用)
 const THOR_ISSEN_VIS_HALFWIDTH = 80;    // 一閃の描画半太さ(当たり判定と同じ・社長修正指示で120の2/3へ)
 const THOR_HARAI_WINDUP_MS = 1000;      // 払いの予告(逆回転+並行ライン)時間
