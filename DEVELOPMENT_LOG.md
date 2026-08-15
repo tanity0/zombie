@@ -1,5 +1,53 @@
 # Development Log
 
+## v0.25.3435 — B7: 武器スプライト演出強化+慣性違反修正【2026-08-15 12:32 JST】
+- PACING_PUZZLE.md §7-15(出現・消滅の統一型)+技表GOの実装バッチ。実装チャット(Sonnetサブエージェント)。
+- **共通ヘルパ(新規)**: `weaponSpawnEase(elapsedSinceAppearMs, remainBeforeVanishMs)`(下からズレ上がり+
+  フェードイン/沈みながらフェードアウト・ease-out/ease-in cubic)と`weaponAppearEase(key, now)`
+  (継続描画されている武器の「呼ばれなくなってから一定ギャップが空いたら新規出現扱い」判定・gap=400ms)を
+  `pixiScene.ts`に追加(全ボス共通・コピペ実装なし)。
+- **作業1(出現・消滅)**: 賞金首4本(標識/鞭/鋏/毬)は各bossStateの windup経過ms / recover残りms から
+  ease配線(`drawBountyWeapon`呼び出し側)。毬(舞妓)はスポーン時刻(`e.spawnedAt`)基準で出現easeのみ
+  (常時オービットは維持)。ジブリルのランタン(`drawJibrilLantern`)・トール/ミゲル/ウリ/ラフィの剣
+  (共通`drawKatanaReady`)は`weaponAppearEase`で出現側を配線(despawn側は今回未対応=既存の即時OFFのまま。
+  理由: これらは「呼ばれ続ける限り持ち替えない」構造で、呼ばれなくなった後の数フレームを描き足す仕組みが
+  無いため。次バッチ候補)。bite-jaw/idol-fistは作業2の演出内で個別にease追加。
+- **作業2(技表GOの派手アクション)**: 全て判定・タイミング不変(絵のみ)。
+  - バス停: 射撃=反動キック(ease-out)。レーザー溜め=震え(windupTremorPx)→発射中は明滅
+    (ビーム本体と同じ0.9+0.1sin式)。押しのけ=振りかぶり→ease-outで薙ぎ抜く回転。
+  - 馬乗り: 3段コンボ=段ごとに向き反転する振り抜き回転(スミアと同期)。突進=頭上ぐるぐる
+    (角速度∝prog²)→発進。懲罰狙撃=前半ease-outで振り上げ→後半ease-inで地面へ叩きつけ。
+    ※アイドル「だらり垂れて波打つ」は実装せず=★未決(下記)。
+  - 鋏: `drawBountyWeapon`に`widthMul`引数を追加(2枚構成の素材が無いので回転+スケールで開閉を擬似)。
+    薙ぎ=開(1.7)→閉(1.0)ease-in+振り。跳びかかり=頭上で開いたまま(1.5)→着地で閉じる。
+    `fx/scissor-x-0..2`(命中閃)を新規配線(`bountyScissorFlashSprites`・薙ぎ命中/着地の2箇所)。
+    ※アイドル「小さくカチカチ開閉」は実装せず=★未決(下記)。
+  - 舞妓: 技前スカッシュ(`squashInflateMul`・sin波の一発バウンド・naginata/spin/suiu/boom/reposeの
+    各windup先頭)。乱舞(水鳥ホップ)=hop1→2→3で回転加速(spinDiv 90→72→54)+花びら増量(6→9→14)。
+    手毬打ちは既存の高速回転(now/30)のまま(残像=motion trailは今回未実装)。
+  - ラフィ/スカディ(扇): `syncSkadiHazards`で「扇内の直近発射時刻」を共有し、未発射の刃へ240msの
+    ease-out反動キック(開き直り)を追加。
+  - ミーミル(顎): `drawBiteJaws`呼び出しに開き際の震え(2軸windupTremorPx)+閉じ切り直後の
+    一瞬の輝度ブースト(残像感)を追加。
+  - 城ボス銃: `drawGun`/`drawBoltGun`両クロージャの反動を線形→ease-outへ差し替え+
+    `drawBossGunMuzzle`(新規pooled sprite・`fx/muzzle-flash`を1.6倍で焼く)を発射直後110msだけ表示。
+  - アイドル(拳): 突き出し中(reach→1)に直交方向の握り込み震え+命中直後の一瞬の輝度ブースト。
+- **作業3(INERTIA_LEDGER.md 5件修正)**: #1画面外ボスマーク(`bossMarkFx`でoffscreen往復にease)/
+  #2アイテムドロップ出現(`PickupView.bornAt`+pivot-scale trickでeaseOutBack pop-in+drop。マグネット
+  吸引の座標計算は不変)/#4サブウェポン設置物(盾は既に§7-15型実装済みと判明=無変更。デコイに新規追加・
+  タレットの線形popをease-out+dropへ差し替え)/#5城召喚魔法陣(出現側にease-inのalpha、回転を等速→
+  ease-outへ)。#6/#7は例外候補のまま未着手(社長裁定待ち)。ステータスをresearch/INERTIA_LEDGER.md §5に追記。
+- **★未決(PACING_PUZZLE.md §7-15直下に記載)**: 馬乗り(鞭)アイドル「だらり垂れて波打つ」/鋏アイドル
+  「小さくカチカチ開閉」は、確定済みの裁定(v0.25.3408「武器スプライトは技の予兆〜攻撃の間だけ表示」)と
+  矛盾するため未実装。案A(確定裁定優先・今回はこちら)/案Bを提示し社長裁定を仰ぐ。
+- **検証**: `npm run typecheck`(0エラー)・`npm run lint`(0エラー・既存warning 16件のみ=無関係)・
+  `npx madge --circular`(既存1件のまま増加なし・pixiScene.tsと無関係のgameStore⇄ghostBuild⇄weaponUtils)。
+  描画専用の変更(状態機械に触れていない)のためユニットテストは対象外(掟どおり未実行)。
+- **負荷**: 1/10(全て描画オフセット/alpha/scale/rotationのlerp。per-frame Graphics再描画・新規フィルタ
+  なし。boss-gunマズルフラッシュ/鋏命中閃は短命pooled spriteで、同時数は攻撃中の該当ボス数に比例=小さい)。
+- 主な変更ファイル: `src/pixi/pixiScene.ts`(描画のみ)、`research/INERTIA_LEDGER.md`(ステータス追記)、
+  `PACING_PUZZLE.md`(§7-15直下にB7実装済み+★未決)、`src/data/changelog.ts`、`package.json`。
+
 ## v0.25.3434 — 新仕様ベースライン(5ラン)の分析【2026-08-15 15:50 JST】
 - results/20260815-0248分析: ①ボットは全ラン3:00前に死亡=ランク床・賞金首自然湧きはボットで検証不能
   (社長の手動実機が最短) ②BOT_REPORTのdda欄が実値を映していない疑い(全ラン0→0・付随値0)=計測口の
