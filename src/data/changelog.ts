@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3457',
+    items: [
+      '変異体対策室で小ボス(賞金首)が一番上に並ぶようになりました(前回の修正が画面に届いていませんでした)。',
+    ],
+  },
+  {
     version: '0.25.3456',
     items: [
       '斬撃(刀・近接の斬り)が、薄いまま先に出たり後に残ったりせず、斬った瞬間に最大で出てすぐ消えるようになりました。',

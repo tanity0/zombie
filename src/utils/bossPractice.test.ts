@@ -1,6 +1,6 @@
 // ボスラッシュ(練習モード)の台帳テスト。BOSS_MAKER.md §20-8-b の受け入れ条件を機械化する。
 import { describe, it, expect } from 'vitest';
-import { GLEN_PHASE2_SLOT_KEY, PRACTICE_SLOTS, practiceSlotByKey, practiceBossHealth } from './bossPractice';
+import { GLEN_PHASE2_SLOT_KEY, PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, practiceSlotByKey, practiceBossHealth } from './bossPractice';
 import { GHOST_DOSSIER_SLOTS } from './ghostDossier';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 import { STAGE_BOSS_HEALTH_BY_STAGE } from '../config/bossHealth';
@@ -98,6 +98,13 @@ describe('賞金首の掲載枠', () => {
     const ghostIdxs = PRACTICE_SLOTS.map((s, i) => (!isBountyType(s.bossType) ? i : -1)).filter(i => i >= 0);
     const bountyIdxs = PRACTICE_SLOTS.map((s, i) => (isBountyType(s.bossType) ? i : -1)).filter(i => i >= 0);
     expect(Math.max(...bountyIdxs)).toBeLessThan(Math.min(...ghostIdxs));
+  });
+
+  // ★v0.25.3457の教訓の機械化: 上の台帳順だけでは画面は変わらない(対策室はカテゴリで区切って描く)。
+  // **表示順の正=PRACTICE_CATEGORY_ORDER** なので、こちらの先頭も固定する。
+  it('画面のカテゴリ順も小ボス(賞金首)が先頭', () => {
+    expect(PRACTICE_CATEGORY_ORDER[0]).toBe('bounty');
+    expect([...PRACTICE_CATEGORY_ORDER].sort()).toEqual(['bounty', 'gate', 'hidden', 'story']);
   });
 
   it('出撃先はlab/corridorではないstage-1・強制出現は?bountynow相乗り・本編到達可能', () => {

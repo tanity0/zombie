@@ -17,7 +17,7 @@ import { bossHintsFor } from '../data/bossHints';
 import { loadEncounteredBosses } from '../utils/bossEncounter';
 import { GHOST_DOSSIER_CATEGORY_LABEL, type GhostDossierCategory } from '../utils/ghostDossier';
 import { GHOST_DOSSIER_SLOTS } from '../utils/ghostDossier';
-import { PRACTICE_SLOTS, practiceBossHealth, type PracticeSlot } from '../utils/bossPractice';
+import { PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, practiceBossHealth, type PracticeSlot } from '../utils/bossPractice';
 import { isBountyType } from '../utils/enemyUtils';
 import type { CharacterClass } from '../types/game';
 
@@ -149,7 +149,9 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
         </span>
       </div>
 
-      {(['story', 'gate', 'hidden', 'bounty'] as const).map(cat => {
+      {/* 社長指示v0.25.3444「小ボスは一番上だろ」: 表示順の正は bossPractice.PRACTICE_CATEGORY_ORDER。
+          v3444では台帳の並びだけ直したが、画面はカテゴリ区切りで描くため変わっていなかった(v3457で是正)。 */}
+      {PRACTICE_CATEGORY_ORDER.map(cat => {
         const slots = PRACTICE_SLOTS.filter(s => categoryOf(s) === cat);
         if (slots.length === 0) return null;
         return (

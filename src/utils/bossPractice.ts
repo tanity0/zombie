@@ -209,6 +209,12 @@ const BOUNTY_PRACTICE_SLOTS: readonly PracticeSlot[] = BOUNTY_PRACTICE_TYPES.map
 // 表示順=小ボス(賞金首)が一番上(社長指示v0.25.3444「小ボスは一番上だろ」。旧: 既存ボス群の後ろ)。
 export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, ...GHOST_DERIVED_SLOTS];
 
+// ★変異体対策室のカテゴリ表示順の正(社長指示v0.25.3444「小ボスは一番上だろ」)。
+// v3444では上の PRACTICE_SLOTS の並びだけを直したが、画面(BossRush.tsx)は**カテゴリごとに区切って
+// 描く**ので並びが変わっていなかった(社長再指摘v0.25.3457)。順番の定義はここ1箇所にして、
+// 画面はこれをそのまま回す=同じ取りこぼしを繰り返さない(bossPractice.testで先頭を機械化)。
+export const PRACTICE_CATEGORY_ORDER = ['bounty', 'story', 'gate', 'hidden'] as const;
+
 export const practiceSlotByKey = (slotKey: string): PracticeSlot | undefined =>
   PRACTICE_SLOTS.find(s => s.slotKey === slotKey);
 
