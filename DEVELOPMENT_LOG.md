@@ -1,5 +1,28 @@
 # Development Log
 
+## v0.25.3488 — バス停「三段突き」の見た目是正: 標識の突き切り届き先+白い突きの風圧【2026-08-15 23:09 JST】
+- **社長の実機指摘(そのまま)**: 「バス停の三段突き、赤ラインの先端まで武器のヴィジュアルが届いてない
+  様に見える。突くヴィジュアルを伸ばして、トールの突きと同じく白いダッシュの突き撃エフェクト入れて。」
+- **①標識の長さ/位置**: `bs2 === 'br-triple-1'/'2'/'3'` の突き出し(`pixiScene.ts`)で、標識の
+  中心位置`reachPx`を `55 + 125*lungeT`(突き切りで中心180px→先端245px)から
+  **`55 + 180*lungeT`(突き切りで中心235px→先端300px)** へ逆算し直した。先端=中心+標識半長65px
+  (`lengthPx=130`固定・全バス停共通の規約は不変)。突き切り(`lungeT=1`)の瞬間に先端300pxが
+  赤帯の先端(`BR_TRIPLE_REACH=300`)へちょうど一致する。判定・帯の寸法・タイミングは無改修。
+- **②白い風圧**: `drawKatanaSlash`内にあった突き(thrust)専用の白い風圧(`fx/dash-wind`)描画を
+  **`drawThrustWind`として共通private関数に切り出し**(規約=先端を命中点に置き、扇は手元側へ後方に
+  広がる/judgeLenの0.55→1.3倍へease-outで伸び切る/フェードインなし、を維持)、`drawKatanaSlash`
+  (トール突き含む)からもこの共通関数を呼ぶよう置き換えた。三段突きの各段(`bs2==='br-triple-1/2/3'`)
+  にも同関数を新規呼び出しし、`bountyThrustWindSprites`(id=boss.idの1本使い回し・resetActorFxDefaults
+  で既定OFF・削除時destroy)で管理。先端位置=標識の突き切り先端と同じ点(帯の先端)、tt=突き出し+戻り
+  合計150msに対する進行度(段間70msは自動でtt≥1→alpha0)。3段とも`brTripleAngles(lockedAng)[stepIdx]`
+  由来の`ang`をそのまま使うため、左/中/右で自動的に向きが変わる。
+- **③慣性**: 突き出し(ease-out)→戻り(ease-in)の既存タイミングにそのまま乗せており、瞬間出現/瞬間
+  停止は無い(風圧のフェードもtt<10%で0→以後フェードのみ・長さeaseが伸びの慣性を担う=CLAUDE.md MUST)。
+- **ファイル**: `src/pixi/pixiScene.ts`(描画のみ改修。`src/utils/bountyTriple.ts`/`bountyTick.ts`は無改修)。
+- **検証**: `npm run typecheck`(エラー0)・`npm run lint`(エラー0・既存warningのみ)・
+  `npx vitest run src/utils/bountyTriple.test.ts src/utils/bountyTick.test.ts`(96 tests 全pass)。
+- **次の引き継ぎ**: 実機確認は社長が行う(このプロジェクトのテスト運用どおり・ヘッドレス実走はしていない)。
+
 ## v0.25.3487 — 遅延起爆(giantDelayedHits)の帯にも流星の描き→消しを適用+全帯/線のタイミング監査【2026-08-15 22:36 JST】
 - **社長の実機指摘(そのまま)**: 「帯状の流星、タイミング合ってない時ありそうなのと、まだ実装され
   てないのがありそう。ステージ1城ボスのコウモリの羽とか」。

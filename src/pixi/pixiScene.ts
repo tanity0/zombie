@@ -3221,6 +3221,10 @@ export class PixiScene {
   // sprite=全技この1本を使い回す(§6.38武器素材台帳の原則どおり)。位置/角度/表示のON-OFFは
   // drawEnemy側の各技分岐が毎フレーム更新する(既定OFFはresetActorFxDefaults)。
   private bountyWeaponSprites = new Map<string, Sprite>();
+  // §6.38三段突き(社長指摘v0.25.3488「突くヴィジュアルを伸ばして、白いダッシュの突き撃エフェクト入れて」):
+  // 突きの白い風圧(fx/dash-wind・drawThrustWindと同じ規約)。boss.idごとに1枚のpooled sprite
+  // (3段とも同時には出ない=使い回し)。
+  private bountyThrustWindSprites = new Map<string, Sprite>();
   // 馬乗り3段コンボの鞭スミア(fx/whip-smear-0/1/2・段対応)。コンボ段ごとに1枚のpooled sprite。
   private bountyWhipSmearSprites = new Map<string, Sprite>();
   // 技表GO: 鋏(bounty-balance)の命中閃(fx/scissor-x-0..2・初配線)。派手側=判定より大きく出す。
@@ -11856,6 +11860,8 @@ export class PixiScene {
         if (bountySummonSp) { bountySummonSp.destroy(); this.bountySummonSprites.delete(id); }
         const bountyWeaponSp = this.bountyWeaponSprites.get(id);
         if (bountyWeaponSp) { bountyWeaponSp.destroy(); this.bountyWeaponSprites.delete(id); }
+        const bountyThrustWindSp = this.bountyThrustWindSprites.get(id);
+        if (bountyThrustWindSp) { bountyThrustWindSp.destroy(); this.bountyThrustWindSprites.delete(id); }
         const bountyWhipSp = this.bountyWhipSmearSprites.get(id);
         if (bountyWhipSp) { bountyWhipSp.destroy(); this.bountyWhipSmearSprites.delete(id); }
         const scissorFlashSp = this.bountyScissorFlashSprites.get(id);
@@ -13975,6 +13981,8 @@ export class PixiScene {
       if (weaponSp) weaponSp.visible = false;
       const smearSp = this.bountyWhipSmearSprites.get(e.id);
       if (smearSp) smearSp.visible = false;
+      const thrustWindSp = this.bountyThrustWindSprites.get(e.id);
+      if (thrustWindSp) thrustWindSp.visible = false;
     }
     // 社長裁定(v0.25.3437): idolのハンドガン(bountyWeaponSpritesをキー=e.idで流用)も同じ作法で
     // 既定OFF。点けるのはdrawEnemyのidol射撃分岐だけ(技中のみ表示=v3408と同じ扱い)。
@@ -14701,12 +14709,28 @@ export class PixiScene {
         } else {
           lungeT = 0;
         }
-        const reachPx = 55 + 125 * lungeT; // 構え55px→突き切りで180px相当(絵の尺=判定寸法とは別)
+        // 社長指摘v0.25.3488「赤ラインの先端まで武器のヴィジュアルが届いてない」是正: 突き切り
+        // (lungeT=1)の瞬間に標識の先端(=中心+標識半長65px)が赤帯の先端(BR_TRIPLE_REACH=300px)へ
+        // ぴったり届くよう逆算(構え55px→突き切りで235px。235+65=300)。旧180px相当(構え55+125)は
+        // 先端245pxまでしか届かず、帯の先端300pxより手前で終わっていた。判定・帯の寸法は不変。
+        const reachPx = 55 + 180 * lungeT;
         this.drawBountyWeapon(
           e.id, 'bounty-ranged-sign',
           cx + Math.cos(ang) * reachPx, cy - e.height * 0.15 + Math.sin(ang) * reachPx,
           ang + Math.PI / 2, 130, 0.95,
         );
+        // 白い風圧(社長指示v0.25.3488「トールの突きと同じ白いダッシュの突き撃エフェクト入れて」):
+        // drawThrustWindと同じ規約=先端を標識の突き切り位置(帯の先端と同じ点)に置き、扇は手元側へ
+        // 後方に広がる。tt=突き出し+戻りの合計(150ms)に対する進行度(段間70msは自動でtt>=1→alpha0)。
+        let windSp = this.bountyThrustWindSprites.get(e.id);
+        if (!windSp) {
+          windSp = new Sprite(); windSp.anchor.set(0, 0.5); windSp.blendMode = 'add';
+          this.L.effectLayer.addChild(windSp); this.bountyThrustWindSprites.set(e.id, windSp);
+        }
+        const windTipX = cx + Math.cos(ang) * BR_TRIPLE_REACH;
+        const windTipY = (cy - e.height * 0.15) + Math.sin(ang) * BR_TRIPLE_REACH;
+        const windTt = stepElapsed / (BR_TRIPLE_THRUST_MS + BR_TRIPLE_RETURN_MS);
+        this.drawThrustWind(windSp, windTipX, windTipY, ang, BR_TRIPLE_REACH, windTt);
         if (stepElapsed >= BR_TRIPLE_THRUST_MS) {
           // 命中閃(既存のscissor閃/br-pushの斬撃弧と同じ作法=分類②「派手さ」。段ごとに1回だけ発火)。
           this.triggerBountySlashArcOnce(
@@ -22322,6 +22346,32 @@ export class PixiScene {
   //   children[4]=突きの風圧が、前の振りの最後のalphaのまま置き去り**になり、次の構えの間ずっと
   //   薄く見えていた(=「出る前から薄い」と「前の攻撃の残り」は同じ1つのバグ)。
   //   構え/溜めでは振りの絵を全部消す。**このコンテナに絵を足す時は必ずここも通ること。**
+  // トールの突き/バス停三段突き 共通: 突きの白い風圧(fx/dash-wind、②派手さの絵=判定なし)。
+  // 素材の尖った先端が-x側なので、anchor(0,0.5)+rotation=angle+PI で**先端を命中点(tx,ty)に置き、
+  // 扇は手元(fx,fy)側=判定線の後方へ広がる**(drawDashWindと同じ規約)。judgeLen=判定線の長さ
+  // (hypot(tx-fx,ty-fy))を基準に、tt(0→1=突きの進行度)で0.55→1.3倍へease-outして伸び切る
+  // (慣性=CLAUDE.md「加減速のない動き禁止」への対応・瞬間出現させない)。フェードインなし(tt<10%は
+  // 完全非透明=0)。元はdrawKatanaSlash内のみに書かれていたが、同じ見え方を別の技(三段突き)へ
+  // 出すため共通関数へ切り出した(社長指示v0.25.3488「トールの突きと同じ絵を同型で入れて」)。
+  private drawThrustWind(
+    sp: Sprite, tx: number, ty: number, angle: number, judgeLen: number, tt: number, alphaMul = 1,
+  ): void {
+    const tex = getTexture('fx/dash-wind');
+    if (!tex) { sp.visible = false; return; }
+    if (sp.anchor.x !== 0 || sp.anchor.y !== 0.5) sp.anchor.set(0, 0.5);
+    if (sp.texture !== tex) sp.texture = tex;
+    const ttc = Math.max(0, Math.min(1, tt));
+    const we = 1 - Math.pow(1 - Math.min(1, ttc / 0.45), 3); // 突き出し(0→45%)で減速しながら伸び切る
+    const wlen = Math.max(80, judgeLen * (0.55 + 0.75 * we)); // 伸び切りで判定長の1.3倍(はみ出してよい絵)
+    sp.scale.set(wlen / Math.max(1, tex.width)); // 縦横同倍率=素材の扇の比率を保つ
+    sp.rotation = angle + Math.PI;
+    sp.position.set(tx, ty);
+    // フェードイン廃止(社長指摘v0.25.3455): 突き出しの頭(10%)で一気に出して以後フェードだけ
+    // (伸びの慣性は上の長さeaseが担う)。
+    sp.alpha = (ttc < 0.10 ? 0 : 0.95 * (1 - Math.max(0, (ttc - 0.45) / 0.55))) * alphaMul;
+    sp.visible = sp.alpha > 0.01;
+  }
+
   private drawKatanaSlash(
     fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
     bladeLenFrac: number, katanaLength: number, katanaTexName: string,
@@ -22391,28 +22441,16 @@ export class PixiScene {
       arcSp.visible = false;
     }
     // 突き(thrust)の絵(社長指示v0.25.3452「その白いやつを突きに使って」): 弧の代わりに突進で使っている
-    // 白い風圧(fx/dash-wind)を突きの軸へ乗せる。素材の尖った先端が-x側=突きの切っ先側なので、
-    // anchor(0,0.5)+rotation=angle+PI で**先端を命中点(tx,ty)に置き、扇は手元(fx,fy)側へ後ろ向きに広がる**
-    // (drawDashWindと同じ規約)。判定なし=②派手さの絵なので判定線より少し長く出す。
-    // 慣性(CLAUDE.md・現実基準): 長さは伸び切りへ ease-out(突き出して減速)=瞬間出現させない。
+    // 白い風圧(fx/dash-wind)を突きの軸へ乗せる。規約・実装は drawThrustWind に切り出し済み
+    // (v0.25.3488・バス停三段突きと共用するため=社長指示「トールの突きと同じ絵を同型で」)。
     let windSp = c.children[4] as Sprite | undefined;
     if (!windSp) {
       windSp = new Sprite(); windSp.anchor.set(0, 0.5); windSp.blendMode = 'add';
       c.addChild(windSp);
     }
-    const windTex = style === 'thrust' ? getTexture('fx/dash-wind') : undefined;
-    if (windTex && windSp) {
-      if (windSp.texture !== windTex) windSp.texture = windTex;
-      const we = 1 - Math.pow(1 - Math.min(1, tt / 0.45), 3); // 突き出し(0→45%)で減速しながら伸び切る
-      const wlen = Math.max(80, length * (0.55 + 0.75 * we)); // 伸び切りで判定長の1.3倍(はみ出してよい絵)
-      windSp.scale.set(wlen / Math.max(1, windTex.width)); // 縦横同倍率=素材の扇の比率を保つ
-      windSp.rotation = angle + Math.PI;
-      windSp.position.set(tx, ty);
-      // 弧と同じ是正(社長指摘v0.25.3455「ツキも(出る前から薄く見える)」): フェードインを廃止し、
-      // 突き出しの頭(10%)で一気に出して以後フェードだけ(伸びの慣性は上の長さeaseが担う)。
-      windSp.alpha = tt < 0.10 ? 0 : 0.95 * (1 - Math.max(0, (tt - 0.45) / 0.55));
-      windSp.visible = windSp.alpha > 0.01;
-    } else if (windSp) {
+    if (style === 'thrust') {
+      this.drawThrustWind(windSp, tx, ty, angle, length, tt);
+    } else {
       windSp.visible = false;
     }
     if (burst) {
@@ -24356,6 +24394,7 @@ export class PixiScene {
     for (const o of this.angelEyeSprites.values()) o.destroy();
     for (const o of this.bountySummonSprites.values()) o.destroy();
     for (const o of this.bountyWeaponSprites.values()) o.destroy();
+    for (const o of this.bountyThrustWindSprites.values()) o.destroy();
     for (const o of this.bountyWhipSmearSprites.values()) o.destroy();
     for (const o of this.bountyScissorFlashSprites.values()) o.destroy();
     for (const o of this.bossGunMuzzleSprites.values()) o.destroy();
