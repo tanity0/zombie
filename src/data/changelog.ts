@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3470',
+    items: [
+      'ゲーム内容の変更はありません(テストの不安定さの修正)。',
+    ],
+  },
+  {
     version: '0.25.3469',
     items: [
       '賞金首「バス停」の遠距離攻撃が単調な等間隔撃ちから、3点バースト・扇状3発・弾速の速い溜め撃ちの',

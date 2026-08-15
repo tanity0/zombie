@@ -10,6 +10,7 @@ import {
   BOUNTY_NATURAL_FIRST_MS, BOUNTY_NATURAL_MAX_COUNT, BOUNTY_NATURAL_SPAWN_AT_MS,
   BR_ESCORT_COUNT as BR_ESCORT_COUNT_FOR_TEST,
   MK_REPOSE_MS, MK_SUIU_RADIUS, MK_SUIU_HOP_INTERVAL_CHOICES, MK_SUIU_HOP_TRAVEL_MS,
+  BR_SHOT_UNIT_MS,
 } from './bountyTick';
 import { bossLeashDistancePx } from './bossEngagement';
 import { usesMimirLaser } from './mimirLaserTrack';
@@ -540,27 +541,52 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       });
 
       it('溜め中(charge)は速度が0へ向けて減衰し、発射後は再び速度が戻る(慣性・瞬間停止禁止=CLAUDE.md MUST)', () => {
-        // kite退却中(dist<BR_KITE_MIN)にして「動いている速度」を作り、状態sを直接覗いてcharge
-        // サイクルに入るのを待つ(brPatternはBountyTickStateの内部状態=setupTypeがstateとして返す)。
-        const { id, step, state } = setupType('bounty-ranged', { x: 250, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER });
-        let sawDecelerate = false, sawReaccelerate = false;
-        let prevSpeed = Infinity;
-        for (let i = 0; i < 3000 && !(sawDecelerate && sawReaccelerate); i++) {
+        // 型の抽選は確率任せだと「テスト時間内に一度もchargeが選ばれない」ことがあり得て不安定になる
+        // (実測: 60秒でも一度も出ない試行が発生した)ため、ここではBountyTickState(state)を直接
+        // 上書きしてchargeサイクルの溜め中/発射後recoverを強制的に作る。抽選そのものの検証は
+        // bountyShots.test.tsの統計テストが担い、ここは「tickRangedがs.brPattern==='charge'の時に
+        // 実際にbrChargeWindupSpeedMult/brChargeRecoverSpeedMultを移動速度へ配線しているか」だけを見る。
+        const { id, step, state, gt } = setupType(
+          'bounty-ranged', { x: 650, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER }, // 560<dist<700=approach継続+leash内
+        );
+        // runBountyTickの最初の1回はactiveId初期化でresetBountyRunState(stateの全リセット)が走る
+        // ため、まず0ms分だけ回してそれを消費してから強制上書きする(でないと直後の上書きが消える)。
+        step(0);
+        // 溜め中を強制する: brPattern='charge'・brShotsRemaining=1(未発射)・bossNextActionAt=
+        // 現在時刻+350ms(=発射時刻・#4)・brCycleEndAt=現在時刻+1100ms(=次サイクル開始時刻・#3)。
+        state.brPattern = 'charge';
+        state.brShotsRemaining = 1;
+        state.brCycleEndAt = gt() + BR_SHOT_UNIT_MS;
+        useGameStore.setState(s => ({
+          enemies: s.enemies.map(e => e.id === id ? { ...e, bossNextActionAt: gt() + 350 } : e),
+        }));
+        const speeds: number[] = [];
+        for (let i = 0; i < 34; i++) { // 340ms分(10ms刻み)=まだ発射していない(350ms未満)ことを保証する余裕
           step(10);
           const cur = useGameStore.getState().enemies.find(e => e.id === id);
-          if (!cur) continue;
-          const spd = Math.hypot(cur.vx ?? 0, cur.vy ?? 0);
-          if (state.brPattern === 'charge' && state.brShotsRemaining > 0) {
-            // 溜め中: 速度は単調に0へ向かうはず(前フレーム以下)。
-            if (spd < prevSpeed - 0.001) sawDecelerate = true;
-          } else if (state.brPattern === 'charge' && state.brShotsRemaining === 0) {
-            // 発射後recover中: 速度が前フレームより増えていれば再加速を確認できたことにする。
-            if (spd > prevSpeed + 0.001) sawReaccelerate = true;
-          }
-          prevSpeed = spd;
+          speeds.push(Math.hypot(cur?.vx ?? 0, cur?.vy ?? 0));
         }
-        expect(sawDecelerate).toBe(true);
-        expect(sawReaccelerate).toBe(true);
+        // まだ溜め中(未発射)であること=このサンプルが確実にwindup区間だけであることの前提確認。
+        expect(state.brShotsRemaining).toBe(1);
+        // 単調とまでは要求しない(離散刻み+resolveMoveの丸めを許容)が、終盤は序盤よりはっきり遅い
+        // (ease-outで1→0へ減速)ことを確認する。
+        const earlyAvg = speeds.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
+        const lateAvg = speeds.slice(-5).reduce((a, b) => a + b, 0) / 5;
+        expect(lateAvg).toBeLessThan(earlyAvg * 0.3);
+
+        // 発射をまたぐ(残り10ms+余裕分)。以後750msで速度が戻ることを見る。
+        for (let i = 0; i < 3; i++) step(10);
+        expect(state.brPattern).toBe('charge');
+        expect(state.brShotsRemaining).toBe(0); // 発射済み=recoverへ入っている
+        const recoverSpeeds: number[] = [];
+        for (let i = 0; i < 75; i++) { // 750ms分(10ms刻み)=recover完了まで
+          step(10);
+          const cur = useGameStore.getState().enemies.find(e => e.id === id);
+          recoverSpeeds.push(Math.hypot(cur?.vx ?? 0, cur?.vy ?? 0));
+        }
+        const recoverEarlyAvg = recoverSpeeds.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
+        const recoverLateAvg = recoverSpeeds.slice(-5).reduce((a, b) => a + b, 0) / 5;
+        expect(recoverLateAvg).toBeGreaterThan(recoverEarlyAvg * 2); // ease-inで0→1、序盤より終盤が明らかに速い
       });
 
       it('割り込み後に射撃サイクルが持ち越されない(#7): 押しのけが挟まるとサイクル状態がクリアされる', () => {

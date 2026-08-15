@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.3470 — v0.25.3469の統合テスト1件が不安定だったのを是正【2026-08-15 18:54 JST】
+- push直後に確認のため`bountyTick.test.ts`を複数回まわしたところ、追加した「溜め中(charge)は速度が
+  0へ向けて減衰し、発射後は再び速度が戻る」テストが**確率で失敗する**ことが判明(型3種の抽選は
+  `Math.random`任せなので、60秒のシミュレーション内で一度もchargeが引かれない試行があった)。
+  実装(`bountyTick.ts`/`bountyShots.ts`)側の挙動は正しいまま=**テストコードだけの不具合**。
+- 是正: `BountyTickState`(テスト側に公開されている`state`)を直接上書きしてchargeサイクルの
+  溜め中/発射直後を確定的に作るテストへ書き換えた。決定的になったことを6回連続の再実行で確認。
+  併せて、初回tickでのactiveId初期化(`resetBountyRunState`が全リセットする)を先に1回(`step(0)`)
+  消費してから上書きする必要があることも判明したので反映(でないと上書きが直後に消される)。
+- 変更: `src/utils/bountyTick.test.ts` のみ。検証: typecheck+lint(エラー0)+
+  `npx vitest run src/utils/bountyShots.test.ts src/utils/bountyTick.test.ts` を3回連続実行し、
+  毎回 85 passed / 1 failed(舞妓「毬回し」の無関係な既存失敗のみ)で安定を確認。
+
 ## v0.25.3469 — バス停の中立射撃に緩急(§6.38 v10・型3種burst/fan/charge)【2026-08-15 18:37 JST】
 - **実装対象**: PACING_PUZZLE.md §6.38 v10「バス停の中立射撃に緩急」。賞金首「バス停」
   (bounty-ranged)の中立(chase中の"ポツポツ撃ち")を等間隔単発から型3種のサイクル抽選へ差し替え。
