@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3427',
+    items: [
+      'ゲーム内容の変更はありません(施設(POI)の配置・スケール修正の仕様を確定し、実装を発注)。',
+    ],
+  },
+  {
     version: '0.25.3426',
     items: [
       'バス停(変異)のレーザー照準がプレイヤーを追いかけてこない不具合を修正しました(ミーミルと同じ追尾になります)。',
