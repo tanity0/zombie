@@ -234,6 +234,30 @@ export const relaxSpawnAdjust = (macro: DirectorMacro): RelaxSpawnAdjust =>
     ? { escMult: RELAX_ESC_MULT, intervalMult: RELAX_INTERVAL_MULT, capMult: RELAX_CAP_MULT }
     : { escMult: 1, intervalMult: 1, capMult: 1 };
 
+/**
+ * ★RELAXの湧きレバー(間隔/上限)を**パズル方式のスポーナー**へ適用する(社長指示v0.25.3495
+ * 「リラックスさせて」)。
+ *
+ * 経緯(なぜ後から生えたか): `intervalMult`/`capMult` を読んでいたのは useGameLoop.ts の**旧**
+ * スポーナーだけで、その分岐は `!puzzleActiveNow`(=城ボス台本フェーズ/?puzzle=0/ラボ/屋内/
+ * チュートリアル)でしか走らない。つまり**通常プレイでは3レバーのうち2本が一度も効いていなかった**
+ * (v0.25.3493のヘッドレス計測で「51比較中ほぼ全て有意差なし」になった構造的な理由)。
+ * パズル方式のスポーナー(directorTick.ts の runKomaBoardMaintenance)は盤面上限(capForState)と
+ * 湧きCD(cdForKoma)を持つので、その2つへ同じ倍率を掛けるのがこの関数。
+ *
+ * 上限は**最低1**で床を張る(倍率をいくら下げても「1体も湧かない」にはしない=長期戦で弾薬・回復の
+ * ドロップ経路が枯れないため。ボス交戦中の強制リラックス(bossRelax)が「ゼロではない」を保つのと
+ * 同じ理由)。
+ */
+export const applyRelaxSpawnCadence = (
+  cap: number,
+  cdMs: number,
+  adj: Pick<RelaxSpawnAdjust, 'intervalMult' | 'capMult'>,
+): { cap: number; cdMs: number } => ({
+  cap: Math.max(1, Math.round(cap * adj.capMult)),
+  cdMs: cdMs * adj.intervalMult,
+});
+
 // ---- ステップC: Performance高でBuildUpを強める(社長合意・Bより慎重に=レバーを1本だけにする) ----
 // ルール厳守: Performance は「BuildUpを強める」だけに使う(Intensity/被弾側とは絶対に混ぜない)。
 // 効かせる先は escalation(③④=強さ/種類の上乗せ)の**上乗せ量のみ**。湧き間隔/湧き上限には触れない

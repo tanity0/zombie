@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createDirectorState, stepDirector, summarizeRun, relaxSpawnAdjust, buildupSpawnAdjust, type DirectorInputs, type DirectorState, type RunSampleLite } from './aiDirector';
+import { createDirectorState, stepDirector, summarizeRun, relaxSpawnAdjust, buildupSpawnAdjust, applyRelaxSpawnCadence, RELAX_INTERVAL_MULT, RELAX_CAP_MULT, type DirectorInputs, type DirectorState, type RunSampleLite } from './aiDirector';
 
 const CALM: DirectorInputs = { hpFrac: 1, damageTakenFrac: 0, nearEnemies: 0, killDelta: 0, dangerBias: 0 };
 
@@ -221,5 +221,30 @@ describe('aiDirector: buildupSpawnAdjust(ステップC)', () => {
 
   it('Performanceが1を超えてもクランプされる(壊れた入力を渡さない前提の防御)', () => {
     expect(buildupSpawnAdjust('buildup', 1.5).escBoost).toBe(buildupSpawnAdjust('buildup', 1).escBoost);
+  });
+});
+
+// ★v0.25.3495(社長指示「リラックスさせて」)。RELAXの湧きレバー2本(間隔/上限)は、
+// 長らく旧spawner(!puzzleActiveNow)しか読んでおらず通常プレイで死んでいた。本方式の
+// スポーナーへ効かせるための適用式をここに固定する(恒等・向き・床の3点)。
+describe('applyRelaxSpawnCadence(RELAXの湧きレバーを本方式へ効かせる)', () => {
+  it('倍率1は恒等(未適用時に挙動が1ミリも変わらないこと)', () => {
+    expect(applyRelaxSpawnCadence(20, 1800, { intervalMult: 1, capMult: 1 })).toEqual({ cap: 20, cdMs: 1800 });
+  });
+  it('RELAX中は上限が下がり、湧き間隔が伸びる(向きを取り違えたら落ちる)', () => {
+    const r = applyRelaxSpawnCadence(20, 1800, relaxSpawnAdjust('relax'));
+    expect(r.cap).toBeLessThan(20);
+    expect(r.cdMs).toBeGreaterThan(1800);
+    expect(r.cap).toBe(Math.round(20 * RELAX_CAP_MULT));
+    expect(r.cdMs).toBeCloseTo(1800 * RELAX_INTERVAL_MULT, 6);
+  });
+  it('BUILD_UP/PEAK中は素通し(RELAX以外で緩めない)', () => {
+    for (const m of ['buildup', 'peak'] as const) {
+      expect(applyRelaxSpawnCadence(14, 1200, relaxSpawnAdjust(m))).toEqual({ cap: 14, cdMs: 1200 });
+    }
+  });
+  it('上限の床は1(倍率をいくら下げても「1体も湧かない」にはしない=ドロップ経路を枯らさない)', () => {
+    expect(applyRelaxSpawnCadence(1, 1000, { intervalMult: 1, capMult: 0 }).cap).toBe(1);
+    expect(applyRelaxSpawnCadence(3, 1000, { intervalMult: 1, capMult: 0.01 }).cap).toBe(1);
   });
 });

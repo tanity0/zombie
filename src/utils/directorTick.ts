@@ -30,7 +30,7 @@ import {
 } from './enemyUtils';
 import { selectCullCandidates } from './enemyCulling';
 import { enemyCountCap, ENEMY_COUNT_CEIL, type PhaseKind } from './difficultyDirector';
-import { stepDirector, type DirectorState } from './aiDirector';
+import { stepDirector, applyRelaxSpawnCadence, type DirectorState } from './aiDirector';
 import { setDirectorDebug, recordDirectorSample, DIRECTOR_EVENT_BIT } from './aiDirectorDebug';
 import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDirector';
 import { setPityDrop } from './pityState';
@@ -288,6 +288,14 @@ export interface KomaMaintenanceCtx {
   spawnViewOffsetY: number;
   snowTheme: boolean;
   spawnEsc: number;
+  /**
+   * 社長指示v0.25.3495「リラックスさせて」: AIディレクターのRELAXが持つ湧きレバーのうち
+   * **湧き間隔(intervalMult)と盤面上限(capMult)**。従来この2本は旧スポーナー(!puzzleActiveNow)
+   * だけが読んでおり、通常プレイでは一度も効いていなかった。省略時は1(=従来と完全に同じ挙動)
+   * なので、既存のテスト・ヘッドレス経路には影響しない。
+   */
+  relaxIntervalMult?: number;
+  relaxCapMult?: number;
 }
 
 // PACING_PUZZLE.md バッチM4: 盤面構成パズル方式の配線。§2の停止/継続リストどおり、
@@ -300,6 +308,11 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     return;
   }
   const { gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc } = ctx;
+  // v0.25.3495: RELAXの湧きレバー(間隔/上限)。未指定=1=従来どおり(下の cap/cdMs でだけ使う)。
+  const relaxCadenceAdj = {
+    intervalMult: ctx.relaxIntervalMult ?? 1,
+    capMult: ctx.relaxCapMult ?? 1,
+  };
   const {
     puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef,
     rankPaceRef,
@@ -521,7 +534,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
 
   // M6(§4-C): コマ別のチャフ目標・度数・CD。目標へは1ずつランプ(上げ)・下げは即スナップ。
   const rank = puzzleClockRef.current.rank;
-  const cap = capForState(puzzleClockRef.current);
+  const capRaw = capForState(puzzleClockRef.current);
   // 締め(§3-D・通常/ピーク限定): 無被弾15秒+(Perf>=0.6 or 盤面<目標が15秒継続)。緩め優先。
   const tightenedNow = inScriptKoma && !softenedNow
     && msSinceLastHit >= TIGHTEN_NO_HIT_MS
@@ -530,12 +543,21 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   // リラックス = チャフ目標が上限の40% / 湧きCDがランク基準の2倍。**ゼロではない**ので、
   // 弾薬・回復のドロップ経路は細るだけで止まらない(長期戦で枯れない)。
   const spawnKoma = bossRelax ? 'relax' : koma.kind;
+  // ★v0.25.3495(社長指示「リラックスさせて」): AIディレクターのRELAXが持つ湧きレバー2本
+  // (湧き間隔/盤面上限)をここで初めて実際に効かせる。従来この2本は旧スポーナー
+  // (!puzzleActiveNow)しか読んでおらず、通常プレイでは死んでいた(aiDirector.ts の
+  // applyRelaxSpawnCadence のコメント参照)。未適用時は倍率1=式ごと恒等なので挙動不変。
+  // bossRelax(ボス交戦中の強制リラックス)とは別レバーで、両方が同時に効いてよい
+  // (あちらは spawnKoma を'relax'として読む=目標とCDの"段"を変える、こちらは倍率)。
+  const cdRaw = cdForKoma(spawnKoma, rank, puzzleClockRef.current.r7Cap, tightenedNow, softenedNow);
+  const cadence = applyRelaxSpawnCadence(capRaw, cdRaw, relaxCadenceAdj);
+  const cap = cadence.cap;
+  const cdMs = cadence.cdMs;
   let komaChaffTarget = chaffTargetForKoma(spawnKoma, cap);
   if (softenedNow) komaChaffTarget = Math.max(SOFTEN_TARGET_MIN, Math.round(komaChaffTarget * SOFTEN_TARGET_MULT));
   // PACING_PUZZLE.md §5.21-追補4(社長決定v0.25.1553): 追補3が足した「ゲート1中はchaff目標=
   // ピーク・CD0を強制」は撤回。ゲート1中もchaffは常にコマ駆動の値をそのまま使う=既存カーブ不変
   // (雑魚の湧き数はディレクター任せ)。
-  const cdMs = cdForKoma(spawnKoma, rank, puzzleClockRef.current.r7Cap, tightenedNow, softenedNow);
   koma.chaffRamp = stepChaffRamp(koma.chaffRamp, {
     dtMs: deltaTime * 1000,
     komaTarget: komaChaffTarget,

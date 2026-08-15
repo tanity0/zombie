@@ -11780,6 +11780,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           },
           {
             puzzleActiveNow, gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc,
+            // v0.25.3495(社長指示「リラックスさせて」): RELAXの湧きレバー2本(間隔/上限)を
+            // 本方式のスポーナーへも渡す。?directorApply が無ければ relaxAdj は全て1=挙動不変。
+            relaxIntervalMult: relaxAdj.intervalMult, relaxCapMult: relaxAdj.capMult,
           }
         );
 

@@ -1,5 +1,38 @@
 # Development Log
 
+## v0.25.3495 — RELAXの湧きレバー2本(間隔/上限)を本方式のスポーナーへ配線【2026-08-16 02:24 JST】
+- **社長指示**: 「リラックスさせて」(v0.25.3494の報告「RELAXの3レバーのうち2本が通常プレイでは
+  死んでいます」への裁定)。
+- **背景(死んでいた理由)**: `relaxSpawnAdjust` が返す `intervalMult`/`capMult` を読んでいたのは
+  `useGameLoop.ts` の**旧スポーナー**だけで、その分岐は `!puzzleActiveNow`(=城ボス台本フェーズ/
+  `?puzzle=0`/ラボ/屋内/チュートリアル)でしか走らない。通常プレイ(パズル方式)のスポーナーへは
+  `spawnEsc` しか渡っておらず、**RELAXに入っても湧きの緩みは一度も起きていなかった**。
+  さらに生きていた `escMult` も、掛ける相手の `buildEsc` が戦力マージン>1.1でしか立ち上がらないため
+  序盤〜中盤はほぼ0=**0に倍率を掛けても0**。v0.25.3493のN=30ヘッドレス計測で「51比較中ほぼ有意差
+  なし」になったのはこの構造が理由(=ディレクターが無力なのではない)。
+- **実装**:
+  - `src/utils/aiDirector.ts`: 純関数 `applyRelaxSpawnCadence(cap, cdMs, adj)` を新設
+    (上限×capMult・湧きCD×intervalMult。**上限の床=1**でドロップ経路を枯らさない)。
+  - `src/utils/directorTick.ts`: `KomaMaintenanceCtx` に `relaxIntervalMult?`/`relaxCapMult?`
+    (省略時1=挙動不変)を追加し、`capForState`/`cdForKoma` の結果へ適用。
+    `bossRelax`(ボス交戦中の強制リラックス)とは**別レバー**で、両方同時に効いてよい
+    (あちらは `spawnKoma` を'relax'として読む"段"の切替、こちらは倍率)。
+  - `src/hooks/useGameLoop.ts` / `src/utils/playtestDriver.ts`: 既に算出済みの `relaxAdj` から
+    2本を渡すだけ。**`?directorApply` が無ければ全て1**なので既定の挙動は完全に不変。
+- **機械化**: `src/utils/aiDirector.test.ts` に「倍率1は恒等」「RELAXは上限↓・間隔↑(向きの取り違え
+  検知)」「BUILD_UP/PEAKは素通し」「上限の床=1」を固定。
+- **既定ON化は未裁定**(社長へ質問中)。現時点で体感するには `?director=1&directorApply=relax`
+  (または `=all`)が要る。
+- **計測レポートの扱い**: `research/DIRECTOR_METRICS.md` の冒頭に「この数字はv0.25.3494以前=
+  2レバー未配線時のもの。結論は取り直しが必要」と明記した。
+- 検証: `npx vitest run src/utils/aiDirector.test.ts`(26 passed) / `npm run typecheck`(0エラー) /
+  `npm run lint`(0エラー)。実機確認は社長。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)への抵触なし——既定(フラグ無し)では
+  倍率が全て1で式ごと恒等。効くのはディレクター有効時のみで、方向は**緩める側**のみ。
+- ファイル: `src/utils/aiDirector.ts` / `src/utils/aiDirector.test.ts` / `src/utils/directorTick.ts` /
+  `src/hooks/useGameLoop.ts` / `src/utils/playtestDriver.ts` / `research/DIRECTOR_METRICS.md` /
+  `src/data/changelog.ts` / `package.json` / `DEVELOPMENT_LOG.md`
+
 ## v0.25.3494 — 弾・爆発で「小ボスだけ」技が中断される事故を修正(社長裁定・案A)【2026-08-16 02:19 JST】
 - **社長報告**: 「城ボスは平気なんだけど、小ボスはノックバックかな？の度に技がキャンセルされてる」。
 - **原因**: 全弾命中の共通ノックバック口(`useGameLoop.ts`)が

@@ -405,10 +405,11 @@ export interface PlaytestTickOptions {
   // DirectorRankのescBoost(directorRank.ts・難易度⑤)はheadlessで未配線のため合算していない
   // (この2つは今回の計測対象=RELAX/BUILDUPの効きとは別レバーなので、影響は「絶対値が実機より
   // 低めに出る」だけで、RELAX/BUILDUPを掛けた時の相対差の向き・大きさの評価は成立する)。
-  // また、湧き間隔/湧き上限(RELAX_INTERVAL_MULT/RELAX_CAP_MULT)は本方式(puzzleActiveNow)配下の
-  // 通常湧きには使われない(useGameLoop.ts側でも!puzzleActiveNow=ボス台本フェーズ中だけが読む
-  // legacy spawnerの変数で、このheadlessドライバはそのlegacy spawner自体を移植していない=元から
-  // 対象外)。よってこの計測で動かせる/動くのはescalation(spawnEsc)経路だけ。
+  // ★v0.25.3495(社長指示「リラックスさせて」)で解消済みの旧注記: かつて湧き間隔/湧き上限
+  // (RELAX_INTERVAL_MULT/RELAX_CAP_MULT)は旧spawner(!puzzleActiveNow)しか読んでおらず、
+  // 本方式配下の通常湧きには効いていなかった(=N=30計測で有意差がほぼ出なかった構造的な理由)。
+  // 現在は runKomaBoardMaintenance の relaxIntervalMult/relaxCapMult 経由で本方式にも効く。
+  // よってこの計測で動くのは escalation(spawnEsc)+湧き間隔+盤面上限の3経路。
   directorApply?: 'none' | 'relax' | 'buildup' | 'all';
 }
 
@@ -692,12 +693,16 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   // 固定0のまま=既存テストへの副作用なし)。directorRef.current.state は「前フレームの値」
   // (=useGameLoop.tsの1フレーム遅延パターンと同じ。このtickのrunDirectorSignalStepはこの後で呼ぶ)。
   let spawnEsc = 0;
+  // v0.25.3495: RELAXの湧きレバー2本(間隔/上限)も本方式のスポーナーへ渡せるようになったので、
+  // relaxAdj をブロックの外へ出して runKomaBoardMaintenance へも渡す(directorApply未指定なら
+  // 全て1=従来と完全に同じ挙動)。
+  let relaxAdj = { escMult: 1, intervalMult: 1, capMult: 1 };
   if (opts.directorApply !== undefined) {
     const curPhase = phaseAt(t);
     const dirState = refs.director.directorRef.current.state;
     const applyRelax = opts.directorApply === 'relax' || opts.directorApply === 'all';
     const applyBuildup = opts.directorApply === 'buildup' || opts.directorApply === 'all';
-    const relaxAdj = applyRelax ? relaxSpawnAdjust(dirState.macro) : { escMult: 1, intervalMult: 1, capMult: 1 };
+    if (applyRelax) relaxAdj = relaxSpawnAdjust(dirState.macro);
     const buildupAdj = applyBuildup ? buildupSpawnAdjust(dirState.macro, dirState.performance) : { escBoost: 0 };
     const buildEsc = spawnEscalation({
       level: s.player.level,
@@ -717,6 +722,7 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   runKomaBoardMaintenance(refs.koma, {
     puzzleActiveNow: true, gameTime: t, deltaTime: dt, player: s.player, playerAreaIdx,
     spawnBounds: gameBounds, spawnViewOffsetY: 0, snowTheme: false, spawnEsc,
+    relaxIntervalMult: relaxAdj.intervalMult, relaxCapMult: relaxAdj.capMult,
   });
   runOffscreenRecycleAndCull({
     labTheme: false, indoor: false, gameBounds, player: s.player, playerCenterX, playerCenterY,
