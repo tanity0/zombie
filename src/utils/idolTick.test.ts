@@ -20,7 +20,7 @@ import { clampRectToPlayableArea } from '../world/playableArea';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
-import { IDOL_TUNING } from './idolScript';
+import { IDOL_TUNING, idolGunMuzzle } from './idolScript';
 import type { Enemy } from '../types/game';
 
 const mk = (id: string, dormant: boolean): Enemy =>
@@ -335,14 +335,20 @@ describe('弾の性能は技ごとに効く', () => {
     } finally { Object.assign(IDOL_TUNING.bullet, JSON.parse(save)); }
   });
 
-  it('★大きさを変えても弾の中心はボスの中心のまま(生成時に渡している証拠)', () => {
+  it('★大きさを変えても弾の中心は銃口のまま(生成時に渡している証拠・社長指示v0.25.3439)', () => {
     const bul = IDOL_TUNING.bullet;
     const save = JSON.stringify(bul);
     try {
       bul.aim.size = 48; // 既定16から大きく変える
       const { p, boss } = fireAndGrab('aim');
-      expect(p.x + p.width / 2).toBeCloseTo(boss.x + boss.width / 2, 3);
-      expect(p.y + p.height / 2).toBeCloseTo(boss.y + boss.height / 2, 3);
+      // 起点=銃口(立ち絵の銃の高さ×狙う側の絵の端・idolGunMuzzle)。狙う側はプレイヤーの居る側。
+      const pl = useGameStore.getState().player;
+      const mz = idolGunMuzzle(
+        boss.x + boss.width / 2, boss.y + boss.height,
+        (pl.x + pl.width / 2) - (boss.x + boss.width / 2),
+      );
+      expect(p.x + p.width / 2).toBeCloseTo(mz.x, 3);
+      expect(p.y + p.height / 2).toBeCloseTo(mz.y, 3);
     } finally { Object.assign(IDOL_TUNING.bullet, JSON.parse(save)); }
   });
 });

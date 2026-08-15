@@ -34,7 +34,7 @@ import {
   IDOL_TUNING, IDOL_STRING_LEN, IDOL_REST, IDOL_PUNISH, IDOL_NEUTRAL_BAND,
   IDOL_VERB_SPEED_MULT, IDOL_TIMING, IDOL_MOVES_ALL, IDOL_ORB_SPREAD_RAD,
   idolZone, idolPhaseForHealth, idolFanCount, idolOrbCount, idolWaveActive,
-  idolStrings, idolShot, idolShotFireMs, idolMoveTiming, isIdolShot,
+  idolStrings, idolShot, idolShotFireMs, idolMoveTiming, isIdolShot, idolGunMuzzle,
   type IdolMove, type IdolShotSlot, type IdolShotSpec,
 } from './idolScript';
 
@@ -343,6 +343,11 @@ export const runIdolTick = (
     }
   }
 
+  // 社長指示v0.25.3439: 銃技(aim/fan/snipe/orb/射撃部品)の起点=立ち絵で銃がある高さの、狙う側の
+  // 絵の端(idolGunMuzzle・idolScript)。発射・ロック2点・予告線・武器絵が全て同じ純関数を読む。
+  const gunMuzzleFor = (aimX: number): { x: number; y: number } =>
+    idolGunMuzzle(icx, idol.y + idol.height, aimX - icx);
+
   // ---- 技の開始(ストリングの1段を出す) --------------------------------------------------------
   const beginMove = (m: IdolMove): void => {
     sfx.alert();
@@ -358,18 +363,22 @@ export const runIdolTick = (
       s.shotSlot = m;
       s.shotWaveIdx = 0;
       if (Math.round(sp.aimMode) === 1) {
-        s.shotAngle = Math.atan2(aim.y - icy, aim.x - icx);
-        patch.aiFromX = icx; patch.aiFromY = icy;
-        patch.aiTargetX = icx + Math.cos(s.shotAngle) * SHOT_LOCK_VIS_RANGE;
-        patch.aiTargetY = icy + Math.sin(s.shotAngle) * SHOT_LOCK_VIS_RANGE;
+        // 社長指示v0.25.3439: 起点=銃口(立ち絵の銃の高さ×狙う側の端)。ロックの2点ごと銃口基準にする。
+        const mz = gunMuzzleFor(aim.x);
+        s.shotAngle = Math.atan2(aim.y - mz.y, aim.x - mz.x);
+        patch.aiFromX = mz.x; patch.aiFromY = mz.y;
+        patch.aiTargetX = mz.x + Math.cos(s.shotAngle) * SHOT_LOCK_VIS_RANGE;
+        patch.aiTargetY = mz.y + Math.sin(s.shotAngle) * SHOT_LOCK_VIS_RANGE;
       }
     } else if (m === 'snipe') {
       // 掟W4: 溜め開始で線をロック(テルを出したら必ず撃つ)。図形=判定=描画が同じ2点を読む。
+      // 社長指示v0.25.3439: 起点=銃口。
       const aim = hateAim();
-      const dl = Math.hypot(aim.x - icx, aim.y - icy) || 1;
-      patch.aiFromX = icx; patch.aiFromY = icy;
-      patch.aiTargetX = icx + ((aim.x - icx) / dl) * IDOL_TUNING.shape.snipeRange;
-      patch.aiTargetY = icy + ((aim.y - icy) / dl) * IDOL_TUNING.shape.snipeRange;
+      const mz = gunMuzzleFor(aim.x);
+      const dl = Math.hypot(aim.x - mz.x, aim.y - mz.y) || 1;
+      patch.aiFromX = mz.x; patch.aiFromY = mz.y;
+      patch.aiTargetX = mz.x + ((aim.x - mz.x) / dl) * IDOL_TUNING.shape.snipeRange;
+      patch.aiTargetY = mz.y + ((aim.y - mz.y) / dl) * IDOL_TUNING.shape.snipeRange;
       patch.hateTarget = aim.side;
     } else if (m === 'roll') {
       const aim = hateAim();
@@ -418,9 +427,10 @@ export const runIdolTick = (
    * `createEnemyProjectile` は size から x/y を逆算する(中心合わせ)ので、**生成時に渡す**
    * ——生成後に上書きすると位置がズレる。
    */
-  const fire = (move: 'aim' | 'fan', tx: number, ty: number): void =>
+  const fire = (move: 'aim' | 'fan', tx: number, ty: number, ox?: number, oy?: number): void =>
     useGameStore.getState().addProjectile(
-      createEnemyProjectile(idol, player, tx, ty, undefined, undefined, IDOL_TUNING.bullet[move]),
+      // ox/oy=銃口(社長指示v0.25.3439)。スリィエルの環と同じoriginオーバーライドを使う。
+      createEnemyProjectile(idol, player, tx, ty, ox, oy, IDOL_TUNING.bullet[move]),
     );
 
   /**
@@ -432,11 +442,11 @@ export const runIdolTick = (
    * ★2は「読めなさ」ではなく「読み合い」を作るための物(社長方針: MAXは密度で作る)。
    * 止まる/曲がるで外れる=プレイヤー側に必ず答えがある。
    */
-  const shotAimAngle = (sp: IdolShotSpec): number => {
+  const shotAimAngle = (sp: IdolShotSpec, mzx: number, mzy: number): number => {
     const mode = Math.round(sp.aimMode);
     if (mode === 1) return s.shotAngle;
     const aim = lockedHateAim();
-    if (mode !== 2) return Math.atan2(aim.y - icy, aim.x - icx);
+    if (mode !== 2) return Math.atan2(aim.y - mzy, aim.x - mzx);
     const spd = Math.max(1, sp.speed);
     let tx = aim.x, ty = aim.y;
     const ghost = aim.side === 'ghost'
@@ -445,12 +455,13 @@ export const runIdolTick = (
     const targetVx = aim.side === 'ghost' ? (ghost?.vx ?? 0) : s.playerVx;
     const targetVy = aim.side === 'ghost' ? (ghost?.vy ?? 0) : s.playerVy;
     // 到達時間→予測位置→到達時間、の2回で十分収束する(弾速がプレイヤー速度より十分速いため)。
+    // 距離・角度とも銃口(mzx/mzy)基準(社長指示v0.25.3439)。
     for (let i = 0; i < 2; i++) {
-      const t = Math.hypot(tx - icx, ty - icy) / spd;
+      const t = Math.hypot(tx - mzx, ty - mzy) / spd;
       tx = aim.x + targetVx * t;
       ty = aim.y + targetVy * t;
     }
-    return Math.atan2(ty - icy, tx - icx);
+    return Math.atan2(ty - mzy, tx - mzx);
   };
 
   /**
@@ -461,7 +472,12 @@ export const runIdolTick = (
   const fireShotVolley = (slot: IdolShotSlot, waveIdx: number): void => {
     const sp = idolShot(slot);
     const n = Math.max(1, Math.round(sp.count));
-    const base = shotAimAngle(sp) + (waveIdx * sp.waveTurnDeg * Math.PI) / 180;
+    // 起点=銃口(社長指示v0.25.3439)。固定(aimMode=1)は溜め開始でロックした2点の始点(=その時の銃口)を
+    // そのまま使う=予告の赤い線と発射点が厳密一致。追従/偏差は今の狙い側の銃口を毎斉射取り直す。
+    const mz = Math.round(sp.aimMode) === 1 && idol.aiFromX !== undefined && idol.aiFromY !== undefined
+      ? { x: idol.aiFromX, y: idol.aiFromY }
+      : gunMuzzleFor(lockedHateAim().x);
+    const base = shotAimAngle(sp, mz.x, mz.y) + (waveIdx * sp.waveTurnDeg * Math.PI) / 180;
     const spread = (sp.spreadDeg * Math.PI) / 180;
     const half = (n - 1) / 2;
     const profile = { speed: sp.speed, damage: sp.damage, size: sp.size };
@@ -469,7 +485,7 @@ export const runIdolTick = (
     for (let k = 0; k < n; k++) {
       const a = base + (k - half) * spread;
       const p = createEnemyProjectile(
-        idol, player, icx + Math.cos(a) * 100, icy + Math.sin(a) * 100, undefined, undefined, profile,
+        idol, player, mz.x + Math.cos(a) * 100, mz.y + Math.sin(a) * 100, mz.x, mz.y, profile,
       );
       if (homing) {
         p.id = `${SHOT_ID_PREFIX}${idol.id}-${slot}-${newGameTime}-${waveIdx}-${k}`;
@@ -609,7 +625,8 @@ export const runIdolTick = (
   } else if (st === 'idol-aim-windup') {
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       const aim = hateAim();
-      fire('aim', aim.x, aim.y);
+      const mz = gunMuzzleFor(aim.x); // 社長指示v0.25.3439: 起点=銃口
+      fire('aim', aim.x, aim.y, mz.x, mz.y);
       patch.hateTarget = aim.side;
       toRecover('aim');
     }
@@ -618,11 +635,12 @@ export const runIdolTick = (
       const aim = hateAim();
       patch.hateTarget = aim.side;
       const count = idolFanCount(phase);
-      const ang = Math.atan2(aim.y - icy, aim.x - icx);
+      const mz = gunMuzzleFor(aim.x); // 社長指示v0.25.3439: 起点=銃口(角度も銃口から取る)
+      const ang = Math.atan2(aim.y - mz.y, aim.x - mz.x);
       const half = (count - 1) / 2;
       for (let k = 0; k < count; k++) {
         const a = ang + (k - half) * IDOL_TUNING.shape.fanSpreadStep;
-        fire('fan', icx + Math.cos(a) * 100, icy + Math.sin(a) * 100);
+        fire('fan', mz.x + Math.cos(a) * 100, mz.y + Math.sin(a) * 100, mz.x, mz.y);
       }
       toRecover('fan');
     }
@@ -631,14 +649,15 @@ export const runIdolTick = (
       const aim = hateAim();
       patch.hateTarget = aim.side;
       const n = idolOrbCount(phase);
-      const base = Math.atan2(aim.y - icy, aim.x - icx);
+      const mz = gunMuzzleFor(aim.x); // 社長指示v0.25.3439: 起点=銃口
+      const base = Math.atan2(aim.y - mz.y, aim.x - mz.x);
       const ids: string[] = [];
       for (let k = 0; k < n; k++) {
         const a = base + (k - (n - 1) / 2) * IDOL_ORB_SPREAD_RAD; // 少し散らして出す(全弾が同じ線に乗らない)
         // 追尾弾も**技ごとの弾**として生成時に渡す(size は x/y の逆算に使うので後から書けない)。
         // 速度は既存パス `shape.orbSpeed` が正(値を二重に持たない・社長指示v0.25.2628)。
         const p = createEnemyProjectile(
-          idol, player, icx + Math.cos(a) * 100, icy + Math.sin(a) * 100, undefined, undefined,
+          idol, player, mz.x + Math.cos(a) * 100, mz.y + Math.sin(a) * 100, mz.x, mz.y,
           { speed: IDOL_TUNING.shape.orbSpeed, damage: IDOL_TUNING.bullet.orb.damage, size: IDOL_TUNING.bullet.orb.size },
         );
         p.id = `${ORB_ID_PREFIX}${idol.id}-${newGameTime}-${k}`;

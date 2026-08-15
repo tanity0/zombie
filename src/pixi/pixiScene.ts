@@ -91,7 +91,7 @@ import { horizontalShadowCorners } from '../utils/shadowProjection';
 import { lightAt, lightSmoothLerp, assistLightMult, type PointLight } from '../utils/lightField';
 import {
   idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_TUNING, IDOL_ORB_SPREAD_RAD, IDOL_MOVES_ALL,
-  idolShot, isIdolShot, idolFistReach, type IdolShotSlot, type IdolMove,
+  idolShot, isIdolShot, idolFistReach, idolGunMuzzle, type IdolShotSlot, type IdolMove,
 } from '../utils/idolScript';
 import {
   MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
@@ -15090,18 +15090,23 @@ export class PixiScene {
       } else {
         view.sprite.tint = 0xffffff;
       }
+      // 社長指示v0.25.3439: 銃技の起点=立ち絵で銃がある高さ×狙う側の絵の端(idolGunMuzzle)。
+      // 判定側(idolTick)と同じ純関数を読む=赤い線と弾道・発射点が厳密に一致する。
+      const gunMz = (aimX: number) => idolGunMuzzle(cx, fb.footY, aimX - cx);
       // T6: 狙い撃ち(終点リング無し=遠隔が通る・本体は来ない)。
       if (bs === 'idol-aim-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / idolAimWindupVis()));
         const pl = useGameStore.getState().player;
         const px = pl.x + pl.width / 2, py = pl.y + pl.height / 2;
-        this.drawAngelBeamLine(o, cx, cy, px, py, idolBulletHalfWidthVis('aim'), prog, now);
+        const mz = gunMz(px);
+        this.drawAngelBeamLine(o, mz.x, mz.y, px, py, idolBulletHalfWidthVis('aim'), prog, now);
       }
       // T6が扇状に3本(Phase2で5本): 連射。
       if (bs === 'idol-fan-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / idolFanWindupVis()));
         const pl = useGameStore.getState().player;
-        const ang = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
+        const mz = gunMz(pl.x + pl.width / 2);
+        const ang = Math.atan2((pl.y + pl.height / 2) - mz.y, (pl.x + pl.width / 2) - mz.x);
         const count = idolFanCount(e.bossPhase === 2 ? 2 : 1);
         // ★テーブルの値をそのまま読む(v0.25.2638)。ここに `0.14` を書いておくと、メーカーで
         // 開き角を変えた瞬間に**赤い線と実弾がズレる**(CLAUDE.md「赤いのに当たらない」の禁止事項)。
@@ -15109,7 +15114,7 @@ export class PixiScene {
         const half = (count - 1) / 2;
         for (let k = 0; k < count; k++) {
           const a = ang + (k - half) * spreadStep;
-          this.drawAngelBeamLine(o, cx, cy, cx + Math.cos(a) * IDOL_FAN_VIS_RANGE, cy + Math.sin(a) * IDOL_FAN_VIS_RANGE, idolBulletHalfWidthVis('fan'), prog, now);
+          this.drawAngelBeamLine(o, mz.x, mz.y, mz.x + Math.cos(a) * IDOL_FAN_VIS_RANGE, mz.y + Math.sin(a) * IDOL_FAN_VIS_RANGE, idolBulletHalfWidthVis('fan'), prog, now);
         }
       }
       // T2帯(長): 狙撃線。**溜め開始でロックした2点(aiFrom→aiTarget)をそのまま描く**ので、
@@ -15122,11 +15127,12 @@ export class PixiScene {
       if (bs === 'idol-orb-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_TIMING.orb.windup));
         const pl = useGameStore.getState().player;
-        const base = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
+        const mz = gunMz(pl.x + pl.width / 2);
+        const base = Math.atan2((pl.y + pl.height / 2) - mz.y, (pl.x + pl.width / 2) - mz.x);
         const n = idolOrbCount(e.bossPhase === 2 ? 2 : 1);
         for (let k = 0; k < n; k++) {
           const a = base + (k - (n - 1) / 2) * IDOL_ORB_SPREAD_RAD;
-          this.drawAngelBeamLine(o, cx, cy, cx + Math.cos(a) * IDOL_FAN_VIS_RANGE, cy + Math.sin(a) * IDOL_FAN_VIS_RANGE, idolBulletHalfWidthVis('fan'), prog, now);
+          this.drawAngelBeamLine(o, mz.x, mz.y, mz.x + Math.cos(a) * IDOL_FAN_VIS_RANGE, mz.y + Math.sin(a) * IDOL_FAN_VIS_RANGE, idolBulletHalfWidthVis('fan'), prog, now);
         }
       }
       // 射撃部品(v0.25.2638): **数字から予告を引く**ので、社長が弾数/広がり/狙い方を変えると
@@ -15139,15 +15145,19 @@ export class PixiScene {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / Math.max(1, sp.windup)));
           const pl = useGameStore.getState().player;
           const locked = Math.round(sp.aimMode) === 1 && e.aiTargetX !== undefined && e.aiTargetY !== undefined;
+          // 起点=銃口(v0.25.3439)。固定(ロック済み)はロックの始点=その時の銃口をそのまま読む。
+          const mz = locked
+            ? { x: e.aiFromX ?? cx, y: e.aiFromY ?? cy }
+            : gunMz(pl.x + pl.width / 2);
           const base = locked
-            ? Math.atan2(e.aiTargetY! - (e.aiFromY ?? cy), e.aiTargetX! - (e.aiFromX ?? cx))
-            : Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
+            ? Math.atan2(e.aiTargetY! - mz.y, e.aiTargetX! - mz.x)
+            : Math.atan2((pl.y + pl.height / 2) - mz.y, (pl.x + pl.width / 2) - mz.x);
           const n = Math.max(1, Math.round(sp.count));
           const spread = (sp.spreadDeg * Math.PI) / 180;
           const half = (n - 1) / 2;
           for (let k = 0; k < n; k++) {
             const a = base + (k - half) * spread;
-            this.drawAngelBeamLine(o, cx, cy, cx + Math.cos(a) * IDOL_FAN_VIS_RANGE, cy + Math.sin(a) * IDOL_FAN_VIS_RANGE, sp.size / 2, prog, now);
+            this.drawAngelBeamLine(o, mz.x, mz.y, mz.x + Math.cos(a) * IDOL_FAN_VIS_RANGE, mz.y + Math.sin(a) * IDOL_FAN_VIS_RANGE, sp.size / 2, prog, now);
           }
         }
       }
@@ -15236,17 +15246,19 @@ export class PixiScene {
           })();
           if (gunMove !== undefined && bs !== undefined) {
             const isWind = bs.endsWith('-windup');
+            // ロック技(snipe/照準固定の射撃部品)はロックした2点(始点=溜め開始時の銃口)を読む。
+            const lockedGun = (gunMove === 'snipe'
+              || (isIdolShot(gunMove as IdolMove) && Math.round(idolShot(gunMove as IdolShotSlot).aimMode) === 1))
+              && e.aiTargetX !== undefined && e.aiTargetY !== undefined;
             let gunAng: number | undefined;
             if (isWind) {
-              // 向きは赤い線と同じ出どころ: snipe/照準ロック済み射撃部品=ロックした2点、他=毎フレームのプレイヤー方向。
-              const locked = (gunMove === 'snipe'
-                || (isIdolShot(gunMove as IdolMove) && Math.round(idolShot(gunMove as IdolShotSlot).aimMode) === 1))
-                && e.aiTargetX !== undefined && e.aiTargetY !== undefined;
-              if (locked) {
+              // 向きは赤い線と同じ出どころ: ロック技=ロックの2点、他=銃口→毎フレームのプレイヤー方向(v0.25.3439)。
+              if (lockedGun) {
                 gunAng = Math.atan2(e.aiTargetY! - (e.aiFromY ?? cy), e.aiTargetX! - (e.aiFromX ?? cx));
               } else {
                 const pl = useGameStore.getState().player;
-                gunAng = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
+                const mzA = gunMz(pl.x + pl.width / 2);
+                gunAng = Math.atan2((pl.y + pl.height / 2) - mzA.y, (pl.x + pl.width / 2) - mzA.x);
               }
               view.idolGunAim = gunAng;                // 撃った後(fire/recover)は最後の向きで固まる(punchAimと同じ作法)
               view.idolGunFireAt = e.bossStateUntil;   // 発射の瞬間=溜め明け(反動の起点)
@@ -15264,9 +15276,14 @@ export class PixiScene {
               const fdt = view.idolGunFireAt !== undefined ? gameTime - view.idolGunFireAt : -1;
               const kickU = fdt >= 0 && fdt <= 240 ? (1 - fdt / 240) ** 2 : 0;
               const flip = Math.cos(gunAng) < 0; // 左向きは上下反転して逆さ持ちを防ぐ
+              // 持ち位置=銃口(社長指示v0.25.3439: 立ち絵の銃の高さ×狙う側の端)。ロック技はロックの
+              // 始点(=溜め開始時の銃口・発射点・赤い線と同一点)に据え置き。反動は狙いの逆へ引く。
+              const gp = lockedGun && e.aiFromX !== undefined && e.aiFromY !== undefined
+                ? { x: e.aiFromX, y: e.aiFromY }
+                : gunMz(cx + Math.cos(gunAng));
               this.drawBountyWeapon(
                 e.id, 'weapons/handgun-t1',
-                cx + Math.cos(gunAng) * (20 - 8 * kickU), cy + Math.sin(gunAng) * (20 - 8 * kickU) + ease.dy,
+                gp.x - Math.cos(gunAng) * 8 * kickU, gp.y - Math.sin(gunAng) * 8 * kickU + ease.dy,
                 gunAng + (flip ? 1 : -1) * 0.35 * kickU, 42, 0.95 * ease.alphaMul * artFade, 1, flip,
               );
             }
@@ -20467,7 +20484,10 @@ export class PixiScene {
 
     // 社長指示v0.25.3290: グレネードガン(武器庫限定glauncher系)の弾は支給ドット弾(fx/grenade-ball)。
     // weaponTypeはrifle(トレーサー用)だが、弾の絵だけ専用に差し替える。未ロード時は従来描画へ。
-    if (p.weaponKey === 'glauncher-t1' || p.weaponKey === 'glauncher-t2' || p.weaponKey === 'glauncher-t3') {
+    // 社長指示v0.25.3439「グレネードは手榴弾をそのまま流用できると思う」: 転がり弾(t1/t2=
+    // rollDetonatePx持ち)はここでは止めず、下のswitchで手榴弾と同じ描画(影+跳ねアニメ)へ流す。
+    if (p.rollDetonatePx === undefined
+      && (p.weaponKey === 'glauncher-t1' || p.weaponKey === 'glauncher-t2' || p.weaponKey === 'glauncher-t3')) {
       const ballTex = getTexture('fx/grenade-ball');
       if (ballTex) {
         const r = Math.max(5, p.width * 0.85);
@@ -20530,6 +20550,9 @@ export class PixiScene {
         g.circle(0, 0, p.width / 3).fill({ color: 0xfca5a5 });
         break;
       }
+      // 転がり弾(グレネードガンt1/t2・weaponType='glauncher')は手榴弾の描画をそのまま流用(v0.25.3439)。
+      // ここへ来るのは転がり弾のみ(t3等は上の早期スタンプでreturn済み)。
+      case 'glauncher':
       case 'grenade': {
         const t = Math.max(0, Math.min(1, (Date.now() - p.createdAt) / Math.max(1, p.duration)));
         const hopEnvelope = Math.max(0, 1 - t * 0.58);

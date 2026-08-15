@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3439',
+    items: [
+      '隠しボスの銃撃(予告線・弾・構えた銃)が、立ち絵で銃を構えている手元から出るようになりました。',
+      'グレネードガンⅠ・Ⅱの転がり弾が手榴弾と同じ見た目(影+跳ねながら転がる)になりました。',
+    ],
+  },
+  {
     version: '0.25.3438',
     items: [
       'グレネードガンⅠ・Ⅱの弾が手榴弾のように転がって爆発するようになりました'

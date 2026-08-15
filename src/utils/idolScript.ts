@@ -427,6 +427,20 @@ export const idolMoveEligible = (move: IdolMove, distance: number): boolean => {
   return idolStrings().some(s => s.zone === z && s.weight > 0 && s.moves.includes(move));
 };
 
+// ---- 銃口(社長指示v0.25.3439) -----------------------------------------------------------------
+// 「銃技は立ち絵で銃がある高さの、絵の左右端っこを起点にする。進行方向が右なら右端を起点。高さは一定。」
+// 立ち絵(public/sprites/idol.png・768×1024・表示高95px)では銃は腕を伸ばした絵の端・上から約18%の
+// 高さにある。銃技(aim/fan/snipe/orb/射撃部品)の**発射起点・予告線の起点・武器絵の持ち位置**を
+// 全てこの1点に揃える(判定=赤い線=絵が同じ純関数を読む)。punch/rollは銃技ではない=対象外。
+export const IDOL_GUN_MUZZLE_SIDE_PX = 36; // 絵の左右端(表示幅≒95×768/1024=71pxの半分)
+export const IDOL_GUN_MUZZLE_UP_PX = 78;   // 足元から銃の高さまで(表示高95pxの上から約18%)
+export const idolGunMuzzle = (
+  centerX: number, footY: number, aimDx: number,
+): { x: number; y: number } => ({
+  x: centerX + (aimDx >= 0 ? IDOL_GUN_MUZZLE_SIDE_PX : -IDOL_GUN_MUZZLE_SIDE_PX),
+  y: footY - IDOL_GUN_MUZZLE_UP_PX,
+});
+
 // ---- 弾プロファイルの登録(v0.25.2849・BOSS_MAKER.md §19-6-a) ----------------------------------
 // 弾の性能を「11ボス共通の1行」(`enemyUtils` の fallback)から**このテーブル**へ差し替える。
 // **同じ参照**を渡すので、ボスメーカーで数字を変えるとその場で次の弾から反映される。
