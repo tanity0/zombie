@@ -14619,11 +14619,10 @@ export class PixiScene {
           cx + Math.cos(swingAngle) * 55, cy - e.height * 0.15 + Math.sin(swingAngle) * 55,
           swingAngle + Math.PI / 2, 130, 0.9,
         );
-        // 斬撃弧(v0.25.3444): 薙ぎ抜きの軌道に沿って白い弧を1回スタンプ(横に伸ばして標識の振り幅に合わせる)。
+        // 斬撃弧(v0.25.3444→3455): 標識の切っ先が通る円弧。中心=握り(構え高さ)・半径=握り55+標識130。
         this.triggerBountySlashArcOnce(
           e.id, `push:${e.bossStateUntil ?? 0}`,
-          cx + Math.cos(aimAng) * 80, cy - e.height * 0.15 + Math.sin(aimAng) * 80,
-          aimAng, 300, 210, now,
+          cx, cy - e.height * 0.15, aimAng, 170, now,
         );
       } else if (bs2 === 'br-push-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
@@ -14739,10 +14738,10 @@ export class PixiScene {
         // 閉じ切る=命中の瞬間(windup完了直前)に命中閃(fx/scissor-x-0)を初配線。
         if (sweepProg > 0.92) {
           this.triggerBountyScissorFlashOnce(e.id, `sweep:${e.bossStateUntil ?? 0}`, (bfx + btx) / 2, (bfy + bty) / 2, aimAng, 0, now);
-          // 斬撃弧(v0.25.3444): 薙ぎの帯(bf→bt)に沿って横に伸ばした白い弧を重ねる。
+          // 斬撃弧(v0.25.3444→3455): 薙ぎの帯の根元(bf=振りの軸)を中心に、帯の長さを半径とする円弧。
           this.triggerBountySlashArcOnce(
-            e.id, `sweeparc:${e.bossStateUntil ?? 0}`, (bfx + btx) / 2, (bfy + bty) / 2,
-            Math.atan2(bty - bfy, btx - bfx), Math.hypot(btx - bfx, bty - bfy) * 1.1, BB_SWEEP_HALFWIDTH * 3.2, now,
+            e.id, `sweeparc:${e.bossStateUntil ?? 0}`, bfx, bfy,
+            Math.atan2(bty - bfy, btx - bfx), Math.hypot(btx - bfx, bty - bfy), now,
           );
         }
         this.tickBountyScissorFlash(e.id, now);
@@ -22131,16 +22130,26 @@ export class PixiScene {
     streak.scale.set(sc, vsc);
     streak.alpha = tt < 0.5 ? (0.35 + 0.5 * (tt / 0.5)) : (1 - Math.max(0, (tt - 0.85) / 0.15));
     // 白い弧(v0.25.3449): 突き(thrust)には出さない(弧=薙ぎの軌跡の記号・社長指示v0.25.3447)。
-    // 薙ぎ/抜き打ち/振り下ろしは判定ラインに沿わせて横伸ばし・streakと同じtで生き死に。
+    // ★向きの是正(社長指摘v0.25.3455「剣の振りと斬撃の向きが合ってない。上から下に振るなら弧は
+    //   右か左に広がるのに下を向いている」): 旧実装は**判定ラインに沿って弧を長く引き伸ばして**いたため、
+    //   弧の深さ(膨らみ)が攻撃方向へ伸び、幅(弧の広がり)が潰れて「前を向いた尖り」になっていた。
+    //   正しい幾何は**剣先が描く円弧**=中心は柄(pivot)・半径は柄から切っ先までの距離・膨らみは
+    //   攻撃方向。縦横同寸(=半径×2の正方形)で置けば素材の弧がそのまま剣先の軌道になる
+    //   (バス停等で社長OKが出ている drawSlashArc と同じ規約に揃えた)。
     const arcTex = style !== 'thrust' ? getTexture('fx/slash-arc') : undefined;
     if (arcTex && arcSp) {
       if (arcSp.texture !== arcTex) arcSp.texture = arcTex;
-      arcSp.rotation = angle + Math.PI; // 素材の膨らみ(-x側)を振る方向へ(drawSlashArcと同じ規約)
-      arcSp.width = Math.max(60, length * 1.2);
-      arcSp.height = Math.max(40, halfWidth * 4);
-      arcSp.position.set((fx + tx) / 2, (fy + ty) / 2);
-      // t=0(構え・振り開始前)では出さない(0から立ち上がる=溜め中に弧が見える誤りを防ぐ)。
-      arcSp.alpha = 0.9 * (tt < 0.5 ? (tt / 0.5) : (1 - Math.max(0, (tt - 0.7) / 0.3)));
+      const acx = pivotX ?? fx, acy = pivotY ?? fy;              // 振りの中心=柄(手元)
+      const arcR = Math.max(30, Math.hypot(tx - acx, ty - acy)); // 半径=柄→切っ先
+      arcSp.rotation = Math.atan2(ty - acy, tx - acx) + Math.PI; // 素材の膨らみ(-x側)を攻撃方向へ
+      arcSp.width = arcR * 2;
+      arcSp.height = arcR * 2;
+      arcSp.position.set(acx, acy);
+      // ★出す時刻(社長指摘v0.25.3455「斬撃が出る前から薄く表示されてる」): 旧実装は振りの前半50%を
+      //   かけて0から薄く立ち上げていたため、斬撃が来る前に幽霊のように見えていた。斬撃の跡は現実でも
+      //   **刃が通った瞬間に最大**で、あとは消えるだけ=フェードインを廃止して立ち上がりを切り、
+      //   振り始め(12%)までは完全に消しておく。
+      arcSp.alpha = tt < 0.12 ? 0 : 0.95 * (1 - Math.max(0, (tt - 0.35) / 0.65));
       arcSp.visible = arcSp.alpha > 0.01;
     } else if (arcSp) {
       arcSp.visible = false;
@@ -22163,7 +22172,9 @@ export class PixiScene {
       windSp.scale.set(wlen / Math.max(1, windTex.width)); // 縦横同倍率=素材の扇の比率を保つ
       windSp.rotation = angle + Math.PI;
       windSp.position.set(tx, ty);
-      windSp.alpha = 0.95 * (tt < 0.18 ? (tt / 0.18) : (1 - Math.max(0, (tt - 0.45) / 0.55)));
+      // 弧と同じ是正(社長指摘v0.25.3455「ツキも(出る前から薄く見える)」): フェードインを廃止し、
+      // 突き出しの頭(10%)で一気に出して以後フェードだけ(伸びの慣性は上の長さeaseが担う)。
+      windSp.alpha = tt < 0.10 ? 0 : 0.95 * (1 - Math.max(0, (tt - 0.45) / 0.55));
       windSp.visible = windSp.alpha > 0.01;
     } else if (windSp) {
       windSp.visible = false;
@@ -22637,8 +22648,12 @@ export class PixiScene {
   private bountySlashArcSprites = new Map<string, Sprite>();
   private bountySlashArcKey = new Map<string, string>();
   private bountySlashArcBornAt = new Map<string, number>();
+  // ★向きの是正(社長指摘v0.25.3455): 引数は「弧の中心(=振りの軸・武器を持つ手)」と「半径(=軸から
+  //   切っ先までの距離)」。縦横同寸(半径×2)で置くことで、素材の弧がそのまま**切っ先の通り道**になる。
+  //   旧実装は攻撃方向へ長さ・直交方向へ幅を別々に与えており、弧の膨らみが攻撃方向へ伸びて
+  //   「前を向いた尖り」に見えていた(=振りと向きが合わない)。
   private triggerBountySlashArcOnce(
-    id: string, key: string, x: number, y: number, angle: number, lengthPx: number, widthPx: number, now: number,
+    id: string, key: string, x: number, y: number, angle: number, radiusPx: number, now: number,
   ): void {
     if (this.bountySlashArcKey.get(id) === key) return;
     this.bountySlashArcKey.set(id, key);
@@ -22651,8 +22666,8 @@ export class PixiScene {
     }
     if (sp.texture !== tex) sp.texture = tex;
     sp.rotation = angle + Math.PI; // drawSlashArcと同じ規約(素材の膨らみ=-x側を振る方向へ)
-    sp.width = lengthPx;
-    sp.height = widthPx;
+    sp.width = radiusPx * 2;  // 縦横同寸=素材の弧の比率を保つ(切っ先の円弧そのもの)
+    sp.height = radiusPx * 2;
     sp.position.set(x, y);
     sp.alpha = 0.95;
     sp.visible = true;
@@ -22717,8 +22732,8 @@ export class PixiScene {
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', btx, bty, now / 100, 58, 0.9);
       // 斬撃弧(v0.25.3444): 毬の薙ぎが振り抜けた瞬間(recover入り)に帯の軌道へ1回スタンプ。
       this.triggerBountySlashArcOnce(
-        e.id, `naginata:${bs}:${e.bossStateUntil ?? 0}`, (bfx + btx) / 2, (bfy + bty) / 2,
-        Math.atan2(bty - bfy, btx - bfx), Math.hypot(btx - bfx, bty - bfy) * 1.1, MK_NAGINATA_HALFWIDTH * 3.6, now,
+        e.id, `naginata:${bs}:${e.bossStateUntil ?? 0}`, bfx, bfy,
+        Math.atan2(bty - bfy, btx - bfx), Math.hypot(btx - bfx, bty - bfy), now,
       );
       return;
     }
