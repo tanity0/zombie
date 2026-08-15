@@ -2252,6 +2252,12 @@ const DUST_MS = 700;
 // 別に出ているなら良し」の範囲。赤い帯/線は従来どおり判定と厳密一致のまま出ている。
 // 攻撃判定より35%遅れて見えていたため、台本化に合わせて判定時間と同期する。
 const FX_SWING_LINGER = 1;
+// 剣コンテナ(streak/burst/katana + 追加の振り絵)のうち、**振っている時だけの絵**(children[3以降]=
+// 白い弧・突きの風圧)を消す。構え/溜めの描画から必ず呼ぶ(消し忘れると前の振りの絵が薄いまま
+// 残り、「斬撃が出る前から薄く見える」になる=v0.25.3458の実バグ)。
+const hideSwingExtraFx = (c: Container): void => {
+  for (let i = 3; i < c.children.length; i++) c.children[i].visible = false;
+};
 const FX_IMPACT_TOLERANCE_MS = 34; // gameTime/描画時計の1〜2フレーム差で実行FXを誤キャンセルしない
 const SWORD_STYLE_CODES: readonly SwordSwingStyle[] = ['wide', 'overhead', 'draw', 'thrust'];
 // 衝撃波(社長支給素材・v0.25.2414)。**判定が直線の帯なのに絵が「振っただけ」で終わる技**へ、
@@ -22051,17 +22057,23 @@ export class PixiScene {
     const sign = (e.face ?? 1) < 0 ? -1 : 1;
     const sc = e.length / Math.max(1, ref.width);
     const halfW = (ref.width * sc) / 2, halfH = (ref.height * sc) / 2;
-    // ★社長指摘v0.25.3456「斬撃が薄く出てるのまだ残ってる。前の攻撃のが残ってる可能性もある」:
-    //   旧実装は前半(0→50%)でグローを0→4へ**育て**、後半で0へ縮めていた。前半の育ちが
-    //   「本番の前に薄い斬撃が先に出る」、後半の縮みが「前の攻撃の残り」に見えていた(実際は同じ1枚)。
-    //   斬撃の跡は現実でも**刃が通った瞬間が最大**なので、最大コマから始めて縮めながら消えるだけにする。
-    const idx = Math.max(0, 4 - Math.floor(t * 5));       // 4→0 シュリンク(上の端へ収束)
-    streak.anchor.set(1, 0);                              // 右上の端(top-right tip)を固定
-    streak.position.set(e.x + halfW * sign, e.y - halfH);
+    // ※v0.25.3456で「育ち→縮み」をやめる変更を入れたが、社長の指摘は**トール戦の絵**の話で
+    //   プレイヤーの斬撃ではなかった(真因はv0.25.3458の構え中の消し忘れ)。指示外の仕様変更に
+    //   あたるため元に戻した(伸びてから縮む=刃が走る絵は元の意図)。
+    let idx: number;
+    if (t < 0.5) {
+      idx = Math.min(4, Math.floor((t / 0.5) * 5));      // 0→4 グロー(下の端から伸びる)
+      streak.anchor.set(0, 1);                            // 左下の端(bottom-left tip)を固定
+      streak.position.set(e.x - halfW * sign, e.y + halfH);
+    } else {
+      idx = Math.max(0, 4 - Math.floor(((t - 0.5) / 0.5) * 5)); // 4→0 シュリンク(上の端へ収束)
+      streak.anchor.set(1, 0);                            // 右上の端(top-right tip)を固定
+      streak.position.set(e.x + halfW * sign, e.y - halfH);
+    }
     const stex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
     if (streak.texture !== stex) streak.texture = stex;
     streak.scale.set(sc * sign, sc);                     // face=-1 で水平反転
-    streak.alpha = 1 - t * t;                            // ease-inで加速して消える(残り香を作らない)
+    streak.alpha = 1 - Math.max(0, (t - 0.75) / 0.25);   // 終盤フェード
     // burst: 斬撃中央で 0→4 にポップ→フェード。
     const bref = getTexture('fx/slash-burst-4');
     const bidx = Math.min(4, Math.floor(t * 6));
@@ -22083,6 +22095,13 @@ export class PixiScene {
   // (§5.21-追補8: 剣の見た目だけ差し替えたいのでヘルパーを共通化・専用関数の重複を避ける)。
   // t: 0(実行開始)→1(終了)の進行度。streakの伸縮と同時に、剣は技別の大きな弧を最後まで振り切る。
   // burst=trueの間だけ命中点(tx,ty)にバーストがポップ(実行中の手応え。溜め中は出さない)。
+  // ★真因(社長指摘v0.25.3455/3456「斬撃が出る前から薄く表示されてる。ツキも」「前の攻撃のが残ってる
+  //   可能性もある」・スクショはトール戦): 構え/溜めの描画(drawKatanaReady・drawThorTsukiCharge・
+  //   drawThorIaiCharge)は振りと**同じコンテナを使い回す**のに、children[0]のストリークと
+  //   children[1]のバーストしか消していなかった。v0.25.3449/3452で足した **children[3]=白い弧 /
+  //   children[4]=突きの風圧が、前の振りの最後のalphaのまま置き去り**になり、次の構えの間ずっと
+  //   薄く見えていた(=「出る前から薄い」と「前の攻撃の残り」は同じ1つのバグ)。
+  //   構え/溜めでは振りの絵を全部消す。**このコンテナに絵を足す時は必ずここも通ること。**
   private drawKatanaSlash(
     fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
     bladeLenFrac: number, katanaLength: number, katanaTexName: string,
@@ -22283,6 +22302,7 @@ export class PixiScene {
     c.visible = true;
     streak.visible = false;
     burstSp.visible = false;
+    hideSwingExtraFx(c); // ★溜め中は振りの絵(弧・突きの風圧)も消す=v0.25.3458
     const kscale = THOR_KATANA_LENGTH / (THOR_KATANA_BLADE_LEN_FRAC * Math.max(1, kref.width));
     katana.scale.set(kscale);
     // 狙い=手元からターゲット(プレイヤー)への向き。刃の先端をこの向きへ合わせる。
@@ -22324,6 +22344,7 @@ export class PixiScene {
     c.visible = true;
     streak.visible = false;
     burstSp.visible = false;
+    hideSwingExtraFx(c); // ★溜め中は振りの絵(弧・突きの風圧)も消す=v0.25.3458
     const kscale = THOR_KATANA_LENGTH / (THOR_KATANA_BLADE_LEN_FRAC * Math.max(1, kref.width));
     katana.scale.set(kscale);
     const d = Math.hypot(dirX, dirY) || 1;
@@ -22373,6 +22394,7 @@ export class PixiScene {
     c.visible = true;
     streak.visible = false;
     burstSp.visible = false;
+    hideSwingExtraFx(c); // ★構え中は振りの絵(弧・突きの風圧)も消す=v0.25.3458
     const kscale = katanaLength / (bladeLenFrac * Math.max(1, kref.width));
     const baseAngle = swordAttackAngle(attackFromX, attackFromY, attackToX, attackToY);
     const pose = swordSwingPose(style, poseProgress);
