@@ -47,7 +47,8 @@ import { phaseAt } from './difficultyDirector';
 import { createPuzzleClockState, createKomaAccumulator, createSoftenState, createRankPaceState, clampRank } from './rankAssessor';
 import { ZERO_NUISANCE, selectPattern, nuisanceTarget, type NuisanceType } from './scriptPuzzle';
 import { createPinchState } from './pityDirector';
-import { createDirectorState } from './aiDirector';
+import { createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust } from './aiDirector';
+import { spawnEscalation } from './difficultyScaler'; // AI_DIRECTOR_METRICS計測(v0.25.3477): headless側でも難易度③(戦力連動escalation)を実機と同じ式で再現するために使う(下記PlaytestTickOptions.directorApplyのコメント参照)。
 import {
   runPityUpkeep, runKomaBoardMaintenance, runOffscreenRecycleAndCull, runDirectorSignalStep,
   computeDirCountCap, computeEnemyCap,
@@ -393,6 +394,22 @@ export interface PlaytestTickOptions {
   objective?: BotObjective;
   // 目的の進捗をこのtickの分だけ受け取るコールバック(レポート/テスト用・任意)。
   onObjective?: (plan: ObjectivePlan) => void;
+  // AI_DIRECTOR_METRICS計測バッチ(v0.25.3477・research/DIRECTOR_METRICS.md): AIディレクターの
+  // relaxSpawnAdjust/buildupSpawnAdjust(src/utils/aiDirector.ts)をspawnEscへ適用するかどうか。
+  // **未指定(既定)=従来どおりspawnEsc固定0**(既存の全テスト/計測スイートの結果は不変)。
+  // 'none'を指定すると、RELAX/BUILDUPの上乗せは無しのまま、難易度③(spawnEscalation=戦力連動
+  // escalation。useGameLoop.tsのbuildEscと同じ式)だけをheadlessでも計算するようになる(=RELAX/
+  // BUILDUPを比較する時の「土台となる素のescalation」を再現する狙い)。'relax'/'buildup'/'all'は
+  // それぞれ ?directorApply= と同じ意味で、そこにrelaxSpawnAdjust/buildupSpawnAdjustを重ねて掛ける。
+  // ★実機との既知の差(計測レポートに明記する内容の写し): 関所ライブ補正(gateLiveCorrection)と
+  // DirectorRankのescBoost(directorRank.ts・難易度⑤)はheadlessで未配線のため合算していない
+  // (この2つは今回の計測対象=RELAX/BUILDUPの効きとは別レバーなので、影響は「絶対値が実機より
+  // 低めに出る」だけで、RELAX/BUILDUPを掛けた時の相対差の向き・大きさの評価は成立する)。
+  // また、湧き間隔/湧き上限(RELAX_INTERVAL_MULT/RELAX_CAP_MULT)は本方式(puzzleActiveNow)配下の
+  // 通常湧きには使われない(useGameLoop.ts側でも!puzzleActiveNow=ボス台本フェーズ中だけが読む
+  // legacy spawnerの変数で、このheadlessドライバはそのlegacy spawner自体を移植していない=元から
+  // 対象外)。よってこの計測で動かせる/動くのはescalation(spawnEsc)経路だけ。
+  directorApply?: 'none' | 'relax' | 'buildup' | 'all';
 }
 
 // v0.25.2339: store の状態を目的層(botObjective=純関数)が読める形へ詰め替える。
@@ -670,16 +687,40 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   const dirCountCap = computeDirCountCap(t, false, false, MAX_ENEMIES, { countCapBonus: 0 }, 0, 0);
   const enemyCap = computeEnemyCap(false, 20, null, dirCountCap, 0, true, refs.koma.puzzleClockRef.current);
 
+  // AI_DIRECTOR_METRICS計測(v0.25.3477・research/DIRECTOR_METRICS.md): opts.directorApply が
+  // 指定された時だけ、useGameLoop.ts 11408-11436行と同じ式でspawnEscを組み立てる(未指定=従来の
+  // 固定0のまま=既存テストへの副作用なし)。directorRef.current.state は「前フレームの値」
+  // (=useGameLoop.tsの1フレーム遅延パターンと同じ。このtickのrunDirectorSignalStepはこの後で呼ぶ)。
+  let spawnEsc = 0;
+  if (opts.directorApply !== undefined) {
+    const curPhase = phaseAt(t);
+    const dirState = refs.director.directorRef.current.state;
+    const applyRelax = opts.directorApply === 'relax' || opts.directorApply === 'all';
+    const applyBuildup = opts.directorApply === 'buildup' || opts.directorApply === 'all';
+    const relaxAdj = applyRelax ? relaxSpawnAdjust(dirState.macro) : { escMult: 1, intervalMult: 1, capMult: 1 };
+    const buildupAdj = applyBuildup ? buildupSpawnAdjust(dirState.macro, dirState.performance) : { escBoost: 0 };
+    const buildEsc = spawnEscalation({
+      level: s.player.level,
+      weaponTierSum: s.player.weapons.reduce((sum, w) => sum + (w.tier ?? 1), 0),
+      maxHealth: s.player.maxHealth,
+      equippedCount: [s.player.equipment.body, s.player.equipment.arms, s.player.equipment.accessory].filter(Boolean).length,
+      skillCount: s.runBuild.length,
+    }, t, curPhase.kind === 'gate');
+    // 実機との既知差分(PlaytestTickOptions.directorApplyのコメントに詳細): gateLiveCorrection(④)
+    // とDirectorRankのescBoost(⑤)は未配線のため合算しない。
+    spawnEsc = Math.max(0, Math.min(1, buildEsc + buildupAdj.escBoost)) * relaxAdj.escMult;
+  }
+
   runPityUpkeep(refs.pity, {
     pityEnabled: true, player: s.player, enemyCap, deltaTime: dt, gameTime: t,
   });
   runKomaBoardMaintenance(refs.koma, {
     puzzleActiveNow: true, gameTime: t, deltaTime: dt, player: s.player, playerAreaIdx,
-    spawnBounds: gameBounds, spawnViewOffsetY: 0, snowTheme: false, spawnEsc: 0,
+    spawnBounds: gameBounds, spawnViewOffsetY: 0, snowTheme: false, spawnEsc,
   });
   runOffscreenRecycleAndCull({
     labTheme: false, indoor: false, gameBounds, player: s.player, playerCenterX, playerCenterY,
-    gameTime: t, spawnBounds: gameBounds, spawnViewOffsetY: 0, snowTheme: false, spawnEsc: 0,
+    gameTime: t, spawnBounds: gameBounds, spawnViewOffsetY: 0, snowTheme: false, spawnEsc,
     playerAreaIdx, enemyCap, puzzleActiveNow: true, labSpawnAggroRange: 420,
   });
   runDirectorSignalStep(refs.director, {

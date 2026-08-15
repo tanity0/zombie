@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3481',
+    items: [
+      'ゲーム内容の変更はありません(AIディレクターの計測ハーネスを保存)。',
+    ],
+  },
+  {
     version: '0.25.3480',
     items: [
       'ゲーム内容の変更はありません(三段突きの仕様確定=社長裁定の反映)。',
