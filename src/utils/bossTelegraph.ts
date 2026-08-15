@@ -43,7 +43,12 @@ export const MELEE_REACH_PX = 74;
  * プレイヤーは**敵の中心に立っている訳ではなく、近接がギリギリ届く位置で殴っている**。
  * だから「ボス自身を中心に出るAoE」は、その立ち位置から外へ出る距離だけを測るのが正しい。
  *   起点(敵の中心からの距離) = 敵の当たり判定の半分 + MELEE_REACH_PX
- * enemyHitHalfPx は**小さい方の軸(=一番近づける向き)**を渡す(厳しい側で測る)。
+ *
+ * ★enemyHitHalfPx は**縦横の平均**(矩形の代表半径 =(幅/2 + 高さ/2)/2)を渡す。
+ *   v0.25.3465では「小さい方の軸=一番近づける向き」で厳しく測ったが、**横に長いボスでは実態と
+ *   合わなかった**(社長指摘v0.25.3467「噛みつき、余裕で避けれるけど規準まだ合ってない」)。
+ *   幅223×高さ124のミーミルは、横から殴れば中心から185px、上下からでも136px離れており、
+ *   最小軸だけで測ると「避けられない」と出るが実機では余裕で避けられる。平均が実態に近い。
  */
 export const meleeStandDistPx = (enemyHitHalfPx: number): number => enemyHitHalfPx + MELEE_REACH_PX;
 
@@ -158,23 +163,21 @@ export const AOE_TELEGRAPH_AUDIT: readonly AoeTelegraphEntry[] = [
   // useGameLoop.ts: MIMIR_BITE_WINDUP_MS=700 / bodyCenteredAoe.MIMIR_BITE_RADIUS=216(v0.25.2612で
   // 92→216) → 必要約2069ms。★v0.25.2893: この行の 92 が是正に取り残されており、監査が旧値を
   // 検査していた(=不足81msに見えていたが実際は不足1369ms)。「密着への懲罰」という役目は不変。
-  // ★起点つき(v0.25.3465): mimirは裏ボス=生の帯(223x124)。小さい方の軸の半分=62 → 起点=62+74=136。
-  {
-    name: 'mimir-bite(群体の噛みつき)', escapeMs: 700, radiusPx: 216, standDistPx: 136,
-    intentionallyUnavoidable: '密着帯(<=200px)専用の懲罰技=「張り付き続けたら噛まれる」を教える技。'
-      + '城ボスの踏み鳴らし(密着でstomp重み50)と同じ思想。範囲外へ歩くのではなく間合いを空ける動機付けが役目。'
-      + '起点を入れた新基準(v0.25.3465)でも必要766msに対し700ms=不足66msなので免除は継続。',
-  },
+  // ★起点(v0.25.3467で是正): mimirは裏ボス=生の帯(223x124)。縦横の平均=(111.5+62)/2≒86.75
+  // → 起点=86.75+74≒161。必要 (216-161)/104.4*1000 ≒ 527ms で、予告700msは上回る=**合格**。
+  // 社長の実機観察「噛みつき、余裕で避けれる」と一致した(v0.25.3465の最小軸=136では不足66msと出て
+  // 実態と食い違っていた)。**免除は撤去**。
+  { name: 'mimir-bite(群体の噛みつき)', escapeMs: 700, radiusPx: 216, standDistPx: 161 },
   // angelBossTick.ts: SURIEL_RINGSPIN_WINDUP_MS=800 / SURIEL_RINGSPIN_RADIUS=92 → 必要881ms
-  // ★起点つき(v0.25.3465)で**合格に転じた**: suriel 60x30 → 足元の帯(幅33/高さ30)の小さい方の半分=15
-  // → 起点=15+74=89。必要は(92-89)/104.4*1000≒29ms で、予告800msはこれを大きく上回る。
+  // ★起点つき(v0.25.3465)で**合格に転じた**: suriel 60x30 → 足元の帯(幅33/高さ30)の縦横平均≒15.75
+  // → 起点≒90。必要は(92-90)/104.4*1000≒19ms で、予告800msはこれを大きく上回る。
   // 旧基準(中心に立っている前提)では「不足81ms」に見えていただけで、**実際は殴る位置から出られる**。
-  { name: 'suriel-ringspin(近接拒否の回転)', escapeMs: 800, radiusPx: 92, standDistPx: 89 },
+  { name: 'suriel-ringspin(近接拒否の回転)', escapeMs: 800, radiusPx: 92, standDistPx: 90 },
   // angelBossTick.ts: ACRASIEL_BURST_WINDUP_MS=1200 / ACRASIEL_BURST_RADIUS=140 → 必要1341ms
-  // ★起点つき(v0.25.3465)で**合格に転じた**: acrasiel 60x30 → 起点=89。必要は(140-89)/104.4*1000≒488ms。
+  // ★起点つき(v0.25.3465)で**合格に転じた**: acrasiel 60x30 → 起点≒90。必要は(140-90)/104.4*1000≒479ms。
   // 予告1200msはこれを大きく上回る。旧基準の「不足141ms」は中心に立っている前提の数字で、
   // ★未決だった「1400msへ延ばすか半径を縮めるか」の二択は**不要になった**(社長裁定を仰ぐ必要なし)。
-  { name: 'acrasiel-burst(大円)', escapeMs: 1200, radiusPx: 140, standDistPx: 89 },
+  { name: 'acrasiel-burst(大円)', escapeMs: 1200, radiusPx: 140, standDistPx: 90 },
   // PACING_PUZZLE.md §6.38 B2b: bountyTick.ts MK_SPIN_WINDUP_CHOICES([800,1300])の短い方を登録
   // (社長指示「escapeMs=短い方」)/ MK_SPIN_RADIUS=90 → 必要約996ms。
   // ★v0.25.3464で半径 90→180(社長指示「範囲を二倍にして」)。この行が旧90のまま取り残されると
