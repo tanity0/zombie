@@ -152,6 +152,9 @@ import {
   MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS,
   MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
   MK_BOOM_HITRADIUS, MK_BOOM_WINDUP_MS, MK_BOOM_OUT_MS, MK_BOOM_BACK_MS,
+  // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15): 角度・タイミングは判定と同じ純関数から導く。
+  BR_TRIPLE_REACH, BR_TRIPLE_HALF_WIDTH, BR_TRIPLE_WINDUP_MS, BR_TRIPLE_THRUST_MS, BR_TRIPLE_RETURN_MS,
+  brTripleAngles, brTripleStepDurationMs,
 } from '../utils/bountyTick';
 import { telegraphProgress01 } from '../utils/bossTelegraph';
 import { isMarkedBossVisible, bossMarkFor, type MarkBox } from '../utils/bossMarker';
@@ -14571,7 +14574,8 @@ export class PixiScene {
       // 直呼び)も同時にdashLineTickへ寄せる(同じ穴=カウンター/完走を問わず最後のフレームで
       // prog<1のまま次stateへ切り替わり得た)。
       let pushRemain = 0, pushProg = 0, comboStep = 0, comboRemain = 0, comboProg = 0,
-        snipeRemain = 0, snipeProg = 0, sweepRemain = 0, sweepProg = 0, chargeRemain = 0, chargeProg = 0;
+        snipeRemain = 0, snipeProg = 0, sweepRemain = 0, sweepProg = 0, chargeRemain = 0, chargeProg = 0,
+        tripleTrackAng = 0, tripleProg = 0;
       {
         const pushWindupOn = bs2 === 'br-push-windup';
         pushRemain = (e.bossStateUntil ?? gameTime) - gameTime;
@@ -14594,6 +14598,20 @@ export class PixiScene {
         chargeRemain = (e.bossStateUntil ?? gameTime) - gameTime;
         chargeProg = Math.max(0, Math.min(1, 1 - chargeRemain / WEREWOLF_WINDUP_MS));
         this.dashLineTick(o, `${e.id}:bm-charge`, chargeWindupOn, chargeRemain, bfx, bfy, btx, bty, now, chargeProg);
+        // §6.38 v12(三段突き・社長裁定#3「溜め明けに一括ロック」): 溜め中は毎フレーム現在のプレイヤー
+        // 方向を追い(追尾)、windup完了で判定側(bountyTick.ts)がbounty.bountyTripleAngへ固定する。
+        // ここは常時無条件で呼ぶ(windupOn=falseへ落ちた1フレームを渡し損ねると、中断時の消し継続が
+        // 起動しない=dashLineArm/zoneCapsuleArmと同型の掟)。
+        const tripleWindupOn = bs2 === 'br-triple-windup';
+        const plT = useGameStore.getState().player;
+        tripleTrackAng = Math.atan2((plT.y + plT.height / 2) - cy, (plT.x + plT.width / 2) - cx);
+        const tripleAngs = brTripleAngles(tripleTrackAng);
+        const tripleRemain = (e.bossStateUntil ?? gameTime) - gameTime;
+        tripleProg = Math.max(0, Math.min(1, 1 - tripleRemain / BR_TRIPLE_WINDUP_MS));
+        for (let ti = 0; ti < 3; ti++) {
+          const ttx = cx + Math.cos(tripleAngs[ti]) * BR_TRIPLE_REACH, tty = cy + Math.sin(tripleAngs[ti]) * BR_TRIPLE_REACH;
+          this.zoneCapsuleTick(view, o, `${e.id}:br-triple:${ti}`, tripleWindupOn, tripleRemain, cx, cy, ttx, tty, BR_TRIPLE_HALF_WIDTH, now, tripleProg, ti);
+        }
       }
       // §7-15: 出現=windup開始からの経過(elapsed=総windup時間-remain)/消滅=recoverの残りmsを
       // weaponSpawnEase へ渡す。該当しない側はInfinity(既に出現済み/まだ消滅対象外)。
@@ -14652,6 +14670,59 @@ export class PixiScene {
           e.id, 'bounty-ranged-sign',
           cx + shakeNx * shake, cy - e.height * 0.15 + ease.dy + shakeNy * shake,
           holdAng, 130, 0.95 * ease.alphaMul * flicker,
+        );
+      } else if (bs2 === 'br-triple-windup') {
+        // §6.38 v12: 3本の帯そのものは上の常時ブロック(zoneCapsuleTick×3)が描く。ここは武器(標識)の
+        // 構えだけ(追尾中=tripleTrackAngを毎フレーム向く)。
+        const ease = weaponSpawnEase(BR_TRIPLE_WINDUP_MS * tripleProg, Infinity);
+        this.drawBountyWeapon(
+          e.id, 'bounty-ranged-sign',
+          cx + Math.cos(tripleTrackAng) * 55, cy - e.height * 0.15 + Math.sin(tripleTrackAng) * 55 + ease.dy,
+          tripleTrackAng + Math.PI / 2, 130, 0.9 * ease.alphaMul,
+        );
+      } else if (bs2 === 'br-triple-1' || bs2 === 'br-triple-2' || bs2 === 'br-triple-3') {
+        // 判定用の帯は既にwindup中に流星の描き→消しを描き切っている(=「消えて当たる」文法。上の
+        // 常時ブロックがwindupOn=falseへ落ちた瞬間に自動でそうなる)。ここは得物のスラスト演出
+        // (分類②=派手さの絵。判定より大きく=命中閃も判定の帯より一回り大きく出す)だけを描く。
+        const stepIdx = bs2 === 'br-triple-1' ? 0 : bs2 === 'br-triple-2' ? 1 : 2;
+        const lockedAng = e.bountyTripleAng ?? 0;
+        const ang = brTripleAngles(lockedAng)[stepIdx];
+        const stepDurMs = brTripleStepDurationMs(stepIdx as 0 | 1 | 2);
+        const remainStep = (e.bossStateUntil ?? gameTime) - gameTime;
+        const stepElapsed = Math.max(0, stepDurMs - remainStep);
+        // 突き出し(0→90ms・ease-out=速く始まり止まる)→戻り(90→150ms・ease-in=じわり引く)→段間は静止。
+        let lungeT: number;
+        if (stepElapsed <= BR_TRIPLE_THRUST_MS) {
+          const t = Math.max(0, Math.min(1, stepElapsed / BR_TRIPLE_THRUST_MS));
+          lungeT = 1 - Math.pow(1 - t, 2);
+        } else if (stepElapsed <= BR_TRIPLE_THRUST_MS + BR_TRIPLE_RETURN_MS) {
+          const t = Math.max(0, Math.min(1, (stepElapsed - BR_TRIPLE_THRUST_MS) / BR_TRIPLE_RETURN_MS));
+          lungeT = 1 - t * t;
+        } else {
+          lungeT = 0;
+        }
+        const reachPx = 55 + 125 * lungeT; // 構え55px→突き切りで180px相当(絵の尺=判定寸法とは別)
+        this.drawBountyWeapon(
+          e.id, 'bounty-ranged-sign',
+          cx + Math.cos(ang) * reachPx, cy - e.height * 0.15 + Math.sin(ang) * reachPx,
+          ang + Math.PI / 2, 130, 0.95,
+        );
+        if (stepElapsed >= BR_TRIPLE_THRUST_MS) {
+          // 命中閃(既存のscissor閃/br-pushの斬撃弧と同じ作法=分類②「派手さ」。段ごとに1回だけ発火)。
+          this.triggerBountySlashArcOnce(
+            e.id, `triple${stepIdx}:${e.bossStateUntil ?? 0}`,
+            cx, cy - e.height * 0.15, ang, BR_TRIPLE_REACH * 0.6, now,
+          );
+        }
+      } else if (bs2 === 'br-triple-recover') {
+        const remainR = (e.bossStateUntil ?? gameTime) - gameTime;
+        const ease = weaponSpawnEase(Infinity, remainR);
+        const lockedAng = e.bountyTripleAng ?? 0;
+        const ang = brTripleAngles(lockedAng)[2]; // 最終段(右)の構えのまま消える
+        this.drawBountyWeapon(
+          e.id, 'bounty-ranged-sign',
+          cx + Math.cos(ang) * 55, cy - e.height * 0.15 + Math.sin(ang) * 55 + ease.dy,
+          ang + Math.PI / 2, 130, 0.9 * ease.alphaMul,
         );
       } else if (e.type === 'bounty-ranged' && !e.dormant
         && (gameTime - (e.lastRangedShotAt ?? -1e9) < 900

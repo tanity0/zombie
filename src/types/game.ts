@@ -750,6 +750,11 @@ export interface Enemy {
     // (§6.38 B0のLASER-TRACK一般化。同じ状態名を使うことでgameStore側の中断/描画が両者へ自動で効く)。
     // br-push-* = 近接されたら押しのけ(小KB・カウンター可)。
     | 'br-push-windup' | 'br-push' | 'br-push-recover'
+    // §6.38 v12(バス停「三段突き」・社長指示2026-08-15+社長裁定2026-08-15): 中距離の詰め技。
+    // br-triple-windup(溜め900ms・ボス静止)→ br-triple-1/2/3(左→中→右の3段突き。各段の末尾で
+    // hitCapsuleを積む)→ br-triple-recover(硬直)。角度・タイミングは src/utils/bountyTriple.ts
+    // (判定/描画の単一の出どころ)。
+    | 'br-triple-windup' | 'br-triple-1' | 'br-triple-2' | 'br-triple-3' | 'br-triple-recover'
     // PACING_PUZZLE.md §6.38 B2: 馬乗り(変異・bounty-melee)の技。
     // bm-charge-* = 突進(werewolfのwindup→charge流用・流星ライン予告・カウンター可)。
     // bm-combo{1,2,3}-* = 3段コンボ(速→速→遅)。bm-snipe-* = 輸入=懲罰狙撃(idolのsnipe流用)。
@@ -797,6 +802,11 @@ export interface Enemy {
   // PACING_PUZZLE.md §6.38 B2(バス停「取り巻き召喚」): この敵が賞金首の取り巻きなら親bounty.idを持つ
   // (交戦開始時に1回だけ2体・再召喚なし)。bountyTick.tsが賞金首の退場時にこのidを一緒に片付ける。
   bountyEscortId?: string;
+  // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15#3「溜め明けに一括ロック」): 真ん中の突きが
+  // 狙う方向(radians)を溜め明けに1回だけ確定して持たせる(以後の3段は追尾せず、この値だけを読む=
+  // src/utils/bountyTriple.ts brTripleAnglesの単一の出どころ)。判定(bountyTick.ts)と描画
+  // (pixiScene.ts)の両方がここを読む。
+  bountyTripleAng?: number;
   bossBurstLeft?: number;    // 3連発の残弾
   bossBurstNextAt?: number;  // 次の1発の gameTime(ms)
   // PACING_PUZZLE.md §6.28-21(バッチM53/M55/M57・ロットL2): ミゲル/ジブリル/ラフィへ追加した新技1つずつの

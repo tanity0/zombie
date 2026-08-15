@@ -36,6 +36,22 @@ export {
   MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS, MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
   BOUNTY_BASE_HP, BR_SIGN_TIP_PX,
 };
+// §6.38 v12「バス停の新技『三段突き』」(社長裁定2026-08-15): 3本の角度・タイミングは判定/描画が
+// 同じ純関数から導く(bountyTriple.ts=依存ゼロの葉。bountyDims.tsと同じ循環import防止の流儀)。
+import {
+  BR_TRIPLE_MIN, BR_TRIPLE_MAX, BR_TRIPLE_CD_MS, BR_TRIPLE_WINDUP_MS,
+  BR_TRIPLE_REACH, BR_TRIPLE_HALF_WIDTH, BR_TRIPLE_STEP, BR_TRIPLE_DAMAGE,
+  BR_TRIPLE_SPREAD_RAD, BR_TRIPLE_THRUST_MS, BR_TRIPLE_RETURN_MS, BR_TRIPLE_GAP_MS,
+  BR_TRIPLE_STEP_MS, BR_TRIPLE_LAST_STEP_MS, BR_TRIPLE_ACTIVE_MS,
+  brTripleAngles, brTripleStepDurationMs, brTripleLungeEase01,
+} from './bountyTriple';
+export {
+  BR_TRIPLE_MIN, BR_TRIPLE_MAX, BR_TRIPLE_CD_MS, BR_TRIPLE_WINDUP_MS,
+  BR_TRIPLE_REACH, BR_TRIPLE_HALF_WIDTH, BR_TRIPLE_STEP, BR_TRIPLE_DAMAGE,
+  BR_TRIPLE_SPREAD_RAD, BR_TRIPLE_THRUST_MS, BR_TRIPLE_RETURN_MS, BR_TRIPLE_GAP_MS,
+  BR_TRIPLE_STEP_MS, BR_TRIPLE_LAST_STEP_MS, BR_TRIPLE_ACTIVE_MS,
+  brTripleAngles, brTripleStepDurationMs, brTripleLungeEase01,
+};
 // §6.38 v10「バス停の中立射撃に緩急」: 型3種(burst/fan/charge)のサイクル抽選・間隔・弾数の計算は
 // bountyShots.ts(依存ゼロの葉)へ一本化。tickRangedはここの関数を呼ぶだけ(#10)。
 import {
@@ -238,17 +254,34 @@ export interface BountyTickState {
   // 実行中はそこからの**イーズ距離**で位置を決める(等速移動・瞬間停止を作らないため)。
   spinKey: number; spinX0: number; spinY0: number; spinUx: number; spinUy: number;
   whip360Hit: boolean; // 馬乗り: 360度ムチ振りは1回の振りで1度だけ当てる(多段防止)
+  // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15): クールダウン(6000ms)は**BountyTickState側で
+  // 管理**する(社長裁定「置き場所はBountyTickState・activeId切替で消えてよい」)。gameTime基準・
+  // 初期値0=初回は即撃てる。
+  tripleReadyAt: number;
+  // 現在の段(br-triple-1/2/3)が始まった gameTime(命中判定=突き出しの末尾90msの計測起点)。
+  tripleStepStartAt: number;
+  // 現在の段で既に命中判定(hitCapsule)を1回積んだか(多段防止)。
+  tripleHitFired: boolean;
+  // 踏み込み(3段を通した1つの弧=加速→減速)の起点・向き・開始時刻(mk-spinの
+  // spinX0/spinY0/spinUx/spinUyと同型)。br-triple-windupが明けた1フレームで焼き付ける。
+  tripleLungeX0: number; tripleLungeY0: number; tripleLungeUx: number; tripleLungeUy: number;
+  tripleLungeStartAt: number;
 }
 export const createBountyTickState = (): BountyTickState => ({
   activeId: null, aimVX: 0, aimVY: 0, farMs: 0, comboStep: 0, escortsSummoned: false,
   suiuHopIdx: 0, suiuTx: 0, suiuTy: 0,
   brPattern: null, brPrevPattern: null, brShotsRemaining: 0, brCycleEndAt: 0,
   spinKey: 0, spinX0: 0, spinY0: 0, spinUx: 0, spinUy: 0, whip360Hit: false,
+  tripleReadyAt: 0, tripleStepStartAt: 0, tripleHitFired: false,
+  tripleLungeX0: 0, tripleLungeY0: 0, tripleLungeUx: 0, tripleLungeUy: 0, tripleLungeStartAt: 0,
 });
 const resetBountyRunState = (s: BountyTickState): void => {
   s.aimVX = 0; s.aimVY = 0; s.farMs = 0; s.comboStep = 0; s.escortsSummoned = false;
   s.suiuHopIdx = 0; s.suiuTx = 0; s.suiuTy = 0;
   s.spinKey = 0; s.spinX0 = 0; s.spinY0 = 0; s.spinUx = 0; s.spinUy = 0; s.whip360Hit = false;
+  // §6.38 v12: activeId切替(=別個体を制御し直す)ではCDも含めて消えてよい(社長裁定)。
+  s.tripleReadyAt = 0; s.tripleStepStartAt = 0; s.tripleHitFired = false;
+  s.tripleLungeX0 = 0; s.tripleLungeY0 = 0; s.tripleLungeUx = 0; s.tripleLungeUy = 0; s.tripleLungeStartAt = 0;
   resetBrShotCycle(s);
 };
 /**
@@ -279,6 +312,10 @@ const cancelBountyTechnique = (s: BountyTickState): void => {
   s.comboStep = 0;
   s.spinKey = 0; s.spinX0 = 0; s.spinY0 = 0; s.spinUx = 0; s.spinUy = 0;
   s.whip360Hit = false;
+  // §6.38 v12「中断: ノックバック等で止められたら技を中断して残段を出さない」(v0.25.3477の作法どおり)。
+  // ★CD(tripleReadyAt)はここでは触らない=選択時に既に課金済み(中断で得しない・連発防止を保つ)。
+  s.tripleStepStartAt = 0; s.tripleHitFired = false;
+  s.tripleLungeX0 = 0; s.tripleLungeY0 = 0; s.tripleLungeUx = 0; s.tripleLungeUy = 0; s.tripleLungeStartAt = 0;
   resetBrShotCycle(s);
 };
 
@@ -289,11 +326,13 @@ const BOUNTY_WINDUP_STATES: readonly string[] = [
   'br-push-windup', 'bm-charge-windup', 'bm-whip360-windup', 'bm-combo1-windup', 'bm-combo2-windup', 'bm-combo3-windup', 'bm-snipe-windup',
   'bb-sweep-windup', 'leap-windup',
   'mk-naginata-windup', 'mk-naginata1-windup', 'mk-naginata2-windup', 'mk-spin-windup', 'mk-suiu-windup', 'mk-boom-windup',
+  'br-triple-windup', // §6.38 v12(社長裁定#9「溜め/硬直はカウンター可=既存の押しのけと同じ扱い」)
 ];
 const BOUNTY_RECOVER_STATES: readonly string[] = [
   'br-push-recover', 'bm-charge-recover', 'bm-combo1-recover', 'bm-combo2-recover', 'bm-combo3-recover', 'bm-snipe-recover',
   'bb-sweep-recover', 'leap-recover',
   'mk-naginata-recover', 'mk-naginata1-recover', 'mk-naginata2-recover', 'mk-spin-recover', 'mk-suiu-recover', 'mk-boom-recover',
+  'br-triple-recover', // §6.38 v12(同上)
 ];
 
 /** カウンター成立の演出(idolTick.ts/angelBossTick.tsのcounterHit/angelCounterHitと同型)。 */
@@ -358,6 +397,8 @@ const BR_LASER_NORMAL_CD_MS = 9000;
 // 取り巻き召喚(§4①②・ニアール型=交戦開始1回だけ・再召喚なし・fromEventは立てない=B1.5-3と同じ理由)。
 export const BR_ESCORT_COUNT = 2;
 const BR_ESCORT_TYPE: EnemyType = 'zombie';
+// §6.38 v12(三段突き・社長裁定): 硬直(パニッシュ窓の下限floor込み=900のまま変化なし)。
+const BR_TRIPLE_RECOVER_MS = withRecoverFloor(900);
 
 // ---- 馬乗り(bounty-melee): 距離帯+技の定数 -------------------------------------------------------
 const BM_MELEE_MAX = 130; // 密着=コンボ帯
@@ -465,6 +506,15 @@ const tickRanged = (
       s.aimVX = 0; s.aimVY = 0;
       patch.bossState = 'laser-windup';
       patch.bossStateUntil = newGameTime + 3000; // = mimirLaserTrack.MIMIR_LASER_WINDUP_MS(直接値。定数はimport済みで下のtestが一致検査)
+      return;
+    }
+    // §6.38 v12(社長指示2026-08-15「バス停の新技『三段突き』」+社長裁定2026-08-15): 中距離の詰め技。
+    // 押しのけ(<=110)とレーザーの割り込み判定の**後**・中立の射撃サイクルの**前**に見る(設計書の順序)。
+    if (newGameTime >= s.tripleReadyAt && dist >= BR_TRIPLE_MIN && dist <= BR_TRIPLE_MAX) {
+      sfx.alert();
+      patch.bossState = 'br-triple-windup';
+      patch.bossStateUntil = newGameTime + BR_TRIPLE_WINDUP_MS;
+      s.tripleReadyAt = newGameTime + BR_TRIPLE_CD_MS; // 選択時に課金(中断されても払い戻さない)
       return;
     }
     // 中立: kite(引き撃ち)+型3種(burst/fan/charge)のサイクル射撃(§6.38 v10「バス停の中立射撃に緩急」)。
@@ -634,6 +684,75 @@ const tickRanged = (
       patch.bossState = 'chase';
       patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
       resetBrShotCycle(s); // §6.38 v10 #7: レーザー(recover/broken)からのchase復帰=射撃サイクルをクリア
+    }
+    return;
+  }
+
+  // ---- §6.38 v12: 三段突き(中距離の詰め技) -----------------------------------------------------
+  if (st === 'br-triple-windup') {
+    // 社長裁定#3「溜め明けに一括ロック」: 溜め中(900ms)は毎フレーム現在のプレイヤー方向を追い続け、
+    // windupが明けた瞬間の1回だけ角度を確定する(以後は追尾しない=横に避けても構えが追ってくるので、
+    // 実質「後退するしかない」を作る狙い)。ボス自身は静止したまま(社長裁定「溜め中はボスを止める」
+    // =patch.x/y/vx/vyを一切書かない)。
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      const ang = Math.atan2(pcy - bcy, pcx - bcx);
+      patch.bountyTripleAng = ang; // ロック確定(以後の3段はこの角度だけを読む=単一の出どころ)
+      s.tripleStepStartAt = newGameTime;
+      s.tripleHitFired = false;
+      // 踏み込み(3段通しの1つの弧)の起点/向き/開始時刻をここで焼き付ける(mk-spinと同型)。
+      s.tripleLungeX0 = bounty.x; s.tripleLungeY0 = bounty.y;
+      s.tripleLungeUx = Math.cos(ang); s.tripleLungeUy = Math.sin(ang);
+      s.tripleLungeStartAt = newGameTime;
+      patch.bossState = 'br-triple-1';
+      patch.bossStateUntil = newGameTime + brTripleStepDurationMs(0);
+    }
+    return;
+  }
+  if (st === 'br-triple-1' || st === 'br-triple-2' || st === 'br-triple-3') {
+    const stepIdx: 0 | 1 | 2 = st === 'br-triple-1' ? 0 : st === 'br-triple-2' ? 1 : 2;
+    // 踏み込み(社長裁定#2・監査で出た未指定の埋め「溜め中はボスを止める。踏み込みは実行の3段を
+    // 通して加速→減速」): 合計BR_TRIPLE_STEP(120px)を**1つの弧**として消化する(段ごとに瞬間停止
+    // しない=CLAUDE.md MUST)。起点/向きはwindup明けの1フレームで焼き付け済み。
+    const lungeElapsed = newGameTime - s.tripleLungeStartAt;
+    const eased = brTripleLungeEase01(lungeElapsed, BR_TRIPLE_ACTIVE_MS);
+    const moved = BR_TRIPLE_STEP * eased;
+    const c = resolveMove(s.tripleLungeX0 + s.tripleLungeUx * moved, s.tripleLungeY0 + s.tripleLungeUy * moved, bounty);
+    patch.x = c.x; patch.y = c.y;
+    const tNorm = Math.max(0, Math.min(1, BR_TRIPLE_ACTIVE_MS > 0 ? lungeElapsed / BR_TRIPLE_ACTIVE_MS : 1));
+    const spd = (BR_TRIPLE_STEP * 6 * tNorm * (1 - tNorm)) / (BR_TRIPLE_ACTIVE_MS / 1000);
+    patch.vx = s.tripleLungeUx * spd; patch.vy = s.tripleLungeUy * spd;
+    // 判定は**動いた後の中心**で取る(絵と判定を同じ位置に揃える=赤帯の座標は毎フレーム現在のボス
+    // 中心を読む、の掟。mk-spinと同じ扱い)。
+    const curBcx = c.x + bounty.width / 2, curBcy = c.y + bounty.height / 2;
+
+    // 命中判定(監査で出た未指定の埋め「各段の突き出しの末尾(帯が伸び切った瞬間)」)。damagePlayer
+    // 直呼びはしない=既存の帯判定共通経路hitCapsuleを使う(無敵/カウンター/守護霊の経路を素通りしない)。
+    const stepElapsed = newGameTime - s.tripleStepStartAt;
+    if (!s.tripleHitFired && stepElapsed >= BR_TRIPLE_THRUST_MS) {
+      s.tripleHitFired = true;
+      const ang = brTripleAngles(bounty.bountyTripleAng ?? Math.atan2(pcy - bcy, pcx - bcx))[stepIdx];
+      const tx = curBcx + Math.cos(ang) * BR_TRIPLE_REACH, ty = curBcy + Math.sin(ang) * BR_TRIPLE_REACH;
+      hitCapsule(bounty, curBcx, curBcy, tx, ty, BR_TRIPLE_HALF_WIDTH, BR_TRIPLE_DAMAGE);
+    }
+
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      if (stepIdx < 2) {
+        s.tripleStepStartAt = newGameTime;
+        s.tripleHitFired = false;
+        patch.bossState = stepIdx === 0 ? 'br-triple-2' : 'br-triple-3';
+        patch.bossStateUntil = newGameTime + brTripleStepDurationMs((stepIdx + 1) as 1 | 2);
+      } else {
+        patch.bossState = 'br-triple-recover';
+        patch.bossStateUntil = newGameTime + BR_TRIPLE_RECOVER_MS;
+      }
+    }
+    return;
+  }
+  if (st === 'br-triple-recover') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+      resetBrShotCycle(s); // §6.38 v10 #7と同格の割り込み扱い(押しのけ/レーザーと同じくchase復帰でクリア)
     }
     return;
   }

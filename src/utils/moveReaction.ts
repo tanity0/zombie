@@ -51,6 +51,8 @@ export const MOVE_REACTION_KEYS = [
   'idol-snipe',
   // PACING_PUZZLE.md §6.38 B2a(賞金首・bountyTick.ts): バス停/馬乗りの近接/レーザー技。
   'br-push', 'br-laser',
+  // §6.38 v12(バス停「三段突き」・社長指示2026-08-15): windup/1/2/3/recoverの全フェーズを1つの技へ。
+  'br-triple',
   'bm-charge', 'bm-combo1', 'bm-combo2', 'bm-combo3', 'bm-snipe',
   // PACING_PUZZLE.md §6.38 B2b(賞金首・bountyTick.ts): 鋏/舞妓の技。
   'bb-sweep', 'bb-leap',
@@ -203,6 +205,9 @@ const MELEE_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<strin
   'bounty-ranged': {
     'br-push-windup': 'br-push', 'br-push': 'br-push', 'br-push-recover': 'br-push',
     'laser-windup': 'br-laser', 'laser-fire': 'br-laser', 'laser-recover': 'br-laser', 'laser-broken': 'br-laser',
+    // §6.38 v12: 三段突き(windup/1/2/3/recoverの全フェーズを同じキーへ寄せる=既存の掟どおり)。
+    'br-triple-windup': 'br-triple', 'br-triple-1': 'br-triple', 'br-triple-2': 'br-triple',
+    'br-triple-3': 'br-triple', 'br-triple-recover': 'br-triple',
   },
   'bounty-melee': {
     'bm-charge-windup': 'bm-charge', 'bm-charge': 'bm-charge', 'bm-charge-recover': 'bm-charge',

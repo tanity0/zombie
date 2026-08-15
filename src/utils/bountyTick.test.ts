@@ -2,7 +2,7 @@
 // 純関数(bountyEngagedNow等)は「1分退場・戦闘中リセット・抑止ゲート」を式で機械化する。
 // runBountyTick本体(store書き込みを伴う)は、idolTick.test.tsと同じ作法(resetGame→盤面を作り
 // tickを実際に回す)で状態機械を検証する(B1.5監査の指摘=「漏れの機械化」)。描画はテスト対象外。
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   bountyEngagedNow, bountyLingerExpired, bountySpawnBlocked, pickActiveBounty, bountyMaxHealth,
   runBountyTick, createBountyTickState, anyBountyEngaged, bountyNaturalSpawnReady,
@@ -11,6 +11,7 @@ import {
   BR_ESCORT_COUNT as BR_ESCORT_COUNT_FOR_TEST,
   MK_REPOSE_MS, MK_SUIU_RADIUS, MK_SUIU_HOP_INTERVAL_CHOICES, MK_SUIU_HOP_TRAVEL_MS,
   BR_SHOT_UNIT_MS,
+  type BountySfx,
 } from './bountyTick';
 import { bossLeashDistancePx } from './bossEngagement';
 import { usesMimirLaser } from './mimirLaserTrack';
@@ -367,8 +368,11 @@ describe('runBountyTick — B2a 技の状態機械', () => {
 
   const START_GT = 10_000_000;
 
-  /** setupと同型だが型を選べる(バス停/馬乗りの技テスト用)。 */
-  const setupType = (type: EnemyType, playerOffset: { x: number; y: number }, over: Partial<Enemy> = {}) => {
+  /** setupと同型だが型を選べる(バス停/馬乗りの技テスト用)。sfxOverrideは既定NOOP(選択SE確認用)。 */
+  const setupType = (
+    type: EnemyType, playerOffset: { x: number; y: number }, over: Partial<Enemy> = {},
+    sfxOverride?: BountySfx,
+  ) => {
     const e = spawnEnemyAt(type, 50000, 50000, START_GT);
     e.dormant = false; // 技テストは交戦中から始める(起床演出待ちを省く)
     e.homeX = e.x; e.homeY = e.y;
@@ -385,7 +389,7 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       gt += ms;
       useGameStore.setState({ gameTime: gt });
       const cur = useGameStore.getState().enemies.find(x => x.id === e.id);
-      if (cur) runBountyTick(cur, s, gt, ms / 1000, 1, gt);
+      if (cur) runBountyTick(cur, s, gt, ms / 1000, 1, gt, sfxOverride);
     };
     return { id: e.id, step, gt: () => gt, state: s };
   };
@@ -502,10 +506,12 @@ describe('runBountyTick — B2a 技の状態機械', () => {
     // bountyShots.test.tsで既に行っているので、ここでは「実際にtickRangedを回した時に配線どおり
     // 効くか」だけを見る(実装精度の規律4「配線ロジックも純関数と同じコミットでテストする」)。
     describe('中立射撃の型3種(§6.38 v10)', () => {
-      // kite圏内(340〜560)の真ん中に置き、レーザーCDを未来へ飛ばして押しのけ/レーザーどちらの
-      // 割り込みも起きない盤面を作る(「割り込みが一度も入らない中立のみ」の受け入れ条件と同条件)。
+      // kite圏内(340〜560)に置き、レーザーCDを未来へ飛ばして押しのけ/レーザーどちらの割り込みも
+      // 起きない盤面を作る(「割り込みが一度も入らない中立のみ」の受け入れ条件と同条件)。
+      // ★x=500(旧450から移動・§6.38 v12): 三段突きの選択距離帯(380〜460)を避ける
+      // (450はその内側=このdescribeが検証したい「中立のみ」の前提が三段突きの新規割り込みで崩れるため)。
       const setupNeutralOnly = (over: Partial<Enemy> = {}) =>
-        setupType('bounty-ranged', { x: 450, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, ...over });
+        setupType('bounty-ranged', { x: 500, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, ...over });
 
       it('★受け入れ条件: 割り込みなしの中立のみで1分あたり54.5発±1(社長裁定「案A」の検算)', () => {
         const { step } = setupNeutralOnly();
@@ -641,6 +647,180 @@ describe('runBountyTick — B2a 技の状態機械', () => {
         // (中立へ辿り着けていない=そもそもサイクルが開始されない)。resetBrShotCycleが機能していれば
         // 残弾は0のまま蓄積しない。
         expect(state.brShotsRemaining).toBe(0);
+      });
+    });
+
+    // §6.38 v12(社長指示2026-08-15「バス停の新技『三段突き』」)+★社長裁定(2026-08-15)の配線テスト。
+    // 純関数側(角度・タイミング・受け入れ条件の検算)は bountyTriple.test.ts。ここは
+    // 「実際にtickRangedを回した時に配線どおり効くか」だけを見る(実装精度の規律4)。
+    describe('三段突き(§6.38 v12・社長裁定2026-08-15)', () => {
+      it('選択距離帯(380〜460)でwindupを発火し、選択時にsfx.alert()が鳴る', () => {
+        const alert = vi.fn();
+        const { id, step } = setupType(
+          'bounty-ranged', { x: 420, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER },
+          { alert, fire: () => {}, counter: () => {}, reward: () => {} },
+        );
+        step(16);
+        expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-triple-windup');
+        expect(alert).toHaveBeenCalled();
+      });
+
+      it('選択距離帯の下限未満(200px)・上限超(600px)では発火しない', () => {
+        const near = setupType('bounty-ranged', { x: 200, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
+        for (let i = 0; i < 5; i++) near.step(16);
+        expect(useGameStore.getState().enemies.find(e => e.id === near.id)?.bossState).not.toBe('br-triple-windup');
+
+        const far = setupType('bounty-ranged', { x: 600, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
+        for (let i = 0; i < 5; i++) far.step(16);
+        expect(useGameStore.getState().enemies.find(e => e.id === far.id)?.bossState).not.toBe('br-triple-windup');
+      });
+
+      it('選択距離帯(380〜460)内で発火する(境界含む)', () => {
+        // playerOffset.{x,y}はplayer.{x,y}への単純加算(中心合わせではない)。bounty-ranged=44x44・
+        // player=28x28なので、x/yとも(bounty.半径-player.半径)=(22-14)=8だけ補正しないと中心間距離が
+        // 8px分ズレる(境界を厳密に検証するため両軸を補正=x方向のみ+8・y方向は+8で中心を揃える)。
+        for (const dist of [380, 420, 460]) {
+          const { id, step } = setupType('bounty-ranged', { x: dist + 8, y: 8 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER });
+          step(16);
+          expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-triple-windup');
+        }
+      });
+
+      it('完走: windup→1→2→3→recover→chaseの順で進み、静止したプレイヤーへ3回判定を積む(帯寸法=設計値)', () => {
+        const { id, step } = setupType('bounty-ranged', { x: 420, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
+        const seen = new Set<string | undefined>();
+        const before = useGameStore.getState().pumpkinBlasts.length;
+        // windup(900)+3段(590)+硬直(900)=2390msを十分上回るまで刻む。
+        for (let i = 0; i < 60; i++) {
+          step(50);
+          seen.add(useGameStore.getState().enemies.find(e => e.id === id)?.bossState);
+        }
+        expect(seen.has('br-triple-windup')).toBe(true);
+        expect(seen.has('br-triple-1')).toBe(true);
+        expect(seen.has('br-triple-2')).toBe(true);
+        expect(seen.has('br-triple-3')).toBe(true);
+        expect(seen.has('br-triple-recover')).toBe(true);
+        expect(seen.has('chase')).toBe(true);
+        const newBlasts = useGameStore.getState().pumpkinBlasts.slice(before);
+        const tripleBlasts = newBlasts.filter(b => b.capsule?.halfWidth === 34);
+        expect(tripleBlasts.length).toBe(3); // 3段=3回(多段ヒット無し)
+        for (const b of tripleBlasts) expect(b.damage).toBe(9); // BR_TRIPLE_DAMAGE
+      });
+
+      it('狙い(bountyTripleAng)は溜め明けに1回だけロックされ、以後の3段で追尾しない', () => {
+        const { id, step } = setupType('bounty-ranged', { x: 420, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
+        step(16);
+        expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-triple-windup');
+        // windup完走までプレイヤーを真横(90度方向)へ移動させる(狙いが追い続けるかを見る)。
+        for (let i = 0; i < 20; i++) {
+          step(50);
+          const cur = useGameStore.getState().enemies.find(e => e.id === id);
+          if (cur?.bossState !== 'br-triple-windup') break;
+          useGameStore.setState(s => ({ player: { ...s.player, x: cur.x, y: cur.y + 300 } }));
+        }
+        const afterWindup = useGameStore.getState().enemies.find(e => e.id === id)!;
+        expect(afterWindup.bossState).not.toBe('br-triple-windup'); // windupを抜けている
+        const lockedAng = afterWindup.bountyTripleAng;
+        expect(lockedAng).toBeDefined();
+        // ロック後にプレイヤーを再び逆側(真横)へ動かしても、角度は変化しない(追尾しない)。
+        useGameStore.setState(s => ({ player: { ...s.player, x: afterWindup.x, y: afterWindup.y - 300 } }));
+        step(16);
+        const later = useGameStore.getState().enemies.find(e => e.id === id)!;
+        expect(later.bountyTripleAng).toBe(lockedAng);
+      });
+
+      it('クールダウン(6000ms)明けまで再選択されない', () => {
+        const { id, step, state } = setupType('bounty-ranged', { x: 420, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
+        step(16);
+        expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-triple-windup');
+        expect(state.tripleReadyAt).toBeGreaterThan(useGameStore.getState().gameTime);
+        // 技を完走させてchaseへ戻す(windup900+3段590+硬直900=2390ms)。踏み込み(最大120px)で
+        // プレイヤーとの距離が縮むため、以後は毎tick選択距離帯(dist=420相当)へ位置を戻して
+        // 「距離は満たしているのにCDで出ない/CD明けで出る」だけを見る(自然なkiteの復帰待ちに
+        // 依存しない)。
+        const reposition = (): void => {
+          const b = useGameStore.getState().enemies.find(e => e.id === id);
+          if (!b) return;
+          useGameStore.setState(s => ({
+            player: { ...s.player, x: b.x + b.width / 2 - s.player.width / 2 + 420, y: b.y },
+          }));
+        };
+        for (let i = 0; i < 60; i++) { step(50); reposition(); }
+        expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('chase');
+        // CDが明けるまでは再びbr-triple-windupへ入らない(距離条件は毎tick満たしている)。
+        let sawTripleAgain = false;
+        for (let i = 0; i < 40; i++) { // 40*50=2000ms(まだCD=6000ms明けていない)
+          step(50); reposition();
+          if (useGameStore.getState().enemies.find(e => e.id === id)?.bossState === 'br-triple-windup') sawTripleAgain = true;
+        }
+        expect(sawTripleAgain).toBe(false);
+        // CDが明けたら再発火できる。
+        for (let i = 0; i < 100; i++) { // さらに5000ms分(合計CDを十分超える)
+          step(50); reposition();
+          if (useGameStore.getState().enemies.find(e => e.id === id)?.bossState === 'br-triple-windup') sawTripleAgain = true;
+        }
+        expect(sawTripleAgain).toBe(true);
+      });
+
+      it('カウンター可(windup中): 成立でchaseへ即中断し残段を出さない(v3128の掟+v0.25.3477の作法)', () => {
+        const { id, step } = setupType('bounty-ranged', { x: 420, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
+        step(16);
+        expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-triple-windup');
+        const bounty = useGameStore.getState().enemies.find(e => e.id === id)!;
+        useGameStore.setState(s => ({
+          player: { ...s.player, x: bounty.x, y: bounty.y, counterWindowEnd: Date.now() + 5000 },
+        }));
+        const hpBefore = useGameStore.getState().enemies.find(e => e.id === id)!.health;
+        step(16);
+        const after = useGameStore.getState().enemies.find(e => e.id === id);
+        expect(after?.bossState).toBe('chase'); // 技が中断されchaseへ復帰(v3128)
+        expect(after!.health).toBeLessThan(hpBefore); // カウンター反撃ダメージが入っている
+        // 中断後、残りの段(br-triple-2/3)が出ないことを続けて確認する。
+        let sawLaterStep = false;
+        for (let i = 0; i < 20; i++) {
+          step(16);
+          const st2 = useGameStore.getState().enemies.find(e => e.id === id)?.bossState;
+          if (st2 === 'br-triple-2' || st2 === 'br-triple-3') sawLaterStep = true;
+        }
+        expect(sawLaterStep).toBe(false);
+      });
+
+      it('フルスタン(紫)成立でwindup中の技が即chaseへ中断される(FB6と同型)', () => {
+        const { id, step } = setupType('bounty-ranged', { x: 420, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
+        step(16);
+        expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-triple-windup');
+        const gtNow = useGameStore.getState().gameTime;
+        useGameStore.setState(s => ({
+          enemies: s.enemies.map(e => e.id === id
+            ? { ...e, bossFullStunUntil: gtNow + 5000, stunUntil: gtNow + 5000 } : e),
+        }));
+        step(16);
+        const during = useGameStore.getState().enemies.find(e => e.id === id)!;
+        expect(during.bossState).toBe('chase');
+        expect(during.bossStateUntil).toBeUndefined();
+      });
+
+      it('踏み込みは等速・瞬間停止でない(加速→減速): 3段の実行中、ボスは滑らかに前進する', () => {
+        const { id, step } = setupType('bounty-ranged', { x: 420, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
+        step(16);
+        for (let i = 0; i < 30; i++) { // windup(900ms)を消化しきる
+          const cur = useGameStore.getState().enemies.find(e => e.id === id);
+          if (cur?.bossState !== 'br-triple-windup') break;
+          step(50);
+        }
+        const startPos = useGameStore.getState().enemies.find(e => e.id === id)!;
+        expect(startPos.bossState).toBe('br-triple-1');
+        const x0 = startPos.x, y0 = startPos.y;
+        const dists: number[] = [];
+        for (let i = 0; i < 20; i++) { // 200ms分(10ms刻み)=3段実行の序盤
+          step(10);
+          const cur = useGameStore.getState().enemies.find(e => e.id === id)!;
+          dists.push(Math.hypot(cur.x - x0, cur.y - y0));
+        }
+        // 単調に前進する(逆流しない)。
+        for (let i = 1; i < dists.length; i++) expect(dists[i]).toBeGreaterThanOrEqual(dists[i - 1] - 0.01);
+        // 終盤は移動していること(止まったままではない=技として機能している)。
+        expect(dists[dists.length - 1]).toBeGreaterThan(0);
       });
     });
   });

@@ -1,5 +1,39 @@
 # Development Log
 
+## v0.25.3486 — バス停「三段突き」を実装(§6.38 v12・社長裁定2026-08-15)【2026-08-15 22:16 JST】
+- **PACING_PUZZLE.md §6.38 v12 + 直後の★社長裁定(2026-08-15・監査の3点に回答)+「監査で出た未指定の
+  埋め」節をそのまま実装**(社長裁定が最優先=v12本文の古い数値は破棄)。
+- **状態機械**(`src/utils/bountyTick.ts` `tickRanged`): 選択(dist∈[380,460]・CD6000ms・押しのけ/
+  レーザーの後、中立射撃の前)→ `br-triple-windup`(900ms・ボス静止・毎フレーム追尾→windup明けの
+  1フレームで角度を`bounty.bountyTripleAng`へロック)→ `br-triple-1/2/3`(左→中→右。各段=突き出し
+  90ms+戻り60ms、1・2段目のみ段間70ms=590ms。命中は各段の突き出しの末尾で`hitCapsule`共通経路
+  (無敵/カウンター/守護霊を素通りしない)。踏み込みは3段合計120pxを**1つの弧**として
+  smoothstep加速→減速で消化=CLAUDE.MUST)→ `br-triple-recover`(withRecoverFloor(900))→chase。
+  中断(カウンター/フルスタン/ノックバック)は残段を出さず即chase(v0.25.3477の作法)。CDは
+  `BountyTickState.tripleReadyAt`に置く(社長裁定「activeId切替で消えてよい」)。
+- **純関数の切り出し**(`src/utils/bountyTriple.ts`・依存ゼロの葉=bountyDims.tsと同じ循環import
+  防止の流儀): 3本の角度(`brTripleAngles`)・段の周期(`brTripleStepDurationMs`)・踏み込みの
+  イーズ(`brTripleLungeEase01`)・実効到達(`brTripleEffectiveReachPx`)。判定
+  (bountyTick.ts)と描画(pixiScene.ts)がここから同じ値を導く(単一の出どころ)。
+- **描画**(`src/pixi/pixiScene.ts`): 3本の赤帯は溜め中に流星の描き→消し文法(`zoneCapsuleTick`)で
+  描く(=「消えて当たる」。中断時の消し継続込みで常時ブロックへ配線)。溜め中は毎フレーム
+  現在のプレイヤー方向を追う(社長裁定#3のとおり)。得物(標識)は3段それぞれ突き出しアニメ+命中閃
+  (`triggerBountySlashArcOnce`=既存の斬撃弧と同じ作法・分類②「派手さ」)。
+- **登録**: `src/types/game.ts` BossState union + `bountyTripleAng?`フィールド、
+  `BOUNTY_WINDUP_STATES`/`BOUNTY_RECOVER_STATES`(windup/recoverのみ=既存の押しのけと同じ扱い)、
+  `src/utils/moveReaction.ts`の技台帳(`br-triple`キー・全5フェーズを同じキーへ)。
+- **テスト**: `src/utils/bountyTriple.test.ts`(新規・14件=角度/タイミング/踏み込みイーズ/
+  受け入れ条件の検算)+`src/utils/bountyTick.test.ts`(新規9件=配線・選択境界・CD・カウンター/
+  フルスタン中断・追尾ロック・踏み込みの滑らかさ)。既存の「中立射撃の型3種」テストの基準距離を
+  450→500へ移動(新設の選択距離帯380〜460と重なっていたため。CLAUDE.md「実在確認」の一環で
+  実際にconflictすることを実行して確認した)。
+- **受け入れ条件の検算(bountyTriple.test.ts)**: 選択上限460 ≦ 実効到達468(300+34+14+120)=空振り
+  確定域なし。予告900ms ≧ 必要843ms(公平の物差し)。3本の帯は半径280.7pxまでは横方向に隙間なく
+  連続するが、**先端(半径300px)側の約19px区間だけ最大約6.6pxの隙間が残る**(帯の全長の約93.6%は
+  連続=社長の狙い「横に避けても引っかかる」は実質的に成立)。詳細はチャット報告へ。
+- 検証: `npx vitest run src/utils/bountyTriple.test.ts src/utils/bountyTick.test.ts
+  src/utils/moveReaction.test.ts`(全て green)+typecheck+lint(エラー0)。
+
 ## v0.25.3482 — 自動タレットのレベル差を実装(社長裁定)【2026-08-15 22:24 JST】
 - **社長裁定「秒数を変えようかな。15秒+たまに爆発が3 / 13秒が2 / 10秒が1」**:
   `TURRET_DURATION_BY_LEVEL` を **[Lv1 10秒 / Lv2 13秒 / Lv3 15秒]** へ(旧: 全Lv15秒で
