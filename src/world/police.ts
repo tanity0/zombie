@@ -24,20 +24,28 @@ export const POLICE_ARENA_RADIUS = 240;
 /** 入手後のフェードアウト時間(ms)。病院/武器庫と同じ。 */
 export const POLICE_FADE_MS = 900;
 
+// §7-16(社長指示2026-08-15): アリーナ(=このPOIの「サークル」)は建物の当たり判定と重ならない位置=
+// 「目の前(手前側)」へ置く。この世界の「手前」は常に+Y(detourPoi.ts の DETOUR_CIRCLE_FRONT_OFFSET
+// と同じ理屈)。病院/武器庫と半径が違う(240)ので、ここに個別定義する。
+const POLICE_ARENA_FRONT_GAP = 20; // 重なりゼロに足す余白(px)。病院/武器庫と同じ余白。
+export const POLICE_ARENA_FRONT_OFFSET = POLICE_ARENA_RADIUS + POLICE_ARENA_FRONT_GAP; // = 260
+
 // 素材(社長支給v0.25.2352・public/sprites/police.png・520×472の等角ピクセルアート)。
-// 横に広い絵なので**幅基準**で表示サイズを揃える(病院は高さ基準=HOSPITAL_DISPLAY_H)。armory.tsと
-// 同じ考え方で幅を合わせる(素材の縦横比が違うので高さは自動的に病院よりわずかに大きくなる)。
-// ★実機調整前提の仮値(社長指示v0.25.2352「妥当な値を置いたうえで実機調整前提と明記」)。
-// 社長報告v0.25.2389「建物が大半を占めてて邪魔」を受けて縮小(380→300)。
-// 警察署だけは**アリーナ(直径480)の中で戦う**ため、病院/武器庫(通り過ぎるだけ)と違い建物の大きさが
-// そのまま戦闘スペースを削る。380では絵がアリーナ直径の79%を占めていた → 300で63%。
-export const POLICE_DISPLAY_W = 300;
+// §7-16: 見た目のスケール感を城と揃える。旧300px幅(高さ換算で約272px相当)から、城と同じ
+// CASTLE_TARGET_HEIGHT=188(pixiScene.ts)相当へ縮小し、**高さ基準**に切替える
+// (社長確定仕様=病院/武器庫も同じ高さ基準に統一。旧「横に広い絵は幅基準」の使い分けは廃止)。
+const POLICE_OLD_DISPLAY_W = 300; // 旧値(参考。社長報告v0.25.2389を受けて380→300へ縮小した値)
+const POLICE_TEX_ASPECT = 472 / 520; // 実素材のタテヨコ比(高さ/幅)
+const POLICE_OLD_EFFECTIVE_H = POLICE_OLD_DISPLAY_W * POLICE_TEX_ASPECT; // ≈272(旧見た目の高さ換算)
+/** 見た目の高さ(px・等倍時)。城(CASTLE_TARGET_HEIGHT=188)と同じスケール感。 */
+export const POLICE_DISPLAY_H = 188;
+const POLICE_SCALE_RATIO = POLICE_DISPLAY_H / POLICE_OLD_EFFECTIVE_H;
 // 当たり判定=建物の土台だけ(絵より小さい・足元の敷地に合わせた低い箱)。
-// 社長報告v0.25.2389を受けて縮小(260×80→150×56)。**移動を塞ぐのはこの箱**で、260ではアリーナの
-// 幅の54%が通れない壁だった(囲まれた状態で回り込む余地が無い) → 150で31%。
-// CLAUDE.mdの障害物規約どおり「絵は箱より大きく、箱の上に絵が立つ」ので、絵を保ったまま足元だけ細くできる。
-export const POLICE_HITBOX_W = 150;
-export const POLICE_HITBOX_H = 56;
+// §7-16: 絵の縮小比(POLICE_SCALE_RATIO)に合わせて旧値(150×56)を比例縮小。
+// なお警察署は §7-16 でアリーナ自体が建物の外(手前)へ移るため、旧来の「建物がアリーナ中央を
+// 塞ぐ」問題は位置の変更で解消済み。下の当たり判定はその上で絵に合わせた比例縮小のみ行う。
+export const POLICE_HITBOX_W = Math.round(150 * POLICE_SCALE_RATIO); // ≈104
+export const POLICE_HITBOX_H = Math.round(56 * POLICE_SCALE_RATIO); // ≈39
 
 // 一度アリーナが始まったら、**プレイヤーがこの距離まで離れるまで再発動しない**(社長報告v0.25.2389
 // 「失敗すると位置がずれて再発動して抜け出せない」の修正)。
@@ -70,6 +78,12 @@ export const resolvePoliceCollision = (
   return resolveAabb(rect, [policeRect(pos)]);
 };
 
+/** アリーナ(=このPOIの「サークル」)の中心。§7-16: 建物の足元(=絵の下端)そのものではなく、
+ * その手前(+Y=POLICE_ARENA_FRONT_OFFSET分だけ画面下側)に置く(hospital.tsのhospitalCircleCenterと
+ * 同じ理屈)。isNearPolice/isPoliceRearmed/useGameLoopのアリーナ発生位置が全てここを読む。 */
+export const policeArenaCenter = (pos: { x: number; y: number }): { x: number; y: number } =>
+  ({ x: pos.x, y: pos.y + POLICE_ARENA_FRONT_OFFSET });
+
 /**
  * プレイヤー(矩形の中心)が警察署アリーナの発生半径内に入ったか。
  * サークル+滞在ではなく「近づいた瞬間にアリーナ発生」なので、しきい値は1つだけ(dwellは無い)。
@@ -80,8 +94,9 @@ export const isNearPolice = (
   radius: number = POLICE_ARENA_RADIUS,
 ): boolean => {
   if (!pos) return false;
+  const c = policeArenaCenter(pos);
   const px = player.x + player.width / 2, py = player.y + player.height / 2;
-  return Math.hypot(px - pos.x, py - pos.y) <= radius;
+  return Math.hypot(px - c.x, py - c.y) <= radius;
 };
 
 /**
@@ -89,12 +104,15 @@ export const isNearPolice = (
  * `isNearPolice` と対になるヒステリシスの外側のしきい値(POLICE_REARM_RADIUS=360 > 発動240)。
  * これが true になるまで再発動させないことで、「失敗→即再発動→円の内側へ弾かれる」の無限ループを断つ。
  * 離れれば再武装するので、**立て直してもう一度挑むことはできる**(報酬を取り上げない)。
+ * §7-16: しきい値は isNearPolice と同じ policeArenaCenter を基準にする(発動/再武装で
+ * 基準点がズレるとヒステリシスの前提が崩れる)。
  */
 export const isPoliceRearmed = (
   player: { x: number; y: number; width: number; height: number },
   pos: { x: number; y: number } | null,
 ): boolean => {
   if (!pos) return true;
+  const c = policeArenaCenter(pos);
   const px = player.x + player.width / 2, py = player.y + player.height / 2;
-  return Math.hypot(px - pos.x, py - pos.y) > POLICE_REARM_RADIUS;
+  return Math.hypot(px - c.x, py - c.y) > POLICE_REARM_RADIUS;
 };

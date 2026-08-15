@@ -4,9 +4,9 @@
 // 一方この詰め替えは world の半径/費用を要る。両方を知ってよい薄い橋渡しをここに置き、
 // **実機(useGameLoop)とヘッドレス(playtestDriver)の両方が同じ関数を呼ぶ**ことで
 // 「片方だけ直して挙動がズレる」事故(CLAUDE.md「同じ動作を持つ全員に付ける」)を防ぐ。
-import { ARMORY_CIRCLE_RADIUS, ARMORY_SCRAP_COST } from '../world/armory';
-import { HOSPITAL_CIRCLE_RADIUS } from '../world/hospital';
-import { POLICE_ARENA_RADIUS } from '../world/police';
+import { ARMORY_CIRCLE_RADIUS, ARMORY_SCRAP_COST, armoryCircleCenter } from '../world/armory';
+import { HOSPITAL_CIRCLE_RADIUS, hospitalCircleCenter } from '../world/hospital';
+import { POLICE_ARENA_RADIUS, policeArenaCenter } from '../world/police';
 
 /** 詰め替えに必要な store の断片だけを要求する(store 型そのものには依存しない)。 */
 export interface PoiSourceState {
@@ -31,8 +31,19 @@ export type BotObjectivePoi = {
  */
 export const botObjectivePois = (s: PoiSourceState): BotObjectivePoi[] => {
   const out: BotObjectivePoi[] = [];
-  if (s.hospital) out.push({ kind: 'hospital', x: s.hospital.x, y: s.hospital.y, taken: s.hospitalTaken, radius: HOSPITAL_CIRCLE_RADIUS });
-  if (s.armory) out.push({ kind: 'armory', x: s.armory.x, y: s.armory.y, taken: s.armoryTaken, radius: ARMORY_CIRCLE_RADIUS, cost: ARMORY_SCRAP_COST });
-  if (s.police) out.push({ kind: 'police', x: s.police.x, y: s.police.y, taken: s.policeTaken, radius: POLICE_ARENA_RADIUS });
+  // §7-16: サークル/アリーナは建物の位置そのものではなく手前(circleCenter系)にある。
+  // ボットは実際の判定と同じ中心を狙わないと円に入れない。
+  if (s.hospital) {
+    const c = hospitalCircleCenter(s.hospital);
+    out.push({ kind: 'hospital', x: c.x, y: c.y, taken: s.hospitalTaken, radius: HOSPITAL_CIRCLE_RADIUS });
+  }
+  if (s.armory) {
+    const c = armoryCircleCenter(s.armory);
+    out.push({ kind: 'armory', x: c.x, y: c.y, taken: s.armoryTaken, radius: ARMORY_CIRCLE_RADIUS, cost: ARMORY_SCRAP_COST });
+  }
+  if (s.police) {
+    const c = policeArenaCenter(s.police);
+    out.push({ kind: 'police', x: c.x, y: c.y, taken: s.policeTaken, radius: POLICE_ARENA_RADIUS });
+  }
   return out;
 };

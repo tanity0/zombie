@@ -237,7 +237,7 @@ import { bossNeutralDelayMs, bossRebuildIdForEnemy } from '../utils/bossRebuild'
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { bossLairPos, poiSectorIndex } from '../world/pois';
-import { POLICE_ARENA_RADIUS, isNearPolice, isPoliceRearmed } from '../world/police';
+import { POLICE_ARENA_RADIUS, isNearPolice, isPoliceRearmed, policeArenaCenter } from '../world/police';
 import { POLICE_REWARD_SKILLS, SKILLS } from '../data/campaign';
 import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
@@ -3515,8 +3515,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               !pgs.bossChasing && !hiddenBossAlivePolice && hunterRef.current.phase === 'idle' &&
               !facilitiesLocked(pgs.bossFightNow, pgs.bossFightLastTrueAt, newGameTime)
             ) {
+              // §7-16: アリーナの中心は建物の位置そのものではなく policeArenaCenter(建物の手前)。
+              // isNearPolice/isPoliceRearmed と同じ基準点でクランプ・演出を揃える。
+              const pCenter = policeArenaCenter(ppos);
               const peEvent = {
-                kind: 'horde' as const, x: ppos.x, y: ppos.y, radius: POLICE_ARENA_RADIUS,
+                kind: 'horde' as const, x: pCenter.x, y: pCenter.y, radius: POLICE_ARENA_RADIUS,
                 startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS, policeArena: true,
               };
               useGameStore.getState().beginArenaEvent(peEvent);
@@ -3528,8 +3531,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().showPoiIntel('police');
               playSfx('event-start');
               const peRingColor = 'rgba(96,165,250,0.9)'; // 警察=青
-              spawnRing(ppos.x, ppos.y, POLICE_ARENA_RADIUS * 0.2, POLICE_ARENA_RADIUS, peRingColor, 6, 700);
-              spawnRing(ppos.x, ppos.y, POLICE_ARENA_RADIUS, POLICE_ARENA_RADIUS + 30, peRingColor, 3, 760);
+              spawnRing(pCenter.x, pCenter.y, POLICE_ARENA_RADIUS * 0.2, POLICE_ARENA_RADIUS, peRingColor, 6, 700);
+              spawnRing(pCenter.x, pCenter.y, POLICE_ARENA_RADIUS, POLICE_ARENA_RADIUS + 30, peRingColor, 3, 760);
               spawnFlash('rgba(30,58,138,0.24)', 360);
               useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
               useGameStore.getState().triggerTimeSlow(0.4, 520);

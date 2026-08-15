@@ -12,7 +12,9 @@
 // この層は renderer-agnostic(PixiJS非依存)。座標・当たり判定・滞在判定の純関数だけを置く。
 // 描画は pixiScene、滞在の進行と付与(スクラップ消費+装備ロール)は gameStore が、ここの値を読んで行う。
 import { footRect, resolveAabb, type Rect } from './obstacles';
-import { DETOUR_DIST, DETOUR_CIRCLE_RADIUS, DETOUR_DWELL_MS, detourPosForSector } from './detourPoi';
+import {
+  DETOUR_DIST, DETOUR_CIRCLE_RADIUS, DETOUR_DWELL_MS, DETOUR_CIRCLE_FRONT_OFFSET, detourPosForSector,
+} from './detourPoi';
 
 /** デンジャーゾーン(AREA_THRESHOLDS[1]〜[2])の中点。§6.24: 武器庫方面=4000(不変)。 */
 export const ARMORY_DIST = DETOUR_DIST.armory; // = 4000
@@ -29,14 +31,19 @@ export const ARMORY_FADE_MS = 900;
 export const ARMORY_SCRAP_COST = 100;
 
 // 素材(社長支給v0.25.2352・public/sprites/armory.png・520×394の等角ピクセルアート)。
-// 横に広い絵なので**幅基準**で表示サイズを揃える(病院は高さ基準=HOSPITAL_DISPLAY_H)。
-// 380px幅 = 病院(HOSPITAL_DISPLAY_H=300・実素材440×356→表示幅換算 約371px)と近い見た目の大きさになる値。
-// ★実機調整前提の仮値(社長指示v0.25.2352「妥当な値を置いたうえで実機調整前提と明記」)。
-export const ARMORY_DISPLAY_W = 380;
-// 当たり判定=建物の土台だけ(絵より小さい・足元の敷地に合わせた低い箱)。病院の当たり判定と同寸を仮置き。
-// ★実機調整前提の仮値。
-export const ARMORY_HITBOX_W = 260;
-export const ARMORY_HITBOX_H = 80;
+// §7-16(社長指示2026-08-15): 見た目のスケール感を城と揃える。旧380px幅(高さ換算で約288px相当)
+// から、城と同じ CASTLE_TARGET_HEIGHT=188(pixiScene.ts)相当へ縮小し、**高さ基準**に切替える
+// (社長確定仕様=病院/警察署も同じ高さ基準に統一。旧「横に広い絵は幅基準」の使い分けは廃止)。
+const ARMORY_OLD_DISPLAY_W = 380; // 旧値(参考)
+const ARMORY_TEX_ASPECT = 394 / 520; // 実素材のタテヨコ比(高さ/幅)
+const ARMORY_OLD_EFFECTIVE_H = ARMORY_OLD_DISPLAY_W * ARMORY_TEX_ASPECT; // ≈288(旧見た目の高さ換算)
+/** 見た目の高さ(px・等倍時)。城(CASTLE_TARGET_HEIGHT=188)と同じスケール感。 */
+export const ARMORY_DISPLAY_H = 188;
+const ARMORY_SCALE_RATIO = ARMORY_DISPLAY_H / ARMORY_OLD_EFFECTIVE_H;
+// 当たり判定=建物の土台だけ(絵より小さい・足元の敷地に合わせた低い箱)。
+// §7-16: 絵の縮小比(ARMORY_SCALE_RATIO)に合わせて旧値(260×80)を比例縮小。
+export const ARMORY_HITBOX_W = Math.round(260 * ARMORY_SCALE_RATIO); // ≈170
+export const ARMORY_HITBOX_H = Math.round(80 * ARMORY_SCALE_RATIO); // ≈52
 
 /** 武器庫の立ち位置。割り当てられたセクター番号から位置だけを計算する純関数(乱数はここで引かない)。 */
 export const armoryPos = (sector: number, offsetRad = 0): { x: number; y: number } => detourPosForSector('armory', sector, offsetRad);
@@ -60,8 +67,10 @@ export const resolveArmoryCollision = (
   return resolveAabb(rect, [armoryRect(pos)]);
 };
 
-/** サークルの中心。建物の足元(=絵の下端)に置く。 */
-export const armoryCircleCenter = (pos: { x: number; y: number }): { x: number; y: number } => pos;
+/** サークルの中心。§7-16: 建物の足元(=絵の下端)そのものではなく、その手前(+Y=DETOUR_CIRCLE_FRONT_OFFSET
+ * 分だけ画面下側)に置く(hospital.ts の hospitalCircleCenter と同じ理屈)。 */
+export const armoryCircleCenter = (pos: { x: number; y: number }): { x: number; y: number } =>
+  ({ x: pos.x, y: pos.y + DETOUR_CIRCLE_FRONT_OFFSET });
 
 /** プレイヤー(矩形)の中心がサークル内か。 */
 export const isInArmoryCircle = (

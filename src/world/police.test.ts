@@ -3,11 +3,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   POLICE_DIST, POLICE_ARENA_RADIUS, POLICE_HITBOX_W, POLICE_HITBOX_H, POLICE_REARM_RADIUS,
-  policePos, policeRect, resolvePoliceCollision, isNearPolice, isPoliceRearmed,
+  policePos, policeRect, resolvePoliceCollision, isNearPolice, isPoliceRearmed, policeArenaCenter,
 } from './police';
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
-import { detourPosForSector } from './detourPoi';
+import { detourPosForSector, DETOUR_ANGLE_SCATTER_RAD } from './detourPoi';
 import { poiSectorIndex } from './pois';
+import { rectsOverlap } from './obstacles';
 
 describe('policePos(研究対象区域の中間・§6.24)', () => {
   // v0.25.3172(社長指示「警察署はデンジャーに寄せる」): 拠点(3200)より内側にあると
@@ -64,14 +65,18 @@ describe('policeRect / resolvePoliceCollision(足元基準の矩形)', () => {
   });
 });
 
+// §7-16(社長指示2026-08-15): アリーナ(=このPOIの「サークル」)は建物の位置そのものではなく、
+// その手前(policeArenaCenter)を中心に発生する。isNearPolice/isPoliceRearmedは内部でこの中心を使う
+// (呼び出し側は引き続き建物の位置=policePos()を渡すだけでよい)。
 describe('isNearPolice(近づいたらアリーナ発生・サークル/滞在は使わない)', () => {
   const pos = { x: 1500, y: -700 };
+  const c = policeArenaCenter(pos);
   const player = (cx: number, cy: number) => ({ x: cx - 14, y: cy - 14, width: 28, height: 28 });
 
-  it('半径内なら true / 外なら false(境界は含む)', () => {
-    expect(isNearPolice(player(pos.x, pos.y), pos)).toBe(true);
-    expect(isNearPolice(player(pos.x + POLICE_ARENA_RADIUS, pos.y), pos)).toBe(true);
-    expect(isNearPolice(player(pos.x + POLICE_ARENA_RADIUS + 1, pos.y), pos)).toBe(false);
+  it('円の中心が半径内なら true / 外なら false(境界は含む)', () => {
+    expect(isNearPolice(player(c.x, c.y), pos)).toBe(true);
+    expect(isNearPolice(player(c.x + POLICE_ARENA_RADIUS, c.y), pos)).toBe(true);
+    expect(isNearPolice(player(c.x + POLICE_ARENA_RADIUS + 1, c.y), pos)).toBe(false);
   });
 
   it('警察署が無い出撃(null)は常に false', () => {
@@ -79,8 +84,12 @@ describe('isNearPolice(近づいたらアリーナ発生・サークル/滞在�
   });
 
   it('半径を明示指定できる(既定=POLICE_ARENA_RADIUS)', () => {
-    expect(isNearPolice(player(pos.x + 50, pos.y), pos, 50)).toBe(true);
-    expect(isNearPolice(player(pos.x + 51, pos.y), pos, 50)).toBe(false);
+    expect(isNearPolice(player(c.x + 50, c.y), pos, 50)).toBe(true);
+    expect(isNearPolice(player(c.x + 51, c.y), pos, 50)).toBe(false);
+  });
+
+  it('円の中心は建物の足元より手前(+Y)にある=正面から発生する(建物が邪魔にならない)', () => {
+    expect(c.y).toBeGreaterThan(pos.y);
   });
 });
 
@@ -89,6 +98,7 @@ describe('isNearPolice(近づいたらアリーナ発生・サークル/滞在�
 // 時間切れの瞬間プレイヤーは必ず発動半径の内側に居る=即再発動→クランプ、の無限ループだった。
 describe('isPoliceRearmed(失敗後の再武装=ヒステリシス・v0.25.2389)', () => {
   const pos = policePos(0);
+  const c = policeArenaCenter(pos);
   const player = (x: number, y: number) => ({ x: x - 12, y: y - 12, width: 24, height: 24 });
 
   // ★これが壊れると「抜け出せない」バグが再発する。しきい値の大小関係そのものが不変条件。
@@ -97,16 +107,16 @@ describe('isPoliceRearmed(失敗後の再武装=ヒステリシス・v0.25.2389)
   });
 
   it('アリーナ内(=失敗直後に必ず居る位置)では再武装しない', () => {
-    expect(isPoliceRearmed(player(pos.x, pos.y), pos)).toBe(false);
-    expect(isPoliceRearmed(player(pos.x + POLICE_ARENA_RADIUS, pos.y), pos)).toBe(false);
+    expect(isPoliceRearmed(player(c.x, c.y), pos)).toBe(false);
+    expect(isPoliceRearmed(player(c.x + POLICE_ARENA_RADIUS, c.y), pos)).toBe(false);
   });
 
   it('発動半径の外へ出ただけでは再武装しない(すぐ掴み直さない)', () => {
-    expect(isPoliceRearmed(player(pos.x + POLICE_ARENA_RADIUS + 1, pos.y), pos)).toBe(false);
+    expect(isPoliceRearmed(player(c.x + POLICE_ARENA_RADIUS + 1, c.y), pos)).toBe(false);
   });
 
   it('再武装の距離まで離れたら、また挑める(報酬を取り上げない)', () => {
-    expect(isPoliceRearmed(player(pos.x + POLICE_REARM_RADIUS + 1, pos.y), pos)).toBe(true);
+    expect(isPoliceRearmed(player(c.x + POLICE_REARM_RADIUS + 1, c.y), pos)).toBe(true);
   });
 
   it('警察署が無い出撃(null)は常に再武装済み扱い(発動側の判定で弾かれる)', () => {
@@ -115,9 +125,30 @@ describe('isPoliceRearmed(失敗後の再武装=ヒステリシス・v0.25.2389)
 });
 
 // 社長報告v0.25.2389「建物が大半を占めてて邪魔」の回帰テスト。
-// 警察署だけは**アリーナの中で戦う**ため、建物の当たり判定がそのまま戦闘スペースを削る。
+// §7-16でアリーナ自体が建物の外(手前)へ移ったため直接の懸念は解消したが、
+// 比率の不変条件は安全側の残置として維持する。
 describe('建物の大きさ(アリーナとの比率・v0.25.2389)', () => {
   it('当たり判定の幅がアリーナの直径の1/3を超えない(囲まれても回り込める)', () => {
     expect(POLICE_HITBOX_W / (POLICE_ARENA_RADIUS * 2)).toBeLessThanOrEqual(1 / 3);
+  });
+});
+
+// §7-16(社長指示2026-08-15・確定仕様): アリーナ(サークル)矩形とPOI当たり判定(footRect)の重なりはゼロ。
+describe('アリーナ=POIの手前(§7-16「サークル矩形∩POI当たり判定=空」)', () => {
+  const sectors = [0, 1, 2, 3];
+  const offsets = [-DETOUR_ANGLE_SCATTER_RAD, 0, DETOUR_ANGLE_SCATTER_RAD];
+
+  it('アリーナのbboxは建物の当たり判定(footRect)と重ならない(全セクター×角度スキャッタ)', () => {
+    for (const sector of sectors) {
+      for (const offsetRad of offsets) {
+        const pos = policePos(sector, offsetRad);
+        const c = policeArenaCenter(pos);
+        const arenaBox = {
+          x: c.x - POLICE_ARENA_RADIUS, y: c.y - POLICE_ARENA_RADIUS,
+          width: POLICE_ARENA_RADIUS * 2, height: POLICE_ARENA_RADIUS * 2,
+        };
+        expect(rectsOverlap(arenaBox, policeRect(pos))).toBe(false);
+      }
+    }
   });
 });

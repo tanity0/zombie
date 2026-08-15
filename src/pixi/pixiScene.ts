@@ -159,13 +159,13 @@ import { bossPostureMax, bossPostureNow, isBossPostureBroken, usesPostureSystem 
 import { getRunPois, isPoiRevealed, poiSectorIndex, type DetourPoiInput } from '../world/pois';
 import {
   HOSPITAL_CIRCLE_RADIUS, HOSPITAL_CIRCLE_REVEAL_DIST, HOSPITAL_DWELL_MS,
-  HOSPITAL_FADE_MS, HOSPITAL_DISPLAY_H,
+  HOSPITAL_FADE_MS, HOSPITAL_DISPLAY_H, hospitalCircleCenter,
 } from '../world/hospital';
 import {
   ARMORY_CIRCLE_RADIUS, ARMORY_CIRCLE_REVEAL_DIST, ARMORY_DWELL_MS,
-  ARMORY_FADE_MS, ARMORY_DISPLAY_W,
+  ARMORY_FADE_MS, ARMORY_DISPLAY_H, armoryCircleCenter,
 } from '../world/armory';
-import { POLICE_FADE_MS, POLICE_DISPLAY_W } from '../world/police';
+import { POLICE_FADE_MS, POLICE_DISPLAY_H } from '../world/police';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
@@ -536,6 +536,12 @@ const FRONT_FOREST_FADE_TOP_ALPHA = 0.58;
 const FRONT_FOREST_FADE_MID_ALPHA = 0.82;
 const CASTLE_FOOT_OFFSET_Y = 38;
 const CASTLE_TARGET_HEIGHT = 188; // 125 * 1.5(建物1.5倍指示)
+// §7-16(社長指示2026-08-15): 病院/武器庫はサークルが建物の手前(+Y=DETOUR_CIRCLE_FRONT_OFFSET=115・
+// world/detourPoi.ts)に出る。サークル南端(footY+115+半径95=210)は絵の高さ(188)より外側に出るため、
+// カリング判定はこの南端を基準にする(絵の高さだけを margin にすると、建物がぎりぎり画面外でも
+// サークルはまだ画面内、というケースで描き漏れる)。警察署はこの円を描かない(建物の見た目のみ)。
+const POI_CIRCLE_CULL_MARGIN = 230; // 210(サークル南端)+余裕
+const POLICE_CULL_MARGIN = 210; // 建物(188)基準+余裕(円を描かないので南端分は不要)
 const MERCHANT_TARGET_HEIGHT = 100;
 const EVENT_NPC_TARGET_HEIGHT = 108;
 // NPC8人(=出撃している護衛8人: エドガー/ジョセフ/エリザベス/武蔵/ムハンマド/チェン/ローレン/フェイザー)
@@ -18458,7 +18464,7 @@ export class PixiScene {
     const footY = pos.y;
     const tex = getTexture('hospital');
     const horizonAlpha = this.horizonActorAlpha(footY);
-    const onScreen = this.distanceOutsideViewport(pos.x, footY, HOSPITAL_DISPLAY_H) <= 0;
+    const onScreen = this.distanceOutsideViewport(pos.x, footY, POI_CIRCLE_CULL_MARGIN) <= 0;
     if (!tex || horizonAlpha <= 0 || !onScreen) {
       this.hospitalSprite.visible = false;
       this.hospitalShadow = null;
@@ -18490,30 +18496,32 @@ export class PixiScene {
 
     // サークルは「近づいたら」出す(社長指示)。距離でフェードイン=遠くから見えて煩くならない。
     if (s.hospitalTaken) return;
+    // §7-16: サークルは建物の位置そのものではなく、その手前(hospitalCircleCenter)に出す。
+    const c = hospitalCircleCenter(pos);
     const p = s.player;
-    const dist = Math.hypot(p.x + p.width / 2 - pos.x, p.y + p.height / 2 - footY);
+    const dist = Math.hypot(p.x + p.width / 2 - c.x, p.y + p.height / 2 - c.y);
     const near = Math.max(0, Math.min(1, (HOSPITAL_CIRCLE_REVEAL_DIST - dist) / 120));
     if (near <= 0) return;
     const pulse = 0.5 + 0.5 * Math.sin(now / 240);
     const a = (0.34 + 0.2 * pulse) * near;
     const color = 0x86efac; // 医療=緑(帰還サークルと同じ「安全」の色)
-    g.circle(pos.x, footY, HOSPITAL_CIRCLE_RADIUS - 4).fill({ color, alpha: (0.06 + 0.05 * pulse) * near });
-    g.circle(pos.x, footY, HOSPITAL_CIRCLE_RADIUS).stroke({ width: 6, color, alpha: a * 0.6 });
-    g.circle(pos.x, footY, HOSPITAL_CIRCLE_RADIUS - 3).stroke({ width: 2, color, alpha: a });
+    g.circle(c.x, c.y, HOSPITAL_CIRCLE_RADIUS - 4).fill({ color, alpha: (0.06 + 0.05 * pulse) * near });
+    g.circle(c.x, c.y, HOSPITAL_CIRCLE_RADIUS).stroke({ width: 6, color, alpha: a * 0.6 });
+    g.circle(c.x, c.y, HOSPITAL_CIRCLE_RADIUS - 3).stroke({ width: 2, color, alpha: a });
     // 滞在進捗の外周円弧(帰還サークルと同じ読み方)。arc 前に moveTo して地面を横切る線を防ぐ。
     const frac = Math.max(0, Math.min(1, s.hospitalDwellMs / HOSPITAL_DWELL_MS));
     if (frac > 0) {
       const start = -Math.PI / 2;
       const rr = HOSPITAL_CIRCLE_RADIUS + 5;
-      g.moveTo(pos.x + Math.cos(start) * rr, footY + Math.sin(start) * rr)
-        .arc(pos.x, footY, rr, start, start + Math.PI * 2 * frac)
+      g.moveTo(c.x + Math.cos(start) * rr, c.y + Math.sin(start) * rr)
+        .arc(c.x, c.y, rr, start, start + Math.PI * 2 * frac)
         .stroke({ width: 4, color: 0xdcfce7, alpha: 0.95 });
     }
   }
 
   // 武器庫(PACING_PUZZLE.md §6.24 M48): 病院と同じ枠組み(サークル+3秒滞在)。**描くだけ**
-  // (滞在判定/スクラップ支払い/装備付与は store 側)。素材は横に広い等角絵なので**幅基準**で
-  // スケールする(病院は高さ基準=HOSPITAL_DISPLAY_H)。負荷1/10: スプライト1枚+Graphics1つ。
+  // (滞在判定/スクラップ支払い/装備付与は store 側)。§7-16で病院と同じ**高さ基準**
+  // (ARMORY_DISPLAY_H=城と同スケール)へ統一(旧: 幅基準)。負荷1/10: スプライト1枚+Graphics1つ。
   private syncArmory(now: number) {
     const s = useGameStore.getState();
     const pos = s.armory;
@@ -18535,7 +18543,7 @@ export class PixiScene {
     const footY = pos.y;
     const tex = getTexture('armory');
     const horizonAlpha = this.horizonActorAlpha(footY);
-    const onScreen = this.distanceOutsideViewport(pos.x, footY, ARMORY_DISPLAY_W) <= 0;
+    const onScreen = this.distanceOutsideViewport(pos.x, footY, POI_CIRCLE_CULL_MARGIN) <= 0;
     if (!tex || horizonAlpha <= 0 || !onScreen) {
       this.armorySprite.visible = false;
       this.armoryShadow = null;
@@ -18543,8 +18551,8 @@ export class PixiScene {
     }
 
     const d = this.depthScale(footY);
-    const targetW = ARMORY_DISPLAY_W * d; // 幅基準(横に広い等角絵。病院は高さ基準)
-    const sc = targetW / tex.width;
+    const targetH = ARMORY_DISPLAY_H * d; // §7-16: 高さ基準(病院・城と同じ)
+    const sc = targetH / tex.height;
     this.armorySprite.texture = tex;
     this.armorySprite.scale.set(sc);
     this.armorySprite.position.set(Math.round(pos.x), Math.round(footY));
@@ -18564,29 +18572,32 @@ export class PixiScene {
     };
 
     if (s.armoryTaken) return;
+    // §7-16: サークルは建物の位置そのものではなく、その手前(armoryCircleCenter)に出す。
+    const c = armoryCircleCenter(pos);
     const p = s.player;
-    const dist = Math.hypot(p.x + p.width / 2 - pos.x, p.y + p.height / 2 - footY);
+    const dist = Math.hypot(p.x + p.width / 2 - c.x, p.y + p.height / 2 - c.y);
     const near = Math.max(0, Math.min(1, (ARMORY_CIRCLE_REVEAL_DIST - dist) / 120));
     if (near <= 0) return;
     const pulse = 0.5 + 0.5 * Math.sin(now / 240);
     const a = (0.34 + 0.2 * pulse) * near;
     const color = 0xfbbf24; // スクラップ=琥珀(ShopMenuのSCRAP表示と同系色。病院の緑と見分けが付く)
-    g.circle(pos.x, footY, ARMORY_CIRCLE_RADIUS - 4).fill({ color, alpha: (0.06 + 0.05 * pulse) * near });
-    g.circle(pos.x, footY, ARMORY_CIRCLE_RADIUS).stroke({ width: 6, color, alpha: a * 0.6 });
-    g.circle(pos.x, footY, ARMORY_CIRCLE_RADIUS - 3).stroke({ width: 2, color, alpha: a });
+    g.circle(c.x, c.y, ARMORY_CIRCLE_RADIUS - 4).fill({ color, alpha: (0.06 + 0.05 * pulse) * near });
+    g.circle(c.x, c.y, ARMORY_CIRCLE_RADIUS).stroke({ width: 6, color, alpha: a * 0.6 });
+    g.circle(c.x, c.y, ARMORY_CIRCLE_RADIUS - 3).stroke({ width: 2, color, alpha: a });
     const frac = Math.max(0, Math.min(1, s.armoryDwellMs / ARMORY_DWELL_MS));
     if (frac > 0) {
       const start = -Math.PI / 2;
       const rr = ARMORY_CIRCLE_RADIUS + 5;
-      g.moveTo(pos.x + Math.cos(start) * rr, footY + Math.sin(start) * rr)
-        .arc(pos.x, footY, rr, start, start + Math.PI * 2 * frac)
+      g.moveTo(c.x + Math.cos(start) * rr, c.y + Math.sin(start) * rr)
+        .arc(c.x, c.y, rr, start, start + Math.PI * 2 * frac)
         .stroke({ width: 4, color: 0xfef3c7, alpha: 0.95 });
     }
   }
 
   // 警察署(PACING_PUZZLE.md §6.24 M48。旧称「研究施設跡」)。サークル+滞在ではなくアリーナ方式
-  // (近づくと囲いイベントが発生=useGameLoop側)なので、ここは建物の見た目だけを描く。
-  // 素材は横に広い等角絵なので**幅基準**でスケールする(病院は高さ基準)。負荷1/10: スプライト1枚。
+  // (近づくと囲いイベントが発生=useGameLoop側。中心はpoliceArenaCenter=建物の手前)なので、
+  // ここは建物の見た目だけを描く。§7-16で病院/武器庫と同じ**高さ基準**(城と同スケール)へ統一
+  // (旧: 幅基準)。負荷1/10: スプライト1枚。
   private syncPolice(_now: number) {
     const s = useGameStore.getState();
     const pos = s.police;
@@ -18606,7 +18617,7 @@ export class PixiScene {
     const footY = pos.y;
     const tex = getTexture('police');
     const horizonAlpha = this.horizonActorAlpha(footY);
-    const onScreen = this.distanceOutsideViewport(pos.x, footY, POLICE_DISPLAY_W) <= 0;
+    const onScreen = this.distanceOutsideViewport(pos.x, footY, POLICE_CULL_MARGIN) <= 0;
     if (!tex || horizonAlpha <= 0 || !onScreen) {
       this.policeSprite.visible = false;
       this.policeShadow = null;
@@ -18614,8 +18625,8 @@ export class PixiScene {
     }
 
     const d = this.depthScale(footY);
-    const targetW = POLICE_DISPLAY_W * d;
-    const sc = targetW / tex.width;
+    const targetH = POLICE_DISPLAY_H * d; // §7-16: 高さ基準(病院・武器庫・城と同じ)
+    const sc = targetH / tex.height;
     this.policeSprite.texture = tex;
     this.policeSprite.scale.set(sc);
     this.policeSprite.position.set(Math.round(pos.x), Math.round(footY));

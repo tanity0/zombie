@@ -10,7 +10,9 @@
 // この層は renderer-agnostic(PixiJS非依存)。座標・当たり判定・滞在判定の純関数だけを置く。
 // 描画は pixiScene、滞在の進行と付与は gameStore/useGameLoop が、ここの値を読んで行う。
 import { footRect, resolveAabb, type Rect } from './obstacles';
-import { DETOUR_DIST, DETOUR_CIRCLE_RADIUS, DETOUR_DWELL_MS, detourPosForSector } from './detourPoi';
+import {
+  DETOUR_DIST, DETOUR_CIRCLE_RADIUS, DETOUR_DWELL_MS, DETOUR_CIRCLE_FRONT_OFFSET, detourPosForSector,
+} from './detourPoi';
 
 /** デンジャーゾーン(AREA_THRESHOLDS[1]〜[2])の75%地点=帯の一番奥。
  * v0.25.3173で 6250(未確認汚染の中点)から移動。理由は detourPoi.ts のコメント②
@@ -27,11 +29,16 @@ export const HOSPITAL_DWELL_MS = DETOUR_DWELL_MS;
 /** 入手後のフェードアウト時間(ms)。 */
 export const HOSPITAL_FADE_MS = 900;
 
-/** 見た目の高さ(px・等倍時)。城(CASTLE_TARGET_HEIGHT=188)より一回り大きい建物として置く。 */
-export const HOSPITAL_DISPLAY_H = 300;
-/** 当たり判定=建物の土台だけ(絵より小さい)。等角の絵なので、足元の敷地に合わせた低い箱にする。 */
-export const HOSPITAL_HITBOX_W = 260;
-export const HOSPITAL_HITBOX_H = 80;
+// §7-16(社長指示2026-08-15): 見た目のスケール感を城と揃える。旧300(城188より一回り大きい)から、
+// 城と同じ CASTLE_TARGET_HEIGHT=188(pixiScene.ts)相当へ縮小(社長確定仕様)。
+const HOSPITAL_OLD_DISPLAY_H = 300; // 旧値(参考=下の当たり判定の縮小比の元)
+/** 見た目の高さ(px・等倍時)。城(CASTLE_TARGET_HEIGHT=188)と同じスケール感。 */
+export const HOSPITAL_DISPLAY_H = 188;
+const HOSPITAL_SCALE_RATIO = HOSPITAL_DISPLAY_H / HOSPITAL_OLD_DISPLAY_H;
+/** 当たり判定=建物の土台だけ(絵より小さい)。等角の絵なので、足元の敷地に合わせた低い箱にする。
+ * §7-16: 絵の縮小比(HOSPITAL_SCALE_RATIO)に合わせて旧値(260×80)を比例縮小。 */
+export const HOSPITAL_HITBOX_W = Math.round(260 * HOSPITAL_SCALE_RATIO); // ≈163
+export const HOSPITAL_HITBOX_H = Math.round(80 * HOSPITAL_SCALE_RATIO); // ≈50
 
 /**
  * 病院の立ち位置。**PACING_PUZZLE.md §6.24 M48で変更**: 「裏ボスの真反対で固定」から
@@ -62,8 +69,11 @@ export const resolveHospitalCollision = (
   return resolveAabb(rect, [hospitalRect(pos)]);
 };
 
-/** サークルの中心。建物の足元(=絵の下端)に置く。 */
-export const hospitalCircleCenter = (pos: { x: number; y: number }): { x: number; y: number } => pos;
+/** サークルの中心。§7-16: 建物の足元(=絵の下端)そのものではなく、その手前(+Y=DETOUR_CIRCLE_FRONT_OFFSET
+ * 分だけ画面下側)に置く。footRect の下端は常に pos.y なので、この分だけ南にずらせば
+ * x位置に関わらず円は必ず当たり判定の外に出る(重なりゼロ)。 */
+export const hospitalCircleCenter = (pos: { x: number; y: number }): { x: number; y: number } =>
+  ({ x: pos.x, y: pos.y + DETOUR_CIRCLE_FRONT_OFFSET });
 
 /** プレイヤー(矩形)の中心がサークル内か。 */
 export const isInHospitalCircle = (

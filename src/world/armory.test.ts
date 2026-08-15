@@ -3,11 +3,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   ARMORY_DIST, ARMORY_CIRCLE_RADIUS, ARMORY_DWELL_MS, ARMORY_HITBOX_W, ARMORY_HITBOX_H, ARMORY_SCRAP_COST,
-  armoryPos, armoryRect, resolveArmoryCollision, isInArmoryCircle, tickArmoryDwell,
+  armoryPos, armoryRect, resolveArmoryCollision, isInArmoryCircle, tickArmoryDwell, armoryCircleCenter,
 } from './armory';
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
-import { detourPosForSector } from './detourPoi';
+import { detourPosForSector, DETOUR_ANGLE_SCATTER_RAD } from './detourPoi';
 import { poiSectorIndex } from './pois';
+import { rectsOverlap } from './obstacles';
 
 const player = (cx: number, cy: number) => ({ x: cx - 14, y: cy - 14, width: 28, height: 28 });
 
@@ -63,16 +64,40 @@ describe('armoryRect / resolveArmoryCollision(足元基準の矩形)', () => {
   });
 });
 
-describe('isInArmoryCircle(病院と同じ半径95・§6.24 A4)', () => {
+describe('isInArmoryCircle(病院と同じ半径95・§6.24 A4。§7-16でサークルはarmoryCircleCenterへ移動)', () => {
   const pos = { x: -2000, y: 800 };
-  it('中心が半径内なら true / 外なら false(境界は含む)', () => {
+  const c = armoryCircleCenter(pos);
+  it('円の中心が半径内なら true / 外なら false(境界は含む)', () => {
     expect(ARMORY_CIRCLE_RADIUS).toBe(95);
-    expect(isInArmoryCircle(player(pos.x, pos.y), pos)).toBe(true);
-    expect(isInArmoryCircle(player(pos.x + ARMORY_CIRCLE_RADIUS, pos.y), pos)).toBe(true);
-    expect(isInArmoryCircle(player(pos.x + ARMORY_CIRCLE_RADIUS + 1, pos.y), pos)).toBe(false);
+    expect(isInArmoryCircle(player(c.x, c.y), pos)).toBe(true);
+    expect(isInArmoryCircle(player(c.x + ARMORY_CIRCLE_RADIUS, c.y), pos)).toBe(true);
+    expect(isInArmoryCircle(player(c.x + ARMORY_CIRCLE_RADIUS + 1, c.y), pos)).toBe(false);
   });
   it('武器庫が無い出撃(null)は常に false', () => {
     expect(isInArmoryCircle(player(0, 0), null)).toBe(false);
+  });
+  it('円の中心は建物の足元より手前(+Y)にある=正面から入れる(詰みにならない)', () => {
+    expect(c.y).toBeGreaterThan(pos.y);
+  });
+});
+
+// §7-16(社長指示2026-08-15・確定仕様): サークル矩形とPOI当たり判定(footRect)の重なりはゼロ。
+describe('滞在サークル=POIの手前(§7-16「サークル矩形∩POI当たり判定=空」)', () => {
+  const sectors = [0, 1, 2, 3];
+  const offsets = [-DETOUR_ANGLE_SCATTER_RAD, 0, DETOUR_ANGLE_SCATTER_RAD];
+
+  it('サークルのbboxは建物の当たり判定(footRect)と重ならない(全セクター×角度スキャッタ)', () => {
+    for (const sector of sectors) {
+      for (const offsetRad of offsets) {
+        const pos = armoryPos(sector, offsetRad);
+        const c = armoryCircleCenter(pos);
+        const circleBox = {
+          x: c.x - ARMORY_CIRCLE_RADIUS, y: c.y - ARMORY_CIRCLE_RADIUS,
+          width: ARMORY_CIRCLE_RADIUS * 2, height: ARMORY_CIRCLE_RADIUS * 2,
+        };
+        expect(rectsOverlap(circleBox, armoryRect(pos))).toBe(false);
+      }
+    }
   });
 });
 

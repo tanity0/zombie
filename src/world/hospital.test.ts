@@ -4,10 +4,12 @@ import { describe, it, expect } from 'vitest';
 import {
   HOSPITAL_DIST, HOSPITAL_CIRCLE_RADIUS, HOSPITAL_DWELL_MS, HOSPITAL_HITBOX_W, HOSPITAL_HITBOX_H,
   hospitalPos, hospitalRect, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell,
+  hospitalCircleCenter,
 } from './hospital';
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
-import { detourPosForSector } from './detourPoi';
+import { detourPosForSector, DETOUR_ANGLE_SCATTER_RAD } from './detourPoi';
 import { getRunPois, poiSectorIndex } from './pois';
+import { rectsOverlap } from './obstacles';
 
 const player = (cx: number, cy: number) => ({ x: cx - 14, y: cy - 14, width: 28, height: 28 });
 
@@ -92,26 +94,44 @@ describe('hospitalRect / resolveHospitalCollision(足元基準の矩形)', () =>
   });
 });
 
-describe('isInHospitalCircle', () => {
+describe('isInHospitalCircle(§7-16: サークルは建物の手前=hospitalCircleCenter)', () => {
   const pos = { x: 1000, y: -500 };
+  const c = hospitalCircleCenter(pos);
 
-  it('中心が半径内なら true / 外なら false(境界は含む)', () => {
-    expect(isInHospitalCircle(player(pos.x, pos.y), pos)).toBe(true);
-    expect(isInHospitalCircle(player(pos.x + HOSPITAL_CIRCLE_RADIUS, pos.y), pos)).toBe(true);
-    expect(isInHospitalCircle(player(pos.x + HOSPITAL_CIRCLE_RADIUS + 1, pos.y), pos)).toBe(false);
+  it('円の中心が半径内なら true / 外なら false(境界は含む)', () => {
+    expect(isInHospitalCircle(player(c.x, c.y), pos)).toBe(true);
+    expect(isInHospitalCircle(player(c.x + HOSPITAL_CIRCLE_RADIUS, c.y), pos)).toBe(true);
+    expect(isInHospitalCircle(player(c.x + HOSPITAL_CIRCLE_RADIUS + 1, c.y), pos)).toBe(false);
   });
 
   it('病院が無い出撃(null)は常に false', () => {
     expect(isInHospitalCircle(player(0, 0), null)).toBe(false);
   });
 
-  it('サークルは建物の土台の外まで届く=正面から入れる(詰みにならない)', () => {
-    expect(HOSPITAL_CIRCLE_RADIUS).toBeGreaterThan(0);
-    const front = player(pos.x, pos.y + HOSPITAL_CIRCLE_RADIUS - 1); // 足元より手前(下)
-    expect(isInHospitalCircle(front, pos)).toBe(true);
-    // 手前側は土台(足元より上へ伸びる箱)に含まれない=立てる。
-    const r = hospitalRect(pos);
-    expect(front.y).toBeGreaterThan(r.y + r.height - 1);
+  it('円の中心は建物の足元より手前(+Y)にある=正面から入れる(詰みにならない)', () => {
+    expect(c.y).toBeGreaterThan(pos.y);
+  });
+});
+
+// §7-16(社長指示2026-08-15・確定仕様): サークル矩形とPOI当たり判定(footRect)の重なりはゼロ。
+// footRect の下端は常に pos.y(x位置に関わらず)なので、円の中心が pos.y より半径ぶん以上
+// 手前(+Y)にあれば、セクター・角度スキャッタに関わらず重ならない=一般幾何として機械化できる。
+describe('滞在サークル=POIの手前(§7-16「サークル矩形∩POI当たり判定=空」)', () => {
+  const sectors = [0, 1, 2, 3];
+  const offsets = [-DETOUR_ANGLE_SCATTER_RAD, 0, DETOUR_ANGLE_SCATTER_RAD];
+
+  it('サークルのbboxは建物の当たり判定(footRect)と重ならない(全セクター×角度スキャッタ)', () => {
+    for (const sector of sectors) {
+      for (const offsetRad of offsets) {
+        const pos = hospitalPos(sector, offsetRad);
+        const c = hospitalCircleCenter(pos);
+        const circleBox = {
+          x: c.x - HOSPITAL_CIRCLE_RADIUS, y: c.y - HOSPITAL_CIRCLE_RADIUS,
+          width: HOSPITAL_CIRCLE_RADIUS * 2, height: HOSPITAL_CIRCLE_RADIUS * 2,
+        };
+        expect(rectsOverlap(circleBox, hospitalRect(pos))).toBe(false);
+      }
+    }
   });
 });
 

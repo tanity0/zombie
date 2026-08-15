@@ -41,6 +41,15 @@ export const DETOUR_DIST: Record<DetourKind, number> = {
 export const DETOUR_CIRCLE_RADIUS = 95;
 export const DETOUR_DWELL_MS = 3000;
 
+// §7-16(社長指示2026-08-15): 滞在サークルはPOIの当たり判定(footRect)と重ならない位置=
+// 「目の前(手前側)」へ置く。この世界の「手前」は常に+Y(画面下=カメラ側。obstacles.ts の規約で
+// footRect の下端=足元=常に pos.y なので、円の中心を pos.y からこの分だけ+Y側へずらせば、
+// x位置やセクター角に関係なく円は必ず建物の下端より南=当たり判定の外に出る)。
+// 病院/武器庫はこのDETOUR_CIRCLE_RADIUSを共有するのでここに一括定義する
+// (警察署は別半径=POLICE_ARENA_RADIUSなのでpolice.tsに個別定義)。
+export const DETOUR_CIRCLE_FRONT_GAP = 20; // 重なりゼロに足す余白(px)。0だと外接=見た目が窮屈なので少し離す。
+export const DETOUR_CIRCLE_FRONT_OFFSET = DETOUR_CIRCLE_RADIUS + DETOUR_CIRCLE_FRONT_GAP; // = 115
+
 // セクターの中心角(rad)。拠点(createBaseSites)と同じ方角=セクター i は i*(360/POI_SECTORS)°。
 // sectorIndexForAngle の逆変換に一致させること(セクター中心に置けば往復判定が一致する)。
 const SECTOR_ANGLE_STEP = (Math.PI * 2) / POI_SECTORS;

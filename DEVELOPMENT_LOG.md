@@ -1,5 +1,40 @@
 # Development Log
 
+## v0.25.3430 — §7-16 POI配置・スケール修正を実装(サークルは建物の手前・絵は城スケール)【2026-08-15 11:31 JST】
+- PACING_PUZZLE.md §7-16(社長確定仕様)を実装。
+  1. **滞在サークル/アリーナを建物の手前(+Y=画面下・カメラ側)へオフセット**:
+     病院/武器庫=`DETOUR_CIRCLE_FRONT_OFFSET`(=115=半径95+余白20・detourPoi.ts)、
+     警察署=`POLICE_ARENA_FRONT_OFFSET`(=260=半径240+余白20・police.ts)。footRectの下端は
+     常に`pos.y`(x位置に関わらず)なので、オフセット≧半径であれば全セクター・角度スキャッタで
+     「サークル矩形∩POI当たり判定=空」を幾何的に保証。`hospitalCircleCenter`/`armoryCircleCenter`/
+     `policeArenaCenter`を新設し、isIn*Circle/isNearPolice/isPoliceRearmed/pixiSceneの円描画/
+     useGameLoopのアリーナ発生位置・spawnRing/botObjectivePois(ヘッドレスボット誘導先)が全て
+     この中心を読むよう統一。
+  2. **表示スケールを城と統一**: 病院/武器庫/警察署とも`CASTLE_TARGET_HEIGHT`(=188)基準の
+     **高さ基準**スケールへ統一(病院は元々高さ基準=300→188。武器庫/警察署は幅基準380/300から
+     高さ基準へ切替=実質288/272相当→188。旧サイズは城より一回り大きかったため、結果は**縮小**)。
+     当たり判定(`HOSPITAL_HITBOX_*`/`ARMORY_HITBOX_*`/`POLICE_HITBOX_*`)は絵の縮小比に比例して
+     縮小(footRect規約=足元基準は不変)。
+  3. pixiSceneのカリング margin をサークル南端(オフセット+半径=210)を覆う値へ更新
+     (`POI_CIRCLE_CULL_MARGIN=230`/`POLICE_CULL_MARGIN=210`)=建物が画面端でもサークルが
+     描き漏れない。
+- ★注記: 発注文面は「施設が大きくなり」だったが、実際の変更は縮小(CASTLE_TARGET_HEIGHT=188が
+  旧POI表示より小さいため)。§7-16の詳細メモをPACING_PUZZLE.mdに追記済み(社長確認推奨)。
+- ★スコープ外: 木/松明/街プロップ等procedural障害物とサークルの重なり回避は本バッチでは未着手
+  (既存から持っていたリスクで「位置と絵だけ」の指示範囲外と判断)。
+- 変更ファイル: `src/world/detourPoi.ts`(FRONT_OFFSET定数追加)/`src/world/hospital.ts`/
+  `src/world/armory.ts`/`src/world/police.ts`(circleCenter系関数・スケール・当たり判定)/
+  `src/pixi/pixiScene.ts`(円描画位置・スケール基準・カリングmargin)/`src/hooks/useGameLoop.ts`
+  (警察署アリーナ発生位置)/`src/utils/botObjectivePois.ts`(ボット誘導先)/
+  `src/world/hospital.test.ts`・`armory.test.ts`・`police.test.ts`(新仕様への更新+重なりゼロの
+  機械化テスト追加)。
+- 検証: `npm run typecheck` 0エラー / `npm run lint` 0エラー(既存warning 16件は無関係) /
+  `npx madge --circular` 1本のまま(既知の`gameStore→ghostBuild→weaponUtils`のみ・増加なし) /
+  変更した3テストファイル+関連ファイル(hospital/armory/police/detourPoi/pois)緑(137 tests)。
+  ビルド・フルテスト・ボットランは社長指示が無いため未実行(テスト運用ポリシーどおり)。
+- 次の引き継ぎ: 実機確認(サークルが建物の手前に見えるか・`?zoomlock=0.4`での破綻有無)は社長。
+  上記★注記2点(縮小方向の意図確認/木除けのスコープ)の裁定待ち。
+
 ## v0.25.3429 — 絶対ルール「全ての動きに慣性」恒久化+技表GO+洗い出し開始【2026-08-15 14:00 JST】
 - 社長指示: ①技表(武器の派手アクション)=GO→B7で実装 ②**絶対ルール(世界の法則)**=技に限らず
   全ての動きに慣性(加減速)を入れる。物理を無視しない。CLAUDE.md「動きの絶対ルール」に恒久化。
