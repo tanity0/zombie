@@ -4975,12 +4975,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.x = boss.x + bs.vx * bossMoveDt; patch.y = boss.y + bs.vy * bossMoveDt;
               };
               if (frozen) {
-                // 解除後はチェイスから再開。溜め/連射タイマーを巻き戻して「解除直後に溜め攻撃が暴発」を防ぎ、
-                // 進行中の連射残数もクリア(凍結をまたいで状態が漏れないように)。慣性もリセット。
                 bs.vx = 0; bs.vy = 0;
-                patch.bossState = 'chase';
-                patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
-                patch.bossBurstLeft = 0;
+                // ★社長裁定v0.25.3497「ノックバックもだけど、技だけキャンセルされなければええで」:
+                // **ノックバック"だけ"で止まっている間は技を中断しない**(v0.25.3476で紫と同じ扱いに
+                // 揃えたのを取り消す)。代わりに技の時計を凍結ぶんだけ後ろへずらす=解除後に続きから。
+                // 絶対時刻(bossStateUntil)のままだと解除の瞬間に期限切れ=stale windupが即着弾するため。
+                // 移動は従来どおり止める(押されている間にチェイスで座標を上書きしない)。
+                const kbOnlyStop = kbStoppedNow && !warping && !bossFullStun && !stunnedNow && !liftedNow && !rootedNow;
+                if (kbOnlyStop) {
+                  const kbDtMs = deltaTime * 1000;
+                  if (boss.bossStateUntil !== undefined) patch.bossStateUntil = boss.bossStateUntil + kbDtMs;
+                  patch.bossNextActionAt = (boss.bossNextActionAt ?? newGameTime) + kbDtMs;
+                } else {
+                  // 解除後はチェイスから再開。溜め/連射タイマーを巻き戻して「解除直後に溜め攻撃が暴発」を防ぎ、
+                  // 進行中の連射残数もクリア(凍結をまたいで状態が漏れないように)。
+                  patch.bossState = 'chase';
+                  patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+                  patch.bossBurstLeft = 0;
+                }
               } else {
               // 画面外/帰巣中は bossState='return' になる。チェイス状態機械に 'return' のケースが無いため、
               // 復帰時に 'return' のままだと どの分岐にも入らず=移動も状態遷移もせず永久に固まる(社長報告のバグ)。

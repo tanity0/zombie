@@ -1544,6 +1544,28 @@ export const runBountyTick = (
   // 一緒に捨てる=cancelBountyTechniqueに統一(bounty-rangedだけ別出口だったbossNextActionAtの
   // 個別上書きも不要になった)。
   if (isFrozen(bounty, newGameTime, nowMs)) {
+    // ★社長裁定v0.25.3497「ノックバックもだけど、技だけキャンセルされなければええで」:
+    // **ノックバック"だけ"で止まっている間は技を中断しない**。v0.25.3476で紫と同じ「中断」へ
+    // 揃えたが、実機では近接・弾・爆発のたびに技が消えて何も撃てなくなった(社長報告v0.25.3494)。
+    // 代わりに**技の時計を凍結ぶんだけ後ろへずらす**=解除後に続きから出る。
+    //  - 時計をずらす理由: bossStateUntil は絶対時刻(gameTime)なので、止めている間も時間が進むと
+    //    解除の瞬間に既に期限切れ=**stale windupがその場で即着弾**する(v0.25.3476のコメントが
+    //    「まとめ撃ち・stale windup事故」と呼んでいたもの)。ずらせばこの事故は起きない。
+    //  - 気絶/拘束/浮き/紫は従来どおり中断(あちらは「止める」ではなく「崩す」効果)。
+    const kbOnly = bounty.knockbackUntil !== undefined && nowMs < bounty.knockbackUntil
+      && !(bounty.bossFullStunUntil !== undefined && newGameTime < bounty.bossFullStunUntil)
+      && !(bounty.stunUntil !== undefined && newGameTime < bounty.stunUntil)
+      && !(bounty.rootUntil !== undefined && newGameTime < bounty.rootUntil)
+      && !(bounty.liftUntil !== undefined && nowMs < bounty.liftUntil);
+    if (kbOnly) {
+      const dtMs = deltaTime * 1000;
+      applyPatch(bounty.id, {
+        ...(bounty.bossStateUntil !== undefined ? { bossStateUntil: bounty.bossStateUntil + dtMs } : {}),
+        bossNextActionAt: (bounty.bossNextActionAt ?? newGameTime) + dtMs,
+        bountyLastEngagedAt: newGameTime,
+      });
+      return;
+    }
     cancelBountyTechnique(s);
     applyPatch(bounty.id, {
       bossState: 'chase',
