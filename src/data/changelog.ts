@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3431',
+    items: [
+      'ゲーム内容の変更はありません(POI修正の検収記録と、慣性違反の洗い出し台帳の登録)。',
+    ],
+  },
+  {
     version: '0.25.3430',
     items: [
       '施設(病院・武器庫・警察署)が城と同じくらいの大きさへ変わり、滞在サークル/戦闘エリアが建物の手前に出るようになりました。建物が視界や移動を塞がず戦いやすくなります。',
