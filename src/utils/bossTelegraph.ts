@@ -26,7 +26,26 @@ export const PLAYER_ATTACK_CYCLE_MS = 820;
  * 必ずコメントで意図を明記する)。
  * 注: プレイヤー半径は呼び出し側で足す(自機サイズが場面で変わるため、ここでは素の式だけを持つ)。
  */
-export const minWindupMs = (radiusPx: number): number => (radiusPx / PLAYER_WALK_PX_PER_SEC) * 1000;
+export const minWindupMs = (radiusPx: number, standDistPx = 0): number =>
+  (Math.max(0, radiusPx - standDistPx) / PLAYER_WALK_PX_PER_SEC) * 1000;
+
+/**
+ * プレイヤーの近接リーチ(px)。gameStore の MELEE_RADIUS(74) の複製(この層はstore非依存のため。
+ * 一致は bossTelegraph.test.ts が実体をimportして機械検証する)。
+ * 意味: **敵の当たり判定の縁からこの距離まで**近接が届く(判定は enemyMeleeDist=矩形の最近点までの距離)。
+ */
+export const MELEE_REACH_PX = 74;
+
+/**
+ * ★交戦の起点(社長指示v0.25.3465「監査の技を避けれるかの基準を直して。プレイヤーの近距離攻撃が、
+ * 敵の当たり判定の端っこに届く距離のギリギリを起点に考えて」)。
+ *
+ * プレイヤーは**敵の中心に立っている訳ではなく、近接がギリギリ届く位置で殴っている**。
+ * だから「ボス自身を中心に出るAoE」は、その立ち位置から外へ出る距離だけを測るのが正しい。
+ *   起点(敵の中心からの距離) = 敵の当たり判定の半分 + MELEE_REACH_PX
+ * enemyHitHalfPx は**小さい方の軸(=一番近づける向き)**を渡す(厳しい側で測る)。
+ */
+export const meleeStandDistPx = (enemyHitHalfPx: number): number => enemyHitHalfPx + MELEE_REACH_PX;
 
 // ============================================================================================
 // ★この物差しの使い方(v0.25.3151・全技の回避可能性を走査した時の反省をここに固定する)
@@ -34,9 +53,16 @@ export const minWindupMs = (radiusPx: number): number => (radiusPx / PLAYER_WALK
 //
 // ● 測り方(この2つ以外を持ち込まないこと)
 //   必要ms = (危険域から出るのに要る距離) / PLAYER_WALK_PX_PER_SEC * 1000
-//     - 円  : 半径 + プレイヤー半径(14)
+//     - 円  : 半径 + プレイヤー半径(14)  − **起点(下記)**
 //     - 帯  : 半幅 + プレイヤー半径(14)  ※横へ抜ける
 //   判定  = 予告時間(赤い図形が出てから判定が出るまで) >= 必要ms
+//
+// ● ★起点(社長指示v0.25.3465で追加。旧: 常に「円の中心に立っている」最悪ケース)
+//   **プレイヤーの近接攻撃が敵の当たり判定の端にギリギリ届く位置**を起点にする。
+//     起点 = 敵の当たり判定の半分 + MELEE_REACH_PX(74) … `meleeStandDistPx()`
+//   これは「ボス自身を中心に出るAoE」にだけ効く(プレイヤーは中心には立っていないため)。
+//   **プレイヤーの位置に置かれる技**(着地円・狙って引かれる帯など)は、プレイヤーが中心に居るのが
+//   前提なので起点=0のまま(minWindupMs の第2引数を渡さない)。
 //
 // ● ★やってはいけない2つ(v0.25.3146の走査で実際にやって、結果が丸ごと間違った)
 //   1. **PLAYER_BASE_SPEED(87) をそのまま使う。** 実効速度は **× GAME_SPEED(1.2) = 104.4**。
@@ -46,13 +72,15 @@ export const minWindupMs = (radiusPx: number): number => (radiusPx / PLAYER_WALK
 //   この2つで技1つあたり400〜500msぶん厳しく出て、**実際は避けられる技を大量にNG判定した**
 //   (社長の実機報告「ラフィの技は今の所全て避けれるよ」で発覚。ラフィのsweepは -20%ではなく +35%)。
 //
-// ● ★対象外(社長決定v0.25.3151「足元系は現状維持」)
-//   **本体の足元/中心を中心とする円AoE**は、この物差しの適用外とする。
-//   該当: giantbat の stomp / nova / wing、mimir の bite、suriel の ring-spin。
-//   理由: 必要msは「プレイヤーがボスの中心に立っている」最悪ケースの数字で、実際は殴る位置ぶん
-//   既に外側に居る。かつ**密着し続けたら食らう**のはこの技たちの意図そのもの
-//   (「離れる」がプレイヤー側の答えで、予告を伸ばすとその意図が消える)。
-//   ⇒ **これらの予告時間を「短いから」という理由で伸ばさないこと。** 走査でNGに出ても正常。
+// ● ★足元系(本体を中心とする円AoE)の扱い — v0.25.3465で「対象外」から「起点を変えて測る」へ
+//   該当: giantbat の stomp / nova / wing、mimir の bite、suriel の ring-spin、舞妓の毬回し など。
+//   旧(社長決定v0.25.3151): 「プレイヤーがボスの中心に立っている」最悪ケースの数字になるので
+//   **物差しの対象外**にして、短くても伸ばさないことにしていた。
+//   新(社長指示v0.25.3465): 対象外にせず、**起点を「近接がギリギリ届く立ち位置」にして測る**
+//   (`minWindupMs(radius + 14, meleeStandDistPx(敵の当たり判定の半分))`)。これで
+//   「殴っている位置から歩いて出られるか」という**実際の問い**に対して数字が出る。
+//   依然として、意図的に避けさせない技(密着し続けたら食らう)は基準未満でよいが、
+//   **その場合はコメントで意図を明記する**(黙って基準割れを放置しない)。
 //
 // ● 逆に、**プレイヤーを狙って置かれる**技(円の中心/帯の線上にプレイヤーが必ず居るもの)は
 //   この物差しがそのまま効く。走査でNGなら本当に避けられない=直す対象。
@@ -99,6 +127,12 @@ export interface AoeTelegraphEntry {
   name: string;
   escapeMs: number;
   radiusPx: number;
+  /**
+   * ★起点(社長指示v0.25.3465)。**ボス自身を中心に出るAoE**だけに入れる
+   * (= `meleeStandDistPx(敵の当たり判定の半分)`)。プレイヤーの位置に置かれる技(着地円など)は
+   * 中心に立っているのが前提なので**入れない**。
+   */
+  standDistPx?: number;
   /** 意図的に下限未満にしている技(密着への懲罰など)。設定時は検査を免除し、理由を必ず書く。 */
   intentionallyUnavoidable?: string;
 }
@@ -121,29 +155,32 @@ export const AOE_TELEGRAPH_AUDIT: readonly AoeTelegraphEntry[] = [
   // useGameLoop.ts: MIMIR_BITE_WINDUP_MS=700 / bodyCenteredAoe.MIMIR_BITE_RADIUS=216(v0.25.2612で
   // 92→216) → 必要約2069ms。★v0.25.2893: この行の 92 が是正に取り残されており、監査が旧値を
   // 検査していた(=不足81msに見えていたが実際は不足1369ms)。「密着への懲罰」という役目は不変。
+  // ★起点つき(v0.25.3465): mimirは裏ボス=生の帯(223x124)。小さい方の軸の半分=62 → 起点=62+74=136。
   {
-    name: 'mimir-bite(群体の噛みつき)', escapeMs: 700, radiusPx: 216,
+    name: 'mimir-bite(群体の噛みつき)', escapeMs: 700, radiusPx: 216, standDistPx: 136,
     intentionallyUnavoidable: '密着帯(<=200px)専用の懲罰技=「張り付き続けたら噛まれる」を教える技。'
-      + '城ボスの踏み鳴らし(密着でstomp重み50)と同じ思想。範囲外へ歩くのではなく間合いを空ける動機付けが役目。',
+      + '城ボスの踏み鳴らし(密着でstomp重み50)と同じ思想。範囲外へ歩くのではなく間合いを空ける動機付けが役目。'
+      + '起点を入れた新基準(v0.25.3465)でも必要766msに対し700ms=不足66msなので免除は継続。',
   },
   // angelBossTick.ts: SURIEL_RINGSPIN_WINDUP_MS=800 / SURIEL_RINGSPIN_RADIUS=92 → 必要881ms
-  {
-    name: 'suriel-ringspin(近接拒否の回転)', escapeMs: 800, radiusPx: 92,
-    intentionallyUnavoidable: '「近接拒否」=密着帯(<=140px)に居ることそのものへの懲罰技(§6.28-18)。'
-      + '不足は81msで、密着から一歩でも動いていれば抜けられる。役目が「密着を許さない」なので据え置く。',
-  },
+  // ★起点つき(v0.25.3465)で**合格に転じた**: suriel 60x30 → 足元の帯(幅33/高さ30)の小さい方の半分=15
+  // → 起点=15+74=89。必要は(92-89)/104.4*1000≒29ms で、予告800msはこれを大きく上回る。
+  // 旧基準(中心に立っている前提)では「不足81ms」に見えていただけで、**実際は殴る位置から出られる**。
+  { name: 'suriel-ringspin(近接拒否の回転)', escapeMs: 800, radiusPx: 92, standDistPx: 89 },
   // angelBossTick.ts: ACRASIEL_BURST_WINDUP_MS=1200 / ACRASIEL_BURST_RADIUS=140 → 必要1341ms
-  {
-    name: 'acrasiel-burst(大円)', escapeMs: 1200, radiusPx: 140,
-    intentionallyUnavoidable: '不足141ms(必要値の89%)。アクラシエルは脚が無く(speed:0)自分から間合いを'
-      + '詰められないため、大円は「近寄り過ぎるな」の唯一の担い手。★未決: 社長裁定待ち(1400msへ延ばすか、'
-      + '半径を125pxへ縮めるかの二択。判定と赤円は同じ定数なのでどちらでも図形と判定は一致する)。',
-  },
+  // ★起点つき(v0.25.3465)で**合格に転じた**: acrasiel 60x30 → 起点=89。必要は(140-89)/104.4*1000≒488ms。
+  // 予告1200msはこれを大きく上回る。旧基準の「不足141ms」は中心に立っている前提の数字で、
+  // ★未決だった「1400msへ延ばすか半径を縮めるか」の二択は**不要になった**(社長裁定を仰ぐ必要なし)。
+  { name: 'acrasiel-burst(大円)', escapeMs: 1200, radiusPx: 140, standDistPx: 89 },
   // PACING_PUZZLE.md §6.38 B2b: bountyTick.ts MK_SPIN_WINDUP_CHOICES([800,1300])の短い方を登録
   // (社長指示「escapeMs=短い方」)/ MK_SPIN_RADIUS=90 → 必要約996ms。
+  // ★v0.25.3464で半径 90→180(社長指示「範囲を二倍にして」)。この行が旧90のまま取り残されると
+  // 監査が嘘をつくので同時に更新する(mimir-biteで同じ取り残しが起きた前例あり)。
+  // 起点(v0.25.3465): 賞金首 44x44 → 足元の帯(幅24.2/高さ44)の小さい方の半分=12.1 → 起点=12.1+74≒86。
   {
-    name: 'bounty-maiko-spin(舞妓・毬回し)', escapeMs: 800, radiusPx: 90,
+    name: 'bounty-maiko-spin(舞妓・毬回し)', escapeMs: 800, radiusPx: 180, standDistPx: 86,
     intentionallyUnavoidable: '密着帯への懲罰技(mimir-bite/suriel-ringspinと同じ思想=「近寄り過ぎたら'
-      + '巻き込まれる」を教える技)。不足196ms(必要値の80%)。密着を選んだ側への間合い喚起として据え置く。',
+      + '巻き込まれる」を教える技)。新基準(起点つき)で必要900msに対し800ms=**不足100ms**まで縮んだ'
+      + '(旧基準の見かけの不足は1060ms)。密着を選んだ側への間合い喚起として据え置く。',
   },
 ] as const;

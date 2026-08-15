@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   PLAYER_WALK_PX_PER_SEC, PLAYER_ATTACK_CYCLE_MS, BOSS_RECOVER_FLOOR_MS, BOSS_STRING_REST_MS,
   minWindupMs, withRecoverFloor, telegraphProgress01, AOE_TELEGRAPH_AUDIT,
+  MELEE_REACH_PX, meleeStandDistPx,
 } from './bossTelegraph';
-import { PLAYER_BASE_SPEED, COUNTER_WINDOW, COUNTER_COOLDOWN } from '../store/gameStore';
+import { PLAYER_BASE_SPEED, COUNTER_WINDOW, COUNTER_COOLDOWN, MELEE_RADIUS } from '../store/gameStore';
 import { GAME_SPEED } from '../config/gameSpeed';
 
 describe('bossTelegraph: 基準系の複製がズレていないこと', () => {
@@ -39,6 +40,28 @@ describe('minWindupMs(換算式②)', () => {
       expect((minWindupMs(r) / 1000) * PLAYER_WALK_PX_PER_SEC).toBeCloseTo(r, 6);
     }
   });
+
+  // ★起点(社長指示v0.25.3465「プレイヤーの近距離攻撃が、敵の当たり判定の端っこに届く距離の
+  //   ギリギリを起点に考えて」)。足元系AoEは、その立ち位置から外へ出る距離だけで測る。
+  describe('起点=近接がギリギリ届く立ち位置', () => {
+    it('MELEE_REACH_PX は gameStore の MELEE_RADIUS と同値(複製のズレ検知)', () => {
+      expect(MELEE_REACH_PX).toBe(MELEE_RADIUS);
+    });
+    it('起点 = 敵の当たり判定の半分 + 近接リーチ', () => {
+      expect(meleeStandDistPx(22)).toBe(22 + MELEE_REACH_PX);
+    });
+    it('起点を渡すと、その分だけ必要msが短くなる', () => {
+      const stand = meleeStandDistPx(12);       // 例: 賞金首の帯の半分(小さい方の軸)
+      expect(minWindupMs(194, stand)).toBeCloseTo(((194 - stand) / PLAYER_WALK_PX_PER_SEC) * 1000, 6);
+      expect(minWindupMs(194, stand)).toBeLessThan(minWindupMs(194));
+    });
+    it('起点より内側に収まる円は「歩かなくても外に居る」=0ms', () => {
+      expect(minWindupMs(50, meleeStandDistPx(22))).toBe(0);
+    });
+    it('起点を渡さなければ従来どおり(プレイヤーが中心に居る技=着地円など)', () => {
+      expect(minWindupMs(114)).toBeCloseTo((114 / PLAYER_WALK_PX_PER_SEC) * 1000, 6);
+    });
+  });
 });
 
 describe('withRecoverFloor(換算式③)', () => {
@@ -57,8 +80,8 @@ describe('AOE_TELEGRAPH_AUDIT: 自己中心AoEの予告が換算式②を満た�
   it('免除指定の無い技はすべて「見てから歩いて避けられる」', () => {
     const violations = AOE_TELEGRAPH_AUDIT
       .filter(e => e.intentionallyUnavoidable === undefined)
-      .filter(e => e.escapeMs < minWindupMs(e.radiusPx))
-      .map(e => `${e.name}: escape=${e.escapeMs}ms < 必要${Math.ceil(minWindupMs(e.radiusPx))}ms`);
+      .filter(e => e.escapeMs < minWindupMs(e.radiusPx, e.standDistPx ?? 0))
+      .map(e => `${e.name}: escape=${e.escapeMs}ms < 必要${Math.ceil(minWindupMs(e.radiusPx, e.standDistPx ?? 0))}ms`);
     expect(violations).toEqual([]);
   });
   it('免除指定がある技には必ず理由が書いてある(空文字で黙らせない)', () => {
@@ -71,7 +94,7 @@ describe('AOE_TELEGRAPH_AUDIT: 自己中心AoEの予告が換算式②を満た�
   it('免除指定は「本当に下限未満」の技にだけ付ける(合格した技に免除を残さない)', () => {
     for (const e of AOE_TELEGRAPH_AUDIT) {
       if (e.intentionallyUnavoidable !== undefined) {
-        expect(e.escapeMs).toBeLessThan(minWindupMs(e.radiusPx));
+        expect(e.escapeMs, e.name).toBeLessThan(minWindupMs(e.radiusPx, e.standDistPx ?? 0));
       }
     }
   });
