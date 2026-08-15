@@ -14651,11 +14651,16 @@ export class PixiScene {
           cx + shakeNx * shake, cy - e.height * 0.15 + ease.dy + shakeNy * shake,
           holdAng, 130, 0.95 * ease.alphaMul * flicker,
         );
-      } else if (e.type === 'bounty-ranged' && gameTime - (e.lastRangedShotAt ?? -1e9) < 900) {
+      } else if (e.type === 'bounty-ranged' && !e.dormant
+        && (gameTime - (e.lastRangedShotAt ?? -1e9) < 900
+          || (((e.bossNextActionAt ?? -1) - gameTime) > 0 && ((e.bossNextActionAt ?? -1) - gameTime) < 350))) {
         // 社長指示v0.25.3443「弾飛ばす時もバス停の先から撃つ感じにして」: 中立のポツポツ撃ち中は
         // 標識を剣式に構えて見せ、弾は先端(BR_SIGN_TIP_PX=手元55px+標識半長65px)から出る
-        // (発射起点はbountyTick側が同じ定数を読む)。連射中は構え継続、撃ち止めて0.9秒で消える。
-        const ease = this.weaponAppearEase(`br-sign-shot:${e.id}`, now, 900);
+        // (発射起点はbountyTick側が同じ定数を読む)。
+        // 社長指摘v0.25.3450「発射口と弾の位置が合ってない」: 旧は発射の瞬間に出現easeが始まる=弾が出る
+        // 瞬間、標識はまだ下からフェードイン中で先端がそこに無かった。**次の発射の350ms前**(bossNextActionAt)
+        // から構え始めることで、撃つ時には先端が発射点に確実に居る。撃ち止めて0.9秒で消える。
+        const ease = this.weaponAppearEase(`br-sign-shot:${e.id}`, now, 1300);
         this.drawBountyWeapon(
           e.id, 'bounty-ranged-sign',
           cx + Math.cos(aimAng) * 55, cy - e.height * 0.15 + Math.sin(aimAng) * 55 + ease.dy,
@@ -20666,24 +20671,16 @@ export class PixiScene {
 
     // 社長指示v0.25.3290: グレネードガン(武器庫限定glauncher系)の弾は支給ドット弾(fx/grenade-ball)。
     // weaponTypeはrifle(トレーサー用)だが、弾の絵だけ専用に差し替える。未ロード時は従来描画へ。
-    // 社長裁定v0.25.3445「弾が転がるのと、信管の赤ランプの明滅は残してもいい」: 支給素材はそのまま、
-    // 転がり弾(t1/t2)だけ①道のり同期の回転 ②信管の赤ランプ明滅(爆発が近いほど速い)を足す。
-    // 手榴弾流用の影+跳ね(v3439)は撤回済み。t3(直進)は素材の静止スタンプのまま。
-    if (p.weaponKey === 'glauncher-t1' || p.weaponKey === 'glauncher-t2' || p.weaponKey === 'glauncher-t3') {
+    // v0.25.3450(社長指示「グレネードの弾も飛び跳ねて」): 転がり弾(t1/t2)はここでは止めず、
+    // 下のswitch(case 'glauncher'→'grenade')で手榴弾と同一の表現(影+飛び跳ね+回転ランプ)へ流す。
+    // t3(直進・着弾爆発)だけ素材の静止スタンプ。
+    if (p.rollDetonatePx === undefined
+      && (p.weaponKey === 'glauncher-t1' || p.weaponKey === 'glauncher-t2' || p.weaponKey === 'glauncher-t3')) {
       const ballTex = getTexture('fx/grenade-ball');
       if (ballTex) {
         const r = Math.max(5, p.width * 0.85);
         g.fillStyle = { color: 0xffffff, alpha: 1 }; // v0.25.3293: fillスタイルalphaの引き継ぎ対策(手榴弾と同じ)
-        if (p.rollDetonatePx !== undefined) {
-          g.rotation = (p.traveledPx ?? 0) / Math.max(4, r); // 半径ぶん進むと1rad=転がりと同期
-          g.texture(ballTex, 0xffffff, -r, -r, r * 2, r * 2);
-          const fu = Math.max(0, Math.min(1, (p.traveledPx ?? 0) / p.rollDetonatePx));
-          if (Math.sin(Date.now() / (150 - 105 * fu)) > 0) {
-            g.circle(r * 0.4, -r * 0.4, 1.6 + 1.4 * fu).fill({ color: 0xff5252, alpha: 0.9 });
-          }
-        } else {
-          g.texture(ballTex, 0xffffff, -r, -r, r * 2, r * 2);
-        }
+        g.texture(ballTex, 0xffffff, -r, -r, r * 2, r * 2);
         return;
       }
     }
@@ -20741,34 +20738,42 @@ export class PixiScene {
         g.circle(0, 0, p.width / 3).fill({ color: 0xfca5a5 });
         break;
       }
+      // 転がり弾(グレネードガンt1/t2・weaponType='glauncher')は手榴弾と同一表現(v0.25.3450統一)。
+      case 'glauncher':
       case 'grenade': {
         const t = Math.max(0, Math.min(1, (Date.now() - p.createdAt) / Math.max(1, p.duration)));
-        // 社長指示v0.25.3447「手榴弾もグレネードの弾と同じ仕様に(転がりと点滅)」: 旧・影+跳ねアニメを
-        // 廃止し、グレネードガン転がり弾と同一の描き方=道のり同期の転がり回転+信管の赤ランプ明滅
-        // (信管が進むほど速い)へ統一。ボマーの子手榴弾・idolの手榴弾も同じ(同じ動作=同じ絵)。
-        // v0.25.2472: ownerGhost(守護霊が投げた手榴弾)は青白tint(視覚のみ・判定/挙動不変)。
+        // 信管の進行: 転がり弾=道のり基準(爆発距離に対する割合)/手榴弾=時間基準(経過/信管)。
+        const fu = p.rollDetonatePx !== undefined
+          ? Math.max(0, Math.min(1, (p.traveledPx ?? 0) / p.rollDetonatePx)) : t;
         // 敵の手榴弾(idolの手榴弾技・v0.25.3442): 爆発範囲の赤円=判定(HEAVY_GRENADE_RADIUS・
-        // 「中心が円の内側なら当たる」)と厳密一致(分類1)。信管が進むほど濃く(円は回転対称なので
-        // g.rotationの影響を受けない)。
+        // 「中心が円の内側なら当たる」)と厳密一致(分類1)。信管が進むほど濃く。
         if (p.hostile) {
           g.circle(0, 0, HEAVY_GRENADE_RADIUS).fill({ color: 0xef4444, alpha: 0.08 + 0.14 * t });
           g.circle(0, 0, HEAVY_GRENADE_RADIUS).stroke({ color: 0xef4444, alpha: 0.5 + 0.4 * t, width: 2 });
         }
+        // 社長指示v0.25.3450「ちゃんと飛び跳ねて(飛び跳ねだけ戻して)」: v3447で消した影+跳ねを復活。
+        const hopEnvelope = Math.max(0, 1 - t * 0.58);
+        const hop = Math.abs(Math.sin(t * Math.PI * 5.2)) * 9 * hopEnvelope;
+        g.ellipse(0, 4, Math.max(3, p.width * 0.48), Math.max(1.2, p.height * 0.14))
+          .fill({ color: 0x000000, alpha: 0.28 });
         const ballTex = getTexture('fx/grenade-ball');
         const br = Math.max(4, p.width * 0.75);
-        g.rotation = (p.traveledPx ?? 0) / Math.max(4, br); // 半径ぶん進むと1rad=転がりと同期
+        g.rotation = 0; // 跳ね(上方向)と影を崩さないため本体は回さない。転がりはランプの公転(下)で表現。
         if (ballTex) {
           // v0.25.3293(社長報告「半透明になってる」): Graphics.texture()は直前のfillスタイルの
-          // alphaを引き継ぐことがあるため、スタンプ前に必ずリセット。
+          // alphaを引き継ぐ(上の影楕円のalpha 0.28が弾に乗っていた)。スタンプ前に必ずリセット。
           g.fillStyle = { color: 0xffffff, alpha: 1 };
-          g.texture(ballTex, p.ownerGhost ? 0x9fd8ff : 0xffffff, -br, -br, br * 2, br * 2);
+          g.texture(ballTex, p.ownerGhost ? 0x9fd8ff : 0xffffff, -br, -hop - br, br * 2, br * 2);
         } else {
-          g.circle(0, 0, Math.max(3, p.width / 2)).fill({ color: p.ownerGhost ? 0x9fd8ff : 0x1f2937 });
-          g.circle(-1, -1, Math.max(1.5, p.width / 5)).fill({ color: p.ownerGhost ? 0xe0f2fe : 0x9ca3af, alpha: 0.55 });
+          g.circle(0, -hop, Math.max(3, p.width / 2)).fill({ color: p.ownerGhost ? 0x9fd8ff : 0x1f2937 });
+          g.circle(-1, -hop - 1, Math.max(1.5, p.width / 5)).fill({ color: p.ownerGhost ? 0xe0f2fe : 0x9ca3af, alpha: 0.55 });
         }
-        // 信管の赤ランプ(転がり弾と同じ式。手榴弾は時間信管なのでt=経過/信管で加速)。
-        if (Math.sin(Date.now() / (150 - 105 * t)) > 0) {
-          g.circle(br * 0.4, -br * 0.4, 1.6 + 1.4 * t).fill({ color: 0xff5252, alpha: 0.9 });
+        // 転がり+信管ランプ(v3445裁定で維持): ランプが弾の縁を公転する=転がって見える(道のり同期)。
+        // 明滅は信管の進行(fu)で加速。
+        const rot = (p.traveledPx ?? 0) / Math.max(4, br);
+        if (Math.sin(Date.now() / (150 - 105 * fu)) > 0) {
+          g.circle(Math.cos(rot) * br * 0.55, -hop + Math.sin(rot) * br * 0.55, 1.6 + 1.4 * fu)
+            .fill({ color: 0xff5252, alpha: 0.9 });
         }
         break;
       }
