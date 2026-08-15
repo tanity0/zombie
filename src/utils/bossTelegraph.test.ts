@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   PLAYER_WALK_PX_PER_SEC, PLAYER_ATTACK_CYCLE_MS, BOSS_RECOVER_FLOOR_MS, BOSS_STRING_REST_MS,
   minWindupMs, withRecoverFloor, telegraphProgress01, AOE_TELEGRAPH_AUDIT,
-  MELEE_REACH_PX, meleeStandDistPx,
+  MELEE_REACH_PX, meleeStandDistPx, effectiveHitReachPx, reachesMovingPlayer,
 } from './bossTelegraph';
 import { PLAYER_BASE_SPEED, COUNTER_WINDOW, COUNTER_COOLDOWN, MELEE_RADIUS } from '../store/gameStore';
 import { GAME_SPEED } from '../config/gameSpeed';
@@ -114,5 +114,25 @@ describe('telegraphProgress01(★未決の予告メーター演出の土台)', (
     expect(telegraphProgress01(1500, undefined, 2000)).toBe(0);
     expect(telegraphProgress01(1500, 1000, undefined)).toBe(0);
     expect(telegraphProgress01(1500, 2000, 1000)).toBe(0);
+  });
+});
+
+// ★物差し②(社長指摘v0.25.3490「指標がそもそも壊れてる可能性が高い」)。
+// 「逃げられるか」だけでなく「**普通に動く相手に届くか**」を数字で出せるようにする。
+describe('effectiveHitReachPx / reachesMovingPlayer(物差し②=当たるか)', () => {
+  it('狙いを固定してから判定までが長いほど、実効射程は短くなる', () => {
+    expect(effectiveHitReachPx(300, 0)).toBe(300);
+    expect(effectiveHitReachPx(300, 900)).toBeCloseTo(300 - 0.9 * PLAYER_WALK_PX_PER_SEC, 6);
+    expect(effectiveHitReachPx(300, 1800)).toBeLessThan(effectiveHitReachPx(300, 900));
+  });
+  it('ボスが接近する技は、その距離ぶん実効射程が伸びる', () => {
+    expect(effectiveHitReachPx(300, 900, 200)).toBeCloseTo(effectiveHitReachPx(300, 900) + 200, 6);
+  });
+  it('★実例(v0.25.3488の三段突き): 接近なしでは選択上限460pxに届かない=設計時に分かるはずだった', () => {
+    // 実効到達468(=リーチ300+帯半幅34+自機半径14+踏み込み120)・狙い固定から判定まで900ms。
+    expect(reachesMovingPlayer(460, 468, 900)).toBe(false);
+  });
+  it('★接近を足すと届く(v0.25.3489で高速接近にした形)', () => {
+    expect(reachesMovingPlayer(460, 468, 900, 160)).toBe(true);
   });
 });
