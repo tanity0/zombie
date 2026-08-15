@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3475',
+    items: [
+      '馬乗り(変異)の鞭が、真ん中ではなく柄(根本)を軸に振られるようになりました。',
+    ],
+  },
+  {
     version: '0.25.3474',
     items: [
       '帯の赤い予告から薄い下地を外し、線の予告と同じ見え方に揃えました。',

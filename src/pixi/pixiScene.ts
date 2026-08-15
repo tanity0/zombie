@@ -14678,15 +14678,18 @@ export class PixiScene {
         const swingDir = step % 2 === 0 ? 1 : -1;
         const swingEased = 1 - Math.pow(1 - prog, 2);
         const swingAngle = aimAng - swingDir * Math.PI * 0.4 * (1 - swingEased);
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, swingAngle, 170, 0.95 * ease.alphaMul);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, swingAngle, 170, 0.95 * ease.alphaMul,
+          1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
         this.drawBountyWhipSmear(e.id, prog, cx, cy, swingAngle, 170, 0.5 + 0.5 * prog);
       } else if (bs2 === 'bm-combo1-recover' || bs2 === 'bm-combo2-recover') {
         // 次段へ継続するだけの中継=消滅させない(コンボが繋がっている間は鞭を出しっぱなし)。
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9,
+          1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-combo3-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const ease = weaponSpawnEase(Infinity, remain);
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, aimAng, 170, 0.9 * ease.alphaMul);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, aimAng, 170, 0.9 * ease.alphaMul,
+          1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-snipe-windup') {
         const ease = weaponSpawnEase(BM_SNIPE_WINDUP_MS * snipeProg, Infinity);
         // 技表GO: 懲罰狙撃=地面に叩きつけ→発射。前半70%で振り上げ(ease-out=減速して止まる)、
@@ -14697,17 +14700,20 @@ export class PixiScene {
         const slamEased = slamT * slamT;
         const liftPx = -34 * raiseEased * (1 - slamEased);
         const slamPx = 10 * slamEased;
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + liftPx + slamPx + ease.dy, aimAng, 170, 0.9 * ease.alphaMul);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + liftPx + slamPx + ease.dy, aimAng, 170, 0.9 * ease.alphaMul,
+          1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-snipe') {
         // 実行中: 判定と同じ線を実線で維持(予告と同じ2点・半幅)。
         const life = Math.max(0, Math.min(1, ((e.bossStateUntil ?? gameTime) - gameTime) / BM_SNIPE_ACTIVE_MS));
         o.moveTo(bfx, bfy).lineTo(btx, bty).stroke({ width: BM_SNIPE_HALFWIDTH * 2, color: 0xff2a2a, alpha: 0.35 * life, cap: 'round' });
         o.moveTo(bfx, bfy).lineTo(btx, bty).stroke({ width: 4, color: 0xffe0e0, alpha: 0.9 * life, cap: 'round' });
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9,
+          1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-snipe-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const ease = weaponSpawnEase(Infinity, remain);
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, aimAng, 170, 0.9 * ease.alphaMul);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, aimAng, 170, 0.9 * ease.alphaMul,
+          1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-charge-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / WEREWOLF_WINDUP_MS));
         const ease = weaponSpawnEase(WEREWOLF_WINDUP_MS * prog, Infinity);
@@ -14719,9 +14725,10 @@ export class PixiScene {
           e.id, 'bounty-melee-whip',
           cx, cy - e.height * 0.35 + ease.dy,
           spinAngle, 170, 0.9 * ease.alphaMul,
-        );
+          1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-charge') {
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, Math.atan2((e.vy ?? 0), (e.vx ?? 1) || 1), 170, 0.95);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, Math.atan2((e.vy ?? 0), (e.vx ?? 1) || 1), 170, 0.95,
+          1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-whip360-windup') {
         // 社長指示v0.25.3473「ダッシュ後に360度、ムチ振り攻撃。(慣性入れてね)」の予告。
         // 判定=自分中心の円(BM_WHIP360_RADIUS)。赤円と判定は同じ値=厳密一致。
@@ -14731,20 +14738,23 @@ export class PixiScene {
         o.circle(cx, cy, BM_WHIP360_RADIUS).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.35 + 0.4 * prog });
         // 振りかぶり: 角速度をprog^2で上げる(0からいきなり回さない=慣性)。
         const windAng = prog * prog * 1.6 * Math.PI * 2;
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy - e.height * 0.2, windAng, 170 * (0.7 + 0.3 * prog), 0.9);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy - e.height * 0.2, windAng, 170 * (0.7 + 0.3 * prog), 0.9,
+          1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-whip360') {
         // 振り抜き: 1周を**加速→減速**(smoothstep)で回す。鞭は伸び切った長さで外周を薙ぐ。
         const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BM_WHIP360_ACTIVE_MS));
         const eased = t * t * (3 - 2 * t);
         const ang = eased * Math.PI * 2;
         o.circle(cx, cy, BM_WHIP360_RADIUS).stroke({ width: 3, color: 0xff5a5a, alpha: 0.5 * (1 - t) });
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, ang, BM_WHIP360_RADIUS, 0.98);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, ang, BM_WHIP360_RADIUS, 0.98,
+          1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
         // スネア3枚を1振りの中で回す(しなり→伸び)。角度は鞭と同じ=揃える。
         this.drawBountyWhipSmear(e.id, t, cx, cy, ang, BM_WHIP360_RADIUS, 0.85);
       } else if (bs2 === 'bm-charge-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const ease = weaponSpawnEase(Infinity, remain);
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, Math.atan2((e.vy ?? 0), (e.vx ?? 1) || 1), 170, 0.9 * ease.alphaMul);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, Math.atan2((e.vy ?? 0), (e.vx ?? 1) || 1), 170, 0.9 * ease.alphaMul,
+          1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bb-sweep-windup') {
         const ease = weaponSpawnEase(BB_SWEEP_WINDUP_MS * sweepProg, Infinity);
         // 技表GO: 薙ぎ=開いて→閉じながら薙ぐ。開(widthMul 1.7)→閉(1.0)をease-in(閉じる勢いが強まる)。
@@ -22638,6 +22648,12 @@ export class PixiScene {
   // pooled sprite(1体1枚=全技この1本を使い回す・武器素材台帳の原則どおり)。中心アンカーで
   // 位置(px,py)へ置き、角度(angleRad)へ向ける単純な仕様(thor-katanaほどの握り位置精度は持たない=
   // 「見せる」ことを優先した簡略版。見た目は派手側に倒す=大きめのlengthPxで存在感を出す)。
+  // 鞭(bounty-melee-whip)の柄の位置と素材内の向き。素材は左下が柄で右上へ伸びる(248x384)ので、
+  // 柄=(0.08, 0.95)・素材内の「柄→先端」= -45°。振り物はこの軸で回す(v0.25.3475)。
+  private static readonly WHIP_GRIP_X = 0.08;
+  private static readonly WHIP_GRIP_Y = 0.95;
+  private static readonly WHIP_INTRINSIC = -Math.PI / 4;
+
   private drawBountyWeapon(
     id: string, texName: string, px: number, py: number, angleRad: number,
     lengthPx: number, alpha: number,
@@ -22646,20 +22662,26 @@ export class PixiScene {
     widthMul = 1,
     // idolのハンドガン(v0.25.3437): 左向きに構える時は上下反転して逆さ持ちを防ぐ(絵のみ)。
     flipY = false,
+    // ★回転の軸(社長指摘v0.25.3475「馬乗りのムチは視点が根本じゃないと動きがおかしい。いまは真ん中に
+    //   なってる?」= そのとおり、既定は素材の中心(0.5,0.5)だった)。**振り物は根本(柄)を軸に回す**のが
+    //   自然なので、鞭のように「柄から先が伸びる」得物は柄の位置をここで指定する。
+    //   intrinsicAngle = 素材の中で「柄→先端」が向いている角度(これを引いて狙い方向へ合わせる)。
+    gripX = 0.5, gripY = 0.5, intrinsicAngle = 0,
   ) {
     const tex = getTexture(texName);
     if (!tex) return;
     let sp = this.bountyWeaponSprites.get(id);
     if (!sp) {
-      sp = new Sprite(tex); sp.anchor.set(0.5, 0.5);
+      sp = new Sprite(tex);
       this.L.effectLayer.addChild(sp); this.bountyWeaponSprites.set(id, sp);
     }
     if (sp.texture !== tex) sp.texture = tex;
+    if (sp.anchor.x !== gripX || sp.anchor.y !== gripY) sp.anchor.set(gripX, gripY);
     const longSide = Math.max(1, Math.max(tex.width, tex.height));
     const s = lengthPx / longSide;
     sp.scale.set(s * widthMul, flipY ? -s : s);
     sp.position.set(px, py);
-    sp.rotation = angleRad;
+    sp.rotation = angleRad - intrinsicAngle;
     sp.alpha = alpha;
     sp.visible = true;
   }
