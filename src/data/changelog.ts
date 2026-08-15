@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3445',
+    items: [
+      'ゲーム内容の変更はありません(グレネード弾の表現=転がり回転+信管ランプ維持、の裁定を記録)。',
+    ],
+  },
+  {
     version: '0.25.3444',
     items: [
       '帯の攻撃予告が赤ラインと同じ「流星」の動きになりました(帯全体が押し出して技の瞬間に描き切る)。',
