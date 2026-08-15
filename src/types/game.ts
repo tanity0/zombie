@@ -780,6 +780,9 @@ export interface Enemy {
   // 作らない・v6 C-1の掟)。固定長のwindupはbossStateUntilだけで足りるため未設定のままでよい。
   bossWindupStartAt?: number;
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
+  // バス停(bounty-ranged)のポツポツ撃ちの直近発射時刻(gameTime)。描画専用=構えの標識を出す合図
+  // (社長指示v0.25.3443「弾はバス停の先から」・発射起点はbountyTick側)。判定には使わない。
+  lastRangedShotAt?: number;
   // 攻撃開始時に確定した短い連携台本の残り。各recoverで先頭を消費し、空になった時だけ通常硬直へ戻る。
   bossScriptQueue?: string[];
   bossLeashSince?: number;  // フィールドボスが離脱距離の外に出続けた起点(gameTime)。3秒予兆用

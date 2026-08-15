@@ -936,9 +936,10 @@ const saveNamedFoe = (m: NamedFoeMeta | null): void => {
 };
 
 // Light knockback applied to a normal enemy each time a bullet connects.
-// Guns shove only half as hard as the melee counter's push.
-// ノックバックでずらす速さを約2/3に(社長指示): 64→43。
-export const BULLET_KNOCKBACK_SPEED = 43;
+// 社長指示v0.25.3443「打った時のノックバックも小さすぎて認識できない」: 43→86(旧64→43の2/3化を撤回して
+// 2倍へ。単発≈12px移動=見て分かる叩き台)。knockbackEnemyの全発生源(銃/爆発/デコイ等)が同じ物差しで太る
+// =「全体的に動きを大きく見せる」の一環。強すぎたら実機でこの1本を調整。
+export const BULLET_KNOCKBACK_SPEED = 86;
 
 // Crit → stun duration (gameTime ms). A stunned enemy is a finisher target.
 export const STUN_DURATION_MS = 5000;

@@ -29,12 +29,12 @@ import {
 import {
   BB_SWEEP_HALFWIDTH, BB_LEAP_RADIUS,
   MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS, MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
-  BOUNTY_BASE_HP,
+  BOUNTY_BASE_HP, BR_SIGN_TIP_PX,
 } from './bountyDims';
 export {
   BB_SWEEP_HALFWIDTH, BB_LEAP_RADIUS,
   MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS, MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
-  BOUNTY_BASE_HP,
+  BOUNTY_BASE_HP, BR_SIGN_TIP_PX,
 };
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { isBountyType, createEnemyProjectile, spawnEnemyAt } from './enemyUtils';
@@ -422,10 +422,14 @@ const tickRanged = (
     }
     if (newGameTime >= (bounty.bossNextActionAt ?? 0)) {
       patch.bossNextActionAt = newGameTime + BR_SHOT_INTERVAL_MS;
+      // 社長指示v0.25.3443「弾飛ばす時もバス停の先から撃つ感じにして」: 発射起点=構えた標識の先端
+      // (BR_SIGN_TIP_PX・構えの高さ=身長比-0.15)。描画側(pixiScene)が同じ点に標識を構える。
       const ang = Math.atan2(pcy - bcy, pcx - bcx);
+      const mzx = bcx + Math.cos(ang) * BR_SIGN_TIP_PX;
+      const mzy = bcy - bounty.height * 0.15 + Math.sin(ang) * BR_SIGN_TIP_PX;
+      patch.lastRangedShotAt = newGameTime; // 描画専用の合図(構えの標識を~0.9秒見せる)
       useGameStore.getState().addProjectile(createEnemyProjectile(
-        bounty, useGameStore.getState().player, bcx + Math.cos(ang) * 100, bcy + Math.sin(ang) * 100,
-        undefined, undefined, BR_SHOT_PROFILE,
+        bounty, useGameStore.getState().player, undefined, undefined, mzx, mzy, BR_SHOT_PROFILE,
       ));
     }
     return;

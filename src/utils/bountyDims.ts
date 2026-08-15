@@ -19,6 +19,12 @@ export const PUMPKIN_EXPLOSION_RADIUS = 54;
  * bossPractice→bountyTick→gameStore→bossPractice の循環import防止。v0.25.3390の教訓と同じ理由)。 */
 export const BOUNTY_BASE_HP = 2000;
 
+// ---- バス停(bounty-ranged) ----
+/** 標識の先端(構えの中心=手元から先端まで・px)。社長指示v0.25.3443「弾飛ばす時もバス停の先から
+ * 撃つ感じにして」: 発射起点(bountyTick)と構えの絵の先端(pixiScene・手元+55px中心の130px標識の先)が
+ * 同じこの値を読む。構えの高さ=身長比-0.15は両側でe.height×0.15をインライン共有。 */
+export const BR_SIGN_TIP_PX = 120;
+
 // ---- 鋏(bounty-balance) ----
 /** 薙ぎ払いのカプセル半幅(px)。判定(bountyTick)と予告描画(pixiScene)と levelUpGate が共有。 */
 export const BB_SWEEP_HALFWIDTH = 40;

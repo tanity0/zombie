@@ -14552,6 +14552,16 @@ export class PixiScene {
           cx + shakeNx * shake, cy - e.height * 0.15 + ease.dy + shakeNy * shake,
           holdAng, 130, 0.95 * ease.alphaMul * flicker,
         );
+      } else if (e.type === 'bounty-ranged' && gameTime - (e.lastRangedShotAt ?? -1e9) < 900) {
+        // 社長指示v0.25.3443「弾飛ばす時もバス停の先から撃つ感じにして」: 中立のポツポツ撃ち中は
+        // 標識を剣式に構えて見せ、弾は先端(BR_SIGN_TIP_PX=手元55px+標識半長65px)から出る
+        // (発射起点はbountyTick側が同じ定数を読む)。連射中は構え継続、撃ち止めて0.9秒で消える。
+        const ease = this.weaponAppearEase(`br-sign-shot:${e.id}`, now, 900);
+        this.drawBountyWeapon(
+          e.id, 'bounty-ranged-sign',
+          cx + Math.cos(aimAng) * 55, cy - e.height * 0.15 + Math.sin(aimAng) * 55 + ease.dy,
+          aimAng + Math.PI / 2, 130, 0.9 * ease.alphaMul,
+        );
       } else if (bs2 === 'bm-combo1-windup' || bs2 === 'bm-combo2-windup' || bs2 === 'bm-combo3-windup') {
         const step = comboStep;
         const prog = comboProg;
@@ -20502,10 +20512,9 @@ export class PixiScene {
 
     // 社長指示v0.25.3290: グレネードガン(武器庫限定glauncher系)の弾は支給ドット弾(fx/grenade-ball)。
     // weaponTypeはrifle(トレーサー用)だが、弾の絵だけ専用に差し替える。未ロード時は従来描画へ。
-    // 社長指示v0.25.3439「グレネードは手榴弾をそのまま流用できると思う」: 転がり弾(t1/t2=
-    // rollDetonatePx持ち)はここでは止めず、下のswitchで手榴弾と同じ描画(影+跳ねアニメ)へ流す。
-    if (p.rollDetonatePx === undefined
-      && (p.weaponKey === 'glauncher-t1' || p.weaponKey === 'glauncher-t2' || p.weaponKey === 'glauncher-t3')) {
+    // 社長指示v0.25.3443「緑卵の爆発は、前のヴィジュアルに戻して」: v3439の手榴弾流用(影+跳ね)を撤回し、
+    // 転がり弾(t1/t2)も従来どおりの静止スタンプへ戻す(転がり挙動・爆発仕様は不変=絵のみ)。
+    if (p.weaponKey === 'glauncher-t1' || p.weaponKey === 'glauncher-t2' || p.weaponKey === 'glauncher-t3') {
       const ballTex = getTexture('fx/grenade-ball');
       if (ballTex) {
         const r = Math.max(5, p.width * 0.85);
@@ -20568,9 +20577,6 @@ export class PixiScene {
         g.circle(0, 0, p.width / 3).fill({ color: 0xfca5a5 });
         break;
       }
-      // 転がり弾(グレネードガンt1/t2・weaponType='glauncher')は手榴弾の描画をそのまま流用(v0.25.3439)。
-      // ここへ来るのは転がり弾のみ(t3等は上の早期スタンプでreturn済み)。
-      case 'glauncher':
       case 'grenade': {
         const t = Math.max(0, Math.min(1, (Date.now() - p.createdAt) / Math.max(1, p.duration)));
         const hopEnvelope = Math.max(0, 1 - t * 0.58);
