@@ -1,5 +1,48 @@
 # Development Log
 
+## v0.25.3487 — 遅延起爆(giantDelayedHits)の帯にも流星の描き→消しを適用+全帯/線のタイミング監査【2026-08-15 22:36 JST】
+- **社長の実機指摘(そのまま)**: 「帯状の流星、タイミング合ってない時ありそうなのと、まだ実装され
+  てないのがありそう。ステージ1城ボスのコウモリの羽とか」。
+- **①未実装だった帯を追加**: `giantDelayedHits`(`pixiScene.ts` 約17800行台。城ボス/グレンの「起爆
+  までのカウントダウン」表示=爪痕g-talon×3本/三連射g-trishotの三拍目)の capsule(帯)描画を、
+  v0.25.3479で「攻撃windupではなく起爆までのカウントダウンだから別サブシステム」として対象外にして
+  いたのを撤回し、`PixiScene.meteorPhase` を使う同じ文法(前半45%で流星の頭が描き切り、後半55%で
+  後ろから消しが追いかけ、起爆の瞬間=`t=1`にちょうど消え切る)へ揃えた。`t`(起爆までのカウントダウン
+  進行度0→1)はwindupの溜め進行度0→1と意味が同じ(残っている赤の量=残り時間)なので、そのまま
+  `meteorPhase(t)`へ渡すだけで済む。円(else側=氷/血溜まり/虚無の三唱)は発注書どおり対象外のまま。
+  - 帯の縁取り(`drawTelegraphBand`スプライト)は、同フレームに存在しうる「今windup中の帯」
+    (`drawGiantCapsuleZone`が常にidx0を使う)と枠を奪い合わないよう、専用の`delayBandIdx`(1番から
+    採番)を新設した。
+  - `src/pixi/pixiScene.ts`(該当関数のみ改修。判定・ダメージ・発火タイミングは不変)。
+- **②タイミング監査**: 帯・線の予告を出している呼び出し(drawTelegraphBand直呼び/drawGiantCapsuleZone/
+  drawGiantFanZone/drawAngelZoneCapsule/drawAngelDashLine/drawAngelBeamLine/zoneCapsuleTick/
+  dashLineTick経由の全箇所、および上記giantDelayedHits)を洗い、渡している進行度の分母が「判定が
+  出る瞬間に1になる」値かを確認した。
+  - 城ボス系(GIANT_*/GLEN_*)の定数は全て`useGameStore`からの**import**(判定側と同一の実体)で
+    手写しが無く、構造的にズレようがないことを確認。
+  - 天使/裏ボス系の手写し`_VIS`定数(THOR_ISSEN/HARAI/TSUKI・MIGUEL_HARAI・RAFI_SWEEP・
+    URI_SWEEP/DOWNSLASH・SURIEL_SWEEP/RINGSHOT・ACRASIEL_SPIKE/SPEAR/GAZE・MIMIR_BITE・JORM_COIL)
+    は`src/utils/angelSwordSync.test.ts`が判定側の実体と機械的に一致を検査しており、現物を読み比べて
+    全て一致していることを確認(ズレ無し)。
+  - `telegraphProgress01`(変則ディレイ技=舞妓の毬薙ぎ`mk-naginata*`/ダッシュ後ムチ`bm-whip360`等)が
+    参照する`bossWindupStartAt`は、`bountyTick.ts`側で該当windupへの遷移と同じ行で必ず設定されており
+    (未設定のまま`prog`が0に張り付く事故は無し)、`bossStateUntil`も同時に確定するため分母は常に
+    正しい実測windup長になっていることを確認。
+  - 上記の結果、**denominator(分母)の実バグは検出しなかった**。①の`giantDelayedHits`が唯一「流星化
+    されていない=他の帯と動きの言語が違う」箇所で、社長の「タイミング合ってない時ありそう」という
+    体感は主にこれが原因だった可能性が高いと判断し、①の是正で対応した。
+- **今回も対象外にしたもの(理由)**:
+  - 円/扇(自己中心AoE・扇形windup先出し): 発注書どおり対象外(社長指示「円/扇は今回も対象外」)。
+  - `drawAngelBeamLine`系(ミーミルのレーザー/idolの狙撃・連射扇/スリィエルの環射出/アクラシエルの
+    視線): 「溜めで太くなる線」という**別の既存文法**(v0.25.2951社長指示で意図的に採用・帯の流星
+    とは別物)。今回は分母の一致だけ確認し、グラマー自体は変更していない(仕様変更に該当するため)。
+  - スカジ/ラフィの刃の進路ライン・城ボス扇(g-quad-breath/g-sweepbeam)の`drawGiantFanZone`:
+    v0.25.3479時点の除外理由(発射後は残り飛距離を毎フレーム引き直す/自己中心の扇AoE)が今も成立
+    しているため据え置き。
+- 検証: `npm run typecheck`(エラー0)・`npm run lint`(エラー0・既存warning 16件のみ、pixiScene.ts
+  由来のエラーなし)。テストは社長指示制のため未実行(`angelSwordSync.test.ts`は目視で現物を読み
+  比べて確認)。
+
 ## v0.25.3486 — バス停「三段突き」を実装(§6.38 v12・社長裁定2026-08-15)【2026-08-15 22:16 JST】
 - **PACING_PUZZLE.md §6.38 v12 + 直後の★社長裁定(2026-08-15・監査の3点に回答)+「監査で出た未指定の
   埋め」節をそのまま実装**(社長裁定が最優先=v12本文の古い数値は破棄)。

@@ -17800,7 +17800,15 @@ export class PixiScene {
       // M66: 遅延起爆キュー(滑空の二撃目/翼撃の三拍目/三連突進の氷)。aiPhaseに関係なく常に描く
       // (recoverや次のwindup中でも予告が生きているため)。ice=trueは青系(スカジ氷と同じ色)。
       // capsuleがあれば帯、無ければ円のT5フェードインとして描く(いずれも既存の意匠の流用)。
+      // v0.25.34xx(社長指摘「まだ実装されてないのがありそう」): 帯(capsule)側は
+      // windupの帯と同じ流星文法(`PixiScene.meteorPhase`)へ揃える。「起爆までのカウントダウン」の
+      // 進行度 t(0→1・起爆の瞬間に1)は、windupの溜め進行(0→1・技が出る瞬間に1)と意味が同じ
+      // (=残っている赤の量が残り時間)なので、そのまま meteorPhase(t) に渡せば揃う。円(else側)は
+      // 対象外(発注書どおり「円/扇は対象外」)。
       let clawIdx = 0;
+      // idx=0は「今windup中の帯」(drawGiantCapsuleZoneが常にidx0で使う)専用なので、遅延起爆の帯は
+      // 1番から使う(同フレームに存在しうるwindup帯と同じスプライト枠を取り合わない)。
+      let delayBandIdx = 1;
       for (const h of e.giantDelayedHits ?? []) {
         const total = Math.max(1, h.fireAt - h.bornAt);
         const t = Math.max(0, Math.min(1, (gameTime - h.bornAt) / total));
@@ -17826,14 +17834,41 @@ export class PixiScene {
           const nx = -ddy / ddl, ny = ddx / ddl;
           const ux = ddx / ddl, uy = ddy / ddl;
           const hw = h.capsule.halfWidth;
-          const pts = [
-            h.capsule.fx - ux * hw + nx * hw, h.capsule.fy - uy * hw + ny * hw,
-            h.capsule.tx + ux * hw + nx * hw, h.capsule.ty + uy * hw + ny * hw,
-            h.capsule.tx + ux * hw - nx * hw, h.capsule.ty + uy * hw - ny * hw,
-            h.capsule.fx - ux * hw - nx * hw, h.capsule.fy - uy * hw - ny * hw,
-          ];
-          o.poly(pts).fill({ color: col, alpha: (0.05 + 0.22 * t + 0.06 * gPulse) * TELEGRAPH_FILL_MULT });
-          o.poly(pts).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.5 * t + 0.12 * gPulse });
+          // 流星の描き→消し(meteorPhase): 前半45%で頭が描き切り、後半55%で後ろから消しが追いかけ、
+          // t=1(起爆)にちょうど消え切る。zp=描けている先端/er=消された始点(いずれも[0,1]の区間)。
+          const dph = PixiScene.meteorPhase(t);
+          const zp = dph.p, er = dph.er;
+          if (zp - er > 0.001) {
+            const DSEGS = 8;
+            for (let i = 0; i < DSEGS; i++) {
+              const s0 = er + (zp - er) * (i / DSEGS);
+              const s1 = er + (zp - er) * ((i + 1) / DSEGS);
+              if (s1 - s0 <= 0.0005) continue;
+              const k = (i + 1) / DSEGS; // 頭(進行方向側)ほど明るい
+              const backCap = i === 0 && er <= 0 ? hw : 0;
+              const frontCap = i === DSEGS - 1 ? hw * zp : 0;
+              const ax = h.capsule.fx + ddx * s0, ay = h.capsule.fy + ddy * s0;
+              const bx = h.capsule.fx + ddx * s1, by = h.capsule.fy + ddy * s1;
+              o.poly([
+                ax - ux * backCap + nx * hw, ay - uy * backCap + ny * hw,
+                bx + ux * frontCap + nx * hw, by + uy * frontCap + ny * hw,
+                bx + ux * frontCap - nx * hw, by + uy * frontCap - ny * hw,
+                ax - ux * backCap - nx * hw, ay - uy * backCap - ny * hw,
+              ]).fill({ color: col, alpha: (0.05 + 0.22 * zp + 0.06 * gPulse) * (0.55 + 0.45 * k) * TELEGRAPH_FILL_MULT });
+            }
+            const defx = h.capsule.fx + ddx * er, defy = h.capsule.fy + ddy * er;
+            const detx = h.capsule.fx + ddx * zp, dety = h.capsule.fy + ddy * zp;
+            if (FX_RING_ENABLED) {
+              this.drawTelegraphBand(view, defx, defy, detx, dety, hw, strokeCol, 0.2 + 0.5 * zp + 0.12 * gPulse, delayBandIdx++);
+            } else {
+              o.poly([
+                defx + nx * hw, defy + ny * hw,
+                detx + nx * hw, dety + ny * hw,
+                detx - nx * hw, dety - ny * hw,
+                defx - nx * hw, defy - ny * hw,
+              ]).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.5 * zp + 0.12 * gPulse });
+            }
+          }
           // 爪痕(D-2)を判定の矩形へ重ねる。氷(スカジ/城ボスstage-4)は爪ではないので付けない。
           // 濃さは既存のフェードイン(t)に合わせる=「n秒後に爆ぜる」という既存の語彙(§6.28-3)のまま。
           //
@@ -17841,9 +17876,9 @@ export class PixiScene {
           // (社長指示v0.25.2891「爪がシュッてした後、すぐに当たり判定発生と同時にズバッと」)。
           // 振っている最中は痕を出さない(=windup終わりまで carve は 0)。爪の絵が振り切る瞬間から
           // CLAW_CARVE_MS で一気に刻み、以降は 1 で据え置き=従来どおり爆ぜるまで濃くなるだけ。
-          // 危険の告知は下に敷いてある赤い帯が最初から全長で出しているので、痕が遅れて出ても
-          // 「赤いのに当たらない/赤くないのに当たる」にはならない。
-          // g-talon 以外(将来の帯型の遅延判定)は従来どおり最初から全長で出す。
+          // 危険の告知は下に敷いてある赤い帯が(流星の描き→消しで)先に全形へ描き切っているので、
+          // 痕が遅れて出ても「赤いのに当たらない/赤くないのに当たる」にはならない。
+          // g-talon 以外(将来の帯型の遅延判定)は carve=1 のまま=最初から全形で出す。
           // v0.25.3124(社長指示): 爪痕は**起爆と同時**に出す。よって待ちの間は一切描かない
           // (旧: 振り終わりから CLAW_CARVE_MS で刻んでいた)。起爆後の描画は下の `:talonmark` が担う。
           const carve = h.moveKey === 'g-talon' ? 0 : 1;
