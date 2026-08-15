@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3459',
+    items: [
+      'ゲーム内容の変更はありません(次の実装の仕様書のみ)。',
+    ],
+  },
+  {
     version: '0.25.3458',
     items: [
       'ボスの構え・溜め中に、前の振りの斬撃(弧・突きの風圧)が薄く残って見えてしまう不具合を直しました。',
