@@ -40,6 +40,10 @@ type SkillShopEntry = {
 
 // SKILL_BUILD_REDESIGN.md §13-1+§16-7+§18-1: 商人の装備区画(指名買いカタログ)の1枚。
 // defId=null は売り切れ(特殊装備 or 最上段到達)を表す=押せない。
+// 社長裁定v0.25.3464「案2」(装備の枠が買うまで分からない件): 枠のアイコン。
+// 対応は社長指定=**体=人型 / 銃=銃 / 小物=バッグ**(枠の呼び名は決まっていないので文字は足さない)。
+const EQUIP_SLOT_BADGE: Record<EquipSlot, string> = { body: '🧍', arms: '🔫', accessory: '🎒' };
+
 type EquipShopEntry = {
   key: string;
   slot: EquipSlot;
@@ -293,7 +297,12 @@ const ShopMenu: React.FC = () => {
                         : (equipmentById(entry.defId)?.special ? '🏯' : '🛡️')}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-bold text-white truncate">{entry.name}</div>
+                      {/* 社長裁定v0.25.3464「案2」: どの枠を埋めるのかが買う前に分かるよう、枠のアイコンを添える
+                          (体=人型/銃=銃/小物=バッグ。社長指定の対応そのまま)。 */}
+                      <div className="text-[13px] font-bold text-white truncate">
+                        <span className="mr-1 align-middle text-[12px]" aria-hidden>{EQUIP_SLOT_BADGE[entry.slot]}</span>
+                        {entry.name}
+                      </div>
                       <div className="text-[10px] leading-tight text-white/50">{entry.description}</div>
                     </div>
                     <div className="text-[12px] font-black text-amber-200 tabular-nums whitespace-nowrap">

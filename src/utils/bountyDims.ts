@@ -34,8 +34,14 @@ export const BB_LEAP_RADIUS = PUMPKIN_EXPLOSION_RADIUS;
 // ---- 舞妓(bounty-maiko) ----
 /** 毬の薙ぎのカプセル半幅(px)。 */
 export const MK_NAGINATA_HALFWIDTH = 30;
-/** 毬回し(自分中心円)の半径(px)。AOE_TELEGRAPH_AUDIT 登録対象。 */
-export const MK_SPIN_RADIUS = 90;
+/**
+ * 毬回し(自分中心円)の半径(px)。AOE_TELEGRAPH_AUDIT 登録対象。
+ * 社長指示v0.25.3464「舞妓の周りを高速回転する技の範囲を二倍にして」で 90→180。
+ * ※予告(MK_SPIN_WINDUP_CHOICES=[800,1300]ms)は据え置き。歩いて円の外へ出る物差し
+ *   ((180+14)/104.4*1000≒1860ms)は下回るため、「密着していると避けきれない大技」になる。
+ *   予告を伸ばすかは社長裁定(v0.25.3464の報告で提示)。
+ */
+export const MK_SPIN_RADIUS = 180;
 /** 水鳥乱舞の各着地円の半径(px)。社長指示v0.25.3460「範囲狭すぎる。二倍くらいにして」で 50→100。 */
 export const MK_SUIU_RADIUS = 100;
 /** 水鳥乱舞・最終段の円の倍率。 */

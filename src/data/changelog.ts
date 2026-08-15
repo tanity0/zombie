@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3464',
+    items: [
+      '舞妓(変異)の毬回し(高速回転)の範囲を2倍にしました。',
+      '商人の装備に「どの枠に着くか」のアイコンが付きました(体・銃・小物)。',
+    ],
+  },
+  {
     version: '0.25.3463',
     items: [
       'ゲーム内容の変更はありません(スキルアイコンを受け入れる準備=台帳のみ)。',
