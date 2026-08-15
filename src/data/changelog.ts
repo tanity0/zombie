@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3449',
+    items: [
+      '刀ボス(トール・ミゲル・ウリ・ラフィ)の薙ぎ・抜き打ち・振り下ろしに白い斬撃の弧が出るようになりました(突きには出ません)。',
+    ],
+  },
+  {
     version: '0.25.3448',
     items: [
       'ゲーム内容の変更はありません(斬撃弧の適用ルール=「専用の振りエフェクトが無い振り技だけ」を仕様書に記録)。',

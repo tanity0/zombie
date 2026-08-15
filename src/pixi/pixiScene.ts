@@ -22119,9 +22119,15 @@ export class PixiScene {
     const streak = c.children[0] as Sprite;
     const burstSp = c.children[1] as Sprite;
     const katana = c.children[2] as Sprite;
-    // v0.25.3447(社長指示「刀とかで専用の斬撃があるなら変えないで。突きなのに弧を描いたりしないで」):
-    // v3446で足した白い弧はここでは出さない(刀はslash-streakの専用斬撃が既にある。tsuki=突きにも
-    // この関数が使われるため弧は誤り)。白い弧は専用斬撃を持たない振り(賞金首の薙ぎ3種)だけ。
+    // 社長指摘v0.25.3449「今見たら、刀に斬撃エフェクト無いじゃん」: コード上はslash-streakが配線されて
+    // いるが、実機の振りで斬撃として読めていない=「存在しない」が実態。白い弧(fx/slash-arc)を
+    // **突き(thrust)以外の振り**へ復帰させる(v3447の「専用があるなら足さない」は「見えている専用が
+    // ある場合」の話として整理し直し。掟: 画面に出ているかを確認してから判断する)。
+    let arcSp = c.children[3] as Sprite | undefined;
+    if (!arcSp) {
+      arcSp = new Sprite(); arcSp.anchor.set(0.5, 0.5); arcSp.blendMode = 'add';
+      c.addChild(arcSp);
+    }
     const ref = getTexture('fx/slash-streak-4');
     if (!ref) { c.visible = false; return; }
     c.visible = true;
@@ -22137,6 +22143,21 @@ export class PixiScene {
     streak.rotation = angle;
     streak.scale.set(sc, vsc);
     streak.alpha = tt < 0.5 ? (0.35 + 0.5 * (tt / 0.5)) : (1 - Math.max(0, (tt - 0.85) / 0.15));
+    // 白い弧(v0.25.3449): 突き(thrust)には出さない(弧=薙ぎの軌跡の記号・社長指示v0.25.3447)。
+    // 薙ぎ/抜き打ち/振り下ろしは判定ラインに沿わせて横伸ばし・streakと同じtで生き死に。
+    const arcTex = style !== 'thrust' ? getTexture('fx/slash-arc') : undefined;
+    if (arcTex && arcSp) {
+      if (arcSp.texture !== arcTex) arcSp.texture = arcTex;
+      arcSp.rotation = angle + Math.PI; // 素材の膨らみ(-x側)を振る方向へ(drawSlashArcと同じ規約)
+      arcSp.width = Math.max(60, length * 1.2);
+      arcSp.height = Math.max(40, halfWidth * 4);
+      arcSp.position.set((fx + tx) / 2, (fy + ty) / 2);
+      // t=0(構え・振り開始前)では出さない(0から立ち上がる=溜め中に弧が見える誤りを防ぐ)。
+      arcSp.alpha = 0.9 * (tt < 0.5 ? (tt / 0.5) : (1 - Math.max(0, (tt - 0.7) / 0.3)));
+      arcSp.visible = arcSp.alpha > 0.01;
+    } else if (arcSp) {
+      arcSp.visible = false;
+    }
     if (burst) {
       const bref = getTexture('fx/slash-burst-4');
       const bidx = Math.max(0, Math.min(4, Math.floor(tt * 6)));
