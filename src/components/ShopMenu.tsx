@@ -16,6 +16,7 @@ import {
 } from '../store/gameStore';
 import type { AmmoType, EquipSlot, ShopItemKey, SubWeaponKey } from '../types/game';
 import { CHARACTER_SUBWEAPON_KEYS } from '../data/campaign';
+import { subWeaponUpgradeNoteText } from '../data/subWeaponUpgradeNotes';
 import { merchantEquipShelf, equipmentById, equipmentDescription, hasEquipIcon, equipIconName } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
 import { playSfx } from '../audio/audioManager';
@@ -141,7 +142,10 @@ const ShopMenu: React.FC = () => {
         // 本当のLv3だけMAX表記、陳列上限止まりは現在Lvをそのまま出す(グレーアウトで買えないのは見て分かる)。
         name: `${subWeaponDisplayName(skillKey)} ${currentLevel >= 3 ? 'MAX'
           : maxedForStock ? `Lv${currentLevel}` : `Lv${currentLevel + 1}`}`,
-        description: maxedForStock ? `陳列Lv${cappedUnlock}まで購入済み` : `スキルカード 陳列Lv${cappedUnlock}`,
+        // 社長指示(強化ポイント表示): 陳列在庫(陳列Lv)の内部用語は出さず、「買うとどう強くなるか」を
+        // 台帳(subWeaponUpgradeNotes.ts)から出す。上限で買えない時は現在Lv表記(名前側)のまま、
+        // 説明欄は短く「これ以上強化できない」。
+        description: maxedForStock ? 'これ以上強化できない' : subWeaponUpgradeNoteText(skillKey, currentLevel + 1),
         cost: skillKey === 'dog' ? SHOP_DOG_COST : skillKey === 'katana' ? SHOP_KATANA_COST : SHOP_CLASS_SKILL_COST,
         disabled: maxedForStock
       };

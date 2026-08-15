@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3478',
+    items: [
+      '武器商人のスキルカードの説明を、「陳列Lv」という内部表記から「買うとどう強くなるか」が一目でわかる表示に変更しました。',
+    ],
+  },
+  {
     version: '0.25.3477',
     items: [
       '自動タレットや連射武器を撃ち続けても、ボスが完全に動けなくなる不具合を直しました(揺れる反応は出ますが、一定時間で必ずまた動きます)。',

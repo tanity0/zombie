@@ -1,5 +1,35 @@
 # Development Log
 
+## v0.25.3478 — ショップのスキルカード説明を「陳列Lv」から強化ポイント表示へ【2026-08-15 21:38 JST】
+- **社長指示**: 「ショップのスキルレベルアップカードの下に書いてある説明は、どう強化されるのか?を
+  簡単にポイントだけ書いたものにかえたい」。従来は `スキルカード 陳列Lv3` / `陳列Lv3まで購入済み`
+  という内部用語(陳列在庫の話)が出ており、プレイヤーが知りたい「次のレベルで何が強くなるか」が
+  書かれていなかった。
+- 新設: `src/data/subWeaponUpgradeNotes.ts`。`SubWeaponKey` ごとに Lv2/Lv3へ上げた時の強化ポイントを
+  1行で持つ台帳(`Record<SubWeaponKey, {lv2, lv3}>` = 型チェックで取りこぼしゼロを強制)。
+  各行は実際のコードの `*_BY_LEVEL` 定数・分岐を読んで書いた(根拠ファイル:行をコメント併記)。
+  本文に数値は書かない(CLAUDE.md「本文に数値を書かない」)。データと表示は分離
+  (`subWeaponUpgradeNoteText(key, nextLevel)` が文言を組み立て、ShopMenu 側から呼ぶだけ)。
+- `ShopMenu.tsx`: スキルカードの `description` を台帳ベースへ差し替え。買える時=次のレベルの
+  強化ポイント/上限で買えない時=「これ以上強化できない」。陳列Lv(内部用語)は表示から撤去。
+  名前側の「Lv3=MAX/陳列上限=現在Lv」表記(v0.25.3440裁定)は不変のまま。
+- **レベルで変化が無いサブウェポンが3つ見つかった(仕様の穴の可能性・報告事項)**:
+  - `turret`(タレット): `TURRET_DURATION_BY_LEVEL=[0,15000,15000,15000]` で全Lv同値、他の
+    攻撃力/発射間隔もレベルを参照していない。コメントに「Lv2/3はTODO(暫定据置)」とあり=
+    実装が追いついていない未決事項。
+  - `murasame`(小烏丸)/`sage-stone`(賢者の石): どちらも刀Lv3/錬金Lv3到達で商人に1回だけ並ぶ
+    特殊枠。`maybeUnlockMurasame`/`maybeUnlockSageStone` が陳列レベルを常に1で止めるため、
+    購入後にLv2/Lv3へ上げる動線自体が存在しない(これは仕様どおりで「穴」ではなく、そもそも
+    レベルという概念を持たない一回きりの解禁アイテム)。
+- テスト: `src/data/subWeaponUpgradeNotes.test.ts`(商人に並びうる全サブウェポン=
+  `SUB_WEAPON_KEYS ∪ CHARACTER_SUBWEAPON_KEYS ∪ {murasame, sage-stone}` に台帳の行が存在する/
+  余剰不足ゼロ/本文に数値なし/`subWeaponUpgradeNoteText`の分岐、計7本)。
+- 検証: `npm run typecheck`(エラー0)・`npm run lint`(エラー0・既存警告のみ)・
+  `npx vitest run src/data/subWeaponUpgradeNotes.test.ts`(7 passed)。
+- ※並行実行中の別バッチが `useGameLoop.ts`/`gameStore.ts`/`bountyTick.ts`/`sim.test.ts`/
+  `bountyTick.test.ts`/`playtestDriver.ts` を編集中(共有ワークツリー)だったため、
+  それらのファイルには一切触れていない(自分が触ったファイルのみ typecheck/lint 確認)。
+
 ## v0.25.3477 — 自動タレット/連射武器のボスハメを修正+ノックバックで技を中断【2026-08-15 21:36 JST】
 - **社長報告**: 自動タレットの連射を浴び続けたボスが完全に動けなくなり(ハメ)、そのボスの攻撃
   エフェクトも途中で止まったまま固まる。tier3サブマシンガンでも同条件で起きる。
