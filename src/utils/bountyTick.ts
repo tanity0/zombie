@@ -53,6 +53,7 @@ import { isCounterablePhase, phaseJustChanged } from './bossScript';
 // §6.38 B2b: distToSegmentはgeometry.ts(依存ゼロ)から直接import(levelUpGate.ts経由をやめた)。
 // levelUpGate.tsが賞金首の技の実寸法をbountyTick.tsからimportする際、逆import(循環)を作らないため。
 import { distToSegment } from './geometry';
+import { GAME_SPEED } from '../config/gameSpeed';
 import { rectsOverlap } from '../world/obstacles';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
@@ -392,10 +393,13 @@ const tickRanged = (
     }
     if (newGameTime >= (bounty.mimirLaserReadyAt ?? 0) && dist > BR_KITE_MIN) {
       sfx.alert();
-      const ang = Math.atan2(pcy - bcy, pcx - bcx);
       patch.aiFromX = bcx; patch.aiFromY = bcy;
-      patch.aiTargetX = bcx + Math.cos(ang) * BR_LASER_RANGE;
-      patch.aiTargetY = bcy + Math.sin(ang) * BR_LASER_RANGE;
+      // ★v0.25.3426バグ修正: 照準点の初期値=**プレイヤー位置**(ミーミルと同じ。aimTgt=注視対象の座標)。
+      // 旧: レーザー終端(プレイヤーの先BR_LASER_RANGE=900px)を照準点にしていたため、追尾器がそこから
+      // プレイヤーまで「戻る旅」をすることになり、3秒の溜め内に追いつけず「追いかけてこない」見え方に
+      // なっていた(社長報告)。向きの描画/判定は bcx→aiTarget の正規化なので距離は自由=位置で持つのが正。
+      patch.aiTargetX = pcx;
+      patch.aiTargetY = pcy;
       s.aimVX = 0; s.aimVY = 0;
       patch.bossState = 'laser-windup';
       patch.bossStateUntil = newGameTime + 3000; // = mimirLaserTrack.MIMIR_LASER_WINDUP_MS(直接値。定数はimport済みで下のtestが一致検査)
@@ -505,7 +509,8 @@ const laserWindupTick = (
 ): void => {
   const until = bounty.bossStateUntil ?? 0;
   if (mimirLaserPhase(newGameTime, until) !== 'track') return; // ロック段=以後動かさない
-  const caps = mimirLaserTrackCaps(useGameStore.getState().player.speed ?? 87);
+  // ★v0.25.3426: ミーミル本家と同じくGAME_SPEEDを掛ける(輸入技の同一性。掛けないと追尾が2割遅い)。
+  const caps = mimirLaserTrackCaps((useGameStore.getState().player.speed ?? 87) * GAME_SPEED);
   const progress = Math.max(0, Math.min(1, 1 - (until - newGameTime) / BR_LASER_WINDUP_MS));
   const stepped = stepLaserAim(
     { x: bounty.aiTargetX ?? pcx, y: bounty.aiTargetY ?? pcy, vx: s.aimVX, vy: s.aimVY },

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3426',
+    items: [
+      'バス停(変異)のレーザー照準がプレイヤーを追いかけてこない不具合を修正しました(ミーミルと同じ追尾になります)。',
+    ],
+  },
+  {
     version: '0.25.3425',
     items: [
       '城の裏に回り込んだ時、他の建物や木と同じように城が透けるようになりました(施設フェード処理が透過を毎フレーム打ち消していた不具合の修正)。',
