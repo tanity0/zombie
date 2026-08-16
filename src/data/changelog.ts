@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3511',
+    items: [
+      'アバター「猫耳セット」の耳の絵が新しくなりました(左右が離れた形に)。尻尾は変更ありません。',
+    ],
+  },
+  {
     version: '0.25.3510',
     items: [
       'スクラップブースト中のバフ表示が、スクラップのアイコンを赤いドット枠で光らせる見た目になりました。',
