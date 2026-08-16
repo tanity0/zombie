@@ -673,17 +673,29 @@ describe('runBountyTick — B2a 技の状態機械', () => {
         expect(alert).toHaveBeenCalled();
       });
 
-      it('選択距離帯の下限未満(200px)・上限超(600px)では発火しない', () => {
+      // ★v0.25.3516(社長指示「三段突きは0から全部出る様にして」): 下限を380→0にしたので、
+      // 200pxでも**発火するのが正**(旧テストは「発火しない」を固定していたので反転させる)。
+      // 上限超(600px)で出ないことは不変=遠すぎる所からは出ない。
+      it('下限は0=近距離(200px)でも発火する / 上限超(600px)では発火しない', () => {
         const near = setupType('bounty-ranged', { x: 200, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
         for (let i = 0; i < 5; i++) near.step(16);
-        expect(useGameStore.getState().enemies.find(e => e.id === near.id)?.bossState).not.toBe('br-triple-windup');
+        expect(useGameStore.getState().enemies.find(e => e.id === near.id)?.bossState).toBe('br-triple-windup');
 
         const far = setupType('bounty-ranged', { x: 600, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
         for (let i = 0; i < 5; i++) far.step(16);
         expect(useGameStore.getState().enemies.find(e => e.id === far.id)?.bossState).not.toBe('br-triple-windup');
       });
 
-      it('選択距離帯(380〜460)内で発火する(境界含む)', () => {
+      // 押しのけ(<=110)は三段突きより先に見る(§4「近接されたら押しのけ」が最優先の防御反応)。
+      // 下限0にしても**この優先順位は変えていない**ことを固定する(体感上の三段突き帯は概ね110〜460)。
+      it('至近(押しのけ圏内)では押しのけが優先され、三段突きは出ない', () => {
+        const veryNear = setupType('bounty-ranged', { x: 60, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
+        for (let i = 0; i < 5; i++) veryNear.step(16);
+        const st = useGameStore.getState().enemies.find(e => e.id === veryNear.id)?.bossState;
+        expect(st).toBe('br-push-windup');
+      });
+
+      it('選択距離帯の上限側(380〜460)で発火する(境界含む)', () => {
         // playerOffset.{x,y}はplayer.{x,y}への単純加算(中心合わせではない)。bounty-ranged=44x44・
         // player=28x28なので、x/yとも(bounty.半径-player.半径)=(22-14)=8だけ補正しないと中心間距離が
         // 8px分ズレる(境界を厳密に検証するため両軸を補正=x方向のみ+8・y方向は+8で中心を揃える)。

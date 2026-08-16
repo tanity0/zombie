@@ -91,17 +91,29 @@ describe('★受け入れ条件(社長裁定#2の検算式・機械化できる�
     expect(BR_TRIPLE_MAX).toBeLessThanOrEqual(effective);
   });
 
-  it('予告900ms ≧ 必要ms((468−380)/104.4*1000≒843) = 公平の物差し合格', () => {
+  // ★v0.25.3516(社長指示「三段突きは0から全部出る様にして」)で下限を0にした。
+  // 物差し①(歩いて避けられるか)は**遠い側でだけ**成立する。近い側は歩いて避けられない=
+  // カウンターで対処する技、という扱い(v0.25.3489の社長承認の延長)。ここを数字で固定しておく。
+  it('選択上限(460)から出された時は、溜め900msで歩いて避けられる(遠い側の公平性は不変)', () => {
     const effective = brTripleEffectiveReachPx();
-    const requiredMs = ((effective - BR_TRIPLE_MIN) / PLAYER_WALK_PX_PER_SEC) * 1000;
-    expect(requiredMs).toBeCloseTo(842.5, 0); // ≒843ms(設計書の記載どおり)
+    const requiredMs = ((effective - BR_TRIPLE_MAX) / PLAYER_WALK_PX_PER_SEC) * 1000;
+    expect(requiredMs).toBeCloseTo(76.6, 0);
     expect(BR_TRIPLE_WINDUP_MS).toBeGreaterThanOrEqual(requiredMs);
   });
 
-  it('選択距離帯は既存のキート帯(340〜560)の内側(社長裁定の主張どおり)', () => {
-    const BR_KITE_MIN_MIRROR = 340, BR_KITE_MAX_MIRROR = 560; // bountyTick.tsの複製値(store非依存の層のため)
-    expect(BR_TRIPLE_MIN).toBeGreaterThanOrEqual(BR_KITE_MIN_MIRROR);
-    expect(BR_TRIPLE_MAX).toBeLessThanOrEqual(BR_KITE_MAX_MIRROR);
+  it('★下限=0(近距離でも出る)。近距離では歩いて避けられない=カウンター前提であることを明記', () => {
+    expect(BR_TRIPLE_MIN).toBe(0);
+    const effective = brTripleEffectiveReachPx();
+    const requiredAtZero = ((effective - BR_TRIPLE_MIN) / PLAYER_WALK_PX_PER_SEC) * 1000;
+    expect(requiredAtZero).toBeGreaterThan(BR_TRIPLE_WINDUP_MS); // 歩きでは間に合わない(承認済みの意図)
+    expect(Math.round(requiredAtZero)).toBe(4483);
+  });
+
+  it('選択帯がキート帯より内側まで広がった=110〜340pxの空白が埋まる(この修正の目的)', () => {
+    const BR_PUSH_RANGE_MIRROR = 110, BR_KITE_MIN_MIRROR = 340; // bountyTick.tsの複製値(store非依存の層のため)
+    // 押しのけ(<=110)が割り込む帯より内側から候補になり、レーザーの下限(340)より手前を覆う。
+    expect(BR_TRIPLE_MIN).toBeLessThan(BR_PUSH_RANGE_MIRROR);
+    expect(BR_TRIPLE_MAX).toBeGreaterThan(BR_KITE_MIN_MIRROR);
   });
 
   it('3本の帯は横方向に「概ね」隙間なく連続する(距離帯を計算し、成り立たない範囲があれば明記)', () => {
@@ -131,8 +143,7 @@ describe('★受け入れ条件(社長裁定#2の検算式・機械化できる�
 describe('接近(社長指示2026-08-15「高速で近づいてから突く」)', () => {
   it('REACH/選択距離/溜め時間は変えていない(既存値のまま)', () => {
     expect(BR_TRIPLE_REACH).toBe(300);
-    expect(BR_TRIPLE_MIN).toBe(380);
-    expect(BR_TRIPLE_MAX).toBe(460);
+    expect(BR_TRIPLE_MAX).toBe(460); // 上限は不変(下限だけ v0.25.3516 で 380→0)
     expect(BR_TRIPLE_WINDUP_MS).toBe(900);
   });
   it('接近の目標停止距離=REACH(行き過ぎて重ならない・突きが届く距離で止まる)', () => {
