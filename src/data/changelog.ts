@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3527',
+    items: [
+      '山場に重なる紅き月が20秒続くようになりました(山場の頭で1回だけ始まります)。',
+      '紅き月中でも、敵から受けるダメージは増えません。',
+    ],
+  },
+  {
     version: '0.25.3526',
     items: [
       '山場(きつい場面)に紅き月と同じ演出と手強さが重なるようになりました。画面が血赤に染まり、敵が速く・硬くなります。',

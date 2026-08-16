@@ -862,10 +862,14 @@ const DIRECTOR_APPLY_PARAM = evParam('directorApply');
 //   切り分け用に `?directorApply=off` で従来の基準点(両方OFF)へ戻せる。
 const DIRECTOR_APPLY_RELAX = DIRECTOR_APPLY_PARAM !== 'off' && DIRECTOR_APPLY_PARAM !== 'buildup';
 const DIRECTOR_APPLY_BUILDUP = DIRECTOR_APPLY_PARAM === 'buildup' || DIRECTOR_APPLY_PARAM === 'all';
-// ★PEAKサージ(社長指示v0.25.3526): 山(PEAK)に紅き月と同じ効き方を重ねる試行。既定ON・`?peaksurge=0`で切れる。
-// 保持の下限=山が一瞬で抜けた時に赤が点滅して見えないための床(PEAK自体は最大4秒)。
+// ★PEAKサージ(社長指示v0.25.3526): 山(PEAK)に紅き月と同じ効き方を重ねる。既定ON・`?peaksurge=0`で切れる。
+// 社長指示v0.25.3527「**20秒続いて欲しい。毎ピークの最初のみ**」= 本物の紅き月と同じ20秒。
+// ★「毎ピークの最初のみ」は**追加のフラグ無しで自然に成立する**: PEAKは最大4秒(PEAK_HOLD_MS)なので、
+// 20秒のサージが走っている間に同じ山が二度目を撃つことは構造上ありえない。よって発火条件は
+// 「今PEAK かつ 前のサージが明けている」だけでよい(=山の頭で1回だけ・山の途中では撃ち直さない)。
+// 副産物として、**サージ中に次の山が来ても延長されない**(乱戦で赤が出ずっぱりになるのを防ぐ床)。
 const PEAK_SURGE_ENABLED = evParam('peaksurge') !== '0';
-const PEAK_SURGE_MIN_MS = 1500;
+const PEAK_SURGE_MS = 20000;
 // 信号算出(Intensity/Performance/macro state)は既定で常時ON(社長要望のPEAK重ねSE/紅き月連携が実プレイで
 // 動くために必要。読むだけで軽い=近接敵数と危険敵の走査のみ、新規描画なし)。他の難易度③④⑤⑥と同じ
 // 「既定ON・?director=0で無効化」に統一(旧来は明示フラグ必須だった)。デバッグ表示の可否は
@@ -11263,17 +11267,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const redNightActiveNow = useGameStore.getState().redNight?.phase === 'active';
         const rankAdj = (rankOutdoor && !redNightActiveNow) ? rankAdjustFor(rankRef.current.rank) : { escBoost: 0, countCapBonus: 0, rewardMult: 1, rareBoost: 0 };
         // ★PEAKサージ(社長指示v0.25.3526「一度ピークに紅き月を重ねて見るのは試したい」):
-        // 山(PEAK)の間だけ、**紅き月と同じ効き方**(敵の速度2倍・敵の硬さ2倍=被ダメ半減・血赤グレード)を重ねる。
+        // 山(PEAK)の頭で、**紅き月と同じ効き方**(敵の速度2倍・敵の硬さ2倍=被ダメ半減・血赤グレード)を
+        // 20秒ぶん重ねる(社長指示v0.25.3527「20秒続いて欲しい。毎ピークの最初のみ」)。
         // 社長の観察「時間と距離と共に苦しくなる感じはあるが、PEAKの時が苦しいかと言われるとそうではない」への
         // 試行。**湧きを足すのではなく既にいる敵を怖くする**ので、PEAKが明けた後に敵が残らない
         // =直前に既定ONにしたRELAX(谷)を潰さない。
-        //  - PEAKは最大4秒・条件次第で一瞬で抜けるので、**最低1.5秒は保持**する(赤が点滅して見えるのを防ぐ)。
+        //  - 発火は「今PEAK かつ 前のサージが明けている」だけ(PEAK_SURGE_MS の定義側コメント参照)。
         //  - 本物の紅き月の最中は重ねない(二重に盛らない=上のrankAdjと同じ既存方針)。
-        //  - 経験値2倍は**乗せない**(AIディレクターはスコア/経験値/レベル速度に触れない=立ち上げ時からの掟)。
+        //  - **敵の与ダメージ2倍は乗せない**(社長裁定v0.25.3527)。本物の紅き月は与ダメも2倍だが、
+        //    1ランに何度も来るものに付けると事故死が増えて理不尽側に倒れる。
+        //  - 経験値2倍も**乗せない**(AIディレクターはスコア/経験値/レベル速度に触れない=立ち上げ時からの掟)。
         if (PEAK_SURGE_ENABLED && !labTheme && !indoor && !redNightActiveNow
-          && directorRef.current.state.macro === 'peak') {
-          const until = newGameTime + PEAK_SURGE_MIN_MS;
-          if (until > useGameStore.getState().peakSurgeUntil) useGameStore.setState({ peakSurgeUntil: until });
+          && directorRef.current.state.macro === 'peak'
+          && newGameTime >= useGameStore.getState().peakSurgeUntil) {
+          useGameStore.setState({ peakSurgeUntil: newGameTime + PEAK_SURGE_MS });
         }
         // HARVEST相当(buildupフェーズ=関所間の緩む区間)でだけ、rank に応じたEXP倍率を効かせる
         // (難関=gate/boss中は物資ではなく倍率で回すというCodex提案の切り分けを維持)。
