@@ -284,12 +284,63 @@ export const CAMPAIGN_BOSS_ENGAGE_PX = 900;
 /**
  * 目的 → 今tickの指示。**世界の状態だけを見る純関数**(内部状態を持たない)。
  */
+/**
+ * ★デンジャーゾーンの内側境界(px・原点からの距離)。`enemyUtils.AREA_THRESHOLDS[1]` と同値。
+ * ここを跨ぐと `viciousHunter.shouldTriggerViciousHunter` の「デンジャー」条件が立つ。
+ */
+export const DANGER_ZONE_R = 3000;
+/** デンジャー境界のどれだけ手前で引き返すか(px)。跨いでから戻るのでは遅いので余裕を取る。 */
+export const DANGER_GATE_MARGIN_PX = 500;
+
+/**
+ * ★「デンジャーへ行くなら拠点を取ってから」(社長指示v0.25.3508)。全ての目的に先立って効く関門。
+ *
+ * 理由(v0.25.3507の実測): 凶悪ハンターの発生条件(`src/utils/viciousHunter.ts`)は
+ * **「デンジャーに居る × ゲート1未通過 × 拠点0」で必ず出る**。ボットは目的が無いと拠点を取らないため、
+ * デンジャーへ入った瞬間に確定で凶悪ハンターが湧き、21ラン中16ランがデンジャー到達→うち11ランが
+ * ハンター死という分布になっていた(=敵バランスではなく**設計どおりの罰**を測っていた)。
+ * 社長裁定「どちらにしても、デンジャーに行く場合は拠点は取るで」。
+ *
+ * 返す指示は campaign の拠点フローと同じ:**拠点の中心ではなく担当の護衛NPCへ付き添う**
+ * (拠点を制圧するのは escort で、escort は画面内に居る間しか前進しない=v0.25.3059の実走で判明)。
+ *
+ * 対象外(null を返す=従来どおり自由):
+ *  - 拠点の無いステージ / 取れる拠点が残っていない(罰は避けようがないので足止めしない)
+ *  - 既に1つ以上制圧済み(発生条件が外れている)
+ *  - まだ境界より十分内側に居る
+ * **状態を持たない純関数**にしてある(タイムアウト等の時間依存を入れない=テストが安定する)。
+ */
+export const dangerBaseGatePlan = (w: ObjectiveWorld): ObjectivePlan | null => {
+  if (w.baseSites.length === 0) return null;
+  if (w.baseSites.some(b => b.status === 'captured')) return null;
+  if (radiusOf(w) < DANGER_ZONE_R - DANGER_GATE_MARGIN_PX) return null;
+  const target = campaignTargetBase(w) ?? nearestUncapturedBase(w);
+  if (!target) return null;
+  const escort = nearestEscortFor(w, target.id);
+  return {
+    destination: escort ? { x: escort.x, y: escort.y } : { x: target.x, y: target.y },
+    focus: null, travel: true, pressAttack: false, done: false,
+    note: escort ? 'デンジャー前に拠点確保(護衛に付き添う)' : 'デンジャー前に拠点確保(拠点へ)',
+  };
+};
+
 export const planObjective = (obj: BotObjective, w: ObjectiveWorld): ObjectivePlan => {
-  // 目的なし(既定)は従来どおり何も指示しない。囲いの割り込みも入れない(挙動不変の保証)。
-  if (obj.kind === 'none') return NO_PLAN;
   // **囲いイベントは全ての目的に優先する**。倒さない限り前へ進めないため(v0.25.2340)。
-  const arena = arenaPlan(w);
-  if (arena) return arena;
+  // (目的なし=none には従来どおり割り込ませない。)
+  if (obj.kind !== 'none') {
+    const arena = arenaPlan(w);
+    if (arena) return arena;
+  }
+  // ★v0.25.3508(社長指示「どちらにしても、デンジャーに行く場合は拠点は取るで」):
+  // 目的の種類に関係なく、デンジャーへ入る前に拠点を1つ確保させる(凶悪ハンターの確定発生を避ける)。
+  // **depth だけ対象外**——「この深さまで潜れ」という明示指示なので、関門を掛けると達成不能になる
+  // (深層ラッシュのシナリオ試験がこれに当たる)。
+  if (obj.kind !== 'depth') {
+    const gate = dangerBaseGatePlan(w);
+    if (gate) return gate;
+  }
+  // 目的なし(既定)は上の関門以外では従来どおり何も指示しない。
+  if (obj.kind === 'none') return NO_PLAN;
 
   switch (obj.kind) {
     case 'clear': {

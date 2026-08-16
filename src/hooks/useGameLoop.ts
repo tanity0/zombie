@@ -2152,7 +2152,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // M26-L(§6.3): botモードはヘッドレスボットの判断(decideBotInput)で入力をローカル差し替え
         // (storeへは書かない=タッチUI非干渉)。以降このtick内の inputState 参照は全てボット入力になる。
         // v0.25.2339/2340: 目的(ゴール)のプランは入力合成より先に立てる(囲い中は退避を止めるため)。
-        const botGoalPlan = (BOT_PERSONA && BOT_GOAL.kind !== 'none')
+        // v0.25.3508: `kind==='none'` でも planObjective を通す。「デンジャーへ行くなら拠点を取る」
+        // の関門(dangerBaseGatePlan)は目的の種類に関係なく効かせる必要があるため(社長指示)。
+        // none の時に返るのは関門プランか NO_PLAN のどちらかで、それ以外の指示は出ない=従来どおり。
+        const botGoalPlan = BOT_PERSONA
           ? planObjective(BOT_GOAL, {
               px: player.x + player.width / 2, py: player.y + player.height / 2,
               level: player.level, enemies, pickups,

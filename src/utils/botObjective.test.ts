@@ -5,6 +5,7 @@ import {
   planObjective, parseBotObjective, steerTo, outwardPoint, nearestOfType, nearestUncapturedBase,
   ARRIVE_DIST, HIDDEN_BOSS_MIN_LEVEL, FARM_RADIUS, arenaPlan, nearestEventEnemy,
   nearestUnopenedPoi, CAMPAIGN_MIN_LEVEL, CAMPAIGN_BOSS_ENGAGE_PX, HOLD_INPUT, campaignTargetBase,
+  dangerBaseGatePlan, DANGER_ZONE_R, DANGER_GATE_MARGIN_PX,
   type ObjectiveWorld,
 } from './botObjective';
 import type { Enemy, EnemyType, BaseSite, Pickup } from '../types/game';
@@ -426,5 +427,72 @@ describe('囲いイベント突破(関所ゲート1/2)— v0.25.2340', () => {
     expect(p.destination).toBeNull();
     expect(p.focus).toBeNull();
     expect(p.travel).toBe(false);
+  });
+});
+
+// ★v0.25.3508(社長指示「どちらにしても、デンジャーに行く場合は拠点は取るで」)。
+// 凶悪ハンターは「デンジャーに居る × ゲート1未通過 × 拠点0」で**必ず**出る(viciousHunter.ts)。
+// v0.25.3507の実測では、目的なしのボットが拠点を1つも取らずデンジャーへ入り、
+// 21ラン中16ランがデンジャー到達→うち11ランがハンター死=**罰を測っていただけ**だった。
+describe('デンジャー前の拠点確保ゲート(dangerBaseGatePlan)', () => {
+  const bases = [base('b1', 1200, 0), base('b2', -1200, 0)];
+  const atDanger = (over: Partial<ObjectiveWorld> = {}) =>
+    world({ px: DANGER_ZONE_R - 100, py: 0, baseSites: bases, ...over });
+
+  it('境界の手前まで来て拠点0なら、拠点(の護衛)へ向かわせる', () => {
+    const p = dangerBaseGatePlan(atDanger())!;
+    expect(p).not.toBeNull();
+    expect(p.travel).toBe(true);
+    expect(p.destination).toEqual({ x: 1200, y: 0 }); // escort未提供=拠点そのもの
+  });
+
+  it('護衛NPCが居ればそちらへ付き添う(拠点の中心へ立っても制圧されないため)', () => {
+    const p = dangerBaseGatePlan(atDanger({ escorts: [{ baseId: 'b1', x: 900, y: 50 }] }))!;
+    expect(p.destination).toEqual({ x: 900, y: 50 });
+  });
+
+  it('1つでも制圧済みなら関門は掛からない(発生条件が外れている)', () => {
+    expect(dangerBaseGatePlan(atDanger({ baseSites: [base('b1', 1200, 0, 'captured'), bases[1]] }))).toBeNull();
+  });
+
+  it('まだ十分内側なら自由(手前で無用に足止めしない)', () => {
+    expect(dangerBaseGatePlan(world({ px: DANGER_ZONE_R - DANGER_GATE_MARGIN_PX - 1, py: 0, baseSites: bases }))).toBeNull();
+  });
+
+  it('境界を跨いだ後も効く(入ってしまったら戻って拠点を取る)', () => {
+    expect(dangerBaseGatePlan(atDanger({ px: DANGER_ZONE_R + 2000 }))).not.toBeNull();
+  });
+
+  it('拠点の無いステージ/取れる拠点が無い時は足止めしない(避けようがない罰で止めない)', () => {
+    expect(dangerBaseGatePlan(atDanger({ baseSites: [] }))).toBeNull();
+    expect(dangerBaseGatePlan(atDanger({ baseSites: [base('b1', 1200, 0, 'captured')] }))).toBeNull();
+  });
+
+  it('★目的の種類に関係なく効く(none でも効く=これが今回の肝)', () => {
+    for (const obj of [{ kind: 'none' }, { kind: 'score' }, { kind: 'kills', count: 100 },
+      { kind: 'hunt', enemyType: 'hunter' }] as const) {
+      const p = planObjective(obj as never, atDanger());
+      expect(p.note, obj.kind).toContain('拠点確保');
+    }
+  });
+
+  it('depth だけは対象外(「この深さまで潜れ」の明示指示を達成不能にしない)', () => {
+    const p = planObjective({ kind: 'depth', dist: 7500 }, atDanger());
+    expect(p.note).not.toContain('拠点確保');
+  });
+
+  it('none は関門が掛からない状況では従来どおり何も指示しない(挙動不変の保証)', () => {
+    const p = planObjective({ kind: 'none' }, world({ px: 0, py: 0, baseSites: bases }));
+    expect(p.destination).toBeNull();
+    expect(p.note).toBe('目的なし');
+  });
+
+  it('囲いイベント中でも none は従来どおり割り込まない(既存の保証を壊さない)', () => {
+    const p = planObjective({ kind: 'none' }, world({
+      px: 0, py: 0, baseSites: bases,
+      activeEvent: { kind: 'horde', x: 0, y: 0, radius: 400 },
+      enemies: [enemy('zombie', 50, 0)],
+    }));
+    expect(p.note).toBe('目的なし');
   });
 });

@@ -485,7 +485,10 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     + Array.from(new Set(botGuns.map(w => w.ammoType).filter((tt): tt is AmmoType => !!tt)))
         .reduce((a, tt) => a + ammoPoolFor(player, tt), 0) <= 0;
   // v0.25.2339/2340: 目的(ゴール)は入力の合成より先に立てる。囲い中は退避を止める(noRetreat)ため。
-  const objPlan = objective && objective.kind !== 'none'
+  // v0.25.3508: `kind==='none'` でも通す(「デンジャーへ行くなら拠点を取る」の関門を効かせるため)。
+  // **objective 自体を渡していない呼び出し(既存シナリオ試験の多く)は従来どおり完全に素通り**
+  // =深層ラッシュ試験など「目的を与えていない」ランの挙動は1ビットも変わらない。
+  const objPlan = objective
     ? planObjective(objective, buildObjectiveWorld(objective))
     : null;
   if (objPlan) onObjective?.(objPlan);

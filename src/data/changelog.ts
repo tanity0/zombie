@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3508',
+    items: [
+      'ゲーム内容の変更はありません(開発用オートプレイが、デンジャーゾーンへ入る前に拠点を確保しに行くようになりました)。',
+    ],
+  },
+  {
     version: '0.25.3507',
     items: [
       'ビッグバレットにもアイコンが付き、これで全スキルのアイコンがドット絵になりました(絵文字は全廃)。',
