@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3507',
+    items: [
+      'ビッグバレットにもアイコンが付き、これで全スキルのアイコンがドット絵になりました(絵文字は全廃)。',
+    ],
+  },
+  {
     version: '0.25.3506',
     items: [
       'ウォームアップにも専用のドット絵アイコンが付きました。',

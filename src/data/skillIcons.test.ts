@@ -6,6 +6,7 @@ import {
   SKILL_ICON_ORDER, SKILL_ICON_INDEX, SKILL_ICON_COUNT, skillSheetGrid, skillSheetGeometry,
   skillIconStyle, hasSkillIcon, SKILL_SINGLE_ICON, skillSingleIconName,
 } from './skillIcons';
+import { SKILL_ICON } from './campaign';
 
 describe('SKILL_ICON_ORDER(台帳)', () => {
   it('38種ちょうど・重複なし', () => {
@@ -89,10 +90,10 @@ describe('skillIconStyle(切り出し)', () => {
 // v0.25.3500: POI報酬3種(101 爆撃 / 102 防衛 / 103 使役)は1枚シートに入らない単体ファイル。
 // 対応の正は「社長の番号=支給ファイル名の番号」。ここを取り違えると別のスキルの絵が出るので固定する。
 describe('SKILL_SINGLE_ICON(単体ファイルのアイコン)', () => {
-  it('単体アイコンを持つのはシートに入らない8種だけ(POI3種+守護霊3種+スクラップビルダー+ウォームアップ)', () => {
+  it('単体アイコンを持つのはシートに入らない9種だけ', () => {
     expect(Object.keys(SKILL_SINGLE_ICON).sort())
-      .toEqual(['ghost-helper', 'ghost-slayer', 'guardian-spirit', 'poi-bombing', 'poi-guard',
-        'poi-thrall', 'scrap-builder', 'warm-up']);
+      .toEqual(['big-bullet', 'ghost-helper', 'ghost-slayer', 'guardian-spirit', 'poi-bombing',
+        'poi-guard', 'poi-thrall', 'scrap-builder', 'warm-up']);
   });
   it('101=爆撃 / 102=防衛 / 103=使役 / 104=守護霊 の対応', () => {
     expect(skillSingleIconName('poi-bombing')).toBe('skill/poi-bombing');
@@ -115,5 +116,20 @@ describe('SKILL_SINGLE_ICON(単体ファイルのアイコン)', () => {
     expect(skillSingleIconName('reaper')).toBeNull();
     expect(skillSingleIconName(null)).toBeNull();
     expect(skillSingleIconName(undefined)).toBeNull();
+  });
+});
+
+// ★v0.25.3507: 全スキルに絵が行き渡ったこと(=絵文字フォールバックに落ちるスキルが無いこと)を固定する。
+// 新しいスキルを足した時に「アイコンを用意し忘れた」のを検知するための網。
+// 台帳(campaign.SKILL_ICON)=表示対象の全スキル、に対して シート38種 ∪ 単体9種 が覆っているか。
+describe('アイコンの取りこぼしゼロ', () => {
+  it('表示対象の全スキルがシートか単体ファイルのどちらかを持つ', () => {
+    const covered = new Set<string>([...SKILL_ICON_ORDER, ...Object.keys(SKILL_SINGLE_ICON)]);
+    const missing = Object.keys(SKILL_ICON).filter(k => !covered.has(k));
+    expect(missing).toEqual([]);
+  });
+  it('シートと単体で二重に定義されているスキルが無い(どちらが出るか不定にしない)', () => {
+    const dup = Object.keys(SKILL_SINGLE_ICON).filter(k => (SKILL_ICON_ORDER as readonly string[]).includes(k));
+    expect(dup).toEqual([]);
   });
 });

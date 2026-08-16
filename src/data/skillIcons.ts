@@ -118,6 +118,7 @@ export const SKILL_SINGLE_ICON: Partial<Record<SkillKey, string>> = {
   'ghost-slayer': 'skill/ghost-slayer',       // 守護霊(猛者)
   'scrap-builder': 'skill/scrap-builder',     // 106 スクラップビルダー
   'warm-up': 'skill/warm-up',                 // 107 ウォームアップ
+  'big-bullet': 'skill/big-bullet',           // 108 ビッグバレット(横長140×68=contain表示前提)
 };
 
 /** 単体ファイルのアイコン名(無ければ null)。 */
