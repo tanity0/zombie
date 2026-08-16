@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3522',
+    items: [
+      '斬撃の弧が、振った場所に残るようになりました(ボスが動いてもエフェクトが付いて回りません)。',
+      '突進の風圧が、突進が終わった後もボスに付いて行かなくなりました。',
+    ],
+  },
+  {
     version: '0.25.3521',
     items: [
       'バス停のバックロールに砂埃と速度線が出るようになりました(他の突進・ローリングと同じ演出)。',

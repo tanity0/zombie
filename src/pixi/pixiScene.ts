@@ -3238,6 +3238,13 @@ export class PixiScene {
   private bountyWhipSmearAnchor = new Map<string, { key: number; x: number; y: number }>();
   /** v0.25.3520: アクラシエルの爆発破片の放射原点(爆発が始まった位置に固定=本体に引きずらせない)。 */
   private acrasielBurstOrigin = new Map<string, { key: number; x: number; y: number }>();
+  /**
+   * v0.25.3522: 刀/大剣の**斬撃の弧**(fx/slash-arc)の中心を、振りの頭で焼き付けるための錨。
+   * 呼び出し口(トール/ミゲル/ウリ/ラフィ)は pivot に **本体の現在位置**(fb.footX/fb.footY)を
+   * 毎フレーム渡していたので、振り切った後の減衰中にボスが動くと弧も一緒に動いていた
+   * (社長指摘v0.25.3521「エフェクト切り離されてないよ。ついてくるよ」)。
+   */
+  private katanaArcAnchor = new Map<string, { key: string; lastT: number; x: number; y: number }>();
   // 技表GO: 鋏(bounty-balance)の命中閃(fx/scissor-x-0..2・初配線)。派手側=判定より大きく出す。
   private bountyScissorFlashSprites = new Map<string, Sprite>();
   private bountyScissorFlashKey = new Map<string, string>();
@@ -5133,7 +5140,9 @@ export class PixiScene {
   // FX-V2c: 突進の風圧の向き+減衰締切。突進中は毎フレーム向きを撮り直し(endAtも押し戻す)、
   // 突進が明けたら最後の向きのまま endAt までの残り時間で減衰させる(dashWasOnと同じ「立ち下がり
   // 後も自前の時計で出し切る」作法。gaze-flash等と違い毎フレーム位置が変わるので latchFx は使わない)。
-  private dashWindDir = new Map<string, { ux: number; uy: number; endAt: number }>();
+  // ★v0.25.3522: 位置(x,y)も持たせた。突進が明けた後の減衰まで本体の現在位置に置き直していたため、
+  // 風圧がボスに付いて行っていた(社長指摘v0.25.3521)。**突進中だけ撮り直し、明けたら置き去り**。
+  private dashWindDir = new Map<string, { ux: number; uy: number; x: number; y: number; endAt: number }>();
   // FX-V2d: ヨルムンガンド coil の胴体。予告帯(aiFrom→aiTarget)は 'coil' 実行中も座標が動かない
   // (useGameLoop がwindup時に一度設定して以降触らない)ので、dashWindDirと違い毎フレーム
   // fx/fy/tx/tyを撮り直す必要は無い=coil中は据え置き、明けたら最後の帯のまま endAt まで減衰。
@@ -11893,6 +11902,11 @@ export class PixiScene {
         if (uriFx) { uriFx.destroy({ children: true }); this.uriSlashFx.delete(id); }
         const rafiFx = this.rafiSlashFx.get(id);
         if (rafiFx) { rafiFx.destroy({ children: true }); this.rafiSlashFx.delete(id); }
+        // v0.25.3522: 弧の錨(小さな記録だが、個体が消えたら一緒に片付ける=IDの使い回しで
+        // 前の個体の焼き位置を引き継がせない)。鞭スミア/爆発原点の錨も同じ理由でここで消す。
+        this.katanaArcAnchor.delete(id);
+        this.bountyWhipSmearAnchor.delete(id);
+        this.acrasielBurstOrigin.delete(id);
         const lanternSp = this.jibrilLanternSprites.get(id);
         if (lanternSp) { lanternSp.destroy(); this.jibrilLanternSprites.delete(id); }
         // v0.25.3204: 飛行中ランタン(ランス3本)のプールも個体退場と同時に破棄(討伐後の残像防止)。
@@ -16463,12 +16477,17 @@ export class PixiScene {
           wdy = (e.aiTargetY ?? fb.footY) - (e.aiFromY ?? fb.footY);
         }
         const wl = Math.hypot(wdx, wdy) || 1;
-        this.dashWindDir.set(e.id, { ux: wdx / wl, uy: wdy / wl, endAt: now + DASH_WIND_FADE_MS });
+        this.dashWindDir.set(e.id, {
+          ux: wdx / wl, uy: wdy / wl, x: fb.footX, y: fb.footY, endAt: now + DASH_WIND_FADE_MS,
+        });
       }
       const dw = this.dashWindDir.get(e.id);
       if (dw) {
         const fadeT = hiddenDashOn ? 1 : Math.max(0, (dw.endAt - now) / DASH_WIND_FADE_MS);
-        this.drawDashWind(view, fb.footX, fb.footY, dw.ux, dw.uy, Math.max(e.width, e.height) * DASH_WIND_SCALE, fadeT);
+        // ★位置も向きと同じ扱いにする(v0.25.3522): 突進中は最後に撮った位置=現在位置だが、
+        // 明けた後の減衰は**最後に撮った位置に置き去り**にする(風圧は空気に残る物で、
+        // ボスに付いて回らない)。
+        this.drawDashWind(view, dw.x, dw.y, dw.ux, dw.uy, Math.max(e.width, e.height) * DASH_WIND_SCALE, fadeT);
       }
     }
     // FX-V2d(発注仕様research/FX_GAP_LEDGER.md「裏ボス便3」): coil(ヨルムンガンドのうねり薙ぎ)実行中、
@@ -22528,10 +22547,22 @@ export class PixiScene {
     //   正しい幾何は**剣先が描く円弧**=中心は柄(pivot)・半径は柄から切っ先までの距離・膨らみは
     //   攻撃方向。縦横同寸(=半径×2の正方形)で置けば素材の弧がそのまま剣先の軌道になる
     //   (バス停等で社長OKが出ている drawSlashArc と同じ規約に揃えた)。
+    // ★エフェクトは本体に付いて行かない(社長指摘v0.25.3521→v0.25.3522): 呼び出し口は pivot に
+    //   **本体の現在位置**(fb.footX/fb.footY)を毎フレーム渡してくるので、そのまま使うと弧が
+    //   減衰しながらボスに引きずられる。弧は「空中に残った剣先の軌跡」なので、**振りの頭で中心を
+    //   焼き**、その振りの間は動かさない(latchFx/鞭スミアと同じ「立ち上がりで撮って撮り直さない」作法)。
+    //   振りの識別は**焼き済みの判定線(fx,fy,tx,ty)+style**の変化と、進行度 tt の巻き戻り(=次の振り)。
+    //   武器そのもの(katana)は手に持っている物なので live のまま=切り離すのはエフェクト側だけ。
+    const arcKey = `${Math.round(fx)},${Math.round(fy)},${Math.round(tx)},${Math.round(ty)}|${style}`;
+    let arcAnchor = this.katanaArcAnchor.get(id);
+    if (!arcAnchor || arcAnchor.key !== arcKey || tt < arcAnchor.lastT) {
+      arcAnchor = { key: arcKey, lastT: tt, x: pivotX ?? fx, y: pivotY ?? fy };
+      this.katanaArcAnchor.set(id, arcAnchor);
+    } else arcAnchor.lastT = tt;
     const arcTex = style !== 'thrust' ? getTexture('fx/slash-arc') : undefined;
     if (arcTex && arcSp) {
       if (arcSp.texture !== arcTex) arcSp.texture = arcTex;
-      const acx = pivotX ?? fx, acy = pivotY ?? fy;              // 振りの中心=柄(手元)
+      const acx = arcAnchor.x, acy = arcAnchor.y;               // 振りの中心=柄(手元)を焼いた位置
       const arcR = Math.max(30, Math.hypot(tx - acx, ty - acy)); // 半径=柄→切っ先
       arcSp.rotation = Math.atan2(ty - acy, tx - acx) + Math.PI; // 素材の膨らみ(-x側)を攻撃方向へ
       arcSp.width = arcR * 2;
