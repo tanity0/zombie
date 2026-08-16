@@ -196,7 +196,12 @@ export const chaffWeightsForKoma = (kind: KomaKind4): ChaffWeights => {
 
 // チャフ目標(§4-C・上限capに対する比率)。リラックス40%/ハーベスト100%/通常50%/ピーク100%。
 export const chaffTargetForKoma = (kind: KomaKind4, cap: number): number => {
-  if (kind === 'relax') return Math.round(cap * 0.4);
+  // ★緩(リラックス)=**ほぼ沸かない**(社長指示v0.25.3529「リラックスは敵ほぼ沸かない
+  // (ピークの残党のみ)にしよう」)。0.4→0.1。邪魔者・特別枠は元から投入停止なので、
+  // これでリラックスは「ピークで残った敵を自然に消化するだけの40秒」になる。
+  // 収入(経験値/スクラップ)の心配は不要——**直後のハーベストが満量・最速**で稼ぐコマだから
+  // (休む40秒 → 稼ぐ40秒、と役割が分かれる)。
+  if (kind === 'relax') return Math.round(cap * 0.1);
   if (kind === 'normal') return Math.round(cap * 0.5);
   return cap; // harvest / peak = 満量
 };

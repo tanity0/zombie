@@ -207,11 +207,21 @@ describe('M6 §4-C: 4コマサイクル', () => {
     expect(chaffWeightsForKoma('peak')).toEqual(CHAFF_WEIGHTS_DEFAULT);
   });
 
-  it('chaff targets per koma: relax 40% / normal 50% / harvest・peak 100% of the cap', () => {
-    expect(chaffTargetForKoma('relax', 10)).toBe(4);
+  it('chaff targets per koma: relax 10% / normal 50% / harvest・peak 100% of the cap', () => {
+    // v0.25.3529(社長指示「リラックスは敵ほぼ沸かない」): 緩=0.4→0.1。
+    expect(chaffTargetForKoma('relax', 10)).toBe(1);
     expect(chaffTargetForKoma('normal', 10)).toBe(5);
     expect(chaffTargetForKoma('harvest', 10)).toBe(10);
     expect(chaffTargetForKoma('peak', 20)).toBe(20);
+  });
+
+  it('relax stays the emptiest koma at every cap (休憩が休憩でなくなる並びを作らない)', () => {
+    for (const cap of [5, 8, 10, 12, 16, 20, 24]) {
+      const relax = chaffTargetForKoma('relax', cap);
+      expect(relax).toBeLessThan(chaffTargetForKoma('normal', cap));
+      expect(relax).toBeLessThan(chaffTargetForKoma('harvest', cap));
+      expect(relax).toBeLessThan(chaffTargetForKoma('peak', cap));
+    }
   });
 
   it('ramp intervals: harvest 2s / others 6s (4s while tightened)', () => {

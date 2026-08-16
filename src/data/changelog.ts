@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3529',
+    items: [
+      '休憩(リラックス)の40秒は敵がほとんど湧かなくなりました。山場で残った敵を片付けるだけの時間になります。',
+      'その直後の収穫は今までどおり、弱い敵が一番多く・一番速く湧きます(稼ぐ時間)。',
+    ],
+  },
+  {
     version: '0.25.3528',
     items: [
       '紅き月は6分の1回だけに戻しました(山場に重ねる試みは取りやめ)。',

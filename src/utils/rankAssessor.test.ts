@@ -3,7 +3,7 @@ import {
   createPuzzleClockState, tickPuzzleClock, capForState, cdBasisForRank, cdBasisTightened,
   assessKomaDelta, applyKomaAssessment, applyRankDelta, combineCycleDelta, isDemoteGrade,
   createKomaAccumulator, stepKomaAccumulator, finalizeKomaAssessmentInput,
-  createSoftenState, stepSoften, SOFTEN_RELEASE_NO_HIT_MS,
+  createSoftenState, stepSoften, SOFTEN_RELEASE_NO_HIT_MS, softenedChaffTarget, SOFTEN_TARGET_MIN,
   BASE_CAP, R7_CAP_MIN, R7_CAP_MAX, R7_CAP_STEP, RAMP_INTERVAL_NORMAL_MS, RAMP_INTERVAL_TIGHT_MS,
   RAMP_NO_HIT_HOLD_MS, TIGHTEN_NO_HIT_MS, TIGHTEN_STARVE_MS, clampRank,
   promotionScore,
@@ -566,5 +566,22 @@ describe('M50 §6.27: tickRankPace(合成本体・ランク変更時の自動リ
       }
     }
     expect(promotedEver).toBe(false);
+  });
+
+  describe('softenedChaffTarget(「緩め」は絶対に増やさない)', () => {
+    it('目標が下限より多いコマ(通常/収穫/ピーク)では、従来どおり0.8倍で下限3体まで', () => {
+      expect(softenedChaffTarget(20)).toBe(16);
+      expect(softenedChaffTarget(10)).toBe(8);
+      expect(softenedChaffTarget(5)).toBe(4);
+      expect(softenedChaffTarget(4)).toBe(SOFTEN_TARGET_MIN); // round(3.2)=3 = 下限
+    });
+
+    it('【不変条件】元の目標より多くならない(v0.25.3529: 緩コマ=cap×0.1 で下限3が逆に足していた)', () => {
+      for (let t = 0; t <= 30; t++) expect(softenedChaffTarget(t)).toBeLessThanOrEqual(t);
+      // 「休憩コマなのに苦しんでいる時だけ敵が増える」という真逆の動きが起きないこと。
+      expect(softenedChaffTarget(1)).toBe(1);
+      expect(softenedChaffTarget(2)).toBe(2);
+      expect(softenedChaffTarget(0)).toBe(0);
+    });
   });
 });

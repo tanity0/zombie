@@ -61,7 +61,7 @@ import {
   capForState, clampRank,
   assessKomaDelta, applyRankDelta, combineCycleDelta,
   createKomaAccumulator, stepKomaAccumulator, finalizeKomaAssessmentInput,
-  stepSoften, SOFTEN_TARGET_MULT, SOFTEN_TARGET_MIN,
+  stepSoften, softenedChaffTarget,
   TIGHTEN_NO_HIT_MS, TIGHTEN_PERF_MIN, TIGHTEN_STARVE_MS,
   tickRankPace,
   type PuzzleClockState, type KomaAccumulatorState, type SoftenState, type RankDelta,
@@ -554,7 +554,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   const cap = cadence.cap;
   const cdMs = cadence.cdMs;
   let komaChaffTarget = chaffTargetForKoma(spawnKoma, cap);
-  if (softenedNow) komaChaffTarget = Math.max(SOFTEN_TARGET_MIN, Math.round(komaChaffTarget * SOFTEN_TARGET_MULT));
+  if (softenedNow) komaChaffTarget = softenedChaffTarget(komaChaffTarget);
   // PACING_PUZZLE.md §5.21-追補4(社長決定v0.25.1553): 追補3が足した「ゲート1中はchaff目標=
   // ピーク・CD0を強制」は撤回。ゲート1中もchaffは常にコマ駆動の値をそのまま使う=既存カーブ不変
   // (雑魚の湧き数はディレクター任せ)。

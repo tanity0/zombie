@@ -175,6 +175,20 @@ export const SOFTEN_RELEASE_NO_HIT_MS = 10000;
 export const SOFTEN_TARGET_MULT = 0.8;
 export const SOFTEN_TARGET_MIN = 3;
 
+/**
+ * 「多少緩め」(softened)中のチャフ目標。**緩めるための仕組みなので、絶対に増やさない**。
+ *
+ * ★v0.25.3529で `Math.min` を足した理由(社長指示「緩コマはほぼ沸かない=cap×0.1」への対応):
+ * 旧式は `max(SOFTEN_TARGET_MIN, round(target × MULT))` で、**下限3体**が入っていた。
+ * これは目標が3体より多いコマ(通常/収穫/ピーク)では「減らしすぎない床」として正しいが、
+ * **目標が1〜2体しかない緩コマでは逆に増やしてしまう**——
+ * 「プレイヤーが苦しんでいる時に緩める」はずの仕組みが、**休憩コマだけ敵を足す**という
+ * 真逆の動きになる。そこで**元の目標を超えないこと**を最後に必ず通す。
+ * (通常5/収穫10/ピーク20では ×0.8 が既に3以上なので、この min は何も変えない=既存挙動は不変。)
+ */
+export const softenedChaffTarget = (komaTarget: number): number =>
+  Math.min(komaTarget, Math.max(SOFTEN_TARGET_MIN, Math.round(komaTarget * SOFTEN_TARGET_MULT)));
+
 const SOFTEN_BUCKETS = 10;
 
 export interface SoftenState {
