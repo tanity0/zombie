@@ -31,7 +31,7 @@ import {
 import { selectCullCandidates } from './enemyCulling';
 import { enemyCountCap, ENEMY_COUNT_CEIL, type PhaseKind } from './difficultyDirector';
 import { stepDirector, applyRelaxSpawnCadence, type DirectorState } from './aiDirector';
-import { setDirectorDebug, recordDirectorSample, DIRECTOR_EVENT_BIT } from './aiDirectorDebug';
+import { setDirectorDebug, recordDirectorSample, DIRECTOR_EVENT_BIT, getDirectorPower } from './aiDirectorDebug';
 import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDirector';
 import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
@@ -1304,6 +1304,10 @@ export function runDirectorSignalStep(refs: DirectorSignalRefs, ctx: DirectorSig
       puzzleRank: puzzleSnap?.rank,
       boardTarget: puzzleSnap?.boardTarget,
       komaKind: puzzleSnap?.komaKind, // §5.8: パズルON時のコマ種別(リザルト集計をコマ基準へ)
+      // 案0(v0.25.3530・社長指示「まず数字を画面に出す」): 戦力マージンとescalationも記録だけする。
+      // useGameLoop側が毎フレーム publish した値を読むだけ(ここでは計算しない=式の出どころを1本に保つ)。
+      ppMargin: getDirectorPower()?.margin,
+      buildEsc: getDirectorPower()?.esc,
     });
   }
 }

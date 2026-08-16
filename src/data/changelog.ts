@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3530',
+    items: [
+      'リザルトのAIディレクター欄に「戦力マージン」が出るようになりました(ゲーム内容の変更はありません)。',
+    ],
+  },
+  {
     version: '0.25.3529',
     items: [
       '休憩(リラックス)の40秒は敵がほとんど湧かなくなりました。山場で残った敵を片付けるだけの時間になります。',

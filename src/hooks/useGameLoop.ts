@@ -246,11 +246,11 @@ import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { phaseAt, sceneAt } from '../utils/difficultyDirector';
-import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
+import { spawnEscalation, gateLiveCorrection, playerPower, expectedPower, powerMargin } from '../utils/difficultyScaler';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust } from '../utils/aiDirector';
-import { resetDirectorSamples } from '../utils/aiDirectorDebug';
+import { resetDirectorSamples, setDirectorPower } from '../utils/aiDirectorDebug';
 import { evaluatePhasePerformance, rankFromPerformance, rankAdjustFor } from '../utils/directorRank';
 import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/directorRankState';
 import { createPinchState, pityLevel } from '../utils/pityDirector';
@@ -11455,15 +11455,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // B5(SKILL_BUILD_REDESIGN.md §21-1点2/§11-1 A-8): skillCountの入力をplayer.skills.length→
         // runBuild.lengthへ切替(係数もdifficultyScaler.ts側で1.0→0.5・cap+3.0へ切替済み)。
         const ddaActive = DDA_ENABLED && !labTheme && !indoor;
-        const buildEsc = ddaActive
-          ? spawnEscalation({
-              level: player.level,
-              weaponTierSum: player.weapons.reduce((s, w) => s + (w.tier ?? 1), 0),
-              maxHealth: player.maxHealth,
-              equippedCount: [player.equipment.body, player.equipment.arms, player.equipment.accessory].filter(Boolean).length,
-              skillCount: useGameStore.getState().runBuild.length,
-            }, gameTime, curPhase.kind === 'gate')
-          : 0;
+        const ddaInputs = {
+          level: player.level,
+          weaponTierSum: player.weapons.reduce((s, w) => s + (w.tier ?? 1), 0),
+          maxHealth: player.maxHealth,
+          equippedCount: [player.equipment.body, player.equipment.arms, player.equipment.accessory].filter(Boolean).length,
+          skillCount: useGameStore.getState().runBuild.length,
+        };
+        const buildEsc = ddaActive ? spawnEscalation(ddaInputs, gameTime, curPhase.kind === 'gate') : 0;
+        // ★案0(社長指示v0.25.3530「まず案0」): **戦力マージンを画面に出す**。読むだけ=挙動は不変。
+        // 難易度③は「実PP ÷ その時刻の期待PP」が1.1を超えた分だけ働くが、期待PPは1分あたり4.2ずつ
+        // 上限なく伸びるのに実PPは5項目中3つに上限があるため、通常プレイ(5〜7分)では一度も
+        // 立ち上がっていない疑いが強い。**較正されていない数字を実測せずにいじらない**ための計器。
+        setDirectorPower({
+          pp: playerPower(ddaInputs),
+          expected: expectedPower(gameTime),
+          margin: powerMargin(ddaInputs, gameTime),
+          esc: buildEsc,
+        });
         // 難易度④(関所ライブ補正): 関所中だけ、プレイヤーのHP推移を目標帯へ寄せる escalation 補正を平滑化して加える。
         // 楽勝なら足す(主)/苦しいなら緩める(弱め・下限あり)。余裕(buildup)/関所外は補正を0へ戻す(補正なし)。
         // PACING_REDESIGN.mdバッチ3: gatePressureが有効な関所中は④を停止する(二重ブレーキ/二重アクセル防止。

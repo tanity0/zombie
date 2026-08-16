@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { getDirectorSamples, DIRECTOR_EVENT_BIT, type DirectorPhaseKind } from '../utils/aiDirectorDebug';
+import { getDirectorSamples, DIRECTOR_EVENT_BIT, DIRECTOR_MARGIN_DEADBAND, type DirectorPhaseKind } from '../utils/aiDirectorDebug';
 import { summarizeRun, type DirectorMacro } from '../utils/aiDirector';
 import { BORED_BONUS_MAX } from '../utils/boredomDirector';
 
@@ -44,6 +44,18 @@ const H = CHART_TOP + CHART_H;
 const DirectorResult: React.FC = () => {
   const samples = getDirectorSamples();
   const summary = useMemo(() => summarizeRun(samples), [samples]);
+  // 案0(v0.25.3530): 戦力マージンの要約。**サンプルに記録がある時だけ**表示する(旧ランは undefined)。
+  const power = useMemo(() => {
+    const ms = samples.map(s => s.ppMargin).filter((v): v is number => typeof v === 'number');
+    if (ms.length === 0) return null;
+    const sum = ms.reduce((a, b) => a + b, 0);
+    const armed = ms.filter(v => v >= DIRECTOR_MARGIN_DEADBAND).length;
+    return {
+      avg: sum / ms.length,
+      max: Math.max(...ms),
+      armedPct: Math.round((armed / ms.length) * 100),
+    };
+  }, [samples]);
 
   const chart = useMemo(() => {
     if (samples.length < 2) return null;
@@ -223,6 +235,20 @@ const DirectorResult: React.FC = () => {
         <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/60 tabular-nums">
           <span><span className="text-orange-300/80">Intns</span> 平均{summary.avgIntensity.toFixed(2)} 最大{summary.maxIntensity.toFixed(2)}</span>
           <span><span className="text-violet-300/80">Perf</span> 平均{summary.avgPerformance.toFixed(2)}</span>
+        </div>
+      )}
+      {/* ★案0(社長指示v0.25.3530): 難易度③「戦力連動」の計器。**1.10を超えて初めて働く**レバーなので、
+          「このランで一度でも届いたか」だけ分かれば、較正するかどうかを実測で決められる。読むだけ。 */}
+      {power && (
+        <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/60 tabular-nums">
+          <span>
+            <span className="text-amber-300/80">戦力マージン</span>{' '}
+            平均{power.avg.toFixed(2)} 最大{power.max.toFixed(2)}
+            <span className="text-white/35"> / 作動{DIRECTOR_MARGIN_DEADBAND.toFixed(2)}</span>
+          </span>
+          <span className={power.armedPct > 0 ? 'text-amber-300/80' : 'text-white/35'}>
+            作動していた時間 {power.armedPct}%
+          </span>
         </div>
       )}
       {/* BUILD_UP/PEAK/RELAX の内訳(社長指示: 「RELAXが少ない」を体感でなく数字で見られるように)。 */}

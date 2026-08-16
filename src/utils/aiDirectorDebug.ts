@@ -11,6 +11,30 @@ let latest: DirectorState | null = null;
 export const setDirectorDebug = (s: DirectorState | null) => { latest = s; };
 export const getDirectorDebug = (): DirectorState | null => latest;
 
+// ---- 戦力マージン(難易度③・案0「まず数字を画面に出す」・社長指示v0.25.3530) ----
+// **読むだけ**の窓。挙動は1ミリも変えない。
+//
+// なぜ要るか: 難易度③(戦力連動escalation)は「実PP ÷ その時刻の期待PP」が **1.1倍**を超えた分だけ
+// 働くが、**期待PPは1分あたり4.2ずつ上限なく伸びる**のに対し、実PPは5項目のうち3つ(装備数/スキル数/
+// 最大HP)に上限がある。結果、通常プレイ(5〜7分)ではマージンが1.1に届かず、**このレバーは事実上
+// 一度も立ち上がっていない**(research/DIRECTOR_METRICS.md の「有意差なし」の主因)。
+// **較正されていない数字を実測せずにいじるのは博打**なので、まず「今いくつなのか」を出す。
+export interface DirectorPowerReadout {
+  /** 実PP(プレイヤー戦力指数)。 */
+  pp: number;
+  /** その時刻に「順調なビルド」が持つはずのPP。 */
+  expected: number;
+  /** pp / expected(0.5〜3にクランプ済み)。**1.1を超えて初めて escalation が動く**。 */
+  margin: number;
+  /** 実際に湧きへ渡っている escalation(0..1)。 */
+  esc: number;
+}
+let power: DirectorPowerReadout | null = null;
+export const setDirectorPower = (p: DirectorPowerReadout | null) => { power = p; };
+export const getDirectorPower = (): DirectorPowerReadout | null => power;
+/** escalation が動き始める境目(difficultyScaler.ts の DDA_MARGIN_DEADBAND と同値。表示専用)。 */
+export const DIRECTOR_MARGIN_DEADBAND = 1.1;
+
 // ---- 時系列サンプル(リザルトのタイムライン/スコア用) ----
 // バッチ2.5(診断計測・v0.25.1312): 実機確認①の原因分析(固定タイマー起因のイベント/ハンターが
 // gatePressureと無関係に体感を支配していた)を、リザルト画面だけで追えるように4フィールド追加。
@@ -44,6 +68,9 @@ export interface DirectorSample {
   // PACING_PUZZLE.md §5.8(M6追補3): パズルON時のコマ種別。リザルトのBUILD/PEAK/RELAX集計を
   // コマ基準で数えるために記録する(?puzzle=0/旧経路では undefined=従来のマクロ分類で数える)。
   komaKind?: 'relax' | 'harvest' | 'normal' | 'peak';
+  // 案0(v0.25.3530): 戦力マージンと escalation の時系列。リザルトで「一度でも1.1に届いたか」を見る。
+  ppMargin?: number;
+  buildEsc?: number;
 }
 const SAMPLE_CAP = 3000; // 0.5s刻みで約25分ぶん。超えたら古いものから捨てる。
 let samples: DirectorSample[] = [];

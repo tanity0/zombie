@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { getDirectorDebug } from '../utils/aiDirectorDebug';
+import { getDirectorDebug, getDirectorPower, DIRECTOR_MARGIN_DEADBAND } from '../utils/aiDirectorDebug';
 import { getDirectorRankDebug } from '../utils/directorRankState';
 import { getPityLevel } from '../utils/pityState';
 import { getPhaseKillDebug, getCurrentStyle } from '../utils/killTelemetryState';
@@ -45,6 +45,7 @@ const DirectorOverlay: React.FC = () => {
   }, []);
 
   const d = getDirectorDebug();
+  const pw = getDirectorPower(); // 案0: 戦力マージンの計器(読むだけ)
   const rankDebug = getDirectorRankDebug();
   const phaseKillDebug = getPhaseKillDebug();
   const pressureDebug = getGatePressureDebug();
@@ -81,6 +82,22 @@ const DirectorOverlay: React.FC = () => {
           <div className="text-white/40 tabular-nums">
             near {d.nearEnemies} · danger {d.dangerBias.toFixed(1)} · dmgSince {(d.sinceDamageMs / 1000).toFixed(0)}s · kill/s {d.killRateEma.toFixed(2)}
           </div>
+          {/* ★案0(社長指示v0.25.3530): 難易度③の戦力マージン。1.10を超えて初めてescalationが動く。
+              超えていない間は灰色・超えたら黄色=「今このレバーが生きているか」が一目で分かる。 */}
+          {pw && (
+            <div className="flex items-center gap-1.5">
+              <span className="w-[42px] text-white/70">Power</span>
+              <span
+                className="font-bold tabular-nums"
+                style={{ color: pw.margin >= DIRECTOR_MARGIN_DEADBAND ? '#fbbf24' : 'rgba(255,255,255,0.45)' }}
+              >
+                {pw.margin.toFixed(2)}
+              </span>
+              <span className="text-white/35 tabular-nums">
+                /{DIRECTOR_MARGIN_DEADBAND.toFixed(2)} · pp {pw.pp.toFixed(1)} of {pw.expected.toFixed(1)} · esc {pw.esc.toFixed(2)}
+              </span>
+            </div>
+          )}
         </div>
       ) : (
         <div className="text-white/50">waiting…</div>
