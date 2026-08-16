@@ -2682,17 +2682,6 @@ const MINES_DISABLED = typeof window !== 'undefined' && new URLSearchParams(wind
 // = 敵HP実質2倍(被ダメ半減)/敵速度2倍/経験値ドロップ2倍/敵弾・接触の紅き夜挙動。紅き夜の「最初から
 // 引っかかる」が敵条件由来かを切り分ける(赤マトリクスは深層域で無罪確定済=残る差はこの敵条件と音/シネマ)。既定OFF。
 export const RN_ENEMY_FORCE = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('rnenemy') === '1';
-// ★PEAKサージ(社長指示v0.25.3526「一度ピークに紅き月を重ねて見るのは試したい」)。
-// 「紅き月と同じ効き方をしている最中か」の**唯一の出どころ**。本物の紅き月 / PEAKサージ / デバッグ強制の3つを
-// ここで畳む(同じ判定を各所に手写しすると必ず1つ取りこぼす=このプロジェクトで繰り返している型の事故)。
-//
-// ★経験値ドロップ2倍だけは、ここではなく本物の紅き月の判定を直に見ている(=**PEAKサージでは倍にならない**)。
-// AIディレクターは「スコア/経験値/レベル速度に一切触れない」が社長指示による立ち上げ時からの掟
-// (AI_DIRECTOR_HANDOFF.md §2.6)。山が来るたびに経験値が倍になるとレベル速度が変わってしまうため、
-// 脅威側(敵の速度・敵の硬さ)だけを重ねる。倍にしたい場合は明示指示で外す。
-const isRedNightLike = (
-  redNight: { phase: string } | null, peakSurgeUntil: number, gameTime: number,
-): boolean => redNight?.phase === 'active' || gameTime < peakSurgeUntil || RN_ENEMY_FORCE;
 const EGG_RING_COUNT = 22; // イベント「緑卵の包囲」で画面外リングに置く卵の数。
 // 変異体(抱卵型・旧ghost): プレイヤーの周囲を周回しながら緑卵(mine)をバラ撒く。
 // 3秒CDののち、周辺のランダム位置へ0.5秒おきに1個ずつ、最大3個ばらまく(社長指示)。
@@ -4217,11 +4206,6 @@ interface GameState {
   activeEvent: ActiveEvent | null;
   // 紅き夜: 非null中は全敵ステータス2倍・経験値2倍・画面赤染め。
   redNight: RedNight | null;
-  // ★PEAKサージ(社長指示v0.25.3526「一度ピークに紅き月を重ねて見るのは試したい」)。
-  // AIディレクターが山(PEAK)に入っている間だけ、**紅き月と同じ効き方**を短く重ねる時刻(gameTime ms)。
-  // 0=off。**本物の紅き月とは別枠**にしてあるのは、ショップ再開・宿敵昇格・大イベントの排他など
-  // 「redNightが非nullである」ことに紐づく判定を巻き込まないため(4秒の山で毎回それらが動くと事故る)。
-  peakSurgeUntil: number;
   // 叫喚型(screamer)の強化が有効な gameTime(ms)。これを過ぎるまで通常敵の移動速度・与ダメージ×1.2。
   screamerBuffUntil: number;
   weaponMerchant: WeaponMerchant;
@@ -5118,7 +5102,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   castleEvent: createCastleEvent(),
   activeEvent: null,
   redNight: null,
-  peakSurgeUntil: 0,
   screamerBuffUntil: 0,
   weaponMerchant: createWeaponMerchant(),
   merchantDwellMs: 0,
@@ -9625,8 +9608,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
       const resolvedAmount = meleeFatal?.damage ?? gunReward?.damage ?? amount;
       // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
-      const eff = isRedNightLike(state.redNight, state.peakSurgeUntil, state.gameTime)
-        ? Math.max(1, Math.floor(resolvedAmount / 2)) : resolvedAmount;
+      const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(resolvedAmount / 2)) : resolvedAmount;
       appliedDamage = eff; // §6.21 M46計測用(set後にchannel別加算)
       const newHealth = Math.max(0, enemy.health - eff);
       // nonLethalBoss: 廃止(v0.25.1571) 爆発もボスを倒せる。互換のため引数は残置
@@ -10016,7 +9998,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const pcy = player.y + player.height / 2;
       const indoor = state.indoorMode;
       // 紅き夜中は全敵スピード2倍。
-      const rnSpeedMult = isRedNightLike(state.redNight, state.peakSurgeUntil, gameTime) ? 2 : 1;
+      const rnSpeedMult = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? 2 : 1;
       // 叫喚型(screamer)の強化窓が有効か。通常敵(ボス/screamer以外)の移動速度を×SCREAMER_BUFF_MULT する。
       const screamActive = gameTime < state.screamerBuffUntil;
       const openDoorIds = indoor ? state.labDoors.filter(d => d.open).map(d => d.id) : [];
@@ -16091,7 +16073,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         mineAmbushAnchor: null,
         activeEvent: null,
         redNight: null,
-        peakSurgeUntil: 0, // v0.25.3526: 出撃ごとにPEAKサージも初期化(前ランの山を持ち越さない)
         screamerBuffUntil: 0,
         eventBannerText: '',
         eventBannerUntil: 0,

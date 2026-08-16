@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3528',
+    items: [
+      '紅き月は6分の1回だけに戻しました(山場に重ねる試みは取りやめ)。',
+      '山場を越えた後に楽になる時間が入るのは、これまでどおり続きます。',
+    ],
+  },
+  {
     version: '0.25.3527',
     items: [
       '山場に重なる紅き月が20秒続くようになりました(山場の頭で1回だけ始まります)。',

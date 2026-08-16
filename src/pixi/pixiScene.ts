@@ -7520,9 +7520,7 @@ export class PixiScene {
       !s.indoorMode && s.stageTheme !== 'lab' && !s.rhythm.active,
       Math.hypot(s.player.x + s.player.width / 2, s.player.y + s.player.height / 2),
       now,
-      // ★PEAKサージ(社長指示v0.25.3526): 山(PEAK)の間は本物の紅き月と同じ血赤グレードを掛ける。
-      // 「きつい」は数値より**合図**で伝わる=脅威の数値(敵速度・敵の硬さ)と必ず同じ窓で出す。
-      s.redNight?.phase === 'active' || s.gameTime < s.peakSurgeUntil,
+      s.redNight?.phase === 'active',
       s.gateActive, // ゲート戦闘中はセピアの切替を凍結(社長指示v0.25.1667)
       s.deepZoneLocked, // ゲート2未クリアの間は深層セピアに入らない(社長報告v0.25.1670)
     );
