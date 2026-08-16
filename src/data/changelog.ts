@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3502',
+    items: [
+      '守護霊にも専用のドット絵アイコンが付きました。',
+    ],
+  },
+  {
     version: '0.25.3501',
     items: [
       'POI報酬スキル(爆撃・防衛・使役)にも専用のドット絵アイコンが付きました。',

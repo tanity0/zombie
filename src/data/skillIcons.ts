@@ -98,13 +98,19 @@ export const SKILL_ICON_ORDER: readonly SkillKey[] = [
  * POI報酬の3種(爆撃/防衛/使役)は絵の縦横比がバラバラ(128×128 / 136×128 / 152×256)なので、
  * シートへ詰めず**1枚ずつのpng**で持つ。値は `spritePath()` に渡す名前(public/sprites/<この名前>.png)。
  *
- * 対応は**社長の番号=支給ファイル名の番号**が正(101/102/103)。絵の中身とも一致を確認済み:
- *   101=爆撃(爆撃機が爆弾を落とす) / 102=防衛(ブーメランが周回する紋章) / 103=使役(従える兵士)。
+ * 対応は**社長の番号=支給ファイル名の番号**が正(101〜)。絵の中身とも一致を確認済み:
+ *   101=爆撃(爆撃機が爆弾を落とす) / 102=防衛(ブーメランが周回する紋章) / 103=使役(従える兵士) /
+ *   104=守護霊(青白い人型の霊)。
+ *
+ * ★守護霊(`guardian-spirit`)は**シートの38種に入っていない**(POI3種と同じ扱い=単体ファイル)。
+ *   関連キーの `ghost-helper` / `ghost-slayer` は別スキルなので、ここには**足していない**
+ *   (絵が来たら同じ形で1行足す)。
  */
 export const SKILL_SINGLE_ICON: Partial<Record<SkillKey, string>> = {
-  'poi-bombing': 'skill/poi-bombing', // 101 爆撃
-  'poi-guard': 'skill/poi-guard',     // 102 防衛
-  'poi-thrall': 'skill/poi-thrall',   // 103 使役
+  'poi-bombing': 'skill/poi-bombing',         // 101 爆撃
+  'poi-guard': 'skill/poi-guard',             // 102 防衛
+  'poi-thrall': 'skill/poi-thrall',           // 103 使役
+  'guardian-spirit': 'skill/guardian-spirit', // 104 守護霊
 };
 
 /** 単体ファイルのアイコン名(無ければ null)。 */

@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.3502 — 守護霊(104)のアイコンを搭載【2026-08-16 11:53 JST】
+- **社長支給**: 104 守護霊(124×128)。シートの38種に入っていないので、POI3種と同じ**単体ファイル**
+  (`public/sprites/skill/guardian-spirit.png`)として持つ。台帳への1行追加だけで表示に乗る
+  (v0.25.3501で作った「①単体ファイル→②1枚シート→③絵文字」の優先順位に自動で乗る)。
+- **巻き込み防止**: `ghost-helper` / `ghost-slayer` は守護霊とは**別スキル**なので足していない。
+  取り違え防止としてテストで「この2つは null のまま」を固定した(絵が来たら同じ形で1行足す)。
+- 機械化: `skillIcons.test.ts` を更新(単体アイコンはPOI3種+守護霊の4つだけ/番号との対応/
+  関連キーを巻き込まない)。計19件。
+- 検証: `npx vitest run src/data/skillIcons.test.ts`(19 passed) / `npm run typecheck`(0エラー) /
+  `npm run lint`(0エラー)。実機での見た目確認は社長。
+- ファイル: `public/sprites/skill/guardian-spirit.png`(新規) / `src/data/skillIcons.ts` /
+  `src/data/skillIcons.test.ts` / `src/data/changelog.ts` / `package.json`
+
 ## v0.25.3501 — POI報酬スキル3種のアイコン(101/102/103)を搭載【2026-08-16 11:49 JST】
 - **社長支給**: 101 爆撃 / 102 防衛 / 103 使役。**1枚シートではなく単体png**(縦横比がバラバラ:
   128×128 / 136×128 / 152×256)なので、シートへ詰めず `public/sprites/skill/poi-*.png` として持つ。

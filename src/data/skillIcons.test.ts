@@ -89,13 +89,19 @@ describe('skillIconStyle(切り出し)', () => {
 // v0.25.3500: POI報酬3種(101 爆撃 / 102 防衛 / 103 使役)は1枚シートに入らない単体ファイル。
 // 対応の正は「社長の番号=支給ファイル名の番号」。ここを取り違えると別のスキルの絵が出るので固定する。
 describe('SKILL_SINGLE_ICON(単体ファイルのアイコン)', () => {
-  it('POI報酬3種にだけ単体アイコンがある', () => {
-    expect(Object.keys(SKILL_SINGLE_ICON).sort()).toEqual(['poi-bombing', 'poi-guard', 'poi-thrall']);
+  it('単体アイコンを持つのはPOI報酬3種+守護霊だけ', () => {
+    expect(Object.keys(SKILL_SINGLE_ICON).sort())
+      .toEqual(['guardian-spirit', 'poi-bombing', 'poi-guard', 'poi-thrall']);
   });
-  it('101=爆撃 / 102=防衛 / 103=使役 の対応', () => {
+  it('101=爆撃 / 102=防衛 / 103=使役 / 104=守護霊 の対応', () => {
     expect(skillSingleIconName('poi-bombing')).toBe('skill/poi-bombing');
     expect(skillSingleIconName('poi-guard')).toBe('skill/poi-guard');
     expect(skillSingleIconName('poi-thrall')).toBe('skill/poi-thrall');
+    expect(skillSingleIconName('guardian-spirit')).toBe('skill/guardian-spirit');
+  });
+  it('守護霊の関連キー(ghost-helper/ghost-slayer)は別スキルなので巻き込まない', () => {
+    expect(skillSingleIconName('ghost-helper')).toBeNull();
+    expect(skillSingleIconName('ghost-slayer')).toBeNull();
   });
   it('シート側の38種とは重ならない(二重定義でどちらが出るか分からない状態を作らない)', () => {
     for (const key of Object.keys(SKILL_SINGLE_ICON)) {
