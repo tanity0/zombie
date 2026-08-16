@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.3505 — スクラップビルダー(106)のアイコンを搭載【2026-08-16 12:11 JST】
+- **社長支給**: 106 スクラップビルダー(136×128)。シートの38種に入っていないので、POI3種・守護霊3種と
+  同じ**単体ファイル**(`public/sprites/skill/scrap-builder.png`)。台帳へ1行足すだけで
+  「①単体ファイル→②1枚シート→③絵文字」の優先順位に乗る。
+- **残りは2種**: `warm-up`(ウォームアップ・🤸)/ `big-bullet`(ビッグバレット・⚫)。
+  ※この2種の洗い出しはコードから機械的に出した(シート38種 ∪ 単体7種 を全スキル台帳から引いた差)。
+  目視で数えていない。
+- 機械化: `skillIcons.test.ts` の単体アイコン一覧を7種へ更新(取りこぼし・二重定義の検知)。計19件。
+- 検証: `npx vitest run src/data/skillIcons.test.ts`(19 passed) / `npm run typecheck`(0エラー) /
+  `npm run lint`(0エラー)。実機での見た目確認は社長。
+- ファイル: `public/sprites/skill/scrap-builder.png`(新規) / `src/data/skillIcons.ts` /
+  `src/data/skillIcons.test.ts` / `src/data/changelog.ts` / `package.json`
+
 ## v0.25.3504 — 守護霊の色違い2種(有志=緑/猛者=金)を生成・搭載【2026-08-16 12:04 JST】
 - **社長指示**: 「ghost-helper / ghost-slayer これは守護霊のを色違いで」。
 - **生成方法**: `scripts/recolor-ghost-icons.py`(新規)。原画(`guardian-spirit.png`)から

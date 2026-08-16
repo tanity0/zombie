@@ -116,6 +116,7 @@ export const SKILL_SINGLE_ICON: Partial<Record<SkillKey, string>> = {
   // 色の意味: 有志=緑(協力) / 猛者=金(精鋭。このプロジェクトの金=宿敵・金箱と同じ「格上」の色)。
   'ghost-helper': 'skill/ghost-helper',       // 守護霊(有志)
   'ghost-slayer': 'skill/ghost-slayer',       // 守護霊(猛者)
+  'scrap-builder': 'skill/scrap-builder',     // 106 スクラップビルダー
 };
 
 /** 単体ファイルのアイコン名(無ければ null)。 */

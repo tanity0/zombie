@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3505',
+    items: [
+      'スクラップビルダーにも専用のドット絵アイコンが付きました。',
+    ],
+  },
+  {
     version: '0.25.3504',
     items: [
       '守護霊(有志)と守護霊(猛者)のアイコンが付きました。守護霊の色違いで、有志は緑・猛者は金です。',
