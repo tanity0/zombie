@@ -856,7 +856,11 @@ const SETPIECE_ENABLED = evParam('setpiece') === '1';
 // 既定(フラグ無し)は基準点(commit b1eae30)と完全に同じ挙動。可視化(?director=1)とは独立に指定できる
 // (適用だけ試したい/両方見ながら試したい、のどちらも出来るように)。
 const DIRECTOR_APPLY_PARAM = evParam('directorApply');
-const DIRECTOR_APPLY_RELAX = DIRECTOR_APPLY_PARAM === 'relax' || DIRECTOR_APPLY_PARAM === 'all';
+// ★社長指示v0.25.3525「面白くするためには、きつい!という場面と、楽な場面がいくつか必要。
+//   **まずリラックスはおこる様にして**」= RELAXの適用を**既定ON**にする(旧: ?directorApply=relax が必須)。
+//   BUILD_UP側(アクセル)は指示が「まずリラックス」なので**既定OFFのまま**据え置く。
+//   切り分け用に `?directorApply=off` で従来の基準点(両方OFF)へ戻せる。
+const DIRECTOR_APPLY_RELAX = DIRECTOR_APPLY_PARAM !== 'off' && DIRECTOR_APPLY_PARAM !== 'buildup';
 const DIRECTOR_APPLY_BUILDUP = DIRECTOR_APPLY_PARAM === 'buildup' || DIRECTOR_APPLY_PARAM === 'all';
 // 信号算出(Intensity/Performance/macro state)は既定で常時ON(社長要望のPEAK重ねSE/紅き月連携が実プレイで
 // 動くために必要。読むだけで軽い=近接敵数と危険敵の走査のみ、新規描画なし)。他の難易度③④⑤⑥と同じ
@@ -11430,10 +11434,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             syncWallDepth(runDeepestDistRef.current);
           }
         }
-        // AIディレクター ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、直前フレームで
-        // 算出済みの DirectorState(macro)を読み、RELAX中だけ「escalationを止める/湧き間隔を伸ばす/湧き上限を
-        // 下げる」を薄く掛ける。既存の敵を強制的に間引くカリング上限(enemyCap)には触れない=急に画面から
-        // 消える演出を避ける。フラグ無し(既定)は基準点(b1eae30)と完全に同じ挙動。屋内/ラボは対象外。
+        // AIディレクター ステップB(★v0.25.3525で既定ONへ・社長指示「まずリラックスはおこる様にして」):
+        // 直前フレームで算出済みの DirectorState(macro)を読み、RELAX中だけ「escalationを止める/
+        // 湧き間隔を伸ばす(1.35倍)/湧き上限を下げる(0.85倍)」を薄く掛ける。既存の敵を強制的に間引く
+        // カリング上限(enemyCap)には触れない=急に画面から消える演出を避ける。屋内/ラボは対象外。
+        // `?directorApply=off` で従来の基準点(適用なし)へ戻せる。
         const directorApplyRelaxActive = DIRECTOR_APPLY_RELAX && !labTheme && !indoor;
         const relaxAdj = directorApplyRelaxActive ? relaxSpawnAdjust(directorRef.current.state.macro) : { escMult: 1, intervalMult: 1, capMult: 1 };
         // AIディレクター ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが

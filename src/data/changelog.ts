@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3525',
+    items: [
+      '山を越えた後に「楽になる時間」が入るようになりました(湧きが遅くなり、盤面の数も減ります)。',
+      '最低8秒は続くので、立て直す余白ができます。',
+    ],
+  },
+  {
     version: '0.25.3524',
     items: [
       'ミゲルの払い/縦払いと、ウリの大薙ぎに「踏み込み」が入りました(溜めの終わりから踏み出して振り切りで止まる)。',
