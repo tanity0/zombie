@@ -75,6 +75,10 @@ export const parseMovePhase = (state: string | null | undefined): MovePhaseRef |
  * キーは `前の技 -> 次の技`。値は**なぜ切っていないと言えるのか**の説明。
  */
 export const ALLOWED_MOVE_CHAINS: Readonly<Record<string, string>> = {
+  'br-roll -> br-triple':
+    'バス停の近距離の台本「バックロール→三段突き」(社長指示v0.25.3519)。'
+    + 'ロールは**攻撃ではない移動**で、持ち時間(BR_ROLL_MS)を使い切った時にだけ次へ渡す'
+    + '=途中で切っていない。押しのけと並ぶ「密着への2通りの答え」の片方として設計されたもの。',
   'bm-charge -> bm-whip360':
     '馬乗りの「突進→360度ムチ」(社長指示v0.25.3473「ダッシュ後に360度、ムチ振り攻撃」)。'
     + '突進は**目標へ着いた/持ち時間を使い切った**時にだけ次へ渡す(bountyTick: dl<=2 || 時間切れ)'

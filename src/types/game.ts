@@ -761,6 +761,10 @@ export interface Enemy {
     // hitCapsuleを積む)→ br-triple-recover(硬直)。角度・タイミングは src/utils/bountyTriple.ts
     // (判定/描画の単一の出どころ)。
     | 'br-triple-windup' | 'br-triple-1' | 'br-triple-2' | 'br-triple-3' | 'br-triple-recover'
+    // v0.25.3519(社長指示「バス停の近距離の台本は、押しのけ と バックロール→三段つき にする」):
+    // 近距離の台本その2の1手目=後方ロール。**攻撃ではない移動**なので溜め(windup)は持たない
+    // (=カウンター対象にもしない)。ロールが明けたらそのまま三段突きの溜めへ繋ぐ。
+    | 'br-roll'
     // PACING_PUZZLE.md §6.38 B2: 馬乗り(変異・bounty-melee)の技。
     // bm-charge-* = 突進(werewolfのwindup→charge流用・流星ライン予告・カウンター可)。
     // bm-combo{1,2,3}-* = 3段コンボ(速→速→遅)。bm-snipe-* = 輸入=懲罰狙撃(idolのsnipe流用)。

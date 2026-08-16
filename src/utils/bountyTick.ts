@@ -40,6 +40,7 @@ export {
 // 同じ純関数から導く(bountyTriple.ts=依存ゼロの葉。bountyDims.tsと同じ循環import防止の流儀)。
 import {
   BR_TRIPLE_MIN, BR_TRIPLE_MAX, BR_TRIPLE_CD_MS, BR_TRIPLE_WINDUP_MS,
+  BR_ROLL_DIST, BR_ROLL_MS, brRollEase,
   BR_TRIPLE_REACH, BR_TRIPLE_HALF_WIDTH, BR_TRIPLE_STEP, BR_TRIPLE_DAMAGE,
   BR_TRIPLE_SPREAD_RAD, BR_TRIPLE_THRUST_MS, BR_TRIPLE_RETURN_MS, BR_TRIPLE_GAP_MS,
   BR_TRIPLE_STEP_MS, BR_TRIPLE_LAST_STEP_MS, BR_TRIPLE_ACTIVE_MS,
@@ -505,11 +506,20 @@ const tickRanged = (
         newGameTime >= s.tripleReadyAt,
         newGameTime >= s.pushReadyAt,
       );
-      if (closeMove === 'triple') {
-        sfx.alert();
-        patch.bossState = 'br-triple-windup';
-        patch.bossStateUntil = newGameTime + BR_TRIPLE_WINDUP_MS;
-        s.tripleReadyAt = newGameTime + BR_TRIPLE_CD_MS; // 選択時に課金(中断されても払い戻さない)
+      if (closeMove === 'roll') {
+        // 台本その2の1手目: **後方ロール**(社長指示v0.25.3519)。攻撃ではないのでSEの警告は鳴らさず
+        // (=カウンター対象の溜めではない)、明けたらそのまま三段突きの溜めへ繋ぐ。
+        // 行き先はプレイヤーの反対側へ BR_ROLL_DIST。**移動は resolveMove を通す**
+        // (障害物→行ける帯クランプ。CLAUDE.md「アクターを動かす時は必ず通す」)。
+        const dl = Math.max(0.001, dist);
+        patch.aiFromX = bcx; patch.aiFromY = bcy;
+        patch.aiTargetX = bcx + ((bcx - pcx) / dl) * BR_ROLL_DIST;
+        patch.aiTargetY = bcy + ((bcy - pcy) / dl) * BR_ROLL_DIST;
+        patch.bossState = 'br-roll';
+        patch.bossStateUntil = newGameTime + BR_ROLL_MS;
+        // 台本の最後(三段突き)のCDは**台本を選んだ時点で課金**する(押しのけ・三段突きと同じ作法。
+        // 途中で崩されても払い戻さない=連発防止)。
+        s.tripleReadyAt = newGameTime + BR_TRIPLE_CD_MS;
         return;
       }
       if (closeMove === 'push') {
@@ -645,6 +655,26 @@ const tickRanged = (
           patch.bossNextActionAt = s.brCycleEndAt;
         }
       }
+    }
+    return;
+  }
+
+  // ★v0.25.3519(社長指示「近距離の台本は、押しのけ と バックロール→三段つき」): 台本の1手目。
+  // 後方へ BR_ROLL_DIST 引く**移動だけ**の状態(攻撃判定なし・カウンター対象でもない)。
+  // 動きは smoothstep(brRollEase)=加速→減速(CLAUDE.md「慣性」。等速で始まって瞬間停止しない)。
+  // 明けたら**そのまま三段突きの溜めへ**繋ぐ(=台本。moveCancelGuard の申告表に登録済み)。
+  if (st === 'br-roll') {
+    const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
+    const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
+    const t = Math.max(0, Math.min(1, 1 - ((bounty.bossStateUntil ?? newGameTime) - newGameTime) / BR_ROLL_MS));
+    const k = brRollEase(t);
+    const c = resolveMove(fx + (tx - fx) * k - bounty.width / 2, fy + (ty - fy) * k - bounty.height / 2, bounty);
+    patch.x = c.x; patch.y = c.y;
+    patch.vx = 0; patch.vy = 0;
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      sfx.alert(); // ここからが予告(=カウンターを狙える溜め)なので、この瞬間に鳴らす
+      patch.bossState = 'br-triple-windup';
+      patch.bossStateUntil = newGameTime + BR_TRIPLE_WINDUP_MS;
     }
     return;
   }

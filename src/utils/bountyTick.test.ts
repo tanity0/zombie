@@ -414,11 +414,20 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       } finally { rnd.mockRestore(); }
     });
 
-    it('★近距離でも三段突きが出る(乱数=三段突き側)=押しのけ1本道の解消(社長指示v0.25.3517)', () => {
+    // ★v0.25.3519(社長指示「近距離の台本は、押しのけ と バックロール→三段つき」):
+    // 近距離のもう1つは**台本**=1手目のロールから始まり、ロールが明けると三段突きの溜めへ繋がる。
+    it('★近距離の台本: バックロール→三段突き(乱数=台本側)', () => {
       const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.1);
       try {
         const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 });
         step(16);
+        const rolled = useGameStore.getState().enemies.find(e => e.id === id)!;
+        expect(rolled.bossState).toBe('br-roll'); // 1手目=後方ロール
+        const x0 = rolled.x;
+        step(100);
+        // プレイヤーは +60px 側に居るので、ロールは**その反対=−x**へ進む(=後方へ引く)。
+        expect(useGameStore.getState().enemies.find(e => e.id === id)!.x).toBeLessThan(x0);
+        step(200); // BR_ROLL_MS(180)を超える
         expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-triple-windup');
       } finally { rnd.mockRestore(); }
     });
@@ -711,8 +720,8 @@ describe('runBountyTick — B2a 技の状態機械', () => {
 
       // ★v0.25.3517(社長指示「近接も重み変えて」): 至近は押しのけの独占ではなく**重み抽選**。
       // 乱数を振り分けて「両方出うる」ことを固定する(どちらかに固定されたらこのテストが落ちる)。
-      it('至近(押しのけ圏内)でも押しのけ/三段突きの両方が出る=1本道でない', () => {
-        for (const [r, expected] of [[0.1, 'br-triple-windup'], [0.9, 'br-push-windup']] as const) {
+      it('至近(押しのけ圏内)でも押しのけ/ロール台本の両方が出る=1本道でない', () => {
+        for (const [r, expected] of [[0.1, 'br-roll'], [0.9, 'br-push-windup']] as const) {
           const rnd = vi.spyOn(Math, 'random').mockReturnValue(r);
           try {
             const near = setupType('bounty-ranged', { x: 60, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });

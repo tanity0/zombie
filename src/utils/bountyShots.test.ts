@@ -3,7 +3,7 @@
 // bountyTick.test.tsの「バス停(bounty-ranged) — 中立射撃の型3種(§6.38 v10)」節で行う。
 import { describe, it, expect } from 'vitest';
 import {
-  pickBrCloseMove, BR_PUSH_CD_MS, BR_CLOSE_TRIPLE_WEIGHT, BR_CLOSE_PUSH_WEIGHT,
+  pickBrCloseMove, BR_PUSH_CD_MS, BR_CLOSE_ROLL_WEIGHT, BR_CLOSE_PUSH_WEIGHT,
   pickBrShotPattern, brShotCount, brCycleDurationMs,
   brChargeWindupSpeedMult, brChargeRecoverSpeedMult,
   BR_SHOT_UNIT_MS, BR_BURST_SHOT_COUNT, BR_BURST_INTERVAL_MS,
@@ -154,21 +154,21 @@ describe('brChargeWindupSpeedMult / brChargeRecoverSpeedMult(慣性・瞬間停�
 describe('pickBrCloseMove(近距離の技選択)', () => {
   const R = (v: number) => () => v;
 
-  it('両方CD明けなら重みどおりに割れる(三段突き60 / 押しのけ40)', () => {
-    const total = BR_CLOSE_TRIPLE_WEIGHT + BR_CLOSE_PUSH_WEIGHT;
-    expect(pickBrCloseMove(R(0), true, true)).toBe('triple');
-    expect(pickBrCloseMove(R((BR_CLOSE_TRIPLE_WEIGHT - 1) / total), true, true)).toBe('triple');
-    expect(pickBrCloseMove(R((BR_CLOSE_TRIPLE_WEIGHT + 1) / total), true, true)).toBe('push');
+  it('両方CD明けなら重みどおりに割れる(ロール台本60 / 押しのけ40)', () => {
+    const total = BR_CLOSE_ROLL_WEIGHT + BR_CLOSE_PUSH_WEIGHT;
+    expect(pickBrCloseMove(R(0), true, true)).toBe('roll');
+    expect(pickBrCloseMove(R((BR_CLOSE_ROLL_WEIGHT - 1) / total), true, true)).toBe('roll');
+    expect(pickBrCloseMove(R((BR_CLOSE_ROLL_WEIGHT + 1) / total), true, true)).toBe('push');
     expect(pickBrCloseMove(R(0.999), true, true)).toBe('push');
   });
 
-  it('★押しのけの方が重みは軽い=密着の主役は「読む価値のある技」側(この修正の狙い)', () => {
-    expect(BR_CLOSE_TRIPLE_WEIGHT).toBeGreaterThan(BR_CLOSE_PUSH_WEIGHT);
+  it('★押しのけの方が重みは軽い=密着の主役は「読む価値のある台本」側(この修正の狙い)', () => {
+    expect(BR_CLOSE_ROLL_WEIGHT).toBeGreaterThan(BR_CLOSE_PUSH_WEIGHT);
   });
 
   it('片方だけCD明けならそれが必ず出る(重みに関係なく)', () => {
     for (const r of [0, 0.5, 0.999]) {
-      expect(pickBrCloseMove(R(r), true, false)).toBe('triple');
+      expect(pickBrCloseMove(R(r), true, false)).toBe('roll');
       expect(pickBrCloseMove(R(r), false, true)).toBe('push');
     }
   });

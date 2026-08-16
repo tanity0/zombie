@@ -138,3 +138,29 @@ export const brTripleApproachDecelMult = (remainDistPx: number): number => {
   if (BR_TRIPLE_APPROACH_SLOW_RADIUS <= 0) return remainDistPx > 0 ? 1 : 0;
   return Math.max(0, Math.min(1, remainDistPx / BR_TRIPLE_APPROACH_SLOW_RADIUS));
 };
+
+// ---- 近距離の台本その2「バックロール → 三段突き」(社長指示v0.25.3519) ----------------------------
+//
+// 社長の言葉: 「バス停の近距離の台本は、**押しのけ** と **バックロール→三段つき** にする」。
+//
+// 密着された時の答えを2通りにする台本。押しのけが「押し返して間合いを作る」なら、こちらは
+// **自分から引いて、その間合いから突く**。1手目のロールは**攻撃ではない移動**なので溜めを持たない
+// (=カウンター対象にしない)。ロールが明けたらそのまま三段突きの溜めへ繋ぐ。
+//
+// 数字は idol の離脱ローリング(`idolScript.ts`: rollDist=140 / active=180)をそのまま借りる。
+// **同じ動作は同じ数字**(idolTick.tsの「距離=shape.rollDist・同じ動作は同じ数字」と同じ作法)=
+// 新しい手触りを発明しない。
+/** 後方ロールの距離(px)。idol の shape.rollDist と同値。 */
+export const BR_ROLL_DIST = 140;
+/** 後方ロールの所要(ms)。idol の TIMING.roll.active と同値。 */
+export const BR_ROLL_MS = 180;
+
+/**
+ * ロールの進行度(0→1)を**慣性つき**の距離比へ変換する(smoothstep=加速→減速)。
+ * CLAUDE.md「★動きの絶対ルール: 慣性」= 等速で始まって瞬間停止する動きは禁止。
+ * (idol 側は線形のままだが、そちらを勝手に変えない=このバッチの担当外。)
+ */
+export const brRollEase = (t01: number): number => {
+  const t = Math.max(0, Math.min(1, t01));
+  return t * t * (3 - 2 * t);
+};

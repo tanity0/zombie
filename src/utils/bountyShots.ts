@@ -90,17 +90,22 @@ export const brChargeRecoverSpeedMult = (progress01: number): number => {
 // 結果、密着し続けるだけで「押しのけ→また密着→押しのけ」の1本だけが返ってきて、
 // **読む対象が1つしか無い=簡単**になっていた(社長報告)。
 //
-// 新: 近距離も**重みで引く**。押しのけにもCDを付け、三段突き(v0.25.3516で下限0=近距離でも候補)と
-// 混ぜる。両方CD中なら `null` を返し、呼び出し側は中立の射撃サイクルへ落ちる
-// (= バス停は後退しながら撃つ。密着し続けても3通りの答えが返る)。
+// 新: 近距離も**重みで引く**。押しのけにもCDを付け、もう1つの台本と混ぜる。両方CD中なら `null` を
+// 返し、呼び出し側は中立の射撃サイクルへ落ちる(= バス停は後退しながら撃つ)。
+//
+// ★v0.25.3519(社長指示「バス停の近距離の台本は、**押しのけ** と **バックロール→三段つき** にする」):
+// もう1つの側を「三段突き単体」から**「バックロール→三段突き」の台本**へ差し替えた。
+// 押しのけ=押し返して間合いを作る / ロール台本=自分から引いて、その間合いから突く。
+// 密着し続けても **押しのけ / ロール→三段突き / 下がり撃ち(両方CD中)** の3通りが返る。
 
 /** 押しのけのクールダウン(ms)。0だと「密着=押しのけ」の1本道に戻るための最低限の間隔。 */
 export const BR_PUSH_CD_MS = 2500;
-/** 近距離の重み。三段突きの方が重い=密着時の主役を「読む価値のある技」側へ寄せる。 */
-export const BR_CLOSE_TRIPLE_WEIGHT = 60;
+/** 近距離の重み。ロール台本の方が重い=密着時の主役を「読む価値のある技」側へ寄せる。 */
+export const BR_CLOSE_ROLL_WEIGHT = 60;
 export const BR_CLOSE_PUSH_WEIGHT = 40;
 
-export type BrCloseMove = 'triple' | 'push';
+/** 'roll' = **バックロール→三段突き**の台本(1手目のロールから始まる)。 */
+export type BrCloseMove = 'roll' | 'push';
 
 /**
  * 近距離で出す技を重みで引く。CD中のものは候補から外す。
@@ -108,10 +113,11 @@ export type BrCloseMove = 'triple' | 'push';
  * `rand` は注入式(0<=rand()<1想定)=テストで決定的に固定できる(pickBrShotPatternと同じ作法)。
  */
 export const pickBrCloseMove = (
-  rand: () => number, tripleReady: boolean, pushReady: boolean,
+  rand: () => number, rollScriptReady: boolean, pushReady: boolean,
 ): BrCloseMove | null => {
   const pool: { move: BrCloseMove; w: number }[] = [];
-  if (tripleReady) pool.push({ move: 'triple', w: BR_CLOSE_TRIPLE_WEIGHT });
+  // ロール台本の可否は**その先の三段突きのCD**で決まる(台本は最後まで通す前提で選ぶ)。
+  if (rollScriptReady) pool.push({ move: 'roll', w: BR_CLOSE_ROLL_WEIGHT });
   if (pushReady) pool.push({ move: 'push', w: BR_CLOSE_PUSH_WEIGHT });
   if (pool.length === 0) return null;
   const total = pool.reduce((a, e) => a + e.w, 0);

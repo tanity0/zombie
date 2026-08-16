@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3519',
+    items: [
+      'バス停に密着した時の動きが2通りになりました。押しのけて間合いを作るか、後ろへ跳んでから三段突きを撃ってくるかのどちらかです。',
+    ],
+  },
+  {
     version: '0.25.3518',
     items: [
       'ゲーム内容の変更はありません(「次の技は前の技をキャンセルしない」という規則を、開発側で自動チェックする仕組みを入れました)。',
