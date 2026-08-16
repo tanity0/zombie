@@ -519,3 +519,38 @@
   .ghost-dossier-enter { animation: none; }
 }
 
+/* ★スクラップブースト(消耗品バフ)のアイコン枠(社長指示v0.25.3510
+   「スクラップブーストは絵の外周を赤いドット枠に光らせる」)。
+   絵はスクラップの資源アイコンをそのまま使い、**外周だけ**を赤いドットの枠で囲って光らせる
+   =消耗品バフだと一目で分かるが、資源アイコンそのものは差し替えない。
+
+   ドット枠はCSSの `dotted` ボーダーではなく **repeating-linear-gradient を4辺に敷く**方式。
+   理由: `dotted` はブラウザによって丸ドット・太さ・間隔がバラバラで、ドット絵の見た目に揃わない。
+   グラデーションなら「2px塗り→2px透明」の**四角いドット**を厳密に置ける(ピクセルの目に合う)。
+
+   光りは box-shadow の脈動。**動きは大きく**(CLAUDE.md)ので、明るさと滲みの両方を動かす。
+   `prefers-reduced-motion` では脈動を止め、枠と控えめな光だけ残す(消える=情報が減るのは避ける)。 */
+.scrap-boost-frame {
+  position: relative;
+  padding: 2px;
+  --sbf-dot: #ff3b3b;
+  background-image:
+    repeating-linear-gradient(90deg,  var(--sbf-dot) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(90deg,  var(--sbf-dot) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(0deg,   var(--sbf-dot) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(0deg,   var(--sbf-dot) 0 2px, transparent 2px 4px);
+  background-size: 100% 2px, 100% 2px, 2px 100%, 2px 100%;
+  background-position: left top, left bottom, left top, right top;
+  background-repeat: no-repeat;
+  animation: scrap-boost-glow 900ms ease-in-out infinite;
+}
+@keyframes scrap-boost-glow {
+  0%, 100% { filter: drop-shadow(0 0 1px rgba(255, 59, 59, 0.55)); }
+  50%      { filter: drop-shadow(0 0 5px rgba(255, 90, 90, 1)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrap-boost-frame {
+    animation: none;
+    filter: drop-shadow(0 0 2px rgba(255, 59, 59, 0.8));
+  }
+}

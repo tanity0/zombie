@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3510',
+    items: [
+      'スクラップブースト中のバフ表示が、スクラップのアイコンを赤いドット枠で光らせる見た目になりました。',
+    ],
+  },
+  {
     version: '0.25.3509',
     items: [
       'スクラップの表示が絵文字から専用のドット絵アイコンになりました(画面右上の所持数、レベルアップ画面の所持数、スクラップ報酬のカード)。',

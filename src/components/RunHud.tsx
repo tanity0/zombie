@@ -76,7 +76,24 @@ const RunHud: React.FC = () => {
               className="hud-translucent rounded-lg px-1.5 py-0.5 text-[11px] leading-tight text-amber-100 whitespace-nowrap"
               title={CONSUMABLES[b.key].name}
             >
-              {CONSUMABLE_ICON[b.key]} {b.remaining}s
+              {/* v0.25.3510(社長指示): スクラップブーストだけは絵文字ではなく資源アイコンを使い、
+                  **外周を赤いドット枠で光らせる**(消耗品バフだと一目で分かる)。他のバフは従来どおり絵文字。 */}
+              {b.key === 'scrap-boost' ? (
+                <span className="inline-flex items-center gap-1 align-middle">
+                  <span className="scrap-boost-frame inline-flex shrink-0">
+                    <img
+                      src={spritePath('scrap-icon')}
+                      alt=""
+                      className="w-[13px] h-[13px] object-contain block"
+                      style={{ imageRendering: 'pixelated' }}
+                      draggable={false}
+                    />
+                  </span>
+                  {b.remaining}s
+                </span>
+              ) : (
+                <>{CONSUMABLE_ICON[b.key]} {b.remaining}s</>
+              )}
             </div>
           ))}
         </div>
