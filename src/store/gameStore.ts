@@ -5469,7 +5469,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             m0AdvanceLimitX: get().m0AdvanceLimitX,
             corridorRunInActive: state.corridorRunInActive,
           };
-          const clamped = clampRectToPlayableArea(newX, newY, player.width, player.height, playableCtx);
+          // v0.25.3498(社長指示「城と同じ壁の見せ方にして」): 移動前のxを渡すことで、M0の前進壁は
+          // 「跨ぐ移動だけ止める」になる(戦闘中に前へ出た結果を、戦闘終了時にスナップで没収しない)。
+          const clamped = clampRectToPlayableArea(newX, newY, player.width, player.height, playableCtx, player.x);
           newX = clamped.x;
           newY = clamped.y;
         }

@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
   clampRectToPlayableArea, isRectInPlayableArea,
   clampCastleFightCrossing, CASTLE_FIGHT_MAX_DIST,
-  TUTORIAL_MOVE_Y_LIMIT_PX, TUTORIAL_MOVE_X_MIN_PX, CORRIDOR_BOTTOM_LIMIT,
+  TUTORIAL_MOVE_Y_LIMIT_PX, TUTORIAL_MOVE_X_MIN_PX, CORRIDOR_BOTTOM_LIMIT, M0_ADVANCE_EDGE_EPS,
   type PlayableAreaCtx,
 } from './playableArea';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from './labWalls';
@@ -63,6 +63,48 @@ describe('clampRectToPlayableArea(M0/tutorial)', () => {
     const limited: PlayableAreaCtx = { ...ctx, m0AdvanceLimitX: 500 };
     const r = clampRectToPlayableArea(999999, 0, w, h, limited);
     expect(r.x + w / 2).toBeCloseTo(500);
+  });
+
+  // ★不具合報告 TEST_HANDOFF/results/20260816-tutorial-warp.md(社長「攻撃喰らうとワープする/
+  // スタートに戻される」)の回帰。前進壁は**戦闘中だけ外れる**設計なので、戦闘中に壁より先へ
+  // 進んだ状態で敵が全滅すると、スナップ実装のままだと壁の位置へ瞬間移動で引き戻されていた。
+  // 社長指示「城と同じ壁の見せ方にして」= 跨ぐ移動だけ止める / 既に先に居るならスナップしない。
+  describe('M0の前進壁: 跨ぐ移動だけ止める(社長指示v0.25.3498)', () => {
+    const limited: PlayableAreaCtx = { ...ctx, m0AdvanceLimitX: 500 };
+    const wall = 500 - w / 2; // top-left基準の壁位置
+
+    it('★壁より先に居るなら引き戻さない(戦闘中に前へ出た結果を没収しない)', () => {
+      const prev = wall + 300; // 戦闘中に壁の300px先まで進んでいた
+      expect(clampRectToPlayableArea(prev, 0, w, h, limited, prev).x).toBe(prev);
+      // そのまま更に前へ進むのも自由(城ボス戦=clampCastleFightCrossingと同じ扱い)。
+      expect(clampRectToPlayableArea(prev + 50, 0, w, h, limited, prev).x).toBe(prev + 50);
+      // 戻る方向も自由。
+      expect(clampRectToPlayableArea(prev - 50, 0, w, h, limited, prev).x).toBe(prev - 50);
+    });
+
+    it('壁より手前から前へ跨ごうとする移動は従来どおり止める(壁の役目は保つ)', () => {
+      const prev = wall - 100;
+      expect(clampRectToPlayableArea(999999, 0, w, h, limited, prev).x).toBeCloseTo(wall);
+      expect(clampRectToPlayableArea(wall + 10, 0, w, h, limited, prev).x).toBeCloseTo(wall);
+    });
+
+    it('境界ちょうどに載っている時は「内側」扱い=押し続けても越えられない(城のEPSと同じ理由)', () => {
+      expect(clampRectToPlayableArea(wall + 5, 0, w, h, limited, wall).x).toBeCloseTo(wall);
+      expect(clampRectToPlayableArea(wall + 5, 0, w, h, limited, wall + M0_ADVANCE_EDGE_EPS).x).toBeCloseTo(wall);
+    });
+
+    it('prevXを渡さない呼び出し(=アイテム/敵の湧き)は従来どおりスナップする(挙動不変)', () => {
+      expect(clampRectToPlayableArea(999999, 0, w, h, limited).x).toBeCloseTo(wall);
+    });
+
+    it('前進壁以外(上下・左端)はprevXを渡しても従来どおりクランプする', () => {
+      const far = wall + 300;
+      const r = clampRectToPlayableArea(far, 9999, w, h, limited, far);
+      expect(r.x).toBe(far);                                   // 前進壁は素通し
+      expect(r.y + h / 2).toBeCloseTo(TUTORIAL_MOVE_Y_LIMIT_PX); // 上下は効いたまま
+      const l = clampRectToPlayableArea(-99999, 0, w, h, limited, far);
+      expect(l.x + w / 2).toBeCloseTo(TUTORIAL_MOVE_X_MIN_PX);   // 左端も効いたまま
+    });
   });
 });
 

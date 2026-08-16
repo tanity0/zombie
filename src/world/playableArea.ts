@@ -40,8 +40,34 @@ export interface PlayableAreaCtx {
 // 同じ適用順(tutorial→lab→corridor)。** 両者は同じ「行ける場所」を指すので、片方だけ直すと
 // 移動可能範囲と湧き制限がズレる。変更する時は必ず両方(この関数とプレイヤー移動クランプの
 // 呼び出し)を確認すること。
+/**
+ * M0の前進壁を「跨ぐ移動だけ止める」に切り替える時の境界許容幅(px)。
+ * 城ボス戦の `CASTLE_FIGHT_EDGE_EPS` と**同じ理由・同じ幅**にしてある: クランプ結果が境界ちょうど
+ * (浮動小数点で 800.0001 等)に載ると、次フレームに「既に外に居る」と誤認して素通ししてしまう
+ * (v0.25.3058で城側が踏んだ実バグ)。境界+この幅までは「内側に居た」とみなして止める。
+ */
+export const M0_ADVANCE_EDGE_EPS = 40;
+
+/**
+ * 矩形(x,y,w,h・top-left基準)を「プレイヤーが行ける帯」の内側へ寄せた座標を返す。
+ *
+ * `prevX` は**移動のクランプにだけ**渡す(=移動前の左上x)。渡した場合、M0の前進壁は
+ * 「線を前向きに跨ぐ移動だけを止める / 既に壁より先に居るならスナップさせない」という
+ * **城ボス戦(clampCastleFightCrossing)と同じ作法**になる(社長指示v0.25.3498「城と同じ壁の
+ * 見せ方にして」)。
+ *
+ * ★なぜ必要か(テストチャットの不具合報告 2026-08-16 / `TEST_HANDOFF/results/20260816-tutorial-warp.md`):
+ * M0の前進壁は**戦闘中だけ外れる**設計(`m0Tutorial.m0AdvanceLimit` が waveActive の間 null を返す=
+ * 「教習中に狭い箱へ閉じ込めない」社長指摘v0.25.2305への対応)。ところがここの適用が `Math.min` の
+ * **スナップ**だったため、戦闘中に壁より先へ進んでいると、**敵を全滅させた瞬間に壁の位置へ
+ * 瞬間移動で引き戻される**(社長報告「攻撃喰らうとワープする/スタートに戻される」の正体)。
+ * 「跨ぐ移動だけを止める」に変えれば、戦闘中に前へ出た結果を没収しない。
+ *
+ * `prevX` を渡さない呼び出し(**アイテム/敵の湧き=その場に置く処理**)は従来どおりスナップする。
+ * 湧きは「移動」ではなく「配置」なので、帯の内側へ寄せるのが正しい(前後関係が無いので跨ぎも定義できない)。
+ */
 export const clampRectToPlayableArea = (
-  x: number, y: number, w: number, h: number, ctx: PlayableAreaCtx
+  x: number, y: number, w: number, h: number, ctx: PlayableAreaCtx, prevX?: number
 ): { x: number; y: number } => {
   let nx = x;
   let ny = y;
@@ -51,7 +77,12 @@ export const clampRectToPlayableArea = (
     const half = h / 2;
     ny = Math.max(-TUTORIAL_MOVE_Y_LIMIT_PX - half, Math.min(TUTORIAL_MOVE_Y_LIMIT_PX - half, ny));
     nx = Math.max(TUTORIAL_MOVE_X_MIN_PX - w / 2, nx);
-    if (ctx.m0AdvanceLimitX !== null) nx = Math.min(ctx.m0AdvanceLimitX - w / 2, nx);
+    if (ctx.m0AdvanceLimitX !== null) {
+      const wall = ctx.m0AdvanceLimitX - w / 2;
+      // 既に壁より先に居た移動(=戦闘中に前へ出ていた)は引き戻さない。城ボス戦と同じ作法。
+      const wasBeyond = prevX !== undefined && prevX > wall + M0_ADVANCE_EDGE_EPS;
+      if (!wasBeyond) nx = Math.min(wall, nx);
+    }
   }
   // ステージ2(研究所・横長廊下): 上下固定。プレイヤー中心yを±LAB_CORRIDOR_Y_LIMIT_PXに数値クランプ。
   // Xは無制限。
