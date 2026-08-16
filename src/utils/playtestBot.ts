@@ -293,9 +293,24 @@ const KITER_DEFAULT_RANGE = 176;
 // - 避ける: 移動中のみ、進行方向の前方〜近傍(MINE_AVOID_RADIUS)の卵に対し「卵と反対側の直交方向」を
 //   移動方向に合成して45°逸れる(8方向入力で確実に効く反発の実装形)。後方の卵は無視(既に離れている)。
 //   静止判断(stationary/kiterのバンド内静止等)は動かさない=ペルソナ不変。
-export interface MinePropLike { footX: number; footY: number }
-export const MINE_AVOID_RADIUS = 70; // 反発を効かせる距離(px・叩き台)
-export const MINE_SMASH_DIST = 60;   // これ以内なら叩いて割る(接触より外・近接リーチ74内の安全距離・叩き台)
+// ★v0.25.3489(社長指示「赤くなった緑卵は割り、緑のからは距離を取る」):
+// 卵には**2つの状態**があり、扱いを逆にしないと自分でアームさせてしまう。
+//   ・緑(未アーム / `armedAt === undefined`): **80px以内に入るとアームされ**、1.5秒後に半径80pxで爆発
+//     (`combatTick.applyMineDamage`)。→ **近づかないのが唯一の正解**。
+//   ・赤(アーム済み / `armedAt` あり): 導火中。**近接で割れば無害に解除できる**
+//     (`combatTick.ts` の注記「近接で割る従来経路は不変=アーム中でも無害に解除できる」)。
+//     → **割るのが正解**。放置すると爆発する。
+// 旧実装は状態を見ずに「60px以内なら何でも叩く / 70px以内なら避ける」だったため、
+//   ① 緑を叩きに行く途中で80px圏に入れてしまい自分でアームさせる
+//   ② 回避半径70pxが起爆圏80pxより内側=避け始める前にアームさせる
+// の2つを踏んでいた(実測: 18ラン中7ランが地雷死・master3本は全て地雷死)。
+export interface MinePropLike { footX: number; footY: number; armedAt?: number }
+/** 緑(未アーム)から取る距離。**起爆圏80pxより外**にしないと、避ける前にアームさせてしまう。 */
+export const MINE_AVOID_RADIUS = 100;
+/** 赤(アーム済み)を割りに行ってよい距離。近接リーチ74px内の安全距離。 */
+export const MINE_SMASH_DIST = 60;
+/** 緑卵の起爆圏(world/mines.ts の EGG_BLAST_RADIUS と同値の複製=このモジュールはworld非依存を保つ)。 */
+export const MINE_ARM_RADIUS = 80;
 
 export interface MineAdjustResult { input: InputState; wantsMelee: boolean }
 
@@ -309,15 +324,19 @@ export const adjustBotForMines = (
   smashDist = MINE_SMASH_DIST,
 ): MineAdjustResult => {
   if (mines.length === 0) return { input, wantsMelee };
-  // 最寄りの卵(叩く判定用)。
-  let nearestD = Infinity;
-  for (const m of mines) {
+  // ★状態で扱いを分ける。赤(アーム済み)=割る / 緑(未アーム)=近づかない。
+  const armed = mines.filter(m => m.armedAt !== undefined);
+  const green = mines.filter(m => m.armedAt === undefined);
+  // ① 赤が叩ける距離にあれば叩く(無害に解除できる。放置すると爆発する)。
+  let nearestArmed = Infinity;
+  for (const m of armed) {
     const d = Math.hypot(m.footX - pcx, m.footY - pcy);
-    if (d < nearestD) nearestD = d;
+    if (d < nearestArmed) nearestArmed = d;
   }
-  // 叩ける距離なら叩く(優先)。移動入力はそのまま(スイングは移動と独立・全方位)。
-  if (nearestD <= smashDist) return { input, wantsMelee: true };
-  // 避ける: 移動していない時は触らない(ペルソナの静止判断を尊重)。
+  if (nearestArmed <= smashDist) return { input, wantsMelee: true };
+  // ② 避ける: 移動していない時は触らない(ペルソナの静止判断を尊重)。
+  //    避ける対象は**緑(未アーム)だけ**。赤は割りに行く対象なので回避で遠ざけない
+  //    (遠ざけると導火が進んで結局爆発する)。
   const mx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
   const my = (input.down ? 1 : 0) - (input.up ? 1 : 0);
   if (mx === 0 && my === 0) return { input, wantsMelee };
@@ -326,7 +345,7 @@ export const adjustBotForMines = (
   // 前方(進行方向側)〜近傍の卵に対し、卵のいる側と反対の「横」へ舵を切る(反発の後ろ向き成分は
   // 8方向入力(dirInputの0.3閾値)ではほぼ消えるため、確実に曲がる直交ステアで避ける)。
   let steer = 0; // Σ sign(cross)×重み。正=卵が右側寄り→左(上)へ、負=卵が左側寄り→右(下)へ
-  for (const m of mines) {
+  for (const m of green) {
     const tx = m.footX - pcx, ty = m.footY - pcy; // プレイヤー→卵
     const d = Math.hypot(tx, ty);
     if (d >= avoidRadius || d < 0.001) continue;

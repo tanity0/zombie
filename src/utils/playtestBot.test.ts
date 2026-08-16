@@ -295,39 +295,65 @@ describe('adjustBotForMines (M34: 緑卵を避ける/叩く)', () => {
     expect(r.wantsMelee).toBe(false);
   });
 
-  it('叩く: 最寄りの卵がMINE_SMASH_DIST(60)以内ならwantsMelee=true・移動入力は不変(叩く優先)', () => {
-    const r = adjustBotForMines(RIGHT, false, 0, 0, [{ footX: 50, footY: 0 }]);
+  // ★v0.25.3489(社長指示「赤くなった緑卵は割り、緑のからは距離を取る」):
+  // 赤(armedAt あり)= 近接で割れば**無害に解除できる**(combatTick.ts の注記)。
+  // 緑(armedAt なし)= 80px以内に入ると**アームされて1.5秒後に爆発**する。
+  // よって扱いは逆。旧実装は状態を見ずに叩き/回避していたため、自分でアームさせていた。
+  const RED = (x: number, y = 0) => ({ footX: x, footY: y, armedAt: 1000 });
+  const GREEN = (x: number, y = 0) => ({ footX: x, footY: y });
+
+  it('★赤(アーム済み)がMINE_SMASH_DIST(60)以内なら叩く・移動入力は不変', () => {
+    const r = adjustBotForMines(RIGHT, false, 0, 0, [RED(50)]);
     expect(r.wantsMelee).toBe(true);
     expect(r.input).toBe(RIGHT); // 反発合成はしない(叩ける距離なら叩く)
     expect(MINE_SMASH_DIST).toBe(60);
   });
 
-  it('避ける: 前方(進行方向)の卵は反発で進路が曲がる(右進行+右前方の卵→上下成分が付く)', () => {
-    // 卵は右65px・SMASH(60)の外・AVOID(70)の内。y をわずかに下へずらし反発が上へ出るように。
-    const r = adjustBotForMines(RIGHT, false, 0, 0, [{ footX: 65, footY: 6 }]);
+  it('★緑(未アーム)は近くても叩かない(叩きに行くと自分でアームさせるため)', () => {
+    const r = adjustBotForMines(RIGHT, false, 0, 0, [GREEN(50)]);
     expect(r.wantsMelee).toBe(false);
-    expect(r.input).not.toEqual(RIGHT); // 直進のままではない=曲がった
-    expect(r.input.up).toBe(true);      // 卵の下側(footY=+6)を避けて上へ逸れる
-    expect(MINE_AVOID_RADIUS).toBe(70);
   });
 
-  it('後方の卵は避けない(既に離れる向き=蛇行しない)', () => {
-    const r = adjustBotForMines(RIGHT, false, 0, 0, [{ footX: -65, footY: 0 }]);
+  it('★避ける半径は起爆圏(80px)より外にある=避け始める前にアームさせない', () => {
+    expect(MINE_AVOID_RADIUS).toBeGreaterThan(80);
+  });
+
+  it('避ける: 前方の緑卵は反発で進路が曲がる(右進行+右前方の緑→上へ逸れる)', () => {
+    const r = adjustBotForMines(RIGHT, false, 0, 0, [GREEN(90, 6)]);
+    expect(r.wantsMelee).toBe(false);
+    expect(r.input).not.toEqual(RIGHT);
+    expect(r.input.up).toBe(true);
+  });
+
+  it('★赤は回避の対象にしない(遠ざけると導火が進んで結局爆発するため)', () => {
+    const r = adjustBotForMines(RIGHT, false, 0, 0, [RED(90, 6)]);
+    expect(r.input).toBe(RIGHT); // 進路を曲げない
+    expect(r.wantsMelee).toBe(false); // まだ叩ける距離ではない
+  });
+
+  it('後方の緑卵は避けない(既に離れる向き=蛇行しない)', () => {
+    const r = adjustBotForMines(RIGHT, false, 0, 0, [GREEN(-90)]);
     expect(r.input).toBe(RIGHT);
     expect(r.wantsMelee).toBe(false);
   });
 
-  it('静止中(移動入力なし)は動かさない=stationary/バンド内静止のペルソナ判断を尊重(smash距離外)', () => {
-    const r = adjustBotForMines(STILL, false, 0, 0, [{ footX: 65, footY: 0 }]);
+  it('静止中(移動入力なし)は動かさない=ペルソナ判断を尊重(smash距離外)', () => {
+    const r = adjustBotForMines(STILL, false, 0, 0, [GREEN(90)]);
     expect(r.input).toBe(STILL);
     expect(r.wantsMelee).toBe(false);
   });
 
-  it('真正面の卵でも決定的に逸れる(cross=0は右側扱い→上へ45°)', () => {
-    const r = adjustBotForMines(RIGHT, false, 0, 0, [{ footX: 62, footY: 0 }]);
+  it('真正面の緑卵でも決定的に逸れる(cross=0は右側扱い→上へ45°)', () => {
+    const r = adjustBotForMines(RIGHT, false, 0, 0, [GREEN(90)]);
     expect(r.wantsMelee).toBe(false);
-    expect(r.input.up).toBe(true);    // 上へ逸れる
-    expect(r.input.right).toBe(true); // 前進成分は保つ(45°)
+    expect(r.input.up).toBe(true);
+    expect(r.input.right).toBe(true);
+  });
+
+  it('赤と緑が混在: 赤は割りに行き、緑の回避より優先される', () => {
+    const r = adjustBotForMines(RIGHT, false, 0, 0, [GREEN(90, 6), RED(50)]);
+    expect(r.wantsMelee).toBe(true);
+    expect(r.input).toBe(RIGHT);
   });
 
   it('卵が進行の左上側なら下へ逸れる(反対側ステア)', () => {
