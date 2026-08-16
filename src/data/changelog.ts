@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3506',
+    items: [
+      'ウォームアップにも専用のドット絵アイコンが付きました。',
+    ],
+  },
+  {
     version: '0.25.3505',
     items: [
       'スクラップビルダーにも専用のドット絵アイコンが付きました。',

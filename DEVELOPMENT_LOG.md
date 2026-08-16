@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.3506 — ウォームアップ(107)のアイコンを搭載【2026-08-16 12:14 JST】
+- **社長支給**: 107 ウォームアップ(148×128)。シートの38種に入らないので単体ファイル
+  (`public/sprites/skill/warm-up.png`)。台帳へ1行。
+- **残りは `big-bullet`(ビッグバレット・⚫)の1種のみ**(コードから機械的に確認。絵あり46種)。
+- 機械化: `skillIcons.test.ts` の単体アイコン一覧を8種へ更新。計19件。
+- 検証: `npx vitest run src/data/skillIcons.test.ts`(19 passed) / `npm run typecheck`(0エラー) /
+  `npm run lint`(0エラー)。実機での見た目確認は社長。
+- ファイル: `public/sprites/skill/warm-up.png`(新規) / `src/data/skillIcons.ts` /
+  `src/data/skillIcons.test.ts` / `src/data/changelog.ts` / `package.json`
+
 ## v0.25.3505 — スクラップビルダー(106)のアイコンを搭載【2026-08-16 12:11 JST】
 - **社長支給**: 106 スクラップビルダー(136×128)。シートの38種に入っていないので、POI3種・守護霊3種と
   同じ**単体ファイル**(`public/sprites/skill/scrap-builder.png`)。台帳へ1行足すだけで
