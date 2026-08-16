@@ -3234,6 +3234,10 @@ export class PixiScene {
   private bountyThrustWindSprites = new Map<string, Sprite>();
   // 馬乗り3段コンボの鞭スミア(fx/whip-smear-0/1/2・段対応)。コンボ段ごとに1枚のpooled sprite。
   private bountyWhipSmearSprites = new Map<string, Sprite>();
+  /** v0.25.3520: 鞭の残像を「振りの開始位置」へ焼き付けるための錨(本体の移動に付いて行かせない)。 */
+  private bountyWhipSmearAnchor = new Map<string, { key: number; x: number; y: number }>();
+  /** v0.25.3520: アクラシエルの爆発破片の放射原点(爆発が始まった位置に固定=本体に引きずらせない)。 */
+  private acrasielBurstOrigin = new Map<string, { key: number; x: number; y: number }>();
   // 技表GO: 鋏(bounty-balance)の命中閃(fx/scissor-x-0..2・初配線)。派手側=判定より大きく出す。
   private bountyScissorFlashSprites = new Map<string, Sprite>();
   private bountyScissorFlashKey = new Map<string, string>();
@@ -14834,7 +14838,7 @@ export class PixiScene {
         const swingAngle = aimAng - swingDir * Math.PI * 0.4 * (1 - swingEased);
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, swingAngle, 170, 0.95 * ease.alphaMul,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
-        this.drawBountyWhipSmear(e.id, prog, cx, cy, swingAngle, 170, 0.5 + 0.5 * prog);
+        this.drawBountyWhipSmear(e.id, prog, cx, cy, swingAngle, 170, 0.5 + 0.5 * prog, e.bossStateUntil ?? 0);
       } else if (bs2 === 'bm-combo1-recover' || bs2 === 'bm-combo2-recover') {
         // 次段へ継続するだけの中継=消滅させない(コンボが繋がっている間は鞭を出しっぱなし)。
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9,
@@ -14903,7 +14907,7 @@ export class PixiScene {
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, ang, BM_WHIP360_RADIUS, 0.98,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
         // スネア3枚を1振りの中で回す(しなり→伸び)。角度は鞭と同じ=揃える。
-        this.drawBountyWhipSmear(e.id, t, cx, cy, ang, BM_WHIP360_RADIUS, 0.85);
+        this.drawBountyWhipSmear(e.id, t, cx, cy, ang, BM_WHIP360_RADIUS, 0.85, e.bossStateUntil ?? 0);
       } else if (bs2 === 'bm-charge-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const ease = weaponSpawnEase(Infinity, remain);
@@ -16031,9 +16035,18 @@ export class PixiScene {
         const burstActiveT = bwind ? -1
           : Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_BURST_ACTIVE_MS_VIS));
         if (burstActiveT >= 0) {
+          // ★v0.25.3520(社長指示「エフェクトを武器やボスの動きと切り離して」): 破片の**放射原点**は
+          // 爆発が始まった位置に焼き付ける。毎フレームcx/cyを渡すと、本体が動いた時に破片の束ごと
+          // 引きずられる(鞭の残像と同じ形の問題)。キーは実行の期限=1回の爆発で1つ。
+          const bKey = e.bossStateUntil ?? 0;
+          let bOrigin = this.acrasielBurstOrigin.get(e.id);
+          if (!bOrigin || bOrigin.key !== bKey) {
+            bOrigin = { key: bKey, x: cx, y: cy };
+            this.acrasielBurstOrigin.set(e.id, bOrigin);
+          }
           for (let i = 0; i < ACRASIEL_BURST_FRAG_COUNT; i++) {
             const fragAng = (Math.PI * 2 / ACRASIEL_BURST_FRAG_COUNT) * i;
-            this.drawAcrasielBurstFragment(view, i, cx, cy, fragAng, burstActiveT);
+            this.drawAcrasielBurstFragment(view, i, bOrigin.x, bOrigin.y, fragAng, burstActiveT);
           }
         }
         // ★予兆一括バッチ(v0.25.3344): 収縮→大爆発の溜め=自壊的な力を溜める震え。
@@ -21767,8 +21780,10 @@ export class PixiScene {
           entry.container.addChild(entry.sprite);
         }
         entry.sprite.texture = tex;
-        // §6.38 B3: gold-chest素材(424×256)は他のpickupアイコンより大判なので実表示は縮小する。
-        const itemBox = p.type === 'lab-clear-item' ? size * 2.4 : p.type === 'bounty-chest' ? size * 0.85 : size; // クリアアイテムは目立つよう大きめ
+        // §6.38 B3: gold-chest素材(424×256)は他のpickupアイコンより大判なので実表示は縮小していた。
+        // ★v0.25.3520(社長指示「金箱の絵が小さすぎるので二倍にして」): 0.85 → 1.7(=2倍)。
+        // 賞金首の討伐報酬という「一目で分かるべき物」なので、他のpickupより大きくてよい。
+        const itemBox = p.type === 'lab-clear-item' ? size * 2.4 : p.type === 'bounty-chest' ? size * 1.7 : size; // クリアアイテムは目立つよう大きめ
         const sc = containScale(itemBox, itemBox, tex.width, tex.height) * d;
         entry.sprite.scale.set(sc);
         entry.sprite.position.set(Math.round(cx), Math.round(footY + floatOffset));
@@ -22973,12 +22988,29 @@ export class PixiScene {
   //   新: **1回の振りの中で 0→1→2 を一瞬で回す**(3枚で1アニメーション)。角度は3枚とも同じ
   //   (振りの向き)で、**柄(画像の下端中央)を手元に置いて外へ伸びる**=伸びる方向が揃う。
   //   素材は3枚とも同じ画布(456x264)で、下端中央から上へ伸びていく絵(bboxで確認)。
+  /**
+   * 鞭のしなり(スネア3コマ)。
+   *
+   * ★v0.25.3520(社長指示「武器とかのエフェクト、斬撃とか爆発も全部。**武器やボスの動きと切り離して**。
+   * 動きにエフェクトもついてくるのは、おかしい。例えば、馬乗りの鞭スネアとか」):
+   * 旧実装は**毎フレーム本体の現在位置(cx,cy)**へ置いていたので、ボスが動くと残像も一緒に動いていた。
+   * 残像は「空中に残った軌跡」なので、**振りの開始位置に焼き付けて、そこに留める**のが正しい。
+   * `swingKey`(振りごとに変わる値=bossStateUntil等)が変わった最初のフレームだけ座標を焼き、
+   * 以後は焼いた座標で描く(latchFxと同じ「立ち上がりで撮って以後は撮り直さない」作法)。
+   */
   private drawBountyWhipSmear(
     id: string, t01: number, gripX: number, gripY: number, angleRad: number, lengthPx: number, alpha: number,
+    swingKey: number,
   ) {
     const f: 0 | 1 | 2 = t01 < 0.34 ? 0 : t01 < 0.67 ? 1 : 2; // 一瞬で回す=振りの進行で3コマ
     const tex = getTexture(`fx/whip-smear-${f}`);
     if (!tex) return;
+    // 振りの頭で座標を焼く(以後この振りの間は動かさない=本体の移動に付いて行かない)。
+    let anchor = this.bountyWhipSmearAnchor.get(id);
+    if (!anchor || anchor.key !== swingKey) {
+      anchor = { key: swingKey, x: gripX, y: gripY };
+      this.bountyWhipSmearAnchor.set(id, anchor);
+    }
     let sp = this.bountyWhipSmearSprites.get(id);
     if (!sp) {
       sp = new Sprite(tex); sp.anchor.set(0.5, 1); sp.blendMode = 'add';
@@ -22989,7 +23021,7 @@ export class PixiScene {
     // 素材は上向き(-y)に伸びるので、+90°で「振りの向き」へ倒す(3枚とも同じ角度=角度を揃える)。
     sp.rotation = angleRad + Math.PI / 2;
     sp.scale.set(Math.max(60, lengthPx) / Math.max(1, tex.height));
-    sp.position.set(gripX, gripY);
+    sp.position.set(anchor.x, anchor.y); // ★焼いた位置。本体が動いても残像は置き去りになる。
     sp.alpha = alpha;
     sp.visible = true;
   }
