@@ -403,10 +403,24 @@ describe('runBountyTick — B2a 技の状態機械', () => {
   };
 
   describe('バス停(bounty-ranged)', () => {
-    it('近すぎると押しのけ(br-push-windup)を発火する', () => {
-      const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 }); // BR_PUSH_RANGE(110)未満
-      step(16);
-      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-push-windup');
+    // ★v0.25.3517: 近距離は「押しのけ100%」ではなく**重み抽選**(三段突き60/押しのけ40)になった。
+    // 押しのけ単体の挙動を見るテストは、乱数を押しのけ側(>=0.6)へ固定して引く。
+    it('近すぎると押しのけ(br-push-windup)を発火する(乱数=押しのけ側)', () => {
+      const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.9);
+      try {
+        const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 }); // BR_PUSH_RANGE(110)未満
+        step(16);
+        expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-push-windup');
+      } finally { rnd.mockRestore(); }
+    });
+
+    it('★近距離でも三段突きが出る(乱数=三段突き側)=押しのけ1本道の解消(社長指示v0.25.3517)', () => {
+      const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.1);
+      try {
+        const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 });
+        step(16);
+        expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-triple-windup');
+      } finally { rnd.mockRestore(); }
     });
 
     it('押しのけ完走: windup→push→recoverを経てchaseへ戻り、pumpkinBlastsへ判定を積む(判定=絵の一致)', () => {
@@ -424,8 +438,10 @@ describe('runBountyTick — B2a 技の状態機械', () => {
     });
 
     it('押しのけはカウンター可能(windup中のカウンター成立でchaseへ即復帰=v3128の掟)', () => {
+      const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.9); // v0.25.3517: 近距離の抽選を押しのけ側へ固定
       const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 });
       step(16);
+      rnd.mockRestore();
       expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-push-windup');
       // カウンター成立の条件(rectsOverlap+counterWindowEnd)を満たす: プレイヤーを重ねてカウンター窓を開く。
       const bounty = useGameStore.getState().enemies.find(e => e.id === id)!;
@@ -444,8 +460,12 @@ describe('runBountyTick — B2a 技の状態機械', () => {
     // へ戻し、予告(windup系bossState)を消す。旧実装はbossStateを一切書き換えず、紫の間ずっと
     // 予告が残り続け(FB6)、凍結明けにstale windupがそのまま暴発する/止まって見える(FB5)。
     it('★FB6: フルスタン(紫)成立でwindup中の技が即chaseへ中断される(予告が消える)', () => {
+      // v0.25.3517: 近距離が重み抽選になったので押しのけ側へ固定(この試験の主題は「紫で中断されるか」で、
+      // どの技が出たかは本質ではない)。
+      const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.9);
       const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 }); // BR_PUSH_RANGE未満=windup開始
       step(16);
+      rnd.mockRestore();
       expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-push-windup');
       const gtNow = useGameStore.getState().gameTime;
       useGameStore.setState(s => ({
@@ -481,7 +501,10 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       let sawWindupAgain = false;
       for (let i = 0; i < 10; i++) {
         step(50);
-        if (useGameStore.getState().enemies.find(e => e.id === id)?.bossState === 'br-push-windup') sawWindupAgain = true;
+        // v0.25.3517: 近距離の技は押しのけ/三段突きの2択になったので、どちらでも「再発火した」と見る
+        // (押しのけはCD2500msを持つようになったため、押しのけ限定にすると観測できない窓がある)。
+        const stNow = useGameStore.getState().enemies.find(e => e.id === id)?.bossState;
+        if (stNow === 'br-push-windup' || stNow === 'br-triple-windup') sawWindupAgain = true;
       }
       expect(sawWindupAgain).toBe(true);
     });
@@ -686,13 +709,17 @@ describe('runBountyTick — B2a 技の状態機械', () => {
         expect(useGameStore.getState().enemies.find(e => e.id === far.id)?.bossState).not.toBe('br-triple-windup');
       });
 
-      // 押しのけ(<=110)は三段突きより先に見る(§4「近接されたら押しのけ」が最優先の防御反応)。
-      // 下限0にしても**この優先順位は変えていない**ことを固定する(体感上の三段突き帯は概ね110〜460)。
-      it('至近(押しのけ圏内)では押しのけが優先され、三段突きは出ない', () => {
-        const veryNear = setupType('bounty-ranged', { x: 60, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
-        for (let i = 0; i < 5; i++) veryNear.step(16);
-        const st = useGameStore.getState().enemies.find(e => e.id === veryNear.id)?.bossState;
-        expect(st).toBe('br-push-windup');
+      // ★v0.25.3517(社長指示「近接も重み変えて」): 至近は押しのけの独占ではなく**重み抽選**。
+      // 乱数を振り分けて「両方出うる」ことを固定する(どちらかに固定されたらこのテストが落ちる)。
+      it('至近(押しのけ圏内)でも押しのけ/三段突きの両方が出る=1本道でない', () => {
+        for (const [r, expected] of [[0.1, 'br-triple-windup'], [0.9, 'br-push-windup']] as const) {
+          const rnd = vi.spyOn(Math, 'random').mockReturnValue(r);
+          try {
+            const near = setupType('bounty-ranged', { x: 60, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
+            for (let i = 0; i < 5; i++) near.step(16);
+            expect(useGameStore.getState().enemies.find(e => e.id === near.id)?.bossState, `rand=${r}`).toBe(expected);
+          } finally { rnd.mockRestore(); }
+        }
       });
 
       it('選択距離帯の上限側(380〜460)で発火する(境界含む)', () => {

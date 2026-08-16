@@ -3,6 +3,7 @@
 // bountyTick.test.tsの「バス停(bounty-ranged) — 中立射撃の型3種(§6.38 v10)」節で行う。
 import { describe, it, expect } from 'vitest';
 import {
+  pickBrCloseMove, BR_PUSH_CD_MS, BR_CLOSE_TRIPLE_WEIGHT, BR_CLOSE_PUSH_WEIGHT,
   pickBrShotPattern, brShotCount, brCycleDurationMs,
   brChargeWindupSpeedMult, brChargeRecoverSpeedMult,
   BR_SHOT_UNIT_MS, BR_BURST_SHOT_COUNT, BR_BURST_INTERVAL_MS,
@@ -145,5 +146,43 @@ describe('brChargeWindupSpeedMult / brChargeRecoverSpeedMult(慣性・瞬間停�
     expect(brChargeWindupSpeedMult(2)).toBe(0);
     expect(brChargeRecoverSpeedMult(-1)).toBe(0);
     expect(brChargeRecoverSpeedMult(2)).toBe(1);
+  });
+});
+
+// ★v0.25.3517(社長指示「近接も重み変えて / 押しのけしか出ないせいで、倒すのが簡単になってる」)。
+// 旧: 密着すると押しのけがCDなしで100%返り、読む対象が1つしか無かった。
+describe('pickBrCloseMove(近距離の技選択)', () => {
+  const R = (v: number) => () => v;
+
+  it('両方CD明けなら重みどおりに割れる(三段突き60 / 押しのけ40)', () => {
+    const total = BR_CLOSE_TRIPLE_WEIGHT + BR_CLOSE_PUSH_WEIGHT;
+    expect(pickBrCloseMove(R(0), true, true)).toBe('triple');
+    expect(pickBrCloseMove(R((BR_CLOSE_TRIPLE_WEIGHT - 1) / total), true, true)).toBe('triple');
+    expect(pickBrCloseMove(R((BR_CLOSE_TRIPLE_WEIGHT + 1) / total), true, true)).toBe('push');
+    expect(pickBrCloseMove(R(0.999), true, true)).toBe('push');
+  });
+
+  it('★押しのけの方が重みは軽い=密着の主役は「読む価値のある技」側(この修正の狙い)', () => {
+    expect(BR_CLOSE_TRIPLE_WEIGHT).toBeGreaterThan(BR_CLOSE_PUSH_WEIGHT);
+  });
+
+  it('片方だけCD明けならそれが必ず出る(重みに関係なく)', () => {
+    for (const r of [0, 0.5, 0.999]) {
+      expect(pickBrCloseMove(R(r), true, false)).toBe('triple');
+      expect(pickBrCloseMove(R(r), false, true)).toBe('push');
+    }
+  });
+
+  it('★両方CD中はnull=技を出さない(呼び出し側は中立の射撃サイクルへ落ちる)', () => {
+    expect(pickBrCloseMove(R(0), false, false)).toBeNull();
+    expect(pickBrCloseMove(R(0.999), false, false)).toBeNull();
+  });
+
+  it('rand()が1に極めて近くてもnullを返さない(端の保険)', () => {
+    expect(pickBrCloseMove(R(1 - Number.EPSILON), true, true)).not.toBeNull();
+  });
+
+  it('押しのけにCDがある(0だと密着=押しのけの1本道に戻る)', () => {
+    expect(BR_PUSH_CD_MS).toBeGreaterThan(0);
   });
 });

@@ -82,3 +82,43 @@ export const brChargeRecoverSpeedMult = (progress01: number): number => {
   const p = Math.max(0, Math.min(1, progress01));
   return p * p;
 };
+
+// ---- 近距離(押しのけ圏内)の技選択(社長指示v0.25.3517「近接も重み変えて / 押しのけしか出ないせいで、
+//      倒すのが簡単になってる」)---------------------------------------------------------------------
+//
+// 旧: `dist <= BR_PUSH_RANGE(110)` なら**押しのけを無条件・CDなしで100%**。
+// 結果、密着し続けるだけで「押しのけ→また密着→押しのけ」の1本だけが返ってきて、
+// **読む対象が1つしか無い=簡単**になっていた(社長報告)。
+//
+// 新: 近距離も**重みで引く**。押しのけにもCDを付け、三段突き(v0.25.3516で下限0=近距離でも候補)と
+// 混ぜる。両方CD中なら `null` を返し、呼び出し側は中立の射撃サイクルへ落ちる
+// (= バス停は後退しながら撃つ。密着し続けても3通りの答えが返る)。
+
+/** 押しのけのクールダウン(ms)。0だと「密着=押しのけ」の1本道に戻るための最低限の間隔。 */
+export const BR_PUSH_CD_MS = 2500;
+/** 近距離の重み。三段突きの方が重い=密着時の主役を「読む価値のある技」側へ寄せる。 */
+export const BR_CLOSE_TRIPLE_WEIGHT = 60;
+export const BR_CLOSE_PUSH_WEIGHT = 40;
+
+export type BrCloseMove = 'triple' | 'push';
+
+/**
+ * 近距離で出す技を重みで引く。CD中のものは候補から外す。
+ * どちらも撃てない時は `null`(=呼び出し側は中立の射撃サイクルへ落ちる)。
+ * `rand` は注入式(0<=rand()<1想定)=テストで決定的に固定できる(pickBrShotPatternと同じ作法)。
+ */
+export const pickBrCloseMove = (
+  rand: () => number, tripleReady: boolean, pushReady: boolean,
+): BrCloseMove | null => {
+  const pool: { move: BrCloseMove; w: number }[] = [];
+  if (tripleReady) pool.push({ move: 'triple', w: BR_CLOSE_TRIPLE_WEIGHT });
+  if (pushReady) pool.push({ move: 'push', w: BR_CLOSE_PUSH_WEIGHT });
+  if (pool.length === 0) return null;
+  const total = pool.reduce((a, e) => a + e.w, 0);
+  let r = rand() * total;
+  for (const e of pool) {
+    r -= e.w;
+    if (r < 0) return e.move;
+  }
+  return pool[pool.length - 1].move; // 浮動小数の端(rand()が1に極めて近い等)の保険
+};

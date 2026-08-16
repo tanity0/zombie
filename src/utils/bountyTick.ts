@@ -87,6 +87,8 @@ import { isCounterablePhase, phaseJustChanged } from './bossScript';
 // §6.38 B2b: distToSegmentはgeometry.ts(依存ゼロ)から直接import(levelUpGate.ts経由をやめた)。
 // levelUpGate.tsが賞金首の技の実寸法をbountyTick.tsからimportする際、逆import(循環)を作らないため。
 import { distToBandRect } from './geometry';
+// v0.25.3517: 近距離の技選択(押しのけ1本道の解消)。重み・CDは bountyShots.ts が唯一の出どころ。
+import { pickBrCloseMove, BR_PUSH_CD_MS } from './bountyShots';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { rectsOverlap } from '../world/obstacles';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
@@ -264,6 +266,9 @@ export interface BountyTickState {
   // 管理**する(社長裁定「置き場所はBountyTickState・activeId切替で消えてよい」)。gameTime基準・
   // 初期値0=初回は即撃てる。
   tripleReadyAt: number;
+  // v0.25.3517(社長指示「近接も重み変えて」): 押しのけにもCDを持たせる(旧はCDなし=密着すると
+  // 押しのけしか返ってこない1本道だった)。gameTime基準・初期値0=初回は即出せる。
+  pushReadyAt: number;
   // 現在の段(br-triple-1/2/3)が始まった gameTime(命中判定=突き出しの末尾90msの計測起点)。
   tripleStepStartAt: number;
   // 現在の段で既に命中判定(hitCapsule)を1回積んだか(多段防止)。
@@ -278,7 +283,7 @@ export const createBountyTickState = (): BountyTickState => ({
   suiuHopIdx: 0, suiuTx: 0, suiuTy: 0,
   brPattern: null, brPrevPattern: null, brShotsRemaining: 0, brCycleEndAt: 0,
   spinKey: 0, spinX0: 0, spinY0: 0, spinUx: 0, spinUy: 0, whip360Hit: false,
-  tripleReadyAt: 0, tripleStepStartAt: 0, tripleHitFired: false,
+  tripleReadyAt: 0, pushReadyAt: 0, tripleStepStartAt: 0, tripleHitFired: false,
   tripleLungeX0: 0, tripleLungeY0: 0, tripleLungeUx: 0, tripleLungeUy: 0, tripleLungeStartAt: 0,
 });
 const resetBountyRunState = (s: BountyTickState): void => {
@@ -286,7 +291,7 @@ const resetBountyRunState = (s: BountyTickState): void => {
   s.suiuHopIdx = 0; s.suiuTx = 0; s.suiuTy = 0;
   s.spinKey = 0; s.spinX0 = 0; s.spinY0 = 0; s.spinUx = 0; s.spinUy = 0; s.whip360Hit = false;
   // §6.38 v12: activeId切替(=別個体を制御し直す)ではCDも含めて消えてよい(社長裁定)。
-  s.tripleReadyAt = 0; s.tripleStepStartAt = 0; s.tripleHitFired = false;
+  s.tripleReadyAt = 0; s.pushReadyAt = 0; s.tripleStepStartAt = 0; s.tripleHitFired = false;
   s.tripleLungeX0 = 0; s.tripleLungeY0 = 0; s.tripleLungeUx = 0; s.tripleLungeUy = 0; s.tripleLungeStartAt = 0;
   resetBrShotCycle(s);
 };
@@ -490,15 +495,35 @@ const tickRanged = (
       s.escortsSummoned = true;
       summonBountyEscorts(bounty, newGameTime);
     }
+    // ★v0.25.3517(社長指示「近接も重み変えて / 押しのけしか出ないせいで、倒すのが簡単になってる」):
+    // 近距離は**重みで引く**(押しのけ / 三段突き)。どちらもCD中なら何も返さず、下の中立射撃へ落ちる
+    // (=後退しながら撃つ)。旧実装は押しのけをCDなしで100%返しており、密着すると答えが1つしか
+    // 無い=読む対象が無い状態だった。**押しのけの防御反応としての性格は残す**(重み40で最頻ではある)。
     if (dist <= BR_PUSH_RANGE) {
-      sfx.alert();
-      const ang = Math.atan2(pcy - bcy, pcx - bcx);
-      patch.aiFromX = bcx; patch.aiFromY = bcy;
-      patch.aiTargetX = bcx + Math.cos(ang) * BR_PUSH_RANGE_PX;
-      patch.aiTargetY = bcy + Math.sin(ang) * BR_PUSH_RANGE_PX;
-      patch.bossState = 'br-push-windup';
-      patch.bossStateUntil = newGameTime + BR_PUSH_WINDUP_MS;
-      return;
+      const closeMove = pickBrCloseMove(
+        Math.random,
+        newGameTime >= s.tripleReadyAt,
+        newGameTime >= s.pushReadyAt,
+      );
+      if (closeMove === 'triple') {
+        sfx.alert();
+        patch.bossState = 'br-triple-windup';
+        patch.bossStateUntil = newGameTime + BR_TRIPLE_WINDUP_MS;
+        s.tripleReadyAt = newGameTime + BR_TRIPLE_CD_MS; // 選択時に課金(中断されても払い戻さない)
+        return;
+      }
+      if (closeMove === 'push') {
+        sfx.alert();
+        const ang = Math.atan2(pcy - bcy, pcx - bcx);
+        patch.aiFromX = bcx; patch.aiFromY = bcy;
+        patch.aiTargetX = bcx + Math.cos(ang) * BR_PUSH_RANGE_PX;
+        patch.aiTargetY = bcy + Math.sin(ang) * BR_PUSH_RANGE_PX;
+        patch.bossState = 'br-push-windup';
+        patch.bossStateUntil = newGameTime + BR_PUSH_WINDUP_MS;
+        s.pushReadyAt = newGameTime + BR_PUSH_CD_MS; // 三段突きと同じ「選択時に課金」の作法
+        return;
+      }
+      // 両方CD中=このtickは技を出さない。下の中立(kite+射撃サイクル)へ落ちる。
     }
     if (newGameTime >= (bounty.mimirLaserReadyAt ?? 0) && dist > BR_KITE_MIN) {
       sfx.alert();
