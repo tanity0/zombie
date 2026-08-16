@@ -83,7 +83,11 @@ export const swordSwingPose = (style: SwordSwingStyle, progress: number): SwordS
       : [160 * Math.PI / 180, -30 * Math.PI / 180];
   return {
     angleOffset: lerp(start, end, t),
-    pushPx: Math.sin(Math.PI * t) * 10,
+    // ★柄の押し出し(社長指示v0.25.3524「本体と剣**も**踏み込みたい」): 10→34px。
+    // 本体の踏み込み(swordLunge.ts)と対で「剣も前へ出る」ぶん。sin山なので**振りの頭で0・
+    // 中腹で最大・振り切りで0**=加減速が入っている(慣性の掟)。判定には一切影響しない絵だけの値。
+    // 小さいと動きが読めない(CLAUDE.md「動きは大きく」)ので、まず大きめに置いて実機で絞る。
+    pushPx: Math.sin(Math.PI * t) * 34,
     scaleMult: 1 + Math.sin(Math.PI * t) * 0.08,
   };
 };

@@ -58,6 +58,8 @@ import { choreographyRecoverMs, planBossChoreography, type ChoreographyBoss } fr
 // (CLAUDE.md「アクターを動かす時は必ずclampRectToPlayableAreaを通す」・v0.25.2615-2617の
 // 3連続事故の再発防止・v0.25.2895)。
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
+// 剣ボスの踏み込み(社長指示v0.25.3524)。慣性つきの位置だけを返す純関数(判定には一切触らない)。
+import { planSwordLunge, isSwordLungeLive, swordLungeCenterAt } from './swordLunge';
 
 // --- 音の注入(ヘッドレスはNOOP) -------------------------------------------
 export interface AngelSfx {
@@ -97,6 +99,22 @@ const MIGUEL_HARAI_HALF_WIDTH = 40;
 // ★振り速度2倍(社長指示v0.25.2885): 220→110。判定の持続窓も半分になる=技そのものが速い。
 // **pixiScene.ts の同名定数と必ず同値に保つこと**(手写しの重複。ズレると剣が固まる/先に振り終わる)。
 const MIGUEL_HARAI_ACTIVE_MS = 110;
+// ★剣ボスの踏み込み(社長指示v0.25.3524「本体と剣も踏み込みたい。(もちろん慣性は忘れずに)」)。
+// 動機と幾何は src/utils/swordLunge.ts の頭に書いた(剣が判定に全く届いていなかった実測)。
+// **判定・射程・溜め時間は一切変えない**=難易度は下げない。動くのは本体だけ。
+//
+// 先行時間: 溜めの**最後の180ms**から踏み出し、振り切り(実行の終わり)で止まる。
+// 実行だけ(110〜130ms)で150px動かすと瞬間移動に見えるため、人が斬る前に足を出すのと同じ形にした。
+const ANGEL_LUNGE_LEAD_MS = 180;
+// ミゲル 払い/縦払い: 詰める先=帯の中点(=狙いをロックした点)。そこから80px手前に立つ(剣を振る間合い)。
+// 上限150pxは「踏み込みであって突進ではない」ための頭打ち(踏み込み専用技のdashと役割が被らないように)。
+const MIGUEL_LUNGE_STANDOFF_PX = 80;
+const MIGUEL_LUNGE_MAX_PX = 150;
+// ウリ 大薙ぎ: 詰める先=帯の**始点**(=内径の位置)。
+// ★上限を内径の半分にしてあるのは、**「懐が安全」がこの技の主題**(§6.28-17)だから——
+// 内径の奥まで踏み込むと、その主題が実機で読めなくなる。半分までなら、詰めた後も前方に懐が残る。
+const URI_LUNGE_STANDOFF_PX = 40;
+const URI_LUNGE_MAX_FRAC = 0.5;
 const MIGUEL_ORBIT_MARGIN = 20;
 const MIGUEL_ORBIT_SPEED = 70;
 const MIGUEL_MELEE_DASH_MS = 1000;
@@ -571,7 +589,26 @@ export const runMiguelTick = (
       s.miguelVolley.nextShotAt = newGameTime; s.miguelVolley.shots = 0;
     }
   } else if (st === 'harai-windup' || st === 'tate-windup') {
-    // 溜め: 本体静止・カウンター可能。溜め終了で実行へ。
+    // 溜め: カウンター可能。溜め終了で実行へ。
+    // ★踏み込み(社長指示v0.25.3524): 溜めの**最後の180ms**で1回だけ計画を立て、以後は時計から
+    // 位置を引く。判定(aiFrom/aiTarget)はロック済みで**1ミリも動かさない**——動くのは本体だけ。
+    const lungeMove = st === 'harai-windup' ? 'harai' : 'tate';
+    if (!isSwordLungeLive(miguel.bossLunge, lungeMove, newGameTime)
+      && (miguel.bossStateUntil ?? newGameTime) - newGameTime <= ANGEL_LUNGE_LEAD_MS) {
+      const lfx = miguel.aiFromX ?? mcx, lfy = miguel.aiFromY ?? mcy;
+      const ltx = miguel.aiTargetX ?? mcx, lty = miguel.aiTargetY ?? mcy;
+      const planned = planSwordLunge(
+        lungeMove, mcx, mcy, (lfx + ltx) / 2, (lfy + lty) / 2,
+        MIGUEL_LUNGE_STANDOFF_PX, MIGUEL_LUNGE_MAX_PX,
+        newGameTime, ANGEL_LUNGE_LEAD_MS + MIGUEL_HARAI_ACTIVE_MS,
+      );
+      if (planned !== null) patch.bossLunge = planned;
+    }
+    const liveLunge = patch.bossLunge ?? miguel.bossLunge;
+    if (isSwordLungeLive(liveLunge, lungeMove, newGameTime)) {
+      const lc = swordLungeCenterAt(liveLunge, newGameTime);
+      patch.x = lc.x - miguel.width / 2; patch.y = lc.y - miguel.height / 2;
+    }
     const { overlap, counterActive } = bodyOverlapNow(miguel);
     if (overlap && counterActive) {
       miguelCounterHit(mcx, mcy);
@@ -581,6 +618,12 @@ export const runMiguelTick = (
       sfx.sweep();
     }
   } else if (st === 'harai' || st === 'tate') {
+    // ★踏み込みの続き(v0.25.3524): 溜めの終盤で始めた1本の動きを、振り切りまで同じ計画で出し切る
+    // (状態が変わっても時計は繋がっているので、境目で速度が飛ばない=慣性が途切れない)。
+    if (isSwordLungeLive(miguel.bossLunge, st, newGameTime)) {
+      const lc = swordLungeCenterAt(miguel.bossLunge, newGameTime);
+      patch.x = lc.x - miguel.width / 2; patch.y = lc.y - miguel.height / 2;
+    }
     // 実行: ロック済みライン上のみ判定(点-線分距離のカプセル)。
     const fx0 = miguel.aiFromX ?? mcx, fy0 = miguel.aiFromY ?? mcy;
     const tx0 = miguel.aiTargetX ?? mcx, ty0 = miguel.aiTargetY ?? mcy;
@@ -1827,6 +1870,25 @@ export const runUriTick = (
       }
     }
   } else if (st === 'sweep-windup') {
+    // ★踏み込み(社長指示v0.25.3524): 詰める先は**帯の始点**(=内径の位置)。大薙ぎは剣85pxに対して
+    // 判定が内径140/90pxから始まる=**剣が内径の中で止まっていて判定に一度も触れていなかった**。
+    // 上限は内径の半分(URI_LUNGE_MAX_FRAC)——「懐が安全」がこの技の主題なので、詰めた後も懐を残す。
+    if (!isSwordLungeLive(uri.bossLunge, 'sweep', newGameTime)
+      && (uri.bossStateUntil ?? newGameTime) - newGameTime <= ANGEL_LUNGE_LEAD_MS) {
+      const lfx = uri.aiFromX ?? ucx, lfy = uri.aiFromY ?? ucy;
+      const innerR = Math.hypot(lfx - ucx, lfy - ucy); // = uriSweepInnerRadius(phase)(ロック時に焼いた値)
+      const planned = planSwordLunge(
+        'sweep', ucx, ucy, lfx, lfy,
+        URI_LUNGE_STANDOFF_PX, innerR * URI_LUNGE_MAX_FRAC,
+        newGameTime, ANGEL_LUNGE_LEAD_MS + URI_SWEEP_ACTIVE_MS,
+      );
+      if (planned !== null) patch.bossLunge = planned;
+    }
+    const liveLunge = patch.bossLunge ?? uri.bossLunge;
+    if (isSwordLungeLive(liveLunge, 'sweep', newGameTime)) {
+      const lc = swordLungeCenterAt(liveLunge, newGameTime);
+      patch.x = lc.x - uri.width / 2; patch.y = lc.y - uri.height / 2;
+    }
     const { overlap, counterActive } = bodyOverlapNow(uri);
     if (overlap && counterActive) {
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
@@ -1834,6 +1896,11 @@ export const runUriTick = (
       patch.bossState = 'sweep'; patch.bossStateUntil = newGameTime + URI_SWEEP_ACTIVE_MS;
     }
   } else if (st === 'sweep') {
+    // ★踏み込みの続き(v0.25.3524): 溜めの終盤で始めた1本の動きを振り切りまで出し切る。
+    if (isSwordLungeLive(uri.bossLunge, 'sweep', newGameTime)) {
+      const lc = swordLungeCenterAt(uri.bossLunge, newGameTime);
+      patch.x = lc.x - uri.width / 2; patch.y = lc.y - uri.height / 2;
+    }
     // 始点(aiFromX/Y)は溜め開始時に既に内径ぶん前へ出してある(通常のカプセル判定=distToSegment)。
     const fx0 = uri.aiFromX ?? ucx, fy0 = uri.aiFromY ?? ucy, tx0 = uri.aiTargetX ?? ucx, ty0 = uri.aiTargetY ?? ucy;
     const pr = Math.max(player.width, player.height) / 2;

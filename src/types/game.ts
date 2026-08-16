@@ -5,6 +5,7 @@
 import type { MolotovCycleState } from '../utils/molotov';
 import type { FirstAidKitState } from '../utils/firstAidKit';
 import type { AvatarId } from '../data/avatars'; // アバターシステム(試験・第1弾)。依存ゼロの純データモジュール(循環しない)。
+import type { SwordLungePlan } from '../utils/swordLunge'; // 剣ボスの踏み込み計画(依存ゼロの純関数モジュール=循環しない)。
 
 // Game state types
 export type GameState = 'title' | 'menu' | 'loading' | 'playing' | 'paused' | 'gameOver' | 'victory' | 'returned' | 'ending';
@@ -798,6 +799,11 @@ export interface Enemy {
   // 作らない・v6 C-1の掟)。固定長のwindupはbossStateUntilだけで足りるため未設定のままでよい。
   bossWindupStartAt?: number;
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
+  // 剣を振るボスの「踏み込み」(社長指示v0.25.3524)。判定はロック済みで動かないまま、**本体だけ**を
+  // 判定の手前まで慣性つきで詰める(=剣の絵が判定に届くようにする。難易度は変えない)。
+  // 計画は技の溜めの終盤で1回だけ立て、以後は時計から位置を引く。**持ち時間で自然に切れる**ので、
+  // 技が中断される多数の出口で消して回る必要が無い(src/utils/swordLunge.ts の掟)。
+  bossLunge?: SwordLungePlan;
   // バス停(bounty-ranged)のポツポツ撃ちの直近発射時刻(gameTime)。描画専用=構えの標識を出す合図
   // (社長指示v0.25.3443「弾はバス停の先から」・発射起点はbountyTick側)。判定には使わない。
   lastRangedShotAt?: number;
