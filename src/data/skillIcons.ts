@@ -102,15 +102,20 @@ export const SKILL_ICON_ORDER: readonly SkillKey[] = [
  *   101=爆撃(爆撃機が爆弾を落とす) / 102=防衛(ブーメランが周回する紋章) / 103=使役(従える兵士) /
  *   104=守護霊(青白い人型の霊)。
  *
- * ★守護霊(`guardian-spirit`)は**シートの38種に入っていない**(POI3種と同じ扱い=単体ファイル)。
- *   関連キーの `ghost-helper` / `ghost-slayer` は別スキルなので、ここには**足していない**
- *   (絵が来たら同じ形で1行足す)。
+ * ★守護霊の3種(`guardian-spirit` / `ghost-helper` / `ghost-slayer`)も**シートの38種に入っていない**
+ *   (POI3種と同じ扱い=単体ファイル)。後2つは原画の色違い(下記)。
  */
 export const SKILL_SINGLE_ICON: Partial<Record<SkillKey, string>> = {
   'poi-bombing': 'skill/poi-bombing',         // 101 爆撃
   'poi-guard': 'skill/poi-guard',             // 102 防衛
   'poi-thrall': 'skill/poi-thrall',           // 103 使役
-  'guardian-spirit': 'skill/guardian-spirit', // 104 守護霊
+  'guardian-spirit': 'skill/guardian-spirit', // 104 守護霊(社長支給の原画)
+  // ★守護霊の色違い(社長指示v0.25.3503「これは守護霊のを色違いで」)。
+  // 原画から `scripts/recolor-ghost-icons.py` で生成する(明暗・彩度・形・透明度はそのまま、
+  // 色相だけを目標色へ**揃える**。回すと縁のアンチエイリアスの少数派色相が飛んで斑点になる)。
+  // 色の意味: 有志=緑(協力) / 猛者=金(精鋭。このプロジェクトの金=宿敵・金箱と同じ「格上」の色)。
+  'ghost-helper': 'skill/ghost-helper',       // 守護霊(有志)
+  'ghost-slayer': 'skill/ghost-slayer',       // 守護霊(猛者)
 };
 
 /** 単体ファイルのアイコン名(無ければ null)。 */

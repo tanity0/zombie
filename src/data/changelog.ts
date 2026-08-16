@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3504',
+    items: [
+      '守護霊(有志)と守護霊(猛者)のアイコンが付きました。守護霊の色違いで、有志は緑・猛者は金です。',
+    ],
+  },
+  {
     version: '0.25.3503',
     items: [
       'ゲーム内容の変更はありません(開発用オートプレイが、緑の卵には近づかず、赤くなった卵だけを割るようになりました)。',
