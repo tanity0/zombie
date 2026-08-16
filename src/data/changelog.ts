@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3531',
+    items: [
+      'ゲーム内容の変更はありません(記録の訂正のみ)。',
+    ],
+  },
+  {
     version: '0.25.3530',
     items: [
       'リザルトのAIディレクター欄に「戦力マージン」が出るようになりました(ゲーム内容の変更はありません)。',
