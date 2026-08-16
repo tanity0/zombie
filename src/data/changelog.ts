@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3503',
+    items: [
+      'ゲーム内容の変更はありません(開発用オートプレイが、緑の卵には近づかず、赤くなった卵だけを割るようになりました)。',
+    ],
+  },
+  {
     version: '0.25.3502',
     items: [
       '守護霊にも専用のドット絵アイコンが付きました。',
