@@ -219,7 +219,11 @@ const GameHUD: React.FC = () => {
           right: 'max(env(safe-area-inset-right), 12px)'
         }}
       >
-        🔩 {player.straps}
+        {/* v0.25.3509(社長支給): スクラップは絵文字ではなく専用アイコン。数字とベースラインを揃える。 */}
+        <span className="inline-flex items-center gap-1">
+          <img src={spritePath('scrap-icon')} alt="" className="w-[15px] h-[15px] object-contain shrink-0" style={{ imageRendering: 'pixelated' }} draggable={false} />
+          {player.straps}
+        </span>
       </div>
       <EventQuestPill />
 

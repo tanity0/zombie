@@ -84,7 +84,10 @@ const UpgradeMenu: React.FC = () => {
           <h2 className="text-xl font-semibold tracking-tight text-white">レベルアップ</h2>
           <p className="text-xs text-white/60 mt-1">強化を選んでください</p>
           {/* 所持スクラップ(社長指示v0.25.3276)。リロール代の判断材料なので常時見せる。 */}
-          <span className="absolute right-4 top-5 text-[12px] text-white/75 tabular-nums">🔩 {straps}</span>
+          <span className="absolute right-4 top-5 text-[12px] text-white/75 tabular-nums inline-flex items-center gap-1">
+            <img src={spritePath('scrap-icon')} alt="" className="w-[14px] h-[14px] object-contain shrink-0" style={{ imageRendering: 'pixelated' }} draggable={false} />
+            {straps}
+          </span>
         </div>
         <div className="px-3 pb-4 flex flex-col gap-2 overflow-y-auto min-h-0 overscroll-contain touch-pan-y">
           {upgradeOptions.map(upgrade => {
@@ -168,15 +171,18 @@ const UpgradeMenu: React.FC = () => {
             }
             // 装備=特殊(level0)は金枠、通常はランク表示。scrap/heal は専用アイコン。
             const isSpecial = upgrade.type === 'equipment' && upgrade.level === 0;
-            const icon = upgrade.type === 'scrap' ? '🔩'
+            const icon = upgrade.type === 'scrap' ? '🔩' // 画像は下の iconImg 側で差し替える(絵文字はフォールバック)
               : upgrade.type === 'heal' ? '❤️'
               : upgrade.type === 'knife' ? '🔪'
               : upgrade.type === 'equipment' ? (isSpecial ? '🏯' : '🛡️')
               : upgrade.type === 'weapon' ? '⚔️' : '🔮';
             // 装備に専用アイコン素材があれば実画像、無ければ絵文字フォールバック。
-            const iconImg = upgrade.type === 'equipment' && hasEquipIcon(upgrade.equipDefId)
-              ? spritePath(equipIconName(upgrade.equipDefId!))
-              : null;
+            // v0.25.3509: スクラップ報酬のカードも専用アイコン(社長支給)。
+            const iconImg = upgrade.type === 'scrap'
+              ? spritePath('scrap-icon')
+              : upgrade.type === 'equipment' && hasEquipIcon(upgrade.equipDefId)
+                ? spritePath(equipIconName(upgrade.equipDefId!))
+                : null;
             return (
               <button
                 key={upgrade.id}

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3509',
+    items: [
+      'スクラップの表示が絵文字から専用のドット絵アイコンになりました(画面右上の所持数、レベルアップ画面の所持数、スクラップ報酬のカード)。',
+    ],
+  },
+  {
     version: '0.25.3508',
     items: [
       'ゲーム内容の変更はありません(開発用オートプレイが、デンジャーゾーンへ入る前に拠点を確保しに行くようになりました)。',

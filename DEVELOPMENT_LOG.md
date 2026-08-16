@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.3509 — スクラップUIアイコン(109)を搭載【2026-08-16 14:16 JST】
+- **社長支給**: スクラップUIのアイコン(304×256)。`public/sprites/scrap-icon.png`。
+  ※スキルの「スクラップビルダー」(v0.25.3505)とは**別物**。こちらは**資源そのものの表示**。
+- **差し替えたのは絵文字(🔩)でスクラップ資源を表していた3箇所**:
+  ①`GameHUD` 右上の所持数ピル ②`UpgradeMenu` の所持数 ③`UpgradeMenu` の**スクラップ報酬カード**の
+  アイコン(装備アイコンと同じ `iconImg` 経路へ合流させた)。
+- **触っていないもの(意図的)**:
+  - `StatsHud` の「SCRAP {n}」と `ShopMenu` ヘッダの「SCRAP」は**文字ラベル**であってアイコンではない。
+    ここを画像に替えるのはレイアウトの作り替えになるので、指示の範囲外として据え置いた。
+  - `RunHud` の消耗品アイコン `'scrap-boost': '🔩'` は**スクラップブースト(消耗品)**であって資源表示
+    ではない。消耗品の列に資源アイコンを混ぜると意味がぶれるため据え置き。**必要なら一言で差し替える。**
+- 実装メモ: 数字とベースラインを揃えるため `inline-flex items-center gap-1` で包み、
+  画像は `object-contain`(304×256=横長なので正方枠だと潰れる)+`imageRendering: pixelated`。
+- 検証: `npm run typecheck`(0エラー) / `npm run lint`(0エラー)。実機での見た目確認は社長。
+- ファイル: `public/sprites/scrap-icon.png`(新規) / `src/components/GameHUD.tsx` /
+  `src/components/UpgradeMenu.tsx` / `src/data/changelog.ts` / `package.json`
+
 ## v0.25.3508 — ボット: デンジャーへ行く前に拠点を確保する(目的に依らない関門)【2026-08-16 14:07 JST】
 - **社長指示**: 「テストは回してないので改良して」「どちらにしても、デンジャーに行く場合は拠点は取るで」。
 - **背景(v0.25.3507の実測)**: 凶悪ハンターの発生条件(`src/utils/viciousHunter.ts:28`)は
