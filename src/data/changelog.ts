@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3523',
+    items: [
+      '鞭の残像がボスに付いて回らなくなりました(押している間だけ症状が出ていた不具合)。',
+      '同じ原因で「1回だけ」の演出(命中閃・斬撃弧・花びら)が連発していたのも直りました。',
+    ],
+  },
+  {
     version: '0.25.3522',
     items: [
       '斬撃の弧が、振った場所に残るようになりました(ボスが動いてもエフェクトが付いて回りません)。',

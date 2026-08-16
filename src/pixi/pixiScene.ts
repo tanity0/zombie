@@ -3235,7 +3235,29 @@ export class PixiScene {
   // 馬乗り3段コンボの鞭スミア(fx/whip-smear-0/1/2・段対応)。コンボ段ごとに1枚のpooled sprite。
   private bountyWhipSmearSprites = new Map<string, Sprite>();
   /** v0.25.3520: 鞭の残像を「振りの開始位置」へ焼き付けるための錨(本体の移動に付いて行かせない)。 */
-  private bountyWhipSmearAnchor = new Map<string, { key: number; x: number; y: number }>();
+  private bountyWhipSmearAnchor = new Map<string, { key: string; x: number; y: number }>();
+  /**
+   * ★v0.25.3523: 技の「何回目か」を表す通し番号(bossState が変わるたびに +1)。
+   *
+   * **なぜ必要か(実バグ・社長指摘「鞭のエフェクト付いてくるなー」)**:
+   * 「1回だけ出す」「振りの頭で座標を焼く」系の演出は、**`bossStateUntil` を"その振りのID"として
+   * 使っていた**。ところが v0.25.3497 で入れた**ノックバック中の時計の一時停止**は、
+   * `bossStateUntil` を**毎フレーム delta ぶん後ろへずらす**(= 毎フレーム値が変わる)。
+   * その結果、押されている間じゅう「新しい振り」と誤認され、**毎フレーム発火・毎フレーム座標を
+   * 焼き直す**=エフェクトがボスにぴったり付いて行く、という形の事故になっていた。
+   * (押されている時=まさにボスが動く時なので、症状が一番出るのがここ。)
+   *
+   * 対策として**時計に依存しない「回」の識別子**をここで作る。`bossState`(技の名前)が変われば
+   * 次の回、変わらなければ同じ回。時計をどうずらしても影響を受けない。
+   */
+  private moveInstance = new Map<string, { state: string; n: number }>();
+  private moveInstanceNo(id: string, state: string): number {
+    const m = this.moveInstance.get(id);
+    if (m !== undefined && m.state === state) return m.n;
+    const next = { state, n: (m?.n ?? 0) + 1 };
+    this.moveInstance.set(id, next);
+    return next.n;
+  }
   /** v0.25.3520: アクラシエルの爆発破片の放射原点(爆発が始まった位置に固定=本体に引きずらせない)。 */
   private acrasielBurstOrigin = new Map<string, { key: number; x: number; y: number }>();
   /**
@@ -11907,6 +11929,7 @@ export class PixiScene {
         this.katanaArcAnchor.delete(id);
         this.bountyWhipSmearAnchor.delete(id);
         this.acrasielBurstOrigin.delete(id);
+        this.moveInstance.delete(id); // v0.25.3523: 技の回数カウンタも個体と一緒に片付ける
         const lanternSp = this.jibrilLanternSprites.get(id);
         if (lanternSp) { lanternSp.destroy(); this.jibrilLanternSprites.delete(id); }
         // v0.25.3204: 飛行中ランタン(ランス3本)のプールも個体退場と同時に破棄(討伐後の残像防止)。
@@ -14641,6 +14664,10 @@ export class PixiScene {
       const bfx = e.aiFromX ?? cx, bfy = e.aiFromY ?? cy;
       const btx = e.aiTargetX ?? cx, bty = e.aiTargetY ?? cy;
       const bs2 = e.bossState;
+      // ★v0.25.3523: 技の「回」を**毎フレーム無条件で**観測する(if分岐の中だけで呼ぶと、
+      // 同じ技が間に別の技を挟まず2回続いた時に「同じ回」と誤認して焼き直しが起きない)。
+      // dashLineTick/zoneCapsuleTick を分岐の外で呼ぶのと同じ理由=状態の遷移を1つも取りこぼさない。
+      this.moveInstanceNo(e.id, bs2 ?? '');
       const aimAng = Math.atan2(bty - bfy, btx - bfx);
       // §6.38実機FB1(社長裁定2026-08-15「小ボスの武器の扱いは城ボス/ゲートボスと同じ」・v0.25.3408):
       // **武器スプライトは技の予兆〜攻撃(硬直まで)の間だけ表示**する(boss-gun/jibrilLantern等と同じ
@@ -14724,7 +14751,7 @@ export class PixiScene {
         );
         // 斬撃弧(v0.25.3444→3455): 標識の切っ先が通る円弧。中心=握り(構え高さ)・半径=握り55+標識130。
         this.triggerBountySlashArcOnce(
-          e.id, `push:${e.bossStateUntil ?? 0}`,
+          e.id, `push:${this.moveInstanceNo(e.id, bs2 ?? '')}`,
           cx, cy - e.height * 0.15, aimAng, 170, now,
         );
       } else if (bs2 === 'br-push-recover') {
@@ -14811,7 +14838,7 @@ export class PixiScene {
         if (stepElapsed >= BR_TRIPLE_THRUST_MS) {
           // 命中閃(既存のscissor閃/br-pushの斬撃弧と同じ作法=分類②「派手さ」。段ごとに1回だけ発火)。
           this.triggerBountySlashArcOnce(
-            e.id, `triple${stepIdx}:${e.bossStateUntil ?? 0}`,
+            e.id, `triple${stepIdx}:${this.moveInstanceNo(e.id, bs2 ?? '')}`,
             cx, cy - e.height * 0.15, ang, BR_TRIPLE_REACH * 0.6, now,
           );
         }
@@ -14852,7 +14879,7 @@ export class PixiScene {
         const swingAngle = aimAng - swingDir * Math.PI * 0.4 * (1 - swingEased);
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, swingAngle, 170, 0.95 * ease.alphaMul,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
-        this.drawBountyWhipSmear(e.id, prog, cx, cy, swingAngle, 170, 0.5 + 0.5 * prog, e.bossStateUntil ?? 0);
+        this.drawBountyWhipSmear(e.id, prog, cx, cy, swingAngle, 170, 0.5 + 0.5 * prog, `${this.moveInstanceNo(e.id, bs2 ?? '')}`);
       } else if (bs2 === 'bm-combo1-recover' || bs2 === 'bm-combo2-recover') {
         // 次段へ継続するだけの中継=消滅させない(コンボが繋がっている間は鞭を出しっぱなし)。
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9,
@@ -14921,7 +14948,7 @@ export class PixiScene {
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, ang, BM_WHIP360_RADIUS, 0.98,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
         // スネア3枚を1振りの中で回す(しなり→伸び)。角度は鞭と同じ=揃える。
-        this.drawBountyWhipSmear(e.id, t, cx, cy, ang, BM_WHIP360_RADIUS, 0.85, e.bossStateUntil ?? 0);
+        this.drawBountyWhipSmear(e.id, t, cx, cy, ang, BM_WHIP360_RADIUS, 0.85, `${this.moveInstanceNo(e.id, bs2 ?? '')}`);
       } else if (bs2 === 'bm-charge-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const ease = weaponSpawnEase(Infinity, remain);
@@ -14938,10 +14965,10 @@ export class PixiScene {
         this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy + ease.dy, swingAngle, 160, 0.95 * ease.alphaMul, widthMul);
         // 閉じ切る=命中の瞬間(windup完了直前)に命中閃(fx/scissor-x-0)を初配線。
         if (sweepProg > 0.92) {
-          this.triggerBountyScissorFlashOnce(e.id, `sweep:${e.bossStateUntil ?? 0}`, (bfx + btx) / 2, (bfy + bty) / 2, aimAng, 0, now);
+          this.triggerBountyScissorFlashOnce(e.id, `sweep:${this.moveInstanceNo(e.id, bs2 ?? '')}`, (bfx + btx) / 2, (bfy + bty) / 2, aimAng, 0, now);
           // 斬撃弧(v0.25.3444→3455): 薙ぎの帯の根元(bf=振りの軸)を中心に、帯の長さを半径とする円弧。
           this.triggerBountySlashArcOnce(
-            e.id, `sweeparc:${e.bossStateUntil ?? 0}`, bfx, bfy,
+            e.id, `sweeparc:${this.moveInstanceNo(e.id, bs2 ?? '')}`, bfx, bfy,
             Math.atan2(bty - bfy, btx - bfx), Math.hypot(btx - bfx, bty - bfy), now,
           );
         }
@@ -14977,7 +15004,7 @@ export class PixiScene {
         this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy + ease.dy, 0, 160, 0.9 * ease.alphaMul, 1.0);
         // 着地=閉じた瞬間に命中閃(着地円の中心=aiTargetX/Y。leap-windup/airと同じ着地点)。
         const lx = e.aiTargetX ?? cx, ly = e.aiTargetY ?? cy;
-        this.triggerBountyScissorFlashOnce(e.id, `leap:${e.bossStateUntil ?? 0}`, lx, ly, 0, 1, now);
+        this.triggerBountyScissorFlashOnce(e.id, `leap:${this.moveInstanceNo(e.id, bs2 ?? '')}`, lx, ly, 0, 1, now);
         this.tickBountyScissorFlash(e.id, now);
       } else if (e.type === 'bounty-maiko' && !e.dormant) {
         this.drawMaikoState(view, o, e, bs2, cx, cy, bfx, bfy, btx, bty, gameTime, now);
@@ -23030,12 +23057,17 @@ export class PixiScene {
    * 動きにエフェクトもついてくるのは、おかしい。例えば、馬乗りの鞭スネアとか」):
    * 旧実装は**毎フレーム本体の現在位置(cx,cy)**へ置いていたので、ボスが動くと残像も一緒に動いていた。
    * 残像は「空中に残った軌跡」なので、**振りの開始位置に焼き付けて、そこに留める**のが正しい。
-   * `swingKey`(振りごとに変わる値=bossStateUntil等)が変わった最初のフレームだけ座標を焼き、
+   * `swingKey`(振りごとに変わる値)が変わった最初のフレームだけ座標を焼き、
    * 以後は焼いた座標で描く(latchFxと同じ「立ち上がりで撮って以後は撮り直さない」作法)。
+   *
+   * ★v0.25.3523(社長指摘「鞭のエフェクト付いてくるなー」): この `swingKey` に
+   * **`bossStateUntil` を渡していたのが穴だった**。ノックバック中の時計の一時停止(v0.25.3497)は
+   * `bossStateUntil` を毎フレームずらすので、**押されている間じゅう毎フレーム焼き直し**=
+   * 結局ボスに付いて行っていた。今は `moveInstanceNo`(時計に依存しない「技の回数」)を渡す。
    */
   private drawBountyWhipSmear(
     id: string, t01: number, gripX: number, gripY: number, angleRad: number, lengthPx: number, alpha: number,
-    swingKey: number,
+    swingKey: string,
   ) {
     const f: 0 | 1 | 2 = t01 < 0.34 ? 0 : t01 < 0.67 ? 1 : 2; // 一瞬で回す=振りの進行で3コマ
     const tex = getTexture(`fx/whip-smear-${f}`);
@@ -23195,7 +23227,7 @@ export class PixiScene {
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', btx, bty, now / 100, 58, 0.9);
       // 斬撃弧(v0.25.3444): 毬の薙ぎが振り抜けた瞬間(recover入り)に帯の軌道へ1回スタンプ。
       this.triggerBountySlashArcOnce(
-        e.id, `naginata:${bs}:${e.bossStateUntil ?? 0}`, bfx, bfy,
+        e.id, `naginata:${bs}:${this.moveInstanceNo(e.id, bs ?? '')}`, bfx, bfy,
         Math.atan2(bty - bfy, btx - bfx), Math.hypot(btx - bfx, bty - bfy), now,
       );
       return;
@@ -23241,7 +23273,7 @@ export class PixiScene {
       const petalCount = [0, 6, 9, 14][hopIdx];
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', lx, ly - 30, now / spinDiv, isFinal ? 80 : 60, 0.95);
       // 花びら: 着地(このホップ表示に入った瞬間)に1回だけ散らす(型B・派手側=バウンドごとに増量)。
-      this.triggerPetalOnce(e.id, `suiu:${bs}:${e.bossStateUntil ?? 0}`, lx, ly, petalCount, now);
+      this.triggerPetalOnce(e.id, `suiu:${bs}:${this.moveInstanceNo(e.id, bs ?? '')}`, lx, ly, petalCount, now);
       return;
     }
     if (bs === 'mk-suiu-recover') {
@@ -23274,7 +23306,7 @@ export class PixiScene {
         const dlb = Math.hypot(dxb, dyb) || 1;
         this.maikoBoomLast.set(e.id, { x: px, y: py, ux: dxb / dlb, uy: dyb / dlb });
       }
-      if (bs === 'mk-boom-out' && t >= 0.98) this.triggerPetalOnce(e.id, `boom-out:${e.bossStateUntil ?? 0}`, px, py, 6, now);
+      if (bs === 'mk-boom-out' && t >= 0.98) this.triggerPetalOnce(e.id, `boom-out:${this.moveInstanceNo(e.id, bs ?? '')}`, px, py, 6, now);
       return;
     }
     if (bs === 'mk-boom-recover') {
@@ -23283,7 +23315,7 @@ export class PixiScene {
     }
     if (bs === 'mk-repose') {
       // 型切替の舞い直し: 花びらを1回まとめて散らす(型A→B切替の合図・派手側)。
-      this.triggerPetalOnce(e.id, `repose:${e.bossStateUntil ?? 0}`, cx, cy, 16, now);
+      this.triggerPetalOnce(e.id, `repose:${this.moveInstanceNo(e.id, bs ?? '')}`, cx, cy, 16, now);
       // 技表GO: 技前=一瞬止まってふくらむ(スカッシュ)。
       const squash = squashInflateMul(gameTime - (e.bossWindupStartAt ?? gameTime));
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', idleX, idleY, orbitAng, 56 * squash, 0.95);
