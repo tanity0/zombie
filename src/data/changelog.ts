@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3515',
+    items: [
+      '訓練ステージの前方の制限ラインが、先へ進めるようになるとその場で薄れて消えるようになりました。',
+    ],
+  },
+  {
     version: '0.25.3514',
     items: [
       '訓練ステージの移動制限ラインを、左右の壁だけ・青色に変えました。',

@@ -4018,6 +4018,12 @@ export class PixiScene {
   private tutorialBoundsGfx = new Graphics();
   /** 前線(m0AdvanceLimitX)は戦闘中だけ消える=出入りするので、慣性つきでフェードさせる。 */
   private m0FrontLineAlpha = 0;
+  /**
+   * 前線の最後の位置。**消える時にその場でフェードアウトさせる**ために要る(v0.25.3515)。
+   * これが無いと `front === null` になった瞬間に描画対象ごと消えて、フェードが効かず**パッと消える**
+   * (フェードイン側だけ効いていた=CLAUDE.md「慣性」の片側落ち)。
+   */
+  private m0FrontLineX: number | null = null;
   private castleRingAlpha = 0;
   private makerGrid: Graphics | null = null; // ボスメーカーの方眼(部屋に居る時だけ生成/描画)
 
@@ -7427,8 +7433,13 @@ export class PixiScene {
         const xMin = TUTORIAL_MOVE_X_MIN_PX;
         // 前線(次の関門)。戦闘中は null=壁が外れる(m0Tutorial.m0AdvanceLimit)ので、
         // **消える/出るを慣性つきで**フェードさせる(パッと出て消えるのは禁止=CLAUDE.md 慣性の掟)。
+        // ★v0.25.3515(社長指示「進める様になったら消して」): 壁が外れた=先へ進めるようになったら
+        // 線を消す。`m0AdvanceLimitX === null` がそのまま「今は進める」なので、それを見て消す。
+        // 消え方は**その場でフェードアウト**(位置を持ち越す)。線が出る時と消える時で扱いを変えない。
         const front = s.m0AdvanceLimitX;
+        if (front !== null) this.m0FrontLineX = front;
         this.m0FrontLineAlpha += ((front !== null ? 1 : 0) - this.m0FrontLineAlpha) * 0.08;
+        if (this.m0FrontLineAlpha <= 0.02 && front === null) this.m0FrontLineX = null; // 消え切ったら忘れる
         const outerA = 0.16 + 0.08 * rPulse;
         const innerA = 0.26 + 0.10 * rPulse;
         // 色は青(社長指示v0.25.3514)。城ボス戦の赤(0xf87171/0xfecaca)と**同じ明度差の対**を選ぶ
@@ -7438,11 +7449,12 @@ export class PixiScene {
           g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 1.5, color: 0xbfdbfe, alpha: innerA * a });
         };
         line(xMin, yTop, xMin, yBot, 1); // 後ろ(スタート側)
-        if (this.m0FrontLineAlpha > 0.02 && front !== null) {
-          line(front, yTop, front, yBot, this.m0FrontLineAlpha); // 前線(関門)
+        if (this.m0FrontLineAlpha > 0.02 && this.m0FrontLineX !== null) {
+          // 前線(関門)。壁が外れている間は alpha が落ちていくので、その場で薄れて消える。
+          line(this.m0FrontLineX, yTop, this.m0FrontLineX, yBot, this.m0FrontLineAlpha);
         }
-      } else if (this.m0FrontLineAlpha !== 0) {
-        this.m0FrontLineAlpha = 0; // 別ステージへ移ったら次の訓練で0から立ち上がる
+      } else if (this.m0FrontLineAlpha !== 0 || this.m0FrontLineX !== null) {
+        this.m0FrontLineAlpha = 0; this.m0FrontLineX = null; // 別ステージへ移ったら次の訓練で0から立ち上がる
       }
     }
     // v0.25.3054: 施設フェードの適用(POI建物3種+サークル+拠点サークル+影リクエスト)。
