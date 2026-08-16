@@ -4,17 +4,44 @@
 //   「左上から右方向へ、1段ずつ下に進む順番」= 8列×5段(最終段だけ6個)= 38個。
 // この台帳は「シートの何番目がどのスキルか」だけを持つ(表示側はここを読むだけ)。
 //
-// ★画像の置き場所: public/sprites/skill/skills-sheet.png(素材が入るまで表示側は既存のまま)。
+// ★画像の置き場所: public/sprites/skill/skills-sheet.png(**まだ未投入**。入るまで表示は絵文字のまま)。
 //   同名で差し替えれば `?v=` は内容ハッシュなので自動更新される(ASSET_VERSIONの手バンプ不要)。
 //
 // ★台帳を1箇所にする理由: 装備アイコン(EQUIP_ICON_IDS)と同じ作法。並びの正がコードに1本あれば、
 //   後からアイコンを足す/差し替える時に「どの絵がどのスキルか」を探し直さなくて済む。
 import type { SkillKey } from '../types/game';
 
-/** シートの列数(1段あたりの個数)。 */
-export const SKILL_ICON_COLS = 8;
-/** シートの段数。 */
-export const SKILL_ICON_ROWS = 5;
+/**
+ * ★シートの並び方(段組み)は**画像の実寸から自動判定する**(v0.25.3499)。
+ *
+ * 理由: 社長のシートは支給のたびに段組みが変わりうる(初回=8列×5段、v0.25.3499の差し替え=1段×38列)。
+ * 「配置は一緒です」=**スキルの順番(SKILL_ICON_ORDER)は不変**だが、**何列×何段に並べたかは別の話**。
+ * ここを定数で固定すると差し替えのたびに人がコードを直す必要があり、直し忘れると全部のアイコンが
+ * ズレる(素材差し替え事故の典型)。マス目が正方形である限り、**画像の縦横比と個数から段組みは一意に
+ * 決まる**ので、読み込んだ実寸から求める。
+ */
+export const SKILL_ICON_COUNT = 38;
+
+/**
+ * 画像の実寸から段組み(列×段)を求める純関数。マス目は正方形前提。
+ * 候補は「38個が収まる段数 R=1..SKILL_ICON_COUNT」で、列 C=ceil(38/R)。
+ * そのときの縦横比 C/R が実測の縦横比に最も近いものを選ぶ。
+ */
+export const skillSheetGrid = (
+  naturalWidth: number, naturalHeight: number, count: number = SKILL_ICON_COUNT,
+): { cols: number; rows: number } => {
+  if (!(naturalWidth > 0) || !(naturalHeight > 0) || count <= 0) return { cols: count, rows: 1 };
+  const aspect = naturalWidth / naturalHeight;
+  let best = { cols: count, rows: 1 };
+  let bestErr = Infinity;
+  for (let rows = 1; rows <= count; rows++) {
+    const cols = Math.ceil(count / rows);
+    // 比の誤差は対数で測る(縦長・横長を対等に扱う)。
+    const err = Math.abs(Math.log((cols / rows) / aspect));
+    if (err < bestErr) { bestErr = err; best = { cols, rows }; }
+  }
+  return best;
+};
 
 /**
  * シートの並び(社長の番号 1〜38 の順)。index 0 = 左上。
@@ -82,18 +109,18 @@ export const hasSkillIcon = (key: SkillKey | null | undefined): boolean =>
  * boxPx = 表示したい1マスの大きさ(px)。
  */
 export const skillIconStyle = (
-  key: SkillKey, sheetUrl: string, boxPx: number,
+  key: SkillKey, sheetUrl: string, boxPx: number, cols: number, rows: number,
 ): React.CSSProperties | null => {
   const idx = SKILL_ICON_INDEX[key];
   if (idx === undefined) return null;
-  const col = idx % SKILL_ICON_COLS;
-  const row = Math.floor(idx / SKILL_ICON_COLS);
+  const col = idx % cols;
+  const row = Math.floor(idx / cols);
   return {
     width: boxPx,
     height: boxPx,
     backgroundImage: `url(${sheetUrl})`,
     // シート全体を「列数×段数」倍に拡大し、目的のマスだけを窓から見せる。
-    backgroundSize: `${boxPx * SKILL_ICON_COLS}px ${boxPx * SKILL_ICON_ROWS}px`,
+    backgroundSize: `${boxPx * cols}px ${boxPx * rows}px`,
     backgroundPosition: `${-col * boxPx}px ${-row * boxPx}px`,
     backgroundRepeat: 'no-repeat',
     imageRendering: 'pixelated',

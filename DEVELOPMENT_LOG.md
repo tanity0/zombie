@@ -1,5 +1,34 @@
 # Development Log
 
+## v0.25.3499 — スキルアイコン(1枚シート)の配線。段組みは実寸から自動判定【2026-08-16 11:22 JST】
+- **社長支給**: スキル38種のアイコンを差し替え(「ドット絵にし忘れてたので。配置は一緒です」)。
+- **★素材はまだリポジトリに入っていない**(`public/sprites/skill/skills-sheet.png` が未投入)。
+  チャットに貼られた画像をこちらからバイナリとして書き出す手段が無いため、**社長かCodexがコミット
+  する必要がある**(CLAUDE.md「Drive素材はCodexが public/ へコピーしてから使う」と同じ運用)。
+  素材が入ったコミットだけで表示が切り替わるところまで、今回で配線を済ませた。
+- **配線**: `src/utils/useSkillIconSheet.ts`(新規)がシートを1回だけ読み、`{url, cols, rows}` を返す。
+  `RunHud`(HUDのスキル欄)と `UpgradeMenu`(レベルアップの選択カード)がこれを見る。
+  **素材が無い/404の間は null を返し、表示は従来どおり絵文字**=素材未投入のまま配線して
+  「アイコンが全部空白」になる事故を構造的に防ぐ。
+- **★段組み(何列×何段か)はコードに定数で持たない**。`skillSheetGrid(naturalWidth, naturalHeight)` が
+  **画像の実寸から自動判定**する(マス目が正方形である限り、縦横比と個数38から段組みは一意)。
+  理由: 初回支給は8列×5段だったが、今回の差し替えは**1段×38列**。「配置は一緒です」は
+  **スキルの順番(SKILL_ICON_ORDER)が不変**という意味で、**並べ方は変わりうる**。定数固定だと
+  差し替えのたびに人が直す必要があり、直し忘れると全アイコンがズレる(素材差し替え事故の典型)。
+- 再レンダ規律(CLAUDE.md): 読み込みはモジュール単位で1回、`onload` 時に1回だけ `setState` する。
+  以後は再レンダを起こさない(毎フレームの購読はしていない)。
+- 機械化: `src/data/skillIcons.test.ts`(新規・10件)。台帳38件の重複なし/索引と並びの一致/
+  38×1と8×5の両方を言い当てる/解像度非依存/端の余白±数pxでも正しい/不正実寸でも落ちない/
+  切り出し位置(1番目=左上・38番目=最後・9番目が2段目の先頭)。
+- 置き場所の説明を `public/sprites/skill/README.md` に置いた(ファイル名固定・同名差し替えでOK・
+  `ASSET_VERSION` の手バンプ不要=`?v=` は内容ハッシュ)。
+- 検証: `npx vitest run src/data/skillIcons.test.ts`(10 passed) / `npm run typecheck`(0エラー) /
+  `npm run lint`(0エラー)。**実機での見た目確認は素材が入ってから**。
+- 自己点検: 憲法第4条・第5条への抵触なし(表示のみ。ゲーム挙動・湧き・難易度に一切触れていない)。
+- ファイル: `src/utils/useSkillIconSheet.ts`(新規) / `src/data/skillIcons.ts` /
+  `src/data/skillIcons.test.ts`(新規) / `src/components/RunHud.tsx` / `src/components/UpgradeMenu.tsx` /
+  `public/sprites/skill/README.md`(新規) / `src/data/changelog.ts` / `package.json` / `DEVELOPMENT_LOG.md`
+
 ## v0.25.3498 — 訓練ステージの「戦闘後にスタートへ引き戻される」を修正【2026-08-16 11:15 JST】
 - **出どころ**: テストチャットの不具合報告 `TEST_HANDOFF/results/20260816-tutorial-warp.md`
   (社長報告「攻撃喰らうとワープしちゃう」「通常敵もハンターも/強制的にスタートに戻される」)。

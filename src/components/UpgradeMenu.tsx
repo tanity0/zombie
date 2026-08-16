@@ -3,6 +3,9 @@ import { useGameStore, activeConsumableCount } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
 import { hasEquipIcon, equipIconName, equipmentById } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
+// v0.25.3499: スキルの1枚シート(入っていればドット絵アイコン、無ければ従来の絵文字)。
+import { useSkillIconSheet } from '../utils/useSkillIconSheet';
+import { skillIconStyle, hasSkillIcon } from '../data/skillIcons';
 import { SKILLS, RARITY_LABEL, skillIcon } from '../data/campaign';
 import { runBuildCapacity, rerollPrice, MAX_BANISH_PER_RUN } from '../utils/runSkillDraft';
 import type { UpgradeOption } from '../types/game';
@@ -28,6 +31,7 @@ const EquipIcon: React.FC<{ defId: string }> = ({ defId }) => {
 };
 
 const UpgradeMenu: React.FC = () => {
+  const skillSheet = useSkillIconSheet(); // v0.25.3499: 素材が無ければ null=絵文字のまま
   const upgradeOptions = useGameStore(state => state.upgradeOptions);
   const selectUpgrade = useGameStore(state => state.selectUpgrade);
   // SKILL_BUILD_REDESIGN.md §17-1点3: スキル専業レベルアップの残枠表示+リロール/バニッシュ。
@@ -103,7 +107,13 @@ const UpgradeMenu: React.FC = () => {
                     onClick={() => handleSelect(upgrade)}
                     className="flex-1 min-w-0 text-left flex items-start gap-3 active:opacity-70"
                   >
-                    <div className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10">{skillIcon(skillKey)}</div>
+                    <div className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10 overflow-hidden">
+                      {(() => {
+                        const st = skillSheet && hasSkillIcon(skillKey)
+                          ? skillIconStyle(skillKey, skillSheet.url, 36, skillSheet.cols, skillSheet.rows) : null;
+                        return st ? <span style={st} aria-hidden /> : skillIcon(skillKey);
+                      })()}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <h3 className="text-[15px] font-semibold text-white truncate">{upgrade.name}</h3>

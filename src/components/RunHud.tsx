@@ -3,6 +3,9 @@ import { shallow } from 'zustand/shallow';
 import { useGameStore } from '../store/gameStore';
 import { CONSUMABLES } from '../data/consumables';
 import { SKILLS, skillIcon } from '../data/campaign';
+// v0.25.3499: 社長支給の1枚シートが入っていればドット絵アイコン、無ければ従来の絵文字。
+import { useSkillIconSheet } from '../utils/useSkillIconSheet';
+import { skillIconStyle, hasSkillIcon } from '../data/skillIcons';
 import type { ConsumableKey } from '../types/game';
 
 // 社長指示v0.25.3298: ①装備中のランスキルを**左下**にアイコンで表示 ②強化バフ中は**その上の段**に
@@ -35,6 +38,7 @@ const UNTIL_KEYS: { key: ConsumableKey; field: 'consumableScrapUntil' | 'consuma
 ];
 
 const RunHud: React.FC = () => {
+  const skillSheet = useSkillIconSheet(); // v0.25.3499: 素材が無ければ null=絵文字のまま
   const runBuild = useGameStore(s => s.runBuild);
   // Lvの派生プリミティブ(取得/Lvアップ時にだけ変わる文字列)。
   const levelsKey = useGameStore(s => s.runBuild.map(k => s.player.skillLevels?.[k] ?? 1).join(','));
@@ -84,7 +88,11 @@ const RunHud: React.FC = () => {
               className={`relative hud-translucent rounded-lg border ${RARITY_RING[SKILLS[k].rarity]} w-6 h-6 flex items-center justify-center text-[13px] leading-none`}
               title={SKILLS[k].name}
             >
-              {skillIcon(k)}
+              {(() => {
+                const st = skillSheet && hasSkillIcon(k)
+                  ? skillIconStyle(k, skillSheet.url, 22, skillSheet.cols, skillSheet.rows) : null;
+                return st ? <span style={st} aria-hidden /> : skillIcon(k);
+              })()}
               {(levels[i] ?? 1) > 1 && (
                 <span className="absolute -top-1 -right-1 text-[8px] px-0.5 rounded bg-black/70 text-white leading-tight">
                   {levels[i]}
