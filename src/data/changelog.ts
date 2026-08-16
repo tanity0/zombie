@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3514',
+    items: [
+      '訓練ステージの移動制限ラインを、左右の壁だけ・青色に変えました。',
+    ],
+  },
+  {
     version: '0.25.3513',
     items: [
       '訓練ステージで、動ける範囲が城ボス戦と同じ細い赤ラインで見えるようになりました(中は塗りません)。次の関門の線は、戦闘中は消えて終わるとまた現れます。',

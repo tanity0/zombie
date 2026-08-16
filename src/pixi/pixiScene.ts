@@ -7419,27 +7419,24 @@ export class PixiScene {
       g.clear();
       if (s.farBackdrop === 'tutorial') {
         const rPulse = 0.5 + 0.5 * Math.sin(now / 300);
+        // v0.25.3514(社長指示「上下の線は消して。左右だけ」「青にして」):
+        // **左右の壁(縦線)だけ**を描く。上下の帯は画面の外へ出るほどの幅ではなく、線を引くと
+        // 視界を横切って景観を切ってしまうため(城ボス戦のリングも"外縁だけ"で内側は描かない)。
+        // 縦線の長さは移動できる帯の高さ(±TUTORIAL_MOVE_Y_LIMIT_PX)そのまま=「ここが端」が読める。
         const yTop = -TUTORIAL_MOVE_Y_LIMIT_PX, yBot = TUTORIAL_MOVE_Y_LIMIT_PX;
         const xMin = TUTORIAL_MOVE_X_MIN_PX;
         // 前線(次の関門)。戦闘中は null=壁が外れる(m0Tutorial.m0AdvanceLimit)ので、
         // **消える/出るを慣性つきで**フェードさせる(パッと出て消えるのは禁止=CLAUDE.md 慣性の掟)。
         const front = s.m0AdvanceLimitX;
         this.m0FrontLineAlpha += ((front !== null ? 1 : 0) - this.m0FrontLineAlpha) * 0.08;
-        // 前線が無い間(戦闘中=壁が外れている)は、上下の線を画面の先まで伸ばして「まだ続く」ことを見せる。
-        // ★ズーム引き考慮(CLAUDE.md 必須チェック): 可視域は最大引き(ZOOM_MIN_ABS)で画面の 1/0.40 倍に
-        //   広がる。`screenW` そのままだと引いた時に**線の切れ端が画面内に見えてしまう**ので、
-        //   最大引きの可視域ぶん伸ばす(さらに余裕を1画面分)。
-        const xEnd = front !== null
-          ? front
-          : s.camera.x + this.screenW / ZOOM_MIN_ABS + this.screenW;
         const outerA = 0.16 + 0.08 * rPulse;
         const innerA = 0.26 + 0.10 * rPulse;
+        // 色は青(社長指示v0.25.3514)。城ボス戦の赤(0xf87171/0xfecaca)と**同じ明度差の対**を選ぶ
+        // =意匠は揃えたまま色だけ替える(城=赤・訓練=青、で意味が読み分けられる)。
         const line = (x0: number, y0: number, x1: number, y1: number, a: number) => {
-          g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 4, color: 0xf87171, alpha: outerA * a });
-          g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 1.5, color: 0xfecaca, alpha: innerA * a });
+          g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 4, color: 0x60a5fa, alpha: outerA * a });
+          g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 1.5, color: 0xbfdbfe, alpha: innerA * a });
         };
-        line(xMin, yTop, xEnd, yTop, 1); // 上
-        line(xMin, yBot, xEnd, yBot, 1); // 下
         line(xMin, yTop, xMin, yBot, 1); // 後ろ(スタート側)
         if (this.m0FrontLineAlpha > 0.02 && front !== null) {
           line(front, yTop, front, yBot, this.m0FrontLineAlpha); // 前線(関門)
