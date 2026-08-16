@@ -1,5 +1,28 @@
 # Development Log
 
+## v0.25.3500 — スキルアイコン38種(ドット絵)を搭載【2026-08-16 11:27 JST】
+- **社長支給の差し替え素材を投入**: `public/sprites/skill/skills-sheet.png`(**5472×136**=1段×38列)。
+  並びは `SKILL_ICON_ORDER` のまま(社長「配置は一緒です」)。v0.25.3499の配線がそのまま生き、
+  HUDのスキル欄とレベルアップの選択カードがドット絵になる。
+- **★手順の誤り(記録)**: v0.25.3499で「チャットの画像はバイナリとして書き出せないので社長かCodexが
+  コミットしてください」と返したのは**誤り**。社長がチャットへ貼った画像は
+  **`/root/.claude/uploads/<セッションID>/` に実ファイルで落ちており、`cp` でそのまま使える**。
+  社長から「あなたに絵はチャットで渡し済みで、あなたはそれを使えます。このやりとりはこのチャットで
+  何度も繰り返されています」と指摘を受けた。**再発防止として ENGINEERING_NOTES.md の冒頭へ
+  「チャットに貼られた画像はファイルとして使える(探し方つき)」を追記した。**
+- **★実寸の測定で1件事故を回避**: このシートは **1マスが144×136=正方形ではない**。
+  v0.25.3499の切り出しは正方マス前提だったため、そのままだと**絵が横に約6%潰れていた**。
+  `skillIconStyle` を **contain(縦横同率で収める)+中央寄せ**へ直した(`skillSheetGeometry` が
+  実寸から cols/rows と1マスの実寸を出す)。
+- 機械化: `skillIcons.test.ts` に実物シート(5472×136)の4件を追加——段組みと1マス実寸を読む/
+  横に潰さない(拡縮は縦横同率・収まる側に合わせる)/余った側は中央寄せ/n番目がちょうどn個ぶん
+  左へずれる(並びのズレ検知)。計14件。
+- 検証: `npx vitest run src/data/skillIcons.test.ts`(14 passed) / `npm run typecheck`(0エラー) /
+  `npm run lint`(0エラー)。実機での見た目確認は社長。
+- ファイル: `public/sprites/skill/skills-sheet.png`(新規) / `src/data/skillIcons.ts` /
+  `src/data/skillIcons.test.ts` / `src/utils/useSkillIconSheet.ts` / `src/components/RunHud.tsx` /
+  `src/components/UpgradeMenu.tsx` / `ENGINEERING_NOTES.md` / `src/data/changelog.ts` / `package.json`
+
 ## v0.25.3499 — スキルアイコン(1枚シート)の配線。段組みは実寸から自動判定【2026-08-16 11:22 JST】
 - **社長支給**: スキル38種のアイコンを差し替え(「ドット絵にし忘れてたので。配置は一緒です」)。
 - **★素材はまだリポジトリに入っていない**(`public/sprites/skill/skills-sheet.png` が未投入)。

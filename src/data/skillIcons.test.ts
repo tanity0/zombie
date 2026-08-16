@@ -3,7 +3,8 @@
 // ここを固定値にすると差し替えのたびに人が直す必要があり、直し忘れると全アイコンがズレる。
 import { describe, it, expect } from 'vitest';
 import {
-  SKILL_ICON_ORDER, SKILL_ICON_INDEX, SKILL_ICON_COUNT, skillSheetGrid, skillIconStyle, hasSkillIcon,
+  SKILL_ICON_ORDER, SKILL_ICON_INDEX, SKILL_ICON_COUNT, skillSheetGrid, skillSheetGeometry,
+  skillIconStyle, hasSkillIcon,
 } from './skillIcons';
 
 describe('SKILL_ICON_ORDER(台帳)', () => {
@@ -41,15 +42,46 @@ describe('skillSheetGrid(実寸→段組み)', () => {
 });
 
 describe('skillIconStyle(切り出し)', () => {
+  // 正方マスのシート(比較しやすいので基本形はこちらで固定)。
+  const SQ = skillSheetGeometry(38 * 64, 64);
   it('1番目は左上・38番目は最後のマスを指す(1段×38列)', () => {
-    const first = skillIconStyle(SKILL_ICON_ORDER[0], '/x.png', 32, 38, 1)!;
+    const first = skillIconStyle(SKILL_ICON_ORDER[0], '/x.png', 32, SQ)!;
     expect(first.backgroundPosition).toBe('0px 0px');
-    const last = skillIconStyle(SKILL_ICON_ORDER[37], '/x.png', 32, 38, 1)!;
+    const last = skillIconStyle(SKILL_ICON_ORDER[37], '/x.png', 32, SQ)!;
     expect(last.backgroundPosition).toBe(`${-37 * 32}px 0px`);
     expect(last.backgroundSize).toBe(`${38 * 32}px ${1 * 32}px`);
   });
   it('8列×5段では9番目が2段目の先頭になる', () => {
-    const ninth = skillIconStyle(SKILL_ICON_ORDER[8], '/x.png', 32, 8, 5)!;
+    const grid = skillSheetGeometry(8 * 64, 5 * 64);
+    const ninth = skillIconStyle(SKILL_ICON_ORDER[8], '/x.png', 32, grid)!;
     expect(ninth.backgroundPosition).toBe(`0px ${-1 * 32}px`);
+  });
+
+  // ★実物のシート(v0.25.3500・5472×136)は**マスが正方形ではない**(144×136)。
+  // 正方形の窓へ強制すると横に潰れるので、contain(比を保って収める)+中央寄せであること。
+  describe('マスが正方形でないシート(実物=5472×136)', () => {
+    const REAL = skillSheetGeometry(5472, 136);
+    it('段組みと1マスの実寸を正しく読む', () => {
+      expect(REAL).toEqual({ cols: 38, rows: 1, cellW: 144, cellH: 136 });
+    });
+    it('横に潰さない: 拡縮は縦横同率で、はみ出す側ではなく収まる側に合わせる', () => {
+      const st = skillIconStyle(SKILL_ICON_ORDER[0], '/x.png', 36, REAL)!;
+      const scale = 36 / 144; // 横の方が大きいので横に合わせる=contain
+      expect(st.backgroundSize).toBe(`${38 * 144 * scale}px ${136 * scale}px`);
+    });
+    it('余った側(この場合は縦)は中央へ寄せる', () => {
+      const st = skillIconStyle(SKILL_ICON_ORDER[0], '/x.png', 36, REAL)!;
+      const scale = 36 / 144;
+      const padY = (36 - 136 * scale) / 2;
+      expect(st.backgroundPosition).toBe(`0px ${padY}px`);
+      expect(padY).toBeGreaterThan(0);
+    });
+    it('n番目のマスがちょうどn個ぶん左へずれる(並びのズレ検知)', () => {
+      const scale = 36 / 144;
+      for (const i of [1, 17, 37]) {
+        const st = skillIconStyle(SKILL_ICON_ORDER[i], '/x.png', 36, REAL)!;
+        expect(st.backgroundPosition).toBe(`${-i * 144 * scale}px ${(36 - 136 * scale) / 2}px`);
+      }
+    });
   });
 });

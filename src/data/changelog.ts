@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3500',
+    items: [
+      'スキル38種のアイコンが新しいドット絵になりました(HUDのスキル欄とレベルアップの選択カード)。',
+    ],
+  },
+  {
     version: '0.25.3499',
     items: [
       'スキルのアイコンを絵文字から専用のドット絵に差し替える準備が入りました(画像素材が入り次第、HUDのスキル欄とレベルアップの選択カードに出ます)。',

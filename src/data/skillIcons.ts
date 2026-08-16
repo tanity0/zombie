@@ -4,7 +4,7 @@
 //   「左上から右方向へ、1段ずつ下に進む順番」= 8列×5段(最終段だけ6個)= 38個。
 // この台帳は「シートの何番目がどのスキルか」だけを持つ(表示側はここを読むだけ)。
 //
-// ★画像の置き場所: public/sprites/skill/skills-sheet.png(**まだ未投入**。入るまで表示は絵文字のまま)。
+// ★画像の置き場所: public/sprites/skill/skills-sheet.png(v0.25.3500で投入済み・5472×136=1段×38列)。
 //   同名で差し替えれば `?v=` は内容ハッシュなので自動更新される(ASSET_VERSIONの手バンプ不要)。
 //
 // ★台帳を1箇所にする理由: 装備アイコン(EQUIP_ICON_IDS)と同じ作法。並びの正がコードに1本あれば、
@@ -108,20 +108,41 @@ export const hasSkillIcon = (key: SkillKey | null | undefined): boolean =>
  * 表示側は `<div style={skillIconStyle(key, sheetUrl, px)} />` で置ける(画像を分割せずに済む)。
  * boxPx = 表示したい1マスの大きさ(px)。
  */
+/** シートの実測値。cellW/cellHは1マスの実寸(**正方形とは限らない**)。 */
+export interface SkillSheetGeometry {
+  cols: number;
+  rows: number;
+  cellW: number;
+  cellH: number;
+}
+
+/** 実寸から段組みと1マスの寸法をまとめて求める。 */
+export const skillSheetGeometry = (
+  naturalWidth: number, naturalHeight: number, count: number = SKILL_ICON_COUNT,
+): SkillSheetGeometry => {
+  const { cols, rows } = skillSheetGrid(naturalWidth, naturalHeight, count);
+  return { cols, rows, cellW: naturalWidth / cols, cellH: naturalHeight / rows };
+};
+
 export const skillIconStyle = (
-  key: SkillKey, sheetUrl: string, boxPx: number, cols: number, rows: number,
+  key: SkillKey, sheetUrl: string, boxPx: number, geo: SkillSheetGeometry,
 ): React.CSSProperties | null => {
   const idx = SKILL_ICON_INDEX[key];
   if (idx === undefined) return null;
-  const col = idx % cols;
-  const row = Math.floor(idx / cols);
+  const col = idx % geo.cols;
+  const row = Math.floor(idx / geo.cols);
+  // ★マスは正方形とは限らない(実測=144×136)。**contain(縦横比を保って収める)**で拡縮し、
+  //   余った側は中央へ寄せる。ここを boxPx の正方形へ強制すると絵が横に潰れる。
+  const scale = Math.min(boxPx / geo.cellW, boxPx / geo.cellH);
+  const cw = geo.cellW * scale, ch = geo.cellH * scale;
+  const padX = (boxPx - cw) / 2, padY = (boxPx - ch) / 2;
   return {
     width: boxPx,
     height: boxPx,
     backgroundImage: `url(${sheetUrl})`,
-    // シート全体を「列数×段数」倍に拡大し、目的のマスだけを窓から見せる。
-    backgroundSize: `${boxPx * cols}px ${boxPx * rows}px`,
-    backgroundPosition: `${-col * boxPx}px ${-row * boxPx}px`,
+    // シート全体を同じ倍率で拡縮し、目的のマスだけを窓から見せる。
+    backgroundSize: `${geo.cols * cw}px ${geo.rows * ch}px`,
+    backgroundPosition: `${-col * cw + padX}px ${-row * ch + padY}px`,
     backgroundRepeat: 'no-repeat',
     imageRendering: 'pixelated',
   };

@@ -90,7 +90,7 @@ const RunHud: React.FC = () => {
             >
               {(() => {
                 const st = skillSheet && hasSkillIcon(k)
-                  ? skillIconStyle(k, skillSheet.url, 22, skillSheet.cols, skillSheet.rows) : null;
+                  ? skillIconStyle(k, skillSheet.url, 22, skillSheet) : null;
                 return st ? <span style={st} aria-hidden /> : skillIcon(k);
               })()}
               {(levels[i] ?? 1) > 1 && (

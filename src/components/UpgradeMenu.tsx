@@ -110,7 +110,7 @@ const UpgradeMenu: React.FC = () => {
                     <div className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10 overflow-hidden">
                       {(() => {
                         const st = skillSheet && hasSkillIcon(skillKey)
-                          ? skillIconStyle(skillKey, skillSheet.url, 36, skillSheet.cols, skillSheet.rows) : null;
+                          ? skillIconStyle(skillKey, skillSheet.url, 36, skillSheet) : null;
                         return st ? <span style={st} aria-hidden /> : skillIcon(skillKey);
                       })()}
                     </div>

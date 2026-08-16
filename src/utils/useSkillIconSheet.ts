@@ -11,12 +11,10 @@
 //     ここは画像の onload 時に1回 setState するだけで、以後は再レンダを起こさない)。
 import { useEffect, useState } from 'react';
 import { assetUrl } from '../config/assetUrl';
-import { skillSheetGrid } from '../data/skillIcons';
+import { skillSheetGeometry, type SkillSheetGeometry } from '../data/skillIcons';
 
-export interface SkillIconSheet {
+export interface SkillIconSheet extends SkillSheetGeometry {
   url: string;
-  cols: number;
-  rows: number;
 }
 
 /** 素材の置き場所(同名で差し替えれば `?v=` は内容ハッシュなので自動更新される)。 */
@@ -32,9 +30,8 @@ const startLoad = (): void => {
   started = true;
   const img = new Image();
   img.onload = () => {
-    const { cols, rows } = skillSheetGrid(img.naturalWidth, img.naturalHeight);
     state.done = true;
-    state.sheet = { url: SKILL_SHEET_URL, cols, rows };
+    state.sheet = { url: SKILL_SHEET_URL, ...skillSheetGeometry(img.naturalWidth, img.naturalHeight) };
     for (const fn of listeners) fn(state.sheet);
   };
   img.onerror = () => {
