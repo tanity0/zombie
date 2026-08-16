@@ -1,5 +1,30 @@
 # Development Log
 
+## v0.25.3512 — 自動タレットの発射間隔をLvの階段へ(現行値=Lv3=MAX)【2026-08-16 15:15 JST】
+- **社長指示**: 「自動タレットの発射間隔もレベルで下げたい。**いまの間隔をMAXとして、階段にしておいて**」。
+- **実装**: 倍率の階段 `TURRET_FIRE_INTERVAL_MULT_BY_LEVEL = [0, 1.5, 1.2, 1.0]`。
+  実値は 前方集中 **195 / 156 / 130ms**、全方位 **630 / 504 / 420ms**(Lv3=現行値のまま)。
+  - **モードごとに実数を2組置かず倍率の表1つ**にした。前方:全方位の比(約3.2倍)がLvで崩れないため、
+    かつ調整が1行で済むため。
+- **★Lv差の規則を1本化した**: `src/utils/turretTuning.ts`(新規・依存ゼロの葉)へ
+  持続時間の表 / Lvの逆算 / 発射間隔をまとめ、`useGameLoop` は使うだけにした。
+  Lv判定が「持続時間の表」「爆発弾のLv3ゲート」「発射間隔」の3箇所に散ると、片方だけ直した時に
+  静かにズレる(このプロジェクトで何度も起きている型)。**爆発弾のLv3判定も同じ関数へ差し替えた**
+  (旧 `(turret.duration ?? 0) >= TURRET_DURATION_BY_LEVEL[3]` と結果は同一)。
+- **Lvは設置時に焼いた持続時間から逆算する**(v0.25.3482の作法を踏襲)。後からLvを上げても
+  **既に置いてあるタレットは置いた時の性能のまま**=途中で強くならない(自然)。
+- **★テストが実バグを1件捕まえた**: `?? 1` のフォールバックだと**表の0番がダミーの `0` なので
+  `level=0` で間隔0ms=無限連射**になっていた。`> 0` の判定へ修正。現状 `turretLevelFromDuration` は
+  必ず1以上を返すので到達しないが、呼び出し口が増えた時に静かに壊れる形は残さない。
+- 機械化: `turretTuning.test.ts`(新規・10件)。Lv逆算(境界の1ms手前含む)/**Lv3=現行値のまま**/
+  階段の向き/Lv1・Lv2の実値/**2モードの比が保たれる**/範囲外Lvは等倍/倍率表の単調性。
+- 台帳更新: `subWeaponUpgradeNotes.ts` のタレット行に連射の話を追記(数値は書かない規約どおり)。
+- 負荷: **1/10**(1タレットにつき1回の掛け算が増えるだけ。弾数・描画は不変)。
+- 検証: `npx vitest run src/utils/turretTuning.test.ts src/data/subWeaponUpgradeNotes.test.ts`
+  (17 passed) / `npm run typecheck`(0エラー) / `npm run lint`(0エラー)。実機確認は社長。
+- ファイル: `src/utils/turretTuning.ts`(新規) / `src/utils/turretTuning.test.ts`(新規) /
+  `src/hooks/useGameLoop.ts` / `src/data/subWeaponUpgradeNotes.ts` / `src/data/changelog.ts` / `package.json`
+
 ## v0.25.3511 — 猫耳セット(アバター)の耳を差し替え【2026-08-16 14:56 JST】
 - **社長支給**: 「ねこみみせっとアバターの画像を差し替え」。1枚のシート(232×136)に**耳2つ+尻尾**が
   並んだ形で届いた。実装は `avatar-cat-ears.png` / `avatar-cat-tail.png` の**2ファイル**なので分割した。

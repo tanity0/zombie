@@ -212,6 +212,7 @@ import {
   resistsChipKnockback
 } from '../utils/enemyUtils';
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
+import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs } from '../utils/turretTuning';
 import {
   isCounterablePhase, phaseJustChanged, BOSS_ALERT_SFX_KEY,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
@@ -501,7 +502,8 @@ const TURRET_COOLDOWN_MS = 10000;                       // 設置間隔(全Lv共
 // 社長裁定v0.25.3482「秒数を変えようかな。15秒+たまに爆発が3 / 13秒が2 / 10秒が1」:
 // Lv1=10秒 / Lv2=13秒 / Lv3=15秒。**Lv3だけ「たまに爆発」(グレネード弾10%)が付く**。
 // 旧: 全Lv 15000で「Lv2/3はTODO(暫定据置)」=買っても何も強くならない状態だった。
-const TURRET_DURATION_BY_LEVEL = [0, 10000, 13000, 15000];
+// v0.25.3512: 持続時間・Lv判定・発射間隔の階段は `src/utils/turretTuning.ts` へ一本化した
+// (3箇所に散らすと片方だけ直した時に静かにズレるため)。ここは再輸出のみ=既存の参照を壊さない。
 const TURRET_FOOT_W = 30;                               // 当たり判定幅(叩く判定/設置足元)
 const TURRET_FOOT_H = 18;                               // 当たり判定奥行(下辺=足元)
 const TURRET_PLACE_FORWARD = 24;                        // プレイヤー中心から進行方向へ置く距離
@@ -8888,7 +8890,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             // --- オート射撃(モード別スロットル)+ 前方集中の索敵スキャン。
             const mode = turret.turretMode ?? 'forward';
-            const interval = mode === 'omni' ? TURRET_OMNI_FIRE_MS : TURRET_FWD_FIRE_MS;
+            // v0.25.3512(社長指示「発射間隔もレベルで下げたい。いまの間隔をMAXとして、階段に」):
+            // 現行値(前方130ms/全方位420ms)= Lv3。Lv1/Lv2 はそのぶん遅い。
+            // Lvは**設置時に焼いた持続時間**から逆算する(後からLvを上げても既設のタレットは
+            // 置いた時の性能のまま=v0.25.3482の作法をそのまま踏襲)。
+            const turretLv = turretLevelFromDuration(turret.duration);
+            const interval = turretFireIntervalMs(mode === 'omni' ? TURRET_OMNI_FIRE_MS : TURRET_FWD_FIRE_MS, turretLv);
             const fireReady = gameTime >= (turretFireRef.current.get(turret.id) ?? 0);
             let dir: { x: number; y: number } | null = null;
             if (mode === 'omni') {
@@ -8939,7 +8946,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 全方位モードでもランチャー弾は現在のターゲット方向へ撃つ。
             // ★Lv3だけ「たまに爆発」(社長裁定v0.25.3482)。**設置時の持続時間でLv3かを判定する**
             //   (プレイヤーが後からLvを上げても、置いた時のタレットは置いた時の性能のまま=自然)。
-            const turretIsLv3 = (turret.duration ?? 0) >= TURRET_DURATION_BY_LEVEL[3];
+            const turretIsLv3 = turretLv === 3; // v0.25.3512: 上の turretLevelFromDuration と同じ1本の判定
             if (turretIsLv3 && Math.random() < TURRET_GRENADE_CHANCE) {
               addProjectile({
                 id: `proj-turret-gl-${turret.id}-${nowMs}`,

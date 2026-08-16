@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3512',
+    items: [
+      '自動タレットの連射速度がレベルで上がるようになりました。今までの速さがLv3(最速)で、Lv1・Lv2はそのぶん控えめです。設置時間の差と合わせて、レベルを上げるほど1台あたりの働きが伸びます。',
+    ],
+  },
+  {
     version: '0.25.3511',
     items: [
       'アバター「猫耳セット」の耳の絵が新しくなりました(左右が離れた形に)。尻尾は変更ありません。',

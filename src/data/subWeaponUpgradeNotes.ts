@@ -101,9 +101,10 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
   // 根拠: src/hooks/useGameLoop.ts:499 TURRET_DURATION_BY_LEVEL=[0,15000,15000,15000]
   turret: {
     // 社長裁定v0.25.3482: Lv1=10秒 / Lv2=13秒 / Lv3=15秒+たまに爆発弾。
-    // (useGameLoop.ts TURRET_DURATION_BY_LEVEL / TURRET_GRENADE_CHANCE のLv3ゲート)
-    lv2: '設置していられる時間が延びる',
-    lv3: 'さらに長持ちし、たまに爆発弾を撃つ',
+    // 社長指示v0.25.3512: 発射間隔もLvの階段(現行値=Lv3がMAX)。
+    // (src/utils/turretTuning.ts が唯一の出どころ / TURRET_GRENADE_CHANCE のLv3ゲート)
+    lv2: '設置していられる時間が延び、連射も速くなる',
+    lv3: 'さらに長持ちして連射も最速になり、たまに爆発弾を撃つ',
   },
   // 四神舞(shijin): レベルでリズムのテンポ(BPM)が上がり、こなせる手数が増える。
   // 根拠: src/config/shijin.ts:7-8 RHYTHM_BPM_BY_LEVEL=[120,100,120,140](コメントに明記)
