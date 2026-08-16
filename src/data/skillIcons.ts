@@ -93,6 +93,24 @@ export const SKILL_ICON_ORDER: readonly SkillKey[] = [
   'blood-treads',      // 38. 血の履帯
 ];
 
+/**
+ * ★1枚シートに含まれない「単体ファイル」のアイコン(v0.25.3500・社長支給 101〜103)。
+ * POI報酬の3種(爆撃/防衛/使役)は絵の縦横比がバラバラ(128×128 / 136×128 / 152×256)なので、
+ * シートへ詰めず**1枚ずつのpng**で持つ。値は `spritePath()` に渡す名前(public/sprites/<この名前>.png)。
+ *
+ * 対応は**社長の番号=支給ファイル名の番号**が正(101/102/103)。絵の中身とも一致を確認済み:
+ *   101=爆撃(爆撃機が爆弾を落とす) / 102=防衛(ブーメランが周回する紋章) / 103=使役(従える兵士)。
+ */
+export const SKILL_SINGLE_ICON: Partial<Record<SkillKey, string>> = {
+  'poi-bombing': 'skill/poi-bombing', // 101 爆撃
+  'poi-guard': 'skill/poi-guard',     // 102 防衛
+  'poi-thrall': 'skill/poi-thrall',   // 103 使役
+};
+
+/** 単体ファイルのアイコン名(無ければ null)。 */
+export const skillSingleIconName = (key: SkillKey | null | undefined): string | null =>
+  (key && SKILL_SINGLE_ICON[key]) ?? null;
+
 /** スキル→シート番号(0始まり)。台帳に無いスキル(守護霊・POI専用など)は undefined。 */
 export const SKILL_ICON_INDEX: Partial<Record<SkillKey, number>> = (() => {
   const out: Partial<Record<SkillKey, number>> = {};

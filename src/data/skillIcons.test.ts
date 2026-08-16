@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   SKILL_ICON_ORDER, SKILL_ICON_INDEX, SKILL_ICON_COUNT, skillSheetGrid, skillSheetGeometry,
-  skillIconStyle, hasSkillIcon,
+  skillIconStyle, hasSkillIcon, SKILL_SINGLE_ICON, skillSingleIconName,
 } from './skillIcons';
 
 describe('SKILL_ICON_ORDER(台帳)', () => {
@@ -83,5 +83,28 @@ describe('skillIconStyle(切り出し)', () => {
         expect(st.backgroundPosition).toBe(`${-i * 144 * scale}px ${(36 - 136 * scale) / 2}px`);
       }
     });
+  });
+});
+
+// v0.25.3500: POI報酬3種(101 爆撃 / 102 防衛 / 103 使役)は1枚シートに入らない単体ファイル。
+// 対応の正は「社長の番号=支給ファイル名の番号」。ここを取り違えると別のスキルの絵が出るので固定する。
+describe('SKILL_SINGLE_ICON(単体ファイルのアイコン)', () => {
+  it('POI報酬3種にだけ単体アイコンがある', () => {
+    expect(Object.keys(SKILL_SINGLE_ICON).sort()).toEqual(['poi-bombing', 'poi-guard', 'poi-thrall']);
+  });
+  it('101=爆撃 / 102=防衛 / 103=使役 の対応', () => {
+    expect(skillSingleIconName('poi-bombing')).toBe('skill/poi-bombing');
+    expect(skillSingleIconName('poi-guard')).toBe('skill/poi-guard');
+    expect(skillSingleIconName('poi-thrall')).toBe('skill/poi-thrall');
+  });
+  it('シート側の38種とは重ならない(二重定義でどちらが出るか分からない状態を作らない)', () => {
+    for (const key of Object.keys(SKILL_SINGLE_ICON)) {
+      expect(SKILL_ICON_ORDER).not.toContain(key);
+    }
+  });
+  it('単体アイコンを持たないスキルは null(表示側はシート→絵文字へ落ちる)', () => {
+    expect(skillSingleIconName('reaper')).toBeNull();
+    expect(skillSingleIconName(null)).toBeNull();
+    expect(skillSingleIconName(undefined)).toBeNull();
   });
 });

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3501',
+    items: [
+      'POI報酬スキル(爆撃・防衛・使役)にも専用のドット絵アイコンが付きました。',
+    ],
+  },
+  {
     version: '0.25.3500',
     items: [
       'スキル38種のアイコンが新しいドット絵になりました(HUDのスキル欄とレベルアップの選択カード)。',

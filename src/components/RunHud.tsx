@@ -5,7 +5,8 @@ import { CONSUMABLES } from '../data/consumables';
 import { SKILLS, skillIcon } from '../data/campaign';
 // v0.25.3499: 社長支給の1枚シートが入っていればドット絵アイコン、無ければ従来の絵文字。
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
-import { skillIconStyle, hasSkillIcon } from '../data/skillIcons';
+import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
+import { spritePath } from '../utils/spriteLoader';
 import type { ConsumableKey } from '../types/game';
 
 // 社長指示v0.25.3298: ①装備中のランスキルを**左下**にアイコンで表示 ②強化バフ中は**その上の段**に
@@ -85,10 +86,13 @@ const RunHud: React.FC = () => {
           {runBuild.map((k, i) => (
             <div
               key={k}
-              className={`relative hud-translucent rounded-lg border ${RARITY_RING[SKILLS[k].rarity]} w-6 h-6 flex items-center justify-center text-[13px] leading-none`}
+              className={`relative hud-translucent rounded-lg border ${RARITY_RING[SKILLS[k].rarity]} w-6 h-6 flex items-center justify-center text-[13px] leading-none overflow-hidden`}
               title={SKILLS[k].name}
             >
               {(() => {
+                // ①単体ファイルのアイコン(POI報酬3種) ②1枚シート ③絵文字、の順に優先。
+                const single = skillSingleIconName(k);
+                if (single) return <img src={spritePath(single)} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />;
                 const st = skillSheet && hasSkillIcon(k)
                   ? skillIconStyle(k, skillSheet.url, 22, skillSheet) : null;
                 return st ? <span style={st} aria-hidden /> : skillIcon(k);

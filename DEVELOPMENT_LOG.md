@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.3501 — POI報酬スキル3種のアイコン(101/102/103)を搭載【2026-08-16 11:49 JST】
+- **社長支給**: 101 爆撃 / 102 防衛 / 103 使役。**1枚シートではなく単体png**(縦横比がバラバラ:
+  128×128 / 136×128 / 152×256)なので、シートへ詰めず `public/sprites/skill/poi-*.png` として持つ。
+- **対応の確認**: 支給ファイル名の番号(`..._101/102/103.png`)が正。**絵の中身とも突き合わせ済み**
+  (101=爆撃機が爆弾を落とす / 102=ブーメランが周回する紋章=「プレイヤーの周りをブーメランが常に周回」
+  の技そのもの / 103=従える兵士)。表示順だけで決めると取り違える組み合わせだったので、
+  番号・ファイル名・絵の3つが一致することを確認してから配線した。
+- **表示の優先順位**: ①単体ファイル(POI3種) → ②1枚シート(38種) → ③絵文字。
+  `skillSingleIconName()` が唯一の出どころ。`RunHud` と `UpgradeMenu` が同じ順で引く。
+- 機械化: `skillIcons.test.ts` に4件追加(単体アイコンはPOI3種だけ/番号との対応/**シート38種と
+  重複しない**=どちらが出るか不定の状態を作らない/持たないスキルはnull)。計18件。
+- 検証: `npx vitest run src/data/skillIcons.test.ts`(18 passed) / `npm run typecheck`(0エラー) /
+  `npm run lint`(0エラー)。実機での見た目確認は社長。
+- ファイル: `public/sprites/skill/poi-bombing.png` / `poi-guard.png` / `poi-thrall.png`(新規) /
+  `src/data/skillIcons.ts` / `src/data/skillIcons.test.ts` / `src/components/RunHud.tsx` /
+  `src/components/UpgradeMenu.tsx` / `src/data/changelog.ts` / `package.json`
+
 ## v0.25.3500 — スキルアイコン38種(ドット絵)を搭載【2026-08-16 11:27 JST】
 - **社長支給の差し替え素材を投入**: `public/sprites/skill/skills-sheet.png`(**5472×136**=1段×38列)。
   並びは `SKILL_ICON_ORDER` のまま(社長「配置は一緒です」)。v0.25.3499の配線がそのまま生き、

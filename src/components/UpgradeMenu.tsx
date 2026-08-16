@@ -5,7 +5,7 @@ import { hasEquipIcon, equipIconName, equipmentById } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
 // v0.25.3499: スキルの1枚シート(入っていればドット絵アイコン、無ければ従来の絵文字)。
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
-import { skillIconStyle, hasSkillIcon } from '../data/skillIcons';
+import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
 import { SKILLS, RARITY_LABEL, skillIcon } from '../data/campaign';
 import { runBuildCapacity, rerollPrice, MAX_BANISH_PER_RUN } from '../utils/runSkillDraft';
 import type { UpgradeOption } from '../types/game';
@@ -109,6 +109,9 @@ const UpgradeMenu: React.FC = () => {
                   >
                     <div className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10 overflow-hidden">
                       {(() => {
+                        // ①単体ファイルのアイコン(POI報酬3種) ②1枚シート ③絵文字、の順に優先。
+                        const single = skillSingleIconName(skillKey);
+                        if (single) return <img src={spritePath(single)} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />;
                         const st = skillSheet && hasSkillIcon(skillKey)
                           ? skillIconStyle(skillKey, skillSheet.url, 36, skillSheet) : null;
                         return st ? <span style={st} aria-hidden /> : skillIcon(skillKey);
