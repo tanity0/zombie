@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3521',
+    items: [
+      'バス停のバックロールに砂埃と速度線が出るようになりました(他の突進・ローリングと同じ演出)。',
+    ],
+  },
+  {
     version: '0.25.3520',
     items: [
       '金箱の絵を2倍の大きさにしました。',

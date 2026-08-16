@@ -16407,7 +16407,11 @@ export class PixiScene {
       const dashBoss = e.bossState === 'issen-dash' || e.bossState === 'tsuki'
         || e.bossState === 'dash' || e.bossState === 'mdash-move'
         || e.bossState === 'thrust' || e.bossState === 'idol-roll'
-        || e.bossState === 'idol-nade'; // v0.25.3444: 手榴弾のバックロールも同じ蹴り出し土煙
+        || e.bossState === 'idol-nade' // v0.25.3444: 手榴弾のバックロールも同じ蹴り出し土煙
+        // ★v0.25.3521(社長指摘「バックロールは砂埃とかあったはずだよ」): バス停の後方ロール。
+        // v0.25.3519で技を足した時に**この台帳へ登録し忘れていた**——CLAUDE.md「同じ"動作"を持つ
+        // 全員に付ける(v0.25.2426の教訓)」そのもの。**ロール系は idol-roll / idol-nade / br-roll の3つ**。
+        || e.bossState === 'br-roll';
       const dashing = dashPhase || dashBoss;
       // 蹴り出し: 突進の立ち上がりで、その場(足元)に一発。
       const kickL = this.latchFx(`${e.id}:dashkick`, dashing, DUST_MS, now,
