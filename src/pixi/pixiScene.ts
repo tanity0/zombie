@@ -158,7 +158,14 @@ import {
 } from '../utils/bountyTick';
 import { telegraphProgress01 } from '../utils/bossTelegraph';
 import { isMarkedBossVisible, bossMarkFor, type MarkBox } from '../utils/bossMarker';
-import { CASTLE_FIGHT_MAX_DIST } from '../world/playableArea'; // v0.25.3055: 城ボス戦の移動制限ライン(描画は読むだけ)
+import {
+  CASTLE_FIGHT_MAX_DIST, // v0.25.3055: 城ボス戦の移動制限ライン(描画は読むだけ)
+  // v0.25.3513: 訓練ステージの移動制限ライン。**world層の実定数をそのまま読む**(写し定数を作らない
+  // =GIANT_STOMP_RADIUS_MIRRORが反面教師。線と判定がドリフトしたら「見えている線を越えられる」)。
+  // Y側(TUTORIAL_MOVE_Y_LIMIT_PX)は上の gameStore からの再輸出で既に読んでいる(実体は同じ
+  // playableArea.ts の定数)ので、ここではX側だけ足す。
+  TUTORIAL_MOVE_X_MIN_PX,
+} from '../world/playableArea';
 import {
   bossEngagementDistancePx, isEngageableBoss,
 } from '../utils/bossEngagement';
@@ -4006,6 +4013,11 @@ export class PixiScene {
   private facilityFadeLastNow = 0;
   // v0.25.3055: 城ボス戦の移動制限ライン(研究対象の外縁・原点中心の円)。線のみ・中は塗らない(社長指示)。
   private castleFightRingGfx = new Graphics();
+  // v0.25.3513(社長指示「チュートリアルステージ、移動できる範囲を城ボス戦と同じく線引いて」):
+  // 訓練ステージの移動可能帯を線だけで描く(中は塗らない=城ボス戦と同じ作法)。
+  private tutorialBoundsGfx = new Graphics();
+  /** 前線(m0AdvanceLimitX)は戦闘中だけ消える=出入りするので、慣性つきでフェードさせる。 */
+  private m0FrontLineAlpha = 0;
   private castleRingAlpha = 0;
   private makerGrid: Graphics | null = null; // ボスメーカーの方眼(部屋に居る時だけ生成/描画)
 
@@ -4296,6 +4308,7 @@ export class PixiScene {
       this.returnGfx, // 帰還サークル(地面・world座標)
       this.baseSitesGfx, // 拠点候補地サークル(地面・world座標)
       this.castleFightRingGfx, // v0.25.3055: 城ボス戦の移動制限ライン(地面・world座標・線のみ)
+      this.tutorialBoundsGfx, // v0.25.3513: 訓練ステージの移動制限ライン(同上)
       this.hospitalGfx, // 病院サークル(地面・world座標)
       this.armoryGfx, // §6.24 M48: 武器庫サークル(地面・world座標。病院と同じ)
       this.hunterVisionGfx, // ハンター視界範囲(薄紫・地面・world座標)
@@ -7396,6 +7409,43 @@ export class PixiScene {
         const rPulse = 0.5 + 0.5 * Math.sin(now / 300);
         g.circle(0, 0, CASTLE_FIGHT_MAX_DIST).stroke({ width: 4, color: 0xf87171, alpha: this.castleRingAlpha * (0.16 + 0.08 * rPulse) });
         g.circle(0, 0, CASTLE_FIGHT_MAX_DIST - 6).stroke({ width: 1.5, color: 0xfecaca, alpha: this.castleRingAlpha * (0.26 + 0.10 * rPulse) });
+      }
+    }
+    // v0.25.3513(社長指示「チュートリアルステージ、移動できる範囲を城ボス戦と同じく線引いて」):
+    // 訓練ステージの移動可能帯を**線だけ**で描く(中は塗らない=城ボス戦と同じ作法・意匠も同じ二重ストローク)。
+    // 座標系の注意: playableArea のクランプは**プレイヤー中心**に効くので、線もそのまま中心基準で置く。
+    {
+      const g = this.tutorialBoundsGfx;
+      g.clear();
+      if (s.farBackdrop === 'tutorial') {
+        const rPulse = 0.5 + 0.5 * Math.sin(now / 300);
+        const yTop = -TUTORIAL_MOVE_Y_LIMIT_PX, yBot = TUTORIAL_MOVE_Y_LIMIT_PX;
+        const xMin = TUTORIAL_MOVE_X_MIN_PX;
+        // 前線(次の関門)。戦闘中は null=壁が外れる(m0Tutorial.m0AdvanceLimit)ので、
+        // **消える/出るを慣性つきで**フェードさせる(パッと出て消えるのは禁止=CLAUDE.md 慣性の掟)。
+        const front = s.m0AdvanceLimitX;
+        this.m0FrontLineAlpha += ((front !== null ? 1 : 0) - this.m0FrontLineAlpha) * 0.08;
+        // 前線が無い間(戦闘中=壁が外れている)は、上下の線を画面の先まで伸ばして「まだ続く」ことを見せる。
+        // ★ズーム引き考慮(CLAUDE.md 必須チェック): 可視域は最大引き(ZOOM_MIN_ABS)で画面の 1/0.40 倍に
+        //   広がる。`screenW` そのままだと引いた時に**線の切れ端が画面内に見えてしまう**ので、
+        //   最大引きの可視域ぶん伸ばす(さらに余裕を1画面分)。
+        const xEnd = front !== null
+          ? front
+          : s.camera.x + this.screenW / ZOOM_MIN_ABS + this.screenW;
+        const outerA = 0.16 + 0.08 * rPulse;
+        const innerA = 0.26 + 0.10 * rPulse;
+        const line = (x0: number, y0: number, x1: number, y1: number, a: number) => {
+          g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 4, color: 0xf87171, alpha: outerA * a });
+          g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 1.5, color: 0xfecaca, alpha: innerA * a });
+        };
+        line(xMin, yTop, xEnd, yTop, 1); // 上
+        line(xMin, yBot, xEnd, yBot, 1); // 下
+        line(xMin, yTop, xMin, yBot, 1); // 後ろ(スタート側)
+        if (this.m0FrontLineAlpha > 0.02 && front !== null) {
+          line(front, yTop, front, yBot, this.m0FrontLineAlpha); // 前線(関門)
+        }
+      } else if (this.m0FrontLineAlpha !== 0) {
+        this.m0FrontLineAlpha = 0; // 別ステージへ移ったら次の訓練で0から立ち上がる
       }
     }
     // v0.25.3054: 施設フェードの適用(POI建物3種+サークル+拠点サークル+影リクエスト)。

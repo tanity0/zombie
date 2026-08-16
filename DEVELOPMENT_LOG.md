@@ -1,5 +1,25 @@
 # Development Log
 
+## v0.25.3513 — 訓練ステージの移動可能範囲に線を引く(城ボス戦と同じ作法)【2026-08-16 15:28 JST】
+- **社長指示**: 「チュートリアルステージ、移動できる範囲を城ボス戦と同じく線引いて」。
+- **実装**: `tutorialBoundsGfx`(新規Graphics・地面レイヤ=城ボスの制限リングの隣)に、
+  上下(±`TUTORIAL_MOVE_Y_LIMIT_PX`)・後ろ(`TUTORIAL_MOVE_X_MIN_PX`)・前線(`m0AdvanceLimitX`)を
+  **線だけ**で描く。意匠は城ボス戦と同一(太4pxの薄い赤 + 細1.5pxの明るい赤の二重ストローク・脈動)。
+  **中は塗らない**(v0.25.3055の社長指示「制限ラインを薄く表示するのはいいが、中は塗るな」を踏襲)。
+- **写し定数を作っていない**: 線の座標は `world/playableArea.ts` の実定数をそのままimportして描く
+  (`TUTORIAL_MOVE_Y_LIMIT_PX` / `TUTORIAL_MOVE_X_MIN_PX` / store の `m0AdvanceLimitX`)。
+  ここを複製すると「見えている線を越えられる/線の内側なのに止まる」が静かに生まれる
+  (`GIANT_STOMP_RADIUS_MIRROR` が反面教師)。**クランプはプレイヤー中心に効く**ので線も中心基準。
+- **前線は慣性つきでフェード**(0.08の追従)。前線は戦闘中だけ外れる仕様(`m0AdvanceLimit` が
+  waveActive の間 null)なので、パッと出て消えると安っぽい(CLAUDE.md「慣性=世界の法則」)。
+- **★ズーム引き考慮(CLAUDE.md 必須チェック)**: 前線が無い間、上下の線は右へ伸ばして「まだ続く」ことを
+  見せるが、`screenW` そのままだと**最大引き(ZOOM_MIN_ABS=0.40=可視域2.5倍)で線の切れ端が画面内に
+  見える**。`screenW / ZOOM_MIN_ABS + screenW` まで伸ばして塞いだ。
+- 負荷: **1/10**。線4本のGraphicsを訓練ステージでのみ毎フレーム引き直すだけ(投影影・強glowは無関係)。
+- 検証: `npm run typecheck`(0エラー) / `npm run lint`(0エラー) /
+  `npx vitest run src/world/playableArea.test.ts`(25 passed=判定側は無改変)。実機確認は社長。
+- ファイル: `src/pixi/pixiScene.ts` / `src/data/changelog.ts` / `package.json`
+
 ## v0.25.3512 — 自動タレットの発射間隔をLvの階段へ(現行値=Lv3=MAX)【2026-08-16 15:15 JST】
 - **社長指示**: 「自動タレットの発射間隔もレベルで下げたい。**いまの間隔をMAXとして、階段にしておいて**」。
 - **実装**: 倍率の階段 `TURRET_FIRE_INTERVAL_MULT_BY_LEVEL = [0, 1.5, 1.2, 1.0]`。
