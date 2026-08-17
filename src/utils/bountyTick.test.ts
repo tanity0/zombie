@@ -432,6 +432,23 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       } finally { rnd.mockRestore(); }
     });
 
+    // ★【不変条件】近距離では三段突きへ**直行しない**(社長報告v0.25.3534「三段突きの前にバックロール
+    // してない」の再発防止)。原因は v0.25.3518 で BR_TRIPLE_MIN を 380→0 にした副作用で、
+    // 中距離用の直行分岐が密着でも成立し、**近距離の台本(ロール→三段突き)を飛ばしていた**こと。
+    // ⇒ 近距離から 'chase' を抜ける先は **br-roll / br-push-windup / それ以外(中立)** のいずれかで、
+    //   **br-triple-windup が直接来てはいけない**。乱数を全域で振っても破れないことを確かめる。
+    it('★【不変条件】近距離(BR_PUSH_RANGE内)からは br-triple-windup へ直行しない', () => {
+      for (const r of [0.0, 0.2, 0.4, 0.59, 0.6, 0.8, 0.99]) {
+        const rnd = vi.spyOn(Math, 'random').mockReturnValue(r);
+        try {
+          const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 }); // BR_PUSH_RANGE(110)未満
+          step(16);
+          const st = useGameStore.getState().enemies.find(e => e.id === id)?.bossState;
+          expect(st).not.toBe('br-triple-windup');
+        } finally { rnd.mockRestore(); }
+      }
+    });
+
     it('押しのけ完走: windup→push→recoverを経てchaseへ戻り、pumpkinBlastsへ判定を積む(判定=絵の一致)', () => {
       // プレイヤーが動かないため押しのけ→chase→(再び近接)押しのけ…が回り続ける想定の盤面。
       // 「一度でもchaseへ戻ったか」を見る(押しのけ範囲に居続ける限り再発火するのは仕様どおり)。

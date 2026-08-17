@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3534',
+    items: [
+      'バス停の三段突きが、密着時にバックロールを飛ばして出てしまう不具合を直しました。近距離では必ず「押しのけ」か「バックロール→三段突き」のどちらかになります。',
+    ],
+  },
+  {
     version: '0.25.3533',
     items: [
       'ゲーム内容の変更はありません(開発ルールの追記のみ)。',
