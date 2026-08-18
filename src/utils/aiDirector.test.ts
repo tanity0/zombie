@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createDirectorState, stepDirector, summarizeRun, relaxSpawnAdjust, buildupSpawnAdjust, applyRelaxSpawnCadence, RELAX_INTERVAL_MULT, RELAX_CAP_MULT, type DirectorInputs, type DirectorState, type RunSampleLite } from './aiDirector';
+import { createDirectorState, stepDirector, summarizeRun, relaxSpawnAdjust, buildupSpawnAdjust, applyRelaxSpawnCadence, RELAX_ESC_MULT, RELAX_INTERVAL_MULT, RELAX_CAP_MULT, type DirectorInputs, type DirectorState, type RunSampleLite } from './aiDirector';
 
 const CALM: DirectorInputs = { hpFrac: 1, damageTakenFrac: 0, nearEnemies: 0, killDelta: 0, dangerBias: 0 };
 
@@ -246,5 +246,34 @@ describe('applyRelaxSpawnCadence(RELAXの湧きレバーを本方式へ効かせ
   it('上限の床は1(倍率をいくら下げても「1体も湧かない」にはしない=ドロップ経路を枯らさない)', () => {
     expect(applyRelaxSpawnCadence(1, 1000, { intervalMult: 1, capMult: 0 }).cap).toBe(1);
     expect(applyRelaxSpawnCadence(3, 1000, { intervalMult: 1, capMult: 0.01 }).cap).toBe(1);
+  });
+});
+
+describe('★収穫コマではRELAXを効かせない(社長裁定v0.25.3548)', () => {
+  it('収穫(harvest)コマではRELAX中でも湧きレバーが中立(全て1)', () => {
+    // 収穫は満量・CD×0.5・ランプ2秒で「意図的に盛る」コマ。ディレクターが緩めると打ち消し合う。
+    expect(relaxSpawnAdjust('relax', 'harvest')).toEqual({ escMult: 1, intervalMult: 1, capMult: 1 });
+  });
+
+  it('★【不変条件】収穫以外のコマではRELAXが従来どおり効く', () => {
+    for (const kind of ['relax', 'normal', 'peak'] as const) {
+      expect(relaxSpawnAdjust('relax', kind), kind).toEqual({
+        escMult: RELAX_ESC_MULT, intervalMult: RELAX_INTERVAL_MULT, capMult: RELAX_CAP_MULT,
+      });
+    }
+  });
+
+  it('★【不変条件】コマ未指定なら従来どおり(既存の呼び出しは挙動不変)', () => {
+    expect(relaxSpawnAdjust('relax')).toEqual({
+      escMult: RELAX_ESC_MULT, intervalMult: RELAX_INTERVAL_MULT, capMult: RELAX_CAP_MULT,
+    });
+  });
+
+  it('★【不変条件】RELAX以外のmacroでは、コマに関係なく中立', () => {
+    for (const macro of ['buildup', 'peak'] as const) {
+      for (const kind of ['relax', 'harvest', 'normal', 'peak'] as const) {
+        expect(relaxSpawnAdjust(macro, kind)).toEqual({ escMult: 1, intervalMult: 1, capMult: 1 });
+      }
+    }
   });
 });

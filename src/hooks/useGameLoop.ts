@@ -11442,7 +11442,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // カリング上限(enemyCap)には触れない=急に画面から消える演出を避ける。屋内/ラボは対象外。
         // `?directorApply=off` で従来の基準点(適用なし)へ戻せる。
         const directorApplyRelaxActive = DIRECTOR_APPLY_RELAX && !labTheme && !indoor;
-        const relaxAdj = directorApplyRelaxActive ? relaxSpawnAdjust(directorRef.current.state.macro) : { escMult: 1, intervalMult: 1, capMult: 1 };
+        // ★v0.25.3548(社長裁定「収穫でリラックス効かせない」): 現在のコマ種別を渡す。
+        // 収穫コマでは relaxSpawnAdjust が中立(全て1)を返す=台本の「稼ぐ40秒」をディレクターが緩めない。
+        const relaxAdj = directorApplyRelaxActive
+          ? relaxSpawnAdjust(directorRef.current.state.macro, puzzleKomaRef.current.kind)
+          : { escMult: 1, intervalMult: 1, capMult: 1 };
         // AIディレクター ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが
         // 高いほど escalation を少し上乗せする。レバーはescalationのみ(湧き間隔/上限には触れない・Bより
         // 慎重)。Performanceは「BuildUpを強める」だけに使う=Intensity/被弾側とは絶対に混ぜない。

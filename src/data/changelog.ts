@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3548',
+    items: [
+      '収穫の40秒(稼ぐコマ)で、AIディレクターが湧きを緩めなくなりました。稼ぐコマは最後まで稼げます。',
+    ],
+  },
+  {
     version: '0.25.3547',
     items: [
       '赤い個体が「強個体」になりました。気絶させても一撃では倒せず、削り切るしかありません。',

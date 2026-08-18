@@ -705,7 +705,9 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     const dirState = refs.director.directorRef.current.state;
     const applyRelax = opts.directorApply === 'relax' || opts.directorApply === 'all';
     const applyBuildup = opts.directorApply === 'buildup' || opts.directorApply === 'all';
-    if (applyRelax) relaxAdj = relaxSpawnAdjust(dirState.macro);
+    // ★v0.25.3548(社長裁定「収穫でリラックス効かせない」): 実機(useGameLoop.ts)と同じく
+    // 現在のコマ種別を渡す。収穫コマではRELAXが中立になる=計測が実機とズレない。
+    if (applyRelax) relaxAdj = relaxSpawnAdjust(dirState.macro, refs.koma.puzzleKomaRef.current.kind);
     const buildupAdj = applyBuildup ? buildupSpawnAdjust(dirState.macro, dirState.performance) : { escBoost: 0 };
     const buildEsc = spawnEscalation({
       level: s.player.level,

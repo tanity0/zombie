@@ -10,6 +10,8 @@
 // ★このモジュールは「算出するだけ」。湧き等ゲーム挙動には一切影響させない(ステップA=読むだけ)。
 //   Date.now()/Math.random() は使わない(dtSec でタイマーを積む=resume安全・テスト再現可能)。
 
+import type { KomaKind4 } from './scriptPuzzle';
+
 export type DirectorMacro = 'buildup' | 'peak' | 'relax';
 
 // 1フレームの入力(useGameLoop が集めて渡す)。すべて“この瞬間”の観測値。
@@ -229,10 +231,31 @@ export const RELAX_ESC_MULT = 0;          // RELAX中は escalation を完全に
 export const RELAX_INTERVAL_MULT = 1.35;  // 湧き間隔を35%伸ばす(気持ち緩める・私案)
 export const RELAX_CAP_MULT = 0.85;       // 湧き上限を15%下げる(私案)
 
-export const relaxSpawnAdjust = (macro: DirectorMacro): RelaxSpawnAdjust =>
-  macro === 'relax'
+const RELAX_NEUTRAL: RelaxSpawnAdjust = { escMult: 1, intervalMult: 1, capMult: 1 };
+
+/**
+ * ★収穫(ハーベスト)のコマではRELAXを効かせない(社長裁定v0.25.3548「収穫でリラックス効かせない」)。
+ *
+ * なぜ: 台本の4コマは役割で分かれている——**緩=休む / 収穫=稼ぐ / 通常 / ピーク=山**。
+ * 収穫は `chaffTargetForKoma`=満量・`cdForKoma`=×0.5(最速)・ランプ2秒で**意図的に盛る**コマなのに、
+ * その最中にディレクターがRELAX(間隔×1.35・上限×0.85・escalation停止)へ入ると
+ * **2つの仕組みが真逆に引っ張り合って打ち消し合う**。緩コマが「ほぼ湧かない」(cap×0.1・v0.25.3529)に
+ * なったことで、直後の収穫で稼げるかどうかがランの収入を決めるようになり、この打ち消しが実害になった。
+ * ⇒ **コマの役割が勝つ**。ディレクターは「今どれくらい苦しいか」を見る仕組みで、
+ *   台本は「今このランで何をする40秒か」を決める仕組み。**後者が上位**。
+ *
+ * ★緩(relax)コマは対象外=RELAXを効かせたまま。あちらは役割が「休む」でディレクターと同じ向きなので、
+ * 重ねても打ち消し合わない(むしろ強め合う=意図どおり)。
+ *
+ * 型は `scriptPuzzle.ts` の KomaKind4 を **type-only import** で借りる(scriptPuzzle 側はこのファイルを
+ * 参照しないので循環しない)。
+ */
+export const relaxAppliesToKoma = (komaKind?: KomaKind4): boolean => komaKind !== 'harvest';
+
+export const relaxSpawnAdjust = (macro: DirectorMacro, komaKind?: KomaKind4): RelaxSpawnAdjust =>
+  (macro === 'relax' && relaxAppliesToKoma(komaKind))
     ? { escMult: RELAX_ESC_MULT, intervalMult: RELAX_INTERVAL_MULT, capMult: RELAX_CAP_MULT }
-    : { escMult: 1, intervalMult: 1, capMult: 1 };
+    : RELAX_NEUTRAL;
 
 /**
  * ★RELAXの湧きレバー(間隔/上限)を**パズル方式のスポーナー**へ適用する(社長指示v0.25.3495
