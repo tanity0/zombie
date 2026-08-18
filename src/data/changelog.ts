@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3554',
+    items: [
+      'ゲーム内容の変更はありません(テスト用AIの改修: 木への引っかかりからの脱出・全レベルで回避する・上級はボスの構えにもカウンターを狙う)。',
+    ],
+  },
+  {
     version: '0.25.3553',
     items: [
       'ゲーム内容の変更はありません(テスト用AIが、遠くの気絶した敵へ群れを突っ切って突っ込む挙動の修正)。',

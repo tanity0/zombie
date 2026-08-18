@@ -299,6 +299,7 @@ import {
 import {
   decideBotInput, pickupSeekInput, torchForageInput, avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, createRusherTrackState,
+  escapeIfStuck, createBotStuckState, // ★v0.25.3554: 詰まり脱出(全ペルソナ共通)
   decideCounterReaction, createCounterThreatState, BOT_PERSONAS, type BotPersona,
 } from '../utils/playtestBot';
 import { pickUpgradeByPolicy, mulberry32 } from '../utils/botUpgradePolicy';
@@ -1540,6 +1541,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // M26-L(§6.3): 実機オートパイロット(?bot)の状態。BOT_PERSONA=null時は全て不使用。
   const botTickRef = useRef(0);                            // decideBotInput用のtick連番
   const botRusherRef = useRef(createRusherTrackState());   // rusherペルソナの詰まり検知状態
+  // ★v0.25.3554: 詰まり脱出の外部状態(全ペルソナ共通)。ラン単位に1つ・毎tick同じ参照を渡す。
+  const botStuckRef = useRef(createBotStuckState());
   const botCounterThreatRef = useRef(createCounterThreatState()); // M37(§6.14): 人間反応カウンターの検知状態
   const botWarpRef = useRef(createWarpTrackState());       // M49-3(§6.25): ワープ(瞬間移動)追従の前tick位置
   const botEngagementRef = useRef(createEngagementTrackState()); // M49(§6.25改訂): 行動階層①⇄②の直近実績
@@ -2282,12 +2285,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               player.x + player.width / 2, player.y + player.height / 2,
               loopState.breakableProps.filter(p => p.type === 'mine'))
           : null;
-        const inputState = botWarpVec ? dodgeToInput(botWarpVec)
+        const inputStateRaw = botWarpVec ? dodgeToInput(botWarpVec)
           : botDodge ? dodgeToInput(botDodge)
           : (botGoalPlan && botGoalPlan.hold) ? HOLD_INPUT
           : botObjSteerAdj ? botObjSteerAdj.input
           : botObjSteer ? dodgeToInput(botObjSteer, 0.3)
           : (botMineAdj ? botMineAdj.input : touchInputState);
+        // ★v0.25.3554(社長報告「木にひっかかるとずっと引っかかってる」): 詰まり脱出は**最終入力**へ
+        // 掛ける。こうすると回避・目的地ステア・地雷回避のどの枝から来た入力でも等しく効く。
+        // ボット無効時(BOT_PERSONA===null)は素通し=通常プレイは1バイトも変えない。
+        const inputState = BOT_PERSONA === null ? inputStateRaw
+          : escapeIfStuck(inputStateRaw, botStuckRef.current,
+              player.x + player.width / 2, player.y + player.height / 2);
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
         const labTheme = loopState.stageTheme === 'lab'; // 研究所スキン: 湧く敵をラボ用ゾンビのみにする
@@ -2579,6 +2588,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // M26-L: 実機オートパイロットの状態も新ランでリセット(tick連番/rusher詰まり検知/乱数/レポート済みフラグ)。
           botTickRef.current = 0;
           botRusherRef.current = createRusherTrackState();
+          botStuckRef.current = createBotStuckState(); // ★v0.25.3554: 新ランでリセット
           botCounterThreatRef.current = createCounterThreatState(); // M37: 人間反応カウンターの検知状態も新ランでリセット
           botWarpRef.current = createWarpTrackState(); // M49-3: ワープ追従の前tick位置も新ランでリセット
           botEngagementRef.current = createEngagementTrackState(); // M49: 行動階層①⇄②の直近実績も新ランでリセット

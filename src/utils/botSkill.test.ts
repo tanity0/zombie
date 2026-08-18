@@ -28,11 +28,12 @@ describe('段階の定義', () => {
     expect(botSkillProfile()).toBe(BOT_SKILL_PROFILES.casual);
   });
 
-  it('casual は現状のボットと同値(反応250ms・成功率0.65・回避なし・最寄り狙い)', () => {
+  // ★v0.25.3554(社長指示「基本どのレベルでもある程度は避けて」): casual の `dodge:'none'` は**廃止**。
+  // 反応/成功率/標的選択/囲まれ判定は従来どおり。
+  it('casual は反応250ms・成功率0.65・最寄り狙い(回避は全段階に入ったため対象外)', () => {
     const c = BOT_SKILL_PROFILES.casual;
     expect(c.reactionMs).toBe(COUNTER_REACTION_PROFILES.standard!.reactionMs);
     expect(c.counterChance).toBe(COUNTER_REACTION_PROFILES.standard!.chance);
-    expect(c.dodge).toBe('none');       // 現状のボットは位置で避けない
     expect(c.targeting).toBe('nearest'); // 現状のボットは最寄りを狙う
     expect(c.surroundCount).toBe(3);     // playtestBot の SURROUND_COUNT と同値
   });
@@ -138,16 +139,17 @@ describe('回避の段階(dodgeHandles / dodgeVector)', () => {
     for (const k of ['projectile', 'jump', 'charge'] as const) expect(dodgeHandles('all', k)).toBe(true);
   });
 
-  it('novice / casual は一切避けない(現状の挙動を変えない)', () => {
+  // ★v0.25.3554(社長指示「基本どのレベルでもある程度は避けて」・社長報告「敵の弾に一切反応できてない」):
+  // 旧テストは「novice/casual は一切避けない」「skilled は弾だけ」を固定していた。**両方とも廃止**。
+  it('★novice / casual も弾は避ける(回避を無効化しない)', () => {
     const b = [bullet(-60, 0, 1, 0)];
-    const e = [enemy({ aiPhase: 'jump', aiTargetX: 0, aiTargetY: 0 })];
-    expect(dodgeVector(BOT_SKILL_PROFILES.novice, 0, 0, e, b)).toBeNull();
-    expect(dodgeVector(BOT_SKILL_PROFILES.casual, 0, 0, e, b)).toBeNull();
+    expect(dodgeVector(BOT_SKILL_PROFILES.novice, 0, 0, [], b)).toBeTruthy();
+    expect(dodgeVector(BOT_SKILL_PROFILES.casual, 0, 0, [], b)).toBeTruthy();
   });
 
-  it('skilled は弾だけ避け、着地は避けない', () => {
+  it('★skilled は弾も着地も避ける(dodge:\'all\')', () => {
     const onlyJump = [enemy({ aiPhase: 'jump', aiTargetX: 0, aiTargetY: 0 })];
-    expect(dodgeVector(BOT_SKILL_PROFILES.skilled, 10, 0, onlyJump, [])).toBeNull();
+    expect(dodgeVector(BOT_SKILL_PROFILES.skilled, 10, 0, onlyJump, [])).toBeTruthy();
     expect(dodgeVector(BOT_SKILL_PROFILES.skilled, 0, 0, [], [bullet(-60, 0, 1, 0)])).toBeTruthy();
   });
 
@@ -239,12 +241,14 @@ describe('HP退避(disengageHp・§6.25改訂で反転)', () => {
 // warpReact=false/upgradePolicy='random'(明示的なno-op値)は本テストの対象に含めない
 // (PACING_PUZZLE.md ★未決事項参照: disengageHp反転は novice/casual にも実測値が入る意図的な変更)。
 describe('novice/casualの既存ダイヤルは本バッチで変わらない(不変条件1)', () => {
-  it('reactionMs/counterChance/dodge/targeting/surroundCountは従来値のまま', () => {
+  // ★v0.25.3554: `dodge` は社長指示で全段階へ入ったので、この不変条件の対象から外した
+  // (反応・成功率・標的選択・囲まれ判定は従来どおり据え置き)。
+  it('reactionMs/counterChance/targeting/surroundCountは従来値のまま', () => {
     expect(BOT_SKILL_PROFILES.novice).toMatchObject({
-      reactionMs: 500, counterChance: 0.25, dodge: 'none', targeting: 'nearest',
+      reactionMs: 500, counterChance: 0.25, targeting: 'nearest',
     });
     expect(BOT_SKILL_PROFILES.casual).toMatchObject({
-      reactionMs: 250, counterChance: 0.65, dodge: 'none', targeting: 'nearest', surroundCount: 3,
+      reactionMs: 250, counterChance: 0.65, targeting: 'nearest', surroundCount: 3,
     });
   });
 
@@ -299,10 +303,14 @@ describe('接触脅威(contactDodge・§6.25 M49-1)', () => {
     expect(dodgeVector(BOT_SKILL_PROFILES.master, 0, 0, dangerous, [])).toBeNull();
   });
 
-  it('dodgeVector: master(all)はmaxHealthを渡すと危険な接触脅威を避ける。skilled(projectile)は避けない', () => {
+  // ★v0.25.3554: skilled も `dodge:'all'` になったので接触脅威を避ける(旧: skilled は 'projectile' で避けなかった)。
+  // 接触を避けないのは **novice/casual**(dodge:'projectile')になった=段の切れ目が1つ下がった。
+  it('dodgeVector: 接触脅威を避けるのは skilled 以上(novice/casual は避けない)', () => {
     const dangerous = [enemy({ x: 50, y: 0, damage: 999 } as Partial<Enemy>)];
     expect(dodgeVector(BOT_SKILL_PROFILES.master, 0, 0, dangerous, [], 100)).toBeTruthy();
-    expect(dodgeVector(BOT_SKILL_PROFILES.skilled, 0, 0, dangerous, [], 100)).toBeNull();
+    expect(dodgeVector(BOT_SKILL_PROFILES.skilled, 0, 0, dangerous, [], 100)).toBeTruthy();
+    expect(dodgeVector(BOT_SKILL_PROFILES.casual, 0, 0, dangerous, [], 100)).toBeNull();
+    expect(dodgeVector(BOT_SKILL_PROFILES.novice, 0, 0, dangerous, [], 100)).toBeNull();
   });
 });
 

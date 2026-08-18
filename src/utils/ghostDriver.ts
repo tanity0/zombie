@@ -449,6 +449,8 @@ const GHOST_DODGE_PROFILE: BotSkillProfile = {
   reactionMs: 0, counterChance: 0, dodge: 'all', targeting: 'threat', surroundCount: 0,
   disengageHp: 0, engageDist: 0, dodgeVsAttack: 0, avoidContactDist: 0, meleeVsDanger: true,
   warpReact: false, upgradePolicy: 'random', dodgeStrength: 1,
+  // ★v0.25.3554: 守護霊はカウンターを撃たない(counterChance:0)ので、この項目は無関係=false。
+  seesBossCounterPhases: false,
 };
 
 /**

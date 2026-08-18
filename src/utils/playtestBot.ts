@@ -4,6 +4,8 @@
 // 呼び出し側(headless driver)がこの決定を実際の store アクション(movePlayer/triggerCounter/
 // setActiveWeapon)へ反映する。
 import type { Enemy, InputState, Player, Projectile } from '../types/game';
+// ★v0.25.3554: 「この構えは弾ける」の唯一の出どころを共有する(写すな、共通化しろ)。
+import { isDashParryCounterPhase } from './combatTick';
 
 // 'rusher' はPACING_PUZZLE.md §5.20(M19・深層ラッシュ試験専用)のペルソナ。既存の通常スモーク
 // (BOT_PERSONAS の巡回)には含めず、専用テストからのみ persona 名で直接呼び出す。
@@ -283,6 +285,82 @@ const WANDER_DIRS: InputState[] = [
 ];
 export const wanderDirForSeed = (seed: number): InputState => WANDER_DIRS[Math.abs(seed) % WANDER_DIRS.length];
 
+// ---------------------------------------------------------------------------
+// ★詰まり脱出(全ペルソナ共通)。社長報告v0.25.3554「木にひっかかるとずっと引っかかってる」。
+//
+// **何が起きていたか**: 詰まり検知は `rusher` ペルソナの中にしか無かった(下の RusherTrackState)。
+// `standard`(既定)には1行も無く、木や壁に押し当たると**同じ入力を出し続けて永久に抜けない**。
+//
+// **直し方**: 判定を「原点からの最大半径が伸びたか」(rusher専用の指標)ではなく
+// **「実際に動けているか」**へ変え、`decideBotInput` の**後段の調整器**(adjustBotForMines /
+// avoidMerchantZone と同じ流儀)として全ペルソナ・全モードの**最終入力**へ掛ける。
+// こうすると回避・目的地ステア・地雷回避のどの枝から来た入力でも等しく効く。
+//
+// **窓で見る理由**: 毎フレームの変位で見ると、戦闘で減速しただけの時に誤検知する
+// (実測でボットの速度は0〜87px/s=1フレーム1.45px程度まで落ちる)。**10tickごとに位置を採り、
+// その間の変位が閾値未満**なら1回「動けていない」と数える。
+// ---------------------------------------------------------------------------
+export interface BotStuckState {
+  lastX: number;        // 直近サンプル時の位置(NaN=未初期化)
+  lastY: number;
+  tick: number;         // サンプル間隔を数えるtick
+  stuckSamples: number; // 連続で「動けていない」と判定されたサンプル数
+  escapeTicks: number;  // 脱出入力を出し続ける残りtick(0=通常)
+  escapeSign: 1 | -1;   // 回り込む向き(固定・毎回同じ側)
+}
+export const createBotStuckState = (escapeSign: 1 | -1 = 1): BotStuckState => ({
+  lastX: NaN, lastY: NaN, tick: 0, stuckSamples: 0, escapeTicks: 0, escapeSign,
+});
+/** 位置を採る間隔(tick)。60fps換算で約0.17秒。 */
+export const BOT_STUCK_SAMPLE_TICKS = 10;
+/** 1サンプル(=10tick)でこのpx未満しか動いていなければ「動けていない」。 */
+export const BOT_STUCK_MOVE_EPS = 6;
+/** 連続でこの数だけ「動けていない」が続いたら詰まりと判定(=約0.5秒)。 */
+export const BOT_STUCK_SAMPLES = 3;
+/** 詰まり判定後、脱出入力を出し続けるtick数(≈0.5秒)。1フレームだけだと壁際で振動する。 */
+export const BOT_STUCK_ESCAPE_TICKS = 30;
+
+/**
+ * 詰まっていたら横へ回り込む入力へ差し替える。**状態はmutateする**(rusher/rankAssessor等と同じ
+ * 「明示的な外部状態」方式=呼び出し側がラン単位に1つ持ち、毎tick同じ参照を渡す)。
+ * 移動入力が無いtick(意図的な静止)では詰まりを数えない。
+ */
+export const escapeIfStuck = (
+  input: InputState,
+  state: BotStuckState,
+  pcx: number,
+  pcy: number,
+): InputState => {
+  const wantsMove = input.up || input.down || input.left || input.right;
+  if (!wantsMove) { state.stuckSamples = 0; state.escapeTicks = 0; return input; }
+
+  // 初回だけ基準点を即座に置く(サンプル境界まで待つと1サンプルぶん検知が遅れる)。
+  if (Number.isNaN(state.lastX)) { state.lastX = pcx; state.lastY = pcy; }
+
+  state.tick += 1;
+  if (state.tick >= BOT_STUCK_SAMPLE_TICKS) {
+    state.tick = 0;
+    const moved = Math.hypot(pcx - state.lastX, pcy - state.lastY);
+    state.lastX = pcx; state.lastY = pcy;
+    if (moved < BOT_STUCK_MOVE_EPS) {
+      state.stuckSamples += 1;
+      if (state.stuckSamples >= BOT_STUCK_SAMPLES) state.escapeTicks = BOT_STUCK_ESCAPE_TICKS;
+    } else {
+      state.stuckSamples = 0;
+    }
+  }
+
+  if (state.escapeTicks <= 0) return input;
+  state.escapeTicks -= 1;
+  // 進みたい向きへ±90°の横成分を強めに混ぜて回り込む(元の向きも少し残して前進を捨てない)。
+  const dx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  const dy = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+  const m = Math.hypot(dx, dy) || 1;
+  const ux = dx / m, uy = dy / m;
+  const lx = -uy * state.escapeSign, ly = ux * state.escapeSign;
+  return dirInput(ux * 0.3 + lx * 0.7, uy * 0.3 + ly * 0.7);
+};
+
 // rusherペルソナ(§5.20 M19)の詰まり検知に使う外部状態。呼び出し側(ヘッドレス駆動側)が
 // ラン開始時に1つ作って毎tick同じ参照を渡し続ける(rankAssessor等のRef系と同じ「明示的な外部状態」方式)。
 export interface RusherTrackState {
@@ -396,7 +474,7 @@ const CHARGE_HEADING_MIN_DOT = 0.3;
 const PROJECTILE_THREAT_DIST = 160;  // 敵弾をカウンター対象とみなす距離(px)
 const PROJECTILE_THREAT_ETA_MS = 400; // 到達予測がこれ未満なら対象(接近中のみ。離れていく弾は無視)
 
-export type CounterThreatKind = 'jump' | 'charge' | 'projectile';
+export type CounterThreatKind = 'jump' | 'charge' | 'projectile' | 'boss-phase';
 
 export interface CounterReactionProfile {
   reactionMs: number; // 検知から発火までの反応遅延(ms)
@@ -459,8 +537,26 @@ const projectileIsThreat = (pcx: number, pcy: number, p: Projectile): boolean =>
   return (d / closing) * 1000 < PROJECTILE_THREAT_ETA_MS;
 };
 
+/**
+ * ★v0.25.3554(社長指示「マスターは積極的にカウンターを取る。どの攻撃も」)。
+ *
+ * **何が足りなかったか**: `findCounterThreat` は `aiPhase==='jump'` / `aiPhase==='charge'` /
+ * 弾の**3種類しか見ていなかった**。城ボスの `g-*` 系(飛び掛かり滞空・三連跳び・滑空)や
+ * ジャイアントの受け流し可能フェーズは**1つも見えていない**——回避側で v0.25.2432 に直した
+ * 「ボットは赤を一切避けない人だった」と**同じ穴がカウンター側に残っていた**。
+ *
+ * ⇒ ゲーム側の「この構えは弾ける」の**唯一の出どころ**である `isDashParryCounterPhase`
+ * (combatTick.ts)をそのまま使う(**写すな、共通化しろ**)。近さの条件は既存の
+ * `jumpIsThreat`/`chargeIsThreat` と揃えて `COUNTER_BOSS_PHASE_DIST` で見る。
+ *
+ * **段階で刻む**: 上級(skilled/master)だけがこの拡張分を見る。novice/casual は従来の3種のまま
+ * =「能力の質」ではなく「見えている脅威の広さ」で腕前差を出す。
+ */
+const COUNTER_BOSS_PHASE_DIST = 260;
+
 const findCounterThreat = (
   pcx: number, pcy: number, enemies: readonly Enemy[], projectiles: readonly Projectile[],
+  seesBossPhases = false,
 ): { id: string; kind: CounterThreatKind } | null => {
   for (const e of enemies) {
     if (e.aiPhase === 'jump' && jumpIsThreat(pcx, pcy, e)) return { id: e.id, kind: 'jump' };
@@ -470,6 +566,14 @@ const findCounterThreat = (
   }
   for (const p of projectiles) {
     if (projectileIsThreat(pcx, pcy, p)) return { id: p.id, kind: 'projectile' };
+  }
+  if (seesBossPhases) {
+    for (const e of enemies) {
+      if (e.aiPhase === 'jump' || e.aiPhase === 'charge') continue; // 上で見た(距離条件が違うので二重に拾わない)
+      if (!isDashParryCounterPhase(e)) continue;
+      const d = Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy);
+      if (d <= COUNTER_BOSS_PHASE_DIST) return { id: e.id, kind: 'boss-phase' };
+    }
   }
   return null;
 };
@@ -481,6 +585,11 @@ const threatStillValid = (
   if (kind === 'projectile') {
     const p = projectiles.find(pp => pp.id === threatId);
     return !!p && projectileIsThreat(pcx, pcy, p);
+  }
+  if (kind === 'boss-phase') {
+    const be = enemies.find(ee => ee.id === threatId);
+    if (!be || !isDashParryCounterPhase(be)) return false;
+    return Math.hypot((be.x + be.width / 2) - pcx, (be.y + be.height / 2) - pcy) <= COUNTER_BOSS_PHASE_DIST;
   }
   const e = enemies.find(ee => ee.id === threatId);
   if (!e || e.aiPhase !== kind) return false;
@@ -518,7 +627,8 @@ export const decideCounterReaction = (
 
   // 新規検知(追跡中の脅威が無い時のみ=1脅威ずつ処理。検知ごとに1回だけ抽選する)。
   if (state.threatId === null) {
-    const found = findCounterThreat(pcx, pcy, enemies, projectiles);
+    // ★v0.25.3554: 上級(skilled/master)だけがボスの構え(isDashParryCounterPhase)まで見る。
+    const found = findCounterThreat(pcx, pcy, enemies, projectiles, sp?.seesBossCounterPhases === true);
     if (found) {
       state.threatId = found.id; state.kind = found.kind;
       state.detectedAt = gameTime;

@@ -62,6 +62,14 @@ export interface BotSkillProfile {
   warpReact: boolean;
   /** レベルアップ時の強化選択ポリシー(M49-4)。 */
   upgradePolicy: 'random' | 'greedy';
+  /**
+   * ★v0.25.3554: カウンターで**ボスの受け流し可能フェーズ**(`isDashParryCounterPhase`)まで見るか。
+   * 旧実装のカウンター検知は jump / charge / 弾の**3種類しか見ておらず**、城ボスの `g-*` 系や
+   * ジャイアントの受け流し可能フェーズが**1つも見えていなかった**(回避側で v0.25.2432 に直した
+   * 「赤を一切避けない人だった」と同じ穴がカウンター側に残っていた)。
+   * 段階差は「試行確率」ではなく**見えている脅威の広さ**で付ける。
+   */
+  seesBossCounterPhases: boolean;
 }
 
 // 段階表(叩き台・実機とソークで調整する)。
@@ -73,14 +81,21 @@ export interface BotSkillProfile {
 // 旧 retreatHpFrac(novice/casual=0=退避しない)の反転を含め、novice/casualにも実測値が入る
 // (novice>casualの逆転を正すための意図的な変更・PACING_PUZZLE.md ★未決参照)。
 export const BOT_SKILL_PROFILES: Record<BotSkill, BotSkillProfile> = {
-  novice:  { reactionMs: 500, counterChance: 0.25, dodge: 'none',       targeting: 'nearest', surroundCount: 2, disengageHp: 0.5, dodgeStrength: 0,
-             engageDist: 200, dodgeVsAttack: 0.5,  avoidContactDist: 0,   meleeVsDanger: true,  warpReact: false, upgradePolicy: 'random' },
-  casual:  { reactionMs: 250, counterChance: 0.65, dodge: 'none',       targeting: 'nearest', surroundCount: 3, disengageHp: 0.4, dodgeStrength: 0,
-             engageDist: 260, dodgeVsAttack: 0.5,  avoidContactDist: 0,   meleeVsDanger: true,  warpReact: false, upgradePolicy: 'random' },
-  skilled: { reactionMs: 150, counterChance: 0.85, dodge: 'projectile', targeting: 'threat',  surroundCount: 5, disengageHp: 0.3, dodgeStrength: 0.7,
-             engageDist: 340, dodgeVsAttack: 0.4,  avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy' },
+  // ★v0.25.3554(社長指示「基本どのレベルでもある程度は避けて。マスターは積極的にカウンターを取る。
+  // どの攻撃も。スキルドもそれなりにカウンター取りつつ避けつつ」):
+  //  - **回避は全段階に入れる**(旧: novice/casual は dodge:'none' + dodgeStrength:0 = **回避処理が
+  //    丸ごと無効**で、弾も突進も着弾予告も一切避けなかった=社長報告「敵の弾に一切反応できてない」)。
+  //    段階差は**避ける種類**(projectile→all)と**強さ**(0.25→1.0)で付ける。
+  //  - **カウンターの見える範囲**を `seesBossCounterPhases` で刻む(skilled/master のみ、ボスの
+  //    受け流し可能フェーズまで見る)。counterChance(試行確率)は従来どおり。
+  novice:  { reactionMs: 500, counterChance: 0.25, dodge: 'projectile', targeting: 'nearest', surroundCount: 2, disengageHp: 0.5, dodgeStrength: 0.25,
+             engageDist: 200, dodgeVsAttack: 0.5,  avoidContactDist: 0,   meleeVsDanger: true,  warpReact: false, upgradePolicy: 'random', seesBossCounterPhases: false },
+  casual:  { reactionMs: 250, counterChance: 0.65, dodge: 'projectile', targeting: 'nearest', surroundCount: 3, disengageHp: 0.4, dodgeStrength: 0.45,
+             engageDist: 260, dodgeVsAttack: 0.5,  avoidContactDist: 0,   meleeVsDanger: true,  warpReact: false, upgradePolicy: 'random', seesBossCounterPhases: false },
+  skilled: { reactionMs: 150, counterChance: 0.85, dodge: 'all',        targeting: 'threat',  surroundCount: 5, disengageHp: 0.3, dodgeStrength: 0.7,
+             engageDist: 340, dodgeVsAttack: 0.4,  avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy', seesBossCounterPhases: true },
   master:  { reactionMs: 80,  counterChance: 1.0,  dodge: 'all',        targeting: 'optimal', surroundCount: 8, disengageHp: 0.2, dodgeStrength: 1,
-             engageDist: 420, dodgeVsAttack: 0.25, avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy' },
+             engageDist: 420, dodgeVsAttack: 0.25, avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy', seesBossCounterPhases: true },
 };
 
 export const botSkillProfile = (skill: BotSkill = DEFAULT_BOT_SKILL): BotSkillProfile =>

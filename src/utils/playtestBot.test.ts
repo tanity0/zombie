@@ -3,7 +3,9 @@ import { decideBotInput, wanderDirForSeed, pickupSeekInput, BOT_PERSONAS,
   torchForageInput, TORCH_SEEK_DIST, TORCH_SMASH_DIST,
   avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, MINE_AVOID_RADIUS, MINE_SMASH_DIST,
-  decideCounterReaction, createCounterThreatState, STUNNED_CHASE_MAX_DIST } from './playtestBot';
+  decideCounterReaction, createCounterThreatState, STUNNED_CHASE_MAX_DIST,
+  escapeIfStuck, createBotStuckState, BOT_STUCK_SAMPLE_TICKS, BOT_STUCK_SAMPLES, BOT_STUCK_ESCAPE_TICKS } from './playtestBot';
+import { botSkillProfile } from './botSkill';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 import type { Enemy, Projectile } from '../types/game';
@@ -523,5 +525,88 @@ describe('★処刑優先の距離制限(社長報告v0.25.3553「間に敵が�
 
   it('★【不変条件】処刑優先の上限は近接射程より広い(目の前の気絶敵を取り逃がさない)', () => {
     expect(STUNNED_CHASE_MAX_DIST).toBeGreaterThan(80); // MELEE_ENGAGE_DIST
+  });
+});
+
+describe('★詰まり脱出(社長報告v0.25.3554「木にひっかかるとずっと引っかかってる」)', () => {
+  // 旧実装は詰まり検知が rusher ペルソナにしか無く、standard(既定)には1行も無かった。
+  // 木や壁に押し当たると同じ入力を出し続けて永久に抜けない。
+  const RIGHT = { up: false, down: false, left: false, right: true };
+  const STILL = { up: false, down: false, left: false, right: false };
+
+  /** 同じ位置に留まったまま n tick 回す。最後の入力を返す。 */
+  const runStuck = (state: ReturnType<typeof createBotStuckState>, ticks: number) => {
+    let out = RIGHT;
+    for (let i = 0; i < ticks; i++) out = escapeIfStuck(RIGHT, state, 100, 100);
+    return out;
+  };
+
+  it('動けていれば入力は素通し(誤検知しない)', () => {
+    const st = createBotStuckState();
+    let out = RIGHT;
+    for (let i = 0; i < 200; i++) {
+      // 毎tick 2px ずつ進む=1サンプル(10tick)で20px動く
+      out = escapeIfStuck(RIGHT, st, 100 + i * 2, 100);
+    }
+    expect(out).toEqual(RIGHT);
+  });
+
+  it('★同じ位置に留まり続けたら横へ回り込む入力に変わる', () => {
+    const st = createBotStuckState();
+    const out = runStuck(st, BOT_STUCK_SAMPLE_TICKS * (BOT_STUCK_SAMPLES + 1));
+    expect(out).not.toEqual(RIGHT);
+    // 右へ進みたいまま詰まった=上下どちらかの横成分が立つ。
+    expect(out.up || out.down).toBe(true);
+  });
+
+  it('★【不変条件】移動入力が無いtick(意図的な静止)では詰まりを数えない', () => {
+    const st = createBotStuckState();
+    for (let i = 0; i < 300; i++) escapeIfStuck(STILL, st, 100, 100);
+    expect(st.stuckSamples).toBe(0);
+    expect(st.escapeTicks).toBe(0);
+    // 静止のあと動き出しても、いきなり脱出モードにはならない。
+    expect(escapeIfStuck(RIGHT, st, 100, 100)).toEqual(RIGHT);
+  });
+
+  it('★【不変条件】脱出は1フレームで終わらない(壁際で振動しない)', () => {
+    const st = createBotStuckState();
+    runStuck(st, BOT_STUCK_SAMPLE_TICKS * (BOT_STUCK_SAMPLES + 1));
+    expect(st.escapeTicks).toBeGreaterThan(0);
+  });
+
+  it('抜けられたら通常の入力へ戻る', () => {
+    const st = createBotStuckState();
+    runStuck(st, BOT_STUCK_SAMPLE_TICKS * (BOT_STUCK_SAMPLES + 1));
+    let out = RIGHT;
+    for (let i = 0; i < BOT_STUCK_ESCAPE_TICKS + BOT_STUCK_SAMPLE_TICKS * 2; i++) {
+      out = escapeIfStuck(RIGHT, st, 100 + i * 5, 100); // しっかり動けている
+    }
+    expect(out).toEqual(RIGHT);
+  });
+});
+
+describe('★回避は全段階に入る(社長指示v0.25.3554「基本どのレベルでもある程度は避けて」)', () => {
+  it('★【不変条件】どの腕前でも回避が無効化されない', () => {
+    // 旧: novice/casual は dodge:'none' + dodgeStrength:0 で dodgeVector が即nullを返し、
+    // **弾も突進も着弾予告も一切避けなかった**(社長報告「敵の弾に一切反応できてない」)。
+    for (const skill of ['novice', 'casual', 'skilled', 'master'] as const) {
+      const p = botSkillProfile(skill);
+      expect(p.dodge, skill).not.toBe('none');
+      expect(p.dodgeStrength, skill).toBeGreaterThan(0);
+    }
+  });
+
+  it('回避の強さは腕前で単調に上がる', () => {
+    const s = (k: 'novice' | 'casual' | 'skilled' | 'master') => botSkillProfile(k).dodgeStrength;
+    expect(s('novice')).toBeLessThan(s('casual'));
+    expect(s('casual')).toBeLessThan(s('skilled'));
+    expect(s('skilled')).toBeLessThan(s('master'));
+  });
+
+  it('★上級だけがボスの構えまでカウンター対象として見る', () => {
+    expect(botSkillProfile('novice').seesBossCounterPhases).toBe(false);
+    expect(botSkillProfile('casual').seesBossCounterPhases).toBe(false);
+    expect(botSkillProfile('skilled').seesBossCounterPhases).toBe(true);
+    expect(botSkillProfile('master').seesBossCounterPhases).toBe(true);
   });
 });
