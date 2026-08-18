@@ -151,8 +151,12 @@ const ResultReach: React.FC<ResultReachProps> = ({
                 >
                   <div className="absolute inset-0 opacity-50" style={{ backgroundImage: st.tex }} />
                   {/* 区域名は**横スクロールしても左端に貼り付く**(sticky)。壁の左端に置くと過去へ
-                      遡った時に名前が流れて消えてしまうため。 */}
-                  <div className="pointer-events-none absolute inset-0 flex items-center">
+                      遡った時に名前が流れて消えてしまうため。
+                      ★v0.25.3544(社長指示「リザルトのエリア名にメーターが被っちゃってる。文字の方を
+                      レイヤー上にして」): **z-40 で竪坑(z-20)とそのラベル(z-30)より上へ**。
+                      従来は地層divが z-auto のままで、下の暗幕だけで勝たせようとしていたが、
+                      暗幕ごと竪坑に塗り潰されていた(暗幕は同じ層の中でしか効かない)。 */}
+                  <div className="pointer-events-none absolute inset-0 z-40 flex items-center">
                     <span
                       className="inline-block whitespace-nowrap px-1.5 text-[9.5px] tracking-wide"
                       style={{

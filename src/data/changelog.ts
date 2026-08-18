@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3544',
+    items: [
+      'リザルトの到達メーターで、エリア名が掘削の柱に隠れてしまう問題を修正しました(エリア名が前面に出ます)。',
+    ],
+  },
+  {
     version: '0.25.3543',
     items: [
       'スラッシャーの連続攻撃で、判定だけ入ってプレイヤーが前に出ない不具合を修正しました(押し飛ばした分だけ必ず踏み込みます)。',
