@@ -205,6 +205,10 @@ export const getBossTestSkillInjection = (): BossTestSkillInjection | null => bo
 export const BOSS_MAKER_BOSSES: readonly EnemyType[] = [
   'idol',
   'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
+  // 第3弾(v0.25.3567): 天使6体。実戦は拘束サークル付きのゲート2経路だが、**部屋では通常の単体
+  // スポーン**で立てる(§1-1「部屋にはプレイヤーとボスだけ」)。旋回/縁クランプの中心(homeX/homeY)は
+  // useGameLoop のボスメーカー出現ブロックが置く。
+  'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel',
 ];
 export const BOSS_MAKER_DEFAULT_BOSS: EnemyType = 'idol';
 

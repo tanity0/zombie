@@ -11,7 +11,10 @@
 import { describe, it, expect } from 'vitest';
 import { MIMIR_BITE_RADIUS, MIN_BODY_AOE_REACH_PX, bodyAoeReachPx, bodyAoeReaches, type BodyCenteredAoe } from './bodyCenteredAoe';
 import { ENEMY_STATS } from './enemyUtils';
-import { SURIEL_RINGSPIN_RADIUS } from './angelBossTick';
+// v0.25.3564: 天使6体の技の数値は angelScript.ts のテーブルへ移設(ボスメーカー第3弾)。
+// 参照先が変わっただけで、見張っている値(回転斬の半径)は同じ。
+import { ANGEL_SURIEL_TUNING } from './angelScript';
+const SURIEL_RINGSPIN_RADIUS = ANGEL_SURIEL_TUNING.ringspin.radius;
 import { GIANT_STOMP_RADIUS } from '../store/gameStore';
 
 /**

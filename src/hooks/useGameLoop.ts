@@ -210,6 +210,7 @@ import {
   OFFSCREEN_SPAWN_MARGIN,
   isCorpse,
   isBountyType,
+  isGate2AngelBoss, // v0.25.3567: ボスメーカーの部屋で天使に旋回中心(home)を置くため
   resistsChipKnockback
 } from '../utils/enemyUtils';
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
@@ -305,7 +306,10 @@ import {
   decideCounterReaction, createCounterThreatState, BOT_PERSONAS, type BotPersona,
 } from '../utils/playtestBot';
 import { pickUpgradeByPolicy, mulberry32 } from '../utils/botUpgradePolicy';
-import { runAngelBossTick, tickAngelBossFires, tickAcrasielSpears, createAngelBossState, type AngelSfx } from '../utils/angelBossTick';
+import {
+  runAngelBossTick, tickAngelBossFires, tickAcrasielSpears, createAngelBossState,
+  angelPlaybackActive, clearAngelPlayback, type AngelSfx,
+} from '../utils/angelBossTick';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import {
   computeDirCountCap, computeEnemyCap, computeNormalSpawnCap,
@@ -2596,6 +2600,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           idolStateRef.current = createIdolTickState(); // idolのストリング/懲罰タイマも新ランでリセット
           clearIdolPlayback(); // ボスメーカーの個別再生も新ランで解除(createIdolTickStateに副作用を持たせない=v0.25.2625の教訓)
           angelStateRef.current = createAngelBossState(); // 天使(ゲート2ボス)状態も新ランでリセット(M26 Step3)
+          clearAngelPlayback(); // ボスメーカーの個別再生も新ランで解除(createAngelBossStateに副作用を持たせない=v0.25.2625の教訓)
           // M26-L: 実機オートパイロットの状態も新ランでリセット(tick連番/rusher詰まり検知/乱数/レポート済みフラグ)。
           botTickRef.current = 0;
           botRusherRef.current = createRusherTrackState();
@@ -6192,6 +6197,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             mk.fromEvent = true; mk.dormant = false; mk.fixed = false;
             mk.bossState = 'chase'; mk.bossPhase = 1;
             mk.bossNextActionAt = newGameTime + 800;
+            // 天使6体(§6.28・v0.25.3567)は home を中心に旋回し、その周り(半径300)へ位置がクランプ
+            // される。**homeX/homeY が未設定だと「自分の現在地=中心」になり毎フレーム自分から離れ
+            // 続ける**(=猛烈にドリフトする)ので、実ゲート2と同じく中心を明示的に置く
+            // (拘束サークルそのものは張らない=部屋はプレイヤーとボスだけ・§1-1)。
+            if (isGate2AngelBoss(BOSS_MAKER_BOSS)) {
+              mk.homeX = mcx; mk.homeY = mcy;
+            }
             // 賞金首(§6.38)はHPが「基準値×実効難易度倍率」で後から決まる型なので、自然湧き
             // (spawnBountyEncounter)と同じ式をここでも通す。帰巣(リーシュ)の原点も置いておく。
             if (isBountyType(BOSS_MAKER_BOSS)) {
@@ -6274,7 +6286,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 挙動・数値は抽出前と同一。ヘッドレス(playtestDriver)と共用。音はANGEL_SFXで注入(定義は本ファイル下部)。
         if (!danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
          try {
-          runAngelBossTick(angelStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT, ANGEL_SFX, triggerPlayerDeath);
+          // ボスメーカーの「停止」トグル: ボスの時間だけ止める(絵を止めて見たい時)。プレイヤーは
+          // 動けるまま=当たり判定の位置関係を落ち着いて確かめられる。停止中でも「個別再生」の間だけは
+          // 時間を進める(社長要望v0.25.2625)。★idol/賞金首と同じ形に揃える(v0.25.3567・BOSS_MAKER.md §6-1)。
+          // bossMaker.paused は部屋以外では常に false なので、通常プレイの挙動は変わらない。
+          if (!useGameStore.getState().bossMaker.paused || angelPlaybackActive()) {
+            runAngelBossTick(angelStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT, ANGEL_SFX, triggerPlayerDeath);
+          }
          } catch (err) {
           if (!angelCtrlErrLogged) { angelCtrlErrLogged = true; console.error('[angel] controller error (suppressed after first):', err); }
           reportSuppressedError('angel', err); // v0.25.3324: 天使ボスの技全壊系(アクラシエル報告)の実例外源をここで捕まえる

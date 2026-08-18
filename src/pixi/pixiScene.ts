@@ -96,15 +96,14 @@ import {
   idolShot, isIdolShot, idolFistReach, idolGunMuzzle, type IdolShotSlot, type IdolMove,
 } from '../utils/idolScript';
 import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
+import { MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED } from '../utils/angelBossTick';
+// ★v0.25.3564(ボスメーカー横展開・第3弾): 天使6体の技の数値は angelScript.ts のテーブルが正本。
+// **判定(angelBossTick)と描画(ここ)が同じ実体を読む**ので、手写しのミラー定数は作らないこと
+// (ミラーを置くと、画面で数値を動かした時に絵だけ古い値のまま=「赤いのに当たらない」になる)。
 import {
-  MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
-  ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS, ACRASIEL_WARP_TELEGRAPH_MS, ACRASIEL_BURST_WINDUP_MS,
-  MIGUEL_DASH_WINDUP_MS, MIGUEL_DASH_MOVE_MS, MIGUEL_DASH_STRIKE_MS,
-  URI_THRUST_WINDUP_MS, URI_THRUST_MOVE_MS, URI_THRUST_STRIKE_MS,
-  JIBRIL_LANCE_MIN_WINDUP_MS, JIBRIL_LANCE_BEAM_MS, JIBRIL_LANCE_HALF_WIDTH_PX,
-  MIGUEL_VOLLEY_WINDUP_MS, JIBRIL_VOLLEY_WINDUP_MS, JIBRIL_WARP_WINDUP_MS,
-  JIBRIL_CONSECRATE_WINDUP_MS, ACRASIEL_WARP_WINDUP_MS,
-} from '../utils/angelBossTick';
+  ANGEL_MIGUEL_TUNING as MG_T, ANGEL_JIBRIL_TUNING as JB_T, ANGEL_RAFI_TUNING as RF_T,
+  ANGEL_URI_TUNING as UR_T, ANGEL_SURIEL_TUNING as SR_T, ANGEL_ACRASIEL_TUNING as AC_T,
+} from '../utils/angelScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
@@ -1420,9 +1419,6 @@ const THOR_HARAI_WINDUP_MS = 1000;      // 払いの予告(逆回転+並行ラ�
 const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
 const THOR_HARAI_VIS_HALFWIDTH = 40;    // 払いの描画半太さ(当たり判定THOR_HARAI_HALF_WIDTH=40と一致・社長指示v0.25.1610)
 // ミゲル(ゲート2ボス)の横払い(狭)描画用(視覚・useGameLoop のゲームプレイ値と一致させること)。
-const MIGUEL_HARAI_WINDUP_MS = 1000;    // 払いの予告時間(useGameLoop と一致)
-const MIGUEL_HARAI_ACTIVE_MS = 110;     // 払いの実行(判定持続)時間(angelBossTick.ts の同名と一致・振り速度2倍 v0.25.2885)
-const MIGUEL_HARAI_VIS_HALFWIDTH = 40;  // 払いの描画半太さ(当たり判定MIGUEL_HARAI_HALF_WIDTH=40と一致・社長指示v0.25.1610)
 const THOR_TSUKI_WINDUP_MS = 1000;      // 突きの溜め時間(useGameLoop と一致・溜め演出の進行度算出用)
 const TSUKI_DRAW_BACK_PX = 20;          // 突き溜め: 手元を狙い線の後方へ引く量(社長指示「少しだけ」ゆっくり)
 const THOR_TSUKI_MS = 180;              // 突きの実行(判定持続)時間(useGameLoop と一致)
@@ -1598,29 +1594,10 @@ const SURIEL_RING_VIS_D = 54; // 画面上の直径(px・叩き台)
 // 使う予備動作の長さ(半幅はTHOR_HARAI_VIS_HALFWIDTH=40/THOR_TSUKI_VIS_HALFWIDTH=15/
 // MIGUEL_HARAI_VIS_HALFWIDTH=40を再利用=新しい太さを発明しない)。値はangelBossTick.tsの同名定数と一致
 // (「一致」コメント義務=既存のMIGUEL_HARAI_WINDUP_MS等と同じ流儀)。
-const RAFI_SWEEP_WINDUP_MS_VIS = 700;
-const URI_SWEEP_WINDUP_MS_VIS = 550;   // 社長指示v0.25.3195「溜を半分に」: angelBossTickと同値必須
-const URI_SWEEP_ACTIVE_MS = 130;          // 振り速度2倍(v0.25.2885)。angelBossTick.tsの同名と一致
-const URI_DOWNSLASH_WINDUP_MS_VIS = 500; // 社長指示v0.25.3195: 同上
-const URI_DOWNSLASH_ACTIVE_MS = 100;      // 振り速度2倍(v0.25.2885)。angelBossTick.tsの同名と一致
-const SURIEL_SWEEP_WINDUP_MS_VIS = 800;
-const SURIEL_RINGSHOT_BEAM_WINDUP_MS_VIS = 700;
-const SURIEL_RINGSHOT_ACTIVE_MS_VIS = 220;
-const SURIEL_RINGSPIN_ACTIVE_MS_VIS = 600;
-const SURIEL_SWEEP_ACTIVE_MS_VIS = 220;
 const BOSS_DASH_WINDUP_MS_VIS = 1000; // =useGameLoopのBOSS_DASH_WINDUP_MS(裏ボスdash溜め)。流星ラインの進行同期用の写し。
-const ACRASIEL_SPIKE_WINDUP_MS_VIS = 1100;
-const ACRASIEL_SPIKE_ACTIVE_MS_VIS = 240;
-const ACRASIEL_BURST_ACTIVE_MS_VIS = 300;
-const ACRASIEL_SPIKE_RANGE_VIS = 310; // =THOR_HARAI_RANGE相当(流用)。放射棘8方向の描画長。
-const ACRASIEL_SPEAR_WINDUP_MS_VIS = 700;
-const ACRASIEL_GAZE_WINDUP_MS_VIS = 450;
-const SURIEL_GAZE_WINDUP_MS_VIS = 450;  // 単眼の凝視windup時間(angelBossTick SURIEL_GAZE_WINDUP_MSと一致)。
-const SURIEL_RINGSPIN_WINDUP_MS_VIS = 800; // 環の回転斬windup時間(angelBossTick SURIEL_RINGSPIN_WINDUP_MSと一致)。
 // ★ACRASIEL_WARP_TELEGRAPH_MS はimportへ移行(v0.25.2893)。旧: ここに 800 を手写ししており、
 // v0.25.2609の是正(800→1000・800msでは構造的に円から出られない)が判定側にしか届いていなかった
 // =予告円が実際より2割速く「満ちて」見えていた。
-const ACRASIEL_BURST_RADIUS_VIS = 140; // ★未決事項(angelBossTick.tsと同じ叩き台値)。
 
 // FX-V2b(発注仕様research/FX_GAP_LEDGER.md「FX-V2b」・武器主役)。掟どおり既存素材
 // (acrasiel-spear.png)のみ・タイミングは既存の ACRASIEL_SPIKE_ACTIVE_MS_VIS / ACRASIEL_BURST_ACTIVE_MS_VIS
@@ -1633,7 +1610,9 @@ const acrasielSpikeThrustRise = (t: number): number => {
 };
 const ACRASIEL_BURST_FRAG_COUNT = 5; // 4〜6片の中央値(発注仕様どおり)
 // burst: 判定より外へはみ出してよい(分類②)。破片は判定半径の1.3倍まで飛ばす。
-const ACRASIEL_BURST_FRAG_REACH = ACRASIEL_BURST_RADIUS_VIS * 1.3;
+// ★関数にしてあるのは、テーブル(AC_T.burst.radius)を**使う時に読む**ため。
+// モジュール定数にすると起動時の値が焼き付き、ボスメーカーで半径を動かしても断片だけ元の飛距離になる。
+const acrasielBurstFragReach = (): number => AC_T.burst.radius * 1.3;
 // warp: 消失/出現の繋ぎ(魔法陣素材が来たら差し替え前提の軽い実装)。判定を持たない純粋な
 // 演出なので独自の短い尺(既存の判定タイミングとは無関係)。
 const ACRASIEL_WARP_FLASH_MS_VIS = 380;
@@ -12212,7 +12191,7 @@ export class PixiScene {
         // ままで描画は読むだけ。
         if (e.bossState === 'sweep') {
           const remain = Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime);
-          const t = Math.max(0, Math.min(1, 1 - remain / SURIEL_SWEEP_ACTIVE_MS_VIS));
+          const t = Math.max(0, Math.min(1, 1 - remain / SR_T.sweep.active));
           const fx = e.aiFromX ?? e.ringX, fy = e.aiFromY ?? e.ringY;
           const tx = e.aiTargetX ?? fx, ty = e.aiTargetY ?? fy;
           const pose = swordSwingPose('wide', t);
@@ -12267,7 +12246,7 @@ export class PixiScene {
     for (const sp of spears) {
       const total = Math.max(1, sp.fireAt - sp.bornAt);
       const t = Math.max(0, Math.min(1, (gameTime - sp.bornAt) / total));
-      const R = ACRASIEL_SPEAR_RADIUS;
+      const R = AC_T.spear.radius;
       g.ellipse(sp.x, sp.y, R, R).fill({ color: 0xff2a2a, alpha: (0.05 + 0.18 * t + 0.06 * pulse) * TELEGRAPH_FILL_MULT });
       g.ellipse(sp.x, sp.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * t + 0.12 * pulse });
       if (tex) {
@@ -15748,7 +15727,7 @@ export class PixiScene {
         // 実行(spear/spear-recover)まで進んだら構えは畳む=本物の槍と二重に出さない。
         if (spL && bs !== 'spear-recover') {
           const prog = spearWind
-            ? Math.max(0, Math.min(1, 1 - spearRemain / ACRASIEL_SPEAR_WINDUP_MS_VIS))
+            ? Math.max(0, Math.min(1, 1 - spearRemain / AC_T.spear.windup))
             : spL.t;
           const pl = useGameStore.getState().player;
           // 溜め中は狙いを追い、中断後は焼き付けた狙いのまま構え切る。
@@ -15762,7 +15741,7 @@ export class PixiScene {
       // ★予兆一括バッチ(v0.25.3344・レシピ4/裁定済みv0.25.3341): ミゲル/ジブリルの弾連射(volley)構え=
       // ホロscanを本体に半透明で被せる(windup尺で1周)。素の棒立ちだった行を解消。
       if ((e.type === 'miguel' || e.type === 'jibril') && (bs === 'volley-windup' || bs === 'volley')) {
-        const volleyWindMs = e.type === 'miguel' ? MIGUEL_VOLLEY_WINDUP_MS : JIBRIL_VOLLEY_WINDUP_MS;
+        const volleyWindMs = e.type === 'miguel' ? MG_T.volley.windup : JB_T.volley.windup;
         const vProg = bs === 'volley-windup'
           ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / volleyWindMs))
           : 1;
@@ -15771,14 +15750,14 @@ export class PixiScene {
       // ★予兆一括バッチ(v0.25.3344・レシピ2+4): ジブリルの瞬間移動(warp)構え=縦縮み(しゃがみ)+
       // 足元にホロmini(windup尺で1周)。旧「なし」を解消(パンプキン式の縮みを流用)。
       if (e.type === 'jibril' && bs === 'warp-windup') {
-        const wProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / JIBRIL_WARP_WINDUP_MS));
+        const wProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / JB_T.warp.windup));
         view.sprite.scale.set(view.sprite.scale.x * (1 + 0.14 * wProg), view.sprite.scale.y * (1 - 0.30 * wProg));
         this.drawHoloMiniAt(e.id, fb.footX, fb.footY, Math.max(e.width, e.height) * 1.3, wProg, 0.5 + 0.4 * wProg);
       }
       // ★予兆一括バッチ(v0.25.3344): ジブリルの結界(consecrate)構え=常設ランタンを軽く掲げ直す
       // アクセント(alpha/scaleの一瞬の張り。ランタン自体の描画=drawJibrilLanternは既存のまま)。
       if (e.type === 'jibril' && bs === 'consecrate-windup') {
-        const cProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / JIBRIL_CONSECRATE_WINDUP_MS));
+        const cProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / JB_T.consecrate.windup));
         const lanternSp = this.jibrilLanternSprites.get(e.id);
         if (lanternSp) {
           const raise = Math.sin(cProg * Math.PI) * 0.18; // 頭で持ち上げ→振り下ろす1山
@@ -15795,12 +15774,12 @@ export class PixiScene {
           // 放つ前=赤いダメージゾーンの予告。社長指示v0.25.1611「レッドライン=攻撃範囲にする」:
           // 当たり判定は中心線の両側±MIGUEL_HARAI_HALF_WIDTH のカプセルなので、予告も細い線1本ではなく
           // 判定幅ぶん膨らませた矩形ゾーンで描く(トールの一閃ゾーンと同じ意匠。判定は不変=見た目だけ実寸)。
-          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_WINDUP_MS));
-          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, prog, now);
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MG_T.harai.windup));
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, MG_T.harai.halfWidth, prog, now);
           // 剣を振るモーションの「最初の位置」に最初から構えておく。柄=ミゲルの手元、刃先=薙ぎ始めの点。
           // 武器スプライトはミゲル専用(miguel-sword)。ジブリルは武器の使い方を受領後に別途追加(予告のみ)。
           if (e.type === 'miguel') {
-            const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * MIGUEL_HARAI_WINDUP_MS);
+            const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * MG_T.harai.windup);
             // ★予兆一括バッチ(v0.25.3344): 構え自体は既存のまま、終盤だけ震え追加(社長要望)。
             this.drawMiguelKatanaReady(
               e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, swingStyle, 0, windupTremorPx(prog, now), now,
@@ -15808,8 +15787,8 @@ export class PixiScene {
           }
         } else {
           // 払い/縦払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
-          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_ACTIVE_MS));
-          if (e.type === 'miguel') this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, swingStyle);
+          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MG_T.harai.active));
+          if (e.type === 'miguel') this.drawMiguelSlash(e.id, fx, fy, tx, ty, MG_T.harai.halfWidth, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, swingStyle);
         }
       }
       // ---- ミゲル(§6.28-4・M53新規): 踏み込み(dash)=T1赤ライン+終点リング ----
@@ -15819,14 +15798,14 @@ export class PixiScene {
         // v0.25.3342→3343: 溜め中は進行同期で伸び、踏み込み中は**始点から蒸発**(走者が線を食う)。
         const elapsed = gameTime - (e.aiStartedAt ?? gameTime);
         const mprog = bs === 'mdash-windup'
-          ? 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_DASH_WINDUP_MS
+          ? 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MG_T.dash.windup
           : 1;
-        const merase = bs === 'mdash-windup' ? 0 : Math.min(1, elapsed / MIGUEL_DASH_MOVE_MS);
+        const merase = bs === 'mdash-windup' ? 0 : Math.min(1, elapsed / MG_T.dash.moveMs);
         this.drawAngelDashLine(o, cx, cy, tx, ty, now, mprog, merase);
-        if (bs === 'mdash-windup' || elapsed < MIGUEL_DASH_MOVE_MS) {
+        if (bs === 'mdash-windup' || elapsed < MG_T.dash.moveMs) {
           const remaining = (e.bossStateUntil ?? gameTime) - gameTime;
           const swordAlpha = bs === 'mdash-windup'
-            ? 0.7 * swordFadeInAlpha(MIGUEL_DASH_WINDUP_MS - remaining)
+            ? 0.7 * swordFadeInAlpha(MG_T.dash.windup - remaining)
             : 1;
           // ★予兆一括バッチ(v0.25.3344): mdash-windupは震え+後ずさりを追加(社長要望「突進なら
           // 震えながら後ずさる」)。描画オフセットのみ(実座標=e.x/e.yは不変・判定は据え置き)。
@@ -15840,8 +15819,8 @@ export class PixiScene {
             view.sprite.position.x += off.x; view.sprite.position.y += off.y;
           }
         } else {
-          const strikeProg = Math.max(0, Math.min(1, (elapsed - MIGUEL_DASH_MOVE_MS) / MIGUEL_DASH_STRIKE_MS));
-          this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, strikeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'draw');
+          const strikeProg = Math.max(0, Math.min(1, (elapsed - MG_T.dash.moveMs) / MG_T.dash.strikeMs));
+          this.drawMiguelSlash(e.id, fx, fy, tx, ty, MG_T.harai.halfWidth, strikeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'draw');
         }
       }
       // ---- ミゲル: 硬直中も武器を消さない(掟W9)。振り切った姿勢のまま静止させる。 ----
@@ -15864,14 +15843,14 @@ export class PixiScene {
         (e.lanceLanterns ?? []).forEach((L, li) => {
           if (L.firedUntil !== undefined) {
             // 光条: 判定幅の赤+白芯。起爆(判定)はカプセル側=絵は判定幅と同じ(分類①)。
-            const lt = Math.max(0, Math.min(1, 1 - (L.firedUntil - gameTime) / JIBRIL_LANCE_BEAM_MS));
+            const lt = Math.max(0, Math.min(1, 1 - (L.firedUntil - gameTime) / JB_T.lance.beamMs));
             const a = 1 - lt * 0.7;
-            o.moveTo(cx, cy).lineTo(L.x, L.y).stroke({ width: JIBRIL_LANCE_HALF_WIDTH_PX * 2, color: 0xff3b3b, alpha: 0.6 * a });
+            o.moveTo(cx, cy).lineTo(L.x, L.y).stroke({ width: JB_T.lance.halfWidth * 2, color: 0xff3b3b, alpha: 0.6 * a });
             o.moveTo(cx, cy).lineTo(L.x, L.y).stroke({ width: 6, color: 0xffffff, alpha: 0.9 * a });
             return;
           }
-          const prog = Math.max(0, Math.min(1, (gameTime - L.bornAt) / JIBRIL_LANCE_MIN_WINDUP_MS));
-          this.drawAngelZoneCapsule(view, o, cx, cy, L.x, L.y, JIBRIL_LANCE_HALF_WIDTH_PX, prog, now);
+          const prog = Math.max(0, Math.min(1, (gameTime - L.bornAt) / JB_T.lance.minWindup));
+          this.drawAngelZoneCapsule(view, o, cx, cy, L.x, L.y, JB_T.lance.halfWidth, prog, now);
           if (lanceTex) {
             const key = `${e.id}:${li}`;
             let sp = this.jibrilLanceLanternPool.get(key);
@@ -15888,9 +15867,9 @@ export class PixiScene {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (bs === 'sweep-windup') {
-          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / RAFI_SWEEP_WINDUP_MS_VIS));
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / RF_T.sweep.windup));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
-          const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * RAFI_SWEEP_WINDUP_MS_VIS);
+          const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * RF_T.sweep.windup);
           // ★予兆一括バッチ(v0.25.3344): miguel/uriと同型の震えを追加。
           this.drawRafiKatanaReady(
             e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 0, windupTremorPx(prog, now), now,
@@ -15931,15 +15910,15 @@ export class PixiScene {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (bs === 'sweep-windup') {
-          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_SWEEP_WINDUP_MS_VIS));
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / UR_T.sweep.windup));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
-          const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * URI_SWEEP_WINDUP_MS_VIS);
+          const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * UR_T.sweep.windup);
           // ★予兆一括バッチ(v0.25.3344): 震え追加。
           this.drawUriKatanaReady(
             e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 0, windupTremorPx(prog, now), now,
           );
         } else if (bs === 'sweep') {
-          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_SWEEP_ACTIVE_MS));
+          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / UR_T.sweep.active));
           this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
         } else {
           const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
@@ -15953,15 +15932,15 @@ export class PixiScene {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (bs === 'downslash-windup') {
-          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_DOWNSLASH_WINDUP_MS_VIS));
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / UR_T.downslash.windup));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, prog, now);
-          const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * URI_DOWNSLASH_WINDUP_MS_VIS);
+          const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * UR_T.downslash.windup);
           // ★予兆一括バッチ(v0.25.3344): 震え追加(既存の振りかぶり構え=drawKatanaReadyに揃える)。
           this.drawUriKatanaReady(
             e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'overhead', 0, windupTremorPx(prog, now), now,
           );
         } else if (bs === 'downslash') {
-          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_DOWNSLASH_ACTIVE_MS));
+          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / UR_T.downslash.active));
           this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'overhead');
         } else {
           const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
@@ -15978,24 +15957,24 @@ export class PixiScene {
         const elapsed = gameTime - (e.aiStartedAt ?? gameTime);
         if (bs !== 'thrust-recover') {
           const uprog = bs === 'thrust-windup'
-            ? 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_THRUST_WINDUP_MS
+            ? 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / UR_T.thrust.windup
             : 1;
-          const uerase = bs === 'thrust-windup' ? 0 : Math.min(1, elapsed / URI_THRUST_MOVE_MS);
+          const uerase = bs === 'thrust-windup' ? 0 : Math.min(1, elapsed / UR_T.thrust.moveMs);
           this.drawAngelDashLine(o, cx, cy, tx, ty, now, uprog, uerase);
         }
-        if (bs === 'thrust-windup' || (bs === 'thrust' && elapsed < URI_THRUST_MOVE_MS)) {
+        if (bs === 'thrust-windup' || (bs === 'thrust' && elapsed < UR_T.thrust.moveMs)) {
           const remaining = (e.bossStateUntil ?? gameTime) - gameTime;
           const swordAlpha = bs === 'thrust-windup'
-            ? 0.7 * swordFadeInAlpha(URI_THRUST_WINDUP_MS - remaining)
+            ? 0.7 * swordFadeInAlpha(UR_T.thrust.windup - remaining)
             : 1;
           // ★予兆一括バッチ(v0.25.3344): windup中のみ震え(踏み込み中=thrust-move phaseは既に動いているので0)。
           const thrustTremor = bs === 'thrust-windup'
-            ? windupTremorPx(1 - remaining / URI_THRUST_WINDUP_MS, now) : 0;
+            ? windupTremorPx(1 - remaining / UR_T.thrust.windup, now) : 0;
           this.drawUriKatanaReady(
             e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'thrust', 0, thrustTremor, now,
           );
         } else if (bs === 'thrust') {
-          const strikeProg = Math.max(0, Math.min(1, (elapsed - URI_THRUST_MOVE_MS) / URI_THRUST_STRIKE_MS));
+          const strikeProg = Math.max(0, Math.min(1, (elapsed - UR_T.thrust.moveMs) / UR_T.thrust.strikeMs));
           this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, strikeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'thrust');
         } else {
           const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
@@ -16012,7 +15991,7 @@ export class PixiScene {
         let dirx = tx - fx, diry = ty - fy; const dl = Math.hypot(dirx, diry) || 1; dirx /= dl; diry /= dl;
         const ex = fx + dirx * MIMIR_LASER_VIS_RANGE, ey = fy + diry * MIMIR_LASER_VIS_RANGE;
         const beamProg = bs === 'ring-beam-windup'
-          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SURIEL_RINGSHOT_BEAM_WINDUP_MS_VIS))
+          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SR_T.ringshot.beamWindup))
           : 1;
         this.drawAngelBeamLine(o, fx, fy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, beamProg, now);
         // v0.25.3200(社長指示): Phase2は2本目の環からも同じ対象へもう1本(判定と同幅・同尺=分類①)。
@@ -16028,13 +16007,13 @@ export class PixiScene {
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         // v0.25.2579: GIANT_STOMP_RADIUS流用をやめ、判定(angelBossTick)と同じSURIEL_RINGSPIN_RADIUSで描く。
         // 踏み鳴らしの範囲拡大(92→縁+92導出)でスリィエルだけ「赤が判定より大きい」に割れるのを防ぐ(分類①)。
-        o.ellipse(cx, cy, SURIEL_RINGSPIN_RADIUS, SURIEL_RINGSPIN_RADIUS).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(cx, cy, SR_T.ringspin.radius, SR_T.ringspin.radius).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
-        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, SURIEL_RINGSPIN_RADIUS, 0xff3b3b, 0.45 + 0.3 * pulse);
-        else o.ellipse(cx, cy, SURIEL_RINGSPIN_RADIUS, SURIEL_RINGSPIN_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, SR_T.ringspin.radius, 0xff3b3b, 0.45 + 0.3 * pulse);
+        else o.ellipse(cx, cy, SR_T.ringspin.radius, SR_T.ringspin.radius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
         // ★予兆一括バッチ(v0.25.3344・レシピ1): 構え(環を引き寄せる動作)の代わりに震え。
         if (bs === 'ring-spin-windup') {
-          const rsProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SURIEL_RINGSPIN_WINDUP_MS_VIS));
+          const rsProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SR_T.ringspin.windup));
           view.sprite.position.x += windupTremorPx(rsProg, now);
         }
       }
@@ -16043,7 +16022,7 @@ export class PixiScene {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (bs === 'sweep-windup') {
-          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SURIEL_SWEEP_WINDUP_MS_VIS));
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SR_T.sweep.windup));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
           // ★予兆一括バッチ(v0.25.3344・レシピ1): マント/武器絵が無いので震え+後ずさりで代用
           // (素材は「あった方がいい」枠のため今回は仮置き。台帳に理由を記載)。
@@ -16059,22 +16038,22 @@ export class PixiScene {
       else if (scriptActive && e.type === 'acrasiel' && (bs === 'spike-windup' || bs === 'spike')) {
         const mask = e.spikeGapMask ?? 0;
         const prog = bs === 'spike-windup'
-          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_SPIKE_WINDUP_MS_VIS))
+          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.spike.windup))
           : 1;
         // FX-V2b #1: 実行中(spike active)だけ、結晶の槍が地面から突き上がる(判定=帯は不変・添え絵)。
         const spikeActiveT = bs === 'spike'
-          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_SPIKE_ACTIVE_MS_VIS))
+          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.spike.active))
           : 0;
         for (let sector = 0; sector < 8; sector++) {
           if ((mask & (1 << sector)) !== 0) continue; // 空きセクター=描かない(判定と一致)
           const ang = sector * (Math.PI / 4);
-          const ex = cx + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_VIS, ey = cy + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_VIS;
+          const ex = cx + Math.cos(ang) * AC_T.spike.range, ey = cy + Math.sin(ang) * AC_T.spike.range;
           // idx=sector: 同フレームに最大8本まで同時に生きるので、rings(連続ジャンプ)と同じ
           // idx方式でview.bandsのスロットを分ける(1本しか持たないと最後のセクターしか素材が出ない)。
           this.drawAngelZoneCapsule(view, o, cx, cy, ex, ey, THOR_HARAI_VIS_HALFWIDTH, prog, now, sector);
           if (bs === 'spike') {
-            this.drawAcrasielSpikeThrust(view, sector, cx + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_VIS * 0.55,
-              cy + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_VIS * 0.55, ang, spikeActiveT);
+            this.drawAcrasielSpikeThrust(view, sector, cx + Math.cos(ang) * AC_T.spike.range * 0.55,
+              cy + Math.sin(ang) * AC_T.spike.range * 0.55, ang, spikeActiveT);
           }
         }
         // ★予兆一括バッチ(v0.25.3344・レシピ2「安い方」): 8方向へ力を溜める=しゃがみ(縦縮み)。
@@ -16087,20 +16066,20 @@ export class PixiScene {
       // ★予兆一括バッチ(v0.25.3344・レシピ2+4): アクラシエルの転移(warp-out=消える前の溜め)構え=
       // 縦縮み(しゃがみ)+足元にホロmini(windup尺で1周)。ジブリルwarpと同じ扱い。
       else if (scriptActive && e.type === 'acrasiel' && bs === 'warp-out') {
-        const woProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_WARP_WINDUP_MS));
+        const woProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.warp.windup));
         view.sprite.scale.set(view.sprite.scale.x * (1 + 0.14 * woProg), view.sprite.scale.y * (1 - 0.30 * woProg));
         this.drawHoloMiniAt(e.id, fb.footX, fb.footY, Math.max(e.width, e.height) * 1.3, woProg, 0.5 + 0.4 * woProg);
       }
       // ---- アクラシエル: 転移(出現先)=T5円フェードイン(0.8秒)。転移元(消失)はtintのT4フラッシュのみ。 ----
       else if (scriptActive && e.type === 'acrasiel' && bs === 'warp-in') {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        const total = ACRASIEL_WARP_TELEGRAPH_MS;
+        const total = AC_T.warp.telegraphMs;
         const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / total));
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-        o.ellipse(tx, ty, ACRASIEL_SPEAR_RADIUS, ACRASIEL_SPEAR_RADIUS).fill({ color: 0xff2a2a, alpha: (0.05 + 0.18 * t + 0.06 * pulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(tx, ty, AC_T.spear.radius, AC_T.spear.radius).fill({ color: 0xff2a2a, alpha: (0.05 + 0.18 * t + 0.06 * pulse) * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
-        if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, ACRASIEL_SPEAR_RADIUS, 0xff3b3b, 0.2 + 0.45 * t + 0.12 * pulse);
-        else o.ellipse(tx, ty, ACRASIEL_SPEAR_RADIUS, ACRASIEL_SPEAR_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * t + 0.12 * pulse });
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, AC_T.spear.radius, 0xff3b3b, 0.2 + 0.45 * t + 0.12 * pulse);
+        else o.ellipse(tx, ty, AC_T.spear.radius, AC_T.spear.radius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * t + 0.12 * pulse });
       }
       // ---- アクラシエル: 収縮→爆発=T2大円。「最大の反撃窓」(§6.28-19) ----
       // ★v0.25.3148(バグ修正): **溜め(burst-windup 1200ms)の間、赤い円が一度も出ていなかった**。
@@ -16112,17 +16091,17 @@ export class PixiScene {
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         const bwind = bs === 'burst-windup';
         const bprog = bwind
-          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_BURST_WINDUP_MS))
+          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.burst.windup))
           : 1;
-        o.ellipse(cx, cy, ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).fill({ color: 0xff2a2a, alpha: ((bwind ? 0.06 + 0.12 * bprog : 0.18) + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(cx, cy, AC_T.burst.radius, AC_T.burst.radius).fill({ color: 0xff2a2a, alpha: ((bwind ? 0.06 + 0.12 * bprog : 0.18) + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
         const bring = (bwind ? 0.2 + 0.3 * bprog : 0.5) + 0.3 * pulse;
-        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, ACRASIEL_BURST_RADIUS_VIS, 0xff3b3b, bring);
-        else o.ellipse(cx, cy, ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).stroke({ width: 2, color: 0xff3b3b, alpha: bring });
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, AC_T.burst.radius, 0xff3b3b, bring);
+        else o.ellipse(cx, cy, AC_T.burst.radius, AC_T.burst.radius).stroke({ width: 2, color: 0xff3b3b, alpha: bring });
         // FX-V2b #2: 結晶の槍の断片が4〜6片(ACRASIEL_BURST_FRAG_COUNT)放射する(既存リングに添える・②)。
         // ※断片は**実行中だけ**(溜め中に破片が飛ぶと「もう爆発した」に見える)。
         const burstActiveT = bwind ? -1
-          : Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_BURST_ACTIVE_MS_VIS));
+          : Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.burst.active));
         if (burstActiveT >= 0) {
           // ★v0.25.3520(社長指示「エフェクトを武器やボスの動きと切り離して」): 破片の**放射原点**は
           // 爆発が始まった位置に焼き付ける。毎フレームcx/cyを渡すと、本体が動いた時に破片の束ごと
@@ -16146,7 +16125,7 @@ export class PixiScene {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         let dirx = tx - cx, diry = ty - cy; const dl = Math.hypot(dirx, diry) || 1; dirx /= dl; diry /= dl;
         const ex = cx + dirx * MIMIR_LASER_VIS_RANGE, ey = cy + diry * MIMIR_LASER_VIS_RANGE;
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_GAZE_WINDUP_MS_VIS));
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.gaze.windup));
         this.drawAngelBeamLine(o, cx, cy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, prog, now);
       }
       // ---- スリィエル: 単眼の凝視(小技)=T4のみ(図形なし・tintは上で設定済み) ----
@@ -16163,36 +16142,36 @@ export class PixiScene {
         this.latchSwordCompletion(
           `${e.id}:miguel-harai-complete`, haraiWind || haraiActive,
           haraiWind || haraiActive || bs === 'harai-recover', haraiWind ? swordRemain : 0,
-          haraiWind ? MIGUEL_HARAI_ACTIVE_MS : haraiActive ? swordRemain : MIGUEL_HARAI_ACTIVE_MS, now,
+          haraiWind ? MG_T.harai.active : haraiActive ? swordRemain : MG_T.harai.active, now,
           this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
           MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
-          e.id, swordFx, swordFy, swordTx, swordTy, MIGUEL_HARAI_VIS_HALFWIDTH,
+          e.id, swordFx, swordFy, swordTx, swordTy, MG_T.harai.halfWidth,
           swordHandX, swordHandY, 'wide',
         );
         const tateWind = bs === 'tate-windup', tateActive = bs === 'tate';
         this.latchSwordCompletion(
           `${e.id}:miguel-tate-complete`, tateWind || tateActive,
           tateWind || tateActive || bs === 'tate-recover', tateWind ? swordRemain : 0,
-          tateWind ? MIGUEL_HARAI_ACTIVE_MS : tateActive ? swordRemain : MIGUEL_HARAI_ACTIVE_MS, now,
+          tateWind ? MG_T.harai.active : tateActive ? swordRemain : MG_T.harai.active, now,
           this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
           MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
-          e.id, swordFx, swordFy, swordTx, swordTy, MIGUEL_HARAI_VIS_HALFWIDTH,
+          e.id, swordFx, swordFy, swordTx, swordTy, MG_T.harai.halfWidth,
           swordHandX, swordHandY, 'overhead',
         );
         const dashWind = bs === 'mdash-windup', dashActive = bs === 'mdash-move';
         const dashElapsed = dashActive ? Math.max(0, gameTime - (e.aiStartedAt ?? gameTime)) : 0;
         const dashToStrike = dashWind
-          ? swordRemain + MIGUEL_DASH_MOVE_MS
-          : dashActive ? Math.max(0, MIGUEL_DASH_MOVE_MS - dashElapsed) : 0;
+          ? swordRemain + MG_T.dash.moveMs
+          : dashActive ? Math.max(0, MG_T.dash.moveMs - dashElapsed) : 0;
         const dashSwingRemain = dashWind
-          ? MIGUEL_DASH_STRIKE_MS
-          : dashActive ? Math.max(1, swordRemain - dashToStrike) : MIGUEL_DASH_STRIKE_MS;
+          ? MG_T.dash.strikeMs
+          : dashActive ? Math.max(1, swordRemain - dashToStrike) : MG_T.dash.strikeMs;
         this.latchSwordCompletion(
           `${e.id}:miguel-dash-complete`, dashWind || dashActive,
           dashWind || dashActive || bs === 'mdash-recover', dashToStrike, dashSwingRemain, now,
           this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
           MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
-          e.id, swordFx, swordFy, swordTx, swordTy, MIGUEL_HARAI_VIS_HALFWIDTH,
+          e.id, swordFx, swordFy, swordTx, swordTy, MG_T.harai.halfWidth,
           swordHandX, swordHandY, 'draw',
         );
         this.latchSwordRecovery(
@@ -16235,7 +16214,7 @@ export class PixiScene {
         this.latchSwordCompletion(
           `${e.id}:uri-sweep-complete`, sweepWind || sweepActive,
           sweepWind || sweepActive || bs === 'sweep-recover', sweepWind ? swordRemain : 0,
-          sweepWind ? URI_SWEEP_ACTIVE_MS : sweepActive ? swordRemain : URI_SWEEP_ACTIVE_MS, now,
+          sweepWind ? UR_T.sweep.active : sweepActive ? swordRemain : UR_T.sweep.active, now,
           this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
           URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
           e.id, swordFx, swordFy, swordTx, swordTy, THOR_HARAI_VIS_HALFWIDTH,
@@ -16245,7 +16224,7 @@ export class PixiScene {
         this.latchSwordCompletion(
           `${e.id}:uri-downslash-complete`, downWind || downActive,
           downWind || downActive || bs === 'downslash-recover', downWind ? swordRemain : 0,
-          downWind ? URI_DOWNSLASH_ACTIVE_MS : downActive ? swordRemain : URI_DOWNSLASH_ACTIVE_MS, now,
+          downWind ? UR_T.downslash.active : downActive ? swordRemain : UR_T.downslash.active, now,
           this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
           URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
           e.id, swordFx, swordFy, swordTx, swordTy, THOR_TSUKI_VIS_HALFWIDTH,
@@ -16254,11 +16233,11 @@ export class PixiScene {
         const thrustWind = bs === 'thrust-windup', thrustActive = bs === 'thrust';
         const thrustElapsed = thrustActive ? Math.max(0, gameTime - (e.aiStartedAt ?? gameTime)) : 0;
         const thrustToStrike = thrustWind
-          ? swordRemain + URI_THRUST_MOVE_MS
-          : thrustActive ? Math.max(0, URI_THRUST_MOVE_MS - thrustElapsed) : 0;
+          ? swordRemain + UR_T.thrust.moveMs
+          : thrustActive ? Math.max(0, UR_T.thrust.moveMs - thrustElapsed) : 0;
         const thrustSwingRemain = thrustWind
-          ? URI_THRUST_STRIKE_MS
-          : thrustActive ? Math.max(1, swordRemain - thrustToStrike) : URI_THRUST_STRIKE_MS;
+          ? UR_T.thrust.strikeMs
+          : thrustActive ? Math.max(1, swordRemain - thrustToStrike) : UR_T.thrust.strikeMs;
         this.latchSwordCompletion(
           `${e.id}:uri-thrust-complete`, thrustWind || thrustActive,
           thrustWind || thrustActive || bs === 'thrust-recover', thrustToStrike, thrustSwingRemain, now,
@@ -16302,7 +16281,7 @@ export class PixiScene {
         // 2本目だけ突然消える「絵が消えた」事故を作らない(掟W9)。
         const beamL = this.latchFx(
           `${e.id}:suriel-beam-complete`, beamWind || beamActive,
-          (beamWind ? swordRemain : 0) + (beamWind ? SURIEL_RINGSHOT_ACTIVE_MS_VIS : beamActive ? swordRemain : SURIEL_RINGSHOT_ACTIVE_MS_VIS),
+          (beamWind ? swordRemain : 0) + (beamWind ? SR_T.ringshot.active : beamActive ? swordRemain : SR_T.ringshot.active),
           now,
           () => {
             let b2: [number, number, number, number] = [NaN, NaN, NaN, NaN];
@@ -16311,7 +16290,7 @@ export class PixiScene {
               const dl2 = Math.hypot(d2x, d2y) || 1; d2x /= dl2; d2y /= dl2;
               b2 = [e.ring2X, e.ring2Y, e.ring2X + d2x * MIMIR_LASER_VIS_RANGE, e.ring2Y + d2y * MIMIR_LASER_VIS_RANGE];
             }
-            return [beamWind ? swordRemain : 0, beamWind ? SURIEL_RINGSHOT_ACTIVE_MS_VIS : Math.max(1, swordRemain), swordFx, swordFy, beamEx, beamEy, ...b2];
+            return [beamWind ? swordRemain : 0, beamWind ? SR_T.ringshot.active : Math.max(1, swordRemain), swordFx, swordFy, beamEx, beamEy, ...b2];
           },
         );
         if (beamL && !(beamWind || beamActive || bs === 'ring-recover')) {
@@ -16330,9 +16309,9 @@ export class PixiScene {
         const spinWind = bs === 'ring-spin-windup', spinActive = bs === 'ring-spin';
         const spinL = this.latchFx(
           `${e.id}:suriel-spin-complete`, spinWind || spinActive,
-          (spinWind ? swordRemain : 0) + (spinWind ? SURIEL_RINGSPIN_ACTIVE_MS_VIS : spinActive ? swordRemain : SURIEL_RINGSPIN_ACTIVE_MS_VIS),
+          (spinWind ? swordRemain : 0) + (spinWind ? SR_T.ringspin.active : spinActive ? swordRemain : SR_T.ringspin.active),
           now,
-          () => [spinWind ? swordRemain : 0, spinWind ? SURIEL_RINGSPIN_ACTIVE_MS_VIS : Math.max(1, swordRemain), cx, cy],
+          () => [spinWind ? swordRemain : 0, spinWind ? SR_T.ringspin.active : Math.max(1, swordRemain), cx, cy],
         );
         if (spinL && !(spinWind || spinActive || bs === 'ring-spin-recover')) {
           const elapsed = now - spinL.t0;
@@ -16340,18 +16319,18 @@ export class PixiScene {
             this.fxLatches.delete(`${e.id}:suriel-spin-complete`);
           } else if (elapsed < spinL.d[0] + spinL.d[1]) {
             const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-            o.ellipse(spinL.d[2], spinL.d[3], SURIEL_RINGSPIN_RADIUS, SURIEL_RINGSPIN_RADIUS).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
-            if (FX_RING_ENABLED) this.drawTelegraphRing(view, spinL.d[2], spinL.d[3], SURIEL_RINGSPIN_RADIUS, 0xff3b3b, 0.45 + 0.3 * pulse);
-            else o.ellipse(spinL.d[2], spinL.d[3], SURIEL_RINGSPIN_RADIUS, SURIEL_RINGSPIN_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+            o.ellipse(spinL.d[2], spinL.d[3], SR_T.ringspin.radius, SR_T.ringspin.radius).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+            if (FX_RING_ENABLED) this.drawTelegraphRing(view, spinL.d[2], spinL.d[3], SR_T.ringspin.radius, 0xff3b3b, 0.45 + 0.3 * pulse);
+            else o.ellipse(spinL.d[2], spinL.d[3], SR_T.ringspin.radius, SR_T.ringspin.radius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
           }
         }
 
         const sweepWind = bs === 'sweep-windup', sweepActive = bs === 'sweep';
         const sweepL = this.latchFx(
           `${e.id}:suriel-sweep-complete`, sweepWind || sweepActive,
-          (sweepWind ? swordRemain : 0) + (sweepWind ? SURIEL_SWEEP_ACTIVE_MS_VIS : sweepActive ? swordRemain : SURIEL_SWEEP_ACTIVE_MS_VIS),
+          (sweepWind ? swordRemain : 0) + (sweepWind ? SR_T.sweep.active : sweepActive ? swordRemain : SR_T.sweep.active),
           now,
-          () => [sweepWind ? swordRemain : 0, sweepWind ? SURIEL_SWEEP_ACTIVE_MS_VIS : Math.max(1, swordRemain), swordFx, swordFy, swordTx, swordTy],
+          () => [sweepWind ? swordRemain : 0, sweepWind ? SR_T.sweep.active : Math.max(1, swordRemain), swordFx, swordFy, swordTx, swordTy],
         );
         if (sweepL && !(sweepWind || sweepActive || bs === 'sweep-recover')) {
           const elapsed = now - sweepL.t0;
@@ -16365,7 +16344,7 @@ export class PixiScene {
         // 斬撃ストリークを1枚出す。進行度はsyncSurielRing側の環の振りと同じ式(swordRemain基準)で
         // 揃える=絵がズレない。
         if (sweepActive) {
-          const sweepT = Math.max(0, Math.min(1, 1 - swordRemain / SURIEL_SWEEP_ACTIVE_MS_VIS));
+          const sweepT = Math.max(0, Math.min(1, 1 - swordRemain / SR_T.sweep.active));
           this.drawSurielSweepStreak(e.id, swordFx, swordFy, swordTx, swordTy, THOR_HARAI_VIS_HALFWIDTH, sweepT);
         } else if (sweepL && !(sweepWind || bs === 'sweep-recover')) {
           // ★v0.25.3120(監査A): 帯(sweepL)は出し切るのに**添えのストリークだけ実行州直読み**で、
@@ -16380,9 +16359,9 @@ export class PixiScene {
         const spikeWind = bs === 'spike-windup', spikeActive = bs === 'spike';
         const spikeL = this.latchFx(
           `${e.id}:acrasiel-spike-complete`, spikeWind || spikeActive,
-          (spikeWind ? swordRemain : 0) + (spikeWind ? ACRASIEL_SPIKE_ACTIVE_MS_VIS : spikeActive ? swordRemain : ACRASIEL_SPIKE_ACTIVE_MS_VIS),
+          (spikeWind ? swordRemain : 0) + (spikeWind ? AC_T.spike.active : spikeActive ? swordRemain : AC_T.spike.active),
           now,
-          () => [spikeWind ? swordRemain : 0, spikeWind ? ACRASIEL_SPIKE_ACTIVE_MS_VIS : Math.max(1, swordRemain), cx, cy, e.spikeGapMask ?? 0],
+          () => [spikeWind ? swordRemain : 0, spikeWind ? AC_T.spike.active : Math.max(1, swordRemain), cx, cy, e.spikeGapMask ?? 0],
         );
         if (spikeL && !(spikeWind || spikeActive || bs === 'spike-recover')) {
           const elapsed = now - spikeL.t0;
@@ -16395,11 +16374,11 @@ export class PixiScene {
             for (let sector = 0; sector < 8; sector++) {
               if ((spikeL.d[4] & (1 << sector)) !== 0) continue;
               const ang = sector * (Math.PI / 4);
-              const ex = spikeL.d[2] + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_VIS;
-              const ey = spikeL.d[3] + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_VIS;
+              const ex = spikeL.d[2] + Math.cos(ang) * AC_T.spike.range;
+              const ey = spikeL.d[3] + Math.sin(ang) * AC_T.spike.range;
               this.drawAngelZoneCapsule(view, o, spikeL.d[2], spikeL.d[3], ex, ey, THOR_HARAI_VIS_HALFWIDTH, 1, now, sector, 0);
-              this.drawAcrasielSpikeThrust(view, sector, spikeL.d[2] + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_VIS * 0.55,
-                spikeL.d[3] + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_VIS * 0.55, ang, spikeTailT);
+              this.drawAcrasielSpikeThrust(view, sector, spikeL.d[2] + Math.cos(ang) * AC_T.spike.range * 0.55,
+                spikeL.d[3] + Math.sin(ang) * AC_T.spike.range * 0.55, ang, spikeTailT);
             }
           }
         }
@@ -16407,9 +16386,9 @@ export class PixiScene {
         const burstWind = bs === 'burst-windup', burstActive = bs === 'burst';
         const burstL = this.latchFx(
           `${e.id}:acrasiel-burst-complete`, burstWind || burstActive,
-          (burstWind ? swordRemain : 0) + (burstWind ? ACRASIEL_BURST_ACTIVE_MS_VIS : burstActive ? swordRemain : ACRASIEL_BURST_ACTIVE_MS_VIS),
+          (burstWind ? swordRemain : 0) + (burstWind ? AC_T.burst.active : burstActive ? swordRemain : AC_T.burst.active),
           now,
-          () => [burstWind ? swordRemain : 0, burstWind ? ACRASIEL_BURST_ACTIVE_MS_VIS : Math.max(1, swordRemain), cx, cy],
+          () => [burstWind ? swordRemain : 0, burstWind ? AC_T.burst.active : Math.max(1, swordRemain), cx, cy],
         );
         if (burstL && !(burstWind || burstActive || bs === 'burst-recover')) {
           const elapsed = now - burstL.t0;
@@ -16417,9 +16396,9 @@ export class PixiScene {
             this.fxLatches.delete(`${e.id}:acrasiel-burst-complete`);
           } else if (elapsed < burstL.d[0] + burstL.d[1]) {
             const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-            o.ellipse(burstL.d[2], burstL.d[3], ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).fill({ color: 0xff2a2a, alpha: (0.18 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
-            if (FX_RING_ENABLED) this.drawTelegraphRing(view, burstL.d[2], burstL.d[3], ACRASIEL_BURST_RADIUS_VIS, 0xff3b3b, 0.5 + 0.3 * pulse);
-            else o.ellipse(burstL.d[2], burstL.d[3], ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.5 + 0.3 * pulse });
+            o.ellipse(burstL.d[2], burstL.d[3], AC_T.burst.radius, AC_T.burst.radius).fill({ color: 0xff2a2a, alpha: (0.18 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+            if (FX_RING_ENABLED) this.drawTelegraphRing(view, burstL.d[2], burstL.d[3], AC_T.burst.radius, 0xff3b3b, 0.5 + 0.3 * pulse);
+            else o.ellipse(burstL.d[2], burstL.d[3], AC_T.burst.radius, AC_T.burst.radius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.5 + 0.3 * pulse });
             // FX-V2b #2: 生きているブロックと同じ断片放射をここでも完走させる(既存の掟)。
             const burstTailT = Math.max(0, Math.min(1, (elapsed - burstL.d[0]) / Math.max(1, burstL.d[1])));
             for (let i = 0; i < ACRASIEL_BURST_FRAG_COUNT; i++) {
@@ -16449,7 +16428,7 @@ export class PixiScene {
       // ★予兆一括バッチ(v0.25.3344・レシピ5/単眼素材fx/angel-eye裁定済み2026-08-14): 単眼の凝視
       // windup=目がボス頭上〜中心に現れて発光(フェードイン+微パルス)+震え(レシピ1)。
       if (gazeWindupOn) {
-        const gazeWindMs = e.type === 'suriel' ? SURIEL_GAZE_WINDUP_MS_VIS : ACRASIEL_GAZE_WINDUP_MS_VIS;
+        const gazeWindMs = e.type === 'suriel' ? SR_T.gaze.windup : AC_T.gaze.windup;
         const gzProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / gazeWindMs));
         this.drawAngelEyeReady(e.id, cx, cy - e.height * 0.35, Math.max(e.width, e.height) * 0.6, gzProg, now);
         view.sprite.position.x += windupTremorPx(gzProg, now, 1.6);
@@ -18584,7 +18563,7 @@ export class PixiScene {
   }
 
   // FX-V2b #2: 収縮→爆発(burst)の瞬間に飛び散る槍(結晶)の断片。判定はACRASIEL_BURST_RADIUS_VIS
-  // の円(既存・不変)のみが持つ。断片は②「派手さの絵」なので判定より外(ACRASIEL_BURST_FRAG_REACH)
+  // の円(既存・不変)のみが持つ。断片は②「派手さの絵」なので判定より外(acrasielBurstFragReach)
   // まで飛ばし、既存のリングに添える(掟「迷ったら派手側に倒す」)。
   private drawAcrasielBurstFragment(view: ActorView, idx: number, originX: number, originY: number, angle: number, t: number): void {
     const tex = getTexture('acrasiel-spear');
@@ -18598,7 +18577,7 @@ export class PixiScene {
       view.burstFrag[idx] = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;
-    const dist = t * ACRASIEL_BURST_FRAG_REACH;
+    const dist = t * acrasielBurstFragReach();
     const fx = originX + Math.cos(angle) * dist, fy = originY + Math.sin(angle) * dist;
     const baseScale = (ACRASIEL_SPEAR_VIS_LEN * 0.32) / Math.max(1, tex.height); // 全長の1/3程度=「割れた破片」
     sp.rotation = angle + Math.PI / 2 + t * 2.4; // 飛びながら回転(判定なしなので自由に演出してよい)
