@@ -2,7 +2,7 @@
 // 純関数(bountyEngagedNow等)は「1分退場・戦闘中リセット・抑止ゲート」を式で機械化する。
 // runBountyTick本体(store書き込みを伴う)は、idolTick.test.tsと同じ作法(resetGame→盤面を作り
 // tickを実際に回す)で状態機械を検証する(B1.5監査の指摘=「漏れの機械化」)。描画はテスト対象外。
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   bountyEngagedNow, bountyLingerExpired, bountySpawnBlocked, pickActiveBounty, bountyMaxHealth,
   runBountyTick, createBountyTickState, anyBountyEngaged, bountyNaturalSpawnReady,
@@ -391,6 +391,9 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
     expect(useGameStore.getState().enemies.find(e => e.id === id)).toBeUndefined();
   });
 });
+
+// ★v0.25.3570: Math.random のスパイ(密着帯の抽選テスト)をテスト間でリークさせない。
+afterEach(() => { vi.restoreAllMocks(); });
 
 // =================================================================================================
 // §6.38 B2a: バス停(bounty-ranged)/馬乗り(bounty-melee)の技。runBountyTickの状態機械を実際に回す
@@ -1054,14 +1057,32 @@ describe('runBountyTick — B2a 技の状態機械', () => {
   });
 
   describe('馬乗り(bounty-melee)', () => {
-    it('密着帯(BM_MELEE_MAX以内)で3段コンボ(速→速→遅)を発火する', () => {
-      const { id, step } = setupType('bounty-melee', { x: 80, y: 0 });
-      step(16);
-      const s1 = useGameStore.getState().enemies.find(e => e.id === id);
-      expect(s1?.bossState).toBe('bm-combo1-windup');
+    // ★v0.25.3570(社長指示「近距離でも360度攻撃入れて」): 密着帯は3段コンボ1本ではなく
+    // **コンボ/360度ムチの抽選**になった。乱数を固定して両方の枝を検証する。
+    it('密着帯(BM_MELEE_MAX以内): 乱数が高ければ3段コンボを発火する', () => {
+      const spy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+      try {
+        const { id, step } = setupType('bounty-melee', { x: 80, y: 0 });
+        step(16);
+        const s1 = useGameStore.getState().enemies.find(e => e.id === id);
+        expect(s1?.bossState).toBe('bm-combo1-windup');
+      } finally { spy.mockRestore(); }
+    });
+
+    it('★密着帯: 乱数が低ければ360度ムチを単独発火する(v0.25.3570)', () => {
+      const spy = vi.spyOn(Math, 'random').mockReturnValue(0.01);
+      try {
+        const { id, step } = setupType('bounty-melee', { x: 80, y: 0 });
+        step(16);
+        const s1 = useGameStore.getState().enemies.find(e => e.id === id);
+        expect(s1?.bossState).toBe('bm-whip360-windup');
+      } finally { spy.mockRestore(); }
     });
 
     it('3段コンボ完走: 1→2→3段目まで進み、各段でpumpkinBlastsへ判定を積んでからchaseへ戻る(終端=パニッシュ窓)', () => {
+      // ★v0.25.3570: 密着帯が抽選になったので、コンボ枝を確実に踏むため乱数を高値に固定する。
+      // (このテスト内の他のMath.random消費への影響は「コンボが選ばれ続ける」方向のみ=検証意図に合致)
+      vi.spyOn(Math, 'random').mockReturnValue(0.99);
       const { id, step } = setupType('bounty-melee', { x: 80, y: 0 });
       const seenStates = new Set<string | undefined>();
       let blastCount = 0;

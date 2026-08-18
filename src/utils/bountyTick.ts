@@ -902,6 +902,10 @@ const laserWindupTick = (
   s.aimVX = stepped.vx; s.aimVY = stepped.vy;
 };
 
+/** ★v0.25.3570(社長指示「近距離でも360度攻撃入れて」): 近距離抽選で360度ムチを選ぶ確率(叩き台)。
+ * 残りは3段コンボ。突進からの自動連係(bm-charge→whip360)は従来どおり別口で残る。 */
+export const BM_WHIP360_CLOSE_CHANCE = 0.3;
+
 /** 馬乗り: 輸入=懲罰狙撃(遠距離の長居に飛ぶ細長い帯)。 */
 const beginBmSnipe = ({ s, newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
   s.farMs = 0;
@@ -968,7 +972,15 @@ const tickMelee = (
       return;
     }
     if (dist <= BM_T.meleeMax) {
-      beginBmCombo(bctx);
+      // ★v0.25.3570(社長指示「近距離でも360度攻撃入れて」): 近距離の技を3段コンボ1本から
+      // **コンボ / 360度ムチの抽選**にする。360側の重み(BM_WHIP360_CLOSE_CHANCE)は叩き台。
+      // 単独発火用に beginBmWhip360 は▸再生と同じ入口を使う(写すな共通化しろ=v0.25.3563の束)。
+      if (Math.random() < BM_WHIP360_CLOSE_CHANCE) {
+        sfx.alert();
+        beginBmWhip360(bctx);
+      } else {
+        beginBmCombo(bctx);
+      }
       return;
     }
     // 突進は「中距離を詰める」役(BM_CHARGE_REACH圏内だけ)。真の遠距離はここで割り込ませず

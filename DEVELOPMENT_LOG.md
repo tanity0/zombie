@@ -1,5 +1,51 @@
 # Development Log
 
+## v0.25.3570 — 馬乗り: 近距離360度の抽選 + スミアの固定速再生+先端フラッシュ【2026-08-19 07:15 JST】
+
+- **社長指示3点**: ①「近距離でも360度攻撃入れて」 ②「スミアは高速アニメで終わりに合わせて再生を固定。
+  ディレイ攻撃でもスミアはゆっくりにしない」 ③「スミアの最後のコマで先端をフラッシュ」。
+- **①(挙動変更・社長指示による)**: 密着帯(BM_MELEE_MAX以内)の技を3段コンボ1本から
+  **コンボ / 360度ムチの抽選**へ。`BM_WHIP360_CLOSE_CHANCE = 0.3`(**叩き台**・360側の重み)。
+  単独発火の入口は▸再生と同じ `beginBmWhip360`(v0.25.3563の束=写すな共通化しろ)。
+  突進からの自動連係(bm-charge→whip360)は従来どおり別口で残る。
+- **②(絵のみ)**: スミア3コマの再生を**固定の実時間 `WHIP_SMEAR_MS` = 140ms**にし、
+  **終わり=命中(windup明け)に一致**するよう残り時間から逆算。旧=振り抜き相(windupの20%)に比例で、
+  3段目(遅)の溜めが長いとスミアまで間延びしていた。技のディレイがいくらでも常に同じ速さ。
+- **③(絵のみ)**: 3コマ目の間だけ、**判定の帯の先端**(焼いた起点+角度×長さ)に加算グローを一閃
+  (sin山=出て消える・慣性)。pooled 1枚・既定OFF/destroy 2経路とも配線済み。
+- テスト(`bountyTick.test.ts` 89→90): 密着帯の抽選を**乱数固定で両枝検証**(高値=コンボ/低値=360)。
+  コンボ完走テストも乱数を高値に固定(抽選化でflakyにならないため)。`afterEach(restoreAllMocks)` で
+  スパイのリークを防止。
+- 負荷: 1/10(スミアはpooled既存+グロー1枚)。
+- **並走の記録**: typecheckの148エラーは全て第4弾(裏ボス)サブエージェントの `useGameLoop.ts` 作業途中断面
+  (私の変更ファイルにはエラー0)。pixiScene は自分の7ハンクだけ選択ステージ。
+- 変更ファイル: `src/utils/bountyTick.ts` / `src/utils/bountyTick.test.ts` / `src/pixi/pixiScene.ts`(7ハンク) /
+  `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+- 検証: 変更ファイルのeslint 0 / `bountyTick.test.ts` 90/90 pass。実機確認は社長。
+
+
+## v0.25.3570 — ボスメーカー横展開・第4弾: 裏ボス4体(計画メモ=コントローラの地図)【2026-08-19 07:08 JST】
+
+着手前の地図(BOSS_MAKER.md §6 フェーズ4・第4弾)。**4体は天使/賞金首と違い専用tickモジュールを持たず、
+`useGameLoop.ts` の1つの巨大な inline ブロックで動いている**——ここが第1〜3弾との最大の差。
+
+| 何 | どこ | 備考 |
+|---|---|---|
+| 4体共通コントローラ | `useGameLoop.ts` L4767〜6123(`const hiddenBoss = …` の `if` ブロック) | 出現/帰巣/離脱/破壊FX/状態機械が全部この中 |
+| 出現(巣・`?bossnow`) | 同 L4796〜4834 | `bs.bossId` が無い間だけ通る |
+| 交戦(座標を直接書く) | 同 L4835〜6117(`else if (boss)`) | ⏸ のガードはここに掛ける |
+| フェーズ(HP→bossPhase) | 同 L4892〜4903 | **毎フレームHPから引き直して上書き**=P2ボタンは効かない |
+| 技の開始(begin*) | 同 L5221〜5355 | `beginHiddenDash`/`beginMimirMove`/`beginJormungandMove`/`beginSkadiMove`/`beginThorMove`。**既に切り出し済み**=▸はここへ合流させるだけ(複製しない) |
+| 状態遷移の本体 | 同 L5411〜6081 | `st === 'chase'` 以下の if/else チェーン |
+| 抽選(純関数・別モジュール) | `utils/mimirScript.ts` / `jormungandScript.ts` / `skadiScript.ts` / `thorScript.ts`(フラグは `bossScript.ts`) | 今回は触らない |
+| レーザーの寸法/溜め | `utils/mimirLaserTrack.ts` | **バス停(bounty-ranged)と共有**。二重定義を作らないため今回もここが正本(欄は出さない) |
+| 数値定数 | `useGameLoop.ts` L920〜1128 | 今回テーブルへ移す対象 |
+
+やること: ①`utils/hiddenBossScript.ts`(テーブル・葉) ②`utils/hiddenBossPlayback.ts`(▸の要求箱)
+③`tools/bossmaker/hiddenBossTuning.ts`(スキーマ) ④⏸/▸の配線 ⑤部屋へ4体を出す。
+結果は下の本エントリへ追記する。
+
+
 ## v0.25.3569 — 鞭スミアを判定の帯へ焼き付け(社長指示「判定の長さに合わせて縦に・武器と切り離して」)【2026-08-19 07:08 JST】
 
 - **社長指示「馬乗り、鞭のスネアは当たり判定の長さに合わせて縦に出して。武器と切り離して追従させないで」。**
