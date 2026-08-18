@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3573',
+    items: [
+      'ゲーム内容の変更はありません(開発ツール: ボスメーカーで裏ボス4体=ミーミル/ヨルムンガルド/スカジ/トールの数字を画面から詰められるようにしました。停止と技の個別再生も対応)。',
+    ],
+  },
+  {
     version: '0.25.3572',
     items: [
       '馬乗り(変異)の鞭のしなりと先端の閃光が、当たり判定の先端寄りに出るようになりました。',

@@ -17,7 +17,6 @@ import {
   STUN_DURATION_MS,
   CRIT_DAMAGE_MULT,
   BOSS_CRIT_DAMAGE_MULT,
-  PLAYER_BASE_SPEED,
   isKatanaMode,
   subWeaponBlockedByKatana,
   katanaRange,
@@ -143,7 +142,6 @@ import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
 import { stageBossHealthFor, STAGE_BOSS_HEALTH_BY_STAGE } from '../config/bossHealth';
-import { withRecoverFloor } from '../utils/bossTelegraph';
 import { canForceGateBossNow, bossMakerBossType } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import {
@@ -310,6 +308,20 @@ import {
   runAngelBossTick, tickAngelBossFires, tickAcrasielSpears, createAngelBossState,
   angelPlaybackActive, clearAngelPlayback, type AngelSfx,
 } from '../utils/angelBossTick';
+// ボスメーカー第4弾(BOSS_MAKER.md §6 フェーズ4・v0.25.3573): 裏ボス4体の可変テーブルと▸の要求箱。
+// ★入れ子オブジェクトを参照で持つ=画面で動かした値がそのまま毎フレーム効く(スカラーの再exportは不可)。
+import {
+  HIDDEN_COMMON_TUNING as HB_C,
+  HIDDEN_MIMIR_TUNING as HB_MI,
+  HIDDEN_JORMUNGAND_TUNING as HB_JO,
+  HIDDEN_SKADI_TUNING as HB_SK,
+  HIDDEN_THOR_TUNING as HB_TH,
+  HIDDEN_COMMON_TUNING_DEFAULTS,
+} from '../utils/hiddenBossScript';
+import {
+  takeHiddenBossPlay, settleHiddenBossPlayback, hiddenBossPlaybackActive, clearHiddenBossPlayback,
+  isHiddenControllerBoss, type HiddenMoveKey,
+} from '../utils/hiddenBossPlayback';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import {
   computeDirCountCap, computeEnemyCap, computeNormalSpawnCap,
@@ -923,45 +935,21 @@ const BOSS_SPAWN_DEPTH = evNum('bossdepth', 7800);   // この深度に到達で
 const BOSS_SPAWN_NEAR = 1500;                        // 巣(固定)へこの距離まで近づくと出現(=指定エリアに近づくと出現)
 const BOSS_EXIT_DEPTH = AREA_THRESHOLDS[3] - BOSS_SPAWN_NEAR; // 深層境界7500から1500px戻るまで戦闘継続(旧7300=余白200px)
 const BOSS_REGEN_PER_SEC = 10;                       // 画面外/帰巣中は毎秒この耐久値が回復(社長指示: 40→10)
-const BOSS_DASH_SPEED_MULT = 4.4;                    // 溜め後は歩行の4.4倍で一気に間合いを横断
 const BOSS_SCREEN_MARGIN = 120;                      // 画面上の余白px。world側ではズーム倍率で逆換算する
-// 攻撃状態機械のタイミング(gameTime ms)。
-const BOSS_ACTION_MIN_MS = 2600;                     // 次の特殊行動までの最短(追跡しながら待つ)
-const BOSS_ACTION_MAX_MS = 4600;                     // 同・最長
-const BOSS_AIM_BURST_MS = 1000;                      // 立ち止まり1秒後に3連発(社長指示)
-const BOSS_BURST_SHOTS = 3;
-const BOSS_BURST_GAP_MS = 500;                       // 0.5秒間隔(社長指示)
-const BOSS_AIM_RADIAL_MS = 2000;                     // 立ち止まり2秒後に全方位16発(社長指示)
-const BOSS_RADIAL_COUNT = 16;
-// ヨルムンガルド専用の攻撃調整(社長指示)。他の裏ボス(mimir/skadi)は従来どおり。ダッシュは共通で維持。
-const JORM_BURST_VOLLEYS = 5;        // 3発バーストを5回(0.5秒間隔)=計15発
-const JORM_BURST_FAN_SPREAD = 0.18;  // 1回=固定ヘイト対象狙いの3-way扇の左右開き(rad・約10°)
-const JORM_BURST_GAP_MS = 500;       // バースト間隔0.5秒
-const JORM_RADIAL_VOLLEYS = 8;       // 全方位16発を8回
-const JORM_RADIAL_GAP_MS = 300;      // 全方位間隔0.3秒
-const JORM_RADIAL_SPIN = Math.PI / 16; // 各回ごとに時計回りへずらす角度(rad・約11°)=螺旋射撃(社長指示)
-// スカジ専用の追加攻撃(社長指示。既存のburst/radial/dashは据え置きで、ここに「追加」して抽選)。
-const SKADI_ATTACK_CHANCE = 0.5;     // chase からの行動抽選で氷攻撃を選ぶ確率(残りは従来のdash/burst/radial)
-const SKADI_ICE_COUNT = 5;           // 氷塊バーストの個数
-const SKADI_ICE_GAP_MS = 1000;       // 1秒おきに設置
-const SKADI_ICE_TELEGRAPH_MS = 2000; // 赤サークル2秒フェードイン→起爆
-const SKADI_BLADE_COUNT = 7;         // 氷の刃の個数
-const SKADI_BLADE_GAP_MS = 400;      // 0.4秒おきに設置(社長指示で0.2→0.4)
-const SKADI_BLADE_DELAY_MS = 1000;   // 設置1秒後に発射
-const SKADI_BLADE_RING_MIN = 100;    // 固定ヘイト対象周辺の設置リング内半径(社長指示でもう少し近く)
-const SKADI_BLADE_RING_MAX = 180;    // 同・外半径
-const BOSS_DASH_WINDUP_MS = 1000;                    // 読める溜めは残すが、待たせ過ぎない
-const BOSS_DASH_MS = 700;                            // 実行は短く爆発的。判定/移動/残像はこの州で同期
-const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
+// ★v0.25.3573(ボスメーカー第4弾・BOSS_MAKER.md §6 フェーズ4): 裏ボス4体の**技と動きの数値**は
+// `src/utils/hiddenBossScript.ts` のテーブル(HB_C/HB_MI/HB_JO/HB_SK/HB_TH)へ移した。値は1つも
+// 変えていない(既定値=移設前の実装値)。**スカラーの再exportは数値のコピーで画面から動かせない**
+// (第1弾の教訓)ので、使用箇所は全てテーブル読みへ書き換えてある。
+// ここに残っているのは「場と交戦の値」(出現/帰巣/画面余白)と**旧実装(?<boss>script=0)専用の抽選確率**だけ。
+const SKADI_ATTACK_CHANCE = 0.5;     // 【旧挙動?skadiscript=0専用】氷攻撃を選ぶ確率
+const BOSS_DASH_CHANCE = 0.1;        // 【旧挙動専用】「たまーーーに」=低確率
 // ミーミル専用: 射撃方向に赤いラインを2秒溜め→その方向へ太いレーザーを発射(社長指示)。
 const MIMIR_LASER_CHANCE = 0.34;                     // chase からの行動抽選でレーザーを選ぶ確率(ミーミルのみ)
 // §6.33(LASER-TRACK・v0.25.2937): 溜め時間の正本は mimirLaserTrack.ts(3000ms)。溜め中の挙動は
 // MIMIR_TRACK_ENABLED で分岐: 新=前段2700msが物理追尾+終段300msロック / 旧=開始時ロック(方向固定)。
 const MIMIR_LASER_AIM_TRACK = 1.5;                   // 【旧挙動?mimirtrack=0専用】発射中の照準追尾レート(小さいほど遅い)
 // MIMIR_LASER_FIRE_MS/RANGE/HALF_WIDTHはmimirLaserTrack.tsからimport(§6.38 B2b・旧private定数から移設)。
-const MIMIR_LASER_SHAKE_MAG = 5;                     // 発射中の画面シェイク振幅(社長指示)
-const MIMIR_LASER_DAMAGE = 42;                       // レーザー被弾ダメージ(直撃)
-const BOSS_FADE_MS = 2600;                           // 討伐時のFF風フェードアウト時間(描画側で使用)
+const BOSS_FADE_MS = 2600;                        // 討伐時のFF風フェードアウト時間(描画側で使用)
 // 裏ボスが障害物を踏み潰した時の爆破FX/SE/シェイク。森を突っ切ると同時破壊が多発しうるので「スロットル」で
 // 一定間隔に1回だけ発火=per-frame Graphics(リング/バースト)を積み上げない安全弁(負荷の主因は数×描画法)。
 const BOSS_CRUSH_FX_MS = 130;                        // 爆破FX/SE/シェイクの最短間隔(=最大~7回/秒)
@@ -985,9 +973,6 @@ const spawnBossCrushExplosionFx = (x: number, y: number, primary = true): void =
 };
 const BOSS_SUMMON_AGGRO = 2000;                      // 裏ボスが召喚へ「吸い付く」最大距離(画面内の召喚は基本対象に)
 const BOSS_WARP_FADE_MS = 500;                       // ワープ先での 0.5秒フェードインの長さ(発火経路はv0.25.2957で撤廃済み。コントローラ側のフェード復帰だけ残置)
-const BOSS_TURN_RESPONSE = 3.2;                      // 移動の慣性。目標速度へ寄せる係数(小さいほど慣性大=ぬるっと曲がる)
-const BOSS_DASH_HOMING = 0.05;                       // ダッシュ中の弱いホーミング量/frame(基本は直進・少しだけ固定ヘイト対象へ寄せる)
-const BOSS_DASH_BACKSTEP_MULT = 0.4;                 // 突進溜め中、ゆっくり後退り(ターゲットから離れる)する速度倍率(社長指示)
 // --- 裏ボス トール(ステージ5)専用の独自攻撃(社長指示 v0.25.1318〜) --------------------------
 // 前提(社長指示): 弾は撃たない・ダッシュもしない(既存burst/radial/dash抽選から除外し、専用の
 // 状態機械のみを回す)。すべての攻撃がカウンター可能(各attackの実行中にcounterWindowEndを判定)。
@@ -996,54 +981,10 @@ const BOSS_DASH_BACKSTEP_MULT = 0.4;                 // 突進溜め中、ゆっ
 // 実機調整前提でDEVELOPMENT_LOG.mdに透明化して記録。
 // 社長修正指示(v0.25.1321〜): 旋回距離=ハンドガンが届かないくらいの距離(RANGE_BY_CATEGORY.handgun
 // 基準)へ変更(旧: 近接距離基準)。
-const THOR_ORBIT_MARGIN_PX = 40;             // ハンドガン射程より少し外側で旋回する余白
-const THOR_ORBIT_DIST = RANGE_BY_CATEGORY.handgun + THOR_ORBIT_MARGIN_PX; // 旋回時の目標距離(中心間)
-const THOR_ORBIT_APPROACH_SLACK = 60;        // この分だけ余裕を見て「接近」⇄「旋回」を切り替える(ハンチング防止)
-const THOR_ORBIT_SPEED_MULT = 2 / 3;         // 旋回速度=通常の2/3(社長指示。旋回距離ちょうど〜やや遠い時のみ)
-const THOR_ORBIT_RADIUS_CORRECT = 4;         // 旋回距離よりやや遠い時、半径をTHOR_ORBIT_DISTへ寄せる
-                                              // イージング係数(大きいほど素早く戻る)
-// 社長指示(v0.25.1331〜): 接近/後退は自身のスピードではなく「プレイヤーの1/2速度」を基準にする
-// (2/3のoriginal boss.speedとは別枠。厳密な現在の可変速度ではなくPLAYER_BASE_SPEEDを基準とする=
-// enemyUtils.tsのトール速度導出と同じ簡略化)。
-const THOR_APPROACH_SPEED = PLAYER_BASE_SPEED * 0.5; // 旋回間合いに入るまでの接近速度
-const THOR_RETREAT_SPEED = PLAYER_BASE_SPEED * 0.5;  // 旋回距離より近づかれた時に後ずさる速度
-const THOR_BACKSTEP_MIN_INTERVAL_MS = 3000;  // バックステップの最短間隔(「たまに」の頻度・叩き台)
-const THOR_BACKSTEP_MAX_INTERVAL_MS = 6000;
-const THOR_BACKSTEP_DIST = 90;               // バックステップで離れる距離(px)
-const THOR_BACKSTEP_MS = 180;                // バックステップそのものの所要時間
-// 社長指示: 旋回中(ちょうど良い距離を保っている間)にも、たまに接線方向へ少しだけ弾む「ステップ」を混ぜる
-// (常に滑らかな等速円運動だけにしない=動きに緩急を付ける)。バックステップと同型・別枠のタイマー/短距離移動。
-const THOR_ORBIT_STEP_MIN_INTERVAL_MS = 2500;
-const THOR_ORBIT_STEP_MAX_INTERVAL_MS = 5000;
-const THOR_ORBIT_STEP_DIST = 70;             // ステップで進む距離(px)
-const THOR_ORBIT_STEP_MS = 160;              // ステップそのものの所要時間
-// 社長指示:「たまに2秒さらに1/2の速度で歩く」。chase中の移動速度(接近/後退/旋回いずれも)へ
-// 一律で追加の減速を掛ける一時ウィンドウ(状態遷移ではない=speed multiplierのみの単純な効果)。
-const THOR_SLOWWALK_MS = 2000;               // 減速が続く時間
-const THOR_SLOWWALK_MULT = 0.5;              // 更なる減速倍率(「さらに1/2」)
-const THOR_SLOWWALK_MIN_INTERVAL_MS = 5000;  // 「たまに」の頻度(叩き台)
-const THOR_SLOWWALK_MAX_INTERVAL_MS = 9000;
-
-// 一閃の溜め。社長指示v0.25.3461「トールの一閃、もう少し発動早くていい」で 3000→2400。
-// 公平の掟(bossTelegraph): 帯の半幅80+自機14=94px → 必要900ms。2400msは十分上(=見てから避けられる)。
-const THOR_ISSEN_WINDUP_MS = 2400;           // 一閃: 溜め・赤く点滅して静止(旧3000)
-const THOR_ISSEN_DASH_MS = 280;              // 高速移動そのものの所要時間
-// 社長修正指示(v0.25.1321〜): 長さを半分(620→310)・幅を2倍(60→120)に変更。溜め中はプレイヤーを
-// 追わない(方向は溜め開始時点で固定・行動選択側でロック)。
-const THOR_ISSEN_RANGE = 310;                // ラインの長さ=終着点までの距離
-const THOR_ISSEN_HALF_WIDTH = 80;            // 当たり判定=赤ライン半幅(社長修正指示: 120の2/3へ)
-
-const THOR_TSUKI_WINDUP_MS = 1000;           // 突き: 1秒停止(社長指示)
-const THOR_TSUKI_MS = 180;                   // 突き自体(高速な踏み込み)の所要時間
-// 一閃の長さ/幅修正の影響を受けないよう、突き専用の値として独立させる(一閃の元の値=620/半幅30を維持)。
-const THOR_TSUKI_RANGE = 240;                // 社長指示v0.25.1627で射程を300→240pxへ短縮(旧: v1621 620→300)
-const THOR_TSUKI_TRACK_FRAC = 0.5;           // 突き溜め中の狙い追従速度=プレイヤー速度のこの倍(社長指示v0.25.1621「追跡速度を半分」)
-const THOR_TSUKI_HALF_WIDTH = 15;            // 社長指示v0.25.1622で突きの半幅を±15へ(30→15=細い突き)
-
-const THOR_HARAI_WINDUP_MS = 1000;           // 払い: 溜め1秒(社長指示)
-const THOR_HARAI_RANGE = 310;                // 社長指示v0.25.1622で横払いの長さを元へ戻す(160→310)。一閃/突きとは独立
-const THOR_HARAI_HALF_WIDTH = 40;            // 社長指示v0.25.1610: 中心から片側40px(旧TSUKI*1.5=45)。突き本体は無変更
-const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
+// ★v0.25.3573: トールの数値も `utils/hiddenBossScript.ts` の HB_TH テーブルへ移設(値は不変)。
+//   旋回距離の既定216は `RANGE_BY_CATEGORY.handgun(176) + 40`、接近/後退の43.5は
+//   `PLAYER_BASE_SPEED(87) × 0.5` から来ている。テーブルは**storeを import しない葉**なので
+//   数値を複製してあり、一致は `hiddenBossTuning.test.ts` が機械検査する。
 
 // ゲート内側マージン。周回半径=GATE_ARENA_RADIUS-margin-帯高さ半分(足元帯=height/2)。
 // margin=20・miguel.height=60 → 300-20-30=250(仕様の目安値と一致)。
@@ -1053,15 +994,6 @@ const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
                                              // 「剣撃より頻度高め」=0.5超(弾6:斬り4)・叩き台/要調整
 
 
-
-const THOR_JUMP_TRIGGER_HITS = 3;            // 画面外からの被弾3回で間合いを詰める(社長修正指示)
-const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
-const THOR_JUMP_WINDUP_MS = 700;             // ジャンプ前の溜め(pumpkinのcrouchより短め=間合いを詰める性質上)
-const THOR_JUMP_MS = 360;                    // 溜め後は一気に着地。着地点の予告時間はwindup込みで確保
-const THOR_JUMP_RADIUS = 70;                 // 着地爆風半径(pumpkinの54よりやや広め=ボス級)
-const THOR_JUMP_RECOVER_MS = withRecoverFloor(900);            // 着地後の硬直
-
-const THOR_COUNTER_LEAP_MS = 260;            // カウンターを受けた時の後退ジャンプ所要時間(社長指示)
 
 // PACING_PUZZLE.md §6.28-5/7/9/10(バッチM54/M56/M58/M59・ロットL3): 裏ボス4体(mimir/jormungand/
 // skadi/thor)のソウル式化=硬直(recover)新設+新技+HP段階+分岐連携。giant(§6.26)/L2(§6.28-4〜19)と
@@ -1081,51 +1013,14 @@ const HIDDEN_BOSS_PHASE_FLASH_MS = 1200;
 //   社長裁定(§6.28-21★2)で意図的に短くしたものなので上書きしない。
 // 硬直(recover)の実効ms(§6.28-5/7/9・裏ボスは壁時計系=このmsがそのまま実効)。硬直中は完全静止+
 // 青白tint(BOSS_RECOVER_TINT)+次技抽選なし(W6)。ボスごとに値が違う技はボス別定数を分ける。
-const MIMIR_LASER_RECOVER_MS = withRecoverFloor(900);   // ミーミル レーザーの硬直
-const BOSS_DASH_RECOVER_MS = withRecoverFloor(800);     // 突進の硬直(mimir/jormungand/skadi共通・§6.28-5/7/9で同値)
-const MIMIR_RADIAL_RECOVER_MS = withRecoverFloor(500);  // ミーミル 全方位の硬直
-const MIMIR_BURST_RECOVER_MS = withRecoverFloor(300);   // ミーミル 弾3連の硬直
-const JORM_RADIAL_RECOVER_MS = withRecoverFloor(900);   // ヨルムンガルド 螺旋全方位の硬直
-const JORM_BURST_RECOVER_MS = withRecoverFloor(500);    // ヨルムンガルド 3-way扇の硬直
-const SKADI_PRE_WINDUP_MS = 450;      // スカジ 氷塊/氷刃 共通の設置前windup(壁時計系=このmsがそのまま実効・§6.28-9【新設】)
-const SKADI_ICE_RECOVER_MS = withRecoverFloor(600);     // スカジ 氷塊の硬直
-const SKADI_BLADE_RECOVER_MS = withRecoverFloor(600);   // スカジ 氷刃の硬直
-const SKADI_RADIAL_RECOVER_MS = withRecoverFloor(500);  // スカジ 全方位の硬直
-const SKADI_BURST_RECOVER_MS = withRecoverFloor(300);   // スカジ 弾3連の硬直
-
-// ミーミル「群体の噛みつき」(§6.28-5・密着専用の新技)。§6.28-15裁定で「踏み潰し」から改名=役割
-// (密着帯を塞ぐ)・図形(T2即時円)・リード・硬直は不変、意味だけ「本体直下の群体が一斉に噛む」へ差し替え。
-const MIMIR_BITE_WINDUP_MS = 700;
-const MIMIR_BITE_RECOVER_MS = withRecoverFloor(800);
-const MIMIR_BITE_CD_MS = 6000;
+// ★v0.25.3573: 硬直/新技の値も HB_MI / HB_JO / HB_SK / HB_TH テーブルへ移設(値は不変。
+//   `withRecoverFloor()` は宣言側ごと移してあるので、元の数字も床の意味もテーブルで読める)。
 // v0.25.2613(社長指示「ミーミルは直して / そして二度と起きない学習」): 92→216。
 // 旧値は GRENADE_BLAST_RADIUS(=92・城ボス系の値)の流用だったが、ミーミルは当たり判定が
 // 248×138(半幅124)なので**円が体の中に収まり構造的に当たらなかった**。値と不変条件は
 // utils/bodyCenteredAoe.ts へ移設(足元の円AoEは体の外へ届くことをテストで機械検証する)。
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 
-// ヨルムンガルド「うねり」(§6.28-7・近接専用の新技・Phase2限定)。長さ/半幅はTHOR_HARAI_RANGE/
-// HALF_WIDTHをそのまま流用(=ジャイアントの薙ぎ払いと同値・同じ意味・§6.28-7で明記)。
-const JORM_COIL_WINDUP_MS = 700;
-const JORM_COIL_ACTIVE_MS = THOR_HARAI_ACTIVE_MS; // 220ms(既存の帯判定と同じ実行秒数を流用)
-const JORM_COIL_RECOVER_MS = withRecoverFloor(700);
-const JORM_COIL_CD_MS = 7000;
-const JORM_COIL_RANGE = THOR_HARAI_RANGE;
-const JORM_COIL_HALF_WIDTH = THOR_HARAI_HALF_WIDTH;
-
-// スカジ「氷結の檻」(§6.28-9・全帯の大技・Phase3限定)。プレイヤーを中心とした半径180pxのリング上に
-// 氷塊8個・1箇所だけ空ける(設置の瞬間に確定=掟W4。ジブリル聖別=JIBRIL_CONSECRATE_*と同じ作法)。
-const SKADI_CAGE_WINDUP_MS = 1000;
-const SKADI_CAGE_RECOVER_MS = withRecoverFloor(900);
-const SKADI_CAGE_CD_MS = 12000;
-const SKADI_CAGE_RING_RADIUS = 180;
-const SKADI_CAGE_COUNT = 8;
-
-// トール(§6.28-10): 全技に硬直を新設。既存の社長指定値(リード/射程/半幅/追従率/旋回/バックステップ/
-// スロー歩き)は1つも変えない。足すのは硬直・SE・連携・フェーズだけ。
-const THOR_ISSEN_RECOVER_MS = withRecoverFloor(900);
-const THOR_TSUKI_RECOVER_MS = withRecoverFloor(600);
-const THOR_HARAI_RECOVER_MS = withRecoverFloor(700);
 
 // PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)。★未決(下記コメント参照)により
 // campaign.tsのhiddenBoss機構は通常プレイでは`!labTheme`ゲートに阻まれて到達しない(useGameLoop.ts
@@ -1148,7 +1043,9 @@ const BOSS_MAKER_BOSS = bossMakerBossType();
 // idolのステータス(width/height/speed/health/damage)はenemyUtils.tsのENEMY_STATS.idolを唯一の出所とする
 // (ここでは複製しない)。以下は台本(帯/技)のms・半径のみ。
 // ★叩き台(設計書に実行秒数の列が無い・§6.28-14と同型の未決): ローリングの実行(移動)所要時間と距離。
-const IDOL_ACTION_MIN_MS = BOSS_ACTION_MIN_MS; // 既存の一般行動ゲートを流用(新しい数字を発明しない)
+// ★v0.25.3573: 裏ボスの共通テーブルの**既定値**(書き換わらない側)から読む。idolは自分の
+// テーブル(idolScript.ts)を持つので、ボスメーカーで裏ボスの数字を動かしてもidolは動かない。
+const IDOL_ACTION_MIN_MS = HIDDEN_COMMON_TUNING_DEFAULTS.actionMinMs; // 既存の一般行動ゲートを流用(新しい数字を発明しない)
 // 弾の速度/ダメージは createEnemyProjectile が enemyUtils.ts の getEnemyFireProfile('idol') から
 // 引く(既に裏ボス/天使共通の320/20が登録済み・§6.28-20★配線)。ここでは複製しない。
 
@@ -2358,8 +2255,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           markMeleeSwingFx: () => useGameStore.getState().markMeleeSwingFx(),
         };
         const combatTunables: CombatTunables = {
-          thorOrbitDist: THOR_ORBIT_DIST,
-          thorCounterLeapMs: THOR_COUNTER_LEAP_MS,
+          thorOrbitDist: HB_TH.orbit.distPx,
+          thorCounterLeapMs: HB_TH.counterLeapMs,
           grenadeBlastRadius: GRENADE_BLAST_RADIUS,
           grenadeBlastDamageMult: GRENADE_BLAST_DAMAGE_MULT,
           counterReflectSlowMs: COUNTER_REFLECT_SLOW_MS,
@@ -2601,6 +2498,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           clearIdolPlayback(); // ボスメーカーの個別再生も新ランで解除(createIdolTickStateに副作用を持たせない=v0.25.2625の教訓)
           angelStateRef.current = createAngelBossState(); // 天使(ゲート2ボス)状態も新ランでリセット(M26 Step3)
           clearAngelPlayback(); // ボスメーカーの個別再生も新ランで解除(createAngelBossStateに副作用を持たせない=v0.25.2625の教訓)
+          clearHiddenBossPlayback(); // 裏ボス4体のボスメーカー個別再生も新ランで解除(同上・v0.25.3573)
           // M26-L: 実機オートパイロットの状態も新ランでリセット(tick連番/rusher詰まり検知/乱数/レポート済みフラグ)。
           botTickRef.current = 0;
           botRusherRef.current = createRusherTrackState();
@@ -4769,7 +4667,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         //  追跡/攻撃(3連発・全方位16発・たまにダッシュ)。ズーム後の画面外が3秒続くと巣へ戻りつつ回復。
         //  拡張した深層戦闘域を3秒出ると帰巣して退場。追いかけてくる間は他敵が一斉に逃げる。
         //  討伐で「<名前>討伐!」+FF風フェードアウト。移動/攻撃はこのコントローラが座標を直接書き込む。
-        const hiddenBoss = useGameStore.getState().hiddenBoss;
+        // ★v0.25.3573(ボスメーカー第4弾): 部屋(?bossmaker=1)では **store の hiddenBoss を立てない**
+        // まま、このコントローラだけを回す。store へ書くと寄り道POIの「ボスの巣」マーカーや
+        // ゲームオーバー画面の表記まで生えて §2-5「部屋にはプレイヤーとボスだけ」が壊れるため、
+        // ここのローカル変数だけで補う(通常プレイでは BOSS_MAKER=false なので1バイトも変わらない)。
+        const hiddenBoss = useGameStore.getState().hiddenBoss
+          ?? (BOSS_MAKER && isHiddenControllerBoss(BOSS_MAKER_BOSS) ? BOSS_MAKER_BOSS : null);
         if (hiddenBoss && !danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
          try { // 裏ボス制御の例外でゲームループ全体(=移動/攻撃)が固まらないよう保護(描画ループとは別系統)。
           const bs = bossRef.current;
@@ -4832,7 +4735,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
               spawnFlash('rgba(120,20,40,0.30)', 360);
             }
-          } else if (boss) {
+          } else if (boss && (!useGameStore.getState().bossMaker.paused || hiddenBossPlaybackActive())) {
+            // ボスメーカーの「停止」トグル: ボスの時間だけ止める(絵を止めて見たい時)。プレイヤーは
+            // 動けるまま=当たり判定の位置関係を落ち着いて確かめられる。停止中でも「個別再生」の間だけは
+            // 時間を進める(社長要望v0.25.2625)。★idol/賞金首/天使と同じ形(BOSS_MAKER.md §6-1)。
+            // bossMaker.paused は部屋以外では常に false なので、通常プレイの挙動は変わらない。
+            // ボスメーカー: 単独再生の立ち下がり(1)=**状態機械の前**。気絶/カウンター/割り込みで技が
+            // 消された時の受け皿(これが無いと再生中フラグが立ちっぱなしになり ⏸ が二度と効かなくなる)。
+            settleHiddenBossPlayback(boss.bossState);
             bs.lastX = boss.x; bs.lastY = boss.y; bs.w = boss.width; bs.h = boss.height;
             const gb = useGameStore.getState().gameBounds;
             const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
@@ -4853,7 +4763,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const keepR = bossRetreatKeepRadiusPx(gb, bossViewZoom);
             const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
             const onScreen = Math.abs(bcx - kpcx) <= keepR && Math.abs(bcy - kpcy) <= keepR;
-            const inDeep = FORCE_HIDDEN_BOSS || practiceForces('bossnow') || depth >= BOSS_EXIT_DEPTH; // テスト時は深層域判定を無視(浅い場所でも帰巣しない)
+            const inDeep = FORCE_HIDDEN_BOSS || practiceForces('bossnow') || BOSS_MAKER || depth >= BOSS_EXIT_DEPTH; // テスト時/ボスメーカーの部屋は深層域判定を無視(浅い場所でも帰巣しない)
             // v0.25.2971(社長裁定・案A/テストチャット診断): 技の実行中も**離脱の時計は進める**。
             // v0.25.2962の「技中は時計停止」はボスが時間の6〜8割を技で過ごすため時計が実質永久停止し、
             // どれだけ逃げても帰巣しない真因になっていた(実測: 猶予1200msに対し最大到達567ms)。
@@ -4909,7 +4819,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (prevHp >= 0 && boss.health < prevHp && !onScreen) {
                 bs.thorRangedHits.push(newGameTime);
               }
-              bs.thorRangedHits = bs.thorRangedHits.filter(t => newGameTime - t <= THOR_JUMP_TRIGGER_WINDOW_MS);
+              bs.thorRangedHits = bs.thorRangedHits.filter(t => newGameTime - t <= HB_TH.jump.triggerWindowMs);
               bs.thorPrevHealth = boss.health;
             }
 
@@ -5007,7 +4917,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dl = Math.hypot(dpx, dpy) || 1;
                 const desVx = (dpx / dl) * spd * mult;
                 const desVy = (dpy / dl) * spd * mult;
-                const k = Math.min(1, BOSS_TURN_RESPONSE * bossMoveDt);
+                const k = Math.min(1, HB_C.turnResponse * bossMoveDt);
                 bs.vx += (desVx - bs.vx) * k;
                 bs.vy += (desVy - bs.vy) * k;
                 patch.x = boss.x + bs.vx * bossMoveDt; patch.y = boss.y + bs.vy * bossMoveDt;
@@ -5028,14 +4938,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 解除後はチェイスから再開。溜め/連射タイマーを巻き戻して「解除直後に溜め攻撃が暴発」を防ぎ、
                   // 進行中の連射残数もクリア(凍結をまたいで状態が漏れないように)。
                   patch.bossState = 'chase';
-                  patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+                  patch.bossNextActionAt = newGameTime + HB_C.actionMinMs;
                   patch.bossBurstLeft = 0;
                 }
               } else {
               // 画面外/帰巣中は bossState='return' になる。チェイス状態機械に 'return' のケースが無いため、
               // 復帰時に 'return' のままだと どの分岐にも入らず=移動も状態遷移もせず永久に固まる(社長報告のバグ)。
               // チェイス復帰時は 'chase' として扱い、bossState も chase へ戻して必ず再開させる。
-              if (boss.bossState === 'return') { patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS; }
+              if (boss.bossState === 'return') { patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + HB_C.actionMinMs; }
               const st = (boss.bossState == null || boss.bossState === 'return') ? 'chase' : boss.bossState;
               // CRIT-UNIFY §9.2: クリ窓(bossSlowUntil)中は次行動CDに×2。カウンター成立の直後に
               // 同フレームでこの関数を呼ぶ経路があるため、閉じ込めたstale boss(フレーム先頭のスナップ
@@ -5045,7 +4955,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const profileId = bossRebuildIdForEnemy(boss.type);
                 const neutralMs = profileId
                   ? bossNeutralDelayMs(profileId, boss.bossPhase ?? 1)
-                  : BOSS_ACTION_MIN_MS + Math.random() * (BOSS_ACTION_MAX_MS - BOSS_ACTION_MIN_MS);
+                  : HB_C.actionMinMs + Math.random() * (HB_C.actionMaxMs - HB_C.actionMinMs);
                 return newGameTime + neutralMs * bossCritCdMult(freshBoss(), newGameTime);
               };
               // --- トール(ステージ5)専用ヘルパー(社長指示・独自攻撃) ------------------------------
@@ -5053,24 +4963,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // Y-down画面座標では atan2 の角度が増える向き=視覚的に時計回り(社長指示「時計回り」の既定 dir=1)。
               // 社長指示(v0.25.1334〜):「たまに2秒さらに1/2の速度で歩く」。今の移動速度(接近/後退/旋回の
               // どれでも)に一律で追加の減速を掛ける一時ウィンドウ。bs.thorSlowWalkUntilが未来の間だけ有効。
-              const thorSlowMult = () => (newGameTime < (bs.thorSlowWalkUntil ?? 0) ? THOR_SLOWWALK_MULT : 1);
+              const thorSlowMult = () => (newGameTime < (bs.thorSlowWalkUntil ?? 0) ? HB_TH.slowWalk.mult : 1);
               const thorOrbitMove = () => {
                 const dir = boss.bossCircleDir ?? 1;
                 const relX = bcx - chaseTgt.x, relY = bcy - chaseTgt.y;
                 const curDist = Math.hypot(relX, relY) || 1;
                 const slowMult = thorSlowMult();
-                if (curDist < THOR_ORBIT_DIST) {
+                if (curDist < HB_TH.orbit.distPx) {
                   // 社長指示②: 旋回距離より近づかれたら、旋回せずプレイヤーの1/2速度で真っ直ぐ後ずさる。
                   const ux = relX / curDist, uy = relY / curDist; // 相手から離れる向き
-                  patch.x = boss.x + ux * THOR_RETREAT_SPEED * slowMult * bossMoveDt;
-                  patch.y = boss.y + uy * THOR_RETREAT_SPEED * slowMult * bossMoveDt;
+                  patch.x = boss.x + ux * HB_TH.retreatSpeed * slowMult * bossMoveDt;
+                  patch.y = boss.y + uy * HB_TH.retreatSpeed * slowMult * bossMoveDt;
                   bs.vx = 0; bs.vy = 0;
                   return;
                 }
                 const curAngle = Math.atan2(relY, relX);
-                const angularSpeed = (speed * THOR_ORBIT_SPEED_MULT * slowMult) / THOR_ORBIT_DIST;
+                const angularSpeed = (speed * HB_TH.orbit.speedMult * slowMult) / HB_TH.orbit.distPx;
                 const newAngle = curAngle + dir * angularSpeed * bossMoveDt;
-                const correctedDist = curDist + (THOR_ORBIT_DIST - curDist) * Math.min(1, THOR_ORBIT_RADIUS_CORRECT * bossMoveDt);
+                const correctedDist = curDist + (HB_TH.orbit.distPx - curDist) * Math.min(1, HB_TH.orbit.radiusCorrect * bossMoveDt);
                 const ncx = chaseTgt.x + Math.cos(newAngle) * correctedDist;
                 const ncy = chaseTgt.y + Math.sin(newAngle) * correctedDist;
                 patch.x = ncx - boss.width / 2; patch.y = ncy - boss.height / 2;
@@ -5081,7 +4991,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
                 const dist = Math.hypot(dpx, dpy) || 1;
                 // 社長指示①: 旋回間合いに入るまでの接近速度はプレイヤーの1/2(自身のspeedではなくTHOR_APPROACH_SPEED)。
-                if (dist > THOR_ORBIT_DIST + THOR_ORBIT_APPROACH_SLACK) moveToward(1, THOR_APPROACH_SPEED * thorSlowMult());
+                if (dist > HB_TH.orbit.distPx + HB_TH.orbit.approachSlack) moveToward(1, HB_TH.approachSpeed * thorSlowMult());
                 else thorOrbitMove();
               };
               // 次の攻撃選択までの間隔。HPが低いほど短く=高頻度化(社長指示)。
@@ -5139,10 +5049,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const lx = bcx - pcx, ly = bcy - pcy;
                 const ll = Math.hypot(lx, ly) || 1;
                 patch.bossState = 'counter-leap';
-                patch.bossStateUntil = newGameTime + THOR_COUNTER_LEAP_MS;
+                patch.bossStateUntil = newGameTime + HB_TH.counterLeapMs;
                 patch.aiFromX = bcx; patch.aiFromY = bcy;
-                patch.aiTargetX = pcx + (lx / ll) * THOR_ORBIT_DIST;
-                patch.aiTargetY = pcy + (ly / ll) * THOR_ORBIT_DIST;
+                patch.aiTargetX = pcx + (lx / ll) * HB_TH.orbit.distPx;
+                patch.aiTargetY = pcy + (ly / ll) * HB_TH.orbit.distPx;
                 patch.bossBurstLeft = 0;
               };
               // 近接距離(社長指示「通常の近接攻撃距離」=MELEE_RADIUS)での接触+カウンター窓中かの判定に使う
@@ -5223,9 +5133,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ddx0 = aim.x - bcx, ddy0 = aim.y - bcy;
                 const ddl0 = Math.hypot(ddx0, ddy0) || 1;
                 bs.dashDirX = ddx0 / ddl0; bs.dashDirY = ddy0 / ddl0;
-                const travel = speed * BOSS_DASH_SPEED_MULT * (BOSS_DASH_MS / 1000);
+                const travel = speed * HB_C.dash.speedMult * (HB_C.dash.ms / 1000);
                 patch.bossState = 'dash-windup';
-                patch.bossStateUntil = newGameTime + BOSS_DASH_WINDUP_MS;
+                patch.bossStateUntil = newGameTime + HB_C.dash.windup;
                 patch.aiFromX = bcx; patch.aiFromY = bcy;
                 patch.aiTargetX = bcx + bs.dashDirX * travel; patch.aiTargetY = bcy + bs.dashDirY * travel;
               };
@@ -5233,7 +5143,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 playSfx(BOSS_ALERT_SFX_KEY);
                 if (move === 'bite') {
                   patch.bossState = 'bite-windup';
-                  patch.bossStateUntil = newGameTime + MIMIR_BITE_WINDUP_MS;
+                  patch.bossStateUntil = newGameTime + HB_MI.bite.windup;
                 } else if (move === 'laser') {
                   const aim = lockAttackAim();
                   patch.bossState = 'laser-windup';
@@ -5247,10 +5157,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 } else if (move === 'burst') {
                   lockAttackAim();
                   patch.bossState = 'aim-burst';
-                  patch.bossStateUntil = newGameTime + BOSS_AIM_BURST_MS;
+                  patch.bossStateUntil = newGameTime + HB_C.aimBurstMs;
                 } else {
                   patch.bossState = 'aim-radial';
-                  patch.bossStateUntil = newGameTime + BOSS_AIM_RADIAL_MS;
+                  patch.bossStateUntil = newGameTime + HB_C.aimRadialMs;
                 }
               };
               const beginJormungandMove = (move: JormungandMove) => {
@@ -5258,23 +5168,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (move === 'coil') {
                   const aim = lockAttackAim();
                   patch.bossState = 'coil-windup';
-                  patch.bossStateUntil = newGameTime + JORM_COIL_WINDUP_MS;
+                  patch.bossStateUntil = newGameTime + HB_JO.coil.windup;
                   const rx = bcx - aim.x, ry = bcy - aim.y;
                   const rl = Math.hypot(rx, ry) || 1;
                   const tx0 = -ry / rl, ty0 = rx / rl; // 接線(90度回転)の単位ベクトル=薙ぐ帯の向き(トール払いと同式)
-                  patch.aiFromX = aim.x - tx0 * (JORM_COIL_RANGE / 2);
-                  patch.aiFromY = aim.y - ty0 * (JORM_COIL_RANGE / 2);
-                  patch.aiTargetX = aim.x + tx0 * (JORM_COIL_RANGE / 2);
-                  patch.aiTargetY = aim.y + ty0 * (JORM_COIL_RANGE / 2);
+                  patch.aiFromX = aim.x - tx0 * (HB_JO.coil.range / 2);
+                  patch.aiFromY = aim.y - ty0 * (HB_JO.coil.range / 2);
+                  patch.aiTargetX = aim.x + tx0 * (HB_JO.coil.range / 2);
+                  patch.aiTargetY = aim.y + ty0 * (HB_JO.coil.range / 2);
                 } else if (move === 'dash') {
                   beginHiddenDash();
                 } else if (move === 'burst') {
                   lockAttackAim();
                   patch.bossState = 'aim-burst';
-                  patch.bossStateUntil = newGameTime + BOSS_AIM_BURST_MS;
+                  patch.bossStateUntil = newGameTime + HB_C.aimBurstMs;
                 } else {
                   patch.bossState = 'aim-radial';
-                  patch.bossStateUntil = newGameTime + BOSS_AIM_RADIAL_MS;
+                  patch.bossStateUntil = newGameTime + HB_C.aimRadialMs;
                 }
               };
               const beginSkadiMove = (move: SkadiMove) => {
@@ -5282,26 +5192,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (move === 'ice') {
                   lockAttackAim();
                   patch.bossState = 'skadi-ice-windup';
-                  patch.bossStateUntil = newGameTime + SKADI_PRE_WINDUP_MS;
+                  patch.bossStateUntil = newGameTime + HB_SK.preWindup;
                 } else if (move === 'blade') {
                   lockAttackAim();
                   patch.bossState = 'skadi-blade-windup';
-                  patch.bossStateUntil = newGameTime + SKADI_PRE_WINDUP_MS;
+                  patch.bossStateUntil = newGameTime + HB_SK.preWindup;
                   // v0.25.3078(社長指示): 溜めの頭で「これから飛ぶ本数」の氷刃が全方位へドバッと出る予兆。
-                  useGameStore.getState().spawnFanBurst(bcx, bcy, 'skadi-ice-blade', SKADI_BLADE_COUNT);
+                  useGameStore.getState().spawnFanBurst(bcx, bcy, 'skadi-ice-blade', HB_SK.blade.count);
                 } else if (move === 'cage') {
                   lockAttackAim();
                   patch.bossState = 'cage-windup';
-                  patch.bossStateUntil = newGameTime + SKADI_CAGE_WINDUP_MS;
+                  patch.bossStateUntil = newGameTime + HB_SK.cage.windup;
                 } else if (move === 'dash') {
                   beginHiddenDash();
                 } else if (move === 'burst') {
                   lockAttackAim();
                   patch.bossState = 'aim-burst';
-                  patch.bossStateUntil = newGameTime + BOSS_AIM_BURST_MS;
+                  patch.bossStateUntil = newGameTime + HB_C.aimBurstMs;
                 } else {
                   patch.bossState = 'aim-radial';
-                  patch.bossStateUntil = newGameTime + BOSS_AIM_RADIAL_MS;
+                  patch.bossStateUntil = newGameTime + HB_C.aimRadialMs;
                 }
               };
               // 弾3連/全方位/突進(burst/radial/dash)は3ボス共通の技名なので、硬直明けの連携判定も
@@ -5324,27 +5234,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const aim = lockAttackAim();
                 if (move === 'issen') {
                   patch.bossState = 'issen-windup';
-                  patch.bossStateUntil = newGameTime + THOR_ISSEN_WINDUP_MS;
+                  patch.bossStateUntil = newGameTime + HB_TH.issen.windup;
                   const ddx0 = aim.x - bcx, ddy0 = aim.y - bcy;
                   const ddl0 = Math.hypot(ddx0, ddy0) || 1;
                   patch.aiFromX = bcx; patch.aiFromY = bcy;
-                  patch.aiTargetX = bcx + (ddx0 / ddl0) * THOR_ISSEN_RANGE;
-                  patch.aiTargetY = bcy + (ddy0 / ddl0) * THOR_ISSEN_RANGE;
+                  patch.aiTargetX = bcx + (ddx0 / ddl0) * HB_TH.issen.range;
+                  patch.aiTargetY = bcy + (ddy0 / ddl0) * HB_TH.issen.range;
                 } else if (move === 'tsuki') {
                   patch.bossState = 'tsuki-windup';
-                  patch.bossStateUntil = newGameTime + THOR_TSUKI_WINDUP_MS;
+                  patch.bossStateUntil = newGameTime + HB_TH.tsuki.windup;
                   patch.aiFromX = bcx; patch.aiFromY = bcy;
                   patch.aiTargetX = aim.x; patch.aiTargetY = aim.y;
                 } else {
                   patch.bossState = 'harai-windup';
-                  patch.bossStateUntil = newGameTime + THOR_HARAI_WINDUP_MS;
+                  patch.bossStateUntil = newGameTime + HB_TH.harai.windup;
                   const rx = bcx - aim.x, ry = bcy - aim.y;
                   const rl = Math.hypot(rx, ry) || 1;
                   const tx0 = -ry / rl, ty0 = rx / rl;
-                  patch.aiFromX = aim.x - tx0 * (THOR_HARAI_RANGE / 2);
-                  patch.aiFromY = aim.y - ty0 * (THOR_HARAI_RANGE / 2);
-                  patch.aiTargetX = aim.x + tx0 * (THOR_HARAI_RANGE / 2);
-                  patch.aiTargetY = aim.y + ty0 * (THOR_HARAI_RANGE / 2);
+                  patch.aiFromX = aim.x - tx0 * (HB_TH.harai.range / 2);
+                  patch.aiFromY = aim.y - ty0 * (HB_TH.harai.range / 2);
+                  patch.aiTargetX = aim.x + tx0 * (HB_TH.harai.range / 2);
+                  patch.aiTargetY = aim.y + ty0 * (HB_TH.harai.range / 2);
                 }
               };
               const thorRecoverAdvance = () => {
@@ -5352,6 +5262,46 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.bossScriptQueue = rest;
                 if (next === 'issen' || next === 'tsuki' || next === 'harai') beginThorMove(next);
                 else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
+              };
+              // トール: 飛び掛かりの開始。実戦(画面外から3回被弾)と ボスメーカーの▸が**同じ1本**を通る
+              // ように chase 分岐から切り出した(掟: 遷移コードを複製しない)。発火条件(被弾カウント)は
+              // 呼び出し側に残す=▸は条件をバイパスしてここを直接叩ける(部屋は訓練場)。
+              const beginThorJump = () => {
+                patch.bossState = 'jump-windup';
+                patch.bossStateUntil = newGameTime + HB_TH.jump.windup;
+                patch.bossScriptQueue = planBossChoreography('thor', 'jump', boss.bossPhase ?? 1).slice(1);
+                // §6.28-10「ジャンプ着地円を溜め開始から出す」: 着地点は溜め"開始"の瞬間にロックする
+                // (W1「予告図形はリード全域で出す」+受け入れ条件10「判定と同寸」のため)。
+                if (THOR_SCRIPT_ENABLED) {
+                  const aim = lockAttackAim();
+                  patch.aiTargetX = aim.x; patch.aiTargetY = aim.y;
+                }
+              };
+              // ボスメーカー ▸(BOSS_MAKER.md §6-1): 技を1つだけ再生する入口。**実戦の抽選と同じ begin* の束**
+              // を通す(写さない)。連携の台本は積まない(=▸は1技だけを最後まで再生して chase へ戻る)。
+              const startHiddenMove = (k: HiddenMoveKey): void => {
+                patch.bossScriptQueue = [];
+                switch (k) {
+                  case 'mi-bite': beginMimirMove('bite'); break;
+                  case 'mi-laser': beginMimirMove('laser'); break;
+                  case 'mi-dash': beginMimirMove('dash'); break;
+                  case 'mi-burst': beginMimirMove('burst'); break;
+                  case 'mi-radial': beginMimirMove('radial'); break;
+                  case 'jo-coil': beginJormungandMove('coil'); break;
+                  case 'jo-dash': beginJormungandMove('dash'); break;
+                  case 'jo-burst': beginJormungandMove('burst'); break;
+                  case 'jo-radial': beginJormungandMove('radial'); break;
+                  case 'sk-ice': beginSkadiMove('ice'); break;
+                  case 'sk-blade': beginSkadiMove('blade'); break;
+                  case 'sk-cage': beginSkadiMove('cage'); break;
+                  case 'sk-dash': beginSkadiMove('dash'); break;
+                  case 'sk-burst': beginSkadiMove('burst'); break;
+                  case 'sk-radial': beginSkadiMove('radial'); break;
+                  case 'th-issen': beginThorMove('issen'); break;
+                  case 'th-tsuki': beginThorMove('tsuki'); break;
+                  case 'th-harai': beginThorMove('harai'); break;
+                  case 'th-jump': beginThorJump(); break;
+                }
               };
               // W7の対象状態一覧(§6.28-13 #8/§6.28-21★3): 弾3連/全方位16発/ミーミルのレーザーの各windup
               // (静止/後退り)、および突進の実行中(active=その技の判定に委ねる=ここで直接カウンターを判定する)。
@@ -5411,64 +5361,57 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (hiddenBossCountered || ghostCountered) {
                 // カウンター成立: hiddenBossCounterHit/thorCounterHitが既にpatch(chase復帰/counter-leap)まで
                 // 設定済みなので、通常の状態遷移(下のif/elseチェーン)はこのフレームだけ丸ごとスキップする。
+              } else if (takeHiddenBossPlay(boss.type, startHiddenMove)) {
+                // ボスメーカー ▸: 条件(距離帯/CD/抽選)をバイパスして技を1つ始める(部屋は訓練場)。
+                // 通常プレイでは要求箱が常に null なのでここへは来ない。
               } else if (st === 'chase') {
                 if (boss.type === 'thor') {
                   // 社長指示:「たまに2秒さらに1/2の速度で歩く」。クールダウンが明けたら新しい減速ウィンドウへ
                   // 突入(既に減速中は再抽選しない=毎フレーム延長し続けない)。
                   if (newGameTime >= (bs.thorNextSlowWalkAt ?? 0) && newGameTime >= (bs.thorSlowWalkUntil ?? 0)) {
-                    bs.thorNextSlowWalkAt = newGameTime + THOR_SLOWWALK_MIN_INTERVAL_MS + Math.random() * (THOR_SLOWWALK_MAX_INTERVAL_MS - THOR_SLOWWALK_MIN_INTERVAL_MS);
-                    bs.thorSlowWalkUntil = newGameTime + THOR_SLOWWALK_MS;
+                    bs.thorNextSlowWalkAt = newGameTime + HB_TH.slowWalk.minIntervalMs + Math.random() * (HB_TH.slowWalk.maxIntervalMs - HB_TH.slowWalk.minIntervalMs);
+                    bs.thorSlowWalkUntil = newGameTime + HB_TH.slowWalk.ms;
                   }
                   thorMove();
                 } else {
                   moveToward(1);
                 }
                 const thorDistToTgt = boss.type === 'thor' ? Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy) : 0;
-                if (boss.type === 'thor' && bs.thorRangedHits.length >= THOR_JUMP_TRIGGER_HITS) {
+                if (boss.type === 'thor' && bs.thorRangedHits.length >= HB_TH.jump.triggerHits) {
                   // 遠距離からの連続被弾への対抗: 通常の間隔を待たず即ジャンプ攻撃で間合いを詰める(社長指示)。
                   bs.thorRangedHits = [];
-                  patch.bossState = 'jump-windup';
-                  patch.bossStateUntil = newGameTime + THOR_JUMP_WINDUP_MS;
-                  patch.bossScriptQueue = planBossChoreography('thor', 'jump', boss.bossPhase ?? 1).slice(1);
-                  // §6.28-10「ジャンプ着地円を溜め開始から出す」【変更: 現行は滞空中のみ】。着地点は
-                  // 溜め"開始"の瞬間にロックする(現行は溜め終了時=jump-attack移行時にロックしていた
-                  // ものを前倒し。W1「予告図形はリード全域で出す」+受け入れ条件10「判定と同寸」のため。
-                  // 既存の攻撃判定・ダメージ・windup長(700ms)・CD・着地半径は一切変えない)。
-                  if (THOR_SCRIPT_ENABLED) {
-                    const aim = lockAttackAim();
-                    patch.aiTargetX = aim.x; patch.aiTargetY = aim.y;
-                  }
+                  beginThorJump(); // ★v0.25.3573: 中身は beginThorJump へ切り出し(▸と同じ1本)
                 } else if (
                   boss.type === 'thor' &&
-                  thorDistToTgt < THOR_ORBIT_DIST &&
+                  thorDistToTgt < HB_TH.orbit.distPx &&
                   newGameTime >= (bs.thorNextBackstepAt ?? 0)
                 ) {
                   // 社長指示②: 「たまにバックステップで少し距離を取る」。近づかれている間、間隔を空けて発火。
-                  bs.thorNextBackstepAt = newGameTime + THOR_BACKSTEP_MIN_INTERVAL_MS + Math.random() * (THOR_BACKSTEP_MAX_INTERVAL_MS - THOR_BACKSTEP_MIN_INTERVAL_MS);
+                  bs.thorNextBackstepAt = newGameTime + HB_TH.backstep.minIntervalMs + Math.random() * (HB_TH.backstep.maxIntervalMs - HB_TH.backstep.minIntervalMs);
                   const rx = bcx - chaseTgt.x, ry = bcy - chaseTgt.y;
                   const rl = Math.hypot(rx, ry) || 1;
                   patch.bossState = 'backstep';
-                  patch.bossStateUntil = newGameTime + THOR_BACKSTEP_MS;
+                  patch.bossStateUntil = newGameTime + HB_TH.backstep.ms;
                   patch.aiFromX = bcx; patch.aiFromY = bcy;
-                  patch.aiTargetX = bcx + (rx / rl) * THOR_BACKSTEP_DIST;
-                  patch.aiTargetY = bcy + (ry / rl) * THOR_BACKSTEP_DIST;
+                  patch.aiTargetX = bcx + (rx / rl) * HB_TH.backstep.distPx;
+                  patch.aiTargetY = bcy + (ry / rl) * HB_TH.backstep.distPx;
                   bs.vx = 0; bs.vy = 0;
                 } else if (
                   boss.type === 'thor' &&
-                  thorDistToTgt >= THOR_ORBIT_DIST &&
-                  thorDistToTgt <= THOR_ORBIT_DIST + THOR_ORBIT_APPROACH_SLACK &&
+                  thorDistToTgt >= HB_TH.orbit.distPx &&
+                  thorDistToTgt <= HB_TH.orbit.distPx + HB_TH.orbit.approachSlack &&
                   newGameTime >= (bs.thorNextOrbitStepAt ?? 0)
                 ) {
                   // 社長指示: 旋回中(適正距離)にたまに接線方向へ少しだけ弾む「ステップ」を混ぜる(緩急)。
-                  bs.thorNextOrbitStepAt = newGameTime + THOR_ORBIT_STEP_MIN_INTERVAL_MS + Math.random() * (THOR_ORBIT_STEP_MAX_INTERVAL_MS - THOR_ORBIT_STEP_MIN_INTERVAL_MS);
+                  bs.thorNextOrbitStepAt = newGameTime + HB_TH.orbitStep.minIntervalMs + Math.random() * (HB_TH.orbitStep.maxIntervalMs - HB_TH.orbitStep.minIntervalMs);
                   const dir = boss.bossCircleDir ?? 1;
                   const rux = (bcx - chaseTgt.x) / (thorDistToTgt || 1), ruy = (bcy - chaseTgt.y) / (thorDistToTgt || 1);
                   const tux = -ruy * dir, tuy = rux * dir; // 接線方向(thorOrbitMoveと同じ向き規則)
                   patch.bossState = 'orbit-step';
-                  patch.bossStateUntil = newGameTime + THOR_ORBIT_STEP_MS;
+                  patch.bossStateUntil = newGameTime + HB_TH.orbitStep.ms;
                   patch.aiFromX = bcx; patch.aiFromY = bcy;
-                  patch.aiTargetX = bcx + tux * THOR_ORBIT_STEP_DIST;
-                  patch.aiTargetY = bcy + tuy * THOR_ORBIT_STEP_DIST;
+                  patch.aiTargetX = bcx + tux * HB_TH.orbitStep.distPx;
+                  patch.aiTargetY = bcy + tuy * HB_TH.orbitStep.distPx;
                   bs.vx = 0; bs.vy = 0;
                 } else if (boss.type === 'thor') {
                   if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
@@ -5534,21 +5477,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   } else if (boss.type === 'skadi' && Math.random() < SKADI_ATTACK_CHANCE) {
                     // 旧挙動(?skadiscript=0)。スカジ専用の氷攻撃を「追加」抽選(氷塊バースト or 氷の刃)。
                     lockAttackAim();
-                    if (Math.random() < 0.5) { patch.bossState = 'skadi-ice'; patch.bossBurstLeft = SKADI_ICE_COUNT; patch.bossBurstNextAt = newGameTime; }
-                    else { patch.bossState = 'skadi-blade'; patch.bossBurstLeft = SKADI_BLADE_COUNT; patch.bossBurstNextAt = newGameTime; }
+                    if (Math.random() < 0.5) { patch.bossState = 'skadi-ice'; patch.bossBurstLeft = HB_SK.ice.count; patch.bossBurstNextAt = newGameTime; }
+                    else { patch.bossState = 'skadi-blade'; patch.bossBurstLeft = HB_SK.blade.count; patch.bossBurstNextAt = newGameTime; }
                   } else {
                     // 旧挙動(共通): dash/aim-burst/aim-radialの固定3択(いずれかのボスがscript=0の時のフォールバック)。
                     const r = Math.random();
                     if (r < BOSS_DASH_CHANCE) { beginHiddenDash(); }
-                    else if (r < BOSS_DASH_CHANCE + (1 - BOSS_DASH_CHANCE) / 2) { lockAttackAim(); patch.bossState = 'aim-burst'; patch.bossStateUntil = newGameTime + BOSS_AIM_BURST_MS; }
-                    else { patch.bossState = 'aim-radial'; patch.bossStateUntil = newGameTime + BOSS_AIM_RADIAL_MS; }
+                    else if (r < BOSS_DASH_CHANCE + (1 - BOSS_DASH_CHANCE) / 2) { lockAttackAim(); patch.bossState = 'aim-burst'; patch.bossStateUntil = newGameTime + HB_C.aimBurstMs; }
+                    else { patch.bossState = 'aim-radial'; patch.bossStateUntil = newGameTime + HB_C.aimRadialMs; }
                   }
                 }
               } else if (st === 'aim-burst') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'burst';
                   // ヨルムンガルド: 3発×5回。他の裏ボス: 従来の単発×3。
-                  patch.bossBurstLeft = boss.type === 'jormungand' ? JORM_BURST_VOLLEYS : BOSS_BURST_SHOTS;
+                  patch.bossBurstLeft = boss.type === 'jormungand' ? HB_JO.burst.volleys : HB_C.burstShots;
                   patch.bossBurstNextAt = newGameTime;
                 }
               } else if (st === 'burst') {
@@ -5559,18 +5502,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // 1回=固定したヘイト対象を追う軽い3-way扇(計3発)。
                     const ang = Math.atan2(aimTgt.y - bcy, aimTgt.x - bcx);
                     for (let k = -1; k <= 1; k++) {
-                      const a = ang + k * JORM_BURST_FAN_SPREAD;
+                      const a = ang + k * HB_JO.burst.fanSpread;
                       fireBullet(bcx + Math.cos(a) * 100, bcy + Math.sin(a) * 100);
                     }
                   } else {
                     fireBullet(aimTgt.x, aimTgt.y);
                   }
                   patch.bossBurstLeft = left - 1;
-                  patch.bossBurstNextAt = newGameTime + (boss.type === 'jormungand' ? JORM_BURST_GAP_MS : BOSS_BURST_GAP_MS);
+                  patch.bossBurstNextAt = newGameTime + (boss.type === 'jormungand' ? HB_JO.burst.gapMs : HB_C.burstGapMs);
                   if (left - 1 <= 0) {
                     // §6.28-5/7/9: 硬直(反撃窓)を新設。旧挙動時は現行どおり即chase復帰。
                     if (hiddenScriptOn) {
-                      const recMs = boss.type === 'jormungand' ? JORM_BURST_RECOVER_MS : boss.type === 'skadi' ? SKADI_BURST_RECOVER_MS : MIMIR_BURST_RECOVER_MS;
+                      const recMs = boss.type === 'jormungand' ? HB_JO.burst.recover : boss.type === 'skadi' ? HB_SK.burstRecover : HB_MI.burstRecover;
                       patch.bossState = 'burst-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(recMs, (boss.bossScriptQueue?.length ?? 0) > 0);
                     } else {
                       patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay();
@@ -5582,16 +5525,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (boss.type === 'jormungand') {
                     // ヨルムンガルド: 全方位16発を0.3秒おきに8回。繰り返しは 'radial' 状態で回す。
                     patch.bossState = 'radial';
-                    patch.bossBurstLeft = JORM_RADIAL_VOLLEYS;
+                    patch.bossBurstLeft = HB_JO.radial.volleys;
                     patch.bossBurstNextAt = newGameTime;
                   } else {
-                    for (let i = 0; i < BOSS_RADIAL_COUNT; i++) {
-                      const a = (Math.PI * 2 * i) / BOSS_RADIAL_COUNT;
+                    for (let i = 0; i < HB_C.radialCount; i++) {
+                      const a = (Math.PI * 2 * i) / HB_C.radialCount;
                       fireBullet(bcx + Math.cos(a) * 100, bcy + Math.sin(a) * 100);
                     }
                     if (hiddenScriptOn) {
                       patch.bossState = 'radial-recover';
-                      patch.bossStateUntil = newGameTime + choreographyRecoverMs(boss.type === 'skadi' ? SKADI_RADIAL_RECOVER_MS : MIMIR_RADIAL_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0);
+                      patch.bossStateUntil = newGameTime + choreographyRecoverMs(boss.type === 'skadi' ? HB_SK.radialRecover : HB_MI.radialRecover, (boss.bossScriptQueue?.length ?? 0) > 0);
                     } else {
                       patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay();
                     }
@@ -5603,15 +5546,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // §6.28-7「規則を読む」不変条件: 回転方向は常に時計回りで固定(jormRadialSpinAngleが構造的に保証)。
                 const left = boss.bossBurstLeft ?? 0;
                 if (left > 0 && newGameTime >= (boss.bossBurstNextAt ?? 0)) {
-                  const vi = JORM_RADIAL_VOLLEYS - left; // 0始まりの回数インデックス
-                  for (let i = 0; i < BOSS_RADIAL_COUNT; i++) {
-                    const a = (Math.PI * 2 * i) / BOSS_RADIAL_COUNT + jormRadialSpinAngle(vi, JORM_RADIAL_SPIN); // 時計回り(画面y下)へ加算
+                  const vi = HB_JO.radial.volleys - left; // 0始まりの回数インデックス
+                  for (let i = 0; i < HB_C.radialCount; i++) {
+                    const a = (Math.PI * 2 * i) / HB_C.radialCount + jormRadialSpinAngle(vi, HB_JO.radial.spin); // 時計回り(画面y下)へ加算
                     fireBullet(bcx + Math.cos(a) * 100, bcy + Math.sin(a) * 100);
                   }
                   patch.bossBurstLeft = left - 1;
-                  patch.bossBurstNextAt = newGameTime + JORM_RADIAL_GAP_MS;
+                  patch.bossBurstNextAt = newGameTime + HB_JO.radial.gapMs;
                   if (left - 1 <= 0) {
-                    if (hiddenScriptOn) { patch.bossState = 'radial-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(JORM_RADIAL_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0); }
+                    if (hiddenScriptOn) { patch.bossState = 'radial-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_JO.radial.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                     else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
                   }
                 }
@@ -5619,13 +5562,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // §6.28-9【新設】: 氷塊設置ループの直前に静止windupを挟む(T4フラッシュ+SEはここが担う)。
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'skadi-ice';
-                  patch.bossBurstLeft = SKADI_ICE_COUNT;
+                  patch.bossBurstLeft = HB_SK.ice.count;
                   patch.bossBurstNextAt = newGameTime;
                 }
               } else if (st === 'skadi-blade-windup') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'skadi-blade';
-                  patch.bossBurstLeft = SKADI_BLADE_COUNT;
+                  patch.bossBurstLeft = HB_SK.blade.count;
                   patch.bossBurstNextAt = newGameTime;
                 }
               } else if (st === 'skadi-ice') {
@@ -5634,11 +5577,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const left = boss.bossBurstLeft ?? 0;
                 if (left > 0 && newGameTime >= (boss.bossBurstNextAt ?? 0)) {
                   const aimTgt = lockedAttackAim();
-                  useGameStore.getState().spawnSkadiIce(aimTgt.x, aimTgt.y, newGameTime, newGameTime + SKADI_ICE_TELEGRAPH_MS, boss.id);
+                  useGameStore.getState().spawnSkadiIce(aimTgt.x, aimTgt.y, newGameTime, newGameTime + HB_SK.ice.telegraphMs, boss.id);
                   patch.bossBurstLeft = left - 1;
-                  patch.bossBurstNextAt = newGameTime + SKADI_ICE_GAP_MS;
+                  patch.bossBurstNextAt = newGameTime + HB_SK.ice.gapMs;
                   if (left - 1 <= 0) {
-                    if (SKADI_SCRIPT_ENABLED) { patch.bossState = 'skadi-ice-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SKADI_ICE_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0); }
+                    if (SKADI_SCRIPT_ENABLED) { patch.bossState = 'skadi-ice-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_SK.ice.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                     else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
                   }
                 }
@@ -5649,14 +5592,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (left > 0 && newGameTime >= (boss.bossBurstNextAt ?? 0)) {
                   const aimTgt = lockedAttackAim();
                   const a0 = Math.random() * Math.PI * 2;
-                  const dist = SKADI_BLADE_RING_MIN + Math.random() * (SKADI_BLADE_RING_MAX - SKADI_BLADE_RING_MIN);
+                  const dist = HB_SK.blade.ringMin + Math.random() * (HB_SK.blade.ringMax - HB_SK.blade.ringMin);
                   const sx = aimTgt.x + Math.cos(a0) * dist, sy = aimTgt.y + Math.sin(a0) * dist;
                   const aim = Math.atan2(aimTgt.y - sy, aimTgt.x - sx); // 設置時のヘイト対象方向(以後固定)
-                  useGameStore.getState().spawnSkadiBlade(sx, sy, aim, newGameTime + SKADI_BLADE_DELAY_MS, boss.id);
+                  useGameStore.getState().spawnSkadiBlade(sx, sy, aim, newGameTime + HB_SK.blade.delayMs, boss.id);
                   patch.bossBurstLeft = left - 1;
-                  patch.bossBurstNextAt = newGameTime + SKADI_BLADE_GAP_MS;
+                  patch.bossBurstNextAt = newGameTime + HB_SK.blade.gapMs;
                   if (left - 1 <= 0) {
-                    if (SKADI_SCRIPT_ENABLED) { patch.bossState = 'skadi-blade-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SKADI_BLADE_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0); }
+                    if (SKADI_SCRIPT_ENABLED) { patch.bossState = 'skadi-blade-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_SK.blade.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                     else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
                   }
                 }
@@ -5690,7 +5633,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossState = 'laser-fire';
                   patch.bossStateUntil = newGameTime + MIMIR_LASER_FIRE_MS;
                   playSfx('heavy-impact'); // レーザー発射音(使い回し)
-                  useGameStore.getState().triggerShake(MIMIR_LASER_FIRE_MS, MIMIR_LASER_SHAKE_MAG); // 発射中ずっと揺れる
+                  useGameStore.getState().triggerShake(MIMIR_LASER_FIRE_MS, HB_MI.laser.shakeMag); // 発射中ずっと揺れる
                 }
               } else if (st === 'laser-broken') {
                 // §6.33-2-2: 弱点窓で近接中断された(gameStore側でlaser-brokenへ遷移済み)。1700msの
@@ -5722,15 +5665,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 if (Math.hypot(ppx - cxp, ppy - cyp) <= MIMIR_LASER_HALF_WIDTH + pr) {
-                  const died = damagePlayer(MIMIR_LASER_DAMAGE, 'ミーミルのレーザー', cxp, cyp);
+                  const died = damagePlayer(HB_MI.laser.damage, 'ミーミルのレーザー', cxp, cyp);
                   if (died) triggerPlayerDeath(ppx, ppy);
                 }
                 // G4b(§2.9): ビーム帯はゴースト(守護霊)にも当たる(同じ線分±半太さ・同じダメージ。
                 // 継続ダメージの間引きはdamageSummonのi-frame=プレイヤーのdamagePlayer i-frameと同型)。
                 applyGhostAllyCapsuleHit(bcx, bcy, bcx + ux * MIMIR_LASER_RANGE, bcy + uy * MIMIR_LASER_RANGE,
-                  MIMIR_LASER_HALF_WIDTH, MIMIR_LASER_DAMAGE, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:mimir-laser');
+                  MIMIR_LASER_HALF_WIDTH, HB_MI.laser.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:mimir-laser');
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
-                  if (MIMIR_SCRIPT_ENABLED) { patch.bossState = 'laser-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(MIMIR_LASER_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0); }
+                  if (MIMIR_SCRIPT_ENABLED) { patch.bossState = 'laser-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_MI.laser.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
                 }
               } else if (st === 'dash-windup') {
@@ -5739,11 +5682,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const aimTgt = lockedAttackAim();
                   const bdx = bcx - aimTgt.x, bdy = bcy - aimTgt.y;
                   const bl = Math.hypot(bdx, bdy) || 1;
-                  const back = speed * BOSS_DASH_BACKSTEP_MULT * bossMoveDt;
+                  const back = speed * HB_C.dash.backstepMult * bossMoveDt;
                   patch.x = boss.x + (bdx / bl) * back; patch.y = boss.y + (bdy / bl) * back;
                 }
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
-                  patch.bossState = 'dash'; patch.bossStateUntil = newGameTime + BOSS_DASH_MS;
+                  patch.bossState = 'dash'; patch.bossStateUntil = newGameTime + HB_C.dash.ms;
                   if (!hiddenScriptOn) {
                     // 旧挙動: windup終了時に再照準(新スクリプト無効時のみ)。有効時はbeginHiddenDashが
                     // windup開始の瞬間に既にbs.dashDirXをロック済みなので、ここでは再照準しない(掟W4)。
@@ -5758,16 +5701,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const aimTgt = lockedAttackAim();
                 const tdx = aimTgt.x - bcx, tdy = aimTgt.y - bcy;
                 const tl = Math.hypot(tdx, tdy) || 1;
-                const dx = bs.dashDirX + (tdx / tl) * BOSS_DASH_HOMING;
-                const dy = bs.dashDirY + (tdy / tl) * BOSS_DASH_HOMING;
+                const dx = bs.dashDirX + (tdx / tl) * HB_C.dash.homing;
+                const dy = bs.dashDirY + (tdy / tl) * HB_C.dash.homing;
                 const dnl = Math.hypot(dx, dy) || 1;
                 bs.dashDirX = dx / dnl; bs.dashDirY = dy / dnl; // 向きを少しずつ更新(累積で緩く曲がる)
-                const mv = speed * BOSS_DASH_SPEED_MULT * bossMoveDt;
+                const mv = speed * HB_C.dash.speedMult * bossMoveDt;
                 patch.x = boss.x + bs.dashDirX * mv; patch.y = boss.y + bs.dashDirY * mv;
-                bs.vx = bs.dashDirX * speed * BOSS_DASH_SPEED_MULT; // 突進後のチェイスへ慣性を引き継ぐ
-                bs.vy = bs.dashDirY * speed * BOSS_DASH_SPEED_MULT;
+                bs.vx = bs.dashDirX * speed * HB_C.dash.speedMult; // 突進後のチェイスへ慣性を引き継ぐ
+                bs.vy = bs.dashDirY * speed * HB_C.dash.speedMult;
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
-                  if (hiddenScriptOn) { patch.bossState = 'dash-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(BOSS_DASH_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0); }
+                  if (hiddenScriptOn) { patch.bossState = 'dash-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_C.dash.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
                 }
               } else if (st === 'burst-recover') {
@@ -5790,11 +5733,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     pumpkinBlasts: [...state.pumpkinBlasts, { x: bcx, y: bcy, radius: MIMIR_BITE_RADIUS, damage: boss.damage, enemyId: boss.id }],
                   }));
                   patch.bossState = 'bite-recover';
-                  patch.bossStateUntil = newGameTime + choreographyRecoverMs(MIMIR_BITE_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0);
+                  patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_MI.bite.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
                 }
               } else if (st === 'bite-recover') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
-                  patch.mimirBiteReadyAt = newGameTime + MIMIR_BITE_CD_MS;
+                  patch.mimirBiteReadyAt = newGameTime + HB_MI.bite.cdMs;
                   hiddenRecoverAdvance('bite');
                 }
               } else if (st === 'coil-windup') {
@@ -5805,20 +5748,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const stx = boss.aiTargetX ?? bcx, sty = boss.aiTargetY ?? bcy;
                   useGameStore.setState(state => ({
                     pumpkinBlasts: [...state.pumpkinBlasts, {
-                      x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: JORM_COIL_HALF_WIDTH,
+                      x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: HB_JO.coil.halfWidth,
                       damage: boss.damage, enemyId: boss.id,
-                      capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: JORM_COIL_HALF_WIDTH },
+                      capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: HB_JO.coil.halfWidth },
                     }],
                   }));
-                  patch.bossState = 'coil'; patch.bossStateUntil = newGameTime + JORM_COIL_ACTIVE_MS;
+                  patch.bossState = 'coil'; patch.bossStateUntil = newGameTime + HB_JO.coil.active;
                 }
               } else if (st === 'coil') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
-                  patch.bossState = 'coil-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(JORM_COIL_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0);
+                  patch.bossState = 'coil-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_JO.coil.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
                 }
               } else if (st === 'coil-recover') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
-                  patch.jormCoilReadyAt = newGameTime + JORM_COIL_CD_MS;
+                  patch.jormCoilReadyAt = newGameTime + HB_JO.coil.cdMs;
                   hiddenRecoverAdvance('coil');
                 }
               } else if (st === 'cage-windup') {
@@ -5827,17 +5770,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   const aimTgt = lockedAttackAim();
                   const gapAngle = Math.random() * Math.PI * 2;
-                  for (let i = 1; i <= SKADI_CAGE_COUNT; i++) {
-                    const ang = gapAngle + (Math.PI * 2 / (SKADI_CAGE_COUNT + 1)) * i;
-                    const ix = aimTgt.x + Math.cos(ang) * SKADI_CAGE_RING_RADIUS, iy = aimTgt.y + Math.sin(ang) * SKADI_CAGE_RING_RADIUS;
-                    useGameStore.getState().spawnSkadiIce(ix, iy, newGameTime, newGameTime + SKADI_ICE_TELEGRAPH_MS, boss.id);
+                  for (let i = 1; i <= HB_SK.cage.count; i++) {
+                    const ang = gapAngle + (Math.PI * 2 / (HB_SK.cage.count + 1)) * i;
+                    const ix = aimTgt.x + Math.cos(ang) * HB_SK.cage.ringRadius, iy = aimTgt.y + Math.sin(ang) * HB_SK.cage.ringRadius;
+                    useGameStore.getState().spawnSkadiIce(ix, iy, newGameTime, newGameTime + HB_SK.ice.telegraphMs, boss.id);
                   }
                   patch.bossState = 'cage-recover';
-                  patch.bossStateUntil = newGameTime + choreographyRecoverMs(SKADI_CAGE_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0);
+                  patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_SK.cage.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
                 }
               } else if (st === 'cage-recover') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
-                  patch.skadiCageReadyAt = newGameTime + SKADI_CAGE_CD_MS;
+                  patch.skadiCageReadyAt = newGameTime + HB_SK.cage.cdMs;
                   hiddenRecoverAdvance('cage');
                 }
               } else if (st === 'issen-windup') {
@@ -5848,13 +5791,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   thorCounterHit(bcx, bcy);
                 } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'issen-dash';
-                  patch.bossStateUntil = newGameTime + THOR_ISSEN_DASH_MS;
+                  patch.bossStateUntil = newGameTime + HB_TH.issen.dashMs;
                 }
               } else if (st === 'issen-dash') {
                 // 一閃(高速移動): 終着点まで直進。当たり判定=もとの帯ではなく、この赤いライン上のみ(社長指示)。
                 const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
                 const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
-                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_ISSEN_DASH_MS));
+                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / HB_TH.issen.dashMs));
                 patch.x = (fx + (tx - fx) * t) - boss.width / 2;
                 patch.y = (fy + (ty - fy) * t) - boss.height / 2;
                 let lux = tx - fx, luy = ty - fy;
@@ -5864,7 +5807,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 let countered = false;
-                if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, THOR_ISSEN_HALF_WIDTH) <= pr) { // v0.25.3496: 描いてある四角
+                if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, HB_TH.issen.halfWidth) <= pr) { // v0.25.3496: 描いてある四角
                   const cp = useGameStore.getState().player;
                   if (Date.now() <= cp.counterWindowEnd) {
                     thorCounterHit(cxp, cyp);
@@ -5877,11 +5820,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
                 // G4b(§2.9): 一閃はゴースト(守護霊)にも当たる(同じ線分カプセル・同じboss.damage・同じフレーム。
                 // 連続ヒットはdamageSummonのi-frameが間引く。プレイヤー側の判定は上のブロックのまま1bit不変)。
-                applyGhostAllyCapsuleHit(fx, fy, tx, ty, THOR_ISSEN_HALF_WIDTH, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-issen');
+                applyGhostAllyCapsuleHit(fx, fy, tx, ty, HB_TH.issen.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-issen');
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
                   // §6.28-10「全技に硬直(recover)を新設」: 硬直900ms・青白tint(描画側)。既存のリード/
                   // 射程/半幅/カウンター等は無改変。?thorscript=0の間は現行どおり即chase復帰。
-                  if (THOR_SCRIPT_ENABLED) { patch.bossState = 'issen-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(THOR_ISSEN_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0); }
+                  if (THOR_SCRIPT_ENABLED) { patch.bossState = 'issen-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_TH.issen.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
                 }
               } else if (st === 'tsuki-windup') {
@@ -5892,7 +5835,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const aimX = boss.aiTargetX ?? aimTgt.x, aimY = boss.aiTargetY ?? aimTgt.y;
                 const adx = aimTgt.x - aimX, ady = aimTgt.y - aimY;
                 const adl = Math.hypot(adx, ady);
-                const trackStep = Math.min(adl, player.speed * THOR_TSUKI_TRACK_FRAC * bossMoveDt);
+                const trackStep = Math.min(adl, player.speed * HB_TH.tsuki.trackFrac * bossMoveDt);
                 const naimX = adl > 0.001 ? aimX + (adx / adl) * trackStep : aimX;
                 const naimY = adl > 0.001 ? aimY + (ady / adl) * trackStep : aimY;
                 patch.aiTargetX = naimX; patch.aiTargetY = naimY; // 溜め中は遅延追従する狙い点を保持
@@ -5901,13 +5844,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   thorCounterHit(bcx, bcy);
                 } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'tsuki';
-                  patch.bossStateUntil = newGameTime + THOR_TSUKI_MS;
+                  patch.bossStateUntil = newGameTime + HB_TH.tsuki.ms;
                   // 突く方向=遅延した狙い点(naim)への向き。射程ぶん伸ばして突きラインを確定。
                   const ddx = naimX - bcx, ddy = naimY - bcy;
                   const ddl = Math.hypot(ddx, ddy) || 1;
                   patch.aiFromX = bcx; patch.aiFromY = bcy;
-                  patch.aiTargetX = bcx + (ddx / ddl) * THOR_TSUKI_RANGE;
-                  patch.aiTargetY = bcy + (ddy / ddl) * THOR_TSUKI_RANGE;
+                  patch.aiTargetX = bcx + (ddx / ddl) * HB_TH.tsuki.range;
+                  patch.aiTargetY = bcy + (ddy / ddl) * HB_TH.tsuki.range;
                   playSfx('thor-thrust');
                 }
               } else if (st === 'tsuki') {
@@ -5922,7 +5865,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 let countered = false;
-                if (Math.hypot(pcx - cxp, pcy - cyp) <= THOR_TSUKI_HALF_WIDTH + pr) {
+                if (Math.hypot(pcx - cxp, pcy - cyp) <= HB_TH.tsuki.halfWidth + pr) {
                   const cp = useGameStore.getState().player;
                   if (Date.now() <= cp.counterWindowEnd) {
                     thorCounterHit(cxp, cyp);
@@ -5933,9 +5876,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
                 // G4b(§2.9): 突きもゴーストに当たる(一閃と同じ作法)。
-                applyGhostAllyCapsuleHit(fx, fy, tx, ty, THOR_TSUKI_HALF_WIDTH, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-tsuki');
+                applyGhostAllyCapsuleHit(fx, fy, tx, ty, HB_TH.tsuki.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-tsuki');
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
-                  if (THOR_SCRIPT_ENABLED) { patch.bossState = 'tsuki-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(THOR_TSUKI_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0); }
+                  if (THOR_SCRIPT_ENABLED) { patch.bossState = 'tsuki-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_TH.tsuki.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
                 }
               } else if (st === 'harai-windup') {
@@ -5945,7 +5888,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   thorCounterHit(bcx, bcy);
                 } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'harai';
-                  patch.bossStateUntil = newGameTime + THOR_HARAI_ACTIVE_MS;
+                  patch.bossStateUntil = newGameTime + HB_TH.harai.active;
                   playSfx('thor-sweep');
                 }
               } else if (st === 'harai') {
@@ -5959,7 +5902,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 let countered = false;
-                if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, THOR_HARAI_HALF_WIDTH) <= pr) { // v0.25.3496: 描いてある四角
+                if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, HB_TH.harai.halfWidth) <= pr) { // v0.25.3496: 描いてある四角
                   const cp = useGameStore.getState().player;
                   if (Date.now() <= cp.counterWindowEnd) {
                     thorCounterHit(cxp, cyp);
@@ -5970,10 +5913,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
                 // G4b(§2.9): 払いもゴーストに当たる(一閃と同じ作法)。
-                applyGhostAllyCapsuleHit(fx, fy, tx, ty, THOR_HARAI_HALF_WIDTH, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-harai');
+                applyGhostAllyCapsuleHit(fx, fy, tx, ty, HB_TH.harai.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-harai');
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossCircleDir = 1; // 払い後は既定の時計回りへ復帰(社長指示・据え置き)
-                  if (THOR_SCRIPT_ENABLED) { patch.bossState = 'harai-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(THOR_HARAI_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0); }
+                  if (THOR_SCRIPT_ENABLED) { patch.bossState = 'harai-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_TH.harai.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
                 }
               } else if (st === 'issen-recover') {
@@ -6007,7 +5950,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   thorCounterHit(bcx, bcy);
                 } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'jump-attack';
-                  patch.bossStateUntil = newGameTime + THOR_JUMP_MS;
+                  patch.bossStateUntil = newGameTime + HB_TH.jump.ms;
                   patch.aiFromX = bcx; patch.aiFromY = bcy;
                   // THOR_SCRIPT_ENABLED時は溜め開始時に既にaiTargetX/Yをロック済み(上のjump-windup突入時)
                   // なのでここでは再照準しない(掟W4)。無効時は現行どおり溜め終了時にロックする。
@@ -6020,7 +5963,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // ジャンプ攻撃(実行): ハンターの速いジャンプ感でロック済みの着地点まで移動(社長指示)。
                 const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
                 const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
-                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_JUMP_MS));
+                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / HB_TH.jump.ms));
                 // v0.25.3076(社長指示「滑空って全てのジャンプね」): 等速の線形補間をやめ、両端で
                 // 速度も加速度も0になる曲線で運ぶ(着地時刻・着地点・着地爆発はすべて不変)。
                 const tEs = airHopEase01(t);
@@ -6029,10 +5972,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   // 着地: 既存のpumpkinBlasts(着地爆発)パイプラインへ積む=カウンター/被弾処理を丸ごと再利用。
                   useGameStore.setState(state => ({
-                    pumpkinBlasts: [...state.pumpkinBlasts, { x: tx, y: ty, radius: THOR_JUMP_RADIUS, damage: boss.damage, enemyId: boss.id, moveKey: 'thor-jump' }], // moveKey=G4a計測タグ(記録専用)
+                    pumpkinBlasts: [...state.pumpkinBlasts, { x: tx, y: ty, radius: HB_TH.jump.radius, damage: boss.damage, enemyId: boss.id, moveKey: 'thor-jump' }], // moveKey=G4a計測タグ(記録専用)
                   }));
                   patch.bossState = 'jump-recover';
-                  patch.bossStateUntil = newGameTime + choreographyRecoverMs(THOR_JUMP_RECOVER_MS, (boss.bossScriptQueue?.length ?? 0) > 0);
+                  patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_TH.jump.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
                 }
               } else if (st === 'jump-recover') {
                 // 着地後の硬直。静止・カウンター可能。
@@ -6046,7 +5989,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // カウンター成立後、近接距離ギリギリ外までロック済みの後退先へ高速移動(社長指示)。
                 const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
                 const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
-                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_COUNTER_LEAP_MS));
+                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / HB_TH.counterLeapMs));
                 patch.x = (fx + (tx - fx) * t) - boss.width / 2;
                 patch.y = (fy + (ty - fy) * t) - boss.height / 2;
                 bs.vx = 0; bs.vy = 0;
@@ -6060,7 +6003,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // (既にスケジュール済みの次攻撃タイミングをそのまま維持=移動演出で攻撃頻度が変わらない)。
                 const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
                 const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
-                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_BACKSTEP_MS));
+                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / HB_TH.backstep.ms));
                 patch.x = (fx + (tx - fx) * t) - boss.width / 2;
                 patch.y = (fy + (ty - fy) * t) - boss.height / 2;
                 bs.vx = 0; bs.vy = 0;
@@ -6071,7 +6014,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 旋回中のステップ: ロック済みの接線方向target地点へ短時間で移動(社長指示「たまに再度ステップで少し移動」)。
                 const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
                 const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
-                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_ORBIT_STEP_MS));
+                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / HB_TH.orbitStep.ms));
                 patch.x = (fx + (tx - fx) * t) - boss.width / 2;
                 patch.y = (fy + (ty - fy) * t) - boss.height / 2;
                 bs.vx = 0; bs.vy = 0;
@@ -6079,6 +6022,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossState = 'chase';
                 }
               }
+              // ボスメーカー: 単独再生の立ち下がり(2)=**状態機械の直後**。技がchaseへ戻ったその
+              // フレームで終える(停止中に「余分な1フレームだけ歩く」が起きない)。
+              settleHiddenBossPlayback(patch.bossState ?? boss.bossState);
               } // end !frozen
             }
 
@@ -6211,6 +6157,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               mk.health = mkHp; mk.maxHealth = mkHp;
               mk.homeX = mk.x; mk.homeY = mk.y;
               mk.aggroRange = BOUNTY_AGGRO_RANGE_DEFAULT;
+            }
+            // 裏ボス4体(§6.28-5/7/9/10・v0.25.3573)は専用コントローラ(このファイルの hiddenBoss
+            // ブロック)が座標を直接書く型で、**そのコントローラは `bossRef` の1スロットで相手を掴む**。
+            // 部屋では「深度で出現+拘束」の実戦経路を通らないので、掴み直す手掛かり(bossId/巣/寸法)を
+            // ここで置く=単体スポーンのまま同じ状態機械が回る(拘束サークルもゴースト週間も張らない)。
+            if (isHiddenControllerBoss(BOSS_MAKER_BOSS)) {
+              mk.homeX = mk.x; mk.homeY = mk.y; // 帰巣先=その場(部屋では inDeep 扱いなので帰らない)
+              const hbs = bossRef.current;
+              hbs.spawned = true; hbs.bossId = mk.id; hbs.retreating = false; hbs.disengageSince = undefined;
+              hbs.homeX = mk.x; hbs.homeY = mk.y; hbs.lastX = mk.x; hbs.lastY = mk.y;
+              hbs.w = mk.width; hbs.h = mk.height;
+              hbs.thorPrevHealth = mk.health; // 「画面外からの被弾」カウントの初期値(-1のままだと初回を取りこぼす)
             }
             addEnemy(mk);
           }

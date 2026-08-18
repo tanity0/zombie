@@ -35,6 +35,7 @@ import { hiddenPaths } from './bossPresets';
 import { registerIdolTuning } from './idolTuning';
 import { registerBountyTuning } from './bountyTuning';
 import { registerAngelTuning } from './angelTuning';
+import { registerHiddenBossTuning } from './hiddenBossTuning';
 import { bossMakerBossType } from '../../utils/bossTest';
 import { BossMakerLive } from './BossMakerLive';
 import { BossScriptEditor } from './BossScriptEditor';
@@ -42,6 +43,7 @@ import { BossScriptEditor } from './BossScriptEditor';
 registerIdolTuning(); // フェーズ1(BOSS_MAKER.md §6)
 registerBountyTuning(); // フェーズ4・第1弾(v0.25.3558): 賞金首4種
 registerAngelTuning(); // フェーズ4・第3弾(v0.25.3567): 天使6種
+registerHiddenBossTuning(); // フェーズ4・第4弾(v0.25.3573): 裏ボス4種
 
 // 部屋に出ている1体(URLの ?makerboss= で決まる=**読込時に固定**。BOSS_MAKER.md §1-3)。
 // ★モジュール定数にしてある: 強制出現フラグと同じく読込時に決まる値で、コンポーネントの寿命の

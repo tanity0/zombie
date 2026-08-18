@@ -209,6 +209,10 @@ export const BOSS_MAKER_BOSSES: readonly EnemyType[] = [
   // スポーン**で立てる(§1-1「部屋にはプレイヤーとボスだけ」)。旋回/縁クランプの中心(homeX/homeY)は
   // useGameLoop のボスメーカー出現ブロックが置く。
   'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel',
+  // 第4弾(v0.25.3573): 裏ボス4体。実戦は「深層域の巣へ近づくと出現」だが、**部屋では通常の単体
+  // スポーン**で立てる(§1-1)。専用コントローラ(useGameLoopのhiddenBossブロック)が掴む手掛かり
+  // (bossId/巣/寸法)は、ボスメーカーの出現ブロックが置く。
+  'mimir', 'jormungand', 'skadi', 'thor',
 ];
 export const BOSS_MAKER_DEFAULT_BOSS: EnemyType = 'idol';
 

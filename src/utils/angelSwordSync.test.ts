@@ -11,6 +11,11 @@ import {
   ANGEL_MIGUEL_TUNING as MG_T, ANGEL_RAFI_TUNING as RF_T,
   ANGEL_URI_TUNING as UR_T, ANGEL_SURIEL_TUNING as SR_T, ANGEL_ACRASIEL_TUNING as AC_T,
 } from './angelScript';
+// v0.25.3573(第4弾): 裏ボス4体も同じ形になった(テーブル1箇所を判定も描画も読む)。
+import {
+  HIDDEN_COMMON_TUNING as HB_C, HIDDEN_MIMIR_TUNING as HB_MI,
+  HIDDEN_JORMUNGAND_TUNING as HB_JO, HIDDEN_SKADI_TUNING as HB_SK, HIDDEN_THOR_TUNING as HB_TH,
+} from './hiddenBossScript';
 
 // ボスの技タイミング/寸法は、**判定側と描画側で同名(または_VIS付き)の定数が手写しで二重管理**
 // されている(該当箇所に「一致」コメントの掟あり)。
@@ -46,21 +51,13 @@ const PAIRS: [keyof typeof SOURCES, string, string][] = [
   //   この表で見張る対象が無い(見張ろうとすると「pixiSceneに定数が見つからない」で必ず落ちる)。
   //   ここを4行残したままだったため、このテストは**ずっと4件failのまま**だった(v0.25.3461で撤去)。
   //   同型の再発防止: importで共有した定数は、この表から必ず外すこと。
-  ['useGameLoop', 'MIMIR_BITE_WINDUP_MS', 'MIMIR_BITE_WINDUP_MS_VIS'],
-  ['useGameLoop', 'JORM_COIL_WINDUP_MS', 'JORM_COIL_WINDUP_MS_VIS'],
-  ['useGameLoop', 'THOR_ISSEN_WINDUP_MS', 'THOR_ISSEN_WINDUP_MS'],
-  ['useGameLoop', 'THOR_ISSEN_DASH_MS', 'THOR_ISSEN_DASH_MS'],
-  ['useGameLoop', 'THOR_ISSEN_HALF_WIDTH', 'THOR_ISSEN_VIS_HALFWIDTH'],
-  ['useGameLoop', 'THOR_HARAI_WINDUP_MS', 'THOR_HARAI_WINDUP_MS'],
-  ['useGameLoop', 'THOR_HARAI_ACTIVE_MS', 'THOR_HARAI_ACTIVE_MS'],
-  ['useGameLoop', 'THOR_HARAI_HALF_WIDTH', 'THOR_HARAI_VIS_HALFWIDTH'],
-  ['useGameLoop', 'THOR_TSUKI_WINDUP_MS', 'THOR_TSUKI_WINDUP_MS'],
-  ['useGameLoop', 'THOR_TSUKI_MS', 'THOR_TSUKI_MS'],
-  ['useGameLoop', 'THOR_TSUKI_HALF_WIDTH', 'THOR_TSUKI_VIS_HALFWIDTH'],
-  ['useGameLoop', 'THOR_JUMP_RADIUS', 'THOR_JUMP_RADIUS'],
+  // --- 裏ボス4体も v0.25.3573 で**手写しが消えた**(hiddenBossScript.ts のテーブルを判定も描画も読む)。
+  //     天使と同じくこの表の掟どおり12行を外し、下の describe で「実体の値」と「ミラーの再発」を見張る。
 ];
 
-describe('ボスの判定側と描画側の手写し定数が一致していること', () => {
+// ★表が空=「見張るべき二重管理がもう無い」(第一選択の単一ソース化が全部済んだ状態)。
+// 新しく手写しを増やしたら必ず PAIRS へ足すこと。it.each は空配列を受け付けないので describe ごと畳む。
+describe.skipIf(PAIRS.length === 0)('ボスの判定側と描画側の手写し定数が一致していること(手写しが残っている間だけ)', () => {
   it.each(PAIRS)('%s.%s(判定) と pixiScene.%s(描画) が同値', (srcKey, logicName, viewName) => {
     const a = constValue(SOURCES[srcKey], logicName);
     const b = constValue(pixiSceneSrc, viewName);
@@ -69,7 +66,9 @@ describe('ボスの判定側と描画側の手写し定数が一致している�
     expect(b, `pixiScene.ts の ${viewName} が見つからない`).not.toBeNull();
     expect(b, `${logicName}=${a} と ${viewName}=${b} がズレている`).toBe(a);
   });
+});
 
+describe('天使/裏ボスに共通の形の見張り', () => {
   it('★振り(ACTIVE)は予告(WINDUP)より必ず短い=溜めてから振る形が崩れていない', () => {
     // 天使ぶんはテーブルの実体で見る(正規表現より確実。期待している関係は初版から同じ)。
     for (const [label, act, wind] of [
@@ -123,8 +122,12 @@ describe('天使6体は単一ソース(angelScript.ts のテーブルを判定�
   it('T6細ビームの描画半太さ=スリィエルの判定半太さ(1つの絵を2体で共用しているため手写しのまま)', () => {
     expect(constValue(pixiSceneSrc, 'THIN_BEAM_VIS_HALFWIDTH')).toBe(SR_T.beam.halfWidth);
   });
-  it('飛び掛かりの溜め(縦縮みの尺)=ラフィの判定側の溜め(トールと共用の絵のため手写しのまま)', () => {
-    expect(constValue(pixiSceneSrc, 'THOR_JUMP_WINDUP_MS_VIS')).toBe(RF_T.jump.windup);
+  // v0.25.3573: 共用していた「飛び掛かりの溜め」の手写し(THOR_JUMP_WINDUP_MS_VIS)は消え、
+  // 描画はトールのテーブル(HB_TH.jump.windup)を読むようになった。絵を共用している以上、
+  // **ラフィの判定側の溜めと既定が揃っていること**が引き続きの不変条件。
+  it('飛び掛かりの溜め=ラフィとトールで既定が揃っている(1つの絵を2体で共用しているため)', () => {
+    expect(constValue(pixiSceneSrc, 'THOR_JUMP_WINDUP_MS_VIS'), '手写しへ逆行している').toBeNull();
+    expect(HB_TH.jump.windup).toBe(RF_T.jump.windup);
   });
 
   // 流用で作った既定値(別の欄として持っている=画面で片方だけ動かせる)。**既定は揃っている**こと。
@@ -133,5 +136,49 @@ describe('天使6体は単一ソース(angelScript.ts のテーブルを判定�
     expect(UR_T.thrust.halfWidth, 'ウリ突きの半幅=ミゲル払いと同じ既定').toBe(MG_T.harai.halfWidth);
     expect(MG_T.dash.strikeMs, '踏み込みの斬り抜け=払いの振りと同じ既定').toBe(MG_T.harai.active);
     expect(AC_T.spear.radius, '結晶の槍の半径=転移衝撃と同じ既定').toBe(AC_T.warp.impactRadius);
+  });
+});
+
+// =================================================================================================
+// 裏ボス4体(v0.25.3573・ボスメーカー横展開・第4弾)
+// =================================================================================================
+// 天使と同じく手写しの二重管理そのものを**無くした**ので、見張る対象は
+// ①描画側にミラー定数が復活していないこと ②両側がテーブルを読んでいること ③流用の既定が揃っていること。
+describe('裏ボス4体は単一ソース(hiddenBossScript.ts のテーブルを判定も描画も読む)', () => {
+  const GONE_HIDDEN = [
+    'THOR_ISSEN_WINDUP_MS', 'THOR_ISSEN_DASH_MS', 'THOR_ISSEN_VIS_HALFWIDTH',
+    'THOR_HARAI_WINDUP_MS', 'THOR_HARAI_ACTIVE_MS', 'THOR_HARAI_VIS_HALFWIDTH',
+    'THOR_TSUKI_WINDUP_MS', 'THOR_TSUKI_MS', 'THOR_TSUKI_VIS_HALFWIDTH',
+    'THOR_JUMP_RADIUS', 'THOR_JUMP_WINDUP_MS_VIS',
+    'MIMIR_BITE_WINDUP_MS_VIS', 'JORM_COIL_WINDUP_MS_VIS', 'JORM_COIL_ACTIVE_MS_VIS',
+    'SKADI_PRE_WINDUP_MS_VIS', 'SKADI_CAGE_WINDUP_MS_VIS', 'BOSS_DASH_WINDUP_MS_VIS',
+  ];
+  it.each(GONE_HIDDEN)('pixiScene に %s の手写しリテラルが無い', (name) => {
+    expect(constValue(pixiSceneSrc, name), `${name} が手写しへ逆行している`).toBeNull();
+  });
+
+  it('描画側(pixiScene)がテーブルを import している', () => {
+    expect(pixiSceneSrc).toMatch(/from '\.\.\/utils\/hiddenBossScript'/);
+  });
+
+  it('判定側(useGameLoop)がテーブルを import している', () => {
+    expect(useGameLoopSrc).toMatch(/from '\.\.\/utils\/hiddenBossScript'/);
+  });
+
+  it('★振り(ACTIVE)は予告(WINDUP)より必ず短い=溜めてから振る形が崩れていない', () => {
+    for (const [label, act, wind] of [
+      ['トール 払い', HB_TH.harai.active, HB_TH.harai.windup],
+      ['トール 突き', HB_TH.tsuki.ms, HB_TH.tsuki.windup],
+      ['ヨルムンガルド うねり', HB_JO.coil.active, HB_JO.coil.windup],
+    ] as const) {
+      expect(act, label).toBeLessThan(wind);
+    }
+  });
+
+  it('4体で共有している値は同じ実体(複製されていない)', () => {
+    expect(HB_MI.common).toBe(HB_C);
+    expect(HB_JO.common).toBe(HB_C);
+    expect(HB_SK.common).toBe(HB_C);
+    expect(HB_TH.common).toBe(HB_C);
   });
 });

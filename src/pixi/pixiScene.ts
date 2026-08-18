@@ -73,6 +73,15 @@ import {
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
+// ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
+// (手写しミラーは撤去済み。入れ子オブジェクトを参照で持つので部屋で動かした値が絵にも即効く)。
+import {
+  HIDDEN_COMMON_TUNING as HB_C,
+  HIDDEN_MIMIR_TUNING as HB_MI,
+  HIDDEN_JORMUNGAND_TUNING as HB_JO,
+  HIDDEN_SKADI_TUNING as HB_SK,
+  HIDDEN_THOR_TUNING as HB_TH,
+} from '../utils/hiddenBossScript';
 import { biteJawFrame } from '../utils/biteJawMotion';
 // PACING_PUZZLE.md §6.33(LASER-TRACK): カラオケ塗り/ロック/弱点窓の進行は純関数から引く(判定と同じ式)。
 import {
@@ -1411,38 +1420,20 @@ const BOSS_SHADOW_TINT = 0x9a0000; // 暗赤(0x5a0000)→より赤く
 // ミーミルのレーザー描画(寸法/溜め/発射時間はmimirLaserTrack.tsからimport=上のMIMIR_LASER_VIS_RANGE等)。
 // §6.33(LASER-TRACK)の描画ゲート。フラグの正本は mimirLaserTrack.ts(状態機械/中断と同じ1本)。
 const MIMIR_TRACK_VIS_ENABLED = mimirTrackEnabled();
-// トール(ステージ5裏ボス)の独自攻撃の描画(視覚・useGameLoop のゲームプレイ値と揃える)。
-const THOR_ISSEN_WINDUP_MS = 2400;      // 一閃の溜め時間(進行度の算出用・v0.25.3461で3000→2400)
-const THOR_ISSEN_DASH_MS = 280;         // 一閃の高速移動そのものの所要時間(フェード用)
-const THOR_ISSEN_VIS_HALFWIDTH = 80;    // 一閃の描画半太さ(当たり判定と同じ・社長修正指示で120の2/3へ)
-const THOR_HARAI_WINDUP_MS = 1000;      // 払いの予告(逆回転+並行ライン)時間
-const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
-const THOR_HARAI_VIS_HALFWIDTH = 40;    // 払いの描画半太さ(当たり判定THOR_HARAI_HALF_WIDTH=40と一致・社長指示v0.25.1610)
-// ミゲル(ゲート2ボス)の横払い(狭)描画用(視覚・useGameLoop のゲームプレイ値と一致させること)。
-const THOR_TSUKI_WINDUP_MS = 1000;      // 突きの溜め時間(useGameLoop と一致・溜め演出の進行度算出用)
+// トール(ステージ5裏ボス)の独自攻撃の描画。★v0.25.3573(ボスメーカー第4弾): ここにあった
+// 手写しの数値ミラー(溜め/実行時間/半太さ)は**全て撤去**し、判定と同じテーブル
+// (utils/hiddenBossScript.ts の HB_TH ほか)を直接読む。手写しは「部屋で判定を動かすと絵だけ
+// 古い値のまま」=「赤いのに当たらない」を生む(ミーミルの噛みつき半径で実際に起きた事故と同型)。
 const TSUKI_DRAW_BACK_PX = 20;          // 突き溜め: 手元を狙い線の後方へ引く量(社長指示「少しだけ」ゆっくり)
-const THOR_TSUKI_MS = 180;              // 突きの実行(判定持続)時間(useGameLoop と一致)
-const THOR_TSUKI_VIS_HALFWIDTH = 15;    // 突きの描画半太さ(当たり判定THOR_TSUKI_HALF_WIDTH=15と一致・社長指示v0.25.1622)
-const THOR_JUMP_RADIUS = 70;            // ジャンプ攻撃の着地爆風半径(useGameLoop と一致)
-const THOR_JUMP_WINDUP_MS_VIS = 700;    // 飛び掛かりの溜め時間(useGameLoop THOR_JUMP_WINDUP_MS/
-                                         // angelBossTick RAFI_JUMP_WINDUP_MSと一致・両者とも同値)
 // PACING_PUZZLE.md §6.28-5/7(バッチM54/M56): ミーミル「群体の噛みつき」/ヨルムンガルド「うねり」の
 // 描画用(視覚・useGameLoop のゲームプレイ値と一致させること)。
-const MIMIR_BITE_WINDUP_MS_VIS = 700;   // 噛みつきのwindup時間(useGameLoop MIMIR_BITE_WINDUP_MSと一致)
 // ★importへ移行(v0.25.2893)。旧: ここに 92 を手写ししており、v0.25.2612の判定是正(92→216)が
 // 描画に届かず、**赤円92pxの外・216pxの内側で「赤くないのに当たる」**が常時発生していた(実バグ)。
 const MIMIR_BITE_RADIUS_VIS = MIMIR_BITE_RADIUS;
-const JORM_COIL_WINDUP_MS_VIS = 700;    // うねりのwindup時間(useGameLoop JORM_COIL_WINDUP_MSと一致)
 // (v0.25.3454で撤去: 裏ボスの銃技構えに銃の絵を出すのをやめたため、その進行度に使っていた
 //  BOSS_AIM_BURST_MS_VIS/BOSS_AIM_RADIAL_MS_VIS も不要になった。判定側の溜め時間は
 //  useGameLoop の BOSS_AIM_BURST_MS/BOSS_AIM_RADIAL_MS が正で不変。)
-// スカジ 氷塊/氷刃/檻の設置前windup(useGameLoop SKADI_PRE_WINDUP_MS/SKADI_CAGE_WINDUP_MSと一致)。
-const SKADI_PRE_WINDUP_MS_VIS = 450;
-const SKADI_CAGE_WINDUP_MS_VIS = 1000;
 // FX-V2d(発注仕様research/FX_GAP_LEDGER.md「裏ボス便3」): coil(実行)の胴体スプライト。
-// useGameLoop側の JORM_COIL_ACTIVE_MS は THOR_HARAI_ACTIVE_MS のエイリアスなのでそのまま流用
-// (JORM_COIL_RANGE=THOR_HARAI_RANGE / JORM_COIL_HALF_WIDTH=THOR_HARAI_HALF_WIDTHと同じ作法)。
-const JORM_COIL_ACTIVE_MS_VIS = THOR_HARAI_ACTIVE_MS;
 const JORM_COIL_BODY_FADE_MS = 150;     // coil明け後、胴体が消えるまでの減衰時間(dash-windと同じ作法)
 const JORM_COIL_BODY_LEN_SCALE = 1.3;   // 帯の長さ(JORM_COIL_RANGE)に対する胴体スプライトの長さ倍率
 // PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)の描画用(useGameLoop のゲームプレイ値と一致させること)。
@@ -1594,7 +1585,6 @@ const SURIEL_RING_VIS_D = 54; // 画面上の直径(px・叩き台)
 // 使う予備動作の長さ(半幅はTHOR_HARAI_VIS_HALFWIDTH=40/THOR_TSUKI_VIS_HALFWIDTH=15/
 // MIGUEL_HARAI_VIS_HALFWIDTH=40を再利用=新しい太さを発明しない)。値はangelBossTick.tsの同名定数と一致
 // (「一致」コメント義務=既存のMIGUEL_HARAI_WINDUP_MS等と同じ流儀)。
-const BOSS_DASH_WINDUP_MS_VIS = 1000; // =useGameLoopのBOSS_DASH_WINDUP_MS(裏ボスdash溜め)。流星ラインの進行同期用の写し。
 // ★ACRASIEL_WARP_TELEGRAPH_MS はimportへ移行(v0.25.2893)。旧: ここに 800 を手写ししており、
 // v0.25.2609の是正(800→1000・800msでは構造的に円から出られない)が判定側にしか届いていなかった
 // =予告円が実際より2割速く「満ちて」見えていた。
@@ -3214,7 +3204,9 @@ export class PixiScene {
   private bountyWhipSmearSprites = new Map<string, Sprite>();
   // ★v0.25.3566: 360度薙ぎの追従アーク(pooled)と、突進の前振りの開始時刻(技の回数で焼く)。
   private bountyWhip360ArcSprites = new Map<string, Sprite>();
-  private bountyWhipTipFlashSprites = new Map<string, Sprite>(); // ★v0.25.3570: スミア最終コマの先端フラッシュ
+  private bountyWhipTipFlashSprites = new Map<string, Sprite>(); // ★v0.25.3573: スミア最終コマの先端フラッシュ
+  private bountyWhipRopes = new Map<string, { rope: MeshRope; pts: Point[] }>(); // ★v0.25.3573: 鞭本体のしなりロープ
+  private bountyWhipLag = new Map<string, { ang: number; vel: number; lastMs: number }>(); // ★v0.25.3573: 先端遅れバネの状態
   private bountyChargeSwingStart = new Map<string, { key: string; at: number }>();
   /** v0.25.3520: 鞭の残像を「振りの開始位置」へ焼き付けるための錨(本体の移動に付いて行かせない)。 */
   private bountyWhipSmearAnchor = new Map<string, { key: string; x: number; y: number; ang: number; len: number }>();
@@ -11948,8 +11940,11 @@ export class PixiScene {
         if (bountyWhipSp) { bountyWhipSp.destroy(); this.bountyWhipSmearSprites.delete(id); }
         const bountyArc360Sp = this.bountyWhip360ArcSprites.get(id); // ★v0.25.3566
         if (bountyArc360Sp) { bountyArc360Sp.destroy(); this.bountyWhip360ArcSprites.delete(id); }
-        const bountyTipFl = this.bountyWhipTipFlashSprites.get(id); // ★v0.25.3570
+        const bountyTipFl = this.bountyWhipTipFlashSprites.get(id); // ★v0.25.3573
         if (bountyTipFl) { bountyTipFl.destroy(); this.bountyWhipTipFlashSprites.delete(id); }
+        const bountyRope = this.bountyWhipRopes.get(id); // ★v0.25.3573
+        if (bountyRope) { bountyRope.rope.destroy(); this.bountyWhipRopes.delete(id); }
+        this.bountyWhipLag.delete(id);
         this.bountyChargeSwingStart.delete(id);
         const scissorFlashSp = this.bountyScissorFlashSprites.get(id);
         if (scissorFlashSp) { scissorFlashSp.destroy(); this.bountyScissorFlashSprites.delete(id); }
@@ -14070,8 +14065,10 @@ export class PixiScene {
       if (smearSp) smearSp.visible = false;
       const arc360Sp = this.bountyWhip360ArcSprites.get(e.id); // ★v0.25.3566: 既定OFF(描く分岐だけが点ける)
       if (arc360Sp) arc360Sp.visible = false;
-      const tipFlashSp = this.bountyWhipTipFlashSprites.get(e.id); // ★v0.25.3570: 同上
+      const tipFlashSp = this.bountyWhipTipFlashSprites.get(e.id); // ★v0.25.3573: 同上
       if (tipFlashSp) tipFlashSp.visible = false;
+      const whipRope = this.bountyWhipRopes.get(e.id); // ★v0.25.3573: 鞭ロープも既定OFF(描く分岐だけが点ける)
+      if (whipRope) whipRope.rope.visible = false;
       const thrustWindSp = this.bountyThrustWindSprites.get(e.id);
       if (thrustWindSp) thrustWindSp.visible = false;
     }
@@ -14208,7 +14205,7 @@ export class PixiScene {
     // (★要確認だった行の解消)。pumpkin crouch/空中と同じ式をbossState経由で足すだけ(新素材不要)。
     if (e.type === 'thor' || e.type === 'rafi') {
       if (e.bossState === 'jump-windup') {
-        const p = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_JUMP_WINDUP_MS_VIS));
+        const p = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_TH.jump.windup));
         aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; // しゃがんで縦縮み・横広がり(pumpkin crouchと同じ式)
       } else if (e.bossState === 'jump-attack') {
         aiSqY = 1.08; aiSqX = 0.94; // 空中は少し縦伸び(pumpkin/giant空中と同じ式)
@@ -14889,7 +14886,7 @@ export class PixiScene {
         }
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, swingAngle, 170, 0.95 * ease.alphaMul,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
-        // ★v0.25.3570(社長指示「スミアは高速アニメで終わりに合わせて再生を固定。ディレイ攻撃でも
+        // ★v0.25.3573(社長指示「スミアは高速アニメで終わりに合わせて再生を固定。ディレイ攻撃でも
         // スミアはゆっくりにしない」): 3コマの再生は**固定の実時間(WHIP_SMEAR_MS)**で、
         // **終わり=命中(windup明け)に一致**させる。旧: 振り抜き相(windupの20%)に比例=
         // 3段目(遅)の溜めが長いとスミアまで間延びしていた。remain(命中までの残りms)から逆算するので、
@@ -14898,7 +14895,7 @@ export class PixiScene {
           const comboRemainMs = (e.bossStateUntil ?? gameTime) - gameTime;
           if (comboRemainMs <= PixiScene.WHIP_SMEAR_MS) {
             const smearT = Math.max(0, Math.min(1, 1 - comboRemainMs / PixiScene.WHIP_SMEAR_MS));
-            // ★v0.25.3572(社長指示「スミアとフラッシュは当たり判定の先端寄りにして」): スミアの起点を
+            // ★v0.25.3573(社長指示「スミアとフラッシュは当たり判定の先端寄りにして」): スミアの起点を
             // 帯の根元から**帯の40%地点**へずらし、残り60%(=先端側)を覆う。鞭で実際に切るのは先端側、
             // という絵の理屈。先端フラッシュは「スミアの終端」に出る実装なので、この1変更で
             // 自動的に帯の先端(=判定の末端)に一致したまま動く。
@@ -15145,7 +15142,7 @@ export class PixiScene {
         if (issenFlash !== null) view.sprite.tint = issenFlash;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_WINDUP_MS));
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_TH.issen.windup));
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         // ゾーンの太さ=実際の攻撃判定幅(THOR_ISSEN_VIS_HALFWIDTH*2)と一致させる。矩形(fx,fy)→(tx,ty)を
         // 半幅ぶん左右に膨らませて塗る(ジャンプ攻撃の着地ゾーンと同じ意匠=fill+stroke)。
@@ -15156,7 +15153,7 @@ export class PixiScene {
         const ddl = Math.hypot(ddx, ddy) || 1;
         const nx = -ddy / ddl, ny = ddx / ddl; // 進行方向に直交する単位ベクトル
         const ux = ddx / ddl, uy = ddy / ddl;  // 軸方向の単位ベクトル(両端の延長に使う)
-        const hw = THOR_ISSEN_VIS_HALFWIDTH;
+        const hw = HB_TH.issen.halfWidth;
         const zoneFill = (0.12 + 0.22 * prog) + 0.08 * pulse;
         // v0.25.3496: 面も流星の可視区間へ(縁だけ流星だと消しが面に隠れて読めない)。
         const iMet = PixiScene.meteorPhase(prog);
@@ -15189,7 +15186,7 @@ export class PixiScene {
         // §5.25 M24: tsukiは従来無テレグラフだったが、一貫性優先で他3攻撃と同じ400ms前フラッシュを追加。
         const tsukiFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
         if (tsukiFlash !== null) view.sprite.tint = tsukiFlash;
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_TSUKI_WINDUP_MS));
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_TH.tsuki.windup));
         const pl = useGameStore.getState().player;
         // 社長指示v0.25.1621: 溜め中の狙いは「遅延追従する狙い点(aiTarget)」に合わせる(瞬間追従をやめた分、
         // 見た目の切っ先も遅れて追う=当たり判定と一致)。aiTarget未設定時のみプレイヤー中心にフォールバック。
@@ -15210,13 +15207,13 @@ export class PixiScene {
           // 放つ前=赤いダメージゾーン予告。社長指示v0.25.1617「範囲攻撃の赤表示は全部四角に統一」: 判定は
           // 中心線の両側±THOR_HARAI_HALF_WIDTH(=VIS_HALFWIDTH=40)のカプセル(両端に丸い張り出し)。丸ではなく
           // 両端を半幅ぶん軸方向へ延ばした「角ばった四角」で覆う(角のぶん広く覆う=赤の外=安全は維持・判定不変)。
-          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_WINDUP_MS));
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_TH.harai.windup));
           const pulse = 0.55 + 0.45 * Math.sin(now / 80);
           const hdx = tx - fx, hdy = ty - fy;
           const hdl = Math.hypot(hdx, hdy) || 1;
           const hnx = -hdy / hdl, hny = hdx / hdl; // 進行方向に直交する単位ベクトル
           const hux = hdx / hdl, huy = hdy / hdl;  // 軸方向の単位ベクトル(両端の延長に使う)
-          const hhw = THOR_HARAI_VIS_HALFWIDTH;
+          const hhw = HB_TH.harai.halfWidth;
           const hFill = 0.12 + 0.22 * prog + 0.08 * pulse;
           // v0.25.3496: 面・白芯も流星の可視区間へ(一閃と同じ直し)。
           const hMet = PixiScene.meteorPhase(prog);
@@ -15237,7 +15234,7 @@ export class PixiScene {
           if (hVisible) o.moveTo(hvfx, hvfy).lineTo(hvtx, hvty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' }); // 薙ぎの軸(白芯)
           // 柄を手元に置き、攻撃方向から140度引いた大薙ぎの開始姿勢へ構える。実行は同じ姿勢から
           // 200度振り切るため、構え→振り→残心が連続する。
-          const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * THOR_HARAI_WINDUP_MS);
+          const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * HB_TH.harai.windup);
           // ★予兆一括バッチ(v0.25.3344): issen/tsukiと同じ震え式をharaiにも揃える(社長要望「震えながら」)。
           this.drawThorKatanaReady(
             e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 0, windupTremorPx(prog, now), now,
@@ -15258,7 +15255,7 @@ export class PixiScene {
         const showLandingCircle = e.bossState === 'jump-attack' || (THOR_SCRIPT_ENABLED && e.bossState === 'jump-windup');
         if (showLandingCircle) {
           const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-          const R = THOR_JUMP_RADIUS;
+          const R = HB_TH.jump.radius;
           // 社長指示v0.25.1612「赤の外=安全」: 当たり判定は世界座標の真円(半径R+自機半径)。地面に寝かせた
           // 縦潰し楕円(旧ry=R*0.55)だと上下に立つと赤の外でも食らうので、真円(ry=R)で判定を覆う(判定は不変)。
           o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
@@ -15303,10 +15300,10 @@ export class PixiScene {
         const bs = e.bossState;
         const swinging = bs === 'issen-dash' || bs === 'tsuki' || bs === 'harai';
         // 判定の窓(bossStateUntil)と同じ時間で振り切り、次の技への繋ぎを視覚でも一致させる。
-        const swingDur = (bs === 'issen-dash' ? THOR_ISSEN_DASH_MS : bs === 'tsuki' ? THOR_TSUKI_MS : THOR_HARAI_ACTIVE_MS) * FX_SWING_LINGER;
+        const swingDur = (bs === 'issen-dash' ? HB_TH.issen.dashMs : bs === 'tsuki' ? HB_TH.tsuki.ms : HB_TH.harai.active) * FX_SWING_LINGER;
         const swL = this.latchFx(`${e.id}:thorswing`, swinging, swingDur, now, () => [
           e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy,
-          bs === 'issen-dash' ? THOR_ISSEN_VIS_HALFWIDTH : bs === 'tsuki' ? THOR_TSUKI_VIS_HALFWIDTH : THOR_HARAI_VIS_HALFWIDTH,
+          bs === 'issen-dash' ? HB_TH.issen.halfWidth : bs === 'tsuki' ? HB_TH.tsuki.halfWidth : HB_TH.harai.halfWidth,
           bs === 'issen-dash' ? 0 : bs === 'tsuki' ? 1 : 2, // 技の種別(柄の軸の付け方が違う)
         ]);
         if (swL) {
@@ -15328,28 +15325,28 @@ export class PixiScene {
         this.latchSwordCompletion(
           `${e.id}:thor-issen-complete`, issenWind || issenActive,
           issenWind || issenActive || bs === 'issen-recover', issenWind ? remain : 0,
-          issenWind ? THOR_ISSEN_DASH_MS : issenActive ? remain : THOR_ISSEN_DASH_MS, now,
+          issenWind ? HB_TH.issen.dashMs : issenActive ? remain : HB_TH.issen.dashMs, now,
           this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
           THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
-          e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, fx, fy, 'draw',
+          e.id, fx, fy, tx, ty, HB_TH.issen.halfWidth, fx, fy, 'draw',
         );
         const tsukiWind = bs === 'tsuki-windup', tsukiActive = bs === 'tsuki';
         this.latchSwordCompletion(
           `${e.id}:thor-tsuki-complete`, tsukiWind || tsukiActive,
           tsukiWind || tsukiActive || bs === 'tsuki-recover', tsukiWind ? remain : 0,
-          tsukiWind ? THOR_TSUKI_MS : tsukiActive ? remain : THOR_TSUKI_MS, now,
+          tsukiWind ? HB_TH.tsuki.ms : tsukiActive ? remain : HB_TH.tsuki.ms, now,
           this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
           THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
-          e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, fx, fy, 'thrust',
+          e.id, fx, fy, tx, ty, HB_TH.tsuki.halfWidth, fx, fy, 'thrust',
         );
         const haraiWind = bs === 'harai-windup', haraiActive = bs === 'harai';
         this.latchSwordCompletion(
           `${e.id}:thor-harai-complete`, haraiWind || haraiActive,
           haraiWind || haraiActive || bs === 'harai-recover', haraiWind ? remain : 0,
-          haraiWind ? THOR_HARAI_ACTIVE_MS : haraiActive ? remain : THOR_HARAI_ACTIVE_MS, now,
+          haraiWind ? HB_TH.harai.active : haraiActive ? remain : HB_TH.harai.active, now,
           this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
           THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
-          e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, handX, handY, 'wide',
+          e.id, fx, fy, tx, ty, HB_TH.harai.halfWidth, handX, handY, 'wide',
         );
         this.latchSwordRecovery(
           `${e.id}:thor-issen-recover-complete`, bs === 'issen-recover', remain, now,
@@ -15405,7 +15402,7 @@ export class PixiScene {
         const dashWindOn = bs === 'dash-windup';
         const dRemain = (e.bossStateUntil ?? gameTime) - gameTime;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        const dProg = 1 - dRemain / BOSS_DASH_WINDUP_MS_VIS;
+        const dProg = 1 - dRemain / HB_C.dash.windup;
         this.dashLineTick(o, `${e.id}:hbdash`, dashWindOn, dRemain, cx, cy, tx, ty, now, dProg);
         // ★予兆一括バッチ(v0.25.3344): 突進windupに震え+後ずさり(werewolf系backstepの型)。
         // 本体は静止していたので追加。描画オフセットのみ(実座標=e.x/e.yは不変)。
@@ -15423,7 +15420,7 @@ export class PixiScene {
       //   とロックの白フラッシュが担っているので、撤去しても「テル無し」にはならない。
       // T2: ミーミル「群体の噛みつき」(§6.28-5/§6.28-15) = 足元の即時赤円(giant踏み鳴らしと同じ意匠)。
       if (e.type === 'mimir' && bs === 'bite-windup') {
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIMIR_BITE_WINDUP_MS_VIS));
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_MI.bite.windup));
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         const R = MIMIR_BITE_RADIUS_VIS;
         o.ellipse(cx, cy, R, R).fill({ color: 0xff2a2a, alpha: ((0.14 + 0.14 * prog) + 0.08 * pulse) * TELEGRAPH_FILL_MULT });
@@ -15471,8 +15468,8 @@ export class PixiScene {
       if (e.type === 'jormungand' && bs === 'coil-windup') {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / JORM_COIL_WINDUP_MS_VIS));
-        this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_JO.coil.windup));
+        this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, HB_TH.harai.halfWidth, prog, now);
         // ★予兆一括バッチ(v0.25.3344): 「体をうねらせて力を溜める」の代わりに震え+後ずさりで代用
         // (胴体の走行アニメ=fx/jorm-coil-bodyは実行中(coil)専用の別経路なので、こちらは触らない)。
         const ddx = tx - fx, ddy = ty - fy; const ddl = Math.hypot(ddx, ddy) || 1;
@@ -15483,7 +15480,7 @@ export class PixiScene {
       // 「震え」のみ=設置技なので後ずさりは付けない)。既存の赤テレグラフ(氷塊マーカーの2秒サークル等・
       // syncSkadiHazards)はそのまま・触らない。
       if (e.type === 'skadi' && (bs === 'skadi-ice-windup' || bs === 'skadi-blade-windup' || bs === 'cage-windup')) {
-        const windMs = bs === 'cage-windup' ? SKADI_CAGE_WINDUP_MS_VIS : SKADI_PRE_WINDUP_MS_VIS;
+        const windMs = bs === 'cage-windup' ? HB_SK.cage.windup : HB_SK.preWindup;
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / windMs));
         view.sprite.position.x += windupTremorPx(prog, now, 1.6, 0.4);
       }
@@ -15890,15 +15887,15 @@ export class PixiScene {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (bs === 'sweep-windup') {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / RF_T.sweep.windup));
-          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, HB_TH.harai.halfWidth, prog, now);
           const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * RF_T.sweep.windup);
           // ★予兆一括バッチ(v0.25.3344): miguel/uriと同型の震えを追加。
           this.drawRafiKatanaReady(
             e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 0, windupTremorPx(prog, now), now,
           );
         } else if (bs === 'sweep') {
-          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
-          this.drawRafiSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
+          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_TH.harai.active));
+          this.drawRafiSlash(e.id, fx, fy, tx, ty, HB_TH.harai.halfWidth, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
         } else {
           // 硬直中も武器を消さない(掟W9): 振り切った姿勢のまま静止。
           const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
@@ -15918,7 +15915,7 @@ export class PixiScene {
       else if (e.type === 'rafi' && (bs === 'jump-windup' || bs === 'jump-attack')) {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-        const R = THOR_JUMP_RADIUS; // = RAFI_JUMP_RADIUS(同値・§6.28-8「=THOR_JUMP_RADIUS(同値)」)
+        const R = HB_TH.jump.radius; // = RAFI_JUMP_RADIUS(同値・§6.28-8「=HB_TH.jump.radius(同値)」)
         o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, 0.45 + 0.3 * pulse);
@@ -15933,7 +15930,7 @@ export class PixiScene {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (bs === 'sweep-windup') {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / UR_T.sweep.windup));
-          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, HB_TH.harai.halfWidth, prog, now);
           const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * UR_T.sweep.windup);
           // ★予兆一括バッチ(v0.25.3344): 震え追加。
           this.drawUriKatanaReady(
@@ -15941,7 +15938,7 @@ export class PixiScene {
           );
         } else if (bs === 'sweep') {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / UR_T.sweep.active));
-          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
+          this.drawUriSlash(e.id, fx, fy, tx, ty, HB_TH.harai.halfWidth, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
         } else {
           const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
           this.drawUriKatanaReady(
@@ -15955,7 +15952,7 @@ export class PixiScene {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (bs === 'downslash-windup') {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / UR_T.downslash.windup));
-          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, prog, now);
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, HB_TH.tsuki.halfWidth, prog, now);
           const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * UR_T.downslash.windup);
           // ★予兆一括バッチ(v0.25.3344): 震え追加(既存の振りかぶり構え=drawKatanaReadyに揃える)。
           this.drawUriKatanaReady(
@@ -15963,7 +15960,7 @@ export class PixiScene {
           );
         } else if (bs === 'downslash') {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / UR_T.downslash.active));
-          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'overhead');
+          this.drawUriSlash(e.id, fx, fy, tx, ty, HB_TH.tsuki.halfWidth, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'overhead');
         } else {
           const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
           this.drawUriKatanaReady(
@@ -15997,7 +15994,7 @@ export class PixiScene {
           );
         } else if (bs === 'thrust') {
           const strikeProg = Math.max(0, Math.min(1, (elapsed - UR_T.thrust.moveMs) / UR_T.thrust.strikeMs));
-          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, strikeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'thrust');
+          this.drawUriSlash(e.id, fx, fy, tx, ty, HB_TH.tsuki.halfWidth, strikeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'thrust');
         } else {
           const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
           this.drawUriKatanaReady(
@@ -16045,14 +16042,14 @@ export class PixiScene {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (bs === 'sweep-windup') {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SR_T.sweep.windup));
-          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, HB_TH.harai.halfWidth, prog, now);
           // ★予兆一括バッチ(v0.25.3344・レシピ1): マント/武器絵が無いので震え+後ずさりで代用
           // (素材は「あった方がいい」枠のため今回は仮置き。台帳に理由を記載)。
           const ddx = tx - fx, ddy = ty - fy; const ddl = Math.hypot(ddx, ddy) || 1;
           const off = windupBackstepOffset(prog, now, -ddx / ddl, -ddy / ddl, 7);
           view.sprite.position.x += off.x; view.sprite.position.y += off.y;
         } else if (bs === 'sweep') {
-          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, 1, now, 0, 0); // 実行中=全形(消し0を明示)
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, HB_TH.harai.halfWidth, 1, now, 0, 0); // 実行中=全形(消し0を明示)
         }
       }
       // ---- アクラシエル(§6.28-19・M63新規): 放射棘=T3帯を8方向(空きセクターは塗らない)。
@@ -16072,7 +16069,7 @@ export class PixiScene {
           const ex = cx + Math.cos(ang) * AC_T.spike.range, ey = cy + Math.sin(ang) * AC_T.spike.range;
           // idx=sector: 同フレームに最大8本まで同時に生きるので、rings(連続ジャンプ)と同じ
           // idx方式でview.bandsのスロットを分ける(1本しか持たないと最後のセクターしか素材が出ない)。
-          this.drawAngelZoneCapsule(view, o, cx, cy, ex, ey, THOR_HARAI_VIS_HALFWIDTH, prog, now, sector);
+          this.drawAngelZoneCapsule(view, o, cx, cy, ex, ey, HB_TH.harai.halfWidth, prog, now, sector);
           if (bs === 'spike') {
             this.drawAcrasielSpikeThrust(view, sector, cx + Math.cos(ang) * AC_T.spike.range * 0.55,
               cy + Math.sin(ang) * AC_T.spike.range * 0.55, ang, spikeActiveT);
@@ -16219,10 +16216,10 @@ export class PixiScene {
         this.latchSwordCompletion(
           `${e.id}:rafi-sweep-complete`, sweepWind || sweepActive,
           sweepWind || sweepActive || bs === 'sweep-recover', sweepWind ? swordRemain : 0,
-          sweepWind ? THOR_HARAI_ACTIVE_MS : sweepActive ? swordRemain : THOR_HARAI_ACTIVE_MS, now,
+          sweepWind ? HB_TH.harai.active : sweepActive ? swordRemain : HB_TH.harai.active, now,
           this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE,
           RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
-          e.id, swordFx, swordFy, swordTx, swordTy, THOR_HARAI_VIS_HALFWIDTH,
+          e.id, swordFx, swordFy, swordTx, swordTy, HB_TH.harai.halfWidth,
           swordHandX, swordHandY, 'wide',
         );
         this.latchSwordRecovery(
@@ -16239,7 +16236,7 @@ export class PixiScene {
           sweepWind ? UR_T.sweep.active : sweepActive ? swordRemain : UR_T.sweep.active, now,
           this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
           URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
-          e.id, swordFx, swordFy, swordTx, swordTy, THOR_HARAI_VIS_HALFWIDTH,
+          e.id, swordFx, swordFy, swordTx, swordTy, HB_TH.harai.halfWidth,
           swordHandX, swordHandY, 'wide',
         );
         const downWind = bs === 'downslash-windup', downActive = bs === 'downslash';
@@ -16249,7 +16246,7 @@ export class PixiScene {
           downWind ? UR_T.downslash.active : downActive ? swordRemain : UR_T.downslash.active, now,
           this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
           URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
-          e.id, swordFx, swordFy, swordTx, swordTy, THOR_TSUKI_VIS_HALFWIDTH,
+          e.id, swordFx, swordFy, swordTx, swordTy, HB_TH.tsuki.halfWidth,
           swordHandX, swordHandY, 'overhead',
         );
         const thrustWind = bs === 'thrust-windup', thrustActive = bs === 'thrust';
@@ -16265,7 +16262,7 @@ export class PixiScene {
           thrustWind || thrustActive || bs === 'thrust-recover', thrustToStrike, thrustSwingRemain, now,
           this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
           URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
-          e.id, swordFx, swordFy, swordTx, swordTy, THOR_TSUKI_VIS_HALFWIDTH,
+          e.id, swordFx, swordFy, swordTx, swordTy, HB_TH.tsuki.halfWidth,
           swordHandX, swordHandY, 'thrust',
         );
         this.latchSwordRecovery(
@@ -16359,7 +16356,7 @@ export class PixiScene {
           if (elapsed + FX_IMPACT_TOLERANCE_MS < sweepL.d[0]) {
             this.fxLatches.delete(`${e.id}:suriel-sweep-complete`);
           } else if (elapsed < sweepL.d[0] + sweepL.d[1]) {
-            this.drawAngelZoneCapsule(view, o, sweepL.d[2], sweepL.d[3], sweepL.d[4], sweepL.d[5], THOR_HARAI_VIS_HALFWIDTH, 1, now, 0, 0);
+            this.drawAngelZoneCapsule(view, o, sweepL.d[2], sweepL.d[3], sweepL.d[4], sweepL.d[5], HB_TH.harai.halfWidth, 1, now, 0, 0);
           }
         }
         // FX-V2a(社長方針2026-08-07): 実行の瞬間(sweep)だけ、環の振り(syncSurielRing)に添えて
@@ -16367,14 +16364,14 @@ export class PixiScene {
         // 揃える=絵がズレない。
         if (sweepActive) {
           const sweepT = Math.max(0, Math.min(1, 1 - swordRemain / SR_T.sweep.active));
-          this.drawSurielSweepStreak(e.id, swordFx, swordFy, swordTx, swordTy, THOR_HARAI_VIS_HALFWIDTH, sweepT);
+          this.drawSurielSweepStreak(e.id, swordFx, swordFy, swordTx, swordTy, HB_TH.harai.halfWidth, sweepT);
         } else if (sweepL && !(sweepWind || bs === 'sweep-recover')) {
           // ★v0.25.3120(監査A): 帯(sweepL)は出し切るのに**添えのストリークだけ実行州直読み**で、
           // カウンターすると帯だけ残ってストリークが消える片手落ちだった。帯と同じ焼き付けから描く。
           const elapsed = now - sweepL.t0;
           if (elapsed >= sweepL.d[0] && elapsed < sweepL.d[0] + sweepL.d[1]) {
             const sweepT = Math.max(0, Math.min(1, (elapsed - sweepL.d[0]) / Math.max(1, sweepL.d[1])));
-            this.drawSurielSweepStreak(e.id, sweepL.d[2], sweepL.d[3], sweepL.d[4], sweepL.d[5], THOR_HARAI_VIS_HALFWIDTH, sweepT);
+            this.drawSurielSweepStreak(e.id, sweepL.d[2], sweepL.d[3], sweepL.d[4], sweepL.d[5], HB_TH.harai.halfWidth, sweepT);
           }
         }
       } else if (e.type === 'acrasiel') {
@@ -16398,7 +16395,7 @@ export class PixiScene {
               const ang = sector * (Math.PI / 4);
               const ex = spikeL.d[2] + Math.cos(ang) * AC_T.spike.range;
               const ey = spikeL.d[3] + Math.sin(ang) * AC_T.spike.range;
-              this.drawAngelZoneCapsule(view, o, spikeL.d[2], spikeL.d[3], ex, ey, THOR_HARAI_VIS_HALFWIDTH, 1, now, sector, 0);
+              this.drawAngelZoneCapsule(view, o, spikeL.d[2], spikeL.d[3], ex, ey, HB_TH.harai.halfWidth, 1, now, sector, 0);
               this.drawAcrasielSpikeThrust(view, sector, spikeL.d[2] + Math.cos(ang) * AC_T.spike.range * 0.55,
                 spikeL.d[3] + Math.sin(ang) * AC_T.spike.range * 0.55, ang, spikeTailT);
             }
@@ -16583,7 +16580,7 @@ export class PixiScene {
         // 帯に沿ってスライドする進行度。実行中はgameTime基準(=シミュ時計。他のwindup progと同じ式)で
         // 220msぶん進め、明けた後(減衰中)は末尾(t=1=帯を通過し切った位置)で固定して減衰だけ進める。
         const prog = coilActive
-          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / JORM_COIL_ACTIVE_MS_VIS))
+          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_JO.coil.active))
           : 1;
         const fadeT = coilActive ? 1 : Math.max(0, (cb.endAt - now) / JORM_COIL_BODY_FADE_MS);
         this.drawJormCoilBody(view, cb.fx, cb.fy, cb.tx, cb.ty, prog, fadeT);
@@ -16614,7 +16611,7 @@ export class PixiScene {
         const tp = e.gTriJumpPts ?? [];
         const jx = triAir ? (tp[triIdx * 2] ?? e.x) : (e.aiTargetX ?? e.x) + e.width / 2;
         const jy = triAir ? (tp[triIdx * 2 + 1] ?? e.y) : (e.aiTargetY ?? e.y) + e.height / 2;
-        const r = (triAir ? GLEN_TRIJUMP_RADIUS : genericAir ? PUMPKIN_EXPLOSION_RADIUS : THOR_JUMP_RADIUS) * DUST_SCALE;
+        const r = (triAir ? GLEN_TRIJUMP_RADIUS : genericAir ? PUMPKIN_EXPLOSION_RADIUS : HB_TH.jump.radius) * DUST_SCALE;
         const frac = (jToImpact + DUST_MS) > 0 ? jToImpact / (jToImpact + DUST_MS) : 0;
         return [jx, jy, r, frac];
       });
@@ -16628,7 +16625,7 @@ export class PixiScene {
         const tp = e.gTriJumpPts ?? [];
         const jx = triAir ? (tp[triIdx * 2] ?? e.x) : (e.aiTargetX ?? e.x) + e.width / 2;
         const jy = triAir ? (tp[triIdx * 2 + 1] ?? e.y) : (e.aiTargetY ?? e.y) + e.height / 2;
-        const r = (triAir ? GLEN_TRIJUMP_RADIUS : genericAir ? PUMPKIN_EXPLOSION_RADIUS : THOR_JUMP_RADIUS) * DUST_SCALE;
+        const r = (triAir ? GLEN_TRIJUMP_RADIUS : genericAir ? PUMPKIN_EXPLOSION_RADIUS : HB_TH.jump.radius) * DUST_SCALE;
         return [jx, jy, r];
       });
     }
@@ -20025,7 +20022,7 @@ export class PixiScene {
     const ux = dx / bandLen, uy = dy / bandLen;
     const bodyLen = bandLen * JORM_COIL_BODY_LEN_SCALE;
     const halfLen = bodyLen / 2;
-    const halfWidth = THOR_HARAI_VIS_HALFWIDTH; // 帯幅(THOR_HARAI_VIS_HALFWIDTH×2)に合わせる=発注仕様
+    const halfWidth = HB_TH.harai.halfWidth; // 帯幅(HB_TH.harai.halfWidth×2)に合わせる=発注仕様
     // 開始(t=0): 頭(進行方向側の先端)がfxに来る位置。終了(t=1): 尾(後方の先端)がtxを越えて逃げる位置。
     const startCx = fx - ux * halfLen, startCy = fy - uy * halfLen;
     const endCx = tx + ux * halfLen, endCy = ty + uy * halfLen;
@@ -22789,7 +22786,7 @@ export class PixiScene {
     katana.rotation = aimAngle - THOR_KATANA_INTRINSIC_ANGLE;   // 先端=突く方向
     katana.position.set(pivotX - ux * draw + (-uy) * shake, pivotY - uy * draw + ux * shake);
     katana.tint = 0xffffff;
-    katana.alpha = (0.55 + 0.45 * prog) * swordFadeInAlpha(prog * THOR_TSUKI_WINDUP_MS);
+    katana.alpha = (0.55 + 0.45 * prog) * swordFadeInAlpha(prog * HB_TH.tsuki.windup);
     katana.visible = true;
   }
 
@@ -22827,7 +22824,7 @@ export class PixiScene {
     // 柄を腰(hip)に置き、溜めで斬る方向と逆へゆっくり引く。震えは斬る線に直交方向へ。
     katana.position.set(hipX - ux * draw + (-uy) * tremor, hipY - uy * draw + ux * tremor);
     katana.tint = 0xffffff;
-    katana.alpha = (0.5 + 0.5 * prog) * swordFadeInAlpha(prog * THOR_ISSEN_WINDUP_MS);
+    katana.alpha = (0.5 + 0.5 * prog) * swordFadeInAlpha(prog * HB_TH.issen.windup);
     katana.visible = true;
   }
 
@@ -23053,14 +23050,21 @@ export class PixiScene {
   // pooled sprite(1体1枚=全技この1本を使い回す・武器素材台帳の原則どおり)。中心アンカーで
   // 位置(px,py)へ置き、角度(angleRad)へ向ける単純な仕様(thor-katanaほどの握り位置精度は持たない=
   // 「見せる」ことを優先した簡略版。見た目は派手側に倒す=大きめのlengthPxで存在感を出す)。
-  // 鞭(bounty-melee-whip)の柄の位置と素材内の向き。素材は左下が柄で右上へ伸びる(248x384)ので、
-  // 柄=(0.08, 0.95)・素材内の「柄→先端」= -45°。振り物はこの軸で回す(v0.25.3475)。
-  private static readonly WHIP_GRIP_X = 0.08;
-  private static readonly WHIP_GRIP_Y = 0.95;
-  private static readonly WHIP_INTRINSIC = -Math.PI / 4;
-  /** ★v0.25.3570: 鞭スミア3コマの固定再生時間(ms)。終わりが命中に一致するよう残り時間から逆算する。 */
+  // 鞭(bounty-melee-whip)の柄の位置と素材内の向き。★v0.25.3573 素材差し替え(社長支給・まっすぐ水平の
+  // 鎖鞭996x366): 柄=左端・先端=右端・軸=縦中央(取り込み時に上へ110px透明パディングして
+  // 軸y≈183=中央へ揃えた)。柄=(0.05, 0.5)・素材内の「柄→先端」= 0°。
+  // まっすぐ素材になったので本体はMeshRopeで曲げる(drawBountyWhipRope・しなり表現)。
+  private static readonly WHIP_GRIP_X = 0.05;
+  private static readonly WHIP_GRIP_Y = 0.5;
+  private static readonly WHIP_INTRINSIC = 0;
+  // 鞭スミア(fx/whip-smear-0..2)は旧規約の絵のまま(柄=左下0.08,0.95・柄→先端=-45°)。
+  // 本体素材が水平直線に変わったので、スミアの規約を本体定数から独立させた(v0.25.3573)。
+  private static readonly WHIP_SMEAR_GRIP_X = 0.08;
+  private static readonly WHIP_SMEAR_GRIP_Y = 0.95;
+  private static readonly WHIP_SMEAR_INTRINSIC = -Math.PI / 4;
+  /** ★v0.25.3573: 鞭スミア3コマの固定再生時間(ms)。終わりが命中に一致するよう残り時間から逆算する。 */
   private static readonly WHIP_SMEAR_MS = 140;
-  /** ★v0.25.3572(社長指示「先端寄りに」): スミアの起点=判定の帯のこの割合の地点(残りを先端まで覆う)。 */
+  /** ★v0.25.3573(社長指示「先端寄りに」): スミアの起点=判定の帯のこの割合の地点(残りを先端まで覆う)。 */
   private static readonly WHIP_SMEAR_TIP_BIAS = 0.4;
 
   private drawBountyWeapon(
@@ -23077,6 +23081,12 @@ export class PixiScene {
     //   intrinsicAngle = 素材の中で「柄→先端」が向いている角度(これを引いて狙い方向へ合わせる)。
     gripX = 0.5, gripY = 0.5, intrinsicAngle = 0,
   ) {
+    // ★v0.25.3573: 鞭だけはSprite回転ではなくMeshRope(しなり)で描く。呼び出し側の互換は保つ
+    // (gripX/gripY/intrinsicAngleは鞭定数が渡ってくるがロープ側は自前のWHIP_*定数を読む)。
+    if (texName === 'bounty-melee-whip') {
+      this.drawBountyWhipRope(id, px, py, angleRad, lengthPx, alpha);
+      return;
+    }
     const tex = getTexture(texName);
     if (!tex) return;
     let sp = this.bountyWeaponSprites.get(id);
@@ -23093,6 +23103,67 @@ export class PixiScene {
     sp.rotation = angleRad - intrinsicAngle;
     sp.alpha = alpha;
     sp.visible = true;
+  }
+
+  // ★v0.25.3573 鞭本体のしなり(MeshRope)。社長指示「鞭の武器に関しては、先端の歪みを強めに入れて
+  // しなりを表現して」+まっすぐ水平素材への差し替え(「鞭は真っ直ぐの絵にした方が扱いやすい?」→採用)。
+  // 仕組み: 柄の狙い角(angleRad)に対して**先端の角度がバネで遅れて追う**(慣性=世界の法則MUST)。
+  // 遅れ角を先端寄り(t^WHIP_BEND_POW)に配分して点列を積分する=根本はまっすぐ・先端ほど大きく曲がる。
+  // 振り抜きでは減衰を臨界より弱めにしてあるので先端が一度行き過ぎてから戻る(鞭のスナップ)。
+  // 負荷 1/10: 鞭1本=点12個のpooled MeshRope 1本(per-frame Graphicsなし・賞金首は同時1体)。
+  /** ロープの点数。 */
+  private static readonly WHIP_ROPE_PTS = 12;
+  /** バネの硬さ(叩き台)。大きいほど先端が速く追いつく=しなりが浅くなる。 */
+  private static readonly WHIP_LAG_K = 140;
+  /** バネの減衰(叩き台)。臨界(2√K≈23.7)よりやや弱め=振り抜きで先端が行き過ぎてから戻る。 */
+  private static readonly WHIP_LAG_DAMP = 13;
+  /** 曲げの先端寄り指数(叩き台・社長指示「先端の歪みを強めに」)。1=均等、大きいほど先端に集中。 */
+  private static readonly WHIP_BEND_POW = 1.7;
+  /** 遅れ角の上限(rad・叩き台)。折り返して絵が潰れない範囲に留める。 */
+  private static readonly WHIP_BEND_MAX = 1.15;
+
+  private drawBountyWhipRope(id: string, px: number, py: number, angleRad: number, lengthPx: number, alpha: number): void {
+    const tex = getTexture('bounty-melee-whip');
+    if (!tex) return;
+    let slot = this.bountyWhipRopes.get(id);
+    if (!slot) {
+      const pts: Point[] = [];
+      for (let i = 0; i < PixiScene.WHIP_ROPE_PTS; i++) pts.push(new Point(i, 0));
+      const rope = new MeshRope({ texture: tex, points: pts });
+      this.L.effectLayer.addChild(rope);
+      slot = { rope, pts };
+      this.bountyWhipRopes.set(id, slot);
+    }
+    // 先端遅れのバネ(実時間で積分。タブ復帰などの巨大dtは50msに丸めて破綻させない)
+    const nowMs = performance.now();
+    let st = this.bountyWhipLag.get(id);
+    if (!st) { st = { ang: angleRad, vel: 0, lastMs: nowMs }; this.bountyWhipLag.set(id, st); }
+    const dt = Math.max(0, Math.min(0.05, (nowMs - st.lastMs) / 1000));
+    st.lastMs = nowMs;
+    const norm = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+    st.vel += norm(angleRad - st.ang) * PixiScene.WHIP_LAG_K * dt;
+    st.vel *= Math.exp(-PixiScene.WHIP_LAG_DAMP * dt);
+    st.ang = norm(st.ang + st.vel * dt);
+    const bend = Math.max(-PixiScene.WHIP_BEND_MAX, Math.min(PixiScene.WHIP_BEND_MAX, norm(st.ang - angleRad)));
+    // 点列: 柄(手元)からlengthPxぶん、角度を根本=狙い角→先端=狙い角+遅れ角へ先端寄りに曲げつつ積分。
+    // 柄アンカーぶん(WHIP_GRIP_X)だけ手前に下げてから始める=旧Sprite時代の握り位置と一致させる。
+    const n = slot.pts.length;
+    const k = lengthPx / Math.max(1, tex.width); // 表示スケール(まっすぐ時に絵の全長=lengthPx)
+    const seg = lengthPx / (n - 1);
+    let wx = -Math.cos(angleRad) * PixiScene.WHIP_GRIP_X * lengthPx;
+    let wy = -Math.sin(angleRad) * PixiScene.WHIP_GRIP_X * lengthPx;
+    slot.pts[0].set(wx / k, wy / k);
+    for (let i = 1; i < n; i++) {
+      const t = (i - 0.5) / (n - 1); // セグメント中央の進行度
+      const a = angleRad + bend * Math.pow(t, PixiScene.WHIP_BEND_POW);
+      wx += Math.cos(a) * seg; wy += Math.sin(a) * seg;
+      slot.pts[i].set(wx / k, wy / k);
+    }
+    if (slot.rope.texture !== tex) slot.rope.texture = tex;
+    slot.rope.scale.set(k);
+    slot.rope.position.set(px, py);
+    slot.rope.alpha = alpha;
+    slot.rope.visible = true;
   }
 
   // 馬乗り3段コンボの鞭スミア(fx/whip-smear-0/1/2)。段(0/1/2)ごとに絵が変わる=「段対応」。
@@ -23135,22 +23206,22 @@ export class PixiScene {
     }
     let sp = this.bountyWhipSmearSprites.get(id);
     if (!sp) {
-      sp = new Sprite(tex); sp.anchor.set(PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y); sp.blendMode = 'add';
+      sp = new Sprite(tex); sp.anchor.set(PixiScene.WHIP_SMEAR_GRIP_X, PixiScene.WHIP_SMEAR_GRIP_Y); sp.blendMode = 'add';
       this.L.effectLayer.addChild(sp); this.bountyWhipSmearSprites.set(id, sp);
     }
     if (sp.texture !== tex) sp.texture = tex;
-    if (sp.anchor.y !== PixiScene.WHIP_GRIP_Y) sp.anchor.set(PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y);
+    if (sp.anchor.y !== PixiScene.WHIP_SMEAR_GRIP_Y) sp.anchor.set(PixiScene.WHIP_SMEAR_GRIP_X, PixiScene.WHIP_SMEAR_GRIP_Y);
     // ★v0.25.3562(社長指摘「鞭シナリエフェクト、向きが合ってない。鞭に対してまっすぐ」):
     // 旧コードは「素材は下端中央から真上に伸びる」前提(anchor 0.5,1 + 回転+90°)だったが、
-    // **実素材は鞭本体と同じ規約**——柄が左下(≈0.08,0.95)にあり、右上(−45°)へ伸びる絵
-    // (whip-smear-2 で確認。鞭に重ねる前提で描かれている)。よって鞭本体(drawBountyWeapon)と
-    // **同じ柄アンカー+同じ intrinsic 角**で回す=スミアが常に鞭とまっすぐ平行に重なる。
-    sp.rotation = anchor.ang - PixiScene.WHIP_INTRINSIC;
+    // **実素材は柄が左下(≈0.08,0.95)にあり、右上(−45°)へ伸びる絵**(whip-smear-2 で確認)。
+    // よって柄アンカー+intrinsic角で狙い方向へ回す=スミアが判定の帯とまっすぐ平行に重なる。
+    // (v0.25.3573: 本体素材が水平直線に差し替わったため、スミアは専用定数 WHIP_SMEAR_* を使う)
+    sp.rotation = anchor.ang - PixiScene.WHIP_SMEAR_INTRINSIC;
     sp.scale.set(Math.max(60, anchor.len) / Math.max(1, Math.max(tex.width, tex.height)));
     sp.position.set(anchor.x, anchor.y); // ★焼いた位置。本体が動いても残像は置き去りになる。
     sp.alpha = alpha;
     sp.visible = true;
-    // ★v0.25.3570(社長指示「スミアの最後のコマで先端をフラッシュ」): 3コマ目の間だけ、
+    // ★v0.25.3573(社長指示「スミアの最後のコマで先端をフラッシュ」): 3コマ目の間だけ、
     // 帯の先端(焼いた起点+焼いた角度×焼いた長さ=判定の先端)に加算グローを一閃。
     // sin山(出て消える)=パッと出て瞬間消滅しない(慣性)。pooled 1枚・per-frame Graphicsなし。
     if (f === 2) {
@@ -24685,6 +24756,7 @@ export class PixiScene {
     for (const o of this.bountyWhipSmearSprites.values()) o.destroy();
     for (const o of this.bountyWhip360ArcSprites.values()) o.destroy();
     for (const o of this.bountyWhipTipFlashSprites.values()) o.destroy();
+    for (const o of this.bountyWhipRopes.values()) o.rope.destroy(); // ★v0.25.3573
     for (const o of this.bountyScissorFlashSprites.values()) o.destroy();
     for (const o of this.bossGunMuzzleSprites.values()) o.destroy();
     for (const p of this.petalPool) p.sp.destroy();
