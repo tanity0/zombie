@@ -1686,6 +1686,10 @@ export interface GameStats {
   strapsSpent: number;
   treasuresCollected: number;
   damageTaken: number;     // 被弾総量(survivalScore用)
+  // ★v0.25.3555(社長GO・AI実機テストの計器): 「きつい場面が足りない」を体感でなく数字で見るための2つ。
+  // 総量(damageTaken)だけでは「1回大きく食らった」と「何度も削られた」が区別できないので回数を分ける。
+  hitsTaken: number;       // 被弾**回数**(実ダメージが入った回数。amount>0のみ)
+  minHpFrac: number;       // ラン中のHP最低値(0..1・health/maxHealth)。初期値1=無傷。
   meleeFinishers: number;  // 近接フィニッシュ(KILL!)回数(finisherScore用)
   eliteKills: number;      // エリート(pumpkin)撃破数
   bossKills: number;       // ボス(giantbat)撃破数

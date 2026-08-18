@@ -5265,6 +5265,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     strapsSpent: 0,
     treasuresCollected: 0,
     damageTaken: 0,
+    hitsTaken: 0,
+    minHpFrac: 1,
     meleeFinishers: 0,
     eliteKills: 0,
     bossKills: 0,
@@ -8449,7 +8451,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       const newHealth = makerInvincible ? state.player.health : Math.max(0, state.player.health - amount);
       return {
         // 被弾総量(survivalScore用)。実ダメージ(amount>0)のみ加算。
-        gameStats: amount > 0 ? { ...state.gameStats, damageTaken: state.gameStats.damageTaken + amount } : state.gameStats,
+        // ★v0.25.3555: あわせて**被弾回数**と**HP最低値**も記録する(AI実機テストの計器)。
+        // HP最低値はここで採る=ダメージが入った直後が必ず最小値なので、毎フレーム走査は要らない。
+        gameStats: amount > 0 ? {
+          ...state.gameStats,
+          damageTaken: state.gameStats.damageTaken + amount,
+          hitsTaken: state.gameStats.hitsTaken + 1,
+          minHpFrac: Math.min(
+            state.gameStats.minHpFrac,
+            state.player.maxHealth > 0 ? newHealth / state.player.maxHealth : 1,
+          ),
+        } : state.gameStats,
         // 死因表示: 実ダメージ(amount>0)かつ source 指定時に更新。
         lastDamageSource: (amount > 0 && source) ? source : state.lastDamageSource,
         // §5.14 M13: 宿敵昇格判定用(実ダメージかつ型指定時のみ更新。型不明の被弾では前回値を保持しない
@@ -16189,6 +16201,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           strapsSpent: 0,
           treasuresCollected: 0,
           damageTaken: 0,
+          hitsTaken: 0,
+          minHpFrac: 1,
           meleeFinishers: 0,
           eliteKills: 0,
           bossKills: 0,

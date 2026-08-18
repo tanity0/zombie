@@ -1,5 +1,34 @@
 # Development Log
 
+## v0.25.3555 — リザルトに被弾の計器を追加(AI実機テスト用・社長GO)【2026-08-18 22:58 JST】
+
+- **社長質問「このテストは何を見ればいいの？何回か回したけど」への回答としての実装**(社長GO「はい」)。
+- **背景**: AI実機テスト(`?bot=`)で見られる数字が事実上ほぼ無かった。一方、ヘッドレス計測(v0.25.3550)は
+  **被弾0.2回/分・HP最低93.7%・死亡0/30**で、**そもそも苦しくなっていない**ことが判明していた。
+  ⇒ ディレクターの数字(PEAK回数等)を読む前に、**まず「本当に苦しかったのか」を見る**べき、という順序。
+- **追加した計器**: `gameStats` に2フィールド。
+  - `hitsTaken`(被弾**回数**) — 総量(`damageTaken`)だけでは**「1回大きく食らった」と「何度も削られた」が
+    区別できない**ため回数を分けた。
+  - `minHpFrac`(ラン中のHP最低値・0..1)。
+  更新は `damagePlayer` の1箇所のみ。**HP最低値はダメージが入った直後が必ず最小値**なので、
+  毎フレーム走査は不要(負荷を足さない作り)。
+- **表示**: `DirectorResult`(リザルト)に1行追加=`被弾 N回 / HP最低 M% / 被ダメ計 X`。
+  **無傷(0回)とHP90%以上は色を変える**(=「この回は苦しくなかった」が一目で分かる)。
+  `DirectorResult` は `?director=0` 以外で常時表示なので、**追加のURLパラメータは不要**。
+- **既に見られる数字(重複実装しないための記録)**: **PEAK回数/滞在%・RELAX回数/滞在%・BUILD滞在%は
+  `DirectorResult` に元からある**(v0.25.3555で確認)。生存時間・死亡はリザルト本体。
+  ⇒ 当初「3つ足す」と見積もったが、**実際に不足していたのは被弾系だけ**だった。
+- **React再レンダ規律**: `gameStats` 全体を購読せず、`hitsTaken`/`damageTaken`/`minHpFrac` の
+  **3フィールドを個別に**取る(CLAUDE.md「React re-render discipline」)。
+- 負荷: **0/10**(被弾時にフィールド2つを更新するだけ。毎フレームの処理は増えない)。
+- 変更ファイル: `src/types/game.ts` / `src/store/gameStore.ts` / `src/components/DirectorResult.tsx` /
+  `src/utils/resultScoring.test.ts`(GameStatsの固定値に2項追加) /
+  `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+- 検証: `npm run typecheck` 0エラー / `npm run lint` 0エラー / `resultScoring.test.ts` 10/10 pass。
+- **AI実機テストの回し方(まとめ)**: `?bot=standard&botskill=casual&director=1&autotut=1`
+  (`autotut=1` が無いとレベルアップ/宝箱の選択画面で止まる)。腕前は `novice|casual|skilled|master`。
+
+
 ## v0.25.3554 — ボットAI②③: 詰まり脱出を全ペルソナへ + 回避を全段階へ + カウンターの視野拡張【2026-08-18 22:40 JST】
 
 - **AI実機テストで社長が見つけた3件のうち②③**(①は v0.25.3553)。**ゲーム挙動は不変**(テスト用ボットの判断のみ)。

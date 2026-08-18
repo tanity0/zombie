@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { getDirectorSamples, DIRECTOR_EVENT_BIT, DIRECTOR_MARGIN_DEADBAND, type DirectorPhaseKind } from '../utils/aiDirectorDebug';
 import { summarizeRun, type DirectorMacro } from '../utils/aiDirector';
 import { BORED_BONUS_MAX } from '../utils/boredomDirector';
+import { useGameStore } from '../store/gameStore';
 
 // リザルト画面のAIディレクター振り返り(v0.25.1374から常時表示。?director=0で記録ごと停止)。
 // プレイ中は数字を見ずに遊び、死亡/クリア後にここで「緊張曲線＋難易度スコア」を確認する(社長指示)。
@@ -43,6 +44,12 @@ const H = CHART_TOP + CHART_H;
 
 const DirectorResult: React.FC = () => {
   const samples = getDirectorSamples();
+  // ★v0.25.3555: 被弾の計器。**毎フレーム変わる gameStats 全体を購読しない**(React再レンダ規律)。
+  // 必要なフィールドだけを個別に取る=リザルト表示中は値が動かないので再レンダも起きない。
+  const hitsTaken = useGameStore(s => s.gameStats.hitsTaken);
+  const damageTaken = useGameStore(s => s.gameStats.damageTaken);
+  const minHpFrac = useGameStore(s => s.gameStats.minHpFrac);
+  const minHpPct = Math.round(minHpFrac * 100);
   const summary = useMemo(() => summarizeRun(samples), [samples]);
   // 案0(v0.25.3530): 戦力マージンの要約。**サンプルに記録がある時だけ**表示する(旧ランは undefined)。
   const power = useMemo(() => {
@@ -256,6 +263,19 @@ const DirectorResult: React.FC = () => {
         <span><span className="text-sky-300/80">BUILD</span> {summary.buildupSeconds.toFixed(0)}s ({pct(summary.buildupSeconds)}%)</span>
         <span><span className="text-rose-300/80">PEAK</span> {summary.peakCount}回 {summary.peakSeconds.toFixed(0)}s ({pct(summary.peakSeconds)}%)</span>
         <span><span className="text-emerald-300/80">RELAX</span> {summary.relaxCount}回 {summary.relaxSeconds.toFixed(0)}s ({pct(summary.relaxSeconds)}%)</span>
+      </div>
+      {/* ★v0.25.3555(社長GO・AI実機テストの計器): 「きつい場面が足りない」を体感でなく数字で見る。
+          ヘッドレス計測(v0.25.3550)は被弾0.2回/分・HP最低93.7%・死亡0/30で、**そもそも苦しくなって
+          いない**ことが分かった=ディレクターの数字を読む前にここを見る。
+          被弾は「総量」ではなく**回数**も出す(1回大きく食らったのか、何度も削られたのかを分けるため)。 */}
+      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums">
+        <span className={hitsTaken === 0 ? 'text-amber-300/90' : 'text-white/60'}>
+          被弾 {hitsTaken}回{hitsTaken === 0 && ' ★無傷'}
+        </span>
+        <span className={minHpPct >= 90 ? 'text-amber-300/90' : 'text-white/60'}>
+          HP最低 {minHpPct}%
+        </span>
+        <span className="text-white/60">被ダメ計 {Math.round(damageTaken)}</span>
       </div>
     </div>
   );

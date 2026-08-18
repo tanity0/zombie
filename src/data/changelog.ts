@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3555',
+    items: [
+      'リザルトに「被弾回数 / HP最低 / 被ダメ計」が出るようになりました。無傷やHP90%以上で終えた回は色が変わります。',
+    ],
+  },
+  {
     version: '0.25.3554',
     items: [
       'ゲーム内容の変更はありません(テスト用AIの改修: 木への引っかかりからの脱出・全レベルで回避する・上級はボスの構えにもカウンターを狙う)。',

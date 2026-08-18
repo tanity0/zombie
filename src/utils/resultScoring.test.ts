@@ -5,7 +5,7 @@ import type { GameStats } from '../types/game';
 // 全項目0の GameStats(必要なものだけ上書きして使う)。
 const mkStats = (over: Partial<GameStats> = {}): GameStats => ({
   timeAlive: 0, enemiesKilled: 0, damageDealt: 0, experienceCollected: 0, maxLevel: 1,
-  maxCombo: 0, strapsCollected: 0, strapsSpent: 0, treasuresCollected: 0, damageTaken: 0,
+  maxCombo: 0, strapsCollected: 0, strapsSpent: 0, treasuresCollected: 0, damageTaken: 0, hitsTaken: 0, minHpFrac: 1,
   meleeFinishers: 0, eliteKills: 0, bossKills: 0, maxAreaReached: 0, maxDepthDist: 0, maxRankReached: 1,
   ...over,
 });
