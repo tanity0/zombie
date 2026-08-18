@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3543',
+    items: [
+      'スラッシャーの連続攻撃で、判定だけ入ってプレイヤーが前に出ない不具合を修正しました(押し飛ばした分だけ必ず踏み込みます)。',
+    ],
+  },
+  {
     version: '0.25.3542',
     items: [
       'M0の序盤会話にジュン「頼りにしてます！」が戻りました(4行に)。',

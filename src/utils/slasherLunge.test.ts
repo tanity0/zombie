@@ -10,14 +10,45 @@ const FORCE_KB_PX = 25;   // SLASHER_FORCE_KB_PX
 const FINAL_KB_MULT = 2;  // SLASHER_FINAL_KB_MULT (Lv3最終段)
 
 describe('slasherLungePx — スラッシャー追撃の自動追尾', () => {
-  it('射程内に残るなら踏み込まない(0)', () => {
-    // 射程60・目の前(5px)で25px押しても、押した後は30px=内側の着地距離(54px)より近い。
-    expect(slasherLungePx(5, FORCE_KB_PX, 60)).toBe(0);
+  it('★【回帰・v0.25.3543】目の前の敵を押した時も、押した分だけ必ず踏み込む', () => {
+    // 初版(v0.25.3540)は「押した後の距離 − 近接が入る距離」だけで書いていたため、
+    // 近接戦の常態(敵が目の前=距離ほぼ0)で常に0を返し、**判定だけ入ってプレイヤーが動かなかった**
+    // (社長報告v0.25.3543)。押した量は必ず出ること。
+    expect(slasherLungePx(0, FORCE_KB_PX, 60)).toBe(FORCE_KB_PX);
+    expect(slasherLungePx(5, FORCE_KB_PX, 60)).toBe(FORCE_KB_PX);
+    // Lv3最終段(50px押し)も同じ。
+    expect(slasherLungePx(5, FORCE_KB_PX * FINAL_KB_MULT, 60)).toBe(FORCE_KB_PX * FINAL_KB_MULT);
   });
 
-  it('押されて射程の外へ出る分だけ踏み込む', () => {
-    // 射程60(着地距離54)、敵は50pxに居て25px押される → 75px → 75-54 = 21px 詰める。
-    expect(slasherLungePx(50, FORCE_KB_PX, 60)).toBeCloseTo(21, 6);
+  it('★【不変条件】踏み込みは必ず「押した量」以上(相対距離が開かない)', () => {
+    for (const meleeRange of [30, 45, 60, 80, 120]) {
+      for (const pushedPx of [10, FORCE_KB_PX, FORCE_KB_PX * FINAL_KB_MULT]) {
+        for (const dist of [0, 5, 20, meleeRange * 0.5, meleeRange]) {
+          expect(slasherLungePx(dist, pushedPx, meleeRange))
+            .toBeGreaterThanOrEqual(Math.min(pushedPx, SLASHER_LUNGE_MAX_PX) - 1e-9);
+        }
+      }
+    }
+  });
+
+  it('射程の縁で当てた時は、押した量より深く詰めて内側へ入る', () => {
+    // 射程60(着地距離54)、敵は50pxに居て25px押される → 75px → 75-54 = 21px…ではなく、
+    // 「押した量25px」の方が大きいので25px。さらに縁(58px)なら 58+25-54 = 29px > 25px で29px。
+    expect(slasherLungePx(50, FORCE_KB_PX, 60)).toBe(FORCE_KB_PX);
+    expect(slasherLungePx(58, FORCE_KB_PX, 60)).toBeCloseTo(29, 6);
+  });
+
+  it('★【不変条件】踏み込んでも押す前より近づきすぎない', () => {
+    // 踏み込み後の距離 <= 踏み込み前の距離。前へ出るが、敵を追い越したり潜り込んだりはしない。
+    for (const meleeRange of [30, 60, 120]) {
+      for (const pushedPx of [10, FORCE_KB_PX, FORCE_KB_PX * FINAL_KB_MULT]) {
+        for (const dist of [0, 5, 20, meleeRange * 0.5, meleeRange]) {
+          const distAfter = dist + pushedPx - slasherLungePx(dist, pushedPx, meleeRange);
+          expect(distAfter).toBeLessThanOrEqual(dist + 1e-9);
+          expect(distAfter).toBeGreaterThanOrEqual(-1e-9);
+        }
+      }
+    }
   });
 
   it('★【不変条件】どんな押し量でも、踏み込んだ後は必ず「近接が入る距離」以内に着地する', () => {
@@ -49,8 +80,10 @@ describe('slasherLungePx — スラッシャー追撃の自動追尾', () => {
   });
 
   it('踏み込みは負にならない(後ろへ下がらない)', () => {
+    // 押していない=追う相手が動いていないので踏み込まない(v0.25.3400「KBしなかったら前進しない」)。
     expect(slasherLungePx(0, 0, 60)).toBe(0);
     expect(slasherLungePx(0, 0, 0)).toBe(0);
+    expect(slasherLungePx(5, 0, 60)).toBe(0);
   });
 
   it('着地距離は射程の内側(境界ちょうどではない)', () => {
