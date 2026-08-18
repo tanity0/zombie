@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3568',
+    items: [
+      'ゲーム内容の変更はありません(開発記録の追記のみ)。',
+    ],
+  },
+  {
     version: '0.25.3567',
     items: [
       'ゲーム内容の変更はありません(開発ツール: ボスメーカーで天使6体の数値調整・停止・技の個別再生ができるようになりました)。',
