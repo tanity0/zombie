@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3561',
+    items: [
+      'ゲーム内容の変更はありません(開発ツール: ボスメーカーの部屋から「メニューに戻る」でボス選択メニューへ戻れるようになりました)。',
+    ],
+  },
+  {
     version: '0.25.3560',
     items: [
       'ゲーム内容の変更はありません(テスト用AI: 歩いて寄ってくる敵にカウンターを合わせるようになりました。カウンター反応が回避に食われる問題と、masterが混戦へ突っ込みすぎる問題も修正)。',

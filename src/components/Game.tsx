@@ -19,6 +19,7 @@ import AwakenCutin from './AwakenCutin'; // SKILL_BUILD_REDESIGN.md §24: 覚醒
 import WallInscription from './WallInscription';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
+import { isBossMakerRun } from '../utils/bossTest';
 import StoryReturnPrompt from './StoryReturnPrompt';
 import TutorialPopup from './TutorialPopup';
 import BossCutin from './BossCutin';
@@ -266,7 +267,15 @@ const Game: React.FC<GameProps> = ({
       {/* チュートリアルの操作説明ポップアップ(表示中はisPaused=trueだがPauseMenuは出さない=ポップアップ優先) */}
       <TutorialPopup />
       {isPaused && !tutorialPopupOpen && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && !storyReturnPromptVisible && (
-        <PauseMenu onResume={() => setPaused(false)} onQuit={onGameOver} />
+        <PauseMenu
+          onResume={() => setPaused(false)}
+          // ★v0.25.3561(社長報告「ボスメーカー、メニューボタンが効いてない」): ボスメーカーの部屋では
+          // 「メニューに戻る」で**出撃メニュー(ボス選択)へ戻す**。従来は onGameOver → bare の
+          // restartBareRoom() で**部屋がリスタートするだけ**だった(偶像1体の時代は戻る必要が無く潜伏。
+          // v0.25.3558で5体になり、ボスを切り替えるにはメニューへ戻る必要が生まれて露呈)。
+          // クエリを消せばメニューが出る(tools/bossmaker/main.tsx の出し分け=URLに出撃フラグがあるか)。
+          onQuit={() => { if (isBossMakerRun()) { window.location.search = ''; return; } onGameOver(); }}
+        />
       )}
 
       <StoryReturnPrompt />
