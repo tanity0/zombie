@@ -6323,7 +6323,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // botAttackSuppressedByDodgeが常にfalse=不変)。
         // v0.25.3064: 目的地ステア中に見つけた卵も叩く(botObjSteerAdj)。移動入力だけ差し替えて
         // 叩きを繋がないと、避けきれない至近の卵を割れないまま素通りして起爆させてしまう。
-        if ((botMineAdj?.wantsMelee || botObjSteerAdj?.wantsMelee || botWantsCounterReaction) && !botAttackSuppressedByDodge) useGameStore.getState().triggerCounter(); // M34: 卵叩き / M37: 人間反応カウンター
+        // ★v0.25.3560: カウンター反応(botWantsCounterReaction)は**回避抑制の対象から外す**。
+        // decideCounterReaction は返した瞬間に fired=true を立てるので、ここで抑制されると
+        // その脅威へのカウンター機会は**永久に失われる**。masterは dodge:'all' で回避ベクトルが
+        // ほぼ常時立つため、dodgeVsAttack=0.25 の抑制に25%の確率で食われ続けていた
+        // (=「masterほどカウンターしない」の残り半分)。回避と防御反応は競合させない。
+        if ((botMineAdj?.wantsMelee || botObjSteerAdj?.wantsMelee) && !botAttackSuppressedByDodge || botWantsCounterReaction) useGameStore.getState().triggerCounter(); // M34: 卵叩き / M37: 人間反応カウンター
         if (botDecision?.wantsWeaponSwitch) {
           const botPlayer = useGameStore.getState().player;
           const botGuns = getGuns(botPlayer);

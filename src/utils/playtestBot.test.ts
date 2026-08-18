@@ -5,7 +5,7 @@ import { decideBotInput, wanderDirForSeed, pickupSeekInput, BOT_PERSONAS,
   adjustBotForMines, MINE_AVOID_RADIUS, MINE_SMASH_DIST,
   decideCounterReaction, createCounterThreatState, STUNNED_CHASE_MAX_DIST,
   escapeIfStuck, createBotStuckState, BOT_STUCK_SAMPLE_TICKS, BOT_STUCK_SAMPLES, BOT_STUCK_ESCAPE_TICKS,
-  separationAdjust, SEPARATION_DIST } from './playtestBot';
+  separationAdjust, SEPARATION_DIST, CONTACT_COUNTER_DIST } from './playtestBot';
 import { botSkillProfile } from './botSkill';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
@@ -661,5 +661,49 @@ describe('★近接分離ステア(社長報告v0.25.3557「なんか割と敵�
     const STILL = { up: false, down: false, left: false, right: false };
     const e = spawnEnemyAt('zombie', 10, 0, 0);
     expect(separationAdjust(master, STILL, 0, 0, [e])).toEqual(STILL);
+  });
+});
+
+describe('★接近雑魚へのカウンター(社長報告v0.25.3560「カウンターもしない。歩いてくる敵に棒立ちで当たる」)', () => {
+  // 近接カウンターの実体は「窓が開いている間に敵が触れたら弾く」(applyContactDamage)。
+  // 歩いて寄ってくる雑魚こそ最多のカウンター機会なのに、検知が jump/charge/弾だけで
+  // 一度も脅威として見ていなかった。
+  const st = () => createCounterThreatState();
+
+  it('★90px内でこちらへ向かって動く敵は脅威=カウンターを振る(反応80ms後)', () => {
+    const s = st();
+    const e = { ...spawnEnemyAt('zombie', 60, 0, 0), vx: -40, vy: 0 } as Enemy; // 左=プレイヤーへ接近
+    expect(decideCounterReaction('standard', s, 0, 0, [e], [], 10000, 0, () => 0, 'master')).toBe(false); // 検知(遅延中)
+    expect(decideCounterReaction('standard', s, 0, 0, [e], [], 10100, 0, () => 0, 'master')).toBe(true);  // 80ms経過=発火
+  });
+
+  it('★【不変条件】遠ざかる敵には振らない(至近を除く)', () => {
+    const s = st();
+    const e = { ...spawnEnemyAt('zombie', 70, 0, 0), vx: +40, vy: 0 } as Enemy; // 右=離れていく
+    const fired = decideCounterReaction('standard', s, 0, 0, [e], [], 10000, 0, () => 0, 'master');
+    expect(fired).toBe(false);
+  });
+
+  it('★【不変条件】90pxの外の敵には振らない(空振り乱発しない)', () => {
+    const s = st();
+    const e = { ...spawnEnemyAt('zombie', CONTACT_COUNTER_DIST + 40, 0, 0), vx: -40, vy: 0 } as Enemy;
+    const fired = decideCounterReaction('standard', s, 0, 0, [e], [], 10000, 0, () => 0, 'master');
+    expect(fired).toBe(false);
+  });
+
+  it('至近(48px内)なら向きに関わらず脅威(もう触れる)', () => {
+    const s = st();
+    // spawnEnemyAtのx,yは左上。中心距離が48px未満になるようプレイヤー(0,0)のほぼ真上に置く。
+    const e = { ...spawnEnemyAt('zombie', -10, -30, 0), vx: 0, vy: 0 } as Enemy;
+    expect(decideCounterReaction('standard', s, 0, 0, [e], [], 10000, 0, () => 0, 'master')).toBe(false); // 検知
+    expect(decideCounterReaction('standard', s, 0, 0, [e], [], 10100, 0, () => 0, 'master')).toBe(true);
+  });
+
+  it('反応遅延は従来どおり効く(novice=500msは即フレームでは振らない)', () => {
+    const s = st();
+    const e = { ...spawnEnemyAt('zombie', 60, 0, 0), vx: -40, vy: 0 } as Enemy;
+    // 検知フレーム(遅延0ms経過)では振らない。willAttemptの抽選はrand()=0<0.25で必ず通す。
+    const fired = decideCounterReaction('standard', s, 0, 0, [e], [], 10000, 0, () => 0, 'novice');
+    expect(fired).toBe(false);
   });
 });

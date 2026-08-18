@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3560',
+    items: [
+      'ゲーム内容の変更はありません(テスト用AI: 歩いて寄ってくる敵にカウンターを合わせるようになりました。カウンター反応が回避に食われる問題と、masterが混戦へ突っ込みすぎる問題も修正)。',
+    ],
+  },
+  {
     version: '0.25.3559',
     items: [
       '秘密兵器箱の出現率を10%から5%に下げました(パンプキンが常連化して箱の数が増え、実出現が想定の3倍以上に膨らんでいたため)。',

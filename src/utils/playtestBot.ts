@@ -6,6 +6,7 @@
 import type { Enemy, InputState, Player, Projectile } from '../types/game';
 // ★v0.25.3554: 「この構えは弾ける」の唯一の出どころを共有する(写すな、共通化しろ)。
 import { isDashParryCounterPhase } from './combatTick';
+import { isCorpse } from './enemyUtils';
 
 // 'rusher' はPACING_PUZZLE.md §5.20(M19・深層ラッシュ試験専用)のペルソナ。既存の通常スモーク
 // (BOT_PERSONAS の巡回)には含めず、専用テストからのみ persona 名で直接呼び出す。
@@ -519,7 +520,7 @@ const CHARGE_HEADING_MIN_DOT = 0.3;
 const PROJECTILE_THREAT_DIST = 160;  // 敵弾をカウンター対象とみなす距離(px)
 const PROJECTILE_THREAT_ETA_MS = 400; // 到達予測がこれ未満なら対象(接近中のみ。離れていく弾は無視)
 
-export type CounterThreatKind = 'jump' | 'charge' | 'projectile' | 'boss-phase';
+export type CounterThreatKind = 'jump' | 'charge' | 'projectile' | 'boss-phase' | 'contact-close';
 
 export interface CounterReactionProfile {
   reactionMs: number; // 検知から発火までの反応遅延(ms)
@@ -598,6 +599,10 @@ const projectileIsThreat = (pcx: number, pcy: number, p: Projectile): boolean =>
  * =「能力の質」ではなく「見えている脅威の広さ」で腕前差を出す。
  */
 const COUNTER_BOSS_PHASE_DIST = 260;
+/** 接近雑魚をカウンター脅威と見る距離(v0.25.3560)。窓400ms×雑魚の突進速度で「振ってから触れる」が成立する帯。 */
+export const CONTACT_COUNTER_DIST = 90;
+/** これより近ければ向きに関わらず脅威(もう触れる)。 */
+const CONTACT_COUNTER_NEAR = 48;
 
 const findCounterThreat = (
   pcx: number, pcy: number, enemies: readonly Enemy[], projectiles: readonly Projectile[],
@@ -611,6 +616,25 @@ const findCounterThreat = (
   }
   for (const p of projectiles) {
     if (projectileIsThreat(pcx, pcy, p)) return { id: p.id, kind: 'projectile' };
+  }
+  // ★v0.25.3560(社長報告3回目「カウンターもしない。敵が歩いてくるのに棒立ちで当たる」の根本):
+  // このゲームの近接カウンターの実体は applyContactDamage の「窓が開いている間に敵が触れたら弾く」。
+  // つまり**歩いて寄ってくる雑魚・ゾンビの突進(zrush)こそが最多のカウンター機会**なのに、
+  // 検知は jump/charge/弾(+ボスの構え)だけで、**接近してくる普通の敵を一度も脅威として見ていなかった**。
+  // 人間のプレイヤーは敵が触れる寸前に振って弾く——それをここで再現する:
+  // 「近距離(CONTACT_COUNTER_DIST)で、こちらへ向かって動いている敵」を脅威にする。
+  // 段階差は従来どおり試行確率(novice 25%〜master 100%)と反応遅延が付ける。
+  for (const e of enemies) {
+    if (isCorpse(e)) continue;
+    if (e.type === 'reaper' && !e.reaperChaser) continue;
+    if (e.aiPhase === 'jump') continue; // 空中は接触判定ごと無い(専用の検知が上にある)
+    const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+    const dx = pcx - ecx, dy = pcy - ecy;
+    const d = Math.hypot(dx, dy);
+    if (d >= CONTACT_COUNTER_DIST || d < 0.001) continue;
+    // こちらへ向かっているか(速度との内積>0)。至近(体1つ分)は向きに関わらず脅威。
+    const closing = (dx * (e.vx ?? 0) + dy * (e.vy ?? 0)) > 0;
+    if (closing || d < CONTACT_COUNTER_NEAR) return { id: e.id, kind: 'contact-close' };
   }
   if (seesBossPhases) {
     for (const e of enemies) {
@@ -641,6 +665,12 @@ const threatStillValid = (
   if (kind === 'projectile') {
     const p = projectiles.find(pp => pp.id === threatId);
     return !!p && projectileIsThreat(pcx, pcy, p);
+  }
+  if (kind === 'contact-close') {
+    const ce = enemies.find(ee => ee.id === threatId);
+    if (!ce || isCorpse(ce)) return false;
+    const d = Math.hypot((ce.x + ce.width / 2) - pcx, (ce.y + ce.height / 2) - pcy);
+    return d <= CONTACT_COUNTER_DIST * 1.5; // 少し離れただけでは追跡を保つ(振り直し連打を防ぐ)
   }
   if (kind === 'boss-phase') {
     const be = enemies.find(ee => ee.id === threatId);

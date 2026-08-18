@@ -94,7 +94,11 @@ export const BOT_SKILL_PROFILES: Record<BotSkill, BotSkillProfile> = {
              engageDist: 260, dodgeVsAttack: 0.5,  avoidContactDist: 0,   meleeVsDanger: true,  warpReact: false, upgradePolicy: 'random', seesBossCounterPhases: false },
   skilled: { reactionMs: 150, counterChance: 0.85, dodge: 'all',        targeting: 'threat',  surroundCount: 5, disengageHp: 0.3, dodgeStrength: 0.7,
              engageDist: 340, dodgeVsAttack: 0.4,  avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy', seesBossCounterPhases: true },
-  master:  { reactionMs: 80,  counterChance: 1.0,  dodge: 'all',        targeting: 'optimal', surroundCount: 8, disengageHp: 0.2, dodgeStrength: 1,
+  // ★master の surroundCount 8→5(v0.25.3560・社長報告「混戦になると自分から突っ込んで行ってる」)。
+  // 事実として: 8 は v0.25.2364 の裁定「上手いほど囲まれても粘る」(当時の実測で退避が早いほど
+  // masterの撃破数が最下位になった)に由来する。現時点の実機では「8体まで退避しない」が
+  // 突っ込み死の主因になっているため 5(skilledと同値)へ下げる。単調性(上位ほど≧)は維持。
+  master:  { reactionMs: 80,  counterChance: 1.0,  dodge: 'all',        targeting: 'optimal', surroundCount: 5, disengageHp: 0.2, dodgeStrength: 1,
              engageDist: 420, dodgeVsAttack: 0.25, avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy', seesBossCounterPhases: true },
 };
 
