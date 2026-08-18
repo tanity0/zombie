@@ -1057,36 +1057,39 @@ describe('runBountyTick — B2a 技の状態機械', () => {
   });
 
   describe('馬乗り(bounty-melee)', () => {
-    // ★v0.25.3570(社長指示「近距離でも360度攻撃入れて」): 密着帯は3段コンボ1本ではなく
-    // **コンボ/360度ムチの抽選**になった。乱数を固定して両方の枝を検証する。
-    it('密着帯(BM_MELEE_MAX以内): 乱数が高ければ3段コンボを発火する', () => {
-      const spy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
-      try {
-        const { id, step } = setupType('bounty-melee', { x: 80, y: 0 });
-        step(16);
-        const s1 = useGameStore.getState().enemies.find(e => e.id === id);
-        expect(s1?.bossState).toBe('bm-combo1-windup');
-      } finally { spy.mockRestore(); }
+    // ★v0.25.3571(社長指示「三段攻撃の最後に360度、の台本に統合」): v0.25.3570の近距離抽選は撤回。
+    // 密着帯の入口はコンボ1本(乱数に依らない)で、360はコンボの締めとして出る(下の統合テスト)。
+    it('密着帯(BM_MELEE_MAX以内)は常に3段コンボで始まる(抽選しない・v0.25.3571)', () => {
+      const { id, step } = setupType('bounty-melee', { x: 80, y: 0 });
+      step(16);
+      const s1 = useGameStore.getState().enemies.find(e => e.id === id);
+      expect(s1?.bossState).toBe('bm-combo1-windup');
     });
 
-    it('★密着帯: 乱数が低ければ360度ムチを単独発火する(v0.25.3570)', () => {
-      const spy = vi.spyOn(Math, 'random').mockReturnValue(0.01);
-      try {
-        const { id, step } = setupType('bounty-melee', { x: 80, y: 0 });
-        step(16);
-        const s1 = useGameStore.getState().enemies.find(e => e.id === id);
-        expect(s1?.bossState).toBe('bm-whip360-windup');
-      } finally { spy.mockRestore(); }
+    it('★【統合台本】3段目の斬り終わりから360度ムチ(bm-whip360-windup)へ直結する(v0.25.3571)', () => {
+      const { id, step } = setupType('bounty-melee', { x: 80, y: 0 });
+      const seen = new Set<string | undefined>();
+      let sawComboThenWhip = false;
+      let prev: string | undefined;
+      for (let i = 0; i < 200; i++) {
+        step(30);
+        const cur = useGameStore.getState().enemies.find(e => e.id === id);
+        seen.add(cur?.bossState);
+        if (prev === 'bm-combo3-windup' && cur?.bossState === 'bm-whip360-windup') sawComboThenWhip = true;
+        prev = cur?.bossState ?? prev;
+        if (sawComboThenWhip) break;
+      }
+      expect(seen.has('bm-combo3-windup')).toBe(true);
+      expect(sawComboThenWhip).toBe(true);
+      // 旧経路(コンボ3段目→bm-combo3-recover)は通らない=締めは必ず360。
+      expect(seen.has('bm-combo3-recover')).toBe(false);
     });
 
-    it('3段コンボ完走: 1→2→3段目まで進み、各段でpumpkinBlastsへ判定を積んでからchaseへ戻る(終端=パニッシュ窓)', () => {
-      // ★v0.25.3570: 密着帯が抽選になったので、コンボ枝を確実に踏むため乱数を高値に固定する。
-      // (このテスト内の他のMath.random消費への影響は「コンボが選ばれ続ける」方向のみ=検証意図に合致)
-      vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    it('統合台本の完走: コンボ1→2→3段→360度→硬直→chase(v0.25.3571・終端パニッシュ窓=bm-charge-recover)', () => {
       const { id, step } = setupType('bounty-melee', { x: 80, y: 0 });
       const seenStates = new Set<string | undefined>();
       let blastCount = 0;
-      for (let i = 0; i < 80; i++) {
+      for (let i = 0; i < 120; i++) {
         step(50);
         const cur = useGameStore.getState().enemies.find(e => e.id === id);
         seenStates.add(cur?.bossState);
@@ -1095,10 +1098,10 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       expect(seenStates.has('bm-combo1-windup')).toBe(true);
       expect(seenStates.has('bm-combo2-windup')).toBe(true);
       expect(seenStates.has('bm-combo3-windup')).toBe(true);
-      expect(seenStates.has('bm-combo3-recover')).toBe(true);
-      expect(blastCount).toBeGreaterThanOrEqual(3); // 3段=3回の判定
-      // プレイヤーが動かないため終端(chase)後に再び密着帯へ入って次のコンボが再発火する想定の盤面
-      // (押しのけ同様「一度でもchaseへ戻ったか」を見る=終端パニッシュ窓が実在することの確認)。
+      // ★v0.25.3571: 3段目の後は360度(締め)→その硬直(bm-charge-recover)がパニッシュ窓を引き継ぐ。
+      expect(seenStates.has('bm-whip360-windup')).toBe(true);
+      expect(seenStates.has('bm-whip360')).toBe(true);
+      expect(blastCount).toBeGreaterThanOrEqual(3); // 3段=3回の判定(+360の円は別経路)
       expect(seenStates.has('chase')).toBe(true);
     });
 

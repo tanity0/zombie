@@ -343,6 +343,13 @@ const BOUNTY_WINDUP_STATES: readonly string[] = [
   'mk-naginata-windup', 'mk-naginata1-windup', 'mk-naginata2-windup', 'mk-spin-windup', 'mk-suiu-windup', 'mk-boom-windup',
   'br-triple-windup', // §6.38 v12(社長裁定#9「溜め/硬直はカウンター可=既存の押しのけと同じ扱い」)
 ];
+// ★v0.25.3571(社長報告「馬乗りの360度と突進、カウンターできない気がする」): 実行中(active)にも
+// カウンターを開く技のリスト。従来の掟W7は「windup/硬直の接触=可」で、**突進の走り(bm-charge)と
+// 360度の振り(bm-whip360)は対象外**だった——werewolfの突進(aiPhase 'charge')が実行中でも弾けるのと
+// 非対称で、体感「カウンターできない」の正体。加えて360系は**赤円の中なら体が触れていなくても弾ける**
+// (下の counterReachFor。城ボスの着地円=「赤い予告の中でだけ成立」v0.25.2601 と同じ文法)。
+const BOUNTY_ACTIVE_COUNTER_STATES: readonly string[] = ['bm-charge', 'bm-whip360'];
+
 const BOUNTY_RECOVER_STATES: readonly string[] = [
   'br-push-recover', 'bm-charge-recover', 'bm-combo1-recover', 'bm-combo2-recover', 'bm-combo3-recover', 'bm-snipe-recover',
   'bb-sweep-recover', 'leap-recover',
@@ -902,9 +909,8 @@ const laserWindupTick = (
   s.aimVX = stepped.vx; s.aimVY = stepped.vy;
 };
 
-/** ★v0.25.3570(社長指示「近距離でも360度攻撃入れて」): 近距離抽選で360度ムチを選ぶ確率(叩き台)。
- * 残りは3段コンボ。突進からの自動連係(bm-charge→whip360)は従来どおり別口で残る。 */
-export const BM_WHIP360_CLOSE_CHANCE = 0.3;
+// (v0.25.3570の BM_WHIP360_CLOSE_CHANCE=近距離抽選は、v0.25.3571「三段攻撃の最後に360度、の
+// 台本に統合」で撤去。360は独立技ではなくコンボの締めになった。)
 
 /** 馬乗り: 輸入=懲罰狙撃(遠距離の長居に飛ぶ細長い帯)。 */
 const beginBmSnipe = ({ s, newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
@@ -972,15 +978,10 @@ const tickMelee = (
       return;
     }
     if (dist <= BM_T.meleeMax) {
-      // ★v0.25.3570(社長指示「近距離でも360度攻撃入れて」): 近距離の技を3段コンボ1本から
-      // **コンボ / 360度ムチの抽選**にする。360側の重み(BM_WHIP360_CLOSE_CHANCE)は叩き台。
-      // 単独発火用に beginBmWhip360 は▸再生と同じ入口を使う(写すな共通化しろ=v0.25.3563の束)。
-      if (Math.random() < BM_WHIP360_CLOSE_CHANCE) {
-        sfx.alert();
-        beginBmWhip360(bctx);
-      } else {
-        beginBmCombo(bctx);
-      }
+      // ★v0.25.3571(社長指示「三段攻撃の最後に360度、の台本に統合」): v0.25.3570の近距離抽選
+      // (コンボ/360の二択)は**1日で撤回**——360は独立技ではなく**3段コンボの締め**として出す
+      // (コンボ3段目→360へ直結)。よって近距離の入口はコンボ1本へ戻す。
+      beginBmCombo(bctx);
       return;
     }
     // 突進は「中距離を詰める」役(BM_CHARGE_REACH圏内だけ)。真の遠距離はここで割り込ませず
@@ -1068,8 +1069,12 @@ const tickMelee = (
         patch.bossState = step === 0 ? 'bm-combo1-recover' : 'bm-combo2-recover';
         patch.bossStateUntil = newGameTime + BM_T.combo.stepRecover;
       } else {
-        patch.bossState = 'bm-combo3-recover';
-        patch.bossStateUntil = newGameTime + BM_T.combo.finishRecover;
+        // ★v0.25.3571(社長指示「三段攻撃の最後に360度、の台本に統合」): 3段目の斬り終わりから
+        // **360度ムチへ直結**する(コンボの締め=大技)。予告(whip360.windup・赤円)を挟むので
+        // 「赤=カウンター/回避の対象」の文法はそのまま。360の終わりの bm-charge-recover が
+        // 従来の finishRecover の役(パニッシュ窓)を引き継ぐ。
+        beginBmWhip360({ bounty, s, newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch });
+        s.comboStep = 0;
       }
     }
     return;
@@ -1779,12 +1784,21 @@ export const runBountyTick = (
   // ---- カウンター(W7: windup中/硬直中の接触=可。v3128の掟=成立で技中断+chase復帰) -----------------
   const stNow = patch.bossState !== undefined ? patch.bossState : (bounty.bossState ?? 'chase');
   const counterableNow = counterEnabled
-    && isCounterablePhase(stNow, BOUNTY_WINDUP_STATES, BOUNTY_RECOVER_STATES);
+    && (isCounterablePhase(stNow, BOUNTY_WINDUP_STATES, BOUNTY_RECOVER_STATES)
+      || BOUNTY_ACTIVE_COUNTER_STATES.includes(stNow)); // ★v0.25.3571: 突進の走り/360の振りも可
   let countered = false;
   if (counterableNow) {
     const cp = useGameStore.getState().player;
-    const overlap = rectsOverlap({ x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height });
-    if (overlap && Date.now() <= cp.counterWindowEnd) {
+    // ★v0.25.3571: 360系(windup/振り)は判定が「体」ではなく「赤円(whip360.radius)」なので、
+    // カウンターの成立域も赤円に合わせる(赤=カウンター対象の文法・城ボス着地円と同型)。
+    // それ以外は従来どおり体の重なり。
+    const is360 = stNow === 'bm-whip360-windup' || stNow === 'bm-whip360';
+    const pcx2 = cp.x + cp.width / 2, pcy2 = cp.y + cp.height / 2;
+    const pRad = Math.max(cp.width, cp.height) / 2;
+    const inReach = is360
+      ? Math.hypot(pcx2 - bcx, pcy2 - bcy) <= BM_T.whip360.radius + pRad
+      : rectsOverlap({ x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height });
+    if (inReach && Date.now() <= cp.counterWindowEnd) {
       bountyCounterHit(bounty, bcx, bcy, sfx);
       countered = true;
       s.comboStep = 0;
