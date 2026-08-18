@@ -43,14 +43,32 @@ const nearestEnemy = (px: number, py: number, enemies: Enemy[]): Enemy | undefin
   return best;
 };
 
+/**
+ * 処刑優先(スタン敵へ寄る)を許す最大距離(px)。
+ *
+ * ★v0.25.3553(社長報告「敵がクリティカル状態になると、間に敵がいてもお構いなしに突っ込んでいってる」)。
+ *
+ * **何が起きていたか**: `nearestStunned` の結果が `stunned ?? skillTarget(...)` で
+ * **無条件に標的選択を上書き**していた。腕前設定(`targeting`)も危険度も、**間に何体いるかも見ない**。
+ * さらに移動は `approach()` = 標的への直線入力で、**障害物も敵も避けない**。
+ * ⇒ 「処刑優先」が他のすべてより強く、**群れを突っ切って気絶敵へ突っ込む**。
+ *
+ * **直し方**: 処刑優先そのものは残す(気絶=好機、を捨てるのは違う)が、**距離の上限**を付ける。
+ * 目の前の気絶敵は従来どおり処刑し、**フィールドを横断してまで取りに行かない**。
+ * `MELEE_ENGAGE_DIST`(80=近接が届く距離)の2倍を叩き台とした——1歩踏み込めば届く範囲、という意味。
+ * 「間にいる敵の数で諦める」判定は入れていない(距離だけで実害が消える見込み・必要なら後段で足す)。
+ */
+export const STUNNED_CHASE_MAX_DIST = MELEE_ENGAGE_DIST * 2;
+
 // スタン中(gameTime基準)の敵を優先ターゲットにする(標準ペルソナ=処刑優先)。
+// ★v0.25.3553: **STUNNED_CHASE_MAX_DIST 以内のものだけ**が対象(上のコメント参照)。
 const nearestStunned = (px: number, py: number, enemies: Enemy[], gameTime: number): Enemy | undefined => {
   let best: Enemy | undefined;
-  let bestD = Infinity;
+  let bestD = STUNNED_CHASE_MAX_DIST;
   for (const e of enemies) {
     if (e.stunUntil === undefined || e.stunUntil <= gameTime) continue;
     const d = distTo(px, py, e);
-    if (d < bestD) { bestD = d; best = e; }
+    if (d <= bestD) { bestD = d; best = e; }
   }
   return best;
 };

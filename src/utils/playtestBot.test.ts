@@ -3,7 +3,7 @@ import { decideBotInput, wanderDirForSeed, pickupSeekInput, BOT_PERSONAS,
   torchForageInput, TORCH_SEEK_DIST, TORCH_SMASH_DIST,
   avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, MINE_AVOID_RADIUS, MINE_SMASH_DIST,
-  decideCounterReaction, createCounterThreatState } from './playtestBot';
+  decideCounterReaction, createCounterThreatState, STUNNED_CHASE_MAX_DIST } from './playtestBot';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 import type { Enemy, Projectile } from '../types/game';
@@ -80,13 +80,16 @@ describe('decideBotInput', () => {
     expect(d.input.left || d.input.up || d.input.down).toBe(true);
   });
 
-  it('standard prioritizes a stunned enemy over a closer non-stunned one for melee targeting', () => {
+  // ★v0.25.3553(社長報告「間に敵がいてもお構いなしに突っ込んでいってる」・社長GO済み):
+  // 処刑優先に距離の上限(STUNNED_CHASE_MAX_DIST)を入れたため、この旧テストの前提
+  // (200px先の気絶敵を無条件で追う)は**意図的に廃止**した。近い気絶敵を優先することは不変。
+  it('standard prioritizes a stunned enemy over a closer non-stunned one — 上限の内側なら従来どおり', () => {
     const player = freshPlayer();
     const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
-    const closeHealthy = spawnEnemyAt('zombie', pcx + 30, pcy, 0);
-    const fartherStunned = { ...spawnEnemyAt('zombie', pcx + 200, pcy, 0), stunUntil: 5000 };
+    const closeHealthy = spawnEnemyAt('zombie', pcx - 30, pcy, 0);
+    const fartherStunned = { ...spawnEnemyAt('zombie', pcx + (STUNNED_CHASE_MAX_DIST - 20), pcy, 0), stunUntil: 5000 };
     const d = decideBotInput('standard', player, [closeHealthy, fartherStunned], 1000, 0, 0);
-    // stunned target is farther than melee range → bot should approach (not stand still on the closer one)
+    // 気絶敵は上限の内側=従来どおり優先し、近接射程より遠いので寄っていく。
     expect(d.input.right).toBe(true);
     expect(d.wantsMelee).toBe(false);
   });
@@ -481,5 +484,44 @@ describe('decideCounterReaction (M37: 人間反応のカウンター・PACING_PU
     decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 0, 0, rand0);
     expect(decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 250, 0, rand0)).toBe(true);
     expect(decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 260, 0, rand0)).toBe(false);
+  });
+});
+
+
+describe('★処刑優先の距離制限(社長報告v0.25.3553「間に敵がいてもお構いなしに突っ込んでいってる」)', () => {
+  // 旧実装は nearestStunned が engageDist(casual=260px)の中なら**無条件で標的選択を上書き**していた。
+  // 腕前設定も危険度も、間に何体いるかも見ず、移動は標的への直線入力(障害物も敵も避けない)。
+  // ⇒ 群れを突っ切って気絶敵へ突っ込む。処刑優先は残しつつ、**距離の上限**で歯止めをかけた。
+
+  const stun = (e: Enemy, gameTime: number): Enemy => ({ ...e, stunUntil: gameTime + 5000 });
+
+  it('★遠くの気絶敵より、近くの通常敵を選ぶ(フィールドを横断して取りに行かない)', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    // 気絶敵は上限の外(右へ)。通常敵はすぐ左。
+    // 通常敵は「近接射程の外・上限の内」に置く(射程内だと動かずに殴るので移動で判定できない)。
+    const farStunned = stun(spawnEnemyAt('zombie', pcx + STUNNED_CHASE_MAX_DIST + 60, pcy, 0), 0);
+    const nearNormal = spawnEnemyAt('zombie', pcx - 120, pcy, 0);
+    const d = decideBotInput('standard', player, [farStunned, nearNormal], 0, 0, 0);
+    // 近い方(左)へ動く=右へは行かない。
+    expect(d.input.left).toBe(true);
+    expect(d.input.right).toBe(false);
+  });
+
+  it('★近くの気絶敵は従来どおり優先する(処刑優先そのものは殺していない)', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    // 気絶敵は上限の内(右)。通常敵はもう少し遠い左。
+    const nearStunned = stun(spawnEnemyAt('zombie', pcx + STUNNED_CHASE_MAX_DIST - 20, pcy, 0), 0);
+    const fartherNormal = spawnEnemyAt('zombie', pcx - (STUNNED_CHASE_MAX_DIST + 20), pcy, 0);
+    const d = decideBotInput('standard', player, [nearStunned, fartherNormal], 0, 0, 0);
+    expect(d.input.right).toBe(true);
+    expect(d.input.left).toBe(false);
+  });
+
+  it('★【不変条件】処刑優先の上限は近接射程より広い(目の前の気絶敵を取り逃がさない)', () => {
+    expect(STUNNED_CHASE_MAX_DIST).toBeGreaterThan(80); // MELEE_ENGAGE_DIST
   });
 });
