@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3551',
+    items: [
+      'ゲーム内容の変更はありません(AIディレクター計測の結果記録のみ)。',
+    ],
+  },
+  {
     version: '0.25.3550',
     items: [
       '賞金首が3分ちょうどに出るようになりました(これまで構造的に3分に出られず、4〜5分へずれ込んでいました)。',
