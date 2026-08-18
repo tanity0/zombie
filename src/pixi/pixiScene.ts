@@ -3216,7 +3216,7 @@ export class PixiScene {
   private bountyWhip360ArcSprites = new Map<string, Sprite>();
   private bountyChargeSwingStart = new Map<string, { key: string; at: number }>();
   /** v0.25.3520: 鞭の残像を「振りの開始位置」へ焼き付けるための錨(本体の移動に付いて行かせない)。 */
-  private bountyWhipSmearAnchor = new Map<string, { key: string; x: number; y: number }>();
+  private bountyWhipSmearAnchor = new Map<string, { key: string; x: number; y: number; ang: number; len: number }>();
   /**
    * ★v0.25.3523: 技の「何回目か」を表す通し番号(bossState が変わるたびに +1)。
    *
@@ -14885,7 +14885,12 @@ export class PixiScene {
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, swingAngle, 170, 0.95 * ease.alphaMul,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
         if (snapT > 0) {
-          this.drawBountyWhipSmear(e.id, snapT, cx, cy, swingAngle, 170, 0.5 + 0.5 * snapT, `${this.moveInstanceNo(e.id, bs2 ?? '')}`);
+          // ★v0.25.3569(社長指示「スネアは当たり判定の長さに合わせて縦に出して。武器と切り離して
+          // 追従させないで」): スミアは**判定の帯(bf→bt)そのもの**に沿って出す——起点=帯の根元、
+          // 角度=帯の向き、長さ=帯の長さ(判定と同一)。武器の振り(swingAngle)には載せない。
+          // 位置・角度・長さは drawBountyWhipSmear 側が振りの頭で焼き付ける=以後一切追従しない。
+          this.drawBountyWhipSmear(e.id, snapT, bfx, bfy, aimAng, Math.hypot(btx - bfx, bty - bfy),
+            0.5 + 0.5 * snapT, `${this.moveInstanceNo(e.id, bs2 ?? '')}`);
         }
       } else if (bs2 === 'bm-combo1-recover' || bs2 === 'bm-combo2-recover') {
         // 次段へ継続するだけの中継=消滅させない(コンボが繋がっている間は鞭を出しっぱなし)。
@@ -14949,9 +14954,8 @@ export class PixiScene {
         const chargeAngle = velAng - Math.PI * 0.8 * (1 - snapEased);
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, chargeAngle, 170, 0.95,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
-        if (snapT < 1) {
-          this.drawBountyWhipSmear(e.id, snapT, cx, cy, chargeAngle, 170, 0.8 * (1 - snapT * 0.4), chargeKey);
-        }
+        // ★v0.25.3569: 前振りのスミアは廃止(v0.25.3566で足した装飾)。社長指示「スネアは当たり判定の
+        // 長さに合わせて」——突進の判定は帯カプセルではなく突進ラインなので、スミアを載せる判定が無い。
       } else if (bs2 === 'bm-whip360-windup') {
         // 社長指示v0.25.3473「ダッシュ後に360度、ムチ振り攻撃。(慣性入れてね)」の予告。
         // 判定=自分中心の円(BM_T.whip360.radius)。赤円と判定は同じ値=厳密一致。
@@ -23099,10 +23103,12 @@ export class PixiScene {
     const f: 0 | 1 | 2 = t01 < 0.34 ? 0 : t01 < 0.67 ? 1 : 2; // 一瞬で回す=振りの進行で3コマ
     const tex = getTexture(`fx/whip-smear-${f}`);
     if (!tex) return;
-    // 振りの頭で座標を焼く(以後この振りの間は動かさない=本体の移動に付いて行かない)。
+    // ★v0.25.3569(社長指示「スネアは当たり判定の長さに合わせて縦に出して。武器と切り離して
+    // 追従させないで」): 振りの頭で**座標・角度・長さの全部**を焼き付ける。以後この振りの間は
+    // 1つも更新しない=武器の回転にも本体の移動にも一切追従しない(空中に残った軌跡)。
     let anchor = this.bountyWhipSmearAnchor.get(id);
     if (!anchor || anchor.key !== swingKey) {
-      anchor = { key: swingKey, x: gripX, y: gripY };
+      anchor = { key: swingKey, x: gripX, y: gripY, ang: angleRad, len: lengthPx };
       this.bountyWhipSmearAnchor.set(id, anchor);
     }
     let sp = this.bountyWhipSmearSprites.get(id);
@@ -23117,8 +23123,8 @@ export class PixiScene {
     // **実素材は鞭本体と同じ規約**——柄が左下(≈0.08,0.95)にあり、右上(−45°)へ伸びる絵
     // (whip-smear-2 で確認。鞭に重ねる前提で描かれている)。よって鞭本体(drawBountyWeapon)と
     // **同じ柄アンカー+同じ intrinsic 角**で回す=スミアが常に鞭とまっすぐ平行に重なる。
-    sp.rotation = angleRad - PixiScene.WHIP_INTRINSIC;
-    sp.scale.set(Math.max(60, lengthPx) / Math.max(1, Math.max(tex.width, tex.height)));
+    sp.rotation = anchor.ang - PixiScene.WHIP_INTRINSIC;
+    sp.scale.set(Math.max(60, anchor.len) / Math.max(1, Math.max(tex.width, tex.height)));
     sp.position.set(anchor.x, anchor.y); // ★焼いた位置。本体が動いても残像は置き去りになる。
     sp.alpha = alpha;
     sp.visible = true;

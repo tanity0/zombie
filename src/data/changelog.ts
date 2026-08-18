@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3569',
+    items: [
+      '馬乗り(変異)の鞭のしなりが、当たり判定の帯とぴったり同じ位置・向き・長さで出るようになりました(武器の振りに追従しません=空中に残る軌跡)。',
+    ],
+  },
+  {
     version: '0.25.3568',
     items: [
       'ゲーム内容の変更はありません(開発記録の追記のみ)。',
