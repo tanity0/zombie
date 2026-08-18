@@ -373,8 +373,11 @@ export const escapeIfStuck = (
 // 近接射程(80px)より内側だけに効かせるので、**殴りに行く動きは阻害しない**(48〜80pxの帯で殴れる)。
 // 対象は avoidContactDist>0 の段(=skilled/master)。novice/casual は従来どおり(ぶつかるのも下手さ)。
 // ---------------------------------------------------------------------------
-export const SEPARATION_DIST = 48;
-const SEPARATION_BLEND = 0.55; // 元の移動0.45 : 反発0.55(反発をやや強く=擦り抜けを許さない)
+// ★v0.25.3562(社長報告2回目「うん、敵にぶつかってる」): 48px/0.55では弱かった。
+// 敵の体は幅36〜44pxあり、接触は中心間≈35pxで起きる——48pxの帯は実質1歩ぶんしかなく、
+// 反発が効く前に接触していた。半径を体1.5個分へ広げ、反発の配分も上げる。
+export const SEPARATION_DIST = 68;
+const SEPARATION_BLEND = 0.75; // 元の移動0.25 : 反発0.75
 
 export const separationAdjust = (
   profile: BotSkillProfile,

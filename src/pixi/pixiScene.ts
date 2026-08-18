@@ -23079,14 +23079,18 @@ export class PixiScene {
     }
     let sp = this.bountyWhipSmearSprites.get(id);
     if (!sp) {
-      sp = new Sprite(tex); sp.anchor.set(0.5, 1); sp.blendMode = 'add';
+      sp = new Sprite(tex); sp.anchor.set(PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y); sp.blendMode = 'add';
       this.L.effectLayer.addChild(sp); this.bountyWhipSmearSprites.set(id, sp);
     }
     if (sp.texture !== tex) sp.texture = tex;
-    if (sp.anchor.y !== 1) sp.anchor.set(0.5, 1);
-    // 素材は上向き(-y)に伸びるので、+90°で「振りの向き」へ倒す(3枚とも同じ角度=角度を揃える)。
-    sp.rotation = angleRad + Math.PI / 2;
-    sp.scale.set(Math.max(60, lengthPx) / Math.max(1, tex.height));
+    if (sp.anchor.y !== PixiScene.WHIP_GRIP_Y) sp.anchor.set(PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y);
+    // ★v0.25.3562(社長指摘「鞭シナリエフェクト、向きが合ってない。鞭に対してまっすぐ」):
+    // 旧コードは「素材は下端中央から真上に伸びる」前提(anchor 0.5,1 + 回転+90°)だったが、
+    // **実素材は鞭本体と同じ規約**——柄が左下(≈0.08,0.95)にあり、右上(−45°)へ伸びる絵
+    // (whip-smear-2 で確認。鞭に重ねる前提で描かれている)。よって鞭本体(drawBountyWeapon)と
+    // **同じ柄アンカー+同じ intrinsic 角**で回す=スミアが常に鞭とまっすぐ平行に重なる。
+    sp.rotation = angleRad - PixiScene.WHIP_INTRINSIC;
+    sp.scale.set(Math.max(60, lengthPx) / Math.max(1, Math.max(tex.width, tex.height)));
     sp.position.set(anchor.x, anchor.y); // ★焼いた位置。本体が動いても残像は置き去りになる。
     sp.alpha = alpha;
     sp.visible = true;
