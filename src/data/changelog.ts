@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3542',
+    items: [
+      'M0の序盤会話にジュン「頼りにしてます！」が戻りました(4行に)。',
+    ],
+  },
+  {
     version: '0.25.3541',
     items: [
       'スラッシャーの連続攻撃: 追撃の当たり判定を「いま立っている位置からの近接射程」に戻しました(実効射程が伸びて射程が嘘になっていた不具合)。',
