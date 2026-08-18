@@ -434,6 +434,77 @@ const clearBountyEscorts = (bountyId: string): void => {
   useGameStore.setState(st => ({ enemies: st.enemies.filter(e => e.bountyEscortId !== bountyId) }));
 };
 
+// =================================================================================================
+// ★v0.25.3563: 「技を始める」遷移だけを切り出した束(begin*)。
+//
+// **通常の抽選(各tickのchase分岐)と、ボスメーカーの▸個別再生が、必ずこの同じ1本を通る。**
+// 遷移コードを2箇所に書くと、片方だけ直して「メーカーでは出るのに実戦で出ない(逆も)」が静かに起きる
+// ——だから写さずに共通化する。**条件(距離帯・CD・重みの抽選)は呼び出し側(chase分岐)に残す**。
+// ここは「選ばれた技を始める」だけを担う=個別再生は条件をバイパスして直接ここを叩ける。
+// =================================================================================================
+/** begin* の引数束(tick関数が持っている値をそのまま渡す。patchは参照=書き込みがそのまま届く)。 */
+interface BountyBeginCtx {
+  bounty: Enemy;
+  s: BountyTickState;
+  newGameTime: number;
+  dist: number;
+  pcx: number; pcy: number;
+  bcx: number; bcy: number;
+  sfx: BountySfx;
+  patch: Partial<Enemy>;
+}
+
+/** バス停: 近距離の台本その2の1手目=後方ロール(攻撃判定なし)。明けたら三段突きの溜めへ繋ぐ。 */
+const beginBrRoll = ({ s, newGameTime, dist, pcx, pcy, bcx, bcy, patch }: BountyBeginCtx): void => {
+  const dl = Math.max(0.001, dist);
+  patch.aiFromX = bcx; patch.aiFromY = bcy;
+  patch.aiTargetX = bcx + ((bcx - pcx) / dl) * BR_ROLL_DIST;
+  patch.aiTargetY = bcy + ((bcy - pcy) / dl) * BR_ROLL_DIST;
+  patch.bossState = 'br-roll';
+  patch.bossStateUntil = newGameTime + BR_ROLL_MS;
+  // 台本の最後(三段突き)のCDは**台本を選んだ時点で課金**する(押しのけ・三段突きと同じ作法。
+  // 途中で崩されても払い戻さない=連発防止)。
+  s.tripleReadyAt = newGameTime + BR_TRIPLE_CD_MS;
+};
+
+/** バス停: 押しのけ(密着への答えその1・カウンター可)。 */
+const beginBrPush = ({ s, newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
+  sfx.alert();
+  const ang = Math.atan2(pcy - bcy, pcx - bcx);
+  patch.aiFromX = bcx; patch.aiFromY = bcy;
+  patch.aiTargetX = bcx + Math.cos(ang) * BR_T.push.reach;
+  patch.aiTargetY = bcy + Math.sin(ang) * BR_T.push.reach;
+  patch.bossState = 'br-push-windup';
+  patch.bossStateUntil = newGameTime + BR_T.push.windup;
+  s.pushReadyAt = newGameTime + BR_PUSH_CD_MS; // 三段突きと同じ「選択時に課金」の作法
+};
+
+/**
+ * バス停: 三段突きの溜め。`chargeCd=false` は**台本(ロール→三段突き)の続き**から呼ぶ時
+ * ——CDは台本を選んだ時点(beginBrRoll)で課金済みなので二重に課金しない。
+ */
+const beginBrTriple = ({ s, newGameTime, sfx, patch }: BountyBeginCtx, chargeCd = true): void => {
+  sfx.alert();
+  patch.bossState = 'br-triple-windup';
+  patch.bossStateUntil = newGameTime + BR_TRIPLE_WINDUP_MS;
+  if (chargeCd) s.tripleReadyAt = newGameTime + BR_TRIPLE_CD_MS; // 選択時に課金(中断されても払い戻さない)
+};
+
+/** バス停: 輸入=ミーミル型レーザー(紫=カウンター不可)。 */
+const beginBrLaser = ({ s, newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
+  sfx.alert();
+  patch.aiFromX = bcx; patch.aiFromY = bcy;
+  // ★v0.25.3426バグ修正: 照準点の初期値=**プレイヤー位置**(ミーミルと同じ。aimTgt=注視対象の座標)。
+  // 旧: レーザー終端(プレイヤーの先BR_LASER_RANGE=900px)を照準点にしていたため、追尾器がそこから
+  // プレイヤーまで「戻る旅」をすることになり、3秒の溜め内に追いつけず「追いかけてこない」見え方に
+  // なっていた(社長報告)。向きの描画/判定は bcx→aiTarget の正規化なので距離は自由=位置で持つのが正。
+  patch.aiTargetX = pcx;
+  patch.aiTargetY = pcy;
+  s.aimVX = 0; s.aimVY = 0;
+  patch.bossState = 'laser-windup';
+  patch.bossStateUntil = newGameTime + 3000; // = mimirLaserTrack.MIMIR_LASER_WINDUP_MS(直接値。定数はimport済みで下のtestが一致検査)
+};
+
 /**
  * バス停(bounty-ranged)の1tick。中立(kite+ポツポツ撃ち)を土台に、押しのけ→レーザーの順で
  * 割り込みを判定する(§4「近接されたら押しのけ→距離を開け直す」が最優先の防御反応のため)。
@@ -444,6 +515,8 @@ const tickRanged = (
   patch: Partial<Enemy>,
 ): void => {
   const st = bounty.bossState ?? 'chase';
+  // 技の開始は必ず begin*(上の束)を通す=ボスメーカーの▸個別再生と同じ1本(遷移を複製しない)。
+  const bctx: BountyBeginCtx = { bounty, s, newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch };
 
   if (st === 'chase') {
     if (!s.escortsSummoned) {
@@ -465,42 +538,17 @@ const tickRanged = (
         // (=カウンター対象の溜めではない)、明けたらそのまま三段突きの溜めへ繋ぐ。
         // 行き先はプレイヤーの反対側へ BR_ROLL_DIST。**移動は resolveMove を通す**
         // (障害物→行ける帯クランプ。CLAUDE.md「アクターを動かす時は必ず通す」)。
-        const dl = Math.max(0.001, dist);
-        patch.aiFromX = bcx; patch.aiFromY = bcy;
-        patch.aiTargetX = bcx + ((bcx - pcx) / dl) * BR_ROLL_DIST;
-        patch.aiTargetY = bcy + ((bcy - pcy) / dl) * BR_ROLL_DIST;
-        patch.bossState = 'br-roll';
-        patch.bossStateUntil = newGameTime + BR_ROLL_MS;
-        // 台本の最後(三段突き)のCDは**台本を選んだ時点で課金**する(押しのけ・三段突きと同じ作法。
-        // 途中で崩されても払い戻さない=連発防止)。
-        s.tripleReadyAt = newGameTime + BR_TRIPLE_CD_MS;
+        beginBrRoll(bctx);
         return;
       }
       if (closeMove === 'push') {
-        sfx.alert();
-        const ang = Math.atan2(pcy - bcy, pcx - bcx);
-        patch.aiFromX = bcx; patch.aiFromY = bcy;
-        patch.aiTargetX = bcx + Math.cos(ang) * BR_T.push.reach;
-        patch.aiTargetY = bcy + Math.sin(ang) * BR_T.push.reach;
-        patch.bossState = 'br-push-windup';
-        patch.bossStateUntil = newGameTime + BR_T.push.windup;
-        s.pushReadyAt = newGameTime + BR_PUSH_CD_MS; // 三段突きと同じ「選択時に課金」の作法
+        beginBrPush(bctx);
         return;
       }
       // 両方CD中=このtickは技を出さない。下の中立(kite+射撃サイクル)へ落ちる。
     }
     if (newGameTime >= (bounty.mimirLaserReadyAt ?? 0) && dist > BR_T.kite.min) {
-      sfx.alert();
-      patch.aiFromX = bcx; patch.aiFromY = bcy;
-      // ★v0.25.3426バグ修正: 照準点の初期値=**プレイヤー位置**(ミーミルと同じ。aimTgt=注視対象の座標)。
-      // 旧: レーザー終端(プレイヤーの先BR_LASER_RANGE=900px)を照準点にしていたため、追尾器がそこから
-      // プレイヤーまで「戻る旅」をすることになり、3秒の溜め内に追いつけず「追いかけてこない」見え方に
-      // なっていた(社長報告)。向きの描画/判定は bcx→aiTarget の正規化なので距離は自由=位置で持つのが正。
-      patch.aiTargetX = pcx;
-      patch.aiTargetY = pcy;
-      s.aimVX = 0; s.aimVY = 0;
-      patch.bossState = 'laser-windup';
-      patch.bossStateUntil = newGameTime + 3000; // = mimirLaserTrack.MIMIR_LASER_WINDUP_MS(直接値。定数はimport済みで下のtestが一致検査)
+      beginBrLaser(bctx);
       return;
     }
     // §6.38 v12(社長指示2026-08-15「バス停の新技『三段突き』」+社長裁定2026-08-15): 中距離の詰め技。
@@ -519,10 +567,7 @@ const tickRanged = (
     // 「距離0から三段突きが出る」という指示は、**台本のロール経由**で従来どおり満たされる。
     // ※中距離(110px超)の直行は §6.38 v12 からの既存仕様なのでそのまま残す。
     if (dist > BR_T.push.pickRange && newGameTime >= s.tripleReadyAt && dist >= BR_TRIPLE_MIN && dist <= BR_TRIPLE_MAX) {
-      sfx.alert();
-      patch.bossState = 'br-triple-windup';
-      patch.bossStateUntil = newGameTime + BR_TRIPLE_WINDUP_MS;
-      s.tripleReadyAt = newGameTime + BR_TRIPLE_CD_MS; // 選択時に課金(中断されても払い戻さない)
+      beginBrTriple(bctx);
       return;
     }
     // 中立: kite(引き撃ち)+型3種(burst/fan/charge)のサイクル射撃(§6.38 v10「バス停の中立射撃に緩急」)。
@@ -639,9 +684,9 @@ const tickRanged = (
     patch.x = c.x; patch.y = c.y;
     patch.vx = 0; patch.vy = 0;
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
-      sfx.alert(); // ここからが予告(=カウンターを狙える溜め)なので、この瞬間に鳴らす
-      patch.bossState = 'br-triple-windup';
-      patch.bossStateUntil = newGameTime + BR_TRIPLE_WINDUP_MS;
+      // ここからが予告(=カウンターを狙える溜め)なので、この瞬間にSEが鳴る(beginBrTripleの中)。
+      // CDは台本を選んだ時点(beginBrRoll)で課金済み=ここでは課金しない(chargeCd=false)。
+      beginBrTriple(bctx, false);
     }
     return;
   }
@@ -839,6 +884,52 @@ const laserWindupTick = (
   s.aimVX = stepped.vx; s.aimVY = stepped.vy;
 };
 
+/** 馬乗り: 輸入=懲罰狙撃(遠距離の長居に飛ぶ細長い帯)。 */
+const beginBmSnipe = ({ s, newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
+  s.farMs = 0;
+  sfx.alert();
+  const dl = dist || 1;
+  patch.aiFromX = bcx; patch.aiFromY = bcy;
+  patch.aiTargetX = bcx + ((pcx - bcx) / dl) * BM_T.snipe.range;
+  patch.aiTargetY = bcy + ((pcy - bcy) / dl) * BM_T.snipe.range;
+  patch.bossState = 'bm-snipe-windup';
+  patch.bossStateUntil = newGameTime + BM_T.snipe.windup;
+};
+
+/** 馬乗り: 3段コンボ(速→速→遅)の1段目。2/3段目は各recoverからの続き。 */
+const beginBmCombo = ({ s, newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
+  sfx.alert();
+  s.comboStep = 1;
+  const ang = Math.atan2(pcy - bcy, pcx - bcx);
+  patch.aiFromX = bcx; patch.aiFromY = bcy;
+  patch.aiTargetX = bcx + Math.cos(ang) * BM_T.combo.range;
+  patch.aiTargetY = bcy + Math.sin(ang) * BM_T.combo.range;
+  patch.bossState = 'bm-combo1-windup';
+  patch.bossStateUntil = newGameTime + BM_T.combo.windup[0];
+};
+
+/** 馬乗り: 輸入=突進(werewolf型)。走り終わりに360度ムチへ繋がる。 */
+const beginBmCharge = ({ newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
+  sfx.alert();
+  const dl = dist || 1;
+  patch.aiFromX = bcx; patch.aiFromY = bcy;
+  patch.aiTargetX = bcx + ((pcx - bcx) / dl) * BM_T.charge.reach;
+  patch.aiTargetY = bcy + ((pcy - bcy) / dl) * BM_T.charge.reach;
+  patch.bossState = 'bm-charge-windup';
+  patch.bossStateUntil = newGameTime + BM_T.charge.windup;
+};
+
+/**
+ * 馬乗り: 360度ムチ振りの溜め。**実戦では突進の着地から自動で繋がる**(単独では抽選されない)ので、
+ * ▸個別再生ではここを直接叩いて「ムチだけ」を見る(BOSS_MAKER.mdの訓練場の精神)。
+ */
+const beginBmWhip360 = ({ newGameTime, patch }: BountyBeginCtx): void => {
+  patch.vx = 0; patch.vy = 0;
+  patch.bossWindupStartAt = newGameTime;
+  patch.bossState = 'bm-whip360-windup';
+  patch.bossStateUntil = newGameTime + BM_T.whip360.windup;
+};
+
 /**
  * 馬乗り(bounty-melee)の1tick。§4③の懲罰(遠距離2秒)を最優先で見て、次に密着帯のコンボ、
  * それ以外は突進で距離を詰める(idolTick.tsの中立判断=懲罰→ストリングの順序を踏襲)。
@@ -849,42 +940,23 @@ const tickMelee = (
   patch: Partial<Enemy>,
 ): void => {
   const st = bounty.bossState ?? 'chase';
+  const bctx: BountyBeginCtx = { bounty, s, newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch };
 
   if (st === 'chase') {
     const stepMs = deltaTime * 1000;
     s.farMs = advanceLingerMs(s.farMs, dist > BM_T.meleeMax * 3, stepMs);
     if (s.farMs >= BM_T.farMs) {
-      s.farMs = 0;
-      sfx.alert();
-      const dl = dist || 1;
-      patch.aiFromX = bcx; patch.aiFromY = bcy;
-      patch.aiTargetX = bcx + ((pcx - bcx) / dl) * BM_T.snipe.range;
-      patch.aiTargetY = bcy + ((pcy - bcy) / dl) * BM_T.snipe.range;
-      patch.bossState = 'bm-snipe-windup';
-      patch.bossStateUntil = newGameTime + BM_T.snipe.windup;
+      beginBmSnipe(bctx);
       return;
     }
     if (dist <= BM_T.meleeMax) {
-      sfx.alert();
-      s.comboStep = 1;
-      const ang = Math.atan2(pcy - bcy, pcx - bcx);
-      patch.aiFromX = bcx; patch.aiFromY = bcy;
-      patch.aiTargetX = bcx + Math.cos(ang) * BM_T.combo.range;
-      patch.aiTargetY = bcy + Math.sin(ang) * BM_T.combo.range;
-      patch.bossState = 'bm-combo1-windup';
-      patch.bossStateUntil = newGameTime + BM_T.combo.windup[0];
+      beginBmCombo(bctx);
       return;
     }
     // 突進は「中距離を詰める」役(BM_CHARGE_REACH圏内だけ)。真の遠距離はここで割り込ませず
     // farMsを積ませ続ける(=懲罰狙撃が必ず発火する。突進が毎tick先取りしてfarMsの窓を潰さないため)。
     if (dist <= BM_T.charge.reach && newGameTime >= (bounty.bossNextActionAt ?? 0)) {
-      sfx.alert();
-      const dl = dist || 1;
-      patch.aiFromX = bcx; patch.aiFromY = bcy;
-      patch.aiTargetX = bcx + ((pcx - bcx) / dl) * BM_T.charge.reach;
-      patch.aiTargetY = bcy + ((pcy - bcy) / dl) * BM_T.charge.reach;
-      patch.bossState = 'bm-charge-windup';
-      patch.bossStateUntil = newGameTime + BM_T.charge.windup;
+      beginBmCharge(bctx);
       return;
     }
     // 中立: プレイヤーへ直進(主戦帯を作るほどの語彙は持たない=シンプルな肉薄型)。
@@ -918,10 +990,7 @@ const tickMelee = (
     }
     if (dl <= 2 || newGameTime >= (bounty.bossStateUntil ?? 0)) {
       // 社長指示v0.25.3473「ダッシュ後に360度、ムチ振り攻撃」: 突進の着地点でそのまま薙ぎ払いへ繋ぐ。
-      patch.vx = 0; patch.vy = 0;
-      patch.bossWindupStartAt = newGameTime;
-      patch.bossState = 'bm-whip360-windup';
-      patch.bossStateUntil = newGameTime + BM_T.whip360.windup;
+      beginBmWhip360(bctx);
     }
     return;
   }
@@ -1033,30 +1102,41 @@ const tickMelee = (
 // 距離帯・薙ぎ払い・跳びかかりの数値は **BB_T(bountyScript.ts)** が正(跳びかかりはpumpkin輸入。
 // v2 A節の掟「跳躍はpumpkinのaiPhase機構を流用せず-windup/-air/-recoverとしてbossState側に再実装」)。
 
+/** 鋏: 目の前の帯=薙ぎ払い(密着に居座らせないための技)。 */
+const beginBbSweep = ({ newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
+  sfx.alert();
+  const ang = Math.atan2(pcy - bcy, pcx - bcx);
+  patch.aiFromX = bcx; patch.aiFromY = bcy;
+  patch.aiTargetX = bcx + Math.cos(ang) * BB_T.sweep.range;
+  patch.aiTargetY = bcy + Math.sin(ang) * BB_T.sweep.range;
+  patch.bossState = 'bb-sweep-windup';
+  patch.bossStateUntil = newGameTime + BB_T.sweep.windup;
+};
+
+/** 鋏: 輸入=跳びかかり(pumpkin型)。着地点は溜め開始時のプレイヤー位置で固定。 */
+const beginBbLeap = ({ newGameTime, pcx, pcy, sfx, patch }: BountyBeginCtx): void => {
+  sfx.alert();
+  // 着地点=溜め開始時のプレイヤー位置スナップ(pumpkinと同じ「狙って置かれる」型)。
+  patch.aiTargetX = pcx; patch.aiTargetY = pcy;
+  patch.bossState = 'leap-windup';
+  patch.bossStateUntil = newGameTime + BB_T.leap.windup;
+};
+
 const tickBalance = (
-  bounty: Enemy, _s: BountyTickState, newGameTime: number, deltaTime: number, moveSpeedMult: number,
+  bounty: Enemy, s: BountyTickState, newGameTime: number, deltaTime: number, moveSpeedMult: number,
   dist: number, pcx: number, pcy: number, bcx: number, bcy: number, sfx: BountySfx,
   patch: Partial<Enemy>,
 ): void => {
   const st = bounty.bossState ?? 'chase';
+  const bctx: BountyBeginCtx = { bounty, s, newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch };
 
   if (st === 'chase') {
     if (dist <= BB_T.nearMax) {
-      sfx.alert();
-      const ang = Math.atan2(pcy - bcy, pcx - bcx);
-      patch.aiFromX = bcx; patch.aiFromY = bcy;
-      patch.aiTargetX = bcx + Math.cos(ang) * BB_T.sweep.range;
-      patch.aiTargetY = bcy + Math.sin(ang) * BB_T.sweep.range;
-      patch.bossState = 'bb-sweep-windup';
-      patch.bossStateUntil = newGameTime + BB_T.sweep.windup;
+      beginBbSweep(bctx);
       return;
     }
     if (newGameTime >= (bounty.bossNextActionAt ?? 0)) {
-      sfx.alert();
-      // 着地点=溜め開始時のプレイヤー位置スナップ(pumpkinと同じ「狙って置かれる」型)。
-      patch.aiTargetX = pcx; patch.aiTargetY = pcy;
-      patch.bossState = 'leap-windup';
-      patch.bossStateUntil = newGameTime + BB_T.leap.windup;
+      beginBbLeap(bctx);
       return;
     }
     if (dist > 1) {
@@ -1125,6 +1205,58 @@ const tickBalance = (
 /** 変則ディレイ(§4 v4「マルギット型」): 2値から毎回独立に抽選(連続同値も許す=乱数を持ち越さない)。 */
 const pick2 = (choices: readonly [number, number]): number => (Math.random() < 0.5 ? choices[0] : choices[1]);
 
+/**
+ * 舞妓: 毬の薙ぎ。**型A(phase1)は単発 / 型B(phase2)は速→遅の2連**——どちらへ入るかは
+ * 渡された phase だけで決まる(▸個別再生も同じ関数を通るので、型に合った方が必ず出る)。
+ */
+const beginMkNaginata = (
+  { s, newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx, phase: 1 | 2,
+): void => {
+  sfx.alert();
+  const ang = Math.atan2(pcy - bcy, pcx - bcx);
+  patch.aiFromX = bcx; patch.aiFromY = bcy;
+  patch.aiTargetX = bcx + Math.cos(ang) * MK_T.naginata.range;
+  patch.aiTargetY = bcy + Math.sin(ang) * MK_T.naginata.range;
+  patch.bossWindupStartAt = newGameTime; // v6 C-1: 変則ディレイは開始時刻を併記(描画側の進行度算出用)
+  if (phase === 1) {
+    const w = pick2(MK_T.naginata.windup);
+    patch.bossState = 'mk-naginata-windup';
+    patch.bossStateUntil = newGameTime + w;
+  } else {
+    s.comboStep = 1;
+    const w = pick2(MK_T.naginata.windup1);
+    patch.bossState = 'mk-naginata1-windup';
+    patch.bossStateUntil = newGameTime + w;
+  }
+};
+
+/** 舞妓: 水鳥乱舞(型B専用の3連バウンド)。 */
+const beginMkSuiu = ({ s, newGameTime, sfx, patch }: BountyBeginCtx): void => {
+  sfx.alert();
+  s.suiuHopIdx = 0;
+  patch.bossState = 'mk-suiu-windup';
+  patch.bossStateUntil = newGameTime + 500;
+};
+
+/** 舞妓: 手毬打ち(遠距離のブーメラン)。 */
+const beginMkBoom = ({ newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
+  sfx.alert();
+  patch.aiFromX = bcx; patch.aiFromY = bcy;
+  const dl = dist || 1;
+  patch.aiTargetX = bcx + ((pcx - bcx) / dl) * MK_T.boom.range;
+  patch.aiTargetY = bcy + ((pcy - bcy) / dl) * MK_T.boom.range;
+  patch.bossState = 'mk-boom-windup';
+  patch.bossStateUntil = newGameTime + MK_T.boom.windup;
+};
+
+/** 舞妓: 毬回し(自分中心の円+踏み込み)。 */
+const beginMkSpin = ({ newGameTime, sfx, patch }: BountyBeginCtx): void => {
+  sfx.alert();
+  patch.bossWindupStartAt = newGameTime;
+  patch.bossState = 'mk-spin-windup';
+  patch.bossStateUntil = newGameTime + pick2(MK_T.spin.windup);
+};
+
 const tickMaiko = (
   bounty: Enemy, s: BountyTickState, newGameTime: number, deltaTime: number, moveSpeedMult: number,
   dist: number, pcx: number, pcy: number, bcx: number, bcy: number, sfx: BountySfx,
@@ -1132,6 +1264,7 @@ const tickMaiko = (
 ): void => {
   const st = bounty.bossState ?? 'chase';
   const phase: 1 | 2 = bounty.bossPhase === 2 ? 2 : 1;
+  const bctx: BountyBeginCtx = { bounty, s, newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch };
 
   if (st === 'chase') {
     // 型切替(v6 C-5「実行中の技は完走してから」=chaseに戻ってから判定するので自然に満たす。1回だけ)。
@@ -1145,48 +1278,21 @@ const tickMaiko = (
     }
 
     if (dist <= MK_T.nearMax) {
-      sfx.alert();
-      const ang = Math.atan2(pcy - bcy, pcx - bcx);
-      patch.aiFromX = bcx; patch.aiFromY = bcy;
-      patch.aiTargetX = bcx + Math.cos(ang) * MK_T.naginata.range;
-      patch.aiTargetY = bcy + Math.sin(ang) * MK_T.naginata.range;
-      patch.bossWindupStartAt = newGameTime; // v6 C-1: 変則ディレイは開始時刻を併記(描画側の進行度算出用)
-      if (phase === 1) {
-        const w = pick2(MK_T.naginata.windup);
-        patch.bossState = 'mk-naginata-windup';
-        patch.bossStateUntil = newGameTime + w;
-      } else {
-        s.comboStep = 1;
-        const w = pick2(MK_T.naginata.windup1);
-        patch.bossState = 'mk-naginata1-windup';
-        patch.bossStateUntil = newGameTime + w;
-      }
+      beginMkNaginata(bctx, phase);
       return;
     }
 
     if (newGameTime >= (bounty.bossNextActionAt ?? 0)) {
       const roll = Math.random();
       if (phase === 2 && roll < 0.4) {
-        sfx.alert();
-        s.suiuHopIdx = 0;
-        patch.bossState = 'mk-suiu-windup';
-        patch.bossStateUntil = newGameTime + 500;
+        beginMkSuiu(bctx);
         return;
       }
       if (dist > MK_T.farMin && roll < (phase === 2 ? 0.75 : 0.7)) {
-        sfx.alert();
-        patch.aiFromX = bcx; patch.aiFromY = bcy;
-        const dl = dist || 1;
-        patch.aiTargetX = bcx + ((pcx - bcx) / dl) * MK_T.boom.range;
-        patch.aiTargetY = bcy + ((pcy - bcy) / dl) * MK_T.boom.range;
-        patch.bossState = 'mk-boom-windup';
-        patch.bossStateUntil = newGameTime + MK_T.boom.windup;
+        beginMkBoom(bctx);
         return;
       }
-      sfx.alert();
-      patch.bossWindupStartAt = newGameTime;
-      patch.bossState = 'mk-spin-windup';
-      patch.bossStateUntil = newGameTime + pick2(MK_T.spin.windup);
+      beginMkSpin(bctx);
       return;
     }
     if (dist > 1) {
@@ -1422,6 +1528,91 @@ const tickMaiko = (
   }
 };
 
+// =================================================================================================
+// ボスメーカーの「個別再生」(▸)— 賞金首4種(BOSS_MAKER.md §7・社長要望v0.25.2625/v0.25.3563)
+// > 停止中は技、動きごとに再生ボタンで個々に再生できる様にしたい
+//
+// 押した技を**即座に開始**する。CD・距離帯・型(phase)の抽選は**全部バイパス**する
+// (「いま見たい技を見る」ための道具なので、条件が揃うまで待たせない=部屋は訓練場)。
+// ★ただし**技の中身(タイミング・判定・描画)は本番と同じコード**を通る——始め方だけが違う
+//   (begin* の束を実戦と共用しているので、遷移が二重管理にならない)。
+//
+// 置き場所は idolTick.ts の pendingPlay と同型: パネル(React)は BountyTickState の実体を
+// 持てない(useGameLoopのrefの中)ので、**モジュール変数の要求箱**を経由し、tickが引き取る。
+// ★この箱は BossMakerPanel からしか書かれない=**通常プレイでは常に null**(毎フレームの追加費用は
+//   bool 2つの比較だけ。賞金首の実プレイ挙動は1バイトも変わらない)。
+// =================================================================================================
+
+/** ▸で再生できる技のキー(パネルのボタンと1対1。値は bossState の接頭辞に揃えてある)。 */
+export type BountyMoveKey =
+  | 'br-push' | 'br-roll' | 'br-triple' | 'br-laser'
+  | 'bm-charge' | 'bm-whip360' | 'bm-combo' | 'bm-snipe'
+  | 'bb-sweep' | 'bb-leap'
+  | 'mk-naginata' | 'mk-spin' | 'mk-suiu' | 'mk-boom';
+
+/**
+ * どのボスがどの技を持つか。**パネルの playables と、再生時の取り違え防止の両方がこれを読む**
+ * (1つの出どころ=「ボタンは出ているのに何も起きない」を原理的に作らない)。
+ */
+export const BOUNTY_MOVES_BY_TYPE: Readonly<Record<string, readonly BountyMoveKey[]>> = {
+  'bounty-ranged': ['br-push', 'br-roll', 'br-triple', 'br-laser'],
+  'bounty-melee': ['bm-charge', 'bm-whip360', 'bm-combo', 'bm-snipe'],
+  'bounty-balance': ['bb-sweep', 'bb-leap'],
+  'bounty-maiko': ['mk-naginata', 'mk-spin', 'mk-suiu', 'mk-boom'],
+};
+
+/** 選ばれた技を始める(実戦のchase分岐と**同じ begin* を叩く**)。 */
+const startBountyMove = (move: BountyMoveKey, bctx: BountyBeginCtx): void => {
+  switch (move) {
+    case 'br-push': beginBrPush(bctx); return;
+    case 'br-roll': beginBrRoll(bctx); return;
+    case 'br-triple': beginBrTriple(bctx); return;
+    case 'br-laser': beginBrLaser(bctx); return;
+    case 'bm-charge': beginBmCharge(bctx); return;
+    case 'bm-whip360': beginBmWhip360(bctx); return;
+    case 'bm-combo': beginBmCombo(bctx); return;
+    case 'bm-snipe': beginBmSnipe(bctx); return;
+    case 'bb-sweep': beginBbSweep(bctx); return;
+    case 'bb-leap': beginBbLeap(bctx); return;
+    // 型(A/B)は**いまのボスの型に従う**=切り替えボタン(HP40%等)で見たい方を選ぶ。
+    case 'mk-naginata': beginMkNaginata(bctx, bctx.bounty.bossPhase === 2 ? 2 : 1); return;
+    case 'mk-spin': beginMkSpin(bctx); return;
+    case 'mk-suiu': beginMkSuiu(bctx); return;
+    case 'mk-boom': beginMkBoom(bctx); return;
+  }
+};
+
+interface BountyPlayRequest { move: BountyMoveKey; solo: boolean; loop: boolean }
+let pendingBountyPlay: BountyPlayRequest | null = null;
+/** 単独再生の実行中(=停止中でも tick を進めてよい)。技が終わったら false へ戻る。 */
+let bountySoloActive = false;
+/** ループ再生中の技(null=1回で止まる)。 */
+let bountyLoopMove: BountyMoveKey | null = null;
+
+/**
+ * 技を1つだけ再生する。solo=停止中でもこの技が終わるまで進めて、終わったらまた止まる。
+ * ★idolとの違い: ループ中の技をもう一度押した時、idolは要求箱を「解除」で埋めて即chaseへ戻すが、
+ * ここでは**ループだけを止める**(進行中の技は最後まで再生してから止まる)。停止中に絵が
+ * 技の途中で凍りつくのを避けるため——賞金首は「解除」に相当する移動語彙(verb)を持たない。
+ */
+export const requestBountyMovePlay = (move: BountyMoveKey, opts?: { solo?: boolean; loop?: boolean }): void => {
+  if (bountyLoopMove === move) { bountyLoopMove = null; return; }
+  pendingBountyPlay = { move, solo: opts?.solo ?? false, loop: opts?.loop ?? false };
+};
+/** 停止中でも tick を回す必要があるか(useGameLoop のポーズ判定が読む)。 */
+export const bountyPlaybackActive = (): boolean => bountySoloActive || pendingBountyPlay !== null;
+/** 画面表示用(どの技をループ中か)。verbは賞金首には無いので常に null。 */
+export const getBountyPlayback = (): { verb: string | null; loop: string | null } =>
+  ({ verb: null, loop: bountyLoopMove });
+/**
+ * 全部消す(ラン開始時のリセット経路)。★`createBountyTickState()` に副作用として入れてはいけない
+ * ——`useRef(createBountyTickState())` の引数は毎レンダー評価されるので、パネルが再描画するたびに
+ * 要求箱が空になり「▶を押しても技が1フレームで止まる」になる(idolTick.ts v0.25.2625の実バグ)。
+ */
+export const clearBountyPlayback = (): void => {
+  pendingBountyPlay = null; bountySoloActive = false; bountyLoopMove = null;
+};
+
 /**
  * 賞金首1体を1tick進める。B1の状態(休眠/追跡/帰巣)に加え、B2a/B2bで4体全ての技を追加した。
  * §6.38 B1.5-5: 出現告知(triggerAttention+バナー「賞金首出現」+SE)はスポーン時(呼び出し側=
@@ -1446,7 +1637,18 @@ export const runBountyTick = (
   const dist = Math.hypot(pcx - bcx, pcy - bcy);
   const patch: Partial<Enemy> = {};
 
+  // ---- ボスメーカー: 単独再生の終わり(保険) ------------------------------------------------------
+  // 通常は「技がchaseへ戻ったフレーム」(下の post-tick 判定)で終わる。ここは**割り込みで技が
+  // 消された時**の受け皿——気絶/紫/ノックバック/カウンター/帰巣は post-tick まで到達せずに return
+  // するため、これが無いと bountySoloActive が立ちっぱなしになり **⏸(停止)が二度と効かなくなる**。
+  if (bountySoloActive && pendingBountyPlay === null && (bounty.bossState ?? 'chase') === 'chase') {
+    if (bountyLoopMove !== null) pendingBountyPlay = { move: bountyLoopMove, solo: true, loop: true };
+    else bountySoloActive = false;
+  }
+
   if (bounty.dormant) {
+    // 休眠中の個体に▸は意味が無い。要求を捨てる(捨てないと要求箱が残り続けて⏸が効かなくなる)。
+    if (bountyPlaybackActive()) clearBountyPlayback();
     resetBountyRunState(s);
     const ar = bounty.aggroRange ?? BOUNTY_AGGRO_RANGE_DEFAULT;
     if (dist <= ar) {
@@ -1615,8 +1817,27 @@ export const runBountyTick = (
     }
   }
 
+  // ---- ボスメーカー: 個別再生の要求箱の引き取り(毎フレーム1回・idolTick.tsのpendingPlayと同型) ----
+  // 掟: 強制発動の前に**進行中の技の持ち越しを必ず捨てる**(中途半端な状態が残ると以後の挙動が
+  // 「たまに変」になり、原因究明が地獄になる=idolTick.tsの掟をそのまま踏襲)。
+  let forcedThisFrame = false;
+  if (!countered && pendingBountyPlay !== null) {
+    const req = pendingBountyPlay;
+    pendingBountyPlay = null;
+    if ((BOUNTY_MOVES_BY_TYPE[bounty.type] ?? []).includes(req.move)) {
+      cancelBountyTechnique(s);
+      s.farMs = 0; s.suiuHopIdx = 0;
+      bountySoloActive = req.solo;
+      bountyLoopMove = req.loop ? req.move : null;
+      startBountyMove(req.move, { bounty, s, newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch });
+      forcedThisFrame = true;
+    } else {
+      clearBountyPlayback(); // 別のボスの技キー(取り違え)。握り潰さず再生状態ごと消す。
+    }
+  }
+
   // ---- 技/移動の分岐(§4)。カウンター成立フレームは上でchaseへ落としているのでここには来ない ------
-  if (!countered) {
+  if (!countered && !forcedThisFrame) {
     if (bounty.type === 'bounty-ranged') {
       tickRanged(bounty, s, newGameTime, deltaTime, moveSpeedMult, dist, pcx, pcy, bcx, bcy, sfx, patch);
     } else if (bounty.type === 'bounty-melee') {
@@ -1625,6 +1846,16 @@ export const runBountyTick = (
       tickBalance(bounty, s, newGameTime, deltaTime, moveSpeedMult, dist, pcx, pcy, bcx, bcy, sfx, patch);
     } else if (bounty.type === 'bounty-maiko') {
       tickMaiko(bounty, s, newGameTime, deltaTime, moveSpeedMult, dist, pcx, pcy, bcx, bcy, sfx, patch);
+    }
+    // 単独再生の終わり(idolTick.afterMoveと同じ位置づけ): 技が chase へ戻った**そのフレーム**で
+    // 判定する=停止中に「余分な1フレームだけ歩く」が起きない。ループONなら同じ技をもう一度。
+    if (bountySoloActive && patch.bossState === 'chase') {
+      if (bountyLoopMove !== null) {
+        cancelBountyTechnique(s);
+        startBountyMove(bountyLoopMove, { bounty, s, newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch });
+      } else {
+        bountySoloActive = false;
+      }
     }
   }
 

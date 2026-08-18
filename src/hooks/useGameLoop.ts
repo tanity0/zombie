@@ -148,6 +148,7 @@ import { canForceGateBossNow, bossMakerBossType } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import {
   runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
+  bountyPlaybackActive, clearBountyPlayback,
   bountySpawnBlocked, bountyNaturalSpawnReady, anyBountyEngaged,
   type BountySfx,
 } from '../utils/bountyTick';
@@ -2588,6 +2589,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
           bountyStateRef.current = createBountyTickState(); // 賞金首のラン内状態も新ランでリセット(§6.38 B2a)
+          clearBountyPlayback(); // ボスメーカーの個別再生も新ランで解除(idolと同じ理由=v0.25.2625の教訓)
           bountyNaturalRef.current = { count: 0 }; // 自然湧きの回数も新ランでリセット(§6.38 B4/v8.3)
           policeArmedRef.current = true; // 警察署アリーナの再発動ガードも新ランで解除(§6.24 M48・v0.25.2389)
           bossMakerReadyRef.current = false;
@@ -6285,7 +6287,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (!danceTest && !useGameStore.getState().gameWon) {
          try {
           const activeBounty = pickActiveBounty(useGameStore.getState().enemies);
-          if (activeBounty) {
+          // ボスメーカーの「停止」トグル: ボスの時間だけ止める(絵を止めて見たい時)。プレイヤーは
+          // 動けるまま=当たり判定の位置関係を落ち着いて確かめられる。停止中でも「個別再生」の間だけは
+          // 時間を進める(社長要望v0.25.2625)。★idolと同じ形に揃える(v0.25.3563・社長報告
+          // 「ボスメーカーの上に並んでるメニュー群が効いてない」=ここにガードが無かったのが実体)。
+          // bossMaker.paused は部屋以外では常に false なので、通常プレイの挙動は変わらない。
+          if (activeBounty && (!useGameStore.getState().bossMaker.paused || bountyPlaybackActive())) {
             runBountyTick(
               activeBounty, bountyStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT, Date.now(),
               BOUNTY_SFX, BOSS_COUNTER_ENABLED,

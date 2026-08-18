@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3563',
+    items: [
+      'ゲーム内容の変更はありません(開発ツール: ボスメーカーの停止・技の個別再生が賞金首4種でも効くようになりました)。',
+    ],
+  },
+  {
     version: '0.25.3562',
     items: [
       '馬乗り(変異)の鞭のしなりエフェクトが、鞭とまっすぐ平行に重なるようになりました(向きと軸のズレを修正)。',

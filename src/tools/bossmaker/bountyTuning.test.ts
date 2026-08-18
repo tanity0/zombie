@@ -5,6 +5,7 @@ import { getBossTuning, getAtPath, resetTuning, setAtPath, changedPaths, formatT
 import {
   registerBountyTuning,
   BOUNTY_RANGED_FIELDS, BOUNTY_MELEE_FIELDS, BOUNTY_BALANCE_FIELDS, BOUNTY_MAIKO_FIELDS,
+  BOUNTY_PLAYABLES_BY_TYPE, BOUNTY_MOVES_BY_TYPE,
 } from './bountyTuning';
 import {
   BOUNTY_RANGED_TUNING, BOUNTY_RANGED_TUNING_DEFAULTS,
@@ -135,4 +136,47 @@ describe('コピー→貼り戻しが往復する(実データで)', () => {
       expect(changedPaths(e)).toEqual([]);
     }
   });
+});
+
+// ================================================================================================
+// ▶個別再生(v0.25.3563・社長指示「技再生ボタンは必須」)
+// ================================================================================================
+// ★ここで機械化しているのは「押しても何も起きないボタンを作らない」こと。ボタン(playables)は
+// スキーマ側、実際に始められる技(BOUNTY_MOVES_BY_TYPE)はボス側にあるので、**別々に育つと必ずズレる**。
+describe('▶個別再生の配線(4種まとめて)', () => {
+  beforeEach(() => { registerBountyTuning(); });
+
+  for (const c of CASES) {
+    it(`${c.boss}: playables/onPlay/playState が登録されている(=画面に▶が生える)`, () => {
+      const e = getBossTuning(c.boss)!;
+      expect(e.playables?.length ?? 0).toBeGreaterThan(0);
+      expect(typeof e.onPlay).toBe('function');
+      expect(typeof e.playState).toBe('function');
+    });
+
+    it(`${c.boss}: 全ての▶がボス側の実在する技を指している(押して何も起きないボタンが無い)`, () => {
+      const e = getBossTuning(c.boss)!;
+      const known = BOUNTY_MOVES_BY_TYPE[c.boss] ?? [];
+      const bad = (e.playables ?? []).filter(p => !known.includes(p.key as never));
+      expect(bad.map(p => p.key)).toEqual([]);
+    });
+
+    it(`${c.boss}: ボス側の技は全て▶から出せる(繰り越し無し=社長指示「技再生ボタンは必須」)`, () => {
+      const keys = new Set((BOUNTY_PLAYABLES_BY_TYPE[c.boss] ?? []).map(p => p.key));
+      const missing = (BOUNTY_MOVES_BY_TYPE[c.boss] ?? []).filter(m => !keys.has(m));
+      expect(missing).toEqual([]);
+    });
+
+    it(`${c.boss}: ▶の見出し(section)が数値欄の見出しと一致する(節が2つに割れない)`, () => {
+      const secs = new Set(c.fields.map(f => f.section));
+      const bad = (BOUNTY_PLAYABLES_BY_TYPE[c.boss] ?? []).filter(p => !secs.has(p.section));
+      expect(bad.map(p => p.section)).toEqual([]);
+    });
+
+    // ③(v0.25.3563): P2は bossPhase を持つボスにしか意味が無い。賞金首4種は宣言しない
+    // =パネルはボタンごと出さない(舞妓の型BはHP閾値方式なので HP40% ボタンで到達する)。
+    it(`${c.boss}: hasPhase2 を宣言しない(P2ボタンを出さない)`, () => {
+      expect(getBossTuning(c.boss)!.hasPhase2).toBeFalsy();
+    });
+  }
 });

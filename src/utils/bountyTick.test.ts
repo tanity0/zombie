@@ -9,7 +9,9 @@ import {
   BOUNTY_LINGER_MS, BOUNTY_HIT_ENGAGE_MS, BOUNTY_BASE_HP, BOUNTY_DEPART_FADE_MS,
   BOUNTY_NATURAL_FIRST_MS, BOUNTY_NATURAL_MAX_COUNT, BOUNTY_NATURAL_SPAWN_AT_MS,
   BR_SHOT_UNIT_MS,
-  type BountySfx,
+  requestBountyMovePlay, bountyPlaybackActive, getBountyPlayback, clearBountyPlayback,
+  BOUNTY_MOVES_BY_TYPE,
+  type BountySfx, type BountyMoveKey,
 } from './bountyTick';
 // ★v0.25.3558: 賞金首の数値は bountyScript.ts の可変テーブルが正(ボスメーカーで動かせる)。
 // 既定値は移設前と完全一致なので、この下のテストの期待値は1つも変えていない。
@@ -1249,5 +1251,130 @@ describe('★【回帰・v0.25.3549】城ボスと賞金首の同時出現', () 
 
   it('ボスが場に居なければ従来どおり出せる', () => {
     expect(bountySpawnBlocked(base())).toBe(false);
+  });
+});
+
+// =================================================================================================
+// ボスメーカーの▸個別再生(v0.25.3563・社長指示「技再生ボタンは必須」)
+// =================================================================================================
+// 掟(idolTick.test.tsと同じ): **通常プレイの期待値は1つも書き換えない**。ここで見るのは
+// 「要求箱に入れた技のwindupへ入るか」「再生の立ち下がり(=停止トグルが二度と効かなくなる事故の芽)」だけ。
+describe('runBountyTick — ボスメーカーの個別再生(▸)', () => {
+  beforeEach(() => {
+    setTreesDisabled(true);
+    setTorchesDisabled(true);
+    useGameStore.getState().resetGame('assault');
+    clearBountyPlayback(); // ★毎回まっさらから(モジュール変数の要求箱はテスト間で持ち越される)
+  });
+
+  const START_GT = 10_000_000;
+
+  const setupPlay = (type: EnemyType, playerOffset: { x: number; y: number }, over: Partial<Enemy> = {}) => {
+    const e = spawnEnemyAt(type, 50000, 50000, START_GT);
+    e.dormant = false;
+    e.homeX = e.x; e.homeY = e.y;
+    e.aggroRange = 200;
+    e.lastHit = START_GT;
+    Object.assign(e, over);
+    useGameStore.setState(s => ({
+      enemies: [e],
+      player: { ...s.player, x: e.x + playerOffset.x, y: e.y + playerOffset.y, health: 9999, maxHealth: 9999 },
+    }));
+    let gt = START_GT;
+    const s = createBountyTickState();
+    const step = (ms: number): void => {
+      gt += ms;
+      useGameStore.setState({ gameTime: gt });
+      const cur = useGameStore.getState().enemies.find(x => x.id === e.id);
+      if (cur) runBountyTick(cur, s, gt, ms / 1000, 1, gt);
+    };
+    const stateOf = (): string | undefined =>
+      useGameStore.getState().enemies.find(x => x.id === e.id)?.bossState;
+    return { id: e.id, step, stateOf };
+  };
+
+  it('要求箱は既定で空=通常プレイでは再生機構が一切動かない(挙動不変の担保)', () => {
+    expect(bountyPlaybackActive()).toBe(false);
+    expect(getBountyPlayback()).toEqual({ verb: null, loop: null });
+  });
+
+  // ★「距離条件を無視して直接そのwindupへ入る」= 部屋は訓練場(BOSS_MAKER.mdの精神)。
+  // 馬乗りの懲罰狙撃は本来「遠くに2秒居続ける」が条件なので、密着で出れば条件バイパスの証明になる。
+  it('★距離条件つきの技(懲罰狙撃)も、密着から▸で即その溜めへ入る', () => {
+    const { step, stateOf } = setupPlay('bounty-melee', { x: 60, y: 0 });
+    requestBountyMovePlay('bm-snipe', { solo: true, loop: false });
+    expect(bountyPlaybackActive()).toBe(true);
+    step(16);
+    expect(stateOf()).toBe('bm-snipe-windup');
+  });
+
+  it('▸(突進)で bm-charge-windup へ入る(密着=本来はコンボが選ばれる距離)', () => {
+    const { step, stateOf } = setupPlay('bounty-melee', { x: 60, y: 0 });
+    requestBountyMovePlay('bm-charge', { solo: true, loop: false });
+    step(16);
+    expect(stateOf()).toBe('bm-charge-windup');
+  });
+
+  it('★4体の全ての技が▸で始まる(=技ごとの取りこぼしが無い)', () => {
+    // 期待する入口の状態名。**bossStateの実データで確認する**(「配線したから出ているはず」を根拠にしない)。
+    const ENTRY: Record<BountyMoveKey, string> = {
+      'br-push': 'br-push-windup', 'br-roll': 'br-roll', 'br-triple': 'br-triple-windup',
+      'br-laser': 'laser-windup',
+      'bm-charge': 'bm-charge-windup', 'bm-whip360': 'bm-whip360-windup',
+      'bm-combo': 'bm-combo1-windup', 'bm-snipe': 'bm-snipe-windup',
+      'bb-sweep': 'bb-sweep-windup', 'bb-leap': 'leap-windup',
+      'mk-naginata': 'mk-naginata-windup', 'mk-spin': 'mk-spin-windup',
+      'mk-suiu': 'mk-suiu-windup', 'mk-boom': 'mk-boom-windup',
+    };
+    for (const [type, moves] of Object.entries(BOUNTY_MOVES_BY_TYPE)) {
+      for (const m of moves) {
+        clearBountyPlayback();
+        useGameStore.getState().resetGame('assault');
+        const { step, stateOf } = setupPlay(type as EnemyType, { x: 60, y: 0 });
+        requestBountyMovePlay(m, { solo: true, loop: false });
+        step(16);
+        expect(stateOf(), `${type} / ${m}`).toBe(ENTRY[m]);
+      }
+    }
+  });
+
+  it('★立ち下がり: 単独再生は技が終わると自分で false へ戻る(⏸が効かなくなる事故の芽)', () => {
+    const { step, stateOf } = setupPlay('bounty-melee', { x: 60, y: 0 });
+    requestBountyMovePlay('bm-snipe', { solo: true, loop: false });
+    step(16);
+    expect(bountyPlaybackActive()).toBe(true);
+    let ended = false;
+    for (let i = 0; i < 400; i++) { // 400*16ms=6.4秒(狙撃の溜め+判定+硬直より十分長い)
+      step(16);
+      if (!bountyPlaybackActive()) { ended = true; break; }
+    }
+    expect(ended).toBe(true);
+    expect(stateOf()).not.toBe('bm-snipe-windup');
+  });
+
+  it('🔁ループ中は同じ技を繰り返す / もう一度押すとループだけ止まる', () => {
+    const { step, stateOf } = setupPlay('bounty-melee', { x: 60, y: 0 });
+    requestBountyMovePlay('bm-snipe', { solo: true, loop: true });
+    step(16); // 要求箱の引き取りはtick側(idolと同じ=押した瞬間ではなく次のtickで確定する)
+    expect(getBountyPlayback().loop).toBe('bm-snipe');
+    // 密着では懲罰狙撃は**通常の抽選では絶対に出ない**ので、2回目以降はループの証明になる。
+    let entries = 0, prev: string | undefined;
+    for (let i = 0; i < 600; i++) {
+      step(16);
+      const cur = stateOf();
+      if (cur === 'bm-snipe-windup' && prev !== 'bm-snipe-windup') entries += 1;
+      prev = cur;
+    }
+    expect(entries).toBeGreaterThanOrEqual(2);
+    requestBountyMovePlay('bm-snipe'); // トグル=ループ解除(進行中の技は最後まで再生する)
+    expect(getBountyPlayback().loop).toBeNull();
+  });
+
+  it('別のボスの技キーは握り潰さず捨てる(要求箱が残って⏸が効かなくなるのを防ぐ)', () => {
+    const { step, stateOf } = setupPlay('bounty-balance', { x: 60, y: 0 });
+    requestBountyMovePlay('mk-suiu', { solo: true, loop: true }); // 鋏は舞妓の技を持たない
+    step(16);
+    expect(bountyPlaybackActive()).toBe(false);
+    expect(stateOf()).not.toBe('mk-suiu-windup');
   });
 });

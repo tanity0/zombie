@@ -371,6 +371,7 @@ export const registerIdolTuning = (): void => {
     // §18: 行動パターンは「束で選ぶ」を主にする(中身の数値は詳細トグルでのみ出る)。
     choices: BEHAVIOR_CHOICES,
     playables: IDOL_PLAYABLES,
+    hasPhase2: true, // 上端の P2(bossPhase=2)が効くボス(v0.25.3563・従来どおり表示する)
     // 見出しは固定文字列(`射撃枠 s3`)で持ち、表示だけ社長が付けた名前へ差し替える。
     sectionLabel: sec => {
       const slot = IDOL_SHOT_SLOTS.find(m => shotSection(m) === sec);

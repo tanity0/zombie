@@ -13,8 +13,14 @@
 //    「赤いのに当たらない」になる(バス停専用のダメージ/硬直/CDだけ載せてある)。
 //  - HP(BOUNTY_BASE_HP)と中立時間(BOUNTY_NEUTRAL_MS): 4体で1つの値を共有しているため、
 //    分けると挙動の構造が変わる=仕様変更。社長裁定が要る。
-//  - ▶個別再生(playables): bountyTick.ts に単発再生の口が無い(idolTick.ts の requestIdolMovePlay 相当)。
-import { registerBossTuning, type TuningField } from './bossTuning';
+//
+// ★v0.25.3563(社長報告「ボスメーカーの上に並んでるメニュー群が効いてない」): ▶個別再生を配線した。
+// 実体は bountyTick.ts の requestBountyMovePlay(idolTick.ts の同名の口と同型)。技の開始は実戦と
+// **同じ begin* の束**を通るので、ここで並べたキーは「見た目だけ動く別経路」にはならない。
+import { registerBossTuning, type TuningField, type PlayableAction } from './bossTuning';
+import {
+  requestBountyMovePlay, getBountyPlayback, BOUNTY_MOVES_BY_TYPE, type BountyMoveKey,
+} from '../../utils/bountyTick';
 import {
   BOUNTY_RANGED_TUNING, BOUNTY_RANGED_TUNING_DEFAULTS,
   BOUNTY_MELEE_TUNING, BOUNTY_MELEE_TUNING_DEFAULTS,
@@ -235,6 +241,58 @@ const MK_HELP: Record<string, string> = {
 };
 
 // ================================================================================================
+// ▶個別再生(v0.25.3563・社長指示「技再生ボタンは必須」)
+// ================================================================================================
+// section は**数値欄と同じ見出し文字列**にする(UIはsectionで突き合わせるので、ここがズレると
+// 「見出しはあるのに▶が別の場所に出る」になる)。1つの節に1つなら見出しの右に▶が出て、
+// 2つ以上なら節を開いた中に並ぶ(パネル側の既存の作法。ここでは何も足していない)。
+const play = (key: BountyMoveKey, label: string, section: string): PlayableAction =>
+  ({ kind: 'move', key, label, section });
+
+const BR_PLAYABLES: readonly PlayableAction[] = [
+  play('br-push', '押しのけ', BR_SEC.push),
+  play('br-laser', 'レーザー', BR_SEC.laser),
+  // 台本(ロール→三段突き)と、三段突きだけ。実戦では近距離が台本・中距離が直行なので、
+  // **どちらの入り方も見られるように2つ出す**(距離条件は再生時にバイパスされる)。
+  play('br-roll', 'ロール→三段突き', BR_SEC.triple),
+  play('br-triple', '三段突きだけ', BR_SEC.triple),
+];
+const BM_PLAYABLES: readonly PlayableAction[] = [
+  play('bm-charge', '突進(→ムチ)', BM_SEC.charge),
+  play('bm-whip360', 'ムチだけ', BM_SEC.whip),
+  play('bm-combo', '3段コンボ', BM_SEC.combo),
+  play('bm-snipe', '懲罰狙撃', BM_SEC.snipe),
+];
+const BB_PLAYABLES: readonly PlayableAction[] = [
+  play('bb-sweep', '薙ぎ払い', BB_SEC.sweep),
+  play('bb-leap', '跳びかかり', BB_SEC.leap),
+];
+const MK_PLAYABLES: readonly PlayableAction[] = [
+  // 毬の薙ぎは**いまの型に従う**(型A=単発 / 型B=2連)。型は HP40% ボタンで切り替える。
+  play('mk-naginata', '毬の薙ぎ', MK_SEC.nag),
+  play('mk-spin', '毬回し', MK_SEC.spin),
+  play('mk-suiu', '水鳥乱舞', MK_SEC.suiu),
+  play('mk-boom', '手毬打ち', MK_SEC.boom),
+];
+
+/** ▶を押した時の実行(4体で同じ1本。ボス側の要求箱へ渡すだけ)。 */
+const onBountyPlay = (a: PlayableAction, opts: { solo: boolean; loop: boolean }): void => {
+  requestBountyMovePlay(a.key as BountyMoveKey, opts);
+};
+
+/**
+ * 「並べたボタン」と「ボス側が実際に始められる技」が食い違っていないかの検算材料
+ * (bountyTuning.test.ts が突き合わせる。押しても何も起きないボタンを作らないため)。
+ */
+export const BOUNTY_PLAYABLES_BY_TYPE: Readonly<Record<string, readonly PlayableAction[]>> = {
+  'bounty-ranged': BR_PLAYABLES,
+  'bounty-melee': BM_PLAYABLES,
+  'bounty-balance': BB_PLAYABLES,
+  'bounty-maiko': MK_PLAYABLES,
+};
+export { BOUNTY_MOVES_BY_TYPE };
+
+// ================================================================================================
 // 登録
 // ================================================================================================
 export const BOUNTY_RANGED_FIELDS: readonly TuningField[] = rangedFields();
@@ -250,23 +308,29 @@ export const registerBountyTuning = (): void => {
     table: BOUNTY_RANGED_TUNING as unknown as Record<string, unknown>,
     defaults: BOUNTY_RANGED_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: BOUNTY_RANGED_FIELDS, sectionHelp: BR_HELP,
+    // hasPhase2 は宣言しない=賞金首4体はフェーズを bossPhase で持たないので P2 ボタンを出さない
+    // (舞妓の型Bだけは bossPhase を使うが、切替はHP閾値方式=HP40%ボタンで到達する。§7も参照)。
+    playables: BR_PLAYABLES, onPlay: onBountyPlay, playState: getBountyPlayback,
   });
   registerBossTuning({
     bossType: 'bounty-melee', label: '馬乗り(変異)',
     table: BOUNTY_MELEE_TUNING as unknown as Record<string, unknown>,
     defaults: BOUNTY_MELEE_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: BOUNTY_MELEE_FIELDS, sectionHelp: BM_HELP,
+    playables: BM_PLAYABLES, onPlay: onBountyPlay, playState: getBountyPlayback,
   });
   registerBossTuning({
     bossType: 'bounty-balance', label: '鋏(変異)',
     table: BOUNTY_BALANCE_TUNING as unknown as Record<string, unknown>,
     defaults: BOUNTY_BALANCE_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: BOUNTY_BALANCE_FIELDS, sectionHelp: BB_HELP,
+    playables: BB_PLAYABLES, onPlay: onBountyPlay, playState: getBountyPlayback,
   });
   registerBossTuning({
     bossType: 'bounty-maiko', label: '舞妓(変異)',
     table: BOUNTY_MAIKO_TUNING as unknown as Record<string, unknown>,
     defaults: BOUNTY_MAIKO_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: BOUNTY_MAIKO_FIELDS, sectionHelp: MK_HELP,
+    playables: MK_PLAYABLES, onPlay: onBountyPlay, playState: getBountyPlayback,
   });
 };

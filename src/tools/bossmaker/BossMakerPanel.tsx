@@ -733,7 +733,11 @@ export const BossMakerPanel = () => {
           )}
           <div className="w-1 shrink-0" />
           <button className={`${ico} ${off} !w-auto px-2 text-[10px] font-bold`} onClick={() => patchBoss(e => ({ health: Math.max(1, Math.round(e.maxHealth * 0.4)) }))}>HP40%</button>
-          <button className={`${ico} ${off} !w-auto px-2 text-[10px] font-bold`} onClick={() => patchBoss(() => ({ bossPhase: 2 }))}>P2</button>
+          {/* P2 は bossPhase を持つボスにだけ出す(v0.25.3563)。持たないボスでは押しても何も
+              起きない=「効かないボタン」になるので、ボタンごと出さない(宣言は entry.hasPhase2)。 */}
+          {entry.hasPhase2 && (
+            <button className={`${ico} ${off} !w-auto px-2 text-[10px] font-bold`} onClick={() => patchBoss(() => ({ bossPhase: 2 }))}>P2</button>
+          )}
           <button className={`${ico} ${off} !w-auto px-2 text-[10px] font-bold`} onClick={() => patchBoss(() => ({ health: 1 }))}>瀕死</button>
           <button
             className={`${ico} ${off} !w-auto px-2 text-[10px] font-bold`}

@@ -1,5 +1,74 @@
 # Development Log
 
+## v0.25.3563 — ボスメーカーの上部操作列を賞金首4種でも効かせる(⏸ / ▸ / P2)【2026-08-19 00:42 JST】
+
+社長報告「ボスメーカーの上に並んでるメニュー群(が効いてない)」+ 追加指示「あと技再生ボタンは必須」。
+v0.25.3558(第1弾=賞金首4種のテーブル化)で繰り越した**操作の配線**を実装した。**ゲームの仕様・挙動・
+数値は一切変えていない**——全ての変更は `bossMaker` の部屋でのみ意味を持つ(下の「挙動不変の担保」参照)。
+
+### ① ⏸(ボスの時間停止)を賞金首にも効かせる
+- **原因**: `useGameLoop.ts` の `runIdolTick` 呼び出しだけが `bossMaker.paused` でガードされており、
+  `runBountyTick` の呼び出しには**ガードが無かった**(⏸を押しても賞金首は動き続ける)。
+- **修正**: idol と同じ形に揃えた
+  `if (activeBounty && (!bossMaker.paused || bountyPlaybackActive()))`。
+  「停止中でも個別再生の間だけは時間を進める」(社長要望v0.25.2625)も idol と同じ。
+- `bossMaker.paused` は部屋以外では常に false なので、**通常プレイは1バイトも変わらない**。
+
+### ② ▸(技の個別再生)を賞金首4種へ実装(★社長指示「必須」・繰り越しなし)
+- **遷移コードは複製していない**。各tickの chase 分岐にあった「技を始める」部分を
+  `bountyTick.ts` の **`begin*` の束**(`BountyBeginCtx` を取る14個の小関数)へ切り出し、
+  **実戦の抽選と▸の再生が同じ1本を通る**ようにした。条件(距離帯・CD・重みの抽選)は呼び出し側に残す
+  =▸は条件をバイパスして `begin*` を直接叩く(部屋は訓練場)。**技の中身は本番と同じコードを通る。**
+- 要求箱は `idolTick.ts` の `pendingPlay` と同型:
+  `requestBountyMovePlay` / `bountyPlaybackActive` / `getBountyPlayback` / `clearBountyPlayback`。
+  ★`createBountyTickState()` に副作用として入れない(v0.25.2625 の実バグの教訓)。
+  リセットは `useGameLoop` のラン開始点で `clearBountyPlayback()` を明示的に呼ぶ。
+- **14技すべてに▸を出した**(繰り越しゼロ):
+  バス停=押しのけ / ロール→三段突き / 三段突きだけ / レーザー、
+  馬乗り=突進(→ムチ) / ムチだけ / 3段コンボ / 懲罰狙撃、
+  鋏=薙ぎ払い / 跳びかかり、舞妓=毬の薙ぎ / 毬回し / 水鳥乱舞 / 手毬打ち。
+  - 「ムチだけ」「三段突きだけ」は**実戦では前段(突進 / ロール)から自動で繋がる**ので単独抽選されない技。
+    訓練場としてはそれ単体を見たいので、入口を直接叩けるようにした。
+  - 舞妓の「毬の薙ぎ」は**いまの型に従う**(型A=単発 / 型B=2連)。型の切替は上端の `HP40%` ボタン。
+- 🔁ループは idol の作法どおり **solo(=停止中)の時だけ**繰り返す。もう一度押すとループだけ止まる
+  (進行中の技は最後まで再生してから止まる=停止中に絵が技の途中で凍らない。idolとの意図的な差)。
+- **⏸が二度と効かなくなる事故の芽を2重に塞いだ**: 通常は「技がchaseへ戻ったフレーム」で立ち下げ、
+  割り込み(紫/気絶/ノックバック/カウンター/帰巣=post-tickまで到達せず return する経路)は
+  tick冒頭の保険で立ち下げる。休眠個体への要求と、別ボスの技キーは捨てる。
+
+### ③ P2 ボタンをボスに合わせる
+- `BossTuningEntry` に **`hasPhase2?: boolean`** を足し、**宣言したボスにだけ P2 ボタンを描画**する
+  (UIはボスを知らないまま出し分ける=§2-3を崩さない)。idol は `hasPhase2: true`(従来どおり)。
+- 賞金首4種は宣言しない=**P2 ボタンごと出ない**。舞妓の型B切替はHP閾値方式なので `HP40%` ボタンで
+  実質到達できる(**仕様は変えていない**)。判断が要る話は BOSS_MAKER.md §7-5 に★未決として残した。
+
+### 挙動不変の担保(通常プレイの賞金首は1バイトも変わらない)
+- 既存 81 本(`bountyTick.test.ts`)+ 35 本(`bountyTuning.test.ts`)の**期待値を1つも書き換えずに全pass**。
+  = `begin*` への切り出しが純粋なリファクタであることの機械的な証明。
+- 要求箱を書くのは `BossMakerPanel` だけ。通常プレイでは常に null で、毎フレームの追加費用は bool 2つの比較。
+  負荷スコア **1/10**(simulation・分岐2つ。描画・メモリへの追加ゼロ)。
+
+### 検証
+- `npm run typecheck` 0エラー / `npm run lint` 0エラー(warning 8=既存)。
+- `npx vitest run src/utils/bountyTick.test.ts src/tools/bossmaker/` → **274 pass**
+  (bountyTick 81→88 / bountyTuning 35→55。新規27本=▸の入口・立ち下がり・ループ・取り違え・配線の突き合わせ)。
+- **ヘッドレス実走**(Playwright・`bossmaker.html?...&makerboss=bounty-melee`):
+  - ⏸前: ボスが動く(1.2秒で Δ=2.014px)。
+  - ⏸後: **Δ=0.000px / bossState 据え置き / gameTime は進行**(=ボスの時間だけ止まっている)。
+  - ▸(突進)クリック → `bm-charge-windup` → `bm-charge` → `bm-whip360-windup` → `bm-whip360`
+    と**停止中(paused=true)のまま最後まで再生**された。pageerror なし。
+
+### 変更ファイル
+`src/utils/bountyTick.ts`(begin*抽出+要求箱)/ `src/hooks/useGameLoop.ts`(⏸ガード+ランリセット)/
+`src/tools/bossmaker/bountyTuning.ts`(playables/onPlay/playState)/ `src/tools/bossmaker/bossTuning.ts`
+(`hasPhase2`)/ `src/tools/bossmaker/BossMakerPanel.tsx`(P2の出し分け)/ `src/tools/bossmaker/idolTuning.ts`
+(`hasPhase2: true`)/ 各テスト / `BOSS_MAKER.md`(§6 フェーズ表・§6-1 配線の型・§7-5/§7-6 未決)。
+
+### 次の引き継ぎ
+- **★未決(社長裁定待ち)**: BOSS_MAKER.md §7-5(舞妓の型Bを画面から直に呼べるようにするか)と
+  §7-6(バス停の中立射撃 burst/fan/charge に▸を出すか。推薦=「1サイクル=型1つ」を再生単位にする)。
+  どちらも**仕様に触れるので実装していない**(勝手に決めない)。
+
 ## v0.25.3562 — 鞭スミアの向き修正 + ボット分離ステア強化【2026-08-19 00:14 JST】
 
 ### ① 馬乗りの鞭シナリ(スミア)の向き(社長報告「向きが合ってない。鞭に対してまっすぐ」)
