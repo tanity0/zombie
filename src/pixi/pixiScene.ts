@@ -3233,6 +3233,9 @@ export class PixiScene {
   private bountyThrustWindSprites = new Map<string, Sprite>();
   // 馬乗り3段コンボの鞭スミア(fx/whip-smear-0/1/2・段対応)。コンボ段ごとに1枚のpooled sprite。
   private bountyWhipSmearSprites = new Map<string, Sprite>();
+  // ★v0.25.3566: 360度薙ぎの追従アーク(pooled)と、突進の前振りの開始時刻(技の回数で焼く)。
+  private bountyWhip360ArcSprites = new Map<string, Sprite>();
+  private bountyChargeSwingStart = new Map<string, { key: string; at: number }>();
   /** v0.25.3520: 鞭の残像を「振りの開始位置」へ焼き付けるための錨(本体の移動に付いて行かせない)。 */
   private bountyWhipSmearAnchor = new Map<string, { key: string; x: number; y: number }>();
   /**
@@ -11963,6 +11966,9 @@ export class PixiScene {
         if (bountyThrustWindSp) { bountyThrustWindSp.destroy(); this.bountyThrustWindSprites.delete(id); }
         const bountyWhipSp = this.bountyWhipSmearSprites.get(id);
         if (bountyWhipSp) { bountyWhipSp.destroy(); this.bountyWhipSmearSprites.delete(id); }
+        const bountyArc360Sp = this.bountyWhip360ArcSprites.get(id); // ★v0.25.3566
+        if (bountyArc360Sp) { bountyArc360Sp.destroy(); this.bountyWhip360ArcSprites.delete(id); }
+        this.bountyChargeSwingStart.delete(id);
         const scissorFlashSp = this.bountyScissorFlashSprites.get(id);
         if (scissorFlashSp) { scissorFlashSp.destroy(); this.bountyScissorFlashSprites.delete(id); }
         this.bountyScissorFlashKey.delete(id);
@@ -14080,6 +14086,8 @@ export class PixiScene {
       if (weaponSp) weaponSp.visible = false;
       const smearSp = this.bountyWhipSmearSprites.get(e.id);
       if (smearSp) smearSp.visible = false;
+      const arc360Sp = this.bountyWhip360ArcSprites.get(e.id); // ★v0.25.3566: 既定OFF(描く分岐だけが点ける)
+      if (arc360Sp) arc360Sp.visible = false;
       const thrustWindSp = this.bountyThrustWindSprites.get(e.id);
       if (thrustWindSp) thrustWindSp.visible = false;
     }
@@ -14874,14 +14882,32 @@ export class PixiScene {
         const prog = comboProg;
         // 出現ease=1段目の立ち上がりだけ(2段目以降は既に振り抜かれた鞭が継続して見えているので再出現させない)。
         const ease = bs2 === 'bm-combo1-windup' ? weaponSpawnEase(BM_T.combo.windup[0] * prog, Infinity) : { dy: 0, alphaMul: 1 };
-        // 技表GO: 3段コンボ=スミア0→1→2と同期した振り抜き回転。振りかぶり(角度オフセット)から
-        // ease-outでaimAngへ振り抜く=impactの瞬間(prog=1)にスミアと重なる。段ごとに向きを反転。
+        // ★v0.25.3566(社長指示「後ろに振りかぶって、溜めて、最後に前に振らないと」): 3拍の振りへ作り直し。
+        // 旧: 振りかぶり位置からwindup全体をかけて等間隔にaimへ寄る=「溜め」が無く、振りの山も無かった。
+        // 新: ①0〜45% 後ろへ振りかぶる(ease-out=引き切りで減速・慣性) ②45〜80% 溜め(背後で保持+
+        //     じわっと絞る) ③80〜100% 前へ振り抜く(ease-in=加速して impact(prog=1)で aim に到達)。
+        // スミア(しなり軌跡)は**③の振り抜きの間だけ**出す(=軌跡は速い振りにしか出ない)。段ごとに向き反転。
         const swingDir = step % 2 === 0 ? 1 : -1;
-        const swingEased = 1 - Math.pow(1 - prog, 2);
-        const swingAngle = aimAng - swingDir * Math.PI * 0.4 * (1 - swingEased);
+        const BACK = Math.PI * 0.7; // 振りかぶりの深さ
+        let swingAngle: number;
+        let snapT = 0; // ③の進行(0=まだ/1=振り切り)
+        if (prog < 0.45) {
+          const t = prog / 0.45;
+          const eo = 1 - Math.pow(1 - t, 2); // ease-out=引き切りで減速
+          swingAngle = aimAng - swingDir * BACK * eo;
+        } else if (prog < 0.8) {
+          const t = (prog - 0.45) / 0.35;
+          swingAngle = aimAng - swingDir * (BACK + Math.PI * 0.06 * t); // 溜め=じわっと絞る
+        } else {
+          snapT = (prog - 0.8) / 0.2;
+          const ei = snapT * snapT; // ease-in=加速して振り抜く
+          swingAngle = aimAng - swingDir * (BACK + Math.PI * 0.06) * (1 - ei);
+        }
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, swingAngle, 170, 0.95 * ease.alphaMul,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
-        this.drawBountyWhipSmear(e.id, prog, cx, cy, swingAngle, 170, 0.5 + 0.5 * prog, `${this.moveInstanceNo(e.id, bs2 ?? '')}`);
+        if (snapT > 0) {
+          this.drawBountyWhipSmear(e.id, snapT, cx, cy, swingAngle, 170, 0.5 + 0.5 * snapT, `${this.moveInstanceNo(e.id, bs2 ?? '')}`);
+        }
       } else if (bs2 === 'bm-combo1-recover' || bs2 === 'bm-combo2-recover') {
         // 次段へ継続するだけの中継=消滅させない(コンボが繋がっている間は鞭を出しっぱなし)。
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9,
@@ -14918,18 +14944,35 @@ export class PixiScene {
       } else if (bs2 === 'bm-charge-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BM_T.charge.windup));
         const ease = weaponSpawnEase(BM_T.charge.windup * prog, Infinity);
-        // 技表GO(旧「引きずり構え」から更新): 突進=頭上ぐるぐる→発進。角速度をprog^2に比例させ、
-        // 0からいきなり高速回転させない(慣性)。頭上で回し切ってから発進(bm-chargeで進行方向へ切替)。
-        const spinTurns = 2.2;
-        const spinAngle = prog * prog * spinTurns * Math.PI * 2;
+        // ★v0.25.3566(社長指示「突進のときもクルクルするの変。振りかぶって突進で前に振る動作かな」):
+        // 旧「頭上ぐるぐる2.2回転」を廃止。予告中は**進行方向の後ろへ振りかぶる**(ease-out=
+        // 引き切りで減速・慣性)。前へ振るのは bm-charge(発進)側で行う。
+        const backEased = 1 - Math.pow(1 - prog, 2);
+        const windupAngle = aimAng - Math.PI * 0.8 * backEased;
         this.drawBountyWeapon(
           e.id, 'bounty-melee-whip',
-          cx, cy - e.height * 0.35 + ease.dy,
-          spinAngle, 170, 0.9 * ease.alphaMul,
+          cx, cy + ease.dy,
+          windupAngle, 170, 0.9 * ease.alphaMul,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-charge') {
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, Math.atan2((e.vy ?? 0), (e.vx ?? 1) || 1), 170, 0.95,
+        // ★v0.25.3566: 発進の最初の220msで、振りかぶり位置(後ろ0.8π)から進行方向へ**前に振り抜く**
+        // (ease-out=振り切りで減速して構えに収まる)。以後は進行方向を向いたまま引きずる(従来どおり)。
+        // 開始時刻は技の回数(moveInstanceNo)で焼く=時計に依存しない(bossStateUntilは識別子にしない掟)。
+        const velAng = Math.atan2((e.vy ?? 0), (e.vx ?? 1) || 1);
+        const chargeKey = `${this.moveInstanceNo(e.id, bs2 ?? '')}`;
+        let chargeAnchor = this.bountyChargeSwingStart.get(e.id);
+        if (!chargeAnchor || chargeAnchor.key !== chargeKey) {
+          chargeAnchor = { key: chargeKey, at: now };
+          this.bountyChargeSwingStart.set(e.id, chargeAnchor);
+        }
+        const snapT = Math.max(0, Math.min(1, (now - chargeAnchor.at) / 220));
+        const snapEased = 1 - Math.pow(1 - snapT, 2);
+        const chargeAngle = velAng - Math.PI * 0.8 * (1 - snapEased);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, chargeAngle, 170, 0.95,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
+        if (snapT < 1) {
+          this.drawBountyWhipSmear(e.id, snapT, cx, cy, chargeAngle, 170, 0.8 * (1 - snapT * 0.4), chargeKey);
+        }
       } else if (bs2 === 'bm-whip360-windup') {
         // 社長指示v0.25.3473「ダッシュ後に360度、ムチ振り攻撃。(慣性入れてね)」の予告。
         // 判定=自分中心の円(BM_T.whip360.radius)。赤円と判定は同じ値=厳密一致。
@@ -14949,8 +14992,11 @@ export class PixiScene {
         o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 3, color: 0xff5a5a, alpha: 0.5 * (1 - t) });
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, ang, BM_T.whip360.radius, 0.98,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
-        // スネア3枚を1振りの中で回す(しなり→伸び)。角度は鞭と同じ=揃える。
-        this.drawBountyWhipSmear(e.id, t, cx, cy, ang, BM_T.whip360.radius, 0.85, `${this.moveInstanceNo(e.id, bs2 ?? '')}`);
+        // ★v0.25.3566(社長指示「360度振りにはスネアエフェクト使わず弧を描く斬撃の方がいい」):
+        // スミアをやめ、既存の弧斬撃素材(fx/slash-arc・鋏の薙ぎと同じ)を**鞭の回転に追従**させる。
+        // 中心=判定円と同じ現在のボス中心 / 半径=判定と同じ whip360.radius(切っ先の通り道)。
+        // 出は最初の15%でフェードイン・終わりの20%でフェードアウト(パッと出て消えない=慣性)。
+        this.drawBountyWhip360Arc(e.id, cx, cy, ang, BM_T.whip360.radius, t);
       } else if (bs2 === 'bm-charge-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const ease = weaponSpawnEase(Infinity, remain);
@@ -23099,6 +23145,27 @@ export class PixiScene {
     sp.visible = true;
   }
 
+  /** ★v0.25.3566: 360度薙ぎの追従アーク。鋏の弧斬撃と同じ素材(fx/slash-arc)を、鞭の回転角に
+   * 毎フレーム追従させる(一発焼き付け型の triggerBountySlashArcOnce とは別物=回す絵)。
+   * spriteは専用スロット(bountyWhip360ArcSprites)でpooled・mark-and-sweepで回収。 */
+  private drawBountyWhip360Arc(id: string, cx: number, cy: number, ang: number, radiusPx: number, t01: number): void {
+    const tex = getTexture('fx/slash-arc');
+    if (!tex) return;
+    let sp = this.bountyWhip360ArcSprites.get(id);
+    if (!sp) {
+      sp = new Sprite(tex); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
+      this.L.effectLayer.addChild(sp); this.bountyWhip360ArcSprites.set(id, sp);
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    sp.rotation = ang + Math.PI; // triggerBountySlashArcOnceと同じ規約(素材の膨らみを振る方向へ)
+    sp.width = radiusPx * 2; sp.height = radiusPx * 2; // 縦横同寸=切っ先の円弧そのもの
+    sp.position.set(cx, cy);
+    const fadeIn = Math.min(1, t01 / 0.15);
+    const fadeOut = Math.min(1, (1 - t01) / 0.2);
+    sp.alpha = 0.9 * Math.min(fadeIn, fadeOut);
+    sp.visible = true;
+  }
+
   // 技表GO: 鋏の命中閃(fx/scissor-x-0..2)。判定=カプセル/円そのもの(社長方針「分類2=派手さの絵は
   // 判定より大きく」)なので、判定の太さより一回り大きく出す。impact.: 一撃につき1回だけ発火(dedup)。
   private triggerBountyScissorFlashOnce(id: string, key: string, x: number, y: number, angle: number, step: 0 | 1 | 2, now: number): void {
@@ -24588,6 +24655,7 @@ export class PixiScene {
     for (const o of this.bountyWeaponSprites.values()) o.destroy();
     for (const o of this.bountyThrustWindSprites.values()) o.destroy();
     for (const o of this.bountyWhipSmearSprites.values()) o.destroy();
+    for (const o of this.bountyWhip360ArcSprites.values()) o.destroy();
     for (const o of this.bountyScissorFlashSprites.values()) o.destroy();
     for (const o of this.bossGunMuzzleSprites.values()) o.destroy();
     for (const p of this.petalPool) p.sp.destroy();
