@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.3545 — リザルトの「七つの大罪」見出しを削除【2026-08-18 20:24 JST】
+
+- **社長指示「リザルトの『七つの大罪』って文字タイトル消して」。**
+- `src/components/ResultReach.tsx` の7段帯の直下にあった見出し行から、左の `七つの大罪` を削除。
+  **右の現在ランク表示(`R◯ 罪名`)は残す**ので、`justify-between` → `justify-end` に変えて
+  元の右端位置を保った(1つ残った子が左へ寄るのを防ぐ)。
+- **7段の帯そのもの・自己最高の金の⚑・現在ランクの強調は不変**(消したのは見出しの文字だけ)。
+- なお `GameOverScreen.tsx` / `ResultReach.tsx` に残る「七つの大罪」はいずれも**コード内コメント**で、
+  画面には出ない(検索で確認済み)。
+- 変更ファイル: `src/components/ResultReach.tsx` / `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+- 検証: `npm run typecheck` 0エラー / `npm run lint` 0エラー。実機確認は社長。
+
+
 ## v0.25.3544 — リザルト到達メーター: エリア名を最前面へ【2026-08-18 20:18 JST】
 
 - **社長指示「リザルトのエリア名にメーターが被っちゃってる。文字の方をレイヤー上にして」。**

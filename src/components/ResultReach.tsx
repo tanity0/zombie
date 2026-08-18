@@ -265,8 +265,9 @@ const ResultReach: React.FC<ResultReachProps> = ({
           </div>
         ))}
       </div>
-      <div className="mt-1 flex justify-between font-mono text-[7.5px] tracking-widest text-white/30">
-        <span>七つの大罪</span>
+      {/* ★v0.25.3545(社長指示「リザルトの『七つの大罪』って文字タイトル消して」): 見出しの文字を削除。
+          右の現在ランク表示(R◯ 罪名)はそのまま残すので、justify-end で元の右端位置を保つ。 */}
+      <div className="mt-1 flex justify-end font-mono text-[7.5px] tracking-widest text-white/30">
         <span>R{cur} {ranks[cur - 1]?.name}</span>
       </div>
 

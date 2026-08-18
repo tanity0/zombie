@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3545',
+    items: [
+      'リザルトから「七つの大罪」の見出し文字を外しました(7段の帯と現在ランクの表示はそのままです)。',
+    ],
+  },
+  {
     version: '0.25.3544',
     items: [
       'リザルトの到達メーターで、エリア名が掘削の柱に隠れてしまう問題を修正しました(エリア名が前面に出ます)。',
