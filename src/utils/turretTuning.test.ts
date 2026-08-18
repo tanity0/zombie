@@ -3,7 +3,7 @@
 // **Lvの判定式が1本であること**と**階段の向き**をここで固定する。
 import { describe, it, expect } from 'vitest';
 import {
-  TURRET_DURATION_BY_LEVEL, TURRET_FIRE_INTERVAL_MULT_BY_LEVEL,
+  TURRET_DURATION_BY_LEVEL, TURRET_FIRE_INTERVAL_MULT_BY_LEVEL, TURRET_COOLDOWN_MS, turretNextReadyAt,
   turretLevelFromDuration, turretFireIntervalMs,
 } from './turretTuning';
 
@@ -57,5 +57,38 @@ describe('turretFireIntervalMs(発射間隔の階段)', () => {
     expect(TURRET_FIRE_INTERVAL_MULT_BY_LEVEL[3]).toBe(1);
     expect(TURRET_FIRE_INTERVAL_MULT_BY_LEVEL[1]).toBeGreaterThan(TURRET_FIRE_INTERVAL_MULT_BY_LEVEL[2]);
     expect(TURRET_FIRE_INTERVAL_MULT_BY_LEVEL[2]).toBeGreaterThan(TURRET_FIRE_INTERVAL_MULT_BY_LEVEL[3]);
+  });
+});
+
+describe('★turretNextReadyAt — CDは「消えてから」数える(社長報告v0.25.3552「CDがズルしてる」)', () => {
+  it('次に設置できる時刻 = 設置時刻 + 寿命 + CD', () => {
+    expect(turretNextReadyAt(0, 1)).toBe(TURRET_DURATION_BY_LEVEL[1] + TURRET_COOLDOWN_MS);
+    expect(turretNextReadyAt(0, 2)).toBe(TURRET_DURATION_BY_LEVEL[2] + TURRET_COOLDOWN_MS);
+    expect(turretNextReadyAt(0, 3)).toBe(TURRET_DURATION_BY_LEVEL[3] + TURRET_COOLDOWN_MS);
+  });
+
+  it('★【不変条件】CDはタレットの寿命と並走しない(寿命が明ける前に再設置できない)', () => {
+    // これが「ズル」の中身。旧実装は CD=設置+10秒 で寿命(10/13/15秒)と並走し、
+    // CD明けに**まだ生きているタレットを消して置き直す**ため、どのLvでも実効「10秒周期で常設」だった。
+    for (const lv of [1, 2, 3]) {
+      const placedAt = 5000;
+      expect(turretNextReadyAt(placedAt, lv))
+        .toBeGreaterThan(placedAt + TURRET_DURATION_BY_LEVEL[lv]);
+    }
+  });
+
+  it('★【不変条件】持続時間の階段が、そのまま「次に置けるまで」の階段になる(Lvが死なない)', () => {
+    // v0.25.3482の持続時間の階段(10/13/15秒)が1秒も効いていなかったのが今回の不具合。
+    expect(turretNextReadyAt(0, 2)).toBeGreaterThan(turretNextReadyAt(0, 1));
+    expect(turretNextReadyAt(0, 3)).toBeGreaterThan(turretNextReadyAt(0, 2));
+  });
+
+  it('設置時刻ぶんは素直にずれる', () => {
+    expect(turretNextReadyAt(12345, 2) - turretNextReadyAt(0, 2)).toBe(12345);
+  });
+
+  it('範囲外のLvは1..3へ丸める(落ちない)', () => {
+    expect(turretNextReadyAt(0, 0)).toBe(turretNextReadyAt(0, 1));
+    expect(turretNextReadyAt(0, 9)).toBe(turretNextReadyAt(0, 3));
   });
 });

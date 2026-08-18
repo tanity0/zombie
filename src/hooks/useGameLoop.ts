@@ -212,7 +212,7 @@ import {
   resistsChipKnockback
 } from '../utils/enemyUtils';
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
-import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs } from '../utils/turretTuning';
+import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs, turretNextReadyAt } from '../utils/turretTuning';
 import {
   isCounterablePhase, phaseJustChanged, BOSS_ALERT_SFX_KEY,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
@@ -498,7 +498,6 @@ const SHIELD_KNOCKBACK_MULT = 1.4;           // 接触した敵を外向きへ�
 // オート射撃。デフォルト=前方集中(ティア3SMG=handgun-t3 相当/長射程の直線制圧)。叩くと
 // 全方位(ハンドガン=handgun-t1 相当/短射程の周囲対応)へ切替。通常弾の代わりに低確率で
 // グレネード弾(既存ヘビーグレネードを流用)。消滅時に小爆発。数値は実機調整前提(TODO)。
-const TURRET_COOLDOWN_MS = 10000;                       // 設置間隔(全Lv共通10秒)
 // 社長裁定v0.25.3482「秒数を変えようかな。15秒+たまに爆発が3 / 13秒が2 / 10秒が1」:
 // Lv1=10秒 / Lv2=13秒 / Lv3=15秒。**Lv3だけ「たまに爆発」(グレネード弾10%)が付く**。
 // 旧: 全Lv 15000で「Lv2/3はTODO(暫定据置)」=買っても何も強くならない状態だった。
@@ -7307,7 +7306,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // v0.25.2480: ゴースト発動時のみ設置点で距離減衰(プレイヤー発動は従来どおり等倍)。
           const turretGain = ghostOwned ? subSfxGainAt(footX, footY) : 1;
           if (turretGain > 0) playSfx('shield-deploy', turretGain);
-          setActorSubWeaponCooldown(ownerGhostId(trOwner), 'turret', gameTime + TURRET_COOLDOWN_MS);
+          // ★v0.25.3552(社長報告「CDがズルしてる。設置からのCDになってる」): CDは**タレットが
+          // 消えてから**数える(= 設置時刻 + 寿命 + CD)。旧実装はCDが寿命と並走していたため、
+          // Lv2/Lv3の長い寿命が毎回捨てられ、どのLvでも実効「10秒周期で常設」になっていた。
+          // 式は turretTuning.ts(Lv差の唯一の出どころ)へ集約。
+          setActorSubWeaponCooldown(ownerGhostId(trOwner), 'turret', turretNextReadyAt(gameTime, level));
           consumeGhostSubClaim(trOwner); // G2.6
         }
 
