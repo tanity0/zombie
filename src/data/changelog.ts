@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3559',
+    items: [
+      '秘密兵器箱の出現率を10%から5%に下げました(パンプキンが常連化して箱の数が増え、実出現が想定の3倍以上に膨らんでいたため)。',
+    ],
+  },
+  {
     version: '0.25.3558',
     items: ['ゲーム内容の変更はありません(開発ツール: ボスメーカーで賞金首4種の数値を調整できるようになりました)。'],
   },

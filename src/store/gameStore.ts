@@ -2660,7 +2660,10 @@ const WEAPON_CRATE_SCATTER_RADIUS = 92;
 // 社長指示v0.25.3277「武器箱が10%の確率で[秘密兵器箱]に変化」: 拾うと大表示+武器抽選3回+
 // 赤経験値20個ばらまき(松明壊し=DROP_SCATTER_RADIUS 42より広く)。屋内(研究所)は武器が
 // 出ない箱(トレジャー箱)なので対象外。
-const SECRET_CRATE_RATE = 0.10;
+// ★v0.25.3559(社長裁定「5%にさげよう」): 0.10 → 0.05。率そのものは v0.25.3277 から不変だったが、
+// パンプキンが台本の邪魔者枠で常連化して箱の数が約3倍(抽選13回/ラン前後)になり、秘密箱の実出現が
+// 期待値1.3個/ランまで膨らんでいた(社長報告「その確率が異様に高い」)。5%で期待値≈0.65個/ランへ。
+const SECRET_CRATE_RATE = 0.05;
 const SECRET_CRATE_WEAPON_ROLLS = 3;
 const SECRET_CRATE_XP_COUNT = 20;
 const SECRET_CRATE_XP_VALUE = 5;            // value>=5 = 赤経験値(pixiSceneの色分けしきい値)
