@@ -14898,7 +14898,15 @@ export class PixiScene {
           const comboRemainMs = (e.bossStateUntil ?? gameTime) - gameTime;
           if (comboRemainMs <= PixiScene.WHIP_SMEAR_MS) {
             const smearT = Math.max(0, Math.min(1, 1 - comboRemainMs / PixiScene.WHIP_SMEAR_MS));
-            this.drawBountyWhipSmear(e.id, smearT, bfx, bfy, aimAng, Math.hypot(btx - bfx, bty - bfy),
+            // ★v0.25.3572(社長指示「スミアとフラッシュは当たり判定の先端寄りにして」): スミアの起点を
+            // 帯の根元から**帯の40%地点**へずらし、残り60%(=先端側)を覆う。鞭で実際に切るのは先端側、
+            // という絵の理屈。先端フラッシュは「スミアの終端」に出る実装なので、この1変更で
+            // 自動的に帯の先端(=判定の末端)に一致したまま動く。
+            const bandLen = Math.hypot(btx - bfx, bty - bfy);
+            const bias = PixiScene.WHIP_SMEAR_TIP_BIAS;
+            const sx = bfx + Math.cos(aimAng) * bandLen * bias;
+            const sy = bfy + Math.sin(aimAng) * bandLen * bias;
+            this.drawBountyWhipSmear(e.id, smearT, sx, sy, aimAng, bandLen * (1 - bias),
               0.5 + 0.5 * smearT, `${this.moveInstanceNo(e.id, bs2 ?? '')}`);
           }
         }
@@ -23052,6 +23060,8 @@ export class PixiScene {
   private static readonly WHIP_INTRINSIC = -Math.PI / 4;
   /** ★v0.25.3570: 鞭スミア3コマの固定再生時間(ms)。終わりが命中に一致するよう残り時間から逆算する。 */
   private static readonly WHIP_SMEAR_MS = 140;
+  /** ★v0.25.3572(社長指示「先端寄りに」): スミアの起点=判定の帯のこの割合の地点(残りを先端まで覆う)。 */
+  private static readonly WHIP_SMEAR_TIP_BIAS = 0.4;
 
   private drawBountyWeapon(
     id: string, texName: string, px: number, py: number, angleRad: number,

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3572',
+    items: [
+      '馬乗り(変異)の鞭のしなりと先端の閃光が、当たり判定の先端寄りに出るようになりました。',
+    ],
+  },
+  {
     version: '0.25.3571',
     items: [
       '馬乗り(変異)の3段コンボは、3段目の後に360度ムチ振りで締める1つの台本になりました(前バージョンの「近距離で別技として抽選」は撤回)。',
