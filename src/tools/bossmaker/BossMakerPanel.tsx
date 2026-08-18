@@ -33,10 +33,19 @@ import {
 } from './bossTuning';
 import { hiddenPaths } from './bossPresets';
 import { registerIdolTuning } from './idolTuning';
+import { registerBountyTuning } from './bountyTuning';
+import { bossMakerBossType } from '../../utils/bossTest';
 import { BossMakerLive } from './BossMakerLive';
 import { BossScriptEditor } from './BossScriptEditor';
 
-registerIdolTuning(); // フェーズ1はアイドル1体(BOSS_MAKER.md §6)
+registerIdolTuning(); // フェーズ1(BOSS_MAKER.md §6)
+registerBountyTuning(); // フェーズ4・第1弾(v0.25.3558): 賞金首4種
+
+// 部屋に出ている1体(URLの ?makerboss= で決まる=**読込時に固定**。BOSS_MAKER.md §1-3)。
+// ★モジュール定数にしてある: 強制出現フラグと同じく読込時に決まる値で、コンポーネントの寿命の
+// 途中で変わらない(=hookの依存に入れる必要が無い。中で `useState` にすると全hookへ依存が増える)。
+// 保存キー(開閉/ピン/タブ…)は全部この bossType 付きなので、ボスごとに独立して覚える。
+const bossType = bossMakerBossType();
 
 const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
 
@@ -396,7 +405,6 @@ export const BossMakerPanel = () => {
   const setBossMaker = useGameStore(s => s.setBossMaker);
   const [rev, bump] = useState(0);
   const [note, setNote] = useState('');
-  const bossType = 'idol'; // フェーズ1はアイドル1体(BOSS_MAKER.md §6)
   const entry = getBossTuning(bossType);
 
   const [openSecs, setOpenSecs] = useState<Set<string>>(() => loadSet(OPEN_KEY, bossType));

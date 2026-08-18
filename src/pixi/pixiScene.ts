@@ -144,18 +144,17 @@ import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOA
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType } from '../utils/enemyUtils';
 import {
   BOUNTY_DEPART_FADE_MS,
-  BR_PUSH_WINDUP_MS, BR_PUSH_HALFWIDTH,
-  BM_COMBO_WINDUP_MS, BM_COMBO_HALFWIDTH, BM_SNIPE_WINDUP_MS, BM_SNIPE_ACTIVE_MS, BM_SNIPE_HALFWIDTH,
-  // §6.38 B2b: 鋏(bounty-balance)/舞妓(bounty-maiko)の技の寸法・タイミング。
-  BB_SWEEP_HALFWIDTH, BB_SWEEP_WINDUP_MS, BB_LEAP_WINDUP_MS, BB_LEAP_AIR_MS, BB_LEAP_RADIUS,
-  BM_WHIP360_RADIUS, BM_WHIP360_ACTIVE_MS, // 社長指示v0.25.3473: ダッシュ後の360度ムチ振り
-  MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS,
-  MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
-  MK_BOOM_HITRADIUS, MK_BOOM_WINDUP_MS, MK_BOOM_OUT_MS, MK_BOOM_BACK_MS,
   // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15): 角度・タイミングは判定と同じ純関数から導く。
   BR_TRIPLE_REACH, BR_TRIPLE_HALF_WIDTH, BR_TRIPLE_WINDUP_MS, BR_TRIPLE_THRUST_MS, BR_TRIPLE_RETURN_MS,
   brTripleAngles, brTripleStepDurationMs,
 } from '../utils/bountyTick';
+// ★v0.25.3558(ボスメーカー横展開・第1弾): 賞金首4種の技の寸法・タイミングは**可変テーブル**が正。
+// 判定(bountyTick/levelUpGate)とここが**同じ場所を読む**ので、画面で数字を動かしても赤い予告と
+// 当たり判定はズレない(BOSS_MAKER.md §2-4「判定と描画の一致を壊さない」)。
+import {
+  BOUNTY_RANGED_TUNING as BR_T, BOUNTY_MELEE_TUNING as BM_T,
+  BOUNTY_BALANCE_TUNING as BB_T, BOUNTY_MAIKO_TUNING as MK_T,
+} from '../utils/bountyScript';
 import { telegraphProgress01 } from '../utils/bossTelegraph';
 import { isMarkedBossVisible, bossMarkFor, type MarkBox } from '../utils/bossMarker';
 import {
@@ -14691,24 +14690,24 @@ export class PixiScene {
       {
         const pushWindupOn = bs2 === 'br-push-windup';
         pushRemain = (e.bossStateUntil ?? gameTime) - gameTime;
-        pushProg = Math.max(0, Math.min(1, 1 - pushRemain / BR_PUSH_WINDUP_MS));
-        this.zoneCapsuleTick(view, o, `${e.id}:br-push`, pushWindupOn, pushRemain, bfx, bfy, btx, bty, BR_PUSH_HALFWIDTH, now, pushProg);
+        pushProg = Math.max(0, Math.min(1, 1 - pushRemain / BR_T.push.windup));
+        this.zoneCapsuleTick(view, o, `${e.id}:br-push`, pushWindupOn, pushRemain, bfx, bfy, btx, bty, BR_T.push.halfWidth, now, pushProg);
         const comboWindupOn = bs2 === 'bm-combo1-windup' || bs2 === 'bm-combo2-windup' || bs2 === 'bm-combo3-windup';
         comboStep = bs2 === 'bm-combo2-windup' ? 1 : bs2 === 'bm-combo3-windup' ? 2 : 0;
         comboRemain = (e.bossStateUntil ?? gameTime) - gameTime;
-        comboProg = Math.max(0, Math.min(1, 1 - comboRemain / BM_COMBO_WINDUP_MS[comboStep]));
-        this.zoneCapsuleTick(view, o, `${e.id}:bm-combo`, comboWindupOn, comboRemain, bfx, bfy, btx, bty, BM_COMBO_HALFWIDTH, now, comboProg, comboStep);
+        comboProg = Math.max(0, Math.min(1, 1 - comboRemain / BM_T.combo.windup[comboStep]));
+        this.zoneCapsuleTick(view, o, `${e.id}:bm-combo`, comboWindupOn, comboRemain, bfx, bfy, btx, bty, BM_T.combo.halfWidth, now, comboProg, comboStep);
         const snipeWindupOn = bs2 === 'bm-snipe-windup';
         snipeRemain = (e.bossStateUntil ?? gameTime) - gameTime;
-        snipeProg = Math.max(0, Math.min(1, 1 - snipeRemain / BM_SNIPE_WINDUP_MS));
-        this.zoneCapsuleTick(view, o, `${e.id}:bm-snipe`, snipeWindupOn, snipeRemain, bfx, bfy, btx, bty, BM_SNIPE_HALFWIDTH, now, snipeProg);
+        snipeProg = Math.max(0, Math.min(1, 1 - snipeRemain / BM_T.snipe.windup));
+        this.zoneCapsuleTick(view, o, `${e.id}:bm-snipe`, snipeWindupOn, snipeRemain, bfx, bfy, btx, bty, BM_T.snipe.halfWidth, now, snipeProg);
         const sweepWindupOn = bs2 === 'bb-sweep-windup';
         sweepRemain = (e.bossStateUntil ?? gameTime) - gameTime;
-        sweepProg = Math.max(0, Math.min(1, 1 - sweepRemain / BB_SWEEP_WINDUP_MS));
-        this.zoneCapsuleTick(view, o, `${e.id}:bb-sweep`, sweepWindupOn, sweepRemain, bfx, bfy, btx, bty, BB_SWEEP_HALFWIDTH, now, sweepProg);
+        sweepProg = Math.max(0, Math.min(1, 1 - sweepRemain / BB_T.sweep.windup));
+        this.zoneCapsuleTick(view, o, `${e.id}:bb-sweep`, sweepWindupOn, sweepRemain, bfx, bfy, btx, bty, BB_T.sweep.halfWidth, now, sweepProg);
         const chargeWindupOn = bs2 === 'bm-charge-windup';
         chargeRemain = (e.bossStateUntil ?? gameTime) - gameTime;
-        chargeProg = Math.max(0, Math.min(1, 1 - chargeRemain / WEREWOLF_WINDUP_MS));
+        chargeProg = Math.max(0, Math.min(1, 1 - chargeRemain / BM_T.charge.windup));
         this.dashLineTick(o, `${e.id}:bm-charge`, chargeWindupOn, chargeRemain, bfx, bfy, btx, bty, now, chargeProg);
         // §6.38 v12(三段突き・社長裁定#3「溜め明けに一括ロック」): 溜め中は毎フレーム現在のプレイヤー
         // 方向を追い(追尾)、windup完了で判定側(bountyTick.ts)がbounty.bountyTripleAngへ固定する。
@@ -14728,7 +14727,7 @@ export class PixiScene {
       // §7-15: 出現=windup開始からの経過(elapsed=総windup時間-remain)/消滅=recoverの残りmsを
       // weaponSpawnEase へ渡す。該当しない側はInfinity(既に出現済み/まだ消滅対象外)。
       if (bs2 === 'br-push-windup') {
-        const ease = weaponSpawnEase(BR_PUSH_WINDUP_MS - pushRemain, Infinity);
+        const ease = weaponSpawnEase(BR_T.push.windup - pushRemain, Infinity);
         // 技表GO: 押しのけ=大振りの薙ぎ回転。溜め(ease-in=じわっと効いてくる)で振りかぶる。
         // 社長指示v0.25.3441「剣みたいに振って。先端は看板が付いてる方」: 根元(ポール端)を手元に固定し、
         // 看板の先端が外側を薙ぐ(素材は看板が上=+π/2で先端が振り方向を向く。中心は手元から55px先)。
@@ -14856,7 +14855,7 @@ export class PixiScene {
         && (gameTime - (e.lastRangedShotAt ?? -1e9) < 900
           || (((e.bossNextActionAt ?? -1) - gameTime) > 0 && ((e.bossNextActionAt ?? -1) - gameTime) < 350))) {
         // 社長指示v0.25.3443「弾飛ばす時もバス停の先から撃つ感じにして」: 中立のポツポツ撃ち中は
-        // 標識を剣式に構えて見せ、弾は先端(BR_SIGN_TIP_PX=手元55px+標識半長65px)から出る
+        // 標識を剣式に構えて見せ、弾は先端(BR_T.signTipPx=手元55px+標識半長65px)から出る
         // (発射起点はbountyTick側が同じ定数を読む)。
         // 社長指摘v0.25.3450「発射口と弾の位置が合ってない」: 旧は発射の瞬間に出現easeが始まる=弾が出る
         // 瞬間、標識はまだ下からフェードイン中で先端がそこに無かった。**次の発射の350ms前**(bossNextActionAt)
@@ -14871,7 +14870,7 @@ export class PixiScene {
         const step = comboStep;
         const prog = comboProg;
         // 出現ease=1段目の立ち上がりだけ(2段目以降は既に振り抜かれた鞭が継続して見えているので再出現させない)。
-        const ease = bs2 === 'bm-combo1-windup' ? weaponSpawnEase(BM_COMBO_WINDUP_MS[0] * prog, Infinity) : { dy: 0, alphaMul: 1 };
+        const ease = bs2 === 'bm-combo1-windup' ? weaponSpawnEase(BM_T.combo.windup[0] * prog, Infinity) : { dy: 0, alphaMul: 1 };
         // 技表GO: 3段コンボ=スミア0→1→2と同期した振り抜き回転。振りかぶり(角度オフセット)から
         // ease-outでaimAngへ振り抜く=impactの瞬間(prog=1)にスミアと重なる。段ごとに向きを反転。
         const swingDir = step % 2 === 0 ? 1 : -1;
@@ -14890,7 +14889,7 @@ export class PixiScene {
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, aimAng, 170, 0.9 * ease.alphaMul,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-snipe-windup') {
-        const ease = weaponSpawnEase(BM_SNIPE_WINDUP_MS * snipeProg, Infinity);
+        const ease = weaponSpawnEase(BM_T.snipe.windup * snipeProg, Infinity);
         // 技表GO: 懲罰狙撃=地面に叩きつけ→発射。前半70%で振り上げ(ease-out=減速して止まる)、
         // 後半30%で地面へ叩きつける(ease-in=加速して打ち込む)。
         const raiseT = Math.min(1, snipeProg / 0.7);
@@ -14903,8 +14902,8 @@ export class PixiScene {
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-snipe') {
         // 実行中: 判定と同じ線を実線で維持(予告と同じ2点・半幅)。
-        const life = Math.max(0, Math.min(1, ((e.bossStateUntil ?? gameTime) - gameTime) / BM_SNIPE_ACTIVE_MS));
-        o.moveTo(bfx, bfy).lineTo(btx, bty).stroke({ width: BM_SNIPE_HALFWIDTH * 2, color: 0xff2a2a, alpha: 0.35 * life, cap: 'round' });
+        const life = Math.max(0, Math.min(1, ((e.bossStateUntil ?? gameTime) - gameTime) / BM_T.snipe.active));
+        o.moveTo(bfx, bfy).lineTo(btx, bty).stroke({ width: BM_T.snipe.halfWidth * 2, color: 0xff2a2a, alpha: 0.35 * life, cap: 'round' });
         o.moveTo(bfx, bfy).lineTo(btx, bty).stroke({ width: 4, color: 0xffe0e0, alpha: 0.9 * life, cap: 'round' });
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
@@ -14914,8 +14913,8 @@ export class PixiScene {
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, aimAng, 170, 0.9 * ease.alphaMul,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-charge-windup') {
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / WEREWOLF_WINDUP_MS));
-        const ease = weaponSpawnEase(WEREWOLF_WINDUP_MS * prog, Infinity);
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BM_T.charge.windup));
+        const ease = weaponSpawnEase(BM_T.charge.windup * prog, Infinity);
         // 技表GO(旧「引きずり構え」から更新): 突進=頭上ぐるぐる→発進。角速度をprog^2に比例させ、
         // 0からいきなり高速回転させない(慣性)。頭上で回し切ってから発進(bm-chargeで進行方向へ切替)。
         const spinTurns = 2.2;
@@ -14930,32 +14929,32 @@ export class PixiScene {
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-whip360-windup') {
         // 社長指示v0.25.3473「ダッシュ後に360度、ムチ振り攻撃。(慣性入れてね)」の予告。
-        // 判定=自分中心の円(BM_WHIP360_RADIUS)。赤円と判定は同じ値=厳密一致。
+        // 判定=自分中心の円(BM_T.whip360.radius)。赤円と判定は同じ値=厳密一致。
         const prog = telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil);
         const pulse = 0.5 + 0.5 * Math.sin(now / 90);
-        o.circle(cx, cy, BM_WHIP360_RADIUS).fill({ color: 0xff2a2a, alpha: (0.10 + 0.20 * prog) * TELEGRAPH_FILL_MULT * (0.7 + 0.3 * pulse) });
-        o.circle(cx, cy, BM_WHIP360_RADIUS).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.35 + 0.4 * prog });
+        o.circle(cx, cy, BM_T.whip360.radius).fill({ color: 0xff2a2a, alpha: (0.10 + 0.20 * prog) * TELEGRAPH_FILL_MULT * (0.7 + 0.3 * pulse) });
+        o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.35 + 0.4 * prog });
         // 振りかぶり: 角速度をprog^2で上げる(0からいきなり回さない=慣性)。
         const windAng = prog * prog * 1.6 * Math.PI * 2;
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy - e.height * 0.2, windAng, 170 * (0.7 + 0.3 * prog), 0.9,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-whip360') {
         // 振り抜き: 1周を**加速→減速**(smoothstep)で回す。鞭は伸び切った長さで外周を薙ぐ。
-        const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BM_WHIP360_ACTIVE_MS));
+        const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BM_T.whip360.active));
         const eased = t * t * (3 - 2 * t);
         const ang = eased * Math.PI * 2;
-        o.circle(cx, cy, BM_WHIP360_RADIUS).stroke({ width: 3, color: 0xff5a5a, alpha: 0.5 * (1 - t) });
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, ang, BM_WHIP360_RADIUS, 0.98,
+        o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 3, color: 0xff5a5a, alpha: 0.5 * (1 - t) });
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, ang, BM_T.whip360.radius, 0.98,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
         // スネア3枚を1振りの中で回す(しなり→伸び)。角度は鞭と同じ=揃える。
-        this.drawBountyWhipSmear(e.id, t, cx, cy, ang, BM_WHIP360_RADIUS, 0.85, `${this.moveInstanceNo(e.id, bs2 ?? '')}`);
+        this.drawBountyWhipSmear(e.id, t, cx, cy, ang, BM_T.whip360.radius, 0.85, `${this.moveInstanceNo(e.id, bs2 ?? '')}`);
       } else if (bs2 === 'bm-charge-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const ease = weaponSpawnEase(Infinity, remain);
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, Math.atan2((e.vy ?? 0), (e.vx ?? 1) || 1), 170, 0.9 * ease.alphaMul,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bb-sweep-windup') {
-        const ease = weaponSpawnEase(BB_SWEEP_WINDUP_MS * sweepProg, Infinity);
+        const ease = weaponSpawnEase(BB_T.sweep.windup * sweepProg, Infinity);
         // 技表GO: 薙ぎ=開いて→閉じながら薙ぐ。開(widthMul 1.7)→閉(1.0)をease-in(閉じる勢いが強まる)。
         // 振りはコンボと同型(振りかぶり→ease-outで薙ぎ切る)。
         const closeEased = sweepProg * sweepProg;
@@ -14981,17 +14980,17 @@ export class PixiScene {
       } else if (bs2 === 'leap-windup' || bs2 === 'leap-air') {
         const untilW = e.bossStateUntil ?? gameTime;
         const prog = bs2 === 'leap-windup'
-          ? Math.max(0, Math.min(1, 1 - (untilW - gameTime) / BB_LEAP_WINDUP_MS))
+          ? Math.max(0, Math.min(1, 1 - (untilW - gameTime) / BB_T.leap.windup))
           : 1;
         // 跳びかかりの着地円(T5式=水鳥/ジャイアント跳躍と同じ収縮リング文法。しゃがみ→着地円)。
         const lx = e.aiTargetX ?? cx, ly = e.aiTargetY ?? cy;
-        o.circle(lx, ly, BB_LEAP_RADIUS).fill({ color: 0xff2a2a, alpha: (0.15 + 0.25 * prog) * TELEGRAPH_FILL_MULT });
-        o.circle(lx, ly, BB_LEAP_RADIUS).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.4 + 0.4 * prog });
+        o.circle(lx, ly, BB_T.leap.radius).fill({ color: 0xff2a2a, alpha: (0.15 + 0.25 * prog) * TELEGRAPH_FILL_MULT });
+        o.circle(lx, ly, BB_T.leap.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.4 + 0.4 * prog });
         if (bs2 === 'leap-air') {
-          const airProg = Math.max(0, Math.min(1, 1 - (untilW - gameTime) / BB_LEAP_AIR_MS));
-          o.circle(lx, ly, BB_LEAP_RADIUS * (1.6 - 0.6 * airProg)).stroke({ width: 2, color: 0xffe0e0, alpha: 0.5 * (1 - airProg) });
+          const airProg = Math.max(0, Math.min(1, 1 - (untilW - gameTime) / BB_T.leap.airMs));
+          o.circle(lx, ly, BB_T.leap.radius * (1.6 - 0.6 * airProg)).stroke({ width: 2, color: 0xffe0e0, alpha: 0.5 * (1 - airProg) });
         }
-        const ease = bs2 === 'leap-windup' ? weaponSpawnEase(BB_LEAP_WINDUP_MS * prog, Infinity) : { dy: 0, alphaMul: 1 };
+        const ease = bs2 === 'leap-windup' ? weaponSpawnEase(BB_T.leap.windup * prog, Infinity) : { dy: 0, alphaMul: 1 };
         // 技表GO: 跳びかかり=頭上に掲げ→着地で閉じ+scissor-x。宙にいる間は開いたまま(widthMul一定)。
         this.drawBountyWeapon(
           e.id, 'bounty-balance-scissors',
@@ -23107,7 +23106,7 @@ export class PixiScene {
     }
     if (sp.texture !== tex) sp.texture = tex;
     sp.rotation = angle;
-    sp.scale.set(190 / Math.max(1, tex.width)); // 判定(BB_SWEEP_HALFWIDTH*2/BB_LEAP_RADIUS*2)より一回り大きく=派手側
+    sp.scale.set(190 / Math.max(1, tex.width)); // 判定(BB_T.sweep.halfWidth*2/BB_T.leap.radius*2)より一回り大きく=派手側
     sp.position.set(x, y);
     sp.alpha = 1;
     sp.visible = true;
@@ -23208,10 +23207,10 @@ export class PixiScene {
       const naginataWindupOn = bs === 'mk-naginata-windup' || bs === 'mk-naginata1-windup' || bs === 'mk-naginata2-windup';
       const naginataRemain = (e.bossStateUntil ?? gameTime) - gameTime;
       const naginataProg = naginataWindupOn ? telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil) : 0;
-      this.zoneCapsuleTick(view, o, `${e.id}:mk-naginata`, naginataWindupOn, naginataRemain, bfx, bfy, btx, bty, MK_NAGINATA_HALFWIDTH, now, naginataProg);
+      this.zoneCapsuleTick(view, o, `${e.id}:mk-naginata`, naginataWindupOn, naginataRemain, bfx, bfy, btx, bty, MK_T.naginata.halfWidth, now, naginataProg);
       const boomWindupOn = bs === 'mk-boom-windup';
       const boomRemain = (e.bossStateUntil ?? gameTime) - gameTime;
-      const boomProg = Math.max(0, Math.min(1, 1 - boomRemain / MK_BOOM_WINDUP_MS));
+      const boomProg = Math.max(0, Math.min(1, 1 - boomRemain / MK_T.boom.windup));
       this.dashLineTick(o, `${e.id}:mk-boom`, boomWindupOn, boomRemain, bfx, bfy, btx, bty, now, boomProg);
     }
 
@@ -23235,15 +23234,15 @@ export class PixiScene {
     if (bs === 'mk-spin-windup' || bs === 'mk-spin') {
       const prog = bs === 'mk-spin-windup' ? telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil) : 1;
       const pulse = 0.5 + 0.5 * Math.sin(now / 90);
-      o.circle(cx, cy, MK_SPIN_RADIUS).fill({ color: 0xff2a2a, alpha: (0.12 + 0.22 * prog) * TELEGRAPH_FILL_MULT * (0.7 + 0.3 * pulse) });
-      o.circle(cx, cy, MK_SPIN_RADIUS).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.35 + 0.4 * prog });
+      o.circle(cx, cy, MK_T.spin.radius).fill({ color: 0xff2a2a, alpha: (0.12 + 0.22 * prog) * TELEGRAPH_FILL_MULT * (0.7 + 0.3 * pulse) });
+      o.circle(cx, cy, MK_T.spin.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.35 + 0.4 * prog });
       // 毬が周囲を高速で回る(判定=円そのもの。速い周回で「回している」感=派手側)。
       const spinAng = now / (bs === 'mk-spin' ? 40 : 90);
       // 技表GO: 技前=一瞬止まってふくらむ(スカッシュ・windup側のみ)。
       const squash = bs === 'mk-spin-windup' ? squashInflateMul(gameTime - (e.bossWindupStartAt ?? gameTime)) : 1;
       this.drawBountyWeapon(
         e.id, 'bounty-maiko-temari',
-        cx + Math.cos(spinAng) * MK_SPIN_RADIUS * 0.85, cy + Math.sin(spinAng) * MK_SPIN_RADIUS * 0.85,
+        cx + Math.cos(spinAng) * MK_T.spin.radius * 0.85, cy + Math.sin(spinAng) * MK_T.spin.radius * 0.85,
         spinAng, 56 * squash, 0.95,
       );
       return;
@@ -23261,7 +23260,7 @@ export class PixiScene {
         return;
       }
       const isFinal = bs === 'mk-suiu-hop3';
-      const radius = isFinal ? MK_SUIU_RADIUS * MK_SUIU_FINAL_RADIUS_MULT : MK_SUIU_RADIUS;
+      const radius = isFinal ? MK_T.suiu.radius * MK_T.suiu.finalRadiusMult : MK_T.suiu.radius;
       // 変則ディレイ(区間=予告+移動の合算)の内訳を描画側は知らないため、着地円は静的な強い表示で
       // 出す(位置/半径=判定と厳密一致。ズレるのはフィルの立ち上がり演出だけ=安全上は無関係)。
       const pulse = 0.55 + 0.45 * Math.sin(now / 70);
@@ -23281,20 +23280,20 @@ export class PixiScene {
       return;
     }
     if (bs === 'mk-boom-windup') {
-      const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MK_BOOM_WINDUP_MS));
+      const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MK_T.boom.windup));
       // 技表GO: 技前=一瞬止まってふくらむ(スカッシュ)。
-      const squash = squashInflateMul(prog * MK_BOOM_WINDUP_MS);
+      const squash = squashInflateMul(prog * MK_T.boom.windup);
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bfx + (btx - bfx) * 0.12 * prog, bfy + (bty - bfy) * 0.12 * prog, now / 60, 58 * squash, 0.95);
       return;
     }
     if (bs === 'mk-boom-out' || bs === 'mk-boom-back') {
-      const total = bs === 'mk-boom-out' ? MK_BOOM_OUT_MS : MK_BOOM_BACK_MS;
+      const total = bs === 'mk-boom-out' ? MK_T.boom.outMs : MK_T.boom.backMs;
       const remain = (e.bossStateUntil ?? gameTime) - gameTime;
       const t = Math.max(0, Math.min(1, 1 - remain / total));
       const px = bs === 'mk-boom-out' ? bfx + (btx - bfx) * t : btx + (bfx - btx) * t;
       const py = bs === 'mk-boom-out' ? bfy + (bty - bfy) * t : bty + (bfy - bty) * t;
-      o.circle(px, py, MK_BOOM_HITRADIUS).fill({ color: 0xff2a2a, alpha: 0.35 * TELEGRAPH_FILL_MULT });
-      o.circle(px, py, MK_BOOM_HITRADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.6 });
+      o.circle(px, py, MK_T.boom.hitRadius).fill({ color: 0xff2a2a, alpha: 0.35 * TELEGRAPH_FILL_MULT });
+      o.circle(px, py, MK_T.boom.hitRadius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.6 });
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', px, py, now / 30, 62, 0.98);
       // ★慣性バッチ: 射出スピンの残像(motion trail)。往路・復路とも毬の軌跡へ約30ms間隔で
       // 「その瞬間の毬」を置き去りにする(判定不変・分類②=派手側)。

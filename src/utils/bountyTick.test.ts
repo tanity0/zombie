@@ -8,11 +8,12 @@ import {
   runBountyTick, createBountyTickState, anyBountyEngaged, bountyNaturalSpawnReady,
   BOUNTY_LINGER_MS, BOUNTY_HIT_ENGAGE_MS, BOUNTY_BASE_HP, BOUNTY_DEPART_FADE_MS,
   BOUNTY_NATURAL_FIRST_MS, BOUNTY_NATURAL_MAX_COUNT, BOUNTY_NATURAL_SPAWN_AT_MS,
-  BR_ESCORT_COUNT as BR_ESCORT_COUNT_FOR_TEST,
-  MK_REPOSE_MS, MK_SUIU_RADIUS, MK_SUIU_HOP_INTERVAL_CHOICES, MK_SUIU_HOP_TRAVEL_MS,
   BR_SHOT_UNIT_MS,
   type BountySfx,
 } from './bountyTick';
+// ★v0.25.3558: 賞金首の数値は bountyScript.ts の可変テーブルが正(ボスメーカーで動かせる)。
+// 既定値は移設前と完全一致なので、この下のテストの期待値は1つも変えていない。
+import { BOUNTY_RANGED_TUNING as BR_T, BOUNTY_MAIKO_TUNING as MK_T } from './bountyScript';
 import { bossLeashDistancePx } from './bossEngagement';
 import { usesMimirLaser } from './mimirLaserTrack';
 import { AOE_TELEGRAPH_AUDIT, minWindupMs, PLAYER_WALK_PX_PER_SEC } from './bossTelegraph';
@@ -566,7 +567,7 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       const before = useGameStore.getState().enemies.length;
       step(16);
       const afterFirst = useGameStore.getState().enemies.length;
-      expect(afterFirst).toBe(before + BR_ESCORT_COUNT_FOR_TEST);
+      expect(afterFirst).toBe(before + BR_T.escort.count);
       for (let i = 0; i < 20; i++) step(50);
       expect(useGameStore.getState().enemies.length).toBe(afterFirst); // 増え続けない=再召喚なし
     });
@@ -1135,7 +1136,7 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       const { id, step } = setupType('bounty-maiko', { x: 700, y: 0 }, { health: 1000, maxHealth: 2000 });
       step(16);
       expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('mk-repose');
-      step(MK_REPOSE_MS + 16);
+      step(MK_T.reposeMs + 16);
       const after = useGameStore.getState().enemies.find(e => e.id === id);
       expect(after?.bossPhase).toBe(2);
       expect(after?.bossState).toBe('chase');
@@ -1201,10 +1202,10 @@ describe('runBountyTick — B2a 技の状態機械', () => {
     });
 
     it('水鳥乱舞のホップ間隔(予告)は換算式②の必要msを満たす(見てから歩いて避けられる)', () => {
-      // MK_SUIU_HOP_INTERVAL_CHOICES(下限側)+MK_SUIU_HOP_TRAVEL_MS >= minWindupMs(半径+自機半径)。
-      const need = minWindupMs(MK_SUIU_RADIUS + 14);
-      const hopIntervalMin = Math.min(...MK_SUIU_HOP_INTERVAL_CHOICES);
-      expect(hopIntervalMin + MK_SUIU_HOP_TRAVEL_MS).toBeGreaterThanOrEqual(need);
+      // MK_T.suiu.hopInterval(下限側)+MK_T.suiu.travelMs >= minWindupMs(半径+自機半径)。
+      const need = minWindupMs(MK_T.suiu.radius + 14);
+      const hopIntervalMin = Math.min(...MK_T.suiu.hopInterval);
+      expect(hopIntervalMin + MK_T.suiu.travelMs).toBeGreaterThanOrEqual(need);
     });
 
     it('手毬打ち(遠距離・ブーメラン): 強制発火させるとwindup→out→back→recoverを経てchaseへ戻る', () => {

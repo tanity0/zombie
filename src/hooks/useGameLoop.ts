@@ -144,7 +144,7 @@ import { GAME_SPEED } from '../config/gameSpeed';
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
 import { stageBossHealthFor, STAGE_BOSS_HEALTH_BY_STAGE } from '../config/bossHealth';
 import { withRecoverFloor } from '../utils/bossTelegraph';
-import { canForceGateBossNow } from '../utils/bossTest';
+import { canForceGateBossNow, bossMakerBossType } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import {
   runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
@@ -1135,6 +1135,9 @@ const FORCE_BOUNTY_TYPE = evParam('bountytype'); // 'ranged'|'melee'|'balance'|'
 // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋。`?nospawn=1` と併用して湧きを止める。
 // **数値の受け渡しにURLは使わない**(社長明示「?パラメータは回りくどい」)。この1個は部屋への入口だけ。
 const BOSS_MAKER = evParam('bossmaker') === '1';
+// 部屋に出す1体(BOSS_MAKER.md §1-3 / v0.25.3558でフェーズ4=賞金首4種を追加)。既定=idol。
+// これも「どの部屋を立てるか」の情報なので stage と同じ扱い(数値は相変わらずURLで渡さない)。
+const BOSS_MAKER_BOSS = bossMakerBossType();
 // ※敵モーション動物園はゲーム内モード(?zoo=1・v0.25.2900〜2902)を撤去し、独立ページ zoo.html へ
 //   移行した(v0.25.2903・社長指示「ステージそのまま使うと色々と不都合が出てくる」)。
 // idolのステータス(width/height/speed/health/damage)はenemyUtils.tsのENEMY_STATS.idolを唯一の出所とする
@@ -6183,10 +6186,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             bossMakerReadyRef.current = true;
             useGameStore.getState().setBossMaker({ active: true });
             const mcx = player.x + player.width / 2, mcy = player.y + player.height / 2;
-            const mk = spawnEnemyAt('idol', mcx - 20, mcy - 300, newGameTime);
+            const mk = spawnEnemyAt(BOSS_MAKER_BOSS, mcx - 20, mcy - 300, newGameTime);
             mk.fromEvent = true; mk.dormant = false; mk.fixed = false;
             mk.bossState = 'chase'; mk.bossPhase = 1;
             mk.bossNextActionAt = newGameTime + 800;
+            // 賞金首(§6.38)はHPが「基準値×実効難易度倍率」で後から決まる型なので、自然湧き
+            // (spawnBountyEncounter)と同じ式をここでも通す。帰巣(リーシュ)の原点も置いておく。
+            if (isBountyType(BOSS_MAKER_BOSS)) {
+              const mkHp = bountyMaxHealth(areaIndexForPos(mk.x + mk.width / 2, mk.y + mk.height / 2), newGameTime);
+              mk.health = mkHp; mk.maxHealth = mkHp;
+              mk.homeX = mk.x; mk.homeY = mk.y;
+              mk.aggroRange = BOUNTY_AGGRO_RANGE_DEFAULT;
+            }
             addEnemy(mk);
           }
           const idol = pickActiveIdol(useGameStore.getState().enemies); // v0.25.2614: 起きている個体を優先(2体並んだ時の保険)

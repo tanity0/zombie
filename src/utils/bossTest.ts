@@ -199,12 +199,32 @@ export const setBossTestSkillInjection = (injection: BossTestSkillInjection | nu
 /** gameStore.resetGame が読む。ボスメーカーの部屋(isBossMakerRun)以外では無視される。 */
 export const getBossTestSkillInjection = (): BossTestSkillInjection | null => bossTestSkillInjection;
 
-export const bossMakerQuery = (opts: BossTestOptions): string => {
+// ---- 部屋に出すボス(BOSS_MAKER.md §1-3 セレクト欄・v0.25.3558でフェーズ4=賞金首4種を追加) ------
+// ★URLで渡すのは「どの部屋を立てるか」まで(=stage と同じ扱い)。**数値はURLで渡さない**という上の掟は
+// 崩していない。強制出現フラグと同じくモジュールロード時に決まる値なので、切替は再読込で行う。
+export const BOSS_MAKER_BOSSES: readonly EnemyType[] = [
+  'idol',
+  'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
+];
+export const BOSS_MAKER_DEFAULT_BOSS: EnemyType = 'idol';
+
+/** `?makerboss=` を読む純関数(未知/未指定は既定=idol。window非依存でテストできる)。 */
+export const parseBossMakerBoss = (search: string): EnemyType => {
+  const raw = new URLSearchParams(search).get('makerboss');
+  return BOSS_MAKER_BOSSES.find(b => b === raw) ?? BOSS_MAKER_DEFAULT_BOSS;
+};
+
+/** いまの読込でボスメーカーが出すボス(ページ読込時のURLが真実)。 */
+export const bossMakerBossType = (): EnemyType =>
+  parseBossMakerBoss(typeof window !== 'undefined' ? window.location.search : '');
+
+export const bossMakerQuery = (opts: BossTestOptions, bossType: EnemyType = BOSS_MAKER_DEFAULT_BOSS): string => {
   const p = new URLSearchParams();
   p.set('smoke', '1');
   p.set('stage', BOSS_MAKER_STAGE);
   p.set('nospawn', '1');
   p.set('bossmaker', '1');
+  p.set('makerboss', bossType);
   p.set('class', opts.characterClass);
   p.set('retry', '1');
   if (opts.ghostMode) {

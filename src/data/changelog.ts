@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3558',
+    items: ['ゲーム内容の変更はありません(開発ツール: ボスメーカーで賞金首4種の数値を調整できるようになりました)。'],
+  },
+  {
     version: '0.25.3557',
     items: [
       'ゲーム内容の変更はありません(テスト用AI: 溜め・硬直に空振りしてカウンターを焼く自滅ループの修正+雑魚に体を擦らない分離ステア)。',

@@ -4,7 +4,7 @@
 // ※アプリ配布(最終形)ではこの入口ごと非表示にする想定(TitleScreen側の1フラグで消せる)。
 import React, { useState } from 'react';
 import {
-  BOSS_TEST_ENTRIES, bossTestQuery, bossMakerQuery,
+  BOSS_TEST_ENTRIES, bossTestQuery, bossMakerQuery, BOSS_MAKER_BOSSES,
   type BossTestEntry, type BossTestGhostMode,
 } from '../../utils/bossTest';
 import { enemyDeathLabel } from '../../store/gameStore';
@@ -64,22 +64,26 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
         <div className="px-4 pb-2 text-[10px] leading-relaxed text-white/45">
           実ステージへ直行してボスが即出現します(環境・サークル・雑魚は本物)。選ぶと再読込して出撃。
         </div>
-        {/* ボスメーカー(BOSS_MAKER.md §3): 入口はここに1項目だけ足す。本編の導線からは入れない。 */}
+        {/* ボスメーカー(BOSS_MAKER.md §3): 入口はここ。本編の導線からは入れない。
+            v0.25.3558(フェーズ4・第1弾): 相手を選べるようにした=ボタン1つ=1体(押した相手で部屋を立てる)。
+            別ページへは飛ばず同じページのクエリを差し替えるだけ(強制出現フラグは読込時定数=再読込は必要)。 */}
         <div className="px-4 pb-3">
-          <button
-            className="w-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-2 text-left"
-            // 別ページ(開発用ツール)へ飛ぶ。BOSS_MAKER.md §19-5-b。
-            // `/zombie/` を直書きしない: pages.yml は `--base=/zombie/v2/` の v2 線も合成デプロイ
-            // しているので、直書きすると v2 で 404 になる。
-            // v0.25.2862: このメニュー自体がボスメーカーのページに載ったので、別ページへ飛ばず
-            // 同じページのクエリを差し替えるだけでよい(強制出現フラグは読込時定数=再読込は必要)。
-            onClick={() => { window.location.search = bossMakerQuery({ characterClass: cls, ghostMode: null, ghostlog: false }); }}
-          >
-            <div className="text-[12px] font-bold text-emerald-300">ボスメーカー(調整部屋)</div>
-            <div className="text-[10px] text-white/50">
-              一騎打ちの訓練場。無敵・湧きなし・方眼。数字を画面で回してその場で反映 → コピーで共有。
-            </div>
-          </button>
+          <div className="mb-1 text-[10px] text-white/45">
+            ボスメーカー(調整部屋)— 一騎打ちの訓練場。無敵・湧きなし・方眼。数字を画面で回してその場で反映。
+          </div>
+          <div className="grid grid-cols-2 gap-1">
+            {BOSS_MAKER_BOSSES.map(b => (
+              <button
+                key={b}
+                className="border border-emerald-400/50 bg-emerald-500/10 px-2 py-2 text-left text-[12px] font-bold text-emerald-300"
+                onClick={() => {
+                  window.location.search = bossMakerQuery({ characterClass: cls, ghostMode: null, ghostlog: false }, b);
+                }}
+              >
+                {bossCutinName(b) ?? enemyDeathLabel(b)}
+              </button>
+            ))}
+          </div>
         </div>
         {/* クラスとトグル */}
         <div className="flex flex-wrap items-center gap-1 px-4 pb-2">
