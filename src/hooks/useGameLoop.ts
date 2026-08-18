@@ -300,6 +300,7 @@ import {
   decideBotInput, pickupSeekInput, torchForageInput, avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, createRusherTrackState,
   escapeIfStuck, createBotStuckState, // ★v0.25.3554: 詰まり脱出(全ペルソナ共通)
+  separationAdjust, // ★v0.25.3557: 近接分離ステア(skilled/master・雑魚に体を擦らない)
   decideCounterReaction, createCounterThreatState, BOT_PERSONAS, type BotPersona,
 } from '../utils/playtestBot';
 import { pickUpgradeByPolicy, mulberry32 } from '../utils/botUpgradePolicy';
@@ -2294,8 +2295,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ★v0.25.3554(社長報告「木にひっかかるとずっと引っかかってる」): 詰まり脱出は**最終入力**へ
         // 掛ける。こうすると回避・目的地ステア・地雷回避のどの枝から来た入力でも等しく効く。
         // ボット無効時(BOT_PERSONA===null)は素通し=通常プレイは1バイトも変えない。
+        // ★v0.25.3557: 分離ステア(近距離の敵全員から弱い反発)→詰まり脱出、の順で最終入力を調整。
+        // 分離は方向の質、脱出は「動けているか」の保険なので、脱出を最後に置く。
         const inputState = BOT_PERSONA === null ? inputStateRaw
-          : escapeIfStuck(inputStateRaw, botStuckRef.current,
+          : escapeIfStuck(
+              separationAdjust(botSkillProfile(BOT_SKILL), inputStateRaw,
+                player.x + player.width / 2, player.y + player.height / 2, enemies),
+              botStuckRef.current,
               player.x + player.width / 2, player.y + player.height / 2);
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ

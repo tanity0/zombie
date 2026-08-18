@@ -4,7 +4,8 @@ import { decideBotInput, wanderDirForSeed, pickupSeekInput, BOT_PERSONAS,
   avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, MINE_AVOID_RADIUS, MINE_SMASH_DIST,
   decideCounterReaction, createCounterThreatState, STUNNED_CHASE_MAX_DIST,
-  escapeIfStuck, createBotStuckState, BOT_STUCK_SAMPLE_TICKS, BOT_STUCK_SAMPLES, BOT_STUCK_ESCAPE_TICKS } from './playtestBot';
+  escapeIfStuck, createBotStuckState, BOT_STUCK_SAMPLE_TICKS, BOT_STUCK_SAMPLES, BOT_STUCK_ESCAPE_TICKS,
+  separationAdjust, SEPARATION_DIST } from './playtestBot';
 import { botSkillProfile } from './botSkill';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
@@ -608,5 +609,57 @@ describe('★回避は全段階に入る(社長指示v0.25.3554「基本どの�
     expect(botSkillProfile('casual').seesBossCounterPhases).toBe(false);
     expect(botSkillProfile('skilled').seesBossCounterPhases).toBe(true);
     expect(botSkillProfile('master').seesBossCounterPhases).toBe(true);
+  });
+});
+
+describe('★boss-phaseカウンターは「来る攻撃」だけ構える(社長報告v0.25.3557「masterで…カウンターもしない」)', () => {
+  // v0.25.3554の初版は isDashParryCounterPhase をそのまま使い、'crouch'(溜め)/'recover'(硬直)まで
+  // 脅威扱いした。260px先のしゃがみパンプキンに空振りし続け、カウンターCDが焼かれて
+  // 本物のジャンプ着地が取れない=「カウンターしない」の自滅ループになっていた。
+  const st = () => createCounterThreatState();
+  const mk = (aiPhase: string, dx = 100): Enemy =>
+    ({ ...spawnEnemyAt('pumpkin', dx, 0, 0), aiPhase } as Enemy);
+
+  it('★crouch(溜め)では構えない', () => {
+    const s = st();
+    const fired = decideCounterReaction('standard', s, 0, 0, [mk('crouch')], [], 10000, 0, () => 0, 'master');
+    expect(fired).toBe(false);
+    expect(s.threatId).toBeNull(); // 脅威としても追跡しない
+  });
+
+  it('★recover(硬直)では構えない', () => {
+    const s = st();
+    const fired = decideCounterReaction('standard', s, 0, 0, [mk('recover')], [], 10000, 0, () => 0, 'master');
+    expect(fired).toBe(false);
+    expect(s.threatId).toBeNull();
+  });
+});
+
+describe('★近接分離ステア(社長報告v0.25.3557「なんか割と敵にぶつかってる」)', () => {
+  const RIGHT = { up: false, down: false, left: false, right: true };
+  const master = botSkillProfile('master');
+  const casual = botSkillProfile('casual');
+
+  it('★至近(48px内)の敵からは反発が混ざる(直進で体を擦らない)', () => {
+    // 右へ進みたい進路のすぐ右に敵 → 入力が右一直線のままではなくなる。
+    const e = spawnEnemyAt('zombie', 30 - 20, -20, 0); // 中心が(30,0)付近
+    const out = separationAdjust(master, RIGHT, 0, 0, [e]);
+    expect(out).not.toEqual(RIGHT);
+  });
+
+  it('★【不変条件】近接射程の外(48px以上)の敵には効かない(殴りに行く動きを阻害しない)', () => {
+    const e = spawnEnemyAt('zombie', SEPARATION_DIST + 30, 0, 0);
+    expect(separationAdjust(master, RIGHT, 0, 0, [e])).toEqual(RIGHT);
+  });
+
+  it('★【不変条件】novice/casualには効かない(ぶつかるのも下手さ=段階差)', () => {
+    const e = spawnEnemyAt('zombie', 10, 0, 0);
+    expect(separationAdjust(casual, RIGHT, 0, 0, [e])).toEqual(RIGHT);
+  });
+
+  it('意図的な静止は尊重する(反発で勝手に歩き出さない)', () => {
+    const STILL = { up: false, down: false, left: false, right: false };
+    const e = spawnEnemyAt('zombie', 10, 0, 0);
+    expect(separationAdjust(master, STILL, 0, 0, [e])).toEqual(STILL);
   });
 });

@@ -361,6 +361,51 @@ export const escapeIfStuck = (
   return dirInput(ux * 0.3 + lx * 0.7, uy * 0.3 + ly * 0.7);
 };
 
+// ---------------------------------------------------------------------------
+// ★近接分離ステア(社長報告v0.25.3557「なんか割と敵にぶつかってる」)。
+//
+// **何が起きていたか**: 接触回避(contactDodge)は「危険な敵」(接触ダメージ≥最大HPの20%)しか見ない。
+// 通常の雑魚は対象外なので、標的への接近(approach=直線入力)は**群れの中を素通りで突っ切る**。
+// masterは engageDist=420 で遠い標的も追う+囲まれ判定が8体と鈍いため、雑魚に体を擦りながら歩く。
+//
+// **直し方**: ごく近距離(SEPARATION_DIST)の敵**全員**から弱い反発ベクトルを受け、移動入力に混ぜる。
+// 近接射程(80px)より内側だけに効かせるので、**殴りに行く動きは阻害しない**(48〜80pxの帯で殴れる)。
+// 対象は avoidContactDist>0 の段(=skilled/master)。novice/casual は従来どおり(ぶつかるのも下手さ)。
+// ---------------------------------------------------------------------------
+export const SEPARATION_DIST = 48;
+const SEPARATION_BLEND = 0.55; // 元の移動0.45 : 反発0.55(反発をやや強く=擦り抜けを許さない)
+
+export const separationAdjust = (
+  profile: BotSkillProfile,
+  input: InputState,
+  pcx: number,
+  pcy: number,
+  enemies: readonly Enemy[],
+): InputState => {
+  if (profile.avoidContactDist <= 0) return input;
+  const wantsMove = input.up || input.down || input.left || input.right;
+  if (!wantsMove) return input; // 意図的な静止(殴り射程での停止)は尊重する
+  let sx = 0, sy = 0, n = 0;
+  for (const e of enemies) {
+    if (e.corpseUntil !== undefined) continue;
+    const dx = pcx - (e.x + e.width / 2);
+    const dy = pcy - (e.y + e.height / 2);
+    const d = Math.hypot(dx, dy);
+    if (d >= SEPARATION_DIST || d < 0.001) continue;
+    const w = 1 - d / SEPARATION_DIST; // 近いほど強く
+    sx += (dx / d) * w; sy += (dy / d) * w; n += 1;
+  }
+  if (n === 0) return input;
+  const sm = Math.hypot(sx, sy) || 1;
+  const dx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  const dy = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+  const im = Math.hypot(dx, dy) || 1;
+  return dirInput(
+    (dx / im) * (1 - SEPARATION_BLEND) + (sx / sm) * SEPARATION_BLEND,
+    (dy / im) * (1 - SEPARATION_BLEND) + (sy / sm) * SEPARATION_BLEND,
+  );
+};
+
 // rusherペルソナ(§5.20 M19)の詰まり検知に使う外部状態。呼び出し側(ヘッドレス駆動側)が
 // ラン開始時に1つ作って毎tick同じ参照を渡し続ける(rankAssessor等のRef系と同じ「明示的な外部状態」方式)。
 export interface RusherTrackState {
@@ -570,6 +615,17 @@ const findCounterThreat = (
   if (seesBossPhases) {
     for (const e of enemies) {
       if (e.aiPhase === 'jump' || e.aiPhase === 'charge') continue; // 上で見た(距離条件が違うので二重に拾わない)
+      // ★v0.25.3557(社長報告「masterで回したけど…カウンターもしない」の修正):
+      // v0.25.3554の初版は isDashParryCounterPhase を**そのまま**使ったが、あの述語は
+      // 「パリィが成立しうる全フェーズ」で、**'crouch'(溜め)と 'recover'(硬直)を含む**。
+      // その結果、パンプキンのしゃがみ/werewolfの溜めが260px先に居るだけで triggerCounter を撃ち、
+      // **空振りのたびにカウンターCD(窓400+CD420ms)が焼かれ、本物のジャンプ着地/突進が来た時には
+      // CD中で取れない**という自滅ループになっていた(=「カウンターしない」の正体)。
+      // ⇒ **来る攻撃が無いフェーズでは構えない**: 'crouch'/'recover'(汎用)と 'g-*-recover'(城ボス硬直)を
+      // 除外し、実際に攻撃が飛んでくるフェーズ(滞空・突進・薙ぎのactive等)だけを脅威として見る。
+      // 硬直へのパニッシュは「カウンター」ではなく通常近接(接近ロジック)の仕事。
+      if (e.aiPhase === 'crouch' || e.aiPhase === 'recover') continue;
+      if (typeof e.aiPhase === 'string' && e.aiPhase.endsWith('-recover')) continue;
       if (!isDashParryCounterPhase(e)) continue;
       const d = Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy);
       if (d <= COUNTER_BOSS_PHASE_DIST) return { id: e.id, kind: 'boss-phase' };
@@ -589,6 +645,9 @@ const threatStillValid = (
   if (kind === 'boss-phase') {
     const be = enemies.find(ee => ee.id === threatId);
     if (!be || !isDashParryCounterPhase(be)) return false;
+    // ★v0.25.3557: 検知側(findCounterThreat)と同じ除外(crouch/recover系は脅威でない)。
+    if (be.aiPhase === 'crouch' || be.aiPhase === 'recover') return false;
+    if (typeof be.aiPhase === 'string' && be.aiPhase.endsWith('-recover')) return false;
     return Math.hypot((be.x + be.width / 2) - pcx, (be.y + be.height / 2) - pcy) <= COUNTER_BOSS_PHASE_DIST;
   }
   const e = enemies.find(ee => ee.id === threatId);
