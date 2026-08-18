@@ -4,6 +4,7 @@ import {
   SPECIAL_SLOTS, eligibleSpecialSlots, nextSpecialDeficit, nextNuisanceDeficit,
   NUISANCE_CD_MS, SPECIAL_CD_MS, POST_HIT_GUARD_MS, pickChaffType, CHAFF_WEIGHTS_DEFAULT,
   decideNextSpawn,
+  peakRedTier,
   nextKomaKind, KOMA_ORDER, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
   chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp,
   isScriptCleared, selectRotationPattern, LOWER_MIX_CHANCE, LOWER_MIX_CHANCE_HIT,
@@ -328,5 +329,29 @@ describe('M6 §4-D: selectRotationPattern(下位混入つきの次台本選択)'
       const p = selectRotationPattern(2, new Set(), 'R2-A', false, 0.9, i / 20);
       expect(p.id).not.toBe('R2-A');
     }
+  });
+});
+
+describe('peakRedTier(ピークの赤い個体1体・社長裁定v0.25.3546)', () => {
+  it('ピークのコマの最初のチャフだけが赤になる', () => {
+    expect(peakRedTier('peak', 'chaff', false)).toBe('red');
+  });
+
+  it('★【不変条件】1コマに1体だけ(2体目以降は赤にしない)', () => {
+    expect(peakRedTier('peak', 'chaff', true)).toBeUndefined();
+  });
+
+  it('★【不変条件】ピーク以外のコマでは赤を出さない', () => {
+    // 緩(ほぼ湧かない)・収穫(稼ぐ)・通常に赤が混ざると、コマの役割分担が壊れる。
+    for (const kind of ['relax', 'harvest', 'normal'] as const) {
+      expect(peakRedTier(kind, 'chaff', false)).toBeUndefined();
+    }
+  });
+
+  it('★【不変条件】邪魔者・特別枠は赤にしない(台本のノルマを強化しない)', () => {
+    // 邪魔者(plant/werewolf/pumpkin)と特別枠(叫喚/ゴースト)は台本のノルマ側。
+    // ここを赤くすると「1体だけ強い」ではなく台本そのものが強化されてしまう。
+    expect(peakRedTier('peak', 'nuisance', false)).toBeUndefined();
+    expect(peakRedTier('peak', 'special', false)).toBeUndefined();
   });
 });

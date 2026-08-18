@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3546',
+    items: [
+      'ピーク(4コマ目)に、赤い個体が必ず1体出るようになりました。浅いエリアでも出ます——「ここが山だ」の合図です。',
+    ],
+  },
+  {
     version: '0.25.3545',
     items: [
       'リザルトから「七つの大罪」の見出し文字を外しました(7段の帯と現在ランクの表示はそのままです)。',

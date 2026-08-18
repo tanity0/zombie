@@ -73,6 +73,7 @@ import {
   ZERO_NUISANCE, NUISANCE_TYPES,
   nextKomaKind, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
   chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp,
+  peakRedTier,
   isScriptCleared, selectRotationPattern, allPatternsSeen,
   type FormationPattern, type NuisanceCounts, type SpecialType, type KomaKind4, type ChaffRampState,
 } from './scriptPuzzle';
@@ -263,6 +264,8 @@ export interface KomaState {
   belowTargetMs: number;
   // 社長指示v0.25.1845: 「変異体が興奮し始めた」通信をこのコマで出したか(査定コマごとに1回)。
   excitedThisKoma: boolean;
+  // ★v0.25.3546(社長裁定「①の1は入れていい」): ピークの「赤い個体1体」をこのコマで出したか。
+  peakRedSpawned: boolean;
 }
 
 export interface KomaMaintenanceRefs {
@@ -486,6 +489,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     koma.elapsedMs = 0;
     koma.acc = createKomaAccumulator();
     koma.excitedThisKoma = false; // 興奮通信(v0.25.1845)はコマごとに再アーム
+    koma.peakRedSpawned = false;  // ★ピークの赤い個体(v0.25.3546)もコマごとに再アーム
     if (koma.kind === 'normal') {
       // 確定査定の反映は「次の通常」から(§4-C。直後のリラックス/ハーベストはR1相当なので影響なし)。
       // M50(§6.27・?rank2=0時のみ): 実ランクはここで動かす旧経路。rank2既定ON時はこの確定査定は
@@ -610,7 +614,15 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     tieBreakRandom: Math.random(),
   });
   if (decision) {
-    const puzzleEnemy = generateEnemy(gameTime, player, spawnBounds, decision.type, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+    // ★v0.25.3546(社長裁定「①の1は入れていい」): ピークのコマの**最初のチャフ**を赤にする。
+    // 追加で湧かせるのではなく既存の1体に色を乗せるだけなので、盤面数・湧きCD・バースト禁止(§0.5)
+    // の規律には一切触れない。判定の理由と経緯は scriptPuzzle.ts の `peakRedTier` に集約してある。
+    const forcedTier = peakRedTier(koma.kind, decision.slot, koma.peakRedSpawned);
+    const puzzleEnemy = generateEnemy(
+      gameTime, player, spawnBounds, decision.type, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc,
+      [], [], 1, false, [], undefined, forcedTier,
+    );
+    if (forcedTier) koma.peakRedSpawned = true;
     // 叫喚の一本化(社長裁定v0.25.1378): 旧ディレクターが持っていた叫喚固有の扱いを特別枠側へ
     // 引き継ぐ——fixed=true(単体管理=画面外カリング/距離リサイクル対象外。キープ距離AIで
     // 画面外に留まるため、外すと回収→即補充のチャーンが起きる)+「叫喚型 出現」バナー。

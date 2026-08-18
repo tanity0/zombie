@@ -639,7 +639,10 @@ export const generateEnemy = (
   rareMult = 1, // DISTRIBUTION_REDESIGN.md③: シーン/Rank連動のレア演出倍率。1=現状据え置き。
   floorAllowed = false, // PACING_REDESIGN.mdバッチ1.5: featuredのエリア床を許すシーンか(講習/mowdownのみtrue)。
   blocked: EnemyType[] = [], // PACING_REDESIGN.mdバッチ3: gatePressureで未解禁の問題児を完全ブロック(重み0)。
-  mix?: ChaffMix // PACING_REDESIGN.mdバッチ3.5-A: チャフ(bat/skeleton/zombie)の役割配合。省略=従来どおり。
+  mix?: ChaffMix, // PACING_REDESIGN.mdバッチ3.5-A: チャフ(bat/skeleton/zombie)の役割配合。省略=従来どおり。
+  // ★v0.25.3546(ピークの赤い個体1体): 色抽選(rollColorTierForArea)を経ずtierを強制指定する。
+  // 省略=従来どおり抽選。`spawnEnemyAtWithTier` の generateEnemy 版(あちらは座標指定の兄弟)。
+  forcedColorTier?: EnemyColorTier
 ): Enemy => {
   // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
   const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
@@ -692,7 +695,7 @@ export const generateEnemy = (
       y = vy0 - halfH + Math.random() * viewportHeight;
       break;
   }
-  return buildEnemy(type, x, y, gameTime, false, esc, rareMult);
+  return buildEnemy(type, x, y, gameTime, false, esc, rareMult, forcedColorTier);
 };
 
 // Spawn an enemy at a specific world position (used for Reaper, scripted
