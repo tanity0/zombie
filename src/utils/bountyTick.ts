@@ -276,6 +276,10 @@ export interface BountyTickState {
   // spinX0/spinY0/spinUx/spinUyと同型)。br-triple-windupが明けた1フレームで焼き付ける。
   tripleLungeX0: number; tripleLungeY0: number; tripleLungeUx: number; tripleLungeUy: number;
   tripleLungeStartAt: number;
+  // ★v0.25.3564(社長裁定「(三段突きの)その後前に追尾してくるの無し。逃げれない」): 溜め中の接近が
+  // 狙う**固定目標**(windup開始フレームのプレイヤー位置のスナップショット)。キーはwindupの開始時刻。
+  tripleApproachKey: number;
+  tripleApproachTx: number; tripleApproachTy: number;
 }
 export const createBountyTickState = (): BountyTickState => ({
   activeId: null, aimVX: 0, aimVY: 0, farMs: 0, comboStep: 0, escortsSummoned: false,
@@ -283,6 +287,7 @@ export const createBountyTickState = (): BountyTickState => ({
   brPattern: null, brPrevPattern: null, brShotsRemaining: 0, brCycleEndAt: 0,
   spinKey: 0, spinX0: 0, spinY0: 0, spinUx: 0, spinUy: 0, whip360Hit: false,
   tripleReadyAt: 0, pushReadyAt: 0, tripleStepStartAt: 0, tripleHitFired: false,
+  tripleApproachKey: 0, tripleApproachTx: 0, tripleApproachTy: 0,
   tripleLungeX0: 0, tripleLungeY0: 0, tripleLungeUx: 0, tripleLungeUy: 0, tripleLungeStartAt: 0,
 });
 const resetBountyRunState = (s: BountyTickState): void => {
@@ -768,8 +773,11 @@ const tickRanged = (
     // REACH/HALF_WIDTH/STEP/選択距離/溜め時間は不変——実行フェーズ開始時点で距離を
     // BR_TRIPLE_APPROACH_STOP_DIST(=REACH)まで詰めておくことで、実行フェーズのREACHだけで
     // 確実に届くようにする(旧実装は溜め中静止=プレイヤーが歩くだけで上限側が届かなくなっていた)。
-    // 速度はプレイヤーの「現在」位置を毎フレーム追う(ライブ追尾)ので、途中で歩いて離れても
-    // 詰め切れる(社長裁定「歩いて避けられない設計になってもよい・数字は報告に明記」)。
+    // ★v0.25.3564(社長報告「バス停の三段突き、バックロール後だけかもだけど、その後前に追尾して
+    // くるの無し。逃げれない」): **ライブ追尾を廃止**。接近の目標は windup 開始フレームの
+    // プレイヤー位置の**スナップショット(固定点)**とし、以後は追わない。歩いて離れれば逃げられる。
+    // 事実として: 旧実装のライブ追尾は 2026-08-15 の社長裁定「もっと高速で近づいてから使う」
+    // 「歩いて避けられない設計になってもよい」に基づくもので、本裁定はそれを更新する(裁定は事実として併記)。
     // 加速→減速(CLAUDE.md MUST=瞬間停止禁止): 速度=「加速倍率(発進からの経過ms)」×
     // 「減速倍率(目標までの残り距離px)」で作る(seek and arrive・brTripleApproach{Accel,Decel}Mult)。
     // ★時間の締切(残り時間)だけで減速を作る実装は採らない——実測で破綻することを確認済み:
@@ -779,15 +787,22 @@ const tickRanged = (
     // 自然に減速する=締切に関係なく詰め切れる。移動は resolveMove(=障害物+移動可能帯clamp)を通す。
     const untilAt = bounty.bossStateUntil ?? (newGameTime + BR_TRIPLE_WINDUP_MS);
     const windupStartAt = untilAt - BR_TRIPLE_WINDUP_MS;
+    // 固定目標のスナップショット(windupの開始時刻をキーに1回だけ焼く)。
+    if (s.tripleApproachKey !== windupStartAt) {
+      s.tripleApproachKey = windupStartAt;
+      s.tripleApproachTx = pcx; s.tripleApproachTy = pcy;
+    }
     const accelMult = brTripleApproachAccelMult(newGameTime - windupStartAt);
-    const remainDist = Math.max(0, dist - BR_TRIPLE_APPROACH_STOP_DIST);
+    const snapDx = s.tripleApproachTx - bcx, snapDy = s.tripleApproachTy - bcy;
+    const snapDist = Math.hypot(snapDx, snapDy);
+    const remainDist = Math.max(0, snapDist - BR_TRIPLE_APPROACH_STOP_DIST);
     const decelMult = brTripleApproachDecelMult(remainDist);
     const approachSpeed = bounty.speed * BR_TRIPLE_APPROACH_SPEED_MULT * accelMult * decelMult;
     let curBx = bounty.x, curBy = bounty.y;
-    if (remainDist > 0 && approachSpeed > 0) {
+    if (remainDist > 0 && approachSpeed > 0 && snapDist > 0.001) {
       const dt = deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime);
       const step = Math.min(approachSpeed * dt, remainDist); // 大きなdt(コマ落ち)でも行き過ぎない安全弁
-      const ux = (pcx - bcx) / dist, uy = (pcy - bcy) / dist;
+      const ux = snapDx / snapDist, uy = snapDy / snapDist;
       const c = resolveMove(bounty.x + ux * step, bounty.y + uy * step, bounty);
       curBx = c.x; curBy = c.y;
       patch.x = c.x; patch.y = c.y;

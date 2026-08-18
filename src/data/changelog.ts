@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3564',
+    items: [
+      'バス停(変異)の三段突き: 溜め中の接近がプレイヤーを追いかけ続けなくなりました。狙うのは構えた瞬間の位置だけ=歩いて逃げれば届きません。',
+    ],
+  },
+  {
     version: '0.25.3563',
     items: [
       'ゲーム内容の変更はありません(開発ツール: ボスメーカーの停止・技の個別再生が賞金首4種でも効くようになりました)。',

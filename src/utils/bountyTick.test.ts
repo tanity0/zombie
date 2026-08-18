@@ -992,10 +992,12 @@ describe('runBountyTick — B2a 技の状態機械', () => {
         });
 
         // ★公平性の再計算(社長裁定「歩いて避けられない設計になってもよい・数字は報告に明記」)。
-        // 選択上限(460px=最も厳しいケース)から、溜め中(900ms)ずっとプレイヤーが実測の歩行速度
-        // (PLAYER_WALK_PX_PER_SEC=104.4px/s・bossTelegraph.tsの物差し)で直線に逃げ続けても、
-        // 中央の突きが届くかを実測する。届く=「もう歩くだけでは避けられない技になった」ことの実測。
-        it('選択上限(460px)から溜め中ずっと全力で逃げても、中央の突きは届く(=歩いて避けられない・数字は報告に明記)', () => {
+        // ★v0.25.3564(社長裁定「その後前に追尾してくるの無し。逃げれない」): 旧テストは
+        // 「溜め中ずっと全力で逃げても中央の突きは届く=歩いて避けられない」(2026-08-15裁定)を
+        // 固定していたが、本裁定はその**逆**を要求する——接近はwindup開始時のスナップショット
+        // (固定点)へ向かうだけで、**歩いて逃げれば届かない**。期待を反転して書き換えた
+        // (後任へ: このテストが赤くなっても旧挙動=ライブ追尾へ戻さないこと。裁定は事実として両方併記)。
+        it('★選択上限(460px)から溜め中ずっと全力で逃げれば、中央の突きは届かない(=逃げられる・v0.25.3564裁定)', () => {
           const { id, step } = setupType('bounty-ranged', { x: 460 + 8, y: 8 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER });
           step(16);
           const before = useGameStore.getState().pumpkinBlasts.length;
@@ -1014,6 +1016,28 @@ describe('runBountyTick — B2a 技の状態機械', () => {
               const moveDist = PLAYER_WALK_PX_PER_SEC * 0.015; // 15ms刻み
               useGameStore.setState(st => ({ player: { ...st.player, x: st.player.x + ux * moveDist, y: st.player.y + uy * moveDist } }));
             }
+            if (cur.bossState === 'chase' && i > 80) break;
+          }
+          const pl = useGameStore.getState().player;
+          const pcx = pl.x + pl.width / 2, pcy = pl.y + pl.height / 2;
+          const pr = Math.max(pl.width, pl.height) / 2;
+          const tripleBlasts = useGameStore.getState().pumpkinBlasts.slice(before).filter(b => b.capsule?.halfWidth === 34);
+          expect(tripleBlasts.length).toBe(3);
+          const center = tripleBlasts[1]!;
+          const d = distToSegment({ x: pcx, y: pcy }, { x: center.capsule!.fx, y: center.capsule!.fy }, { x: center.capsule!.tx, y: center.capsule!.ty });
+          expect(d).toBeGreaterThan(center.capsule!.halfWidth + pr);
+        });
+
+        it('★【不変条件】動かないプレイヤーには従来どおり届く(中距離エントリを殺していない)', () => {
+          // 追尾を消しても、固定点=windup開始時のプレイヤー位置へは詰め切る。立ち止まっていれば
+          // スナップショット=現在地なので、中央の突きは届く(=技として機能し続ける)。
+          const { id, step } = setupType('bounty-ranged', { x: 460 + 8, y: 8 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER });
+          step(16);
+          const before = useGameStore.getState().pumpkinBlasts.length;
+          for (let i = 0; i < 150; i++) {
+            step(15);
+            const cur = useGameStore.getState().enemies.find(e => e.id === id);
+            if (!cur) break;
             if (cur.bossState === 'chase' && i > 80) break;
           }
           const pl = useGameStore.getState().player;
