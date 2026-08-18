@@ -788,9 +788,14 @@ const tickRanged = (
     const untilAt = bounty.bossStateUntil ?? (newGameTime + BR_TRIPLE_WINDUP_MS);
     const windupStartAt = untilAt - BR_TRIPLE_WINDUP_MS;
     // 固定目標のスナップショット(windupの開始時刻をキーに1回だけ焼く)。
+    // ★v0.25.3565(社長裁定「三段突き、判定が始まったら追尾しないで」): 角度ロックも**溜めの頭**へ
+    // 前倒しする。旧: 裁定#3(2026-08-15)「溜め中は毎フレーム追い、溜め明けに一括ロック」=
+    // 赤帯(判定の予告)が900msの間こちらを向き直し続けていた。新: 赤が出た瞬間に方向も確定
+    // (以後、絵も判定も一切追わない。裁定は事実として両方併記)。
     if (s.tripleApproachKey !== windupStartAt) {
       s.tripleApproachKey = windupStartAt;
       s.tripleApproachTx = pcx; s.tripleApproachTy = pcy;
+      patch.bountyTripleAng = Math.atan2(pcy - bcy, pcx - bcx); // 赤帯と判定の唯一の出どころを頭で固定
     }
     const accelMult = brTripleApproachAccelMult(newGameTime - windupStartAt);
     const snapDx = s.tripleApproachTx - bcx, snapDy = s.tripleApproachTy - bcy;
@@ -810,13 +815,11 @@ const tickRanged = (
     } else {
       patch.vx = 0; patch.vy = 0;
     }
-    // 社長裁定#3「溜め明けに一括ロック」: 溜め中(900ms)は毎フレーム現在のプレイヤー方向を追い続け、
-    // windupが明けた瞬間の1回だけ角度を確定する(以後は追尾しない=横に避けても構えが追ってくるので、
-    // 実質「後退するしかない」を作る狙い)。
+    // ★v0.25.3565: 溜め明けの再照準は**しない**(角度は上=溜めの頭で確定済み)。
+    // 旧裁定#3(2026-08-15「溜め明けに一括ロック」)は事実として記す——横に避けても構えが追う設計
+    // だったが、本裁定「判定が始まったら追尾しない」により、赤帯が出た後の回避が全方向で成立する。
     if (newGameTime >= untilAt) {
-      const curBcx = curBx + bounty.width / 2, curBcy = curBy + bounty.height / 2;
-      const ang = Math.atan2(pcy - curBcy, pcx - curBcx);
-      patch.bountyTripleAng = ang; // ロック確定(以後の3段はこの角度だけを読む=単一の出どころ)
+      const ang = bounty.bountyTripleAng ?? Math.atan2(pcy - bcy, pcx - bcx);
       s.tripleStepStartAt = newGameTime;
       s.tripleHitFired = false;
       // 踏み込み(3段通しの1つの弧)の起点/向き/開始時刻をここで焼き付ける(mk-spinと同型)。

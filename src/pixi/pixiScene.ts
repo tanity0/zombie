@@ -14709,13 +14709,16 @@ export class PixiScene {
         chargeRemain = (e.bossStateUntil ?? gameTime) - gameTime;
         chargeProg = Math.max(0, Math.min(1, 1 - chargeRemain / BM_T.charge.windup));
         this.dashLineTick(o, `${e.id}:bm-charge`, chargeWindupOn, chargeRemain, bfx, bfy, btx, bty, now, chargeProg);
-        // §6.38 v12(三段突き・社長裁定#3「溜め明けに一括ロック」): 溜め中は毎フレーム現在のプレイヤー
-        // 方向を追い(追尾)、windup完了で判定側(bountyTick.ts)がbounty.bountyTripleAngへ固定する。
+        // ★v0.25.3565(社長裁定「三段突き、判定が始まったら追尾しないで」): 赤帯の角度は
+        // **判定側が溜めの頭で固定した bountyTripleAng をそのまま読む**(赤=判定と厳密一致の掟)。
+        // 旧: 裁定#3(2026-08-15)で溜め中は毎フレーム現在のプレイヤー方向を追っていた(事実として併記)。
+        // フォールバック(未設定の1フレームだけ)はライブ角。
         // ここは常時無条件で呼ぶ(windupOn=falseへ落ちた1フレームを渡し損ねると、中断時の消し継続が
         // 起動しない=dashLineArm/zoneCapsuleArmと同型の掟)。
         const tripleWindupOn = bs2 === 'br-triple-windup';
         const plT = useGameStore.getState().player;
-        tripleTrackAng = Math.atan2((plT.y + plT.height / 2) - cy, (plT.x + plT.width / 2) - cx);
+        tripleTrackAng = e.bountyTripleAng
+          ?? Math.atan2((plT.y + plT.height / 2) - cy, (plT.x + plT.width / 2) - cx);
         const tripleAngs = brTripleAngles(tripleTrackAng);
         const tripleRemain = (e.bossStateUntil ?? gameTime) - gameTime;
         tripleProg = Math.max(0, Math.min(1, 1 - tripleRemain / BR_TRIPLE_WINDUP_MS));
