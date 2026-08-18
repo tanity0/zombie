@@ -32,9 +32,9 @@ const boss = (type: EnemyType = 'giantbat', over: Partial<Enemy> = {}): Enemy =>
 
 describe('boss posture', () => {
   it('uses 80/100/120 maxima and five counters break every boss class', () => {
-    expect(bossPostureMax('giantbat')).toBe(80);
-    expect(bossPostureMax('miguel')).toBe(100);
-    expect(bossPostureMax('mimir')).toBe(120);
+    expect(bossPostureMax({ type: 'giantbat' })).toBe(80);
+    expect(bossPostureMax({ type: 'miguel' })).toBe(100);
+    expect(bossPostureMax({ type: 'mimir' })).toBe(120);
     for (const type of ['giantbat', 'miguel', 'mimir'] as EnemyType[]) {
       let e = boss(type);
       for (let i = 0; i < 5; i++) {
@@ -51,9 +51,9 @@ describe('boss posture', () => {
   // 入れない(isEngageableBoss経由でusesPostureSystemが既に付く)専用if分岐。
   it('賞金首4型: max=90でPOSTURE_ELITE_TYPESには入っていない(isEngageableBoss経由でusesPostureSystem)', () => {
     for (const type of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as EnemyType[]) {
-      expect(bossPostureMax(type), type).toBe(90);
+      expect(bossPostureMax({ type: type }), type).toBe(90);
       expect(POSTURE_ELITE_TYPES.has(type), type).toBe(false);
-      expect(usesPostureSystem(type), type).toBe(true);
+      expect(usesPostureSystem({ type: type }), type).toBe(true);
     }
   });
 
@@ -111,5 +111,35 @@ describe('boss posture', () => {
     expect(r.triggered).toBe(true);
     expect(r.patch.giantDelayedHits).toHaveLength(1);
     expect(r.patch.giantDelayedHits![0].burst).toBe(true);
+  });
+});
+
+describe('★赤い個体=強個体(社長裁定v0.25.3547「強個体です」)', () => {
+  it('赤い雑魚は体勢システムを持つ(型では持たない敵でも色で付く)', () => {
+    // 赤はエリア抽選でもピークの確定枠でも同じ扱い=「2種類の赤」を作らない。
+    expect(usesPostureSystem({ type: 'bat' })).toBe(false);
+    expect(usesPostureSystem({ type: 'bat', colorTier: 'red' })).toBe(true);
+    expect(usesPostureSystem({ type: 'zombie', colorTier: 'red' })).toBe(true);
+  });
+
+  it('★【不変条件】青・紫は雑魚のまま(体勢を持たない)', () => {
+    // 色ティアのうち強個体へ上げるのは**赤だけ**。青/紫まで上げると雑魚が消える。
+    for (const t of ['bat', 'skeleton', 'zombie'] as const) {
+      expect(usesPostureSystem({ type: t, colorTier: 'blue' }), t).toBe(false);
+      expect(usesPostureSystem({ type: t, colorTier: 'purple' }), t).toBe(false);
+    }
+  });
+
+  it('赤の体勢最大値は強個体と同じ60(格ごとに1つの数字)', () => {
+    expect(bossPostureMax({ type: 'bat', colorTier: 'red' })).toBe(60);
+    expect(bossPostureMax({ type: 'pumpkin' })).toBe(60);
+    // 赤いパンプキンでも60のまま(赤専用ティアを作っていない)。
+    expect(bossPostureMax({ type: 'pumpkin', colorTier: 'red' })).toBe(60);
+  });
+
+  it('★【不変条件】ボスの体勢最大値は色で変わらない', () => {
+    // 城ボス等は色が付かない(CONSTANT_STRENGTH_TYPES)が、万一付いても格が下がってはいけない。
+    expect(bossPostureMax({ type: 'giantbat' })).toBe(80);
+    expect(bossPostureMax({ type: 'mimir' })).toBe(120);
   });
 });

@@ -1,5 +1,45 @@
 # Development Log
 
+## v0.25.3547 — 赤い個体を「強個体」へ(社長裁定「強個体です」)【2026-08-18 21:33 JST】
+
+- **社長裁定「強個体です」**。v0.25.3546 の報告「この赤を強個体扱いにするかは未決のまま」に対する回答。
+  経緯: v0.25.3528頃の社長提起「赤は強個体扱いにするってのは？」が、ここで確定した。
+- **★対象はピークの確定赤に限らず、すべての赤い個体**(深いエリアの色抽選で出た赤も同じ)。
+  **色で2種類の赤を作らない**——プレイヤーに説明できなくなるため。
+- **何が変わるか(強個体の中身=既存の2システム)**:
+  1. **気絶中の近接で即死しなくなる**(`stunnedMeleeOutcome` が 'execute' → 'heavy')。
+     代わりに近接ダメージ ×`ELITE_MELEE_STUN_MULT`(3)+気絶解除。**削り切る(HP0)以外で死なない。**
+     ⇒ 赤(HP5×/攻3×)は既に雑魚とは別物の強さなのに、**気絶させれば1発で即死**していた穴が塞がる。
+  2. **体勢ゲージを持つ**(`usesPostureSystem`)。崩せば紫の完全気絶=致命の窓。最大値は
+     **強個体と同じ60**(赤専用ティアは作らない=格ごとに1つの数字)。
+- **★実装上の判断: 判定を「型」から「個体」へ広げた。** 赤は型ではなく**個体の色**なので、
+  従来の `EnemyType` 引数では表現できない。
+  - `meleeExecute.ts`: **`isEliteEnemy(enemy)` を新設**——強個体の判定を「タイプ(pumpkin/lab-zombie-3)
+    または個体フラグ(isNamed/questTarget)または**赤**」の**唯一の出どころ**にした
+    (従来は `stunnedMeleeOutcome` の中でローカルに合成していた=他から参照できなかった)。
+  - `bossPosture.ts`: `usesPostureSystem` / `bossPostureMax` の引数を `EnemyType` から
+    **`PostureSubject`(= `Pick<Enemy,'type'|'colorTier'>`)** へ変更。外部の呼び出し側は
+    `pixiScene.ts` の2行だけ(体勢ゲージ描画)＝影響は小さい。
+- **やっていないこと(意図的)**: **強個体の定義そのものの統一(PACING_PUZZLE.md §8-6)は未着手のまま。**
+  今回触ったのは「今そこにある強個体の2システムに赤を入れる」ことだけで、`usesBossCrit` /
+  `isEngageableBoss` / `isHiddenBoss` 等の軸の整理には手を付けていない(§8-8の未決9件は据え置き)。
+  赤はボスではないので `usesBossCrit` に入らない=クリで従来どおり5秒気絶する。これは**パンプキンと
+  完全に同じ扱い**で、意図どおり。
+- **教訓の機械化**(テスト8本追加):
+  - `meleeExecute.test.ts`(17→21): 「赤は気絶中でも即死しない」「**青・紫は雑魚のまま**」
+    「isEliteEnemyは3経路(タイプ/フラグ/赤)」「赤はheavy枝=ボス枝へ行かない」。
+  - `bossPosture.test.ts`(8→12): 「赤い雑魚は体勢を持つ」「**青・紫は体勢を持たない**」
+    「赤の最大値は60」「**ボスの最大値は色で変わらない**」。
+  - **青・紫を上げない**を両方に入れたのは、色ティアの上げ幅が広がると雑魚が消えるため。
+- 負荷: **1/10**。判定に真偽値1つ増えるだけ。体勢ゲージの描画は既存の pooled 経路をそのまま使う。
+- **実機で見ていただきたい点**: 小さい赤い雑魚(赤いコウモリ等)の頭上に体勢ゲージが出る絵の据わり。
+- 変更ファイル: `src/utils/meleeExecute.ts` / `src/utils/meleeExecute.test.ts` / `src/utils/bossPosture.ts` /
+  `src/utils/bossPosture.test.ts` / `src/utils/mimirLaserTrack.test.ts` / `src/pixi/pixiScene.ts` /
+  `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+- 検証: `npm run typecheck` 0エラー / `npm run lint` 0エラー /
+  `npx vitest run` **254ファイル 3756テスト pass**(全域・回帰なし)。
+
+
 ## v0.25.3546 — ピークの台本に「赤い個体1体」を確定投入(案A)【2026-08-18 20:58 JST】
 
 - **社長裁定「①の1は入れていい」= エリアを無視して赤い個体を1体出す。**

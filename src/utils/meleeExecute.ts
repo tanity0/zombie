@@ -10,12 +10,12 @@
 // 判定する(v0.25.3171・案A)。旧コメントは「isBossType 分岐より後段に置くこと」だったが、
 // それだと pumpkin / lab-zombie-3 に強個体規定が永久に届かなかった。
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(実装精度の規律4)。
-import type { EnemyType } from '../types/game';
+import type { EnemyColorTier, EnemyType } from '../types/game';
 import { isBossType } from './enemyUtils';
 
 export const ELITE_MELEE_STUN_MULT = 3;
 
-// 強個体の定義: pumpkin/lab-zombie-3(タイプ) または isNamed/questTarget(個体フラグ)。
+// 強個体の**タイプ**判定(個体フラグ・色は含まない=個体単位の判定は下の `isEliteEnemy`)。
 // §6.38 v7(社長裁定「城ボスをコピーして作り直して」): 賞金首4型は旧v6 A-1でここへ名指し追加
 // されていたが、v7でisBossTypeへフル編入されたため撤去(=賞金首は下のusesBossStunnedMeleeで
 // 普通に「ボス」として扱われ、致命の一撃はboss式×BOSS_MELEE_STUN_MULT・keepStunもboss枝が担う。
@@ -39,9 +39,28 @@ export interface StunnedMeleeEnemy {
   type: EnemyType;
   isNamed?: boolean;
   questTarget?: boolean;
+  // ★v0.25.3547(社長裁定「強個体です」): 赤い個体は強個体。色ティアも強個体判定の入力。
+  colorTier?: EnemyColorTier;
   health: number;
   maxHealth: number;
 }
+
+/**
+ * ★強個体か(個体単位の判定・唯一の出どころ)。
+ *
+ * 内訳: **タイプ**(pumpkin / lab-zombie-3) または **個体フラグ**(isNamed / questTarget)
+ * または **★色ティアが赤**(v0.25.3547)。
+ *
+ * 赤が入った経緯(社長裁定v0.25.3546→3547): ピークのコマに赤を1体確定で置く(案A)ことにした際、
+ * 社長が「赤は強個体扱いにするってのは？」と提起し、実装報告に対して**「強個体です」**と裁定した。
+ * ⇒ **ピークの赤に限らず、赤い個体はすべて強個体**(深いエリアの色抽選で出た赤も同じ)。
+ *   色で2種類の赤を作るとプレイヤーに説明できないため。
+ *
+ * 赤(HP5×/攻3×)は既に雑魚とは別物の強さを持っているのに、**気絶させれば1発で即死**していた。
+ * 強個体にすることで「削り切る以外で死なない」=山の頂点として立つ。
+ */
+export const isEliteEnemy = (enemy: Pick<StunnedMeleeEnemy, 'type' | 'isNamed' | 'questTarget' | 'colorTier'>): boolean =>
+  isEliteType(enemy.type) || !!enemy.isNamed || !!enemy.questTarget || enemy.colorTier === 'red';
 
 export type StunnedMeleeOutcome = 'execute' | 'heavy';
 
@@ -51,8 +70,8 @@ export const stunnedMeleeOutcome = (enemy: StunnedMeleeEnemy): StunnedMeleeOutco
   // には到達しなくなった(呼び出し側は必ずusesBossStunnedMeleeを先に見る=下のコメントどおり)。
   // §6.38 B3(E-1確定): 強個体(pumpkin/lab-zombie-3/isNamed/questTarget)はHPに関わらずexecuteを
   // 返さない(常にheavy)。旧HP50%閾値は撤去=瀕死処刑の廃止(既存behavior変更=社長宣言による)。
-  const isElite = isEliteType(enemy.type) || !!enemy.isNamed || !!enemy.questTarget;
-  return isElite ? 'heavy' : 'execute'; // 雑魚は無条件即死・強個体は常にheavy(即死しない)
+  // ★v0.25.3547: 判定は `isEliteEnemy` へ一本化(赤い個体=強個体を含む)。
+  return isEliteEnemy(enemy) ? 'heavy' : 'execute'; // 雑魚は無条件即死・強個体は常にheavy(即死しない)
 };
 
 // ---------------------------------------------------------------------------

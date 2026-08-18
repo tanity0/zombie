@@ -18225,8 +18225,8 @@ export class PixiScene {
 
   private drawHealthBar(g: Graphics, e: Enemy, now: number, gameTime: number) {
     // v0.25.3295: 体勢ゲージは紫システム保有者全員(交戦ボス+パンプキン等の強敵=usesPostureSystem)。
-    const postureBoss = usesPostureSystem(e.type);
-    const postureMax = postureBoss ? bossPostureMax(e.type) : 0;
+    const postureBoss = usesPostureSystem(e);
+    const postureMax = postureBoss ? bossPostureMax(e) : 0;
     const posture = postureBoss ? bossPostureNow(e) : postureMax;
     if (e.health >= e.maxHealth && (!postureBoss || posture >= postureMax)) return;
     const w = e.width;

@@ -7,7 +7,20 @@ import { isBountyType } from './enemyUtils';
 // **「だけ」の意味**: クリ減速(usesBossCrit)・ボスカメラ・湧きリラックス(isEngageableBoss)には
 // 入れない。体勢値の蓄積と紫だけをこの表で足す。
 export const POSTURE_ELITE_TYPES = new Set<EnemyType>(['pumpkin', 'lab-zombie-3']);
-export const usesPostureSystem = (t: EnemyType): boolean => isEngageableBoss(t) || POSTURE_ELITE_TYPES.has(t);
+
+/** 体勢システムの判定に必要な最小形(タイプ+色ティア)。★v0.25.3547で色が入ったため型で受けない。 */
+export type PostureSubject = Pick<Enemy, 'type' | 'colorTier'>;
+
+/**
+ * 体勢値(→紫の完全気絶)を持つか。
+ *
+ * ★v0.25.3547(社長裁定「強個体です」): **赤い個体を追加**。引数を `EnemyType` から
+ * 「タイプ+色ティア」へ広げたのはこのため——赤は型ではなく**個体の色**なので、型だけでは判定できない。
+ * 対象は**ピークの確定赤に限らず、すべての赤い個体**(深いエリアの色抽選で出た赤も同じ)。
+ * 色で2種類の赤を作るとプレイヤーに説明できないため。
+ */
+export const usesPostureSystem = (e: PostureSubject): boolean =>
+  isEngageableBoss(e.type) || POSTURE_ELITE_TYPES.has(e.type) || e.colorTier === 'red';
 
 export type BossPostureImpact = 'counter' | 'melee' | 'heavy' | 'gun-crit' | 'reflect';
 
@@ -44,7 +57,11 @@ const IMPACT_RATIO: Record<BossPostureImpact, number> = {
   reflect: 0.05,
 };
 
-export const bossPostureMax = (type: EnemyType): number => {
+export const bossPostureMax = (e: PostureSubject): number => {
+  const type = e.type;
+  // ★v0.25.3547: 赤い個体も強個体なので**同じ60**。格ごとに1つの数字にしておく(赤専用のティアを
+  // 作らない)。ただし型の強個体2体より先に見る=赤いパンプキンでも60で変わらない。
+  if (e.colorTier === 'red') return 60; // 叩き台(強個体の既存値と同値)
   if (POSTURE_ELITE_TYPES.has(type)) return 60; // 強敵2体(v0.25.3295叩き台・城ボス80より軽い)
   if (type === 'giantbat') return 80;
   if (type === 'mimir' || type === 'jormungand' || type === 'skadi' || type === 'thor') return 120;
@@ -56,10 +73,10 @@ export const bossPostureMax = (type: EnemyType): number => {
 };
 
 export const bossPostureNow = (enemy: Enemy): number =>
-  Math.max(0, Math.min(bossPostureMax(enemy.type), enemy.bossPosture ?? bossPostureMax(enemy.type)));
+  Math.max(0, Math.min(bossPostureMax(enemy), enemy.bossPosture ?? bossPostureMax(enemy)));
 
 export const isBossPostureBroken = (enemy: Enemy, gameTime: number): boolean =>
-  usesPostureSystem(enemy.type)
+  usesPostureSystem(enemy)
   && enemy.bossFullStunUntil !== undefined
   && gameTime < enemy.bossFullStunUntil;
 
@@ -71,9 +88,9 @@ export const applyBossPostureDamage = (
   // 倍率(×1.5/1.75/2.0)。既定1=他の全impact/未所持は無改変。
   impactMult = 1,
 ): { patch: Partial<Enemy>; triggered: boolean } | null => {
-  if (!usesPostureSystem(enemy.type) || isBossPostureBroken(enemy, gameTime)) return null;
+  if (!usesPostureSystem(enemy) || isBossPostureBroken(enemy, gameTime)) return null;
   if (gameTime < (enemy.bossPostureLockUntil ?? 0)) return null;
-  const max = bossPostureMax(enemy.type);
+  const max = bossPostureMax(enemy);
   const before = bossPostureNow(enemy);
   const after = Math.max(0, before - max * IMPACT_RATIO[impact] * impactMult * POSTURE_CHIP_MULT);
   let recoveryCap = enemy.bossPostureRecoveryCap ?? max;
@@ -109,8 +126,8 @@ export const applyBossPostureDamage = (
 };
 
 export const tickBossPosture = (enemy: Enemy, gameTime: number, deltaTime: number): Partial<Enemy> | null => {
-  if (!usesPostureSystem(enemy.type)) return null;
-  const max = bossPostureMax(enemy.type);
+  if (!usesPostureSystem(enemy)) return null;
+  const max = bossPostureMax(enemy);
   if (enemy.bossFullStunUntil !== undefined) {
     if (gameTime < enemy.bossFullStunUntil) return null;
     return {
@@ -149,8 +166,8 @@ export const applyBrokenMeleeFatal = (
   return {
     damage: baseDamage * 5 + Math.max(0, enemy.bossBreakRewardRemaining ?? 0),
     patch: {
-      bossPosture: bossPostureMax(enemy.type),
-      bossPostureRecoveryCap: bossPostureMax(enemy.type),
+      bossPosture: bossPostureMax(enemy),
+      bossPostureRecoveryCap: bossPostureMax(enemy),
       bossFullStunUntil: undefined,
       bossBreakRewardRemaining: undefined,
       // 旧: undefined(=命中と同時に再開)。v0.25.3035で致命後の停止(2秒)に変更。

@@ -1,6 +1,7 @@
 // PACING_PUZZLE.md §6.22 M47仕様①→§6.38 B3(E-1確定=瀕死処刑の撤去)のユニットテスト。
 import { describe, it, expect } from 'vitest';
-import { stunnedMeleeOutcome, resolveStunnedMeleeHit, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT } from './meleeExecute';
+import { stunnedMeleeOutcome, resolveStunnedMeleeHit, usesBossStunnedMelee, isEliteEnemy, ELITE_MELEE_STUN_MULT } from './meleeExecute';
+import type { StunnedMeleeEnemy } from './meleeExecute';
 import type { EnemyType } from '../types/game';
 
 const enemy = (over: Partial<{
@@ -162,5 +163,37 @@ describe('resolveStunnedMeleeHit(気絶敵フィニッシュの裁定・プレ�
     const r = resolveStunnedMeleeHit(
       stunned({ type: 'giantbat', isNamed: true, health: 1, maxHealth: 100 }), 10, 500, BOSS_MULT);
     expect(r?.kind).toBe('boss');
+  });
+});
+
+describe('★赤い個体=強個体(社長裁定v0.25.3547「強個体です」)', () => {
+  const mk = (over: Partial<StunnedMeleeEnemy> = {}): StunnedMeleeEnemy =>
+    ({ type: 'bat', health: 10, maxHealth: 100, ...over });
+
+  it('赤い雑魚は気絶中でも即死しない(常にheavy)', () => {
+    // 赤(HP5×/攻3×)は既に雑魚とは別物なのに、気絶させれば1発で即死していた。
+    expect(stunnedMeleeOutcome(mk())).toBe('execute');
+    expect(stunnedMeleeOutcome(mk({ colorTier: 'red' }))).toBe('heavy');
+  });
+
+  it('★【不変条件】青・紫は雑魚のまま(即死する)', () => {
+    expect(stunnedMeleeOutcome(mk({ colorTier: 'blue' }))).toBe('execute');
+    expect(stunnedMeleeOutcome(mk({ colorTier: 'purple' }))).toBe('execute');
+  });
+
+  it('isEliteEnemy: タイプ/個体フラグ/赤 のいずれでも強個体', () => {
+    expect(isEliteEnemy({ type: 'bat' })).toBe(false);
+    expect(isEliteEnemy({ type: 'pumpkin' })).toBe(true);
+    expect(isEliteEnemy({ type: 'lab-zombie-3' })).toBe(true);
+    expect(isEliteEnemy({ type: 'bat', isNamed: true })).toBe(true);
+    expect(isEliteEnemy({ type: 'bat', questTarget: true })).toBe(true);
+    expect(isEliteEnemy({ type: 'bat', colorTier: 'red' })).toBe(true);
+  });
+
+  it('★【不変条件】赤は気絶中の近接でELITE_MELEE_STUN_MULT倍を受ける(ボス枝へは行かない)', () => {
+    const r = resolveStunnedMeleeHit(
+      { ...mk({ colorTier: 'red' }), stunUntil: 1000 }, 10, 0, 5,
+    );
+    expect(r).toEqual({ kind: 'heavy', dmg: 10 * ELITE_MELEE_STUN_MULT });
   });
 });

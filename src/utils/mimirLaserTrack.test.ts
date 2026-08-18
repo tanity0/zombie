@@ -190,7 +190,7 @@ describe('mimirLaserTrack: 中断(弱点窓)', () => {
     expect(r!.patch.bossStateUntil).toBe(9500 + MIMIR_LASER_BROKEN_MS);
     expect(r!.patch.bossScriptQueue).toEqual([]);
     expect(r!.patch.mimirLaserReadyAt).toBe(9500 + MIMIR_LASER_INTERRUPTED_CD_MS);
-    expect(r!.patch.bossPosture).toBeCloseTo(bossPostureMax('mimir') * 0.8, 6);
+    expect(r!.patch.bossPosture).toBeCloseTo(bossPostureMax({ type: 'mimir' }) * 0.8, 6);
   });
   it('窓外はnull(中断しない)', () => {
     expect(mimirLaserBreakOnMeleeHit(mkMimir(), 10000 - MIMIR_LASER_WEAK_MS - 1)).toBeNull();
