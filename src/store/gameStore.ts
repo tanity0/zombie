@@ -114,6 +114,7 @@ import {
 } from '../utils/eventQuest';
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
+import { slasherLungePx } from '../utils/slasherLunge';
 import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isArenaSweepProtected } from '../utils/enemyUtils';
 // §6.38 B4(クリーンアップ): 実効難易度倍率の式はbountyValue.ts(依存ゼロに近い葉。詳細はファイル冒頭の
 // コメント参照)へ一本化した。bountyTick.tsもここから同じ関数をimportする(=もう複製ではなく本物の
@@ -1161,8 +1162,9 @@ export const runnerAwakenDamageMult = (player: Player): number =>
 // エクスプローダー覚醒(Lv3)の爆発KB距離倍率(主語=その爆発の持ち主)。全爆発KB地点がこれを乗算する。
 export const skillExplosionKbMult = (player: Player): number =>
   skillLevel(player, 'exploder') >= 3 ? EXPLODER_AWAKEN_KB_MULT : 1;
-// スラッシャーのチェーン攻撃時の踏み込み(社長指示v0.25.3258「連続攻撃は20px前進(慣性入れて)」)。
-export const SLASHER_LUNGE_PX = 20;
+// スラッシャーのチェーン攻撃時の踏み込み。
+// v0.25.3258「連続攻撃は20px前進(慣性入れて)」の固定20pxは、★v0.25.3540 社長発案の**自動追尾**へ
+// 置き換えた。距離の式と上限は `src/utils/slasherLunge.ts`(純関数+テスト)に置いてある。
 // パニッシャーの巻き込み判定の拡張幅(社長指示v0.25.3260「広めに」・叩き台)。
 export const PUNISHER_HIT_PAD_PX = 16;
 // パニッシャー巻き込み成立時の画面シェイク(社長指示v0.25.3265・描画のみ・叩き台)。
@@ -1170,7 +1172,6 @@ export const PUNISHER_TWO_BEAT_MS = 150; // 社長指示v0.25.3299「ダン!ダ�
 export const PUNISHER_SHAKE_MS = 200;
 export const PUNISHER_SHAKE_MAG = 4;
 export const SLASHER_LUNGE_MS = 160;
-export const SLASHER_LUNGE_SEEK_PX = 300; // 空振り時に踏み込み先の敵を探す半径(v0.25.3266)
 // ジャンプ/ダッシュ攻撃をカウンターした時の「弾き飛ばし」。速度ノックバックは updateEnemies が
 // 翌フレーム以降に適用するため、着地で付与される stun/lift に上書きされ「その場で痺れる」だけに
 // なっていた。→ パリィ成立の瞬間に即時で位置を飛ばす(LAUNCH)+その後も速く滑らせる(SPEED)。
@@ -3889,40 +3890,30 @@ const applySlasherChainStrike = (
   // (最終段はSLASHER_FINAL_KB_MULT倍=50px)。knockbackEnemyは免疫CDを見ない=連撃中も毎段飛ぶ。
   const kbMult = (knockbackSpeedFor(SLASHER_FORCE_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED) * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1);
   // ★v0.25.3399 社長指示「移動後に判定しないと絶対当たらない。敵は25動いてるのに」:
-  // 順序を**踏み込み→判定**へ変更。①先に踏み込み方向(最寄りの敵・死体除外・300px内。いなければ
-  // 現在の移動方向)を決め、②判定は**踏み込み完了後の位置(20px先)**から行う。前段の強制KB25pxで
-  // 離れた敵に、踏み込みで追いついてから振る=「連撃で押しながら切り進む」が成立する。
-  // (見た目の滑り=既存の減衰スライドはそのまま。判定だけ着地点を先取りする)
-  let lx = 0, ly = 0;
-  {
-    let bd2 = SLASHER_LUNGE_SEEK_PX * SLASHER_LUNGE_SEEK_PX;
-    for (const e of get().enemies) {
-      if (e.corpseUntil !== undefined) continue;
-      if (e.type === 'reaper' && !e.reaperChaser) continue;
-      const dx = e.x + e.width / 2 - pcx, dy = e.y + e.height / 2 - pcy;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bd2 && d2 > 0.0001) { bd2 = d2; const d = Math.sqrt(d2); lx = dx / d; ly = dy / d; }
-    }
-    if (lx === 0 && ly === 0 && Math.hypot(player.vx, player.vy) > 1) {
-      const d = Math.hypot(player.vx, player.vy); lx = player.vx / d; ly = player.vy / d;
-    }
-  }
-  // 判定の基準点=踏み込み完了後の位置。
-  const jx = pcx + lx * SLASHER_LUNGE_PX;
-  const jy = pcy + ly * SLASHER_LUNGE_PX;
+  // ★v0.25.3540 社長指示「追撃の範囲は、自分がいま立ってるところからの近接攻撃射程内。
+  // じゃないと射程が嘘になるので」: **判定はいま立っている位置(pcx,pcy)から測る。**
+  // これは v0.25.3399「移動後に判定しないと絶対当たらない。敵は25動いてるのに」の撤回
+  // (事実として: v3399は判定基準を踏み込み後の位置=20px先へ動かしていた。結果、実効射程が
+  //  踏み込みぶん伸びて**表示・体感の射程より遠くへ届く**=「射程が嘘」になっていた)。
+  // v3399が解こうとしていた「押した敵に届かない」は、下の**自動追尾の踏み込み**が引き受ける
+  // ——押した量ぶんだけ詰め直すので、次の一撃は再び「立っている位置の射程内」に敵が居る。
   let killed = 0;
   let hit = false;
   const hitIds: string[] = [];
+  // 踏み込みの目標: 実際にノックバックした敵のうち**最寄り**(=いま切り結んでいる相手)。
+  // 死んだ敵・押せなかった敵(ボス級)は目標にしない=v0.25.3400「KBしなかったら前進しない」を維持。
+  let lungeTo: { dirX: number; dirY: number; dist: number } | null = null;
   for (const e of get().enemies) {
     if (e.type === 'reaper' && !e.reaperChaser) continue;
     if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は追撃対象から除外
     const ecx = e.x + e.width / 2;
     const ecy = e.y + e.height / 2;
-    const dx = ecx - jx, dy = ecy - jy;
+    const dx = ecx - pcx, dy = ecy - pcy;
     // ★距離は初撃と同じ enemyMeleeDist(判定帯の最近点)で測る(v0.25.3398バグ修正)。
     // 旧: 中心距離のまま v0.25.3170 の一本化から取り残され、「初撃は届くのに追撃は身体の
     // 厚みぶん届かない」帯域が生まれていた=2撃目以降が系統的に空振り。
-    if (enemyMeleeDist(jx, jy, e) > meleeRange) continue;
+    const eDist = enemyMeleeDist(pcx, pcy, e);
+    if (eDist > meleeRange) continue;
     hit = true;
     hitIds.push(e.id);
     const k = get().damageEnemy(e.id, dmg);
@@ -3939,27 +3930,40 @@ const applySlasherChainStrike = (
       //  「KB無効の相手には前進しない」意図とも噛み合わない。)
       if (!resistsChipKnockback(e.type)) {
         get().knockbackEnemy(e.id, dx / d, dy / d, kbMult, kbMult); // 追撃が当たった敵のみノックバック(Lv3最終段のみ大)。maxStrengthも渡す(既定cap=3で頭打ちになる罠・v0.25.3257)
+        if (lungeTo === null || eDist < lungeTo.dist) lungeTo = { dirX: dx / d, dirY: dy / d, dist: eDist };
       }
     }
   }
-  get().spawnRing(jx, jy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200); // 追撃の一閃(踏み込み先で出す)
-  // v0.25.3258「連続攻撃は20px前進(慣性入れて)」→ ★v0.25.3400 社長指示
-  // 「相手がノックバックしてなかったら、こちらも(踏み込み)しない」:
-  // このスイングで当てた敵が**実際にノックバック(または死体吹き飛び)した時だけ**踏み込む。
-  // 空振り・KB無効の相手(ボス級等)には前進しない(旧: 空振りでも最寄りの敵へ前進していた=v3266は廃止)。
+  // 一閃の絵は**判定と同じ円**(いま立っている位置・半径=meleeRange)に揃える。
+  get().spawnRing(pcx, pcy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200);
+  // ★v0.25.3540 社長発案「スラッシャーは射程内であれば、その敵から規定の距離(近接入る距離)まで
+  // 自動追尾 であれば事故が減りそう」: 踏み込みを**定数(旧20px)から自動追尾へ**作り替える。
+  //
+  // なぜ: 旧実装は踏み込み20px固定なのに強制KBは25px(Lv3最終段50px)で、**数字が2本あった**。
+  // 押し量を変えるたびにズレが再発する構造で、実際に毎撃5pxずつ相手が逃げていた(v0.25.3538の洗い出し)。
+  // ⇒ 踏み込み距離を `いま押した後の距離 − 近接が入る距離` で毎回**算出**する。押し量がいくつでも
+  //   (将来ノックバック減衰が入って変わっても)**常に近接が入る位置に着地する**=この事故の型が消える。
+  // 「いま押した後の距離」は、この一撃で自分が与えた押し量が分かっているので予測できる
+  //  (ノックバックは速度で280msかけて効くため、この瞬間の敵はまだ動いていない=実測では取れない)。
+  // 慣性は従来どおり: 速度を与えて SLASHER_LUNGE_MS かけて減衰スライドする(瞬間移動しない)。
+  // チェーンCD(300ms)>踏み込み(160ms)なので、次の一撃までに踏み込みは必ず終わる。
   {
     const nowMs = Date.now();
-    const kbHappened = hitIds.length > 0 && get().enemies.some(e =>
-      hitIds.includes(e.id) && ((e.knockbackUntil ?? 0) > nowMs || isCorpse(e)));
-    if (kbHappened && (lx !== 0 || ly !== 0)) {
-      const lungeSpeed = knockbackSpeedFor(SLASHER_LUNGE_PX, SLASHER_LUNGE_MS);
-      useGameStore.setState(state => ({
-        player: {
-          ...state.player,
-          knockbackVx: lx * lungeSpeed, knockbackVy: ly * lungeSpeed,
-          knockbackUntil: nowMs + SLASHER_LUNGE_MS, knockbackMs: SLASHER_LUNGE_MS,
-        },
-      }));
+    if (lungeTo !== null) {
+      // 押した量(実距離px)。Lv3最終段のみ SLASHER_FINAL_KB_MULT 倍。
+      const pushedPx = SLASHER_FORCE_KB_PX * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1);
+      const lungePx = slasherLungePx(lungeTo.dist, pushedPx, meleeRange);
+      const lx = lungeTo.dirX, ly = lungeTo.dirY;
+      if (lungePx > 0.5) {
+        const lungeSpeed = knockbackSpeedFor(lungePx, SLASHER_LUNGE_MS);
+        useGameStore.setState(state => ({
+          player: {
+            ...state.player,
+            knockbackVx: lx * lungeSpeed, knockbackVy: ly * lungeSpeed,
+            knockbackUntil: nowMs + SLASHER_LUNGE_MS, knockbackMs: SLASHER_LUNGE_MS,
+          },
+        }));
+      }
     }
   }
   // スキル: ナイフマスターのコンボ加算(§6.10 M33⑧: スラッシャー追撃のヒットでも貯める。倍率は既に乗っている)。
