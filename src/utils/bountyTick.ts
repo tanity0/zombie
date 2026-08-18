@@ -1740,6 +1740,19 @@ export interface BountySpawnBlockInput {
   bossFightNow: boolean;   // ボス戦中(施設ロックと同じ土管)
   activeEvent: boolean;    // 囲い/救助等のイベント中
   hiddenBossAlive: boolean; // 裏ボス(mimir等)存命中
+  /**
+   * ★v0.25.3549(社長報告「小ボスと城ボスが5分に同時に出てきてます」): **交戦ボスが場に居るか**
+   * (賞金首自身は除く=`isGhostEligibleBoss`)。
+   *
+   * なぜ `bossFightNow` だけでは足りなかったか: あちらは `bossEngagedNow` = **プレイヤーとの距離**で
+   * 決まる「交戦中か」の判定。城ボスは 5:00(`CASTLE_BOSS_MIN_TIME_MS`)に**城の位置へ湧く**ので、
+   * プレイヤーが着くまでは `bossFightNow === false`。**その「湧いたが未交戦」の窓に賞金首が入り込む。**
+   * 3:00の賞金首が抑止(初心者ゾーン/緩コマ等)で繰り越されていると、ゲートが開いた瞬間=まさにこの窓に
+   * 落ちて、**城ボスと小ボスが同時に出る**。
+   *
+   * 裏ボス(`hiddenBossAlive`)は最初から**存命**で見ていた。城ボスだけ交戦基準だったのが非対称=これが穴。
+   */
+  bossAlive: boolean;
   redNightActive: boolean; // 紅き夜中
   area: number;            // 憲法第4条: 初心者ゾーン(エリア0-1)では出さない
   storyBossOnly: boolean;  // storyBossOnlyステージ(ストーリー専用進行)
@@ -1748,7 +1761,7 @@ export interface BountySpawnBlockInput {
   tutorialStage: boolean;  // チュートリアル(farBackdrop==='tutorial')
 }
 export const bountySpawnBlocked = (input: BountySpawnBlockInput): boolean =>
-  input.bossFightNow || input.activeEvent || input.hiddenBossAlive || input.redNightActive
+  input.bossFightNow || input.bossAlive || input.activeEvent || input.hiddenBossAlive || input.redNightActive
   || input.area <= 1 || input.storyBossOnly || input.labTheme || input.corridorMode || input.tutorialStage;
 
 // ---------------------------------------------------------------------------------------------

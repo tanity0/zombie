@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3549',
+    items: [
+      '城ボスと賞金首が同時に出てしまう不具合を修正しました。ボスが場に出ている間は賞金首を出しません。',
+    ],
+  },
+  {
     version: '0.25.3548',
     items: [
       '収穫の40秒(稼ぐコマ)で、AIディレクターが湧きを緩めなくなりました。稼ぐコマは最後まで稼げます。',

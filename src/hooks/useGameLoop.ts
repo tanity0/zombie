@@ -353,7 +353,7 @@ import {
   bossWideShotZoom,
   bossCameraLeadX, // v0.25.3063: 横のボス先読み(社長裁定「2をまず揃える」)
 } from '../utils/cameraZoom';
-import {
+import { isGhostEligibleBoss,
   advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss, bossRetreatKeepRadiusPx,
   facilitiesLocked, // v0.25.3054: ボス戦中の施設ロック(発火ゲート)
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
@@ -3935,8 +3935,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const bountyAliveNow = bgs.enemies.some(e => isBountyType(e.type));
           const bHiddenBossAlive = bgs.enemies.some(e => isHiddenBoss(e.type));
           const bAreaForGate = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
+          // ★v0.25.3549: 「交戦中」ではなく「場に居るか」。城ボスは5:00に城へ湧くので、プレイヤーが
+          // 着くまで bossFightNow=false のままで、その窓に繰り越しの賞金首が入り込んでいた。
+          // 賞金首自身は除く(isGhostEligibleBoss=交戦ボス−賞金首)=同時1体の制御は bountyAlive が担う。
+          const bBossAlive = bgs.enemies.some(e => isGhostEligibleBoss(e.type));
           const bBlocked = bountySpawnBlocked({
             bossFightNow: bgs.bossFightNow,
+            bossAlive: bBossAlive,
             activeEvent: !!bgs.activeEvent,
             hiddenBossAlive: bHiddenBossAlive,
             redNightActive: bgs.redNight?.phase === 'active',

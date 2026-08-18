@@ -59,7 +59,7 @@ describe('bountyLingerExpired — 滞在1分(gameTime基準・§2)', () => {
 
 describe('bountySpawnBlocked — 抑止ゲート(B1で用意・B4でuseGameLoop.tsの自然湧きへ配線)', () => {
   const ok = (): Parameters<typeof bountySpawnBlocked>[0] => ({
-    bossFightNow: false, activeEvent: false, hiddenBossAlive: false, redNightActive: false,
+    bossFightNow: false, bossAlive: false, activeEvent: false, hiddenBossAlive: false, redNightActive: false,
     area: 2, storyBossOnly: false, labTheme: false, corridorMode: false, tutorialStage: false,
   });
   it('全条件クリアならブロックしない', () => {
@@ -67,6 +67,7 @@ describe('bountySpawnBlocked — 抑止ゲート(B1で用意・B4でuseGameLoop.
   });
   it('各条件が単独でブロックする', () => {
     expect(bountySpawnBlocked({ ...ok(), bossFightNow: true })).toBe(true);
+    expect(bountySpawnBlocked({ ...ok(), bossAlive: true })).toBe(true);
     expect(bountySpawnBlocked({ ...ok(), activeEvent: true })).toBe(true);
     expect(bountySpawnBlocked({ ...ok(), hiddenBossAlive: true })).toBe(true);
     expect(bountySpawnBlocked({ ...ok(), redNightActive: true })).toBe(true);
@@ -1197,5 +1198,30 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       expect(seen.has('mk-boom-recover')).toBe(true);
       expect(seen.has('chase')).toBe(true);
     });
+  });
+});
+
+
+describe('★【回帰・v0.25.3549】城ボスと賞金首の同時出現', () => {
+  // 社長報告「小ボスと城ボスが5分に同時に出てきてます」。
+  // 城ボスは5:00に**城の位置へ湧く**ので、プレイヤーが着くまで bossFightNow(=交戦距離判定)はfalse。
+  // その「湧いたが未交戦」の窓に、3:00から繰り越された賞金首が入り込んでいた。
+  const base = (): Parameters<typeof bountySpawnBlocked>[0] => ({
+    bossFightNow: false, bossAlive: false, activeEvent: false, hiddenBossAlive: false, redNightActive: false,
+    area: 2, storyBossOnly: false, labTheme: false, corridorMode: false, tutorialStage: false,
+  });
+
+  it('★城ボスが湧いていれば、まだ交戦していなくても賞金首は出ない', () => {
+    expect(bountySpawnBlocked({ ...base(), bossFightNow: false, bossAlive: true })).toBe(true);
+  });
+
+  it('★【不変条件】裏ボスと城ボスで扱いが揃っている(片方だけ交戦基準にしない)', () => {
+    // 裏ボスは最初から「存命」で見ていたのに、城ボスだけ「交戦中」基準だったのが穴だった。
+    expect(bountySpawnBlocked({ ...base(), hiddenBossAlive: true })).toBe(true);
+    expect(bountySpawnBlocked({ ...base(), bossAlive: true })).toBe(true);
+  });
+
+  it('ボスが場に居なければ従来どおり出せる', () => {
+    expect(bountySpawnBlocked(base())).toBe(false);
   });
 });
