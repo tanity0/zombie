@@ -1783,11 +1783,27 @@ export interface BountyNaturalSpawnInput {
   spawnCount: number;     // このランで自然湧きした回数(消費済み・討伐/退場を問わない=B-4裁定)
   bountyAlive: boolean;   // 同時1体まで(既に賞金首が場に居る)
   spawnBlocked: boolean;  // bountySpawnBlockedの結果(ボス戦中/初心者ゾーン等)
-  calmOk: boolean;        // 緩コマでない(=告知してよいコマ。第5条「緩を荒らさない」)
+  /**
+   * ★v0.25.3550(社長裁定「b」)で**判定から外した**。フィールドは呼び出し側の互換のため残すが、
+   * `bountyNaturalSpawnReady` はもう見ない(渡す値は結果を変えない)。
+   *
+   * なぜ外したか(社長報告「そもそも5分に出てくるのはおかしい。3分に出てこないし」):
+   * 旧仕様は「**通常コマでだけ**告知する(第5条『緩を荒らさない』)」だったが、これと固定スケジュール
+   * (3:00/7:00)の**位相が構造的に噛み合っていなかった**。4コマは 緩→収穫→通常→ピークで、緩と収穫は
+   * きっかり40秒、通常とピークは40秒＋片付き(最大+30秒)。よって通常コマの窓は
+   * **1周目=80秒〜120〜150秒 / 2周目=240〜300秒〜** で、**180秒(3:00)はどの通常コマにも入らない**
+   * (1周目の通常は最長150秒で終わり、2周目の通常は最速240秒から)。
+   * ⇒ **賞金首①は設定時刻に出られる可能性がゼロ**で、「遅れても失効しない」仕様により次の通常コマ
+   * (4:00〜5:00)まで持ち越され、そこで漏れていた=社長が見た「5分の小ボス」。
+   *
+   * 社長裁定は**時刻優先**(案b「時刻に達したらコマを無視して出す」)。緩コマに賞金首が降ってくることは
+   * 承知の上での決定=**第5条より時刻表が優先**する、と読む。
+   */
+  calmOk?: boolean;
 }
 export const bountyNaturalSpawnReady = (input: BountyNaturalSpawnInput): boolean =>
   input.spawnCount < BOUNTY_NATURAL_MAX_COUNT
   && input.gameTime >= BOUNTY_NATURAL_SPAWN_AT_MS[input.spawnCount]
   && !input.bountyAlive
-  && !input.spawnBlocked
-  && input.calmOk;
+  && !input.spawnBlocked;
+  // ★v0.25.3550(社長裁定「b」): `calmOk`(通常コマ限定)は判定から外した。理由は上のコメント。

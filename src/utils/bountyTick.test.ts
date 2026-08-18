@@ -135,8 +135,33 @@ describe('bountyNaturalSpawnReady — 自然湧きの固定スケジュール(§
   it('抑止ゲート(bountySpawnBlocked)が掛かっていれば不可', () => {
     expect(bountyNaturalSpawnReady({ ...ok(), spawnBlocked: true })).toBe(false);
   });
-  it('緩コマ中は告知しない=calmOk falseなら不可', () => {
-    expect(bountyNaturalSpawnReady({ ...ok(), calmOk: false })).toBe(false);
+  // ★v0.25.3550(社長裁定「b」=時刻優先): 旧「緩コマ中は告知しない(calmOk)」は**廃止**。
+  it('★【回帰・v0.25.3550】コマ種別は解禁判定に影響しない(時刻優先)', () => {
+    // 旧仕様は「通常コマでだけ出す(第5条)」だったが、4コマの位相と固定スケジュール(3:00/7:00)が
+    // 構造的に噛み合わず、**180秒はどの通常コマにも入らない**ため賞金首①が3:00に出られなかった。
+    // 通常コマの窓: 1周目=80s〜120〜150s / 2周目=240〜300s〜(緩・収穫はきっかり40s、
+    // 通常・ピークは40s+片付き最大30s)。社長裁定で時刻表を優先し、コマ判定を外した。
+    expect(bountyNaturalSpawnReady({ ...ok(), calmOk: false })).toBe(true);
+    expect(bountyNaturalSpawnReady({ ...ok(), calmOk: undefined })).toBe(true);
+  });
+
+  it('★【不変条件】3:00ちょうどで解禁される(位相ズレで出られない状態に戻さない)', () => {
+    // 社長報告「3分に出てこない」の回帰。時刻・回数・同時数・抑止ゲートだけで判定すること。
+    expect(bountyNaturalSpawnReady({
+      gameTime: BOUNTY_NATURAL_SPAWN_AT_MS[0], spawnCount: 0,
+      bountyAlive: false, spawnBlocked: false,
+    })).toBe(true);
+    // 1秒前はまだ不可(しきい値そのものは動かしていない)。
+    expect(bountyNaturalSpawnReady({
+      gameTime: BOUNTY_NATURAL_SPAWN_AT_MS[0] - 1, spawnCount: 0,
+      bountyAlive: false, spawnBlocked: false,
+    })).toBe(false);
+  });
+
+  it('★【不変条件】抑止ゲート・同時1体・回数上限は従来どおり効く(時刻優先は"無条件"ではない)', () => {
+    expect(bountyNaturalSpawnReady({ ...ok(), spawnBlocked: true })).toBe(false);
+    expect(bountyNaturalSpawnReady({ ...ok(), bountyAlive: true })).toBe(false);
+    expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: BOUNTY_NATURAL_MAX_COUNT })).toBe(false);
   });
 });
 

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3550',
+    items: [
+      '賞金首が3分ちょうどに出るようになりました(これまで構造的に3分に出られず、4〜5分へずれ込んでいました)。',
+    ],
+  },
+  {
     version: '0.25.3549',
     items: [
       '城ボスと賞金首が同時に出てしまう不具合を修正しました。ボスが場に出ている間は賞金首を出しません。',

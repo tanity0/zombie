@@ -3951,12 +3951,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             corridorMode: bgs.corridorMode,
             tutorialStage,
           });
-          // 緩コマ中は告知しない(通常コマで出す。第5条)。パズル方式ONはコマのkindで判定
-          // (通常=komaKind'normal'のみ可。緩=relax/harvest、ピークは別枠なのでどちらも不可)。
-          // OFF(?puzzle=0)時は紅き夜と同じ旧phase基準(redNightPhaseGateOk="gateフェーズでない")を流用する。
-          const bountyCalmOk = puzzleActiveNow
-            ? puzzleKomaRef.current.kind === 'normal'
-            : redNightPhaseGateOk(phaseAt(newGameTime).kind);
+          // ★v0.25.3550(社長裁定「b」=時刻優先): **コマ判定は廃止**。
+          // 旧「通常コマでだけ出す(第5条)」は固定スケジュール(3:00/7:00)と位相が噛み合わず、
+          // **180秒はどの通常コマにも入らない**ため賞金首①が構造的に3:00へ出られなかった
+          // (詳細は bountyTick.ts の BountyNaturalSpawnInput.calmOk のコメント)。
           // v8.3(社長裁定2026-08-15「3分と7分にして」): CD方式を廃止し固定スケジュール
           // (BOUNTY_NATURAL_SPAWN_AT_MS=[3:00,7:00])。n回目の解禁時刻はspawnCountで表を引く。
           const bReady = bountyNaturalSpawnReady({
@@ -3964,7 +3962,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnCount: bountyNaturalRef.current.count,
             bountyAlive: bountyAliveNow,
             spawnBlocked: bBlocked,
-            calmOk: bountyCalmOk,
           });
           if (bReady) {
             const { picked, rest } = takeNextBountyRotationType(bgs.bountyRotation);
