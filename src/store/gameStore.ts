@@ -6562,18 +6562,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             hitstopUntil: Date.now() + KILLFX_TOTAL_MS,
           });
           get().triggerTimeSlow(0.2, KILLFX_TOTAL_MS + KILLFX_RELEASE_SLOW_MS, KILLFX_TOTAL_MS);
-          // ★実機FB5(v0.25.3611): 斬撃=**刀の一閃と同じ絵**(spawnSlash・青白い斬閃・大サイズ)を
-          // 一拍明け(BURST_AT)に首元へ。killFx中の'slash'は実時間駆動(v0.25.3608)なので停止中でも流れる。
-          {
-            const neckX = prim.x + prim.width / 2;
-            const neckY = prim.y + prim.height / 2 - prim.height * 0.30;
-            const slashLen = Math.max(prim.width, prim.height) * 1.9 / 80; // spawnSlash基準長(≒80px)比
-            setTimeout(() => {
-              const kfx = get().killFx;
-              if (!kfx || Date.now() - kfx.startAt >= KILLFX_TOTAL_MS) return;
-              get().spawnSlash(neckX, neckY, 'rgba(221,238,255,0.95)', slashLen);
-            }, KILLFX_BURST_AT_MS);
-          }
+          // ★実機FB8(v0.25.3615「もっと大きく、横一文字にして」): 斬撃はstoreのspawnSlash(斜め固定の
+          // 汎用斬撃)ではなく、pixi側の専用描画(drawKillFxSlash・同じslash-streak素材を横一文字に
+          // 回転+大型化・実時間駆動)が一拍明け(BURST_AT)に出す。ここでは何も出さない。
           // ★実機FB1(v0.25.3605)+FB5: 斬撃の直後(BLOOD_LAG)にSE。血・KILL!文字と同期。
           // gameStoreはaudioManagerを静的importできない(循環)ため、動的importで解決する
           // (発火はズームCD明けのフル演出時のみ=頻度は低い。素材は既存2音の重ね=叩き台、

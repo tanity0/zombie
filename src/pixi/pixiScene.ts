@@ -3451,6 +3451,7 @@ export class PixiScene {
   private killFxSeen2 = 0;                      // 噴出2波目(+90ms・間欠泉の密度)を出した startAt
   private killFxDustSeen = 0;                   // 着地の砂埃を出した killFx.startAt(1回きり)
   private killFxText: Text | null = null;       // KILL!文字(実時間駆動。storeのcalloutは停止中凍るため専用)
+  private killFxSlashSp: Sprite | null = null;  // 喉搔きの斬撃(slash-streak素材を横一文字に・FB8)
   private killFxBloodPool: Sprite[] = [];       // 血粒のスプライトプール(Texture.WHITE・使い回し)
   private killFxBlood: { x: number; y: number; vx: number; vy: number; size: number; born: number; life: number; tint: number }[] = [];
   private killFxBloodPrevStep = 0;              // 実時間積分の前回時刻(タブ復帰の飛びはクランプ)
@@ -13416,8 +13417,11 @@ export class PixiScene {
     const t1 = KILLFX_CROUCH_MS, t2 = t1 + KILLFX_LEAP_MS;
     const tB = KILLFX_BURST_AT_MS; // 斬撃時刻(=貼り付き+一拍の後)。血/SE/文字はBLOOD_LAG後。
     const t3 = tB + KILLFX_SLASH_MS, t4 = t3 + KILLFX_RETURN_MS;
-    // ★FB5: 斬撃の絵は刀の一閃流用(store.spawnSlashをkillFx書き込み側がタイマーで出す)。
-    // 自前ストリークは撤去した。
+    // ★FB8(v0.25.3615): 斬撃=一閃と同じslash-streak素材を**横一文字**に回転+大型化して首元へ
+    // (「喉を掻っ切ってる」読み)。表示窓外では隠す(常時判定=消し忘れ防止)。
+    const slashT = (rt - tB) / 150;
+    if (rt >= tB && slashT < 1) this.drawKillFxSlash(k, slashT);
+    else if (this.killFxSlashSp) this.killFxSlashSp.visible = false;
     this.drawKillFxText(k, rt); // KILL!文字(血しぶきと同時に出る・実時間駆動)
     if (rt < 0 || rt >= KILLFX_TOTAL_MS) return null;
     const faceLeft = k.ex < footX;
@@ -13480,6 +13484,34 @@ export class PixiScene {
       }
     }
     return { offX, offY, sqX, sqY, lean, faceLeft };
+  }
+
+  /** 喉搔きの斬撃(FB8・v0.25.3615): 一閃と同じ fx/slash-streak-0..4 を**横一文字**に回転して
+   * 首元で大きく走らせる。素材内のストロークは斜め(左下→右上=-45°)なので +45°回して水平に寝かせる。
+   * t=0..1(150ms)。実時間駆動=全停止中も流れる。派手さの絵=判定なし(2分類②・大きく出す)。 */
+  private drawKillFxSlash(
+    k: NonNullable<ReturnType<typeof useGameStore.getState>['killFx']>, t: number,
+  ): void {
+    const ref = getTexture('fx/slash-streak-4');
+    if (!ref) return;
+    if (!this.killFxSlashSp) {
+      this.killFxSlashSp = new Sprite();
+      this.killFxSlashSp.anchor.set(0.5);
+      this.killFxSlashSp.blendMode = 'add';
+      this.L.effectLayer.addChild(this.killFxSlashSp);
+    }
+    const sp = this.killFxSlashSp;
+    const idx = Math.min(4, Math.floor(t * 5));
+    const tex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
+    if (sp.texture !== tex) sp.texture = tex;
+    const dir = k.ex < k.px ? -1 : 1; // 振り抜きの向き=プレイヤー→敵の向き
+    const len = Math.max(k.ew, k.eh) * 2.6; // ★FB8「もっと大きく」(旧1.9)
+    const sc = len / Math.max(1, ref.width);
+    sp.scale.set(sc * dir, sc);
+    sp.rotation = dir * (Math.PI / 4); // 斜め素材を水平へ寝かせる=横一文字
+    sp.position.set(k.ex, k.ey - k.eh * 0.30); // 首元
+    sp.alpha = 1 - Math.max(0, (t - 0.65) / 0.35);
+    sp.visible = sp.alpha > 0.01;
   }
 
   /** 血の一斉間欠泉: primary の首元は濃く大量、巻き込み(victims)も同時に噴く。
@@ -25283,6 +25315,7 @@ export class PixiScene {
     for (const o of this.acrasielSpearReadySprites.values()) o.destroy();
     for (const o of this.holoVolleySprites.values()) o.destroy();
     this.killFxText?.destroy(); this.killFxText = null;
+    this.killFxSlashSp?.destroy(); this.killFxSlashSp = null;
     for (const o of this.killFxBloodPool) o.destroy();
     this.killFxBloodPool = []; this.killFxBlood = [];
     for (const o of this.holoMiniSprites.values()) o.destroy();

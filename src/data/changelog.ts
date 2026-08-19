@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3615',
+    items: [
+      'KILL処刑演出の一閃エフェクトを大型化(約1.4倍)し、喉を掻っ切る横一文字に変更しました。',
+    ],
+  },
+  {
     version: '0.25.3614',
     items: [
       'KILL処刑演出の最中に攻撃ボタンを連打すると通常の振りモーション・振り音が混ざっていたのを修正しました(演出中は全ての通常近接演出を抑止。演出後の攻撃は従来どおり)。',
