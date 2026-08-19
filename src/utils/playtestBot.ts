@@ -308,9 +308,16 @@ export interface BotStuckState {
   stuckSamples: number; // 連続で「動けていない」と判定されたサンプル数
   escapeTicks: number;  // 脱出入力を出し続ける残りtick(0=通常)
   escapeSign: 1 | -1;   // 回り込む向き(固定・毎回同じ側)
+  // ★v0.25.3619(社長報告「敵と敵にはさまってくるくるして何もしない」): 円運動は1サンプル(0.17s)
+  // ごとの移動量は大きい(円周を歩いている)ので旧検知(6px未満)をすり抜ける。長窓のアンカーから
+  // の**正味移動**で検知する(回っていても正味はほぼ0)。
+  anchorX: number;      // 長窓の基準点(NaN=未初期化)
+  anchorY: number;
+  anchorAge: number;    // 基準点からのサンプル数
 }
 export const createBotStuckState = (escapeSign: 1 | -1 = 1): BotStuckState => ({
   lastX: NaN, lastY: NaN, tick: 0, stuckSamples: 0, escapeTicks: 0, escapeSign,
+  anchorX: NaN, anchorY: NaN, anchorAge: 0,
 });
 /** 位置を採る間隔(tick)。60fps換算で約0.17秒。 */
 export const BOT_STUCK_SAMPLE_TICKS = 10;
@@ -320,6 +327,9 @@ export const BOT_STUCK_MOVE_EPS = 6;
 export const BOT_STUCK_SAMPLES = 3;
 /** 詰まり判定後、脱出入力を出し続けるtick数(≈0.5秒)。1フレームだけだと壁際で振動する。 */
 export const BOT_STUCK_ESCAPE_TICKS = 30;
+/** ★v0.25.3619 長窓(くるくる検知): この数のサンプル(≈1秒)での正味移動がEPS未満なら詰まり。 */
+export const BOT_STUCK_ANCHOR_SAMPLES = 6;
+export const BOT_STUCK_ANCHOR_EPS = 24;
 
 /**
  * 詰まっていたら横へ回り込む入力へ差し替える。**状態はmutateする**(rusher/rankAssessor等と同じ
@@ -348,6 +358,14 @@ export const escapeIfStuck = (
       if (state.stuckSamples >= BOT_STUCK_SAMPLES) state.escapeTicks = BOT_STUCK_ESCAPE_TICKS;
     } else {
       state.stuckSamples = 0;
+    }
+    // ★v0.25.3619(くるくる検知): 長窓の正味移動。円運動(サンプルごとには動いて見える)を捕まえる。
+    if (Number.isNaN(state.anchorX)) { state.anchorX = pcx; state.anchorY = pcy; state.anchorAge = 0; }
+    state.anchorAge += 1;
+    if (state.anchorAge >= BOT_STUCK_ANCHOR_SAMPLES) {
+      const net = Math.hypot(pcx - state.anchorX, pcy - state.anchorY);
+      if (net < BOT_STUCK_ANCHOR_EPS) state.escapeTicks = BOT_STUCK_ESCAPE_TICKS;
+      state.anchorX = pcx; state.anchorY = pcy; state.anchorAge = 0;
     }
   }
 
@@ -427,6 +445,19 @@ export const separationAdjust = (
   let ox: number, oy: number;
   if (n === 0) {
     ox = dx / im; oy = dy / im;
+  } else if (n >= 2 && Math.hypot(sx, sy) < 0.35) {
+    // ★v0.25.3619(社長報告「敵と敵にはさまってくるくるして何もしない」): 挟まれ(両側の反発が
+    // 相殺)では合成ベクトルが微小かつ毎フレーム向きが揺れ、ブレンド+接線射影の合成が**回転**を
+    // 生んでいた。相殺を検知したら、最寄り敵への向きの**固定サイドの接線**へ滑り出す(決定的=
+    // 揺れない。抜けた後は通常のブレンドへ自然復帰)。
+    let nx = 0, ny = 0, nd = Infinity;
+    for (const e of enemies) {
+      if (e.corpseUntil !== undefined) continue;
+      const ex = (e.x + e.width / 2) - pcx, ey = (e.y + e.height / 2) - pcy;
+      const d = Math.hypot(ex, ey);
+      if (d < nd && d > 0.001) { nd = d; nx = ex / d; ny = ey / d; }
+    }
+    ox = -ny; oy = nx; // 最寄り敵に対して常に同じ側(+90°)の接線へ
   } else {
     const sm = Math.hypot(sx, sy) || 1;
     ox = (dx / im) * (1 - SEPARATION_BLEND) + (sx / sm) * SEPARATION_BLEND;

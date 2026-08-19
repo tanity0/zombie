@@ -689,6 +689,41 @@ describe('★近接分離ステア(社長報告v0.25.3557「なんか割と敵�
     const out = separationAdjust(master, RIGHT, 0, 0, [e]);
     expect(out.right).toBe(false); // 敵の方向(+x)へは進まない
   });
+
+  // ★v0.25.3619(社長報告「敵と敵にはさまってくるくるして何もしない」): 両側の反発が相殺すると
+  // 合成ベクトルが微小に揺れて回転を生んでいた。挟まれ検知時は最寄り敵への向きの固定サイド接線
+  // (+90°)へ滑り出す=決定的で揺れない。
+  it('挟まれ(左右の反発が相殺)では固定サイドの接線(縦方向)へ滑り出す', () => {
+    const RIGHT = { up: false, down: false, left: false, right: true };
+    const eL = spawnEnemyAt('zombie', -30 - 20, -20, 0); // 中心(-30,0)=左至近
+    const eR = spawnEnemyAt('zombie', 30 - 20, -20, 0);  // 中心(30,0)=右至近
+    const out = separationAdjust(master, RIGHT, 0, 0, [eL, eR]);
+    // 左右どちらへも突っ込まず、縦(接線)成分で抜ける。
+    expect(out.up || out.down).toBe(true);
+    // 決定的(同条件なら毎回同じ向き=揺れて回転しない)。
+    expect(separationAdjust(master, RIGHT, 0, 0, [eL, eR])).toEqual(out);
+  });
+});
+
+describe('★くるくる検知(社長報告v0.25.3619・長窓の正味移動)', () => {
+  const RIGHT = { up: false, down: false, left: false, right: true };
+  it('円運動(サンプル毎には動くが正味ほぼ0)を約1秒で詰まり判定して脱出する', () => {
+    const st = createBotStuckState();
+    let escaped = false;
+    // 半径12pxの円周上を回る(1サンプル=10tickごとに約15px動く=旧検知(6px)はすり抜ける)。
+    for (let i = 0; i < 120; i++) {
+      const a = (i / 20) * Math.PI * 2;
+      const out = escapeIfStuck(RIGHT, st, 100 + Math.cos(a) * 12, 100 + Math.sin(a) * 12);
+      if (out !== RIGHT && (out.up || out.down || out.left)) escaped = true;
+    }
+    expect(escaped).toBe(true);
+  });
+  it('直進(正味が出ている)では脱出モードに入らない', () => {
+    const st = createBotStuckState();
+    for (let i = 0; i < 120; i++) {
+      expect(escapeIfStuck(RIGHT, st, 100 + i * 5, 100)).toEqual(RIGHT);
+    }
+  });
 });
 
 describe('★接触カウンターの再武装(社長報告v0.25.3596「カウンターもしてるようには見えない」)', () => {

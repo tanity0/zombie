@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3619',
+    items: [
+      'AIテスト: botが敵と敵に挟まれるとその場でくるくる回って何もしなくなることがあったのを修正しました(挟まれたら一定方向へ滑り出す+回転状態を約1秒で検知して脱出)。',
+    ],
+  },
+  {
     version: '0.25.3618',
     items: [
       'KILL処刑演出の横一文字が見えなかったのを修正(振り抜きを高速化してフルの線を保持+さらに大型化+血しぶきの上に表示)。',
