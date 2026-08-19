@@ -316,16 +316,17 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
    * (社長指摘v0.25.2862「この導線おかしいでしょ。ゲームからそのままシームレスに戦闘に入らないと」)。
    * 強制出現フラグは `bossPractice` の実行時状態へ移したので、URLを触る必要が無くなった。
    *
-   * 選択ステージ/ミッション/フリーは**この場で書き換えて、練習を抜ける時に元へ戻す**
-   * (`revisit` が残っていると stage-6 の練習が洋館再訪ランに化けるため・BOSS_MAKER.md §20-7-a)。
+   * 選択ステージ/ミッション/フリーは**書き換えない**(v0.25.3629)。旧実装はここで
+   * `setSelectedStageId(slot.stageId)` 等を書いていたが、`beginPracticeRun` の後は practiceGuard
+   * (練習中はlocalStorage書き込み全封鎖)が**その書き込みを黙って飲んでいた**=出撃先が
+   * 選択中のステージのまま走る実バグ(ガントレットで発覚)。いまは data/progress の
+   * getSelected* が**練習ラン中は practiceActiveSlot() を正として返す**ので、書く必要がない
+   * (`revisit` 化け防止・BOSS_MAKER.md §20-7-a も同じ仕組みで担保)。restore は「万一の復元」用に残す。
    */
   const startPractice = (slot: PracticeSlot, characterClass: string): void => {
     beginPracticeRun(slot, {
       stageId: getSelectedStageId(), mission: getSelectedMission(), free: getSelectedFreeMode(),
     });
-    setSelectedStageId(slot.stageId);
-    setSelectedMission('main');
-    setSelectedFreeMode(false);
     void startGame(characterClass, false, true);
   };
 
@@ -347,10 +348,8 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
         stageId: getSelectedStageId(), mission: getSelectedMission(), free: getSelectedFreeMode(),
       };
     }
+    // 出撃先の書き換えはしない(v0.25.3629: startPractice と同じ。practiceActiveSlot() が正)。
     beginPracticeRun(slot, gauntletRestoreRef.current);
-    setSelectedStageId(slot.stageId);
-    setSelectedMission('main');
-    setSelectedFreeMode(false);
     const cls = useGameStore.getState().characterClass
       || new URLSearchParams(window.location.search).get('class') || 'warrior';
     void startGame(cls, false, true);

@@ -1,5 +1,28 @@
 # Development Log
 
+## v0.25.3630 — 練習ラン出撃先バグ修正(practiceGuardがステージ指定を飲んでいた)【2026-08-19 20:34 JST】
+
+- 社長実機観察「ステージボスがずっとステージ1の搬送体と何度も戦ってる」の真因を特定・修正。
+  ガントレット結果(城ボス6枠すべて基本5技のみ・グレン/EX枠のみ2ラン連続で未接敵)と
+  スクショ(stage-3枠が森の夜背景)が全て1つの原因で説明できた:
+  **出撃時の `setSelectedStageId(slot.stageId)` が `beginPracticeRun` の後に走るため、
+  practiceGuard(練習中はlocalStorage書き込み全封鎖)に黙って飲まれていた。**
+  → 全枠が「選択中のステージ」のまま出撃(新規プロファイル=''なら固有技なし・カットイン名なし・
+  既定背景・storyBoss不発=グレン/EXは湧かない)。ボスモード(メニューからの練習)も同罪
+  (選択中ステージに依存して固有技/HP/背景が化ける)。
+- 直し: 練習中の出撃先は localStorage ではなく**実行中の練習枠(practiceActiveSlot)を正**とする。
+  data/progress の getSelectedStageId/Mission/FreeMode が練習ラン中は枠から返す(ガントレットは
+  一度も練習ランを抜けない設計なので「先に書く」順序替えでは直らない=この形が唯一)。
+  App側の(飲まれて死んでいた)setSelected* 3行×2箇所は撤去。restore機構は残置(無害)。
+  import方向は progress→bossPractice の一方通行(逆はbossEncounter経由の循環になる・コメント化)。
+- 機械化: practiceGuard.test.ts に「★練習ランの出撃先は関所に飲まれない」を追加(28 green)。
+  ENGINEERING_NOTES.md §2 に地雷「practiceGuardは練習中の書き込みを黙って飲む」を追記。
+- 検証: practiceGuard/bossPractice 28 green / typecheck 0 / lint 0エラー。
+  自己点検: 挙動変更は「練習の出撃先が枠どおりになる」=仕様の回復のみ。憲法非抵触。
+- 影響(社長向け): ボスモードの各枠が**本当にそのステージへ出撃する**ようになる(背景・HP・固有技・
+  カットイン名が枠どおりに変わる。idol枠はstage-2ラボ、グレン/EX枠はボスが湧くようになる)。
+- 並行: 幻影バッチ(v0.25.3629)がpush済み=完了通知後に検収予定。
+
 ## v0.25.3629 — 守護霊ボス「幻影」を実装(ボスモードの実験枠「決闘」)【2026-08-19 20:28 JST】
 
 正となる設計書: `research/GHOST_BOSS.md`(v2・監査21件反映済み)。社長ゴール「試しに、ボスモードに

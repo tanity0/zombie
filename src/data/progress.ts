@@ -5,10 +5,29 @@
 import { STAGES, getStage, type Stage } from './campaign';
 import { getEventQuestConfig } from '../utils/eventQuest';
 import { clearBossEncounters, unlockAllBossEncounters } from '../utils/bossEncounter';
+// ★練習ランの出撃先(下の「実行時上書き」)。import方向は progress→bossPractice の一方通行
+// (bossPractice側はprogressを読まない)。逆向き(bossPractice→progress)にすると
+// bossPractice→progress→bossEncounter→bossPractice の循環になるので注意。
+import { practiceActiveSlot } from '../utils/bossPractice';
 
 const CLEARED_KEY = 'zombie.progress.cleared';
 const SELECTED_KEY = 'zombie.progress.selectedStage';
 const FREE_KEY = 'zombie.progress.selectedFree'; // 直近の出撃がフリー(周回)か
+
+// ---------------------------------------------------------------------------------------------
+// ★練習ラン(ボスモード/ガントレット)の出撃先の実行時上書き(v0.25.3629)
+//
+// 社長実機観察「ステージボス枠がどれもずっと同じ(stage-1に見える)ボスと戦っている」の真因対応。
+// 旧実装は出撃時に setSelectedStageId(slot.stageId) を localStorage へ書いていたが、その書き込みは
+// beginPracticeRun の**後**に走るため、practiceGuard(練習中は localStorage 書き込みを全封鎖する関所)
+// が**黙って飲んでいた**。結果、選択中のままのステージ(新規プロファイルでは ''=未指定)で全枠が走り、
+// getSelectedStageId() 依存の全て——城ボスの固有技/大技・ボスHP・カットイン名・背景・
+// storyBoss(グレン/EX1 はこれが立たないと**そもそも湧かない**)——がステージ不明のまま動いていた。
+// ガントレットは一度も練習ランを抜けない設計なので「先に書いてから begin する」順序替えでは直らない。
+// ⇒ 練習中の出撃先は localStorage ではなく**実行中の練習枠(practiceActiveSlot)そのもの**を正とする
+//    (関所の「練習は何も書き残さない」思想とも一致)。枠は beginPracticeRun / endPracticeRun の
+//    寿命と機械的に一致するので、復元漏れが構造上起きない。
+// ---------------------------------------------------------------------------------------------
 
 const readSet = (): Set<string> => {
   if (typeof localStorage === 'undefined') return new Set();
@@ -96,6 +115,8 @@ export const isStageUnlocked = (stage: Stage, cleared: Set<string> = readSet()):
   stage.unlockBy === null || cleared.has(stage.unlockBy);
 
 export const getSelectedStageId = (): string => {
+  const slot = practiceActiveSlot();
+  if (slot) return slot.stageId; // 練習ラン中は枠の出撃先が正(上の★)
   if (typeof localStorage === 'undefined') return '';
   try {
     return localStorage.getItem(SELECTED_KEY) ?? '';
@@ -116,6 +137,7 @@ export const setSelectedStageId = (stageId: string): void => {
 
 // フリー(周回)出撃フラグ。会話なし & クリア進行に影響させない出撃かどうか。
 export const getSelectedFreeMode = (): boolean => {
+  if (practiceActiveSlot()) return false; // 練習ラン中は常にフリーではない(上の★)
   if (typeof localStorage === 'undefined') return false;
   try {
     return localStorage.getItem(FREE_KEY) === '1';
@@ -502,6 +524,7 @@ export type SelectedMission = 'main' | 'revisit';
 const SELECTED_MISSION_KEY = 'zombie.progress.selectedMission';
 
 export const getSelectedMission = (): SelectedMission => {
+  if (practiceActiveSlot()) return 'main'; // 練習ラン中は常に'main'(上の★・stage-6練習のrevisit化け防止)
   if (typeof localStorage === 'undefined') return 'main';
   try {
     return localStorage.getItem(SELECTED_MISSION_KEY) === 'revisit' ? 'revisit' : 'main';

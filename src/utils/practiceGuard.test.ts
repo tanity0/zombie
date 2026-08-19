@@ -26,7 +26,8 @@ const storage = makeStorage();
 (globalThis as unknown as { localStorage: Storage }).localStorage = storage;
 
 const { installPracticeGuard, PRACTICE_WRITE_ALLOWLIST } = await import('./practiceGuard');
-const { isPracticeRun, practiceBossType } = await import('./bossPractice');
+const { isPracticeRun, practiceBossType, beginPracticeRun, endPracticeRun, PRACTICE_SLOTS } = await import('./bossPractice');
+const { getSelectedStageId, getSelectedMission, getSelectedFreeMode, setSelectedStageId } = await import('../data/progress');
 
 beforeEach(() => { store.clear(); });
 
@@ -62,6 +63,36 @@ describe('練習ランの関所', () => {
     localStorage.removeItem('zombie.progress.cleared');
     localStorage.clear();
     expect(store.get('zombie.progress.cleared')).toBe('keep');
+  });
+
+  // ★v0.25.3629(社長実機観察「ステージボス枠がどれも同じボスと戦っている」の真因の機械化):
+  // 旧実装は出撃時に setSelectedStageId(slot.stageId) を書いていたが、beginPracticeRun の後は
+  // この関所がその書き込みを**黙って飲む**ため、出撃先が選択中のステージのまま全枠が走っていた
+  // (固有技/大技・ボスHP・カットイン名・背景・storyBoss湧きが全て getSelectedStageId 依存)。
+  // いまは getSelected* が練習ラン中は practiceActiveSlot() を正として返す。ここでそれを固定する。
+  it('★練習ランの出撃先は関所に飲まれない(枠が getSelected* の正になる)', () => {
+    installPracticeGuard();
+    store.set('zombie.progress.selectedStage', 'stage-1');
+    store.set('zombie.progress.selectedMission', 'revisit');
+    store.set('zombie.progress.selectedFree', '1');
+    const slot = PRACTICE_SLOTS.find(s => s.slotKey === 'giantbat@stage-3');
+    expect(slot).toBeDefined();
+    beginPracticeRun(slot!, { stageId: 'stage-1', mission: 'revisit', free: true });
+    // 練習中は枠の出撃先が正(revisit/フリーの化けも同じ仕組みで防がれる)。
+    expect(getSelectedStageId()).toBe('stage-3');
+    expect(getSelectedMission()).toBe('main');
+    expect(getSelectedFreeMode()).toBe(false);
+    // 練習中の書き込みは従来どおり関所が飲む(=ストレージは汚れない)…
+    setSelectedStageId('stage-9');
+    expect(store.get('zombie.progress.selectedStage')).toBe('stage-1');
+    // …が、読み側は枠を返し続けるので出撃先は壊れない。
+    expect(getSelectedStageId()).toBe('stage-3');
+    // 練習を抜けたら保存値に戻る(このテスト環境は?practice=1のURLラン扱いのままだが、
+    // 上書きの寿命は activeSlot(begin/end)にだけ紐づくことの確認)。
+    endPracticeRun();
+    expect(getSelectedStageId()).toBe('stage-1');
+    expect(getSelectedMission()).toBe('revisit');
+    expect(getSelectedFreeMode()).toBe(true);
   });
 
   it('許可リストに進行キーを混ぜていない(将来ここへ足させないための固定)', () => {

@@ -112,6 +112,18 @@ find / -xdev -iname "*.png" -newermt "-6 hours" 2>/dev/null | grep uploads
 
 ## 2. プロジェクト固有の地雷(実バグ化したものだけを載せる)
 
+### 練習ラン(ボスモード/ガントレット)
+- **★practiceGuard は練習中の localStorage 書き込みを「黙って」全部飲む(v0.25.3630・実バグ)**。
+  `beginPracticeRun` の後に localStorage 経由で状態を渡そうとすると、書き込みは失敗もエラーも
+  出さずに消える。実際に、練習出撃の `setSelectedStageId(slot.stageId)` が飲まれて
+  **全枠が「選択中のステージ」のまま出撃**していた(城ボスの固有技/大技・ボスHP・カットイン名・
+  背景・storyBoss湧き=グレン/EXが全て getSelectedStageId 依存 → ガントレットでは新規プロファイル=
+  ''のため「どの枠も同じ素のボス」に見え、グレン/EX枠はボスが一生湧かなかった)。
+  → **練習中に効かせたい状態は localStorage を経由させない**。実行時の practiceActiveSlot() を
+  正とする(getSelected* が練習中は枠を返す・data/progress.ts の★コメント参照)。
+  同型の兆候: 「練習/ガントレットでだけ設定が効かない」「メニューからだと直る」。
+  機械化: practiceGuard.test.ts「★練習ランの出撃先は関所に飲まれない」。
+
 ### 描画(PixiJS v8)
 - **「効くはずの変更が無反応」なら、まずその関数が呼ばれているかを疑う(v0.25.2324・実バグ)**。
   レイアウト(リサイズ)時にだけ走る関数へ新しい描画を足すと、**その時点では `currentFarKey` 等の
