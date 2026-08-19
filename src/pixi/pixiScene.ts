@@ -13579,6 +13579,12 @@ export class PixiScene {
     }
   }
 
+  /** KILL処刑演出が進行中か(斬撃エフェクトの実時間駆動ゲート等に使う)。 */
+  private killFxActive(): boolean {
+    const k = useGameStore.getState().killFx;
+    return !!k && Date.now() - k.startAt < KILLFX_TOTAL_MS;
+  }
+
   /** killFx粒子の実時間積分+描画(毎フレーム。粒子ゼロならプールを隠すだけ)。 */
   private stepKillFxBlood(): void {
     if (this.killFxBlood.length === 0) {
@@ -22373,7 +22379,11 @@ export class PixiScene {
       } else if (e.kind === 'blood') {
         this.drawBloodSprite(e, now);
       } else if (e.kind === 'slash') {
-        this.drawSlashSprite(e, now);
+        // ★実機FB2(v0.25.3608「KILLエフェクト、斬撃のエフェクトは止めずにそのまま流して」):
+        // KILL処刑演出(全停止)の間だけ、斬撃は凍結時計(hitstopFreezeNow)ではなく実時間で流し切る
+        // (振り抜きの絵が停止中に固まらない)。カウンター等の通常ヒットストップ(100ms)は従来どおり
+        // 凍る=freeze画の意図は不変。createdAtは実時刻打刻なので時計の混在は起きない。
+        this.drawSlashSprite(e, this.killFxActive() ? Date.now() : now);
       } else if (e.kind === 'particle') {
         this.drawParticleSprite(e, now);
       } else if (e.kind === 'ring') {
