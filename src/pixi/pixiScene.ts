@@ -23565,6 +23565,8 @@ export class PixiScene {
       const bxp = btx + (cx - btx) * eoB, byp = bty + (cy - bty) * eoB;
       const hop = Math.abs(Math.sin(tB * Math.PI * 2)) * 34 * (1 - tB); // 2バウンド・減衰
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bxp, byp - hop, now / 100, 58, 0.9);
+      // ★v0.25.3586: 打ち出しの瞬間に帯の先端へ花びらを散らす(舞妓の全技=桜のアイデンティティ)。
+      this.triggerPetalOnce(e.id, `naginata-hit:${bs}:${this.moveInstanceNo(e.id, bs ?? '')}`, btx, bty, 8, now);
       // 斬撃弧(v0.25.3444): 毬の薙ぎが振り抜けた瞬間(recover入り)に帯の軌道へ1回スタンプ。
       this.triggerBountySlashArcOnce(
         e.id, `naginata:${bs}:${this.moveInstanceNo(e.id, bs ?? '')}`, bfx, bfy,
@@ -23581,11 +23583,11 @@ export class PixiScene {
       const spinAng = now / (bs === 'mk-spin' ? 40 : 90);
       // 技表GO: 技前=一瞬止まってふくらむ(スカッシュ・windup側のみ)。
       const squash = bs === 'mk-spin-windup' ? squashInflateMul(gameTime - (e.bossWindupStartAt ?? gameTime)) : 1;
-      this.drawBountyWeapon(
-        e.id, 'bounty-maiko-temari',
-        cx + Math.cos(spinAng) * MK_T.spin.radius * 0.85, cy + Math.sin(spinAng) * MK_T.spin.radius * 0.85,
-        spinAng, 56 * squash, 0.95,
-      );
+      const spinBx = cx + Math.cos(spinAng) * MK_T.spin.radius * 0.85;
+      const spinBy = cy + Math.sin(spinAng) * MK_T.spin.radius * 0.85;
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', spinBx, spinBy, spinAng, 56 * squash, 0.95);
+      // ★v0.25.3586: 回している間、毬の軌跡から花びらが舞い散り続ける(150ms刻みのキー=連続発火)。
+      this.triggerPetalOnce(e.id, `spin-shed:${Math.floor(now / 150)}`, spinBx, spinBy, 2, now);
       return;
     }
     if (bs === 'mk-spin-recover') {
@@ -23610,7 +23612,7 @@ export class PixiScene {
       // 技表GO: 乱舞=バウンドごとに回転加速+花びら増量(hop1<hop2<hop3)。
       const hopIdx = bs === 'mk-suiu-hop1' ? 1 : bs === 'mk-suiu-hop2' ? 2 : 3;
       const spinDiv = [0, 90, 72, 54][hopIdx]; // 小さいほど速い(hop1=90→hop3=54)
-      const petalCount = [0, 6, 9, 14][hopIdx];
+      const petalCount = [0, 10, 14, 20][hopIdx]; // ★v0.25.3586 増量
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', lx, ly - 30, now / spinDiv, isFinal ? 80 : 60, 0.95);
       // 花びら: 着地(このホップ表示に入った瞬間)に1回だけ散らす(型B・派手側=バウンドごとに増量)。
       this.triggerPetalOnce(e.id, `suiu:${bs}:${this.moveInstanceNo(e.id, bs ?? '')}`, lx, ly, petalCount, now);
@@ -23646,7 +23648,7 @@ export class PixiScene {
         const dlb = Math.hypot(dxb, dyb) || 1;
         this.maikoBoomLast.set(e.id, { x: px, y: py, ux: dxb / dlb, uy: dyb / dlb });
       }
-      if (bs === 'mk-boom-out' && t >= 0.98) this.triggerPetalOnce(e.id, `boom-out:${this.moveInstanceNo(e.id, bs ?? '')}`, px, py, 6, now);
+      if (bs === 'mk-boom-out' && t >= 0.98) this.triggerPetalOnce(e.id, `boom-out:${this.moveInstanceNo(e.id, bs ?? '')}`, px, py, 10, now);
       return;
     }
     if (bs === 'mk-boom-recover') {
@@ -23655,11 +23657,15 @@ export class PixiScene {
     }
     if (bs === 'mk-repose') {
       // 型切替の舞い直し: 花びらを1回まとめて散らす(型A→B切替の合図・派手側)。
-      this.triggerPetalOnce(e.id, `repose:${this.moveInstanceNo(e.id, bs ?? '')}`, cx, cy, 16, now);
+      this.triggerPetalOnce(e.id, `repose:${this.moveInstanceNo(e.id, bs ?? '')}`, cx, cy, 22, now);
       // 技表GO: 技前=一瞬止まってふくらむ(スカッシュ)。
       const squash = squashInflateMul(gameTime - (e.bossWindupStartAt ?? gameTime));
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', idleX, idleY, orbitAng, 56 * squash, 0.95);
       return;
+    }
+    // ★v0.25.3586: バックロールの蹴り出しにも花びら(1回だけ。毬は既定のオービットのまま)。
+    if (bs === 'mk-backroll') {
+      this.triggerPetalOnce(e.id, `backroll:${this.moveInstanceNo(e.id, bs ?? '')}`, cx, cy, 6, now);
     }
     // 既定(待機/移動中/その他): 毬はオービット(判定なし=武器の存在提示のみ)。スポーン直後だけ
     // §7-15の出現ease(下からズレ上がり+フェードイン)を乗せる(220ms後はalphaMul=1・dy=0で無効化)。
@@ -23668,8 +23674,13 @@ export class PixiScene {
 
   // §6.38 B2b: 舞妓の桜の花びら(fx/petal-0)。固定サイズpool(24枚)から未使用スロットを取って散らす
   // (負荷ルール: 毎フレームnewしない・上限あり=有限プール)。回転+縮小+フェードで自然消滅する。
-  private static readonly PETAL_POOL_SIZE = 24;
-  private static readonly PETAL_LIFE_MS = 700;
+  // ★v0.25.3586(社長指摘「花びら作ってって言われたから渡したけど、使ってなくない?」):
+  // 配線はされていたが**14px級・0.7秒**でズームの引きも相まって実質見えていなかった
+  // (「小さくて見えない」禁止の典型)。大きく(32px級)・長く(1.2s)・多く+全技へ拡充。
+  private static readonly PETAL_POOL_SIZE = 40;
+  private static readonly PETAL_LIFE_MS = 1200;
+  /** 花びらの基準サイズpx(叩き台)。旧14。 */
+  private static readonly PETAL_SIZE_PX = 32;
   private ensurePetalPool(): void {
     if (this.petalPool.length > 0) return;
     for (let i = 0; i < PixiScene.PETAL_POOL_SIZE; i++) {
@@ -23803,12 +23814,15 @@ export class PixiScene {
       const age = now - p.bornAt;
       if (age >= p.life) { p.active = false; p.sp.visible = false; continue; }
       const t = age / p.life;
-      p.sp.x += p.vx * deltaSec; p.sp.y += p.vy * deltaSec;
-      p.vy += 60 * deltaSec; // 軽い重力
+      // ★v0.25.3586: ひらひら(横揺れ)を追加。花びらは直線落下しない(慣性=現実の動き)。
+      const sway = Math.sin(now / 140 + p.bornAt) * 26 * deltaSec;
+      p.sp.x += p.vx * deltaSec + sway; p.sp.y += p.vy * deltaSec;
+      p.vy += 46 * deltaSec; // 軽い重力(ゆっくり舞い落ちる)
+      p.vx *= Math.exp(-1.6 * deltaSec); // 初速は空気抵抗で失われる
       p.sp.rotation += p.vr * deltaSec;
-      const s = (14 * (1 - t * 0.5)) / 128; // 14px級まで縮小しながらフェード
+      const s = (PixiScene.PETAL_SIZE_PX * (1 - t * 0.35)) / 128;
       p.sp.scale.set(s);
-      p.sp.alpha = 1 - t;
+      p.sp.alpha = t < 0.7 ? 1 : (1 - t) / 0.3;
     }
   }
 
