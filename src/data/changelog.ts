@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3599',
+    items: [
+      '被弾後の無敵時間を 0.7秒 → 1.0秒 に延長しました(ボスの連続技で立て続けにもらう・群れに囲まれて一気に削られる事故の緩和)。守護霊・召喚も同じ長さになります。',
+    ],
+  },
+  {
     version: '0.25.3598',
     items: [
       'ゲーム内容の変更はありません(開発資料: 全ボス×AI実機テストの設計書を追加)。',

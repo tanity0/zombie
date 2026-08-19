@@ -396,7 +396,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
 // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「血の弧」(boon)が置く血溜まりの床。
 // giantDelayedHitsのエントリのうちfloorUntil付き(=既に一度burstで爆発済み)を毎フレーム走査し、
 // プレイヤーが接触していればdamagePlayerを呼ぶ(applyContactDamageと全く同じ作法=毎フレーム
-// 呼ぶだけで、既存の被弾i-frame=INVULN_MS=700msが自然にスロットルする。専用のDoTタイマーは作らない)。
+// 呼ぶだけで、既存の被弾i-frame=INVULN_MSが自然にスロットルする。専用のDoTタイマーは作らない)。
 // 1フレーム1ヒットまで(複数の床が重なっていても多重ヒットしない=既存のブラスト系と同じ節度)。
 // 重い演出(ring/heavy-impact SFX)は使わず、通常接触被弾と同じ軽いFXに留める(CLAUDE.md負荷方針)。
 export const applyGlenFloorDamage = (fx: CombatEffects): void => {
