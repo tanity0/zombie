@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3650',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 育成設計からリロード強化を除外=4系統に)。',
+    ],
+  },
+  {
     version: '0.25.3649',
     items: [
       'サブクエストの調整: ①出撃直後に達成音が誤って鳴ることがあった不具合を修正 ②長い任務名で表示が折り返さないように ③護衛NPCや召喚が倒した敵もカウントすることを明確化。',
