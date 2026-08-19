@@ -13724,6 +13724,12 @@ export class PixiScene {
       ? Math.max(PLAYER_MELEE_SWING_MS, juiceSlowUntil - (p.meleeSwingAt || 0))
       : PLAYER_MELEE_SWING_MS;
     const sinceSwing = now - (p.meleeSwingAt || 0);
+    // ★実機FB3(社長指示v0.25.3609「近接攻撃モーションをキャンセルしてKILL演出だけにしてほしい」):
+    // KILL処刑演出中は通常の近接モーション(専用ポーズ差し替え・踏み込み振り抜き)を出さない。
+    // 判定・攻撃レートは不変(描画のみ)。斬撃エフェクト(kind='slash')は流し切る(v0.25.3608)。
+    const killFxState = useGameStore.getState().killFx;
+    const killFxActiveForPose = !!killFxState && Date.now() - killFxState.startAt >= 0
+      && Date.now() - killFxState.startAt < KILLFX_TOTAL_MS;
     // 近接専用ポーズを持つクラス(スカベンジャー=necromancer/マークスマン=mage・社長提供素材)は近接スイング中に
     // 本体を差し替える。構え→振り抜きをスイング進行 kt=MELEE_POSE_READY_FRAC で切替。専用ポーズは各クラスの待機絵と
     // 同じ幅86px・足元下端で焼いてあるので描画スケール/足位置は不変(playerBaseScaleは幅基準)。
@@ -13731,7 +13737,7 @@ export class PixiScene {
     // 救急鞄スキル発動の一拍(振り抜きポーズ+鞄掲げ)。近接スイングとは別トリガー(firstAidPoseAt)。
     const sinceFirstAid = now - (p.firstAidPoseAt || 0);
     const firstAidActive = p.firstAidPoseAt > 0 && sinceFirstAid >= 0 && sinceFirstAid < PLAYER_FIRSTAID_POSE_MS;
-    if (meleePosePrefix && !warlordFull && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+    if (meleePosePrefix && !warlordFull && !killFxActiveForPose && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
       const poseSuffix = (sinceSwing / swingWindowMs) < MELEE_POSE_READY_FRAC ? '-ready' : '-swing';
       const poseTex = getTexture(`${meleePosePrefix}${poseSuffix}`);
       if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}${poseSuffix}`; }
@@ -13748,7 +13754,7 @@ export class PixiScene {
       const downTex = getTexture(`${meleePosePrefix}-ready`);
       if (downTex) { view.sprite.texture = downTex; bodyTexName = `${meleePosePrefix}-ready`; }
     }
-    if (PLAYER_MOTION_FX && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+    if (PLAYER_MOTION_FX && !killFxActiveForPose && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
       const t = sinceSwing / swingWindowMs;
       const arc = Math.sin(t * Math.PI); // 0→1→0(踏み込みのピークは中盤)
       const whip = 1 - t;                // 開始が一番強い→復帰
@@ -13774,7 +13780,6 @@ export class PixiScene {
     // ★KILL処刑演出v2(社長指示v0.25.3603): 実時間駆動の しゃがみ→跳びつき→掻っ切り→帰還。
     // hitstop中(now凍結)でも Date.now で進む。描画のみ=store座標/判定は不変。
     this.stepKillFxBlood();
-    const killFxState = useGameStore.getState().killFx;
     const killPose = killFxState ? this.applyKillFx(killFxState, fb.footX, fb.footY) : null;
     if (killPose) {
       actOffX += killPose.offX;

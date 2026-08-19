@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3609',
+    items: [
+      'KILL処刑演出中は通常の近接攻撃モーション(構え/振り抜きポーズ・踏み込み)をキャンセルし、処刑の振り付けだけを見せるようにしました。',
+    ],
+  },
+  {
     version: '0.25.3608',
     items: [
       '進軍NPC(護衛軍人)の歩行速度を20%アップしました。',
