@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3637',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 幻影v2の実装仕様を単独で読める最終版v6に統合)。',
+    ],
+  },
+  {
     version: '0.25.3636',
     items: [
       'ゲーム内容の変更はありません(開発資料: 幻影v2設計書に社長裁定「紫ゲージ廃止・予告なし・全て同じ」を確定)。',

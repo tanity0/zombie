@@ -364,3 +364,90 @@
 - プレイヤー文法: 弾の打ち返しは効く。カウンターは幻影の攻撃に成立しない(仕様)。
 - `?phantomnow` 無しで既存挙動不変+phantomGate は幻影以外に恒等(v4のまま)。
 - 負荷 2/10(州機械が消える分 v4 より軽い)。
+
+---
+
+# v6 実装仕様(最終・これだけ読めば作れる)
+
+**v4/v5は経緯。実装は本節のみを正とする。v4の受け入れ条件・実装地図・★未決Q1〜Q3は全て廃止**
+(裁定は出た: 「そもそも紫ゲージ無くす。予告無し。全て同じ。」)。v4から生きて引き継ぐ節は
+「phantomHitGate(置き場所・適用順・7系統・副作用抑止・戻り値契約)」「銃ミラー(M4)」「弾回避」
+「北極星と写経禁止」「ではない条件」のみ。それ以外でv4と本節が食い違えば本節が勝つ。
+
+## 幻影v2の最終形
+1. **頭脳・移動**: decideGhost 対プレイヤーアダプタ(既存のまま)。移動は毎tick clamp(既存)。
+   - **通常被弾で止まらない**: `phantomTick.isFrozen` から knockbackUntil 参照を外す。
+   - **押し道具は効く**: `knockbackShoveUntil` 窓中は phantomTick が自分の移動で x/y を上書きしない。
+   - **クリティカルの移動半減は外す**(D4): `bossSlowMult` を幻影の移動に掛けない(プレイヤーに無い
+     効果=「全て同じ」の適用。usesBossCrit のダメージ倍率側は残す=プレイヤー弾のクリはちゃんと痛い)。
+   - 技中も含め **decidePhantom は毎tick呼ぶ**(州が無くなるので弾回避・危険記憶が常時効く)。
+2. **近接=即発ミラー**(D1/D2/B1の解):
+   - 発火=**自前周期タイマー単独**。周期は **`GHOST_COUNTER_MELEE_PERIOD_MS`(ghostDriver.ts:256・
+     COUNTER_WINDOW+COUNTER_COOLDOWN由来の既存定数)を import して流用**(写経禁止)。
+     `decision.action==='melee'` は**使わない**(縁74px以内でしか立たず、reach160の外側が死ぬため)。
+     ※帰結: 台帳 meleeBias は近接頻度に効かなくなる(間合い管理=preferredDist で個性は残る)。明記。
+   - 条件: 縁距離(既存 edgeDistTo)≤ melee.reach(160)。カプセル起点終点=**発火時に phantomTick が
+     直接計算**(幻影中心→プレイヤー中心方向・長さ reach・半幅 halfWidth。beginMove/aiFrom* は廃止)。
+   - ダメージ=**damagePlayer 直**(dmg18叩き台)。**汎用爆風(applyPumpkinBlastDamage=全画面オレンジ
+     フラッシュ+r20リング)は使わない**(B1: 820ms周期で全画面が明滅する+判定と絵が不一致)。
+   - **振りの絵は新規に組む(既存素材の流用のみ)**: 斬撃弧=**fx/slash-streak(刀の一閃流用)**を
+     カプセルと同じ向き・同等の長さで1発(2分類①: 危険を伝える絵=判定に揃える)+本体の小さな
+     踏み込み→戻り(ease=慣性MUST)。ヒットSE=既存の近接被弾系を流用。
+3. **銃ミラー**: v4のM4節のとおり(守護霊の霊体武器ループ流用/状態は PhantomTickState/
+   敵弾=共通赤二重丸/実弾速=projectileSpeed×PROJECTILE_SPEED_MULT/クリ5%も撃つ/
+   リロード=beginWeaponReload/finishWeaponReload・リザーブ∞/射程=zoomedGunRange(RANGE_BY_CATEGORY))。
+4. **被弾=phantomGate**: v4のゲート節のとおり(新しい葉 phantomGate.ts・全値引数渡し・適用順=
+   報酬予算より前・7系統名指し・副作用抑止(slashAt/meleeHitEnemyIds/meleeDamageNumbers/lastHit)・
+   戻り値契約 hit/finish/killed・幻影以外に恒等)。
+   - **counterChance は呼び出し側(gameStore)が `strongestGuardian().profile.counterChance` を渡す**
+     (C3解消: phantomGate は型以外 import しない、を守る)。
+   - **パリィ即反撃はハンドシェイク**: ゲート成立→ `enemy.gpParriedAt=gameTime` → 次tickの
+     phantomTick が消費し、**近接周期を無視して1回割り込みで即発近接**を出す(D3)。反撃後は
+     周期タイマーをリセット。パリィCD 1000ms(gpParryCdUntil)・プレイヤー小ノックバックは維持。
+   - パリィ音=既存 'counter' キー流用。無効化ヒット=gpBlockedAt→白点滅・SEなし(v4のまま)。
+   - **source='counter'(パリィ不可)の生き残りは combatTick.ts:362(刃の爆風パリィ)の1本だけ**
+     (C2訂正: ダッシュパリィ1159は980の幻影素通りで到達しない。phantomCounterHit は撤去される)。
+5. **無くなる物(裁定)**: 体勢値(usesPostureSystem から幻影除外=1箇所。紫ゲージ・報酬帯は
+   postureBoss ガード済みで自動的に出なくなる・確認済み)/予告(赤帯・赤ライン)/一閃/
+   gp-* 州すべて/プレイヤー側カウンターの成立(弾の打ち返しだけ残る)。
+
+## 撤去の完全リスト(監査3周目A系・全て実在確認済み)
+- `counterReach.ts`: COUNTER_REACH_DECL の gp宣言+**counterReachShapeFor の case 2つ(L274-277)**+
+  L35 の GP_T import(未使用化=lintで落ちる)
+- `counterReach.test.ts`: L17(状態リストimport)/L19(GP_T)/L44-46(幻影missing)/L50-56('gp:'許可)/
+  **L106-112(melee/issen halfWidthテスト)**
+- `pixiScene.ts`: 赤帯・赤ライン(zoneCapsule/dashLine)の幻影分岐+L176 の GP_T import
+- `phantomScript.ts`: shotブロック/**issenブロック/restMs/issenTravelFrac/PhantomBand の
+  windup・active・recover**。残すのは melee の reach/halfWidth/damage+パリィ定数のみ
+- `phantomTick.ts`: 州機械・カウンター成立配線・phantomCounterHit・一閃移動・**未使用import17個**・
+  `counterEnabled` 引数(+useGameLoop 側の実引数 BOSS_COUNTER_ENABLED)
+- `PhantomSfx`: alert/counter/reward を撤去し **parry を追加(音は既存'counter')**+useGameLoop の写像
+- `types/game.ts`: bossState union の gp州全部
+- `phantomTick.test.ts`: 生存は pickActivePhantom/createPhantomTickState のみ=v6仕様で書き直し
+- 波及なし(確認済み・触らない): bossPractice.test の HP 定数参照/bossPosture.test/moveCancelGuard
+
+## テスト(v6版・D5/D6)
+結合テスト(bountyTick.test の型)5本+不変条件1本:
+① 即発近接が周期どおり出てプレイヤーHPが減る(縁距離reach内・タイマー消化)
+② 被弾無敵中は7系統でダメージ0(代表経路+phantomGate単体で全分岐・rand注入)
+③ パリィ: ゲート成立→gpParriedAt→次tickで割り込み近接が出る(rand固定)
+④ 銃ミラー: 敵弾が生成され、マガジン切れでリロード中は撃たない
+⑤ knockbackUntil 中も移動・射撃が継続する(通常被弾で止まらない)
+⑥ 【不変条件】幻影に体勢値が積まれない+phantomGate は幻影以外の敵に恒等
+
+## 受け入れ条件(v6・これのみが正)
+- 実機: 撃つ(即発・リロード息継ぎ)/即発近接(斬撃弧が判定どおりに見える・全画面フラッシュは出ない)/
+  弾をサイドステップ/こちらの近接がときどき弾かれ即反撃/殴り続けても止まらない/紫ゲージも赤予告も
+  一切出ない/被弾は互いに1秒1回。
+- プレイヤー文法: 弾の打ち返しは効く。カウンターは幻影に成立しない(仕様)。
+- `?phantomnow` 無しで既存挙動不変。typecheck 0 / lint 0エラー(未使用import掃除込み)。
+- 負荷 2/10。
+
+## 実装地図(v6・Opusバッチ1本・大)
+1. 葉: phantomGate.ts 新設+phantomScript の撤去と整理
+2. gameStore: 7系統ゲート+副作用抑止+戻り値契約+gpParriedAt/gpBlockedAt+counterChance受け渡し
+3. phantomTick: 州機械撤去→即発近接(周期タイマー+割り込み反撃)/銃ミラー/凍結除外/毎tick decidePhantom
+4. 描画: 斬撃弧(slash-streak流用)+踏み込み戻り/マズル+反動/白点滅/パリィスパーク/赤予告と
+   赤ライン分岐の撤去/モーション整理(ENEMY_MOTION_TABLE登録)
+5. 撤去リストの完全消化(counterReach/型/テスト/未使用import)+BOSS_HINTS改訂
+6. テスト6本+既存改訂/typecheck/lint
