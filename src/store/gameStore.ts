@@ -1860,11 +1860,14 @@ export const MELEE_FINISH_ZOOM_CD_MS = 10000;
 // 実時間ms。合計=hitstop(全停止)の長さ——この間、動くのはpixi側の実時間駆動FXだけ
 // (社長指示「エフェクト中は時間ストップ(エフェクトは止めない)」)。数値は叩き台。
 export const KILLFX_CROUCH_MS = 110;   // しゃがみ(タメ・沈み込み)
-export const KILLFX_LEAP_MS = 150;     // 首元へ跳びつき(ease-out+放物線)
+// ★実機FB4(社長指示v0.25.3610「最初はジャンプじゃなくて、尺を半分にして首にダッシュで近づく。
+// その後一拍をその分長く置いて、あと一緒」): 跳びつき→**地を走るダッシュ**へ・尺150→75ms。
+// 浮いた75msは一拍(HOLD)へ移す=噴出時刻(BURST_AT)・合計は不変。
+export const KILLFX_LEAP_MS = 75;      // 首元へダッシュ(ease-out・放物線なし)
 // ★実機FB1(社長指示v0.25.3605「首元に貼り付いたら、一拍置いてからSEと共に大量に血を上に噴射。
 // このタイミングでKILL!などの文字も合わせる」): 貼り付き→噴出の間に「一拍」を追加。
-// SE(useGameLoopのkillFx監視)・血・KILL!文字は全部この境界(=噴出時刻)に同期する。
-export const KILLFX_HOLD_MS = 170;     // 首元に貼り付いて一拍(静止のタメ)
+// SE(killFx書き込み時のタイマー)・血・KILL!文字は全部この境界(=噴出時刻)に同期する。
+export const KILLFX_HOLD_MS = 245;     // 首元に貼り付いて一拍(静止のタメ。FB4でダッシュ短縮分+75ms)
 export const KILLFX_SLASH_MS = 170;    // 掻っ切り+血の間欠泉(巻き込んだ敵も全員一斉)
 export const KILLFX_RETURN_MS = 190;   // 元の場所へ跳んで戻る(高い放物線)
 export const KILLFX_LAND_MS = 90;      // 着地スカッシュ

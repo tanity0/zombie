@@ -3455,6 +3455,7 @@ export class PixiScene {
   private killFxBloodPool: Sprite[] = [];       // 血粒のスプライトプール(Texture.WHITE・使い回し)
   private killFxBlood: { x: number; y: number; vx: number; vy: number; size: number; born: number; life: number; tint: number }[] = [];
   private killFxBloodPrevStep = 0;              // 実時間積分の前回時刻(タブ復帰の飛びはクランプ)
+  private killFxVisPos: { x: number; y: number } | null = null; // 演出中のプレイヤー見た目位置(ズーム追尾用・FB4)
 
   // Atmosphere (screen space). gradeSprite multiplies the world cool; the warm
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
@@ -6746,8 +6747,13 @@ export class PixiScene {
     const centerX = this.screenW / 2, centerY = this.screenH / 2;
     const zoomAimsTarget = s.zoomHasTarget && zoomDecay > 0;
     // 対象の「等倍時の画面座標」(world.position は本関数の先頭でカメラオフセット込み更新済み)。
-    const targetScreenX = this.L.world.position.x + s.zoomTargetX;
-    const targetScreenY = this.L.world.position.y + s.zoomTargetY;
+    // ★実機FB4(v0.25.3610「KILLズームはちゃんとプレイヤーを追尾して。もともと立ってた場所で
+    // ズームしちゃってる」): KILL処刑演出中は寄り先を固定座標(キル位置)ではなく**プレイヤーの
+    // 見た目位置(振り付けオフセット込み・毎フレーム更新)**にする。killFxVisPosはdrawPlayerが
+    // 毎フレーム書く(前フレーム値=1フレーム遅れは体感不能。演出が終わるとnull=従来の固定寄り先)。
+    const kvp = this.killFxVisPos;
+    const targetScreenX = this.L.world.position.x + (kvp ? kvp.x : s.zoomTargetX);
+    const targetScreenY = this.L.world.position.y + (kvp ? kvp.y : s.zoomTargetY);
     // v0.25.2593(社長報告「起点が守護霊によったことで、映ってはいけない画面外がでちゃってる感じ。
     // レイヤーが切れてる」): 寄せ量に**安全上限**を掛ける。ズーム倍率 z で拡大している間は可視範囲が
     // 1/z に縮むので、**(1 - 1/z) × 画面半分**までなら平行移動しても「等倍時に見えていた範囲」の内側に
@@ -13428,12 +13434,13 @@ export class PixiScene {
       const e = (rt / t1) ** 2;
       offY = 5 * e; sqY = 1 - 0.22 * e; sqX = 1 + 0.14 * e; lean = -dir * 0.06 * e;
     } else if (rt < t2) {
-      // 跳びつき: ease-out(初速最大→減速)+低い放物線。進行方向へストレッチ。
+      // ★実機FB4(v0.25.3610): 跳びつき→**地を走るダッシュ**(放物線なし・尺半分)。
+      // ease-out(初速最大→減速)で滑り込み、進行方向へ横に伸びる+強い前傾。
       const u = (rt - t1) / KILLFX_LEAP_MS;
       const e = 1 - (1 - u) ** 3;
       offX = dx * e;
-      offY = dy * e - 58 * Math.sin(Math.PI * u);
-      sqY = 1.18 - 0.18 * u; sqX = 0.88 + 0.12 * u; lean = dir * 0.30 * (1 - u);
+      offY = dy * e;
+      sqX = 1.22 - 0.22 * u; sqY = 0.86 + 0.14 * u; lean = dir * 0.38 * (1 - u);
     } else if (rt < tB) {
       // ★一拍(実機FB1): 首元に貼り付いて静止。刃を引き絞るタメ(ゆっくり圧縮)だけ掛ける。
       const u = (rt - t2) / KILLFX_HOLD_MS;
@@ -13787,6 +13794,10 @@ export class PixiScene {
       actSqX *= killPose.sqX;
       actSqY *= killPose.sqY;
       actLean += killPose.lean;
+      // ★実機FB4: KILLズームの追尾点=体の見た目中心(足元+オフセット−半身)。ズーム適用側が読む。
+      this.killFxVisPos = { x: fb.footX + killPose.offX, y: fb.footY - fb.boxH * 0.5 + killPose.offY };
+    } else {
+      this.killFxVisPos = null;
     }
 
     // 登場演出(社長指示で刷新): 飛び降りは廃止。プレイヤーは着地地点に居たまま、ヘリが
