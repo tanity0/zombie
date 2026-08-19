@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3598',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 全ボス×AI実機テストの設計書を追加)。',
+    ],
+  },
+  {
     version: '0.25.3597',
     items: [
       '小ボス(賞金首)が場に居る間は、囲い・救難などの閉じ込めイベントが発動しなくなりました(賞金首が待機中でも先送りされます。倒す/見逃すと再開)。',
