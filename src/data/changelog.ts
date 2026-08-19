@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3617',
+    items: [
+      'KILL処刑演出中に青白いカウンター窓のリング(弧)が固まって表示され続けていたのを修正しました(スクショで特定いただいたやつです)。',
+    ],
+  },
+  {
     version: '0.25.3616',
     items: [
       'スラッシャー: 初撃にも自動追尾の踏み込みが付きました(押した敵を2撃目で追いかけない事故の修正)。',

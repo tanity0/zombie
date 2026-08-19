@@ -24565,7 +24565,10 @@ export class PixiScene {
     const katana = player.subWeapons.includes('katana') || player.subWeapons.includes('murasame');
     const counterFxVisible = !katana || now - player.lastCounterSuccessTime < 360;
     if (this.counterReachRing) this.counterReachRing.visible = false; // 既定OFF(下で出す時だけON)
-    if (now <= player.counterWindowEnd && counterFxVisible) {
+    // ★実機FB10(v0.25.3617・社長スクショ「キル時に発生して止まってる斬撃の弧はこれ」): 正体は
+    // この**カウンター窓のリング+クレセント**。KILL全停止中は now が凍る=約140msで消えるはずの
+    // フラッシュが停止の間ずっと最大表示で固まっていた。KILL処刑演出中は出さない(窓の判定は不変)。
+    if (now <= player.counterWindowEnd && counterFxVisible && !this.killFxActive()) {
       // 元の黄色い攻撃範囲テレグラフ(社長指示で復活)。細いリーチリング + さっと出て
       // 速く消える静止クレセント。クレセントは狙い方向を向き、腹が太く先端が細い。
       // ※近接スイングの見た目は別途2枚画像差し替えで描画(本ブロックは攻撃範囲の表示)。
