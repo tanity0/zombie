@@ -1,66 +1,119 @@
-# 守護霊ボス(ボスモードで守護霊と戦う)設計 v1
+# 守護霊ボス「幻影」設計 v2(監査21件反映)
 
 ## ゴール(社長の言葉のまま)
 「試しに、ボスモードに守護霊の最強データを一体、ボスとして配線できる?プレイヤーと守護霊を戦わせてみたい」
-(骨子=第1弾3技構成は v0.25.3624 の返信で提示し社長「はい」=GO済み)
+(骨子=第1弾3技構成は社長「はい」=GO済み)
 
 ## 「ではない」条件(労力をかけない所)
-- **「試しに」の第1弾**である: サブウェポン群・スキル群・装備効果のフル再現は**第2弾**(やらない)。
-  技は3つ(近接スイング/銃撃/一閃ダッシュ)に絞る。
-- **本編への組み込みではない**(ボスモード=変異体対策室の特別枠のみ。湧き表・コマ・イベントには一切触れない)
-- **オンライン対戦ではない**(相手は固定守護霊台帳のローカルデータ)
-- **botの腕前の改善は別件**(頭脳は既存部品の流用)
+- 第1弾: サブウェポン群・スキル群・装備効果のフル再現は第2弾
+- 本編組み込み・オンライン対戦ではない/専用素材は作らない/バランス精密さは対象外(数値=叩き台)
 
-## 決定事項
-- **相手=固定守護霊台帳(fixedGuardians.ts・20体)の score 最上位1体**(社長「はい」時の既定。
-  プレイヤー自身の装備写しは第2弾候補)。名前・クラス・銃/近接キー・得意距離(preferredDist)を台帳から読む。
+## 決定事項(v2で確定)
+- **相手=鴉(karasu)**: fixedGuardians の performance.score 最上位(77)。id/名前を固定で名指しする
+  (「最上位を引く」抽選ではなく確定1体。台帳が変わったら手で差し替え)。
+- **敵type名=`guardian-phantom`**(監査19: "ghost boss"は既存コードで**守護霊が戦う相手**を指す
+  (GHOST_BOSS_HP_MULT等)ため逆義衝突。状態接頭辞=`gp-`)。表示名「鴉(幻影)」。
+- **台帳から効かせるデータ(監査9/10)**: ①クラス立ち絵(rogue) ②名前 ③profile.preferredDist
+  ④profile.counterChance/reactionMs(頭脳の反応) ⑤移動リズム(stationaryFrac等・decideGhost経由)
+  ⑥snapshot.activeGunKey→銃撃ダメージの基礎値。melee/issenの寸法・ダメージは第1弾は固定値
+  (見た目が読める判定を優先)。読み出しパスの正: score=`performance.score` /
+  preferredDist=`profile.preferredDist` / gunKey=`profile.snapshot.activeGunKey`(監査8)。
 
 ## 方式
-### 枠(入口)
-- PRACTICE_SLOTS に独立枠 `ghost-champion@practice` を**1つ**追加(カテゴリ 'duel'・一覧の最下段)。
-  ラベル=「(守護霊名)(幻影)」。解放=常時(開発実験枠。遭遇ゲートを新設しない)。
-  ※bossPractice.test の「守護霊メニューと同じ台帳」不変条件は「+bounty4+duel1」へ改訂する(裁定として記録)。
-- 出撃: stage-1・新 PracticeParam `ghostbossnow`(useGameLoopに賞金首(bountynow)と同型の
-  強制スポーン1回を追加。`?ghostbossnow=1` の直リンクも同時に効く)。
+### 入口(監査1/5/7)
+- PRACTICE_SLOTS 末尾に独立枠 `guardian-phantom@practice`・新カテゴリ **'duel'**。
+  - `PracticeSlot` に **`alwaysUnlocked?: true`** を新設し、BossRush の unlocked 判定を
+    `slot.alwaysUnlocked || encountered.has(...)` へ(遭遇記録の輪は既存の掟のまま断つ)。
+  - `PRACTICE_CATEGORY_ORDER` 末尾へ 'duel' 追加+BossRush.tsx の `PracticeCategory` 型/ラベル表
+    (「決闘」)/`categoryOf` に duel 分岐を追加(未知キーは'story'に落ちるため必須)。
+  - **テスト改訂(明記・監査5/7)**: bossPractice.test の①台帳不変条件=「+bounty4+duel1」
+    ②カテゴリ順sort=5値 ③「HPが引ける」= practiceBossHealth に guardian-phantom 分岐
+    (=GUARDIAN_PHANTOM_HEALTH を返す)を追加。**bossHints.test**= BOSS_HINTS に幻影のヒント3行を
+    追加(本文に半角数字禁止の掟)。
+- 出撃: stage-1・新 PracticeParam `phantomnow`。強制スポーンは賞金首と同じ**4点セット**(監査15):
+  ①モジュール定数 FORCE_PHANTOM ②`FORCE_PHANTOM || practiceForces('phantomnow')` ③force ref
+  ④gameTime巻き戻しでの再アーム。
+- **ガントレット除外(監査6)**: `GAUNTLET_SKIP_SLOT_KEYS` に追加(未検証ボスを自動テストへ混ぜない。
+  安定後に外す)。
 
-### 敵実体
-- 新 EnemyType **`ghost-boss`**。**isBossTypeに編入**(即死処刑されない/ボスHPバー/致命の一撃・
-  KILL演出の対象/宿敵昇格なし)。HP=専用定数 `GHOST_BOSS_HEALTH = 3000`(叩き台)。体勢値=ボス標準。
-- 見た目: 守護霊と同じ**クラス立ち絵の流用描画**(pixiの疑似プレイヤー描画=fakeGhost型)。
-  敵と読めるよう**ダーク系tint+赤い目glow**(叩き台。素材は作らない)。頭上に台帳の名前ラベル
-  (宿敵ラベルの流用)。
+### 敵実体(監査3/4/12/13)
+- `guardian-phantom` を EnemyType へ追加。**ENEMY_STATS**: width 40 / height 56(プレイヤー級)/
+  speed=87(プレイヤー基準)/ **contact damage 0**(接触では削らない=技でのみ削る決闘仕様)/
+  experienceValue 200(叩き台)。
+- **HP=裏ボス方式**: `CONSTANT_STRENGTH_TYPES` に編入+`GUARDIAN_PHANTOM_HEALTH=3000` 固定
+  (ENEMY_HP_MULT/エリア/色倍率を通さない。色ティア抽選対象外)。
+- **ボス扱いの集合(監査4)**: `isBossType` と **`ENGAGEABLE_BOSS_TYPES`** の両方へ編入
+  (HPバー/体勢値=紫/ボス引きズーム/致命の一撃はこちら由来)。ただし
+  **`isGhostEligibleBoss` からは賞金首と同様に除外**(守護霊召喚/bossClock/notifyBossClear/
+  duoRecords/ghostOnline の5系統へ幻影を混入させない)。年表(chronicle)にも載せない
+  (triggerDramaticDeathの対象判定に幻影の除外1行)。
+- **通常追跡AIから除外(監査12)**: updateEnemies の追跡・接触ブロックを素通りする型ガードを追加
+  (isHiddenBoss と同じ作法の専用述語 `isGuardianPhantom`)。動かすのは phantomTick だけ。
+- **反応表・技表には載せない(監査20・第1弾の割り切り)**: MOVE_REACTION_KEYS へ gp-* を足すと
+  固定守護霊20体全員に「幻影の技への反応」の偽データが自動生成されるため載せない。
+  =幻影戦の被弾は技キー無し(記録の穴として既知)。ガントレット除外(上)と整合。
 
-### 頭脳(既存部品の向き替え)
-- 移動: 毎tick「プレイヤーを標的」にした簡易ステア——preferredDist を保つ(近接型は詰める/
-  射撃型は間合いを取る)+分離(壁は resolveAabb)。bot部品(dodgeVector等)は**流用しない**
-  (敵側に回避を持たせるのは第1弾の範囲外。まず戦いが成立することが目的)。
-- 技のローテーション: ボス標準の「技→硬直→抽選」型(bossState機械)。距離で抽選を変える
-  (近=melee / 中=issen or shot / 遠=shot)。
+### 頭脳(監査10=decideGhost流用に転換)
+- **既存 `decideGhost`(ghostDriver)を「対プレイヤー」アダプタで流用**する。標的取得
+  (boundBossId/pickTarget)を「プレイヤーの矩形・座標」を返すアダプタへ差し替えるだけで、
+  preferredDist・counterChance・reactionMs・移動リズム(stationaryFrac/approachPerMin)が
+  そのまま生きる=「守護霊らしさ」をデータで出す(自前ステアは書かない)。
+- decideGhost の出力(接近/離脱/攻撃意図)を phantomTick が bossState 機械へ写す。
+  技の抽選: 近(≤preferredDist)=melee / 中=issen or shot / 遠=shot。技間の休み900ms(叩き台)。
+- **移動は毎tick `clampRectToPlayableArea` を通す(CLAUDE.md MUST・監査11)**。一閃の終点も
+  クランプ。上下移動の5副作用表(地平線/減光/遠近/可視域/移動帯)はstage-1野外=帯なしだが、
+  実装時に表を1回確認して結果をログへ書く。
 
-### 技3つ(カウンター文法準拠=赤は判定と厳密一致)
+### 技3つ(カウンター文法準拠。状態名は規約どおり -windup/-active/-recover・監査17)
 | 技 | 状態 | 予告 | 判定 |
 |---|---|---|---|
-| 近接スイング `gb-melee` | `gb-melee-windup`(500ms)→`gb-melee`→`gb-melee-recover` | 赤帯(幅=判定) | 前方帯 |
-| 銃撃 `gb-shot` | `gb-shot-windup`(400ms)→発射→`gb-shot-recover` | 構え(体の張り) | **共通の赤二重丸弾**×3連(絵替え禁止の掟どおり) |
-| 一閃 `gb-issen` | `gb-issen-windup`(700ms)→`gb-issen-dash`→`gb-issen-recover` | 赤ライン(帯=判定) | ライン帯に沿って高速移動・接触ダメージ |
-- カウンター: windup 2種(melee/issen)は帯宣言を **COUNTER_REACH_DECL に登録**(完全性テストが強制)。
-  shotは弾を打ち返す(共通弾の既存文法)。
-- moveCancelGuard: 新規連携なし(標準の windup→active→recover のみ=申告不要)。
-- 反応表: `gb-melee` / `gb-issen`(MELEE_STATE_TO_MOVE)+ `gb-shot`(BULLET側・srcMoveKey)を台帳へ
-  追加(MOVE_KEYS_BY_BOSS_TYPE 導出テストに乗る)。
+| 近接 `gp-melee` | `gp-melee-windup`(500ms)→`gp-melee-active`(180ms)→`gp-melee-recover` | 赤帯(=判定) | 前方帯 160×40 / dmg 18 |
+| 銃撃 `gp-shot` | `gp-shot-windup`(400ms)→`gp-shot-active`(3連・gap120ms)→`gp-shot-recover` | 構えの張り | **共通の赤二重丸弾**・弾速480・dmg=gunKeyの武器基礎値から導出(下限6) |
+| 一閃 `gp-issen` | `gp-issen-windup`(700ms)→`gp-issen-active`(260ms)→`gp-issen-recover` | 赤ライン(帯=判定) | ライン420×36に沿って高速移動・dmg 22 |
 
-### 数値(全部叩き台・メーカー調整は第2弾)
-melee: 帯 160×40px・damage 18 / shot: 弾速480・damage 8×3(gap 120ms)/
-issen: ライン420px・幅36・dash 260ms・damage 22 / 技間の休み 900ms / 移動速度 プレイヤー基準×1.0。
+### カウンターの成立(監査2=宣言だけでは成立しない)
+- `COUNTER_REACH_DECL` に登録: `gp-melee-windup`=帯 / `gp-issen-windup`=帯 /
+  recover 2種=自分の体(body)。
+- **成立側の配線を phantomTick 自身が持つ**(bountyTick と同型): windup/recover 中に
+  プレイヤーのカウンター窓+`inCounterReach` を毎tick判定し、成立したら
+  ①技を中断して `gp-stagger`(ノックバック+硬直・dashParriedEnemyPatch と同じ作法)
+  ②体勢値を积む(ボス標準) ③counterMasterのCDリファンド等は既存の成立共通処理を通す。
+- 弾は共通弾=既存の打ち返し文法がそのまま効く(配線不要)。
+- **counterReach 完全性テスト(監査18)**: `gp-` 系統の州リストを export して missing() を追加。
+  「bounty:/hidden:/idol: 以外は body 禁止」の既存テストは **prefix許可リストへ 'gp-' を追加**する
+  改訂を行う(理由コメント付き)。
+
+### 描画(監査14)
+- **敵アクター側に専用分岐 `drawGuardianPhantom`** を新設(drawGhostAlly の直接流用はしない——
+  Summon主語・単一インスタンスキャッシュ・味方半透明が前提のため)。中身は同じ部品の写し:
+  クラス立ち絵(playerTextureName・rogue)+歩きコマ、**alpha=1(半透明にしない)**、
+  ダーク系tint、**赤い目=小glowスプライト(強glow=投影影は使わない・監査21)**。
+  遠近は **depthScaleEnemy**。頭上に名前ラベル(宿敵ラベル=namedFoeLabels の流用)。
+  予告(赤帯/赤ライン)は既存のボス予告描画と同じ作法。
+- **出現(監査16・慣性MUST)**: holo-mini(簡易出現魔法陣・既存素材)を足元に+本体は下から
+  スッと立ち上がるフェードイン(ease-out)。出撃時は他の練習枠と同じアテンション+
+  eventBanner「鴉(幻影)」(cutin台帳には足さない=素材なし)。討伐時は標準の崩壊演出。
+  BossRush/PracticeResult のアイコンは BOSS_ICON 未登録=「?」のままで良い(開発実験枠)。
+
+## 性能(監査21・CLAUDE.md必須)
+**負荷 1/10**。毎フレームの追加は phantomTick(1体・軽量判定)と描画1体ぶんのみ。
+赤目は小glow(pooled sprite=実測ただ)。**強glow(投影影)は使わない**。パーティクルは既存プール流用。
 
 ## 実装地図(Opusバッチ1本・中)
-1. 台帳: fixedGuardians から score最上位を引く純関数 `strongestGuardian()`(+テスト)
-2. 枠: bossPractice に duel枠+PracticeParam・テスト改訂 / useGameLoop に強制スポーン
-3. 敵: types(EnemyType/bossState)・isBossType編入・HP定数・`src/utils/ghostBossTick.ts`
-   (状態機械=純関数寄り・ユニットテスト)・counterReach宣言+テスト・moveReaction台帳+テスト
-4. 描画: pixiSceneにghost-boss分岐(クラス立ち絵+tint+赤目+赤帯/赤ライン予告+名前ラベル)
-5. 検証: typecheck/lint+関連テスト(憲法・counterReach完全性・moveReaction導出)
+1. 台帳読み: `strongestGuardian()`=鴉を返す純関数+テスト(score最上位の機械検証つき)
+2. 入口: PracticeSlot.alwaysUnlocked+duel枠+カテゴリ+テスト改訂4件+BOSS_HINTS 3行
+3. 敵: EnemyType/ENEMY_STATS/CONSTANT_STRENGTH/ENGAGEABLE編入+isGhostEligible除外+
+   通常AI除外述語+力スポーン4点セット(phantomnow)
+4. 頭脳+技: `src/utils/phantomTick.ts`(decideGhostアダプタ+bossState機械+カウンター成立配線・
+   ユニットテスト)+counterReach宣言+テスト改訂
+5. 描画: drawGuardianPhantom(立ち絵+tint+赤目小glow+赤予告+名前ラベル+出現演出)
+6. 検証: typecheck/lint+関連テスト(bossPractice/bossHints/counterReach/憲法)
 
-## ★未決(裁定不要と判断した点=事実として記録)
-- 「最強」=score最上位(台帳の既存指標)。同点時はid昇順。
-- 幻影が敗北した時: 通常のpracticeWin(勝ち)。討伐アテンション=ボス標準のまま。
+## 監査の記録
+- v1監査: 21件。**全件反映**(このv2)。要点: 入口の永久ロック(#1→alwaysUnlocked)/カウンター
+  成立配線の欠落(#2→phantomTick内で成立させる)/HP倍率機構(#3→裏ボス方式)/ボス扱いの実体は
+  ENGAGEABLE集合(#4→両編入+ghost系5系統から除外)/落ちるテスト2件+カテゴリ(#5/#7→改訂を明記)/
+  ガントレット混入(#6→SKIP)/台帳パスと「誰か」(#8→鴉)/データが効かない(#9/#10→decideGhost流用へ
+  転換)/clamp未指定(#11)/二重駆動(#12)/寸法(#13)/描画の前提(#14)/force4点(#15)/出現演出(#16)/
+  州名規約(#17)/完全性テストの網(#18)/命名衝突(#19→guardian-phantom)/反応表汚染(#20→載せない)/
+  負荷スコア(#21)。不採用ゼロ(※#20は「載せる」ではなく「載せない」を明文化する形で採用)。
