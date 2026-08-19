@@ -51,8 +51,12 @@ describe('既定値=移設前の実装値(テーブル化で挙動が1つも変�
   it('鋏(bounty-balance)', () => {
     const d = BOUNTY_BALANCE_TUNING_DEFAULTS;
     expect(d.nearMax).toBe(170);
-    // sweep.range=250(社長指示v0.25.3579) / leap一式 = v0.25.3576 ボスメーカー貼り戻し(社長確定)。
-    expect(d.sweep).toEqual({ range: 250, halfWidth: 40, windup: 750, damage: 18, recover: 900 });
+    // sweep.range=250(v0.25.3579) / damage=25(v0.25.3582貼り戻し) / leap一式=v0.25.3576貼り戻し(社長確定)。
+    expect(d.sweep).toEqual({ range: 250, halfWidth: 40, windup: 750, damage: 25, recover: 900 });
+    // 3連発: windup[1000,350,500]+帯200(単発から分離)= v0.25.3582 貼り戻し+手書き追記(社長確定)。
+    expect(d.sweepTriple).toEqual({
+      chance: 0.5, halfWidth: 30, range: 200, windup: [1000, 350, 500], stepRecover: 150, damage: 18,
+    });
     expect(d.leap).toEqual({ radius: 110, windup: 1000, airMs: 300, recover: 500, damage: 22 });
   });
 

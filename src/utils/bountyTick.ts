@@ -1138,20 +1138,20 @@ const tickMelee = (
 // 距離帯・薙ぎ払い・跳びかかりの数値は **BB_T(bountyScript.ts)** が正(跳びかかりはpumpkin輸入。
 // v2 A節の掟「跳躍はpumpkinのaiPhase機構を流用せず-windup/-air/-recoverとしてbossState側に再実装」)。
 
-/** 鋏: 薙ぎの帯を今のプレイヤー方向へ張り直す(単発・3連発の各発で共用)。 */
+/** 鋏: 薙ぎの帯を今のプレイヤー方向へ張り直す(単発・3連発の各発で共用。長さは技ごと=v0.25.3582)。 */
 const aimBbSweepBand = (
-  pcx: number, pcy: number, bcx: number, bcy: number, patch: Partial<Enemy>,
+  pcx: number, pcy: number, bcx: number, bcy: number, patch: Partial<Enemy>, rangePx: number,
 ): void => {
   const ang = Math.atan2(pcy - bcy, pcx - bcx);
   patch.aiFromX = bcx; patch.aiFromY = bcy;
-  patch.aiTargetX = bcx + Math.cos(ang) * BB_T.sweep.range;
-  patch.aiTargetY = bcy + Math.sin(ang) * BB_T.sweep.range;
+  patch.aiTargetX = bcx + Math.cos(ang) * rangePx;
+  patch.aiTargetY = bcy + Math.sin(ang) * rangePx;
 };
 
 /** 鋏: 目の前の帯=薙ぎ払い(密着に居座らせないための技)。 */
 const beginBbSweep = ({ newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
   sfx.alert();
-  aimBbSweepBand(pcx, pcy, bcx, bcy, patch);
+  aimBbSweepBand(pcx, pcy, bcx, bcy, patch, BB_T.sweep.range);
   patch.bossState = 'bb-sweep-windup';
   patch.bossStateUntil = newGameTime + BB_T.sweep.windup;
 };
@@ -1161,7 +1161,7 @@ const beginBbSweep = ({ newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeg
  *  取り直す(bm-comboと同じ「windup→step recover→次windup」型=キャンセル監視の正規形)。 */
 const beginBbTriple = ({ newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
   sfx.alert();
-  aimBbSweepBand(pcx, pcy, bcx, bcy, patch);
+  aimBbSweepBand(pcx, pcy, bcx, bcy, patch, BB_T.sweepTriple.range);
   patch.bossState = 'bb-triple1-windup';
   patch.bossStateUntil = newGameTime + BB_T.sweepTriple.windup[0];
 };
@@ -1253,7 +1253,7 @@ const tickBalance = (
   if (st === 'bb-triple1-recover' || st === 'bb-triple2-recover') {
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       const nextIdx = st === 'bb-triple1-recover' ? 1 : 2;
-      aimBbSweepBand(pcx, pcy, bcx, bcy, patch); // 発ごとに向きを取り直す(コンボと同じ)
+      aimBbSweepBand(pcx, pcy, bcx, bcy, patch, BB_T.sweepTriple.range); // 発ごとに向きを取り直す(コンボと同じ)
       patch.bossState = nextIdx === 1 ? 'bb-triple2-windup' : 'bb-triple3-windup';
       patch.bossStateUntil = newGameTime + BB_T.sweepTriple.windup[nextIdx];
     }

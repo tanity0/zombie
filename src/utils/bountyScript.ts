@@ -145,6 +145,9 @@ export interface BountyBalanceTuning {
     /** 取り掛かり(近距離の薙ぎ開始)で3連発を引く確率。残りは単発。 */
     chance: number;
     halfWidth: number;
+    /** ★v0.25.3582(社長指示・貼り戻しに手書き追記「帯の長さ=200px」): 3連発専用の帯の長さ。
+     *  単発(sweep.range)より短い=単発と共有をやめて分離した。 */
+    range: number;
     /** 発ごとの予告ms。1発目=単発と同じタメ、2-3発目は早い(社長指示)。 */
     windup: [number, number, number];
     /** 発間の切り返しms(この間に向きを取り直す)。 */
@@ -173,9 +176,11 @@ export interface BountyBalanceTuning {
 export const BOUNTY_BALANCE_TUNING: BountyBalanceTuning = {
   nearMax: 170,
   // sweep.range 150→300(v0.25.3576貼り戻し)→250(社長指示v0.25.3579「薙払いの長さを250に短縮」)。
-  sweep: { range: 250, halfWidth: 40, windup: 750, damage: 18, recover: withRecoverFloor(900) },
-  // ★v0.25.3580: 数値は全部叩き台(確率50%・幅40→30・2-3発目350ms・切り返し150ms・威力は単発と同じ)。
-  sweepTriple: { chance: 0.5, halfWidth: 30, windup: [750, 350, 350], stepRecover: 150, damage: 18 },
+  // sweep.damage 18→25 = v0.25.3582 貼り戻し(社長確定)。
+  sweep: { range: 250, halfWidth: 40, windup: 750, damage: 25, recover: withRecoverFloor(900) },
+  // ★v0.25.3580導入→v0.25.3582貼り戻し: windup [750,350,350]→[1000,350,500](1発目のタメ深く・
+  // 3発目やや遅らせて読ませる)+帯の長さ200(手書き追記=単発250から分離)。chance/幅/切り返しは叩き台のまま。
+  sweepTriple: { chance: 0.5, halfWidth: 30, range: 200, windup: [1000, 350, 500], stepRecover: 150, damage: 18 },
   // ★v0.25.3581: 数値は全部叩き台。ロールはバス停(140px/180ms)より大きめに引いて弾の間合いを作る。
   // 弾速520=バス停の通常弾260の2倍(「高速弾」)。
   rollCombo: {

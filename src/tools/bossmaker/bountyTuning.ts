@@ -176,6 +176,7 @@ const balanceFields = (): TuningField[] => {
     tr('sweepTriple.stepRecover', '発間の切り返し', 'ms', 0, 2000, 50, 'この間に向きを取り直す'),
     tr('sweepTriple.damage', 'ダメージ(1発あたり)', 'num', 0, 200, 1),
     tr('sweepTriple.halfWidth', '帯の半幅', 'px', 4, 200, 10, '単発より少し狭い'),
+    tr('sweepTriple.range', '帯の長さ', 'px', 10, 600, 10, '単発(250)とは別の値'), // ★v0.25.3582
 
     rc('rollCombo.chance', '台本を引く確率', 'num', 0, 1, 0.05, '取り掛かりで最初に判定。残りを単発/3連発で分ける'),
     rc('rollCombo.rollMs', 'バックロールの所要', 'ms', 100, 2000, 20),
