@@ -1789,7 +1789,9 @@ const SkillGacha: React.FC = () => {
         else if (best === 'super') playSfx('heavy-impact');
       }, intro + m * SHOT_STAGGER);
     } else {
-      playSfx('shoot'); playSfx('bomb'); // 発砲＋着弾(破裂)
+      // ★v0.25.3651(SE台帳走査で発見): 旧 'shoot' はSfxKey型にだけ存在しSFX_SOURCES未定義=常に無音だった。
+      // 連打側(上のループ)と同じ 'rifle-fire' に揃える(単発だけ発砲音が無い非対称の解消)。
+      playSfx('rifle-fire'); playSfx('bomb'); // 発砲＋着弾(破裂)
       if (best === 'rare') playSfx('homing-lock2');
       else if (best === 'super') { playSfx('heavy-impact'); playSfx('event-clear'); }
     }
