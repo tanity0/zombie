@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3634',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 幻影v2設計書を「全てプレイヤーと同条件」の裁定と監査18件を反映したv4へ改稿)。',
+    ],
+  },
+  {
     version: '0.25.3633',
     items: [
       'ゲーム内容の変更はありません(開発資料: 幻影v2「守護霊ミラー」の設計書を追加)。',
