@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3575',
+    items: [
+      '馬乗り(変異)の鞭のしなりを強くしました(先端の遅れが約2倍深く・スナップの質感は維持)。',
+    ],
+  },
+  {
     version: '0.25.3574',
     items: [
       '馬乗り(変異)の鞭が新しいまっすぐな鎖鞭の絵になり、振りに合わせて先端がしなる(遅れて追いつく)ようになりました。',

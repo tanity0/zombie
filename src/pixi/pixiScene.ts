@@ -23113,14 +23113,16 @@ export class PixiScene {
   // 負荷 1/10: 鞭1本=点12個のpooled MeshRope 1本(per-frame Graphicsなし・賞金首は同時1体)。
   /** ロープの点数。 */
   private static readonly WHIP_ROPE_PTS = 12;
-  /** バネの硬さ(叩き台)。大きいほど先端が速く追いつく=しなりが浅くなる。 */
-  private static readonly WHIP_LAG_K = 140;
-  /** バネの減衰(叩き台)。臨界(2√K≈23.7)よりやや弱め=振り抜きで先端が行き過ぎてから戻る。 */
-  private static readonly WHIP_LAG_DAMP = 13;
+  /** バネの硬さ(叩き台)。大きいほど先端が速く追いつく=しなりが浅くなる。
+   *  v0.25.3575(社長指示「しなりもっと強く」): 140→70=先端の遅れ角が約2倍深くなる。 */
+  private static readonly WHIP_LAG_K = 70;
+  /** バネの減衰(叩き台)。臨界(2√K≈16.7)よりやや弱め=振り抜きで先端が行き過ぎてから戻る。
+   *  Kと一緒に下げて減衰比≈0.55を保つ(スナップの質感は同じまま、振れ幅だけ大きく)。 */
+  private static readonly WHIP_LAG_DAMP = 9;
   /** 曲げの先端寄り指数(叩き台・社長指示「先端の歪みを強めに」)。1=均等、大きいほど先端に集中。 */
   private static readonly WHIP_BEND_POW = 1.7;
-  /** 遅れ角の上限(rad・叩き台)。折り返して絵が潰れない範囲に留める。 */
-  private static readonly WHIP_BEND_MAX = 1.15;
+  /** 遅れ角の上限(rad・叩き台)。折り返して絵が潰れない範囲に留める(v0.25.3575: 1.15→1.6)。 */
+  private static readonly WHIP_BEND_MAX = 1.6;
 
   private drawBountyWhipRope(id: string, px: number, py: number, angleRad: number, lengthPx: number, alpha: number): void {
     const tex = getTexture('bounty-melee-whip');
