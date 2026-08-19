@@ -1292,6 +1292,68 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       expect(useGameStore.getState().enemies.find(e => e.id === id)!.x).toBeLessThan(x0);
     });
 
+    // ★v0.25.3585(社長報告「舞妓の毱打ち以外の技、カウンター取れない」): 成立域を赤い予告の形に
+    // 揃えた(薙ぎ=帯/回し=円/乱舞=着地円)。体に触れていなくても赤の中ならカウンターが通る。
+    it('毬の薙ぎはカウンター可: 帯の中(体に触れない距離)で成立し、chaseへ中断+反撃ダメージ', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.9); // バックロールを外して薙ぎ固定
+      const { id, step } = setupType('bounty-maiko', { x: 60, y: 0 });
+      step(16);
+      const b0 = useGameStore.getState().enemies.find(e => e.id === id)!;
+      expect(b0.bossState).toBe('mk-naginata-windup');
+      // 帯の軸上・中心から100px(=体の外・帯の内)に立ってカウンター窓を開く
+      const bcx = b0.x + b0.width / 2, bcy = b0.y + b0.height / 2;
+      useGameStore.setState(s => ({
+        player: { ...s.player, x: bcx + 100 - s.player.width / 2, y: bcy - s.player.height / 2, counterWindowEnd: Date.now() + 5000 },
+      }));
+      const hpBefore = b0.health;
+      step(16);
+      const after = useGameStore.getState().enemies.find(e => e.id === id);
+      expect(after?.bossState).toBe('chase');
+      expect(after!.health).toBeLessThan(hpBefore);
+    });
+
+    it('毬回しはカウンター可: 赤円の中で成立(windup中・体に触れていない)', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.9); // 遠隔の抽選を回し側へ(0.9はboom/suiuに入らない)
+      const { id, step } = setupType('bounty-maiko', { x: 250, y: 0 });
+      step(16);
+      const b0 = useGameStore.getState().enemies.find(e => e.id === id)!;
+      expect(b0.bossState).toBe('mk-spin-windup');
+      const bcx = b0.x + b0.width / 2, bcy = b0.y + b0.height / 2;
+      useGameStore.setState(s => ({
+        player: { ...s.player, x: bcx + 120 - s.player.width / 2, y: bcy - s.player.height / 2, counterWindowEnd: Date.now() + 5000 },
+      }));
+      const hpBefore = b0.health;
+      step(16);
+      const after = useGameStore.getState().enemies.find(e => e.id === id);
+      expect(after?.bossState).toBe('chase');
+      expect(after!.health).toBeLessThan(hpBefore);
+    });
+
+    it('水鳥乱舞はカウンター可: ホップ中に着地円の中で成立', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.1); // 型2の遠隔抽選(<0.4)=水鳥乱舞
+      const { id, step } = setupType('bounty-maiko', { x: 250, y: 0 });
+      useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === id ? { ...e, bossPhase: 2 } : e)) }));
+      let cur = useGameStore.getState().enemies.find(e => e.id === id)!;
+      for (let i = 0; i < 60 && cur.bossState !== 'mk-suiu-hop1'; i++) {
+        step(50);
+        cur = useGameStore.getState().enemies.find(e => e.id === id)!;
+      }
+      expect(cur.bossState).toBe('mk-suiu-hop1');
+      // 現在ホップの着地円の中心に立ってカウンター窓を開く
+      useGameStore.setState(s => ({
+        player: {
+          ...s.player,
+          x: (cur.aiTargetX ?? 0) - s.player.width / 2, y: (cur.aiTargetY ?? 0) - s.player.height / 2,
+          counterWindowEnd: Date.now() + 5000,
+        },
+      }));
+      const hpBefore = cur.health;
+      step(16);
+      const after = useGameStore.getState().enemies.find(e => e.id === id);
+      expect(after?.bossState).toBe('chase');
+      expect(after!.health).toBeLessThan(hpBefore);
+    });
+
     it('型切替: HP50%以下になるとmk-reposeを経て型B(bossPhase=2)へ1回だけ切り替わる', () => {
       const { id, step } = setupType('bounty-maiko', { x: 700, y: 0 }, { health: 1000, maxHealth: 2000 });
       step(16);

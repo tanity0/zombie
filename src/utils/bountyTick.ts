@@ -349,7 +349,12 @@ const BOUNTY_WINDUP_STATES: readonly string[] = [
 // 360度の振り(bm-whip360)は対象外**だった——werewolfの突進(aiPhase 'charge')が実行中でも弾けるのと
 // 非対称で、体感「カウンターできない」の正体。加えて360系は**赤円の中なら体が触れていなくても弾ける**
 // (下の counterReachFor。城ボスの着地円=「赤い予告の中でだけ成立」v0.25.2601 と同じ文法)。
-const BOUNTY_ACTIVE_COUNTER_STATES: readonly string[] = ['bm-charge', 'bm-whip360'];
+// ★v0.25.3585(社長報告「舞妓の毱打ち以外カウンター取れない」): 舞妓の実行中も開く——
+// 毬回しの回転中(mk-spin=360の振りと同型)と水鳥乱舞のホップ中(mk-suiu-hop*=着地円文法)。
+const BOUNTY_ACTIVE_COUNTER_STATES: readonly string[] = [
+  'bm-charge', 'bm-whip360',
+  'mk-spin', 'mk-suiu-hop1', 'mk-suiu-hop2', 'mk-suiu-hop3',
+];
 
 const BOUNTY_RECOVER_STATES: readonly string[] = [
   'br-push-recover', 'bm-charge-recover', 'bm-combo1-recover', 'bm-combo2-recover', 'bm-combo3-recover', 'bm-snipe-recover',
@@ -1928,13 +1933,30 @@ export const runBountyTick = (
     const cp = useGameStore.getState().player;
     // ★v0.25.3571: 360系(windup/振り)は判定が「体」ではなく「赤円(whip360.radius)」なので、
     // カウンターの成立域も赤円に合わせる(赤=カウンター対象の文法・城ボス着地円と同型)。
-    // それ以外は従来どおり体の重なり。
-    const is360 = stNow === 'bm-whip360-windup' || stNow === 'bm-whip360';
+    // ★v0.25.3585(社長報告「舞妓の毱打ち以外の技、カウンター取れない」): 同じ穴が舞妓の3技に
+    // 丸ごと残っていた——成立域が「体の重なり」のみで、舞妓は**体に触れない技ばかり**
+    // (薙ぎ=140px先の帯 / 回し=半径180の自分中心円 / 乱舞=遠くの着地円。しかも本体は踏み込まない)
+    // =構造的にカウンター不可能だった。**成立域を赤い予告の形に揃える**(赤=カウンター対象の文法):
+    //   薙ぎ=帯(distToBandRect・判定と同形) / 回し=自分中心円 / 乱舞=現在ホップの着地円。
+    // それ以外(押しのけ・コンボ・手毬打ち等)は従来どおり体の重なり。
     const pcx2 = cp.x + cp.width / 2, pcy2 = cp.y + cp.height / 2;
     const pRad = Math.max(cp.width, cp.height) / 2;
-    const inReach = is360
-      ? Math.hypot(pcx2 - bcx, pcy2 - bcy) <= BM_T.whip360.radius + pRad
-      : rectsOverlap({ x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height });
+    let inReach: boolean;
+    if (stNow === 'bm-whip360-windup' || stNow === 'bm-whip360') {
+      inReach = Math.hypot(pcx2 - bcx, pcy2 - bcy) <= BM_T.whip360.radius + pRad;
+    } else if (stNow === 'mk-spin-windup' || stNow === 'mk-spin') {
+      inReach = Math.hypot(pcx2 - bcx, pcy2 - bcy) <= MK_T.spin.radius + pRad;
+    } else if (stNow === 'mk-naginata-windup' || stNow === 'mk-naginata1-windup' || stNow === 'mk-naginata2-windup') {
+      const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
+      const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
+      inReach = distToBandRect({ x: pcx2, y: pcy2 }, { x: fx, y: fy }, { x: tx, y: ty }, MK_T.naginata.halfWidth) <= pRad;
+    } else if (stNow === 'mk-suiu-hop1' || stNow === 'mk-suiu-hop2' || stNow === 'mk-suiu-hop3') {
+      const lx = bounty.aiTargetX ?? bcx, ly = bounty.aiTargetY ?? bcy;
+      const r = stNow === 'mk-suiu-hop3' ? MK_T.suiu.radius * MK_T.suiu.finalRadiusMult : MK_T.suiu.radius;
+      inReach = Math.hypot(pcx2 - lx, pcy2 - ly) <= r + pRad;
+    } else {
+      inReach = rectsOverlap({ x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height });
+    }
     if (inReach && Date.now() <= cp.counterWindowEnd) {
       bountyCounterHit(bounty, bcx, bcy, sfx);
       countered = true;
