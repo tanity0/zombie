@@ -15007,13 +15007,37 @@ export class PixiScene {
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bb-sweep-windup') {
         const ease = weaponSpawnEase(BB_T.sweep.windup * sweepProg, Infinity);
-        // 技表GO: 薙ぎ=開いて→閉じながら薙ぐ。開(widthMul 1.7)→閉(1.0)をease-in(閉じる勢いが強まる)。
-        // 振りはコンボと同型(振りかぶり→ease-outで薙ぎ切る)。
-        const closeEased = sweepProg * sweepProg;
-        const widthMul = 1.7 - 0.7 * closeEased;
-        const swingEased = 1 - Math.pow(1 - sweepProg, 2);
-        const swingAngle = aimAng - Math.PI * 0.35 * (1 - swingEased);
-        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy + ease.dy, swingAngle, 160, 0.95 * ease.alphaMul, widthMul);
+        // ★v0.25.3578(社長指示「鋏っぽくない。もっとタメと勢いを分かりやすく。縦に長い攻撃も、
+        // 端から端まで、スパッと行く感じに」): 旧「振りながらじわじわ閉じる」(剣の振りの文法)を廃止。
+        // 鋏は**閉じる瞬間が斬**なので、3拍に分ける:
+        //  A(〜55%) タメ: 帯の手前で一気に全開(ease-out)+わずかに引く
+        //  B(〜85%) 溜め持続: 開きと引きがじわっと増える(完全静止させない=慣性)
+        //  C(〜100%) スパッ: ease-inで帯の根元→先端まで一気に滑走しながら閉じ切る(閉じ=命中)
+        // 角度は終始 帯の向き(aimAng)。閃光/斬撃弧は従来どおり>92%=滑走中に出る。
+        const dirX = Math.cos(aimAng), dirY = Math.sin(aimAng);
+        const L = 160;
+        const startX = bfx + dirX * L * 0.3, startY = bfy + dirY * L * 0.3;   // 構え=帯の根元側
+        const endX = btx - dirX * L * 0.25, endY = bty - dirY * L * 0.25;    // 斬り終わり=先端が帯の端
+        let openMul: number; let px2: number; let py2: number;
+        if (sweepProg < PixiScene.SCISSOR_TAME_END) {
+          const t = sweepProg / PixiScene.SCISSOR_TAME_END;
+          const eo = 1 - Math.pow(1 - t, 3);
+          openMul = 1 + 0.7 * (0.94 * eo);
+          px2 = startX - dirX * 26 * eo; py2 = startY - dirY * 26 * eo;
+        } else if (sweepProg < PixiScene.SCISSOR_SNAP_START) {
+          const t = (sweepProg - PixiScene.SCISSOR_TAME_END)
+            / (PixiScene.SCISSOR_SNAP_START - PixiScene.SCISSOR_TAME_END);
+          openMul = 1 + 0.7 * (0.94 + 0.06 * t);
+          const pull = 26 + 8 * t;
+          px2 = startX - dirX * pull; py2 = startY - dirY * pull;
+        } else {
+          const t = (sweepProg - PixiScene.SCISSOR_SNAP_START) / (1 - PixiScene.SCISSOR_SNAP_START);
+          const ei = t * t * t;
+          openMul = 1 + 0.7 * (1 - ei);
+          const sx0 = startX - dirX * 34, sy0 = startY - dirY * 34;
+          px2 = sx0 + (endX - sx0) * ei; py2 = sy0 + (endY - sy0) * ei;
+        }
+        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', px2, py2 + ease.dy, aimAng, L, 0.95 * ease.alphaMul, openMul);
         // 閉じ切る=命中の瞬間(windup完了直前)に命中閃(fx/scissor-x-0)を初配線。
         if (sweepProg > 0.92) {
           this.triggerBountyScissorFlashOnce(e.id, `sweep:${this.moveInstanceNo(e.id, bs2 ?? '')}`, (bfx + btx) / 2, (bfy + bty) / 2, aimAng, 0, now);
@@ -15027,7 +15051,14 @@ export class PixiScene {
       } else if (bs2 === 'bb-sweep-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const ease = weaponSpawnEase(Infinity, remain);
-        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy + ease.dy, aimAng, 160, 0.9 * ease.alphaMul, 1.0);
+        // ★v0.25.3578: 斬り終わり(帯の先端)から手元へ**減速しながら**戻す(瞬間テレポート禁止=慣性)。
+        const elapsedR = Math.max(0, BB_T.sweep.recover - remain);
+        const backT = Math.min(1, elapsedR / 250);
+        const eoR = 1 - Math.pow(1 - backT, 3);
+        const dirXr = Math.cos(aimAng), dirYr = Math.sin(aimAng);
+        const fromX = btx - dirXr * 160 * 0.25, fromY = bty - dirYr * 160 * 0.25;
+        const rx2 = fromX + (cx - fromX) * eoR, ry2 = fromY + (cy - fromY) * eoR;
+        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', rx2, ry2 + ease.dy, aimAng, 160, 0.9 * ease.alphaMul, 1.0);
         this.tickBountyScissorFlash(e.id, now);
       } else if (bs2 === 'leap-windup' || bs2 === 'leap-air') {
         const untilW = e.bossStateUntil ?? gameTime;
@@ -23187,8 +23218,13 @@ export class PixiScene {
     { tex: 'bounty-balance-blade-0', ax: 0.918, ay: 0.792, dist: 375, intrinsic: -2.8572, flip: false },
     { tex: 'bounty-balance-blade-1', ax: 0.920, ay: 0.667, dist: 360, intrinsic: -2.9471, flip: true },
   ] as const;
-  /** 全開(旧widthMul=1.7)時の片側の開き角(rad・叩き台)。 */
-  private static readonly SCISSOR_OPEN_MAX_RAD = 0.5;
+  /** 全開(旧widthMul=1.7)時の片側の開き角(rad・叩き台)。
+   *  v0.25.3578(社長指示「タメと勢いを分かりやすく」): 0.5→0.7=全開が約80°に開く。 */
+  private static readonly SCISSOR_OPEN_MAX_RAD = 0.7;
+  /** 薙ぎの3拍の区切り(windup進行の割合・叩き台)。〜TAME_END=全開まで開く/〜SNAP_START=溜め持続/
+   *  以降=帯の端から端へ滑走しながら閉じ切る(スパッ)。 */
+  private static readonly SCISSOR_TAME_END = 0.55;
+  private static readonly SCISSOR_SNAP_START = 0.85;
 
   private drawBountyScissors(
     id: string, px: number, py: number, angleRad: number, lengthPx: number, alpha: number, widthMul: number,
