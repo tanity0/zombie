@@ -170,6 +170,10 @@ import {
   BOUNTY_BALANCE_TUNING as BB_T, BOUNTY_MAIKO_TUNING as MK_T,
 } from '../utils/bountyScript';
 import { telegraphProgress01 } from '../utils/bossTelegraph';
+// research/GHOST_BOSS.md(守護霊ボス「幻影」): 表示名・立ち絵クラスの正本(台帳)と、技の寸法テーブル。
+// **判定(phantomTick)と同じ1箇所**を読むので「赤いのに当たらない」が起きない。
+import { GUARDIAN_PHANTOM_LABEL, GUARDIAN_PHANTOM_CLASS } from '../utils/bossPractice';
+import { GUARDIAN_PHANTOM_TUNING as GP_T } from '../utils/phantomScript';
 import { isMarkedBossVisible, bossMarkFor, type MarkBox } from '../utils/bossMarker';
 import {
   CASTLE_FIGHT_MAX_DIST, // v0.25.3055: 城ボス戦の移動制限ライン(描画は読むだけ)
@@ -1388,6 +1392,19 @@ const STATUS_ALLY = 0x38bdf8;   // sky-400: 味方(救助対象)
 // 装備の見た目は再現しない(霊体だから見えなくても世界観として自然)。
 const GHOST_ALLY_TINT = 0x9fd8ff;
 const GHOST_ALLY_ALPHA = 0.7;
+// research/GHOST_BOSS.md(守護霊ボス「幻影」)の描画パラメータ。
+// ★味方の守護霊(上のGHOST_ALLY_*)とは**扱いを分ける**: 幻影は敵として立っているので
+//   半透明にしない(alpha=1)。「薄い=味方の霊体」という既存の読み取りを崩さないため。
+const GUARDIAN_PHANTOM_TINT = 0x7b6a86;      // ダーク系(影のような人型に見せる)
+const GUARDIAN_PHANTOM_EYE_TINT = 0xff2a2a;  // 赤い目
+/** 赤い目=**小glowスプライト**の直径(world px・足元の遠近スケールを掛ける)。 */
+const GUARDIAN_PHANTOM_EYE_PX = 15;
+/** 目の高さ(絵の高さに対する割合・足元から上へ)。 */
+const GUARDIAN_PHANTOM_EYE_H_FRAC = 0.78;
+/** 出現演出の長さ(ms・gameTime基準/e.spawnedAt起点)。賞金首の魔法陣と同じ尺感。 */
+const GUARDIAN_PHANTOM_SUMMON_MS = 900;
+/** 出現時に「下から立ち上がる」量(world px)。ease-out で 0 へ収束する(慣性MUST)。 */
+const GUARDIAN_PHANTOM_RISE_PX = 46;
 // 分身(shadow-clone)1体ぶんの描画スプライト一式。§2.11追補(v0.25.2541)で分身が**主語ごと**に
 // なったので、同じ一式をプレイヤー用と守護霊用に1組ずつ持つ(描画コードは drawCloneSlot で共有)。
 interface CloneSlotSprites {
@@ -3196,6 +3213,12 @@ export class PixiScene {
   private holoVolleySprites = new Map<string, Sprite>();
   private holoMiniSprites = new Map<string, Sprite>();   // ワープ(warp)構え: 足元
   private angelEyeSprites = new Map<string, Sprite>();   // 単眼の凝視(gaze)構え: 頭上〜中心
+  /**
+   * research/GHOST_BOSS.md(幻影): **赤い目**。pooled sprite 1枚だけ(id keyed)。
+   * ★**強glow(=投影影を落とす光源)は使わない。** CLAUDE.mdの実測いわく「強glowの絵は無料/
+   * 重いのはそれが落とす投影影(1個≈2ms=予算の12%)」。目は絵だけあればよいので小glowで描く。
+   */
+  private phantomEyeSprites = new Map<string, Sprite>();
   // PACING_PUZZLE.md §6.38 v9(完全コピー原則): 出現演出=城ボスのcastleSummonCircleと同じ
   // 魔法陣(拡大しながらフェードアウト・SUMMON_MS)。個体ごとに1枚のpooled sprite(id keyed)。
   // 旧・起床演出(holo-circle・dormant解除時)は撤去=スポーン時のこの1本だけに一本化した。
@@ -11968,6 +11991,9 @@ export class PixiScene {
         if (holoMiniSp) { holoMiniSp.destroy(); this.holoMiniSprites.delete(id); }
         const eyeSp = this.angelEyeSprites.get(id);
         if (eyeSp) { eyeSp.destroy(); this.angelEyeSprites.delete(id); }
+        // research/GHOST_BOSS.md(幻影): 赤い目も個体退場・討伐と同時に破棄(残像防止)。
+        const gpEyeSp = this.phantomEyeSprites.get(id);
+        if (gpEyeSp) { gpEyeSp.destroy(); this.phantomEyeSprites.delete(id); }
         // ★慣性バッチ: スリィエルの環はここで即destroyしない。syncSurielRingのsweepが
         // 減速+フェードの消滅(RING_VANISH_MS)を描き切ってから自分でdestroyする(リーク無し)。
         const sweepStreakSp = this.surielSweepStreakFx.get(id);
@@ -14462,6 +14488,14 @@ export class PixiScene {
       const thrustWindSp = this.bountyThrustWindSprites.get(e.id);
       if (thrustWindSp) thrustWindSp.visible = false;
     }
+    // research/GHOST_BOSS.md(幻影): 出現魔法陣(holo-mini)と赤い目も同じ作法で既定OFF
+    // (点けるのは drawGuardianPhantom だけ=呼ばれなければ消えている)。
+    if (e.type === 'guardian-phantom') {
+      const gpHolo = this.holoMiniSprites.get(e.id);
+      if (gpHolo) gpHolo.visible = false;
+      const gpEye = this.phantomEyeSprites.get(e.id);
+      if (gpEye) gpEye.visible = false;
+    }
     // 社長裁定(v0.25.3437): idolのハンドガン(bountyWeaponSpritesをキー=e.idで流用)も同じ作法で
     // 既定OFF。点けるのはdrawEnemyのidol射撃分岐だけ(技中のみ表示=v3408と同じ扱い)。
     if (e.type === 'idol') {
@@ -14480,9 +14514,13 @@ export class PixiScene {
     // **視覚のみ**=判定・AI・技・HPは一切不変(CLAUDE.md「Visual vs. hitbox」)。
     // v0.25.3029(社長裁定「二体」): 第二形態は glenForm===2 の**別個体**(旧「HP60%で変身」は廃止)。
     const glenP2 = this.currentFarKey === 'stage7' && e.type === 'giantbat' && e.glenForm === 2;
-    const tex = glenP2
-      ? (getTexture('glen-boss2') ?? getTexture(this.enemyTexKey(e.type, e.id)))
-      : getTexture(this.enemyTexKey(e.type, e.id));
+    // research/GHOST_BOSS.md(守護霊ボス「幻影」): 専用素材は作らない=**プレイヤーのクラス立ち絵**
+    // (台帳のクラス。最強データ=鴉は rogue)をそのまま使う。歩きコマもプレイヤーと同じ関数で選ぶ。
+    const tex = e.type === 'guardian-phantom'
+      ? this.guardianPhantomTexture(view, now)
+      : glenP2
+        ? (getTexture('glen-boss2') ?? getTexture(this.enemyTexKey(e.type, e.id)))
+        : getTexture(this.enemyTexKey(e.type, e.id));
     const cx = e.x + e.width / 2;
     const cy = e.y + e.height / 2;
 
@@ -14882,9 +14920,13 @@ export class PixiScene {
       // (敵の描画ビューはid単位でプール再利用されるため、リセットしないと別個体へtintが残る)。
       // §5.14 M13: 宿敵は専用tint=黄金(社長確定)。レアのtintより優先(被った場合、金が勝つ)。
       // 二人組クエストの強制目標個体(questTarget)も宿敵と同じ金tint+名前表示(EVENT_QUEST_DESIGN.md)。
-      view.sprite.tint = (e.isNamed || e.questTarget)
-        ? NAMED_TINT
-        : (RARE_BODY_TINT_ENABLED && e.colorTier) ? ENEMY_COLOR_TIER_BODY_TINT[e.colorTier] : 0xffffff;
+      view.sprite.tint = e.type === 'guardian-phantom'
+        // research/GHOST_BOSS.md: 幻影は**必ず**ダークtint(宿敵金/レア色より優先)。
+        // 素材がプレイヤーの立ち絵そのものなので、tintが抜けると「自分がもう1人立っている」だけになる。
+        ? GUARDIAN_PHANTOM_TINT
+        : (e.isNamed || e.questTarget)
+          ? NAMED_TINT
+          : (RARE_BODY_TINT_ENABLED && e.colorTier) ? ENEMY_COLOR_TIER_BODY_TINT[e.colorTier] : 0xffffff;
     } else {
       view.sprite.skew.x = 0;
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
@@ -14893,13 +14935,19 @@ export class PixiScene {
 
     // §5.14 M13: 宿敵の頭上に名前を常時表示(同時1体・生成は湧き時1回だけ=Pixi Text可)。
     // クエスト目標個体(questTarget)も同様(名前は個体のquestName。同時1体なので負荷は同等)。
-    if (e.isNamed || e.questTarget) {
+    // research/GHOST_BOSS.md(幻影): 頭上に「鴉(幻影)」を出す。**宿敵ラベルの機構をそのまま流用**
+    // (生成は湧き時1回だけ=Pixi Text でよい/同時1体)。名前の出どころは台帳1箇所(GUARDIAN_PHANTOM_LABEL)。
+    const phantomLabelText = e.type === 'guardian-phantom' ? GUARDIAN_PHANTOM_LABEL : null;
+    if (e.isNamed || e.questTarget || phantomLabelText) {
       let label = this.namedFoeLabels.get(e.id);
       if (!label) {
         label = new Text({
-          text: e.questTarget ? (e.questName ?? '') : normalizeNamedName(useGameStore.getState().namedFoe?.name ?? ''),
+          text: phantomLabelText ?? (e.questTarget ? (e.questName ?? '') : normalizeNamedName(useGameStore.getState().namedFoe?.name ?? '')),
           resolution: Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2))),
-          style: { fontFamily: FONT_STACK, fontSize: 15, fontWeight: 'bold', fill: NAMED_TINT, stroke: { color: 0x2a1a00, width: 3 } },
+          style: phantomLabelText
+            // 幻影は宿敵の金ではなく、体と同じ紫寄りの淡色+暗い縁取り(「守護霊のデータ」の読み)。
+            ? { fontFamily: FONT_STACK, fontSize: 15, fontWeight: 'bold', fill: 0xd9c9ea, stroke: { color: 0x1a1020, width: 3 } }
+            : { fontFamily: FONT_STACK, fontSize: 15, fontWeight: 'bold', fill: NAMED_TINT, stroke: { color: 0x2a1a00, width: 3 } },
         });
         label.anchor.set(0.5, 1);
         this.L.effectLayer.addChild(label);
@@ -15020,6 +15068,9 @@ export class PixiScene {
     // (城ボスに無い差分=「謎の黄色いサークル」の正体)。旧・起床演出(holo-circle・dormant解除時)
     // も撤去し、出現演出は城ボスのcastleSummonCircleと同じ魔法陣(拡大しながらフェードアウト)
     // へ統一。トリガーはスポーン時刻(e.spawnedAt)基準=起床(dormant解除)時ではない。
+    // research/GHOST_BOSS.md(守護霊ボス「幻影」): 出現演出・赤い目・技の予告(赤帯/赤ライン)。
+    // ★**判定・状態は一切書かない**(store を読むだけ)。ここを通るのは幻影1体だけ。
+    if (e.type === 'guardian-phantom') this.drawGuardianPhantom(view, o, e, gameTime, now, fb, cx, cy);
     if (isBountyType(e.type)) {
       const bFootX = cx, bFootY = e.y + e.height;
       const bSummonT = e.spawnedAt !== undefined ? (gameTime - e.spawnedAt) / BOUNTY_SUMMON_MS : 1;
@@ -21232,10 +21283,18 @@ export class PixiScene {
     // 絵の選択は生体と同じチェーン(enemyTexKey)。ここを2段しか見ていなかったのが
     // 「ステージ4で倒すとステージ1の見た目になる」の原因(社長報告・v0.25.2383で修正)。
     // glenBoss2(v0.25.3029): グレン第二形態の死体は変身後の絵で崩す(生体と同じglen-boss2)。
+    // research/GHOST_BOSS.md(幻影): 型名のテクスチャが存在しない(素材を作らない=クラス立ち絵を借りて
+    // いる)ので、**討伐の崩壊も同じ立ち絵で崩す**。ここに分岐が無いと `!tex` で早期returnし、
+    // 「閃光と時間停止は出るのに何も崩れない」= 標準の討伐演出が半分欠ける。
+    const isPhantomCorpse = corpse.type === 'guardian-phantom';
     const tex = corpse.glenBoss2
       ? (getTexture('glen-boss2') ?? getTexture(this.enemyTexKey(corpse.type, '')))
-      : getTexture(this.enemyTexKey(corpse.type, ''));
+      : isPhantomCorpse
+        ? (getTexture(PLAYER_IDLE_SPRITE[GUARDIAN_PHANTOM_CLASS as Player['characterClass']] ?? 'player-scavenger-idle') ?? getTexture('player'))
+        : getTexture(this.enemyTexKey(corpse.type, ''));
     if (!tex) { sp.visible = false; return; }
+    // 生体と同じダークtint(崩壊の瞬間だけ素の色に戻ると別人が崩れたように見える)。
+    sp.tint = isPhantomCorpse ? GUARDIAN_PHANTOM_TINT : 0xffffff;
     const FADE_MS = 2600; // useGameLoop の BOSS_FADE_MS と一致(超過後は store 側が corpse を消す)
     // v0.25.2955: holdMs(死亡アテンションの尺)の間は t=0=無傷で見せ、その後に実時間で崩す
     // (社長指示「ストップとフラッシュが終わってから、時間停止のままゆっくり崩れ去る」)。
@@ -23516,6 +23575,115 @@ export class PixiScene {
     sp.visible = true;
   }
 
+  // =================================================================================================
+  // research/GHOST_BOSS.md — 守護霊ボス「幻影」の描画
+  //
+  // ★**drawGhostAlly(味方の守護霊)を直接流用しない。** あちらは Summon 主語・単一インスタンス
+  //   キャッシュ・味方の半透明が前提で、敵アクター(Enemy/ActorView)には乗らない。ここは
+  //   「同じ部品の写し」=クラス立ち絵+歩きコマだけを共有し、透明度・tint・予告は敵側の作法に従う。
+  // ★**判定・状態はここに置かない**(CLAUDE.md「pixiSceneは読むだけ」)。寸法は phantomScript.ts の
+  //   1箇所を判定(phantomTick)と共有する=「赤いのに当たらない」が原理的に起きない。
+  // =================================================================================================
+  /** 幻影の歩き判定のしきい値(px/s)。汎用敵経路が持つ平滑済み実速度(view.motSpeed)で見る。 */
+  private static readonly GP_WALK_MIN_SPEED = 12;
+
+  /**
+   * 幻影の本体テクスチャ。**プレイヤーと同じ関数**(playerTextureName/playerWalkFrame)で選ぶので、
+   * クラス絵の対応表を二重に持たない。装備は空(ALLY_PLAIN_EQUIP)=武将立ち絵の混入を防ぐ。
+   */
+  private guardianPhantomTexture(view: ActorView, now: number): ReturnType<typeof getTexture> {
+    const player = useGameStore.getState().player;
+    const fake = {
+      ...player,
+      characterClass: GUARDIAN_PHANTOM_CLASS as Player['characterClass'],
+      equipment: ALLY_PLAIN_EQUIP,
+      subWeapons: [],
+    };
+    // 歩き判定は**前フレームの**平滑済み実速度(この値は下の汎用経路が毎フレーム更新する)。
+    // 1フレーム遅れるが、歩き/待機の切り替えに1フレームの遅れは知覚されない。
+    const walking = (view.motSpeed ?? 0) > PixiScene.GP_WALK_MIN_SPEED;
+    const frame = playerWalkFrame(fake, now, walking, false);
+    return getTexture(playerTextureName(fake, frame, walking, false))
+      ?? getTexture(PLAYER_IDLE_SPRITE[fake.characterClass] ?? 'player-scavenger-idle')
+      ?? getTexture('player');
+  }
+
+  /**
+   * 幻影の「本体以外」= 出現演出 / 赤い目 / 技の予告。**汎用の敵描画が本体を描いた後**に呼ぶ
+   * (位置・スケール・tintは向こうで確定済み。ここはその上へ乗せるだけ)。
+   */
+  private drawGuardianPhantom(
+    view: ActorView, o: Graphics, e: Enemy, gameTime: number, now: number,
+    fb: { footX: number; footY: number; boxW: number; boxH: number }, cx: number, cy: number,
+  ): void {
+    const dsc = this.depthScaleEnemy(fb.footY);
+
+    // ---- 出現(慣性MUST: 「パッと出て止まる」を作らない) -----------------------------------------
+    // 足元に簡易魔法陣(holo-mini・既存素材)を1周ぶん。本体は**下からスッと立ち上がる**
+    // ease-out(速く出てゆっくり止まる)+フェードイン。
+    const t = e.spawnedAt !== undefined ? (gameTime - e.spawnedAt) / GUARDIAN_PHANTOM_SUMMON_MS : 1;
+    let riseOff = 0;
+    if (t >= 0 && t < 1) {
+      this.drawHoloMiniAt(e.id, fb.footX, fb.footY, fb.boxW * 1.15 * dsc, t, (1 - t) * 0.95);
+      const ease = 1 - Math.pow(1 - t, 3);
+      riseOff = (1 - ease) * GUARDIAN_PHANTOM_RISE_PX * dsc;
+      view.sprite.position.y += riseOff;
+      view.sprite.alpha *= ease;
+      const lb = this.namedFoeLabels.get(e.id);
+      if (lb) { lb.alpha = ease; lb.position.y = Math.round(lb.position.y + riseOff); }
+    } else {
+      const lb = this.namedFoeLabels.get(e.id);
+      if (lb) lb.alpha = 1;
+    }
+
+    // ---- 赤い目(小glowスプライト・**強glow=投影影は使わない**) -----------------------------------
+    // 高さは「実際に描かれた絵の高さ」から取る(box ではない)。box は判定寸法×倍率なので、
+    // contain フィットで縮んだ絵の頭より上に浮いてしまう。
+    {
+      const tex = view.sprite.texture;
+      const drawnH = tex && tex.height > 1 ? Math.abs(view.sprite.scale.y) * tex.height : fb.boxH * dsc;
+      let sp = this.phantomEyeSprites.get(e.id);
+      if (!sp) {
+        sp = new Sprite(getSoftGlowTexture());
+        sp.anchor.set(0.5, 0.5);
+        sp.blendMode = 'add';
+        sp.tint = GUARDIAN_PHANTOM_EYE_TINT;
+        this.L.effectLayer.addChild(sp);
+        this.phantomEyeSprites.set(e.id, sp);
+      }
+      sp.width = sp.height = GUARDIAN_PHANTOM_EYE_PX * dsc;
+      // anchor(0.5,1)=足元基準なので、スプライトのYからそのまま絵の高さぶん上へ上がればよい
+      // (=出現の立ち上がりにも自動で追従する)。
+      sp.position.set(view.sprite.position.x, view.sprite.position.y - drawnH * GUARDIAN_PHANTOM_EYE_H_FRAC);
+      const pulse = 0.74 + 0.26 * Math.sin(now / 240);
+      sp.alpha = 0.9 * pulse * view.sprite.alpha;
+      sp.visible = view.sprite.visible;
+    }
+
+    // ---- 技の予告(赤=カウンターできる。判定と厳密一致) --------------------------------------------
+    // 2点(aiFromX/Y → aiTargetX/Y)も半幅も、**判定(phantomTick)がその技で使う値そのもの**。
+    // ★if の外=毎フレーム無条件で呼ぶ(windupOn が false へ落ちた1フレームを latch へ渡し損ねると
+    //   中断時の消しアニメが起動しない=dashLineArm/zoneCapsuleArm と同型の掟)。
+    const gfx = e.aiFromX ?? cx, gfy = e.aiFromY ?? cy;
+    const gtx = e.aiTargetX ?? cx, gty = e.aiTargetY ?? cy;
+    const bs = e.bossState;
+    const remain = (e.bossStateUntil ?? gameTime) - gameTime;
+    // 近接=前方の赤帯(帯そのものが当たり判定)。
+    const meleeOn = bs === 'gp-melee-windup';
+    this.zoneCapsuleTick(
+      view, o, `${e.id}:gp-melee`, meleeOn, remain, gfx, gfy, gtx, gty, GP_T.melee.halfWidth, now,
+      Math.max(0, Math.min(1, 1 - remain / GP_T.melee.windup)),
+    );
+    // 一閃=赤ライン。**帯(=判定/成立域)と流星ラインの両方**を出す: 帯だけだと「線で斬り抜けてくる」
+    // 読みが弱く、線だけだと判定の太さが伝わらない。どちらも同じ2点・同じ技の値から描く。
+    const issenOn = bs === 'gp-issen-windup';
+    const issenProg = Math.max(0, Math.min(1, 1 - remain / GP_T.issen.windup));
+    this.zoneCapsuleTick(
+      view, o, `${e.id}:gp-issen`, issenOn, remain, gfx, gfy, gtx, gty, GP_T.issen.halfWidth, now, issenProg,
+    );
+    this.dashLineTick(o, `${e.id}:gp-issen-line`, issenOn, remain, gfx, gfy, gtx, gty, now, issenProg);
+  }
+
   // PACING_PUZZLE.md §6.38 v9(完全コピー原則): 賞金首の出現魔法陣=城ボスのcastleSummonCircle
   // (syncCastle内)と同じ機構(拡大しながらフェードアウト・ゆっくり回転)。個体ごとに1枚のpooled
   // sprite。t=0..1(スポーンからの経過/BOUNTY_SUMMON_MS)、d=depthScaleEnemy(足元の遠近スケール)。
@@ -25391,6 +25559,7 @@ export class PixiScene {
     this.killFxBloodPool = []; this.killFxBlood = [];
     for (const o of this.holoMiniSprites.values()) o.destroy();
     for (const o of this.angelEyeSprites.values()) o.destroy();
+    for (const o of this.phantomEyeSprites.values()) o.destroy(); // research/GHOST_BOSS.md(幻影の赤い目)
     for (const o of this.bountySummonSprites.values()) o.destroy();
     for (const o of this.bountyWeaponSprites.values()) o.destroy();
     for (const o of this.bountyThrustWindSprites.values()) o.destroy();

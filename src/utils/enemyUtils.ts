@@ -1,7 +1,7 @@
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 import { normalizeChaffMix, type ChaffMix } from './chaffMix';
 import { projectileMoveKeyForEnemy } from './moveReaction'; // GHOST-BULLET-TECH: 弾へ載せる技キー(記録専用)
-import { GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
+import { GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH, GUARDIAN_PHANTOM_HEALTH } from '../config/bossHealth';
 import { effectiveDifficultyArea, lerpAreaTable } from './timeDifficulty';
 // 当たり判定の「帯」(視覚と分離した gameplay の矩形)。射程を測る相手の矩形として使う。
 // renderSpec は utils を逆輸入しない(types と cameraZoom だけ)ので循環しない。
@@ -115,11 +115,26 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   'bounty-melee':   { width: 44, height: 44, speed: 50, health: 2000, damage: 18, experienceValue: 0 },
   'bounty-balance': { width: 44, height: 44, speed: 50, health: 2000, damage: 18, experienceValue: 0 },
   'bounty-maiko':   { width: 44, height: 44, speed: 50, health: 2000, damage: 18, experienceValue: 0 },
+  // research/GHOST_BOSS.md(守護霊ボス「幻影」): 体格=プレイヤー級(40×56)。
+  //  ・speed=87 は設計書の決定値(プレイヤー基準の生値)。**実効値は ×ENEMY_SPEED_MULT** になる点に注意
+  //    (固定強度タイプなので areaSpeed は 1)。この叩き台は実機で社長が確認して調整する。
+  //  ・damage=0 = **接触では削らない**(決闘仕様: 技だけがプレイヤーを削る)。
+  //  ・health は CONSTANT_STRENGTH_TYPES + hpMult 固定(下の buildEnemy)なのでこの値がそのまま実効HP。
+  'guardian-phantom': { width: 40, height: 56, speed: 87, health: GUARDIAN_PHANTOM_HEALTH, damage: 0, experienceValue: 200 },
 };
 
 /** PACING_PUZZLE.md §6.38(賞金首・B1): 4型の集合。texture名=type規約(getTexture(e.type))。 */
 export const BOUNTY_ENEMY_TYPES = new Set<EnemyType>(['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko']);
 export const isBountyType = (t: EnemyType): boolean => BOUNTY_ENEMY_TYPES.has(t);
+
+/**
+ * research/GHOST_BOSS.md: 守護霊ボス「幻影」か。
+ *
+ * **専用述語を置く理由**(isHiddenBoss と同じ作法): この型は `updateEnemies` の通常追跡AI・接触処理を
+ * **素通りさせる**必要がある(動かすのは phantomTick だけ=二重駆動の禁止)。型名の直書きを各所へ
+ * 撒くと必ず1箇所取りこぼすので、判定はここ1本にする。
+ */
+export const isGuardianPhantom = (t: EnemyType): boolean => t === 'guardian-phantom';
 
 // 裏ボス共通判定(完全に同一仕様。stage で見た目/名前だけ変わる)。
 // miguel(ゲート2ボス)もここに含める: updateEnemies の通常追跡AIから除外(専用コントローラが座標を
@@ -173,7 +188,10 @@ export const isGate2AngelBoss = (t: EnemyType): boolean => t === 'miguel' || t =
 export const isBossType = (t: EnemyType): boolean =>
   t === 'pumpkin' || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
   t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' ||
-  t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter' || isBountyType(t);
+  t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter' || isBountyType(t) ||
+  // research/GHOST_BOSS.md: 幻影もボス扱いの全既定(HPバー/体勢値=紫/致命の一撃/崩壊演出/
+  // 弾の小突きノックバック耐性…)をこの1テーブルから受け取る。
+  isGuardianPhantom(t);
 
 /**
  * 囲い/救助イベント開始時の周辺一掃(`beginArenaEvent`/`beginRescueEvent`)で残す(=消さない)個体か。
@@ -456,7 +474,9 @@ const COLOR_TIER_SIZE_MULT: Record<EnemyColorTier, number> = RARE_TINT_ENABLED
   ? { blue: 1, purple: 1, red: 1 }
   : { blue: 1.1, purple: 1.2, red: 1.3 }; // 旧値(青1.1/紫1.2/赤1.3・+10%刻み)
 // 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
-const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol', 'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko']);
+const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol', 'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
+  // research/GHOST_BOSS.md(幻影・裏ボス方式): エリア/距離/時間/色でスケールしない=色ティア抽選の対象外。
+  'guardian-phantom']);
 // ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
 const LAB_FIXED_TYPES = new Set<EnemyType>(['lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3']);
 // エリア → [青影, 紫影, 赤影] の出現確率(絶対値・社長指定)。残りは無色。
@@ -592,7 +612,9 @@ const buildEnemy = (
   const diffHp = areaBase * colorHpMult;
   // Reaper は終端個体で別管理。giant/ラボ等の固定タイプは全体底上げ(ENEMY_HP_MULT)のみ維持。
   // reaper と裏ボスは health をそのまま使う(裏ボスは個別HPを直接指定=ENEMY_HP_MULT を掛けない)。
-  const hpMult = (type === 'reaper' || isHiddenBoss(type)) ? 1 : (fixed ? ENEMY_HP_MULT : diffHp * ENEMY_HP_MULT);
+  // research/GHOST_BOSS.md(幻影): 裏ボスと同じ「HPを直接指定」枠=ENEMY_HP_MULT を掛けない
+  // (GUARDIAN_PHANTOM_HEALTH がそのまま実効HPになる=練習画面の表示と実戦が一致する)。
+  const hpMult = (type === 'reaper' || isHiddenBoss(type) || isGuardianPhantom(type)) ? 1 : (fixed ? ENEMY_HP_MULT : diffHp * ENEMY_HP_MULT);
   const dmgMult = type === 'reaper' ? 1 : (fixed ? 1 : diffDmg);
   const sizeMult = colorTier ? COLOR_TIER_SIZE_MULT[colorTier] : 1;
 

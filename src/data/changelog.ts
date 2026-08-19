@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3629',
+    items: [
+      'ボスモードに実験枠「決闘」を追加: 守護霊の最強データ「鴉(幻影)」と戦えます。',
+    ],
+  },
+  {
     version: '0.25.3628',
     items: [
       'AIテスト: botが近接や脅威回避で見ていた「敵までの距離」を、敵の左上角までの距離から当たり判定枠の縁までの距離に修正しました(巨体ボスに体がめり込むまで詰めてから殴っていた事故の対策。銃・近接と同じ物差しに統一)。',

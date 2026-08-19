@@ -5,14 +5,16 @@
 //
 // ★このモジュールが持つのは**台帳と判定だけ**。UIは components/BossRush.tsx、
 //   遭遇の記録は utils/bossEncounter.ts。ボスの挙動・HP・技には一切触らない。
-import type { EnemyType } from '../types/game';
+import type { CharacterClass, EnemyType } from '../types/game';
 import { bossCutinName } from '../data/bossCutin';
 import { GHOST_DOSSIER_SLOTS, type GhostDossierSlot } from './ghostDossier';
 import { stageIdForGateBoss } from '../config/gateBoss';
 import { getStage, STAGES } from '../data/campaign';
 import {
-  STAGE_BOSS_HEALTH_BY_STAGE, GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH,
+  STAGE_BOSS_HEALTH_BY_STAGE, GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH, GUARDIAN_PHANTOM_HEALTH,
 } from '../config/bossHealth';
+// research/GHOST_BOSS.md(幻影): 表示名の出どころ=守護霊台帳の人物名(名前を写経しない)。
+import { strongestGuardian } from '../data/fixedGuardians';
 import { isBountyType } from './enemyUtils';
 // ★HP基準値は依存ゼロの葉(bountyDims.ts)から直接読む。bountyTick.ts経由にすると
 // 「gameStore → bossPractice → bountyTick → gameStore」の循環importになる(v0.25.3390の教訓と同型)。
@@ -100,7 +102,7 @@ export const isBossTestOrPracticeRun = (): boolean =>
 // 台帳: 守護霊メニューと同じ基礎台帳(GHOST_DOSSIER_SLOTS)+形態別の派生枠
 // ---------------------------------------------------------------------------------------------
 /** 出撃のさせ方。`param=null` = 強制出現パラメータ不要(ステージへ出撃すれば勝手に出る)。 */
-export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | null;
+export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | null;
 
 export interface PracticeSlot {
   slotKey: string;              // 基本はGHOST_DOSSIER_SLOTS.slotKeyと同一。形態別掲載だけ固有キー。
@@ -117,7 +119,19 @@ export interface PracticeSlot {
   glenForm2?: boolean;
   /** 本編で遭遇し得るか。false = 現状どこにも置かれていない(社長裁定§20-10: 「?」のまま並べる)。 */
   reachable: boolean;
+  /**
+   * research/GHOST_BOSS.md: **本編の遭遇記録を待たずに最初から選べる枠**。
+   *
+   * なぜ要るか: 対策室の解放は「一度ステージで出会っていること」(encounterSlotKey の遭遇記録)が
+   * 条件だが、幻影は**本編のどこにも置かれていない**ので、その輪だけでは永久に開かない。
+   * 遭遇記録の掟そのものは触らず(既存ボスの解放条件は1bitも変えない)、この枠だけを別の入口で開ける。
+   */
+  alwaysUnlocked?: true;
 }
+
+/** その枠が今えらべるか(遭遇記録 or 常時解放)。**画面と台帳テストが同じ1本を見る**。 */
+export const practiceSlotUnlocked = (slot: PracticeSlot, encountered: ReadonlySet<string>): boolean =>
+  slot.alwaysUnlocked === true || encountered.has(slot.encounterSlotKey);
 
 // 城ボスの湧きゲート(useGameLoop)は `!labTheme && !storyBoss` を要求する。
 // よって `castlenow` が効くのは**その両方に当たらないステージだけ**。
@@ -199,14 +213,40 @@ const BOUNTY_PRACTICE_SLOTS: readonly PracticeSlot[] = BOUNTY_PRACTICE_TYPES.map
   reachable: true,
 }));
 
+// ---------------------------------------------------------------------------------------------
+// research/GHOST_BOSS.md(守護霊ボス「幻影」): 独立枠1つ・新カテゴリ 'duel'(「決闘」)。
+// 一覧の**最下段**(実験枠なので既存ボス群の後ろ)。出撃先=stage-1(lab/corridorではない野外)、
+// 強制出現は専用パラメータ `?phantomnow=1` へ相乗り(useGameLoop.ts の FORCE_PHANTOM)。
+// 表示名は台帳の人物名から組む(名前の出どころを2箇所に持たない)。
+// ---------------------------------------------------------------------------------------------
+export const GUARDIAN_PHANTOM_SLOT_KEY = 'guardian-phantom@practice';
+/** 一覧・リザルト・頭上ラベルの表示名。**唯一の出どころ**(pixiSceneもここを読む)。 */
+export const GUARDIAN_PHANTOM_LABEL = `${strongestGuardian().name}(幻影)`;
+/** 立ち絵に使うクラス(台帳の最強データのクラス。**唯一の出どころ**=pixiSceneもここを読む)。 */
+export const GUARDIAN_PHANTOM_CLASS: CharacterClass = strongestGuardian().classId;
+const GUARDIAN_PHANTOM_SLOT: PracticeSlot = {
+  slotKey: GUARDIAN_PHANTOM_SLOT_KEY,
+  // 本編に居ない相手なので遭遇記録は一生付かない。キーは型文字列の規約に揃えておく(将来
+  // 本編へ置かれたら既存の遭遇配線がそのまま効く)が、解放は alwaysUnlocked が担う。
+  encounterSlotKey: 'guardian-phantom',
+  bossType: 'guardian-phantom',
+  stageId: 'stage-1',
+  param: 'phantomnow',
+  label: GUARDIAN_PHANTOM_LABEL,
+  reachable: false, // 本編のどこにも置かれていない(実験枠)
+  alwaysUnlocked: true,
+};
+
 // 表示順=小ボス(賞金首)が一番上(社長指示v0.25.3444「小ボスは一番上だろ」。旧: 既存ボス群の後ろ)。
-export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, ...GHOST_DERIVED_SLOTS];
+// 幻影(決闘)は最下段。
+export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, ...GHOST_DERIVED_SLOTS, GUARDIAN_PHANTOM_SLOT];
 
 // ★変異体対策室のカテゴリ表示順の正(社長指示v0.25.3444「小ボスは一番上だろ」)。
 // v3444では上の PRACTICE_SLOTS の並びだけを直したが、画面(BossRush.tsx)は**カテゴリごとに区切って
 // 描く**ので並びが変わっていなかった(社長再指摘v0.25.3457)。順番の定義はここ1箇所にして、
 // 画面はこれをそのまま回す=同じ取りこぼしを繰り返さない(bossPractice.testで先頭を機械化)。
-export const PRACTICE_CATEGORY_ORDER = ['bounty', 'story', 'gate', 'hidden'] as const;
+// research/GHOST_BOSS.md: 'duel'(決闘=幻影)は**末尾**(実験枠)。
+export const PRACTICE_CATEGORY_ORDER = ['bounty', 'story', 'gate', 'hidden', 'duel'] as const;
 
 export const practiceSlotByKey = (slotKey: string): PracticeSlot | undefined =>
   PRACTICE_SLOTS.find(s => s.slotKey === slotKey);
@@ -232,6 +272,8 @@ export const practiceBossHealth = (slot: PracticeSlot): number | null => {
   // §6.38(賞金首): 実効HPは基準値(BOUNTY_BASE_HP)×スポーン時の実効難易度倍率(bountyMaxHealth)で
   // 変動するため、台帳の固定値ではなく**基準値をそのまま**出す(掲載裁定「基準値2000を出す」)。
   if (isBountyType(slot.bossType)) return BOUNTY_BASE_HP;
+  // research/GHOST_BOSS.md(幻影): 裏ボス方式=倍率を一切通さない固定HPなので、台帳の値=実効HP。
+  if (slot.bossType === 'guardian-phantom') return GUARDIAN_PHANTOM_HEALTH;
   const gate = (GATE_BOSS_HEALTH as Partial<Record<EnemyType, number>>)[slot.bossType];
   if (gate != null) return gate;
   const hidden = (HIDDEN_BOSS_HEALTH as Partial<Record<EnemyType, number>>)[slot.bossType];

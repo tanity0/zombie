@@ -16,9 +16,10 @@ export interface BossTestEntry {
    * 既存デバッグパラメータ: bossnow=そのステージの裏ボスをプレイヤー近く(画面外)へ即出現 /
    * idolnow=idol強制召喚 / gateboss=ゲート2天使を拘束サークル付きで即発動 /
    * castlenow=城ボスを城へ即出現(城マーカーへ向かって戦う) /
-   * bountynow=賞金首(§6.38 B1)をプレイヤーから700〜1000pxへdormantで即出現。
+   * bountynow=賞金首(§6.38 B1)をプレイヤーから700〜1000pxへdormantで即出現 /
+   * phantomnow=守護霊ボス「幻影」(research/GHOST_BOSS.md)をプレイヤーの近くへ即出現(休眠なし)。
    */
-  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow' | 'bountynow';
+  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow' | 'bountynow' | 'phantomnow';
   /** param==='bountynow'の時だけ意味を持つ副パラメータ(?bountytype=)。4種の型を選ぶ。 */
   bountyType?: 'ranged' | 'melee' | 'balance' | 'maiko';
 }
@@ -45,6 +46,9 @@ export const BOSS_TEST_ENTRIES: readonly BossTestEntry[] = [
   { boss: 'bounty-melee', stageId: 'stage-1', param: 'bountynow', bountyType: 'melee' },
   { boss: 'bounty-balance', stageId: 'stage-1', param: 'bountynow', bountyType: 'balance' },
   { boss: 'bounty-maiko', stageId: 'stage-1', param: 'bountynow', bountyType: 'maiko' },
+  // research/GHOST_BOSS.md(守護霊ボス「幻影」): デバッグ出現のみ(?phantomnow=1)。
+  // ENGAGEABLE へ編入した型は**この表に1件以上必要**(bossTest.test.ts の網羅検査)。
+  { boss: 'guardian-phantom', stageId: 'stage-1', param: 'phantomnow' },
 ];
 
 export interface BossTestOptions {

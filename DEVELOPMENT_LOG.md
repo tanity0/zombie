@@ -1,5 +1,65 @@
 # Development Log
 
+## v0.25.3629 — 守護霊ボス「幻影」を実装(ボスモードの実験枠「決闘」)【2026-08-19 20:28 JST】
+
+正となる設計書: `research/GHOST_BOSS.md`(v2・監査21件反映済み)。社長ゴール「試しに、ボスモードに
+守護霊の最強データを一体、ボスとして配線できる? プレイヤーと守護霊を戦わせてみたい」。
+
+### 入れたもの(設計書「実装地図」1〜6)
+1. **台帳読み**: `strongestGuardian()`(`src/data/fixedGuardians.ts`)= 名指し1体(鴉/karasu)を返す純関数。
+   `fixedGuardians.test.ts` が **performance.score の単独最上位であること**を機械検証する
+   (台帳の数値を動かして順位が変わったら落ちる=名指しの差し替え忘れを検知)。
+2. **入口**: `PracticeSlot.alwaysUnlocked` を新設し、`guardian-phantom@practice`(カテゴリ `'duel'`=
+   「決闘」・一覧最下段)を追加。解放判定は `practiceSlotUnlocked()` の1本へ集約(BossRush.tsx も同じ本を見る)。
+   **既存ボスの解放条件(遭遇記録)は1bitも変えていない**——テストで固定した。
+3. **敵**: `guardian-phantom` を EnemyType/ENEMY_STATS(40×56・speed 87・接触ダメージ0・exp200)へ追加。
+   HP=裏ボス方式(`GUARDIAN_PHANTOM_HEALTH=3000` 固定・倍率を一切通さない)。
+   `CONSTANT_STRENGTH_TYPES` / `isBossType` / `ENGAGEABLE_BOSS_TYPES` に編入し、
+   `isGhostEligibleBoss`(守護霊召喚など5系統)と年表からは除外。通常追跡AIは専用述語
+   `isGuardianPhantom` で素通り(動かすのは phantomTick だけ=二重駆動の禁止)。
+   強制スポーンは賞金首と同じ4点セット(`FORCE_PHANTOM` / `|| practiceForces('phantomnow')` /
+   forceRef / gameTime巻き戻しで再アーム)。
+4. **頭脳+技**: `src/utils/phantomTick.ts` 新設。頭脳は**書かず** `decideGhost`(ghostDriver)を
+   「プレイヤーを疑似 Enemy として渡す」アダプタで流用=preferredDist / counterChance / reactionMs /
+   stationaryFrac / approachPerMin が台帳のまま効く。技は `gp-melee` / `gp-shot` / `gp-issen` の
+   bossState 機械(-windup/-active/-recover)。**カウンター成立の配線を自前で持つ**
+   (`inCounterReach` + 技中断 `gp-stagger` + 体勢値 + CDリファンド等の既存共通処理)。
+   移動は毎tick `resolveBountyMove` → `clampRectToPlayableArea`(一閃の終点もクランプ)。
+   数字は `src/utils/phantomScript.ts`(依存ゼロの葉)へ分離し、判定・成立域・描画が同じ1箇所を読む。
+5. **描画**: `pixiScene.drawGuardianPhantom` を新設(drawGhostAlly は流用せず「同じ部品の写し」)。
+   クラス立ち絵(rogue)+歩きコマ・**alpha=1**(味方守護霊の半透明とは分ける)・ダークtint・
+   赤目=**小glowスプライトのみ**(強glow=投影影は使わない)・遠近は depthScaleEnemy・
+   宿敵ラベル流用の頭上名「鴉(幻影)」・赤帯/赤ラインの予告・出現=holo-mini魔法陣+下から
+   ease-out で立ち上がるフェードイン・討伐=標準の崩壊(死体も同じ立ち絵で崩す分岐を追加)。
+6. **ガントレット除外**: `GAUNTLET_SKIP_SLOT_KEYS` へ追加(未検証ボスを自動テストへ混ぜない。
+   スキップ理由は従来どおり結果ヘッダに出る)。
+
+### 設計書に無くて埋めた「穴」(挙動の意図は変えていない)
+- 3技の **recover(硬直)長**が未指定だったので叩き台を置いた(melee 420 / shot 500 / issen 600ms)。
+  根拠は phantomScript.ts のコメントに明記。
+- `BOSS_TEST_ENTRIES` へ1行追加(`?phantomnow=1`)。**ENGAGEABLE へ編入した型はこの表に1件以上必要**
+  という既存の網羅テスト(bossTest.test.ts)が落ちたため。テストを緩めるのではなく表を埋める側で解決。
+- `isEnemyCapProtected`(上限カリング保護)へ編入。戦っている相手が雑魚の数の都合で消えないように。
+
+### ★社長判断がほしい点(仕様に触れるので勝手に決めていない)
+- **ENEMY_STATS の speed=87 は設計書の決定値だが、実効値は ×ENEMY_SPEED_MULT(2/3)= 58 になる**
+  (固定強度タイプなので areaSpeed は 1)。「プレイヤー基準(87)」を実効値で満たしたいなら生値を
+  130 前後にする必要がある。今回は**設計書どおり 87 を入れた**。実機で遅く感じたら数字を上げる。
+
+### 検証
+- `npm run typecheck` = 0 / `npm run lint` = エラー0(warning 8=既存)。
+- `npx vitest run` 対象12ファイル 242 tests 緑(phantomTick / counterReach / bossPractice / bossHints /
+  fixedGuardians / gauntlet / bossTest / constitution / directorTick / renderSpec / enemyUtils / bossEngagement)。
+- 自己点検(憲法第4条=初心者ゾーン / 第5条=緩を荒らさない): **抵触しない**。幻影は自然湧きの経路を
+  1つも持たず(producer もスケジュールも無い)、`?phantomnow` か「決闘」枠を選んだ時だけ出る。
+- 挙動不変の確認: 追加した分岐は全て `e.type === 'guardian-phantom'` / `isGuardianPhantom()` /
+  `FORCE_PHANTOM || practiceForces('phantomnow')` のいずれかで閉じている。年表の1行は既存型に対して
+  `true &&` にしかならない。既存ボスの練習枠解放条件はテストで固定した。
+
+### 次の担当への申し送り
+- 第2弾(設計書の「ではない」条件)= サブウェポン群・スキル群・装備効果の再現は未着手。
+- 幻影戦の被弾は技キー無し(MOVE_REACTION_KEYS へ `gp-*` を載せない裁定)=記録の穴として既知。
+
 ## v0.25.3628 — bot近接の距離物差しを「判定枠の縁まで」に統一【2026-08-19 20:06 JST】
 
 - 社長実機観察「近接攻撃、ボスの中心を見てない?かなりギリギリを攻めて事故ってる」への修正。

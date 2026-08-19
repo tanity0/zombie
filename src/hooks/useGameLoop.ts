@@ -150,6 +150,10 @@ import {
   bountySpawnBlocked, bountyNaturalSpawnReady, anyBountyEngaged,
   type BountySfx,
 } from '../utils/bountyTick';
+// research/GHOST_BOSS.md(守護霊ボス「幻影」): 頭脳(decideGhostの対プレイヤーアダプタ)+技の状態機械。
+import {
+  runPhantomTick, createPhantomTickState, pickActivePhantom, type PhantomSfx,
+} from '../utils/phantomTick';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -790,6 +794,13 @@ const BOUNTY_SFX: BountySfx = {
   counter: (gain = 1) => playSfx('counter', gain),
   reward: (gain = 1) => playSfx('headshot', gain),
 };
+// research/GHOST_BOSS.md(幻影): 音は既存の共通キーを流用する(専用素材は作らない=「ではない」条件)。
+const PHANTOM_SFX: PhantomSfx = {
+  alert: () => playSfx(BOSS_ALERT_SFX_KEY),
+  fire: () => playSfx('heavy-impact'),
+  counter: (gain = 1) => playSfx('counter', gain),
+  reward: (gain = 1) => playSfx('headshot', gain),
+};
 const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
 const GATE_LIVE_TAU = 1.0;                             // 難易度④: 関所ライブ補正の平滑化時定数(秒)。
 const SCENES_ENABLED = evParam('scenes') !== '0';     // 沸きシーン(構成/速度)。?scenes=0 で無効化(素の分布・等速)。
@@ -1041,6 +1052,11 @@ const FORCE_IDOL = evParam('idolnow') === '1';
 // §6.38 掲載裁定(B4): 練習出撃(変異体対策室)は`practiceForces('bountynow')`でこの経路へ相乗りする
 // (下の使用箇所で`FORCE_BOUNTY || practiceForces('bountynow')`として読む。既存URL経路はそのまま)。
 const FORCE_BOUNTY = evParam('bountynow') === '1';
+// research/GHOST_BOSS.md(守護霊ボス「幻影」): デバッグ出現専用(`?phantomnow=1`)。
+// 練習出撃(変異体対策室の「決闘」枠)は practiceForces('phantomnow') でこの経路へ相乗りする
+// (=既存のURL経路はそのまま。賞金首と同じ4点セット: ①この定数 ②`||practiceForces` ③forceRef
+//  ④gameTime巻き戻しでの再アーム)。
+const FORCE_PHANTOM = evParam('phantomnow') === '1';
 const FORCE_BOUNTY_TYPE = evParam('bountytype'); // 'ranged'|'melee'|'balance'|'maiko'|null(=ranged既定)
 // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋。`?nospawn=1` と併用して湧きを止める。
 // **数値の受け渡しにURLは使わない**(社長明示「?パラメータは回りくどい」)。この1個は部屋への入口だけ。
@@ -1063,6 +1079,7 @@ let bossCtrlErrLogged = false;                       // 裏ボス制御例外の
 let idolCtrlErrLogged = false;                       // idol制御例外のログも初回だけ
 let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
 let bountyCtrlErrLogged = false;                     // 賞金首(§6.38)制御例外のログも初回だけ(本体はbountyTick.ts)
+let phantomCtrlErrLogged = false;                    // 守護霊ボス「幻影」制御例外のログも初回だけ(本体はphantomTick.ts)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 /**
  * 上の「1回きり」フラグを**全部**再アームする(research/BOSS_GAUNTLET.md 検出器5)。
@@ -1075,6 +1092,7 @@ export const rearmLoopErrorFlags = (): void => {
   idolCtrlErrLogged = false;
   angelCtrlErrLogged = false;
   bountyCtrlErrLogged = false;
+  phantomCtrlErrLogged = false;
   loopErrLogged = false;
 };
 // (屋内の固定敵の「画面外」復帰余白 LAB_RETURN_HOME_MARGIN は src/utils/directorTick.ts へ移設)
@@ -1448,6 +1466,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const idolForceRef = useRef(false);
   // ?bountynow=1 診断(§6.38 B1): ラン開始後に1回だけ賞金首をforce-spawnしたかどうか。
   const bountyForceRef = useRef(false);
+  // research/GHOST_BOSS.md: ?phantomnow=1 / 「決闘」枠のforce-spawnを1回だけにするフラグ。
+  const phantomForceRef = useRef(false);
+  // 幻影のラン内状態(頭脳の持ち越し/休み/踏み込みの焼き付け)。同時1体なので単一refでよい。
+  const phantomStateRef = useRef(createPhantomTickState());
   // §6.38 B2a: 賞金首のラン内状態(照準速度/懲罰タイマ/コンボ進行/取り巻き召喚済みか)。
   // idolStateRefと同じ流儀(idolTick.tsを手本・bountyTick.ts参照)。同時1体なので単一refでよい。
   const bountyStateRef = useRef(createBountyTickState());
@@ -2524,6 +2546,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
+          phantomForceRef.current = false; // ?phantomnow=1 の force-spawn も新ランで再アーム(research/GHOST_BOSS.md)
+          phantomStateRef.current = createPhantomTickState(); // 幻影のラン内状態も新ランでリセット
           bountyStateRef.current = createBountyTickState(); // 賞金首のラン内状態も新ランでリセット(§6.38 B2a)
           clearBountyPlayback(); // ボスメーカーの個別再生も新ランで解除(idolと同じ理由=v0.25.2625の教訓)
           bountyNaturalRef.current = { count: 0 }; // 自然湧きの回数も新ランでリセット(§6.38 B4/v8.3)
@@ -6193,6 +6217,44 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // §6.38 B4: 出現位置・演出はspawnBountyEncounter(自然湧きと共用・二重実装しない)。
             spawnBountyEncounter(bType, newGameTime);
           }
+          // research/GHOST_BOSS.md(守護霊ボス「幻影」): デバッグ/練習「決闘」枠の強制出現。
+          // 賞金首と同じ4点セットの②(`FORCE_PHANTOM || practiceForces('phantomnow')`)。
+          // 休眠は使わない=即戦闘(一騎打ちの枠なので「探しに行く」段が無い)。出現演出は
+          // pixiScene が e.spawnedAt 基準で描く(足元の簡易魔法陣+下から立ち上がるフェードイン)。
+          if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current) {
+            phantomForceRef.current = true;
+            const gpName = enemyDeathLabel('guardian-phantom');
+            useGameStore.setState({ eventBannerText: gpName, eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+            const gpPcx = player.x + player.width / 2, gpPcy = player.y + player.height / 2;
+            // 距離は叩き台(実機調整前提): 画面内に収まり、出現演出が見える位置で正対させる。
+            const gpAng = Math.random() * Math.PI * 2;
+            const gpDist = 380 + Math.random() * 120;
+            const gpX0 = gpPcx + Math.cos(gpAng) * gpDist, gpY0 = gpPcy + Math.sin(gpAng) * gpDist;
+            const gpE = spawnEnemyAt('guardian-phantom', gpX0 - 20, gpY0 - 28, newGameTime);
+            // CLAUDE.md MUST: 湧き位置も「行ける帯」へクランプ(プレイヤーが追えない場所に置かない)。
+            const gpClamped = clampRectToPlayableArea(gpE.x, gpE.y, gpE.width, gpE.height, {
+              farBackdrop: useGameStore.getState().farBackdrop,
+              labTheme,
+              corridorMode: useGameStore.getState().corridorMode,
+              m0AdvanceLimitX: useGameStore.getState().m0AdvanceLimitX,
+              corridorRunInActive: useGameStore.getState().corridorRunInActive,
+            });
+            gpE.x = gpClamped.x; gpE.y = gpClamped.y;
+            gpE.dormant = false;
+            gpE.bossState = 'chase';
+            gpE.homeX = gpE.x; gpE.homeY = gpE.y;
+            // 同時1体まで(既存の幻影を消してから出す=idol/賞金首と同じ作法)。
+            useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.type !== 'guardian-phantom') }));
+            addEnemy(gpE);
+            // 出現エフェクト(城ボス/賞金首と同じ機構を流用。色だけ幻影の暗い赤へ寄せる)。
+            spawnFlash('rgba(60,10,20,0.26)', 420);
+            spawnRing(gpX0, gpY0, 16, 150, 'rgba(239,68,68,0.85)', 6, 720);
+            useGameStore.getState().spawnGlow(gpX0, gpY0, GLOW_R_XXL, 'rgba(239,68,68,', 900);
+            spawnBurst(gpX0, gpY0 + 16, '#7f1d1d', 22);
+            // アテンションは出現演出が落ち着いてから(城ボス/賞金首と同じ並び)。カットイン台帳には
+            // 載せない(専用素材を作らない=設計書の「ではない」条件)ので payload は渡さない。
+            bountyAttnRef.current = { at: newGameTime + 950, x: gpX0, y: gpY0, cutin: undefined };
+          }
           // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋を立てて相手を1体だけ出す。休眠は使わない(即戦闘)。
           if (BOSS_MAKER && !bossMakerReadyRef.current) {
             bossMakerReadyRef.current = true;
@@ -6336,6 +6398,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          } catch (err) {
           if (!bountyCtrlErrLogged) { bountyCtrlErrLogged = true; console.error('[bounty] controller error (suppressed after first):', err); }
           reportSuppressedError('bounty', err);
+         }
+        }
+
+        // --- 守護霊ボス「幻影」(research/GHOST_BOSS.md)コントローラ ---
+        // bountyTick と同位置・同じ作法(更新順序上の位置以外に意味は無い=他の敵から独立した専用制御)。
+        // ★この1体を動かすのはここだけ(gameStore.updateEnemies は isGuardianPhantom で素通りする)。
+        if (!danceTest && !useGameStore.getState().gameWon) {
+         try {
+          const activePhantom = pickActivePhantom(useGameStore.getState().enemies);
+          // ボスメーカーの「停止」トグルは幻影では使わない(部屋に並べていない実験枠)が、
+          // 停止中に1体だけ動き続けるのは事故のもとなので、他のボスと同じガードを通しておく。
+          if (activePhantom && !useGameStore.getState().bossMaker.paused) {
+            runPhantomTick(
+              activePhantom, phantomStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT, Date.now(),
+              PHANTOM_SFX, BOSS_COUNTER_ENABLED,
+            );
+          }
+         } catch (err) {
+          if (!phantomCtrlErrLogged) { phantomCtrlErrLogged = true; console.error('[phantom] controller error (suppressed after first):', err); }
+          reportSuppressedError('phantom', err);
          }
         }
 

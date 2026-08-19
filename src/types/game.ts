@@ -798,7 +798,14 @@ export interface Enemy {
     | 'mk-spin-windup' | 'mk-spin' | 'mk-spin-recover'
     | 'mk-suiu-windup' | 'mk-suiu-hop1' | 'mk-suiu-hop2' | 'mk-suiu-hop3' | 'mk-suiu-recover'
     | 'mk-boom-windup' | 'mk-boom-out' | 'mk-boom-back' | 'mk-boom-recover'
-    | 'mk-repose';
+    | 'mk-repose'
+    // research/GHOST_BOSS.md(守護霊ボス「幻影」・phantomTick.ts)。接頭辞 `gp-` は
+    // 既存の "ghost boss"(=守護霊が戦う相手)との逆義衝突を避けるための命名。
+    // gp-stagger = カウンターで崩された時の硬直(技を中断してここへ落ちる)。
+    | 'gp-melee-windup' | 'gp-melee-active' | 'gp-melee-recover'
+    | 'gp-shot-windup' | 'gp-shot-active' | 'gp-shot-recover'
+    | 'gp-issen-windup' | 'gp-issen-active' | 'gp-issen-recover'
+    | 'gp-stagger';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   // PACING_PUZZLE.md §6.38 B2b(v6 C-1・変則ディレイの予告同期): 抽選した溜め時間が技ごとに変わる
   // 技(舞妓の毬の薙ぎ/毬回し=マルギット型2択ランダム)は、bossStateUntilだけでは実際の溜め長を
@@ -1092,7 +1099,12 @@ export type EnemyType =
   | 'bounty-ranged'  // バス停(変異): 遠距離(砲手)。バス停と同化
   | 'bounty-melee'   // 馬乗り(変異): 近接(決闘者)。触手下半身+潜水兜の機械体
   | 'bounty-balance' // 鋏(変異): バランス(教官)。膝立ち+巨大な錨(のち鋏に差し替え検討)
-  | 'bounty-maiko';  // 舞妓(変異): イレギュラー種。4本腕+手毬(オービット武器)
+  | 'bounty-maiko'   // 舞妓(変異): イレギュラー種。4本腕+手毬(オービット武器)
+  // research/GHOST_BOSS.md(守護霊ボス「幻影」): ボスモードの実験枠「決闘」。守護霊の最強データ
+  // (fixedGuardians の score 最上位=鴉)をボス側の実体として立て、プレイヤーと戦わせる。
+  // ★型名は `ghost-*` にしない: 既存コードの "ghost boss"(GHOST_BOSS_HP_MULT 等)は
+  //   **守護霊が戦う相手**を指すため逆義衝突する。状態接頭辞は `gp-`。
+  | 'guardian-phantom';
 
 // Weapon types
 export interface Weapon {

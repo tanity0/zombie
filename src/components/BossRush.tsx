@@ -17,17 +17,25 @@ import { bossHintsFor } from '../data/bossHints';
 import { loadEncounteredBosses } from '../utils/bossEncounter';
 import { GHOST_DOSSIER_CATEGORY_LABEL, type GhostDossierCategory } from '../utils/ghostDossier';
 import { GHOST_DOSSIER_SLOTS } from '../utils/ghostDossier';
-import { PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, practiceBossHealth, type PracticeSlot } from '../utils/bossPractice';
+import { PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, practiceBossHealth, practiceSlotUnlocked, type PracticeSlot } from '../utils/bossPractice';
 import { isBountyType } from '../utils/enemyUtils';
 import type { CharacterClass } from '../types/game';
 
 // §6.38 掲載裁定: 賞金首4種はGHOST_DOSSIER_SLOTS由来ではないので、この画面だけの区分「bounty」を
 // 追加する(ghostDossier.tsのGhostDossierCategory自体は変えない=守護霊メニュー側は無関係のまま)。
-type PracticeCategory = GhostDossierCategory | 'bounty';
-const PRACTICE_CATEGORY_LABEL: Record<PracticeCategory, string> = { ...GHOST_DOSSIER_CATEGORY_LABEL, bounty: '賞金首' };
+// research/GHOST_BOSS.md: 守護霊ボス「幻影」の区分「duel」(決闘)も同様にこの画面だけの追加。
+type PracticeCategory = GhostDossierCategory | 'bounty' | 'duel';
+const PRACTICE_CATEGORY_LABEL: Record<PracticeCategory, string> = {
+  ...GHOST_DOSSIER_CATEGORY_LABEL, bounty: '賞金首', duel: '決闘',
+};
 const CATEGORY_OF = new Map(GHOST_DOSSIER_SLOTS.map(s => [s.slotKey, s.category]));
+// ★未知キーは 'story' に落ちる。新しい独立枠を足したら**必ずここに分岐を書く**
+// (書き忘れると「ステージボス」の棚に紛れ、カテゴリ順の裁定も効かない)。
 const categoryOf = (slot: PracticeSlot): PracticeCategory =>
-  CATEGORY_OF.get(slot.encounterSlotKey) ?? (isBountyType(slot.bossType) ? 'bounty' : 'story');
+  CATEGORY_OF.get(slot.encounterSlotKey)
+  ?? (isBountyType(slot.bossType) ? 'bounty'
+    : slot.bossType === 'guardian-phantom' ? 'duel'
+    : 'story');
 
 const bossName = (slot: PracticeSlot): string => slot.label ?? enemyDeathLabel(slot.bossType);
 const bossIcon = (slot: PracticeSlot): string | null =>
@@ -54,7 +62,8 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
   const [cls, setCls] = useState<CharacterClass>('warrior');
 
   const open = openKey ? PRACTICE_SLOTS.find(s => s.slotKey === openKey) ?? null : null;
-  const unlockedCount = PRACTICE_SLOTS.filter(s => encountered.has(s.encounterSlotKey)).length;
+  // 解放判定は台帳側の1本(practiceSlotUnlocked)=遭遇記録 or 常時解放枠(幻影)。
+  const unlockedCount = PRACTICE_SLOTS.filter(s => practiceSlotUnlocked(s, encountered)).length;
 
   // ---- 詳細 ----------------------------------------------------------------------------------
   if (open) {
@@ -93,7 +102,10 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
             {/* storyBoss の城ボスは実HPと表が食い違うので出さない(BOSS_MAKER.md §20-8)。 */}
             <Row icon={<Heart size={9} />} label="体力" value={hp != null ? hp.toLocaleString() : '—'} />
             <Row icon={<Swords size={9} />} label="種別" value={
-              open.bossType === 'giantbat' ? 'ステージボス' : isBountyType(open.bossType) ? '賞金首' : '固有ボス'
+              open.bossType === 'giantbat' ? 'ステージボス'
+                : isBountyType(open.bossType) ? '賞金首'
+                : open.bossType === 'guardian-phantom' ? '守護霊' // research/GHOST_BOSS.md(決闘の実験枠)
+                : '固有ボス'
             } />
           </div>
         </section>
@@ -161,7 +173,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
             </div>
             <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
               {slots.map(slot => {
-                const unlocked = encountered.has(slot.encounterSlotKey);
+                const unlocked = practiceSlotUnlocked(slot, encountered);
                 const icon = unlocked ? bossIcon(slot) : null;
                 return (
                   <button

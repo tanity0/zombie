@@ -42,8 +42,11 @@ export const SOFTLOCK_EXCLUDED_STATES: ReadonlySet<string> = new Set([
  * 走らない枠。`giantbat@stage-2` は**そのステージに城ボスが存在しない**(bossPractice.castleSortie が
  * reachable:false を返す枠)ので、出撃しても永久にボスが出ない=タイムアウトを1本無駄にするだけ。
  * **スキップした事実は結果へ明記する**(黙って減らさない)。
+ *
+ * `guardian-phantom@practice`(research/GHOST_BOSS.md の実験枠「決闘」)は**未検証のボスを自動テストへ
+ * 混ぜない**ため。安定したらこの行を外す(=外せば自動的にガントレットへ入る)。
  */
-export const GAUNTLET_SKIP_SLOT_KEYS: readonly string[] = ['giantbat@stage-2'];
+export const GAUNTLET_SKIP_SLOT_KEYS: readonly string[] = ['giantbat@stage-2', 'guardian-phantom@practice'];
 
 export const gauntletSlots = (slots: readonly PracticeSlot[] = PRACTICE_SLOTS): readonly PracticeSlot[] =>
   slots.filter(s => !GAUNTLET_SKIP_SLOT_KEYS.includes(s.slotKey));

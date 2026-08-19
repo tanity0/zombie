@@ -8,6 +8,8 @@ import {
   fixedGuardianLeadersForBoss,
   pickFixedGuardianForGhostMode,
   shouldPickFixedGuardian,
+  strongestGuardian,
+  FIXED_GUARDIAN_STRONGEST_ID,
 } from './fixedGuardians';
 import { sanitizePlayerName } from '../utils/playerName';
 import { bossStylePerfScore } from '../utils/playerTraits';
@@ -197,5 +199,33 @@ describe('固定の先人守護霊20体', () => {
 describe('fixed guardian feedback contract', () => {
   it('keeps the Worker allow-list aligned with the fixed guardian data', () => {
     expect(new Set(FIXED_GUARDIAN_IDS)).toEqual(new Set(FIXED_GUARDIANS.map(guardian => guardian.id)));
+  });
+});
+
+// research/GHOST_BOSS.md(守護霊ボス「幻影」): ボスとして立てる「最強データ」の機械検証。
+// 設計の決定は**確定1体を名指し**(抽選ではない)。台帳の数値を動かして順位が変わったら、
+// 名指し(FIXED_GUARDIAN_STRONGEST_ID)を手で差し替える——それを忘れたらここで落ちる。
+describe('守護霊ボス「幻影」の相手(最強データ)', () => {
+  it('strongestGuardian() は名指しの1体(鴉)を返す', () => {
+    expect(FIXED_GUARDIAN_STRONGEST_ID).toBe('karasu');
+    expect(strongestGuardian().id).toBe('karasu');
+    expect(strongestGuardian().name).toBe('鴉');
+  });
+
+  it('★その1体が performance.score の最上位である(名指しと台帳がズレたら落ちる)', () => {
+    const top = [...FIXED_GUARDIANS].sort((a, b) => b.performance.score - a.performance.score)[0];
+    expect(strongestGuardian().id).toBe(top.id);
+    // 同点1位が複数居ると「最強」が曖昧になる(名指しの根拠が消える)ので、単独最上位も固定する。
+    const tied = FIXED_GUARDIANS.filter(g => g.performance.score === top.performance.score);
+    expect(tied).toHaveLength(1);
+  });
+
+  it('ボス配線が読む台帳のパスが埋まっている(クラス立ち絵・間合い・反応・銃)', () => {
+    const g = strongestGuardian();
+    expect(g.classId).toBe('rogue');                      // 立ち絵の出どころ
+    expect(g.profile.preferredDist).toBeGreaterThan(0);   // 間合い
+    expect(g.profile.counterChance).toBeGreaterThan(0);   // 反応
+    expect(g.profile.reactionMs).toBeGreaterThan(0);
+    expect(g.profile.snapshot?.activeGunKey).toBeTruthy(); // 銃撃ダメージの基礎値
   });
 });

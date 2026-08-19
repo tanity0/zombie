@@ -372,6 +372,26 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
   }),
 ];
 
+/**
+ * research/GHOST_BOSS.md(守護霊ボス「幻影」): **台帳の最強データ**。
+ *
+ * 社長ゴール「ボスモードに守護霊の最強データを一体、ボスとして配線できる?」の「最強」の定義=
+ * `performance.score`(60×(3×カウンター率 − 2×被弾率) − クリア秒)の最上位。設計決定は
+ * **確定1体を名指し**(抽選ではない)なので、ここは `FIXED_GUARDIAN_STRONGEST_ID` を引くだけにする。
+ *
+ * ★「名指し」と「score最上位」がズレたら **fixedGuardians.test.ts が落ちる**(機械検証)。
+ * 台帳の数値を動かして順位が変わったら、この定数を手で差し替える(黙って抽選に切り替えない=
+ * 「今日は誰が出るか分からないボス」にしないため)。
+ */
+export const FIXED_GUARDIAN_STRONGEST_ID = 'karasu';
+
+export const strongestGuardian = (): FixedGuardian => {
+  const g = FIXED_GUARDIANS.find(x => x.id === FIXED_GUARDIAN_STRONGEST_ID);
+  // 台帳から消えた=表のズレ。黙って別人へ寄せず、その場で落とす(bossPractice の作法と同じ)。
+  if (!g) throw new Error(`fixedGuardians: 最強データ "${FIXED_GUARDIAN_STRONGEST_ID}" が台帳に無い`);
+  return g;
+};
+
 const stableSlotIndex = (slotKey: string): number => {
   const known = FIXED_GUARDIAN_BOSS_SLOT_ORDER.indexOf(slotKey);
   if (known >= 0) return known;

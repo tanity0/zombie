@@ -20,13 +20,18 @@ const sample = (o: Partial<GauntletSample> = {}): GauntletSample => ({
 });
 
 describe('走る枠(スキップの明示)', () => {
-  it('giantbat@stage-2(城ボス不在)だけを外す。残りは PRACTICE_SLOTS のまま', () => {
-    expect(gauntletSlots().length).toBe(PRACTICE_SLOTS.length - 1);
-    expect(gauntletSlots().some(s => s.slotKey === 'giantbat@stage-2')).toBe(false);
+  // スキップは2枠: giantbat@stage-2(城ボス不在=永久にボスが出ない)と
+  // guardian-phantom@practice(research/GHOST_BOSS.md の未検証な実験枠「決闘」)。
+  it('スキップ枠だけを外す。残りは PRACTICE_SLOTS のまま', () => {
+    expect(gauntletSlots().length).toBe(PRACTICE_SLOTS.length - GAUNTLET_SKIP_SLOT_KEYS.length);
+    for (const key of GAUNTLET_SKIP_SLOT_KEYS) {
+      expect(gauntletSlots().some(s => s.slotKey === key), key).toBe(false);
+    }
     expect(gauntletSkippedSlots().map(s => s.slotKey)).toEqual([...GAUNTLET_SKIP_SLOT_KEYS]);
   });
   it('スキップ枠は「無かったこと」にせず取り出せる(結果に明記するため)', () => {
-    expect(gauntletSkippedSlots().length).toBe(1);
+    expect(gauntletSkippedSlots().length).toBe(GAUNTLET_SKIP_SLOT_KEYS.length);
+    expect(gauntletSkippedSlots().length).toBeGreaterThan(0);
   });
 });
 

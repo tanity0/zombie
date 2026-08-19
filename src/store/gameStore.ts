@@ -115,7 +115,7 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isArenaSweepProtected } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected } from '../utils/enemyUtils';
 // §6.38 B4(クリーンアップ): 実効難易度倍率の式はbountyValue.ts(依存ゼロに近い葉。詳細はファイル冒頭の
 // コメント参照)へ一本化した。bountyTick.tsもここから同じ関数をimportする(=もう複製ではなく本物の
 // 共有import。旧B3コメントの「bountyTick.tsを直接importすると循環」は解消していない=それは今も避け、
@@ -179,7 +179,7 @@ import {
   recordSlotFilled,
   type RunTelemetryEquipSnapshot, type RunTelemetryEquipSlotSnapshot,
 } from '../utils/runTelemetry';
-import { isPracticeRun, practiceBossType } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c
+import { isPracticeRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
@@ -1319,6 +1319,9 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   idol: '偶像',
   hunter: '変異体(狩猟型)',
   screamer: '変異体(叫喚型)',
+  // research/GHOST_BOSS.md(守護霊ボス「幻影」): 名前の出どころは1箇所(bossPractice の
+  // GUARDIAN_PHANTOM_LABEL → 守護霊台帳 strongestGuardian().name)。人物名をここへ写経しない。
+  'guardian-phantom': GUARDIAN_PHANTOM_LABEL,
   // 賞金首4種(名称統一バッチ・社長指示v0.25.3443): 台帳(bossCutin.ts)と同名。従来はフォールバック「変異体」に落ちていて
   // 死因・討伐バナー・被弾文言(「◯◯のレーザー」等)が個体名を出せていなかった。
   'bounty-ranged': 'バス停(変異)',
@@ -3065,7 +3068,11 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   }
   // 歴史年表(chronicle): 各種ボス/ハンターの初回討伐を即載せ(社長決定v0.25.1628)。近接/銃 両キル経路が
   // この関数を通るのでここ1箇所で拾える。宿敵(isNamedのみ)はボス扱いにしない=年表に載せない。
-  if (!glenForm1Kill && (isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter')) {
+  // research/GHOST_BOSS.md(幻影): **年表には載せない**(本編の相手ではない開発実験枠)。
+  // 現状 isHiddenBoss/giantbat/hunter のどれにも当たらないので既に載らないが、明示で止めておく
+  // (将来 isHiddenBoss 等の構成が変わった時に黙って混入しないための1行)。
+  if (!glenForm1Kill && !isGuardianPhantom(enemy.type)
+    && (isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter')) {
     // 年表フレーズ(社長指示v0.25.1658→1659で動詞は「討伐」に統一):
     //  ・城ボス(giantbat=各ステージのストーリーボス・固有名なし)→「ストーリーボスを討伐」。
     //  ・固有名持ち(天使/裏ボス)は「CODE:◯◯を討伐」(§6.20 M45)。「天使」等の種族接頭辞は
@@ -10380,7 +10387,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 注意: committed は aiPhase 基準なので、bossState系(裏ボス/天使/idol)の攻撃中は
         // このガードに掛からず、押し道具が攻撃中でも通る。押し道具は単発の意図的な技のため仕様として許容する。
         // §6.38 B1(賞金首): idol等と同じ「専用コントローラ(bountyTick.ts)で動く」型なので同様に抜ける。
-        if (isHiddenBoss(enemy.type) || isBountyType(enemy.type)) return enemy;
+        // research/GHOST_BOSS.md(幻影): 専用コントローラ(phantomTick.ts)だけが動かす=二重駆動の禁止。
+        // ここを抜けないと、通常追跡AI(接近/接触)と phantomTick が同じフレームで座標を奪い合う。
+        if (isHiddenBoss(enemy.type) || isBountyType(enemy.type) || isGuardianPhantom(enemy.type)) return enemy;
 
         // Bosses pop up briefly when they take melee finisher-grade damage;
         // while airborne they should read as caught, not still advancing.

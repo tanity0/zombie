@@ -36,6 +36,13 @@ const ENEMY_VISUAL_SCALE: Partial<Record<Enemy['type'], number>> = {
   'bounty-melee': 1.95,
   'bounty-balance': 1.95,
   'bounty-maiko': 1.95,
+  // research/GHOST_BOSS.md(守護霊ボス「幻影」): **プレイヤーとまったく同じ見かけの大きさ**にする。
+  // 幻影の絵はプレイヤーのクラス立ち絵(rogue)なので、絵の幅が本人と食い違うと「守護霊のデータ」に
+  // 見えない。ここの倍率 k = ENEMY_VISUAL_SCALE × ENEMY_SIZE_MULT(1.5) = 1.95 のとき、
+  // containScale(=min(boxW/texW, boxH/texH))は幅側が効き、
+  //   40(判定幅) × 1.95 / texW = 78 / texW = PLAYER_ART_BASE_W / texW
+  // となって **playerBaseScale と同じ倍率**になる(立ち絵78×64・歩き96×80のどちらでも一致)。
+  'guardian-phantom': 1.3,
 };
 
 // A foot-anchored draw box in WORLD space. `footX/footY` is the bottom-centre

@@ -27,6 +27,7 @@ import {
   selectLabEnemyType,
   OFFSCREEN_RECYCLE_MARGIN,
   isBountyType,
+  isGuardianPhantom,
 } from './enemyUtils';
 import { selectCullCandidates } from './enemyCulling';
 import { enemyCountCap, ENEMY_COUNT_CEIL, type PhaseKind } from './difficultyDirector';
@@ -115,6 +116,9 @@ export const isEnemyCapProtected = (
   e.type === 'lab-zombie-3' ||
   isHiddenBoss(e.type) ||
   isBountyType(e.type) ||
+  // research/GHOST_BOSS.md(守護霊ボス「幻影」): 上限カリングで消されない(戦っている相手が
+  // 雑魚の数の都合で消えると戦闘そのものが成立しない=他のボス系と同じ保護)。
+  isGuardianPhantom(e.type) ||
   !!(e.isWave && gameTime - (e.spawnedAt ?? 0) < WAVE_GRACE_MS);
 
 // ============================================================================

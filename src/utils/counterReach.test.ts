@@ -13,6 +13,10 @@ import {
   BOUNTY_WINDUP_STATES, BOUNTY_RECOVER_STATES, BOUNTY_ACTIVE_COUNTER_STATES,
 } from './bountyTick';
 import { IDOL_WINDUP_STATES, IDOL_RECOVER_STATES, IDOL_REST_STATE } from './idolTick';
+import {
+  GUARDIAN_PHANTOM_WINDUP_STATES, GUARDIAN_PHANTOM_RECOVER_STATES,
+} from './phantomTick';
+import { GUARDIAN_PHANTOM_TUNING as GP_T } from './phantomScript';
 import { BOUNTY_MELEE_TUNING as BM_T, BOUNTY_BALANCE_TUNING as BB_T, BOUNTY_MAIKO_TUNING as MK_T } from './bountyScript';
 import { ANGEL_RAFI_TUNING as RF_T, ANGEL_ACRASIEL_TUNING as AC_T } from './angelScript';
 import { HIDDEN_JORMUNGAND_TUNING as HB_JO } from './hiddenBossScript';
@@ -36,11 +40,20 @@ describe('① 完全性: カウンターが通る州は必ず宣言表に載っ�
   it('idol(windup/硬直/休符)', () => {
     expect(missing('idol', [...IDOL_WINDUP_STATES, ...IDOL_RECOVER_STATES, IDOL_REST_STATE])).toEqual([]);
   });
+  // research/GHOST_BOSS.md(守護霊ボス「幻影」)。新しい技の州を足して宣言を忘れたらここで落ちる。
+  it('守護霊ボス「幻影」(windup/硬直)', () => {
+    expect(missing('gp', [...GUARDIAN_PHANTOM_WINDUP_STATES, ...GUARDIAN_PHANTOM_RECOVER_STATES])).toEqual([]);
+  });
   // 天使6体は州名が6体で衝突する(rafiとuriの'sweep-windup'は別寸法)ため州リストを持たない。
   // ここでは**宣言されている天使の州は必ず図形reach**(=体の重なりならわざわざ宣言しない)ことだけ固める。
   it('天使の宣言は全て図形reach(体の重なりの州は宣言しない=表を無駄に太らせない)', () => {
+    // ★許可リストに 'gp:'(=守護霊ボス「幻影」・research/GHOST_BOSS.md)を追加した理由:
+    // 幻影は**州名が系統内で一意**なので賞金首/裏ボス/idolと同じ「系統をキーにする」側であり、
+    // 天使(6体で州名が衝突するので boss.type をキーにする)ではない。ここを直さないと、
+    // 幻影の硬直(body=硬直はパニッシュ窓なので体の重なりが正しい)がこの検査に引っかかる。
     const angelKeys = Object.keys(COUNTER_REACH_DECL)
-      .filter(k => !k.startsWith('bounty:') && !k.startsWith('hidden:') && !k.startsWith('idol:'));
+      .filter(k => !k.startsWith('bounty:') && !k.startsWith('hidden:') && !k.startsWith('idol:')
+        && !k.startsWith('gp:'));
     expect(angelKeys.length).toBeGreaterThan(0);
     for (const k of angelKeys) expect(COUNTER_REACH_DECL[k], k).not.toBe('body');
   });
@@ -90,6 +103,13 @@ describe('③ 寸法は技のテーブルを読む(赤い予告と同じ数字=�
     const h3 = counterReachShapeFor('bounty:mk-suiu-hop3', at);
     expect(h1.kind === 'circle' && h1.radius).toBe(MK_T.suiu.radius);
     expect(h3.kind === 'circle' && h3.radius).toBe(MK_T.suiu.radius * MK_T.suiu.finalRadiusMult);
+  });
+  it('幻影: 近接=melee.halfWidth / 一閃=issen.halfWidth(赤い予告と同じ数字)', () => {
+    const at = { ...CTX, aiFromX: 0, aiFromY: 0, aiTargetX: 160, aiTargetY: 0 };
+    const m = counterReachShapeFor('gp:gp-melee-windup', at);
+    expect(m.kind === 'band' && m.bands[0].halfWidth).toBe(GP_T.melee.halfWidth);
+    const i = counterReachShapeFor('gp:gp-issen-windup', at);
+    expect(i.kind === 'band' && i.bands[0].halfWidth).toBe(GP_T.issen.halfWidth);
   });
   it('三段突きは帯3本(brTripleAnglesと同じ左右±20度)', () => {
     const t = counterReachShapeFor('bounty:br-triple-windup', { ...CTX, tripleAng: 0 });

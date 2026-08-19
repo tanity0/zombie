@@ -11,7 +11,7 @@
 // 掟: **ここは判定するだけの純関数**。どう使うか(湧きを落とす/コマ時計を止める)は directorTick 側。
 import type { Enemy, EnemyType } from '../types/game';
 import { BOSS_ZOOM_PROFILES, bossZoomClassFor, zoomCompensatedWorldDistance, ZOOM_MIN_ABS } from './cameraZoom';
-import { isBountyType } from './enemyUtils';
+import { isBountyType, isGuardianPhantom } from './enemyUtils';
 
 /**
  * 「交戦中」として扱うボスの型。
@@ -32,6 +32,10 @@ export const ENGAGEABLE_BOSS_TYPES = new Set<EnemyType>([
   // PACING_PUZZLE.md §6.38 v3(賞金首・社長裁定「城ボス方式に反転」): ズーム・リーシュじわ回復・
   // bossFightNow経由の先送り・施設ロックを既存土管でまとめて受けるため、城ボスと同じ交戦系に乗せる。
   'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
+  // research/GHOST_BOSS.md(守護霊ボス「幻影」・ボスモードの実験枠): HPバー/体勢値(紫)/ボス引きズーム/
+  // 致命の一撃は**この集合由来**なので、ボスとして戦わせるには編入が必要。
+  // ただし下の isGhostEligibleBoss(守護霊召喚等の5系統)からは賞金首と同様に除外する。
+  'guardian-phantom',
 ]);
 
 export const isEngageableBoss = (type: EnemyType): boolean => ENGAGEABLE_BOSS_TYPES.has(type);
@@ -41,9 +45,13 @@ export const isEngageableBoss = (type: EnemyType): boolean => ENGAGEABLE_BOSS_TY
  * duoRecords/ghostOnlineのpickスロット列——この5系統は賞金首を**乗せない**(倒す義務のない相手を
  * ゴースト週間の対象に混ぜない)。ENGAGEABLE から賞金首だけを絞った専用集合を1箇所に作り、
  * 5系統全てがここを見る(個別に「賞金首を除く」条件を書き散らさない)。
+ *
+ * research/GHOST_BOSS.md(幻影): **守護霊ボス「幻影」も同じ理由で除外する。** 幻影は「守護霊の
+ * データを相手として立てた実験枠」なので、ここへ入れると守護霊召喚(=守護霊 vs 守護霊)・撃破タイム・
+ * ソロ/同行台帳・オンラインのスロット列に、本編の相手ではないものが混ざる。
  */
 export const isGhostEligibleBoss = (type: EnemyType): boolean =>
-  ENGAGEABLE_BOSS_TYPES.has(type) && !isBountyType(type);
+  ENGAGEABLE_BOSS_TYPES.has(type) && !isBountyType(type) && !isGuardianPhantom(type);
 
 // 交戦とみなす距離(社長質問v0.25.2416「ボスの画面外判定はハンターくらい広めならOK?」→ ハンター基準)。
 // 基準値は旧ハンター相当。実ワールド距離はボス戦の引きズームに合わせて拡張する。

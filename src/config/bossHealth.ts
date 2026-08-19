@@ -32,5 +32,11 @@ export const HIDDEN_BOSS_HEALTH = {
   thor: 22000,
 } as const satisfies Partial<Record<EnemyType, number>>;
 
+// research/GHOST_BOSS.md(守護霊ボス「幻影」): 裏ボス方式の固定HP。ENEMY_HP_MULT・エリア・色倍率を
+// 一切通さない(buildEnemy の hpMult が `guardian-phantom` を 1 に固定する)ので、ここに書いた値が
+// そのまま実効HPになる=練習画面の表示(practiceBossHealth)と実戦が原理的に一致する。
+// 3000 は叩き台(実機調整前提・設計書の決定値)。
+export const GUARDIAN_PHANTOM_HEALTH = 3000;
+
 export const stageBossHealthFor = (stageId: string): number =>
   STAGE_BOSS_HEALTH_BY_STAGE[stageId] ?? STAGE_BOSS_HEALTH_BY_STAGE['stage-1'];

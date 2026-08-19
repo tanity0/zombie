@@ -81,6 +81,9 @@ export const BOSS_ZOOM_PROFILES: Record<BossZoomClass, BossZoomProfile> = {
 
 const COMPACT_BOSS_TYPES = new Set<EnemyType>([
   'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol',
+  // research/GHOST_BOSS.md(幻影): 体格はプレイヤー級(40×56)=人型ボスの中でも小さい。
+  // giant級の2.5倍引きだと絵が米粒になるので compact(far=0.48)。
+  'guardian-phantom',
 ]);
 const GIANT_BOSS_TYPES = new Set<EnemyType>(['mimir', 'jormungand', 'skadi']);
 
