@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3594',
+    items: [
+      '?director=1 の数値取りラン中に出ていたAIディレクターのライブ表示をやめました(記録とリザルト画面の振り返りは従来どおり)。ライブ表示が必要な診断時だけ ?directorhud=1 で出せます。',
+    ],
+  },
+  {
     version: '0.25.3593',
     items: [
       'ラフィの技が間合いで分担されました: 近距離=薙ぎ払いとロール台本 / 中距離・遠距離=跳びかかりと骨刃。',

@@ -89,8 +89,10 @@ const Game: React.FC<GameProps> = ({
   const makerHideHud = useGameStore(state => state.bossMaker.active && state.bossMaker.hideHud);
   // 凍結診断オンスクリーン表示(?debug=1)。
   const debugOverlay = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
-  // AIディレクター(ステップA)可視化(?director=1)。読むだけ=ゲーム挙動には影響しない。
-  const directorOverlay = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('director') === '1';
+  // AIディレクターのライブ可視化。★v0.25.3594(社長指示「数値とるラン、ステータスをラン中に表示は
+  // やめて、リザルトだけにして。プレイしずらい」): ?director=1 ではラン中に出さない(記録と
+  // リザルト表示は従来どおり)。ライブ表示が要る診断時だけ ?directorhud=1 で出す(読むだけ=挙動不変)。
+  const directorOverlay = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('directorhud') === '1';
   const showUpgradeMenu = useGameStore(state => state.showUpgradeMenu);
   const showShopMenu = useGameStore(state => state.showShopMenu);
   const showEventQuestMenu = useGameStore(state => state.showEventQuestMenu);
