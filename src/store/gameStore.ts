@@ -1481,18 +1481,25 @@ export const counterMasterAwakenBuffPatch = (player: Player, gameTime: number): 
   skillLevel(player, 'counter-master') >= 3
     ? { counterMasterBuffUntil: gameTime + COUNTER_MASTER_AWAKEN_BUFF_MS }
     : {};
+// ★錬金術(社長指示v0.25.3612): 召喚獣1体につきプレイヤーの攻撃力+20%。
+export const ALCHEMY_SUMMON_ATK_BONUS = 0.2;
 // バーサーカー: 全攻撃 ×(1 + 失ったHP割合×係数[Lv1:1.0/Lv2:1.25/Lv3:1.5])。被ダメ×1.2は固定。
 // カウンターマスター覚醒バフ(+30%)もこの「全攻撃」合流点に乗せる。gameTimeは20超の呼び出し箇所へ
 // 引数を配る代わりにここでstoreから読む(実行時のみ呼ばれる関数。ヘッドレステストはstoreのgameTimeを設定する)。
+// ★錬金術の召喚攻撃ボーナス(v0.25.3612)もこの合流点に乗せる: ×(1 + 0.2×生存召喚数)。
+// 数えるのは召喚獣(kind normal/rare。使役ペット=persistentも召喚獣として数える)。
+// 守護霊(ghost-ally)は同行者であって召喚獣ではないので数えない。
 export const skillOutgoingDamageMult = (player: Player): number => {
+  const summonN = useGameStore.getState().summons.reduce((n, s) => n + (s.kind !== 'ghost-ally' ? 1 : 0), 0);
+  const alcMult = 1 + ALCHEMY_SUMMON_ATK_BONUS * summonN;
   const cmMult = (player.counterMasterBuffUntil ?? 0) > useGameStore.getState().gameTime
     && skillLevel(player, 'counter-master') >= 3
     ? COUNTER_MASTER_AWAKEN_DMG_MULT
     : 1;
   const bl = skillLevel(player, 'berserker');
-  if (!bl || player.maxHealth <= 0) return cmMult;
+  if (!bl || player.maxHealth <= 0) return alcMult * cmMult;
   const k = [0, 1, 1.25, 1.5][bl];
-  return cmMult * (1 + Math.max(0, (player.maxHealth - player.health) / player.maxHealth) * k);
+  return alcMult * cmMult * (1 + Math.max(0, (player.maxHealth - player.health) / player.maxHealth) * k);
 };
 // クリティカルD上昇: crit倍率 +0.5/0.75/1.0(Lv)。
 export const skillCritMult = (player: Player, base: number): number => {

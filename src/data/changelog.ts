@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3612',
+    items: [
+      '錬金術: 召喚獣が生きている数だけプレイヤーの攻撃力が上がるようになりました(1体につき+20%。使役ペットも対象・守護霊は対象外)。',
+    ],
+  },
+  {
     version: '0.25.3611',
     items: [
       'KILL処刑演出を改訂: ジャンプ→一拍→斬撃(刀の一閃と同じ斬閃)→血しぶき→バックダッシュで帰還(帰還は尺半分)。演出中はプレイヤーが必ず敵より前面に描かれます。',

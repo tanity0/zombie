@@ -342,6 +342,17 @@ describe('覚醒(Lv3)効果 v0.25.3300', () => {
     useGameStore.setState({ gameTime: 5000 });
     expect(skillOutgoingDamageMult(buffed)).toBeCloseTo(1.0);
   });
+  it('錬金術: 召喚獣1体につき全攻撃+20%(守護霊は数えない・社長指示v0.25.3612)', () => {
+    useGameStore.setState({ gameTime: 0 });
+    const plain = { ...withSkill('exploder', 0), maxHealth: 100, health: 100 } as Player;
+    type Summons = ReturnType<typeof useGameStore.getState>['summons'];
+    useGameStore.setState({ summons: [{ kind: 'normal' }, { kind: 'normal' }, { kind: 'ghost-ally' }] as unknown as Summons });
+    expect(skillOutgoingDamageMult(plain)).toBeCloseTo(1.4); // 2体=+40%(ghost-allyは対象外)
+    useGameStore.setState({ summons: [{ kind: 'rare' }] as unknown as Summons });
+    expect(skillOutgoingDamageMult(plain)).toBeCloseTo(1.2); // レア1体も1体
+    useGameStore.setState({ summons: [] });
+    expect(skillOutgoingDamageMult(plain)).toBeCloseTo(1.0);
+  });
   it('sniper覚醒: 距離条件が70%の距離で上限到達', () => {
     const mk = (lv: number) => ({ ...withSkill('sniper', lv), x: 0, y: 0, width: 0, height: 0 }) as Player;
     const enemyAt = (d: number) => ({ x: d, y: 0, width: 0, height: 0, vx: 100, vy: 0 });
