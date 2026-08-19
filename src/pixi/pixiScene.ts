@@ -15952,7 +15952,12 @@ export class PixiScene {
             o.moveTo(cx, cy).lineTo(L.x, L.y).stroke({ width: 6, color: 0xffffff, alpha: 0.9 * a });
             return;
           }
-          const prog = Math.max(0, Math.min(1, (gameTime - L.bornAt) / JB_T.lance.minWindup));
+          // ★v0.25.3588(社長報告「予告線が規定通りの流星になってない」): 旧progはminWindup基準で
+          // 飛行より先に1へ到達し、**赤が消え切った後もレーザーが来ない/来る**とズレていた。
+          // 分母を射出時に焼いた発射見積もり(estFireAt)へ。旋回で実飛行が延びるぶんは
+          // 「発射までは消し切らない」上限0.97で吸収(消え切り≒発射=流星の掟)。
+          const estTotal = Math.max(1, (L.estFireAt ?? (L.bornAt + JB_T.lance.minWindup)) - L.bornAt);
+          const prog = Math.min(0.97, Math.max(0, (gameTime - L.bornAt) / estTotal));
           this.drawAngelZoneCapsule(view, o, cx, cy, L.x, L.y, JB_T.lance.halfWidth, prog, now);
           if (lanceTex) {
             const key = `${e.id}:${li}`;

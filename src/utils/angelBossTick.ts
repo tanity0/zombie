@@ -95,6 +95,24 @@ export const RAFI_SCRIPT_ENABLED = scriptFlag('rafiscript');
 //   ので、画面で動かした値がそのまま両方に効く(スカラーの再exportは数値のコピー=効かない)。
 //   ここへ新しい数値定数を足す前に、それがテーブル側に載るべきものでないか確認すること。
 const GATE_ARENA_RADIUS = 300;          // ゲートアリーナ半径(useGameLoop.tsと同値)
+
+/** ★v0.25.3588(社長報告「ジブリルのランタンレーザー3連、予告線が規定通りの流星になってない」):
+ *  ランスの発射時刻は「縁に到着した時」で事前に確定しないため、描画の流星が消え切るタイミングを
+ *  同期できなかった(旧: minWindup基準でprogが先に1へ到達→赤が消えた後にレーザーが来る)。
+ *  射出時点で**直線飛行と仮定した縁到着時刻**を見積もって焼く(旋回で実際は多少遅れる=描画側が
+ *  「発射までは消し切らない」ガードで吸収)。純関数(発射判定そのものは従来どおり=挙動不変)。 */
+export const estimateLanceFireAt = (
+  x0: number, y0: number, dir: number, homeX: number, homeY: number, bornAt: number,
+): number => {
+  const px = x0 - homeX, py = y0 - homeY;
+  const dx = Math.cos(dir), dy = Math.sin(dir);
+  const b = px * dx + py * dy;
+  const c = px * px + py * py - GATE_ARENA_RADIUS * GATE_ARENA_RADIUS;
+  const disc = b * b - c;
+  const distToRim = disc >= 0 ? Math.max(0, -b + Math.sqrt(disc)) : GATE_ARENA_RADIUS;
+  const flightMs = (distToRim / Math.max(1, JB_T.lance.lanternSpeed)) * 1000;
+  return bornAt + Math.max(JB_T.lance.minWindup, flightMs);
+};
 const ORBIT_RADIUS_CORRECT = 4;         // 半径補正の寄せ係数(=THOR_ORBIT_RADIUS_CORRECT)
 const HARAI_TRIGGER_DIST = 250;         // 斬り系を出せる距離(同値・旧実装専用)
 // §6.28共通: フェーズ移行の一瞬だけHPバーを点滅させる長さ(ジャイアントのGIANT_PHASE_FLASH_MSと同値)。
@@ -909,10 +927,12 @@ export const runJibrilTick = (
     const aim = jibrilHateAim();
     jr.lanceStartAt = newGameTime;
     jr.lanceLaunched = 1;
+    const dir0 = Math.atan2(aim.y - jcy, aim.x - jcx);
     patch.lanceLanterns = [{
       x: jcx, y: jcy,
-      dir: Math.atan2(aim.y - jcy, aim.x - jcx),
+      dir: dir0,
       bornAt: newGameTime,
+      estFireAt: estimateLanceFireAt(jcx, jcy, dir0, jHomeX, jHomeY, newGameTime), // ★v0.25.3588
     }];
     patch.hateTarget = aim.side;
     patch.bossState = 'lance-windup';
@@ -1102,7 +1122,11 @@ export const runJibrilTick = (
       const shouldHave = Math.min(JB_T.lance.count, 1 + Math.floor(elapsed / JB_T.lance.intervalMs));
       while (jr.lanceLaunched < shouldHave) {
         const aim = jibrilLockedAim(); // 狙いは射出時点のヘイト対象の現在地
-        lanterns.push({ x: jcx, y: jcy, dir: Math.atan2(aim.y - jcy, aim.x - jcx), bornAt: newGameTime });
+        const dirN = Math.atan2(aim.y - jcy, aim.x - jcx);
+        lanterns.push({
+          x: jcx, y: jcy, dir: dirN, bornAt: newGameTime,
+          estFireAt: estimateLanceFireAt(jcx, jcy, dirN, jHomeX, jHomeY, newGameTime), // ★v0.25.3588
+        });
         jr.lanceLaunched += 1;
         sfx.alert();
       }
