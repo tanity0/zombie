@@ -67,7 +67,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS,
   // ★KILL処刑演出v2(社長指示v0.25.3603): 拍の長さはstore側の定数が正(hitstopの長さと同じ出どころ)。
   KILLFX_CROUCH_MS, KILLFX_LEAP_MS, KILLFX_HOLD_MS, KILLFX_SLASH_MS, KILLFX_RETURN_MS, KILLFX_LAND_MS,
-  KILLFX_BURST_AT_MS, KILLFX_TOTAL_MS,
+  KILLFX_BURST_AT_MS, KILLFX_BLOOD_LAG_MS, KILLFX_TOTAL_MS,
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -3450,7 +3450,6 @@ export class PixiScene {
   private killFxSeen = 0;                       // 血の一斉噴出(1波)を出した killFx.startAt(1回きり)
   private killFxSeen2 = 0;                      // 噴出2波目(+90ms・間欠泉の密度)を出した startAt
   private killFxDustSeen = 0;                   // 着地の砂埃を出した killFx.startAt(1回きり)
-  private killFxStreak: Sprite | null = null;   // 掻っ切りの斬撃ストリーク(fx/slash-streak-*)
   private killFxText: Text | null = null;       // KILL!文字(実時間駆動。storeのcalloutは停止中凍るため専用)
   private killFxBloodPool: Sprite[] = [];       // 血粒のスプライトプール(Texture.WHITE・使い回し)
   private killFxBlood: { x: number; y: number; vx: number; vy: number; size: number; born: number; life: number; tint: number }[] = [];
@@ -13415,13 +13414,11 @@ export class PixiScene {
   ): { offX: number; offY: number; sqX: number; sqY: number; lean: number; faceLeft: boolean } | null {
     const rt = Date.now() - k.startAt;
     const t1 = KILLFX_CROUCH_MS, t2 = t1 + KILLFX_LEAP_MS;
-    const tB = KILLFX_BURST_AT_MS; // 噴出時刻(=貼り付き+一拍の後)。SE/血/KILL!文字の同期点。
+    const tB = KILLFX_BURST_AT_MS; // 斬撃時刻(=貼り付き+一拍の後)。血/SE/文字はBLOOD_LAG後。
     const t3 = tB + KILLFX_SLASH_MS, t4 = t3 + KILLFX_RETURN_MS;
-    // 斬撃ストリークの表示窓(噴出の頭120ms)以外では隠す(常時判定=消し忘れ防止)。
-    const streakT = (rt - tB) / 120;
-    if (rt >= tB && streakT < 1.2 && rt < t3) this.drawKillFxStreak(k, Math.min(1, streakT));
-    else if (this.killFxStreak) this.killFxStreak.visible = false;
-    this.drawKillFxText(k, rt); // KILL!文字(噴出と同時に出る・実時間駆動)
+    // ★FB5: 斬撃の絵は刀の一閃流用(store.spawnSlashをkillFx書き込み側がタイマーで出す)。
+    // 自前ストリークは撤去した。
+    this.drawKillFxText(k, rt); // KILL!文字(血しぶきと同時に出る・実時間駆動)
     if (rt < 0 || rt >= KILLFX_TOTAL_MS) return null;
     const faceLeft = k.ex < footX;
     const dir = faceLeft ? -1 : 1;
@@ -13434,74 +13431,51 @@ export class PixiScene {
       const e = (rt / t1) ** 2;
       offY = 5 * e; sqY = 1 - 0.22 * e; sqX = 1 + 0.14 * e; lean = -dir * 0.06 * e;
     } else if (rt < t2) {
-      // ★実機FB4(v0.25.3610): 跳びつき→**地を走るダッシュ**(放物線なし・尺半分)。
-      // ease-out(初速最大→減速)で滑り込み、進行方向へ横に伸びる+強い前傾。
+      // ★FB5(v0.25.3611): 出だしはジャンプへ戻す(FB4のダッシュは撤回・事実として記録)。
+      // ease-out(初速最大→減速)+放物線。進行方向へストレッチ。
       const u = (rt - t1) / KILLFX_LEAP_MS;
       const e = 1 - (1 - u) ** 3;
       offX = dx * e;
-      offY = dy * e;
-      sqX = 1.22 - 0.22 * u; sqY = 0.86 + 0.14 * u; lean = dir * 0.38 * (1 - u);
+      offY = dy * e - 58 * Math.sin(Math.PI * u);
+      sqY = 1.18 - 0.18 * u; sqX = 0.88 + 0.12 * u; lean = dir * 0.30 * (1 - u);
     } else if (rt < tB) {
       // ★一拍(実機FB1): 首元に貼り付いて静止。刃を引き絞るタメ(ゆっくり圧縮)だけ掛ける。
       const u = (rt - t2) / KILLFX_HOLD_MS;
       offX = dx; offY = dy;
       sqX = 1 + 0.06 * u; sqY = 1 - 0.06 * u; lean = -dir * 0.08 * u;
     } else if (rt < t3) {
-      // 掻っ切り(噴出): 頭の1/3だけ鋭い体重移動(斬りの慣性)。血・SE・文字はこの瞬間に同期。
+      // 掻っ切り: 頭の1/3だけ鋭い体重移動(斬りの慣性)。斬撃(一閃流用・store側)→BLOOD_LAG後に
+      // 血・SE・KILL!文字が同期(FB5「斬撃→血しぶき」の順)。
       const u = (rt - tB) / KILLFX_SLASH_MS;
       const cut = Math.max(0, 1 - u * 3);
       offX = dx + dir * 12 * cut; offY = dy;
       lean = dir * (0.20 * cut - 0.05); sqX = 1 + 0.10 * cut; sqY = 1 - 0.08 * cut;
-      if (this.killFxSeen !== k.startAt) {
+      if (this.killFxSeen !== k.startAt && rt >= tB + KILLFX_BLOOD_LAG_MS) {
         this.killFxSeen = k.startAt;
         this.spawnKillFxBlood(k, 1); // 血の間欠泉1波=巻き込んだ敵も全員この瞬間に一斉
       }
-      if (this.killFxSeen2 !== k.startAt && rt >= tB + 90) {
+      if (this.killFxSeen2 !== k.startAt && rt >= tB + KILLFX_BLOOD_LAG_MS + 90) {
         this.killFxSeen2 = k.startAt;
         this.spawnKillFxBlood(k, 2); // 2波目(+90ms)=間欠泉の密度(実機FB1「全然大量じゃない」対策)
       }
     } else if (rt < t4) {
-      // 帰還: smoothstep(踏み切り加速→減速)+高い放物線。後方へ反る(跳んで戻る慣性)。
+      // ★FB5: 帰還=**バックダッシュ**(放物線なし・尺半分)。初速最大→減速で滑って戻る。
+      // 相手を見たまま後傾(バックステップの慣性)。
       const u = (rt - t3) / KILLFX_RETURN_MS;
-      const e = u * u * (3 - 2 * u);
+      const e = 1 - (1 - u) ** 3;
       offX = dx * (1 - e);
-      offY = dy * (1 - e) - 84 * Math.sin(Math.PI * u);
-      lean = -dir * 0.25 * Math.sin(Math.PI * u);
+      offY = dy * (1 - e);
+      lean = -dir * 0.30 * (1 - u * 0.5); sqX = 1.16 - 0.16 * u; sqY = 0.9 + 0.1 * u;
     } else {
-      // 着地: スカッシュ(潰れ→戻り)+砂埃(1回きり)。
+      // 滑り込み停止: スカッシュ(潰れ→戻り)+土煙(1回きり)。
       const v = (rt - t4) / KILLFX_LAND_MS;
-      sqY = 1 - 0.20 * (1 - v); sqX = 1 + 0.14 * (1 - v);
+      sqY = 1 - 0.14 * (1 - v); sqX = 1 + 0.18 * (1 - v); lean = -dir * 0.12 * (1 - v);
       if (this.killFxDustSeen !== k.startAt) {
         this.killFxDustSeen = k.startAt;
         this.spawnKillFxLandPuff(footX, footY);
       }
     }
     return { offX, offY, sqX, sqY, lean, faceLeft };
-  }
-
-  /** 掻っ切りの斬撃ストリーク(fx/slash-streak-0..4を首元で振り抜く)。t=0..1。 */
-  private drawKillFxStreak(
-    k: NonNullable<ReturnType<typeof useGameStore.getState>['killFx']>, t: number,
-  ): void {
-    const ref = getTexture('fx/slash-streak-4');
-    if (!ref) return;
-    if (!this.killFxStreak) {
-      this.killFxStreak = new Sprite();
-      this.killFxStreak.anchor.set(0.5);
-      this.L.effectLayer.addChild(this.killFxStreak);
-    }
-    const sp = this.killFxStreak;
-    const idx = Math.min(4, Math.floor(t * 5));
-    const tex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
-    if (sp.texture !== tex) sp.texture = tex;
-    const dir = k.ex < k.px ? -1 : 1;
-    const len = Math.max(k.ew, k.eh) * 1.9; // 派手さの絵=判定を持たないので大きく(2分類②)
-    const sc = len / Math.max(1, ref.width);
-    sp.scale.set(sc * dir, sc);
-    sp.rotation = -0.32 * dir;
-    sp.position.set(k.ex, k.ey - k.eh * 0.30); // 首元
-    sp.alpha = 1 - Math.max(0, (t - 0.7) / 0.3);
-    sp.visible = sp.alpha > 0.01;
   }
 
   /** 血の一斉間欠泉: primary の首元は濃く大量、巻き込み(victims)も同時に噴く。
@@ -13538,13 +13512,14 @@ export class PixiScene {
     }
   }
 
-  /** KILL!文字(実時間駆動)。噴出(KILLFX_BURST_AT_MS)と同時にポップ→保持→終端でフェード。
+  /** KILL!文字(実時間駆動)。血しぶき(BURST_AT+BLOOD_LAG)と同時にポップ→保持→終端でフェード。
    * storeのcallout(旧Kill!表示)は全停止中に時計ごと凍って出ないため、ここで専用に描く。 */
   private drawKillFxText(
     k: NonNullable<ReturnType<typeof useGameStore.getState>['killFx']>, rt: number,
   ): void {
     const FADE_MS = 260; // 停止明け(TOTAL)から消え切るまで
-    const show = rt >= KILLFX_BURST_AT_MS && rt < KILLFX_TOTAL_MS + FADE_MS;
+    const showAt = KILLFX_BURST_AT_MS + KILLFX_BLOOD_LAG_MS;
+    const show = rt >= showAt && rt < KILLFX_TOTAL_MS + FADE_MS;
     if (!show) { if (this.killFxText) this.killFxText.visible = false; return; }
     if (!this.killFxText) {
       // まれなcallout枠(CD制のフル演出時のみ)なのでPixi Text可。1度作って使い回す。
@@ -13560,7 +13535,7 @@ export class PixiScene {
       this.L.effectLayer.addChild(this.killFxText);
     }
     const tx = this.killFxText;
-    const u = (rt - KILLFX_BURST_AT_MS) / 120; // ポップイン(オーバーシュート→整定=慣性)
+    const u = (rt - (KILLFX_BURST_AT_MS + KILLFX_BLOOD_LAG_MS)) / 120; // ポップイン(オーバーシュート→整定=慣性)
     const pop = u < 1 ? 1.35 - 0.35 * (1 - (1 - Math.min(1, u)) ** 2) : 1;
     tx.scale.set(pop);
     tx.position.set(k.ex, k.ey - k.eh * 0.85);
@@ -13893,7 +13868,9 @@ export class PixiScene {
     // 被弾i-frame は invulnerableTime のみ更新されるので一致せず、従来どおり点滅する。
     const counterInvuln = p.invulnerable && p.lastCounterSuccessTime === p.invulnerableTime;
     view.sprite.alpha = (seekerActive ? 0.4 : (p.invulnerable && !counterInvuln ? 0.5 + 0.5 * Math.sin(now / 50) : 1)) * deathFade * introFade * this.corridorRunInFade();
-    view.container.zIndex = fb.footY;
+    // ★FB5(v0.25.3611「演出中はかならず敵の上のレイヤーに置き」): KILL処刑演出中はYソートを
+    // 無視して必ず全アクターの前面(首元に乗った時に敵の後ろへ回らない)。描画のみ・判定不変。
+    view.container.zIndex = killPose ? fb.footY + 100000 : fb.footY;
     view.light.visible = false;
     view.reticle.clear();
     // 刀/小烏丸(村雨)装備中: 実画像(katana-item)をプレイヤー背面へ表示。
@@ -25281,7 +25258,6 @@ export class PixiScene {
     for (const o of this.jibrilLanceLanternPool.values()) o.destroy();
     for (const o of this.acrasielSpearReadySprites.values()) o.destroy();
     for (const o of this.holoVolleySprites.values()) o.destroy();
-    this.killFxStreak?.destroy(); this.killFxStreak = null;
     this.killFxText?.destroy(); this.killFxText = null;
     for (const o of this.killFxBloodPool) o.destroy();
     this.killFxBloodPool = []; this.killFxBlood = [];

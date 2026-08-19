@@ -1860,21 +1860,21 @@ export const MELEE_FINISH_ZOOM_CD_MS = 10000;
 // 実時間ms。合計=hitstop(全停止)の長さ——この間、動くのはpixi側の実時間駆動FXだけ
 // (社長指示「エフェクト中は時間ストップ(エフェクトは止めない)」)。数値は叩き台。
 export const KILLFX_CROUCH_MS = 110;   // しゃがみ(タメ・沈み込み)
-// ★実機FB4(社長指示v0.25.3610「最初はジャンプじゃなくて、尺を半分にして首にダッシュで近づく。
-// その後一拍をその分長く置いて、あと一緒」): 跳びつき→**地を走るダッシュ**へ・尺150→75ms。
-// 浮いた75msは一拍(HOLD)へ移す=噴出時刻(BURST_AT)・合計は不変。
-export const KILLFX_LEAP_MS = 75;      // 首元へダッシュ(ease-out・放物線なし)
-// ★実機FB1(社長指示v0.25.3605「首元に貼り付いたら、一拍置いてからSEと共に大量に血を上に噴射。
-// このタイミングでKILL!などの文字も合わせる」): 貼り付き→噴出の間に「一拍」を追加。
-// SE(killFx書き込み時のタイマー)・血・KILL!文字は全部この境界(=噴出時刻)に同期する。
-export const KILLFX_HOLD_MS = 245;     // 首元に貼り付いて一拍(静止のタメ。FB4でダッシュ短縮分+75ms)
-export const KILLFX_SLASH_MS = 170;    // 掻っ切り+血の間欠泉(巻き込んだ敵も全員一斉)
-export const KILLFX_RETURN_MS = 190;   // 元の場所へ跳んで戻る(高い放物線)
-export const KILLFX_LAND_MS = 90;      // 着地スカッシュ
-/** 噴出時刻(演出開始からのms)。SE・血・KILL!文字の同期点。 */
-export const KILLFX_BURST_AT_MS = KILLFX_CROUCH_MS + KILLFX_LEAP_MS + KILLFX_HOLD_MS;
+// ★実機FB5(社長指示v0.25.3611「ジャンプ→一拍置く→斬撃(刀の一閃の斬撃流用)→血しぶき→
+// バックダッシュで戻る(こっちの尺を半分に)」): 出だしはジャンプへ戻す(FB4のダッシュ75msは撤回・
+// 事実として記録)。戻りは放物線→**バックダッシュ**へ・尺190→95ms(半分)。
+export const KILLFX_LEAP_MS = 150;     // 首元へジャンプ(ease-out+放物線)
+// ★実機FB1(社長指示v0.25.3605): 貼り付き→噴出の間に「一拍」。
+export const KILLFX_HOLD_MS = 170;     // 首元に貼り付いて一拍(静止のタメ)
+export const KILLFX_SLASH_MS = 170;    // 掻っ切り(斬撃→血しぶきの順・下のBLOOD_LAG)
+export const KILLFX_RETURN_MS = 95;    // バックダッシュで戻る(FB5で半分・放物線なし)
+export const KILLFX_LAND_MS = 90;      // 滑り込み停止(スカッシュ)
+/** 斬撃時刻(演出開始からのms)。刀の一閃流用の斬撃はここで出る。 */
+export const KILLFX_BURST_AT_MS = KILLFX_CROUCH_MS + KILLFX_LEAP_MS + KILLFX_HOLD_MS; // =430
+/** 斬撃→血しぶき/SE/KILL!文字までの間(FB5「斬撃→血しぶき」の順序)。 */
+export const KILLFX_BLOOD_LAG_MS = 90;
 export const KILLFX_TOTAL_MS =
-  KILLFX_BURST_AT_MS + KILLFX_SLASH_MS + KILLFX_RETURN_MS + KILLFX_LAND_MS; // =880
+  KILLFX_BURST_AT_MS + KILLFX_SLASH_MS + KILLFX_RETURN_MS + KILLFX_LAND_MS; // =785
 export const KILLFX_RELEASE_SLOW_MS = 300; // 停止明け: 0.2→等速へ戻す尾(時間にも慣性を付ける)
 export const COUNTER_ZOOM_MAG = 1.0;       // カウンター成立の寄り(社長指示で2倍=+100%・旧1.5倍から改訂)
 // PACING_PUZZLE.md §5.22 M21(社長委任v0.25.1516・CD制確定v0.25.1524): KILL/カウンター演出を
@@ -6555,7 +6555,19 @@ export const useGameStore = create<GameState>((set, get) => ({
             hitstopUntil: Date.now() + KILLFX_TOTAL_MS,
           });
           get().triggerTimeSlow(0.2, KILLFX_TOTAL_MS + KILLFX_RELEASE_SLOW_MS, KILLFX_TOTAL_MS);
-          // ★実機FB1(v0.25.3605): 噴出の瞬間(BURST_AT=貼り付き+一拍の後)にSE。血・KILL!文字と同期。
+          // ★実機FB5(v0.25.3611): 斬撃=**刀の一閃と同じ絵**(spawnSlash・青白い斬閃・大サイズ)を
+          // 一拍明け(BURST_AT)に首元へ。killFx中の'slash'は実時間駆動(v0.25.3608)なので停止中でも流れる。
+          {
+            const neckX = prim.x + prim.width / 2;
+            const neckY = prim.y + prim.height / 2 - prim.height * 0.30;
+            const slashLen = Math.max(prim.width, prim.height) * 1.9 / 80; // spawnSlash基準長(≒80px)比
+            setTimeout(() => {
+              const kfx = get().killFx;
+              if (!kfx || Date.now() - kfx.startAt >= KILLFX_TOTAL_MS) return;
+              get().spawnSlash(neckX, neckY, 'rgba(221,238,255,0.95)', slashLen);
+            }, KILLFX_BURST_AT_MS);
+          }
+          // ★実機FB1(v0.25.3605)+FB5: 斬撃の直後(BLOOD_LAG)にSE。血・KILL!文字と同期。
           // gameStoreはaudioManagerを静的importできない(循環)ため、動的importで解決する
           // (発火はズームCD明けのフル演出時のみ=頻度は低い。素材は既存2音の重ね=叩き台、
           // 専用SEが支給されたら差し替える)。
@@ -6566,7 +6578,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               m.playSfx('heavy-impact');
               m.playSfx('slash-damage');
             });
-          }, KILLFX_BURST_AT_MS);
+          }, KILLFX_BURST_AT_MS + KILLFX_BLOOD_LAG_MS);
         }
       }
     } else if (slashAt.length > 0) {

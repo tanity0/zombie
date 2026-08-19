@@ -163,9 +163,14 @@ const VirtualJoystick: React.FC = () => {
         const counter = triggerCounter();
         // 鞭装備中はナイフ用の汎用音を出さない(鞭専用SE=whip-swing/whip-hit に任せる)。
         const isWhip = useGameStore.getState().player.subWeapons.includes('whip');
-        if (counter.swung && !isWhip) playSfx('melee');
-        if (counter.finish) playSfx('melee-finish');
-        else if (counter.hit && !isWhip) playSfx('slash-damage');
+        // ★実機FB5(v0.25.3611「まだKILL演出確定時に通常の近接SEが鳴ってる」): KILL処刑演出が
+        // このスイングで発動した(triggerCounter内で killFx が今書かれた)場合、通常の近接SE
+        // (振り音/フィニッシュ音)を出さない——演出側が斬撃直後に専用SEを鳴らす。
+        const kfxNow = useGameStore.getState().killFx;
+        const killFxJustFired = !!kfxNow && Date.now() - kfxNow.startAt < 60;
+        if (counter.swung && !isWhip && !killFxJustFired) playSfx('melee');
+        if (counter.finish && !killFxJustFired) playSfx('melee-finish');
+        else if (counter.hit && !isWhip && !killFxJustFired) playSfx('slash-damage');
         if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
       }
     }
