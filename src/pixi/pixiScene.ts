@@ -3186,7 +3186,10 @@ export class PixiScene {
   // ★予兆一括バッチ(v0.25.3344・research/TELL_MOTION_LEDGER.md §4裁定「弾発射=holo-scan/
   // ワープ=holo-mini」): 魔法陣ホログラム2種+単眼(angel-eye)の専用プール。id keyed・単純な1枚Sprite
   // (flipbookはコマ差し替えのみ=drawExplosionSpriteと同じ作法)。
-  private holoScanSprites = new Map<string, Sprite>();   // 弾発射(volley)構え: 本体に半透明で被せる
+  // 弾発射(volley)構え: 出現魔法陣(holo-circle)を本体へ大きく重ねる。
+  // ★v0.25.3604(社長指示「小さすぎる」「これじゃないやつにして」): 旧はholo-scan(分析画面)を
+  // ×1.8で被せていた。素材をholo-circle(出現魔法陣・8コマ)へ差し替え+×3.2へ大型化。
+  private holoVolleySprites = new Map<string, Sprite>();
   private holoMiniSprites = new Map<string, Sprite>();   // ワープ(warp)構え: 足元
   private angelEyeSprites = new Map<string, Sprite>();   // 単眼の凝視(gaze)構え: 頭上〜中心
   // PACING_PUZZLE.md §6.38 v9(完全コピー原則): 出現演出=城ボスのcastleSummonCircleと同じ
@@ -11926,8 +11929,8 @@ export class PixiScene {
         }
         const spearReadySp = this.acrasielSpearReadySprites.get(id);
         if (spearReadySp) { spearReadySp.destroy(); this.acrasielSpearReadySprites.delete(id); }
-        const holoScanSp = this.holoScanSprites.get(id);
-        if (holoScanSp) { holoScanSp.destroy(); this.holoScanSprites.delete(id); }
+        const holoVolleySp = this.holoVolleySprites.get(id);
+        if (holoVolleySp) { holoVolleySp.destroy(); this.holoVolleySprites.delete(id); }
         const holoMiniSp = this.holoMiniSprites.get(id);
         if (holoMiniSp) { holoMiniSp.destroy(); this.holoMiniSprites.delete(id); }
         const eyeSp = this.angelEyeSprites.get(id);
@@ -14252,8 +14255,8 @@ export class PixiScene {
       const spearReadySp = this.acrasielSpearReadySprites.get(e.id);
       if (spearReadySp) spearReadySp.visible = false;
       // ★予兆一括バッチ(v0.25.3344): holo-scan/holo-mini/angel-eyeも同じ作法で既定OFF。
-      const holoScanSp = this.holoScanSprites.get(e.id);
-      if (holoScanSp) holoScanSp.visible = false;
+      const holoVolleySp = this.holoVolleySprites.get(e.id);
+      if (holoVolleySp) holoVolleySp.visible = false;
       const holoMiniSp = this.holoMiniSprites.get(e.id);
       if (holoMiniSp) holoMiniSp.visible = false;
       const eyeSp = this.angelEyeSprites.get(e.id);
@@ -16051,7 +16054,8 @@ export class PixiScene {
         const vProg = bs === 'volley-windup'
           ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / volleyWindMs))
           : 1;
-        this.drawHoloScanOverlay(e.id, cx, cy, Math.max(e.width, e.height) * 1.8, vProg);
+        // ★v0.25.3604(社長指示): holo-scan×1.8→**holo-circle(出現魔法陣)×3.2**へ差し替え+大型化。
+        this.drawHoloVolleyCircle(e.id, cx, cy, Math.max(e.width, e.height) * 3.2, vProg);
       }
       // ★予兆一括バッチ(v0.25.3344・レシピ2+4): ジブリルの瞬間移動(warp)構え=縦縮み(しゃがみ)+
       // 足元にホロmini(windup尺で1周)。旧「なし」を解消(パンプキン式の縮みを流用)。
@@ -23291,22 +23295,24 @@ export class PixiScene {
     sp.visible = true;
   }
 
-  // ★予兆一括バッチ(v0.25.3344・裁定済みv0.25.3341): 弾発射(volley)構え=分析ホログラム(holo-scan・
-  // 全7コマ)を本体スプライトへ半透明で被せる。windup尺で1周・加算合成(強glowは使わない=Graphics塗り
-  // 相当の軽さ)。bodyW/bodyHは本体の見た目サイズ(構えている本人が光って見える程度に合わせる)。
-  private drawHoloScanOverlay(id: string, cx: number, cy: number, sizePx: number, prog: number) {
-    const frame = Math.max(0, Math.min(6, Math.floor(prog * 7)));
-    const tex = getTexture(`fx/holo-scan-${frame}`);
+  // 弾発射(volley)構え=出現魔法陣(holo-circle・全8コマ)を本体へ大きく重ねる。windup尺で1周・
+  // 加算合成(強glowは使わない=pooled sprite 1枚の軽さ)。
+  // ★v0.25.3604(社長指示「まず小さすぎる。これじゃないやつにして」): 旧v0.25.3344の
+  // holo-scan(分析画面・×1.8・alpha0.5)から差し替え。魔法陣は出現アニメ後半で完成形になるので
+  // alphaは進行で立ち上げる(構え切りが一番ハッキリ)。
+  private drawHoloVolleyCircle(id: string, cx: number, cy: number, sizePx: number, prog: number) {
+    const frame = Math.max(0, Math.min(7, Math.floor(prog * 8)));
+    const tex = getTexture(`fx/holo-circle-${frame}`);
     if (!tex) return;
-    let sp = this.holoScanSprites.get(id);
+    let sp = this.holoVolleySprites.get(id);
     if (!sp) {
       sp = new Sprite(tex); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
-      this.L.effectLayer.addChild(sp); this.holoScanSprites.set(id, sp);
+      this.L.effectLayer.addChild(sp); this.holoVolleySprites.set(id, sp);
     }
     if (sp.texture !== tex) sp.texture = tex;
     sp.scale.set(sizePx / Math.max(1, Math.max(tex.width, tex.height)));
     sp.position.set(cx, cy);
-    sp.alpha = 0.5;
+    sp.alpha = 0.45 + 0.35 * prog;
     sp.visible = true;
   }
 
@@ -25191,7 +25197,7 @@ export class PixiScene {
     for (const o of this.jibrilLanternFirePool.values()) o.destroy();
     for (const o of this.jibrilLanceLanternPool.values()) o.destroy();
     for (const o of this.acrasielSpearReadySprites.values()) o.destroy();
-    for (const o of this.holoScanSprites.values()) o.destroy();
+    for (const o of this.holoVolleySprites.values()) o.destroy();
     for (const o of this.holoMiniSprites.values()) o.destroy();
     for (const o of this.angelEyeSprites.values()) o.destroy();
     for (const o of this.bountySummonSprites.values()) o.destroy();
