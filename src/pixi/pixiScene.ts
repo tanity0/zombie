@@ -3207,6 +3207,7 @@ export class PixiScene {
   private bountyWhipTipFlashSprites = new Map<string, Sprite>(); // ★v0.25.3573: スミア最終コマの先端フラッシュ
   private bountyWhipRopes = new Map<string, { rope: MeshRope; pts: Point[] }>(); // ★v0.25.3573: 鞭本体のしなりロープ
   private bountyWhipLag = new Map<string, { ang: number; vel: number; lastMs: number }>(); // ★v0.25.3573: 先端遅れバネの状態
+  private bountyScissorBladeSprites = new Map<string, Sprite[]>(); // ★v0.25.3577: 鋏の刃2枚(ピボット連結の実開閉)
   private bountyChargeSwingStart = new Map<string, { key: string; at: number }>();
   /** v0.25.3520: 鞭の残像を「振りの開始位置」へ焼き付けるための錨(本体の移動に付いて行かせない)。 */
   private bountyWhipSmearAnchor = new Map<string, { key: string; x: number; y: number; ang: number; len: number }>();
@@ -11945,6 +11946,8 @@ export class PixiScene {
         const bountyRope = this.bountyWhipRopes.get(id); // ★v0.25.3573
         if (bountyRope) { bountyRope.rope.destroy(); this.bountyWhipRopes.delete(id); }
         this.bountyWhipLag.delete(id);
+        const scisBlades2 = this.bountyScissorBladeSprites.get(id); // ★v0.25.3577
+        if (scisBlades2) { for (const sp of scisBlades2) sp.destroy(); this.bountyScissorBladeSprites.delete(id); }
         this.bountyChargeSwingStart.delete(id);
         const scissorFlashSp = this.bountyScissorFlashSprites.get(id);
         if (scissorFlashSp) { scissorFlashSp.destroy(); this.bountyScissorFlashSprites.delete(id); }
@@ -14069,6 +14072,8 @@ export class PixiScene {
       if (tipFlashSp) tipFlashSp.visible = false;
       const whipRope = this.bountyWhipRopes.get(e.id); // ★v0.25.3573: 鞭ロープも既定OFF(描く分岐だけが点ける)
       if (whipRope) whipRope.rope.visible = false;
+      const scisBlades = this.bountyScissorBladeSprites.get(e.id); // ★v0.25.3577: 鋏の刃2枚も同じ作法
+      if (scisBlades) for (const sp of scisBlades) sp.visible = false;
       const thrustWindSp = this.bountyThrustWindSprites.get(e.id);
       if (thrustWindSp) thrustWindSp.visible = false;
     }
@@ -23087,6 +23092,12 @@ export class PixiScene {
       this.drawBountyWhipRope(id, px, py, angleRad, lengthPx, alpha);
       return;
     }
+    // ★v0.25.3577: 鋏は刃2枚をピボットで連結して**実開閉**する(社長支給の分離素材)。
+    // 呼び出し側の互換は保つ: 従来の開閉擬似 widthMul(1=閉・1.7=全開)を開き角へ写像する。
+    if (texName === 'bounty-balance-scissors') {
+      this.drawBountyScissors(id, px, py, angleRad, lengthPx, alpha, widthMul);
+      return;
+    }
     const tex = getTexture(texName);
     if (!tex) return;
     let sp = this.bountyWeaponSprites.get(id);
@@ -23166,6 +23177,53 @@ export class PixiScene {
     slot.rope.position.set(px, py);
     slot.rope.alpha = alpha;
     slot.rope.visible = true;
+  }
+
+  // ★v0.25.3577 鋏の実開閉(社長支給の刃2枚素材・「右の丸い部分で連結」「どちらかを逆にして使って」)。
+  // 各刃はピボット(素材右端の丸の中心)をアンカーに持ち、狙い角±開き半角へ回す。刃1は上下反転=
+  // 2枚の反りが向かい合う。従来の開閉擬似(1枚絵のwidthMul)からの写像なので技ごとの開閉の慣性は不変。
+  /** 刃素材の台帳(実測値): アンカー=ピボットの画像内割合 / dist=ピボット→先端px / intrinsic=素材内の先端方向。 */
+  private static readonly SCISSOR_BLADES = [
+    { tex: 'bounty-balance-blade-0', ax: 0.918, ay: 0.792, dist: 375, intrinsic: -2.8572, flip: false },
+    { tex: 'bounty-balance-blade-1', ax: 0.920, ay: 0.667, dist: 360, intrinsic: -2.9471, flip: true },
+  ] as const;
+  /** 全開(旧widthMul=1.7)時の片側の開き角(rad・叩き台)。 */
+  private static readonly SCISSOR_OPEN_MAX_RAD = 0.5;
+
+  private drawBountyScissors(
+    id: string, px: number, py: number, angleRad: number, lengthPx: number, alpha: number, widthMul: number,
+  ): void {
+    let blades = this.bountyScissorBladeSprites.get(id);
+    if (!blades) {
+      blades = [];
+      for (const b of PixiScene.SCISSOR_BLADES) {
+        const tex = getTexture(b.tex);
+        if (!tex) return;
+        const sp = new Sprite(tex);
+        sp.anchor.set(b.ax, b.ay);
+        this.L.effectLayer.addChild(sp);
+        blades.push(sp);
+      }
+      this.bountyScissorBladeSprites.set(id, blades);
+    }
+    // 旧widthMul(1=閉・1.7=全開)→開きの割合。跳びかかり中の1.5は約0.71開き。
+    const openT = Math.max(0, Math.min(1, (widthMul - 1) / 0.7));
+    const openHalf = openT * PixiScene.SCISSOR_OPEN_MAX_RAD;
+    // 旧1枚絵は中心アンカーで(px,py)に置かれていた=見た目の中心を保つため、ピボットを半分だけ手前へ。
+    const pvx = px - Math.cos(angleRad) * lengthPx * 0.5;
+    const pvy = py - Math.sin(angleRad) * lengthPx * 0.5;
+    for (let i = 0; i < blades.length; i++) {
+      const b = PixiScene.SCISSOR_BLADES[i];
+      const sp = blades[i];
+      const s = lengthPx / b.dist; // ピボット→先端=lengthPx(旧: 全長160と同じ届き)
+      sp.scale.set(s, b.flip ? -s : s);
+      // 反転すると素材内の先端方向が上下鏡映(intrinsic→-intrinsic)になるぶん回転の式も変わる。
+      const desired = angleRad + (b.flip ? openHalf : -openHalf);
+      sp.rotation = b.flip ? desired + b.intrinsic : desired - b.intrinsic;
+      sp.position.set(pvx, pvy);
+      sp.alpha = alpha;
+      sp.visible = true;
+    }
   }
 
   // 馬乗り3段コンボの鞭スミア(fx/whip-smear-0/1/2)。段(0/1/2)ごとに絵が変わる=「段対応」。
@@ -24759,6 +24817,7 @@ export class PixiScene {
     for (const o of this.bountyWhip360ArcSprites.values()) o.destroy();
     for (const o of this.bountyWhipTipFlashSprites.values()) o.destroy();
     for (const o of this.bountyWhipRopes.values()) o.rope.destroy(); // ★v0.25.3573
+    for (const arr of this.bountyScissorBladeSprites.values()) for (const sp of arr) sp.destroy(); // ★v0.25.3577
     for (const o of this.bountyScissorFlashSprites.values()) o.destroy();
     for (const o of this.bossGunMuzzleSprites.values()) o.destroy();
     for (const p of this.petalPool) p.sp.destroy();

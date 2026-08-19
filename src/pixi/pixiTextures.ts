@@ -576,7 +576,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'bounty-melee-whip', scaleMode: 'nearest' as const },
       // 鋏(変異)の武器=巨大な血染めの裁ち鋏(社長支給v0.25.3365・392×256)。これで武器素材4本完備。
       // 用途の割当は§6.38武器素材台帳。
-      { name: 'bounty-balance-scissors', scaleMode: 'nearest' as const },
+      // ★v0.25.3577: 鋏は1枚絵→刃2枚(社長支給・右の丸=ピボットで連結し実開閉する)
+      { name: 'bounty-balance-blade-0', scaleMode: 'nearest' as const },
+      { name: 'bounty-balance-blade-1', scaleMode: 'nearest' as const },
       // 桜の花びら(社長支給v0.25.3368・148×128・花弁1枚)。舞妓の全技を貫く装飾粒子=
       // 水鳥乱舞の花吹雪/手毬打ちヒット/型切替の舞い直し。回転・散らし・量産はエンジン側(§6.38)。
       { name: 'fx/petal-0', scaleMode: 'nearest' as const },
