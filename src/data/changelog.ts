@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3654',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 育成の裁定を反映=処刑にも攻撃力適用・phillも弾数対象・守護霊と幻影に育成を反映・ボムキルは数えない)。',
+    ],
+  },
+  {
     version: '0.25.3653',
     items: [
       'ゲーム内容の変更はありません(開発資料: 育成の弾数強化を「所持弾薬の上限+5%ずつ」に訂正=実機の仕様どおり)。',
