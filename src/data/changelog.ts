@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3653',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 育成の弾数強化を「所持弾薬の上限+5%ずつ」に訂正=実機の仕様どおり)。',
+    ],
+  },
+  {
     version: '0.25.3652',
     items: [
       'ゲーム内容の変更はありません(開発資料: 育成設計を最終化=4系統×5段階・初期HP130・メーター式)。',
