@@ -186,19 +186,29 @@ export const phantomEase = (t: number): number => {
 export type PhantomMove = 'gp-melee' | 'gp-shot' | 'gp-issen';
 
 /**
+ * 中距離で銃撃ではなく一閃を選ぶ確率(叩き台)。
+ * ★v0.25.3632(成果物監査・重大1): 旧実装は中距離を「intent==='melee' なら一閃」でゲートしていたが、
+ * decideGhost が melee 意図を返すのは**縁距離74px以内(=gp-meleeの帯の中)だけ**なので、
+ * 「中距離かつ近接意図」は空集合=**一閃が一度も発動しなかった**(44+6配置の実測でwindup出現0)。
+ * 設計書v2の決定は「中=issen or shot」(意図ゲートの指定は無い)。抽選に戻して入口を実在させる。
+ */
+export const ISSEN_MID_CHANCE = 0.45;
+
+/**
  * 距離と「攻撃意図」から技を選ぶ(設計書「近(≤preferredDist)=melee / 中=issen or shot / 遠=shot」)。
  *
  * `intent` は decideGhost が返した action。**間合いの取り方は台帳のプロファイルが決めている**ので、
  * ここは「その間合いで何を出すか」だけを決める薄い層にする(意思決定を二重に持たない)。
  *  - 近(preferredDist 以内) … 近接。
- *  - 中(一閃の射程内)     … 意図が近接寄り(melee)なら一閃、撃つ気(shoot)なら銃撃。
+ *  - 中(一閃の射程内)     … 近接意図なら一閃確定、それ以外は一閃/銃撃の抽選(上の★)。
  *  - 遠                    … 銃撃。
+ * `rand01` は [0,1) の乱数(テストで固定できるよう引数注入)。
  */
 export const pickPhantomMove = (
-  dist: number, preferredDist: number, intent: GhostDecision['action'],
+  dist: number, preferredDist: number, intent: GhostDecision['action'], rand01: number = Math.random(),
 ): PhantomMove => {
   if (dist <= preferredDist) return 'gp-melee';
-  if (dist <= GP_T.issen.reach) return intent === 'melee' ? 'gp-issen' : 'gp-shot';
+  if (dist <= GP_T.issen.reach) return (intent === 'melee' || rand01 < ISSEN_MID_CHANCE) ? 'gp-issen' : 'gp-shot';
   return 'gp-shot';
 };
 
@@ -291,7 +301,7 @@ const phantomCounterHit = (phantom: Enemy, hx: number, hy: number, sfx: PhantomS
   const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT);
   const g2 = useGameStore.getState();
   g2.damageEnemy(phantom.id, dmg, false, true, false, 'other', 'player', 'counter');
-  recordCritHit('guaranteed', false); // §7-11c(4): カウンター反撃(確定クリ)の計測口
+  recordCritHit('guaranteed', true); // §7-11c(4): カウンター反撃(確定クリ)の計測口。幻影はisBossType編入済みなので対ボス=true(v0.25.3632・監査小6)
   g2.spawnDamageNumber(phantom.x + phantom.width / 2, phantom.y, dmg, true);
   sfx.reward();
   g2.spawnRing(hx, hy, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);

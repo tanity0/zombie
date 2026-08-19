@@ -29,6 +29,7 @@ import { GLOW_R_L } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
   isBossType, isHiddenBoss, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile, isCorpse,
+  isGuardianPhantom,
 } from './enemyUtils';
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
 import { activeFlareTargets } from './flareGun';
@@ -972,6 +973,11 @@ export const applyContactDamage = (
     // v0.25.3050(社長指示①): グレンの三連跳び(g-trijump-air)も空中族に追加——空中は被弾しない+
     // カウンターは今の跳びの着地円の中でだけ(単発の飛び掛かりg-jump-airと同じ扱い。監査v3049の発見(a))。
     // v0.25.3052(社長裁定「滑空の案はうで」): 滑空(g-glide-active)も空中族——通過中の体当たりは
+    // research/GHOST_BOSS.md(決闘仕様): 幻影は**接触では削らない**(ENEMY_STATS.damage=0)。
+    // damage=0 のまま下の damagePlayer へ落とすと i-frame が立たず(gameStore側は amount>0 でのみ
+    // invulnerable を立てる)、重なった毎フレーム被弾SE+赤フラッシュ+赤バーストだけが鳴り続ける
+    // (v0.25.3632・成果物監査 重大2)。接触は演出ごと素通りさせる(技のダメージは phantomTick 側)。
+    if (isGuardianPhantom(enemy.type)) return;
     // 被弾しない(ダメージ=赤い帯のカプセル爆発+終点二撃目のみ)。カウンターは赤い帯の中でだけ。
     if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air' || enemy.aiPhase === 'g-trijump-air'
       || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-glide-active')) {

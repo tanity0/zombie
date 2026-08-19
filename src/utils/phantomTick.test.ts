@@ -7,7 +7,7 @@
 //  ④ 州名が命名規約どおりで、カウンター成立域の宣言と食い違わないか
 import { describe, it, expect } from 'vitest';
 import {
-  pickPhantomMove, phantomEase, phantomIssenOffsetPx, phantomProfile, phantomShotDamage,
+  pickPhantomMove, ISSEN_MID_CHANCE, phantomEase, phantomIssenOffsetPx, phantomProfile, phantomShotDamage,
   createPhantomTickState, pickActivePhantom,
   GUARDIAN_PHANTOM_WINDUP_STATES, GUARDIAN_PHANTOM_RECOVER_STATES, GUARDIAN_PHANTOM_TYPE,
 } from './phantomTick';
@@ -28,10 +28,19 @@ describe('① 技の選び方(設計書の距離の表)', () => {
     }
   });
 
-  it('中(一閃の射程内)は意図で分かれる: 近接寄り=一閃 / 撃つ気=銃撃', () => {
+  // ★v0.25.3632(成果物監査・重大1の機械化): 旧仕様「中距離は intent==='melee' でだけ一閃」は、
+  // decideGhost の melee 意図が縁距離74px以内(=近接帯の中)でしか立たないため**空集合**で、
+  // 一閃が一度も発動しなかった。中距離は抽選(ISSEN_MID_CHANCE)で一閃の入口が実在することを固定する。
+  it('中(一閃の射程内)は抽選: 乱数が閾値未満なら一閃 / 以上なら銃撃(近接意図なら確定一閃)', () => {
     const mid = (pref + GP_T.issen.reach) / 2;
-    expect(pickPhantomMove(mid, pref, 'melee')).toBe('gp-issen');
-    expect(pickPhantomMove(mid, pref, 'shoot')).toBe('gp-shot');
+    expect(pickPhantomMove(mid, pref, 'melee', 0.99)).toBe('gp-issen'); // 意図があれば確定
+    expect(pickPhantomMove(mid, pref, 'shoot', 0.0)).toBe('gp-issen'); // 抽選当たり
+    expect(pickPhantomMove(mid, pref, 'shoot', ISSEN_MID_CHANCE)).toBe('gp-shot'); // 抽選はずれ
+    expect(pickPhantomMove(mid, pref, 'shoot', 0.99)).toBe('gp-shot');
+  });
+
+  it('★【不変条件】一閃の入口が実在する(抽選確率が0になっていない)', () => {
+    expect(ISSEN_MID_CHANCE).toBeGreaterThan(0);
   });
 
   it('遠(一閃の射程外)は必ず銃撃', () => {
