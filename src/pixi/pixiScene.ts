@@ -3208,6 +3208,9 @@ export class PixiScene {
   private bountyWhipRopes = new Map<string, { rope: MeshRope; pts: Point[] }>(); // ★v0.25.3573: 鞭本体のしなりロープ
   private bountyWhipLag = new Map<string, { ang: number; vel: number; lastMs: number }>(); // ★v0.25.3573: 先端遅れバネの状態
   private bountyScissorBladeSprites = new Map<string, Sprite[]>(); // ★v0.25.3577: 鋏の刃2枚(ピボット連結の実開閉)
+  // ★v0.25.3587: 水鳥乱舞のバウンド(前の着地点→今の着地点の放物線)のホップ内ラッチ。
+  private maikoSuiuHop = new Map<string, { key: string; x0: number; y0: number; t0: number; lastX: number; lastY: number }>();
+  private maikoSuiuBlur?: BlurFilter; // 頂点のぼかし(共有1個・毬スプライトへ着脱)
   private bountyChargeSwingStart = new Map<string, { key: string; at: number }>();
   /** v0.25.3520: 鞭の残像を「振りの開始位置」へ焼き付けるための錨(本体の移動に付いて行かせない)。 */
   private bountyWhipSmearAnchor = new Map<string, { key: string; x: number; y: number; ang: number; len: number }>();
@@ -11948,6 +11951,7 @@ export class PixiScene {
         this.bountyWhipLag.delete(id);
         const scisBlades2 = this.bountyScissorBladeSprites.get(id); // ★v0.25.3577
         if (scisBlades2) { for (const sp of scisBlades2) sp.destroy(); this.bountyScissorBladeSprites.delete(id); }
+        this.maikoSuiuHop.delete(id); // ★v0.25.3587(GPU資源なし・データのみ)
         this.bountyChargeSwingStart.delete(id);
         const scissorFlashSp = this.bountyScissorFlashSprites.get(id);
         if (scissorFlashSp) { scissorFlashSp.destroy(); this.bountyScissorFlashSprites.delete(id); }
@@ -23500,6 +23504,12 @@ export class PixiScene {
     const orbitR = 46;
     const orbitAng = (now / 500) % (Math.PI * 2);
     const idleX = cx + Math.cos(orbitAng) * orbitR, idleY = cy + Math.sin(orbitAng) * orbitR * 0.55;
+    // ★v0.25.3587: 水鳥乱舞の頂点ぼかし(BlurFilter)はホップ描画だけが付ける。他の状態に持ち越さない
+    // よう、毎フレーム冒頭で外す(付けるのは下のホップ分岐が上書き)。
+    {
+      const wsp0 = this.bountyWeaponSprites.get(e.id);
+      if (wsp0 && wsp0.filters) wsp0.filters = null;
+    }
     // §7-15: 毬(常時オービット)のスポーン出現。bountySummonSprites(魔法陣)と同じくe.spawnedAt基準
     // (起床/dormant解除ではなくスポーン時刻。既存の金リング演出と同じ流儀=CLAUDE.md「同じ動作を持つ
     // 全員に付ける」の対になる「同じ判断軸を揃える」)。
@@ -23613,9 +23623,39 @@ export class PixiScene {
       const hopIdx = bs === 'mk-suiu-hop1' ? 1 : bs === 'mk-suiu-hop2' ? 2 : 3;
       const spinDiv = [0, 90, 72, 54][hopIdx]; // 小さいほど速い(hop1=90→hop3=54)
       const petalCount = [0, 10, 14, 20][hopIdx]; // ★v0.25.3586 増量
-      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', lx, ly - 30, now / spinDiv, isFinal ? 80 : 60, 0.95);
-      // 花びら: 着地(このホップ表示に入った瞬間)に1回だけ散らす(型B・派手側=バウンドごとに増量)。
-      this.triggerPetalOnce(e.id, `suiu:${bs}:${this.moveInstanceNo(e.id, bs ?? '')}`, lx, ly, petalCount, now);
+      // ★v0.25.3587(社長指示「ボールが跳ねてる感じがゼロ。毬を大きくしてぼかしたり、小さくして
+      // 砂埃出したりして毬つきしてる感じにして」): 旧「着地点に浮かせて置くだけ」を廃止。
+      // ホップごとに**前の着地点→今の着地点へ放物線**で跳ぶ:
+      //   頂点=大きく(×1.7)+ぼかし(BlurFilter・高さに比例)+薄く(奥/手前感)
+      //   着地=小さく(×0.85)+くっきり+砂埃+花びら(散るのは着地の瞬間に変更)
+      // 進行はホップ状態の入りでラッチ(t0)→bossStateUntilまでの実時間で0→1(変則ディレイでも破綻しない)。
+      const hopKey = `${bs}:${this.moveInstanceNo(e.id, bs ?? '')}`;
+      let hs = this.maikoSuiuHop.get(e.id);
+      if (!hs || hs.key !== hopKey) {
+        hs = { key: hopKey, x0: hs?.lastX ?? cx, y0: hs?.lastY ?? cy, t0: gameTime, lastX: lx, lastY: ly };
+        this.maikoSuiuHop.set(e.id, hs);
+      }
+      const untilH = e.bossStateUntil ?? gameTime;
+      const tH = Math.max(0, Math.min(1, (gameTime - hs.t0) / Math.max(1, untilH - hs.t0)));
+      const arc = 4 * tH * (1 - tH); // 0→1→0(頂点=中間)
+      const hopH = (isFinal ? 170 : 130) * arc;
+      const bxH = hs.x0 + (lx - hs.x0) * tH;
+      const byH = hs.y0 + (ly - hs.y0) * tH - hopH;
+      hs.lastX = lx; hs.lastY = ly;
+      const sizeH = (isFinal ? 80 : 60) * (0.85 + 0.85 * arc); // 着地小さく・頂点大きく
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bxH, byH, now / spinDiv, sizeH, 0.95 - 0.2 * arc);
+      // ぼかし: 高さに比例(頂点で最大)。共有BlurFilterを毬スプライトに着脱する(他状態では冒頭で外す)。
+      const wspH = this.bountyWeaponSprites.get(e.id);
+      if (wspH) {
+        if (!this.maikoSuiuBlur) this.maikoSuiuBlur = new BlurFilter({ strength: 0 });
+        this.maikoSuiuBlur.strength = 5 * arc;
+        wspH.filters = arc > 0.15 ? [this.maikoSuiuBlur] : null;
+      }
+      // 着地の瞬間(t>0.93): 砂埃+花びら(旧: ホップ開始時に散っていた=毬が届く前で意味が逆だった)。
+      const landL = this.latchFx(`${e.id}:suiu-land:${hopKey}`, tH > 0.93, DUST_MS, now,
+        () => [lx, ly, radius * 1.3]);
+      if (landL) this.drawDust(landL.d[0], landL.d[1], landL.d[2], landL.t, this.dustTintForStage(), this.dustAlpha(landL.t), landL.t0);
+      if (tH > 0.93) this.triggerPetalOnce(e.id, `suiu-land:${hopKey}`, lx, ly, petalCount, now);
       return;
     }
     if (bs === 'mk-suiu-recover') {
