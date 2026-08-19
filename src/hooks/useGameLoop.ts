@@ -3021,9 +3021,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             }
             const pendingGE = GATE_PROGRAM_ENABLED ? gateEventPendingRef.current : null;
-            // §6.38 v6 A-2(B4配線): 賞金首交戦中は囲い/レスキューを先送りする(bountyEngagedNow純関数を
-            // 束ねたanyBountyEngaged。賞金首が居ない/dormantならfalse=通常どおり動く)。
-            const bountyBlocksArena = anyBountyEngaged(useGameStore.getState().enemies, player, Date.now());
+            // §6.38 v6 A-2(B4配線): 賞金首が場に居る間は囲い/レスキューを先送りする。
+            // ★v0.25.3597(社長報告「小ボスと同時に何かの閉じ込めイベントも発動した」): 旧基準は
+            // **交戦中(anyBountyEngaged)**だったが、3:00の賞金首は**dormantで湧く**(700〜1000px先で
+            // 待機)ため、プレイヤーが起こすまで「非交戦」=この先送りが素通しだった。城ボスの同型穴
+            // (v0.25.3549「湧いたが未交戦の窓」)と同じ構造。基準を**存命(dormant含む)**へ。
+            // 賞金首側は元からactiveEvent中に湧かない(bountySpawnBlocked)ので、これで両向きに排他が閉じる。
+            const bountyBlocksArena = useGameStore.getState().enemies.some(e => isBountyType(e.type));
             const gateEventReady = pendingGE != null && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && !redNightActiveNow && !bountyBlocksArena;
             const arenaReady = gateEventReady || ((FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && arenaProducerOk && !bountyBlocksArena);
             if (arenaReady) {
