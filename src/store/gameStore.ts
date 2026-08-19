@@ -1898,7 +1898,10 @@ export const JUICE_MIN_FLASH_MS = 80;
 // Inertia time constants (s). Velocity eases toward its target over this
 // window. The player is now instant (0 = no inertia, snappy control); enemies
 // keep 0.3s so they curve into turns instead of snapping.
-export const PLAYER_INERTIA_TAU = 0;
+// ★社長指示v0.25.3618「プレイヤーの移動に少し慣性入れて。反転移動の切り返しがパッとじゃなく、
+// ほんの少しだけ」: 旧0(完全即応)→60ms。切り返しの向き変えが1〜3フレームだけ「ぬるっと」滑る。
+// 数値は叩き台(体感が重ければ0.04、軽ければ0.08方向へ)。スケーター乗車中の強慣性(1.2〜0.5s)は別系。
+export const PLAYER_INERTIA_TAU = 0.06;
 export const ENEMY_INERTIA_TAU = 0.3;
 // 社長指示(v0.25.1585): 慣性を「その瞬間の実効速度が速い敵ほど強く」する。実効速度=素の速度
 // ×紅き夜(×2)×叫喚バフ(×1.2)×ゾンビラッシュ 等=いま実際に動いている速さ。基準速度

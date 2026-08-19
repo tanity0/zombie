@@ -13501,16 +13501,21 @@ export class PixiScene {
       this.L.effectLayer.addChild(this.killFxSlashSp);
     }
     const sp = this.killFxSlashSp;
-    const idx = Math.min(4, Math.floor(t * 5));
+    // ★FB11(v0.25.3618「横一文字みえない」): slash-streakの0〜3コマは**部分的な短い線**で、
+    // フル長の一文字は最終コマ(4)だけ。旧進行(150msで均等5コマ)だと4コマ目が出る頃には
+    // フェード+血しぶき被りで実質見えなかった。振り抜きは頭の35%(≒50ms)で走り切り、
+    // 以後は**フルコマを保持**してから終盤フェードする。
+    const idx = Math.min(4, Math.floor((t / 0.35) * 5));
     const tex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
     if (sp.texture !== tex) sp.texture = tex;
+    this.L.effectLayer.addChild(sp); // 常に最前面へ(血しぶきプールより後に重ねる=線が埋もれない)
     const dir = k.ex < k.px ? -1 : 1; // 振り抜きの向き=プレイヤー→敵の向き
-    const len = Math.max(k.ew, k.eh) * 2.6; // ★FB8「もっと大きく」(旧1.9)
+    const len = Math.max(k.ew, k.eh) * 3.2; // ★FB8→FB11でさらに大きく(1.9→2.6→3.2)
     const sc = len / Math.max(1, ref.width);
     sp.scale.set(sc * dir, sc);
     sp.rotation = dir * (Math.PI / 4); // 斜め素材を水平へ寝かせる=横一文字
     sp.position.set(k.ex, k.ey - k.eh * 0.30); // 首元
-    sp.alpha = 1 - Math.max(0, (t - 0.65) / 0.35);
+    sp.alpha = 1 - Math.max(0, (t - 0.75) / 0.25);
     sp.visible = sp.alpha > 0.01;
   }
 

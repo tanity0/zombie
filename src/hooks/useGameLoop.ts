@@ -4256,7 +4256,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 拠点開放SE: 制圧カウントが増えた瞬間に1回(store は音声非依存なのでここで鳴らす)。
         {
           const cc = useGameStore.getState().suppressionCaptureCount;
-          if (cc > suppCaptureCountRef.current) playSfx('base-capture');
+          // ★社長指示v0.25.3618「拠点解放のSEを今のじゃなくて、エリア踏破と同じやつにして」:
+          // base-capture → event-clear(エリア踏破の銘打ち・:4398 と同じ音)。素材base-captureは残置。
+          if (cc > suppCaptureCountRef.current) playSfx('event-clear');
           suppCaptureCountRef.current = cc;
         }
 

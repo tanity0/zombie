@@ -753,6 +753,24 @@ export const decideCounterReaction = (
   const sp = skill ? botSkillProfile(skill) : null;
   const profile = sp ? { reactionMs: sp.reactionMs, chance: sp.counterChance } : base;
 
+  // ★v0.25.3618(社長指示「マスターはカウンターを積極的に狙いに行って。全部カウンターする勢いで。
+  // (もちろんCDの制約の中で)」): counterEager(master)は人間モデル(1脅威ずつ追跡・1回抽選)を
+  // 使わず、**毎回その場の脅威を取り直してCDが明けていれば撃つ**。反応遅延(reactionMs)だけは残す
+  // (同一フレーム検知→発火の超人化はしない)。連続再発火の律速はカウンターCDそのもの。
+  if (sp?.counterEager) {
+    const found = findCounterThreat(pcx, pcy, enemies, projectiles, sp.seesBossCounterPhases === true);
+    if (!found) { state.threatId = null; state.kind = null; state.fired = false; return false; }
+    if (state.threatId !== found.id || state.kind !== found.kind) {
+      state.threatId = found.id; state.kind = found.kind;
+      state.detectedAt = gameTime; state.willAttempt = true; state.fired = false;
+    }
+    if (gameTime - state.detectedAt < profile.reactionMs) return false;
+    if (gameTime < counterCooldownEnd) return false;
+    state.fired = true;
+    state.detectedAt = gameTime; // 同一脅威への次弾も反応遅延ぶんだけ空く(=CD+80msが実効レート)
+    return true;
+  }
+
   // 追跡中の脅威が消えた/条件を外れたら解除(遅延中に消えたら撃たない=ここで打ち切られる)。
   if (state.threatId !== null && !threatStillValid(state.threatId, state.kind as CounterThreatKind, pcx, pcy, enemies, projectiles)) {
     state.threatId = null; state.kind = null; state.fired = false;

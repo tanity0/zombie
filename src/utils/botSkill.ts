@@ -70,6 +70,12 @@ export interface BotSkillProfile {
    * 段階差は「試行確率」ではなく**見えている脅威の広さ**で付ける。
    */
   seesBossCounterPhases: boolean;
+  /**
+   * ★v0.25.3618(社長指示「マスターはカウンターを積極的に狙いに行って。全部カウンターする勢いで。
+   * (もちろんCDの制約の中で)」): 脅威を1件ずつ追跡・1脅威1抽選する人間モデルをやめ、
+   * **毎フレーム最良の脅威を取り直し、CDが明けていれば即撃つ**(counterEager)。master のみ true。
+   */
+  counterEager?: boolean;
 }
 
 // 段階表(叩き台・実機とソークで調整する)。
@@ -99,7 +105,8 @@ export const BOT_SKILL_PROFILES: Record<BotSkill, BotSkillProfile> = {
   // masterの撃破数が最下位になった)に由来する。現時点の実機では「8体まで退避しない」が
   // 突っ込み死の主因になっているため 5(skilledと同値)へ下げる。単調性(上位ほど≧)は維持。
   master:  { reactionMs: 80,  counterChance: 1.0,  dodge: 'all',        targeting: 'optimal', surroundCount: 5, disengageHp: 0.2, dodgeStrength: 1,
-             engageDist: 420, dodgeVsAttack: 0.25, avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy', seesBossCounterPhases: true },
+             engageDist: 420, dodgeVsAttack: 0.25, avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy', seesBossCounterPhases: true,
+             counterEager: true }, // ★v0.25.3618: 全部カウンターする勢い(CD内で)
 };
 
 export const botSkillProfile = (skill: BotSkill = DEFAULT_BOT_SKILL): BotSkillProfile =>
