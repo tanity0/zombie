@@ -65,6 +65,8 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   GLEN_NIHIL_CHANT_MS, GLEN_NIHIL_RADIUS,
   // B-1(社長裁定v0.25.3002→3003): アテンション中だけ被写界深度の勾配を広げる位相計算に使う。
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS,
+  // ★KILL処刑演出v2(社長指示v0.25.3603): 拍の長さはstore側の定数が正(hitstopの長さと同じ出どころ)。
+  KILLFX_CROUCH_MS, KILLFX_LEAP_MS, KILLFX_SLASH_MS, KILLFX_RETURN_MS, KILLFX_LAND_MS, KILLFX_TOTAL_MS,
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -3433,6 +3435,14 @@ export class PixiScene {
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
   private arrowGfx = new Graphics();   // off-screen supply arrows (screen)
   private playerDeathAt = 0;           // 死亡で立ち絵フェード開始した時刻(now基準。health>0でリセット)
+  // ★KILL処刑演出v2(社長指示v0.25.3603)。store.killFx(イベント)を実時間(Date.now)で再生する。
+  // hitstop中もここだけ動く=「時間ストップ・エフェクトは止めない」。判定・座標は一切書かない(描画のみ)。
+  private killFxSeen = 0;                       // 血の一斉噴出を出した killFx.startAt(1回きり)
+  private killFxDustSeen = 0;                   // 着地の砂埃を出した killFx.startAt(1回きり)
+  private killFxStreak: Sprite | null = null;   // 掻っ切りの斬撃ストリーク(fx/slash-streak-*)
+  private killFxBloodPool: Sprite[] = [];       // 血粒のスプライトプール(Texture.WHITE・使い回し)
+  private killFxBlood: { x: number; y: number; vx: number; vy: number; size: number; born: number; life: number; tint: number }[] = [];
+  private killFxBloodPrevStep = 0;              // 実時間積分の前回時刻(タブ復帰の飛びはクランプ)
 
   // Atmosphere (screen space). gradeSprite multiplies the world cool; the warm
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
@@ -13374,6 +13384,181 @@ export class PixiScene {
     }
   }
 
+  // -------------------------------------------------------------------------------------------
+  // ★KILL処刑演出v2(社長指示v0.25.3603「首元に飛びついて掻っ切る→大量の血が上に→元の場所へ
+  // ジャンプして戻る(しゃがみ・慣性・斬撃を上手く見せて)」)。
+  // 駆動は**実時間(Date.now)**——全停止(hitstop)中も動くのはこの一式だけ(「時間ストップ・
+  // エフェクトは止めない」)。storeへは一切書かない(描画専用・判定/座標/カメラは不変)。
+  // 血は store の粒子(停止中は凍る)ではなく、ここのプール(Texture.WHITE・実時間積分)で出す。
+  // -------------------------------------------------------------------------------------------
+  private applyKillFx(
+    k: NonNullable<ReturnType<typeof useGameStore.getState>['killFx']>,
+    footX: number, footY: number,
+  ): { offX: number; offY: number; sqX: number; sqY: number; lean: number; faceLeft: boolean } | null {
+    const rt = Date.now() - k.startAt;
+    const t1 = KILLFX_CROUCH_MS, t2 = t1 + KILLFX_LEAP_MS, t3 = t2 + KILLFX_SLASH_MS, t4 = t3 + KILLFX_RETURN_MS;
+    // 斬撃ストリークの表示窓(掻っ切りの頭120ms)以外では隠す(常時判定=消し忘れ防止)。
+    const streakT = (rt - t2) / 120;
+    if (rt >= t2 && streakT < 1.2 && rt < t3) this.drawKillFxStreak(k, Math.min(1, streakT));
+    else if (this.killFxStreak) this.killFxStreak.visible = false;
+    if (rt < 0 || rt >= KILLFX_TOTAL_MS) return null;
+    const faceLeft = k.ex < footX;
+    const dir = faceLeft ? -1 : 1;
+    // 跳びつき先: 足を敵中心のやや下へ=体が首元(敵上部)に重なる。掻っ切り点=首元。
+    const dx = k.ex - footX;
+    const dy = (k.ey + k.eh * 0.15) - footY;
+    let offX = 0, offY = 0, sqX = 1, sqY = 1, lean = 0;
+    if (rt < t1) {
+      // しゃがみ(タメ): 沈み込みは加速(ease-in)+横に張る+僅かに逆側へ引く(バックスイング)。
+      const e = (rt / t1) ** 2;
+      offY = 5 * e; sqY = 1 - 0.22 * e; sqX = 1 + 0.14 * e; lean = -dir * 0.06 * e;
+    } else if (rt < t2) {
+      // 跳びつき: ease-out(初速最大→減速)+低い放物線。進行方向へストレッチ。
+      const u = (rt - t1) / KILLFX_LEAP_MS;
+      const e = 1 - (1 - u) ** 3;
+      offX = dx * e;
+      offY = dy * e - 58 * Math.sin(Math.PI * u);
+      sqY = 1.18 - 0.18 * u; sqX = 0.88 + 0.12 * u; lean = dir * 0.30 * (1 - u);
+    } else if (rt < t3) {
+      // 掻っ切り: 首元で保持。頭の1/3だけ鋭い体重移動(斬りの慣性)。
+      const u = (rt - t2) / KILLFX_SLASH_MS;
+      const cut = Math.max(0, 1 - u * 3);
+      offX = dx + dir * 10 * cut; offY = dy;
+      lean = dir * (0.18 * cut - 0.05); sqX = 1 + 0.10 * cut; sqY = 1 - 0.08 * cut;
+      if (this.killFxSeen !== k.startAt) {
+        this.killFxSeen = k.startAt;
+        this.spawnKillFxBlood(k); // 血の間欠泉=巻き込んだ敵も全員この瞬間に一斉
+      }
+    } else if (rt < t4) {
+      // 帰還: smoothstep(踏み切り加速→減速)+高い放物線。後方へ反る(跳んで戻る慣性)。
+      const u = (rt - t3) / KILLFX_RETURN_MS;
+      const e = u * u * (3 - 2 * u);
+      offX = dx * (1 - e);
+      offY = dy * (1 - e) - 84 * Math.sin(Math.PI * u);
+      lean = -dir * 0.25 * Math.sin(Math.PI * u);
+    } else {
+      // 着地: スカッシュ(潰れ→戻り)+砂埃(1回きり)。
+      const v = (rt - t4) / KILLFX_LAND_MS;
+      sqY = 1 - 0.20 * (1 - v); sqX = 1 + 0.14 * (1 - v);
+      if (this.killFxDustSeen !== k.startAt) {
+        this.killFxDustSeen = k.startAt;
+        this.spawnKillFxLandPuff(footX, footY);
+      }
+    }
+    return { offX, offY, sqX, sqY, lean, faceLeft };
+  }
+
+  /** 掻っ切りの斬撃ストリーク(fx/slash-streak-0..4を首元で振り抜く)。t=0..1。 */
+  private drawKillFxStreak(
+    k: NonNullable<ReturnType<typeof useGameStore.getState>['killFx']>, t: number,
+  ): void {
+    const ref = getTexture('fx/slash-streak-4');
+    if (!ref) return;
+    if (!this.killFxStreak) {
+      this.killFxStreak = new Sprite();
+      this.killFxStreak.anchor.set(0.5);
+      this.L.effectLayer.addChild(this.killFxStreak);
+    }
+    const sp = this.killFxStreak;
+    const idx = Math.min(4, Math.floor(t * 5));
+    const tex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
+    if (sp.texture !== tex) sp.texture = tex;
+    const dir = k.ex < k.px ? -1 : 1;
+    const len = Math.max(k.ew, k.eh) * 1.9; // 派手さの絵=判定を持たないので大きく(2分類②)
+    const sc = len / Math.max(1, ref.width);
+    sp.scale.set(sc * dir, sc);
+    sp.rotation = -0.32 * dir;
+    sp.position.set(k.ex, k.ey - k.eh * 0.30); // 首元
+    sp.alpha = 1 - Math.max(0, (t - 0.7) / 0.3);
+    sp.visible = sp.alpha > 0.01;
+  }
+
+  /** 血の一斉間欠泉: primary の首元は濃く大量、巻き込み(victims)も同時に噴く。 */
+  private spawnKillFxBlood(
+    k: NonNullable<ReturnType<typeof useGameStore.getState>['killFx']>,
+  ): void {
+    const born = Date.now();
+    const tints = [0xdc2626, 0x991b1b, 0x7f1d1d, 0xef4444];
+    const emit = (x: number, y: number, count: number, strong: boolean) => {
+      for (let i = 0; i < count; i++) {
+        if (this.killFxBlood.length >= 260) return; // 上限(プール保護)
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * 0.55; // ほぼ真上±
+        const speed = (strong ? 460 : 380) + Math.random() * (strong ? 480 : 380);
+        this.killFxBlood.push({
+          x, y,
+          vx: Math.cos(a) * speed * 0.35 + (Math.random() - 0.5) * 60,
+          vy: Math.sin(a) * speed,
+          size: 4 + Math.random() * (strong ? 7 : 5),
+          born, life: 650 + Math.random() * 380,
+          tint: tints[(Math.random() * tints.length) | 0],
+        });
+      }
+    };
+    emit(k.ex, k.ey - k.eh * 0.30, 46, true); // primary の首元(掻っ切り点)
+    for (const v of k.victims) {
+      if (Math.abs(v.x - k.ex) < 1 && Math.abs(v.y - k.ey) < 1) continue; // primary本体は上で出した
+      emit(v.x, v.y, 30, false);
+    }
+  }
+
+  /** 帰還着地の小さな土煙(血プールを流用・灰系tint・低く外へ)。 */
+  private spawnKillFxLandPuff(x: number, y: number): void {
+    const born = Date.now();
+    for (let i = 0; i < 12; i++) {
+      if (this.killFxBlood.length >= 260) return;
+      const a = Math.PI + Math.random() * Math.PI; // 上半円(左右へ広がる)
+      const speed = 60 + Math.random() * 140;
+      this.killFxBlood.push({
+        x, y,
+        vx: Math.cos(a) * speed * 1.6,
+        vy: -Math.abs(Math.sin(a)) * speed * 0.8,
+        size: 3 + Math.random() * 5,
+        born, life: 380 + Math.random() * 220,
+        tint: 0x9ca3af,
+      });
+    }
+  }
+
+  /** killFx粒子の実時間積分+描画(毎フレーム。粒子ゼロならプールを隠すだけ)。 */
+  private stepKillFxBlood(): void {
+    if (this.killFxBlood.length === 0) {
+      this.killFxBloodPrevStep = 0;
+      for (const sp of this.killFxBloodPool) sp.visible = false;
+      return;
+    }
+    const rn = Date.now();
+    const dt = this.killFxBloodPrevStep > 0 ? Math.min(50, rn - this.killFxBloodPrevStep) / 1000 : 0.016;
+    this.killFxBloodPrevStep = rn;
+    let write = 0;
+    for (let i = 0; i < this.killFxBlood.length; i++) {
+      const b = this.killFxBlood[i];
+      if (rn - b.born >= b.life) continue;
+      b.vy += 1500 * dt; // 重力(血が上がって落ちる慣性)
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      this.killFxBlood[write++] = b;
+    }
+    this.killFxBlood.length = write;
+    for (let i = 0; i < write; i++) {
+      const b = this.killFxBlood[i];
+      let sp = this.killFxBloodPool[i];
+      if (!sp) {
+        sp = new Sprite(Texture.WHITE);
+        sp.anchor.set(0.5);
+        this.L.effectLayer.addChild(sp);
+        this.killFxBloodPool[i] = sp;
+      }
+      if (sp.texture !== Texture.WHITE) sp.texture = Texture.WHITE;
+      const age = (rn - b.born) / b.life;
+      sp.width = b.size; sp.height = b.size;
+      sp.tint = b.tint;
+      sp.alpha = 1 - Math.max(0, (age - 0.55) / 0.45);
+      sp.position.set(b.x, b.y);
+      sp.visible = true;
+    }
+    for (let i = write; i < this.killFxBloodPool.length; i++) this.killFxBloodPool[i].visible = false;
+  }
+
   private drawPlayer(view: ActorView, p: Player, gameTime: number, now: number) {
     const fb = playerFootBox(p);
     // スケボー乗車中は歩きアニメを止める(社長指示): 待機フレームで板に立つ。歩行の上下バウンド(bob)/
@@ -13520,6 +13705,18 @@ export class PixiScene {
       actOffY += Math.sin(now / 70) * PLAYER_RELOAD_BOB_PX * dsc;
       actLean += Math.sin(now / 110) * PLAYER_RELOAD_LEAN_RAD;
     }
+    // ★KILL処刑演出v2(社長指示v0.25.3603): 実時間駆動の しゃがみ→跳びつき→掻っ切り→帰還。
+    // hitstop中(now凍結)でも Date.now で進む。描画のみ=store座標/判定は不変。
+    this.stepKillFxBlood();
+    const killFxState = useGameStore.getState().killFx;
+    const killPose = killFxState ? this.applyKillFx(killFxState, fb.footX, fb.footY) : null;
+    if (killPose) {
+      actOffX += killPose.offX;
+      actOffY += killPose.offY;
+      actSqX *= killPose.sqX;
+      actSqY *= killPose.sqY;
+      actLean += killPose.lean;
+    }
 
     // 登場演出(社長指示で刷新): 飛び降りは廃止。プレイヤーは着地地点に居たまま、ヘリが
     // 飛び立つタイミング(takeoffStart)からフェードインで現れる。乗車・ジャンプ弧・着地スカッシュは無し。
@@ -13581,7 +13778,10 @@ export class PixiScene {
       // 登場演出(introScale)や歩行スカッシュ等の演出係数はその外側(=演出は殺さない)。
       const baseScale = playerBaseScale(p, tex, fb.boxW, fb.boxH);
       const sc = this.snapTexelScale(baseScale * this.depthScale(fb.footY)) * introScale;
-      const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
+      // ★KILL処刑演出v2中は跳びつく相手の方を向く(帰還中も相手を見たまま後ろへ跳ぶ)。
+      const flip = killPose
+        ? killPose.faceLeft
+        : (p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0));
       view.sprite.scale.set((flip ? -sc : sc) * introSqX * walkSqX * actSqX, sc * introSqY * walkSqY * actSqY);
       view.sprite.rotation = walkLean + actLean;
     }

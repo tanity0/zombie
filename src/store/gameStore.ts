@@ -1853,6 +1853,19 @@ export const MELEE_FINISH_ZOOM_HOLD_MS = 400; // 上記のうち最大寄りを�
 // スロー/揺れ/ヒットストップは毎回発生するが、寄りズームだけはこのCD内なら発動しない
 // (酔い防止・スロー等の演出は不変)。
 export const MELEE_FINISH_ZOOM_CD_MS = 10000;
+// ★KILL処刑演出v2(社長指示v0.25.3603「敵の首元に飛びついて掻っ切る→大量の血が上に飛び散る→
+// もとにいた場所にジャンプして戻る(しゃがみ・慣性・斬撃を上手く見せて)」)。
+// 発動は**寄りズームが入るフル演出(CD明け)の時だけ**(社長指示「ズームインが入るときだけ」)。
+// 実時間ms。合計=hitstop(全停止)の長さ——この間、動くのはpixi側の実時間駆動FXだけ
+// (社長指示「エフェクト中は時間ストップ(エフェクトは止めない)」)。数値は叩き台。
+export const KILLFX_CROUCH_MS = 110;   // しゃがみ(タメ・沈み込み)
+export const KILLFX_LEAP_MS = 150;     // 首元へ跳びつき(ease-out+放物線)
+export const KILLFX_SLASH_MS = 170;    // 掻っ切り+血の間欠泉(巻き込んだ敵も全員一斉)
+export const KILLFX_RETURN_MS = 190;   // 元の場所へ跳んで戻る(高い放物線)
+export const KILLFX_LAND_MS = 90;      // 着地スカッシュ
+export const KILLFX_TOTAL_MS =
+  KILLFX_CROUCH_MS + KILLFX_LEAP_MS + KILLFX_SLASH_MS + KILLFX_RETURN_MS + KILLFX_LAND_MS; // =710
+export const KILLFX_RELEASE_SLOW_MS = 300; // 停止明け: 0.2→等速へ戻す尾(時間にも慣性を付ける)
 export const COUNTER_ZOOM_MAG = 1.0;       // カウンター成立の寄り(社長指示で2倍=+100%・旧1.5倍から改訂)
 // PACING_PUZZLE.md §5.22 M21(社長委任v0.25.1516・CD制確定v0.25.1524): KILL/カウンター演出を
 // 「命中の瞬間に全部ピーク→同じ長さ/カーブで一緒に戻る」1拍エンベロープへ統一する。
@@ -3371,6 +3384,10 @@ const grantMeleeKillRewards = (
       // window.setTimeout だとヘッドレステスト(node環境=window未定義)でクラッシュし、CIを
       // 毎push赤にしていた(v0.25.2106修正)。素のsetTimeoutはブラウザ/nodeの両方で同一挙動。
       setTimeout(() => {
+        // ★KILL処刑演出v2発動中はここを出さない: 全停止中はstoreの粒子が凍るため、pixi側が
+        // 実時間駆動の間欠泉を「掻っ切りの瞬間・全員一斉」で出す(二重噴出の防止)。
+        const kfx = get().killFx;
+        if (kfx && Date.now() - kfx.startAt < KILLFX_TOTAL_MS) return;
         get().spawnBlood(ex, ey, -Math.PI / 2 - 0.16, 260);
         get().spawnBlood(ex, ey, -Math.PI / 2 + 0.16, 260);
       }, MELEE_FINISH_ZOOM_MS - MELEE_FINISH_ZOOM_HOLD_MS);
@@ -4362,6 +4379,16 @@ interface GameState {
   // Global hitstop: while Date.now() < hitstopUntil the simulation is frozen
   // (melee-finisher impact pause). 0 = running.
   hitstopUntil: number;
+  // ★KILL処刑演出v2(社長指示v0.25.3603): フル演出(寄りズーム発火)のフィニッシュキルで1回
+  // 書かれるイベント。描画はpixiScene(実時間駆動=hitstop中も動く・判定/座標は一切不変)。
+  // 跳びつきを見せるのは primary(ex/ey…)の一体のみ。victims=同時に処刑された敵(primary含む)で、
+  // 掻っ切りの瞬間に全員の位置から血が一斉に噴き上がる(社長指示「ほかに巻き込んだ敵は血だけ揃える」)。
+  killFx: {
+    ex: number; ey: number; ew: number; eh: number; // 跳びつく相手(処刑した敵)の中心と寸法
+    px: number; py: number;                          // プレイヤー中心(発動時=戻り先の記録)
+    startAt: number;                                 // 実時刻(Date.now)
+    victims: { x: number; y: number }[];
+  } | null;
   // アテンション・シネマティック(レスキュー/ジャイアント出現): 現地へカメラパン→ホールド→戻る。
   // 駆動は実時間(startReal)。fromCam=開始時のカメラ(=戻り先)。null=非実行。
   attention: {
@@ -5295,6 +5322,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   lastWeaponGet: null,
   hitstopUntil: 0,
+  killFx: null,
   attention: null,
   practiceWinPendingSince: null,
   timeSlowUntil: 0,
@@ -6492,6 +6520,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       const fullCinematic = get().triggerFinishImpact(ztx, zty, bossFatalHits.length > 0);
       if (fullCinematic && killed.some(k => k.finisher)) {
         get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
+        // ★KILL処刑演出v2(社長指示v0.25.3603): 寄りズームが入るフル演出の時だけ、首元へ跳びついて
+        // 掻っ切る→血が一斉に噴き上がる→元の場所へ跳んで戻る(描画はpixiScene・実時間駆動)。
+        // この間は全停止(hitstop)=「時間ストップ・エフェクトは止めない」。停止明けはスローの尾で
+        // 等速へ戻す(時間にも慣性)。ボス致命(bossFatalHits)は既存の討伐演出と衝突するので対象外。
+        // ?juice=0(旧演出との比較モード)でも出さない。
+        if (JUICE_ENABLED && bossFatalHits.length === 0) {
+          const prim = killed.find(k => k.finisher)!.enemy;
+          set({
+            killFx: {
+              ex: prim.x + prim.width / 2, ey: prim.y + prim.height / 2, ew: prim.width, eh: prim.height,
+              px: pcx, py: pcy,
+              startAt: Date.now(),
+              victims: killed.filter(k => k.finisher)
+                .map(k => ({ x: k.enemy.x + k.enemy.width / 2, y: k.enemy.y + k.enemy.height / 2 })),
+            },
+            hitstopUntil: Date.now() + KILLFX_TOTAL_MS,
+          });
+          get().triggerTimeSlow(0.2, KILLFX_TOTAL_MS + KILLFX_RELEASE_SLOW_MS, KILLFX_TOTAL_MS);
+        }
       }
     } else if (slashAt.length > 0) {
       // 通常ヒット(空振りでもフィニッシュでもない)のときだけスイングの揺れを出す。
@@ -9808,7 +9855,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
-    // SKILL_BUILD_REDESIGN.md §28(B7) スキル: 吸血 = キルの20%(率固定)でHP+2/+4/+6(Lv)。
+    // SKILL_BUILD_REDESIGN.md §28(B7) スキル: 吸血 = キルで確定発動(100%・社長裁定v0.25.3603。
+    // 旧: キルの20%・率固定)HP+2/+4/+6(Lv)。
     // 絵は分類②(派手側)。キル地点からプレイヤーへ血粒が吸い込まれるdrainエフェクト
     // (社長指示v0.25.3276「攻撃したときの血のエフェクトがプレイヤーに吸収されていくような」)。
     if (killedAt) {
@@ -16251,6 +16299,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         },
         lastWeaponGet: null,
         hitstopUntil: 0,
+  killFx: null,
   attention: null,
   practiceWinPendingSince: null,
         timeSlowUntil: 0,

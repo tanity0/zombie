@@ -780,7 +780,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'big-bullet':      { name: 'ビッグバレット',       desc: '弾のサイズを拡大(見た目と当たり判定を同時に拡大。貫通数・跳弾回数・壁衝突は変化しない)', rarity: 'normal' },
   // ice-shot: v0.25.3280裁定(ボスも対象・効果半分)。v0.25.3301: キル時氷片は覚醒(Lv3)効果へ移動。
   'ice-shot':        { name: 'アイスショット',       desc: '命中した敵を鈍足化(ボスは効果半分)', rarity: 'normal' },
-  'vampire':         { name: '吸血',                 desc: 'キル時、一定確率でHPを回復(発動率は固定)', rarity: 'normal' },
+  'vampire':         { name: '吸血',                 desc: 'キル時、必ずHPを回復', rarity: 'normal' },
   'incendiary-round':{ name: '延焼弾',               desc: '被弾させた敵を燃焼させる(秒間ダメージ)', rarity: 'rare' },
   // v0.25.3281(社長指示): 「衝撃波」は新要素になるので既存の**爆発**に統一(名称・説明・絵・判定とも)。
   // v0.25.3300(社長指示): 名称変更「処刑の爆発」→「処刑」。

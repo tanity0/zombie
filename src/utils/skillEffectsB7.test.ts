@@ -38,19 +38,17 @@ describe('ice-shot: 鈍足20%/30%/40%・1s/1s/1.5s', () => {
   });
 });
 
-describe('vampire: キルの20%でHP+2/+4/+6(率固定)', () => {
-  it('発動(rng<0.2)ならLv別の回復量', () => {
+// ★社長裁定v0.25.3603「吸血はキルで確定発動にする 100%」。旧仕様(キルの20%・率固定)は
+// 事実として記録: v0.25.3602まで VAMPIRE_PROC_CHANCE=0.2 だった。
+describe('vampire: キルで確定発動 HP+2/+4/+6(v0.25.3603裁定)', () => {
+  it('キルで必ずLv別の回復量(rngの値によらない=100%)', () => {
     expect(rollVampireHeal(1, constRng(0))).toBe(2);
-    expect(rollVampireHeal(2, constRng(0.1))).toBe(4);
-    expect(rollVampireHeal(3, constRng(0.19))).toBe(6);
-  });
-  it('非発動(rng>=0.2)なら0(Lvによらず率固定)', () => {
-    expect(rollVampireHeal(1, constRng(0.2))).toBe(0);
-    expect(rollVampireHeal(3, constRng(0.99))).toBe(0);
+    expect(rollVampireHeal(2, constRng(0.5))).toBe(4);
+    expect(rollVampireHeal(3, constRng(0.99))).toBe(6);
   });
   it('未所持は常に0', () => expect(rollVampireHeal(0, constRng(0))).toBe(0));
-  it('確率は0.2固定・レベル表は[0,2,4,6]', () => {
-    expect(VAMPIRE_PROC_CHANCE).toBeCloseTo(0.2);
+  it('確率は1.0(確定)・レベル表は[0,2,4,6]', () => {
+    expect(VAMPIRE_PROC_CHANCE).toBe(1.0);
     expect(VAMPIRE_HEAL_BY_LEVEL).toEqual([0, 2, 4, 6]);
   });
 });
