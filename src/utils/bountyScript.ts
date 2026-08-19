@@ -145,8 +145,8 @@ export interface BountyBalanceTuning {
 
 export const BOUNTY_BALANCE_TUNING: BountyBalanceTuning = {
   nearMax: 170,
-  // sweep.range 150→300: ボスメーカー実機チューニングの貼り戻し(社長確定 v0.25.3576)。
-  sweep: { range: 300, halfWidth: 40, windup: 750, damage: 18, recover: withRecoverFloor(900) },
+  // sweep.range 150→300(v0.25.3576貼り戻し)→250(社長指示v0.25.3579「薙払いの長さを250に短縮」)。
+  sweep: { range: 250, halfWidth: 40, windup: 750, damage: 18, recover: withRecoverFloor(900) },
   // ★v0.25.3576: 跳びかかりは元pumpkin輸入(複製)だったが、ボスメーカーの実機チューニングで
   // **鋏専用の値に確定**した(貼り戻し)。以後pumpkinとは独立(bountyScript.test.tsも裁定値の固定へ変更)。
   leap: {

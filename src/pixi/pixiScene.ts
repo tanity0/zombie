@@ -15017,7 +15017,9 @@ export class PixiScene {
         const dirX = Math.cos(aimAng), dirY = Math.sin(aimAng);
         const L = 160;
         const startX = bfx + dirX * L * 0.3, startY = bfy + dirY * L * 0.3;   // 構え=帯の根元側
-        const endX = btx - dirX * L * 0.25, endY = bty - dirY * L * 0.25;    // 斬り終わり=先端が帯の端
+        // ★v0.25.3579(社長指示「切る瞬間、もっと前に出して挟むときに帯をカバーするところまで」):
+        // 斬り終わり=**鋏の中心が帯の端**(刃が端を跨いで±L/2を覆う=挟む瞬間に帯の外側を刃がカバー)。
+        const endX = btx, endY = bty;
         let openMul: number; let px2: number; let py2: number;
         if (sweepProg < PixiScene.SCISSOR_TAME_END) {
           const t = sweepProg / PixiScene.SCISSOR_TAME_END;
@@ -15055,9 +15057,7 @@ export class PixiScene {
         const elapsedR = Math.max(0, BB_T.sweep.recover - remain);
         const backT = Math.min(1, elapsedR / 250);
         const eoR = 1 - Math.pow(1 - backT, 3);
-        const dirXr = Math.cos(aimAng), dirYr = Math.sin(aimAng);
-        const fromX = btx - dirXr * 160 * 0.25, fromY = bty - dirYr * 160 * 0.25;
-        const rx2 = fromX + (cx - fromX) * eoR, ry2 = fromY + (cy - fromY) * eoR;
+        const rx2 = btx + (cx - btx) * eoR, ry2 = bty + (cy - bty) * eoR; // 戻りの始点=滑走の終点(帯の端)
         this.drawBountyWeapon(e.id, 'bounty-balance-scissors', rx2, ry2 + ease.dy, aimAng, 160, 0.9 * ease.alphaMul, 1.0);
         this.tickBountyScissorFlash(e.id, now);
       } else if (bs2 === 'leap-windup' || bs2 === 'leap-air') {

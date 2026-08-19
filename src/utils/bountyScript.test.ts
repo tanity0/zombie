@@ -51,8 +51,8 @@ describe('既定値=移設前の実装値(テーブル化で挙動が1つも変�
   it('鋏(bounty-balance)', () => {
     const d = BOUNTY_BALANCE_TUNING_DEFAULTS;
     expect(d.nearMax).toBe(170);
-    // sweep.range 300 / leap一式 = v0.25.3576 ボスメーカー実機チューニングの貼り戻し(社長確定)。
-    expect(d.sweep).toEqual({ range: 300, halfWidth: 40, windup: 750, damage: 18, recover: 900 });
+    // sweep.range=250(社長指示v0.25.3579) / leap一式 = v0.25.3576 ボスメーカー貼り戻し(社長確定)。
+    expect(d.sweep).toEqual({ range: 250, halfWidth: 40, windup: 750, damage: 18, recover: 900 });
     expect(d.leap).toEqual({ radius: 110, windup: 1000, airMs: 300, recover: 500, damage: 22 });
   });
 
