@@ -13431,25 +13431,29 @@ export class PixiScene {
       const e = (rt / t1) ** 2;
       offY = 5 * e; sqY = 1 - 0.22 * e; sqX = 1 + 0.14 * e; lean = -dir * 0.06 * e;
     } else if (rt < t2) {
-      // ★FB5(v0.25.3611): 出だしはジャンプへ戻す(FB4のダッシュは撤回・事実として記録)。
-      // ease-out(初速最大→減速)+放物線。進行方向へストレッチ。
+      // ★FB6(v0.25.3613): **しゃがみ絵のままの低いダッシュ**(放物線なし・ease-out)。
+      // 体は低く(縦を潰したまま)滑り込む——絵は-ready(しゃがみ)を上のポーズ固定が出す。
       const u = (rt - t1) / KILLFX_LEAP_MS;
       const e = 1 - (1 - u) ** 3;
       offX = dx * e;
-      offY = dy * e - 58 * Math.sin(Math.PI * u);
-      sqY = 1.18 - 0.18 * u; sqX = 0.88 + 0.12 * u; lean = dir * 0.30 * (1 - u);
+      offY = dy * e;
+      sqY = 0.82; sqX = 1.16; lean = dir * 0.22 * (1 - u * 0.4);
     } else if (rt < tB) {
-      // ★一拍(実機FB1): 首元に貼り付いて静止。刃を引き絞るタメ(ゆっくり圧縮)だけ掛ける。
+      // ★一拍(実機FB1/FB6): 首元でしゃがんだまま静止。刃を引き絞るタメ(ゆっくり圧縮)だけ掛ける。
       const u = (rt - t2) / KILLFX_HOLD_MS;
       offX = dx; offY = dy;
-      sqX = 1 + 0.06 * u; sqY = 1 - 0.06 * u; lean = -dir * 0.08 * u;
+      sqY = 0.82 - 0.04 * u; sqX = 1.16 + 0.05 * u; lean = dir * (0.10 - 0.16 * u);
     } else if (rt < t3) {
-      // 掻っ切り: 頭の1/3だけ鋭い体重移動(斬りの慣性)。斬撃(一閃流用・store側)→BLOOD_LAG後に
-      // 血・SE・KILL!文字が同期(FB5「斬撃→血しぶき」の順)。
+      // 掻っ切り(FB6「そのまま立ち上がって斬撃」): しゃがみから一気に立ち上がる(縦へ伸びて整定)+
+      // 鋭い体重移動。絵は-swing(振り抜き)。斬撃(一閃流用・store側)→BLOOD_LAG後に血・SE・KILL!文字。
       const u = (rt - tB) / KILLFX_SLASH_MS;
       const cut = Math.max(0, 1 - u * 3);
+      const rise = Math.min(1, u * 4); // 立ち上がりは頭の1/4で完了(勢い)
       offX = dx + dir * 12 * cut; offY = dy;
-      lean = dir * (0.20 * cut - 0.05); sqX = 1 + 0.10 * cut; sqY = 1 - 0.08 * cut;
+      lean = dir * (0.20 * cut - 0.05);
+      // 立ち上がり: 0.78→1.10へ勢いよく伸び(オーバーシュート)→等身へ整定(慣性)。
+      sqY = rise < 1 ? 0.78 + 0.32 * rise : 1.10 - 0.10 * Math.min(1, (u - 0.25) / 0.3);
+      sqX = rise < 1 ? 1.18 - 0.28 * rise : 0.90 + 0.10 * Math.min(1, (u - 0.25) / 0.3);
       if (this.killFxSeen !== k.startAt && rt >= tB + KILLFX_BLOOD_LAG_MS) {
         this.killFxSeen = k.startAt;
         this.spawnKillFxBlood(k, 1); // 血の間欠泉1波=巻き込んだ敵も全員この瞬間に一斉
@@ -13710,8 +13714,13 @@ export class PixiScene {
     // KILL処刑演出中は通常の近接モーション(専用ポーズ差し替え・踏み込み振り抜き)を出さない。
     // 判定・攻撃レートは不変(描画のみ)。斬撃エフェクト(kind='slash')は流し切る(v0.25.3608)。
     const killFxState = useGameStore.getState().killFx;
-    const killFxActiveForPose = !!killFxState && Date.now() - killFxState.startAt >= 0
-      && Date.now() - killFxState.startAt < KILLFX_TOTAL_MS;
+    const killFxRtNow = killFxState ? Date.now() - killFxState.startAt : Infinity;
+    const killFxActiveForPose = killFxRtNow >= 0 && killFxRtNow < KILLFX_TOTAL_MS;
+    // ★実機FB6(v0.25.3613「まだ通常攻撃の演出出ちゃうときがある」): 取りこぼしの真因は、演出後も
+    // スイング表示窓がスローの尾まで伸びている(v0.25.1536)こと——演出が明けた瞬間に振りポーズが
+    // 復活していた。**演出を発動させたスイング**は窓が閉じるまで通常演出を出さない(新しいスイングは出す)。
+    const killFxSwallowsSwing = !!killFxState && killFxRtNow < KILLFX_TOTAL_MS + 1500
+      && (p.meleeSwingAt || 0) <= killFxState.startAt + 50;
     // 近接専用ポーズを持つクラス(スカベンジャー=necromancer/マークスマン=mage・社長提供素材)は近接スイング中に
     // 本体を差し替える。構え→振り抜きをスイング進行 kt=MELEE_POSE_READY_FRAC で切替。専用ポーズは各クラスの待機絵と
     // 同じ幅86px・足元下端で焼いてあるので描画スケール/足位置は不変(playerBaseScaleは幅基準)。
@@ -13719,7 +13728,7 @@ export class PixiScene {
     // 救急鞄スキル発動の一拍(振り抜きポーズ+鞄掲げ)。近接スイングとは別トリガー(firstAidPoseAt)。
     const sinceFirstAid = now - (p.firstAidPoseAt || 0);
     const firstAidActive = p.firstAidPoseAt > 0 && sinceFirstAid >= 0 && sinceFirstAid < PLAYER_FIRSTAID_POSE_MS;
-    if (meleePosePrefix && !warlordFull && !killFxActiveForPose && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+    if (meleePosePrefix && !warlordFull && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
       const poseSuffix = (sinceSwing / swingWindowMs) < MELEE_POSE_READY_FRAC ? '-ready' : '-swing';
       const poseTex = getTexture(`${meleePosePrefix}${poseSuffix}`);
       if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}${poseSuffix}`; }
@@ -13727,6 +13736,18 @@ export class PixiScene {
       // 救急鞄発動: 本体を振り抜き絵(-swing)へ差し替え(社長指示v0.25.1656)。近接スイング中はそちら優先。
       const poseTex = getTexture(`${meleePosePrefix}-swing`);
       if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}-swing`; }
+    }
+    // ★実機FB6(v0.25.3613「切り出しの演出(しゃがみから立ち上がってナイフを振るあれ)」):
+    // KILL処刑演出中の体の絵は専用に固定する——斬撃(BURST_AT)まで**しゃがみ絵(-ready)**で
+    // ダッシュ・一拍し、斬撃の間だけ**振り抜き絵(-swing)**で立ち上がる。以降(帰還)は通常絵。
+    // 専用ポーズ素材の無いクラスは従来どおり立ち絵のまま(モーションだけ)。
+    if (meleePosePrefix && !warlordFull && killFxActiveForPose) {
+      const killSuffix = killFxRtNow < KILLFX_BURST_AT_MS ? '-ready'
+        : killFxRtNow < KILLFX_BURST_AT_MS + KILLFX_SLASH_MS ? '-swing' : null;
+      if (killSuffix) {
+        const poseTex = getTexture(`${meleePosePrefix}${killSuffix}`);
+        if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}${killSuffix}`; }
+      }
     }
     // v0.25.2595(社長報告「死にモーション、強制されてないからか、攻撃モーションとかほかの動きが
     // 優先されてて しゃがみ絵になってない」): **死亡中は何より優先してしゃがみ絵(-ready)へ固定**。
@@ -13736,7 +13757,7 @@ export class PixiScene {
       const downTex = getTexture(`${meleePosePrefix}-ready`);
       if (downTex) { view.sprite.texture = downTex; bodyTexName = `${meleePosePrefix}-ready`; }
     }
-    if (PLAYER_MOTION_FX && !killFxActiveForPose && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+    if (PLAYER_MOTION_FX && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
       const t = sinceSwing / swingWindowMs;
       const arc = Math.sin(t * Math.PI); // 0→1→0(踏み込みのピークは中盤)
       const whip = 1 - t;                // 開始が一番強い→復帰
