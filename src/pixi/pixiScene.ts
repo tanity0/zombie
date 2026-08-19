@@ -23269,6 +23269,10 @@ export class PixiScene {
    *  以降=帯の端から端へ滑走しながら閉じ切る(スパッ)。 */
   private static readonly SCISSOR_TAME_END = 0.55;
   private static readonly SCISSOR_SNAP_START = 0.85;
+  /** ★v0.25.3583 舞妓・毬の薙ぎ(社長指示「鞠が震えるタメ→打ち出すメリハリ→跳ねて帰る」)。
+   *  タメの割合(残りが打ち出し)と、跳ね戻りの所要ms。どちらも叩き台。 */
+  private static readonly MAIKO_NAGINATA_TAME_END = 0.8;
+  private static readonly MAIKO_NAGINATA_BACK_MS = 420;
 
   private drawBountyScissors(
     id: string, px: number, py: number, angleRad: number, lengthPx: number, alpha: number, widthMul: number,
@@ -23528,15 +23532,37 @@ export class PixiScene {
     }
 
     if (bs === 'mk-naginata-windup' || bs === 'mk-naginata1-windup' || bs === 'mk-naginata2-windup') {
+      // ★v0.25.3583(社長指示「ディレイは鞠が震えるタメ動作で、打ち出すメリハリを」):
+      // 旧「予告の間じゅう帯をすーっと滑る」を廃止。タメ(〜80%)=毬が手元で震える(進行で強く)、
+      // 打ち出し(残り20%)=ease-inで帯の先端まで一気に飛ぶ+高速回転。命中は従来どおりwindup末(不変)。
       const prog = telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil);
-      const tk = Math.min(1, prog * 1.15);
-      // 技表GO: 技前=一瞬止まってふくらむ(スカッシュ)。windup開始直後だけ膨らみ、通常サイズへ戻る。
       const squash = squashInflateMul(gameTime - (e.bossWindupStartAt ?? gameTime));
-      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bfx + (btx - bfx) * tk, bfy + (bty - bfy) * tk, now / 100, 58 * squash, 0.95);
+      const TAME = PixiScene.MAIKO_NAGINATA_TAME_END;
+      if (prog < TAME) {
+        const t = prog / TAME;
+        const amp = 2 + 5 * t; // 震え=進行で強く(タメが読める)
+        const jx = Math.sin(now / 31) * amp + Math.sin(now / 17 + 2.1) * amp * 0.5;
+        const jy = Math.cos(now / 27) * amp + Math.sin(now / 13 + 0.7) * amp * 0.5;
+        this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bfx + jx, bfy + jy, now / 160, 58 * squash * (1 + 0.08 * t), 0.95);
+      } else {
+        const t = (prog - TAME) / (1 - TAME);
+        const ei = t * t;
+        this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bfx + (btx - bfx) * ei, bfy + (bty - bfy) * ei, now / 40, 58, 0.95);
+      }
       return;
     }
     if (bs === 'mk-naginata-recover' || bs === 'mk-naginata1-recover' || bs === 'mk-naginata2-recover') {
-      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', btx, bty, now / 100, 58, 0.9);
+      // ★v0.25.3583(社長指示「打ったら跳ねて帰ってくる感じにして」): 打ち終わりの先端から手元へ、
+      // **減衰する2バウンド**で跳ねながら戻る(減速つき=慣性)。2連の段間(stepRecover=220ms)は
+      // 戻り時間をその長さに丸めるので、次の段のタメ(手元の震え)へ途切れず繋がる。
+      const durR = bs === 'mk-naginata1-recover' ? MK_T.naginata.stepRecover : MK_T.naginata.recover;
+      const remainR = (e.bossStateUntil ?? gameTime) - gameTime;
+      const backMs = Math.min(PixiScene.MAIKO_NAGINATA_BACK_MS, durR);
+      const tB = Math.max(0, Math.min(1, (durR - remainR) / backMs));
+      const eoB = 1 - Math.pow(1 - tB, 2);
+      const bxp = btx + (cx - btx) * eoB, byp = bty + (cy - bty) * eoB;
+      const hop = Math.abs(Math.sin(tB * Math.PI * 2)) * 34 * (1 - tB); // 2バウンド・減衰
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bxp, byp - hop, now / 100, 58, 0.9);
       // 斬撃弧(v0.25.3444): 毬の薙ぎが振り抜けた瞬間(recover入り)に帯の軌道へ1回スタンプ。
       this.triggerBountySlashArcOnce(
         e.id, `naginata:${bs}:${this.moveInstanceNo(e.id, bs ?? '')}`, bfx, bfy,
