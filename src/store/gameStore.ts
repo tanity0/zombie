@@ -3900,17 +3900,23 @@ const placeSensorMineOnSwing = (
 // ダメージは追撃ごとに ×2/3 減衰(1.0 / 0.667 / 0.444・旧仕様のまま維持)。
 // Lv3の最終段(4段目)のみノックバック大(叩き台2倍)。それ以外の追撃は通常ノックバック。
 export const SLASHER_CHAIN_CD_MS = 300; // チェーン攻撃間のクールダウン(社長指示v0.25.3254「0.3秒で」)
-export const SLASHER_CHAIN_TIMEOUT_MS = 2000; // CD明けからこの時間タップが無ければチェーン破棄(叩き台・検収時追加)
+// ★v0.25.3616(実機FB「2撃目の配線が残って、1撃目のはずなのに2撃目が発動するときがある」):
+// 旧2000ms(叩き台)は「別の敵へ移った後のタップ」まで追撃にしてしまう広さだった。チェーンは
+// リズム良く繋いだ時だけ=CD明けから800msへ短縮(タップ間隔にして最大1.1秒)。
+export const SLASHER_CHAIN_TIMEOUT_MS = 800;
 export const SLASHER_MAX_HITS = 3;      // 追撃の最大連数(初撃を除く。Lvでmin適用)
 export const SLASHER_MULTS = [1, 2 / 3, (2 / 3) * (2 / 3)]; // 各追撃のダメージ倍率
 export const SLASHER_FINAL_KB_MULT = 2; // Lv3最終段のみ適用するノックバック倍率(叩き台)
 export const SLASHER_FORCE_KB_PX = 25;  // 社長指示v0.25.3297: スラッシャーの強制ノックバック実距離(免疫CD無視)
+// 返り値 null = 射程内に敵が居なかった(★v0.25.3616): チェーンを破棄し、呼び出し側は**通常経路へ
+// 落とす**(このタップは追撃ではなく新しい初撃の候補になる。旧: 空振りでも連数を消費して
+// チェーン演出だけ出ていた=「1撃目のはずなのに2撃目が発動」の一因)。
 const applySlasherChainStrike = (
   get: () => GameState,
   player: Player,
   gameTime: number,
   realGameTime: number,
-): CounterTriggerResult => {
+): CounterTriggerResult | null => {
   const step = player.slasherStrikeStep;
   // 連数の上限はレベル依存: Lv1 1連(追撃) / Lv2 2連 / Lv3 3連(=初撃と合わせて2/3/4回)。
   const slLv = skillLevel(player, 'slasher');
@@ -3950,6 +3956,19 @@ const applySlasherChainStrike = (
   // 踏み込みの目標: 実際にノックバックした敵のうち**最寄り**(=いま切り結んでいる相手)。
   // 死んだ敵・押せなかった敵(ボス級)は目標にしない=v0.25.3400「KBしなかったら前進しない」を維持。
   let lungeTo: { dirX: number; dirY: number; dist: number } | null = null;
+  // ★v0.25.3616: 空振り判定を先に行う(誰も射程内に居なければ何も消費せずチェーン破棄→null)。
+  {
+    let anyInRange = false;
+    for (const e of get().enemies) {
+      if (e.type === 'reaper' && !e.reaperChaser) continue;
+      if (isCorpse(e)) continue;
+      if (enemyMeleeDist(pcx, pcy, e) <= meleeRange) { anyInRange = true; break; }
+    }
+    if (!anyInRange) {
+      get().setSlasherCombo(0, 0);
+      return null;
+    }
+  }
   for (const e of get().enemies) {
     if (e.type === 'reaper' && !e.reaperChaser) continue;
     if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は追撃対象から除外
@@ -5849,7 +5868,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         set(state => ({ player: { ...state.player, slasherQueuedTap: true } }));
         return { swung: false, hit: false, finish: false, killed: 0 }; // チェーンCD中(予約済み)
       } else {
-        return applySlasherChainStrike(get, player, gameTime, realGameTime);
+        const chained = applySlasherChainStrike(get, player, gameTime, realGameTime);
+        // ★v0.25.3616: null=射程内に敵が居ない追撃(チェーンは破棄済み)。returnせず下の通常経路へ
+        // 落とす=このタップは新しい初撃の候補になる(通常CDが明けていなければ従来どおり不発)。
+        if (chained) return chained;
       }
     }
     // Respect cooldown — no swing, no knockback, no window.
@@ -6114,6 +6136,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const meleeHitEnemyIds: string[] = []; // スキル 救難信号: このスイングでヒットした敵ID(発動判定/対象選定用)
+    // ★スラッシャー実機FB(v0.25.3616「敵を2撃目追いかけてない」): 初撃も追撃と同じ自動追尾を持つ。
+    // 初撃の強制KB(25px)で敵が射程の外縁へ出ると、2撃目が空振り→空振りでは追尾も発火しない=
+    // チェーンが最初の一押しで死んでいた。押した敵(最寄り・非ボス)へ lunge する(追撃側v0.25.3540と同式)。
+    let slasherLungeTo: { dirX: number; dirY: number; dist: number } | null = null;
     const meleeCritChance = melee?.critChance ?? 0;
     // 訓練(M0)の封印と台本(社長指示v0.25.2293)。**このスイング開始時点で固定**する
     // (敵ごとのループの中で判定すると、1スイングで複数体に当たった時に「3発目」が壊れる)。
@@ -6327,6 +6353,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       // **通常敵限定**にする。ボス級に効いていると、免疫CDを無視して毎撃 knockbackUntil が立ち、
       // ボスの技が永久に中断される(=はめ)。ボスは従来の免疫CD付きルールへ落ちる。
       const slasherForce = skillLevel(player, 'slasher') > 0 && !resistsChipKnockback(enemy.type);
+      // ★v0.25.3616: 初撃の自動追尾の目標(押した敵のうち最寄り。追撃側の lungeTo と同じ選び方)。
+      if (slasherForce && (slasherLungeTo === null || dist < slasherLungeTo.dist)) {
+        const dn = Math.max(0.001, Math.hypot(dx, dy));
+        slasherLungeTo = { dirX: dx / dn, dirY: dy / dn, dist };
+      }
       if (slasherForce || now >= (enemy.knockbackImmuneUntil ?? 0)) {
         const norm = Math.max(0.001, dist);
         const falloff = 1 - dist / meleeRange;
@@ -6600,6 +6631,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // スキル スラッシャーのチェーン開始はこの近接スイングの set()(player.slasherChainReadyAt)で行う。
     // 追撃自体は「チェーンCD明けのタップ」で applySlasherChainStrike が出す(自動ではない)。
+    // ★v0.25.3616(実機FB「敵を2撃目追いかけてない」): 初撃にも追撃と同じ自動追尾(v0.25.3540)を付ける。
+    // 初撃の強制KB(25px)で敵が射程外縁へ出る→2撃目空振り→空振りでは追尾が発火しない、の悪循環を
+    // 初撃側の踏み込みで断つ(押した量ぶん詰め直す=次のタップは必ず射程内)。
+    if (hasSkill(player, 'slasher') && slashAt.length > 0 && slasherLungeTo !== null) {
+      const lungePx = slasherLungePx(slasherLungeTo.dist, SLASHER_FORCE_KB_PX, meleeRange);
+      if (lungePx > 0.5) {
+        const lungeSpeed = knockbackSpeedFor(lungePx, SLASHER_LUNGE_MS);
+        const lTo = slasherLungeTo;
+        set(state => ({
+          player: {
+            ...state.player,
+            knockbackVx: lTo.dirX * lungeSpeed,
+            knockbackVy: lTo.dirY * lungeSpeed,
+            knockbackUntil: now + SLASHER_LUNGE_MS,
+            knockbackMs: SLASHER_LUNGE_MS,
+          },
+        }));
+      }
+    }
 
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
     const propHit = get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, meleeDamage * 2.5);

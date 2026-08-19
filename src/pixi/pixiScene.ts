@@ -14042,7 +14042,9 @@ export class PixiScene {
     if (this.playerKnifeSetup) {
       // MOVEMENT_REWORK.md 仕様2: スケーター乗車中は近接封印(triggerCounter側)なので
       // meleeSwingAtは基本更新されないが、乗車直前の残りスイングも含めて構え武器を出さない。
-      if (!p.skaterRiding && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+      // ★実機FB9(v0.25.3616「まだ近接の斬撃の弧が止まって残ってる」): この弧(ナイフ振り3コマ+
+      // 武器絵)が通常近接演出の最後の取りこぼしだった。KILL処刑演出中は出さない(下のelseで消える)。
+      if (!p.skaterRiding && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
         const kt = meleeSwingEase(sinceSwing / swingWindowMs); // ゆっくり→速く→ゆっくり(§5.22-追補でスロー中は伸長)
         // 右/左だけ(上下に撃っても水平成分で決定)。pure縦は直近の向き(face)。
         let kax = aimx, kay = aimy;
