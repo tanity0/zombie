@@ -504,8 +504,11 @@ describe('★処刑優先の距離制限(社長報告v0.25.3553「間に敵が�
     const pcy = player.y + player.height / 2;
     // 気絶敵は上限の外(右へ)。通常敵はすぐ左。
     // 通常敵は「近接射程の外・上限の内」に置く(射程内だと動かずに殴るので移動で判定できない)。
+    // ★v0.25.3628: 距離の物差しが「敵の左上角まで」→「判定帯(enemyRangeRect)の縁まで」に変わった。
+    // ゾンビの帯は幅約62pxあるため、旧配置(pcx-120)は縁まで約71px=近接射程80px内に入ってしまい
+    // 「動かず殴る」が正解になる。縁距離で射程の外(約101px)になる位置へ移した(テストの意図は不変)。
     const farStunned = stun(spawnEnemyAt('zombie', pcx + STUNNED_CHASE_MAX_DIST + 60, pcy, 0), 0);
-    const nearNormal = spawnEnemyAt('zombie', pcx - 120, pcy, 0);
+    const nearNormal = spawnEnemyAt('zombie', pcx - 150, pcy, 0);
     const d = decideBotInput('standard', player, [farStunned, nearNormal], 0, 0, 0);
     // 近い方(左)へ動く=右へは行かない。
     expect(d.input.left).toBe(true);

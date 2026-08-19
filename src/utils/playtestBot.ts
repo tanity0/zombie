@@ -6,7 +6,7 @@
 import type { Enemy, InputState, Player, Projectile } from '../types/game';
 // ★v0.25.3554: 「この構えは弾ける」の唯一の出どころを共有する(写すな、共通化しろ)。
 import { isDashParryCounterPhase } from './combatTick';
-import { isCorpse } from './enemyUtils';
+import { isCorpse, enemyRangeRect } from './enemyUtils';
 
 // 'rusher' はPACING_PUZZLE.md §5.20(M19・深層ラッシュ試験専用)のペルソナ。既存の通常スモーク
 // (BOT_PERSONAS の巡回)には含めず、専用テストからのみ persona 名で直接呼び出す。
@@ -34,7 +34,17 @@ const SURROUND_RADIUS = 140;    // この距離以内の敵数で「囲まれた
 // (botSkill.test.ts が両者の一致を不変条件として検査している)。段階指定時は sk.surroundCount が使われる。
 export const SURROUND_COUNT = 3;
 
-const distTo = (px: number, py: number, e: Enemy): number => Math.hypot(e.x - px, e.y - py);
+// ★v0.25.3628(社長実機観察「近接攻撃、ボスの中心を見てない?かなりギリギリを攻めて事故ってる」):
+// 旧実装は敵の**左上角**(e.x, e.y)への距離だった——中心ですらない。近接80pxを「角まで80px」で
+// 測るため、巨体ボスでは体へめり込む位置まで詰めてから殴っていた(=事故)。ゲーム本体の近接判定
+// (gameStore.enemyMeleeDist)と同じ「**判定帯(enemyRangeRect)の最近点までの距離**」へ一本化する
+// =botも表示されている judgement 枠の縁から測る(銃・近接・botが同じ物差し)。
+const distTo = (px: number, py: number, e: Enemy): number => {
+  const r = enemyRangeRect(e);
+  const nx = Math.max(r.x, Math.min(px, r.x + r.width));
+  const ny = Math.max(r.y, Math.min(py, r.y + r.height));
+  return Math.hypot(px - nx, py - ny);
+};
 
 const nearestEnemy = (px: number, py: number, enemies: Enemy[]): Enemy | undefined => {
   let best: Enemy | undefined;
