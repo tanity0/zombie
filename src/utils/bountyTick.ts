@@ -339,7 +339,7 @@ const cancelBountyTechnique = (s: BountyTickState): void => {
 // mimirLaserBreakOnMeleeHitが別枠で処理する専用の「弱点を突いて壊す」機構=標準カウンターとは別物)。
 const BOUNTY_WINDUP_STATES: readonly string[] = [
   'br-push-windup', 'bm-charge-windup', 'bm-whip360-windup', 'bm-combo1-windup', 'bm-combo2-windup', 'bm-combo3-windup', 'bm-snipe-windup',
-  'bb-sweep-windup', 'leap-windup',
+  'bb-sweep-windup', 'bb-triple1-windup', 'bb-triple2-windup', 'bb-triple3-windup', 'leap-windup', // triple=★v0.25.3580
   'mk-naginata-windup', 'mk-naginata1-windup', 'mk-naginata2-windup', 'mk-spin-windup', 'mk-suiu-windup', 'mk-boom-windup',
   'br-triple-windup', // §6.38 v12(社長裁定#9「溜め/硬直はカウンター可=既存の押しのけと同じ扱い」)
 ];
@@ -352,7 +352,7 @@ const BOUNTY_ACTIVE_COUNTER_STATES: readonly string[] = ['bm-charge', 'bm-whip36
 
 const BOUNTY_RECOVER_STATES: readonly string[] = [
   'br-push-recover', 'bm-charge-recover', 'bm-combo1-recover', 'bm-combo2-recover', 'bm-combo3-recover', 'bm-snipe-recover',
-  'bb-sweep-recover', 'leap-recover',
+  'bb-sweep-recover', 'bb-triple1-recover', 'bb-triple2-recover', 'leap-recover', // triple=★v0.25.3580
   'mk-naginata-recover', 'mk-naginata1-recover', 'mk-naginata2-recover', 'mk-spin-recover', 'mk-suiu-recover', 'mk-boom-recover',
   'br-triple-recover', // §6.38 v12(同上)
 ];
@@ -1137,15 +1137,32 @@ const tickMelee = (
 // 距離帯・薙ぎ払い・跳びかかりの数値は **BB_T(bountyScript.ts)** が正(跳びかかりはpumpkin輸入。
 // v2 A節の掟「跳躍はpumpkinのaiPhase機構を流用せず-windup/-air/-recoverとしてbossState側に再実装」)。
 
-/** 鋏: 目の前の帯=薙ぎ払い(密着に居座らせないための技)。 */
-const beginBbSweep = ({ newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
-  sfx.alert();
+/** 鋏: 薙ぎの帯を今のプレイヤー方向へ張り直す(単発・3連発の各発で共用)。 */
+const aimBbSweepBand = (
+  pcx: number, pcy: number, bcx: number, bcy: number, patch: Partial<Enemy>,
+): void => {
   const ang = Math.atan2(pcy - bcy, pcx - bcx);
   patch.aiFromX = bcx; patch.aiFromY = bcy;
   patch.aiTargetX = bcx + Math.cos(ang) * BB_T.sweep.range;
   patch.aiTargetY = bcy + Math.sin(ang) * BB_T.sweep.range;
+};
+
+/** 鋏: 目の前の帯=薙ぎ払い(密着に居座らせないための技)。 */
+const beginBbSweep = ({ newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
+  sfx.alert();
+  aimBbSweepBand(pcx, pcy, bcx, bcy, patch);
   patch.bossState = 'bb-sweep-windup';
   patch.bossStateUntil = newGameTime + BB_T.sweep.windup;
+};
+
+/** ★v0.25.3580 鋏: 薙ぎの3連発(社長指示「取り掛かりを、今の単発と、3連発で分ける。3連発は少し幅を
+ *  狭くして、その代わり2-3発目を早くする」)。1発目のタメは単発と同じ・発間は短い切り返しで向きを
+ *  取り直す(bm-comboと同じ「windup→step recover→次windup」型=キャンセル監視の正規形)。 */
+const beginBbTriple = ({ newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: BountyBeginCtx): void => {
+  sfx.alert();
+  aimBbSweepBand(pcx, pcy, bcx, bcy, patch);
+  patch.bossState = 'bb-triple1-windup';
+  patch.bossStateUntil = newGameTime + BB_T.sweepTriple.windup[0];
 };
 
 /** 鋏: 輸入=跳びかかり(pumpkin型)。着地点は溜め開始時のプレイヤー位置で固定。 */
@@ -1167,7 +1184,9 @@ const tickBalance = (
 
   if (st === 'chase') {
     if (dist <= BB_T.nearMax) {
-      beginBbSweep(bctx);
+      // ★v0.25.3580: 取り掛かりで単発/3連発を抽選(▸再生は bb-sweep / bb-triple で個別に選べる)。
+      if (Math.random() < BB_T.sweepTriple.chance) beginBbTriple(bctx);
+      else beginBbSweep(bctx);
       return;
     }
     if (newGameTime >= (bounty.bossNextActionAt ?? 0)) {
@@ -1198,6 +1217,31 @@ const tickBalance = (
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'chase';
       patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+    }
+    return;
+  }
+  // ★v0.25.3580 3連発: 各発のwindup末で命中(狭幅)→切り返し→向きを取り直して次発。3発目は単発と同じ硬直へ。
+  if (st === 'bb-triple1-windup' || st === 'bb-triple2-windup' || st === 'bb-triple3-windup') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
+      const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
+      hitCapsule(bounty, fx, fy, tx, ty, BB_T.sweepTriple.halfWidth, BB_T.sweepTriple.damage);
+      if (st === 'bb-triple3-windup') {
+        patch.bossState = 'bb-sweep-recover';
+        patch.bossStateUntil = newGameTime + BB_T.sweep.recover;
+      } else {
+        patch.bossState = st === 'bb-triple1-windup' ? 'bb-triple1-recover' : 'bb-triple2-recover';
+        patch.bossStateUntil = newGameTime + BB_T.sweepTriple.stepRecover;
+      }
+    }
+    return;
+  }
+  if (st === 'bb-triple1-recover' || st === 'bb-triple2-recover') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      const nextIdx = st === 'bb-triple1-recover' ? 1 : 2;
+      aimBbSweepBand(pcx, pcy, bcx, bcy, patch); // 発ごとに向きを取り直す(コンボと同じ)
+      patch.bossState = nextIdx === 1 ? 'bb-triple2-windup' : 'bb-triple3-windup';
+      patch.bossStateUntil = newGameTime + BB_T.sweepTriple.windup[nextIdx];
     }
     return;
   }
@@ -1582,7 +1626,7 @@ const tickMaiko = (
 export type BountyMoveKey =
   | 'br-push' | 'br-roll' | 'br-triple' | 'br-laser'
   | 'bm-charge' | 'bm-whip360' | 'bm-combo' | 'bm-snipe'
-  | 'bb-sweep' | 'bb-leap'
+  | 'bb-sweep' | 'bb-triple' | 'bb-leap'
   | 'mk-naginata' | 'mk-spin' | 'mk-suiu' | 'mk-boom';
 
 /**
@@ -1592,7 +1636,7 @@ export type BountyMoveKey =
 export const BOUNTY_MOVES_BY_TYPE: Readonly<Record<string, readonly BountyMoveKey[]>> = {
   'bounty-ranged': ['br-push', 'br-roll', 'br-triple', 'br-laser'],
   'bounty-melee': ['bm-charge', 'bm-whip360', 'bm-combo', 'bm-snipe'],
-  'bounty-balance': ['bb-sweep', 'bb-leap'],
+  'bounty-balance': ['bb-sweep', 'bb-triple', 'bb-leap'],
   'bounty-maiko': ['mk-naginata', 'mk-spin', 'mk-suiu', 'mk-boom'],
 };
 
@@ -1608,6 +1652,7 @@ const startBountyMove = (move: BountyMoveKey, bctx: BountyBeginCtx): void => {
     case 'bm-combo': beginBmCombo(bctx); return;
     case 'bm-snipe': beginBmSnipe(bctx); return;
     case 'bb-sweep': beginBbSweep(bctx); return;
+    case 'bb-triple': beginBbTriple(bctx); return; // ★v0.25.3580
     case 'bb-leap': beginBbLeap(bctx); return;
     // 型(A/B)は**いまのボスの型に従う**=切り替えボタン(HP40%等)で見たい方を選ぶ。
     case 'mk-naginata': beginMkNaginata(bctx, bctx.bounty.bossPhase === 2 ? 2 : 1); return;

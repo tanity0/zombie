@@ -780,6 +780,8 @@ export interface Enemy {
     // leap-windup/-air/-recover = 跳びかかり(遠・pumpkinの数値を読みbossState側で再実装=v2 A節の掟
     // 「跳躍はpumpkinのaiPhase機構を流用せず-windup/-air/-recoverとしてbossState側に再実装」)。
     | 'bb-sweep-windup' | 'bb-sweep' | 'bb-sweep-recover'
+    // ★v0.25.3580 鋏の薙ぎ3連発(社長指示「単発と3連発で分ける」・bm-comboと同じwindup→step recover型)
+    | 'bb-triple1-windup' | 'bb-triple1-recover' | 'bb-triple2-windup' | 'bb-triple2-recover' | 'bb-triple3-windup'
     | 'leap-windup' | 'leap-air' | 'leap-recover'
     // PACING_PUZZLE.md §6.38 B2b: 舞妓(変異・bounty-maiko)の技。全技=毬(v5.1)。
     // mk-naginata* = 毬の薙ぎ(型A単発/型B2連=mk-naginata1・mk-naginata2)。mk-spin* = 毬回し

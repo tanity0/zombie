@@ -14680,7 +14680,7 @@ export class PixiScene {
       // prog<1のまま次stateへ切り替わり得た)。
       let pushRemain = 0, pushProg = 0, comboStep = 0, comboRemain = 0, comboProg = 0,
         snipeRemain = 0, snipeProg = 0, sweepRemain = 0, sweepProg = 0, chargeRemain = 0, chargeProg = 0,
-        tripleTrackAng = 0, tripleProg = 0;
+        tripleTrackAng = 0, tripleProg = 0, bbTripleStep = 0, bbTripleProg = 0;
       {
         const pushWindupOn = bs2 === 'br-push-windup';
         pushRemain = (e.bossStateUntil ?? gameTime) - gameTime;
@@ -14699,6 +14699,11 @@ export class PixiScene {
         sweepRemain = (e.bossStateUntil ?? gameTime) - gameTime;
         sweepProg = Math.max(0, Math.min(1, 1 - sweepRemain / BB_T.sweep.windup));
         this.zoneCapsuleTick(view, o, `${e.id}:bb-sweep`, sweepWindupOn, sweepRemain, bfx, bfy, btx, bty, BB_T.sweep.halfWidth, now, sweepProg);
+        // ★v0.25.3580 薙ぎ3連発: 帯は狭幅(sweepTriple.halfWidth)・発ごとにprogを引き直す(bm-comboと同型)。
+        const bbTripleOn = bs2 === 'bb-triple1-windup' || bs2 === 'bb-triple2-windup' || bs2 === 'bb-triple3-windup';
+        bbTripleStep = bs2 === 'bb-triple2-windup' ? 1 : bs2 === 'bb-triple3-windup' ? 2 : 0;
+        bbTripleProg = Math.max(0, Math.min(1, 1 - sweepRemain / BB_T.sweepTriple.windup[bbTripleStep]));
+        this.zoneCapsuleTick(view, o, `${e.id}:bb-triple`, bbTripleOn, sweepRemain, bfx, bfy, btx, bty, BB_T.sweepTriple.halfWidth, now, bbTripleProg, bbTripleStep);
         const chargeWindupOn = bs2 === 'bm-charge-windup';
         chargeRemain = (e.bossStateUntil ?? gameTime) - gameTime;
         chargeProg = Math.max(0, Math.min(1, 1 - chargeRemain / BM_T.charge.windup));
@@ -15005,8 +15010,12 @@ export class PixiScene {
         const ease = weaponSpawnEase(Infinity, remain);
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy + ease.dy, Math.atan2((e.vy ?? 0), (e.vx ?? 1) || 1), 170, 0.9 * ease.alphaMul,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
-      } else if (bs2 === 'bb-sweep-windup') {
-        const ease = weaponSpawnEase(BB_T.sweep.windup * sweepProg, Infinity);
+      } else if (bs2 === 'bb-sweep-windup' || bs2 === 'bb-triple1-windup' || bs2 === 'bb-triple2-windup' || bs2 === 'bb-triple3-windup') {
+        // ★v0.25.3580: 3連発も同じ「タメ→スパッ」の振り付けを使う(発ごとのwindupに合わせて自動で圧縮)。
+        const isTriple = bs2 !== 'bb-sweep-windup';
+        const sweepProgU = isTriple ? bbTripleProg : sweepProg;
+        const windupMsU = isTriple ? BB_T.sweepTriple.windup[bbTripleStep] : BB_T.sweep.windup;
+        const ease = weaponSpawnEase(windupMsU * sweepProgU, Infinity);
         // ★v0.25.3578(社長指示「鋏っぽくない。もっとタメと勢いを分かりやすく。縦に長い攻撃も、
         // 端から端まで、スパッと行く感じに」): 旧「振りながらじわじわ閉じる」(剣の振りの文法)を廃止。
         // 鋏は**閉じる瞬間が斬**なので、3拍に分ける:
@@ -15021,19 +15030,19 @@ export class PixiScene {
         // 斬り終わり=**鋏の中心が帯の端**(刃が端を跨いで±L/2を覆う=挟む瞬間に帯の外側を刃がカバー)。
         const endX = btx, endY = bty;
         let openMul: number; let px2: number; let py2: number;
-        if (sweepProg < PixiScene.SCISSOR_TAME_END) {
-          const t = sweepProg / PixiScene.SCISSOR_TAME_END;
+        if (sweepProgU < PixiScene.SCISSOR_TAME_END) {
+          const t = sweepProgU / PixiScene.SCISSOR_TAME_END;
           const eo = 1 - Math.pow(1 - t, 3);
           openMul = 1 + 0.7 * (0.94 * eo);
           px2 = startX - dirX * 26 * eo; py2 = startY - dirY * 26 * eo;
-        } else if (sweepProg < PixiScene.SCISSOR_SNAP_START) {
-          const t = (sweepProg - PixiScene.SCISSOR_TAME_END)
+        } else if (sweepProgU < PixiScene.SCISSOR_SNAP_START) {
+          const t = (sweepProgU - PixiScene.SCISSOR_TAME_END)
             / (PixiScene.SCISSOR_SNAP_START - PixiScene.SCISSOR_TAME_END);
           openMul = 1 + 0.7 * (0.94 + 0.06 * t);
           const pull = 26 + 8 * t;
           px2 = startX - dirX * pull; py2 = startY - dirY * pull;
         } else {
-          const t = (sweepProg - PixiScene.SCISSOR_SNAP_START) / (1 - PixiScene.SCISSOR_SNAP_START);
+          const t = (sweepProgU - PixiScene.SCISSOR_SNAP_START) / (1 - PixiScene.SCISSOR_SNAP_START);
           const ei = t * t * t;
           openMul = 1 + 0.7 * (1 - ei);
           const sx0 = startX - dirX * 34, sy0 = startY - dirY * 34;
@@ -15041,7 +15050,7 @@ export class PixiScene {
         }
         this.drawBountyWeapon(e.id, 'bounty-balance-scissors', px2, py2 + ease.dy, aimAng, L, 0.95 * ease.alphaMul, openMul);
         // 閉じ切る=命中の瞬間(windup完了直前)に命中閃(fx/scissor-x-0)を初配線。
-        if (sweepProg > 0.92) {
+        if (sweepProgU > 0.92) {
           this.triggerBountyScissorFlashOnce(e.id, `sweep:${this.moveInstanceNo(e.id, bs2 ?? '')}`, (bfx + btx) / 2, (bfy + bty) / 2, aimAng, 0, now);
           // 斬撃弧(v0.25.3444→3455): 薙ぎの帯の根元(bf=振りの軸)を中心に、帯の長さを半径とする円弧。
           this.triggerBountySlashArcOnce(
@@ -15049,6 +15058,16 @@ export class PixiScene {
             Math.atan2(bty - bfy, btx - bfx), Math.hypot(btx - bfx, bty - bfy), now,
           );
         }
+        this.tickBountyScissorFlash(e.id, now);
+      } else if (bs2 === 'bb-triple1-recover' || bs2 === 'bb-triple2-recover') {
+        // ★v0.25.3580: 発間の切り返し=閉じたまま帯の端から構え位置へ減速で戻す(次発のタメへ繋ぐ)。
+        const remainS = (e.bossStateUntil ?? gameTime) - gameTime;
+        const backTs = Math.max(0, Math.min(1, 1 - remainS / BB_T.sweepTriple.stepRecover));
+        const eoS = 1 - Math.pow(1 - backTs, 3);
+        const dirXs = Math.cos(aimAng), dirYs = Math.sin(aimAng);
+        const sX = bfx + dirXs * 160 * 0.3, sY = bfy + dirYs * 160 * 0.3;
+        const rx3 = btx + (sX - btx) * eoS, ry3 = bty + (sY - bty) * eoS;
+        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', rx3, ry3, aimAng, 160, 0.95, 1.0);
         this.tickBountyScissorFlash(e.id, now);
       } else if (bs2 === 'bb-sweep-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;

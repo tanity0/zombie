@@ -147,11 +147,16 @@ const BM_HELP: Record<string, string> = {
 // ================================================================================================
 // 鋏(bounty-balance)
 // ================================================================================================
-const BB_SEC = { range: '間合い', sweep: '薙ぎ払い(bb-sweep)', leap: '跳びかかり(leap)' };
+const BB_SEC = {
+  range: '間合い', sweep: '薙ぎ払い(bb-sweep)',
+  triple: '薙ぎ3連発(bb-triple)', // ★v0.25.3580
+  leap: '跳びかかり(leap)',
+};
 
 const balanceFields = (): TuningField[] => {
   const rng = mk(BB_SEC.range, 'behavior');
   const sw = mk(BB_SEC.sweep, 'move');
+  const tr = mk(BB_SEC.triple, 'move');
   const lp = mk(BB_SEC.leap, 'move');
   return [
     rng('nearMax', '近いとみなす距離', 'px', 0, 800, 10, 'これより近い=薙ぎ払い / 遠い=跳びかかり'),
@@ -159,8 +164,16 @@ const balanceFields = (): TuningField[] => {
     sw('sweep.windup', '予告', 'ms', 0, 5000, 50, HINT_WINDUP),
     sw('sweep.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
     sw('sweep.damage', 'ダメージ', 'num', 0, 200, 1),
-    sw('sweep.range', '帯の長さ', 'px', 10, 600, 10),
+    sw('sweep.range', '帯の長さ', 'px', 10, 600, 10, '3連発もこの長さを共有する'),
     sw('sweep.halfWidth', '帯の半幅', 'px', 4, 200, 10),
+
+    tr('sweepTriple.chance', '3連発を引く確率', 'num', 0, 1, 0.05, '取り掛かり時の抽選。0=常に単発 / 1=常に3連発'),
+    tr('sweepTriple.windup.0', '予告(1発目)', 'ms', 0, 5000, 50, HINT_WINDUP),
+    tr('sweepTriple.windup.1', '予告(2発目)', 'ms', 0, 5000, 50),
+    tr('sweepTriple.windup.2', '予告(3発目)', 'ms', 0, 5000, 50),
+    tr('sweepTriple.stepRecover', '発間の切り返し', 'ms', 0, 2000, 50, 'この間に向きを取り直す'),
+    tr('sweepTriple.damage', 'ダメージ(1発あたり)', 'num', 0, 200, 1),
+    tr('sweepTriple.halfWidth', '帯の半幅', 'px', 4, 200, 10, '単発より少し狭い'),
 
     lp('leap.windup', '予告(縮み溜め)', 'ms', 0, 6000, 50, HINT_WINDUP),
     lp('leap.airMs', '滞空', 'ms', 100, 4000, 50, '飛び上がってから着地するまで'),
@@ -172,7 +185,8 @@ const balanceFields = (): TuningField[] => {
 
 const BB_HELP: Record<string, string> = {
   [BB_SEC.range]: '近づけば薙ぎ、離れれば跳んでくる。どちらの帯にも居場所がないのがこのボスの圧。',
-  [BB_SEC.sweep]: '目の前の帯。密着に居座らせないための技。',
+  [BB_SEC.sweep]: '目の前の帯。密着に居座らせないための技。取り掛かりで単発/3連発を抽選する。',
+  [BB_SEC.triple]: '薙ぎの3連発版(v0.25.3580)。帯が少し狭い代わりに2-3発目が早い。締めの硬直と帯の長さは単発と共有。',
   [BB_SEC.leap]: 'パンプキンから輸入した跳躍。着地点は予告の時点で固定=歩いて円の外へ出れば避けられる。',
 };
 
@@ -265,6 +279,7 @@ const BM_PLAYABLES: readonly PlayableAction[] = [
 ];
 const BB_PLAYABLES: readonly PlayableAction[] = [
   play('bb-sweep', '薙ぎ払い', BB_SEC.sweep),
+  play('bb-triple', '薙ぎ3連発', BB_SEC.triple), // ★v0.25.3580
   play('bb-leap', '跳びかかり', BB_SEC.leap),
 ];
 const MK_PLAYABLES: readonly PlayableAction[] = [

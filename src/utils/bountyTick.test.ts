@@ -1141,18 +1141,68 @@ describe('runBountyTick — B2a 技の状態機械', () => {
 
   describe('鋏(bounty-balance)', () => {
     it('近距離(BB_NEAR_MAX以内)で薙ぎ払い(bb-sweep-windup)を発火する', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.9); // ★v0.25.3580: 抽選を単発側に固定
       const { id, step } = setupType('bounty-balance', { x: 80, y: 0 });
       step(16);
       expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('bb-sweep-windup');
     });
 
     it('薙ぎ払い完走: pumpkinBlastsへ判定を積んでchaseへ戻る', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.9); // 単発側に固定
       const { id, step } = setupType('bounty-balance', { x: 80, y: 0 });
       const before = useGameStore.getState().pumpkinBlasts.length;
       const seen = new Set<string | undefined>();
       for (let i = 0; i < 60; i++) { step(50); seen.add(useGameStore.getState().enemies.find(e => e.id === id)?.bossState); }
       expect(seen.has('chase')).toBe(true);
       expect(useGameStore.getState().pumpkinBlasts.length).toBeGreaterThan(before);
+    });
+
+    // ★v0.25.3580(社長指示「取り掛かりを、今の単発と、3連発で分ける」)
+    it('取り掛かりの抽選: rand<chance なら3連発(bb-triple1-windup)へ入る', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.1);
+      const { id, step } = setupType('bounty-balance', { x: 80, y: 0 });
+      step(16);
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('bb-triple1-windup');
+    });
+
+    it('3連発の台本: 1→切り返し→2→切り返し→3→単発と同じ硬直→chase。命中は3回積まれる', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.1);
+      const { id, step } = setupType('bounty-balance', { x: 80, y: 0 });
+      const before = useGameStore.getState().pumpkinBlasts.length;
+      const order: string[] = [];
+      for (let i = 0; i < 100; i++) {
+        step(50);
+        const st = useGameStore.getState().enemies.find(e => e.id === id)?.bossState ?? '';
+        if (order[order.length - 1] !== st) order.push(st);
+        if (st === 'chase') break;
+      }
+      const want = ['bb-triple1-windup', 'bb-triple1-recover', 'bb-triple2-windup', 'bb-triple2-recover',
+        'bb-triple3-windup', 'bb-sweep-recover', 'chase'];
+      // orderの先頭は途中経過を含み得るので、wantが順序どおり部分列として現れることを見る
+      let wi = 0;
+      for (const st of order) if (st === want[wi]) wi++;
+      expect(wi, `states seen: ${order.join(' → ')}`).toBe(want.length);
+      expect(useGameStore.getState().pumpkinBlasts.length - before).toBeGreaterThanOrEqual(3);
+    });
+
+    it('3連発は発間の切り返しで向きを取り直す(2発目の帯は移動後のプレイヤーを向く)', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.1);
+      const { id, step } = setupType('bounty-balance', { x: 80, y: 0 });
+      step(16);
+      // 1発目のwindup中にプレイヤーが真下へ回り込む
+      const cur0 = useGameStore.getState().enemies.find(e => e.id === id)!;
+      const bcx = cur0.x + cur0.width / 2, bcy = cur0.y + cur0.height / 2;
+      useGameStore.setState(s => ({ player: { ...s.player, x: bcx, y: bcy + 90 } }));
+      // 2発目のwindupへ入るまで回す
+      let cur = cur0;
+      for (let i = 0; i < 60; i++) {
+        step(50);
+        cur = useGameStore.getState().enemies.find(e => e.id === id)!;
+        if (cur.bossState === 'bb-triple2-windup') break;
+      }
+      expect(cur.bossState).toBe('bb-triple2-windup');
+      // 帯の先端が下(+y)を向いている=取り直した証拠
+      expect((cur.aiTargetY ?? 0) - (cur.aiFromY ?? 0)).toBeGreaterThan(100);
     });
 
     it('遠距離で跳びかかり(輸入=pumpkin): windup(しゃがみ)→air(移動)→recoverを経て着地円の判定を積む', () => {
@@ -1370,7 +1420,7 @@ describe('runBountyTick — ボスメーカーの個別再生(▸)', () => {
       'br-laser': 'laser-windup',
       'bm-charge': 'bm-charge-windup', 'bm-whip360': 'bm-whip360-windup',
       'bm-combo': 'bm-combo1-windup', 'bm-snipe': 'bm-snipe-windup',
-      'bb-sweep': 'bb-sweep-windup', 'bb-leap': 'leap-windup',
+      'bb-sweep': 'bb-sweep-windup', 'bb-triple': 'bb-triple1-windup', 'bb-leap': 'leap-windup',
       'mk-naginata': 'mk-naginata-windup', 'mk-spin': 'mk-spin-windup',
       'mk-suiu': 'mk-suiu-windup', 'mk-boom': 'mk-boom-windup',
     };

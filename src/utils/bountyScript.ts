@@ -139,6 +139,19 @@ export interface BountyBalanceTuning {
   /** 近=薙ぎ払い / 遠=跳びかかり の境目。 */
   nearMax: number;
   sweep: { range: number; halfWidth: number; windup: number; damage: number; recover: number };
+  /** ★v0.25.3580(社長指示「取り掛かりを、今の単発と、3連発で分ける」): 薙ぎの3連発版。
+   *  帯は単発より少し狭く、その代わり2-3発目の予告が早い。長さ(range)と締めの硬直は単発と共有。 */
+  sweepTriple: {
+    /** 取り掛かり(近距離の薙ぎ開始)で3連発を引く確率。残りは単発。 */
+    chance: number;
+    halfWidth: number;
+    /** 発ごとの予告ms。1発目=単発と同じタメ、2-3発目は早い(社長指示)。 */
+    windup: [number, number, number];
+    /** 発間の切り返しms(この間に向きを取り直す)。 */
+    stepRecover: number;
+    /** 1発あたりのダメージ。 */
+    damage: number;
+  };
   /** 跳びかかり(輸入=pumpkin)。 */
   leap: { radius: number; windup: number; airMs: number; recover: number; damage: number };
 }
@@ -147,6 +160,8 @@ export const BOUNTY_BALANCE_TUNING: BountyBalanceTuning = {
   nearMax: 170,
   // sweep.range 150→300(v0.25.3576貼り戻し)→250(社長指示v0.25.3579「薙払いの長さを250に短縮」)。
   sweep: { range: 250, halfWidth: 40, windup: 750, damage: 18, recover: withRecoverFloor(900) },
+  // ★v0.25.3580: 数値は全部叩き台(確率50%・幅40→30・2-3発目350ms・切り返し150ms・威力は単発と同じ)。
+  sweepTriple: { chance: 0.5, halfWidth: 30, windup: [750, 350, 350], stepRecover: 150, damage: 18 },
   // ★v0.25.3576: 跳びかかりは元pumpkin輸入(複製)だったが、ボスメーカーの実機チューニングで
   // **鋏専用の値に確定**した(貼り戻し)。以後pumpkinとは独立(bountyScript.test.tsも裁定値の固定へ変更)。
   leap: {
