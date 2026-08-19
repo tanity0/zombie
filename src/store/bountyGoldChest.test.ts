@@ -1,13 +1,14 @@
-// PACING_PUZZLE.md §6.38 B3(賞金首の金箱)の受け入れ条件を固定するテスト。
-// ①賞金首討伐→金箱がプレイアブル帯に落ちる ②開封で中身が実効ランク準拠。
-import { describe, it, expect } from 'vitest';
-import {
-  useGameStore, rollBountyChestReward, bountyChestValueMult, BOUNTY_CHEST_TREASURE_COUNT,
-} from './gameStore';
+// 金箱(bounty-chest)の受け入れ条件を固定するテスト。
+// ★v0.25.3644(社長裁定「いまの金箱の層は削除。この当たり箱を新金箱として統一。5%で箱が金箱として
+// 登場。小ボスは確定ドロップ」): 旧①賞金首討伐→金箱ドロップ(不変)に加え、
+// ②中身=旧・秘密兵器箱の当たり構成(武器抽選3回+赤経験値20個+スクラップ10倍。旧トレジャー×2は削除)
+// ③武器箱スポーン時に5%で金箱へ変化、を固定する。
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { useGameStore } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { bountyEffectiveValueMult as bountyEffectiveValueMultFromLeaf } from '../utils/bountyValue';
-import { bountyEffectiveValueMult as bountyEffectiveValueMultFromBountyTick } from '../utils/bountyTick';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
+
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('damageEnemy/grantMeleeKillRewards — 賞金首討伐で金箱(bounty-chest)が1個ドロップする(§6.38 B3①)', () => {
   it('銃/接触/爆発キル経路(damageEnemy)で金箱が1個落ちる', () => {
@@ -63,10 +64,11 @@ describe('damageEnemy/grantMeleeKillRewards — 賞金首討伐で金箱(bounty-
   });
 });
 
-describe('collectPickup(bounty-chest) — 開封の中身(§6.38 B3②中身が実効ランク準拠)', () => {
-  it('開封するとトレジャー2個+スクラップが生成され、武器(weapon-drop/weapon-crate)は出ない', () => {
+describe('collectPickup(bounty-chest) — 金箱の中身(★v0.25.3644=旧・秘密兵器箱の当たり構成)', () => {
+  it('開封すると武器3本+赤経験値20個+スクラップ(10倍)が出る。旧中身のトレジャーは出ない', () => {
     useGameStore.getState().resetGame('warrior');
     const gt = useGameStore.getState().gameTime;
+    const weaponsBefore = useGameStore.getState().player.weapons.length;
     useGameStore.setState({
       pickups: [{ id: 'pickup-bounty-chest-test', x: 100, y: 100, type: 'bounty-chest', value: 0 }],
       gameTime: gt,
@@ -74,46 +76,30 @@ describe('collectPickup(bounty-chest) — 開封の中身(§6.38 B3②中身が�
 
     useGameStore.getState().collectPickup('pickup-bounty-chest-test');
 
-    const after = useGameStore.getState().pickups;
-    const treasures = after.filter(p => p.type === 'treasure');
-    const straps = after.filter(p => p.type === 'strap');
-    const weapons = after.filter(p => p.type === 'weapon-drop' || p.type === 'weapon-crate');
-    expect(treasures.length).toBe(BOUNTY_CHEST_TREASURE_COUNT);
-    expect(straps.length).toBeGreaterThan(0);
-    expect(weapons.length).toBe(0); // 武器は入れない(§3・v2 F)
-    // トレジャーには金箱由来の位置(pickup.x/y近辺=addPickupの散らばり込み)と妥当なvariant(1..6)が付く。
-    for (const t of treasures) {
-      expect(Math.abs(t.x - 100)).toBeLessThan(200);
-      expect(Math.abs(t.y - 100)).toBeLessThan(200);
-      expect(t.variant).toBeGreaterThanOrEqual(1);
-      expect(t.variant).toBeLessThanOrEqual(6);
-      expect(t.value).toBeGreaterThanOrEqual(1);
-    }
+    const st = useGameStore.getState();
+    const xp = st.pickups.filter(p => p.type === 'experience' && p.id.startsWith('pickup-xp-gold-'));
+    const straps = st.pickups.filter(p => p.type === 'strap');
+    const treasures = st.pickups.filter(p => p.type === 'treasure');
+    expect(xp.length).toBe(20);                       // 赤経験値20個
+    expect(xp.every(p => p.value >= 5)).toBe(true);   // value>=5=赤(pixiの色分けしきい値)
+    expect(treasures.length).toBe(0);                 // 旧中身(トレジャー×2)は削除
+    // 武器抽選3回: grantWeaponは所持済みキーだと本数が増えないことがあるため、
+    // 「増えている(最低1)」+「スクラップが10倍レンジ(300〜510)」で当たり構成を確認する。
+    expect(st.player.weapons.length).toBeGreaterThan(weaponsBefore);
+    const strapTotal = straps.reduce((a, p) => a + (p.value ?? 0), 0);
+    expect(strapTotal).toBeGreaterThanOrEqual(300);   // (30..51)×10
+    expect(strapTotal).toBeLessThanOrEqual(510);
   });
 
-  it('中身の価値は実効エリアrank(bountyChestValueMult)に比例してスケールする(実効倍率が高いほど高価値)', () => {
-    // danger表の素の価値レンジは3〜6(weightedTreasureValue([[3,40],[4,30],[5,20],[6,10]]))。
-    // mult=1なら値はそのまま3〜6。mult=3なら9〜18(round後)に収まるはず(統計的に確認)。
-    const N = 300;
-    const lowValues: number[] = [];
-    const highValues: number[] = [];
-    for (let i = 0; i < N; i++) {
-      lowValues.push(...rollBountyChestReward(0, 0).treasureValues); // area0・gameTime0=mult最小域
-      highValues.push(...rollBountyChestReward(4, 999_999_999).treasureValues); // 深部エリア+時間経過=mult最大域
-    }
-    const lowMax = Math.max(...lowValues);
-    const highMin = Math.min(...highValues);
-    // 実効倍率が上がるほど価値が底上げされる=高難易度側の最小値が低難易度側の最大値を下回らない
-    // (完全な統計保証ではなく、明確な倍率差が付いていることの目安として緩めに確認)。
-    expect(highMin).toBeGreaterThanOrEqual(lowMax);
-  });
-
-  it('§6.38 B4(クリーンアップ): bountyChestValueMultは複製ではなく、bountyTick.tsと同じ実importである', () => {
-    // B3では循環import回避のためgameStore.ts側に式を複製し、ドリフト検知テスト(値の一致)で監視していた。
-    // B4でbountyValue.ts(依存=enemyUtils+timeDifficultyのみの葉)へ一本化し、gameStore.ts/bountyTick.ts
-    // の両方がそこから直接importする形にした。もう「別々の式がたまたま一致する」ではなく「同じ関数を
-    // 指している」ことを検証する(参照同一性=これがドリフトしなくなったことの証明)。
-    expect(bountyChestValueMult).toBe(bountyEffectiveValueMultFromLeaf);
-    expect(bountyEffectiveValueMultFromBountyTick).toBe(bountyEffectiveValueMultFromLeaf);
+  it('★武器箱はスポーン時に5%で金箱へ変化する(見た目=gold-chest。開封時判明の旧・秘密箱は廃止)', () => {
+    useGameStore.getState().resetGame('warrior');
+    // 当たり側: Math.random()=0 → 変化する。
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    useGameStore.getState().addPickup({ id: 'crate-hit', x: 50, y: 50, type: 'weapon-crate', value: 1 });
+    expect(useGameStore.getState().pickups.find(p => p.id === 'crate-hit')!.type).toBe('bounty-chest');
+    // 外れ側: Math.random()=0.99 → 武器箱のまま。
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    useGameStore.getState().addPickup({ id: 'crate-miss', x: 60, y: 60, type: 'weapon-crate', value: 1 });
+    expect(useGameStore.getState().pickups.find(p => p.id === 'crate-miss')!.type).toBe('weapon-crate');
   });
 });

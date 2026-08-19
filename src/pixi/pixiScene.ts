@@ -22399,10 +22399,10 @@ export class PixiScene {
             core.width = core.height = r * 0.40 * 2;
             core.alpha = GEM_BODY_GLOW_ALPHA * 0.22;
           }
-        } else if (p.type === 'weapon-crate' && p.secret) {
-          // 社長指示v0.25.3277「箱を光らせて差別」: 秘密兵器箱は金色の脈動ハローで普通の武器箱と
-          // 区別する(視覚のみ。XPジェムと同じプール済みソフトグロー2枚=per-frame Graphicsなし・
-          // 投影影には参加しない)。
+        } else if (p.type === 'bounty-chest') {
+          // ★v0.25.3644(金箱統一): 旧・秘密兵器箱の金色脈動ハローを**金箱**に付ける(gold-chest素材
+          // +ハロー=フィールドで一目で分かる)。視覚のみ。XPジェムと同じプール済みソフトグロー2枚
+          // =per-frame Graphicsなし・投影影には参加しない。
           if (!entry.glowHalo) {
             const halo = new Sprite(getSoftGlowTexture());
             halo.anchor.set(0.5); halo.blendMode = 'add'; halo.eventMode = 'none';

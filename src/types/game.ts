@@ -1578,9 +1578,8 @@ export interface Pickup {
   // (as opposed to dropping where an enemy died). These get a VS-style edge
   // arrow pointing the player toward them while they're off-screen.
   worldDrop?: boolean;
-  // 社長指示v0.25.3277: 武器箱(weapon-crate)が10%で「秘密兵器箱」に変化。金色に光って差別化し、
-  // 拾うと大表示+武器抽選3回+赤経験値20個ばらまき。抽選はaddPickup(屋外のみ)で一度だけ行う。
-  secret?: boolean;
+  // (旧 secret?: boolean=「秘密兵器箱」フラグは ★v0.25.3644 の金箱統一で撤去——
+  //  当たりはスポーン時に type='bounty-chest' へ変化する形になった)
   // v0.25.3137(社長指示「ステージ7(ボスモードも)は、最初に宝箱が目の前に初期設置」):
   // 宝箱(type='chest')の**中身の種類**。未設定=従来のボスドロップ(装備の選択メニュー)。
   // 'boss-start' = ステージ7の開幕宝箱(tier2-3の銃1丁 + 3レベルアップ)。
@@ -1670,8 +1669,9 @@ export type PickupType =
   | 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle'
   | 'weapon-drop' | 'weapon-crate' | 'quick-magazine'
   | 'card-key' | 'lab-clear-item' | 'ammo-phill'
-  // §6.38 B3(賞金首の金箱): 討伐で1個ドロップする専用pickup。見た目=gold-chest素材。
-  // 開封=秘密兵器箱の開封機構を流用するが武器は入れない(トレジャー×2+スクラップのみ)。
+  // 金箱(★v0.25.3644 社長裁定で統一): 見た目=gold-chest素材。出どころは②つ——
+  // ①武器箱スポーン時に5%で変化(旧「秘密兵器箱」を改名・統一) ②賞金首討伐の確定ドロップ。
+  // 中身=武器抽選3回+赤経験値20個+スクラップ10倍(旧中身のトレジャー×2+スクラップは削除)。
   | 'bounty-chest';
 
 // 屋内(研究施設)ステージのギミック状態。
