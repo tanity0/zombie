@@ -210,24 +210,47 @@ const sanitize = (raw: unknown): SubquestSave => {
   return out;
 };
 
-export const loadSubquestSave = (): SubquestSave => {
-  if (typeof localStorage === 'undefined') return {};
+// ★v0.25.3649(成果物監査・中3): 保存のホットパス最適化(挙動不変)。
+// 旧実装はマッチする1キルごとに getItem×3+JSON.parse×2+setItem×1 を同期実行していた
+// (爆発スプラッシュ等の同一フレーム5〜10キルでモバイルの1フレームが膨らむ)。
+// ⇒ ①読みは**モジュール内キャッシュ**で0回に ②書きは queueMicrotask で**同一フレーム分を1回に合流**。
+// microtaskは同tick内に走るので practiceGuard の判定タイミングは変わらない(練習中はそもそも
+// put が呼ばれない)。テストは flush/reset ヘルパで同期化する。
+let saveCache: SubquestSave | null = null;
+let flushQueued = false;
+const flushSaveNow = (): void => {
+  if (typeof localStorage === 'undefined' || saveCache === null) return;
   try {
-    const raw = localStorage.getItem(SUBQUEST_SAVE_KEY);
-    return raw ? sanitize(JSON.parse(raw)) : {};
-  } catch {
-    return {};
-  }
-};
-
-export const writeSubquestSave = (save: SubquestSave): void => {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(SUBQUEST_SAVE_KEY, JSON.stringify(save));
+    localStorage.setItem(SUBQUEST_SAVE_KEY, JSON.stringify(saveCache));
   } catch {
     /* ignore (quota / private mode) */
   }
 };
+
+export const loadSubquestSave = (): SubquestSave => {
+  if (saveCache !== null) return saveCache;
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(SUBQUEST_SAVE_KEY);
+    saveCache = raw ? sanitize(JSON.parse(raw)) : {};
+  } catch {
+    saveCache = {};
+  }
+  return saveCache;
+};
+
+export const writeSubquestSave = (save: SubquestSave): void => {
+  saveCache = save;
+  if (typeof queueMicrotask !== 'function') { flushSaveNow(); return; }
+  if (flushQueued) return;
+  flushQueued = true;
+  queueMicrotask(() => { flushQueued = false; flushSaveNow(); });
+};
+
+/** テスト用: 溜まっている書き込みを同期フラッシュ(直後にlocalStorageを直読みする検証のため)。 */
+export const flushSubquestSaveForTest = (): void => { flushQueued = false; flushSaveNow(); };
+/** テスト用: キャッシュ破棄(テストがlocalStorageを直接書き換えた後に呼ぶ)。 */
+export const resetSubquestSaveCacheForTest = (): void => { saveCache = null; flushQueued = false; };
 
 export const getStageSubquestState = (stageId: string): SubquestStageState =>
   loadSubquestSave()[stageId] ?? emptyStageState();

@@ -22,11 +22,12 @@ const storage = {
 const { useGameStore } = await import('./gameStore');
 const { setSelectedStageId } = await import('../data/progress');
 const { spawnEnemyAt } = await import('../utils/enemyUtils');
-const { SUBQUEST_SAVE_KEY } = await import('../utils/subquests');
+const { SUBQUEST_SAVE_KEY, flushSubquestSaveForTest, resetSubquestSaveCacheForTest } = await import('../utils/subquests');
 
 // stage-1 の先頭2枠 = ①通常25体 ②青5体。
 const startRun = (benchmark = false) => {
   mem.clear();
+  resetSubquestSaveCacheForTest(); // ★v0.25.3649: 保存はモジュール内キャッシュ化されたため、ストレージを消したら必ず対で呼ぶ
   setSelectedStageId('stage-1');
   useGameStore.getState().resetGame('warrior');
   useGameStore.getState().setBenchmarkRun(benchmark);
@@ -116,11 +117,21 @@ describe('達成(報酬は1回きり)', () => {
 
   it('達成は保存され、次の出撃では次のorderが補充される', () => {
     killBlues(5);
+    flushSubquestSaveForTest(); // ★v0.25.3649: 書き込みは同一フレーム合流(microtask)なので直読みの前にフラッシュ
     const saved = JSON.parse(localStorage.getItem(SUBQUEST_SAVE_KEY) ?? '{}');
     expect(saved['stage-1'].cleared).toContain('sq-1-2');
     useGameStore.getState().resetGame('warrior');
     useGameStore.getState().refillSubquests();
     expect(useGameStore.getState().subquests.map(r => r.id)).toEqual(['sq-1-1', 'sq-1-3']);
+  });
+});
+
+describe('★決定の固定(v0.25.3649・監査小5): NPC/召喚起因のキルも数える', () => {
+  it('hateSource=ghost・damageChannel=null のキルでも進捗が入る(recordKillと同じ「全部数える」)', () => {
+    const e = spawnInFront('zombie');
+    const before = progressOf('sq-1-1') ?? 0;
+    useGameStore.getState().damageEnemy(e.id, 9999, false, false, false, null, 'ghost');
+    expect(progressOf('sq-1-1')).toBe(before + 1);
   });
 });
 
@@ -145,6 +156,7 @@ describe('ハンター追跡(hunter-survive)の鏡映', () => {
     localStorage.setItem(SUBQUEST_SAVE_KEY, JSON.stringify({
       'stage-4': { cleared: ['sq-4-1', 'sq-4-2'], active: [] },
     }));
+    resetSubquestSaveCacheForTest(); // ★ストレージを直接書いたのでキャッシュを捨てて読み直させる
     useGameStore.getState().resetGame('warrior');
     useGameStore.getState().setBenchmarkRun(false);
     useGameStore.getState().refillSubquests();

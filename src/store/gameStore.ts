@@ -10141,6 +10141,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // サブクエストのキル進捗(research/SUBQUESTS.md)。★キル確定点2本のうちの1本(銃/接触/爆発/DoT)。
     // もう1本は grantMeleeKillRewards(近接5経路の合流点)。
+    // ★決定(v0.25.3649・成果物監査小5の明文化): 護衛NPC・召喚(犬/タレット/デコイ)・守護霊のキルも
+    // **数える**(hateSource/damageChannelで絞らない)。recordKill(スタイル集計)と同じ「全部数える」
+    // =「普段のプレイの延長で達成」の共通方針どおり。※ボム(ロザリオ)の一括除去だけはこの関数を
+    // 通らない別経路(collectPickup)=数えるかは社長裁定待ち(SUBQUESTS.md ★未決)。
     if (subquestKilled) {
       const ske = subquestKilled as Enemy;
       applySubquestProgress(get, { type: 'kill', kill: subquestKillEventFrom(get(), ske) });

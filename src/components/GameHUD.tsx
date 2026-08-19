@@ -225,8 +225,10 @@ const GameHUD: React.FC = () => {
       {/* 右上・スクラップの下の「クエスト列」(research/SUBQUESTS.md v3裁定Q2)。
           受注制の二人組(EventQuestPill)と自動補充のサブクエスト(SubquestHud)を同じ縦積みに
           並べる。どちらも非表示の時は行ごと消えるので隙間は出ない(絶対配置は列側が1つ持つ)。 */}
+      {/* ★v0.25.3649(成果物監査・中4): whitespace-nowrap=長い条件文(ハンター30秒等)が狭い画角で
+          折り返して列が縦に伸び、下のStatsHud(撃破/DMG表示・オプション)へ届くのを防ぐ。 */}
       <div
-        className="absolute flex flex-col items-end gap-1"
+        className="absolute flex flex-col items-end gap-1 whitespace-nowrap"
         style={{
           top: 'calc(max(env(safe-area-inset-top), 8px) + 34px)',
           right: 'max(env(safe-area-inset-right), 12px)',

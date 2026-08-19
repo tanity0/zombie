@@ -1515,8 +1515,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // bossCorpse は getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)討伐で共通に立つので、
   // ここで変化を検出して 'boss-death' SFX を1回だけ鳴らす(gameStore は playSfx を持てないため)。
   const bossCorpseSfxRef = useRef(0);
-  // サブクエスト達成SE用: 直近に鳴らした subquestClearSeq(store側の通し番号)。boss-death と同じ型。
-  const subquestClearSfxRef = useRef(0);
+  // サブクエスト達成SE用: 直近に鳴らした subquestClearSeq(store側の通し番号)。
+  // ★v0.25.3649(成果物監査・致命1): 初期値は0ではなく**マウント時の現在値**。Gameは出撃ごとに
+  // 再マウントされ ref が作り直される一方、subquestClearSeq は resetGame で意図的に維持されるため、
+  // 0初期化だと「セッション中に1件でも達成済み」なら次の出撃の頭で seq(>0)!==ref(0) が成立して
+  // event-clear が誤爆していた(boss-death型と違い「ラン開始時に必ず偽」になる条件が無い)。
+  const subquestClearSfxRef = useRef(useGameStore.getState().subquestClearSeq);
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
   const castleAttnRef = useRef<{ at: number; x: number; y: number }>({ at: 0, x: 0, y: 0 });
