@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3626',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 守護霊ボスの設計書v1を追加)。',
+    ],
+  },
+  {
     version: '0.25.3625',
     items: [
       'AIテスト(ガントレット): botが遠くのボスへ歩いて行かない真因を修正しました(狙う相手が交戦距離の外だと移動が一切始まらなかった→接近距離まで歩いて詰めるように。前進ゲートもガントレット中は常時開放)。',
