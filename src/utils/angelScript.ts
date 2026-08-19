@@ -190,10 +190,12 @@ export const ANGEL_URI_TUNING: AngelUriTuning = {
   common: ANGEL_COMMON_TUNING, // ★6体で同じ実体(複製しない)
   // 社長指示v0.25.3195「ウリの攻撃が遅い。溜を半分に」/ ★振り速度2倍(v0.25.2885)。
   sweep: { windup: 550, active: 130, recover: withRecoverFloor(580), range: 310, halfWidth: 40 },
-  downslash: { windup: 500, active: 100, recover: withRecoverFloor(900), range: 310, halfWidth: 15 },
+  // halfWidth 15→40 = v0.25.3589 ボスメーカー貼り戻し(社長確定)。
+  downslash: { windup: 500, active: 100, recover: withRecoverFloor(900), range: 310, halfWidth: 40 },
   // range/halfWidth の既定はミゲルの払いと同値(§6.28-4と同型の攻撃と解釈した流用)。
   // **別の欄として持つ**(揃っていることは angelTuning.test.ts が既定値で機械検査する)。
-  thrust: { windup: 450, moveMs: 230, strikeMs: 220, recover: withRecoverFloor(580), range: 190, halfWidth: 40 },
+  // moveMs 230→150 = v0.25.3589 ボスメーカー貼り戻し(社長確定・走りが鋭く)。
+  thrust: { windup: 450, moveMs: 150, strikeMs: 220, recover: withRecoverFloor(580), range: 190, halfWidth: 40 },
   bolt: { windup: 225, recover: withRecoverFloor(500) },
   lunge: { standoffPx: 40, maxFrac: 0.5 },
 };
