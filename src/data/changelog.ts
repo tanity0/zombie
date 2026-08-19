@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3614',
+    items: [
+      'KILL処刑演出の最中に攻撃ボタンを連打すると通常の振りモーション・振り音が混ざっていたのを修正しました(演出中は全ての通常近接演出を抑止。演出後の攻撃は従来どおり)。',
+    ],
+  },
+  {
     version: '0.25.3613',
     items: [
       'KILL処刑演出: しゃがみ絵のまま低いダッシュで首元へ→一拍→立ち上がりながら振り抜き(切り出しの構え→振りの絵)+刀の一閃の斬撃、に変更しました。',

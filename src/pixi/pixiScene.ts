@@ -13716,11 +13716,14 @@ export class PixiScene {
     const killFxState = useGameStore.getState().killFx;
     const killFxRtNow = killFxState ? Date.now() - killFxState.startAt : Infinity;
     const killFxActiveForPose = killFxRtNow >= 0 && killFxRtNow < KILLFX_TOTAL_MS;
-    // ★実機FB6(v0.25.3613「まだ通常攻撃の演出出ちゃうときがある」): 取りこぼしの真因は、演出後も
+    // ★実機FB6(v0.25.3613「まだ通常攻撃の演出出ちゃうときがある」): 取りこぼし①=演出後も
     // スイング表示窓がスローの尾まで伸びている(v0.25.1536)こと——演出が明けた瞬間に振りポーズが
-    // 復活していた。**演出を発動させたスイング**は窓が閉じるまで通常演出を出さない(新しいスイングは出す)。
-    const killFxSwallowsSwing = !!killFxState && killFxRtNow < KILLFX_TOTAL_MS + 1500
-      && (p.meleeSwingAt || 0) <= killFxState.startAt + 50;
+    // 復活していた。**演出を発動させたスイング**は窓が閉じるまで通常演出を出さない。
+    // ★実機FB7(v0.25.3614「まだ混じる」): 取りこぼし②=**演出中の追加タップ**(新しいmeleeSwingAt)が
+    // このガードを素通りして、処刑の最中に通常の振りが重なっていた。演出中(killFxActiveForPose)は
+    // どのスイングも通常演出を出さない(①と③=下の合成ガードで両方塞ぐ。演出後の新スイングは出る)。
+    const killFxSwallowsSwing = killFxActiveForPose || (!!killFxState && killFxRtNow < KILLFX_TOTAL_MS + 1500
+      && (p.meleeSwingAt || 0) <= killFxState.startAt + 50);
     // 近接専用ポーズを持つクラス(スカベンジャー=necromancer/マークスマン=mage・社長提供素材)は近接スイング中に
     // 本体を差し替える。構え→振り抜きをスイング進行 kt=MELEE_POSE_READY_FRAC で切替。専用ポーズは各クラスの待機絵と
     // 同じ幅86px・足元下端で焼いてあるので描画スケール/足位置は不変(playerBaseScaleは幅基準)。
