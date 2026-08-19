@@ -748,6 +748,10 @@ const BOT_SKILL: BotSkill = parseBotSkill(evParam('botskill'));
 // v0.25.2339: 目的(ゴール) ?botgoal=clear|score|hiddenBoss[:Lv]|hunt:<敵>|depth:<px>|kills:<n>|bases:<n>
 // (既定 none=従来の挙動)。目的が無いと「上手さ」は最適化する対象を持たない、が社長の診断。
 const BOT_GOAL: BotObjective = parseBotObjective(evParam('botgoal'));
+// ★v0.25.3619(ガントレット実機ラン1回目の学び・TEST_HANDOFF results/20260819-1750): botgoal未指定=
+// {kind:'none'}だとbotは湧き位置に留まり、離れて湧くボスと一生出会わない(21枠中20枠が未接敵
+// タイムアウト・技の記録ゼロ)。ガントレット中は目的を「現在の枠のボスを狩る」に固定する。
+const GAUNTLET_BOT_HUNT = evParam('gauntlet') === '1';
 // BOT_AND_GHOST.md G2(デバッグ召喚): ?ghost=1 でボス交戦の立ち上がりにゴースト助っ人を自動召喚する。
 // G3以降は装備スキル「守護霊」(guardian-spirit)でも同じ召喚が有効(ghostRunEnabled=directorTick側でOR)。
 // このフラグは開発用として残す(装備なしでも従来どおり動く)。
@@ -2090,8 +2094,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // v0.25.3508: `kind==='none'` でも planObjective を通す。「デンジャーへ行くなら拠点を取る」
         // の関門(dangerBaseGatePlan)は目的の種類に関係なく効かせる必要があるため(社長指示)。
         // none の時に返るのは関門プランか NO_PLAN のどちらかで、それ以外の指示は出ない=従来どおり。
+        // ★v0.25.3619: ガントレット中は枠のボスを狩る(practiceBossTypeが現在の枠の型)。
+        const gauntletHuntType = GAUNTLET_BOT_HUNT ? practiceBossType() : null;
+        const effectiveBotGoal: BotObjective = gauntletHuntType
+          ? { kind: 'hunt', enemyType: gauntletHuntType }
+          : BOT_GOAL;
         const botGoalPlan = BOT_PERSONA
-          ? planObjective(BOT_GOAL, {
+          ? planObjective(effectiveBotGoal, {
               px: player.x + player.width / 2, py: player.y + player.height / 2,
               level: player.level, enemies, pickups,
               returnCircle: loopState.returnCircle

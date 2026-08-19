@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3620',
+    items: [
+      'AIテスト(ガントレット): botが枠のボスを自分から探しに行くようになりました(1回目の実機ランで21枠中20枠が未接敵タイムアウトだった対策)。',
+    ],
+  },
+  {
     version: '0.25.3619',
     items: [
       'AIテスト: botが敵と敵に挟まれるとその場でくるくる回って何もしなくなることがあったのを修正しました(挟まれたら一定方向へ滑り出す+回転状態を約1秒で検知して脱出)。',
