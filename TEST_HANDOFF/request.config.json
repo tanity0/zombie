@@ -1,43 +1,11 @@
 {
   "baseUrl": "local",
-  "runMs": 900000,
+  "mode": "gauntlet",
+  "note": "botrunスクリプトは使わない。REQUEST.mdの手順どおりheadedでURLを開いて放置する。",
+  "url": "/zombie/?gauntlet=1&bot=standard&botskill=master",
   "headless": false,
   "viewport": {
     "width": 1280,
     "height": 800
-  },
-  "configs": [
-    {
-      "name": "new-base-1",
-      "persona": "standard",
-      "subs": ["heavy-grenade"],
-      "skills": ["guardian-spirit"]
-    },
-    {
-      "name": "new-base-2",
-      "persona": "standard",
-      "subs": ["heavy-grenade"],
-      "skills": ["guardian-spirit"]
-    },
-    {
-      "name": "new-base-3",
-      "persona": "standard",
-      "subs": ["heavy-grenade"],
-      "skills": ["guardian-spirit"]
-    },
-    {
-      "name": "crit-boss-1",
-      "persona": "standard",
-      "subs": ["heavy-grenade"],
-      "skills": ["guardian-spirit"],
-      "extraQuery": "bountynow=1&bountytype=melee"
-    },
-    {
-      "name": "crit-boss-2",
-      "persona": "standard",
-      "subs": ["heavy-grenade"],
-      "skills": ["guardian-spirit"],
-      "extraQuery": "bountynow=1&bountytype=melee"
-    }
-  ]
+  }
 }
