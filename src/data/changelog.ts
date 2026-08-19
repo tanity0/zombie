@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3601',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 全ボス×AI実機テストの設計書をv2へ改稿)。',
+    ],
+  },
+  {
     version: '0.25.3600',
     items: [
       'ボスモード: グレンの「第二形態」独立枠を撤去し、第一形態と合体しました。本編と同じく第一形態を倒すとその場で第二形態が出現し、両方倒して勝利になります。',
