@@ -38,6 +38,7 @@ import {
   decideGhost, GHOST_COUNTER_MELEE_PERIOD_MS, type GhostDecision, type GhostProfile,
 } from './ghostDriver';
 import { strongestGuardian } from '../data/fixedGuardians';
+import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { GUARDIAN_PHANTOM_LABEL } from './bossPractice';
 import { GUARDIAN_PHANTOM_TUNING as GP_T } from './phantomScript';
 
@@ -89,8 +90,26 @@ export const PHANTOM_MELEE_PERIOD_MS = GHOST_COUNTER_MELEE_PERIOD_MS;
 const PHANTOM_PARRY_SHOVE_PX = 46;
 const PHANTOM_PARRY_SHOVE_MS = 180;
 
-/** 台帳の装備銃(profile.snapshot.activeGunKey)。ラン中に変わらないので1回だけ引く。 */
-const phantomGunKey = (): string | undefined => strongestGuardian().profile.snapshot?.activeGunKey;
+/**
+ * ★社長裁定v0.25.3641「いまってスキルまだ無いんだよね?そしたら武器とかも初期で」:
+ * スキル・サブウェポンの再現は第3弾=未実装なので、**装備も初期に揃える**(初期プレイヤー vs
+ * 初期状態の幻影の決闘)。銃=台帳クラスの**初期銃**(rogue=handgun-t1)。
+ * 旧: snapshot.activeGunKey(handgun-t3=計測時の装備)——スキル再現が入る第3弾で戻す候補。
+ */
+const phantomGunKey = (): string | undefined =>
+  PLAYER_PROFILES[strongestGuardian().classId]?.gunKey;
+
+/**
+ * 近接ダメージ=台帳クラスの**初期近接武器の実ダメージ**(rogue=machete-t3)。同裁定。
+ * 判定の形(reach/halfWidth)は GP_T のまま(見た目が読める判定を優先・叩き台)。クリは未適用(叩き台)。
+ */
+let meleeDamageCache: number | null = null;
+export const phantomMeleeDamage = (): number => {
+  if (meleeDamageCache !== null) return meleeDamageCache;
+  const key = PLAYER_PROFILES[strongestGuardian().classId]?.meleeKey;
+  meleeDamageCache = (key ? createWeapon(key).damage : null) ?? GP_T.melee.damage;
+  return meleeDamageCache;
+};
 
 // =================================================================================================
 // SFX の注入口(bountyTick.BountySfx と同型・headless では audioManager を import しない)
@@ -329,7 +348,7 @@ export const decidePhantom = (
       gunDamage: s.gun?.damage ?? 0,
       gunIntervalMs: s.gun ? effectiveFireCooldown(s.gun, gunOwner(s)) : 500,
       gunRangePx: phantomGunRangePx(s),
-      meleeDamage: GP_T.melee.damage,
+      meleeDamage: phantomMeleeDamage(), // 初期近接武器の実ダメージ(v0.25.3641裁定)
     },
     gameTime,
     nowMs,
@@ -367,7 +386,7 @@ const swingPhantomMelee = (
   // 実際にHPが減ったか(=i-frame中でない有効打か)を前後比較で判定して鳴らす。
   const hpBefore = useGameStore.getState().player.health;
   useGameStore.getState().damagePlayer(
-    GP_T.melee.damage, GUARDIAN_PHANTOM_MELEE_SOURCE, bcx, bcy, GUARDIAN_PHANTOM_TYPE,
+    phantomMeleeDamage(), GUARDIAN_PHANTOM_MELEE_SOURCE, bcx, bcy, GUARDIAN_PHANTOM_TYPE,
   );
   // 被弾SEはここで鳴らす: damagePlayer 直呼びは「本当に何も出ない」前例がある(gameStore の注記)。
   if (useGameStore.getState().player.health < hpBefore) sfx.hurt();

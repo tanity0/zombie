@@ -14,9 +14,11 @@ import {
 } from './phantomTick';
 import { phantomHitGate } from './phantomGate';
 import { GUARDIAN_PHANTOM_TUNING as GP_T } from './phantomScript';
+import { phantomMeleeDamage } from './phantomTick';
 import { COUNTER_REACH_DECL } from './counterReach';
 import { usesPostureSystem, applyBossPostureDamage } from './bossPosture';
 import { strongestGuardian } from '../data/fixedGuardians';
+import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { useGameStore, INVULN_MS } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 import { setTreesDisabled } from '../world/trees';
@@ -68,7 +70,7 @@ describe('① 即発近接(予告なし・プレイヤーと同じ周期)', () =
     const gp = cur();
     expect(gp.gpSwingAt).toBeDefined();                       // 振った(=即発)
     expect(gp.bossState).toBeUndefined();                     // 州機械は使わない(予告も硬直も無い)
-    expect(useGameStore.getState().player.health).toBe(hp0 - GP_T.melee.damage);
+    expect(useGameStore.getState().player.health).toBe(hp0 - phantomMeleeDamage()); // 初期近接武器の実ダメージ(v0.25.3641裁定)
   });
 
   it('次の振りは**プレイヤーの近接の実効周期**(COUNTER_WINDOW+COUNTER_COOLDOWN)を待つ', () => {
@@ -302,10 +304,13 @@ describe('④ 銃ミラー(台帳武器の実性能・リロードの息継ぎ)'
     expect(useGameStore.getState().projectiles.filter(p => p.hostile && p.ownerId === id).length).toBe(0);
   });
 
-  it('銃は台帳(strongestGuardian の装備銃)から作る=数値を発明していない', () => {
+  // ★社長裁定v0.25.3641「スキルまだ無いんだよね?そしたら武器とかも初期で」:
+  // 銃=台帳クラスの**初期銃**(スキル・サブ再現が無い現段階は装備も初期で条件を揃える。
+  // snapshot.activeGunKey へ戻すのはスキル再現が入る第3弾の候補)。数値を発明していないことは不変。
+  it('銃は台帳クラスの初期銃(PLAYER_PROFILES)から作る=数値を発明していない', () => {
     const { step, state } = setup(150);
     step(16);
-    expect(state.gun?.key).toBe(strongestGuardian().profile.snapshot!.activeGunKey);
+    expect(state.gun?.key).toBe(PLAYER_PROFILES[strongestGuardian().classId].gunKey);
   });
 });
 
