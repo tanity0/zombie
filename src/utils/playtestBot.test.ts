@@ -657,10 +657,58 @@ describe('★近接分離ステア(社長報告v0.25.3557「なんか割と敵�
     expect(separationAdjust(casual, RIGHT, 0, 0, [e])).toEqual(RIGHT);
   });
 
-  it('意図的な静止は尊重する(反発で勝手に歩き出さない)', () => {
+  it('静止の尊重は「安全な距離」まで: ガード距離の外に立つだけの敵では歩き出さない(v0.25.3596)', () => {
     const STILL = { up: false, down: false, left: false, right: false };
-    const e = spawnEnemyAt('zombie', 10, 0, 0);
+    const e = spawnEnemyAt('zombie', 45, -20, 0); // 中心が(65,0)付近=ガード距離(56)の外・非接近
     expect(separationAdjust(master, STILL, 0, 0, [e])).toEqual(STILL);
+  });
+
+  // ★v0.25.3596(社長報告5回目「寄ってくる敵に反応できてない」): 旧仕様は静止中の分離が完全オフで、
+  // ホールド中に歩き寄られると触れられるまで棒立ちだった。触れる寸前は静止でも離れる。
+  it('静止中でも触れる寸前(48px内)の敵からは離れる', () => {
+    const STILL = { up: false, down: false, left: false, right: false };
+    const e = spawnEnemyAt('zombie', 10, -20, 0); // 中心が(30,0)付近=+x側の至近
+    const out = separationAdjust(master, STILL, 0, 0, [e]);
+    expect(out.left).toBe(true); // -x(敵の反対)へ退く
+    expect(out.right).toBe(false);
+  });
+
+  it('静止中でもガード距離(56px)内から向かってくる敵からは離れる', () => {
+    const STILL = { up: false, down: false, left: false, right: false };
+    const e = spawnEnemyAt('zombie', 32, -20, 0); // 中心が(52,0)付近
+    e.vx = -50; e.vy = 0; // こちらへ向かっている
+    const out = separationAdjust(master, STILL, 0, 0, [e]);
+    expect(out.left).toBe(true);
+  });
+
+  // ★v0.25.3596(「なぜか自分から突っ込むときがある」): HARD_BLOCK_DIST(44px)内の敵ごとに
+  // 「その敵へ向かう移動成分」を接線へ射影して取り除く=体1つ分の距離では自分から歩み寄らない。
+  it('至近(44px内)の敵へ向かう移動成分は出ない(接線へ逃がす)', () => {
+    const RIGHT = { up: false, down: false, left: false, right: true };
+    const e = spawnEnemyAt('zombie', 20, -20, 0); // 中心が(40,0)付近=進行方向の正面・至近
+    const out = separationAdjust(master, RIGHT, 0, 0, [e]);
+    expect(out.right).toBe(false); // 敵の方向(+x)へは進まない
+  });
+});
+
+describe('★接触カウンターの再武装(社長報告v0.25.3596「カウンターもしてるようには見えない」)', () => {
+  it('発火後、同じ敵が近くに居続けても CONTACT_REFIRE_MS 経過で構え直して2発目が出る', () => {
+    const state = createCounterThreatState();
+    const e = spawnEnemyAt('zombie', 40, -20, 0); // 中心が(60,0)付近
+    e.vx = -50; e.vy = 0; // 接近中
+    const enemies = [e];
+    // 1発目: 検知→(master=遅延後)発火
+    let fired = false;
+    for (let t = 0; t <= 2000 && !fired; t += 16) {
+      fired = decideCounterReaction('standard', state, 0, 0, enemies, [], t, 0, () => 0, 'master');
+    }
+    expect(fired).toBe(true);
+    // 敵は近く(135px内)に居続ける。旧仕様はここで追跡が外れず永久に2発目が出なかった。
+    let fired2 = false;
+    for (let t = 2016; t <= 6000 && !fired2; t += 16) {
+      fired2 = decideCounterReaction('standard', state, 0, 0, enemies, [], t, 0, () => 0, 'master');
+    }
+    expect(fired2).toBe(true);
   });
 });
 

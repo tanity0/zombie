@@ -377,6 +377,10 @@ export const escapeIfStuck = (
 // 敵の体は幅36〜44pxあり、接触は中心間≈35pxで起きる——48pxの帯は実質1歩ぶんしかなく、
 // 反発が効く前に接触していた。半径を体1.5個分へ広げ、反発の配分も上げる。
 export const SEPARATION_DIST = 68;
+/** ★v0.25.3596: 静止中でも「触れる寸前+向かってくる」なら離れる距離(叩き台)。 */
+export const STATIONARY_GUARD_DIST = 56;
+/** ★v0.25.3596: この距離では自分から敵へ向かう移動成分を出さない(接線へ射影・叩き台)。 */
+export const HARD_BLOCK_DIST = 44;
 const SEPARATION_BLEND = 0.75; // 元の移動0.25 : 反発0.75
 
 export const separationAdjust = (
@@ -388,7 +392,6 @@ export const separationAdjust = (
 ): InputState => {
   if (profile.avoidContactDist <= 0) return input;
   const wantsMove = input.up || input.down || input.left || input.right;
-  if (!wantsMove) return input; // 意図的な静止(殴り射程での停止)は尊重する
   let sx = 0, sy = 0, n = 0;
   for (const e of enemies) {
     if (e.corpseUntil !== undefined) continue;
@@ -399,15 +402,51 @@ export const separationAdjust = (
     const w = 1 - d / SEPARATION_DIST; // 近いほど強く
     sx += (dx / d) * w; sy += (dy / d) * w; n += 1;
   }
-  if (n === 0) return input;
-  const sm = Math.hypot(sx, sy) || 1;
+  // ★v0.25.3596(社長報告5回目「寄ってくる敵に反応できてない」): 旧実装は**静止中は分離ごと無効**
+  // だった——拠点/POIホールドや殴り射程での停止中に歩き寄られると、触れられるまで棒立ち。
+  // 静止の意図は尊重しつつ、**触れる寸前(STATIONARY_GUARD_DIST)まで寄られて、かつ相手がこちらへ
+  // 向かっている**時だけは離れる(生存>ホールド。既存の「回避より下に置く=生存優先」と同じ序列)。
+  if (!wantsMove) {
+    let gx = 0, gy = 0, gn = 0;
+    for (const e of enemies) {
+      if (e.corpseUntil !== undefined) continue;
+      const dx = pcx - (e.x + e.width / 2);
+      const dy = pcy - (e.y + e.height / 2);
+      const d = Math.hypot(dx, dy);
+      if (d >= STATIONARY_GUARD_DIST || d < 0.001) continue;
+      const closing = (dx * (e.vx ?? 0) + dy * (e.vy ?? 0)) > 0;
+      if (!closing && d >= CONTACT_COUNTER_NEAR) continue;
+      gx += dx / d; gy += dy / d; gn += 1;
+    }
+    if (gn === 0) return input;
+    return dirInput(gx, gy);
+  }
   const dx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
   const dy = (input.down ? 1 : 0) - (input.up ? 1 : 0);
   const im = Math.hypot(dx, dy) || 1;
-  return dirInput(
-    (dx / im) * (1 - SEPARATION_BLEND) + (sx / sm) * SEPARATION_BLEND,
-    (dy / im) * (1 - SEPARATION_BLEND) + (sy / sm) * SEPARATION_BLEND,
-  );
+  let ox: number, oy: number;
+  if (n === 0) {
+    ox = dx / im; oy = dy / im;
+  } else {
+    const sm = Math.hypot(sx, sy) || 1;
+    ox = (dx / im) * (1 - SEPARATION_BLEND) + (sx / sm) * SEPARATION_BLEND;
+    oy = (dy / im) * (1 - SEPARATION_BLEND) + (sy / sm) * SEPARATION_BLEND;
+  }
+  // ★v0.25.3596(「なぜか自分から突っ込むときがある」): ブレンドだけだと、敵が進路の左右に並んだ時に
+  // 反発が打ち消し合い、**体へ向かう成分が残ったまま隙間へ突っ込む**。仕上げとして
+  // HARD_BLOCK_DIST 内の敵ごとに「その敵へ向かう成分」を接線へ射影して取り除く=
+  // **体1つ分の距離では、自分から敵へ向かって歩かない**を機械的に保証する。
+  for (const e of enemies) {
+    if (e.corpseUntil !== undefined) continue;
+    const ex = (e.x + e.width / 2) - pcx, ey = (e.y + e.height / 2) - pcy;
+    const d = Math.hypot(ex, ey);
+    if (d >= HARD_BLOCK_DIST || d < 0.001) continue;
+    const ux = ex / d, uy = ey / d;
+    const toward = ox * ux + oy * uy;
+    if (toward > 0) { ox -= ux * toward; oy -= uy * toward; }
+  }
+  if (Math.abs(ox) < 1e-6 && Math.abs(oy) < 1e-6) return input.up || input.down || input.left || input.right ? dirInput(sx || 1, sy) : input;
+  return dirInput(ox, oy);
 };
 
 // rusherペルソナ(§5.20 M19)の詰まり検知に使う外部状態。呼び出し側(ヘッドレス駆動側)が
@@ -606,6 +645,8 @@ const COUNTER_BOSS_PHASE_DIST = 260;
 export const CONTACT_COUNTER_DIST = 90;
 /** これより近ければ向きに関わらず脅威(もう触れる)。 */
 const CONTACT_COUNTER_NEAR = 48;
+/** ★v0.25.3596: 接触カウンターの再挑戦間隔ms(叩き台)。発火後この間隔で追跡を解いて構え直す。 */
+export const CONTACT_REFIRE_MS = 500;
 
 const findCounterThreat = (
   pcx: number, pcy: number, enemies: readonly Enemy[], projectiles: readonly Projectile[],
@@ -714,6 +755,15 @@ export const decideCounterReaction = (
 
   // 追跡中の脅威が消えた/条件を外れたら解除(遅延中に消えたら撃たない=ここで打ち切られる)。
   if (state.threatId !== null && !threatStillValid(state.threatId, state.kind as CounterThreatKind, pcx, pcy, enemies, projectiles)) {
+    state.threatId = null; state.kind = null; state.fired = false;
+  }
+  // ★v0.25.3596(社長報告5回目「カウンターもしてるようには見えない」の真因):
+  // contact-close は撃った後も**同じ敵が135px(90×1.5)内に居る限り追跡が外れず fired=true が
+  // 立ちっぱなし**だった。追いかけてくる雑魚はカウンターのノックバック(≈60px)後もすぐ戻るので、
+  // **最初の1発以降カウンターが一生出ない**(混戦ほど顕著)。振り直し連打の防止は「距離」ではなく
+  // 「間隔」で行う: 発火から CONTACT_REFIRE_MS 経ったら追跡を解き、次の脅威(同じ敵でも)を取り直す。
+  if (state.fired && state.kind === 'contact-close'
+    && gameTime - state.detectedAt >= CONTACT_REFIRE_MS) {
     state.threatId = null; state.kind = null; state.fired = false;
   }
 

@@ -68,6 +68,7 @@ import {
   decideBotInput, pickupSeekInput, torchForageInput, avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, decideCounterReaction, scavengerAmmoSeekInput, SCAVENGER_TORCH_SEEK_DIST,
   createCounterThreatState, type BotPersona, type RusherTrackState, type CounterThreatState,
+  separationAdjust, escapeIfStuck, createBotStuckState, type BotStuckState, // ★v0.25.3596: 実機側(useGameLoop)と同じ最終入力調整をヘッドレスにも
 } from './playtestBot';
 import { pickUpgradeByPolicy, mulberry32 } from './botUpgradePolicy';
 import {
@@ -122,6 +123,8 @@ export interface PlaytestRefs {
   counterThreat: CounterThreatState;
   // M49-3(§6.25): ワープ(瞬間移動)追従の前tick位置状態。
   warpTrack: WarpTrackState;
+  // ★v0.25.3596: 詰まり脱出の観測状態(実機側botStuckRefと同じもの)。
+  stuck: BotStuckState;
   // M49(§6.25改訂): 行動階層①⇄②の直近実績(撃破/被弾)状態。
   engagement: EngagementTrackState;
   // v0.25.2172: 空輸弾薬(エアドロップ)の周期状態。useGameLoop.tsの lastAmmoDropRef/
@@ -172,6 +175,7 @@ export const createPlaytestRefs = (): PlaytestRefs => {
     angel: createAngelBossState(),
     counterThreat: createCounterThreatState(),
     warpTrack: createWarpTrackState(),
+    stuck: createBotStuckState(),
     engagement: createEngagementTrackState(),
     airdrop: { lastAmmoDropAt: 0, nextAmmoDropDelayMs: 0 },
   };
@@ -580,11 +584,18 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
         player.x + player.width / 2, player.y + player.height / 2,
         useGameStore.getState().breakableProps.filter(p => p.type === 'mine'))
     : null;
-  const finalInput = warpVec ? dodgeToInput(warpVec)
+  const finalInputRaw = warpVec ? dodgeToInput(warpVec)
     : dodge ? dodgeToInput(dodge)
     : (objPlan && objPlan.hold) ? HOLD_INPUT
     : objSteerAdj ? objSteerAdj.input
     : mineAdj.input;
+  // ★v0.25.3596(二重配線の片側漏れ併修): 分離ステア+詰まり脱出は実機側(useGameLoop)にしか
+  // 配線されていなかった。計測ボットが実機ボットと同じ動きになるよう、同じ順序で最終入力へ掛ける。
+  const finalInput = escapeIfStuck(
+    separationAdjust(botSkillProfile(skill), finalInputRaw,
+      player.x + player.width / 2, player.y + player.height / 2, enemies),
+    refs.stuck,
+    player.x + player.width / 2, player.y + player.height / 2);
   useGameStore.getState().movePlayer(finalInput, dt);
   autoFireGun();
   // v0.25.3064: 目的地ステア中に見つけた卵も叩く(useGameLoop側と同じ)。
