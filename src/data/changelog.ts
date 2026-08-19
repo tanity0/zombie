@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3621',
+    items: [
+      'AIテスト: botが最初の一振り以降カウンターを一切出さなくなる重大バグを修正しました(CD判定の時計の混在。実機・ヘッドレス共通)。masterの「全部カウンターする勢い」はこれで実際に動きます。',
+    ],
+  },
+  {
     version: '0.25.3620',
     items: [
       'AIテスト(ガントレット): botが枠のボスを自分から探しに行くようになりました(1回目の実機ランで21枠中20枠が未接敵タイムアウトだった対策)。',

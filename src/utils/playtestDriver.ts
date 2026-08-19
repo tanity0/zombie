@@ -534,10 +534,12 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   );
   // M37(§6.14): 人間反応のカウンター(ジャンプ/突進/敵弾を反応遅延+試行確率でカウンター)。
   // 移動入力は変えない=既存のwantsMelee判断(mine叩き込み)とOR合成するだけ。
+  // ★v0.25.3621(時計の混在バグ・useGameLoop側と同じ修正): counterCooldownEndはDate.now基準。
+  // シム時刻tと直接比較すると最初の一振り以降「CD中」が永久に真になる。残りCDをtの時計へ写す。
   const wantsCounterReaction = decideCounterReaction(
     persona, refs.counterThreat,
     player.x + player.width / 2, player.y + player.height / 2,
-    enemies, useGameStore.getState().projectiles, t, player.counterCooldownEnd,
+    enemies, useGameStore.getState().projectiles, t, player.counterCooldownEnd - Date.now() + t,
     Math.random, skill,
   );
   // M49-3(§6.25): ワープ(瞬間移動)追従。反応遅延はprofile.reactionMs(warpReact=falseの段=

@@ -2161,11 +2161,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // M37(§6.14): 人間反応のカウンター(ジャンプ/突進/敵弾を反応遅延+試行確率でカウンター)。
         // 移動入力は変えない=既存のwantsMelee判断(mine叩き込み)とOR合成するだけ。?bot無しの
         // 通常プレイはBOT_PERSONA=nullなのでこのブロックごと素通り(挙動不変・負荷0)。
+        // ★v0.25.3621(社長報告「この回も一度もカウンター出してない」の真因=時計の混在):
+        // counterCooldownEnd は Date.now(エポックms)基準だが、ここは gameTime(ラン開始からのms)と
+        // 比較させていた。**最初の一振りで counterCooldownEnd≈1.7e12 になった瞬間から
+        // 「gameTime < CD」が永久に真**=以後カウンターが一生出ない(実機・ヘッドレス共通)。
+        // 残りCDを実時計で取り、gameTimeの時計へ写して渡す(CD無しなら過去=素通り)。
+        const botCounterCdOnGameClock = player.counterCooldownEnd - Date.now() + gameTime;
         const botWantsCounterReaction = botDecision
           ? decideCounterReaction(
               BOT_PERSONA as BotPersona, botCounterThreatRef.current,
               player.x + player.width / 2, player.y + player.height / 2,
-              enemies, loopState.projectiles, gameTime, player.counterCooldownEnd,
+              enemies, loopState.projectiles, gameTime, botCounterCdOnGameClock,
               Math.random, BOT_SKILL)
           : false;
         // M49-3(§6.25): ワープ(瞬間移動)追従。反応遅延はprofile.reactionMs(warpReact=falseの段=

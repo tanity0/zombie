@@ -771,6 +771,10 @@ export const decideCounterReaction = (
   enemies: readonly Enemy[],
   projectiles: readonly Projectile[],
   gameTime: number,
+  // ★時計の契約(v0.25.3621の実バグの教訓): **gameTimeと同じ時計で渡すこと**。
+  // storeの player.counterCooldownEnd は Date.now(エポック)基準なので、呼び出し側が
+  // `counterCooldownEnd - Date.now() + gameTime` で写してから渡す(そのまま渡すと最初の
+  // 一振り以降「CD中」が永久に真=カウンターが一生出ない)。
   counterCooldownEnd: number,
   rand: () => number = Math.random,
   // v0.25.2338: 腕前の段階(botSkill)。**未指定なら従来どおりペルソナ固有のプロファイル**を使う

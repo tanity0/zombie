@@ -725,3 +725,14 @@ CLAUDE.md の「Empirical render budget」節と `research/LIGHT_REWORK.md` の�
   新しいimportを足す時は「この枝でハブに戻る道ができないか」を考える。迷ったら madge を1回回す(8秒)。
 - 複数モジュールが共有する定数は、ハブに置かず**依存ゼロの葉モジュール**に置く(bountyDims.tsが手本)。
 - 「単一の出どころ」規約(写し定数禁止)と両立する: 葉に定義→全員がそこをimport(re-export可)。
+
+## 時計の混在(v0.25.3621の実バグ・全エージェント共通の地雷)
+- このプロジェクトには**時計が3本**ある: ①`gameTime`(シミュ時刻・ラン開始からのms・hitstopで凍る)
+  ②`realGameTime`(実時間系のラン時刻) ③`Date.now()`(エポックms。`counterCooldownEnd`/
+  `hitstopUntil`/`knockbackUntil`/ズーム包絡などstoreの「〜Until」系の多くがこれ)。
+- **異なる時計の値を直接比較しない。** 実例: botのカウンター判定に gameTime と
+  Date.now基準の counterCooldownEnd を渡していたため、最初の一振りで CD≈1.7e12 となり
+  「CD中」が永久に真=**botのカウンターが実機・ヘッドレスとも一生出ない**(社長報告3回分の真因)。
+  ユニットテストは両引数に小さい値を渡すため**この型のバグはテストを素通りする**。
+- 直し方の型: 呼び出し側で「残り時間」を取ってから使う時計へ写す
+  (`ccEnd - Date.now() + gameTime`)。新しい判定を書く時は引数コメントに**時計の契約**を書く。
