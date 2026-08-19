@@ -182,7 +182,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   const bpcx = bp.x + bp.width / 2;
   const bpcy = bp.y + bp.height / 2;
   const counterActive = Date.now() <= bp.counterWindowEnd;
-  const parriedEnemyIds: { id: string; bx: number; by: number }[] = [];
+  // ★v0.25.3591: noDamage=この爆風のパリィは**体勢だけ削ってHPダメージは0**(飛んでくる刃を弾いた時)。
+  const parriedEnemyIds: { id: string; bx: number; by: number; noDamage?: boolean }[] = [];
   // G4b: 爆発/カプセルの合流点=ここでゴーストも受ける(タグ付き21箇所超を一括カバー)。対象は
   // **ボス(isEngageableBoss)の爆発のみ**(パンプキン/lab-zombie-3の着地爆発=非ボスは従来どおり
   // プレイヤーのみ)。ゴースト不在ならfind1回で抜ける=コストゼロ。位置/半径はループ前のスナップ
@@ -215,7 +216,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         // カウンター成立は無敵中でも弾く(=確実にノックバック+クリ反撃)。
         // ※以前は !invulnerable を前提にしていたため、被弾i-frame中だとパリィが
         //   丸ごとスキップされ「カウンターしたのにノックバックしない」が起きていた。
-        parriedEnemyIds.push({ id: b.enemyId, bx: b.x, by: b.y });
+        parriedEnemyIds.push({ id: b.enemyId, bx: b.x, by: b.y, ...(b.parryNoDamage ? { noDamage: true } : {}) });
       } else if (!bp.invulnerable) {
         const blastEnemyType = useGameStore.getState().enemies.find(e => e.id === b.enemyId)?.type;
         // G4a: b.moveKey=どの技の爆発か(記録専用タグ・未設定なら従来どおりundefined)。
@@ -351,7 +352,9 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       const e = useGameStore.getState().enemies.find(en => en.id === hit.id);
       if (!e) continue;
       const boss = isBossType(e.type);
-      const dmg = counterReplyDamage(cBase, bp, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
+      // ★v0.25.3591(社長指示): 刃を弾いたパリィは**HP 0・体勢は通常どおり**。damageEnemy は体勢
+      // (applyBossPostureDamage)を**ダメージ量とは無関係に**適用するので、量だけ0にすればよい。
+      const dmg = hit.noDamage ? 0 : counterReplyDamage(cBase, bp, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
       // CRIT-UNIFY §9.3(社長裁定F): パリィ反撃は確定クリ。ボスは①の効果(半減+CD2倍+紫蓄積)が
       // damageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
@@ -361,7 +364,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         const stunMs = STUN_DURATION_MS * (bp.stunDurationMult ?? 1);
         useGameStore.getState().stunEnemy(hit.id, useGameStore.getState().gameTime + stunMs);
       }
-      fx.spawnDamageNumber(ex, e.y, dmg, true);
+      if (dmg > 0) fx.spawnDamageNumber(ex, e.y, dmg, true); // 0ダメージの「0」は出さない(刃のパリィ)
       fx.spawnRing(ex, ey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
       fx.spawnBurst(ex, ey, '#fde047', 10);
       fx.spawnGlow(ex, ey, 34, 'rgba(253,224,71,', 240);

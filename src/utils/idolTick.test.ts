@@ -495,3 +495,66 @@ describe('B2: クリ黄色窓(bossSlowUntil)中はchaseの移動が半分にな�
     expect(slowDist).toBeCloseTo(normalDist / 2, 1);
   });
 });
+
+// =================================================================================================
+// カウンター成立域=赤い予告の図形(v0.25.3591・research/COUNTER_REACH_AUDIT.md の是正)
+// =================================================================================================
+describe('カウンター成立域は赤い予告の図形(v0.25.3591 監査是正)', () => {
+  beforeEach(() => { clearIdolPlayback(); vi.useRealTimers(); });
+
+  /** アイドル1体+プレイヤー(カウンター有効)の盤面。距離はプレイヤーから見て -y 方向。 */
+  const setupCounter = (distance: number) => {
+    useGameStore.getState().resetGame('assault');
+    const e = spawnEnemyAt('idol', 0, -distance, 0);
+    e.fromEvent = true; e.dormant = false; e.bossState = 'chase'; e.bossPhase = 1;
+    e.bossNextActionAt = Number.MAX_SAFE_INTEGER;
+    e.health = 99999; e.maxHealth = 99999;
+    useGameStore.setState(s => ({
+      enemies: [e], projectiles: [], pumpkinBlasts: [],
+      player: { ...s.player, x: 0, y: 0, health: 9999, maxHealth: 9999 },
+    }));
+    const st = createIdolTickState();
+    let gt = 0;
+    const step = (ms = DT * 1000): void => {
+      gt += ms;
+      useGameStore.setState({ gameTime: gt });
+      const cur = useGameStore.getState().enemies[0];
+      if (cur) runIdolTick(cur, st, gt, ms / 1000, 1, NOOP_IDOL_SFX, true, () => {});
+    };
+    const boss = () => useGameStore.getState().enemies[0];
+    return { step, boss, state: () => boss()?.bossState ?? '(なし)' };
+  };
+  const openWindow = (): void => {
+    useGameStore.setState(s => ({ player: { ...s.player, counterWindowEnd: Date.now() + 5000 } }));
+  };
+  const touching = (): boolean => {
+    const b = useGameStore.getState().enemies[0], p = useGameStore.getState().player;
+    return b.x < p.x + p.width && b.x + b.width > p.x && b.y < p.y + p.height && b.y + b.height > p.y;
+  };
+
+  it('拳(帯90×30): 体に触れていない位置でも帯の中なら成立(監査C-5)', () => {
+    // idolの体は40×20=**全ボスで最小**。従来は「縦24px以内」まで近づかないと取れなかった。
+    const g = setupCounter(60);
+    requestIdolMovePlay('punch', { solo: false, loop: false });
+    g.step();
+    expect(g.state()).toBe('idol-punch-windup');
+    expect(touching()).toBe(false);
+    const hp = g.boss().health;
+    openWindow();
+    g.step();
+    expect(g.state()).toBe('idol-rest'); // カウンター成立=ストリングを断ち切って休符へ
+    expect(g.boss().health).toBeLessThan(hp);
+  });
+
+  it('★狙撃(紫): 帯の中でも体に重なっていても成立しない(社長裁定「避けるだけの技」)', () => {
+    const g = setupCounter(20); // 体に重なるほど密着させる=従来なら確実に成立していた位置
+    requestIdolMovePlay('snipe', { solo: false, loop: false });
+    g.step();
+    expect(g.state()).toBe('idol-snipe-windup');
+    const hp = g.boss().health;
+    openWindow();
+    g.step();
+    expect(g.state()).toBe('idol-snipe-windup'); // 技は続く
+    expect(g.boss().health).toBe(hp);            // 反撃ダメージも入らない
+  });
+});

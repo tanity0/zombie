@@ -4054,6 +4054,13 @@ export interface PumpkinBlast {
    */
   kbSpeed?: number;
   kbMs?: number;
+  /**
+   * ★v0.25.3591(社長指示「これ(骨刃)はカウンターしても体勢値は削るけど、ダメージは入らないように
+   * して」/「同じく氷刃も」): この爆風をパリィした時の**反撃HPダメージを0**にする(体勢値・演出・
+   * 中断・CDリファンドは通常どおり)。飛び道具として飛んでくる刃を弾いた時だけ立てる旗で、
+   * ボス本体の技(薙ぎ・着地・踏み鳴らし等)のパリィは従来どおりダメージが入る。
+   */
+  parryNoDamage?: boolean;
 }
 
 /**
@@ -12433,9 +12440,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const pr = Math.max(player.width, player.height) / 2;
       const counterOpen = now <= player.counterWindowEnd;
       const meleeR = huntingMeleeRadius(player);
-      // 骨刃(ラフィ=visual:'bone')はスカジ生存に関係なく処理する(ゲート2ボスの攻撃)。氷刃(スカジ)は
-      // 従来どおりスカジ不在時は処理せず破棄(掃除)。※skadiIceBlades配列を両ボスで共用しているため。
-      const activeBlades = skadiAlive ? state.skadiIceBlades : state.skadiIceBlades.filter(b => b.visual === 'bone');
+      // ★v0.25.3591(社長指示「ラフィの骨刃は、ラフィ倒したら消えて」): 刃は**その持ち主が居る間だけ**
+      // 生きている。骨刃(ラフィ=visual:'bone')はラフィの生存、氷刃(スカジ)はスカジの生存で見る
+      // (旧: 骨刃は持ち主を見ておらず、ラフィ討伐後も飛び続けて当たっていた)。
+      // ※skadiIceBlades配列を両ボスで共用しているのでここで持ち主ごとに振り分ける。
+      const rafiAlive = state.enemies.some(e => e.type === 'rafi');
+      const activeBlades = state.skadiIceBlades.filter(b => (b.visual === 'bone' ? rafiAlive : skadiAlive));
       const skadiIceBlades = activeBlades
         .map(b => {
           if (!b.launched) {
@@ -12450,13 +12460,16 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (!b.launched) return true;
           if (gameTime >= b.expireAt) return false;
           const d = Math.hypot(pcx - b.x, pcy - b.y);
+          // ★v0.25.3591(社長指示「これはカウンターしても体勢値は削るけど、ダメージは入らないように
+          // して」/「同じく氷刃も」): 飛んでくる刃を弾いた時の**反撃HPダメージだけ0**にする
+          // (体勢値・Counter!演出・無敵・CDリファンドは通常どおり=parryNoDamage)。
           if (counterOpen && d <= meleeR) {
             // カウンター成立: プレイヤー中心(半径meleeR)のブラストでパリィ→消化側でカウンター扱いになる。
-            pumpkinBlasts.push({ x: pcx, y: pcy, radius: meleeR, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: true });
+            pumpkinBlasts.push({ x: pcx, y: pcy, radius: meleeR, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: true, parryNoDamage: true });
             return false;
           }
           if (d <= SKADI_BLADE_HIT + pr) {
-            pumpkinBlasts.push({ x: b.x, y: b.y, radius: SKADI_BLADE_HIT, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: true });
+            pumpkinBlasts.push({ x: b.x, y: b.y, radius: SKADI_BLADE_HIT, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: true, parryNoDamage: true });
             return false;
           }
           return true;

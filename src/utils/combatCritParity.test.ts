@@ -83,3 +83,49 @@ describe('CRIT-UNIFY §9.3: ブラストパリィ(パンプキン着地爆発)�
     expect(after!.stunUntil).toBeUndefined();
   });
 });
+
+// ★v0.25.3591(社長指示「これ(骨刃)はカウンターしても体勢値は削るけど、ダメージは入らないように
+// して」/「同じく氷刃も」): 飛んでくる刃を弾いた時だけ、**反撃のHPダメージを0にして体勢は通常どおり削る**。
+// ボス本体の技(薙ぎ・着地・踏み鳴らし等)のパリィは従来どおりダメージが入る=上のテストが担保。
+describe('刃のパリィ(parryNoDamage): 体勢は削るがHPダメージは入らない', () => {
+  it('骨刃/氷刃を弾くと、体勢だけ削れてHPは1も減らない', () => {
+    setupPlayerAt(0, 0, 400);
+    const player = useGameStore.getState().player;
+    const boss = spawnEnemyAt('rafi', 900, 900, useGameStore.getState().gameTime);
+    boss.health = boss.maxHealth;
+    useGameStore.setState({
+      enemies: [boss],
+      pumpkinBlasts: [{
+        x: player.x + player.width / 2, y: player.y + player.height / 2,
+        radius: 80, damage: 10, enemyId: boss.id, ice: true, parryNoDamage: true,
+      }],
+    });
+
+    applyPumpkinBlastDamage(NOOP_COMBAT_EFFECTS, { thorOrbitDist: 300, thorCounterLeapMs: 500 });
+
+    const after = useGameStore.getState().enemies.find(e => e.id === boss.id);
+    expect(after).toBeTruthy();
+    expect(after!.health).toBe(boss.maxHealth);              // ★HPは減らない
+    expect(after!.bossPosture).toBeDefined();
+    expect(after!.bossPosture!).toBeLessThan(after!.bossPostureMax ?? Infinity); // ★体勢は削れている
+  });
+
+  it('旗が無い普通のブラストパリィは従来どおりHPダメージが入る(刃だけの特例であることの担保)', () => {
+    setupPlayerAt(0, 0, 400);
+    const player = useGameStore.getState().player;
+    const boss = spawnEnemyAt('rafi', 900, 900, useGameStore.getState().gameTime);
+    boss.health = boss.maxHealth;
+    useGameStore.setState({
+      enemies: [boss],
+      pumpkinBlasts: [{
+        x: player.x + player.width / 2, y: player.y + player.height / 2,
+        radius: 80, damage: 10, enemyId: boss.id,
+      }],
+    });
+
+    applyPumpkinBlastDamage(NOOP_COMBAT_EFFECTS, { thorOrbitDist: 300, thorCounterLeapMs: 500 });
+
+    const after = useGameStore.getState().enemies.find(e => e.id === boss.id);
+    expect(after!.health).toBeLessThan(boss.maxHealth);
+  });
+});

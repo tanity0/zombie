@@ -14698,7 +14698,9 @@ export class PixiScene {
         const snipeWindupOn = bs2 === 'bm-snipe-windup';
         snipeRemain = (e.bossStateUntil ?? gameTime) - gameTime;
         snipeProg = Math.max(0, Math.min(1, 1 - snipeRemain / BM_T.snipe.windup));
-        this.zoneCapsuleTick(view, o, `${e.id}:bm-snipe`, snipeWindupOn, snipeRemain, bfx, bfy, btx, bty, BM_T.snipe.halfWidth, now, snipeProg);
+        // ★v0.25.3591(社長裁定「狙撃は避けるだけの技にしようかな」): 懲罰狙撃は**カウンター不可**へ。
+        // 色文法v0.25.2961(赤=カウンター可/紫=不可)に従い、帯を**紫**で描く(寸法・溜め・判定は不変)。
+        this.zoneCapsuleTick(view, o, `${e.id}:bm-snipe`, snipeWindupOn, snipeRemain, bfx, bfy, btx, bty, BM_T.snipe.halfWidth, now, snipeProg, 0, 0x9333ea, 0xa855f7);
         const sweepWindupOn = bs2 === 'bb-sweep-windup';
         sweepRemain = (e.bossStateUntil ?? gameTime) - gameTime;
         sweepProg = Math.max(0, Math.min(1, 1 - sweepRemain / BB_T.sweep.windup));
@@ -15616,7 +15618,8 @@ export class PixiScene {
       // 赤帯と当たり判定(idolTick の distToSegment)は同じ線・同じ半幅で厳密に一致する。
       if (bs === 'idol-snipe-windup' && e.aiTargetX !== undefined && e.aiTargetY !== undefined) {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_TIMING.snipe.windup));
-        this.drawAngelZoneCapsule(view, o, e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX, e.aiTargetY, IDOL_TUNING.shape.snipeHalfWidth, prog, now);
+        // ★v0.25.3591: idolの狙撃も**カウンター不可**(馬乗りの懲罰狙撃と同じ裁定・同じ輸入元)=紫。
+        this.drawAngelZoneCapsule(view, o, e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX, e.aiTargetY, IDOL_TUNING.shape.snipeHalfWidth, prog, now, 0, undefined, 0x9333ea, 0xa855f7);
       }
       // T6線が扇状に(2発/Phase2は3発): 追尾弾の発射方向。弾自体が追ってくるので線は「発射の合図」。
       if (bs === 'idol-orb-windup') {
@@ -16184,10 +16187,15 @@ export class PixiScene {
         const total = AC_T.warp.telegraphMs;
         const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / total));
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-        o.ellipse(tx, ty, AC_T.spear.radius, AC_T.spear.radius).fill({ color: 0xff2a2a, alpha: (0.05 + 0.18 * t + 0.06 * pulse) * TELEGRAPH_FILL_MULT });
+        // ★v0.25.3591(潜伏バグの修正・監査§4-D): ここは**転移衝撃の円**なのに、半径を
+        // `AC_T.spear.radius`(結晶の槍の円)から読んでいた。判定側は `AC_T.warp.impactRadius`。
+        // 今は偶然どちらも92なので絵と判定が一致しているが、ボスメーカーで片方だけ動かした瞬間に
+        // 「赤いのに当たらない/赤くないのに当たる」になる。**判定が読む欄に揃える。**
+        const warpR = AC_T.warp.impactRadius;
+        o.ellipse(tx, ty, warpR, warpR).fill({ color: 0xff2a2a, alpha: (0.05 + 0.18 * t + 0.06 * pulse) * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
-        if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, AC_T.spear.radius, 0xff3b3b, 0.2 + 0.45 * t + 0.12 * pulse);
-        else o.ellipse(tx, ty, AC_T.spear.radius, AC_T.spear.radius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * t + 0.12 * pulse });
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, warpR, 0xff3b3b, 0.2 + 0.45 * t + 0.12 * pulse);
+        else o.ellipse(tx, ty, warpR, warpR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * t + 0.12 * pulse });
       }
       // ---- アクラシエル: 収縮→爆発=T2大円。「最大の反撃窓」(§6.28-19) ----
       // ★v0.25.3148(バグ修正): **溜め(burst-windup 1200ms)の間、赤い円が一度も出ていなかった**。
@@ -18433,9 +18441,13 @@ export class PixiScene {
   // 同じ[erase,1]区間へ描き、始点側から消えていく。呼び出し側(drawEnemy)は直接この関数を呼ばず、
   // 必ず下のzoneCapsuleTick経由で使うこと(素の呼び出しのまま残すと、旧不具合=「windupが終わった
   // 最後のフレームがprog<1のまま描画されずに消える」がまた起きる)。
+  // ★v0.25.3591(社長裁定「狙撃は避けるだけの技にしようかな」): 帯の色を引数化した。既定=赤
+  // (=カウンター可)。**紫**を渡すのは「カウンターできない攻撃」だけ(色文法v0.25.2961=
+  // ミーミルのレーザーと同じ紫。現在は馬乗りの懲罰狙撃とidolの狙撃の2つ)。
   private drawAngelZoneCapsule(
     view: ActorView, o: Graphics, fx: number, fy: number, tx: number, ty: number, halfWidth: number,
     prog: number, now: number, idx = 0, eraseOverride?: number,
+    fillColor = 0xff2a2a, strokeColor = 0xff3b3b,
   ) {
     const pulse = 0.55 + 0.45 * Math.sin(now / 80);
     const ddx = tx - fx, ddy = ty - fy;
@@ -18478,19 +18490,19 @@ export class PixiScene {
         bx + ux * frontCap + nx * halfWidth, by + uy * frontCap + ny * halfWidth,
         bx + ux * frontCap - nx * halfWidth, by + uy * frontCap - ny * halfWidth,
         ax - ux * backCap - nx * halfWidth, ay - uy * backCap - ny * halfWidth,
-      ]).fill({ color: 0xff2a2a, alpha: zoneFill * (0.55 + 0.45 * k) * TELEGRAPH_FILL_MULT });
+      ]).fill({ color: fillColor, alpha: zoneFill * (0.55 + 0.45 * k) * TELEGRAPH_FILL_MULT });
     }
     // 縁取り(焼き済み素材A-2)は可視区間ぶんだけ張る(fill/判定/タイミングは無改変)。
     const efx = fx + ddx * er, efy = fy + ddy * er;
     const etx = fx + ddx * zp, ety = fy + ddy * zp;
-    if (FX_RING_ENABLED) this.drawTelegraphBand(view, efx, efy, etx, ety, halfWidth, 0xff3b3b, strokeA, idx);
+    if (FX_RING_ENABLED) this.drawTelegraphBand(view, efx, efy, etx, ety, halfWidth, strokeColor, strokeA, idx);
     else {
       o.poly([
         efx + nx * halfWidth, efy + ny * halfWidth,
         etx + nx * halfWidth, ety + ny * halfWidth,
         etx - nx * halfWidth, ety - ny * halfWidth,
         efx - nx * halfWidth, efy - ny * halfWidth,
-      ]).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
+      ]).stroke({ width: 2, color: strokeColor, alpha: strokeA });
     }
   }
 
@@ -18523,12 +18535,14 @@ export class PixiScene {
   private zoneCapsuleTick(
     view: ActorView, o: Graphics, key: string, windupOn: boolean, remainMs: number,
     fx: number, fy: number, tx: number, ty: number, halfWidth: number, now: number, prog: number, idx = 0,
+    // ★v0.25.3591: 色は既定=赤(カウンター可)。紫はカウンター不可の技だけ(色文法v0.25.2961)。
+    fillColor = 0xff2a2a, strokeColor = 0xff3b3b,
   ): void {
     if (windupOn) {
       const ph = PixiScene.meteorPhase(prog);
       // arm[7]=最後の描き / arm[8]=最後の消し(中断された時、そこから続きを消すため)。
       this.zoneCapsuleArm.set(key, [fx, fy, tx, ty, halfWidth, idx, remainMs, ph.p, ph.er]);
-      this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, halfWidth, prog, now, idx);
+      this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, halfWidth, prog, now, idx, undefined, fillColor, strokeColor);
       return;
     }
     const armed = this.zoneCapsuleArm.get(key);
@@ -18541,7 +18555,7 @@ export class PixiScene {
       const er0 = el.d[8] ?? 0;
       this.drawAngelZoneCapsule(
         view, o, el.d[0], el.d[1], el.d[2], el.d[3], el.d[4], el.d[7] ?? 1, now, el.d[5],
-        er0 + (1 - er0) * el.t,
+        er0 + (1 - er0) * el.t, fillColor, strokeColor,
       );
     }
   }

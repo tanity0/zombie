@@ -1020,6 +1020,11 @@ const HIDDEN_BOSS_PHASE_FLASH_MS = 1200;
 // 248×138(半幅124)なので**円が体の中に収まり構造的に当たらなかった**。値と不変条件は
 // utils/bodyCenteredAoe.ts へ移設(足元の円AoEは体の外へ届くことをテストで機械検証する)。
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
+// ★v0.25.3591(監査 research/COUNTER_REACH_AUDIT.md): カウンター成立域=赤い予告の図形。宣言表は1箇所。
+import {
+  counterReachShapeFor, inCounterReach,
+  HIDDEN_COUNTER_WINDUP_STATES, HIDDEN_COUNTER_RECOVER_STATES, HIDDEN_COUNTER_ACTIVE_STATES,
+} from '../utils/counterReach';
 
 
 // PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)。★未決(下記コメント参照)により
@@ -5307,25 +5312,40 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // (静止/後退り)、および突進の実行中(active=その技の判定に委ねる=ここで直接カウンターを判定する)。
               // ロットL3(バッチM54/M56/M58)で硬直(recover)を新設したので、W7「硬直中の接触もカウンター可」に
               // 従い、新設した各recoverもここへ加える(§6.28-3 W7)。新規windup(噛みつき/うねり/氷結の檻)も同様。
-              const HIDDEN_BOSS_COUNTER_WINDUPS = [
-                'aim-burst', 'aim-radial', 'dash-windup', 'laser-windup', 'bite-windup', 'coil-windup', 'cage-windup',
-              ];
-              const HIDDEN_BOSS_COUNTER_RECOVERS = [
-                'burst-recover', 'radial-recover', 'dash-recover', 'laser-recover',
-                'skadi-ice-recover', 'skadi-blade-recover', 'bite-recover', 'coil-recover', 'cage-recover',
-                // §6.33: 'laser-broken' は載せない(監査指摘6)。中断の報酬(カウンター成立扱い)は既に
-                // 支払い済みで、ここに載せると1本のレーザーからカウンター報酬が2回出る+1700msの
-                // パニッシュ窓が体当てで短縮される。laser-broken中は普通に殴る(それが報酬)。
-              ];
+              // ★v0.25.3591: 州リストは counterReach.ts へ移設(中身は同一)。理由は「テストできる場所へ
+              // 置く」——このファイルはReactフックなのでユニットテストから読めず、**州リストと
+              // カウンター成立域の宣言表の突き合わせ(新しい技の宣言漏れ検知)ができなかった**。
+              const HIDDEN_BOSS_COUNTER_WINDUPS = HIDDEN_COUNTER_WINDUP_STATES;
+              const HIDDEN_BOSS_COUNTER_RECOVERS = HIDDEN_COUNTER_RECOVER_STATES;
+              // ★v0.25.3591(監査 B-2/B-3): 成立域は「赤い予告の図形」。噛みつき=自分中心円 r=216
+              // (体は223×124=半幅124なので、**円の外周92pxのリングが丸ごと死角**だった)/
+              // うねり=帯 310×40(帯はプレイヤーの位置に置かれるので、蛇の体に触れることはまず無い)。
+              // どの州がどの図形かは counterReach.ts の宣言表が正本(全系統で1箇所・寸法はテーブル直読み)。
+              const hiddenReachOverlapNow = () => {
+                const cp = useGameStore.getState().player;
+                return {
+                  overlap: inCounterReach(
+                    counterReachShapeFor(`hidden:${st}`, {
+                      bcx, bcy, pcx, pcy,
+                      aiFromX: boss.aiFromX, aiFromY: boss.aiFromY,
+                      aiTargetX: boss.aiTargetX, aiTargetY: boss.aiTargetY,
+                    }),
+                    { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
+                    { x: boss.x, y: boss.y, width: boss.width, height: boss.height },
+                  ),
+                  counterActive: Date.now() <= cp.counterWindowEnd,
+                };
+              };
               const hiddenBossCounterableNow = BOSS_COUNTER_ENABLED && boss.type !== 'thor'
-                && (isCounterablePhase(st, HIDDEN_BOSS_COUNTER_WINDUPS, HIDDEN_BOSS_COUNTER_RECOVERS) || st === 'dash')
+                && (isCounterablePhase(st, HIDDEN_BOSS_COUNTER_WINDUPS, HIDDEN_BOSS_COUNTER_RECOVERS)
+                  || HIDDEN_COUNTER_ACTIVE_STATES.includes(st))
                 // §6.33 案G(社長裁定): 新挙動のレーザー溜めは弱点窓(発射前900ms)の間だけ体当て
                 // カウンター可(窓外3000ms全域で潰せた既存W7の穴を塞ぐ)。旧挙動(?mimirtrack=0)は従来どおり。
                 && !(MIMIR_TRACK_ENABLED && usesMimirLaser(boss.type) && st === 'laser-windup'
                   && !canInterruptMimirLaser(boss.type, st, newGameTime, boss.bossStateUntil));
               let hiddenBossCountered = false;
               if (hiddenBossCounterableNow) {
-                const { overlap, counterActive } = thorBodyOverlapNow();
+                const { overlap, counterActive } = hiddenReachOverlapNow();
                 if (overlap && counterActive) {
                   hiddenBossCounterHit(bcx, bcy);
                   hiddenBossCountered = true;
@@ -5342,8 +5362,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ghostCounterableNow = boss.type === 'thor'
                   ? isBossCounterableNowApprox(boss.aiPhase, st)
                   : hiddenBossCounterableNow;
+                // プレイヤー成立の有無を見るだけの照会なので、**プレイヤーと同じ成立域**で引く
+                // (トールは体の重なり / 裏3体は図形reach=v0.25.3591)。
                 const { overlap: pOverlap, counterActive: pActive } = ghostCounterableNow
-                  ? thorBodyOverlapNow() : { overlap: false, counterActive: false };
+                  ? (boss.type === 'thor' ? thorBodyOverlapNow() : hiddenReachOverlapNow())
+                  : { overlap: false, counterActive: false };
                 if (ghostCounterableNow && !(pOverlap && pActive)) {
                   const gClaim = consumeGhostCounterClaim(boss.id, Date.now());
                   if (gClaim) {
@@ -8784,7 +8807,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ジブリルのランタン火(紫の単発火): M26 Step3で angelBossTick.ts へ移設(挙動不変・ヘッドレス共用)。
         tickAngelBossFires(newGameTime, triggerPlayerDeath);
         // §6.28-19(バッチM63): アクラシエルの結晶の槍(設置→2秒後に一度だけ起爆)。
-        tickAcrasielSpears(newGameTime, triggerPlayerDeath);
+        tickAcrasielSpears(newGameTime, triggerPlayerDeath, ANGEL_SFX);
 
         // 二人組(クエストNPC)の滞在受領/納品(EVENT_QUEST_DESIGN.md・社長裁定v0.25.1686)。
         // サークル内3秒(EVENT_QUEST_DWELL_MS)=拠点解放と同じ進捗メーター(pixiSceneがdwellMsを描く)。

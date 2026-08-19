@@ -29,6 +29,8 @@ import { airHopEase01 } from './airHop';
 import { distToSegment } from './levelUpGate';
 // v0.25.3496: 帯(drawAngelZoneCapsule=四角)の判定は四角そのもの。ビーム/レーザー(線)はdistToSegmentのまま。
 import { distToBandRect } from './geometry';
+// ★v0.25.3591: カウンター成立域(赤い予告の図形)の宣言表=全系統で1箇所(counterReach.ts)。
+import { counterReachShapeFor, inCounterReach } from './counterReach';
 import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY, isBossCounterableNowApprox } from './bossScript';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
@@ -211,6 +213,29 @@ const bodyOverlapNow = (boss: Enemy): { overlap: boolean; counterActive: boolean
   const cp = useGameStore.getState().player;
   return {
     overlap: rectsOverlap({ x: boss.x, y: boss.y, width: boss.width, height: boss.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height }),
+    counterActive: Date.now() <= cp.counterWindowEnd,
+  };
+};
+
+/**
+ * ★v0.25.3591(監査 research/COUNTER_REACH_AUDIT.md): **赤い予告の図形=カウンターの成立域**。
+ * `bodyOverlapNow` と同じ形を返すので、体の重なりで見ていた州はキーを渡すだけで図形reachへ移せる。
+ * どの州がどの図形かは counterReach.ts の宣言表が正本(キーは天使だけ**boss.typeで引く**——
+ * 'sweep-windup' 等の州名が6体で衝突し、寸法が別テーブルだから)。
+ */
+const reachOverlapNow = (boss: Enemy, state: string): { overlap: boolean; counterActive: boolean } => {
+  const cp = useGameStore.getState().player;
+  const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
+  return {
+    overlap: inCounterReach(
+      counterReachShapeFor(`${boss.type}:${state}`, {
+        bcx, bcy,
+        pcx: cp.x + cp.width / 2, pcy: cp.y + cp.height / 2,
+        aiFromX: boss.aiFromX, aiFromY: boss.aiFromY, aiTargetX: boss.aiTargetX, aiTargetY: boss.aiTargetY,
+      }),
+      { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
+      { x: boss.x, y: boss.y, width: boss.width, height: boss.height },
+    ),
     counterActive: Date.now() <= cp.counterWindowEnd,
   };
 };
@@ -1521,7 +1546,10 @@ export const runRafiTick = (
       patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, rafi);
     }
   } else if (st === 'jump-windup') {
-    const { overlap, counterActive } = bodyOverlapNow(rafi);
+    // ★v0.25.3591(監査 B-5): 跳びかかりの予告は**着地円 r=70**(プレイヤー位置にロック)。成立域も
+    // 着地円へ揃える(体の重なりだと、赤い円の中に立っていてもカウンターできなかった)。
+    // 旧実装(?rafiscript=0)側も同じ形に揃える(v0.25.3148の掟=片方だけ直すと嘘の円が残る)。
+    const { overlap, counterActive } = reachOverlapNow(rafi, st);
     if (overlap && counterActive) {
       rafiCounterHit(rcx, rcy);
       if (rr.rejumps < RF_T.jump.maxRejumps) {
@@ -1585,7 +1613,16 @@ export const runRafiTick = (
       patch.bossState = 'sweep'; patch.bossStateUntil = newGameTime + RF_T.sweep.active;
     }
   } else if (st === 'sweep') {
-    if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
+    // ★v0.25.3591(監査 B-6): **同じ薙ぎを持つミゲル/ウリ/スリィエル/アクラシエルには実行中の
+    // 帯カウンターがあるのに、ラフィだけ無かった**(この州には判定もカウンターも一切無く、
+    // 赤い帯 310×40 の中に立っていても何も起きない)。4体と同じ形=帯reachで開ける。
+    // ダメージは既に windup 明けの pumpkinBlasts で解決済みなので、ここは**カウンター専用の窓**。
+    const { overlap, counterActive } = reachOverlapNow(rafi, st);
+    if (overlap && counterActive) {
+      rafiCounterHit(rcx, rcy);
+      patch.rSweepReadyAt = newGameTime + RF_T.sweep.cdMs * freshCritCdMult(rafi.id, newGameTime);
+      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
+    } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
       patch.bossState = 'sweep-recover';
       patch.bossStateUntil = newGameTime + choreographyRecoverMs(RF_T.sweep.recover, (rafi.bossScriptQueue?.length ?? 0) > 0);
     }
@@ -1704,7 +1741,10 @@ export const runRafiTickLegacy = (
       patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
     }
   } else if (st === 'jump-windup') {
-    const { overlap, counterActive } = bodyOverlapNow(rafi);
+    // ★v0.25.3591(監査 B-5): 跳びかかりの予告は**着地円 r=70**(プレイヤー位置にロック)。成立域も
+    // 着地円へ揃える(体の重なりだと、赤い円の中に立っていてもカウンターできなかった)。
+    // 旧実装(?rafiscript=0)側も同じ形に揃える(v0.25.3148の掟=片方だけ直すと嘘の円が残る)。
+    const { overlap, counterActive } = reachOverlapNow(rafi, st);
     if (overlap && counterActive) {
       rafiCounterHit(rcx, rcy);
       if (rr.rejumps < RF_T.jump.maxRejumps) {
@@ -2514,7 +2554,14 @@ export const runAcrasielTick = (
       patch.bossState = 'warp-in'; patch.bossStateUntil = newGameTime + AC_T.warp.telegraphMs;
     }
   } else if (st === 'warp-in') {
-    if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
+    // ★v0.25.3591(監査 A-4「赤い予告が出ているのにカウンター手段が1つも無い」): 転移衝撃は
+    // **赤円(impactRadius)+予告1000ms**を出しているのに、この州にはカウンター分岐が存在せず、
+    // 命中もdamagePlayer直呼び=ブラストパリィすら効かなかった。**赤円の中なら予告の間ずっと返せる**
+    // (着地円文法。城ボスの着地円v0.25.2601・舞妓の水鳥乱舞v0.25.3585と同型)。
+    const { overlap, counterActive } = reachOverlapNow(acrasiel, st);
+    if (overlap && counterActive) {
+      acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
+    } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
       const tx = acrasiel.aiTargetX ?? acx, ty = acrasiel.aiTargetY ?? acy;
       const pr = Math.max(player.width, player.height) / 2;
       if (Math.hypot(pcx - tx, pcy - ty) <= AC_T.warp.impactRadius + pr) {
@@ -2650,17 +2697,34 @@ export const tickAngelBossFires = (newGameTime: number, onPlayerDeath: (x: numbe
 // 設置から2秒後(fireAt)に一度だけ円形AoEへ起爆して消える(命中してもしなくても消える=一撃だけの
 // 遅延起爆・ジャイアント踏み鳴らしと同型)。ボス自身が倒れた後もハザードは独立して起爆する
 // (damageはspawn時のenemy.damageを保持済みなのでボス消滅後も参照不要)。
-export const tickAcrasielSpears = (newGameTime: number, onPlayerDeath: (x: number, y: number) => void): void => {
+export const tickAcrasielSpears = (
+  newGameTime: number, onPlayerDeath: (x: number, y: number) => void, sfx: AngelSfx = NOOP_ANGEL_SFX,
+): void => {
   const spears = useGameStore.getState().acrasielSpears;
   if (spears.length === 0) return;
   const pl = useGameStore.getState().player;
   const plcx = pl.x + pl.width / 2, plcy = pl.y + pl.height / 2;
   const pr = Math.max(pl.width, pl.height) / 2;
   let died = false;
+  // ★v0.25.3591(監査 A-3「赤い予告が出ているのにカウンター手段が1つも無い」): 起爆は damagePlayer
+  // 直呼びで、ブラストパリィ(命中の瞬間の弾き)すら通らなかった。**赤円の中で窓が開いていれば
+  // 起爆をカウンターで潰せる**ようにする(1本につき1回・1フレームに1本まで=多重成立させない)。
+  // ※監査の推奨は「pumpkinBlastsへ積む」だったが、そちらは爆発FX/ノックバック/死因ラベルまで
+  //   変わる(=演出の変更)。今回は「成立域の幾何だけ」を直す発注なので、同じ効果を持つこちらを採った。
+  let counteredThisFrame = false;
   const survivors: typeof spears = [];
   for (const sp of spears) {
     if (newGameTime >= sp.fireAt) {
-      if (!pl.invulnerable && !died && Math.hypot(plcx - sp.x, plcy - sp.y) <= AC_T.spear.radius + pr) {
+      const inCircle = Math.hypot(plcx - sp.x, plcy - sp.y) <= AC_T.spear.radius + pr;
+      if (inCircle && !counteredThisFrame && Date.now() <= pl.counterWindowEnd) {
+        const owner = useGameStore.getState().enemies.find(e => e.id === sp.enemyId);
+        if (owner) {
+          counteredThisFrame = true;
+          angelCounterHit(owner, owner.x + owner.width / 2, sp.x, sp.y, sfx);
+          continue; // 起爆は潰れた=ダメージは出さない
+        }
+      }
+      if (!pl.invulnerable && !died && inCircle) {
         const d = useGameStore.getState().damagePlayer(sp.damage, `${enemyDeathLabel('acrasiel')}の結晶の槍`, sp.x, sp.y);
         if (d) { died = true; onPlayerDeath(plcx, plcy); }
       }

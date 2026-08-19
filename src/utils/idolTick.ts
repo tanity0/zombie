@@ -16,7 +16,9 @@ import {
 } from '../store/gameStore';
 import { getActiveGun } from './weaponUtils';
 import { createEnemyProjectile } from './enemyUtils';
-import { rectsOverlap } from '../world/obstacles';
+// ★v0.25.3591(監査 research/COUNTER_REACH_AUDIT.md): カウンター成立域=赤い予告の図形。
+// どの州がどの図形かは counterReach.ts の宣言表が正本(全系統で1箇所)。
+import { counterReachShapeFor, inCounterReach } from './counterReach';
 // v0.25.2617(社長報告「m2は移動できる範囲が限られてるのに、ボスだけその外に移動してる」):
 // プレイヤーの移動クランプと**同じ純関数**を使う。`playableArea.ts` は「行ける帯」の唯一の出どころで、
 // プレイヤー移動・湧き制限・帯の外の減光が全てここから導かれている。ボスだけがこれを通っていなかった。
@@ -326,13 +328,24 @@ export const runIdolTick = (
 
   // 紫中はカウンターも取らない(裏ボス=frozen / 天使=fullStun分岐 と同じ。止まっている相手に
   // カウンターは成立しない=紫はフィニッシュを入れる時間)。
-  const counterableNow = counterEnabled && !fullStun
+  // ★v0.25.3591(社長裁定「狙撃は避けるだけの技にしようかな」): 狙撃の溜め(idol-snipe-windup)は
+  // **紫=カウンター不可**へ。予告の帯900×40も紫で描く(色文法v0.25.2961)。硬直は従来どおり可。
+  // ※WINDUP_STATES は技一覧から機械的に組む台帳(予告の網羅テストが読む)なので**そちらは削らない**——
+  //   ここで1州だけ除外する(台帳=「予告がある州」/ この行=「カウンターが通る州」)。
+  const counterableNow = counterEnabled && !fullStun && st !== 'idol-snipe-windup'
     && (isCounterablePhase(st, WINDUP_STATES, RECOVER_STATES) || st === IDOL_REST_STATE);
   let countered = false;
   if (counterableNow) {
     const cp = useGameStore.getState().player;
-    const overlap = rectsOverlap({ x: idol.x, y: idol.y, width: idol.width, height: idol.height },
-      { x: cp.x, y: cp.y, width: cp.width, height: cp.height });
+    // 成立域は宣言表(counterReach.ts)。拳=帯 90×30(赤い予告と同じ2点・同じ半幅)/ それ以外=体の重なり。
+    const overlap = inCounterReach(
+      counterReachShapeFor(`idol:${st}`, {
+        bcx: icx, bcy: icy, pcx, pcy,
+        aiFromX: idol.aiFromX, aiFromY: idol.aiFromY, aiTargetX: idol.aiTargetX, aiTargetY: idol.aiTargetY,
+      }),
+      { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
+      { x: idol.x, y: idol.y, width: idol.width, height: idol.height },
+    );
     if (overlap && Date.now() <= cp.counterWindowEnd) { counterHit(icx, icy); countered = true; }
     else {
       const claim = consumeGhostCounterClaim(idol.id, Date.now());

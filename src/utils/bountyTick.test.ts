@@ -1598,3 +1598,179 @@ describe('runBountyTick — ボスメーカーの個別再生(▸)', () => {
     expect(stateOf()).not.toBe('mk-suiu-windup');
   });
 });
+
+// =================================================================================================
+// カウンター成立域=赤い予告の図形(v0.25.3591・research/COUNTER_REACH_AUDIT.md の是正)
+// =================================================================================================
+// 社長ゴール(言葉のまま):「(カウンターが)身体に触れているかで見ていて、実際カウンターできない技が多い」。
+// v0.25.3585(舞妓)で確立した型をそのまま横展開したので、テストも同じ型で固める:
+// **体に触れない位置に立ち、赤い図形の中でカウンター窓を開く → 成立して技が中断し、反撃ダメージが入る。**
+describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.25.3591 監査是正)', () => {
+  beforeEach(() => {
+    setTreesDisabled(true);
+    setTorchesDisabled(true);
+    useGameStore.getState().resetGame('assault');
+    clearBountyPlayback();
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  const START_GT = 10_000_000;
+  /** ▸個別再生で技を1つ強制発動する盤面(抽選・距離帯・CDをバイパス=州を狙って作れる)。 */
+  const setupMove = (type: EnemyType, move: BountyMoveKey, playerOffset: { x: number; y: number }) => {
+    const e = spawnEnemyAt(type, 50000, 50000, START_GT);
+    e.dormant = false;
+    e.homeX = e.x; e.homeY = e.y;
+    e.aggroRange = 200;
+    e.lastHit = START_GT;
+    useGameStore.setState(s => ({
+      enemies: [e],
+      player: { ...s.player, x: e.x + playerOffset.x, y: e.y + playerOffset.y, health: 9999, maxHealth: 9999 },
+    }));
+    let gt = START_GT;
+    const s = createBountyTickState();
+    const step = (ms: number): void => {
+      gt += ms;
+      useGameStore.setState({ gameTime: gt });
+      const cur = useGameStore.getState().enemies.find(x => x.id === e.id);
+      if (cur) runBountyTick(cur, s, gt, ms / 1000, 1, gt);
+    };
+    const boss = () => useGameStore.getState().enemies.find(x => x.id === e.id)!;
+    requestBountyMovePlay(move, { solo: true, loop: false });
+    step(16); // 要求箱の引き取り=この1tickで技のwindupへ入る
+    return { id: e.id, step, boss };
+  };
+  /** ボス中心から (dx,dy) の位置へプレイヤーを置き、カウンター窓を開ける。 */
+  const standAt = (b: { x: number; y: number; width: number; height: number }, dx: number, dy: number): void => {
+    useGameStore.setState(s => ({
+      player: {
+        ...s.player,
+        x: b.x + b.width / 2 + dx - s.player.width / 2,
+        y: b.y + b.height / 2 + dy - s.player.height / 2,
+        counterWindowEnd: Date.now() + 5000,
+      },
+    }));
+  };
+  /** 体(矩形)が重なっていないこと=「触れていない」の担保。 */
+  const notTouching = (b: { x: number; y: number; width: number; height: number }): boolean => {
+    const p = useGameStore.getState().player;
+    return !(b.x < p.x + p.width && b.x + b.width > p.x && b.y < p.y + p.height && b.y + b.height > p.y);
+  };
+
+  it('バス停 押しのけ(帯82×34): 体の外・帯の中で成立(監査C-1)', () => {
+    const { step, boss } = setupMove('bounty-ranged', 'br-push', { x: 60, y: 0 });
+    const b0 = boss();
+    expect(b0.bossState).toBe('br-push-windup');
+    standAt(b0, 55, 0);
+    expect(notTouching(b0)).toBe(true);
+    const hp = b0.health;
+    step(16);
+    expect(boss().bossState).toBe('chase');
+    expect(boss().health).toBeLessThan(hp);
+  });
+
+  it('バス停 三段突き(帯300×34 ×3本): 250px先=体の外でも成立(監査B-1・実装コメントが「カウンターで対処する技」と明言していた)', () => {
+    const { step, boss } = setupMove('bounty-ranged', 'br-triple', { x: 250, y: 0 });
+    const b0 = boss();
+    expect(b0.bossState).toBe('br-triple-windup');
+    standAt(b0, 250, 0);
+    expect(notTouching(b0)).toBe(true);
+    const hp = b0.health;
+    step(16);
+    expect(boss().bossState).toBe('chase');
+    expect(boss().health).toBeLessThan(hp);
+  });
+
+  it('馬乗り 3段コンボ(帯130×28): 体の外・帯の中で成立(監査C-2)', () => {
+    const { step, boss } = setupMove('bounty-melee', 'bm-combo', { x: 80, y: 0 });
+    const b0 = boss();
+    expect(b0.bossState).toBe('bm-combo1-windup');
+    standAt(b0, 100, 0);
+    expect(notTouching(b0)).toBe(true);
+    const hp = b0.health;
+    step(16);
+    expect(boss().bossState).toBe('chase');
+    expect(boss().health).toBeLessThan(hp);
+  });
+
+  it('鋏 薙ぎ払い(帯250×40): 150px先=体の外でも成立(監査C-3)', () => {
+    const { step, boss } = setupMove('bounty-balance', 'bb-sweep', { x: 150, y: 0 });
+    const b0 = boss();
+    expect(b0.bossState).toBe('bb-sweep-windup');
+    standAt(b0, 150, 0);
+    expect(notTouching(b0)).toBe(true);
+    const hp = b0.health;
+    step(16);
+    expect(boss().bossState).toBe('chase');
+    expect(boss().health).toBeLessThan(hp);
+  });
+
+  it('鋏 薙ぎ3連発(帯200×30): 体の外・帯の中で成立(監査C-4)', () => {
+    const { step, boss } = setupMove('bounty-balance', 'bb-triple', { x: 150, y: 0 });
+    const b0 = boss();
+    expect(b0.bossState).toBe('bb-triple1-windup');
+    standAt(b0, 150, 0);
+    expect(notTouching(b0)).toBe(true);
+    const hp = b0.health;
+    step(16);
+    expect(boss().bossState).toBe('chase');
+    expect(boss().health).toBeLessThan(hp);
+  });
+
+  it('鋏 跳びかかり(着地円110): 着地円の中=遠く離れていても成立(監査B-4・着地円文法)', () => {
+    const { step, boss } = setupMove('bounty-balance', 'bb-leap', { x: 300, y: 0 });
+    const b0 = boss();
+    expect(b0.bossState).toBe('leap-windup');
+    // 着地点は溜め開始でロック済み=プレイヤーの現在位置。その場に立ったまま窓を開ける。
+    useGameStore.setState(s => ({ player: { ...s.player, counterWindowEnd: Date.now() + 5000 } }));
+    expect(notTouching(b0)).toBe(true);
+    const hp = b0.health;
+    step(16);
+    expect(boss().bossState).toBe('chase');
+    expect(boss().health).toBeLessThan(hp);
+  });
+
+  it('★馬乗り 懲罰狙撃(紫): 帯の中でも体に重なっていてもカウンターできない(社長裁定「避けるだけの技」)', () => {
+    const { step, boss } = setupMove('bounty-melee', 'bm-snipe', { x: 400, y: 0 });
+    const b0 = boss();
+    expect(b0.bossState).toBe('bm-snipe-windup');
+    standAt(b0, 0, 0); // 体に完全に重ねる=従来なら確実に成立していた位置
+    const hp = b0.health;
+    step(16);
+    expect(boss().bossState).toBe('bm-snipe-windup'); // 技は続く
+    expect(boss().health).toBe(hp);                   // 反撃ダメージも入らない
+  });
+
+  it('★舞妓 毬回し(移動する判定円): 円が自分を掃いた最初のフレームでもカウンター勝ち=そのtickの被弾ゼロ', () => {
+    // 社長報告「当たり判定持ちながら移動してくる攻撃は、移動が始まるとカウンター取れない」の回帰。
+    // 仕組み: 上のカウンター判定は**移動前**の位置で見るため、円が掃く最初のフレームは不成立
+    // → 同tickで被弾 → 被弾は窓を閉じる(v0.25.2588の裁定) → 以後ずっと取れない、だった。
+    const { step, boss } = setupMove('bounty-maiko', 'mk-spin', { x: 400, y: 0 });
+    expect(boss().bossState).toBe('mk-spin-windup');
+    for (let i = 0; i < 200 && boss().bossState !== 'mk-spin'; i++) step(16);
+    expect(boss().bossState).toBe('mk-spin');
+    // **移動前の円のすぐ外**(半径180+自機14の20px外)に立つ=このtickでは踏み込みで初めて届く距離。
+    standAt(boss(), MK_T.spin.radius + 14 + 20, 0);
+    expect(notTouching(boss())).toBe(true);
+    const hp = boss().health;
+    const php = useGameStore.getState().player.health;
+    step(120); // 踏み込み(smoothstep)で円が前進してプレイヤーを掃くフレーム
+    expect(boss().bossState).toBe('chase');   // カウンター成立=技を中断
+    expect(boss().health).toBeLessThan(hp);   // 反撃ダメージ
+    expect(useGameStore.getState().player.health).toBe(php); // ★そのtickの被弾はゼロ
+  });
+
+  it('★舞妓 手毬打ち(飛んでいる毬): 毬の円で「打ち返す」=被弾せずカウンター(監査A-5)', () => {
+    const { step, boss } = setupMove('bounty-maiko', 'mk-boom', { x: 400, y: 0 });
+    expect(boss().bossState).toBe('mk-boom-windup');
+    for (let i = 0; i < 200 && boss().bossState !== 'mk-boom-out'; i++) step(16);
+    expect(boss().bossState).toBe('mk-boom-out');
+    // 毬は aiFrom→aiTarget を outMs で渡る。窓を開けたまま往路を追い、毬が到達した瞬間を見る。
+    useGameStore.setState(s => ({ player: { ...s.player, counterWindowEnd: Date.now() + 60000 } }));
+    const hp = boss().health;
+    const php = useGameStore.getState().player.health;
+    for (let i = 0; i < 60 && boss().bossState !== 'chase'; i++) step(16);
+    expect(boss().bossState).toBe('chase');
+    expect(boss().health).toBeLessThan(hp);
+    expect(useGameStore.getState().player.health).toBe(php);
+  });
+});

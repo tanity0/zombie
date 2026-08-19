@@ -89,7 +89,9 @@ import { distToBandRect } from './geometry';
 // v0.25.3517: 近距離の技選択(押しのけ1本道の解消)。重み・CDは bountyShots.ts が唯一の出どころ。
 import { pickBrCloseMove, BR_PUSH_CD_MS } from './bountyShots';
 import { GAME_SPEED } from '../config/gameSpeed';
-import { rectsOverlap } from '../world/obstacles';
+// ★v0.25.3591(監査 research/COUNTER_REACH_AUDIT.md の是正): カウンター成立域の図形は
+// counterReach.ts の宣言表が正本(赤い予告の図形=成立域、を全系統で1箇所に集めた)。
+import { counterReachShapeFor, inCounterReach, type CounterReachShape } from './counterReach';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { refundCounterCooldown } from './counterMaster';
@@ -337,8 +339,11 @@ const cancelBountyTechnique = (s: BountyTickState): void => {
 // ---- カウンター(全4体で共通の1本。W7=windup中/硬直中の接触=可) --------------------------------
 // レーザー('laser-*')はここに含めない: v0.25.2961裁定どおり紫=カウンター不可(近接中断は
 // mimirLaserBreakOnMeleeHitが別枠で処理する専用の「弱点を突いて壊す」機構=標準カウンターとは別物)。
-const BOUNTY_WINDUP_STATES: readonly string[] = [
-  'br-push-windup', 'bm-charge-windup', 'bm-whip360-windup', 'bm-combo1-windup', 'bm-combo2-windup', 'bm-combo3-windup', 'bm-snipe-windup',
+// ★v0.25.3591(社長裁定「狙撃は避けるだけの技にしようかな」): **懲罰狙撃(bm-snipe-windup)を外した**。
+// 帯900×40の予告は紫(=カウンター不可の色文法v0.25.2961)へ変え、溜め中の接触カウンターも不可に統一する
+// (赤いのに返せない/紫なのに返せる、の食い違いを作らない)。硬直(bm-snipe-recover)は従来どおり可。
+export const BOUNTY_WINDUP_STATES: readonly string[] = [
+  'br-push-windup', 'bm-charge-windup', 'bm-whip360-windup', 'bm-combo1-windup', 'bm-combo2-windup', 'bm-combo3-windup',
   'bb-sweep-windup', 'bb-triple1-windup', 'bb-triple2-windup', 'bb-triple3-windup', 'leap-windup', // triple=★v0.25.3580
   'bb-quickshot-windup', // ★v0.25.3581(ロール台本の高速弾。ロール自体は移動=対象外・br-rollと同じ)
   'mk-naginata-windup', 'mk-naginata1-windup', 'mk-naginata2-windup', 'mk-spin-windup', 'mk-suiu-windup', 'mk-boom-windup',
@@ -351,12 +356,12 @@ const BOUNTY_WINDUP_STATES: readonly string[] = [
 // (下の counterReachFor。城ボスの着地円=「赤い予告の中でだけ成立」v0.25.2601 と同じ文法)。
 // ★v0.25.3585(社長報告「舞妓の毱打ち以外カウンター取れない」): 舞妓の実行中も開く——
 // 毬回しの回転中(mk-spin=360の振りと同型)と水鳥乱舞のホップ中(mk-suiu-hop*=着地円文法)。
-const BOUNTY_ACTIVE_COUNTER_STATES: readonly string[] = [
+export const BOUNTY_ACTIVE_COUNTER_STATES: readonly string[] = [
   'bm-charge', 'bm-whip360',
   'mk-spin', 'mk-suiu-hop1', 'mk-suiu-hop2', 'mk-suiu-hop3',
 ];
 
-const BOUNTY_RECOVER_STATES: readonly string[] = [
+export const BOUNTY_RECOVER_STATES: readonly string[] = [
   'br-push-recover', 'bm-charge-recover', 'bm-combo1-recover', 'bm-combo2-recover', 'bm-combo3-recover', 'bm-snipe-recover',
   'bb-sweep-recover', 'bb-triple1-recover', 'bb-triple2-recover', 'bb-quickshot-recover', 'leap-recover', // ★v0.25.3580/3581
   'mk-naginata-recover', 'mk-naginata1-recover', 'mk-naginata2-recover', 'mk-spin-recover', 'mk-suiu-recover', 'mk-boom-recover',
@@ -1417,6 +1422,8 @@ const tickMaiko = (
   bounty: Enemy, s: BountyTickState, newGameTime: number, deltaTime: number, moveSpeedMult: number,
   dist: number, pcx: number, pcy: number, bcx: number, bcy: number, sfx: BountySfx,
   patch: Partial<Enemy>,
+  /** ★v0.25.3591: 移動しながら判定を出す実行州(毬回し/手毬打ち)用「同tickはカウンター勝ち」フック。 */
+  tryMovingCounter: (shape: CounterReachShape) => boolean = () => false,
 ): void => {
   const st = bounty.bossState ?? 'chase';
   const phase: 1 | 2 = bounty.bossPhase === 2 ? 2 : 1;
@@ -1583,6 +1590,10 @@ const tickMaiko = (
       bcx = c.x + bounty.width / 2; bcy = c.y + bounty.height / 2;
     }
     if (Math.hypot(pcx - bcx, pcy - bcy) <= MK_T.spin.radius + Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2) {
+      // ★v0.25.3591: 判定円が自分を掃く**最初のフレーム**は、runBountyTickのカウンター判定(移動前の
+      // 位置で見る)では届いていない=不成立のまま被弾し、被弾で窓が閉じて以後も成立しなかった。
+      // ここで**移動後の円**でもう一度だけ見る(同tickの引き分けはカウンター勝ち)。
+      if (tryMovingCounter(counterReachShapeFor('bounty:mk-spin', { bcx, bcy, pcx, pcy }))) return;
       useGameStore.getState().damagePlayer(MK_T.spin.damage, `${enemyDeathLabel(bounty.type)}の毬回し`, pcx, pcy);
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
@@ -1680,6 +1691,9 @@ const tickMaiko = (
     const py2 = st === 'mk-boom-out' ? fy + (ty - fy) * t : ty + (fy - ty) * t;
     const pr = Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2;
     if (Math.hypot(pcx - px2, pcy - py2) <= MK_T.boom.hitRadius + pr) {
+      // ★v0.25.3591(監査 A-5「毬の円reachでカウンター可にする=打ち返す」): 毬は弾ではないので反射経路に
+      // 乗らず、カウンター手段が1つも無かった。**毬の円**(=描いてある毬そのもの)で成立させる。
+      if (tryMovingCounter(counterReachShapeFor(`bounty:${st}`, { bcx, bcy, pcx, pcy, ballX: px2, ballY: py2 }))) return;
       useGameStore.getState().damagePlayer(MK_T.boom.damage, `${enemyDeathLabel(bounty.type)}の手毬打ち`, pcx, pcy);
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
@@ -1931,32 +1945,19 @@ export const runBountyTick = (
   let countered = false;
   if (counterableNow) {
     const cp = useGameStore.getState().player;
-    // ★v0.25.3571: 360系(windup/振り)は判定が「体」ではなく「赤円(whip360.radius)」なので、
-    // カウンターの成立域も赤円に合わせる(赤=カウンター対象の文法・城ボス着地円と同型)。
-    // ★v0.25.3585(社長報告「舞妓の毱打ち以外の技、カウンター取れない」): 同じ穴が舞妓の3技に
-    // 丸ごと残っていた——成立域が「体の重なり」のみで、舞妓は**体に触れない技ばかり**
-    // (薙ぎ=140px先の帯 / 回し=半径180の自分中心円 / 乱舞=遠くの着地円。しかも本体は踏み込まない)
-    // =構造的にカウンター不可能だった。**成立域を赤い予告の形に揃える**(赤=カウンター対象の文法):
-    //   薙ぎ=帯(distToBandRect・判定と同形) / 回し=自分中心円 / 乱舞=現在ホップの着地円。
-    // それ以外(押しのけ・コンボ・手毬打ち等)は従来どおり体の重なり。
-    const pcx2 = cp.x + cp.width / 2, pcy2 = cp.y + cp.height / 2;
-    const pRad = Math.max(cp.width, cp.height) / 2;
-    let inReach: boolean;
-    if (stNow === 'bm-whip360-windup' || stNow === 'bm-whip360') {
-      inReach = Math.hypot(pcx2 - bcx, pcy2 - bcy) <= BM_T.whip360.radius + pRad;
-    } else if (stNow === 'mk-spin-windup' || stNow === 'mk-spin') {
-      inReach = Math.hypot(pcx2 - bcx, pcy2 - bcy) <= MK_T.spin.radius + pRad;
-    } else if (stNow === 'mk-naginata-windup' || stNow === 'mk-naginata1-windup' || stNow === 'mk-naginata2-windup') {
-      const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
-      const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
-      inReach = distToBandRect({ x: pcx2, y: pcy2 }, { x: fx, y: fy }, { x: tx, y: ty }, MK_T.naginata.halfWidth) <= pRad;
-    } else if (stNow === 'mk-suiu-hop1' || stNow === 'mk-suiu-hop2' || stNow === 'mk-suiu-hop3') {
-      const lx = bounty.aiTargetX ?? bcx, ly = bounty.aiTargetY ?? bcy;
-      const r = stNow === 'mk-suiu-hop3' ? MK_T.suiu.radius * MK_T.suiu.finalRadiusMult : MK_T.suiu.radius;
-      inReach = Math.hypot(pcx2 - lx, pcy2 - ly) <= r + pRad;
-    } else {
-      inReach = rectsOverlap({ x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height });
-    }
+    // ★v0.25.3571/3585 → **v0.25.3591で表へ集約**: 成立域は「赤い予告の図形」。どの州がどの図形かは
+    // counterReach.ts の宣言表(COUNTER_REACH_DECL)が正本で、寸法は技のテーブルをその場で読む。
+    // 写経した if の並びを各系統に増やさない(3度同じ穴を踏んだ再発防止=counterReach.test.tsが機械検査)。
+    const inReach = inCounterReach(
+      counterReachShapeFor(`bounty:${stNow}`, {
+        bcx, bcy, pcx, pcy,
+        aiFromX: bounty.aiFromX, aiFromY: bounty.aiFromY,
+        aiTargetX: bounty.aiTargetX, aiTargetY: bounty.aiTargetY,
+        tripleAng: bounty.bountyTripleAng,
+      }),
+      { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
+      { x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height },
+    );
     if (inReach && Date.now() <= cp.counterWindowEnd) {
       bountyCounterHit(bounty, bcx, bcy, sfx);
       countered = true;
@@ -1966,6 +1967,34 @@ export const runBountyTick = (
       patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
     }
   }
+
+  /**
+   * ★v0.25.3591(社長報告「毱回しみたいな、当たり判定持ちながら移動してくる攻撃は、移動が始まると
+   * カウンター取れない」): **同tickの引き分けはカウンター勝ち**にするためのフック。
+   *
+   * なぜ要るか: 上のカウンター判定は「**移動前**のボス位置」で見る。ところが毬回し等の実行州は
+   * 同じtickの中で「踏み込みで前進 → **移動後**の位置でダメージ」を行う。つまり判定円が自分を
+   * 掃く最初のフレームは、上の判定では**まだ円の外**=不成立、そのフレームで被弾し、被弾は
+   * カウンター窓を閉じる(v0.25.2588の裁定・これは仕様なので触らない)。以後は窓が開かない
+   * =**実行中は構造的にカウンター不能**だった。
+   *
+   * 直し方: ダメージを与える直前に、**移動後の図形**でもう一度だけ成立を見る。成立したら
+   * ダメージを出さずに技を中断する(呼び出し側は damagePlayer を呼ばずに return する)。
+   */
+  const tryMovingCounter = (shape: CounterReachShape): boolean => {
+    if (!counterEnabled || countered) return false;
+    const cp = useGameStore.getState().player;
+    if (Date.now() > cp.counterWindowEnd) return false;
+    if (!inCounterReach(shape, { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
+      { x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height })) return false;
+    bountyCounterHit(bounty, bcx, bcy, sfx);
+    countered = true;
+    s.comboStep = 0;
+    resetBrShotCycle(s);
+    patch.bossState = 'chase';
+    patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+    return true;
+  };
 
   // ---- 交戦判定+リーシュ(§2/v6 A-3・B-4) ---------------------------------------------------
   const leashRadius = bossLeashDistancePx(bounty.type, false);
@@ -2048,7 +2077,7 @@ export const runBountyTick = (
     } else if (bounty.type === 'bounty-balance') {
       tickBalance(bounty, s, newGameTime, deltaTime, moveSpeedMult, dist, pcx, pcy, bcx, bcy, sfx, patch);
     } else if (bounty.type === 'bounty-maiko') {
-      tickMaiko(bounty, s, newGameTime, deltaTime, moveSpeedMult, dist, pcx, pcy, bcx, bcy, sfx, patch);
+      tickMaiko(bounty, s, newGameTime, deltaTime, moveSpeedMult, dist, pcx, pcy, bcx, bcy, sfx, patch, tryMovingCounter);
     }
     // 単独再生の終わり(idolTick.afterMoveと同じ位置づけ): 技が chase へ戻った**そのフレーム**で
     // 判定する=停止中に「余分な1フレームだけ歩く」が起きない。ループONなら同じ技をもう一度。
