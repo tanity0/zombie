@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3576',
+    items: [
+      '鋏(変異)の調整を反映: 薙ぎ払いの帯が2倍(300px)に伸び、跳びかかりが素早く(溜め1秒・滞空0.3秒・硬直0.5秒)・着地円は約2倍(110px)になりました。',
+    ],
+  },
+  {
     version: '0.25.3575',
     items: [
       '馬乗り(変異)の鞭のしなりを強くしました(先端の遅れが約2倍深く・スナップの質感は維持)。',

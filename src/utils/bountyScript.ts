@@ -20,7 +20,6 @@
 //   (BOUNTY_NEUTRAL_MS=4体+共通経路で共有)。いずれも「共有されている/別の葉が正」なので、
 //   テーブル化には持ち主側の分解が要る。
 import { deepCloneTuning } from './deepClone';
-import { PUMPKIN_EXPLOSION_RADIUS } from './bountyDims';
 import { withRecoverFloor } from './bossTelegraph';
 
 /** 技ごとのノックバック(距離と時間。速度はknockbackSpeedForが逆算する)。 */
@@ -146,14 +145,15 @@ export interface BountyBalanceTuning {
 
 export const BOUNTY_BALANCE_TUNING: BountyBalanceTuning = {
   nearMax: 170,
-  sweep: { range: 150, halfWidth: 40, windup: 750, damage: 18, recover: withRecoverFloor(900) },
+  // sweep.range 150→300: ボスメーカー実機チューニングの貼り戻し(社長確定 v0.25.3576)。
+  sweep: { range: 300, halfWidth: 40, windup: 750, damage: 18, recover: withRecoverFloor(900) },
+  // ★v0.25.3576: 跳びかかりは元pumpkin輸入(複製)だったが、ボスメーカーの実機チューニングで
+  // **鋏専用の値に確定**した(貼り戻し)。以後pumpkinとは独立(bountyScript.test.tsも裁定値の固定へ変更)。
   leap: {
-    // 着地円=パンプキンと同一(bountyDims.ts の葉から読む=既定値は複製ではない)。
-    radius: PUMPKIN_EXPLOSION_RADIUS,
-    // ★gameStore の PUMPKIN_* の複製(上の charge と同じ理由・一致はテストで機械検査)。
-    windup: 3000,   // = PUMPKIN_CROUCH_MS
-    airMs: 1000,    // = PUMPKIN_JUMP_MS
-    recover: 1000,  // = PUMPKIN_RECOVER_MS
+    radius: 110,   // 旧: PUMPKIN_EXPLOSION_RADIUS(=54)
+    windup: 1000,  // 旧: 3000 = PUMPKIN_CROUCH_MS
+    airMs: 300,    // 旧: 1000 = PUMPKIN_JUMP_MS
+    recover: 500,  // 旧: 1000。※硬直フロア(BOSS_RECOVER_FLOOR_MS=900)の外で確定(leapは元から未適用)
     damage: 22,
   },
 };

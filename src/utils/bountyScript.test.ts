@@ -14,11 +14,10 @@ import {
   BOUNTY_BALANCE_TUNING, BOUNTY_BALANCE_TUNING_DEFAULTS,
   BOUNTY_MAIKO_TUNING, BOUNTY_MAIKO_TUNING_DEFAULTS,
 } from './bountyScript';
-import { PUMPKIN_EXPLOSION_RADIUS } from './bountyDims';
 import { BOSS_RECOVER_FLOOR_MS } from './bossTelegraph';
 import {
   WEREWOLF_WINDUP_MS, WEREWOLF_CHARGE_MAX_MS, WEREWOLF_CHARGE_SPEED_MULT,
-  PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS,
+  PUMPKIN_CROUCH_MS,
 } from '../store/gameStore';
 
 describe('既定値=移設前の実装値(テーブル化で挙動が1つも変わっていない)', () => {
@@ -52,8 +51,9 @@ describe('既定値=移設前の実装値(テーブル化で挙動が1つも変�
   it('鋏(bounty-balance)', () => {
     const d = BOUNTY_BALANCE_TUNING_DEFAULTS;
     expect(d.nearMax).toBe(170);
-    expect(d.sweep).toEqual({ range: 150, halfWidth: 40, windup: 750, damage: 18, recover: 900 });
-    expect(d.leap).toEqual({ radius: 54, windup: 3000, airMs: 1000, recover: 1000, damage: 22 });
+    // sweep.range 300 / leap一式 = v0.25.3576 ボスメーカー実機チューニングの貼り戻し(社長確定)。
+    expect(d.sweep).toEqual({ range: 300, halfWidth: 40, windup: 750, damage: 18, recover: 900 });
+    expect(d.leap).toEqual({ radius: 110, windup: 1000, airMs: 300, recover: 500, damage: 22 });
   });
 
   it('舞妓(bounty-maiko)', () => {
@@ -88,12 +88,16 @@ describe('輸入技の複製値が本家とズレていない(このファイル
     expect(c.speedMult).toBe(WEREWOLF_CHARGE_SPEED_MULT * 3);
   });
 
-  it('跳びかかり=pumpkin(gameStore / 着地円は依存ゼロの葉)', () => {
+  it('跳びかかり=鋏専用の裁定値(v0.25.3576にpumpkin輸入から独立・ボスメーカー貼り戻し)', () => {
+    // 旧: pumpkin(gameStore)との複製一致を検査していた。社長が実機チューニングで鋏専用の値に
+    // 確定したため、以後は**裁定値そのもの**を固定する(黙って動いたら落ちる)。
     const l = BOUNTY_BALANCE_TUNING_DEFAULTS.leap;
-    expect(l.windup).toBe(PUMPKIN_CROUCH_MS);
-    expect(l.airMs).toBe(PUMPKIN_JUMP_MS);
-    expect(l.recover).toBe(PUMPKIN_RECOVER_MS);
-    expect(l.radius).toBe(PUMPKIN_EXPLOSION_RADIUS);
+    expect(l.windup).toBe(1000);
+    expect(l.airMs).toBe(300);
+    expect(l.recover).toBe(500);
+    expect(l.radius).toBe(110);
+    // pumpkin本家の値が変わってもこちらは動かない(独立の宣言)。
+    expect(l.windup).not.toBe(PUMPKIN_CROUCH_MS);
   });
 });
 
