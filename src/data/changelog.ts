@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3593',
+    items: [
+      'ラフィの技が間合いで分担されました: 近距離=薙ぎ払いとロール台本 / 中距離・遠距離=跳びかかりと骨刃。',
+    ],
+  },
+  {
     version: '0.25.3592',
     items: [
       'ラフィにロール台本が加わりました(近距離で抽選): バックロールで距離を空け、脇から骨刃2本を素早く飛ばしてきます。刃は既存の骨刃と同じくパリィ可能(体勢のみ削る)です。',

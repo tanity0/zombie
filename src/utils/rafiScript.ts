@@ -25,12 +25,15 @@ export const RAFI_COMBO_CHANCE = 0.65; // Phase2は骨刃→跳躍→薙ぎの�
 //   - sweep はPhase2解禁のまま(下の rafiMoveWeight のフェーズ制約)。密着40/近30/中15=密着の答え。
 // ※ラフィは技が3つしか無いため、Phase1の密着は bone75% / jump25% の2本立てが上限になる。
 //   技数そのものを増やすのは作り込み(バッチ3以降)の仕事なのでここではやらない。
+// ★v0.25.3593(社長裁定「近距離はなぎ払いとロール台本で。中距離遠距離がとびかかり、骨刃」):
+// 間合いで技を完全に分担する。近=sweep/roll(50:50・叩き台)、中遠=jump/bone(従来比率を維持)。
+// ※sweepのPhase2解禁(§6.28-8 #4)は既存裁定のまま=**Phase1の近距離はロール台本のみ**になる
+//   (解禁するなら rafiMoveWeight のフェーズ制約を1行外す。事実として併記)。
 export const RAFI_MOVE_WEIGHTS: BossMoveWeights<RafiMove> = {
-  bone:  { melee: 45, near: 45, mid: 40, far: 25 },
-  jump:  { melee: 15, near: 25, mid: 45, far: 75 },
-  sweep: { melee: 40, near: 30, mid: 15, far: 0 },
-  // ★v0.25.3592(叩き台): 密着/近の答え=離れてから刃2連射。中遠では出さない(距離を作る意味が無い)。
-  roll:  { melee: 30, near: 25, mid: 0, far: 0 },
+  bone:  { melee: 0, near: 0, mid: 40, far: 25 },
+  jump:  { melee: 0, near: 0, mid: 45, far: 75 },
+  sweep: { melee: 50, near: 50, mid: 0, far: 0 },
+  roll:  { melee: 50, near: 50, mid: 0, far: 0 },
 };
 
 /** 技×距離×フェーズ→実効重み。sweepはPhase2で解禁(§6.28-8 #4・従来どおり)。 */
