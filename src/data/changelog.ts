@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3642',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: サブクエスト設計書v1を追加)。',
+    ],
+  },
+  {
     version: '0.25.3641',
     items: [
       '決闘「鴉(幻影)」を初期状態のプレイヤーに揃えました: HPは出撃直後のプレイヤーと同じ値、銃は初期ハンドガン、近接は初期ナイフの実ダメージになります(スキル・サブウェポンの再現が入るまでの対等条件)。',
