@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.3625 — ガントレット未接敵の真因2つ目: hunt標的が遠いと歩かない【2026-08-19 19:34 JST】
+
+- テストチャットの再走実測(results/20260819-1930): v3620のhunt注入は配信されているのに
+  **936pxのまま46秒静止→賞金首が未交戦撤退(65s)**。
+- **真因**: planObjectiveのhuntは「標的が見えたら travel:false」固定で、目的地ステア
+  (botObjSteer)は travel&&botAllowAdvance の時しか掛からない——**交戦距離(master=420px)の外の
+  標的へは移動が一切始まらない**構造だった。さらに botAllowAdvance(交戦⇄前進ヒステリシス)も
+  静止側に働き得る。
+- 修正2点: ①hunt=標的が HUNT_APPROACH_DIST(300px・叩き台)より遠ければ travel:true で歩いて
+  詰める(近づいたら従来どおり交戦AIへ)②ガントレット中は botAllowAdvance を常時true。
+- テスト: hunt遠近2ケース追加(botObjective 65 green)。typecheck 0 / lint 0。
+- ※次のテストランはまた3枠から(テストチャット運用どおり)。
+- 自己点検: bot(テスト道具)のみ・製品挙動不変(?gauntlet無しではbotAllowAdvance式は従来と同値、
+  huntのtravel化は?botgoal=hunt利用時のみ=デバッグボット挙動)。憲法非抵触。
+
 ## v0.25.3624 — CD明けポップのアイコン統一(ブーメラン)【2026-08-19 19:25 JST】
 
 - 社長指示「スキルCD明けでいま動いてるポップ系は全てこのスキルアイコンに統一しよう」。

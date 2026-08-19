@@ -299,6 +299,20 @@ describe('hunt(指定の敵を倒す)', () => {
     expect(p.focus?.id).toBe(reaper.id);
   });
 
+  // ★v0.25.3625(ガントレット実測936px静止・TEST_HANDOFF 20260819-1930): 標的が交戦距離の外なら
+  // travel=true で歩いて詰める(旧: 常にtravel:false=目的地ステアが掛からず遠い相手へ永遠に届かない)。
+  it('遠い標的(HUNT_APPROACH_DIST超)へは travel=true で歩いて詰める', () => {
+    const far = enemy('reaper', 900, 0);
+    const p = planObjective({ kind: 'hunt', enemyType: 'reaper' }, world({ enemies: [far] }));
+    expect(p.travel).toBe(true);
+    expect(p.destination).not.toBeNull();
+  });
+  it('近い標的(HUNT_APPROACH_DIST内)は travel=false(交戦AIに任せる)', () => {
+    const near = enemy('reaper', 150, 0);
+    const p = planObjective({ kind: 'hunt', enemyType: 'reaper' }, world({ enemies: [near] }));
+    expect(p.travel).toBe(false);
+  });
+
   it('居なければ探索して出現を待つ(止まらない)', () => {
     const p = planObjective({ kind: 'hunt', enemyType: 'hunter' }, world({ px: 500, py: 0 }));
     expect(p.destination).not.toBeNull();

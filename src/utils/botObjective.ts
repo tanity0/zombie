@@ -267,6 +267,8 @@ export const outwardPoint = (w: ObjectiveWorld, targetDist: number): { x: number
 };
 
 /** レベル上げ用の狩り場: 原点から中距離(=危険すぎず敵が湧く)を周回する点。 */
+/** hunt: この距離までは目的地ステアで歩いて詰める(以内は交戦AIに任せる)。v0.25.3625・叩き台。 */
+export const HUNT_APPROACH_DIST = 300;
 export const FARM_RADIUS = 2200;
 
 /** 裏ボスに挑む前に欲しい最低レベル(叩き台。?botgoal=hiddenBoss:LV で上書きできる)。 */
@@ -460,7 +462,16 @@ export const planObjective = (obj: BotObjective, w: ObjectiveWorld): ObjectivePl
     case 'hunt': {
       const target = nearestOfType(w, obj.enemyType);
       if (target) {
-        return { destination: centerOf(target), focus: target, travel: false, pressAttack: false, done: false, note: `${obj.enemyType}と交戦` };
+        // ★v0.25.3625(ガントレット実測・TEST_HANDOFF 20260819-1930): 標的が見えても travel:false
+        // だと目的地ステアが一切掛からず、交戦距離(master=420px)より遠い相手(実測936px)へ
+        // **誰も歩き出さない**=46秒静止→賞金首は未交戦撤退。交戦が始まる距離までは歩いて詰める。
+        const c = centerOf(target);
+        const d = Math.hypot(c.x - w.px, c.y - w.py);
+        const far = d > HUNT_APPROACH_DIST;
+        return {
+          destination: c, focus: target, travel: far, pressAttack: false, done: false,
+          note: far ? `${obj.enemyType}へ接近中(${Math.round(d)}px)` : `${obj.enemyType}と交戦`,
+        };
       }
       // 見つからない = 出現条件を満たしに行く(多くは時間経過+深部)。外へ潜って待つ。
       return { destination: outwardPoint(w, radiusOf(w) + 700), focus: null, travel: true, pressAttack: false, done: false, note: `${obj.enemyType}を探索中` };

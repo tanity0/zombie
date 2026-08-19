@@ -2198,7 +2198,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           ? tickEngagementPhase(botEngagementRef.current, gameTime, player.level,
               loopState.gameStats.enemiesKilled, player.health)
           : 'engage';
-        const botAllowAdvance = !!loopState.activeEvent || botEngagementPhase === 'advance';
+        // ★v0.25.3625: ガントレット中は交戦⇄前進のヒステリシスを外し常に前進可(枠ボスへ必ず歩く)。
+        const botAllowAdvance = !!loopState.activeEvent || botEngagementPhase === 'advance' || GAUNTLET_BOT_HUNT;
         // v0.25.2339: 目的(ゴール)への移動。優先順位は ワープ回避 > 通常回避 > 目的地 > 従来の合成入力。
         // BOT_GOAL='none'(既定)では planObjective が目的地を返さないので完全な no-op。
         // ③オプション: ②前進中(ゲート/囲い以外)に限り、経路上の至近ピックアップへだけ寄り道する
