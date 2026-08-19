@@ -2624,7 +2624,7 @@ export const runAcrasielTick = (
       const tx = acrasiel.aiTargetX ?? acx, ty = acrasiel.aiTargetY ?? acy;
       const pr = Math.max(player.width, player.height) / 2;
       if (Math.hypot(pcx - tx, pcy - ty) <= AC_T.warp.impactRadius + pr) {
-        const died = useGameStore.getState().damagePlayer(acrasiel.damage, `${enemyDeathLabel(acrasiel.type)}の転移衝撃`, tx, ty);
+        const died = useGameStore.getState().damagePlayer(acrasiel.damage, `${enemyDeathLabel(acrasiel.type)}の転移衝撃`, tx, ty, undefined, undefined, 'acrasiel-warp'); // G4a計測タグ(記録専用・v0.25.3607裁定)
         if (died) onPlayerDeath(tx, ty);
       }
       patch.bossState = 'warp-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(AC_T.warp.recover, (acrasiel.bossScriptQueue?.length ?? 0) > 0);

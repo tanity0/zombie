@@ -1050,7 +1050,7 @@ const tickMelee = (
     const pr = Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2;
     if (!s.whip360Hit && Math.hypot(pcx - bcx, pcy - bcy) <= BM_T.whip360.radius + pr) {
       s.whip360Hit = true;
-      useGameStore.getState().damagePlayer(BM_T.whip360.damage, `${enemyDeathLabel(bounty.type)}の鞭薙ぎ`, pcx, pcy);
+      useGameStore.getState().damagePlayer(BM_T.whip360.damage, `${enemyDeathLabel(bounty.type)}の鞭薙ぎ`, pcx, pcy, undefined, undefined, 'bm-whip360'); // G4a計測タグ(記録専用・v0.25.3607裁定)
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'bm-charge-recover';

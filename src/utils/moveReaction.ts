@@ -45,15 +45,20 @@ export const MOVE_REACTION_KEYS = [
   'uri-downslash', 'uri-sweep', 'uri-thrust',
   'suriel-ring', 'suriel-sweep',
   'acrasiel-burst', 'acrasiel-spear', 'acrasiel-spike',
+  'acrasiel-warp', // ★v0.25.3607: 転移衝撃(warp-in着地の赤円ダメージ)。「warp系=移動」の例外
   // アイドル(useGameLoop.ts)。aim/fan は弾台帳に既出。
   'idol-roll', 'idol-punch',
   // v0.25.2613(バッチ3・idolのMAX化): 狙撃線=帯の近接技。追尾弾は弾台帳(下)へ。
   'idol-snipe',
+  'idol-nade', // ★v0.25.3607: 手榴弾(投擲→爆発。useGameLoopの敵側爆発がタグを付ける)
   // PACING_PUZZLE.md §6.38 B2a(賞金首・bountyTick.ts): バス停/馬乗りの近接/レーザー技。
   'br-push', 'br-laser',
   // §6.38 v12(バス停「三段突き」・社長指示2026-08-15): windup/1/2/3/recoverの全フェーズを1つの技へ。
   'br-triple',
   'bm-charge', 'bm-combo1', 'bm-combo2', 'bm-combo3', 'bm-snipe',
+  // ★v0.25.3607(社長裁定「足して!」・ガントレット実装で見つかった記録の穴): ダメージを持つのに
+  // 台帳に行が無かった3技(360度ムチ/転移衝撃/手榴弾)。無いと被弾が永遠に「回避」へ化ける。
+  'bm-whip360',
   // PACING_PUZZLE.md §6.38 B2b(賞金首・bountyTick.ts): 鋏/舞妓の技。
   'bb-sweep', 'bb-leap',
   'mk-naginata', 'mk-naginata1', 'mk-naginata2', 'mk-spin', 'mk-suiu', 'mk-boom',
@@ -191,12 +196,18 @@ const MELEE_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<strin
     'burst-windup': 'acrasiel-burst', burst: 'acrasiel-burst', 'burst-recover': 'acrasiel-burst',
     'spear-windup': 'acrasiel-spear', 'spear-recover': 'acrasiel-spear',
     'spike-windup': 'acrasiel-spike', spike: 'acrasiel-spike', 'spike-recover': 'acrasiel-spike',
+    // ★v0.25.3607(社長裁定): 転移衝撃。「warp系=移動なので載せない」の掟の例外——warp-inは
+    // 着地の赤円ダメージ(AC_T.warp.impactRadius)を持つ**技**。全フェーズを同じキーへ(掟どおり)。
+    'warp-out': 'acrasiel-warp', 'warp-in': 'acrasiel-warp', 'warp-recover': 'acrasiel-warp',
   },
   // ---- アイドル(useGameLoop.ts) ----
   idol: {
     'idol-roll-windup': 'idol-roll', 'idol-roll': 'idol-roll', 'idol-roll-recover': 'idol-roll',
     'idol-punch-windup': 'idol-punch', 'idol-punch-recover': 'idol-punch',
     'idol-snipe-windup': 'idol-snipe', 'idol-snipe': 'idol-snipe', 'idol-snipe-recover': 'idol-snipe',
+    // ★v0.25.3607(社長裁定): 手榴弾(投擲→後方ロール→爆発)。爆発の被弾は投擲後になるため
+    // 残響(MOVE_REACTION_LINGER_MS)が帰属を拾う。
+    'idol-nade-windup': 'idol-nade', 'idol-nade': 'idol-nade', 'idol-nade-recover': 'idol-nade',
   },
   // ---- 賞金首(§6.38 B2a・bountyTick.ts) ----
   // 'laser-windup'/'laser-fire'/'laser-recover'/'laser-broken' はミーミルと状態名を共有する
@@ -211,6 +222,9 @@ const MELEE_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<strin
   },
   'bounty-melee': {
     'bm-charge-windup': 'bm-charge', 'bm-charge': 'bm-charge', 'bm-charge-recover': 'bm-charge',
+    // ★v0.25.3607(社長裁定): 360度ムチ。専用recover州は無く 'bm-charge-recover' へ合流する
+    // (その硬直は上の行で'bm-charge'に帰属=既存挙動のまま。実行中の被弾はこの2州で拾う)。
+    'bm-whip360-windup': 'bm-whip360', 'bm-whip360': 'bm-whip360',
     'bm-combo1-windup': 'bm-combo1', 'bm-combo1-recover': 'bm-combo1',
     'bm-combo2-windup': 'bm-combo2', 'bm-combo2-recover': 'bm-combo2',
     'bm-combo3-windup': 'bm-combo3', 'bm-combo3-recover': 'bm-combo3',

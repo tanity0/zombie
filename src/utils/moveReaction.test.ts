@@ -97,10 +97,25 @@ describe('moveReaction: moveKeyForEnemy(技キーの導出)', () => {
     const at = (type: string, bossState: string) =>
       moveKeyForEnemy({ type, aiPhase: undefined, bossState } as unknown as MoveReactionEnemy);
     expect(at('jibril', 'warp-windup')).toBeNull();
-    expect(at('acrasiel', 'warp-in')).toBeNull();
-    expect(at('acrasiel', 'warp-out')).toBeNull();
     expect(at('miguel', 'counter-leap')).toBeNull();
     expect(at('rafi', 'chase')).toBeNull();
+  });
+
+  // ★v0.25.3607(社長裁定「足して!」): アクラシエルのwarpは「移動」ではなく**転移衝撃**
+  // (warp-in着地の赤円ダメージ)を持つ技=台帳に載せる(旧: nullだった=被弾が回避に化ける穴)。
+  it('アクラシエルのwarpは技(acrasiel-warp)。ジブリルのwarpは従来どおり移動=null', () => {
+    const at = (type: string, bossState: string) =>
+      moveKeyForEnemy({ type, aiPhase: undefined, bossState } as unknown as MoveReactionEnemy);
+    for (const st of ['warp-out', 'warp-in', 'warp-recover']) expect(at('acrasiel', st)).toBe('acrasiel-warp');
+    expect(at('jibril', 'warp-windup')).toBeNull();
+  });
+
+  // ★v0.25.3607: 同裁定の残り2技(360度ムチ/手榴弾)も台帳に載っている(全フェーズ同一キー)。
+  it('bm-whip360とidol-nadeが台帳から引ける', () => {
+    const at = (type: string, bossState: string) =>
+      moveKeyForEnemy({ type, aiPhase: undefined, bossState } as unknown as MoveReactionEnemy);
+    for (const st of ['bm-whip360-windup', 'bm-whip360']) expect(at('bounty-melee', st)).toBe('bm-whip360');
+    for (const st of ['idol-nade-windup', 'idol-nade', 'idol-nade-recover']) expect(at('idol', st)).toBe('idol-nade');
   });
 });
 

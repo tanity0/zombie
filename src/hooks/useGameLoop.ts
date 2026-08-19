@@ -9148,7 +9148,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (hgDist <= HEAVY_GRENADE_RADIUS && !(hgWalls.length > 0 && segmentBlocked(gx, gy, hgPx, hgPy, hgWalls))) {
               const falloff = 1 - hgDist / HEAVY_GRENADE_RADIUS;
               const dmg = Math.max(1, Math.round(grenade.damage * (0.55 + falloff * 0.45)));
-              const died = useGameStore.getState().damagePlayer(dmg, '偶像の手榴弾', gx, gy);
+              const died = useGameStore.getState().damagePlayer(dmg, '偶像の手榴弾', gx, gy, undefined, undefined, 'idol-nade'); // G4a計測タグ(記録専用・v0.25.3607裁定)
               if (died) triggerPlayerDeath(hgPx, hgPy);
             }
             continue;
