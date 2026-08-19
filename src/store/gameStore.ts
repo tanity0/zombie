@@ -1860,11 +1860,17 @@ export const MELEE_FINISH_ZOOM_CD_MS = 10000;
 // (社長指示「エフェクト中は時間ストップ(エフェクトは止めない)」)。数値は叩き台。
 export const KILLFX_CROUCH_MS = 110;   // しゃがみ(タメ・沈み込み)
 export const KILLFX_LEAP_MS = 150;     // 首元へ跳びつき(ease-out+放物線)
+// ★実機FB1(社長指示v0.25.3605「首元に貼り付いたら、一拍置いてからSEと共に大量に血を上に噴射。
+// このタイミングでKILL!などの文字も合わせる」): 貼り付き→噴出の間に「一拍」を追加。
+// SE(useGameLoopのkillFx監視)・血・KILL!文字は全部この境界(=噴出時刻)に同期する。
+export const KILLFX_HOLD_MS = 170;     // 首元に貼り付いて一拍(静止のタメ)
 export const KILLFX_SLASH_MS = 170;    // 掻っ切り+血の間欠泉(巻き込んだ敵も全員一斉)
 export const KILLFX_RETURN_MS = 190;   // 元の場所へ跳んで戻る(高い放物線)
 export const KILLFX_LAND_MS = 90;      // 着地スカッシュ
+/** 噴出時刻(演出開始からのms)。SE・血・KILL!文字の同期点。 */
+export const KILLFX_BURST_AT_MS = KILLFX_CROUCH_MS + KILLFX_LEAP_MS + KILLFX_HOLD_MS;
 export const KILLFX_TOTAL_MS =
-  KILLFX_CROUCH_MS + KILLFX_LEAP_MS + KILLFX_SLASH_MS + KILLFX_RETURN_MS + KILLFX_LAND_MS; // =710
+  KILLFX_BURST_AT_MS + KILLFX_SLASH_MS + KILLFX_RETURN_MS + KILLFX_LAND_MS; // =880
 export const KILLFX_RELEASE_SLOW_MS = 300; // 停止明け: 0.2→等速へ戻す尾(時間にも慣性を付ける)
 export const COUNTER_ZOOM_MAG = 1.0;       // カウンター成立の寄り(社長指示で2倍=+100%・旧1.5倍から改訂)
 // PACING_PUZZLE.md §5.22 M21(社長委任v0.25.1516・CD制確定v0.25.1524): KILL/カウンター演出を
@@ -3400,9 +3406,16 @@ const grantMeleeKillRewards = (
       if (!suppressKillCallout) {
         // 表示時間・保持時間はスロー演出(MELEE_FINISH_SLOW_MS/HOLD_MS)と揃え、スローが一番遅い
         // 区間の間は文字も一番ハッキリ(満alpha)のまま保つ(社長指示)。
-        get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#ffe4e6', {
-          bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS,
-        }); // 濃いワインレッド(社長指示)
+        // ★実機FB1(v0.25.3605): KILL処刑演出v2の発動時はここを出さない——storeのcalloutは全停止中に
+        // 時計ごと凍るため、pixi側が実時間のKILL!文字を**噴出の瞬間**に出す(タイミングの一本化)。
+        // killFxはこの関数の後(triggerFinishImpactの結果を見て)書かれるので、判定は0msの後回しで行う。
+        setTimeout(() => {
+          const kfx = get().killFx;
+          if (kfx && Date.now() - kfx.startAt < KILLFX_TOTAL_MS) return;
+          get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#ffe4e6', {
+            bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS,
+          }); // 濃いワインレッド(社長指示)
+        }, 0);
       }
     } else {
       get().spawnBurst(ex, ey, '#dc2626', 16, bdx, bdy);
@@ -6538,6 +6551,18 @@ export const useGameStore = create<GameState>((set, get) => ({
             hitstopUntil: Date.now() + KILLFX_TOTAL_MS,
           });
           get().triggerTimeSlow(0.2, KILLFX_TOTAL_MS + KILLFX_RELEASE_SLOW_MS, KILLFX_TOTAL_MS);
+          // ★実機FB1(v0.25.3605): 噴出の瞬間(BURST_AT=貼り付き+一拍の後)にSE。血・KILL!文字と同期。
+          // gameStoreはaudioManagerを静的importできない(循環)ため、動的importで解決する
+          // (発火はズームCD明けのフル演出時のみ=頻度は低い。素材は既存2音の重ね=叩き台、
+          // 専用SEが支給されたら差し替える)。
+          setTimeout(() => {
+            const kfx = get().killFx;
+            if (!kfx || Date.now() - kfx.startAt >= KILLFX_TOTAL_MS) return;
+            void import('../audio/audioManager').then(m => {
+              m.playSfx('heavy-impact');
+              m.playSfx('slash-damage');
+            });
+          }, KILLFX_BURST_AT_MS);
         }
       }
     } else if (slashAt.length > 0) {

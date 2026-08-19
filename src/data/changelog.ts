@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3606',
+    items: [
+      'KILL処刑演出を調整: 首元に貼り付いてから一拍置いて、SEと共に血が大量に噴き上がるようになりました(粒を大幅増量+2段噴射)。「KILL!」の文字も噴出の瞬間に同期して出ます。',
+    ],
+  },
+  {
     version: '0.25.3605',
     items: [
       'ゲーム内容の変更はありません(開発ツール: 全ボス×AI自動テストを追加)。',
