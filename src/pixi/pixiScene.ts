@@ -3219,6 +3219,10 @@ export class PixiScene {
    * 重いのはそれが落とす投影影(1個≈2ms=予算の12%)」。目は絵だけあればよいので小glowで描く。
    */
   private phantomEyeSprites = new Map<string, Sprite>();
+  // research/GHOST_BOSS.md v6: 幻影の斬撃弧(fx/slash-streak-4 の1枚)とマズルフラッシュ。
+  // どちらも pooled sprite 1枚=per-frame Graphics を増やさない(強glow/投影影は使わない)。
+  private phantomSlashSprites = new Map<string, Sprite>();
+  private phantomMuzzleSprites = new Map<string, Sprite>();
   // PACING_PUZZLE.md §6.38 v9(完全コピー原則): 出現演出=城ボスのcastleSummonCircleと同じ
   // 魔法陣(拡大しながらフェードアウト・SUMMON_MS)。個体ごとに1枚のpooled sprite(id keyed)。
   // 旧・起床演出(holo-circle・dormant解除時)は撤去=スポーン時のこの1本だけに一本化した。
@@ -11994,6 +11998,10 @@ export class PixiScene {
         // research/GHOST_BOSS.md(幻影): 赤い目も個体退場・討伐と同時に破棄(残像防止)。
         const gpEyeSp = this.phantomEyeSprites.get(id);
         if (gpEyeSp) { gpEyeSp.destroy(); this.phantomEyeSprites.delete(id); }
+        const gpSlashSp = this.phantomSlashSprites.get(id);
+        if (gpSlashSp) { gpSlashSp.destroy(); this.phantomSlashSprites.delete(id); }
+        const gpMuzzleSp = this.phantomMuzzleSprites.get(id);
+        if (gpMuzzleSp) { gpMuzzleSp.destroy(); this.phantomMuzzleSprites.delete(id); }
         // ★慣性バッチ: スリィエルの環はここで即destroyしない。syncSurielRingのsweepが
         // 減速+フェードの消滅(RING_VANISH_MS)を描き切ってから自分でdestroyする(リーク無し)。
         const sweepStreakSp = this.surielSweepStreakFx.get(id);
@@ -14495,6 +14503,10 @@ export class PixiScene {
       if (gpHolo) gpHolo.visible = false;
       const gpEye = this.phantomEyeSprites.get(e.id);
       if (gpEye) gpEye.visible = false;
+      const gpSlash = this.phantomSlashSprites.get(e.id);
+      if (gpSlash) gpSlash.visible = false;
+      const gpMuzzle = this.phantomMuzzleSprites.get(e.id);
+      if (gpMuzzle) gpMuzzle.visible = false;
     }
     // 社長裁定(v0.25.3437): idolのハンドガン(bountyWeaponSpritesをキー=e.idで流用)も同じ作法で
     // 既定OFF。点けるのはdrawEnemyのidol射撃分岐だけ(技中のみ表示=v3408と同じ扱い)。
@@ -15070,7 +15082,7 @@ export class PixiScene {
     // へ統一。トリガーはスポーン時刻(e.spawnedAt)基準=起床(dormant解除)時ではない。
     // research/GHOST_BOSS.md(守護霊ボス「幻影」): 出現演出・赤い目・技の予告(赤帯/赤ライン)。
     // ★**判定・状態は一切書かない**(store を読むだけ)。ここを通るのは幻影1体だけ。
-    if (e.type === 'guardian-phantom') this.drawGuardianPhantom(view, o, e, gameTime, now, fb, cx, cy);
+    if (e.type === 'guardian-phantom') this.drawGuardianPhantom(view, e, gameTime, now, fb, cx, cy);
     if (isBountyType(e.type)) {
       const bFootX = cx, bFootY = e.y + e.height;
       const bSummonT = e.spawnedAt !== undefined ? (gameTime - e.spawnedAt) / BOUNTY_SUMMON_MS : 1;
@@ -23586,6 +23598,17 @@ export class PixiScene {
   // =================================================================================================
   /** 幻影の歩き判定のしきい値(px/s)。汎用敵経路が持つ平滑済み実速度(view.motSpeed)で見る。 */
   private static readonly GP_WALK_MIN_SPEED = 12;
+  // ---- v6の演出パラメータ(**視覚のみ**。判定・寸法は phantomScript.ts の1箇所が正) ----
+  /** 無効化ヒット(被弾無敵)の白点滅の長さ(ms)。 */
+  private static readonly GP_BLOCK_FLASH_MS = 140;
+  /** 近接の踏み込み量(px・慣性MUST。社長指示「動きは大きく」に寄せた叩き台)。 */
+  private static readonly GP_LUNGE_PX = 22;
+  /** マズルフラッシュの長さ(ms)/大きさ(px)/銃口の前方オフセット(px)。 */
+  private static readonly GP_MUZZLE_MS = 120;
+  private static readonly GP_MUZZLE_PX = 34;
+  private static readonly GP_MUZZLE_OFF_PX = 18;
+  /** 発砲の反動(px)。 */
+  private static readonly GP_RECOIL_PX = 9;
 
   /**
    * 幻影の本体テクスチャ。**プレイヤーと同じ関数**(playerTextureName/playerWalkFrame)で選ぶので、
@@ -23613,7 +23636,7 @@ export class PixiScene {
    * (位置・スケール・tintは向こうで確定済み。ここはその上へ乗せるだけ)。
    */
   private drawGuardianPhantom(
-    view: ActorView, o: Graphics, e: Enemy, gameTime: number, now: number,
+    view: ActorView, e: Enemy, gameTime: number, now: number,
     fb: { footX: number; footY: number; boxW: number; boxH: number }, cx: number, cy: number,
   ): void {
     const dsc = this.depthScaleEnemy(fb.footY);
@@ -23660,28 +23683,73 @@ export class PixiScene {
       sp.visible = view.sprite.visible;
     }
 
-    // ---- 技の予告(赤=カウンターできる。判定と厳密一致) --------------------------------------------
-    // 2点(aiFromX/Y → aiTargetX/Y)も半幅も、**判定(phantomTick)がその技で使う値そのもの**。
-    // ★if の外=毎フレーム無条件で呼ぶ(windupOn が false へ落ちた1フレームを latch へ渡し損ねると
-    //   中断時の消しアニメが起動しない=dashLineArm/zoneCapsuleArm と同型の掟)。
-    const gfx = e.aiFromX ?? cx, gfy = e.aiFromY ?? cy;
-    const gtx = e.aiTargetX ?? cx, gty = e.aiTargetY ?? cy;
-    const bs = e.bossState;
-    const remain = (e.bossStateUntil ?? gameTime) - gameTime;
-    // 近接=前方の赤帯(帯そのものが当たり判定)。
-    const meleeOn = bs === 'gp-melee-windup';
-    this.zoneCapsuleTick(
-      view, o, `${e.id}:gp-melee`, meleeOn, remain, gfx, gfy, gtx, gty, GP_T.melee.halfWidth, now,
-      Math.max(0, Math.min(1, 1 - remain / GP_T.melee.windup)),
-    );
-    // 一閃=赤ライン。**帯(=判定/成立域)と流星ラインの両方**を出す: 帯だけだと「線で斬り抜けてくる」
-    // 読みが弱く、線だけだと判定の太さが伝わらない。どちらも同じ2点・同じ技の値から描く。
-    const issenOn = bs === 'gp-issen-windup';
-    const issenProg = Math.max(0, Math.min(1, 1 - remain / GP_T.issen.windup));
-    this.zoneCapsuleTick(
-      view, o, `${e.id}:gp-issen`, issenOn, remain, gfx, gfy, gtx, gty, GP_T.issen.halfWidth, now, issenProg,
-    );
-    this.dashLineTick(o, `${e.id}:gp-issen-line`, issenOn, remain, gfx, gfy, gtx, gty, now, issenProg);
+    // ---- ★v6: 赤い予告(赤帯・赤ライン)は**全廃**した ---------------------------------------------
+    // 裁定「予告無し・全て同じ」により、幻影の攻撃はプレイヤーと同じ即発=取る対象(windup)が無い。
+    // ここに描くのは「起きたこと」だけ: 振りの絵 / マズル / 無効化(白点滅)。**判定は持たない**。
+
+    // 無効化ヒット(被弾無敵で弾いた)= 小さな白点滅のみ・ヒットSEなし。
+    // 通常の被弾フラッシュ(lastHit起点)を流用すると「当たったのに減らない=バグ」に見えるので別系統。
+    if (e.gpBlockedAt !== undefined) {
+      const bt = (gameTime - e.gpBlockedAt) / PixiScene.GP_BLOCK_FLASH_MS;
+      if (bt >= 0 && bt < 1) view.sprite.alpha = Math.min(1, view.sprite.alpha * (1 + (1 - bt) * 0.9));
+    }
+
+    // 近接の振り(慣性MUST: 踏み込み→戻りをイーズで。等速で始まって瞬間停止しない)。
+    // 斬撃弧は fx/slash-streak-**4コマ目のみ**を使う(0〜3は部分線で「見えない」=KILL演出v0.25.3618の前例)。
+    // 判定(phantomTick)と同じ角度・同じ長さ(GP_T.melee.reach)で置く=「危険を伝える絵は判定に揃える」。
+    {
+      const swingT = e.gpSwingAt !== undefined ? (gameTime - e.gpSwingAt) / GP_T.swingFxMs : 2;
+      const ang = e.gpSwingAngle ?? 0;
+      const slash = this.phantomSlashTexture();
+      let sp = this.phantomSlashSprites.get(e.id);
+      if (slash && swingT >= 0 && swingT < 1) {
+        if (!sp) {
+          sp = new Sprite(slash); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
+          this.L.effectLayer.addChild(sp); this.phantomSlashSprites.set(e.id, sp);
+        }
+        if (sp.texture !== slash) sp.texture = slash;
+        sp.visible = true;
+        sp.rotation = ang;
+        sp.width = GP_T.melee.reach;
+        sp.height = GP_T.melee.halfWidth * 2;
+        sp.position.set(cx + Math.cos(ang) * GP_T.melee.reach / 2, cy + Math.sin(ang) * GP_T.melee.reach / 2);
+        sp.alpha = 1 - swingT * swingT; // 刃が通った瞬間が最大で、あとは消えるだけ
+        // 本体の踏み込み→戻り(両端で速度0のイーズ=(1-cos)/2)。**視覚のみ**(判定・座標は不変)。
+        const lunge = (1 - Math.cos(2 * Math.PI * swingT)) / 2 * PixiScene.GP_LUNGE_PX * dsc;
+        view.sprite.position.x += Math.cos(ang) * lunge;
+        view.sprite.position.y += Math.sin(ang) * lunge;
+      } else if (sp) sp.visible = false;
+    }
+
+    // 発砲のマズルフラッシュ+反動(専用素材は作らない=既存のソフトglowを1枚)。
+    {
+      const shotT = e.gpShotAt !== undefined ? (gameTime - e.gpShotAt) / PixiScene.GP_MUZZLE_MS : 2;
+      const ang = e.gpShotAngle ?? 0;
+      let sp = this.phantomMuzzleSprites.get(e.id);
+      if (shotT >= 0 && shotT < 1) {
+        if (!sp) {
+          sp = new Sprite(getSoftGlowTexture()); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
+          sp.tint = 0xffe9a8;
+          this.L.effectLayer.addChild(sp); this.phantomMuzzleSprites.set(e.id, sp);
+        }
+        sp.visible = true;
+        sp.width = sp.height = PixiScene.GP_MUZZLE_PX * (1 - shotT) * dsc;
+        sp.alpha = 1 - shotT;
+        sp.position.set(
+          view.sprite.position.x + Math.cos(ang) * PixiScene.GP_MUZZLE_OFF_PX * dsc,
+          view.sprite.position.y - fb.boxH * dsc * 0.5 + Math.sin(ang) * PixiScene.GP_MUZZLE_OFF_PX * dsc,
+        );
+        // 反動: 撃った向きの逆へ弾かれて戻る(同じイーズ=慣性MUST)。
+        const kick = (1 - Math.cos(2 * Math.PI * shotT)) / 2 * PixiScene.GP_RECOIL_PX * dsc;
+        view.sprite.position.x -= Math.cos(ang) * kick;
+        view.sprite.position.y -= Math.sin(ang) * kick;
+      } else if (sp) sp.visible = false;
+    }
+  }
+
+  /** 斬撃弧の素材(4コマ目のみ)。0〜3コマは部分線で実機では斬撃として読めない。 */
+  private phantomSlashTexture(): ReturnType<typeof getTexture> {
+    return getTexture('fx/slash-streak-4');
   }
 
   // PACING_PUZZLE.md §6.38 v9(完全コピー原則): 賞金首の出現魔法陣=城ボスのcastleSummonCircle
@@ -25560,6 +25628,8 @@ export class PixiScene {
     for (const o of this.holoMiniSprites.values()) o.destroy();
     for (const o of this.angelEyeSprites.values()) o.destroy();
     for (const o of this.phantomEyeSprites.values()) o.destroy(); // research/GHOST_BOSS.md(幻影の赤い目)
+    for (const o of this.phantomSlashSprites.values()) o.destroy(); // 同(斬撃弧)
+    for (const o of this.phantomMuzzleSprites.values()) o.destroy(); // 同(マズルフラッシュ)
     for (const o of this.bountySummonSprites.values()) o.destroy();
     for (const o of this.bountyWeaponSprites.values()) o.destroy();
     for (const o of this.bountyThrustWindSprites.values()) o.destroy();

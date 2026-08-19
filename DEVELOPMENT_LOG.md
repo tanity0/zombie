@@ -1,5 +1,49 @@
 # Development Log
 
+## v0.25.3639 — 幻影v2「守護霊ミラー」実装(GHOST_BOSS.md v6 実装地図1〜6)【2026-08-19 22:41 JST】
+
+- **仕様の正**: research/GHOST_BOSS.md「v6 実装仕様」節(+v6が名指しで引き継ぐv4の節)。
+- **入った物**:
+  - 新しい葉 `src/utils/phantomGate.ts`: 被弾無敵(プレイヤーと同じ `INVULN_MS` を呼び出し側から
+    渡す)+パリィ(台帳 `counterChance`)の純関数。型以外 import しない・rand注入・**幻影以外に恒等**。
+  - `gameStore`: 7系統に配線(①damageEnemy ②triggerCounter 3枝=バッシュ/気絶フィニッシュ/通常
+    ③shadowCloneStrike ④performKatanaStrike ⑤performWhipStrike ⑥skaterBoardHit ⑦接触=素通り済み)。
+    適用順は早期returnの直後・`applyBrokenGunReward`/`applyBrokenMeleeFatal` と紅き夜補正より前。
+    無効化ヒットは slashAt / meleeHitEnemyIds / meleeDamageNumbers / lastHit に積まず、戻り値
+    `hit/finish/killed`(と鞭の `hits`)にも数えない=SE・ヒットストップ・吸血・救難信号が鳴らない。
+  - `phantomTick` 全面改稿: 州機械・一閃・カウンター成立配線・phantomCounterHit・爆風パイプラインを撤去。
+    **即発近接**(周期=`GHOST_COUNTER_MELEE_PERIOD_MS` を import・判定は `distToBandRect` 共有1本)、
+    **銃ミラー**(createWeapon/effectiveFireCooldown/begin・finishWeaponReload(リザーブ∞)/
+    zoomedGunRange・弾速=projectileFlightStats)、**パリィ消費→割り込み反撃**、**毎tick decidePhantom**
+    (弾は hostile を立てて写す=弾回避が効く)、**通常被弾で止まらない**(isFrozen から knockbackUntil を
+    外し、押し道具の shove 窓だけ座標を書かない)、**クリ由来の鈍足(bossSlowUntil)だけ無視**(grav/iceは残す)。
+  - 体勢値: `usesPostureSystem` から幻影を除外(1箇所)=紫ゲージ・ブレイク・紫の報酬予算・5倍処刑が消える。
+  - 描画: 赤帯/赤ラインの分岐を撤去し、斬撃弧(`fx/slash-streak-4` の1枚を判定と同角・reach長)+
+    踏み込み→戻り/マズル+反動/無効化の白点滅/パリィの青白スパークへ差し替え(全て pooled sprite・
+    既存素材のみ・強glow=投影影は使わない)。`ENEMY_MOTION_TABLE` に guardian-phantom を登録(千鳥足を止める)。
+  - BOSS_HINTS 3行を v6 仕様へ改訂(半角数字なし)。
+- **撤去の消化(v6の完全リスト)**: counterReach の gp 宣言+case+GP_T import / counterReach.test の
+  gp 参照 / pixiScene の zoneCapsule・dashLine 幻影分岐 / phantomScript の shot・issen・restMs・
+  issenTravelFrac・PhantomBand / types の bossState gp 州 union / PhantomSfx の alert・counter・reward /
+  useGameLoop の実引数 BOSS_COUNTER_ENABLED。**残ゼロ**(`grep -rn "gp-melee|gp-issen|gp-shot|gp-stagger|'gp:"` で確認)。
+- **検証**: `npm run typecheck` 0エラー / `npm run lint` 0エラー(warning 8=既存) /
+  `npx vitest run src/utils/phantomTick.test.ts` 23/23 緑 /
+  phantomTick・counterReach・bossPractice・bossPosture・practiceGuard・constitution・moveCancelGuard
+  = 109/109 緑 / `src/utils src/store src/data` 全体 3586 passed・failed 3 のうち
+  **sim.test(移動ランプ)と ghostTelegraph(天使の backroll/quickblades 未登録)は変更前から同じ失敗**、
+  bountyTick(舞妓)は再実行で緑=フレーキー。**本バッチ由来の失敗はゼロ**。
+- **テスト**: `phantomTick.test.ts` を v6仕様で書き直し(結合5本+不変条件1本の枠を23ケースで実装):
+  ①即発近接が周期どおり+HPが減る ②7系統すべてで無敵中0(+phantomGate 単体で全分岐・rand注入)
+  ③パリィ→gpParriedAt→次tickで割り込み反撃(Math.random固定) ④銃ミラー(敵弾生成・リロード中は撃たない)
+  ⑤knockbackUntil 中も振る(気絶では止まる) ⑥不変条件(体勢値ゼロ/ゲートが幻影以外に恒等/gp宣言ゼロ)。
+- **負荷 1/10**: 毎フレームの追加は phantomTick 1体ぶんの判定と pooled sprite 2枚。強glow(投影影)は
+  不使用。ダメージ経路の追加は1発あたり純関数1回=per-frame ではない。
+- **自己点検**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない——変更は
+  `guardian-phantom` 型でしか成立しない分岐と、決闘枠(`?phantomnow` / 練習「決闘」)だけに閉じている。
+- **★未決(社長裁定待ち)**: 幻影のHP。v4の「1200へ」は v6 の引き継ぎ節に無く、撤去リストが
+  「HP定数の参照は触らない」としているため **3000 のまま**にした。被弾無敵で通るダメージが毎秒1発に
+  落ちるので戦闘は伸びる。下げるなら裁定が要る(詳細は GHOST_BOSS.md「実装の記録(v6)」)。
+
 ## v0.25.3638 — 幻影v2仕様v6が最終監査通過→実装バッチ発注(文書のみ)【2026-08-19 22:07 JST】
 
 - 監査4周目=残り6件(全て細部)+「反映すれば実装バッチに出して問題ない」の判定。全件反映:

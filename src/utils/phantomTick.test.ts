@@ -1,144 +1,328 @@
-// research/GHOST_BOSS.md(守護霊ボス「幻影」)の純関数と、配線の不変条件を機械で固定する。
+// research/GHOST_BOSS.md v6(守護霊ボス「幻影」v2「守護霊ミラー」)の結合テスト+不変条件。
 //
-// ここで守りたいのは「実装が動くか」ではなく、**設計の意図が壊れていないか**:
-//  ① 技の選び方が距離の表どおりか(近=近接 / 中=一閃or銃 / 遠=銃)
-//  ② 動きに慣性があるか(等速で始まって瞬間停止しない)
-//  ③ 台帳のデータが本当に効いているか(間合い・反応・銃の基礎値が守護霊台帳から来ている)
-//  ④ 州名が命名規約どおりで、カウンター成立域の宣言と食い違わないか
-import { describe, it, expect } from 'vitest';
+// ここで守りたいのは「実装が動くか」ではなく、**裁定が壊れていないか**:
+//  ① 即発近接が**プレイヤーと同じ周期**で出て、当たればプレイヤーのHPが減る(予告も硬直も無い)
+//  ② 被弾無敵中は**7系統すべて**でダメージ0(1経路でも素通りがあれば「無敵が存在しない」)
+//  ③ パリィ成立 → gpParriedAt → **次tickで周期を無視した割り込み反撃**が出る
+//  ④ 銃ミラー: 敵弾が生成され、マガジン切れ(リロード中)は撃たない
+//  ⑤ 通常被弾のノックバック中も**止まらない**(プレイヤーと同条件=止める手段は無い)
+//  ⑥ 【不変条件】幻影に体勢値(紫)が積まれない / phantomGate は幻影以外の敵に恒等 / gp州が残っていない
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-  pickPhantomMove, ISSEN_MID_CHANCE, phantomEase, phantomIssenOffsetPx, phantomProfile, phantomShotDamage,
-  createPhantomTickState, pickActivePhantom,
-  GUARDIAN_PHANTOM_WINDUP_STATES, GUARDIAN_PHANTOM_RECOVER_STATES, GUARDIAN_PHANTOM_TYPE,
+  runPhantomTick, createPhantomTickState, pickActivePhantom, phantomProfile, edgeDistTo,
+  PHANTOM_MELEE_PERIOD_MS, GUARDIAN_PHANTOM_TYPE, NOOP_PHANTOM_SFX,
 } from './phantomTick';
+import { phantomHitGate } from './phantomGate';
 import { GUARDIAN_PHANTOM_TUNING as GP_T } from './phantomScript';
-import { counterReachKindFor } from './counterReach';
-import { parseMovePhase, isNeutralMoveState } from './moveCancelGuard';
+import { COUNTER_REACH_DECL } from './counterReach';
+import { usesPostureSystem, applyBossPostureDamage } from './bossPosture';
 import { strongestGuardian } from '../data/fixedGuardians';
-import { createWeapon } from './weaponUtils';
+import { useGameStore, INVULN_MS } from '../store/gameStore';
+import { spawnEnemyAt } from './enemyUtils';
+import { setTreesDisabled } from '../world/trees';
+import { setTorchesDisabled } from '../world/torches';
 import type { Enemy } from '../types/game';
 
-describe('① 技の選び方(設計書の距離の表)', () => {
-  const pref = 95; // 台帳(鴉)の preferredDist と同じ桁の値
+// gameTimeの起点を0にしない(gpHitAt などの既定0と、tick開始直後の時刻が偶然近づくのを避ける)。
+const START_GT = 10_000_000;
+const ORIGIN = 50_000; // 原点から遠く離す=施設/街プロップと無縁
 
-  it('近(preferredDist以内)は必ず近接', () => {
-    for (const intent of ['melee', 'shoot'] as const) {
-      expect(pickPhantomMove(0, pref, intent)).toBe('gp-melee');
-      expect(pickPhantomMove(pref, pref, intent)).toBe('gp-melee');
-    }
+/** 幻影1体+プレイヤーの盤面を作り、tickを手動で進めるヘルパ(bountyTick.test.ts の setup を踏襲)。 */
+const setup = (playerOffsetX: number, over: Partial<Enemy> = {}) => {
+  const e = spawnEnemyAt(GUARDIAN_PHANTOM_TYPE, ORIGIN, ORIGIN, START_GT);
+  Object.assign(e, over);
+  useGameStore.setState(s => ({
+    enemies: [e],
+    gameTime: START_GT,
+    player: {
+      ...s.player,
+      x: e.x + e.width / 2 + playerOffsetX, y: e.y + e.height / 2 - s.player.height / 2,
+      health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
+    },
+  }));
+  let gt = START_GT;
+  const s = createPhantomTickState();
+  const step = (ms: number): void => {
+    gt += ms;
+    useGameStore.setState({ gameTime: gt });
+    const cur = useGameStore.getState().enemies.find(x => x.id === e.id);
+    // headless では Date.now 基準の代わりに gt を流用する(どちらも相対時間しか使わない)。
+    if (cur) runPhantomTick(cur, s, gt, ms / 1000, 1, gt, NOOP_PHANTOM_SFX, () => 0.999);
+  };
+  const cur = (): Enemy => useGameStore.getState().enemies.find(x => x.id === e.id)!;
+  return { id: e.id, step, cur, state: s, gt: () => gt };
+};
+
+beforeEach(() => {
+  setTreesDisabled(true);
+  setTorchesDisabled(true);
+  useGameStore.getState().resetGame('assault');
+});
+afterEach(() => { vi.restoreAllMocks(); });
+
+describe('① 即発近接(予告なし・プレイヤーと同じ周期)', () => {
+  it('射程内なら1tick目で振り、当たればプレイヤーのHPが減る(溜めを待たない)', () => {
+    const { step, cur } = setup(80);
+    const hp0 = useGameStore.getState().player.health;
+    step(16);
+    const gp = cur();
+    expect(gp.gpSwingAt).toBeDefined();                       // 振った(=即発)
+    expect(gp.bossState).toBeUndefined();                     // 州機械は使わない(予告も硬直も無い)
+    expect(useGameStore.getState().player.health).toBe(hp0 - GP_T.melee.damage);
   });
 
-  // ★v0.25.3632(成果物監査・重大1の機械化): 旧仕様「中距離は intent==='melee' でだけ一閃」は、
-  // decideGhost の melee 意図が縁距離74px以内(=近接帯の中)でしか立たないため**空集合**で、
-  // 一閃が一度も発動しなかった。中距離は抽選(ISSEN_MID_CHANCE)で一閃の入口が実在することを固定する。
-  it('中(一閃の射程内)は抽選: 乱数が閾値未満なら一閃 / 以上なら銃撃(近接意図なら確定一閃)', () => {
-    const mid = (pref + GP_T.issen.reach) / 2;
-    expect(pickPhantomMove(mid, pref, 'melee', 0.99)).toBe('gp-issen'); // 意図があれば確定
-    expect(pickPhantomMove(mid, pref, 'shoot', 0.0)).toBe('gp-issen'); // 抽選当たり
-    expect(pickPhantomMove(mid, pref, 'shoot', ISSEN_MID_CHANCE)).toBe('gp-shot'); // 抽選はずれ
-    expect(pickPhantomMove(mid, pref, 'shoot', 0.99)).toBe('gp-shot');
+  it('次の振りは**プレイヤーの近接の実効周期**(COUNTER_WINDOW+COUNTER_COOLDOWN)を待つ', () => {
+    const { step, cur } = setup(80);
+    step(16);
+    const first = cur().gpSwingAt!;
+    step(PHANTOM_MELEE_PERIOD_MS - 100);
+    expect(cur().gpSwingAt).toBe(first);                      // 周期の途中では振らない
+    step(200);
+    expect(cur().gpSwingAt).toBeGreaterThan(first);           // 周期が明けたら振る
   });
 
-  it('★【不変条件】一閃の入口が実在する(抽選確率が0になっていない)', () => {
-    expect(ISSEN_MID_CHANCE).toBeGreaterThan(0);
-  });
-
-  it('遠(一閃の射程外)は必ず銃撃', () => {
-    for (const intent of ['melee', 'shoot'] as const) {
-      expect(pickPhantomMove(GP_T.issen.reach + 1, pref, intent)).toBe('gp-shot');
-      expect(pickPhantomMove(5000, pref, intent)).toBe('gp-shot');
-    }
+  it('射程(reach)の外では振らない=判定と同じ物差し(edgeDistTo)で測っている', () => {
+    const { step, cur } = setup(GP_T.melee.reach + 200);
+    expect(edgeDistTo(
+      cur().x + cur().width / 2, cur().y + cur().height / 2, useGameStore.getState().player,
+    )).toBeGreaterThan(GP_T.melee.reach);
+    step(16);
+    expect(cur().gpSwingAt).toBeUndefined();
   });
 });
 
-describe('② 慣性(CLAUDE.md MUST: 加減速のない動きは禁止)', () => {
-  it('イーズは 0→1 で単調増加し、両端の速度が 0(等速で始まらない/瞬間停止しない)', () => {
-    expect(phantomEase(0)).toBe(0);
-    expect(phantomEase(1)).toBe(1);
-    let prev = -1;
-    for (let i = 0; i <= 20; i++) {
-      const v = phantomEase(i / 20);
-      expect(v).toBeGreaterThanOrEqual(prev);
-      prev = v;
-    }
-    // 両端の傾き ≈ 0(=加速して始まり、減速して終わる)。中央の傾きより明確に小さいこと。
-    const d = 0.02;
-    const slopeStart = (phantomEase(d) - phantomEase(0)) / d;
-    const slopeEnd = (phantomEase(1) - phantomEase(1 - d)) / d;
-    const slopeMid = (phantomEase(0.5 + d) - phantomEase(0.5 - d)) / (2 * d);
-    expect(slopeStart).toBeLessThan(slopeMid * 0.3);
-    expect(slopeEnd).toBeLessThan(slopeMid * 0.3);
+describe('② 被弾無敵: 7系統すべてでダメージ0(1経路でも素通りがあれば無敵が存在しないのと同じ)', () => {
+  /** 幻影を「たった今、有効打を受けた」状態にする(=以後 INVULN_MS はダメージ0)。 */
+  const armInvuln = (id: string): void => {
+    const gt = useGameStore.getState().gameTime;
+    useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.id === id ? { ...e, gpHitAt: gt } : e) }));
+  };
+  const hpOf = (id: string): number => useGameStore.getState().enemies.find(e => e.id === id)!.health;
+
+  it('①damageEnemy(銃・サブ・爆発の合流点)', () => {
+    const { id } = setup(40);
+    armInvuln(id);
+    const hp = hpOf(id);
+    useGameStore.getState().damageEnemy(id, 500, false, false, false, 'gun', 'player');
+    expect(hpOf(id)).toBe(hp);
   });
 
-  it('一閃の踏み込みは帯の中に収まる(斬り抜けて相手の向こうへワープしない)', () => {
-    expect(phantomIssenOffsetPx(0)).toBe(0);
-    expect(phantomIssenOffsetPx(1)).toBeCloseTo(GP_T.issen.reach * GP_T.issenTravelFrac, 6);
-    expect(phantomIssenOffsetPx(1)).toBeLessThan(GP_T.issen.reach);
+  it('①damageEnemy(カウンター反撃=postureImpact:counter もゲートされる)', () => {
+    const { id } = setup(40);
+    armInvuln(id);
+    const hp = hpOf(id);
+    useGameStore.getState().damageEnemy(id, 500, false, true, false, 'other', 'player', 'counter');
+    expect(hpOf(id)).toBe(hp);
+  });
+
+  it('②triggerCounter(プレイヤーの近接スイング)', () => {
+    const { id } = setup(20);
+    armInvuln(id);
+    const hp = hpOf(id);
+    const res = useGameStore.getState().triggerCounter();
+    expect(hpOf(id)).toBe(hp);
+    expect(res.hit).toBe(false);   // 戻り値にも数えない(SEが鳴らない=M1の契約)
+    expect(res.killed).toBe(0);
+  });
+
+  it('③shadowCloneStrike(分身)', () => {
+    const { id } = setup(20);
+    armInvuln(id);
+    const hp = hpOf(id);
+    const p = useGameStore.getState().player;
+    useGameStore.getState().shadowCloneStrike({
+      x: p.x, y: p.y, width: p.width, height: p.height, facingLeft: false,
+      characterClass: p.characterClass, spawnedAt: 0, attacksDone: 0, nextAttackAt: 0,
+    });
+    expect(hpOf(id)).toBe(hp);
+  });
+
+  it('④performKatanaStrike(刀)', () => {
+    const { id } = setup(20);
+    useGameStore.setState(s => ({ player: { ...s.player, subWeapons: ['katana'] } }));
+    armInvuln(id);
+    const hp = hpOf(id);
+    const res = useGameStore.getState().performKatanaStrike([id], 1, true, undefined);
+    expect(hpOf(id)).toBe(hp);
+    expect(res.hit).toBe(false);
+  });
+
+  it('⑤performWhipStrike(鞭)', () => {
+    const { id } = setup(20);
+    armInvuln(id);
+    const hp = hpOf(id);
+    const res = useGameStore.getState().performWhipStrike([id]);
+    expect(hpOf(id)).toBe(hp);
+    expect(res.hits).toBe(0);
+  });
+
+  it('⑥skaterBoardHit(スケボー)', () => {
+    const { id } = setup(20);
+    armInvuln(id);
+    const hp = hpOf(id);
+    const e = useGameStore.getState().enemies.find(x => x.id === id)!;
+    useGameStore.getState().skaterBoardHit(e.x + e.width / 2, e.y + e.height / 2, 1, 0);
+    expect(hpOf(id)).toBe(hp);
+  });
+
+  it('⑦接触=そもそも素通り(contact damage 0・phantomTick 以外は幻影を動かさない)', () => {
+    const { id } = setup(0);
+    const before = useGameStore.getState().player.health;
+    useGameStore.getState().updateEnemies(0.016);
+    expect(useGameStore.getState().player.health).toBe(before);
+    expect(useGameStore.getState().enemies.find(e => e.id === id)).toBeDefined();
+  });
+
+  it('無敵が明ければ通る(=無敵は「1秒に1回」であって「無敵化」ではない)', () => {
+    const { id } = setup(400);
+    armInvuln(id);
+    const hp = hpOf(id);
+    useGameStore.setState(s => ({ gameTime: s.gameTime + INVULN_MS }));
+    useGameStore.getState().damageEnemy(id, 100, false, false, false, 'gun', 'player');
+    expect(hpOf(id)).toBeLessThan(hp);
+  });
+
+  it('phantomGate 単体: 無敵/パリィ/通過の全分岐(rand注入で固定)', () => {
+    const base = {
+      enemyType: GUARDIAN_PHANTOM_TYPE, amount: 100, gameTime: 5000,
+      invulnMs: 1000, counterChance: 0.5, parryCdMs: 1000,
+    } as const;
+    // 無敵中(近接でも銃でも0)。
+    for (const source of ['melee', 'counter', 'ranged'] as const) {
+      const r = phantomHitGate({ ...base, source, gpHitAt: 4500, rand: () => 0 });
+      expect(r.damage).toBe(0);
+      expect(r.effects).toBe(false);
+      expect(r.blocked).toBe(true);
+      expect(r.patch.gpBlockedAt).toBe(5000);
+    }
+    // 無敵外・近接・抽選当たり=パリィ。
+    const parry = phantomHitGate({ ...base, source: 'melee', rand: () => 0 });
+    expect(parry.parried).toBe(true);
+    expect(parry.damage).toBe(0);
+    expect(parry.patch.gpParriedAt).toBe(5000);
+    expect(parry.patch.gpParryCdUntil).toBe(6000);
+    // パリィCD中は抽選しない=通る。
+    const cd = phantomHitGate({ ...base, source: 'melee', gpParryCdUntil: 9999, rand: () => 0 });
+    expect(cd.parried).toBe(false);
+    expect(cd.damage).toBe(100);
+    // カウンター反撃・銃はパリィ不可(抽選当たりでも通る)。
+    for (const source of ['counter', 'ranged'] as const) {
+      const r = phantomHitGate({ ...base, source, rand: () => 0 });
+      expect(r.parried).toBe(false);
+      expect(r.damage).toBe(100);
+      expect(r.patch.gpHitAt).toBe(5000);
+    }
+    // 抽選外れ=通る。
+    expect(phantomHitGate({ ...base, source: 'melee', rand: () => 0.999 }).damage).toBe(100);
   });
 });
 
-describe('③ 台帳のデータが効いている(数値を発明していない)', () => {
-  it('頭脳へ渡すプロファイルは守護霊台帳の最強データそのもの', () => {
-    const src = strongestGuardian().profile;
-    const p = phantomProfile();
-    expect(p.preferredDist).toBe(src.preferredDist);
-    expect(p.counterChance).toBe(src.counterChance);
-    expect(p.reactionMs).toBe(src.reactionMs);
-    expect(p.meleeBias).toBe(src.meleeBias);
-    expect(p.mobility).toBe(src.mobility);
-    expect(p.stationaryFrac).toBe(src.stationaryFrac);
-    expect(p.approachPerMin).toBe(src.approachPerMin);
-  });
-
-  it('銃撃のダメージは台帳の装備銃の基礎値から導出(下限あり)', () => {
-    const key = strongestGuardian().profile.snapshot!.activeGunKey!;
-    const base = createWeapon(key).damage;
-    expect(phantomShotDamage()).toBe(Math.max(GP_T.shot.damageFloor, Math.round(base)));
-    expect(phantomShotDamage()).toBeGreaterThanOrEqual(GP_T.shot.damageFloor);
-  });
-});
-
-describe('④ 州名と成立域の宣言', () => {
-  it('全ての州が命名規約(-windup / -active / -recover)に乗る=moveCancelGuardが読める', () => {
-    for (const st of [...GUARDIAN_PHANTOM_WINDUP_STATES, ...GUARDIAN_PHANTOM_RECOVER_STATES]) {
-      expect(isNeutralMoveState(st), st).toBe(false);
-      const ref = parseMovePhase(st);
-      expect(ref, st).not.toBeNull();
-      expect(ref!.move.startsWith('gp-'), st).toBe(true);
-    }
-  });
-
-  it('溜めは帯(=赤い予告の図形)で成立し、硬直は体の重なりで成立する', () => {
-    for (const st of GUARDIAN_PHANTOM_WINDUP_STATES) {
-      expect(counterReachKindFor(`gp:${st}`), st).toBe('band');
-    }
-    for (const st of GUARDIAN_PHANTOM_RECOVER_STATES) {
-      expect(counterReachKindFor(`gp:${st}`), st).toBe('body');
-    }
-  });
-
-  it('銃撃はカウンター可能州に載せない(弾は既存の打ち返し文法で返す)', () => {
-    const all = [...GUARDIAN_PHANTOM_WINDUP_STATES, ...GUARDIAN_PHANTOM_RECOVER_STATES];
-    expect(all.some(s => s.startsWith('gp-shot'))).toBe(false);
+describe('③ パリィ(counterChanceのミラー)→ 次tickで割り込み反撃', () => {
+  it('近接がパリィされると gpParriedAt が立ち、次tickで周期を無視して振り返す', () => {
+    const { id, step, cur, state } = setup(40);
+    // 抽選を確実に当てる(ゲートの発火点は gameStore 側なので Math.random を固定する)。
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    expect(phantomProfile().counterChance).toBeGreaterThan(0);
+    const hp = useGameStore.getState().enemies.find(e => e.id === id)!.health;
+    const e = useGameStore.getState().enemies.find(x => x.id === id)!;
+    useGameStore.getState().skaterBoardHit(e.x + e.width / 2, e.y + e.height / 2, 1, 0);
+    const parried = cur();
+    expect(parried.gpParriedAt).toBe(useGameStore.getState().gameTime);
+    expect(parried.health).toBe(hp);                       // パリィ=ダメージ0
+    // 近接周期を遠い未来へ置く=「周期を無視した割り込み」であることを固定する。
+    state.nextMeleeAt = START_GT + 1_000_000;
+    step(16);
+    expect(cur().gpSwingAt).toBeDefined();                 // 反撃が出た
+    expect(state.nextMeleeAt).toBeLessThan(START_GT + 1_000_000); // 反撃後は周期タイマーがリセットされる
   });
 });
 
-describe('⑤ ラン内状態と個体の拾い方', () => {
-  const fake = (type: Enemy['type'], id: string): Enemy => ({
-    id, x: 0, y: 0, width: 10, height: 10, speed: 0, health: 1, maxHealth: 1,
-    damage: 0, type, experienceValue: 0, lastHit: 0, lastShot: 0,
+describe('④ 銃ミラー(台帳武器の実性能・リロードの息継ぎ)', () => {
+  it('敵弾が生成される(弾は共通の赤い二重丸=hostile な敵弾)', () => {
+    const { id, step } = setup(150);
+    let fired = 0;
+    for (let i = 0; i < 200 && fired === 0; i++) {
+      step(50);
+      fired = useGameStore.getState().projectiles.filter(p => p.hostile && p.ownerId === id).length;
+    }
+    expect(fired).toBeGreaterThan(0);
   });
 
-  it('新しいラン内状態は「まだ誰も制御していない」から始まる', () => {
-    const s = createPhantomTickState();
-    expect(s.activeId).toBeNull();
-    expect(s.nextMoveAt).toBe(0); // 初回は休みなしで動ける
-    expect(s.shotsRemaining).toBe(0);
+  it('マガジン切れ(リロード中)は撃たない=息継ぎがある', () => {
+    const { id, step, state } = setup(150);
+    step(50);
+    expect(state.gun).not.toBeNull();
+    // マガジンを空にする→次tickで beginWeaponReload が走り、リロード中は1発も出ない。
+    state.gun = { ...state.gun!, magazine: 0 };
+    useGameStore.setState({ projectiles: [] });
+    step(50);
+    expect(state.reloadingWeaponId).not.toBe('');
+    for (let i = 0; i < 10; i++) step(50);
+    expect(useGameStore.getState().projectiles.filter(p => p.hostile && p.ownerId === id).length).toBe(0);
+  });
+
+  it('銃は台帳(strongestGuardian の装備銃)から作る=数値を発明していない', () => {
+    const { step, state } = setup(150);
+    step(16);
+    expect(state.gun?.key).toBe(strongestGuardian().profile.snapshot!.activeGunKey);
+  });
+});
+
+describe('⑤ 殴り続けても止まらない(通常被弾のノックバックで技も移動も止まらない)', () => {
+  it('knockbackUntil の最中でも近接を振る', () => {
+    const { step, cur, id } = setup(80);
+    useGameStore.setState(s => ({
+      enemies: s.enemies.map(e => e.id === id ? { ...e, knockbackUntil: START_GT + 5000 } : e),
+    }));
+    step(16);
+    expect(cur().gpSwingAt).toBeDefined();
+  });
+
+  it('気絶(stunUntil)では従来どおり止まる=「止まらない」のは通常被弾のノックバックだけ', () => {
+    const { step, cur, id } = setup(80);
+    useGameStore.setState(s => ({
+      enemies: s.enemies.map(e => e.id === id ? { ...e, stunUntil: START_GT + 5000 } : e),
+    }));
+    step(16);
+    expect(cur().gpSwingAt).toBeUndefined();
+  });
+});
+
+describe('⑥ 【不変条件】撤去したものが戻ってこない', () => {
+  it('幻影は体勢値(紫)を持たない=積まれない(裁定「そもそも紫ゲージ無くす」)', () => {
+    expect(usesPostureSystem({ type: GUARDIAN_PHANTOM_TYPE })).toBe(false);
+    const e = { type: GUARDIAN_PHANTOM_TYPE, bossPosture: 100 } as unknown as Enemy;
+    for (const impact of ['counter', 'melee', 'heavy', 'gun-crit', 'reflect'] as const) {
+      expect(applyBossPostureDamage(e, impact, 1000)).toBeNull();
+    }
+  });
+
+  it('phantomGate は幻影以外の敵に恒等(通常敵のダメージ・副作用に1bitも影響しない)', () => {
+    for (const type of ['zombie', 'giantbat', 'bounty-ranged', 'pumpkin', 'mimir']) {
+      const r = phantomHitGate({
+        enemyType: type, amount: 77, source: 'melee', gameTime: 5000,
+        invulnMs: 1000, counterChance: 1, parryCdMs: 1000,
+        gpHitAt: 4999, // 幻影ならこれで無敵ブロックされる条件を、あえて渡す
+        rand: () => 0, // 幻影ならこれで必ずパリィされる乱数を、あえて渡す
+      });
+      expect(r.damage, type).toBe(77);
+      expect(r.effects, type).toBe(true);
+      expect(r.blocked, type).toBe(false);
+      expect(r.parried, type).toBe(false);
+      expect(Object.keys(r.patch), type).toEqual([]);
+    }
+  });
+
+  it('カウンター成立域の宣言表に gp: が1つも残っていない(予告が無い=取る対象が無い)', () => {
+    expect(Object.keys(COUNTER_REACH_DECL).filter(k => k.startsWith('gp:'))).toEqual([]);
   });
 
   it('盤面から幻影だけを拾う(他のボス/雑魚は拾わない)', () => {
+    const fake = (type: Enemy['type'], id: string): Enemy => ({
+      id, x: 0, y: 0, width: 10, height: 10, speed: 0, health: 1, maxHealth: 1,
+      damage: 0, type, experienceValue: 0, lastHit: 0, lastShot: 0,
+    });
     expect(pickActivePhantom([fake('zombie', 'a'), fake('giantbat', 'b')])).toBeUndefined();
-    const gp = fake(GUARDIAN_PHANTOM_TYPE, 'gp');
-    expect(pickActivePhantom([fake('zombie', 'a'), gp])?.id).toBe('gp');
+    expect(pickActivePhantom([fake('zombie', 'a'), fake(GUARDIAN_PHANTOM_TYPE, 'gp')])?.id).toBe('gp');
   });
 });

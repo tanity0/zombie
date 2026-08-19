@@ -180,6 +180,10 @@ import {
   type RunTelemetryEquipSnapshot, type RunTelemetryEquipSlotSnapshot,
 } from '../utils/runTelemetry';
 import { isPracticeRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
+// research/GHOST_BOSS.md v6: 幻影が受ける打撃の関所(被弾無敵+パリィ)。**7系統の全てがここを通る**。
+import { phantomHitGate, type PhantomHitSource, type PhantomHitGateResult } from '../utils/phantomGate';
+import { GUARDIAN_PHANTOM_TUNING as GP_T } from '../utils/phantomScript';
+import { strongestGuardian } from '../data/fixedGuardians';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
@@ -2504,6 +2508,29 @@ export const PLAYER_BASE_HP = 120;
 export const PLAYER_HITBOX = 28;
 const RELOAD_MOVE_SPEED_MULT = 1;
 export const INVULN_MS = 1000; // 社長裁定v0.25.3599(700→1000。多段技の3発目再被弾・群れ削り対策)
+
+/**
+ * research/GHOST_BOSS.md v6: **幻影が受ける1発**を関所(phantomGate)へ通す薄い橋。
+ *
+ * ここが「呼び出し側が値を渡す」担当(葉は型以外を import しない):
+ *  - 被弾無敵の長さ  = プレイヤーと同じ `INVULN_MS` を**直接参照**(写経しない)
+ *  - パリィ成立率    = 台帳 `strongestGuardian().profile.counterChance`(=プレイヤーのカウンターの鏡)
+ *  - パリィCD        = `phantomScript` の1箇所
+ * **幻影以外の敵に対しては恒等**(通常敵のダメージ・副作用に1bitも影響しない)。
+ */
+const gatePhantomHit = (
+  enemy: Enemy, amount: number, source: PhantomHitSource, gameTime: number, rand?: () => number,
+): PhantomHitGateResult => phantomHitGate({
+  enemyType: enemy.type,
+  amount, source, gameTime,
+  invulnMs: INVULN_MS,
+  // 台帳読みは幻影の時だけ(通常敵のホットパスに台帳アクセスを持ち込まない)。
+  counterChance: isGuardianPhantom(enemy.type) ? strongestGuardian().profile.counterChance : 0,
+  parryCdMs: GP_T.parryCdMs,
+  gpHitAt: enemy.gpHitAt,
+  gpParryCdUntil: enemy.gpParryCdUntil,
+  rand,
+});
 // テスト診断フラグ(依頼#7・v0.25.2546): ?ghostlog=1 で守護霊の被弾源タグをconsoleへ出す。
 // 記録専用=判定・挙動・描画には一切影響しない(window不在のヘッドレステストでは常にfalse)。
 export const GHOST_DMG_LOG_ENABLED =
@@ -5770,6 +5797,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const killedList: { enemy: Enemy; finisher: boolean }[] = [];
     const hitAt: { x: number; y: number }[] = [];
     let dealtSum = 0; // 覚醒=距離減衰で個別ダメージになるため合計を積む(計測/統計用)
+    let gpPatch: Partial<Enemy> | null = null; // research/GHOST_BOSS.md v6: 幻影の i-frame 打刻(同時1体)
     set(s => {
       const out: Enemy[] = [];
       for (const enemy of s.enemies) {
@@ -5779,6 +5807,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
         const d2 = (ecx - x) * (ecx - x) + (ecy - y) * (ecy - y);
         if (d2 > r2) { out.push(enemy); continue; }
+        // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統⑥=スケボー)。バッシュも近接系=パリィ対象。
+        if (isGuardianPhantom(enemy.type)) {
+          const gp = gatePhantomHit(enemy, 0, 'melee', s.gameTime);
+          if (!gp.effects) { out.push({ ...enemy, ...gp.patch }); continue; }
+          gpPatch = gp.patch;
+        }
         hitAt.push({ x: ecx, y: enemy.y });
         // 覚醒: 爆発の距離減衰(中心1.0〜外周0.55)。非覚醒: 従来どおり等倍。
         const eDmg = skAwaken
@@ -5792,6 +5826,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: dirX * SHIELD_BASH_KNOCKBACK_SPEED, knockbackVy: dirY * SHIELD_BASH_KNOCKBACK_SPEED,
           knockbackUntil: now + KNOCKBACK_DURATION, knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
+          ...(gpPatch ?? {}), // research/GHOST_BOSS.md v6: 幻影の i-frame 起点
         });
       }
       const bossKilled = killedList.some(k => isFinalBossKill(k.enemy));
@@ -6241,6 +6276,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // G4a(§2.9(3)・記録専用): 盾を押し出した瞬間=バッシュ1回(敵に当たらなくても「バッシュした」様式)。
     if (hasShieldShove) recordShieldBash(shieldShoves.length);
     let bashHitEnemy = false; // バッシュが敵に当たったか(ストップ用)
+    // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
+    let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
 
     for (const enemy of enemies) {
       if (enemy.type === 'reaper' && !enemy.reaperChaser) { survivors.push(enemy); continue; } // 深奥チェイサーは近接対象(ボス級)
@@ -6259,6 +6296,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (dist > meleeRange && !bashShove) { survivors.push(enemy); continue; }
       // 壁越しには当てない(視線が壁で遮られている敵はスキップ)。
       if (meleeWalls.length > 0 && segmentBlocked(pcx, pcy, ecx, ecy, meleeWalls)) { survivors.push(enemy); continue; }
+
+      // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統②=バッシュ/気絶フィニッシュ/通常近接の
+      // 3枝まとめて)。**この位置**なのが肝: 無効化した打撃は slashAt / meleeHitEnemyIds /
+      // meleeDamageNumbers に1つも積まず、lastHit も打たない(=ヒットストップ・チェーン・吸血・
+      // 救難信号・戻り値 hit/finish/killed のどれにも数えない)。
+      if (isGuardianPhantom(enemy.type)) {
+        const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
+        if (!gp.effects) { survivors.push({ ...enemy, ...gp.patch }); continue; }
+        gpHitPatch = { id: enemy.id, patch: gp.patch }; // 有効打=i-frame の起点を set() で合成する
+      }
 
       // バッシュ: 近接ダメージ×3 + 押し出し方向への強ノックバック。フィニッシュ無し。
       if (bashShove) {
@@ -6427,7 +6474,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
       // 専用の meleeHitAt もスタンプ(gun/爆発は damageEnemy 側の別経路なので対象外)。ミゲル以外は
       // 無害な余剰フィールド(useGameLoop のミゲル専用コントローラだけが参照)。
-      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true, meleeHitAt: gameTime } : e),
+      enemies: survivors.map(e => {
+        // research/GHOST_BOSS.md v6: 幻影の i-frame 打刻を合成する(有効打のときだけ)。
+        const gp = gpHitPatch !== null && gpHitPatch.id === e.id ? gpHitPatch.patch : null;
+        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}) };
+        return gp ? { ...e, ...gp } : e;
+      }),
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length,
@@ -6734,6 +6786,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const cloneHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): このストライクでヒットした敵ID
     const cloneDealt = new Map<string, number>(); // 敵ID→この一撃で入れた生ダメージ(守護霊のヘイト計上用)
     let bossFinishHit = false;
+    // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
+    let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
 
     for (const enemy of enemies) {
       if (enemy.type === 'reaper' && !enemy.reaperChaser) { survivors.push(enemy); continue; }
@@ -6747,6 +6801,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const dist = enemyMeleeDist(ccx, ccy, enemy);
       if (dist > meleeRange) { survivors.push(enemy); continue; }
       if (walls.length > 0 && segmentBlocked(ccx, ccy, ecx, ecy, walls)) { survivors.push(enemy); continue; }
+      // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統③=分身)。分身の近接もパリィ対象。
+      if (isGuardianPhantom(enemy.type)) {
+        const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
+        if (!gp.effects) { survivors.push({ ...enemy, ...gp.patch }); continue; }
+        gpHitPatch = { id: enemy.id, patch: gp.patch };
+      }
       slashAt.push({ x: ecx, y: ecy });
       cloneHitEnemyIds.push(enemy.id); // スキル 救難信号(§6.10 M33⑦): 分身のヒット敵ID(発動判定/対象選定用)
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil
@@ -6825,6 +6885,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       enemies: survivors.map(e => e.lastHit === now
         ? {
           ...e,
+          // research/GHOST_BOSS.md v6: 幻影の i-frame 打刻を合成する(有効打のときだけ)。
+          ...(gpHitPatch !== null && gpHitPatch.id === e.id ? gpHitPatch.patch : {}),
           ...(isGhost
             ? {
               ...(isHateTrackedBossType(e.type) && (cloneDealt.get(e.id) ?? 0) > 0
@@ -7347,6 +7409,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const mimirLaserBreakHits: { x: number; y: number }[] = []; // §6.33: レーザー中断位置(カウンター成立FX用)
     const katanaBossFatalHits: { x: number; y: number; labelY: number }[] = [];
     const katanaHitEnemyIds: string[] = []; // スキル 救難信号: 一閃(allowFinisher時)でヒットした敵ID(発動判定/対象選定用)
+    // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
+    let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
 
     for (const enemy of enemies) {
       // ジャンプ攻撃中(空中)はあらゆる近接の当たり判定を外す(=無敵。盾は敵AI側で別処理)。
@@ -7358,6 +7422,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
+      // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統④=刀)。オート斬撃も一閃もパリィ対象。
+      if (isGuardianPhantom(enemy.type)) {
+        const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
+        if (!gp.effects) { survivors.push({ ...enemy, ...gp.patch }); continue; }
+        gpHitPatch = { id: enemy.id, patch: gp.patch };
+      }
       slashAt.push({ x: ecx, y: ecy });
       katanaHitEnemyIds.push(enemy.id);
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil
@@ -7499,7 +7569,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
       // 専用の meleeHitAt もスタンプ(gun/爆発は damageEnemy 側の別経路なので対象外)。ミゲル以外は
       // 無害な余剰フィールド(useGameLoop のミゲル専用コントローラだけが参照)。
-      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true, meleeHitAt: gameTime } : e),
+      // research/GHOST_BOSS.md v6: 幻影の i-frame 打刻(gpHitPatch)を合成する(有効打のときだけ)。
+      enemies: survivors.map(e => {
+        const gp = gpHitPatch !== null && gpHitPatch.id === e.id ? gpHitPatch.patch : null;
+        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}) };
+        return gp ? { ...e, ...gp } : e;
+      }),
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length,
@@ -7623,6 +7698,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const mimirLaserBreakHits: { x: number; y: number }[] = []; // §6.33: レーザー中断位置(カウンター成立FX用)
     const whipBossFatalHits: { x: number; y: number; labelY: number }[] = [];
     const whipHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): 鞭のヒット敵ID(発動判定/対象選定用)
+    // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
+    let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
     let hits = 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
     const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
@@ -7632,6 +7709,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         // KILL吹き飛び(死体・§26-2): 死体は標的から除外(targetIds選定側で既に除いてあるが二重ガード)
         survivors.push(enemy);
         continue;
+      }
+      // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統⑤=鞭)。無効化した打撃は
+      // hits にも slashAt にも積まない(戻り値 hit/hits がSEを鳴らす条件になっているため)。
+      if (isGuardianPhantom(enemy.type)) {
+        const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
+        if (!gp.effects) { survivors.push({ ...enemy, ...gp.patch }); continue; }
+        gpHitPatch = { id: enemy.id, patch: gp.patch };
       }
       hits++;
       whipHitEnemyIds.push(enemy.id);
@@ -7726,7 +7810,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
       // 専用の meleeHitAt もスタンプ(gun/爆発は damageEnemy 側の別経路なので対象外)。ミゲル以外は
       // 無害な余剰フィールド(useGameLoop のミゲル専用コントローラだけが参照)。
-      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true, meleeHitAt: gameTime } : e),
+      // research/GHOST_BOSS.md v6: 幻影の i-frame 打刻(gpHitPatch)を合成する(有効打のときだけ)。
+      enemies: survivors.map(e => {
+        const gp = gpHitPatch !== null && gpHitPatch.id === e.id ? gpHitPatch.patch : null;
+        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}) };
+        return gp ? { ...e, ...gp } : e;
+      }),
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length,
@@ -9783,6 +9872,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 溜め(crouch)・着地後(recover)は通常どおり被弾する(空中だけ無敵)。
       if (enemy.aiPhase === 'jump') return { enemies };
 
+      // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統①): 適用順は**早期returnの直後・
+      // 紫の報酬予算(applyBrokenGunReward/applyBrokenMeleeFatal)と紅き夜補正より前**
+      // (0ダメージ化したヒットが報酬予算を食わないこと)。damageEnemy へ来るのは銃/サブ/爆発と
+      // カウンター反撃なので**どちらもパリィ不可**(近接スイングは②〜⑥の直接経路を通る)。
+      const gpGate = gatePhantomHit(
+        enemy, amount, postureImpact === 'counter' ? 'counter' : 'ranged', state.gameTime,
+      );
+      if (!gpGate.effects) {
+        // 無効化: HPも lastHit も動かさない(通常の被弾フラッシュ・KB免疫・meleeAggroの起点を作らない)。
+        // 絵は gpBlockedAt / gpParriedAt から描画側が別系統で出す。
+        return { enemies: enemies.map(e => (e.id === id ? { ...e, ...gpGate.patch } : e)) };
+      }
+
       // 紫中の直接銃撃は通常クリ倍率と重ねず、この中央で×5相当まで報酬領域を消費する。
       const gunReward = damageChannel === 'gun' && hateSource === 'player'
         ? applyBrokenGunReward(enemy, amount, state.gameTime)
@@ -9834,7 +9936,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? { ghostHateUntil: state.gameTime + GHOST_MOB_HATE_MS }
         : {};
       const updatedEnemies = enemies.map(e =>
-        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch } : e
+        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch } : e
       );
       
       // Check if enemy was killed

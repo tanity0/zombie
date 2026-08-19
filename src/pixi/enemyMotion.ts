@@ -79,6 +79,10 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   'lab-zombie-2': { kind: 'walk', bobPx: 1.3, rockRad: 0.050, sqAmp: 0.030, strideHz: 2.0, uneven: 0.65, faceMove: false },
   // lab-zombie-3=**四つ這いの巨獣**(v0.25.2923で新絵・骨の尾)。heavy→crawlへ(見た目で判断)。
   'lab-zombie-3': { kind: 'crawl', bobPx: 1.8, rockRad: 0.040, sqAmp: 0.040, strideHz: 2.0, uneven: 0.35, faceMove: false },
+  // research/GHOST_BOSS.md(守護霊ボス「幻影」)= **プレイヤーのクラス立ち絵**なので、雑魚の既定
+  // (MOT_HOBBLER・uneven 0.25=千鳥足)に落ちると「もう1人のプレイヤー」に見えない。
+  // 規則正しい直立歩行(uneven 0)にして、歩きは立ち絵の歩きコマ側だけに任せる。
+  'guardian-phantom': { kind: 'walk', bobPx: 1.0, rockRad: 0.026, sqAmp: 0.024, strideHz: 2.1, uneven: 0, faceMove: false },
 };
 
 /**

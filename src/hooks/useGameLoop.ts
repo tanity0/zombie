@@ -794,12 +794,18 @@ const BOUNTY_SFX: BountySfx = {
   counter: (gain = 1) => playSfx('counter', gain),
   reward: (gain = 1) => playSfx('headshot', gain),
 };
-// research/GHOST_BOSS.md(幻影): 音は既存の共通キーを流用する(専用素材は作らない=「ではない」条件)。
+// research/GHOST_BOSS.md v6(幻影): 音は既存の共通キーを流用する(専用素材は作らない=「ではない」条件)。
+// 銃は**プレイヤーの自動発砲と同じ銃種別の写像**(v0.25.2479パリティの並びをそのまま使う)。
 const PHANTOM_SFX: PhantomSfx = {
-  alert: () => playSfx(BOSS_ALERT_SFX_KEY),
-  fire: () => playSfx('heavy-impact'),
-  counter: (gain = 1) => playSfx('counter', gain),
-  reward: (gain = 1) => playSfx('headshot', gain),
+  swing: () => playSfx('slash-damage'),
+  shot: (category: string) => playSfx(
+    category === 'shotgun' ? 'shotgun-fire'
+      : category === 'rifle' ? 'rifle-fire'
+        : category === 'glauncher' ? 'grenade-launcher-fire'
+          : 'handgun-fire',
+  ),
+  parry: () => playSfx('counter'),
+  hurt: () => playSfx('player-damage'),
 };
 const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
 const GATE_LIVE_TAU = 1.0;                             // 難易度④: 関所ライブ補正の平滑化時定数(秒)。
@@ -6412,7 +6418,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (activePhantom && !useGameStore.getState().bossMaker.paused) {
             runPhantomTick(
               activePhantom, phantomStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT, Date.now(),
-              PHANTOM_SFX, BOSS_COUNTER_ENABLED,
+              PHANTOM_SFX,
             );
           }
          } catch (err) {

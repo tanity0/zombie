@@ -1,66 +1,62 @@
-// research/GHOST_BOSS.md(守護霊ボス「幻影」): 頭脳+技のコントローラ。
+// research/GHOST_BOSS.md v6(守護霊ボス「幻影」v2「守護霊ミラー」): 頭脳+攻撃のコントローラ。
 //
 // ## 何をするファイルか
-// 社長ゴール(言葉のまま):「試しに、ボスモードに守護霊の最強データを一体、ボスとして配線できる?
-// プレイヤーと守護霊を戦わせてみたい」。
+// 社長ゴール(言葉のまま):「めちゃくちゃ弱いなー。やはりプレイヤーと条件を一緒にしないと」
+// 「全てプレイヤーと同条件。じゃないと意味がないので。最終的にオンライン対戦を意識してください。」
+// 裁定(v5):「そもそも紫ゲージ無くす。予告無し。全て同じ。」
 //
-// ## 頭脳は**書かない**(既存 decideGhost を対プレイヤーへ向け直すだけ)
-// 守護霊(味方)の意思決定は `ghostDriver.decideGhost` に全部ある——preferredDist(間合い)/
-// counterChance・reactionMs(反応)/stationaryFrac・approachPerMin(移動リズム)を**計測データから**
-// 出す関数で、これが「守護霊らしさ」の本体。ここで自前のステアリングを書くと、同じ個性を2度
-// 実装して片方だけ古くなる(このプロジェクトが繰り返してきた事故の型)。
-// ⇒ **標的だけ差し替える**: decideGhost には「敵の一覧」と「狙う敵のid」を渡す口があるので、
-//    **プレイヤーを1体の疑似 Enemy として渡す**。返ってくる移動ベクトルと攻撃意図をそのまま使う。
-//
-// ## 技は bossState 機械(bountyTick.ts と同じ流儀)
-// `gp-<move>-windup` → `gp-<move>-active` → `gp-<move>-recover`(命名規約=moveCancelGuard が読む形)。
-// **接頭辞が `gp-` なのは命名衝突の回避**: 既存コードの "ghost boss"(GHOST_BOSS_HP_MULT 等)は
-// **守護霊が戦う相手**を指すので、`ghost-` を使うと意味が逆になる。
+// ## 形(v6でこの形に確定)
+//  - **頭脳**: 既存 `decideGhost`(ghostDriver)を「対プレイヤー」アダプタで流用する(自前ステアを
+//    書かない)。preferredDist・counterChance・reactionMs・移動リズムが台帳のまま生きる。
+//  - **近接**: **即発ミラー**。予告(windup)も硬直(recover)も無い=プレイヤーのタップ近接と同条件。
+//    発火は**自前の周期タイマー**で、周期は `GHOST_COUNTER_MELEE_PERIOD_MS`(=プレイヤーの
+//    COUNTER_WINDOW+COUNTER_COOLDOWN)を import して流用する(数字を写経しない)。
+//  - **銃**: 守護霊(ghost-ally)の霊体武器ループと同じ部品(createWeapon / effectiveFireCooldown /
+//    begin・finishWeaponReload(リザーブ∞)/ zoomedGunRange)で、**台帳武器の実性能**を撃つ。
+//  - **被弾**: `phantomGate`(gameStore側)が無敵とパリィを裁く。ここはパリィ成立の**合図を消費**して
+//    即反撃を1回割り込ませるだけ(二重書き手を作らない)。
+//  - **止まらない**: 通常被弾のノックバック・固めでは技も移動も止まらない(プレイヤーと同条件)。
+//    押し道具(鞭・シールドバッシュ)の shove 窓だけは自分で座標を上書きしない=押される。
 //
 // ## 掟(CLAUDE.md)
 //  - 移動は必ず ①障害物衝突(resolveBountyMove) → ②`clampRectToPlayableArea` の順で通す。
-//    一閃の終点もクランプする(「行ける帯」の定義を1本に保つ)。
-//  - **時計の混在**(ENGINEERING_NOTES.md): `bossState*`/休みは `gameTime`(シミュ時刻)、
-//    `counterWindowEnd`/`knockbackUntil`/decideGhost の内部CDは `Date.now()`。**混ぜて比較しない**。
-//    このファイルは両方を引数で受け取り、それぞれの世界の中だけで比較する。
-//  - 慣性: 一閃の踏み込みは加速→減速(smoothstep)。等速で始まって瞬間停止しない。
-//  - 赤い予告=判定: 帯の寸法は phantomScript.ts の1箇所だけを読む(判定・成立域・描画が同じ数字)。
-import type { Enemy, EnemyType, Player, Projectile } from '../types/game';
-import {
-  useGameStore, resolveBountyMove,
-  counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT, counterMasterAwakenBuffPatch,
-  COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
-  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, knockbackSpeedFor,
-  bossSlowMult,
-} from '../store/gameStore';
+//  - **時計の混在**(ENGINEERING_NOTES.md): 周期タイマー・gp*打刻は `gameTime`、
+//    `knockbackShoveUntil` / `liftUntil` / decideGhost の内部CD・リロードは `Date.now()`。
+//    **混ぜて比較しない**。このファイルは両方を引数で受け取り、それぞれの世界の中だけで比較する。
+//  - 慣性: 振りの絵(踏み込み→戻り)は描画側(pixiScene)がイーズで出す。判定は即発の1回。
+import type { Enemy, EnemyType, Player, Projectile, Weapon } from '../types/game';
+import { useGameStore, resolveBountyMove, CRIT_DAMAGE_MULT, knockbackSpeedFor } from '../store/gameStore';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { createEnemyProjectile } from './enemyUtils';
-import { isCounterablePhase } from './bossScript';
-import { counterReachShapeFor, inCounterReach } from './counterReach';
-import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
-import { recordCritHit } from './botTelemetry';
-import { refundCounterCooldown } from './counterMaster';
-import { createWeapon, getActiveGun } from './weaponUtils';
-import { GLOW_R_L } from './glowTiers';
-import { decideGhost, type GhostDecision, type GhostProfile } from './ghostDriver';
+import { distToBandRect } from './geometry';
+import {
+  createWeapon, effectiveFireCooldown, beginWeaponReload, finishWeaponReload,
+  projectileFlightStats, zoomedGunRange, RANGE_BY_CATEGORY,
+} from './weaponUtils';
+import { GRAVITY_SHOT_BOSS_SLOW_MULT } from './skillEffectsB7';
+import {
+  decideGhost, GHOST_COUNTER_MELEE_PERIOD_MS, type GhostDecision, type GhostProfile,
+} from './ghostDriver';
 import { strongestGuardian } from '../data/fixedGuardians';
+import { GUARDIAN_PHANTOM_LABEL } from './bossPractice';
 import { GUARDIAN_PHANTOM_TUNING as GP_T } from './phantomScript';
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
 export const GUARDIAN_PHANTOM_TYPE: EnemyType = 'guardian-phantom';
+
+/** 被弾の出どころ表示(死亡ログ等)。名前は台帳1箇所から作る(人物名を写経しない)。 */
+export const GUARDIAN_PHANTOM_MELEE_SOURCE = `${GUARDIAN_PHANTOM_LABEL}の斬撃`;
 
 // =================================================================================================
 // 台帳から効かせるデータ(research/GHOST_BOSS.md「台帳から効かせるデータ」)
 // =================================================================================================
 /**
  * 幻影の頭脳へ渡すプロファイル。**守護霊台帳の最強データ(strongestGuardian)そのもの**を
- * `GhostProfile` の形へ写すだけ(値を発明しない)。`PlayerProfile` と `GhostProfile` はノブが
- * 同名・同意味なので、必要なフィールドだけ拾えばよい。
+ * `GhostProfile` の形へ写すだけ(値を発明しない)。
  */
 let profileCache: GhostProfile | null = null;
 export const phantomProfile = (): GhostProfile => {
-  // 台帳は**不変の定数**(ランタイムで書き換わらない)ので1回だけ組んで使い回す
-  // ——毎tick再構築するとオブジェクトを毎フレーム捨てることになる(CLAUDE.md 性能規律)。
+  // 台帳は**不変の定数**(ランタイムで書き換わらない)ので1回だけ組んで使い回す。
   if (profileCache) return profileCache;
   const p = strongestGuardian().profile;
   profileCache = {
@@ -74,48 +70,44 @@ export const phantomProfile = (): GhostProfile => {
     stationaryFrac: p.stationaryFrac,
     approachPerMin: p.approachPerMin,
     // 技への反応表は**渡さない**: 表のキーは「ボスの技」で、幻影から見た相手はプレイヤー=
-    // 技キーが引けない(anyMoveKeyForEnemy が null)。渡しても常にフォールバックになるだけなので、
-    // 「効いているように見えて効いていない配線」を作らない(第1弾の割り切り・設計書§反応表)。
+    // 技キーが引けない。渡しても常にフォールバックになるだけなので配線しない。
   };
   return profileCache;
 };
 
 /**
- * 銃撃1発のダメージ。設計書「dmg=gunKeyの武器基礎値から導出(下限6)」。
- * 出どころ=台帳の `profile.snapshot.activeGunKey` → 武器カタログの基礎値(数字を写経しない)。
+ * ★v6の帰結(明記): 近接の発火は**周期タイマー単独**になったので、台帳の `meleeBias` は
+ * 近接の頻度には効かない(decideGhost の melee 意図は縁74px以内でしか立たず、reach160の外側が
+ * 死ぬため使わない)。個性は**間合いの取り方**(preferredDist / 移動リズム)として残る。
  */
-let shotDamageCache: number | null = null;
-export const phantomShotDamage = (): number => {
-  // 同上(1回だけ引く)。`createWeapon` は毎回インスタンスを作る=毎tick呼ぶ物ではない。
-  if (shotDamageCache !== null) return shotDamageCache;
-  const key = strongestGuardian().profile.snapshot?.activeGunKey;
-  const base = key ? createWeapon(key).damage : 0;
-  shotDamageCache = Math.max(GP_T.shot.damageFloor, Math.round(base));
-  return shotDamageCache;
-};
+export const PHANTOM_MELEE_PERIOD_MS = GHOST_COUNTER_MELEE_PERIOD_MS;
+
+/**
+ * パリィ成立でプレイヤーを弾く量(px)と時間(ms)。**設計書に指定が無いので実装で埋めた叩き台**
+ * (「プレイヤー小ノックバック」だけが指定)。近接の間合いを一度切る程度の小さい値にしてある。
+ */
+const PHANTOM_PARRY_SHOVE_PX = 46;
+const PHANTOM_PARRY_SHOVE_MS = 180;
+
+/** 台帳の装備銃(profile.snapshot.activeGunKey)。ラン中に変わらないので1回だけ引く。 */
+const phantomGunKey = (): string | undefined => strongestGuardian().profile.snapshot?.activeGunKey;
 
 // =================================================================================================
 // SFX の注入口(bountyTick.BountySfx と同型・headless では audioManager を import しない)
 // =================================================================================================
 export interface PhantomSfx {
-  /** 予兆SE(溜めの開始)。 */
-  alert: () => void;
-  /** 発射・斬撃の一撃SE。 */
-  fire: () => void;
-  counter: (gain?: number) => void;
-  reward: (gain?: number) => void;
+  /** 近接を振った(空振り含む)。 */
+  swing: () => void;
+  /** 発砲。`category` は武器カテゴリ(呼び出し側がプレイヤーと同じ銃種SEへ写像する)。 */
+  shot: (category: string) => void;
+  /** パリィ成立(既存 'counter' を流用=新規素材なし)。 */
+  parry: () => void;
+  /** 幻影の攻撃がプレイヤーへ当たった(既存 'player-damage')。damagePlayer 直は音を出さないため。 */
+  hurt: () => void;
 }
 export const NOOP_PHANTOM_SFX: PhantomSfx = {
-  alert: () => {}, fire: () => {}, counter: () => {}, reward: () => {},
+  swing: () => {}, shot: () => {}, parry: () => {}, hurt: () => {},
 };
-
-// =================================================================================================
-// カウンターが通る州(counterReach.ts の宣言表とセットで counterReach.test.ts が突き合わせる)
-// =================================================================================================
-/** 溜め中にカウンターが成立する州。**赤い帯=成立域**(体の重なりではない)。 */
-export const GUARDIAN_PHANTOM_WINDUP_STATES: readonly string[] = ['gp-melee-windup', 'gp-issen-windup'];
-/** 硬直中にカウンターが成立する州(パニッシュ窓)。成立域は自分の体。 */
-export const GUARDIAN_PHANTOM_RECOVER_STATES: readonly string[] = ['gp-melee-recover', 'gp-issen-recover'];
 
 // =================================================================================================
 // ラン内状態(useGameLoop がラン開始時に作り直す・BountyTickState と同じ流儀)
@@ -135,89 +127,90 @@ export interface PhantomTickState {
     dangerLastAt?: number;
     orbitSign?: 1 | -1;
   };
-  /** 次に技を選んでよい時刻(gameTime基準)。硬直明けに `+restMs` して置く。 */
-  nextMoveAt: number;
-  /** 一閃の踏み込み: 焼き付けた起点と単位ベクトル(実行中はここからのイーズ距離で位置を決める)。 */
-  issenX0: number; issenY0: number; issenUx: number; issenUy: number;
-  /** 一閃の判定を1回の振りで1度だけ積むための旗(多段防止)。 */
-  issenHitFired: boolean;
-  /** 近接の判定を1回の振りで1度だけ積むための旗(同上)。 */
-  meleeHitFired: boolean;
-  /** 銃撃: このサイクルで残っている弾数と、次弾の時刻(gameTime基準)。 */
-  shotsRemaining: number;
-  nextShotAt: number;
+  /** 次に近接を振ってよい時刻(gameTime基準)。プレイヤーの近接CDと同じ周期で進む。 */
+  nextMeleeAt: number;
+  /** 消費済みのパリィ打刻(gameTime)。`enemy.gpParriedAt` がこれより新しければ即反撃を1回出す。 */
+  lastParryConsumedAt: number;
+  /** 銃の実体(台帳武器)。リザーブは∞(=弾薬は尽きない。息継ぎ=リロードだけがある)。 */
+  gun: Weapon | null;
+  /** リロードの状態(Date.now基準=weaponUtils と同じ時計)。 */
+  reloadEndsAt: number;
+  reloadingWeaponId: string;
 }
 
 export const createPhantomTickState = (): PhantomTickState => ({
   activeId: null,
   ghost: { facing: 1, lastShotAt: 0, lastMeleeAt: 0 },
-  nextMoveAt: 0,
-  issenX0: 0, issenY0: 0, issenUx: 1, issenUy: 0,
-  issenHitFired: false, meleeHitFired: false,
-  shotsRemaining: 0, nextShotAt: 0,
+  nextMeleeAt: 0,
+  lastParryConsumedAt: 0,
+  gun: null,
+  reloadEndsAt: 0,
+  reloadingWeaponId: '',
 });
 
 /** 個体が入れ替わった/ランが変わった時の全消し。 */
 const resetPhantomRunState = (s: PhantomTickState): void => {
   s.ghost = { facing: 1, lastShotAt: 0, lastMeleeAt: 0 };
-  s.nextMoveAt = 0;
-  cancelPhantomTechnique(s);
-};
-
-/**
- * 進行中の技を捨てる(中断・気絶・カウンター成立)。**焼き付けた踏み込みと残弾だけ**を消す。
- * 休み(nextMoveAt)はここでは触らない=中断で得をしない(連発防止)。
- */
-const cancelPhantomTechnique = (s: PhantomTickState): void => {
-  s.issenX0 = 0; s.issenY0 = 0; s.issenUx = 1; s.issenUy = 0;
-  s.issenHitFired = false; s.meleeHitFired = false;
-  s.shotsRemaining = 0; s.nextShotAt = 0;
+  s.nextMeleeAt = 0;
+  s.lastParryConsumedAt = 0;
+  s.gun = null;
+  s.reloadEndsAt = 0;
+  s.reloadingWeaponId = '';
 };
 
 // =================================================================================================
-// 純関数(テスト対象)
+// 銃(守護霊の霊体武器ループの写し。**2つ目のリロード実装を生やさない**)
 // =================================================================================================
-/** 慣性(CLAUDE.md MUST): 加速→減速の smoothstep。0→1。 */
-export const phantomEase = (t: number): number => {
-  const x = Math.max(0, Math.min(1, t));
-  return x * x * (3 - 2 * x);
+/**
+ * 銃の計算に渡す「中立の主語」。**プレイヤーのビルドは読まない**(読むと幻影の銃が
+ * プレイヤーの装備で強くなる=台帳武器の実性能、という決定が壊れる)。スキル無し・装備無しなので
+ * effectiveMagSize/effectiveReloadMs/effectiveFireCooldown は武器の生値をそのまま返す。
+ */
+const NEUTRAL_GUN_OWNER = {
+  skills: [], skillLevels: {}, magBonus: 0, reloadMult: 1,
+  health: 1, maxHealth: 1, weapons: [], activeWeaponId: '',
+  reloadEndsAt: 0, reloadingWeaponId: '', quickMagCritUntil: 0,
+} as unknown as Player;
+
+const gunOwner = (s: PhantomTickState): Player => ({
+  ...NEUTRAL_GUN_OWNER,
+  weapons: s.gun ? [s.gun] : [],
+  activeWeaponId: s.gun?.id ?? '',
+  reloadEndsAt: s.reloadEndsAt,
+  reloadingWeaponId: s.reloadingWeaponId,
+});
+
+/**
+ * リロードを1tick進める(プレイヤー/守護霊と同じ純関数・リザーブ∞)。
+ * 「リロード中/マガジン0は射程0=撃たない」も守護霊と同じ形にする。
+ */
+const stepPhantomGun = (s: PhantomTickState, nowMs: number): void => {
+  if (!s.gun) {
+    const key = phantomGunKey();
+    if (!key) return;
+    s.gun = createWeapon(key);
+  }
+  const owner = gunOwner(s);
+  const finished = finishWeaponReload(s.gun, owner, Number.POSITIVE_INFINITY, nowMs);
+  if (finished) {
+    s.gun = finished.weapon;
+    s.reloadEndsAt = finished.reloadEndsAt;
+    s.reloadingWeaponId = finished.reloadingWeaponId;
+  }
+  if ((s.gun.magazine ?? 0) <= 0 && !s.reloadingWeaponId) {
+    const started = beginWeaponReload(s.gun, gunOwner(s), Number.POSITIVE_INFINITY, nowMs);
+    if (started) {
+      s.reloadEndsAt = started.reloadEndsAt;
+      s.reloadingWeaponId = started.reloadingWeaponId;
+    }
+  }
 };
 
-export type PhantomMove = 'gp-melee' | 'gp-shot' | 'gp-issen';
-
-/**
- * 中距離で銃撃ではなく一閃を選ぶ確率(叩き台)。
- * ★v0.25.3632(成果物監査・重大1): 旧実装は中距離を「intent==='melee' なら一閃」でゲートしていたが、
- * decideGhost が melee 意図を返すのは**縁距離74px以内(=gp-meleeの帯の中)だけ**なので、
- * 「中距離かつ近接意図」は空集合=**一閃が一度も発動しなかった**(44+6配置の実測でwindup出現0)。
- * 設計書v2の決定は「中=issen or shot」(意図ゲートの指定は無い)。抽選に戻して入口を実在させる。
- */
-export const ISSEN_MID_CHANCE = 0.45;
-
-/**
- * 距離と「攻撃意図」から技を選ぶ(設計書「近(≤preferredDist)=melee / 中=issen or shot / 遠=shot」)。
- *
- * `intent` は decideGhost が返した action。**間合いの取り方は台帳のプロファイルが決めている**ので、
- * ここは「その間合いで何を出すか」だけを決める薄い層にする(意思決定を二重に持たない)。
- *  - 近(preferredDist 以内) … 近接。
- *  - 中(一閃の射程内)     … 近接意図なら一閃確定、それ以外は一閃/銃撃の抽選(上の★)。
- *  - 遠                    … 銃撃。
- * `rand01` は [0,1) の乱数(テストで固定できるよう引数注入)。
- */
-export const pickPhantomMove = (
-  dist: number, preferredDist: number, intent: GhostDecision['action'], rand01: number = Math.random(),
-): PhantomMove => {
-  if (dist <= preferredDist) return 'gp-melee';
-  if (dist <= GP_T.issen.reach) return (intent === 'melee' || rand01 < ISSEN_MID_CHANCE) ? 'gp-issen' : 'gp-shot';
-  return 'gp-shot';
-};
-
-/**
- * 一閃の踏み込みで**このフレームに居るべき位置**(起点からのオフセット)。
- * 距離は帯の長さ×`issenTravelFrac`。時間カーブは加速→減速(慣性MUST)。
- */
-export const phantomIssenOffsetPx = (t01: number): number =>
-  phantomEase(t01) * GP_T.issen.reach * GP_T.issenTravelFrac;
+/** いま撃てるか(=頭脳へ渡す銃射程。撃てないなら0で「銃を選ばせない」)。 */
+const phantomGunRangePx = (s: PhantomTickState): number =>
+  s.gun && !s.reloadingWeaponId && (s.gun.magazine ?? 0) > 0
+    ? zoomedGunRange(RANGE_BY_CATEGORY[s.gun.ammoType ?? 'handgun'])
+    : 0;
 
 // =================================================================================================
 // store を触るヘルパ(bountyTick.ts と同じ作法)
@@ -247,66 +240,30 @@ const resolveMove = (nx: number, ny: number, e: Enemy): { x: number; y: number }
   return clampRectToPlayableArea(collided.x, collided.y, e.width, e.height, playableCtx());
 };
 
-/** 帯(カプセル)の当たり判定を1件積む(bountyTick.hitCapsule と同型)。 */
-const hitCapsule = (
-  phantom: Enemy, fx: number, fy: number, tx: number, ty: number, halfW: number, damage: number,
-  knockback?: { distPx: number; ms: number },
-): void => {
-  useGameStore.setState(state => ({
-    pumpkinBlasts: [...state.pumpkinBlasts, {
-      x: (fx + tx) / 2, y: (fy + ty) / 2, radius: halfW, damage, enemyId: phantom.id,
-      capsule: { fx, fy, tx, ty, halfWidth: halfW },
-      ...(knockback ? { kbSpeed: knockbackSpeedFor(knockback.distPx, knockback.ms), kbMs: knockback.ms } : {}),
-    }],
-  }));
-};
-
 /**
- * 気絶・拘束・浮き・ノックバックのいずれかが有効か(bountyTick.isFrozen と同型)。
- * bossFullStunUntil/stunUntil/rootUntil は gameTime基準、liftUntil/knockbackUntil は Date.now基準
+ * 動きを止める効果(気絶・拘束・浮き)。
+ * ★**通常被弾のノックバック(knockbackUntil)は入れない**(v6裁定1): プレイヤーが被弾しても
+ * 行動が止まらないのと同条件=「殴り続けても止まらない」。押し道具の shove だけは下で別に扱う。
+ * bossFullStunUntil/stunUntil/rootUntil は gameTime基準、liftUntil は Date.now基準
  * ——**時計が違う**ので引数を2本受け取る(ENGINEERING_NOTES.md「時計の混在」)。
  */
 const isFrozen = (e: Enemy, newGameTime: number, nowMs: number): boolean =>
   (e.bossFullStunUntil !== undefined && newGameTime < e.bossFullStunUntil)
   || (e.stunUntil !== undefined && newGameTime < e.stunUntil)
   || (e.rootUntil !== undefined && newGameTime < e.rootUntil)
-  || (e.liftUntil !== undefined && nowMs < e.liftUntil)
-  || (e.knockbackUntil !== undefined && nowMs < e.knockbackUntil);
+  || (e.liftUntil !== undefined && nowMs < e.liftUntil);
 
 /**
- * カウンター成立の演出+報酬(bountyTick.bountyCounterHit と同型・**同じ共通処理を通す**)。
- * ここを自前に書き下ろすのではなく既存の並びを写しているのは、CDリファンド(counter-master)・
- * 覚醒バフ・確定クリ反撃・体勢値('counter' impact)といった「カウンターの取り分」を
- * 1つも落とさないため。体勢値は damageEnemy の postureImpact='counter' 経由で積まれる。
+ * 移動速度に掛かる鈍足。★**クリティカル由来(bossSlowUntil)は幻影では無視する**(v6・D4):
+ * 「クリで動きが半減する」はボスの文法で、プレイヤーには無い=同条件にならない。
+ * 一方 **グラビティ/アイスショットの鈍足は残す**(これはプレイヤーの攻撃効果=当たれば効く)。
+ * クリのダメージ倍率側は damageEnemy が持つので、プレイヤー弾のクリはちゃんと痛いまま。
  */
-const phantomCounterHit = (phantom: Enemy, hx: number, hy: number, sfx: PhantomSfx): void => {
-  notifyCounterHit();
-  notifyMoveCounter();
-  const g = useGameStore.getState();
-  const cp = g.player;
-  const pnow = Date.now();
-  g.addMeleeFinishCombo(1);
-  sfx.counter();
-  g.spawnGlow(hx, hy, GLOW_R_L, 'rgba(56,189,248,', 360);
-  g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
-  g.markMeleeSwingFx();
-  g.spawnRing(hx, hy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-  g.spawnBurst(hx, hy, '#38bdf8', 14);
-  g.spawnCallout(hx, hy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-  useGameStore.setState(stt => ({ player: {
-    ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
-    counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
-    ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
-  } }));
-  const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT);
-  const g2 = useGameStore.getState();
-  g2.damageEnemy(phantom.id, dmg, false, true, false, 'other', 'player', 'counter');
-  recordCritHit('guaranteed', true); // §7-11c(4): カウンター反撃(確定クリ)の計測口。幻影はisBossType編入済みなので対ボス=true(v0.25.3632・監査小6)
-  g2.spawnDamageNumber(phantom.x + phantom.width / 2, phantom.y, dmg, true);
-  sfx.reward();
-  g2.spawnRing(hx, hy, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
-  g2.spawnBurst(hx, hy, '#fde047', 10);
-  g2.spawnGlow(hx, hy, 34, 'rgba(253,224,71,', 240);
+const phantomSlowMult = (e: Enemy, gameTime: number): number => {
+  const grav = (e.gravitySlowUntil !== undefined && gameTime < e.gravitySlowUntil) ? GRAVITY_SHOT_BOSS_SLOW_MULT : 1;
+  const ice = (e.iceSlowUntil !== undefined && gameTime < e.iceSlowUntil)
+    ? Math.max(0, 1 - (e.iceSlowPct ?? 0)) : 1;
+  return Math.min(grav, ice);
 };
 
 // =================================================================================================
@@ -314,9 +271,8 @@ const phantomCounterHit = (phantom: Enemy, hx: number, hy: number, sfx: PhantomS
 // =================================================================================================
 /**
  * プレイヤーを decideGhost が読める「疑似 Enemy」にする。
- *
- * **型は 'zombie'** にしてある(見た目にも判定にも一切使わない・decideGhost 内で `isBossType` の
- * 分岐に落ちないようにするため)。この個体は store には**入れない**=盤面に存在しない一時オブジェクト。
+ * **型は 'zombie'**(見た目にも判定にも使わない・decideGhost 内で isBossType の分岐に落ちないため)。
+ * この個体は store には**入れない**=盤面に存在しない一時オブジェクト。
  */
 const playerAsTarget = (p: Player): Enemy => ({
   id: 'gp-target-player',
@@ -326,7 +282,7 @@ const playerAsTarget = (p: Player): Enemy => ({
 });
 
 /** 矩形の縁までの距離(プレイヤーと同じ AABB 最近点。decideGhost の meleeDist 注入口へ渡す)。 */
-const edgeDistTo = (cx: number, cy: number, r: { x: number; y: number; width: number; height: number }): number => {
+export const edgeDistTo = (cx: number, cy: number, r: { x: number; y: number; width: number; height: number }): number => {
   const nx = Math.max(r.x, Math.min(cx, r.x + r.width));
   const ny = Math.max(r.y, Math.min(cy, r.y + r.height));
   return Math.hypot(cx - nx, cy - ny);
@@ -335,6 +291,9 @@ const edgeDistTo = (cx: number, cy: number, r: { x: number; y: number; width: nu
 /**
  * 幻影の1tickぶんの意思決定。**decideGhost をそのまま呼ぶ**(自前ステアを書かない)。
  * 渡すのは「プレイヤー=狙う相手」「プレイヤーの弾=避ける脅威」だけ。
+ *
+ * ★弾回避(v4): `botSkill.projectileDodge` は1行目 `if (!p.hostile) return null;` で
+ * プレイヤー弾を全部捨てる(テストボット共用なので触らない)。**幻影側で hostile を立てて写す**。
  */
 export const decidePhantom = (
   phantom: Enemy, s: PhantomTickState, player: Player, projectiles: readonly Projectile[],
@@ -361,14 +320,14 @@ export const decidePhantom = (
     player: { x: phantom.x, y: phantom.y, width: phantom.width, height: phantom.height },
     enemies: [target],
     boundBossId: target.id,
-    // **プレイヤーの弾だけ**を脅威として渡す(自分の弾を避けない)。
-    projectiles: projectiles.filter(p => !p.hostile),
+    // **プレイヤーの弾だけ**を脅威として渡し、hostile を立てて写す(上の★)。
+    projectiles: projectiles.filter(p => !p.hostile).map(p => ({ ...p, hostile: true })),
     meleeDist: (cx, cy, e) => edgeDistTo(cx, cy, e),
     profile,
     weapon: {
-      gunDamage: phantomShotDamage(),
-      gunIntervalMs: GP_T.shot.windup + GP_T.shot.gapMs * GP_T.shot.count + GP_T.shot.recover,
-      gunRangePx: GP_T.shot.range,
+      gunDamage: s.gun?.damage ?? 0,
+      gunIntervalMs: s.gun ? effectiveFireCooldown(s.gun, gunOwner(s)) : 500,
+      gunRangePx: phantomGunRangePx(s),
       meleeDamage: GP_T.melee.damage,
     },
     gameTime,
@@ -377,72 +336,95 @@ export const decidePhantom = (
 };
 
 // =================================================================================================
-// 技(bossState 機械)
+// 攻撃(即発。予告も硬直も無い=プレイヤーと同条件)
 // =================================================================================================
-/** 溜めの開始(3技共通の入口)。予告の2点(aiFrom→aiTarget)は**判定と同じ値**を書く。 */
-const beginMove = (
-  move: PhantomMove, phantom: Enemy, s: PhantomTickState, newGameTime: number,
-  pcx: number, pcy: number, bcx: number, bcy: number, sfx: PhantomSfx, patch: Partial<Enemy>,
+/**
+ * 近接を1回振る。**判定はこの瞬間の1回だけ**(即発ミラー)。
+ * 重なり判定式は共有純関数 `distToBandRect(点, 始点, 終点, halfWidth) <= プレイヤー半径`
+ * ——counterReach / combatTick と同じ1本(写経しない)。
+ *
+ * ★汎用爆風(applyPumpkinBlastDamage)は使わない: ①全画面オレンジフラッシュ+リングが判定と
+ *   一致しない ②爆風経路の帯はプレイヤーがカウンターで弾ける=裁定「カウンターは幻影に成立
+ *   しない」が裏口から破れる(GHOST_BOSS.md v6 2.)。
+ */
+const swingPhantomMelee = (
+  bcx: number, bcy: number, player: Player, sfx: PhantomSfx, patch: Partial<Enemy>,
+  newGameTime: number,
 ): void => {
+  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const ang = Math.atan2(pcy - bcy, pcx - bcx);
-  patch.aiFromX = bcx; patch.aiFromY = bcy;
-  patch.bossWindupStartAt = newGameTime;
-  sfx.alert();
-  if (move === 'gp-melee') {
-    patch.aiTargetX = bcx + Math.cos(ang) * GP_T.melee.reach;
-    patch.aiTargetY = bcy + Math.sin(ang) * GP_T.melee.reach;
-    patch.bossState = 'gp-melee-windup';
-    patch.bossStateUntil = newGameTime + GP_T.melee.windup;
-    s.meleeHitFired = false;
-    return;
-  }
-  if (move === 'gp-issen') {
-    // 一閃の終点も**行ける帯へクランプ**してから焼き付ける(帯の外へ斬り抜けない)。
-    const rawTx = bcx + Math.cos(ang) * GP_T.issen.reach;
-    const rawTy = bcy + Math.sin(ang) * GP_T.issen.reach;
-    const c = clampRectToPlayableArea(
-      rawTx - phantom.width / 2, rawTy - phantom.height / 2, phantom.width, phantom.height, playableCtx(),
-    );
-    patch.aiTargetX = c.x + phantom.width / 2;
-    patch.aiTargetY = c.y + phantom.height / 2;
-    patch.bossState = 'gp-issen-windup';
-    patch.bossStateUntil = newGameTime + GP_T.issen.windup;
-    s.issenHitFired = false;
-    return;
-  }
-  // 銃撃: 構えの向きだけ焼く(赤い図形は持たない=弾そのものが予告)。
-  patch.aiTargetX = pcx;
-  patch.aiTargetY = pcy;
-  patch.bossState = 'gp-shot-windup';
-  patch.bossStateUntil = newGameTime + GP_T.shot.windup;
-  s.shotsRemaining = GP_T.shot.count;
+  const tx = bcx + Math.cos(ang) * GP_T.melee.reach;
+  const ty = bcy + Math.sin(ang) * GP_T.melee.reach;
+  patch.gpSwingAt = newGameTime;
+  patch.gpSwingAngle = ang;
+  sfx.swing();
+  const playerRadius = Math.max(player.width, player.height) / 2;
+  if (distToBandRect({ x: pcx, y: pcy }, { x: bcx, y: bcy }, { x: tx, y: ty }, GP_T.melee.halfWidth) > playerRadius) return;
+  // fromX/fromY を渡さないとプレイヤーのノックバックが出ない(GHOST_BOSS.md 監査4周目#1)。
+  const landed = useGameStore.getState().damagePlayer(
+    GP_T.melee.damage, GUARDIAN_PHANTOM_MELEE_SOURCE, bcx, bcy, GUARDIAN_PHANTOM_TYPE,
+  );
+  // 被弾SEはここで鳴らす: damagePlayer 直呼びは「本当に何も出ない」前例がある(gameStore の注記)。
+  if (landed) sfx.hurt();
 };
 
-/** 弾を1発撃つ(全ボス共通の赤い二重丸=絵替えしない)。 */
-const fireShot = (phantom: Enemy, bcx: number, bcy: number, sfx: PhantomSfx): void => {
+/** 弾を1発撃つ(全ボス共通の赤い二重丸=絵替えしない)。飛翔特性はプレイヤーの実弾と同じ共通ヘルパ。 */
+const firePhantomShot = (
+  phantom: Enemy, s: PhantomTickState, bcx: number, bcy: number, sfx: PhantomSfx, patch: Partial<Enemy>,
+  newGameTime: number, rand: () => number,
+): void => {
+  const gun = s.gun;
+  // 「リロード中/マガジン0は撃たない」(守護霊=プレイヤーと同じ息継ぎ)。頭脳側でも射程0で
+  // 撃たせない形にしてあるが、**発射の入口でも閉じる**(2箇所のどちらが先に変わっても弾が漏れない)。
+  if (!gun || s.reloadingWeaponId !== '' || (gun.magazine ?? 0) <= 0) return;
   const st = useGameStore.getState();
   const p = st.player;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const flight = projectileFlightStats(gun);
+  // クリ(台帳武器が実際に持つ確率)も撃つ=同条件。弾の見た目は変えない(共通の赤い二重丸)。
+  const crit = rand() < (gun.critChance ?? 0);
   st.addProjectile(createEnemyProjectile(
     phantom, p, pcx, pcy, bcx, bcy,
-    { speed: GP_T.shot.speed, damage: phantomShotDamage(), size: GP_T.shot.size },
+    { speed: flight.speed, damage: Math.max(1, Math.round(gun.damage * (crit ? CRIT_DAMAGE_MULT : 1))), size: flight.size },
   ));
-  sfx.fire();
+  s.gun = { ...gun, magazine: Math.max(0, (gun.magazine ?? 0) - 1), lastFired: Date.now() };
+  patch.gpShotAt = newGameTime;
+  patch.gpShotAngle = Math.atan2(pcy - bcy, pcx - bcx);
+  sfx.shot(gun.category ?? 'handgun');
 };
 
-/** 硬直へ入る(共通)。休みは硬直明けから数えるので、ここでは `nextMoveAt` を触らない。 */
-type PhantomRecoverState = 'gp-melee-recover' | 'gp-shot-recover' | 'gp-issen-recover';
-const toRecover = (state: PhantomRecoverState, ms: number, newGameTime: number, patch: Partial<Enemy>): void => {
-  patch.bossState = state;
-  patch.bossStateUntil = newGameTime + ms;
-};
-
-/** 中立(chase)へ戻す(共通)。硬直明け・中断のどちらもここを通す。 */
-const toChase = (s: PhantomTickState, newGameTime: number, patch: Partial<Enemy>): void => {
-  cancelPhantomTechnique(s);
-  patch.bossState = 'chase';
-  patch.bossStateUntil = undefined;
-  s.nextMoveAt = newGameTime + GP_T.restMs;
+/**
+ * パリィ成立の合図(gameStore の phantomGate が立てた `gpParriedAt`)を消費して、
+ * **近接周期を無視して1回だけ即反撃**する(D3)。反撃後は周期タイマーをリセットする。
+ */
+const consumePhantomParry = (
+  phantom: Enemy, s: PhantomTickState, player: Player, bcx: number, bcy: number,
+  sfx: PhantomSfx, patch: Partial<Enemy>, newGameTime: number,
+): boolean => {
+  const at = phantom.gpParriedAt;
+  if (at === undefined || at <= s.lastParryConsumedAt) return false;
+  s.lastParryConsumedAt = at;
+  sfx.parry();
+  const g = useGameStore.getState();
+  // 青白いスパーク(既存プールのみ・新規素材なし)。
+  g.spawnRing(bcx, bcy, 10, 52, 'rgba(191,219,254,0.95)', 3, 260);
+  g.spawnBurst(bcx, bcy, '#bfdbfe', 12);
+  // プレイヤーを小さく弾く(弾かれた手応え)。距離・時間は設計書に指定が無いので叩き台。
+  {
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const dl = Math.max(0.001, Math.hypot(pcx - bcx, pcy - bcy));
+    const spd = knockbackSpeedFor(PHANTOM_PARRY_SHOVE_PX, PHANTOM_PARRY_SHOVE_MS);
+    useGameStore.setState(stt => ({ player: {
+      ...stt.player,
+      knockbackVx: ((pcx - bcx) / dl) * spd,
+      knockbackVy: ((pcy - bcy) / dl) * spd,
+      knockbackUntil: Date.now() + PHANTOM_PARRY_SHOVE_MS,
+      knockbackMs: PHANTOM_PARRY_SHOVE_MS,
+    } }));
+  }
+  swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime);
+  s.nextMeleeAt = newGameTime + PHANTOM_MELEE_PERIOD_MS;
+  return true;
 };
 
 // =================================================================================================
@@ -451,8 +433,9 @@ const toChase = (s: PhantomTickState, newGameTime: number, patch: Partial<Enemy>
 /**
  * 幻影1体を1tick進める。
  *
- * @param newGameTime シミュ時刻(ms)。`bossState*` / `nextMoveAt` はこの時計。
- * @param nowMs       `Date.now()`。`counterWindowEnd` / `knockbackUntil` / decideGhost の内部CDはこの時計。
+ * @param newGameTime シミュ時刻(ms)。周期タイマー・gp*打刻はこの時計。
+ * @param nowMs       `Date.now()`。リロード・shove窓・decideGhost の内部CDはこの時計。
+ * @param rand        [0,1) の乱数(テストで固定できるよう注入口。既定 Math.random)。
  */
 export const runPhantomTick = (
   phantom: Enemy,
@@ -462,85 +445,42 @@ export const runPhantomTick = (
   moveSpeedMult: number,
   nowMs: number,
   sfx: PhantomSfx = NOOP_PHANTOM_SFX,
-  counterEnabled = true,
+  rand: () => number = Math.random,
 ): void => {
   if (s.activeId !== phantom.id) { resetPhantomRunState(s); s.activeId = phantom.id; }
 
   const st0 = useGameStore.getState();
   const player = st0.player;
-  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const bcx = phantom.x + phantom.width / 2, bcy = phantom.y + phantom.height / 2;
-  const dist = Math.hypot(pcx - bcx, pcy - bcy);
   const patch: Partial<Enemy> = {};
 
-  // ---- 気絶・拘束・浮き・ノックバック・紫: 技を中断して止まる ------------------------------------
-  // (bountyTick と同じ扱い。毎フレーム 'chase' へ押し出し続けることで、①予告がその場で消える
-  //  ②解除の瞬間に真新しい休みから再開する=期限切れの溜めがその場で即着弾する事故を防ぐ。)
-  if (isFrozen(phantom, newGameTime, nowMs)) {
-    cancelPhantomTechnique(s);
-    applyPatch(phantom.id, { bossState: 'chase', bossStateUntil: undefined });
-    s.nextMoveAt = newGameTime + GP_T.restMs;
-    return;
-  }
+  // ---- 気絶・拘束・浮き: 何もしない(★ノックバックは含めない=殴っても止まらない) ----------------
+  if (isFrozen(phantom, newGameTime, nowMs)) { applyPatch(phantom.id, patch); return; }
 
-  // ---- カウンター成立(★宣言だけでは成立しない=ここが成立側の配線) -------------------------------
-  // 掟: 成立域は「赤い予告の図形」。どの州がどの図形かは counterReach.ts の宣言表が正本で、
-  // 寸法は phantomScript.ts をその場で読む(写経した if を増やさない)。
-  const stNow = phantom.bossState ?? 'chase';
-  let countered = false;
-  if (counterEnabled && isCounterablePhase(stNow, GUARDIAN_PHANTOM_WINDUP_STATES, GUARDIAN_PHANTOM_RECOVER_STATES)) {
-    const inReach = inCounterReach(
-      counterReachShapeFor(`gp:${stNow}`, {
-        bcx, bcy, pcx, pcy,
-        aiFromX: phantom.aiFromX, aiFromY: phantom.aiFromY,
-        aiTargetX: phantom.aiTargetX, aiTargetY: phantom.aiTargetY,
-      }),
-      { x: player.x, y: player.y, width: player.width, height: player.height },
-      { x: phantom.x, y: phantom.y, width: phantom.width, height: phantom.height },
-    );
-    // `counterWindowEnd` は **Date.now基準**(gameTime と比べない=時計の混在の掟)。
-    if (inReach && nowMs <= player.counterWindowEnd) {
-      phantomCounterHit(phantom, bcx, bcy, sfx);
-      countered = true;
-      // 成立=技を中断してノックバック相当の硬直へ落とす。ノックバック自体は上の共通処理
-      // (damageEnemy → 既存のカウンター経路)が積むので、ここは州を戻すだけでよい。
-      patch.bossState = 'gp-stagger';
-      patch.bossStateUntil = newGameTime + GP_T.restMs;
-      cancelPhantomTechnique(s);
-      s.nextMoveAt = newGameTime + GP_T.restMs;
-    }
-  }
+  // ---- パリィの即反撃(周期を無視した割り込み) ---------------------------------------------------
+  const parried = consumePhantomParry(phantom, s, player, bcx, bcy, sfx, patch, newGameTime);
 
-  if (countered) { applyPatch(phantom.id, patch); return; }
+  // ---- 銃の状態(リロード)を進める --------------------------------------------------------------
+  stepPhantomGun(s, nowMs);
 
-  const stNow2 = phantom.bossState ?? 'chase';
-  const until = phantom.bossStateUntil ?? newGameTime;
-  const fx = phantom.aiFromX ?? bcx, fy = phantom.aiFromY ?? bcy;
-  const tx = phantom.aiTargetX ?? bcx, ty = phantom.aiTargetY ?? bcy;
+  // ---- 頭脳(★技中の概念が無くなったので毎tick呼ぶ=弾回避・危険記憶が常時効く) -------------------
+  const decision = decidePhantom(phantom, s, player, st0.projectiles, newGameTime, nowMs);
+  s.ghost.facing = decision.facing;
+  s.ghost.lastShotAt = decision.lastShotAt;
+  s.ghost.lastMeleeAt = decision.lastMeleeAt;
+  s.ghost.counterPendingAt = decision.counterPendingAt;
+  s.ghost.counterWillAttempt = decision.counterWillAttempt;
+  s.ghost.lastCounterAttemptAt = decision.lastCounterAttemptAt;
+  s.ghost.dangerSeenAt = decision.dangerSeenAt;
+  s.ghost.dangerLastAt = decision.dangerLastAt;
+  s.ghost.orbitSign = decision.orbitSign;
 
-  // ---- カウンターで崩された後の硬直(gp-stagger) --------------------------------------------------
-  if (stNow2 === 'gp-stagger') {
-    if (newGameTime >= until) { patch.bossState = 'chase'; patch.bossStateUntil = undefined; }
-    applyPatch(phantom.id, patch);
-    return;
-  }
-
-  // ---- 中立(chase): 頭脳に従って動き、休みが明けていれば技を選ぶ ---------------------------------
-  if (stNow2 === 'chase') {
-    const decision = decidePhantom(phantom, s, player, st0.projectiles, newGameTime, nowMs);
-    // 次tickへ持ち越す自己状態(全て Date.now 基準の世界)。
-    s.ghost.facing = decision.facing;
-    s.ghost.lastShotAt = decision.lastShotAt;
-    s.ghost.lastMeleeAt = decision.lastMeleeAt;
-    s.ghost.counterPendingAt = decision.counterPendingAt;
-    s.ghost.counterWillAttempt = decision.counterWillAttempt;
-    s.ghost.lastCounterAttemptAt = decision.lastCounterAttemptAt;
-    s.ghost.dangerSeenAt = decision.dangerSeenAt;
-    s.ghost.dangerLastAt = decision.dangerLastAt;
-    s.ghost.orbitSign = decision.orbitSign;
-
-    // 移動: 頭脳の単位ベクトル × 速度。**必ず resolveMove(障害物→行ける帯)を通す。**
-    const dt = deltaTime * moveSpeedMult * bossSlowMult(phantom, newGameTime);
+  // ---- 移動 ---------------------------------------------------------------------------------------
+  // 押し道具(鞭・シールドバッシュ)の shove 窓の間は**自分の移動で x/y を上書きしない**
+  // =押されるがままになる(プレイヤーも押し合いの対象になる世界=同条件の範囲内)。
+  const shoved = nowMs < (phantom.knockbackShoveUntil ?? 0);
+  if (!shoved) {
+    const dt = deltaTime * moveSpeedMult * phantomSlowMult(phantom, newGameTime);
     if (decision.moveX !== 0 || decision.moveY !== 0) {
       const spd = phantom.speed * dt;
       const c = resolveMove(phantom.x + decision.moveX * spd, phantom.y + decision.moveY * spd, phantom);
@@ -550,120 +490,21 @@ export const runPhantomTick = (
     } else {
       patch.vx = 0; patch.vy = 0;
     }
-
-    if (decision.action !== 'none' && newGameTime >= s.nextMoveAt) {
-      beginMove(
-        pickPhantomMove(dist, phantomProfile().preferredDist, decision.action),
-        phantom, s, newGameTime, pcx, pcy, bcx, bcy, sfx, patch,
-      );
-    }
-    applyPatch(phantom.id, patch);
-    return;
   }
 
-  // ---- 近接 gp-melee ------------------------------------------------------------------------------
-  if (stNow2 === 'gp-melee-windup') {
-    patch.vx = 0; patch.vy = 0;
-    if (newGameTime >= until) {
-      patch.bossState = 'gp-melee-active';
-      patch.bossStateUntil = newGameTime + GP_T.melee.active;
-    }
-    applyPatch(phantom.id, patch);
-    return;
-  }
-  if (stNow2 === 'gp-melee-active') {
-    if (!s.meleeHitFired) {
-      s.meleeHitFired = true;
-      // 判定=赤帯とまったく同じ2点・同じ半幅(phantomScript の1箇所を両方が読む)。
-      hitCapsule(phantom, fx, fy, tx, ty, GP_T.melee.halfWidth, GP_T.melee.damage, { distPx: 90, ms: 200 });
-      sfx.fire();
-    }
-    if (newGameTime >= until) toRecover('gp-melee-recover', GP_T.melee.recover, newGameTime, patch);
-    applyPatch(phantom.id, patch);
-    return;
-  }
-  if (stNow2 === 'gp-melee-recover') {
-    patch.vx = 0; patch.vy = 0;
-    if (newGameTime >= until) toChase(s, newGameTime, patch);
-    applyPatch(phantom.id, patch);
-    return;
+  // ---- 銃撃(bossState 機械から独立。プレイヤーが移動しながら撃つのと同じ層) ----------------------
+  if (decision.action === 'shoot') firePhantomShot(phantom, s, bcx, bcy, sfx, patch, newGameTime, rand);
+
+  // ---- 近接(即発ミラー・自前周期タイマー単独) -----------------------------------------------------
+  // ★`decision.action==='melee'` は門番にしない: decideGhost が melee 意図を返すのは縁74px以内だけで、
+  //   reach160の外側が死ぬ(GHOST_BOSS.md v6 2.)。距離は decideGhost へ注入したのと同じ edgeDistTo。
+  if (!parried
+    && newGameTime >= s.nextMeleeAt
+    && edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach) {
+    swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime);
+    s.nextMeleeAt = newGameTime + PHANTOM_MELEE_PERIOD_MS;
   }
 
-  // ---- 銃撃 gp-shot -------------------------------------------------------------------------------
-  if (stNow2 === 'gp-shot-windup') {
-    patch.vx = 0; patch.vy = 0;
-    if (newGameTime >= until) {
-      patch.bossState = 'gp-shot-active';
-      // 3連ぶんの実行時間。次弾の時刻は「今」から数える(1発目は溜め明けに即出る)。
-      patch.bossStateUntil = newGameTime + GP_T.shot.gapMs * GP_T.shot.count;
-      s.shotsRemaining = GP_T.shot.count;
-      s.nextShotAt = newGameTime;
-    }
-    applyPatch(phantom.id, patch);
-    return;
-  }
-  if (stNow2 === 'gp-shot-active') {
-    patch.vx = 0; patch.vy = 0;
-    if (s.shotsRemaining > 0 && newGameTime >= s.nextShotAt) {
-      fireShot(phantom, bcx, bcy, sfx);
-      s.shotsRemaining -= 1;
-      s.nextShotAt = newGameTime + GP_T.shot.gapMs;
-      patch.lastRangedShotAt = newGameTime; // 描画専用の合図(構え・反動)
-    }
-    if (s.shotsRemaining <= 0 && newGameTime >= until) {
-      toRecover('gp-shot-recover', GP_T.shot.recover, newGameTime, patch);
-    }
-    applyPatch(phantom.id, patch);
-    return;
-  }
-  if (stNow2 === 'gp-shot-recover') {
-    patch.vx = 0; patch.vy = 0;
-    if (newGameTime >= until) toChase(s, newGameTime, patch);
-    applyPatch(phantom.id, patch);
-    return;
-  }
-
-  // ---- 一閃 gp-issen ------------------------------------------------------------------------------
-  if (stNow2 === 'gp-issen-windup') {
-    patch.vx = 0; patch.vy = 0;
-    if (newGameTime >= until) {
-      // 踏み込みの起点と向きをこのフレームで焼き付ける(以後は追尾しない=赤ライン=判定の掟)。
-      const dl = Math.max(0.001, Math.hypot(tx - fx, ty - fy));
-      s.issenX0 = phantom.x; s.issenY0 = phantom.y;
-      s.issenUx = (tx - fx) / dl; s.issenUy = (ty - fy) / dl;
-      s.issenHitFired = false;
-      patch.bossState = 'gp-issen-active';
-      patch.bossStateUntil = newGameTime + GP_T.issen.active;
-    }
-    applyPatch(phantom.id, patch);
-    return;
-  }
-  if (stNow2 === 'gp-issen-active') {
-    if (!s.issenHitFired) {
-      s.issenHitFired = true;
-      // 判定はライン全体に1回(赤ラインの見た目=判定)。踏み込みで通り抜ける帯そのもの。
-      hitCapsule(phantom, fx, fy, tx, ty, GP_T.issen.halfWidth, GP_T.issen.damage, { distPx: 120, ms: 220 });
-      sfx.fire();
-    }
-    // 慣性(MUST): 加速→減速のイーズで線上を進む(等速で始まって瞬間停止しない)。
-    const t01 = 1 - Math.max(0, Math.min(1, (until - newGameTime) / GP_T.issen.active));
-    const off = phantomIssenOffsetPx(t01);
-    const c = resolveMove(s.issenX0 + s.issenUx * off, s.issenY0 + s.issenUy * off, phantom);
-    patch.x = c.x; patch.y = c.y;
-    patch.vx = s.issenUx * phantom.speed; patch.vy = s.issenUy * phantom.speed;
-    if (newGameTime >= until) toRecover('gp-issen-recover', GP_T.issen.recover, newGameTime, patch);
-    applyPatch(phantom.id, patch);
-    return;
-  }
-  if (stNow2 === 'gp-issen-recover') {
-    patch.vx = 0; patch.vy = 0;
-    if (newGameTime >= until) toChase(s, newGameTime, patch);
-    applyPatch(phantom.id, patch);
-    return;
-  }
-
-  // 未知の州(将来の追加漏れ)は中立へ戻す=固まったまま残さない。
-  toChase(s, newGameTime, patch);
   applyPatch(phantom.id, patch);
 };
 

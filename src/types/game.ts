@@ -559,6 +559,24 @@ export interface Enemy {
   // ボスがクリティカルで「痺れる」代わりに**動きが半減**する窓の終了時刻(gameTime基準・v0.25.2422)。
   // 通常敵の stunUntil(完全停止)とは別概念。ボス以外には設定されない。
   bossSlowUntil?: number;
+  // ---- research/GHOST_BOSS.md v6(守護霊ボス「幻影」)。**全て gameTime 基準**(時計を混ぜない)。
+  //      guardian-phantom 以外には一切書き込まれない(phantomGate が型で閉じる)。
+  /** 直近に**有効な**ダメージが入った時刻。ここから INVULN_MS の間は被弾無敵(プレイヤーと同条件)。 */
+  gpHitAt?: number;
+  /** 無敵で無効化した打撃の時刻(描画=小さな白点滅の起点。ヒットSEは鳴らさない)。 */
+  gpBlockedAt?: number;
+  /** パリィ成立の時刻。**次tickの phantomTick が消費**して即反撃を1回割り込ませる(ハンドシェイク)。 */
+  gpParriedAt?: number;
+  /** パリィの再発火が許される時刻。 */
+  gpParryCdUntil?: number;
+  /** 即発近接を振った時刻(描画=斬撃弧+踏み込みの起点)。 */
+  gpSwingAt?: number;
+  /** その振りの向き(rad)。判定に使ったカプセルと同じ角度を描画へ渡す。 */
+  gpSwingAngle?: number;
+  /** 銃を撃った時刻(描画=マズルフラッシュ+反動の起点)。 */
+  gpShotAt?: number;
+  /** その射撃の向き(rad)。 */
+  gpShotAngle?: number;
   // 連続ジャンプ(グレン専用・v0.25.2430)。3つの着地点を**溜め開始でまとめてロック**して持ち回る。
   // 平たい配列 [x1,y1,x2,y2,x3,y3](中心座標)。判定側と描画側が同じ配列を読む=図形と判定が必ず一致する。
   gTriJumpPts?: number[];
@@ -798,14 +816,10 @@ export interface Enemy {
     | 'mk-spin-windup' | 'mk-spin' | 'mk-spin-recover'
     | 'mk-suiu-windup' | 'mk-suiu-hop1' | 'mk-suiu-hop2' | 'mk-suiu-hop3' | 'mk-suiu-recover'
     | 'mk-boom-windup' | 'mk-boom-out' | 'mk-boom-back' | 'mk-boom-recover'
-    | 'mk-repose'
-    // research/GHOST_BOSS.md(守護霊ボス「幻影」・phantomTick.ts)。接頭辞 `gp-` は
-    // 既存の "ghost boss"(=守護霊が戦う相手)との逆義衝突を避けるための命名。
-    // gp-stagger = カウンターで崩された時の硬直(技を中断してここへ落ちる)。
-    | 'gp-melee-windup' | 'gp-melee-active' | 'gp-melee-recover'
-    | 'gp-shot-windup' | 'gp-shot-active' | 'gp-shot-recover'
-    | 'gp-issen-windup' | 'gp-issen-active' | 'gp-issen-recover'
-    | 'gp-stagger';
+    | 'mk-repose';
+    // research/GHOST_BOSS.md v6: 幻影(guardian-phantom)の `gp-*` 州は**全廃**した。
+    // 予告(windup)も硬直(recover)も持たない=プレイヤーと同じ即発なので、bossState を使わない
+    // (=幻影に対してプレイヤーのカウンターは成立しない。弾の打ち返しだけが残る、が v5/v6 の裁定)。
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   // PACING_PUZZLE.md §6.38 B2b(v6 C-1・変則ディレイの予告同期): 抽選した溜め時間が技ごとに変わる
   // 技(舞妓の毬の薙ぎ/毬回し=マルギット型2択ランダム)は、bossStateUntilだけでは実際の溜め長を

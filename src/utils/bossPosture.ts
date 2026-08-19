@@ -1,6 +1,6 @@
 import type { Enemy, EnemyType } from '../types/game';
 import { isEngageableBoss } from './bossEngagement';
-import { isBountyType } from './enemyUtils';
+import { isBountyType, isGuardianPhantom } from './enemyUtils';
 
 // 社長指示v0.25.3295「パンプキンなどの強敵にも紫システムだけ追加」: 交戦ボスに加え、この強敵2体
 // (isBossTypeだがボス交戦システム=カメラ/湧き制御を持たない)も体勢値→紫の完全気絶を持つ。
@@ -20,7 +20,12 @@ export type PostureSubject = Pick<Enemy, 'type' | 'colorTier'>;
  * 色で2種類の赤を作るとプレイヤーに説明できないため。
  */
 export const usesPostureSystem = (e: PostureSubject): boolean =>
-  isEngageableBoss(e.type) || POSTURE_ELITE_TYPES.has(e.type) || e.colorTier === 'red';
+  // ★research/GHOST_BOSS.md v5/v6(社長裁定「そもそも紫ゲージ無くす」): 幻影は**体勢値を持たない**。
+  // プレイヤーには体勢値が無いので、持たせると「全て同条件」が成立しない(紫の5秒フルスタンが
+  // 裁定「殴り続けても止まらない」を裏口から壊す)。ここ1箇所で外すと、紫ゲージUI・ブレイク・
+  // 紫の報酬予算・5倍処刑は全て postureBoss ガード経由で自動的に出なくなる。
+  !isGuardianPhantom(e.type)
+  && (isEngageableBoss(e.type) || POSTURE_ELITE_TYPES.has(e.type) || e.colorTier === 'red');
 
 export type BossPostureImpact = 'counter' | 'melee' | 'heavy' | 'gun-crit' | 'reflect';
 

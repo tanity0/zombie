@@ -465,3 +465,34 @@
    赤ライン分岐の撤去/モーション整理(ENEMY_MOTION_TABLE登録)
 5. 撤去リストの完全消化(counterReach/型/テスト/未使用import)+BOSS_HINTS改訂
 6. テスト6本+既存改訂/typecheck/lint
+
+---
+
+## 実装の記録(v6・v0.25.3639)
+
+実装地図1〜6を**全部**実装した。詳細は DEVELOPMENT_LOG.md v0.25.3639。
+
+- 新しい葉 `src/utils/phantomGate.ts`(無敵/パリィ・全値引数渡し・rand注入・幻影以外に恒等)。
+- `gameStore`: 7系統に `gatePhantomHit` を配線(damageEnemy / triggerCounter 3枝 / 分身 / 刀 / 鞭 /
+  スケボー、接触は素通り済み)。適用順=早期returnの直後・報酬予算と紅き夜補正より前。
+  無効化ヒットは slashAt / meleeHitEnemyIds / meleeDamageNumbers / lastHit のどれにも積まない。
+- `phantomTick`: 州機械・一閃・カウンター成立配線・phantomCounterHit を撤去し、
+  即発近接(周期=`GHOST_COUNTER_MELEE_PERIOD_MS`)+銃ミラー+パリィ消費+毎tick decidePhantom へ。
+- 撤去は完全消化(counterReach の gp 宣言と case、pixiScene の赤帯/赤ライン、phantomScript の
+  shot/issen/restMs/issenTravelFrac、types の gp 州 union、テストの gp 参照)。
+- 体勢値は `usesPostureSystem` から幻影を除外(1箇所)=紫ゲージ・ブレイク・報酬予算・5倍処刑が消える。
+
+### 設計書に指定が無くて実装側で埋めた値(叩き台・意図は変えていない)
+- **振りの絵の尺** `GUARDIAN_PHANTOM_TUNING.swingFxMs = 260ms`(判定は即発の1回。絵の尺だけ)。
+- **踏み込み/反動/マズル**(描画のみ): 踏み込み 22px / 反動 9px / マズル 120ms・34px・前方18px /
+  無効化の白点滅 140ms。全て両端で速度0のイーズ((1-cos)/2)=慣性MUST。
+- **パリィのプレイヤー小ノックバック**: 46px / 180ms(設計書は「小ノックバック」とだけ指定)。
+- **銃のクリ**: 台帳武器の `critChance` を引き、当たりは `CRIT_DAMAGE_MULT` 倍(弾の見た目は不変)。
+- **PhantomSfx の顔ぶれ**: 撤去リストは「alert/counter/reward を撤去し parry を追加」だが、
+  本文が要求する被弾SE(`player-damage`)と発砲SEの置き場が要るため `swing / shot / parry / hurt` の
+  4つにした(全て**既存キーの流用**=新規素材ゼロ、という条件は満たしている)。
+
+### ★未決事項(v6実装)
+- **HP**: v4の「HP=1200へ変更」は v6 が引き継ぐ節に含まれず、撤去リストも
+  「bossPractice.test の HP 定数参照=波及なし・触らない」としているため、**HP は 3000 のまま**にした。
+  被弾無敵(毎秒1発)が入ったので戦闘時間は伸びる。下げるなら社長裁定が要る(数値=仕様)。

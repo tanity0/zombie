@@ -32,7 +32,6 @@ import { HIDDEN_JORMUNGAND_TUNING as HB_JO } from './hiddenBossScript';
 import { MIMIR_BITE_RADIUS } from './bodyCenteredAoe';
 import { ANGEL_RAFI_TUNING as RF_T, ANGEL_ACRASIEL_TUNING as AC_T } from './angelScript';
 import { IDOL_TUNING } from './idolScript';
-import { GUARDIAN_PHANTOM_TUNING as GP_T } from './phantomScript';
 
 // =================================================================================================
 // 図形(shape)
@@ -128,16 +127,10 @@ export const COUNTER_REACH_DECL: Readonly<Record<string, CounterReachKind>> = {
   'bounty:mk-boom-back': 'circle',
   'bounty:mk-boom-recover': 'body',
 
-  // ---- 守護霊ボス「幻影」(phantomTick.ts・research/GHOST_BOSS.md) ----
-  // 州名の接頭辞は `gp-`(既存の "ghost boss" = 守護霊が戦う相手、との逆義衝突を避けるため)。
-  // 赤い予告=判定なので、近接も一閃も**帯**で成立する(体の重なりではない)。硬直は体。
-  'gp:gp-melee-windup': 'band',   // 近接=前方帯 160×40
-  'gp:gp-melee-recover': 'body',
-  'gp:gp-issen-windup': 'band',   // 一閃=赤ライン(帯 420×36)
-  'gp:gp-issen-recover': 'body',
-  // 銃撃(gp-shot)は**宣言しない**=カウンター可能州の一覧にも載せない(設計書の決定: 登録は
-  // melee/issen の溜め2種 + 硬直2種のみ)。弾そのものは全ボス共通の赤い二重丸なので、既存の
-  // 打ち返し文法(弾反射)がそのまま効く=専用の成立域は要らない。
+  // ---- 守護霊ボス「幻影」(research/GHOST_BOSS.md) ----
+  // ★v6で `gp:*` の宣言は**全撤去**した。裁定「予告無し・全て同じ」により幻影の攻撃は
+  // プレイヤーと同じ即発(windup/recover が存在しない)=**取る対象が無い**ので、
+  // カウンターは幻影には成立しない(仕様)。弾の打ち返しだけは共通の赤い二重丸で従来どおり効く。
 
   // ---- 裏ボス4体(useGameLoop.ts) ----
   'hidden:aim-burst': 'body',             // 弾3連=弾(赤い図形なし。走り込んで体で取るのが設計意図)
@@ -269,12 +262,7 @@ export const counterReachShapeFor = (key: string, ctx: CounterReachCtx): Counter
     case 'bounty:mk-boom-back':
       return { kind: 'circle', cx: ctx.ballX ?? tx, cy: ctx.ballY ?? ty, radius: MK_T.boom.hitRadius };
 
-    // ---- 守護霊ボス「幻影」(research/GHOST_BOSS.md) ----
-    // 寸法は技のテーブル(phantomScript.ts)をその場で読む=赤い予告と同じ数字(複製しない)。
-    case 'gp:gp-melee-windup':
-      return band(fx, fy, tx, ty, GP_T.melee.halfWidth);
-    case 'gp:gp-issen-windup':
-      return band(fx, fy, tx, ty, GP_T.issen.halfWidth);
+    // ---- 守護霊ボス「幻影」= v6で撤去(予告が存在しないのでカウンターの成立域も無い) ----
 
     // ---- 裏ボス ----
     case 'hidden:bite-windup':

@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3639',
+    items: [
+      '決闘「鴉(幻影)」を全面改修: 予告なし・プレイヤーと同じルール(被弾無敵・リロードの息継ぎ・'
+        + 'パリィ)で戦う対戦相手になりました。紫ゲージと赤い予告は出ません。',
+    ],
+  },
+  {
     version: '0.25.3638',
     items: [
       'ゲーム内容の変更はありません(開発資料: 幻影v2実装仕様v6が最終監査を通過。実装バッチ発注)。',
