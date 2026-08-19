@@ -152,6 +152,20 @@ export interface BountyBalanceTuning {
     /** 1発あたりのダメージ。 */
     damage: number;
   };
+  /** ★v0.25.3581(社長指示): 近距離台本「バックロール→高速弾→飛びかかり」。
+   *  ロールで距離を空け、速い弾を1発差し込み、そのまま跳びかかり(leap)へ繋ぐ。 */
+  rollCombo: {
+    /** 近距離取り掛かりでこの台本を引く確率(先に判定。残りを単発/3連発で分ける)。 */
+    chance: number;
+    /** バックロールの所要ms・下がる距離px(バス停のロールと同じ smoothstep 移動)。 */
+    rollMs: number;
+    rollDist: number;
+    /** 高速弾の予告ms(この頭で狙いを固定=追尾しない)と発射後の間ms。 */
+    shotWindup: number;
+    shotRecover: number;
+    /** 高速弾(弾の見た目は全ボス共通=赤い二重丸。速度だけ速い)。 */
+    shot: { speed: number; damage: number; size: number };
+  };
   /** 跳びかかり(輸入=pumpkin)。 */
   leap: { radius: number; windup: number; airMs: number; recover: number; damage: number };
 }
@@ -162,6 +176,13 @@ export const BOUNTY_BALANCE_TUNING: BountyBalanceTuning = {
   sweep: { range: 250, halfWidth: 40, windup: 750, damage: 18, recover: withRecoverFloor(900) },
   // ★v0.25.3580: 数値は全部叩き台(確率50%・幅40→30・2-3発目350ms・切り返し150ms・威力は単発と同じ)。
   sweepTriple: { chance: 0.5, halfWidth: 30, windup: [750, 350, 350], stepRecover: 150, damage: 18 },
+  // ★v0.25.3581: 数値は全部叩き台。ロールはバス停(140px/180ms)より大きめに引いて弾の間合いを作る。
+  // 弾速520=バス停の通常弾260の2倍(「高速弾」)。
+  rollCombo: {
+    chance: 0.34, rollMs: 300, rollDist: 190,
+    shotWindup: 250, shotRecover: 150,
+    shot: { speed: 520, damage: 10, size: 10 },
+  },
   // ★v0.25.3576: 跳びかかりは元pumpkin輸入(複製)だったが、ボスメーカーの実機チューニングで
   // **鋏専用の値に確定**した(貼り戻し)。以後pumpkinとは独立(bountyScript.test.tsも裁定値の固定へ変更)。
   leap: {

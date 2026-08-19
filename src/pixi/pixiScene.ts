@@ -15094,18 +15094,43 @@ export class PixiScene {
         }
         const ease = bs2 === 'leap-windup' ? weaponSpawnEase(BB_T.leap.windup * prog, Infinity) : { dy: 0, alphaMul: 1 };
         // 技表GO: 跳びかかり=頭上に掲げ→着地で閉じ+scissor-x。宙にいる間は開いたまま(widthMul一定)。
+        // ★v0.25.3581(社長指示「飛び掛かり時、ハサミは下を向いて」): 角度=真下(+π/2)。
+        // 開いた刃が下を向く=着地点へ挟みに行く絵。掲げ位置(頭上寄り)から下へ刃が伸びる。
         this.drawBountyWeapon(
           e.id, 'bounty-balance-scissors',
-          cx, cy - e.height * (bs2 === 'leap-air' ? 0.4 : 0.1) + ease.dy, 0, 160, 0.95 * ease.alphaMul, 1.5,
+          cx, cy - e.height * (bs2 === 'leap-air' ? 0.4 : 0.1) + ease.dy, Math.PI / 2, 160, 0.95 * ease.alphaMul, 1.5,
         );
         this.tickBountyScissorFlash(e.id, now);
       } else if (bs2 === 'leap-recover') {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const ease = weaponSpawnEase(Infinity, remain);
-        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy + ease.dy, 0, 160, 0.9 * ease.alphaMul, 1.0);
+        // ★v0.25.3581: 着地後も下向きのまま閉じる(挟み終わりの絵)。
+        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy + ease.dy, Math.PI / 2, 160, 0.9 * ease.alphaMul, 1.0);
         // 着地=閉じた瞬間に命中閃(着地円の中心=aiTargetX/Y。leap-windup/airと同じ着地点)。
         const lx = e.aiTargetX ?? cx, ly = e.aiTargetY ?? cy;
         this.triggerBountyScissorFlashOnce(e.id, `leap:${this.moveInstanceNo(e.id, bs2 ?? '')}`, lx, ly, 0, 1, now);
+        this.tickBountyScissorFlash(e.id, now);
+      } else if (bs2 === 'bb-backroll') {
+        // ★v0.25.3581 台本1手目: ロール中は鋏を閉じて手元に構える(移動は判定側が動かす)。
+        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy, aimAng, 160, 0.9, 1.0);
+        this.tickBountyScissorFlash(e.id, now);
+      } else if (bs2 === 'bb-quickshot-windup' || bs2 === 'bb-quickshot-recover') {
+        // ★v0.25.3581 台本2手目: 高速弾。溜め=固定した狙い(aiTarget)へ鋏を突き出して構え、
+        // 発射後(recover)=反動でわずかに引く(慣性)。弾自体は共通の赤い二重丸(判定側が撃つ)。
+        const qAng = Math.atan2((e.aiTargetY ?? cy) - cy, (e.aiTargetX ?? cx) - cx);
+        const qRemain = (e.bossStateUntil ?? gameTime) - gameTime;
+        let qOff = 0;
+        if (bs2 === 'bb-quickshot-windup') {
+          const qProg = Math.max(0, Math.min(1, 1 - qRemain / BB_T.rollCombo.shotWindup));
+          qOff = 14 * (1 - Math.pow(1 - qProg, 2)); // 突き出し(ease-out)
+        } else {
+          const qProg = Math.max(0, Math.min(1, 1 - qRemain / BB_T.rollCombo.shotRecover));
+          qOff = 14 - 24 * (1 - Math.pow(1 - qProg, 2)); // 反動で引く
+        }
+        this.drawBountyWeapon(
+          e.id, 'bounty-balance-scissors',
+          cx + Math.cos(qAng) * qOff, cy + Math.sin(qAng) * qOff, qAng, 160, 0.95, 1.0,
+        );
         this.tickBountyScissorFlash(e.id, now);
       } else if (e.type === 'bounty-maiko' && !e.dormant) {
         this.drawMaikoState(view, o, e, bs2, cx, cy, bfx, bfy, btx, bty, gameTime, now);

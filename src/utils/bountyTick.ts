@@ -340,6 +340,7 @@ const cancelBountyTechnique = (s: BountyTickState): void => {
 const BOUNTY_WINDUP_STATES: readonly string[] = [
   'br-push-windup', 'bm-charge-windup', 'bm-whip360-windup', 'bm-combo1-windup', 'bm-combo2-windup', 'bm-combo3-windup', 'bm-snipe-windup',
   'bb-sweep-windup', 'bb-triple1-windup', 'bb-triple2-windup', 'bb-triple3-windup', 'leap-windup', // triple=★v0.25.3580
+  'bb-quickshot-windup', // ★v0.25.3581(ロール台本の高速弾。ロール自体は移動=対象外・br-rollと同じ)
   'mk-naginata-windup', 'mk-naginata1-windup', 'mk-naginata2-windup', 'mk-spin-windup', 'mk-suiu-windup', 'mk-boom-windup',
   'br-triple-windup', // §6.38 v12(社長裁定#9「溜め/硬直はカウンター可=既存の押しのけと同じ扱い」)
 ];
@@ -352,7 +353,7 @@ const BOUNTY_ACTIVE_COUNTER_STATES: readonly string[] = ['bm-charge', 'bm-whip36
 
 const BOUNTY_RECOVER_STATES: readonly string[] = [
   'br-push-recover', 'bm-charge-recover', 'bm-combo1-recover', 'bm-combo2-recover', 'bm-combo3-recover', 'bm-snipe-recover',
-  'bb-sweep-recover', 'bb-triple1-recover', 'bb-triple2-recover', 'leap-recover', // triple=★v0.25.3580
+  'bb-sweep-recover', 'bb-triple1-recover', 'bb-triple2-recover', 'bb-quickshot-recover', 'leap-recover', // ★v0.25.3580/3581
   'mk-naginata-recover', 'mk-naginata1-recover', 'mk-naginata2-recover', 'mk-spin-recover', 'mk-suiu-recover', 'mk-boom-recover',
   'br-triple-recover', // §6.38 v12(同上)
 ];
@@ -1165,6 +1166,17 @@ const beginBbTriple = ({ newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: BountyBe
   patch.bossStateUntil = newGameTime + BB_T.sweepTriple.windup[0];
 };
 
+/** ★v0.25.3581 鋏: 近距離台本「バックロール→高速弾→飛びかかり」(社長指示)。1手目=移動だけの
+ *  バックロール(br-rollと同じsmoothstep・攻撃判定なし)。明けたら高速弾の溜めへ(moveCancelGuard申告済み)。 */
+const beginBbRollCombo = ({ newGameTime, dist, pcx, pcy, bcx, bcy, patch }: BountyBeginCtx): void => {
+  const dl = Math.max(1, dist);
+  patch.aiFromX = bcx; patch.aiFromY = bcy;
+  patch.aiTargetX = bcx + ((bcx - pcx) / dl) * BB_T.rollCombo.rollDist;
+  patch.aiTargetY = bcy + ((bcy - pcy) / dl) * BB_T.rollCombo.rollDist;
+  patch.bossState = 'bb-backroll';
+  patch.bossStateUntil = newGameTime + BB_T.rollCombo.rollMs;
+};
+
 /** 鋏: 輸入=跳びかかり(pumpkin型)。着地点は溜め開始時のプレイヤー位置で固定。 */
 const beginBbLeap = ({ newGameTime, pcx, pcy, sfx, patch }: BountyBeginCtx): void => {
   sfx.alert();
@@ -1184,8 +1196,10 @@ const tickBalance = (
 
   if (st === 'chase') {
     if (dist <= BB_T.nearMax) {
-      // ★v0.25.3580: 取り掛かりで単発/3連発を抽選(▸再生は bb-sweep / bb-triple で個別に選べる)。
-      if (Math.random() < BB_T.sweepTriple.chance) beginBbTriple(bctx);
+      // ★v0.25.3580/3581: 取り掛かりの抽選。先にロール台本(rollCombo.chance)、外れたら残りを
+      // 単発/3連発で分ける(sweepTriple.chanceは「残りの中の割合」)。▸再生は各技で個別に選べる。
+      if (Math.random() < BB_T.rollCombo.chance) beginBbRollCombo(bctx);
+      else if (Math.random() < BB_T.sweepTriple.chance) beginBbTriple(bctx);
       else beginBbSweep(bctx);
       return;
     }
@@ -1242,6 +1256,53 @@ const tickBalance = (
       aimBbSweepBand(pcx, pcy, bcx, bcy, patch); // 発ごとに向きを取り直す(コンボと同じ)
       patch.bossState = nextIdx === 1 ? 'bb-triple2-windup' : 'bb-triple3-windup';
       patch.bossStateUntil = newGameTime + BB_T.sweepTriple.windup[nextIdx];
+    }
+    return;
+  }
+  // ★v0.25.3581 台本「バックロール→高速弾→飛びかかり」
+  if (st === 'bb-backroll') {
+    // br-rollと同じ: smoothstepで後方へ引く移動だけの状態(攻撃判定なし・resolveMoveで壁は通らない)。
+    const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
+    const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
+    const t = Math.max(0, Math.min(1, 1 - ((bounty.bossStateUntil ?? newGameTime) - newGameTime) / BB_T.rollCombo.rollMs));
+    const k = brRollEase(t);
+    const c = resolveMove(fx + (tx - fx) * k - bounty.width / 2, fy + (ty - fy) * k - bounty.height / 2, bounty);
+    patch.x = c.x; patch.y = c.y;
+    patch.vx = 0; patch.vy = 0;
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      // 高速弾の溜めへ。**狙いはこの頭で固定**(三段突きの裁定v0.25.3565と同じ=判定が始まったら追尾しない)。
+      sfx.alert();
+      const cbx = c.x + bounty.width / 2, cby = c.y + bounty.height / 2;
+      const ang = Math.atan2(pcy - cby, pcx - cbx);
+      patch.aiFromX = cbx; patch.aiFromY = cby;
+      patch.aiTargetX = cbx + Math.cos(ang) * 300;
+      patch.aiTargetY = cby + Math.sin(ang) * 300;
+      patch.bossState = 'bb-quickshot-windup';
+      patch.bossStateUntil = newGameTime + BB_T.rollCombo.shotWindup;
+    }
+    return;
+  }
+  if (st === 'bb-quickshot-windup') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      // 発射: 弾は全ボス共通の見た目(赤い二重丸)・速度だけ速い。銃口=鋏の先端側。
+      const tx = bounty.aiTargetX ?? pcx, ty = bounty.aiTargetY ?? pcy;
+      const ang = Math.atan2(ty - bcy, tx - bcx);
+      const player = useGameStore.getState().player;
+      useGameStore.getState().addProjectile(createEnemyProjectile(
+        bounty, player, tx, ty,
+        bcx + Math.cos(ang) * 60, bcy + Math.sin(ang) * 60,
+        BB_T.rollCombo.shot,
+      ));
+      patch.lastRangedShotAt = newGameTime;
+      patch.bossState = 'bb-quickshot-recover';
+      patch.bossStateUntil = newGameTime + BB_T.rollCombo.shotRecover;
+    }
+    return;
+  }
+  if (st === 'bb-quickshot-recover') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      // 台本の締め=そのまま飛びかかりの溜めへ(recover→windupなのでキャンセル監視の正規形)。
+      beginBbLeap(bctx);
     }
     return;
   }
@@ -1626,7 +1687,7 @@ const tickMaiko = (
 export type BountyMoveKey =
   | 'br-push' | 'br-roll' | 'br-triple' | 'br-laser'
   | 'bm-charge' | 'bm-whip360' | 'bm-combo' | 'bm-snipe'
-  | 'bb-sweep' | 'bb-triple' | 'bb-leap'
+  | 'bb-sweep' | 'bb-triple' | 'bb-rollcombo' | 'bb-leap'
   | 'mk-naginata' | 'mk-spin' | 'mk-suiu' | 'mk-boom';
 
 /**
@@ -1636,7 +1697,7 @@ export type BountyMoveKey =
 export const BOUNTY_MOVES_BY_TYPE: Readonly<Record<string, readonly BountyMoveKey[]>> = {
   'bounty-ranged': ['br-push', 'br-roll', 'br-triple', 'br-laser'],
   'bounty-melee': ['bm-charge', 'bm-whip360', 'bm-combo', 'bm-snipe'],
-  'bounty-balance': ['bb-sweep', 'bb-triple', 'bb-leap'],
+  'bounty-balance': ['bb-sweep', 'bb-triple', 'bb-rollcombo', 'bb-leap'],
   'bounty-maiko': ['mk-naginata', 'mk-spin', 'mk-suiu', 'mk-boom'],
 };
 
@@ -1653,6 +1714,7 @@ const startBountyMove = (move: BountyMoveKey, bctx: BountyBeginCtx): void => {
     case 'bm-snipe': beginBmSnipe(bctx); return;
     case 'bb-sweep': beginBbSweep(bctx); return;
     case 'bb-triple': beginBbTriple(bctx); return; // ★v0.25.3580
+    case 'bb-rollcombo': beginBbRollCombo(bctx); return; // ★v0.25.3581
     case 'bb-leap': beginBbLeap(bctx); return;
     // 型(A/B)は**いまのボスの型に従う**=切り替えボタン(HP40%等)で見たい方を選ぶ。
     case 'mk-naginata': beginMkNaginata(bctx, bctx.bounty.bossPhase === 2 ? 2 : 1); return;

@@ -1159,14 +1159,14 @@ describe('runBountyTick — B2a 技の状態機械', () => {
 
     // ★v0.25.3580(社長指示「取り掛かりを、今の単発と、3連発で分ける」)
     it('取り掛かりの抽選: rand<chance なら3連発(bb-triple1-windup)へ入る', () => {
-      vi.spyOn(Math, 'random').mockReturnValue(0.1);
+      vi.spyOn(Math, 'random').mockReturnValue(0.4); // 0.4=ロール台本(<0.34)を外し3連発(<0.5)を引く。定数なので他の乱数消費に頑健
       const { id, step } = setupType('bounty-balance', { x: 80, y: 0 });
       step(16);
       expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('bb-triple1-windup');
     });
 
     it('3連発の台本: 1→切り返し→2→切り返し→3→単発と同じ硬直→chase。命中は3回積まれる', () => {
-      vi.spyOn(Math, 'random').mockReturnValue(0.1);
+      vi.spyOn(Math, 'random').mockReturnValue(0.4); // 0.4=ロール台本(<0.34)を外し3連発(<0.5)を引く。定数なので他の乱数消費に頑健
       const { id, step } = setupType('bounty-balance', { x: 80, y: 0 });
       const before = useGameStore.getState().pumpkinBlasts.length;
       const order: string[] = [];
@@ -1185,8 +1185,40 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       expect(useGameStore.getState().pumpkinBlasts.length - before).toBeGreaterThanOrEqual(3);
     });
 
-    it('3連発は発間の切り返しで向きを取り直す(2発目の帯は移動後のプレイヤーを向く)', () => {
+    // ★v0.25.3581(社長指示「近距離でバックロール後、高速弾発射、飛び掛かり の台本も追加」)
+    it('ロール台本の抽選: 1回目のrand<rollCombo.chance で bb-backroll へ入る', () => {
       vi.spyOn(Math, 'random').mockReturnValue(0.1);
+      const { id, step } = setupType('bounty-balance', { x: 80, y: 0 });
+      step(16);
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('bb-backroll');
+    });
+
+    it('ロール台本: バックロール(後退)→高速弾1発→そのまま飛びかかりの溜めへ', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.1);
+      const { id, step } = setupType('bounty-balance', { x: 80, y: 0 });
+      const x0 = useGameStore.getState().enemies.find(e => e.id === id)!.x;
+      const shotsBefore = useGameStore.getState().projectiles.length;
+      const order: string[] = [];
+      for (let i = 0; i < 80; i++) {
+        step(50);
+        const st = useGameStore.getState().enemies.find(e => e.id === id)?.bossState ?? '';
+        if (order[order.length - 1] !== st) order.push(st);
+        if (st === 'leap-windup') break;
+      }
+      const want = ['bb-backroll', 'bb-quickshot-windup', 'bb-quickshot-recover', 'leap-windup'];
+      let wi = 0;
+      for (const st of order) if (st === want[wi]) wi++;
+      expect(wi, `states seen: ${order.join(' → ')}`).toBe(want.length);
+      // ロールで後方(プレイヤーは+x側に居るので-x)へ動いた
+      const cur = useGameStore.getState().enemies.find(e => e.id === id)!;
+      expect(cur.x).toBeLessThan(x0);
+      // 高速弾が1発だけ積まれた(弾速=rollCombo.shot.speed)
+      const shots = useGameStore.getState().projectiles.slice(shotsBefore);
+      expect(shots.length).toBe(1);
+    });
+
+    it('3連発は発間の切り返しで向きを取り直す(2発目の帯は移動後のプレイヤーを向く)', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.4); // 0.4=ロール台本(<0.34)を外し3連発(<0.5)を引く。定数なので他の乱数消費に頑健
       const { id, step } = setupType('bounty-balance', { x: 80, y: 0 });
       step(16);
       // 1発目のwindup中にプレイヤーが真下へ回り込む
@@ -1420,7 +1452,7 @@ describe('runBountyTick — ボスメーカーの個別再生(▸)', () => {
       'br-laser': 'laser-windup',
       'bm-charge': 'bm-charge-windup', 'bm-whip360': 'bm-whip360-windup',
       'bm-combo': 'bm-combo1-windup', 'bm-snipe': 'bm-snipe-windup',
-      'bb-sweep': 'bb-sweep-windup', 'bb-triple': 'bb-triple1-windup', 'bb-leap': 'leap-windup',
+      'bb-sweep': 'bb-sweep-windup', 'bb-triple': 'bb-triple1-windup', 'bb-rollcombo': 'bb-backroll', 'bb-leap': 'leap-windup',
       'mk-naginata': 'mk-naginata-windup', 'mk-spin': 'mk-spin-windup',
       'mk-suiu': 'mk-suiu-windup', 'mk-boom': 'mk-boom-windup',
     };
