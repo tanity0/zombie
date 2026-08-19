@@ -167,13 +167,14 @@ const JB_HELP: Record<string, string> = {
 // ================================================================================================
 // ラフィ(rafi)
 // ================================================================================================
-const RF_SEC = { move: '動き', bone: '骨刃(rf-bone)', jump: '跳びかかり(rf-jump)', sweep: '薙ぎ(rf-sweep)' };
+const RF_SEC = { move: '動き', bone: '骨刃(rf-bone)', jump: '跳びかかり(rf-jump)', sweep: '薙ぎ(rf-sweep)', roll: 'ロール台本(rf-roll)' }; // roll=★v0.25.3592
 
 const rafiFields = (): TuningField[] => {
   const mv = mk(RF_SEC.move, 'behavior');
   const bn = mk(RF_SEC.bone, 'move');
   const jp = mk(RF_SEC.jump, 'move');
   const sw = mk(RF_SEC.sweep, 'move');
+  const rl = mk(RF_SEC.roll, 'move');
   return [
     mv('chase.speed', '追いかける速さ', 'pxs', 0, 400, 10, 'プレイヤーは104.4px/s'),
     mv('step.ms', '横ステップの時間', 'ms', 0, 2000, 20),
@@ -204,6 +205,15 @@ const rafiFields = (): TuningField[] => {
     sw('sweep.cdMs', 'クールダウン', 'ms', 0, 30000, 500),
     sw('sweep.range', '帯の長さ', 'px', 10, 600, 10, '赤い帯=判定'),
     sw('sweep.halfWidth', '帯の半幅', 'px', 4, 200, 10, '赤い帯=判定'),
+
+    rl('roll.rollMs', 'ロールの所要', 'ms', 100, 2000, 20),
+    rl('roll.rollDist', 'ロールの距離', 'px', 40, 500, 10),
+    rl('quickblades.windup', '刃2連射の予告', 'ms', 0, 5000, 50, '頭で狙い固定=追尾しない'),
+    rl('quickblades.count', '本数', 'num', 1, 8, 1),
+    rl('quickblades.gapMs', '発の間隔', 'ms', 0, 1000, 20),
+    rl('quickblades.launchDelayMs', '刃が動き出すまで', 'ms', 0, 2000, 50, '骨刃(1000ms)より短い=高速の正体'),
+    rl('quickblades.sideOffsetPx', '脇のずらし', 'px', 0, 200, 10, '左右の刃の出る位置'),
+    rl('quickblades.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
   ];
 };
 
@@ -212,6 +222,7 @@ const RF_HELP: Record<string, string> = {
   [RF_SEC.bone]: 'プレイヤーを囲む輪から内向きに刃が飛ぶ。置いてから飛ぶまでの間が避けどころ。',
   [RF_SEC.jump]: '着地点に円。**円から歩いて出られる予告か**が公平の物差し(半径を伸ばしたら予告も伸ばす)。',
   [RF_SEC.sweep]: '後半で増える前方の帯。クールダウンで頻度を決める。',
+  [RF_SEC.roll]: '近距離台本(v0.25.3592): バックロールで距離を空け、脇から骨刃2本を短い遅延で高速射出。抽選の重みはrafiScript側(未テーブル化)。',
 };
 
 // ================================================================================================
@@ -399,6 +410,7 @@ const RF_PLAYABLES: readonly PlayableAction[] = [
   play('rf-bone', '骨刃', RF_SEC.bone),
   play('rf-jump', '跳びかかり', RF_SEC.jump),
   play('rf-sweep', '薙ぎ', RF_SEC.sweep),
+  play('rf-roll', 'ロール台本', RF_SEC.roll), // ★v0.25.3592
 ];
 const UR_PLAYABLES: readonly PlayableAction[] = [
   play('ur-sweep', '大薙ぎ', UR_SEC.sweep),

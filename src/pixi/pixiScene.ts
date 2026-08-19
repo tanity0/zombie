@@ -16599,7 +16599,8 @@ export class PixiScene {
         // 全員に付ける(v0.25.2426の教訓)」そのもの。
         // ★v0.25.3584: ロール系は idol-roll / idol-nade / br-roll / bb-backroll / mk-backroll の**5つ**
         // (bb-backrollはv3581で足した時にここへ登録し忘れていた=v3521と同型の漏れ。今回併修)。
-        || e.bossState === 'br-roll' || e.bossState === 'bb-backroll' || e.bossState === 'mk-backroll';
+        || e.bossState === 'br-roll' || e.bossState === 'bb-backroll' || e.bossState === 'mk-backroll'
+        || e.bossState === 'backroll'; // ★v0.25.3592 ラフィ(ロール系は6つ目)
       const dashing = dashPhase || dashBoss;
       // 蹴り出し: 突進の立ち上がりで、その場(足元)に一発。
       const kickL = this.latchFx(`${e.id}:dashkick`, dashing, DUST_MS, now,

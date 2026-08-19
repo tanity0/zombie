@@ -52,7 +52,7 @@ const ENTRY_STATE: Readonly<Record<AngelMoveKey, string>> = {
   'jb-consecrate': 'consecrate-windup',
   'jb-lance': 'lance-windup',
   'jb-warp': 'warp-windup',
-  'rf-bone': 'bone-windup',
+  'rf-bone': 'bone-windup', 'rf-roll': 'backroll',
   'rf-jump': 'jump-windup',
   'rf-sweep': 'sweep-windup',
   'ur-sweep': 'sweep-windup',
@@ -100,6 +100,35 @@ describe('個別再生: 天使6体の技を1つだけ強制発動できる', () 
     g.step();
     expect(angelPlaybackActive()).toBe(false); // 要求も solo も消えている
     expect(g.state()).toBe('chase');
+  });
+});
+
+// ★v0.25.3592(社長指示「ラフィ バックロール追加。その後刃を2発高速で飛ばしてくる技を追加。台本化」)
+describe('ラフィのロール台本(rf-roll)', () => {
+  beforeEach(() => { clearAngelPlayback(); });
+
+  it('バックロール(後退)→刃2連射の溜め→骨刃2本が短遅延で積まれ→硬直→chase', () => {
+    const g = setup('rafi', 150);
+    g.step();
+    const y0 = useGameStore.getState().enemies[0].y;
+    requestAngelMovePlay('rf-roll', { solo: true, loop: false });
+    const order: string[] = [];
+    for (let i = 0; i < 300; i++) {
+      g.step(20);
+      const st = g.state();
+      if (order[order.length - 1] !== st) order.push(st);
+      if (st === 'chase' && order.includes('quickblades-recover')) break;
+    }
+    const want = ['backroll', 'quickblades-windup', 'quickblades-recover', 'chase'];
+    let wi = 0;
+    for (const st of order) if (st === want[wi]) wi++;
+    expect(wi, `states seen: ${order.join(' → ')}`).toBe(want.length);
+    // プレイヤーは(0,0)・ラフィは(0,-150)なので、ロールでさらに-y側へ下がる
+    expect(useGameStore.getState().enemies[0].y).toBeLessThan(y0);
+    // 骨刃が2本、短い起動遅延(既存骨刃の1000msより短い)で積まれている
+    const blades = useGameStore.getState().skadiIceBlades.filter(b => b.visual === 'bone');
+    expect(blades.length).toBe(2);
+    for (const b of blades) expect(b.launchAt).toBeGreaterThan(0);
   });
 });
 

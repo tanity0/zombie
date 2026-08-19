@@ -310,7 +310,7 @@ const scriptOrNeutralAt = (t: number, boss: Enemy): number =>
 export type AngelMoveKey =
   | 'mg-harai' | 'mg-dash' | 'mg-volley'
   | 'jb-volley' | 'jb-lantern' | 'jb-consecrate' | 'jb-lance' | 'jb-warp'
-  | 'rf-bone' | 'rf-jump' | 'rf-sweep'
+  | 'rf-bone' | 'rf-jump' | 'rf-sweep' | 'rf-roll'
   | 'ur-sweep' | 'ur-downslash' | 'ur-thrust' | 'ur-bolt'
   | 'sr-ringshot' | 'sr-ringspin' | 'sr-sweep' | 'sr-gaze'
   | 'ac-spike' | 'ac-spear' | 'ac-warp' | 'ac-burst' | 'ac-gaze';
@@ -322,7 +322,7 @@ export type AngelMoveKey =
 export const ANGEL_MOVES_BY_TYPE: Readonly<Record<string, readonly AngelMoveKey[]>> = {
   miguel: ['mg-harai', 'mg-dash', 'mg-volley'],
   jibril: ['jb-volley', 'jb-lantern', 'jb-consecrate', 'jb-lance', 'jb-warp'],
-  rafi: ['rf-bone', 'rf-jump', 'rf-sweep'],
+  rafi: ['rf-bone', 'rf-jump', 'rf-sweep', 'rf-roll'], // rf-roll=★v0.25.3592 ロール台本
   uri: ['ur-sweep', 'ur-downslash', 'ur-thrust', 'ur-bolt'],
   suriel: ['sr-ringshot', 'sr-ringspin', 'sr-sweep', 'sr-gaze'],
   acrasiel: ['ac-spike', 'ac-spear', 'ac-warp', 'ac-burst', 'ac-gaze'],
@@ -1450,6 +1450,16 @@ export const runRafiTick = (
     patch.aiFromX = rcx; patch.aiFromY = rcy;
     patch.aiTargetX = rcx + dirx * RF_T.sweep.range; patch.aiTargetY = rcy + diry * RF_T.sweep.range;
   };
+  // ★v0.25.3592(社長指示「バックロール追加。その後刃を2発高速で飛ばしてくる技を追加。台本化」):
+  // ロール台本の1手目=移動だけの後退(賞金首のロール台本と同型・攻撃判定なし)。明けたら刃2連射へ直結。
+  const beginRafiRoll = (): void => {
+    const dl = Math.hypot(pcx - rcx, pcy - rcy) || 1;
+    patch.aiFromX = rcx; patch.aiFromY = rcy;
+    patch.aiTargetX = rcx + ((rcx - pcx) / dl) * RF_T.roll.rollDist;
+    patch.aiTargetY = rcy + ((rcy - pcy) / dl) * RF_T.roll.rollDist;
+    patch.bossState = 'backroll';
+    patch.bossStateUntil = newGameTime + RF_T.roll.rollMs;
+  };
   const beginRafiBone = (): void => {
     const aim = rafiHateAim();
     patch.bossState = 'bone-windup';
@@ -1471,6 +1481,7 @@ export const runRafiTick = (
     rr.rejumps = 0;
     if (k === 'rf-sweep') beginRafiSweep();
     else if (k === 'rf-bone') beginRafiBone();
+    else if (k === 'rf-roll') beginRafiRoll(); // ★v0.25.3592
     else beginRafiJump();
   };
 
@@ -1512,6 +1523,54 @@ export const runRafiTick = (
       if (move) {
         startRafiMove(move === 'sweep' ? 'rf-sweep' : move === 'bone' ? 'rf-bone' : 'rf-jump');
       }
+    }
+  } else if (st === 'backroll') {
+    // ★v0.25.3592 台本1手目: smoothstepで後方へ引く移動だけの状態(攻撃判定なし・アリーナ内へクランプ)。
+    const fx = rafi.aiFromX ?? rcx, fy = rafi.aiFromY ?? rcy;
+    const tx = rafi.aiTargetX ?? rcx, ty = rafi.aiTargetY ?? rcy;
+    const tR = Math.max(0, Math.min(1, 1 - ((rafi.bossStateUntil ?? newGameTime) - newGameTime) / RF_T.roll.rollMs));
+    const kR = tR * tR * (3 - 2 * tR);
+    const cR = clampArena(fx + (tx - fx) * kR, fy + (ty - fy) * kR);
+    patch.x = cR.x - rafi.width / 2; patch.y = cR.y - rafi.height / 2;
+    if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
+      // 2手目=刃2連射の溜め。**狙いはこの頭で固定**(三段突き裁定v3565と同じ=以後追尾しない)。
+      const aim = rafiLockedAim();
+      patch.aiTargetX = aim.x; patch.aiTargetY = aim.y; patch.hateTarget = aim.side;
+      patch.bossState = 'quickblades-windup';
+      patch.bossStateUntil = newGameTime + RF_T.quickblades.windup;
+    }
+  } else if (st === 'quickblades-windup') {
+    const { overlap, counterActive } = bodyOverlapNow(rafi);
+    if (overlap && counterActive) {
+      rafiCounterHit(rcx, rcy);
+      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
+    } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
+      // ★v0.25.3592 発射: 自分の脇(±sideOffsetPx)から固定した狙いへ骨刃2本を短遅延で射出
+      // (既存骨刃と同じ飛翔体=速度700px/s。既存のdelay1000msと違い250ms+120ms差=「高速で飛んでくる」。
+      //  刃のパリィ=体勢のみ削る・ラフィ討伐で消える、はv0.25.3591の裁定がそのまま効く)。
+      const qtx = rafi.aiTargetX ?? pcx, qty = rafi.aiTargetY ?? pcy;
+      const baseAng = Math.atan2(qty - rcy, qtx - rcx);
+      for (let qi = 0; qi < RF_T.quickblades.count; qi++) {
+        const side = qi % 2 === 0 ? 1 : -1;
+        const sx = rcx + Math.cos(baseAng + Math.PI / 2) * RF_T.quickblades.sideOffsetPx * side;
+        const sy = rcy + Math.sin(baseAng + Math.PI / 2) * RF_T.quickblades.sideOffsetPx * side;
+        const aimA = Math.atan2(qty - sy, qtx - sx);
+        useGameStore.getState().spawnSkadiBlade(
+          sx, sy, aimA,
+          newGameTime + RF_T.quickblades.launchDelayMs + qi * RF_T.quickblades.gapMs,
+          rafi.id, 'bone',
+        );
+      }
+      patch.bossState = 'quickblades-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(RF_T.quickblades.recover, (rafi.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'quickblades-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(rafi);
+    if (overlap && counterActive) {
+      rafiCounterHit(rcx, rcy);
+      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
+    } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
     }
   } else if (st === 'bone-windup') {
     const { overlap, counterActive } = bodyOverlapNow(rafi);

@@ -786,6 +786,8 @@ export interface Enemy {
     | 'bb-backroll' | 'bb-quickshot-windup' | 'bb-quickshot-recover'
     // ★v0.25.3584 舞妓のバックロール(社長指示。移動のみ・明けたら手毬打ちへ)
     | 'mk-backroll'
+    // ★v0.25.3592 ラフィのロール台本(社長指示「バックロール追加。その後刃を2発高速で飛ばしてくる技」)
+    | 'backroll' | 'quickblades-windup' | 'quickblades-recover'
     | 'leap-windup' | 'leap-air' | 'leap-recover'
     // PACING_PUZZLE.md §6.38 B2b: 舞妓(変異・bounty-maiko)の技。全技=毬(v5.1)。
     // mk-naginata* = 毬の薙ぎ(型A単発/型B2連=mk-naginata1・mk-naginata2)。mk-spin* = 毬回し

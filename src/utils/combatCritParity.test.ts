@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { useGameStore, STUN_DURATION_MS } from '../store/gameStore';
 import { applyContactDamage, applyPumpkinBlastDamage, NOOP_COMBAT_EFFECTS } from './combatTick';
 import { spawnEnemyAt } from './enemyUtils';
+import { bossPostureMax } from './bossPosture';
 
 const setupPlayerAt = (x: number, y: number, counterWindowMs: number, stunDurationMult = 1) => {
   useGameStore.getState().resetGame('warrior');
@@ -107,7 +108,7 @@ describe('刃のパリィ(parryNoDamage): 体勢は削るがHPダメージは入
     expect(after).toBeTruthy();
     expect(after!.health).toBe(boss.maxHealth);              // ★HPは減らない
     expect(after!.bossPosture).toBeDefined();
-    expect(after!.bossPosture!).toBeLessThan(after!.bossPostureMax ?? Infinity); // ★体勢は削れている
+    expect(after!.bossPosture!).toBeLessThan(bossPostureMax(after!)); // ★体勢は削れている(maxは関数から)
   });
 
   it('旗が無い普通のブラストパリィは従来どおりHPダメージが入る(刃だけの特例であることの担保)', () => {

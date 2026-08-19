@@ -4,7 +4,7 @@ import {
   RAFI_MOVE_WEIGHTS, type RafiMove,
 } from './rafiScript';
 
-const ALL_MOVES: RafiMove[] = ['bone', 'jump', 'sweep'];
+const ALL_MOVES: RafiMove[] = ['bone', 'jump', 'roll', 'sweep'];
 const BAND_SAMPLES = [60, 200, 450, 900]; // 密着/近/中/遠
 
 // ==== v0.25.2609: 実走180秒×3ペルソナで Phase1 は bone 100%(jumpは0回)だった ==============
@@ -70,7 +70,7 @@ describe('pickRafiMove', () => {
       const m = pickRafiMove(60, 1, true);
       if (m) seen.add(m);
     }
-    expect([...seen].sort()).toEqual(['bone', 'jump']);
+    expect([...seen].sort()).toEqual(['bone', 'jump', 'roll']);
   });
   it('Phase2の密着で3技すべてが顔を出す', () => {
     const seen = new Set<RafiMove>();
@@ -78,7 +78,7 @@ describe('pickRafiMove', () => {
       const m = pickRafiMove(60, 2, true);
       if (m) seen.add(m);
     }
-    expect([...seen].sort()).toEqual(['bone', 'jump', 'sweep']);
+    expect([...seen].sort()).toEqual(['bone', 'jump', 'roll', 'sweep']);
   });
   it('薙ぎ専用CDが明けていない間はsweepを選ばない', () => {
     for (let i = 0; i < 200; i++) expect(pickRafiMove(60, 2, false)).not.toBe('sweep');

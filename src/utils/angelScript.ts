@@ -156,6 +156,10 @@ export interface AngelRafiTuning extends AngelSharedHolder {
   jump: { maxRejumps: number; windup: number; ms: number; radius: number; recover: number };
   /** 薙ぎ(Phase2専用・前方カプセル)。 */
   sweep: { windup: number; active: number; recover: number; cdMs: number; range: number; halfWidth: number };
+  /** ★v0.25.3592(社長指示「バックロール追加。その後刃を2発高速で飛ばしてくる技を追加。台本化」):
+   *  ロール台本=後退→骨刃2連射。刃は自分の脇から出て短い遅延で高速射出(既存の骨刃と同じ飛翔体)。 */
+  roll: { rollMs: number; rollDist: number };
+  quickblades: { windup: number; count: number; gapMs: number; launchDelayMs: number; sideOffsetPx: number; recover: number };
 }
 
 export const ANGEL_RAFI_TUNING: AngelRafiTuning = {
@@ -168,6 +172,10 @@ export const ANGEL_RAFI_TUNING: AngelRafiTuning = {
   jump: { maxRejumps: 2, windup: 700, ms: 360, radius: 70, recover: 900 },
   // range/halfWidth はトールの払いと同値(既定値の流用・§6.26-9 #3の作法を継承)。
   sweep: { windup: 700, active: 220, recover: withRecoverFloor(700), cdMs: 7000, range: 310, halfWidth: 40 },
+  // ★v0.25.3592: 数値は叩き台。ロール=賞金首のロール台本と同寸(190px/300ms)。
+  // 刃はlaunchDelayMs後に射出(既存骨刃の1000msと違い短い=「高速で飛んでくる」の正体)。
+  roll: { rollMs: 300, rollDist: 190 },
+  quickblades: { windup: 350, count: 2, gapMs: 120, launchDelayMs: 250, sideOffsetPx: 40, recover: withRecoverFloor(900) },
 };
 
 // =================================================================================================

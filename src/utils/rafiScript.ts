@@ -10,7 +10,8 @@
 // 対策: 城ボス裁定(BOSS_RANGE_REWORK.md v0.25.2455)の「ゾーン×重み表」を適用。
 import { pickComboFollowup, pickWeightedMove, bossZoneForDistance, type BossMoveWeights } from './bossScript';
 
-export type RafiMove = 'bone' | 'jump' | 'sweep';
+// ★v0.25.3592: roll=ロール台本(バックロール→骨刃2連射・社長指示)。
+export type RafiMove = 'bone' | 'jump' | 'sweep' | 'roll';
 
 export const RAFI_PHASE_HP_THRESHOLD = 0.6;
 export const RAFI_COMBO_CHANCE = 0.65; // Phase2は骨刃→跳躍→薙ぎの最大3段。各段で抽選する。
@@ -28,6 +29,8 @@ export const RAFI_MOVE_WEIGHTS: BossMoveWeights<RafiMove> = {
   bone:  { melee: 45, near: 45, mid: 40, far: 25 },
   jump:  { melee: 15, near: 25, mid: 45, far: 75 },
   sweep: { melee: 40, near: 30, mid: 15, far: 0 },
+  // ★v0.25.3592(叩き台): 密着/近の答え=離れてから刃2連射。中遠では出さない(距離を作る意味が無い)。
+  roll:  { melee: 30, near: 25, mid: 0, far: 0 },
 };
 
 /** 技×距離×フェーズ→実効重み。sweepはPhase2で解禁(§6.28-8 #4・従来どおり)。 */
@@ -45,7 +48,7 @@ export const rafiMoveWeight = (
 export const rafiMoveEligible = (move: RafiMove, distance: number, phase: 1 | 2): boolean =>
   rafiMoveWeight(move, distance, phase) > 0;
 
-const ALL_MOVES: RafiMove[] = ['bone', 'jump', 'sweep'];
+const ALL_MOVES: RafiMove[] = ['bone', 'jump', 'sweep', 'roll'];
 
 /**
  * CD明けかつ現在ゾーンの重み>0の技から重み比例で1つ。該当無しはnull。
@@ -59,7 +62,7 @@ export const pickRafiMove = (
 ): RafiMove | null => pickWeightedMove(
   ALL_MOVES,
   m => rafiMoveWeight(m, distance, phase),
-  { bone: true, jump: true, sweep: sweepReady },
+  { bone: true, jump: true, sweep: sweepReady, roll: true },
   rand,
 );
 
