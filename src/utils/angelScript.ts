@@ -211,7 +211,8 @@ export interface AngelSurielTuning extends AngelSharedHolder {
   /** 本体の薙ぎ(前方カプセル)。 */
   sweep: { windup: number; active: number; recover: number; range: number; halfWidth: number };
   /** 単眼の凝視(弾を1発)。 */
-  gaze: { windup: number; recover: number };
+  /** ★v0.25.3590(社長指示「10連射に変更」): count=連射数。recoverは発間の間(フロア外・貼り戻し値)。 */
+  gaze: { windup: number; recover: number; count: number };
   /** ビーム(線)の寸法。 */
   beam: { range: number; halfWidth: number };
   /** 環の待機位置と帰投(判定を持たない=見た目と「展開中か」の判定だけ)。 */
@@ -220,12 +221,17 @@ export interface AngelSurielTuning extends AngelSharedHolder {
 
 export const ANGEL_SURIEL_TUNING: AngelSurielTuning = {
   common: ANGEL_COMMON_TUNING, // ★6体で同じ実体(複製しない)
-  ringshot: { moveMs: 900, beamWindup: 700, active: 220, recover: withRecoverFloor(530) },
+  // moveMs 900→700 = v0.25.3590 貼り戻し(社長確定)。
+  ringshot: { moveMs: 700, beamWindup: 700, active: 220, recover: withRecoverFloor(530) },
   // radius 92: v0.25.2579で GIANT_STOMP_RADIUS 流用をやめ独立値に固定した(描画も同じ値を読む)。
-  ringspin: { windup: 800, active: 600, recover: withRecoverFloor(700), radius: 92 },
+  // radius 92→200 = v0.25.3590 貼り戻し(社長確定)。
+  ringspin: { windup: 800, active: 600, recover: withRecoverFloor(700), radius: 200 },
   sweep: { windup: 800, active: 220, recover: withRecoverFloor(650), range: 310, halfWidth: 40 },
-  gaze: { windup: 450, recover: withRecoverFloor(500) },
-  beam: { range: 2600, halfWidth: 20 },
+  // ★v0.25.3590 貼り戻し+手書き「10連射に変更」: windup300/recover100を1発のサイクルとして
+  // count=10連射。recover=発間の間なので**意図的にフロア外**(締めの隙は10連射の総尺が担う・社長確定)。
+  gaze: { windup: 300, recover: 100, count: 10 },
+  // halfWidth 20→30 = v0.25.3590 貼り戻し(社長確定)。
+  beam: { range: 2600, halfWidth: 30 },
   ring: { hoverOffsetX: 0, hoverOffsetY: -64, returnSpeed: 360, deployThreshold: 24, ring2OffsetPx: 34 },
 };
 

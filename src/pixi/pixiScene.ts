@@ -1606,7 +1606,7 @@ const acrasielBurstFragReach = (): number => AC_T.burst.radius * 1.3;
 // warp: 消失/出現の繋ぎ(魔法陣素材が来たら差し替え前提の軽い実装)。判定を持たない純粋な
 // 演出なので独自の短い尺(既存の判定タイミングとは無関係)。
 const ACRASIEL_WARP_FLASH_MS_VIS = 380;
-const THIN_BEAM_VIS_HALFWIDTH = 20; // スリィエル環の射出/アクラシエル単眼レーザー(T6細ビーム)の描画半太さ
+const THIN_BEAM_VIS_HALFWIDTH = 30; // T6細ビームの描画半太さ(=SR_T.beam.halfWidth。20→30=v0.25.3590貼り戻し。使用箇所はスリィエル環の2本のみ・同値はangelSwordSync.testが見張る)
 // FX-V2a(発注仕様v0.25.2974): gaze-windup終了エッジ(発射の瞬間)に一瞬走らせる金色の視線閃光。
 // 判定は既存のenemy_bolt(弾)がそのまま持つ=これは②「派手さの絵」(減衰のみ・軌跡長=環/本体→aiTarget)。
 const GAZE_FLASH_MS_VIS = 200;
@@ -16538,7 +16538,9 @@ export class PixiScene {
       if (gazeWindupOn) {
         const gazeWindMs = e.type === 'suriel' ? SR_T.gaze.windup : AC_T.gaze.windup;
         const gzProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / gazeWindMs));
-        this.drawAngelEyeReady(e.id, cx, cy - e.height * 0.35, Math.max(e.width, e.height) * 0.6, gzProg, now);
+        // ★v0.25.3590(社長指示「目をもっと大きく」): スリィエルの単眼を0.6→1.0倍へ(アクラシエルは従来)。
+        const eyeMul = e.type === 'suriel' ? 1.0 : 0.6;
+        this.drawAngelEyeReady(e.id, cx, cy - e.height * 0.35, Math.max(e.width, e.height) * eyeMul, gzProg, now);
         view.sprite.position.x += windupTremorPx(gzProg, now, 1.6);
       } else {
         const eyeSp = this.angelEyeSprites.get(e.id);

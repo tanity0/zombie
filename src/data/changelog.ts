@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3590',
+    items: [
+      'スリィエルの調整を反映: 環の回り込み700ms・ビームの半幅30px・回転斬の円が半径200pxに拡大。凝視は単眼が大きくなり、素早い10連射(予告300ms・発間100ms)になりました。',
+    ],
+  },
+  {
     version: '0.25.3589',
     items: [
       'ウリの調整を反映: 振り下ろしの帯の半幅が40px(赤=判定ごと太く)になり、踏み込み突きの走りが150msに短縮(鋭く)されました。',

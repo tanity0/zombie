@@ -139,7 +139,7 @@ export interface AngelBossState {
   jibril: { hits: number; lastHitSeen: number; lastWarpHits: number; volleyMode: 'snipe' | 'close'; lastScriptMove: 'lantern' | 'consecrate' | 'volley' | 'lance' | undefined; shots: number; nextShotAt: number; nextFireAt: number; edgeSince: number | undefined; lanceStartAt: number; lanceLaunched: number };
   rafi: { rejumps: number; boneLeft: number; boneNextAt: number; nextStepAt: number; stepUntil: number; stepDx: number; stepDy: number };
   uri: { shots: number; nextShotAt: number };
-  suriel: Record<string, never>; // (環の位置はEnemy側のringX/Y等に永続化=専用のラン内状態は不要)
+  suriel: { gazeShots: number }; // gazeShots=★v0.25.3590 凝視10連射の発数カウンタ(他はEnemy側のringX/Y等に永続化)
 }
 export const createAngelBossState = (): AngelBossState => ({
   miguelSlow: { slowUntil: 0, nextAt: 0 },
@@ -147,7 +147,7 @@ export const createAngelBossState = (): AngelBossState => ({
   jibril: { hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe', lastScriptMove: undefined, shots: 0, nextShotAt: 0, nextFireAt: 0, edgeSince: undefined, lanceStartAt: 0, lanceLaunched: 0 },
   rafi: { rejumps: 0, boneLeft: 0, boneNextAt: 0, nextStepAt: 0, stepUntil: 0, stepDx: 0, stepDy: 0 },
   uri: { shots: 0, nextShotAt: 0 },
-  suriel: {},
+  suriel: { gazeShots: 0 }, // ★v0.25.3590
 });
 
 // カウンター成立の共通処理(旧miguelCounterHit/rafiCounterHit)。演出+プレイヤー無敵+反撃ダメージ。
@@ -2110,6 +2110,7 @@ export const runSurielTick = (
     patch.aiTargetX = scx + dirx * SR_T.sweep.range; patch.aiTargetY = scy + diry * SR_T.sweep.range;
   };
   const beginSurielGaze = (): void => {
+    s.suriel.gazeShots = 1; // ★v0.25.3590: 10連射の1発目
     patch.bossState = 'gaze-windup'; patch.bossStateUntil = newGameTime + SR_T.gaze.windup;
     const gazeAim = resolveBossHateAim(suriel, { x: pcx, y: pcy }, store.summons, newGameTime);
     patch.aiTargetX = gazeAim.x; patch.aiTargetY = gazeAim.y; patch.hateTarget = gazeAim.side;
@@ -2304,14 +2305,29 @@ export const runSurielTick = (
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
       useGameStore.getState().addProjectile(createEnemyProjectile(suriel, player, suriel.aiTargetX, suriel.aiTargetY));
-      patch.bossState = 'gaze-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SR_T.gaze.recover, (suriel.bossScriptQueue?.length ?? 0) > 0);
+      // ★v0.25.3590(10連射): 発間はraw(100ms)=choreographyRecoverMsの休符floorを通さない。
+      // 締めの隙は最終発の後だけ従来どおりfloorつき(パニッシュ窓の憲法を保つ)。
+      const isLastShot = s.suriel.gazeShots >= SR_T.gaze.count;
+      patch.bossState = 'gaze-recover';
+      patch.bossStateUntil = newGameTime + (isLastShot
+        ? choreographyRecoverMs(SR_T.gaze.recover, (suriel.bossScriptQueue?.length ?? 0) > 0)
+        : SR_T.gaze.recover);
     }
   } else if (st === 'gaze-recover') {
     const { overlap, counterActive } = bodyOverlapNow(suriel);
     if (overlap && counterActive) {
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, suriel);
+      // ★v0.25.3590(社長指示「10連射に変更」): recover(100ms=発間)明けに、count発まで狙い直して
+      // 次のwindupへ(gaze-recover→gaze-windup=同一技の段階遷移なのでキャンセル監視の正規形)。
+      if (s.suriel.gazeShots < SR_T.gaze.count) {
+        s.suriel.gazeShots += 1;
+        const gazeAim = resolveBossHateAim(suriel, { x: pcx, y: pcy }, store.summons, newGameTime);
+        patch.aiTargetX = gazeAim.x; patch.aiTargetY = gazeAim.y; patch.hateTarget = gazeAim.side;
+        patch.bossState = 'gaze-windup'; patch.bossStateUntil = newGameTime + SR_T.gaze.windup;
+      } else {
+        patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, suriel);
+      }
     }
   } else {
     patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + AN_C.stunNextActionMs;
