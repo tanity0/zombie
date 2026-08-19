@@ -378,8 +378,10 @@
 1. **頭脳・移動**: decideGhost 対プレイヤーアダプタ(既存のまま)。移動は毎tick clamp(既存)。
    - **通常被弾で止まらない**: `phantomTick.isFrozen` から knockbackUntil 参照を外す。
    - **押し道具は効く**: `knockbackShoveUntil` 窓中は phantomTick が自分の移動で x/y を上書きしない。
-   - **クリティカルの移動半減は外す**(D4): `bossSlowMult` を幻影の移動に掛けない(プレイヤーに無い
-     効果=「全て同じ」の適用。usesBossCrit のダメージ倍率側は残す=プレイヤー弾のクリはちゃんと痛い)。
+   - **クリティカルの移動半減だけ外す**(D4・監査4周目#2で精密化): `bossSlowMult` を丸ごと外すと
+     グラビティ/アイスショットの鈍足まで消える(過剰除去)。**`bossSlowUntil`(クリ由来)だけ幻影では
+     無視し、`gravitySlowUntil`/`iceSlowUntil` は残す**(スキルの鈍足はプレイヤーの攻撃効果=効く)。
+     usesBossCrit のダメージ倍率側は残す=プレイヤー弾のクリはちゃんと痛い。
    - 技中も含め **decidePhantom は毎tick呼ぶ**(州が無くなるので弾回避・危険記憶が常時効く)。
 2. **近接=即発ミラー**(D1/D2/B1の解):
    - 発火=**自前周期タイマー単独**。周期は **`GHOST_COUNTER_MELEE_PERIOD_MS`(ghostDriver.ts:256・
@@ -388,11 +390,21 @@
      ※帰結: 台帳 meleeBias は近接頻度に効かなくなる(間合い管理=preferredDist で個性は残る)。明記。
    - 条件: 縁距離(既存 edgeDistTo)≤ melee.reach(160)。カプセル起点終点=**発火時に phantomTick が
      直接計算**(幻影中心→プレイヤー中心方向・長さ reach・半幅 halfWidth。beginMove/aiFrom* は廃止)。
-   - ダメージ=**damagePlayer 直**(dmg18叩き台)。**汎用爆風(applyPumpkinBlastDamage=全画面オレンジ
-     フラッシュ+r20リング)は使わない**(B1: 820ms周期で全画面が明滅する+判定と絵が不一致)。
-   - **振りの絵は新規に組む(既存素材の流用のみ)**: 斬撃弧=**fx/slash-streak(刀の一閃流用)**を
-     カプセルと同じ向き・同等の長さで1発(2分類①: 危険を伝える絵=判定に揃える)+本体の小さな
-     踏み込み→戻り(ease=慣性MUST)。ヒットSE=既存の近接被弾系を流用。
+   - ダメージ=**damagePlayer 直**(dmg18叩き台)。呼び方を固定(監査4周目#1):
+     **`damagePlayer(18, '鴉(幻影)の斬撃', 幻影中心X, 幻影中心Y, 'guardian-phantom')`**
+     (fromX/fromY を渡さないとプレイヤーのノックバックが出ない)。**被弾SEは phantomTick が既存
+     `player-damage` を鳴らす**(damagePlayer直は「本当に何も出ない」前例あり=gameStore 8566の注記)。
+     **守護霊(ghost-ally)には当てない**(第3弾で対称に検討)。
+   - **汎用爆風(applyPumpkinBlastDamage)は使わない**。理由2つ(どちらも必須): ①全画面オレンジ
+     フラッシュ+r20リングが820ms周期で明滅し判定と絵が不一致(B1) ②**爆風経路の帯はプレイヤーが
+     カウンターで弾ける**(combatTick 216-219)ため、相乗りすると裁定「カウンターは幻影に成立しない」が
+     裏口から破れる(監査4周目#5)。カプセルだけの相乗りも禁止。
+   - **重なり判定式**=既存の共有純関数 **`distToBandRect(点, 始点, 終点, halfWidth) ≤
+     プレイヤー半径(max(w,h)/2)`**(utils/geometry・counterReach/combatTick と同じ1本。写経禁止)。
+   - **振りの絵は新規に組む(既存素材の流用のみ)**: 斬撃弧=**`fx/slash-streak-4`(4コマ目)のみ**を
+     使う(0〜3コマは部分線で「見えない」——KILL演出v0.25.3618と★実在確認の掟が名指しする前例)。
+     **カプセルと同角に回転・長さは reach(160)に合わせて拡大**(2分類①: 危険を伝える絵=判定に揃える)
+     +本体の小さな踏み込み→戻り(ease=慣性MUST)。
 3. **銃ミラー**: v4のM4節のとおり(守護霊の霊体武器ループ流用/状態は PhantomTickState/
    敵弾=共通赤二重丸/実弾速=projectileSpeed×PROJECTILE_SPEED_MULT/クリ5%も撃つ/
    リロード=beginWeaponReload/finishWeaponReload・リザーブ∞/射程=zoomedGunRange(RANGE_BY_CATEGORY))。
@@ -419,8 +431,10 @@
 - `pixiScene.ts`: 赤帯・赤ライン(zoneCapsule/dashLine)の幻影分岐+L176 の GP_T import
 - `phantomScript.ts`: shotブロック/**issenブロック/restMs/issenTravelFrac/PhantomBand の
   windup・active・recover**。残すのは melee の reach/halfWidth/damage+パリィ定数のみ
-- `phantomTick.ts`: 州機械・カウンター成立配線・phantomCounterHit・一閃移動・**未使用import17個**・
-  `counterEnabled` 引数(+useGameLoop 側の実引数 BOSS_COUNTER_ENABLED)
+- `phantomTick.ts`: 州機械・カウンター成立配線・phantomCounterHit・一閃移動・**未使用import一式**
+  (数は固定しない——hitCapsule廃止で knockbackSpeedFor、D4で bossSlowMult 等も未使用化する。
+  **lintエラー0で機械的に担保**する・監査4周目#6)・`counterEnabled` 引数
+  (+useGameLoop 側の実引数 BOSS_COUNTER_ENABLED)
 - `PhantomSfx`: alert/counter/reward を撤去し **parry を追加(音は既存'counter')**+useGameLoop の写像
 - `types/game.ts`: bossState union の gp州全部
 - `phantomTick.test.ts`: 生存は pickActivePhantom/createPhantomTickState のみ=v6仕様で書き直し

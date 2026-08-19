@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3638',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 幻影v2実装仕様v6が最終監査を通過。実装バッチ発注)。',
+    ],
+  },
+  {
     version: '0.25.3637',
     items: [
       'ゲーム内容の変更はありません(開発資料: 幻影v2の実装仕様を単独で読める最終版v6に統合)。',
