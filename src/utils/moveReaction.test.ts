@@ -8,6 +8,7 @@ import {
   MOVE_REACTION_LINGER_MS,
   bulletMoveKeyForEnemy, anyMoveKeyForEnemy, projectileMoveKeyForEnemy,
   isProjectileMoveKey, BULLET_MOVE_KEYS, PROJECTILE_MOVE_KEYS,
+  MOVE_KEYS_BY_BOSS_TYPE, moveKeysForBossType,
   type MoveReactionEnemy,
 } from './moveReaction';
 import { IDOL_SHOT_SLOTS } from './idolScript';
@@ -519,5 +520,50 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
       }
     }
     expect(sites).toBe(16);
+  });
+});
+
+
+// ---- per-boss の技表(台帳・research/BOSS_GAUNTLET.md 検出器4「技カバレッジ」) --------------------
+// 「そのボスが持ち得る技」の突き合わせ相手。上の状態→技キーの表から**導出**しているので、
+// 表を足せば台帳も自動で増える(写し間違いが起きない)ことをここで固定する。
+describe('MOVE_KEYS_BY_BOSS_TYPE(そのボスが持ち得る技の台帳)', () => {
+  it('主要なボスが全部載っている(1体でも欠けるとその枠のカバレッジが空になる)', () => {
+    for (const t of [
+      'giantbat', 'thor', 'mimir', 'jormungand', 'skadi',
+      'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol',
+      'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
+    ]) {
+      expect(moveKeysForBossType(t).length, t).toBeGreaterThan(0);
+    }
+  });
+
+  it('近接技と弾技の**両方**が同じ型へ集まる(片方だけだと「出なかった技」が嘘になる)', () => {
+    expect(moveKeysForBossType('mimir')).toContain('mimir-bite');   // 近接(MELEE_STATE_TO_MOVE由来)
+    expect(moveKeysForBossType('mimir')).toContain('mimir-burst');  // 弾(BULLET_STATE_TO_MOVE由来)
+    expect(moveKeysForBossType('thor')).toContain('thor-issen');    // トールは専用表(THOR_STATE_TO_MOVE)
+  });
+
+  it('giantbat は `g-` の技を全部持つ(aiPhaseから切り出す方式なので型で割れない)', () => {
+    expect(moveKeysForBossType('giantbat')).toContain('g-stomp');
+    expect(moveKeysForBossType('giantbat')).toContain('g-parts'); // 第二形態の胴体弾
+    expect(moveKeysForBossType('giantbat').every(k => k.startsWith('g-'))).toBe(true);
+  });
+
+  it('idol の射撃部品(s1〜s8)は載せない(既定では空の枠=毎回「出なかった」で埋もれるため)', () => {
+    expect(moveKeysForBossType('idol').some(k => /^idol-s[1-8]$/.test(k))).toBe(false);
+    expect(moveKeysForBossType('idol')).toContain('idol-roll');
+  });
+
+  it('台帳に無い型(雑魚)は空配列(呼び側で分岐を書かなくてよい)', () => {
+    expect(moveKeysForBossType('zombie' as EnemyType)).toEqual([]);
+    expect(MOVE_KEYS_BY_BOSS_TYPE['zombie']).toBeUndefined();
+  });
+
+  it('重複が無く昇順(読み物として安定する)', () => {
+    for (const [type, keys] of Object.entries(MOVE_KEYS_BY_BOSS_TYPE)) {
+      expect(new Set(keys).size, type).toBe(keys.length);
+      expect([...keys], type).toEqual([...keys].sort());
+    }
   });
 });

@@ -1,5 +1,40 @@
 # Development Log
 
+## v0.25.3605 — ボス・ガントレット(全ボス×bot実機テスト)【2026-08-19 16:12 JST】
+
+- 発注: research/BOSS_GAUNTLET.md v3(社長裁定「案A」)。**開発ツール+記録専用の配線のみ**で、
+  ゲームの仕様・挙動・バランス・演出は1つも変えていない。
+- **駆動**(`src/components/GauntletRunner.tsx` + App の `?gauntlet=1` ゲート): PRACTICE_SLOTS 全22枠から
+  `giantbat@stage-2`(城ボス不在)を除いた**21枠**を順に自動出撃。1戦の終了= practiceWin / bot死亡 /
+  **実時間**180秒。枠の切り替えは**次枠の `beginPracticeRun` → `startGame`**(`endPracticeRun` を先に
+  呼ぶと一瞬 `isPracticeRun()=false` になり遅れて来た勝敗遷移がセーブ汚染へ落ちる=設計書の順序罠)。
+  ガントレット中は PracticeResult / GameOverScreen を描かず、`handleVictory/GameOver/Return` も
+  早期returnさせて**画面遷移を一切挟まない**。守護霊(?ghost=1 or 同行者)が有効なら**走らず理由を表示**。
+- **判定は純関数**(`src/utils/gauntlet.ts` + 25テスト): 次の枠 / 終了判定 / 異常(NaN座標・HP・体勢の負値・
+  距離>4000px)/ ソフトロックの時計2本(gameTime基準 同一状態20秒・ボス無動作15秒 / 実時間基準
+  「実時間30秒でgameTimeがほぼ進まない」)/ 要約集計 / コピー用テキスト / localStorage追記。
+- **読み口の整備**(全て記録専用・挙動不変): `playerTraits.snapshotMoveTally`(**ディープコピー**)/
+  `resetMoveTally` / `moveReaction.MOVE_KEYS_BY_BOSS_TYPE`(per-boss技表を既存表から**導出**して台帳化・
+  テスト6件)/ 例外の「1回きり」フラグ再アーム口4本(useGameLoop 5フラグ・PixiScene・PixiStage
+  (置き場を `pixi/renderErrorFlags.ts` へ)・errorBeacon)。
+- **被弾タグ付けバッチ**(記録専用): 未指定だった `damageSourceMove` を19箇所へ付与
+  (ミゲル払い/縦払い×2経路・踏み込み / ウリエル3技 / スリィエル環×3・薙ぎ / アクラシエル棘・爆発・
+  結晶の槍 / ジブリルのランタン火 / バス停レーザー / 馬乗り狙撃 / 舞妓の毬回し・手毬打ち /
+  アイドル狙撃 / ミーミルのレーザー)。判定・ダメージ・演出は一切不変。
+- **申告表(ALLOWED_MOVE_CHAINS)へ2件**: `g-quad-charge -> g-quad-breath` / `harai -> tate`
+  (未申告のまま実戦へ繋ぐと城ボス7枠とミゲルで毎戦誤検知)。**キーは状態名ではなく
+  parseMovePhase 後の技名**であることをテストで固定。
+- **practiceGuard の許可リストへ `zombie:gauntlet` を追加**(社長裁定「推薦で」)。理由をコード内に明記。
+- 実装で分かった運用メモ: `?autotut=1` は不要(駆動がチュートリアルのポップアップを閉じる)。
+  ソフトロックの実時間の時計は**ボスが居る間だけ**(出撃ローディングの誤検知回避)。
+- **★未決(設計書に記載・社長裁定待ち)**: 反応表の技キー台帳に行が無いダメージ技が3つ
+  (`bm-whip360` / アクラシエルの転移衝撃 / アイドルの手榴弾)。この3つだけ被弾タグを付けられず、
+  記録上ずっと「回避」に見える。台帳は守護霊の行動生成が読む仕様の一部なので触らず止めた(推薦=足す)。
+- 検証: typecheck 0 / lint 0エラー(warningは既存のみ)/ 新規・関連テスト
+  gauntlet 25・moveReaction 52・moveCancelGuard 17・playerTraits 87・bossPractice 17・practiceGuard 5 = 全緑。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触なし。ゲームの仕様・挙動・
+  バランス・演出は不変(`?gauntlet=1` 無指定時の分岐は1つも変わらない)。
+
 ## v0.25.3604 — 天使volleyの構えホロを出現魔法陣へ差し替え+大型化【2026-08-19 16:09 JST】
 
 - 社長指示「天使系が弾打つ時のホログラム演出、まず小さすぎる。これじゃないやつにして。何種類か

@@ -3383,6 +3383,12 @@ export class PixiScene {
   private arenaGfx = new Graphics(); // 囲い系イベントの柵リング(半透明の光る円ストローク・world座標)
   private returnGfx = new Graphics(); // 帰還サークル(地面・world座標。滞在で外周が満ちる)
   private static enemyDrawErrLogged = false; // drawEnemy 例外ログは初回だけ(1体の描画失敗で全体が固まらないよう保護)
+  /**
+   * 上の「1回きり」フラグを再アームする(research/BOSS_GAUNTLET.md 検出器5)。**ページ寿命**の
+   * フラグなので、1タブで連戦する(ボス・ガントレット)と2戦目以降の描画例外が丸ごと無音になる。
+   * 戦いの切れ目で呼ぶ=握り潰し方(挙動)は変えない。通常プレイでは誰も呼ばない。
+   */
+  static rearmDrawErrorFlag(): void { PixiScene.enemyDrawErrLogged = false; }
   private baseSitesGfx = new Graphics(); // 拠点候補地サークル(地面・world座標。滞在で外周が満ちる)
   private hospitalSprite = new Sprite(); // 廃病院の本体(足元アンカー・actorLayer で y-sort)
   private hospitalGfx = new Graphics(); // 病院サークル(地面・world座標。滞在で外周が満ちる)

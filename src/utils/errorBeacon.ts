@@ -19,3 +19,13 @@ export const reportSuppressedError = (tag: string, err: unknown): void => {
 
 /** 表示側(Game.tsx の ErrBeaconDebug)が1秒間隔で読む。無ければnull。 */
 export const lastSuppressedError = (): string | null => last;
+
+/**
+ * ビーコンを再アームする(research/BOSS_GAUNTLET.md 検出器5)。**次の1件をまた拾えるようにするだけ**で、
+ * 例外の握り潰し方は変えない。
+ *
+ * ★なぜ要るか: 保持は「最初の1件だけ」=**ページ寿命**なので、1タブで連続して何戦も回す
+ * (ボス・ガントレット)と**2戦目以降が丸ごと無音**になる。戦いの切れ目で明示的に再アームする。
+ * 通常プレイでは誰も呼ばない=挙動は従来どおり。
+ */
+export const rearmSuppressedError = (): void => { last = null; };

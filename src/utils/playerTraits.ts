@@ -797,6 +797,39 @@ export const notifyMoveDamage = (moveKey: string): void => {
   if (session) markMoveReactionHit(session.moveReactions, moveKey);
 };
 
+/**
+ * ★技への反応表の**読み口**(research/BOSS_GAUNTLET.md 検出器3・v0.25.3603)。**記録専用・挙動不変**。
+ *
+ * なぜ要るか: 反応表は「撃破してリザルトを通ったセッション」だけがプロファイルへcommitされ、
+ * 途中経過を**外から読む口が1つも無かった**。ガントレット(1戦ごとに読んで畳む)や、
+ * 撃破に至らなかった戦い(タイムアウト・死亡)の記録がそのまま消えてしまう。
+ *
+ * ★**ディープコピーを返す**(CLAUDE.md 実装精度の規律3=集計のアンカーは必ずコピー)。
+ * 生きた参照を返すと、呼び出し側が控えた「開始時点」が後から書き換わって差分が常に0になる。
+ *
+ * 粗さ(読む人向け): tally は**確定したエピソード**の集計。まだ開いている技・残響(linger)中の技は
+ * 入らない(それらは技が切り替わるか残響が切れた時に足される)。
+ */
+export const snapshotMoveTally = (): MoveReactionState['tally'] => {
+  const src = session?.moveReactions.tally;
+  if (!src) return {};
+  const out: MoveReactionState['tally'] = {};
+  for (const key of Object.keys(src) as (keyof MoveReactionState['tally'])[]) {
+    const row = src[key];
+    if (row) out[key] = { exposures: row.exposures, counters: row.counters, hits: row.hits };
+  }
+  return out;
+};
+
+/**
+ * 技への反応表を**この時点から測り直す**(1戦ごとに区切って読むため)。記録専用・挙動不変。
+ * エピソード状態機械ごと作り直す=開いている技・残響も捨てる(前の戦いの残りを次の戦いへ持ち越さない)。
+ * セッションが無い(非交戦/ゴーストラン)時は何もしない。
+ */
+export const resetMoveTally = (): void => {
+  if (session) session.moveReactions = createMoveReactionState();
+};
+
 // ==== G5(BOT_AND_GHOST.md §2.10): ボス撃破の通知(1行フック) ======================================
 
 /**

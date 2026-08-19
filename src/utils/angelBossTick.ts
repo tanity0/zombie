@@ -595,7 +595,7 @@ export const runMiguelTick = (
         // v0.25.3128(案A): 技を中断=カウンター1回につき1成立に揃える。
         patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
       } else {
-        const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の${st === 'harai' ? '払い' : '縦払い'}`, pcx, pcy);
+        const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の${st === 'harai' ? '払い' : '縦払い'}`, pcx, pcy, undefined, undefined, st === 'harai' ? 'miguel-harai' : 'miguel-tate'); // G4a計測タグ(記録専用)
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
@@ -701,7 +701,7 @@ export const runMiguelTick = (
           dashCountered((sx + ex) / 2, (sy + ey) / 2);
           countered = true;
         } else {
-          const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の踏み込み`, pcx, pcy);
+          const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の踏み込み`, pcx, pcy, undefined, undefined, 'miguel-mdash'); // G4a計測タグ(記録専用)
           if (died) onPlayerDeath(pcx, pcy);
         }
       }
@@ -844,7 +844,7 @@ export const runMiguelTickLegacy = (
         // v0.25.3128(案A): 技を中断=カウンター1回につき1成立に揃える。
         patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
       } else {
-        const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の${st === 'harai' ? '払い' : '縦払い'}`, cxp, cyp);
+        const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の${st === 'harai' ? '払い' : '縦払い'}`, cxp, cyp, undefined, undefined, st === 'harai' ? 'miguel-harai' : 'miguel-tate'); // G4a計測タグ(記録専用)
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
@@ -2002,7 +2002,7 @@ export const runUriTick = (
       const cp = useGameStore.getState().player;
       if (Date.now() <= cp.counterWindowEnd) { uriCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri); }
       else {
-        const died = useGameStore.getState().damagePlayer(uri.damage, `${enemyDeathLabel(uri.type)}の大薙ぎ`, pcx, pcy);
+        const died = useGameStore.getState().damagePlayer(uri.damage, `${enemyDeathLabel(uri.type)}の大薙ぎ`, pcx, pcy, undefined, undefined, 'uri-sweep'); // G4a計測タグ(記録専用)
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
@@ -2031,7 +2031,7 @@ export const runUriTick = (
       const cp = useGameStore.getState().player;
       if (Date.now() <= cp.counterWindowEnd) { uriCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri); }
       else {
-        const died = useGameStore.getState().damagePlayer(uri.damage, `${enemyDeathLabel(uri.type)}の振り下ろし`, pcx, pcy);
+        const died = useGameStore.getState().damagePlayer(uri.damage, `${enemyDeathLabel(uri.type)}の振り下ろし`, pcx, pcy, undefined, undefined, 'uri-downslash'); // G4a計測タグ(記録専用)
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
@@ -2090,7 +2090,7 @@ export const runUriTick = (
           thrustCountered((sx + ex) / 2, (sy + ey) / 2); countered = true;
         }
         else {
-          const died = useGameStore.getState().damagePlayer(uri.damage, `${enemyDeathLabel(uri.type)}の踏み込み突き`, pcx, pcy);
+          const died = useGameStore.getState().damagePlayer(uri.damage, `${enemyDeathLabel(uri.type)}の踏み込み突き`, pcx, pcy, undefined, undefined, 'uri-thrust'); // G4a計測タグ(記録専用)
           if (died) onPlayerDeath(pcx, pcy);
         }
       }
@@ -2306,7 +2306,7 @@ export const runSurielTick = (
       const cp = useGameStore.getState().player;
       if (Date.now() <= cp.counterWindowEnd) { surielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel); }
       else {
-        const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の射出`, pcx, pcy);
+        const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の射出`, pcx, pcy, undefined, undefined, 'suriel-ring'); // G4a計測タグ(記録専用)
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
@@ -2322,7 +2322,7 @@ export const runSurielTick = (
           surielCounterHit(pcx, pcy); countered = true;
           patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
         } else {
-          const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の射出`, pcx, pcy);
+          const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の射出`, pcx, pcy, undefined, undefined, 'suriel-ring'); // G4a計測タグ(記録専用)
           if (died) onPlayerDeath(pcx, pcy);
         }
       }
@@ -2355,7 +2355,7 @@ export const runSurielTick = (
       const cp = useGameStore.getState().player;
       if (Date.now() <= cp.counterWindowEnd) { surielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel); }
       else {
-        const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の回転斬`, pcx, pcy);
+        const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の回転斬`, pcx, pcy, undefined, undefined, 'suriel-ring'); // G4a計測タグ(記録専用・回転斬も環=1つの技)
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
@@ -2384,7 +2384,7 @@ export const runSurielTick = (
       const cp = useGameStore.getState().player;
       if (Date.now() <= cp.counterWindowEnd) { surielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel); }
       else {
-        const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の本体の薙ぎ`, pcx, pcy);
+        const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の本体の薙ぎ`, pcx, pcy, undefined, undefined, 'suriel-sweep'); // G4a計測タグ(記録専用)
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
@@ -2566,7 +2566,7 @@ export const runAcrasielTick = (
       const cp = useGameStore.getState().player;
       if (Date.now() <= cp.counterWindowEnd) { acrasielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel); }
       else {
-        const died = useGameStore.getState().damagePlayer(acrasiel.damage, `${enemyDeathLabel(acrasiel.type)}の放射棘`, pcx, pcy);
+        const died = useGameStore.getState().damagePlayer(acrasiel.damage, `${enemyDeathLabel(acrasiel.type)}の放射棘`, pcx, pcy, undefined, undefined, 'acrasiel-spike'); // G4a計測タグ(記録専用)
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
@@ -2650,7 +2650,7 @@ export const runAcrasielTick = (
       const cp = useGameStore.getState().player;
       if (Date.now() <= cp.counterWindowEnd) { acrasielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel); }
       else {
-        const died = useGameStore.getState().damagePlayer(acrasiel.damage, `${enemyDeathLabel(acrasiel.type)}の爆発`, pcx, pcy);
+        const died = useGameStore.getState().damagePlayer(acrasiel.damage, `${enemyDeathLabel(acrasiel.type)}の爆発`, pcx, pcy, undefined, undefined, 'acrasiel-burst'); // G4a計測タグ(記録専用)
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
@@ -2743,7 +2743,7 @@ export const tickAngelBossFires = (newGameTime: number, onPlayerDeath: (x: numbe
     const active = newGameTime >= f.activateAt;
     if (active && !pl.invulnerable && !died && !struck && Math.hypot(plcx - f.x, plcy - f.y) <= hitR) {
       struck = true;
-      const d = useGameStore.getState().damagePlayer(JB_T.fire.damage, 'ジブリルのランタン火', f.x, f.y);
+      const d = useGameStore.getState().damagePlayer(JB_T.fire.damage, 'ジブリルのランタン火', f.x, f.y, undefined, undefined, 'jibril-lantern'); // G4a計測タグ(記録専用・置いた火はランタンの技に帰属)
       if (d) { died = true; onPlayerDeath(plcx, plcy); }
       continue;
     }
@@ -2784,7 +2784,7 @@ export const tickAcrasielSpears = (
         }
       }
       if (!pl.invulnerable && !died && inCircle) {
-        const d = useGameStore.getState().damagePlayer(sp.damage, `${enemyDeathLabel('acrasiel')}の結晶の槍`, sp.x, sp.y);
+        const d = useGameStore.getState().damagePlayer(sp.damage, `${enemyDeathLabel('acrasiel')}の結晶の槍`, sp.x, sp.y, undefined, undefined, 'acrasiel-spear'); // G4a計測タグ(記録専用・遅延起爆は残響で槍へ帰属)
         if (d) { died = true; onPlayerDeath(plcx, plcy); }
       }
       continue;

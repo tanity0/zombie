@@ -724,7 +724,7 @@ export const runIdolTick = (
     const tx = idol.aiTargetX ?? icx, ty = idol.aiTargetY ?? icy;
     const pr = Math.max(player.width, player.height) / 2;
     if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, IDOL_TUNING.shape.snipeHalfWidth) <= pr) {
-      const died = useGameStore.getState().damagePlayer(IDOL_TUNING.moveDamage.snipe, `${enemyDeathLabel(idol.type)}の狙撃`, pcx, pcy);
+      const died = useGameStore.getState().damagePlayer(IDOL_TUNING.moveDamage.snipe, `${enemyDeathLabel(idol.type)}の狙撃`, pcx, pcy, undefined, undefined, 'idol-snipe'); // G4a計測タグ(記録専用)
       if (died) onPlayerDeath(pcx, pcy);
     }
     if (newGameTime >= (idol.bossStateUntil ?? 0)) toRecover('snipe');

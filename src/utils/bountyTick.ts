@@ -766,7 +766,7 @@ const tickRanged = (
     const tproj = Math.max(0, Math.min(BR_LASER_RANGE, (ppx - bcx) * ux + (ppy - bcy) * uy));
     const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
     if (Math.hypot(ppx - cxp, ppy - cyp) <= BR_LASER_HALFWIDTH + pr) {
-      useGameStore.getState().damagePlayer(BR_T.laser.damage, `${enemyDeathLabel(bounty.type)}のレーザー`, ppx, ppy);
+      useGameStore.getState().damagePlayer(BR_T.laser.damage, `${enemyDeathLabel(bounty.type)}のレーザー`, ppx, ppy, undefined, undefined, 'br-laser'); // G4a計測タグ(記録専用)
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'laser-recover';
@@ -1127,7 +1127,7 @@ const tickMelee = (
     const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
     const pr = Math.max(player.width, player.height) / 2;
     if (distToBandRect({ x: ppx, y: ppy }, { x: fx, y: fy }, { x: tx, y: ty }, BM_T.snipe.halfWidth) <= pr) {
-      useGameStore.getState().damagePlayer(BM_T.snipe.damage, `${enemyDeathLabel(bounty.type)}の狙撃`, ppx, ppy);
+      useGameStore.getState().damagePlayer(BM_T.snipe.damage, `${enemyDeathLabel(bounty.type)}の狙撃`, ppx, ppy, undefined, undefined, 'bm-snipe'); // G4a計測タグ(記録専用)
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'bm-snipe-recover';
@@ -1594,7 +1594,7 @@ const tickMaiko = (
       // 位置で見る)では届いていない=不成立のまま被弾し、被弾で窓が閉じて以後も成立しなかった。
       // ここで**移動後の円**でもう一度だけ見る(同tickの引き分けはカウンター勝ち)。
       if (tryMovingCounter(counterReachShapeFor('bounty:mk-spin', { bcx, bcy, pcx, pcy }))) return;
-      useGameStore.getState().damagePlayer(MK_T.spin.damage, `${enemyDeathLabel(bounty.type)}の毬回し`, pcx, pcy);
+      useGameStore.getState().damagePlayer(MK_T.spin.damage, `${enemyDeathLabel(bounty.type)}の毬回し`, pcx, pcy, undefined, undefined, 'mk-spin'); // G4a計測タグ(記録専用)
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'mk-spin-recover';
@@ -1694,7 +1694,7 @@ const tickMaiko = (
       // ★v0.25.3591(監査 A-5「毬の円reachでカウンター可にする=打ち返す」): 毬は弾ではないので反射経路に
       // 乗らず、カウンター手段が1つも無かった。**毬の円**(=描いてある毬そのもの)で成立させる。
       if (tryMovingCounter(counterReachShapeFor(`bounty:${st}`, { bcx, bcy, pcx, pcy, ballX: px2, ballY: py2 }))) return;
-      useGameStore.getState().damagePlayer(MK_T.boom.damage, `${enemyDeathLabel(bounty.type)}の手毬打ち`, pcx, pcy);
+      useGameStore.getState().damagePlayer(MK_T.boom.damage, `${enemyDeathLabel(bounty.type)}の手毬打ち`, pcx, pcy, undefined, undefined, 'mk-boom'); // G4a計測タグ(記録専用)
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       if (st === 'mk-boom-out') {

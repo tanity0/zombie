@@ -77,12 +77,38 @@
 2. 放置(≒70〜90分)。時々画面を見る
 3. 終わったら「コピー」を貼る → 設計チャットが分析
 
-## ★裁定待ち(社長)
-1. **practiceGuardの許可リストにガントレット専用1キー(`zombie:gauntlet`)を足してよいか**。
-   目的=ブラウザ落ちでも戦績が残る。ゲーム進行とは無関係の記録専用キーだが、「練習中は既定で
-   全部塞ぐ」という関所の思想に穴を1つ開ける判断なので裁定を仰ぐ。
-   **推薦=足す**(代替のconsole頼みは落ちた時に拾いにくい)。
-2. タイムアウト180秒(叩き台)と距離異常4000px(叩き台)はこのまま実測で調整する、で良いか。
+## 裁定済み(社長「推薦で」・2026-08-19)
+1. **practiceGuardの許可リストへガントレット専用1キー(`zombie:gauntlet`)を足す**=**承認**。
+   実装済み(`src/utils/practiceGuard.ts` の許可リストに、なぜ穴を開けるかの理由ごと明記)。
+2. **タイムアウト180秒・距離異常4000pxは叩き台のまま**(実測で調整)=**承認**。
+   値は `src/utils/gauntlet.ts`(`GAUNTLET_TIMEOUT_MS` / `GAUNTLET_FAR_DIST_PX`)の1箇所。
+
+## 実装(v0.25.36xx)
+- 駆動: `src/components/GauntletRunner.tsx`(`?gauntlet=1`。App が `startGauntletSlot`/`finishGauntlet` を渡す)
+- 判定(純関数)+検出器: `src/utils/gauntlet.ts`(+ `gauntlet.test.ts`)
+- 読み口: `playerTraits.snapshotMoveTally/resetMoveTally`(ディープコピー)/
+  `moveReaction.MOVE_KEYS_BY_BOSS_TYPE`(per-boss技表・導出)/
+  再アーム口 `useGameLoop.rearmLoopErrorFlags`・`PixiScene.rearmDrawErrorFlag`・
+  `pixi/renderErrorFlags.rearmRenderErrorFlags`・`errorBeacon.rearmSuppressedError`
+- 申告表へ2件追加: `g-quad-charge -> g-quad-breath` / `harai -> tate`
+  (**キーは状態名ではなく `parseMovePhase` 後の技名**。`-windup` 等の接尾辞は落ちる)
+- 実装で分かった運用メモ:
+  - **`?autotut=1` は付けなくてよい**。駆動がチュートリアルのポップアップを「OKを押す」のと同じに
+    閉じる(閉じないと stage-2 でポーズしたままシミュが1フレームも進まない)。
+  - 1戦の時計は**実時間**(gameTimeごと固まるハングも必ず切れる)。出撃ローディングの時間も
+    その180秒に含まれる(キャッシュが温まっていれば1秒程度)。
+  - ソフトロックの**実時間の時計はボスが居る間だけ**回す(ローディング中の gameTime 停止を
+    ハングと誤検知しないため)。
+
+## ★未決事項(実装中に見つかった・社長裁定が要る)
+1. **反応表の台帳に無い技が3つあり、その被弾だけタグを付けられなかった**(記録の穴)。
+   - `bounty-melee` の**360度ムチ**(状態 `bm-whip360`)/ `acrasiel` の**転移衝撃**(状態 `warp-in`)/
+     `idol` の**手榴弾**(状態 `idol-nade`)。いずれも**ダメージを持つ技**だが
+     `moveReaction.ts` の技キー台帳(`MOVE_REACTION_KEYS` / 状態→技キー表)に**行が無い**。
+   - 影響: この3つは「被弾」が記録上ずっと**回避**に見える(ガントレットの被弾内訳にも出ない)。
+   - 直し方は台帳へ3行足すだけだが、**その台帳は守護霊の行動生成が読む仕様の一部**(§2.9/§2.18)なので、
+     記録専用のこのバッチでは触らず止めた。**推薦=足す**(付けないと数字が嘘を言い続けるため)。
+     なお足すと守護霊のプロファイルに新しいキーが増える(既存キーの値は変わらない)。
 
 ## 監査の記録
 - v1監査: 22件(v0.25.3601の版に採否表あり。git履歴参照)。

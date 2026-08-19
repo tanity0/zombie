@@ -11,6 +11,7 @@ import { preloadCorridorTextures, CORRIDOR_TEXTURE_NAMES } from './corridorLayer
 import { SORTIE_STAGE_TEXTURE_PATHS, sortieTexturesNeeded } from './stageTextures';
 
 import { setAppliedResolution } from '../config/renderer';
+import { renderErrorFlags } from './renderErrorFlags';
 
 // 描画解像度の上限(電池対策)。スマホ(タッチ端末)は塗り面積=GPU負荷を抑えるため低め、PCは高画質のまま。
 // 塗るピクセル数は倍率の2乗で効くので、スマホ 2.0→1.5 で約44%削減。?rescap= でURL上書き(検証/微調整)。
@@ -62,7 +63,11 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
   // StrictMode double-mount / fast-unmount race.
   useEffect(() => {
     let cancelled = false;
-    let syncErrorLogged = false;
+    // sync例外のログは初回だけ(1フレームの例外で真っ暗になるのを防ぐ保護)。マウントごとに初回1件を
+    // 拾い直すのは従来どおり。**フラグの置き場だけ**モジュール側(renderErrorFlags)へ移してある=
+    // 1タブで連戦する時に外から再アームできる(research/BOSS_GAUNTLET.md 検出器5)。
+    renderErrorFlags.pixiStageSyncLogged = false;
+
     let readyFailsafe = 0; // ローディング解除のフェイルセーフタイマー(下記)
     const host = hostRef.current;
     const app = new Application();
@@ -211,7 +216,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
         try {
           scene.sync();
         } catch (e) {
-          if (!syncErrorLogged) { syncErrorLogged = true; console.error('[PixiStage] sync error (suppressed after first):', e); }
+          if (!renderErrorFlags.pixiStageSyncLogged) { renderErrorFlags.pixiStageSyncLogged = true; console.error('[PixiStage] sync error (suppressed after first):', e); }
         }
       };
       tickerCallbackRef.current = tick;

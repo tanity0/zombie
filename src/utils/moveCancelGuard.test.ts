@@ -85,6 +85,14 @@ describe('ALLOWED_MOVE_CHAINS(設計された連携の申告)', () => {
   it('申告された連携は違反にならない', () => {
     expect(moveCancelViolation('bm-charge', 'bm-whip360-windup')).toBeNull();
   });
+  // 実戦の状態へ常時接続する前に足した2件(ボス・ガントレット)。**状態名のまま**食わせて確かめる
+  // =申告のキー(技名)と実際に流れてくる状態名の対応がズレていたらここで落ちる。
+  it('城ボスの四連突進→氷結の吐息は申告済み(状態名 g-quad-charge → g-quad-breath-windup)', () => {
+    expect(moveCancelViolation('g-quad-charge', 'g-quad-breath-windup')).toBeNull();
+  });
+  it('ミゲルの払い→縦払いは申告済み(状態名 harai → tate-windup)', () => {
+    expect(moveCancelViolation('harai', 'tate-windup')).toBeNull();
+  });
   it('申告されていない同型の遷移は違反のまま(申告が効きすぎないこと)', () => {
     expect(moveCancelViolation('bm-charge', 'bm-combo1-windup')).not.toBeNull();
   });

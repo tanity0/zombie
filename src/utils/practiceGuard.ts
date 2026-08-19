@@ -26,6 +26,12 @@ export const PRACTICE_WRITE_ALLOWLIST: readonly string[] = [
   'zombie:speed',      // ゲーム速度(config/gameSpeed.ts)
   'zombie:gfx:bloom',  // ブルームON/OFF(config/graphics.ts)
   'zombie:renderer',   // レンダラ選択(config/renderer.ts)
+  // ★ボス・ガントレット(開発用の全ボス自動テスト)の戦績ログ(utils/gauntlet.ts)。
+  // **社長裁定2026-08-19「推薦で」= 足す**(research/BOSS_GAUNTLET.md §裁定)。
+  // 理由: 21戦70〜90分の放置テストなので、ブラウザが落ちた時に**直前までの戦績が残らない**と
+  // 走り直しになる。ゲームの進行・セーブとは無関係の**記録専用キー**で、読むのは開発者だけ。
+  // 「練習中は既定で全部塞ぐ」という関所の思想に開ける唯一の穴なので、ここに理由ごと明記する。
+  'zombie:gauntlet',
 ];
 
 export const isPracticeWritable = (key: string): boolean => PRACTICE_WRITE_ALLOWLIST.includes(key);

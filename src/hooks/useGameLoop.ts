@@ -1060,6 +1060,19 @@ let idolCtrlErrLogged = false;                       // idol制御例外のロ�
 let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
 let bountyCtrlErrLogged = false;                     // 賞金首(§6.38)制御例外のログも初回だけ(本体はbountyTick.ts)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
+/**
+ * 上の「1回きり」フラグを**全部**再アームする(research/BOSS_GAUNTLET.md 検出器5)。
+ * ★なぜ要るか: これらは**ページ寿命**のフラグなので、1タブで連続して何戦も回す(ボス・ガントレット)と
+ * **2戦目以降の例外が丸ごと無音**になる。戦いの切れ目で呼んで、次の戦いの初発をまた拾えるようにする。
+ * 握り潰し方(挙動)は変えない=通常プレイでは誰も呼ばないので従来どおり。
+ */
+export const rearmLoopErrorFlags = (): void => {
+  bossCtrlErrLogged = false;
+  idolCtrlErrLogged = false;
+  angelCtrlErrLogged = false;
+  bountyCtrlErrLogged = false;
+  loopErrLogged = false;
+};
 // (屋内の固定敵の「画面外」復帰余白 LAB_RETURN_HOME_MARGIN は src/utils/directorTick.ts へ移設)
 const PICKUP_HARD_CAP = 120;
 const XP_PICKUP_KEEP_COUNT = 82;
@@ -5693,7 +5706,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 if (Math.hypot(ppx - cxp, ppy - cyp) <= MIMIR_LASER_HALF_WIDTH + pr) {
-                  const died = damagePlayer(HB_MI.laser.damage, 'ミーミルのレーザー', cxp, cyp);
+                  const died = damagePlayer(HB_MI.laser.damage, 'ミーミルのレーザー', cxp, cyp, undefined, undefined, 'mimir-laser'); // G4a計測タグ(記録専用)
                   if (died) triggerPlayerDeath(ppx, ppy);
                 }
                 // G4b(§2.9): ビーム帯はゴースト(守護霊)にも当たる(同じ線分±半太さ・同じダメージ。

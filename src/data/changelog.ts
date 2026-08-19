@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3605',
+    items: [
+      'ゲーム内容の変更はありません(開発ツール: 全ボス×AI自動テストを追加)。',
+    ],
+  },
+  {
     version: '0.25.3604',
     items: [
       '天使(ミゲル/ジブリル)の弾連射の構えホログラムを、分析画面から出現魔法陣に差し替えて大型化しました(約1.8倍→3.2倍・構え切りに向けてハッキリ浮かび上がります)。',

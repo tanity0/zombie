@@ -276,6 +276,51 @@ const BULLET_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<stri
   },
 };
 
+// ---- per-boss の技表(台帳・v0.25.3603) ---------------------------------------------------------
+// ★なぜ要るか(research/BOSS_GAUNTLET.md 検出器4「技カバレッジ」): 上の状態→技キーの表は**非export**で、
+// しかも MOVE_REACTION_KEYS / BULLET_MOVE_KEYS は**全ボス横断のフラットな並び**しか無い。
+// 「このボスが持ち得る技」の突き合わせ相手が現存しないので、**1戦で一度も出なかった技**を出せなかった。
+// ⇒ 上の3表(近接/弾/トール)+giantbatの `g-` 接頭辞から**導出**して台帳化する。
+// 写して二重管理にしない=表を足せばこの台帳も自動で増える(ズレようがない)。
+// **記録専用**(カバレッジの読み物)。判定・挙動には一切使わない。
+//
+// 既知の粗さ(台帳を読む人向け):
+//  - **giantbat は1つの型に全ステージ・全形態の技が混ざる**(状態名からステージを割れない)。
+//    よって giantbat の「出なかった技」には、その枠には元から無い技が必ず並ぶ。
+//  - **idol の射撃部品 s1〜s8 は除く**。ボスメーカーで社長が組んだ時だけ生える枠なので、
+//    既定では必ず「出なかった」になり、本物の取りこぼしが埋もれる。
+const IDOL_SHOT_SLOT_KEY_SET: ReadonlySet<string> = new Set(IDOL_SHOT_SLOTS_MIRROR.map(m => `idol-${m}`));
+
+const buildMoveKeysByBossType = (): Record<string, MoveReactionKey[]> => {
+  const acc: Record<string, Set<string>> = {};
+  const add = (type: string, key: string): void => {
+    if (IDOL_SHOT_SLOT_KEY_SET.has(key)) return;
+    (acc[type] ??= new Set<string>()).add(key);
+  };
+  for (const [type, table] of Object.entries(MELEE_STATE_TO_MOVE)) {
+    for (const key of Object.values(table ?? {})) add(type, key);
+  }
+  for (const [type, table] of Object.entries(BULLET_STATE_TO_MOVE)) {
+    for (const key of Object.values(table ?? {})) add(type, key);
+  }
+  for (const key of Object.values(THOR_STATE_TO_MOVE)) add('thor', key);
+  // giantbat は aiPhase から `g-<move>` を切り出す方式(GIANT_MOVE_RE)なので、両台帳の `g-` 全部が対象。
+  for (const key of [...MOVE_REACTION_KEYS, ...BULLET_MOVE_KEYS]) {
+    if (GIANT_MOVE_RE.test(key)) add('giantbat', key);
+  }
+  const out: Record<string, MoveReactionKey[]> = {};
+  for (const [type, set] of Object.entries(acc)) out[type] = [...set].sort() as MoveReactionKey[];
+  return out;
+};
+
+/** ボスの型 → そのボスが持ち得る技キー(昇順)。**カバレッジの突き合わせ相手**。 */
+export const MOVE_KEYS_BY_BOSS_TYPE: Readonly<Record<string, readonly MoveReactionKey[]>> =
+  buildMoveKeysByBossType();
+
+/** そのボスが持ち得る技キー。台帳に無い型(雑魚など)は空配列。 */
+export const moveKeysForBossType = (type: string): readonly MoveReactionKey[] =>
+  MOVE_KEYS_BY_BOSS_TYPE[type] ?? [];
+
 /** 弾技の技キー導出(弾を撃つ技だけ)。非ボス/弾を撃たない技は null。 */
 export const bulletMoveKeyForEnemy = (
   e: Pick<MoveReactionEnemy, 'type' | 'bossState'>,

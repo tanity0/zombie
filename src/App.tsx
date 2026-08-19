@@ -26,10 +26,19 @@ import { subsAllCompletedFromMeta, endingFollowup } from './utils/storyProgress'
 import { getEventQuestConfig } from './utils/eventQuest';
 import { getStage } from './data/campaign';
 import { isPixiRenderer } from './config/renderer';
-import { isPracticeRun, beginPracticeRun, endPracticeRun, type PracticeSlot } from './utils/bossPractice';
+import { isPracticeRun, beginPracticeRun, endPracticeRun, type PracticeRestore, type PracticeSlot } from './utils/bossPractice';
 import PracticeResult from './components/PracticeResult';
+import GauntletRunner from './components/GauntletRunner';
 
 const LOADING_MIN_MS = 650;
+
+/**
+ * ★ボス・ガントレット(開発用の全ボス自動テスト・`?gauntlet=1`。research/BOSS_GAUNTLET.md)。
+ * 他のデバッグフラグと同じ作法で**モジュールロード時に1回だけ**読む。
+ * 無指定なら本編の描画・分岐は**1つも変わらない**(全部この定数でゲートしてある)。
+ */
+const GAUNTLET_MODE = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('gauntlet') === '1';
 
 // 出撃ローディングのオーバーレイ(v0.25.1827・社長指示「出撃ローディングにも%表示」)。
 // PixiStage初期化のウィンドウ進捗(loadProgressResetWindow基準)を購読して%を出す。
@@ -320,6 +329,44 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     void startGame(characterClass, false, true);
   };
 
+  /**
+   * ★ボス・ガントレット(開発用・`?gauntlet=1`。research/BOSS_GAUNTLET.md)。
+   * **既存の練習ラン(startPractice)と同じ経路**で枠を出撃させるが、枠の切り替えだけが違う:
+   *
+   *   **次枠の `beginPracticeRun` を先に呼んで activeSlot を差し替えてから `startGame`**。
+   *   `endPracticeRun` を先に呼ぶと一瞬 `isPracticeRun()===false` になり、遅れて来た勝敗遷移が
+   *   通常経路(=進行の書き込み)へ落ちる。だからガントレット中は**一度も練習ランを抜けない**。
+   *
+   * 元へ戻すための値(`restore`)は**最初の1回だけ**控える(2枠目以降で控えると、既に書き換えた
+   * 練習用の選択を「元の値」として保存してしまう)。
+   */
+  const gauntletRestoreRef = useRef<PracticeRestore | null>(null);
+  const startGauntletSlot = (slot: PracticeSlot): void => {
+    if (!gauntletRestoreRef.current) {
+      gauntletRestoreRef.current = {
+        stageId: getSelectedStageId(), mission: getSelectedMission(), free: getSelectedFreeMode(),
+      };
+    }
+    beginPracticeRun(slot, gauntletRestoreRef.current);
+    setSelectedStageId(slot.stageId);
+    setSelectedMission('main');
+    setSelectedFreeMode(false);
+    const cls = useGameStore.getState().characterClass
+      || new URLSearchParams(window.location.search).get('class') || 'warrior';
+    void startGame(cls, false, true);
+  };
+
+  /** ガントレット完走。練習ランを抜けて選択状態を戻し、メニューで止める(要約はRunnerが上に出す)。 */
+  const finishGauntlet = (): void => {
+    const restore = endPracticeRun();
+    if (restore) {
+      setSelectedStageId(restore.stageId);
+      setSelectedMission(restore.mission as SelectedMission);
+      setSelectedFreeMode(restore.free);
+    }
+    setGameState('menu');
+  };
+
   /** 練習を抜けてボス一覧へ戻る。プレイヤーの選択状態を元に戻す。 */
   const leavePracticeToList = (): void => {
     const restore = endPracticeRun();
@@ -333,17 +380,22 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   };
 
   const handleGameOver = () => {
+    // ★ガントレット中は画面遷移を挟まない(駆動が次枠へ差し替える)。ここで gameState を動かすと
+    // Game が一瞬アンマウントし、遅れて来た遷移が次の戦いの最中に届く事故になる。
+    if (GAUNTLET_MODE) return;
     if (bare) { restartBareRoom(); return; }
     setGameState('gameOver');
   };
 
   const handleReturn = () => {
+    if (GAUNTLET_MODE) return; // 同上(ガントレットは駆動側が進める)
     if (bare) { restartBareRoom(); return; }
     // 商人「帰還」=任意撤収。進行(クリア解放)はさせず、スコア計上のリザルトへ。装備は持ち帰り可。
     setGameState('returned');
   };
 
   const handleVictory = () => {
+    if (GAUNTLET_MODE) return; // 同上(ガントレットは駆動側が次枠へ差し替える)
     // ★bare(道具ページ)は**進行に一切触らない**。下のクリア解放・エンディング予約を通さない。
     if (bare) { restartBareRoom(); return; }
     // ★練習ラン(ボスラッシュ)も進行に触らない(BOSS_MAKER.md §20-6)。リザルトは出すが、
@@ -464,7 +516,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       {/* 練習(ボスラッシュ)は専用の簡素なリザルト(社長指摘v0.25.2861「表示紛らわしい」)。
           既存のリザルトは報酬・ハイスコア・記録が並ぶが、練習ではそれらを全て封じてあるので
           **実際には何も増えていない**のに増えたように読めてしまう。 */}
-      {!bare && isPracticeRun() && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
+      {!bare && !GAUNTLET_MODE && isPracticeRun() && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
         <PracticeResult
           won={gameState === 'victory'}
           onRetry={() => { void startGame(useGameStore.getState().characterClass, false, true); }}
@@ -472,7 +524,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
         />
       )}
 
-      {!bare && !isPracticeRun() && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
+      {!bare && !GAUNTLET_MODE && !isPracticeRun() && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
         <GameOverScreen
           won={gameState === 'victory'}
           withdraw={gameState === 'returned'}
@@ -498,6 +550,10 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
 
       {/* ステージ6(洋館)通路プレビュー(?corridor=1)。タイトル等の上に全画面。 */}
       {!bare && corridorPreview && <MansionCorridorPreview />}
+
+      {/* ★ボス・ガントレット(開発用・?gauntlet=1)。枠順の自動出撃・観測・記録の駆動。
+          本編(無指定)ではこの木ごと描かれない。 */}
+      {GAUNTLET_MODE && <GauntletRunner onStartSlot={startGauntletSlot} onFinish={finishGauntlet} />}
 
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}
       <OrientationGuard />
