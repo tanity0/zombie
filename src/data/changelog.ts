@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3652',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 育成設計を最終化=4系統×5段階・初期HP130・メーター式)。',
+    ],
+  },
+  {
     version: '0.25.3651',
     items: [
       'ガチャの単発演出で発砲音が鳴っていなかった不具合を修正しました(未定義の効果音キーを参照していたため常に無音。連打側と同じ音に統一)。',
