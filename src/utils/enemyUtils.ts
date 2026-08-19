@@ -116,11 +116,13 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   'bounty-balance': { width: 44, height: 44, speed: 50, health: 2000, damage: 18, experienceValue: 0 },
   'bounty-maiko':   { width: 44, height: 44, speed: 50, health: 2000, damage: 18, experienceValue: 0 },
   // research/GHOST_BOSS.md(守護霊ボス「幻影」): 体格=プレイヤー級(40×56)。
-  //  ・speed=87 は設計書の決定値(プレイヤー基準の生値)。**実効値は ×ENEMY_SPEED_MULT** になる点に注意
-  //    (固定強度タイプなので areaSpeed は 1)。この叩き台は実機で社長が確認して調整する。
+  //  ・speed=130(★社長裁定v0.25.3631「プレイヤー並みにして」): 敵は buildEnemy で
+  //    ×ENEMY_SPEED_MULT(2/3)が掛かるため、**実効値がプレイヤー(PLAYER_BASE_SPEED=87)と同等**に
+  //    なるよう生値を 87×3/2≈130 で指定する(トールが同じ理由で生値を明示指定している前例)。
+  //    固定強度タイプなので areaSpeed は 1。
   //  ・damage=0 = **接触では削らない**(決闘仕様: 技だけがプレイヤーを削る)。
   //  ・health は CONSTANT_STRENGTH_TYPES + hpMult 固定(下の buildEnemy)なのでこの値がそのまま実効HP。
-  'guardian-phantom': { width: 40, height: 56, speed: 87, health: GUARDIAN_PHANTOM_HEALTH, damage: 0, experienceValue: 200 },
+  'guardian-phantom': { width: 40, height: 56, speed: 130, health: GUARDIAN_PHANTOM_HEALTH, damage: 0, experienceValue: 200 },
 };
 
 /** PACING_PUZZLE.md §6.38(賞金首・B1): 4型の集合。texture名=type規約(getTexture(e.type))。 */
