@@ -4019,7 +4019,14 @@ const applySlasherChainStrike = (
     if (eDist > meleeRange) continue;
     hit = true;
     hitIds.push(e.id);
-    const k = get().damageEnemy(e.id, dmg);
+    // ★v0.25.3640(成果物監査A): スラッシャー追撃は**近接**なので、幻影ゲートへ 'melee' で通す
+    // (パリィ抽選の対象になる)。無効化(無敵/パリィ)されたら数字・斬撃・血飛沫・KBを出さない
+    // (「数字は出るのにHPが減らない」偽演出の禁止=監査Q1-1と同型)。幻影以外には従来と1bitも変わらない。
+    const k = get().damageEnemy(e.id, dmg, false, false, false, 'other', 'player', null, 1, 'melee');
+    const eAfter = get().enemies.find(x => x.id === e.id);
+    const gpDeflected = isGuardianPhantom(e.type)
+      && !!eAfter && (eAfter.gpBlockedAt === gameTime || eAfter.gpParriedAt === gameTime);
+    if (gpDeflected) continue; // hit/hitIds は積み済み=チェーンの進行は従来どおり(空振り扱いにしない)
     get().spawnDamageNumber(ecx, e.y, dmg, false);
     get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.95)');
     get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫(v0.25.2026)
@@ -4678,7 +4685,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null, postureImpactMult?: number) => boolean; // postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1)
+  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomHitSource | null) => boolean; // postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接など。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -9842,7 +9849,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player', postureImpact = null, postureImpactMult = 1) => {
+  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null) => {
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
@@ -9875,10 +9882,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統①): 適用順は**早期returnの直後・
       // 紫の報酬予算(applyBrokenGunReward/applyBrokenMeleeFatal)と紅き夜補正より前**
       // (0ダメージ化したヒットが報酬予算を食わないこと)。damageEnemy へ来るのは銃/サブ/爆発と
-      // カウンター反撃なので**どちらもパリィ不可**(近接スイングは②〜⑥の直接経路を通る)。
-      const gpGate = gatePhantomHit(
-        enemy, amount, postureImpact === 'counter' ? 'counter' : 'ranged', state.gameTime,
-      );
+      // カウンター反撃(どちらもパリィ不可)、および gpSource で明示された近接経由
+      // (スラッシャー追撃=パリィ可・v0.25.3640監査A)。
+      // ★v0.25.3640(監査C): **0ダメージのヒットはゲートを通さない**(護衛NPCの演出射撃などの
+      // 無害な弾が i-frame の起点(gpHitAt)を打ってしまう抜け道を塞ぐ。恒等で素通り)。
+      const gpGate: PhantomHitGateResult = amount > 0
+        ? gatePhantomHit(
+          enemy, amount, postureImpact === 'counter' ? 'counter' : (gpSource ?? 'ranged'), state.gameTime,
+        )
+        : { damage: amount, effects: true, blocked: false, parried: false, patch: {} };
       if (!gpGate.effects) {
         // 無効化: HPも lastHit も動かさない(通常の被弾フラッシュ・KB免疫・meleeAggroの起点を作らない)。
         // 絵は gpBlockedAt / gpParriedAt から描画側が別系統で出す。

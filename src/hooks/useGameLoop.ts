@@ -213,7 +213,8 @@ import {
   isCorpse,
   isBountyType,
   isGate2AngelBoss, // v0.25.3567: ボスメーカーの部屋で天使に旋回中心(home)を置くため
-  resistsChipKnockback
+  resistsChipKnockback,
+  isGuardianPhantom // v0.25.3640: 幻影が弾いた弾の数字/SE抑止(成果物監査Q1-1)
 } from '../utils/enemyUtils';
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
 import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs, turretNextReadyAt } from '../utils/turretTuning';
@@ -797,12 +798,16 @@ const BOUNTY_SFX: BountySfx = {
 // research/GHOST_BOSS.md v6(幻影): 音は既存の共通キーを流用する(専用素材は作らない=「ではない」条件)。
 // 銃は**プレイヤーの自動発砲と同じ銃種別の写像**(v0.25.2479パリティの並びをそのまま使う)。
 const PHANTOM_SFX: PhantomSfx = {
-  swing: () => playSfx('slash-damage'),
-  shot: (category: string) => playSfx(
+  // ★v0.25.3640(成果物監査B): swing は**振りの音**('melee'=プレイヤーのスイングと同じ)。
+  // 旧 'slash-damage' は命中音なので、空振りでも当たった音が鳴っていた。
+  swing: () => playSfx('melee'),
+  // 銃種SEはプレイヤーの自動発砲(下の activeGun 分岐)と完全に同じ写像にする:
+  // handgun でも SMG(handgun-t3=台帳の銃)は 'smg-fire'(同じ銃なのに音が違う、を禁止)。
+  shot: (category: string, key: string) => playSfx(
     category === 'shotgun' ? 'shotgun-fire'
       : category === 'rifle' ? 'rifle-fire'
         : category === 'glauncher' ? 'grenade-launcher-fire'
-          : 'handgun-fire',
+          : key === SMG_WEAPON_KEY ? 'smg-fire' : 'handgun-fire',
   ),
   parry: () => playSfx('counter'),
   hurt: () => playSfx('player-damage'),
@@ -10038,6 +10043,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             projectile?.reflected ? 'reflect' : directPlayerGun && hitCrit ? 'gun-crit' : null,
             projectile?.postureMult ?? 1,
           );
+          // ★v0.25.3640(成果物監査Q1-1): 幻影の被弾無敵が弾いた1発は、**数字もヒットSEも出さない**
+          // (ゲートはHPを止めるが、数字/SEは呼び出し側=ここが出しているため、素通しだと
+          // 「満額の数字が出るのにHPが減らない」偽演出がSMG連射で毎秒積み上がる)。
+          // 弾いた事実は damageEnemy が同tickの gpBlockedAt/gpParriedAt 打刻で返す(白点滅は描画側)。
+          const gpDeflectedShot = !!enemyForFx && isGuardianPhantom(enemyForFx.type) && (() => {
+            const gst = useGameStore.getState();
+            const cur = gst.enemies.find(x => x.id === enemyId);
+            return !!cur && (cur.gpBlockedAt === gst.gameTime || cur.gpParriedAt === gst.gameTime);
+          })();
           // PACING_PUZZLE.md §7-11c(4): クリ計測口(挙動は変えない=数えるだけ)。護衛NPC/守護霊の弾は
           // プレイヤー起因ではないため除外(botTelemetryの他の計測=classifyProjectileDamageChannelと
           // 同じ除外方針)。headshotHit=PHILL頭部の確定クリ、それ以外のhitCrit成立はRNGクリ。
@@ -10052,7 +10066,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const hcam = useGameStore.getState().camera, hgb = useGameStore.getState().gameBounds;
             hitSfxGain = npcSfxDistGain(enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2, hpl.x + hpl.width / 2, hpl.y + hpl.height / 2, hcam, hgb);
           }
-          playSfx(hitCrit ? 'headshot' : 'shot-damage', hitSfxGain);
+          if (!gpDeflectedShot) playSfx(hitCrit ? 'headshot' : 'shot-damage', hitSfxGain); // 幻影が弾いた弾は無音(v0.25.3640監査Q1-1)
           // 撃たれた対象の背中側(=弾の進行方向の出口)に「ドバッと火」破裂演出(2コマ立ち絵=プールsprite1枚で安い)。
           // 「敵1体につき直近 FIRE_JET_DEDUP_MS は1本」に間引く。ショットガン等の多弾(=見た目は単発)は近距離だと同一
           // フレーム、遠距離だと数フレームに分かれて命中するため、フレーム単位の間引きだけでは「2本生える」を防げない。
@@ -10399,7 +10413,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // crits both render in the gold "big hit" color.
           // ダメージ0の弾(=味方の演出射撃)では数字を出さない。出すと敵の頭上に「0」が並んで
           // 援護が壊れて見える(社長指示v0.25.2293「味方は演出」の体裁を守る)。
-          if (enemyForFx && dmg > 0) {
+          if (enemyForFx && dmg > 0 && !gpDeflectedShot) { // 幻影が弾いた弾は数字も出さない(v0.25.3640監査Q1-1)
             spawnDamageNumber(
               enemyForFx.x + enemyForFx.width / 2,
               enemyForFx.y,

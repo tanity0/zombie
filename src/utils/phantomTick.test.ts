@@ -217,6 +217,47 @@ describe('② 被弾無敵: 7系統すべてでダメージ0(1経路でも素通
   });
 });
 
+// ★v0.25.3640(成果物監査の機械化)
+describe('★成果物監査の再発防止(v0.25.3640)', () => {
+  it('Q1-3: 幻影の近接が実際に減らした時だけ被弾SE(hurt)が鳴る(damagePlayerの戻り値は「死んだか」)', () => {
+    const { step } = setup(40);
+    let hurt = 0;
+    const sfx = { ...NOOP_PHANTOM_SFX, hurt: () => { hurt += 1; } };
+    // setupのstepはNOOP固定なので、ここは直接runPhantomTickを1回だけ回す。
+    const st = useGameStore.getState();
+    const e = st.enemies[0];
+    const s = createPhantomTickState();
+    runPhantomTick(e, s, START_GT + 16, 0.016, 1, START_GT + 16, sfx, () => 0.999);
+    expect(hurt).toBe(1); // 当たった=鳴る
+    // プレイヤーがi-frame中は減らない=鳴らない。
+    useGameStore.setState(ps => ({ player: { ...ps.player, invulnerable: true, invulnerableTime: Date.now() } }));
+    const s2 = createPhantomTickState();
+    runPhantomTick(useGameStore.getState().enemies[0], s2, START_GT + 5000, 0.016, 1, START_GT + 5000, sfx, () => 0.999);
+    expect(hurt).toBe(1); // 増えない
+    void step; // setupのヘルパは未使用(直接tickで検証)
+  });
+
+  it('監査C: 0ダメージのヒットはゲートを通らない(無害な弾でi-frameが始まらない)', () => {
+    const { id } = setup(400);
+    useGameStore.getState().damageEnemy(id, 0, false, false, false, 'gun', 'player');
+    expect(useGameStore.getState().enemies.find(e => e.id === id)!.gpHitAt).toBeUndefined();
+    // 直後の有効打は普通に通る(0ダメ弾が無敵を張っていない)。
+    const hp = useGameStore.getState().enemies.find(e => e.id === id)!.health;
+    useGameStore.getState().damageEnemy(id, 100, false, false, false, 'gun', 'player');
+    expect(useGameStore.getState().enemies.find(e => e.id === id)!.health).toBeLessThan(hp);
+  });
+
+  it('監査A: 近接由来(gpSource=melee)の damageEnemy はパリィ抽選に掛かる(スラッシャー追撃の経路)', () => {
+    const { id } = setup(400);
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const hp = useGameStore.getState().enemies.find(e => e.id === id)!.health;
+    useGameStore.getState().damageEnemy(id, 100, false, false, false, 'other', 'player', null, 1, 'melee');
+    const e = useGameStore.getState().enemies.find(x => x.id === id)!;
+    expect(e.health).toBe(hp);                                        // パリィ=ダメージ0
+    expect(e.gpParriedAt).toBe(useGameStore.getState().gameTime);     // 反撃の合図が立つ
+  });
+});
+
 describe('③ パリィ(counterChanceのミラー)→ 次tickで割り込み反撃', () => {
   it('近接がパリィされると gpParriedAt が立ち、次tickで周期を無視して振り返す', () => {
     const { id, step, cur, state } = setup(40);

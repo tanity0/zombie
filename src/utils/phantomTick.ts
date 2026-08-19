@@ -98,8 +98,9 @@ const phantomGunKey = (): string | undefined => strongestGuardian().profile.snap
 export interface PhantomSfx {
   /** 近接を振った(空振り含む)。 */
   swing: () => void;
-  /** 発砲。`category` は武器カテゴリ(呼び出し側がプレイヤーと同じ銃種SEへ写像する)。 */
-  shot: (category: string) => void;
+  /** 発砲。`category`+`key` で呼び出し側が**プレイヤーの自動発砲と完全に同じ**銃種SEへ写像する
+   * (handgun-t3=SMGは'smg-fire'。同じ銃なのに音が違う、を禁止・v0.25.3640監査B)。 */
+  shot: (category: string, key: string) => void;
   /** パリィ成立(既存 'counter' を流用=新規素材なし)。 */
   parry: () => void;
   /** 幻影の攻撃がプレイヤーへ当たった(既存 'player-damage')。damagePlayer 直は音を出さないため。 */
@@ -361,11 +362,15 @@ const swingPhantomMelee = (
   const playerRadius = Math.max(player.width, player.height) / 2;
   if (distToBandRect({ x: pcx, y: pcy }, { x: bcx, y: bcy }, { x: tx, y: ty }, GP_T.melee.halfWidth) > playerRadius) return;
   // fromX/fromY を渡さないとプレイヤーのノックバックが出ない(GHOST_BOSS.md 監査4周目#1)。
-  const landed = useGameStore.getState().damagePlayer(
+  // ★v0.25.3640(成果物監査Q1-3): damagePlayer の戻り値は「プレイヤーが死んだか」であって
+  // 「当たったか」ではない(旧実装はこれを landed と誤読し、被弾SEが一度も鳴らなかった)。
+  // 実際にHPが減ったか(=i-frame中でない有効打か)を前後比較で判定して鳴らす。
+  const hpBefore = useGameStore.getState().player.health;
+  useGameStore.getState().damagePlayer(
     GP_T.melee.damage, GUARDIAN_PHANTOM_MELEE_SOURCE, bcx, bcy, GUARDIAN_PHANTOM_TYPE,
   );
   // 被弾SEはここで鳴らす: damagePlayer 直呼びは「本当に何も出ない」前例がある(gameStore の注記)。
-  if (landed) sfx.hurt();
+  if (useGameStore.getState().player.health < hpBefore) sfx.hurt();
 };
 
 /** 弾を1発撃つ(全ボス共通の赤い二重丸=絵替えしない)。飛翔特性はプレイヤーの実弾と同じ共通ヘルパ。 */
@@ -390,7 +395,7 @@ const firePhantomShot = (
   s.gun = { ...gun, magazine: Math.max(0, (gun.magazine ?? 0) - 1), lastFired: Date.now() };
   patch.gpShotAt = newGameTime;
   patch.gpShotAngle = Math.atan2(pcy - bcy, pcx - bcx);
-  sfx.shot(gun.category ?? 'handgun');
+  sfx.shot(gun.category ?? 'handgun', gun.key ?? '');
 };
 
 /**

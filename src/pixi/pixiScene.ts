@@ -23689,9 +23689,17 @@ export class PixiScene {
 
     // 無効化ヒット(被弾無敵で弾いた)= 小さな白点滅のみ・ヒットSEなし。
     // 通常の被弾フラッシュ(lastHit起点)を流用すると「当たったのに減らない=バグ」に見えるので別系統。
+    // ★v0.25.3640(成果物監査Q1-2): 旧実装の alpha ブーストは通常アルファ=1 では min(1, 1.9)=1 で
+    // **何も起きない no-op** だった。白く「光らせる」は tint でしか出せない——ダークtintの各チャンネルを
+    // 白へ寄せる(bt=0で最大→1へ減衰=立ち上がり強・尻すぼみのイーズ)。
     if (e.gpBlockedAt !== undefined) {
       const bt = (gameTime - e.gpBlockedAt) / PixiScene.GP_BLOCK_FLASH_MS;
-      if (bt >= 0 && bt < 1) view.sprite.alpha = Math.min(1, view.sprite.alpha * (1 + (1 - bt) * 0.9));
+      if (bt >= 0 && bt < 1) {
+        const k = (1 - bt) * (1 - bt); // 減衰カーブ(終端速度0=慣性)
+        const base = view.sprite.tint as number;
+        const mix = (c: number): number => Math.round(c + (255 - c) * k);
+        view.sprite.tint = (mix((base >> 16) & 0xff) << 16) | (mix((base >> 8) & 0xff) << 8) | mix(base & 0xff);
+      }
     }
 
     // 近接の振り(慣性MUST: 踏み込み→戻りをイーズで。等速で始まって瞬間停止しない)。
