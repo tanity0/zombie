@@ -1389,6 +1389,17 @@ const beginMkBoom = ({ newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch }: Boun
   patch.bossStateUntil = newGameTime + MK_T.boom.windup;
 };
 
+/** ★v0.25.3584 舞妓: バックロール(社長指示「舞妓にもバックロール追加」)。移動だけの後退で距離を空け、
+ *  明けたら手毬打ち(boom)へ直結する台本(バス停br-roll・鋏bb-backrollと同じ「移動→技」型)。 */
+const beginMkBackRoll = ({ newGameTime, dist, pcx, pcy, bcx, bcy, patch }: BountyBeginCtx): void => {
+  const dl = Math.max(1, dist);
+  patch.aiFromX = bcx; patch.aiFromY = bcy;
+  patch.aiTargetX = bcx + ((bcx - pcx) / dl) * MK_T.backRoll.rollDist;
+  patch.aiTargetY = bcy + ((bcy - pcy) / dl) * MK_T.backRoll.rollDist;
+  patch.bossState = 'mk-backroll';
+  patch.bossStateUntil = newGameTime + MK_T.backRoll.rollMs;
+};
+
 /** 舞妓: 毬回し(自分中心の円+踏み込み)。 */
 const beginMkSpin = ({ newGameTime, sfx, patch }: BountyBeginCtx): void => {
   sfx.alert();
@@ -1418,7 +1429,9 @@ const tickMaiko = (
     }
 
     if (dist <= MK_T.nearMax) {
-      beginMkNaginata(bctx, phase);
+      // ★v0.25.3584: 近距離の取り掛かりでバックロール台本を抽選(外れたら従来どおり毬の薙ぎ)。
+      if (Math.random() < MK_T.backRoll.chance) beginMkBackRoll(bctx);
+      else beginMkNaginata(bctx, phase);
       return;
     }
 
@@ -1449,6 +1462,22 @@ const tickMaiko = (
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'chase';
       patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+    }
+    return;
+  }
+
+  // ★v0.25.3584 バックロール: 移動だけの後退(smoothstep・判定なし)。明けたら手毬打ちへ直結。
+  if (st === 'mk-backroll') {
+    const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
+    const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
+    const t = Math.max(0, Math.min(1, 1 - ((bounty.bossStateUntil ?? newGameTime) - newGameTime) / MK_T.backRoll.rollMs));
+    const k = brRollEase(t);
+    const c = resolveMove(fx + (tx - fx) * k - bounty.width / 2, fy + (ty - fy) * k - bounty.height / 2, bounty);
+    patch.x = c.x; patch.y = c.y;
+    patch.vx = 0; patch.vy = 0;
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      // 手毬打ちの狙いはこの時点の位置から(beginMkBoomが現在のdist/座標で帯を張る)。
+      beginMkBoom(bctx);
     }
     return;
   }
@@ -1688,7 +1717,7 @@ export type BountyMoveKey =
   | 'br-push' | 'br-roll' | 'br-triple' | 'br-laser'
   | 'bm-charge' | 'bm-whip360' | 'bm-combo' | 'bm-snipe'
   | 'bb-sweep' | 'bb-triple' | 'bb-rollcombo' | 'bb-leap'
-  | 'mk-naginata' | 'mk-spin' | 'mk-suiu' | 'mk-boom';
+  | 'mk-naginata' | 'mk-spin' | 'mk-suiu' | 'mk-boom' | 'mk-backroll';
 
 /**
  * どのボスがどの技を持つか。**パネルの playables と、再生時の取り違え防止の両方がこれを読む**
@@ -1698,7 +1727,7 @@ export const BOUNTY_MOVES_BY_TYPE: Readonly<Record<string, readonly BountyMoveKe
   'bounty-ranged': ['br-push', 'br-roll', 'br-triple', 'br-laser'],
   'bounty-melee': ['bm-charge', 'bm-whip360', 'bm-combo', 'bm-snipe'],
   'bounty-balance': ['bb-sweep', 'bb-triple', 'bb-rollcombo', 'bb-leap'],
-  'bounty-maiko': ['mk-naginata', 'mk-spin', 'mk-suiu', 'mk-boom'],
+  'bounty-maiko': ['mk-naginata', 'mk-spin', 'mk-suiu', 'mk-boom', 'mk-backroll'],
 };
 
 /** 選ばれた技を始める(実戦のchase分岐と**同じ begin* を叩く**)。 */
@@ -1721,6 +1750,7 @@ const startBountyMove = (move: BountyMoveKey, bctx: BountyBeginCtx): void => {
     case 'mk-spin': beginMkSpin(bctx); return;
     case 'mk-suiu': beginMkSuiu(bctx); return;
     case 'mk-boom': beginMkBoom(bctx); return;
+    case 'mk-backroll': beginMkBackRoll(bctx); return; // ★v0.25.3584(台本全体=ロール→手毬打ちが通しで出る)
   }
 };
 

@@ -1257,11 +1257,39 @@ describe('runBountyTick — B2a 技の状態機械', () => {
 
   describe('舞妓(bounty-maiko)', () => {
     it('型A(HP>50%)の近距離は毬の薙ぎ単発(mk-naginata-windup)を発火する', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.9); // ★v0.25.3584: バックロール台本(<0.3)を外して固定
       const { id, step } = setupType('bounty-maiko', { x: 60, y: 0 });
       step(16);
       const e = useGameStore.getState().enemies.find(x => x.id === id);
       expect(e?.bossState).toBe('mk-naginata-windup');
       expect([700, 1150]).toContain((e?.bossStateUntil ?? 0) - useGameStore.getState().gameTime);
+    });
+
+    // ★v0.25.3584(社長指示「舞妓にもバックロール追加」)
+    it('近距離の取り掛かり: rand<backRoll.chance で mk-backroll へ入る', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.1);
+      const { id, step } = setupType('bounty-maiko', { x: 60, y: 0 });
+      step(16);
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('mk-backroll');
+    });
+
+    it('バックロール台本: 後退してから手毬打ち(mk-boom-windup)へ直結する', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.1);
+      const { id, step } = setupType('bounty-maiko', { x: 60, y: 0 });
+      const x0 = useGameStore.getState().enemies.find(e => e.id === id)!.x;
+      const order: string[] = [];
+      for (let i = 0; i < 40; i++) {
+        step(50);
+        const st = useGameStore.getState().enemies.find(e => e.id === id)?.bossState ?? '';
+        if (order[order.length - 1] !== st) order.push(st);
+        if (st === 'mk-boom-windup') break;
+      }
+      const want = ['mk-backroll', 'mk-boom-windup'];
+      let wi = 0;
+      for (const st of order) if (st === want[wi]) wi++;
+      expect(wi, `states seen: ${order.join(' → ')}`).toBe(want.length);
+      // プレイヤーは+x側なのでロールで-xへ下がっている
+      expect(useGameStore.getState().enemies.find(e => e.id === id)!.x).toBeLessThan(x0);
     });
 
     it('型切替: HP50%以下になるとmk-reposeを経て型B(bossPhase=2)へ1回だけ切り替わる', () => {
@@ -1453,7 +1481,7 @@ describe('runBountyTick — ボスメーカーの個別再生(▸)', () => {
       'bm-charge': 'bm-charge-windup', 'bm-whip360': 'bm-whip360-windup',
       'bm-combo': 'bm-combo1-windup', 'bm-snipe': 'bm-snipe-windup',
       'bb-sweep': 'bb-sweep-windup', 'bb-triple': 'bb-triple1-windup', 'bb-rollcombo': 'bb-backroll', 'bb-leap': 'leap-windup',
-      'mk-naginata': 'mk-naginata-windup', 'mk-spin': 'mk-spin-windup',
+      'mk-naginata': 'mk-naginata-windup', 'mk-backroll': 'mk-backroll', 'mk-spin': 'mk-spin-windup',
       'mk-suiu': 'mk-suiu-windup', 'mk-boom': 'mk-boom-windup',
     };
     for (const [type, moves] of Object.entries(BOUNTY_MOVES_BY_TYPE)) {

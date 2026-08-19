@@ -251,6 +251,9 @@ export interface BountyMaikoTuning {
     damage: number;
     recover: number;
   };
+  /** ★v0.25.3584(社長指示「舞妓にもバックロール追加」): 近距離でロールして距離を空け、
+   *  明けたら手毬打ち(boom)へ直結する台本(バス停・鋏のロールと同じ「移動→技」型)。 */
+  backRoll: { chance: number; rollMs: number; rollDist: number };
 }
 
 export const BOUNTY_MAIKO_TUNING: BountyMaikoTuning = {
@@ -311,6 +314,8 @@ export const BOUNTY_MAIKO_TUNING: BountyMaikoTuning = {
     damage: 14,
     recover: withRecoverFloor(900),
   },
+  // ★v0.25.3584: 数値は叩き台(鋏のロール台本と同じ距離/時間・確率30%)。
+  backRoll: { chance: 0.3, rollMs: 300, rollDist: 190 },
 };
 
 // ---- 既定値(リセット/差分表示用・BOSS_MAKER.md §2-2) --------------------------------------------

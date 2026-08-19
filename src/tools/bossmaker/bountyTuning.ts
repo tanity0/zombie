@@ -205,7 +205,7 @@ const BB_HELP: Record<string, string> = {
 // ================================================================================================
 // 舞妓(bounty-maiko)
 // ================================================================================================
-const MK_SEC = { range: '間合いと型', nag: '毬の薙ぎ(mk-naginata)', spin: '毬回し(mk-spin)', suiu: '水鳥乱舞(mk-suiu)', boom: '手毬打ち(mk-boom)' };
+const MK_SEC = { range: '間合いと型', nag: '毬の薙ぎ(mk-naginata)', spin: '毬回し(mk-spin)', suiu: '水鳥乱舞(mk-suiu)', boom: '手毬打ち(mk-boom)', roll: 'バックロール(mk-backroll)' };
 
 const maikoFields = (): TuningField[] => {
   const rng = mk(MK_SEC.range, 'behavior');
@@ -213,6 +213,7 @@ const maikoFields = (): TuningField[] => {
   const sp = mk(MK_SEC.spin, 'move');
   const su = mk(MK_SEC.suiu, 'move');
   const bm = mk(MK_SEC.boom, 'move');
+  const rl = mk(MK_SEC.roll, 'move');
   return [
     rng('nearMax', '近いとみなす距離', 'px', 0, 800, 10, 'これより近い=毬の薙ぎ'),
     rng('farMin', '手毬打ちの間合い', 'px', 0, 2000, 10, 'これより遠いと手毬打ち'),
@@ -255,10 +256,14 @@ const maikoFields = (): TuningField[] => {
     bm('boom.hitRadius', '毬の当たり半径', 'px', 4, 200, 10, '毬の絵に揃える'),
     bm('boom.damage', 'ダメージ', 'num', 0, 200, 1),
     bm('boom.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    rl('backRoll.chance', '台本を引く確率', 'num', 0, 1, 0.05, '近距離の取り掛かりで判定。外れたら毬の薙ぎ'),
+    rl('backRoll.rollMs', 'ロールの所要', 'ms', 100, 2000, 20),
+    rl('backRoll.rollDist', 'ロールの距離', 'px', 40, 500, 10),
   ];
 };
 
 const MK_HELP: Record<string, string> = {
+  [MK_SEC.roll]: '近距離台本(v0.25.3584): バックロールで距離を空け、そのまま手毬打ちを投げる。ロール自体に判定はない。',
   [MK_SEC.range]: '型A(HP多)と型B(HP少)で手が変わるボス。距離で薙ぎ/回し/手毬打ちを撃ち分ける。',
   [MK_SEC.nag]: '基本の帯。予告が**2択のランダム**なので、同じ技でも待ちの長さが毎回変わる(変則ディレイ)。',
   [MK_SEC.spin]: '自分中心の円を回しながら踏み込む。踏み込みを0にすると中距離で構造的に当たらなくなる。',
@@ -301,6 +306,7 @@ const MK_PLAYABLES: readonly PlayableAction[] = [
   play('mk-spin', '毬回し', MK_SEC.spin),
   play('mk-suiu', '水鳥乱舞', MK_SEC.suiu),
   play('mk-boom', '手毬打ち', MK_SEC.boom),
+  play('mk-backroll', 'バックロール台本', MK_SEC.roll), // ★v0.25.3584
 ];
 
 /** ▶を押した時の実行(4体で同じ1本。ボス側の要求箱へ渡すだけ)。 */

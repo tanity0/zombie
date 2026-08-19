@@ -70,6 +70,7 @@ describe('既定値=移設前の実装値(テーブル化で挙動が1つも変�
       range: 140, halfWidth: 30, windup: [700, 1150], windup1: [550, 750], windup2: [900, 1300],
       damage: 16, recover: 900, stepRecover: 220,
     });
+    expect(d.backRoll).toEqual({ chance: 0.3, rollMs: 300, rollDist: 190 }); // ★v0.25.3584(叩き台)
     expect(d.spin).toEqual({
       radius: 180, windup: [800, 1300], active: 500, lungePx: 220, damage: 14, recover: 900,
     });
