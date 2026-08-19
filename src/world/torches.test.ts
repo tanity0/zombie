@@ -2,7 +2,7 @@
 // torchesInRegion を world 層で一括ゲートする方式のため、「描画・当たり判定・資材ドロップ源が
 // 同時に消える」ことはこの1点(torchesInRegionが空)で保証される(全消費箇所が torchesInRegion 経由)。
 import { describe, it, expect, afterEach } from 'vitest';
-import { torchesInRegion, setTorchesDisabled, resolveTorchCollision } from './torches';
+import { torchesInRegion, setTorchesDisabled, resolveTorchCollision, TORCH_RELAX_BONUS } from './torches';
 
 afterEach(() => setTorchesDisabled(false)); // 他テストへ漏らさない
 
@@ -29,5 +29,17 @@ describe('setTorchesDisabled(チュートリアル=松明なし)', () => {
     expect(torchesInRegion(-4000, -4000, 4000, 4000)).toEqual([]);
     setTorchesDisabled(false);
     expect(torchesInRegion(-4000, -4000, 4000, 4000).length).toBeGreaterThan(0);
+  });
+});
+
+// ★v0.25.3595(社長指示「リラックス中は少し松明の出現率アップ」)
+describe('torchesInRegion — RELAXボーナス', () => {
+  it('ボーナス付きは同じ区域で松明が増える(既存セルは全て含まれる=増えるだけで動かない)', () => {
+    setTorchesDisabled(false);
+    const base = torchesInRegion(0, 0, 8200, 8200);
+    const boosted = torchesInRegion(0, 0, 8200, 8200, TORCH_RELAX_BONUS);
+    expect(boosted.length).toBeGreaterThan(base.length);
+    const ids = new Set(boosted.map(t => t.id));
+    for (const t of base) expect(ids.has(t.id), `既存の松明 ${t.id} がボーナスで消えた`).toBe(true);
   });
 });

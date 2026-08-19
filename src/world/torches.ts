@@ -14,8 +14,12 @@ const torchHash = (x: number, y: number): number => {
   return v - Math.floor(v);
 };
 
-const torchInCell = (cx: number, cy: number): TorchInstance | null => {
-  if (torchHash(cx + 31, cy - 19) >= 0.40) return null; // 頻度UP(社長指示・出現セル≒30%→40%)。出過ぎたら0.35へ。
+/** ★v0.25.3595(社長指示「リラックス中は少し松明の出現率アップ」): RELAX中だけ足すしきい値
+ *  ボーナス(叩き台)。0.40→0.48=松明セル+2割。world層はstoreを知らないので値は呼び出し側が渡す。 */
+export const TORCH_RELAX_BONUS = 0.08;
+
+const torchInCell = (cx: number, cy: number, bonusChance = 0): TorchInstance | null => {
+  if (torchHash(cx + 31, cy - 19) >= 0.40 + bonusChance) return null; // 頻度UP(社長指示・出現セル≒30%→40%)。出過ぎたら0.35へ。
   const scale = 0.78 + torchHash(cx - 11, cy + 29) * 0.22;
   const ox = (torchHash(cx, cy + 7) - 0.5) * TORCH_CELL * 0.72;
   const oy = (torchHash(cx + 7, cy) - 0.5) * TORCH_CELL * 0.72;
@@ -32,7 +36,8 @@ let torchesDisabled = false;
 export const setTorchesDisabled = (disabled: boolean): void => { torchesDisabled = disabled; };
 
 export const torchesInRegion = (
-  minX: number, minY: number, maxX: number, maxY: number
+  minX: number, minY: number, maxX: number, maxY: number,
+  bonusChance = 0, // ★v0.25.3595: RELAX中の出現率ボーナス(TORCH_RELAX_BONUS)を呼び出し側が渡す
 ): TorchInstance[] => {
   if (torchesDisabled) return [];
   const startX = Math.floor(minX / TORCH_CELL) * TORCH_CELL;
@@ -40,7 +45,7 @@ export const torchesInRegion = (
   const out: TorchInstance[] = [];
   for (let cx = startX; cx <= maxX; cx += TORCH_CELL) {
     for (let cy = startY; cy <= maxY; cy += TORCH_CELL) {
-      const t = torchInCell(cx, cy);
+      const t = torchInCell(cx, cy, bonusChance);
       if (t) out.push(t);
     }
   }

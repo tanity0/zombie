@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3595',
+    items: [
+      'AIディレクターのリラックス中は、松明が少し多く出現するようになりました(息継ぎの間=資材回復の時間)。リラックスが明けても画面内の松明は消えません。',
+    ],
+  },
+  {
     version: '0.25.3594',
     items: [
       '?director=1 の数値取りラン中に出ていたAIディレクターのライブ表示をやめました(記録とリザルト画面の振り返りは従来どおり)。ライブ表示が必要な診断時だけ ?directorhud=1 で出せます。',

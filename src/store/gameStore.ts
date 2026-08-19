@@ -4638,7 +4638,7 @@ interface GameState {
   dropEnemyXp: (enemy: Enemy, x: number, y: number, idPrefix: string, value?: number) => void;
 
   // Breakable props
-  syncBreakableProps: (camera: { x: number; y: number }, bounds: GameBounds) => void;
+  syncBreakableProps: (camera: { x: number; y: number }, bounds: GameBounds, torchBonusChance?: number) => void; // torchBonusChance=★v0.25.3595 RELAX中の松明ボーナス
   spawnEggRing: (cx: number, cy: number) => void; // イベント: 画面外を緑卵(mine)で取り囲む。解除なし=離れると自然消滅。
   damageBreakableProp: (id: string, amount: number) => BreakableProp | null;
   dropBreakablePropLoot: (prop: BreakableProp) => void;
@@ -13722,7 +13722,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().removePickup(id);
   },
 
-  syncBreakableProps: (camera, bounds) => {
+  syncBreakableProps: (camera, bounds, torchBonusChance = 0) => {
     const pad = 520;
     set(state => {
       // 屋内(研究施設)はステージ1の松明/地雷を「生成」しない。ただし resetGame で置いた
@@ -13747,7 +13747,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         camera.x - pad,
         camera.y - pad,
         camera.x + bounds.width + pad,
-        camera.y + bounds.height + pad
+        camera.y + bounds.height + pad,
+        torchBonusChance, // ★v0.25.3595
       );
       const generatedMines = MINES_DISABLED ? [] : minesInRegion(
         camera.x - pad,
@@ -13803,6 +13804,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           type: 'torch',
           lastHit: 0
         });
+      }
+
+      // ★v0.25.3595: RELAXボーナスで生えた松明は、RELAXが明けても**画面内では消さない**
+      // (ボーナスしきい値から外れても、区域内に居る既存の松明プロップは保持=ポップアウト禁止。
+      //  画面外へ出れば従来どおり区域ストリーミングで自然に落ちる。破壊済みは対象外)。
+      for (const [pid, prop] of current) {
+        if (!pid.startsWith('torch-') || prop.type !== 'torch') continue;
+        if (state.destroyedBreakableProps[pid]) continue;
+        if (next.some(n => n.id === pid)) continue;
+        if (prop.footX >= camera.x - pad && prop.footX <= camera.x + bounds.width + pad
+          && prop.footY >= camera.y - pad && prop.footY <= camera.y + bounds.height + pad) {
+          next.push(prop);
+        }
       }
 
       // 武器商人 / イベントNPC(例の2人)のサークル内には緑の卵(mine)を出さない(社長指示)。

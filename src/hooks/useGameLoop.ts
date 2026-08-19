@@ -249,7 +249,8 @@ import { phaseAt, sceneAt } from '../utils/difficultyDirector';
 import { spawnEscalation, gateLiveCorrection, playerPower, expectedPower, powerMargin } from '../utils/difficultyScaler';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
-import { createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust } from '../utils/aiDirector';
+import { createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust, relaxAppliesToKoma } from '../utils/aiDirector';
+import { TORCH_RELAX_BONUS } from '../world/torches';
 import { resetDirectorSamples, setDirectorPower } from '../utils/aiDirectorDebug';
 import { evaluatePhasePerformance, rankFromPerformance, rankAdjustFor } from '../utils/directorRank';
 import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/directorRankState';
@@ -6706,7 +6707,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 監査v0.25.3008: 松明/地雷の生成リージョンは**構図オフセット抜き**のプレイヤー中心カメラで渡す。
         // baseCamY はズーム連動カメラ下げ+縦先読み(最大~1000px)込みのため、そのまま渡すとリージョン
         // 南端がプレイヤーの手前まで縮み、足元の松明/緑卵が配列から落ちて消えることがあった。
-        syncBreakableProps({ x: baseCamX, y: pcCamY - gameBounds.height / 2 }, gameBounds);
+        // ★v0.25.3595(社長指示「リラックス中は少し松明の出現率アップ」): RELAX中(収穫コマ除外=
+        // v3548裁定と同じ物差し)だけ松明セルのしきい値を+0.08。松明の生成自体がlabTheme/屋内では
+        // 元から止まっているので、ここではディレクター状態だけ見ればよい。
+        const torchRelaxBonus = DIRECTOR_APPLY_RELAX
+          && directorRef.current.state.macro === 'relax'
+          && relaxAppliesToKoma(puzzleKomaRef.current.kind)
+          ? TORCH_RELAX_BONUS : 0;
+        syncBreakableProps({ x: baseCamX, y: pcCamY - gameBounds.height / 2 }, gameBounds, torchRelaxBonus);
         
         // Complete any finished reload, then ensure the active gun is
         // shootable (reload it / swap off a fully-dry gun), then fire it.
