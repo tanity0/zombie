@@ -1,6 +1,6 @@
 // ボスラッシュ(練習モード)の台帳テスト。BOSS_MAKER.md §20-8-b の受け入れ条件を機械化する。
 import { describe, it, expect } from 'vitest';
-import { GLEN_PHASE2_SLOT_KEY, PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, practiceSlotByKey, practiceBossHealth } from './bossPractice';
+import { PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, practiceSlotByKey, practiceBossHealth } from './bossPractice';
 import { GHOST_DOSSIER_SLOTS } from './ghostDossier';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 import { STAGE_BOSS_HEALTH_BY_STAGE } from '../config/bossHealth';
@@ -14,20 +14,18 @@ const bountySlots = () => PRACTICE_SLOTS.filter(s => isBountyType(s.bossType));
 const ghostDerivedSlots = () => PRACTICE_SLOTS.filter(s => !isBountyType(s.bossType));
 
 describe('ボスラッシュの台帳', () => {
-  it('守護霊メニューと同じ台帳を基礎にし、グレン第二形態だけ独立掲載する', () => {
-    const phaseSlots = ghostDerivedSlots().filter(s => s.slotKey !== GLEN_PHASE2_SLOT_KEY);
-    expect(phaseSlots.map(s => s.slotKey)).toEqual(GHOST_DOSSIER_SLOTS.map(s => s.slotKey));
-    expect(ghostDerivedSlots()).toHaveLength(GHOST_DOSSIER_SLOTS.length + 1);
-    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length + 1 + BOUNTY_ENEMY_TYPES.size);
+  it('守護霊メニューと同じ台帳をそのまま使う(形態別の独立枠は置かない)', () => {
+    expect(ghostDerivedSlots().map(s => s.slotKey)).toEqual(GHOST_DOSSIER_SLOTS.map(s => s.slotKey));
+    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length + BOUNTY_ENEMY_TYPES.size);
   });
 
-  it('グレン第二形態は第一形態の遭遇を共有し、HP60%から始まる', () => {
-    const first = practiceSlotByKey('giantbat@stage-7')!;
-    const second = practiceSlotByKey(GLEN_PHASE2_SLOT_KEY)!;
-    expect(second.encounterSlotKey).toBe(first.slotKey);
-    expect(second.stageId).toBe('stage-7');
-    expect(second.label).toBe('グレン 第二形態');
-    expect(second.glenForm2).toBe(true);
+  // ★社長裁定v0.25.3600「第二形態は第一形態と合体させて。第一倒したら第二に移行」。
+  // 旧v0.25.3029「二体」時代の独立枠 'giantbat@stage-7:phase2' を復活させたらここで落ちる。
+  // (移行そのもの=形態1討伐→形態2予約が練習でも張られること、はgameStore側の
+  //  triggerDramaticDeathの条件で実装。枠はグレン1つだけ=形態1から通しで戦う。)
+  it('グレン第二形態の独立枠は無い(合体裁定v0.25.3600)', () => {
+    expect(practiceSlotByKey('giantbat@stage-7')).toBeTruthy();
+    expect(PRACTICE_SLOTS.some(s => s.slotKey.includes('phase2') || s.glenForm2)).toBe(false);
   });
 
   // 社長裁定 §20-9-2。台帳は守護霊メニューと共用なので、あちらに足された瞬間ここにも出てしまう。
@@ -87,7 +85,7 @@ describe('ボスラッシュの台帳', () => {
   it('本編で遭遇できない枠はちょうど3つ(台帳からは外さない)', () => {
     const unreachable = PRACTICE_SLOTS.filter(s => !s.reachable).map(s => s.slotKey).sort();
     expect(unreachable).toEqual(['acrasiel', 'giantbat@stage-2', 'suriel'].sort());
-    expect(ghostDerivedSlots()).toHaveLength(GHOST_DOSSIER_SLOTS.length + 1); // 既存枠を外さず第二形態だけ追加
+    expect(ghostDerivedSlots()).toHaveLength(GHOST_DOSSIER_SLOTS.length); // 既存枠を外していない
   });
 });
 

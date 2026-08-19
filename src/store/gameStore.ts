@@ -3022,14 +3022,16 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   // v0.25.2953(社長指示「ボスモードも通常モードみたいにボス消えるまでは終わらないで」):
   // **即 gameWon にしない**。撃破の瞬間はここで実時刻を打刻するだけにして、useGameLoop が
   // 「死亡アテンション(ストップ+崩壊を見せる演出)が終わってから」gameWon を立てる。
-  if (isPracticeRun() && enemy.type === practiceBossType()) {
+  // v0.25.3029(社長裁定「二体」): グレン形態1の死は進行を確定させない(年表・クリアフラグとも
+  // 形態2の討伐=isFinalBossKillでのみ書く)。
+  const glenForm1Kill = enemy.type === 'giantbat' && enemy.glenForm === 1;
+  // ★v0.25.3600(社長裁定「第一倒したら第二に移行」): 練習でも形態1の討伐は勝ちにしない
+  // (下の予約で形態2が続くため。勝ちは形態2=glenForm1Killでない討伐で立つ)。
+  if (isPracticeRun() && enemy.type === practiceBossType() && !glenForm1Kill) {
     useGameStore.setState({ practiceWinPendingSince: Date.now(), returnCircle: null });
   }
   // 歴史年表(chronicle): 各種ボス/ハンターの初回討伐を即載せ(社長決定v0.25.1628)。近接/銃 両キル経路が
   // この関数を通るのでここ1箇所で拾える。宿敵(isNamedのみ)はボス扱いにしない=年表に載せない。
-  // v0.25.3029(社長裁定「二体」): グレン形態1の死は進行を確定させない(年表・クリアフラグとも
-  // 形態2の討伐=isFinalBossKillでのみ書く)。
-  const glenForm1Kill = enemy.type === 'giantbat' && enemy.glenForm === 1;
   if (!glenForm1Kill && (isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter')) {
     // 年表フレーズ(社長指示v0.25.1658→1659で動詞は「討伐」に統一):
     //  ・城ボス(giantbat=各ステージのストーリーボス・固有名なし)→「ストーリーボスを討伐」。
@@ -3107,9 +3109,10 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   }
   // v0.25.3029(社長裁定「二体」): 形態1の討伐では、討伐アテンション(パン→ホールド→崩壊→戻り)が
   // 終わった時刻に**形態2を同位置へ湧かせる予約**を張る(消費はuseGameLoop)。
-  // 練習ランは枠ごとに独立(第一形態枠は形態1だけで勝ち)なので張らない(監査指摘・致命4)。
+  // ★v0.25.3600(社長裁定「合体」): 練習ランでも張る(旧: 第二形態の独立枠があったため
+  // 練習では張らなかった=!isPracticeRun()。枠の撤去に伴い本編と同じ流れへ)。
   // 二重呼び出し(近接/銃の両キル経路)対策で未予約の時だけ(監査指摘・致命5)。
-  if (glenForm1Kill && !enemy.fromEvent && !isPracticeRun() && get().glenForm2SpawnAt == null) {
+  if (glenForm1Kill && !enemy.fromEvent && get().glenForm2SpawnAt == null) {
     useGameStore.setState({
       glenForm2SpawnAt: {
         at: Date.now() + ATTENTION_IN_MS + ATTENTION_HOLD_MS + BOSS_CORPSE_CRUMBLE_MS + ATTENTION_OUT_MS,

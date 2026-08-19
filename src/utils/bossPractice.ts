@@ -74,8 +74,9 @@ const PRACTICE_BOSS_URL: EnemyType | null = (param('practiceboss') as EnemyType 
 export const practiceBossType = (): EnemyType | null => activeSlot?.bossType ?? PRACTICE_BOSS_URL;
 /** 現在選択中の練習枠。リザルトの形態名・専用アイコンにも同じ指定を渡す。 */
 export const practiceActiveSlot = (): PracticeSlot | null => activeSlot;
-/** グレン第二形態枠か(v0.25.3029・二体構成): trueなら最初から glenForm===2 の個体をフルHPでスポーン。
- * 旧 practiceStartHealthFraction(HP60%開始)はこの判定に置き換え。`?practicephase=2` も同じ扱い。 */
+/** グレン第二形態を最初から出すか(glenForm===2 の個体をフルHPでスポーン)。
+ * ★v0.25.3600「合体」裁定でメニューの第二形態枠は撤去済み=通常の練習は常に形態1から。
+ * 開発用の直リンク `?practice=1&practicephase=2` だけがこの経路を使う。 */
 export const practiceWantsGlenForm2 = (): boolean =>
   activeSlot?.glenForm2 === true || (PRACTICE_RUN_URL && param('practicephase') === '2');
 /** 練習の狙いが城ボス(giantbat)か。城ボス/ストーリーボスの湧きを nospawn より優先させる。 */
@@ -110,8 +111,9 @@ export interface PracticeSlot {
   param: PracticeParam;
   /** 一覧・リザルトだけで使う固有名。未指定なら従来の enemyDeathLabel。 */
   label?: string;
-  /** グレン第二形態枠(v0.25.3029・社長裁定「二体」): trueなら最初から第二形態の**別個体**を
-   * フルHPでスポーンする(旧「HP60%から開始」は二体構成化で廃止)。 */
+  /** グレン第二形態を最初から出す枠。★v0.25.3600「合体」裁定でメニューからは撤去済み
+   * (どの枠も設定しない)。型と描画分岐(BossRush/PracticeResultのphase2アイコン)は
+   * 開発用直リンク `?practicephase=2` のために残している。 */
   glenForm2?: boolean;
   /** 本編で遭遇し得るか。false = 現状どこにも置かれていない(社長裁定§20-10: 「?」のまま並べる)。 */
   reachable: boolean;
@@ -164,22 +166,13 @@ const toPracticeSlot = (slot: GhostDossierSlot): PracticeSlot => {
 };
 
 /**
- * ボスラッシュに並ぶ枠。基本は守護霊メニューと同じ順・粒度だが、姿と技が明確に変わる
- * グレン第二形態だけは第一形態の直後へ独立掲載する。解放条件は同じ本編遭遇キーを共有する。
+ * ボスラッシュに並ぶ枠。守護霊メニューと同じ順・粒度。
+ * ★グレン第二形態の独立枠(v0.25.3029「二体」時代の 'giantbat@stage-7:phase2')は
+ * 社長裁定v0.25.3600「第二形態は第一形態と合体させて。第一倒したら第二に移行」で撤去。
+ * 本編と同じ流れ(形態1討伐→アテンション明けに形態2が同位置に湧く)を練習でもそのまま踏む。
+ * 形態2だけを直接練習したい時は開発用の直リンク `?practice=1&practicephase=2` が残っている。
  */
-const BASE_PRACTICE_SLOTS = GHOST_DOSSIER_SLOTS.map(toPracticeSlot);
-export const GLEN_PHASE2_SLOT_KEY = 'giantbat@stage-7:phase2';
-const GHOST_DERIVED_SLOTS: readonly PracticeSlot[] = BASE_PRACTICE_SLOTS.flatMap(slot =>
-  slot.slotKey === 'giantbat@stage-7'
-    ? [slot, {
-        ...slot,
-        slotKey: GLEN_PHASE2_SLOT_KEY,
-        encounterSlotKey: slot.slotKey,
-        label: 'グレン 第二形態',
-        glenForm2: true,
-      }]
-    : [slot],
-);
+const GHOST_DERIVED_SLOTS: readonly PracticeSlot[] = GHOST_DOSSIER_SLOTS.map(toPracticeSlot);
 
 // ---------------------------------------------------------------------------------------------
 // §6.38 掲載裁定: 賞金首4種(GHOST_DOSSIER_SLOTS由来ではない独立追記枠)。
