@@ -13426,9 +13426,11 @@ export class PixiScene {
     if (rt < 0 || rt >= KILLFX_TOTAL_MS) return null;
     const faceLeft = k.ex < footX;
     const dir = faceLeft ? -1 : 1;
-    // 跳びつき先: 足を敵中心のやや下へ=体が首元(敵上部)に重なる。掻っ切り点=首元。
+    // ★FB12(v0.25.3622「首元狙って。足元になってる」): 跳びつき先を敵の上半身へ引き上げ。
+    // 旧: 足を敵中心の少し下(+0.15)=絵として足元に貼り付いて見えた。
+    // 新: 足を敵中心より上(−0.25)=体が敵の首元(上端寄り)に重なる。掻っ切り点=KILLFX_NECK_FRAC。
     const dx = k.ex - footX;
-    const dy = (k.ey + k.eh * 0.15) - footY;
+    const dy = (k.ey - k.eh * 0.25) - footY;
     let offX = 0, offY = 0, sqX = 1, sqY = 1, lean = 0;
     if (rt < t1) {
       // しゃがみ(タメ): 沈み込みは加速(ease-in)+横に張る+僅かに逆側へ引く(バックスイング)。
@@ -13514,7 +13516,7 @@ export class PixiScene {
     const sc = len / Math.max(1, ref.width);
     sp.scale.set(sc * dir, sc);
     sp.rotation = dir * (Math.PI / 4); // 斜め素材を水平へ寝かせる=横一文字
-    sp.position.set(k.ex, k.ey - k.eh * 0.30); // 首元
+    sp.position.set(k.ex, k.ey - k.eh * 0.55); // 首元(★FB12: 0.30→0.55=上端寄りへ)
     sp.alpha = 1 - Math.max(0, (t - 0.75) / 0.25);
     sp.visible = sp.alpha > 0.01;
   }
@@ -13546,7 +13548,7 @@ export class PixiScene {
     // 実機FB1「大量に」: 1波=主噴出(primary 120+victims 70)、2波=追い噴き(半量)。旧46/30から大幅増。
     const primN = wave === 1 ? 120 : 60;
     const subN = wave === 1 ? 70 : 35;
-    emit(k.ex, k.ey - k.eh * 0.30, primN, true); // primary の首元(掻っ切り点)
+    emit(k.ex, k.ey - k.eh * 0.55, primN, true); // primary の首元(掻っ切り点・★FB12: 上端寄りへ)
     for (const v of k.victims) {
       if (Math.abs(v.x - k.ex) < 1 && Math.abs(v.y - k.ey) < 1) continue; // primary本体は上で出した
       emit(v.x, v.y, subN, false);
@@ -13579,7 +13581,7 @@ export class PixiScene {
     const u = (rt - (KILLFX_BURST_AT_MS + KILLFX_BLOOD_LAG_MS)) / 120; // ポップイン(オーバーシュート→整定=慣性)
     const pop = u < 1 ? 1.35 - 0.35 * (1 - (1 - Math.min(1, u)) ** 2) : 1;
     tx.scale.set(pop);
-    tx.position.set(k.ex, k.ey - k.eh * 0.85);
+    tx.position.set(k.ex, k.ey - k.eh * 1.0); // ★FB12: 首元が上がった分、文字も頭上へ
     tx.alpha = rt >= KILLFX_TOTAL_MS ? Math.max(0, 1 - (rt - KILLFX_TOTAL_MS) / FADE_MS) : 1;
     tx.visible = true;
   }

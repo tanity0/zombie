@@ -6135,7 +6135,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const bossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 近接クリで完全気絶が発動した位置(紫FX用)
     const mimirLaserBreakHits: { x: number; y: number }[] = []; // §6.33: レーザー弱点窓を近接で中断した位置(カウンター成立FX用)
-    const bossFatalHits: { x: number; y: number; labelY: number }[] = [];
+    const bossFatalHits: { x: number; y: number; labelY: number; w: number; h: number }[] = []; // w/h=killFx流用(v0.25.3622)
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const meleeHitEnemyIds: string[] = []; // スキル 救難信号: このスイングでヒットした敵ID(発動判定/対象選定用)
@@ -6290,7 +6290,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         bossFinishHit = true;
         const fatal = stunnedHit.kind === 'boss' ? applyBrokenMeleeFatal(enemy, meleeDamage, gameTime) : null;
         const dmg = fatal?.damage ?? stunnedHit.dmg;
-        if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
+        if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
         recordCritHit('guaranteed', stunnedHit.kind === 'boss'); // §7-11c(4): meleeExecuteの紫中フィニッシュ
         // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
@@ -6578,20 +6578,33 @@ export const useGameStore = create<GameState>((set, get) => ({
       const fullCinematic = get().triggerFinishImpact(ztx, zty, bossFatalHits.length > 0);
       if (fullCinematic && killed.some(k => k.finisher)) {
         get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
+      }
+      {
         // ★KILL処刑演出v2(社長指示v0.25.3603): 寄りズームが入るフル演出の時だけ、首元へ跳びついて
         // 掻っ切る→血が一斉に噴き上がる→元の場所へ跳んで戻る(描画はpixiScene・実時間駆動)。
         // この間は全停止(hitstop)=「時間ストップ・エフェクトは止めない」。停止明けはスローの尾で
-        // 等速へ戻す(時間にも慣性)。ボス致命(bossFatalHits)は既存の討伐演出と衝突するので対象外。
-        // ?juice=0(旧演出との比較モード)でも出さない。
-        if (JUICE_ENABLED && bossFatalHits.length === 0) {
-          const prim = killed.find(k => k.finisher)!.enemy;
+        // 等速へ戻す(時間にも慣性)。?juice=0(旧演出との比較モード)では出さない。
+        // ★v0.25.3622(社長指示「このKILL演出の動きを致命の一撃にも流用。致命とKILL両方を巻き込んだ
+        // 場合は、致命を優先」): 跳びつき先(primary)=致命の一撃のボスが最優先、無ければ処刑した
+        // 雑魚の先頭。血の一斉噴出(victims)は処刑した雑魚+致命の全対象。旧「ボス致命は対象外」は撤回
+        // (事実として: v3603では討伐演出との衝突を避けて外していた。本裁定で重ねて出す)。
+        const finKills = killed.filter(k => k.finisher);
+        const fatal = bossFatalHits[0];
+        const prim = fatal
+          ? { cx: fatal.x, cy: fatal.y, w: fatal.w, h: fatal.h }
+          : finKills[0]
+            ? { cx: finKills[0].enemy.x + finKills[0].enemy.width / 2, cy: finKills[0].enemy.y + finKills[0].enemy.height / 2, w: finKills[0].enemy.width, h: finKills[0].enemy.height }
+            : null;
+        if (fullCinematic && JUICE_ENABLED && prim) {
           set({
             killFx: {
-              ex: prim.x + prim.width / 2, ey: prim.y + prim.height / 2, ew: prim.width, eh: prim.height,
+              ex: prim.cx, ey: prim.cy, ew: prim.w, eh: prim.h,
               px: pcx, py: pcy,
               startAt: Date.now(),
-              victims: killed.filter(k => k.finisher)
-                .map(k => ({ x: k.enemy.x + k.enemy.width / 2, y: k.enemy.y + k.enemy.height / 2 })),
+              victims: [
+                ...finKills.map(k => ({ x: k.enemy.x + k.enemy.width / 2, y: k.enemy.y + k.enemy.height / 2 })),
+                ...bossFatalHits.map(p => ({ x: p.x, y: p.y })),
+              ],
             },
             hitstopUntil: Date.now() + KILLFX_TOTAL_MS,
           });
