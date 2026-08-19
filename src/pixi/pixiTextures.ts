@@ -553,6 +553,9 @@ export const ensureTextures = (): Promise<void> => {
       ...Array.from({ length: 8 }, (_, i) => ({ name: `fx/holo-circle-${i}`, scaleMode: 'nearest' as const })),
       ...Array.from({ length: 7 }, (_, i) => ({ name: `fx/holo-scan-${i}`, scaleMode: 'nearest' as const })),
       ...Array.from({ length: 6 }, (_, i) => ({ name: `fx/holo-mini-${i}`, scaleMode: 'nearest' as const })),
+      // スキルアイコンの1枚シート(社長支給・React側メニューと同じ素材)。v0.25.3623:
+      // 弁慶のCD明け頭上マーク(旧「閃き」テキスト)がここから該当マスを切り出して使う。
+      { name: 'skill/skills-sheet', scaleMode: 'nearest' as const },
       // 単眼(社長支給v0.25.3340・紫・352×328)。各天使のgaze系「構え=目の発光」予兆に流用する
       // (スリィエル/アクラシエルのgaze等・配線は予兆バッチで)。
       { name: 'fx/angel-eye', scaleMode: 'nearest' as const },

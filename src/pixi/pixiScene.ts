@@ -18,6 +18,9 @@ import type { ColorMatrix } from 'pixi.js';
 import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import { shadowProbeCount, shadowProbeMode, shadowProbeStretch, noteShadowProbeFrame, noteShadowProbeSigma } from './shadowProbe'; // 影ベンチのプローブ(計測専用)
+// 弁慶CD明けの頭上アイコン(v0.25.3623): スキルシートの段組み・弁慶のマス番号をReact側メニューと
+// 同じ台帳から引く(写し定数を作らない)。データ層のみのimport=描画/判定の層は越えない。
+import { SKILL_ICON_INDEX, skillSheetGeometry } from '../data/skillIcons';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
@@ -7415,6 +7418,7 @@ export class PixiScene {
     this.updateBoomerangReadyMark(s.player, now); // ブーメランCD明けの頭上マーク
     this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
     this.updateFlareReadyMark(s.player, now);     // フレアガンCD明けの頭上炎マーク(一瞬・ブーメラン型)
+    this.updateBenkeiReadyMark(s.player, now);    // 弁慶CD明けの頭上スキルアイコン(v0.25.3623・旧「閃き」)
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     // §6.38 B2b: 舞妓の花びらpool更新(全体で1回・enemyループの外)。
     const petalDtSec = this.lastPetalStepAt === null ? 0 : Math.min(0.1, Math.max(0, (now - this.lastPetalStepAt) / 1000));
@@ -12042,6 +12046,45 @@ export class PixiScene {
       cx - 1.4, topY - 0.6,
       cx - 1.9, topY - h * 0.22,
     ]).fill({ color: 0xfde047, alpha: 0.95 * a });
+  }
+
+  // ★v0.25.3623(社長指示「弁慶アイコンに変えよう」): 弁慶CD明けの頭上マーク。旧「閃き」テキスト
+  // calloutを置換。スキルシート(skill/skills-sheet)から弁慶のマスを1度だけ切り出してキャッシュし、
+  // ブーメラン型(~650ms・ポップ→浮き上がり→フェード)で出す。
+  private benkeiReadySp: Sprite | null = null;
+  private benkeiIconTex: Texture | null = null;
+  private updateBenkeiReadyMark(player: Player, now: number) {
+    const at = useGameStore.getState().benkeiReadyFxAt;
+    const life = 650;
+    const dt = now - at;
+    if (at <= 0 || dt < 0 || dt > life) { if (this.benkeiReadySp) this.benkeiReadySp.visible = false; return; }
+    if (!this.benkeiIconTex) {
+      const sheet = getTexture('skill/skills-sheet');
+      const idx = SKILL_ICON_INDEX['benkei'];
+      if (!sheet || sheet.width === 0 || idx === undefined) return;
+      const geo = skillSheetGeometry(sheet.width, sheet.height);
+      const col = idx % geo.cols, row = Math.floor(idx / geo.cols);
+      this.benkeiIconTex = new Texture({
+        source: sheet.source,
+        frame: new Rectangle(col * geo.cellW, row * geo.cellH, geo.cellW, geo.cellH),
+      });
+    }
+    if (!this.benkeiReadySp) {
+      this.benkeiReadySp = new Sprite(this.benkeiIconTex);
+      this.benkeiReadySp.anchor.set(0.5);
+      this.L.effectLayer.addChild(this.benkeiReadySp);
+    }
+    const sp = this.benkeiReadySp;
+    const t = dt / life;
+    const alpha = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82; // 立ち上がり速→ふわっと減衰(フレア型と同じ)
+    const pop = t < 0.2 ? 1.25 - 0.25 * (t / 0.2) : 1;         // 出現オーバーシュート→整定(慣性)
+    const rise = -18 * t;                                       // 上へ少し浮く(ブーメラン型と同じ)
+    const BOX = 26;                                             // 表示サイズ(px・頭上マーク相当)
+    const sc = (BOX / Math.max(1, Math.max(this.benkeiIconTex.width, this.benkeiIconTex.height))) * pop;
+    sp.scale.set(sc);
+    sp.position.set(player.x + player.width / 2, player.y - 46 + rise);
+    sp.alpha = Math.max(0, alpha);
+    sp.visible = sp.alpha > 0.01;
   }
 
   // ホーミング弾ロックインジケーター: ロック済み敵の頭にPHILL風の照準サークルを描く。
@@ -25327,6 +25370,7 @@ export class PixiScene {
     for (const o of this.acrasielSpearReadySprites.values()) o.destroy();
     for (const o of this.holoVolleySprites.values()) o.destroy();
     this.killFxText?.destroy(); this.killFxText = null;
+    this.benkeiReadySp?.destroy(); this.benkeiReadySp = null; this.benkeiIconTex = null;
     this.killFxSlashSp?.destroy(); this.killFxSlashSp = null;
     for (const o of this.killFxBloodPool) o.destroy();
     this.killFxBloodPool = []; this.killFxBlood = [];

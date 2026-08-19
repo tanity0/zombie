@@ -4250,6 +4250,7 @@ interface GameState {
   // フレアガンのCD明け演出(頭上の小さな炎マーク・一瞬)の発火時刻(Date.now)。
   // サブウェポンのチャージ通知は全共通で「明けた瞬間だけ一瞬出る」ブーメラン型(社長指示v0.25.2155)。
   flareReadyFxAt: number;
+  benkeiReadyFxAt: number; // 弁慶CD明けの頭上アイコン(v0.25.3623・旧「閃き」テキストの置換)
   // マークスマン(mage)の射程上昇が発動した瞬間の頭上マーク演出。fxAt=発火時刻(Date.now)、
   // fxShownFor=その演出を出した連続移動streak(=marksmanMovingSince)。streakごとに一度だけ出す。
   marksmanRangeFxAt: number;
@@ -5156,6 +5157,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   thrownBags: [],
   boomerangReadyFxAt: 0,
   flareReadyFxAt: 0,
+  benkeiReadyFxAt: 0,
   marksmanRangeFxAt: 0,
   marksmanRangeFxShownFor: 0,
   rescueShooterFxAt: 0,

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3623',
+    items: [
+      '弁慶の再発動通知を「閃き」の文字から弁慶のスキルアイコン(頭上に一瞬ポップ)に変更しました。',
+    ],
+  },
+  {
     version: '0.25.3622',
     items: [
       'KILL処刑演出: 飛びつき先・斬撃・血の噴出を敵の首元(上端寄り)へ引き上げました(足元に貼り付いて見えていた修正)。',

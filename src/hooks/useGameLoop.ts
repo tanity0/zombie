@@ -11170,7 +11170,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           flareReadyRef.current = ready;
         }
         // スキル: 弁慶のCD明け(再発動可)を not-ready→ready の瞬間に検出して
-        // プレイヤー頭上に短い「閃き」フラッシュ(描画のみ・スロー無し・~0.6s)。
+        // プレイヤー頭上に短いフラッシュ(描画のみ・スロー無し・~0.6s)。
+        // ★v0.25.3623(社長指示「弁慶アイコンに変えよう」): 旧「閃き」テキストcalloutを廃止し、
+        // スキルシートの弁慶アイコンを頭上に出す(描画はpixiScene.updateBenkeiReadyMark・ブーメラン型)。
         {
           const hasBenkei = hasSkill(player, 'benkei');
           const benkeiReady = hasBenkei && gameTime >= player.benkeiCdUntil;
@@ -11179,7 +11181,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const by = player.y - 18;
             spawnRing(bx, by, 6, 38, 'rgba(250,204,21,0.9)', 2, 600);
             useGameStore.getState().spawnGlow(bx, by, 30, 'rgba(250,204,21,', 600);
-            useGameStore.getState().spawnCallout(bx, by - 8, '閃き', '#fde047');
+            useGameStore.setState({ benkeiReadyFxAt: Date.now() });
           }
           benkeiReadyRef.current = benkeiReady;
         }
