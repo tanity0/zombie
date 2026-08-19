@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3624',
+    items: [
+      'CD明けの頭上通知をアイコン式に統一: ドローンブーメランも実物アイコンのポップになりました(「へ」の字マークを廃止。ピカッの光はそのまま)。',
+    ],
+  },
+  {
     version: '0.25.3623',
     items: [
       '弁慶の再発動通知を「閃き」の文字から弁慶のスキルアイコン(頭上に一瞬ポップ)に変更しました。',

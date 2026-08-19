@@ -9313,29 +9313,43 @@ export class PixiScene {
     this.setLabSceneryAboveVeil(false);
   }
 
-  // ドローンブーメランCD明け: プレイヤー頭上にブーメランマークが一瞬出て、ふわっと上へ消える。
+  // ドローンブーメランCD明け: プレイヤー頭上にブーメランのアイコンが一瞬出て、ふわっと上へ消える。
+  // ★v0.25.3624(社長指示「CD明けのポップ系は全てスキルアイコンに統一」): 手描きの「へ」字マークを
+  // 廃止し、実物のブーメラン素材(drone-boomerang)をアイコンとして出す(弁慶マークと同じ型)。
+  private boomReadySp: Sprite | null = null;
   private updateBoomerangReadyMark(player: Player, now: number) {
     const g = this.boomReadyGfx;
     g.clear();
     const at = useGameStore.getState().boomerangReadyFxAt;
     const life = 650;
     const dt = now - at;
-    if (at <= 0 || dt < 0 || dt > life) return;
+    if (at <= 0 || dt < 0 || dt > life) { if (this.boomReadySp) this.boomReadySp.visible = false; return; }
     const t = dt / life;                       // 0→1
     const alpha = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82; // 立ち上がり速→ふわっと減衰
     const rise = -18 * t;                      // 上へ少し浮く
     const cx = player.x + player.width / 2;
     const cy = player.y - 46 + rise;           // 頭上(もう少し上)
-    const s = 9 * (0.85 + 0.25 * t);           // 少しだけ拡大
-    // 「ピカ!」フラッシュ: 出現直後に白く強く光って素早く消える(加算)。
+    // 「ピカ!」フラッシュ: 出現直後に白く強く光って素早く消える(加算)。従来のまま。
     const flash = Math.max(0, 1 - dt / 170);
     if (flash > 0) {
       g.circle(cx, cy, 11 + 18 * (1 - flash)).fill({ color: 0xbfefff, alpha: 0.5 * flash });
       g.circle(cx, cy, 5).fill({ color: 0xffffff, alpha: 0.95 * flash });
     }
-    // ブーメラン「へ」字マーク(シアン・加算で発光)。
-    g.moveTo(cx - s, cy + s * 0.55).lineTo(cx, cy - s * 0.55).lineTo(cx + s, cy + s * 0.55)
-      .stroke({ width: 3.0, color: 0x9be8ff, alpha: Math.max(0, alpha), cap: 'round', join: 'round' });
+    const tex = getTexture('drone-boomerang');
+    if (!tex || tex.width === 0) return;
+    if (!this.boomReadySp) {
+      this.boomReadySp = new Sprite(tex);
+      this.boomReadySp.anchor.set(0.5);
+      this.L.effectLayer.addChild(this.boomReadySp);
+    }
+    const sp = this.boomReadySp;
+    if (sp.texture !== tex) sp.texture = tex;
+    const pop = t < 0.2 ? 1.25 - 0.25 * (t / 0.2) : 1; // 出現オーバーシュート→整定(慣性・弁慶と同じ)
+    const BOX = 26;
+    sp.scale.set((BOX / Math.max(1, Math.max(tex.width, tex.height))) * pop);
+    sp.position.set(cx, cy);
+    sp.alpha = Math.max(0, alpha);
+    sp.visible = sp.alpha > 0.01;
   }
 
   // マークスマン射程上昇の発動マーク: ブーメランの頭上マークと同じ「一瞬出て消える」ノリで、
@@ -25371,6 +25385,7 @@ export class PixiScene {
     for (const o of this.holoVolleySprites.values()) o.destroy();
     this.killFxText?.destroy(); this.killFxText = null;
     this.benkeiReadySp?.destroy(); this.benkeiReadySp = null; this.benkeiIconTex = null;
+    this.boomReadySp?.destroy(); this.boomReadySp = null;
     this.killFxSlashSp?.destroy(); this.killFxSlashSp = null;
     for (const o of this.killFxBloodPool) o.destroy();
     this.killFxBloodPool = []; this.killFxBlood = [];
