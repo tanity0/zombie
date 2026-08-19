@@ -256,6 +256,10 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     useGameStore.getState().setPendingCorridor(corridorRun);
     useGameStore.getState().setPendingHiddenBoss(stageForRun?.hiddenBoss ?? null);
     resetGame(validClass);
+    // サブクエスト(research/SUBQUESTS.md): 補充は **resetGame の後**(中12: reset で消えるため)。
+    // ベンチ(BENCH)は benchmarkRun で、練習/ガントレットは refillSubquests 内の isPracticeRun で除外。
+    useGameStore.getState().setBenchmarkRun(benchmark);
+    useGameStore.getState().refillSubquests();
     clearSfxThrottle(); // ラン開始でSEスロットル記録をリセット(前ランの終わり際の音が次ラン頭でブロックされるのを防ぐ)
     // 出撃ごとの会話は選択ミッションから設定。フリー(周回)/未選択/ベンチ/再訪(通信なし)は空=会話なし。
     const free = getSelectedFreeMode();

@@ -155,6 +155,13 @@ import {
 } from '../data/progress';
 // 城ボスの個体名の正本(カットイン台帳)。死因・討伐バナー・年表など全UIが同じ名前を引く。
 import { CASTLE_BOSS_NAME_BY_STAGE } from '../data/bossCutin';
+// サブクエスト(research/SUBQUESTS.md): 台帳+純関数/保存。どちらも葉モジュール(storeを読まない)。
+import { subquestsForStage } from '../data/subquests';
+import {
+  applySubquestEvent, refillStageSubquests, toRunEntries,
+  getStageSubquestState, putStageSubquestState,
+  type SubquestEvent, type SubquestKillEvent, type SubquestRunEntry, type SubquestActiveEntry,
+} from '../utils/subquests';
 import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgress';
 import type { KomaAssessmentInput } from '../utils/rankAssessor';
 import { getDirectorRewardMult } from '../utils/directorRankState';
@@ -3297,6 +3304,75 @@ const setActorDashState = (
 // enemy currency, ammo scavenge for the active gun family, boss weapon crates,
 // and finisher juice. Extracted from triggerCounter so the katana reuses the
 // exact same finisher judgement/演出 without duplicating reward rules.
+// ───────────────────────────────────────────────────────────────────────────
+// サブクエスト(research/SUBQUESTS.md)の進捗合流点。
+//
+// ★キル確定点は**2本**ある(v2監査・致命1)。`damageEnemy` のkill分岐(銃/接触/爆発/DoT)と、
+//   `grantMeleeKillRewards`(カウンター/刀/鞭/分身/投擲スケボー=近接5経路の合流点)。
+//   recordKill / 二人組の questKillProgress と**同じ両点配線**を踏襲する。片方だけに書くと
+//   近接キルが丸ごと数えられない(このプロジェクトが繰り返している事故の型)。
+// ★除外: ベンチ(benchmarkRun)と練習/ガントレット(isPracticeRun)。練習は practiceGuard が
+//   保存を飲むが、**表示・付与も止める**(決闘のHUDと財布を汚さない)。
+// ───────────────────────────────────────────────────────────────────────────
+
+/** 敵1体からサブクエストのキルイベントを組み立てる(在中系のフラグはstateから)。 */
+const subquestKillEventFrom = (st: GameState, enemy: Enemy): SubquestKillEvent => ({
+  colorTier: enemy.colorTier,
+  isNamed: !!enemy.isNamed,
+  isBounty: isBountyType(enemy.type),
+  isBoss: isBossType(enemy.type),
+  labLevel: enemy.type === 'lab-zombie-1' ? 1 : enemy.type === 'lab-zombie-2' ? 2 : enemy.type === 'lab-zombie-3' ? 3 : undefined,
+  hordeActive: st.activeEvent?.kind === 'horde',
+  redNightActive: st.redNight?.phase === 'active',
+});
+
+/** イベント1件を active な枠(最大2)へ適用。達成したら即ゴールド付与+ポップ、そして cleared へ移す。 */
+const applySubquestProgress = (get: () => GameState, ev: SubquestEvent): void => {
+  const st = get();
+  if (st.benchmarkRun || isPracticeRun()) return;
+  if (st.subquests.length === 0) return;
+  const active: SubquestActiveEntry[] = st.subquests
+    .filter(r => !r.done)
+    .map(r => ({ id: r.id, progress: r.progress }));
+  if (active.length === 0) return;
+  const res = applySubquestEvent(active, ev);
+  if (!res.changed) return;
+
+  // 表示行の更新: 並びは維持し、達成した行は done=true で**そのランでは残す**(空欄にしない)。
+  const clearedIds = new Set(res.clearedNow.map(d => d.id));
+  const nextProgress = new Map(res.active.map(e => [e.id, e.progress]));
+  const rows: SubquestRunEntry[] = st.subquests.map(r => {
+    if (r.done) return r;
+    if (clearedIds.has(r.id)) return { ...r, progress: r.target, done: true };
+    const p = nextProgress.get(r.id);
+    return p === undefined || p === r.progress ? r : { ...r, progress: p };
+  });
+
+  // 保存(小15: マッチのたびに書く。数十バイト)。cleared は「報酬を出した」印=判定対象から外れる。
+  const stageId = getSelectedStageId();
+  const saved = getStageSubquestState(stageId);
+  putStageSubquestState(stageId, {
+    cleared: [...new Set([...saved.cleared, ...clearedIds])],
+    active: res.active,
+  });
+
+  let gold = 0;
+  for (const def of res.clearedNow) {
+    // v3裁定Q3: 報酬にもゴールドラッシュを掛ける(台帳の20〜200Gは掛ける前の定義)。
+    gold += Math.max(1, Math.round(def.rewardGold * skillGoldRushMult(get().player)));
+  }
+  useGameStore.setState(state => ({
+    subquests: rows,
+    subquestGoldEarned: state.subquestGoldEarned + gold,
+    subquestClearSeq: state.subquestClearSeq + res.clearedNow.length,
+  }));
+  if (gold > 0) {
+    get().addGold(gold);
+    const p = get().player;
+    get().spawnCallout(p.x + p.width / 2, p.y - 26, `+${gold}G`, '#fbbf24', { scale: 1.1 });
+  }
+};
+
 const grantMeleeKillRewards = (
   get: () => GameState,
   killed: { enemy: Enemy; finisher: boolean }[],
@@ -3342,6 +3418,8 @@ const grantMeleeKillRewards = (
       const qNext = questKillProgress(qs.eventQuestActive, qs.eventQuestGoalTier, qs.eventQuestKills, enemy);
       if (qNext !== null) useGameStore.setState({ eventQuestKills: qNext });
     }
+    // サブクエストのキル進捗(research/SUBQUESTS.md)。★近接キル確定点(2本のうちの1本)。
+    applySubquestProgress(get, { type: 'kill', kill: subquestKillEventFrom(get(), enemy) });
     const ex = enemy.x + enemy.width / 2;
     const ey = enemy.y + enemy.height / 2;
     if (enemy.isNamed) resolveNamedFoeDefeat(get, [enemy], ex, ey); // §5.14 M13: 宿敵討伐
@@ -4331,6 +4409,28 @@ interface GameState {
   eventQuestKills: number;
   eventQuestGoalCount: number;               // N(forced=1 / sub=設定値)
   eventQuestGoalTier: EnemyColorTier | null; // sub の対象色(null=全キル)
+  // ── サブクエスト(research/SUBQUESTS.md)。受注せず出撃時に2枠まで自動補充される小目標。
+  // 二人組クエスト(上のeventQuest*)とは完全に別系統。HUDは右上のEventQuestPillと同じ縦積み。
+  // subquests は**進捗が動いた時にだけ**書き換わる(毎フレームではない=React再描画規律を満たす)。
+  subquests: SubquestRunEntry[];
+  /** そのランでサブクエスト達成により付与済みのゴールド合計(倍率適用後・リザルト表示用)。 */
+  subquestGoldEarned: number;
+  /** 達成の通し番号。useGameLoop が変化を見て 'event-clear' を1回鳴らす(storeはplaySfx不可)。 */
+  subquestClearSeq: number;
+  /** ベンチマークラン(BENCH)か。補充・進捗・表示・ゴールド付与を全て止める。startGameが設定。 */
+  benchmarkRun: boolean;
+  /**
+   * ハンターの追跡(useGameLoopの状態機械 phase==='chase')開始時刻の鏡映。**gameTime(ms)**。
+   * 非chase/ハンター消滅/プレイヤー死亡で null。hunter-survive の「連続N秒」判定の唯一の出どころ。
+   * ※時計の契約: gameTime とだけ比較する(Date.now系と混ぜない・ENGINEERING_NOTES「時計の混在」)。
+   */
+  hunterChaseSince: number | null;
+  setBenchmarkRun: (benchmark: boolean) => void;
+  /** 出撃時(resetGameの後)に呼ぶ。選択ステージの枠を2つまで補充して subquests へ載せる。 */
+  refillSubquests: () => void;
+  setHunterChaseSince: (t: number | null) => void;
+  /** ハンター追跡中に毎フレーム呼ぶ(gameTime)。連続秒が1秒動いた時だけ書き込む。 */
+  applySubquestHunterSurvive: (gameTime: number) => void;
   gameTime: number;
   // gameTime と同じくポーズ中は止まるが、slow-mo(timeScale)の影響を受けない「実効」時計。
   // 近接フィニッシュの slow-mo で gameTime が遅くなってもスラッシャー追撃リングを通常速度で
@@ -5232,6 +5332,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   eventQuestKills: 0,
   eventQuestGoalCount: 0,
   eventQuestGoalTier: null,
+  subquests: [],
+  subquestGoldEarned: 0,
+  subquestClearSeq: 0,
+  benchmarkRun: false,
+  hunterChaseSince: null,
   gameTime: 0,
   realGameTime: 0,
   isPaused: false,
@@ -9853,6 +9958,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // SKILL_BUILD_REDESIGN.md §28(B7): キルの瞬間に判定するスキル2種(poi-thrallと同じ「set()内で
     // 候補だけ拾い、実際の抽選/適用はset()の外側で行う」流儀)。
     let killedAt: { x: number; y: number } | null = null; // 吸血/グラビティショットの発生位置(set後に判定)
+    // サブクエスト(research/SUBQUESTS.md): ★キル確定点2本のうちの1本(銃/接触/爆発/DoT)。
+    // 付与(ゴールド/ポップ/保存)は副作用なので set() の外側で行う=候補だけここで拾う。
+    let subquestKilled: Enemy | null = null;
 
     set(state => {
       const { enemies, gameStats } = state;
@@ -9975,6 +10083,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         recordKill(enemy.type, 'gun', state.gameTime);
         // 二人組クエストのキル進捗(EVENT_QUEST_DESIGN.md)。銃/接触/爆発キル経路。
         const questKillNext = questKillProgress(state.eventQuestActive, state.eventQuestGoalTier, state.eventQuestKills, enemy);
+        subquestKilled = enemy; // サブクエストの進捗(付与はset後)
 
         // Update game stats
         const newStats = {
@@ -10028,6 +10137,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       const allySnap = ghostAllySnapshot(findGhostAlly(get().summons));
       notifyBossClear(bossClearedType, getSelectedStageId(), allySnap);
       recordDuoBossClear(bossClearedType, getSelectedStageId(), allySnap);
+    }
+
+    // サブクエストのキル進捗(research/SUBQUESTS.md)。★キル確定点2本のうちの1本(銃/接触/爆発/DoT)。
+    // もう1本は grantMeleeKillRewards(近接5経路の合流点)。
+    if (subquestKilled) {
+      const ske = subquestKilled as Enemy;
+      applySubquestProgress(get, { type: 'kill', kill: subquestKillEventFrom(get(), ske) });
     }
 
     // 裏ボスが完全気絶(紫)に移行: 紫の衝撃リング＋発光＋コールアウトで知らせる。
@@ -13300,6 +13416,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }));
       get().npcOpPrepReact(ae.x, ae.y); // イベント系クリア(救助成功)→地域NPCが「救助者保護(rescueReturned)」で反応
       get().spawnRing(ae.x, ae.y, ae.radius * 0.2, ae.radius, 'rgba(74,222,128,0.9)', 6, 700);
+      // サブクエスト(research/SUBQUESTS.md): 救助成功の唯一の確定点。1出撃1回上限=累計で伸びる長期枠。
+      applySubquestProgress(get, { type: 'rescue' });
       return;
     }
     set({ activeEvent: { ...ae, holdMs } });
@@ -14712,6 +14830,39 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   setPendingHiddenBoss: (t) => {
     set({ pendingHiddenBoss: t });
+  },
+
+  // ── サブクエスト(research/SUBQUESTS.md) ──────────────────────────────────
+  setBenchmarkRun: (benchmark) => {
+    set({ benchmarkRun: benchmark });
+  },
+
+  // 補充は**出撃時だけ**(ラン中は補充しない=裁定「次回プレイ時に補充」)。
+  // 呼ぶ場所は startGame の `resetGame()` の**後**(中12: storeに持つ値がresetで消えるのを避ける)。
+  // ステージは getSelectedStageId()(練習中は枠が正だが、練習では下のガードで補充自体しない)。
+  refillSubquests: () => {
+    if (get().benchmarkRun || isPracticeRun()) { set({ subquests: [] }); return; }
+    const stageId = getSelectedStageId();
+    const defs = subquestsForStage(stageId);
+    if (defs.length === 0) { set({ subquests: [] }); return; } // 台帳が無いステージ=サブクエスト無し
+    const next = refillStageSubquests(getStageSubquestState(stageId), stageId);
+    putStageSubquestState(stageId, next);
+    // プール全消化(active 0件)なら空配列=左右どちらにも何も出さない(中11)。
+    set({ subquests: toRunEntries(next.active) });
+  },
+
+  setHunterChaseSince: (t) => {
+    if (get().hunterChaseSince === t) return;
+    set({ hunterChaseSince: t });
+    // 追跡が切れた=連続秒のリセット(hunter-survive は「1回の追跡内で満たす」)。
+    if (t === null) applySubquestProgress(get, { type: 'hunter-seconds', seconds: 0 });
+  },
+
+  applySubquestHunterSurvive: (gameTime) => {
+    const since = get().hunterChaseSince;
+    if (since === null) return;
+    // 時計の契約: since も gameTime も **gameTime(ms)**。Date.now系と混ぜない。
+    applySubquestProgress(get, { type: 'hunter-seconds', seconds: Math.max(0, (gameTime - since) / 1000) });
   },
 
   // M5 遭遇のみ(統合正本4.5 / utils/eventQuest.ts encounterOnly): サークル滞在3秒で確定会話を流して
@@ -16422,6 +16573,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         eventQuestKills: 0,
         eventQuestGoalCount: 0,
         eventQuestGoalTier: null,
+        // サブクエスト: ラン内の表示/集計はここで空に戻す(補充は startGame が resetGame の**後**に呼ぶ)。
+        // subquestClearSeq はセッション通しの通し番号なので**リセットしない**(0へ戻すと
+        // useGameLoop側の「変化したら鳴らす」が出撃の瞬間に誤爆する)。
+        subquests: [],
+        subquestGoldEarned: 0,
+        hunterChaseSince: null,
         gameTime: 0,
         realGameTime: 0,
         isPaused: false,

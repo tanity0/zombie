@@ -261,6 +261,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const goldEarned = Math.round(goldEarnedBase * goldRushMult * ghostGoldMultiplier(ghostSourceThisRun));
   // このランで得たゴールドを永続財布へ加算(マウント時1回。ベンチマークは加算しない)。
   const isBenchmarkRun = benchmarkResult !== null;
+  // サブクエスト(research/SUBQUESTS.md 中10): 件数と付与済み額。プリミティブだけを購読する。
+  const subquestCleared = useGameStore(s => s.subquests.filter(r => r.done).length);
+  const subquestGold = useGameStore(s => s.subquestGoldEarned);
   const addGold = useGameStore(s => s.addGold);
   const goldBalance = useGameStore(s => s.goldBalance);
   // 死亡時: 失う装備を tier ぶんゴールド換金(各部位ごと。銃は装備外なので対象外)。
@@ -960,6 +963,14 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 <div className="mb-3 rounded-none bg-black/20 px-3 py-2 flex items-center justify-between gap-2 text-[11px] text-white/60">
                   <span>獲得 <span className="font-semibold text-amber-200 tabular-nums">+{goldEarned}g</span></span>
                   <span>所持 <span className="font-semibold text-white tabular-nums">{goldBalance}g</span></span>
+                </div>
+              )}
+              {/* サブクエスト(research/SUBQUESTS.md 中10): ラン中に達成した件数と報酬額。
+                  ゴールドは**達成の瞬間に付与済み**なので、上の「獲得」とは別行にして二重加算しない。 */}
+              {!isBenchmark && subquestCleared > 0 && (
+                <div className="mb-3 rounded-none bg-black/20 px-3 py-2 flex items-center justify-between gap-2 text-[11px] text-white/60">
+                  <span>サブクエスト達成 <span className="font-semibold text-white tabular-nums">{subquestCleared}件</span></span>
+                  <span className="font-semibold text-amber-200 tabular-nums">+{subquestGold}g<span className="text-white/40 font-normal">(獲得済み)</span></span>
                 </div>
               )}
             </>

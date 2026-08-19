@@ -1515,6 +1515,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // bossCorpse は getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)討伐で共通に立つので、
   // ここで変化を検出して 'boss-death' SFX を1回だけ鳴らす(gameStore は playSfx を持てないため)。
   const bossCorpseSfxRef = useRef(0);
+  // サブクエスト達成SE用: 直近に鳴らした subquestClearSeq(store側の通し番号)。boss-death と同じ型。
+  const subquestClearSfxRef = useRef(0);
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
   const castleAttnRef = useRef<{ at: number; x: number; y: number }>({ at: 0, x: 0, y: 0 });
@@ -1925,6 +1927,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (corpse && corpse.diedAt !== bossCorpseSfxRef.current) {
           bossCorpseSfxRef.current = corpse.diedAt;
           playSfx('boss-death');
+        }
+      }
+
+      // サブクエスト達成の告知SE(research/SUBQUESTS.md 中8: 'event-clear'=既存の「達成」音)。
+      // gameStore は playSfx を import できないので、達成の通し番号の変化をここで拾って1回鳴らす
+      // (boss-death と同じ型)。ゴールド付与とポップは store 側で済んでいる。
+      {
+        const seq = useGameStore.getState().subquestClearSeq;
+        if (seq !== subquestClearSfxRef.current) {
+          subquestClearSfxRef.current = seq;
+          if (seq > 0) playSfx('event-clear');
         }
       }
 
@@ -3836,6 +3849,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }),
               }));
             }
+          }
+        }
+
+        // --- サブクエスト hunter-survive の状態源(research/SUBQUESTS.md 致命2) --------------
+        // ハンターの状態機械は**この hook の useRef** にしか無いので、store の軽量フィールド
+        // `hunterChaseSince`(gameTime打刻)へ鏡映する。「追跡」= phase==='chase' のみ
+        // (search=検知は含めない)。追跡が切れた/ハンターが消えた/プレイヤーが死んだ→null。
+        // 書き込みは**変化した時だけ**(setHunterChaseSince が同値ならno-op)=毎フレームのset churn無し。
+        // 上のハンターブロックはステージ条件でまるごと止まるが、その場合 phase は 'idle' のままなので
+        // ここは null を維持する(=ハンターの出ないステージでは常に非追跡)。
+        {
+          const sqSt = useGameStore.getState();
+          const chasing = hunterRef.current.phase === 'chase' && sqSt.player.health > 0;
+          if (!chasing) {
+            sqSt.setHunterChaseSince(null);
+          } else {
+            if (sqSt.hunterChaseSince === null) sqSt.setHunterChaseSince(newGameTime);
+            useGameStore.getState().applySubquestHunterSurvive(newGameTime);
           }
         }
 

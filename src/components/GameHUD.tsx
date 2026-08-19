@@ -7,6 +7,7 @@ import { hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
 import { spritePath } from '../utils/spriteLoader';
 import VitalsOrb from './VitalsOrb';
 import { NpcDialogue } from './NpcDialogue';
+import SubquestHud from './SubquestHud';
 import { LowHpVignette } from './LowHpVignette';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
@@ -23,12 +24,8 @@ const EventQuestPill: React.FC = () => {
   const label = active === 'forced' ? '変異種討伐' : 'サンプル集め';
   return (
     <div
-      className="absolute glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums"
-      style={{
-        top: 'calc(max(env(safe-area-inset-top), 8px) + 34px)',
-        right: 'max(env(safe-area-inset-right), 12px)',
-        color: done ? '#4ade80' : '#e2e8f0',
-      }}
+      className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums"
+      style={{ color: done ? '#4ade80' : '#e2e8f0' }}
     >
       🧪 {label} {Math.min(kills, goal)}/{goal}{done ? ' 納品' : ''}
     </div>
@@ -225,7 +222,19 @@ const GameHUD: React.FC = () => {
           {player.straps}
         </span>
       </div>
-      <EventQuestPill />
+      {/* 右上・スクラップの下の「クエスト列」(research/SUBQUESTS.md v3裁定Q2)。
+          受注制の二人組(EventQuestPill)と自動補充のサブクエスト(SubquestHud)を同じ縦積みに
+          並べる。どちらも非表示の時は行ごと消えるので隙間は出ない(絶対配置は列側が1つ持つ)。 */}
+      <div
+        className="absolute flex flex-col items-end gap-1"
+        style={{
+          top: 'calc(max(env(safe-area-inset-top), 8px) + 34px)',
+          right: 'max(env(safe-area-inset-right), 12px)',
+        }}
+      >
+        <EventQuestPill />
+        <SubquestHud />
+      </div>
 
       {/* フィナーレボスの予告/常時バナーは廃止。出現時の告知は city/castle 側の eventBanner「危険変異体出現」に一本化。 */}
 

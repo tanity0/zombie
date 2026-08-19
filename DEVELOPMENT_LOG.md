@@ -1,5 +1,30 @@
 # Development Log
 
+## v0.25.3647 — サブクエスト実装(受注不要・2枠自動補充・右上表示)【2026-08-20 07:15 JST】
+
+- research/SUBQUESTS.md(v1骨格+v2修正+v3裁定)を実装。**新規**: `src/data/subquests.ts`(台帳40件・
+  stage-1〜6のみ)/ `src/utils/subquests.ts`(マッチ・補充・保存の純関数)/ `src/components/SubquestHud.tsx`。
+  **改修**: gameStore(進捗合流点・補充・報酬・状態5つ)/ App.startGame(resetGameの**後**に補充)/
+  useGameLoop(hunterChaseSince鏡映+達成SE)/ GameHUD(右上のクエスト列)/ GameOverScreen(達成行)。
+- **キル確定点は2本に配線**(v2監査・致命1): `damageEnemy` のkill分岐 と `grantMeleeKillRewards`
+  (近接5経路の合流点)。片方だけだと近接キルが丸ごと数えられない。結合テストで固定。
+- **hunter-survive**: useGameLoopのハンター状態機械(useRef)→store `hunterChaseSince`(gameTime打刻)へ
+  鏡映。chase かつ プレイヤー生存 のみ。追跡が切れたら進捗0へ(連続N秒)。
+- **報酬は1回きり**: 達成即 `cleared` へ移して判定対象から外す(表示は done で残す)+テストで機械化。
+  報酬にはゴールドラッシュ(skillGoldRushMult)を掛ける(v3 Q3)。達成SEは 'event-clear'。
+- **除外**: ベンチ(`benchmarkRun`・startGameで設定)/ 練習・ガントレット(`isPracticeRun`)は
+  補充・進捗・付与・**表示**まで全て止める。台帳の無いステージ・プール全消化でも表示ごと出ない。
+- 負荷 **1/10**: キル時=active最大2件との定数回比較+localStorage 1書き込み。per-frameの新規は
+  ハンター追跡中のみ(小配列2件の比較・変化時だけset)。React購読は進捗が動いた時にしか起きない。
+- 検証: `npx vitest run` 全体= **4214 passed / 2 failed**(失敗2件 `ghostTelegraph.test.ts` と
+  `sim.test.ts` の速度ランプは **本変更前のHEADでも同じく失敗**=既存の赤。stash して確認済み)。
+  新規テストは 41件全緑(台帳9・純関数22・結合10)。`npm run typecheck` 0 / `npm run lint` 0 error。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触なし——湧き・敵量・報酬曲線・
+  ペーシングには一切触れず、既存キル処理の**後段に読み取り専用の集計を1本足しただけ**。
+  サブクエストが1件も無い状態(台帳なし/全消化/練習/ベンチ)では既存挙動と完全に同一。
+- ★未決2件を SUBQUESTS.md「★未決事項(実装)」に記載(色系の必要数がステージごとに違う件 /
+  label文面は実装側で作文した件)。
+
 ## v0.25.3646 — 永続育成システム設計v1(文書のみ)【2026-08-20 07:06 JST】
 
 - 社長裁定の集約: 育成採用/移動なし・弾数あり/攻撃力も多少(前提変更=敵側再調整OKによる)/

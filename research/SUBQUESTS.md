@@ -181,3 +181,32 @@ UIは左側に条件表示。一つクリアすると次が次回プレイ時に
 
 ## 発注時の注意(v1→v2→v3の読み順)
 実装は「v1の骨格」+「v2の修正(キル確定点2本ほか)」+「本v3の裁定」。矛盾時は v3 > v2 > v1。
+
+---
+
+# 実装の記録(v0.25.3647・2026-08-20)
+
+実装は **v1骨格+v2修正+v3裁定**どおり。実ファイル:
+- `src/data/subquests.ts`(台帳・葉モジュール)/ `src/utils/subquests.ts`(純関数+保存)
+- `src/store/gameStore.ts`(進捗合流点2本・補充・報酬・状態)/ `src/App.tsx`(出撃時の補充)
+- `src/hooks/useGameLoop.ts`(hunterChaseSince の鏡映+達成SE)/ `src/components/SubquestHud.tsx`
+- `src/components/GameHUD.tsx`(右上のクエスト列)/ `src/components/GameOverScreen.tsx`(リザルト行)
+- テスト: `src/data/subquests.test.ts` / `src/utils/subquests.test.ts` / `src/store/subquestProgress.test.ts`
+
+確定した実装上の要点:
+- **キル確定点は2本**(`damageEnemy`のkill分岐 と `grantMeleeKillRewards`)。両方から同じ
+  `applySubquestProgress` を1回ずつ呼ぶ。結合テスト「近接キルで進捗が入る」で固定。
+- **hunter-survive**: `hunterChaseSince`(gameTime打刻・store)へ useGameLoop が毎フレーム鏡映
+  (書き込みは変化時のみ)。`phase==='chase'` かつ プレイヤー生存 のみ追跡扱い。追跡が切れたら0へ。
+- **報酬1回きり**: 達成した枠は即 `cleared` へ移り active から外れる(判定対象外)。表示は done=true で残す。
+- **除外**: `benchmarkRun`(startGameで設定)と `isPracticeRun()` を補充・進捗・付与・表示の全てで弾く。
+- 表示は右上・EventQuestPill と同じ縦積み列(`GameHUD` 側に列コンテナを1つ置き、両者は列の子になった)。
+- 達成SE `event-clear` は useGameLoop が `subquestClearSeq` の変化を見て鳴らす(storeはplaySfx不可)。
+
+## ★未決事項(実装)
+- **色系の「必要数」だけが v1 のままステージごとに違う**: v2で報酬は色基準の固定額
+  (色付き50G/青60G/紫110G/赤170G)に揃えたが、必要数は v1 の叩き台のまま(例: 青は S1=5体 /
+  S4=15体 / S5=25体)。同じ額で必要数が5倍違う枠が並ぶ。**数値は全て叩き台**という前提なので
+  実装はそのまま入れてある。揃える(例: 色ごとに必要数も固定)か、額側を必要数に応じて戻すかは社長判断。
+- **labelの文面は実装側で作文した**(台帳に文案が無かったため。例「通常の変異体を{n}体倒す」
+  「研究所Lv1の被験体を{n}体倒す」「ハンターの追跡を{n}秒生き延びる」)。差し替えは台帳1箇所で済む。
