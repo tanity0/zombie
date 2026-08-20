@@ -563,18 +563,52 @@
   相当420ms)を狙って斬る」という読み合いが成立する(あてずっぽう vs 後の先)。
 - counterChance(台帳0.82)は近接パリィでは使わない(下の弾パリィ専用に残す)。
   ※対称性を最優先(「全てプレイヤーと同条件」)。個性は反応速度(reactionMs)が担う。
+- **★リーチ外からの近接はパリィされない(監査指摘1=意図として明記)**: 幻影のスイングは射程ゲート
+  (edgeDistTo≦reach74・v0.25.3665の空振り防止)の内でしか出ない=窓もその内でしか開かない。
+  プレイヤーが幻影のリーチ外(スキルでリーチ142まで伸びる/矩形差の6〜14px帯)から斬れば
+  **構造的にパリィされない——これは仕様**(構えていない相手からは取れないのが自然。リーチ差の優位は
+  対人として正当で、初期状態同士ではこの帯は実用的に狙えない僅差。ナイフマスター等のスキル優位は
+  「プレイヤー側の成長の価値」として認める)。窓を距離非依存にする案は採らない
+  (圏外の空振りスイングを復活させる=v0.25.3665の修正と矛盾するため)。
 
 ### 2. 弾パリィ=反応時間モデル
-- **弾の飛翔時間(発射点→幻影の距離 ÷ 弾速)≧ 台帳の reactionMs(鴉=100ms)**の時だけ、
+- **弾の飛翔時間 ≧ 台帳の reactionMs(鴉=100ms)**の時だけ、
   従来どおり counterChance 抽選+パリィCD(1000ms)で打ち返す。
+- **★飛翔時間の算出(監査指摘2)**: Projectile は発射点を持たず、createdAt は Date.now 基準
+  =phantomGate の「時計は gameTime 1本・混ぜない」の掟に抵触する。**時刻を使わない**:
+  弾に**発射点フィールド(originX/originY)を追加**し(プレイヤー銃の生成点で焼く)、
+  ヒット時に `dist(origin→幻影中心) / proj.speed × 1000` で導出する(距離÷速度=スローや
+  ヒットストップの影響も受けない・掟にも抵触しない)。origin が無い弾(旧データ/他所生成)は
+  従来どおり抽選対象(反応可能扱い=安全側)。
 - 飛翔時間 < reactionMs の弾は**抽選なしで反応不可**=接近して撃ち込めば打ち返されない
   (近距離射撃のリスクに報酬が付く)。遠距離からの撃ち合いは従来どおり打ち返される。
 
 ### 3. パリィ成立の演出=プレイヤーのカウンターと同じ組(社長指摘1)
-- 現行の青白スパーク独自演出を、**プレイヤーのカウンター成立と同じ文法**へ置き換える:
-  SE 'counter'+ヒットストップ+カウンターの成立エフェクト(useGameLoop 5182周辺の実物と同じ
-  呼び出しの組。実装時に写経ではなく同じ関数を呼ぶ形にできるなら共通化)。
-- 弾の打ち返し成立時も同様(v8の青白リングを同文法へ)。
+- **事実の訂正(監査指摘4)**: SE 'counter' は近接(sfx.parry=useGameLoop:816)・弾(10178)とも
+  **既に鳴っている**。足りないのは**ヒットストップ/シェイク/ズーム(triggerHitImpact)と
+  カウンター色の成立エフェクト**——これを足す(SEを二重に鳴らさない・既存SEは消さない)。
+- **★出すもの/出さないもの(監査指摘3・applyGhostCounterEffect(ghostCounter.ts:217-247)の
+  前例に倣う)**:
+  - 出す: triggerHitImpact(停止+ズーム)・カウンター成立のスパーク/リング(プレイヤーの成立と
+    同じ色文法)・既存SE 'counter'(現状のまま)。弾パリィも同じ組(頻度はパリィCD1000msが上限)。
+  - **出さない(プレイヤー専用の副作用)**: notifyCounterHit/notifyMoveCounter(計測)・
+    addMeleeFinishCombo・player.invulnerable付与・lastCounterSuccessTime・refundCounterCooldown・
+    counterMasterAwakenBuffPatch。**弾かれた側のプレイヤーが得をする副作用は1つも呼ばない**。
+
+### 実装の改訂対象(監査指摘5の列挙)
+- phantomGate: `PhantomHitGateInput` に窓入力(gpSwingAt・窓長=COUNTER_WINDOW)を追加し、
+  ②を source で分岐(melee=窓判定/bullet=飛翔時間+counterChance抽選)。counterChance は
+  melee では読まない。
+- gameStore の橋(gatePhantomHit): enemy.gpSwingAt と COUNTER_WINDOW を渡す。counterChance は
+  bullet 用に残す。弾ヒット側(useGameLoop)は origin から飛翔時間を計算して渡す(または橋で計算)。
+- **窓の読み取り(監査指摘7)**: 窓の起点は**storeに入った enemy.gpSwingAt** を読む。幻影tickの
+  applyPatch が同フレーム後段の場合の1フレーム(16ms)の取りこぼしは許容(仕様)と明記。
+- **パリィ直後の窓(監査指摘6)**: パリィ反撃のスイングも gpSwingAt を打つ=新しい窓が開くが、
+  パリィCD(1000ms)が覆うため連続パリィにはならない。**CDを縮める時はこの帰結を思い出すこと**(明記)。
+- テスト改訂: phantomTick.test.ts 185-215/228-245(ゲート単体=窓入力へ)・291-310(統合=先に
+  スイングを起こしてから斬る形へ)・370-390(counterChance=1の非パリィ源)・
+  **phantomParryProbe.test.ts(実在する・v0.25.3662)**=「窓中はパリィ・窓外は素通り」の2ケースへ
+  書き換え。ProjectileType に originX/originY を追加。
 
 ### 4. 不変
 - i-frame(1秒)・パリィ成立→即反撃(gpParriedAt/gpBulletParriedAt のハンドシェイク)・

@@ -184,7 +184,7 @@ import { bossTestGhostSkill, isBossMakerRun, getBossTestSkillInjection } from '.
 // 引数で渡す=utils→store の逆流を作らない)。計測路(ガントレット)の述語は依存ゼロの葉から読む。
 import {
   PLAYER_UPGRADES_KEY, activeUpgradeLevel, effectiveAmmoMaxMap, emptyPlayerUpgrades,
-  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, loadPlayerUpgrades, playerUpgradeCost,
+  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, growthXpMult, loadPlayerUpgrades, playerUpgradeCost,
   savePlayerUpgrades, type PlayerUpgradeState,
 } from '../utils/playerUpgrades';
 import { PLAYER_UPGRADE_MAX_LEVEL, type PlayerUpgradeId } from '../data/playerUpgrades';
@@ -5243,6 +5243,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     growthScoreMult: 1,
     growthAmmoMax: { ...AMMO_MAX },
     growthGoldMult: 1,
+    growthXpMult: 1,
     ddaBaseHp: PLAYER_BASE_HP,
     critChance: 0,
     quickMagCritUntil: 0,
@@ -8980,7 +8981,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   gainExperience: (amount) => {
     // 消費カード「経験値ブースト」(×1.5・60秒・§23)をここへ合流(経験値付与の唯一の出どころ)。
-    const gained = amount * XP_GAIN_MULT * consumableXpMult(get().player, get().gameTime); // 全体調整: 経験値1/3
+    // 育成「経験値効率」(社長指示v0.25.3679・+10%×5段)もここで掛ける(焼き値=次の出撃から)。
+    const gained = amount * XP_GAIN_MULT * consumableXpMult(get().player, get().gameTime) * (get().player.growthXpMult ?? 1); // 全体調整: 経験値1/3
     set(state => {
       const { player, gameStats } = state;
       const newExperience = player.experience + gained;
@@ -16244,6 +16246,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // AmmoTypeの5キー全部(glauncherを含む)。素値は引数で渡す=utils側はAMMO_MAXをimportしない。
     const bakedGrowthAmmoMax = effectiveAmmoMaxMap(AMMO_MAX, activeUpgradeLevel(growthMeters, 'ammo'));
     const bakedGrowthGoldMult = growthGoldMult(activeUpgradeLevel(growthMeters, 'gold'));
+    const bakedGrowthXpMult = growthXpMult(activeUpgradeLevel(growthMeters, 'xp'));
     // スコア倍率(社長裁定2026-08-20): メーター1本フルで−0.2・ゴールド系統は数えない。計測路は上と同じく0段=1.0。
     const bakedGrowthScoreMult = growthScoreMult(growthMeters);
     // DDAの参照HP(社長裁定Q3=A案): profile.maxHp+育成HP加算。**装備HPは含めない**
@@ -16571,6 +16574,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           growthScoreMult: bakedGrowthScoreMult,
           growthAmmoMax: bakedGrowthAmmoMax,
           growthGoldMult: bakedGrowthGoldMult,
+          growthXpMult: bakedGrowthXpMult,
           ddaBaseHp: bakedDdaBaseHp,
           critChance: 0,
           quickMagCritUntil: 0,

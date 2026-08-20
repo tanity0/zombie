@@ -89,6 +89,9 @@ export const growthAttackMult = (activeLevel: number): number => 1 + perLevel('a
 /** ゴールド獲得: 付与額の倍率。 */
 export const growthGoldMult = (activeLevel: number): number => 1 + perLevel('gold') * eff(activeLevel);
 
+/** 経験値効率: 獲得XPの倍率(適用点は gainExperience=経験値付与の唯一の出どころ)。 */
+export const growthXpMult = (activeLevel: number): number => 1 + perLevel('xp') * eff(activeLevel);
+
 /**
  * 弾数: 所持弾薬**上限**の実効値。**素値(AMMO_MAX)は引数で受ける**(冒頭の循環import回避)。
  * マガジン装填数・リロード・弾ドロップ率の枯渇度には一切関与しない(「持てる母数」だけを広げる)。

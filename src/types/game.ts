@@ -132,6 +132,8 @@ export interface Player extends DashLocomotionState {
   growthAmmoMax: Record<AmmoType, number>;
   /** ゴールド獲得の育成倍率(既定1.0)。各付与点が金額の算出行で掛ける。 */
   growthGoldMult: number;
+  /** 経験値効率の育成倍率(既定1.0)。gainExperience(付与の唯一の出どころ)が掛ける。 */
+  growthXpMult: number;
   /** DDAの参照HP = profile.maxHp + 育成HP加算(装備HPは含めない)。difficultyScaler の入力。 */
   ddaBaseHp: number;
   /** スコア倍率(社長裁定2026-08-20: メーター1本フルで−0.2・ゴールド系統は数えない・既定1.0)。

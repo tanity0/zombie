@@ -7,7 +7,7 @@
 //   完全に一致する、が最重要の不変条件)。
 
 /** 育成の系統id。 */
-export type PlayerUpgradeId = 'health' | 'attack' | 'ammo' | 'gold';
+export type PlayerUpgradeId = 'health' | 'attack' | 'ammo' | 'xp' | 'gold';
 
 /** 各系統の上限段数。 */
 export const PLAYER_UPGRADE_MAX_LEVEL = 5;
@@ -37,6 +37,8 @@ export const PLAYER_UPGRADES: readonly PlayerUpgradeDef[] = [
   { id: 'health', label: '体力',       perLevel: 20,   perLevelLabel: '+20',  desc: '最大体力が増える' },
   { id: 'attack', label: '攻撃力',     perLevel: 0.04, perLevelLabel: '+4%',  desc: '与えるダメージが上がる' },
   { id: 'ammo',   label: '弾数',       perLevel: 0.05, perLevelLabel: '+5%',  desc: '持てる弾薬の上限が増える' },
+  // 経験値効率(社長指示v0.25.3679「強化項目に経験値効率も追加。10%ずつ」)。
+  { id: 'xp',     label: '経験値効率',   perLevel: 0.10, perLevelLabel: '+10%', desc: 'プレイ中のレベルアップが速くなる' },
   { id: 'gold',   label: 'ゴールド獲得', perLevel: 0.10, perLevelLabel: '+10%', desc: '手に入るゴールドが増える' },
 ];
 
@@ -53,7 +55,9 @@ export const PLAYER_UPGRADE_IDS: readonly PlayerUpgradeId[] = PLAYER_UPGRADES.ma
  *   0.1=1段−2%・1本フル−0.1・**3本フルでちょうど×0.7**(経緯: 0.2→0.125→0.1)。
  */
 export const PLAYER_UPGRADE_SCORE_PENALTY_PER_METER = 0.1;
-export const SCORE_PENALTY_UPGRADE_IDS: readonly PlayerUpgradeId[] = ['health', 'attack', 'ammo'];
+// 経験値効率もラン内の強さ(レベル=スキル)に直結するため対象に含める(社長裁定「ゴールド強化は
+// スコア対象外。その他は換金も下げる」の一貫・v0.25.3679)。4本フルで×0.6。
+export const SCORE_PENALTY_UPGRADE_IDS: readonly PlayerUpgradeId[] = ['health', 'attack', 'ammo', 'xp'];
 
 /** 台帳の1行を引く(未定義のidは呼べない=型で塞いである)。 */
 export const playerUpgradeDef = (id: PlayerUpgradeId): PlayerUpgradeDef =>

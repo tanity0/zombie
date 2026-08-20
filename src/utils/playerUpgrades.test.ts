@@ -18,7 +18,7 @@ const mem = new Map<string, string>();
 
 const {
   PLAYER_UPGRADES_KEY, activeUpgradeLevel, effectiveAmmoMax, effectiveAmmoMaxMap, emptyPlayerUpgrades,
-  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, loadPlayerUpgrades,
+  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, growthXpMult, loadPlayerUpgrades,
   normalizePlayerUpgrades, playerUpgradeCost, savePlayerUpgrades,
 } = await import('./playerUpgrades');
 const { PLAYER_UPGRADE_COSTS, PLAYER_UPGRADE_IDS, PLAYER_UPGRADE_MAX_LEVEL } = await import('../data/playerUpgrades');
@@ -113,6 +113,13 @@ describe('メーターの不変条件: 常に 0 ≦ active ≦ bought ≦ 5', ()
   });
 });
 
+describe('経験値効率(v0.25.3679・+10%×5段)', () => {
+  it('0段=1.0/5段=1.5', () => {
+    expect(growthXpMult(0)).toBe(1);
+    expect(growthXpMult(5)).toBeCloseTo(1.5, 10);
+  });
+});
+
 describe('スコア倍率(社長裁定2026-08-20: メーター1本フルで−0.2・ゴールド系統は数えない)', () => {
   it('0段=1.0(スコア不変)', () => {
     expect(growthScoreMult(emptyPlayerUpgrades())).toBe(1);
@@ -131,6 +138,15 @@ describe('スコア倍率(社長裁定2026-08-20: メーター1本フルで−0.
   it('ゴールド獲得の段数はスコアに影響しない(社長裁定「ゴールド強化はスコア対象外」)', () => {
     const goldOnly = normalizePlayerUpgrades({ gold: { bought: 5, active: 5 } });
     expect(growthScoreMult(goldOnly)).toBe(1);
+  });
+  it('経験値効率(v0.25.3679追加)もスコア対象=4系統フルで0.6', () => {
+    const xpOnly = normalizePlayerUpgrades({ xp: { bought: 5, active: 5 } });
+    expect(growthScoreMult(xpOnly)).toBeCloseTo(0.9, 10);
+    const all4 = normalizePlayerUpgrades({
+      health: { bought: 5, active: 5 }, attack: { bought: 5, active: 5 },
+      ammo: { bought: 5, active: 5 }, xp: { bought: 5, active: 5 },
+    });
+    expect(growthScoreMult(all4)).toBeCloseTo(0.6, 10);
   });
   it('効くのは有効段数(メーター)——下げれば戻る', () => {
     const lowered = normalizePlayerUpgrades({ attack: { bought: 5, active: 0 } });
