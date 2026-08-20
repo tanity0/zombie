@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3671',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 難度階段の設計へ再監査6件を反映。三巡目確認中)。',
+    ],
+  },
+  {
     version: '0.25.3670',
     items: [
       'ゲーム内容の変更はありません(開発資料: 難度階段の設計へ監査10件を反映。再監査中)。',
