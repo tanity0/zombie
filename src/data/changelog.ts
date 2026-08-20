@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3678',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 幻影パリィの反応速度モデル(v9)を設計=近接は「窓」・弾は反応時間・成立演出はカウンターと同じ組。監査中)。',
+    ],
+  },
+  {
     version: '0.25.3677',
     items: [
       'ゲーム内容の変更はありません(内部: 偶像とラスボス第二形態にもステージ係数の配管を通しました=現在は同値・将来のズレ予防)。',
