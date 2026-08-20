@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3656',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 育成発注文へ監査18件を反映。後半調整の構造走査も完了)。',
+    ],
+  },
+  {
     version: '0.25.3655',
     items: [
       'ゲーム内容の変更はありません(開発資料: 育成の最終確定仕様v4=発注文を確定。実装バッチ発注前の監査中)。',

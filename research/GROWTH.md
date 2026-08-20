@@ -214,25 +214,56 @@
 - **初期HP: STANDARD_MAX_HP 110→130**(playerProfiles.ts の1箇所・全クラス共通)。
 - `PLAYER_BASE_HP=120`(store初期プレースホルダ・守護霊台帳の記録基準)は**据え置き**。
 
+## ★焼き込みの原則(全系統共通・監査反映)
+**育成値は resetGame 時に Player のフィールドとして焼く。ラン中・リザルトの参照は全て
+その焼き値を読む。store(有効段数)の直読みは禁止**(理由: ①「メーター変更は次の出撃から」を
+機械的に保証する ②守護霊の疑似Player(buildPseudoPlayer)が同じ関数を通るため、store直読みだと
+スナップショット固定が成立しない)。焼くフィールド(名前は実装者が既存命名に合わせてよい):
+- `growthAtkMult`(攻撃倍率・既定1.0)/ `growthAmmoMax`(カテゴリ別の実効上限・既定=AMMO_MAX素値)/
+  `growthGoldMult`(ゴールド倍率・既定1.0)/ `ddaBaseHp`(DDA基準・下記)。HPは maxHealth へ直接加算。
+- ボスメーカー/ガントレットでは**0段として焼く**(下記「計測路」)。
+
 ## 各系統の実装詳細
 1. **体力**: resetGame の `maxHealth = profile.maxHp + equipMaxHealthOf(...)` に育成加算を1項追加。
-2. **攻撃力**: `skillOutgoingDamageMult` へ乗算(錬金術バフと同じ式に1項)。**加えて処刑ダメージ
-   (体勢崩し×5/クリ×3: resolveStunnedMeleeHit / applyBrokenMeleeFatal 等、通常ヒット枝を通らない
-   確定ダメージの枝)にも同じ倍率を掛ける**(社長裁定Q1=乗せる)。適用漏れ防止のため
-   「近接処刑」の全経路を洗ってから配線する。
-3. **弾数**: `AMMO_MAX` の直接参照(拾得・購入・弾ドロップ抽選)を `effectiveAmmoMax(category)`
-   (純関数・有効段数を読む)へ差し替える。マガジン装填数・リロードは**触らない**。
-4. **ゴールド獲得**: 適用面=①リザルト獲得(ghostGoldMultiplierと併せ「倍率を全部掛けてから最後に
-   1回round」) ②サブクエ報酬 ③二人組報酬+useGameLoop側の吹き出し表示コピーも同時に直す
-   ④宿敵トレジャー(NAMED_TREASURE_GOLD)。**掛けない**=ガチャ返金・死亡時の装備換金。
-   実装は `addGold` の内側ではなく**各付与点で掛ける**(GoldRushと同じ作法・両方持てば重なる)。
+2. **攻撃力**: `skillOutgoingDamageMult`(gameStore.ts:1505・Playerを引数に取る)へ乗算1項
+   (player.growthAtkMult を読む)。**加えて処刑ダメージにも同じ倍率を掛ける**(社長裁定Q1)。
+   処刑の経路は**5つ**(監査で実数確認済み・「等」で済ませない):
+   ①ナイフ=resolveStunnedMeleeHit経由(gameStore.ts:6440) ②守護霊=同経由(8654)
+   ③分身=インライン複製(6917/6930) ④刀=同(7541/7567) ⑤鞭=同(7834/7848)。
+   ※meleeExecute.ts:9 の「finisher 3箇所」コメントは実数と不一致=ついでに5箇所へ訂正する。
+   **掛け方は前掛け**: `applyBrokenMeleeFatal` は `baseDamage×5 + bossBreakRewardRemaining`
+   (bossPosture.ts:167-176)なので、**育成倍率は baseDamage 側にだけ掛ける**(報酬予算の残量は
+   固定の設計値=育成で増やさない)。対象4箇所: gameStore.ts 6448/7544/7836/10003。
+   **適用外(現状維持)**: skillOutgoingDamageMult を意図的に外している攻撃(例: 救難信号の
+   援護アライ gameStore.ts:3550-3552「変更禁止」コメント付き)には乗せない=コードを触らない。
+3. **弾数**: 純関数 `effectiveAmmoMax(category, activeLevel)` を utils に作り、resetGame で
+   `growthAmmoMax`(4カテゴリ分)へ焼く。**差し替えるのは「上限」としての参照のみ(4箇所)**:
+   ①addAmmo のclamp(gameStore.ts:13474) ②同ティア武器拾得時の弾変換の直接clamp(14435)
+   ③商人購入の上限判定4分岐(9588-9608) ④ShopMenuのMAX表示+購入disabled(ShopMenu.tsx:117)。
+   **差し替えない(素のAMMO_MAXのまま)**: 弾ドロップ率の枯渇度(gameStore.ts:3446,3460/
+   useGameLoop.ts:10602,10620)と弾種配分(ammoDrop.ts:22)の `reserve/max`、および
+   playtestDriver.ts:229,236(ボット計測基準・ゲーム挙動に非影響)。
+   理由: 社長裁定は「持てる母数」の拡張であり、ドロップ経済(出やすさ)を裏で動かす二次効果は
+   入れない(最小解釈)。マガジン装填数・リロードは**触らない**。
+4. **ゴールド獲得**: 適用面=①リザルト: **GameOverScreen.tsx:262 の goldEarned 算出行に掛ける**
+   (addGold(284)は goldEarned+equipmentGold の合算なので、そこに掛けると装備換金まで増える=禁止。
+   ghostGoldMultiplierと併せ「倍率を全部掛けてから最後に1回round」) ②サブクエ報酬(gameStore.ts:3370)
+   ③二人組報酬(9888)+useGameLoop側の吹き出し表示コピーも同時に直す ④宿敵トレジャー(3026)。
+   **掛けない**=ガチャ返金・死亡時の装備換金(14755/14784)。
+   実装は `addGold` の内側ではなく**各付与点で player.growthGoldMult を掛ける**(GoldRushと同じ作法・
+   両方持てば重なる)。リザルトはランを跨いだ後に走るが、player の焼き値を読むので整合する。
 
 ## メーター式(購入と有効化の分離)
 - 保存: `zombie.progress.playerUpgrades` = `{ [系統id]: { bought: n, active: n } }`。
   **常に 0≦active≦bought≦5**。購入は不可逆(返金なし)。activeはいつでも上下可・次の出撃から反映。
-- storeフィールド+永続保存(purchasedSubLevels と同型)。UIとresetGameが同じstore値を読む。
-- practiceGuard の封鎖対象(練習中に購入は発生し得ないが安全網として)。
-- **ガチャリセット(resetGachaProgress)の消去対象に追加**(Gだけ消えて育成が残る片落ちを作らない)。
+- **名前空間は `zombie.progress.*`(src/data/progress.ts の進行系統)で確定**。storeフィールド+
+  永続保存で、UIとresetGameが同じstore値を読む(v2の「purchasedSubLevelsと同型」の表現は撤回——
+  あちらは `zombie:` 名前空間の別系統で、混ぜない)。
+- practiceGuard は**許可リスト方式**(practiceGuard.ts:26-36)なので**何も触らない**
+  (新キーは既定で塞がれている。許可リストに足すと逆に穴が開く)。
+- **ガチャリセット(resetGachaProgress・gameStore.ts:14711)の消去対象に追加**——直す場所は2箇所:
+  キー配列(14716-14717)と set()(14722-14723)。加えてボタン表記
+  (MissionSelect.tsx:1710「所持スキル・サブ装備・G・階段」)に「強化」を追記する。
 
 ## UI
 - **新 Screen('growth')+HubButton「強化」**。購入UIの作法は**開発施設の既存リストをそのまま流用**
@@ -240,41 +271,66 @@
 - 各行にメーター(有効段数の±)。リザルト・タイトルには出さない。静的画面=React再レンダー規律は低リスク。
 
 ## 写し先(社長裁定Q4=両方に写す)
-- **守護霊**: スナップショット(playerBuild.ts)に**HP・攻撃力・弾数上限を明示的に写す**
-  (「黙って写る/写らない」の非対称を無くす。スナップショット取得時の有効段数で焼く)。
+- **守護霊**: スナップショット(playerBuild.ts)の maxHealth は**既に記録済み=HPは現行で足りる**。
+  追加するのは**攻撃力のみ**: `PlayerBuildSnapshot` に growthAtkMult フィールドを追加+
+  `buildPseudoPlayer`(playerBuild.ts:108)で復元+**旧データ(フィールド欠損)は1.0=0段扱い**。
+  **弾数は守護霊には対象外**(守護霊の銃はリザーブ∞で回している
+  (useGameLoop.ts:8475,8484)=写す先が存在しない。事実として明記)。
 - **幻影**: 「育成込みの初期状態」に変更。**GUARDIAN_PHANTOM_HEALTH はimport時評価でENEMY_STATSに
-  焼かれているため、スポーン時に評価する関数へ変更**し、育成後maxHpを返す。幻影の銃ダメ・近接ダメ
-  (phantomTick.ts の phantomMeleeDamage / 銃 createWeapon 経由)にも攻撃力育成を乗せる。
-  (背景: 幻影は将来ステージ乱入敵にする構想=プレイヤーの現在の強さを写す)。
+  焼かれているため、スポーン時に評価する関数へ変更**し、育成後maxHpを返す。読み手はもう1本ある:
+  **practiceBossHealth(bossPractice.ts:276・練習画面のHP表示)と等値アサート(bossPractice.test.ts:199)
+  も同じ関数を読ませ、表示も育成込みにする**(「練習画面の表示と実戦が原理的に一致する」不変条件
+  (bossHealth.ts:41/enemyUtils.ts:618)を保つ)。
+  攻撃側: 近接は phantomMeleeDamage(phantomTick.ts:107)が**モジュールキャッシュで初回値を焼く**
+  ため、**キャッシュを廃止しスポーン時計算に変更**(段数を変えてもリロード不要にする)。
+  銃は phantomTick.ts:412 の `gun.damage×(crit?…)` に幻影専用の育成倍率を掛ける。
+  ※これは NEUTRAL_GUN_OWNER の「プレイヤーのビルドを読まない」既存ドクトリン(phantomTick.ts:190)
+  への**明示的な例外**(社長裁定Q4 2026-08-20「幻影も反映」・乱入敵構想が理由)——コード内コメントも
+  「中立主語は維持しつつ、育成だけは裁定により写す」と事実で書き換える。
 
 ## 計測路の中立化
-- **ボスメーカー/ガントレット(skillInjection分岐)では育成を0段として扱う**(TTK計測の基準が
-  育成の進みでズレない)。通常のボス練習は乗る(プレイヤーの実力扱い)。
+- **ボスメーカーとガントレットでは育成を0段として焼く**(TTK計測の基準が育成の進みでズレない)。
+  判定は別物(監査で確認済み・「skillInjection分岐」ではガントレットを拾えない):
+  - ボスメーカー: `isBossMakerRun()`(skillInjection生成の既存分岐・gameStore.ts:16060)。
+  - ガントレット: `GAUNTLET_MODE`(App.tsx:40 の `?gauntlet=1` URLフラグ)。Appのモジュール定数で
+    store から見えないため、**ガントレット起動経路(startGauntletSlot→resetGame)から
+    「育成無効」を渡す口を1つ作る**(resetGame引数 or storeフラグ。実装者が既存の受け渡しに合わせる)。
+  - 通常のボス練習(isPracticeRunだがガントレットでない)は**乗る**(プレイヤーの実力扱い)。
 
 ## DDA(社長裁定Q3=A案)
-- `DDA_BASE_MAX_HP`(固定120)を**「そのランの開始時maxHP(育成込み・装備込み前の基礎)」**に
-  差し替える=DDAはラン中に拾ったHP成長だけを見る。縛り勢(active=0)は現行と完全一致。
-  初期130化も自動吸収(基準が130になるだけ)。
+- 基準は**「profile.maxHp(130)+育成HP加算」**で一意に定める(「開始時maxHP」と書くと
+  装備HP(equipMaxHealthOf)まで基準に入り、現行PPに乗っている装備HP寄与(difficultyScaler.ts:36)が
+  消える=裁定外の挙動変更になるため。**装備HPは従来どおりPPに乗る**)。
+- 実装: resetGame でこの基準値を `player.ddaBaseHp` に焼く。`DDA_BASE_MAX_HP` は
+  playerPower の内部定数(difficultyScaler.ts:13,36)なので、`DdaPowerInputs`(同19行)に
+  基準値の入力を追加し、呼び出し側(useGameLoop.ts:11688-11705)から渡す。
+  `difficultyScaler.test.ts:31,49-68` の改訂も同コミット。
+- 縛り勢(active=0)は現行と完全一致。初期130化は基準が130になるだけで自動吸収。
 
 ## サブクエ(裁定)
 - **ボム(collectPickup 'bomb')の一括キルはサブクエに数えない**(配線しない・現状のまま)。
 
 ## 不変条件テスト(同コミットで機械化)
-- 全系統 active=0 のとき: HP加算0/攻撃倍率1.0/弾上限=AMMO_MAX素値/ゴールド倍率1.0
-  = resetGame の結果が現行(130化後)と完全一致。
+- 全系統 active=0 のとき: HP加算0/攻撃倍率1.0/弾上限=AMMO_MAX素値/ゴールド倍率1.0/
+  ddaBaseHp=profile.maxHp = resetGame の結果が現行(130化後)と完全一致。
 - 0≦active≦bought≦5 を常に保証(active>boughtを書けない)。価格表は単調増加。
-- メーター変更はラン中に効かない(次の出撃から)。保存キーは進行名前空間(playerUpgrades)。
-- 幻影・守護霊の写し: 育成0のとき現行値と一致。
+- メーター変更はラン中に効かない(=ラン中の参照が全て焼き値経由であることをテストで固定)。
+  保存キーは進行名前空間(zombie.progress.playerUpgrades)。
+- 幻影・守護霊の写し: 育成0のとき現行値と一致。処刑の前掛け: 育成0で処刑ダメージ不変。
 
 ## 実装地図(バッチ1本・中〜大)
 1. `src/data/playerUpgrades.ts`: 台帳(4系統・刻み・価格)+不変条件テスト
-2. `src/utils/playerUpgrades.ts`: 保存読み書き+段数→効果値の純関数(effectiveAmmoMax含む)+テスト
-3. gameStore: resetGame注入(HP)/skillOutgoingDamageMult+処刑枝(攻撃)/AMMO_MAX参照差し替え(弾)/
-   ゴールド付与点4箇所/DDA入力の基準差し替え/ガチャリセット連動/skillInjection分岐の0段扱い
-4. 守護霊スナップショット(playerBuild.ts)+幻影(bossHealth.ts関数化+phantomTick.ts)
-5. UI: Screen('growth')+HubButton+メーター行
-6. STANDARD_MAX_HP 110→130+既存テストの追従改訂
-7. 検証: typecheck/lint+変更ユニットのテスト
+2. `src/utils/playerUpgrades.ts`: 保存読み書き+段数→効果値の純関数(effectiveAmmoMax(category, level)含む)+テスト
+3. gameStore: resetGameの焼き込み(HP加算+growthAtkMult/growthAmmoMax/growthGoldMult/ddaBaseHp)/
+   skillOutgoingDamageMult 1項+処刑5経路の前掛け/AMMO_MAX「上限」参照4箇所の差し替え/
+   ゴールド付与点4箇所(掛け先の行を名指しどおり)/ガチャリセット連動(2箇所+ボタン表記)/
+   ボスメーカー・ガントレットの0段焼き込み
+4. DDA: DdaPowerInputs入力追加+useGameLoop呼び出し側+difficultyScaler.test.ts改訂
+5. 守護霊スナップショット(playerBuild.ts: growthAtkMult追加・欠損時1.0)+
+   幻影(bossHealth.ts関数化+practiceBossHealth/テスト追従+phantomTick.tsキャッシュ廃止・銃/近接倍率)
+6. UI: Screen('growth')+HubButton+メーター行+ShopMenuのMAX表示追従
+7. STANDARD_MAX_HP 110→130+既存テストの追従改訂+meleeExecute.ts:9コメント訂正(3→5箇所)
+8. 検証: typecheck/lint+変更ユニットのテスト
 
 ## 性能
 負荷 1/10。per-frame追加ゼロ(resetGame時と会計時の定数演算のみ)。
