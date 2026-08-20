@@ -21,7 +21,11 @@ export const GUARDIAN_PHANTOM_TUNING = {
    * 発火周期は**プレイヤーの近接の実効周期**(ghostDriver.GHOST_COUNTER_MELEE_PERIOD_MS=
    * COUNTER_WINDOW+COUNTER_COOLDOWN)を import して使う=ここに周期の数字は置かない(写経禁止)。
    */
-  melee: { reach: 160, halfWidth: 20, damage: 18 },
+  // ★reach=プレイヤーの近接範囲 MELEE_RADIUS(74)の鏡(社長指摘v0.25.3667「こっちが届かない
+  //   近距離攻撃をしてくる」——旧160はv6叩き台でプレイヤーの2倍以上=非対称だった)。
+  //   正本は gameStore.MELEE_RADIUS(葉から import できないため値の写し)。
+  //   **ズレたら phantomTick.test.ts の等値アサートが落ちる**(写経の機械化)。
+  melee: { reach: 74, halfWidth: 20, damage: 18 },
   /**
    * パリィ(プレイヤーの「カウンター」の鏡)の再発火まで置く間隔(ms・gameTime基準)。
    * 成立率そのものは台帳(strongestGuardian().profile.counterChance)=ここには書かない。

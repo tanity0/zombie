@@ -49,10 +49,10 @@ export const PLAYER_UPGRADE_IDS: readonly PlayerUpgradeId[] = PLAYER_UPGRADES.ma
  * 対象は下の3系統だけ——**ゴールド獲得はスコア対象外**(社長裁定)。
  * 換金(goldScore→ゴールド)にも掛かる(社長裁定「その他は換金も下げる。下げるメリットが薄まるため」
  * =メーターを下げれば実入りも戻る、が縛りの動機になる)。
- * ★数値改定(社長指示v0.25.3666「全部マックスにすると0.6-0.7倍くらいのイメージ。0.6寄りに」):
- *   旧0.2(3本フル×0.4)→0.125=**3本フルで×0.625**(0.6寄りの割り切れる値)。
+ * ★数値改定(社長指示v0.25.3667「0.7で割り切れるならそっちがいい」):
+ *   0.1=1段−2%・1本フル−0.1・**3本フルでちょうど×0.7**(経緯: 0.2→0.125→0.1)。
  */
-export const PLAYER_UPGRADE_SCORE_PENALTY_PER_METER = 0.125;
+export const PLAYER_UPGRADE_SCORE_PENALTY_PER_METER = 0.1;
 export const SCORE_PENALTY_UPGRADE_IDS: readonly PlayerUpgradeId[] = ['health', 'attack', 'ammo'];
 
 /** 台帳の1行を引く(未定義のidは呼べない=型で塞いである)。 */

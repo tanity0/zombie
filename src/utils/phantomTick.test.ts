@@ -19,7 +19,7 @@ import { COUNTER_REACH_DECL } from './counterReach';
 import { usesPostureSystem, applyBossPostureDamage } from './bossPosture';
 import { strongestGuardian } from '../data/fixedGuardians';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { useGameStore, INVULN_MS } from '../store/gameStore';
+import { useGameStore, INVULN_MS, MELEE_RADIUS } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
@@ -64,7 +64,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 
 describe('① 即発近接(予告なし・プレイヤーと同じ周期)', () => {
   it('射程内なら1tick目で振り、当たればプレイヤーのHPが減る(溜めを待たない)', () => {
-    const { step, cur } = setup(80);
+    const { step, cur } = setup(60); // reach=MELEE_RADIUS(74)内(v0.25.3667で160→74)
     const hp0 = useGameStore.getState().player.health;
     step(16);
     const gp = cur();
@@ -75,7 +75,7 @@ describe('① 即発近接(予告なし・プレイヤーと同じ周期)', () =
   });
 
   it('次の振りは**プレイヤーの近接の実効周期**(COUNTER_WINDOW+COUNTER_COOLDOWN)を待つ', () => {
-    const { step, cur } = setup(80);
+    const { step, cur } = setup(60); // reach=74内(v0.25.3667)
     step(16);
     const first = cur().gpSwingAt!;
     step(PHANTOM_MELEE_PERIOD_MS - 100);
@@ -219,6 +219,13 @@ describe('② 被弾無敵: 7系統すべてでダメージ0(1経路でも素通
     expect(phantomHitGate({ ...base, source: 'melee', rand: () => 0.999 }).damage).toBe(100);
   });
 
+  // ★v0.25.3667(社長指摘「こっちが届かない近距離攻撃をしてくる」): 幻影の近接リーチは
+  // プレイヤーの近接範囲(MELEE_RADIUS)と同値=「全てプレイヤーと同条件」。
+  // phantomScript は葉で gameStore を import できないため値の写し——ここで等値を機械検査する。
+  it('幻影の近接リーチ=プレイヤーの MELEE_RADIUS(写経ズレの機械検知)', () => {
+    expect(GP_T.melee.reach).toBe(MELEE_RADIUS);
+  });
+
   // ★v0.25.3665(社長指摘「鴉、銃の弾反撃しないよ?」): プレイヤーの銃弾('bullet')もパリィ対象。
   it('phantomGate 単体: 銃弾のパリィは gpBulletParriedAt に打刻(近接の gpParriedAt とは別の合図)', () => {
     const base = {
@@ -337,7 +344,7 @@ describe('④ 銃ミラー(台帳武器の実性能・リロードの息継ぎ)'
 
 describe('⑤ 殴り続けても止まらない(通常被弾のノックバックで技も移動も止まらない)', () => {
   it('knockbackUntil の最中でも近接を振る', () => {
-    const { step, cur, id } = setup(80);
+    const { step, cur, id } = setup(60); // reach=74内(v0.25.3667)
     useGameStore.setState(s => ({
       enemies: s.enemies.map(e => e.id === id ? { ...e, knockbackUntil: START_GT + 5000 } : e),
     }));
@@ -346,7 +353,7 @@ describe('⑤ 殴り続けても止まらない(通常被弾のノックバッ�
   });
 
   it('気絶(stunUntil)では従来どおり止まる=「止まらない」のは通常被弾のノックバックだけ', () => {
-    const { step, cur, id } = setup(80);
+    const { step, cur, id } = setup(60); // reach=74内(=止まる理由がstunだけであることを保証)
     useGameStore.setState(s => ({
       enemies: s.enemies.map(e => e.id === id ? { ...e, stunUntil: START_GT + 5000 } : e),
     }));
