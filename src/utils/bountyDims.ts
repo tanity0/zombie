@@ -19,10 +19,13 @@
  * 旧: gameStore.ts 直書き54(66→54=社長指示)。値は不変・置き場所だけ移動。 */
 export const PUMPKIN_EXPLOSION_RADIUS = 54;
 
-/** §6.38 §3「HP: 基準値(叩き台)」。bountyMaxHealth(bountyTick.ts)がここへ実効難易度倍率を掛ける。
- * 変異体対策室(bossPractice.ts)のHP表示もここを直接読む(掲載裁定・値は不変・置き場所だけ葉へ移動=
- * bossPractice→bountyTick→gameStore→bossPractice の循環import防止。v0.25.3390の教訓と同じ理由)。 */
-export const BOUNTY_BASE_HP = 2000;
+/** §6.38 §3「HP: 基準値」。bountyMaxHealth(bountyTick.ts)がここへ実効難易度倍率を掛ける。
+ * 変異体対策室(bossPractice.ts)のHP表示もここを直接読む(掲載裁定・置き場所は葉=
+ * bossPractice→bountyTick→gameStore→bossPractice の循環import防止。v0.25.3390の教訓と同じ理由)。
+ * 2000→4000(社長裁定2026-08-20「バス停のhp2000はかなり弱い。マークスマンで適当に引き撃ちしてても
+ * 勝てる。4000HPにする。小ボスの他も同じく」=4体共通の基準値なのでここ1箇所で全員に効く。
+ * 城ボス系は現状ステイ=触らない)。 */
+export const BOUNTY_BASE_HP = 4000;
 
 // ---- 賞金首4種の技の寸法は `bountyScript.ts`(可変テーブル)へ移設した(v0.25.3558) ----
 // 旧: BR_SIGN_TIP_PX / BB_SWEEP_HALFWIDTH / BB_LEAP_RADIUS / MK_NAGINATA_HALFWIDTH /
