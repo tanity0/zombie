@@ -14445,16 +14445,22 @@ export class PixiScene {
     view.overlayTop.clear(); // 攻撃の絵より上に出すゲージ(v0.25.3150)
     // 予告の輪スプライト(A-1)は既定で消しておき、必要な分岐だけが drawTelegraphRing で点ける
     // (tele.clear() と同じ役割。消し忘れて前フレームの輪が残るのを構造的に防ぐ)。
-    if (view.rings) for (const s of view.rings) s.visible = false;
-    if (view.bands) for (const s of view.bands) s.visible = false;
+    // ★v0.25.3698: rings/bands/clawMarks/shockwaves は「インデックス代入で作る歯抜け配列」
+    // (view.rings[idx] = sp 方式。idx=2だけ先に作られると[0][1]がundefinedのまま)。
+    // 走査は必ず if (s) の要素ガードを付ける(glenParts/atkArt/spikeThrust/burstFragと同じ作法)。
+    // ガード無しの s.visible が実機ビーコン「ERR draw:giantbat: undefined is not an object
+    // (evaluating 'T.visible')」の真犯人=drawEnemyが毎フレーム途中死してグレン/アクラシエルの
+    // 絵が凍結(以降の姿勢・攻撃演出が全て実行されなかった)。
+    if (view.rings) for (const s of view.rings) if (s) s.visible = false;
+    if (view.bands) for (const s of view.bands) if (s) s.visible = false;
     if (view.slash) view.slash.visible = false;
-    if (view.clawMarks) for (const s of view.clawMarks) s.visible = false;
+    if (view.clawMarks) for (const s of view.clawMarks) if (s) s.visible = false;
     // ★glenParts(ラスボス第二形態の連結パーツ)はここで消さない(v0.25.2955・社長報告「パーツが
     // くっついてない。本体しかいない」の実バグ)。パーツは攻撃予告ではなく**本体の一部**で、
     // syncGlenParts(この関数より前に実行)が表示した直後にこの行が毎フレーム非表示へ戻していた=
     // 導入(v0.25.2918)から一度も画面に出ていなかった。既定OFFの役目は syncGlenParts 自身の先頭で
     // 果たしている(count=0で全消し)ので、ここから外して重複させない。
-    if (view.shockwaves) for (const s of view.shockwaves) s.visible = false;
+    if (view.shockwaves) for (const s of view.shockwaves) if (s) s.visible = false;
     // v0.25.3324(v3207の残穴): 被弾フラッシュ(本体ポーズを写した白シルエット)も既定OFF。
     // これがdrawEnemy内(try/catchの中)のOFF分岐頼みだと、例外時に**白く歪んだシルエットが
     // 焼き付いたまま残る**(社長報告v0.25.3323「敵は白く歪んだまま」の一致候補)。
@@ -18751,13 +18757,15 @@ export class PixiScene {
     const teleFade = TELEGRAPH_OWN_FADE ? this.telegraphFade(view) : 1;
     view.tele.alpha = teleFade;
     if (teleFade < 1) {
-      if (view.rings) for (const s of view.rings) if (s.visible) s.alpha *= teleFade;
-      if (view.bands) for (const s of view.bands) if (s.visible) s.alpha *= teleFade;
+      // ★v0.25.3698: 歯抜け配列(インデックス代入で作られる)につき要素ガード必須。
+      // ここの s.visible が実機ビーコン 'T.visible' 例外の発生行(詳細は14448付近のコメント)。
+      if (view.rings) for (const s of view.rings) if (s?.visible) s.alpha *= teleFade;
+      if (view.bands) for (const s of view.bands) if (s?.visible) s.alpha *= teleFade;
       if (view.slash?.visible) view.slash.alpha *= teleFade;
-      if (view.clawMarks) for (const s of view.clawMarks) if (s.visible) s.alpha *= teleFade;
-      if (view.shockwaves) for (const s of view.shockwaves) if (s.visible) s.alpha *= teleFade;
-      if (view.spikeThrust) for (const s of view.spikeThrust) if (s.visible) s.alpha *= teleFade;
-      if (view.burstFrag) for (const s of view.burstFrag) if (s.visible) s.alpha *= teleFade;
+      if (view.clawMarks) for (const s of view.clawMarks) if (s?.visible) s.alpha *= teleFade;
+      if (view.shockwaves) for (const s of view.shockwaves) if (s?.visible) s.alpha *= teleFade;
+      if (view.spikeThrust) for (const s of view.spikeThrust) if (s?.visible) s.alpha *= teleFade;
+      if (view.burstFrag) for (const s of view.burstFrag) if (s?.visible) s.alpha *= teleFade;
       if (view.dashWind?.visible) view.dashWind.alpha *= teleFade;
       if (view.coilBody?.visible) view.coilBody.alpha *= teleFade;
     }
