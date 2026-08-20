@@ -126,6 +126,9 @@ export type SfxKey =
   | 'screamer-cry'   // 変異体(叫喚型)の叫喚(発動)SE
   | 'gate-clear'     // 強襲(関所)を生きて凌いだ時の突破ジングル
   | 'subquest-clear' // サブクエスト達成ジングル(社長提供・約2.8s。旧: event-clearの流用だった)
+  | 'reaper-pass'    // 死神の横切り(気配演出)音(社長提供・約1.0s。v0.25.3665で配線待ちの席に配置)
+  | 'kill-dash'      // KILL処刑演出: 首元への高速ダッシュ音(社長提供・約0.44s)
+  | 'jump-land'      // ジャンプ攻撃の着地音(社長提供・約0.37s。汎用jump+城ボスg-jump共通)
   | 'thor-sweep'     // 裏ボス トールの払い(横払い)SE(社長提供)
   | 'thor-thrust'    // 裏ボス トールの突きSE(社長提供)
   | 'glen-nihil';    // グレン「虚無の三唱」(お墓技)SE(社長提供・壊れたラジオ加工)。長尺→フェードで止める
@@ -190,6 +193,24 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/hunter-alert.mp3`,
     volume: 1.0,
     minIntervalMs: 400,
+  },
+  // 死神の横切り(短い不穏音・社長提供)。横切り開始と同時に1回(useGameLoop の doReaperCross)。
+  'reaper-pass': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/reaper-pass.mp3`,
+    volume: 0.8,
+    minIntervalMs: 1000,
+  },
+  // KILL処刑演出の首元ダッシュ(社長提供・約0.44s)。killFx 開始(跳びつき)と同時に1回。
+  'kill-dash': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/kill-dash.mp3`,
+    volume: 0.9,
+    minIntervalMs: 300,
+  },
+  // ジャンプ攻撃の着地(社長提供・約0.37s)。汎用jump(パンプキン/ハンター/ラボ3)と城ボスg-jumpの共通着地音。
+  'jump-land': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/jump-land.mp3`,
+    volume: 0.9,
+    minIntervalMs: 250,
   },
   // サブクエスト達成ジングル(社長提供・約2.8s・v0.25.3663)。達成コールアウトと同時に1回。
   'subquest-clear': {

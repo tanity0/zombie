@@ -13,7 +13,7 @@ import {
   PHANTOM_MELEE_PERIOD_MS, GUARDIAN_PHANTOM_TYPE, NOOP_PHANTOM_SFX,
 } from './phantomTick';
 import { phantomHitGate } from './phantomGate';
-import { GUARDIAN_PHANTOM_TUNING as GP_T } from './phantomScript';
+import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from './phantomScript';
 import { phantomMeleeDamage } from './phantomTick';
 import { COUNTER_REACH_DECL } from './counterReach';
 import { usesPostureSystem, applyBossPostureDamage } from './bossPosture';
@@ -70,7 +70,8 @@ describe('① 即発近接(予告なし・プレイヤーと同じ周期)', () =
     const gp = cur();
     expect(gp.gpSwingAt).toBeDefined();                       // 振った(=即発)
     expect(gp.bossState).toBeUndefined();                     // 州機械は使わない(予告も硬直も無い)
-    expect(useGameStore.getState().player.health).toBe(hp0 - phantomMeleeDamage()); // 初期近接武器の実ダメージ(v0.25.3641裁定)
+    // 初期近接武器の実ダメージ(v0.25.3641裁定)×対人1/10(社長裁定2026-08-20)。
+    expect(useGameStore.getState().player.health).toBe(hp0 - phantomMeleeDamage() * PVP_DAMAGE_SCALE);
   });
 
   it('次の振りは**プレイヤーの近接の実効周期**(COUNTER_WINDOW+COUNTER_COOLDOWN)を待つ', () => {
@@ -207,7 +208,7 @@ describe('② 被弾無敵: 7系統すべてでダメージ0(1経路でも素通
     const cd = phantomHitGate({ ...base, source: 'melee', gpParryCdUntil: 9999, rand: () => 0 });
     expect(cd.parried).toBe(false);
     expect(cd.damage).toBe(100);
-    // カウンター反撃・銃はパリィ不可(抽選当たりでも通る)。
+    // カウンター反撃・弾以外の遠隔(サブ/爆発)はパリィ不可(抽選当たりでも通る)。
     for (const source of ['counter', 'ranged'] as const) {
       const r = phantomHitGate({ ...base, source, rand: () => 0 });
       expect(r.parried).toBe(false);
@@ -216,6 +217,26 @@ describe('② 被弾無敵: 7系統すべてでダメージ0(1経路でも素通
     }
     // 抽選外れ=通る。
     expect(phantomHitGate({ ...base, source: 'melee', rand: () => 0.999 }).damage).toBe(100);
+  });
+
+  // ★v0.25.3665(社長指摘「鴉、銃の弾反撃しないよ?」): プレイヤーの銃弾('bullet')もパリィ対象。
+  it('phantomGate 単体: 銃弾のパリィは gpBulletParriedAt に打刻(近接の gpParriedAt とは別の合図)', () => {
+    const base = {
+      enemyType: GUARDIAN_PHANTOM_TYPE, amount: 100, gameTime: 5000,
+      invulnMs: 1000, counterChance: 0.5, parryCdMs: 1000,
+    } as const;
+    const r = phantomHitGate({ ...base, source: 'bullet', rand: () => 0 });
+    expect(r.parried).toBe(true);
+    expect(r.damage).toBe(0);
+    expect(r.effects).toBe(false);
+    expect(r.patch.gpBulletParriedAt).toBe(5000);   // 弾ヒット処理が同tickで消費=弾を打ち返す
+    expect(r.patch.gpParriedAt).toBeUndefined();    // 近接反撃・プレイヤーshoveは出さない
+    expect(r.patch.gpParryCdUntil).toBe(6000);      // CDは近接と共有
+    // CD中の弾は抽選せず通る(i-frameの起点を打つ)。
+    const cd = phantomHitGate({ ...base, source: 'bullet', gpParryCdUntil: 9999, rand: () => 0 });
+    expect(cd.parried).toBe(false);
+    expect(cd.damage).toBe(100);
+    expect(cd.patch.gpHitAt).toBe(5000);
   });
 });
 

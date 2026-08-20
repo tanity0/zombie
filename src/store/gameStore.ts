@@ -197,7 +197,7 @@ import {
 import { isPracticeRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
 // research/GHOST_BOSS.md v6: 幻影が受ける打撃の関所(被弾無敵+パリィ)。**7系統の全てがここを通る**。
 import { phantomHitGate, type PhantomHitSource, type PhantomHitGateResult } from '../utils/phantomGate';
-import { GUARDIAN_PHANTOM_TUNING as GP_T } from '../utils/phantomScript';
+import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from '../utils/phantomScript';
 import { strongestGuardian } from '../data/fixedGuardians';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
@@ -2545,6 +2545,8 @@ const gatePhantomHit = (
   // 台帳読みは幻影の時だけ(通常敵のホットパスに台帳アクセスを持ち込まない)。
   counterChance: isGuardianPhantom(enemy.type) ? strongestGuardian().profile.counterChance : 0,
   parryCdMs: GP_T.parryCdMs,
+  // 対人ダメージ1/10(社長裁定2026-08-20「一旦」)。幻影以外は1=完全恒等。
+  pvpDamageScale: isGuardianPhantom(enemy.type) ? PVP_DAMAGE_SCALE : 1,
   gpHitAt: enemy.gpHitAt,
   gpParryCdUntil: enemy.gpParryCdUntil,
   rand,
@@ -4850,7 +4852,7 @@ interface GameState {
   // weaponKey: 反射弾の帰属を差し替える(既定=元の弾のまま=プレイヤーの反射と1bit同値)。
   // v0.25.2525: 守護霊の反射だけ GHOST_REFLECT_WEAPON_KEY を渡す=計測除外/ヘイト='ghost'/
   // 倍率の主語=疑似Player(着弾側の解決は useGameLoop の弾ヒット処理)。
-  reflectProjectile: (id: string, multiplier?: number, weaponKey?: string) => void;
+  reflectProjectile: (id: string, multiplier?: number, weaponKey?: string, asHostile?: boolean) => void;
   
   // Pickup actions
   addPickup: (pickup: Pickup) => void;
@@ -5940,16 +5942,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         const d2 = (ecx - x) * (ecx - x) + (ecy - y) * (ecy - y);
         if (d2 > r2) { out.push(enemy); continue; }
         // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統⑥=スケボー)。バッシュも近接系=パリィ対象。
+        let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
         if (isGuardianPhantom(enemy.type)) {
           const gp = gatePhantomHit(enemy, 0, 'melee', s.gameTime);
           if (!gp.effects) { out.push({ ...enemy, ...gp.patch }); continue; }
           gpPatch = gp.patch;
+          gpDmgScale = gp.damageScale;
         }
         hitAt.push({ x: ecx, y: enemy.y });
         // 覚醒: 爆発の距離減衰(中心1.0〜外周0.55)。非覚醒: 従来どおり等倍。
-        const eDmg = skAwaken
+        const eDmg = (skAwaken
           ? Math.max(1, Math.round(dmg * (0.55 + (1 - Math.sqrt(d2) / bashRange) * 0.45)))
-          : dmg;
+          : dmg) * gpDmgScale;
         dealtSum += eDmg;
         const nh = Math.max(0, enemy.health - eDmg);
         if (nh <= 0) { killedList.push({ enemy, finisher: false }); continue; }
@@ -6438,10 +6442,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 3枝まとめて)。**この位置**なのが肝: 無効化した打撃は slashAt / meleeHitEnemyIds /
       // meleeDamageNumbers に1つも積まず、lastHit も打たない(=ヒットストップ・チェーン・吸血・
       // 救難信号・戻り値 hit/finish/killed のどれにも数えない)。
+      let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
       if (isGuardianPhantom(enemy.type)) {
         const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
         if (!gp.effects) { survivors.push({ ...enemy, ...gp.patch }); continue; }
         gpHitPatch = { id: enemy.id, patch: gp.patch }; // 有効打=i-frame の起点を set() で合成する
+        gpDmgScale = gp.damageScale;
       }
 
       // バッシュ: 近接ダメージ×3 + 押し出し方向への強ノックバック。フィニッシュ無し。
@@ -6449,7 +6455,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         bashHitEnemy = true; // 敵にヒット → 後でストップ
         slashAt.push({ x: ecx, y: ecy });
         meleeHitEnemyIds.push(enemy.id);
-        const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
+        const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT * gpDmgScale;
         recordShieldBashDamage(dmg); // G4a(§2.9(3)・記録専用): バッシュ与ダメの様式カウンタ
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
         const newHealth = Math.max(0, enemy.health - dmg);
@@ -6473,7 +6479,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 気絶敵へのフィニッシュ裁定は resolveStunnedMeleeHit が唯一の出どころ
       // (v0.25.2525で抽出=**守護霊の近接スイングと共有**・値/条件は不変。ボス5×は
       // 完全気絶(紫)中のみ気絶維持 / 強個体はHP50%以上で3×+気絶解除 / それ以外は即時処刑)。
-      const stunnedHit = resolveStunnedMeleeHit(enemy, meleeExecBase, gameTime, BOSS_MELEE_STUN_MULT);
+      const stunnedHit = resolveStunnedMeleeHit(enemy, meleeExecBase * gpDmgScale, gameTime, BOSS_MELEE_STUN_MULT);
       if (stunnedHit) {
         if (stunnedHit.kind === 'execute') {
           killed.push({ enemy, finisher: true }); // normal instant execute
@@ -6481,7 +6487,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         bossFinishHit = true;
-        const fatal = stunnedHit.kind === 'boss' ? applyBrokenMeleeFatal(enemy, meleeExecBase, gameTime) : null;
+        const fatal = stunnedHit.kind === 'boss' ? applyBrokenMeleeFatal(enemy, meleeExecBase * gpDmgScale, gameTime) : null;
         const dmg = fatal?.damage ?? stunnedHit.dmg;
         if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
@@ -6807,6 +6813,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             hitstopUntil: Date.now() + KILLFX_TOTAL_MS,
           });
           get().triggerTimeSlow(0.2, KILLFX_TOTAL_MS + KILLFX_RELEASE_SLOW_MS, KILLFX_TOTAL_MS);
+          // 首元への高速ダッシュ音(社長提供・v0.25.3665)。跳びつき開始=killFxセットと同時に1回。
+          // 下の血噴出SEと同じ理由で動的import(gameStoreはaudioManagerを静的importできない=循環)。
+          void import('../audio/audioManager').then(m => m.playSfx('kill-dash'));
           // ★実機FB8(v0.25.3615「もっと大きく、横一文字にして」): 斬撃はstoreのspawnSlash(斜め固定の
           // 汎用斬撃)ではなく、pixi側の専用描画(drawKillFxSlash・同じslash-streak素材を横一文字に
           // 回転+大型化・実時間駆動)が一拍明け(BURST_AT)に出す。ここでは何も出さない。
@@ -6942,10 +6951,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (dist > meleeRange) { survivors.push(enemy); continue; }
       if (walls.length > 0 && segmentBlocked(ccx, ccy, ecx, ecy, walls)) { survivors.push(enemy); continue; }
       // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統③=分身)。分身の近接もパリィ対象。
+      let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
       if (isGuardianPhantom(enemy.type)) {
         const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
         if (!gp.effects) { survivors.push({ ...enemy, ...gp.patch }); continue; }
         gpHitPatch = { id: enemy.id, patch: gp.patch };
+        gpDmgScale = gp.damageScale;
       }
       slashAt.push({ x: ecx, y: ecy });
       cloneHitEnemyIds.push(enemy.id); // スキル 救難信号(§6.10 M33⑦): 分身のヒット敵ID(発動判定/対象選定用)
@@ -6981,7 +6992,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
-      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
+      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
@@ -7566,10 +7577,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
       // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統④=刀)。オート斬撃も一閃もパリィ対象。
+      let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
       if (isGuardianPhantom(enemy.type)) {
         const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
         if (!gp.effects) { survivors.push({ ...enemy, ...gp.patch }); continue; }
         gpHitPatch = { id: enemy.id, patch: gp.patch };
+        gpDmgScale = gp.damageScale;
       }
       slashAt.push({ x: ecx, y: ecy });
       katanaHitEnemyIds.push(enemy.id);
@@ -7583,9 +7596,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (usesBossStunnedMelee(enemy.type)) {
           // Same boss rule as the knife: 5× damage, no execute。ただし裏ボスの完全気絶(紫)中は
           // 気絶を解除せずタイマー切れまで5×を“し放題”(社長指示)。通常の気絶は従来どおり1発で解除。
-          const fatal = !isGhost ? applyBrokenMeleeFatal(enemy, katanaExecBase, gameTime) : null;
+          const fatal = !isGhost ? applyBrokenMeleeFatal(enemy, katanaExecBase * gpDmgScale, gameTime) : null;
           bossFinishHit = true;
-          const dmg = fatal?.damage ?? katanaExecBase * BOSS_MELEE_STUN_MULT;
+          const dmg = fatal?.damage ?? katanaExecBase * gpDmgScale * BOSS_MELEE_STUN_MULT;
           if (fatal) katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           if (!isGhost) recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ(プレイヤー起因のみ)
@@ -7608,7 +7621,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §6.22 M47仕様①: 強個体はHP50%以上だと即死せず近接ダメージ×3+気絶解除。
         if (stunnedMeleeOutcome(enemy) === 'heavy') {
           bossFinishHit = true;
-          const dmg = katanaExecBase * ELITE_MELEE_STUN_MULT;
+          const dmg = katanaExecBase * gpDmgScale * ELITE_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -7632,7 +7645,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeHitCritChance(KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)], player, gameTime, enemy);
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
-      const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
+      const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
@@ -7855,10 +7868,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統⑤=鞭)。無効化した打撃は
       // hits にも slashAt にも積まない(戻り値 hit/hits がSEを鳴らす条件になっているため)。
+      let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
       if (isGuardianPhantom(enemy.type)) {
         const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
         if (!gp.effects) { survivors.push({ ...enemy, ...gp.patch }); continue; }
         gpHitPatch = { id: enemy.id, patch: gp.patch };
+        gpDmgScale = gp.damageScale;
       }
       hits++;
       whipHitEnemyIds.push(enemy.id);
@@ -7869,7 +7884,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const whipMult = inHurricane(ecx, ecy) ? 1 : WHIP_DAMAGE_MULT;
       // 処刑(ボス5×/強個体3×/致命の一撃)は skillOutgoingDamageMult を通らないので、育成の攻撃力は
       // 素ダメージへ前掛けする(research/GROWTH.md v4・ナイフ/分身/刀/守護霊と同じ扱い)。
-      const whipExecBase = meleeBase * whipMult * (player.growthAtkMult ?? 1);
+      const whipExecBase = meleeBase * whipMult * (player.growthAtkMult ?? 1) * gpDmgScale;
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       if (stunned) {
         // 近接フィニッシュ: スタン敵は即時処刑(ボスは5×でスタン解除。§6.22 M47でネームド/questTarget/
@@ -7908,7 +7923,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
-      const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
+      const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
@@ -10042,30 +10057,33 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? gatePhantomHit(
           enemy, amount, postureImpact === 'counter' ? 'counter' : (gpSource ?? 'ranged'), state.gameTime,
         )
-        : { damage: amount, effects: true, blocked: false, parried: false, patch: {} };
+        : { damage: amount, effects: true, blocked: false, parried: false, patch: {}, damageScale: 1 };
       if (!gpGate.effects) {
         // 無効化: HPも lastHit も動かさない(通常の被弾フラッシュ・KB免疫・meleeAggroの起点を作らない)。
         // 絵は gpBlockedAt / gpParriedAt から描画側が別系統で出す。
         return { enemies: enemies.map(e => (e.id === id ? { ...e, ...gpGate.patch } : e)) };
       }
 
+      // ★PVP(社長裁定2026-08-20「プレイヤー同士の戦いではダメージ1/10で一旦」): 以降のダメージは
+      // ゲートの実効値(gpGate.damage=幻影なら×PVP_DAMAGE_SCALE・幻影以外は素のamountのまま)を使う。
+      const gatedAmount = gpGate.damage;
       // 紫中の直接銃撃は通常クリ倍率と重ねず、この中央で×5相当まで報酬領域を消費する。
       const gunReward = damageChannel === 'gun' && hateSource === 'player'
-        ? applyBrokenGunReward(enemy, amount, state.gameTime)
+        ? applyBrokenGunReward(enemy, gatedAmount, state.gameTime)
         : null;
       // ワイヤー等、中央経路へ来る直接近接フィニッシュも同じ致命裁定へ合流。
       // research/GROWTH.md v4: この経路へ来る amount(ワイヤーの meleeDmg)は呼び出し側で既に
       // skillOutgoingDamageMult(=育成込み)を通っている。**ここで再度掛けると二重適用**になるため
       // 掛けない(規約: 中央経路の直接近接フィニッシュは「育成込みの amount」を受け取る)。
       const meleeFatal = viaMeleeFinish && hateSource === 'player' && postureImpact === 'heavy'
-        ? applyBrokenMeleeFatal(enemy, amount, state.gameTime)
+        ? applyBrokenMeleeFatal(enemy, gatedAmount, state.gameTime)
         : null;
       if (meleeFatal) bossFatalAt = {
         x: enemy.x + enemy.width / 2,
         y: enemy.y + enemy.height / 2,
         labelY: enemy.y - 6,
       };
-      const resolvedAmount = meleeFatal?.damage ?? gunReward?.damage ?? amount;
+      const resolvedAmount = meleeFatal?.damage ?? gunReward?.damage ?? gatedAmount;
       // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
       const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(resolvedAmount / 2)) : resolvedAmount;
       appliedDamage = eff; // §6.21 M46計測用(set後にchannel別加算)
@@ -12998,7 +13016,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         straps: bs.player.straps,
       });
     }
-    if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
+    if (pumpkinLanded) {
+      get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
+      // 着地音(社長提供・v0.25.3665)。汎用jump(パンプキン/ハンター/ラボ3)と城ボスg-jumpの
+      // 全着地がこのフラグに合流している=1箇所で全員に付く(「同じ動作を持つ全員に付ける」)。
+      // 動的import=killFxのSEと同じ理由(gameStoreはaudioManagerを静的importできない・循環)。
+      void import('../audio/audioManager').then(m => m.playSfx('jump-land'));
+    }
     // 虚無の三唱: 1唱ごとに**大きく**揺らす(社長指示v0.25.3122)。全技中で最大級の振幅=
     // 「数える3回」を体で分からせる合図。判定・秒数・ダメージには一切関与しない(描画のみ)。
     if (glenNihilChanted) get().triggerShake(GLEN_NIHIL_SHAKE_MS, GLEN_NIHIL_SHAKE_MAG);
@@ -13566,7 +13590,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-  reflectProjectile: (id, multiplier = REFLECT_DAMAGE_MULTIPLIER, weaponKey) => {
+  // asHostile=true は幻影の弾パリィ用(v0.25.3665): プレイヤーの弾を**敵対弾として**打ち返す
+  // (プレイヤーのカウンター打ち返しの鏡。倍率・速度・非貫通は同じ規則=同条件)。既定は従来どおり。
+  reflectProjectile: (id, multiplier = REFLECT_DAMAGE_MULTIPLIER, weaponKey, asHostile = false) => {
     set(state => ({
       projectiles: state.projectiles.map(p => {
         if (p.id !== id) return p;
@@ -13575,7 +13601,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           direction: { x: -p.direction.x, y: -p.direction.y },
           speed: p.speed * REFLECT_SPEED_MULTIPLIER,
           damage: p.damage * multiplier,
-          hostile: false,
+          hostile: asHostile,
           reflected: true,
           // 反射した敵弾は貫通しない=最初に当たった1体で消える(社長指示)。以前は貫通(plow through)していた。
           passthrough: false,

@@ -40,7 +40,7 @@ import {
 import { strongestGuardian } from '../data/fixedGuardians';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { GUARDIAN_PHANTOM_LABEL } from './bossPractice';
-import { GUARDIAN_PHANTOM_TUNING as GP_T } from './phantomScript';
+import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from './phantomScript';
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
 export const GUARDIAN_PHANTOM_TYPE: EnemyType = 'guardian-phantom';
@@ -397,7 +397,8 @@ const swingPhantomMelee = (
   // 実際にHPが減ったか(=i-frame中でない有効打か)を前後比較で判定して鳴らす。
   const hpBefore = useGameStore.getState().player.health;
   useGameStore.getState().damagePlayer(
-    phantomMeleeDamage(growthAtkMult), GUARDIAN_PHANTOM_MELEE_SOURCE, bcx, bcy, GUARDIAN_PHANTOM_TYPE,
+    // 対人1/10(社長裁定2026-08-20「プレイヤー同士の戦いではダメージ1/10で一旦」)。
+    phantomMeleeDamage(growthAtkMult) * PVP_DAMAGE_SCALE, GUARDIAN_PHANTOM_MELEE_SOURCE, bcx, bcy, GUARDIAN_PHANTOM_TYPE,
   );
   // 被弾SEはここで鳴らす: damagePlayer 直呼びは「本当に何も出ない」前例がある(gameStore の注記)。
   if (useGameStore.getState().player.health < hpBefore) sfx.hurt();
@@ -421,7 +422,8 @@ const firePhantomShot = (
   st.addProjectile(createEnemyProjectile(
     phantom, p, pcx, pcy, bcx, bcy,
     // research/GROWTH.md v4: 幻影の銃にも育成の攻撃力を掛ける(スポーン時に焼いた倍率)。
-    { speed: flight.speed, damage: Math.max(1, Math.round(gun.damage * (crit ? CRIT_DAMAGE_MULT : 1) * s.growthAtkMult)), size: flight.size },
+    // 対人1/10(社長裁定2026-08-20)も弾の生成時に掛ける(被弾側=combatTickは共通経路なので触らない)。
+    { speed: flight.speed, damage: Math.max(1, Math.round(gun.damage * (crit ? CRIT_DAMAGE_MULT : 1) * s.growthAtkMult * PVP_DAMAGE_SCALE)), size: flight.size },
   ));
   s.gun = { ...gun, magazine: Math.max(0, (gun.magazine ?? 0) - 1), lastFired: Date.now() };
   patch.gpShotAt = newGameTime;
@@ -445,8 +447,13 @@ const consumePhantomParry = (
   // 青白いスパーク(既存プールのみ・新規素材なし)。
   g.spawnRing(bcx, bcy, 10, 52, 'rgba(191,219,254,0.95)', 3, 260);
   g.spawnBurst(bcx, bcy, '#bfdbfe', 12);
-  // プレイヤーを小さく弾く(弾かれた手応え)。距離・時間は設計書に指定が無いので叩き台。
-  {
+  // ★v0.25.3665(社長報告「すごい距離から斬撃っぽいの」): パリィされるのは**分身・守護霊の近接**の
+  // こともあり、その時プレイヤー本人は遠くにいる。反撃スイング(絵は距離無関係に出る)と
+  // プレイヤーへの押し返しを距離ゲート無しで出すと、**遠距離のプレイヤーへ空振りの斬撃弧が飛ぶ+
+  // 殴っていない本人が押される**という意味不明な絵になる。どちらも近接射程内の時だけ出す
+  // (「見たまんまが当たり判定」文法。パリィ自体のスパーク・SEは幻影の位置の演出なので無条件)。
+  if (edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach) {
+    // プレイヤーを小さく弾く(弾かれた手応え)。距離・時間は設計書に指定が無いので叩き台。
     const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
     const dl = Math.max(0.001, Math.hypot(pcx - bcx, pcy - bcy));
     const spd = knockbackSpeedFor(PHANTOM_PARRY_SHOVE_PX, PHANTOM_PARRY_SHOVE_MS);
@@ -457,9 +464,9 @@ const consumePhantomParry = (
       knockbackUntil: Date.now() + PHANTOM_PARRY_SHOVE_MS,
       knockbackMs: PHANTOM_PARRY_SHOVE_MS,
     } }));
+    swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult);
+    s.nextMeleeAt = newGameTime + PHANTOM_MELEE_PERIOD_MS;
   }
-  swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult);
-  s.nextMeleeAt = newGameTime + PHANTOM_MELEE_PERIOD_MS;
   return true;
 };
 

@@ -21,12 +21,15 @@ import type { Enemy } from '../types/game';
 export const PHANTOM_GATE_TYPE = 'guardian-phantom';
 
 /**
- * 打撃の出どころ。**パリィできるのは 'melee' だけ**。
- *  - 'melee'   … プレイヤー(と分身/守護霊)の近接スイング全般=パリィ可。
+ * 打撃の出どころ。**パリィできるのは 'melee' と 'bullet'**。
+ *  - 'melee'   … プレイヤー(と分身/守護霊)の近接スイング全般=パリィ可(弾いて次tickに近接反撃)。
+ *  - 'bullet'  … プレイヤーの銃弾=パリィ可(社長指摘v0.25.3665「鴉、銃の弾反撃しないよ?」——
+ *                プレイヤーがカウンターで敵弾を打ち返せるのと同条件。成立時は**弾を打ち返す**
+ *                (呼び出し側が弾を反転・敵対化する)。近接反撃・プレイヤーへのshoveは出さない)。
  *  - 'counter' … カウンター反撃(確定クリ)=パリィ不可(意図的・GHOST_BOSS.md M3)。
- *  - 'ranged'  … 銃弾・サブウェポン・爆発など=パリィ不可(躱すのは弾回避の仕事)。
+ *  - 'ranged'  … サブウェポン・爆発など弾以外の遠隔=パリィ不可(プレイヤーも爆発は打ち返せない)。
  */
-export type PhantomHitSource = 'melee' | 'counter' | 'ranged';
+export type PhantomHitSource = 'melee' | 'bullet' | 'counter' | 'ranged';
 
 export interface PhantomHitGateInput {
   /** 殴られた敵の型。'guardian-phantom' 以外はこの関数は何もしない(恒等)。 */
@@ -48,6 +51,13 @@ export interface PhantomHitGateInput {
   gpParryCdUntil?: number;
   /** [0,1) の乱数(テストで固定できるよう注入口にする)。 */
   rand?: () => number;
+  /**
+   * 対人ダメージスケール(社長裁定2026-08-20「プレイヤー同士の戦いではダメージ1/10で一旦」)。
+   * 呼び出し側が幻影の時だけ PVP_DAMAGE_SCALE を渡す。未指定=1(スケールなし)。
+   * ③通過時の damage に掛かり、戻り値 damageScale としても返す(近接掃引系=amount0で
+   * 判定だけ通す経路が、自前のダメージ計算に掛けるため)。
+   */
+  pvpDamageScale?: number;
 }
 
 export interface PhantomHitGateResult {
@@ -65,11 +75,16 @@ export interface PhantomHitGateResult {
   parried: boolean;
   /** 敵へ合成するパッチ(打刻のみ。HPは呼び出し側が持つ)。 */
   patch: Partial<Enemy>;
+  /**
+   * 呼び出し側が自前のダメージ計算(近接掃引・処刑など amount を通さない経路)に掛けるスケール。
+   * 幻影=pvpDamageScale(1/10)、幻影以外=常に1(恒等)。
+   */
+  damageScale: number;
 }
 
 /** 幻影以外(=大多数)のための恒等結果。オブジェクトは毎回作る(呼び出し側が patch を展開するため)。 */
 const passThrough = (amount: number): PhantomHitGateResult =>
-  ({ damage: amount, effects: true, blocked: false, parried: false, patch: {} });
+  ({ damage: amount, effects: true, blocked: false, parried: false, patch: {}, damageScale: 1 });
 
 /**
  * 幻影が受ける1発を裁く。**適用順**は呼び出し側の責任:
@@ -78,25 +93,33 @@ const passThrough = (amount: number): PhantomHitGateResult =>
  */
 export const phantomHitGate = (input: PhantomHitGateInput): PhantomHitGateResult => {
   if (input.enemyType !== PHANTOM_GATE_TYPE) return passThrough(input.amount);
+  const scale = input.pvpDamageScale ?? 1;
 
   // ① 被弾無敵(プレイヤーと同じ i-frame)。無敵中はHPも副作用も動かさない。
   const hitAt = input.gpHitAt;
   if (hitAt !== undefined && input.gameTime - hitAt < input.invulnMs) {
-    return { damage: 0, effects: false, blocked: true, parried: false, patch: { gpBlockedAt: input.gameTime } };
+    return { damage: 0, effects: false, blocked: true, parried: false, patch: { gpBlockedAt: input.gameTime }, damageScale: scale };
   }
 
-  // ② パリィ(近接系だけ)。CD中は抽選しない=連続で弾き続けない。
-  if (input.source === 'melee'
+  // ② パリィ(近接と銃弾)。CD中は抽選しない=連続で弾き続けない(CDは近接・弾で共有)。
+  if ((input.source === 'melee' || input.source === 'bullet')
     && input.counterChance > 0
     && input.gameTime >= (input.gpParryCdUntil ?? 0)
     && (input.rand ?? Math.random)() < input.counterChance) {
     return {
       damage: 0, effects: false, blocked: false, parried: true,
-      // gpParriedAt は**次tickの phantomTick が消費する合図**(ハンドシェイク=二重書き手を作らない)。
-      patch: { gpParriedAt: input.gameTime, gpParryCdUntil: input.gameTime + input.parryCdMs },
+      // 打刻は消費者ごとに分ける(ハンドシェイク=二重書き手を作らない):
+      //  - 近接: gpParriedAt → 次tickの phantomTick が近接反撃+プレイヤーshoveを出す。
+      //  - 弾:   gpBulletParriedAt → 同tickの弾ヒット処理(useGameLoop)が**その弾を打ち返す**
+      //          (近接反撃・shoveは出さない=遠距離でプレイヤーが押される不自然を作らない)。
+      patch: input.source === 'melee'
+        ? { gpParriedAt: input.gameTime, gpParryCdUntil: input.gameTime + input.parryCdMs }
+        : { gpBulletParriedAt: input.gameTime, gpParryCdUntil: input.gameTime + input.parryCdMs },
+      damageScale: scale,
     };
   }
 
   // ③ 通った。ここで i-frame の起点を打つ(=次の1秒は0になる)。
-  return { damage: input.amount, effects: true, blocked: false, parried: false, patch: { gpHitAt: input.gameTime } };
+  // 対人スケール(PVP・社長裁定2026-08-20)はここで掛かる=damageEnemy経由の全ダメージが1/10になる。
+  return { damage: input.amount * scale, effects: true, blocked: false, parried: false, patch: { gpHitAt: input.gameTime }, damageScale: scale };
 };

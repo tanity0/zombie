@@ -34,3 +34,12 @@ export const GUARDIAN_PHANTOM_TUNING = {
    */
   swingFxMs: 260,
 } as const;
+
+/**
+ * ★対人ダメージスケール(社長裁定2026-08-20「プレイヤー同士の戦いではダメージ1/10で一旦」)。
+ * 幻影戦=プレイヤー同士の対戦なので、**双方向**の与ダメージに掛かる:
+ *  - プレイヤー→幻影: phantomGate(全7系統の合流点)が実効ダメージ/damageScale で返す。
+ *  - 幻影→プレイヤー: 近接(phantomTick)・銃弾(発射時)・打ち返し弾(reflect倍率)に掛ける。
+ * 「一旦」=叩き台(実機で社長が調整)。幻影以外の通常戦闘には一切効かない。
+ */
+export const PVP_DAMAGE_SCALE = 0.1;

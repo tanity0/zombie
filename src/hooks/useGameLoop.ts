@@ -82,7 +82,9 @@ import {
   SHOP_MEDKIT_COST, // SKILL_BUILD_REDESIGN.md §15-1(B0): ボット購買ポリシーの救急価格
   EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の7: ボット購買ポリシー②(装備区画)の価格表
   takeNextBountyRotationType, // §6.38 v2 F(B4): 賞金首4種の重複なしローテ(純関数・storeフィールドと対)
+  REFLECT_DAMAGE_MULTIPLIER, // v0.25.3665: 幻影の弾パリィ(打ち返し)=プレイヤーの打ち返しと同じ倍率規則
 } from '../store/gameStore';
+import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
 import { glenScriptApplies } from '../utils/giantScript';
 import { glenPartCountFull, glenRemovedPartAnchors } from '../utils/glenChain';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
@@ -4559,7 +4561,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.setState({
                 reaperCross: { startedAt: Date.now(), durationMs: REAPER_CONFIG.crossDurationMs, ...cross },
               });
-              // SFX(短い不穏音)は専用アセット待ち。配置後 playSfx('reaper-pass') を有効化。
+              playSfx('reaper-pass'); // 短い不穏音(社長提供・v0.25.3665で専用アセット配置)
             };
             // 距離(深奥)による横切り。深いほど頻発。
             if (depth >= REAPER_CONFIG.warningDepthPx) {
@@ -10083,16 +10085,40 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             enemyId, dmg, false, hitCrit, false, dmgChannel, hateShotSource,
             projectile?.reflected ? 'reflect' : directPlayerGun && hitCrit ? 'gun-crit' : null,
             projectile?.postureMult ?? 1,
+            // ★v0.25.3665(社長指摘「鴉、銃の弾反撃しないよ?」): プレイヤーの直接銃弾は 'bullet' として
+            // 幻影ゲートへ(=counterChance抽選で打ち返し対象)。サブ・爆発・護衛/守護霊弾は従来どおり。
+            directPlayerGun ? 'bullet' : undefined,
           );
           // ★v0.25.3640(成果物監査Q1-1): 幻影の被弾無敵が弾いた1発は、**数字もヒットSEも出さない**
           // (ゲートはHPを止めるが、数字/SEは呼び出し側=ここが出しているため、素通しだと
           // 「満額の数字が出るのにHPが減らない」偽演出がSMG連射で毎秒積み上がる)。
           // 弾いた事実は damageEnemy が同tickの gpBlockedAt/gpParriedAt 打刻で返す(白点滅は描画側)。
-          const gpDeflectedShot = !!enemyForFx && isGuardianPhantom(enemyForFx.type) && (() => {
-            const gst = useGameStore.getState();
-            const cur = gst.enemies.find(x => x.id === enemyId);
-            return !!cur && (cur.gpBlockedAt === gst.gameTime || cur.gpParriedAt === gst.gameTime);
-          })();
+          const gpNow = !!enemyForFx && isGuardianPhantom(enemyForFx.type)
+            ? (() => {
+              const gst = useGameStore.getState();
+              const cur = gst.enemies.find(x => x.id === enemyId);
+              return {
+                blocked: !!cur && (cur.gpBlockedAt === gst.gameTime || cur.gpParriedAt === gst.gameTime),
+                bulletParried: !!cur && cur.gpBulletParriedAt === gst.gameTime,
+              };
+            })()
+            : { blocked: false, bulletParried: false };
+          const gpDeflectedShot = gpNow.blocked || gpNow.bulletParried;
+          // ★v0.25.3665: 弾パリィ成立=**その弾を打ち返す**(プレイヤーのカウンター打ち返しの鏡:
+          // 反転・敵対化・×REFLECT倍率・非貫通。ただし既に反射済みの弾はラリーでダメージが
+          // 指数増殖しないよう倍率1で返す)。弾はこの後の消滅判定でも消さない。
+          const gpBulletReflected = gpNow.bulletParried && !!projectile;
+          if (gpBulletReflected && projectile && enemyForFx) {
+            // 倍率=(打ち返し×10)×(対人1/10)=素の弾ダメージで返る。反射済みの弾はさらに1で
+            // 返す(ラリーでダメージが指数増殖しない)。プレイヤー側の再打ち返し(×10)は既存のまま。
+            useGameStore.getState().reflectProjectile(
+              projectile.id, (projectile.reflected ? 1 : REFLECT_DAMAGE_MULTIPLIER) * PVP_DAMAGE_SCALE, undefined, true,
+            );
+            const gcx = enemyForFx.x + enemyForFx.width / 2, gcy = enemyForFx.y + enemyForFx.height / 2;
+            playSfx('counter'); // プレイヤーの打ち返しと同じ音=同条件の文法
+            spawnRing(gcx, gcy, 10, 52, 'rgba(191,219,254,0.95)', 3, 260); // 幻影パリィの青白スパーク
+            spawnBurst(gcx, gcy, '#bfdbfe', 10);
+          }
           // PACING_PUZZLE.md §7-11c(4): クリ計測口(挙動は変えない=数えるだけ)。護衛NPC/守護霊の弾は
           // プレイヤー起因ではないため除外(botTelemetryの他の計測=classifyProjectileDamageChannelと
           // 同じ除外方針)。headshotHit=PHILL頭部の確定クリ、それ以外のhitCrit成立はRNGクリ。
@@ -10112,7 +10138,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 「敵1体につき直近 FIRE_JET_DEDUP_MS は1本」に間引く。ショットガン等の多弾(=見た目は単発)は近距離だと同一
           // フレーム、遠距離だと数フレームに分かれて命中するため、フレーム単位の間引きだけでは「2本生える」を防げない。
           const lastJetAt = fireJetEnemyAtRef.current.get(enemyId) ?? -Infinity;
-          if (enemyForFx && projectile && !fireJetEnemiesThisFrame.has(enemyId) && fireNowMs - lastJetAt >= FIRE_JET_DEDUP_MS) {
+          // 打ち返された弾は「当たっていない」ので火・血は出さない(v0.25.3665)。
+          if (enemyForFx && projectile && !gpBulletReflected && !fireJetEnemiesThisFrame.has(enemyId) && fireNowMs - lastJetAt >= FIRE_JET_DEDUP_MS) {
             fireJetEnemiesThisFrame.add(enemyId);
             fireJetEnemyAtRef.current.set(enemyId, fireNowMs);
             const ecx = enemyForFx.x + enemyForFx.width / 2, ecy = enemyForFx.y + enemyForFx.height / 2;
@@ -10532,8 +10559,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           //  - unlimited passthrough (sniper/grenade): stop on a kill.
           //  - everything else: stop on first hit.
           if (projectile) {
-            const removeIt =
-              isGrenadeGunKey(projectile.weaponKey) // v0.25.3290: グレネード系銃の弾は着弾で必ず消える(爆発済み)
+            const removeIt = gpBulletReflected
+              ? false // ★v0.25.3665: 幻影が打ち返した弾は消さない(反転・敵対化してそのまま飛んでいく)
+              : isGrenadeGunKey(projectile.weaponKey) // v0.25.3290: グレネード系銃の弾は着弾で必ず消える(爆発済み)
                 ? true
                 : projectile.pierce !== undefined
                 ? projectile.hitEnemies.length > projectile.pierce

@@ -586,6 +586,8 @@ export interface Enemy {
   gpBlockedAt?: number;
   /** パリィ成立の時刻。**次tickの phantomTick が消費**して即反撃を1回割り込ませる(ハンドシェイク)。 */
   gpParriedAt?: number;
+  /** 幻影が銃弾をパリィした打刻(gameTime)。同tickの弾ヒット処理が消費して弾を打ち返す(v0.25.3665)。 */
+  gpBulletParriedAt?: number;
   /** パリィの再発火が許される時刻。 */
   gpParryCdUntil?: number;
   /** 即発近接を振った時刻(描画=斬撃弧+踏み込みの起点)。 */
