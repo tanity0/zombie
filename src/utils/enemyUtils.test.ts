@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit, aimEnemyDist2, isBountyType, corpseEligible, isArenaSweepProtected, resistsChipKnockback } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit, aimEnemyDist2, isBountyType, corpseEligible, isArenaSweepProtected, resistsChipKnockback, isPumpkinTier } from './enemyUtils';
 import { isEngageableBoss } from './bossEngagement';
 import type { Enemy, Player, Summon, GameBounds, EnemyType } from '../types/game';
 import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
@@ -237,6 +237,53 @@ describe('isBossType', () => {
     expect(isBossType('mimir')).toBe(true);
     expect(isBossType('jormungand')).toBe(true);
     expect(isBossType('thor')).toBe(true);
+  });
+});
+
+// PACING_PUZZLE.md §9-7#1(社長指示 2026-08-20・「同格」述語): driller はpumpkinと全ての
+// isBossType派生の特別扱いを共有する。ここに1本まとめて固定し、片方だけ直して取りこぼす事故を防ぐ。
+describe('isPumpkinTier(driller の「同格」= pumpkinと完全に同じ扱いを受けること)', () => {
+  it('pumpkin/driller だけがtrue', () => {
+    expect(isPumpkinTier('pumpkin')).toBe(true);
+    expect(isPumpkinTier('driller')).toBe(true);
+    expect(isPumpkinTier('giantbat')).toBe(false);
+    expect(isPumpkinTier('zombie')).toBe(false);
+  });
+
+  it('isBossType: pumpkinと同じくtrue(HPバー・致命の一撃・KB耐性の入口)', () => {
+    expect(isBossType('driller')).toBe(isBossType('pumpkin'));
+    expect(isBossType('driller')).toBe(true);
+  });
+
+  it('usesBossCrit: pumpkinと同じくfalse(ボス式クリの半減窓に入らない=通常敵と同じく固まる)', () => {
+    expect(usesBossCrit('driller')).toBe(usesBossCrit('pumpkin'));
+    expect(usesBossCrit('driller')).toBe(false);
+  });
+
+  it('resistsChipKnockback: pumpkinと同じくtrue(弾の小突きノックバックで押されない)', () => {
+    expect(resistsChipKnockback('driller')).toBe(resistsChipKnockback('pumpkin'));
+    expect(resistsChipKnockback('driller')).toBe(true);
+  });
+
+  it('getsDeathAttention: pumpkinと同じくfalse(ウェーブ枠なので討伐のたび世界を止めない)', () => {
+    expect(getsDeathAttention('driller')).toBe(getsDeathAttention('pumpkin'));
+    expect(getsDeathAttention('driller')).toBe(false);
+  });
+
+  it('getsDramaticDeath: pumpkinと同じくfalse(討伐イベントごと対象外)', () => {
+    expect(getsDramaticDeath({ type: 'driller' } as Enemy)).toBe(getsDramaticDeath({ type: 'pumpkin' } as Enemy));
+    expect(getsDramaticDeath({ type: 'driller' } as Enemy)).toBe(false);
+  });
+
+  it('corpseEligible: pumpkinと同じくtrue(死体化の例外編入=v3704のpumpkin例外を継承)', () => {
+    expect(corpseEligible({ type: 'driller' })).toBe(corpseEligible({ type: 'pumpkin' }));
+    expect(corpseEligible({ type: 'driller' })).toBe(true);
+  });
+
+  it('isArenaSweepProtected: pumpkinと同じくtrue(囲い/救助イベントの一掃で残す)', () => {
+    expect(isArenaSweepProtected({ type: 'driller', fixed: undefined, questTarget: undefined }))
+      .toBe(isArenaSweepProtected({ type: 'pumpkin', fixed: undefined, questTarget: undefined }));
+    expect(isArenaSweepProtected({ type: 'driller', fixed: undefined, questTarget: undefined })).toBe(true);
   });
 });
 

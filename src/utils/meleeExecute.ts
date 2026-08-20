@@ -12,7 +12,7 @@
 // それだと pumpkin / lab-zombie-3 に強個体規定が永久に届かなかった。
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(実装精度の規律4)。
 import type { EnemyColorTier, EnemyType } from '../types/game';
-import { isBossType } from './enemyUtils';
+import { isBossType, isPumpkinTier } from './enemyUtils';
 
 export const ELITE_MELEE_STUN_MULT = 3;
 
@@ -22,7 +22,7 @@ export const ELITE_MELEE_STUN_MULT = 3;
 // 普通に「ボス」として扱われ、致命の一撃はboss式×BOSS_MELEE_STUN_MULT・keepStunもboss枝が担う。
 // 二重登録の解消)。E-1(強個体処刑の撤去=パンプキン/lab-zombie-3側)は§6.38 B3で実施済み
 // (このファイル内=stunnedMeleeOutcomeのHP閾値撤去)。
-const isEliteType = (t: EnemyType): boolean => t === 'pumpkin' || t === 'lab-zombie-3';
+const isEliteType = (t: EnemyType): boolean => isPumpkinTier(t) || t === 'lab-zombie-3';
 
 /**
  * ★気絶中の近接を「ボス式」(=即死しない・近接×BOSS_MELEE_STUN_MULT)で受ける型か。

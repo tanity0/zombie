@@ -27,7 +27,7 @@ import type {
   BloodSpike, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
   GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショットの渦(v0.25.3276)
 } from '../types/game';
-import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
@@ -155,7 +155,7 @@ import {
 // 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
 const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(巨大ボス遠距離を含む)を基準にする
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
-import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType } from '../utils/enemyUtils';
+import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType, isPumpkinTier } from '../utils/enemyUtils';
 import {
   BOUNTY_DEPART_FADE_MS,
   // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15): 角度・タイミングは判定と同じ純関数から導く。
@@ -9682,7 +9682,8 @@ export class PixiScene {
       );
       for (const enemy of enemies) {
         const box = enemyFootBox(enemy);
-        const bossWeight = enemy.type === 'reaper' || enemy.type === 'giantbat' || enemy.type === 'pumpkin'
+        // PACING_PUZZLE.md §9-7#1(pixiSceneの影): driller はpumpkinと同格。
+        const bossWeight = enemy.type === 'reaper' || enemy.type === 'giantbat' || isPumpkinTier(enemy.type)
           ? 1.28
           : 1;
         push(box.footX, box.footY, box.boxW * 0.55 * this.depthScaleEnemy(box.footY), bossWeight);
@@ -15107,6 +15108,49 @@ export class PixiScene {
     // research/GHOST_BOSS.md(守護霊ボス「幻影」): 出現演出・赤い目・技の予告(赤帯/赤ライン)。
     // ★**判定・状態は一切書かない**(store を読むだけ)。ここを通るのは幻影1体だけ。
     if (e.type === 'guardian-phantom') this.drawGuardianPhantom(view, e, gameTime, now, fb, cx, cy);
+    // PACING_PUZZLE.md §9-4(削岩型の突き予告): windup中はaiFrom→aiTargetの赤帯(判定と同寸=
+    // 長さ200×半幅12)。分類①(危険を伝える絵)=判定と厳密一致(既存の帯予告=drawTelegraphBand/
+    // T3ゾーンの意匠をそのまま流用。activeの瞬間の絵は最低限でよいので専用描画は置かない)。
+    if (e.type === 'driller' && (e.aiPhase === 'driller-thrust-windup' || e.aiPhase === 'driller-thrust-active')) {
+      const dfx = e.aiFromX ?? cx, dfy = e.aiFromY ?? cy;
+      const dtx = e.aiTargetX ?? cx, dty = e.aiTargetY ?? cy;
+      const ddx = dtx - dfx, ddy = dty - dfy;
+      const ddl = Math.hypot(ddx, ddy) || 1;
+      const dnx = -ddy / ddl, dny = ddx / ddl;
+      const dux = ddx / ddl, duy = ddy / ddl;
+      const dhw = DRILLER_THRUST_HALF_WIDTH;
+      if (e.aiPhase === 'driller-thrust-active') {
+        // 検収監査#5:「当たる瞬間の絵」。判定と同寸の帯を白熱→琥珀の突きとして一気に走らせ、
+        // activeの残時間でフェードする(旧: activeは無描画=赤帯が当たる瞬間に消え、既存レールの
+        // 小爆発だけが見えて「ドリルで突いた」と読めなかった)。分類①=判定と同寸(はみ出さない)。
+        const aDur = Math.max(1, DRILLER_THRUST_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT);
+        const aT = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / aDur));
+        const apts = [
+          dfx - dux * dhw + dnx * dhw, dfy - duy * dhw + dny * dhw,
+          dtx + dux * dhw + dnx * dhw, dty + duy * dhw + dny * dhw,
+          dtx + dux * dhw - dnx * dhw, dty + duy * dhw - dny * dhw,
+          dfx - dux * dhw - dnx * dhw, dfy - duy * dhw - dny * dhw,
+        ];
+        o.poly(apts).fill({ color: 0xffe4b0, alpha: 0.55 * (1 - aT) });
+        o.poly(apts).stroke({ width: 3, color: 0xffb347, alpha: 0.85 * (1 - aT) });
+      } else {
+        const dprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (DRILLER_THRUST_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+        const dpulse = 0.55 + 0.45 * Math.sin(now / 80);
+        const dMet = PixiScene.meteorPhase(dprog);
+        const dvfx = dfx + (dtx - dfx) * dMet.er, dvfy = dfy + (dty - dfy) * dMet.er;
+        const dvtx = dfx + (dtx - dfx) * dMet.p, dvty = dfy + (dty - dfy) * dMet.p;
+        const dVisible = dMet.p - dMet.er > 0.001;
+        const dpts = [
+          dvfx - dux * dhw + dnx * dhw, dvfy - duy * dhw + dny * dhw,
+          dvtx + dux * dhw + dnx * dhw, dvty + duy * dhw + dny * dhw,
+          dvtx + dux * dhw - dnx * dhw, dvty + duy * dhw - dny * dhw,
+          dvfx - dux * dhw - dnx * dhw, dvfy - duy * dhw - dny * dhw,
+        ];
+        if (dVisible) o.poly(dpts).fill({ color: 0xff2a2a, alpha: (0.12 + 0.22 * dprog + 0.08 * dpulse) * TELEGRAPH_FILL_MULT });
+        if (FX_RING_ENABLED) this.drawTelegraphBand(view, dfx, dfy, dtx, dty, dhw, 0xff3b3b, (0.32 + 0.4 * dprog) + 0.15 * dpulse, 0, dprog);
+        else if (dVisible) o.poly(dpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * dprog) + 0.15 * dpulse });
+      }
+    }
     if (isBountyType(e.type)) {
       const bFootX = cx, bFootY = e.y + e.height;
       const bSummonT = e.spawnedAt !== undefined ? (gameTime - e.spawnedAt) / BOUNTY_SUMMON_MS : 1;
@@ -18787,7 +18831,8 @@ export class PixiScene {
       }
       ov.circle(cx, my, 1.4).fill({ color: 0x7dd3fc, alpha: pulse });
     }
-    if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
+    // PACING_PUZZLE.md §9-7#1(pixiSceneのボスマーカー): driller はpumpkinと同格。
+    if (isPumpkinTier(e.type) || e.type === 'giantbat' || e.type === 'reaper') {
       this.drawBossMarker(ov, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
     }
     // 拠点/レスキューの「専用敵」(fromEvent)は通常湧きと区別(社長指示・軽量マーク): 頭上に橙の下向き三角(脈動)。
@@ -18810,7 +18855,8 @@ export class PixiScene {
       const w = w01 * 2 - 1;
       return { x: 1 + JORM_SLUG_SQX * w, y: 1 - JORM_SLUG_SQY * w };
     }
-    const heavy = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper' || e.type === 'hunter' || isHiddenBoss(e.type);
+    // PACING_PUZZLE.md §9-7#1(pixiSceneの疑似呼吸): driller はpumpkinと同格。
+    const heavy = isPumpkinTier(e.type) || e.type === 'giantbat' || e.type === 'reaper' || e.type === 'hunter' || isHiddenBoss(e.type);
     const amp = heavy ? 0.65 : 1;
     const phase = now / ENEMY_BREATH_MS * Math.PI * 2 + stablePhase(e.id);
     const inhale = Math.sin(phase);
@@ -18828,7 +18874,8 @@ export class PixiScene {
       return;
     }
     const hitT = Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_LIGHT_MS);
-    const boss = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper' || e.type === 'hunter' || isHiddenBoss(e.type);
+    // PACING_PUZZLE.md §9-7#1(pixiSceneのカリング保護対象の光): driller はpumpkinと同格。
+    const boss = isPumpkinTier(e.type) || e.type === 'giantbat' || e.type === 'reaper' || e.type === 'hunter' || isHiddenBoss(e.type);
     if (this.enemyCount >= ENEMY_LIGHT_CULL_COUNT && !boss && hitT <= 0) {
       view.light.visible = false;
       return;

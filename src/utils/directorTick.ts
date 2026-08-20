@@ -28,7 +28,11 @@ import {
   OFFSCREEN_RECYCLE_MARGIN,
   isBountyType,
   isGuardianPhantom,
+  isPumpkinTier,
 } from './enemyUtils';
+import { resolvePumpkinTier, allowDrillerForRun } from './drillerAi'; // PACING_PUZZLE.md §9
+import { isBossMakerRun } from './bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdrillerを出さない
+import { isGauntletRun } from './gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdrillerを出さない
 import { selectCullCandidates } from './enemyCulling';
 import { enemyCountCap, ENEMY_COUNT_CEIL, type PhaseKind } from './difficultyDirector';
 import { stepDirector, applyRelaxSpawnCadence, type DirectorState } from './aiDirector';
@@ -90,7 +94,9 @@ export type Ref<T> = { current: T };
 
 // --- 以下、useGameLoop.ts のモジュールスコープ定数のうち、ここへ移した処理だけが使っていたもの。
 // 値は元のまま(重複定義。元ファイル側の宣言はこの移設に伴い削除済み)。
-const PUZZLE_MANAGED_TYPES = new Set<EnemyType>(['bat', 'skeleton', 'zombie', 'plant', 'werewolf', 'pumpkin', 'screamer', 'ghost']);
+// PACING_PUZZLE.md §9-3(削岩型): driller はpumpkin枠の実体化差し替えなので、盤面カウント
+// (boardCount)にも同じくpumpkin相当として乗る(将棋盤の駒数=見た目に関わらず数える)。
+const PUZZLE_MANAGED_TYPES = new Set<EnemyType>(['bat', 'skeleton', 'zombie', 'plant', 'werewolf', 'pumpkin', 'driller', 'screamer', 'ghost']);
 const DIRECTOR_NEAR_RADIUS = 240;         // Intensity の"近接敵"を数える半径(接触危険レンジ相当)
 const DIRECTOR_EGG_DANGER_RADIUS = 180;   // 抱卵型(ghost)が撒いた毒卵の"密度"を見る、プレイヤー中心の半径
 const DIRECTOR_EGG_DANGER_FULL = 3;       // この個数(近くに)でdanger最大(=1バーストぶんが足元に集まっている状態)
@@ -112,7 +118,7 @@ export const isEnemyCapProtected = (
   !!e.fromEvent ||
   !!e.isNamed ||
   !!e.questTarget ||
-  e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
+  e.type === 'reaper' || e.type === 'giantbat' || isPumpkinTier(e.type) ||
   e.type === 'lab-zombie-3' ||
   isHiddenBoss(e.type) ||
   isBountyType(e.type) ||
@@ -429,7 +435,9 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   const aliveNuisance: NuisanceCounts = {
     plant: puzzleEnemiesNow.filter(e => e.type === 'plant').length,
     werewolf: puzzleEnemiesNow.filter(e => e.type === 'werewolf').length,
-    pumpkin: puzzleEnemiesNow.filter(e => e.type === 'pumpkin').length,
+    // §9-3: driller はpumpkin枠の実体化差し替え(帳簿はpumpkinのまま)。台本の「片付き」判定
+    // (isScriptCleared)がpumpkin枠の生存を見誤らないよう、実体化されたdrillerもここで合算する。
+    pumpkin: puzzleEnemiesNow.filter(e => isPumpkinTier(e.type)).length,
   };
   const aliveSpecial: Partial<Record<SpecialType, number>> = {
     screamer: puzzleEnemiesNow.filter(e => e.type === 'screamer').length,
@@ -572,6 +580,9 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     komaTarget: komaChaffTarget,
     rampIntervalMs: rampIntervalForKoma(spawnKoma, tightenedNow),
     holdIncrease: koma.kind !== 'harvest' && msSinceLastHit < 10000, // §3-A被弾ホールド(盛り演出のハーベストは対象外)
+    // v0.25.3705(社長裁定①): ピークは目標を即スナップ=バナー「多数の変異体を検知」と圧の立ち上がりを
+    // 一致させる(bossRelax中はspawnKomaが'relax'になるので自動的にスナップしない)。
+    snapUp: spawnKoma === 'peak',
   });
   // 邪魔者/特別枠は通常・ピークのみ供給(緩コマは新規補充停止=在席は自然消化)。
   // v0.25.3177: 緩コマ(relax/harvest)は**ノルマ0**を渡すだけで新規投入が止まる(欠員判定が
@@ -623,8 +634,14 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     // 追加で湧かせるのではなく既存の1体に色を乗せるだけなので、盤面数・湧きCD・バースト禁止(§0.5)
     // の規律には一切触れない。判定の理由と経緯は scriptPuzzle.ts の `peakRedTier` に集約してある。
     const forcedTier = peakRedTier(koma.kind, decision.slot, koma.peakRedSpawned);
+    // PACING_PUZZLE.md §9-3①(台本nuisance枠の実体化): decision.type==='pumpkin' の時だけ
+    // resolvePumpkinTier で実際に湧かせる型を差し替える。帳簿(scriptSpawned・下)は decision.type
+    // (='pumpkin')のまま消化する=実体化のみの差し替え。
+    const materializedType: EnemyType = decision.type === 'pumpkin'
+      ? resolvePumpkinTier(allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()))
+      : decision.type;
     const puzzleEnemy = generateEnemy(
-      gameTime, player, spawnBounds, decision.type, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc,
+      gameTime, player, spawnBounds, materializedType, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc,
       [], [], 1, false, [], undefined, forcedTier,
     );
     if (forcedTier) koma.peakRedSpawned = true;
@@ -1040,6 +1057,9 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // =「急に画面から消える」原因になっていた(社長報告: パンプキンのジャンプ/カウンター時)。攻撃を完遂させ、
     // 終わって(aiPhase解除)から遠ければ通常どおりリサイクルする。
     if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'charge') return enemy;
+    // PACING_PUZZLE.md §9-8②(削岩型の突き3州): windup中にリサイクルで飛ばすとロック済みの赤帯だけが
+    // 残る=「赤いのに当たらない」(絶対禁止)。pumpkinの aiPhase==='jump' 除外と同じ扱いで除外する。
+    if (enemy.aiPhase === 'driller-thrust-windup' || enemy.aiPhase === 'driller-thrust-active' || enemy.aiPhase === 'driller-thrust-recover') return enemy;
     // M66(PACING_PUZZLE.md §6.26-11・stage-3 急降下): 城ボスが「本体が不在(無敵ではなく居ない)」を
     // 表現するため、windup中は実座標を意図的に場外(GIANT_DIVE_AWAY_OFFSET)へ退避させている。この
     // 汎用オフスクリーンリサイクルに捕まると「急に元の場所へワープして戻ってくる」= dive の演出が
@@ -1147,6 +1167,9 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
         knockbackUntil: undefined,
         knockbackVx: undefined,
         knockbackVy: undefined,
+        // PACING_PUZZLE.md §9-7#6(削岩型): 距離リサイクル/個体使い回しで drillerRetreatUntil を
+        // 必ずクリアする(他タイプには存在しないフィールドなので無害)。
+        drillerRetreatUntil: undefined,
         spawnedAt: gameTime
       };
     }
@@ -1253,6 +1276,11 @@ export function runDirectorSignalStep(refs: DirectorSignalRefs, ctx: DirectorSig
     } else if (e.type === 'pumpkin') {
       if (e.aiPhase === 'jump') dangerBias = Math.max(dangerBias, 1);
       else if (e.aiPhase === 'crouch') dangerBias = Math.max(dangerBias, 0.6);
+    } else if (e.type === 'driller') {
+      // 検収監査#8(§9-7#1の取りこぼし): 削岩型の突き予告/発動も「危ないものが起きようとしている」に
+      // 数える(pumpkinのjump/crouchと同格の扱い)。
+      if (e.aiPhase === 'driller-thrust-active') dangerBias = Math.max(dangerBias, 1);
+      else if (e.aiPhase === 'driller-thrust-windup') dangerBias = Math.max(dangerBias, 0.6);
     } else if (e.type === 'screamer') {
       if (e.aiPhase === 'scream') dangerBias = Math.max(dangerBias, 0.7);
     } else if (e.type === 'plant') {

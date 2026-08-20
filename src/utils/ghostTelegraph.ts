@@ -174,6 +174,14 @@ put(LEDGER, ['warp-in'], {
   coverage: 'ghost', ghostShape: { kind: 'circle-target', radius: ACRASIEL_WARP_IMPACT_MIRROR },
   note: 'アクラシエルの転移着地の衝撃円(中心=aiTarget=出現先)。',
 });
+// PACING_PUZZLE.md §9-4(削岩型・driller): 突きはaiPhase駆動(aiFromX/Y→aiTargetX/Y)だが接頭辞が
+// 'g-' でも bossState でもないため、botSkill.telegraphDodge の帯の自動判定(ph.startsWith('g-')/
+// bs.endsWith('-windup'))に乗らない。他の非'g-'系windup(idol-roll等)と同じ扱いでこの表に足す。
+put(LEDGER, ['driller-thrust-windup', 'driller-thrust-active'], {
+  coverage: 'ghost', ghostShape: { kind: 'band' },
+  note: '削岩型の突き。帯(aiFrom→aiTarget)が危険。activeは1回だけカプセル判定が積まれた直後だが、'
+    + '回避は安全側に広くて構わないので windup と同じ帯のまま扱う(g-bite-active等と同じ作法)。',
+});
 put(LEDGER, ['g-dive-windup'], {
   coverage: 'both', sharedShape: 'band',
   ghostShape: { kind: 'circle-target', radius: DIVE_RADIUS_MIRROR, targetIsTopLeft: true },
@@ -194,6 +202,7 @@ put(LEDGER, [
   'radial-recover', 'ring-recover', 'ring-spin-recover', 'skadi-blade-recover', 'skadi-ice-recover',
   'spear-recover', 'spike-recover', 'sweep-recover', 'tate-recover', 'thrust-recover',
   'tsuki-recover', 'volley-recover', 'warp-recover',
+  'driller-thrust-recover', // PACING_PUZZLE.md §9-4(削岩型): 突きの硬直。
 ], {
   coverage: 'none',
   note: '硬直(技は終わっている)=避ける図形は無い。ここはむしろカウンターの窓側の話。',

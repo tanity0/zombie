@@ -115,7 +115,7 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier } from '../utils/enemyUtils';
 // research/STAGE_DIFFICULTY.md: ステージ難度の階段。係数の判断(計測路なら1.0)はこのヘルパ1本。
 import { stageBossDiffMults } from '../utils/stageDiffMults';
 // §6.38 B4(クリーンアップ): 実効難易度倍率の式はbountyValue.ts(依存ゼロに近い葉。詳細はファイル冒頭の
@@ -169,6 +169,7 @@ import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgr
 import type { KomaAssessmentInput } from '../utils/rankAssessor';
 import { getDirectorRewardMult } from '../utils/directorRankState';
 import { recordKill, recordSpawn } from '../utils/killTelemetryState';
+import { drillerZoneFor, drillerCanThrust, isDrillerRetreating, DRILLER_RETREAT_MS, DRILLER_RETREAT_SPEED_MULT } from '../utils/drillerAi';
 import { getPityDropTuning } from '../utils/pityState';
 import { pickNpcLine } from '../data/npcLines';
 import {
@@ -1346,6 +1347,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   werewolf: '変異体(獣化型)',
   plant: '変異体(定着型)',
   pumpkin: '変異体(肥大型)',
+  driller: '削岩型', // PACING_PUZZLE.md §9-2(社長指示 2026-08-20)
   giantbat: '変異体(飛行型)',
   reaper: '死神',
   'lab-zombie-1': '研究施設の変異体(Lv1)',
@@ -2044,6 +2046,16 @@ export const SHIELD_BLOCK_SHAKE_MAG = 5;
 import { PUMPKIN_EXPLOSION_RADIUS } from '../utils/bountyDims';
 export { PUMPKIN_EXPLOSION_RADIUS };
 
+// PACING_PUZZLE.md §9-4(削岩型・driller): 突き(ヤリ攻撃)の溜め/判定/硬直/CD。間合い(接近/後退/構え)
+// と発動距離は src/utils/drillerAi.ts(純関数・テスト済み)を見る。ここは gameStore 内でしか使わない
+// 攻撃モーション寄りの値だけを持つ。値は全て叩き台(§9-6「バランスの最終値ではない」)。
+export const DRILLER_THRUST_WINDUP_MS = 700;   // 溜め(開始の瞬間に方向・帯をロック)
+export const DRILLER_THRUST_ACTIVE_MS = 220;   // 突き判定の表示(1回だけカプセルを積む・実効180ms相当)
+export const DRILLER_THRUST_RECOVER_MS = 400;  // 硬直
+export const DRILLER_THRUST_CD_MS = 3500;      // 次の突きまでのCD(生値。atkUntil式でENEMY_ATTACK_SPEED_MULT除算)
+export const DRILLER_THRUST_LENGTH = 200;      // 帯の長さ(px)=判定と同寸
+export const DRILLER_THRUST_HALF_WIDTH = 12;   // 帯の半幅(px・細め)=判定と同寸
+
 // ==== M51: 城ボス「ジャイアント」新行動スクリプト(PACING_PUZZLE.md §6.26・裁定済み6.26-9) ====
 // `?giantscript=0` で旧挙動(このセクションを使わず、上の GIANTBAT_*/WEREWOLF_*/PUMPKIN_* 経由の
 // 従来スケジューラ)へ完全フォールバック(受け入れ条件11)。werewolf/pumpkin/lab-zombie-2/
@@ -2548,7 +2560,8 @@ const inertiaAlpha = (deltaTime: number, tau: number): number =>
   tau <= 0 ? 1 : 1 - Math.exp(-deltaTime / tau);
 
 // スコア集計用のエリート/ボス判定(gameplayの isBossType とは別。社長指示=elite:pumpkin / boss:giantbat のみ)。
-const isScoreElite = (t: string): boolean => t === 'pumpkin';
+// PACING_PUZZLE.md §9-7#1: driller はpumpkinと「同格」なのでisPumpkinTier経由でエリート計上を共有する。
+const isScoreElite = (t: string): boolean => isPumpkinTier(t as EnemyType);
 const isScoreBoss = (t: string): boolean => t === 'giantbat' || t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'hunter';
 const countScoreEliteBoss = (enemies: { type: string }[]): { elite: number; boss: number } => ({
   elite: enemies.reduce((n, e) => n + (isScoreElite(e.type) ? 1 : 0), 0),
@@ -3519,7 +3532,9 @@ const grantMeleeKillRewards = (
     }
     // Mid-boss killed in melee still drops its weapon crate (the gun-kill
     // path drops one too; bosses are usually finished with the counter).
-    if (enemy.type === 'pumpkin' || enemy.type === 'giantbat') {
+    // PACING_PUZZLE.md §9-7#1(死亡FXの重さ・useGameLoop.ts:10740付近と対の近接経路):
+    // driller はpumpkinと同格=isPumpkinTier経由でクレート/リング演出を共有する。
+    if (isPumpkinTier(enemy.type) || enemy.type === 'giantbat') {
       get().addPickup({
         id: `pickup-crate-${enemy.id}`,
         x: ex - 8, y: ey - 8 - 18,
@@ -4177,6 +4192,8 @@ const applySlasherChainStrike = (
     const gpDeflected = isGuardianPhantom(e.type)
       && !!eAfter && (eAfter.gpBlockedAt === gameTime || eAfter.gpParriedAt === gameTime);
     if (gpDeflected) continue; // hit/hitIds は積み済み=チェーンの進行は従来どおり(空振り扱いにしない)
+    // PACING_PUZZLE.md §9-4/§9-7#6(削岩型・近接被弾での離脱): スラッシャー追撃も近接武器の打撃。
+    if (!k) get().applyDrillerRetreat(e.id);
     get().spawnDamageNumber(ecx, e.y, dmg, false);
     get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.95)');
     get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫(v0.25.2026)
@@ -4877,6 +4894,8 @@ interface GameState {
   stunEnemy: (id: string, until: number) => void;
   rootEnemy: (id: string, until: number) => void;
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number, maxStrength?: number) => void;
+  // PACING_PUZZLE.md §9-4/§9-7#6(削岩型): 近接武器の打撃を受けた瞬間に呼ぶ。driller以外は無害(no-op)。
+  applyDrillerRetreat: (id: string) => void;
   openCounterWindow: () => void;
   setSlasherCombo: (readyAt: number, step: number) => void;
   pumpSlasherQueuedTap: () => void; // スラッシャー先行入力の自動発動(毎フレーム・useGameLoopから)
@@ -6687,7 +6706,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       enemies: survivors.map(e => {
         // research/GHOST_BOSS.md v6: 幻影の i-frame 打刻を合成する(有効打のときだけ)。
         const gp = gpHitPatch !== null && gpHitPatch.id === e.id ? gpHitPatch.patch : null;
-        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}) };
+        // PACING_PUZZLE.md §9-4/§9-7#6(削岩型・近接被弾での離脱): このスイングで近接ダメージを受けた
+        // driller に gameTime+2000 を書く(ナイフ/刀/鞭のスイング=この3関数+守護霊/分身は別途)。
+        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}), ...(e.type === 'driller' ? { drillerRetreatUntil: gameTime + DRILLER_RETREAT_MS } : {}) };
         return gp ? { ...e, ...gp } : e;
       }),
       gameStats: {
@@ -7089,6 +7110,9 @@ export const useGameStore = create<GameState>((set, get) => ({
               ...(!isBossType(e.type) ? { ghostHateUntil: gameTime + GHOST_MOB_HATE_MS } : {}),
             }
             : { meleeAggro: true, meleeHitAt: gameTime }),
+          // PACING_PUZZLE.md §9-4/§9-7#6(削岩型): 守護霊(isGhost)/分身どちらの近接武器打撃も対象
+          // (isGhost分岐の外=両方に効かせる)。
+          ...(e.type === 'driller' ? { drillerRetreatUntil: gameTime + DRILLER_RETREAT_MS } : {}),
         }
         : e),
       gameStats: {
@@ -7554,7 +7578,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         const killed = get().damageEnemy(e.id, dmg);
         get().spawnDamageNumber(ecx, e.y, dmg, false);
         // 重い敵/ボス/すり抜け勢はノックバック無効(既存のシールド等と同じ慣例)。
-        const knockbackImmune = e.type === 'giantbat' || e.type === 'pumpkin'
+        // PACING_PUZZLE.md §9-7#1(ノックバック免除): driller はpumpkinと同格=isPumpkinTier経由で共有。
+        const knockbackImmune = e.type === 'giantbat' || isPumpkinTier(e.type)
           || e.type === 'reaper' || isHiddenBoss(e.type);
         if (!killed && !knockbackImmune) {
           const nrm = Math.max(0.001, dist);
@@ -7773,7 +7798,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // research/GHOST_BOSS.md v6: 幻影の i-frame 打刻(gpHitPatch)を合成する(有効打のときだけ)。
       enemies: survivors.map(e => {
         const gp = gpHitPatch !== null && gpHitPatch.id === e.id ? gpHitPatch.patch : null;
-        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}) };
+        // PACING_PUZZLE.md §9-4/§9-7#6(削岩型・近接被弾での離脱): このスイングで近接ダメージを受けた
+        // driller に gameTime+2000 を書く(ナイフ/刀/鞭のスイング=この3関数+守護霊/分身は別途)。
+        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}), ...(e.type === 'driller' ? { drillerRetreatUntil: gameTime + DRILLER_RETREAT_MS } : {}) };
         return gp ? { ...e, ...gp } : e;
       }),
       gameStats: {
@@ -8028,7 +8055,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // research/GHOST_BOSS.md v6: 幻影の i-frame 打刻(gpHitPatch)を合成する(有効打のときだけ)。
       enemies: survivors.map(e => {
         const gp = gpHitPatch !== null && gpHitPatch.id === e.id ? gpHitPatch.patch : null;
-        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}) };
+        // PACING_PUZZLE.md §9-4/§9-7#6(削岩型・近接被弾での離脱): このスイングで近接ダメージを受けた
+        // driller に gameTime+2000 を書く(ナイフ/刀/鞭のスイング=この3関数+守護霊/分身は別途)。
+        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}), ...(e.type === 'driller' ? { drillerRetreatUntil: gameTime + DRILLER_RETREAT_MS } : {}) };
         return gp ? { ...e, ...gp } : e;
       }),
       gameStats: {
@@ -10542,6 +10571,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     let giantNovaFired = false;      // g-nova発動 → skadi-ice(氷結波=氷の近似)
     let giantSweepbeamFired = false; // g-sweepbeam発動 → heavy-impact(ビーム発射=ミーミルレーザーと同じ流用)
     let giantBreathFired = false;    // g-quad-breath発動 → hurricane(ブレス=風の近似)
+    // PACING_PUZZLE.md §9-4(削岩型): 突き発動の瞬間に thor-thrust(v3700の文法「突き=同じ動作は同じ音」)。
+    let drillerThrustFired = false;
     const glenVolleyFires: string[] = []; // v0.25.3027: グレン第二形態の胴体弾(パーツV字斉射)。post-set で発射。
     const shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[] = []; // シールドで防いだ瞬間の接触点(FX/SE用)
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
@@ -12843,6 +12874,96 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, vx: svx, vy: svy, x: smoved.x, y: smoved.y, screamNextAt: nextScream };
         }
 
+        // PACING_PUZZLE.md §9-4(削岩型・driller): カイト(接近/後退/構え)+突き(ヤリ攻撃)+近接被弾での離脱。
+        // 優先順(§9-8③・検収監査#2#3で確定): 気絶/浮き(手前のstunUntil/liftUntil早期return) >
+        // 突きの**進行中**3州(ノックバックで中断しない=変位のみ重畳。※拘束(root)は v0.25.2421の
+        // 一般則「aiPhase中はroot無効」により**3州中は効かない**——全敵共通の既存則をそのまま踏襲) >
+        // 離脱(retreat・**新規の突き発動より優先**=「殴ったら離れる」が「殴ったら反撃」に化けないため) >
+        // 突きの新規発動 > 通常移動(接近/後退/構え)。
+        if (enemy.type === 'driller') {
+          const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+          // 検収監査#4(CLAUDE.mdの上下副作用チェック): 離れるAIは地平線の上(透明化ゾーン)や帯の外へ
+          // 出やすい(隣のresolveMoveコメント「パンプキンが円の外=地平線の上へ出て見えなくなる」と同型)。
+          // プレイヤーと同じ「行ける帯」の定義(clampRectToPlayableArea)で移動先をクランプする。
+          const drillerClampMove = (mx: number, my: number): { x: number; y: number } => {
+            const moved = resolveMove(mx, my);
+            const ctx: PlayableAreaCtx = {
+              farBackdrop: state.farBackdrop, labTheme,
+              corridorMode: state.corridorMode,
+              m0AdvanceLimitX: state.m0AdvanceLimitX,
+              corridorRunInActive: state.corridorRunInActive,
+            };
+            return clampRectToPlayableArea(moved.x, moved.y, enemy.width, enemy.height, ctx, enemy.x);
+          };
+          // 突き3州: 進行中はここで完結させる(間合い/離脱の判定より優先)。
+          if (enemy.aiPhase === 'driller-thrust-windup') {
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              const tfx = enemy.aiFromX ?? ecx, tfy = enemy.aiFromY ?? ecy;
+              const ttx = enemy.aiTargetX ?? ecx, tty = enemy.aiTargetY ?? ecy;
+              // 分類①(危険を伝える絵)=判定と厳密一致。帯(pixiScene)と同寸(長さ200×半幅12)のカプセルを
+              // activeへ移る瞬間に1回だけ積む(g-bite/g-slam等と同じ「windup末尾で1回積む」型)。
+              pumpkinBlasts.push({
+                x: (tfx + ttx) / 2, y: (tfy + tty) / 2, radius: DRILLER_THRUST_HALF_WIDTH,
+                damage: enemy.damage, enemyId: enemy.id, moveKey: 'driller-thrust',
+                capsule: { fx: tfx, fy: tfy, tx: ttx, ty: tty, halfWidth: DRILLER_THRUST_HALF_WIDTH },
+              });
+              drillerThrustFired = true; // post-set SE(thor-thrust)
+              return { ...enemy, vx: 0, vy: 0, aiPhase: 'driller-thrust-active', aiPhaseUntil: atkUntil(DRILLER_THRUST_ACTIVE_MS) };
+            }
+            return { ...enemy, vx: 0, vy: 0 };
+          }
+          if (enemy.aiPhase === 'driller-thrust-active') {
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              return { ...enemy, vx: 0, vy: 0, aiPhase: 'driller-thrust-recover', aiPhaseUntil: atkUntil(DRILLER_THRUST_RECOVER_MS) };
+            }
+            return { ...enemy, vx: 0, vy: 0 };
+          }
+          if (enemy.aiPhase === 'driller-thrust-recover') {
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: 0, aiReadyAt: atkUntil(DRILLER_THRUST_CD_MS) };
+            }
+            return { ...enemy, vx: 0, vy: 0 };
+          }
+          // 発動判定(§9-4)は常にプレイヤー基準の距離で見る(社長の言葉「プレイヤーへ...ヤリ攻撃を
+          // してくる」・離脱もプレイヤーの近接打撃が起点=どちらもtgt(召喚誘引)ではなくpcx/pcyで判定)。
+          const pDx = pcx - ecx, pDy = pcy - ecy;
+          const pDist = Math.hypot(pDx, pDy);
+          // ★離脱は**新規の突き発動より先**に判定する(検収監査#2)。旧順序だと「近接で殴られた瞬間は
+          // 必ず200px以内=CD明けなら突きを開始→1320msその場に静止」で、社長ゴール「1.5倍速で2秒間
+          // 距離を離す」が実質1/3に削れていた(体験が「殴ったら反撃してくる」に化ける)。
+          if (isDrillerRetreating(enemy.drillerRetreatUntil, gameTime)) {
+            const rl = Math.max(0.001, pDist);
+            const rtvx = -(pDx / rl) * speed * DRILLER_RETREAT_SPEED_MULT;
+            const rtvy = -(pDy / rl) * speed * DRILLER_RETREAT_SPEED_MULT;
+            const ra = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed));
+            const rvx = (enemy.vx ?? rtvx) + (rtvx - (enemy.vx ?? rtvx)) * ra;
+            const rvy = (enemy.vy ?? rtvy) + (rtvy - (enemy.vy ?? rtvy)) * ra;
+            const rmoved = drillerClampMove(enemy.x + rvx * deltaTime, enemy.y + rvy * deltaTime);
+            return { ...enemy, vx: rvx, vy: rvy, x: rmoved.x, y: rmoved.y };
+          }
+          if (drillerCanThrust(pDist) && gameTime >= (enemy.aiReadyAt ?? 0)) {
+            const pl = Math.max(0.001, pDist);
+            const pux = pDx / pl, puy = pDy / pl;
+            return {
+              ...enemy, vx: 0, vy: 0,
+              aiPhase: 'driller-thrust-windup', aiPhaseUntil: atkUntil(DRILLER_THRUST_WINDUP_MS),
+              aiFromX: ecx, aiFromY: ecy,
+              aiTargetX: ecx + pux * DRILLER_THRUST_LENGTH, aiTargetY: ecy + puy * DRILLER_THRUST_LENGTH,
+            };
+          }
+          // 通常時: 間合い3分岐(接近/後退/構え)。移動対象は他の型と同じ tgt(召喚誘引込み)基準の
+          // dx/dy/distance を使う(既存モブ移動の経路に乗せる=座標書き換えの新設をしない)。
+          const zone = drillerZoneFor(distance);
+          let dtvx = 0, dtvy = 0;
+          if (zone === 'approach') { dtvx = (dx / distance) * speed; dtvy = (dy / distance) * speed; }
+          else if (zone === 'backoff') { dtvx = -(dx / distance) * speed; dtvy = -(dy / distance) * speed; }
+          const da = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed));
+          const dvx = (enemy.vx ?? dtvx) + (dtvx - (enemy.vx ?? dtvx)) * da;
+          const dvy = (enemy.vy ?? dtvy) + (dtvy - (enemy.vy ?? dtvy)) * da;
+          const dmoved = drillerClampMove(enemy.x + dvx * deltaTime, enemy.y + dvy * deltaTime);
+          return { ...enemy, vx: dvx, vy: dvy, x: dmoved.x, y: dmoved.y };
+        }
+
         // v0.25.3176(案4): 曲がる速さ(慣性tau)にも個体差を入れる。チャフの既存tauは0.30〜0.41sなので
         // ×0.75〜1.60 = **0.22〜0.65s** の幅になる=同じ型でも曲がり方が揃わない(壁で来なくなる)。
         const alpha = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed)
@@ -13143,6 +13264,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (giantBreathFired) m.playSfx('hurricane');      // 回転ブレス=風の近似
       });
     }
+    // PACING_PUZZLE.md §9-4(削岩型・driller): 突き発動音。動的import=jump-landと同じ理由
+    // (gameStoreはaudioManagerを静的importできない・循環)。予告SE(hunter-alert)は付けない(§9-4)。
+    if (drillerThrustFired) {
+      void import('../audio/audioManager').then(m => m.playSfx('thor-thrust'));
+    }
     // v0.25.3699(社長指示「グレンの第二形態はHP半分で」): 形態1はHPを**半分まで削った時点**で
     // 第二形態へ移行する(旧v0.25.3600: HP0=撃破で移行)。移行の絵と流れは撃破時と完全に同じ
     // triggerDramaticDeath(崩壊アテンション→glenForm2SpawnAt予約→useGameLoopが形態2を湧かす)を
@@ -13364,6 +13490,17 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...dr.patch,
         };
       })
+    }));
+  },
+
+  // PACING_PUZZLE.md §9-4/§9-7#6(削岩型): 近接被弾で離脱(retreat)。呼び出し側(プレイヤー/守護霊/
+  // 分身の近接武器の打撃=ナイフ・刀・鞭のスイング/近接フィニッシュ/スラッシャー追撃)は全列挙して
+  // 呼ぶ(銃・爆発・サブ武器・カウンター反撃・DoTは対象外=呼ばない)。driller以外はno-op。
+  applyDrillerRetreat: (id) => {
+    set(state => ({
+      enemies: state.enemies.map(e =>
+        (e.id === id && e.type === 'driller') ? { ...e, drillerRetreatUntil: state.gameTime + DRILLER_RETREAT_MS } : e
+      )
     }));
   },
 

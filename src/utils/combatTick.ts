@@ -201,6 +201,12 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       fx.spawnRing(b.x, b.y, 6, b.radius, 'rgba(150,210,255,0.9)', 4, 300);
       fx.spawnBurst(b.x, b.y, '#bfe6ff', 16);
       fx.spawnGlow(b.x, b.y, b.radius, 'rgba(150,210,255,', 280);
+    } else if (b.moveKey === 'driller-thrust') {
+      // 削岩型の突き(検収監査#5): 雑魚の通常攻撃なので**全画面フラッシュは出さない**(3.5秒ごとに
+      // 画面全体が明滅するのはうるさい)。判定終端の小さな火花+リングだけ(色はドリル=琥珀寄り)。
+      const dcx = b.capsule ? b.capsule.tx : b.x, dcy = b.capsule ? b.capsule.ty : b.y;
+      fx.spawnRing(dcx, dcy, 4, 26, 'rgba(255,190,90,0.9)', 3, 240);
+      fx.spawnBurst(dcx, dcy, '#fbbf24', 10);
     } else {
       fx.spawnFlash('rgba(255,150,60,0.16)', 200);
       fx.spawnRing(b.x, b.y, 6, b.radius, 'rgba(255,170,80,0.9)', 4, 300);
@@ -221,7 +227,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       } else if (!bp.invulnerable) {
         const blastEnemyType = useGameStore.getState().enemies.find(e => e.id === b.enemyId)?.type;
         // G4a: b.moveKey=どの技の爆発か(記録専用タグ・未設定なら従来どおりundefined)。
-        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の落下攻撃`, undefined, undefined, undefined, undefined, b.moveKey);
+        // 検収監査#6: 死因の技名はmoveKeyで分ける(削岩型の突きが「落下攻撃」と表示されていた)。
+        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${b.moveKey === 'driller-thrust' ? '突き' : '落下攻撃'}`, undefined, undefined, undefined, undefined, b.moveKey);
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
         // v0.25.2653: **技ごとの押し量**(b.kbSpeed/kbMs)があればそれを使う。未指定=従来の共通値。

@@ -102,6 +102,14 @@ describe('resolveStunnedMeleeHit(気絶敵フィニッシュの裁定・プレ�
     }
   });
 
+  // PACING_PUZZLE.md §9-7#1(削岩型・「同格」): driller はpumpkinと全く同じ扱い
+  // (isEliteType経由=近接フィニッシュ即死の免除)を受ける。
+  it('★driller はpumpkinと同格(強個体として裁定される・HPに関わらず即死しない)', () => {
+    expect(resolveStunnedMeleeHit(stunned({ type: 'driller', health: 60, maxHealth: 100 }), 10, 500, BOSS_MULT))
+      .toEqual(resolveStunnedMeleeHit(stunned({ type: 'pumpkin', health: 60, maxHealth: 100 }), 10, 500, BOSS_MULT));
+    expect(usesBossStunnedMelee('driller')).toBe(false);
+  });
+
   it('usesBossStunnedMelee = isBossType − 強個体(呼び出し側はこれだけを見る)', () => {
     expect(usesBossStunnedMelee('giantbat')).toBe(true);
     expect(usesBossStunnedMelee('mimir')).toBe(true);

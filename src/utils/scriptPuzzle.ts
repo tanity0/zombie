@@ -273,10 +273,17 @@ export const cdForKoma = (
 export interface ChaffRampState { target: number; msSinceRampMs: number; }
 export const stepChaffRamp = (
   state: ChaffRampState,
-  input: { dtMs: number; komaTarget: number; rampIntervalMs: number; holdIncrease: boolean }
+  input: { dtMs: number; komaTarget: number; rampIntervalMs: number; holdIncrease: boolean; snapUp?: boolean }
 ): ChaffRampState => {
   if (state.target > input.komaTarget) return { target: input.komaTarget, msSinceRampMs: 0 }; // 下げは即
   if (state.target === input.komaTarget) return { target: state.target, msSinceRampMs: 0 };
+  // ★v0.25.3705(社長裁定「①にしてみよう」): ピークは**上げも即スナップ**(snapUp=呼び出し側が
+  // spawnKoma==='peak'で渡す)。従来の1体/6秒ランプだと「多数の変異体を検知」バナーから満量まで
+  // 約30秒(cap10: 通常5→満量10)=40秒コマの残り10秒しか山が立たず、被弾ホールドも重なって
+  // 「アナウンスと体感の圧が噛み合わない」構造だった。湧きそのものは従来どおり基本CDで1体ずつ
+  // =バースト禁止(§0.5)は不変(先に立つのは**目標**だけ)。被弾ホールドもピーク中は効かない
+  // (山を立てるのがピークの仕事。辛い時の保護は緩め§3-D=softenedが別途担う)。
+  if (input.snapUp) return { target: input.komaTarget, msSinceRampMs: 0 };
   if (input.holdIncrease) return { target: state.target, msSinceRampMs: 0 }; // 被弾直後は足踏み
   const ms = state.msSinceRampMs + input.dtMs;
   if (ms >= input.rampIntervalMs) return { target: state.target + 1, msSinceRampMs: 0 };

@@ -1,5 +1,5 @@
 import type { Enemy, EnemyType, EscortSoldier } from '../types/game';
-import { isHiddenBoss } from './enemyUtils';
+import { isHiddenBoss, isPumpkinTier } from './enemyUtils';
 
 export type EscortAdvanceZone = 'none' | 'front' | 'side' | 'rear';
 
@@ -47,7 +47,7 @@ const REAR_ENTER_COS = -FRONT_ENTER_COS;
 const REAR_EXIT_COS = -FRONT_EXIT_COS;
 
 export const isEscortStrongEnemy = (type: EnemyType): boolean =>
-  isHiddenBoss(type) || type === 'pumpkin' || type === 'giantbat' || type === 'reaper' ||
+  isHiddenBoss(type) || isPumpkinTier(type) || type === 'giantbat' || type === 'reaper' ||
   type === 'lab-zombie-3' || type === 'hunter';
 
 const enemyCenterDist2 = (x: number, y: number, enemy: Enemy): number => {

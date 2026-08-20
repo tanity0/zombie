@@ -22,7 +22,9 @@ const SubquestHud: React.FC = () => {
           className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums"
           style={{ color: r.done ? '#4ade80' : '#e2e8f0', opacity: r.done ? 0.65 : 1 }}
         >
-          {r.done ? '✔' : '📋'} {r.label} {Math.min(r.progress, r.target)}/{r.target}
+          {/* v0.25.3705(社長指示): アイコン削除+端的な短縮文(達成は色と薄さで伝える)。
+              フル文(「通常の変異体を50体倒す」)はリザルト側=labelのまま。 */}
+          {r.shortLabel} {Math.min(r.progress, r.target)}/{r.target}
         </div>
       ))}
     </>

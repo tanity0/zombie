@@ -60,6 +60,9 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   ghost:     { width: 24, height: 24, speed: 48,  health: 26,   damage: 6,   experienceValue: 3 },
   werewolf:  { width: 30, height: 30, speed: 105, health: 32,   damage: 12,  experienceValue: 3 },
   pumpkin:   { width: 40, height: 40, speed: 55,  health: 150,  damage: 16,  experienceValue: 8 },
+  // PACING_PUZZLE.md §9-2(削岩型): 判定サイズ・HP・攻撃・経験値=パンプキンと同値(「同格」)。
+  // speed=75=bat と同値(社長指示「歩く速さはバットくらい」)。
+  driller:   { width: 40, height: 40, speed: 75,  health: 150,  damage: 16,  experienceValue: 8 },
   // 新型(lich・ステージ4): 速度はゴースト(90)の1.2倍=108。旋回しながら詰めてくる(AIは store)。
   lich:      { width: 30, height: 30, speed: 108, health: 36,   damage: 12,  experienceValue: 4 },
   // 城ボス(ジャイアント)。ここは生成時の互換値(×ENEMY_HP_MULT=実効2500)。**出現時に台帳の値へ置換される**
@@ -201,8 +204,15 @@ export const isGate2AngelBoss = (t: EnemyType): boolean => t === 'miguel' || t =
 // 入れるだけでボス系の全既定が付く形**に統一する(v7の方針転換)。isBountyType(=isEliteType/
 // isArenaSweepProtected/getsDramaticDeath/corpseEligible等で個別に足していた賞金首専用の
 // 迂回路)は本表へ入れたことで大半が自動的に不要になる=各所の重複を撤去した(v7実装ログ参照)。
+// PACING_PUZZLE.md §9-7#1(社長指示 2026-08-20・監査反映v2): 「同格」を述語1本で機械化する。
+// pumpkin(ウェーブ枠のエリート)と driller(削岩型・同じ枠を分け合う「同格」の新型)は、
+// isBossType/isEliteType等のpumpkin特別扱いを全てこの述語経由で共有する。
+// ★講習(reliefProgram)・囲いミニボス(useGameLoop:3255)・ホードN体目(useGameLoop:3319)・
+// botObjective・アイコン等の「pumpkin固有」(§9-7②)はこの述語を通さない=対象外のまま。
+export const isPumpkinTier = (t: EnemyType): boolean => t === 'pumpkin' || t === 'driller';
+
 export const isBossType = (t: EnemyType): boolean =>
-  t === 'pumpkin' || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
+  isPumpkinTier(t) || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
   t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' ||
   t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter' || isBountyType(t) ||
   // research/GHOST_BOSS.md: 幻影もボス扱いの全既定(HPバー/体勢値=紫/致命の一撃/崩壊演出/
@@ -216,7 +226,7 @@ export const isBossType = (t: EnemyType): boolean =>
  * 賞金首もここへ追加登録する)。
  */
 export const isArenaSweepProtected = (e: Pick<Enemy, 'type' | 'fixed' | 'questTarget'>): boolean =>
-  e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
+  e.type === 'reaper' || e.type === 'giantbat' || isPumpkinTier(e.type) ||
   isHiddenBoss(e.type) || isBountyType(e.type) || !!e.fixed || !!e.questTarget;
 
 /**
@@ -233,7 +243,7 @@ export const isArenaSweepProtected = (e: Pick<Enemy, 'type' | 'fixed' | 'questTa
  * 「クリ=固まる」へ戻す。**ここが唯一の出どころ**(半減窓とCD2倍の両方がこれを見る)。
  */
 export const usesBossCrit = (t: EnemyType): boolean =>
-  isBossType(t) && t !== 'pumpkin' && t !== 'lab-zombie-3';
+  isBossType(t) && !isPumpkinTier(t) && t !== 'lab-zombie-3';
 
 /**
  * ★弾・爆発の「小突きノックバック」で押されない型か(社長裁定v0.25.3494・案A)。
@@ -256,7 +266,7 @@ export const usesBossCrit = (t: EnemyType): boolean =>
  * 意図どおりの挙動。
  */
 export const resistsChipKnockback = (t: EnemyType): boolean =>
-  usesBossCrit(t) || t === 'pumpkin';
+  usesBossCrit(t) || isPumpkinTier(t);
 
 /** 「最終ボスを討伐した」扱いにしてよいキルか(v0.25.3029・社長裁定「二体」)。
  * グレン形態1(glenForm===1)の死はミッション進行を確定させない(討伐アテンションの後に形態2が湧く)。
@@ -273,7 +283,7 @@ export const isFinalBossKill = (e: Pick<Enemy, 'type' | 'fromEvent' | 'glenForm'
  * 刈る手触り(§コアループ①秒)が毎回途切れる。**崩壊演出・バナー・スロー・シェイクは残す**ので、
  * 討伐した手応えは維持したまま、進行を止める要素だけを外す。
  */
-export const getsDeathAttention = (t: EnemyType): boolean => isBossType(t) && t !== 'pumpkin';
+export const getsDeathAttention = (t: EnemyType): boolean => isBossType(t) && !isPumpkinTier(t);
 
 // 討伐(KILL)時に「FF風クランブル」統一演出(triggerDramaticDeath・gameStore.ts)を出す対象か。
 // ボス系は全員対象。ネームド/クエスト対象も従来どおり劇的な討伐を維持する。
@@ -283,7 +293,7 @@ export const getsDeathAttention = (t: EnemyType): boolean => isBossType(t) && t 
 // だけで自動的にtrueになる(賞金首はpumpkinではない)。重複登録なので撤去(討伐SE=ボス討伐SE流用
 // との整合=劇的死亡を出す、という結論自体は不変)。
 export const getsDramaticDeath = (enemy: Enemy): boolean =>
-  !!enemy.isNamed || !!enemy.questTarget || (isBossType(enemy.type) && enemy.type !== 'pumpkin');
+  !!enemy.isNamed || !!enemy.questTarget || (isBossType(enemy.type) && !isPumpkinTier(enemy.type));
 
 // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26): この個体が「死体」(corpseUntil付き)か。
 // これが唯一の判定=AI/攻撃/照準/被弾/対象選定の全経路がこの1関数で除外する(§26-2)。
@@ -301,7 +311,7 @@ export const isCorpse = (e: Pick<Enemy, 'corpseUntil'>): boolean => e.corpseUnti
 // 死体化から除外=**死亡演出が両方とも無い「隙間」に落ちてパッと消えていた**(慣性MUST違反)。
 // 討伐イベント無しの裁定はそのまま、死に方は通常敵と同じ死体吹き飛びを与える(pumpkinだけ例外編入)。
 export const corpseEligible = (enemy: Pick<Enemy, 'type' | 'isNamed' | 'questTarget'>): boolean =>
-  (!isBossType(enemy.type) || enemy.type === 'pumpkin') && !enemy.isNamed && !enemy.questTarget;
+  (!isBossType(enemy.type) || isPumpkinTier(enemy.type)) && !enemy.isNamed && !enemy.questTarget;
 // ★社長指示v0.25.3168「パンプキンは厳密にはボスではないので討伐イベントいらない」:
 // pumpkin を**討伐イベントごと**除外する(崩壊/バナー「◯◯を討伐」/閃光/リング/シェイク/スロー)。
 // 旧: v0.25.2879 では「時間停止+カメラ寄り(getsDeathAttention)」だけを外し、崩壊やバナーは残していた。
@@ -899,6 +909,7 @@ export const getEnemyColor = (type: EnemyType): string => {
     case 'ghost':    return '#cbd5e1';  // pale blue-white
     case 'werewolf': return '#6b3f1d';  // dark brown
     case 'pumpkin':  return '#f97316';  // orange
+    case 'driller':  return '#d9a441';  // ヘルメットの琥珀(削岩型・PACING_PUZZLE.md §9-2)
     case 'giantbat': return '#11122c';  // very dark
     case 'reaper':   return '#0a0a0a';  // pitch black
     case 'lich':     return '#7fb4e6';  // icy blue (ステージ4新型)

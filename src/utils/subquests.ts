@@ -11,7 +11,7 @@
 //  ・active  = 受注中の枠(最大 SUBQUEST_SLOTS)。progress は**ラン跨ぎの累計**。
 
 import {
-  SUBQUEST_SLOTS, subquestsForStage, subquestById, subquestLabel,
+  SUBQUEST_SLOTS, subquestsForStage, subquestById, subquestLabel, subquestShortLabel,
   type SubquestDef,
 } from '../data/subquests';
 import type { EnemyColorTier } from '../types/game';
@@ -25,7 +25,8 @@ export type SubquestSave = Record<string, SubquestStageState>;
 /** HUD/リザルトが読む1行ぶんの表示データ(達成済みも `done` で残す=表示と判定を分ける)。 */
 export interface SubquestRunEntry {
   id: string;
-  label: string;      // 数値差し込み済み
+  label: string;      // 数値差し込み済み(リザルト等のフル文)
+  shortLabel: string; // プレイ中HUD用の端的な文(数値なし・v0.25.3705 社長指示)
   target: number;
   progress: number;
   done: boolean;
@@ -170,13 +171,13 @@ export const toRunEntries = (
     const def = subquestById(e.id);
     if (!def) continue;
     rows.push({
-      id: def.id, label: subquestLabel(def), target: def.target,
+      id: def.id, label: subquestLabel(def), shortLabel: subquestShortLabel(def), target: def.target,
       progress: Math.min(e.progress, def.target), done: false, rewardGold: def.rewardGold,
     });
   }
   for (const def of done) {
     rows.push({
-      id: def.id, label: subquestLabel(def), target: def.target,
+      id: def.id, label: subquestLabel(def), shortLabel: subquestShortLabel(def), target: def.target,
       progress: def.target, done: true, rewardGold: def.rewardGold,
     });
   }

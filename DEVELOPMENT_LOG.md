@@ -1,5 +1,57 @@
 # Development Log
 
+## v0.25.3705 — 新敵「削岩型」実装+PEAK目標の即スナップ+サブクエHUD簡略化【2026-08-20 22:24 JST】
+
+- **削岩型(driller・§9設計=監査3巡「通し」→Sonnet実装→検収監査)**: ステージ4〜7でパンプキン枠を
+  50%で分け合う槍持ちカイト型。間合い140〜190維持/突き=赤帯200×半幅12(windup700ms・判定は
+  pumpkinBlastsカプセル=カウンター・SE既存レール・発動SE=thor-thrust)/近接被弾で2秒×1.5倍速離脱。
+  「同格」は isPumpkinTier 述語で機械化。**★'pumpkin'全ヒットの「置換した/しない」全件台帳(§9-7#1・
+  これが唯一の安全網)**:
+  【置換した】enemyUtils(isBossType/isArenaSweepProtected/usesBossCrit/resistsChipKnockback/
+  getsDeathAttention/getsDramaticDeath/corpseEligible)/meleeExecute isEliteType/escortAdvance
+  isEscortStrongEnemy/gameStore(isScoreElite/KB免除初期キット/武器クレート近接ドロップ/
+  enemyDeathLabel)/useGameLoop(四神SHIJIN_BOSS_TYPES/dog-bite・shield-bashのKB免除/死亡FX
+  (blood/ring/isElite)/pumpkinPairActive/関所同時数キャップ=合算2(aliveOfType×2+overCap+
+  pumpkinCount)/shieldContactDamage)/directorTick(isEnemyCapProtected/PUZZLE_MANAGED_TYPES/
+  aliveNuisance/★dangerBias=検収監査#8で追補)/pixiScene(影の重み/ボスマーカー/疑似呼吸/
+  光カリング保護)/renderUtils(影・光暈/ボスマーカー×2)/killTelemetry bucketForKill+
+  killTelemetryState lastKillAt(不応期・主題保証の見落とし防止)。
+  【置換しない(理由)】講習reliefProgram(パンプキンの教習=絵が変わると成立しない・§9-8①)/
+  囲いミニボス useGameLoop:3260・ホードN体目 :3324(§9-7②=重石役の体験維持・社長確認枠)/
+  botObjective(bot探索対象の具体指定)/eventQuestのアイコン・候補(コンテンツ具体指定)/
+  summonUtils(錬金術の見た目)/stageDirector(既定OFFの旧セットピース)/POSTURE_ELITE_TYPES
+  (§9-6「体勢ゲージ対象外」)/DDA_TOUGH_TYPES・AREA_WEIGHT・BASE_WEIGHT(pumpkin自体がweight0=
+  通常プール圏外のdead code・§9-3)/FORMATION_TABLE・NuisanceType・ProblemChild等の帳簿型
+  (§9-3「台帳不変・pumpkin枠のまま消化」)/pumpkin固有のjump/crouch AI・予告演出(drillerは跳ばない=
+  aiPhaseゲートで自然除外)/BenchmarkOverlay HEAVY_ENEMY_TYPES(開発ベンチのプリセット)/
+  renderUtils:1043の手続き絵(legacy非保守)/useGameLoop:10466・12538の直書き(隣のisBossTypeが
+  isPumpkinTier経由で真=dead code)。
+  実体化地点は**4**: ①台本nuisance(directorTick) ②関所配役(pendingCast) ③featured床=gate系
+  プログラムの通常湧き(検収監査#1で追補) ④主題保証(featureGuarantee・実装時発見)。
+  新規純関数 drillerAi.ts(resolvePumpkinTier/間合い/retreat述語)+テスト11件。
+- **検収監査(場面2)8件→全件反映**: #1 featured床経路の差し替え漏れ(関所の主湧きからdrillerが
+  出なかった)→通常湧きループに追補 / #2 retreatが新規突き発動に負けて実質1/3だった→離脱を
+  発動判定より先へ / #3 優先順の「拘束」記述が実態(v2421一般則=3州中root無効)と食い違い→
+  記述を実態へ訂正(挙動は全敵共通則のまま) / #4 離脱AIが地平線上・帯外へ出うる→driller移動を
+  clampRectToPlayableArea でクランプ(CLAUDE.md上下副作用チェック) / #5 activeの絵が無く
+  全画面フラッシュだけだった→当たる瞬間の突き帯(白熱→琥珀・判定と同寸)を追加+drillerの
+  blastは全画面フラッシュ抑制(終端の小火花のみ) / #6 死因「落下攻撃」→「突き」 /
+  #7 本台帳のDEVLOG列挙(この項) / #8 dangerBiasへdriller予告を追加。
+- **PEAK盤面目標の即スナップ(社長裁定「①にしてみよう」)**: stepChaffRampにsnapUp追加=ピークコマは
+  目標を即満量へ(従来1体/6秒ランプでバナーから満量まで約30秒・被弾ホールドで更に停滞=
+  「アナウンスと体感が噛み合わない」構造の解消)。湧きは従来CD=バースト禁止不変。テスト追加。
+- **サブクエHUD簡略化(社長指示)**: アイコン(📋/✔)削除+短縮ラベル(「通常変異体 0/50」形式)。
+  台帳にkindベースの subquestShortLabel を新設(リザルトのフル文=subquestLabel は不変)。
+- **吸血のLv別説明文修正**: 旧仕様「一定確率で回復」→「必ず回復」(v3603裁定=100%確定。一覧側は
+  直っていたがLv別側が残っていた。グラビティと同型の説明文の嘘)。
+- 既知fail(いずれも本pushと無関係): sim移動ランプ(#41)/ghostTelegraphのbackroll系(angelBossTickの
+  ラフィbackroll・quickblades州が回避台帳テストから漏れている先行事象=stashで変更前から失敗を確認)。
+  →後者もタスク化して次の診断枠で扱う。
+- 検証: typecheck 0 / lint 0(warning8既存)/ vitest(utils+store)3578パス(fail3=上記既知2+flaky1
+  (bountyGoldChest・単独再実行で全パス))。
+- 自己点検: 確定表・帳簿・憲法テスト不変。削岩型は §9-6の「ではない」条件内。PEAKスナップは
+  目標のみ(湧きCD・バースト禁止不変)。
+
 ## v0.25.3704 — パンプキンの「パッと消える」修正+削岩型§9-8(再監査5指摘の反映)【2026-08-20 21:11 JST】
 
 - **#40① 社長報告「ジャンプをカウンターでちょうど倒すと消える」の真因**: pumpkinは

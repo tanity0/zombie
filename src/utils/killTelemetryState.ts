@@ -34,7 +34,13 @@ export const recordKill = (type: EnemyType, method: 'gun' | 'melee', gameTimeMs?
   totals.byBucket[bucketForKill(type)] += 1;
   if (method === 'gun') totals.gunKills += 1;
   else totals.meleeKills += 1;
-  if (gameTimeMs !== undefined) lastKillAt[type] = gameTimeMs;
+  if (gameTimeMs !== undefined) {
+    lastKillAt[type] = gameTimeMs;
+    // PACING_PUZZLE.md §9-3/§9-7#1(社長指示 2026-08-20): driller はpumpkin枠の実体化差し替え
+    // (「同格」)なので、pumpkin役の不応期(PROBLEM_REFRACTORY_MS)もdrillerのキルで更新する
+    // (lastKillAtは型ごとのため、role='pumpkin'のキー側にも同時に書く)。
+    if (type === 'driller') lastKillAt['pumpkin'] = gameTimeMs;
+  }
 };
 
 export const getKillTotals = (): Readonly<KillTotals> => totals;

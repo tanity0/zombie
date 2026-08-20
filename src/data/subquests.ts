@@ -145,3 +145,25 @@ export const subquestById = (id: string): SubquestDef | undefined =>
 /** 表示文。`{n}` に必要数を差し込む(labelに数値を直書きしないための唯一の出口)。 */
 export const subquestLabel = (def: SubquestDef): string =>
   def.label.replace('{n}', String(def.target));
+
+/**
+ * ★プレイ中HUD用の短縮ラベル(社長指示2026-08-20「プレイ中のサブクエスト文章は端的にしたい。
+ * 『通常の変異体を50体倒す』→『通常変異体 0/50』とか」)。数字はHUD側が progress/target で出すので
+ * ここには含めない。**リザルト等のフル文はsubquestLabelのまま**(短いのはプレイ中だけ)。
+ * kindベースの表引き=台帳へ1件ずつ書かない(追加漏れを作らない)。
+ */
+export const subquestShortLabel = (def: SubquestDef): string => {
+  switch (def.kind) {
+    case 'kill-normal': return '通常変異体';
+    case 'kill-colored': return '色付き変異体';
+    case 'kill-tier':
+      return def.tier === 'blue' ? '青変異体' : def.tier === 'purple' ? '紫変異体' : '赤変異体';
+    case 'kill-lab': return `被験体Lv${def.labLevel ?? 1}`;
+    case 'rescue': return '生存者救助';
+    case 'miniboss': return '賞金首討伐';
+    case 'wanted': return '宿敵討伐';
+    case 'horde-kills': return '大量発生中キル';
+    case 'rednight-kills': return '紅き夜キル';
+    case 'hunter-survive': return 'ハンター生存(秒)';
+  }
+};

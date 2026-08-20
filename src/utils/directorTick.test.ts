@@ -30,6 +30,11 @@ describe('isEnemyCapProtected — 上限カリングの保護表(§6.38 B1)', ()
   it('通常の雑魚は保護されない(=カリング対象になり得る)', () => {
     expect(isEnemyCapProtected(mk('zombie'), 999999)).toBe(false);
   });
+  // PACING_PUZZLE.md §9-7#1(削岩型・「同格」): driller はpumpkinと同じくカリング保護される。
+  it('driller はpumpkinと同格でカリング保護される', () => {
+    expect(isEnemyCapProtected(mk('driller'), 0)).toBe(isEnemyCapProtected(mk('pumpkin'), 0));
+    expect(isEnemyCapProtected(mk('driller'), 0)).toBe(true);
+  });
   it('waveは猶予10秒だけ保護され、以後は保護されない', () => {
     expect(isEnemyCapProtected(mk('zombie', { isWave: true, spawnedAt: 0 }), 5000)).toBe(true);
     expect(isEnemyCapProtected(mk('zombie', { isWave: true, spawnedAt: 0 }), 10001)).toBe(false);

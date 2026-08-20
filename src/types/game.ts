@@ -528,7 +528,11 @@ export interface Enemy {
     | 'g-nihil-chant1' | 'g-nihil-chant2' | 'g-nihil-chant3' | 'g-nihil-recover'
     // v0.25.3139(社長指示): グレン第二形態の通常技「尻尾の叩きつけ→弾の連射」。
     // 叩きつけの射程は**尻尾(連結パーツ)の長さそのもの**=パーツが減れば短くなる(見たまま=判定)。
-    | 'g-tailslam-windup' | 'g-tailslam-active' | 'g-tailslam-volley' | 'g-tailslam-recover';
+    | 'g-tailslam-windup' | 'g-tailslam-active' | 'g-tailslam-volley' | 'g-tailslam-recover'
+    // PACING_PUZZLE.md §9-4(削岩型の突き): 開始時にaiFromX/Y→aiTargetX/Yへ方向と帯(長さ200×半幅12)を
+    // ロックし、activeで1回だけカプセル判定を積む(§6.28共通T3ゾーンと同型)。§9-8④: moveCancelGuardの
+    // 観測対象外(watchはgauntletのみ+drillerは計測路に出ない)。
+    | 'driller-thrust-windup' | 'driller-thrust-active' | 'driller-thrust-recover';
   aiPhaseUntil?: number; // 現フェーズの終了 gameTime
   aiReadyAt?: number;    // 次に特殊行動を開始できる gameTime(連発防止)
   aiTargetX?: number;    // 突進/着地の狙い座標(行動開始時のプレイヤー位置スナップ)
@@ -544,6 +548,10 @@ export interface Enemy {
   ghostHpBoosted?: boolean;
   aggroRange?: number;
   fixed?: boolean;
+  // PACING_PUZZLE.md §9-4/§9-7#6(削岩型): 近接武器の打撃を受けた瞬間 gameTime+2000 を書く。
+  // 有効中はプレイヤー逆方向へspeed×1.5(通常移動より優先・突き3州には劣後=変位のみ重畳)。
+  // 距離リサイクル/個体使い回しで必ずクリアする(directorTick.ts runOffscreenRecycleAndCull)。
+  drillerRetreatUntil?: number;
   // idol専用(§6.28-20・社長指示)の設置時の向き。true=水平ミラーして左向きで描画。既存の汎用
   // facingLeft機構は無い(ShadowCloneStateの同名フィールドとは別物=プレイヤー分身の描画専用)ため、
   // 「無ければidol専用に最小限を足す」方針でここへ足す。設置時に決定論的に算出して固定し、以後は
@@ -1113,6 +1121,10 @@ export type EnemyType =
   | 'ghost'     // 変異体(抱卵型): プレイヤーの周囲を周回し1秒ごとに緑卵(mine)を設置する。internal idは'ghost'据え置き
   | 'werewolf'  // mid-game fast bruiser
   | 'pumpkin'   // elite (wave events)
+  // PACING_PUZZLE.md §9(社長指示 2026-08-20): 削岩型(driller)= 槍持ちカイト型。ステージ4以降、
+  // 台本的にパンプキンと「同格」(同一枠を分け合う=isPumpkinTier)。一定距離を保ちドリルの突きを
+  // 放ち、近接を食らうと離脱する。isBossType等の特別扱いはisPumpkinTier経由でpumpkinと共有する。
+  | 'driller'
   | 'giantbat'  // mini-boss every ~10 minutes
   | 'reaper'    // terminal entity at 30:00
   | 'lich'      // ステージ4の新型。ゴーストの1.2倍速でプレイヤーの周囲を旋回しながら詰める

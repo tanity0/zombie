@@ -284,6 +284,13 @@ describe('M6 stepChaffRamp', () => {
     for (let i = 0; i < 10; i++) s = stepChaffRamp(s, { dtMs: 6000, komaTarget: 5, rampIntervalMs: 6000, holdIncrease: false });
     expect(s.target).toBe(5);
   });
+  it('snapUp(ピーク・社長裁定v0.25.3705①): 上げも即スナップ・被弾ホールドより優先', () => {
+    const s = stepChaffRamp({ target: 5, msSinceRampMs: 0 }, { dtMs: 16, komaTarget: 10, rampIntervalMs: 6000, holdIncrease: true, snapUp: true });
+    expect(s.target).toBe(10);
+    // 下げは従来どおり即(snapUpと無関係に成立)
+    const down = stepChaffRamp({ target: 10, msSinceRampMs: 0 }, { dtMs: 16, komaTarget: 4, rampIntervalMs: 6000, holdIncrease: false, snapUp: true });
+    expect(down.target).toBe(4);
+  });
 });
 
 describe('M6 §4-D: isScriptCleared(片付き判定)', () => {

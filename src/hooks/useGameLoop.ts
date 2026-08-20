@@ -218,8 +218,12 @@ import {
   isBountyType,
   isGate2AngelBoss, // v0.25.3567: ボスメーカーの部屋で天使に旋回中心(home)を置くため
   resistsChipKnockback,
-  isGuardianPhantom // v0.25.3640: 幻影が弾いた弾の数字/SE抑止(成果物監査Q1-1)
+  isGuardianPhantom, // v0.25.3640: 幻影が弾いた弾の数字/SE抑止(成果物監査Q1-1)
+  isPumpkinTier // PACING_PUZZLE.md §9-7#1(削岩型): pumpkinの特別扱いをdrillerと共有する述語
 } from '../utils/enemyUtils';
+import { resolvePumpkinTier, allowDrillerForRun } from '../utils/drillerAi'; // PACING_PUZZLE.md §9-3
+import { isBossMakerRun } from '../utils/bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdrillerを出さない
+import { isGauntletRun } from '../utils/gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdrillerを出さない
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
 import { projectileFlightMsTo } from '../utils/projectileOrigin'; // GHOST_BOSS.md v9: 弾の飛翔時間(距離÷速度)
 import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs, turretNextReadyAt } from '../utils/turretTuning';
@@ -502,7 +506,9 @@ const SHIELD_HP_BY_LEVEL = [0, 10, 30, 60];  // 耐久(Lv1/2/3)。被ダメー�
 const shieldContactDamage = (enemy: { type: EnemyType; aiPhase?: string; bossState?: string }): number => {
   const t = enemy.type;
   if (t === 'werewolf' || t === 'lab-zombie-2') return enemy.aiPhase === 'charge' ? 10 : 5;
-  if (t === 'pumpkin') return enemy.aiPhase === 'jump' ? 30 : 10;
+  // PACING_PUZZLE.md §9-7#1(盾への接触ダメージ表): driller はpumpkinと同格(jump相当の技を
+  // 持たないため常に10。パンプキンのジャンプ着地分岐はdrillerには効かない=無害)。
+  if (isPumpkinTier(t)) return enemy.aiPhase === 'jump' ? 30 : 10;
   if (t === 'giantbat' || t === 'reaper' || isHiddenBoss(t)) {
     if (isHiddenBoss(t)) return enemy.bossState === 'dash' ? 30 : 10; // 裏ボスは bossState で突進判定
     if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'charge') return 30;
@@ -1765,7 +1771,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // Game loop
   useEffect(() => {
     // --- 四神舞(リズム)の攻撃実行ヘルパー(store=判定、loop=実行)。すべて軽量・短命VFX。
-    const SHIJIN_BOSS_TYPES = new Set(['giantbat', 'pumpkin', 'reaper']);
+    // PACING_PUZZLE.md §9-7#1(四神の対象): driller はpumpkinと同格(isPumpkinTier)なので合流させる。
+    const SHIJIN_BOSS_TYPES = new Set(['giantbat', 'pumpkin', 'driller', 'reaper']);
     const ARROW_VEC: Record<RhythmArrow, { x: number; y: number }> = {
       up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
     };
@@ -7321,7 +7328,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const killed = damageEnemy(enemy.id, dogDmg);
                 spawnDamageNumber(ex, enemy.y, dogDmg, false);
                 spawnBurst(ex, ey, '#cbd5e1', 4);
-                if (!killed && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
+                // PACING_PUZZLE.md §9-7#1(ノックバック免除): driller はpumpkinと同格。
+                if (!killed && enemy.type !== 'giantbat' && !isPumpkinTier(enemy.type)) {
                   const n = Math.max(0.001, Math.hypot(ex - dogX, ey - dogY));
                   useGameStore.getState().knockbackEnemy(enemy.id, (ex - dogX) / n, (ey - dogY) / n, DOG_BITE_KNOCKBACK_MULT);
                 }
@@ -9966,8 +9974,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     dmgByShield.set(s.id, (dmgByShield.get(s.id) ?? 0) + shieldContactDamage(enemy));
                     shieldHitRef.current.set(key, gameTime + SHIELD_HIT_INTERVAL_MS);
                     // ノックバック方向 = シールド中心→敵中心(来た方へ弾き返す)。
-                    // 重い敵/ボス/すり抜け勢(giantbat/pumpkin/reaper/裏ボス)は弾かない。
-                    if (!passesThrough && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
+                    // 重い敵/ボス/すり抜け勢(giantbat/pumpkin/driller/reaper/裏ボス)は弾かない
+                    // (PACING_PUZZLE.md §9-7#1: driller はpumpkinと同格)。
+                    if (!passesThrough && enemy.type !== 'giantbat' && !isPumpkinTier(enemy.type)) {
                       const ecx = enemy.x + enemy.width / 2;
                       const ecy = enemy.y + enemy.height / 2;
                       const scx = s.x + s.width / 2;
@@ -10737,7 +10746,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // Death splash: red burst so kills read as blood/hit impact.
               const ex = enemy.x + enemy.width / 2;
               const ey = enemy.y + enemy.height / 2;
-              const bloodCount = enemy.type === 'pumpkin' || enemy.type === 'giantbat' ? 30 : 16;
+              // PACING_PUZZLE.md §9-7#1(死亡FXの重さ): driller はpumpkinと同格。
+              const bloodCount = isPumpkinTier(enemy.type) || enemy.type === 'giantbat' ? 30 : 16;
               // §5.23 M22 C1: 弾/接触キルの死亡血しぶきも弾の進行方向へ寄せる(弾が無い接触キル等はundefined=従来の全方位)。
               const kDirX = DIRFX_ENABLED && projectile ? projectile.direction.x : undefined;
               const kDirY = DIRFX_ENABLED && projectile ? projectile.direction.y : undefined;
@@ -10750,11 +10760,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 kDirY
               );
               spawnBurst(ex, ey, '#7f1d1d', Math.max(6, Math.floor(bloodCount * 0.45)), kDirX, kDirY);
-              spawnRing(ex, ey, 4, enemy.type === 'pumpkin' || enemy.type === 'giantbat' ? 38 : 24, 'rgba(185,28,28,0.72)', 3, 300);
+              spawnRing(ex, ey, 4, isPumpkinTier(enemy.type) || enemy.type === 'giantbat' ? 38 : 24, 'rgba(185,28,28,0.72)', 3, 300);
               useGameStore.getState().dropEnemyCurrency(enemy, ex, ey);
 
               dropEnemyXp(enemy, ex, ey, 'pickup-xp');
-              const isElite = enemy.type === 'pumpkin' || enemy.type === 'giantbat';
+              // 銃キル版の武器クレート/リング演出も同じ isElite を通る=近接版(gameStore.ts)と揃える。
+              const isElite = isPumpkinTier(enemy.type) || enemy.type === 'giantbat';
               if (isElite) {
                 // Mid-boss drop — a weapon crate. Picking it up opens it and
                 // rolls a new gun (category & tier weighted by run time).
@@ -11941,7 +11952,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 憲法第2条注記(PACING_REDESIGN.md): パンプキン2体は出すタイミング+周囲の雑魚数によっては
         // 回避不能級。2体目がいる間は雑魚湧きテンポを一段緩める(問題児と数を同時に盛らない)。
         const PUMPKIN_PAIR_SPAWN_EASE = 1.3;
-        const pumpkinPairActive = allEnemiesNow.filter(e => e.type === 'pumpkin').length >= 2;
+        // PACING_PUZZLE.md §9-7#1(関所の同時数キャップ・不応期): キャップはpumpkin+driller合算で2。
+        const pumpkinPairActive = allEnemiesNow.filter(e => isPumpkinTier(e.type)).length >= 2;
         // バッチ3(最小版・第一レバー): 関所中はテンポをgatePressureが連続的に駆動する
         // (1.0→0.55の連続、段差なし)。シーン固定のintervalMultは関所以外(緩)でのみ使う。
         const baseIntervalMult = pressureOutdoor
@@ -12035,14 +12047,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           const pending = pressureCastRef.current.pendingCast;
           if (pending) {
-            const aliveOfType = useGameStore.getState().enemies.filter(e => e.type === pending).length;
+            // PACING_PUZZLE.md §9-7#1(関所の同時数キャップ): pending==='pumpkin'の在席数はpumpkin+
+            // driller合算で見る(実体化されたdrillerも同じ枠を占有しているため)。
+            const aliveOfType = useGameStore.getState().enemies.filter(e => pending === 'pumpkin' ? isPumpkinTier(e.type) : e.type === pending).length;
             // ?debt=0 は完全復帰(旧cap=2・延期なし)。既定はTank存命中ルール(生存0体のみ)+debt延期。
             const aliveOk = DEBT_ENABLED ? aliveOfType === 0 : aliveOfType < 2;
             const debtOk = !DEBT_ENABLED || boardDebtNow <= CAST_DEBT_MAX;
             // 問題児リフラクトリ: 同型を倒した直後15秒はgatePressure配役でも再投入しない(社長報告対応)。
             const refractoryOk = !PROGRAM_ENABLED || !isInRefractory(getLastKillAt(pending), gameTime);
             if (aliveOk && debtOk && refractoryOk) {
-              const castEnemy = generateEnemy(gameTime, player, spawnBounds, pending, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+              // PACING_PUZZLE.md §9-3②(関所の配役実体化): pending==='pumpkin'の時だけ実際に湧かせる
+              // 型をresolvePumpkinTierで差し替える(帳簿=pressureCastRef.pendingCastは'pumpkin'のまま)。
+              const materializedType: EnemyType = pending === 'pumpkin'
+                ? resolvePumpkinTier(allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()))
+                : pending;
+              const castEnemy = generateEnemy(gameTime, player, spawnBounds, materializedType, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
               addEnemy(castEnemy);
               pressureCastRef.current.pendingCast = null;
             }
@@ -12063,7 +12082,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (t === 'screamer') continue;
             const type = t as GuaranteeType;
             if (featureGuaranteeRef.current.satisfied.has(type)) continue;
-            const aliveOfType = useGameStore.getState().enemies.filter(e => e.type === type).length;
+            // PACING_PUZZLE.md §9-7#1: type==='pumpkin'の在席数はpumpkin+driller合算で見る。
+            const aliveOfType = useGameStore.getState().enemies.filter(e => type === 'pumpkin' ? isPumpkinTier(e.type) : e.type === type).length;
             const guarantee = shouldGuaranteeSpawn({
               type,
               elapsedMs,
@@ -12075,7 +12095,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               nowMs: gameTime,
             });
             if (guarantee) {
-              const guaranteedEnemy = generateEnemy(gameTime, player, spawnBounds, type, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+              // PACING_PUZZLE.md §9-3②(関所の配役実体化・主題保証も関所配役の一部): type==='pumpkin'
+              // の時だけ実際に湧かせる型をresolvePumpkinTierで差し替える(帳簿=satisfiedは'pumpkin'のまま)。
+              const materializedType: EnemyType = type === 'pumpkin'
+                ? resolvePumpkinTier(allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()))
+                : type;
+              const guaranteedEnemy = generateEnemy(gameTime, player, spawnBounds, materializedType, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
               addEnemy(guaranteedEnemy);
               featureGuaranteeRef.current.satisfied.add(type);
             }
@@ -12110,14 +12135,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             .filter(e => e.type === 'plant').length;
           let wolfCount = useGameStore.getState().enemies
             .filter(e => e.type === 'werewolf').length;
+          // PACING_PUZZLE.md §9-7#1(関所の同時数キャップ): pumpkin枠はpumpkin+driller合算で2。
           let pumpkinCount = useGameStore.getState().enemies
-            .filter(e => e.type === 'pumpkin').length;
+            .filter(e => isPumpkinTier(e.type)).length;
           let ghostCount = useGameStore.getState().enemies
             .filter(e => e.type === 'ghost').length;
           const overCap = (t: EnemyType): boolean =>
             (t === 'plant' && plantCount >= 2) ||
             (t === 'werewolf' && wolfCount >= 2) ||
-            (t === 'pumpkin' && pumpkinCount >= 2) ||
+            (isPumpkinTier(t) && pumpkinCount >= 2) ||
             (t === 'ghost' && ghostCount >= 1);
           // 研究所スキン: 区画(LAB_ZONE)ごとの現在の敵数を集計(1区画 LAB_ENEMIES_PER_ZONE 体まで)。
           const labZoneCounts = new Map<string, number>();
@@ -12183,6 +12209,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 enemy = generateEnemy(gameTime, player, spawnBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, [], [], sceneRareMult);
               }
             }
+            // PACING_PUZZLE.md §9-3③(featured床=gate系プログラムの実体化・検収監査#1):
+            // 通常湧きループが gate系プログラム(effectiveGateProgram)の featured 経由で 'pumpkin' を
+            // 引いた時も resolvePumpkinTier で差し替える(旧: ①台本nuisance/②関所配役だけで、
+            // **関所中の主たる湧き経路からdrillerが1体も出なかった**)。帳簿・キャップは pumpkin枠のまま
+            // (上の overCap は isPumpkinTier 合算で判定済み)。講習/回収(reliefProgram)は
+            // effectiveGateProgram を持たないので自然に対象外(§9-8①)。
+            if (enemy.type === 'pumpkin' && effectiveGateProgram
+              && resolvePumpkinTier(allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun())) === 'driller') {
+              enemy = generateEnemy(gameTime, player, spawnBounds, 'driller', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+            }
             // 洋館通路(corridorMode): 移動不可エリアに敵を沸かせない(社長指示v0.25.2391「ステージ2に
             // 限らず」)。プレイヤー移動と同じ帯定義(clampRectToPlayableArea)へ寄せる。ここは通常湧き
             // だけが通る経路(ボス/固定/イベント敵はspawnEnemyAt直呼びで別経路=対象外)。
@@ -12200,7 +12236,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             if (enemy.type === 'plant') plantCount += 1;
             if (enemy.type === 'werewolf') wolfCount += 1;
-            if (enemy.type === 'pumpkin') pumpkinCount += 1;
+            if (isPumpkinTier(enemy.type)) pumpkinCount += 1;
             if (enemy.type === 'ghost') ghostCount += 1;
             // バッチ4(講習): 演目の主役(lessonPrimary)を1体出したら投入済みフラグを立てる
             // (1フェーズ合計1体・キル後は再投入しない=effectiveProgramが以後featuredを空にする)。
