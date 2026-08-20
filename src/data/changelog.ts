@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3668',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: ステージ難度階段の攻撃力カーブを確定=S3:1.1〜S6:1.4)。',
+    ],
+  },
+  {
     version: '0.25.3667',
     items: [
       '幻影(決闘)の近接リーチをプレイヤーの近接範囲と同じ74pxにしました(これまで160px=2倍以上あり、届かない距離から斬られていました)。',
