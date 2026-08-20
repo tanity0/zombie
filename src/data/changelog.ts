@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3675',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: トールの技台本変更の仕様を確定=無の境地+一閃の必中反応・突き/払いの予告調整・突き3連コンボ。実装は難度階段バッチ後)。',
+    ],
+  },
+  {
     version: '0.25.3674',
     items: [
       'ゲーム内容の変更はありません(開発資料: 難度階段の設計が監査4巡・20件反映で通過→実装バッチ発注)。',
