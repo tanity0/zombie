@@ -7660,3 +7660,10 @@ KB中の跳ね描画(`pixiScene.ts` ＝実速度が乗っている時だけ跳�
 8. **phillbossに `isStoryBoss` は付けない**(M60 Phase3拡張など#4で廃止するgiantbat経路の残骸を
    踏まないため)。ズームはGIANT_BOSS_TYPES登録で担保。交戦距離(bossEngagementDistancePx)は
    phillboss型でgiant級の距離を返す分岐を1行足す(isStoryBoss経由にしない)。
+
+### §10-16 監査反映v6(最終1件・2026-08-20)=**監査通過**
+- **(採用)勝利検知はポーリング1箇所**: 撃破点フック(5経路+分身の既存穴=fan-out事故の型)は
+  使わない。旧EXと同じ型で**「phillbossをスポーンした後、場からphillbossが消えたら
+  `beginReturnPhase(スポーン座標)`」の1箇所**で全キル経路を漏れなく拾う(EXにphillbossは
+  1体しか存在しない=#1不変条件+gate2Clearedゲートが根拠)。
+- 本節をもって着手前監査**通過**(4巡・指摘21→12→8→1件・全反映)。実装バッチへ。
