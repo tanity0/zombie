@@ -1359,6 +1359,16 @@ export const scheduleDanceBeatKick = (beatAtMs: number) => {
   playSfxAt('dance-kick', ctxTime);
 };
 
+// ジャスト吸着(社長指示2026-08-20): JUST成功音を「入力の瞬間」ではなく「その拍の時刻」に予約する。
+// 早めのタップでも成功音が拍ぴったりに鳴る(=メトロノームと同時に重なって太い1発に聞こえる)。
+// 過去時刻は playSfxAt が currentTime へクランプ=遅れたタップは従来どおり即時。
+export const scheduleDanceJustKick = (beatAtMs: number) => {
+  const context = ensureSfxContext();
+  if (!context) return;
+  const ctxTime = context.currentTime + (beatAtMs - Date.now()) / 1000;
+  playSfxAt('dance-kick-just', ctxTime);
+};
+
 // --- Hurricane rumble: a continuous low "ゴゴゴゴ" bed that runs only while a
 // whip-hurricane (or reaper suction) is active. The source clip is ~2.4s, so a
 // hard native loop pulses at the seam. Instead we crossfade OVERLAPPING voices:

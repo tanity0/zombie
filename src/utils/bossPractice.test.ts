@@ -9,7 +9,7 @@ import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 import { STAGE_BOSS_HEALTH_BY_STAGE } from '../config/bossHealth';
 import { STAGES, getStage } from '../data/campaign';
 import { BOUNTY_ENEMY_TYPES, isBountyType, isHiddenBoss, spawnEnemyAt } from './enemyUtils';
-import { stageHpMult } from '../config/stageDifficulty';
+import { stageHpMult, BOUNTY_HOME_STAGE } from '../config/stageDifficulty';
 import { BOUNTY_BASE_HP } from './bountyDims';
 import { guardianPhantomHealth } from '../config/bossHealth';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
@@ -123,9 +123,12 @@ describe('賞金首の掲載枠', () => {
     expect([...PRACTICE_CATEGORY_ORDER].sort()).toEqual(['bounty', 'duel', 'gate', 'hidden', 'story']);
   });
 
-  it('出撃先はlab/corridorではないstage-1・強制出現は?bountynow相乗り・本編到達可能', () => {
+  // 社長報告2026-08-20「難易度補正、ボスモードに入ってない」の修正: 出撃先=**生息ステージ**
+  // (BOUNTY_HOME_STAGE)。旧v6 B-5のstage-1固定は「lab/corridorではない野外」が理由で、
+  // 生息ステージも全て野外=理由は満たしたまま実戦と同じ係数が乗る。
+  it('出撃先は生息ステージ(BOUNTY_HOME_STAGE)・野外・強制出現は?bountynow相乗り・本編到達可能', () => {
     for (const slot of bountySlots()) {
-      expect(slot.stageId, slot.slotKey).toBe('stage-1');
+      expect(slot.stageId, slot.slotKey).toBe(BOUNTY_HOME_STAGE[slot.bossType] ?? 'stage-1');
       expect(slot.param, slot.slotKey).toBe('bountynow');
       expect(slot.reachable, slot.slotKey).toBe(true);
       const stage = getStage(slot.stageId)!;
@@ -144,9 +147,9 @@ describe('賞金首の掲載枠', () => {
     expect(labels).toEqual(['バス停(変異)', '舞妓(変異)', '鋏(変異)', '馬乗り(変異)'].sort());
   });
 
-  it('HP表示は基準値(BOUNTY_BASE_HP)を出す', () => {
+  it('HP表示は基準値(BOUNTY_BASE_HP)×生息ステージ係数を出す(実戦と同じ式)', () => {
     for (const slot of bountySlots()) {
-      expect(practiceBossHealth(slot), slot.slotKey).toBe(BOUNTY_BASE_HP);
+      expect(practiceBossHealth(slot), slot.slotKey).toBe(Math.round(BOUNTY_BASE_HP * stageHpMult(slot.stageId)));
     }
   });
 });

@@ -104,3 +104,30 @@ describe('育成のスコア補正(scoreMult)', () => {
     expect(r.goldEarned).toBeLessThan(base.goldEarned);
   });
 });
+
+// 社長指示2026-08-20「難易度補正の分、スコアにも補正を。換金にも。つまりステージ1より6の方が稼げる」:
+// stageMult(難度階段のHP係数の焼き値)は scoreMult と同じく両方に掛かる。既定1=従来と完全一致。
+describe('ステージ難度のスコア補正(stageMult)', () => {
+  const stats = mkStats({
+    timeAlive: 300, damageDealt: 4000, meleeFinishers: 5, maxCombo: 10,
+    treasuresCollected: 2, strapsCollected: 100, damageTaken: 100,
+  });
+
+  it('totalScore と goldScore の両方に掛かる(S6=×1.8)', () => {
+    const base = calculateResultScore(stats, true);
+    const r = calculateResultScore(stats, true, false, 1, 1.8);
+    expect(r.totalScore).toBe(Math.round(base.totalScore * 1.8));
+    expect(r.goldScore).toBe(Math.round(base.goldScore * 1.8));
+    expect(r.goldEarned).toBeGreaterThan(base.goldEarned);
+  });
+
+  it('育成補正と重なる時は両方が1回ずつ掛かる', () => {
+    const base = calculateResultScore(stats, true);
+    const r = calculateResultScore(stats, true, false, 0.6, 1.8);
+    expect(r.totalScore).toBe(Math.round(base.totalScore * 0.6 * 1.8));
+  });
+
+  it('省略時(既定1)は従来と完全一致', () => {
+    expect(calculateResultScore(stats, true, false, 1)).toEqual(calculateResultScore(stats, true, false, 1, 1));
+  });
+});

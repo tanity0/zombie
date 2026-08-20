@@ -244,6 +244,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   };
   // 育成のスコア補正(そのランの焼き値)。ハイスコアと換金の両方に掛かる(社長裁定2026-08-20)。
   const growthScoreMult = useGameStore(s => s.player.growthScoreMult ?? 1);
+  // ステージ難度のスコア補正(同・焼き値)。高難度ステージほどスコア・換金が増える(S6=×1.8)。
+  const stageScoreMult = useGameStore(s => s.player.stageScoreMult ?? 1);
   const {
     damageScore,
     finisherScore,
@@ -256,7 +258,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     clearBonus,
     totalScore,
     goldEarned: goldEarnedBase,
-  } = calculateResultScore(stats, won, isLab, growthScoreMult);
+  } = calculateResultScore(stats, won, isLab, growthScoreMult, stageScoreMult);
   // スキル: ゴールドラッシュ(§6.10 M33⑪) = リザルトのラン獲得ゴールド ×1.2/1.35/1.5(Lv・四捨五入)。
   // そのランで装備していた場合に適用(storeのplayerはこのランの状態のまま)。表示と加算で同じ値を使う。
   const goldRushMult = useGameStore(s => skillGoldRushMult(s.player));
@@ -819,6 +821,10 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                     {growthScoreMult < 1 && (
                       <div className="mt-0.5 text-[10px] text-white/50 tabular-nums">強化補正 ×{growthScoreMult.toFixed(2)}</div>
                     )}
+                    {/* ステージ難度のスコア補正(高難度ほど稼げる)。効いている時だけ明記。 */}
+                    {stageScoreMult > 1 && (
+                      <div className="mt-0.5 text-[10px] text-emerald-200/70 tabular-nums">ステージ補正 ×{stageScoreMult.toFixed(1)}</div>
+                    )}
                   </div>
                   <div className="space-y-1 text-[11px] text-white/65 tabular-nums">
                     {scoreItems.map(item => (
@@ -903,6 +909,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   <div className="mt-1.5 text-2xl font-bold text-amber-200 tabular-nums leading-tight">{totalScore}</div>
                   {growthScoreMult < 1 && (
                     <div className="mt-0.5 text-[10px] text-white/50 tabular-nums">強化補正 ×{growthScoreMult.toFixed(2)}</div>
+                  )}
+                  {stageScoreMult > 1 && (
+                    <div className="mt-0.5 text-[10px] text-emerald-200/70 tabular-nums">ステージ補正 ×{stageScoreMult.toFixed(1)}</div>
                   )}
                   {topScoreItemResult && (
                     <div className="mt-0.5 text-[11px] text-white/60 truncate">

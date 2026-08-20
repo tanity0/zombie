@@ -390,7 +390,7 @@ import { isGhostEligibleBoss,
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
 import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, zoomedGunRange, isDirectGunWeaponKey, isGrenadeGunKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, scheduleDanceJustKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
@@ -406,7 +406,7 @@ import {
   GENBU_LINE_LENGTH, GENBU_LINE_HALF_W, GENBU_DAMAGE,
   SEIRYU_LINE_LENGTH, SEIRYU_LINE_HALF_W, SEIRYU_DAMAGE,
   BYAKKO_RANGE, BYAKKO_DAMAGE, BYAKKO_MAX_HITS,
-  SHIJIN_FINISH_BOSS_DAMAGE, SHIJIN_FINISH_SCREEN_MARGIN,
+  SHIJIN_FINISH_BOSS_DAMAGE, SHIJIN_FINISH_SCREEN_MARGIN, DANCE_BEAT_MODE,
 } from '../config/shijin';
 import type { RhythmArrow, RhythmPending, ShijinGod } from '../types/game';
 
@@ -958,7 +958,8 @@ const FORCE_GATEBOSS = evParam('gateboss') === '1';
 // (WAVE_GRACE_MS は src/utils/directorTick.ts へ移設)
 // ダンスビートB方式(社長決定 v0.25.1339・仕様はHANDOFF_DANCE_AUDIO.md末尾)。?beat=0で従来の
 // (メトロノーム無し+曲への自動アンカー同期)挙動へ完全復帰(切り分け用)。
-const BEAT_ENABLED = evParam('beat') !== '0';
+// URL読みは config/shijin の DANCE_BEAT_MODE に一本化(ジャスト吸着でgameStoreも同じ値を読むため)。
+const BEAT_ENABLED = DANCE_BEAT_MODE;
 const DANCE_BEAT_SCHEDULE_WINDOW_MS = 150; // 次の1拍をこの時間内に入ったら予約する(仕様:100〜200ms)
 
 // --- 裏ボス(深層域の隠しボス: mimir/jormungand)コントローラ定数 ---
@@ -1657,7 +1658,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       goldEarned: Math.round(
         // ★v0.25.2768: スコア倍率の廃止に伴い ghostSummonedThisRun の受け渡しも撤去
         // (元々 goldEarned には効いていなかった=引数を揃えるためだけに渡していた)。
-        calculateResultScore(s.gameStats, outcome === 'clear', s.stageTheme === 'lab', s.player.growthScoreMult ?? 1).goldEarned
+        calculateResultScore(s.gameStats, outcome === 'clear', s.stageTheme === 'lab', s.player.growthScoreMult ?? 1, s.player.stageScoreMult ?? 1).goldEarned
         * skillGoldRushMult(s.player)
       ),
       // M46(§6.21): 与ダメ/即死/近接ペース計測(gun/melee/otherチャネル・total=出力時に合算)。
@@ -1888,7 +1889,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ダンスのタップ(近接円)でも松明・卵を破壊。
         useGameStore.getState().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeR, 30);
         // B方式: メトロノームが拍そのものを鳴らすので、JUST成功音はピッチ上げで差別化(仕様4)。
-        playSfx(BEAT_ENABLED ? 'dance-kick-just' : 'dance-kick'); // ジャスト成功 → キックドラム(拍踏み)
+        // ジャスト吸着: 実行はdrainのatMsゲートで拍まで待たされているが、SEはさらにWebAudioの
+        // 時刻指定でその拍へ正確に予約する(フレーム粒度の遅れも消してメトロノームと重ねる)。
+        if (BEAT_ENABLED) scheduleDanceJustKick(pa.atMs ?? Date.now());
+        else playSfx('dance-kick'); // ?beat=0(従来経路)は即時のまま
       } else if (pa.kind === 'flick') {
         // バッシュ(フリック): カウンター窓を開き、近接フィニッシュ可(execute=true)、
         // ノックバックは上限6(=距離2倍)で強く弾く。
@@ -1897,7 +1901,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         rhythmLineAttack(pcx, pcy, v.x, v.y, RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT, true, RHYTHM_FLICK_KNOCKBACK_MAX);
         useGameStore.getState().spawnSlash(pcx + v.x * RHYTHM_FLICK_RANGE * 0.6, pcy + v.y * RHYTHM_FLICK_RANGE * 0.6, 'rgba(186,230,253,0.9)');
         // フリックの斬撃音(katana-dash)は無し。拍踏みのキックドラムのみ鳴らす(B方式はピッチ上げで差別化)。
-        playSfx(BEAT_ENABLED ? 'dance-kick-just' : 'dance-kick'); // フリックのジャスト成功でもキックドラム(拍踏み)
+        // ジャスト吸着: タップと同じくその拍の時刻へ予約(遅れた入力はクランプで即時)。
+        if (BEAT_ENABLED) scheduleDanceJustKick(pa.atMs ?? Date.now());
+        else playSfx('dance-kick');
       } else if (pa.kind === 'god') {
         fireShijinGod(pa.god, pa.x, pa.y);
       } else if (pa.kind === 'finish') {
@@ -6758,7 +6764,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // ※毎フレームの位相再同期(resync)は廃止。音楽クロックの微ノイズを追いかけて
             //   サークルが微振動(ブルブル)するため、開始時に合わせた固定グリッドで一定に流す。
             // pending(タップ/フリック/四神技/全体フィニッシュ)を消化して実行。
-            for (const pa of useGameStore.getState().drainRhythmPending()) {
+            // B方式: 拍(atMs)まで待ってから実行=ジャスト吸着(社長指示2026-08-20「無理やりちょうどの
+            // タイミングでSEと動きを合わせる」)。早めの入力は攻撃の絵と音が拍ぴったりに出る。
+            // 待ちの上限は成功窓(タップ±180ms/フリック+55ms)=知覚上は「入力→拍で発動」の型。
+            for (const pa of useGameStore.getState().drainRhythmPending(BEAT_ENABLED ? Date.now() : undefined)) {
               executeRhythmPending(pa);
             }
             // 白虎: 5秒間 0.5秒ごとに射程内の近い敵を1体斬る(最大10回)。毎フレーム探索しない。
@@ -6793,6 +6802,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               setDanceMode(true, lvl);
             } else {
               setDanceMode(false);
+              // ジャスト吸着の後始末: 拍待ちのまま消化されなかったpendingを捨てる(退出=320ms移動と
+              // 吸着の最大待ち235msは近く、稀に取り残しが出る。残すと次のダンス開始時に古いタップが
+              // 1発だけ発動する)。
+              useGameStore.setState(s => (s.rhythm.pending.length > 0
+                ? { rhythm: { ...s.rhythm, pending: [] } } : {}));
             }
             if (BEAT_ENABLED) setDanceBeatDuck(danceNow); // B方式: メトロノームが埋もれないよう曲を軽くダック
             danceModeRef.current = danceNow;

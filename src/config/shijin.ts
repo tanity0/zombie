@@ -32,6 +32,11 @@ export const rhythmIntervalForLevel = (level: number): number => {
   return 60000 / RHYTHM_BPM_BY_LEVEL[lvl];
 };
 export const RHYTHM_LEAD_MS = 600;            // モード開始〜最初のジャストまでの猶予
+// ダンスビートB方式(v0.25.1339)のON/OFF。?beat=0 で従来(曲アンカー同期)へ完全復帰(切り分け用)。
+// useGameLoop と gameStore(ジャスト吸着のSE予約)の両方が読むため、URL読みをここへ一本化する。
+export const DANCE_BEAT_MODE = typeof window === 'undefined'
+  ? true
+  : new URLSearchParams(window.location.search).get('beat') !== '0';
 // プレイ中の位相リシンク(自動アンカーの定期版)。曲が正確なテンポでも実時計/音声クロックの微差や
 // fps低下で僅かにズレうるので、たまに曲の実再生位置からビートグリッド起点を補正する。
 // 重くならない頻度(数秒に1回)＋閾値超えのズレだけ最小限に動かす(毎フレーム同期=ブルブルは避ける)。

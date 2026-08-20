@@ -27,7 +27,7 @@ import { BOUNTY_BASE_HP } from './bountyDims';
 // research/STAGE_DIFFICULTY.md: ステージ難度の階段(HP係数)。**生の台帳を直接読む**——表示は常に
 // 「プレイヤーが見る実戦の値」で、計測路の中立化(utils/stageDiffMults)は一覧を出さない場面の話なので
 // ここでは通さない。config/stageDifficulty.ts は依存ゼロの葉=循環importにならない。
-import { stageHpMult } from '../config/stageDifficulty';
+import { stageHpMult, BOUNTY_HOME_STAGE } from '../config/stageDifficulty';
 
 // ---------------------------------------------------------------------------------------------
 // 出撃の種類(ランのフラグ)
@@ -203,8 +203,12 @@ const GHOST_DERIVED_SLOTS: readonly PracticeSlot[] = GHOST_DOSSIER_SLOTS.map(toP
 // bossStyleSlotKey()(src/utils/ghostSlot.ts)がgiantbat以外の型に対して返すキーと同一形式
 // (isEngageableBossに賞金首4型が既に入っているので、directorTick.tsのengagedBossSlotKeys→
 // markBossesEncounteredが本編交戦開始時にこのキーをそのまま記録する。追加配線は不要)。
-// 出撃先=stage-1(lab/corridorではない野外・v6 B-5)。デバッグ強制出現は`?bountynow=1`相乗り
-// (useGameLoop.tsのFORCE_BOUNTY判定がpracticeForces('bountynow')を見る)。
+// 出撃先=**生息ステージ**(BOUNTY_HOME_STAGE・社長報告2026-08-20「難易度補正、ボスモードに
+// 入ってない」への修正)。旧v6 B-5では stage-1 固定(裁定理由は「lab/corridorではない野外」で、
+// 生息ステージも全て野外=理由は満たしたまま)。難度階段(v3676)で賞金首がステージ固有になった後も
+// 練習だけ stage-1=係数×1.0 で出ており、実戦(S3:1.2/S4:1.4/S5:1.6)と強さが食い違っていた。
+// 出撃先を生息地にすれば係数・背景・HP一覧(stageHpMult(slot.stageId))が全て台帳1本で一致する。
+// デバッグ強制出現は`?bountynow=1`相乗り(useGameLoop.tsのFORCE_BOUNTY判定がpracticeForces('bountynow')を見る)。
 const BOUNTY_PRACTICE_LABEL: Record<'bounty-ranged' | 'bounty-melee' | 'bounty-balance' | 'bounty-maiko', string> = {
   'bounty-ranged': 'バス停(変異)',
   'bounty-melee': '馬乗り(変異)',
@@ -216,7 +220,7 @@ const BOUNTY_PRACTICE_SLOTS: readonly PracticeSlot[] = BOUNTY_PRACTICE_TYPES.map
   slotKey: `${t}@practice`,
   encounterSlotKey: t,
   bossType: t,
-  stageId: 'stage-1',
+  stageId: BOUNTY_HOME_STAGE[t] ?? 'stage-1', // 生息ステージへ出撃=実戦と同じ難度係数が乗る
   param: 'bountynow',
   label: BOUNTY_PRACTICE_LABEL[t],
   reachable: true,
@@ -300,8 +304,8 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
  *    誤り**。正しくは2500で2.4倍のズレだった)。
  * ★**stage-ex1 は台帳に行が無い**ので従来どおり実効2500=表示できない(null)。
  * ★research/STAGE_DIFFICULTY.md: 実戦のスポーンは台帳HPに**ステージ係数**を掛けるので、表示も同じ式で出す
- *   (掛けないと一覧が実戦と食い違う)。賞金首枠・幻影枠は stageId='stage-1' 固定=×1.0で従来と同値
- *   (幻影は実戦側も係数を通さないので、この枠の出撃先が stage-1 であることが一致の前提)。
+ *   (掛けないと一覧が実戦と食い違う)。賞金首枠は生息ステージへ出撃(2026-08-20修正)=実戦と同係数。
+ *   幻影枠は stage-1 固定のまま(実戦側も係数を通さないので×1.0が正)。
  *   計測路(ボスメーカー/ガントレット)は実戦側が1.0だが、その場面ではこの一覧を出さないので生の係数でよい。
  */
 export const practiceBossHealth = (slot: PracticeSlot): number | null => {

@@ -139,6 +139,9 @@ export interface Player extends DashLocomotionState {
   /** スコア倍率(社長裁定2026-08-20: メーター1本フルで−0.2・ゴールド系統は数えない・既定1.0)。
    *  リザルトの totalScore と goldScore の両方に掛かる(換金も下げる)。 */
   growthScoreMult: number;
+  /** ステージ難度のスコア倍率(社長指示2026-08-20「難易度補正の分、スコアにも。換金にも」)。
+   *  難度階段のHP係数の焼き値(S3=1.2〜S6=1.8・他は1.0)。totalScore/goldScore の両方に掛かる。 */
+  stageScoreMult: number;
   // Level-up crit bonus [0, 0.30]. Gun shots add this to the weapon's base
   // crit chance; melee uses its weapon crit chance directly.
   critChance: number;
@@ -1388,9 +1391,13 @@ export type ConsumableKey = 'scrap-boost' | 'attack-doping' | 'speed-boost' | 'x
 export type RhythmArrow = 'up' | 'down' | 'left' | 'right';
 export type ShijinGod = 'suzaku' | 'genbu' | 'seiryu' | 'byakko';
 // loop が消化する実行待ちアクション(store=判定/状態、loop=攻撃実行 の橋渡し)。
+// atMs(社長指示2026-08-20「無理やりちょうどのタイミングでSEと動きを合わせる」=ジャスト吸着):
+// その入力が取った拍の時刻(Date.now基準=拍グリッドと同じ時計)。B方式ではloopが**この時刻まで
+// 実行を待つ**ことで、早めのタップでも攻撃の絵・SEが拍ぴったりに出る(遅れたタップは即時=過去へは
+// 戻せない)。god/finish は atMs を持たず、直前のflickが実行された同フレームに続けて出る(順序保持)。
 export type RhythmPending =
-  | { kind: 'tap' }
-  | { kind: 'flick'; arrow: RhythmArrow }
+  | { kind: 'tap'; atMs?: number }
+  | { kind: 'flick'; arrow: RhythmArrow; atMs?: number }
   | { kind: 'god'; god: ShijinGod; x: number; y: number }
   | { kind: 'finish' };
 export interface RhythmState {

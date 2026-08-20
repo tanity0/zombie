@@ -28,3 +28,8 @@ export const BOUNTY_TYPE_BY_STAGE: Partial<Record<string, EnemyType>> = {
   'stage-4': 'bounty-balance', // 鋏
   'stage-5': 'bounty-maiko',   // 舞妓
 };
+
+/** 賞金首→生息ステージの逆引き(上の表から機械導出=二重管理しない)。ボスモードの出撃先が使う。 */
+export const BOUNTY_HOME_STAGE: Partial<Record<string, string>> = Object.fromEntries(
+  Object.entries(BOUNTY_TYPE_BY_STAGE).map(([stageId, type]) => [type as string, stageId]),
+);

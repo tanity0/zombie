@@ -49,11 +49,16 @@ const GOLD_CAP_SCRAP = 8000;
 // 下げるメリットが薄まるため」=メーターを下げれば実入りも戻る)。0段=1.0で従来と完全一致。
 // ※v0.25.2768の「守護霊スコア倍率廃止」とは別物(あちらは霊が与ダメを持っていく=自然に下がるから
 //   二重取りだった。育成は自然には下がらないので倍率で払う)。守護霊の引数は引き続き足さない。
+// ★ステージ難度のスコア補正(社長指示2026-08-20「難易度補正の分、スコアにも補正を。換金にも。
+// つまりステージ1より6の方が稼げる(しんどいが)」): stageMult = そのランの焼き値
+// player.stageScoreMult(=難度階段のHP係数をそのまま流用: S1/S2/S7=1.0・S3=1.2・S4=1.4・
+// S5=1.6・S6=1.8)。growthScoreMult と同じく totalScore と goldScore の両方に1回掛ける。
 export const calculateResultScore = (
   stats: GameStats,
   won: boolean,
   isLab = false,
   scoreMult = 1,
+  stageMult = 1,
 ): ResultScore => {
   const netScrap = Math.max(0, stats.strapsCollected - stats.strapsSpent);
 
@@ -76,7 +81,7 @@ export const calculateResultScore = (
   // 青天井(ハイスコア/表示)。育成のスコア補正は**合計に1回だけ**掛けて最後に丸める。
   const totalScore = Math.round((
     clearBonus + treasureScore + damageScore + finisherScore +
-    comboScore + eliteBossScore + scrapScore + survivalScore + speedBonus) * scoreMult);
+    comboScore + eliteBossScore + scrapScore + survivalScore + speedBonus) * scoreMult * stageMult);
 
   // 換金(各項目をMAXでクランプ。treasure/eliteBoss は cap 無し)。こちらにも同じ補正が掛かる(裁定)。
   const goldScore = Math.round((
@@ -86,7 +91,7 @@ export const calculateResultScore = (
     Math.min(comboScore, GOLD_CAP_COMBO) +
     eliteBossScore +
     Math.min(scrapScore, GOLD_CAP_SCRAP) +
-    survivalScore + speedBonus) * scoreMult);
+    survivalScore + speedBonus) * scoreMult * stageMult);
 
   return {
     clearBonus, treasureScore, damageScore, finisherScore, comboScore,

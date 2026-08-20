@@ -92,7 +92,7 @@ import {
   RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
   RHYTHM_START_INVULN_MS, SHIJIN_FINISH_COUNT, SHIJIN_BY_ARROW, rhythmComboStage,
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
-  SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
+  SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
@@ -5090,7 +5090,8 @@ interface GameState {
   tickRhythm: () => void;
   startByakko: () => void;
   advanceByakko: () => void;
-  drainRhythmPending: () => RhythmPending[];
+  /** nowMs を渡すと「拍(atMs)が来たものだけ」先頭から返す(ジャスト吸着)。省略=全部(?beat=0 の従来経路)。 */
+  drainRhythmPending: (nowMs?: number) => RhythmPending[];
   setGameBounds: (bounds: GameBounds) => void;
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
@@ -5250,6 +5251,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 実際の焼き込みは resetGame(出撃時に1回)。
     growthAtkMult: 1,
     growthScoreMult: 1,
+    stageScoreMult: 1,
     growthAmmoMax: { ...AMMO_MAX },
     growthGoldMult: 1,
     growthXpMult: 1,
@@ -16010,10 +16012,23 @@ export const useGameStore = create<GameState>((set, get) => ({
     const arrow: RhythmArrow | null = (kind === 'flick' && dir) ? arrowFromDir(dir.x, dir.y) : null;
     // 頭上表示用の入力履歴: フリックを末尾に追加(末尾4つを表示、5つ目以降は古いものから消える)。
     let inputArrows = arrow ? [...r.inputArrows, arrow].slice(-8) : r.inputArrows;
+    // ジャスト吸着の拍時刻。★強制JUSTモード(danceForceJust)は拍から遠いタップも成功になるため、
+    // beatTを付けると最大ほぼ1拍(500〜600ms)待たされる=検収監査Q2の指摘。force時は吸着なし(即時)。
+    const snapAt = state.danceForceJust ? undefined : beatT;
+    // ★SEの拍予約はここ(=入力の瞬間)で出す。drainのatMsゲートを通った後だと拍は常に過去=
+    // クランプで即時になり予約が機能しない(検収監査Q1の指摘)。ここなら最大235ms先の未来へ
+    // サンプル精度で予約でき、メトロノームのキックと重なって太い1発に聞こえる。遅れた入力は
+    // playSfxAt側のクランプで即時。audioManagerは静的importできない(循環)ため動的import。
+    // minIntervalMs(60ms)の重複抑止はこの経路に無いが、JUST成功は1拍(>=428ms)に1回しか
+    // 起きない(expectBeatが進む)ので構造的に重ならない=意図的に外している(検収監査Q3)。
+    if (DANCE_BEAT_MODE) {
+      const seAt = snapAt ?? gt;
+      void import('../audio/audioManager').then(m => m.scheduleDanceJustKick(seAt));
+    }
     if (!arrow) {
-      newPending.push({ kind: 'tap' }); // タップ=周囲を軽く吹き飛ばし
+      newPending.push({ kind: 'tap', atMs: snapAt }); // タップ=周囲を軽く吹き飛ばし(実行は拍へ吸着)
     } else {
-      newPending.push({ kind: 'flick', arrow }); // フリック=方向攻撃
+      newPending.push({ kind: 'flick', arrow, atMs: snapAt }); // フリック=方向攻撃(実行は拍へ吸着)
       if (arrow === prompt[inputIndex]) {
         inputIndex++;
         if (inputIndex >= prompt.length) {
@@ -16120,11 +16135,26 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-  drainRhythmPending: () => {
+  drainRhythmPending: (nowMs) => {
     const p = get().rhythm.pending;
     if (p.length === 0) return [];
-    set(s => ({ rhythm: { ...s.rhythm, pending: [] } }));
-    return p;
+    // ジャスト吸着(社長指示2026-08-20): nowMs を渡された時は「拍の時刻(atMs)が来たものだけ」を
+    // 先頭から取り出す。**最初のまだ来ていない項目で止める**(飛ばさない)——god/finish は atMs を
+    // 持たず、直前の flick の実行に続いて出る約束なので、順序を崩すと技が入力より先に出る。
+    // nowMs 省略(=?beat=0 の従来経路)は全部返す=従来挙動。
+    let take = p.length;
+    if (nowMs !== undefined) {
+      take = 0;
+      while (take < p.length) {
+        const at = (p[take] as { atMs?: number }).atMs;
+        if (at !== undefined && at > nowMs) break;
+        take++;
+      }
+      if (take === 0) return [];
+    }
+    const due = p.slice(0, take);
+    set(s => ({ rhythm: { ...s.rhythm, pending: s.rhythm.pending.slice(take) } }));
+    return due;
   },
 
   setGameBounds: (bounds) => {
@@ -16264,6 +16294,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const bakedGrowthXpMult = growthXpMult(activeUpgradeLevel(growthMeters, 'xp'));
     // スコア倍率(社長裁定2026-08-20): メーター1本フルで−0.2・ゴールド系統は数えない。計測路は上と同じく0段=1.0。
     const bakedGrowthScoreMult = growthScoreMult(growthMeters);
+    // ステージ難度のスコア倍率(社長指示2026-08-20「難易度補正の分、スコアにも。換金にも」):
+    // 難度階段のHP係数をそのまま流用(S3=1.2〜S6=1.8・他/計測路は1.0=ヘルパが返す)。
+    const bakedStageScoreMult = stageBossDiffMults().hp;
     // DDAの参照HP(社長裁定Q3=A案): profile.maxHp+育成HP加算。**装備HPは含めない**
     // (含めると現行PPに乗っている装備HP寄与が消える=裁定外の挙動変更になる)。
     const bakedDdaBaseHp = profile.maxHp + growthHpBonus;
@@ -16587,6 +16620,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 育成の焼き値(上の「★焼き込みの原則」)。ラン中の参照先はここ。
           growthAtkMult: bakedGrowthAtkMult,
           growthScoreMult: bakedGrowthScoreMult,
+          stageScoreMult: bakedStageScoreMult,
           growthAmmoMax: bakedGrowthAmmoMax,
           growthGoldMult: bakedGrowthGoldMult,
           growthXpMult: bakedGrowthXpMult,
