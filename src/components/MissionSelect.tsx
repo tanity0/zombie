@@ -606,7 +606,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // EXノード(統合正本10.1 / 指示書8.1): 条件成立(再訪で薬を使用)まで一切出さない(伏せ表示もしない)。
     // hidden=旧ex2の残置データ(導線なし)。
     const storyFlags = getStoryFlags();
-    const exs = STAGES.filter(s => s.kind === 'ex' && !s.hidden && canShowEx(storyFlags) && isStageUnlocked(s, cleared));
+    // v0.25.3717(実機テスト用・社長「EXステージどこ」): `?exshow=1` でストーリー条件(薬使用)と
+    // 解放条件を無視してEXを一覧に出す。製品挙動は不変(パラメータ無しなら従来どおり)。
+    const exForced = (() => { try { return new URLSearchParams(window.location.search).get('exshow') === '1'; } catch { return false; } })();
+    const exs = STAGES.filter(s => s.kind === 'ex' && !s.hidden && (exForced || (canShowEx(storyFlags) && isStageUnlocked(s, cleared))));
     return (
       <>
         <Header title="作戦地域" onBack={() => setScreen({ name: 'home' })} />
