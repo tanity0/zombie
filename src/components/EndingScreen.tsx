@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ENDING_HEADER, ENDING_SCRIPT, ENDING_FINAL_WORD } from '../data/ending';
+import { setEndingBgm } from '../audio/audioManager';
 
 // 通常エンディング(社長編集稿v0.25.2191): 軍の聴取記録→暗転で「成し得なかった」だけが残り
 // フェードアウト→入れ替わりに「the ONE」フェードイン→メニューへ。
@@ -18,6 +19,12 @@ interface EndingScreenProps {
 }
 
 const EndingScreen: React.FC<EndingScreenProps> = ({ onDone }) => {
+  // エンディングBGM(社長支給2026-08-20): この画面のマウント中だけ再生。通常BGMは gameState==='ending'
+  // 中は App が setBgmScene('off') にしているので重ならない。
+  useEffect(() => {
+    setEndingBgm(true);
+    return () => setEndingBgm(false);
+  }, []);
   const [phase, setPhase] = useState<Phase>('script');
   const [lineIdx, setLineIdx] = useState(0); // 表示済みの行数-1(0=最初の1行のみ表示)
   const timerRef = useRef<number | null>(null);

@@ -15108,9 +15108,9 @@ export class PixiScene {
     // research/GHOST_BOSS.md(守護霊ボス「幻影」): 出現演出・赤い目・技の予告(赤帯/赤ライン)。
     // ★**判定・状態は一切書かない**(store を読むだけ)。ここを通るのは幻影1体だけ。
     if (e.type === 'guardian-phantom') this.drawGuardianPhantom(view, e, gameTime, now, fb, cx, cy);
-    // PACING_PUZZLE.md §9-4(削岩型の突き予告): windup中はaiFrom→aiTargetの赤帯(判定と同寸=
-    // 長さ200×半幅12)。分類①(危険を伝える絵)=判定と厳密一致(既存の帯予告=drawTelegraphBand/
-    // T3ゾーンの意匠をそのまま流用。activeの瞬間の絵は最低限でよいので専用描画は置かない)。
+    // PACING_PUZZLE.md §9-4(削岩型の突き): windup中はaiFrom→aiTargetの赤帯予告(判定と同寸=
+    // 長さ200×半幅12・分類①=判定と厳密一致)。active中は「突きが走る絵」(下のease-out伸長。
+    // 検収監査#5/Bで追加=当たる瞬間の絵+慣性MUST)。
     if (e.type === 'driller' && (e.aiPhase === 'driller-thrust-windup' || e.aiPhase === 'driller-thrust-active')) {
       const dfx = e.aiFromX ?? cx, dfy = e.aiFromY ?? cy;
       const dtx = e.aiTargetX ?? cx, dty = e.aiTargetY ?? cy;
@@ -15120,19 +15120,23 @@ export class PixiScene {
       const dux = ddx / ddl, duy = ddy / ddl;
       const dhw = DRILLER_THRUST_HALF_WIDTH;
       if (e.aiPhase === 'driller-thrust-active') {
-        // 検収監査#5:「当たる瞬間の絵」。判定と同寸の帯を白熱→琥珀の突きとして一気に走らせ、
-        // activeの残時間でフェードする(旧: activeは無描画=赤帯が当たる瞬間に消え、既存レールの
-        // 小爆発だけが見えて「ドリルで突いた」と読めなかった)。分類①=判定と同寸(はみ出さない)。
+        // 検収監査#5+B:「当たる瞬間の絵」=白熱→琥珀の突き。**幾何を動かす**(慣性MUST):
+        // activeの前半で先端をease-out(1-(1-t)^3)で0→全長へ伸ばし切り、終端で止めて残時間でフェード。
+        // 判定は積み済み=絵をどう動かしても判定は不変。分類①=終端形状が判定と同寸(はみ出さない)。
         const aDur = Math.max(1, DRILLER_THRUST_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT);
         const aT = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / aDur));
+        const extT = Math.min(1, aT / 0.4);                 // 前半40%で伸ばし切る
+        const ext = 1 - Math.pow(1 - extT, 3);              // ease-out=突きの勢い→減速
+        const atx = dfx + (dtx - dfx) * ext, aty = dfy + (dty - dfy) * ext;
         const apts = [
           dfx - dux * dhw + dnx * dhw, dfy - duy * dhw + dny * dhw,
-          dtx + dux * dhw + dnx * dhw, dty + duy * dhw + dny * dhw,
-          dtx + dux * dhw - dnx * dhw, dty + duy * dhw - dny * dhw,
+          atx + dux * dhw + dnx * dhw, aty + duy * dhw + dny * dhw,
+          atx + dux * dhw - dnx * dhw, aty + duy * dhw - dny * dhw,
           dfx - dux * dhw - dnx * dhw, dfy - duy * dhw - dny * dhw,
         ];
-        o.poly(apts).fill({ color: 0xffe4b0, alpha: 0.55 * (1 - aT) });
-        o.poly(apts).stroke({ width: 3, color: 0xffb347, alpha: 0.85 * (1 - aT) });
+        const aFade = aT < 0.4 ? 1 : 1 - (aT - 0.4) / 0.6;  // 伸び切ってからフェード
+        o.poly(apts).fill({ color: 0xffe4b0, alpha: 0.55 * aFade });
+        o.poly(apts).stroke({ width: 3, color: 0xffb347, alpha: 0.85 * aFade });
       } else {
         const dprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (DRILLER_THRUST_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
         const dpulse = 0.55 + 0.45 * Math.sin(now / 80);

@@ -24,6 +24,7 @@ const GAME_BGM: Record<string, string> = {
   stage5: `${import.meta.env.BASE_URL}audio/stage5.mp3`, // 軍本部(ステージ5)。stage.bgm='stage5'
   stage6: `${import.meta.env.BASE_URL}audio/stage6.mp3`, // 古い洋館(ステージ6)。stage.bgm='stage6'
   stage7: `${import.meta.env.BASE_URL}audio/ashen-crown-oath.mp3`, // M7=ラスボス曲(社長提供・灰の冠の誓い)。stage.bgm='stage7'(v0.25.1940)
+  ex: `${import.meta.env.BASE_URL}audio/ex-battle.mp3`, // EXステージ(洋館跡地=フィル戦)曲(社長提供2026-08-20)。stage.bgm='ex'
 };
 // 深層域BGM(逆再生版)。屋外ステージごとに areverse 版を用意(命名 stageN-reverse.mp3)。
 // 深層域に入ると通常BGMを pause(位置保持)し、こちらを play で即時切替する(クロスフェード無し)。
@@ -978,6 +979,25 @@ export const setAudioMuted = (nextMuted: boolean) => {
   applyBgm();
   applyDanceAudio();
   applyRadioLayerAudio(); // ラジオ層(ステージ2クロスフェード)もmute設定に即追従
+};
+
+// ---- エンディングBGM(社長支給 2026-08-20・public/audio/ending.mp3) --------------------------
+// EndingScreen のマウント中だけ専用要素で再生する。gameState==='ending' 中は App が
+// setBgmScene('off') にする=通常BGM機構は停止済みで重ならない。1画面限りの一本道なので
+// シーン機構(GAME_BGM)には乗せない。音量はBGMスライダー(bgmVolume)に従う。
+const ENDING_BGM_TRACK = assetUrl('audio/ending.mp3');
+let endingEl: HTMLAudioElement | null = null;
+export const setEndingBgm = (on: boolean) => {
+  if (!on) {
+    if (endingEl) { try { endingEl.pause(); } catch { /* ignore */ } endingEl = null; }
+    return;
+  }
+  if (endingEl || muted) return;
+  const el = new Audio(ENDING_BGM_TRACK);
+  el.loop = true;
+  el.volume = bgmVolume;
+  endingEl = el;
+  void el.play().catch(() => { /* 自動再生拒否は無音のまま(エンディングはタップ操作があるので稀) */ });
 };
 
 export const setBgmVolume = (volume: number) => {

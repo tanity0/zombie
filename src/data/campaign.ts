@@ -501,6 +501,7 @@ export const STAGES: Stage[] = [
     kind: 'ex',
     name: '洋館跡地',
     area: 'クリア後 / 軍の正式任務',
+    bgm: 'ex', // EXバトル曲(社長支給2026-08-20・public/audio/ex-battle.mp3)
     unlockBy: 'stage-7',
     day: 42,
     time: '03:40',

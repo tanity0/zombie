@@ -12217,7 +12217,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // effectiveGateProgram を持たないので自然に対象外(§9-8①)。
             if (enemy.type === 'pumpkin' && effectiveGateProgram
               && resolvePumpkinTier(allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun())) === 'driller') {
-              enemy = generateEnemy(gameTime, player, spawnBounds, 'driller', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+              // 監査A: sceneRareMultを落とさない(落とすとdrillerだけ色ティア抽選が1.0に下がる=§9-7#3違反)。
+              enemy = generateEnemy(gameTime, player, spawnBounds, 'driller', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, [], [], sceneRareMult);
             }
             // 洋館通路(corridorMode): 移動不可エリアに敵を沸かせない(社長指示v0.25.2391「ステージ2に
             // 限らず」)。プレイヤー移動と同じ帯定義(clampRectToPlayableArea)へ寄せる。ここは通常湧き
