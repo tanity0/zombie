@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3702',
+    items: [
+      'ゲーム内容の変更はありません(新型雑魚「削岩型」設計書への監査指摘7件の反映のみ)。',
+    ],
+  },
+  {
     version: '0.25.3701',
     items: [
       'ゲーム内容の変更はありません(新型雑魚「削岩型」の設計書と立ち絵素材の取り込みのみ。実装は次版以降)。',

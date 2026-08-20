@@ -7344,3 +7344,30 @@ KB中の跳ね描画(`pixiScene.ts` ＝実速度が乗っている時だけ跳�
 - **確定表(FORMATION_TABLE)の改訂ではない**: パンプキン枠の分け合いのみ。台本の数字は動かさない。
 - **バランスの最終値ではない**: CD/windup/間合い/50%比率は叩き台=実機で社長が調整する前提。
   数値の妥当性への指摘は不要(構造の穴・漏れだけを見る)。
+
+### §9-7 監査反映v2(着手前監査・7指摘 2026-08-20。**§9-2〜§9-6と矛盾したら本節が勝つ**)
+1. **「同格」は述語1本で機械化する**: `isPumpkinTier(type)`(= pumpkin | driller)を enemyUtils に立て、
+   pumpkin の特別扱いを全てこの述語経由に置換する。監査で列挙された効きの大きい箇所:
+   isEliteType(meleeExecute=近接フィニッシュ即死の免除)/isBossType(HPバー・致命の一撃・KB耐性)/
+   isScoreElite(eliteKills計上)/関所の同時数キャップ・不応期(**キャップは pumpkin+driller の合算で2**)/
+   ノックバック免除/カリング保護/死亡FXの重さ/四神の対象/pixiSceneのHPバー・影・擬似遠近。
+   **実装時に `'pumpkin'` の全ヒットを走査し、「置換した/しない(理由)」を全件DEVLOGに列挙**する
+   (Partialテーブルは型が守らない=列挙が唯一の安全網)。講習(reliefProgram)はpumpkin講習のまま=置換しない。
+2. **台本外の実体化地点2つ(監査発見)は差し替えない**: 囲いイベントのミニボス(useGameLoop 3255)と
+   ホードのN体目(3319)は**pumpkinのまま**。役割が「押してくる重石」でカイト型だと体験が別物になるため。
+   ★社長への確認枠(推薦=差し替えない。「そこもdrillerを混ぜたい」なら1行で変更可)。
+3. **強さスケール=pumpkinと同じ**: CONSTANT_STRENGTH_TYPES に入れない(エリア/時間/色ティアで
+   HP・攻撃がスケールする)。赤ティア=強個体扱いも同じ。
+4. **州と赤帯の約束**: 3州(thrust-windup/active/recover)は Enemy の該当ユニオン型に追加(型が守る)。
+   カウンター成立は**activeの判定フレームのみ=既存モブの赤予告(パンプキンのジャンプ着地円)と同じ文法**。
+   windup中の成立は作らない(新しい約束を発明しない)。COUNTER_REACH_DECL はボス用台帳=対象外のまま。
+5. **表示・資料の追従先(全列挙)**: enemyDeathLabel「削岩型」/ getEnemyColor '#d9a441' /
+   資料室(campaign.ts の敵図鑑)に1行「変異体(削岩型)」/ zooViewer / enemyVariant(driller-common 1種)。
+   モーションは既定の歩き(専用モーションはv1では作らない)。
+6. **retreatの厳密化**: 優先順= stun/knockback > thrust3州 > retreat > 通常移動(後退と重なったら
+   retreatが勝つ=方向は同じで速度1.5倍)。「近接被弾」=プレイヤー/守護霊/分身の**近接武器の打撃**
+   (ナイフ・刀・鞭のスイング/近接フィニッシュ/スラッシャー追撃)。銃・爆発・サブ武器・カウンター反撃・
+   DoTは含めない。Enemyに `drillerRetreatUntil?: number` を追加し、**個体リサイクル経路で必ずクリア**。
+   適用地点は実装時に列挙してDEVLOGに残す(幻影v9の取りこぼしの教訓)。
+7. **計測路では常にpumpkin**: resolvePumpkinTier は計測路(ボス練習/ボスメーカー/ガントレット)で
+   driller を返さない(GROWTH/STAGE_DIFFICULTY「計測路は中立化」と同じ方針)。
