@@ -11943,6 +11943,19 @@ export class PixiScene {
         // v0.25.3324: 実機ではconsoleが見えず例外源を特定できない(アクラシエル3度目の報告)。
         // 左下バージョン表示に赤字で要約を出すビーコンへも渡す(storeは書かない=描画専門の掟は維持)。
         reportSuppressedError(`draw:${e.type}`, err);
+        // ★fail-visible(v0.25.3696・社長報告「グラフィックが固まって、当たり判定だけ透明で動く」
+        // =グレン/アクラシエルの凍結族): 例外で view が丸ごと更新されないと**絵は凍結・シミュだけ
+        // 進む透明ボス**になり、何も見えないままダメージだけ受ける。最低限の「位置・向き・表示」だけ
+        // 素で追従させ、演出ゼロでも**見えて動くボス**に劣化させる(戦える)。ビーコンは引き続き出る
+        // =原因特定の手掛かりは失わない。例外フレームのみの追加コスト=負荷1/10。
+        try {
+          const fbE = enemyFootBox(e);
+          view.sprite.visible = true;
+          view.sprite.alpha = 1;
+          view.sprite.rotation = 0;
+          view.sprite.skew.set(0, 0);
+          view.sprite.position.set(Math.round(fbE.footX), Math.round(fbE.footY));
+        } catch { /* 最終フォールバックすら失敗したら諦める(次フレームでまた試す) */ }
       }
     }
     for (const [id, view] of this.enemies) {

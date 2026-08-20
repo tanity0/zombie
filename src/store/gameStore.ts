@@ -2198,7 +2198,7 @@ export const GIANT_GLIDE_SECOND_HIT_RADIUS = 150; // 滑空の終点に開くT2�
 // --- stage-3: 急降下(dive・大技・トレース元=カラミートの飛翔→急降下) ---
 export const GIANT_DIVE_WINDUP_MS = 1680;  // 実効1400ms・本体は画面外へ(無敵ではなく居ない)
 export const GIANT_DIVE_RECOVER_MS = 1440; // 実効1200ms
-export const GIANT_DIVE_CD_MS = 14400;     // 実効12.0s
+export const GIANT_DIVE_CD_MS = 12000;     // 実効10.0s(社長指示2026-08-20「樹木管理員、大技のCDを10秒に」。旧14400=実効12.0s)
 export const GIANT_DIVE_RADIUS = 220;      // 地面のT5フェードイン円(実行=着弾は瞬時)
 export const GIANT_DIVE_AWAY_OFFSET = 20000; // 画面外へ退避させる距離(描画/リサイクル判定の外)
 
@@ -2258,7 +2258,7 @@ export const GIANT_QUAD_BREATH_SWEEP_RAD = (2 * Math.PI) / 3;  // 120°(sweepbea
 export const GIANT_NOVA_WINDUP_MS = 1440;  // 実効1200ms・身を屈めて静止
 export const GIANT_NOVA_ACTIVE_MS = 840;   // 実効700ms・半径60→400が広がる
 export const GIANT_NOVA_RECOVER_MS = 1320; // 実効1100ms
-export const GIANT_NOVA_CD_MS = 13200;     // 実効11.0s
+export const GIANT_NOVA_CD_MS = 12000;     // 実効10.0s(社長指示2026-08-20「大技系は10秒CDを標準に」。旧13200=実効11.0s)
 export const GIANT_NOVA_RADIUS_START = 60;
 export const GIANT_NOVA_RADIUS_END = 400;
 export const GIANT_NOVA_BAND_THICKNESS = GIANT_SWEEP_HALF_WIDTH; // 輪の判定幅(叩き台=sweepの半幅を流用)
@@ -2274,7 +2274,7 @@ export const GIANT_NOVA_BAND_THICKNESS = GIANT_SWEEP_HALF_WIDTH; // 輪の判定
 export const GIANT_WING_WINDUP_MS = 1440;       // 実効1200ms・羽を頭上に広げて静止
 export const GIANT_WING_ACTIVE_MS = 312;        // 実効260ms・素早くぶん回す
 export const GIANT_WING_RECOVER_MS = 1560;      // 実効1300ms・全技中で最大の反撃窓=大技の報酬
-export const GIANT_WING_CD_MS = 13200;          // 実効11.0s
+export const GIANT_WING_CD_MS = 12000;          // 実効10.0s(社長指示2026-08-20「大技系は10秒CDを標準に」。旧13200=実効11.0s)
 export const GIANT_WING_RADIUS = 380;
 
 // ★三連射(trishot)= stage-5 の固有技(v0.25.2939・社長支給素材)。
@@ -2295,7 +2295,7 @@ export const GIANT_TRISHOT_SPREAD_RAD = Math.PI / 5; // 左右の帯の開き角
 export const GIANT_SWEEPBEAM_WINDUP_MS = 1560;  // 実効1300ms・頭を上げて溜める
 export const GIANT_SWEEPBEAM_ACTIVE_MS = 1080;  // 実効900ms・120°を回転して薙ぐ
 export const GIANT_SWEEPBEAM_RECOVER_MS = 1440; // 実効1200ms
-export const GIANT_SWEEPBEAM_CD_MS = 15600;     // 実効13.0s
+export const GIANT_SWEEPBEAM_CD_MS = 12000;     // 実効10.0s(社長指示2026-08-20「大技系は10秒CDを標準に」。旧15600=実効13.0s)
 export const GIANT_SWEEPBEAM_LENGTH = 700;
 export const GIANT_SWEEPBEAM_HALF_WIDTH = 30;
 // 懐(回転の中心付近)が安全=帯の始点を中心からこの分だけ前へ出す(ウリの内径修正=v0.25.2376の方式を
