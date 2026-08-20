@@ -89,15 +89,60 @@ const headTopCache = new Map<string, number | null>();
 const headCxCache = new Map<string, number | null>();
 const HEAD_BAND_FRAC = 0.18; // 頭部帯=コンテンツ高さの上から18%(実測でマークスマンの頭部を覆う)
 
-const measureHeadTop = async (name: string): Promise<void> => {
+// ★計測の永続キャッシュ+リトライ(v0.25.3690・社長報告「またアバターずれてる。定期的にもどっちゃうのなぜ」):
+// 旧実装は起動のたびに体の絵を**もう1回fetchして**計測し、1回でも失敗するとそのセッションは
+// 黙って追従0(null)に落ちていた(リトライ無し・保存無し・console.warnのみ)。
+// **「日によってズレたり直ったりする」の正体**=読み込みが失敗したセッションだけズレる。
+//  ①成功した計測を localStorage に保存する。キーは ?v=内容ハッシュ込みのURL=素材を差し替えれば
+//    自動で失効して再計測(手動バンプ不要・assetUrlの規約に相乗り)。
+//  ②保存済みの値があれば fetch せず即採用(起動も軽くなる)。
+//  ③無ければ計測し、失敗時は2回までリトライ(1s/3s)。それでも駄目な時だけ従来どおり null(追従0)。
+const AVATAR_HEAD_LS_KEY = 'zombie:avatarHeadCache:v1';
+type HeadLsEntry = { top: number | null; cx: number | null };
+const headLsStore: Record<string, HeadLsEntry> = (() => {
   try {
-    const img = new Image();
-    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = spritePath(name); });
+    const raw = localStorage.getItem(AVATAR_HEAD_LS_KEY);
+    const o = raw ? JSON.parse(raw) : {};
+    return (o && typeof o === 'object') ? o : {};
+  } catch { return {}; }
+})();
+const saveHeadLs = (): void => {
+  try { localStorage.setItem(AVATAR_HEAD_LS_KEY, JSON.stringify(headLsStore)); } catch { /* ignore */ }
+};
+const loadImageWithRetry = async (src: string, retries: number): Promise<HTMLImageElement> => {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const img = new Image();
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = src; });
+      return img;
+    } catch (e) {
+      if (attempt >= retries) throw e;
+      await new Promise(res => setTimeout(res, attempt === 0 ? 1000 : 3000));
+    }
+  }
+};
+
+const measureHeadTop = async (name: string): Promise<void> => {
+  const url = spritePath(name);
+  const cached = headLsStore[url];
+  if (cached && typeof cached === 'object') {
+    headTopCache.set(name, typeof cached.top === 'number' ? cached.top : null);
+    headCxCache.set(name, typeof cached.cx === 'number' ? cached.cx : null);
+    return;
+  }
+  try {
+    const img = await loadImageWithRetry(url, 2);
     const w = img.naturalWidth, h = img.naturalHeight;
-    if (!w || !h) { headTopCache.set(name, null); headCxCache.set(name, null); return; }
+    // 空画像=素材そのものの性質(決定的)なので null を**保存して**再fetchも避ける。
+    if (!w || !h) {
+      headTopCache.set(name, null); headCxCache.set(name, null);
+      headLsStore[url] = { top: null, cx: null }; saveHeadLs();
+      return;
+    }
     const cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
     const ctx = cv.getContext('2d');
+    // ctx取得失敗=環境の一時事情かもしれないので保存しない(次回また試す)。
     if (!ctx) { headTopCache.set(name, null); headCxCache.set(name, null); return; }
     ctx.drawImage(img, 0, 0);
     const d = ctx.getImageData(0, 0, w, h).data;
@@ -110,7 +155,11 @@ const measureHeadTop = async (name: string): Promise<void> => {
       }
     }
     headTopCache.set(name, top);
-    if (top === null) { headCxCache.set(name, null); return; }
+    if (top === null) {
+      headCxCache.set(name, null);
+      headLsStore[url] = { top: null, cx: null }; saveHeadLs(); // 全行透明も決定的=保存
+      return;
+    }
     // 走査2: 頭部帯(top〜コンテンツ高さ18%)だけの横bbox中心。ライフル等の低い位置の突起に
     // 引っ張られない=前傾(頭の横移動)を正しく拾う。フレーム中心基準で保存。
     const band = Math.max(2, Math.round((bottom - top + 1) * HEAD_BAND_FRAC));
@@ -124,8 +173,12 @@ const measureHeadTop = async (name: string): Promise<void> => {
         }
       }
     }
-    headCxCache.set(name, maxX >= minX ? (minX + maxX) / 2 - w / 2 : null);
+    const cx = maxX >= minX ? (minX + maxX) / 2 - w / 2 : null;
+    headCxCache.set(name, cx);
+    headLsStore[url] = { top, cx }; saveHeadLs(); // 成功値を保存=次回以降は失敗知らず・fetch不要
   } catch (e) {
+    // リトライ2回でも失敗(回線等の一時事情)。保存はしない=次回起動で再挑戦。
+    // このセッションは従来どおり追従0(null)へ落ちる(絵は出る・位置だけ素のオフセット)。
     console.warn(`[pixiTextures] failed to measure head-top "${name}":`, e);
     headTopCache.set(name, null);
     headCxCache.set(name, null);
@@ -151,8 +204,19 @@ const AVATAR_HEAD_TRACK_NAMES: string[] = [
 ];
 
 /** 頭頂キャッシュを1回だけ埋める(ensureTextures内部から並列で叩かれる)。 */
-const measureAllAvatarHeadTops = (): Promise<void> =>
-  Promise.all(AVATAR_HEAD_TRACK_NAMES.map(measureHeadTop)).then(() => {});
+// 差し替えで版が変わった古いURLのゴミをlocalStorageから掃除してから計測(肥大防止・1起動1回)。
+const pruneHeadLs = (): void => {
+  const current = new Set(AVATAR_HEAD_TRACK_NAMES.map(n => spritePath(n)));
+  let dirty = false;
+  for (const k of Object.keys(headLsStore)) {
+    if (!current.has(k)) { delete headLsStore[k]; dirty = true; }
+  }
+  if (dirty) saveHeadLs();
+};
+const measureAllAvatarHeadTops = (): Promise<void> => {
+  pruneHeadLs();
+  return Promise.all(AVATAR_HEAD_TRACK_NAMES.map(measureHeadTop)).then(() => {});
+};
 
 /** 計測済みの頭頂行(art px)。未計測/計測失敗は null。 */
 export const getHeadTopRow = (name: string): number | null => headTopCache.get(name) ?? null;
