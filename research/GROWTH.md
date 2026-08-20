@@ -200,7 +200,8 @@
 ## 概要
 永続育成「強化」を追加する。**ゴールド購入・4系統×5段階・メーター式**(有効段数をいつでも下げられる)。
 購入は拠点メニュー、効果は**次の出撃(resetGame)から**反映。育成は数値の加減算のみで、
-**新しい判定・文法は作らない**(全メーター0=現行と完全一致、が最重要の不変条件)。
+**新しい判定・文法は作らない**(全メーター0=「育成機能が無かった時(初期130化後)」と完全一致、
+が最重要の不変条件)。
 
 ## 系統(4つ・各5段・価格は全系統共通 60/140/300/620/1,200G)
 | 系統 | 1段あたり | 5段MAX | 適用 |
@@ -242,8 +243,12 @@
    固定の設計値=育成で増やさない)。対象4箇所: gameStore.ts 6448/7544/7836/10003。
    **適用外(現状維持)**: skillOutgoingDamageMult を意図的に外している攻撃(例: 救難信号の
    援護アライ gameStore.ts:3550-3552「変更禁止」コメント付き)には乗せない=コードを触らない。
-3. **弾数**: 純関数 `effectiveAmmoMax(category, activeLevel)` を utils に作り、resetGame で
-   `growthAmmoMax`(4カテゴリ分)へ焼く。**差し替えるのは「上限」としての参照のみ(4箇所)**:
+3. **弾数**: 純関数 `effectiveAmmoMax(baseMax, activeLevel)` を utils に作り、resetGame で
+   `growthAmmoMax`(**AmmoTypeの5キー全部**・「★焼き込みの原則」どおり)へ焼く。
+   **★循環import回避: 素値(AMMO_MAX)は関数に引数で渡す**——AMMO_MAX は gameStore.ts:269 にあり、
+   utils/playerUpgrades が AMMO_MAX を import すると gameStore⇄utils の相互参照になる
+   (現状この一方向は保たれている。import時評価の初期化順事故=幻影HPで直している型のバグを
+   新規に作らない)。**差し替えるのは「上限」としての参照のみ(4箇所)**:
    ①addAmmo のclamp(gameStore.ts:13474) ②同ティア武器拾得時の弾変換の直接clamp(14435)
    ③商人購入の上限判定4分岐(9588-9608) ④ShopMenuのMAX表示+購入disabled(ShopMenu.tsx:117)。
    **差し替えない(素のAMMO_MAXのまま)**: 弾ドロップ率の枯渇度(gameStore.ts:3446,3460/
@@ -287,6 +292,11 @@
   playerTraits.ts:662)に player.growthAtkMult の記録を追加**(これが無いと永久にundefined=写らない。
   「記録側と消費側が同じ1枚の変換」のファイル内ドクトリンどおり両側を同時に) ③読み出し側
   `buildPseudoPlayer`(playerBuild.ts:108)で復元+**旧データ(フィールド欠損)は1.0=0段扱い**。
+  ※buildPseudoPlayer は `...live`(本人)を土台に上書きする構造なので、growthAtkMult 以外の焼き値
+  (growthAmmoMax/growthGoldMult/ddaBaseHp)は**本人の値が素通しで乗る——これで良い**
+  (守護霊はリザーブ∞・ゴールドを配らない・PPを持たない=どれも読まれない)。playerBuild.ts の
+  「中立化する項目」ドクトリン(99-103/126-137)に倣い、素通しの理由をコメントで1行残す
+  (後任が中立化漏れとして触らないため)。
   **弾数は守護霊には対象外**(守護霊の銃はリザーブ∞で回している
   (useGameLoop.ts:8475,8484)=写す先が存在しない。事実として明記)。
 - **幻影**: 「育成込みの初期状態」に変更。値の定義を一意に:
@@ -303,6 +313,10 @@
   銃は phantomTick.ts:412 の `gun.damage×(crit?…)` に幻影専用の育成倍率を掛ける。
   **攻撃側の読み先も player.growthAtkMult(焼き値)**(幻影はラン中にしかスポーンしない=
   焼き値が必ず存在する。敵tickはPlayer主語を持たないため、スポーン/tick時にplayerから読むと明記)。
+  ※事実として1行: この変更で幻影HPの基準クラスが**「守護霊台帳の最強クラス」(現行
+  strongestGuardian().classId)から「そのランのプレイヤーのクラス」へ入れ替わる**。今日は全クラス
+  同値(STANDARD_MAX_HP)なので挙動不変だが、将来クラスごとにHP差を付けた時はここで差が出る
+  (bossHealth.ts:44 の「自動追従」コメントもこの意味に更新する)。
   ※これは NEUTRAL_GUN_OWNER の「プレイヤーのビルドを読まない」既存ドクトリン(phantomTick.ts:190)
   への**明示的な例外**(社長裁定Q4 2026-08-20「幻影も反映」・乱入敵構想が理由)——コード内コメントも
   「中立主語は維持しつつ、育成だけは裁定により写す」と事実で書き換える。
@@ -339,7 +353,8 @@
   **「resetGame 後に store/保存の active を変えても、player の焼き値と各適用点
   (HP/攻撃倍率/弾上限/ゴールド倍率)の結果が変わらない」**をテストする。
   保存キーは進行名前空間(zombie.progress.playerUpgrades)。
-- 幻影・守護霊の写し: 育成0のとき現行値と一致。処刑の前掛け: 育成0で処刑ダメージ不変。
+- 幻影・守護霊の写し: 育成0のとき「育成機能が無かった時(130化後)」の値と一致
+  (注意: 幻影HPは110→130へ動く=これは130化の意図した変化)。処刑の前掛け: 育成0で処刑ダメージ不変。
 
 ## 実装地図(バッチ1本・中〜大)
 1. `src/data/playerUpgrades.ts`: 台帳(4系統・刻み・価格)+不変条件テスト
@@ -349,7 +364,8 @@
    ゴールド付与点4箇所(掛け先の行を名指しどおり)/ガチャリセット連動(2箇所+ボタン表記)/
    ボスメーカー・ガントレットの0段焼き込み
 4. DDA: DdaPowerInputs入力追加+useGameLoop呼び出し側+difficultyScaler.test.ts改訂
-5. 守護霊スナップショット(playerBuild.ts: growthAtkMult追加・欠損時1.0)+
+5. 守護霊スナップショット(playerBuild.ts: **型+書き込みsnapshotPlayerBuild+読み出しbuildPseudoPlayer
+   の3点セット**・欠損時1.0・素通し理由コメント)+
    幻影(bossHealth.ts関数化+practiceBossHealth/テスト追従+phantomTick.tsキャッシュ廃止・銃/近接倍率)
 6. UI: Screen('growth')+HubButton+メーター行+ShopMenuのMAX表示追従
 7. STANDARD_MAX_HP 110→130+既存テストの追従改訂+meleeExecute.ts:9コメント訂正(3→5箇所)
