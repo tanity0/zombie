@@ -50,6 +50,11 @@ const ACRASIEL_SPIKE_RANGE_MIRROR = 310; // = angelBossTick.ACRASIEL_SPIKE_RANGE
 const ACRASIEL_BURST_RADIUS_MIRROR = 140;// = angelBossTick.ACRASIEL_BURST_RADIUS(大円)
 const ACRASIEL_WARP_IMPACT_MIRROR = 92;  // = angelBossTick.ACRASIEL_WARP_IMPACT_RADIUS(転移衝撃)
 const IDOL_PUNCH_RANGE_MIRROR = 90;      // = useGameLoop.IDOL_TUNING.shape.punchRange(前方の短い帯の長さ)
+// PACING_PUZZLE.md §10(フィル・バッチ2)の複製値 = angelScript.ANGEL_PHILL_TUNING の該当欄。
+const PHILL_GOLDRING_RADIUS_MIRROR = 220;  // = PH_T.goldring.radius(金環の大円)
+const PHILL_JUDGMENT_RADIUS_MIRROR = 90;   // = PH_T.judgment.radius(裁きの光の追尾円)
+const PHILL_CAGE_START_RADIUS_MIRROR = 260; // = PH_T.cage.startRadius(羽根の檻・回避は安全側に広く=初期半径を使う)
+const PHILL_DIVE_RADIUS_MIRROR = 110;      // = PH_T.dive.radius(急降下の着地円)
 
 /** 既存 telegraphDodge がその状態で読む図形(テストのプローブ生成用=「何を根拠に shared と言えるか」)。 */
 export type SharedShape = 'band' | 'circle-target' | 'stomp' | 'tri-jump' | 'delayed';
@@ -112,6 +117,8 @@ put(LEDGER, [
   'coil-windup', 'issen-windup', 'tsuki-windup',
   // 既存表が状態名で名指ししている実行フェーズ(トール)。
   'harai', 'issen-dash', 'tsuki',
+  // PACING_PUZZLE.md §10(フィル・バッチ2): 溜め開始(begin*)でaiFrom/aiTargetをロックする3技の溜め。
+  'phill-wingslash-windup', 'phill-wingthrust-windup', 'phill-wingcombo-windup', 'phill-ringtoss-windup',
 ], {
   coverage: 'shared', sharedShape: 'band',
   note: '始点(aiFrom)→終点(aiTarget)の帯。既存表の語尾ルール/名指しで拾えている。',
@@ -132,6 +139,11 @@ put(LEDGER, [
   'idol-roll',     // idolの転がり突進
   'idol-nade',     // idolの手榴弾バックロール(v0.25.3444)。本体は後方へ転がるだけ=判定なしだが帯分類でOK(移動線)
   'idol-snipe', 'idol-snipe-windup', // idolの狙撃線(v0.25.2613)。溜めでロックした帯がそのまま判定。
+  // PACING_PUZZLE.md §10(フィル・バッチ2): 溜め明けにblastを積んでからも同じaiFrom/aiTargetの帯が
+  // 危険(語尾が-windupでない実行フェーズ=既存表の語尾ルールに乗らない)。
+  'phill-wingslash-active', 'phill-wingthrust-active',
+  'phill-wingcombo-active1', 'phill-wingcombo-gap', 'phill-wingcombo-active2',
+  'phill-ringtoss-out', 'phill-ringtoss-back',
 ], {
   coverage: 'ghost', ghostShape: { kind: 'band' },
   note: '実行中も帯(aiFrom→aiTarget)が危険。既存表は語尾ルールで拾えないためゴースト側で足す。',
@@ -174,6 +186,30 @@ put(LEDGER, ['warp-in'], {
   coverage: 'ghost', ghostShape: { kind: 'circle-target', radius: ACRASIEL_WARP_IMPACT_MIRROR },
   note: 'アクラシエルの転移着地の衝撃円(中心=aiTarget=出現先)。',
 });
+put(LEDGER, ['phill-goldring-windup'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: PHILL_GOLDRING_RADIUS_MIRROR },
+  note: 'フィルの金環。頭上の金環→本体中心の大円AoE(外へ逃げるが正解)。blastは溜め明けの1回だけなので'
+    + '実行(active)側には危険が残らない=windupだけで足りる。',
+});
+put(LEDGER, ['phill-judgment-windup'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-target', radius: PHILL_JUDGMENT_RADIUS_MIRROR },
+  note: '★カウンター必須(裁きの光)。追尾円=aiTargetが毎フレーム足元を追う(§10-12#16「予告のみ・'
+    + '判定なし」)。固定の瞬間に1回blastが立つのでwindup明けの実行側には危険が残らない。',
+});
+put(LEDGER, ['phill-cage-windup'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-target', radius: PHILL_CAGE_START_RADIUS_MIRROR },
+  note: '★カウンター必須(羽根の檻)。中心は溜め開始でロック(以後追尾しない=逃げ場なし)。回避は安全側に'
+    + '広くて構わないので、収縮後の実際の判定半径(closeRadius)ではなく初期半径(startRadius)を使う。',
+});
+put(LEDGER, ['phill-dive-windup'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-target', radius: PHILL_DIVE_RADIUS_MIRROR },
+  note: 'フィルの急降下。追尾する影マーカー(aiTarget=足元を追う・判定なし)。',
+});
+put(LEDGER, ['phill-dive-fall'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-target', radius: PHILL_DIVE_RADIUS_MIRROR },
+  note: 'フィルの急降下・落下中。着地点(aiTarget=windup明けでロック済み)の円だけが危険=本体の軌跡自体は'
+    + '接触判定を持たない(ジャンプ着地レールと同型)。',
+});
 // PACING_PUZZLE.md §9-4(削岩型・driller): 突きはaiPhase駆動(aiFromX/Y→aiTargetX/Y)だが接頭辞が
 // 'g-' でも bossState でもないため、botSkill.telegraphDodge の帯の自動判定(ph.startsWith('g-')/
 // bs.endsWith('-windup'))に乗らない。他の非'g-'系windup(idol-roll等)と同じ扱いでこの表に足す。
@@ -203,6 +239,12 @@ put(LEDGER, [
   'spear-recover', 'spike-recover', 'sweep-recover', 'tate-recover', 'thrust-recover',
   'tsuki-recover', 'volley-recover', 'warp-recover',
   'driller-thrust-recover', // PACING_PUZZLE.md §9-4(削岩型): 突きの硬直。
+  // PACING_PUZZLE.md §10(フィル・バッチ2): 硬直(全技共通)+blast溜め明けで既に判定が終わっている実行フェーズ。
+  'phill-wingslash-recover', 'phill-wingthrust-recover', 'phill-wingcombo-recover',
+  'phill-goldring-active', 'phill-goldring-recover',
+  'phill-judgment-active', 'phill-judgment-recover',
+  'phill-cage-active', 'phill-cage-recover',
+  'phill-ringtoss-recover', 'phill-dive-recover', 'phill-summon-recover', 'phill-feathershot-recover',
 ], {
   coverage: 'none',
   note: '硬直(技は終わっている)=避ける図形は無い。ここはむしろカウンターの窓側の話。',
@@ -213,6 +255,9 @@ put(LEDGER, [
   // 弾避け(projectileDodge)系の圏内(手榴弾は接触ダメージ無し・爆発は信管2秒後)。
   'gaze-windup', 'idol-aim-windup', 'idol-fan-windup', 'idol-orb-windup', 'idol-nade-windup', 'g-bolt-windup', 'g-bolt-burst',
   'g-tailslam-volley', // v0.25.3139: 叩きつけの後の弾連射(胴体弾と同じ弾)=地面に図形は出ない
+  // PACING_PUZZLE.md §10(フィル・バッチ2): 光槍の扇/エルデの流星=共通赤弾のみ(地面に図形なし)。
+  'phill-lancefan-windup', 'phill-lancefan-active', 'phill-lancefan-recover',
+  'phill-meteor-windup', 'phill-meteor-active', 'phill-meteor-recover',
 ], {
   coverage: 'none',
   note: '弾を撃つだけの技=地面に図形が出ない。飛んだ弾は projectileDodge が別経路で避ける。',
@@ -221,10 +266,18 @@ put(LEDGER, [
   'bone', 'bone-windup', 'spear-windup', 'lantern', 'lantern-windup',
   'lance-windup', // v0.25.3199/3204 ジブリルの槍: 危険=lanceLanterns(追尾ランタン)+pumpkinBlastsカプセル(別エンティティ)
   'skadi-ice', 'skadi-ice-windup', 'skadi-blade', 'skadi-blade-windup',
+  // PACING_PUZZLE.md §10(フィル・バッチ2): 光の雨(小円が時間差でblastsへ積まれる=座標はEnemyに乗らない)・
+  // 羽根散弾(専用飛翔体=骨/氷刃と同型)。
+  'phill-lightrain-windup', 'phill-lightrain-active', 'phill-lightrain-recover',
+  'phill-feathershot-windup', 'phill-feathershot-recover',
 ], {
   coverage: 'none',
   note: '危険が**別エンティティ**(骨/刃/氷/火)として撒かれる技。Enemyの予告フィールドに乗らないので、'
     + 'この表では扱えない(拾うならエンティティ側の回避=別バッチ)。',
+});
+put(LEDGER, ['phill-summon-windup'], {
+  coverage: 'none',
+  note: 'フィルの召喚。判定を持たない技(EX雑魚を呼ぶだけ)=避ける図形がそもそも無い。',
 });
 put(LEDGER, ['consecrate-windup', 'cage-windup'], {
   coverage: 'none',

@@ -850,7 +850,22 @@ export interface Enemy {
     | 'mk-spin-windup' | 'mk-spin' | 'mk-spin-recover'
     | 'mk-suiu-windup' | 'mk-suiu-hop1' | 'mk-suiu-hop2' | 'mk-suiu-hop3' | 'mk-suiu-recover'
     | 'mk-boom-windup' | 'mk-boom-out' | 'mk-boom-back' | 'mk-boom-recover'
-    | 'mk-repose';
+    | 'mk-repose'
+    // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」・バッチ2): 州名は全て新設 `phill-<move>-*`
+    // (§10-12#7・既存州名の再利用禁止)。実在13技(番号は§10-13により14まで進むが#13は落とされている)。
+    | 'phill-lightrain-windup' | 'phill-lightrain-active' | 'phill-lightrain-recover'
+    | 'phill-lancefan-windup' | 'phill-lancefan-active' | 'phill-lancefan-recover'
+    | 'phill-wingslash-windup' | 'phill-wingslash-active' | 'phill-wingslash-recover'
+    | 'phill-wingthrust-windup' | 'phill-wingthrust-active' | 'phill-wingthrust-recover'
+    | 'phill-wingcombo-windup' | 'phill-wingcombo-active1' | 'phill-wingcombo-gap' | 'phill-wingcombo-active2' | 'phill-wingcombo-recover'
+    | 'phill-summon-windup' | 'phill-summon-recover'
+    | 'phill-goldring-windup' | 'phill-goldring-active' | 'phill-goldring-recover'
+    | 'phill-judgment-windup' | 'phill-judgment-active' | 'phill-judgment-recover'
+    | 'phill-cage-windup' | 'phill-cage-active' | 'phill-cage-recover'
+    | 'phill-meteor-windup' | 'phill-meteor-active' | 'phill-meteor-recover'
+    | 'phill-ringtoss-windup' | 'phill-ringtoss-out' | 'phill-ringtoss-back' | 'phill-ringtoss-recover'
+    | 'phill-dive-windup' | 'phill-dive-fall' | 'phill-dive-recover'
+    | 'phill-feathershot-windup' | 'phill-feathershot-recover';
     // research/GHOST_BOSS.md v6: 幻影(guardian-phantom)の `gp-*` 州は**全廃**した。
     // 予告(windup)も硬直(recover)も持たない=プレイヤーと同じ即発なので、bossState を使わない
     // (=幻影に対してプレイヤーのカウンターは成立しない。弾の打ち返しだけが残る、が v5/v6 の裁定)。

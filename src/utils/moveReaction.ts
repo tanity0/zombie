@@ -62,6 +62,10 @@ export const MOVE_REACTION_KEYS = [
   // PACING_PUZZLE.md §6.38 B2b(賞金首・bountyTick.ts): 鋏/舞妓の技。
   'bb-sweep', 'bb-leap',
   'mk-naginata', 'mk-naginata1', 'mk-naginata2', 'mk-spin', 'mk-suiu', 'mk-boom',
+  // PACING_PUZZLE.md §10(EXボス「フィル」・バッチ2): 近接/AoE技(弾を撃つ2技=lancefan/meteorは
+  // 弾技台帳=下のBULLET_MOVE_KEYSへ)。
+  'phill-wingslash', 'phill-wingthrust', 'phill-wingcombo', 'phill-lightrain', 'phill-goldring',
+  'phill-judgment', 'phill-cage', 'phill-ringtoss', 'phill-dive', 'phill-summon', 'phill-feathershot',
 ] as const;
 
 // ---- 弾技の台帳(GHOST-BULLET-TECH・v0.25.2543) -------------------------------------------------
@@ -87,6 +91,8 @@ export const BULLET_MOVE_KEYS = [
   // 専用aiPhaseを持たない周期斉射のため状態表(BULLET_STATE_TO_MOVE)からは引けず、
   // 発射側が生成後に srcMoveKey を直接付ける(監査指摘対応)。
   'g-parts',
+  // PACING_PUZZLE.md §10(フィル・バッチ2): 弾を撃つ2技(光槍の扇/エルデの流星)。
+  'phill-lancefan', 'phill-meteor',
   // 射撃部品(v0.25.2638・BOSS_MAKER.md): 社長がメーカーで足す弾撃ち技の8枠。
   // **技キーは枠の記号(s1〜s8)で固定**する——社長が付けた名前(「ジャブ」等)は実行中に変わるので、
   // 記録のキーに使うと**同じ技の記録が名前を変えた瞬間に分断される**。表示名は引く側で解決する。
@@ -243,6 +249,22 @@ const MELEE_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<strin
     'mk-suiu-hop3': 'mk-suiu', 'mk-suiu-recover': 'mk-suiu',
     'mk-boom-windup': 'mk-boom', 'mk-boom-out': 'mk-boom', 'mk-boom-back': 'mk-boom', 'mk-boom-recover': 'mk-boom',
   },
+  // フィル(§10・バッチ2・angelBossTick.ts): 州名は全て`phill-<move>-*`(§10-12#7)。
+  // 弾を撃つ2技(lancefan/meteor)はBULLET_STATE_TO_MOVEへ。
+  phillboss: {
+    'phill-wingslash-windup': 'phill-wingslash', 'phill-wingslash-active': 'phill-wingslash', 'phill-wingslash-recover': 'phill-wingslash',
+    'phill-wingthrust-windup': 'phill-wingthrust', 'phill-wingthrust-active': 'phill-wingthrust', 'phill-wingthrust-recover': 'phill-wingthrust',
+    'phill-wingcombo-windup': 'phill-wingcombo', 'phill-wingcombo-active1': 'phill-wingcombo', 'phill-wingcombo-gap': 'phill-wingcombo',
+    'phill-wingcombo-active2': 'phill-wingcombo', 'phill-wingcombo-recover': 'phill-wingcombo',
+    'phill-lightrain-windup': 'phill-lightrain', 'phill-lightrain-active': 'phill-lightrain', 'phill-lightrain-recover': 'phill-lightrain',
+    'phill-goldring-windup': 'phill-goldring', 'phill-goldring-active': 'phill-goldring', 'phill-goldring-recover': 'phill-goldring',
+    'phill-judgment-windup': 'phill-judgment', 'phill-judgment-active': 'phill-judgment', 'phill-judgment-recover': 'phill-judgment',
+    'phill-cage-windup': 'phill-cage', 'phill-cage-active': 'phill-cage', 'phill-cage-recover': 'phill-cage',
+    'phill-ringtoss-windup': 'phill-ringtoss', 'phill-ringtoss-out': 'phill-ringtoss', 'phill-ringtoss-back': 'phill-ringtoss', 'phill-ringtoss-recover': 'phill-ringtoss',
+    'phill-dive-windup': 'phill-dive', 'phill-dive-fall': 'phill-dive', 'phill-dive-recover': 'phill-dive',
+    'phill-summon-windup': 'phill-summon', 'phill-summon-recover': 'phill-summon',
+    'phill-feathershot-windup': 'phill-feathershot', 'phill-feathershot-recover': 'phill-feathershot',
+  },
 };
 
 // 弾技の状態→技キー(GHOST-BULLET-TECH)。**必ず type でゲートする**: 状態名は複数のボスで衝突する
@@ -275,6 +297,11 @@ const BULLET_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<stri
   // 視線弾は windup の終わりに1発撃って即 recover へ移る(active フェーズが無い)。
   suriel: { 'gaze-windup': 'suriel-gaze', 'gaze-recover': 'suriel-gaze' },
   acrasiel: { 'gaze-windup': 'acrasiel-gaze', 'gaze-recover': 'acrasiel-gaze' },
+  // フィル(§10・バッチ2): 弾を撃つ2技だけ(近接/AoEはMELEE_STATE_TO_MOVEへ)。
+  phillboss: {
+    'phill-lancefan-windup': 'phill-lancefan', 'phill-lancefan-active': 'phill-lancefan', 'phill-lancefan-recover': 'phill-lancefan',
+    'phill-meteor-windup': 'phill-meteor', 'phill-meteor-active': 'phill-meteor', 'phill-meteor-recover': 'phill-meteor',
+  },
   // idol(idolTick.ts)。roll/punch は近接なので入れない。
   idol: {
     'idol-aim-windup': 'idol-aim', 'idol-aim-recover': 'idol-aim',

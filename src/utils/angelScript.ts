@@ -272,6 +272,55 @@ export const ANGEL_ACRASIEL_TUNING: AngelAcrasielTuning = {
   gaze: { windup: 450, recover: withRecoverFloor(500) },
 };
 
+// =================================================================================================
+// フィル(phillboss・PACING_PUZZLE.md §10・バッチ2)
+// =================================================================================================
+export interface AngelPhillTuning extends AngelSharedHolder {
+  /** 光の雨(技1): 時間差の小円5〜6個→光柱。 */
+  lightrain: { windup: number; shotCount: number; shotGapMs: number; radius: number; recover: number; cdMs: number };
+  /** 光槍の扇(技2): 共通赤弾5本×2回。 */
+  lancefan: { windup: number; shotsPerVolley: number; volleys: number; volleyGapMs: number; spreadDeg: number; recover: number };
+  /** 羽斬り(技3・物理①): 大振り横薙ぎ帯。 */
+  wingslash: { windup: number; active: number; recover: number; range: number; halfWidth: number };
+  /** 羽突き(技4・物理②): 細長い帯の刺突(ディレイ持ち)。 */
+  wingthrust: { windup: number; active: number; recover: number; range: number; halfWidth: number };
+  /** 羽連撃(技5・物理③): 帯×2(2撃目ディレイ)。 */
+  wingcombo: { windup: number; active1: number; gapMs: number; active2: number; recover: number; range: number; halfWidth: number };
+  /** 召喚(技6): 同時上限は phillScript.PHILL_SUMMON_CAP。 */
+  summon: { windup: number; recover: number };
+  /** 金環(技7): 頭上の金環→数秒後フィル中心の大円AoE(外へ逃げるが正解)。 */
+  goldring: { windup: number; active: number; recover: number; radius: number; cdMs: number };
+  /** 裁きの光(技8★カウンター必須): 追尾円(判定なし)→固定の瞬間に1回blast。 */
+  judgment: { trackMs: number; active: number; recover: number; radius: number; cdMs: number };
+  /** 羽根の檻(技9★カウンター必須): 収縮円(判定なし)→閉じ切る瞬間にblast。 */
+  cage: { trackMs: number; active: number; recover: number; startRadius: number; closeRadius: number; cdMs: number };
+  /** エルデの流星(技10): 誘導する共通赤弾4発。 */
+  meteor: { windup: number; count: number; gapMs: number; turnRateDeg: number; recover: number };
+  /** 光輪投げ(技11): 頭上の光輪を直線に投げ、往復とも帯判定。 */
+  ringtoss: { windup: number; outMs: number; backMs: number; recover: number; range: number; halfWidth: number };
+  /** 急降下(技12): 追尾する影マーカー→着地円(マレニアP2の型・ジャンプ着地レールの大型版)。 */
+  dive: { windup: number; fallMs: number; recover: number; radius: number };
+  /** 羽根散弾(技14): 専用飛翔体(skadiIceBlades共有配列にvisual:'feather')。 */
+  feathershot: { windup: number; count: number; spreadDeg: number; recover: number };
+}
+
+export const ANGEL_PHILL_TUNING: AngelPhillTuning = {
+  common: ANGEL_COMMON_TUNING, // ★7人目も同じ実体(複製しない)
+  lightrain: { windup: 1200, shotCount: 6, shotGapMs: 220, radius: 70, recover: withRecoverFloor(700), cdMs: 10000 },
+  lancefan: { windup: 700, shotsPerVolley: 5, volleys: 2, volleyGapMs: 450, spreadDeg: 60, recover: withRecoverFloor(600) },
+  wingslash: { windup: 700, active: 150, recover: withRecoverFloor(700), range: 310, halfWidth: 44 },
+  wingthrust: { windup: 950, active: 130, recover: withRecoverFloor(700), range: 340, halfWidth: 36 },
+  wingcombo: { windup: 650, active1: 130, gapMs: 260, active2: 130, recover: withRecoverFloor(800), range: 300, halfWidth: 40 },
+  summon: { windup: 900, recover: withRecoverFloor(700) },
+  goldring: { windup: 1600, active: 260, recover: withRecoverFloor(900), radius: 220, cdMs: 10000 },
+  judgment: { trackMs: 2200, active: 260, recover: withRecoverFloor(900), radius: 90, cdMs: 10000 },
+  cage: { trackMs: 2400, active: 260, recover: withRecoverFloor(900), startRadius: 260, closeRadius: 70, cdMs: 10000 },
+  meteor: { windup: 900, count: 4, gapMs: 220, turnRateDeg: 70, recover: withRecoverFloor(700) },
+  ringtoss: { windup: 700, outMs: 380, backMs: 380, recover: withRecoverFloor(700), range: 620, halfWidth: 40 },
+  dive: { windup: 900, fallMs: 420, recover: withRecoverFloor(900), radius: 110 },
+  feathershot: { windup: 600, count: 6, spreadDeg: 50, recover: withRecoverFloor(600) },
+};
+
 // ---- 既定値(リセット/差分表示用・BOSS_MAKER.md §2-2) --------------------------------------------
 // テーブルとは**別のオブジェクト**として焼く(参照を共有すると「リセット」で戻せなくなる)。
 export const ANGEL_COMMON_TUNING_DEFAULTS: AngelCommonTuning = deepCloneTuning(ANGEL_COMMON_TUNING);
@@ -281,3 +330,4 @@ export const ANGEL_RAFI_TUNING_DEFAULTS: AngelRafiTuning = deepCloneTuning(ANGEL
 export const ANGEL_URI_TUNING_DEFAULTS: AngelUriTuning = deepCloneTuning(ANGEL_URI_TUNING);
 export const ANGEL_SURIEL_TUNING_DEFAULTS: AngelSurielTuning = deepCloneTuning(ANGEL_SURIEL_TUNING);
 export const ANGEL_ACRASIEL_TUNING_DEFAULTS: AngelAcrasielTuning = deepCloneTuning(ANGEL_ACRASIEL_TUNING);
+export const ANGEL_PHILL_TUNING_DEFAULTS: AngelPhillTuning = deepCloneTuning(ANGEL_PHILL_TUNING);

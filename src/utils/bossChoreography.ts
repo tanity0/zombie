@@ -5,7 +5,7 @@
 import { BOSS_STRING_REST_MS } from './bossTelegraph';
 export type ChoreographyBoss =
   | 'giant' | 'glen' | 'mimir' | 'jormungand' | 'skadi' | 'thor'
-  | 'miguel' | 'jibril' | 'rafi' | 'uri' | 'suriel' | 'acrasiel';
+  | 'miguel' | 'jibril' | 'rafi' | 'uri' | 'suriel' | 'acrasiel' | 'phillboss';
 
 const trimForPhase = (moves: readonly string[], phase: number): string[] =>
   moves.slice(0, phase <= 1 ? 2 : 3);
@@ -67,6 +67,24 @@ const SCRIPTS: Record<Exclude<ChoreographyBoss, 'giant' | 'glen'>, Record<string
   acrasiel: {
     spike: ['spike', 'spear', 'warp'], spear: ['spear', 'warp', 'burst'],
     warp: ['warp', 'burst', 'gaze'], burst: ['burst', 'spike', 'spear'], gaze: ['gaze', 'warp', 'burst'],
+  },
+  // フィル(§10・バッチ2): 開幕連携は最小1本(社長指示「開幕連携は最小1本でよい」・PACING_PUZZLE.md
+  // §10タスク項6)。近接3技どうし・弾/範囲技どうしを軽く繋ぐだけの叩き台(調整は実機で)。
+  phillboss: {
+    wingslash: ['wingslash', 'wingthrust', 'wingcombo'],
+    wingthrust: ['wingthrust', 'wingcombo', 'wingslash'],
+    wingcombo: ['wingcombo', 'wingslash', 'lancefan'],
+    lancefan: ['lancefan', 'meteor', 'goldring'],
+    lightrain: ['lightrain', 'goldring', 'ringtoss'],
+    goldring: ['goldring', 'ringtoss', 'lightrain'],
+    meteor: ['meteor', 'lancefan', 'ringtoss'],
+    ringtoss: ['ringtoss', 'wingthrust', 'meteor'],
+    dive: ['dive', 'wingcombo', 'lancefan'],
+    summon: ['summon', 'lightrain', 'wingslash'],
+    feathershot: ['feathershot', 'meteor', 'wingthrust'],
+    // ★judgment/cage(カウンター必須)はこの表に載せない=`table[opening] ?? [opening]`のフォールバックで
+    // 「自分自身1つだけ」になる(planBossChoreographyのslice(1)で連携キューは常に空)。§10-14#7の
+    // 「同時に1つ・4秒間隔」ゲートはpickPhillMove側が持つため、台本連携でそれをバイパスさせない。
   },
 };
 

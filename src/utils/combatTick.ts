@@ -32,6 +32,7 @@ import {
   isGuardianPhantom,
 } from './enemyUtils';
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
+import { PHILL_COUNTER_RECOVER_MS } from './phillScript'; // §10-15#2: フィル後追い分岐の硬直長
 import { activeFlareTargets } from './flareGun';
 import { getActiveGun, GHOST_REFLECT_WEAPON_KEY } from './weaponUtils';
 import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkCollision } from './collisionUtils';
@@ -169,6 +170,24 @@ export interface CombatTunables {
   grenadeBlastDamageMult: number;
   counterReflectSlowMs: number;
 }
+
+// ★PACING_PUZZLE.md §10-14#2(R2)/§10-15#2: フィルの技14種の州名接頭辞(§10-12#7の命名規約
+// `phill-<move>-*`)。パリィ解決の瞬間(blast消化)に「今どの技の途中か」を州名から逆引きするための表。
+// 新しい移動を持たない状態(接頭辞が衝突しない=13技名どうしで前方一致の衝突は無い)ので単純な
+// startsWith 判定で足りる。
+const PHILL_MOVE_SLUGS = [
+  'lightrain', 'lancefan', 'wingslash', 'wingthrust', 'wingcombo', 'summon', 'goldring',
+  'judgment', 'cage', 'meteor', 'ringtoss', 'dive', 'feathershot',
+] as const;
+const PHILL_RECOVER_STATE_BY_SLUG: Readonly<Record<(typeof PHILL_MOVE_SLUGS)[number], Enemy['bossState']>> = {
+  lightrain: 'phill-lightrain-recover', lancefan: 'phill-lancefan-recover',
+  wingslash: 'phill-wingslash-recover', wingthrust: 'phill-wingthrust-recover',
+  wingcombo: 'phill-wingcombo-recover', summon: 'phill-summon-recover',
+  goldring: 'phill-goldring-recover', judgment: 'phill-judgment-recover',
+  cage: 'phill-cage-recover', meteor: 'phill-meteor-recover',
+  ringtoss: 'phill-ringtoss-recover', dive: 'phill-dive-recover',
+  feathershot: 'phill-feathershot-recover',
+};
 
 // ⑤ パンプキン/lab-zombie-3のジャンプ着地爆発(範囲狭め)。store が記録した着地点(pumpkinBlasts)を
 // 消化し、爆発FXを出しつつ半径内ならプレイヤーへダメージ(無敵中は無効)。カウンター窓中ならパリィ
@@ -320,6 +339,11 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           else { ndx = 0; ndy = -1; d = 1; } // それも潰れていれば上方へ弾く
         }
         const ux = ndx / d, uy = ndy / d;
+        // ★PACING_PUZZLE.md §10-15#2: phillbossは基本patchのKB系(位置飛ばし+knockbackVx/Vy/
+        // knockbackUntil)から除外する。フィルはbossState駆動(angel系)で、位置飛ばしはangel tickの
+        // 毎フレーム書き戻し(chase/技の位置patch)と衝突する。KB相当は下の「後追い分岐」が
+        // bossStateの遷移(硬直)だけで表現する。
+        const isPhill = e.type === 'phillboss';
         return {
           ...e,
           // 突進パリィと同じく aiPhase を完全解除して弾き返す。'recover' のままだと
@@ -334,8 +358,10 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           //    → ここで“即時に”位置を弾き飛ばす(COUNTER_KNOCKBACK_LAUNCH)。
           // ② 凍結系(stun/lift/root)と ノックバック無敵窓を全解除して、続く速度スライドを
           //    何にも邪魔させない。
-          x: e.x + ux * COUNTER_KNOCKBACK_LAUNCH,
-          y: e.y + uy * COUNTER_KNOCKBACK_LAUNCH,
+          ...(isPhill ? {} : {
+            x: e.x + ux * COUNTER_KNOCKBACK_LAUNCH,
+            y: e.y + uy * COUNTER_KNOCKBACK_LAUNCH,
+          }),
           vx: 0, vy: 0,
           // ★v0.25.3127(社長報告「紫ぴより中に、さらにカウンター決めると、黄色に戻っちゃう」):
           // 紫(完全気絶)は `stunUntil` と `bossFullStunUntil` を**同時に**打って成立している。
@@ -348,9 +374,11 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
             ? e.stunUntil : undefined,
           liftUntil: undefined, rootUntil: undefined,
           knockbackImmuneUntil: 0,
-          knockbackVx: ux * COUNTER_KNOCKBACK_SPEED,
-          knockbackVy: uy * COUNTER_KNOCKBACK_SPEED,
-          knockbackUntil: pnow + KNOCKBACK_DURATION,
+          ...(isPhill ? {} : {
+            knockbackVx: ux * COUNTER_KNOCKBACK_SPEED,
+            knockbackVy: uy * COUNTER_KNOCKBACK_SPEED,
+            knockbackUntil: pnow + KNOCKBACK_DURATION,
+          }),
         };
       }),
     }));
@@ -394,6 +422,24 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           aiFromX: tcx, aiFromY: tcy,
           aiTargetX: bpcx + (lx / ll) * tunables.thorOrbitDist,
           aiTargetY: bpcy + (ly / ll) * tunables.thorOrbitDist,
+        } : en),
+      }));
+    }
+    // ★PACING_PUZZLE.md §10-14#2(R2)/§10-15#2/#4: フィル(bossState駆動)はこのblastレールの
+    // パリィpatch(aiPhase系のみ書く)が効かない=技が止まらず赤も消えなかった。**後追い分岐**として
+    // bossState='phill-<move>-recover'+bossScriptQueue:[](天使正規経路angelCounterHitと同じ=台本の
+    // 続きを止める)を明示的に書き、G1計測(notifyCounterHit)もここで揃える(blastレール側の
+    // notifyMoveCounterだけだとフィル戦がcounterChance計測の母数から抜けるため)。
+    for (const hit of parriedEnemyIds) {
+      const pe = useGameStore.getState().enemies.find(en => en.id === hit.id);
+      if (!pe || pe.type !== 'phillboss') continue;
+      const slug = PHILL_MOVE_SLUGS.find(k => (pe.bossState ?? '').startsWith(`phill-${k}`));
+      const recoverState = slug ? PHILL_RECOVER_STATE_BY_SLUG[slug] : undefined;
+      if (!recoverState) continue; // 未知の州(想定外)は何もしない=安全側
+      notifyCounterHit();
+      useGameStore.setState(st => ({
+        enemies: st.enemies.map(en => en.id === hit.id ? {
+          ...en, bossState: recoverState, bossStateUntil: Date.now() + PHILL_COUNTER_RECOVER_MS, bossScriptQueue: [],
         } : en),
       }));
     }

@@ -1,5 +1,199 @@
 # Development Log
 
+## v0.25.3719 — フィルEXボス バッチ2(技14+カウンター+ボスメーカー接続)実装【2026-08-21 01:47 JST】
+
+PACING_PUZZLE.md §10(§10-1〜§10-17。着手時点で全節反映済み・監査4巡通過済み)に基づく、EXボス
+「フィル(変異体)」のシミュ層バッチ2(技14+カウンター後追い分岐+ボスメーカー16体目)。バッチ1
+(v0.25.3716・器のみ)の続き。**コミットは親が行う(本エントリはバッチ2実装の完了報告)**。
+着手前に本ファイル先頭(バッチ1エントリ)を読み、バッチ1の「編入した/しない」台帳・申し送りを踏まえた。
+
+### やったこと(要約)
+- `isGate2AngelBoss`(enemyUtils.ts)へ `phillboss` を編入=angelBossTickの7人目として本格編入。
+  バッチ1の暫定最小チェイスAI(`phillChaseVelocity`直呼び・useGameLoop.ts)を撤去し、`exStage.ts`から
+  同関数を削除(isExStageRun/phillBossSpawnReadyの2関数のみ残る葉モジュールへ整理)。
+  `isHiddenBoss` は既存の天使6体もisGate2AngelBossと**両方**に入っている前例に合わせてそのまま維持
+  (バッチ1申し送りの再判断=「そのまま」を採用。理由: isHiddenBossは「専用コントローラが座標を書く
+  型+通常AI除外+生AABB」の意味で、isGate2AngelBossとは独立した別の役割)。
+- 新規純関数モジュール `src/utils/phillScript.ts`: `pickPhillMove`(距離帯×重み+CD/フェーズゲート)・
+  `phillPhaseForHealth`(HP50%でP2)・`phillRequiredMoveReady`/`phillRequiredMoveDamage`(§10-14#7/
+  §10-15#5)・`phillCageInitialRadiusPx`(§10-12#17)・`phillSummonSpawnCount`(§10-3の6)・
+  `PHILL_COUNTER_RECOVER_MS`(§10-15#2)。store非依存の葉(他の`<boss>Script.ts`と同じ流儀)。
+- `angelScript.ts` に `AngelPhillTuning`/`ANGEL_PHILL_TUNING`(+`_DEFAULTS`)を追加。判定(angelBossTick)
+  とボスメーカーが同じテーブルを読む(第1弾で確立した「台本はコード/数字はテーブル」を継承)。
+- `angelBossTick.ts` に `runPhillTick`(技14の状態機械)を実装し、ディスパッチャへ`phillboss`分岐を追加。
+  `AngelBossState.phill`(CD/キュー等のラン内状態)・`AngelMoveKey`に`ph-*`13キー・
+  `ANGEL_MOVES_BY_TYPE.phillboss`を追加。設計は既存6体(特にrafi/acrasiel/suriel)のbegin*束+
+  windup/active/recover状態機械パターンを完全踏襲(新しい仕組みは足していない)。
+
+### 技14(実在13技。番号は§10-13で14まで進むが#13「吸引+金環」は§10-14#14で落とされている)
+州名は全て `phill-<move>-*`(§10-12#7)。判定レール=①pumpkinBlasts(カプセル/円)②共通赤弾
+③専用飛翔体(skadiIceBlades共有配列)の3種のみ(全て既存レール・新規判定機構ゼロ)。
+
+| # | 技 | 州名 | レール |
+|---|---|---|---|
+| 1 | 光の雨 | `phill-lightrain-windup/-active/-recover` | pumpkinBlasts(小円6個・時間差で`s.phill.lightrainQueue`から発火) |
+| 2 | 光槍の扇 | `phill-lancefan-windup/-active/-recover` | 共通赤弾(5本×2回・扇状スプレッド) |
+| 3 | 羽斬り | `phill-wingslash-windup/-active/-recover` | pumpkinBlasts(カプセル) |
+| 4 | 羽突き | `phill-wingthrust-windup/-active/-recover` | pumpkinBlasts(カプセル・windup長め=ディレイ表現) |
+| 5 | 羽連撃 | `phill-wingcombo-windup/-active1/-gap/-active2/-recover` | pumpkinBlasts(カプセル×2・-gapが2撃目のディレイ) |
+| 6 | 召喚 | `phill-summon-windup/-recover` | spawnEnemyAt('zombie')・同時上限3(`phillSummonSpawnCount`)・`bountyEscortId`で所有権タグ |
+| 7 | 金環 | `phill-goldring-windup/-active/-recover` | pumpkinBlasts(自分中心の円・大技CD10秒) |
+| 8 | 裁きの光★必須 | `phill-judgment-windup/-active/-recover` | pumpkinBlasts(追尾円=windup中は判定なし・固定の瞬間に1回) |
+| 9 | 羽根の檻★必須 | `phill-cage-windup/-active/-recover` | pumpkinBlasts(中心は溜め開始でロック=以後追尾しない) |
+| 10 | エルデの流星 | `phill-meteor-windup/-active/-recover` | 共通赤弾(4発・idolのorbと同型の誘導旋回をrunPhillTick冒頭で処理) |
+| 11 | 光輪投げ | `phill-ringtoss-windup/-out/-back/-recover` | pumpkinBlasts(カプセル・往復とも判定) |
+| 12 | 急降下 | `phill-dive-windup/-fall/-recover` | pumpkinBlasts(円・windup中は追尾影のみ→fallでairHopEase01降下→着地円) |
+| 14 | 羽根散弾 | `phill-feathershot-windup/-recover` | 専用飛翔体(skadiIceBlades共有配列+`visual:'feather'`・打ち返し対象外) |
+
+- フェーズ2(HP50%以下・`phillPhaseForHealth`): 8(裁きの光)・9(羽根の檻)を解禁。§10-9が追加指示した
+  「召喚眷属の生存中微回復」は§10-12#19で明示的に落とされている(実装せず)。
+- CD: 大技4つ(光の雨・金環・裁きの光・羽根の檻)=個別10秒(`PHILL_BIG_MOVE_CD_MS`)。
+  裁きの光/羽根の檻はさらに**2つ合わせて**4秒間隔(`PHILL_REQUIRED_GAP_MS`・§10-14#7「同時に1つ・
+  前回の成立/被弾から最低4秒」)。ゲートは`pickPhillMove`の抽選候補そのものを塞ぐ形で実装=
+  「同時に1つまで」が状態機械の外側(抽選)からも構造的に保証される。
+- カウンター必須技のダメージ上限: `phillRequiredMoveDamage = min(enemy.damage, player.maxHealth*0.35)`
+  (§10-15#5)。blastを積む地点でクランプ。
+- カウンター文法: 近接3技(3/4/5)+回避技(1/7/10/11/12/14)は赤=判定一致・カウンター可。8/9のみ
+  「カウンター必須」(避け切れないがカウンターで無効化+反撃=紫ではない・赤のまま)。紫(カウンター
+  不可)の技は今回作っていない(§10-9裁定どおり)。
+
+### カウンター成立の実体(§10-14#2/§10-15#2〜#4)
+- **windup/recover中の早期カウンター**は他の天使6体と同じ自己完結パターン(`bodyOverlapNow`+
+  `angelCounterHit`をrunPhillTick内で直接呼ぶ・州をchaseへ戻す)。counterReach.tsには**phill州を
+  一切追加していない**(§10-15#3「counterReachにphill州は載せない・完全性検査も作らない」を明記どおり
+  遵守。フィルの判定は全てbodyOverlapNow=体の重なりのみで、帯/円の形状一致は取っていない=★判断メモ
+  下記参照)。
+- **技の実行そのものへのカウンター**(pumpkinBlastsが実際に発火する瞬間)は`combatTick.ts`の
+  `applyPumpkinBlastDamage`が全ボス共通で処理する既存レールにそのまま乗る。ただし同関数の基本patch
+  (KB系=位置飛ばし+knockbackVx/Vy/knockbackUntil)は`e.type==='phillboss'`を**除外**した
+  (§10-15#2。angel tickの毎フレーム位置書き戻しと衝突するため)。代わりに**後追い分岐**を追加し、
+  パリィ成立時に`bossState='phill-<move>-recover'`(現在のbossStateの接頭辞から技名を逆引き=
+  `PHILL_MOVE_SLUGS`)+`bossStateUntil=+900ms`(`PHILL_COUNTER_RECOVER_MS`)+`bossScriptQueue:[]`
+  (天使正規経路angelCounterHitと同じ=台本の続きを止める)を書き、`notifyCounterHit()`も呼ぶ
+  (§10-15#4・blastレール側は`notifyMoveCounter`しか呼ばないため、これが無いとフィル戦の成立が
+  G1計測counterChanceの母数から抜ける)。
+
+### ★判断メモ(設計書に明記が薄く、実装上の判断を要した点)
+1. **フィルの判定はcounterReach(赤い予告の図形と厳密一致)を使わず、全てbodyOverlapNow(体の重なり)
+   +pumpkinBlasts(実ダメージの瞬間)の組にした。** §10-15#3が「counterReachにphill州を載せない」と
+   明記している以上、windup/recover中の早期カウンターは体の重なりでしか取れない(帯/円に触れただけ
+   では取れない)。これは既存6体の一部(rafi/acrasielの一部州)がreachOverlapNowで帯/円一致まで
+   取れているのと比べると**判定はやや狭い**が、設計書の明記(counterReach不使用)と矛盾しない選択。
+   もし「windup中も赤い帯/円に触れればカウンターできる」形にしたい場合はcounterReach.tsへの追加が
+   必要=仕様変更に当たるため実装せず、ここに記録するに留めた(社長判断が要ればPACING_PUZZLE.md
+   §10末尾へ★未決として追記する)。
+2. **羽根散弾(feathershot)の弾ダメージ/速度/命中半径は既存のスカジ氷刃と全く同じ定数
+   (SKADI_BLADE_DAMAGE/HIT/SPEED/LIFE_MS)を共有した。** gameStore.tsの共有tickがこれらを
+   `visual`に関わらず一律で使う実装だったため(骨刃も同じ値を共有している既存の形)、フィル専用の
+   値を持たせるには共有tick自体の改修(技ごとの上書きフィールド追加)が要る=「全て叩き台」の指示に
+   照らして今回は見送り、既存の共有値をそのまま使った。
+3. **羽根散弾のFX(`ice`フラグ)は`visual!=='feather'`の時だけtrueにした。** 旧実装は骨刃(bone)も
+   ice=trueで氷色FX/氷SEを鳴らしていた(既存の挙動=不変)。フィル(feather)だけ新規に false へ
+   分岐させ、既定のオレンジ起爆FXへフォールバックする(氷でも骨でもない新しい飛翔体なので)。
+   赤い軌跡等の専用ビジュアルはバッチ3(pixi新規描画)の範囲として持ち越した。
+
+### 台帳追従(全件列挙・CLAUDE.md「同じ動作を持つ全員に付ける」の機械化)
+- **moveReaction.ts**: `MOVE_REACTION_KEYS`に近接/AoE11技(`phill-wingslash`等)、
+  `BULLET_MOVE_KEYS`に弾2技(`phill-lancefan`/`phill-meteor`)を追加。`MELEE_STATE_TO_MOVE.phillboss`/
+  `BULLET_STATE_TO_MOVE.phillboss`に全州→技キーの対応表を追加(既存6体と同じ「全フェーズを同じキーへ
+  寄せる」掟どおり)。`moveReaction.test.ts`の発射箇所数固定テストを16→18へ更新(lancefan/meteorの
+  ループ内`createEnemyProjectile`呼び出しがそれぞれ1箇所ずつ増えた分・理由をコメントに明記)。
+- **ghostTelegraph.ts**: フィルの全13技・約30州を分類(LEDGERへ`put`で追加)。
+  - shared+band: wingslash/wingthrust/wingcombo/ringtossの各windup(begin*でaiFrom/aiTargetを
+    ロック済み=既存の語尾ルールがそのまま拾える)。
+  - ghost+band: 同技の実行フェーズ(windup以外の語尾=語尾ルールに乗らないため明示追加)。
+  - ghost+circle-self/circle-target: goldring-windup(自分中心円)・judgment-windup/cage-windup/
+    dive-windup/dive-fall(追尾orロック中心の円・複製値`PHILL_*_MIRROR`を4つ追加)。
+  - none: lightrain(座標がEnemyでなくAngelBossState.phillに乗るため拾えない)・lancefan/meteor
+    (弾のみ)・feathershot(別エンティティ)・summon(判定なし)・全recover(硬直)。
+  - 全数は`ghostTelegraph.test.ts`のソース走査テストで検証済み(未分類の新規州が1件でも残っていれば
+    このテストが機械的に落ちる=手作業の見落としが混入しない)。
+- **bossChoreography.ts**: `ChoreographyBoss`型に`phillboss`を追加。開幕連携は最小1本(社長指示
+  「開幕連携は最小1本でよい」)=近接3技どうし・弾/範囲技どうしを軽く繋ぐだけの叩き台。
+  裁きの光/羽根の檻は連携表に載せない(`table[opening]??[opening]`のフォールバックで「自分自身1つ
+  だけ」=連携キューが常に空になる。§10-14#7の同時1つ・4秒間隔ゲートをpickPhillMove側が持つため、
+  台本連携でそれをバイパスさせない設計)。
+- **BOSS_HINTS(bossHints.ts)**: 4行の攻略ヒントを追加(バッチ1で「技が無いので見送り」としていた
+  除外を解禁)。`bossHints.test.ts`の除外分岐を削除し、通常の「全ボスにヒントがある」検査へ統合。
+- **getEnemyFireProfile(enemyUtils.ts)**: `phillboss`を裏ボス〜天使〜idolの共通発射プロファイル
+  チェーンへ追加(光槍の扇/エルデの流星が`createEnemyProjectile`経由で共通赤弾を撃てるようにする
+  ための性能置き場。発射タイミング自体はphillScript/angelBossTickが持つ=既存の設計原則どおり)。
+- **skadiIceBlades(gameStore.ts・§10-14#8=R8)**: 所有者判定を「二値分岐(bone?rafi:skadi)」から
+  **enemyId基準へ一般化**(`state.enemies`に持ち主のidが実在するかで判定)。旧実装のままだと
+  skadi不在のEXでフィルの羽根散弾が発射直後に全消滅していた。`visual`型に`'feather'`を追加
+  (`skadiIceBlades`配列/`spawnSkadiBlade`の両方)。既存2テスト
+  (`angelCounter.test.ts`155-172の「ラフィ討伐で骨刃も消える」/`angelPlayback.test.ts`129の
+  「骨刃visual:'bone'フィルタ」)は**外部挙動が変わらないため無修正でパス**を確認済み
+  (enemyId基準の一般化は既存の「型固定の二値判定」を包含する厳密な一般化のため)。
+- **ボスメーカー(§10-17・受け入れ条件)**: `angelTuning.ts`に`phillFields`/`PH_HELP`/`PH_PLAYABLES`
+  (13技ぶんの▸ボタン+数値欄)を追加し、`registerAngelTuning()`内で7人目として登録(既存6体と同じ
+  `registerBossTuning`呼び出し1本)。`hasPhase2`は宣言せず(既存6体と同じ理由=bossPhaseは毎フレーム
+  HPから再計算されるため押しても戻る。P2到達は既存の汎用HP40%ボタンで足りる=`BossMakerPanel.tsx`に
+  既に実装済みの汎用ボタンで新規配線は不要だった)。`bossTest.ts`の`BOSS_MAKER_BOSSES`へ`phillboss`
+  (16体目)を追加=部屋のセレクトに出るようになる。練習/ボスラッシュの出撃先(`toPracticeSlot`/
+  `practiceBossBaseHealth`/`BOSS_TEST_ENTRIES`)はバッチ1で`stage-ex1`へ実装済み・今回は無変更。
+  カウンター必須技(裁きの光/羽根の檻)は▸で単独再生した時、windup中のbodyOverlapNowカウンターと
+  blast発火時のcombatTick後追い分岐の両方が部屋でもそのまま動く(実戦と同じ経路を通るため=
+  「部屋は訓練場」の設計原則どおり、成立/被弾の両方が部屋で確認できる)。
+
+### 純関数+テスト(同コミット)
+- `src/utils/phillScript.ts`+`src/utils/phillScript.test.ts`(17件): フェーズ判定・カウンター必須の
+  4秒ゲート・35%ダメージクランプ(境界値含む)・檻の初期半径クランプ(ズーム引き上限)・召喚の上限
+  クランプ・技選択(距離帯重み+CD/フェーズ/召喚上限ゲートで候補が塞がれることの網羅チェック)。
+
+### 修正した既存テスト(仕様変更に伴う想定内の更新)
+- `src/utils/moveReaction.test.ts` — 発射箇所数固定テストの期待値16→18(理由をテスト内コメントに明記)。
+- `src/utils/angelPlayback.test.ts` — `ENTRY_STATE`表にフィル13技の入口州を追加(既存の網羅テストが
+  自動でフィルも回すようになり、13技すべて▸から始まることを実機と同じ経路で検証済み)。
+- `src/data/bossHints.test.ts` — phillboss除外分岐を削除。
+- `src/utils/exStage.test.ts` — `phillChaseVelocity`のテスト3件を削除(関数ごと撤去のため)。
+
+### 検証
+- `npm run typecheck` — エラー0。
+- `npm run lint` — エラー0・warning8(既存分のみ・バッチ1と同数=新規warning無し)。
+- 関連vitestを個別実行して全パス確認: phillScript/angelCounter/angelPlayback/angelSwordSync/
+  bossFullStunCoverage/bossChoreography/exStage/enemyUtils/bossTest/bossPractice/bountyTriple/
+  bountyTick/idolTick/combatCritParity/moveReaction/ghostTelegraph/bossHints/constitution/
+  storyCanon/bossHealth/stageDifficulty/ghostDossier/bossEncounter/duoRecords/playerTraits/
+  angelTuning(86件・全ボス横断の自動検査込み)。
+- 仕上げに全体スイート(`npx vitest run`)も一度通し、4355件中**既存2件の失敗**を確認
+  (`store/sim.test.ts`のプレイヤー速度ランプ検定/`utils/ghostTelegraph.test.ts`のrafi backroll・
+  quickblades未分類=バッチ1報告と同一・`git stash`で退避して同一失敗を再確認=このバッチのコードは
+  無関係)。**加えて`bountyTick.test.ts`の1件が全体スイート内でのみ失敗**したが、単体実行
+  (`npx vitest run src/utils/bountyTick.test.ts`)では109件全パスし、当該テストを単独指定
+  (`-t`)しても単独では再現しなかった=フルスイート内の乱数/実行順依存の既存フレーク(bountyTick.ts/
+  bountyScript.tsは今回一切触っていない)と判断。修正はスコープ外として見送り、ここに事実として記録する。
+
+### 自己点検
+- 仕様変更のルール: 技の数値(windup/active/recover/range/halfWidth/radius/CD等)は全てPACING_PUZZLE.md
+  §10-3/§10-9/§10-13が明記した「叩き台」の値をそのまま採用し、独自の数値判断は入れていない
+  (社長指示どおり実機調整前提)。カウンター文法(赤=判定一致・カウンター必須の35%クランプ・4秒
+  ゲート)・州名規約(`phill-<move>-*`)・counterReach不使用・KB除外+後追い分岐の形は、いずれも
+  §10-12〜§10-16の監査反映済み節の明記をそのまま実装しただけで、独自に仕様を足していない。
+  ★判断メモ(上記3点)は全て「設計書に明記が薄い実装判断」であり、ゲームの見え方・挙動そのものを
+  変える判断は含まない(差し戻しが要れば影響範囲が閉じた形にしてある)。
+- ★未決事項: 無し。判断が割れそうな点は上の★判断メモとして開示済み。
+- pixiの新規描画(バッチ3の範囲)には着手していない。既存の天使予告描画(`drawAngelZoneCapsule`等)は
+  全て`e.type==='miguel'|'uri'|...`のボス型ごとの専用分岐で書かれており、`phillboss`用の分岐が
+  1つも無い状態(=汎用のフォールバックに乗る仕組みが元から存在しない)。よって「既存分岐が拾える形に
+  データを載せる」(タスク項の指示)は、州名規約(`phill-<move>-*`)・`aiFromX/Y`/`aiTargetX/Y`を
+  既存6体と同じ意味・同じタイミングでロックする、という**データの形を揃えることまで**を実施した
+  (pixi側の新規分岐追加そのものはバッチ3)。追尾円(裁きの光)・収縮円(羽根の檻)・往復帯(光輪投げ)の
+  3つは既存分岐が最も薄い(=新規描画が確実に要る)技として申し送る。
+
+### 次への申し送り(バッチ3=描画)
+- 専用レイヤー(DoF除外)・呼吸/浮遊ボブ・羽6枚(glenParts式追従)・チルトシフト除外・手動tint。
+- 予告描画: 既存の`drawAngelZoneCapsule`/自分中心円/circle-targetのパターンで大半(9技)は流用できる
+  はずだが、`e.type==='phillboss'`の分岐が1つも無いため新規に足す必要がある。追尾円(裁きの光)・
+  収縮円(羽根の檻)・往復帯(光輪投げ)の3つは既存の図形パターン(circle-target/shrinking circle等)を
+  流用できるか要確認(収縮円=時間とともに半径が変わる図形は既存に前例が無い可能性が高い)。
+- 羽根散弾(feathershot)のFX: 現状は氷刃描画へのフォールバック(iceTex流用)。専用テクスチャ
+  (`public/sprites/fx/phill-feather.png`は既に取込済み・v0.25.3710)+赤い軌跡(§10-14#11の「大きめ+
+  赤い軌跡+直進」規約)への差し替えが要る。
+- 撒き羽根(判定ゼロ・§10-11/§10-13の歪み多パターン)・武器スプライト(羽の物理攻撃・phill-wing-attack.png)
+  はバッチ2では一切配線していない(シミュ層に影響しない純粋な演出のため)。
+- BOSS_SPRITE_FIT/enemyTexKeyの本格調整(バッチ1で仮値のまま)。
+
 ## v0.25.3718 — EXの見た目=ステージ6と同一へ(社長指摘「EXステージは6だよ」)【2026-08-21 01:36 JST】
 
 - 実在確認: stage-6(古い洋館)は専用遠景なし=既定の夜の森。stage-ex1は旧仮措置(v0.25.3203)で

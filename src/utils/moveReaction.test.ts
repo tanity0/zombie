@@ -523,7 +523,9 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
     //                      uri・suriel・acrasiel
     //   combatTick.ts  1 = 汎用発砲(plant等の非ボス。?giantscript=0のgiantbat旧経路も同じ口)
     //   idolTick.ts    3 = idolの通常弾(aim/fan)/ 追尾弾(orb)/ **射撃部品の斉射**(v0.25.2638)
-    // 合計16。増えたら「そのボスのその状態」をBULLET_STATE_TO_MOVEへ足すこと(足さないと
+    // 合計16(v0.25.3319時点)。+2(PACING_PUZZLE.md §10・フィルのバッチ2): 光槍の扇(phill-lancefan、
+    // 扇状5本×ループ内1箇所)/エルデの流星(phill-meteor、誘導弾4発×ループ内1箇所)。合計18。
+    // 増えたら「そのボスのその状態」をBULLET_STATE_TO_MOVEへ足すこと(足さないと
     // その弾だけ技キーが付かず、記録にも守護霊の再現にも一生乗らない)。
     // ※射撃部品は1箇所(fireShotVolley)で8枠ぶんを撃つので、枠を増やしても発射箇所は増えない。
     let sites = 0;
@@ -534,7 +536,7 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
         sites += (line.match(/createEnemyProjectile\(/g) ?? []).length;
       }
     }
-    expect(sites).toBe(16);
+    expect(sites).toBe(18);
   });
 });
 

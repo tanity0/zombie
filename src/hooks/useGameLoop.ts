@@ -302,7 +302,7 @@ import {
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
-import { isExStageRun, phillBossSpawnReady, phillChaseVelocity } from '../utils/exStage';
+import { isExStageRun, phillBossSpawnReady } from '../utils/exStage';
 import {
   parseBotSkill, botSkillProfile, dodgeVector, dodgeToInput, dodgeOverridesAttack,
   createWarpTrackState, warpDodge, type BotSkill,
@@ -800,6 +800,7 @@ const ANGEL_SFX: AngelSfx = {
   beam: () => playSfx('heavy-impact'),          // ビーム/凝視の発射(ミーミルレーザー発射と同じ流用)
   iceBurst: () => playSfx('skadi-ice'),         // 結晶/氷の起爆(スカディ氷と同じ)
   throw: () => playSfx('boomerang-throw'),      // 骨/刃の投擲(プレイヤーのブーメラン投げ近似)
+  summon: () => playSfx('summon'),              // ★フィルバッチ2(§10-3の6): 召喚(既存SEをそのまま流用)
 };
 // idol(stage-2隠しボス)の音。予告SEは全ボス共通の hunter-alert 流用(§6.26-9 #5)。
 const IDOL_SFX: IdolSfx = {
@@ -2943,11 +2944,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // --- EXボス「フィル(変異体)」(PACING_PUZZLE.md §10・バッチ1=器のみ。技はバッチ2) ---
+        // --- EXボス「フィル(変異体)」(PACING_PUZZLE.md §10・バッチ2=angelBossTickの7人目) ---
         // 出現: gate2Cleared(スリィエル撃破)&&プレイヤー深度>=PHILL_SPAWN_DEPTH(叩き台9000)。
         // 強制出現(練習/デバッグ): ?phillnow=1 または 練習枠(practiceForces('phillnow'))。
-        // 器はangelBossTickの7人目(§10-2)を将来の到達点とするが、バッチ1はまだ技を持たない
-        // 置物(bossState='chase'で直進するだけ)。isGate2AngelBossには入れない(バッチ2で編入)。
+        // 器=angelBossTickの7人目(§10-2)。isGate2AngelBoss編入によりbossState='chase'を立てるだけで
+        // 以後の移動・技選択はrunAngelBossTickの通常呼び出しが自動的に拾う(専用ブロック不要)。
         if (isExStageRun() && !danceTest && !indoor && !labTheme && !phillBossSpawnedRef.current
             && (!noSpawn || practiceForces('phillnow'))) {
           const pcxPhill = player.x + player.width / 2;
@@ -2997,29 +2998,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             bountyAttnRef.current = { at: newGameTime + 950, x: pscx, y: pscy, cutin: bossCutinPayload('phillboss') };
           }
         }
-        // フィルの最小AI(バッチ1=置物・直進チェイスのみ)。isHiddenBoss登録によりupdateEnemiesの
-        // 通常追跡AIから除外されている(idolと同じ理由=専用コントローラが座標を直接書き込む必要が
-        // ある)ため、ここで毎フレーム動かす。移動可能帯クランプは毎フレーム必須(CLAUDE.md)。
-        if (phillBossSpawnedRef.current && !danceTest) {
-          const pgsBoss = useGameStore.getState().enemies.find(e => e.type === 'phillboss');
-          if (pgsBoss && !isGameTimeStopped()) {
-            const pbcx = pgsBoss.x + pgsBoss.width / 2, pbcy = pgsBoss.y + pgsBoss.height / 2;
-            const ptcx = player.x + player.width / 2, ptcy = player.y + player.height / 2;
-            const { vx: pbvx, vy: pbvy } = phillChaseVelocity(pbcx, pbcy, ptcx, ptcy, pgsBoss.speed);
-            const pbNx = pgsBoss.x + pbvx * deltaTime;
-            const pbNy = pgsBoss.y + pbvy * deltaTime;
-            const pbClamped = clampRectToPlayableArea(pbNx, pbNy, pgsBoss.width, pgsBoss.height, {
-              farBackdrop: useGameStore.getState().farBackdrop,
-              labTheme,
-              corridorMode: useGameStore.getState().corridorMode,
-              m0AdvanceLimitX: useGameStore.getState().m0AdvanceLimitX,
-              corridorRunInActive: useGameStore.getState().corridorRunInActive,
-            });
-            useGameStore.setState(s => ({
-              enemies: s.enemies.map(e => e.id === pgsBoss.id ? { ...e, x: pbClamped.x, y: pbClamped.y, vx: pbvx, vy: pbvy } : e),
-            }));
-          }
-        }
+        // ★バッチ2(§10-2「angelBossTickの7人目」): 移動・技はisGate2AngelBoss編入により
+        // runAngelBossTick(下の通常呼び出し・ミゲル〜アクラシエルと同じ1本)が自動的に拾う。
+        // バッチ1の最小チェイスAI(phillChaseVelocity直呼び)はここで撤去した(§10申し送り事項どおり)。
         // 撃破検知(§10-16「フィルをスポーンした後、場から消えたらbeginReturnPhase」の1箇所=全キル
         // 経路を漏れなく拾う。旧EXのuseGameLoop 2858と同じ型・#1不変条件+gate2Clearedゲートにより
         // EXにphillbossは1体しか存在しない)。EXクリアフラグは通常ステージと同じ経路

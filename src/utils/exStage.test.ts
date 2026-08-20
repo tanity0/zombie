@@ -13,7 +13,7 @@ const backing: Record<string, string> = {};
   get length() { return Object.keys(backing).length; },
 } as Storage;
 
-import { isExStageRun, phillBossSpawnReady, phillChaseVelocity } from './exStage';
+import { isExStageRun, phillBossSpawnReady } from './exStage';
 
 const SELECTED_KEY = 'zombie.progress.selectedStage';
 const setStage = (id: string) => { backing[SELECTED_KEY] = id; };
@@ -46,22 +46,5 @@ describe('phillBossSpawnReady — §10-14#5: gate2Cleared=falseの間は湧か�
   it('gate2Cleared=trueかつ深度到達でtrue(境界=以上)', () => {
     expect(phillBossSpawnReady(true, 9000, 9000)).toBe(true);
     expect(phillBossSpawnReady(true, 9500, 9000)).toBe(true);
-  });
-});
-
-describe('phillChaseVelocity', () => {
-  it('目標へ向かう単位ベクトル×speedを返す', () => {
-    const { vx, vy } = phillChaseVelocity(0, 0, 100, 0, 70);
-    expect(vx).toBeCloseTo(70);
-    expect(vy).toBeCloseTo(0);
-  });
-  it('斜め方向でも速さはspeedに一致する', () => {
-    const { vx, vy } = phillChaseVelocity(0, 0, 30, 40, 50); // 3-4-5三角形
-    expect(Math.hypot(vx, vy)).toBeCloseTo(50);
-    expect(vx).toBeCloseTo(30);
-    expect(vy).toBeCloseTo(40);
-  });
-  it('距離が1px未満なら停止(ゼロ除算しない)', () => {
-    expect(phillChaseVelocity(5, 5, 5.2, 5.1, 70)).toEqual({ vx: 0, vy: 0 });
   });
 });

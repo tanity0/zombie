@@ -782,7 +782,7 @@ const M4_HORIZON_FOREST_UP_PX = tsNum('m4up', 0);
 const M5_HORIZON_FOREST_UP_PX = tsNum('m5up', 0);
 const M6_HORIZON_FOREST_UP_PX = tsNum('m6up', 0);
 const M7_HORIZON_FOREST_UP_PX = tsNum('m7up', 60); // M1と同じく40→60(社長v0.25.1942「m7のも同時に」)
-const EX1_HORIZON_FOREST_UP_PX = tsNum('ex1up', 60); // v0.25.3205: stage-7の視覚一式を仮流用(m7up=60と同値)
+const EX1_HORIZON_FOREST_UP_PX = tsNum('ex1up', 0); // v0.25.3718(社長「EXステージは6だよ」): stage-6と同じ既定0へ(旧: stage-7仮流用の60)
 const EX2_HORIZON_FOREST_UP_PX = tsNum('ex2up', 0);
 const HORIZON_FOREST_UP_BY_STAGE: Record<string, number> = {
   'stage-tutorial': M0_HORIZON_FOREST_UP_PX,
@@ -12204,7 +12204,10 @@ export class PixiScene {
   // 氷刃=設置中は薄く方向表示→発射後はくっきり、常に向きへ回転。effectLayer=world座標。
   private syncSkadiHazards(
     markers: { id: string; x: number; y: number; bornAt: number; fireAt: number }[],
-    blades: { id: string; x: number; y: number; angle: number; launched: boolean; launchAt: number; expireAt: number; visual?: 'ice' | 'bone' }[],
+    // ★PACING_PUZZLE.md §10-13/§10-14#8(フィル羽根散弾=visual:'feather'): 型は3種類受け入れるが、
+    // 専用テクスチャ/赤軌跡の描き分けはバッチ3(pixi新規描画)の範囲。現状はiceTexへフォールバックする
+    // (型を通すためだけの最小対応・「羽根なのに氷の絵」は暫定で、実機で気になれば手当てする)。
+    blades: { id: string; x: number; y: number; angle: number; launched: boolean; launchAt: number; expireAt: number; visual?: 'ice' | 'bone' | 'feather' }[],
     gameTime: number,
     now: number,
   ) {

@@ -68,6 +68,19 @@ const ENTRY_STATE: Readonly<Record<AngelMoveKey, string>> = {
   'ac-warp': 'warp-out',
   'ac-burst': 'burst-windup',
   'ac-gaze': 'gaze-windup',
+  'ph-lightrain': 'phill-lightrain-windup',
+  'ph-lancefan': 'phill-lancefan-windup',
+  'ph-wingslash': 'phill-wingslash-windup',
+  'ph-wingthrust': 'phill-wingthrust-windup',
+  'ph-wingcombo': 'phill-wingcombo-windup',
+  'ph-summon': 'phill-summon-windup',
+  'ph-goldring': 'phill-goldring-windup',
+  'ph-judgment': 'phill-judgment-windup',
+  'ph-cage': 'phill-cage-windup',
+  'ph-meteor': 'phill-meteor-windup',
+  'ph-ringtoss': 'phill-ringtoss-windup',
+  'ph-dive': 'phill-dive-windup',
+  'ph-feathershot': 'phill-feathershot-windup',
 };
 
 describe('個別再生: 天使6体の技を1つだけ強制発動できる', () => {

@@ -4427,7 +4427,7 @@ interface GameState {
   pumpkinBlasts: PumpkinBlast[];
   // 裏ボス スカジの氷ハザード。markers=足元の氷塊テレグラフ(赤サークル2秒→起爆)、blades=設置後に発射される氷刃。
   skadiIceMarkers: { id: string; x: number; y: number; bornAt: number; fireAt: number; enemyId: string }[];
-  skadiIceBlades: { id: string; x: number; y: number; angle: number; launchAt: number; launched: boolean; vx: number; vy: number; expireAt: number; enemyId: string; visual?: 'ice' | 'bone' }[];
+  skadiIceBlades: { id: string; x: number; y: number; angle: number; launchAt: number; launched: boolean; vx: number; vy: number; expireAt: number; enemyId: string; visual?: 'ice' | 'bone' | 'feather' }[];
   // 火炎瓶(molotov)が設置した地面の火だまり。lifetime/DoTは tickGroundFires が処理、描画は pixiScene が直読み。
   groundFires: GroundFire[];
   // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘。lifetime/DoTは tickBloodSpikes が
@@ -4880,7 +4880,7 @@ interface GameState {
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
-  spawnSkadiBlade: (x: number, y: number, angle: number, launchAt: number, enemyId: string, visual?: 'ice' | 'bone') => void; // visual='bone'=ラフィの骨刃(見た目のみ差し替え・判定/挙動はスカジ刃と同じ)
+  spawnSkadiBlade: (x: number, y: number, angle: number, launchAt: number, enemyId: string, visual?: 'ice' | 'bone' | 'feather') => void; // visual='bone'=ラフィの骨刃(見た目のみ差し替え・判定/挙動はスカジ刃と同じ)
   // NPCセリフ: キューに追加 / 毎フレームの表示進行(useGameLoopから呼ぶ)。
   enqueueNpcDialogue: (lines: { name: string; text: string; portrait?: string }[]) => void;
   updateNpcDialogue: (gameTime: number) => void;
@@ -13126,11 +13126,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       const counterOpen = now <= player.counterWindowEnd;
       const meleeR = huntingMeleeRadius(player);
       // ★v0.25.3591(社長指示「ラフィの骨刃は、ラフィ倒したら消えて」): 刃は**その持ち主が居る間だけ**
-      // 生きている。骨刃(ラフィ=visual:'bone')はラフィの生存、氷刃(スカジ)はスカジの生存で見る
-      // (旧: 骨刃は持ち主を見ておらず、ラフィ討伐後も飛び続けて当たっていた)。
-      // ※skadiIceBlades配列を両ボスで共用しているのでここで持ち主ごとに振り分ける。
-      const rafiAlive = state.enemies.some(e => e.type === 'rafi');
-      const activeBlades = state.skadiIceBlades.filter(b => (b.visual === 'bone' ? rafiAlive : skadiAlive));
+      // 生きている(旧: 骨刃は持ち主を見ておらず、ラフィ討伐後も飛び続けて当たっていた)。
+      // ★PACING_PUZZLE.md §10-14#8(R8): 所有者判定を二値分岐(bone?rafi:skadi)から**enemyId基準へ
+      // 一般化**した(旧実装のままだとskadi不在のEXでフィルの羽根散弾=visual:'feather'が発射直後に
+      // 全消滅していた)。skadiIceBlades配列は複数ボスで共用しているが、判定は「その刃のenemyIdが
+      // 今も盤面に居るか」の1本で足りる=visual種別を見る必要がそもそも無い。
+      const blaOwnerIds = new Set(state.enemies.map(e => e.id));
+      const activeBlades = state.skadiIceBlades.filter(b => blaOwnerIds.has(b.enemyId));
       const skadiIceBlades = activeBlades
         .map(b => {
           if (!b.launched) {
@@ -13148,13 +13150,16 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ★v0.25.3591(社長指示「これはカウンターしても体勢値は削るけど、ダメージは入らないように
           // して」/「同じく氷刃も」): 飛んでくる刃を弾いた時の**反撃HPダメージだけ0**にする
           // (体勢値・Counter!演出・無敵・CDリファンドは通常どおり=parryNoDamage)。
+          // ice=true は青の起爆FX/skadi-ice SEを選ぶフラグ(既存のice/bone両方=true実装をそのまま維持)。
+          // フィルの羽根散弾(visual:'feather')だけは新規なので氷のFXにしない(既定のオレンジ起爆へ)。
+          const iceFx = b.visual !== 'feather';
           if (counterOpen && d <= meleeR) {
             // カウンター成立: プレイヤー中心(半径meleeR)のブラストでパリィ→消化側でカウンター扱いになる。
-            pumpkinBlasts.push({ x: pcx, y: pcy, radius: meleeR, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: true, parryNoDamage: true });
+            pumpkinBlasts.push({ x: pcx, y: pcy, radius: meleeR, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: iceFx, parryNoDamage: true });
             return false;
           }
           if (d <= SKADI_BLADE_HIT + pr) {
-            pumpkinBlasts.push({ x: b.x, y: b.y, radius: SKADI_BLADE_HIT, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: true, parryNoDamage: true });
+            pumpkinBlasts.push({ x: b.x, y: b.y, radius: SKADI_BLADE_HIT, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: iceFx, parryNoDamage: true });
             return false;
           }
           return true;

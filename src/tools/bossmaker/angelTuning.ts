@@ -28,6 +28,7 @@ import {
   ANGEL_URI_TUNING, ANGEL_URI_TUNING_DEFAULTS,
   ANGEL_SURIEL_TUNING, ANGEL_SURIEL_TUNING_DEFAULTS,
   ANGEL_ACRASIEL_TUNING, ANGEL_ACRASIEL_TUNING_DEFAULTS,
+  ANGEL_PHILL_TUNING, ANGEL_PHILL_TUNING_DEFAULTS,
 } from '../../utils/angelScript';
 
 // 欄を作る小道具(section を毎行書かないためだけのもの。意味は素の TuningField と同じ)。
@@ -387,6 +388,132 @@ const AC_HELP: Record<string, string> = {
 };
 
 // ================================================================================================
+// フィル(phillboss・PACING_PUZZLE.md §10-17・angelBossTickの7人目=バッチ2)
+// ================================================================================================
+const PH_SEC = {
+  lightrain: '光の雨(ph-lightrain)', lancefan: '光槍の扇(ph-lancefan)',
+  wingslash: '羽斬り(ph-wingslash)', wingthrust: '羽突き(ph-wingthrust)', wingcombo: '羽連撃(ph-wingcombo)',
+  summon: '召喚(ph-summon)', goldring: '金環(ph-goldring)',
+  judgment: '裁きの光★必須(ph-judgment)', cage: '羽根の檻★必須(ph-cage)',
+  meteor: 'エルデの流星(ph-meteor)', ringtoss: '光輪投げ(ph-ringtoss)', dive: '急降下(ph-dive)',
+  feathershot: '羽根散弾(ph-feathershot)',
+};
+
+const HINT_REQUIRED = '★カウンター必須(避け切れない。カウンターで無効化+反撃)。同時に1つ・前回の成立/被弾から一定間隔。';
+
+const phillFields = (): TuningField[] => {
+  const lr = mk(PH_SEC.lightrain, 'move');
+  const lf = mk(PH_SEC.lancefan, 'move');
+  const ws = mk(PH_SEC.wingslash, 'move');
+  const wt = mk(PH_SEC.wingthrust, 'move');
+  const wc = mk(PH_SEC.wingcombo, 'move');
+  const sm = mk(PH_SEC.summon, 'move');
+  const gr = mk(PH_SEC.goldring, 'move');
+  const jd = mk(PH_SEC.judgment, 'move');
+  const cg = mk(PH_SEC.cage, 'move');
+  const mt = mk(PH_SEC.meteor, 'move');
+  const rt = mk(PH_SEC.ringtoss, 'move');
+  const dv = mk(PH_SEC.dive, 'move');
+  const fs = mk(PH_SEC.feathershot, 'move');
+  return [
+    lr('lightrain.windup', '予告', 'ms', 0, 5000, 50, HINT_WINDUP),
+    lr('lightrain.shotCount', '柱の本数', 'num', 1, 12, 1, '時間差で降ってくる光柱の数'),
+    lr('lightrain.shotGapMs', '柱の間隔', 'ms', 20, 2000, 20),
+    lr('lightrain.radius', '柱の半径', 'px', 10, 300, 10, '赤い円=判定'),
+    lr('lightrain.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    lr('lightrain.cdMs', 'クールダウン', 'ms', 0, 30000, 500, '大技(叩き台10秒)'),
+
+    lf('lancefan.windup', '予告', 'ms', 0, 5000, 50, HINT_WINDUP),
+    lf('lancefan.shotsPerVolley', '1回の本数', 'num', 1, 12, 1),
+    lf('lancefan.volleys', '回数', 'num', 1, 6, 1, '扇を撃つ回数'),
+    lf('lancefan.volleyGapMs', '回の間隔', 'ms', 50, 3000, 50),
+    lf('lancefan.spreadDeg', '扇の開き', 'deg', 0, 180, 5),
+    lf('lancefan.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+
+    ws('wingslash.windup', '予告', 'ms', 0, 5000, 50, HINT_WINDUP),
+    ws('wingslash.active', '振り', 'ms', 10, 2000, 10, HINT_ACTIVE),
+    ws('wingslash.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    ws('wingslash.range', '帯の長さ', 'px', 10, 600, 10, '赤い帯=判定'),
+    ws('wingslash.halfWidth', '帯の半幅', 'px', 4, 200, 10),
+
+    wt('wingthrust.windup', '予告', 'ms', 0, 5000, 50, `${HINT_WINDUP}(ディレイ持ち=長め)`),
+    wt('wingthrust.active', '突き', 'ms', 10, 2000, 10, HINT_ACTIVE),
+    wt('wingthrust.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    wt('wingthrust.range', '帯の長さ', 'px', 10, 600, 10, '赤い帯=判定'),
+    wt('wingthrust.halfWidth', '帯の半幅', 'px', 4, 200, 10),
+
+    wc('wingcombo.windup', '予告', 'ms', 0, 5000, 50, HINT_WINDUP),
+    wc('wingcombo.active1', '1撃目', 'ms', 10, 2000, 10, HINT_ACTIVE),
+    wc('wingcombo.gapMs', '2撃目のディレイ', 'ms', 0, 2000, 20),
+    wc('wingcombo.active2', '2撃目', 'ms', 10, 2000, 10, HINT_ACTIVE),
+    wc('wingcombo.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    wc('wingcombo.range', '帯の長さ', 'px', 10, 600, 10, '赤い帯=判定(2撃とも同じ帯)'),
+    wc('wingcombo.halfWidth', '帯の半幅', 'px', 4, 200, 10),
+
+    sm('summon.windup', '予告', 'ms', 0, 5000, 50, HINT_WINDUP),
+    sm('summon.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+
+    gr('goldring.windup', '予告', 'ms', 0, 5000, 50, `${HINT_WINDUP}。★半径÷104.4px/s 以上にする`),
+    gr('goldring.active', '判定', 'ms', 10, 2000, 10, HINT_ACTIVE),
+    gr('goldring.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    gr('goldring.radius', '大円の半径', 'px', 20, 600, 10, '赤い円=判定。外へ逃げるのが正解'),
+    gr('goldring.cdMs', 'クールダウン', 'ms', 0, 30000, 500, '大技(叩き台10秒)'),
+
+    jd('judgment.trackMs', '追尾する時間', 'ms', 500, 8000, 50, `${HINT_REQUIRED}(≥2秒推奨)`),
+    jd('judgment.active', '判定', 'ms', 10, 2000, 10, HINT_ACTIVE),
+    jd('judgment.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    jd('judgment.radius', '固定後の円の半径', 'px', 10, 300, 10, '赤い円=判定(固定の瞬間に1回)'),
+    jd('judgment.cdMs', 'クールダウン', 'ms', 0, 30000, 500, '個別CD(叩き台10秒)。cage との共通4秒間隔は別枠'),
+
+    cg('cage.trackMs', '閉じるまでの時間', 'ms', 500, 8000, 50, `${HINT_REQUIRED}中心は溜め開始でロック(以後追尾しない)`),
+    cg('cage.active', '判定', 'ms', 10, 2000, 10, HINT_ACTIVE),
+    cg('cage.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    cg('cage.startRadius', '初期半径', 'px', 20, 600, 10, '★可視短辺×0.45が上限(ズーム引きで自動クランプ)'),
+    cg('cage.closeRadius', '閉じ切った半径', 'px', 10, 300, 10, '赤い円=実際の判定'),
+    cg('cage.cdMs', 'クールダウン', 'ms', 0, 30000, 500, '個別CD(叩き台10秒)。judgment との共通4秒間隔は別枠'),
+
+    mt('meteor.windup', '予告', 'ms', 0, 5000, 50, HINT_WINDUP),
+    mt('meteor.count', '発数', 'num', 1, 12, 1),
+    mt('meteor.gapMs', '発の間隔', 'ms', 20, 2000, 20),
+    mt('meteor.turnRateDeg', '誘導の旋回速度', 'num', 0, 360, 5, '度/秒。大きいほど曲がる'),
+    mt('meteor.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+
+    rt('ringtoss.windup', '予告', 'ms', 0, 5000, 50, HINT_WINDUP),
+    rt('ringtoss.outMs', '往路', 'ms', 10, 2000, 10, HINT_ACTIVE),
+    rt('ringtoss.backMs', '復路', 'ms', 10, 2000, 10, HINT_ACTIVE),
+    rt('ringtoss.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    rt('ringtoss.range', '帯の長さ', 'px', 10, 900, 10, '赤い帯=判定(往復とも)'),
+    rt('ringtoss.halfWidth', '帯の半幅', 'px', 4, 200, 10),
+
+    dv('dive.windup', '追尾する時間', 'ms', 0, 5000, 50, '影マーカーが足元を追う(判定なし)'),
+    dv('dive.fallMs', '落下', 'ms', 50, 2000, 10),
+    dv('dive.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    dv('dive.radius', '着地円の半径', 'px', 10, 400, 10, '赤い円=判定。伸ばしたら追尾時間も伸ばす'),
+
+    fs('feathershot.windup', '予告', 'ms', 0, 5000, 50, HINT_WINDUP),
+    fs('feathershot.count', '本数', 'num', 1, 12, 1, '扇状に飛ぶ羽根の枚数'),
+    fs('feathershot.spreadDeg', '扇の開き', 'deg', 0, 180, 5),
+    fs('feathershot.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+  ];
+};
+
+const PH_HELP: Record<string, string> = {
+  [PH_SEC.lightrain]: 'プレイヤー周辺に小円の赤予告→時間差で光柱が落ちる大技。',
+  [PH_SEC.lancefan]: '5本扇の光弾を2回撃つ(共通赤弾=打ち返し可)。',
+  [PH_SEC.wingslash]: '大振りの横薙ぎ帯(近接)。',
+  [PH_SEC.wingthrust]: '細長い帯の刺突。溜めが長め(ディレイ持ち)。',
+  [PH_SEC.wingcombo]: '左右の羽で2連斬り。2撃目にディレイがある。',
+  [PH_SEC.summon]: 'EX雑魚を2〜3体召喚(同時上限3)。',
+  [PH_SEC.goldring]: '頭上の金環→本体中心の大円AoE。外へ走って逃げるのが正解。',
+  [PH_SEC.judgment]: '足元を追尾する赤円→固定の瞬間に光柱。避け切れない=カウンター必須。',
+  [PH_SEC.cage]: '全方位から羽根の輪が閉じる。中心は溜め開始でロック(逃げ場なし)=カウンター必須。',
+  [PH_SEC.meteor]: '誘導する光球4発(共通赤弾=打ち返し可)。',
+  [PH_SEC.ringtoss]: '頭上の光輪を直線に投げ、往復とも帯判定。',
+  [PH_SEC.dive]: '急上昇→追尾する影マーカー→急降下+着地円。',
+  [PH_SEC.feathershot]: '羽根を扇状に飛ばす専用飛翔体(打ち返し対象外=避ける系)。',
+};
+
+// ================================================================================================
 // ▸個別再生(社長指示「技再生ボタンは必須」)
 // ================================================================================================
 // section は**数値欄と同じ見出し文字列**にする(UIはsectionで突き合わせるので、ここがズレると
@@ -431,6 +558,21 @@ const AC_PLAYABLES: readonly PlayableAction[] = [
   play('ac-burst', '爆発', AC_SEC.burst),
   play('ac-gaze', '凝視', AC_SEC.gaze),
 ];
+const PH_PLAYABLES: readonly PlayableAction[] = [
+  play('ph-lightrain', '光の雨', PH_SEC.lightrain),
+  play('ph-lancefan', '光槍の扇', PH_SEC.lancefan),
+  play('ph-wingslash', '羽斬り', PH_SEC.wingslash),
+  play('ph-wingthrust', '羽突き', PH_SEC.wingthrust),
+  play('ph-wingcombo', '羽連撃', PH_SEC.wingcombo),
+  play('ph-summon', '召喚', PH_SEC.summon),
+  play('ph-goldring', '金環', PH_SEC.goldring),
+  play('ph-judgment', '裁きの光', PH_SEC.judgment),
+  play('ph-cage', '羽根の檻', PH_SEC.cage),
+  play('ph-meteor', 'エルデの流星', PH_SEC.meteor),
+  play('ph-ringtoss', '光輪投げ', PH_SEC.ringtoss),
+  play('ph-dive', '急降下', PH_SEC.dive),
+  play('ph-feathershot', '羽根散弾', PH_SEC.feathershot),
+];
 
 /** ▸を押した時の実行(6体で同じ1本。ボス側の要求箱へ渡すだけ)。 */
 const onAngelPlay = (a: PlayableAction, opts: { solo: boolean; loop: boolean }): void => {
@@ -448,6 +590,7 @@ export const ANGEL_PLAYABLES_BY_TYPE: Readonly<Record<string, readonly PlayableA
   uri: UR_PLAYABLES,
   suriel: SR_PLAYABLES,
   acrasiel: AC_PLAYABLES,
+  phillboss: PH_PLAYABLES,
 };
 export { ANGEL_MOVES_BY_TYPE };
 
@@ -460,6 +603,7 @@ export const ANGEL_RAFI_FIELDS: readonly TuningField[] = rafiFields();
 export const ANGEL_URI_FIELDS: readonly TuningField[] = uriFields();
 export const ANGEL_SURIEL_FIELDS: readonly TuningField[] = surielFields();
 export const ANGEL_ACRASIEL_FIELDS: readonly TuningField[] = acrasielFields();
+export const ANGEL_PHILL_FIELDS: readonly TuningField[] = phillFields();
 
 /**
  * ★hasPhase2 は**6体とも宣言しない**(=P2ボタンを出さない)。
@@ -513,5 +657,14 @@ export const registerAngelTuning = (): void => {
     defaults: ANGEL_ACRASIEL_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: ANGEL_ACRASIEL_FIELDS, sectionHelp: AC_HELP,
     playables: AC_PLAYABLES, onPlay: onAngelPlay, playState: getAngelPlayback,
+  });
+  // PACING_PUZZLE.md §10-17(フィル・バッチ2・16体目=7人目)。hasPhase2は宣言しない(上のコメントと
+  // 同じ理由=bossPhaseは毎フレームHPから再計算される。P2到達はHP40%ボタンで足りる)。
+  registerBossTuning({
+    bossType: 'phillboss', label: 'フィル',
+    table: ANGEL_PHILL_TUNING as unknown as Record<string, unknown>,
+    defaults: ANGEL_PHILL_TUNING_DEFAULTS as unknown as Record<string, unknown>,
+    fields: ANGEL_PHILL_FIELDS, sectionHelp: PH_HELP,
+    playables: PH_PLAYABLES, onPlay: onAngelPlay, playState: getAngelPlayback,
   });
 };

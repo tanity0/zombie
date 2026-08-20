@@ -203,7 +203,10 @@ export const aimEnemyDist2 = (pcx: number, pcy: number, e: Enemy): number => {
 // ゲート2の天使ボス(ミゲル/ジブリル/ラフィ/ウリ/スリィエル/アクラシエル)。裏ボスの部分集合=
 // ゲート2から fromEvent スポーンされ、専用コントローラ(bossState機械)で動き、ミゲルの攻撃描画を
 // 流用する型。将来の天使を足す時はここ1箇所に追加する。idolはゲート2ではないため含めない。
-export const isGate2AngelBoss = (t: EnemyType): boolean => t === 'miguel' || t === 'jibril' || t === 'rafi' || t === 'uri' || t === 'suriel' || t === 'acrasiel';
+// PACING_PUZZLE.md §10(フィル・バッチ2): フィルはゲート2ボスではない(最奥ボス)が、angelBossTickの
+// 7人目として同じディスパッチャ(runAngelBossTick)に拾わせるためここへ編入する(isHiddenBossとの
+// 二重編入は既存6体と同じ形=専用コントローラが座標を書く型+通常AI/生AABBの両方が必要)。
+export const isGate2AngelBoss = (t: EnemyType): boolean => t === 'miguel' || t === 'jibril' || t === 'rafi' || t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'phillboss';
 
 // Big set-piece enemies. They use a different crit ruleset (no instant melee
 // finisher; crits hit much harder instead).
@@ -840,8 +843,10 @@ export const getEnemyFireProfile = (enemy: Enemy): FireProfile | null => {
   // miguel(ゲート2ボス)もこのチェーンに含める(Explore地図チェックリスト)が、バッチ1では弾は
   // 未使用(攻撃1=harai は近接ライン判定のみ)。将来の弾攻撃追加時にそのまま使える置き場として置く。
   // uri/suriel/acrasiel/idol(§6.28・M52 L1)も同じ置き場に追加(台本=実際の発射タイミングはL2/L3の担当)。
+  // phillboss(§10・バッチ2): 光槍の扇/エルデの流星が共通赤弾を使う。台本側(phillScript/angelBossTick)
+  // が実際の発射タイミング・本数・追尾を持つ=ここは弾の性能(damage/speed/size)の置き場のみ。
   if (enemy.type === 'mimir' || enemy.type === 'jormungand' || enemy.type === 'skadi' || enemy.type === 'thor' || enemy.type === 'miguel' || enemy.type === 'jibril' || enemy.type === 'rafi'
-    || enemy.type === 'uri' || enemy.type === 'suriel' || enemy.type === 'acrasiel' || enemy.type === 'idol') {
+    || enemy.type === 'uri' || enemy.type === 'suriel' || enemy.type === 'acrasiel' || enemy.type === 'idol' || enemy.type === 'phillboss') {
     return { interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 };
   }
   return null;

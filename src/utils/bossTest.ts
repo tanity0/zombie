@@ -222,6 +222,9 @@ export const BOSS_MAKER_BOSSES: readonly EnemyType[] = [
   // スポーン**で立てる(§1-1)。専用コントローラ(useGameLoopのhiddenBossブロック)が掴む手掛かり
   // (bossId/巣/寸法)は、ボスメーカーの出現ブロックが置く。
   'mimir', 'jormungand', 'skadi', 'thor',
+  // PACING_PUZZLE.md §10-17(フィル・バッチ2・16体目): angelBossTickの7人目=天使6体と同じ枠組み
+  // (isGate2AngelBoss編入)なので、部屋では天使6体と同じ通常の単体スポーンで立つ。
+  'phillboss',
 ];
 export const BOSS_MAKER_DEFAULT_BOSS: EnemyType = 'idol';
 

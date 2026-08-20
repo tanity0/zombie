@@ -23,7 +23,7 @@ import {
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossSlowMult, bossCritCdMult,
 } from '../store/gameStore';
 import { getActiveGun } from './weaponUtils';
-import { createEnemyProjectile, isGate2AngelBoss } from './enemyUtils';
+import { createEnemyProjectile, isGate2AngelBoss, spawnEnemyAt } from './enemyUtils';
 import { rectsOverlap } from '../world/obstacles';
 import { airHopEase01 } from './airHop';
 import { distToSegment } from './levelUpGate';
@@ -46,6 +46,11 @@ import {
   pickAcrasielMove, acrasielPhaseForHealth, acrasielSpikeGapCount,
   pickSpikeGapMask, isSpikeGapSector,
 } from './acrasielScript';
+import {
+  pickPhillMove, phillPhaseForHealth, phillRequiredMoveReady, phillRequiredMoveDamage,
+  phillSummonSpawnCount, PHILL_REQUIRED_GAP_MS, PHILL_SUMMON_CAP,
+  type PhillMoveGates, type PhillMove,
+} from './phillScript';
 import { resolveBossHateAim, resolveBossLockedHateAim, type ResolvedHateAim } from './bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
 import { bossNeutralDelayMs, bossRebuildIdForEnemy } from './bossRebuild';
 // v0.25.2609(ボス動き横断監査・バッチ2): 硬直=パニッシュ窓の床。本作の「1発」=カウンター1サイクル
@@ -59,6 +64,7 @@ import {
   ANGEL_COMMON_TUNING as AN_C,
   ANGEL_MIGUEL_TUNING as MG_T, ANGEL_JIBRIL_TUNING as JB_T, ANGEL_RAFI_TUNING as RF_T,
   ANGEL_URI_TUNING as UR_T, ANGEL_SURIEL_TUNING as SR_T, ANGEL_ACRASIEL_TUNING as AC_T,
+  ANGEL_PHILL_TUNING as PH_T,
 } from './angelScript';
 import { choreographyRecoverMs, planBossChoreography, type ChoreographyBoss } from './bossChoreography';
 // v0.25.2617(idolTick.tsと同じ理由): プレイヤーの移動クランプと**同じ純関数**を使う。
@@ -85,10 +91,12 @@ export interface AngelSfx {
   beam: () => void;      // ビーム/凝視発射(playSfx('heavy-impact'))
   iceBurst: () => void;  // 結晶/氷起爆(playSfx('skadi-ice'))
   throw: () => void;     // 投擲(playSfx('boomerang-throw'))
+  summon: () => void;    // ★v0.25.フィルバッチ2: 召喚(playSfx('summon')・§10-3の6)
 }
 export const NOOP_ANGEL_SFX: AngelSfx = {
   counter: () => {}, reward: () => {}, sweep: () => {}, alert: () => {},
   shot: () => {}, thrust: () => {}, dashSlash: () => {}, slashHit: () => {}, beam: () => {}, iceBurst: () => {}, throw: () => {},
+  summon: () => {},
 };
 void BOSS_ALERT_SFX_KEY; // (呼び出し側=useGameLoop.tsがplaySfx(BOSS_ALERT_SFX_KEY)をalertへ配線する)
 
@@ -153,6 +161,14 @@ export interface AngelBossState {
   rafi: { rejumps: number; boneLeft: number; boneNextAt: number; nextStepAt: number; stepUntil: number; stepDx: number; stepDy: number };
   uri: { shots: number; nextShotAt: number };
   suriel: { gazeShots: number }; // gazeShots=★v0.25.3590 凝視10連射の発数カウンタ(他はEnemy側のringX/Y等に永続化)
+  /** フィル(§10・バッチ2)。CDは4大技それぞれ個別+裁きの光/羽根の檻の共通4秒ゲート(§10-14#7)。 */
+  phill: {
+    lightrainReadyAt: number; goldringReadyAt: number; judgmentReadyAt: number; cageReadyAt: number;
+    requiredReadyAt: number;
+    lightrainQueue: { x: number; y: number; at: number }[];
+    lancefanVolley: number; lancefanNextAt: number;
+    meteorHomingIds: string[];
+  };
 }
 export const createAngelBossState = (): AngelBossState => ({
   miguelSlow: { slowUntil: 0, nextAt: 0 },
@@ -161,6 +177,10 @@ export const createAngelBossState = (): AngelBossState => ({
   rafi: { rejumps: 0, boneLeft: 0, boneNextAt: 0, nextStepAt: 0, stepUntil: 0, stepDx: 0, stepDy: 0 },
   uri: { shots: 0, nextShotAt: 0 },
   suriel: { gazeShots: 0 }, // ★v0.25.3590
+  phill: {
+    lightrainReadyAt: 0, goldringReadyAt: 0, judgmentReadyAt: 0, cageReadyAt: 0, requiredReadyAt: 0,
+    lightrainQueue: [], lancefanVolley: 0, lancefanNextAt: 0, meteorHomingIds: [],
+  },
 });
 
 // カウンター成立の共通処理(旧miguelCounterHit/rafiCounterHit)。演出+プレイヤー無敵+反撃ダメージ。
@@ -324,7 +344,10 @@ export type AngelMoveKey =
   | 'rf-bone' | 'rf-jump' | 'rf-sweep' | 'rf-roll'
   | 'ur-sweep' | 'ur-downslash' | 'ur-thrust' | 'ur-bolt'
   | 'sr-ringshot' | 'sr-ringspin' | 'sr-sweep' | 'sr-gaze'
-  | 'ac-spike' | 'ac-spear' | 'ac-warp' | 'ac-burst' | 'ac-gaze';
+  | 'ac-spike' | 'ac-spear' | 'ac-warp' | 'ac-burst' | 'ac-gaze'
+  | 'ph-lightrain' | 'ph-lancefan' | 'ph-wingslash' | 'ph-wingthrust' | 'ph-wingcombo'
+  | 'ph-summon' | 'ph-goldring' | 'ph-judgment' | 'ph-cage' | 'ph-meteor' | 'ph-ringtoss'
+  | 'ph-dive' | 'ph-feathershot';
 
 /**
  * どのボスがどの技を持つか。**パネルの playables と、再生時の取り違え防止の両方がこれを読む**
@@ -337,6 +360,12 @@ export const ANGEL_MOVES_BY_TYPE: Readonly<Record<string, readonly AngelMoveKey[
   uri: ['ur-sweep', 'ur-downslash', 'ur-thrust', 'ur-bolt'],
   suriel: ['sr-ringshot', 'sr-ringspin', 'sr-sweep', 'sr-gaze'],
   acrasiel: ['ac-spike', 'ac-spear', 'ac-warp', 'ac-burst', 'ac-gaze'],
+  // フィル(§10・バッチ2): 技14(実在13・#13は落とされ番号だけ14まで進む。§10-13)。
+  phillboss: [
+    'ph-lightrain', 'ph-lancefan', 'ph-wingslash', 'ph-wingthrust', 'ph-wingcombo',
+    'ph-summon', 'ph-goldring', 'ph-judgment', 'ph-cage', 'ph-meteor', 'ph-ringtoss',
+    'ph-dive', 'ph-feathershot',
+  ],
 };
 
 interface AngelPlayRequest { move: AngelMoveKey; solo: boolean; loop: boolean }
@@ -2718,6 +2747,584 @@ export const runAcrasielTick = (
   applyPatch(acrasiel.id, patch);
 };
 
+// ============================================================================================
+// --- フィル(§10・バッチ2・新規): angelBossTickの7人目 ------------------------------------------
+// ============================================================================================
+/** PhillMove → AngelMoveKey(ボスメーカー▸のキー)。抽選/▸再生の両方がこの1本を通る。 */
+const PHILL_MOVE_TO_KEY: Readonly<Record<PhillMove, AngelMoveKey>> = {
+  lightrain: 'ph-lightrain', lancefan: 'ph-lancefan', wingslash: 'ph-wingslash', wingthrust: 'ph-wingthrust',
+  wingcombo: 'ph-wingcombo', summon: 'ph-summon', goldring: 'ph-goldring', judgment: 'ph-judgment',
+  cage: 'ph-cage', meteor: 'ph-meteor', ringtoss: 'ph-ringtoss', dive: 'ph-dive', feathershot: 'ph-feathershot',
+};
+
+export const runPhillTick = (
+  phill: Enemy, s: AngelBossState, newGameTime: number, deltaTime: number, moveSpeedMult: number,
+  sfx: AngelSfx, onPlayerDeath: (x: number, y: number) => void,
+): void => {
+  const store = useGameStore.getState();
+  const player = store.player;
+  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+  const phcx = phill.x + phill.width / 2, phcy = phill.y + phill.height / 2;
+  const bossMoveDt = deltaTime * moveSpeedMult;
+  const st = phill.bossState ?? 'chase';
+  const patch: Partial<Enemy> = {};
+  const ph = s.phill;
+
+  const healthFrac = phill.maxHealth > 0 ? phill.health / phill.maxHealth : 1;
+  const phase = phillPhaseForHealth(healthFrac);
+  patch.bossPhase = phase;
+  patch.bossPhaseFlashUntil = phaseJustChanged(phill.bossPhase, phase) ? newGameTime + ANGEL_PHASE_FLASH_MS : phill.bossPhaseFlashUntil;
+
+  // §10-4「浮遊ボスだが移動はclampRectToPlayableArea経由」(バッチ1と同じ)。ゲート2ボスの
+  // GATE_ARENA_RADIUS円クランプは掛けない(フィルは最奥の移動可能帯そのものが「場」・§10-14#9)。
+  const chaseMove = (rawSpd: number): void => {
+    const spd = rawSpd * bossSlowMult(phill, newGameTime);
+    const dx = pcx - phcx, dy = pcy - phcy;
+    const dl = Math.hypot(dx, dy) || 1;
+    patch.x = phill.x + (dx / dl) * spd * bossMoveDt;
+    patch.y = phill.y + (dy / dl) * spd * bossMoveDt;
+  };
+  const phillCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(phill, phcx, hx, hy, sfx, ghost);
+  const phillHateAim = (): ResolvedHateAim => resolveBossHateAim(phill, { x: pcx, y: pcy }, store.summons, newGameTime);
+
+  // ---- エルデの流星(技10): 誘導弾の旋回(毎フレーム・idolの誘導弾と同型。上限4発=負荷1/10) ----
+  if (ph.meteorHomingIds.length > 0) {
+    const live = new Set(store.projectiles.map(p => p.id));
+    ph.meteorHomingIds = ph.meteorHomingIds.filter(id => live.has(id));
+    if (ph.meteorHomingIds.length > 0) {
+      const homingSet = new Set(ph.meteorHomingIds);
+      const turnRate = (PH_T.meteor.turnRateDeg * Math.PI) / 180;
+      useGameStore.setState(state => ({
+        projectiles: state.projectiles.map(p => {
+          if (!homingSet.has(p.id)) return p;
+          const cur = Math.atan2(p.direction.y, p.direction.x);
+          const want = Math.atan2(pcy - (p.y + p.height / 2), pcx - (p.x + p.width / 2));
+          let d = want - cur;
+          while (d > Math.PI) d -= Math.PI * 2;
+          while (d < -Math.PI) d += Math.PI * 2;
+          const step = Math.max(-turnRate * deltaTime, Math.min(turnRate * deltaTime, d));
+          const a = cur + step;
+          return { ...p, direction: { x: Math.cos(a), y: Math.sin(a) } };
+        }),
+      }));
+    }
+  }
+
+  // --- 技の開始(begin*)。実戦の抽選(chase分岐)とボスメーカーの▸個別再生が**同じ1本**を通る ---
+  const beginLightrain = (): void => {
+    patch.bossState = 'phill-lightrain-windup';
+    patch.bossStateUntil = newGameTime + PH_T.lightrain.windup;
+    ph.lightrainReadyAt = newGameTime + PH_T.lightrain.cdMs;
+  };
+  const beginLancefan = (): void => {
+    patch.bossState = 'phill-lancefan-windup';
+    patch.bossStateUntil = newGameTime + PH_T.lancefan.windup;
+    patch.hateTarget = phillHateAim().side;
+  };
+  const lockBand = (range: number): void => {
+    const aim = phillHateAim();
+    patch.hateTarget = aim.side;
+    const dl = Math.hypot(aim.x - phcx, aim.y - phcy) || 1;
+    const dirx = (aim.x - phcx) / dl, diry = (aim.y - phcy) / dl;
+    patch.aiFromX = phcx; patch.aiFromY = phcy;
+    patch.aiTargetX = phcx + dirx * range; patch.aiTargetY = phcy + diry * range;
+  };
+  const beginWingslash = (): void => {
+    patch.bossState = 'phill-wingslash-windup';
+    patch.bossStateUntil = newGameTime + PH_T.wingslash.windup;
+    lockBand(PH_T.wingslash.range);
+  };
+  const beginWingthrust = (): void => {
+    patch.bossState = 'phill-wingthrust-windup';
+    patch.bossStateUntil = newGameTime + PH_T.wingthrust.windup;
+    lockBand(PH_T.wingthrust.range);
+  };
+  const beginWingcombo = (): void => {
+    patch.bossState = 'phill-wingcombo-windup';
+    patch.bossStateUntil = newGameTime + PH_T.wingcombo.windup;
+    lockBand(PH_T.wingcombo.range);
+  };
+  const beginSummon = (): void => {
+    patch.bossState = 'phill-summon-windup';
+    patch.bossStateUntil = newGameTime + PH_T.summon.windup;
+  };
+  const beginGoldring = (): void => {
+    patch.bossState = 'phill-goldring-windup';
+    patch.bossStateUntil = newGameTime + PH_T.goldring.windup;
+    ph.goldringReadyAt = newGameTime + PH_T.goldring.cdMs;
+  };
+  const beginJudgment = (): void => {
+    patch.bossState = 'phill-judgment-windup';
+    patch.bossStateUntil = newGameTime + PH_T.judgment.trackMs;
+    patch.aiTargetX = pcx; patch.aiTargetY = pcy;
+    ph.judgmentReadyAt = newGameTime + PH_T.judgment.cdMs;
+  };
+  const beginCage = (): void => {
+    patch.bossState = 'phill-cage-windup';
+    patch.bossStateUntil = newGameTime + PH_T.cage.trackMs;
+    // §10-9「全方位から羽根の輪が閉じる(逃げ場なし)」=閉じる中心は溜め開始でロック(以後追尾しない)。
+    patch.aiTargetX = pcx; patch.aiTargetY = pcy;
+    ph.cageReadyAt = newGameTime + PH_T.cage.cdMs;
+  };
+  const beginMeteor = (): void => {
+    patch.bossState = 'phill-meteor-windup';
+    patch.bossStateUntil = newGameTime + PH_T.meteor.windup;
+    patch.hateTarget = phillHateAim().side;
+  };
+  const beginRingtoss = (): void => {
+    patch.bossState = 'phill-ringtoss-windup';
+    patch.bossStateUntil = newGameTime + PH_T.ringtoss.windup;
+    lockBand(PH_T.ringtoss.range);
+  };
+  const beginDive = (): void => {
+    patch.bossState = 'phill-dive-windup';
+    patch.bossStateUntil = newGameTime + PH_T.dive.windup;
+    patch.aiTargetX = pcx; patch.aiTargetY = pcy;
+    patch.hateTarget = phillHateAim().side;
+  };
+  const beginFeathershot = (): void => {
+    patch.bossState = 'phill-feathershot-windup';
+    patch.bossStateUntil = newGameTime + PH_T.feathershot.windup;
+    patch.hateTarget = phillHateAim().side;
+  };
+  /** 選ばれた技を始める(予告SEは全技共通=hunter-alert・§10-2「天使の器をそのまま使う」)。 */
+  const startPhillMove = (k: AngelMoveKey): void => {
+    sfx.alert();
+    if (k === 'ph-lightrain') beginLightrain();
+    else if (k === 'ph-lancefan') beginLancefan();
+    else if (k === 'ph-wingslash') beginWingslash();
+    else if (k === 'ph-wingthrust') beginWingthrust();
+    else if (k === 'ph-wingcombo') beginWingcombo();
+    else if (k === 'ph-summon') beginSummon();
+    else if (k === 'ph-goldring') beginGoldring();
+    else if (k === 'ph-judgment') beginJudgment();
+    else if (k === 'ph-cage') beginCage();
+    else if (k === 'ph-meteor') beginMeteor();
+    else if (k === 'ph-ringtoss') beginRingtoss();
+    else if (k === 'ph-dive') beginDive();
+    else beginFeathershot();
+  };
+
+  // 判定は全てpumpkinBlasts(カプセル/円)or共通赤弾or専用飛翔体レール(§10タスク項2)。
+  // カウンター成立の実体はcombatTick.applyPumpkinBlastDamageの「後追い分岐」1本
+  // (§10-15#2/#3: counterReachにphill州は載せない)。windup/recover中の早期カウンターだけは
+  // 他の天使6体と同じbodyOverlapNow+angelCounterHitの自己完結パターンを使う。
+  const pushBlast = (x: number, y: number, radius: number, damage: number, moveKey: string,
+    capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number }): void => {
+    useGameStore.setState(state => ({
+      pumpkinBlasts: [...state.pumpkinBlasts, { x, y, radius, damage, enemyId: phill.id, moveKey, ...(capsule ? { capsule } : {}) }],
+    }));
+  };
+
+  const phillFull = phill.bossFullStunUntil !== undefined && newGameTime < phill.bossFullStunUntil;
+  let phGhostFire: GhostCounterFire | null = null;
+  if (phillFull) {
+    patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + AN_C.stunNextActionMs;
+  } else if ((phGhostFire = takeGhostAngelCounter(phill)) !== null) {
+    phillCounterHit(phcx, phcy, phGhostFire);
+    patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+  } else if (takeAngelPlay(phill, 'phillboss', startPhillMove)) {
+    // ボスメーカー ▸(通常プレイでは要求箱が常に null なのでここへは来ない)。
+  } else if (st === 'chase') {
+    chaseMove(phill.speed);
+    if (newGameTime >= (phill.bossNextActionAt ?? 0)) {
+      const dist = Math.hypot(pcx - phcx, pcy - phcy);
+      const liveEscorts = store.enemies.filter(e => e.bountyEscortId === phill.id).length;
+      const gates: PhillMoveGates = {
+        lightrainReady: newGameTime >= ph.lightrainReadyAt,
+        goldringReady: newGameTime >= ph.goldringReadyAt,
+        judgmentReady: newGameTime >= ph.judgmentReadyAt,
+        cageReady: newGameTime >= ph.cageReadyAt,
+        requiredReady: phillRequiredMoveReady(phase, newGameTime, ph.requiredReadyAt),
+        summonReady: liveEscorts < PHILL_SUMMON_CAP,
+      };
+      const scripted = chooseScriptMove(phill, 'phillboss', phase, () => pickPhillMove(dist, gates));
+      const move = scripted.move;
+      patch.bossScriptQueue = scripted.remaining;
+      if (move) startPhillMove(PHILL_MOVE_TO_KEY[move]);
+    }
+  } else if (st === 'phill-lightrain-windup') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      const queue: { x: number; y: number; at: number }[] = [];
+      for (let i = 0; i < PH_T.lightrain.shotCount; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = Math.random() * 90;
+        queue.push({ x: pcx + Math.cos(ang) * dist, y: pcy + Math.sin(ang) * dist, at: newGameTime + i * PH_T.lightrain.shotGapMs });
+      }
+      ph.lightrainQueue = queue;
+      patch.bossState = 'phill-lightrain-active';
+      patch.bossStateUntil = newGameTime + (PH_T.lightrain.shotCount - 1) * PH_T.lightrain.shotGapMs + 400;
+    }
+  } else if (st === 'phill-lightrain-active') {
+    if (ph.lightrainQueue.length > 0) {
+      const due = ph.lightrainQueue.filter(q => newGameTime >= q.at);
+      if (due.length > 0) {
+        ph.lightrainQueue = ph.lightrainQueue.filter(q => newGameTime < q.at);
+        for (const q of due) pushBlast(q.x, q.y, PH_T.lightrain.radius, phill.damage, 'phill-lightrain');
+        sfx.beam();
+      }
+    }
+    if (ph.lightrainQueue.length === 0 && newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'phill-lightrain-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.lightrain.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-lightrain-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else if (st === 'phill-lancefan-windup') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      ph.lancefanVolley = 0; ph.lancefanNextAt = newGameTime;
+      patch.bossState = 'phill-lancefan-active';
+      patch.bossStateUntil = newGameTime + PH_T.lancefan.volleys * PH_T.lancefan.volleyGapMs;
+    }
+  } else if (st === 'phill-lancefan-active') {
+    if (ph.lancefanVolley < PH_T.lancefan.volleys && newGameTime >= ph.lancefanNextAt) {
+      const aim = resolveBossLockedHateAim(phill, { x: pcx, y: pcy }, store.summons);
+      const baseAng = Math.atan2(aim.y - phcy, aim.x - phcx);
+      const n = PH_T.lancefan.shotsPerVolley;
+      const spread = (PH_T.lancefan.spreadDeg * Math.PI) / 180;
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0 : (i / (n - 1)) - 0.5;
+        const ang = baseAng + t * spread;
+        useGameStore.getState().addProjectile(createEnemyProjectile(phill, player, phcx + Math.cos(ang) * 400, phcy + Math.sin(ang) * 400));
+      }
+      sfx.shot();
+      ph.lancefanVolley += 1;
+      ph.lancefanNextAt = newGameTime + PH_T.lancefan.volleyGapMs;
+    }
+    if (ph.lancefanVolley >= PH_T.lancefan.volleys && newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'phill-lancefan-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.lancefan.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-lancefan-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else if (st === 'phill-wingslash-windup') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      const fx0 = phill.aiFromX ?? phcx, fy0 = phill.aiFromY ?? phcy, tx0 = phill.aiTargetX ?? phcx, ty0 = phill.aiTargetY ?? phcy;
+      pushBlast((fx0 + tx0) / 2, (fy0 + ty0) / 2, PH_T.wingslash.halfWidth, phill.damage, 'phill-wingslash',
+        { fx: fx0, fy: fy0, tx: tx0, ty: ty0, halfWidth: PH_T.wingslash.halfWidth });
+      patch.bossState = 'phill-wingslash-active'; patch.bossStateUntil = newGameTime + PH_T.wingslash.active;
+      sfx.sweep();
+    }
+  } else if (st === 'phill-wingslash-active') {
+    if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'phill-wingslash-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.wingslash.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-wingslash-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else if (st === 'phill-wingthrust-windup') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      const fx0 = phill.aiFromX ?? phcx, fy0 = phill.aiFromY ?? phcy, tx0 = phill.aiTargetX ?? phcx, ty0 = phill.aiTargetY ?? phcy;
+      pushBlast((fx0 + tx0) / 2, (fy0 + ty0) / 2, PH_T.wingthrust.halfWidth, phill.damage, 'phill-wingthrust',
+        { fx: fx0, fy: fy0, tx: tx0, ty: ty0, halfWidth: PH_T.wingthrust.halfWidth });
+      patch.bossState = 'phill-wingthrust-active'; patch.bossStateUntil = newGameTime + PH_T.wingthrust.active;
+      sfx.thrust();
+    }
+  } else if (st === 'phill-wingthrust-active') {
+    if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'phill-wingthrust-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.wingthrust.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-wingthrust-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else if (st === 'phill-wingcombo-windup') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      const fx0 = phill.aiFromX ?? phcx, fy0 = phill.aiFromY ?? phcy, tx0 = phill.aiTargetX ?? phcx, ty0 = phill.aiTargetY ?? phcy;
+      pushBlast((fx0 + tx0) / 2, (fy0 + ty0) / 2, PH_T.wingcombo.halfWidth, phill.damage, 'phill-wingcombo',
+        { fx: fx0, fy: fy0, tx: tx0, ty: ty0, halfWidth: PH_T.wingcombo.halfWidth });
+      patch.bossState = 'phill-wingcombo-active1'; patch.bossStateUntil = newGameTime + PH_T.wingcombo.active1;
+      sfx.sweep();
+    }
+  } else if (st === 'phill-wingcombo-active1') {
+    if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'phill-wingcombo-gap'; patch.bossStateUntil = newGameTime + PH_T.wingcombo.gapMs;
+    }
+  } else if (st === 'phill-wingcombo-gap') {
+    // 2撃目のディレイ(§10-3の5「羽連撃(物理③): 左右の羽で2連斬り(帯×2・2撃目ディレイ)」)。
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      const fx0 = phill.aiFromX ?? phcx, fy0 = phill.aiFromY ?? phcy, tx0 = phill.aiTargetX ?? phcx, ty0 = phill.aiTargetY ?? phcy;
+      pushBlast((fx0 + tx0) / 2, (fy0 + ty0) / 2, PH_T.wingcombo.halfWidth, phill.damage, 'phill-wingcombo',
+        { fx: fx0, fy: fy0, tx: tx0, ty: ty0, halfWidth: PH_T.wingcombo.halfWidth });
+      patch.bossState = 'phill-wingcombo-active2'; patch.bossStateUntil = newGameTime + PH_T.wingcombo.active2;
+      sfx.sweep();
+    }
+  } else if (st === 'phill-wingcombo-active2') {
+    if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'phill-wingcombo-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.wingcombo.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-wingcombo-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else if (st === 'phill-summon-windup') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      const liveEscorts = store.enemies.filter(e => e.bountyEscortId === phill.id).length;
+      const n = phillSummonSpawnCount(liveEscorts);
+      if (n > 0) {
+        const escorts: Enemy[] = [];
+        for (let i = 0; i < n; i++) {
+          const ang = (Math.PI * 2 * i) / n + Math.random() * 0.4;
+          const ex = phcx + Math.cos(ang) * 90, ey = phcy + Math.sin(ang) * 90;
+          const e = spawnEnemyAt('zombie', ex - 16, ey - 16, newGameTime);
+          e.bountyEscortId = phill.id;
+          escorts.push(e);
+        }
+        useGameStore.setState(st2 => ({ enemies: [...st2.enemies, ...escorts] }));
+        sfx.summon();
+      }
+      patch.bossState = 'phill-summon-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.summon.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-summon-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else if (st === 'phill-goldring-windup') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      pushBlast(phcx, phcy, PH_T.goldring.radius, phill.damage, 'phill-goldring');
+      patch.bossState = 'phill-goldring-active'; patch.bossStateUntil = newGameTime + PH_T.goldring.active;
+      sfx.beam();
+    }
+  } else if (st === 'phill-goldring-active') {
+    if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'phill-goldring-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.goldring.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-goldring-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else if (st === 'phill-judgment-windup') {
+    // ★カウンター必須(§10-9/§10-12#16): 追尾中=予告のみ(判定なし・ジャンプ着地円と同型)。
+    // 早期カウンターは他の天使と同じ自己完結windupチェックで許す(赤=判定一致・避け切れなくても弾ける)。
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      const tx = phill.aiTargetX ?? pcx, ty = phill.aiTargetY ?? pcy;
+      pushBlast(tx, ty, PH_T.judgment.radius, phillRequiredMoveDamage(phill.damage, player.maxHealth), 'phill-judgment');
+      ph.requiredReadyAt = newGameTime + PHILL_REQUIRED_GAP_MS;
+      patch.bossState = 'phill-judgment-active'; patch.bossStateUntil = newGameTime + PH_T.judgment.active;
+      sfx.beam();
+    } else {
+      patch.aiTargetX = pcx; patch.aiTargetY = pcy; // 追尾(判定はまだ無い)
+    }
+  } else if (st === 'phill-judgment-active') {
+    if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'phill-judgment-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.judgment.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-judgment-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else if (st === 'phill-cage-windup') {
+    // ★カウンター必須(§10-9/§10-12#16): 収縮円は溜め開始でロックした中心から閉じる(以後追尾しない=
+    // 「逃げ場なし」)。初期半径は可視短辺×0.45を上限にクランプ(§10-12#17・?zoomlock=0.4でも破綻しない)。
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      const tx = phill.aiTargetX ?? pcx, ty = phill.aiTargetY ?? pcy;
+      pushBlast(tx, ty, PH_T.cage.closeRadius, phillRequiredMoveDamage(phill.damage, player.maxHealth), 'phill-cage');
+      ph.requiredReadyAt = newGameTime + PHILL_REQUIRED_GAP_MS;
+      patch.bossState = 'phill-cage-active'; patch.bossStateUntil = newGameTime + PH_T.cage.active;
+      sfx.beam();
+    }
+  } else if (st === 'phill-cage-active') {
+    if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'phill-cage-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.cage.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-cage-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else if (st === 'phill-meteor-windup') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      const ids: string[] = [];
+      for (let i = 0; i < PH_T.meteor.count; i++) {
+        const ang = ((i - (PH_T.meteor.count - 1) / 2) * 0.35);
+        const baseAim = resolveBossLockedHateAim(phill, { x: pcx, y: pcy }, store.summons);
+        const baseAng = Math.atan2(baseAim.y - phcy, baseAim.x - phcx) + ang;
+        const proj = createEnemyProjectile(phill, player, phcx + Math.cos(baseAng) * 400, phcy + Math.sin(baseAng) * 400);
+        useGameStore.getState().addProjectile(proj);
+        ids.push(proj.id);
+      }
+      ph.meteorHomingIds = [...ph.meteorHomingIds, ...ids];
+      sfx.shot();
+      patch.bossState = 'phill-meteor-active'; patch.bossStateUntil = newGameTime + PH_T.meteor.gapMs * PH_T.meteor.count;
+    }
+  } else if (st === 'phill-meteor-active') {
+    if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'phill-meteor-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.meteor.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-meteor-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else if (st === 'phill-ringtoss-windup') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      const fx0 = phill.aiFromX ?? phcx, fy0 = phill.aiFromY ?? phcy, tx0 = phill.aiTargetX ?? phcx, ty0 = phill.aiTargetY ?? phcy;
+      pushBlast((fx0 + tx0) / 2, (fy0 + ty0) / 2, PH_T.ringtoss.halfWidth, phill.damage, 'phill-ringtoss',
+        { fx: fx0, fy: fy0, tx: tx0, ty: ty0, halfWidth: PH_T.ringtoss.halfWidth });
+      patch.bossState = 'phill-ringtoss-out'; patch.bossStateUntil = newGameTime + PH_T.ringtoss.outMs;
+      sfx.throw();
+    }
+  } else if (st === 'phill-ringtoss-out') {
+    if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      const fx0 = phill.aiFromX ?? phcx, fy0 = phill.aiFromY ?? phcy, tx0 = phill.aiTargetX ?? phcx, ty0 = phill.aiTargetY ?? phcy;
+      pushBlast((fx0 + tx0) / 2, (fy0 + ty0) / 2, PH_T.ringtoss.halfWidth, phill.damage, 'phill-ringtoss',
+        { fx: fx0, fy: fy0, tx: tx0, ty: ty0, halfWidth: PH_T.ringtoss.halfWidth });
+      patch.bossState = 'phill-ringtoss-back'; patch.bossStateUntil = newGameTime + PH_T.ringtoss.backMs;
+    }
+  } else if (st === 'phill-ringtoss-back') {
+    if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'phill-ringtoss-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.ringtoss.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-ringtoss-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else if (st === 'phill-dive-windup') {
+    // 急降下(技12): 追尾する影マーカー(判定なし)→急降下+着地円(ジャンプ着地レールの大型版)。
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.aiFromX = phcx; patch.aiFromY = phcy; // 現在位置=飛び出し点
+      // 着地点は溜め開始でロック済み(v0.25.3148と同じ流儀=aiTargetX/Yはここでは狙い直さない)。
+      patch.bossState = 'phill-dive-fall'; patch.bossStateUntil = newGameTime + PH_T.dive.fallMs;
+      patch.aiStartedAt = newGameTime;
+    } else {
+      patch.aiTargetX = pcx; patch.aiTargetY = pcy; // 追尾(判定はまだ無い)
+    }
+  } else if (st === 'phill-dive-fall') {
+    const fx0 = phill.aiFromX ?? phcx, fy0 = phill.aiFromY ?? phcy, tx0 = phill.aiTargetX ?? phcx, ty0 = phill.aiTargetY ?? phcy;
+    const t = Math.max(0, Math.min(1, (newGameTime - (phill.aiStartedAt ?? newGameTime)) / PH_T.dive.fallMs));
+    const tEs = airHopEase01(t); // v0.25.3076「滑空って全てのジャンプね」と同じ緩急曲線
+    patch.x = (fx0 + (tx0 - fx0) * tEs) - phill.width / 2;
+    patch.y = (fy0 + (ty0 - fy0) * tEs) - phill.height / 2;
+    if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      pushBlast(tx0, ty0, PH_T.dive.radius, phill.damage, 'phill-dive');
+      patch.bossState = 'phill-dive-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.dive.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-dive-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else if (st === 'phill-feathershot-windup') {
+    // 羽根散弾(技14・§10-13): 専用飛翔体(skadiIceBlades共有配列にvisual:'feather')。
+    // 打ち返し対象外=避ける系(ラフィの骨/ジブリルのランス/スカディの氷刃と同型)。
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      const aim = resolveBossLockedHateAim(phill, { x: pcx, y: pcy }, store.summons);
+      const baseAng = Math.atan2(aim.y - phcy, aim.x - phcx);
+      const n = PH_T.feathershot.count;
+      const spread = (PH_T.feathershot.spreadDeg * Math.PI) / 180;
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0 : (i / (n - 1)) - 0.5;
+        useGameStore.getState().spawnSkadiBlade(phcx, phcy, baseAng + t * spread, newGameTime + 250, phill.id, 'feather');
+      }
+      sfx.throw();
+      patch.bossState = 'phill-feathershot-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(PH_T.feathershot.recover, (phill.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'phill-feathershot-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(phill);
+    if (overlap && counterActive) {
+      phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
+    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, phill);
+    }
+  } else {
+    patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + AN_C.stunNextActionMs;
+  }
+
+  void onPlayerDeath; // フィルの技は全てpumpkinBlasts/共通弾/専用飛翔体経由=combatTick側がdamagePlayerと死亡判定を担う(他の被弾直呼びを持つ技が無いため未使用)。
+  applyPatch(phill.id, patch);
+};
+
 // --- ディスパッチャ(両呼び出し側の入口) -----------------------------------------------------
 export const runAngelBossTick = (
   s: AngelBossState, newGameTime: number, deltaTime: number, moveSpeedMult: number,
@@ -2750,6 +3357,8 @@ export const runAngelBossTick = (
     runSurielTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx, onPlayerDeath);
   } else if (angel.type === 'acrasiel') {
     runAcrasielTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx, onPlayerDeath);
+  } else if (angel.type === 'phillboss') {
+    runPhillTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx, onPlayerDeath);
   }
   // ボスメーカー: 単独再生の立ち下がり(2)=**tickの直後**。技がchaseへ戻ったそのフレームで終える
   // (停止中に「余分な1フレームだけ歩く」が起きない)。ループONなら次フレームにもう一度始まる。

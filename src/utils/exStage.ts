@@ -19,17 +19,6 @@ export const phillBossSpawnReady = (
   gate2Cleared: boolean, playerDepthPx: number, spawnDepthPx: number,
 ): boolean => gate2Cleared && playerDepthPx >= spawnDepthPx;
 
-/**
- * バッチ1のフィル(phillboss)は技を持たない置物=プレイヤーへ直進するだけの最小AI
- * (バッチ2でangelBossTickへ本格編入するまでの仮の動き。CLAUDE.md「動きは慣性」は技の演出の話で、
- * この直進チェイス自体は既存の雑魚チェイスAIと同じ直線追跡=対象外)。
- * 速度ベクトルを返すだけの純関数。移動の反映・clampRectToPlayableAreaは呼び出し側の責務。
- */
-export const phillChaseVelocity = (
-  bossCx: number, bossCy: number, targetCx: number, targetCy: number, speed: number,
-): { vx: number; vy: number } => {
-  const dx = targetCx - bossCx, dy = targetCy - bossCy;
-  const dist = Math.hypot(dx, dy);
-  if (dist < 1) return { vx: 0, vy: 0 };
-  return { vx: (dx / dist) * speed, vy: (dy / dist) * speed };
-};
+// ★バッチ2(§10-2「angelBossTickの7人目」): phillChaseVelocity(バッチ1の最小チェイスAI)はここで撤去した。
+// フィルはisGate2AngelBoss編入によりrunAngelBossTick(angelBossTick.ts)が移動・技選択を丸ごと持つため、
+// この葉モジュールに移動ロジックを置く必要が無くなった(exStageRun判定/出現深度判定の2関数だけが残る)。
