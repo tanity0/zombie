@@ -115,7 +115,9 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults } from '../utils/enemyUtils';
+// research/STAGE_DIFFICULTY.md: ステージ難度の階段。係数の判断(計測路なら1.0)はこのヘルパ1本。
+import { stageBossDiffMults } from '../utils/stageDiffMults';
 // §6.38 B4(クリーンアップ): 実効難易度倍率の式はbountyValue.ts(依存ゼロに近い葉。詳細はファイル冒頭の
 // コメント参照)へ一本化した。bountyTick.tsもここから同じ関数をimportする(=もう複製ではなく本物の
 // 共有import。旧B3コメントの「bountyTick.tsを直接importすると循環」は解消していない=それは今も避け、
@@ -2873,25 +2875,10 @@ const treasureVariantForValue = (value: number): number =>
 // ★v0.25.3644: 旧金箱の中身削除に伴い、gameStore側の別名(bountyChestValueMult)は撤去
 // (賞金首本体の価値スケーリングは bountyTick が bountyEffectiveValueMult を直接使う=不変)。
 
-// §6.38 v2 F(4種重複なしローテ・B4): 1ラン内でbounty-*4種を重複なく回し、全種消化後は再抽選する。
-// storeフィールド(bountyRotation)がラン内の「残り」を保持し、resetGameで新しい並びに差し替える
-// (B-4裁定: 出現した個体は討伐/退場を問わず回数とローテ枠を消費=消費は「取り出した時点」で確定)。
-export const BOUNTY_ROTATION_TYPES: readonly EnemyType[] = ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'];
-export const shuffleBountyRotation = (): EnemyType[] => {
-  const arr = [...BOUNTY_ROTATION_TYPES];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-};
-/** ローテから次の1種を取り出す(純関数)。空(=前回で使い切った)なら先に再シャッフルしてから取り出す
- * (§2「全種消化後は再抽選」)。戻り値のrestを呼び出し側がstore.bountyRotationへ書き戻す。 */
-export const takeNextBountyRotationType = (rotation: readonly EnemyType[]): { picked: EnemyType; rest: EnemyType[] } => {
-  const pool = rotation.length > 0 ? [...rotation] : shuffleBountyRotation();
-  const [picked, ...rest] = pool;
-  return { picked, rest };
-};
+// research/STAGE_DIFFICULTY.md(社長裁定2026-08-20「小ボスは1 3 4 5だけ。6は小ボス無し」):
+// 旧「§6.38 v2 F(4種重複なしローテ・B4)」= 1ラン内で bounty-*4種を重複なく回す方式は**撤去**。
+// 種別は**ステージ固定割当**(config/stageDifficulty.ts の BOUNTY_TYPE_BY_STAGE)へ移った
+// ——store のラン内状態(旧 bountyRotation)は不要になったのでフィールドごと削除している。
 
 // ★v0.25.3644(社長裁定): 旧金箱の中身(トレジャー×2+スクラップ・rollBountyChestReward /
 // BountyChestReward / BOUNTY_CHEST_TREASURE_COUNT)は**削除**。金箱の中身は collectPickup の
@@ -4969,10 +4956,6 @@ interface GameState {
   // 査定入力スナップショット(directorTick.tsがコマ切替の度に書き換える)。死亡リザルトが1回だけ
   // 読んでpromotionScore()に渡す(rankAssessor.ts)。負荷0/10(読むだけ)。
   lastKomaAssessmentInput: KomaAssessmentInput | null;
-  // §6.38 v2 F(B4): 賞金首4種の自然湧きローテーション「残り」。resetGameで新しい並びに差し替える
-  // (ラン内ローテ=次ランへ持ち越さない)。空になったら次の取り出し時に自動で再抽選される
-  // (takeNextBountyRotationType参照)。
-  bountyRotation: EnemyType[];
   // 屋内(研究施設)ステージ
   indoorMode: boolean;                                  // 屋内マップ(壁/カメラクランプ/湧き抑制)有効か
   // ステージ6(洋館・奥行き通路)。true の間: 横移動を ±CORRIDOR_LATERAL_CLAMP に拘束し、
@@ -5436,7 +5419,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   wallEventQueue: [],
   wallEventSeq: 0,
   lastKomaAssessmentInput: null,
-  bountyRotation: shuffleBountyRotation(),
   indoorMode: false,
   corridorMode: false,
   pendingCorridor: false,
@@ -16214,8 +16196,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       wallBandUntil: 0,
       wallEventQueue: [],
       lastKomaAssessmentInput: null,
-      // §6.38 v2 F(B4): 賞金首ローテもラン単位でリセット(次ランは新しい並びで4種を回す)。
-      bountyRotation: shuffleBountyRotation(),
     });
     state.enemies.forEach(e => tagRemove(e.id, 'reset')); // 消失ログ用: リスタートで全敵クリア
     clearDestroyedObstacles(); // 裏ボスに壊された木/プロップの欠番を新ランで復活させる。
@@ -16359,6 +16339,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       setFlowersDisabled(bossMakerRoom);
       // 洋館通路の湧き方向ゲート(上=奥 主体・左右は湧かせない)。generateEnemy が参照(新規/リサイクル両方)。
       setCorridorSpawn(corridorMode);
+      // research/STAGE_DIFFICULTY.md(ステージ難度の階段): 雑魚のHP/攻撃に掛かるステージ係数を
+      // **出撃のたびに1回**セットする(木/通路ゲートと同じ作法)。全出撃(通常/練習/ガントレット/
+      // ボスメーカー)がここを通るのでセット点はこの1箇所で足りる。計測路(ボスメーカー/ガントレット)は
+      // ヘルパが1.0を返す=ボス側の個別適用と同じ判断を1本で共有する。
+      {
+        const stageDiff = stageBossDiffMults();
+        setStageDifficultyMults(stageDiff.hp, stageDiff.dmg);
+      }
       // 遠景森2(手前の帯)は forest/lab どちらでも有効(ダンステストのみ無効)。lab は機材シルエット帯。
       const nearHorizon = !state.danceTestMode ? state.pendingNearHorizon : '';
       // 裏ボス(深層域)。屋外(非ラボ/非屋内)・非ダンステストのときだけ有効。

@@ -24,6 +24,10 @@ import { isBountyType } from './enemyUtils';
 // ★HP基準値は依存ゼロの葉(bountyDims.ts)から直接読む。bountyTick.ts経由にすると
 // 「gameStore → bossPractice → bountyTick → gameStore」の循環importになる(v0.25.3390の教訓と同型)。
 import { BOUNTY_BASE_HP } from './bountyDims';
+// research/STAGE_DIFFICULTY.md: ステージ難度の階段(HP係数)。**生の台帳を直接読む**——表示は常に
+// 「プレイヤーが見る実戦の値」で、計測路の中立化(utils/stageDiffMults)は一覧を出さない場面の話なので
+// ここでは通さない。config/stageDifficulty.ts は依存ゼロの葉=循環importにならない。
+import { stageHpMult } from '../config/stageDifficulty';
 
 // ---------------------------------------------------------------------------------------------
 // 出撃の種類(ランのフラグ)
@@ -259,16 +263,8 @@ export const practiceSlotByKey = (slotKey: string): PracticeSlot | undefined =>
 // ---------------------------------------------------------------------------------------------
 // 表示用のHP(BOSS_MAKER.md §20-8)
 // ---------------------------------------------------------------------------------------------
-/**
- * 枠のHP。**引けない枠は null**(画面は「—」を出す)。
- * ※v0.25.3164(社長決定「ボスのHPは増やす台本を適用しよう」)で、**stage-7のグレンは台帳どおり
- *   6000で戦うようになった**ので、そのまま表示してよくなった。
- *   旧: storyBossは台帳を通らず実効2500で戦っており、表の6000を出すと嘘になるので出していなかった
- *   (当時のコメントは「base(500)のまま/12倍の嘘」と書いていたが、**×ENEMY_HP_MULT(5)を見落とした
- *    誤り**。正しくは2500で2.4倍のズレだった)。
- * ★**stage-ex1 は台帳に行が無い**ので従来どおり実効2500=表示できない(null)。
- */
-export const practiceBossHealth = (slot: PracticeSlot): number | null => {
+/** 係数を掛ける前の台帳HP(表引きだけ。ステージ係数を掛けるのは下の practiceBossHealth)。 */
+const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
   if (slot.bossType === 'giantbat') {
     // 台帳に行があれば、その値で戦っている(v0.25.3164でストーリーボスも台帳を通るようになった)。
     // 行が無い枠(stage-ex1)だけは実際のHPと表が違うので出さない。
@@ -293,4 +289,22 @@ export const practiceBossHealth = (slot: PracticeSlot): number | null => {
   if (gate != null) return gate;
   const hidden = (HIDDEN_BOSS_HEALTH as Partial<Record<EnemyType, number>>)[slot.bossType];
   return hidden ?? null;
+};
+
+/**
+ * 枠のHP。**引けない枠は null**(画面は「—」を出す)。
+ * ※v0.25.3164(社長決定「ボスのHPは増やす台本を適用しよう」)で、**stage-7のグレンは台帳どおりの値で
+ *   戦うようになった**ので、そのまま表示してよくなった。
+ *   旧: storyBossは台帳を通らず実効2500で戦っており、表の値を出すと嘘になるので出していなかった
+ *   (当時のコメントは「base(500)のまま/12倍の嘘」と書いていたが、**×ENEMY_HP_MULT(5)を見落とした
+ *    誤り**。正しくは2500で2.4倍のズレだった)。
+ * ★**stage-ex1 は台帳に行が無い**ので従来どおり実効2500=表示できない(null)。
+ * ★research/STAGE_DIFFICULTY.md: 実戦のスポーンは台帳HPに**ステージ係数**を掛けるので、表示も同じ式で出す
+ *   (掛けないと一覧が実戦と食い違う)。賞金首枠・幻影枠は stageId='stage-1' 固定=×1.0で従来と同値
+ *   (幻影は実戦側も係数を通さないので、この枠の出撃先が stage-1 であることが一致の前提)。
+ *   計測路(ボスメーカー/ガントレット)は実戦側が1.0だが、その場面ではこの一覧を出さないので生の係数でよい。
+ */
+export const practiceBossHealth = (slot: PracticeSlot): number | null => {
+  const base = practiceBossBaseHealth(slot);
+  return base === null ? null : Math.round(base * stageHpMult(slot.stageId));
 };

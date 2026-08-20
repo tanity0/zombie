@@ -81,7 +81,6 @@ import {
   GLEN_NIHIL_SE_MS, // 虚無の三唱の専用SEを鳴らす長さ(技の定数から導出・v0.25.3143)
   SHOP_MEDKIT_COST, // SKILL_BUILD_REDESIGN.md §15-1(B0): ボット購買ポリシーの救急価格
   EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の7: ボット購買ポリシー②(装備区画)の価格表
-  takeNextBountyRotationType, // §6.38 v2 F(B4): 賞金首4種の重複なしローテ(純関数・storeフィールドと対)
   REFLECT_DAMAGE_MULTIPLIER, // v0.25.3665: 幻影の弾パリィ(打ち返し)=プレイヤーの打ち返しと同じ倍率規則
 } from '../store/gameStore';
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
@@ -144,6 +143,9 @@ import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
 import { stageBossHealthFor, STAGE_BOSS_HEALTH_BY_STAGE, guardianPhantomHealth } from '../config/bossHealth';
+// research/STAGE_DIFFICULTY.md(ステージ難度の階段): 小ボスのステージ固定割当と、ボス個別適用の係数。
+import { BOUNTY_TYPE_BY_STAGE } from '../config/stageDifficulty';
+import { stageBossDiffMults } from '../utils/stageDiffMults';
 import { canForceGateBossNow, bossMakerBossType } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import {
@@ -2665,7 +2667,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
           // PHILLガンはstage-2限定・弾薬有限のため火力基準から除外。通常ビルド基準でstage進行ごとに上げる。
-          boss.health = boss.maxHealth = stageBossHealthFor(getSelectedStageId());
+          // research/STAGE_DIFFICULTY.md: 台帳のステージ階段に、育成への対抗であるステージ係数を重ねる
+          // (役割が別=掛ける・社長裁定「案A」)。計測路(ボスメーカー/ガントレット)はヘルパが1.0を返す。
+          {
+            const cbMult = stageBossDiffMults();
+            boss.health = boss.maxHealth = Math.round(stageBossHealthFor(getSelectedStageId()) * cbMult.hp);
+            boss.damage = Math.round(boss.damage * cbMult.dmg);
+          }
           // 出現直後は城で待機=プレイヤーが近づくまで向かってこない(社長指示)。aggroRange 内へ入ると起動。
           boss.dormant = true;
           boss.aggroRange = GIANT_AGGRO_RANGE;
@@ -2752,8 +2760,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             //     ステージ1の城ボス(3500)より弱い状態。
             // ※台帳に**行がある stage だけ**適用する(stage-ex1 は行が無く、既定へフォールバックさせると
             //   誰も決めていない値になるので触らない=従来どおり2500)。
-            if (STAGE_BOSS_HEALTH_BY_STAGE[storyStageId] !== undefined) {
-              boss.health = boss.maxHealth = stageBossHealthFor(storyStageId);
+            // research/STAGE_DIFFICULTY.md: 城ボスと同じくステージ係数を重ねる(stage-7 / stage-ex1 は
+            // 表未掲載=1.0なので実効は不変。適用点を城ボスと揃えて取りこぼしを作らないための配線)。
+            {
+              const sbMult = stageBossDiffMults();
+              if (STAGE_BOSS_HEALTH_BY_STAGE[storyStageId] !== undefined) {
+                boss.health = boss.maxHealth = Math.round(stageBossHealthFor(storyStageId) * sbMult.hp);
+              }
+              boss.damage = Math.round(boss.damage * sbMult.dmg);
             }
             // v0.25.3029(社長裁定「二体」): stage-7のグレンは形態フラグを持つ。通常は形態1から。
             // ボスモードの「グレン 第二形態」枠は**最初から形態2の個体**をフルHPでスポーン
@@ -3026,6 +3040,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // ゲート2ボスはステージ別(stage-1=ミゲル / stage-3=ジブリル)。未定義ステージは従来どおりミゲル。
             const gate2BossType = GATE2_BOSS_TYPE_BY_STAGE[getSelectedStageId()] ?? 'miguel';
             const boss = spawnEnemyAt(gate2BossType, bx - 24, by - 24, newGameTime);
+            // research/STAGE_DIFFICULTY.md: ステージ係数(計測路は1.0)。天使のスポーンは**2箇所**
+            // (ここ=本編の自然発火 / 下の練習・デバッグ経路)なので両方に掛ける。
+            {
+              const g2Mult = stageBossDiffMults();
+              boss.health = boss.maxHealth = Math.round(boss.health * g2Mult.hp);
+              boss.damage = Math.round(boss.damage * g2Mult.dmg);
+            }
             boss.fromEvent = true;
             // ミゲルは周回移動(bossState制御)なので dormant/aggroRange は使わない(giantbat流用時の名残)。
             boss.bossState = 'chase';
@@ -3937,8 +3958,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           bountyE.aggroRange = BOUNTY_AGGRO_RANGE_DEFAULT;
           bountyE.homeX = bountyE.x; bountyE.homeY = bountyE.y;
           const bArea = areaIndexForPos(bountyE.x + bountyE.width / 2, bountyE.y + bountyE.height / 2);
-          const bHp = bountyMaxHealth(bArea, atGameTime);
+          // research/STAGE_DIFFICULTY.md: ステージ係数(計測路は1.0)。既存の bountyEffectiveValueMult とは
+          // 乗算で重なる(どちらも「基準値2000への倍率」)。★攻撃係数で動くのは**接触ダメージだけ**——
+          // 賞金首の技は bountyScript の専用定数で enemy.damage を通らない=据え置き。
+          const bMult = stageBossDiffMults();
+          const bHp = Math.round(bountyMaxHealth(bArea, atGameTime) * bMult.hp);
           bountyE.health = bHp; bountyE.maxHealth = bHp;
+          bountyE.damage = Math.round(bountyE.damage * bMult.dmg);
           // 同時1体まで(§2)=既存の賞金首を消してから出す(idolの複数体対策と同じ作法)。
           useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => !isBountyType(e.type)) }));
           addEnemy(bountyE);
@@ -3962,8 +3988,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // --- 賞金首(BOUNTY)自然湧き(§6.38 §2「頻度」・v2 F・B4) ---------------------------------
         // イベントproducer(eventGateOk相当)への相乗り=抑止ゲート(bountySpawnBlocked)+緩コマ不可
-        // (第5条「緩を荒らさない」)+専用の回数/CDゲート(bountyNaturalSpawnReady)。抽選は4種ローテ
-        // (store.bountyRotation・重複なし・全種消化で再抽選)。出現位置・演出はspawnBountyEncounter共用。
+        // (第5条「緩を荒らさない」)+専用の回数/CDゲート(bountyNaturalSpawnReady)。
+        // ★research/STAGE_DIFFICULTY.md: 種別は**ステージ固定割当**(BOUNTY_TYPE_BY_STAGE)。旧4種ローテは撤去。
+        // 台帳に行が無いステージ(stage-2/6/7 ほか)は**湧かせない**(社長裁定「小ボスは1 3 4 5だけ。
+        // 6は小ボス無し」)。本編S6は既存の corridorMode ゲートで既に塞がっているので、この台帳ゲートが
+        // 実際に効くのは**S6の再訪/フリー周回**。出現位置・演出はspawnBountyEncounter共用。
         if (!danceTest && !indoor && !storyBoss && !tutorialStage && !noSpawn) {
           const bgs = useGameStore.getState();
           const bountyAliveNow = bgs.enemies.some(e => isBountyType(e.type));
@@ -3997,12 +4026,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             bountyAlive: bountyAliveNow,
             spawnBlocked: bBlocked,
           });
-          if (bReady) {
-            const { picked, rest } = takeNextBountyRotationType(bgs.bountyRotation);
-            useGameStore.setState({ bountyRotation: rest });
-            // B-4裁定: 出現した個体は討伐/退場を問わず回数とローテ枠を消費(=消費は出現の瞬間に確定)。
+          const bStageType = BOUNTY_TYPE_BY_STAGE[getSelectedStageId()];
+          if (bReady && bStageType) {
+            // B-4裁定: 出現した個体は討伐/退場を問わず回数を消費(=消費は出現の瞬間に確定)。
             bountyNaturalRef.current.count += 1;
-            spawnBountyEncounter(picked, newGameTime);
+            spawnBountyEncounter(bStageType, newGameTime);
           }
         }
 
@@ -4764,6 +4792,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const gbx = gcx + Math.cos(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
             const gby = gcy + Math.sin(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
             const gboss = spawnEnemyAt(gbType, gbx - 24, gby - 24, newGameTime);
+            // research/STAGE_DIFFICULTY.md: 天使のスポーン2箇所目(練習/デバッグ)。実ゲート2と同じ係数を掛ける
+            // (練習ランは枠のstageIdが getSelectedStageId から返る=実戦と同じ値になる)。
+            {
+              const gbMult = stageBossDiffMults();
+              gboss.health = gboss.maxHealth = Math.round(gboss.health * gbMult.hp);
+              gboss.damage = Math.round(gboss.damage * gbMult.dmg);
+            }
             gboss.fromEvent = true; // ×5は掛けない=基本値(実ゲート2と揃える・社長指示v0.25.1595)
             gboss.bossState = 'chase';
             gboss.bossNextActionAt = newGameTime + 2000;
@@ -4820,6 +4855,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (!bs.spawned && (FORCE_HIDDEN_BOSS || practiceForces('bossnow') || nearLair) && !useGameStore.getState().attention && !isGameTimeStopped()
                 && !useGameStore.getState().activeEvent) { // 囲い系イベント中は裏ボスを出さない(重なると逃走で詰み=終わらない・社長報告)
               const e = spawnEnemyAt(hiddenBoss, 0, 0, newGameTime);
+              // research/STAGE_DIFFICULTY.md: ステージ係数(裏ボスのスポーンはこの1箇所=自然/強制共通)。
+              // 計測路(ボスメーカー/ガントレット)ではヘルパが1.0を返す。
+              {
+                const hbMult = stageBossDiffMults();
+                e.health = e.maxHealth = Math.round(e.health * hbMult.hp);
+                e.damage = Math.round(e.damage * hbMult.dmg);
+              }
               let cx: number, cy: number;
               if (FORCE_HIDDEN_BOSS || practiceForces('bossnow')) {
                 // 進行方向(なければ最後の向き/上)の画面外すぐ外へ。帰巣先もここにする。
@@ -6253,8 +6295,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (raw === 'melee') return 'bounty-melee';
               if (raw === 'balance') return 'bounty-balance';
               if (raw === 'maiko') return 'bounty-maiko';
-              // ★種別未指定(?bountynow=1のみ)は4種からランダム(v0.25.3399・社長報告
-              // 「遠距離しか出てこない」=旧: ranged固定既定は誤解を生んだ)。
+              // ★種別未指定(?bountynow=1のみ)は**選択ステージの台帳**を引く
+              // (research/STAGE_DIFFICULTY.md=実戦と同じ割当で検証できる)。
+              const byStage = BOUNTY_TYPE_BY_STAGE[getSelectedStageId()];
+              if (byStage && isBountyType(byStage)) return byStage as 'bounty-ranged' | 'bounty-melee' | 'bounty-balance' | 'bounty-maiko';
+              // 台帳に行が無いステージでは従来どおり4種からランダム(デバッグ用の自由度を残す・v0.25.3399
+              // 社長報告「遠距離しか出てこない」=旧: ranged固定既定は誤解を生んだ)。
               const all = ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as const;
               return all[Math.floor(Math.random() * all.length)];
             };

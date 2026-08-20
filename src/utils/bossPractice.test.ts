@@ -8,7 +8,8 @@ import { GHOST_DOSSIER_SLOTS } from './ghostDossier';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 import { STAGE_BOSS_HEALTH_BY_STAGE } from '../config/bossHealth';
 import { STAGES, getStage } from '../data/campaign';
-import { BOUNTY_ENEMY_TYPES, isBountyType } from './enemyUtils';
+import { BOUNTY_ENEMY_TYPES, isBountyType, isHiddenBoss, spawnEnemyAt } from './enemyUtils';
+import { stageHpMult } from '../config/stageDifficulty';
 import { BOUNTY_BASE_HP } from './bountyDims';
 import { guardianPhantomHealth } from '../config/bossHealth';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
@@ -168,6 +169,34 @@ describe('練習画面のHP表示', () => {
       const stage = getStage(slot.stageId);
       if (slot.bossType === 'giantbat' && (stage?.storyBossOnly || stage?.theme === 'lab')) continue;
       expect(practiceBossHealth(slot), slot.slotKey).toBeGreaterThan(0);
+    }
+  });
+
+  // research/STAGE_DIFFICULTY.md(ステージ難度の階段): 表示は常に「プレイヤーが見る実戦の値」。
+  // ★通常経路(非計測路)に限定した一致——ボスメーカー/ガントレット中は実戦が1.0/表示は係数込みで
+  // 一致しないのが仕様(その場面ではこの一覧を出さない)。
+  it('天使/裏ボスの表示 = 実戦スポーン値(台帳HP×ステージ係数)', () => {
+    for (const slot of PRACTICE_SLOTS) {
+      if (!isHiddenBoss(slot.bossType)) continue; // 天使6体+裏ボス5体(idol含む)
+      // 実戦は spawnEnemyAt が書く台帳HP(倍率を通さない固定型)へ、スポーン地点でステージ係数を掛ける。
+      const spawned = spawnEnemyAt(slot.bossType, 0, 0, 0);
+      expect(practiceBossHealth(slot), slot.slotKey).toBe(Math.round(spawned.health * stageHpMult(slot.stageId)));
+    }
+  });
+
+  it('城ボス(giantbat)の表示 = 台帳HP×ステージ係数', () => {
+    for (const slot of PRACTICE_SLOTS.filter(s => s.bossType === 'giantbat')) {
+      const ledger = STAGE_BOSS_HEALTH_BY_STAGE[slot.stageId];
+      if (ledger === undefined) continue; // stage-ex1 は「—」
+      expect(practiceBossHealth(slot), slot.slotKey).toBe(Math.round(ledger * stageHpMult(slot.stageId)));
+    }
+  });
+
+  it('階段に乗るステージの枠は、係数のぶんだけ台帳より大きく表示される', () => {
+    const laddered = PRACTICE_SLOTS.filter(s => stageHpMult(s.stageId) > 1 && isHiddenBoss(s.bossType));
+    expect(laddered.length).toBeGreaterThan(0); // 台帳の割当が消えたら気付けるようにする
+    for (const slot of laddered) {
+      expect(practiceBossHealth(slot)!, slot.slotKey).toBeGreaterThan(spawnEnemyAt(slot.bossType, 0, 0, 0).health);
     }
   });
 });

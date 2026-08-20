@@ -12,8 +12,12 @@ export const STAGE_BOSS_HEALTH_BY_STAGE: Readonly<Record<string, number>> = {
   'stage-3': 4500,
   'stage-4': 5000,
   'stage-5': 5500,
-  // stage-6にはボスがいない。6000はstage-7のラスボス(グレン)へ適用する。
-  'stage-7': 6000,
+  // stage-6にはボスがいない。12000はstage-7のラスボス(グレン)へ適用する。
+  // research/STAGE_DIFFICULTY.md(社長裁定2026-08-20「7は単純にHPを第一と第2それぞれ2倍くらいに」):
+  // 6000→12000。**第二形態も同じこの行を読む**(useGameLoopの形態2スポーンが
+  // stageBossHealthFor('stage-7'))ので、ここを2倍にするだけで両形態が2倍になる。
+  // stage-7 はステージ係数の階段には乗せない(固定値)ので、増分はこの行だけが持つ。
+  'stage-7': 12000,
 };
 
 // ゲート2は裏ボスへ向かう途中で必ず戦う中ボス。対応ステージの城ボスより強くしつつ、

@@ -18,6 +18,17 @@ export const OFFSCREEN_RECYCLE_MARGIN = 240;  // ビュー矩形の外側この�
 // 湧き数・敵種・AI・当たり判定は不変(=位置の左右→上下振り分けだけ)。
 let corridorSpawnEnabled = false;
 export const setCorridorSpawn = (enabled: boolean): void => { corridorSpawnEnabled = enabled; };
+// research/STAGE_DIFFICULTY.md(ステージ難度の階段): 雑魚のHP/攻撃に掛かるステージ係数。
+// setCorridorSpawn / setTreesDisabled と同じ既存作法で **resetGame が出撃のたびに1回セットする**
+// (通常出撃=選択ステージの係数 / ボスメーカー・ガントレット=1.0=計測路の中立化)。
+// 台帳の値は config/stageDifficulty.ts。ここは受け取るだけ(このモジュールは台帳を読まない=
+// 出撃ごとに1回で済む値を毎スポーンで引き直さない)。
+let stageDiffHpMult = 1;
+let stageDiffDmgMult = 1;
+export const setStageDifficultyMults = (hp: number, dmg: number): void => {
+  stageDiffHpMult = hp;
+  stageDiffDmgMult = dmg;
+};
 // 上(奥)から湧く比率(叩き台=上7:下3)。定数化して調整可能に(社長指示)。
 // v0.25.2151(社長指示「敵が終盤まで出てこない。最初に戻して」): v2128の上のみ(1.0)を撤回し、
 // 最初(v2105)の上7:下3へ復帰=下(手前)からも湧いて序盤から接敵する。
@@ -613,14 +624,21 @@ const buildEnemy = (
   const areaBase = fixed ? 1 : lerpAreaTable(AREA_BASE_DIFFICULTY, effArea);
   // 社長指定v0.25.2317: エリアが深いほど動きが速くなる(固定強度タイプは対象外)。時間軸も同様に迫る。
   const areaSpeed = fixed ? 1 : lerpAreaTable(AREA_SPEED_MULT, effArea);
-  const diffDmg = areaBase * colorDmgMult;
+  // research/STAGE_DIFFICULTY.md: ステージ難度の階段(雑魚)。**攻撃係数は diffDmg 自体に掛ける**
+  // ——接触ダメージ(下の damage:)と敵弾ダメージ(difficultyMultiplier を createEnemyProjectile が読む)の
+  // 両方が同時に動く(damage だけに掛けると plant 等の撃つ雑魚の弾が据え置きになる)。
+  // 固定型(CONSTANT_STRENGTH_TYPES / LAB_FIXED_TYPES)は下の `fixed ? 1 : diffDmg` のガードで自動的に除外。
+  const diffDmg = areaBase * colorDmgMult * stageDiffDmgMult;
   const diffHp = areaBase * colorHpMult;
   // Reaper は終端個体で別管理。giant/ラボ等の固定タイプは全体底上げ(ENEMY_HP_MULT)のみ維持。
   // reaper と裏ボスは health をそのまま使う(裏ボスは個別HPを直接指定=ENEMY_HP_MULT を掛けない)。
   // research/GHOST_BOSS.md(幻影): 裏ボスと同じ「HPを直接指定」枠=ENEMY_HP_MULT を掛けない
   // (スポーン側が書き込んだHPがそのまま実効HPになる=練習画面の表示と実戦が一致する。
   //  幻影は ENEMY_STATS の値がプレースホルダで、スポーン直後に育成込みの値へ上書きされる)。
-  const hpMult = (type === 'reaper' || isHiddenBoss(type) || isGuardianPhantom(type)) ? 1 : (fixed ? ENEMY_HP_MULT : diffHp * ENEMY_HP_MULT);
+  // research/STAGE_DIFFICULTY.md: HP係数は hpMult へ乗算。**非固定(=雑魚)の枝だけ**に掛ける
+  // ——固定型(城ボス/賞金首/天使/裏ボス/ラボ敵ほか)はスポーン側の個別適用が担当なので、
+  // ここで掛けると二重になる(除外の意図は diffDmg 側の fixed ガードと同じ)。
+  const hpMult = (type === 'reaper' || isHiddenBoss(type) || isGuardianPhantom(type)) ? 1 : (fixed ? ENEMY_HP_MULT : diffHp * ENEMY_HP_MULT * stageDiffHpMult);
   const dmgMult = type === 'reaper' ? 1 : (fixed ? 1 : diffDmg);
   const sizeMult = colorTier ? COLOR_TIER_SIZE_MULT[colorTier] : 1;
 

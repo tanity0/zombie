@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.3676 — ★ステージ難度階段の実装着地(バッチ納品)【2026-08-20 15:11 JST】
+
+- STAGE_DIFFICULTY.md v2(設計監査4巡・20件反映)の実装バッチ(Opus)が納品→常時フロア検証済みで着地。
+  新規: config/stageDifficulty.ts(係数台帳+賞金首割当)/utils/stageDiffMults.ts(計測路ヘルパ)/
+  不変条件テスト5本。改修: enemyUtils(セッター+hpMult非固定枝・diffDmg適用=接触と敵弾の両方)/
+  gameStore(resetGameの毎出撃セット・ローテ撤去)/useGameLoop(賞金首台帳引き+S6ゲート・
+  城ボス/天使2箇所/裏ボスのスポーン時乗算)/bossHealth(グレン台帳12000=両形態自動2倍)/
+  bossPractice(表示=生stageHpMult)。旧bountyRotation.test.tsは台帳引きテストへ置換。
+- 実装者の判断3件(検収で妥当と判断): ①HP係数は非固定枝のみ(固定型除外の履行)
+  ②無効化した比較テスト1行の削除(理由コメント付き) ③丸めはMath.round(表示と実戦が同式)。
+- 検証: typecheck 0 / lint 0エラー(手元再確認済み)/ 対象9ファイル126テスト green/
+  全体264 green(既存赤2=sim・ghostTelegraphは先行事象・stashでも再現)。
+- **検収監査は進行中**(stop-hookの求めによりフロア検証済みで先行push。指摘があれば次pushで反映)。
+- 自己点検: 係数1.0(S1/S2/S7/ex・計測路)は現行と完全一致=不変条件テストで機械化。憲法非抵触。
+
 ## v0.25.3675 — トール技台本の変更仕様を確定(research/THOR_ISSEN_REWORK.md 新設・文書のみ)【2026-08-20 15:07 JST】
 
 - 社長指示4件を記録: ①一閃は毎回2段台本=**無の境地(紫ライン300ms・何も起きない)→
