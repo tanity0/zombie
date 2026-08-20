@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3664',
+    items: [
+      'ガチャの単発演出を10連と同じ型に統一しました(撃つ→着弾の流れ・当たり時の導入パーティクルと号砲も単発で出ます)。',
+    ],
+  },
+  {
     version: '0.25.3663',
     items: [
       'サブクエスト達成に専用のクリア音が付きました(これまでは小イベント完了音の流用でした)。',

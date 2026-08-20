@@ -1790,30 +1790,22 @@ const SkillGacha: React.FC = () => {
     }
     const best = bestRarity(got);
     const m = got.length;
-    // super を含む複数連だけ、連打の前に「パーティクルがパー!と広がる」導入を置く(SEのファンファーレも先頭)。
-    const intro = m > 1 && best === 'super' ? SUPER_INTRO_MS : 0;
-    if (m > 1) {
-      if (best === 'super') window.setTimeout(() => playSfx('event-clear'), 0); // 導入パーティクルの号砲
-      // 連打(通常の撃つ演出)。super は導入ぶん遅らせて開始。
-      for (let i = 0; i < m; i++) window.setTimeout(() => playSfx('rifle-fire'), intro + i * SHOT_STAGGER);
-      window.setTimeout(() => {
-        playSfx('bomb');
-        if (best === 'rare') playSfx('homing-lock2');
-        else if (best === 'super') playSfx('heavy-impact');
-      }, intro + m * SHOT_STAGGER);
-    } else {
-      // ★v0.25.3651(SE台帳走査で発見): 旧 'shoot' はSfxKey型にだけ存在しSFX_SOURCES未定義=常に無音だった。
-      // 連打側(上のループ)と同じ 'rifle-fire' に揃える(単発だけ発砲音が無い非対称の解消)。
-      playSfx('rifle-fire'); playSfx('bomb'); // 発砲＋着弾(破裂)
+    // ★v0.25.3664(社長指示「ガチャ単発のは10連の流用して直して」): 単発専用のSE枝を廃止し、
+    // 発数1でも複数連と同じ流れ(super導入号砲→撃つ×m→着弾+レア度SE)を通す。
+    const intro = best === 'super' ? SUPER_INTRO_MS : 0;
+    if (best === 'super') window.setTimeout(() => playSfx('event-clear'), 0); // 導入パーティクルの号砲
+    for (let i = 0; i < m; i++) window.setTimeout(() => playSfx('rifle-fire'), intro + i * SHOT_STAGGER);
+    window.setTimeout(() => {
+      playSfx('bomb');
       if (best === 'rare') playSfx('homing-lock2');
-      else if (best === 'super') { playSfx('heavy-impact'); playSfx('event-clear'); }
-    }
+      else if (best === 'super') playSfx('heavy-impact');
+    }, intro + m * SHOT_STAGGER);
     setIdx(0);
     setLeaving(false);
     setResults(got);     // リザルトは確定(暗転は破裂後に出す)
     setBursting(true);   // まず破裂演出
-    // 連射は連打ぶん＋(superは導入ぶん)長め。単発は従来どおり。
-    const burstMs = m > 1 ? Math.max(BURST_MS, intro + m * SHOT_STAGGER + 430) : BURST_MS;
+    // 連射ぶん+(superは導入ぶん)長め。単発も同じ式(m=1で従来のBURST_MSに落ちる)。
+    const burstMs = Math.max(BURST_MS, intro + m * SHOT_STAGGER + 430);
     setTimeout(() => setBursting(false), burstMs);
   };
   const closeReveal = () => { setResults(null); setBursting(false); setPendingCount(null); setIdx(0); setShowList(false); setLeaving(false); };
@@ -1858,10 +1850,12 @@ const SkillGacha: React.FC = () => {
   if (bursting) {
     const best = bestRarity(results ?? []);
     const fx = BURST_FX[best];
-    const shotCount = (results ?? []).length;
-    // 10連等(複数): 的「1枚」を食い気味に連打(通常の撃つ演出=フラッシュ＋破片。パーティクルは混ぜない)。
+    const shotCount = Math.max(1, (results ?? []).length);
+    // 的「1枚」を食い気味に連打(通常の撃つ演出=フラッシュ＋破片。パーティクルは混ぜない)。
     // super を含む時のみ「最初にパーティクルがパー!っと画面全体に広がってから」連打に入る(導入だけ特別)。
-    if (shotCount > 1) {
+    // ★v0.25.3664(社長指示「ガチャ単発のは10連の流用」): 単発専用の破裂ブロックを廃止し、
+    //   この演出を発数1でも使う(音と同じ非対称の解消。旧単発ブロックの的破裂・リングは撤去)。
+    {
       const isSuper = best === 'super';
       const intro = isSuper ? SUPER_INTRO_MS : 0; // superは導入パーティクルぶん連打開始を後ろへ
       const SHARDS_PER = 4;
@@ -1903,40 +1897,6 @@ const SkillGacha: React.FC = () => {
         document.body
       );
     }
-    // 単発: 中心から飛び散る破片。--tx/--ty で方向を渡す(CSS駆動)。レア度で枚数・飛距離が増える。
-    const shards = Array.from({ length: fx.shardCount }, (_, i) => {
-      const ang = (Math.PI * 2 * i) / fx.shardCount;
-      const dist = 96 + (i % 3) * 26 + fx.distBonus;
-      return { tx: Math.cos(ang) * dist, ty: Math.sin(ang) * dist, i };
-    });
-    // body 直下へポータル。施設リストの scroll/transform から切り離した真の専用フルスクリーン演出にする。
-    return createPortal(
-      <div className="gacha-dim fixed inset-0 z-50 flex items-center justify-center bg-black">
-        {/* v0.25.2146: 複数連と同じく、不透明の黒+射撃場の絵を基層に(暗幕だけだと背後のメニューが透ける)。 */}
-        <img src={coverSrc} alt="" draggable={false} className="absolute inset-0 h-full w-full object-contain" />
-        <div className={`absolute inset-0 ${fx.dim}`} />
-        <div className={`relative flex items-center justify-center ${fx.shake ? 'gacha-burst-shake' : ''}`} style={{ width: '70%', maxWidth: 340, aspectRatio: '3 / 4' }}>
-          {/* super: 背後に広がる金色の光(レア度演出の主役) */}
-          {fx.glow && (
-            <span className="gacha-burst-glow absolute inset-[-30%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(251,191,36,0.55), rgba(251,191,36,0) 70%)' }} />
-          )}
-          {/* rare/super: 広がる色付きリング(複数で厚みを出す) */}
-          {fx.rings.map((ringCls, k) => (
-            <span key={k} className={`gacha-burst-ring absolute h-44 w-44 rounded-full border-2 ${ringCls}`} style={{ animationDelay: `${k * 90}ms` }} />
-          ))}
-          <img src={targetSrc} alt="" className="gacha-target-burst absolute inset-0 h-full w-full object-contain" />
-          {shards.map(s => (
-            <span
-              key={s.i}
-              className={`gacha-shard absolute h-2.5 w-2.5 rounded-[2px] ${fx.shard}`}
-              style={{ ['--tx' as string]: `${s.tx}px`, ['--ty' as string]: `${s.ty}px` }}
-            />
-          ))}
-          <span className={`gacha-flash absolute inset-0 rounded-full ${fx.flash}`} style={{ filter: 'blur(8px)' }} />
-        </div>
-      </div>,
-      document.body
-    );
   }
 
   // --- 排出結果(矢印めくり・スクロール無しの専用全画面) ----------------
