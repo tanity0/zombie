@@ -128,7 +128,18 @@ export const isPromotionExcluded = (
   killerType: EnemyType | null | undefined,
   redNightActive: boolean,
 ): boolean =>
-  !killerType || killerType === 'giantbat' || killerType === 'reaper' || isHiddenBoss(killerType) || redNightActive;
+  // 'guardian-phantom'(幻影=決闘の対戦相手)は宿敵にしない(v0.25.3694・社長報告「鴉は敵として
+  // 通常ステージに出てきたよ！」の実バグ): 決闘で幻影に倒されると宿敵へ昇格し、通常ステージの
+  // 宿敵湧き(60%)で幻影がフィールドに出ていた。対戦専用の型は本編の湧きに出さない。
+  !killerType || killerType === 'giantbat' || killerType === 'reaper' || killerType === 'guardian-phantom'
+  || isHiddenBoss(killerType) || redNightActive;
+
+/**
+ * 保存済みの宿敵メタの浄化(v0.25.3694)。除外型(幻影等)が過去の穴で保存されてしまった端末を
+ * 読込時に救済する(nullなら宿敵不在に戻る)。redNightは保存時の状態と無関係なのでfalseで判定。
+ */
+export const sanitizeNamedFoe = <T extends { type: EnemyType }>(m: T | null): T | null =>
+  m && !isPromotionExcluded(m.type, false) ? m : null;
 
 // 名前抽選(乱数注入可=テスト用)。候補は多いほど良い(社長指示)=32名からランダム1つ。
 export const pickNamedEnemyName = (rand: () => number = Math.random): string =>

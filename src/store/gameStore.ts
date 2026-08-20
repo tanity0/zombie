@@ -105,7 +105,7 @@ import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
 import {
-  type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath,
+  type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath, sanitizeNamedFoe,
   NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, pickNamedEnemyName, normalizeNamedName,
 } from '../utils/namedEnemy';
 import {
@@ -981,7 +981,8 @@ const loadNamedFoe = (): NamedFoeMeta | null => {
     if (!r) return null;
     const o = JSON.parse(r);
     if (!o || typeof o !== 'object' || typeof o.type !== 'string' || typeof o.name !== 'string') return null;
-    return { type: o.type, name: o.name, grudge: typeof o.grudge === 'number' ? o.grudge : 0 };
+    // v0.25.3694: 除外型(幻影等)が過去の穴で保存された端末の浄化(sanitizeNamedFoe)。
+    return sanitizeNamedFoe({ type: o.type as EnemyType, name: o.name, grudge: typeof o.grudge === 'number' ? o.grudge : 0 });
   } catch { return null; }
 };
 const saveNamedFoe = (m: NamedFoeMeta | null): void => {
@@ -8998,9 +8999,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const died = get().player.health <= 0;
     // 死亡で装備は全ロスト(持ち込み含む)。持ち帰り永続も破棄する。
     if (died) saveCarriedEquip(null);
-    // PACING_PUZZLE.md §5.14 M13: 死亡時、殺した敵の型を宿敵へ昇格判定(城ボス/死神/裏ボス/
+    // PACING_PUZZLE.md §5.14 M13: 死亡時、殺した敵の型を宿敵へ昇格判定(城ボス/死神/裏ボス/幻影/
     // 紅き月個体/型不明は除外。自分の宿敵インスタンスに殺された場合は強化せず因縁+1のみ)。
-    if (died && NAMED_ENEMY_ENABLED) {
+    // ★練習ラン中は昇格しない(v0.25.3694): practiceGuardはlocalStorageを塞ぐが**メモリのstateは
+    // 塞がない**。決闘で幻影に倒される→メモリの宿敵が幻影化→リロード無しで通常出撃→resetGameの
+    // saveNamedFoe(carried)で**通常ラン側からディスクへ固定**、の抜け道で「通常プレイに鴉が乱入」が
+    // 実際に起きた(社長報告2026-08-20)。練習は本編の状態を1bitも動かさない=メモリ側もここで塞ぐ。
+    if (died && NAMED_ENEMY_ENABLED && !isPracticeRun()) {
       const st = get();
       const outcome = decidePromotionOnDeath(st.lastDamagerType, st.lastDamagerWasNamed, st.redNight?.phase === 'active');
       if (outcome.kind === 'grudge' && st.namedFoe) {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  NAMED_ENEMY_NAMES, isPromotionExcluded, pickNamedEnemyName, rollNamedSpawnThisRun, decidePromotionOnDeath,
+  NAMED_ENEMY_NAMES, isPromotionExcluded, pickNamedEnemyName, rollNamedSpawnThisRun, decidePromotionOnDeath, sanitizeNamedFoe,
   normalizeNamedName, normalizeNamedNamesInText,
 } from './namedEnemy';
 
@@ -113,5 +113,21 @@ describe('decidePromotionOnDeath', () => {
   it('overwrites (fresh promotion, grudge implicitly 0 by caller) when killed by a new eligible type', () => {
     const outcome = decidePromotionOnDeath('skeleton', false, false, () => 0);
     expect(outcome).toEqual({ kind: 'overwrite', type: 'skeleton', name: NAMED_ENEMY_NAMES[0] });
+  });
+});
+
+// v0.25.3694(社長報告「鴉は敵として通常ステージに出てきたよ！」): 幻影(guardian-phantom)は
+// 対戦専用の型なので宿敵に昇格させない+過去の穴で保存された端末は読込時に浄化する。
+describe('幻影(guardian-phantom)は宿敵にならない', () => {
+  it('幻影に殺されても昇格しない', () => {
+    expect(decidePromotionOnDeath('guardian-phantom', false, false)).toEqual({ kind: 'none' });
+  });
+
+  it('sanitizeNamedFoe: 除外型の保存データはnull(浄化)・通常型はそのまま', () => {
+    expect(sanitizeNamedFoe({ type: 'guardian-phantom' as const, name: '鴉', grudge: 2 })).toBeNull();
+    expect(sanitizeNamedFoe({ type: 'giantbat' as const, name: 'x', grudge: 0 })).toBeNull();
+    const ok = { type: 'zombie' as const, name: 'ハロルド', grudge: 1 };
+    expect(sanitizeNamedFoe(ok)).toBe(ok);
+    expect(sanitizeNamedFoe(null)).toBeNull();
   });
 });
