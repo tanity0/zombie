@@ -103,15 +103,19 @@ describe('① 即発近接(予告なし・プレイヤーと同じ周期)', () =
   });
 });
 
-describe('② 被弾無敵: 7系統すべてでダメージ0(1経路でも素通りがあれば無敵が存在しないのと同じ)', () => {
-  /** 幻影を「たった今、有効打を受けた」状態にする(=以後 INVULN_MS はダメージ0)。 */
+// ★社長裁定2026-08-20「近接攻撃は無敵時間無視で(近接にCDがあるので)」: 無敵(i-frame)で弾くのは
+// **弾・遠隔だけ**になった。近接系(スイング/分身/刀/鞭/スケボー/カウンター反撃)は無敵中でも通る
+// (銃連射が張る i-frame に近接が吸われて「近接が効かない」体感になっていた)。
+// このスイートは両方向を固定する: 遠隔=0のまま/近接=無敵中でも減る(退行するとまた「効かない」へ戻る)。
+describe('② 被弾無敵: 弾・遠隔は0/近接系は無敵を無視して通る(社長裁定2026-08-20)', () => {
+  /** 幻影を「たった今、有効打を受けた」状態にする(=以後 INVULN_MS は弾・遠隔がダメージ0)。 */
   const armInvuln = (id: string): void => {
     const gt = useGameStore.getState().gameTime;
     useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.id === id ? { ...e, gpHitAt: gt } : e) }));
   };
   const hpOf = (id: string): number => useGameStore.getState().enemies.find(e => e.id === id)!.health;
 
-  it('①damageEnemy(銃・サブ・爆発の合流点)', () => {
+  it('①damageEnemy(銃・サブ・爆発の合流点)は無敵で0', () => {
     const { id } = setup(40);
     armInvuln(id);
     const hp = hpOf(id);
@@ -119,25 +123,24 @@ describe('② 被弾無敵: 7系統すべてでダメージ0(1経路でも素通
     expect(hpOf(id)).toBe(hp);
   });
 
-  it('①damageEnemy(カウンター反撃=postureImpact:counter もゲートされる)', () => {
+  it('①damageEnemy(カウンター反撃=postureImpact:counter)は無敵を無視して通る', () => {
     const { id } = setup(40);
     armInvuln(id);
     const hp = hpOf(id);
     useGameStore.getState().damageEnemy(id, 500, false, true, false, 'other', 'player', 'counter');
-    expect(hpOf(id)).toBe(hp);
+    expect(hpOf(id)).toBeLessThan(hp);
   });
 
-  it('②triggerCounter(プレイヤーの近接スイング)', () => {
+  it('②triggerCounter(プレイヤーの近接スイング)は無敵を無視して通る', () => {
     const { id } = setup(20);
     armInvuln(id);
     const hp = hpOf(id);
     const res = useGameStore.getState().triggerCounter();
-    expect(hpOf(id)).toBe(hp);
-    expect(res.hit).toBe(false);   // 戻り値にも数えない(SEが鳴らない=M1の契約)
-    expect(res.killed).toBe(0);
+    expect(hpOf(id)).toBeLessThan(hp);
+    expect(res.hit).toBe(true);
   });
 
-  it('③shadowCloneStrike(分身)', () => {
+  it('③shadowCloneStrike(分身)は無敵を無視して通る', () => {
     const { id } = setup(20);
     armInvuln(id);
     const hp = hpOf(id);
@@ -146,35 +149,35 @@ describe('② 被弾無敵: 7系統すべてでダメージ0(1経路でも素通
       x: p.x, y: p.y, width: p.width, height: p.height, facingLeft: false,
       characterClass: p.characterClass, spawnedAt: 0, attacksDone: 0, nextAttackAt: 0,
     });
-    expect(hpOf(id)).toBe(hp);
+    expect(hpOf(id)).toBeLessThan(hp);
   });
 
-  it('④performKatanaStrike(刀)', () => {
+  it('④performKatanaStrike(刀)は無敵を無視して通る', () => {
     const { id } = setup(20);
     useGameStore.setState(s => ({ player: { ...s.player, subWeapons: ['katana'] } }));
     armInvuln(id);
     const hp = hpOf(id);
     const res = useGameStore.getState().performKatanaStrike([id], 1, true, undefined);
-    expect(hpOf(id)).toBe(hp);
-    expect(res.hit).toBe(false);
+    expect(hpOf(id)).toBeLessThan(hp);
+    expect(res.hit).toBe(true);
   });
 
-  it('⑤performWhipStrike(鞭)', () => {
+  it('⑤performWhipStrike(鞭)は無敵を無視して通る', () => {
     const { id } = setup(20);
     armInvuln(id);
     const hp = hpOf(id);
     const res = useGameStore.getState().performWhipStrike([id]);
-    expect(hpOf(id)).toBe(hp);
-    expect(res.hits).toBe(0);
+    expect(hpOf(id)).toBeLessThan(hp);
+    expect(res.hits).toBeGreaterThan(0);
   });
 
-  it('⑥skaterBoardHit(スケボー)', () => {
+  it('⑥skaterBoardHit(スケボー)は無敵を無視して通る', () => {
     const { id } = setup(20);
     armInvuln(id);
     const hp = hpOf(id);
     const e = useGameStore.getState().enemies.find(x => x.id === id)!;
     useGameStore.getState().skaterBoardHit(e.x + e.width / 2, e.y + e.height / 2, 1, 0);
-    expect(hpOf(id)).toBe(hp);
+    expect(hpOf(id)).toBeLessThan(hp);
   });
 
   it('⑦接触=そもそも素通り(contact damage 0・phantomTick 以外は幻影を動かさない)', () => {
@@ -201,13 +204,19 @@ describe('② 被弾無敵: 7系統すべてでダメージ0(1経路でも素通
       invulnMs: 1000, counterChance: 0.5, parryCdMs: 1000,
       swingWindowMs: COUNTER_WINDOW, reactionMs: 100,
     } as const;
-    // 無敵中(近接でも銃でも0)。
-    for (const source of ['melee', 'counter', 'ranged'] as const) {
-      const r = phantomHitGate({ ...base, source, gpHitAt: 4500, rand: () => 0 });
+    // 無敵中: 弾・遠隔は0/近接系は無敵を無視して通る(社長裁定2026-08-20)。
+    for (const source of ['bullet', 'ranged'] as const) {
+      const r = phantomHitGate({ ...base, source, gpHitAt: 4500, rand: () => 1 });
       expect(r.damage).toBe(0);
       expect(r.effects).toBe(false);
       expect(r.blocked).toBe(true);
       expect(r.patch.gpBlockedAt).toBe(5000);
+    }
+    for (const source of ['melee', 'counter'] as const) {
+      const r = phantomHitGate({ ...base, source, gpHitAt: 4500, rand: () => 0 });
+      expect(r.blocked).toBe(false);
+      expect(r.damage).toBe(100);
+      expect(r.patch.gpHitAt).toBe(5000);
     }
     // 無敵外・近接・**窓の中**=パリィ(乱数は一切読まない)。
     const parry = phantomHitGate({ ...base, source: 'melee', gpSwingAt: 4900, rand: () => 0.999 });

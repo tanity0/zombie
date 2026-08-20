@@ -160,8 +160,13 @@ export const phantomHitGate = (input: PhantomHitGateInput): PhantomHitGateResult
   const scale = input.pvpDamageScale ?? 1;
 
   // ① 被弾無敵(プレイヤーと同じ i-frame)。無敵中はHPも副作用も動かさない。
+  // ★近接('melee')と近接カウンター('counter')は無敵を**無視して通る**(社長裁定2026-08-20
+  // 「近接攻撃は無敵時間無視で(近接にCDがあるので)」)。銃連射が i-frame を張り続けるせいで
+  // CD持ちの近接が吸われて「近接が効かない」体感になっていた。近接は②の窓パリィだけで守る。
+  // 弾・遠隔(サブ/爆発)は従来どおり無敵で弾く(CDの無い連射から1秒1発を守る本来の役目)。
+  const invulnApplies = input.source !== 'melee' && input.source !== 'counter';
   const hitAt = input.gpHitAt;
-  if (hitAt !== undefined && input.gameTime - hitAt < input.invulnMs) {
+  if (invulnApplies && hitAt !== undefined && input.gameTime - hitAt < input.invulnMs) {
     return { damage: 0, effects: false, blocked: true, parried: false, patch: { gpBlockedAt: input.gameTime }, damageScale: scale };
   }
 

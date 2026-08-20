@@ -45,5 +45,7 @@ export const GUARDIAN_PHANTOM_TUNING = {
  *  - プレイヤー→幻影: phantomGate(全7系統の合流点)が実効ダメージ/damageScale で返す。
  *  - 幻影→プレイヤー: 近接(phantomTick)・銃弾(発射時)・打ち返し弾(reflect倍率)に掛ける。
  * 「一旦」=叩き台(実機で社長が調整)。幻影以外の通常戦闘には一切効かない。
+ * v0.25.3691(社長裁定「ダメージ1/10を1/5に直す」): 0.1 → 0.2。
+ * ※派生: 幻影の弾パリィの打ち返しは ×REFLECT(10)×これ なので、素の弾ダメの2倍で返るようになる。
  */
-export const PVP_DAMAGE_SCALE = 0.1;
+export const PVP_DAMAGE_SCALE = 0.2;
