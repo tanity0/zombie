@@ -193,8 +193,10 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   },
   // 死神の横切り(短い不穏音・社長提供)。横切り開始と同時に1回(useGameLoop の doReaperCross)。
   'reaper-pass': {
+    // v0.25.3695(社長報告「聞こえない」): 素材が他SEより約16dB小さかった(mean -35.9dB)。
+    // ファイル側を+10dB相当(圧縮+ゲイン)で作り直し、再生音量も0.8→1.0へ。
     src: `${import.meta.env.BASE_URL}audio/sfx/reaper-pass.mp3`,
-    volume: 0.8,
+    volume: 1.0,
     minIntervalMs: 1000,
   },
   // KILL処刑演出の首元ダッシュ(社長提供・約0.44s)。killFx 開始(跳びつき)と同時に1回。

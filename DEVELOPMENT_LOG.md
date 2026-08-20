@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.3695 — 新規SE群の「聞こえない」診断=素材音量差を実測して補正【2026-08-20 19:21 JST】
+
+- **社長質問「KILL時の追加したSE群、聞こえないか入ってないか。音量?」の実在確認**:
+  配線は全て生きていた(ファイル実在・SFX_SOURCES登録・起動時warm・発火点(killFx/doReaperCross/
+  pumpkinLanded/announceRankChange)確認)。**問題は素材の音量差**(ffmpeg volumedetect実測):
+  kill.mp3(基準)mean -20.0dB に対し、reaper-pass **-35.9dB(16dB小=体感約1/6)**・jump-land -26.1dB・
+  kill-dash -20.2dB(基準並みだがKILL瞬間のSE密集でマスキング)。rank-up/down・subquest-clearは問題なし。
+- **補正(素材側+再生設定)**: reaper-pass=+9dB→圧縮(acompressor)+リミッターでさらに持ち上げ
+  (mean -35.9→-25.6/max -0.4dB)+再生volume 0.8→1.0。jump-land=+5dB(mean -21.5)。
+  kill-dash=+3dB(mean -17.5=基準より2.5dB上へ)。クリップなし(alimiter/ヘッドルーム内)。
+  素材URLは内容ハッシュ(?v=)なので差し替えだけで自動更新。
+- 検証: typecheck 0・lint 0エラー(warning8既存)。実機で「死神の横切り」「着地」「首元ダッシュ」の
+  聞こえ方を確認してほしい(まだ小さければ次はKILL演出中の他SEを下げる=マスキング側を削る)。
+
 ## v0.25.3694 — 「鴉が通常ステージに乱入」の実バグ修正(宿敵経由の漏出)【2026-08-20 19:14 JST】
 
 - **社長報告「鴉は敵として通常ステージに出てきたよ！」の真因(二重の穴)**:
