@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3669',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: ステージ難度階段の実装設計を確定=小ボスは1/3/4/5固定・6は無し。監査中)。',
+    ],
+  },
+  {
     version: '0.25.3668',
     items: [
       'ゲーム内容の変更はありません(開発資料: ステージ難度階段の攻撃力カーブを確定=S3:1.1〜S6:1.4)。',
