@@ -88,7 +88,9 @@ export const stageDmgMult = (stageId: string | null | undefined): number => STAG
   この優先で種別が決まっている。丸ごと台帳引きに置き換えると馬乗り/鋏/舞妓の練習枠が全部
   stage-1=バス停に落ちる(監査指摘)。
 - 強さ: スポーン時(spawnBountyEncounter=useGameLoop:3921 の1本・HPは3941)に
-  `health/maxHealth ×stageHpMult`・`damage ×stageDmgMult`
+  **計測路ヘルパ `stageBossDiffMults()` を通して**(監査指摘=分岐を1本に集約する原則から賞金首だけ
+  外さない。今日はガントレットで賞金首も回るが練習枠はstage-1=1.0で実害なし・将来の汚染予防)
+  `health/maxHealth ×HP係数`・`damage ×攻撃係数`
   (既存の bountyEffectiveValueMult とは乗算で重なる=どちらも「基準値への倍率」)。
   **★攻撃係数で動くのは接触ダメージ(combatTick:1053 の enemy.damage)だけ**——賞金首の技は
   bountyScript の専用定数(sweep25/leap22/whip360=12/snipe22/shot10/laser24等)で enemy.damage を
@@ -99,10 +101,10 @@ export const stageDmgMult = (stageId: string | null | undefined): number => STAG
   掲載裁定「基準値2000を出す」も従来のまま成立する。
 
 ## その他ボス(スポーン時に個別乗算・ステージ固定なので一意)
-- **★裁定待ち(監査指摘4=構造の明示)**: ボスHP台帳は**既にステージ階段**
-  (城3500→5500/天使5000→9000/裏ボス14000→22000)なので、係数を掛けると**階段×階段**になる
-  (例: S6スリィエル 9000×1.8=16200・S5トール 22000×1.6=35200)。掛けるか(推薦)/掛けないかは
-  下の★残裁定。以下は「掛ける」前提の記述。
+- **構造の明示(監査指摘4→社長裁定「案A」で確定)**: ボスHP台帳は**既にステージ階段**
+  (城3500→5500/天使5000→9000/裏ボス14000→22000)で、係数を掛けると**階段×階段**になる
+  (例: S6スリィエル 9000×1.8=16200・S5トール 22000×1.6=35200)。**掛ける(案A)で確定**
+  (下の「残裁定→案Aで確定」節)。以下は掛ける前提の記述。
 - **城ボス(giantbat)**: HP上書き行(useGameLoop **2668** の `stageBossHealthFor(...)`)に×stageHpMult、
   `damage` に×stageDmgMult。ストーリーボス(**2756**)も同様。
 - **ゲート2ボス(天使)**: スポーン箇所は**2つ**(監査指摘3)——本編の自然発火(useGameLoop **3028**)と
@@ -123,9 +125,9 @@ export const stageDmgMult = (stageId: string | null | undefined): number => STAG
   **置き場所=新規 `src/utils/stageDiffMults.ts`**(import は config/stageDifficulty・bossTest・
   gauntletMode の3つ=いずれも葉。台帳 config/stageDifficulty.ts の「依存ゼロの葉」宣言は保つ。
   bossPractice→このヘルパ、gameStore→bossPractice の並びでも循環なし)。
-  **表示(practiceBossHealth→BossRush一覧)は常に係数込み**(プレイヤーが見る実戦の値)。
-  ガントレットは一覧表示を持たないため矛盾は生じない——不変条件テストの「表示=実戦の一致」は
-  **通常経路(非計測路)に限定**して書く。
+  **表示(practiceBossHealth→BossRush一覧)は生の `stageHpMult(slot.stageId)` を呼ぶ**(ヘルパではない
+  ——表示は常に「プレイヤーが見る実戦の値」で、計測路では一覧が表示されないため実挙動も一致する)。
+  不変条件テストの「表示=実戦の一致」は**通常経路(非計測路)に限定**して書く。
 - 技ごとの専用ダメージ定数(mimirレーザー42・jibril火30・idol弾20・skadi氷38/20等)は
   **enemy.damage を通らない**ため、この係数では動かない=**据え置き**(触らない。
   動かすかは実機後の個別裁定)。
@@ -138,9 +140,14 @@ export const stageDmgMult = (stageId: string | null | undefined): number => STAG
 
 ## 不変条件テスト(同コミット)
 - 台帳: HP/攻撃とも掲載ステージで単調増加・S1/S2/S7/ex は1.0。
-- 雑魚: セッター1.0のとき buildEnemy の結果が現行と完全一致/係数セット時に
-  CONSTANT_STRENGTH_TYPES・LAB_FIXED_TYPES の実効値が動かない。
-- 賞金首: 台帳の4割当・S6で湧かない・係数がHP/damageに乗る。
+- 雑魚: セッター1.0のとき buildEnemy の **health / maxHealth / damage / difficultyMultiplier** が
+  現行と一致(id・lastShot・colorTier は乱数・時刻を含むためオブジェクト全体の等値比較は書けない
+  ——監査指摘)。係数セット時に CONSTANT_STRENGTH_TYPES・LAB_FIXED_TYPES の実効値が動かない。
+  **テストは beforeEach で `setStageDifficultyMults(1, 1)` に戻す**(モジュール変数は
+  テスト間で持ち越る=setTreesDisabledと同じ既知の弱点。後続テストの汚染予防)。
+- 賞金首: 台帳の4割当・**stage-6 かつ corridorMode=false(=再訪/フリー周回)で湧かない**
+  (本編S6は既存の corridorMode ゲートで塞がっており、新しい台帳ゲートが実際に効くのは再訪だけ
+  ——ここを検証しないテストは新実装ゼロでも通ってしまう=監査指摘)・係数がHP/damageに乗る。
 - 計測路: ボスメーカー/ガントレットの resetGame 後はセッターが1.0。
 - 練習: 天使/裏ボスの practiceBossHealth = 実戦スポーン値(係数込みで一致)。
   **通常経路(非計測路)に限定**して検証する(ガントレット中は実戦=1.0/表示=係数込みで
