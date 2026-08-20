@@ -118,15 +118,15 @@ describe('スコア倍率(社長裁定2026-08-20: メーター1本フルで−0.
     expect(growthScoreMult(emptyPlayerUpgrades())).toBe(1);
     expect(growthScoreMult(undefined)).toBe(1);
   });
-  it('1段=−0.04、1系統フル=−0.2、3系統(体力/攻撃/弾数)フル=0.4', () => {
+  it('1段=−0.025、1系統フル=−0.125、3系統(体力/攻撃/弾数)フル=0.625(社長指示v0.25.3666「0.6寄り」)', () => {
     const one = normalizePlayerUpgrades({ attack: { bought: 1, active: 1 } });
-    expect(growthScoreMult(one)).toBeCloseTo(0.96, 10);
+    expect(growthScoreMult(one)).toBeCloseTo(0.975, 10);
     const full = normalizePlayerUpgrades({ health: { bought: 5, active: 5 } });
-    expect(growthScoreMult(full)).toBeCloseTo(0.8, 10);
+    expect(growthScoreMult(full)).toBeCloseTo(0.875, 10);
     const all = normalizePlayerUpgrades({
       health: { bought: 5, active: 5 }, attack: { bought: 5, active: 5 }, ammo: { bought: 5, active: 5 },
     });
-    expect(growthScoreMult(all)).toBeCloseTo(0.4, 10);
+    expect(growthScoreMult(all)).toBeCloseTo(0.625, 10);
   });
   it('ゴールド獲得の段数はスコアに影響しない(社長裁定「ゴールド強化はスコア対象外」)', () => {
     const goldOnly = normalizePlayerUpgrades({ gold: { bought: 5, active: 5 } });

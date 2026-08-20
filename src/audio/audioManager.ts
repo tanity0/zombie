@@ -129,6 +129,8 @@ export type SfxKey =
   | 'reaper-pass'    // 死神の横切り(気配演出)音(社長提供・約1.0s。v0.25.3665で配線待ちの席に配置)
   | 'kill-dash'      // KILL処刑演出: 首元への高速ダッシュ音(社長提供・約0.44s)
   | 'jump-land'      // ジャンプ攻撃の着地音(社長提供・約0.37s。汎用jump+城ボスg-jump共通)
+  | 'rank-up'        // ランク到達ジングル(社長提供・約2.3s。旧: level-upの流用だった)
+  | 'rank-down'      // ランク降格ジングル(社長提供・約3.4s。旧: 無音だった)
   | 'thor-sweep'     // 裏ボス トールの払い(横払い)SE(社長提供)
   | 'thor-thrust'    // 裏ボス トールの突きSE(社長提供)
   | 'glen-nihil';    // グレン「虚無の三唱」(お墓技)SE(社長提供・壊れたラジオ加工)。長尺→フェードで止める
@@ -211,6 +213,17 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/jump-land.mp3`,
     volume: 0.9,
     minIntervalMs: 250,
+  },
+  // ランク到達/降格ジングル(社長提供・v0.25.3666)。directorTick の announceRankChange が1回鳴らす。
+  'rank-up': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/rank-up.mp3`,
+    volume: 0.9,
+    minIntervalMs: 1000,
+  },
+  'rank-down': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/rank-down.mp3`,
+    volume: 0.9,
+    minIntervalMs: 1000,
   },
   // サブクエスト達成ジングル(社長提供・約2.8s・v0.25.3663)。達成コールアウトと同時に1回。
   'subquest-clear': {

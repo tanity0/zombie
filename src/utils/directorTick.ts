@@ -208,12 +208,13 @@ function announceRankChange(prevRank: PuzzleRank, newRank: PuzzleRank): void {
     useGameStore.getState().enqueueWallEvent(
       'rank', `${rankLabel(newRank)} —— 到達`, WALL_RANK_NAMES_EN[newRank], '#ff6a55'
     );
-    playSfx('level-up'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
+    playSfx('rank-up'); // 専用ジングル(社長提供・v0.25.3666。旧: level-upの流用)
     recordChronicle(getSelectedStageId(), 'rank', String(newRank), `${rankLabel(newRank)}に到達`);
   } else if (newRank < prevRank) {
     useGameStore.getState().enqueueWallEvent(
       'rank', `${rankLabel(newRank)} —— 降格`, WALL_RANK_NAMES_EN[newRank], '#9ca3af'
     );
+    playSfx('rank-down'); // 専用ジングル(社長提供・v0.25.3666。旧: 無音)
   }
 }
 
