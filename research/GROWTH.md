@@ -219,9 +219,15 @@
 その焼き値を読む。store(有効段数)の直読みは禁止**(理由: ①「メーター変更は次の出撃から」を
 機械的に保証する ②守護霊の疑似Player(buildPseudoPlayer)が同じ関数を通るため、store直読みだと
 スナップショット固定が成立しない)。焼くフィールド(名前は実装者が既存命名に合わせてよい):
-- `growthAtkMult`(攻撃倍率・既定1.0)/ `growthAmmoMax`(カテゴリ別の実効上限・既定=AMMO_MAX素値)/
+- `growthAtkMult`(攻撃倍率・既定1.0)/ `growthAmmoMax`(**AmmoTypeの5キー全部**の実効上限・
+  既定=AMMO_MAX素値。**glauncherキーも含め、値はrifleと同値**——同ティア武器拾得の弾変換
+  (gameStore.ts:14435)が `AMMO_MAX[weapon.ammoType]` を引き、glauncher銃のammoTypeは'glauncher'
+  (weaponUtils.ts:177/96-98)のため、4キーだとこの経路だけ素値で頭打ちになる)/
   `growthGoldMult`(ゴールド倍率・既定1.0)/ `ddaBaseHp`(DDA基準・下記)。HPは maxHealth へ直接加算。
 - ボスメーカー/ガントレットでは**0段として焼く**(下記「計測路」)。
+- **唯一の例外=ラン外のメニュー表示**: 練習画面のボスHP表示(practiceBossHealth→BossRush.tsx:71)は
+  出撃前=焼き値が存在しないため、**表示に限り有効段数(store/保存)の直読みを許す**
+  (「表示と実戦の一致」不変条件を守るための例外。ゲームプレイの参照は焼き値のみ)。
 
 ## 各系統の実装詳細
 1. **体力**: resetGame の `maxHealth = profile.maxHp + equipMaxHealthOf(...)` に育成加算を1項追加。
@@ -245,10 +251,14 @@
    playtestDriver.ts:229,236(ボット計測基準・ゲーム挙動に非影響)。
    理由: 社長裁定は「持てる母数」の拡張であり、ドロップ経済(出やすさ)を裏で動かす二次効果は
    入れない(最小解釈)。マガジン装填数・リロードは**触らない**。
-4. **ゴールド獲得**: 適用面=①リザルト: **GameOverScreen.tsx:262 の goldEarned 算出行に掛ける**
-   (addGold(284)は goldEarned+equipmentGold の合算なので、そこに掛けると装備換金まで増える=禁止。
-   ghostGoldMultiplierと併せ「倍率を全部掛けてから最後に1回round」) ②サブクエ報酬(gameStore.ts:3370)
-   ③二人組報酬(9888)+useGameLoop側の吹き出し表示コピーも同時に直す ④宿敵トレジャー(3026)。
+4. **ゴールド獲得**: **掛け先は必ず「金額の算出行」であって addGold の呼び出し行ではない**
+   (加算だけ増えて記録・表示が据え置きになる)。適用面=①リザルト: **GameOverScreen.tsx:262 の
+   goldEarned 算出行**(addGold(284)は goldEarned+equipmentGold の合算なので、そこに掛けると
+   装備換金まで増える=禁止。ghostGoldMultiplierと併せ「倍率を全部掛けてから最後に1回round」)
+   ②サブクエ報酬: **gameStore.ts:3363 の gold 積算行**(3366 のリザルト記録・3372 の吹き出しが
+   同じ gold を読むため、3370 の addGold で掛けてはいけない) ③二人組報酬(9888=算出行)
+   +useGameLoop側の吹き出し表示コピーも同時に直す ④宿敵トレジャー: **3025 の算出行**
+   (壁銘打ち表示も同額になる。3026 の addGold ではない)。
    **掛けない**=ガチャ返金・死亡時の装備換金(14755/14784)。
    実装は `addGold` の内側ではなく**各付与点で player.growthGoldMult を掛ける**(GoldRushと同じ作法・
    両方持てば重なる)。リザルトはランを跨いだ後に走るが、player の焼き値を読むので整合する。
@@ -272,18 +282,27 @@
 
 ## 写し先(社長裁定Q4=両方に写す)
 - **守護霊**: スナップショット(playerBuild.ts)の maxHealth は**既に記録済み=HPは現行で足りる**。
-  追加するのは**攻撃力のみ**: `PlayerBuildSnapshot` に growthAtkMult フィールドを追加+
+  追加するのは**攻撃力のみ**で、直す場所は**3点セット**: ①型 `PlayerBuildSnapshot` に
+  growthAtkMult 追加 ②**書き込み側 `snapshotPlayerBuild`(playerBuild.ts:58-88・呼び出しは
+  playerTraits.ts:662)に player.growthAtkMult の記録を追加**(これが無いと永久にundefined=写らない。
+  「記録側と消費側が同じ1枚の変換」のファイル内ドクトリンどおり両側を同時に) ③読み出し側
   `buildPseudoPlayer`(playerBuild.ts:108)で復元+**旧データ(フィールド欠損)は1.0=0段扱い**。
   **弾数は守護霊には対象外**(守護霊の銃はリザーブ∞で回している
   (useGameLoop.ts:8475,8484)=写す先が存在しない。事実として明記)。
-- **幻影**: 「育成込みの初期状態」に変更。**GUARDIAN_PHANTOM_HEALTH はimport時評価でENEMY_STATSに
-  焼かれているため、スポーン時に評価する関数へ変更**し、育成後maxHpを返す。読み手はもう1本ある:
+- **幻影**: 「育成込みの初期状態」に変更。値の定義を一意に:
+  **幻影HP = profile.maxHp + 育成HP加算(= player.ddaBaseHp と同値。装備HPは含めない**——
+  「幻影は装備補正なし=出撃直後のプレイヤーと同じ」の既存決定(bossHealth.ts:42-43)を維持)。
+  **GUARDIAN_PHANTOM_HEALTH はimport時評価でENEMY_STATSに焼かれているため、スポーン時に評価する
+  関数へ変更**する。**ラン中のスポーンは player.ddaBaseHp(焼き値)を読む**。読み手はもう1本ある:
   **practiceBossHealth(bossPractice.ts:276・練習画面のHP表示)と等値アサート(bossPractice.test.ts:199)
-  も同じ関数を読ませ、表示も育成込みにする**(「練習画面の表示と実戦が原理的に一致する」不変条件
+  も同じ関数を読ませ、表示も育成込みにする**——こちらはラン外表示なので上の「表示例外」どおり
+  有効段数の直読みでよい(「練習画面の表示と実戦が原理的に一致する」不変条件
   (bossHealth.ts:41/enemyUtils.ts:618)を保つ)。
   攻撃側: 近接は phantomMeleeDamage(phantomTick.ts:107)が**モジュールキャッシュで初回値を焼く**
   ため、**キャッシュを廃止しスポーン時計算に変更**(段数を変えてもリロード不要にする)。
   銃は phantomTick.ts:412 の `gun.damage×(crit?…)` に幻影専用の育成倍率を掛ける。
+  **攻撃側の読み先も player.growthAtkMult(焼き値)**(幻影はラン中にしかスポーンしない=
+  焼き値が必ず存在する。敵tickはPlayer主語を持たないため、スポーン/tick時にplayerから読むと明記)。
   ※これは NEUTRAL_GUN_OWNER の「プレイヤーのビルドを読まない」既存ドクトリン(phantomTick.ts:190)
   への**明示的な例外**(社長裁定Q4 2026-08-20「幻影も反映」・乱入敵構想が理由)——コード内コメントも
   「中立主語は維持しつつ、育成だけは裁定により写す」と事実で書き換える。
@@ -292,9 +311,10 @@
 - **ボスメーカーとガントレットでは育成を0段として焼く**(TTK計測の基準が育成の進みでズレない)。
   判定は別物(監査で確認済み・「skillInjection分岐」ではガントレットを拾えない):
   - ボスメーカー: `isBossMakerRun()`(skillInjection生成の既存分岐・gameStore.ts:16060)。
-  - ガントレット: `GAUNTLET_MODE`(App.tsx:40 の `?gauntlet=1` URLフラグ)。Appのモジュール定数で
-    store から見えないため、**ガントレット起動経路(startGauntletSlot→resetGame)から
-    「育成無効」を渡す口を1つ作る**(resetGame引数 or storeフラグ。実装者が既存の受け渡しに合わせる)。
+  - ガントレット: `GAUNTLET_MODE`(App.tsx:40 の `?gauntlet=1` URLフラグ)。実装形は
+    **URL由来の純述語を utils に1本置く**(isBossMakerRun()と同型・gameStoreから直接見える)——
+    resetGameへの引数渡しだと他の呼び出し元が渡し忘れる余地が残るため、
+    **「渡し忘れが構造的に起きない形」を条件とする**(1経路だけ書いて取りこぼす型の再発防止)。
   - 通常のボス練習(isPracticeRunだがガントレットでない)は**乗る**(プレイヤーの実力扱い)。
 
 ## DDA(社長裁定Q3=A案)
@@ -305,16 +325,19 @@
   playerPower の内部定数(difficultyScaler.ts:13,36)なので、`DdaPowerInputs`(同19行)に
   基準値の入力を追加し、呼び出し側(useGameLoop.ts:11688-11705)から渡す。
   `difficultyScaler.test.ts:31,49-68` の改訂も同コミット。
-- 縛り勢(active=0)は現行と完全一致。初期130化は基準が130になるだけで自動吸収。
+- **育成0なら「育成機能が無かった時(初期130化後)」と同じ**(注意: 「現行と完全一致」ではない——
+  基準が120→130へ動くこと自体は初期HP130化に伴う**意図した変化**。不変条件テストもこの意味で書く)。
 
 ## サブクエ(裁定)
 - **ボム(collectPickup 'bomb')の一括キルはサブクエに数えない**(配線しない・現状のまま)。
 
 ## 不変条件テスト(同コミットで機械化)
 - 全系統 active=0 のとき: HP加算0/攻撃倍率1.0/弾上限=AMMO_MAX素値/ゴールド倍率1.0/
-  ddaBaseHp=profile.maxHp = resetGame の結果が現行(130化後)と完全一致。
+  ddaBaseHp=profile.maxHp = **「育成機能が無かった時(130化後)」と一致**。
 - 0≦active≦bought≦5 を常に保証(active>boughtを書けない)。価格表は単調増加。
-- メーター変更はラン中に効かない(=ラン中の参照が全て焼き値経由であることをテストで固定)。
+- メーター変更はラン中に効かない——検証可能な形で書く:
+  **「resetGame 後に store/保存の active を変えても、player の焼き値と各適用点
+  (HP/攻撃倍率/弾上限/ゴールド倍率)の結果が変わらない」**をテストする。
   保存キーは進行名前空間(zombie.progress.playerUpgrades)。
 - 幻影・守護霊の写し: 育成0のとき現行値と一致。処刑の前掛け: 育成0で処刑ダメージ不変。
 
