@@ -615,7 +615,13 @@
   ②を source で分岐(melee=窓判定/bullet=飛翔時間+counterChance抽選)。counterChance は
   melee では読まない。
 - gameStore の橋(gatePhantomHit): enemy.gpSwingAt と COUNTER_WINDOW を渡す。counterChance は
-  bullet 用に残す。弾ヒット側(useGameLoop)は origin から飛翔時間を計算して渡す(または橋で計算)。
+  bullet 用に残す。
+- **★飛翔時間の運び方(監査四巡目で確定)**: 弾のゲートは damageEnemy の内側で呼ばれ、橋は弾を
+  受け取らない。位置引数を増やさず、**既存の gpSource を
+  `'melee' | 'counter' | { kind: 'bullet'; flightMs: number }` へ広げる**——
+  useGameLoop(弾ヒット側)が origin から flightMs を計算して damageEnemy の gpSource に載せ、
+  damageEnemy→橋→ゲートへそのまま流す(型で運搬が強制される・並び間違いが起きない)。
+  スラッシャー追撃等の既存 'melee' 渡しは不変。
 - **窓の読み取り(監査指摘7)**: 窓の起点は**storeに入った enemy.gpSwingAt** を読む。幻影tickの
   applyPatch が同フレーム後段の場合の1フレーム(16ms)の取りこぼしは許容(仕様)と明記。
 - **パリィ直後の窓(監査指摘6)**: パリィ反撃のスイングも gpSwingAt を打つ=新しい窓が開くが、

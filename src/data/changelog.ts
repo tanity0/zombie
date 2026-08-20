@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3682',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 幻影v9設計が監査4巡・15件反映で確定→実装バッチ発注)。',
+    ],
+  },
+  {
     version: '0.25.3681',
     items: [
       'ゲーム内容の変更はありません(開発資料: 幻影v9設計へ三巡目監査3件を反映=PHILL瞬着弾のガード・originの挿入点補完ほか。最終確認中)。',
