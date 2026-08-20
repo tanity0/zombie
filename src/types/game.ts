@@ -134,6 +134,9 @@ export interface Player extends DashLocomotionState {
   growthGoldMult: number;
   /** DDAの参照HP = profile.maxHp + 育成HP加算(装備HPは含めない)。difficultyScaler の入力。 */
   ddaBaseHp: number;
+  /** スコア倍率(社長裁定2026-08-20: メーター1本フルで−0.2・ゴールド系統は数えない・既定1.0)。
+   *  リザルトの totalScore と goldScore の両方に掛かる(換金も下げる)。 */
+  growthScoreMult: number;
   // Level-up crit bonus [0, 0.30]. Gun shots add this to the weapon's base
   // crit chance; melee uses its weapon crit chance directly.
   critChance: number;

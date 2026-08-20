@@ -182,7 +182,7 @@ import { bossTestGhostSkill, isBossMakerRun, getBossTestSkillInjection } from '.
 // 引数で渡す=utils→store の逆流を作らない)。計測路(ガントレット)の述語は依存ゼロの葉から読む。
 import {
   PLAYER_UPGRADES_KEY, activeUpgradeLevel, effectiveAmmoMaxMap, emptyPlayerUpgrades,
-  growthAttackMult, growthGoldMult, growthMaxHpBonus, loadPlayerUpgrades, playerUpgradeCost,
+  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, loadPlayerUpgrades, playerUpgradeCost,
   savePlayerUpgrades, type PlayerUpgradeState,
 } from '../utils/playerUpgrades';
 import { PLAYER_UPGRADE_MAX_LEVEL, type PlayerUpgradeId } from '../data/playerUpgrades';
@@ -5255,6 +5255,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 育成の焼き値(research/GROWTH.md v4)。ここは**出撃前のプレースホルダ**=常に0段相当。
     // 実際の焼き込みは resetGame(出撃時に1回)。
     growthAtkMult: 1,
+    growthScoreMult: 1,
     growthAmmoMax: { ...AMMO_MAX },
     growthGoldMult: 1,
     ddaBaseHp: PLAYER_BASE_HP,
@@ -16237,6 +16238,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // AmmoTypeの5キー全部(glauncherを含む)。素値は引数で渡す=utils側はAMMO_MAXをimportしない。
     const bakedGrowthAmmoMax = effectiveAmmoMaxMap(AMMO_MAX, activeUpgradeLevel(growthMeters, 'ammo'));
     const bakedGrowthGoldMult = growthGoldMult(activeUpgradeLevel(growthMeters, 'gold'));
+    // スコア倍率(社長裁定2026-08-20): メーター1本フルで−0.2・ゴールド系統は数えない。計測路は上と同じく0段=1.0。
+    const bakedGrowthScoreMult = growthScoreMult(growthMeters);
     // DDAの参照HP(社長裁定Q3=A案): profile.maxHp+育成HP加算。**装備HPは含めない**
     // (含めると現行PPに乗っている装備HP寄与が消える=裁定外の挙動変更になる)。
     const bakedDdaBaseHp = profile.maxHp + growthHpBonus;
@@ -16551,6 +16554,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ammoPhill: AMMO_INITIAL.phill,
           // 育成の焼き値(上の「★焼き込みの原則」)。ラン中の参照先はここ。
           growthAtkMult: bakedGrowthAtkMult,
+          growthScoreMult: bakedGrowthScoreMult,
           growthAmmoMax: bakedGrowthAmmoMax,
           growthGoldMult: bakedGrowthGoldMult,
           ddaBaseHp: bakedDdaBaseHp,

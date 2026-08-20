@@ -43,6 +43,16 @@ export const PLAYER_UPGRADES: readonly PlayerUpgradeDef[] = [
 /** 系統idの一覧(表示順=台帳順)。 */
 export const PLAYER_UPGRADE_IDS: readonly PlayerUpgradeId[] = PLAYER_UPGRADES.map(u => u.id);
 
+/**
+ * スコア補正(社長裁定2026-08-20「強化するとスコア倍率が比例して下がる」):
+ * **メーター1本(1系統5段フル)あたりスコア倍率 −0.2**(=1段あたり−0.04)。
+ * 対象は下の3系統だけ——**ゴールド獲得はスコア対象外**(社長裁定)。
+ * 換金(goldScore→ゴールド)にも掛かる(社長裁定「その他は換金も下げる。下げるメリットが薄まるため」
+ * =メーターを下げれば実入りも戻る、が縛りの動機になる)。3本フルで ×0.4。
+ */
+export const PLAYER_UPGRADE_SCORE_PENALTY_PER_METER = 0.2;
+export const SCORE_PENALTY_UPGRADE_IDS: readonly PlayerUpgradeId[] = ['health', 'attack', 'ammo'];
+
 /** 台帳の1行を引く(未定義のidは呼べない=型で塞いである)。 */
 export const playerUpgradeDef = (id: PlayerUpgradeId): PlayerUpgradeDef =>
   PLAYER_UPGRADES.find(u => u.id === id) as PlayerUpgradeDef;

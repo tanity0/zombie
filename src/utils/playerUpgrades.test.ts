@@ -18,8 +18,8 @@ const mem = new Map<string, string>();
 
 const {
   PLAYER_UPGRADES_KEY, activeUpgradeLevel, effectiveAmmoMax, effectiveAmmoMaxMap, emptyPlayerUpgrades,
-  growthAttackMult, growthGoldMult, growthMaxHpBonus, loadPlayerUpgrades, normalizePlayerUpgrades,
-  playerUpgradeCost, savePlayerUpgrades,
+  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, loadPlayerUpgrades,
+  normalizePlayerUpgrades, playerUpgradeCost, savePlayerUpgrades,
 } = await import('./playerUpgrades');
 const { PLAYER_UPGRADE_COSTS, PLAYER_UPGRADE_IDS, PLAYER_UPGRADE_MAX_LEVEL } = await import('../data/playerUpgrades');
 
@@ -110,6 +110,31 @@ describe('メーターの不変条件: 常に 0 ≦ active ≦ bought ≦ 5', ()
     expect(mem.has('zombie.progress.playerUpgrades')).toBe(true);
     expect(PLAYER_UPGRADES_KEY).toBe('zombie.progress.playerUpgrades');
     expect(loadPlayerUpgrades().gold).toEqual({ bought: 4, active: 4 });
+  });
+});
+
+describe('スコア倍率(社長裁定2026-08-20: メーター1本フルで−0.2・ゴールド系統は数えない)', () => {
+  it('0段=1.0(スコア不変)', () => {
+    expect(growthScoreMult(emptyPlayerUpgrades())).toBe(1);
+    expect(growthScoreMult(undefined)).toBe(1);
+  });
+  it('1段=−0.04、1系統フル=−0.2、3系統(体力/攻撃/弾数)フル=0.4', () => {
+    const one = normalizePlayerUpgrades({ attack: { bought: 1, active: 1 } });
+    expect(growthScoreMult(one)).toBeCloseTo(0.96, 10);
+    const full = normalizePlayerUpgrades({ health: { bought: 5, active: 5 } });
+    expect(growthScoreMult(full)).toBeCloseTo(0.8, 10);
+    const all = normalizePlayerUpgrades({
+      health: { bought: 5, active: 5 }, attack: { bought: 5, active: 5 }, ammo: { bought: 5, active: 5 },
+    });
+    expect(growthScoreMult(all)).toBeCloseTo(0.4, 10);
+  });
+  it('ゴールド獲得の段数はスコアに影響しない(社長裁定「ゴールド強化はスコア対象外」)', () => {
+    const goldOnly = normalizePlayerUpgrades({ gold: { bought: 5, active: 5 } });
+    expect(growthScoreMult(goldOnly)).toBe(1);
+  });
+  it('効くのは有効段数(メーター)——下げれば戻る', () => {
+    const lowered = normalizePlayerUpgrades({ attack: { bought: 5, active: 0 } });
+    expect(growthScoreMult(lowered)).toBe(1);
   });
 });
 

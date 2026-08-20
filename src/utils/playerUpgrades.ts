@@ -9,6 +9,7 @@
 // 反映される(ラン中の参照は Player へ焼いた値だけを読む=gameStore 側の「★焼き込みの原則」)。
 import {
   PLAYER_UPGRADE_COSTS, PLAYER_UPGRADE_IDS, PLAYER_UPGRADE_MAX_LEVEL, playerUpgradeDef,
+  PLAYER_UPGRADE_SCORE_PENALTY_PER_METER, SCORE_PENALTY_UPGRADE_IDS,
   type PlayerUpgradeId,
 } from '../data/playerUpgrades';
 
@@ -94,6 +95,20 @@ export const growthGoldMult = (activeLevel: number): number => 1 + perLevel('gol
  */
 export const effectiveAmmoMax = (baseMax: number, activeLevel: number): number =>
   Math.round(baseMax * (1 + perLevel('ammo') * eff(activeLevel)));
+
+/**
+ * スコア倍率(社長裁定2026-08-20)。メーター1本フルで−0.2(1段−0.04)、
+ * 対象は SCORE_PENALTY_UPGRADE_IDS(体力/攻撃/弾数)——**ゴールド獲得は数えない**。
+ * 0段=1.0(スコア不変)。3本フルで0.4。リザルトのハイスコア(totalScore)と換金(goldScore)の
+ * **両方**に掛かる(換金も下げる=メーターを下げる動機を残す・社長裁定)。
+ */
+export const growthScoreMult = (s: PlayerUpgradeState | undefined): number => {
+  let penalty = 0;
+  for (const id of SCORE_PENALTY_UPGRADE_IDS) {
+    penalty += PLAYER_UPGRADE_SCORE_PENALTY_PER_METER * (activeUpgradeLevel(s, id) / PLAYER_UPGRADE_MAX_LEVEL);
+  }
+  return Math.max(0, 1 - penalty);
+};
 
 /** 弾種ごとの素値テーブルを丸ごと実効上限へ変換する(キーは呼び出し側の型のまま)。 */
 export const effectiveAmmoMaxMap = <K extends string>(

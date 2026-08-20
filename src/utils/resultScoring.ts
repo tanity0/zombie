@@ -43,10 +43,17 @@ const GOLD_CAP_FINISHER = 25000;
 const GOLD_CAP_COMBO = 15000;   // maxCombo*300 → 50コンボでMAX
 const GOLD_CAP_SCRAP = 8000;
 
+// ★永続育成のスコア補正(社長裁定2026-08-20「強化するとスコア倍率が比例して下がる」):
+// scoreMult = そのランの焼き値 player.growthScoreMult(メーター1本フルで−0.2・ゴールド系統は数えない)。
+// **totalScore(ハイスコア)と goldScore(換金)の両方に掛かる**(「その他は換金も下げる。
+// 下げるメリットが薄まるため」=メーターを下げれば実入りも戻る)。0段=1.0で従来と完全一致。
+// ※v0.25.2768の「守護霊スコア倍率廃止」とは別物(あちらは霊が与ダメを持っていく=自然に下がるから
+//   二重取りだった。育成は自然には下がらないので倍率で払う)。守護霊の引数は引き続き足さない。
 export const calculateResultScore = (
   stats: GameStats,
   won: boolean,
   isLab = false,
+  scoreMult = 1,
 ): ResultScore => {
   const netScrap = Math.max(0, stats.strapsCollected - stats.strapsSpent);
 
@@ -66,20 +73,20 @@ export const calculateResultScore = (
     ? Math.round(Math.min(Math.max(0, LAB_PAR_TIME_SEC - stats.timeAlive) * SPEED_BONUS_PER_SEC, 20000))
     : 0;
 
-  // 青天井(ハイスコア/表示)。全項目が整数なので整数になるが、念のため丸める(小数表示の再発防止)。
-  const totalScore = Math.round(
+  // 青天井(ハイスコア/表示)。育成のスコア補正は**合計に1回だけ**掛けて最後に丸める。
+  const totalScore = Math.round((
     clearBonus + treasureScore + damageScore + finisherScore +
-    comboScore + eliteBossScore + scrapScore + survivalScore + speedBonus);
+    comboScore + eliteBossScore + scrapScore + survivalScore + speedBonus) * scoreMult);
 
-  // 換金(各項目をMAXでクランプ。treasure/eliteBoss は cap 無し)
-  const goldScore = Math.round(
+  // 換金(各項目をMAXでクランプ。treasure/eliteBoss は cap 無し)。こちらにも同じ補正が掛かる(裁定)。
+  const goldScore = Math.round((
     clearBonus + treasureScore +
     Math.min(damageScore, GOLD_CAP_DAMAGE) +
     Math.min(finisherScore, GOLD_CAP_FINISHER) +
     Math.min(comboScore, GOLD_CAP_COMBO) +
     eliteBossScore +
     Math.min(scrapScore, GOLD_CAP_SCRAP) +
-    survivalScore + speedBonus);
+    survivalScore + speedBonus) * scoreMult);
 
   return {
     clearBonus, treasureScore, damageScore, finisherScore, comboScore,

@@ -242,6 +242,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     endGhostOnlineRun();
     navigate();
   };
+  // 育成のスコア補正(そのランの焼き値)。ハイスコアと換金の両方に掛かる(社長裁定2026-08-20)。
+  const growthScoreMult = useGameStore(s => s.player.growthScoreMult ?? 1);
   const {
     damageScore,
     finisherScore,
@@ -254,7 +256,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     clearBonus,
     totalScore,
     goldEarned: goldEarnedBase,
-  } = calculateResultScore(stats, won, isLab);
+  } = calculateResultScore(stats, won, isLab, growthScoreMult);
   // スキル: ゴールドラッシュ(§6.10 M33⑪) = リザルトのラン獲得ゴールド ×1.2/1.35/1.5(Lv・四捨五入)。
   // そのランで装備していた場合に適用(storeのplayerはこのランの状態のまま)。表示と加算で同じ値を使う。
   const goldRushMult = useGameStore(s => skillGoldRushMult(s.player));
@@ -813,6 +815,10 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                       )}
                     </div>
                     <div className="mt-1.5 text-2xl font-bold text-amber-200 tabular-nums leading-tight">{totalScore}</div>
+                    {/* 育成のスコア補正(社長裁定2026-08-20)。黙って下げない=補正が効いている時だけ明記。 */}
+                    {growthScoreMult < 1 && (
+                      <div className="mt-0.5 text-[10px] text-white/50 tabular-nums">強化補正 ×{growthScoreMult.toFixed(2)}</div>
+                    )}
                   </div>
                   <div className="space-y-1 text-[11px] text-white/65 tabular-nums">
                     {scoreItems.map(item => (
@@ -895,6 +901,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                     )}
                   </div>
                   <div className="mt-1.5 text-2xl font-bold text-amber-200 tabular-nums leading-tight">{totalScore}</div>
+                  {growthScoreMult < 1 && (
+                    <div className="mt-0.5 text-[10px] text-white/50 tabular-nums">強化補正 ×{growthScoreMult.toFixed(2)}</div>
+                  )}
                   {topScoreItemResult && (
                     <div className="mt-0.5 text-[11px] text-white/60 truncate">
                       {topScoreItemResult.label} <span className="font-semibold text-white/85 tabular-nums">{topScoreItemResult.value}</span>

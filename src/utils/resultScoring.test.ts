@@ -69,20 +69,38 @@ describe('守護霊(ゴースト)ランのスコアは素通し(v0.25.2768で半
     treasuresCollected: 2, strapsCollected: 100, damageTaken: 100,
   });
 
-  it('スコアを左右する引数は stats / won / isLab の3つだけ(守護霊の口が生えていない)', () => {
-    expect(calculateResultScore.length).toBe(2); // 既定値つき isLab は length に数えられない
-    // 旧実装は第4引数 ghostSummoned=true で totalScore が半分になっていた。余分な引数を渡しても
-    // 結果が変わらない=倍率の口が塞がっていることを固定する。
+  it('守護霊の口は生えていない(第4引数は育成のスコア補正=数値であり、霊のフラグではない)', () => {
+    expect(calculateResultScore.length).toBe(2); // 既定値つき isLab / scoreMult は length に数えられない
+    // 第4引数は v0.25.3662 から growthScoreMult(育成のスコア補正・既定1)。1を渡せば素通し
+    // =守護霊向けの倍率が復活していないことを固定する(v0.25.2768の裁定は不変)。
     const base = calculateResultScore(stats, true);
-    const extra = (calculateResultScore as unknown as
-      (s: typeof stats, w: boolean, l?: boolean, g?: boolean) => typeof base)(stats, true, false, true);
-    expect(extra).toEqual(base);
+    expect(calculateResultScore(stats, true, false, 1)).toEqual(base);
   });
 
-  it('内訳の合計がそのまま totalScore になる(どこにも倍率が掛かっていない)', () => {
+  it('育成0(補正1.0)では内訳の合計がそのまま totalScore になる', () => {
     const r = calculateResultScore(stats, true);
     expect(r.totalScore).toBe(
       r.clearBonus + r.treasureScore + r.damageScore + r.finisherScore +
       r.comboScore + r.eliteBossScore + r.scrapScore + r.survivalScore + r.speedBonus);
+  });
+});
+
+// 社長裁定2026-08-20「強化するとスコア倍率が比例して下がる」:
+// scoreMult は totalScore(ハイスコア)と goldScore(換金)の**両方**に掛かる
+// (「その他は換金も下げる。下げるメリットが薄まるため」)。ゴールド系統を数えない判定は
+// growthScoreMult(utils/playerUpgrades)側のテストで固定している。
+describe('育成のスコア補正(scoreMult)', () => {
+  const stats = mkStats({
+    timeAlive: 300, damageDealt: 4000, meleeFinishers: 5, maxCombo: 10,
+    treasuresCollected: 2, strapsCollected: 100, damageTaken: 100,
+  });
+
+  it('totalScore と goldScore の両方に掛かり、goldEarned も連動して下がる', () => {
+    const base = calculateResultScore(stats, true);
+    const r = calculateResultScore(stats, true, false, 0.4);
+    expect(r.totalScore).toBe(Math.round(base.totalScore * 0.4));
+    expect(r.goldScore).toBe(Math.round(base.goldScore * 0.4));
+    expect(r.goldEarned).toBe(Math.floor(r.goldScore / 2000));
+    expect(r.goldEarned).toBeLessThan(base.goldEarned);
   });
 });

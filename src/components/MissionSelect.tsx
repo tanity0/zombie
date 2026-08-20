@@ -2282,13 +2282,18 @@ const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           const maxed = cur.bought >= PLAYER_UPGRADE_MAX_LEVEL;
           const cost = playerUpgradeCost(cur.bought);
           const cantPay = !maxed && goldBalance < cost;
+          // 累計アップ数(社長指示2026-08-20「4%の部分を書き換えで3段で12%とかの表示」)。
+          // 基準は有効段数(メーター)=いま実際に効いている量。体力は加算値・他は%。
+          const cumLabel = def.id === 'health'
+            ? `+${def.perLevel * cur.active}`
+            : `+${Math.round(def.perLevel * cur.active * 100)}%`;
           return (
             <div key={def.id} className="ff7r-fade-right rounded-none px-3 py-2 text-white">
               <button type="button" disabled={maxed || cantPay}
                 onClick={() => { if (!maxed && buyPlayerUpgrade(def.id)) playSfx('ui-select'); }}
                 className={`flex w-full items-center justify-between gap-2 text-left transition-[filter] active:brightness-110 ${cantPay ? 'opacity-60' : ''}`}>
                 <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-semibold">{def.label} <span className="text-white/45">{def.perLevelLabel}/段</span></span>
+                  <span className="block truncate text-[13px] font-semibold">{def.label} <span className="text-white/45">{cumLabel}（{def.perLevelLabel}/段）</span></span>
                   <span className="block text-[11px] text-white/50">{def.desc}（購入 {cur.bought}/{PLAYER_UPGRADE_MAX_LEVEL}）</span>
                 </span>
                 <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'text-rose-300' : 'text-amber-200'}`}>{maxed ? 'MAX' : `${cost}G`}</span>

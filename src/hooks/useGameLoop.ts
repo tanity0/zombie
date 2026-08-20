@@ -1652,7 +1652,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       goldEarned: Math.round(
         // ★v0.25.2768: スコア倍率の廃止に伴い ghostSummonedThisRun の受け渡しも撤去
         // (元々 goldEarned には効いていなかった=引数を揃えるためだけに渡していた)。
-        calculateResultScore(s.gameStats, outcome === 'clear', s.stageTheme === 'lab').goldEarned
+        calculateResultScore(s.gameStats, outcome === 'clear', s.stageTheme === 'lab', s.player.growthScoreMult ?? 1).goldEarned
         * skillGoldRushMult(s.player)
       ),
       // M46(§6.21): 与ダメ/即死/近接ペース計測(gun/melee/otherチャネル・total=出力時に合算)。
