@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3708',
+    items: [
+      'ゲーム内容の変更はありません(フィルの技セットを13技へ拡充した設計書の追補)。',
+    ],
+  },
+  {
     version: '0.25.3707',
     items: [
       'ゲーム内容の変更はありません(EXボス「フィル」の設計書を追加)。',
