@@ -1,5 +1,24 @@
 # Development Log
 
+## v0.25.3689 — ダンスフロア(shijin)退役: 入手経路遮断+返金+曲削除【2026-08-20 18:35 JST】
+
+- **社長裁定「いいや、消そう。曲も削除で」**(吸着v3685-87でも実機の音ズレ体感が解決しなかったため)。
+- **消し方=RETIRED_SKILLSと同じ退役型**(SubWeaponKey型・リズムエンジン一式は死蔵で残し、入手経路を全て断つ):
+  ①campaign.tsに RETIRED_SUB_WEAPONS=['shijin'] ②開発施設の陳列リスト/装備メニューからフィルタ
+  ③gameStoreの一回きりマイグレーション(retireSubWeaponsOnce): 陳列購入者へ累計G返金(Lv1=20/Lv2=70/
+  Lv3=170)+保存済み装備からshijinを除去 ④オプションのダンスモード(練習)パネルを撤去。
+  ダンスモード起動は player.subWeapons に shijin が要る(useGameLoop)ため、経路遮断で到達不能。
+- **曲も物理削除**: dance-100/120/140.mp3(計約10.5MB)をgit rm。audioManagerの参照も全て掃除
+  (DANCE_LOOP_TRACKS/danceTrackForLevel削除・applyDanceAudio/setDanceModeは基準曲へ倒す・
+  **preloadAllAudioのダンス3本プリロードとunlockDanceAudioの解錠対象から除外**=削除後404の芽と
+  起動DL約10MBを同時に解消)。SFX(dance-kick等)と死蔵コード(rhythm系・config/shijin)は残置=
+  完全なコード摘出は別の掃除バッチ(要るなら)。
+- 注意: 編集中に PEAK_LAYER_TRACK の参照を誤って書き換えかけた(即時修正済み・pushには乗っていない)。
+- 検証: typecheck 0・lint 0エラー(warning8既存)・rhythmPendingDrain4/danceBeat7/bossPractice26 pass。
+- **新規バグ報告(診断キュー)**: 多段技のカウンター重複(「3連撃の最後の段だけ取ったのに3回カウンターが
+  出た」・馬乗り以外でも)。カウンター成立の消費が1窓1回になっていない疑い。
+- 停止中: トール設計書改稿=次の作業。5分帯のフェーズ表組み直し=新時刻表の叩き台を社長へ提示中。
+
 ## v0.25.3688 — 小ボス基準HP 2000→4000(社長裁定)【2026-08-20 18:08 JST】
 
 - **社長裁定「バス停のhp2000はかなり弱い。マークスマンで適当に引き撃ちしてても勝てる。4000HPにする。

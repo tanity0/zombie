@@ -969,6 +969,13 @@ export const NEW_SLEEPING_SKILLS: SkillKey[] = [];
 // 扱いにする。効果コード自体もgameStore.ts側で削除済み=既存所持者にも二度と効果は発生しない)。
 export const RETIRED_SKILLS: SkillKey[] = ['scrap-builder', 'warm-up', 'big-bullet']; // big-bullet=v0.25.3297でattack-shooterへ統合
 
+// ★退役サブウェポン(社長裁定2026-08-20「(ダンスフロアは)消そう。曲も削除で」)。
+// RETIRED_SKILLS と同じ作法: SubWeaponKey 型・台帳・死蔵コード(リズムエンジン一式)は残し、
+// **入手経路を全て断つ**(開発施設の陳列リスト/装備メニュー/出撃時の商人在庫。ダンス練習パネルも撤去)。
+// 陳列を購入済みの端末には gameStore の一回きりマイグレーションが累計額を返金する。
+// 削除の理由: 音ズレ問題(曲/拍/入力の同期)が実機で解決しきらなかった(吸着v3685-87でも社長実機NG)。
+export const RETIRED_SUB_WEAPONS: SubWeaponKey[] = ['shijin'];
+
 /** 退役スキルの所持者へ返すコイン総額(ガチャの被り返金と同額=§23-2条件4「既存規則を流用」)。
  * 呼び出し側(gameStore.ts)が localStorage フラグで1回きりの適用を保証する(この関数自体は純粋・冪等)。 */
 export const retiredSkillsRefundTotal = (owned: readonly SkillKey[]): number =>

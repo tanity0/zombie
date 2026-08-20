@@ -40,15 +40,10 @@ const TITLE_TRACK = assetUrl('audio/title.mp3');
 // PEAK(AIディレクター/紅き月)中だけ通常BGMに重ねる打楽器レイヤー(社長提供)。差し替え/追加のみで
 // 通常BGMは止めない(社長要望の「PEAK突入の輪郭を体で感じさせる」演出)。
 const PEAK_LAYER_TRACK = assetUrl('audio/peak-layer.mp3');
-// ダンスタイム(四神舞)中だけ流す曲。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
-// v0.25.284: 8小節ループの継ぎ目が要素 loop=true でぶつ切りになるため、軽量(128k/48k)のフル尺曲に戻す。
-// フル尺なら継ぎ目(末尾→先頭)は3〜4分に1回でダンス中はほぼ当たらない。要素再生なので軽い。
-const DANCE_LOOP_TRACKS: Record<number, string> = {
-  1: assetUrl('audio/dance-100.mp3'),
-  2: assetUrl('audio/dance-120.mp3'),
-  3: assetUrl('audio/dance-140.mp3'),
-};
-let currentDanceLevel = 2; // 現在ダンスループに使っているレベル
+// ★ダンスフロア(四神舞)退役(社長裁定2026-08-20「消そう。曲も削除で」): ダンス専用曲
+// (dance-100/120/140.mp3)はリポジトリから削除した。ダンス中の曲差し替えは行わない
+// (danceActive はサブ退役により二度と true にならないが、残存経路も基準曲へ倒してある)。
+let currentDanceLevel = 2; // 現在ダンスループに使っているレベル(死蔵・互換のため残置)
 
 type SfxConfig = {
   src: string;
@@ -560,7 +555,8 @@ const cancelDanceStop = () => {
   if (danceStopTimer !== null) { clearTimeout(danceStopTimer); danceStopTimer = null; }
 };
 
-const danceTrackForLevel = (level: number) => DANCE_LOOP_TRACKS[Math.max(1, Math.min(3, level))] ?? DANCE_LOOP_TRACKS[2];
+// danceTrackForLevel / DANCE_LOOP_TRACKS は退役に伴い削除(曲ファイルごと消したため、参照を残すと
+// プリロード/解錠が404を掴む)。
 
 const playBgmRobust = () => {
   ensureBgm();
@@ -620,8 +616,9 @@ const applyDanceAudio = () => {
     return;
   }
   if (danceActive) {
+    // 退役後は専用曲なし=基準曲のまま(danceActiveはサブ退役で実質到達不能の死蔵経路)。
     cancelDanceStop();
-    setBgmTrack(danceTrackForLevel(currentDanceLevel), currentDanceLevel);
+    setBgmTrack(bgmBaseTrack, 0);
   } else if (bgmTargetDanceLevel !== 0 && danceStopTimer === null) {
     danceStopTimer = window.setTimeout(() => {
       danceStopTimer = null;
@@ -637,11 +634,9 @@ export const setDanceMode = (active: boolean, level = 2) => {
   ensureBgm();
   if (active) {
     if (danceActive && level === currentDanceLevel) return;
-    const levelChanged = danceActive && level !== currentDanceLevel;
     danceActive = true;
     cancelDanceStop(); // 直前の終了で仕込まれた遅延停止タイマーを破棄(深層進入等で applyDanceAudio に到達せず生き残り、再開直後に戦闘曲へ戻る不具合の防止)
-    currentDanceLevel = level;
-    if (levelChanged) setBgmTrack(danceTrackForLevel(currentDanceLevel), currentDanceLevel);
+    currentDanceLevel = level; // 退役後は曲差し替えなし(専用曲は削除済み)
   } else {
     if (!danceActive) return;
     danceActive = false;
@@ -902,22 +897,14 @@ const waitAudioReady = (el: HTMLAudioElement | null, timeoutMs = 12000): Promise
 export const preloadAllAudio = (): Promise<void> => {
   warmSfxBuffers();
   ensureBgm();
-  const danceWaits = [1, 2, 3].map(level => {
-    const url = danceTrackForLevel(level);
-    if (!url || typeof Audio === 'undefined') return Promise.resolve();
-    const el = new Audio(url);
-    el.preload = 'auto';
-    (el as HTMLVideoElement).playsInline = true;
-    return waitAudioReady(el);
-  });
+  // ダンス曲3本のプリロードは退役に伴い削除(ファイルごと消した=起動DLも約10MB軽くなる)。
   const sfxWaits = Array.from(sfxLoading.values()).map(p => p.catch(() => {}));
-  // ローディング%(社長指示v0.25.1776): 音声ぶん(メインBGM1+ダンス3+SFX)を登録し、
+  // ローディング%(社長指示v0.25.1776): 音声ぶん(メインBGM1+SFX)を登録し、
   // 1ファイル完了ごとに進める。waitAudioReady/sfxWaits は reject しない(then で十分)。
-  loadProgressBegin(1 + danceWaits.length + sfxWaits.length);
+  loadProgressBegin(1 + sfxWaits.length);
   const track = <T,>(p: Promise<T>): Promise<T> => p.then(v => { loadProgressDone(); return v; });
   return Promise.all([
     track(waitAudioReady(bgm)),
-    Promise.allSettled(danceWaits.map(track)),
     Promise.allSettled(sfxWaits.map(track)),
   ]).then(() => {});
 };
@@ -927,7 +914,7 @@ export const unlockDanceAudio = () => {
   // Native app builds should remove this and use the app audio session/engine instead.
   // 一時要素は解錠専用で使い捨て。最後までミュートのままにする(pause直後に un-mute すると
   // pause が効き切る前の一瞬が鳴り、スタート時に複数曲が重なって聞こえる ← v0.25.282の代償)。
-  const urls = [GAME_BGM.default, DANCE_LOOP_TRACKS[1], DANCE_LOOP_TRACKS[2], DANCE_LOOP_TRACKS[3], ...Object.values(REVERSE_BGM)].filter(Boolean);
+  const urls = [GAME_BGM.default, ...Object.values(REVERSE_BGM)].filter(Boolean); // ダンス曲は退役で削除済み
   for (const url of urls) {
     if (typeof Audio === 'undefined') continue;
     const el = new Audio(url);

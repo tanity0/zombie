@@ -123,7 +123,7 @@ import {
 
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
-  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, OBTAINABLE_SKILL_KEYS, COMPANION_SKILL_KEYS, BESTIARY,
+  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, RETIRED_SUB_WEAPONS, SKILL_KEYS, SKILLS, OBTAINABLE_SKILL_KEYS, COMPANION_SKILL_KEYS, BESTIARY,
   gachaPullCostFor, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, type SkillRarity, type Stage
 } from '../data/campaign';
@@ -1066,8 +1066,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <div>
             <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-emerald-200/70">サブウェポン（1つ）</div>
             <div className="menu-stagger grid grid-cols-2 gap-2">
-              {/* キャラ固有スキル(職スキル枠)はトップの装備メニューには載せない(自動付与・選択不可)。 */}
-              {SUB_WEAPON_KEYS.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k)).map(k => {
+              {/* キャラ固有スキル(職スキル枠)はトップの装備メニューには載せない(自動付与・選択不可)。
+                  退役サブ(ダンスフロア)も載せない(社長裁定2026-08-20)。 */}
+              {SUB_WEAPON_KEYS.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k) && !RETIRED_SUB_WEAPONS.includes(k)).map(k => {
                 const on = equippedSubs.includes(k);
                 const owned = subOwned(k);
                 return (
@@ -1130,7 +1131,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <AudioSettings />
         <GraphicsSettings />
         {/* 名前の決定は守護霊メニューへ一本化(社長裁定v0.25.2555「オプションから名前は外して」)。 */}
-        {DEV_TOOLS_ENABLED && <DevTools selectedClass={selectedClass} onStartGame={onStartGame} onStartBenchmark={onStartBenchmark} onRefreshCleared={() => setCleared(getClearedStages())} />}
+        {DEV_TOOLS_ENABLED && <DevTools selectedClass={selectedClass} onStartBenchmark={onStartBenchmark} onRefreshCleared={() => setCleared(getClearedStages())} />}
       </div>
     </>
   );
@@ -1659,42 +1660,23 @@ const GhostCommentSettings: React.FC = () => {
   );
 };
 
-// === オプション内: テスト開発ツール(FPS/撃破数表示・ダンスモード・BENCH・デバッグ入力) ===
+// === オプション内: テスト開発ツール(FPS/撃破数表示・BENCH・デバッグ入力) ===
 const DevTools: React.FC<{
   selectedClass: CharacterClass;
-  onStartGame: (c: string) => void;
   onStartBenchmark: (c: string) => void;
   onRefreshCleared: () => void;
-}> = ({ selectedClass, onStartGame, onStartBenchmark, onRefreshCleared }) => {
+}> = ({ selectedClass, onStartBenchmark, onRefreshCleared }) => {
   const showStatsOverlay = useGameStore(s => s.showStatsOverlay);
   const setShowStatsOverlay = useGameStore(s => s.setShowStatsOverlay);
-  const setDanceTestMode = useGameStore(s => s.setDanceTestMode);
-  const setDanceTestLevel = useGameStore(s => s.setDanceTestLevel);
-  const setDanceTestInterval = useGameStore(s => s.setDanceTestInterval);
-  const danceTestAutoTap = useGameStore(s => s.danceTestAutoTap);
-  const setDanceTestAutoTap = useGameStore(s => s.setDanceTestAutoTap);
-  const danceForceJust = useGameStore(s => s.danceForceJust);
-  const setDanceForceJust = useGameStore(s => s.setDanceForceJust);
+  // ダンスモード(練習)パネルは撤去(社長裁定2026-08-20: ダンスフロア=shijin退役。曲も削除)。
   const ammoPickupAmounts = useGameStore(s => s.ammoPickupAmounts);
   const setAmmoPickupAmount = useGameStore(s => s.setAmmoPickupAmount);
 
-  const [danceLevel, setDanceLevel] = useState(1);
   // 自動回収量を調整できるのは handgun/shotgun/rifle のみ(phill は手動射撃で対象外)。
   const [ammoInputs, setAmmoInputs] = useState<Record<'handgun' | 'shotgun' | 'rifle', string>>({
     handgun: String(ammoPickupAmounts.handgun), shotgun: String(ammoPickupAmounts.shotgun), rifle: String(ammoPickupAmounts.rifle),
   });
 
-  const selectDanceLevel = (lv: number) => { setDanceLevel(lv); };
-  const startDancePractice = () => {
-    // ms指定は廃止=常に0(レベル既定のBPM)。過去に入れた値が残らないよう毎回0で上書きする。
-    setDanceTestInterval(0);
-    setDanceTestLevel(danceLevel);
-    setDanceTestMode(true);
-    setSelectedStageId('');     // 練習はステージ進行に影響させない
-    setSelectedFreeMode(false);
-    useGameStore.getState().setPendingLoadout([]);
-    onStartGame(selectedClass);
-  };
   const ammoFields: { type: 'handgun' | 'shotgun' | 'rifle'; label: string }[] = [
     { type: 'handgun', label: 'ハンドガン' }, { type: 'shotgun', label: 'ショットガン' }, { type: 'rifle', label: 'ライフル' },
   ];
@@ -1714,30 +1696,7 @@ const DevTools: React.FC<{
         <span className="text-[11px] font-semibold shrink-0">{showStatsOverlay ? 'ON' : 'OFF'}</span>
       </button>
 
-      {/* ダンスモード(練習) */}
-      <div className="rounded-none bg-fuchsia-500/5 p-2.5 space-y-2">
-        <span className="block text-[11px] text-fuchsia-200/80">🕺 ダンスモード（練習）</span>
-        <div className="flex items-center gap-2">
-          {[1, 2, 3].map(lv => (
-            <button key={lv} onClick={() => selectDanceLevel(lv)} aria-pressed={danceLevel === lv}
-              className={`flex-1 py-2 rounded-none text-sm font-semibold border ${danceLevel === lv ? 'text-white border-fuchsia-300/80 ring-1 ring-fuchsia-300/60' : 'text-fuchsia-100 border-fuchsia-400/40'}`}
-              style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.22), rgba(168,85,247,0.22))' }}>Lv{lv}</button>
-          ))}
-        </div>
-        {/* サークル間隔(ms/拍)の入力欄は撤去(社長指示2026-08-20「取っちゃった方がいいかも」)。
-            B方式ではレベルのBPM=曲=メトロノーム=判定が同じグリッドで揃う前提なので、任意msを
-            入れられる口は「曲とテンポの合わない練習」を作る罠だった。常にレベル既定値を使う。 */}
-        <button type="button" onClick={() => setDanceTestAutoTap(!danceTestAutoTap)} aria-pressed={danceTestAutoTap}
-          className={`w-full flex items-center justify-between gap-2 rounded-none border px-3 py-1.5 text-left text-[12px] ${danceTestAutoTap ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/75 active:bg-purple-400/10'}`}>
-          <span>自動タップ(JUSTでドラム)</span><span className="shrink-0 font-semibold">{danceTestAutoTap ? 'ON' : 'OFF'}</span>
-        </button>
-        <button type="button" onClick={() => setDanceForceJust(!danceForceJust)} aria-pressed={danceForceJust}
-          className={`w-full flex items-center justify-between gap-2 rounded-none border px-3 py-1.5 text-left text-[12px] ${danceForceJust ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/75 active:bg-purple-400/10'}`}>
-          <span>強制JUST判定(タップ常に成功)</span><span className="shrink-0 font-semibold">{danceForceJust ? 'ON' : 'OFF'}</span>
-        </button>
-        <button type="button" onClick={startDancePractice} className="w-full py-2 rounded-none text-sm font-bold text-white"
-          style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.45), rgba(168,85,247,0.45))' }}>決定（開始）</button>
-      </div>
+      {/* ダンスモード(練習)パネルは撤去(社長裁定2026-08-20: ダンスフロア退役)。 */}
 
       {/* BENCH */}
       <button type="button" onClick={() => { setSelectedStageId(''); setSelectedFreeMode(false); useGameStore.getState().setPendingLoadout([]); onStartBenchmark(selectedClass); }}
@@ -2249,7 +2208,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </button>
         {/* 社長指示v0.25.3323: 固定(クラス固有)サブは自クラス専用+最初から上限解放(v0.25.3322)のため
             陳列解放リストから除外(買っても意味のないG消費を並べない)。 */}
-        {SUB_WEAPON_KEYS.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k)).map(skillKey => {
+        {SUB_WEAPON_KEYS.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k) && !RETIRED_SUB_WEAPONS.includes(k)).map(skillKey => {
           const level = purchasedSubLevels[skillKey] ?? 0;
           const maxed = level >= 3;
           // v0.25.3185(社長指示): 解放は有料(20G/50G/100G)。支払いはガチャと同じ永続ゴールド。

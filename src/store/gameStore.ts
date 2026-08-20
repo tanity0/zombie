@@ -946,6 +946,32 @@ const loadNumber = (key: string, def: number): number => {
 const saveNumber = (key: string, n: number): void => {
   try { localStorage.setItem(key, String(n)); } catch { /* ignore */ }
 };
+
+// ★ダンスフロア(shijin)退役の一回きりマイグレーション(社長裁定2026-08-20「消そう。曲も削除で」)。
+// RETIRED_SKILLS の返金(loadGoldBalanceWithRetiredRefund)と同じ作法: localStorageフラグで冪等化し、
+// store作成前に走らせる(以降の loadSubShelfLevels()/goldBalance 読みは掃除済みの値を見る)。
+//  ①陳列(purchasedSubLevels)から shijin を除去し、支払った累計G(20/50/100=v0.25.3185価格)を返金
+//  ②保存済みの装備(pendingLoadout)からも除去(残すと resetGame のフィルタ頼みになる)
+// 入手経路(開発施設リスト/装備メニュー)はUI側で RETIRED_SUB_WEAPONS をフィルタ=二度と買えない。
+const RETIRED_SUBS_REFUNDED_KEY = 'zombie:retiredSubsRefunded';
+const SHELF_COST_CUMULATIVE = [0, 20, 70, 170]; // index=陳列Lv。20G/50G/100Gの累計
+const retireSubWeaponsOnce = (): void => {
+  try {
+    if (localStorage.getItem(RETIRED_SUBS_REFUNDED_KEY) === '1') return;
+    localStorage.setItem(RETIRED_SUBS_REFUNDED_KEY, '1'); // 先に立てる(再実行しない)
+    const shelf = loadSubShelfLevels();
+    const lv = Math.max(0, Math.min(3, shelf['shijin'] ?? 0));
+    if (lv > 0) {
+      delete shelf['shijin'];
+      saveSubShelfLevels(shelf);
+      saveNumber(GOLD_BALANCE_KEY, loadNumber(GOLD_BALANCE_KEY, 0) + SHELF_COST_CUMULATIVE[lv]);
+    }
+    const subs = loadStringArray(LOADOUT_SUBS_KEY);
+    if (subs.includes('shijin')) saveStringArray(LOADOUT_SUBS_KEY, subs.filter(k => k !== 'shijin'));
+  } catch { /* ignore(localStorage無し環境=テスト等では何もしない) */ }
+};
+retireSubWeaponsOnce();
+
 // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)のメタ保存({型,名前,因縁回数}の1体分のみ・
 // 新たに別の敵に殺されたら上書き)。goldBalance等と同じtry/catch guarded JSON永続化パターン。
 const NAMED_FOE_KEY = 'zombie:namedFoe';
