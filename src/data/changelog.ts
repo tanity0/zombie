@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3655',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 育成の最終確定仕様v4=発注文を確定。実装バッチ発注前の監査中)。',
+    ],
+  },
+  {
     version: '0.25.3654',
     items: [
       'ゲーム内容の変更はありません(開発資料: 育成の裁定を反映=処刑にも攻撃力適用・phillも弾数対象・守護霊と幻影に育成を反映・ボムキルは数えない)。',
