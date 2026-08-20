@@ -308,6 +308,12 @@ describe('isBountyType / 賞金首のisBossTypeフル編入(§6.38 v7)', () => {
   it('corpseEligible=除外(!isBossTypeで自動的にfalse)', () => {
     for (const type of BOUNTY_TYPES) expect(corpseEligible({ type }), type).toBe(false);
   });
+  it('corpseEligible: pumpkinだけボス型でも死体化の対象(v0.25.3704・討伐イベント無しの隙間でパッと消えていた)', () => {
+    expect(corpseEligible({ type: 'pumpkin' })).toBe(true);
+    expect(corpseEligible({ type: 'pumpkin', isNamed: true })).toBe(false);  // 宿敵化は劇的死亡側=死体化しない
+    expect(corpseEligible({ type: 'giantbat' })).toBe(false);
+    expect(corpseEligible({ type: 'zombie' })).toBe(true);
+  });
   it('isArenaSweepProtected=保護(こちらは個別登録のまま=isBossType非依存・不変)', () => {
     for (const type of BOUNTY_TYPES) {
       expect(isArenaSweepProtected({ type, fixed: false, questTarget: false }), type).toBe(true);

@@ -296,8 +296,12 @@ export const isCorpse = (e: Pick<Enemy, 'corpseUntil'>): boolean => e.corpseUnti
 // v7でisBossTypeへ賞金首がフル編入されたため`!isBossType(enemy.type)`だけで自動的にfalse
 // (=対象外)になる。重複登録なので撤去(討伐時は死体化させず即除去=劇的死亡演出と整合、という
 // 結論自体は不変)。
+// ★v0.25.3704(社長報告「(パンプキンの)ジャンプをカウンターでちょうど倒すと消える」): pumpkin は
+// v0.25.3168裁定で討伐イベント(getsDramaticDeath)から除外され、かつ isBossType なのでここでも
+// 死体化から除外=**死亡演出が両方とも無い「隙間」に落ちてパッと消えていた**(慣性MUST違反)。
+// 討伐イベント無しの裁定はそのまま、死に方は通常敵と同じ死体吹き飛びを与える(pumpkinだけ例外編入)。
 export const corpseEligible = (enemy: Pick<Enemy, 'type' | 'isNamed' | 'questTarget'>): boolean =>
-  !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget;
+  (!isBossType(enemy.type) || enemy.type === 'pumpkin') && !enemy.isNamed && !enemy.questTarget;
 // ★社長指示v0.25.3168「パンプキンは厳密にはボスではないので討伐イベントいらない」:
 // pumpkin を**討伐イベントごと**除外する(崩壊/バナー「◯◯を討伐」/閃光/リング/シェイク/スロー)。
 // 旧: v0.25.2879 では「時間停止+カメラ寄り(getsDeathAttention)」だけを外し、崩壊やバナーは残していた。

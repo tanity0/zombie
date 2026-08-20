@@ -7371,3 +7371,22 @@ KB中の跳ね描画(`pixiScene.ts` ＝実速度が乗っている時だけ跳�
    適用地点は実装時に列挙してDEVLOGに残す(幻影v9の取りこぼしの教訓)。
 7. **計測路では常にpumpkin**: resolvePumpkinTier は計測路(ボス練習/ボスメーカー/ガントレット)で
    driller を返さない(GROWTH/STAGE_DIFFICULTY「計測路は中立化」と同じ方針)。
+
+### §9-8 監査反映v3(再監査・5指摘 2026-08-20。**§9-7と矛盾したら本節が勝つ**)
+1. **featured床と講習の衝突(監査発見)**: 講習(lessonPrimary)/回収(recoveryPrimary)の主役も
+   featured床を通って出るため、「③featured床は差し替え」と「講習はpumpkinのまま」が同一地点で相反する。
+   → **裁定: 講習・回収の主役は常にpumpkin**(講習=「パンプキンの教習」なので絵が変わると成立しない)。
+   **差し替えの判定は selectEnemyType の内側ではなく、湧きプログラムの種別が見える呼び出し側で行う**
+   (関所配役=gate系プログラムの実体化時のみ resolvePumpkinTier を通す。lesson/recovery系は通さない)。
+2. **距離リサイクルの除外に突き3州を追加**: リサイクル(directorTick 1004〜)は個体を移設するため、
+   windup中に飛ばすとロック済みの赤帯だけが残る=「赤いのに当たらない」(絶対禁止)。pumpkinの
+   `aiPhase==='jump'` 除外と同じ扱いで **driller の突き3州を除外条件に追加**する。
+3. **優先順の訂正(MOVE_CANCEL_RULE整合)**: ノックバックは技を切らない(v0.25.3497の全ボス統一)。
+   → 優先順= stun/拘束 > **thrust3州(knockbackでは中断しない・変位のみ重畳)** > retreat > 通常移動。
+4. **moveCancelGuard**: driller の3州は`<move>-windup/-active/-recover`命名だが**観測対象外**とする
+   (watchは現状gauntletのみ+drillerは計測路に出ない=§9-7#7)。将来watchを雑魚へ広げる時は
+   連続突き遷移(recover→windup)を ALLOWED_MOVE_CHAINS へ登録すること(ここに明記=後任向け)。
+5. **§9-7#7の引用訂正**: STAGE_DIFFICULTYの中立化は**ボスメーカー/ガントレットのみ**(通常のボス練習は
+   係数が乗る=プレイヤーの実力扱い)。加えて練習ランは noSpawn で通常湧き自体が止まるため、
+   「ボス練習では常にpumpkin」の条項は実質no-op(害なし・誤読防止のため事実として訂正)。
+   resolvePumpkinTier の計測路ゲートは**ボスメーカー/ガントレット**を対象とする。
