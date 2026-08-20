@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3718',
+    items: [
+      'EXステージ(洋館跡地)の見た目をステージ6(古い洋館)と同じ夜の森に修正しました(誤ってステージ7の星雲遠景を流用していました)。',
+    ],
+  },
+  {
     version: '0.25.3717',
     items: [
       '開発用: URLに ?exshow=1 を付けるとEXステージ(洋館跡地)がストーリー条件を無視して作戦地域一覧に出るようになりました(通常プレイの出現条件=再訪で薬を使用、は従来どおり)。',
