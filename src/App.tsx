@@ -29,6 +29,7 @@ import { isPixiRenderer } from './config/renderer';
 import { isPracticeRun, beginPracticeRun, endPracticeRun, type PracticeRestore, type PracticeSlot } from './utils/bossPractice';
 import PracticeResult from './components/PracticeResult';
 import GauntletRunner from './components/GauntletRunner';
+import { isGauntletRun } from './utils/gauntletMode';
 
 const LOADING_MIN_MS = 650;
 
@@ -36,9 +37,9 @@ const LOADING_MIN_MS = 650;
  * ★ボス・ガントレット(開発用の全ボス自動テスト・`?gauntlet=1`。research/BOSS_GAUNTLET.md)。
  * 他のデバッグフラグと同じ作法で**モジュールロード時に1回だけ**読む。
  * 無指定なら本編の描画・分岐は**1つも変わらない**(全部この定数でゲートしてある)。
+ * 判定の実体は utils/gauntletMode.ts の1本(store 側の計測路中立化も同じ述語を読む)。
  */
-const GAUNTLET_MODE = typeof window !== 'undefined'
-  && new URLSearchParams(window.location.search).get('gauntlet') === '1';
+const GAUNTLET_MODE = isGauntletRun();
 
 // 出撃ローディングのオーバーレイ(v0.25.1827・社長指示「出撃ローディングにも%表示」)。
 // PixiStage初期化のウィンドウ進捗(loadProgressResetWindow基準)を購読して%を出す。

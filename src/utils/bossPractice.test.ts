@@ -10,7 +10,9 @@ import { STAGE_BOSS_HEALTH_BY_STAGE } from '../config/bossHealth';
 import { STAGES, getStage } from '../data/campaign';
 import { BOUNTY_ENEMY_TYPES, isBountyType } from './enemyUtils';
 import { BOUNTY_BASE_HP } from './bountyDims';
-import { GUARDIAN_PHANTOM_HEALTH } from '../config/bossHealth';
+import { guardianPhantomHealth } from '../config/bossHealth';
+import { PLAYER_PROFILES } from '../data/playerProfiles';
+import { growthMaxHpBonus, activeUpgradeLevel, loadPlayerUpgrades } from './playerUpgrades';
 import { strongestGuardian } from '../data/fixedGuardians';
 
 // §6.38 掲載裁定で追記した賞金首4枠(GHOST_DOSSIER_SLOTS由来ではない独立追記枠)。
@@ -195,8 +197,25 @@ describe('決闘(幻影)の掲載枠', () => {
     }
   });
 
-  it('HPは裏ボス方式の固定値(倍率を通さない)', () => {
-    expect(practiceBossHealth(practiceSlotByKey(GUARDIAN_PHANTOM_SLOT_KEY)!)).toBe(GUARDIAN_PHANTOM_HEALTH);
+  // research/GROWTH.md v4: 幻影HP=「初期プレイヤーHP+育成の体力加算」。練習画面の表示と実戦(スポーン時に
+  // 書き込む値)が原理的に一致する、という不変条件はこの等値で守る(表示だけは有効段数の直読みが許される
+  // 唯一の例外=出撃前は焼き値が存在しないため)。
+  it('HPは裏ボス方式(倍率を通さない)= 育成込みの初期プレイヤーHPと一致', () => {
+    expect(practiceBossHealth(practiceSlotByKey(GUARDIAN_PHANTOM_SLOT_KEY)!)).toBe(
+      guardianPhantomHealth(
+        PLAYER_PROFILES[strongestGuardian().classId].maxHp
+        + growthMaxHpBonus(activeUpgradeLevel(loadPlayerUpgrades(), 'health')),
+      ),
+    );
+  });
+
+  // ★前提の機械化(GROWTH.md v4・検収監査の指摘2): 上の等値は、実戦の基準クラス
+  // (そのランのプレイヤー=player.ddaBaseHp)と表示の基準クラス(守護霊台帳の最強クラス)が
+  // 別物なのに、**全クラスの maxHp が同値**だから成立している。クラス別HPを導入すると
+  // 表示と実戦がズレるので、このテストで前提が破れた瞬間に検知する(その時は表示側の再設計が要る)。
+  it('全クラスの maxHp は同値(幻影HP表示=実戦の一致が依存する前提)', () => {
+    const values = Object.values(PLAYER_PROFILES).map(p => p.maxHp);
+    expect(new Set(values).size).toBe(1);
   });
 
   it('表示名は守護霊台帳の人物名から組む(名前を写経しない)', () => {

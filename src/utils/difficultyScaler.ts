@@ -10,14 +10,20 @@
 //
 // スコア/経験値/レベルアップの各システムには一切書き込まない(読むだけ)。純関数=テスト可能。
 
-export const DDA_BASE_MAX_HP = 120; // 参照HP(= PLAYER_BASE_HP)。maxHealth 投資の正規化に使う。
-
 // プレイヤー戦力指数 PP(内部・難易度判定専用)。育ち(ビルド)の粗い代理値。
 // レベルを背骨に、武器ティア/最大HP/装備数/スキル数で深さを足す(数値は私案・実機調整前提)。
 export interface DdaPowerInputs {
   level: number;
   weaponTierSum: number; // 所持武器の tier 合計(T1=1..)。
   maxHealth: number;
+  /**
+   * ★参照HP(maxHealth 投資の正規化に使う分母)。research/GROWTH.md v4(社長裁定Q3=A案):
+   * 旧・固定値120(内部定数 DDA_BASE_MAX_HP)から**入力へ変更**した。呼び出し側は
+   * 「そのランの profile.maxHp + 永続育成の体力加算」(= player.ddaBaseHp)を渡す。
+   * ⇒ **DDAはラン中に拾ったHPだけを見る**=買った強さが敵の強化で相殺されない。
+   * ※装備HP(equipMaxHealthOf)は基準に**含めない**ので、従来どおり装備の寄与はPPに乗る。
+   */
+  baseMaxHealth: number;
   equippedCount: number; // 装備している部位数(0..3)。
   skillCount: number;    // ラン中ビルド枠数(runBuild.length)。B5切替(§21-1/§11-1 A-8)。
 }
@@ -32,7 +38,7 @@ export const DDA_SKILLCOUNT_CAP = 3.0; // 6枠フル(6×0.5)で頭打ち。保�
 export const playerPower = (i: DdaPowerInputs): number =>
   i.level
   + i.weaponTierSum
-  + Math.max(0, i.maxHealth / DDA_BASE_MAX_HP - 1) * 4
+  + Math.max(0, i.maxHealth / Math.max(1, i.baseMaxHealth) - 1) * 4
   + i.equippedCount * 1.5
   + Math.min(DDA_SKILLCOUNT_CAP, i.skillCount * DDA_SKILLCOUNT_COEFF);
 

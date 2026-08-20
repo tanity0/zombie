@@ -1,5 +1,27 @@
 # Development Log
 
+## v0.25.3661 — ★永続育成「強化」実装着地(4系統×5段階・メーター式・初期HP130)【2026-08-20 11:31 JST】
+
+- GROWTH.md v4発注文(設計監査6巡・37件反映済み)の実装バッチ(Opus)が納品→検収→着地。
+  新規: data/playerUpgrades.ts(台帳)/utils/playerUpgrades.ts(純関数+保存 zombie.progress.playerUpgrades)/
+  utils/gauntletMode.ts(URL純述語)/テスト2本(不変条件22件)。
+  改修: gameStore(焼き込み growthAtkMult・growthAmmoMax(5キー)・growthGoldMult・ddaBaseHp/処刑5経路の
+  前掛け/AMMO_MAX上限4箇所差し替え(ドロップ経済は素値)/ゴールド算出行4箇所/ガチャリセット連動/
+  計測路0段)/difficultyScaler(baseMaxHealth入力化・DDA_BASE_MAX_HP削除)/playerBuild(3点セット)/
+  bossHealth+enemyUtils(幻影プレースホルダ化)/phantomTick(キャッシュ廃止・育成倍率)/
+  bossPractice(表示=localStorage純関数)/MissionSelect(Screen('growth')+HubButton「強化」+メーター)/
+  ShopMenu(MAX表示追従)/playerProfiles(STANDARD_MAX_HP 110→130)。
+- **検収監査(7巡目)3件に対応**: ①実バグ級=ワイヤー大技の致命の一撃で育成が二重乗算(×1.44)
+  → 中央ゲートの再乗算を削除し「育成込みamountを受け取る」規約をコメント+テストで固定
+  ②幻影HP表示と実戦の基準クラス差 → 前提「全クラスmaxHp同値」をテスト機械化 ③購入時active+1=
+  発注文に無い実装判断 → 社長追認待ち(GROWTH.md ★実装中の未決)。
+- 検証: typecheck 0 / lint 0エラー(warning 8は既存)/ 新規・関連テスト green(playerUpgrades 45・
+  difficultyScaler・bossPractice・phantomTick・meleeExecute・憲法ほか)。既存失敗2件
+  (sim.test.ts MOVEMENT_REWORK・ghostTelegraph台帳)はクリーンツリーでも落ちる先行事象=本バッチ無関係。
+- 自己点検: 育成0段(active=0)は「育成機能が無かった時(130化後)」と完全一致=縛りプレイの文法不変。
+  憲法テスト green。初期HP130化と幻影HP130化は裁定済みの意図した変化。
+- 停止理由(残ボール): ①購入時active+1の追認(社長) ②数値の実機調整(社長) ③後半調整の口=案1/案2(社長)。
+
 ## v0.25.3660 — 育成: 五巡目監査2件を反映(六巡目=最終確認へ・文書のみ)【2026-08-20 10:43 JST】
 
 - 五巡目の指摘2件(いずれも幻影HP引数化の詰め残り)を GROWTH.md v4 に反映:

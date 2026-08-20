@@ -1,7 +1,7 @@
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 import { normalizeChaffMix, type ChaffMix } from './chaffMix';
 import { projectileMoveKeyForEnemy } from './moveReaction'; // GHOST-BULLET-TECH: 弾へ載せる技キー(記録専用)
-import { GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH, GUARDIAN_PHANTOM_HEALTH } from '../config/bossHealth';
+import { GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH, GUARDIAN_PHANTOM_PLACEHOLDER_HEALTH } from '../config/bossHealth';
 import { effectiveDifficultyArea, lerpAreaTable } from './timeDifficulty';
 // 当たり判定の「帯」(視覚と分離した gameplay の矩形)。射程を測る相手の矩形として使う。
 // renderSpec は utils を逆輸入しない(types と cameraZoom だけ)ので循環しない。
@@ -121,8 +121,11 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   //    なるよう生値を 87×3/2≈130 で指定する(トールが同じ理由で生値を明示指定している前例)。
   //    固定強度タイプなので areaSpeed は 1。
   //  ・damage=0 = **接触では削らない**(決闘仕様: 技だけがプレイヤーを削る)。
-  //  ・health は CONSTANT_STRENGTH_TYPES + hpMult 固定(下の buildEnemy)なのでこの値がそのまま実効HP。
-  'guardian-phantom': { width: 40, height: 56, speed: 130, health: GUARDIAN_PHANTOM_HEALTH, damage: 0, experienceValue: 200 },
+  //  ・health は**プレースホルダ**。CONSTANT_STRENGTH_TYPES + hpMult 固定(下の buildEnemy)で倍率は
+  //    一切通らないが、実効HPは**スポーン側が必ず上書きする**(useGameLoop の幻影スポーン1箇所で
+  //    guardianPhantomHealth(player.ddaBaseHp)=育成込みの初期プレイヤーHP・research/GROWTH.md v4)。
+  //    ENEMY_STATS は import 時評価で焼かれるため、ここに育成を含む値は書けない。
+  'guardian-phantom': { width: 40, height: 56, speed: 130, health: GUARDIAN_PHANTOM_PLACEHOLDER_HEALTH, damage: 0, experienceValue: 200 },
 };
 
 /** PACING_PUZZLE.md §6.38(賞金首・B1): 4型の集合。texture名=type規約(getTexture(e.type))。 */
@@ -615,7 +618,8 @@ const buildEnemy = (
   // Reaper は終端個体で別管理。giant/ラボ等の固定タイプは全体底上げ(ENEMY_HP_MULT)のみ維持。
   // reaper と裏ボスは health をそのまま使う(裏ボスは個別HPを直接指定=ENEMY_HP_MULT を掛けない)。
   // research/GHOST_BOSS.md(幻影): 裏ボスと同じ「HPを直接指定」枠=ENEMY_HP_MULT を掛けない
-  // (GUARDIAN_PHANTOM_HEALTH がそのまま実効HPになる=練習画面の表示と実戦が一致する)。
+  // (スポーン側が書き込んだHPがそのまま実効HPになる=練習画面の表示と実戦が一致する。
+  //  幻影は ENEMY_STATS の値がプレースホルダで、スポーン直後に育成込みの値へ上書きされる)。
   const hpMult = (type === 'reaper' || isHiddenBoss(type) || isGuardianPhantom(type)) ? 1 : (fixed ? ENEMY_HP_MULT : diffHp * ENEMY_HP_MULT);
   const dmgMult = type === 'reaper' ? 1 : (fixed ? 1 : diffDmg);
   const sizeMult = colorTier ? COLOR_TIER_SIZE_MULT[colorTier] : 1;

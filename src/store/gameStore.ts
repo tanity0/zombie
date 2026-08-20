@@ -178,6 +178,15 @@ import {
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { setFlowersDisabled } from '../world/forestDecor';
 import { bossTestGhostSkill, isBossMakerRun, getBossTestSkillInjection } from '../utils/bossTest';
+// research/GROWTH.md v4(永続育成「強化」)。**効果値の純関数と保存は utils 側**(AMMO_MAX は
+// 引数で渡す=utils→store の逆流を作らない)。計測路(ガントレット)の述語は依存ゼロの葉から読む。
+import {
+  PLAYER_UPGRADES_KEY, activeUpgradeLevel, effectiveAmmoMaxMap, emptyPlayerUpgrades,
+  growthAttackMult, growthGoldMult, growthMaxHpBonus, loadPlayerUpgrades, playerUpgradeCost,
+  savePlayerUpgrades, type PlayerUpgradeState,
+} from '../utils/playerUpgrades';
+import { PLAYER_UPGRADE_MAX_LEVEL, type PlayerUpgradeId } from '../data/playerUpgrades';
+import { isGauntletRun } from '../utils/gauntletMode';
 // SKILL_BUILD_REDESIGN.md §15(B0発注文): 1ランぶんの計測台帳(読むだけ・挙動は変えない)。
 import {
   resetRunTelemetry, recordBossEntry, recordUpgradeOffered, recordUpgradeSelected,
@@ -1502,17 +1511,20 @@ export const ALCHEMY_SUMMON_ATK_BONUS = 0.2;
 // ★錬金術の召喚攻撃ボーナス(v0.25.3612)もこの合流点に乗せる: ×(1 + 0.2×生存召喚数)。
 // 数えるのは召喚獣(kind normal/rare。使役ペット=persistentも召喚獣として数える)。
 // 守護霊(ghost-ally)は同行者であって召喚獣ではないので数えない。
+// ★永続育成の攻撃力(research/GROWTH.md v4)もこの合流点に乗せる: player の**焼き値**を読む
+// (store の有効段数は読まない=守護霊の疑似Playerが同じ関数を通るため)。0段=1.0で無変化。
 export const skillOutgoingDamageMult = (player: Player): number => {
   const summonN = useGameStore.getState().summons.reduce((n, s) => n + (s.kind !== 'ghost-ally' ? 1 : 0), 0);
   const alcMult = 1 + ALCHEMY_SUMMON_ATK_BONUS * summonN;
+  const growthMult = player.growthAtkMult ?? 1;
   const cmMult = (player.counterMasterBuffUntil ?? 0) > useGameStore.getState().gameTime
     && skillLevel(player, 'counter-master') >= 3
     ? COUNTER_MASTER_AWAKEN_DMG_MULT
     : 1;
   const bl = skillLevel(player, 'berserker');
-  if (!bl || player.maxHealth <= 0) return alcMult * cmMult;
+  if (!bl || player.maxHealth <= 0) return alcMult * cmMult * growthMult;
   const k = [0, 1, 1.25, 1.5][bl];
-  return alcMult * cmMult * (1 + Math.max(0, (player.maxHealth - player.health) / player.maxHealth) * k);
+  return alcMult * cmMult * growthMult * (1 + Math.max(0, (player.maxHealth - player.health) / player.maxHealth) * k);
 };
 // クリティカルD上昇: crit倍率 +0.5/0.75/1.0(Lv)。
 export const skillCritMult = (player: Player, base: number): number => {
@@ -3022,7 +3034,9 @@ const resolveNamedFoeDefeat = (get: () => GameState, killedEnemies: Enemy[], x: 
     namedFoeRunResolved: true,
   });
   // スキル: ゴールドラッシュ(§6.10 M33⑪) = 永続ゴールド獲得 ×1.2/1.35/1.5(Lv・四捨五入)。表示(壁銘打ち)も同額。
-  const namedGold = Math.round(NAMED_TREASURE_GOLD * skillGoldRushMult(st.player));
+  // research/GROWTH.md v4: 育成のゴールド倍率(焼き値)も**この算出行**に掛ける(addGold側ではない=
+  // 壁銘打ちの表示が同額のまま取り残されないように)。GoldRushと同じ作法=両方持てば重なる。
+  const namedGold = Math.round(NAMED_TREASURE_GOLD * skillGoldRushMult(st.player) * st.player.growthGoldMult);
   get().addGold(namedGold);
   // トレジャー確定1個(通常のtreasureDropChance抽選を経由せず直接付与)。
   get().addPickup({
@@ -3359,7 +3373,9 @@ const applySubquestProgress = (get: () => GameState, ev: SubquestEvent): void =>
   let gold = 0;
   for (const def of res.clearedNow) {
     // v3裁定Q3: 報酬にもゴールドラッシュを掛ける(台帳の20〜200Gは掛ける前の定義)。
-    gold += Math.max(1, Math.round(def.rewardGold * skillGoldRushMult(get().player)));
+    // research/GROWTH.md v4: 育成のゴールド倍率(焼き値)も同じ算出行に掛ける(リザルト記録・吹き出しも
+    // この gold を読むので、addGold 側で掛けてはいけない)。
+    gold += Math.max(1, Math.round(def.rewardGold * skillGoldRushMult(get().player) * get().player.growthGoldMult));
   }
   useGameStore.setState(state => ({
     subquests: rows,
@@ -4865,6 +4881,13 @@ interface GameState {
   setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
   purchasedSubLevels: Partial<Record<SubWeaponKey, number>>; // 開発施設で購入した陳列Lv(永続)。装備条件=Lv1以上
   setPurchasedSubLevel: (key: SubWeaponKey, level: number) => void;
+  // ── 永続育成「強化」(research/GROWTH.md v4)。購入(bought)と有効段数(active)の分離=メーター式。
+  // **ここを読んでよいのは強化画面と resetGame だけ**(ラン中の参照は Player の焼き値)。
+  playerUpgrades: PlayerUpgradeState;
+  /** 1段購入(ゴールド消費・不可逆)。買えた=true。買った段はそのまま有効(active)にもなる。 */
+  buyPlayerUpgrade: (id: PlayerUpgradeId) => boolean;
+  /** 有効段数(メーター)を設定。0〜購入済み段数へクランプ。反映は次の出撃から。 */
+  setPlayerUpgradeActive: (id: PlayerUpgradeId, active: number) => void;
   avatarId: AvatarId | null; // アバターシステム(試験・第1弾)。選択中のアバター(視覚のみ・永続・resetGameで消えない)
   setAvatarId: (id: AvatarId | null) => void;
   setStartWithTestStraps: (enabled: boolean) => void;
@@ -5229,6 +5252,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     ammoShotgun: AMMO_INITIAL.shotgun,
     ammoRifle: AMMO_INITIAL.rifle,
     ammoPhill: AMMO_INITIAL.phill,
+    // 育成の焼き値(research/GROWTH.md v4)。ここは**出撃前のプレースホルダ**=常に0段相当。
+    // 実際の焼き込みは resetGame(出撃時に1回)。
+    growthAtkMult: 1,
+    growthAmmoMax: { ...AMMO_MAX },
+    growthGoldMult: 1,
+    ddaBaseHp: PLAYER_BASE_HP,
     critChance: 0,
     quickMagCritUntil: 0,
     reloadEndsAt: 0,
@@ -5367,6 +5396,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   ammoPickupAmounts: loadAmmoPickupAmounts(),
   unlockedShopSkillCards: {},
   purchasedSubLevels: loadSubShelfLevels(),
+  playerUpgrades: loadPlayerUpgrades(),
   avatarId: loadAvatarId(),
   pendingLoadout: loadStringArray(LOADOUT_SUBS_KEY) as SubWeaponKey[],
   // SKILL_BUILD_REDESIGN.md §20-1点2(移行): 新キー優先・無ければ旧pendingSkillsキーから守護霊系だけを
@@ -6039,6 +6069,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player); // finisher refunds into the active gun
     const meleeDamage = meleeSwingBaseDamage(melee, player); // キャラ固有: ストライカー弾切れ時×1.5 / 装備ダメージ倍率
+    // ★処刑(気絶敵フィニッシュ/ボス5×/強個体3×)は skillOutgoingDamageMult を通らない経路なので、
+    // 永続育成の攻撃力(research/GROWTH.md v4・社長裁定Q1)は**素ダメージへ前掛け**して渡す。
+    // applyBrokenMeleeFatal は `baseDamage×5 + 報酬予算の残量` なので、前掛けにすると育成は
+    // baseDamage 側にだけ乗る(報酬予算の残量は固定の設計値=育成で増やさない)。
+    const meleeExecBase = meleeDamage * (player.growthAtkMult ?? 1);
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     const meleeRange = huntingMeleeRadius(player);
@@ -6437,7 +6472,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 気絶敵へのフィニッシュ裁定は resolveStunnedMeleeHit が唯一の出どころ
       // (v0.25.2525で抽出=**守護霊の近接スイングと共有**・値/条件は不変。ボス5×は
       // 完全気絶(紫)中のみ気絶維持 / 強個体はHP50%以上で3×+気絶解除 / それ以外は即時処刑)。
-      const stunnedHit = resolveStunnedMeleeHit(enemy, meleeDamage, gameTime, BOSS_MELEE_STUN_MULT);
+      const stunnedHit = resolveStunnedMeleeHit(enemy, meleeExecBase, gameTime, BOSS_MELEE_STUN_MULT);
       if (stunnedHit) {
         if (stunnedHit.kind === 'execute') {
           killed.push({ enemy, finisher: true }); // normal instant execute
@@ -6445,7 +6480,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         bossFinishHit = true;
-        const fatal = stunnedHit.kind === 'boss' ? applyBrokenMeleeFatal(enemy, meleeDamage, gameTime) : null;
+        const fatal = stunnedHit.kind === 'boss' ? applyBrokenMeleeFatal(enemy, meleeExecBase, gameTime) : null;
         const dmg = fatal?.damage ?? stunnedHit.dmg;
         if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
@@ -6867,6 +6902,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player);
     const meleeDamage = meleeSwingBaseDamage(melee, player);
+    // 処刑(ボス5×/強個体3×)は skillOutgoingDamageMult を通らないので、育成の攻撃力は素ダメージへ
+    // 前掛けする(research/GROWTH.md v4・ナイフ/刀/鞭/守護霊と同じ扱い)。主語=分身の持ち主。
+    const meleeExecBase = meleeDamage * (player.growthAtkMult ?? 1);
     const meleeCritChance = melee?.critChance ?? 0;
     // 守護霊はコンボ計数を持たないため中立(×1)=GHOST-BUILD-1 ★未決1・刀と同じ扱い。
     const meleeComboMult = skillMeleeComboMult(
@@ -6916,7 +6954,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // v0.25.3171(案A): 「ボスか否か」は usesBossStunnedMelee(=isBossTypeから強個体を除く)。
         if (usesBossStunnedMelee(enemy.type)) {
           bossFinishHit = true;
-          const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
+          const dmg = meleeExecBase * BOSS_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           if (!isGhost) recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ(プレイヤー起因のみ)
           cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
@@ -6929,7 +6967,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §6.22 M47仕様①: 分身にもナイフと同じ強個体しきい値を適用(分身だけエリート消し可、を残さない)。
         if (stunnedMeleeOutcome(enemy) === 'heavy') {
           bossFinishHit = true;
-          const dmg = meleeDamage * ELITE_MELEE_STUN_MULT;
+          const dmg = meleeExecBase * ELITE_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
@@ -7490,6 +7528,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const gun = getActiveGun(player); // ammo scavenge stays gun-family based
     const baseDamage = KATANA_DAMAGE_BY_LEVEL[katanaLevel(player)];
+    // 処刑(ボス5×/強個体3×/致命の一撃)は skillOutgoingDamageMult を通らないので、育成の攻撃力は
+    // 素ダメージへ前掛けする(research/GROWTH.md v4・ナイフ/分身/鞭/守護霊と同じ扱い)。
+    const katanaExecBase = baseDamage * damageMult * (player.growthAtkMult ?? 1);
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
@@ -7541,9 +7582,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (usesBossStunnedMelee(enemy.type)) {
           // Same boss rule as the knife: 5× damage, no execute。ただし裏ボスの完全気絶(紫)中は
           // 気絶を解除せずタイマー切れまで5×を“し放題”(社長指示)。通常の気絶は従来どおり1発で解除。
-          const fatal = !isGhost ? applyBrokenMeleeFatal(enemy, baseDamage * damageMult, gameTime) : null;
+          const fatal = !isGhost ? applyBrokenMeleeFatal(enemy, katanaExecBase, gameTime) : null;
           bossFinishHit = true;
-          const dmg = fatal?.damage ?? baseDamage * damageMult * BOSS_MELEE_STUN_MULT;
+          const dmg = fatal?.damage ?? katanaExecBase * BOSS_MELEE_STUN_MULT;
           if (fatal) katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           if (!isGhost) recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ(プレイヤー起因のみ)
@@ -7566,7 +7607,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §6.22 M47仕様①: 強個体はHP50%以上だと即死せず近接ダメージ×3+気絶解除。
         if (stunnedMeleeOutcome(enemy) === 'heavy') {
           bossFinishHit = true;
-          const dmg = baseDamage * damageMult * ELITE_MELEE_STUN_MULT;
+          const dmg = katanaExecBase * ELITE_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -7825,6 +7866,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       slashAt.push({ x: ecx, y: ecy });
       // 巻き込み中は通常倍率(1.0)、それ以外は鞭の低倍率(0.25)。
       const whipMult = inHurricane(ecx, ecy) ? 1 : WHIP_DAMAGE_MULT;
+      // 処刑(ボス5×/強個体3×/致命の一撃)は skillOutgoingDamageMult を通らないので、育成の攻撃力は
+      // 素ダメージへ前掛けする(research/GROWTH.md v4・ナイフ/分身/刀/守護霊と同じ扱い)。
+      const whipExecBase = meleeBase * whipMult * (player.growthAtkMult ?? 1);
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       if (stunned) {
         // 近接フィニッシュ: スタン敵は即時処刑(ボスは5×でスタン解除。§6.22 M47でネームド/questTarget/
@@ -7833,8 +7877,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // v0.25.3171(案A): 強個体(pumpkin/lab-zombie-3)はボス枝へ落とさない。
         if (usesBossStunnedMelee(enemy.type)) {
           bossFinishHit = true;
-          const fatal = applyBrokenMeleeFatal(enemy, meleeBase * whipMult, gameTime);
-          const dmg = fatal?.damage ?? meleeBase * whipMult * BOSS_MELEE_STUN_MULT;
+          const fatal = applyBrokenMeleeFatal(enemy, whipExecBase, gameTime);
+          const dmg = fatal?.damage ?? whipExecBase * BOSS_MELEE_STUN_MULT;
           if (fatal) whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ
@@ -7847,7 +7891,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §6.22 M47仕様①: 強個体はHP50%以上だと即死せず近接ダメージ×3+気絶解除。
         if (stunnedMeleeOutcome(enemy) === 'heavy') {
           bossFinishHit = true;
-          const dmg = meleeBase * whipMult * ELITE_MELEE_STUN_MULT;
+          const dmg = whipExecBase * ELITE_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -8651,7 +8695,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!enemy || !actor) return null;
     const melee = actor.weapons.find(w => w.isMelee);
     // 裁定はプレイヤーのナイフスイングと同じ1本(値・条件・優先順はそのまま)。
-    const hit = resolveStunnedMeleeHit(enemy, meleeSwingBaseDamage(melee, actor), st.gameTime, BOSS_MELEE_STUN_MULT);
+    // 育成の攻撃力(research/GROWTH.md v4)はナイフと同じく**素ダメージへ前掛け**する。主語は疑似Player
+    // =スナップショットに写した計測時の育成倍率(欠損=旧データは1.0)。
+    const hit = resolveStunnedMeleeHit(
+      enemy, meleeSwingBaseDamage(melee, actor) * (actor.growthAtkMult ?? 1), st.gameTime, BOSS_MELEE_STUN_MULT,
+    );
     if (!hit) return null;
     const now = Date.now();
     // v0.25.2582(試験改定): 守護霊のフィニッシュにも停止+スロー+寄りズーム(プレイヤーの
@@ -9585,27 +9633,31 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
 
       if (key === 'ammo-handgun' || ammoType === 'handgun') {
-        if (state.player.ammoHandgun >= AMMO_MAX.handgun) return {}; // MAXなら購入不可
+        // 上限は育成の焼き値(research/GROWTH.md v4「弾数」)。0段=AMMO_MAX素値と同じ。
+        if (state.player.ammoHandgun >= state.player.growthAmmoMax.handgun) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
-          ammoHandgun: Math.min(AMMO_MAX.handgun, state.player.ammoHandgun + shopAmmoAmount('handgun', state.ammoPickupAmounts))
+          ammoHandgun: Math.min(state.player.growthAmmoMax.handgun, state.player.ammoHandgun + shopAmmoAmount('handgun', state.ammoPickupAmounts))
         });
       }
       if (key === 'ammo-shotgun' || ammoType === 'shotgun') {
-        if (state.player.ammoShotgun >= AMMO_MAX.shotgun) return {}; // MAXなら購入不可
+        // 上限は育成の焼き値(research/GROWTH.md v4「弾数」)。0段=AMMO_MAX素値と同じ。
+        if (state.player.ammoShotgun >= state.player.growthAmmoMax.shotgun) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
-          ammoShotgun: Math.min(AMMO_MAX.shotgun, state.player.ammoShotgun + shopAmmoAmount('shotgun', state.ammoPickupAmounts))
+          ammoShotgun: Math.min(state.player.growthAmmoMax.shotgun, state.player.ammoShotgun + shopAmmoAmount('shotgun', state.ammoPickupAmounts))
         });
       }
       if (key === 'ammo-rifle' || ammoType === 'rifle') {
-        if (state.player.ammoRifle >= AMMO_MAX.rifle) return {}; // MAXなら購入不可
+        // 上限は育成の焼き値(research/GROWTH.md v4「弾数」)。0段=AMMO_MAX素値と同じ。
+        if (state.player.ammoRifle >= state.player.growthAmmoMax.rifle) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
-          ammoRifle: Math.min(AMMO_MAX.rifle, state.player.ammoRifle + shopAmmoAmount('rifle', state.ammoPickupAmounts))
+          ammoRifle: Math.min(state.player.growthAmmoMax.rifle, state.player.ammoRifle + shopAmmoAmount('rifle', state.ammoPickupAmounts))
         });
       }
       if (key === 'ammo-phill' || ammoType === 'phill') { // 研究所: 商人はPHILL弾のみ販売
-        if (state.player.ammoPhill >= AMMO_MAX.phill) return {}; // MAXなら購入不可
+        // 上限は育成の焼き値(research/GROWTH.md v4「弾数」)。0段=AMMO_MAX素値と同じ。
+        if (state.player.ammoPhill >= state.player.growthAmmoMax.phill) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
-          ammoPhill: Math.min(AMMO_MAX.phill, state.player.ammoPhill + shopAmmoAmount('phill', state.ammoPickupAmounts))
+          ammoPhill: Math.min(state.player.growthAmmoMax.phill, state.player.ammoPhill + shopAmmoAmount('phill', state.ammoPickupAmounts))
         });
       }
       if (key === 'buy-phill') { // 研究所(lab テーマ): 武器商人がPHILL銃を無料配布(1挺・所持済みなら無効)
@@ -9885,7 +9937,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const stageId = getSelectedStageId();
     const active = get().eventQuestActive;
     // スキル: ゴールドラッシュ(§6.10 M33⑪) = 永続ゴールド獲得 ×1.2/1.35/1.5(Lv・四捨五入)。
-    get().addGold(Math.round(EVENT_QUEST_REWARD_GOLD * skillGoldRushMult(get().player)));
+    // research/GROWTH.md v4: 育成のゴールド倍率(焼き値)も同じ算出行に掛ける(useGameLoop 側の
+    // 吹き出し表示コピーも同じ式=表示と付与額を一致させる)。
+    get().addGold(Math.round(EVENT_QUEST_REWARD_GOLD * skillGoldRushMult(get().player) * get().player.growthGoldMult));
     const meta = getEventQuestMeta(stageId);
     if (active === 'forced') {
       setEventQuestMeta(stageId, { ...meta, forced: true });
@@ -9999,6 +10053,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? applyBrokenGunReward(enemy, amount, state.gameTime)
         : null;
       // ワイヤー等、中央経路へ来る直接近接フィニッシュも同じ致命裁定へ合流。
+      // research/GROWTH.md v4: この経路へ来る amount(ワイヤーの meleeDmg)は呼び出し側で既に
+      // skillOutgoingDamageMult(=育成込み)を通っている。**ここで再度掛けると二重適用**になるため
+      // 掛けない(規約: 中央経路の直接近接フィニッシュは「育成込みの amount」を受け取る)。
       const meleeFatal = viaMeleeFinish && hateSource === 'player' && postureImpact === 'heavy'
         ? applyBrokenMeleeFatal(enemy, amount, state.gameTime)
         : null;
@@ -13471,7 +13528,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   addAmmo: (type, amount) => {
     set(state => {
       const field = AMMO_FIELD[type];
-      const max = AMMO_MAX[type];
+      // 上限は育成の焼き値(research/GROWTH.md v4「弾数」)。0段=AMMO_MAX素値と同じ。
+      const max = state.player.growthAmmoMax[type] ?? AMMO_MAX[type];
       return {
         player: {
           ...state.player,
@@ -14432,7 +14490,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         return {
           player: {
             ...player,
-            [ammoField]: Math.min(AMMO_MAX[ammoType], player[ammoField] + amount)
+            // 上限は育成の焼き値(glauncherキーも含む5キー全部を焼いてあるのでここで頭打ちにならない)。
+            [ammoField]: Math.min(player.growthAmmoMax[ammoType] ?? AMMO_MAX[ammoType], player[ammoField] + amount)
           },
         lastWeaponGet: {
           name: `${weaponTierLabel(weapon.tier)} ${weapon.name} -> 弾薬 +${amount}`,
@@ -14635,6 +14694,31 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  // ── 永続育成「強化」(research/GROWTH.md v4)。購入は不可逆(返金なし)・有効段数は次の出撃から反映。
+  // 保存は進行名前空間(zombie.progress.playerUpgrades)。**ラン中の挙動はここを一切読まない**
+  // (読むのは resetGame の焼き込みと強化画面だけ)。
+  buyPlayerUpgrade: (id) => {
+    const cur = get().playerUpgrades[id];
+    if (!cur || cur.bought >= PLAYER_UPGRADE_MAX_LEVEL) return false;
+    const cost = playerUpgradeCost(cur.bought);
+    if (!get().spendGold(cost)) return false;
+    const bought = cur.bought + 1;
+    // 買った段はそのまま有効にする(メーターは「下げられる」ためのもの=買っても何も起きない状態は作らない)。
+    const next: PlayerUpgradeState = { ...get().playerUpgrades, [id]: { bought, active: Math.min(bought, cur.active + 1) } };
+    savePlayerUpgrades(next);
+    set({ playerUpgrades: next });
+    return true;
+  },
+  setPlayerUpgradeActive: (id, active) => {
+    const cur = get().playerUpgrades[id];
+    if (!cur) return;
+    const clamped = Math.max(0, Math.min(cur.bought, Math.floor(active)));
+    if (clamped === cur.active) return;
+    const next: PlayerUpgradeState = { ...get().playerUpgrades, [id]: { ...cur, active: clamped } };
+    savePlayerUpgrades(next);
+    set({ playerUpgrades: next });
+  },
+
   setAvatarId: (id) => {
     saveAvatarId(id);
     set({ avatarId: id });
@@ -14713,14 +14797,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 選んだサブウェポン(LOADOUT_SUBS_KEY / pendingLoadout)も一緒に初手(未装備)へ戻す。
     // SKILL_BUILD_REDESIGN.md §20(B4): 装備中の同行者(companionSkill)も所持スキルの消去と一緒に外す
     // (LOADOUT_SKILLS_KEYは旧キーの残骸掃除。COMPANION_SKILL_KEYが正=新キー)。
+    // research/GROWTH.md v4: 永続育成「強化」も同じゴールドで買うので、ガチャリセットの消去対象に含める
+    // (残すと「Gは0なのに育成だけ残っている」状態になり、初回体験の確認にならない)。
     for (const k of [OWNED_SKILLS_KEY, OWNED_SKILL_LEVELS_KEY, GACHA_DUPES_KEY, GACHA_PITY_KEY,
-      GACHA_PULLS_KEY, GOLD_BALANCE_KEY, LOADOUT_SKILLS_KEY, COMPANION_SKILL_KEY, LOADOUT_SUBS_KEY, SUB_SHELF_KEY]) {
+      GACHA_PULLS_KEY, GOLD_BALANCE_KEY, LOADOUT_SKILLS_KEY, COMPANION_SKILL_KEY, LOADOUT_SUBS_KEY, SUB_SHELF_KEY,
+      PLAYER_UPGRADES_KEY]) {
       try { localStorage.removeItem(k); } catch { /* ignore */ }
     }
     set({
       // 「初手」にも守護霊は入っている(G3: 最初から所持)ので、リセット後も欠けさせない。
       ownedSkills: ensureDefaultOwnedSkills([]), ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0,
       gachaPullsTotal: 0, goldBalance: 0, companionSkill: null, pendingLoadout: [], purchasedSubLevels: {},
+      playerUpgrades: emptyPlayerUpgrades(),
     });
   },
   // 強化訓練を1回引く(逐次)。レア度をpityから抽選→pity更新(super=リセット/他=+1)→
@@ -16137,8 +16225,23 @@ export const useGameStore = create<GameState>((set, get) => ({
     // (=途中離脱や死亡では失う。死亡時は damagePlayer でも明示クリア)。
     saveCarriedEquip(null);
     const runEquipBonus = aggregateEquipBonus(runLoadout);
-    // 最大体力は装備分を加算してベイク(消費側を据え置きにするため)。
-    const maxHealth = profile.maxHp + equipMaxHealthOf(runLoadout);
+    // ── 永続育成「強化」の焼き込み(research/GROWTH.md v4「★焼き込みの原則」) ──────────────────
+    // 有効段数(store)を読むのは**ここだけ**。以降ラン中・リザルトは Player の焼き値だけを読むので、
+    // 「メーター変更は次の出撃から」が機械的に保証される(守護霊の疑似Playerも同じ焼き値を通る)。
+    // 計測路(ボスメーカー / ガントレット)は**0段として焼く**=TTK計測の基準が育成の進みでズレない。
+    // 通常のボス練習(isPracticeRunだがガントレットでない)は乗る(プレイヤーの実力扱い)。
+    const growthMeterless = isBossMakerRun() || isGauntletRun();
+    const growthMeters = growthMeterless ? emptyPlayerUpgrades() : state.playerUpgrades;
+    const growthHpBonus = growthMaxHpBonus(activeUpgradeLevel(growthMeters, 'health'));
+    const bakedGrowthAtkMult = growthAttackMult(activeUpgradeLevel(growthMeters, 'attack'));
+    // AmmoTypeの5キー全部(glauncherを含む)。素値は引数で渡す=utils側はAMMO_MAXをimportしない。
+    const bakedGrowthAmmoMax = effectiveAmmoMaxMap(AMMO_MAX, activeUpgradeLevel(growthMeters, 'ammo'));
+    const bakedGrowthGoldMult = growthGoldMult(activeUpgradeLevel(growthMeters, 'gold'));
+    // DDAの参照HP(社長裁定Q3=A案): profile.maxHp+育成HP加算。**装備HPは含めない**
+    // (含めると現行PPに乗っている装備HP寄与が消える=裁定外の挙動変更になる)。
+    const bakedDdaBaseHp = profile.maxHp + growthHpBonus;
+    // 最大体力は装備分を加算してベイク(消費側を据え置きにするため)。育成の体力加算もここで1回だけ乗る。
+    const maxHealth = profile.maxHp + equipMaxHealthOf(runLoadout) + growthHpBonus;
     // 固有スキル(クラス標準サブ武器)を最初から Lv1 所持で開始する。
     const innateSub = classSubWeaponFor(validClass);
     // SKILL_BUILD_REDESIGN.md §15-1の2(B0発注文)+§12-2#7: ボスメーカーの部屋はXPが入らないため
@@ -16446,6 +16549,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           ammoShotgun: AMMO_INITIAL.shotgun,
           ammoRifle: AMMO_INITIAL.rifle,
           ammoPhill: AMMO_INITIAL.phill,
+          // 育成の焼き値(上の「★焼き込みの原則」)。ラン中の参照先はここ。
+          growthAtkMult: bakedGrowthAtkMult,
+          growthAmmoMax: bakedGrowthAmmoMax,
+          growthGoldMult: bakedGrowthGoldMult,
+          ddaBaseHp: bakedDdaBaseHp,
           critChance: 0,
           quickMagCritUntil: 0,
           reloadEndsAt: 0,

@@ -102,13 +102,14 @@ const phantomGunKey = (): string | undefined =>
 /**
  * 近接ダメージ=台帳クラスの**初期近接武器の実ダメージ**(rogue=machete-t3)。同裁定。
  * 判定の形(reach/halfWidth)は GP_T のまま(見た目が読める判定を優先・叩き台)。クリは未適用(叩き台)。
+ * research/GROWTH.md v4(社長裁定Q4「幻影も反映」): 永続育成の攻撃力を掛ける。**モジュールキャッシュは
+ * 廃止**した——初回値を焼くと、強化画面で段数を変えてもリロードするまで反映されないため
+ * (呼び出し側はスポーン時に焼いた倍率を渡す。既定1=育成なしと同値)。
  */
-let meleeDamageCache: number | null = null;
-export const phantomMeleeDamage = (): number => {
-  if (meleeDamageCache !== null) return meleeDamageCache;
+export const phantomMeleeDamage = (growthAtkMult = 1): number => {
   const key = PLAYER_PROFILES[strongestGuardian().classId]?.meleeKey;
-  meleeDamageCache = (key ? createWeapon(key).damage : null) ?? GP_T.melee.damage;
-  return meleeDamageCache;
+  const base = (key ? createWeapon(key).damage : null) ?? GP_T.melee.damage;
+  return base * growthAtkMult;
 };
 
 // =================================================================================================
@@ -156,6 +157,11 @@ export interface PhantomTickState {
   /** リロードの状態(Date.now基準=weaponUtils と同じ時計)。 */
   reloadEndsAt: number;
   reloadingWeaponId: string;
+  /**
+   * 永続育成の攻撃力倍率(research/GROWTH.md v4)。**個体がスポーンした瞬間に1回だけ焼く**
+   * (敵tickはPlayer主語を持たないので、その時点の player.growthAtkMult=ランの焼き値を読む)。
+   */
+  growthAtkMult: number;
 }
 
 export const createPhantomTickState = (): PhantomTickState => ({
@@ -166,6 +172,7 @@ export const createPhantomTickState = (): PhantomTickState => ({
   gun: null,
   reloadEndsAt: 0,
   reloadingWeaponId: '',
+  growthAtkMult: 1,
 });
 
 /** 個体が入れ替わった/ランが変わった時の全消し。 */
@@ -176,6 +183,7 @@ const resetPhantomRunState = (s: PhantomTickState): void => {
   s.gun = null;
   s.reloadEndsAt = 0;
   s.reloadingWeaponId = '';
+  s.growthAtkMult = 1;
 };
 
 // =================================================================================================
@@ -185,6 +193,9 @@ const resetPhantomRunState = (s: PhantomTickState): void => {
  * 銃の計算に渡す「中立の主語」。**プレイヤーのビルドは読まない**(読むと幻影の銃が
  * プレイヤーの装備で強くなる=台帳武器の実性能、という決定が壊れる)。スキル無し・装備無しなので
  * effectiveMagSize/effectiveReloadMs/effectiveFireCooldown は武器の生値をそのまま返す。
+ * ★例外(research/GROWTH.md v4・社長裁定Q4 2026-08-20「幻影も反映」・乱入敵構想が理由): **永続育成の
+ * 攻撃力だけ**はこの中立主語の外側で掛ける(s.growthAtkMult=スポーン時に焼いた値)。
+ * 中立主語は維持しつつ、育成だけは裁定により写す。
  */
 const NEUTRAL_GUN_OWNER = {
   skills: [], skillLevels: {}, magBonus: 0, reloadMult: 1,
@@ -348,7 +359,7 @@ export const decidePhantom = (
       gunDamage: s.gun?.damage ?? 0,
       gunIntervalMs: s.gun ? effectiveFireCooldown(s.gun, gunOwner(s)) : 500,
       gunRangePx: phantomGunRangePx(s),
-      meleeDamage: phantomMeleeDamage(), // 初期近接武器の実ダメージ(v0.25.3641裁定)
+      meleeDamage: phantomMeleeDamage(s.growthAtkMult), // 初期近接武器の実ダメージ(v0.25.3641裁定)+育成
     },
     gameTime,
     nowMs,
@@ -369,7 +380,7 @@ export const decidePhantom = (
  */
 const swingPhantomMelee = (
   bcx: number, bcy: number, player: Player, sfx: PhantomSfx, patch: Partial<Enemy>,
-  newGameTime: number,
+  newGameTime: number, growthAtkMult: number,
 ): void => {
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const ang = Math.atan2(pcy - bcy, pcx - bcx);
@@ -386,7 +397,7 @@ const swingPhantomMelee = (
   // 実際にHPが減ったか(=i-frame中でない有効打か)を前後比較で判定して鳴らす。
   const hpBefore = useGameStore.getState().player.health;
   useGameStore.getState().damagePlayer(
-    phantomMeleeDamage(), GUARDIAN_PHANTOM_MELEE_SOURCE, bcx, bcy, GUARDIAN_PHANTOM_TYPE,
+    phantomMeleeDamage(growthAtkMult), GUARDIAN_PHANTOM_MELEE_SOURCE, bcx, bcy, GUARDIAN_PHANTOM_TYPE,
   );
   // 被弾SEはここで鳴らす: damagePlayer 直呼びは「本当に何も出ない」前例がある(gameStore の注記)。
   if (useGameStore.getState().player.health < hpBefore) sfx.hurt();
@@ -409,7 +420,8 @@ const firePhantomShot = (
   const crit = rand() < (gun.critChance ?? 0);
   st.addProjectile(createEnemyProjectile(
     phantom, p, pcx, pcy, bcx, bcy,
-    { speed: flight.speed, damage: Math.max(1, Math.round(gun.damage * (crit ? CRIT_DAMAGE_MULT : 1))), size: flight.size },
+    // research/GROWTH.md v4: 幻影の銃にも育成の攻撃力を掛ける(スポーン時に焼いた倍率)。
+    { speed: flight.speed, damage: Math.max(1, Math.round(gun.damage * (crit ? CRIT_DAMAGE_MULT : 1) * s.growthAtkMult)), size: flight.size },
   ));
   s.gun = { ...gun, magazine: Math.max(0, (gun.magazine ?? 0) - 1), lastFired: Date.now() };
   patch.gpShotAt = newGameTime;
@@ -446,7 +458,7 @@ const consumePhantomParry = (
       knockbackMs: PHANTOM_PARRY_SHOVE_MS,
     } }));
   }
-  swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime);
+  swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult);
   s.nextMeleeAt = newGameTime + PHANTOM_MELEE_PERIOD_MS;
   return true;
 };
@@ -471,10 +483,15 @@ export const runPhantomTick = (
   sfx: PhantomSfx = NOOP_PHANTOM_SFX,
   rand: () => number = Math.random,
 ): void => {
-  if (s.activeId !== phantom.id) { resetPhantomRunState(s); s.activeId = phantom.id; }
-
   const st0 = useGameStore.getState();
   const player = st0.player;
+  // 個体が入れ替わった=スポーン。育成の攻撃力(research/GROWTH.md v4)はこの瞬間に1回だけ焼く。
+  if (s.activeId !== phantom.id) {
+    resetPhantomRunState(s);
+    s.activeId = phantom.id;
+    s.growthAtkMult = player.growthAtkMult ?? 1;
+  }
+
   const bcx = phantom.x + phantom.width / 2, bcy = phantom.y + phantom.height / 2;
   const patch: Partial<Enemy> = {};
 
@@ -525,7 +542,7 @@ export const runPhantomTick = (
   if (!parried
     && newGameTime >= s.nextMeleeAt
     && edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach) {
-    swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime);
+    swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult);
     s.nextMeleeAt = newGameTime + PHANTOM_MELEE_PERIOD_MS;
   }
 

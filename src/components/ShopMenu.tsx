@@ -86,6 +86,9 @@ const ShopMenu: React.FC = () => {
       ammoShotgun: state.player.ammoShotgun,
       ammoRifle: state.player.ammoRifle,
       ammoPhill: state.player.ammoPhill,
+      // 弾薬上限は育成の焼き値(research/GROWTH.md v4)。resetGame で1回作った安定参照なので
+      // shallow 比較でも毎フレーム再描画にならない。
+      growthAmmoMax: state.player.growthAmmoMax,
       equipment: state.player.equipment // 商人の装備区画用(購入時以外は同一参照=再描画規律)
     }),
     shallow
@@ -114,7 +117,7 @@ const ShopMenu: React.FC = () => {
   // lab テーマでは PHILL 銃を無料配布(未所持時のみ)。社長指示: 武器商人が無料で販売。
   const hasPhillGun = player.weapons.some(w => !w.isMelee && w.category === 'phill');
   const ammoEntries = ammoTypes.map(type => {
-    const maxed = ammoNow[type] >= AMMO_MAX[type];
+    const maxed = ammoNow[type] >= (player.growthAmmoMax[type] ?? AMMO_MAX[type]);
     return {
       key: ammoShopKey[type],
       name: ammoLabel[type],

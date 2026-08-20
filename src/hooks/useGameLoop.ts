@@ -141,7 +141,7 @@ import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
-import { stageBossHealthFor, STAGE_BOSS_HEALTH_BY_STAGE } from '../config/bossHealth';
+import { stageBossHealthFor, STAGE_BOSS_HEALTH_BY_STAGE, guardianPhantomHealth } from '../config/bossHealth';
 import { canForceGateBossNow, bossMakerBossType } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import {
@@ -6277,6 +6277,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const gpDist = 380 + Math.random() * 120;
             const gpX0 = gpPcx + Math.cos(gpAng) * gpDist, gpY0 = gpPcy + Math.sin(gpAng) * gpDist;
             const gpE = spawnEnemyAt('guardian-phantom', gpX0 - 20, gpY0 - 28, newGameTime);
+            // research/GROWTH.md v4(社長裁定Q4「幻影も反映」): 幻影HP=**育成込みの初期プレイヤー**
+            // (= player.ddaBaseHp。装備補正は含めない)。ENEMY_STATS の値は import 時評価の
+            // プレースホルダなので、城ボスの stageBossHealthFor と同じ作法でここで必ず上書きする
+            // (幻影のスポーンはこの1箇所だけ=渡し忘れが構造的に起きない)。
+            gpE.health = gpE.maxHealth = guardianPhantomHealth(player.ddaBaseHp);
             // CLAUDE.md MUST: 湧き位置も「行ける帯」へクランプ(プレイヤーが追えない場所に置かない)。
             const gpClamped = clampRectToPlayableArea(gpE.x, gpE.y, gpE.width, gpE.height, {
               farBackdrop: useGameStore.getState().farBackdrop,
@@ -9036,7 +9041,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   spawnRing(q.x, q.y - 22, 12, 62, 'rgba(253,230,138,0.85)', 3, 520);
                   useGameStore.getState().spawnGlow(q.x, q.y - 30, GLOW_R_M, 'rgba(253,230,138,', 520);
                   // §6.10 M33⑪: ゴールドラッシュの獲得倍率を表示にも反映(付与額=completeEventQuestと同じ式)。
-                  useGameStore.getState().spawnCallout(q.x, q.y - 76, `+${Math.round(EVENT_QUEST_REWARD_GOLD * skillGoldRushMult(useGameStore.getState().player))}G`, '#fde68a');
+                  // research/GROWTH.md v4: 育成のゴールド倍率(焼き値)も同じ算出行に掛ける(表示=付与額)。
+                  useGameStore.getState().spawnCallout(q.x, q.y - 76, `+${Math.round(EVENT_QUEST_REWARD_GOLD * skillGoldRushMult(useGameStore.getState().player) * useGameStore.getState().player.growthGoldMult)}G`, '#fde68a');
                   playSfx('event-clear');
                 }
               }
@@ -11690,6 +11696,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           level: player.level,
           weaponTierSum: player.weapons.reduce((s, w) => s + (w.tier ?? 1), 0),
           maxHealth: player.maxHealth,
+          // research/GROWTH.md v4(社長裁定Q3=A案): 参照HPは「そのランの profile.maxHp+育成HP加算」の
+          // 焼き値。装備HPは基準に含めないので、装備の寄与は従来どおりPPに乗る。
+          baseMaxHealth: player.ddaBaseHp,
           equippedCount: [player.equipment.body, player.equipment.arms, player.equipment.accessory].filter(Boolean).length,
           skillCount: useGameStore.getState().runBuild.length,
         };

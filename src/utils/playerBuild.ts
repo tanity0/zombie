@@ -80,6 +80,9 @@ export const snapshotPlayerBuild = (
     subWeapons: [...p.subWeapons],
     subWeaponLevels: { ...p.subWeaponLevels },
     characterClass: p.characterClass,
+    // research/GROWTH.md v4: 育成(攻撃力)も「計測時のビルド」の一部として記録する。
+    // 記録側と消費側(buildPseudoPlayer)は同じ1枚の変換=片側だけ足すと永久にundefinedになる。
+    growthAtkMult: p.growthAtkMult,
     avatarId: avatarId ?? null,
     ...(phill && phill.shots > 0
       ? { phillShots: phill.shots, phillHeadshots: phill.headshots, phillHeadshotRate: phill.headshots / phill.shots }
@@ -101,6 +104,10 @@ export const buildHasLoadout = (snap: PlayerBuildSnapshot | undefined): boolean 
  *   ゴーストは弾薬を拾わず武器も持ち替えないので、これらの窓は本人のものを流用してはいけない
  *   (本人のバフがゴーストに乗る=ビルド再現ではなく二重取りになる)。関数自体は共通のまま通すので、
  *   将来ゴースト側でこれらの窓を持たせれば同じ式でそのまま効く。
+ * 素通しにする項目(=中立化漏れではなく**意図して本人の値を乗せている**もの):
+ *   育成の焼き値のうち growthAmmoMax / growthGoldMult / ddaBaseHp は上書きしない。守護霊は
+ *   リザーブ∞で撃ち(弾上限を読む先が無い)・ゴールドを配らず・PPを持たないので、どれも読まれない。
+ *   写すのは growthAtkMult(=ダメージ式が実際に読む1つ)だけ。
  * ※weapons/activeWeaponIdはここでは触らない(createWeaponが必要=ghostBuild.tsが被せる)。
  * ※x/y/width/height/health は「実体(ゴースト)側の値」で上書きして使う(位置依存のスナイパー倍率・
  *   失HP依存のバーサーカー倍率が実体基準になる)。上書きは ghostBuild.ts の ghostActorPlayer。
@@ -122,6 +129,8 @@ export const buildPseudoPlayer = (snap: PlayerBuildSnapshot | undefined, live: P
     reloadMult: snap.reloadMult ?? live.reloadMult,
     subWeapons: snap.subWeapons ?? live.subWeapons,
     subWeaponLevels: snap.subWeaponLevels ?? live.subWeaponLevels,
+    // research/GROWTH.md v4(社長裁定Q4): 育成(攻撃力)は計測時の値を復元する。欠損=旧データは 1.0(0段)。
+    growthAtkMult: snap.growthAtkMult ?? 1,
     // 一時バフ窓の中立化(上のコメント参照)。
     quickMagCritUntil: 0,
     benkeiBuffUntil: 0,

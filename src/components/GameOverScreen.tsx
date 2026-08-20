@@ -258,7 +258,11 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   // スキル: ゴールドラッシュ(§6.10 M33⑪) = リザルトのラン獲得ゴールド ×1.2/1.35/1.5(Lv・四捨五入)。
   // そのランで装備していた場合に適用(storeのplayerはこのランの状態のまま)。表示と加算で同じ値を使う。
   const goldRushMult = useGameStore(s => skillGoldRushMult(s.player));
-  const goldEarned = Math.round(goldEarnedBase * goldRushMult * ghostGoldMultiplier(ghostSourceThisRun));
+  // research/GROWTH.md v4: 永続育成のゴールド倍率(そのランの焼き値)も**この算出行**に掛ける。
+  // 倍率を全部掛けてから最後に1回だけ round する(下の addGold は goldEarned+装備換金の合算なので、
+  // そちらで掛けると装備換金まで増えてしまう=禁止)。
+  const growthGoldMult = useGameStore(s => s.player.growthGoldMult);
+  const goldEarned = Math.round(goldEarnedBase * goldRushMult * growthGoldMult * ghostGoldMultiplier(ghostSourceThisRun));
   // このランで得たゴールドを永続財布へ加算(マウント時1回。ベンチマークは加算しない)。
   const isBenchmarkRun = benchmarkResult !== null;
   // サブクエスト(research/SUBQUESTS.md 中10): 件数と付与済み額。プリミティブだけを購読する。

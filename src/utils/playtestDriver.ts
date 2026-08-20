@@ -726,6 +726,8 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
       level: s.player.level,
       weaponTierSum: s.player.weapons.reduce((sum, w) => sum + (w.tier ?? 1), 0),
       maxHealth: s.player.maxHealth,
+      // research/GROWTH.md v4: DDAの参照HPはランの焼き値(profile.maxHp+育成HP加算)。実機と同じ入力を渡す。
+      baseMaxHealth: s.player.ddaBaseHp,
       equippedCount: [s.player.equipment.body, s.player.equipment.arms, s.player.equipment.accessory].filter(Boolean).length,
       skillCount: s.runBuild.length,
     }, t, curPhase.kind === 'gate');

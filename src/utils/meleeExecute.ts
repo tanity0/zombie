@@ -6,8 +6,9 @@
 // ★E-1確定(社長裁定v0.25.3171「パンプキンもだけど即死無しだよ。致命の一撃ではあるけど」・
 // PACING_PUZZLE.md §6.38 v3裁定): 旧仕様(HP<maxHealth×ELITE_EXECUTE_HP_RATIOなら即死)は撤去。
 // パンプキン/lab-zombie-3/isNamed/questTargetの瀕死処刑を廃止=強個体は削り切る(HP0)以外で死なない。
-// 呼び出し側(gameStore.ts の finisher 3箇所+ここ)の「ボスか否か」は **usesBossStunnedMelee** で
-// 判定する(v0.25.3171・案A)。旧コメントは「isBossType 分岐より後段に置くこと」だったが、
+// 呼び出し側(gameStore.ts の finisher **5箇所**=ナイフ/守護霊/分身/刀/鞭+ここ)の「ボスか否か」は
+// **usesBossStunnedMelee** で判定する(v0.25.3171・案A)。
+// 旧コメントは「isBossType 分岐より後段に置くこと」だったが、
 // それだと pumpkin / lab-zombie-3 に強個体規定が永久に届かなかった。
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(実装精度の規律4)。
 import type { EnemyColorTier, EnemyType } from '../types/game';

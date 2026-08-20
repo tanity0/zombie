@@ -123,6 +123,17 @@ export interface Player extends DashLocomotionState {
   ammoShotgun: number;
   ammoRifle: number;
   ammoPhill: number; // 研究所専用 PHILL銃のリザーブ弾。共有弾とは別プール。
+  // ── 永続育成「強化」の焼き値(research/GROWTH.md v4「★焼き込みの原則」) ──────────────────
+  // resetGame が有効段数から1回だけ算出して**Playerへ焼く**。ラン中・リザルトの参照は全てこの
+  // 焼き値を読む(store の有効段数の直読みは禁止=「メーター変更は次の出撃から」を機械的に保証する)。
+  /** 攻撃力の育成倍率(既定1.0)。skillOutgoingDamageMult と処刑の前掛けが読む。 */
+  growthAtkMult: number;
+  /** 所持弾薬の実効上限(AmmoTypeの5キー全部・素値=AMMO_MAX。glauncherはrifleと同値)。 */
+  growthAmmoMax: Record<AmmoType, number>;
+  /** ゴールド獲得の育成倍率(既定1.0)。各付与点が金額の算出行で掛ける。 */
+  growthGoldMult: number;
+  /** DDAの参照HP = profile.maxHp + 育成HP加算(装備HPは含めない)。difficultyScaler の入力。 */
+  ddaBaseHp: number;
   // Level-up crit bonus [0, 0.30]. Gun shots add this to the weapon's base
   // crit chance; melee uses its weapon crit chance directly.
   critChance: number;
@@ -274,6 +285,11 @@ export interface PlayerBuildSnapshot {
   subWeaponLevels?: Partial<Record<SubWeaponKey, number>>;
   /** 計測時のクラス(キャラ固有スキルの評価に使う。絵の選択は従来どおりPlayerProfile.srcClass)。 */
   characterClass?: CharacterClass;
+  /**
+   * research/GROWTH.md v4(社長裁定Q4「守護霊にも写す」): 計測時の攻撃力育成倍率。
+   * 欠損(旧データ)は消費側で 1.0=0段扱い。HPは maxHealth に既に含まれている(追加不要)。
+   */
+  growthAtkMult?: number;
   // ---- 裁定4(PHILL): 撃破ラン中の発射数とヘッドショット数(率はrateへ丸めて保存) ----
   phillShots?: number;
   phillHeadshots?: number;

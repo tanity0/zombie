@@ -88,7 +88,7 @@ const PreClearBriefing: React.FC<{ synopsis: string[]; summary: string; resetKey
   );
 };
 import {
-  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Sparkles, Ghost, Skull
+  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Sparkles, Ghost, Skull, TrendingUp
 } from 'lucide-react';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
@@ -144,6 +144,9 @@ import {
   getBgmVolume, getSfxVolume, isAudioMuted, setAudioMuted, setBgmVolume, setSfxVolume, setBgmScene, playSfx
 } from '../audio/audioManager';
 import BossRush from './BossRush'; // BOSS_MAKER.md §20: ボスラッシュ(練習モード)
+// research/GROWTH.md v4(永続育成「強化」): 台帳=data、価格/上限の判定=utils。効果の適用はresetGame。
+import { PLAYER_UPGRADES, PLAYER_UPGRADE_MAX_LEVEL } from '../data/playerUpgrades';
+import { playerUpgradeCost } from '../utils/playerUpgrades';
 import type { PracticeSlot } from '../utils/bossPractice';
 
 interface MissionSelectProps {
@@ -215,6 +218,8 @@ type Screen =
   | { name: 'home' }
   | { name: 'options' }
   | { name: 'weaponDev' }
+  // research/GROWTH.md v4: 永続育成「強化」(ゴールド購入・4系統×5段・メーター式)。
+  | { name: 'growth' }
   | { name: 'archive' }
   // BOT_AND_GHOST.md §2.14/§2.16 C: 独立メニュー「守護霊」(名前の決定+討伐の保持記録)。
   | { name: 'ghost' }
@@ -516,6 +521,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             サブウェポンと同行者(守護霊)のみ。ラン中のスキルは全てレベルアップの抽選で組む。 */}
         <HubButton icon={<Check size={18} />} label="装備" desc="サブウェポン1 / 同行者選択" onClick={() => setScreen({ name: 'loadout' })} delay={50} />
         <HubButton icon={<ShoppingBag size={18} />} label="開発施設" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} delay={100} />
+        {/* research/GROWTH.md v4(永続育成): ゴールドで4系統を段階購入。有効段数は次の出撃から反映。 */}
+        <HubButton icon={<TrendingUp size={18} />} label="強化" desc="体力・攻撃力・弾数・ゴールド" onClick={() => setScreen({ name: 'growth' })} delay={125} />
         <HubButton icon={<BookOpen size={18} />} label="資料室" desc="記録・変異体資料" onClick={goArchive} delay={150} badge={unreadArchiveCount > 0 ? 'NEW' : undefined} />
         {/* BOT_AND_GHOST.md §2.14(社長裁定「独立メニュー化しよう」): 守護霊=名前の決定+討伐の保持記録。
             資料室(操作記録・物語資料)とは別物なので独立させる。名称/位置は叩き台。 */}
@@ -1082,6 +1089,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const renderWeaponDev = () => <WeaponDev onBack={() => setScreen({ name: 'home' })} />;
 
   // ====================================================================
+  // 強化(永続育成・research/GROWTH.md v4)
+  // ====================================================================
+  const renderGrowth = () => <PlayerGrowth onBack={() => setScreen({ name: 'home' })} />;
+
+  // ====================================================================
   // 資料室(ストーリー記録 + 図鑑) — PACING_PUZZLE.md §6.18 バッチM41で刷新。
   // STORY_UI_SPEC.md 6章のカテゴリ構成へ: 任務記録は ArchiveRecord ベース(解放済み=タイトル一覧+
   // 未読マーク→タップで本文/既読化、未解放=伏せ表示)に差し替え。旧・debrief転載セクションは撤去
@@ -1399,6 +1411,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       {screen.name === 'loadout' && renderLoadout()}
       {screen.name === 'options' && renderOptions()}
       {screen.name === 'weaponDev' && renderWeaponDev()}
+      {screen.name === 'growth' && renderGrowth()}
       {screen.name === 'archive' && renderArchive()}
       {screen.name === 'ghost' && renderGhost()}
       {screen.name === 'bossRush' && renderBossRush()}
@@ -1707,7 +1720,7 @@ const DevTools: React.FC<{
       {/* ガチャだけ初手へ戻す(進行リセットはガチャ状態を消さないので別ボタン)。
           「初戦の稼ぎで2回引ける」等の初回体験を実機で試すため(社長指示v0.25.2347)。 */}
       <div className="mt-2 flex gap-2">
-        <button type="button" onClick={() => { useGameStore.getState().resetGachaProgress(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-fuchsia-400/10 text-fuchsia-50/85 active:bg-fuchsia-400/20">ガチャリセット(所持スキル・サブ装備・G・階段)</button>
+        <button type="button" onClick={() => { useGameStore.getState().resetGachaProgress(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-fuchsia-400/10 text-fuchsia-50/85 active:bg-fuchsia-400/20">ガチャリセット(所持スキル・サブ装備・G・階段・強化)</button>
       </div>
     </div>
   );
@@ -2242,6 +2255,62 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">{level === 0 ? '解放して装備可能に' : `商人の陳列上限 Lv${level} → Lv${Math.min(3, level + 1)}`}</span></span>
               <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'text-rose-300' : 'text-amber-200'}`}>{maxed ? 'MAX' : `${cost}G`}</span>
             </button>
+          );
+        })}
+      </div>
+    </>
+  );
+};
+
+// === 強化(永続育成・research/GROWTH.md v4) ==================================
+// 購入UIの作法は開発施設の解放リストをそのまま流用(spendGold→ui-select SE→Lv表示/MAX/価格→
+// 残高不足はdisabled)。各行に**メーター**(有効段数の±)を足したのがこの画面の差分。
+// ★この画面は保存を書き換えるだけで、ゲームの数値には**その場では何も起きない**——効果が乗るのは
+//   次の出撃(resetGame)の焼き込みから(「メーター変更は次の出撃から」を機械的に保証する形)。
+const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+  const playerUpgrades = useGameStore(s => s.playerUpgrades);
+  const goldBalance = useGameStore(s => s.goldBalance);
+  const buyPlayerUpgrade = useGameStore(s => s.buyPlayerUpgrade);
+  const setPlayerUpgradeActive = useGameStore(s => s.setPlayerUpgradeActive);
+  return (
+    <>
+      <Header title="強化" subtitle="有効段数の変更は次の出撃から反映されます" onBack={onBack} />
+      <div className="px-3 pb-1 text-right text-[11px] tabular-nums text-amber-200/80">所持 {goldBalance}G</div>
+      <div className="menu-stagger px-3 pb-3 space-y-2">
+        {PLAYER_UPGRADES.map(def => {
+          const cur = playerUpgrades[def.id] ?? { bought: 0, active: 0 };
+          const maxed = cur.bought >= PLAYER_UPGRADE_MAX_LEVEL;
+          const cost = playerUpgradeCost(cur.bought);
+          const cantPay = !maxed && goldBalance < cost;
+          return (
+            <div key={def.id} className="ff7r-fade-right rounded-none px-3 py-2 text-white">
+              <button type="button" disabled={maxed || cantPay}
+                onClick={() => { if (!maxed && buyPlayerUpgrade(def.id)) playSfx('ui-select'); }}
+                className={`flex w-full items-center justify-between gap-2 text-left transition-[filter] active:brightness-110 ${cantPay ? 'opacity-60' : ''}`}>
+                <span className="min-w-0">
+                  <span className="block truncate text-[13px] font-semibold">{def.label} <span className="text-white/45">{def.perLevelLabel}/段</span></span>
+                  <span className="block text-[11px] text-white/50">{def.desc}（購入 {cur.bought}/{PLAYER_UPGRADE_MAX_LEVEL}）</span>
+                </span>
+                <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'text-rose-300' : 'text-amber-200'}`}>{maxed ? 'MAX' : `${cost}G`}</span>
+              </button>
+              {/* メーター: 有効段数(0〜購入済み段数)。購入していない段は上げられない。 */}
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <span className="flex gap-1" aria-hidden>
+                  {Array.from({ length: PLAYER_UPGRADE_MAX_LEVEL }, (_, i) => (
+                    <span key={i} className={`h-1.5 w-6 ${i < cur.active ? 'bg-amber-300/80' : i < cur.bought ? 'bg-white/25' : 'bg-white/8'}`} />
+                  ))}
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="text-[11px] tabular-nums text-white/70">有効 {cur.active}</span>
+                  <button type="button" disabled={cur.active <= 0}
+                    onClick={() => { setPlayerUpgradeActive(def.id, cur.active - 1); playSfx('ui-select'); }}
+                    className="px-2 py-1 text-[12px] font-semibold text-white/80 bg-purple-400/5 active:bg-purple-400/10 disabled:opacity-30">−</button>
+                  <button type="button" disabled={cur.active >= cur.bought}
+                    onClick={() => { setPlayerUpgradeActive(def.id, cur.active + 1); playSfx('ui-select'); }}
+                    className="px-2 py-1 text-[12px] font-semibold text-white/80 bg-purple-400/5 active:bg-purple-400/10 disabled:opacity-30">＋</button>
+                </span>
+              </div>
+            </div>
           );
         })}
       </div>

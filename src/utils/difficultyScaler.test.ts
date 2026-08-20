@@ -28,7 +28,7 @@ describe('difficultyScaler — power margin & escalation (step 3)', () => {
 
   it('margin ~1 when actual power matches the expected curve at that time', () => {
     const t = 180_000; // 3:00 → expected 4 + 4.2*3 = 16.6
-    const m = powerMargin({ level: 14, weaponTierSum: 2, maxHealth: 120, equippedCount: 0, skillCount: 0 }, t);
+    const m = powerMargin({ level: 14, weaponTierSum: 2, maxHealth: 130, baseMaxHealth: 130, equippedCount: 0, skillCount: 0 }, t);
     expect(m).toBeGreaterThan(0.85);
     expect(m).toBeLessThan(1.15);
     expect(escalation01(m, true)).toBe(0); // on-track → no escalation
@@ -36,19 +36,19 @@ describe('difficultyScaler — power margin & escalation (step 3)', () => {
 
   it('a fresh start produces zero escalation (no change to early game)', () => {
     expect(expectedPower(0)).toBeGreaterThan(0);
-    expect(spawnEscalation({ level: 1, weaponTierSum: 1, maxHealth: 120, equippedCount: 0, skillCount: 0 }, 0, true)).toBe(0);
+    expect(spawnEscalation({ level: 1, weaponTierSum: 1, maxHealth: 130, baseMaxHealth: 130, equippedCount: 0, skillCount: 0 }, 0, true)).toBe(0);
   });
 
   it('an over-built player past the curve escalates (>0)', () => {
-    const esc = spawnEscalation({ level: 25, weaponTierSum: 6, maxHealth: 200, equippedCount: 3, skillCount: 2 }, 180_000, true);
+    const esc = spawnEscalation({ level: 25, weaponTierSum: 6, maxHealth: 200, baseMaxHealth: 130, equippedCount: 3, skillCount: 2 }, 180_000, true);
     expect(esc).toBeGreaterThan(0.3);
     expect(esc).toBeLessThanOrEqual(1);
   });
 });
 
 describe('playerPower — skillCount term (SKILL_BUILD_REDESIGN.md §21-1 point 2, B5 DDA switch)', () => {
-  const base = { level: 0, weaponTierSum: 0, maxHealth: 0, equippedCount: 0 };
-  // maxHealth=0 makes the equippedCount/maxHealth terms 0 (Math.max(0, 0/120-1)*4 = 0), isolating skillCount.
+  const base = { level: 0, weaponTierSum: 0, maxHealth: 0, baseMaxHealth: 130, equippedCount: 0 };
+  // maxHealth=0 makes the maxHealth term 0 (Math.max(0, 0/130-1)*4 = 0), isolating skillCount.
 
   it('contributes 0 for an empty runBuild (0 slots)', () => {
     expect(playerPower({ ...base, skillCount: 0 })).toBe(0);

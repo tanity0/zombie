@@ -11,10 +11,15 @@ import { GHOST_DOSSIER_SLOTS, type GhostDossierSlot } from './ghostDossier';
 import { stageIdForGateBoss } from '../config/gateBoss';
 import { getStage, STAGES } from '../data/campaign';
 import {
-  STAGE_BOSS_HEALTH_BY_STAGE, GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH, GUARDIAN_PHANTOM_HEALTH,
+  STAGE_BOSS_HEALTH_BY_STAGE, GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH, guardianPhantomHealth,
 } from '../config/bossHealth';
 // research/GHOST_BOSS.md(幻影): 表示名の出どころ=守護霊台帳の人物名(名前を写経しない)。
 import { strongestGuardian } from '../data/fixedGuardians';
+// ★research/GROWTH.md v4「唯一の例外=ラン外のメニュー表示」: 出撃前は焼き値が存在しないので、
+// 幻影HPの**表示に限り**有効段数を直読みする。読み先は保存を読む純関数だけ(store経由は
+// gameStore → bossPractice の循環importになるので不可)。ゲームプレイの参照は焼き値のみ。
+import { PLAYER_PROFILES } from '../data/playerProfiles';
+import { activeUpgradeLevel, growthMaxHpBonus, loadPlayerUpgrades } from './playerUpgrades';
 import { isBountyType } from './enemyUtils';
 // ★HP基準値は依存ゼロの葉(bountyDims.ts)から直接読む。bountyTick.ts経由にすると
 // 「gameStore → bossPractice → bountyTick → gameStore」の循環importになる(v0.25.3390の教訓と同型)。
@@ -272,8 +277,18 @@ export const practiceBossHealth = (slot: PracticeSlot): number | null => {
   // §6.38(賞金首): 実効HPは基準値(BOUNTY_BASE_HP)×スポーン時の実効難易度倍率(bountyMaxHealth)で
   // 変動するため、台帳の固定値ではなく**基準値をそのまま**出す(掲載裁定「基準値2000を出す」)。
   if (isBountyType(slot.bossType)) return BOUNTY_BASE_HP;
-  // research/GHOST_BOSS.md(幻影): 裏ボス方式=倍率を一切通さない固定HPなので、台帳の値=実効HP。
-  if (slot.bossType === 'guardian-phantom') return GUARDIAN_PHANTOM_HEALTH;
+  // research/GHOST_BOSS.md(幻影): 裏ボス方式=倍率を一切通さないので、スポーン時に書く値=実効HP。
+  // その値は「初期プレイヤーHP+育成の体力加算」(装備補正なし)なので、表示も同じ式で出す。
+  // ★基準クラスの注意(GROWTH.md v4): 実戦は「そのランのプレイヤーのクラス」(player.ddaBaseHp)、
+  //   ここは「守護霊台帳の最強クラス」。ラン外ではプレイヤーのクラスが確定しないためこの式のままだが、
+  //   一致は**全クラスの maxHp が同値(STANDARD_MAX_HP)であること**に依存している。
+  //   クラス別HPを導入するとズレる——その前提は bossPractice.test.ts でテスト化してある。
+  if (slot.bossType === 'guardian-phantom') {
+    return guardianPhantomHealth(
+      PLAYER_PROFILES[strongestGuardian().classId].maxHp
+      + growthMaxHpBonus(activeUpgradeLevel(loadPlayerUpgrades(), 'health')),
+    );
+  }
   const gate = (GATE_BOSS_HEALTH as Partial<Record<EnemyType, number>>)[slot.bossType];
   if (gate != null) return gate;
   const hidden = (HIDDEN_BOSS_HEALTH as Partial<Record<EnemyType, number>>)[slot.bossType];
