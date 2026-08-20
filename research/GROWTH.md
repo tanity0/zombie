@@ -309,8 +309,15 @@
   関数へ変更**する。**ラン中のスポーンは player.ddaBaseHp(焼き値)を読む**。
   **★循環import回避(AMMO_MAXと同じ処方)**: bossHealth.ts は「dataの葉=循環なし」を自ら宣言する
   ファイルで、読み手の enemyUtils を gameStore が import している(gameStore.ts:118)。よって
-  **bossHealth 側は基準HPを引数で受ける純関数のまま**にし、**player.ddaBaseHp はスポーン側
-  (buildEnemy の呼び出し経路)から引数で渡す**——bossHealth/enemyUtils から store を読まない。
+  **bossHealth 側は基準HPを引数で受ける純関数のまま**にし、store を読まない。
+  **渡す経路は1本に固定(渡し忘れが構造的に起きない形)**: 幻影のスポーンは実際には
+  **useGameLoop.ts:6279 の1箇所だけ**(`const gpE = spawnEnemyAt('guardian-phantom', …)`)なので、
+  spawnEnemyAt の共有シグネチャは触らず、**この行の直後に戻り値へ
+  `gpE.health = gpE.maxHealth = 関数(player.ddaBaseHp)` を上書きする**
+  (城ボスの `boss.health = boss.maxHealth = stageBossHealthFor(...)`(useGameLoop.ts:2666)と
+  同じ既存作法)。**ENEMY_STATS['guardian-phantom'].health(enemyUtils.ts:125)は
+  「プレースホルダ(スポーン側で必ず上書きされる)」と定義し直し**、enemyUtils.ts:618 の
+  「GUARDIAN_PHANTOM_HEALTH がそのまま実効HPになる」コメントも実態(スポーン側上書き)へ更新する。
   読み手はもう1本ある:
   **practiceBossHealth(bossPractice.ts:276・練習画面のHP表示)と等値アサート(bossPractice.test.ts:199)
   も同じ関数を読ませ、表示も育成込みにする**——こちらはラン外表示なので上の「表示例外」どおり
@@ -375,7 +382,9 @@
 4. DDA: DdaPowerInputs入力追加+useGameLoop呼び出し側+difficultyScaler.test.ts改訂
 5. 守護霊スナップショット(playerBuild.ts: **型+書き込みsnapshotPlayerBuild+読み出しbuildPseudoPlayer
    の3点セット**・欠損時1.0・素通し理由コメント)+
-   幻影(bossHealth.ts関数化+practiceBossHealth/テスト追従+phantomTick.tsキャッシュ廃止・銃/近接倍率)
+   幻影(bossHealth.ts関数化(引数受け)+useGameLoop.ts:6279のスポーン後上書き+
+   ENEMY_STATSエントリのプレースホルダ化+enemyUtils.ts:618/bossHealth.ts:40-44のコメント更新+
+   practiceBossHealth/テスト追従+phantomTick.tsキャッシュ廃止・銃/近接倍率)
 6. UI: Screen('growth')+HubButton+メーター行+ShopMenuのMAX表示追従
 7. STANDARD_MAX_HP 110→130+既存テストの追従改訂+meleeExecute.ts:9コメント訂正(3→5箇所)
 8. 検証: typecheck/lint+変更ユニットのテスト

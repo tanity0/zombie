@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3660',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 育成発注文へ五巡目監査2件を反映=幻影HPの渡し経路を1本に固定)。',
+    ],
+  },
+  {
     version: '0.25.3659',
     items: [
       'ゲーム内容の変更はありません(開発資料: 育成発注文へ四巡目監査3件を反映=循環importの処方を統一)。',
