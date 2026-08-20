@@ -2847,7 +2847,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               e2.storyBossVariant = 'stage-7';
               e2.glenForm = 2;
               // v0.25.3164: 形態2も台帳のHPで出す(形態1と同額)。ここも台帳を通っていなかった。
-              e2.health = e2.maxHealth = stageBossHealthFor('stage-7');
+              // v0.25.3677(検収監査): 形態1(2766)と同じくステージ係数ヘルパを通す。今日はS7=1.0で
+              // 同値だが、台帳にS7の行が入った瞬間に形態1とだけズレる地雷を残さない。
+              {
+                const f2Mult = stageBossDiffMults();
+                e2.health = e2.maxHealth = Math.round(stageBossHealthFor('stage-7') * f2Mult.hp);
+                e2.damage = Math.round(e2.damage * f2Mult.dmg);
+              }
               // 形態1と同じM7の2倍化(当たり判定込み・中心維持)。
               const ow2 = e2.width, oh2 = e2.height;
               e2.width = ow2 * 2; e2.height = oh2 * 2;
@@ -6269,6 +6275,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const ix = pcx0 + Math.cos(spawnAng) * spawnDist, iy = pcy0 + Math.sin(spawnAng) * spawnDist;
             const idolE = spawnEnemyAt('idol', ix - 20, iy - 10, newGameTime);
             idolE.fromEvent = true; // ×5は掛けない(ゲート2ボスと同じ作法・社長指示v0.25.1595の踏襲)
+            // v0.25.3677(検収監査): idolは裏ボス経路(4861)を通らない独立スポーンなので、ここにも
+            // ステージ係数ヘルパを通す(今日はS2=1.0で同値・将来の「表示=実戦」ズレの予防)。
+            {
+              const idMult = stageBossDiffMults();
+              idolE.health = Math.round(idolE.health * idMult.hp);
+              idolE.maxHealth = Math.round(idolE.maxHealth * idMult.hp);
+              idolE.damage = Math.round(idolE.damage * idMult.dmg);
+            }
             idolE.bossState = 'chase';
             idolE.bossPhase = 1;
             idolE.bossNextActionAt = newGameTime + IDOL_ACTION_MIN_MS;
