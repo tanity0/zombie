@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3715',
+    items: [
+      'ゲーム内容の変更はありません(フィルのボスメーカー接続を設計書に追記)。',
+    ],
+  },
+  {
     version: '0.25.3714',
     items: [
       'ゲーム内容の変更はありません(フィル設計書が監査通過・実装開始)。',
