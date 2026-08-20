@@ -28,6 +28,7 @@ import type { Enemy, EnemyType, Player, Projectile, Weapon } from '../types/game
 import {
   useGameStore, resolveBountyMove, CRIT_DAMAGE_MULT, knockbackSpeedFor,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
+  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
 } from '../store/gameStore';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { createEnemyProjectile } from './enemyUtils';
@@ -457,6 +458,9 @@ const consumePhantomParry = (
   // glow も青文法の構成要素(検収監査v9指摘: 主語を持たない光なので callout と違い裁定不要)。
   // 半径43=守護霊成立(ghostCounterBlueLayer)と同じ。
   g.spawnGlow(bcx, bcy, 43, 'rgba(56,189,248,', 360);
+  // 「Counter!」の文字も出す(社長裁定2026-08-20「幻影パリィにも文字出して」=v9未決の決着)。
+  // 体裁はプレイヤー/守護霊成立と同値(combatTick 289 / ghostCounterBlueLayer)。
+  g.spawnCallout(bcx, bcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
   g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, bcx, bcy);
   // ★v0.25.3665(社長報告「すごい距離から斬撃っぽいの」): パリィされるのは**分身・守護霊の近接**の
   // こともあり、その時プレイヤー本人は遠くにいる。反撃スイング(絵は距離無関係に出る)と

@@ -10200,6 +10200,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(gcx, gcy, '#38bdf8', 14);
             // glow も青文法の構成要素(検収監査v9指摘)。半径43=守護霊成立と同じ。
             useGameStore.getState().spawnGlow(gcx, gcy, 43, 'rgba(56,189,248,', 360);
+            // 「Counter!」の文字も出す(社長裁定2026-08-20「幻影パリィにも文字出して」=v9未決の決着)。
+            useGameStore.getState().spawnCallout(gcx, gcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
             useGameStore.getState().triggerHitImpact(
               COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, gcx, gcy,
             );
