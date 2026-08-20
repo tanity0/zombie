@@ -500,3 +500,35 @@ export const pickGiantMoveWithGlen = (
 // そのまま3回のパルスになるようにするため。quaddashのようなindexカウンタは使わない)。
 // この定数は回数が3であることをテストで固定するためのもの(状態機械のケース数と一致させること)。
 export const GLEN_NIHIL_CHANT_COUNT = 3;
+
+// =================================================================================================
+// ★中断時のCD確定用: 州(aiPhase)→技IDの逆引き(v0.25.3697・社長報告「CD12秒のはずが連発」)。
+// 従来、気絶割り込み(紫/スタン)は aiPhase を解除するだけで、技のCD(gStageReadyAt/gGlenReadyAt)は
+// **完了(recover満了)時にしか書かれなかった**。→カウンター等で技を中断させるたびに同じ大技が
+// 即再抽選=連発。中断も「使った」扱いでCDを書くため、消費側(gameStoreの割り込みブロック)が
+// この逆引きで技IDを特定する。新しい州を足したらここにも足す(取りこぼすと連発が再発する)。
+// =================================================================================================
+export const giantStageMoveOfPhase = (aiPhase: string | undefined): GiantStageMoveId | null => {
+  if (!aiPhase) return null;
+  if (aiPhase.startsWith('g-bite-')) return 'bite';
+  if (aiPhase.startsWith('g-slam-')) return 'slam';
+  if (aiPhase.startsWith('g-glide-')) return 'glide';
+  if (aiPhase.startsWith('g-dive-')) return 'dive';
+  if (aiPhase.startsWith('g-quad-')) return 'quaddash';
+  if (aiPhase.startsWith('g-nova-')) return 'nova';
+  if (aiPhase.startsWith('g-wing-')) return 'wing';
+  if (aiPhase.startsWith('g-sweepbeam-')) return 'sweepbeam';
+  if (aiPhase.startsWith('g-trishot-')) return 'trishot';
+  return null;
+};
+
+export const glenMoveOfPhase = (aiPhase: string | undefined): GlenMoveId | null => {
+  if (!aiPhase) return null;
+  if (aiPhase.startsWith('g-talon-')) return 'talon';
+  if (aiPhase.startsWith('g-boon-')) return 'boon';
+  if (aiPhase.startsWith('g-reach-')) return 'reach';
+  if (aiPhase.startsWith('g-nihil-')) return 'nihil';
+  if (aiPhase.startsWith('g-trijump-')) return 'trijump';
+  if (aiPhase.startsWith('g-tailslam-')) return 'tailslam';
+  return null;
+};

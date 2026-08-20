@@ -138,7 +138,7 @@ import {
   GIANT_STAGE_UNIQUE_MOVE, GIANT_STAGE_ULT_MOVE,
   giantQuadDashComplete,
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用の新技4つの純関数。
-  pickGiantMoveWithGlen, glenScriptApplies, isGlenMoveId, type GlenMoveId, GLEN_NIHIL_CHANT_COUNT,
+  pickGiantMoveWithGlen, glenScriptApplies, isGlenMoveId, type GlenMoveId, GLEN_NIHIL_CHANT_COUNT, giantStageMoveOfPhase, glenMoveOfPhase,
   GIANT_PHASE_HP_THRESHOLD, glenTriJumpPoints, GLEN_TRIJUMP_COUNT,
 } from '../utils/giantScript';
 // v0.25.3027: グレン第二形態の胴体弾(連結パーツからのV字斉射・社長裁定)。台帳と式は描画と共有。
@@ -10732,8 +10732,25 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 気絶したら、突進/ジャンプ等の特殊挙動(aiPhase)を必ずリセットして「着地・静止」させる。
           // パンプキンのジャンプ準備/ジャンプ中、werewolf の溜め/突進、今後の特殊敵も aiPhase 基準で同様にキャンセル。
           if (enemy.aiPhase !== undefined) {
+            // ★中断でも技のCDを確定する(v0.25.3697・社長報告「樹木のCD12秒もあった?割と連発してきた」):
+            // 従来この割り込みは aiPhase を解除するだけで、技ごとのCD(gStageReadyAt/gGlenReadyAt)は
+            // **recover満了時にしか書かれなかった**。→カウンター/気絶で技を中断させるたびに、同じ大技が
+            // 即座に再抽選対象へ戻る=体感「CDが無い連発」。中断も「1回使った」扱いでCDを書く。
+            const stMv = giantStageMoveOfPhase(enemy.aiPhase);
+            const glMv = glenMoveOfPhase(enemy.aiPhase);
+            const stageCdMs: Record<GiantStageMoveId, number> = {
+              bite: GIANT_BITE_CD_MS, slam: GIANT_SLAM_CD_MS, glide: GIANT_GLIDE_CD_MS,
+              dive: GIANT_DIVE_CD_MS, quaddash: GIANT_QUAD_CD_MS, nova: GIANT_NOVA_CD_MS,
+              wing: GIANT_WING_CD_MS, sweepbeam: GIANT_SWEEPBEAM_CD_MS, trishot: GIANT_TRISHOT_CD_MS,
+            };
+            const glenCdMs: Record<GlenMoveId, number> = {
+              talon: GLEN_TALON_CD_MS, boon: GLEN_BOON_CD_MS, reach: GLEN_REACH_CD_MS,
+              nihil: GLEN_NIHIL_CD_MS, trijump: GLEN_TRIJUMP_CD_MS, tailslam: GLEN_TAILSLAM_CD_MS,
+            };
             return {
               ...enemy, vx: 0, vy: 0,
+              ...(stMv ? { gStageReadyAt: { ...enemy.gStageReadyAt, [stMv]: atkCdUntil(stageCdMs[stMv]) } } : {}),
+              ...(glMv ? { gGlenReadyAt: { ...enemy.gGlenReadyAt, [glMv]: atkCdUntil(glenCdMs[glMv]) } } : {}),
               aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
               aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
               aiReadyAt: enemy.stunUntil + 300, // 気絶明け後しばらくは特殊行動を再発動しない

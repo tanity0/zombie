@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.3697 — 大技「連発」の真因修正: 中断された技もCDに入れる【2026-08-20 19:43 JST】
+
+- **社長指摘「樹木のCD12秒もあった?割と連発してきたよ?」の実在確認(観察が正)**: CD自体は実在するが、
+  **気絶割り込み(紫/スタン=カウンター起点含む)が技を中断した時、aiPhaseだけ解除して技ごとのCD
+  (gStageReadyAt/gGlenReadyAt)を書いていなかった**(CDはrecover満了=完走時のみ)。
+  →技をカウンターで止めるほど同じ大技が即再抽選=体感「CD無しの連発」。数字をいくら上げても直らない
+  種類の穴だった(v3696のCD10秒統一はこの穴の上では効かない)。
+- **修正**: 割り込みブロック(gameStore 10731〜)で、中断された州から技IDを逆引きして
+  「1回使った」扱いのCDを書く。逆引き表は giantScript.ts(葉)の giantStageMoveOfPhase /
+  glenMoveOfPhase=城ボス9技(bite/slam/glide/dive/quaddash/nova/wing/sweepbeam/trishot)+
+  グレン6技(talon/boon/reach/nihil/trijump/tailslam)。CD値は完走時と同じ定数・atkCdUntil
+  (実効化+クリCD2倍)も同じ式=完走と中断で長さが揃う。
+- 汎用5技(stomp/sweep/dash/jump/bolt)は共有CD(aiReadyAt)方式のため対象外(従来どおり気絶明け+300ms。
+  大技ではないので今回の「連発がおかしい」の範囲外・変えるなら別裁定)。
+- 検証: typecheck 0・lint 0エラー(warning8既存)。
+- 新規受領(キュー#38): 作戦地域選択+任務詳細にサブクエストの表示。
+
 ## v0.25.3696 — グレン/アクラシエル凍結族: fail-visible化(透明ボスの構造的廃止)【2026-08-20 19:30 JST】
 
 - **社長報告「グラフィックが固まってうごかない。当たり判定だけ透明で動いてる。何がおきてるか
