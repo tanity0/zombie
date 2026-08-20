@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3680',
+    items: [
+      'ゲーム内容の変更はありません(開発資料: 幻影v9設計へ二巡目監査4件を反映=ラリーの再打刻・originの機械化ほか。三巡目確認中)。',
+    ],
+  },
+  {
     version: '0.25.3679',
     items: [
       '強化に5系統目「経験値効率」を追加しました(+10%×5段=最大+50%。プレイ中のレベルアップが速くなります。スコア補正の対象・全5系統中4系統フルで×0.6)。',
