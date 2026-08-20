@@ -16019,8 +16019,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // クランプで即時になり予約が機能しない(検収監査Q1の指摘)。ここなら最大235ms先の未来へ
     // サンプル精度で予約でき、メトロノームのキックと重なって太い1発に聞こえる。遅れた入力は
     // playSfxAt側のクランプで即時。audioManagerは静的importできない(循環)ため動的import。
-    // minIntervalMs(60ms)の重複抑止はこの経路に無いが、JUST成功は1拍(>=428ms)に1回しか
-    // 起きない(expectBeatが進む)ので構造的に重ならない=意図的に外している(検収監査Q3)。
+    // minIntervalMs(60ms)の重複抑止はこの経路に無いが、入力は RHYTHM_INPUT_DEBOUNCE_MS(90ms)で
+    // 間引かれており(danceForceJust=拍外も成功のモードでも同じ)、60ms未満の連発は構造的に
+    // 起きない=意図的に外している(検収監査Q3・根拠はデバウンス側に置く)。
     if (DANCE_BEAT_MODE) {
       const seAt = snapAt ?? gt;
       void import('../audio/audioManager').then(m => m.scheduleDanceJustKick(seAt));

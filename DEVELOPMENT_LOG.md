@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.3686 — 吸着の監査クローズ往復: JUST音の二重予約を修正【2026-08-20 17:31 JST】
+
+- **監査の指摘(実バグ級)**: v3685は「SE予約を入力時点へ移設」した際、**executeRhythmPending側の
+  旧予約2箇所(タップ/フリック)を撤去し忘れており**、通常プレイでJUST音が1入力2発
+  (入力時点の正しい予約+ゲート通過後のクランプ即時)鳴る状態だった。両方playSfxAt経由で
+  minIntervalMsも効かない=確実に重なる。
+- 修正: 2箇所を `if (!BEAT_ENABLED) playSfx('dance-kick')` のみに(B方式のSEは入力時点の予約が唯一)。
+  未使用になったscheduleDanceJustKickのimportを削除。スロットルを外す根拠のコメントも
+  「RHYTHM_INPUT_DEBOUNCE_MS(90ms)>60ms」へ訂正(forceJustでも成り立つ根拠に差し替え)。
+- 教訓: 「移設」は**移す+元を消す**の2手。申告と差分の突き合わせを検収でやってもらえたのが命拾い。
+- 検証: typecheck 0・lint 0エラー(warning8既存)。
+
 ## v0.25.3685 — ダンス吸着+ボスモード難度係数+ステージ稼ぎ補正+裁定8件の記録【2026-08-20 17:27 JST】
 
 - **ダンスフロア「ジャスト吸着」(社長GO「推薦の方法でやってみて」)**: tap/flickのpendingにatMs(取った拍の

@@ -390,7 +390,7 @@ import { isGhostEligibleBoss,
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
 import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, zoomedGunRange, isDirectGunWeaponKey, isGrenadeGunKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, scheduleDanceJustKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
@@ -1888,11 +1888,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         // ダンスのタップ(近接円)でも松明・卵を破壊。
         useGameStore.getState().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeR, 30);
-        // B方式: メトロノームが拍そのものを鳴らすので、JUST成功音はピッチ上げで差別化(仕様4)。
-        // ジャスト吸着: 実行はdrainのatMsゲートで拍まで待たされているが、SEはさらにWebAudioの
-        // 時刻指定でその拍へ正確に予約する(フレーム粒度の遅れも消してメトロノームと重ねる)。
-        if (BEAT_ENABLED) scheduleDanceJustKick(pa.atMs ?? Date.now());
-        else playSfx('dance-kick'); // ?beat=0(従来経路)は即時のまま
+        // B方式: JUST成功音は**入力時点(rhythmInput)で拍へ予約済み**(ジャスト吸着・検収監査で
+        // ここからの予約は撤去=ゲート通過後だと拍は常に過去でクランプ即時→入力側の予約と二重に鳴る)。
+        if (!BEAT_ENABLED) playSfx('dance-kick'); // ?beat=0(従来経路)のみ即時に鳴らす
       } else if (pa.kind === 'flick') {
         // バッシュ(フリック): カウンター窓を開き、近接フィニッシュ可(execute=true)、
         // ノックバックは上限6(=距離2倍)で強く弾く。
@@ -1901,9 +1899,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         rhythmLineAttack(pcx, pcy, v.x, v.y, RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT, true, RHYTHM_FLICK_KNOCKBACK_MAX);
         useGameStore.getState().spawnSlash(pcx + v.x * RHYTHM_FLICK_RANGE * 0.6, pcy + v.y * RHYTHM_FLICK_RANGE * 0.6, 'rgba(186,230,253,0.9)');
         // フリックの斬撃音(katana-dash)は無し。拍踏みのキックドラムのみ鳴らす(B方式はピッチ上げで差別化)。
-        // ジャスト吸着: タップと同じくその拍の時刻へ予約(遅れた入力はクランプで即時)。
-        if (BEAT_ENABLED) scheduleDanceJustKick(pa.atMs ?? Date.now());
-        else playSfx('dance-kick');
+        // JUST成功音はタップと同じく入力時点(rhythmInput)で予約済み=ここでは鳴らさない(二重防止)。
+        if (!BEAT_ENABLED) playSfx('dance-kick');
       } else if (pa.kind === 'god') {
         fireShijinGod(pa.god, pa.x, pa.y);
       } else if (pa.kind === 'finish') {

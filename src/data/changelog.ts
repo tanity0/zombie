@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3686',
+    items: [
+      'ダンスフロア: ジャスト成功音が二重に鳴っていた問題を修正しました(v3685の吸着の直後修正)。',
+    ],
+  },
+  {
     version: '0.25.3685',
     items: [
       'ダンスフロア: ジャスト成功の音と攻撃が拍ぴったりに出るようになりました(早めの入力は拍まで待って発動・遅れた入力は即時)。',
