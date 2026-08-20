@@ -227,8 +227,11 @@
   `growthGoldMult`(ゴールド倍率・既定1.0)/ `ddaBaseHp`(DDA基準・下記)。HPは maxHealth へ直接加算。
 - ボスメーカー/ガントレットでは**0段として焼く**(下記「計測路」)。
 - **唯一の例外=ラン外のメニュー表示**: 練習画面のボスHP表示(practiceBossHealth→BossRush.tsx:71)は
-  出撃前=焼き値が存在しないため、**表示に限り有効段数(store/保存)の直読みを許す**
-  (「表示と実戦の一致」不変条件を守るための例外。ゲームプレイの参照は焼き値のみ)。
+  出撃前=焼き値が存在しないため、**表示に限り有効段数の直読みを許す。ただし読み先は
+  保存(localStorage)を読む純関数に限る——store経由は不可**(practiceBossHealth は
+  utils/bossPractice にあり、gameStore が bossPractice を import している(gameStore.ts:188)ため、
+  store を読むと循環importになる)。「表示と実戦の一致」不変条件を守るための例外。
+  ゲームプレイの参照は焼き値のみ。
 
 ## 各系統の実装詳細
 1. **体力**: resetGame の `maxHealth = profile.maxHp + equipMaxHealthOf(...)` に育成加算を1項追加。
@@ -303,7 +306,12 @@
   **幻影HP = profile.maxHp + 育成HP加算(= player.ddaBaseHp と同値。装備HPは含めない**——
   「幻影は装備補正なし=出撃直後のプレイヤーと同じ」の既存決定(bossHealth.ts:42-43)を維持)。
   **GUARDIAN_PHANTOM_HEALTH はimport時評価でENEMY_STATSに焼かれているため、スポーン時に評価する
-  関数へ変更**する。**ラン中のスポーンは player.ddaBaseHp(焼き値)を読む**。読み手はもう1本ある:
+  関数へ変更**する。**ラン中のスポーンは player.ddaBaseHp(焼き値)を読む**。
+  **★循環import回避(AMMO_MAXと同じ処方)**: bossHealth.ts は「dataの葉=循環なし」を自ら宣言する
+  ファイルで、読み手の enemyUtils を gameStore が import している(gameStore.ts:118)。よって
+  **bossHealth 側は基準HPを引数で受ける純関数のまま**にし、**player.ddaBaseHp はスポーン側
+  (buildEnemy の呼び出し経路)から引数で渡す**——bossHealth/enemyUtils から store を読まない。
+  読み手はもう1本ある:
   **practiceBossHealth(bossPractice.ts:276・練習画面のHP表示)と等値アサート(bossPractice.test.ts:199)
   も同じ関数を読ませ、表示も育成込みにする**——こちらはラン外表示なので上の「表示例外」どおり
   有効段数の直読みでよい(「練習画面の表示と実戦が原理的に一致する」不変条件
@@ -358,7 +366,8 @@
 
 ## 実装地図(バッチ1本・中〜大)
 1. `src/data/playerUpgrades.ts`: 台帳(4系統・刻み・価格)+不変条件テスト
-2. `src/utils/playerUpgrades.ts`: 保存読み書き+段数→効果値の純関数(effectiveAmmoMax(category, level)含む)+テスト
+2. `src/utils/playerUpgrades.ts`: 保存読み書き+段数→効果値の純関数(effectiveAmmoMax(baseMax, activeLevel)
+   =素値は引数渡し・本文3の循環回避どおり)+テスト
 3. gameStore: resetGameの焼き込み(HP加算+growthAtkMult/growthAmmoMax/growthGoldMult/ddaBaseHp)/
    skillOutgoingDamageMult 1項+処刑5経路の前掛け/AMMO_MAX「上限」参照4箇所の差し替え/
    ゴールド付与点4箇所(掛け先の行を名指しどおり)/ガチャリセット連動(2箇所+ボタン表記)/
