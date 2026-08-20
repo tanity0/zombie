@@ -125,8 +125,10 @@ import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, RETIRED_SUB_WEAPONS, SKILL_KEYS, SKILLS, OBTAINABLE_SKILL_KEYS, COMPANION_SKILL_KEYS, BESTIARY,
   gachaPullCostFor, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
-  gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, type SkillRarity, type Stage
+  gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillIcon, type SkillRarity, type Stage
 } from '../data/campaign';
+import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
+import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import {
   getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, getStageHighScore,
   getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, getWallMeta, type SelectedMission
@@ -383,6 +385,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 守護霊(同行者)ピッカー(社長指示2026-08-20: 装備から同行者欄を外し、キャラ選択の右端の
   // 「守護霊枠」から選ぶ)。開閉だけのUI状態なのでローカルstate。
   const [ghostPickerOpen, setGhostPickerOpen] = useState(false);
+  const skillSheet = useSkillIconSheet(); // ピッカーのスキルアイコン(素材が無ければnull=絵文字)
   // 装備(サブ/スキル)はトップの独立「装備メニュー」で選び、store に永続。出撃時に resetGame が反映。
   const equippedSubs = useGameStore(state => state.pendingLoadout);
   const companionSkill = useGameStore(state => state.companionSkill);
@@ -845,11 +848,16 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // 前ランからの持ち越し装備(localStorage)。ラン開始時に該当スロットへ自動装備される。
     const carriedDef = equipmentById(getCarriedEquipId());
     const carriedIcon = carriedDef && hasEquipIcon(carriedDef.id) ? spritePath(equipIconName(carriedDef.id)) : null;
-    const c = CHARACTER_CLASSES.find(x => x.id === selectedClass) ?? CHARACTER_CLASSES[0];
+    // M0(訓練・stage-tutorial)はヘビーガンナー固定・守護霊枠なし(社長指示2026-08-20)。
+    // チュートリアルは1キャラに絞って説明を単純に保つ(選択肢と同行者は本編から)。
+    const isTutorial = stageId === 'stage-tutorial';
+    const selectableClasses = isTutorial ? CHARACTER_CLASSES.filter(x => x.id === 'warrior') : CHARACTER_CLASSES;
+    const effectiveClass = isTutorial ? 'warrior' : selectedClass;
+    const c = CHARACTER_CLASSES.find(x => x.id === effectiveClass) ?? CHARACTER_CLASSES[0];
     return (
       <div className="screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none">
         {/* 全画面=選択中キャラの立ち絵。クラス切替=key 再マウント。ロード完了後に下からスッと表示。 */}
-        <CharPortrait key={selectedClass} src={portraitSrcFor(selectedClass)} alt={c.name} />
+        <CharPortrait key={effectiveClass} src={portraitSrcFor(effectiveClass)} alt={c.name} />
         {/* 視認性スクリム(上=戻る帯 / 下=情報・選択帯)。立ち絵の暗背景に馴染ませる。 */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/70 to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[56%] bg-gradient-to-t from-black/95 via-black/72 to-transparent" />
@@ -878,7 +886,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         >
           <div className="flex items-end justify-between gap-3">
             {/* 情報パネル(左下=今ある情報を集約)。キャラ切替=key 再マウントで都度フェードイン。 */}
-            <div key={selectedClass} className="info-rise min-w-0 max-w-[64%]">
+            <div key={effectiveClass} className="info-rise min-w-0 max-w-[64%]">
               <div className="text-[22px] font-bold leading-tight text-white" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.95)' }}>{c.name}</div>
               <div className="mt-2 space-y-1.5">
                 <InfoLine label="初期装備" value={c.gear} />
@@ -898,7 +906,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </div>
             {/* スタート(右下)=FF7R風の紫ボタン(社長指示で旧・緑PNGは破棄)。 */}
             <Ff7rButton
-              onClick={() => startMission(stageId, selectedClass, missionKind)}
+              onClick={() => startMission(stageId, effectiveClass, missionKind)}
               className="shrink-0 min-w-[150px] active:scale-95 transition-transform"
               ariaLabel="スタート"
               emphasis
@@ -911,7 +919,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
           {/* キャラ選択(最下段。ドット絵チップ。タップで立ち絵＋情報が切替) */}
           <div className="flex items-end gap-2 overflow-x-auto pb-0.5">
-            {CHARACTER_CLASSES.map(cc => {
+            {selectableClasses.map(cc => {
               const on = cc.id === selectedClass;
               return (
                 <button
@@ -950,8 +958,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               );
             })}
             {/* 守護霊枠(社長指示2026-08-20)。一番右・ヘビーガンナーのシルエット。押すとピッカーが
-                開き、どの守護霊を連れて行くか(なし=初期値)を選ぶ。装備メニューの同行者欄から移設。 */}
-            <button
+                開き、どの守護霊を連れて行くか(なし=初期値)を選ぶ。装備メニューの同行者欄から移設。
+                M0(訓練)では出さない(社長指示: チュートリアルはヘビーガンナーのみ・守護霊なし)。 */}
+            {!isTutorial && <button
               onClick={() => { playSfx('ui-select'); setGhostPickerOpen(true); }}
               className="relative shrink-0 flex flex-col items-center justify-end rounded-none pt-2 pb-1 px-2 transition-[filter] active:brightness-110"
               style={{
@@ -982,12 +991,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               <span className={`relative mt-0.5 text-[8px] leading-none ${companionSkill ? 'text-fuchsia-200' : 'text-white/55'}`}>
                 {companionSkill ? SKILLS[companionSkill].name : '守護霊：なし'}
               </span>
-            </button>
+            </button>}
           </div>
         </div>
 
         {/* 守護霊ピッカー(枠タップで開く)。なし/解禁済みの守護霊系3種から単一選択。 */}
-        {ghostPickerOpen && (
+        {!isTutorial && ghostPickerOpen && (
           <div className="absolute inset-0 z-30" onClick={() => { playSfx('ui-select'); setGhostPickerOpen(false); }}>
             <div className="absolute inset-0 bg-black/70" />
             <div
@@ -1007,23 +1016,33 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   <span className="text-[13px] font-semibold">なし</span>
                   {companionSkill === null && <Check size={15} className="shrink-0" />}
                 </button>
+                {/* レア度表記は出さない(社長指示2026-08-20「超レアとか消して。もはやスキル枠とは別枠なので」)。
+                    スキルアイコン(①単体ファイル ②1枚シート ③絵文字の優先順=UpgradeMenuと同じ文法)を付ける。 */}
                 {SKILL_KEYS.filter(k => COMPANION_SKILL_KEYS.includes(k) && ownedSkills.includes(k)).map(k => {
                   const on = companionSkill === k;
-                  const rarity = SKILLS[k].rarity;
                   return (
                     <button
                       key={k}
                       onClick={() => { playSfx('ui-select'); setCompanionSkill(k); setGhostPickerOpen(false); }}
-                      className={`ff7r-fade-right flex w-full flex-col items-start gap-0.5 rounded-none px-3 py-2.5 text-left transition-[filter] ${
+                      className={`ff7r-fade-right flex w-full items-start gap-3 rounded-none px-3 py-2.5 text-left transition-[filter] ${
                         on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
                       }`}
                     >
-                      <span className="flex w-full items-center justify-between gap-2">
-                        <span className="text-[13px] font-semibold">{SKILLS[k].name} <span className="text-amber-200">{lvText(k, ownedSkillLevels[k] ?? 1)}</span></span>
-                        {on && <Check size={15} className="shrink-0" />}
+                      <span className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10 overflow-hidden">
+                        {(() => {
+                          const single = skillSingleIconName(k);
+                          if (single) return <img src={spritePath(single)} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />;
+                          const st = skillSheet && hasSkillIcon(k) ? skillIconStyle(k, skillSheet.url, 36, skillSheet) : null;
+                          return st ? <span style={st} aria-hidden /> : skillIcon(k);
+                        })()}
                       </span>
-                      <span className={`text-[9px] font-semibold uppercase tracking-wider ${RARITY_TEXT[rarity]}`}>{RARITY_LABEL[rarity]}</span>
-                      <span className="text-[10px] leading-snug text-white/50">{skillDescForLevel(k, ownedSkillLevels[k] ?? 1)}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span className="text-[13px] font-semibold">{SKILLS[k].name} <span className="text-amber-200">{lvText(k, ownedSkillLevels[k] ?? 1)}</span></span>
+                          {on && <Check size={15} className="shrink-0" />}
+                        </span>
+                        <span className="block text-[10px] leading-snug text-white/50">{skillDescForLevel(k, ownedSkillLevels[k] ?? 1)}</span>
+                      </span>
                     </button>
                   );
                 })}
