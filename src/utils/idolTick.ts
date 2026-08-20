@@ -45,8 +45,15 @@ export interface IdolSfx {
   alert: () => void;
   counter: (gain?: number) => void;
   reward: (gain?: number) => void;
+  // v0.25.3700(社長指示・プレイヤー近似流用): 技SEの追加分。全て () => void。
+  shot: () => void;
+  snipe: () => void;
+  throwNade: () => void;
 }
-export const NOOP_IDOL_SFX: IdolSfx = { alert: () => {}, counter: () => {}, reward: () => {} };
+export const NOOP_IDOL_SFX: IdolSfx = {
+  alert: () => {}, counter: () => {}, reward: () => {},
+  shot: () => {}, snipe: () => {}, throwNade: () => {},
+};
 
 /** ラン単位の状態(useGameLoop / プローブがラン開始時に作り直す)。 */
 export interface IdolTickState {
@@ -643,6 +650,7 @@ export const runIdolTick = (
       const aim = hateAim();
       const mz = gunMuzzleFor(aim.x); // 社長指示v0.25.3439: 起点=銃口
       fire('aim', aim.x, aim.y, mz.x, mz.y);
+      sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
       patch.hateTarget = aim.side;
       toRecover('aim');
     }
@@ -658,6 +666,7 @@ export const runIdolTick = (
         const a = ang + (k - half) * IDOL_TUNING.shape.fanSpreadStep;
         fire('fan', mz.x + Math.cos(a) * 100, mz.y + Math.sin(a) * 100, mz.x, mz.y);
       }
+      sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用・1回の発射イベントにつき1回)
       toRecover('fan');
     }
   } else if (st === 'idol-orb-windup') {
@@ -681,6 +690,7 @@ export const runIdolTick = (
         ids.push(p.id);
       }
       for (const id of ids) s.homing.push({ id, move: 'orb', side: aim.side });
+      sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用・1回の発射イベントにつき1回)
       toRecover('orb');
     }
   } else if (st === 'idol-nade-windup') {
@@ -701,6 +711,7 @@ export const runIdolTick = (
         duration: HEAVY_GRENADE_FUSE_MS, createdAt: Date.now(),
         passthrough: false, hitEnemies: [], hostile: true, reflected: false,
       });
+      sfx.throwNade(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
       patch.hateTarget = aim.side;
       patch.bossState = 'idol-nade';
       patch.bossStateUntil = newGameTime + IDOL_TIMING.nade.active;
@@ -717,6 +728,7 @@ export const runIdolTick = (
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       patch.bossState = 'idol-snipe';
       patch.bossStateUntil = newGameTime + IDOL_TIMING.snipe.active;
+      sfx.snipe(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
   } else if (st === 'idol-snipe') {
     // ロック済みの線上のみ判定(点-線分距離のカプセル)。図形=判定=描画が同じ2点を読む。

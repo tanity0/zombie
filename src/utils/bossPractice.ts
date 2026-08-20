@@ -24,6 +24,7 @@ import { isBountyType } from './enemyUtils';
 // ★HP基準値は依存ゼロの葉(bountyDims.ts)から直接読む。bountyTick.ts経由にすると
 // 「gameStore → bossPractice → bountyTick → gameStore」の循環importになる(v0.25.3390の教訓と同型)。
 import { BOUNTY_BASE_HP } from './bountyDims';
+import { GLEN_FORM1_HP_MULT } from './glenChain';
 // research/STAGE_DIFFICULTY.md: ステージ難度の階段(HP係数)。**生の台帳を直接読む**——表示は常に
 // 「プレイヤーが見る実戦の値」で、計測路の中立化(utils/stageDiffMults)は一覧を出さない場面の話なので
 // ここでは通さない。config/stageDifficulty.ts は依存ゼロの葉=循環importにならない。
@@ -272,7 +273,13 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
   if (slot.bossType === 'giantbat') {
     // 台帳に行があれば、その値で戦っている(v0.25.3164でストーリーボスも台帳を通るようになった)。
     // 行が無い枠(stage-ex1)だけは実際のHPと表が違うので出さない。
-    return STAGE_BOSS_HEALTH_BY_STAGE[slot.stageId] ?? null;
+    const row = STAGE_BOSS_HEALTH_BY_STAGE[slot.stageId];
+    if (row === undefined) return null;
+    // v0.25.3700(社長裁定): stage-7グレンの形態1は最大HP1.5倍(残り1/3で第二形態へ移行)。
+    // この一覧は最初に戦う個体のバーを出す=形態1入りの枠は1.5倍で表示(表示=実戦一致の原則)。
+    // 形態2直行枠(glenForm2)は台帳そのまま。
+    if (slot.stageId === 'stage-7' && slot.glenForm2 !== true) return Math.round(row * GLEN_FORM1_HP_MULT);
+    return row;
   }
   // §6.38(賞金首): 実効HPは基準値(BOUNTY_BASE_HP)×スポーン時の実効難易度倍率(bountyMaxHealth)で
   // 変動するため、台帳の固定値ではなく**基準値をそのまま**出す(掲載裁定「基準値2000を出す」)。

@@ -77,8 +77,19 @@ export interface AngelSfx {
   sweep: () => void;    // 払い/縦払い実行(playSfx('thor-sweep'))
   // §6.28共通: 予告SE(全技共通=hunter-alert流用・§6.26-9 #5)。溜め(windup)へ入った瞬間に1回。
   alert: () => void;
+  // v0.25.3700(社長指示・プレイヤー近似流用): 技SEの追加分。全て () => void。
+  shot: () => void;      // 弾発射(playSfx('handgun-fire'))
+  thrust: () => void;    // 突き(playSfx('thor-thrust'))
+  dashSlash: () => void; // ダッシュ斬り(playSfx('katana-dash'))
+  slashHit: () => void;  // 斬撃命中(playSfx('slash-damage'))
+  beam: () => void;      // ビーム/凝視発射(playSfx('heavy-impact'))
+  iceBurst: () => void;  // 結晶/氷起爆(playSfx('skadi-ice'))
+  throw: () => void;     // 投擲(playSfx('boomerang-throw'))
 }
-export const NOOP_ANGEL_SFX: AngelSfx = { counter: () => {}, reward: () => {}, sweep: () => {}, alert: () => {} };
+export const NOOP_ANGEL_SFX: AngelSfx = {
+  counter: () => {}, reward: () => {}, sweep: () => {}, alert: () => {},
+  shot: () => {}, thrust: () => {}, dashSlash: () => {}, slashHit: () => {}, beam: () => {}, iceBurst: () => {}, throw: () => {},
+};
 void BOSS_ALERT_SFX_KEY; // (呼び出し側=useGameLoop.tsがplaySfx(BOSS_ALERT_SFX_KEY)をalertへ配線する)
 
 // --- ボスごとのフォールバック(`?<boss>script=0`・giantScriptと同じ作法) -----------------------
@@ -596,6 +607,7 @@ export const runMiguelTick = (
         patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
       } else {
         const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の${st === 'harai' ? '払い' : '縦払い'}`, pcx, pcy, undefined, undefined, st === 'harai' ? 'miguel-harai' : 'miguel-tate'); // G4a計測タグ(記録専用)
+        sfx.slashHit(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
@@ -629,6 +641,7 @@ export const runMiguelTick = (
     if (s.miguelVolley.shots < AN_C.burst.shots && newGameTime >= s.miguelVolley.nextShotAt) {
       const aim = miguelLockedAim();
       useGameStore.getState().addProjectile(createEnemyProjectile(miguel, player, aim.x, aim.y));
+      sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
       s.miguelVolley.shots += 1;
       s.miguelVolley.nextShotAt = newGameTime + AN_C.burst.gapMs;
     }
@@ -652,6 +665,7 @@ export const runMiguelTick = (
       patch.bossState = 'mdash-move';
       patch.bossStateUntil = newGameTime + MG_T.dash.moveMs + MG_T.dash.strikeMs;
       patch.aiStartedAt = newGameTime;
+      sfx.dashSlash(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
   } else if (st === 'mdash-move') {
     const fx0 = miguel.aiFromX ?? mcx, fy0 = miguel.aiFromY ?? mcy;
@@ -865,6 +879,7 @@ export const runMiguelTickLegacy = (
     miguelOrbitMove();
     if (s.miguelVolley.shots < AN_C.burst.shots && newGameTime >= s.miguelVolley.nextShotAt) {
       useGameStore.getState().addProjectile(createEnemyProjectile(miguel, player));
+      sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
       s.miguelVolley.shots += 1;
       s.miguelVolley.nextShotAt = newGameTime + AN_C.burst.gapMs;
     }
@@ -1103,12 +1118,14 @@ export const runJibrilTick = (
         if (jr.shots % 2 === 0) {
           const aim = jibrilLockedAim();
           useGameStore.getState().addProjectile(createEnemyProjectile(jibril, player, aim.x, aim.y));
+          sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
         } else {
           for (let k = 0; k < JB_T.volley.omniBullets; k++) {
             const ang = (Math.PI * 2 * k) / JB_T.volley.omniBullets;
             useGameStore.getState().addProjectile(
               createEnemyProjectile(jibril, player, jcx + Math.cos(ang) * 100, jcy + Math.sin(ang) * 100));
           }
+          sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用・1斉射につき1回)
         }
         jr.shots += 1;
         jr.nextShotAt = newGameTime + gap;
@@ -1370,6 +1387,7 @@ export const runJibrilTickLegacy = (
       const proj = createEnemyProjectile(jibril, player);
       if (jr.volleyMode === 'snipe') proj.speed *= JIBRIL_SNIPE_SPEED_MULT;
       useGameStore.getState().addProjectile(proj);
+      sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
       jr.shots += 1;
       jr.nextShotAt = newGameTime + gap;
     }
@@ -1561,6 +1579,7 @@ export const runRafiTick = (
           rafi.id, 'bone',
         );
       }
+      sfx.throw(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
       patch.bossState = 'quickblades-recover';
       patch.bossStateUntil = newGameTime + choreographyRecoverMs(RF_T.quickblades.recover, (rafi.bossScriptQueue?.length ?? 0) > 0);
     }
@@ -1590,6 +1609,7 @@ export const runRafiTick = (
       const sx = aimTgt.x + Math.cos(a0) * dist, sy = aimTgt.y + Math.sin(a0) * dist;
       const aim = Math.atan2(aimTgt.y - sy, aimTgt.x - sx);
       useGameStore.getState().spawnSkadiBlade(sx, sy, aim, newGameTime + RF_T.bone.delayMs, rafi.id, 'bone');
+      sfx.throw(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
       rr.boneLeft -= 1;
       rr.boneNextAt = newGameTime + RF_T.bone.gapMs;
     }
@@ -1793,6 +1813,7 @@ export const runRafiTickLegacy = (
       const sx = pcx + Math.cos(a0) * dist, sy = pcy + Math.sin(a0) * dist;
       const aim = Math.atan2(pcy - sy, pcx - sx);
       useGameStore.getState().spawnSkadiBlade(sx, sy, aim, newGameTime + RF_T.bone.delayMs, rafi.id, 'bone');
+      sfx.throw(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
       rr.boneLeft -= 1;
       rr.boneNextAt = newGameTime + RF_T.bone.gapMs;
     }
@@ -1987,6 +2008,7 @@ export const runUriTick = (
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
       patch.bossState = 'sweep'; patch.bossStateUntil = newGameTime + UR_T.sweep.active;
+      sfx.sweep(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
   } else if (st === 'sweep') {
     // ★踏み込みの続き(v0.25.3524): 溜めの終盤で始めた1本の動きを振り切りまで出し切る。
@@ -2022,6 +2044,7 @@ export const runUriTick = (
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
       patch.bossState = 'downslash'; patch.bossStateUntil = newGameTime + UR_T.downslash.active;
+      sfx.sweep(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
   } else if (st === 'downslash') {
     const fx0 = uri.aiFromX ?? ucx, fy0 = uri.aiFromY ?? ucy, tx0 = uri.aiTargetX ?? ucx, ty0 = uri.aiTargetY ?? ucy;
@@ -2052,6 +2075,7 @@ export const runUriTick = (
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
       patch.bossState = 'thrust'; patch.bossStateUntil = newGameTime + UR_T.thrust.moveMs + UR_T.thrust.strikeMs;
       patch.aiStartedAt = newGameTime;
+      sfx.thrust(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
   } else if (st === 'thrust') {
     const fx0 = uri.aiFromX ?? ucx, fy0 = uri.aiFromY ?? ucy, tx0 = uri.aiTargetX ?? ucx, ty0 = uri.aiTargetY ?? ucy;
@@ -2117,6 +2141,7 @@ export const runUriTick = (
     if (s.uri.shots < AN_C.burst.shots && newGameTime >= s.uri.nextShotAt) {
       const aim = uriLockedAim();
       useGameStore.getState().addProjectile(createEnemyProjectile(uri, player, aim.x, aim.y));
+      sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
       s.uri.shots += 1; s.uri.nextShotAt = newGameTime + AN_C.burst.gapMs;
     }
     if (newGameTime >= (uri.bossStateUntil ?? 0)) {
@@ -2295,6 +2320,7 @@ export const runSurielTick = (
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
       patch.bossState = 'ring-active'; patch.bossStateUntil = newGameTime + SR_T.ringshot.active;
+      sfx.beam(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
   } else if (st === 'ring-active') {
     const fx0 = suriel.aiFromX ?? scx, fy0 = suriel.aiFromY ?? scy, tx0 = suriel.aiTargetX ?? scx, ty0 = suriel.aiTargetY ?? scy;
@@ -2343,6 +2369,7 @@ export const runSurielTick = (
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
       patch.bossState = 'ring-spin'; patch.bossStateUntil = newGameTime + SR_T.ringspin.active; patch.aiStartedAt = newGameTime;
+      sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
     patch.ringX = scx; patch.ringY = scy; // 回転斬りの前に環を本体へ引き寄せる(近接拒否の絵)
   } else if (st === 'ring-spin') {
@@ -2375,6 +2402,7 @@ export const runSurielTick = (
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
       patch.bossState = 'sweep'; patch.bossStateUntil = newGameTime + SR_T.sweep.active;
+      sfx.sweep(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
   } else if (st === 'sweep') {
     const fx0 = suriel.aiFromX ?? scx, fy0 = suriel.aiFromY ?? scy, tx0 = suriel.aiTargetX ?? scx, ty0 = suriel.aiTargetY ?? scy;
@@ -2404,6 +2432,7 @@ export const runSurielTick = (
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
       useGameStore.getState().addProjectile(createEnemyProjectile(suriel, player, suriel.aiTargetX, suriel.aiTargetY));
+      sfx.beam(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
       // ★v0.25.3590(10連射): 発間はraw(100ms)=choreographyRecoverMsの休符floorを通さない。
       // 締めの隙は最終発の後だけ従来どおりfloorつき(パニッシュ窓の憲法を保つ)。
       const isLastShot = s.suriel.gazeShots >= SR_T.gaze.count;
@@ -2550,6 +2579,7 @@ export const runAcrasielTick = (
       acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
     } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
       patch.bossState = 'spike'; patch.bossStateUntil = newGameTime + AC_T.spike.active;
+      sfx.iceBurst(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
   } else if (st === 'spike') {
     const mask = acrasiel.spikeGapMask ?? 0;
@@ -2642,6 +2672,7 @@ export const runAcrasielTick = (
       acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
     } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
       patch.bossState = 'burst'; patch.bossStateUntil = newGameTime + AC_T.burst.active;
+      sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
   } else if (st === 'burst') {
     const pr = Math.max(player.width, player.height) / 2;
@@ -2670,6 +2701,7 @@ export const runAcrasielTick = (
       acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
     } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
       useGameStore.getState().addProjectile(createEnemyProjectile(acrasiel, player, acrasiel.aiTargetX, acrasiel.aiTargetY));
+      sfx.beam(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
       patch.bossState = 'gaze-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(AC_T.gaze.recover, (acrasiel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'gaze-recover') {
@@ -2783,6 +2815,7 @@ export const tickAcrasielSpears = (
           continue; // 起爆は潰れた=ダメージは出さない
         }
       }
+      sfx.iceBurst(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用・起爆1本ごと)
       if (!pl.invulnerable && !died && inCircle) {
         const d = useGameStore.getState().damagePlayer(sp.damage, `${enemyDeathLabel('acrasiel')}の結晶の槍`, sp.x, sp.y, undefined, undefined, 'acrasiel-spear'); // G4a計測タグ(記録専用・遅延起爆は残響で槍へ帰属)
         if (d) { died = true; onPlayerDeath(plcx, plcy); }

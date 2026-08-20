@@ -85,7 +85,7 @@ import {
 } from '../store/gameStore';
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
 import { glenScriptApplies } from '../utils/giantScript';
-import { glenPartCountFull, glenRemovedPartAnchors } from '../utils/glenChain';
+import { glenPartCountFull, glenRemovedPartAnchors, GLEN_FORM1_HP_MULT } from '../utils/glenChain';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
@@ -785,12 +785,24 @@ const ANGEL_SFX: AngelSfx = {
   sweep: () => playSfx('thor-sweep'),
   // PACING_PUZZLE.md §6.28(バッチM53/M55/M57/M61/M62/M63): 予告SE(全技共通=hunter-alert流用・§6.26-9 #5)。
   alert: () => playSfx(BOSS_ALERT_SFX_KEY),
+  // v0.25.3700(社長指示「ボスの技にも対応するSEを・プレイヤー側の近似値を流用」):
+  shot: () => playSfx('handgun-fire'),          // 弾の発射(全ボス共通の赤弾=音も共通)
+  thrust: () => playSfx('thor-thrust'),         // 突き(トールと同じ動作=同じ音)
+  dashSlash: () => playSfx('katana-dash'),      // 踏み込みダッシュ斬り(プレイヤーの刀ダッシュ近似)
+  slashHit: () => playSfx('slash-damage'),      // 斬撃の命中(プレイヤー斬撃の命中音近似)
+  beam: () => playSfx('heavy-impact'),          // ビーム/凝視の発射(ミーミルレーザー発射と同じ流用)
+  iceBurst: () => playSfx('skadi-ice'),         // 結晶/氷の起爆(スカディ氷と同じ)
+  throw: () => playSfx('boomerang-throw'),      // 骨/刃の投擲(プレイヤーのブーメラン投げ近似)
 };
 // idol(stage-2隠しボス)の音。予告SEは全ボス共通の hunter-alert 流用(§6.26-9 #5)。
 const IDOL_SFX: IdolSfx = {
   alert: () => playSfx(BOSS_ALERT_SFX_KEY),
   counter: (gain = 1) => playSfx('counter', gain),
   reward: (gain = 1) => playSfx('headshot', gain),
+  // v0.25.3700: 技の発動音(プレイヤー近似の流用)。
+  shot: () => playSfx('handgun-fire'),               // 狙い撃ち/扇/オーブの発射
+  snipe: () => playSfx('rifle-fire'),                // 狙撃線(ライフル近似)
+  throwNade: () => playSfx('grenade-launcher-fire'), // 手榴弾投擲(グレネードランチャー近似)
 };
 // 賞金首(§6.38 B2a)の音。予兆SEは全ボス共通のhunter-alert流用(§6.26-9 #5)。fireはレーザー発射の
 // 一撃SE(ミーミルと同じ'heavy-impact'流用=useGameLoop.tsのlaser-windup→laser-fire遷移箇所と同一)。
@@ -799,6 +811,14 @@ const BOUNTY_SFX: BountySfx = {
   fire: () => playSfx('heavy-impact'),
   counter: (gain = 1) => playSfx('counter', gain),
   reward: (gain = 1) => playSfx('headshot', gain),
+  // v0.25.3700: 技の発動音(プレイヤー近似の流用)。
+  shot: () => playSfx('handgun-fire'),          // 弾の発射(バス停burst/fan/charge・鋏の高速弾)
+  snipe: () => playSfx('rifle-fire'),           // 馬乗りの懲罰狙撃(ライフル近似)
+  whipSwing: () => playSfx('whip-swing'),       // 馬乗りの360度ムチ(プレイヤー鞭の振り)
+  whipHit: () => playSfx('whip-hit'),           // 同・命中(プレイヤー鞭の命中)
+  throwBall: () => playSfx('boomerang-throw'),  // 舞妓の手毬打ち(ブーメラン軌道=投げ近似)
+  spin: () => playSfx('hurricane'),             // 舞妓の毬回し(回転技=ハリケーン近似)
+  summon: () => playSfx('summon'),              // バス停の取り巻き召喚(プレイヤー召喚と同じ)
 };
 // research/GHOST_BOSS.md v6(幻影): 音は既存の共通キーを流用する(専用素材は作らない=「ではない」条件)。
 // 銃は**プレイヤーの自動発砲と同じ銃種別の写像**(v0.25.2479パリティの並びをそのまま使う)。
@@ -1433,6 +1453,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // M51: ジャイアント新スクリプトの予告SE(全技共通=hunter-alert流用・社長裁定6.26-9 #5)。
   // 直前フレームのaiPhaseを覚えておき、5つの溜め(windup)ステートへ切り替わった瞬間だけ1回鳴らす。
   const giantWindupSfxRef = useRef<string | undefined>(undefined);
+  // v0.25.3700(社長指示「ボスの技にも対応するSEを」): 被弾SEの合流点用・前フレームのHP。
+  // damagePlayer直呼びの技(トール一閃・ミゲル払いの命中・舞妓の毬回し・馬乗りのムチ360等)は
+  // combatTickの被弾SE経路(爆風/弾/接触)に乗らず**当たっても無音**だった。HP減少のエッジ検知
+  // 1箇所で全経路を塞ぐ(守護霊被弾のlastHitエッジ検知と同じ「合流点1箇所で全部に付ける」作法)。
+  const prevPlayerHpRef = useRef<number | null>(null);
   // 四神舞(リズム): 停止が続いた gameTime の起点(0=未停止)。RHYTHM_ENTER_IDLE_MS でモード開始。
   const rhythmIdleStartRef = useRef<number>(0);
   // 四神舞: 動き出した gameTime の起点(0=停止中)。RHYTHM_EXIT_MOVE_MS 動き続けた時だけ終了
@@ -2778,6 +2803,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (旧「HP60%から開始」は二体構成化で廃止)。
             if (storyStageId === 'stage-7') {
               boss.glenForm = practiceWantsGlenForm2() ? 2 : 1;
+              // v0.25.3700(社長裁定): 形態1は最大HP1.5倍+残り1/3で第二形態へ移行
+              // (glenChain.glenForm1TransitionReady)。削る量は従来のバー1本分のまま=
+              // 「倒し切る前に移行する」見せ方だけが変わる。形態2は従来どおり台帳そのまま。
+              if (boss.glenForm === 1) {
+                boss.health = boss.maxHealth = Math.round(boss.maxHealth * GLEN_FORM1_HP_MULT);
+              }
             }
             // M7(stage-7=グレン)のボスだけ当たり判定込みで2倍(社長指示v0.25.2000)。width/height=当たり判定なので
             // 2倍で見た目(=箱にcontainスケール)も当たり判定も同時に2倍。増分の半分だけ左上へ寄せて中心を維持。
@@ -4954,7 +4985,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 通常敵と揃えるため、移動の位置更新/慣性は bossMoveDt(= deltaTime × MOVE_SPEED_MULT)を使う(社長指示)。
             // 回復(BOSS_REGEN)やタイマー等は素の deltaTime のまま(テンポの対象外)。
             const bossMoveDt = deltaTime * MOVE_SPEED_MULT;
-            const fireBullet = (tx: number, ty: number) => addProjectile(createEnemyProjectile(boss, player, tx, ty));
+            // v0.25.3700(社長指示「ボスの技にも対応するSEを」): 弾の発射音=プレイヤー銃の近似
+            // (handgun-fire)。弾は全ボス共通の見た目(赤二重丸)なので音も共通1種。全方位16発など
+            // 同フレーム連射は audioManager の minIntervalMs(24ms)が1発に間引く=スパムしない。
+            const fireBullet = (tx: number, ty: number) => {
+              playSfx('handgun-fire');
+              addProjectile(createEnemyProjectile(boss, player, tx, ty));
+            };
 
             const patch: Partial<typeof boss> = {};
             let chasing = false;
@@ -5432,6 +5469,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // ように chase 分岐から切り出した(掟: 遷移コードを複製しない)。発火条件(被弾カウント)は
               // 呼び出し側に残す=▸は条件をバイパスしてここを直接叩ける(部屋は訓練場)。
               const beginThorJump = () => {
+                // v0.25.3700: 予告SEの漏れ修正(issen/tsuki/haraiのbeginThorMoveにはあるがjumpだけ無かった)。
+                if (THOR_SCRIPT_ENABLED) playSfx(BOSS_ALERT_SFX_KEY);
                 patch.bossState = 'jump-windup';
                 patch.bossStateUntil = newGameTime + HB_TH.jump.windup;
                 patch.bossScriptQueue = planBossChoreography('thor', 'jump', boss.bossPhase ?? 1).slice(1);
@@ -5975,6 +6014,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'issen-dash';
                   patch.bossStateUntil = newGameTime + HB_TH.issen.dashMs;
+                  // v0.25.3700: 一閃=ダッシュ斬りの発動音(プレイヤーの刀ダッシュ斬りと同じ近似)。
+                  // トール3技で唯一の完全無音だった(払い=thor-sweep/突き=thor-thrustは配線済み)。
+                  playSfx('katana-dash');
                 }
               } else if (st === 'issen-dash') {
                 // 一閃(高速移動): 終着点まで直進。当たり判定=もとの帯ではなく、この赤いライン上のみ(社長指示)。
@@ -8377,6 +8419,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             || gPhase === 'g-nova-windup' || gPhase === 'g-wing-windup' || gPhase === 'g-sweepbeam-windup'
             || gPhase === 'g-talon-windup' || gPhase === 'g-boon-windup' || gPhase === 'g-reach-windup'
             || gPhase === 'g-tailslam-windup'
+            // v0.25.3700: ホワイトリスト漏れ2件(三方向斬/三段ジャンプの溜めが無音だった)。
+            || gPhase === 'g-trishot-windup' || gPhase === 'g-trijump-windup'
             || gPhase === 'g-nihil-chant1' || gPhase === 'g-nihil-chant2' || gPhase === 'g-nihil-chant3';
           if (isGiantWindupNow && giantWindupSfxRef.current !== gPhase) {
             playSfx('hunter-alert');
@@ -8391,6 +8435,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (gPhase === 'g-nihil-chant1') playSfx('glen-nihil', 1, GLEN_NIHIL_SE_MS);
           }
           giantWindupSfxRef.current = isGiantWindupNow ? gPhase : undefined;
+        }
+
+        // v0.25.3700: 被弾SEの合流点(上のprevPlayerHpRef参照)。HPが実際に減ったフレームだけ1回。
+        // 既存経路(combatTickの爆風/弾/接触)が同フレームに鳴らした分は audioManager の
+        // minIntervalMs(140ms)が間引く=二重にならない。無敵・シールドで防いだ時はHPが減らない=鳴らない。
+        {
+          const hpNow = useGameStore.getState().player.health;
+          const prevHp = prevPlayerHpRef.current;
+          if (prevHp != null && hpNow < prevHp) playSfx('player-damage');
+          prevPlayerHpRef.current = hpNow;
         }
 
         // 設置シールドでジャンプ/ダッシュを防いだ瞬間の「ぶつかった感」: 接触点に火花バースト＋

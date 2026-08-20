@@ -4,7 +4,7 @@ import {
   glenPartCountFull,
   pushGlenTrail, sampleGlenTrail, glenChainDistances, GLEN_TRAIL_MAX,
   shouldGlenVolley, glenVolleyShots, GLEN_VOLLEY_SAFE_PX, glenRemovedPartAnchors,
-  glenForm1TransitionReady,
+  glenForm1TransitionReady, GLEN_FORM1_HP_MULT,
   type GlenTrailPoint,
 } from './glenChain';
 import type { Enemy } from '../types/game';
@@ -27,12 +27,16 @@ describe('glenChain — 台帳の不変条件', () => {
   });
 });
 
-describe('glenForm1TransitionReady — HP半分で第二形態へ(社長指示v0.25.3699)', () => {
-  const base = { type: 'giantbat' as const, glenForm: 1 as const, fromEvent: undefined, maxHealth: 1000 };
-  it('HPがちょうど半分・半分未満で真、半分超で偽', () => {
-    expect(glenForm1TransitionReady({ ...base, health: 500 })).toBe(true);
-    expect(glenForm1TransitionReady({ ...base, health: 499 })).toBe(true);
-    expect(glenForm1TransitionReady({ ...base, health: 501 })).toBe(false);
+describe('glenForm1TransitionReady — 残り1/3で第二形態へ(社長裁定v0.25.3700・HP1.5倍とセット)', () => {
+  const base = { type: 'giantbat' as const, glenForm: 1 as const, fromEvent: undefined, maxHealth: 900 };
+  it('残りがちょうど1/3・1/3未満で真、1/3超で偽', () => {
+    expect(glenForm1TransitionReady({ ...base, health: 300 })).toBe(true);
+    expect(glenForm1TransitionReady({ ...base, health: 299 })).toBe(true);
+    expect(glenForm1TransitionReady({ ...base, health: 301 })).toBe(false);
+  });
+  it('1.5倍×残り1/3=削る量は従来のバー1本分(裁定の狙いを数式で固定)', () => {
+    // 旧HPをXとすると、新maxHealth=1.5X・移行時の残り=1.5X×1/3=0.5X → 削った量=1.5X−0.5X=X。
+    expect(GLEN_FORM1_HP_MULT * (1 - 1 / 3)).toBeCloseTo(1.0, 10);
   });
   it('HP0(=キル経路が移行を担当)・形態2・イベント産・他typeは偽', () => {
     expect(glenForm1TransitionReady({ ...base, health: 0 })).toBe(false);

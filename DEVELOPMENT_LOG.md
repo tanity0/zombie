@@ -1,5 +1,33 @@
 # Development Log
 
+## v0.25.3700 — ボス技SE一式(プレイヤー近似の流用)+グレン移行の改訂(HP1.5倍・残り1/3)【2026-08-20 20:28 JST】
+
+- **社長指示「ボスの技にも対応するSEつけて。プレイヤー側で近似値があるはず。考えられるところ全てに」**。
+  棚卸し(サブエージェント走査)の結果: 技固有SEはトール払い/突き等3系統のみ・**ボスの弾は全ボス無音**・
+  damagePlayer直呼び技(トール一閃/ミゲル払いの命中/舞妓毬回し/馬乗りムチ360/狙撃線等)は**当たっても無音**。
+- **配線(約40技・対応表)**: 弾の発射=handgun-fire(弾は全ボス共通の見た目=音も共通1種。同フレーム連射は
+  minIntervalMsが間引く)/一閃・ミゲル踏み込み=katana-dash/突き=thor-thrust/薙ぎ系=thor-sweep/
+  ムチ360=whip-swing+whip-hit/狙撃線=rifle-fire/手榴弾=grenade-launcher-fire/結晶・氷(ノヴァ・棘・槍起爆)=
+  skadi-ice/ビーム・凝視=heavy-impact/回転ブレス・毬回し=hurricane/召喚=summon/骨・刃・手毬の投擲=
+  boomerang-throw/斬撃の命中=slash-damage。予告SEホワイトリスト漏れ3件(g-trishot/g-trijump/トールjump)も修正。
+- **被弾SEの合流点を新設**(useGameLoop): 前フレームとのHP比較で「実際に減った瞬間」に player-damage を1回。
+  既存経路(combatTick)の同フレーム分は minIntervalMs(140ms) が間引く=二重にならない。無敵・シールドは
+  HPが減らない=鳴らない。
+- 実装経路: 裏ボス=fireBullet+bossState遷移(useGameLoop)/天使=AngelSfx拡張(shot/thrust/dashSlash/
+  slashHit/beam/iceBurst/throw)/賞金首=BountySfx拡張(※新メンバーはoptional=既存テストの手書きモック互換)/
+  アイドル=IdolSfx拡張/城ボス・グレン=post-setフラグ+動的import(jump-landと同じ作法)。
+  Sonnetサブエージェントに3ファイル(angelBossTick/bountyTick/idolTick)を発注・検収済み(167テストパス)。
+  監査対象外(既存SE素材の入れ込み・新規の仕組みなし)。**音の当てはめは叩き台**=実機で違和感があれば個別差し替え。
+- **グレン移行の改訂(社長裁定・v3699の差し替え)**: 「第一形態のHPは変えたくない」→ 選択肢確認の結果
+  **最大HP1.5倍+残り1/3で移行**(1.5×(1−1/3)=1.0=削る量は従来のバー1本分のまま)。指示の文字どおり
+  (1.5倍・残り2/3)だと削る量が半減して狙いと矛盾するため、1問確認で「残り1/3」に裁定いただいた。
+  GLEN_FORM1_HP_MULT/GLEN_FORM1_TRANSITION_FRAC(glenChain.ts)・スポーン(useGameLoop)・
+  ボスモードHP表示(bossPractice=形態1枠は×1.5表示・形態2直行枠は台帳のまま)を同時更新。
+- テスト: glenChain(しきい値境界+「削る量不変」の数式固定)・bossPractice(stage-7×1.5表示)を追従。44件パス。
+- 検証: typecheck 0 / lint 0(warning8=既存)/ 対象テスト 44+167 パス。
+- 自己点検: SEは演出のみ(判定・タイミング・ダメージ不変)。グレンは移行の見せ方のみ変更で戦闘量は従来どおり。
+  憲法抵触なし。
+
 ## v0.25.3699 — グレン第二形態への移行をHP半分に(社長指示)【2026-08-20 20:05 JST】
 
 - **社長指示「グレンの第二形態はHP半分で」**: 形態1(glenForm===1)のHPが**50%以下に達した時点**で

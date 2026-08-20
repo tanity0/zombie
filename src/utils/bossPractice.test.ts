@@ -11,6 +11,7 @@ import { STAGES, getStage } from '../data/campaign';
 import { BOUNTY_ENEMY_TYPES, isBountyType, isHiddenBoss, spawnEnemyAt } from './enemyUtils';
 import { stageHpMult, BOUNTY_HOME_STAGE } from '../config/stageDifficulty';
 import { BOUNTY_BASE_HP } from './bountyDims';
+import { GLEN_FORM1_HP_MULT } from './glenChain';
 import { guardianPhantomHealth } from '../config/bossHealth';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { growthMaxHpBonus, activeUpgradeLevel, loadPlayerUpgrades } from './playerUpgrades';
@@ -187,11 +188,13 @@ describe('練習画面のHP表示', () => {
     }
   });
 
-  it('城ボス(giantbat)の表示 = 台帳HP×ステージ係数', () => {
+  it('城ボス(giantbat)の表示 = 台帳HP×ステージ係数(stage-7形態1枠は×1.5・社長裁定v0.25.3700)', () => {
     for (const slot of PRACTICE_SLOTS.filter(s => s.bossType === 'giantbat')) {
       const ledger = STAGE_BOSS_HEALTH_BY_STAGE[slot.stageId];
       if (ledger === undefined) continue; // stage-ex1 は「—」
-      expect(practiceBossHealth(slot), slot.slotKey).toBe(Math.round(ledger * stageHpMult(slot.stageId)));
+      // グレン形態1は最大HP1.5倍で戦う(残り1/3で第二形態へ移行)ので、表示も1.5倍で一致させる。
+      const f1 = slot.stageId === 'stage-7' && slot.glenForm2 !== true ? GLEN_FORM1_HP_MULT : 1;
+      expect(practiceBossHealth(slot), slot.slotKey).toBe(Math.round(ledger * f1 * stageHpMult(slot.stageId)));
     }
   });
 

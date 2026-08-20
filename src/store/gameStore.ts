@@ -10482,6 +10482,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     //  全件処理して空にする。updateEnemies と消費の間に脱出経路は無い=useGameLoop 7209→7240。)
     const pumpkinBlasts: PumpkinBlast[] = [];
     const giantBoltFires: Enemy[] = []; // M51: ジャイアント新スクリプトの咆哮弾。set() 後に post-set で addProjectile する。
+    // v0.25.3700(社長指示「ボスの技にも対応するSEを」): 発動の瞬間にプレイヤー近似SEを鳴らすための
+    // post-setフラグ(set内は再入set禁止+audioManagerは静的importできない=pumpkinLanded/jump-landと同じ作法)。
+    let giantNovaFired = false;      // g-nova発動 → skadi-ice(氷結波=氷の近似)
+    let giantSweepbeamFired = false; // g-sweepbeam発動 → heavy-impact(ビーム発射=ミーミルレーザーと同じ流用)
+    let giantBreathFired = false;    // g-quad-breath発動 → hurricane(ブレス=風の近似)
     const glenVolleyFires: string[] = []; // v0.25.3027: グレン第二形態の胴体弾(パーツV字斉射)。post-set で発射。
     const shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[] = []; // シールドで防いだ瞬間の接触点(FX/SE用)
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
@@ -11845,6 +11850,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-quad-breath-windup': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                giantBreathFired = true; // v0.25.3700: 発動SE(post-setで鳴らす)
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
                   aiPhase: 'g-quad-breath-active', aiPhaseUntil: atkUntil(GIANT_QUAD_BREATH_ACTIVE_MS),
@@ -11910,6 +11916,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // ==== M66: stage-4 氷結波(nova・大技) ====
             case 'g-nova-windup': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                giantNovaFired = true; // v0.25.3700: 発動SE(post-setで鳴らす)
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
                   aiPhase: 'g-nova-active', aiPhaseUntil: atkUntil(GIANT_NOVA_ACTIVE_MS),
@@ -12059,6 +12066,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // ==== M66: stage-5 掃射(sweepbeam・大技) ====
             case 'g-sweepbeam-windup': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                giantSweepbeamFired = true; // v0.25.3700: 発動SE(post-setで鳴らす)
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
                   aiPhase: 'g-sweepbeam-active', aiPhaseUntil: atkUntil(GIANT_SWEEPBEAM_ACTIVE_MS),
@@ -13071,6 +13079,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 「数える3回」を体で分からせる合図。判定・秒数・ダメージには一切関与しない(描画のみ)。
     if (glenNihilChanted) get().triggerShake(GLEN_NIHIL_SHAKE_MS, GLEN_NIHIL_SHAKE_MAG);
     if (glenTailSlammed) get().triggerShake(GLEN_TAILSLAM_SHAKE_MS, GLEN_TAILSLAM_SHAKE_MAG);
+    // v0.25.3700(社長指示「ボスの技にも対応するSEを」): 城ボス技の発動音(プレイヤー近似の流用)。
+    // 動的import=jump-landと同じ理由(gameStoreはaudioManagerを静的importできない・循環)。
+    if (giantNovaFired || giantSweepbeamFired || giantBreathFired) {
+      void import('../audio/audioManager').then(m => {
+        if (giantNovaFired) m.playSfx('skadi-ice');       // 氷結波=氷の近似
+        if (giantSweepbeamFired) m.playSfx('heavy-impact'); // ビーム発射=ミーミルレーザーと同じ流用
+        if (giantBreathFired) m.playSfx('hurricane');      // 回転ブレス=風の近似
+      });
+    }
     // v0.25.3699(社長指示「グレンの第二形態はHP半分で」): 形態1はHPを**半分まで削った時点**で
     // 第二形態へ移行する(旧v0.25.3600: HP0=撃破で移行)。移行の絵と流れは撃破時と完全に同じ
     // triggerDramaticDeath(崩壊アテンション→glenForm2SpawnAt予約→useGameLoopが形態2を湧かす)を
@@ -13089,6 +13106,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 弾自体の性能(速度/サイズ/ダメージ)は getEnemyFireProfile('giantbat') のプロファイルを
     // createEnemyProjectile が使う=現行不変(6.26-6)。錬金術の召喚ターゲットも既存どおり考慮する。
     if (giantBoltFires.length > 0) {
+      // v0.25.3700: 咆哮弾の発射音(プレイヤー銃近似・弾は全ボス共通の見た目=音も共通)。
+      // 1発射イベント(この配列が積まれたフレーム)につき1回。連射(burst)は1発ずつ来るので発ごとに鳴る。
+      void import('../audio/audioManager').then(m => m.playSfx('handgun-fire'));
       const bp = get().player;
       const bGameTime = get().gameTime;
       const bFlareTargets = activeFlareTargets(get().flareGunFlares, bGameTime);
@@ -13140,6 +13160,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ±45°のV字へ各2発。無照準・通常弾(giantbat既定プロファイル=赤い二重丸・打ち返し可)。
     // 位置は世界座標の近似(裁定1a)・プレイヤー80px未満のパーツは撃たない(裁定2)。
     if (glenVolleyFires.length > 0 && glenSimTrail) {
+      // v0.25.3700: 胴体弾(パーツV字斉射)の発射音。1斉射イベントにつき1回(同フレーム多発の重なり防止)。
+      void import('../audio/audioManager').then(m => m.playSfx('handgun-fire'));
       const bp = get().player;
       const bpx = bp.x + bp.width / 2, bpy = bp.y + bp.height / 2;
       for (const gid of glenVolleyFires) {

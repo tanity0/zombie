@@ -238,8 +238,21 @@ export interface BountySfx {
   fire: () => void;
   counter: (gain?: number) => void;
   reward: (gain?: number) => void;
+  // v0.25.3700(社長指示・プレイヤー近似流用): 技SEの追加分。全て () => void。
+  // ★optional: 既存テスト(bountyTick.test.ts)が旧4メンバーだけの手書きモックを複数箇所で
+  // 渡しており、ここを必須にすると無関係なテストまで型エラーになる。呼び出し側は `?.()` で保護する。
+  shot?: () => void;      // 弾発射(playSfx('handgun-fire'))
+  snipe?: () => void;     // 帯発動=狙撃(playSfx相当)
+  whipSwing?: () => void; // 鞭360の振り
+  whipHit?: () => void;   // 鞭360の命中
+  throwBall?: () => void; // 手毬の射出
+  spin?: () => void;      // 毬回し発動
+  summon?: () => void;    // 取り巻き召喚
 }
-export const NOOP_BOUNTY_SFX: BountySfx = { alert: () => {}, fire: () => {}, counter: () => {}, reward: () => {} };
+export const NOOP_BOUNTY_SFX: BountySfx = {
+  alert: () => {}, fire: () => {}, counter: () => {}, reward: () => {},
+  shot: () => {}, snipe: () => {}, whipSwing: () => {}, whipHit: () => {}, throwBall: () => {}, spin: () => {}, summon: () => {},
+};
 
 /** ラン単位の状態(useGameLoopがラン開始時に作り直す・idolTick.IdolTickStateと同じ流儀)。 */
 export interface BountyTickState {
@@ -545,6 +558,7 @@ const tickRanged = (
     if (!s.escortsSummoned) {
       s.escortsSummoned = true;
       summonBountyEscorts(bounty, newGameTime);
+      sfx.summon?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用・sfxが届く呼び出し側で完結)
     }
     // ★v0.25.3517(社長指示「近接も重み変えて / 押しのけしか出ないせいで、倒すのが簡単になってる」):
     // 近距離は**重みで引く**(押しのけ / 三段突き)。どちらもCD中なら何も返さず、下の中立射撃へ落ちる
@@ -669,6 +683,7 @@ const tickRanged = (
           useGameStore.getState().addProjectile(createEnemyProjectile(
             bounty, player, tgtX, tgtY, mzx, mzy, profile,
           ));
+          sfx.shot?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
         };
         patch.lastRangedShotAt = newGameTime; // 描画専用の合図(構えの標識を~0.9秒見せる)
         if (s.brPattern === 'burst') {
@@ -1042,6 +1057,7 @@ const tickMelee = (
       patch.bossState = 'bm-whip360';
       patch.bossStateUntil = newGameTime + BM_T.whip360.active;
       s.whip360Hit = false;
+      sfx.whipSwing?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
     return;
   }
@@ -1051,6 +1067,7 @@ const tickMelee = (
     if (!s.whip360Hit && Math.hypot(pcx - bcx, pcy - bcy) <= BM_T.whip360.radius + pr) {
       s.whip360Hit = true;
       useGameStore.getState().damagePlayer(BM_T.whip360.damage, `${enemyDeathLabel(bounty.type)}の鞭薙ぎ`, pcx, pcy, undefined, undefined, 'bm-whip360'); // G4a計測タグ(記録専用・v0.25.3607裁定)
+      sfx.whipHit?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'bm-charge-recover';
@@ -1117,6 +1134,7 @@ const tickMelee = (
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'bm-snipe';
       patch.bossStateUntil = newGameTime + BM_T.snipe.active;
+      sfx.snipe?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
     return;
   }
@@ -1303,6 +1321,7 @@ const tickBalance = (
         bcx + Math.cos(ang) * 60, bcy + Math.sin(ang) * 60,
         BB_T.rollCombo.shot,
       ));
+      sfx.shot?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
       patch.lastRangedShotAt = newGameTime;
       patch.bossState = 'bb-quickshot-recover';
       patch.bossStateUntil = newGameTime + BB_T.rollCombo.shotRecover;
@@ -1559,6 +1578,7 @@ const tickMaiko = (
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'mk-spin';
       patch.bossStateUntil = newGameTime + MK_T.spin.active;
+      sfx.spin?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
     return;
   }
@@ -1676,6 +1696,7 @@ const tickMaiko = (
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'mk-boom-out';
       patch.bossStateUntil = newGameTime + MK_T.boom.outMs;
+      sfx.throwBall?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
     return;
   }
