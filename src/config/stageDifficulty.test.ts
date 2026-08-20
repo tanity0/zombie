@@ -74,7 +74,7 @@ describe('小ボス(賞金首)のステージ固定割当', () => {
       hiddenBossAlive: false,
       redNightActive: false,
       area: 3,               // 初心者ゾーン(0-1)の外
-      storyBossOnly: false,
+      suppressBounties: false,
       labTheme: false,
       corridorMode: false,   // ★再訪/フリー周回
       tutorialStage: false,

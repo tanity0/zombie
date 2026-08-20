@@ -13,8 +13,12 @@ describe('攻略ヒント', () => {
     }
   });
 
-  it('ボスラッシュに並ぶ全てのボスにヒントがある', () => {
+  it('ボスラッシュに並ぶ全てのボスにヒントがある(phillbossを除く)', () => {
+    // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」バッチ1): phillbossはまだ技を持たない
+    // (bossState='chase'の置物。技セットはバッチ2)。技の無いボスへ攻略ヒントを書くと存在しない
+    // 挙動を捏造することになる(CLAUDE.md「実在確認の掟」)ので、技の実装と同時に足す=バッチ2で解禁。
     for (const slot of PRACTICE_SLOTS) {
+      if (slot.bossType === 'phillboss') continue;
       expect(bossHintsFor(slot.bossType).length, slot.slotKey).toBeGreaterThan(0);
     }
   });

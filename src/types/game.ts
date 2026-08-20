@@ -1156,7 +1156,12 @@ export type EnemyType =
   // (fixedGuardians の score 最上位=鴉)をボス側の実体として立て、プレイヤーと戦わせる。
   // ★型名は `ghost-*` にしない: 既存コードの "ghost boss"(GHOST_BOSS_HP_MULT 等)は
   //   **守護霊が戦う相手**を指すため逆義衝突する。状態接頭辞は `gp-`。
-  | 'guardian-phantom';
+  | 'guardian-phantom'
+  // PACING_PUZZLE.md §10(社長指示 2026-08-20): EXボス「フィル(変異体)」。テーマは大天使の融合体。
+  // 内部型ID=`phillboss`(`'phill'`はPHILL銃/PHILLガンの語で既使用のため衝突回避・§10-12#5)。
+  // stage-ex1の最奥ボス(ゲート2ボスではない=isGate2AngelBossには入れない)。バッチ1は器のみ
+  // (技セット・angelBossTickへの本格編入はバッチ2)。
+  | 'phillboss';
 
 // Weapon types
 export interface Weapon {

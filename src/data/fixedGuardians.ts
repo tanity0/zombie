@@ -38,7 +38,8 @@ export const FIXED_GUARDIAN_LEADERS_PER_BOSS = 4;
 // giantbat以外はスロットがステージ非依存なので、ボス型の正本順で後ろへ並べる。
 export const FIXED_GUARDIAN_BOSS_SLOT_ORDER: readonly string[] = [
   'giantbat@stage-1', 'giantbat@stage-2', 'giantbat@stage-3', 'giantbat@stage-4', 'giantbat@stage-5',
-  'giantbat@stage-6', 'giantbat@stage-7', 'giantbat@stage-ex1', 'giantbat@stage-ex2',
+  // PACING_PUZZLE.md §10-14#10(フィル): 'giantbat@stage-ex1' → 'phillboss@stage-ex1'(順序維持)。
+  'giantbat@stage-6', 'giantbat@stage-7', 'phillboss@stage-ex1', 'giantbat@stage-ex2',
   'mimir', 'jormungand', 'skadi', 'thor',
   'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol',
 ];

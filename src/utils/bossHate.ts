@@ -32,6 +32,7 @@ export const BOSS_HATE_ENABLED =
 const HATE_TRACKED_BOSS_TYPES = new Set<string>([
   'giantbat', 'idol', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel',
   'mimir', 'jormungand', 'skadi', 'thor',
+  'phillboss', // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」): 守護霊と共闘できるボスに編入
 ]);
 export const isHateTrackedBossType = (t: string): boolean => HATE_TRACKED_BOSS_TYPES.has(t);
 

@@ -2139,14 +2139,17 @@ export interface BountySpawnBlockInput {
   bossAlive: boolean;
   redNightActive: boolean; // 紅き夜中
   area: number;            // 憲法第4条: 初心者ゾーン(エリア0-1)では出さない
-  storyBossOnly: boolean;  // storyBossOnlyステージ(ストーリー専用進行)
+  // PACING_PUZZLE.md §10-12#8(EXボス「フィル(変異体)」バッチ1): 旧`storyBossOnly`フィールドの
+  // 意味流用をやめ、名前と意味を一致させた。呼び出し側(useGameLoop)は `storyBoss ||
+  // isExStageRun()` を渡す(M7専用ラン + EXの両方を抑止)。
+  suppressBounties: boolean;
   labTheme: boolean;       // 研究所スキン(v6 B-5)
   corridorMode: boolean;   // 廊下モード(v6 B-5)
   tutorialStage: boolean;  // チュートリアル(farBackdrop==='tutorial')
 }
 export const bountySpawnBlocked = (input: BountySpawnBlockInput): boolean =>
   input.bossFightNow || input.bossAlive || input.activeEvent || input.hiddenBossAlive || input.redNightActive
-  || input.area <= 1 || input.storyBossOnly || input.labTheme || input.corridorMode || input.tutorialStage;
+  || input.area <= 1 || input.suppressBounties || input.labTheme || input.corridorMode || input.tutorialStage;
 
 // ---------------------------------------------------------------------------------------------
 // 自然湧きの頻度ゲート(§2「頻度(叩き台)」・B4配線)。イベントproducer(eventGateOk)への相乗りに

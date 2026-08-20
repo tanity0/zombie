@@ -595,6 +595,11 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'suriel-ring', scaleMode: 'linear' as const },
       { name: 'acrasiel', scaleMode: 'nearest' as const } /* v0.25.2926 ドット化 */,
       { name: 'acrasiel-spear', scaleMode: 'linear' as const },
+      // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」バッチ1): 本体絵phill.png(768×1024・
+      // 詳細イラスト調)を取り込み。テクスチャキー='phill'(EnemyType='phillboss'とは名前が違う=
+      // PHILL銃と衝突回避のため。enemyTexKeyでphillboss→'phill'へマップする)。羽/羽攻撃/羽根エフェクト
+      // 素材(phill-wings/phill-wing-attack/fx/phill-feather)はバッチ2/3の描画配線で読み込む。
+      { name: 'phill', scaleMode: 'nearest' as const },
       // 予告円の「輪」(社長支給素材 A-1・v0.25.2395)。グレースケール+透過で、ゲーム側が tint で
       // 赤(危険)/青白(硬直)に染める。全ボスの円テレグラフで使い回す共通部品なので `fx/` 配下に置く。
       // 縮小して使う(512→直径108〜260)ので linear。

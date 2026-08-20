@@ -1376,3 +1376,32 @@ describe('playerTraits §2.16 B: リザルト年表のビュー(pendingBossClear
     expect(pendingBossClears()).toEqual([]);
   });
 });
+
+// PACING_PUZZLE.md §10-12#4/§10-14#10(EXボス「フィル(変異体)」バッチ1): bossStylesのスロットキーも
+// 初回ロード時に1度だけ 'giantbat@stage-ex1' → 'phillboss@stage-ex1' へ読み替える。
+describe('playerTraits: bossStylesの旧EXスロットキー移行', () => {
+  it('旧キーの記録を新キーへ1度だけ移行し、旧キーは消える', () => {
+    const map = installStorage();
+    map.set('zombie-ghost-profile-v1', JSON.stringify({
+      v: 1, runs: 1, reactionMs: 500, counterChance: 0.5, preferredDist: 100, meleeBias: 0.5,
+      mobility: 0.5, hitsPerMin: 1,
+      bossStyles: { mimir: { samples: 2 }, 'giantbat@stage-ex1': { samples: 3 } },
+    }));
+    const p = loadPlayerProfile()!;
+    expect(p.bossStyles?.['phillboss@stage-ex1']).toEqual({ samples: 3 });
+    expect(p.bossStyles?.['giantbat@stage-ex1']).toBeUndefined();
+    expect(p.bossStyles?.mimir).toEqual({ samples: 2 }); // 他の記録は無傷
+    // 書き戻し確認(次回ロードでも旧キーが復活しない=1度だけの移行)。
+    const raw = JSON.parse(map.get('zombie-ghost-profile-v1')!);
+    expect(raw.bossStyles['giantbat@stage-ex1']).toBeUndefined();
+    expect(raw.bossStyles['phillboss@stage-ex1']).toEqual({ samples: 3 });
+  });
+
+  it('旧キーが無ければ何もしない(すでに移行済み/新規プレイヤー)', () => {
+    installStorage();
+    runClearSession([{ type: 'thor', stageId: 'stage-1' }]);
+    settlePendingTraits(false, ['thor']);
+    const p = loadPlayerProfile()!;
+    expect(p.bossStyles?.thor).toBeDefined();
+  });
+});

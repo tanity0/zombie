@@ -20,7 +20,9 @@ export const GHOST_DOSSIER_SLOTS: readonly GhostDossierSlot[] = [
   { slotKey: 'giantbat@stage-4', bossType: 'giantbat', stageId: 'stage-4', category: 'story' },
   { slotKey: 'giantbat@stage-5', bossType: 'giantbat', stageId: 'stage-5', category: 'story' },
   { slotKey: 'giantbat@stage-7', bossType: 'giantbat', stageId: 'stage-7', category: 'story' },
-  { slotKey: 'giantbat@stage-ex1', bossType: 'giantbat', stageId: 'stage-ex1', category: 'story' },
+  // PACING_PUZZLE.md §10-12#4/§10-14#10(EXボス「フィル(変異体)」): 旧EXボス(giantbat流用)を
+  // phillbossへ差し替え(順序維持=既存プレイヤーの守護霊記録の並びを変えない)。
+  { slotKey: 'phillboss@stage-ex1', bossType: 'phillboss', stageId: 'stage-ex1', category: 'story' },
 
   { slotKey: 'miguel', bossType: 'miguel', stageId: null, category: 'gate' },
   { slotKey: 'jibril', bossType: 'jibril', stageId: null, category: 'gate' },

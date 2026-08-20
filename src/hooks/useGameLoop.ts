@@ -302,6 +302,7 @@ import {
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
+import { isExStageRun, phillBossSpawnReady, phillChaseVelocity } from '../utils/exStage';
 import {
   parseBotSkill, botSkillProfile, dodgeVector, dodgeToInput, dodgeOverridesAttack,
   createWarpTrackState, warpDodge, type BotSkill,
@@ -976,10 +977,10 @@ const FORCE_GATEBOSS = evParam('gateboss') === '1';
 // PACING_PUZZLE.md §6.28-0★/§6.28-21(バッチM52): stage-5/6/ex1にウリ/スリィエル/アクラシエルを
 // 追加(旧: 定義漏れで`?? 'miguel'`へフォールバックしていた=段階設計上の逆行=★未決①、素材受領で解消)。
 // `?? 'miguel'`のフォールバックは未定義ステージの保険として残す。
-// 注意(★未決事項に記録済み): stage-ex1は`campaign.ts`で`storyBossOnly:true`のため、現状ゲート2自体が
-// 発火しない(`gateFireOk`が`!storyBoss`を要求)。よってこのマッピング自体は正しいが、通常のゲート2
-// 経路からは当面到達できない(`?gateboss=1`のforce-spawn経路でのみ確認できる)。仕様判断(storyBossOnly
-// を変えるか等)はPACING_PUZZLE.mdの★未決事項へ記録し、ここでは配線のみ行う。
+// PACING_PUZZLE.md §10-12#8(EXボス「フィル(変異体)」バッチ1で解消): stage-ex1は
+// `campaign.ts`の`storyBossOnly`を廃止したため、通常のゲート2経路(深層境界=wallIdx4を踏破)で
+// 実際に発火するようになった(旧注記: storyBossOnlyのためforce-spawn経路でしか確認できなかった、
+// は解消済み)。表の正本(stage-ex1=suriel)は下記の通り。
 // 表の正本は `src/config/gateBoss.ts`(v0.25.2857・ボスラッシュと共有するため切り出した)。
 // (WAVE_GRACE_MS は src/utils/directorTick.ts へ移設)
 // ダンスビートB方式(社長決定 v0.25.1339・仕様はHANDOFF_DANCE_AUDIO.md末尾)。?beat=0で従来の
@@ -1091,6 +1092,12 @@ import {
 // 側の既存テーマ判定=campaign.tsの再設計はしない)。実機/自動検証用に?idolnow=1で強制召喚できるように
 // するだけに留める(fromEvent的な単発デバッグ召喚。giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
 const FORCE_IDOL = evParam('idolnow') === '1';
+// PACING_PUZZLE.md §10-14#5(EXボス「フィル(変異体)」バッチ1): 出現トリガ=gate2Cleared &&
+// プレイヤー深度>=PHILL_SPAWN_DEPTH(叩き台9000・壁4=7500より外=順序が壊れない)。
+// テスト/練習用の強制出現(?phillnow=1)は下の使用箇所で`FORCE_PHILL || practiceForces('phillnow')`
+// として読む(giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
+const PHILL_SPAWN_DEPTH = evNum('philldepth', 9000);
+const FORCE_PHILL = evParam('phillnow') === '1';
 // PACING_PUZZLE.md §6.38 B1(賞金首): デバッグ出現専用(`?bountynow=1`+`?bountytype=ranged|melee|balance|maiko`)。
 // §6.38 掲載裁定(B4): 練習出撃(変異体対策室)は`practiceForces('bountynow')`でこの経路へ相乗りする
 // (下の使用箇所で`FORCE_BOUNTY || practiceForces('bountynow')`として読む。既存URL経路はそのまま)。
@@ -1572,9 +1579,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const glenPartsPrevRef = useRef<{ id: string; count: number | null } | null>(null);
   // v0.25.3038: ヒットストップ中のエフェクト実時間tick用の前フレーム時刻(0=非停止中)。
   const hitstopFxLastRef = useRef(0);
-  // the ONE ストーリーボス(M7/EX)の進行: 出現済みか / 終幕(勝利化)予定時刻(0=未予約)。
+  // the ONE ストーリーボス(M7)の進行: 出現済みか / 終幕(勝利化)予定時刻(0=未予約)。
   const storyBossSpawnedRef = useRef(false);
   const storyBossWinAtRef = useRef(0);
+  // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」): 出現済みか(二重スポーン防止)+スポーン座標
+  // (撃破検知後にこの座標へbeginReturnPhaseするため)。
+  const phillBossSpawnedRef = useRef(false);
+  const phillBossSpawnPosRef = useRef({ x: 0, y: 0 });
   const glenRoarQueuedRef = useRef(false); // M7: 咆哮を会話キューへ積んだか
   const glenRoarShownRef = useRef(false);  // M7: 咆哮が実際に表示されたか(表示終了後の出現ゲート)
   // 洋館再訪: 開始時に洋館(保存槽)へ一度だけカメラアテンションを出したか。
@@ -2665,6 +2676,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           resetDirectorSamples(); // リザルトのタイムライン記録も新ランでクリア
           storyBossSpawnedRef.current = false; // the ONE ストーリーボス進行も新ランで再アーム
           storyBossWinAtRef.current = 0;
+          phillBossSpawnedRef.current = false; // EXボス「フィル(変異体)」も新ランで再アーム
+          phillBossSpawnPosRef.current = { x: 0, y: 0 };
           glenRoarQueuedRef.current = false;
           glenRoarShownRef.current = false;
           revisitAttnShownRef.current = false;
@@ -2675,12 +2688,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 骨格を残すため対象外(§2「7:00城ボス=既存PHASESのbossフェーズだけ残す」)。curPhaseは
         // まだこの位置では未計算(ずっと下の別ブロックで初めて求まる)ので、既存の他箇所と同じく
         // phaseAt()を軽量に再呼び出しする(同種の再計算は無視できるコスト・既存踏襲)。
+        // PACING_PUZZLE.md §10-14#4(解放): EXはstoryBossOnlyを廃止したのでstoryBoss=falseになり、
+        // ここは**コード変更なしで自然に解放される**(壁4でゲート発火が要るため=通常台本パズルは必須)。
         const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && phaseAt(newGameTime).kind !== 'boss';
         // §5.21追補(社長報告v0.25.1848「ゲート1、クリアしなくても奥に行けちゃう」の修正):
         // ゲート(境界囲い1/2)の発火は地理トリガー(境界踏破)なので、コマ/フェーズ表とは無関係に働く。
         // 旧実装は puzzleActiveNow(=フェーズ表がboss扱いの7:00-7:30はfalse)でゲートしていたため、
         // その時間帯に境界を跨ぐと発火が丸ごと止まり素通りできた(実測再現)。城ボスは城の固定位置・
         // ゲートは境界=地理的に重ならないため、実戦闘との排他は不要。フェーズ条件だけ外した版を使う。
+        // PACING_PUZZLE.md §10-14#4(解放): 同上=storyBoss=falseで自然に解放(中盤スリィエルのゲート発火に必須)。
         const gateFireOk = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage;
 
         const castle = useGameStore.getState().castleEvent;
@@ -2698,7 +2714,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const cgs = useGameStore.getState();
           return facilitiesLocked(cgs.bossFightNow, cgs.bossFightLastTrueAt, newGameTime);
         })();
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && (!noSpawn || practiceWantsCastleBoss()) && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady && !castleSpawnLocked) {
+        // PACING_PUZZLE.md §10-14#4(維持=storyBoss || isExStageRun): EXは城ボス(giantbat)の対象外
+        // (最奥ボスはphillboss。城ボスの5分湧きイベントとphillbossを混在させない=旧EXボス廃止と同じ理由)。
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && (!noSpawn || practiceWantsCastleBoss()) && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady && !castleSpawnLocked) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
@@ -2738,10 +2756,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           playSfx('boss-appear');
         }
 
-        // --- the ONE ストーリーボス(M7=グレン巨大化 / EX=未確認変異体) ---
-        // 統合正本M7/10章: storyBossOnly ステージは通常湧き・各種イベントを全停止(上下の各ゲート)し、
-        // 「導入会話(M7・会話なし=EXは即)→ボス出現→撃破→終幕→勝利」だけで構成する。ボスは既存の
-        // giantbat(城ボス)を流用(新規アート禁止=指示書1)。勝利は帰還サークルを経由せず直接 gameWon。
+        // --- the ONE ストーリーボス(M7=グレン巨大化) ---
+        // 統合正本M7章: storyBossOnly ステージは通常湧き・各種イベントを全停止(上下の各ゲート)し、
+        // 「導入会話→ボス出現→撃破→終幕→勝利」だけで構成する。ボスは既存のgiantbat(城ボス)を
+        // 流用(新規アート禁止=指示書1)。勝利は帰還サークルを経由せず直接 gameWon。
+        // ★PACING_PUZZLE.md §10-12#4(EXボス「フィル(変異体)」バッチ1): 旧EXボス(giantbat流用の
+        // このブロック)は廃止した。stage-ex1はstoryBossOnlyを外したのでstoryBoss=falseになり、
+        // このブロックはもう実行されない(=stage-7専用に確定)。EXの出現/勝利は専用ブロック
+        // (isExStageRun()配下・下記PHILL_SPAWN_DEPTH)へ移した。
         if (storyBoss && !danceTest) {
           const sbs = useGameStore.getState();
           // 導入完了 = 登場演出(ヘリ=時間停止)が明けた瞬間。会話自体は通常会話キューで非停止再生する。
@@ -2787,6 +2809,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // isStoryBossが付かない=無改変(受け入れ条件13「storyBossMode/getSelectedStageId()で分岐」)。
             const storyStageId = getSelectedStageId();
             boss.isStoryBoss = true;
+            // ★このブロックはstoryBoss(=stage-7専用)でのみ実行される(§10-12#4)。storyStageIdは
+            // 常に'stage-7'だが、型(storyBossVariant)・下流の分岐は既存のまま変更しない(無改変)。
             boss.storyBossVariant = storyStageId === 'stage-7' ? 'stage-7' : 'stage-ex1';
             // ★v0.25.3164(社長決定「ボスのHPは増やす台本を適用しよう」): ストーリーボスにも
             // ボスHPの台帳(config/bossHealth.ts)を適用する。
@@ -2840,40 +2864,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnRing(scx, scy, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
             useGameStore.getState().spawnGlow(scx, scy, GLOW_R_XXL, 'rgba(239,68,68,', 900);
             spawnBurst(scx, scy + 20, '#7f1d1d', 28);
-            // §6.36: グレン(stage-7)は出現カットイン付き。EX(stage-ex1)は「未確認変異体」=名を
-            // 出さない方針(統合正本10.3)なので台帳に無い=カットイン無し(従来のattentionのみ)。
-            // 監査指摘1: attention生存中は保留箱へ(捨てない=「毎回出す」)。
+            // §6.36: グレン(stage-7)は出現カットイン付き。監査指摘1: attention生存中は保留箱へ
+            // (捨てない=「毎回出す」)。
             {
               const glenCutin = bossCutinPayload('giantbat', storyStageId);
               if (glenCutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { x: scx, y: scy, cutin: glenCutin };
               else useGameStore.getState().triggerAttention(scx, scy, glenCutin);
             }
             playSfx('boss-appear');
-            if (getSelectedStageId() !== 'stage-7') {
-              // EX: ボス表示は「未確認変異体」のみ(PHILL/フィルの名は出さない=統合正本10.3・
-              // 修正差分メモD-07で「異常変異体」から改称)。
-              // (M7の咆哮は出現ゲート側で表示済み=v0.25.2076でここでのenqueueは廃止。)
-              useGameStore.setState({ eventBannerText: '未確認変異体', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
-            }
           } else if (storyBossSpawnedRef.current && storyBossWinAtRef.current === 0) {
             // 撃破検知: 場から giantbat が消えたら終幕へ(storyBossランには他の giantbat 供給経路がない)。
             // 画面揺れ+背景で崩れる演出は triggerDramaticDeath(既存)が担う。
             // v0.25.3029(監査指摘・致命1): 形態2のスポーン予約中は「まだ戦闘中」=終幕にしない
-            // (形態1討伐〜形態2出現の約5.2秒は盤上のgiantbatが0になるため)。EX(予約を張らない)は不変。
+            // (形態1討伐〜形態2出現の約5.2秒は盤上のgiantbatが0になるため)。
             const alive = sbs.enemies.some(e => e.type === 'giantbat') || sbs.glenForm2SpawnAt != null;
             if (!alive) {
-              if (getSelectedStageId() === 'stage-7') {
-                // 撃破後・共通/サブ3本完了分岐(統合正本M7撃破後・指示書4.8)。グレン「……」は削除しない。
-                const lines: { name: string; text: string }[] = [{ name: 'ミラ', text: 'ありがとう……ありがとう……' }];
-                if (subsAllCompletedFromMeta()) {
-                  lines.push({ name: 'ミラ', text: 'グレンの薬を託すよ' }, { name: 'グレン', text: '……' });
-                }
-                useGameStore.getState().enqueueNpcDialogue(lines);
-                storyBossWinAtRef.current = newGameTime + lines.length * (NPC_DIALOGUE_MS + NPC_DIALOGUE_GAP_MS) + 900;
-              } else {
-                // EX: 台詞・通信・正体表示なし、そのままクリア(統合正本10.4)。崩壊演出の余韻だけ置く。
-                storyBossWinAtRef.current = newGameTime + 2600;
+              // 撃破後・共通/サブ3本完了分岐(統合正本M7撃破後・指示書4.8)。グレン「……」は削除しない。
+              const lines: { name: string; text: string }[] = [{ name: 'ミラ', text: 'ありがとう……ありがとう……' }];
+              if (subsAllCompletedFromMeta()) {
+                lines.push({ name: 'ミラ', text: 'グレンの薬を託すよ' }, { name: 'グレン', text: '……' });
               }
+              useGameStore.getState().enqueueNpcDialogue(lines);
+              storyBossWinAtRef.current = newGameTime + lines.length * (NPC_DIALOGUE_MS + NPC_DIALOGUE_GAP_MS) + 900;
             }
           }
           // v0.25.3029(社長裁定「二体」): 形態1の討伐アテンションが終わったら、同位置に第二形態を
@@ -2931,6 +2943,95 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // --- EXボス「フィル(変異体)」(PACING_PUZZLE.md §10・バッチ1=器のみ。技はバッチ2) ---
+        // 出現: gate2Cleared(スリィエル撃破)&&プレイヤー深度>=PHILL_SPAWN_DEPTH(叩き台9000)。
+        // 強制出現(練習/デバッグ): ?phillnow=1 または 練習枠(practiceForces('phillnow'))。
+        // 器はangelBossTickの7人目(§10-2)を将来の到達点とするが、バッチ1はまだ技を持たない
+        // 置物(bossState='chase'で直進するだけ)。isGate2AngelBossには入れない(バッチ2で編入)。
+        if (isExStageRun() && !danceTest && !indoor && !labTheme && !phillBossSpawnedRef.current
+            && (!noSpawn || practiceForces('phillnow'))) {
+          const pcxPhill = player.x + player.width / 2;
+          const pcyPhill = player.y + player.height / 2;
+          const depthPhill = Math.hypot(pcxPhill, pcyPhill);
+          if (phillBossSpawnReady(gateMetaRef.current.gate2Cleared, depthPhill, PHILL_SPAWN_DEPTH)
+              || FORCE_PHILL || practiceForces('phillnow')) {
+            phillBossSpawnedRef.current = true;
+            // 出現位置: プレイヤーの前方(進行方向)。城/ストーリーボスと同じ「前方出現」の型。
+            let phDirX = player.vx ?? 0, phDirY = player.vy ?? 0;
+            if (Math.abs(phDirX) + Math.abs(phDirY) < 0.01 && player.lastDirection) { phDirX = player.lastDirection.x; phDirY = player.lastDirection.y; }
+            if (Math.abs(phDirX) + Math.abs(phDirY) < 0.01) phDirY = -1;
+            const phDirLen = Math.hypot(phDirX, phDirY) || 1;
+            const pscx = pcxPhill + (phDirX / phDirLen) * STORY_BOSS_SPAWN_DIST;
+            const pscy = pcyPhill + (phDirY / phDirLen) * STORY_BOSS_SPAWN_DIST;
+            const pBoss = spawnEnemyAt('phillboss', pscx - 30, pscy - 15, newGameTime);
+            // HP台帳の上書き(§10-14#3・幻影のスポーン時上書きと同作法=唯一の実効HP)。
+            {
+              const pMult = stageBossDiffMults();
+              pBoss.health = pBoss.maxHealth = Math.round(stageBossHealthFor('stage-ex1') * pMult.hp);
+              pBoss.damage = Math.round(pBoss.damage * pMult.dmg);
+            }
+            // 移動可能帯へクランプ(CLAUDE.md必須・アクターを新しく動かす時は必ず通す)。
+            const pClamped = clampRectToPlayableArea(pBoss.x, pBoss.y, pBoss.width, pBoss.height, {
+              farBackdrop: useGameStore.getState().farBackdrop,
+              labTheme,
+              corridorMode: useGameStore.getState().corridorMode,
+              m0AdvanceLimitX: useGameStore.getState().m0AdvanceLimitX,
+              corridorRunInActive: useGameStore.getState().corridorRunInActive,
+            });
+            pBoss.x = pClamped.x; pBoss.y = pClamped.y;
+            pBoss.vx = 0; pBoss.vy = 0;
+            pBoss.dormant = false; // 出現した瞬間から戦闘
+            pBoss.bossState = 'chase'; // バッチ1は置物=直進するだけ(技はバッチ2)
+            pBoss.homeX = pBoss.x; pBoss.homeY = pBoss.y;
+            phillBossSpawnPosRef.current = { x: pBoss.x + pBoss.width / 2, y: pBoss.y + pBoss.height / 2 };
+            addEnemy(pBoss);
+            useGameStore.setState({ eventBannerText: 'フィル(変異体) 出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+            // 出現エフェクト(城ボス/幻影と同じ機構を流用=新規アート不要)。
+            spawnFlash('rgba(127,29,29,0.28)', 420);
+            spawnRing(pscx, pscy, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
+            spawnRing(pscx, pscy, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
+            useGameStore.getState().spawnGlow(pscx, pscy, GLOW_R_XXL, 'rgba(239,68,68,', 900);
+            spawnBurst(pscx, pscy + 20, '#7f1d1d', 28);
+            // アテンション+カットインは出現エフェクトが消えてから(城ボス/幻影と同じ並び。
+            // bountyAttnRefは賞金首/幻影と共有する汎用の遅延ディスパッチャ=専用refを増やさない)。
+            bountyAttnRef.current = { at: newGameTime + 950, x: pscx, y: pscy, cutin: bossCutinPayload('phillboss') };
+          }
+        }
+        // フィルの最小AI(バッチ1=置物・直進チェイスのみ)。isHiddenBoss登録によりupdateEnemiesの
+        // 通常追跡AIから除外されている(idolと同じ理由=専用コントローラが座標を直接書き込む必要が
+        // ある)ため、ここで毎フレーム動かす。移動可能帯クランプは毎フレーム必須(CLAUDE.md)。
+        if (phillBossSpawnedRef.current && !danceTest) {
+          const pgsBoss = useGameStore.getState().enemies.find(e => e.type === 'phillboss');
+          if (pgsBoss && !isGameTimeStopped()) {
+            const pbcx = pgsBoss.x + pgsBoss.width / 2, pbcy = pgsBoss.y + pgsBoss.height / 2;
+            const ptcx = player.x + player.width / 2, ptcy = player.y + player.height / 2;
+            const { vx: pbvx, vy: pbvy } = phillChaseVelocity(pbcx, pbcy, ptcx, ptcy, pgsBoss.speed);
+            const pbNx = pgsBoss.x + pbvx * deltaTime;
+            const pbNy = pgsBoss.y + pbvy * deltaTime;
+            const pbClamped = clampRectToPlayableArea(pbNx, pbNy, pgsBoss.width, pgsBoss.height, {
+              farBackdrop: useGameStore.getState().farBackdrop,
+              labTheme,
+              corridorMode: useGameStore.getState().corridorMode,
+              m0AdvanceLimitX: useGameStore.getState().m0AdvanceLimitX,
+              corridorRunInActive: useGameStore.getState().corridorRunInActive,
+            });
+            useGameStore.setState(s => ({
+              enemies: s.enemies.map(e => e.id === pgsBoss.id ? { ...e, x: pbClamped.x, y: pbClamped.y, vx: pbvx, vy: pbvy } : e),
+            }));
+          }
+        }
+        // 撃破検知(§10-16「フィルをスポーンした後、場から消えたらbeginReturnPhase」の1箇所=全キル
+        // 経路を漏れなく拾う。旧EXのuseGameLoop 2858と同じ型・#1不変条件+gate2Clearedゲートにより
+        // EXにphillbossは1体しか存在しない)。EXクリアフラグは通常ステージと同じ経路
+        // (App.tsx handleVictory → markStageCleared)で自動的に付く=専用フラグは不要と判断。
+        if (phillBossSpawnedRef.current && !useGameStore.getState().returnCircle && !useGameStore.getState().gameWon) {
+          const phillAlive = useGameStore.getState().enemies.some(e => e.type === 'phillboss');
+          if (!phillAlive) {
+            useGameStore.getState().beginReturnPhase(phillBossSpawnPosRef.current.x, phillBossSpawnPosRef.current.y);
+            playSfx('event-start');
+          }
+        }
+
         // --- the ONE 洋館［SUB］再訪(統合正本9章) ---
         // 通常ステージと同様に敵が湧く中で洋館(=保存槽)へ向かい、接近すると［グレンの薬を使う］を表示。
         // 使用(useGlenMedicine)後は短い間を置いて勝利(成功/失敗の説明・演出は置かない)。
@@ -2963,7 +3064,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 「進行(スポーン段階/クリア判定/タイムアウト)」は M20 の新経路(軸1退屈補正の囲い等)が
         // puzzleActiveNow=true(通常プレイ)中に activeEvent をセットするケースでも動く必要があるため、
         // ゲートを「発火」側だけに絞る(進行側は常時稼働=puzzleActiveNow=falseの旧来挙動は無変更)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !noSpawn) {
+        // PACING_PUZZLE.md §10-14#4(維持): EXは連戦の圧を絞る(社長指摘「スリィエルの後の連戦なので
+        // そこだけ注意」・§10-6)。囲い系イベント(強制アリーナ/ミニボス/救助/卵)は側イベントとして
+        // 出さない=既定を維持。
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !noSpawn) {
           // PACING_PUZZLE.md §5.21-追補5(社長決定v0.25.1555): ゲート発火待ちが立っていて、かつ城ボス
           // 以外のイベント(レスキュー/退屈囲い=kind 'rescue'|'horde')が進行中なら、それを強制解除して
           // ゲートを発火可能にする(「ゲート>他イベント」の優先を発火時に効かせる)。城ボスは PHASE
@@ -3487,7 +3591,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ゲーム開始3分後に1回だけ発動。警告10秒→本番20秒→暗転終了。
         // 本番中: 全敵ステータス×2・経験値×2・画面赤染め。
         // 拠点近接 or 商人に話しかけると「やり過ごした」で即脱出(商人側は performAttack 内で処理)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !noSpawn) {
+        // PACING_PUZZLE.md §10-14#4(維持): 紅き夜(時間経過の全体強化イベント)はEXでも出さない
+        // (連戦バランスを守る側イベント抑止・既定は維持側)。
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !noSpawn) {
           const rnGs = useGameStore.getState();
           const rn = rnGs.redNight;
 
@@ -3602,7 +3708,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 発生源が「プレイヤーがこの固定地点に近づいたか」だけの点が退屈アリーナ(boredomArena)と違う
         // (中心はプレイヤーの現在地ではなく警察署の位置に固定)。全滅クリアの報酬付与は下の
         // 「終了判定」ブロック(ae.policeArena)側で行う。
-        if (!danceTest && !indoor && !labTheme && !storyBoss) {
+        // PACING_PUZZLE.md §10-14#4(維持): 警察署アリーナ(固定地点イベント)もEXでは出さない
+        // (側イベント抑止・既定は維持側)。
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun()) {
           const pgs = useGameStore.getState();
           const ppos = pgs.police;
           if (ppos && !pgs.policeTaken && !pgs.activeEvent) {
@@ -3707,8 +3815,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // --- ハンター変異体イベント(専用コントローラ・社長指示) ---------------------
         // 屋内/練習モードでは出さない。出現〜索敵〜発見〜追跡〜撤退〜増援を状態機械で管理。
         // ステージ2(研究所スキン=labTheme)にも出さない(社長指示v0.25.1753。凶悪ハンター含む
-        // コントローラごと停止=死神をlabで止めるのと同じ扱い)。ストーリーボス専用ラン(M7/EX)も出さない。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !noSpawn) {
+        // コントローラごと停止=死神をlabで止めるのと同じ扱い)。ストーリーボス専用ラン(M7)も出さない。
+        // PACING_PUZZLE.md §10-14#4(維持): EXはstoryBossOnlyを廃止したが、この抑止の対象としては
+        // 維持する(既存コメントが名指ししていた「M7/EX」の意図をisExStageRun()で引き継ぐ)。
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !noSpawn) {
           const H = hunterRef.current;
           const hs = useGameStore.getState();
           const hpx = hs.player.x + hs.player.width / 2;
@@ -4041,7 +4151,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 台帳に行が無いステージ(stage-2/6/7 ほか)は**湧かせない**(社長裁定「小ボスは1 3 4 5だけ。
         // 6は小ボス無し」)。本編S6は既存の corridorMode ゲートで既に塞がっているので、この台帳ゲートが
         // 実際に効くのは**S6の再訪/フリー周回**。出現位置・演出はspawnBountyEncounter共用。
-        if (!danceTest && !indoor && !storyBoss && !tutorialStage && !noSpawn) {
+        // PACING_PUZZLE.md §10-14#4(維持): 賞金首の自然湧きもEXでは止める(側イベント抑止)。
+        if (!danceTest && !indoor && !storyBoss && !isExStageRun() && !tutorialStage && !noSpawn) {
           const bgs = useGameStore.getState();
           const bountyAliveNow = bgs.enemies.some(e => isBountyType(e.type));
           const bHiddenBossAlive = bgs.enemies.some(e => isHiddenBoss(e.type));
@@ -4057,7 +4168,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             hiddenBossAlive: bHiddenBossAlive,
             redNightActive: bgs.redNight?.phase === 'active',
             area: bAreaForGate,
-            storyBossOnly: storyBoss,
+            // PACING_PUZZLE.md §10-12#8(旧storyBossOnlyフィールドの意味流用をやめる): 意味と名前を
+            // 一致させた新フィールド。EXも含めて抑止する(storyBoss=M7 / isExStageRun()=EX)。
+            suppressBounties: storyBoss || isExStageRun(),
             labTheme,
             corridorMode: bgs.corridorMode,
             tutorialStage,
@@ -4481,7 +4594,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 洋館通路(corridorMode)の死神は v0.25.2144 で復活(社長指示「時間で出るのは死神だけ」=
         // v0.25.2130の「死神なし」裁定を撤回。ゴール設置済みなので時間切れの圧として死神を使う)。
         // 区域バナー/壁踏破/ゲート予約は下の内側ゲート(!corridorMode)が引き続きスキップする。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !noSpawn) {
+        // PACING_PUZZLE.md §10-14#4(維持): 死神(深奥リスク)もEXでは出さない(側イベント抑止)。
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !noSpawn) {
           const rs = reaperRef.current;
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
@@ -12113,7 +12227,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           !danceTest &&
           !indoor &&
           !noSpawn && // ?nospawn=1 デバッグ: 旧スポナーも止める(社長試作v0.25.1861)
-          !storyBoss && // ストーリーボス専用ラン(M7/EX)は通常湧きなし(統合正本10.3)
+          // PACING_PUZZLE.md §10-14#4(解放): storyBossOnly廃止によりEXはstoryBoss=falseとなり、
+          // ここは**コード変更なしで自然に解放される**(通常湧き=EXも中盤までは通常ステージと同じ)。
+          // M7(グレン専用ラン)だけが引き続き対象。
+          !storyBoss && // ストーリーボス専用ラン(M7)は通常湧きなし(統合正本10.3)
           !tutorialStage && // チュートリアルは自動湧きなし(イベント湧きのみ予定・社長指示)
           !confining &&
           !bossChasingNow && // 裏ボスが画面内で追跡中だけ通常湧きを止める(非追跡=画面外/帰巣中は湧く・社長指摘)
@@ -12392,7 +12509,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // consumeDueWaves fires each event exactly once.
         // 研究所スキンは森系の演出波(plant/pumpkin/zombie/skeleton/werewolf)を出さない=
         // 湧きはラボ用ゾンビのみ。クリアボス(giantbat)は別経路(城ボス)で維持。
-        if (SETPIECE_ENABLED && !danceTest && !indoor && !labTheme && !storyBoss && !confining) {
+        // PACING_PUZZLE.md §10-14#4(維持): 演出波(scripted wave)もEXでは出さない(側イベント抑止)。
+        if (SETPIECE_ENABLED && !danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !confining) {
           const waveEnemies = consumeDueWaves(
             gameTime,
             consumedWavesRef.current,

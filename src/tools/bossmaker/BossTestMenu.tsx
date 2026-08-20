@@ -26,6 +26,7 @@ const PARAM_NOTE: Record<BossTestEntry['param'], string> = {
   castlenow: '城へ即出現(移動あり)',
   bountynow: '700〜1000px先へdormant出現(§6.38 B1)',
   phantomnow: '近くへ即出現(決闘・research/GHOST_BOSS.md)',
+  phillnow: '前方へ即出現(EXボス「フィル(変異体)」・PACING_PUZZLE.md §10)',
 };
 
 // 社長報告v0.25.2852「ボス戦モードが守護霊必須になっててソロで戦えない」: **なし(ソロ)を先頭に足す**。

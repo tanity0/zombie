@@ -77,8 +77,12 @@ export interface Stage {
   bgm?: string;          // ステージBGMキー(audioManager の GAME_BGM)。未指定なら theme/既定で解決。
   mainEvent?: 'suppression'; // メインミッションのゲームプレイ・イベント種別。'suppression'=4拠点制圧。
   hiddenBoss?: EnemyType; // このステージの深層域に出現する裏ボス('mimir'=ステージ1 / 'jormungand'=ステージ3)。未指定=なし。
-  // 統合正本M7/EX(10.2-10.3): ストーリーボス専用ステージ。通常湧き・城ボス・ハンター・ゲート・
+  // 統合正本M7(10.2-10.3): ストーリーボス専用ステージ。通常湧き・城ボス・ハンター・ゲート・
   // 紅き夜・死神・演出波を全停止し、「(会話)→ボス出現→撃破→勝利」だけで構成する(useGameLoop側で配線)。
+  // ★PACING_PUZZLE.md §10-12#8(EXボス「フィル(変異体)」バッチ1): stage-ex1はこのフラグを廃止した
+  // (旧EXボス=giantbat流用の直接勝利フロー自体を撤去)。stage-ex1は今後「中盤にスリィエルのゲート→
+  // 撃破で最奥手前にphillboss出現」という**通常ステージ寄りの構成**になる。isExStageRun()
+  // (src/utils/exStage.ts)が代わりにEX固有の抑止(賞金首/紅き夜/囲いイベント等)を担う。
   storyBossOnly?: boolean;
 }
 
@@ -507,7 +511,9 @@ export const STAGES: Stage[] = [
     time: '03:40',
     timeLabel: '数日後／未明', // 統合正本5.2: 表示上の時間経過(数値日時へ変換しない)
     locationTitle: '旧市街地・洋館跡地',
-    storyBossOnly: true, // 開始通信なし・現地到着後いきなり未確認変異体が出現し即戦闘(統合正本10.2)
+    // PACING_PUZZLE.md §10-12#8(バッチ1): storyBossOnlyを廃止。中盤にスリィエルのゲート→撃破で
+    // 最奥手前にphillboss(フィル)が出現する通常ステージ寄りの構成へ(旧: 開始通信なし・現地到着後
+    // いきなり未確認変異体が出現し即戦闘=旧統合正本10.2は撤回)。
     // ★仮(社長指示v0.25.3203→3205「まるっとコピーし直した方が速そう」): 専用遠景が無く壊れて見える
     // ため、stage-7の視覚設定一式(遠景=星雲/遠景森2/地平線オフセット=pixiScene側60px)を丸ごと流用。
     farBackdrop: 'stage7',

@@ -17,9 +17,11 @@ export interface BossTestEntry {
    * idolnow=idol強制召喚 / gateboss=ゲート2天使を拘束サークル付きで即発動 /
    * castlenow=城ボスを城へ即出現(城マーカーへ向かって戦う) /
    * bountynow=賞金首(§6.38 B1)をプレイヤーから700〜1000pxへdormantで即出現 /
-   * phantomnow=守護霊ボス「幻影」(research/GHOST_BOSS.md)をプレイヤーの近くへ即出現(休眠なし)。
+   * phantomnow=守護霊ボス「幻影」(research/GHOST_BOSS.md)をプレイヤーの近くへ即出現(休眠なし) /
+   * phillnow=EXボス「フィル(変異体)」(PACING_PUZZLE.md §10)を出現条件(gate2Cleared+深度)を
+   * 無視してプレイヤーの近くへ即出現。
    */
-  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow' | 'bountynow' | 'phantomnow';
+  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow' | 'bountynow' | 'phantomnow' | 'phillnow';
   /** param==='bountynow'の時だけ意味を持つ副パラメータ(?bountytype=)。4種の型を選ぶ。 */
   bountyType?: 'ranged' | 'melee' | 'balance' | 'maiko';
 }
@@ -37,9 +39,12 @@ export const BOSS_TEST_ENTRIES: readonly BossTestEntry[] = [
   { boss: 'jibril', stageId: 'stage-3', param: 'gateboss' },
   { boss: 'rafi', stageId: 'stage-4', param: 'gateboss' },
   { boss: 'uri', stageId: 'stage-5', param: 'gateboss' },
-  { boss: 'suriel', stageId: 'stage-6', param: 'gateboss' },
-  { boss: 'acrasiel', stageId: 'stage-ex1', param: 'gateboss' },
+  // PACING_PUZZLE.md §10-12#2(ゲートボス交換): stage-6=acrasiel / stage-ex1=suriel。
+  { boss: 'acrasiel', stageId: 'stage-6', param: 'gateboss' },
+  { boss: 'suriel', stageId: 'stage-ex1', param: 'gateboss' },
   { boss: 'giantbat', stageId: 'stage-1', param: 'castlenow' },
+  // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」): デバッグ出現のみ(?phillnow=1)。
+  { boss: 'phillboss', stageId: 'stage-ex1', param: 'phillnow' },
   // PACING_PUZZLE.md §6.38 B1(賞金首): デバッグ出現のみ(?bountynow=1&bountytype=…)。
   // stage-1(森・非labテーマ/非corridor)で統一=v6 B-5の抑止条件に抵触しない場所。
   { boss: 'bounty-ranged', stageId: 'stage-1', param: 'bountynow', bountyType: 'ranged' },

@@ -81,6 +81,8 @@ const HIDDEN_BOSSES: CastEntry[] = [
   { tex: 'skadi', label: 'スカジ', spec: B_HEAVY, targetH: 320, speed: 45 },
   { tex: 'thor', label: 'トール', spec: B_WALK, targetH: 300, speed: 60 },
   { tex: 'idol', label: '偶像', spec: B_WALK, targetH: 280, speed: 70 },
+  // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」・バッチ1): isHiddenBoss編入=このタブが同じ扱い。
+  { tex: 'phill', label: 'フィル(変異体)', spec: B_HOVER, targetH: 320, speed: 40 },
 ];
 
 const TABS: { key: string; label: string; cast: CastEntry[] }[] = [

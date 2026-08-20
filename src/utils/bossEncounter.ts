@@ -17,6 +17,12 @@ import { isBossTestOrPracticeRun, PRACTICE_SLOTS } from './bossPractice';
 
 const KEY = 'boss.encountered.v1';
 
+// PACING_PUZZLE.md §10-12#4/§10-14#10(EXボス「フィル(変異体)」バッチ1): 旧EXボス(giantbat流用)の
+// スロットキーは 'giantbat@stage-ex1' → 'phillboss@stage-ex1' へ置換した(GHOST_DOSSIER_SLOTS)。
+// 保存済みの遭遇記録は初回ロード時に1度だけ読み替えて旧キーを削除する(恒久2キー併存を避ける)。
+const LEGACY_PHILLBOSS_SLOT_KEY = 'giantbat@stage-ex1';
+const PHILLBOSS_SLOT_KEY = 'phillboss@stage-ex1';
+
 /** 端末の遭遇済みキー。初回読み込み後はメモリ側を正とし、増えた時だけ書く(毎tick書かない)。 */
 let cache: Set<string> | null = null;
 
@@ -28,6 +34,11 @@ const read = (): Set<string> => {
     cache = new Set(Array.isArray(arr) ? arr.filter((v): v is string => typeof v === 'string') : []);
   } catch {
     cache = new Set();
+  }
+  if (cache.has(LEGACY_PHILLBOSS_SLOT_KEY)) {
+    cache.delete(LEGACY_PHILLBOSS_SLOT_KEY);
+    cache.add(PHILLBOSS_SLOT_KEY);
+    try { localStorage.setItem(KEY, JSON.stringify([...cache])); } catch { /* 保存不可でも進行は止めない */ }
   }
   return cache;
 };

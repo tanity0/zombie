@@ -2594,6 +2594,9 @@ const BOSS_SPRITE_FIT: Record<string, { w: number; h: number; cx: number; cy: nu
   acrasiel:   { w: 0.55, h: 0.20, cx: 0.50, cy: 0.95 }, // アクラシエル(532×1208・脚が無い結晶)。
   // §6.28-20(バッチM52・確定値): stage-2隠しボス「idol」(983×1334・等身大の人間・ハンドガンを構えて走る)。
   idol:       { w: 0.42, h: 0.13, cx: 0.42, cy: 0.98 },
+  // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」バッチ1): phill.png(768×1024)。叩き台=天使系
+  // (miguel等)の型を流用した仮値(実機で社長が調整=バッチ2/3の描画配線で本格化)。
+  phillboss:  { w: 0.50, h: 0.20, cx: 0.50, cy: 0.97 },
 };
 const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85 };
 // PACING_PUZZLE.md §6.28(バッチM53/M55/M57/M61/M62/M63): ゲート2ボスごとのフォールバック
@@ -20421,8 +20424,11 @@ export class PixiScene {
    */
   private enemyTexKey(type: string, id: string): string {
     return (
+      // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」バッチ1): 内部型ID='phillboss'だが
+      // 素材ファイル名は'phill'(PHILL銃と衝突回避のため型名を変えた・§10-12#5)。
+      (type === 'phillboss' ? 'phill' : null)
       // M7ボス=stage-7のgiantbatだけグレンの新アートに差し替え(社長支給v0.25.1999)。
-      ((this.currentFarKey === 'stage7' && type === 'giantbat') ? 'glen-boss' : null)
+      ?? ((this.currentFarKey === 'stage7' && type === 'giantbat') ? 'glen-boss' : null)
       // ★見た目2種以上を持つ敵(bat/skeleton…社長支給の新アート)は**全ステージ共通**。
       // ステージ別の差し替えより**先に**返すので、stage3/4/5 でも同じ絵が出る。
       // どれになるかは敵IDで固定=個体はちらつかない。表は `utils/enemyVariant.ts`。

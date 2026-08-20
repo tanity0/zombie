@@ -249,6 +249,20 @@ const isValidProfile = (v: unknown): v is PlayerProfile => {
     && (o.bossStyles === undefined || (typeof o.bossStyles === 'object' && o.bossStyles !== null));
 };
 
+// PACING_PUZZLE.md §10-12#4/§10-14#10(EXボス「フィル(変異体)」バッチ1): bossStylesのスロットキーも
+// ghostDossier/bossEncounterと同じく 'giantbat@stage-ex1' → 'phillboss@stage-ex1' へ読み替える
+// (初回ロード時に1度だけ移行して旧キーを削除=恒久2キー併存を避ける)。
+const LEGACY_PHILLBOSS_STYLE_KEY = 'giantbat@stage-ex1';
+const PHILLBOSS_STYLE_KEY = 'phillboss@stage-ex1';
+const migrateLegacyPhillbossStyle = (
+  bossStyles: Record<string, BossStyleSlot> | undefined,
+): { styles: Record<string, BossStyleSlot> | undefined; changed: boolean } => {
+  if (!bossStyles || !(LEGACY_PHILLBOSS_STYLE_KEY in bossStyles)) return { styles: bossStyles, changed: false };
+  const { [LEGACY_PHILLBOSS_STYLE_KEY]: legacy, ...rest } = bossStyles;
+  // 新キーに既に記録がある(重複保存等の異常系)なら、既存の新キーを優先し旧キーはただ捨てる。
+  return { styles: { ...rest, [PHILLBOSS_STYLE_KEY]: rest[PHILLBOSS_STYLE_KEY] ?? legacy }, changed: true };
+};
+
 /** 保存済みプロファイル。無ければ null(G2側が既定プロファイルへフォールバックする)。 */
 export const loadPlayerProfile = (): PlayerProfile | null => {
   try {
@@ -256,15 +270,19 @@ export const loadPlayerProfile = (): PlayerProfile | null => {
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (!isValidProfile(parsed)) return null;
+    const { styles: migratedBossStyles, changed: bossStylesMigrated } = migrateLegacyPhillbossStyle(parsed.bossStyles);
     // 後方互換: 旧フォーマット(欠損ノブ)は控えめな既定値(SEED)/空表で埋めて返す。
-    return {
+    const profile: PlayerProfile = {
       ...parsed,
       subUsesPerMin: parsed.subUsesPerMin ?? SEED_PROFILE.subUsesPerMin,
       stationaryFrac: parsed.stationaryFrac ?? SEED_PROFILE.stationaryFrac,
       approachPerMin: parsed.approachPerMin ?? SEED_PROFILE.approachPerMin,
       moveReactions: parsed.moveReactions ?? {},
       subStyles: normalizeSubStyles(parsed.subStyles),
+      bossStyles: migratedBossStyles,
     };
+    if (bossStylesMigrated) saveProfile(profile);
+    return profile;
   } catch {
     return null;
   }

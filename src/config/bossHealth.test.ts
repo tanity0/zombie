@@ -15,7 +15,17 @@ describe('boss health progression', () => {
     expect(stages.map(stageBossHealthFor)).toEqual([3500, 4000, 4500, 5000, 5500, 12000]);
     expect(STAGE_BOSS_HEALTH_BY_STAGE).not.toHaveProperty('stage-6');
     expect(STAGE_BOSS_HEALTH_BY_STAGE['stage-7']).toBe(12000);
-    expect(Object.values(STAGE_BOSS_HEALTH_BY_STAGE).every((hp, i, all) => i === 0 || hp > all[i - 1])).toBe(true);
+    expect(stages.map(stageBossHealthFor).every((hp, i, all) => i === 0 || hp > all[i - 1])).toBe(true);
+  });
+
+  // PACING_PUZZLE.md §10-12#3/§10-14#3(EXボス「フィル(変異体)」): stage-ex1(phillboss)の行。
+  // 叩き台=stage-7の値×0.85(§10-6「連戦補正」=スリィエルの後の連戦なので単独ボス想定より1段控えめ)。
+  // stage-7より低いのは意図的(上の単調増加チェックの対象からは意図的に外す)。
+  it('stage-ex1(フィル)はstage-7の85%(連戦補正・叩き台)', () => {
+    expect(STAGE_BOSS_HEALTH_BY_STAGE['stage-ex1']).toBe(10200);
+    expect(stageBossHealthFor('stage-ex1')).toBe(10200);
+    expect(STAGE_BOSS_HEALTH_BY_STAGE['stage-ex1']).toBeLessThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-7']);
+    expect(STAGE_BOSS_HEALTH_BY_STAGE['stage-ex1']).toBeGreaterThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-5']);
   });
 
   it('raises gate bosses in encounter order', () => {

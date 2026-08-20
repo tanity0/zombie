@@ -85,7 +85,10 @@ const COMPACT_BOSS_TYPES = new Set<EnemyType>([
   // giant級の2.5倍引きだと絵が米粒になるので compact(far=0.48)。
   'guardian-phantom',
 ]);
-const GIANT_BOSS_TYPES = new Set<EnemyType>(['mimir', 'jormungand', 'skadi']);
+// PACING_PUZZLE.md §10-14#12(フィル・監査是正): phillbossはGIANT_BOSS_TYPES(far=0.40)に登録する
+// (COMPACT_BOSS_TYPES=0.48ではない=旧監査の誤記を訂正した値)。isStoryBoss経由にせず型で直接判定する
+// (§10-15#8「交戦距離はphillboss型でgiant級の距離を返す分岐を1行足す。isStoryBoss経由にしない」)。
+const GIANT_BOSS_TYPES = new Set<EnemyType>(['mimir', 'jormungand', 'skadi', 'phillboss']);
 
 export const bossZoomClassFor = (type: EnemyType, isStoryBoss = false): BossZoomClass => {
   if (type === 'giantbat' && isStoryBoss) return 'giant';

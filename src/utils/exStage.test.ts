@@ -1,0 +1,67 @@
+// PACING_PUZZLE.md §10-15#7(isExStageRun)。node 既定環境には localStorage が無いので、
+// stageDiffMults.test.ts と同じ作法で最小モックを差す(getSelectedStageId は
+// `typeof localStorage === 'undefined'` で早期returnするため)。
+import { describe, it, expect, beforeEach } from 'vitest';
+
+const backing: Record<string, string> = {};
+(globalThis as unknown as { localStorage: Storage }).localStorage = {
+  getItem: (k: string) => (k in backing ? backing[k] : null),
+  setItem: (k: string, v: string) => { backing[k] = v; },
+  removeItem: (k: string) => { delete backing[k]; },
+  clear: () => { for (const k of Object.keys(backing)) delete backing[k]; },
+  key: () => null,
+  get length() { return Object.keys(backing).length; },
+} as Storage;
+
+import { isExStageRun, phillBossSpawnReady, phillChaseVelocity } from './exStage';
+
+const SELECTED_KEY = 'zombie.progress.selectedStage';
+const setStage = (id: string) => { backing[SELECTED_KEY] = id; };
+
+beforeEach(() => { for (const k of Object.keys(backing)) delete backing[k]; });
+
+describe('isExStageRun', () => {
+  it('選択ステージがstage-ex1ならtrue', () => {
+    setStage('stage-ex1');
+    expect(isExStageRun()).toBe(true);
+  });
+
+  it('他ステージではfalse', () => {
+    setStage('stage-7');
+    expect(isExStageRun()).toBe(false);
+  });
+
+  it('未選択(空)ではfalse', () => {
+    expect(isExStageRun()).toBe(false);
+  });
+});
+
+describe('phillBossSpawnReady — §10-14#5: gate2Cleared=falseの間は湧かない', () => {
+  it('gate2Cleared=falseなら深度に関わらずfalse', () => {
+    expect(phillBossSpawnReady(false, 999999, 9000)).toBe(false);
+  });
+  it('gate2Cleared=trueでも深度未達ならfalse', () => {
+    expect(phillBossSpawnReady(true, 8999, 9000)).toBe(false);
+  });
+  it('gate2Cleared=trueかつ深度到達でtrue(境界=以上)', () => {
+    expect(phillBossSpawnReady(true, 9000, 9000)).toBe(true);
+    expect(phillBossSpawnReady(true, 9500, 9000)).toBe(true);
+  });
+});
+
+describe('phillChaseVelocity', () => {
+  it('目標へ向かう単位ベクトル×speedを返す', () => {
+    const { vx, vy } = phillChaseVelocity(0, 0, 100, 0, 70);
+    expect(vx).toBeCloseTo(70);
+    expect(vy).toBeCloseTo(0);
+  });
+  it('斜め方向でも速さはspeedに一致する', () => {
+    const { vx, vy } = phillChaseVelocity(0, 0, 30, 40, 50); // 3-4-5三角形
+    expect(Math.hypot(vx, vy)).toBeCloseTo(50);
+    expect(vx).toBeCloseTo(30);
+    expect(vy).toBeCloseTo(40);
+  });
+  it('距離が1px未満なら停止(ゼロ除算しない)', () => {
+    expect(phillChaseVelocity(5, 5, 5.2, 5.1, 70)).toEqual({ vx: 0, vy: 0 });
+  });
+});

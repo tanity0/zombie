@@ -205,9 +205,12 @@ describe('M7グレン戦直前・確定稿(指示書4.7「台詞順が完全一�
       { speaker: 'ミラ', text: '……終わらせてあげて！' },
     ]);
   });
-  it('M7/EXはストーリーボス専用(通常湧きなし)', () => {
+  it('M7はストーリーボス専用(通常湧きなし)', () => {
     expect(st('stage-7').storyBossOnly).toBe(true);
-    expect(st('stage-ex1').storyBossOnly).toBe(true);
+    // PACING_PUZZLE.md §10-12#8(EXボス「フィル(変異体)」バッチ1): stage-ex1はstoryBossOnlyを
+    // 廃止した(旧EXボス=giantbat流用のstoryBossOnly直行フローは撤去。中盤にスリィエルのゲート→
+    // 撃破で最奥手前にphillboss出現、という通常ステージ寄りの構成へ変わった)。
+    expect(st('stage-ex1').storyBossOnly).toBeUndefined();
   });
 });
 

@@ -13,7 +13,10 @@ describe('GHOST_DOSSIER_SLOTS', () => {
     expect(keys).not.toContain('giantbat@stage-6');
     expect(keys).not.toContain('giantbat@stage-ex2');
     expect(keys).toContain('giantbat@stage-7');
-    expect(keys).toContain('giantbat@stage-ex1');
+    // PACING_PUZZLE.md §10-14#10(EXボス「フィル(変異体)」バッチ1): 旧EXボス(giantbat流用)の枠は
+    // phillbossへ置換した(順序維持)。
+    expect(keys).not.toContain('giantbat@stage-ex1');
+    expect(keys).toContain('phillboss@stage-ex1');
   });
 });
 

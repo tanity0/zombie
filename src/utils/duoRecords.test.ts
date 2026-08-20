@@ -186,3 +186,29 @@ describe('duoRecords: 交戦時計と打刻', () => {
     expect(album?.slots.thor.clearTimeMs).toBe(30_000);
   });
 });
+
+// PACING_PUZZLE.md §10-12#4/§10-14#10(EXボス「フィル(変異体)」バッチ1): スロットキーも初回ロード時に
+// 1度だけ 'giantbat@stage-ex1' → 'phillboss@stage-ex1' へ読み替える。
+describe('同行台帳: 旧EXスロットキー移行', () => {
+  it('旧キーの記録を新キーへ1度だけ移行し、旧キーは消える', () => {
+    const pre: DuoAlbum = {
+      v: 1,
+      slots: { mimir: { clearTimeMs: 20_000, at: 5 }, 'giantbat@stage-ex1': { clearTimeMs: 40_000, at: 9 } },
+    };
+    localStorage.setItem('zombie-ghost-duo-album-v1', JSON.stringify(pre));
+    const album = loadDuoAlbum();
+    expect(album?.slots['phillboss@stage-ex1']).toEqual({ clearTimeMs: 40_000, at: 9 });
+    expect(album?.slots['giantbat@stage-ex1']).toBeUndefined();
+    expect(album?.slots.mimir).toEqual({ clearTimeMs: 20_000, at: 5 }); // 他のスロットは無傷
+    // 書き戻し確認(次回ロードでも旧キーが復活しない=1度だけの移行)。
+    const raw = JSON.parse(localStorage.getItem('zombie-ghost-duo-album-v1')!) as DuoAlbum;
+    expect(raw.slots['giantbat@stage-ex1']).toBeUndefined();
+    expect(raw.slots['phillboss@stage-ex1']).toEqual({ clearTimeMs: 40_000, at: 9 });
+  });
+
+  it('旧キーが無ければ何もしない(すでに移行済み/新規プレイヤー)', () => {
+    engageFor('thor', 0, 30_000);
+    recordDuoBossClear('thor', 'stage-3', ally());
+    expect(loadDuoAlbum()?.slots.thor.clearTimeMs).toBe(30_000);
+  });
+});

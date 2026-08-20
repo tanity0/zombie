@@ -101,7 +101,10 @@ describe('ボスラッシュの台帳', () => {
     const unreachable = PRACTICE_SLOTS.filter(s => !s.reachable).map(s => s.slotKey).sort();
     // 幻影(決闘)は**本編のどこにも置かれていない**ので reachable:false。ただし遭遇記録を待たずに
     // 選べる(alwaysUnlocked)ので、ここに載ることと解放されていることは矛盾しない。
-    expect(unreachable).toEqual(['acrasiel', 'giantbat@stage-2', 'suriel', GUARDIAN_PHANTOM_SLOT_KEY].sort());
+    // PACING_PUZZLE.md §10-12#2/§10-14#9(ゲートボス交換): stage-6=acrasiel / stage-ex1=suriel。
+    // storyBossOnlyがstage-ex1から外れたのでsurielは本編で遭遇可能になった(=unreachableから除外)。
+    // 代わりにstage-6側のacrasielが不変で遭遇不能のまま残る(交換前後で「1体は遭遇不能」自体は不変・R9)。
+    expect(unreachable).toEqual(['acrasiel', 'giantbat@stage-2', GUARDIAN_PHANTOM_SLOT_KEY].sort());
     expect(ghostDerivedSlots()).toHaveLength(GHOST_DOSSIER_SLOTS.length); // 既存枠を外していない
   });
 });
@@ -182,10 +185,21 @@ describe('練習画面のHP表示', () => {
   it('天使/裏ボスの表示 = 実戦スポーン値(台帳HP×ステージ係数)', () => {
     for (const slot of PRACTICE_SLOTS) {
       if (!isHiddenBoss(slot.bossType)) continue; // 天使6体+裏ボス5体(idol含む)
+      // PACING_PUZZLE.md §10-14#3(フィル): phillbossはisHiddenBoss編入だが、実効HPは
+      // ENEMY_STATSの素の値(プレースホルダ500)ではなく**スポーン時にSTAGE_BOSS_HEALTH_BY_STAGEで
+      // 上書きされた値**(giantbat/幻影と同じ「表=実戦」原則)。下の専用テストで別途検証する。
+      if (slot.bossType === 'phillboss') continue;
       // 実戦は spawnEnemyAt が書く台帳HP(倍率を通さない固定型)へ、スポーン地点でステージ係数を掛ける。
       const spawned = spawnEnemyAt(slot.bossType, 0, 0, 0);
       expect(practiceBossHealth(slot), slot.slotKey).toBe(Math.round(spawned.health * stageHpMult(slot.stageId)));
     }
+  });
+
+  it('フィル(phillboss)の表示 = STAGE_BOSS_HEALTH_BY_STAGE[stage-ex1]×ステージ係数', () => {
+    const slot = practiceSlotByKey('phillboss@stage-ex1')!;
+    expect(slot).toBeDefined();
+    const ledger = STAGE_BOSS_HEALTH_BY_STAGE[slot.stageId];
+    expect(practiceBossHealth(slot)).toBe(Math.round(ledger * stageHpMult(slot.stageId)));
   });
 
   it('城ボス(giantbat)の表示 = 台帳HP×ステージ係数(stage-7形態1枠は×1.5・社長裁定v0.25.3700)', () => {

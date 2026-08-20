@@ -55,13 +55,24 @@ const isValidAlbum = (v: unknown): v is DuoAlbum => {
     && typeof (s as Record<string, unknown>).at === 'number');
 };
 
+// PACING_PUZZLE.md §10-12#4/§10-14#10(EXボス「フィル(変異体)」バッチ1): スロットキーも
+// 'giantbat@stage-ex1' → 'phillboss@stage-ex1' へ読み替える(初回ロード時に1度だけ移行して
+// 旧キーを削除=恒久2キー併存を避ける)。
+const LEGACY_PHILLBOSS_SLOT_KEY = 'giantbat@stage-ex1';
+const PHILLBOSS_SLOT_KEY = 'phillboss@stage-ex1';
+
 /** 保存済みの同行撃破台帳。無ければ null(=まだ同行撃破が1件も無い)。 */
 export const loadDuoAlbum = (): DuoAlbum | null => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    return isValidAlbum(parsed) ? parsed : null;
+    if (!isValidAlbum(parsed)) return null;
+    if (!(LEGACY_PHILLBOSS_SLOT_KEY in parsed.slots)) return parsed;
+    const { [LEGACY_PHILLBOSS_SLOT_KEY]: legacy, ...rest } = parsed.slots;
+    const migrated: DuoAlbum = { v: 1, slots: { ...rest, [PHILLBOSS_SLOT_KEY]: rest[PHILLBOSS_SLOT_KEY] ?? legacy } };
+    saveDuoAlbum(migrated);
+    return migrated;
   } catch {
     return null;
   }

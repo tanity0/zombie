@@ -63,7 +63,7 @@ describe('bountyLingerExpired — 滞在1分(gameTime基準・§2)', () => {
 describe('bountySpawnBlocked — 抑止ゲート(B1で用意・B4でuseGameLoop.tsの自然湧きへ配線)', () => {
   const ok = (): Parameters<typeof bountySpawnBlocked>[0] => ({
     bossFightNow: false, bossAlive: false, activeEvent: false, hiddenBossAlive: false, redNightActive: false,
-    area: 2, storyBossOnly: false, labTheme: false, corridorMode: false, tutorialStage: false,
+    area: 2, suppressBounties: false, labTheme: false, corridorMode: false, tutorialStage: false,
   });
   it('全条件クリアならブロックしない', () => {
     expect(bountySpawnBlocked(ok())).toBe(false);
@@ -76,7 +76,7 @@ describe('bountySpawnBlocked — 抑止ゲート(B1で用意・B4でuseGameLoop.
     expect(bountySpawnBlocked({ ...ok(), redNightActive: true })).toBe(true);
     expect(bountySpawnBlocked({ ...ok(), area: 1 })).toBe(true); // 初心者ゾーン(憲法第4条・エリア0-1)
     expect(bountySpawnBlocked({ ...ok(), area: 0 })).toBe(true);
-    expect(bountySpawnBlocked({ ...ok(), storyBossOnly: true })).toBe(true);
+    expect(bountySpawnBlocked({ ...ok(), suppressBounties: true })).toBe(true);
     expect(bountySpawnBlocked({ ...ok(), labTheme: true })).toBe(true); // v6 B-5
     expect(bountySpawnBlocked({ ...ok(), corridorMode: true })).toBe(true); // v6 B-5
     expect(bountySpawnBlocked({ ...ok(), tutorialStage: true })).toBe(true);
@@ -1456,7 +1456,7 @@ describe('★【回帰・v0.25.3549】城ボスと賞金首の同時出現', () 
   // その「湧いたが未交戦」の窓に、3:00から繰り越された賞金首が入り込んでいた。
   const base = (): Parameters<typeof bountySpawnBlocked>[0] => ({
     bossFightNow: false, bossAlive: false, activeEvent: false, hiddenBossAlive: false, redNightActive: false,
-    area: 2, storyBossOnly: false, labTheme: false, corridorMode: false, tutorialStage: false,
+    area: 2, suppressBounties: false, labTheme: false, corridorMode: false, tutorialStage: false,
   });
 
   it('★城ボスが湧いていれば、まだ交戦していなくても賞金首は出ない', () => {

@@ -62,6 +62,29 @@ describe('ボスの遭遇記録', () => {
   });
 });
 
+// PACING_PUZZLE.md §10-12#4/§10-14#10(EXボス「フィル(変異体)」バッチ1): 旧EXボス(giantbat流用)の
+// 遭遇記録キーは初回ロード時に1度だけ読み替える。
+describe('旧EXボスのスロットキー移行(giantbat@stage-ex1 → phillboss@stage-ex1)', () => {
+  it('旧キーの記録を新キーへ1度だけ移行し、旧キーは消える', () => {
+    store.set('boss.encountered.v1', JSON.stringify(['mimir', 'giantbat@stage-ex1']));
+    resetBossEncounterCache();
+    expect(hasEncounteredBoss('phillboss@stage-ex1')).toBe(true);
+    expect(hasEncounteredBoss('giantbat@stage-ex1')).toBe(false);
+    expect(hasEncounteredBoss('mimir')).toBe(true); // 他の記録は無傷
+    // 移行後は保存側からも旧キーが消えている(恒久2キー併存を避ける)。
+    resetBossEncounterCache();
+    const raw = JSON.parse(store.get('boss.encountered.v1')!) as string[];
+    expect(raw).not.toContain('giantbat@stage-ex1');
+    expect(raw).toContain('phillboss@stage-ex1');
+  });
+
+  it('旧キーが無ければ何もしない(すでに移行済み/新規プレイヤー)', () => {
+    markBossesEncountered(new Set(['phillboss@stage-ex1']));
+    resetBossEncounterCache();
+    expect(hasEncounteredBoss('phillboss@stage-ex1')).toBe(true);
+  });
+});
+
 describe('全開放(開発用・オプションの「全ステージ+ボス解放」から)', () => {
   // 社長指示v0.25.2861「ステージ解放と一緒にしちゃっていい」。導線テスト用なので、
   // 本編でまだ置かれていない3体(BOSS_MAKER.md §20-10)も含めて**台帳の全部**を開ける。

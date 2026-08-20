@@ -1,5 +1,165 @@
 # Development Log
 
+## v0.25.3716 — フィルEXボス バッチ1(器)実装【2026-08-21 00:45 JST】
+
+PACING_PUZZLE.md §10(§10-1〜§10-16。着手時点で§10-17は未着手=バッチ2の受け入れ条件・本バッチの対象外)
+に基づく、EXボス「フィル(変異体)」のシミュ層バッチ1(技・描画は含まない)。**コミットは親が行う
+(本エントリはバッチ1実装の完了報告)**。
+
+### やったこと(要約)
+- 敵タイプ `'phillboss'` 新設(`src/types/game.ts`)+ `ENEMY_STATS.phillboss`
+  (帯=スリィエル級60×30・speed=70・health=500はプレースホルダ=スポーン時上書きが唯一の実効値)。
+- 編入の全数grep→該当箇所へ編入(下の一覧)。全数はTS型検査(`EnemyType`追加後の`tsc`エラー)で
+  機械的に洗い出し、非exhaustiveな`Partial<Record<EnemyType,…>>`箇所は個別にレビュー。
+- ゲートボス交換(`config/gateBoss.ts`): stage-6=acrasiel / stage-ex1=suriel(旧: 逆)。
+- HP台帳(`config/bossHealth.ts`): `STAGE_BOSS_HEALTH_BY_STAGE['stage-ex1'] = round(12000*0.85) = 10200`
+  (stage-7の85%・連戦補正の叩き台)。
+- EXステージフロー: `campaign.ts`からstage-ex1の`storyBossOnly`を撤去。新設の葉モジュール
+  `src/utils/exStage.ts`(`isExStageRun` / `phillBossSpawnReady` / `phillChaseVelocity`)。
+  `useGameLoop.ts`の`!storyBoss`箇所を解放/維持に仕分け(下表)。`bountyTick.ts`は
+  `storyBossOnly`→`suppressBounties`へ改名(意味の流用をやめた)。
+- 旧EXボス(giantbat流用のstoryBossスポーン経路)を撤去: `useGameLoop.ts`の`if(storyBoss)`ブロックから
+  EX分岐(未確認変異体バナー・撃破検知のEX側else)を削除、`gameStore.ts`のgiant tick選択ロジックから
+  `storyBossVariant==='stage-ex1'`専用分岐を削除(いずれも到達不能だった死コードの整理=挙動は不変)。
+- フィルの出現+勝利(`useGameLoop.ts`新規ブロック、旧EXの2858行と同じ「1箇所ポーリング」型):
+  `isExStageRun() && phillBossSpawnReady(gate2Cleared, depth, PHILL_SPAWN_DEPTH=9000)`で1体スポーン
+  (`?phillnow=1`/練習枠`practiceForces('phillnow')`で強制も可)。HPは`stageBossHealthFor('stage-ex1')`で
+  スポーン直後に上書き(幻影と同作法)。`clampRectToPlayableArea`必須(CLAUDE.md)。バッチ1は技を
+  持たないため、`phillChaseVelocity`(新設純関数)で毎フレーム直進チェイスするだけの最小AIを追加
+  (isHiddenBoss編入によりupdateEnemiesの通常AIから除外されるため必須=idolと同じ理由)。
+  撃破検知は「スポーン後、場からphillbossが消えたら`beginReturnPhase(スポーン座標)`」の1箇所。
+  EXクリアフラグは調査の結果**専用配線は不要**と判断(App.tsx `handleVictory`が
+  `getEventQuestConfig('stage-ex1')`未設定→`markStageCleared`の通常経路を自動的に通るため)。
+- 守護霊台帳の移行: `ghostDossier.ts`/`fixedGuardians.ts`の`'giantbat@stage-ex1'`を
+  `'phillboss@stage-ex1'`へ置換(順序維持)。**保存済みデータの読み替え移行**(初回ロード時に1度だけ・
+  旧キー削除)を3箇所に実装: `bossEncounter.ts`(遭遇済み解放セット)/`playerTraits.ts`
+  (`bossStyles`=守護霊の攻略スタイル)/`duoRecords.ts`(同行撃破台帳)。いずれもテスト同コミット。
+
+### 編入した/しない(理由)全件列挙(§10-12#6の監査列挙+実装中に判明した追加箇所)
+**編入した**(理由つき):
+- `isHiddenBoss` — フィルは専用コントローラが座標を直接書き込む型(通常追跡AIから除外・生AABB・
+  BOSS_SPRITE_FIT対象)として扱うため。★判断メモ: §10-2は将来像として「angelBossTickの7人目」を
+  指すが、バッチ1は`isGate2AngelBoss`未編入(下記)なのでangelBossTickは一切phillbossを拾わない。
+  そのままだと「通常AIからも除外・専用コントローラも無し」で完全に静止するため、`isHiddenBoss`編入と
+  セットで新規の最小チェイスAI(`phillChaseVelocity`)を追加した。isHiddenBoss登録は指示の直接記載
+  ではなく実装上必須だった判断=念のため明記。
+- `CONSTANT_STRENGTH_TYPES` — HPはスポーン時上書きが唯一の実効値(§10-14#3の明記どおり)。
+- `getEnemyColor` — `#f5e6c8`(光の乳白)。
+- `bossEngagement.ts`(`ENGAGEABLE_BOSS_TYPES`) — HPバー/ボス引きズーム/致命の一撃等の既定を受ける。
+- `bossHate.ts`(`HATE_TRACKED_BOSS_TYPES`) — 守護霊と共闘できるボスに編入。
+- `cameraZoom.ts`(`GIANT_BOSS_TYPES`) — far=0.40(§10-14#12の訂正どおり。COMPACT=0.48ではない)。
+  `bossZoomClassFor`/`bossEngagementDistancePx`は型で直接giant級を返す(isStoryBoss経由にしない・
+  §10-15#8)。
+- `bossCutin.ts`(`NAMED_BOSS_CUTIN_NAME`) — 表示名「フィル(変異体)」を出す(★社長確認枠=推薦採用。
+  統合正本10.3の「未確認変異体(名を伏せる)」裁定は事実として記録=素材・名前確定後の今は出す方が
+  良いと判断/CLAUDE.md「過去の裁定は制約ではなく事実」)。
+- `gameStore.ts`(`ENEMY_DEATH_LABELS`) — 同上、台帳と同名。
+- `bossIcon.ts`(`BOSS_ICON`) — `phillboss: 'phill'`(phill.png)。
+- `gateBoss.ts` — 上記のとおり交換。
+- `pixiTexturesロード` — `phill.png`をnearest(既存の天使/裏ボス群と同じドット絵扱い)で読み込み登録。
+- `BOSS_SPRITE_FIT` — 天使系の型を流用した仮値(w0.50/h0.20/cx0.50/cy0.97)。実機調整はバッチ2/3。
+- `enemyTexKey`(pixiScene.ts) — `phillboss→'phill'`のキー変換を1行追加。★判断メモ: これと
+  BOSS_SPRITE_FITはバッチ1の「技・描画は含まない」の境界線上。専用レイヤー/呼吸/羽等の**演出**は
+  一切足していないが、texture解決そのものを配線しないと「場に出て」いても既定の絵が出ない
+  (フォールバック描画のリスク)ため、最小限だけ配線した。過剰と判断されれば差し戻し可能な1行。
+- `zooViewer.ts` — 開発鑑賞ツール(HIDDEN_BOSSESタブに追加)。
+- `bossPractice.ts` — `toPracticeSlot`にphillboss専用分岐(param='phillnow')+
+  `practiceBossBaseHealth`にHP解決分岐(STAGE_BOSS_HEALTH_BY_STAGEを読む=giantbatと同原則)。
+- `bossTest.ts` — `BOSS_TEST_ENTRIES`に1件追加(`ENGAGEABLE`編入型はテストが1件以上を要求)+
+  ゲート交換に合わせてsuriel/acrasiel行のstageIdを入れ替え+`param`型に`'phillnow'`追加。
+- `isBossType`(enemyUtils.ts) — HPバー/致命の一撃/劇的死亡/死体化除外/討伐アテンション等の
+  既定を1本で受け取る(getsDramaticDeath/corpseEligible/getsDeathAttentionは自動追従・追加編集不要)。
+
+**しない(バッチ2/3・理由つき)**:
+- `isGate2AngelBoss` — ゲート2ボスではない(最奥ボス)。angelBossTickへの本格編入(dispatch追加)は
+  技実装と不可分=バッチ2。
+- `moveReaction` / `ghostTelegraph` / `ANGEL_MOVES_BY_TYPE` / `angelTuning` / `AngelBossState`サブ状態
+  / `bossChoreography.ts` / `BOSS_MAKER_BOSSES`(ボスメーカーの部屋) — いずれも技が前提。技セットが
+  存在しないバッチ1で編入すると空の台帳/意味の無い項目を作ることになるため見送り。
+  `bossChoreography.ts`の`ChoreographyBoss`型にも未追加。
+- `BOSS_HINTS`(bossHints.ts) — 技が無いのに攻略ヒントを書くと存在しない挙動を捏造する
+  (CLAUDE.md「実在確認の掟」)。`bossHints.test.ts`の網羅テストにphillbossだけ除外理由を明記して追加。
+- `getEnemyFireProfile` — `applyEnemyFire`は`isHiddenBoss`型を呼び出し前に丸ごと除外するため、
+  未登録でも自動発砲のリスクは無い(検証済み)。弾技追加時(バッチ2)にまとめて登録する。
+- `BOSS_COMBAT_PROFILES`/`BossRebuildId`(bossRebuild.ts) — 技の連段/中立姿勢プロファイルなので
+  技が無いバッチ1では書く意味が無い(この表自体、giantbat@各ステージ行も実装上どこからも
+  参照されていない=既存のdead code。ついでの掃除はスコープ外として見送り)。
+- `LARGE_ZOOM_TYPES`(cameraZoom.ts) — 敵数駆動の別ズーム系統。既存の天使系(miguel等)もここには
+  入っていない前例に合わせて対象外。
+
+### useGameLoopの`!storyBoss`site 解放/維持(§10-14#4)
+**解放**(コード変更なし=`storyBoss`がEXではfalseになったことで自動的に解放):
+- `puzzleActiveNow`(通常台本パズル。壁4のゲート発火に必須)
+- `gateFireOk`(ゲート1/2の地理トリガー)
+- 通常湧き(旧12116行の`!storyBoss`ガード)
+- 帰還サークル勝利(新規実装。既存`!storyBoss`site起因ではなく`beginReturnPhase`直呼びの新設)
+
+**維持**(`!storyBoss && !isExStageRun()`へ変更。理由=既存の記述付き):
+1. 城ボス(giantbat)出現 — EXの最奥ボスはphillboss。城ボスの5分湧きイベントと混在させない。
+2. 囲い系イベント(強制アリーナ/ミニボス/救助/卵) — 連戦バランス(§10-6)を守る側イベント抑止。
+3. 紅き夜 — 同上。
+4. 警察署アリーナ — 同上。
+5. ハンター変異体 — 既存コメントが既に「M7/EX」を名指ししていた=そのまま踏襲。
+6. 賞金首自然湧き — 同上(`bountyTick.ts`のフィールド改名とセット)。
+7. 死神(深奥リスク) — 同上。
+8. セットピース(演出波) — 同上。
+
+### 純関数+テスト(同コミット)
+- `src/utils/exStage.ts`: `isExStageRun` / `phillBossSpawnReady`
+  (**「gate2Cleared=falseの間phillbossは湧かない」を固定=§10-14#1の受け入れ条件**) /
+  `phillChaseVelocity`。`src/utils/exStage.test.ts`(9件)。
+- 3つの移行関数(bossEncounter/playerTraits/duoRecords)にそれぞれ2件ずつテスト追加
+  (旧キー→新キー移行/旧キー無しはno-op)。
+
+### 修正した既存テスト(仕様変更に伴う想定内の更新。挙動の意図を変えない範囲)
+- `config/bossHealth.test.ts` — 単調増加チェックの対象からstage-ex1を除外(意図的にstage-7より
+  低い連戦補正値のため)+専用テスト追加。
+- `data/storyCanon.test.ts` — `stage-ex1.storyBossOnly`の期待値をtrue→undefinedへ。
+- `utils/bossPractice.test.ts` — unreachable一覧からsurielを除外(ゲート交換でacrasielと入れ替わり)+
+  phillboss用のHP表示テストを分離。
+- `utils/ghostDossier.test.ts` — `'giantbat@stage-ex1'`→`'phillboss@stage-ex1'`。
+- `config/stageDifficulty.test.ts` / `utils/bountyTick.test.ts` — `storyBossOnly`→`suppressBounties`
+  のフィールド名追従。
+- `data/bossHints.test.ts` — phillbossを除外(理由はコメントに明記・上記参照)。
+
+### 検証
+- `npm run typecheck` — エラー0。
+- `npm run lint` — エラー0・warning8(既存分のみ・新規warning無し)。
+- 関連vitest — `npx vitest related`はこの環境で`.html`エントリの解析に失敗する既知の不具合
+  (このバッチ以前から発生・単一ファイル指定でも再現)のため、影響ファイルを手動で洗って直接実行
+  (enemyUtils/bossHealth/gateBoss周辺・bossPractice/bossEngagement/bossHate/cameraZoom/bossTest/
+  bountyTick/ghostDossier/storyCanon/fixedGuardians/bossEncounter/duoRecords/playerTraits/
+  stageDifficulty/giantScript/constitution/isHiddenBoss参照ファイル一式、他)。**全パス**
+  (上記の想定内更新を反映後)。仕上げに全体スイート(`npx vitest run`)も一度通し、4340件中
+  未関連の**既存2件の失敗**を検出(`store/sim.test.ts`のプレイヤー速度ランプ検定、
+  `utils/ghostTelegraph.test.ts`の予告台帳網羅=angelBossTickの`backroll`/`quickblades-*`未分類)。
+  `git stash`でこのバッチの変更を退避して再実行し、**この2件はバッチ適用前から失敗する
+  既存の別問題**と確認した(本バッチのコードは一切関与しない)。修正はスコープ外として見送り、
+  ここに事実として記録する。
+
+### 自己点検
+- 仕様変更のルール: 値の意味・カーブ・閾値を「良かれと思って」変えていない。HP係数(0.85)・
+  出現深度(9000)・帯サイズ・BOSS_SPRITE_FIT等はすべて設計書(§10-14#3/#5)の叩き台値をそのまま
+  実装しただけで、独自の数値は入れていない。「isHiddenBoss編入」「texture配線1行」の2点だけは
+  設計書に明記が無い実装判断だったため★判断メモとして上に明記した(仕様=見え方/挙動そのものは
+  変えていない=最小限のプラグイン配線)。
+- CONSTANT_STRENGTH_TYPES/isBossType等への編入は「上書き前提のHP」「討伐演出の既定」という
+  既存の設計原則をそのまま適用しただけで、新しい原則は作っていない。
+- ★未決事項: 無し(判断が割れそうな2点は上の★判断メモとして開示。差し戻しが要れば1行revertで戻せる
+  形にしてある)。
+- 発見事項(参考): 実装中にPACING_PUZZLE.md §10-17(社長指示「ボスメーカー繋いでね」)が
+  設計チャット側で追記されたのを確認。**バッチ2の受け入れ条件**として明記されており、
+  技が無いバッチ1の範囲には影響しない(出撃先=stage-ex1という記載は本バッチのbossPractice実装と
+  整合済み)。
+
+### 次への申し送り
+- バッチ2(技14+カウンター後追い分岐)着手時に: `isGate2AngelBoss`編入・`isHiddenBoss`除去orそのまま
+  かの再判断(angelBossTickへ完全移管するなら`isHiddenBoss`を外し専用コントローラの座標書き込みへ
+  一本化する選択肢がある。現状の最小チェイスAIとの二重管理を避けること)/州名規約(`phill-<move>-*`)/
+  BOSS_HINTS/BOSS_MAKER_BOSSES/bossChoreography/getEnemyFireProfileの編入/§10-17(ボスメーカー16体目)。
+- バッチ3(描画)着手時に: BOSS_SPRITE_FITの実測調整・専用レイヤー(DoF除外)・呼吸/浮遊/羽6枚・
+  羽根エフェクト散らし・enemyTexKeyの本格化(現状は最小の1行のみ)。
+
 ## v0.25.3715 — フィル§10-17: ボスメーカー接続を必須要件化(社長指示)【2026-08-21 00:20 JST】
 
 - 社長指示「ボスメーカー繋いでね」→ §10-17: 部屋にフィル枠(16体目)=⏸/▸×14技/スキーマ欄/

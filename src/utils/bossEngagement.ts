@@ -29,6 +29,7 @@ export const ENGAGEABLE_BOSS_TYPES = new Set<EnemyType>([
   'mimir', 'jormungand', 'skadi', 'thor',       // 裏ボス4体
   'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', // ゲート2ボス6体
   'idol',                                       // stage-2 隠しボス
+  'phillboss',                                  // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」・最奥ボス)
   // PACING_PUZZLE.md §6.38 v3(賞金首・社長裁定「城ボス方式に反転」): ズーム・リーシュじわ回復・
   // bossFightNow経由の先送り・施設ロックを既存土管でまとめて受けるため、城ボスと同じ交戦系に乗せる。
   'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',

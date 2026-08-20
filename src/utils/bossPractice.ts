@@ -112,7 +112,7 @@ export const isBossTestOrPracticeRun = (): boolean =>
 // 台帳: 守護霊メニューと同じ基礎台帳(GHOST_DOSSIER_SLOTS)+形態別の派生枠
 // ---------------------------------------------------------------------------------------------
 /** 出撃のさせ方。`param=null` = 強制出現パラメータ不要(ステージへ出撃すれば勝手に出る)。 */
-export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | null;
+export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | 'phillnow' | null;
 
 export interface PracticeSlot {
   slotKey: string;              // 基本はGHOST_DOSSIER_SLOTS.slotKeyと同一。形態別掲載だけ固有キー。
@@ -145,12 +145,15 @@ export const practiceSlotUnlocked = (slot: PracticeSlot, encountered: ReadonlySe
 
 // 城ボスの湧きゲート(useGameLoop)は `!labTheme && !storyBoss` を要求する。
 // よって `castlenow` が効くのは**その両方に当たらないステージだけ**。
-// storyBoss ステージ(7 / ex1)は castlenow が効かない代わりに**storyBoss経路で勝手に出る**ので
+// storyBoss ステージ(7)は castlenow が効かない代わりに**storyBoss経路で勝手に出る**ので
 // パラメータ不要。lab ステージ(2)は**本編にも城ボスが存在しない**=どうやっても出ない。
+// ★PACING_PUZZLE.md §10-12#4(フィル): stage-ex1の旧EXボス(giantbat流用)は廃止。stage-ex1は
+// GHOST_DOSSIER_SLOTSからgiantbat枠自体を外した(phillbossへ置換)ので、ここへ'stage-ex1'が
+// 渡ってくることはもう無い。
 const castleSortie = (stageId: string): { param: PracticeParam; reachable: boolean } => {
   const st = getStage(stageId);
   if (st?.theme === 'lab') return { param: null, reachable: false }; // stage-2: 城ボス不在
-  if (st?.storyBossOnly) return { param: null, reachable: true };    // stage-7 / ex1: 勝手に出る
+  if (st?.storyBossOnly) return { param: null, reachable: true };    // stage-7: 勝手に出る
   return { param: 'castlenow', reachable: true };
 };
 
@@ -164,7 +167,8 @@ const toPracticeSlot = (slot: GhostDossierSlot): PracticeSlot => {
     const { param: p, reachable } = castleSortie(stageId);
     // 表示名はカットインと同じ台帳(src/data/bossCutin.ts)を引く。台帳に無いステージの城ボス=
     // 実装してないボスなので「?」(社長指示2026-08-07「実装してないボスは、ボスモードでもどこでも?に
-    // しといて」)。該当: stage-2(城ボス不在)/ stage-ex1(未確認変異体=名を出さない)。
+    // しといて」)。該当: stage-2(城ボス不在)。stage-ex1は§10-12#4で旧EX(giantbat流用)を廃止=
+    // このgiantbat分岐にstage-ex1が渡ることはもう無い(phillboss分岐へ移った)。
     return {
       slotKey: slot.slotKey, encounterSlotKey: slot.slotKey, bossType: 'giantbat', stageId, param: p, reachable,
       label: bossCutinName('giantbat', stageId) ?? '?',
@@ -173,10 +177,17 @@ const toPracticeSlot = (slot: GhostDossierSlot): PracticeSlot => {
   if (slot.bossType === 'idol') {
     return { slotKey: slot.slotKey, encounterSlotKey: slot.slotKey, bossType: 'idol', stageId: 'stage-2', param: 'idolnow', reachable: true };
   }
+  // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」): ゲート2ボスではない最奥ボス。出現は
+  // gate2Cleared+深度トリガ(useGameLoop)なので、練習では強制出現(?phillnow=1)で直行させる。
+  if (slot.bossType === 'phillboss') {
+    return { slotKey: slot.slotKey, encounterSlotKey: slot.slotKey, bossType: 'phillboss', stageId: 'stage-ex1', param: 'phillnow', reachable: true };
+  }
   const gateStage = stageIdForGateBoss(slot.bossType);
   if (gateStage) {
     // ゲート2の自然発火は `!storyBoss` を要求し、洋館通路(stage-6)は予約ごとスキップされる。
-    // よってスリィエル(stage-6)とアクラシエル(stage-ex1)は**本編では遭遇できない**。
+    // PACING_PUZZLE.md §10-12#2/§10-14#9(ゲートボス交換): stage-6=acrasiel / stage-ex1=suriel
+    // (交換前はこの逆だった)。交換後も**stage-6側に置かれた天使が1体、本編では遭遇不能のまま**
+    // (交換前後で不変。R9)——それが acrasiel に入れ替わっただけ。
     const st = getStage(gateStage);
     const reachable = !st?.storyBossOnly && gateStage !== 'stage-6';
     return { slotKey: slot.slotKey, encounterSlotKey: slot.slotKey, bossType: slot.bossType, stageId: gateStage, param: 'gateboss', reachable };
@@ -281,6 +292,9 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
     if (slot.stageId === 'stage-7' && slot.glenForm2 !== true) return Math.round(row * GLEN_FORM1_HP_MULT);
     return row;
   }
+  // PACING_PUZZLE.md §10-14#3(フィル): STAGE_BOSS_HEALTH_BY_STAGE['stage-ex1']行=スポーン時に
+  // 実際に上書きされる唯一の実効HPと同じ台帳を読む(giantbatと同じ「表=実戦」原則)。
+  if (slot.bossType === 'phillboss') return STAGE_BOSS_HEALTH_BY_STAGE[slot.stageId] ?? null;
   // §6.38(賞金首): 実効HPは基準値(BOUNTY_BASE_HP)×スポーン時の実効難易度倍率(bountyMaxHealth)で
   // 変動するため、台帳の固定値ではなく**基準値をそのまま**出す(掲載裁定「基準値2000を出す」)。
   if (isBountyType(slot.bossType)) return BOUNTY_BASE_HP;

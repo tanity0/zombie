@@ -140,6 +140,11 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   //    guardianPhantomHealth(player.ddaBaseHp)=育成込みの初期プレイヤーHP・research/GROWTH.md v4)。
   //    ENEMY_STATS は import 時評価で焼かれるため、ここに育成を含む値は書けない。
   'guardian-phantom': { width: 40, height: 56, speed: 130, health: GUARDIAN_PHANTOM_PLACEHOLDER_HEALTH, damage: 0, experienceValue: 200 },
+  // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」・バッチ1「器」): 帯=スリィエル級(60×30)、
+  // speed=70(叩き台)。health=500はプレースホルダ(giantbatの旧仕様と同じ意味=**スポーン直後に
+  // STAGE_BOSS_HEALTH_BY_STAGE['stage-ex1']で必ず上書きされる**。CONSTANT_STRENGTH_TYPES編入により
+  // その上書きが唯一の実効HP。damage=38は他の天使/裏ボスと同じ叩き台(接触・技はバッチ2)。
+  phillboss: { width: 60, height: 30, speed: 70, health: 500, damage: 38, experienceValue: 0 },
 };
 
 /** PACING_PUZZLE.md §6.38(賞金首・B1): 4型の集合。texture名=type規約(getTexture(e.type))。 */
@@ -162,7 +167,11 @@ export const isGuardianPhantom = (t: EnemyType): boolean => t === 'guardian-phan
 // PACING_PUZZLE.md §6.28(バッチM52・ロットL1): uri/suriel/acrasiel(ゲート2の天使ボス4〜6体目)と
 // idol(stage-2隠しボス)を追加。台本(移動/攻撃)はL2/L3の担当だが、hpMult=1固定(=ENEMY_STATSの
 // 基本値がそのまま実効値になる。§6.28-1-1)・updateEnemiesの通常AIからの除外は今のうちに揃えておく。
-export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' || t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol';
+// PACING_PUZZLE.md §10-12#6(フィル編入): phillbossもここへ入れる。理由=「専用コントローラが座標を
+// 直接書き込む」型として扱う必要がある(通常追跡AI/分離力/地平線以外のモーションFXから除外し、
+// 生のAABB=ENEMY_STATSの帯+BOSS_SPRITE_FITで絵を追従させる)。isGate2AngelBoss には**入れない**
+// (ゲート2ボスではない=最奥ボス。angelBossTickへの本格編入はバッチ2)。
+export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' || t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'phillboss';
 
 /**
  * ★**射程を測る相手の矩形 = その敵の当たり判定そのもの**(唯一の出どころ)。
@@ -214,7 +223,7 @@ export const isPumpkinTier = (t: EnemyType): boolean => t === 'pumpkin' || t ===
 export const isBossType = (t: EnemyType): boolean =>
   isPumpkinTier(t) || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
   t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' ||
-  t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter' || isBountyType(t) ||
+  t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'phillboss' || t === 'hunter' || isBountyType(t) ||
   // research/GHOST_BOSS.md: 幻影もボス扱いの全既定(HPバー/体勢値=紫/致命の一撃/崩壊演出/
   // 弾の小突きノックバック耐性…)をこの1テーブルから受け取る。
   isGuardianPhantom(t);
@@ -506,7 +515,11 @@ const COLOR_TIER_SIZE_MULT: Record<EnemyColorTier, number> = RARE_TINT_ENABLED
 // 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
 const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol', 'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
   // research/GHOST_BOSS.md(幻影・裏ボス方式): エリア/距離/時間/色でスケールしない=色ティア抽選の対象外。
-  'guardian-phantom']);
+  'guardian-phantom',
+  // PACING_PUZZLE.md §10-14#3(フィル): HPはスポーン時にSTAGE_BOSS_HEALTH_BY_STAGE['stage-ex1']で
+  // 上書きするのが唯一の実効値。ここへ入れないとエリア/色補正でENEMY_STATSの500(プレースホルダ)が
+  // 変動してしまう(上書き前提が崩れる)。
+  'phillboss']);
 // ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
 const LAB_FIXED_TYPES = new Set<EnemyType>(['lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3']);
 // エリア → [青影, 紫影, 赤影] の出現確率(絶対値・社長指定)。残りは無色。
@@ -924,6 +937,7 @@ export const getEnemyColor = (type: EnemyType): string => {
     case 'suriel':   return '#a16207';  // 金褐色(ゲート2ボス・天使名ボス「スリィエル」・ステージ6・金の環)
     case 'acrasiel': return '#7e22ce';  // 結晶の紫(ゲート2ボス・天使名ボス「アクラシエル」・EX)
     case 'idol':     return '#f472b6';  // ピンク(stage-2隠しボス「idol」・等身大の人間)
+    case 'phillboss': return '#f5e6c8'; // 光の乳白(EXボス「フィル(変異体)」・PACING_PUZZLE.md §10-12#6)
     case 'hunter':   return '#d9cfc4';  // 蒼白い肉色(ハンター変異体)
     case 'screamer': return '#8fae4f';  // くすんだ毒々しい緑(叫喚型)
     default:         return '#dc2626';

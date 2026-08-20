@@ -31,6 +31,10 @@ const NAMED_BOSS_CUTIN_NAME: Partial<Record<EnemyType, string>> = {
   uri: 'ウリ',
   suriel: 'スリィエル',
   acrasiel: 'アクラシエル',
+  // PACING_PUZZLE.md §10-12#5(EXボス「フィル(変異体)」): 素材と名前が確定したので名を出す
+  // (統合正本10.3の「未確認変異体」裁定=当時は名を伏せる意図だったが今は確定=出す方が良いと判断。
+  // 過去の裁定は事実として併記/CLAUDE.md「★過去の裁定は制約ではなく事実」)。
+  phillboss: 'フィル(変異体)',
   // PACING_PUZZLE.md §6.38 v9(完全コピー原則): 賞金首4種も城ボスと同じ出現カットインを出す。
   'bounty-ranged': 'バス停(変異)',
   'bounty-melee': '馬乗り(変異)',

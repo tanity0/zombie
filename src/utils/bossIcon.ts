@@ -15,6 +15,8 @@ const BOSS_ICON: Record<string, string> = {
   giantbat: 'atlas-px2/giantbat',
   mimir: 'mimir', jormungand: 'jormungand', skadi: 'skadi', thor: 'thor',
   idol: 'idol',
+  // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」): 本体絵phill.png(768×1024)を流用。
+  phillboss: 'phill',
   // §6.38 掲載裁定: 変異体対策室に並ぶ賞金首4種。本体スプライト(pixiTextures.ts登録済み)をそのまま流用。
   'bounty-ranged': 'bounty-ranged', 'bounty-melee': 'bounty-melee',
   'bounty-balance': 'bounty-balance', 'bounty-maiko': 'bounty-maiko',

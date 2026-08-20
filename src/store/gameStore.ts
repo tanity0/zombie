@@ -1369,6 +1369,8 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   suriel: 'スリィエル',
   acrasiel: 'アクラシエル',
   idol: '偶像',
+  // PACING_PUZZLE.md §10-12#5(EXボス「フィル(変異体)」): 台帳(bossCutin.ts)と同名。
+  phillboss: 'フィル(変異体)',
   hunter: '変異体(狩猟型)',
   screamer: '変異体(叫喚型)',
   // research/GHOST_BOSS.md(守護霊ボス「幻影」): 名前の出どころは1箇所(bossPractice の
@@ -12461,17 +12463,6 @@ export const useGameStore = create<GameState>((set, get) => ({
                       ...enemy, ...phaseFields, vx: 0, vy: 0,
                       bossScriptQueue: queued ? (enemy.bossScriptQueue ?? []).slice(1) : planBossChoreography('giant', move, phase).slice(1),
                       ...(isStageMove ? beginGiantStageMove(move as GiantStageMoveId) : beginGiantMove(move as GiantMove)),
-                    };
-                  }
-                } else if (isStoryBoss && enemy.storyBossVariant === 'stage-ex1') {
-                  // 未確認変異体は固有技を増やさず、基本5技の比重だけを「追い続ける総合試験」へ組み直す。
-                  const queued = enemy.bossScriptQueue?.[0];
-                  const move = (queued as GiantMove | undefined) ?? pickGiantMoveWithStage('stage-ex1', dist, phase, ready, {});
-                  if (move) {
-                    return {
-                      ...enemy, ...phaseFields, vx: 0, vy: 0,
-                      bossScriptQueue: queued ? (enemy.bossScriptQueue ?? []).slice(1) : planBossChoreography('giant', move, phase).slice(1),
-                      ...beginGiantMove(move as GiantMove),
                     };
                   }
                 } else if (glenScriptApplies(enemy.isStoryBoss, enemy.storyBossVariant, GLEN_SCRIPT_ENABLED)) {

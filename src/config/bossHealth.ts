@@ -18,6 +18,12 @@ export const STAGE_BOSS_HEALTH_BY_STAGE: Readonly<Record<string, number>> = {
   // stageBossHealthFor('stage-7'))ので、ここを2倍にするだけで両形態が2倍になる。
   // stage-7 はステージ係数の階段には乗せない(固定値)ので、増分はこの行だけが持つ。
   'stage-7': 12000,
+  // PACING_PUZZLE.md §10-12#3/§10-14#3(EXボス「フィル(変異体)」): 叩き台=stage-7の値×0.85
+  // (§10-6「連戦補正」=スリィエル撃破直後の連戦なので単独ボス想定より1段控えめ)。実機で社長が調整。
+  // phillbossスポーン直後にこの値で上書きする(幻影のスポーン時上書き=useGameLoopと同作法)。
+  // ★CONSTANT_STRENGTH_TYPES編入により、この上書きが唯一の実効HP(書き忘れ=プレースホルダ500で
+  // 戦う事故になるので、phillbossをスポーンする経路は必ずこの値で上書きすること)。
+  'stage-ex1': Math.round(12000 * 0.85),
 };
 
 // ゲート2は裏ボスへ向かう途中で必ず戦う中ボス。対応ステージの城ボスより強くしつつ、
