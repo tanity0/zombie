@@ -100,9 +100,9 @@ export const effectiveAmmoMax = (baseMax: number, activeLevel: number): number =
   Math.round(baseMax * (1 + perLevel('ammo') * eff(activeLevel)));
 
 /**
- * スコア倍率(社長裁定2026-08-20)。メーター1本フルで−0.2(1段−0.04)、
- * 対象は SCORE_PENALTY_UPGRADE_IDS(体力/攻撃/弾数)——**ゴールド獲得は数えない**。
- * 0段=1.0(スコア不変)。3本フルで0.4。リザルトのハイスコア(totalScore)と換金(goldScore)の
+ * スコア倍率(社長裁定2026-08-20)。メーター1本フルで−0.1(1段−0.02)、
+ * 対象は SCORE_PENALTY_UPGRADE_IDS(体力/攻撃/弾数/経験値効率)——**ゴールド獲得は数えない**。
+ * 0段=1.0(スコア不変)。対象4本フルで0.6。リザルトのハイスコア(totalScore)と換金(goldScore)の
  * **両方**に掛かる(換金も下げる=メーターを下げる動機を残す・社長裁定)。
  */
 export const growthScoreMult = (s: PlayerUpgradeState | undefined): number => {

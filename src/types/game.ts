@@ -1478,6 +1478,12 @@ export interface Projectile {
   srcMoveKey?: string;
   duration: number;
   createdAt: number;
+  // 発射点(ワールド座標)。**storeへ挿入する合流点で必ず焼かれる**(ensureProjectileOrigin)ので、
+  // 生成側の書き忘れで欠けることは無い。時刻ではなく「距離÷速度」で飛翔時間を出すために持つ
+  // (createdAt は Date.now 基準=gameTime と混ぜられない/スロー・ヒットストップの影響も受ける)。
+  // 反射(reflectProjectile)のたびに反射点へ打ち直す=常に「直近の飛翔」を表す。
+  originX?: number;
+  originY?: number;
   passthrough: boolean;
   hitEnemies: string[];
   // For piercing rounds: how many enemies the shot may pass THROUGH before it

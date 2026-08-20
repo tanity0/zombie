@@ -25,7 +25,10 @@
 //    **混ぜて比較しない**。このファイルは両方を引数で受け取り、それぞれの世界の中だけで比較する。
 //  - 慣性: 振りの絵(踏み込み→戻り)は描画側(pixiScene)がイーズで出す。判定は即発の1回。
 import type { Enemy, EnemyType, Player, Projectile, Weapon } from '../types/game';
-import { useGameStore, resolveBountyMove, CRIT_DAMAGE_MULT, knockbackSpeedFor } from '../store/gameStore';
+import {
+  useGameStore, resolveBountyMove, CRIT_DAMAGE_MULT, knockbackSpeedFor,
+  COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
+} from '../store/gameStore';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { createEnemyProjectile } from './enemyUtils';
 import { distToBandRect } from './geometry';
@@ -444,9 +447,17 @@ const consumePhantomParry = (
   s.lastParryConsumedAt = at;
   sfx.parry();
   const g = useGameStore.getState();
-  // 青白いスパーク(既存プールのみ・新規素材なし)。
-  g.spawnRing(bcx, bcy, 10, 52, 'rgba(191,219,254,0.95)', 3, 260);
-  g.spawnBurst(bcx, bcy, '#bfdbfe', 12);
+  // ★GHOST_BOSS.md v9 §3(社長指摘「カウンター取ったらカウンターのエフェクトは出ないとおかしい」):
+  // 成立の絵は**プレイヤーのカウンター成立と同じ色文法**(青)+停止/揺れ/寄り(triggerHitImpact)。
+  // 既存プールのみ・新規素材なし。SEは上の sfx.parry()('counter')のまま=二重に鳴らさない。
+  // **弾かれた側=プレイヤーが得をする副作用**(コンボ加算・無敵付与・CDリファンド・成立打刻・
+  // 計測notify)は1つも呼ばない(applyGhostCounterEffect の前例と同じ扱い)。
+  g.spawnRing(bcx, bcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+  g.spawnBurst(bcx, bcy, '#38bdf8', 14);
+  // glow も青文法の構成要素(検収監査v9指摘: 主語を持たない光なので callout と違い裁定不要)。
+  // 半径43=守護霊成立(ghostCounterBlueLayer)と同じ。
+  g.spawnGlow(bcx, bcy, 43, 'rgba(56,189,248,', 360);
+  g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, bcx, bcy);
   // ★v0.25.3665(社長報告「すごい距離から斬撃っぽいの」): パリィされるのは**分身・守護霊の近接**の
   // こともあり、その時プレイヤー本人は遠くにいる。反撃スイング(絵は距離無関係に出る)と
   // プレイヤーへの押し返しを距離ゲート無しで出すと、**遠距離のプレイヤーへ空振りの斬撃弧が飛ぶ+

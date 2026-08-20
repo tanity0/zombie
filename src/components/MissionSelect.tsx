@@ -146,7 +146,7 @@ import {
 import BossRush from './BossRush'; // BOSS_MAKER.md §20: ボスラッシュ(練習モード)
 // research/GROWTH.md v4(永続育成「強化」): 台帳=data、価格/上限の判定=utils。効果の適用はresetGame。
 import { PLAYER_UPGRADES, PLAYER_UPGRADE_MAX_LEVEL } from '../data/playerUpgrades';
-import { playerUpgradeCost } from '../utils/playerUpgrades';
+import { playerUpgradeCost, growthScoreMult } from '../utils/playerUpgrades';
 import type { PracticeSlot } from '../utils/bossPractice';
 
 interface MissionSelectProps {
@@ -233,6 +233,12 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean }> = ({ childr
   <div
     className="screen-in h-full w-full flex flex-col items-center justify-start bg-[#0b0b12] overflow-hidden"
     style={{
+      // 社長報告2026-08-20「ページが長いと下の方が少し切れる。スクロールしても届かない(守護霊メニュー)」:
+      // body は position:fixed + height:100% で、モバイルのブラウザUI(アドレスバー)が出ている間は
+      // 100% が可視領域より大きい。パネル(max-h-full)の下端が画面外に落ち、スクロール自体は末尾まで
+      // 行けても「見える範囲」に最後の数十pxが入らない。可視ビューポート(svh)でクランプして直す
+      // (svh未対応ブラウザでは無効値として無視され従来どおり=安全なフォールバック)。
+      maxHeight: '100svh',
       backgroundImage: `linear-gradient(rgba(8,7,14,0.6), rgba(8,7,14,0.82)), url(${import.meta.env.BASE_URL}backgrounds/title-the-one.png)`,
       backgroundSize: 'cover',
       backgroundPosition: 'center top',
@@ -375,6 +381,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   }, [screen]);
   const [selectedClass, setSelectedClass] = useState<CharacterClass>('warrior');
   const [freeMode, setFreeMode] = useState(false);               // 出撃がフリー(周回・会話なし)か
+  // 守護霊(同行者)ピッカー(社長指示2026-08-20: 装備から同行者欄を外し、キャラ選択の右端の
+  // 「守護霊枠」から選ぶ)。開閉だけのUI状態なのでローカルstate。
+  const [ghostPickerOpen, setGhostPickerOpen] = useState(false);
   // 装備(サブ/スキル)はトップの独立「装備メニュー」で選び、store に永続。出撃時に resetGame が反映。
   const equippedSubs = useGameStore(state => state.pendingLoadout);
   const companionSkill = useGameStore(state => state.companionSkill);
@@ -519,7 +528,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <HubButton icon={<Skull size={18} />} label="変異体対策室" desc="戦った変異体と練習する" onClick={goBossRush} delay={25} />
         {/* SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止): スキルの持ち込みは撤去。ここで選ぶのは
             サブウェポンと同行者(守護霊)のみ。ラン中のスキルは全てレベルアップの抽選で組む。 */}
-        <HubButton icon={<Check size={18} />} label="装備" desc="サブウェポン1 / 同行者選択" onClick={() => setScreen({ name: 'loadout' })} delay={50} />
+        <HubButton icon={<Check size={18} />} label="装備" desc="サブウェポン1 / アバター" onClick={() => setScreen({ name: 'loadout' })} delay={50} />
         <HubButton icon={<ShoppingBag size={18} />} label="開発施設" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} delay={100} />
         {/* research/GROWTH.md v4(永続育成): ゴールドで4系統を段階購入。有効段数は次の出撃から反映。 */}
         <HubButton icon={<TrendingUp size={18} />} label="強化" desc="体力・攻撃力・弾数・ゴールド" onClick={() => setScreen({ name: 'growth' })} delay={125} />
@@ -851,7 +860,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
         {/* 戻る(左上) */}
         <button
-          onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId, mission: missionKind }); }}
+          onClick={() => { playSfx('ui-select'); setGhostPickerOpen(false); setScreen({ name: 'missionDetail', stageId, mission: missionKind }); }}
           className="absolute z-20 h-9 px-2.5 rounded-none bg-black/45 text-white/85 flex items-center gap-1 active:bg-black/65"
           style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)' }}
           aria-label="戻る"
@@ -941,8 +950,93 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 </button>
               );
             })}
+            {/* 守護霊枠(社長指示2026-08-20)。一番右・ヘビーガンナーのシルエット。押すとピッカーが
+                開き、どの守護霊を連れて行くか(なし=初期値)を選ぶ。装備メニューの同行者欄から移設。 */}
+            <button
+              onClick={() => { playSfx('ui-select'); setGhostPickerOpen(true); }}
+              className="relative shrink-0 flex flex-col items-center justify-end rounded-none pt-2 pb-1 px-2 transition-[filter] active:brightness-110"
+              style={{
+                width: 74, height: 80,
+                background: companionSkill
+                  ? 'linear-gradient(95deg, rgba(232,121,249,0.22) 0%, rgba(232,121,249,0.08) 55%, transparent 100%)'
+                  : 'linear-gradient(95deg, rgba(24,15,38,0.42) 0%, rgba(24,15,38,0.18) 55%, transparent 100%)',
+                borderTop: '1px solid transparent',
+                borderBottom: '1px solid transparent',
+                borderImage: `linear-gradient(90deg, rgba(232,121,249,${companionSkill ? 0.9 : 0.45}) 0%, rgba(232,121,249,${companionSkill ? 0.5 : 0.25}) 45%, transparent 100%) 1`,
+              }}
+              aria-label="守護霊を選ぶ"
+            >
+              <div className="absolute bottom-1 h-3 w-10 rounded-full blur-md" style={{ backgroundColor: 'rgba(232,121,249,0.6)', opacity: companionSkill ? 0.7 : 0.25 }} />
+              {/* シルエット=ヘビーガンナーのドット絵を黒塗り(brightness(0))。連れて行く時は薄紫に灯す。 */}
+              <img
+                src={CHARACTER_CLASSES[0].sprite}
+                alt=""
+                draggable={false}
+                className="relative max-h-[50px] object-contain"
+                style={{
+                  imageRendering: 'pixelated',
+                  filter: companionSkill
+                    ? 'brightness(0) invert(0.75) sepia(1) saturate(4) hue-rotate(240deg) opacity(0.9)'
+                    : 'brightness(0) opacity(0.8)',
+                }}
+              />
+              <span className={`relative mt-0.5 text-[8px] leading-none ${companionSkill ? 'text-fuchsia-200' : 'text-white/55'}`}>
+                {companionSkill ? SKILLS[companionSkill].name : '守護霊：なし'}
+              </span>
+            </button>
           </div>
         </div>
+
+        {/* 守護霊ピッカー(枠タップで開く)。なし/解禁済みの守護霊系3種から単一選択。 */}
+        {ghostPickerOpen && (
+          <div className="absolute inset-0 z-30" onClick={() => { playSfx('ui-select'); setGhostPickerOpen(false); }}>
+            <div className="absolute inset-0 bg-black/70" />
+            <div
+              className="screen-in absolute inset-x-0 bottom-0 max-h-[70%] overflow-y-auto px-4 pt-4"
+              style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 16px), 20px)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="mb-2 text-[11px] uppercase tracking-widest text-fuchsia-200/70">守護霊を連れて行く</div>
+              <div className="menu-stagger space-y-2">
+                {/* なし(初期値) */}
+                <button
+                  onClick={() => { playSfx('ui-select'); setCompanionSkill(null); setGhostPickerOpen(false); }}
+                  className={`ff7r-fade-right flex w-full items-center justify-between gap-2 rounded-none px-3 py-2.5 text-left transition-[filter] ${
+                    companionSkill === null ? 'is-on text-white' : 'text-white/85 active:brightness-110'
+                  }`}
+                >
+                  <span className="text-[13px] font-semibold">なし</span>
+                  {companionSkill === null && <Check size={15} className="shrink-0" />}
+                </button>
+                {SKILL_KEYS.filter(k => COMPANION_SKILL_KEYS.includes(k) && ownedSkills.includes(k)).map(k => {
+                  const on = companionSkill === k;
+                  const rarity = SKILLS[k].rarity;
+                  return (
+                    <button
+                      key={k}
+                      onClick={() => { playSfx('ui-select'); setCompanionSkill(k); setGhostPickerOpen(false); }}
+                      className={`ff7r-fade-right flex w-full flex-col items-start gap-0.5 rounded-none px-3 py-2.5 text-left transition-[filter] ${
+                        on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
+                      }`}
+                    >
+                      <span className="flex w-full items-center justify-between gap-2">
+                        <span className="text-[13px] font-semibold">{SKILLS[k].name} <span className="text-amber-200">{lvText(k, ownedSkillLevels[k] ?? 1)}</span></span>
+                        {on && <Check size={15} className="shrink-0" />}
+                      </span>
+                      <span className={`text-[9px] font-semibold uppercase tracking-wider ${RARITY_TEXT[rarity]}`}>{RARITY_LABEL[rarity]}</span>
+                      <span className="text-[10px] leading-snug text-white/50">{skillDescForLevel(k, ownedSkillLevels[k] ?? 1)}</span>
+                    </button>
+                  );
+                })}
+                {SKILL_KEYS.filter(k => COMPANION_SKILL_KEYS.includes(k) && ownedSkills.includes(k)).length === 0 && (
+                  <p className="rounded-none bg-purple-400/5 px-3 py-3 text-[11px] leading-snug text-white/50">
+                    解禁済みの守護霊がありません。
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -963,52 +1057,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       playSfx('ui-select');
       setPendingLoadout(equippedSubs.includes(k) ? [] : [k]);
     };
-    // SKILL_BUILD_REDESIGN.md §20(B4): 同行者は単一選択(companionSkill: SkillKey|null)。
-    // 選択中を再タップで解除、別の候補をタップで置き換え(アバター選択と同じ単一選択パターン)。
-    const toggleCompanion = (k: SkillKey) => {
-      playSfx('ui-select');
-      setCompanionSkill(companionSkill === k ? null : k);
-    };
+    // 同行者(守護霊)の選択はここから撤去(社長指示2026-08-20)。キャラクター選択の右端
+    // 「守護霊枠」へ移設した(renderCharacterSelect の ghostPicker)。companionSkill 自体は不変。
     return (
       <>
-        <Header title="装備" subtitle="全作戦共通。サブウェポンと同行者を選択（自動保存）" onBack={() => setScreen({ name: 'home' })} />
+        <Header title="装備" subtitle="全作戦共通。サブウェポンを選択（自動保存）" onBack={() => setScreen({ name: 'home' })} />
         <div className="p-3 space-y-4">
-          {/* 同行者(守護霊系3種のみ・単一選択)。持ち込みスキルUIは撤去済み。 */}
-          <div>
-            <div className="flex items-center justify-between px-1 mb-1.5">
-              <span className="text-[11px] uppercase tracking-widest text-fuchsia-200/70">同行者</span>
-              <span className="text-[11px] text-white/45">{companionSkill ? '1/1' : '0/1'}</span>
-            </div>
-            {ownedSkills.length === 0 ? (
-              <p className="rounded-none bg-purple-400/5 px-3 py-3 text-[11px] leading-snug text-white/50">
-                解禁済みの同行者がありません。
-              </p>
-            ) : (
-              <div className="menu-stagger grid grid-cols-2 gap-2">
-                {/* 同行者候補(守護霊系3種)のみ表示(レア度色付き)。 */}
-                {SKILL_KEYS.filter(k => COMPANION_SKILL_KEYS.includes(k) && ownedSkills.includes(k)).map(k => {
-                  const on = companionSkill === k;
-                  const rarity = SKILLS[k].rarity;
-                  return (
-                    <button
-                      key={k}
-                      onClick={() => toggleCompanion(k)}
-                      className={`ff7r-fade-right flex flex-col items-start gap-0.5 rounded-none px-3 py-2.5 text-left transition-[filter] ${
-                        on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
-                      }`}
-                    >
-                      <span className="flex w-full items-center justify-between gap-2">
-                        <span className="text-[13px] font-semibold">{SKILLS[k].name} <span className="text-amber-200">{lvText(k, ownedSkillLevels[k] ?? 1)}</span></span>
-                        {on && <Check size={15} className="shrink-0" />}
-                      </span>
-                      <span className={`text-[9px] font-semibold uppercase tracking-wider ${RARITY_TEXT[rarity]}`}>{RARITY_LABEL[rarity]}</span>
-                      <span className="text-[10px] leading-snug text-white/50">{skillDescForLevel(k, ownedSkillLevels[k] ?? 1)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
           {/* サブウェポン */}
           <div>
             <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-emerald-200/70">サブウェポン（1つ）</div>
@@ -1059,8 +1113,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </div>
           </div>
           <p className="text-[11px] text-white/45 text-center">
-            同行者: {companionSkill ? SKILLS[companionSkill].name : 'なし'}
-            {' ／ '}サブ: {equippedSubs.length === 0 ? 'なし' : equippedSubs.map(k => subWeaponDisplayName(k)).join(' / ')}
+            サブ: {equippedSubs.length === 0 ? 'なし' : equippedSubs.map(k => subWeaponDisplayName(k)).join(' / ')}
             {' ／ '}アバター: {avatarId ? AVATARS[avatarId].name : 'なし'}
           </p>
         </div>
@@ -2235,7 +2288,14 @@ const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   return (
     <>
       <Header title="強化" subtitle="有効段数の変更は次の出撃から反映されます" onBack={onBack} />
-      <div className="px-3 pb-1 text-right text-[11px] tabular-nums text-amber-200/80">所持 {goldBalance}G</div>
+      {/* スコア補正の現在値(社長指示2026-08-20「マイナスになるスコアも表示」)。リザルトの
+          「強化補正 ×0.xx」と同じ値=有効メーターに応じて growthScoreMult をその場で再計算。 */}
+      <div className="px-3 pb-1 flex items-center justify-between text-[11px] tabular-nums">
+        {(() => { const m = growthScoreMult(playerUpgrades); return (
+          <span className={m < 1 ? 'text-rose-300/90' : 'text-white/40'}>スコア補正 ×{m.toFixed(2)}{m < 1 ? '（強化ぶんスコア・換金が減ります）' : ''}</span>
+        ); })()}
+        <span className="text-amber-200/80">所持 {goldBalance}G</span>
+      </div>
       <div className="menu-stagger px-3 pb-3 space-y-2">
         {PLAYER_UPGRADES.map(def => {
           const cur = playerUpgrades[def.id] ?? { bought: 0, active: 0 };

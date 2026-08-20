@@ -221,6 +221,7 @@ import {
   isGuardianPhantom // v0.25.3640: 幻影が弾いた弾の数字/SE抑止(成果物監査Q1-1)
 } from '../utils/enemyUtils';
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
+import { projectileFlightMsTo } from '../utils/projectileOrigin'; // GHOST_BOSS.md v9: 弾の飛翔時間(距離÷速度)
 import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs, turretNextReadyAt } from '../utils/turretTuning';
 import {
   isCounterablePhase, phaseJustChanged, BOSS_ALERT_SFX_KEY,
@@ -10139,15 +10140,31 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ('ghost-reflect'・v0.25.2525)だけヘイトの起因を'ghost'にする(escort等それ以外は既定
           // 'player'=「1つの財布」の側という扱い・本バッチのスコープ外)。
           const hateShotSource: HateSide = isGhostShot ? 'ghost' : 'player';
+          // ★GHOST_BOSS.md v9(弾パリィ=反応時間モデル): 弾のゲートは damageEnemy の内側で呼ばれ、
+          // 橋は弾を受け取らない。**飛翔時間はここで出して打撃種別と一緒に運ぶ**(距離÷速度なので
+          // 時計を跨がない・スロー/ヒットストップの影響も受けない)。速度0や発射点=着弾点の弾は
+          // 「瞬間着弾=見てから反応できない」側に出る(割り算の前で分岐済み)。
+          const gpBulletSource = directPlayerGun
+            ? {
+              kind: 'bullet' as const,
+              flightMs: projectile && enemyForFx
+                ? projectileFlightMsTo(
+                  projectile,
+                  enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2,
+                )
+                : Number.POSITIVE_INFINITY,
+            }
+            : undefined;
           // v0.25.3219(社長指示): カウンターで打ち返した弾(reflected)の命中は体勢ゲージを少し削る。
           // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王が載せたpostureMult(既定1)をそのまま運ぶ。
           const enemyKilled = damageEnemy(
             enemyId, dmg, false, hitCrit, false, dmgChannel, hateShotSource,
             projectile?.reflected ? 'reflect' : directPlayerGun && hitCrit ? 'gun-crit' : null,
             projectile?.postureMult ?? 1,
-            // ★v0.25.3665(社長指摘「鴉、銃の弾反撃しないよ?」): プレイヤーの直接銃弾は 'bullet' として
-            // 幻影ゲートへ(=counterChance抽選で打ち返し対象)。サブ・爆発・護衛/守護霊弾は従来どおり。
-            directPlayerGun ? 'bullet' : undefined,
+            // ★v0.25.3665(社長指摘「鴉、銃の弾反撃しないよ?」): プレイヤーの直接銃弾は弾として
+            // 幻影ゲートへ(=飛翔時間が反応速度以上なら counterChance 抽選で打ち返し対象)。
+            // サブ・爆発・護衛/守護霊弾は従来どおり。
+            gpBulletSource,
           );
           // ★v0.25.3640(成果物監査Q1-1): 幻影の被弾無敵が弾いた1発は、**数字もヒットSEも出さない**
           // (ゲートはHPを止めるが、数字/SEは呼び出し側=ここが出しているため、素通しだと
@@ -10176,8 +10193,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             );
             const gcx = enemyForFx.x + enemyForFx.width / 2, gcy = enemyForFx.y + enemyForFx.height / 2;
             playSfx('counter'); // プレイヤーの打ち返しと同じ音=同条件の文法
-            spawnRing(gcx, gcy, 10, 52, 'rgba(191,219,254,0.95)', 3, 260); // 幻影パリィの青白スパーク
-            spawnBurst(gcx, gcy, '#bfdbfe', 10);
+            // ★GHOST_BOSS.md v9 §3: 成立の絵は**プレイヤーのカウンター成立と同じ色文法**(青)+
+            // 停止/揺れ/寄り。頻度の上限はパリィCD(1000ms)。弾かれた側=プレイヤーが得をする
+            // 副作用(コンボ・無敵付与・CDリファンド・計測notify)は1つも呼ばない。
+            spawnRing(gcx, gcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+            spawnBurst(gcx, gcy, '#38bdf8', 14);
+            // glow も青文法の構成要素(検収監査v9指摘)。半径43=守護霊成立と同じ。
+            useGameStore.getState().spawnGlow(gcx, gcy, 43, 'rgba(56,189,248,', 360);
+            useGameStore.getState().triggerHitImpact(
+              COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, gcx, gcy,
+            );
           }
           // PACING_PUZZLE.md §7-11c(4): クリ計測口(挙動は変えない=数えるだけ)。護衛NPC/守護霊の弾は
           // プレイヤー起因ではないため除外(botTelemetryの他の計測=classifyProjectileDamageChannelと

@@ -198,7 +198,8 @@ import {
 } from '../utils/runTelemetry';
 import { isPracticeRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
 // research/GHOST_BOSS.md v6: 幻影が受ける打撃の関所(被弾無敵+パリィ)。**7系統の全てがここを通る**。
-import { phantomHitGate, type PhantomHitSource, type PhantomHitGateResult } from '../utils/phantomGate';
+import { phantomHitGate, type PhantomDamageSource, type PhantomHitGateResult } from '../utils/phantomGate';
+import { ensureProjectileOrigin } from '../utils/projectileOrigin';
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from '../utils/phantomScript';
 import { strongestGuardian } from '../data/fixedGuardians';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
@@ -2539,14 +2540,22 @@ export const INVULN_MS = 1000; // 社長裁定v0.25.3599(700→1000。多段技�
  * **幻影以外の敵に対しては恒等**(通常敵のダメージ・副作用に1bitも影響しない)。
  */
 const gatePhantomHit = (
-  enemy: Enemy, amount: number, source: PhantomHitSource, gameTime: number, rand?: () => number,
+  enemy: Enemy, amount: number, source: PhantomDamageSource | 'ranged', gameTime: number, rand?: () => number,
 ): PhantomHitGateResult => phantomHitGate({
   enemyType: enemy.type,
-  amount, source, gameTime,
+  amount, gameTime,
+  // 弾だけは「飛翔時間つきの形」で来る(GHOST_BOSS.md v9)。ここで種別と飛翔時間へ開く。
+  source: typeof source === 'string' ? source : 'bullet',
+  flightMs: typeof source === 'string' ? undefined : source.flightMs,
   invulnMs: INVULN_MS,
   // 台帳読みは幻影の時だけ(通常敵のホットパスに台帳アクセスを持ち込まない)。
   counterChance: isGuardianPhantom(enemy.type) ? strongestGuardian().profile.counterChance : 0,
+  reactionMs: isGuardianPhantom(enemy.type) ? strongestGuardian().profile.reactionMs : 0,
   parryCdMs: GP_T.parryCdMs,
+  // 近接パリィの窓: **storeに入った**スイング打刻を起点に、プレイヤーと同じ長さだけ開く
+  // (幻影tickのパッチ合成が同フレーム後段なら1フレーム(16ms)の取りこぼしが出るが許容=仕様)。
+  gpSwingAt: enemy.gpSwingAt,
+  swingWindowMs: COUNTER_WINDOW,
   // 対人ダメージ1/10(社長裁定2026-08-20「一旦」)。幻影以外は1=完全恒等。
   pvpDamageScale: isGuardianPhantom(enemy.type) ? PVP_DAMAGE_SCALE : 1,
   gpHitAt: enemy.gpHitAt,
@@ -4779,7 +4788,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomHitSource | null) => boolean; // postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接など。null=従来の導出・v0.25.3640監査A)
+  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null) => boolean; // postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾=飛翔時間つきの形。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -9580,13 +9589,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (ghost) {
       // 守護霊: 自分のロックだけを消す(プレイヤーのロック配列には触らない=2人分が独立)。
       set(state => ({
-        projectiles: [...state.projectiles, ...newProjectiles],
+        projectiles: [...state.projectiles, ...newProjectiles.map(ensureProjectileOrigin)],
         summons: state.summons.map(s => s.id === ghost.id
           ? { ...s, ghostHomingLocks: [], ghostHomingHoldStartAt: undefined, ghostHomingNextLockAt: undefined }
           : s),
       }));
     } else {
-      set(state => ({ projectiles: [...state.projectiles, ...newProjectiles], homingLocks: [] }));
+      set(state => ({ projectiles: [...state.projectiles, ...newProjectiles.map(ensureProjectileOrigin)], homingLocks: [] }));
     }
     setActorSubWeaponCooldown(ghostId, 'homing', gameTime + HOMING_COOLDOWN_MS);
   },
@@ -13551,7 +13560,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Projectile actions
   addProjectile: (projectile) => {
     set(state => ({
-      projectiles: [...state.projectiles, projectile]
+      // 発射点(originX/originY)は**ここで焼く**(GHOST_BOSS.md v9)。生成箇所は weaponUtils・
+      // gameStore など散在していて静的に漏れを検出できないので、storeへの合流点で必ず補完する。
+      projectiles: [...state.projectiles, ensureProjectileOrigin(projectile)]
     }));
   },
   
@@ -13584,6 +13595,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...p,
           direction: { x: -p.direction.x, y: -p.direction.y },
           speed: p.speed * REFLECT_SPEED_MULTIPLIER,
+          // 発射点を**反射点(今の位置)へ打ち直す**(GHOST_BOSS.md v9): 飛翔時間の判定が常に
+          // 「直近の飛翔」になる=近距離のラリーは打ち返されない、が保たれる。
+          originX: p.x,
+          originY: p.y,
           damage: p.damage * multiplier,
           hostile: asHostile,
           reflected: true,
