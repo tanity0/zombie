@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3687',
+    items: [
+      'ダンス練習(テスト開発用): 「サークル間隔 ms/拍」の入力欄を廃止しました。練習も常に本番と同じレベル既定のテンポで動きます(曲・メトロノーム・判定がズレる設定を作れないように)。',
+    ],
+  },
+  {
     version: '0.25.3686',
     items: [
       'ダンスフロア: ジャスト成功音が二重に鳴っていた問題を修正しました(v3685の吸着の直後修正)。',

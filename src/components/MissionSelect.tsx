@@ -95,7 +95,6 @@ import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullRe
 import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
 import { AVATARS, AVATAR_IDS, type AvatarId } from '../data/avatars';
 import { spritePath } from '../utils/spriteLoader';
-import { rhythmIntervalForLevel } from '../config/shijin';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
@@ -1680,16 +1679,15 @@ const DevTools: React.FC<{
   const setAmmoPickupAmount = useGameStore(s => s.setAmmoPickupAmount);
 
   const [danceLevel, setDanceLevel] = useState(1);
-  const [danceIntervalInput, setDanceIntervalInput] = useState(String(Math.round(rhythmIntervalForLevel(1))));
   // 自動回収量を調整できるのは handgun/shotgun/rifle のみ(phill は手動射撃で対象外)。
   const [ammoInputs, setAmmoInputs] = useState<Record<'handgun' | 'shotgun' | 'rifle', string>>({
     handgun: String(ammoPickupAmounts.handgun), shotgun: String(ammoPickupAmounts.shotgun), rifle: String(ammoPickupAmounts.rifle),
   });
 
-  const selectDanceLevel = (lv: number) => { setDanceLevel(lv); setDanceIntervalInput(String(Math.round(rhythmIntervalForLevel(lv)))); };
+  const selectDanceLevel = (lv: number) => { setDanceLevel(lv); };
   const startDancePractice = () => {
-    const n = parseInt(danceIntervalInput, 10);
-    setDanceTestInterval(Number.isFinite(n) ? n : 0);
+    // ms指定は廃止=常に0(レベル既定のBPM)。過去に入れた値が残らないよう毎回0で上書きする。
+    setDanceTestInterval(0);
     setDanceTestLevel(danceLevel);
     setDanceTestMode(true);
     setSelectedStageId('');     // 練習はステージ進行に影響させない
@@ -1726,12 +1724,9 @@ const DevTools: React.FC<{
               style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.22), rgba(168,85,247,0.22))' }}>Lv{lv}</button>
           ))}
         </div>
-        <label className="flex items-center gap-2 text-[12px] text-white/75">
-          <span className="shrink-0">サークル間隔</span>
-          <input type="number" inputMode="numeric" value={danceIntervalInput} onChange={e => setDanceIntervalInput(e.target.value)}
-            className="w-20 rounded-none bg-black/30 px-2 py-1 text-right font-mono tabular-nums text-white/90 outline-none focus:border-fuchsia-300/60" />
-          <span className="shrink-0 text-white/45">ms/拍</span>
-        </label>
+        {/* サークル間隔(ms/拍)の入力欄は撤去(社長指示2026-08-20「取っちゃった方がいいかも」)。
+            B方式ではレベルのBPM=曲=メトロノーム=判定が同じグリッドで揃う前提なので、任意msを
+            入れられる口は「曲とテンポの合わない練習」を作る罠だった。常にレベル既定値を使う。 */}
         <button type="button" onClick={() => setDanceTestAutoTap(!danceTestAutoTap)} aria-pressed={danceTestAutoTap}
           className={`w-full flex items-center justify-between gap-2 rounded-none border px-3 py-1.5 text-left text-[12px] ${danceTestAutoTap ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/75 active:bg-purple-400/10'}`}>
           <span>自動タップ(JUSTでドラム)</span><span className="shrink-0 font-semibold">{danceTestAutoTap ? 'ON' : 'OFF'}</span>
