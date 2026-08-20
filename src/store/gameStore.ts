@@ -2518,6 +2518,11 @@ let bossFireSeq = 0;    // ジブリルのランタン火の一意id採番(プ�
 let acrasielSpearSeq = 0; // §6.28-19: アクラシエルの結晶の槍の一意id採番(プール/差分の安定キー)
 let bloodSpikeSeq = 0;  // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘の一意id採番
 let gravityWellSeq = 0; // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショット(gravity-shot)爆縮の一意id採番
+// v0.25.3703(社長指示「グラビティショットはキル時じゃなくて、射撃ヒット時に確率にして」):
+// ヒットはキルの数倍の頻度なので、渦のバラマキ防止に発動後は再抽選CD(実時間・叩き台=実機で調整)。
+// Date.now()基準にするのはgameTimeがラン跨ぎで0へ戻る=保存値が未来になって永久に発動しない事故を避けるため。
+const GRAVITY_SHOT_PROC_CD_MS = 2000;
+let gravityShotNextRollAt = 0;
 // v0.25.3027: グレン第二形態の胴体弾用・sim側の足元軌跡(描画のview.glenTrailとは別台帳。
 // 監査指摘どおりresetGameで明示クリアし、個体idが変われば作り直す。ストーリーボスは同時1体)。
 let glenSimTrail: { id: string; trail: GlenTrailPoint[] } | null = null;
@@ -3756,6 +3761,42 @@ const showBossFatalPresentation = (get: () => GameState, x: number, y: number, l
   get().spawnCallout(x, labelY, 'Kill!', '#ffe4e6', {
     bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS,
   });
+};
+
+// ★v0.25.3703(社長報告「パンプキンへの致命の一撃でKILL演出が出なかった。致命の一撃はCDないはず」):
+// KILL処刑演出(首元へ跳びつき→掻っ切り→帰還)の発火を1本化。v0.25.3622「KILL演出を致命の一撃にも
+// 流用」は**ナイフ経路だけ**に配線されており、①強個体(パンプキン等)の気絶中3×=E-1裁定の
+// 「致命の一撃」 ②刀・鞭・ワイヤーの致命、が全て取りこぼされていた(「同じ動作を持つ全員に付ける」)。
+// 呼び出し側はフル演出(triggerFinishImpactがtrueを返した時)だけ呼ぶ。?juice=0では出さない(従来どおり)。
+const startKillFxCinematic = (
+  get: () => GameState,
+  prim: { cx: number; cy: number; w: number; h: number },
+  victims: { x: number; y: number }[],
+  pcx: number, pcy: number,
+) => {
+  if (!JUICE_ENABLED) return;
+  useGameStore.setState({
+    killFx: {
+      ex: prim.cx, ey: prim.cy, ew: prim.w, eh: prim.h,
+      px: pcx, py: pcy,
+      startAt: Date.now(),
+      victims,
+    },
+    hitstopUntil: Date.now() + KILLFX_TOTAL_MS,
+  });
+  get().triggerTimeSlow(0.2, KILLFX_TOTAL_MS + KILLFX_RELEASE_SLOW_MS, KILLFX_TOTAL_MS);
+  // 首元への高速ダッシュ音(社長提供・v0.25.3665)。跳びつき開始=killFxセットと同時に1回。
+  // 動的import=gameStoreはaudioManagerを静的importできない(循環)。
+  void import('../audio/audioManager').then(m => m.playSfx('kill-dash'));
+  // 斬撃の直後(BLOOD_LAG)にSE。血・KILL!文字と同期(v0.25.3605 FB1+FB5)。
+  setTimeout(() => {
+    const kfx = get().killFx;
+    if (!kfx || Date.now() - kfx.startAt >= KILLFX_TOTAL_MS) return;
+    void import('../audio/audioManager').then(m => {
+      m.playSfx('heavy-impact');
+      m.playSfx('slash-damage');
+    });
+  }, KILLFX_BURST_AT_MS + KILLFX_BLOOD_LAG_MS);
 };
 
 // スキル: カウンターマスター = カウンター成立スイングで、プレイヤー近傍(~MELEE_RADIUS*1.5)の敵を
@@ -6511,7 +6552,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         bossFinishHit = true;
         const fatal = stunnedHit.kind === 'boss' ? applyBrokenMeleeFatal(enemy, meleeExecBase * gpDmgScale, gameTime) : null;
         const dmg = fatal?.damage ?? stunnedHit.dmg;
-        if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
+        // ★v0.25.3703: 強個体(パンプキン等)の気絶中3×(heavy)も「致命の一撃」(E-1裁定
+        // 「即死無しだよ。致命の一撃ではあるけど」)=ボス致命と同じ演出系へ載せる
+        // (Kill!演出+CD無視の最大ズーム+KILL跳びつき)。旧: boss枝(紫中)のみで、
+        // 社長報告「パンプキンへの致命の一撃でKILL演出が出なかった」の真因。
+        if (fatal || stunnedHit.kind === 'heavy') bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
         recordCritHit('guaranteed', stunnedHit.kind === 'boss'); // §7-11c(4): meleeExecuteの紫中フィニッシュ
         // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
@@ -6821,38 +6866,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           : finKills[0]
             ? { cx: finKills[0].enemy.x + finKills[0].enemy.width / 2, cy: finKills[0].enemy.y + finKills[0].enemy.height / 2, w: finKills[0].enemy.width, h: finKills[0].enemy.height }
             : null;
-        if (fullCinematic && JUICE_ENABLED && prim) {
-          set({
-            killFx: {
-              ex: prim.cx, ey: prim.cy, ew: prim.w, eh: prim.h,
-              px: pcx, py: pcy,
-              startAt: Date.now(),
-              victims: [
-                ...finKills.map(k => ({ x: k.enemy.x + k.enemy.width / 2, y: k.enemy.y + k.enemy.height / 2 })),
-                ...bossFatalHits.map(p => ({ x: p.x, y: p.y })),
-              ],
-            },
-            hitstopUntil: Date.now() + KILLFX_TOTAL_MS,
-          });
-          get().triggerTimeSlow(0.2, KILLFX_TOTAL_MS + KILLFX_RELEASE_SLOW_MS, KILLFX_TOTAL_MS);
-          // 首元への高速ダッシュ音(社長提供・v0.25.3665)。跳びつき開始=killFxセットと同時に1回。
-          // 下の血噴出SEと同じ理由で動的import(gameStoreはaudioManagerを静的importできない=循環)。
-          void import('../audio/audioManager').then(m => m.playSfx('kill-dash'));
-          // ★実機FB8(v0.25.3615「もっと大きく、横一文字にして」): 斬撃はstoreのspawnSlash(斜め固定の
-          // 汎用斬撃)ではなく、pixi側の専用描画(drawKillFxSlash・同じslash-streak素材を横一文字に
-          // 回転+大型化・実時間駆動)が一拍明け(BURST_AT)に出す。ここでは何も出さない。
-          // ★実機FB1(v0.25.3605)+FB5: 斬撃の直後(BLOOD_LAG)にSE。血・KILL!文字と同期。
-          // gameStoreはaudioManagerを静的importできない(循環)ため、動的importで解決する
-          // (発火はズームCD明けのフル演出時のみ=頻度は低い。素材は既存2音の重ね=叩き台、
-          // 専用SEが支給されたら差し替える)。
-          setTimeout(() => {
-            const kfx = get().killFx;
-            if (!kfx || Date.now() - kfx.startAt >= KILLFX_TOTAL_MS) return;
-            void import('../audio/audioManager').then(m => {
-              m.playSfx('heavy-impact');
-              m.playSfx('slash-damage');
-            });
-          }, KILLFX_BURST_AT_MS + KILLFX_BLOOD_LAG_MS);
+        // v0.25.3703: 発火の中身は startKillFxCinematic へ抽出(刀/鞭/ワイヤーの致命と共有)。挙動不変。
+        if (fullCinematic && prim) {
+          startKillFxCinematic(get, prim, [
+            ...finKills.map(k => ({ x: k.enemy.x + k.enemy.width / 2, y: k.enemy.y + k.enemy.height / 2 })),
+            ...bossFatalHits.map(p => ({ x: p.x, y: p.y })),
+          ], pcx, pcy);
+          // 斬撃の絵(横一文字)はpixi側drawKillFxSlashが一拍明けに出す(v0.25.3615 FB8)。
+          // 斬撃SE(heavy-impact+slash-damage)はstartKillFxCinematic内(v0.25.3605 FB1+FB5)。
         }
       }
     } else if (slashAt.length > 0) {
@@ -7583,7 +7604,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const critStunAt: { x: number; y: number }[] = [];
     const katanaBossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 刀クリで完全気絶が発動した位置
     const mimirLaserBreakHits: { x: number; y: number }[] = []; // §6.33: レーザー中断位置(カウンター成立FX用)
-    const katanaBossFatalHits: { x: number; y: number; labelY: number }[] = [];
+    const katanaBossFatalHits: { x: number; y: number; labelY: number; w: number; h: number }[] = []; // w/h=killFx流用(v0.25.3703)
     const katanaHitEnemyIds: string[] = []; // スキル 救難信号: 一閃(allowFinisher時)でヒットした敵ID(発動判定/対象選定用)
     // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
     let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
@@ -7621,7 +7642,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const fatal = !isGhost ? applyBrokenMeleeFatal(enemy, katanaExecBase * gpDmgScale, gameTime) : null;
           bossFinishHit = true;
           const dmg = fatal?.damage ?? katanaExecBase * gpDmgScale * BOSS_MELEE_STUN_MULT;
-          if (fatal) katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
+          if (fatal) katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           if (!isGhost) recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ(プレイヤー起因のみ)
           // §5.21-追補4: スタン中ボスへの5×一閃=ボスのフィニッシュ経路そのものなのでclampしない。
@@ -7644,6 +7665,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (stunnedMeleeOutcome(enemy) === 'heavy') {
           bossFinishHit = true;
           const dmg = katanaExecBase * gpDmgScale * ELITE_MELEE_STUN_MULT;
+          // v0.25.3703: 強個体のheavy=致命の一撃(E-1)なので演出系(致命演出+CD無視+KILL跳びつき)へ載せる。
+          if (!isGhost) katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -7826,7 +7849,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       const [ztx, zty] = katanaBossFatalHits[0]
         ? [katanaBossFatalHits[0].x, katanaBossFatalHits[0].y]
         : finishZoomTargetOf(killed);
-      get().triggerFinishImpact(ztx, zty, katanaBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
+      const fullCinematic = get().triggerFinishImpact(ztx, zty, katanaBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
+      // v0.25.3703: 刀の致命にもKILL跳びつき(v3622の取りこぼし)。刀の**処刑(finisher)**は従来どおり
+      // 「斬」演出が主役なので跳びつきは付けない=致命(katanaBossFatalHits)がある時だけ。プレイヤー起因のみ。
+      const kFatal = katanaBossFatalHits[0];
+      if (fullCinematic && kFatal && !isGhost) {
+        startKillFxCinematic(get, { cx: kFatal.x, cy: kFatal.y, w: kFatal.w, h: kFatal.h },
+          katanaBossFatalHits.map(p => ({ x: p.x, y: p.y })), pcx, pcy);
+      }
     }
     // スキル: リーパー。刀の一閃フィニッシュ範囲(katanaRange)内の敵を全員フィニッシュ。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, katanaRange(player), baseDamage * damageMult, meleeFinisherAt(killed));
@@ -7874,7 +7904,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const slashAt: { x: number; y: number }[] = [];
     const whipBossFullStunHits: { x: number; y: number }[] = []; // §9.4(v0.25.2502): 鞭クリで完全気絶が発動した位置(紫FX用)
     const mimirLaserBreakHits: { x: number; y: number }[] = []; // §6.33: レーザー中断位置(カウンター成立FX用)
-    const whipBossFatalHits: { x: number; y: number; labelY: number }[] = [];
+    const whipBossFatalHits: { x: number; y: number; labelY: number; w: number; h: number }[] = []; // w/h=killFx流用(v0.25.3703)
     const whipHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): 鞭のヒット敵ID(発動判定/対象選定用)
     // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
     let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
@@ -7917,7 +7947,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           const fatal = applyBrokenMeleeFatal(enemy, whipExecBase, gameTime);
           const dmg = fatal?.damage ?? whipExecBase * BOSS_MELEE_STUN_MULT;
-          if (fatal) whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
+          if (fatal) whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ
           // §5.21-追補4: スタン中ボスへの5×鞭打ち=ボスのフィニッシュ経路そのものなのでclampしない。
@@ -7930,6 +7960,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (stunnedMeleeOutcome(enemy) === 'heavy') {
           bossFinishHit = true;
           const dmg = whipExecBase * ELITE_MELEE_STUN_MULT;
+          // v0.25.3703: 強個体のheavy=致命の一撃(E-1)なので演出系へ載せる(ナイフ/刀と同じ)。
+          whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -8053,7 +8085,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       const [ztx, zty] = whipBossFatalHits[0]
         ? [whipBossFatalHits[0].x, whipBossFatalHits[0].y]
         : finishZoomTargetOf(killed);
-      get().triggerFinishImpact(ztx, zty, whipBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
+      const fullCinematic = get().triggerFinishImpact(ztx, zty, whipBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
+      // v0.25.3703: 鞭の致命にもKILL跳びつき(v3622の取りこぼし)。処刑(finisher)は従来どおり=致命のみ。
+      const wFatal = whipBossFatalHits[0];
+      if (fullCinematic && wFatal) {
+        startKillFxCinematic(get, { cx: wFatal.x, cy: wFatal.y, w: wFatal.w, h: wFatal.h },
+          whipBossFatalHits.map(p => ({ x: p.x, y: p.y })), pcx, pcy);
+      }
     }
     // スキル: リーパー。鞭フィニッシュ範囲(WHIP_LENGTH)内の敵を全員フィニッシュ。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, WHIP_LENGTH_BY_LEVEL[1], meleeBase, meleeFinisherAt(killed));
@@ -10044,7 +10082,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
-    let bossFatalAt: { x: number; y: number; labelY: number } | null = null;
+    let bossFatalAt: { x: number; y: number; labelY: number; w: number; h: number } | null = null; // w/h=killFx流用(v0.25.3703)
     let namedFoeKilled: Enemy | null = null; // §5.14 M13: 宿敵討伐(set後にREVENGE演出+報酬)
     let deathPopAt: { ex: number; ey: number; fromX: number; fromY: number } | null = null; // §5.23 M22 A3(set後に発火)
     let dramaticDeathAt: { enemy: Enemy; x: number; y: number } | null = null; // juice: FF風クランブル(set後に発火)
@@ -10054,7 +10092,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     let bossClearedType: EnemyType | null = null; // BOT_AND_GHOST.md §2.10 G5: 撃破ボスの型(set後にnotifyBossClear)
     // SKILL_BUILD_REDESIGN.md §28(B7): キルの瞬間に判定するスキル2種(poi-thrallと同じ「set()内で
     // 候補だけ拾い、実際の抽選/適用はset()の外側で行う」流儀)。
-    let killedAt: { x: number; y: number } | null = null; // 吸血/グラビティショットの発生位置(set後に判定)
+    let killedAt: { x: number; y: number } | null = null; // 吸血の発生位置(set後に判定)
+    // v0.25.3703: グラビティショットはキル時→**射撃ヒット時**へ移設(社長指示)。ヒット位置をset内で拾い、
+    // 抽選はset外(吸血と同じ流儀)。銃チャネル+プレイヤー起因+実ダメージ>0のみ。
+    let gunHitAt: { x: number; y: number } | null = null;
     // サブクエスト(research/SUBQUESTS.md): ★キル確定点2本のうちの1本(銃/接触/爆発/DoT)。
     // 付与(ゴールド/ポップ/保存)は副作用なので set() の外側で行う=候補だけここで拾う。
     let subquestKilled: Enemy | null = null;
@@ -10109,12 +10150,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         x: enemy.x + enemy.width / 2,
         y: enemy.y + enemy.height / 2,
         labelY: enemy.y - 6,
+        w: enemy.width, h: enemy.height,
       };
       const resolvedAmount = meleeFatal?.damage ?? gunReward?.damage ?? gatedAmount;
       // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
       const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(resolvedAmount / 2)) : resolvedAmount;
       appliedDamage = eff; // §6.21 M46計測用(set後にchannel別加算)
       const newHealth = Math.max(0, enemy.health - eff);
+      // v0.25.3703: グラビティショットのヒット位置(銃チャネル+プレイヤー起因+実ダメージのみ)。
+      if (damageChannel === 'gun' && hateSource === 'player' && eff > 0) {
+        gunHitAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
+      }
       // nonLethalBoss: 廃止(v0.25.1571) 爆発もボスを倒せる。互換のため引数は残置
       // ★finishKillOnly(フィニッシュ以外では死なない)は v0.25.3329 で削除(未使用の死んだ旗・社長指示)。
       // 裏ボス: クリを規定回数当てると完全気絶(紫)。倒しきれなかったクリのみカウント。
@@ -10262,9 +10308,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnCallout(p.x, p.y - 24, 'BREAK!', '#d8b4fe', { bg: 0x6b21a8 });
     }
     if (bossFatalAt) {
-      const p = bossFatalAt as { x: number; y: number; labelY: number };
+      const p = bossFatalAt as { x: number; y: number; labelY: number; w: number; h: number };
       showBossFatalPresentation(get, p.x, p.y, p.labelY);
-      get().triggerFinishImpact(p.x, p.y, true); // ワイヤー等の致命もCDを無視して必ず最大ズーム
+      const fullCinematic = get().triggerFinishImpact(p.x, p.y, true); // ワイヤー等の致命もCDを無視して必ず最大ズーム
+      // v0.25.3703: ワイヤー等の致命にもKILL跳びつき(v3622の取りこぼし)。
+      if (fullCinematic) {
+        const fp = get().player;
+        startKillFxCinematic(get, { cx: p.x, cy: p.y, w: p.w, h: p.h }, [{ x: p.x, y: p.y }],
+          fp.x + fp.width / 2, fp.y + fp.height / 2);
+      }
     }
 
     // 死神を倒したらスキル「死神」を習得(ガチャ非排出。撃破でのみ解禁)。未所持時のみ告知。
@@ -10316,13 +10368,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
-    // SKILL_BUILD_REDESIGN.md §28(B7) スキル: グラビティショット = キルの20/30/40%(Lv)で爆縮
-    // (引き寄せ120px/s×0.4s・半径100/120/140)。判定なし=絵は分類②(派手に・既存プールで)。
-    if (killedAt) {
+    // SKILL_BUILD_REDESIGN.md §28(B7) スキル: グラビティショット = **射撃ヒット時**の20/30/40%(Lv)で
+    // 爆縮(社長指示v0.25.3703。旧: キル時)。確率表・渦の性能(引き寄せ120px/s×0.4s・半径100/120/140・
+    // 覚醒Lv3=2倍長)は不変。ヒットはキルの数倍の頻度なので、発動後 GRAVITY_SHOT_PROC_CD_MS は
+    // 再抽選しない(叩き台)。判定なし=絵は分類②(派手に・既存プールで)。
+    if (gunHitAt && Date.now() >= gravityShotNextRollAt) {
       const gravLv = skillLevel(get().player, 'gravity-shot');
       const well = rollGravityShotWell(gravLv);
       if (well) {
-        const p = killedAt as { x: number; y: number };
+        gravityShotNextRollAt = Date.now() + GRAVITY_SHOT_PROC_CD_MS;
+        const p = gunHitAt as { x: number; y: number };
         // 覚醒(Lv3・v0.25.3300): 2倍の長さで引き寄せ続ける。
         get().spawnGravityWell(p.x, p.y, well.radius, gravLv >= 3 ? GRAVITY_SHOT_PULL_MS * 2 : undefined);
         get().spawnRing(p.x, p.y, 6, well.radius, 'rgba(168,85,247,0.75)', 3, 420);

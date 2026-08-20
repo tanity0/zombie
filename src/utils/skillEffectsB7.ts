@@ -73,7 +73,8 @@ export const EXECUTION_SHOCK_BY_LEVEL: readonly ExecutionShock[] = [
 ];
 export const executionShockParams = (level: number): ExecutionShock => EXECUTION_SHOCK_BY_LEVEL[clampLv(level)];
 
-// ---- グラビティショット(rare): キルの20/30/40%で爆縮(引き寄せ120px/s×0.4s・半径100/120/140) ----
+// ---- グラビティショット(rare): 射撃ヒットの20/30/40%で爆縮(引き寄せ120px/s×0.4s・半径100/120/140)
+// (v0.25.3703・社長指示でキル時→ヒット時へ。抽選関数自体は不変=呼び出し時機だけが変わった) ----
 export interface GravityShotProc { chance: number; radius: number }
 export const GRAVITY_SHOT_BY_LEVEL: readonly GravityShotProc[] = [
   { chance: 0, radius: 0 },

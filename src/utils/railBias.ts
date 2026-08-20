@@ -49,7 +49,7 @@ const RAIL_SKILL_CLASS: Partial<Record<SkillKey, RailKind>> = {
   'exploder': 'dps',           // 全ての爆発の範囲とダメージ+20〜50%
   'bomber': 'dps',             // 爆発時にミニ手榴弾(追加ダメージ)
   'incendiary-round': 'dps',   // 被弾させた敵を燃焼(継続ダメージ)
-  'gravity-shot': 'dps',       // キル時に爆縮(追加ダメージ)
+  'gravity-shot': 'dps',       // 射撃ヒット時に爆縮(v0.25.3703・旧キル時)
 };
 
 /** 純関数: スキル→レール分類(対象外=null)。 */
