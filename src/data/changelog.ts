@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3693',
+    items: [
+      '守護霊枠: 選択後はキャラ選択右端の枠にそのスキルのアイコンが表示されるようになりました(未選択時はシルエットのまま)。選択画面のLv/MAX表記も外しました。',
+    ],
+  },
+  {
     version: '0.25.3692',
     items: [
       '守護霊の選択画面にスキルアイコンを表示するようにしました。レア度表記(超レア等)はスキル枠とは別枠になったため外しました。',

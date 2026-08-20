@@ -975,19 +975,26 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               aria-label="守護霊を選ぶ"
             >
               <div className="absolute bottom-1 h-3 w-10 rounded-full blur-md" style={{ backgroundColor: 'rgba(232,121,249,0.6)', opacity: companionSkill ? 0.7 : 0.25 }} />
-              {/* シルエット=ヘビーガンナーのドット絵を黒塗り(brightness(0))。連れて行く時は薄紫に灯す。 */}
-              <img
-                src={CHARACTER_CLASSES[0].sprite}
-                alt=""
-                draggable={false}
-                className="relative max-h-[50px] object-contain"
-                style={{
-                  imageRendering: 'pixelated',
-                  filter: companionSkill
-                    ? 'brightness(0) invert(0.75) sepia(1) saturate(4) hue-rotate(240deg) opacity(0.9)'
-                    : 'brightness(0) opacity(0.8)',
-                }}
-              />
+              {/* 未選択=ヘビーガンナーのシルエット(黒塗り)。選択後=そのスキルのアイコン
+                  (社長指示2026-08-20「選択した後の画像もスキルアイコンに合わせた方がいい」)。 */}
+              {companionSkill ? (
+                <span className="relative w-[44px] h-[44px] flex items-center justify-center text-2xl overflow-hidden">
+                  {(() => {
+                    const single = skillSingleIconName(companionSkill);
+                    if (single) return <img src={spritePath(single)} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />;
+                    const st = skillSheet && hasSkillIcon(companionSkill) ? skillIconStyle(companionSkill, skillSheet.url, 44, skillSheet) : null;
+                    return st ? <span style={st} aria-hidden /> : skillIcon(companionSkill);
+                  })()}
+                </span>
+              ) : (
+                <img
+                  src={CHARACTER_CLASSES[0].sprite}
+                  alt=""
+                  draggable={false}
+                  className="relative max-h-[50px] object-contain"
+                  style={{ imageRendering: 'pixelated', filter: 'brightness(0) opacity(0.8)' }}
+                />
+              )}
               <span className={`relative mt-0.5 text-[8px] leading-none ${companionSkill ? 'text-fuchsia-200' : 'text-white/55'}`}>
                 {companionSkill ? SKILLS[companionSkill].name : '守護霊：なし'}
               </span>
@@ -1038,7 +1045,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex w-full items-center justify-between gap-2">
-                          <span className="text-[13px] font-semibold">{SKILLS[k].name} <span className="text-amber-200">{lvText(k, ownedSkillLevels[k] ?? 1)}</span></span>
+                          {/* Lv/MAX表記は出さない(社長指示2026-08-20「レベルのMAXって表記もいらん」=スキル枠とは別枠)。 */}
+                          <span className="text-[13px] font-semibold">{SKILLS[k].name}</span>
                           {on && <Check size={15} className="shrink-0" />}
                         </span>
                         <span className="block text-[10px] leading-snug text-white/50">{skillDescForLevel(k, ownedSkillLevels[k] ?? 1)}</span>
