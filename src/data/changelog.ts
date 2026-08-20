@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3707',
+    items: [
+      'ゲーム内容の変更はありません(EXボス「フィル」の設計書を追加)。',
+    ],
+  },
+  {
     version: '0.25.3706',
     items: [
       'EXステージ(洋館跡地)に専用バトルBGM、エンディングに専用BGMが付きました(社長支給)。',
