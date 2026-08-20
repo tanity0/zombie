@@ -26,7 +26,7 @@
    走査の確定事実: 雑魚の強さにステージ軸は存在しない(距離+時間+色のみ)ので新しい口が要る。
 3. **小ボス・その他ボス(城ボス/ゲート2/裏ボス)も同じ倍率で強化**(「階段は今後の雑魚と同じ倍率」)。
 
-## ★係数カーブ(社長裁定 2026-08-20・HP側は確定/攻撃側は検討中)
+## ★係数カーブ(社長裁定 2026-08-20・HP/攻撃とも確定)
 | stage | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
 |---|---|---|---|---|---|---|---|
 | **HP倍率(確定)** | **1.0** | 固定(1.0) | **1.2** | **1.4** | **1.6** | **1.8** | 固定(下記) |
@@ -110,10 +110,14 @@ export const stageDmgMult = (stageId: string | null | undefined): number => STAG
 - **ゲート2ボス(天使)**: スポーン箇所は**2つ**(監査指摘3)——本編の自然発火(useGameLoop **3028**)と
   **練習/デバッグ経路(4767・?gateboss/practiceForces)**。**両方**に health/maxHealth×stageHpMult・
   damage×stageDmgMult。裏ボスは1箇所(**4822**・自然/強制共通)。stage-ex1 は表未掲載=1.0。
-  **ボス→ステージの対応は既存の正本を引く**(監査指摘9・表を2本にしない):
-  天使=gateBoss.ts の `stageIdForGateBoss`/裏ボス=bossPractice.ts の `stageIdForHiddenBoss`
-  (**非exportなのでexportする**)。設計書内の「rafi=S4…」の列挙は説明であって写経先ではない。
-  practiceBossHealth の表示も同じ係数を掛ける(「練習画面の表示と実戦が原理的に一致する」を保つ)。
+  **stageId の出どころは1本=`getSelectedStageId()`**(監査4巡目で確定): 天使は自然発火(3027)も
+  練習経路(4748)も `GATE2_BOSS_TYPE_BY_STAGE[getSelectedStageId()]` で型を引いており、城ボス(2668)・
+  裏ボス(pendingHiddenBoss=選択ステージのもの)も同じ。練習ラン中は getSelectedStageId が枠の
+  stageId を返す(progress.ts:117-119)ので全スポーン経路で正しい。
+  **ヘルパ `stageBossDiffMults()` は引数なしで getSelectedStageId() を読む**。
+  stageIdForGateBoss / stageIdForHiddenBoss の export は**不要**(消費者がいない。配線を2本作らない)。
+  設計書内の「rafi=S4…」の列挙は説明であって写経先ではない。
+  練習表示の扱いは下の「計測路」節(表示は生の stageHpMult)を正とする。
 - **stage-7 グレン(固定分・監査指摘1の訂正)**: 第二形態(useGameLoop **2836**)は
   **第一形態と同じ台帳エントリ(stageBossHealthFor('stage-7'))を読む**ため、
   **台帳 STAGE_BOSS_HEALTH_BY_STAGE['stage-7'] を 6000→12000 にするだけで両形態が2倍になる**
@@ -140,9 +144,10 @@ export const stageDmgMult = (stageId: string | null | undefined): number => STAG
 
 ## 不変条件テスト(同コミット)
 - 台帳: HP/攻撃とも掲載ステージで単調増加・S1/S2/S7/ex は1.0。
-- 雑魚: セッター1.0のとき buildEnemy の **health / maxHealth / damage / difficultyMultiplier** が
-  現行と一致(id・lastShot・colorTier は乱数・時刻を含むためオブジェクト全体の等値比較は書けない
-  ——監査指摘)。係数セット時に CONSTANT_STRENGTH_TYPES・LAB_FIXED_TYPES の実効値が動かない。
+- 雑魚: セッター1.0のとき **health / maxHealth / damage / difficultyMultiplier** が現行と一致。
+  検証条件(監査指摘): ①buildEnemy は非export=**spawnEnemyAt / spawnEnemyAtWithTier 経由**で書く
+  ②colorTier の乱数で health がブレるため **tier固定(spawnEnemyAtWithTier)か area0(原点近く=
+  COLOR_RATE_BY_AREA[0]は全0で必ず無色)で湧かせる**。係数セット時に CONSTANT_STRENGTH_TYPES・LAB_FIXED_TYPES の実効値が動かない。
   **テストは beforeEach で `setStageDifficultyMults(1, 1)` に戻す**(モジュール変数は
   テスト間で持ち越る=setTreesDisabledと同じ既知の弱点。後続テストの汚染予防)。
 - 賞金首: 台帳の4割当・**stage-6 かつ corridorMode=false(=再訪/フリー周回)で湧かない**
