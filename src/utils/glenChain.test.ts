@@ -4,6 +4,7 @@ import {
   glenPartCountFull,
   pushGlenTrail, sampleGlenTrail, glenChainDistances, GLEN_TRAIL_MAX,
   shouldGlenVolley, glenVolleyShots, GLEN_VOLLEY_SAFE_PX, glenRemovedPartAnchors,
+  glenForm1TransitionReady,
   type GlenTrailPoint,
 } from './glenChain';
 import type { Enemy } from '../types/game';
@@ -23,6 +24,21 @@ describe('glenChain — 台帳の不変条件', () => {
     expect(glenPartCountFull(1)).toBe(GLEN_SLOT_COUNT);
     expect(glenPartCountFull(0)).toBe(0);
     expect(glenPartCountFull(0.5)).toBe(5); // ceil(4.5)
+  });
+});
+
+describe('glenForm1TransitionReady — HP半分で第二形態へ(社長指示v0.25.3699)', () => {
+  const base = { type: 'giantbat' as const, glenForm: 1 as const, fromEvent: undefined, maxHealth: 1000 };
+  it('HPがちょうど半分・半分未満で真、半分超で偽', () => {
+    expect(glenForm1TransitionReady({ ...base, health: 500 })).toBe(true);
+    expect(glenForm1TransitionReady({ ...base, health: 499 })).toBe(true);
+    expect(glenForm1TransitionReady({ ...base, health: 501 })).toBe(false);
+  });
+  it('HP0(=キル経路が移行を担当)・形態2・イベント産・他typeは偽', () => {
+    expect(glenForm1TransitionReady({ ...base, health: 0 })).toBe(false);
+    expect(glenForm1TransitionReady({ ...base, glenForm: 2 as unknown as 1, health: 400 })).toBe(false);
+    expect(glenForm1TransitionReady({ ...base, fromEvent: true as unknown as undefined, health: 400 })).toBe(false);
+    expect(glenForm1TransitionReady({ ...base, type: 'zombie' as unknown as 'giantbat', health: 400 })).toBe(false);
   });
 });
 

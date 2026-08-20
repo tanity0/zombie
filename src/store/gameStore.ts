@@ -143,7 +143,8 @@ import {
 } from '../utils/giantScript';
 // v0.25.3027: グレン第二形態の胴体弾(連結パーツからのV字斉射・社長裁定)。台帳と式は描画と共有。
 import {
-  pushGlenTrail, shouldGlenVolley, glenVolleyShots, glenTailReach, GLEN_VOLLEY_CD_MS, type GlenTrailPoint,
+  pushGlenTrail, shouldGlenVolley, glenVolleyShots, glenTailReach, GLEN_VOLLEY_CD_MS,
+  glenForm1TransitionReady, type GlenTrailPoint,
 } from '../utils/glenChain';
 import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
 import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
@@ -13070,6 +13071,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 「数える3回」を体で分からせる合図。判定・秒数・ダメージには一切関与しない(描画のみ)。
     if (glenNihilChanted) get().triggerShake(GLEN_NIHIL_SHAKE_MS, GLEN_NIHIL_SHAKE_MAG);
     if (glenTailSlammed) get().triggerShake(GLEN_TAILSLAM_SHAKE_MS, GLEN_TAILSLAM_SHAKE_MAG);
+    // v0.25.3699(社長指示「グレンの第二形態はHP半分で」): 形態1はHPを**半分まで削った時点**で
+    // 第二形態へ移行する(旧v0.25.3600: HP0=撃破で移行)。移行の絵と流れは撃破時と完全に同じ
+    // triggerDramaticDeath(崩壊アテンション→glenForm2SpawnAt予約→useGameLoopが形態2を湧かす)を
+    // 流用し、本体はここで退場させる。キル経路(報酬・統計・撃破通知)は通さない=移行であって
+    // 討伐ではない。一撃でHP0まで落ちた場合は従来どおりキル経路が同じ移行を行う
+    // (両経路とも glenForm2SpawnAt==null ガードで二重予約はない)。
+    const glenHalf = get().glenForm2SpawnAt == null
+      ? get().enemies.find(e => glenForm1TransitionReady(e) && !isCorpse(e))
+      : undefined;
+    if (glenHalf) {
+      useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.id !== glenHalf.id) }));
+      triggerDramaticDeath(get, glenHalf,
+        glenHalf.x + glenHalf.width / 2, glenHalf.y + glenHalf.height / 2);
+    }
     // M51: ジャイアント新スクリプトの咆哮弾(set() 内は再入set禁止のため post-set で発射)。
     // 弾自体の性能(速度/サイズ/ダメージ)は getEnemyFireProfile('giantbat') のプロファイルを
     // createEnemyProjectile が使う=現行不変(6.26-6)。錬金術の召喚ターゲットも既存どおり考慮する。

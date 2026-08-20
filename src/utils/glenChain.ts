@@ -101,6 +101,16 @@ export const GLEN_VOLLEY_TARGET_REACH_PX = 100; // createEnemyProjectileへ渡�
 
 /** 斉射してよい瞬間か(社長裁定3「技の予告中は撃たない」=aiPhase無し=追跡/歩行中のみ)。
  * lastAt==null は「変身直後の種付け前」=撃たない(初回はCD後・監査指摘)。 */
+/** v0.25.3699(社長指示「グレンの第二形態はHP半分で」): 形態1はHPを半分まで削った時点で
+ * 第二形態へ移行する(旧v0.25.3600: HP0=撃破で移行)。この述語が真の個体を gameStore(post-set)が
+ * 退場させ、撃破時と同じ移行(崩壊アテンション→形態2湧き予約)を発火する。
+ * fromEvent(イベント産giantbat)は対象外=移行しない(撃破時の予約ガードと同じ条件)。 */
+export const glenForm1TransitionReady = (
+  e: Pick<Enemy, 'type' | 'glenForm' | 'fromEvent' | 'health' | 'maxHealth'>,
+): boolean =>
+  e.type === 'giantbat' && e.glenForm === 1 && !e.fromEvent
+  && e.health > 0 && e.health <= e.maxHealth * 0.5;
+
 export const shouldGlenVolley = (
   secondForm: boolean, aiPhase: string | undefined, lastAt: number | undefined,
   gameTime: number, cdEffMs: number,
