@@ -1934,14 +1934,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
       }
 
-      // サブクエスト達成の告知SE(research/SUBQUESTS.md 中8: 'event-clear'=既存の「達成」音)。
+      // サブクエスト達成の告知SE(v0.25.3663: 社長提供の専用ジングル。旧: 'event-clear'の流用)。
       // gameStore は playSfx を import できないので、達成の通し番号の変化をここで拾って1回鳴らす
       // (boss-death と同じ型)。ゴールド付与とポップは store 側で済んでいる。
       {
         const seq = useGameStore.getState().subquestClearSeq;
         if (seq !== subquestClearSfxRef.current) {
           subquestClearSfxRef.current = seq;
-          if (seq > 0) playSfx('event-clear');
+          if (seq > 0) playSfx('subquest-clear');
         }
       }
 

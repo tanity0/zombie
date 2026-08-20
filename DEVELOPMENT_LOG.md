@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.3663 — サブクエスト達成の専用クリア音(社長提供素材)【2026-08-20 13:27 JST】
+
+- 社長提供のmp3(約2.8s・192kbps)を `public/audio/sfx/subquest-clear.mp3` として同梱し、
+  SfxKey 'subquest-clear' を追加(volume 0.9 / minInterval 1000・gate-clearと同じジングル型)。
+- サブクエ達成の告知(useGameLoop の subquestClearSeq 監視)を 'event-clear' 流用→専用音へ差し替え。
+  **他の 'event-clear' 用途(囲い/救助・拠点開放・ガチャ演出等)は不変**。
+- 素材の入れ込みのみ=監査対象外。検証: typecheck 0 / lint 0エラー。
+- SE配線台帳(Artifact)の該当行は次回台帳更新時に反映。
+
 ## v0.25.3662 — 育成: スコア補正+累計表示/幻影パリィの診断【2026-08-20 13:21 JST】
 
 - **スコア補正(社長裁定)**: 「ゴールド強化はスコア対象外。その他は換金も下げる。1メーターあたり0.2」

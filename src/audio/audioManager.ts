@@ -125,6 +125,7 @@ export type SfxKey =
   | 'hunter-alert'   // ハンター変異体の検知(視界に入った=見られている)警告SE
   | 'screamer-cry'   // 変異体(叫喚型)の叫喚(発動)SE
   | 'gate-clear'     // 強襲(関所)を生きて凌いだ時の突破ジングル
+  | 'subquest-clear' // サブクエスト達成ジングル(社長提供・約2.8s。旧: event-clearの流用だった)
   | 'thor-sweep'     // 裏ボス トールの払い(横払い)SE(社長提供)
   | 'thor-thrust'    // 裏ボス トールの突きSE(社長提供)
   | 'glen-nihil';    // グレン「虚無の三唱」(お墓技)SE(社長提供・壊れたラジオ加工)。長尺→フェードで止める
@@ -189,6 +190,12 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/hunter-alert.mp3`,
     volume: 1.0,
     minIntervalMs: 400,
+  },
+  // サブクエスト達成ジングル(社長提供・約2.8s・v0.25.3663)。達成コールアウトと同時に1回。
+  'subquest-clear': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/subquest-clear.mp3`,
+    volume: 0.9,
+    minIntervalMs: 1000,
   },
   // 強襲(関所)突破ジングル(社長提供・約1.9s)。「襲撃を凌いだ」コールアウトと同時に1回。
   'gate-clear': {
