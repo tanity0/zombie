@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3711',
+    items: [
+      'ゲーム内容の変更はありません(フィルの羽根=歪みバリエーション+飛び道具技の設計追記)。',
+    ],
+  },
+  {
     version: '0.25.3710',
     items: [
       'ゲーム内容の変更はありません(フィルの羽エフェクト素材の取り込み+設計書の監査反映21件)。',
