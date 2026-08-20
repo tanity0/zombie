@@ -7632,3 +7632,31 @@ KB中の跳ね描画(`pixiScene.ts` ＝実速度が乗っている時だけ跳�
     撒き羽根(判定ゼロ)=小さめ・ひらひら落下。この差を受け入れ条件に(2分類の混同防止)。
 12. **(R12)ズーム登録の訂正**: phillbossは **GIANT_BOSS_TYPES**(far=0.40)に登録
     (COMPACT_BOSS_TYPESは0.48=誤記を訂正)。
+
+### §10-15 監査反映v5(3巡目8指摘・2026-08-20。**以前の節と矛盾したら本節が勝つ**)
+1. **(重)勝利配線の新設**: 帰還サークルは isFinalBossKill(=giantbat限定)でしか出ない=現設計では
+   EXがクリア不能だった。**EX専用配線**を新設: phillboss撃破の検知(両キル経路の撃破点)で
+   `beginReturnPhase(フィル戦域の座標=phillbossスポーン座標)` を直接呼ぶ。
+   **isFinalBossKillは触らない**(広げるとstage-7グレンの二体構成に波及するため。EX専用が安全側)。
+   EXのクリアフラグ・年表もphillboss撃破点で書く。
+2. **(重)パリィ基本patchからphillbossを除外**: combatTickのパリィpatchは全員に位置飛ばし+
+   knockback系を**無条件に書く**ため、後追い分岐で書かないだけでは消えない。**基本patchのKB系
+   (x/y加算・knockbackVx/Vy/knockbackUntil)からphillbossを除外**する。後追い分岐では
+   `bossState='phill-<move>-recover'`+`bossStateUntil=now+PHILL_COUNTER_RECOVER_MS(叩き台900ms=
+   §6.28の硬直と同値)`+**`bossScriptQueue: []`**(天使正規経路angelCounterHitと同じ=台本の続きを
+   止める)を書く。
+3. **counterReachにphill州は載せない**(§10-12の7を撤回)。カウンター成立の正は
+   **blastレール+後追い分岐の1本のみ**。完全性検査も作らない(実行されない宣言の検査=偽の安心)。
+4. **後追い分岐で `notifyCounterHit()` を呼ぶ**(天使6体のangelCounterHitと計測を揃える。
+   blastレール側のnotifyMoveCounterだけだとフィル戦がcounterChance計測の母数から抜ける)。
+5. **カウンター必須技のダメージ上限はクランプの形で**: blastを積む地点で
+   `damage = Math.min(enemy.damage, player.maxHealth * 0.35)`(必須技のみ・係数がいくら乗っても
+   破れない形)。35%は叩き台。
+6. **羽根散弾のenemyId一般化は既存テスト2本と同コミットで整合**(angelCounter.test 164-170 /
+   angelPlayback.test 129=二値分岐前提のテストを新実装で通す・必要なら期待を追従)。
+7. **isExStageRunは葉モジュールに置く**(循環import回避=v0.25.3390 TDZ暗転の教訓・
+   drillerAi/gauntletModeと同じ作法)。bountyTickへの抑止は既存フィールドの流用をやめ、
+   **新フィールド `suppressBounties: boolean`**(意味と名前を一致)で渡す。
+8. **phillbossに `isStoryBoss` は付けない**(M60 Phase3拡張など#4で廃止するgiantbat経路の残骸を
+   踏まないため)。ズームはGIANT_BOSS_TYPES登録で担保。交戦距離(bossEngagementDistancePx)は
+   phillboss型でgiant級の距離を返す分岐を1行足す(isStoryBoss経由にしない)。

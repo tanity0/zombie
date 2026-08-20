@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.3713 — フィル§10-15: 3巡目監査8指摘の反映(v5)【2026-08-20 23:55 JST】
+
+- 重2件: ①**EXがクリア不能だった**(帰還サークル=isFinalBossKill(giantbat限定)でしか出ない)→
+  EX専用の勝利配線(phillboss撃破点でbeginReturnPhase直呼び・isFinalBossKillは触らない=グレン波及回避)
+  ②パリィ基本patchが全員へKBを無条件に書く→phillbossを基本patchから除外+後追い分岐で
+  硬直900ms+bossScriptQueueクリア+notifyCounterHit。
+- 他: counterReachへのphill州掲載を撤回(成立の正=blast+後追い1本)/必須技35%上限はクランプ形/
+  enemyId一般化は既存テスト2本と同コミット整合/isExStageRunは葉モジュール+suppressBounties新設/
+  isStoryBossは付けない。
+- 4巡目(最終確認)へ提出済み。文書のみ。
+
 ## v0.25.3712 — フィル§10-14: 再監査12指摘の反映(v4)【2026-08-20 23:42 JST】
 
 - 効きの大きい採用: R1=ゲート期限無効化を撤回(押し戻しループ維持・フィル出現はgate2Clearedのみ)/
