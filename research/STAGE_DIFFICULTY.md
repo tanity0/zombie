@@ -50,39 +50,77 @@ export const stageDmgMult = (stageId: string | null | undefined): number => STAG
 ```
 
 ## 雑魚への適用(取りこぼしを構造的に防ぐ形)
-- **セッター方式**(`setTreesDisabled` と同じ既存作法): enemyUtils にモジュール変数
+- **セッター方式**(`setTreesDisabled`(trees.ts:49-50)と同じ既存作法): enemyUtils にモジュール変数
   `stageDiffHpMult / stageDiffDmgMult`(既定1)と `setStageDifficultyMults(hp, dmg)` を置き、
   **resetGame が出撃のたびに1回セットする**(通常出撃=選択ステージの係数/
-  **ボスメーカー・ガントレットは1.0**=育成と同じ計測路の中立化)。
-  spawn経路(25箇所以上)のシグネチャは触らない=渡し忘れが構造的に起きない。
-- 適用点は `buildEnemy` の2行だけ: `hpMult`(現 areaBase×COLOR_TIER_HP×ENEMY_HP_MULT)に×HP係数、
-  `damage = round(stats.damage × diffDmg)` に×攻撃係数。
-- **CONSTANT_STRENGTH_TYPES と LAB_FIXED_TYPES には掛けない**(ボス・賞金首・幻影・reaper・天使・
+  **ボスメーカー・ガントレットは1.0**=育成と同じ計測路の中立化)。全出撃(通常/練習/ガントレット/
+  ボスメーカー)は App.tsx:259 経由で resetGame を必ず通る=セット点は1つで足りる(監査確認済み)。
+- 適用点(監査指摘2の反映): HP係数は `hpMult` に乗算。**攻撃係数は `diffDmg` 自体に乗算**——
+  接触ダメージ(buildEnemy 644 の `damage:` 行)と**敵弾ダメージ**(645 の `difficultyMultiplier`→
+  enemyUtils.ts:851 が弾生成で読む)の**両方が同時に動く**(damage:行だけに掛けると
+  plant等の撃つ雑魚の弾が据え置きになる)。`fixed ? 1 : diffDmg` のガードで固定型の除外も自動。
+- **CONSTANT_STRENGTH_TYPES と LAB_FIXED_TYPES には掛けない**(城ボス・賞金首・幻影・reaper・天使・
   裏ボス・idol はここを通っても係数1=下の個別適用と二重にしない。ラボ敵はS2固定=対象外)。
+- **pumpkin と hunter は雑魚側の階段に乗せる**(監査指摘5の明確化): 両者は CONSTANT に入っておらず
+  エリア/色でスケールする型(hunter は enemyUtils.ts:101-105 に明記)。isBossType での除外は
+  **しない**——「雑魚はHPと攻撃力が増える」の雑魚スケール系に元から乗っている型はそのまま階段にも
+  乗せ、個別適用はしない(二重なし)。
 - speed・経験値・色ティア・時間スケーリングは**触らない**(HPと攻撃だけの階段=裁定どおり)。
 
 ## 小ボス(賞金首)
 - 台帳(stageDifficulty.ts に併置): `BOUNTY_TYPE_BY_STAGE: Partial<Record<string, EnemyType文字列>>` =
   { 'stage-1': 'bounty-ranged', 'stage-3': 'bounty-melee', 'stage-4': 'bounty-balance', 'stage-5': 'bounty-maiko' }。
-- 湧き判定: **表に無いステージ(2/6/7/ex)は賞金首を湧かせない**。
-  ローテ(takeNextBountyRotationType+storeフィールド)は撤去(死コードを残さない。台帳引きへ)。
-- 強さ: スポーン時に `health/maxHealth ×stageHpMult`・`damage ×stageDmgMult`
+- **湧き判定(監査指摘6の明確化)**: 既存の `bountySpawnBlocked`(bountyTick.ts:2126-2128・
+  labTheme/corridorMode/storyBossOnly)は**置き換えず残す**。その上で、湧き入口
+  (useGameLoop:3967 の if→spawnBountyEncounter)に**「台帳に行が無いステージは湧かせない」を追加**
+  (実際に新たに塞がるのは stage-6 の再訪/フリー周回だけ——corridorMode は本編のみ・
+  gameStore:16345 `!pendingRevisit`)。S2/S7 の既存挙動は不変。
+- **ローテ撤去の影響範囲(監査指摘7)**: gameStore.ts:2877-2891(shuffleBountyRotation /
+  takeNextBountyRotationType / BOUNTY_ROTATION_TYPES)+storeフィールド bountyRotation
+  (4975/5439/16218)+呼び出し useGameLoop.ts:4001-4002 を撤去し台帳引きへ。
+  **`src/store/bountyRotation.test.ts` は台帳引きのテストに書き換える**(放置するとCIが赤)。
+  `?bountynow=1`(種別未指定・useGameLoop:6256 の4種ランダム)は**選択ステージの台帳を引く**
+  (台帳に無いステージでは従来どおりランダム=デバッグ用の自由度を残す)。
+- 強さ: スポーン時(spawnBountyEncounter=useGameLoop:3921 の1本・HPは3941)に
+  `health/maxHealth ×stageHpMult`・`damage ×stageDmgMult`
   (既存の bountyEffectiveValueMult とは乗算で重なる=どちらも「基準値への倍率」)。
-- 練習(ボスモード)の賞金首枠: 掲載裁定「基準値2000を出す」は据え置き(練習はステージ文脈が無いため
-  係数を掛けない=従来どおり。表示との一致も従来のまま)。
+- 練習(ボスモード)の賞金首枠: **特別な分岐を書かない**(監査指摘10)。練習枠の出撃先は stage-1
+  (bossPractice.ts:202-216)で getSelectedStageId が枠の stageId を返すため、台帳を引けば自動で1.0。
+  掲載裁定「基準値2000を出す」も従来のまま成立する。
 
 ## その他ボス(スポーン時に個別乗算・ステージ固定なので一意)
-- **城ボス(giantbat)**: HP上書き行(useGameLoop 2666 の `stageBossHealthFor(...)`)に×stageHpMult、
-  `damage` に×stageDmgMult。ストーリーボス(2753)も同様。
-- **ゲート2ボス(天使)/裏ボス**: スポーン時に health/maxHealth×stageHpMult・damage×stageDmgMult
-  (rafi=S4・uri=S5・suriel=S6/skadi=S4・thor=S5 等。stage-ex1 は表未掲載=1.0)。
-  ボス練習(ボスモード)は**当該ボスの所属ステージの係数を適用**し、practiceBossHealth の表示も
-  同じ係数を掛ける(「練習画面の表示と実戦が原理的に一致する」不変条件を保つ)。
-- **stage-7 グレン(固定分)**: STAGE_BOSS_HEALTH_BY_STAGE['stage-7'] **6000→12000**+
-  第二形態(useGameLoop 2834)のHPを**2倍**。攻撃力は据え置き。
+- **★裁定待ち(監査指摘4=構造の明示)**: ボスHP台帳は**既にステージ階段**
+  (城3500→5500/天使5000→9000/裏ボス14000→22000)なので、係数を掛けると**階段×階段**になる
+  (例: S6スリィエル 9000×1.8=16200・S5トール 22000×1.6=35200)。掛けるか(推薦)/掛けないかは
+  下の★残裁定。以下は「掛ける」前提の記述。
+- **城ボス(giantbat)**: HP上書き行(useGameLoop **2668** の `stageBossHealthFor(...)`)に×stageHpMult、
+  `damage` に×stageDmgMult。ストーリーボス(**2756**)も同様。
+- **ゲート2ボス(天使)**: スポーン箇所は**2つ**(監査指摘3)——本編の自然発火(useGameLoop **3028**)と
+  **練習/デバッグ経路(4767・?gateboss/practiceForces)**。**両方**に health/maxHealth×stageHpMult・
+  damage×stageDmgMult。裏ボスは1箇所(**4822**・自然/強制共通)。stage-ex1 は表未掲載=1.0。
+  **ボス→ステージの対応は既存の正本を引く**(監査指摘9・表を2本にしない):
+  天使=gateBoss.ts の `stageIdForGateBoss`/裏ボス=bossPractice.ts の `stageIdForHiddenBoss`
+  (**非exportなのでexportする**)。設計書内の「rafi=S4…」の列挙は説明であって写経先ではない。
+  practiceBossHealth の表示も同じ係数を掛ける(「練習画面の表示と実戦が原理的に一致する」を保つ)。
+- **stage-7 グレン(固定分・監査指摘1の訂正)**: 第二形態(useGameLoop **2836**)は
+  **第一形態と同じ台帳エントリ(stageBossHealthFor('stage-7'))を読む**ため、
+  **台帳 STAGE_BOSS_HEALTH_BY_STAGE['stage-7'] を 6000→12000 にするだけで両形態が2倍になる**
+  (「台帳2倍+第二形態も2倍」と実装すると第二形態が24000=二重)。攻撃力は据え置き。
+- **計測路(監査指摘8の明確化)**: ボスメーカー/ガントレットでは**ボスの個別係数も掛けない(1.0)**
+  ——育成と同じ「計測の基準を動かさない」原則(TTKの過去ログと比較可能に保つ)。
+  実装: 個別乗算の係数取得を1本のヘルパ(例: `stageBossDiffMults()`)に集約し、その中で
+  `isBossMakerRun() || isGauntletRun()` なら1.0を返す(掛け忘れ/掛けすぎの分岐を散らさない)。
 - 技ごとの専用ダメージ定数(mimirレーザー42・jibril火30・idol弾20・skadi氷38/20等)は
   **enemy.damage を通らない**ため、この係数では動かない=**据え置き**(触らない。
   動かすかは実機後の個別裁定)。
+
+## ★残裁定(社長・1問)
+- **既存のボスHP台帳(それ自体が階段)に、新係数をさらに掛けるか?**
+  - 案A(推薦)=**掛ける**(階段×階段)。既存台帳の傾きは緩く(城1.57倍・天使1.8倍)「元の設計」、
+    新係数は「育成+20%への対抗の上乗せ」と役割が別。S6スリィエル16200・S5トール35200等になるが
+    数値は台帳/係数のどちらでも実機調整可。
+  - 案B=ボスには係数を掛けない(既存台帳の階段のみ=「それに伴い強化」が雑魚・小ボスだけになる)。
+  - 案C=台帳を平坦化して係数だけにする(過去の台帳裁定を崩すため非推薦)。
 
 ## 不変条件テスト(同コミット)
 - 台帳: HP/攻撃とも掲載ステージで単調増加・S1/S2/S7/ex は1.0。
