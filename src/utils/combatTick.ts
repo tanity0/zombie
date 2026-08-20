@@ -418,7 +418,10 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         enemies: st.enemies.map(en => en.id === hit.id ? {
           ...en,
           bossState: 'counter-leap',
-          bossStateUntil: Date.now() + tunables.thorCounterLeapMs,
+          // ★v0.25.3721(検収監査・時計の混在): bossStateUntilはgameTime基準のフィールド。
+          // 旧Date.now()(絶対時刻≒1.7e12)だと出口判定 newGameTime >= bossStateUntil が永久に
+          // 到達せず、**counter-leapが導入以来一度も終わっていなかった**(=パリィ後退が機能せず)。
+          bossStateUntil: useGameStore.getState().gameTime + tunables.thorCounterLeapMs,
           aiFromX: tcx, aiFromY: tcy,
           aiTargetX: bpcx + (lx / ll) * tunables.thorOrbitDist,
           aiTargetY: bpcy + (ly / ll) * tunables.thorOrbitDist,
@@ -439,7 +442,9 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       notifyCounterHit();
       useGameStore.setState(st => ({
         enemies: st.enemies.map(en => en.id === hit.id ? {
-          ...en, bossState: recoverState, bossStateUntil: Date.now() + PHILL_COUNTER_RECOVER_MS, bossScriptQueue: [],
+          // ★v0.25.3721(検収監査・実バグ級): gameTime基準に修正。旧Date.now()だとrecoverの出口が
+          // 永久に来ず、カウンター成立1回でフィルが停止し続けていた(thor分岐の同型バグを写した事故)。
+          ...en, bossState: recoverState, bossStateUntil: useGameStore.getState().gameTime + PHILL_COUNTER_RECOVER_MS, bossScriptQueue: [],
         } : en),
       }));
     }

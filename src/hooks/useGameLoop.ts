@@ -2954,8 +2954,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const pcxPhill = player.x + player.width / 2;
           const pcyPhill = player.y + player.height / 2;
           const depthPhill = Math.hypot(pcxPhill, pcyPhill);
-          if (phillBossSpawnReady(gateMetaRef.current.gate2Cleared, depthPhill, PHILL_SPAWN_DEPTH)
-              || FORCE_PHILL || practiceForces('phillnow')) {
+          // ★不変条件「天使は同時に1体」(§10-14#1・v0.25.3721検収監査#2): 別のゲート2天使が
+          // bossStateを持って場に居る間は、強制出現(?phillnow/練習)でも湧かせない
+          // (runAngelBossTickは先頭1体しかtickしない=2体並ぶと片方が無言で凍るため)。
+          const otherAngelActivePhill = useGameStore.getState().enemies.some(
+            e => e.type !== 'phillboss' && isGate2AngelBoss(e.type) && e.bossState != null);
+          if (!otherAngelActivePhill
+              && (phillBossSpawnReady(gateMetaRef.current.gate2Cleared, depthPhill, PHILL_SPAWN_DEPTH, otherAngelActivePhill)
+                || FORCE_PHILL || practiceForces('phillnow'))) {
             phillBossSpawnedRef.current = true;
             // 出現位置: プレイヤーの前方(進行方向)。城/ストーリーボスと同じ「前方出現」の型。
             let phDirX = player.vx ?? 0, phDirY = player.vy ?? 0;

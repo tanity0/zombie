@@ -169,8 +169,10 @@ export const isGuardianPhantom = (t: EnemyType): boolean => t === 'guardian-phan
 // 基本値がそのまま実効値になる。§6.28-1-1)・updateEnemiesの通常AIからの除外は今のうちに揃えておく。
 // PACING_PUZZLE.md §10-12#6(フィル編入): phillbossもここへ入れる。理由=「専用コントローラが座標を
 // 直接書き込む」型として扱う必要がある(通常追跡AI/分離力/地平線以外のモーションFXから除外し、
-// 生のAABB=ENEMY_STATSの帯+BOSS_SPRITE_FITで絵を追従させる)。isGate2AngelBoss には**入れない**
-// (ゲート2ボスではない=最奥ボス。angelBossTickへの本格編入はバッチ2)。
+// 生のAABB=ENEMY_STATSの帯+BOSS_SPRITE_FITで絵を追従させる)。
+// ★v0.25.3721訂正(検収監査#3): バッチ2で phillboss は **isGate2AngelBoss にも入れた**(下の209行=
+// angelBossTickがtickする唯一の根拠)。旧コメント「入れない」はバッチ1時点の記述で誤り。
+// フィルはゲート2の"関所ボス"ではないが、器としてはゲート2天使と同じディスパッチャに乗っている。
 export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' || t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'phillboss';
 
 /**

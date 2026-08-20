@@ -1180,8 +1180,8 @@ export type EnemyType =
   | 'guardian-phantom'
   // PACING_PUZZLE.md §10(社長指示 2026-08-20): EXボス「フィル(変異体)」。テーマは大天使の融合体。
   // 内部型ID=`phillboss`(`'phill'`はPHILL銃/PHILLガンの語で既使用のため衝突回避・§10-12#5)。
-  // stage-ex1の最奥ボス(ゲート2ボスではない=isGate2AngelBossには入れない)。バッチ1は器のみ
-  // (技セット・angelBossTickへの本格編入はバッチ2)。
+  // stage-ex1の最奥ボス。★v0.25.3721訂正(検収監査#3): バッチ2で isGate2AngelBoss に**編入済み**
+  // (angelBossTickの7人目としてtickされる根拠)。関所ボスではないが器はゲート2天使と共通。
   | 'phillboss';
 
 // Weapon types

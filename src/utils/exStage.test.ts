@@ -48,3 +48,13 @@ describe('phillBossSpawnReady — §10-14#5: gate2Cleared=falseの間は湧か�
     expect(phillBossSpawnReady(true, 9500, 9000)).toBe(true);
   });
 });
+
+describe('phillBossSpawnReady — §10-14#1不変条件: 天使は同時に1体(v0.25.3721検収監査#2)', () => {
+  it('別のゲート2天使がbossState保持中は、他条件が全て揃っても湧かせない', () => {
+    expect(phillBossSpawnReady(true, 99999, 9000, true)).toBe(false);
+  });
+  it('天使不在(otherAngelActive=false・既定値)なら従来どおり', () => {
+    expect(phillBossSpawnReady(true, 9000, 9000, false)).toBe(true);
+    expect(phillBossSpawnReady(true, 9000, 9000)).toBe(true);
+  });
+});
