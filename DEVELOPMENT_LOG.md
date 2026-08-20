@@ -1,5 +1,124 @@
 # Development Log
 
+## v0.25.3720 — フィルEXボス バッチ3(pixi描画: 本体/羽/後光/技FX/撒き羽根/登場シーン)実装【2026-08-21 02:46 JST】
+
+PACING_PUZZLE.md §10(§10-1〜§10-19。§10-19は着手中に追加指示が来て反映)に基づく、EXボス
+「フィル(変異体)」の最終バッチ=描画(pixiScene/pixiTextures/lighting中心)。バッチ1(v0.25.3716・器)・
+バッチ2(v0.25.3719・技14+カウンター+ボスメーカー)は着地済み。**コミットは親が行う(本エントリは
+バッチ3実装の完了報告)**。シミュ(gameStore/utils配下の判定・数値)は原則触っていない(唯一の例外は
+下記「シミュ側の最小追加」を参照)。typecheck 0 / lint 0(warning8=既存分と同数、新規warning無し)。
+
+### レイヤー構成(§10-12#10・前例=danceUiLayer)
+`src/pixi/layers.ts` に `phillLayer: Container` を新設。`worldGroup` の子として `filteredWorld`
+(tilt-shift/DoFが掛かる範囲)の**外**・`danceUiLayer` の**後**(=上)に配置し、`pixiScene.ts` が
+毎フレーム `world` と同じカメラオフセットを `phillLayer.position` へ適用する(danceUiLayerと全く同じ
+作法・新しい仕組みは足していない)。フィルの `ActorView.container`(本体)は敵ループの先頭で
+`actorLayer`→`phillLayer`へ`addChild`し直す(1回だけ・以後は親チェックのみ)。
+
+phillLayer内の実際の重なり順(下→上・個体ごとに1つの`back`コンテナへ束ねてz順を生成タイミングから
+独立させた):
+```
+phillLayer
+ ├─ back(addChildAt index 0=常に最下)
+ │   ├─ shadow(Graphics・楕円影)
+ │   ├─ halo(Sprite・後光ゴッドレイ・加算)
+ │   ├─ sparkles×18(Sprite・fx/breath-sparkle・加算・頭部キラキラ)
+ │   └─ wings×6(Sprite・phill-wings.pngの2列×3行スライス)
+ ├─ view.container(本体・呼吸+浮遊ボブ+登場フェード/降下。既存drawEnemyのbossFixed経路をそのまま流用)
+ │   └─ (内部) reticle/sprite/hitFlash/tele(=予告円/帯)/overlay/overlayTop
+ ├─ phillWingFx(Container・技3/4/5の羽攻撃武器スプライト。drawKatanaSlash/Readyに
+ │   targetLayer引数を追加してphillLayerを指せるようにした=既存6体はeffectLayer既定のまま無改変)
+ └─ phillFeatherPool×96(Sprite・撒き羽根。判定ゼロ=常に最前面)
+```
+技の予告円/帯(goldring/judgment/cage/dive/wingslash/wingthrust/wingcombo/ringtoss/lightrain)は
+`view.tele`(=`o`)へ描く=`view.container`の子なので上記の構成へ自然に収まる(追加配線不要)。
+
+### 失うもの表の実施状況(§10-12#11/§10-14#6・全項目チェック済み)
+| 失うもの | 手当て | 実施箇所 |
+|---|---|---|
+| bloom | 加算グロー(halo=ゴッドレイ焼きテクスチャ+sparkle) | `lighting.ts getPhillGodrayTexture` |
+| ENV_TINT・環境光 | 未使用(素の見た目のまま=実機で気になれば手動tintを足す・★下記未決) | — |
+| 投影影(syncLocalEventLighting) | `syncEnemyLight`でphillbossを`view.light.visible=false`固定 | `pixiScene.ts` |
+| Yソート/FXの重なり | 技FX(帯/円/武器)は本体の子または専用layer内サブコンテナ=本体の後ろに隠れない | 上記レイヤー構成 |
+| 足元の楕円影 | 専用レイヤー内へ自前描画(共有shadowPoolのループからphillbossを`continue`で除外) | `drawPhillExtras`/敵影ループ |
+| horizonActorAlpha(地平線フェード) | `e.type==='phillboss'`でhorizonAlpha=1固定(§10-14#6=外すのが意図) | `drawEnemy` |
+| depthScaleEnemy(擬似遠近) | 同上、bossFixedのscale計算で1固定 | `drawEnemy` |
+
+### 実装した見た目(§10-4/§10-9/§10-10/§10-11/§10-13/§10-18/§10-19)
+- **本体**: 既存の疑似呼吸(`isHiddenBoss`経由=無改変)+新規の上下ボブ(sin・振幅14px)。足元影は
+  本体が上がるほど縮小・薄化(浮遊感)。
+- **羽6枚(3対)**: `phill-wings.png`(804×1024)を2列×3行にスライスし、対ごとに位相をずらしたsin
+  でrotation/scaleを振る(大きくゆっくり)。フェーズ2で速く(§10-9)。技3/4/5発動中は主翼(対1)を
+  約2.6倍振る(動きは大きく=v3443)。アンカー座標は実測未受領=目視の叩き台(コード内に明記)。
+- **後光**: `getPhillGodrayTexture`(放射光条+白熱コアを1回だけcanvasへベイク)を頭部後ろに配置し、
+  ゆっくり回転+sin明滅。技発動/フェーズ移行の瞬間は420msだけ増光。頭部キラキラは既存`fx/breath-sparkle`
+  を流用(状態を持たない=毎フレームnowから直接位置/明滅を計算)。投影影の光源にはしていない。
+- **羽攻撃の武器(技3/4/5)**: `phill-wing-attack.png`をrafi/miguelと同じ`drawKatanaReady`/
+  `drawKatanaSlash`汎用関数で振る(掟W9=構え+実行の両方に出す)。羽連撃(技5)は1撃目wide/2撃目
+  overheadで振り分けた叩き台。
+- **予告(赤=判定と厳密一致)**: 帯技3種(羽斬り/羽突き/羽連撃)は`drawAngelZoneCapsule`(既存6体と
+  同じ関数)。光輪投げは往復とも全形帯。金環は自分中心の大円。裁きの光/羽根の檻は`aiTargetX/Y`を
+  読むだけの追尾円/収縮円(判定の実体はblastレール=バッチ2のまま・pixiは読むだけ)。急降下は
+  追尾影→着地円(ジャンプ着地レールと同型)。光の雨は時間差の小円群(下記「シミュ側の最小追加」参照)。
+  羽根の檻/裁きの光/急降下の円は`phillZoomSafeRadius`(既存`phillCageInitialRadiusPx`=可視短辺の
+  0.45倍上限)でクランプ(§10-12#17・表示だけ・判定は不変)。
+- **羽根散弾(技14・判定あり)**: `syncSkadiHazards`の共有配列に`visual:'feather'`分岐を追加。
+  `fx/phill-feather`テクスチャ+既存の赤い進路ライン(氷刃/骨刃と共通のレール)+個体ごとの軽いskew
+  (§10-13-2)。表示サイズを112px(氷/骨の80pxより大きく)にして撒き羽根(30px)と見分ける
+  (§10-14#11の受け入れ条件)。先端の向き補正は`bladeArt.ts`に`PHILL_FEATHER_NATIVE_ANGLE`を追加。
+- **撒き羽根(判定ゼロ・分類②)**: `fx/phill-feather`を花びら型(既存petalPoolと同じ物理)で撒く。
+  回転/スケール/左右反転/skew/落下の揺らぎを個体ごとにランダム(§10-13-1)。トリガ: 羽ばたきの
+  周期の頭(少量常時)/bossState切替=技14種のwindup〜recover全州(技発動のたび)/`lastHit`変化
+  (被弾・カウンター成立の両方=damageEnemy経由で共通)/フェーズ移行(大量)/死亡(大量・cleanup直前)。
+- **登場シーン(§10-19・追加指示)**: 出現位置(`view.sprite`の初回位置)で即座に羽根70枚を上方向
+  優勢+全方向へ吹き出し(初速大→減速→ひらひら=慣性)、260ms後から本体をsmoothstepでフェード
+  イン+150px降下させながら登場(=羽根が先・本体が後)。既存の出現アテンション(boss-appear SE+
+  カットイン・useGameLoop側)は座標を共有するだけで独立=手を入れていない(両立を確認)。
+
+### シミュ側の最小追加(データ配管のみ・挙動は無改変)
+光の雨(技1)の時間差落下キューは`useGameLoop`のローカルref(`AngelBossState.phill.lightrainQueue`)
+にしか存在せず、Pixiは store/Enemy 経由でしか状態を読めない(CLAUDE.md「PixiJSは読むだけ」)ため、
+`lanceLanterns`(ジブリルの飛行中ランタン)と全く同じ前例で`Enemy.phillLightrainQueue`をミラー
+追加した(`types/game.ts`+`angelBossTick.ts`の該当2箇所で`patch.phillLightrainQueue = ph.lightrainQueue`
+を書くだけ)。**数値・タイミング・判定は1つも変えていない**(読み出し口を1つ足しただけ)。
+
+### CLAUDE.md「Y方向5点チェック」自己点検(声に出して確認・v0.25.2618)
+1. **地平線フェード**: phillbossはhorizonAlpha=1固定(専用レイヤー=対象外が意図)なので、浮遊ボブ
+   (±14px)・登場降下(150px・一時的)のどちらも透明化を起こさない。
+2. **帯の外の減光**: `updateLabOutsideDim`はlab/tutorial限定の機構で、EXステージ(屋外・
+   `!indoor && !labTheme`)では発火しない=無関係。
+3. **擬似遠近スケール**: `depthScaleEnemy`もphillbossだけ1固定(専用レイヤー=対象外が意図)。
+4. **可視域**: phillLayerは`worldGroup`の子(danceUiLayerと同じ親)なのでズーム倍率(`ZOOM_MIN_ABS`
+   =0.40含む)は他レイヤーと同じく一律に掛かる=独自の画面外はみ出しは生まない。裁きの光/羽根の檻/
+   急降下の円半径だけ`phillZoomSafeRadius`で追加クランプ済み(§10-12#17)。
+5. **移動可能帯**: 本体の実座標(e.x/e.y)は一切動かしていない(浮遊ボブ・登場降下はview.sprite/
+   wings/halo/shadowの表示位置だけを動かす視覚専用オフセット)。移動そのものはバッチ2の
+   `clampRectToPlayableArea`のまま=無改変。
+
+### 実装精度の規律・自己点検
+- 憲法テスト(`constitution.test.ts`)を壊す変更は無し(pixi描画のみ・純関数追加は`phillZoomSafeRadius`
+  程度で新規テスト対象になる判定ロジックは追加していない)。
+- 仕様変更ルール: 技の数値・カーブ・判定は1バイトも変えていない(唯一のsim側変更=上記のミラー
+  配管のみで、挙動・タイミングは無改変)。
+
+### ★未決事項(社長裁定が要る/実機で決める点)
+1. **ENV_TINT相当の手動tint**(§10-12#11「フィルに手動tintで同等値を適用」)は今回**未実装**。
+   理由: 現行のENV_TINT運用(昼夜/ステージ別の色温度)がどの値を指すか設計書に具体値の指定が無く、
+   決め打ちすると「なぜその色か」の根拠が無いまま仕様を作ってしまう。実機でフィルの絵が周囲の
+   光と噛み合わない(浮いて見える)ようであれば、その時の環境光の値を教えてもらえれば1行の
+   tint調整で対応できる。
+2. **羽/後光/キラキラのアンカー座標・寸法**(`PHILL_WING_ANCHOR`/`PHILL_WING_PAIR_H_PX`/
+   `PHILL_HALO_SIZE_PX`等)は全て実測未受領=目視の叩き台。実機で羽の付け根が本体からズレて見える
+   場合は、コード内の該当定数(全てコメント付き)を実機の見た目に合わせて調整する前提。
+3. **光柱/インパクトの追加グロー**(§10-14タスク項5「光柱・光弾・金環はglow自由」の"光柱"演出)は、
+   技発動の瞬間に既に「撒き羽根14枚+後光の増光420ms」が発火するため今回は追加しなかった
+   (迷ったら派手側=既にこの2つで満たしていると判断)。実機で見て物足りなければ、goldring/judgment/
+   cageのactive突入時に加算グローの一発バーストを足す拡張は容易(既存のgetGlowTexture流用)。
+4. **wingcomboの左右振り分け**(1撃目wide/2撃目overhead)は「左右の羽で交互に」という原文の意図を
+   汲んだ叩き台で、実際にaiFromX/Y基準の左右どちらの羽かは判別していない(元々aiFrom/aiTargetは
+   帯の始点/終点であって左右のどちらの羽かの情報を持たない=判定側の設計に無い区別)。見た目だけの
+   差別化として2撃のスタイルを変えてある。
+
 ## v0.25.3719 — フィルEXボス バッチ2(技14+カウンター+ボスメーカー接続)実装【2026-08-21 01:47 JST】
 
 PACING_PUZZLE.md §10(§10-1〜§10-17。着手時点で全節反映済み・監査4巡通過済み)に基づく、EXボス

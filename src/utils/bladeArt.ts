@@ -10,9 +10,13 @@
 // (PixiJSに一切依存しない)=store から読んでも層の掟に反しない。
 export const SKADI_BLADE_NATIVE_ANGLE = -62.8 * Math.PI / 180;
 export const RAFI_BLADE_NATIVE_ANGLE = -90 * Math.PI / 180;
+// PACING_PUZZLE.md §10-13/§10-14#11(フィルの羽根散弾=fx/phill-feather.png)。素材の先端(尖った側)は
+// 目視で左上(≈-135°)を向いている(実測未受領=目視の叩き台)。
+export const PHILL_FEATHER_NATIVE_ANGLE = -135 * Math.PI / 180;
 
 /** テクスチャ名から刃先の向きの補正を引く。未知の絵は0(補正なし)。 */
 export const bladeNativeAngle = (texture: string): number =>
   texture === 'rafi-blade' ? RAFI_BLADE_NATIVE_ANGLE
     : texture === 'skadi-ice-blade' ? SKADI_BLADE_NATIVE_ANGLE
-      : 0;
+      : texture === 'fx/phill-feather' ? PHILL_FEATHER_NATIVE_ANGLE
+        : 0;

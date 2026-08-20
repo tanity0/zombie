@@ -2955,6 +2955,7 @@ export const runPhillTick = (
         queue.push({ x: pcx + Math.cos(ang) * dist, y: pcy + Math.sin(ang) * dist, at: newGameTime + i * PH_T.lightrain.shotGapMs });
       }
       ph.lightrainQueue = queue;
+      patch.phillLightrainQueue = queue; // pixi描画用ミラー(§10バッチ3)。挙動は不変=読み出し口を足すだけ。
       patch.bossState = 'phill-lightrain-active';
       patch.bossStateUntil = newGameTime + (PH_T.lightrain.shotCount - 1) * PH_T.lightrain.shotGapMs + 400;
     }
@@ -2963,6 +2964,7 @@ export const runPhillTick = (
       const due = ph.lightrainQueue.filter(q => newGameTime >= q.at);
       if (due.length > 0) {
         ph.lightrainQueue = ph.lightrainQueue.filter(q => newGameTime < q.at);
+        patch.phillLightrainQueue = ph.lightrainQueue; // pixi描画用ミラー(§10バッチ3)
         for (const q of due) pushBlast(q.x, q.y, PH_T.lightrain.radius, phill.damage, 'phill-lightrain');
         sfx.beam();
       }

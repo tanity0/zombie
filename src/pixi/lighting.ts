@@ -768,3 +768,53 @@ export const getShadowOuterTexture = (): Texture => {
   shadowOuterTex = bakeRadialAlphaCurve([[0, 0.95], [0.25, 0.80], [0.6, 0.42], [1, 0]]);
   return shadowOuterTex;
 };
+
+// PACING_PUZZLE.md §10-18(EXボス「フィル」バッチ3・社長指示「頭の後ろくらいからピカーキラキラ
+// キラキラ〜」): 後光(ゴッドレイ)。放射状の光条+中心の白熱コアを一度だけベイクし、実行時は
+// スプライトの rotation(ゆっくり回転)と alpha(sinの明滅)だけを動かす=per-frame Graphics無し。
+// 加算合成前提(色はRGBに焼き込み・使う側はtintしない=金色の後光の色そのものを焼く)。
+// 投影影の光源にはしない(§10-12#21・強glowの「絵」は無料=実測)。
+let phillGodrayTex: Texture | null = null;
+export const getPhillGodrayTexture = (): Texture => {
+  if (phillGodrayTex) return phillGodrayTex;
+  const s = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = s; canvas.height = s;
+  const ctx = canvas.getContext('2d')!;
+  const cx = s / 2, cy = s / 2;
+  ctx.globalCompositeOperation = 'lighter';
+  const SPOKES = 14;
+  for (let i = 0; i < SPOKES; i++) {
+    const ang = (i / SPOKES) * Math.PI * 2;
+    // 太い条と細い条を交互に(単調な扇にならないよう・視認性=光条だと分かる形)。
+    const halfDeg = (i % 2 === 0 ? 7.5 : 3.5) * Math.PI / 180;
+    const len = s * 0.5;
+    const perpX = -Math.sin(ang), perpY = Math.cos(ang);
+    const x1 = cx + Math.cos(ang) * len, y1 = cy + Math.sin(ang) * len;
+    const baseHalf = Math.tan(halfDeg) * len;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(x1 + perpX * baseHalf, y1 + perpY * baseHalf);
+    ctx.lineTo(x1 - perpX * baseHalf, y1 - perpY * baseHalf);
+    ctx.closePath();
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, len);
+    g.addColorStop(0, 'rgba(255,246,214,0.95)');
+    g.addColorStop(0.35, 'rgba(255,228,160,0.55)');
+    g.addColorStop(1, 'rgba(255,208,120,0)');
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
+  // 中心の白熱コア(頭の後ろの光源そのもの)。
+  const coreR = s * 0.17;
+  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
+  core.addColorStop(0, 'rgba(255,253,240,1)');
+  core.addColorStop(0.5, 'rgba(255,240,195,0.75)');
+  core.addColorStop(1, 'rgba(255,225,150,0)');
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  phillGodrayTex = Texture.from(canvas);
+  return phillGodrayTex;
+};

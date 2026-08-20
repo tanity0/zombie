@@ -937,6 +937,12 @@ export interface Enemy {
   // 更新はangelBossTick(lance-windup)のみ。pixiSceneは読んで赤ライン/ランタン/ビームを描くだけ。
   // estFireAt=発射予定時刻の見積もり(★v0.25.3588: 予告帯の流星を「消え切り=発射」に同期させる描画用)
   lanceLanterns?: { x: number; y: number; dir: number; bornAt: number; firedUntil?: number; estFireAt?: number }[];
+  // PACING_PUZZLE.md §10(EXボス「フィル」バッチ3・pixi描画用ミラー): 光の雨(技1)の時間差落下キューは
+  // AngelBossState.phill.lightrainQueue(useGameLoopのローカルref)にしか存在せず、Pixiは store/Enemy
+  // 経由でしか状態を読めない(CLAUDE.md「PixiJSはstoreを読むだけ」)ため、lanceLanternsと同じ作法で
+  // Enemyへミラーする。角度所要挙動は不変(数値・タイミングは一切変えない=描画用の読み出し口を足すだけ)。
+  // 更新はangelBossTick(runPhillTick)のみ。
+  phillLightrainQueue?: { x: number; y: number; at: number }[];
   // トール専用: 旋回方向(1=時計回り/既定 -1=逆回転)。払いの予告中だけ一時的に反転する。
   bossCircleDir?: number;
   // ミゲル(ゲート2ボス)専用: 直近に「近接」ダメージを受けた gameTime(ms)。gameStore.ts の近接

@@ -118,7 +118,10 @@ import { MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED } fro
 import {
   ANGEL_MIGUEL_TUNING as MG_T, ANGEL_JIBRIL_TUNING as JB_T, ANGEL_RAFI_TUNING as RF_T,
   ANGEL_URI_TUNING as UR_T, ANGEL_SURIEL_TUNING as SR_T, ANGEL_ACRASIEL_TUNING as AC_T,
+  ANGEL_PHILL_TUNING as PH_T,
 } from '../utils/angelScript';
+// PACING_PUZZLE.md §10-12#17(フィル・羽根の檻/裁きの光/急降下の可視域クランプ=可視短辺の0.45倍上限)。
+import { phillCageInitialRadiusPx } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
@@ -145,7 +148,7 @@ import {
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, zoomCompensatedWorldDistance, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
 import { airHopHeight01 } from '../utils/airHop';
-import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE } from '../utils/bladeArt';
+import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE, PHILL_FEATHER_NATIVE_ANGLE } from '../utils/bladeArt';
 import { bossWideShotZoom } from '../utils/cameraZoom';
 import {
   GLEN_CHAIN, GLEN_SLOT_COUNT, GLEN_VISIBLE_BY_COUNT, glenPartCountFull,
@@ -216,7 +219,7 @@ import {
   pickExplSlot, rankFade, shouldFreezeGeom,
   SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS,
 } from '../utils/shadowSlots';
-import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
+import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 // SKILL_BUILD_REDESIGN.md §21(B5)/§24(社長指示2026-08-13): 枠光の判定は純関数のまま(pixiは読むだけ・
 // 判定を書かない)。バーサーカー=HP依存の常時オーラ、オーバークロック=proc起点の800msフラッシュ。
@@ -1590,6 +1593,69 @@ const RAFI_BLADE_TIP_FRAC = { x: 0.50, y: 0.05 };
 const RAFI_BLADE_INTRINSIC_ANGLE = Math.atan2(RAFI_BLADE_TIP_FRAC.y - RAFI_BLADE_GRIP_FRAC.y, RAFI_BLADE_TIP_FRAC.x - RAFI_BLADE_GRIP_FRAC.x);
 const RAFI_BLADE_SLASH_LEN_FRAC = Math.hypot(RAFI_BLADE_TIP_FRAC.x - RAFI_BLADE_GRIP_FRAC.x, RAFI_BLADE_TIP_FRAC.y - RAFI_BLADE_GRIP_FRAC.y);
 const RAFI_BLADE_SLASH_LENGTH = 90; // 叩き台
+
+// =================================================================================================
+// PACING_PUZZLE.md §10(EXボス「フィル(変異体)」バッチ3: pixi新規描画)。★数値は全て叩き台
+// (§10-8「バランスの最終値ではない」を継承・実機で社長が整える)。専用レイヤー(L.phillLayer)は
+// filteredWorldの外=DoF/地平線フェード/擬似遠近の対象外(§10-12#10/#11/§10-14#6)。
+// =================================================================================================
+// ---- 本体: 呼吸(既存ENEMY_BREATH・isHiddenBoss経由で自動適用)+浮遊(§10-4) ----
+const PHILL_FLOAT_AMP_PX = 14;       // 上下ボブの振幅(px・視覚のみ=e.y/当たり判定は不変)。
+const PHILL_FLOAT_PERIOD_MS = 3400;  // ゆっくり(慣性=sin波なので加減速は内在=v0.25.3429)。
+// ---- 羽(§10-4/§10-12#12): phill-wings.png(804×1024)=2列(左/右翼)×3行(3対)のシート ----
+const PHILL_WING_COLS = 2, PHILL_WING_ROWS = 3;
+// 各対の付け根(ゲム)のフラクション座標。実測未受領=目視の叩き台(実機調整前提。列0=左翼/列1=右翼)。
+const PHILL_WING_ANCHOR: { x: number; y: number }[][] = [
+  [{ x: 0.56, y: 0.19 }, { x: 0.44, y: 0.19 }], // 対0(最奥・上向きに畳んだ羽)
+  [{ x: 0.70, y: 0.42 }, { x: 0.30, y: 0.42 }], // 対1(中段・横に広がる=主翼)
+  [{ x: 0.58, y: 0.24 }, { x: 0.42, y: 0.24 }], // 対2(手前・触手つき)
+];
+const PHILL_WING_PAIR_H_PX = [126, 188, 168]; // 対ごとの表示高さ(px・主翼(対1)を一番大きく)
+const PHILL_WING_FLAP_MS = 2400;         // 大きくゆっくり(フェーズ1基準・§10-1「大きくゆっくり羽ばたく」)
+const PHILL_WING_FLAP_MS_PHASE2 = 1300;  // フェーズ2は速くなる(§10-9)
+const PHILL_WING_FLAP_ROT = 0.30;        // 羽ばたきの回転振幅(rad)
+const PHILL_WING_FLAP_SCALE = 0.10;      // 羽ばたきの拡縮振幅
+const PHILL_WING_ATTACK_BOOST = 2.6;     // 技3/4/5発動中、主翼(対1)を大きく振る倍率(動きは大きく=v3443)
+// ---- 羽攻撃の武器スプライト(§10-10): phill-wing-attack.png(436×512) ----
+const PHILL_WING_ATTACK_GRIP_FRAC = { x: 0.76, y: 0.34 }; // 実測目視の叩き台(付け根のゲム)
+const PHILL_WING_ATTACK_TIP_FRAC = { x: 0.05, y: 0.85 };  // 羽根の先端
+const PHILL_WING_ATTACK_INTRINSIC_ANGLE = Math.atan2(
+  PHILL_WING_ATTACK_TIP_FRAC.y - PHILL_WING_ATTACK_GRIP_FRAC.y,
+  PHILL_WING_ATTACK_TIP_FRAC.x - PHILL_WING_ATTACK_GRIP_FRAC.x,
+);
+const PHILL_WING_ATTACK_LEN_FRAC = Math.hypot(
+  PHILL_WING_ATTACK_TIP_FRAC.x - PHILL_WING_ATTACK_GRIP_FRAC.x,
+  PHILL_WING_ATTACK_TIP_FRAC.y - PHILL_WING_ATTACK_GRIP_FRAC.y,
+);
+const PHILL_WING_ATTACK_LENGTH = 160; // 動きは大きく(CLAUDE.md v3443)=既存武器絵(uri85/thor220)の中間より大きめ
+// ---- 後光(§10-18・社長指示「頭の後ろくらいからピカーキラキラキラ〜」) ----
+const PHILL_HALO_SIZE_PX = 240;         // ゴッドレイの表示直径
+const PHILL_HALO_SPIN_RATE = 1 / 5200;  // ゆっくり回転(rad/ms・慣性は常時回転なので開始/終了はフェードで持たせる)
+const PHILL_HALO_FLICKER_MS = 900;      // sin明滅の周期
+const PHILL_HALO_ALPHA = 0.85;
+const PHILL_HALO_BOOST_ALPHA = 1.0;     // 技発動/フェーズ移行の瞬間だけ増光(メリハリ)
+const PHILL_HALO_BOOST_MS = 420;
+const PHILL_SPARKLE_POOL_SIZE = 18;
+const PHILL_SPARKLE_RADIUS_PX = 70;     // 頭部周辺キラキラの散らばり半径
+// ---- 撒き羽根(§10-11/§10-13/§10-19): fx/phill-featureを花びら型+歪みパラメータで散らす ----
+const PHILL_FEATHER_POOL_SIZE = 96; // 登場のブワッ(70)+同時多発の技/被弾トリガぶんの余裕(派手側に倒す)
+const PHILL_FEATHER_LIFE_MS = 1300;
+const PHILL_FEATHER_SIZE_PX = 30;
+const PHILL_FEATHER_FLAP_COUNT = 2;     // 常時(羽ばたきのたび)少量
+const PHILL_FEATHER_MOVE_COUNT = 14;    // 技発動/被弾(カウンター含む=lastHit経由)
+const PHILL_FEATHER_PHASE_COUNT = 36;   // フェーズ移行
+const PHILL_FEATHER_DEATH_COUNT = 60;   // 死亡
+const PHILL_FEATHER_SPAWN_COUNT = 70;   // §10-19 登場のブワッ(最大量=先に大量吹き出す)
+// ---- 足元影(専用レイヤー内・§10-12#11「同期ズレを構造的に回避」) ----
+const PHILL_SHADOW_BASE_RX = 46, PHILL_SHADOW_BASE_RY = 16;
+// ---- 羽根散弾(技14・§10-13/§10-14#8/#11): skadiIceBlades共有配列にvisual:'feather'枝を追加 ----
+// §10-14#11の受け入れ条件「当たる羽根=大きめ+赤い軌跡+直進/撒き羽根=小さめ・ひらひら」を満たすため、
+// 判定ありの羽根散弾はice/bone(80px)より一回り大きく表示する(判定半径自体はSKADI_BLADE_HIT=共通・不変)。
+const PHILL_FEATHERSHOT_VIS_PX = 112;
+// ---- 登場シーン(§10-19・社長指示「羽が大量に吹き出してブワッと。その後、登場する感じで」) ----
+const PHILL_INTRO_BODY_DELAY_MS = 260;  // 羽根が先に吹き出してから本体が現れるまでの間(順序が肝)
+const PHILL_INTRO_BODY_FADE_MS = 700;   // 本体のフェード+降下の尺(慣性=ease)
+const PHILL_INTRO_DESCEND_PX = 150;     // 降下の落差(視覚のみ=e.y/当たり判定は不変)
 
 // アクラシエルの結晶の槍(acrasiel-spear.png=152×512)。設置武器(ラフィ骨刃/スカジ氷刃と同じ語彙)なので
 // 振り演出は持たない。溜め(spear-windup)中だけ本体前方に1本「構え」表示する(掟W9の窓口・叩き台)。
@@ -3316,6 +3382,28 @@ export class PixiScene {
   // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)の頭上名前ラベル。同時1体・生成は湧き時1回だけ
   // なのでPixi Text可(CLAUDE.mdの「まれなcallout枠」)。毎フレーム再生成はしない=位置追従のみ。
   private namedFoeLabels = new Map<string, Text>();
+
+  // ---- PACING_PUZZLE.md §10 バッチ3(フィル専用描画・L.phillLayer内) ----------------------------
+  private phillWingFrames: Texture[] | null = null; // phill-wings.pngを6枚にスライスしたキャッシュ(1回だけ)
+  // 影/後光/羽をまとめる下敷きコンテナ(phillLayerのindex 0=最下へ挿す)。本体(view.container)は
+  // 別途phillLayerへ通常addChildされる(=下敷きの後に追加される→常に本体の方が手前)。z順を
+  // 生成タイミングに依存させない(遅延生成される羽/後光がaddChild順で本体の上に来る事故を防ぐ)。
+  private phillBack = new Map<string, Container>();
+  private phillWingSprites = new Map<string, Sprite[]>(); // enemyId→6枚(pair0L,0R,1L,1R,2L,2R)
+  private phillHalo = new Map<string, Sprite>();
+  private phillHaloBoostAt = new Map<string, number>(); // 技発動/フェーズ移行の瞬間の増光(§10-18)
+  // 頭部キラキラ(§10-18・既存sparkle型=fx/breath-sparkle流用)。backコンテナの子=個体退場で自動破棄。
+  // 位置/明滅は毎フレーム now から直接計算する純粋関数的な描画(独自の寿命管理を持たない=常時表示)。
+  private phillSparkles = new Map<string, { sp: Sprite; ang0: number; r: number; spd: number; h: number }[]>();
+  private phillShadow = new Map<string, Graphics>(); // 足元の楕円影(専用レイヤー内=DoFと同期ズレを回避)
+  private phillWingFx = new Map<string, Container>(); // 羽攻撃(技3/4/5)の武器スプライト(katana系と同型)
+  private phillSpawnAt = new Map<string, number>(); // §10-19 登場フェード/降下の起点時刻
+  private phillLastBossState = new Map<string, string>(); // 技切替検知(撒き羽根のトリガ)
+  private phillLastHitAt = new Map<string, number>();
+  private phillLastPhase = new Map<string, number>();
+  private phillFlapPhaseAt = new Map<string, number>(); // 常時の羽ばたき撒き散らし間引き(周期の頭でだけ発火)
+  private phillLastPos = new Map<string, { x: number; y: number }>(); // 死亡時の最終位置(cleanupで演出を出すため)
+  private phillFeatherPool: { sp: Sprite; active: boolean; bornAt: number; life: number; vx: number; vy: number; vr: number; skewBase: number; flipX: number }[] = [];
 
   // ① 通常足影: ソフト影テクスチャのスプライトプール(Graphics廃止)。光方向へ回転+伸縮で
   // 「伸びる/向き」を保ちつつ、毎フレームのブラーパス無しで柔らかいエッジにする。
@@ -6668,6 +6756,8 @@ export class PixiScene {
     this.syncLab(); // 屋内ステージの床/壁/扉描画＋屋外レイヤーの表示切替
     // ダンスUI層は world と同じカメラオフセットで追従(ワールド座標のまま、被写体深度の外で描く)。
     this.L.danceUiLayer.position.set(-s.camera.x + sx, -s.camera.y + sy);
+    // フィル専用層(§10-12#10)も同じオフセットで追従(前例=danceUiLayerと同じ作法)。
+    this.L.phillLayer.position.set(-s.camera.x + sx, -s.camera.y + sy);
 
     // ズーム(描画のみ): worldGroup を画面中央=プレイヤー基準で拡大。
     //  ・待機ズーム: 手を離して静止している間だけ少し寄る(滑らかに/操作再開で1.0へ)。
@@ -7460,6 +7550,8 @@ export class PixiScene {
     this.lastPetalStepAt = now;
     if (petalDtSec > 0) this.stepPetals(now, petalDtSec);
     this.stepMaikoTrail(now); // ★慣性バッチ: 手毬打ちの射出残像pool更新(全体で1回)
+    // PACING_PUZZLE.md §10-11(フィルの撒き羽根)。petalと同じ場所・同じdeltaで1回だけ更新。
+    if (petalDtSec > 0) this.stepPhillFeathers(now, petalDtSec);
     // ★慣性バッチ: §7-15消滅側。syncActors(=resetActorFxDefaultsの既定OFF)の後に回し、
     // 「今フレーム描かれなかった武器絵」へ沈み+フェードアウトを描き足す。
     this.flushWeaponVanish(now);
@@ -10716,6 +10808,10 @@ export class PixiScene {
 
     // ---- 敵(通常/裏ボス) ----
     for (const e of enemies) {
+      // PACING_PUZZLE.md §10-12#11(足元の楕円影→専用レイヤー内に描いて同期ズレを構造的に回避)。
+      // groundLayer(=filteredWorldの中)側のこの共有影プールには乗せない(drawPhillExtrasが
+      // phillLayer内に自前で描く)。
+      if (e.type === 'phillboss') continue;
       const footY = e.y + e.height;
       const horizonAlpha = this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
@@ -11939,6 +12035,12 @@ export class PixiScene {
         view = this.makeActor();
         this.enemies.set(e.id, view);
       }
+      // PACING_PUZZLE.md §10-12#10(フィル専用レイヤー): makeActor()は既定でactorLayerへ追加するため、
+      // phillbossだけ専用レイヤー(filteredWorldの外=DoF対象外)へ移す。addChildは既存の親から
+      // 動かすだけ(destroy無し)なので、他アクターと同じ view/内部Graphics構成のまま流用できる。
+      if (e.type === 'phillboss' && view.container.parent !== this.L.phillLayer) {
+        this.L.phillLayer.addChild(view.container);
+      }
       // v0.25.3206: 既定OFFは try/catch の**外**(=drawEnemy本体が例外を投げても必ず今フレーム分が
       // 反映される場所)で先に済ませる。詳細は resetActorFxDefaults のコメント。
       this.resetActorFxDefaults(view, e);
@@ -12068,6 +12170,26 @@ export class PixiScene {
         const ballDrop = this.maikoBallDrop.get(id);
         if (ballDrop) { ballDrop.sp.destroy(); this.maikoBallDrop.delete(id); }
         this.maikoBoomLast.delete(id);
+        // PACING_PUZZLE.md §10-11(フィル死亡=大量に撒く)。片付ける前に最後の位置で撒いてから破棄する。
+        const phLastPos = this.phillLastPos.get(id);
+        if (phLastPos) {
+          this.spawnPhillFeathers(phLastPos.x, phLastPos.y, PHILL_FEATHER_DEATH_COUNT, now);
+          this.phillLastPos.delete(id);
+        }
+        const phBack = this.phillBack.get(id);
+        if (phBack) { phBack.destroy({ children: true }); this.phillBack.delete(id); }
+        this.phillWingSprites.delete(id);
+        this.phillHalo.delete(id);
+        this.phillHaloBoostAt.delete(id);
+        this.phillShadow.delete(id);
+        this.phillSparkles.delete(id);
+        const phWingFx = this.phillWingFx.get(id);
+        if (phWingFx) { phWingFx.destroy({ children: true }); this.phillWingFx.delete(id); }
+        this.phillSpawnAt.delete(id);
+        this.phillLastBossState.delete(id);
+        this.phillLastHitAt.delete(id);
+        this.phillLastPhase.delete(id);
+        this.phillFlapPhaseAt.delete(id);
       }
     }
   }
@@ -12204,9 +12326,9 @@ export class PixiScene {
   // 氷刃=設置中は薄く方向表示→発射後はくっきり、常に向きへ回転。effectLayer=world座標。
   private syncSkadiHazards(
     markers: { id: string; x: number; y: number; bornAt: number; fireAt: number }[],
-    // ★PACING_PUZZLE.md §10-13/§10-14#8(フィル羽根散弾=visual:'feather'): 型は3種類受け入れるが、
-    // 専用テクスチャ/赤軌跡の描き分けはバッチ3(pixi新規描画)の範囲。現状はiceTexへフォールバックする
-    // (型を通すためだけの最小対応・「羽根なのに氷の絵」は暫定で、実機で気になれば手当てする)。
+    // PACING_PUZZLE.md §10-13/§10-14#8(フィル羽根散弾=visual:'feather'): バッチ3でfx/phill-feather
+    // テクスチャ+専用サイズ/向きを配線(下のbtex/nativeAngle分岐)。判定/挙動はice/boneと共通のまま
+    // (§10-14#8=既存共有配列にvisualを増やしただけ・新配列は作らない)。
     blades: { id: string; x: number; y: number; angle: number; launched: boolean; launchAt: number; expireAt: number; visual?: 'ice' | 'bone' | 'feather' }[],
     gameTime: number,
     now: number,
@@ -12236,16 +12358,18 @@ export class PixiScene {
         sp.visible = true;
       }
     }
-    // 氷刃(skadi)/骨刃(rafi=visual:'bone')は判定/挙動は同じ・見た目のテクスチャだけ差し替える(社長指示v0.25.1665)。
+    // 氷刃(skadi)/骨刃(rafi=visual:'bone')/羽根散弾(phill=visual:'feather')は判定/挙動は同じ・
+    // 見た目のテクスチャだけ差し替える(社長指示v0.25.1665・§10-14#8で羽根も同じ共有配列に編入)。
     const iceTex = getTexture('skadi-ice-blade');
     const boneTex = getTexture('rafi-blade');
+    const featherTex = getTexture('fx/phill-feather');
     // 技表GO: ラフィ/スカディ(扇)=発射時に残りの刃が反動で開き直る。この扇(=blades配列そのもの、
     // 1回のsync呼び出しは1体ぶん)の中で直近に発射した刃があれば、そのタイミングを全未発射の刃で共有する。
     const REOPEN_KICK_MS = 240;
     let lastFanLaunchAt = -Infinity;
     for (const b of blades) if (b.launched && b.launchAt > lastFanLaunchAt) lastFanLaunchAt = b.launchAt;
     for (const b of blades) {
-      const btex = b.visual === 'bone' ? boneTex : iceTex;
+      const btex = b.visual === 'bone' ? boneTex : b.visual === 'feather' ? featherTex : iceTex;
       if (!btex) continue;
       seen.add(b.id);
       // v0.25.3198(社長指示): 飛んでいる間、進路の赤ラインを刃の現在位置から残り飛距離ぶん引く。
@@ -12268,8 +12392,17 @@ export class PixiScene {
       let sp = this.skadiBladePool.get(b.id);
       if (!sp) { sp = new Sprite(btex); sp.anchor.set(0.5, 0.5); this.skadiHazardContainer.addChild(sp); this.skadiBladePool.set(b.id, sp); }
       if (sp.texture !== btex) sp.texture = btex; // 差し替え(プール再利用時の保険)
-      sp.scale.set(80 / Math.max(btex.width, btex.height));
-      sp.rotation = b.angle - (b.visual === 'bone' ? RAFI_BLADE_NATIVE_ANGLE : SKADI_BLADE_NATIVE_ANGLE); // 刃先を発射方向へ
+      // §10-14#11「当たる羽根=大きめ+赤い軌跡+直進」: 判定半径(SKADI_BLADE_HIT)は共通のまま、
+      // 絵だけ一回り大きく(撒き羽根=PHILL_FEATHER_SIZE_PX=30pxより明確に大きい=見分けが付く)。
+      sp.scale.set((b.visual === 'feather' ? PHILL_FEATHERSHOT_VIS_PX : 80) / Math.max(btex.width, btex.height));
+      sp.rotation = b.angle - (
+        b.visual === 'bone' ? RAFI_BLADE_NATIVE_ANGLE
+          : b.visual === 'feather' ? PHILL_FEATHER_NATIVE_ANGLE
+            : SKADI_BLADE_NATIVE_ANGLE
+      ); // 刃先(先端)を発射方向へ
+      // §10-13-2「飛翔中の羽根も§10-13-1の歪みを掛ける」: 個体ごとに決定的な軽いskew(判定円の
+      // 見分けやすさを崩さない範囲=小さめ)。撒き羽根(spawnPhillFeathers)ほど大きくは歪ませない。
+      sp.skew.x = b.visual === 'feather' ? (stablePhase(b.id) / (Math.PI * 2) - 0.5) * 0.4 : 0;
       // ★予兆一括バッチ(v0.25.3344・社長の例「次に飛んでくる刃が前もって震えながら少し後ずさる」):
       // 発射直前(赤ラインが出る=SKADI_BLADE_LINE_PRE_MS窓)だけ、発射方向と逆へ震え+後ずさり。
       // 描画オフセットのみ(判定はstore側のb.x/y・発射時刻を一切変えない)。骨刃(rafi)/氷刃(skadi)共通。
@@ -14504,6 +14637,10 @@ export class PixiScene {
       if (holoMiniSp) holoMiniSp.visible = false;
       const eyeSp = this.angelEyeSprites.get(e.id);
       if (eyeSp) eyeSp.visible = false;
+      // PACING_PUZZLE.md §10-10(フィルの羽攻撃武器スプライト)。同じ作法で既定OFF=技3/4/5の
+      // 分岐(drawPhillWingReady/Slash)だけが点ける。
+      const wingFx = this.phillWingFx.get(e.id);
+      if (wingFx) wingFx.visible = false;
     }
     // §6.38 B1/B2b(賞金首): 出現魔法陣+武器スプライト+鞭スミアも同じ作法で既定OFF。
     // ★v0.25.3383のバグ修正: この一群は元々isGate2AngelBoss(e.type)ブロックの中に置かれていたため、
@@ -14701,7 +14838,9 @@ export class PixiScene {
     // 他敵は従来どおり足元アンカー＋遠近スケール。
     const bossFixed = isHiddenBoss(e.type);
     view.container.zIndex = fb.footY;
-    const horizonAlpha = this.horizonActorAlpha(fb.footY);
+    // PACING_PUZZLE.md §10-14#6(フィルは専用レイヤー=filteredWorldの外なので地平線フェードの対象外
+    // =外すのが意図。浮遊ボスは遠近/地平線の演出そのものに乗らない)。
+    const horizonAlpha = e.type === 'phillboss' ? 1 : this.horizonActorAlpha(fb.footY);
     // 死神の回り込みワープ: 消える(0)→テレポート→出る(1) のフェード(useGameLoop が reaperWarpAlpha を駆動)。
     const reaperWarpFade = e.reaperWarpAlpha ?? 1;
     // 非ボス敵は「手前(画面最下端)で消える」near-plane フェードを掛ける。裏ボスは自前の裏回りフェード
@@ -14743,13 +14882,25 @@ export class PixiScene {
       view.sprite.rotation = 0; // ビューはプール再利用されるため、雑魚時代の歩行モーション回転を持ち越さない
       // 帯幅→絵の実寸(縦横同率=歪まない)。さらに他敵と同じ擬似遠近スケールを掛ける(画面の前後で大小・視覚のみ)。
       // 当たり判定の帯(e.width×e.height)は不変=絵だけが前で大きく/奥で小さくなる(社長指示)。
-      const scale = ((e.width / fit.w) / tex.width) * this.depthScaleEnemy(fb.footY);
+      // §10-14#6: フィルは擬似遠近も対象外(専用レイヤー=浮遊ボスは遠近の演出に乗らないのが意図)。
+      const scale = ((e.width / fit.w) / tex.width) * (e.type === 'phillboss' ? 1 : this.depthScaleEnemy(fb.footY));
       const spriteW = scale * tex.width, spriteH = scale * tex.height;
       const stripCx = e.x + e.width / 2, stripCy = e.y + e.height / 2;
       // 絵の中心(アンカー)= 帯の中心から、帯が絵内のどこにあるか(fit.cx/cy)ぶん逆にずらす。
       const spx = stripCx + (0.5 - fit.cx) * spriteW;
       const spy = stripCy + (0.5 - fit.cy) * spriteH;
       const breath = this.enemyBreath(e, now);
+      // PACING_PUZZLE.md §10-4(浮遊)+§10-19(登場シーン)。視覚のみ=e.y/当たり判定は不変
+      // (CLAUDE.md Y方向5点チェック: 地平線フェード/擬似遠近は上で既に対象外化。可視域/移動可能帯は
+      // e.x/e.yそのものを一切動かさないため無関係。this.phillIntroState()が登場時の羽根撒きも駆動する)。
+      let phillBob = 0, phillIntroAlpha = 1, phillIntroDescend = 0;
+      if (e.type === 'phillboss') {
+        phillBob = Math.sin((now / PHILL_FLOAT_PERIOD_MS) * Math.PI * 2 + stablePhase(e.id)) * PHILL_FLOAT_AMP_PX;
+        const intro = this.phillIntroState(e.id, spx, spy, now);
+        phillIntroAlpha = intro.alphaMul;
+        phillIntroDescend = intro.descendPx;
+        this.phillLastPos.set(e.id, { x: spx, y: spy }); // 死亡時の撒き羽根用(cleanupで参照)
+      }
       const sinceHit = now - e.lastHit;
       let flinchSqY = 1;
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
@@ -14783,7 +14934,10 @@ export class PixiScene {
       // 影が置かれていた=透明な余白を「絵の下端」と誤認していたため)。
       const contentBottomFrac = this.textureContentBottomFrac(tex);
       view.shadowGroundY = spy + scale * tex.height * (contentBottomFrac - 0.5); // 論理の足元(実体下端。リフト/スカッシュ無し)
-      view.sprite.position.set(Math.round(spx + liftShake + lungeOffX), Math.round(spy - liftHop - kbHop + lungeOffY));
+      view.sprite.position.set(
+        Math.round(spx + liftShake + lungeOffX),
+        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob - phillIntroDescend),
+      );
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
       // スケールXの符号だけを反転する見た目専用の変更で、hitbox(e.x/y/width/height)・座標・攻撃方向・
@@ -14801,7 +14955,7 @@ export class PixiScene {
       const behindApplies = bossBehindFadeApplies(spriteW, ply.width);
       if (!behindApplies) {
         // v0.25.2623: 位置由来のフェードに下限を敷く(artFade は地平線フェードを含む)。
-        view.sprite.alpha = bossPositionAlpha(artFade);
+        view.sprite.alpha = bossPositionAlpha(artFade) * phillIntroAlpha;
         view.sprite.visible = true;
       } else {
       const behindDist = fb.footY - (ply.y + ply.height);   // 正 = プレイヤーが帯より奥
@@ -14839,7 +14993,7 @@ export class PixiScene {
       const fastLerp = 1 - (1 - this.seeThroughLerp) ** 2;
       this.bossBehindAlpha += (behindTarget - this.bossBehindAlpha) * fastLerp;
       // v0.25.2623: 裏回り透け × 地平線フェードの積にも下限を敷く(掛け算で0へ落ちるのを防ぐ)。
-      view.sprite.alpha = bossPositionAlpha(this.bossBehindAlpha * artFade);
+      view.sprite.alpha = bossPositionAlpha(this.bossBehindAlpha * artFade) * phillIntroAlpha;
       view.sprite.visible = true;
       }
     } else {
@@ -16766,6 +16920,136 @@ export class PixiScene {
         const ex = cx + dirx * MIMIR_LASER_VIS_RANGE, ey = cy + diry * MIMIR_LASER_VIS_RANGE;
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.gaze.windup));
         this.drawAngelBeamLine(o, cx, cy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, prog, now);
+      }
+      // =============================================================================================
+      // PACING_PUZZLE.md §10(EXボス「フィル」バッチ3): 予告(帯/円)+羽攻撃(技3/4/5)の武器スプライト。
+      // 判定/進行度/座標はangelBossTick(runPhillTick)が正=ここは読んで描くだけ(CLAUDE.md「Pixiは
+      // 描画専門」)。羽攻撃の武器絵はphillLayer専用(§10-12#10・drawPhillWingSlash/Readyが
+      // drawKatanaSlash/Readyのtargetをphillへ差し替え済み)。他の予告円/帯はview.tele(=o)へ描く=
+      // view.container(=phillLayer内)の子なので自然に専用レイヤーへ収まる(追加の配線不要)。
+      // =============================================================================================
+      // ---- フィル: 光の雨(技1)=時間差の小円5〜6個→光柱(§10-3の1) ----
+      else if (e.type === 'phillboss' && bs === 'phill-lightrain-active') {
+        // 位置/時刻はe.phillLightrainQueue(バッチ3で新設したangelBossTickからのミラー・§10バッチ3)。
+        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+        for (const q of e.phillLightrainQueue ?? []) {
+          if (gameTime >= q.at) continue; // 発火済み(保険=既にキューから外れている想定)
+          o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius)
+            .fill({ color: 0xff2a2a, alpha: (0.14 + 0.14 * pulse) * TELEGRAPH_FILL_MULT });
+          if (FX_RING_ENABLED) this.drawTelegraphRing(view, q.x, q.y, PH_T.lightrain.radius, 0xff3b3b, 0.4 + 0.3 * pulse);
+          else o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.4 + 0.3 * pulse });
+        }
+      }
+      // ---- フィル: 羽斬り(技3・物理①)=T3帯+羽攻撃の武器スプライト(掟W9=構え+実行の両方に出す) ----
+      else if (e.type === 'phillboss' && (bs === 'phill-wingslash-windup' || bs === 'phill-wingslash-active' || bs === 'phill-wingslash-recover')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        if (bs === 'phill-wingslash-windup') {
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.wingslash.windup));
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, PH_T.wingslash.halfWidth, prog, now);
+          const wa = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * PH_T.wingslash.windup);
+          this.drawPhillWingReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, wa, 'wide', 0, windupTremorPx(prog, now), now);
+        } else if (bs === 'phill-wingslash-active') {
+          const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.wingslash.active));
+          this.drawPhillWingSlash(e.id, fx, fy, tx, ty, PH_T.wingslash.halfWidth, t, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
+        } else {
+          const wa = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
+          this.drawPhillWingReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, wa, 'wide', 1, 0, now);
+        }
+      }
+      // ---- フィル: 羽突き(技4・物理②)=T3帯(細め・ディレイ持ち)+突きの武器スプライト ----
+      else if (e.type === 'phillboss' && (bs === 'phill-wingthrust-windup' || bs === 'phill-wingthrust-active' || bs === 'phill-wingthrust-recover')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        if (bs === 'phill-wingthrust-windup') {
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.wingthrust.windup));
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, PH_T.wingthrust.halfWidth, prog, now);
+          const wa = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * PH_T.wingthrust.windup);
+          this.drawPhillWingReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, wa, 'thrust', 0, 0, now);
+        } else if (bs === 'phill-wingthrust-active') {
+          const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.wingthrust.active));
+          this.drawPhillWingSlash(e.id, fx, fy, tx, ty, PH_T.wingthrust.halfWidth, t, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'thrust');
+        } else {
+          const wa = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
+          this.drawPhillWingReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, wa, 'thrust', 1, 0, now);
+        }
+      }
+      // ---- フィル: 羽連撃(技5・物理③)=帯×2(2撃目ディレイ)。武器は振り切った姿勢のまま2撃目まで
+      // 保持(掟W9)=構えを畳まない。 ----
+      else if (e.type === 'phillboss' && (bs === 'phill-wingcombo-windup' || bs === 'phill-wingcombo-active1' || bs === 'phill-wingcombo-gap' || bs === 'phill-wingcombo-active2' || bs === 'phill-wingcombo-recover')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        if (bs === 'phill-wingcombo-windup') {
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.wingcombo.windup));
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, PH_T.wingcombo.halfWidth, prog, now);
+          const wa = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * PH_T.wingcombo.windup);
+          this.drawPhillWingReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, wa, 'wide', 0, windupTremorPx(prog, now), now);
+        } else if (bs === 'phill-wingcombo-active1') {
+          const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.wingcombo.active1));
+          this.drawPhillWingSlash(e.id, fx, fy, tx, ty, PH_T.wingcombo.halfWidth, t, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
+        } else if (bs === 'phill-wingcombo-gap') {
+          this.drawPhillWingReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, 1, 'wide', 1, 0, now);
+        } else if (bs === 'phill-wingcombo-active2') {
+          // 1撃目(active1)と同じ作法=武器スプライトの振り自体が「危険を伝える絵」を兼ねる
+          // (miguel/rafi/uriのsweep-active/harai-activeと同じ・静的な帯を二重に出さない)。
+          const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.wingcombo.active2));
+          this.drawPhillWingSlash(e.id, fx, fy, tx, ty, PH_T.wingcombo.halfWidth, t, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'overhead');
+        } else {
+          const wa = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
+          this.drawPhillWingReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, wa, 'wide', 1, 0, now);
+        }
+      }
+      // ---- フィル: 金環(技7)=頭上の金環→本体中心の大円AoE(外へ逃げるが正解・§10-3の7) ----
+      else if (e.type === 'phillboss' && bs === 'phill-goldring-windup') {
+        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.goldring.windup));
+        o.ellipse(cx, cy, PH_T.goldring.radius, PH_T.goldring.radius)
+          .fill({ color: 0xff2a2a, alpha: ((0.06 + 0.12 * prog) + 0.10 * pulse) * TELEGRAPH_FILL_MULT });
+        const ringA = (0.2 + 0.3 * prog) + 0.25 * pulse;
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, PH_T.goldring.radius, 0xffd166, ringA);
+        else o.ellipse(cx, cy, PH_T.goldring.radius, PH_T.goldring.radius).stroke({ width: 2, color: 0xffd166, alpha: ringA });
+      }
+      // ---- フィル: 裁きの光(技8★カウンター必須)=追尾円(判定なし)→固定の瞬間に1回blast(§10-9の8) ----
+      else if (e.type === 'phillboss' && bs === 'phill-judgment-windup') {
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy; // 毎フレーム足元を追尾(runPhillTick側)
+        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+        const R = this.phillZoomSafeRadius(PH_T.judgment.radius);
+        o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: (0.18 + 0.14 * pulse) * TELEGRAPH_FILL_MULT });
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, 0.5 + 0.3 * pulse);
+        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.5 + 0.3 * pulse });
+      }
+      // ---- フィル: 羽根の檻(技9★カウンター必須)=全方位から収縮する円(判定なし)→閉じ切る瞬間に
+      // blast(§10-9の9)。中心は溜め開始でロック=以後追尾しない。 ----
+      else if (e.type === 'phillboss' && bs === 'phill-cage-windup') {
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy; // ロック済み(以後動かない)
+        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.cage.trackMs));
+        const startR = this.phillZoomSafeRadius(PH_T.cage.startRadius);
+        const R = startR + (PH_T.cage.closeRadius - startR) * prog; // startRadius→closeRadiusへ収縮
+        o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: (0.10 + 0.20 * prog + 0.10 * pulse) * TELEGRAPH_FILL_MULT });
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, 0.35 + 0.4 * prog + 0.2 * pulse);
+        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.35 + 0.4 * prog + 0.2 * pulse });
+      }
+      // ---- フィル: 光輪投げ(技11)=往復とも帯判定(横に避ける・§10-9の11) ----
+      else if (e.type === 'phillboss' && (bs === 'phill-ringtoss-windup' || bs === 'phill-ringtoss-out' || bs === 'phill-ringtoss-back' || bs === 'phill-ringtoss-recover')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        if (bs === 'phill-ringtoss-windup') {
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.ringtoss.windup));
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, PH_T.ringtoss.halfWidth, prog, now);
+        } else if (bs === 'phill-ringtoss-out' || bs === 'phill-ringtoss-back') {
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, PH_T.ringtoss.halfWidth, 1, now, 0, 0); // 往復とも全形=判定と一致
+        }
+      }
+      // ---- フィル: 急降下(技12)=追尾する影マーカー(判定なし)→急降下+着地円(ジャンプ着地レールの
+      // 大型版・§10-9の12)。着地点(aiTarget)はwindup明けでロック済み=fall中もこの円のまま。 ----
+      else if (e.type === 'phillboss' && (bs === 'phill-dive-windup' || bs === 'phill-dive-fall')) {
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+        const R = this.phillZoomSafeRadius(PH_T.dive.radius);
+        o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, 0.45 + 0.3 * pulse);
+        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
       }
       // ---- スリィエル: 単眼の凝視(小技)=T4のみ(図形なし・tintは上で設定済み) ----
       // ---- 上記いずれにも該当しない状態(chase/volley/bolt-windup/counter-leap等)は図形なし ----
@@ -18853,6 +19137,317 @@ export class PixiScene {
       ov.poly([cx - 6, my - 8, cx + 6, my - 8, cx, my]).stroke({ width: 1.5, color: 0x7c2d12, alpha: 0.9 });
     }
     // 被弾フラッシュは hitFlash スプライト(絵を加算で光らせる)へ移行。丸い白フィルは廃止(裏ボスを隠さない・社長指示)。
+    // PACING_PUZZLE.md §10 バッチ3: 影/後光/羽/撒き羽根トリガはphillbossの時だけ(本体位置が確定した後=末尾)。
+    if (e.type === 'phillboss') this.drawPhillExtras(view, e, gameTime, now);
+  }
+
+  // =================================================================================================
+  // PACING_PUZZLE.md §10 バッチ3(EXボス「フィル」専用描画・L.phillLayer内)。技の予告(帯/円)・
+  // 羽攻撃の武器はisGate2AngelBossの技チェーン側(既存の天使予告分岐と同じ場所)に追加する
+  // (=器を割らない・州名/進行度はangelBossTickが正=描画は読むだけ)。ここは本体周辺の演出
+  // (影/後光/羽/撒き羽根トリガ/登場シーン)専用。★全て叩き台(実機調整前提)。
+  // =================================================================================================
+
+  /** phillLayer内の下敷きコンテナ(影/後光/キラキラ/羽)。個体ごとに1回だけ作り、index0=最下へ挿す
+   *  (本体view.containerは通常addChildで乗る=z順を生成タイミングに依存させない・§10-12#10)。 */
+  private ensurePhillBack(id: string): Container {
+    const existing = this.phillBack.get(id);
+    if (existing) return existing;
+    const back = new Container();
+    this.L.phillLayer.addChildAt(back, 0);
+    this.phillBack.set(id, back);
+
+    const shadow = new Graphics();
+    back.addChild(shadow);
+    this.phillShadow.set(id, shadow);
+
+    const halo = new Sprite(getPhillGodrayTexture());
+    halo.anchor.set(0.5);
+    halo.blendMode = 'add';
+    back.addChild(halo);
+    this.phillHalo.set(id, halo);
+
+    // 頭部キラキラ(§10-18・既存sparkle型=fx/breath-sparkleの流用)。常時表示=独自の寿命管理を持たず、
+    // 位置/明滅は毎フレーム now から直接計算する(状態を持たないので個体退場時もbackごと片付くだけでよい)。
+    const sparkTex = getTexture(SWEEP_ICE_SPARK_TEX);
+    const sparkles: { sp: Sprite; ang0: number; r: number; spd: number; h: number }[] = [];
+    for (let i = 0; i < PHILL_SPARKLE_POOL_SIZE; i++) {
+      const sp = new Sprite(sparkTex ?? undefined);
+      sp.anchor.set(0.5, 0.5);
+      sp.blendMode = 'add';
+      back.addChild(sp);
+      const h = ((i * 2654435761) % 1000) / 1000; // 決定的な種(個体差・毎フレーム乱数を引かない)
+      sparkles.push({
+        sp, ang0: h * Math.PI * 2, r: PHILL_SPARKLE_RADIUS_PX * (0.35 + h * 0.65),
+        spd: (0.00028 + h * 0.00035) * (i % 2 === 0 ? 1 : -1), h,
+      });
+    }
+    this.phillSparkles.set(id, sparkles);
+
+    // 羽6枚(後光/キラキラの上・本体の下)。
+    const wings: Sprite[] = [];
+    for (let i = 0; i < PHILL_WING_ROWS * PHILL_WING_COLS; i++) {
+      const sp = new Sprite();
+      sp.anchor.set(0.5, 0.5);
+      back.addChild(sp);
+      wings.push(sp);
+    }
+    this.phillWingSprites.set(id, wings);
+    return back;
+  }
+
+  /** phill-wings.png(804×1024)を2列(左/右翼)×3行(3対)=6枚にスライスしたキャッシュ(1回だけ)。 */
+  private getPhillWingFrame(row: number, col: number): Texture | null {
+    if (!this.phillWingFrames) {
+      const atlas = getTexture('phill-wings');
+      if (!atlas) return null;
+      const fw = Math.floor(atlas.width / PHILL_WING_COLS);
+      const fh = Math.floor(atlas.height / PHILL_WING_ROWS);
+      const frames: Texture[] = [];
+      for (let r = 0; r < PHILL_WING_ROWS; r++) {
+        for (let c = 0; c < PHILL_WING_COLS; c++) {
+          frames.push(new Texture({ source: atlas.source, frame: new Rectangle(c * fw, r * fh, fw, fh) }));
+        }
+      }
+      this.phillWingFrames = frames;
+    }
+    return this.phillWingFrames[row * PHILL_WING_COLS + col] ?? null;
+  }
+
+  /**
+   * PACING_PUZZLE.md §10-12#17(受け入れ条件「羽根の檻の初期半径・裁きの光の追尾円・急降下マーカーは
+   * ?zoomlock=0.4の可視域に収まること」)。ここは**表示だけ**のクランプ(実際の判定半径=PH_Tの生値の
+   * まま・sim側は不変)。羽根の檻はさらに閉じ切り半径(closeRadius)へ向かって描くので、外接する
+   * 見た目が縮んでいく過程で判定と食い違うことは無い(閉じ切った瞬間=closeRadiusの円のまま)。
+   */
+  private phillZoomSafeRadius(preferredRadiusPx: number): number {
+    const zoom = this.L.worldGroup.scale.x || 1;
+    const shortSide = Math.min(this.screenW, this.screenH) / zoom;
+    return phillCageInitialRadiusPx(preferredRadiusPx, shortSide);
+  }
+
+  /**
+   * PACING_PUZZLE.md §10-19(社長指示「登場シーンも羽が大量に吹き出してブワッと。その後、登場する
+   * 感じで」): ①出現位置から羽根が大量に吹き出す(初回呼び出しの副作用) → ②DELAY後、本体をease
+   * フェード+降下(慣性)。既存の出現アテンション(boss-appear SE+カットイン・useGameLoop側)とは
+   * 座標・タイミングを共有するだけで独立=両立する(このバッチはSE/カットインに触れない)。
+   */
+  private phillIntroState(id: string, x: number, y: number, now: number): { alphaMul: number; descendPx: number } {
+    let spawnAt = this.phillSpawnAt.get(id);
+    if (spawnAt === undefined) {
+      spawnAt = now;
+      this.phillSpawnAt.set(id, spawnAt);
+      this.spawnPhillFeathers(x, y, PHILL_FEATHER_SPAWN_COUNT, now, true); // ①羽根が先に大量に吹き出す
+    }
+    const elapsed = now - spawnAt;
+    if (elapsed < PHILL_INTRO_BODY_DELAY_MS) return { alphaMul: 0, descendPx: PHILL_INTRO_DESCEND_PX };
+    const t = Math.max(0, Math.min(1, (elapsed - PHILL_INTRO_BODY_DELAY_MS) / PHILL_INTRO_BODY_FADE_MS));
+    const ease = t * t * (3 - 2 * t); // 慣性(smoothstep=加減速)
+    return { alphaMul: ease, descendPx: PHILL_INTRO_DESCEND_PX * (1 - ease) };
+  }
+
+  /** drawEnemy()の末尾からphillbossの時だけ呼ばれる。本体位置(view.sprite)は確定済み=読むだけ。 */
+  private drawPhillExtras(view: ActorView, e: Enemy, gameTime: number, now: number): void {
+    const id = e.id;
+    this.ensurePhillBack(id);
+    const bodyX = view.sprite.x, bodyY = view.sprite.y;
+    const bodyScale = Math.abs(view.sprite.scale.y) || 1;
+    const bodyAlpha = view.sprite.alpha;
+    const groundY = view.shadowGroundY ?? (bodyY + 40);
+    this.phillLastPos.set(id, { x: bodyX, y: groundY }); // 死亡時の撒き羽根用(cleanupで参照)
+
+    // ---- 足元影(§10-4/§10-12#11): 浮遊感=本体が上がるほど小さく薄く ----
+    const shadow = this.phillShadow.get(id);
+    if (shadow) {
+      shadow.clear();
+      const floatT = Math.sin((now / PHILL_FLOAT_PERIOD_MS) * Math.PI * 2 + stablePhase(id)); // -1..1
+      const liftFrac = Math.max(0, floatT); // 上がっている時だけ絞る(下がっている時=通常影)
+      const shW = PHILL_SHADOW_BASE_RX * bodyScale * (1 - 0.35 * liftFrac);
+      const shH = PHILL_SHADOW_BASE_RY * bodyScale * (1 - 0.45 * liftFrac);
+      const shAlpha = 0.42 * (1 - 0.5 * liftFrac) * bodyAlpha;
+      if (shW > 0.5 && shH > 0.5) shadow.ellipse(bodyX, groundY, shW, shH).fill({ color: 0x000000, alpha: shAlpha });
+    }
+
+    this.syncPhillWings(id, e, bodyX, bodyY, bodyScale, bodyAlpha, now);
+    this.syncPhillHalo(id, bodyX, bodyY - view.sprite.height * 0.30, bodyScale, bodyAlpha, now);
+    this.triggerPhillFeatherFx(id, e, bodyX, bodyY, gameTime, now);
+  }
+
+  /** §10-4/§10-12#12: 羽6枚(3対)。glenParts「式」(追従アルゴリズムの流用であって描画経路の流用ではない)。 */
+  private syncPhillWings(id: string, e: Enemy, bodyX: number, bodyY: number, bodyScale: number, bodyAlpha: number, now: number): void {
+    const wings = this.phillWingSprites.get(id);
+    if (!wings) return;
+    const bs = e.bossState ?? '';
+    const phase2 = (e.bossPhase ?? 1) >= 2;
+    const flapMs = phase2 ? PHILL_WING_FLAP_MS_PHASE2 : PHILL_WING_FLAP_MS; // §10-9: フェーズ2は速い
+    // §10-4「技3/4/5の発動時は該当する対を大きく振る」: 主翼(対1)を対象にする(叩き台=実機で対象や
+    // 見た目を絞る)。
+    const wingMoveActive = bs.startsWith('phill-wingslash') || bs.startsWith('phill-wingthrust') || bs.startsWith('phill-wingcombo');
+    const tex = getTexture('phill');
+    const bodyH = (tex?.height ?? 1024) * bodyScale;
+    const bodyW = (tex?.width ?? 768) * bodyScale;
+    const pairYOffFrac = [-0.34, -0.12, 0.06]; // 対ごとの縦オフセット(叩き台=目視)
+    const pairXOffFrac = [0.12, 0.32, 0.24];   // 対ごとの横広がり
+    for (let pair = 0; pair < PHILL_WING_ROWS; pair++) {
+      for (let side = 0; side < PHILL_WING_COLS; side++) {
+        const idx = pair * PHILL_WING_COLS + side;
+        const sp = wings[idx];
+        const frameTex = this.getPhillWingFrame(pair, side);
+        if (!frameTex) { sp.visible = false; continue; }
+        if (sp.texture !== frameTex) sp.texture = frameTex;
+        const anchorFrac = PHILL_WING_ANCHOR[pair][side];
+        sp.anchor.set(anchorFrac.x, anchorFrac.y);
+        const sign = side === 0 ? -1 : 1; // col0=左翼(-x)/col1=右翼(+x)。素材は既にL/R個別に描かれている。
+        const boosted = wingMoveActive && pair === 1;
+        const phaseOff = pair * 1.9 + side * 0.35; // 対ごとに位相をずらす(§10-4)
+        const flapEffMs = boosted ? flapMs / PHILL_WING_ATTACK_BOOST : flapMs;
+        const flap = Math.sin((now / flapEffMs) * Math.PI * 2 + phaseOff);
+        const rotAmp = PHILL_WING_FLAP_ROT * (boosted ? PHILL_WING_ATTACK_BOOST * 0.6 : 1);
+        const scaleAmp = PHILL_WING_FLAP_SCALE * (boosted ? PHILL_WING_ATTACK_BOOST * 0.6 : 1);
+        const sc = (PHILL_WING_PAIR_H_PX[pair] * bodyScale / Math.max(1, frameTex.height)) * (1 + flap * scaleAmp);
+        sp.scale.set(sc, sc);
+        sp.rotation = sign * flap * rotAmp; // 左右対称(内へ畳む/外へ開く)
+        sp.position.set(bodyX + sign * pairXOffFrac[pair] * bodyW, bodyY + pairYOffFrac[pair] * bodyH);
+        sp.alpha = bodyAlpha;
+        sp.visible = true;
+      }
+    }
+  }
+
+  /** §10-18(後光・社長指示「頭の後ろくらいからピカーキラキラキラ〜」)。投影影の光源にはしない。 */
+  private syncPhillHalo(id: string, cx: number, headY: number, bodyScale: number, bodyAlpha: number, now: number): void {
+    const halo = this.phillHalo.get(id);
+    if (!halo) return;
+    // 常時ゆっくり回転(周辺の背景演出=CINE_SKY_BREATHと同型の直読み。フェード開始/終了は
+    // 登場フェード/死亡フェードがalphaで既に担うため、角速度側の別途の慣性は持たせない)。
+    const ang = (now * PHILL_HALO_SPIN_RATE) % (Math.PI * 2);
+    const boostAt = this.phillHaloBoostAt.get(id) ?? -Infinity;
+    const boostT = Math.max(0, 1 - (now - boostAt) / PHILL_HALO_BOOST_MS);
+    const flicker = 0.85 + 0.15 * Math.sin((now / PHILL_HALO_FLICKER_MS) * Math.PI * 2);
+    halo.position.set(cx, headY);
+    halo.rotation = ang;
+    halo.scale.set((PHILL_HALO_SIZE_PX * bodyScale * (1 + boostT * 0.18)) / Math.max(1, halo.texture.width));
+    halo.alpha = Math.max(0, (PHILL_HALO_ALPHA + (PHILL_HALO_BOOST_ALPHA - PHILL_HALO_ALPHA) * boostT) * flicker * bodyAlpha);
+    halo.visible = true;
+
+    const sparkles = this.phillSparkles.get(id);
+    if (sparkles) {
+      for (const s of sparkles) {
+        const a = (0.35 + 0.65 * Math.abs(Math.sin(now / (70 + s.h * 90) + s.h * 9))) * (0.7 + 0.3 * boostT) * bodyAlpha;
+        const ang2 = s.ang0 + now * s.spd;
+        s.sp.position.set(cx + Math.cos(ang2) * s.r * bodyScale, headY + Math.sin(ang2) * s.r * 0.55 * bodyScale);
+        s.sp.scale.set((10 + s.h * 8) * bodyScale / Math.max(1, s.sp.texture?.width || 32));
+        s.sp.alpha = a;
+        s.sp.visible = true;
+      }
+    }
+  }
+
+  /**
+   * PACING_PUZZLE.md §10-11/§10-13(社長指示「事あるごとに大量にブワッとさせて派手に」)。
+   * 羽ばたき(少量常時)・技の発動(bossState切替=全州を拾う)・被弾(カウンター成立もlastHit経由で
+   * 含む)・フェーズ移行(大量)を検知して撒く。判定ゼロ=分類②(派手側に倒す)。
+   */
+  private triggerPhillFeatherFx(id: string, e: Enemy, x: number, y: number, gameTime: number, now: number): void {
+    void gameTime;
+    const phase2 = (e.bossPhase ?? 1) >= 2;
+    const flapMs = phase2 ? PHILL_WING_FLAP_MS_PHASE2 : PHILL_WING_FLAP_MS;
+    const flapCyclePos = (now / flapMs) % 1;
+    const lastFlapAt = this.phillFlapPhaseAt.get(id) ?? -Infinity;
+    if (flapCyclePos < 0.06 && now - lastFlapAt > flapMs * 0.5) {
+      this.phillFlapPhaseAt.set(id, now);
+      this.spawnPhillFeathers(x, y - 20, PHILL_FEATHER_FLAP_COUNT, now);
+    }
+
+    const bs = e.bossState ?? '';
+    if (bs !== this.phillLastBossState.get(id)) {
+      this.phillLastBossState.set(id, bs);
+      if (bs.startsWith('phill-')) {
+        this.spawnPhillFeathers(x, y, PHILL_FEATHER_MOVE_COUNT, now);
+        this.phillHaloBoostAt.set(id, now); // §10-18: 技発動の瞬間は増光
+      }
+    }
+
+    if (e.lastHit > 0 && e.lastHit !== this.phillLastHitAt.get(id)) {
+      this.phillLastHitAt.set(id, e.lastHit);
+      this.spawnPhillFeathers(x, y, PHILL_FEATHER_MOVE_COUNT, now); // 被弾・カウンター成立(damageEnemy経由)の両方を拾う
+    }
+
+    const phase = e.bossPhase ?? 1;
+    const lastPhase = this.phillLastPhase.get(id);
+    if (lastPhase !== undefined && phase > lastPhase) {
+      this.spawnPhillFeathers(x, y, PHILL_FEATHER_PHASE_COUNT, now, true);
+      this.phillHaloBoostAt.set(id, now);
+    }
+    this.phillLastPhase.set(id, phase);
+  }
+
+  /** §10-11(撒き羽根)+§10-14#11(羽根散弾との見分け=判定ゼロ・小さめ・ひらひら落下)の固定プール。 */
+  private ensurePhillFeatherPool(): void {
+    if (this.phillFeatherPool.length > 0) return;
+    for (let i = 0; i < PHILL_FEATHER_POOL_SIZE; i++) {
+      const sp = new Sprite();
+      sp.anchor.set(0.5, 0.5);
+      sp.visible = false;
+      this.L.phillLayer.addChild(sp); // 判定ゼロ(分類②)=専用レイヤー内・常に最前面(本体/羽より手前)
+      this.phillFeatherPool.push({ sp, active: false, bornAt: 0, life: PHILL_FEATHER_LIFE_MS, vx: 0, vy: 0, vr: 0, skewBase: 0, flipX: 1 });
+    }
+  }
+
+  /**
+   * §10-13(社長指示「歪ませたりして色々なパターンにして散りばめて」): 回転・スケール・左右反転・
+   * skew・落下の揺らぎを個体ごとにランダム(=同じ絵の連打に見せない)。biasUpward=§10-19登場時の
+   * 「全方向+上方向優勢・初速大」。
+   */
+  private spawnPhillFeathers(x: number, y: number, count: number, now: number, biasUpward = false): void {
+    const tex = getTexture('fx/phill-feather');
+    if (!tex) return;
+    this.ensurePhillFeatherPool();
+    let spawned = 0;
+    for (const p of this.phillFeatherPool) {
+      if (spawned >= count) break;
+      if (p.active) continue;
+      const ang = biasUpward
+        ? -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.6 // 上方向優勢+全方向にばらける
+        : Math.random() * Math.PI * 2;
+      const spd = biasUpward ? 150 + Math.random() * 190 : 40 + Math.random() * 95; // 慣性=初速大→減速
+      p.sp.texture = tex;
+      p.sp.position.set(x, y);
+      p.sp.rotation = Math.random() * Math.PI * 2;
+      p.skewBase = (Math.random() - 0.5) * 0.7;
+      p.flipX = Math.random() < 0.5 ? -1 : 1;
+      const baseScale = PHILL_FEATHER_SIZE_PX / Math.max(1, tex.height);
+      p.sp.scale.set(baseScale * p.flipX, baseScale);
+      p.sp.alpha = 1;
+      p.sp.visible = true;
+      p.active = true;
+      p.bornAt = now;
+      p.life = PHILL_FEATHER_LIFE_MS * (0.75 + Math.random() * 0.5); // 個体ごとに尺もばらつかせる
+      p.vx = Math.cos(ang) * spd;
+      p.vy = Math.sin(ang) * spd - (biasUpward ? 60 : 20);
+      p.vr = (Math.random() - 0.5) * 5;
+      spawned++;
+    }
+  }
+
+  /** 毎フレーム1回(petal/maikoTrailと同じ場所から呼ぶ)。撒き羽根の物理+フェード更新。 */
+  private stepPhillFeathers(now: number, deltaSec: number): void {
+    for (const p of this.phillFeatherPool) {
+      if (!p.active) continue;
+      const age = now - p.bornAt;
+      if (age >= p.life) { p.active = false; p.sp.visible = false; continue; }
+      const t = age / p.life;
+      const sway = Math.sin(now / 130 + p.bornAt) * 24 * deltaSec; // ひらひら(直線落下しない=慣性)
+      p.sp.x += p.vx * deltaSec + sway;
+      p.sp.y += p.vy * deltaSec;
+      p.vy += 60 * deltaSec;              // 軽い重力
+      p.vx *= Math.exp(-1.4 * deltaSec);  // 初速は空気抵抗で失われる(慣性=減速)
+      p.sp.rotation += p.vr * deltaSec;
+      p.sp.skew.x = p.skewBase * Math.sin(now / 260 + p.bornAt); // §10-13: 歪み(skew)も揺らす
+      const s = (PHILL_FEATHER_SIZE_PX * (1 - t * 0.3)) / Math.max(1, p.sp.texture.height);
+      p.sp.scale.set(s * p.flipX, s);
+      p.sp.alpha = t < 0.65 ? 1 : (1 - t) / 0.35;
+    }
   }
 
   private enemyBreath(e: Enemy, now: number) {
@@ -18879,7 +19474,9 @@ export class PixiScene {
   }
 
   private syncEnemyLight(view: ActorView, e: Enemy, footX: number, footY: number, now: number) {
-    if (!ENEMY_LIGHT_ENABLED || e.type === 'bat') {
+    // PACING_PUZZLE.md §10-12#11(フィルの後光=専用の加算godrayが役目を代替する。地面の点光源
+    // (groundLayer=DoF対象)はフィルの専用レイヤー構成と噛み合わないため出さない)。
+    if (!ENEMY_LIGHT_ENABLED || e.type === 'bat' || e.type === 'phillboss') {
       view.light.visible = false;
       return;
     }
@@ -23225,7 +23822,10 @@ export class PixiScene {
     fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
     bladeLenFrac: number, katanaLength: number, katanaTexName: string,
     id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean,
-    showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide'
+    showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide',
+    // PACING_PUZZLE.md §10-12#10(フィル専用レイヤー): 既定はeffectLayer(全角度共通の従来挙動を維持)。
+    // フィルの羽攻撃だけphillLayer(filteredWorldの外=DoF対象外)へ差し替える。
+    targetLayer?: Container,
   ) {
     let c = fxMap.get(id);
     if (!c) {
@@ -23234,7 +23834,7 @@ export class PixiScene {
       const katana = new Sprite(); katana.anchor.set(gripFrac.x, gripFrac.y);
       c = new Container();
       c.addChild(streak, burstSp, katana);
-      this.L.effectLayer.addChild(c);
+      (targetLayer ?? this.L.effectLayer).addChild(c);
       fxMap.set(id, c);
     }
     const streak = c.children[0] as Sprite;
@@ -23494,6 +24094,8 @@ export class PixiScene {
     tremorPx = 0,
     // §7-15: 出現ease用の時計。省略時(0)はease無効=既存呼び出しを壊さない後方互換の既定値。
     now = 0,
+    // PACING_PUZZLE.md §10-12#10(フィル専用レイヤー): 既定はeffectLayer(従来挙動を維持)。
+    targetLayer?: Container,
   ) {
     let c = fxMap.get(id);
     if (!c) {
@@ -23502,7 +24104,7 @@ export class PixiScene {
       const katana = new Sprite(); katana.anchor.set(gripFrac.x, gripFrac.y);
       c = new Container();
       c.addChild(streak, burstSp, katana);
-      this.L.effectLayer.addChild(c);
+      (targetLayer ?? this.L.effectLayer).addChild(c);
       fxMap.set(id, c);
     }
     const streak = c.children[0] as Sprite;
@@ -23596,6 +24198,26 @@ export class PixiScene {
     this.drawKatanaReady(
       this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE, RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
       id, pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, alpha, style, poseProgress, tremorPx, now,
+    );
+  }
+
+  // PACING_PUZZLE.md §10-10(フィルの羽攻撃=技3/4/5の武器スプライト)。rafi/miguelと全く同じ仕組みを
+  // phill-wing-attackで流用するが、**専用レイヤー(phillLayer)へ描く**点だけ他と違う(§10-12#10・
+  // drawKatanaSlash/drawKatanaReadyのtargetLayer引数=このバッチで追加した差し替え口)。
+  private drawPhillWingSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide') {
+    this.drawKatanaSlash(
+      this.phillWingFx, PHILL_WING_ATTACK_GRIP_FRAC, PHILL_WING_ATTACK_INTRINSIC_ANGLE, PHILL_WING_ATTACK_LEN_FRAC, PHILL_WING_ATTACK_LENGTH, 'phill-wing-attack',
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style, this.L.phillLayer,
+    );
+  }
+  private drawPhillWingReady(
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number, alpha: number,
+    style: SwordSwingStyle = 'wide', poseProgress = 0, tremorPx = 0, now = 0,
+  ) {
+    this.drawKatanaReady(
+      this.phillWingFx, PHILL_WING_ATTACK_GRIP_FRAC, PHILL_WING_ATTACK_INTRINSIC_ANGLE, PHILL_WING_ATTACK_LEN_FRAC, PHILL_WING_ATTACK_LENGTH, 'phill-wing-attack',
+      id, pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, alpha, style, poseProgress, tremorPx, now, this.L.phillLayer,
     );
   }
 

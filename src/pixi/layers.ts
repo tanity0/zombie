@@ -44,6 +44,11 @@ export interface SceneLayers {
   // ダンスUI(ミラーボール/サークル/矢印/四神名)専用。filteredWorld の外＝被写体深度(tilt-shift)で
   // ボケない。ワールド座標で追従させるため、毎フレーム world と同じカメラオフセットを適用する。
   danceUiLayer: Container;
+  // PACING_PUZZLE.md §10-4/§10-12#10(EXボス「フィル」バッチ3): フィル(本体+羽+後光+技FX+足元影)
+  // 専用。danceUiLayerと同じ前例(filteredWorldの外=被写界深度/bloomの対象外・毎フレームworldと
+  // 同じカメラオフセットを適用)。フィルは「浮いている」ので、地平線フェード/擬似遠近/tilt-shiftの
+  // 対象から外すのが意図(§10-14#6)。danceUiLayerより後(=上)に置く=通常のゲームプレイ演出より前面。
+  phillLayer: Container;
   uiLayer: Container;
 }
 
@@ -103,8 +108,10 @@ export const buildLayers = (
   // danceUiLayer は filteredWorld の後(=上)に置く: フィルタ外なのでボケず、front forest より下=従来の
   // effectLayer と同じ重なり順を保つ。位置(カメラオフセット)は pixiScene が毎フレーム world と同期する。
   const danceUiLayer = new Container();
+  // フィル専用レイヤー(§10-12#10)。danceUiLayerと同じ扱い=filteredWorldの外・カメラオフセット追従。
+  const phillLayer = new Container();
   // nearHorizon は horizonForest の「手前(上=後で描画)」・gameplay(filteredWorld)の「後ろ」に置く。
-  worldGroup.addChild(groundBase, horizonForest, nearHorizon, filteredWorld, danceUiLayer);
+  worldGroup.addChild(groundBase, horizonForest, nearHorizon, filteredWorld, danceUiLayer, phillLayer);
 
   const uiLayer = new Container();
 
@@ -128,6 +135,7 @@ export const buildLayers = (
     effectLayer,
     lightingLayer,
     danceUiLayer,
+    phillLayer,
     uiLayer,
   };
 };

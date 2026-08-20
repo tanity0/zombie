@@ -597,9 +597,15 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'acrasiel-spear', scaleMode: 'linear' as const },
       // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」バッチ1): 本体絵phill.png(768×1024・
       // 詳細イラスト調)を取り込み。テクスチャキー='phill'(EnemyType='phillboss'とは名前が違う=
-      // PHILL銃と衝突回避のため。enemyTexKeyでphillboss→'phill'へマップする)。羽/羽攻撃/羽根エフェクト
-      // 素材(phill-wings/phill-wing-attack/fx/phill-feather)はバッチ2/3の描画配線で読み込む。
+      // PHILL銃と衝突回避のため。enemyTexKeyでphillboss→'phill'へマップする)。
       { name: 'phill', scaleMode: 'nearest' as const },
+      // バッチ3(§10-4/§10-12#12): 羽(左右×3対=804×1024の2列×3行シート・pixiSceneでスライス)。
+      { name: 'phill-wings', scaleMode: 'linear' as const },
+      // バッチ3(§10-10): 羽の物理攻撃(技3/4/5)の武器スプライト(436×512)。
+      { name: 'phill-wing-attack', scaleMode: 'linear' as const },
+      // バッチ3(§10-11/§10-13/§10-14#11): 羽根散弾(技14=判定あり)+撒き羽根(判定ゼロ・花びら型)の
+      // 共通素材(264×256)。
+      { name: 'fx/phill-feather', scaleMode: 'linear' as const },
       // 予告円の「輪」(社長支給素材 A-1・v0.25.2395)。グレースケール+透過で、ゲーム側が tint で
       // 赤(危険)/青白(硬直)に染める。全ボスの円テレグラフで使い回す共通部品なので `fx/` 配下に置く。
       // 縮小して使う(512→直径108〜260)ので linear。
