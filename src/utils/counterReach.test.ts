@@ -60,7 +60,9 @@ describe('① 完全性: カウンターが通る州は必ず宣言表に載っ�
 describe('② 一致: 宣言した図形と、実装が組む図形が食い違わない(表が飾りにならない)', () => {
   it('全宣言について counterReachShapeFor().kind === 宣言', () => {
     for (const key of Object.keys(COUNTER_REACH_DECL)) {
-      const shape = counterReachShapeFor(key, { ...CTX, aiTargetX: 200, aiTargetY: 0, tripleAng: 0, ballX: 50, ballY: 0 });
+      // ctx は「盤面の値が全部揃っている」場合。landingLocked も揃っている側(=台本ON)で見る
+      // (台本OFFで 'body' へ落ちることは ⑤ の専用テストが別に固定する)。
+      const shape = counterReachShapeFor(key, { ...CTX, aiTargetX: 200, aiTargetY: 0, tripleAng: 0, ballX: 50, ballY: 0, landingLocked: true });
       expect(shape.kind, key).toBe(COUNTER_REACH_DECL[key]);
     }
   });
@@ -214,17 +216,39 @@ describe('⑤ トール: 赤い予告の図形=成立域(§8-2)', () => {
 
   // ★v0.25.3810(§9-12・§8-2 の包括裁定「赤いのにカウンターできないは聞くまでもなく直すでしょ」):
   // ジャンプの溜めだけ `'body'` で、**赤い着地円を描いているのに体に当てないと取れなかった**。
-  // ラフィ・賞金首の跳びかかりと同じ `'circle'` へ揃えた=**成立域が広がる**(挙動が動いた唯一の州)。
-  it('★飛び掛かりの溜めは着地円(circle・中心=ロック済みの着地点/半径=jump.radius)', () => {
-    expect(counterReachKindFor('hidden:jump-windup')).toBe('circle');
-    const at = { ...CTX, aiTargetX: 300, aiTargetY: 40 };
+  // → **円でも取れるようにした(体当ての経路はそのまま)**=赤い円を成立域へ**足した**。
+  // ※v0.25.3810 はこれを `'circle'` への**置換**として実装しており、円と体は包含関係にない別集合なので
+  //   「体当てで取る」経路が消えていた(着地点はヘイト次第で守護霊の足元にロックされる)。
+  //   v0.25.3812 で `'circle-or-body'` へ訂正。
+  it('★飛び掛かりの溜めは「着地円 または 体」(circle-or-body・中心=ロック済みの着地点/半径=jump.radius)', () => {
+    expect(counterReachKindFor('hidden:jump-windup')).toBe('circle-or-body');
+    const at = { ...CTX, aiTargetX: 300, aiTargetY: 40, landingLocked: true };
     const j = counterReachShapeFor('hidden:jump-windup', at);
     // 中心も半径もラフィ('rafi:jump-windup')・賞金首('bounty:leap-windup')と**同じ式**。
-    expect(j.kind === 'circle' && [j.cx, j.cy, j.radius]).toEqual([300, 40, HB_TH.jump.radius]);
-    // 赤い円の中(体には触れていない)で成立する=これが §9-12 の是正の中身。
+    expect(j.kind === 'circle-or-body' && [j.cx, j.cy, j.radius]).toEqual([300, 40, HB_TH.jump.radius]);
+    // ①赤い円の中(ボスの体からは 300px 離れていて一切触れていない)で成立する=足した経路。
     expect(inCounterReach(j, playerAt(300, 40), BOSS)).toBe(true);
-    // 円の外(半径+自機半径より遠い)では成立しない=「赤くないのに当たる」を作っていない。
+    // ②ボスの体に重なっている(円の中心からは遠い)場所でも成立する=**奪っていない**既存の経路。
+    //   ボスは中心(0,0)の44×44、着地円は(300,40)なので、原点は円の外(距離302.6 > 110+14)。
+    expect(Math.hypot(0 - 300, 0 - 40) > HB_TH.jump.radius + 14).toBe(true);
+    expect(inCounterReach(j, playerAt(0, 0), BOSS)).toBe(true);
+    // ③どちらでもない所(円の外・体からも離れている)では成立しない=「赤くないのに当たる」を作っていない。
     expect(inCounterReach(j, playerAt(300 + HB_TH.jump.radius + 200, 40), BOSS)).toBe(false);
+  });
+
+  // ★v0.25.3812(§5-8): `?thorscript=0`(台本OFF)は `beginThorJump` が着地点をロックせず、
+  // `pixiScene` の `showLandingCircle` も溜め中は赤い円を描かない。溜め中の aiTarget は
+  // **前の技の残骸**なので、そこを成立域にすると「画面に赤が1つも無い場所で成立」してしまう。
+  it('★台本OFF(着地点が未ロック)では従来どおり「体の重なり」へ落ちる=赤くない場所で成立させない', () => {
+    // landingLocked を渡さない/false = 台本OFF相当。
+    const stale = { ...CTX, aiTargetX: 300, aiTargetY: 40 };
+    const b = counterReachShapeFor('hidden:jump-windup', stale);
+    expect(b.kind).toBe('body');
+    expect(counterReachShapeFor('hidden:jump-windup', { ...stale, landingLocked: false }).kind).toBe('body');
+    // 残骸の着地点(300,40)に立っても成立しない(赤い円が描かれていないから)。
+    expect(inCounterReach(b, playerAt(300, 40), BOSS)).toBe(false);
+    // 体に重なっていれば従来どおり成立する。
+    expect(inCounterReach(b, playerAt(0, 0), BOSS)).toBe(true);
   });
 
   it('★他ボスの宣言が1つも変わっていない(除外撤去がトール以外へ波及していない)', () => {

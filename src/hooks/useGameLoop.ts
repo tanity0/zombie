@@ -5632,8 +5632,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // ★v0.25.3780(§8-2): トール専用だった `thorBodyOverlapNow`(体の重なりだけで成立)は撤去した。
               // トールも他ボスと同じ宣言表(counterReach.ts)へ乗ったので、成立域の判定は
               // `hiddenReachOverlapNow()` 1本になった。
-              // ★飛び掛かりの溜め('hidden:jump-windup')は **v0.25.3810 で 'circle'(着地円)へ揃えた**
+              // ★飛び掛かりの溜め('hidden:jump-windup')は **v0.25.3810 で着地円(赤い円)を成立域へ足し、
+              // v0.25.3812 で 'circle-or-body' へ訂正した=円でも取れるようになった(体当ての経路はそのまま)**
               // ——§8-2 の包括裁定「赤いのにカウンターできないは聞くまでもなく直すでしょ」に該当。
+              // (v0.25.3810 の 'circle' は置換で、体当ての経路を消していた=§9-12。台本OFFでは
+              //  着地点が未ロック=赤い円も無いので 'body' へ落ちる=§5-8。)
               // 突進の溜め('hidden:thor-dash-windup')は **'body' のまま=裁定待ちであって対象外ではない**
               // (赤い流星ラインを描いているのに線の上では取れない= research/THOR_ISSEN_REWORK.md §9-3。
               // 推薦は「全突進と同じ 'body' 据え置き」側だが、**同じ『赤 vs 成立域』の件**である)。
@@ -5920,6 +5923,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       bcx, bcy, pcx, pcy,
                       aiFromX: boss.aiFromX, aiFromY: boss.aiFromY,
                       aiTargetX: boss.aiTargetX, aiTargetY: boss.aiTargetY,
+                      // ★v0.25.3812(§5-8): 飛び掛かりの着地点(aiTarget)が**溜め開始でロック済みか**。
+                      // ロックしているのは `beginThorJump` の `if (THOR_SCRIPT_ENABLED)` 分岐だけで、
+                      // 台本OFFでは溜め中の aiTarget は前の技の残骸+`showLandingCircle` も赤い円を
+                      // 描かない ⇒ 成立域は 'body'(従来挙動)へ落とす=「赤くないのに当たる」を作らない。
+                      landingLocked: THOR_SCRIPT_ENABLED,
                     }),
                     { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
                     { x: boss.x, y: boss.y, width: boss.width, height: boss.height },

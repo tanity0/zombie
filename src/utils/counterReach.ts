@@ -36,8 +36,14 @@ import { IDOL_TUNING } from './idolScript';
 // =================================================================================================
 // 図形(shape)
 // =================================================================================================
-/** 成立域の形。'none' = **紫=カウンター不可**の技(赤い予告を持たない/裁定で不可と決めたもの)。 */
-export type CounterReachKind = 'body' | 'band' | 'circle' | 'none';
+/**
+ * 成立域の形。'none' = **紫=カウンター不可**の技(赤い予告を持たない/裁定で不可と決めたもの)。
+ *
+ * ★'circle-or-body'(v0.25.3812): **円と体は包含関係にない別集合**なので、'body' を 'circle' へ
+ * 差し替えると「赤い円が出た=体当てで取れなくなる」という**経路の置換**になる。赤い予告を
+ * 成立域へ**足す**のが目的の州(=着地円が離れた場所に出る技)は、この2つを OR で足す。
+ */
+export type CounterReachKind = 'body' | 'band' | 'circle' | 'circle-or-body' | 'none';
 
 /** 帯(カプセル)1本。判定側の `distToBandRect` と同じ2点+半幅を渡す。 */
 export interface CounterBand { fx: number; fy: number; tx: number; ty: number; halfWidth: number }
@@ -49,6 +55,11 @@ export type CounterReachShape =
   | { kind: 'band'; bands: readonly CounterBand[] }
   /** 円(自分中心の円 / 着地円 / 飛んでいる毬の円 — 中心の出どころが違うだけで判定は同じ)。 */
   | { kind: 'circle'; cx: number; cy: number; radius: number }
+  /**
+   * 円 **または** 体の重なり(★v0.25.3812)。赤い円の中でも取れるし、従来どおりボスの体に
+   * 当てても取れる(**既存の経路を奪わずに赤い円を足す**)。
+   */
+  | { kind: 'circle-or-body'; cx: number; cy: number; radius: number }
   /** カウンター不可(紫)。 */
   | { kind: 'none' };
 
@@ -64,6 +75,17 @@ export interface CounterReachCtx {
   tripleAng?: number;
   /** 手毬打ちの毬の現在位置(往復の途中。判定と同じ式で呼び出し側が出す)。 */
   ballX?: number; ballY?: number;
+  /**
+   * ★v0.25.3812: **着地点(`aiTarget`)が、この州の溜め開始時にロック済みか**。
+   * トールの飛び掛かりは `?thorscript=0`(台本OFF)だと**溜め終了の瞬間**にしか着地点をロックせず、
+   * 溜め中の `aiTarget` は**前の技の残骸**(一閃/突きの到達点)。しかも `pixiScene` の
+   * `showLandingCircle` も台本OFFでは溜め中に赤い円を描かない ⇒ その `aiTarget` を成立域にすると
+   * **「画面に赤が1つも無い場所でカウンターが成立する」**(CLAUDE.md「この一致だけは妥協しない」の禁則)。
+   * よって台本OFFでは 'body'(従来挙動)へ落とす。
+   * **ゲートは葉へ持ち込まない**(このファイルは store も bossScript のフラグも import しない)ので、
+   * 呼び出し側が事実を1フラグで渡す。**未指定=false=従来どおり体の重なり**(安全側)。
+   */
+  landingLocked?: boolean;
 }
 
 // =================================================================================================
@@ -164,13 +186,18 @@ export const COUNTER_REACH_DECL: Readonly<Record<string, CounterReachKind>> = {
   'hidden:tsuki-recover': 'body',
   'hidden:harai-windup': 'band',          // 払い=帯 310×80(半幅40。ロック済みの並行ライン)
   'hidden:harai-recover': 'body',
-  // ★飛び掛かり=着地円(★v0.25.3810 で `'body'` → `'circle'` へ揃えた・§9-12)。
-  // 社長の包括裁定(§8-2)「赤いのにカウンターできないは**聞くまでもなく**直すでしょ」に該当する件
-  // ——赤い塗り(`0xff2a2a`)+赤い縁の着地円を描いている(`pixiScene.ts` の `showLandingCircle`)のに、
-  // 宣言だけ `'body'`=体に当てないと取れなかった。**成立域が広がる**(=ジャンプが返しやすくなる)。
-  // 式は同じ着地円を持つラフィ('rafi:jump-windup')・賞金首('bounty:leap-windup')と同型
+  // ★飛び掛かり=**着地円を足した**(★v0.25.3810 で `'body'` → `'circle'`。v0.25.3812 で
+  // `'circle-or-body'` へ訂正・§9-12)。社長の包括裁定(§8-2)「赤いのにカウンターできないは
+  // **聞くまでもなく**直すでしょ」に該当する件——赤い塗り(`0xff2a2a`)+赤い縁の着地円を描いている
+  // (`pixiScene.ts` の `showLandingCircle`)のに、宣言だけ `'body'`=体に当てないと取れなかった。
+  // **円でも取れるようになった(体当ての経路はそのまま)**=赤い円を成立域へ**足した**。
+  // ※v0.25.3810 の `'circle'` は**置換**で、円と体は包含関係にない別集合なので「体当てで取る」経路を
+  //   消していた(着地点はヘイト次第で守護霊の足元にロックされるため、実害があった)。
+  // 円の式は同じ着地円を持つラフィ('rafi:jump-windup')・賞金首('bounty:leap-windup')と同型
   // (中心=ロック済みの着地点 `aiTarget` / 半径=`HB_TH.jump.radius`。新しい数字は作っていない)。
-  'hidden:jump-windup': 'circle',
+  // ★`?thorscript=0`(台本OFF)は着地点がロックされておらず赤い円も描かれないので `'body'` へ落ちる
+  //  (`ctx.landingLocked`。§5-8)。
+  'hidden:jump-windup': 'circle-or-body',
   'hidden:jump-recover': 'body',
   // ★突進の溜め=**赤い流星ラインを描いているのに、線の上では取れず体に当てないと取れない**。
   // 裏ボスdash/ミゲル踏み込みと同型(全突進が 'body')という理由で据え置いているが、これは
@@ -345,10 +372,14 @@ export const counterReachShapeFor = (key: string, ctx: CounterReachCtx): Counter
     case 'hidden:harai-windup':
       return band(fx, fy, tx, ty, HB_TH.harai.halfWidth);
     case 'hidden:jump-windup':
-      // ★v0.25.3810(§9-12・§8-2の包括裁定): 赤い着地円=成立域。中心はロック済みの着地点
+      // ★v0.25.3810(§9-12・§8-2の包括裁定): 赤い着地円**も**成立域。中心はロック済みの着地点
       // (`aiTarget`。pixiScene の `showLandingCircle` が同じ2値で赤い円を描く)、半径は技のテーブル。
-      // 形はラフィ/賞金首の跳びかかりと**同じ式**(`{ kind:'circle', cx: tx, cy: ty, radius }`)。
-      return { kind: 'circle', cx: tx, cy: ty, radius: HB_TH.jump.radius };
+      // 円の式はラフィ/賞金首の跳びかかりと**同じ**(`cx: tx, cy: ty, radius`)。
+      // ★v0.25.3812: kind は `'circle-or-body'`=**円を足しただけで体当ての経路は残る**。
+      // 着地点が未ロック(台本OFF)なら赤い円がそもそも描かれないので 'body' へ落ちる(§5-8)。
+      return ctx.landingLocked
+        ? { kind: 'circle-or-body', cx: tx, cy: ty, radius: HB_TH.jump.radius }
+        : { kind: 'body' };
     case 'hidden:tsuki-windup': {
       // 突きの赤帯は**狙い点そのものを終点にしない**(狙い点=プレイヤー位置で射程より近い/遠い)。
       // 始点=ボス中心、終点=狙いへの単位ベクトル×range。実行(`tsuki`)で作られる帯と同じ式
@@ -402,6 +433,12 @@ export const inCounterReach = (shape: CounterReachShape, playerRect: Rect, bossR
   const pcx = playerRect.x + playerRect.width / 2, pcy = playerRect.y + playerRect.height / 2;
   const pRad = Math.max(playerRect.width, playerRect.height) / 2;
   if (shape.kind === 'circle') return Math.hypot(pcx - shape.cx, pcy - shape.cy) <= shape.radius + pRad;
+  // ★v0.25.3812: 円 **または** 体。円('circle')と体('body')は包含関係にない別集合なので、
+  // 赤い円を足す時に 'circle' へ差し替えると体当ての経路が消える(=置換になる)。OR で足す。
+  if (shape.kind === 'circle-or-body') {
+    return Math.hypot(pcx - shape.cx, pcy - shape.cy) <= shape.radius + pRad
+      || rectsOverlap(bossRect, playerRect);
+  }
   return shape.bands.some(b =>
     distToBandRect({ x: pcx, y: pcy }, { x: b.fx, y: b.fy }, { x: b.tx, y: b.ty }, b.halfWidth) <= pRad);
 };
