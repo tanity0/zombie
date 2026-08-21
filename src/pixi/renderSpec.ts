@@ -331,7 +331,8 @@ export const BOSS_SPRITE_FIT: Record<string, { w: number; h: number; cx: number;
   suriel:     { w: 0.50, h: 0.17, cx: 0.50, cy: 0.97, aspect: 1286 / 616 },
   acrasiel:   { w: 0.55, h: 0.20, cx: 0.50, cy: 0.95, aspect: 1208 / 532 },
   idol:       { w: 0.42, h: 0.13, cx: 0.42, cy: 0.98, aspect: 1334 / 983 }, // §6.28-20(確定値)
-  phillboss:  { w: 0.50, h: 0.20, cx: 0.50, cy: 0.97, aspect: 1024 / 768 }, // §10バッチ1の叩き台
+  // v0.25.3730(社長指示「まずフィル倍くらいの大きさにして」): w/hを半分=絵が2倍(視覚のみ・帯=判定は不変)。
+  phillboss:  { w: 0.25, h: 0.10, cx: 0.50, cy: 0.97, aspect: 1024 / 768 },
 };
 export const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85, aspect: 1 };
 

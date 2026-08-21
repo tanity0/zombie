@@ -3388,6 +3388,12 @@ export class PixiScene {
   private phillFlapPhaseAt = new Map<string, number>(); // 常時の羽ばたき撒き散らし間引き(周期の頭でだけ発火)
   private phillLastPos = new Map<string, { x: number; y: number }>(); // 死亡時の最終位置(cleanupで演出を出すため)
   private phillFeatherPool: { sp: Sprite; active: boolean; bornAt: number; life: number; vx: number; vy: number; vr: number; skewBase: number; flipX: number }[] = [];
+  // ★v0.25.3730(社長報告「羽がまだ場合によっては前に来てる」): phillLayer内のz順を
+  // [back(最下)→本体→front(最上)]の3層で構造固定するための前面コンテナ(撒き羽根/羽攻撃の武器絵)。
+  private phillFront: Container | null = null;
+  // ★v0.25.3730(社長報告「登場シーンが止まってる」): 撒き羽根はアテンションの時間停止(凍結now)に
+  // 依存しない自前の実時間時計で更新する(登場の羽根どばっが時間停止中も舞い続けるため)。
+  private lastPhillFeatherStepAt: number | null = null;
 
   // ① 通常足影: ソフト影テクスチャのスプライトプール(Graphics廃止)。光方向へ回転+伸縮で
   // 「伸びる/向き」を保ちつつ、毎フレームのブラーパス無しで柔らかいエッジにする。
@@ -7540,8 +7546,13 @@ export class PixiScene {
     this.lastPetalStepAt = now;
     if (petalDtSec > 0) this.stepPetals(now, petalDtSec);
     this.stepMaikoTrail(now); // ★慣性バッチ: 手毬打ちの射出残像pool更新(全体で1回)
-    // PACING_PUZZLE.md §10-11(フィルの撒き羽根)。petalと同じ場所・同じdeltaで1回だけ更新。
-    if (petalDtSec > 0) this.stepPhillFeathers(now, petalDtSec);
+    // PACING_PUZZLE.md §10-11(フィルの撒き羽根)。★v0.25.3730: petal時計(ヒットストップで凍結する
+    // now)ではなく自前の実時間時計で更新する。登場シーン(羽根どばっ)はアテンションの時間停止中に
+    // 流れるので、凍結時計のままだとカメラが向いている間ずっと羽根が空中で静止してしまう。
+    const phillRnow = Date.now();
+    const phillDtSec = this.lastPhillFeatherStepAt === null ? 0 : Math.min(0.1, Math.max(0, (phillRnow - this.lastPhillFeatherStepAt) / 1000));
+    this.lastPhillFeatherStepAt = phillRnow;
+    if (phillDtSec > 0) this.stepPhillFeathers(phillRnow, phillDtSec);
     // ★慣性バッチ: §7-15消滅側。syncActors(=resetActorFxDefaultsの既定OFF)の後に回し、
     // 「今フレーム描かれなかった武器絵」へ沈み+フェードアウトを描き足す。
     this.flushWeaponVanish(now);
@@ -14887,8 +14898,14 @@ export class PixiScene {
       // e.x/e.yそのものを一切動かさないため無関係。this.phillIntroState()が登場時の羽根撒きも駆動する)。
       let phillBob = 0, phillIntroAlpha = 1, phillIntroRise = 0;
       if (e.type === 'phillboss') {
-        phillBob = Math.sin((now / PHILL_FLOAT_PERIOD_MS) * Math.PI * 2 + stablePhase(e.id)) * PHILL_FLOAT_AMP_PX;
-        const intro = this.phillIntroState(e.id, spx, spy, now);
+        // ★v0.25.3730(社長報告「カメラが向いたのに登場シーンが流れてない」): 浮遊ボブと登場シーケンス
+        // (羽根どばっ→下からフェードイン→羽が開く)は実時間で進める。アテンション(triggerAttention)は
+        // hitstopで描画時計nowを凍結させるため、凍結時計のままだと「カメラが向いている間」こそ
+        // 登場が1mmも進まず、hold明けに一瞬で終わって見えていた。ゲーム時間の停止はそのまま
+        // (シミュはuseGameLoop側で凍結済み)=絵の演出だけが流れる。
+        const phillRnow = Date.now();
+        phillBob = Math.sin((phillRnow / PHILL_FLOAT_PERIOD_MS) * Math.PI * 2 + stablePhase(e.id)) * PHILL_FLOAT_AMP_PX;
+        const intro = this.phillIntroState(e.id, spx, spy, phillRnow);
         phillIntroAlpha = intro.alphaMul;
         phillIntroRise = intro.risePx; // v0.25.3725: 下からズレてフェードイン(正=下方向のオフセット)
         this.phillLastPos.set(e.id, { x: spx, y: spy }); // 死亡時の撒き羽根用(cleanupで参照)
@@ -19130,7 +19147,7 @@ export class PixiScene {
     }
     // 被弾フラッシュは hitFlash スプライト(絵を加算で光らせる)へ移行。丸い白フィルは廃止(裏ボスを隠さない・社長指示)。
     // PACING_PUZZLE.md §10 バッチ3: 影/後光/羽/撒き羽根トリガはphillbossの時だけ(本体位置が確定した後=末尾)。
-    if (e.type === 'phillboss') this.drawPhillExtras(view, e, gameTime, now);
+    if (e.type === 'phillboss') this.drawPhillExtras(view, e, gameTime);
   }
 
   // =================================================================================================
@@ -19184,6 +19201,16 @@ export class PixiScene {
     return back;
   }
 
+  /** ★v0.25.3730: phillLayerの前面コンテナ(撒き羽根プール/羽攻撃の武器絵)。drawPhillExtrasが
+   *  毎フレーム末尾(最前面)へ強制する=z順を生成タイミングに依存させない(3層構造の最上段)。 */
+  private ensurePhillFront(): Container {
+    if (this.phillFront && !this.phillFront.destroyed) return this.phillFront;
+    const front = new Container();
+    this.L.phillLayer.addChild(front);
+    this.phillFront = front;
+    return front;
+  }
+
   /**
    * PACING_PUZZLE.md §10-12#17(受け入れ条件「羽根の檻の初期半径・裁きの光の追尾円・急降下マーカーは
    * ?zoomlock=0.4の可視域に収まること」)。ここは**表示だけ**のクランプ(実際の判定半径=PH_Tの生値の
@@ -19221,15 +19248,24 @@ export class PixiScene {
     return { alphaMul: ease, risePx: PHILL_INTRO_RISE_PX * (1 - ease) };
   }
 
-  /** drawEnemy()の末尾からphillbossの時だけ呼ばれる。本体位置(view.sprite)は確定済み=読むだけ。 */
-  private drawPhillExtras(view: ActorView, e: Enemy, gameTime: number, now: number): void {
+  /** drawEnemy()の末尾からphillbossの時だけ呼ばれる。本体位置(view.sprite)は確定済み=読むだけ。
+   *  演出時計は実時間(Date.now)=アテンションの時間停止(hitstop凍結now)中も登場・浮遊・後光が流れる。 */
+  private drawPhillExtras(view: ActorView, e: Enemy, gameTime: number): void {
     const id = e.id;
+    const rnow = Date.now();
     const backC = this.ensurePhillBack(id);
-    // ★v0.25.3726(社長報告「レイヤーもズレてる」): back(影/後光/羽)は**常に最下**を毎フレーム強制。
-    // 生成順(reparentとensureの前後)によってはbackが本体より手前に入る余地があったため、順序を
-    // タイミング依存にしない(構造的にz順を固定)。
-    if (backC.parent === this.L.phillLayer && this.L.phillLayer.getChildIndex(backC) !== 0) {
-      this.L.phillLayer.setChildIndex(backC, 0);
+    const frontC = this.ensurePhillFront();
+    // ★v0.25.3730(社長報告「羽がまだ場合によっては前に来てる」・v3726の強化版): phillLayer内の
+    // z順を[back(0)=影/後光/羽 → 本体(1) → … → front(末尾)=撒き羽根/羽攻撃の武器絵]の3層構造で
+    // **毎フレーム全部**強制する。v3726はbackを最下へ送るだけだったので、本体(view.container)側が
+    // 後から追加された別の子(武器絵など)との相対順に負ける余地が残っていた。
+    const layer = this.L.phillLayer;
+    if (backC.parent === layer && layer.getChildIndex(backC) !== 0) layer.setChildIndex(backC, 0);
+    if (view.container.parent === layer && layer.children.length > 1 && layer.getChildIndex(view.container) !== 1) {
+      layer.setChildIndex(view.container, 1);
+    }
+    if (frontC.parent === layer && layer.getChildIndex(frontC) !== layer.children.length - 1) {
+      layer.setChildIndex(frontC, layer.children.length - 1);
     }
     const bodyX = view.sprite.x, bodyY = view.sprite.y;
     const bodyScale = Math.abs(view.sprite.scale.y) || 1;
@@ -19241,7 +19277,7 @@ export class PixiScene {
     const shadow = this.phillShadow.get(id);
     if (shadow) {
       shadow.clear();
-      const floatT = Math.sin((now / PHILL_FLOAT_PERIOD_MS) * Math.PI * 2 + stablePhase(id)); // -1..1
+      const floatT = Math.sin((rnow / PHILL_FLOAT_PERIOD_MS) * Math.PI * 2 + stablePhase(id)); // -1..1(本体ボブと同時計=実時間)
       const liftFrac = Math.max(0, floatT); // 上がっている時だけ絞る(下がっている時=通常影)
       const shW = PHILL_SHADOW_BASE_RX * bodyScale * (1 - 0.35 * liftFrac);
       const shH = PHILL_SHADOW_BASE_RY * bodyScale * (1 - 0.45 * liftFrac);
@@ -19249,9 +19285,9 @@ export class PixiScene {
       if (shW > 0.5 && shH > 0.5) shadow.ellipse(bodyX, groundY, shW, shH).fill({ color: 0x000000, alpha: shAlpha });
     }
 
-    this.syncPhillWings(id, e, bodyX, bodyY, bodyScale, bodyAlpha, now);
-    this.syncPhillHalo(id, bodyX, bodyY - view.sprite.height * 0.30, bodyScale, bodyAlpha, now);
-    this.triggerPhillFeatherFx(id, e, bodyX, bodyY, gameTime, now);
+    this.syncPhillWings(id, e, bodyX, bodyY, bodyScale, bodyAlpha, rnow);
+    this.syncPhillHalo(id, bodyX, bodyY - view.sprite.height * 0.30, bodyScale, bodyAlpha, rnow);
+    this.triggerPhillFeatherFx(id, e, bodyX, bodyY, gameTime, rnow);
   }
 
   /** §10-4/§10-12#12+v0.25.3724(社長指示「切らずに1枚で・蝶の羽みたいに」):
@@ -19360,7 +19396,7 @@ export class PixiScene {
       const sp = new Sprite();
       sp.anchor.set(0.5, 0.5);
       sp.visible = false;
-      this.L.phillLayer.addChild(sp); // 判定ゼロ(分類②)=専用レイヤー内・常に最前面(本体/羽より手前)
+      this.ensurePhillFront().addChild(sp); // 判定ゼロ(分類②)=前面コンテナ・常に最前面(本体/羽より手前)
       this.phillFeatherPool.push({ sp, active: false, bornAt: 0, life: PHILL_FEATHER_LIFE_MS, vx: 0, vy: 0, vr: 0, skewBase: 0, flipX: 1 });
     }
   }
@@ -24178,7 +24214,7 @@ export class PixiScene {
   private drawPhillWingSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide') {
     this.drawKatanaSlash(
       this.phillWingFx, PHILL_WING_ATTACK_GRIP_FRAC, PHILL_WING_ATTACK_INTRINSIC_ANGLE, PHILL_WING_ATTACK_LEN_FRAC, PHILL_WING_ATTACK_LENGTH, 'phill-wing-attack',
-      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style, this.L.phillLayer,
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style, this.ensurePhillFront(),
     );
   }
   private drawPhillWingReady(
@@ -24188,7 +24224,7 @@ export class PixiScene {
   ) {
     this.drawKatanaReady(
       this.phillWingFx, PHILL_WING_ATTACK_GRIP_FRAC, PHILL_WING_ATTACK_INTRINSIC_ANGLE, PHILL_WING_ATTACK_LEN_FRAC, PHILL_WING_ATTACK_LENGTH, 'phill-wing-attack',
-      id, pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, alpha, style, poseProgress, tremorPx, now, this.L.phillLayer,
+      id, pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, alpha, style, poseProgress, tremorPx, now, this.ensurePhillFront(),
     );
   }
 

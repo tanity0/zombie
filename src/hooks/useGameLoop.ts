@@ -3013,10 +3013,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // パン360ms→ホールド1900ms。この間にpixi側が ②羽どばっ(+520ms) ③本体が下からズレて
             // フェードイン ④羽が背中から大きく開く、を演じる=§10-19確定版)。
             const pAc = bossArtCenter(pBoss); // v0.25.3727: 寄り先=絵の中心
-            useGameStore.getState().triggerAttention(pAc.x, pAc.y);
-            // ⑤名前表示(カットイン)は従来どおり=下の共有ディスパッチャが「①のアテンション終了を
-            // 待ってから」発火する(4127行の !attention ガードがその待ちを担う=+950は最早発火時刻)。
-            bountyAttnRef.current = { at: newGameTime + 950, x: pAc.x, y: pAc.y, cutin: bossCutinPayload('phillboss') };
+            // ★v0.25.3730(社長指示「最初にカメラ向けたら登場シーンは流れてないと意味ないし、そのまま
+            // アテンションにシームレスに入ってほしい」): アテンションを**1本化**。in(360)→hold(950+800)
+            // の間にpixi側の登場シーン(羽どばっ→下からフェードイン+羽が開く=実時間駆動)が流れ、
+            // hold明けにそのままカットイン(名前・1100ms)→out。カメラは一度も戻らない。
+            // (旧: 素のattention→戻る→カットインattentionの2本で、しかも登場アニメが凍結クロックで
+            //  止まっていた=「ほぼ何も登場できてないシーンで止まる」の真因。)
+            useGameStore.getState().triggerAttention(pAc.x, pAc.y, bossCutinPayload('phillboss'), 800);
+            playSfx('boss-appear');
           }
         }
         // ★バッチ2(§10-2「angelBossTickの7人目」): 移動・技はisGate2AngelBoss編入により
