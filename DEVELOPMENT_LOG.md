@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.3763 — 運用一本化④(最終): CLAUDE.mdメニュー+矛盾条文の一括改訂【2026-08-21 21:23 JST】
+
+DOC_OPS_REDESIGN §5④。設計チャットが直接実施。
+- CLAUDE.md: 冒頭に**★メニュー**(種別→在処の地図+読み書きの入口+archive/規則)を新設。
+  改訂した条文: ①進行ボードHTML節=写し化(STATUSが正・ボード単独更新禁止・再publish前に伝言回収)
+  ②実装精度の規律1と7-4境界注の★未決の書き先=PACING_REDESIGN→担当設計書(PACING_PUZZLE)
+  ③分業節=サブエージェントは「状態変化を完了報告+DEVLOGへ」(設計書・STATUSに書かない)
+  ④ファイル列挙=状態/仕様/履歴/教訓の4本立てへ ⑤作業開始時の読み=メニュー→STATUS→担当設計書
+  ⑥Versioning節にPROJECT_STATUS単独push例外を追加。
+- ENGINEERING_NOTES.md: 「書く側の掟」を新運用(状態はSTATUSへ)に置換(読む側の掟は保持)。
+- HANDOFF_CODEX.md: 冒頭に引き継ぎ定型文(メニュー/STATUS/archive規則)を常設。
+- これでDOC_OPS_REDESIGNの初期展開①〜④が完了。次=検収監査→通ればDOC_OPS_REDESIGN.mdをarchive/へ
+  (規約の正本はPROJECT_STATUS冒頭に移管済み)。文書のみ=ゲーム内容の変更なし。
+
 ## v0.25.3762 — 運用一本化③: 設計書の状態記述掃除+バナー(37本)【2026-08-21 21:20 JST】
 
 DOC_OPS_REDESIGN §5③をSonnetバッチで実施・検収済み。バナー「この文書は設計時の姿…状態は

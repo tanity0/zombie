@@ -2,6 +2,23 @@
 
 Top-down HD-2D survival game. React + Zustand (simulation) + PixiJS (rendering).
 
+## ★メニュー(最初に読む地図 — どの情報がどこにあるか・どこに書くか)
+| 種別 | 在処 |
+|---|---|
+| **案件の状態**(どこまで進んだか・誰のボールか) | **PROJECT_STATUS.md のみ**(冒頭の「運用規約」が読み書き規則の正本) |
+| 仕様 | 各設計書(現在の主戦場=PACING_PUZZLE.md。**設計書に状態は書かない**) |
+| 履歴(いつ何をしたか) | DEVELOPMENT_LOG.md(毎push追記。「## vX.Y.Z」見出しでgrepして引く) |
+| 教訓・地雷 | ENGINEERING_NOTES.md |
+| 恒常ルール | この CLAUDE.md |
+| プレイヤー向け更新情報 | src/data/changelog.ts(ゲーム内表示の正) |
+| 計測・調査の台帳 | research/ |
+| 実機テストの受け渡し | TEST_HANDOFF/(掟=同README.md) |
+| 設計チャットの運転マニュアル | DESIGN_CHAT_GUIDE.md |
+| ゲーム素材 | public/(=配信されるものだけを置く) |
+- **読み(セッション開始時の1回)**: このメニュー → PROJECT_STATUS.md → 担当案件の設計書。
+- **書き**: 着地=DEVELOPMENT_LOGへエントリ追記+状態が動いたらPROJECT_STATUSの該当行(詳細はPROJECT_STATUS冒頭の運用規約)。
+- **archive/ 配下にgrepでヒットした内容は正ではない**(正はPROJECT_STATUS→現行文書)。
+
 ## 仕様変更のルール (最重要 / MUST)
 - **ゲームの仕様・挙動・バランス・演出の意図を、勝手に変更してはいけない。**
   値の意味やカーブ・閾値・floor 等を「良かれと思って」変えるのも禁止。
@@ -300,6 +317,8 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
 - **毎pushで `src/data/changelog.ts`(タイトル画面の更新情報)にも先頭へ1エントリ追記する
   (社長指示v0.25.2147・約170版ぶん記載が抜けた事故の再発防止)。** プレイヤー体験に関わる変更を
   短く書く。体験に変化が無いpush(文書のみ等)は「ゲーム内容の変更はありません」と書く(v0.25.1833の前例)。
+- **例外(v0.25.3763): `PROJECT_STATUS.md` のみの変更はbump・changelog・DEVELOPMENT_LOG不要=即push**
+  (状態の単独push。TEST_HANDOFF/例外と同型。状態を動かした設計チャットが、その回の返信前に行う)。
 - **ALWAYS state the current `version` in every chat reply** (e.g. end the
   response with `v0.25.xxx`). This is a hard rule — never omit it, even for
   questions, doc-only changes, or replies with no code change. After bumping,
@@ -307,12 +326,13 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
 - **止まっている作業は「なぜ止まっているか」を必ず書く(社長指示v0.25.3392)**: 進行報告・状態整理で
   タスクを列挙する時、待ち/停止中の項目には**停止理由(何を待っているか・誰のボールか)を毎回明記**する。
   「実行中」「待ち」だけの箇条書きは禁止(理由が書けない停止は、段取りが説明できていないサイン)。
-- **進行ボードHTML(社長指示v0.25.3433)**: 未完のタスク・話は「zombie進行ボード」(Artifact)に
-  概要・状態(停止理由込み)・説明で載せ、**完了したらトルツメ**。**毎回同じアーティファクトを更新し、
-  毎回の返信にリンクを貼る**。URL(固定・設計チャットが更新):
-  https://claude.ai/code/artifact/195b5630-8606-4f35-8f1e-ee413ff34d4f
+- **進行ボードHTML(社長指示v0.25.3433・v0.25.3762で写し化)**: 「zombie進行ボード」(Artifact)は
+  **PROJECT_STATUS.mdから生成する写し**(食い違ったらSTATUSが正・**ボードだけの更新は禁止**=必ず
+  STATUSを直してから写す)。**毎回同じアーティファクトを更新し、毎回の返信にリンクを貼る**。
+  URL(固定・設計チャットが更新): https://claude.ai/code/artifact/195b5630-8606-4f35-8f1e-ee413ff34d4f
   (更新方法: scratchpadのzombie-tasks.htmlを編集して同パスで再publish。別セッションからは
-  Artifactツールに`url`でこのURLを渡して更新=新規URLを作らない)。
+  Artifactツールに`url`でこのURLを渡す=新規URLを作らない。**再publish前に必ず現物を読み、
+  ボード上部「📮 Claudeへの伝言」の未処理分を回収してから上書きする**)。
 
 ## Branch lock (READ FIRST — overrides everything)
 - **The ONLY development branch is `claude/chat-context-continuity-saxlH`.**
@@ -335,7 +355,7 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
 ## 実装精度の規律(実装チャット向け・v0.25.1344 社長指示「Sonnet側の精度を上げる」)
 実バグ化した見落とし(v0.25.1337/1343)から抽出した恒久ルール。**実装チャットはバッチ着手前にこの節を読むこと。**
 1. **未決をコードコメントに書かない。** 設計書に無い値・未定義の挙動に当たったら、コメントに
-   「質問候補」と書いて先へ進まず、**PACING_REDESIGN.mdの★未決事項に書いて止まる**。
+   「質問候補」と書いて先へ進まず、**担当設計書(現在はPACING_PUZZLE.md)の★未決事項に書いて止まる**。
    コメントに書いた質問は誰にも届かない(gate-chaosのmix未指定が後で実バグ化した教訓)。
 2. **憲法テスト(`src/utils/constitution.test.ts`)を守る。** シーン・演目・台本・しきい値の
    横断不変条件(countCap上限/初心者ゾーン不可侵/featuredの自己整合/mix全指定/床の許可リスト/
@@ -433,18 +453,18 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
 - **体制の更新(社長決定v0.25.1705): Sonnet単独チャットは廃止。「Sonnet」=設計チャットから起動する
   サブエージェント**を指す(v0.25.1690〜運用中)。設計チャットが仕様を設計書(PACING_PUZZLE.md §6.x等)に
   確定させてからサブエージェントに発注し、完了報告を検証して社長へ報告する。
-  - **実装(Sonnetサブエージェント)**: 設計書のバッチを実装し、結果を DEVELOPMENT_LOG.md と設計書の
-    ステータス更新でファイルに残す。**設計判断はしない**(未決事項に当たったら設計書の★未決に書いて
-    止め、最終報告で伝える)。
+  - **実装(Sonnetサブエージェント)**: 設計書のバッチを実装し、結果を DEVELOPMENT_LOG.md に残す。
+    **状態変化は完了報告とDEVLOGエントリの「状態変化: <案件キー> → <状態>(残り: …)」1行に明記する
+    (設計書・PROJECT_STATUSには書かない=STATUSの書き手は設計チャットのみ)**。**設計判断はしない**
+    (未決事項に当たったら設計書の★未決に書いて止め、最終報告で伝える)。
   - **設計チャット(Fable)**: 社長との話し合い・診断・監査・仕様確定・発注・検証。
     **設計チャットの後任(モデル交代含む)は DESIGN_CHAT_GUIDE.md(運転マニュアル)を最初に読むこと。**
 - **チャット間でお互いの会話は見えない。** 決定・未決・実装結果・実機フィードバックの要点は
-  必ずファイル(PACING_REDESIGN.md / DEVELOPMENT_LOG.md / AI_DIRECTOR_HANDOFF.md /
-  DISTRIBUTION_REDESIGN.md / CORE_LOOP.md / ENGINEERING_NOTES.md)に書くこと。チャットにしか書かれていない情報は存在しないのと同じ。
-- 現在の進行プロジェクト: **PACING_PUZZLE.md(ランク7段階×台本パズル方式・旧線の再設計)**。
-  どちらのチャットも作業開始時にまず PACING_PUZZLE.md(「実装順とステータス」「★未決事項」)と
-  DEVELOPMENT_LOG.md の先頭数エントリを読むこと。PACING_REDESIGN.md は前提知識(旧仕様)として
-  参照可。矛盾したら PACING_PUZZLE.md が勝つ。
+  必ずファイル(状態=PROJECT_STATUS.md / 仕様=担当設計書 / 履歴=DEVELOPMENT_LOG.md /
+  教訓=ENGINEERING_NOTES.md)に書くこと。チャットにしか書かれていない情報は存在しないのと同じ。
+- 現在の進行プロジェクト: **PACING_PUZZLE.md(ランク7段階×台本パズル方式)**。
+  どちらのチャットも作業開始時にまず**冒頭のメニュー → PROJECT_STATUS.md(状態・規約・滞留チェック)→
+  担当案件の設計書**の順で読むこと(旧PACING_REDESIGN.mdはarchive/へ退避済み=正ではない)。
 
 ## テストチャット運用(ローカル・テスト専用・社長運用決定v0.25.1706)
 - 社長が「**テストして**」と言ったら: あなたはテスト専用チャット。`git pull` →
@@ -501,7 +521,7 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
 確認は1問に絞り、質問の連打はしない。
 ※境界(実装精度の規律1と併読): 1問確認でよいのは「作業依頼の曖昧さ」(対象ファイルはどれか・
 どちらの意味か等)。**仕様・数値・挙動の未決**はチャットで聞いて済ませず、
-PACING_REDESIGN.mdの★未決事項に書いて止まる(設計判断を実装チャットでしない)。
+担当設計書(現在はPACING_PUZZLE.md)の★未決事項に書いて止まる(設計判断を実装チャットでしない)。
 
 ### 7-5. 部分読み
 大きいファイルは全読みしない。必要なセクション・行範囲のみを
