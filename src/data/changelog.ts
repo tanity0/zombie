@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3791',
+    items: [
+      'ゲーム内容の変更はありません(設計の記録のみ)。',
+    ],
+  },
+  {
     version: '0.25.3790',
     items: [
       'トールの突進をカウンターした時に、Counter!演出も反撃も弾き返しも出なかった問題を直しました(接触の受け流しに横取りされていました)。',
