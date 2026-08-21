@@ -1631,14 +1631,18 @@ const PHILL_WING_ATTACK_LEN_FRAC = Math.hypot(
 );
 const PHILL_WING_ATTACK_LENGTH = 160; // 動きは大きく(CLAUDE.md v3443)=既存武器絵(uri85/thor220)の中間より大きめ
 // ---- 後光(§10-18・社長指示「頭の後ろくらいからピカーキラキラキラ〜」) ----
-const PHILL_HALO_SIZE_PX = 240;         // ゴッドレイの表示直径
+// ★v0.25.3733(社長報告「後光がどこにあるかわからない」): 旧240px×bodyScale(≒実測150px前後)は
+// 本体の絵の裏に埋まる豆粒だった。サイズ基準を**本体表示高さ比**へ変更(「小さくて見えない」は
+// 演出が存在しないのと同じ=CLAUDE.md。派手側に倒す)。
+const PHILL_HALO_DIA_FRAC = 1.15;       // ゴッドレイの表示直径(本体表示高さ比・本体からはみ出す)
 const PHILL_HALO_SPIN_RATE = 1 / 5200;  // ゆっくり回転(rad/ms・慣性は常時回転なので開始/終了はフェードで持たせる)
 const PHILL_HALO_FLICKER_MS = 900;      // sin明滅の周期
 const PHILL_HALO_ALPHA = 0.85;
 const PHILL_HALO_BOOST_ALPHA = 1.0;     // 技発動/フェーズ移行の瞬間だけ増光(メリハリ)
 const PHILL_HALO_BOOST_MS = 420;
 const PHILL_SPARKLE_POOL_SIZE = 18;
-const PHILL_SPARKLE_RADIUS_PX = 70;     // 頭部周辺キラキラの散らばり半径
+const PHILL_SPARKLE_RADIUS_FRAC = 0.34; // 頭部周辺キラキラの散らばり半径(本体表示高さ比・v3733でpx→比率化)
+const PHILL_SPARKLE_SIZE_FRAC = 0.05;   // キラキラ1粒の大きさ(本体表示高さ比)
 // ---- 撒き羽根(§10-11/§10-13/§10-19): fx/phill-featureを花びら型+歪みパラメータで散らす ----
 const PHILL_FEATHER_POOL_SIZE = 96; // 登場のブワッ(70)+同時多発の技/被弾トリガぶんの余裕(派手側に倒す)
 const PHILL_FEATHER_LIFE_MS = 1300;
@@ -3390,9 +3394,12 @@ export class PixiScene {
   private phillFlapPhaseAt = new Map<string, number>(); // 常時の羽ばたき撒き散らし間引き(周期の頭でだけ発火)
   private phillLastPos = new Map<string, { x: number; y: number }>(); // 死亡時の最終位置(cleanupで演出を出すため)
   private phillFeatherPool: { sp: Sprite; active: boolean; bornAt: number; life: number; vx: number; vy: number; vr: number; skewBase: number; flipX: number }[] = [];
-  // ★v0.25.3730(社長報告「羽がまだ場合によっては前に来てる」): phillLayer内のz順を
-  // [back(最下)→本体→front(最上)]の3層で構造固定するための前面コンテナ(撒き羽根/羽攻撃の武器絵)。
+  // ★v0.25.3730→3733: 前面コンテナ(羽攻撃の武器絵のみ・phillLayer末尾=本体より前)。
   private phillFront: Container | null = null;
+  // ★v0.25.3733(社長指示「羽6本→羽一本ずつのエフェクト→フィル本体の順に。本体が常に一番上」):
+  // 撒き羽根の専用コンテナ。生存中は本体view.container内のindex1(羽=back(0)の上・本体絵の下)、
+  // 本体退場後はphillLayer直下に作り直して死亡の余韻(舞い続ける羽根)を保つ。
+  private phillFeatherC: Container | null = null;
   // ★v0.25.3730(社長報告「登場シーンが止まってる」): 撒き羽根はアテンションの時間停止(凍結now)に
   // 依存しない自前の実時間時計で更新する(登場の羽根どばっが時間停止中も舞い続けるため)。
   private lastPhillFeatherStepAt: number | null = null;
@@ -19174,6 +19181,14 @@ export class PixiScene {
     back.addChild(shadow);
     this.phillShadow.set(id, shadow);
 
+    // 羽1枚(v0.25.3724: シートを切らずに1枚で使う)。★v0.25.3733(社長報告「後光がどこにあるか
+    // わからない」): 旧子順は[影→後光→キラキラ→羽]で、v3724の羽大型化以降**後光が羽の裏に完全に
+    // 隠れていた**のが真因。羽を先(下)・後光を後(上)へ=「頭の後ろから」が羽の手前に出る。
+    const wingSp = new Sprite();
+    wingSp.anchor.set(0.5, 0.5); // 蝶の開閉=中心線ですぼめる
+    back.addChild(wingSp);
+    this.phillWingSprites.set(id, [wingSp]);
+
     const halo = new Sprite(getPhillGodrayTexture());
     halo.anchor.set(0.5);
     halo.blendMode = 'add';
@@ -19191,28 +19206,32 @@ export class PixiScene {
       back.addChild(sp);
       const h = ((i * 2654435761) % 1000) / 1000; // 決定的な種(個体差・毎フレーム乱数を引かない)
       sparkles.push({
-        sp, ang0: h * Math.PI * 2, r: PHILL_SPARKLE_RADIUS_PX * (0.35 + h * 0.65),
+        sp, ang0: h * Math.PI * 2, r: PHILL_SPARKLE_RADIUS_FRAC * (0.35 + h * 0.65),
         spd: (0.00028 + h * 0.00035) * (i % 2 === 0 ? 1 : -1), h,
       });
     }
     this.phillSparkles.set(id, sparkles);
-
-    // 羽1枚(後光/キラキラの上・本体の下)。v0.25.3724: シートを切らずに1枚で使う(社長指示)。
-    const wingSp = new Sprite();
-    wingSp.anchor.set(0.5, 0.5); // 蝶の開閉=中心線ですぼめる
-    back.addChild(wingSp);
-    this.phillWingSprites.set(id, [wingSp]);
     return back;
   }
 
-  /** ★v0.25.3730: phillLayerの前面コンテナ(撒き羽根プール/羽攻撃の武器絵)。drawPhillExtrasが
-   *  毎フレーム末尾(最前面)へ強制する=z順を生成タイミングに依存させない(3層構造の最上段)。 */
+  /** ★v0.25.3730→3733: phillLayerの前面コンテナ(**羽攻撃の武器絵のみ**・撒き羽根はv3733で
+   *  phillFeatherCへ分離)。drawPhillExtrasが毎フレーム末尾(最前面)へ強制する。 */
   private ensurePhillFront(): Container {
     if (this.phillFront && !this.phillFront.destroyed) return this.phillFront;
     const front = new Container();
     this.L.phillLayer.addChild(front);
     this.phillFront = front;
     return front;
+  }
+
+  /** ★v0.25.3733: 撒き羽根の専用コンテナ。既定はphillLayer直下(死亡後の余韻用)。
+   *  生存中はdrawPhillExtrasが本体view.container内のindex1(羽の上・本体絵の下)へ移す。 */
+  private ensurePhillFeatherC(): Container {
+    if (this.phillFeatherC && !this.phillFeatherC.destroyed) return this.phillFeatherC;
+    const c = new Container();
+    this.L.phillLayer.addChild(c);
+    this.phillFeatherC = c;
+    return c;
   }
 
   /**
@@ -19267,7 +19286,13 @@ export class PixiScene {
     // 本体sprite(index1以降)より必ず下=羽が本体の前に出る経路が構造的に存在しない。
     if (backC.parent !== view.container) view.container.addChildAt(backC, 0);
     else if (view.container.getChildIndex(backC) !== 0) view.container.setChildIndex(backC, 0);
-    // front(撒き羽根/羽攻撃の武器絵)はphillLayer直下の末尾=view.containerより常に前。
+    // ★v0.25.3733(社長指示のレイヤー確定): 下から[羽6本(back=0)→羽一本ずつのエフェクト
+    // (featherC=1)→フィル本体(sprite以降)]。**本体が常に一番上**。撒き羽根も本体コンテナ内なので
+    // 兄弟の並び替えの影響を受けない(v3732と同じ構造固定)。
+    const featherC = this.ensurePhillFeatherC();
+    if (featherC.parent !== view.container) view.container.addChildAt(featherC, 1);
+    else if (view.container.getChildIndex(featherC) !== 1) view.container.setChildIndex(featherC, 1);
+    // front(羽攻撃の武器絵のみ)はphillLayer直下の末尾=view.containerより常に前(武器は技の絵=見せる)。
     const layer = this.L.phillLayer;
     if (frontC.parent === layer && layer.getChildIndex(frontC) !== layer.children.length - 1) {
       layer.setChildIndex(frontC, layer.children.length - 1);
@@ -19291,7 +19316,7 @@ export class PixiScene {
     }
 
     this.syncPhillWings(id, e, bodyX, bodyY, bodyScale, bodyAlpha, rnow);
-    this.syncPhillHalo(id, bodyX, bodyY - view.sprite.height * 0.30, bodyScale, bodyAlpha, rnow);
+    this.syncPhillHalo(id, bodyX, bodyY - view.sprite.height * 0.30, view.sprite.height, bodyAlpha, rnow);
     this.triggerPhillFeatherFx(id, e, bodyX, bodyY, gameTime, rnow);
   }
 
@@ -19326,8 +19351,9 @@ export class PixiScene {
     sp.visible = true;
   }
 
-  /** §10-18(後光・社長指示「頭の後ろくらいからピカーキラキラキラ〜」)。投影影の光源にはしない。 */
-  private syncPhillHalo(id: string, cx: number, headY: number, bodyScale: number, bodyAlpha: number, now: number): void {
+  /** §10-18(後光・社長指示「頭の後ろくらいからピカーキラキラキラ〜」)。投影影の光源にはしない。
+   *  ★v0.25.3733: サイズ基準をbodyScale(実測で豆粒)→本体表示高さ(bodyH)比へ。 */
+  private syncPhillHalo(id: string, cx: number, headY: number, bodyH: number, bodyAlpha: number, now: number): void {
     const halo = this.phillHalo.get(id);
     if (!halo) return;
     // 常時ゆっくり回転(周辺の背景演出=CINE_SKY_BREATHと同型の直読み。フェード開始/終了は
@@ -19338,7 +19364,7 @@ export class PixiScene {
     const flicker = 0.85 + 0.15 * Math.sin((now / PHILL_HALO_FLICKER_MS) * Math.PI * 2);
     halo.position.set(cx, headY);
     halo.rotation = ang;
-    halo.scale.set((PHILL_HALO_SIZE_PX * bodyScale * (1 + boostT * 0.18)) / Math.max(1, halo.texture.width));
+    halo.scale.set((bodyH * PHILL_HALO_DIA_FRAC * (1 + boostT * 0.18)) / Math.max(1, halo.texture.width));
     halo.alpha = Math.max(0, (PHILL_HALO_ALPHA + (PHILL_HALO_BOOST_ALPHA - PHILL_HALO_ALPHA) * boostT) * flicker * bodyAlpha);
     halo.visible = true;
 
@@ -19347,8 +19373,8 @@ export class PixiScene {
       for (const s of sparkles) {
         const a = (0.35 + 0.65 * Math.abs(Math.sin(now / (70 + s.h * 90) + s.h * 9))) * (0.7 + 0.3 * boostT) * bodyAlpha;
         const ang2 = s.ang0 + now * s.spd;
-        s.sp.position.set(cx + Math.cos(ang2) * s.r * bodyScale, headY + Math.sin(ang2) * s.r * 0.55 * bodyScale);
-        s.sp.scale.set((10 + s.h * 8) * bodyScale / Math.max(1, s.sp.texture?.width || 32));
+        s.sp.position.set(cx + Math.cos(ang2) * s.r * bodyH, headY + Math.sin(ang2) * s.r * 0.55 * bodyH);
+        s.sp.scale.set((PHILL_SPARKLE_SIZE_FRAC * (0.6 + s.h * 0.8)) * bodyH / Math.max(1, s.sp.texture?.width || 32));
         s.sp.alpha = a;
         s.sp.visible = true;
       }
@@ -19394,14 +19420,18 @@ export class PixiScene {
     this.phillLastPhase.set(id, phase);
   }
 
-  /** §10-11(撒き羽根)+§10-14#11(羽根散弾との見分け=判定ゼロ・小さめ・ひらひら落下)の固定プール。 */
+  /** §10-11(撒き羽根)+§10-14#11(羽根散弾との見分け=判定ゼロ・小さめ・ひらひら落下)の固定プール。
+   *  ★v0.25.3733: 親はphillFeatherC(羽の上・本体の下)。本体退場(view.containerごと破棄)で
+   *  プールも道連れになるため、destroyedを検出したら作り直す(死亡演出の撒きがその直後に来る)。 */
   private ensurePhillFeatherPool(): void {
-    if (this.phillFeatherPool.length > 0) return;
+    if (this.phillFeatherPool.length > 0 && !this.phillFeatherPool[0].sp.destroyed) return;
+    this.phillFeatherPool.length = 0;
+    const fc = this.ensurePhillFeatherC();
     for (let i = 0; i < PHILL_FEATHER_POOL_SIZE; i++) {
       const sp = new Sprite();
       sp.anchor.set(0.5, 0.5);
       sp.visible = false;
-      this.ensurePhillFront().addChild(sp); // 判定ゼロ(分類②)=前面コンテナ・常に最前面(本体/羽より手前)
+      fc.addChild(sp); // 判定ゼロ(分類②)。層は[羽(back)→撒き羽根(ここ)→本体絵]=本体が常に一番上
       this.phillFeatherPool.push({ sp, active: false, bornAt: 0, life: PHILL_FEATHER_LIFE_MS, vx: 0, vy: 0, vr: 0, skewBase: 0, flipX: 1 });
     }
   }
@@ -19446,6 +19476,7 @@ export class PixiScene {
   private stepPhillFeathers(now: number, deltaSec: number): void {
     for (const p of this.phillFeatherPool) {
       if (!p.active) continue;
+      if (p.sp.destroyed) { p.active = false; continue; } // 本体退場でプールごと破棄された残骸(v3733)
       const age = now - p.bornAt;
       if (age >= p.life) { p.active = false; p.sp.visible = false; continue; }
       const t = age / p.life;
