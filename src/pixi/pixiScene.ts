@@ -1650,9 +1650,11 @@ const PHILL_SHADOW_BASE_RX = 46, PHILL_SHADOW_BASE_RY = 16;
 // 判定ありの羽根散弾はice/bone(80px)より一回り大きく表示する(判定半径自体はSKADI_BLADE_HIT=共通・不変)。
 const PHILL_FEATHERSHOT_VIS_PX = 112;
 // ---- 登場シーン(§10-19・社長指示「羽が大量に吹き出してブワッと。その後、登場する感じで」) ----
-const PHILL_INTRO_BODY_DELAY_MS = 260;  // 羽根が先に吹き出してから本体が現れるまでの間(順序が肝)
-const PHILL_INTRO_BODY_FADE_MS = 700;   // 本体のフェード+降下の尺(慣性=ease)
-const PHILL_INTRO_DESCEND_PX = 150;     // 降下の落差(視覚のみ=e.y/当たり判定は不変)
+// ★v0.25.3725(社長指示・登場の順序確定): ①カメラ先行→②羽どばっ→③下からフェードイン+④羽が開く→⑤名前。
+const PHILL_INTRO_BURST_DELAY_MS = 520; // カメラのパン到着を待ってから羽根どばっ
+const PHILL_INTRO_BODY_DELAY_MS = 800;  // 羽根どばっ→本体が現れ始めるまでの間(順序が肝)
+const PHILL_INTRO_BODY_FADE_MS = 900;   // 本体のフェード+下からのせり上がりの尺(慣性=ease)
+const PHILL_INTRO_RISE_PX = 150;        // 下からのズレ幅(視覚のみ=e.y/当たり判定は不変)
 
 // アクラシエルの結晶の槍(acrasiel-spear.png=152×512)。設置武器(ラフィ骨刃/スカジ氷刃と同じ語彙)なので
 // 振り演出は持たない。溜め(spear-windup)中だけ本体前方に1本「構え」表示する(掟W9の窓口・叩き台)。
@@ -3393,7 +3395,9 @@ export class PixiScene {
   private phillSparkles = new Map<string, { sp: Sprite; ang0: number; r: number; spd: number; h: number }[]>();
   private phillShadow = new Map<string, Graphics>(); // 足元の楕円影(専用レイヤー内=DoFと同期ズレを回避)
   private phillWingFx = new Map<string, Container>(); // 羽攻撃(技3/4/5)の武器スプライト(katana系と同型)
-  private phillSpawnAt = new Map<string, number>(); // §10-19 登場フェード/降下の起点時刻
+  private phillSpawnAt = new Map<string, number>(); // §10-19 登場シーケンスの起点時刻
+  private phillIntroBurstDone = new Set<string>();  // v0.25.3725: 登場の羽根どばっ(カメラ到着後)を1回だけ
+  private phillIntroWingOpen = new Map<string, number>(); // v0.25.3725: 登場中の羽の開き(0→1・1=通常開閉へ)
   private phillLastBossState = new Map<string, string>(); // 技切替検知(撒き羽根のトリガ)
   private phillLastHitAt = new Map<string, number>();
   private phillLastPhase = new Map<string, number>();
@@ -12182,6 +12186,8 @@ export class PixiScene {
         const phWingFx = this.phillWingFx.get(id);
         if (phWingFx) { phWingFx.destroy({ children: true }); this.phillWingFx.delete(id); }
         this.phillSpawnAt.delete(id);
+        this.phillIntroBurstDone.delete(id);
+        this.phillIntroWingOpen.delete(id);
         this.phillLastBossState.delete(id);
         this.phillLastHitAt.delete(id);
         this.phillLastPhase.delete(id);
@@ -14889,12 +14895,12 @@ export class PixiScene {
       // PACING_PUZZLE.md §10-4(浮遊)+§10-19(登場シーン)。視覚のみ=e.y/当たり判定は不変
       // (CLAUDE.md Y方向5点チェック: 地平線フェード/擬似遠近は上で既に対象外化。可視域/移動可能帯は
       // e.x/e.yそのものを一切動かさないため無関係。this.phillIntroState()が登場時の羽根撒きも駆動する)。
-      let phillBob = 0, phillIntroAlpha = 1, phillIntroDescend = 0;
+      let phillBob = 0, phillIntroAlpha = 1, phillIntroRise = 0;
       if (e.type === 'phillboss') {
         phillBob = Math.sin((now / PHILL_FLOAT_PERIOD_MS) * Math.PI * 2 + stablePhase(e.id)) * PHILL_FLOAT_AMP_PX;
         const intro = this.phillIntroState(e.id, spx, spy, now);
         phillIntroAlpha = intro.alphaMul;
-        phillIntroDescend = intro.descendPx;
+        phillIntroRise = intro.risePx; // v0.25.3725: 下からズレてフェードイン(正=下方向のオフセット)
         this.phillLastPos.set(e.id, { x: spx, y: spy }); // 死亡時の撒き羽根用(cleanupで参照)
       }
       const sinceHit = now - e.lastHit;
@@ -14932,7 +14938,7 @@ export class PixiScene {
       view.shadowGroundY = spy + scale * tex.height * (contentBottomFrac - 0.5); // 論理の足元(実体下端。リフト/スカッシュ無し)
       view.sprite.position.set(
         Math.round(spx + liftShake + lungeOffX),
-        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob - phillIntroDescend),
+        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise),
       );
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
@@ -19201,23 +19207,28 @@ export class PixiScene {
   }
 
   /**
-   * PACING_PUZZLE.md §10-19(社長指示「登場シーンも羽が大量に吹き出してブワッと。その後、登場する
-   * 感じで」): ①出現位置から羽根が大量に吹き出す(初回呼び出しの副作用) → ②DELAY後、本体をease
-   * フェード+降下(慣性)。既存の出現アテンション(boss-appear SE+カットイン・useGameLoop側)とは
-   * 座標・タイミングを共有するだけで独立=両立する(このバッチはSE/カットインに触れない)。
+   * ★v0.25.3725(社長指示・登場の順序確定版): ①カメラが先に彼へ(useGameLoop=spawn時にアテンション)
+   * →②カメラ到着後に羽根どばっ(BURST_DELAY) →③本体が**下からズレてフェードイン**(rise+ease)
+   * +④同時に羽が背中から大きく開かれる(wingOpenT 0→1・syncPhillWingsが読む)
+   * →⑤アテンション+カットインで名前表示(useGameLoop側=従来どおり・最後)。
    */
-  private phillIntroState(id: string, x: number, y: number, now: number): { alphaMul: number; descendPx: number } {
+  private phillIntroState(id: string, x: number, y: number, now: number): { alphaMul: number; risePx: number } {
     let spawnAt = this.phillSpawnAt.get(id);
     if (spawnAt === undefined) {
       spawnAt = now;
       this.phillSpawnAt.set(id, spawnAt);
-      this.spawnPhillFeathers(x, y, PHILL_FEATHER_SPAWN_COUNT, now, true); // ①羽根が先に大量に吹き出す
     }
     const elapsed = now - spawnAt;
-    if (elapsed < PHILL_INTRO_BODY_DELAY_MS) return { alphaMul: 0, descendPx: PHILL_INTRO_DESCEND_PX };
+    // ②羽根どばっ: カメラのパン到着を待ってから1回だけ(順序が肝=カメラが見ている前で吹き出す)。
+    if (elapsed >= PHILL_INTRO_BURST_DELAY_MS && !this.phillIntroBurstDone.has(id)) {
+      this.phillIntroBurstDone.add(id);
+      this.spawnPhillFeathers(x, y, PHILL_FEATHER_SPAWN_COUNT, now, true);
+    }
+    if (elapsed < PHILL_INTRO_BODY_DELAY_MS) { this.phillIntroWingOpen.set(id, 0); return { alphaMul: 0, risePx: PHILL_INTRO_RISE_PX }; }
     const t = Math.max(0, Math.min(1, (elapsed - PHILL_INTRO_BODY_DELAY_MS) / PHILL_INTRO_BODY_FADE_MS));
     const ease = t * t * (3 - 2 * t); // 慣性(smoothstep=加減速)
-    return { alphaMul: ease, descendPx: PHILL_INTRO_DESCEND_PX * (1 - ease) };
+    this.phillIntroWingOpen.set(id, ease); // ④羽の開きを本体の出現と同期(1で通常の開閉へ引き継ぎ)
+    return { alphaMul: ease, risePx: PHILL_INTRO_RISE_PX * (1 - ease) };
   }
 
   /** drawEnemy()の末尾からphillbossの時だけ呼ばれる。本体位置(view.sprite)は確定済み=読むだけ。 */
@@ -19265,7 +19276,11 @@ export class PixiScene {
     const bodyH = (tex?.height ?? 1024) * bodyScale;
     // 蝶の開閉: sinを0..1に写して閉じ(FOLD_MIN)↔全開(1.0)を往復(sin=加減速内在=慣性MUST)。
     const wave = (Math.sin((now / flapMs) * Math.PI * 2 + stablePhase(id)) + 1) / 2; // 0..1
-    const openT = PHILL_WING_FOLD_MIN + (1 - PHILL_WING_FOLD_MIN) * wave;
+    let openT = PHILL_WING_FOLD_MIN + (1 - PHILL_WING_FOLD_MIN) * wave;
+    // ★v0.25.3725 登場シーン④: 本体の出現(ease 0→1)と同期して「背中から大きく開かれる」。
+    // introOpen<1の間は閉じ(0)→全開(1)への一方向の開きが優先。1到達後は通常のsin開閉へ引き継ぐ。
+    const introOpen = this.phillIntroWingOpen.get(id) ?? 1;
+    if (introOpen < 1) openT = introOpen;
     const baseSc = bodyH * PHILL_WING_H_FRAC / Math.max(1, wingTex.height);
     sp.scale.set(baseSc * openT, baseSc * (1 + (1 - openT) * 0.06)); // 閉じる時ほんの少し縦に伸びる(布感)
     sp.rotation = (wave - 0.5) * 2 * PHILL_WING_TILT_ROT; // ごく小さな全体の傾ぎ

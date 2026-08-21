@@ -2999,8 +2999,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnRing(pscx, pscy, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
             useGameStore.getState().spawnGlow(pscx, pscy, GLOW_R_XXL, 'rgba(239,68,68,', 900);
             spawnBurst(pscx, pscy + 20, '#7f1d1d', 28);
-            // アテンション+カットインは出現エフェクトが消えてから(城ボス/幻影と同じ並び。
-            // bountyAttnRefは賞金首/幻影と共有する汎用の遅延ディスパッチャ=専用refを増やさない)。
+            // ★v0.25.3725(社長指示・登場の順序確定): ①**先にカメラを彼へ向ける**(素のアテンション=
+            // パン360ms→ホールド1900ms。この間にpixi側が ②羽どばっ(+520ms) ③本体が下からズレて
+            // フェードイン ④羽が背中から大きく開く、を演じる=§10-19確定版)。
+            useGameStore.getState().triggerAttention(pscx, pscy);
+            // ⑤名前表示(カットイン)は従来どおり=下の共有ディスパッチャが「①のアテンション終了を
+            // 待ってから」発火する(4127行の !attention ガードがその待ちを担う=+950は最早発火時刻)。
             bountyAttnRef.current = { at: newGameTime + 950, x: pscx, y: pscy, cutin: bossCutinPayload('phillboss') };
           }
         }
