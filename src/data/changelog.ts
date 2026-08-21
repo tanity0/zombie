@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3757',
+    items: [
+      'ゲーム内容の変更はありません(開発文書の古くなっていたステータス記載の訂正のみ)。',
+    ],
+  },
+  {
     version: '0.25.3756',
     items: [
       'EXステージ改修(洋館通路化)の検収が完了しました。ゲーム内容の変更はありません(内部の安全ガード追加のみ)。',
