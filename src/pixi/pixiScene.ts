@@ -2689,6 +2689,10 @@ const BOSS_BEHIND_FAR_SCREEN_PX = 220;
 // 0.15 は「自機を隠さない」という#2の狙いを保ったまま、**輪郭は残る**ようにする折衷値(社長裁定)。
 // ※小さい絵のボス(idol/天使)はそもそも #1〜#2 を通らない(v0.25.2615・bossBehindFadeApplies)。
 const BOSS_BEHIND_FAR_ALPHA = 0.15;
+// ★v0.25.3735(社長指示「フィルの裏の半透明が過剰・もう少し緩和」): フィルは絵が約2倍(v3730)で
+// 透けの効く範囲が他ボスより広く深いため、フィル限定で近/遠とも浅めに緩和(叩き台)。
+const PHILL_BEHIND_ALPHA = 0.68;
+const PHILL_BEHIND_FAR_ALPHA = 0.5;
 /**
  * v0.25.2623(社長報告「まだアイドルワープすると絵が消える」): **戦っているボスは、位置の都合で
  * 見えなくならない。**
@@ -14980,6 +14984,11 @@ export class PixiScene {
       } else {
       const behindDist = fb.footY - (ply.y + ply.height);   // 正 = プレイヤーが帯より奥
       const inHoriz = (ply.x + ply.width) > (spx - spriteW / 2) && ply.x < (spx + spriteW / 2);
+      // ★v0.25.3735(社長指示「フィルの裏の半透明が過剰。結構上の方に行っても半透明のまま=緩和」):
+      // フィルは絵が約2倍(v3730)で透けの効く横帯・縦の届きが他ボスより広く深い。フィル限定で
+      // 近0.5→0.68・遠0.15→0.50に緩和(叩き台)。他ボスはBOSS_BEHIND_ALPHA=0.5等の既存裁定のまま。
+      const behindNearAlpha = e.type === 'phillboss' ? PHILL_BEHIND_ALPHA : BOSS_BEHIND_ALPHA;
+      const behindFarAlpha = e.type === 'phillboss' ? PHILL_BEHIND_FAR_ALPHA : BOSS_BEHIND_FAR_ALPHA;
       let behindTarget: number;
       if (!inHoriz || behindDist <= 0) {
         behindTarget = 1;
@@ -14989,12 +14998,12 @@ export class PixiScene {
         const behindNearPx = BOSS_BEHIND_NEAR_SCREEN_PX * behindDistanceScale;
         const behindFarPx = BOSS_BEHIND_FAR_SCREEN_PX * behindDistanceScale;
         const t = Math.min(1, behindDist / behindNearPx);
-        let a = 1 - t * t * (1 - BOSS_BEHIND_ALPHA);
+        let a = 1 - t * t * (1 - behindNearAlpha);
         // #2: さらに奥へ離れたら0.5→0.15。画面上の終点はズームに関係なく220px。
         if (behindDist > behindNearPx) {
           // v0.25.2622(社長裁定「0.15で」): 0ではなく BOSS_BEHIND_FAR_ALPHA まで。
           const t2 = Math.min(1, (behindDist - behindNearPx) / (behindFarPx - behindNearPx));
-          a = BOSS_BEHIND_ALPHA + (BOSS_BEHIND_FAR_ALPHA - BOSS_BEHIND_ALPHA) * t2;
+          a = behindNearAlpha + (behindFarAlpha - behindNearAlpha) * t2;
         }
         behindTarget = a;
       }
@@ -15006,7 +15015,7 @@ export class PixiScene {
         const nx = Math.max(e.x, Math.min(plcx, e.x + e.width));
         const ny = Math.max(e.y, Math.min(plcy, e.y + e.height));
         if (Math.hypot(plcx - nx, plcy - ny) <= BOSS_BEHIND_MELEE_PX) {
-          behindTarget = Math.max(behindTarget, BOSS_BEHIND_ALPHA);
+          behindTarget = Math.max(behindTarget, behindNearAlpha);
         }
       }
       // 透ける/戻るを滑らかにフェード。速度は障害物の透けの2倍(社長指示)= 1-(1-lerp)^2。

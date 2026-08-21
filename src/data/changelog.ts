@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3735',
+    items: [
+      'フィルの裏側に回った時の半透明を緩和しました(薄くなりすぎ・奥まで行っても薄いままだったのをフィル限定で浅めに。他のボスは従来どおり)。',
+    ],
+  },
+  {
     version: '0.25.3734',
     items: [
       'EXバトル曲とエンディング曲の割り当てが逆になっていたのを修正しました(フィル戦=「大天使バトル」・エンディング=もう1曲)。',
