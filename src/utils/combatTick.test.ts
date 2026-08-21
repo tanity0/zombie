@@ -3,7 +3,8 @@
 // ★なぜ在るか(v0.25.3793・検収監査 重大1): **2巡連続で「実機から挙動が消える」事故を起こした場所**
 // なのに、テストが1本も無かった。
 //  - v0.25.3784: `applyContactDamage` の冒頭にあるトール除外から `thor-dash-move` を外した(接触が入る
-//    ようになった)。
+//    ようになった)。**★v0.25.3808(7巡目 中7)で裁定待ちの暫定として除外へ戻した**
+//    (§9-6 の「1セット(赤い帯+bot通知)を入れないまま当てるくらいなら、当てない方がまだ良い」に従う)。
 //  - v0.25.3785: その結果、同じ forEach の下流の**ボス接触受け流し**へも走行中の突進が流れ込み、
 //    `rootUntil=900ms` が立って `frozen` が `bossState='chase'` へ落とすため、**突進のカウンター
 //    (Counter!/クリ反撃/counter-leap/弾き返し/専用CD)が丸ごと実機に出なくなった**。
@@ -51,7 +52,13 @@ beforeEach(() => {
 });
 
 describe('ボス接触受け流し: トールの突進の走行中(thor-dash-move)だけは横取りさせない(§5-2 やること④)', () => {
-  it('★走行中(thor-dash-move)は受け流しが積まれず、接触ダメージ側へ落ちる', () => {
+  // ★v0.25.3808(検収監査7巡目 中7)= **裁定待ちの暫定措置**で期待値を書き換えた。
+  // §9-6 は「(a)当てる を採るなら**赤い帯とbot通知の1セットが要る**。1セットを入れないまま
+  // 当てるくらいなら、当てない方がまだ良い」と書いているのに、①②未実施のまま「当たる」だけが
+  // 実機に載っていた(=「赤くないのに当たる」)。よって `combatTick` の除外を戻した。
+  // **裁定で(a)になったら、この期待値は `toBeLessThan(hp0)` へ戻す**(受け流しの横取りが
+  // 起きないこと=下のアサートは、どちらの裁定でも変わらない)。
+  it('★走行中(thor-dash-move)は受け流しが積まれない(=カウンターの解決はトール側の1本に残る)', () => {
     setup('thor-dash-move');
     const hp0 = useGameStore.getState().player.health;
     applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
@@ -59,8 +66,8 @@ describe('ボス接触受け流し: トールの突進の走行中(thor-dash-mov
     // 受け流しの痕跡(拘束900ms/体幹削りの打刻)が1つも無いこと=カウンターの解決はトール側の1本に残る。
     expect(boss.rootUntil).toBeUndefined();
     expect(boss.bossPostureLastDamageAt).toBeUndefined();
-    // 代わりに接触ダメージが通っている(=ミゲルの踏み込み走行と同じ扱い)。
-    expect(useGameStore.getState().player.health).toBeLessThan(hp0);
+    // ★暫定(裁定待ち): 接触ダメージも入らない(トール除外の中に戻っている)。
+    expect(useGameStore.getState().player.health).toBe(hp0);
   });
 
   it('★追跡中(chase)では従来どおり受け流しが立つ(除外がトールの全州へ広がっていない)', () => {

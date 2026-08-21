@@ -802,6 +802,17 @@ CLAUDE.md の「Empirical render budget」節と `research/LIGHT_REWORK.md` の�
   → **台帳のルール(この節の冒頭)どおり、直す/直さないを決める人が現れたらこの行を更新する。**
   ※教訓: **「環境依存のflaky」と書いた台帳は、本物の回帰を後任に素通りさせる装置になる。**
   台帳へ載せる前に**同じ赤を2〜3回再現し、値が動くか(flaky)動かないか(ハードな赤)を必ず見る。**
+- **`src/store/bountyGoldChest.test.ts` >「金箱の中身は赤経験値20+武器抽選3回+スクラップ10倍」
+  = 乱数flaky(実測 22本中5本で赤・約1/4)**(v0.25.3808 起票・**トール案件由来ではない**)。
+  落ち方は `expected 2 to be greater than 2`(`bountyGoldChest.test.ts:88` の
+  `expect(st.player.weapons.length).toBeGreaterThan(weaponsBefore)`)。
+  原因はテスト自身のコメントが予告しているとおり——**`grantWeapon` は所持済みキーを引くと本数が増えない**
+  ので、武器抽選3回が**3回とも所持済みを引いた乱数の回**だけ「増えていない」で落ちる。
+  **同じ赤の中でも `strapTotal` 側(300〜510)は毎回通っている**=箱の中身そのものは出ている。
+  直すなら「テスト側で `Math.random` を固定する」か「本数ではなく**抽選が3回走ったこと**を見る」の
+  どちらか(=**抽選の重み/所持済みの扱いは仕様なので触らない**)。**担当未定**。
+  → **これで既知の赤は3件**(bountyTick=乱数flaky / sim=ハードな赤 / bountyGoldChest=乱数flaky)。
+  「落ちるのは2件だけ」と書いてある古い報告は**不正確**(v0.25.3808 の実測で3件目が見つかった)。
 
 ## 「載っていない側」だけを固定したテストは、**載っている側が消えても落ちない**(v0.25.3793・実バグの再発防止)
 - 実例: `counterReach.test.ts` のトールの節は `expect(...).not.toContain('issen-nihil')`(=紫は

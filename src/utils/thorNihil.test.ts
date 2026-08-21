@@ -11,9 +11,11 @@ import {
   meleeSwingCommitted, shouldTriggerGuaranteedIssen, isGuaranteedIssenNow, botHoldsMeleeForNihil,
 } from './thorNihil';
 // ★v0.25.3806: 弾き返しの行き先は純関数へ切り出した(値をここで固定する)。
-import { thorDashPushbackTarget } from './thorDashPushback';
+// ★v0.25.3808: **束縛(Enemy/Player から引数を組む所)まで**純関数へ入れた(重大2)。
+import { thorDashPushbackTarget, thorDashPushbackFromEnemy } from './thorDashPushback';
 import { HIDDEN_THOR_TUNING as HB_TH } from './hiddenBossScript';
 import { LAB_CORRIDOR_Y_LIMIT_PX as LAB_Y } from '../world/labWalls';
+import { CORRIDOR_BOTTOM_LIMIT } from '../world/playableArea';
 import { botSkillProfile } from './botSkill';
 import type { Enemy } from '../types/game';
 
@@ -189,6 +191,31 @@ const blockAfter = (lines: string[], startRe: RegExp, endRe: RegExp): string[] =
   return rel < 0 ? [] : lines.slice(i + 1, i + 1 + rel);
 };
 
+/**
+ * `startRe` に当たった行から、**対応する閉じ括弧の行の手前**までを返す(括弧の深さで数える)。
+ *
+ * ★v0.25.3808(検収監査7巡目 低11): `blockAfter` の終端は「最初に `};` に**見える**行」だったので、
+ * 本体の途中にオブジェクトの閉じを1つ作るだけでブロックが縮み、**以降の禁止検査(「ここには
+ * 書かない」の類)がブロックの外へ落ちて見えなくなる**=禁じた書き方をその下に足せば緑を通った。
+ * 深さで数えれば、余分な `}` を足すことは**コンパイルが通らない**ので同じ細工ができない。
+ * ※対象は `codeLines` 済み(コメント行を除いた)本文で、括弧を含む文字列リテラルは
+ *   走査対象の関数に無い(在れば `expect` 側の本数が合わなくなって気づく)。
+ */
+const braceBlockAfter = (lines: string[], startRe: RegExp): string[] => {
+  const i = lines.findIndex(l => startRe.test(l));
+  if (i < 0) return [];
+  const depthOf = (l: string) => (l.match(/\{/g)?.length ?? 0) - (l.match(/\}/g)?.length ?? 0);
+  // 宣言が複数行(引数リストや型注釈で改行する)場合があるので、**最初に深さが1以上になった行**を
+  // 本体の開き括弧とみなし、そこから深さが0へ戻るまでを本体とする。
+  let depth = 0, bodyStart = -1;
+  for (let j = i; j < lines.length; j++) {
+    depth += depthOf(lines[j]);
+    if (bodyStart < 0) { if (depth > 0) bodyStart = j + 1; continue; }
+    if (depth <= 0) return lines.slice(bodyStart, j);
+  }
+  return [];
+};
+
 describe('★必中フラグ(issenGuaranteedUntil)の配線の不変条件(§5-2 やること②)', () => {
   const text = Object.values(LOOP_SOURCES)[0] ?? '';
   const lines = codeLines(text);
@@ -353,6 +380,91 @@ describe('★弾き返しの行き先(純関数 thorDashPushbackTarget)= §4-1 �
 });
 
 // =================================================================================================
+// ★v0.25.3808(検収監査7巡目 重大2): **束縛**の値を固定する。
+// 前巡は「純関数の内側」だけを値で固めていたので、**そこへ何を束縛するか**は無検査だった:
+//  ①`fromX/fromY` と `toX/toY` を入れ替える ⇒ 進行方向が逆 ⇒ ボスがプレイヤーの**向こう側へ150px前進**
+//  ②`bossW/bossH` に 0 を渡す ⇒ 帯クランプが点で効く(巨体が帯からはみ出る)
+//  ③帯の文脈を偽装する(`labTheme: false` を素通し等)⇒ クランプが飾りになる
+// のどれも**全緑**を通った。よって `Enemy`/`Player` から引数を組む所を
+// `thorDashPushbackFromEnemy` へ引き取り、**ここで値としてアサートする**。
+// =================================================================================================
+describe('★弾き返しの束縛(thorDashPushbackFromEnemy)= Enemy/Player から引数を組む所も値で固める', () => {
+  /** 中心 (bcx,bcy)・寸法 w×h・突進 from→to を持つボス。 */
+  const bossAt = (bcx: number, bcy: number, w: number, h: number,
+    dash?: { fromX: number; fromY: number; toX: number; toY: number }) => ({
+    x: bcx - w / 2, y: bcy - h / 2, width: w, height: h,
+    aiFromX: dash?.fromX, aiFromY: dash?.fromY, aiTargetX: dash?.toX, aiTargetY: dash?.toY,
+  });
+  /** 中心 (pcx,pcy)・寸法 w×h のプレイヤー。 */
+  const playerAt = (pcx: number, pcy: number, w = 32, h = 48) =>
+    ({ x: pcx - w / 2, y: pcy - h / 2, width: w, height: h });
+
+  it('★進行方向は from→to(入れ替えるとプレイヤーの向こう側へ前進する=ここで落ちる)', () => {
+    // 左(x=0)から右(x=100)へ走ってきた。プレイヤーは x=500。⇒ 来た方向=左へ150px = x=350。
+    const r = thorDashPushbackFromEnemy(
+      bossAt(400, 0, 140, 140, { fromX: 0, fromY: 0, toX: 100, toY: 0 }),
+      playerAt(500, 0), OPEN_AREA, PUSH,
+    );
+    expect(r.x, 'from/to を入れ替えている(=プレイヤーの向こう側へ前進する)').toBe(500 - PUSH);
+    expect(r.y).toBe(0);
+    // 実際に入れ替えた時の値=「間違いの側」も名指しで固定しておく(取り違えが同じ値にならない証明)。
+    expect(500 + PUSH).not.toBe(500 - PUSH);
+  });
+
+  it('★弾き返しの基準はプレイヤーの**中心**(左上を渡すと半身ぶんズレる=ここで落ちる)', () => {
+    const pw = 32, ph = 48;
+    const r = thorDashPushbackFromEnemy(
+      bossAt(400, 700, 140, 140, { fromX: 0, fromY: 0, toX: 100, toY: 0 }),
+      playerAt(500, 700, pw, ph), OPEN_AREA, PUSH,
+    );
+    expect(r.x).toBe(500 - PUSH);
+    expect(r.y, 'プレイヤーの左上(y=700-ph/2)を基準にしている').toBe(700);
+  });
+
+  it('★矩形の寸法はボスの当たり判定(0を渡すと結果が変わる=ここで落ちる)', () => {
+    // 寸法が結果に効く帯を選ぶ: 洋館通路(corridorMode)の下限 `CORRIDOR_BOTTOM_LIMIT` は
+    // **矩形の上端(top-left y)**へ効くので、中心は `下限 + 高さ/2` で止まる=高さが値に出る。
+    // (研究所の上下クランプは中心基準なので高さが消える=寸法ゼロの細工を検出できない。)
+    const h = 140;
+    const CORRIDOR = { ...OPEN_AREA, corridorMode: true };
+    const r = thorDashPushbackFromEnemy(
+      bossAt(0, 900, 140, h, { fromX: 0, fromY: 5000, toX: 0, toY: 0 }), // 上へ走ってきた=下へ弾く
+      playerAt(0, 800), CORRIDOR, PUSH,
+    );
+    expect(r.y, 'ボスの寸法(height)を渡していない').toBe(CORRIDOR_BOTTOM_LIMIT + h / 2);
+    // 寸法ゼロの「間違いの側」と同じ値にならないこと(=このアサートが効いている証明)。
+    const zeroSized = thorDashPushbackTarget({
+      fromX: 0, fromY: 5000, toX: 0, toY: 0, pcx: 0, pcy: 800,
+      pushbackPx: PUSH, bossW: 0, bossH: 0, area: CORRIDOR,
+    });
+    expect(zeroSized.y).toBe(CORRIDOR_BOTTOM_LIMIT);
+    expect(zeroSized.y).not.toBe(r.y);
+  });
+
+  it('★帯の文脈はそのまま通す(偽装すると帯の外を返す=ここで落ちる)', () => {
+    const args = [
+      bossAt(0, LAB_Y + 800, 140, 140, { fromX: 0, fromY: 5000, toX: 0, toY: 0 }),
+      playerAt(0, LAB_Y + 400),
+    ] as const;
+    const inLab = thorDashPushbackFromEnemy(args[0], args[1], { ...OPEN_AREA, labTheme: true }, PUSH);
+    const faked = thorDashPushbackFromEnemy(args[0], args[1], OPEN_AREA, PUSH);
+    expect(inLab.y).toBe(LAB_Y);
+    expect(faked.y, '帯の文脈が結果に効いていない(=クランプが飾りになっている)').not.toBe(inLab.y);
+  });
+
+  it('突進の起点/到達点が無い時はボスの現在中心で埋める(方向が作れない=プレイヤー中心を返す)', () => {
+    const r = thorDashPushbackFromEnemy(bossAt(123, 456, 140, 140), playerAt(500, 300), OPEN_AREA, PUSH);
+    expect(r).toEqual({ x: 500, y: 300 });
+  });
+
+  it('★弾き返し量はそのまま効く(ゼロ化するとプレイヤー中心に戻る)', () => {
+    const b = bossAt(400, 0, 140, 140, { fromX: 0, fromY: 0, toX: 100, toY: 0 });
+    expect(thorDashPushbackFromEnemy(b, playerAt(500, 0), OPEN_AREA, 0).x).toBe(500);
+    expect(thorDashPushbackFromEnemy(b, playerAt(500, 0), OPEN_AREA, 300).x).toBe(200);
+  });
+});
+
+// =================================================================================================
 // ★v0.25.3798(検収監査5巡目 重大1)+ v0.25.3806(6巡目 重大1): 配線側の固定。
 // v0.25.3785 重大D=「`thorDashCounterHit` が `aiFrom` だけを差し替えていたので、counter-leap の
 // **到達点が弾き返しの有無で1pxも変わらなかった**(=150pxの弾き返しが1pxも効いていなかった)」。
@@ -362,65 +474,81 @@ describe('★弾き返しの行き先(純関数 thorDashPushbackTarget)= §4-1 �
 describe('★突進のカウンター(弾き返し)の配線の不変条件(§5-2 ★弾き返しの効かせ方/やること③)', () => {
   const text = Object.values(LOOP_SOURCES)[0] ?? '';
   const lines = codeLines(text);
-  const dashBody = () => blockAfter(lines, /const thorDashCounterHit = \(/, /^\s*\};\s*$/);
+  // ★v0.25.3808(7巡目 低11): 終端を「最初の `};` に見える行」で取るのをやめ、**括弧の深さ**で数える
+  // (本体の途中にオブジェクトの閉じを1つ作るだけでブロックが縮み、以降の禁止検査が見えなくなった)。
+  const dashBody = () => braceBlockAfter(lines, /const thorDashCounterHit = \(/);
+  const commonBody = () => braceBlockAfter(lines, /const thorCounterHit = \(/);
 
-  it('★弾き返しは**到達点**(patch.aiTargetX/Y)へ書く=`aiFrom` だけを書く形に戻したらここで落ちる', () => {
+  it('★この層は `patch` を**1つも書かない**(=行き先を後段で捨てる/上書きする細工が構造的に不可能)', () => {
     const body = dashBody();
     expect(body.length, 'thorDashCounterHit の本体を走査できていない(走査そのものが壊れた)')
       .toBeGreaterThan(3);
-    // トールは全技共通の反応(counter-leap=aiFrom→aiTarget の補間)を積むので、**到達点**を
-    // 差し替えないと弾き返しは1pxも効かない(起点だけ動かしても終点が同じなら同じ場所へ着く)。
-    // かつ、書く値は**純関数が返したもの**(placed)であること=生値を書いていない証明。
-    for (const f of ['aiTargetX', 'aiTargetY'] as const) {
-      expect(
-        body.some(l => new RegExp(`patch\\.${f}\\s*=(?!=)`).test(l) && /placed\./.test(l)),
-        `弾き返しの到達点(patch.${f})を純関数の結果から書いていない`
-        + '=150pxが効かない(v0.25.3785 重大Dの再発)',
-      ).toBe(true);
-    }
+    // ★7巡目 重大1/3の直しの本体。旧実装は「共通層を呼ぶ → patch.aiTargetX/Y を上書きする」という
+    // **順序契約**だった:
+    //  ・重大1= 共通層は自分で aiTargetX/Y を書くので、**呼び出しを2行下げるだけ**で弾き返しが消える。
+    //  ・重大3= 走査が「`placed.` を使う代入が在るか」しか見ないので、**直後にもう1本足して捨てる**
+    //    (`patch.aiTargetX = pcx;`)だけで緑を通る。
+    // ⇒ 行き先を引数(aimAt)で渡す形にして、この層からは patch への代入を**全廃**した。
+    //   代入が0本なら、順序も上書きも唯一性も**議論が起きない**。
+    const writes = body.filter(l => /patch\.[A-Za-z]+\s*=(?!=)/.test(l));
+    expect(
+      writes.length,
+      'thorDashCounterHit が patch を書いている。この層は「共通層を aimAt 付きで呼ぶ」だけの薄い層で、'
+      + '**patch への代入は共通層(thorCounterHit)の1箇所に集約**されている(順序契約を作らないため)。'
+      + `\n走査=\n${writes.map(b => b.trim()).join('\n')}`,
+    ).toBe(0);
+  });
+
+  it('★行き先は純関数(thorDashPushbackFromEnemy)へ**boss と player を渡して**出す=束縛も配線に残さない', () => {
+    const body = dashBody();
+    expect(body.length, 'thorDashCounterHit の本体を走査できていない(走査そのものが壊れた)')
+      .toBeGreaterThan(3);
+    // ★7巡目 重大2: 前巡は8引数を配線側で組んでいたので、`from`/`to` の入れ替え・寸法ゼロ・
+    // 帯の文脈の偽装が**全部ここで**でき、純関数の値テストを素通りした。束縛ごと純関数へ入れ、
+    // 配線に残るのは「boss と player を渡す」だけにする(値の不変条件は上の describe が持つ)。
+    const calls = body.filter(l => /thorDashPushbackFromEnemy\(/.test(l));
+    expect(
+      calls.length,
+      '弾き返しの行き先を純関数(thorDashPushbackFromEnemy)で出していない(または複数回呼んでいる)。'
+      + `\n走査=\n${body.map(b => b.trim()).join('\n')}`,
+    ).toBe(1);
+    expect(calls[0], '引数の順が boss, player ではない(取り違えると進行方向が逆・基準点が入れ替わる)')
+      .toMatch(/thorDashPushbackFromEnemy\(\s*boss\s*,\s*player\s*,/);
+    // 「行ける帯」の文脈は**実際の store の値**を渡す(空の文脈を渡してクランプを飾りにしない)。
+    expect(
+      body.some(l => /labTheme:\s*pst\.stageTheme === 'lab'/.test(l)),
+      '「行ける帯」の文脈(ステージ条件)を純関数へ渡していない',
+    ).toBe(true);
     // 弾き返し量は既存の合流点(ミゲル/ウリと共有)から**そのまま**渡す=新しい定数も係数も足さない。
     // (`AN_C.dashCounterPushbackPx * 0` のような細工はこの正規表現で落ちる。)
     expect(
-      body.some(l => /pushbackPx:\s*AN_C\.dashCounterPushbackPx\s*,/.test(l)),
+      body.some(l => /\}\s*,\s*AN_C\.dashCounterPushbackPx\s*\)/.test(l)),
       '弾き返し量が既存の dashCounterPushbackPx から**そのまま**渡されていない'
       + '(係数を掛ける/別の定数へ差し替える細工を含む)',
     ).toBe(true);
   });
 
-  it('★この層は**座標を1pxも書かない**(patch.x / patch.y / patch.aiFromX / patch.aiFromY への代入が無い)', () => {
-    const body = dashBody();
-    expect(body.length, 'thorDashCounterHit の本体を走査できていない(走査そのものが壊れた)')
-      .toBeGreaterThan(3);
-    // §5-2「★弾き返しの効かせ方」の MUST。流用元のミゲルのように patch.x/patch.y へ直接書くと
-    // **150px の1フレームテレポート**=CLAUDE.md「★動きの絶対ルール: 慣性」違反になる。
-    // ★v0.25.3806(6巡目 重大1): `aiFrom` も同じ穴だった。`counter-leap` は t≈0 で `aiFrom` に居るので、
-    // そこへ弾き返し位置を書くと**やはり150pxの1フレームテレポート**になる(禁じていたのは
-    // `patch.x/y` だけで `aiFrom` は素通りしていた)。運ぶのは counter-leap の補間の仕事。
-    for (const f of ['x', 'y', 'aiFromX', 'aiFromY'] as const) {
-      const bad = body.filter(l => new RegExp(`patch\\.${f}\\s*=(?!=)`).test(l));
+  it('★共通層は行き先を**引数(aimAt)で受け取り**、到達点の代入は各軸ちょうど1本(上書きされうる構造を作らない)', () => {
+    const body = commonBody();
+    expect(body.length, 'thorCounterHit の本体を走査できていない(走査そのものが壊れた)')
+      .toBeGreaterThan(10);
+    for (const f of ['aiTargetX', 'aiTargetY'] as const) {
+      const writes = body.filter(l => new RegExp(`patch\\.${f}\\s*=(?!=)`).test(l));
       expect(
-        bad.length,
-        `thorDashCounterHit の中で patch.${f} を書いている=150pxの1フレームテレポート(慣性MUST違反)。`
-        + '座標(起点も到達点への瞬間移動も)はここでは1pxも書かない(§5-2「★弾き返しの効かせ方」)。'
-        + `\n走査=\n${bad.map(b => b.trim()).join('\n')}`,
-      ).toBe(0);
+        writes.length,
+        `共通層(thorCounterHit)の patch.${f} への代入が1本ではない。2本あると「後の行が勝つ」`
+        + '=順序契約が復活する(v0.25.3785 重大D の構造)。'
+        + `\n走査=\n${writes.map(b => b.trim()).join('\n')}`,
+      ).toBe(1);
+      expect(
+        writes[0],
+        `共通層が渡された行き先(aimAt)を使っていない=突進の弾き返しが1pxも効かない(patch.${f})`,
+      ).toMatch(/opts\?\.aimAt/);
     }
-  });
-
-  it('★行き先の計算は純関数(thorDashPushbackTarget)を通す=直書きへ戻したらここで落ちる', () => {
-    const body = dashBody();
-    expect(body.length, 'thorDashCounterHit の本体を走査できていない(走査そのものが壊れた)')
-      .toBeGreaterThan(3);
+    // 起点(aiFrom)は**今いる場所**のまま=テレポートしない(150pxの1フレーム移動=慣性MUST違反)。
     expect(
-      body.some(l => /thorDashPushbackTarget\(/.test(l)),
-      '弾き返しの行き先を純関数(thorDashPushbackTarget)で出していない。直書きへ戻すと'
-      + '**ゼロ化・符号反転が全テスト緑を通る**(v0.25.3805 検収監査6巡目 重大1)。',
-    ).toBe(true);
-    // 「行ける帯」を通す責務は純関数側にある(値のテストが上の describe に在る)。ここでは
-    // **帯の文脈を実際に渡している**ことだけを見る(空の文脈を渡してクランプを飾りにしない)。
-    expect(
-      body.some(l => /labTheme:\s*pst\.stageTheme === 'lab'/.test(l)),
-      '「行ける帯」の文脈(ステージ条件)を純関数へ渡していない',
+      body.some(l => /patch\.aiFromX = bcx; patch\.aiFromY = bcy;/.test(l)),
+      '共通層の起点(aiFrom)が「今いる場所(bcx/bcy)」でない=counter-leap が t≈0 でワープする',
     ).toBe(true);
   });
 
@@ -439,7 +567,15 @@ describe('★突進のカウンター(弾き返し)の配線の不変条件(§5-
       + `\n走査=\n${body.map(b => b.trim()).join('\n')}`,
     ).toBe(1);
     expect(inner[0], '共通の反応へ守護霊(ghost)を渡していない=守護霊が取ると演出が変わる')
-      .toMatch(/thorCounterHit\(\s*hitX\s*,\s*hitY\s*,\s*ghost\s*\)/);
+      .toMatch(/thorCounterHit\(\s*hitX\s*,\s*hitY\s*,\s*ghost\s*,/);
+    // ★v0.25.3808(7巡目 重大1/3): 行き先は**この呼び出しの引数として**渡す。純関数を呼んだのに
+    // `aimAt` へ載せない(=結果を捨てる)と、共通層は既定の後退ジャンプへ着地して弾き返しが消える。
+    expect(
+      body.some(l => /aimAt:\s*thorDashPushbackFromEnemy\(/.test(l)),
+      '純関数の結果を `aimAt` として共通層へ渡していない=弾き返しが1pxも効かない'
+      + '(v0.25.3785 重大D の再発)。'
+      + `\n走査=\n${body.map(b => b.trim()).join('\n')}`,
+    ).toBe(true);
   });
 
   it('★`thorDashCounterHit(` の呼び出しは**3本**(プレイヤー/守護霊/到達カプセル)', () => {

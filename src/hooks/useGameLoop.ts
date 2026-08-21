@@ -255,7 +255,7 @@ import {
 } from '../utils/thorNihil';
 // §4-1 受け入れ条件3 / §5-2「★弾き返しの効かせ方」: 突進カウンターの弾き返しの**行き先計算**も
 // 純関数(値をテストで固定できる形)。ここに直書きすると「ゼロ化/符号反転」が緑を通る。
-import { thorDashPushbackTarget } from '../utils/thorDashPushback';
+import { thorDashPushbackFromEnemy } from '../utils/thorDashPushback';
 import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
 // §4: トールの突進をカウンターした時の弾き返し距離。**ミゲル/ウリと共有の既存の合流点をそのまま使う**
 // (新しい定数を作らない=research/THOR_ISSEN_REWORK.md §4-1)。
@@ -5517,7 +5517,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               };
               // カウンター成立時の共通処理(社長指示: すべての攻撃がカウンター可能)。通常カウンターと同じ
               // 演出(Counter!/ヒットインパクト/クリ反撃)を行い、近接距離ギリギリ外まで高速後退させる。
-              const thorCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire) => {
+              // ★v0.25.3808(検収監査7巡目 重大1): 行き先(`aimAt`)は**引数で受け取る**。
+              // 以前は突進側が「この関数を呼んでから `patch.aiTargetX/Y` を上書きする」という
+              // **暗黙の順序契約**の上に立っており、呼び出しを2行下げるだけで弾き返しが丸ごと
+              // 上書きされて消えた(=v0.25.3785 重大Dの完全再現が全テスト緑を通った)。
+              // 引数にすれば「後から上書きされうる」構造そのものが無くなる。
+              const thorCounterHit = (
+                hitX: number, hitY: number, ghost?: GhostCounterFire,
+                opts?: { aimAt?: { x: number; y: number } },
+              ) => {
                 patch.bossScriptQueue = [];
                 // ★v0.25.3784(検収監査 中5): 突進の**専用CD**は「突進が潰れた」全経路で立てる。
                 // 旧実装は ①thor-dash-recover 明け ②走行中のカウンター ③?thorscript=0 の chase 復帰 の
@@ -5574,12 +5582,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.bossState = 'counter-leap';
                 patch.bossStateUntil = newGameTime + HB_TH.counterLeapMs;
                 patch.aiFromX = bcx; patch.aiFromY = bcy;
-                patch.aiTargetX = pcx + (lx / ll) * HB_TH.orbit.distPx;
-                patch.aiTargetY = pcy + (ly / ll) * HB_TH.orbit.distPx;
+                // 既定の到達点=近接距離ギリギリ外(後退ジャンプ)。突進のカウンターだけは
+                // **呼び出し側が `aimAt`(=弾き返しの行き先)を渡す**ので、そちらを使う。
+                // 座標(`patch.x/y`)は書かない=counter-leap の補間が運ぶ(慣性MUST)。
+                patch.aiTargetX = opts?.aimAt ? opts.aimAt.x : pcx + (lx / ll) * HB_TH.orbit.distPx;
+                patch.aiTargetY = opts?.aimAt ? opts.aimAt.y : pcy + (ly / ll) * HB_TH.orbit.distPx;
                 patch.bossBurstLeft = 0;
               };
               // ★突進(thor-dash-*)専用のカウンター反応(§4-1「来た方向へ弾き返す」)。
-              // 共通の thorCounterHit に**弾き返しの行き先**を上書きするだけの薄い層。
+              // 共通の thorCounterHit を、**弾き返しの行き先(aimAt)を渡して**呼ぶだけの薄い層。
               // ★v0.25.3785(検収監査 重大D): 旧実装は `aiFrom` だけを弾き返し位置へ差し替えていたので、
               // counter-leap(aiFrom→aiTarget の補間)の**到達点が弾き返しの有無で1pxも変わらなかった**
               // (=150pxの弾き返しが実質存在しない)。流用元のミゲル(angelBossTick の dashCountered)は
@@ -5587,34 +5598,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // ここでは**最終位置をミゲルに合わせ**(=弾き返し位置)、そこへ**counter-leap の補間で運ぶ**。
               // ミゲルのように patch.x/patch.y へ直接書くと 150px の1フレームテレポート=慣性MUST違反
               // (CLAUDE.md「★動きの絶対ルール: 慣性」)になるため、**座標はここでは1pxも書かない**。
+              //
+              // ★v0.25.3808(検収監査7巡目 重大1/2/3)で構造を変えた。旧実装は
+              //   ①共通層を呼ぶ → ②`patch.aiTargetX/Y` を上書きする
+              // という**順序契約**で、共通層が自分で `aiTargetX/Y` を書くため
+              // **呼び出しを2行下げるだけで弾き返しが丸ごと消えた**(重大1)。さらに
+              // 8引数を組む束縛が配線側に残っていたので **`from`/`to` を入れ替えるだけで前進**(重大2)、
+              // 走査が「`placed.` を使う代入が在るか」しか見ていないので**後段で捨てる**(重大3)。
+              // ⇒ **行き先は引数(aimAt)で渡し、束縛は `thorDashPushbackFromEnemy` へ入れ、
+              //    この層は `patch` を1つも書かない**。3つとも構造ごと消える。
               const thorDashCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire) => {
                 // 専用CD(thorDashReadyAt)は thorCounterHit が州(thor-dash-*)を見て一括で打刻する
                 // =ここには書かない(同じ値を2箇所に書くと必ず片方だけ古くなる)。
-                thorCounterHit(hitX, hitY, ghost);
-                // ★v0.25.3806(検収監査6巡目 重大1): 行き先の計算そのものは純関数
-                // (`thorDashPushbackTarget`)へ出した。ここに直書きしていた頃は、監査が実測した
-                // **弾き返し量のゼロ化・符号反転**が両方とも全テスト緑を通っていた(ソース走査は
-                // 字面しか守れない)。値の不変条件は thorNihil.test.ts が**値で**アサートする。
                 // 弾き返すのは**ボス**であってプレイヤーではない(v0.25.3784 重大2)。
                 const pst = useGameStore.getState();
-                const placed = thorDashPushbackTarget({
-                  fromX: boss.aiFromX ?? bcx, fromY: boss.aiFromY ?? bcy,
-                  toX: boss.aiTargetX ?? bcx, toY: boss.aiTargetY ?? bcy,
-                  pcx, pcy,
-                  pushbackPx: AN_C.dashCounterPushbackPx,
-                  bossW: boss.width, bossH: boss.height,
-                  area: {
+                thorCounterHit(hitX, hitY, ghost, {
+                  aimAt: thorDashPushbackFromEnemy(boss, player, {
                     farBackdrop: pst.farBackdrop,
                     labTheme: pst.stageTheme === 'lab',
                     corridorMode: pst.corridorMode,
                     m0AdvanceLimitX: null,
                     corridorRunInActive: pst.corridorRunInActive,
-                  },
+                  }, AN_C.dashCounterPushbackPx),
                 });
-                // 起点は今いる場所のまま(thorCounterHit が bcx/bcy を入れている)=テレポートしない。
-                // 到達点だけを弾き返し位置へ差し替える=ここが「150pxが効く」ようになった実体。
-                patch.aiTargetX = placed.x;
-                patch.aiTargetY = placed.y;
               };
               // ★v0.25.3780(§8-2): トール専用だった `thorBodyOverlapNow`(体の重なりだけで成立)は撤去した。
               // トールも他ボスと同じ宣言表(counterReach.ts)へ乗ったので、成立域の判定は

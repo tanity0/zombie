@@ -164,7 +164,11 @@ export const COUNTER_REACH_DECL: Readonly<Record<string, CounterReachKind>> = {
   'hidden:tsuki-recover': 'body',
   'hidden:harai-windup': 'band',          // 払い=帯 310×80(半幅40。ロック済みの並行ライン)
   'hidden:harai-recover': 'body',
-  'hidden:jump-windup': 'body',           // 飛び掛かり=着地円だが、成立域は従来どおり体(§8-2の対象外=挙動据え置き)
+  // ★飛び掛かり=**赤い着地円を描いているのに成立域は体**。同じ着地円を持つラフィ('rafi:jump-windup')と
+  // 賞金首('bounty:leap-windup')は 'circle' で、**トールだけが例外**。据え置く理由は設計書のどこにも
+  // 無いので、**research/THOR_ISSEN_REWORK.md §9-12(社長裁定待ち)を見よ**——「対象外」と読んで
+  // 再検討を打ち切らないこと(推薦は 'circle' へ揃える側)。
+  'hidden:jump-windup': 'body',
   'hidden:jump-recover': 'body',
   'hidden:thor-dash-windup': 'body',      // 突進=流星ライン(裏ボスdash/ミゲル踏み込みと同型=図形reachは持たない)
   // ★v0.25.3785(検収監査 中H): 走り(thor-dash-move)も表へ載せた。裏ボスの突進は実行中の州('dash')が
