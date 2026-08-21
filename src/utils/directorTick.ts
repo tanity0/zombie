@@ -201,6 +201,8 @@ const RANK_FLOOR_PACE_MULT = typeof window === 'undefined'
 // (中身は元のコマ切替ブロックのまま=挙動不変・移設のみ)。
 function announceRankChange(prevRank: PuzzleRank, newRank: PuzzleRank): void {
   if (!WALL_ENABLED) return;
+  // v0.25.3728(戦況ライン): HUDミラーへランクを書く(昇格/降格の変化時のみ)。
+  useGameStore.setState(st => ({ hudDirector: { ...st.hudDirector, rank: newRank } }));
   if (newRank > prevRank) {
     useGameStore.setState(state => ({
       gameStats: { ...state.gameStats, maxRankReached: Math.max(state.gameStats.maxRankReached, newRank) },
@@ -499,6 +501,8 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     }
     const prevKind = koma.kind;
     koma.kind = nextKomaKind(koma.kind);
+    // v0.25.3728(戦況ライン): HUDミラーへコマを書く(切替時のみ=約40秒に1回。毎フレームではない)。
+    useGameStore.setState(st => ({ hudDirector: { ...st.hudDirector, koma: koma.kind } }));
     koma.elapsedMs = 0;
     koma.acc = createKomaAccumulator();
     koma.excitedThisKoma = false; // 興奮通信(v0.25.1845)はコマごとに再アーム

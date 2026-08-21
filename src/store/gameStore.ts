@@ -4469,6 +4469,9 @@ interface GameState {
   // イベント発生告知バナー(コンボ表示の近く)。gameTime(ms)基準。HUDが gameTime<eventBannerUntil の間表示。
   eventBannerText: string;
   eventBannerUntil: number;
+  // v0.25.3728(社長GO「バロメーターライン入れて」): 戦況ラインのHUDミラー。書くのはdirectorTickの
+  // **変化時のみ**(コマ切替=約40秒に1回・ランク変化時)=毎フレーム再レンダーしない(CLAUDE.md規律)。
+  hudDirector: { koma: 'relax' | 'harvest' | 'normal' | 'peak'; rank: number };
   // NPCリアルタイムセリフ(時間停止なし・HUDの軽量表示)。current=表示中、queue=順番待ち、nextAt=次を出せる最短gameTime。
   // portrait=会話の立ち絵を話者名と別に指定するオーバーライド(例: 変異後グレン)。省略時は name で引く。
   npcDialogue: { name: string; text: string; until: number; portrait?: string } | null;
@@ -5410,6 +5413,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   rescueShooterFxAt: 0,
   eventBannerText: '',
   eventBannerUntil: 0,
+  hudDirector: { koma: 'relax', rank: 1 },
   npcDialogue: null,
   npcDialogueQueue: [],
   npcDialogueNextAt: 0,
@@ -16995,6 +16999,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         screamerBuffUntil: 0,
         eventBannerText: '',
         eventBannerUntil: 0,
+        hudDirector: { koma: 'relax', rank: 1 },
         // 屋内は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は不在。
         // 城/死神/クエストの“発生”は useGameLoop 側で既に !indoor ゲート済み。商人は最初の部屋へ配置。
         // 洋館通路: 城なし(v0.25.2144・社長指示「城も出現しないで」)。遥か遠方に置く=描画カリング/

@@ -11,6 +11,7 @@ import SubquestHud from './SubquestHud';
 import { LowHpVignette } from './LowHpVignette';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
+import DirectorLine from './DirectorLine';
 
 // 二人組クエストの進捗(右上スクラップ下・社長裁定v0.25.1686 #8「サブクエスト系は右上の
 // スクラップ下に短く表示 n/Nも」)。受領中のみ表示、目標達成で緑+「納品」。
@@ -208,6 +209,8 @@ const GameHUD: React.FC = () => {
       >
         {formattedTime}
       </div>
+      {/* v0.25.3728: 戦況ライン(時計の直下)。色+脈動=コマ/満ち幅=ランク/紫=紅き夜/金縁=ボス戦。 */}
+      <DirectorLine />
       {/* スクラップ(右)=右フェード(枠なし) */}
       <div
         className="absolute glass-pill px-3 py-1 text-[13px] font-semibold tabular-nums"
