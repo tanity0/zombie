@@ -742,10 +742,34 @@ const ensureSfxContext = () => {
   return sfxContext;
 };
 
+// v0.25.3729(社長報告「Bluetooth繋ぐと音が飛び飛び(断続的に接続が切れる?)」): BTイヤホン/スピーカーは
+// **無音が続くとA2DPリンクを省電力で眠らせ、次の音の頭で再接続する**機種が多い。SFX(WebAudio)は
+// 単発音の合間が完全無音になるため、SEのたびに再接続=音の出だしが欠けて「断続的に切れる」ように
+// 聞こえる。対策: **聴感上無音の極小信号(-80dB相当・50Hz)を常時流してリンクを起こしたままにする**
+// キープアライブ。スピーカー再生には聞こえない・CPUもオシレータ1本=実害なし。`?btkeep=0` で無効化。
+let btKeepAliveStarted = false;
+const startBtKeepAlive = () => {
+  if (btKeepAliveStarted) return;
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('btkeep') === '0') return;
+  const ctx = sfxContext;
+  if (!ctx || ctx.state !== 'running') return; // 起動はrunningになってから(ジェスチャ前のstart()は無効)
+  try {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    gain.gain.value = 0.0001; // -80dB=聴感無音
+    osc.frequency.value = 50;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    btKeepAliveStarted = true;
+  } catch { /* ignore */ }
+};
+
 const resumeSfxContext = () => {
   const context = ensureSfxContext();
-  if (!context || context.state !== 'suspended') return;
-  void context.resume().catch(() => {});
+  if (!context) return;
+  if (context.state === 'suspended') void context.resume().then(() => startBtKeepAlive()).catch(() => {});
+  else if (context.state === 'running') startBtKeepAlive();
 };
 
 // Bluetooth 等の音声ルート変更で AudioContext が中断/suspend されると SFX も BGM も止まる。
