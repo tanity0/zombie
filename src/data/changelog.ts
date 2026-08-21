@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3769',
+    items: [
+      'ゲーム内容の変更はありません(ボスモードのフィル部屋の修正を作業範囲に追加)。',
+    ],
+  },
+  {
     version: '0.25.3768',
     items: [
       'ゲーム内容の変更はありません(EXステージ実機フィードバックの仕様記録。修正は次版から)。',
