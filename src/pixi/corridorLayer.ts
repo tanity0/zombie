@@ -102,12 +102,10 @@ const EX_BACK_MAX_FINAL_H_MULT = 1.6; // ★4巡目#7: 最終合成後(投影×�
 export interface CorridorLayerFrameOpts {
   /** trueならEX固有分岐(奥壁のworld固定+ハッチ床の抑止)を有効化。 */
   isEx?: boolean;
-  /** EXの奥壁を置くtravel-space位置(北端-6000の300px奥=6300。§10-20#2)。isEx時のみ参照。 */
+  /** EXの奥壁を置くtravel-space位置(北端-6000の300px奥。exHallTravel(EX_BACK_WORLD_Y)。§10-20#2)。
+   *  isEx時のみ参照。★検収監査#1(2巡目・v3752): 第一引数のtravelがO(y)(exHallTravel)へ置き換わった
+   *  ことで、奥壁もこの**同じO空間**の値を渡せばよくなった(旧exBackRawTravelの分離は不要になり廃止)。 */
   exBackTravel?: number;
-  /** ★検収監査#1(v3751)由来: 奥壁の距離計算だけは「素のtravel(-player.y)」を使う(exBackTravelの
-   *  基準もraw)。第一引数のtravelは広間オドメーター補正済みのため、奥壁の距離計算にそのまま使うと
-   *  広間の中では実際より遠く見えてしまう(補正の目的が違う=床の流速用と奥壁の距離用は別)。 */
-  exBackRawTravel?: number;
   /** container側で既に掛けている最終合成スケール(広間S×worldズーム)。奥壁の破綻防止キャップの
    *  計算にだけ使う(container自体へは二重に掛けない・4巡目#7)。 */
   exDispScaleForCap?: number;
@@ -484,11 +482,11 @@ export class CorridorLayer {
       this.moonWindow.visible = this.moonShaft.visible = this.moonFloor.visible = false; return; }
     // PACING_PUZZLE.md §10-20#2: M6は従来どおり「プレイヤー前方へ無限後退」する固定奥行き(BACK_DEPTH)。
     // EXだけ、奥壁をworld固定(北端-6000の300px奥=exBackTravel)へ切り替える(近づくと実際に迫ってくる壁)。
-    // 検収監査#1由来: 距離計算は必ず素のtravel(exBackRawTravel。無ければ第一引数のtravelそのまま=
-    // M6は無変化)を使う(広間オドメーター補正済みのtravelを使うと広間の中で奥壁が実際より遠く見える)。
-    const rawTravelForBack = opts?.exBackRawTravel ?? travel;
+    // ★検収監査#1(2巡目・v3752): travel(第一引数)がexHallTravel=O(y)へ置き換わったため、奥壁の
+    // exBackTravelも同じO空間の値(exHallTravel(EX_BACK_WORLD_Y))を渡せばよい=素のtravelを別扱い
+    // する必要が無くなった(旧rawTravelForBackの分離は廃止)。
     const backD = (opts?.isEx && opts.exBackTravel != null)
-      ? Math.max(EX_BACK_MIN_D, opts.exBackTravel - rawTravelForBack)
+      ? Math.max(EX_BACK_MIN_D, opts.exBackTravel - travel)
       : BACK_DEPTH;
     const s = CFG.focal / (CFG.focal + backD);
     const horizonY = H * CFG.horizonYr;

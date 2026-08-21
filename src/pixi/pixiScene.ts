@@ -188,7 +188,7 @@ import {
 } from '../world/playableArea';
 // PACING_PUZZLE.md §10-20(EX舞台の洋館通路化): EX専用の広間定数(描画は読むだけ・書かない)。
 import { isExStageRun } from '../utils/exStage';
-import { EX_HALL_SCALE, EX_HALL_LATERAL_CLAMP, exHallScaleT, EX_NORTH_LIMIT_Y } from '../world/exHall';
+import { EX_HALL_SCALE, EX_HALL_LATERAL_CLAMP, exHallScaleT, exHallTravel, EX_BACK_WORLD_Y } from '../world/exHall';
 import {
   bossEngagementDistancePx, isEngageableBoss,
 } from '../utils/bossEngagement';
@@ -4213,14 +4213,6 @@ export class PixiScene {
   // フェードアウト中(store側は既にnullに戻っている)も直前の位置に帯を描き続けるための記憶。
   private exBarrierLastNorthY: number | null = null;
   private exBarrierLastSouthY: number | null = null;
-  // ★検収監査#1(v3751): 広間(通路スケールアップ)のcontainer.scale方式のまま、travel自体を
-  // 「その場のhallSで割った前進量」を積算するオドメーター式にして、床パターンの見かけの流速が
-  // container.scale分だけ速くなる(=足が滑る)のを打ち消す。単純な travel/hallS(現在地) の
-  // 割り算だと、広間手前で既に大きいtravelの絶対値のせいで導関数が負になり得て「床が逆走」する
-  // 新たな破綻を生むため、必ずフレームごとの前進量だけをhallSで割って積み上げる。
-  private exCorridorTravelAccum = 0;
-  private exCorridorTravelPrevY: number | null = null;
-  private exCorridorTravelWasEx = false;
   /** 前線(m0AdvanceLimitX)は戦闘中だけ消える=出入りするので、慣性つきでフェードさせる。 */
   private m0FrontLineAlpha = 0;
   /**
@@ -8828,31 +8820,11 @@ export class PixiScene {
   // 完全m0のまま通常描画で上に乗る(背景のみ・ゲーム状態への書き込みなし)。travel=player.y に1:1連動
   // =前進すると通路がプレイヤーの速度そのもので流れる。幾何はcorridorLayer側のCFG(footYr=0.744)で
   // プレイヤー=画面中央前提に再調整済み(プレビューのCORRIDOR_CFGは不変)。
-  // ★検収監査#1(v3751): 「論理px」の前進量を、通過中の広間スケールhallSぶん割り引いて積算する
-  // オドメーター(距離計)。hallS=1(通路)の区間ではraw travelと数値が一致し続ける(=M6は
-  // このメソッド自体を呼ばないので無関係・EXも広間の外では従来と同じ見え方)。
-  private exCorridorTravel(playerY: number, hallSNow: number): number {
-    if (!this.exCorridorTravelWasEx || this.exCorridorTravelPrevY === null) {
-      this.exCorridorTravelAccum = -playerY; // 初回/EX復帰直後は継ぎ目なく素通しの値から再基準化
-    } else {
-      const dyForward = this.exCorridorTravelPrevY - playerY; // 北(奥)へ進むと正
-      if (Math.abs(dyForward) > 500) {
-        this.exCorridorTravelAccum = -playerY; // 大きなワープ(リトライ等)は積分せず再基準化
-      } else {
-        this.exCorridorTravelAccum += dyForward / Math.max(0.0001, hallSNow);
-      }
-    }
-    this.exCorridorTravelPrevY = playerY;
-    this.exCorridorTravelWasEx = true;
-    return this.exCorridorTravelAccum;
-  }
-
   private syncCorridorBackdrop(now: number, shakeY = 0) {
     const s = useGameStore.getState();
     const on = s.corridorMode && !s.indoorMode;
     if (!on) {
       if (this.corridorBackdrop) this.corridorBackdrop.container.visible = false;
-      this.exCorridorTravelWasEx = false; // §検収#1: 通路を離れたら次回EX突入時に再基準化する
       return;
     }
     if (!this.corridorBackdrop) {
@@ -8872,41 +8844,50 @@ export class PixiScene {
     // M6(stage-6)はex=false=dispScale固定1.0=既存のx/y代入と数値上まったく同じ結果になる
     // (pivot/positionの式は scale=1 のとき常に旧来のcontainer.x/y代入と一致する・下記コメント参照)。
     const ex = s.corridorMode && !s.indoorMode && isExStageRun();
-    if (!ex) this.exCorridorTravelWasEx = false; // M6(stage-6)はオドメーターを使わない=常にfalseへ
     const hallT = ex ? exHallScaleT(s.player.y + s.player.height / 2) : 0;
     const hallS = 1 + (EX_HALL_SCALE - 1) * hallT;
     const dispScale = ex ? hallS * gz : 1;
     // 支点(pivot): 横=world x=0の画面位置(既存)。縦=通路の内部基準点(H*footYr。scale=1時に
     // 旧来のcontainer.y代入と数値一致させるための「ローカル」参照点)。
     const pivotLocalX = this.screenW / 2;
-    const pivotLocalY = this.screenH * CORRIDOR_GAME_CFG.footYr;
+    let pivotLocalY = this.screenH * CORRIDOR_GAME_CFG.footYr;
     const targetScreenX = worldZeroScreenX;
     // v0.25.3202(社長報告「スリィエル討伐時、本人だけ揺れてる。カメラ揺れてない」の正体):
     // 通路背景は横シェイクだけ上のworldZeroScreenX経由で追従し、**縦は画面固定のまま**だった。
     // 通常ステージは地面ごと揺れる=「カメラの揺れ」に見えるが、洋館では画面の大半(通路背景)が
     // 動かず**アクターだけがジッタ**して見える。縦シェイク(sy×ズーム)を背景にも掛けて揃える
     // (討伐崩壊シェイクに限らず、カウンター等の全シェイクが対象。視覚のみ・判定/カメラ不変)。
-    // ★検収監査#2(v3751): EXは縦アンカーを「通路の内部基準点」ではなく**プレイヤー足元の実
-    // スクリーンY**(world/worldGroup変換込み=CORRIDOR_CAMERA_DOWN_FRACのカメラ下げも自動的に
-    // 反映される)へ切り替える。M6(ex=false)は従来どおりpivotLocalY基準=1バイトも変わらない。
     let targetScreenY = shakeY * gz + pivotLocalY;
+    // ★検収監査#2(v3751→2巡目で再修正): EXは支点を「プレイヤー足元の実スクリーンY」へ切り替える。
+    // ただし**支点を動かすのはscaleの伸縮の中心だけ**であって、scale=1のときに絵そのものが平行移動
+    // してはいけない(=旧footYr基準の絵の位置と完全一致させる)。そのために pivot(ローカル)を
+    // 「いまプレイヤー足元に実際に描かれているローカル点」= footScreenY − shakeY*gz とし、
+    // position.y はそのまま footScreenY にする。この形なら
+    //   screenY(local) = footScreenY + (local − pivotLocalY) × dispScale
+    //                   = footScreenY + (local − (footScreenY − shakeY·gz)) × dispScale
+    // で、dispScale=1のとき footScreenY の項が完全に打ち消し合い screenY = local + shakeY·gz となり
+    // 旧来(footYr基準・position.y=shakeY·gz+pivotLocalY)と数値上ぴったり一致する(平行移動ゼロ)。
+    // scale≠1のときだけ、footScreenYを中心に絵が伸縮する(=足元を支点にズームする、という本来の意図)。
+    // これによりカメラの先読み/追従ラグ/危険時タイト化でfootScreenYが動いても、scale=1の間は
+    // 通路背景が縦に揺れない(地面はカメラ固定のまま)。
     if (ex) {
       const footWorldY = s.player.y + s.player.height; // 足元(下端。obstacle衝突と同じ「下端=足」)
-      targetScreenY = (this.L.world.position.y + footWorldY) * gz + this.L.worldGroup.position.y;
+      const footScreenY = (this.L.world.position.y + footWorldY) * gz + this.L.worldGroup.position.y;
+      pivotLocalY = footScreenY - shakeY * gz;
+      targetScreenY = footScreenY;
     }
     this.corridorBackdrop.container.pivot.set(pivotLocalX, pivotLocalY);
     this.corridorBackdrop.container.position.set(targetScreenX, targetScreenY);
     this.corridorBackdrop.container.scale.set(dispScale);
-    // §10-20#2: 奥壁のworld固定位置(travel空間)。北端-6000の300px奥=6300。
-    const EX_BACK_TRAVEL = -EX_NORTH_LIMIT_Y + 300;
-    // ★検収監査#1(v3751): EXはtravelをそのまま渡さず、hallSで割り引いたオドメーター値を渡す
-    // (container.scale=hallS×gzで拡大される絵と、その絵の中を流れる床パターンの速度が相殺し合い、
-    // 見かけの流速がアクターのズーム連動速度gzだけに一致する=足が滑らない)。M6はraw travelのまま。
-    const travelForCorridor = ex ? this.exCorridorTravel(s.player.y, hallS) : -s.player.y;
+    // ★検収監査#1(2巡目・v3752「根本の簡素化」): travelはインスタンス積算のオドメーターをやめ、
+    // yの純関数O(y)=∫₀^y dy'/hallS(y')(exHallTravel)に置き換えた。経路非依存=再基準化/ワープ弁が
+    // 不要になり、床/柱/灯と奥壁を**同じO空間**に置ける(奥壁もexHallTravel(EX_BACK_WORLD_Y)で
+    // 求めるため、rawTravelを別扱いする必要が無くなった=exBackRawTravelは廃止)。
+    const travelForCorridor = ex ? exHallTravel(s.player.y) : -s.player.y;
+    const exBackTravel = ex ? exHallTravel(EX_BACK_WORLD_Y) : 0;
     this.corridorBackdrop.update(travelForCorridor, this.screenW, this.screenH, now, ex ? {
       isEx: true,
-      exBackTravel: EX_BACK_TRAVEL,
-      exBackRawTravel: -s.player.y, // 奥壁の距離計算は素のtravelを使う(オドメーター補正と混ぜない)
+      exBackTravel,
       exDispScaleForCap: dispScale,
     } : undefined);
   }

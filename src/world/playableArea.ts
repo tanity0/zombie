@@ -118,7 +118,12 @@ export const clampRectToPlayableArea = (
   // 矩形の下端(足)がheightぶんはみ出す(「足が1体分はみ出す」の実体)。横クランプ(exHallLateralClamp)
   // ・チュートリアルY制限と同じ作法=**中心**をロック値±halfへクランプし、矩形全体が膜の内側に
   // 収まる形へ揃える(北側は数値上ny基準と一致=無変化。南側だけ実質的にheightぶん手前へ動く)。
-  if (ctx.exPlayerBarrier) {
+  // ★検収監査#3(2巡目・v3752): exPlayerBarrierは全ステージのプレイヤー移動クランプへ無条件に渡される
+  // (gameStore.ts側は{northLockY:null,southLockY:null}でも常にオブジェクトを渡す=truthy)。北南とも
+  // nullなら実質no-opだが、下のcenterY計算(丸め誤差を生みうる浮動小数点演算)が毎フレーム全ステージで
+  // 走ってしまう(isRectInPlayableAreaは===の厳密比較のため、無意味な演算で最下位ビットが変わると
+  // 「クランプしても座標が動かない」判定が崩れうる)。北南とも無い時は早期スキップして何もしない。
+  if (ctx.exPlayerBarrier && (ctx.exPlayerBarrier.northLockY != null || ctx.exPlayerBarrier.southLockY != null)) {
     const half = h / 2;
     let centerY = ny + half;
     if (ctx.exPlayerBarrier.northLockY != null) centerY = Math.max(centerY, ctx.exPlayerBarrier.northLockY + half);

@@ -1,5 +1,38 @@
 # Development Log
 
+## v0.25.3754 — EX洋館通路化: 再検収3件の修正バッチ(§10-20・2巡目)【2026-08-21 16:30 JST】
+
+実装チャット(Sonnetサブエージェント)がv0.25.3752の再検収監査で出た3件を修正。仕様追加なし・修正のみ。
+コミット/pushはこのバッチでは行っていない。前回バッチの#1(オドメーター方式)・#3・#4・#5・#6・
+M6恒等は再検収でOK判定済み(このバッチでは触っていない)。
+
+- **【#1・重】奥壁が床/柱/灯と別空間(exBackRawTravel)にあり泳ぐ問題**: 監査推奨の「根本の簡素化」を
+  採用。pixiSceneのインスタンス積算オドメーター(exCorridorTravelAccum等・状態あり)を全廃し、
+  `src/world/exHall.ts`に**yの純関数** `exHallTravel(y) = O(y) = ∫₀^y dy'/hallS(y')` を新設。
+  hallSは区分「線形」の区間積分なので閉じた式(平坦区間=長さ/hallS、線形ランプ区間=長さ·ln(b/a)/(b-a))
+  で書け、hallS>0より常に単調増加=経路非依存(再基準化/ワープ弁が丸ごと不要になった)。これに伴い
+  `exHallScaleT`のランプ形状をsmoothstepから**線形**へ変更(閉じた式の前提=線形でないと打ち消しが
+  遷移帯の途中でズレるため)。奥壁も同じ`exHallTravel(EX_BACK_WORLD_Y)`(新設。北端の300px奥)を
+  使うようになったため、旧`exBackRawTravel`(奥壁専用のraw travel分離)は不要になり削除。
+  ユニットテスト追加(`exHall.test.ts`): 独立な数値積分(別経路・別実装)との一致・単調性・区間境界の
+  連続性・「局所的な傾き=1/hallS」(=足が滑らない条件そのもの)をそれぞれ固定。45件全通過。
+- **【#2・重】ズーム支点が通路の縦位置そのものを動かしていた問題**: pivotのローカルYを
+  「いまプレイヤー足元に実際に描かれているローカル点」= `footScreenY − shakeY·gz` にし、
+  `position.y = footScreenY` にする形へ修正。この形は scale=1 のとき常に「local + shakeY·gz」に
+  帰着し、footScreenYの値によらず完全に相殺する(=平行移動ゼロ・カメラ先読み/追従ラグでの縦揺れも
+  無くなる)。scale≠1のときだけ、足元を中心に絵が伸縮する(本来の意図どおり)。
+- **【#3・小】exPlayerBarrierが全ステージで無条件に走る問題**: `src/world/playableArea.ts`に
+  「北南ともnullなら何もしない」早期スキップを追加(不要な浮動小数点演算による丸め誤差の混入を防止)。
+- **変更ファイル**: `src/world/exHall.ts`+test(exHallTravel新設・exHallScaleTを線形化・
+  EX_BACK_WORLD_Y新設) / `src/pixi/pixiScene.ts`(オドメーター状態を全廃・pivot式を#2どおり修正・
+  exHallTravelを直接呼ぶ形へ) / `src/pixi/corridorLayer.ts`(exBackRawTravel廃止) /
+  `src/world/playableArea.ts`(#3早期スキップ)。
+- **検証**: `npm run typecheck`(0エラー)・`npm run lint`(0エラー・warning8=既存分のみ)。
+  `npx vitest run`で関連11ファイル166件通過(exHall.test.tsに検収#1向けテスト36件追加=数値積分
+  一致15件・単調性1件・区間境界連続性7件・傾き一致10件・奥壁のO空間検証2件、ほか既存分そのまま)。
+  M6(stage-6)への影響: 変更は全てEX分岐内(`ex`/`isExStageRun()`ガードの中、またはEXでしか
+  呼ばれないexHallTravel等)に閉じており、M6関連の既存テストは無変更で全通過。
+
 ## v0.25.3753 — 二人組クエストv2: 通信原稿3本+討伐目標表示の記録【2026-08-21 16:14 JST】
 
 - 社長支給の通信原稿3本(①血液試料回収 ②特殊個体 ③さらに希少な個体)をEVENT_QUEST_DESIGN.mdへ
