@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.3723 — 全開放オプションにEXステージ表示を含める(社長指示)【2026-08-21 09:09 JST】
+
+- 「EXステージ普通に全開放オプションで並ぶように配線して」→ unlockAllStages(オプションの
+  「全ステージ+ボス解放」)で storyFlags の medicineUsed/revisitCleared も立てる。EXノードの表示条件
+  canShowEx=medicineUsed はステージ解放集合と別系統だったため、全開放しても一覧に出なかった。
+- 正規導線(再訪で薬使用)の演出・フラグ書き込みには触れない=全開放ボタンにフラグ設定を足しただけ。
+- 検証: typecheck 0 / lint 0 / bossEncounter 8テスト緑。
+
+
 ## v0.25.3722 — フィルの羽が出ない実バグ修正(二重スケール)【2026-08-21 09:07 JST】
 
 - 社長報告「せなかの羽が無い」。真因: syncPhillWingsの羽サイズ計算

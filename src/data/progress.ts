@@ -655,6 +655,11 @@ export const recordChronicleGlobalFirst = (
 export const unlockAllStages = (): void => {
   writeSet(new Set(STAGES.map(s => s.id)));
   unlockAllBossEncounters();
+  // v0.25.3723(社長指示「EXステージ普通に全開放オプションで並ぶように配線して」):
+  // EXノードの表示条件は canShowEx=medicineUsed(再訪で薬を使用・統合正本10.1)で、ステージ解放集合
+  // とは別のストーリーフラグ。全開放にはこれも含める(revisitClearedも併せて立て、再訪カードの
+  // 表示状態も「済」に揃える)。正規導線の初回演出(薬の付与ポップ等)には触れない=フラグのみ。
+  updateStoryFlags({ medicineUsed: true, revisitCleared: true });
 };
 export const resetProgress = (): void => {
   writeSet(new Set());
