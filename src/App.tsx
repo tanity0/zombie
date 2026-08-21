@@ -237,8 +237,10 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       && getSelectedMission() === 'revisit' && stageForRun?.id === 'stage-6';
     // ステージ6(古い洋館)メイン出撃=奥行き通路モード(とりあえず統合v0.25.2105・社長指示)。
     // 再訪(SUB)・屋内・ベンチ・フリー周回は対象外。resetGame が pendingCorridor から corridorMode を決める。
+    // PACING_PUZZLE.md §10-20#1(EX舞台の洋館通路化・社長裁定「EXは6と同じ洋館通路型」): stage-ex1も
+    // 同じ切替口に合流させる(revisitRunはstage-6専用フラグなのでEXには関係しないが式の形はそのまま)。
     const corridorRun = !benchmark && !getSelectedFreeMode()
-      && stageForRun?.id === 'stage-6' && !revisitRun && !stageForRun?.indoor;
+      && (stageForRun?.id === 'stage-6' || stageForRun?.id === 'stage-ex1') && !revisitRun && !stageForRun?.indoor;
     // stage-7 は本編M7(グレン戦・climax)。通常プレイは導入会話+グレン戦を出す。cine映像の実験台(?cine=1)の時だけ
     // イベントを止めてクリーンに確認できるようにする(社長指示v0.25.1876/1879)。
     // ※storyBossOnly は cine でも維持する=stage-7 を「storyBossステージ」のまま(通常湧き無し・護衛NPC無し)。

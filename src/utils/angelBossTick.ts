@@ -72,6 +72,10 @@ import { choreographyRecoverMs, planBossChoreography, type ChoreographyBoss } fr
 // (CLAUDE.md「アクターを動かす時は必ずclampRectToPlayableAreaを通す」・v0.25.2615-2617の
 // 3連続事故の再発防止・v0.25.2895)。
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
+// PACING_PUZZLE.md §10-20#6(EX舞台の洋館通路化「関所も同方式(推薦)」): スリィエルの周回AI
+// (orbitRadius≒250)が素の通路幅±170で壁に貼り付いて破綻するのを防ぐため、天使6体共通のこの
+// クランプにもexStageを渡す。isExStageRun()は他ステージ(EX以外)では常にfalse=M6含め無変化。
+import { isExStageRun } from './exStage';
 // 剣ボスの踏み込み(社長指示v0.25.3524)。慣性つきの位置だけを返す純関数(判定には一切触らない)。
 import { planSwordLunge, isSwordLungeLive, swordLungeCenterAt } from './swordLunge';
 
@@ -452,6 +456,7 @@ const applyPatch = (id: string, patch: Partial<Enemy>): void => {
         corridorMode: st0.corridorMode,
         m0AdvanceLimitX: st0.m0AdvanceLimitX,
         corridorRunInActive: st0.corridorRunInActive,
+        exStage: st0.corridorMode && isExStageRun(), // §10-20#6: EXだけ広間の横幅拡大を受ける
       };
       const c = clampRectToPlayableArea(patch.x ?? boss.x, patch.y ?? boss.y, boss.width, boss.height, ctx);
       patch.x = c.x; patch.y = c.y;

@@ -14,6 +14,7 @@
 
 import { LAB_CORRIDOR_Y_LIMIT_PX } from './labWalls';
 import { CORRIDOR_LATERAL_CLAMP } from '../utils/corridorProjection';
+import { EX_NORTH_LIMIT_Y, exHallLateralClamp } from './exHall';
 
 // チュートリアルの上下移動制限(プレイヤー中心yがスポーン(0)から±この値まで・透明な壁)。
 // 縦カメラ=プレイヤー1:1追従とセットで、被写界深度の構図を守る(社長指示v0.25.1826)。
@@ -31,6 +32,15 @@ export interface PlayableAreaCtx {
   corridorMode: boolean;
   m0AdvanceLimitX: number | null;
   corridorRunInActive: boolean;
+  // PACING_PUZZLE.md §10-20#2/#5〜#7: EX(stage-ex1)専用の拡張。省略時(undefined)は既存のM6挙動と
+  // 1バイトも変わらない(exStage/exBarrierはEX関連の呼び出し側だけが明示的に立てる)。
+  /** trueならEXの北端絶対クランプ(EX_NORTH_LIMIT_Y)+広間(スリィエル/フィル)の横クランプ拡幅が有効。
+   * 全アクター共通(§10-20#6「他の解は非推薦」=スリィエルの周回もこの拡幅を受ける必要があるため)。 */
+  exStage?: boolean;
+  /** §10-20#3(c)/#4: 結界(北)・南の膜。**プレイヤーの移動クランプにのみ渡すこと**
+   * (敵・天使・湧きには適用しない=clampRectToPlayableAreaは全アクター共有のためctxを分ける・監査#7)。
+   * null=その向きの結界は今は無い(通常時/未突入/撃破後)。 */
+  exPlayerBarrier?: { northLockY: number | null; southLockY: number | null };
 }
 
 // 矩形(x,y,w,h・top-left基準)を「プレイヤーが行ける帯」の内側へ寄せた座標を返す。制限が
@@ -94,8 +104,19 @@ export const clampRectToPlayableArea = (
   // (柱ライン=移動境界)。下限(CORRIDOR_BOTTOM_LIMIT)は走り込み入場中を除いて適用。
   if (ctx.corridorMode) {
     const halfW = w / 2;
-    nx = Math.max(-CORRIDOR_LATERAL_CLAMP - halfW, Math.min(CORRIDOR_LATERAL_CLAMP - halfW, nx));
+    // PACING_PUZZLE.md §10-20#5〜#7(EX広間の通路スケールアップ): EXだけ、yに応じて横クランプが
+    // CORRIDOR_LATERAL_CLAMP→EX_HALL_LATERAL_CLAMPへ連続に広がる(exHallScaleTと同じtから導く=
+    // 絵とクランプがズレない・6巡目#3)。全アクター共通(敵の周回もこの拡幅を受ける・§10-20#6)。
+    const lateralClamp = ctx.exStage ? exHallLateralClamp(y + h / 2) : CORRIDOR_LATERAL_CLAMP;
+    nx = Math.max(-lateralClamp - halfW, Math.min(lateralClamp - halfW, nx));
     if (!ctx.corridorRunInActive) ny = Math.min(ny, CORRIDOR_BOTTOM_LIMIT);
+    // §10-20#2: EXだけの北端クランプ(corridorは元々北の上限が無いため)。
+    if (ctx.exStage) ny = Math.max(EX_NORTH_LIMIT_Y, ny);
+  }
+  // §10-20#3(c)/#4: 結界(北)・南の膜。プレイヤーの移動クランプだけに渡される(呼び出し側の作法)。
+  if (ctx.exPlayerBarrier) {
+    if (ctx.exPlayerBarrier.northLockY != null) ny = Math.max(ny, ctx.exPlayerBarrier.northLockY);
+    if (ctx.exPlayerBarrier.southLockY != null) ny = Math.min(ny, ctx.exPlayerBarrier.southLockY);
   }
   return { x: nx, y: ny };
 };

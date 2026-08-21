@@ -28,3 +28,24 @@ export const phillBossSpawnReady = (
 // ★バッチ2(§10-2「angelBossTickの7人目」): phillChaseVelocity(バッチ1の最小チェイスAI)はここで撤去した。
 // フィルはisGate2AngelBoss編入によりrunAngelBossTick(angelBossTick.ts)が移動・技選択を丸ごと持つため、
 // この葉モジュールに移動ロジックを置く必要が無くなった(exStageRun判定/出現深度判定の2関数だけが残る)。
+
+// PACING_PUZZLE.md §10-20#3(EX舞台の洋館通路化・関所「スリィエル」): 既存gate2機構
+// (gate2Pending/activeEvent/beginArenaEvent)を一切使わない、EX専用の3点セットの判定を純関数化する
+// (CLAUDE.md「配線ロジックは純関数に切り出してテスト」)。呼び出し側(useGameLoop)はこの2関数の
+// 結果でrefを進めるだけ=判定ロジック自体はここに1本化。
+
+/**
+ * §10-20#3(a) 発火判定: 未スポーンかつプレイヤーyがトリガーy以下(=より奥)に到達したら1回だけtrue。
+ * 通路はyが負へ進むほど奥(北)なので「以下」で判定する(depthのMath.hypotではなくyそのもの)。
+ */
+export const surielGateSpawnReady = (
+  alreadySpawned: boolean, playerY: number, triggerY: number,
+): boolean => !alreadySpawned && playerY <= triggerY;
+
+/**
+ * §10-20#3(b) クリア打刻判定: §10-16のフィル撃破検知と同型のガードをそのまま書き写す
+ * (スポーン済みref && まだ未打刻 && 場に居ない && 討伐カットイン/崩壊の間ではない)。
+ */
+export const surielGateClearReady = (
+  spawned: boolean, alreadyCleared: boolean, alive: boolean, attentionActive: boolean, bossCorpseActive: boolean,
+): boolean => spawned && !alreadyCleared && !alive && !attentionActive && !bossCorpseActive;

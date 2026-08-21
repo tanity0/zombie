@@ -22,7 +22,9 @@ import { CORRIDOR_CFG, projectCorridorPillars, type CorridorConfig } from '../ut
 // 移動クランプ(±170world px)を覆うs≒0.45になるようfootYrを再調整(footYr=horizonYr+(0.5-horizonYr)/0.45)。
 // 消失点はv0.25.2138(社長指示「もう少し上に」)で0.30→0.26へ。footYrも上式で連動(0.744→0.793)=
 // プレイヤー行のカーペット幅とクランプの一致は不変。プレビュー側のCORRIDOR_CFGは不変。
-const CFG: CorridorConfig = { ...CORRIDOR_CFG, horizonYr: 0.26, footYr: 0.793 };
+// PACING_PUZZLE.md §10-20#5/#11(EX舞台の洋館通路化): pixiScene.tsが「プレイヤー足元の画面Y」の
+// 支点を計算する時にfootYrを写さず参照できるようexportする(値を2箇所に持たない=ズレ防止)。
+export const CFG: CorridorConfig = { ...CORRIDOR_CFG, horizonYr: 0.26, footYr: 0.793 };
 // 横移動対応(v0.25.2113): 通路はworld x=0に固定し、pixiSceneがカメラx分だけcontainerを逆シフトする。
 // その際に黒背景が切れないよう左右に持たせる余白(px)。クランプ±170×ズーム+余裕。
 export const CORRIDOR_BG_X_OVERSCAN = 420;
@@ -80,7 +82,11 @@ const FLOOR_W_MULT = 1.0;  // 床の横幅=柱中心間ちょうど
 const GOAL_TILE_START = 3640;              // ハッチ床タイルの手前端(world前進量。520の倍数=タイル境界)
 const GOAL_TILE_LEN = FLOOR_REPEAT;        // 1タイルぶん
 const GOAL_ROWS = 24;                      // ゴール床メッシュの分割(帯1枚ぶんなので床本体より少なくて良い)
-const BACK_DEPTH = 4200;   // 奥壁(ステンドグラス窓)の固定奥行き
+const BACK_DEPTH = 4200;   // 奥壁(ステンドグラス窓)の固定奥行き(M6=常にこの値。EXは下記exBackTravel参照)
+// PACING_PUZZLE.md §10-20#2(3巡目#6): 壁灯/燭台の表示範囲はBACK_DEPTHに紐づけたままにせず、現行の
+// 相対値(=M6の固定BACK_DEPTHから求めた値)へ切り離す。EXの奥壁がworld固定化されて動的な値になっても
+// 灯りが順に消える副作用が起きない(M6はこの定数がBACK_DEPTH-300と数値上完全に一致=1バイトも変わらない)。
+const LAMP_MAX_DEPTH = BACK_DEPTH - 300;
 const BACK_ALPHA = 0.9;    // 奥壁の不透明度(距離フォグに沈めない=光る目標物)
 // v0.25.2099: back.pngはシーン全体の絵で、壁の実体はキャンバス上18%〜下91.5%の帯だけ(上下は黒虚空)。
 // ソース矩形でこの帯だけ切り出して描く。上下の黒虚空を含めない=柱の高さと乖離しない。
@@ -88,6 +94,20 @@ const BACK_SRC_TOP_R = 0.18;   // 壁コンテンツの上端(素材高比・計
 const BACK_SRC_BOT_R = 0.915;  // 壁コンテンツの下端(同)
 const BACK_H_MULT = 1.40;      // 壁コンテンツの表示高=柱の高さ×この倍率(旧1.36はキャンバス全高基準)
 const BACK_GLASS_CY = 0.45;    // ガラス(窓)中心の高さ(切り出し後コンテンツ高の上からの比率・月明かりのアンカー)
+// PACING_PUZZLE.md §10-20#2(EX舞台の洋館通路化): 奥壁world固定化に伴う破綻防止。
+const EX_BACK_MIN_D = 300;          // dの下限(北端クランプで実際にはこれ未満にならないが二重の安全弁)。
+const EX_BACK_MAX_FINAL_H_MULT = 1.6; // ★4巡目#7: 最終合成後(投影×広間S×worldズーム)の表示高キャップ(画面高比・叩き台)。
+
+/** pixiScene.tsから毎フレーム渡すEX(stage-ex1)固有の描画オプション(§10-20#2/#8/#11)。省略時=M6と1バイトも変わらない。 */
+export interface CorridorLayerFrameOpts {
+  /** trueならEX固有分岐(奥壁のworld固定+ハッチ床の抑止)を有効化。 */
+  isEx?: boolean;
+  /** EXの奥壁を置くtravel-space位置(北端-6000の300px奥=6300。§10-20#2)。isEx時のみ参照。 */
+  exBackTravel?: number;
+  /** container側で既に掛けている最終合成スケール(広間S×worldズーム)。奥壁の破綻防止キャップの
+   *  計算にだけ使う(container自体へは二重に掛けない・4巡目#7)。 */
+  exDispScaleForCap?: number;
+}
 // 被写界深度クロスフェード(事前ブラー方式・ランタイムぼかしゼロ)。
 const dofNear = (d: number): number => Math.min(0.9, Math.max(0, Math.min(1, (300 - d) / 400)));  // 手前: d=300で0 → d=-100で1
 const dofFar = (d: number): number => Math.min(0.9, Math.max(0, Math.min(1, (d - 1000) / 1400))); // 遠方: d=1000で0 → d=2400で1
@@ -278,7 +298,7 @@ export class CorridorLayer {
     // (寸法は W/H を直接引数で受ける)。
   }
 
-  update(travel: number, W: number, H: number, now: number): void {
+  update(travel: number, W: number, H: number, now: number, opts?: CorridorLayerFrameOpts): void {
     this.ensureLoaded();
     // 背景は常に全画面+横オーバースキャン(v0.25.2113: 横移動でcontainerごと逆シフトするため、
     // シフトしても黒背景の切れ目が出ないよう左右に余白を持たせる)。
@@ -288,7 +308,7 @@ export class CorridorLayer {
     if (!this.ready) return;
 
     this.updateFloor(travel, W, H);
-    this.updateGoalFloor(travel, W, H);
+    this.updateGoalFloor(travel, W, H, opts);
     this.updateCeiling(travel, W, H);
     // ④ 遠方フェード配置。bgと同じ横オーバースキャン(v0.25.2132: カメラのプレイヤー追従で
     // containerごと横シフトしても黒グラデの縁(=v0.25.2124の「四角い黒い切れ目」の正体)が画面に入らない)。
@@ -298,7 +318,7 @@ export class CorridorLayer {
     this.ceilDark.width = W + CORRIDOR_BG_X_OVERSCAN * 2; this.ceilDark.height = horizonY;
 
     this.updateWallLamps(travel, W, H, now);
-    this.updateBack(W, H);
+    this.updateBack(travel, W, H, opts);
     this.updatePillars(travel, W, H);
   }
 
@@ -332,8 +352,11 @@ export class CorridorLayer {
   // ゴール床(ハッチ)のオーバーレイ(v0.25.2132): 床本体と同じ投影式で、world固定の帯
   // [GOAL_TILE_START, +520) にだけテクスチャ1枚を張る。行の縁をworld座標で切るので
   // タイル境界が正確=通常床(境界も520の倍数)と紋様が連続し、差し替えたように見える。
-  private updateGoalFloor(travel: number, W: number, H: number): void {
+  private updateGoalFloor(travel: number, W: number, H: number, opts?: CorridorLayerFrameOpts): void {
     if (!this.goalFloor) return;
+    // PACING_PUZZLE.md §10-20#8(★監査#5②): EXはハッチ床タイル(travel3640〜4160)を貼らない
+    // (動線-3000→-5000で必ず踏み、通常ステージの帰還ハッチと紛らわしい絵になるため)。
+    if (opts?.isEx) { this.goalFloor.mesh.visible = false; return; }
     const goalEnd = GOAL_TILE_START + GOAL_TILE_LEN;
     // カリング: 完全に通過した(タイル奥端がカメラ背後の描画限界より手前)/遠すぎて見えない、は非表示。
     const dFar = goalEnd - travel;
@@ -400,7 +423,7 @@ export class CorridorLayer {
       const cs = this.candleSharp[i], cb = this.candleBlur[i];
       const gm = this.glowMain[i], gc = this.glowCore[i], gf = this.glowFloor[i];
       const m = lamps[i];
-      const active = m && m.depth >= 60 && m.depth <= BACK_DEPTH - 300;
+      const active = m && m.depth >= 60 && m.depth <= LAMP_MAX_DEPTH;
       if (!active) { for (const s of [cs, cb, gm, gc, gf]) s.visible = false; continue; }
       // 灯り専用フェード(新幾何の可視帯に合わせる。詳細はLAMP_FADE_*のコメント)。
       const sVal = CFG.focal / (CFG.focal + m.depth);
@@ -451,20 +474,32 @@ export class CorridorLayer {
   }
 
   // ⑥ 奥壁(ステンドグラス窓)+月明かり。壁の帯だけを切り出したサブテクスチャを常に遠方=farblurとクロスフェード。
-  private updateBack(W: number, H: number): void {
+  private updateBack(travel: number, W: number, H: number, opts?: CorridorLayerFrameOpts): void {
     const bt = this.backSharpFrame;
     if (!bt || bt.width <= 0) { this.backSharp.visible = false; this.backBlur.visible = false;
       this.moonWindow.visible = this.moonShaft.visible = this.moonFloor.visible = false; return; }
-    const s = CFG.focal / (CFG.focal + BACK_DEPTH);
+    // PACING_PUZZLE.md §10-20#2: M6は従来どおり「プレイヤー前方へ無限後退」する固定奥行き(BACK_DEPTH)。
+    // EXだけ、奥壁をworld固定(北端-6000の300px奥=exBackTravel)へ切り替える(近づくと実際に迫ってくる壁)。
+    const backD = (opts?.isEx && opts.exBackTravel != null)
+      ? Math.max(EX_BACK_MIN_D, opts.exBackTravel - travel)
+      : BACK_DEPTH;
+    const s = CFG.focal / (CFG.focal + backD);
     const horizonY = H * CFG.horizonYr;
     const footY = horizonY + (H * CFG.footYr - horizonY) * s;
-    const bh = H * CFG.pillarHr * s * BACK_H_MULT; // 壁コンテンツの表示高(柱の高さ基準)
+    let bh = H * CFG.pillarHr * s * BACK_H_MULT; // 壁コンテンツの表示高(柱の高さ基準)
+    // ★4巡目#7: この上限は最終合成後の表示スケール(投影×広間S×worldズーム)に対して適用する
+    // (bh自体=投影段階の値なので、container側のexDispScaleForCapを掛けた見かけ高で判定する)。
+    if (opts?.isEx && opts.exDispScaleForCap) {
+      const capH = H * EX_BACK_MAX_FINAL_H_MULT;
+      const finalH = bh * opts.exDispScaleForCap;
+      if (finalH > capH) bh *= capH / finalH;
+    }
     const bw = (bt.width / this.backSrcH) * bh;             // 幅=切り出し後アスペクト従属=歪みなし
     const k = bh / this.backSrcH;                          // srcH*k = bh
     // 奥壁のDOF配合(v0.25.2127・社長報告「この黒い影なに?」): 幾何再調整(footYr 0.744)で奥壁の
     // 表示が小さくなり、26px焼き込みブラー版をw≒0.9で被せると「黒い泥の塊」になっていた(実測bisectで確定)。
     // ブラーの寄与を大きく下げ、シャープ主体+うっすら霞む程度に。
-    const w = dofFar(BACK_DEPTH) * BACK_FARBLUR_WEIGHT;
+    const w = dofFar(backD) * BACK_FARBLUR_WEIGHT;
     // シャープ版(足元アンカー)。
     this.backSharp.texture = bt;
     this.backSharp.position.set(W / 2, footY);

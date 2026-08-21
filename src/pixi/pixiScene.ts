@@ -186,6 +186,9 @@ import {
   // playableArea.ts の定数)ので、ここではX側だけ足す。
   TUTORIAL_MOVE_X_MIN_PX,
 } from '../world/playableArea';
+// PACING_PUZZLE.md §10-20(EX舞台の洋館通路化): EX専用の広間定数(描画は読むだけ・書かない)。
+import { isExStageRun } from '../utils/exStage';
+import { EX_HALL_SCALE, EX_HALL_LATERAL_CLAMP, exHallScaleT, EX_NORTH_LIMIT_Y } from '../world/exHall';
 import {
   bossEngagementDistancePx, isEngageableBoss,
 } from '../utils/bossEngagement';
@@ -248,7 +251,7 @@ import { visibilityPolygon } from '../world/vision';
 import type { Rect } from '../world/obstacles';
 import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/rescue';
 import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
-import { CorridorLayer } from './corridorLayer';
+import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
 
 // --- 深層域グレーディング(退色した暖色セピア) -----------------------------
 // 深層域に入っている間だけ、ゲーム画面全体を退色セピアにする描画のみの演出(当たり判定等には不干渉)。
@@ -4201,6 +4204,9 @@ export class PixiScene {
   // v0.25.3513(社長指示「チュートリアルステージ、移動できる範囲を城ボス戦と同じく線引いて」):
   // 訓練ステージの移動可能帯を線だけで描く(中は塗らない=城ボス戦と同じ作法)。
   private tutorialBoundsGfx = new Graphics();
+  // PACING_PUZZLE.md §10-20#4(EX結界/南の膜): 金色の光の膜(通路幅いっぱいの横帯・加算・ゆらぎ)。
+  // world座標(worldGroup内=アクターと同じ変換)で描く(4巡目#3/5巡目#3・6巡目#2)。
+  private exBarrierGfx = new Graphics();
   /** 前線(m0AdvanceLimitX)は戦闘中だけ消える=出入りするので、慣性つきでフェードさせる。 */
   private m0FrontLineAlpha = 0;
   /**
@@ -4500,6 +4506,7 @@ export class PixiScene {
       this.baseSitesGfx, // 拠点候補地サークル(地面・world座標)
       this.castleFightRingGfx, // v0.25.3055: 城ボス戦の移動制限ライン(地面・world座標・線のみ)
       this.tutorialBoundsGfx, // v0.25.3513: 訓練ステージの移動制限ライン(同上)
+      this.exBarrierGfx, // §10-20#4: EX結界/南の膜(金色の光の膜・地面・world座標)
       this.hospitalGfx, // 病院サークル(地面・world座標)
       this.armoryGfx, // §6.24 M48: 武器庫サークル(地面・world座標。病院と同じ)
       this.hunterVisionGfx, // ハンター視界範囲(薄紫・地面・world座標)
@@ -6800,7 +6807,10 @@ export class PixiScene {
     // ボス距離ズームの対象外(専用背景構造と深い引きの相性問題を根から断つ)。従来の文脈ズームのみへ
     // 戻す=このループでボスを一切拾わない(bossDistanceTarget/カメラ寄せとも不変のまま)。
     // useGameLoopのbossViewZoom算出(離脱判定)も同一条件でゲートする(判定と絵の不一致を作らない)。
-    const bossZoomExcluded = s.stageTheme === 'lab' || s.corridorMode;
+    // PACING_PUZZLE.md §10-20#11: EXはこの除外から外す(スリィエル/フィル戦でボスズームが効くように
+    // する。corridorLayer側はzoomを受けて「広間S×worldズーム」の1式で合成するのでズレない)。
+    // M6(stage-6)は従来どおり除外のまま=1バイトも変えない。
+    const bossZoomExcluded = s.stageTheme === 'lab' || (s.corridorMode && !isExStageRun());
     let bossDistanceTarget: number | null = null;
     let bossBiasDx = 0, bossBiasDy = 0, bossBiasD2 = Infinity; // 最も近い交戦ボスへの中心差(カメラ寄せ用)
     for (const e of s.enemies) {
@@ -7663,6 +7673,26 @@ export class PixiScene {
         }
       } else if (this.m0FrontLineAlpha !== 0 || this.m0FrontLineX !== null) {
         this.m0FrontLineAlpha = 0; this.m0FrontLineX = null; // 別ステージへ移ったら次の訓練で0から立ち上がる
+      }
+    }
+    // PACING_PUZZLE.md §10-20#4(EX結界/南の膜): スリィエル/フィル存命中、プレイヤーを閉じ込める
+    // 「金色の光の膜」(通路幅いっぱいの横帯・加算・ゆらぎ=天使の結界の画。攻撃判定ではないので赤/紫は
+    // 使わない)。world座標(worldGroup内)に描く=クランプ(playableArea)と同じ変換を受けるので
+    // ズームや通路カメラ下げでもズレない。横幅=広間の横クランプ(EX_HALL_LATERAL_CLAMP)と同一定数。
+    {
+      const g = this.exBarrierGfx;
+      g.clear();
+      if (s.corridorMode && !s.indoorMode && (s.exBarrier.northLockY != null || s.exBarrier.southLockY != null)) {
+        g.blendMode = 'add';
+        const flick = 0.85 + 0.15 * Math.sin(now / 260);
+        const halfW = EX_HALL_LATERAL_CLAMP;
+        const drawBand = (yLock: number) => {
+          const th = 46;
+          g.rect(-halfW, yLock - th / 2, halfW * 2, th).fill({ color: 0xf2c14e, alpha: 0.28 * flick });
+          g.rect(-halfW, yLock - 3, halfW * 2, 6).fill({ color: 0xfff3c4, alpha: 0.55 * flick });
+        };
+        if (s.exBarrier.northLockY != null) drawBand(s.exBarrier.northLockY);
+        if (s.exBarrier.southLockY != null) drawBand(s.exBarrier.southLockY);
       }
     }
     // v0.25.3054: 施設フェードの適用(POI建物3種+サークル+拠点サークル+影リクエスト)。
@@ -8790,14 +8820,37 @@ export class PixiScene {
     // 直接求める(ズーム/シェイク込みで正確)。
     const gz = this.L.worldGroup.scale.x || 1;
     const worldZeroScreenX = this.L.world.position.x * gz + this.L.worldGroup.position.x;
-    this.corridorBackdrop.container.x = worldZeroScreenX - this.screenW / 2;
+    // PACING_PUZZLE.md §10-20#5/#11(EX舞台の洋館通路化): 広間S(通路スケールアップ)×worldズームを
+    // 「container.scale」の1式に合成する(S二重掛けの整理=ここが唯一の適用点)。
+    // M6(stage-6)はex=false=dispScale固定1.0=既存のx/y代入と数値上まったく同じ結果になる
+    // (pivot/positionの式は scale=1 のとき常に旧来のcontainer.x/y代入と一致する・下記コメント参照)。
+    const ex = s.corridorMode && !s.indoorMode && isExStageRun();
+    const hallT = ex ? exHallScaleT(s.player.y + s.player.height / 2) : 0;
+    const hallS = 1 + (EX_HALL_SCALE - 1) * hallT;
+    const dispScale = ex ? hallS * gz : 1;
+    // 支点(pivot): 横=world x=0の画面位置(既存)。縦=通路自身の「d=0(=プレイヤーの立ち位置)」の
+    // 足元ライン(H*CFG.footYr)——アクター側zoomの正確な支点(farBackdropHeight/画面中央)とは別だが、
+    // 通路の投影自体がd=0をこのラインへ描く設計のため、通路にとっての自然な「プレイヤー足元」は
+    // ここ=床がここを中心に伸縮すれば剥がれて見えない(3巡目#5相当・受け入れ条件対応)。
+    const pivotLocalX = this.screenW / 2;
+    const pivotLocalY = this.screenH * CORRIDOR_GAME_CFG.footYr;
+    const targetScreenX = worldZeroScreenX;
     // v0.25.3202(社長報告「スリィエル討伐時、本人だけ揺れてる。カメラ揺れてない」の正体):
     // 通路背景は横シェイクだけ上のworldZeroScreenX経由で追従し、**縦は画面固定のまま**だった。
     // 通常ステージは地面ごと揺れる=「カメラの揺れ」に見えるが、洋館では画面の大半(通路背景)が
     // 動かず**アクターだけがジッタ**して見える。縦シェイク(sy×ズーム)を背景にも掛けて揃える
     // (討伐崩壊シェイクに限らず、カウンター等の全シェイクが対象。視覚のみ・判定/カメラ不変)。
-    this.corridorBackdrop.container.y = shakeY * gz;
-    this.corridorBackdrop.update(-s.player.y, this.screenW, this.screenH, now);
+    const targetScreenY = shakeY * gz + pivotLocalY;
+    this.corridorBackdrop.container.pivot.set(pivotLocalX, pivotLocalY);
+    this.corridorBackdrop.container.position.set(targetScreenX, targetScreenY);
+    this.corridorBackdrop.container.scale.set(dispScale);
+    // §10-20#2: 奥壁のworld固定位置(travel空間)。北端-6000の300px奥=6300。
+    const EX_BACK_TRAVEL = -EX_NORTH_LIMIT_Y + 300;
+    this.corridorBackdrop.update(-s.player.y, this.screenW, this.screenH, now, ex ? {
+      isEx: true,
+      exBackTravel: EX_BACK_TRAVEL,
+      exDispScaleForCap: dispScale,
+    } : undefined);
   }
 
   // 最前面の天井帯オーバーレイ: screen-space で画面上端に上寄せ配置。半透明(LAB_CEILING_ALPHA)。

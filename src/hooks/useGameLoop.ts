@@ -302,7 +302,11 @@ import {
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
-import { isExStageRun, phillBossSpawnReady } from '../utils/exStage';
+import { isExStageRun, phillBossSpawnReady, surielGateSpawnReady, surielGateClearReady } from '../utils/exStage';
+import {
+  EX_SURIEL_TRIGGER_Y, EX_SURIEL_NORTH_LOCK_Y, EX_SURIEL_SOUTH_LOCK_Y,
+  EX_PHILL_TRIGGER_Y, EX_PHILL_SOUTH_LOCK_Y,
+} from '../world/exHall';
 import {
   parseBotSkill, botSkillProfile, dodgeVector, dodgeToInput, dodgeOverridesAttack,
   createWarpTrackState, warpDodge, type BotSkill,
@@ -1098,11 +1102,12 @@ import {
 // 側の既存テーマ判定=campaign.tsの再設計はしない)。実機/自動検証用に?idolnow=1で強制召喚できるように
 // するだけに留める(fromEvent的な単発デバッグ召喚。giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
 const FORCE_IDOL = evParam('idolnow') === '1';
-// PACING_PUZZLE.md §10-14#5(EXボス「フィル(変異体)」バッチ1): 出現トリガ=gate2Cleared &&
-// プレイヤー深度>=PHILL_SPAWN_DEPTH(叩き台9000・壁4=7500より外=順序が壊れない)。
-// テスト/練習用の強制出現(?phillnow=1)は下の使用箇所で`FORCE_PHILL || practiceForces('phillnow')`
-// として読む(giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
-const PHILL_SPAWN_DEPTH = evNum('philldepth', 9000);
+// PACING_PUZZLE.md §10-14#5(EXボス「フィル(変異体)」バッチ1)→§10-20#7で改訂: 出現トリガ=
+// gate2Cleared && プレイヤーy<=EX_PHILL_TRIGGER_Y(-5000。旧・深度(Math.hypot)9000は洋館通路化に
+// 伴い廃止=通路はyのみが進む一本道のため、以後は下の呼び出し側で「深度」の代わりにEX_PHILL_TRIGGER_Y
+// との比較用に-playerYを渡す)。テスト/練習用の強制出現(?phillnow=1)は下の使用箇所で
+// `FORCE_PHILL || practiceForces('phillnow')` として読む(giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
+const PHILL_SPAWN_DEPTH = evNum('philldepth', -EX_PHILL_TRIGGER_Y);
 // ★v0.25.3743: フィル撃破イベント終了→黒フェード(GameHUD)→勝利確定までの尺(フェード1.1s+余白)。
 const PHILL_OUTRO_FADE_MS = 1400;
 const FORCE_PHILL = evParam('phillnow') === '1';
@@ -1596,6 +1601,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ★v0.25.3743: フィル撃破イベント終了(アテンション+崩壊が消えた)を検知した時刻。黒フェードの起点。
   const phillOutroAtRef = useRef<number | null>(null);
   const phillBossSpawnPosRef = useRef({ x: 0, y: 0 });
+  // PACING_PUZZLE.md §10-20#3(EX関所「スリィエル」・EX専用3点セット): 出現済みか(二重スポーン防止)+
+  // クリア打刻(gate2Cleared)の次フレーム以降に撃破報酬の金箱を置くための予約フラグ(§10-20#10)。
+  const surielSpawnedRef = useRef(false);
+  const surielChestPendingRef = useRef(false);
   const glenRoarQueuedRef = useRef(false); // M7: 咆哮を会話キューへ積んだか
   const glenRoarShownRef = useRef(false);  // M7: 咆哮が実際に表示されたか(表示終了後の出現ゲート)
   // 洋館再訪: 開始時に洋館(保存槽)へ一度だけカメラアテンションを出したか。
@@ -2691,6 +2700,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           phillBossSpawnedRef.current = false; // EXボス「フィル(変異体)」も新ランで再アーム
           phillOutroAtRef.current = null;      // ★v0.25.3743: 撃破フェードの打刻も再アーム
           phillBossSpawnPosRef.current = { x: 0, y: 0 };
+          surielSpawnedRef.current = false; // §10-20#3: EX関所「スリィエル」も新ランで再アーム
+          surielChestPendingRef.current = false;
           glenRoarQueuedRef.current = false;
           glenRoarShownRef.current = false;
           revisitAttnShownRef.current = false;
@@ -2963,8 +2974,77 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // --- EX関所「スリィエル」(PACING_PUZZLE.md §10-20#3: EX専用3点セット) -------------------
+        // 既存gate2機構(gate2Pending/activeEvent/beginArenaEvent)は一切使わない(3巡目監査#1/#2):
+        // 現行gate2は発火・消費・クリア打刻の全てが死神/ゲート1/囲い/区域儀式と同居しており、
+        // その解除がEXの雑魚封鎖(§10-20#9)と矛盾するため。ここで発火・クリア打刻・結界の3点を完結させる。
+        if (isExStageRun() && !danceTest && !indoor && !labTheme && !noSpawn) {
+          // (a) 発火: プレイヤーy<=EX_SURIEL_TRIGGER_Y(-2800)到達で1回だけ直接スポーン。
+          const pcySuriel = player.y + player.height / 2;
+          if (surielGateSpawnReady(surielSpawnedRef.current, pcySuriel, EX_SURIEL_TRIGGER_Y)) {
+            surielSpawnedRef.current = true;
+            const sBoss = spawnEnemyAt('suriel', -24, -3000 - 24, newGameTime);
+            // research/STAGE_DIFFICULTY.md: 天使のスポーンは既存2箇所(自然gate2/?gateboss=1)と
+            // 明記されており、EXが3箇所目=stageBossDiffMults()を掛け忘れると素のHPで出る(4巡目#4)。
+            {
+              const sMult = stageBossDiffMults();
+              sBoss.health = sBoss.maxHealth = Math.round(sBoss.health * sMult.hp);
+              sBoss.damage = Math.round(sBoss.damage * sMult.dmg);
+            }
+            // 移動可能帯へクランプ(CLAUDE.md必須)。exStage=trueで関所広間の横幅拡大を受ける(§10-20#6)。
+            const sClamped = clampRectToPlayableArea(sBoss.x, sBoss.y, sBoss.width, sBoss.height, {
+              farBackdrop: useGameStore.getState().farBackdrop,
+              labTheme,
+              corridorMode: useGameStore.getState().corridorMode,
+              m0AdvanceLimitX: useGameStore.getState().m0AdvanceLimitX,
+              corridorRunInActive: useGameStore.getState().corridorRunInActive,
+              exStage: useGameStore.getState().corridorMode && isExStageRun(),
+            });
+            sBoss.x = sClamped.x; sBoss.y = sClamped.y;
+            sBoss.vx = 0; sBoss.vy = 0;
+            sBoss.bossState = 'chase';
+            sBoss.bossNextActionAt = newGameTime + 2000;
+            // §10-20#3(a): homeX/homeYは発火時のプレイヤー座標を写さない=固定(0,-3000。周回中心と
+            // 広間の中心を一致させる)。fromEventは立てない(arena機構不使用=イベント一掃と無関係)。
+            sBoss.homeX = 0; sBoss.homeY = -3000;
+            addEnemy(sBoss);
+            // §10-20#4(5巡目#1): 結界(北y<-3700)+南の膜(y=-2300)を同時に立てる=戦闘中は広間から
+            // 出られない(「戦闘中はもうゲートで締めちゃって、この広間から出ることはない」)。
+            useGameStore.setState({ exBarrier: { northLockY: EX_SURIEL_NORTH_LOCK_Y, southLockY: EX_SURIEL_SOUTH_LOCK_Y } });
+            // バナー/SEは既存gate2の発火演出を流用(§10-20#4「文言は実装時に既存を流用」)。
+            useGameStore.setState({ eventBannerText: '深層への扉が閉ざされた', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+            playSfx('event-start');
+            const sAc = bossArtCenter(sBoss);
+            useGameStore.getState().triggerAttention(sAc.x, sAc.y, bossCutinPayload('suriel'));
+            playSfx('boss-appear');
+            spawnRing(0, -3000, GATE_ARENA_RADIUS * 0.2, GATE_ARENA_RADIUS, 'rgba(239,68,68,0.9)', 6, 700);
+            spawnFlash('rgba(127,29,29,0.26)', 360);
+            useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
+          }
+          // (b) クリア打刻: §10-16のフィル撃破検知と同型のガード(スポーン済み&&未打刻&&不在&&
+          // 討伐カットイン/崩壊の間ではない)。打刻先=フィル出現条件が読んでいるgate2Clearedと同じ変数。
+          const gsSr = useGameStore.getState();
+          const surielAlive = gsSr.enemies.some(e => e.type === 'suriel');
+          if (surielGateClearReady(surielSpawnedRef.current, gateMetaRef.current.gate2Cleared, surielAlive, !!gsSr.attention, !!gsSr.bossCorpse)) {
+            gateMetaRef.current = { ...gateMetaRef.current, gate2Cleared: true };
+            // §10-20#4: 撃破で北の結界・南の膜とも同フレームで開放。
+            useGameStore.setState({ exBarrier: { northLockY: null, southLockY: null } });
+            useGameStore.setState({ eventBannerText: '討伐成功！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+            playSfx('event-clear');
+            // §10-20#10(3巡目#7): 撃破後の金箱は実行時addPickup。設置は打刻の**次フレーム以降**
+            // (addPickupは移動可能帯クランプを通るため、結界ctxが1フレームでも残ると南へ寄せられる)。
+            surielChestPendingRef.current = true;
+          }
+        }
+        // 撃破後の金箱(§10-20#10): 打刻フレームの次フレーム以降にaddPickup。座標=撃破後にプレイヤーが
+        // 必ず通る広間北部(0,-3600)付近(結界-3700の手前)。
+        if (surielChestPendingRef.current) {
+          surielChestPendingRef.current = false;
+          useGameStore.getState().addPickup({ id: 'ex-suriel-chest', x: -8, y: -3600 - 8, type: 'bounty-chest', value: 1 });
+        }
+
         // --- EXボス「フィル(変異体)」(PACING_PUZZLE.md §10・バッチ2=angelBossTickの7人目) ---
-        // 出現: gate2Cleared(スリィエル撃破)&&プレイヤー深度>=PHILL_SPAWN_DEPTH(叩き台9000)。
+        // 出現: gate2Cleared(スリィエル撃破)&&プレイヤーy<=EX_PHILL_TRIGGER_Y(-5000・§10-20#7)。
         // 強制出現(練習/デバッグ): ?phillnow=1 または 練習枠(practiceForces('phillnow'))。
         // 器=angelBossTickの7人目(§10-2)。isGate2AngelBoss編入によりbossState='chase'を立てるだけで
         // 以後の移動・技選択はrunAngelBossTickの通常呼び出しが自動的に拾う(専用ブロック不要)。
@@ -2972,7 +3052,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             && (!noSpawn || practiceForces('phillnow'))) {
           const pcxPhill = player.x + player.width / 2;
           const pcyPhill = player.y + player.height / 2;
-          const depthPhill = Math.hypot(pcxPhill, pcyPhill);
+          // §10-20#7: 洋館通路化により「深度」はMath.hypotではなく-yで測る(通路はyだけが進む一本道)。
+          const depthPhill = -pcyPhill;
           // ★不変条件「天使は同時に1体」(§10-14#1・v0.25.3721検収監査#2): 別のゲート2天使が
           // bossStateを持って場に居る間は、強制出現(?phillnow/練習)でも湧かせない
           // (runAngelBossTickは先頭1体しかtickしない=2体並ぶと片方が無言で凍るため)。
@@ -3003,6 +3084,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               corridorMode: useGameStore.getState().corridorMode,
               m0AdvanceLimitX: useGameStore.getState().m0AdvanceLimitX,
               corridorRunInActive: useGameStore.getState().corridorRunInActive,
+              exStage: useGameStore.getState().corridorMode && isExStageRun(), // §10-20#7: フィル広間の横幅拡大
             });
             pBoss.x = pClamped.x; pBoss.y = pClamped.y;
             pBoss.vx = 0; pBoss.vy = 0;
@@ -3011,6 +3093,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             pBoss.homeX = pBoss.x; pBoss.homeY = pBoss.y;
             phillBossSpawnPosRef.current = { x: pBoss.x + pBoss.width / 2, y: pBoss.y + pBoss.height / 2 };
             addEnemy(pBoss);
+            // PACING_PUZZLE.md §10-20#5末尾: 「フィル出現と同時に広間南端をゲートで閉鎖」=戦闘中は
+            // 広間から出られない(撃破→フェード→エンディングなので開放は不要・§10-20#7)。
+            useGameStore.setState({ exBarrier: { northLockY: null, southLockY: EX_PHILL_SOUTH_LOCK_Y } });
             useGameStore.setState({ eventBannerText: 'フィル(変異体) 出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             // 出現エフェクト(城ボス/幻影と同じ機構を流用=新規アート不要)。
             spawnFlash('rgba(127,29,29,0.28)', 420);
@@ -4087,7 +4172,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 社長指示v0.25.2249「m2は叫び沸かないで」: 研究所スキン(M2)では叫喚型を出さない。
         // M2は puzzleActiveNow=false(1908行)なのでこのディレクターが動いていた=唯一の湧き経路。
         // 忍び込むステージで画面外から通常敵を一斉強化されるのは設計と噛み合わないため止める。
-        if (!danceTest && !indoor && !labTheme && !puzzleActiveNow && !noSpawn) {
+        // PACING_PUZZLE.md §10-20#9(社長指示「このステージは雑魚敵も封鎖」): EXは通常湧きなし・
+        // 死神なし。場に出る敵はスリィエル/フィル/フィルの召喚のみ=この叫喚型ディレクターも対象外。
+        if (!danceTest && !indoor && !labTheme && !puzzleActiveNow && !noSpawn && !isExStageRun()) {
           const sS = useGameStore.getState();
           const aliveScreamer = sS.enemies.some(e => e.type === 'screamer');
           const sCinematic = sS.bossChasing || !!sS.attention || sS.redNight?.phase === 'active'
@@ -5096,7 +5183,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // §6.37 v4-3(PACING_PUZZLE.md §6.37-3): stage-2(lab)/stage-6(洋館)はボス距離ズーム対象外。
             // pixiSceneのボスカメラループと同一条件でゲートする(判定と絵の不一致を作らない)。
             // 算出条件のみの変更=isPointInZoomedViewportの判定式そのものは不変(掟)。
-            const bossZoomExcluded = labTheme || useGameStore.getState().corridorMode;
+            // PACING_PUZZLE.md §10-20#11: EXはこの除外から外す(pixiSceneのボスカメラループと同一条件。
+            // 実際にはhiddenBossはEXでは常にnull=このブロック自体EXでは走らないが、条件式は必ず
+            // 2箇所同時に変更する=判定と絵の不一致を作らない、という掟どおり揃えておく)。
+            const bossZoomExcluded = labTheme || (useGameStore.getState().corridorMode && !isExStageRun());
             const bossViewZoom = bossZoomExcluded ? 1 : bossDistanceZoomTarget(
               boss.type, aabbGapDistance(player, boss), boss.isStoryBoss === true,
               { dxCenter: bcx - (player.x + player.width / 2), dyCenter: bcy - (player.y + player.height / 2), viewport: gb },
@@ -12255,10 +12345,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           !danceTest &&
           !indoor &&
           !noSpawn && // ?nospawn=1 デバッグ: 旧スポナーも止める(社長試作v0.25.1861)
-          // PACING_PUZZLE.md §10-14#4(解放): storyBossOnly廃止によりEXはstoryBoss=falseとなり、
-          // ここは**コード変更なしで自然に解放される**(通常湧き=EXも中盤までは通常ステージと同じ)。
-          // M7(グレン専用ラン)だけが引き続き対象。
+          // PACING_PUZZLE.md §10-20#9(旧注記を訂正): 上のコメントは「storyBossOnly廃止によりEXは
+          // コード変更なしで自然に解放される」としていたが、これはEXの敵完全封鎖(社長指示2026-08-21
+          // 「このステージは雑魚敵も封鎖」)と矛盾する。この旧経路はboss-phase窓でのみ有効化される
+          // 補助経路だが、主経路(runKomaBoardMaintenance呼び出し側)と揃えて明示的に閉じる。
           !storyBoss && // ストーリーボス専用ラン(M7)は通常湧きなし(統合正本10.3)
+          !isExStageRun() && // §10-20#9: EXも通常湧きなし(スリィエル/フィル/フィルの召喚のみ)
           !tutorialStage && // チュートリアルは自動湧きなし(イベント湧きのみ予定・社長指示)
           !confining &&
           !bossChasingNow && // 裏ボスが画面内で追跡中だけ通常湧きを止める(非追跡=画面外/帰巣中は湧く・社長指摘)
@@ -12412,7 +12504,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (実装: src/utils/directorTick.ts の runKomaBoardMaintenance へ移設。挙動は不変)。
         // PACING_PUZZLE.md §5.21-追補4: 追補3の「ゲート1中はchaff目標=ピーク・CD0を強制」は撤回済み
         // (gate1.ts参照)。ゲート1中もkomaは通常どおりディレクター駆動のまま=ここに特別分岐は無い。
-        if (!noSpawn) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
+        // PACING_PUZZLE.md §10-20#9(★実装サイト・4巡目#6の実体): EXはstoryBossOnly廃止でstoryBoss=
+        // falseになった結果puzzleActiveNow=trueとなり、**この本方式スポナーが唯一の実質的な通常湧き
+        // 経路として動いていた**(通常湧き完全解放のバグ実体=isExStageRun()未ガード)。ここを塞ぐ
+        // (addEnemyへの一律ガードではなく、この呼び出し1箇所=湧きの入口)。
+        if (!noSpawn && !isExStageRun()) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
           {
             puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef,
             rankPaceRef,

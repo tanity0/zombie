@@ -184,3 +184,68 @@ describe('clampCastleFightCrossing(城ボス戦の移動制限)', () => {
     expect(clampCastleFightCrossing(3500, 0, 3400, 0)).toEqual({ x: 3400, y: 0 });
   });
 });
+
+// PACING_PUZZLE.md §10-20#2/#3(c)/#4/#5〜#7: EX(stage-ex1)専用の拡張。exStage/exPlayerBarrierを
+// 省略した既存の呼び出しは1バイトも挙動が変わらないこと(M6回帰防止)も併せて固定する。
+import { EX_NORTH_LIMIT_Y, EX_HALL_LATERAL_CLAMP, EX_SURIEL_NORTH_LOCK_Y, EX_SURIEL_SOUTH_LOCK_Y } from './exHall';
+describe('clampRectToPlayableArea(EX専用拡張・exStage省略時はM6と無変化)', () => {
+  const corridorCtx: PlayableAreaCtx = { ...NONE_CTX, corridorMode: true };
+  const w = 30, h = 40;
+
+  it('exStageを渡さなければ従来のCORRIDOR_LATERAL_CLAMPのまま(M6は無変化)', () => {
+    const r = clampRectToPlayableArea(9999, -3000, w, h, corridorCtx);
+    expect(r.x).toBe(CORRIDOR_LATERAL_CLAMP - w / 2);
+    expect(r.y).toBe(-3000); // 北端クランプも掛からない
+  });
+
+  it('exStage=trueだと北端(EX_NORTH_LIMIT_Y)より奥へは進めない', () => {
+    const ctx: PlayableAreaCtx = { ...corridorCtx, exStage: true, corridorRunInActive: true };
+    const r = clampRectToPlayableArea(0, EX_NORTH_LIMIT_Y - 500, w, h, ctx);
+    expect(r.y).toBe(EX_NORTH_LIMIT_Y);
+  });
+
+  it('exStage=trueだと広間の内部(スリィエル広間中心)で横クランプがEX_HALL_LATERAL_CLAMPまで広がる', () => {
+    const ctx: PlayableAreaCtx = { ...corridorCtx, exStage: true, corridorRunInActive: true };
+    const r = clampRectToPlayableArea(9999, -3000, w, h, ctx);
+    expect(r.x).toBe(EX_HALL_LATERAL_CLAMP - w / 2);
+  });
+
+  it('exStage=trueでも通常通路区間(広間の外)は従来幅のまま', () => {
+    const ctx: PlayableAreaCtx = { ...corridorCtx, exStage: true, corridorRunInActive: true };
+    const r = clampRectToPlayableArea(9999, 0, w, h, ctx);
+    expect(r.x).toBe(CORRIDOR_LATERAL_CLAMP - w / 2);
+  });
+
+  it('exPlayerBarrier省略時は結界の影響を受けない(敵/湧き側の呼び出しを想定)', () => {
+    const ctx: PlayableAreaCtx = { ...corridorCtx, exStage: true, corridorRunInActive: true };
+    const r = clampRectToPlayableArea(0, -3900, w, h, ctx); // 北端より手前だが北結界ラインより奥
+    expect(r.y).toBe(-3900);
+  });
+
+  it('exPlayerBarrier.northLockYがあると結界より奥へ進めない(プレイヤー専用)', () => {
+    const ctx: PlayableAreaCtx = {
+      ...corridorCtx, exStage: true, corridorRunInActive: true,
+      exPlayerBarrier: { northLockY: EX_SURIEL_NORTH_LOCK_Y, southLockY: null },
+    };
+    const r = clampRectToPlayableArea(0, -3900, w, h, ctx);
+    expect(r.y).toBe(EX_SURIEL_NORTH_LOCK_Y);
+  });
+
+  it('exPlayerBarrier.southLockYがあると膜より手前(南)へ戻れない(退路封鎖)', () => {
+    const ctx: PlayableAreaCtx = {
+      ...corridorCtx, exStage: true, corridorRunInActive: true,
+      exPlayerBarrier: { northLockY: null, southLockY: EX_SURIEL_SOUTH_LOCK_Y },
+    };
+    const r = clampRectToPlayableArea(0, -2000, w, h, ctx);
+    expect(r.y).toBe(EX_SURIEL_SOUTH_LOCK_Y);
+  });
+
+  it('結界の内側に居る移動はそのまま(南北とも)', () => {
+    const ctx: PlayableAreaCtx = {
+      ...corridorCtx, exStage: true, corridorRunInActive: true,
+      exPlayerBarrier: { northLockY: EX_SURIEL_NORTH_LOCK_Y, southLockY: EX_SURIEL_SOUTH_LOCK_Y },
+    };
+    const r = clampRectToPlayableArea(0, -3000, w, h, ctx);
+    expect(r.y).toBe(-3000);
+  });
+});

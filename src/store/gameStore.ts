@@ -225,6 +225,7 @@ import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, set
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal } from '../data/campaign';
+import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX(stage-ex1)専用分岐の判定
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
 import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
@@ -5073,6 +5074,10 @@ interface GameState {
   corridorMode: boolean;
   pendingCorridor: boolean;                             // 出撃が洋館通路(stage-6メイン)か(startGame→resetGame で受け渡し)
   setPendingCorridor: (on: boolean) => void;
+  // PACING_PUZZLE.md §10-20#3(c)/#4: EX(stage-ex1)専用「結界」(北)・「膜」(南)。値が非nullの間、
+  // プレイヤーの移動クランプだけがその向きを止める(敵/湧きには適用しない=useGameLoopのEX専用3点
+  // セットが書く。gate2Pending/activeEvent/beginArenaEventは一切使わない=既存gate2機構と無関係)。
+  exBarrier: { northLockY: number | null; southLockY: number | null };
   // 洋館開始の走り込み(v0.25.2110・社長指示「ヘリ登場いらない。下から走り込んできて」):
   // resetGameがプレイヤー/護衛を下(+y)に置きtrueにする→useGameLoopが上へ自動走行させ、到着(y<=0)で解除。
   // trueの間はisInputLockedで操作を遮断(実移動なので歩行アニメ/護衛追走/カメラ追従は通常システムのまま)。
@@ -5536,6 +5541,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastKomaAssessmentInput: null,
   indoorMode: false,
   corridorMode: false,
+  exBarrier: { northLockY: null, southLockY: null },
   pendingCorridor: false,
   corridorRunInActive: false,
   bossMaker: { active: false, invincible: true, paused: false, showHitbox: false, hideHud: true },
@@ -5822,12 +5828,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         // (v0.25.2391・アイテム/敵の湧きクランプと同じ関数を見る=ズレ防止)。計算・適用順(tutorial→
         // lab→corridor)は元のインライン実装から1px も変えずに移設した。詳細な意図コメントは同ファイル参照。
         {
+          // PACING_PUZZLE.md §10-20#2/#5〜#7: exStageはEX限定で北端クランプ+広間の横幅拡大を有効化
+          // する(全アクター共有だが、他ステージ/M6ではisExStageRun()=falseなので無効=無変化)。
+          // exPlayerBarrierは**プレイヤーの移動クランプにのみ**渡す(§10-20#4「敵/湧きには適用しない」)。
           const playableCtx: PlayableAreaCtx = {
             farBackdrop: get().farBackdrop,
             labTheme,
             corridorMode: state.corridorMode,
             m0AdvanceLimitX: get().m0AdvanceLimitX,
             corridorRunInActive: state.corridorRunInActive,
+            exStage: state.corridorMode && isExStageRun(),
+            exPlayerBarrier: state.exBarrier,
           };
           // v0.25.3498(社長指示「城と同じ壁の見せ方にして」): 移動前のxを渡すことで、M0の前進壁は
           // 「跨ぐ移動だけ止める」になる(戦闘中に前へ出た結果を、戦闘終了時にスナップで没収しない)。
@@ -14133,6 +14144,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 当たり判定サイズは不明なため既定16×16(pixiScene.tsのdrawPickup hitSizeと同じ既定値)。
       // `?spawnclamp=0`で従来の挙動(帯の外にも着地しうる)へ戻せる。
       const labTheme = state.stageTheme === 'lab';
+      // PACING_PUZZLE.md §10-20#10: exStageのみ有効(北端クランプ+広間の横幅拡大)。exPlayerBarrier
+      // は渡さない(§10-20#4「敵/湧きには適用しない」――アイテム設置もここでは"湧き"側の扱い)。
+      // 撃破後の金箱は打刻フレームで結界を解除した**次フレーム以降**にaddPickupする(useGameLoop側)ので、
+      // 仮にここへ結界を混ぜても実害は無いが、ctxを分ける原則(§10-20#4監査#7)どおり明示的に外す。
       let placed = SPAWN_CLAMP_ENABLED
         ? clampRectToPlayableArea(scattered.x, scattered.y, PICKUP_HIT_SIZE, PICKUP_HIT_SIZE, {
             farBackdrop: state.farBackdrop,
@@ -14140,6 +14155,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             corridorMode: state.corridorMode,
             m0AdvanceLimitX: state.m0AdvanceLimitX,
             corridorRunInActive: state.corridorRunInActive,
+            exStage: state.corridorMode && isExStageRun(),
           })
         : { x: scattered.x, y: scattered.y };
       // ★D-4(社長指示v0.25.2424)「壁・木・建物の"中"にアイテムが落ちる」の修正。
@@ -16803,6 +16819,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           value: 1,
         });
       }
+      // PACING_PUZZLE.md §10-20#10(EX舞台の洋館通路化・金箱1個目「スタートの少し上に1つ」):
+      // 走り込み入場(入力ロック自動前進380px)の終端(y<=0で解除)より奥(y≈-500)+中央から横に
+      // 約80pxずらす=入場ロック中に踏んで自動取得になるのを防ぐ(★再監査#10)。stage-7の開始金箱
+      // (resetGameの静的runPickups)と同じ機構=実行時addPickupではなくここで静的に置く。
+      if (corridorMode && isExStageRun()) {
+        runPickups.push({
+          id: 'ex-start-chest',
+          x: 80 - 8,
+          y: -500 - 8,
+          type: 'bounty-chest',
+          value: 1,
+        });
+      }
 
       // 壁/UVバーは区画ごとに手続き生成(labWallsInRegion/labUvBarsInRegion)するので reset では持たない。
       // World is infinite; player starts at the origin and the camera
@@ -16815,7 +16844,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // v0.25.2589(社長指示「ボスモードではNPC出撃しないで」): ボス戦テスト出撃(強制出現フラグ付き)は
       // 護衛NPCを出さない。ボスと守護霊の挙動だけを見る場のため、NPCの射撃・セリフ・拠点占拠が混ざると
       // 観測が汚れる(storyBossステージが護衛を出さないのと同じ理由)。通常出撃には影響しない。
-      const escortRoster = (indoor || stageTheme === 'lab' || state.pendingStoryBoss || BOSS_TEST_RUN || isPracticeRun()) ? []
+      // PACING_PUZZLE.md §10-20#1(★監査#1): corridor化だけではNPCは消えない(護衛4人の抑止は
+      // pendingStoryBossのみ・EXはstoryBossOnlyを既に廃止済みでpendingStoryBossが立たない)。
+      // EX専用分岐として明示的に除外する(社長裁定「景色全体が違う。NPCも居ちゃってる」)。
+      const escortRoster = (indoor || stageTheme === 'lab' || state.pendingStoryBoss || BOSS_TEST_RUN || isPracticeRun() || (corridorMode && isExStageRun())) ? []
         : farBackdrop === 'tutorial' ? makeTutorialCompanions(spawnTL.x, spawnTL.y)
         : makeEscorts(spawnTL.x, spawnTL.y, corridorMode);
       const sortieEsc = (escortRoster.length && farBackdrop !== 'tutorial') ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
@@ -16824,6 +16856,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         unlockedShopSkillCards: runShopUnlocks,
         indoorMode: indoor,
         corridorMode,
+        exBarrier: { northLockY: null, southLockY: null }, // 新ランで必ず解除状態から始める
         stageTheme,
         labRadioX: labIdol?.x ?? null,
         farBackdrop,
@@ -17024,7 +17057,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // v0.25.3138(社長指示「ボスモードでは武器商人は設置しない」): 練習ラン(ボスモード)も同じ扱い。
           // ボスモードは「1体と戦うだけ」の場なので、開幕の視界に商人が居ると邪魔になる
           // (ボスメーカーの部屋と同じ理由)。到達不能座標=不在の作法もそのまま流用する。
-          : (farBackdrop === 'tutorial' || bossMakerRoom || isPracticeRun())
+          // PACING_PUZZLE.md §10-20#1(★監査#1): M6通路はcorridor化だけでは商人が消えない仕様
+          // (corridor除外なし)。EXだけ専用分岐で除外する(社長裁定「NPCも居ちゃってる」・護衛と同じ理由)。
+          : (farBackdrop === 'tutorial' || bossMakerRoom || isPracticeRun() || (corridorMode && isExStageRun()))
             ? { x: 1e9, y: 1e9, radius: 0 }
             // 研究所(屋外・横長廊下)は上下固定クランプ(±100)の外(y:-130)に商人がいると一生話しかけ
             // られない(M2_LAB_CORRIDOR_SPEC.md ★未決2・社長承認で追加)。labThemeだけYを上書きし、
@@ -17090,7 +17125,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 訓練(M0)のゴールサークルは**廃止**(社長指示v0.25.2302「チュートリアルのゴールが目的が
         // 変わって意味をなさないので削除」)。M0の終わりは終盤シーケンス(グレッグ死亡カットシーン →
         // フレアガン受領 → ランク1一巡のダンジョン → その先のゴール)で決まる。実装までM0は未完了のまま。
-        returnCircle: corridorMode
+        // PACING_PUZZLE.md §10-20#8(★監査#5): EXはこの帰還サークルを生成しない(動線-3000→-5000で
+        // 必ず踏み「帰還完了」誤クリアになるため)。EXの勝利はフィル撃破→フェード(§10-20#3(b)近傍の
+        // useGameLoop EX専用ブロック)で直接確定する=帰還サークル自体が不要。
+        returnCircle: (corridorMode && !isExStageRun())
             ? { x: 0, y: CORRIDOR_GOAL_Y, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 }
             : null,
         tutorialPopup: null,
