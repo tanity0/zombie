@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
   COUNTER_REACH_DECL, counterReachKindFor, counterReachShapeFor, inCounterReach,
   HIDDEN_COUNTER_WINDUP_STATES, HIDDEN_COUNTER_RECOVER_STATES, HIDDEN_COUNTER_ACTIVE_STATES,
+  shouldSkipBossContactParry,
 } from './counterReach';
 import {
   BOUNTY_WINDUP_STATES, BOUNTY_RECOVER_STATES, BOUNTY_ACTIVE_COUNTER_STATES,
@@ -17,6 +18,13 @@ import { BOUNTY_MELEE_TUNING as BM_T, BOUNTY_BALANCE_TUNING as BB_T, BOUNTY_MAIK
 import { ANGEL_RAFI_TUNING as RF_T, ANGEL_ACRASIEL_TUNING as AC_T } from './angelScript';
 import { HIDDEN_JORMUNGAND_TUNING as HB_JO, HIDDEN_THOR_TUNING as HB_TH } from './hiddenBossScript';
 import { MIMIR_BITE_RADIUS } from './bodyCenteredAoe';
+
+// ★v0.25.3809(8巡目 重大4): 受け流しスキップの述語は**呼ばれていること**まで固定する。
+// ソースは vite の ?raw で読む(このリポジトリは @types/node を入れていないので node:fs は使わない。
+// thorNihil.test.ts / meleeSwingCommit.test.ts と同じ作法)。
+const COMBAT_TICK_SOURCES = import.meta.glob<string>(
+  ['./combatTick.ts'], { query: '?raw', import: 'default', eager: true },
+);
 
 const CTX = { bcx: 0, bcy: 0, pcx: 100, pcy: 0 };
 const BOSS = { x: -22, y: -22, width: 44, height: 44 };   // 賞金首と同寸(44×44)・中心(0,0)
@@ -214,5 +222,62 @@ describe('⑤ トール: 赤い予告の図形=成立域(§8-2)', () => {
     for (const st of ['issen-windup', 'tsuki-windup', 'harai-windup', 'thor-dash-windup', 'issen-nihil']) {
       expect(HIDDEN_COUNTER_ACTIVE_STATES, st).not.toContain(st);
     }
+  });
+});
+
+// =================================================================================================
+// ★v0.25.3809(検収監査8巡目 重大4): 受け流し(bossContactParries)へ落とさない州の述語。
+//
+// この述語は今 `combatTick` の**到達不能な行**にある(v0.25.3808 の暫定措置=§9-6 で走行中の接触が
+// forEach の冒頭で return するため)。設計書は「§9-6 が(a)で裁定されて除外を外した瞬間に
+// v0.25.3785 重大A(受け流しがカウンターを丸ごと横取りする)が復活するので**残置する**」と書いているが、
+// **それを守るテストが1本も無く、宣言ごと削除しても全緑**だった(監査が実測)。
+// = 次の「デッドコード掃除」で必ず消え、裁定の瞬間に実バグが黙って戻る導火線。
+// **値でアサートしておけば、到達可能かどうかと無関係に生き続ける。**
+// =================================================================================================
+describe('★受け流しへ落とさない州(shouldSkipBossContactParry)= §5-2 やること④', () => {
+  it("★トールの走り(thor-dash-move)は true(=受け流しへ落とさない)", () => {
+    expect(shouldSkipBossContactParry('thor', 'thor-dash-move')).toBe(true);
+  });
+  it('トールの他の州は false(=従来どおり受け流しへ落ちる)', () => {
+    for (const st of ['chase', 'thor-dash-windup', 'thor-dash-recover', 'issen-windup', 'issen-nihil',
+      'tsuki-windup', 'harai-windup', 'jump-windup', 'counter-leap', undefined]) {
+      expect(shouldSkipBossContactParry('thor', st), String(st)).toBe(false);
+    }
+  });
+  it('★他のボスは同名の州でも false(トール1体に閉じている=横展開していない)', () => {
+    for (const t of ['mimir', 'jormungand', 'skadi', 'miguel', 'giantbat', 'zombie']) {
+      expect(shouldSkipBossContactParry(t, 'thor-dash-move'), t).toBe(false);
+      expect(shouldSkipBossContactParry(t, 'dash'), t).toBe(false);
+    }
+  });
+
+  // ★述語を残しても、**呼び出し側を外せば**同じ実バグ(受け流しがカウンターを横取りする)が戻る。
+  // 値のテストだけでは `const thorDashRunNow = false;` に差し替える変異が緑を通ったので、
+  // 「受け流しの分岐が本当にこの述語を見ているか」も配線として固定する(ソース走査)。
+  it('★combatTick の受け流しの分岐が、この述語を通っている(呼び出しを外す変異もここで落ちる)', () => {
+    const src = Object.values(COMBAT_TICK_SOURCES)[0] ?? '';
+    expect(src.length, 'combatTick.ts を読めていない(走査そのものが壊れた)').toBeGreaterThan(1000);
+    const lines = src.split('\n').filter(l => {
+      const t = l.trim();
+      return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+    });
+    const calls = lines.filter(l => /shouldSkipBossContactParry\(/.test(l));
+    expect(
+      calls.length,
+      '受け流しスキップの述語(shouldSkipBossContactParry)の呼び出しが1本ではない。'
+      + `\n走査=\n${calls.map(l => l.trim()).join('\n')}`,
+    ).toBe(1);
+    expect(calls[0], '述語に enemy.type / enemy.bossState を渡していない')
+      .toMatch(/shouldSkipBossContactParry\(\s*enemy\.type\s*,\s*enemy\.bossState\s*\)/);
+    expect(calls[0], '述語の結果を thorDashRunNow へ束ねていない').toMatch(/thorDashRunNow\s*=(?!=)/);
+    const gate = lines.filter(l => /BOSS_CONTACT_PARRY_ENABLED\s*&&/.test(l));
+    expect(gate.length, 'ボス接触受け流しのゲート行が1本ではない').toBe(1);
+    expect(
+      gate[0],
+      'ボス接触受け流しのゲートが `!thorDashRunNow` を見ていない=走行中の突進が受け流しへ落ち、'
+      + '突進のカウンター(Counter!/クリ反撃/counter-leap/弾き返し/専用CD)が丸ごと消える(v0.25.3785 重大A)。'
+      + `\n走査=\n${gate[0].trim()}`,
+    ).toMatch(/!thorDashRunNow/);
   });
 });

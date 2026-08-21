@@ -16,9 +16,85 @@
 // 配線側は「呼んで `aimAt` に渡す」1文だけにする。引数は8個の名前付きオブジェクトから
 // **2個の実体(boss, player)** へ縮み、取り違えの面積そのものが小さくなる。
 //
+// ★v0.25.3809(検収監査8巡目 重大1/3・低9): さらに3つを配線から引き取った。
+//  ・`counterLeapTarget` / `counterLeapOrigin` = **共通層の分岐そのもの**。共通層に
+//    `patch.aiTargetX = opts?.aimAt ? A : B` と三項で書いていた間は、**A と B の両側を既定式にする**
+//    (=`aimAt` を読むフリだけして捨てる)変異が走査(「`opts?.aimAt` という字面が在るか」)を
+//    素通りした。分岐をここへ出し、**`aimAt` を渡したらその座標がそのまま返る**ことを値で固定する。
+//  ・`thorPlayableAreaCtx` = **「行ける帯」の文脈の組み立て**。配線側で4フィールドを1つずつ
+//    書いていた間は、`labTheme` 以外を `false` に差し替える変異が走査(`labTheme:` の1行だけ)を
+//    素通りした。組み立てごとここへ入れ、配線からは**store をそのまま渡す**だけにする。
+//
 // レンダラ非依存・store非依存の葉。import してよいのは型と world の純関数だけ。
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import type { Enemy, Player } from '../types/game';
+
+/** 「行ける帯」の文脈を組む時に読む**store の4フィールド**(構造だけを要求する=store 非依存)。 */
+export interface ThorPlayableAreaState {
+  farBackdrop: string;
+  stageTheme: string;
+  corridorMode: boolean;
+  corridorRunInActive: boolean;
+}
+
+/**
+ * store の状態から「行ける帯」の文脈(`PlayableAreaCtx`)を組む(★v0.25.3809・検収監査8巡目 低9)。
+ *
+ * なぜ切り出すか: 配線側で4フィールドを1つずつ書いていた間、走査が見ていたのは
+ * `labTheme: pst.stageTheme === 'lab'` の**1行だけ**だったので、**残り3つを定数へ差し替える**変異が
+ * 緑を通った(監査が実測)。トールの戦場では実質 no-op なので実機影響は出ないが、同じ純関数が
+ * 他ボス・他ステージへ横展開された瞬間に効く。組み立てごとここへ入れれば、配線に残るのは
+ * 「store をそのまま渡す」1語だけになり、**フィールド単位の細工が構造的にできなくなる**。
+ *
+ * `m0AdvanceLimitX` は **null 固定**(M0の透明壁はチュートリアル専用で、裏ボス戦には存在しない)。
+ * 旧配線もここに null を直書きしていたので**値は1つも変わっていない**。
+ */
+export const thorPlayableAreaCtx = (s: ThorPlayableAreaState): PlayableAreaCtx => ({
+  farBackdrop: s.farBackdrop,
+  labTheme: s.stageTheme === 'lab',
+  corridorMode: s.corridorMode,
+  m0AdvanceLimitX: null,
+  corridorRunInActive: s.corridorRunInActive,
+});
+
+/**
+ * `counter-leap`(トール全技共通のカウンター反応)の**到達点**を返す
+ * (★v0.25.3809・検収監査8巡目 重大1)。
+ *
+ * - `aimAt` が渡されていれば**その座標をそのまま返す**(=突進の弾き返しの行き先)。
+ * - 渡されていなければ既定=**プレイヤーから見て今ボスが居る向きへ `distPx`**(近接距離ギリギリ外の
+ *   後退ジャンプ)。式は旧実装(共通層に直書きしていた三項の else 側)と1文字も変えていない。
+ *
+ * なぜ純関数か: 共通層に `patch.aiTargetX = opts?.aimAt ? opts.aimAt.x : 既定式` と書いてある間は、
+ * 走査が見られるのは「`opts?.aimAt` という字面が在るか」までで、**三項の両側を既定式にする**変異
+ * (=行き先を読むフリだけして捨てる ⇒ 150pxの弾き返しが消え、常に後退ジャンプへ着地する)が
+ * 緑を通った(監査が実測)。**分岐そのものをここへ出し、値でアサートする**。
+ */
+export const counterLeapTarget = (
+  aimAt: { x: number; y: number } | undefined,
+  pcx: number, pcy: number, bcx: number, bcy: number, distPx: number,
+): { x: number; y: number } => {
+  if (aimAt) return { x: aimAt.x, y: aimAt.y };
+  const lx = bcx - pcx, ly = bcy - pcy;
+  const ll = Math.hypot(lx, ly) || 1;
+  return { x: pcx + (lx / ll) * distPx, y: pcy + (ly / ll) * distPx };
+};
+
+/**
+ * `counter-leap` の**起点**を返す(★v0.25.3809・検収監査8巡目 重大3)。`counterLeapTarget` と対。
+ *
+ * - `fromAt` が渡されていれば**その座標をそのまま返す**(=突進の到達フレームで斬り抜けカウンターを
+ *   取った時の「このフレームで実際に居る場所」)。
+ * - 渡されていなければ既定=**フレーム頭のボス中心**(`bcx/bcy`)。
+ *
+ * なぜ純関数か: 旧実装は「共通層が `patch.aiFromX` を書いた**後に**呼び出し側が上書きする」という
+ * **順序契約**の上に立っており、**代入を呼び出しの前に1行動かすだけで全緑**(監査が実測)。
+ * 3つの成立経路のうち**斬り抜け経路だけ**が壊れるので実機で最も気づかれにくい。
+ * `aimAt` と対称に引数化すれば、「後から上書きされうる」構造そのものが消える。
+ */
+export const counterLeapOrigin = (
+  fromAt: { x: number; y: number } | undefined, bcx: number, bcy: number,
+): { x: number; y: number } => (fromAt ? { x: fromAt.x, y: fromAt.y } : { x: bcx, y: bcy });
 
 export interface ThorDashPushbackInput {
   /** 突進の起点(`Enemy.aiFromX/aiFromY`)。**「来た方向」はこの2点から作る。** */
@@ -84,13 +160,16 @@ export type ThorDashPushbackPlayer = Pick<Player, 'x' | 'y' | 'width' | 'height'
  *    = 方向が作れない ⇒ プレイヤー中心が返る(旧配線と同値)。
  *  - **矩形の寸法はボスの当たり判定**(`width/height`)。0 を渡すと帯クランプが点で効く。
  *  - **弾き返しの基準点はプレイヤーの中心**(左上ではない)。
+ *  - ★v0.25.3809(8巡目 低9): **「行ける帯」の文脈の組み立てもここ**(`thorPlayableAreaCtx`)。
+ *    第3引数は組み上がった `PlayableAreaCtx` ではなく**store の状態そのもの**を受け取るので、
+ *    配線側でフィールドを1つずつ差し替える細工ができない。
  *
  * ※基準点をプレイヤー中心に取っていること自体の是非は **§9-6c で社長裁定待ち**(式は変えない)。
  */
 export const thorDashPushbackFromEnemy = (
   boss: ThorDashPushbackBoss,
   player: ThorDashPushbackPlayer,
-  area: PlayableAreaCtx,
+  state: ThorPlayableAreaState,
   pushbackPx: number,
 ): { x: number; y: number } => {
   const bcx = boss.x + boss.width / 2;
@@ -101,6 +180,6 @@ export const thorDashPushbackFromEnemy = (
     pcx: player.x + player.width / 2, pcy: player.y + player.height / 2,
     pushbackPx,
     bossW: boss.width, bossH: boss.height,
-    area,
+    area: thorPlayableAreaCtx(state),
   });
 };

@@ -60,6 +60,7 @@ import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD
 import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect, applyGhostReflectCounterFx } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流 / v0.25.2525: 弾反射の成立演出
 import { npcSfxDistGain } from './npcSfx'; // CRIT-UNIFY §9.3: ゴーストのブラストパリィ成立SEの距離減衰(escort/他ゴースト経路と同流儀)
 import { applyBossPostureDamage } from './bossPosture'; // v0.25.2946: 裏ボス体当たりの受け流し(体幹削り)
+import { shouldSkipBossContactParry } from './counterReach'; // v0.25.3809(8巡目 重大4): 受け流しへ落とさない州の述語(純関数)
 // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王(barrage-king)=反射弾のダメ・体勢削り倍率+貫通1。
 import { barrageKingMult, BARRAGE_KING_PIERCE } from './skillEffectsB7';
 
@@ -1117,7 +1118,11 @@ export const applyContactDamage = (
     //   到達しない**(走行中は forEach の冒頭で return する)。§9-6 が(a)「当てる」で裁定されて
     //   除外を外した瞬間に、この受け流しの横取り(=カウンターが丸ごと消える実バグ)がそのまま
     //   復活するので、**残置する**(消すと裁定と同時に踏み直す)。
-    const thorDashRunNow = enemy.type === 'thor' && enemy.bossState === 'thor-dash-move';
+    // ★v0.25.3809(検収監査8巡目 重大4): その「残置する」を守るテストが**1本も無かった**
+    //   (宣言ごと削除しても全緑=次のデッドコード掃除で必ず消える導火線)。述語を純関数
+    //   `shouldSkipBossContactParry` へ出し、`'thor-dash-move'` で true を**値でアサート**する
+    //   ことで、到達可能かどうかと無関係に生き続ける形にした。**挙動は1bitも変えていない。**
+    const thorDashRunNow = shouldSkipBossContactParry(enemy.type, enemy.bossState);
     if (BOSS_CONTACT_PARRY_ENABLED && counterActiveNow && !bossParryRooted && !thorDashRunNow && isHiddenBoss(enemy.type)) {
       // v0.25.2954(社長指示「体当たりカウンターしたら少しノックバックしてから硬直にして」):
       // 押す向き=プレイヤー→ボス(離れる方向)。ゼロ距離の退避は上向き。

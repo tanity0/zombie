@@ -255,7 +255,9 @@ import {
 } from '../utils/thorNihil';
 // §4-1 受け入れ条件3 / §5-2「★弾き返しの効かせ方」: 突進カウンターの弾き返しの**行き先計算**も
 // 純関数(値をテストで固定できる形)。ここに直書きすると「ゼロ化/符号反転」が緑を通る。
-import { thorDashPushbackFromEnemy } from '../utils/thorDashPushback';
+// ★v0.25.3809(8巡目 重大1/3): counter-leap の**起点/到達点の分岐そのもの**も同じ葉へ出した
+// (共通層に三項で書いてある間は「両側を既定式にする」変異が走査を素通りするため)。
+import { thorDashPushbackFromEnemy, counterLeapOrigin, counterLeapTarget } from '../utils/thorDashPushback';
 import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
 // §4: トールの突進をカウンターした時の弾き返し距離。**ミゲル/ウリと共有の既存の合流点をそのまま使う**
 // (新しい定数を作らない=research/THOR_ISSEN_REWORK.md §4-1)。
@@ -5522,9 +5524,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // **暗黙の順序契約**の上に立っており、呼び出しを2行下げるだけで弾き返しが丸ごと
               // 上書きされて消えた(=v0.25.3785 重大Dの完全再現が全テスト緑を通った)。
               // 引数にすれば「後から上書きされうる」構造そのものが無くなる。
+              // ★v0.25.3809(8巡目 重大3): **起点(`fromAt`)も同じ形で引数化**した。斬り抜けカプセルの
+              // 経路だけは「この関数を呼んでから `patch.aiFromX/Y` を上書きする」順序契約が**現に生きて
+              // いて無検査**で、代入を呼び出しの前へ移すだけで全緑だった(3経路のうち斬り抜けだけが
+              // 壊れる=実機で最も気づかれにくい)。`aimAt` と対称にして構造ごと消す。
               const thorCounterHit = (
                 hitX: number, hitY: number, ghost?: GhostCounterFire,
-                opts?: { aimAt?: { x: number; y: number } },
+                opts?: { aimAt?: { x: number; y: number }; fromAt?: { x: number; y: number } },
               ) => {
                 patch.bossScriptQueue = [];
                 // ★v0.25.3784(検収監査 中5): 突進の**専用CD**は「突進が潰れた」全経路で立てる。
@@ -5577,16 +5583,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnBurst(hitX, hitY, '#fde047', 10);
                 useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
                 }
-                const lx = bcx - pcx, ly = bcy - pcy;
-                const ll = Math.hypot(lx, ly) || 1;
                 patch.bossState = 'counter-leap';
                 patch.bossStateUntil = newGameTime + HB_TH.counterLeapMs;
-                patch.aiFromX = bcx; patch.aiFromY = bcy;
-                // 既定の到達点=近接距離ギリギリ外(後退ジャンプ)。突進のカウンターだけは
-                // **呼び出し側が `aimAt`(=弾き返しの行き先)を渡す**ので、そちらを使う。
+                // ★v0.25.3809(8巡目 重大1/3): 起点も到達点も**分岐ごと純関数**(counterLeapOrigin /
+                // counterLeapTarget)へ出した。ここに三項で書いてある間は、走査が見られるのは
+                // 「`opts?.aimAt` という字面が在るか」までで、**両側を既定式にする**変異
+                // (=渡された行き先を読むフリだけして捨てる ⇒ 弾き返しが消えて後退ジャンプへ着地)が
+                // 緑を通った。純関数なら「渡した座標がそのまま返る」を**値で**固定できる。
+                // 既定=起点はフレーム頭のボス中心 / 到達点は近接距離ギリギリ外(後退ジャンプ)。
                 // 座標(`patch.x/y`)は書かない=counter-leap の補間が運ぶ(慣性MUST)。
-                patch.aiTargetX = opts?.aimAt ? opts.aimAt.x : pcx + (lx / ll) * HB_TH.orbit.distPx;
-                patch.aiTargetY = opts?.aimAt ? opts.aimAt.y : pcy + (ly / ll) * HB_TH.orbit.distPx;
+                const leapFrom = counterLeapOrigin(opts?.fromAt, bcx, bcy);
+                const leapTo = counterLeapTarget(opts?.aimAt, pcx, pcy, bcx, bcy, HB_TH.orbit.distPx);
+                patch.aiFromX = leapFrom.x; patch.aiFromY = leapFrom.y;
+                patch.aiTargetX = leapTo.x; patch.aiTargetY = leapTo.y;
                 patch.bossBurstLeft = 0;
               };
               // ★突進(thor-dash-*)専用のカウンター反応(§4-1「来た方向へ弾き返す」)。
@@ -5607,24 +5616,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 走査が「`placed.` を使う代入が在るか」しか見ていないので**後段で捨てる**(重大3)。
               // ⇒ **行き先は引数(aimAt)で渡し、束縛は `thorDashPushbackFromEnemy` へ入れ、
               //    この層は `patch` を1つも書かない**。3つとも構造ごと消える。
-              const thorDashCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire) => {
+              // ★v0.25.3809(8巡目 重大3/低9): `fromAt`(跳びの起点)も引数で受け取って共通層へ素通しする
+              // =斬り抜け経路が持っていた「呼んでから `patch.aiFromX/Y` を上書きする」順序契約を消す。
+              // 「行ける帯」の文脈は**組み立てごと純関数へ入れた**ので、ここは `pst` をそのまま渡す
+              // (フィールドを1つずつ書かない=`labTheme` 以外を差し替える細工が構造的にできない)。
+              const thorDashCounterHit = (
+                hitX: number, hitY: number, ghost?: GhostCounterFire, fromAt?: { x: number; y: number },
+              ) => {
                 // 専用CD(thorDashReadyAt)は thorCounterHit が州(thor-dash-*)を見て一括で打刻する
                 // =ここには書かない(同じ値を2箇所に書くと必ず片方だけ古くなる)。
                 // 弾き返すのは**ボス**であってプレイヤーではない(v0.25.3784 重大2)。
                 const pst = useGameStore.getState();
                 thorCounterHit(hitX, hitY, ghost, {
-                  aimAt: thorDashPushbackFromEnemy(boss, player, {
-                    farBackdrop: pst.farBackdrop,
-                    labTheme: pst.stageTheme === 'lab',
-                    corridorMode: pst.corridorMode,
-                    m0AdvanceLimitX: null,
-                    corridorRunInActive: pst.corridorRunInActive,
-                  }, AN_C.dashCounterPushbackPx),
+                  aimAt: thorDashPushbackFromEnemy(boss, player, pst, AN_C.dashCounterPushbackPx),
+                  fromAt,
                 });
               };
               // ★v0.25.3780(§8-2): トール専用だった `thorBodyOverlapNow`(体の重なりだけで成立)は撤去した。
               // トールも他ボスと同じ宣言表(counterReach.ts)へ乗ったので、成立域の判定は
               // `hiddenReachOverlapNow()` 1本になった(硬直/飛び掛かりの溜めは宣言 'body'=挙動据え置き)。
+              // ★飛び掛かりの溜め('hidden:jump-windup')が 'body' のままなのは**裁定待ちであって対象外ではない**
+              // ——赤い着地円を描いているのに体に当てないと取れない=research/THOR_ISSEN_REWORK.md §9-12
+              // (推薦は 'circle' へ揃える側)。「据え置き」と読んで再検討を打ち切らないこと。
               // W7統一(PACING_PUZZLE.md §6.28-13/§6.28-21★3・バッチM52): 裏ボス3体(mimir/jormungand/
               // skadi)のカウンター成立処理。演出/反撃ダメージはthorCounterHitと同一だが、この3体は
               // 旋回運動を持たないため THOR_ORBIT_DIST 依存の後退ジャンプ(counter-leap)は行わず、
@@ -6650,10 +6663,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (distToBandRect({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }, HB_TH.harai.halfWidth) <= dpr) {
                     const cp = useGameStore.getState().player;
                     if (Date.now() <= cp.counterWindowEnd) {
-                      thorDashCounterHit((sx + ex) / 2, (sy + ey) / 2);
                       // 跳びの起点は**このフレームで実際に居る場所**(=上で patch.x へ書いた到達点)。
                       // フレーム頭の bcx/bcy のままだと1フレームだけ後ろへ戻って見える。
-                      patch.aiFromX = dnx; patch.aiFromY = dny;
+                      // ★v0.25.3809(8巡目 重大3): 旧実装は**呼んだ後に `patch.aiFromX/Y` を上書き**する
+                      // 順序契約だった(=この2行を呼び出しの前へ移すだけで起点が既定へ戻り、
+                      // 斬り抜け経路だけが黙って壊れる)。**引数(fromAt)で渡す**形にして構造ごと消す。
+                      thorDashCounterHit((sx + ex) / 2, (sy + ey) / 2, undefined, { x: dnx, y: dny });
                       dCountered = true;
                     } else {
                       const died = damagePlayer(boss.damage, 'トールの突進', pcx, pcy, undefined, undefined, 'thor-dash'); // G4a計測タグ(記録専用)

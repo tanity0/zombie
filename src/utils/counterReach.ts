@@ -234,6 +234,30 @@ export const HIDDEN_COUNTER_RECOVER_STATES: readonly string[] = [
 // (弾き返し=突進専用の反応は useGameLoop の thorDashCounterHit が担当する。)
 export const HIDDEN_COUNTER_ACTIVE_STATES: readonly string[] = ['dash', 'thor-dash-move'];
 
+/**
+ * **ボス接触受け流し(`combatTick` の `bossContactParries`)へ落としてはいけない**州かどうか
+ * (★v0.25.3809・検収監査8巡目 重大4)。
+ *
+ * `true` を返す州は、受け流し(体幹削り+`rootUntil` 900ms)を**通さない**。理由は
+ * research/THOR_ISSEN_REWORK.md §5-2 やること④ = **フレーム内の競合順序が固定で不利**だから:
+ * ボスtickは**フレーム頭の座標**で重なりを見て、その後に座標を進める / 接触側は**進めた後の座標**で
+ * 見る ⇒「突進が到達したフレーム」は必ず受け流しが先に取る。受け流しが `rootUntil` を立てると
+ * `frozen` がそれを拾って `bossState='chase'` にするので、**突進のカウンター(Counter!/クリ反撃/
+ * counter-leap/弾き返し/専用CD)が丸ごと出ない**(v0.25.3785 重大A)。
+ *
+ * ★なぜ純関数か(8巡目 重大4): この述語は現在 `combatTick` の**到達不能な行**にある——
+ * v0.25.3808 の暫定措置(§9-6)で走行中の接触が forEach の冒頭で return するようになったため。
+ * 設計書は「§9-6 が(a)で裁定されて除外を外した瞬間に重大Aが復活するので**残置する**」と書いているが、
+ * **それを守るテストが1本も無く、宣言ごと削除しても全緑**だった(監査が実測)。次の
+ * 「デッドコード掃除」で必ず消え、裁定の瞬間に実バグが黙って戻る導火線になる。
+ * 純関数にして**値でアサート**すれば、到達可能かどうかと無関係に生き続ける。
+ *
+ * **挙動は1bitも変えていない**(`enemy.type === 'thor' && enemy.bossState === 'thor-dash-move'` と同値)。
+ */
+export const shouldSkipBossContactParry = (
+  enemyType: string, bossState: string | undefined,
+): boolean => enemyType === 'thor' && bossState === 'thor-dash-move';
+
 /** 宣言を引く(未宣言=従来どおり体の重なり)。**新しい技は必ず表へ足す**(テストが落ちて教える)。 */
 export const counterReachKindFor = (key: string): CounterReachKind => COUNTER_REACH_DECL[key] ?? 'body';
 

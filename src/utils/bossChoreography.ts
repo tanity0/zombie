@@ -50,6 +50,10 @@ const SCRIPTS: Record<Exclude<ChoreographyBoss, 'giant' | 'glen'>, Record<string
     // ——起点は既に4本すべて埋まっていて、突き起点に新台本を置くと既存の `['tsuki','issen','harai']` を
     // 潰すことになる(社長が避けていたのはこの上書き)。3手なので trimForPhase(Phase1=2/Phase2+=3)の
     // 枠内に収まる=長さの特例もフェーズ条件も要らない。
+    // ★この「枠内に収まるので特例は要らない」という推論は **§9-13 が『見落としていた』と認定した当のもの**
+    // (Phase1 は先頭2手に切られるので `['dash','tsuki']`=**社長指定の「突 突」が HPバーの最初の4割で
+    // 出ない**)。**research/THOR_ISSEN_REWORK.md §9-13 で社長裁定待ち**(推薦=突進の台本だけ
+    // 長さの特例でPhase1も3手)。**結論として読まないこと**——裁定が出たらここが動く。
     dash: ['dash', 'tsuki', 'tsuki'],
   },
   miguel: {
