@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3734',
+    items: [
+      'EXバトル曲とエンディング曲の割り当てが逆になっていたのを修正しました(フィル戦=「大天使バトル」・エンディング=もう1曲)。',
+    ],
+  },
+  {
     version: '0.25.3733',
     items: [
       'フィルの重ね順を確定: 下から「背中の羽 → 舞い散る羽根エフェクト → 本体」で、本体が常に一番手前に表示されるようにしました。',
