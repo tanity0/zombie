@@ -1,11 +1,12 @@
 {
   "baseUrl": "local",
   "mode": "gauntlet",
-  "note": "botrunスクリプトは使わない。REQUEST.mdの手順どおりheadedでURLを開いて放置する。",
+  "note": "botrunスクリプトは使わない。REQUEST.mdの手順どおりheadedでURLを開いて放置する。botskill=masterは必須(トールの紫円の新仕様がmaster/skilled限定のため)。devサーバ利用時はpull後に必ず再起動する(版ラベルが古いまま焼かれる事故が前回発生)。",
   "url": "/zombie/?gauntlet=1&bot=standard&botskill=master",
   "headless": false,
   "viewport": {
     "width": 1280,
     "height": 800
-  }
+  },
+  "minVersion": "0.25.3782"
 }
