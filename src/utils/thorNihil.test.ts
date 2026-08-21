@@ -10,7 +10,10 @@ import {
   THOR_NIHIL_STATE, thorNihilRadius, stampMeleeSwingCommit, isInsideNihilCircle,
   meleeSwingCommitted, shouldTriggerGuaranteedIssen, isGuaranteedIssenNow, botHoldsMeleeForNihil,
 } from './thorNihil';
+// ★v0.25.3806: 弾き返しの行き先は純関数へ切り出した(値をここで固定する)。
+import { thorDashPushbackTarget } from './thorDashPushback';
 import { HIDDEN_THOR_TUNING as HB_TH } from './hiddenBossScript';
+import { LAB_CORRIDOR_Y_LIMIT_PX as LAB_Y } from '../world/labWalls';
 import { botSkillProfile } from './botSkill';
 import type { Enemy } from '../types/game';
 
@@ -267,74 +270,176 @@ describe('★突進の専用CD(thorDashReadyAt)を打刻する経路(§4)', () =
 });
 
 // =================================================================================================
-// ★v0.25.3798(検収監査5巡目 重大1): **実機から消えた挙動そのもの**を固定する。
+// ★v0.25.3806(検収監査6巡目 重大1): **弾き返しが出す値そのもの**を固定する。
+//
+// 前巡まで、この節はソース走査(=その字面が在るか)しか持っていなかった。監査が実測したところ、
+// **①弾き返し量のゼロ化(`* 0`) ②符号反転(前へ引き寄せる) ③`aiFrom` を弾き返し位置へ書いて
+// 150pxテレポート ④内側の `thorCounterHit(...)` を丸ごと削除(Counter!演出・クリ反撃・
+// counter-leap・専用CDが全部消える)** の4変異が**すべて緑を通った**。
+// ①②は字面が残るので走査では原理的に取れない ⇒ **行き先計算を純関数
+// (`thorDashPushbackTarget`)へ切り出し、方向・距離・クランプ結果を値でアサートする**
+// (CLAUDE.md 実装精度の規律4)。③④は走査へ**禁止(aiFrom)と必須(内側の呼び出し)**を足して落とす。
+// =================================================================================================
+/** トールの戦場(ステージ5)= 帯クランプがどれも当たらない文脈(§9-8 の事実メモ)。 */
+const OPEN_AREA = {
+  farBackdrop: 'field', labTheme: false, corridorMode: false,
+  m0AdvanceLimitX: null, corridorRunInActive: false,
+};
+const PUSH = 150; // = ANGEL_COMMON_TUNING.dashCounterPushbackPx(値の出どころは配線側のテストで固定)
+
+describe('★弾き返しの行き先(純関数 thorDashPushbackTarget)= §4-1 受け入れ条件3の値', () => {
+  it('★プレイヤー中心から**来た方向へ** pushbackPx ぶん退けた点を返す(ゼロ化も符号反転もここで落ちる)', () => {
+    // 突進は左(x=0)から右(x=100)へ走ってきた。プレイヤーは x=500 に居る。
+    // ⇒ ボスは「来た方向」= 左へ 150px 退く = x=350。
+    const r = thorDashPushbackTarget({
+      fromX: 0, fromY: 0, toX: 100, toY: 0, pcx: 500, pcy: 0,
+      pushbackPx: PUSH, bossW: 140, bossH: 140, area: OPEN_AREA,
+    });
+    expect(r.x, '弾き返し量がゼロ化されている/向きが逆(前へ引き寄せている)').toBe(500 - PUSH);
+    expect(r.y).toBe(0);
+    // 逆向き(右→左に走ってきた)なら、退く先も逆になる。
+    const rev = thorDashPushbackTarget({
+      fromX: 100, fromY: 0, toX: 0, toY: 0, pcx: 500, pcy: 0,
+      pushbackPx: PUSH, bossW: 140, bossH: 140, area: OPEN_AREA,
+    });
+    expect(rev.x).toBe(500 + PUSH);
+  });
+
+  it('★退く距離は**厳密に** pushbackPx(斜めでも短くならない=正規化している証明)', () => {
+    const r = thorDashPushbackTarget({
+      fromX: 0, fromY: 0, toX: 300, toY: 400, pcx: 1000, pcy: 1000, // 進行方向 (0.6, 0.8)
+      pushbackPx: PUSH, bossW: 140, bossH: 140, area: OPEN_AREA,
+    });
+    expect(Math.hypot(r.x - 1000, r.y - 1000)).toBeCloseTo(PUSH, 9);
+    expect(r.x).toBeCloseTo(1000 - 0.6 * PUSH, 9);
+    expect(r.y).toBeCloseTo(1000 - 0.8 * PUSH, 9);
+  });
+
+  it('★弾き返し量を変えると行き先も同じだけ動く(定数が飾りになっていない)', () => {
+    const at = (push: number) => thorDashPushbackTarget({
+      fromX: 0, fromY: 0, toX: 100, toY: 0, pcx: 500, pcy: 0,
+      pushbackPx: push, bossW: 140, bossH: 140, area: OPEN_AREA,
+    }).x;
+    expect(at(0)).toBe(500);       // 0を渡した時だけプレイヤー中心と同じになる
+    expect(at(300)).toBe(200);
+    expect(at(PUSH) - at(0)).toBe(-PUSH);
+  });
+
+  it('起点と到達点が同じ(方向が作れない)時はプレイヤー中心を返す(0除算しない・旧実装と同値)', () => {
+    const r = thorDashPushbackTarget({
+      fromX: 42, fromY: 42, toX: 42, toY: 42, pcx: 500, pcy: 300,
+      pushbackPx: PUSH, bossW: 140, bossH: 140, area: OPEN_AREA,
+    });
+    expect(r).toEqual({ x: 500, y: 300 });
+  });
+
+  it('★行き先は「行ける帯」(clampRectToPlayableArea)を通っている=帯の外を返さない', () => {
+    // 研究所(lab)は上下が LAB_CORRIDOR_Y_LIMIT_PX に固定される帯。矩形の下端まで帯の内側へ
+    // 収める計算(clampRectToPlayableArea)なので、帯の外へ弾き返そうとすると**中心が ±LAB_Y で止まる**。
+    const bossH = 140;
+    const outside = thorDashPushbackTarget({
+      fromX: 0, fromY: 5000, toX: 0, toY: 0, pcx: 0, pcy: LAB_Y + 400, // 上へ走ってきた=下へ弾く
+      pushbackPx: PUSH, bossW: 140, bossH, area: { ...OPEN_AREA, labTheme: true },
+    });
+    // 矩形の下端まで帯の内側へ収まる=中心は ±LAB_CORRIDOR_Y_LIMIT_PX ちょうどで止まる。
+    expect(outside.y, '帯クランプを通していない(生の座標をそのまま返している)').toBe(LAB_Y);
+    // 帯の内側で完結する場合はクランプが効かない(=無条件に潰していない)ことも見る。
+    const inside = thorDashPushbackTarget({
+      fromX: 0, fromY: 100, toX: 0, toY: 0, pcx: 0, pcy: 0,
+      pushbackPx: 10, bossW: 140, bossH, area: { ...OPEN_AREA, labTheme: true },
+    });
+    expect(inside.y).toBe(10);
+  });
+});
+
+// =================================================================================================
+// ★v0.25.3798(検収監査5巡目 重大1)+ v0.25.3806(6巡目 重大1): 配線側の固定。
 // v0.25.3785 重大D=「`thorDashCounterHit` が `aiFrom` だけを差し替えていたので、counter-leap の
 // **到達点が弾き返しの有無で1pxも変わらなかった**(=150pxの弾き返しが1pxも効いていなかった)」。
-// 直したのに**リポジトリ全体で1本も固めていなかった**ので、同じ形へ戻っても全テストが緑になる。
-// あわせて、共通カウンターブロックから突進専用層へ**振り分ける配線**(2経路)も固める
-// (CLAUDE.md 実装精度の規律4「テストされていたのは純関数だけで、配線側の誤りは全部すり抜けた」)。
+// ここで見るのは**値ではなく配線**(どこへ書くか/何を呼ぶか/何を書かないか)だけ。
+// 値の不変条件は上の純関数の describe が持つ(役割を混ぜない)。
 // =================================================================================================
 describe('★突進のカウンター(弾き返し)の配線の不変条件(§5-2 ★弾き返しの効かせ方/やること③)', () => {
   const text = Object.values(LOOP_SOURCES)[0] ?? '';
   const lines = codeLines(text);
+  const dashBody = () => blockAfter(lines, /const thorDashCounterHit = \(/, /^\s*\};\s*$/);
 
   it('★弾き返しは**到達点**(patch.aiTargetX/Y)へ書く=`aiFrom` だけを書く形に戻したらここで落ちる', () => {
-    const body = blockAfter(lines, /const thorDashCounterHit = \(/, /^\s*\};\s*$/);
+    const body = dashBody();
     expect(body.length, 'thorDashCounterHit の本体を走査できていない(走査そのものが壊れた)')
       .toBeGreaterThan(3);
     // トールは全技共通の反応(counter-leap=aiFrom→aiTarget の補間)を積むので、**到達点**を
     // 差し替えないと弾き返しは1pxも効かない(起点だけ動かしても終点が同じなら同じ場所へ着く)。
+    // かつ、書く値は**純関数が返したもの**(placed)であること=生値を書いていない証明。
+    for (const f of ['aiTargetX', 'aiTargetY'] as const) {
+      expect(
+        body.some(l => new RegExp(`patch\\.${f}\\s*=(?!=)`).test(l) && /placed\./.test(l)),
+        `弾き返しの到達点(patch.${f})を純関数の結果から書いていない`
+        + '=150pxが効かない(v0.25.3785 重大Dの再発)',
+      ).toBe(true);
+    }
+    // 弾き返し量は既存の合流点(ミゲル/ウリと共有)から**そのまま**渡す=新しい定数も係数も足さない。
+    // (`AN_C.dashCounterPushbackPx * 0` のような細工はこの正規表現で落ちる。)
     expect(
-      body.some(l => /patch\.aiTargetX\s*=(?!=)/.test(l)),
-      '弾き返しの到達点(patch.aiTargetX)を書いていない=150pxが効かない(v0.25.3785 重大Dの再発)',
-    ).toBe(true);
-    expect(
-      body.some(l => /patch\.aiTargetY\s*=(?!=)/.test(l)),
-      '弾き返しの到達点(patch.aiTargetY)を書いていない=150pxが効かない(v0.25.3785 重大Dの再発)',
-    ).toBe(true);
-    // 弾き返し量は既存の合流点(ミゲル/ウリと共有)から引く=新しい定数を作らない。
-    expect(
-      body.some(l => /dashCounterPushbackPx/.test(l)),
-      '弾き返し量が既存の dashCounterPushbackPx から来ていない',
+      body.some(l => /pushbackPx:\s*AN_C\.dashCounterPushbackPx\s*,/.test(l)),
+      '弾き返し量が既存の dashCounterPushbackPx から**そのまま**渡されていない'
+      + '(係数を掛ける/別の定数へ差し替える細工を含む)',
     ).toBe(true);
   });
 
-  it('★この層は**座標を1pxも書かない**(patch.x / patch.y への代入が無い)', () => {
-    const body = blockAfter(lines, /const thorDashCounterHit = \(/, /^\s*\};\s*$/);
+  it('★この層は**座標を1pxも書かない**(patch.x / patch.y / patch.aiFromX / patch.aiFromY への代入が無い)', () => {
+    const body = dashBody();
     expect(body.length, 'thorDashCounterHit の本体を走査できていない(走査そのものが壊れた)')
       .toBeGreaterThan(3);
     // §5-2「★弾き返しの効かせ方」の MUST。流用元のミゲルのように patch.x/patch.y へ直接書くと
     // **150px の1フレームテレポート**=CLAUDE.md「★動きの絶対ルール: 慣性」違反になる。
-    // 運ぶのは counter-leap の補間の仕事で、この層は**到達点だけ**を差し替える。
-    for (const f of ['x', 'y'] as const) {
+    // ★v0.25.3806(6巡目 重大1): `aiFrom` も同じ穴だった。`counter-leap` は t≈0 で `aiFrom` に居るので、
+    // そこへ弾き返し位置を書くと**やはり150pxの1フレームテレポート**になる(禁じていたのは
+    // `patch.x/y` だけで `aiFrom` は素通りしていた)。運ぶのは counter-leap の補間の仕事。
+    for (const f of ['x', 'y', 'aiFromX', 'aiFromY'] as const) {
       const bad = body.filter(l => new RegExp(`patch\\.${f}\\s*=(?!=)`).test(l));
       expect(
         bad.length,
         `thorDashCounterHit の中で patch.${f} を書いている=150pxの1フレームテレポート(慣性MUST違反)。`
-        + '座標はここでは1pxも書かない(§5-2「★弾き返しの効かせ方」)。'
+        + '座標(起点も到達点への瞬間移動も)はここでは1pxも書かない(§5-2「★弾き返しの効かせ方」)。'
         + `\n走査=\n${bad.map(b => b.trim()).join('\n')}`,
       ).toBe(0);
     }
   });
 
-  it('★行き先は必ず `clampRectToPlayableArea` を通す(CLAUDE.md Y方向の掟)', () => {
-    const body = blockAfter(lines, /const thorDashCounterHit = \(/, /^\s*\};\s*$/);
+  it('★行き先の計算は純関数(thorDashPushbackTarget)を通す=直書きへ戻したらここで落ちる', () => {
+    const body = dashBody();
     expect(body.length, 'thorDashCounterHit の本体を走査できていない(走査そのものが壊れた)')
       .toBeGreaterThan(3);
     expect(
-      body.some(l => /clampRectToPlayableArea\(/.test(l)),
-      '弾き返しの行き先が「行ける帯」の純関数(clampRectToPlayableArea)を通っていない。'
-      + 'アクターを新しく動かす時は必ず通す(CLAUDE.md「Y方向に何かを動かす時の必須チェック」)。',
+      body.some(l => /thorDashPushbackTarget\(/.test(l)),
+      '弾き返しの行き先を純関数(thorDashPushbackTarget)で出していない。直書きへ戻すと'
+      + '**ゼロ化・符号反転が全テスト緑を通る**(v0.25.3805 検収監査6巡目 重大1)。',
     ).toBe(true);
-    // 通した結果を使わずに生値を書いていないこと(=クランプが飾りになっていない)の証明。
+    // 「行ける帯」を通す責務は純関数側にある(値のテストが上の describe に在る)。ここでは
+    // **帯の文脈を実際に渡している**ことだけを見る(空の文脈を渡してクランプを飾りにしない)。
     expect(
-      body.some(l => /patch\.aiTargetX\s*=(?!=)/.test(l) && /placed\./.test(l)),
-      'クランプ結果(placed)ではない生値を aiTargetX へ書いている',
+      body.some(l => /labTheme:\s*pst\.stageTheme === 'lab'/.test(l)),
+      '「行ける帯」の文脈(ステージ条件)を純関数へ渡していない',
     ).toBe(true);
+  });
+
+  it('★内側で共通の `thorCounterHit(...)` を必ず呼ぶ(削ると Counter!/クリ反撃/counter-leap/専用CD が全部消える)', () => {
+    const body = dashBody();
+    expect(body.length, 'thorDashCounterHit の本体を走査できていない(走査そのものが壊れた)')
+      .toBeGreaterThan(3);
+    // この層は「共通の反応 + 弾き返しの上書き」の薄い層。共通の呼び出しを外すと、演出も
+    // 反撃ダメージも counter-leap も突進の専用CD(thorDashReadyAt)も**まとめて消える**のに、
+    // 弾き返しの走査(aiTarget を書く)は通ったままになる=無音の穴。
+    const inner = body.filter(l => /(^|[^A-Za-z])thorCounterHit\(/.test(l));
     expect(
-      body.some(l => /patch\.aiTargetY\s*=(?!=)/.test(l) && /placed\./.test(l)),
-      'クランプ結果(placed)ではない生値を aiTargetY へ書いている',
-    ).toBe(true);
+      inner.length,
+      '`thorCounterHit(hitX, hitY, ghost)` の呼び出しが本体に無い(または増えている)。'
+      + '突進のカウンターは**共通の反応をそのまま積んだ上で行き先だけ差し替える**層である。'
+      + `\n走査=\n${body.map(b => b.trim()).join('\n')}`,
+    ).toBe(1);
+    expect(inner[0], '共通の反応へ守護霊(ghost)を渡していない=守護霊が取ると演出が変わる')
+      .toMatch(/thorCounterHit\(\s*hitX\s*,\s*hitY\s*,\s*ghost\s*\)/);
   });
 
   it('★`thorDashCounterHit(` の呼び出しは**3本**(プレイヤー/守護霊/到達カプセル)', () => {
@@ -343,7 +448,9 @@ describe('★突進のカウンター(弾き返し)の配線の不変条件(§5-
     // (=到達フレームの斬り抜けカプセル経路)は `thor-dash-move` ハンドラの**中**から呼ぶので
     // 同一行に現れず、**3本目を thorCounterHit へ戻す変異が緑を通っていた**
     // (=斬り抜けの間合いで取ったカウンターだけ弾き返しが消える)。よって**呼び出し総数**で固定する。
-    const calls = lines.filter(l => /thorDashCounterHit\(/.test(l));
+    const callIdx: number[] = [];
+    lines.forEach((l, i) => { if (/thorDashCounterHit\(/.test(l)) callIdx.push(i); });
+    const calls = callIdx.map(i => lines[i]);
     expect(
       calls.length,
       '突進専用層(thorDashCounterHit)の呼び出し本数が増減した。内訳は'
@@ -352,13 +459,36 @@ describe('★突進のカウンター(弾き返し)の配線の不変条件(§5-
       + 'カウンターだけ弾き返し(§4-1 受け入れ条件3)が消える。'
       + `\n走査=\n${calls.map(b => b.trim()).join('\n')}`,
     ).toBe(3);
-    // 内訳の証明: ①②は `st === 'thor-dash-move'` で振り分ける2本(守護霊だけが gFire を渡す)。
+    // 内訳の証明①②: `st === 'thor-dash-move'` で振り分ける2本(守護霊だけが gFire を渡す)。
     const dispatch = calls.filter(l => /st === 'thor-dash-move'/.test(l));
     expect(dispatch.length, "共通カウンターブロックの振り分け(st === 'thor-dash-move' の行)が2本ではない").toBe(2);
     expect(dispatch.filter(l => /gFire/.test(l)).length, '守護霊経路(gFire を渡す方)が1本ではない').toBe(1);
     expect(dispatch.filter(l => !/gFire/.test(l)).length, 'プレイヤー経路が1本ではない').toBe(1);
-    // ③は同じハンドラの中から呼ぶので `st === …` を伴わない=残り1本。
-    expect(calls.length - dispatch.length, '到達カプセル経路(3本目)が1本ではない').toBe(1);
+    // ★内訳③(v0.25.3806・検収監査6巡目 低7): 旧テストは3本目を「総数 − 振り分け = 1」の**差分**で
+    // 推定していたので、**振り分け以外の場所へ1本足しつつ到達カプセルの1本を消す**と
+    // 総数3・差分1のまま緑になった。よって3本目は**斬り抜けのブロックを名指しで切り出して**見る。
+    // ブロック=「斬り抜けカプセルの始点を決めた所(`const sx = dnx, sy = dny;`)から、
+    //   ゴースト側の同じカプセル判定(`applyGhostAllyCapsuleHit(sx, …)`)の手前まで」。
+    const capsuleBlock = blockAfter(lines, /const sx = dnx, sy = dny;/, /applyGhostAllyCapsuleHit\(sx/);
+    expect(capsuleBlock.length, '斬り抜けカプセルのブロックを走査できていない(走査そのものが壊れた)')
+      .toBeGreaterThan(3);
+    // 帯の判定とカウンター窓の分岐が同じブロックに在ること(=切り出した場所が本当に「そこ」である証明)。
+    expect(capsuleBlock.some(l => /distToBandRect\(/.test(l)), '斬り抜けの帯の判定がブロックの中に無い').toBe(true);
+    expect(capsuleBlock.some(l => /counterWindowEnd/.test(l)), 'カウンター窓を見る分岐がブロックの中に無い').toBe(true);
+    expect(
+      capsuleBlock.filter(l => /thorDashCounterHit\(/.test(l)).length,
+      '斬り抜けの帯+カウンター窓の分岐から thorDashCounterHit を呼ぶ1本が無い(3本目)。',
+    ).toBe(1);
+    // ★このブロックで**共通層(thorCounterHit)を直接呼んではいけない**。呼ぶと総数3を保ったまま
+    // 「斬り抜けの間合いで取ったカウンターだけ弾き返しが消える」(§4-1 受け入れ条件3が片肺になる)。
+    expect(
+      capsuleBlock.filter(l => /(^|[^A-Za-z])thorCounterHit\(/.test(l)).length,
+      '斬り抜けのブロックが共通層(thorCounterHit)を直接呼んでいる=この間合いのカウンターだけ'
+      + '弾き返しが出ない。突進の成立は必ず突進専用層(thorDashCounterHit)を通す。'
+      + `\n走査=\n${capsuleBlock.map(b => b.trim()).join('\n')}`,
+    ).toBe(0);
+    // ①②と③は別の場所=重なっていないこと(同じ1本を二重に数えていない証明)。
+    expect(dispatch.length + capsuleBlock.filter(l => /thorDashCounterHit\(/.test(l)).length).toBe(3);
   });
 });
 

@@ -253,6 +253,9 @@ import { pickThorMove, thorPhaseForHealth, type ThorMove } from '../utils/thorSc
 import {
   shouldTriggerGuaranteedIssen, isGuaranteedIssenNow, botHoldsMeleeForNihil,
 } from '../utils/thorNihil';
+// §4-1 受け入れ条件3 / §5-2「★弾き返しの効かせ方」: 突進カウンターの弾き返しの**行き先計算**も
+// 純関数(値をテストで固定できる形)。ここに直書きすると「ゼロ化/符号反転」が緑を通る。
+import { thorDashPushbackTarget } from '../utils/thorDashPushback';
 import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
 // §4: トールの突進をカウンターした時の弾き返し距離。**ミゲル/ウリと共有の既存の合流点をそのまま使う**
 // (新しい定数を作らない=research/THOR_ISSEN_REWORK.md §4-1)。
@@ -5588,27 +5591,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 専用CD(thorDashReadyAt)は thorCounterHit が州(thor-dash-*)を見て一括で打刻する
                 // =ここには書かない(同じ値を2箇所に書くと必ず片方だけ古くなる)。
                 thorCounterHit(hitX, hitY, ghost);
-                let bdx = (boss.aiTargetX ?? bcx) - (boss.aiFromX ?? bcx);
-                let bdy = (boss.aiTargetY ?? bcy) - (boss.aiFromY ?? bcy);
-                const bl = Math.hypot(bdx, bdy) || 1; bdx /= bl; bdy /= bl;
+                // ★v0.25.3806(検収監査6巡目 重大1): 行き先の計算そのものは純関数
+                // (`thorDashPushbackTarget`)へ出した。ここに直書きしていた頃は、監査が実測した
+                // **弾き返し量のゼロ化・符号反転**が両方とも全テスト緑を通っていた(ソース走査は
+                // 字面しか守れない)。値の不変条件は thorNihil.test.ts が**値で**アサートする。
                 // 弾き返すのは**ボス**であってプレイヤーではない(v0.25.3784 重大2)。
-                const bx2 = pcx - bdx * AN_C.dashCounterPushbackPx;
-                const by2 = pcy - bdy * AN_C.dashCounterPushbackPx;
-                // 行き先は「行ける帯」の定義(clampRectToPlayableArea)を必ず通す(CLAUDE.md Y方向の掟)。
-                // ※トールの戦場(ステージ5)では tutorial/lab/corridor のどれにも当たらないので実質そのまま
-                //   返る。木/壁の解決(resolveAabb)はしていない=トールは障害物と当たらない設計。
                 const pst = useGameStore.getState();
-                const placed = clampRectToPlayableArea(bx2 - boss.width / 2, by2 - boss.height / 2, boss.width, boss.height, {
-                  farBackdrop: pst.farBackdrop,
-                  labTheme: pst.stageTheme === 'lab',
-                  corridorMode: pst.corridorMode,
-                  m0AdvanceLimitX: null,
-                  corridorRunInActive: pst.corridorRunInActive,
+                const placed = thorDashPushbackTarget({
+                  fromX: boss.aiFromX ?? bcx, fromY: boss.aiFromY ?? bcy,
+                  toX: boss.aiTargetX ?? bcx, toY: boss.aiTargetY ?? bcy,
+                  pcx, pcy,
+                  pushbackPx: AN_C.dashCounterPushbackPx,
+                  bossW: boss.width, bossH: boss.height,
+                  area: {
+                    farBackdrop: pst.farBackdrop,
+                    labTheme: pst.stageTheme === 'lab',
+                    corridorMode: pst.corridorMode,
+                    m0AdvanceLimitX: null,
+                    corridorRunInActive: pst.corridorRunInActive,
+                  },
                 });
                 // 起点は今いる場所のまま(thorCounterHit が bcx/bcy を入れている)=テレポートしない。
                 // 到達点だけを弾き返し位置へ差し替える=ここが「150pxが効く」ようになった実体。
-                patch.aiTargetX = placed.x + boss.width / 2;
-                patch.aiTargetY = placed.y + boss.height / 2;
+                patch.aiTargetX = placed.x;
+                patch.aiTargetY = placed.y;
               };
               // ★v0.25.3780(§8-2): トール専用だった `thorBodyOverlapNow`(体の重なりだけで成立)は撤去した。
               // トールも他ボスと同じ宣言表(counterReach.ts)へ乗ったので、成立域の判定は
