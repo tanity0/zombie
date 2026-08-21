@@ -737,7 +737,18 @@ const ensureSfxContext = () => {
   if (sfxContext) return sfxContext;
   const AudioContextCtor = window.AudioContext ?? (window as WindowWithWebAudio).webkitAudioContext;
   if (!AudioContextCtor) return null;
-  sfxContext = new AudioContextCtor();
+  // v0.25.3731(車載BT「キープアライブを入れてもブチブチ」の切り分けツマミ): `?btlat=` で
+  // AudioContextのlatencyHint(出力バッファの大きさ)を指定できる。BTはレイテンシが大きく、
+  // 既定の'interactive'(小バッファ)だとゲーム負荷でレンダリングが間に合わない瞬間に
+  // アンダーラン=ブチブチが出る端末がある。'playback'=大バッファ(SE遅延は増える)。
+  // 例: ?btlat=playback / ?btlat=balanced / ?btlat=0.15(秒)。指定なし=従来どおり既定。
+  let ctxOptions: AudioContextOptions | undefined;
+  try {
+    const latRaw = new URLSearchParams(window.location.search).get('btlat');
+    if (latRaw === 'playback' || latRaw === 'balanced' || latRaw === 'interactive') ctxOptions = { latencyHint: latRaw };
+    else if (latRaw && Number.isFinite(Number(latRaw)) && Number(latRaw) > 0) ctxOptions = { latencyHint: Number(latRaw) };
+  } catch { /* ignore */ }
+  sfxContext = ctxOptions ? new AudioContextCtor(ctxOptions) : new AudioContextCtor();
   attachAudioRouteRecovery(sfxContext);
   return sfxContext;
 };
@@ -748,8 +759,11 @@ const ensureSfxContext = () => {
 // 聞こえる。対策: **聴感上無音の極小信号(-80dB相当・50Hz)を常時流してリンクを起こしたままにする**
 // キープアライブ。スピーカー再生には聞こえない・CPUもオシレータ1本=実害なし。`?btkeep=0` で無効化。
 let btKeepAliveStarted = false;
+let btKeepAliveOsc: OscillatorNode | null = null;
+let btKeepAliveGain: GainNode | null = null;
 const startBtKeepAlive = () => {
   if (btKeepAliveStarted) return;
+  if (muted) return; // ★v0.25.3731: ミュート中は流さない(下のstopBtKeepAliveと対)
   if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('btkeep') === '0') return;
   const ctx = sfxContext;
   if (!ctx || ctx.state !== 'running') return; // 起動はrunningになってから(ジェスチャ前のstart()は無効)
@@ -761,8 +775,24 @@ const startBtKeepAlive = () => {
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
+    btKeepAliveOsc = osc;
+    btKeepAliveGain = gain;
     btKeepAliveStarted = true;
   } catch { /* ignore */ }
+};
+
+// ★v0.25.3731(社長報告・車載BT「ミュートにしてもすぐ再生される」): キープアライブ信号が
+// ミュートと無関係に流れ続けていた実装漏れの修正。車のヘッドユニットはストリームに信号が
+// ある限り「再生中」扱いに戻るため、ミュートの意図(車側も無音・停止扱い)に反していた。
+// ミュートで止め、解除で再開する(setAudioMuted連動)。
+const stopBtKeepAlive = () => {
+  if (!btKeepAliveStarted) return;
+  try { btKeepAliveOsc?.stop(); } catch { /* ignore */ }
+  try { btKeepAliveOsc?.disconnect(); } catch { /* ignore */ }
+  try { btKeepAliveGain?.disconnect(); } catch { /* ignore */ }
+  btKeepAliveOsc = null;
+  btKeepAliveGain = null;
+  btKeepAliveStarted = false;
 };
 
 const resumeSfxContext = () => {
@@ -999,7 +1029,8 @@ export const getSfxVolume = () => sfxVolume;
 export const setAudioMuted = (nextMuted: boolean) => {
   muted = nextMuted;
   persistMuted();
-  if (!muted) warmSfxBuffers();
+  if (muted) stopBtKeepAlive();       // ★v0.25.3731: ミュート中はBTキープアライブも停止(車側も停止扱いへ)
+  else { warmSfxBuffers(); startBtKeepAlive(); }
   applyBgm();
   applyDanceAudio();
   applyRadioLayerAudio(); // ラジオ層(ステージ2クロスフェード)もmute設定に即追従

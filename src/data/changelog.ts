@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3731',
+    items: [
+      'ミュート中もBluetooth機器(カーオーディオ等)が「再生中」扱いのままになる問題を修正しました(キープアライブ信号がミュートを無視して流れ続けていました)。',
+      'Bluetoothのブチブチ切れの切り分け用に ?btlat=playback(音声バッファを大きくする・SEの遅延は少し増える)を追加しました。既定の挙動は変わりません。',
+    ],
+  },
+  {
     version: '0.25.3730',
     items: [
       'EXボス「フィル」の見た目を約2倍の大きさにしました(判定は不変)。',
