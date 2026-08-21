@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3781',
+    items: [
+      'ゲーム内容の変更はありません(設計の記録のみ)。',
+    ],
+  },
+  {
     version: '0.25.3780',
     items: [
       'トールの一閃が2段になりました。まず「無の境地」の紫の円が出て(何も起きません)、そのあと従来の赤い一閃が来ます。',
