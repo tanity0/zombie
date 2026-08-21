@@ -6541,8 +6541,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dfx = boss.aiFromX ?? bcx, dfy = boss.aiFromY ?? bcy;
                 const dtx = boss.aiTargetX ?? bcx, dty = boss.aiTargetY ?? bcy;
                 const thorDashCountered = (hx: number, hy: number): void => {
+                  // 専用CDは thorCounterHit が州(thor-dash-*)を見て一括で打刻する=ここには書かない
+                  // (同じ値を2箇所に書くと必ず片方だけ古くなる)。
                   thorCounterHit(hx, hy);
-                  patch.thorDashReadyAt = newGameTime + HB_TH.dash.cdMs;
                   let bdx = dtx - dfx, bdy = dty - dfy;
                   const bl = Math.hypot(bdx, bdy) || 1; bdx /= bl; bdy /= bl;
                   // ★v0.25.3784(検収監査 重大2): 弾き返すのは**ボス**であってプレイヤーではない。

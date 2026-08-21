@@ -156,11 +156,13 @@ export const COUNTER_REACH_DECL: Readonly<Record<string, CounterReachKind>> = {
   // 溜め中は「体の重なり」でしか成立しなかった(=赤い帯の中に居ても取れない)。
   // 除外を撤去して他ボスと同じ宣言表に乗せ、**赤い予告の図形=成立域**へ揃える。
   'hidden:issen-nihil': 'none',           // ★紫=無の境地。円の中でも体が重なっても成立しない(§1-1)
-  'hidden:issen-windup': 'band',          // 一閃=帯 310×80(ロック済みの aiFrom→aiTarget)
+  // 寸法の書き方は「長さ×**全幅**(半幅N)」で統一する(v0.25.3784: 旧コメントは 310×80 で、
+  // halfWidth=80 の意味だったが「全幅80」と誤読できた)。
+  'hidden:issen-windup': 'band',          // 一閃=帯 310×160(半幅80。ロック済みの aiFrom→aiTarget)
   'hidden:issen-recover': 'body',
-  'hidden:tsuki-windup': 'band',          // 突き=帯 300×30(**毎フレーム引き直す**=遅延追従する狙い)
+  'hidden:tsuki-windup': 'band',          // 突き=帯 300×30(半幅15。**毎フレーム引き直す**=遅延追従する狙い)
   'hidden:tsuki-recover': 'body',
-  'hidden:harai-windup': 'band',          // 払い=帯 310×80(ロック済みの並行ライン)
+  'hidden:harai-windup': 'band',          // 払い=帯 310×80(半幅40。ロック済みの並行ライン)
   'hidden:harai-recover': 'body',
   'hidden:jump-windup': 'body',           // 飛び掛かり=着地円だが、成立域は従来どおり体(§8-2の対象外=挙動据え置き)
   'hidden:jump-recover': 'body',

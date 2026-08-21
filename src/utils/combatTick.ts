@@ -1024,7 +1024,14 @@ export const applyContactDamage = (
     // トール(ステージ5裏ボス)専用の攻撃実行中(chase/return以外のbossState)は、通常の接触ダメージを
     // 適用しない=各攻撃(一閃/突き/払い/ジャンプ攻撃)自身の当たり判定/カウンター処理に委ねる
     // (社長指示: 一閃・突きは「もとの当たり判定ではなくライン上のみ」)。
-    if (enemy.type === 'thor' && enemy.bossState && enemy.bossState !== 'chase' && enemy.bossState !== 'return') return;
+    // ★v0.25.3784(検収監査 重大1「赤と判定がズレている」): **突進の走り(thor-dash-move)だけは
+    // 除外しない**=流用元のミゲルに合わせる。ミゲルはこの除外を持たないので、踏み込みの走行中
+    // (mdash-move)に体が触れれば接触ダメージが入る(angelBossTick 側の mdash-move はカウンターの
+    // 判定しか持たず、**ダメージはこの共通経路が出している**)。旧実装ではトールの突進だけ走行中が
+    // 完全に無害で、赤い流星ラインの上に立っていても素通りだった。上の3技(一閃/突き/払い)と
+    // ジャンプは従来どおり除外=「もとの当たり判定ではなくライン上のみ」(社長指示)を維持する。
+    if (enemy.type === 'thor' && enemy.bossState && enemy.bossState !== 'chase' && enemy.bossState !== 'return'
+      && enemy.bossState !== 'thor-dash-move') return;
     // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間はプレイヤーは被弾しない。
     // カウンター窓中ならカウンター成立=クリティカル反撃(ヘッドショット)を返す。
     // M51: ジャイアント新スクリプトの飛び掛かり滞空(g-jump-air)も同じ扱い(既存'jump'と同義)。
