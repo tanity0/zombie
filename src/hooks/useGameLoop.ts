@@ -5495,6 +5495,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 演出(Counter!/ヒットインパクト/クリ反撃)を行い、近接距離ギリギリ外まで高速後退させる。
               const thorCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire) => {
                 patch.bossScriptQueue = [];
+                // ★v0.25.3784(検収監査 中5): 突進の**専用CD**は「突進が潰れた」全経路で立てる。
+                // 旧実装は ①thor-dash-recover 明け ②走行中のカウンター ③?thorscript=0 の chase 復帰 の
+                // 3箇所にしか無く、**共通カウンターブロックが thor-dash-windup で成立した経路**が
+                // 抜けていた(=溜めをカウンターし続けると突進が連発できた)。ここは全成立経路
+                // (プレイヤー/守護霊・溜め/走行/硬直)が通る1本なので、州を見て一括で打刻する。
+                if (st === 'thor-dash-windup' || st === 'thor-dash-move' || st === 'thor-dash-recover') {
+                  patch.thorDashReadyAt = newGameTime + HB_TH.dash.cdMs;
+                }
                 if (ghost) {
                   // v0.25.2480(★未決1解消): 守護霊カウンター成立。プレイヤー専用の副作用(G1/G4a計測
                   // notify・コンボ・counter SE等倍・強glow95・triggerHitImpact(停止+ズーム)・
@@ -6347,6 +6355,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // ★これが「必中」の実体(§5-2 やること②)。issen-dash の被弾解決は帯に触れた時点で
                   // counterWindowEnd を見る経路を持つので、**引き金になった振りが開けた窓で必ず弾かれる**。
                   // このフラグが立っている間だけその分岐をスキップして damagePlayer へ直行する。
+                  // ★v0.25.3784(検収監査 重大3): **値は判定に使わない**(立っているか / 0 か だけを見る。
+                  // isGuaranteedIssenNow 参照)。入れている数字はダッシュの終了時刻=デバッグ用の記録で、
+                  // **これを gameTime と比較すると州の最終フレームで窓が閉じる off-by-one が再発する**。
                   patch.issenGuaranteedUntil = newGameTime + HB_TH.issen.dashMs;
                   playSfx('katana-dash'); // §5-10: ダッシュ音は通常・必中とも鳴らす
                 } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
@@ -6383,7 +6394,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // ので、放っておくと必中どころか「ほぼ確実にカウンターされる」。フラグが立っている間だけ
                 // この分岐をスキップして damagePlayer へ直行する(閉じるのは**対プレイヤーの経路だけ**で、
                 // 下の applyGhostAllyCapsuleHit=守護霊側は現行どおり)。通常の一閃では立たない=従来どおり返せる。
-                const issenGuaranteed = isGuaranteedIssenNow(boss.issenGuaranteedUntil, newGameTime);
+                // ★v0.25.3784(検収監査 重大3): 判定は**フラグの有無だけ**(時刻を比較しない)。
+                // 詳細は thorNihil.isGuaranteedIssenNow のコメント(州の最終フレームだけ窓が閉じる
+                // off-by-one で「必中なのにカウンターされる」が起きていた)。
+                const issenGuaranteed = isGuaranteedIssenNow(boss.issenGuaranteedUntil);
                 if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, HB_TH.issen.halfWidth) <= pr) { // v0.25.3496: 描いてある四角
                   const cp = useGameStore.getState().player;
                   if (!issenGuaranteed && Date.now() <= cp.counterWindowEnd) {
@@ -6531,18 +6545,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.thorDashReadyAt = newGameTime + HB_TH.dash.cdMs;
                   let bdx = dtx - dfx, bdy = dty - dfy;
                   const bl = Math.hypot(bdx, bdy) || 1; bdx /= bl; bdy /= bl;
+                  // ★v0.25.3784(検収監査 重大2): 弾き返すのは**ボス**であってプレイヤーではない。
+                  // 流用元(angelBossTick の dashCountered=ミゲル/ウリ共有の合流点)は、同じ式で
+                  // **ミゲルの座標**を書いている(`patch.x = px2 - miguel.width / 2`)。旧実装は
+                  // これをプレイヤーの座標へ書いており、カウンターすると**プレイヤーが150px吹き飛ぶ**
+                  // =ミゲルと真逆の挙動になっていた。**プレイヤーの座標はここでは1pxも書かない。**
+                  const bx2 = pcx - bdx * AN_C.dashCounterPushbackPx;
+                  const by2 = pcy - bdy * AN_C.dashCounterPushbackPx;
                   // 位置は「行ける帯」の定義(clampRectToPlayableArea)を必ず通す(CLAUDE.md Y方向の掟)。
                   const pst = useGameStore.getState();
-                  const px2 = pst.player.x - bdx * AN_C.dashCounterPushbackPx;
-                  const py2 = pst.player.y - bdy * AN_C.dashCounterPushbackPx;
-                  const placed = clampRectToPlayableArea(px2, py2, pst.player.width, pst.player.height, {
+                  const placed = clampRectToPlayableArea(bx2 - boss.width / 2, by2 - boss.height / 2, boss.width, boss.height, {
                     farBackdrop: pst.farBackdrop,
                     labTheme: pst.stageTheme === 'lab',
                     corridorMode: pst.corridorMode,
                     m0AdvanceLimitX: null,
                     corridorRunInActive: pst.corridorRunInActive,
                   });
-                  useGameStore.setState(stt => ({ player: { ...stt.player, x: placed.x, y: placed.y } }));
+                  patch.x = placed.x; patch.y = placed.y;
+                  // thorCounterHit は全技共通の反応(counter-leap=跳び退き)を積む。跳びの補間は
+                  // aiFrom から始まるので、**起点も弾き返した位置**へ揃える(揃えないと次フレームで
+                  // 元の位置へ戻り、弾き返しが1フレームで消える)。跳び先(aiTarget)は共通のまま。
+                  patch.aiFromX = placed.x + boss.width / 2; patch.aiFromY = placed.y + boss.height / 2;
                 };
                 // 通過中(体の重なり)もカウンターを取れる=ミゲルと同じ(素通りして背後から斬られない)。
                 const cpNow = useGameStore.getState().player;
@@ -6557,7 +6580,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dMoveT = Math.max(0, Math.min(1, dElapsed / HB_TH.dash.moveMs));
                 const dnx = dfx + (dtx - dfx) * airHopEase01(dMoveT);
                 const dny = dfy + (dty - dfy) * airHopEase01(dMoveT);
-                if (!dashBodyCountered) { patch.x = dnx - boss.width / 2; patch.y = dny - boss.height / 2; }
+                if (!dashBodyCountered) {
+                  // ★v0.25.3784(検収監査 低): アクターを動かす時は必ず「行ける帯」を通す
+                  // (CLAUDE.md Y方向の掟。旧実装は生の座標をそのまま書いていた)。
+                  const dSt = useGameStore.getState();
+                  const dPlaced = clampRectToPlayableArea(dnx - boss.width / 2, dny - boss.height / 2, boss.width, boss.height, {
+                    farBackdrop: dSt.farBackdrop,
+                    labTheme: dSt.stageTheme === 'lab',
+                    corridorMode: dSt.corridorMode,
+                    m0AdvanceLimitX: null,
+                    corridorRunInActive: dSt.corridorRunInActive,
+                  });
+                  patch.x = dPlaced.x; patch.y = dPlaced.y;
+                }
                 let dCountered = dashBodyCountered;
                 if (!dashBodyCountered && dElapsed >= HB_TH.dash.moveMs) {
                   // 到達=斬り抜け1回(払いのカプセルを流用=ミゲルが harai を流用しているのと同じ作法)。

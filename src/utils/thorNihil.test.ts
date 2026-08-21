@@ -4,7 +4,7 @@
 //  ①紫円の半径が**1つの定数**から来ている(絵・引き金・ボットの3箇所で複製していない)
 //  ②引き金は**近接スイング専用の打刻のエッジ**で見る(カウンター演出やショップでは立たない)
 //  ③**時計を混ぜない**(絶対時刻の比較をしていない=打刻が進んだかどうかだけを見る)
-//  ④必中フラグは gameTime で判定し、0/未設定なら閉じない
+//  ④必中フラグは**有無だけ**で判定する(時刻を比較しない=v0.25.3784の off-by-one の再発防止)
 import { describe, it, expect } from 'vitest';
 import {
   THOR_NIHIL_STATE, thorNihilRadius, stampMeleeSwingCommit, isInsideNihilCircle,
@@ -100,14 +100,29 @@ describe('必中一閃の引き金(§1-3 受け入れ条件1/2/7)', () => {
 });
 
 describe('必中の「カウンターされない」窓(§1-3 受け入れ条件5/9/10)', () => {
-  it('立っている間だけ真(単位=gameTime)', () => {
-    expect(isGuaranteedIssenNow(2000, 1999)).toBe(true);
-    expect(isGuaranteedIssenNow(2000, 2000)).toBe(false); // 終了時刻ちょうどはもう閉じている
-    expect(isGuaranteedIssenNow(2000, 2500)).toBe(false);
+  it('フラグが立っている間は真(★時刻を比較しない)', () => {
+    expect(isGuaranteedIssenNow(2000)).toBe(true);
+    expect(isGuaranteedIssenNow(1)).toBe(true);
   });
   it('通常の一閃(フラグ未設定/0)では閉じない=従来どおりカウンターできる', () => {
-    expect(isGuaranteedIssenNow(undefined, 1000)).toBe(false);
-    expect(isGuaranteedIssenNow(0, 1000)).toBe(false);
+    expect(isGuaranteedIssenNow(undefined)).toBe(false);
+    expect(isGuaranteedIssenNow(0)).toBe(false);
+  });
+  // ★v0.25.3784(検収監査 重大3)の再発防止。旧実装は `gameTime < issenGuaranteedUntil` の排他で、
+  // フラグの値が `bossStateUntil` と同値だったため、**州の最終フレーム**(帯判定がまだ走る最後の1回)
+  // だけ必中が切れていた。COUNTER_WINDOW(400ms) > dashMs(280ms) なので引き金の振りが開けた窓は
+  // まだ開いており、「必中で被弾したうえに Counter! も出る」になっていた。
+  it('★州の最終フレーム(gameTime が issen-dash の終了時刻に達したフレーム)でもカウンターされない', () => {
+    const dashStart = 10_000;
+    const dashMs = HB_TH.issen.dashMs;
+    const flag = dashStart + dashMs;          // 実装が入れる値(= bossStateUntil と同値)
+    const lastFrameGameTime = dashStart + dashMs; // 「州が終わる」と判定されるフレームの時刻
+    // 旧実装(gameTime < flag)ならここが false=カウンターが通ってしまっていた。
+    expect(lastFrameGameTime < flag).toBe(false);
+    expect(isGuaranteedIssenNow(flag)).toBe(true);
+  });
+  it('★フラグを落とすのは「州を抜ける所」だけ=落とせば通常どおりカウンターできる', () => {
+    expect(isGuaranteedIssenNow(0)).toBe(false);
   });
 });
 

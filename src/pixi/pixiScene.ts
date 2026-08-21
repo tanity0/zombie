@@ -16246,15 +16246,35 @@ export class PixiScene {
         // ★新技「突進」(§4・ミゲル型)。溜め中は赤い流星ライン(下の共通ブロックが dashLineTick で描く)+
         // ダメージ瞬間の400ms前フラッシュ(他3技と同じ)。実行中は白へ戻す。
         view.sprite.tint = 0xffffff;
-        if (e.bossState === 'thor-dash-windup') {
-          const dFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
+        const dRemainMs = (e.bossStateUntil ?? gameTime) - gameTime;
+        const dWindNow = e.bossState === 'thor-dash-windup';
+        const dprog = Math.max(0, Math.min(1, 1 - dRemainMs / HB_TH.dash.windup));
+        if (dWindNow) {
+          const dFlash = thorFlashTint(dRemainMs, now);
           if (dFlash !== null) view.sprite.tint = dFlash;
           // ★予兆(既存の型を流用): 震え+後ずさり(裏ボスの突進windupと同じ windupBackstepOffset)。
-          const dprog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_TH.dash.windup));
           const dtx0 = e.aiTargetX ?? cx, dty0 = e.aiTargetY ?? cy;
           const ddx0 = dtx0 - cx, ddy0 = dty0 - cy; const ddl0 = Math.hypot(ddx0, ddy0) || 1;
           const doff = windupBackstepOffset(dprog, now, -ddx0 / ddl0, -ddy0 / ddl0, 8);
           view.sprite.position.x += doff.x; view.sprite.position.y += doff.y;
+        }
+        // ★v0.25.3784(検収監査 重大1): 溜め〜走行中は**刀を持たせる**。ミゲルの踏み込み
+        // (pixiScene 16830 付近 = mdash-windup/mdash-move の drawMiguelKatanaReady)と
+        // **同じ条件・同じ引数の作り方**に揃える(構えの姿勢='draw'・軸=手元・alphaもミゲル式)。
+        // 旧実装は流星ラインと移動だけを移植していたため、突進の間トールは**素手**で走り、
+        // 到達時の斬り抜けが絵ゼロで発生していた。
+        {
+          const dfx = e.aiFromX ?? cx, dfy = e.aiFromY ?? cy;
+          const dtx = e.aiTargetX ?? cx, dty = e.aiTargetY ?? cy;
+          const dElapsed = gameTime - (e.aiStartedAt ?? gameTime);
+          if (dWindNow || dElapsed < HB_TH.dash.moveMs) {
+            const dSwordAlpha = dWindNow ? 0.7 * swordFadeInAlpha(HB_TH.dash.windup - dRemainMs) : 1;
+            const dTremor = dWindNow ? windupTremorPx(dprog, now) : 0;
+            this.drawThorKatanaReady(
+              e.id, fb.footX, fb.footY - fb.boxH * 0.5, dfx, dfy, dtx, dty, dSwordAlpha, 'draw', 0, dTremor, now,
+            );
+          }
+          // 到達後(斬り抜け=strikeMs)の絵は下の thorswing latch が描く(kind===3)。
         }
       } else if (
         e.bossState === 'issen-recover' || e.bossState === 'tsuki-recover'
@@ -16265,10 +16285,13 @@ export class PixiScene {
         // 既存(900ms・無改変)だが、青白tintの配線が未実装だったのでここで一緒に揃える(硬直の存在自体・
         // 長さ・カウンター可否は何も変えない=表示だけの追補)。
         view.sprite.tint = BOSS_RECOVER_TINT;
-        if (e.bossState !== 'jump-recover' && e.bossState !== 'thor-dash-recover') {
+        // ★v0.25.3784(検収監査 重大1): 突進の硬直でも**刀を消さない**(掟W9)。ミゲルは
+        // mdash-recover で drawMiguelKatanaReady を出している(pixiScene 16852 付近)ので揃える。
+        // jump-recover だけは刀の構えを持たない技なので従来どおり対象外。
+        if (e.bossState !== 'jump-recover') {
           const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
           const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-          const recoverStyle: SwordSwingStyle = e.bossState === 'issen-recover'
+          const recoverStyle: SwordSwingStyle = e.bossState === 'issen-recover' || e.bossState === 'thor-dash-recover'
             ? 'draw' : e.bossState === 'tsuki-recover' ? 'thrust' : 'wide';
           this.drawThorKatanaReady(
             e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty,
@@ -16302,19 +16325,30 @@ export class PixiScene {
       // 一閃は元から「抜き位置=ライン始点」が軸なので焼き付け値がそのまま軸になる。
       {
         const bs = e.bossState;
-        const swinging = bs === 'issen-dash' || bs === 'tsuki' || bs === 'harai';
+        // ★v0.25.3784(検収監査 重大1): 突進の**斬り抜け**も「振り」に含める。ミゲル(mdash-move)と
+        // 同じく走り(moveMs)の間は振らず、**到達してから** strikeMs のあいだ斬り抜けの絵が出る
+        // (走行中に振ってしまうと絵と判定の時刻がズレる)。半幅は判定と同じ HB_TH.harai.halfWidth を読む
+        // =pixi 側に数値リテラルを書かない。
+        const dashStriking = bs === 'thor-dash-move'
+          && (gameTime - (e.aiStartedAt ?? gameTime)) >= HB_TH.dash.moveMs;
+        const swinging = bs === 'issen-dash' || bs === 'tsuki' || bs === 'harai' || dashStriking;
         // 判定の窓(bossStateUntil)と同じ時間で振り切り、次の技への繋ぎを視覚でも一致させる。
-        const swingDur = (bs === 'issen-dash' ? HB_TH.issen.dashMs : bs === 'tsuki' ? HB_TH.tsuki.ms : HB_TH.harai.active) * FX_SWING_LINGER;
+        const swingDur = (bs === 'issen-dash' ? HB_TH.issen.dashMs
+          : bs === 'tsuki' ? HB_TH.tsuki.ms
+          : bs === 'harai' ? HB_TH.harai.active
+          : HB_TH.dash.strikeMs) * FX_SWING_LINGER;
         const swL = this.latchFx(`${e.id}:thorswing`, swinging, swingDur, now, () => [
           e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy,
           bs === 'issen-dash' ? HB_TH.issen.halfWidth : bs === 'tsuki' ? HB_TH.tsuki.halfWidth : HB_TH.harai.halfWidth,
-          bs === 'issen-dash' ? 0 : bs === 'tsuki' ? 1 : 2, // 技の種別(柄の軸の付け方が違う)
+          bs === 'issen-dash' ? 0 : bs === 'tsuki' ? 1 : bs === 'harai' ? 2 : 3, // 技の種別(柄の軸の付け方が違う)
         ]);
         if (swL) {
           const [sfx, sfy, stx, sty, hw, kind] = swL.d;
           if (kind === 0) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, sfx, sfy, 'draw');
           else if (kind === 1) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, undefined, undefined, 'thrust');
-          else this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
+          else if (kind === 2) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
+          // kind===3 = 突進の斬り抜け。ミゲルの drawMiguelSlash(…, 'draw', 軸=手元)と同じ作り。
+          else this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'draw');
         }
       }
       // active州へ入る前にカウンターされても、構えていた刀だけは本来の時刻まで振り切る。
@@ -16352,6 +16386,25 @@ export class PixiScene {
           THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
           e.id, fx, fy, tx, ty, HB_TH.harai.halfWidth, handX, handY, 'wide',
         );
+        // ★v0.25.3784(検収監査 重大1): 突進もカウンター保険を持つ。ミゲルの
+        // `miguel-dash-complete`(pixiScene 17363 付近)と**同じ式**——溜め中は「残り+走りの分」を
+        // 到達までの時間、走行中は「moveMs の残り」を到達までの時間として、斬り抜け(strikeMs)を
+        // 最後まで描き切る。これが無いと溜め/走りをカウンターで折られた瞬間に刀ごと消える。
+        const dashWind = bs === 'thor-dash-windup', dashActive = bs === 'thor-dash-move';
+        const dashElapsed = dashActive ? Math.max(0, gameTime - (e.aiStartedAt ?? gameTime)) : 0;
+        const dashToStrike = dashWind
+          ? remain + HB_TH.dash.moveMs
+          : dashActive ? Math.max(0, HB_TH.dash.moveMs - dashElapsed) : 0;
+        const dashSwingRemain = dashWind
+          ? HB_TH.dash.strikeMs
+          : dashActive ? Math.max(1, remain - dashToStrike) : HB_TH.dash.strikeMs;
+        this.latchSwordCompletion(
+          `${e.id}:thor-dash-complete`, dashWind || dashActive,
+          dashWind || dashActive || bs === 'thor-dash-recover', dashToStrike, dashSwingRemain, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, fx, fy, tx, ty, HB_TH.harai.halfWidth, handX, handY, 'draw',
+        );
         this.latchSwordRecovery(
           `${e.id}:thor-issen-recover-complete`, bs === 'issen-recover', remain, now,
           this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
@@ -16369,6 +16422,13 @@ export class PixiScene {
           this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
           THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
           e.id, handX, handY, fx, fy, tx, ty, 'wide',
+        );
+        // ★v0.25.3784: 突進の硬直も同じ保険(ミゲルの miguel-dash-recover-complete と同型)。
+        this.latchSwordRecovery(
+          `${e.id}:thor-dash-recover-complete`, bs === 'thor-dash-recover', remain, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, handX, handY, fx, fy, tx, ty, 'draw',
         );
       }
     }

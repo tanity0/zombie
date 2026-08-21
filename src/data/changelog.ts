@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3786',
+    items: [
+      'トールの突進を修正中です(まだ途中)。突進中に刀が見えていなかった点・カウンターの弾き返しの向き・必中一閃がまれにカウンターされてしまう点を直しています。',
+    ],
+  },
+  {
     version: '0.25.3785',
     items: [
       'ゲーム内容の変更はありません(設計の記録のみ)。',

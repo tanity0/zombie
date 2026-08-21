@@ -4139,7 +4139,7 @@ const applySlasherChainStrike = (
     return { swung: false, hit: false, finish: false, killed: 0 };
   }
   get().markMeleeSwingFx(); // 追撃も近接スイングの二次モーション(踏み込み)を出す(描画のみ)
-  get().commitMeleeSwing(); // ★近接スイング確定の打刻(4経路の1つ=スラッシャー追撃・§1-3)
+  get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=スラッシャー追撃・§1-3)
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
   // 追撃の射程は初撃時に記録した slasherReach を使う(ストライカーの溜めで伸びた射程が初撃で消費されても、
@@ -6312,7 +6312,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           counterCooldownEnd: counterCd,
         }
       }));
-      get().commitMeleeSwing(); // ★近接スイング確定の打刻(4経路の1つ=刀・§1-3)
+      get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=刀・§1-3)
       // 刀でも松明・卵を破壊できる(刀の間合いの円)。
       get().breakPropsAlong(pcx, pcy, 1, 0, 0, katanaRange(player), meleeDamage * 2.5);
       return { swung: false, hit: false, finish: false, killed: 0 };
@@ -6340,7 +6340,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           counterCooldownEnd: now + (counterWindowMs + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS) * meleeCooldownMult(player),
         }
       }));
-      get().commitMeleeSwing(); // ★近接スイング確定の打刻(4経路の1つ=鞭・§1-3)
+      get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=鞭・§1-3)
       set({ whipSwingFxAt: now }); // 鞭を振る音SEのトリガ(命中の有無に関わらず鳴る)
       // 鞭の軌跡 + 当たり範囲の可視化(全長を即表示→フェード。太い帯=当たり範囲)。
       get().spawnEffect({
@@ -6832,7 +6832,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : state.projectiles
     }));
 
-    get().commitMeleeSwing(); // ★近接スイング確定の打刻(4経路の1つ=ナイフ・§1-3)
+    get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=ナイフ・§1-3)
 
     for (const id of grenadesToDetonate) {
       const grenade = projectiles.find(p => p.id === id);
@@ -8591,6 +8591,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           lastDirection: { x: ux, y: uy }
         }
       }));
+      // ★近接スイング確定の打刻(5経路の1つ=刀/村雨のスワイプ一閃・§1-3)。
+      // v0.25.3784(検収監査 中4): ここが抜けていたため、**刀装備のスワイプ一閃だけ**が
+      // 紫円(無の境地)の中で安全に振れてしまっていた。§1-3の規則は「プレイヤーの近接スイングが
+      // 確定する箇所**すべて**に打つ」。守護霊(ghostId あり)は対象外=プレイヤーの操作ではない。
+      get().commitMeleeSwing();
     } else {
       // 守護霊: 防御規格を同一にする。プレイヤーの「invulnerableTime を過去へずらす」逆算打刻は
       // 実効的に「now + KATANA_DASH_MS まで無敵」と同値なので、ゴースト専用の無敵窓

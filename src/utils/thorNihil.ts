@@ -71,11 +71,19 @@ export const shouldTriggerGuaranteedIssen = (i: GuaranteedIssenInput): boolean =
 /**
  * 必中一閃が「カウンターされない」か(§1-3・§5-2やること②)。
  * `issen-dash` の被弾解決は帯に触れた時点で `counterWindowEnd` を見る経路を持つので、
- * **立っている間だけその分岐をスキップ**して damagePlayer へ直行する。単位は **gameTime**。
+ * **立っている間だけその分岐をスキップ**して damagePlayer へ直行する。
+ *
+ * ★v0.25.3784(検収監査 重大3): **時刻を比較しない**。旧実装は
+ * `gameTime < issenGuaranteedUntil` の排他だったが、フラグの値(`newGameTime + dashMs`)が
+ * `bossStateUntil` と**同値**なので、**州の最終フレーム**——つまり帯判定がまだ走る最後の1フレーム——
+ * だけ false に落ちていた。`COUNTER_WINDOW`(400ms) > `dashMs`(280ms) なので引き金の振りが開けた窓は
+ * まだ開いており、**必中で被弾したうえに Counter! も出る**という off-by-one になっていた。
+ * よって判定は**フラグが立っているかどうかだけ**。落とすのは `issen-dash` を抜ける所(全経路)。
+ * 境界を +1ms でごまかさない。
  */
 export const isGuaranteedIssenNow = (
-  issenGuaranteedUntil: number | undefined, gameTime: number,
-): boolean => issenGuaranteedUntil !== undefined && issenGuaranteedUntil > 0 && gameTime < issenGuaranteedUntil;
+  issenGuaranteedUntil: number | undefined,
+): boolean => issenGuaranteedUntil !== undefined && issenGuaranteedUntil > 0;
 
 // -------------------------------------------------------------------------------------------------
 // ボット(§8-4・社長裁定「マスターとスキルドは覚える」)

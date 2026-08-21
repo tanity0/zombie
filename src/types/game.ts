@@ -948,9 +948,13 @@ export interface Enemy {
   // research/THOR_ISSEN_REWORK.md §4: トール「突進」専用CD(6000ms・ミゲルの mDashReadyAt と同じ作法)。
   thorDashReadyAt?: number;
   /**
-   * research/THOR_ISSEN_REWORK.md §1-3(必中一閃)。**単位=gameTime(ms)**。
-   * 無の境地(紫円)の中で近接を振られて**即発動した** `issen-dash` の終了時刻。
-   * この時刻まで、`issen-dash` の被弾解決は `player.counterWindowEnd` を**見ずに** damagePlayer へ直行する
+   * research/THOR_ISSEN_REWORK.md §1-3(必中一閃)。**★これは「フラグ」であって期限ではない。**
+   * 無の境地(紫円)の中で近接を振られて**即発動した** `issen-dash` の間だけ 0 より大きい値が入る
+   * (入れている数字はダッシュの終了時刻=記録用。**判定でこの値を gameTime と比較してはいけない**——
+   * v0.25.3784 の検収監査で、比較していたために**州の最終フレームだけ**必中が切れて
+   * 「必中なのに Counter! が出る」off-by-one になっていた。判定は `isGuaranteedIssenNow` の
+   * **有無だけ**を使う)。
+   * 立っている間、`issen-dash` の被弾解決は `player.counterWindowEnd` を**見ずに** damagePlayer へ直行する
    * (= 引き金になった振りが開けたカウンター窓で必中一閃が弾かれるのを防ぐ)。
    * 通常の一閃(赤予告を経たもの)では**立てない**=従来どおりカウンターできる。
    * `issen-dash` を抜ける時に必ず 0 へ落とす(次の技がカウンター不能にならないように)。

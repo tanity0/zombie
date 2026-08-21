@@ -52,7 +52,6 @@ const ACRASIEL_WARP_IMPACT_MIRROR = 92;  // = angelBossTick.ACRASIEL_WARP_IMPACT
 const IDOL_PUNCH_RANGE_MIRROR = 90;      // = useGameLoop.IDOL_TUNING.shape.punchRange(前方の短い帯の長さ)
 // PACING_PUZZLE.md §10(フィル・バッチ2)の複製値 = angelScript.ANGEL_PHILL_TUNING の該当欄。
 const PHILL_GOLDRING_RADIUS_MIRROR = 220;  // = PH_T.goldring.radius(金環の大円)
-const PHILL_JUDGMENT_RADIUS_MIRROR = 90;   // = PH_T.judgment.radius(裁きの光の追尾円)
 const PHILL_CAGE_START_RADIUS_MIRROR = 260; // = PH_T.cage.startRadius(羽根の檻・回避は安全側に広く=初期半径を使う)
 const PHILL_DIVE_RADIUS_MIRROR = 110;      // = PH_T.dive.radius(急降下の着地円)
 
@@ -193,11 +192,11 @@ put(LEDGER, ['phill-goldring-windup'], {
   note: 'フィルの金環。頭上の金環→本体中心の大円AoE(外へ逃げるが正解)。blastは溜め明けの1回だけなので'
     + '実行(active)側には危険が残らない=windupだけで足りる。',
 });
-put(LEDGER, ['phill-judgment-windup'], {
-  coverage: 'ghost', ghostShape: { kind: 'circle-target', radius: PHILL_JUDGMENT_RADIUS_MIRROR },
-  note: '★カウンター必須(裁きの光)。追尾円=aiTargetが毎フレーム足元を追う(§10-12#16「予告のみ・'
-    + '判定なし」)。固定の瞬間に1回blastが立つのでwindup明けの実行側には危険が残らない。',
-});
+// ★v0.25.3784: `phill-judgment-windup` の登録は**削除**した(死んだキーを溜めない)。
+// v0.25.3740 の社長指示「裁きの光の中身を、羽根の檻に差し替え」で `beginJudgment()` は
+// `beginCage()` を呼ぶだけになり、**この州へ入る経路が1つも無くなっている**
+// (angelBossTick のハンドラは残っているが誰も遷移させない)。危険の実体は
+// `phill-cage-windup`(下で登録済み)側。
 put(LEDGER, ['phill-cage-windup'], {
   coverage: 'ghost', ghostShape: { kind: 'circle-target', radius: PHILL_CAGE_START_RADIUS_MIRROR },
   note: '★カウンター必須(羽根の檻)。中心は溜め開始でロック(以後追尾しない=逃げ場なし)。回避は安全側に'
@@ -241,6 +240,7 @@ put(LEDGER, [
   'spear-recover', 'spike-recover', 'sweep-recover', 'tate-recover', 'thrust-recover',
   'tsuki-recover', 'volley-recover', 'warp-recover',
   'thor-dash-recover', // v0.25.3780: トールの突進の硬直(§4)
+  'quickblades-recover', // ★v0.25.3784: ラフィの刃2連射の硬直(v0.25.3592)。技は終わっている。
   'driller-thrust-recover', // PACING_PUZZLE.md §9-4(削岩型): 突きの硬直。
   // PACING_PUZZLE.md §10(フィル・バッチ2): 硬直(全技共通)+blast溜め明けで既に判定が終わっている実行フェーズ。
   'phill-wingslash-recover', 'phill-wingthrust-recover', 'phill-wingcombo-recover',
@@ -267,6 +267,10 @@ put(LEDGER, [
 });
 put(LEDGER, [
   'bone', 'bone-windup', 'spear-windup', 'lantern', 'lantern-windup',
+  // ★v0.25.3784: ラフィの刃2連射(v0.25.3592・バックロール台本の2手目)。溜め中に地面へ出る
+  // 図形は無く(pixiSceneに専用の予告描画が無い=実在確認済み)、危険は spawnSkadiBlade で
+  // 撒かれる骨刃そのもの=既存の 'bone-windup' / 'skadi-blade-windup' と同じ別エンティティ族。
+  'quickblades-windup',
   'lance-windup', // v0.25.3199/3204 ジブリルの槍: 危険=lanceLanterns(追尾ランタン)+pumpkinBlastsカプセル(別エンティティ)
   'skadi-ice', 'skadi-ice-windup', 'skadi-blade', 'skadi-blade-windup',
   // PACING_PUZZLE.md §10(フィル・バッチ2): 光の雨(小円が時間差でblastsへ積まれる=座標はEnemyに乗らない)・
@@ -322,9 +326,14 @@ put(LEDGER, ['warp-windup', 'warp-out'], {
   coverage: 'none',
   note: '転移そのものはダメージを持たない(ジブリルの離脱/アクラシエルの消滅)。危険は着地の warp-in 側。',
 });
-put(LEDGER, ['chase', 'return', 'backstep', 'orbit-step', 'counter-leap'], {
+put(LEDGER, ['chase', 'return', 'backstep', 'orbit-step', 'counter-leap',
+  // ★v0.25.3784: ラフィのバックロール(v0.25.3592で追加された台本1手目)。**攻撃判定なし**の
+  // 後退移動だけの州(angelBossTick の 'backroll' ハンドラ=smoothstepで後方へ引くだけ)。
+  // 既存の backstep / counter-leap と同じ扱い。
+  'backroll',
+], {
   coverage: 'none',
-  note: '移動だけの状態(追跡/戻り/後退/回り込み/カウンター後の跳び退き)=攻撃判定を持たない。',
+  note: '移動だけの状態(追跡/戻り/後退/回り込み/カウンター後の跳び退き/バックロール)=攻撃判定を持たない。',
 });
 put(LEDGER, ['charge', 'crouch', 'jump', 'recover', 'scream', 'windup'], {
   coverage: 'none',
