@@ -4,6 +4,7 @@ import {
   exHallScaleT, exHallLateralClampFromT, exHallLateralClamp, exHallTravel,
   EX_SURIEL_HALL, EX_PHILL_HALL, EX_HALL_TRANSITION_PX, EX_HALL_SCALE,
   EX_SURIEL_TRIGGER_Y, EX_HALL_LATERAL_CLAMP, EX_NORTH_LIMIT_Y, EX_BACK_WORLD_Y,
+  EX_HALL_RAMP_SUBSEGMENTS,
 } from './exHall';
 import { CORRIDOR_LATERAL_CLAMP } from '../utils/corridorProjection';
 
@@ -134,5 +135,69 @@ describe('exHallLateralClampFromT / exHallLateralClamp', () => {
   it('yからのショートハンドがexHallScaleT経由と一致する', () => {
     expect(exHallLateralClamp(-3000)).toBe(EX_HALL_LATERAL_CLAMP);
     expect(exHallLateralClamp(0)).toBe(CORRIDOR_LATERAL_CLAMP);
+  });
+});
+
+// PACING_PUZZLE.md §10-20#5 検収監査#1(3巡目・v3753): ランプはsmoothstepをNサブ区間(既定32)で
+// 近似する区分線形関数(CLAUDE.md慣性則「等速で始まり瞬間停止する動きの禁止」への対応)。
+describe('exHallScaleT — ランプはsmoothstepのNサブ区間近似(検収監査#1・3巡目)', () => {
+  it('ランプイン(南端手前)の各サブ区間の境界でsmoothstepの標本値と厳密一致する', () => {
+    const southY = EX_SURIEL_HALL.southY;
+    const tInStart = southY + EX_HALL_TRANSITION_PX;
+    for (let i = 0; i <= EX_HALL_RAMP_SUBSEGMENTS; i++) {
+      const frac = i / EX_HALL_RAMP_SUBSEGMENTS;
+      const y = tInStart - EX_HALL_TRANSITION_PX * frac;
+      const expected = frac * frac * (3 - 2 * frac); // smoothstep(frac)
+      expect(exHallScaleT(y)).toBeCloseTo(expected, 9);
+    }
+  });
+
+  it('ランプアウト(北端の先)の各サブ区間の境界でもsmoothstepの標本値と厳密一致する', () => {
+    const northY = EX_SURIEL_HALL.northY;
+    for (let i = 0; i <= EX_HALL_RAMP_SUBSEGMENTS; i++) {
+      const frac = 1 - i / EX_HALL_RAMP_SUBSEGMENTS;
+      const y = northY - EX_HALL_TRANSITION_PX * (i / EX_HALL_RAMP_SUBSEGMENTS);
+      const expected = frac * frac * (3 - 2 * frac);
+      expect(exHallScaleT(y)).toBeCloseTo(expected, 9);
+    }
+  });
+
+  const slopeAt = (y0: number, y1: number): number => (exHallScaleT(y1) - exHallScaleT(y0)) / (y0 - y1);
+
+  it('ランプ入口(frac→0)の傾きはランプ中央(frac≈0.5)よりずっと緩やか(=急に動き出さない・瞬間停止しない)', () => {
+    const southY = EX_SURIEL_HALL.southY;
+    const tInStart = southY + EX_HALL_TRANSITION_PX;
+    const step = EX_HALL_TRANSITION_PX / EX_HALL_RAMP_SUBSEGMENTS;
+    const slopeEdge = slopeAt(tInStart, tInStart - step); // 最初のサブ区間(frac 0→1/N)
+    const midY = southY + EX_HALL_TRANSITION_PX / 2;
+    const slopeMid = slopeAt(midY + step / 2, midY - step / 2); // 中央付近(frac≈0.5=smoothstepの最大傾き)
+    expect(slopeEdge).toBeGreaterThan(0); // 完全な瞬間停止ではない(僅かでも動いている)
+    expect(slopeEdge).toBeLessThan(slopeMid / 3); // だが中央よりずっと緩やか=ease(smoothstep近似の特徴)
+  });
+
+  it('ランプ出口(frac→1・広間へ入る直前)の傾きも同様に緩やか(=瞬間停止しない)', () => {
+    const southY = EX_SURIEL_HALL.southY;
+    const step = EX_HALL_TRANSITION_PX / EX_HALL_RAMP_SUBSEGMENTS;
+    const slopeNearEnd = slopeAt(southY + step, southY); // 広間へ入る直前の最後のサブ区間
+    const midY = southY + EX_HALL_TRANSITION_PX / 2;
+    const slopeMid = slopeAt(midY + step / 2, midY - step / 2);
+    expect(slopeNearEnd).toBeGreaterThan(0);
+    expect(slopeNearEnd).toBeLessThan(slopeMid / 3);
+  });
+});
+
+describe('exHallScaleT / exHallTravel — 同一のブレークポイント表から導出されている(検収監査#1・3巡目)', () => {
+  it('ランプ内側の全サブ区間境界で、exHallTravelの局所傾き(dO/d前進距離)が' +
+     'exHallScaleT由来のhallSの逆数と精度良く一致する(評価点のズレが無いことの直接確認)', () => {
+    const southY = EX_SURIEL_HALL.southY;
+    const tInStart = southY + EX_HALL_TRANSITION_PX;
+    for (let i = 1; i < EX_HALL_RAMP_SUBSEGMENTS; i++) { // 端点(i=0,N)は有限差分が区間外へ出るため除外
+      const y = tInStart - EX_HALL_TRANSITION_PX * (i / EX_HALL_RAMP_SUBSEGMENTS);
+      const h = 0.05;
+      const slope = (exHallTravel(y - h) - exHallTravel(y + h)) / (2 * h);
+      const t = exHallScaleT(y);
+      const hallS = 1 + (EX_HALL_SCALE - 1) * t;
+      expect(slope).toBeCloseTo(1 / hallS, 3);
+    }
   });
 });

@@ -46,37 +46,67 @@ export const EX_SURIEL_SOUTH_LOCK_Y = EX_SURIEL_HALL.southY; // 5巡目#1: 南�
 export const EX_PHILL_TRIGGER_Y = -5000; // 旧・深度9000は廃止
 export const EX_PHILL_SOUTH_LOCK_Y = EX_PHILL_HALL.southY; // 出現と同時に南端を閉鎖(開放は不要=終幕直結)
 
-const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+// --- §10-20#5 検収監査#1(3巡目・v3753): hallS(y)を「smoothstepをN本の線形サブ区間で近似した
+// 区分線形関数」として1箇所(ブレークポイント表)で定義し、exHallScaleT(絵/クランプ)とexHallTravel
+// (床/柱/灯/奥壁の流速)の**両方がこの同じ表から導出される**ようにする。
+//
+// 経緯: 2巡目でランプを純粋な線形(smoothstepではない)にしたところ、dS/dyがランプ入口で0→定数へ
+// 跳ぶ形になり、CLAUDE.md「動きの絶対ルール:慣性」(等速で始まり瞬間停止する動きの禁止)に抵触すると
+// 指摘された(ランプ通過は徒歩で約1.7秒=十分に知覚される)。一方でexHallTravelの閉じた式
+// (oSegmentIntegral)は「区間内でhallSがa→bへ線形に変化する」場合にしか成り立たない。
+// ⇒ 400pxのランプ全体を1本の線形区間として扱うのをやめ、**N本(既定32・16〜64の範囲)の短い線形
+// サブ区間**へ分割し、各サブ区間の両端でsmoothstepを標本化する。これでsmoothstepの見た目(ease)を
+// 1/N²精度で保ちながら、個々のサブ区間は線形=閉じた式がそのまま使え、打ち消しは構造的に厳密なまま。
+// ブレークポイントは定数(EX_HALL_ZONES等)からのみ決まるので初期化時に1回だけ構築すれば足りる。
+export const EX_HALL_RAMP_SUBSEGMENTS = 32; // 叩き台(16〜64の範囲・実機調整は社長裁定)
+
+const smoothstepCurve = (t: number): number => t * t * (3 - 2 * t);
+
+/** hallSのブレークポイント(y降順=南→北)。yとyの間はhallSが線形に変化するとみなす。 */
+interface ExHallBreakpoint { y: number; hallS: number; }
+
+const buildExHallBreakpoints = (zones: ExHallZone[], subsegments: number): ExHallBreakpoint[] => {
+  const pts: ExHallBreakpoint[] = [{ y: 0, hallS: 1 }]; // スタート地点(常に通路幅)
+  for (const z of zones) {
+    const tInStart = z.southY + EX_HALL_TRANSITION_PX;
+    if (pts[pts.length - 1].y > tInStart) pts.push({ y: tInStart, hallS: 1 }); // 広間手前の平坦区間
+    // ランプイン(南→広間・frac 0→1をsmoothstepで標本化)。frac=0の点は直前のhallS=1点と共有する。
+    for (let i = 1; i <= subsegments; i++) {
+      const frac = i / subsegments;
+      pts.push({ y: tInStart - EX_HALL_TRANSITION_PX * frac, hallS: 1 + (EX_HALL_SCALE - 1) * smoothstepCurve(frac) });
+    }
+    pts.push({ y: z.northY, hallS: EX_HALL_SCALE }); // 広間の内部(南端→北端・平坦=S)
+    // ランプアウト(広間→北・frac 1→0をsmoothstepで標本化。i=subsegmentsでy=northY-TRANSITION_PXへ到達)。
+    for (let i = 1; i <= subsegments; i++) {
+      const frac = 1 - i / subsegments;
+      pts.push({ y: z.northY - EX_HALL_TRANSITION_PX * (i / subsegments), hallS: 1 + (EX_HALL_SCALE - 1) * smoothstepCurve(frac) });
+    }
+  }
+  return pts;
+};
+
+const EX_HALL_BREAKPOINTS = buildExHallBreakpoints(EX_HALL_ZONES, EX_HALL_RAMP_SUBSEGMENTS);
 
 /**
  * 広間スケールの補間値t(0=通常通路幅・1=広間フル幅)。yから連続に求める純関数。
  * §10-20#5 6巡目#3の不変条件: **絵のS倍(pixi/corridorLayer.ts)と横クランプの拡幅(playableArea.ts)は
- * 必ずこの1つの値から導くこと**(呼び出し側を分けない)。
- * 遷移帯=広間の南端の手前EX_HALL_TRANSITION_PX(t:0→1)。北端の先も同じ幅で対称に扱う
- * (退出方向の急変を避ける=CLAUDE.md慣性則。実装時確認「帯が縮む向きの移動でスナップさせない」の対策)。
- * ★検収監査#1(2巡目・v3752): ランプは**線形**(旧: smoothstep)。下記exHallTravel(O(y))の閉じた式が
- * 「区間内でhallSがa→bへ線形に変化する」前提で導出されているため、hallS(=exHallScaleTから導く値)の
- * 形自体を線形に揃えないと、床の見かけの流速(container.scale側)とO(y)の打ち消し合いが遷移帯の途中で
- * ズレる(=線形でない形だと閉じた式が成立しない)。線形ランプでも位置(値)は連続=CLAUDE.md慣性則が
- * 禁じる「パッと切り替わる」瞬間移動ではない(速度の折れはあるが位置の跳躍は無い)。
+ * 必ずこの1つの値から導くこと**(呼び出し側を分けない)。下記exHallTravel(O(y))とも**同じ
+ * ブレークポイント表**から導く(検収監査#1・3巡目=同一の区分線形関数であることが受け入れ条件)。
  * §10-20#5「南の膜が閉じる時点(戦闘開始=EX_SURIEL_TRIGGER_Y)でt=1が完了していること」は、
  * 遷移帯の終端(南端ちょうど)がトリガーyより手前(南)にあることで満たされる
  * (南端-2300 > トリガー-2800 なので、トリガー到達時点で既にt=1)。
  */
 export const exHallScaleT = (y: number, zones: ExHallZone[] = EX_HALL_ZONES): number => {
-  for (const z of zones) {
-    if (y <= z.southY && y >= z.northY) return 1; // 広間の内部=フル
-    if (y > z.southY && y <= z.southY + EX_HALL_TRANSITION_PX) {
-      // 南から進入(手前→奥へ進む向き)。
-      return clamp01((z.southY + EX_HALL_TRANSITION_PX - y) / EX_HALL_TRANSITION_PX);
-    }
-    if (y < z.northY && y >= z.northY - EX_HALL_TRANSITION_PX) {
-      // 北から退出(奥→更に奥/次の通路へ進む向き。フィル広間の北端=EX_NORTH_LIMIT_Yなのでここは通常
-      // 到達しないが、スリィエル広間の北端は通路区間へ抜けるため対称に扱う)。
-      return clamp01((y - (z.northY - EX_HALL_TRANSITION_PX)) / EX_HALL_TRANSITION_PX);
+  const pts = zones === EX_HALL_ZONES ? EX_HALL_BREAKPOINTS : buildExHallBreakpoints(zones, EX_HALL_RAMP_SUBSEGMENTS);
+  for (let i = 1; i < pts.length; i++) {
+    const p0 = pts[i - 1], p1 = pts[i]; // p0.y > p1.y
+    if (y <= p0.y && y >= p1.y) {
+      const frac = p0.y === p1.y ? 0 : (p0.y - y) / (p0.y - p1.y);
+      const hallS = p0.hallS + (p1.hallS - p0.hallS) * frac;
+      return (hallS - 1) / (EX_HALL_SCALE - 1);
     }
   }
-  return 0; // 広間の外(通常通路)
+  return 0; // どの区間にも属さない(スタート手前 or 定義域より奥)=平坦(通常通路幅)
 };
 
 /** 広間スケールt(0..1)から移動可能帯の横クランプ(world px)を導く。絵のS倍と同じtを共有する。 */
@@ -87,58 +117,42 @@ export const exHallLateralClampFromT = (t: number): number =>
 export const exHallLateralClamp = (y: number, zones: ExHallZone[] = EX_HALL_ZONES): number =>
   exHallLateralClampFromT(exHallScaleT(y, zones));
 
-// --- §10-20#5 検収監査#1(2巡目・v3752): O(y) = ∫₀^y dy'/hallS(y') の区分解析解 ---------------------
-// hallSは区分線形(定数区間+線形ランプ)なので、各区間の積分は閉じた式で書ける:
-//   区間の長さL・区間内でhallSがa→bへ線形に変化する場合の積分 = a===b ? L/a : L·ln(b/a)/(b-a)
+// --- §10-20#5 検収監査#1: O(y) = ∫₀^y dy'/hallS(y') の区分解析解 -------------------------------
+// 各サブ区間はhallSがa→bへ線形に変化する短い区間なので、積分は閉じた式で書ける:
+//   区間の長さL・hallSがa→bへ線形に変化する場合の積分 = a===b ? L/a : L·ln(b/a)/(b-a)
 // hallS>0が常に成り立つため1/hallSは常に正=Oはyが負へ進むほど単調に増える(経路に依存しない、
-// yだけの純関数。単純な「travel/hallS(現在地)」は絶対値の大きいtravelを終始割るため遷移帯で
-// 導関数が負になり得たが、積分にはその問題が無い)。
+// yだけの純関数)。
 const oSegmentIntegral = (length: number, a: number, b: number): number =>
   a === b ? length / a : length * Math.log(b / a) / (b - a);
 
-/** y0>y1の1区間。hallSはy0でa・y1でbの値を取り、その間を線形に変化する(a===bなら平坦区間)。 */
-interface ExHallOSegment { y0: number; y1: number; a: number; b: number; }
-
-const buildExHallOSegments = (zones: ExHallZone[]): ExHallOSegment[] => {
-  const segs: ExHallOSegment[] = [];
-  let cursor = 0; // y=0(スタート)から南→北の順に区間を積み上げる
-  for (const z of zones) {
-    const tInStart = z.southY + EX_HALL_TRANSITION_PX;
-    if (cursor > tInStart) segs.push({ y0: cursor, y1: tInStart, a: 1, b: 1 }); // 広間の手前=平坦(hallS=1)
-    segs.push({ y0: tInStart, y1: z.southY, a: 1, b: EX_HALL_SCALE });          // 南から進入するランプ
-    segs.push({ y0: z.southY, y1: z.northY, a: EX_HALL_SCALE, b: EX_HALL_SCALE }); // 広間の内部(平坦=S)
-    const tOutEnd = z.northY - EX_HALL_TRANSITION_PX;
-    segs.push({ y0: z.northY, y1: tOutEnd, a: EX_HALL_SCALE, b: 1 });           // 北へ退出するランプ
-    cursor = tOutEnd;
-  }
-  return segs; // cursorより奥(北)は呼び出し側でhallS=1の尾部として扱う
-};
-
-const EX_HALL_O_SEGMENTS = buildExHallOSegments(EX_HALL_ZONES);
+const EX_HALL_O_SEGMENTS = EX_HALL_BREAKPOINTS; // exHallScaleTと**同じ表**(検収監査#1・3巡目の核心)
 
 /**
- * O(y) = ∫₀^y dy'/hallS(y') の閉じた式(§10-20#5検収監査#1・2巡目)。yのみに依存する純関数=経路非依存
+ * O(y) = ∫₀^y dy'/hallS(y') の閉じた式(§10-20#5検収監査#1)。yのみに依存する純関数=経路非依存
  * (再基準化・ワープ弁・インスタンス積算状態は一切不要)。corridorLayerへ渡すtravel(-player.y相当)を
  * この値に置き換えることで、container.scale(=hallS×zoom)の拡大とここでの流速の割引きが正確に
  * 打ち消し合い、広間内でも床/柱/灯/奥壁すべての見かけの流速が常にzoomのみに比例する
- * (=アクターの画面移動速度と一致=足が滑らない・受け入れ条件)。
+ * (=アクターの画面移動速度と一致=足が滑らない・受け入れ条件)。exHallScaleTと**同じブレークポイント
+ * 表**から導出するため、両者の間に評価点以外のズレは生じない。
  */
 export const exHallTravel = (y: number, zones: ExHallZone[] = EX_HALL_ZONES): number => {
   if (y >= 0) return -y;
-  const segs = zones === EX_HALL_ZONES ? EX_HALL_O_SEGMENTS : buildExHallOSegments(zones);
+  const pts = zones === EX_HALL_ZONES ? EX_HALL_O_SEGMENTS : buildExHallBreakpoints(zones, EX_HALL_RAMP_SUBSEGMENTS);
   let acc = 0;
-  for (const seg of segs) {
-    if (y <= seg.y1) { acc += oSegmentIntegral(seg.y0 - seg.y1, seg.a, seg.b); continue; }
-    // y1 < y <= y0: この区間の途中で終わる(区間の残りは未消費のまま関数を抜ける)。
-    const hallSAtY = seg.a + (seg.b - seg.a) * ((seg.y0 - y) / (seg.y0 - seg.y1));
-    acc += oSegmentIntegral(seg.y0 - y, seg.a, hallSAtY);
+  for (let i = 1; i < pts.length; i++) {
+    const p0 = pts[i - 1], p1 = pts[i]; // p0.y > p1.y
+    if (y <= p1.y) { acc += oSegmentIntegral(p0.y - p1.y, p0.hallS, p1.hallS); continue; }
+    // p1.y < y <= p0.y: このサブ区間の途中で終わる。
+    const frac = (p0.y - y) / (p0.y - p1.y);
+    const hallSAtY = p0.hallS + (p1.hallS - p0.hallS) * frac;
+    acc += oSegmentIntegral(p0.y - y, p0.hallS, hallSAtY);
     return acc;
   }
-  const lastY1 = segs.length ? segs[segs.length - 1].y1 : 0;
-  acc += lastY1 - y; // 定義済み区間より更に奥(北)=平坦(hallS=1)の尾部
+  const lastY = pts.length ? pts[pts.length - 1].y : 0;
+  acc += lastY - y; // 定義済み区間より更に奥(北)=平坦(hallS=1)の尾部
   return acc;
 };
 
-// §10-20#2(検収監査#1・2巡目「奥壁もO(-6300)で同じ空間に置ける」): 奥壁のworld固定位置
-// (北端-6000の300px奥)。exHallTravelへそのまま渡せば、床/柱/灯と同じO空間の値になる。
+// §10-20#2(「奥壁もO(-6300)で同じ空間に置ける」): 奥壁のworld固定位置(北端-6000の300px奥)。
+// exHallTravelへそのまま渡せば、床/柱/灯と同じO空間の値になる。
 export const EX_BACK_WORLD_Y = EX_NORTH_LIMIT_Y - 300; // -6300

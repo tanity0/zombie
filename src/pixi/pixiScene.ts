@@ -8844,7 +8844,8 @@ export class PixiScene {
     // M6(stage-6)はex=false=dispScale固定1.0=既存のx/y代入と数値上まったく同じ結果になる
     // (pivot/positionの式は scale=1 のとき常に旧来のcontainer.x/y代入と一致する・下記コメント参照)。
     const ex = s.corridorMode && !s.indoorMode && isExStageRun();
-    const hallT = ex ? exHallScaleT(s.player.y + s.player.height / 2) : 0;
+    const playerCenterY = s.player.y + s.player.height / 2; // ★検収監査#2(3巡目): hallT/travelは同じ評価点(中心)を使う
+    const hallT = ex ? exHallScaleT(playerCenterY) : 0;
     const hallS = 1 + (EX_HALL_SCALE - 1) * hallT;
     const dispScale = ex ? hallS * gz : 1;
     // 支点(pivot): 横=world x=0の画面位置(既存)。縦=通路の内部基準点(H*footYr。scale=1時に
@@ -8883,7 +8884,7 @@ export class PixiScene {
     // yの純関数O(y)=∫₀^y dy'/hallS(y')(exHallTravel)に置き換えた。経路非依存=再基準化/ワープ弁が
     // 不要になり、床/柱/灯と奥壁を**同じO空間**に置ける(奥壁もexHallTravel(EX_BACK_WORLD_Y)で
     // 求めるため、rawTravelを別扱いする必要が無くなった=exBackRawTravelは廃止)。
-    const travelForCorridor = ex ? exHallTravel(s.player.y) : -s.player.y;
+    const travelForCorridor = ex ? exHallTravel(playerCenterY) : -s.player.y;
     const exBackTravel = ex ? exHallTravel(EX_BACK_WORLD_Y) : 0;
     this.corridorBackdrop.update(travelForCorridor, this.screenW, this.screenH, now, ex ? {
       isEx: true,
