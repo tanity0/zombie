@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3795',
+    items: [
+      'ゲーム内容の変更はありません(記載の訂正のみ)。',
+    ],
+  },
+  {
     version: '0.25.3794',
     items: [
       'ゲーム内容の変更はありません(設計の記録のみ)。',
@@ -16,7 +22,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '0.25.3793',
     items: [
-      'トールの突進をノックバックで止めた時に、解除の瞬間に絵が飛ぶ問題を直しています(まだ途中)。',
+      'トールの突進をノックバックで止めた時に、解除の瞬間に絵が飛ぶ問題を直しました(タイミングのズレの方。押された位置がリセットされる方は調整中です)。',
     ],
   },
   {
