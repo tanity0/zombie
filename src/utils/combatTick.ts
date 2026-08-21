@@ -1097,7 +1097,18 @@ export const applyContactDamage = (
     // 被弾直後(無敵中)のカウンターでも受け流しが立つようにする。体幹削りの頻度上限は
     // 旧i-frame基準(700ms)→root基準(900ms)でむしろ厳しくなる=インフレしない。
     const bossParryRooted = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil;
-    if (BOSS_CONTACT_PARRY_ENABLED && counterActiveNow && !bossParryRooted && isHiddenBoss(enemy.type)) {
+    // ★v0.25.3785(検収監査 重大A): **トールの突進の走り(thor-dash-move)だけは受け流しへ落とさない**。
+    // v0.25.3784 で上の除外から thor-dash-move を外した(=接触ダメージをミゲルに揃えた)結果、
+    // 同じ forEach の下流にあるこの「ボス接触受け流し」へも突進が流れ込むようになった
+    // (isHiddenBoss は 'thor' を含む)。受け流しは rootUntil=900ms を立て、それを useGameLoop の
+    // frozen が拾って bossState='chase' にするため、**突進のカウンター(Counter!演出/クリ反撃/
+    // counter-leap/弾き返し/専用CD)が丸ごと出ない**。しかも競合順序が固定で不利:
+    // ボスtickは**フレーム頭の座標**で重なりを見て、その後に座標を進める/この関数は**進めた後の
+    // 座標**で見る ⇒「突進が到達したフレーム」は必ずこちらが先に取る。
+    // よって走行中は**接触ダメージだけを通し**、カウンターの解決はトール側(useGameLoop の
+    // 共通カウンターブロック=counterReach の宣言表 'hidden:thor-dash-move')の1本に残す。
+    const thorDashRunNow = enemy.type === 'thor' && enemy.bossState === 'thor-dash-move';
+    if (BOSS_CONTACT_PARRY_ENABLED && counterActiveNow && !bossParryRooted && !thorDashRunNow && isHiddenBoss(enemy.type)) {
       // v0.25.2954(社長指示「体当たりカウンターしたら少しノックバックしてから硬直にして」):
       // 押す向き=プレイヤー→ボス(離れる方向)。ゼロ距離の退避は上向き。
       const pdx = (enemy.x + enemy.width / 2) - (collPlayer.x + collPlayer.width / 2);

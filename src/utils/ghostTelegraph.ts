@@ -245,6 +245,13 @@ put(LEDGER, [
   // PACING_PUZZLE.md §10(フィル・バッチ2): 硬直(全技共通)+blast溜め明けで既に判定が終わっている実行フェーズ。
   'phill-wingslash-recover', 'phill-wingthrust-recover', 'phill-wingcombo-recover',
   'phill-goldring-active', 'phill-goldring-recover',
+  // ★v0.25.3785(検収監査 低J): この2件も `phill-judgment-windup` と**同じく到達不能**
+  // (v0.25.3740 で `beginJudgment()` が `beginCage()` を呼ぶだけになり、judgment州へ入る経路が消えた。
+  //  angelBossTick.ts のハンドラは残っているが誰も遷移させない)。それでも**台帳から外せない**:
+  //  windup は `st === '...'` 形でしか書かれていない=完全性テストの走査に載らないので消せたが、
+  //  この2件は `patch.bossState = '...'` の代入として書かれている=**走査が拾う**ため、
+  //  外すと「走査で見つかる状態が台帳から漏れている」で落ちる。死にキーではなく「実装が残っている
+  //  到達不能キー」として、理由つきで残すのが正しい状態(掃除するならハンドラごと消す=フィル案件)。
   'phill-judgment-active', 'phill-judgment-recover',
   'phill-cage-active', 'phill-cage-recover',
   'phill-ringtoss-recover', 'phill-dive-recover', 'phill-summon-recover', 'phill-feathershot-recover',

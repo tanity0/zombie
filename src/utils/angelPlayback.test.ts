@@ -75,7 +75,10 @@ const ENTRY_STATE: Readonly<Record<AngelMoveKey, string>> = {
   'ph-wingcombo': 'phill-wingcombo-windup',
   'ph-summon': 'phill-summon-windup',
   'ph-goldring': 'phill-goldring-windup',
-  'ph-judgment': 'phill-judgment-windup',
+  // ★v0.25.3785: v0.25.3740(社長指示「裁きの光の中身を、羽根の檻に差し替え」)で `beginJudgment()` は
+  // `beginCage()` を呼ぶだけになった=▸ ph-judgment の入口は **phill-cage-windup**。
+  // 抽選キー(ph-judgment)と技名「裁きの光」はそのままなので、表の左辺は変えない。
+  'ph-judgment': 'phill-cage-windup',
   'ph-cage': 'phill-cage-windup',
   'ph-meteor': 'phill-meteor-windup',
   'ph-ringtoss': 'phill-ringtoss-windup',

@@ -16,6 +16,14 @@ import type { Enemy } from '../types/game';
 
 const R = HB_TH.issen.nihilRadius;
 
+// ★v0.25.3785(検収監査 中F): 配線側(useGameLoop.ts)をソース走査して不変条件を機械化する。
+// ソースは vite の ?raw で読む(このリポジトリは @types/node を入れていないので node:fs は使わない。
+// meleeSwingCommit.test.ts / ghostTelegraph.test.ts と同じ作法)。
+const LOOP_SOURCES = import.meta.glob<string>(
+  ['../hooks/useGameLoop.ts'],
+  { query: '?raw', import: 'default', eager: true },
+);
+
 // 判定に使う最小限だけを持つ「敵」。botHoldsMeleeForNihil は Pick で受けるのでこれで足りる。
 const thorAt = (x: number, y: number, bossState: string) =>
   ({ type: 'thor', bossState, x: x - 20, y: y - 20, width: 40, height: 40 }) as unknown as Enemy;
@@ -123,6 +131,126 @@ describe('必中の「カウンターされない」窓(§1-3 受け入れ条件
   });
   it('★フラグを落とすのは「州を抜ける所」だけ=落とせば通常どおりカウンターできる', () => {
     expect(isGuaranteedIssenNow(0)).toBe(false);
+  });
+});
+
+// =================================================================================================
+// ★v0.25.3785(検収監査 中F): 「必中フラグの上限を外したので、落とし忘れたら**永久に必中**」を
+// 支えているのは配線側の**1行**だけで、不変条件がどこにも無かった。
+// `bossState = 'issen-dash'` の代入が1箇所増えた瞬間に「通常の一閃が永久にカウンター不能」という
+// **無音の穴**が開く。そこで meleeSwingCommit.test.ts と同じ型——**代入箇所をソース走査して、
+// 1件ずつ「フラグを書くのか / 書かないなら理由」を宣言させる**——で機械化する。
+// =================================================================================================
+interface DashSite {
+  /** どこ(何をしている代入か)。 */
+  where: string;
+  /** その代入と同じブロックで `issenGuaranteedUntil` を書くか。 */
+  writesFlag: boolean;
+  /** 書かないなら理由(必須)。 */
+  why?: string;
+}
+/** `bossState = 'issen-dash'` を書いている場所の台帳(**ソース順**)。 */
+const ISSEN_DASH_SITES: readonly DashSite[] = [
+  { where: '必中一閃(issen-nihil の紫円の中で近接を振った=引き金)', writesFlag: true },
+  {
+    where: '通常の一閃(issen-windup の赤500msが明けた)', writesFlag: false,
+    why: '通常の一閃は必中ではない(§5-2 受け入れ条件3=従来どおりカウンターできる)。'
+      + '直前の beginThorMove が 0 へ落としているので、書かない=立っていない が保証される',
+  },
+];
+/** `issenGuaranteedUntil` を**書いている**場所の台帳(**ソース順**)。読み取りは含めない。 */
+const FLAG_WRITE_SITES: readonly { where: string; raises: boolean }[] = [
+  { where: 'frozen(罠のroot/紫の完全気絶/気絶/浮き/ワープ)で issen-dash から chase へ落ちる', raises: false },
+  { where: 'beginThorMove(一閃の開始=前の一閃のフラグが残っていたら落とす)', raises: false },
+  { where: '必中一閃の発動(★唯一フラグを立てる場所)', raises: true },
+  { where: '通常の一閃がカウンターで中断された', raises: false },
+  { where: 'issen-dash が最後まで走り切った(硬直/chaseへ抜ける)', raises: false },
+];
+
+/** コメント行を除いた本文だけを返す(宣言の走査でコメントの言及を数えないため)。 */
+const codeLines = (text: string): string[] =>
+  text.split('\n').filter(l => {
+    const t = l.trim();
+    return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+  });
+
+describe('★必中フラグ(issenGuaranteedUntil)の配線の不変条件(§5-2 やること②)', () => {
+  const text = Object.values(LOOP_SOURCES)[0] ?? '';
+  const lines = codeLines(text);
+
+  it('useGameLoop.ts を読めている(走査そのものが壊れていない)', () => {
+    expect(text.length).toBeGreaterThan(1000);
+    expect(text).toContain('issenGuaranteedUntil');
+  });
+
+  it("★`bossState = 'issen-dash'` の代入が1件残らず台帳に宣言されている(1箇所増えたらここで落ちる)", () => {
+    const sites: string[][] = [];
+    lines.forEach((l, i) => {
+      // 窓は**同じ代入ブロック**を見る幅だけ(コメント除去後の8行)。広げると隣の州のハンドラを拾う。
+      if (/bossState\s*=\s*'issen-dash'/.test(l)) sites.push(lines.slice(i, i + 8));
+    });
+    expect(
+      sites.length,
+      '一閃のダッシュへ入る経路が増減した。ISSEN_DASH_SITES へ「その経路はフラグを立てるのか/'
+      + '立てないなら理由」を書き足すこと(落とし忘れ=通常の一閃が永久にカウンター不能、の再発防止)。',
+    ).toBe(ISSEN_DASH_SITES.length);
+    sites.forEach((block, i) => {
+      const site = ISSEN_DASH_SITES[i];
+      expect(
+        block.some(l => /issenGuaranteedUntil\s*=(?!=)/.test(l)), // 読み取り(isGuaranteedIssenNow)は数えない
+        `${site.where}: 宣言=${site.writesFlag ? '書く' : '書かない'} と実装が食い違っている`,
+      ).toBe(site.writesFlag);
+    });
+  });
+
+  it('★フラグを書く場所も1件残らず宣言されている(落とす経路を消したらここで落ちる)', () => {
+    const writes = lines.filter(l => /issenGuaranteedUntil\s*=(?!=)/.test(l));
+    expect(
+      writes.length,
+      'issenGuaranteedUntil の書き込み箇所が増減した。FLAG_WRITE_SITES を更新すること。'
+      + `\n走査=\n${writes.map(w => w.trim()).join('\n')}`,
+    ).toBe(FLAG_WRITE_SITES.length);
+    writes.forEach((w, i) => {
+      const site = FLAG_WRITE_SITES[i];
+      // 立てるのは1箇所だけ。他は必ず `= 0`(落とす)。
+      expect(/=\s*0\s*;/.test(w), `${site.where}`).toBe(!site.raises);
+    });
+    expect(FLAG_WRITE_SITES.filter(s => s.raises).length, 'フラグを立てる場所は1箇所だけ').toBe(1);
+  });
+
+  it('★立てないと宣言した経路には理由が書かれている(黙って外さない)', () => {
+    for (const s of ISSEN_DASH_SITES) {
+      if (s.writesFlag) continue;
+      expect((s.why ?? '').length, `${s.where} に理由が無い`).toBeGreaterThan(3);
+    }
+  });
+
+  it('★frozen で issen-dash から抜けた時もフラグを落とす(ハンドラが二度と走らない経路)', () => {
+    expect(text).toContain("if (frozenSt === 'issen-dash') patch.issenGuaranteedUntil = 0;");
+  });
+});
+
+// ★v0.25.3785(検収監査 中E): 突進の専用CD(thorDashReadyAt)は「突進が潰れた」**全経路**で立てる。
+// カウンター(thorCounterHit)と硬直明けだけでは、frozen(罠のroot/紫の完全気絶/気絶+ノックバック/
+// ワープ)で潰された時に打刻が漏れ、**トラップ等で潰し続けると連発できた**。
+describe('★突進の専用CD(thorDashReadyAt)を打刻する経路(§4)', () => {
+  const text = Object.values(LOOP_SOURCES)[0] ?? '';
+  const lines = codeLines(text);
+
+  it('打刻は4経路(カウンター一括/硬直明け/?thorscript=0のchase復帰/★frozen中断)', () => {
+    const stamps = lines.filter(l => /thorDashReadyAt\s*=(?!=)/.test(l));
+    expect(
+      stamps.length,
+      '突進のCD打刻の箇所が増減した。潰れる経路を増やしたら打刻も足すこと(連発の再発防止)。'
+      + `\n走査=\n${stamps.map(s => s.trim()).join('\n')}`,
+    ).toBe(4);
+    for (const s of stamps) expect(s, s.trim()).toContain('HB_TH.dash.cdMs');
+  });
+
+  it('★frozen で突進が中断された時も打刻する(3州すべて)', () => {
+    expect(text).toContain(
+      "if (frozenSt === 'thor-dash-windup' || frozenSt === 'thor-dash-move' || frozenSt === 'thor-dash-recover')",
+    );
   });
 });
 

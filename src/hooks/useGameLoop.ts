@@ -5426,6 +5426,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (boss.bossStateUntil !== undefined) patch.bossStateUntil = boss.bossStateUntil + kbDtMs;
                   patch.bossNextActionAt = (boss.bossNextActionAt ?? newGameTime) + kbDtMs;
                 } else {
+                  // ★v0.25.3785(検収監査 中E): 技を**frozen**(罠のroot/紫の完全気絶/気絶/浮き/ワープ)で
+                  // 潰して chase へ落とす時も、突進の専用CDを打刻する。旧実装は「カウンターで潰れた」経路
+                  // (thorCounterHit)と硬直明けしか打刻しておらず、**トラップ等で突進を潰し続けると
+                  // 連発できた**。判定式は thorCounterHit と同じ(州が thor-dash-* かどうか)。
+                  const frozenSt = boss.bossState;
+                  if (boss.type === 'thor') {
+                    if (frozenSt === 'thor-dash-windup' || frozenSt === 'thor-dash-move' || frozenSt === 'thor-dash-recover') {
+                      patch.thorDashReadyAt = newGameTime + HB_TH.dash.cdMs;
+                    }
+                    // ★v0.25.3785(検収監査 中F): 必中フラグは**issen-dash を抜ける全経路**で落とす。
+                    // frozen でここへ落ちると issen-dash のハンドラは二度と走らない=立ちっぱなしになる。
+                    if (frozenSt === 'issen-dash') patch.issenGuaranteedUntil = 0;
+                  }
                   // 解除後はチェイスから再開。溜め/連射タイマーを巻き戻して「解除直後に溜め攻撃が暴発」を防ぎ、
                   // 進行中の連射残数もクリア(凍結をまたいで状態が漏れないように)。
                   patch.bossState = 'chase';
@@ -5553,6 +5566,41 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.aiTargetX = pcx + (lx / ll) * HB_TH.orbit.distPx;
                 patch.aiTargetY = pcy + (ly / ll) * HB_TH.orbit.distPx;
                 patch.bossBurstLeft = 0;
+              };
+              // ★突進(thor-dash-*)専用のカウンター反応(§4-1「来た方向へ弾き返す」)。
+              // 共通の thorCounterHit に**弾き返しの行き先**を上書きするだけの薄い層。
+              // ★v0.25.3785(検収監査 重大D): 旧実装は `aiFrom` だけを弾き返し位置へ差し替えていたので、
+              // counter-leap(aiFrom→aiTarget の補間)の**到達点が弾き返しの有無で1pxも変わらなかった**
+              // (=150pxの弾き返しが実質存在しない)。流用元のミゲル(angelBossTick の dashCountered)は
+              // 弾き返し後 `bossState='chase'` へ戻すので、**押された位置がそのまま最終位置**になる。
+              // ここでは**最終位置をミゲルに合わせ**(=弾き返し位置)、そこへ**counter-leap の補間で運ぶ**。
+              // ミゲルのように patch.x/patch.y へ直接書くと 150px の1フレームテレポート=慣性MUST違反
+              // (CLAUDE.md「★動きの絶対ルール: 慣性」)になるため、**座標はここでは1pxも書かない**。
+              const thorDashCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire) => {
+                // 専用CD(thorDashReadyAt)は thorCounterHit が州(thor-dash-*)を見て一括で打刻する
+                // =ここには書かない(同じ値を2箇所に書くと必ず片方だけ古くなる)。
+                thorCounterHit(hitX, hitY, ghost);
+                let bdx = (boss.aiTargetX ?? bcx) - (boss.aiFromX ?? bcx);
+                let bdy = (boss.aiTargetY ?? bcy) - (boss.aiFromY ?? bcy);
+                const bl = Math.hypot(bdx, bdy) || 1; bdx /= bl; bdy /= bl;
+                // 弾き返すのは**ボス**であってプレイヤーではない(v0.25.3784 重大2)。
+                const bx2 = pcx - bdx * AN_C.dashCounterPushbackPx;
+                const by2 = pcy - bdy * AN_C.dashCounterPushbackPx;
+                // 行き先は「行ける帯」の定義(clampRectToPlayableArea)を必ず通す(CLAUDE.md Y方向の掟)。
+                // ※トールの戦場(ステージ5)では tutorial/lab/corridor のどれにも当たらないので実質そのまま
+                //   返る。木/壁の解決(resolveAabb)はしていない=トールは障害物と当たらない設計。
+                const pst = useGameStore.getState();
+                const placed = clampRectToPlayableArea(bx2 - boss.width / 2, by2 - boss.height / 2, boss.width, boss.height, {
+                  farBackdrop: pst.farBackdrop,
+                  labTheme: pst.stageTheme === 'lab',
+                  corridorMode: pst.corridorMode,
+                  m0AdvanceLimitX: null,
+                  corridorRunInActive: pst.corridorRunInActive,
+                });
+                // 起点は今いる場所のまま(thorCounterHit が bcx/bcy を入れている)=テレポートしない。
+                // 到達点だけを弾き返し位置へ差し替える=ここが「150pxが効く」ようになった実体。
+                patch.aiTargetX = placed.x + boss.width / 2;
+                patch.aiTargetY = placed.y + boss.height / 2;
               };
               // ★v0.25.3780(§8-2): トール専用だった `thorBodyOverlapNow`(体の重なりだけで成立)は撤去した。
               // トールも他ボスと同じ宣言表(counterReach.ts)へ乗ったので、成立域の判定は
@@ -5867,8 +5915,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const { overlap, counterActive } = hiddenReachOverlapNow();
                 if (overlap && counterActive) {
                   // 成立時の反応(counter-leap/演出)はボスごとに違うので、そこだけ分ける。
-                  if (boss.type === 'thor') thorCounterHit(bcx, bcy);
-                  else hiddenBossCounterHit(bcx, bcy);
+                  // ★v0.25.3785(中H): 突進の走りだけは弾き返し(§4-1)を足した層を通す。
+                  if (boss.type === 'thor') {
+                    if (st === 'thor-dash-move') thorDashCounterHit(bcx, bcy);
+                    else thorCounterHit(bcx, bcy);
+                  } else hiddenBossCounterHit(bcx, bcy);
                   hiddenBossCountered = true;
                 }
               }
@@ -5897,8 +5948,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       claim: gClaim,
                       sfxGain: npcSfxDistGain(bcx, bcy, pcx, pcy, gcSt.camera, gcSt.gameBounds),
                     };
-                    if (boss.type === 'thor') thorCounterHit(bcx, bcy, gFire);
-                    else hiddenBossCounterHit(bcx, bcy, gFire);
+                    if (boss.type === 'thor') {
+                      if (st === 'thor-dash-move') thorDashCounterHit(bcx, bcy, gFire);
+                      else thorCounterHit(bcx, bcy, gFire);
+                    } else hiddenBossCounterHit(bcx, bcy, gFire);
                     ghostCountered = true;
                   }
                 }
@@ -6540,62 +6593,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 共有の合流点)をそのまま使う=新しい機構も新しい定数も作らない。
                 const dfx = boss.aiFromX ?? bcx, dfy = boss.aiFromY ?? bcy;
                 const dtx = boss.aiTargetX ?? bcx, dty = boss.aiTargetY ?? bcy;
-                const thorDashCountered = (hx: number, hy: number): void => {
-                  // 専用CDは thorCounterHit が州(thor-dash-*)を見て一括で打刻する=ここには書かない
-                  // (同じ値を2箇所に書くと必ず片方だけ古くなる)。
-                  thorCounterHit(hx, hy);
-                  let bdx = dtx - dfx, bdy = dty - dfy;
-                  const bl = Math.hypot(bdx, bdy) || 1; bdx /= bl; bdy /= bl;
-                  // ★v0.25.3784(検収監査 重大2): 弾き返すのは**ボス**であってプレイヤーではない。
-                  // 流用元(angelBossTick の dashCountered=ミゲル/ウリ共有の合流点)は、同じ式で
-                  // **ミゲルの座標**を書いている(`patch.x = px2 - miguel.width / 2`)。旧実装は
-                  // これをプレイヤーの座標へ書いており、カウンターすると**プレイヤーが150px吹き飛ぶ**
-                  // =ミゲルと真逆の挙動になっていた。**プレイヤーの座標はここでは1pxも書かない。**
-                  const bx2 = pcx - bdx * AN_C.dashCounterPushbackPx;
-                  const by2 = pcy - bdy * AN_C.dashCounterPushbackPx;
-                  // 位置は「行ける帯」の定義(clampRectToPlayableArea)を必ず通す(CLAUDE.md Y方向の掟)。
-                  const pst = useGameStore.getState();
-                  const placed = clampRectToPlayableArea(bx2 - boss.width / 2, by2 - boss.height / 2, boss.width, boss.height, {
-                    farBackdrop: pst.farBackdrop,
-                    labTheme: pst.stageTheme === 'lab',
-                    corridorMode: pst.corridorMode,
-                    m0AdvanceLimitX: null,
-                    corridorRunInActive: pst.corridorRunInActive,
-                  });
-                  patch.x = placed.x; patch.y = placed.y;
-                  // thorCounterHit は全技共通の反応(counter-leap=跳び退き)を積む。跳びの補間は
-                  // aiFrom から始まるので、**起点も弾き返した位置**へ揃える(揃えないと次フレームで
-                  // 元の位置へ戻り、弾き返しが1フレームで消える)。跳び先(aiTarget)は共通のまま。
-                  patch.aiFromX = placed.x + boss.width / 2; patch.aiFromY = placed.y + boss.height / 2;
-                };
-                // 通過中(体の重なり)もカウンターを取れる=ミゲルと同じ(素通りして背後から斬られない)。
-                const cpNow = useGameStore.getState().player;
-                const dashBodyCountered = rectsOverlap(
-                  { x: boss.x, y: boss.y, width: boss.width, height: boss.height },
-                  { x: cpNow.x, y: cpNow.y, width: cpNow.width, height: cpNow.height })
-                  && Date.now() <= cpNow.counterWindowEnd;
-                if (dashBodyCountered) thorDashCountered(bcx, bcy);
+                // ★v0.25.3785(検収監査 中H): 走行中の体当てカウンターは、ここの生の rectsOverlap では
+                // なく**上の共通カウンターブロック**が宣言表('hidden:thor-dash-move'='body')で解決する
+                // =他ボスの突進(裏ボス 'dash')と同じ経路。成立したフレームはこのif/elseチェーン自体が
+                // 丸ごとスキップされる(=移動も斬り抜けも走らない)ので、旧 dashBodyCountered のゲートは要らない。
                 const dElapsed = newGameTime - (boss.aiStartedAt ?? newGameTime);
                 // ★慣性(CLAUDE.md MUST): 等速の線形補間ではなく、両端で速度0の曲線で運ぶ
                 // (ジャンプ滑空 v0.25.3076 と同じ airHopEase01)。ワープに見せない。
                 const dMoveT = Math.max(0, Math.min(1, dElapsed / HB_TH.dash.moveMs));
-                const dnx = dfx + (dtx - dfx) * airHopEase01(dMoveT);
-                const dny = dfy + (dty - dfy) * airHopEase01(dMoveT);
-                if (!dashBodyCountered) {
-                  // ★v0.25.3784(検収監査 低): アクターを動かす時は必ず「行ける帯」を通す
-                  // (CLAUDE.md Y方向の掟。旧実装は生の座標をそのまま書いていた)。
-                  const dSt = useGameStore.getState();
-                  const dPlaced = clampRectToPlayableArea(dnx - boss.width / 2, dny - boss.height / 2, boss.width, boss.height, {
-                    farBackdrop: dSt.farBackdrop,
-                    labTheme: dSt.stageTheme === 'lab',
-                    corridorMode: dSt.corridorMode,
-                    m0AdvanceLimitX: null,
-                    corridorRunInActive: dSt.corridorRunInActive,
-                  });
-                  patch.x = dPlaced.x; patch.y = dPlaced.y;
-                }
-                let dCountered = dashBodyCountered;
-                if (!dashBodyCountered && dElapsed >= HB_TH.dash.moveMs) {
+                const dnx0 = dfx + (dtx - dfx) * airHopEase01(dMoveT);
+                const dny0 = dfy + (dty - dfy) * airHopEase01(dMoveT);
+                // ★v0.25.3784(検収監査 低): アクターを動かす時は必ず「行ける帯」を通す
+                // (CLAUDE.md Y方向の掟。旧実装は生の座標をそのまま書いていた)。
+                // ※この関数は tutorial/lab/corridor のクランプだけで、木/壁の解決(resolveAabb)はしない。
+                //   トールは障害物と当たらない設計なので壁判定は不要=「帯」だけ通せば足りる。
+                const dSt = useGameStore.getState();
+                const dPlaced = clampRectToPlayableArea(dnx0 - boss.width / 2, dny0 - boss.height / 2, boss.width, boss.height, {
+                  farBackdrop: dSt.farBackdrop,
+                  labTheme: dSt.stageTheme === 'lab',
+                  corridorMode: dSt.corridorMode,
+                  m0AdvanceLimitX: null,
+                  corridorRunInActive: dSt.corridorRunInActive,
+                });
+                patch.x = dPlaced.x; patch.y = dPlaced.y;
+                // ★v0.25.3785(検収監査 低I): 斬り抜けカプセルの**始点はクランプ後の座標**から引く
+                // (旧実装はクランプ前の生の座標だった=帯の外へ出た時だけ絵と判定が本体からズレる)。
+                const dnx = dPlaced.x + boss.width / 2, dny = dPlaced.y + boss.height / 2;
+                let dCountered = false;
+                if (dElapsed >= HB_TH.dash.moveMs) {
                   // 到達=斬り抜け1回(払いのカプセルを流用=ミゲルが harai を流用しているのと同じ作法)。
                   let ddirx = dtx - dfx, ddiry = dty - dfy;
                   const ddl2 = Math.hypot(ddirx, ddiry) || 1; ddirx /= ddl2; ddiry /= ddl2;
@@ -6605,7 +6630,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (distToBandRect({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }, HB_TH.harai.halfWidth) <= dpr) {
                     const cp = useGameStore.getState().player;
                     if (Date.now() <= cp.counterWindowEnd) {
-                      thorDashCountered((sx + ex) / 2, (sy + ey) / 2);
+                      thorDashCounterHit((sx + ex) / 2, (sy + ey) / 2);
+                      // 跳びの起点は**このフレームで実際に居る場所**(=上で patch.x へ書いた到達点)。
+                      // フレーム頭の bcx/bcy のままだと1フレームだけ後ろへ戻って見える。
+                      patch.aiFromX = dnx; patch.aiFromY = dny;
                       dCountered = true;
                     } else {
                       const died = damagePlayer(boss.damage, 'トールの突進', pcx, pcy, undefined, undefined, 'thor-dash'); // G4a計測タグ(記録専用)

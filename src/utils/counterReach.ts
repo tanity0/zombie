@@ -167,6 +167,11 @@ export const COUNTER_REACH_DECL: Readonly<Record<string, CounterReachKind>> = {
   'hidden:jump-windup': 'body',           // 飛び掛かり=着地円だが、成立域は従来どおり体(§8-2の対象外=挙動据え置き)
   'hidden:jump-recover': 'body',
   'hidden:thor-dash-windup': 'body',      // 突進=流星ライン(裏ボスdash/ミゲル踏み込みと同型=図形reachは持たない)
+  // ★v0.25.3785(検収監査 中H): 走り(thor-dash-move)も表へ載せた。裏ボスの突進は実行中の州('dash')が
+  // 載っているのに、トールの走りだけが表の外で生の rectsOverlap で解決されていた=§5-2の狙い
+  // (トールも他ボスと同じ表へ乗せる)から外れる唯一の州だった。宣言は裏ボス 'hidden:dash' と同じ 'body'
+  // (流星ラインは判定を持つ図形ではない=判定は突進の体そのもの)なので**成立域は1pxも変わらない**。
+  'hidden:thor-dash-move': 'body',
   'hidden:thor-dash-recover': 'body',
 
   // ---- 天使(州名が6体で衝突するので boss.type をキーにする) ----
@@ -219,7 +224,11 @@ export const HIDDEN_COUNTER_RECOVER_STATES: readonly string[] = [
   // パニッシュ窓が体当てで短縮される。laser-broken中は普通に殴る(それが報酬)。
 ];
 /** 実行中(active)にもカウンターを開く裏ボスの州(突進の走り=その技の判定に委ねる)。 */
-export const HIDDEN_COUNTER_ACTIVE_STATES: readonly string[] = ['dash'];
+// ★v0.25.3785(検収監査 中H): トールの走り(thor-dash-move)も同じ列へ。**他ボスは同名の州を持たない**
+// ので mimir/jormungand/skadi の挙動は1つも変わらない。成立域は宣言 'body' = 旧実装(ハンドラ内の
+// 生の rectsOverlap)と同じ図形なので、プレイヤー側の取り方も変わらない。
+// (弾き返し=突進専用の反応は useGameLoop の thorDashCounterHit が担当する。)
+export const HIDDEN_COUNTER_ACTIVE_STATES: readonly string[] = ['dash', 'thor-dash-move'];
 
 /** 宣言を引く(未宣言=従来どおり体の重なり)。**新しい技は必ず表へ足す**(テストが落ちて教える)。 */
 export const counterReachKindFor = (key: string): CounterReachKind => COUNTER_REACH_DECL[key] ?? 'body';
