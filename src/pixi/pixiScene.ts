@@ -1602,23 +1602,17 @@ const RAFI_BLADE_SLASH_LENGTH = 90; // 叩き台
 // ---- 本体: 呼吸(既存ENEMY_BREATH・isHiddenBoss経由で自動適用)+浮遊(§10-4) ----
 const PHILL_FLOAT_AMP_PX = 14;       // 上下ボブの振幅(px・視覚のみ=e.y/当たり判定は不変)。
 const PHILL_FLOAT_PERIOD_MS = 3400;  // ゆっくり(慣性=sin波なので加減速は内在=v0.25.3429)。
-// ---- 羽(§10-4/§10-12#12): phill-wings.png(804×1024)=2列(左/右翼)×3行(3対)のシート ----
-const PHILL_WING_COLS = 2, PHILL_WING_ROWS = 3;
-// 各対の付け根(ゲム)のフラクション座標。実測未受領=目視の叩き台(実機調整前提。列0=左翼/列1=右翼)。
-const PHILL_WING_ANCHOR: { x: number; y: number }[][] = [
-  [{ x: 0.56, y: 0.19 }, { x: 0.44, y: 0.19 }], // 対0(最奥・上向きに畳んだ羽)
-  [{ x: 0.70, y: 0.42 }, { x: 0.30, y: 0.42 }], // 対1(中段・横に広がる=主翼)
-  [{ x: 0.58, y: 0.24 }, { x: 0.42, y: 0.24 }], // 対2(手前・触手つき)
-];
-// ★v0.25.3722(社長報告「せなかの羽が無い」の実バグ): 旧「表示高さpx × bodyScale」は bodyScale
-// (本体テクスチャ→表示の縮小率≈0.2)が**二重に掛かり**、羽が25〜37pxの豆粒=本体の陰に完全に
-// 隠れていた。**本体の表示高さに対する比率**で指定し直す(主翼(対1)=本体の約0.92倍=大きく)。
-const PHILL_WING_PAIR_H_FRAC = [0.61, 0.92, 0.82]; // 対ごとの高さ(本体表示高さ比・主翼を一番大きく)
+// ---- 羽(§10-4/§10-12#12): phill-wings.png(804×1024)を**切らずに1枚**で使う ----
+// ★v0.25.3724(社長指示「この羽切らずに1枚で使って。蝶の羽みたいにする感じで」):
+// 旧2列×3行の6分割は廃止。シート全体(3対が描き込まれた構図のまま)を本体の背中に1枚敷き、
+// **蝶の開閉**=横方向のすぼめ↔開き(scale.xのsin)+ごく小さな全体の傾ぎで羽ばたかせる。
+const PHILL_WING_H_FRAC = 1.15;          // 羽全体の高さ(本体表示高さ比・叩き台=本体よりひと回り大きく)
+const PHILL_WING_Y_OFF_FRAC = -0.52;     // 本体足元(bodyY)からの縦オフセット(本体高さ比・背中の高さへ)
 const PHILL_WING_FLAP_MS = 2400;         // 大きくゆっくり(フェーズ1基準・§10-1「大きくゆっくり羽ばたく」)
 const PHILL_WING_FLAP_MS_PHASE2 = 1300;  // フェーズ2は速くなる(§10-9)
-const PHILL_WING_FLAP_ROT = 0.30;        // 羽ばたきの回転振幅(rad)
-const PHILL_WING_FLAP_SCALE = 0.10;      // 羽ばたきの拡縮振幅
-const PHILL_WING_ATTACK_BOOST = 2.6;     // 技3/4/5発動中、主翼(対1)を大きく振る倍率(動きは大きく=v3443)
+const PHILL_WING_FOLD_MIN = 0.55;        // 蝶の閉じ(scale.xの最小倍率)。1.0=全開
+const PHILL_WING_TILT_ROT = 0.05;        // 全体のごく小さな傾ぎ(rad)
+const PHILL_WING_ATTACK_BOOST = 2.6;     // 技3/4/5発動中は速く大きく振る倍率(動きは大きく=v3443)
 // ---- 羽攻撃の武器スプライト(§10-10): phill-wing-attack.png(436×512) ----
 const PHILL_WING_ATTACK_GRIP_FRAC = { x: 0.76, y: 0.34 }; // 実測目視の叩き台(付け根のゲム)
 const PHILL_WING_ATTACK_TIP_FRAC = { x: 0.05, y: 0.85 };  // 羽根の先端
@@ -3387,7 +3381,6 @@ export class PixiScene {
   private namedFoeLabels = new Map<string, Text>();
 
   // ---- PACING_PUZZLE.md §10 バッチ3(フィル専用描画・L.phillLayer内) ----------------------------
-  private phillWingFrames: Texture[] | null = null; // phill-wings.pngを6枚にスライスしたキャッシュ(1回だけ)
   // 影/後光/羽をまとめる下敷きコンテナ(phillLayerのindex 0=最下へ挿す)。本体(view.container)は
   // 別途phillLayerへ通常addChildされる(=下敷きの後に追加される→常に本体の方が手前)。z順を
   // 生成タイミングに依存させない(遅延生成される羽/後光がaddChild順で本体の上に来る事故を防ぐ)。
@@ -19187,34 +19180,12 @@ export class PixiScene {
     }
     this.phillSparkles.set(id, sparkles);
 
-    // 羽6枚(後光/キラキラの上・本体の下)。
-    const wings: Sprite[] = [];
-    for (let i = 0; i < PHILL_WING_ROWS * PHILL_WING_COLS; i++) {
-      const sp = new Sprite();
-      sp.anchor.set(0.5, 0.5);
-      back.addChild(sp);
-      wings.push(sp);
-    }
-    this.phillWingSprites.set(id, wings);
+    // 羽1枚(後光/キラキラの上・本体の下)。v0.25.3724: シートを切らずに1枚で使う(社長指示)。
+    const wingSp = new Sprite();
+    wingSp.anchor.set(0.5, 0.5); // 蝶の開閉=中心線ですぼめる
+    back.addChild(wingSp);
+    this.phillWingSprites.set(id, [wingSp]);
     return back;
-  }
-
-  /** phill-wings.png(804×1024)を2列(左/右翼)×3行(3対)=6枚にスライスしたキャッシュ(1回だけ)。 */
-  private getPhillWingFrame(row: number, col: number): Texture | null {
-    if (!this.phillWingFrames) {
-      const atlas = getTexture('phill-wings');
-      if (!atlas) return null;
-      const fw = Math.floor(atlas.width / PHILL_WING_COLS);
-      const fh = Math.floor(atlas.height / PHILL_WING_ROWS);
-      const frames: Texture[] = [];
-      for (let r = 0; r < PHILL_WING_ROWS; r++) {
-        for (let c = 0; c < PHILL_WING_COLS; c++) {
-          frames.push(new Texture({ source: atlas.source, frame: new Rectangle(c * fw, r * fh, fw, fh) }));
-        }
-      }
-      this.phillWingFrames = frames;
-    }
-    return this.phillWingFrames[row * PHILL_WING_COLS + col] ?? null;
   }
 
   /**
@@ -19276,46 +19247,31 @@ export class PixiScene {
     this.triggerPhillFeatherFx(id, e, bodyX, bodyY, gameTime, now);
   }
 
-  /** §10-4/§10-12#12: 羽6枚(3対)。glenParts「式」(追従アルゴリズムの流用であって描画経路の流用ではない)。 */
+  /** §10-4/§10-12#12+v0.25.3724(社長指示「切らずに1枚で・蝶の羽みたいに」):
+   *  シート全体を背中に1枚敷き、蝶の開閉=横方向のすぼめ↔開き(scale.xのsin)で羽ばたかせる。 */
   private syncPhillWings(id: string, e: Enemy, bodyX: number, bodyY: number, bodyScale: number, bodyAlpha: number, now: number): void {
     const wings = this.phillWingSprites.get(id);
-    if (!wings) return;
+    const sp = wings?.[0];
+    if (!sp) return;
+    const wingTex = getTexture('phill-wings');
+    if (!wingTex) { sp.visible = false; return; }
+    if (sp.texture !== wingTex) sp.texture = wingTex;
     const bs = e.bossState ?? '';
     const phase2 = (e.bossPhase ?? 1) >= 2;
-    const flapMs = phase2 ? PHILL_WING_FLAP_MS_PHASE2 : PHILL_WING_FLAP_MS; // §10-9: フェーズ2は速い
-    // §10-4「技3/4/5の発動時は該当する対を大きく振る」: 主翼(対1)を対象にする(叩き台=実機で対象や
-    // 見た目を絞る)。
+    // 技3/4/5発動中は速く大きく(§10-4「動きは大きく」)。フェーズ2も速い(§10-9)。
     const wingMoveActive = bs.startsWith('phill-wingslash') || bs.startsWith('phill-wingthrust') || bs.startsWith('phill-wingcombo');
+    const flapMs = (phase2 ? PHILL_WING_FLAP_MS_PHASE2 : PHILL_WING_FLAP_MS) / (wingMoveActive ? PHILL_WING_ATTACK_BOOST : 1);
     const tex = getTexture('phill');
     const bodyH = (tex?.height ?? 1024) * bodyScale;
-    const bodyW = (tex?.width ?? 768) * bodyScale;
-    const pairYOffFrac = [-0.34, -0.12, 0.06]; // 対ごとの縦オフセット(叩き台=目視)
-    const pairXOffFrac = [0.12, 0.32, 0.24];   // 対ごとの横広がり
-    for (let pair = 0; pair < PHILL_WING_ROWS; pair++) {
-      for (let side = 0; side < PHILL_WING_COLS; side++) {
-        const idx = pair * PHILL_WING_COLS + side;
-        const sp = wings[idx];
-        const frameTex = this.getPhillWingFrame(pair, side);
-        if (!frameTex) { sp.visible = false; continue; }
-        if (sp.texture !== frameTex) sp.texture = frameTex;
-        const anchorFrac = PHILL_WING_ANCHOR[pair][side];
-        sp.anchor.set(anchorFrac.x, anchorFrac.y);
-        const sign = side === 0 ? -1 : 1; // col0=左翼(-x)/col1=右翼(+x)。素材は既にL/R個別に描かれている。
-        const boosted = wingMoveActive && pair === 1;
-        const phaseOff = pair * 1.9 + side * 0.35; // 対ごとに位相をずらす(§10-4)
-        const flapEffMs = boosted ? flapMs / PHILL_WING_ATTACK_BOOST : flapMs;
-        const flap = Math.sin((now / flapEffMs) * Math.PI * 2 + phaseOff);
-        const rotAmp = PHILL_WING_FLAP_ROT * (boosted ? PHILL_WING_ATTACK_BOOST * 0.6 : 1);
-        const scaleAmp = PHILL_WING_FLAP_SCALE * (boosted ? PHILL_WING_ATTACK_BOOST * 0.6 : 1);
-        // bodyH=本体の表示高さ(px)。羽の高さは本体比(PAIR_H_FRAC)から出す=二重スケールしない。
-        const sc = (bodyH * PHILL_WING_PAIR_H_FRAC[pair] / Math.max(1, frameTex.height)) * (1 + flap * scaleAmp);
-        sp.scale.set(sc, sc);
-        sp.rotation = sign * flap * rotAmp; // 左右対称(内へ畳む/外へ開く)
-        sp.position.set(bodyX + sign * pairXOffFrac[pair] * bodyW, bodyY + pairYOffFrac[pair] * bodyH);
-        sp.alpha = bodyAlpha;
-        sp.visible = true;
-      }
-    }
+    // 蝶の開閉: sinを0..1に写して閉じ(FOLD_MIN)↔全開(1.0)を往復(sin=加減速内在=慣性MUST)。
+    const wave = (Math.sin((now / flapMs) * Math.PI * 2 + stablePhase(id)) + 1) / 2; // 0..1
+    const openT = PHILL_WING_FOLD_MIN + (1 - PHILL_WING_FOLD_MIN) * wave;
+    const baseSc = bodyH * PHILL_WING_H_FRAC / Math.max(1, wingTex.height);
+    sp.scale.set(baseSc * openT, baseSc * (1 + (1 - openT) * 0.06)); // 閉じる時ほんの少し縦に伸びる(布感)
+    sp.rotation = (wave - 0.5) * 2 * PHILL_WING_TILT_ROT; // ごく小さな全体の傾ぎ
+    sp.position.set(bodyX, bodyY + PHILL_WING_Y_OFF_FRAC * bodyH);
+    sp.alpha = bodyAlpha;
+    sp.visible = true;
   }
 
   /** §10-18(後光・社長指示「頭の後ろくらいからピカーキラキラキラ〜」)。投影影の光源にはしない。 */
