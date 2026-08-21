@@ -174,6 +174,18 @@ const codeLines = (text: string): string[] =>
     return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
   });
 
+/**
+ * `startRe` に当たった行の**次の行**から、`endRe` に当たる行の**手前**までを返す(=ブロックの中身)。
+ * 「同じブロックの中に◯◯が書かれているか」を見るための最小限のスライサ
+ * (n行窓だと隣のブロックを拾う/ブロックが伸びると窓から落ちる、の両方を避ける)。
+ */
+const blockAfter = (lines: string[], startRe: RegExp, endRe: RegExp): string[] => {
+  const i = lines.findIndex(l => startRe.test(l));
+  if (i < 0) return [];
+  const rel = lines.slice(i + 1).findIndex(l => endRe.test(l));
+  return rel < 0 ? [] : lines.slice(i + 1, i + 1 + rel);
+};
+
 describe('★必中フラグ(issenGuaranteedUntil)の配線の不変条件(§5-2 やること②)', () => {
   const text = Object.values(LOOP_SOURCES)[0] ?? '';
   const lines = codeLines(text);
@@ -251,6 +263,82 @@ describe('★突進の専用CD(thorDashReadyAt)を打刻する経路(§4)', () =
     expect(text).toContain(
       "if (frozenSt === 'thor-dash-windup' || frozenSt === 'thor-dash-move' || frozenSt === 'thor-dash-recover')",
     );
+  });
+});
+
+// =================================================================================================
+// ★v0.25.3794(検収監査5巡目 重大1): **実機から消えた挙動そのもの**を固定する。
+// v0.25.3785 重大D=「`thorDashCounterHit` が `aiFrom` だけを差し替えていたので、counter-leap の
+// **到達点が弾き返しの有無で1pxも変わらなかった**(=150pxの弾き返しが1pxも効いていなかった)」。
+// 直したのに**リポジトリ全体で1本も固めていなかった**ので、同じ形へ戻っても全テストが緑になる。
+// あわせて、共通カウンターブロックから突進専用層へ**振り分ける配線**(2経路)も固める
+// (CLAUDE.md 実装精度の規律4「テストされていたのは純関数だけで、配線側の誤りは全部すり抜けた」)。
+// =================================================================================================
+describe('★突進のカウンター(弾き返し)の配線の不変条件(§5-2 ★弾き返しの効かせ方/やること③)', () => {
+  const text = Object.values(LOOP_SOURCES)[0] ?? '';
+  const lines = codeLines(text);
+
+  it('★弾き返しは**到達点**(patch.aiTargetX/Y)へ書く=`aiFrom` だけを書く形に戻したらここで落ちる', () => {
+    const body = blockAfter(lines, /const thorDashCounterHit = \(/, /^\s*\};\s*$/);
+    expect(body.length, 'thorDashCounterHit の本体を走査できていない(走査そのものが壊れた)')
+      .toBeGreaterThan(3);
+    // トールは全技共通の反応(counter-leap=aiFrom→aiTarget の補間)を積むので、**到達点**を
+    // 差し替えないと弾き返しは1pxも効かない(起点だけ動かしても終点が同じなら同じ場所へ着く)。
+    expect(
+      body.some(l => /patch\.aiTargetX\s*=(?!=)/.test(l)),
+      '弾き返しの到達点(patch.aiTargetX)を書いていない=150pxが効かない(v0.25.3785 重大Dの再発)',
+    ).toBe(true);
+    expect(
+      body.some(l => /patch\.aiTargetY\s*=(?!=)/.test(l)),
+      '弾き返しの到達点(patch.aiTargetY)を書いていない=150pxが効かない(v0.25.3785 重大Dの再発)',
+    ).toBe(true);
+    // 弾き返し量は既存の合流点(ミゲル/ウリと共有)から引く=新しい定数を作らない。
+    expect(
+      body.some(l => /dashCounterPushbackPx/.test(l)),
+      '弾き返し量が既存の dashCounterPushbackPx から来ていない',
+    ).toBe(true);
+  });
+
+  it("★`st === 'thor-dash-move'` を突進専用層へ振り分ける行が**2本**ある(プレイヤー経路・守護霊経路)", () => {
+    const branches = lines.filter(l => /st === 'thor-dash-move'/.test(l) && /thorDashCounterHit\(/.test(l));
+    expect(
+      branches.length,
+      '走行中の突進を thorDashCounterHit へ振り分ける行が増減した。共通カウンターブロックには'
+      + '**プレイヤー経路と守護霊(ゴースト)経路の2本**があり、片方だけ thorCounterHit のままだと'
+      + 'その経路でだけ弾き返し(§4-1 受け入れ条件3)が消える。'
+      + `\n走査=\n${branches.map(b => b.trim()).join('\n')}`,
+    ).toBe(2);
+    // 守護霊経路だけが GhostCounterFire(gFire)を渡す=2本が別経路であることの証明。
+    expect(branches.filter(l => /gFire/.test(l)).length, '守護霊経路(gFire を渡す方)が1本ではない').toBe(1);
+    expect(branches.filter(l => !/gFire/.test(l)).length, 'プレイヤー経路が1本ではない').toBe(1);
+  });
+});
+
+// =================================================================================================
+// ★v0.25.3794(検収監査5巡目 重大2): v0.25.3793 の唯一のコード変更(中3=ノックバック凍結中に
+// `aiStartedAt` も繰り下げる)に回帰テストが無かった。この1行が消えても全テストが緑=**解除の瞬間に
+// イージング曲線上を凍結時間ぶんワープする**(慣性MUST違反)が黙って復活する。
+// =================================================================================================
+describe('★ノックバック"だけ"で止まっている間の時計の繰り下げ(§5-2 周辺・慣性MUST)', () => {
+  const text = Object.values(LOOP_SOURCES)[0] ?? '';
+  const lines = codeLines(text);
+
+  it('★kbOnlyStop の枝で `aiStartedAt` も同じ kbDtMs だけ繰り下げる(突進の位置補間の基準)', () => {
+    const body = blockAfter(lines, /if \(kbOnlyStop\) \{/, /^\s*\} else \{\s*$/);
+    expect(body.length, 'kbOnlyStop の枝を走査できていない(走査そのものが壊れた)').toBeGreaterThan(1);
+    expect(
+      body.some(l => /patch\.aiStartedAt\s*=(?!=)/.test(l) && /kbDtMs/.test(l)),
+      'kbOnlyStop の枝で aiStartedAt を繰り下げていない。トールの突進(thor-dash-move)だけが位置の'
+      + '補間を aiStartedAt 基準で回しているので、bossStateUntil / bossNextActionAt だけを繰り下げると'
+      + '**解除の瞬間にイージング曲線上を凍結時間ぶんワープ**する(慣性MUST違反=v0.25.3793 中3の再発)。',
+    ).toBe(true);
+    // 凍結中に進んではいけない時計は3本セット。1本でも欠けると「解除の瞬間に何かが飛ぶ」。
+    for (const f of ['bossStateUntil', 'bossNextActionAt', 'aiStartedAt']) {
+      expect(
+        body.some(l => new RegExp(`patch\\.${f}\\s*=(?!=)`).test(l) && /kbDtMs/.test(l)),
+        `${f} が kbDtMs ぶん繰り下げられていない`,
+      ).toBe(true);
+    }
   });
 });
 
