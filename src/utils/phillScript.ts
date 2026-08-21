@@ -103,7 +103,8 @@ export const pickPhillMove = (
   m => PHILL_MOVE_WEIGHTS[m][bossZoneForDistance(distance)],
   {
     lancefan: true, wingslash: true, wingthrust: true, wingcombo: true,
-    meteor: true, ringtoss: true, dive: true, feathershot: true,
+    // ★v0.25.3741(社長指示): 急降下は「召喚→急降下」の台本連携でのみ出す=単発抽選から除外。
+    meteor: true, ringtoss: true, dive: false, feathershot: true,
     lightrain: gates.lightrainReady, goldring: gates.goldringReady,
     summon: gates.summonReady,
     judgment: gates.requiredReady && gates.judgmentReady,

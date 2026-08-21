@@ -92,11 +92,15 @@ export interface AngelSfx {
   iceBurst: () => void;  // 結晶/氷起爆(playSfx('skadi-ice'))
   throw: () => void;     // 投擲(playSfx('boomerang-throw'))
   summon: () => void;    // ★v0.25.フィルバッチ2: 召喚(playSfx('summon')・§10-3の6)
+  // ★v0.25.3741(社長提供SE): フィルの天の光スポットライト予兆。skylight=祝福 / skylightLow=裁きの光
+  // (同素材のピッチ下げ=「少し音を低く(音量ではなく)」)。
+  skylight: () => void;
+  skylightLow: () => void;
 }
 export const NOOP_ANGEL_SFX: AngelSfx = {
   counter: () => {}, reward: () => {}, sweep: () => {}, alert: () => {},
   shot: () => {}, thrust: () => {}, dashSlash: () => {}, slashHit: () => {}, beam: () => {}, iceBurst: () => {}, throw: () => {},
-  summon: () => {},
+  summon: () => {}, skylight: () => {}, skylightLow: () => {},
 };
 void BOSS_ALERT_SFX_KEY; // (呼び出し側=useGameLoop.tsがplaySfx(BOSS_ALERT_SFX_KEY)をalertへ配線する)
 
@@ -2815,6 +2819,7 @@ export const runPhillTick = (
     patch.bossState = 'phill-lightrain-windup';
     patch.bossStateUntil = newGameTime + PH_T.lightrain.windup;
     ph.lightrainReadyAt = newGameTime + PH_T.lightrain.cdMs;
+    sfx.skylight(); // ★v0.25.3741: 祝福の天の光スポットライト(社長提供SE)
   };
   const beginLancefan = (): void => {
     patch.bossState = 'phill-lancefan-windup';
@@ -2866,6 +2871,7 @@ export const runPhillTick = (
     // §10-9「全方位から羽根の輪が閉じる(逃げ場なし)」=閉じる中心は溜め開始でロック(以後追尾しない)。
     patch.aiTargetX = pcx; patch.aiTargetY = pcy;
     ph.cageReadyAt = newGameTime + PH_T.cage.cdMs;
+    sfx.skylightLow(); // ★v0.25.3741: 裁きの光(=檻)の天の光=同SEのピッチ下げ版(社長指示「少し低く」)
   };
   const beginMeteor = (): void => {
     patch.bossState = 'phill-meteor-windup';

@@ -323,7 +323,9 @@ export const ANGEL_PHILL_TUNING: AngelPhillTuning = {
   cage: { trackMs: 1800, active: 260, recover: withRecoverFloor(900), startRadius: 1000, closeRadius: 200, cdMs: 10000 },
   meteor: { windup: 900, count: 4, gapMs: 220, turnRateDeg: 70, recover: withRecoverFloor(700) },
   ringtoss: { windup: 700, outMs: 380, backMs: 380, recover: withRecoverFloor(700), range: 620, halfWidth: 40 },
-  dive: { windup: 900, fallMs: 420, recover: withRecoverFloor(900), radius: 110 },
+  // ★v0.25.3741(社長指示): 追尾2000・落下600・着地半径70。演出=天に昇って画面外→勢いよく降下+砂埃
+  // (pixi側)。台本化: 召喚→急降下の連携でのみ出す(単発抽選から除外・bossChoreography/phillScript)。
+  dive: { windup: 2000, fallMs: 600, recover: withRecoverFloor(900), radius: 70 },
   feathershot: { windup: 600, count: 6, spreadDeg: 50, recover: withRecoverFloor(600) },
 };
 

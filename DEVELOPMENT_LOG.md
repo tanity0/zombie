@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.3741 — フィル: 天の光SE+急降下刷新(天に昇る→砂埃)+召喚→急降下の台本化【2026-08-21 13:34 JST】
+
+- **SE(社長提供 3.07s)**: public/audio/sfx/phill-skylight.mp3。'phill-skylight'(祝福)/
+  'phill-skylight-low'(裁きの光=同素材playbackRate 0.8=「少し音を低く(音量ではなく)」)。
+  AngelSfxにskylight/skylightLow追加・beginLightrain/beginCage(=裁きの光の中身)で発火。
+- **急降下刷新(社長指示)**: 数値=windup 900→2000(追尾)・fallMs 420→600・radius 110→70。
+  演出=windup前半45%で加速上昇し**可視高さ+絵の高さぶん**画面外へ(どのズームでも抜ける・
+  視覚オフセットのみ=判定/sim座標不変)→fallで加速降下(simの水平移動と合成=上空から着地点へ
+  滑空して突っ込む軌道)→**着地砂埃**(城ボス着地と同じlatch+drawDust型・半径70×2.2=派手枠)。
+  昇っている間は足元影も消灯(phillDiveLift01を本体オフセットと影で共用)。
+- **台本化(社長指示「召喚→急降下。どちらも単発では出さない」)**: bossChoreography phillboss表を
+  summon:['summon','dive']の2手固定に(dive単独行削除)・phillScriptの単発抽選からdive除外。
+  召喚(summonReadyゲート)が始動技=「雑魚を呼んだら本人が天に消えて降ってくる」。
+- 検証: typecheck 0 / lint 0(warning8は既存)。実機確認は社長に依頼。
+- ※次作業: アテンションの寄り先ズレ(社長診断「遠景分を考慮してない。可視領域内での真ん中に」)。
+
 ## v0.25.3740 — フィル技調整5件: 扇7連射/羽振り前進/突き刷新/裁きの光=檻/光輪の実絵【2026-08-21 13:24 JST】
 
 - **光輪投げ**(社長指示「スリィエルの輪っか武器を流用して、色を金色に輝かせて」): suriel-ring素材を

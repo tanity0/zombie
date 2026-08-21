@@ -115,6 +115,8 @@ export type SfxKey =
   | 'homing-fire'
   | 'summon'
   | 'boss-appear'    // 城ボス/裏ボス出現時のアテンションSE
+  | 'phill-skylight'     // フィル「祝福」の天の光スポットライト予兆(社長提供SE 2026-08-21)
+  | 'phill-skylight-low' // 同素材のピッチ下げ版=「裁きの光」(音量ではなく音程を低く・社長指示)
   | 'heli-land'      // ヘリ着地SE
   | 'boss-death'     // 裏ボス討伐(消滅)SE。長いので fadeOutMs でフェード
   | 'base-capture'   // 拠点開放SE
@@ -159,6 +161,19 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/event-clear.mp3`,
     volume: 0.85,
     minIntervalMs: 200,
+  },
+  // フィル「祝福」/「裁きの光」の天の光スポットライト予兆(社長提供SE 2026-08-21)。
+  // 裁きの光は同素材のピッチ下げ(playbackRate 0.8)=「少し音を低く(音量ではなく)」(社長指示)。
+  'phill-skylight': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/phill-skylight.mp3`,
+    volume: 0.9,
+    minIntervalMs: 300,
+  },
+  'phill-skylight-low': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/phill-skylight.mp3`,
+    volume: 0.9,
+    minIntervalMs: 300,
+    playbackRate: 0.8,
   },
   // 城ボス/裏ボス出現時のアテンションで鳴らす(社長提供SE)。
   'boss-appear': {

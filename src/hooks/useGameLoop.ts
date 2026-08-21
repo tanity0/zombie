@@ -804,6 +804,8 @@ const ANGEL_SFX: AngelSfx = {
   iceBurst: () => playSfx('skadi-ice'),         // 結晶/氷の起爆(スカディ氷と同じ)
   throw: () => playSfx('boomerang-throw'),      // 骨/刃の投擲(プレイヤーのブーメラン投げ近似)
   summon: () => playSfx('summon'),              // ★フィルバッチ2(§10-3の6): 召喚(既存SEをそのまま流用)
+  skylight: () => playSfx('phill-skylight'),         // ★v0.25.3741: 祝福の天の光(社長提供SE)
+  skylightLow: () => playSfx('phill-skylight-low'),  // ★v0.25.3741: 裁きの光=同SEのピッチ下げ版
 };
 // idol(stage-2隠しボス)の音。予告SEは全ボス共通の hunter-alert 流用(§6.26-9 #5)。
 const IDOL_SFX: IdolSfx = {

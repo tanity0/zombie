@@ -14941,7 +14941,7 @@ export class PixiScene {
       // PACING_PUZZLE.md §10-4(浮遊)+§10-19(登場シーン)。視覚のみ=e.y/当たり判定は不変
       // (CLAUDE.md Y方向5点チェック: 地平線フェード/擬似遠近は上で既に対象外化。可視域/移動可能帯は
       // e.x/e.yそのものを一切動かさないため無関係。this.phillIntroState()が登場時の羽根撒きも駆動する)。
-      let phillBob = 0, phillIntroAlpha = 1, phillIntroRise = 0;
+      let phillBob = 0, phillIntroAlpha = 1, phillIntroRise = 0, phillDiveOff = 0;
       if (e.type === 'phillboss') {
         // ★v0.25.3730(社長報告「カメラが向いたのに登場シーンが流れてない」): 浮遊ボブと登場シーケンス
         // (羽根どばっ→下からフェードイン→羽が開く)は実時間で進める。アテンション(triggerAttention)は
@@ -14954,6 +14954,15 @@ export class PixiScene {
         phillIntroAlpha = intro.alphaMul;
         phillIntroRise = intro.risePx; // v0.25.3725: 下からズレてフェードイン(正=下方向のオフセット)
         this.phillLastPos.set(e.id, { x: spx, y: spy }); // 死亡時の撒き羽根用(cleanupで参照)
+        // ★v0.25.3741(社長指示「急降下は一度天に昇って画面から消えてから勢いよく降りて」):
+        // dive中の垂直視覚オフセット。可視高さ(screenH÷zoom)+絵の高さぶん昇る=どのズームでも
+        // 画面外へ確実に抜ける(判定・simの座標は不変。fall中の水平移動はsim既存のまま=合成で
+        // 「上空から着地点へ滑空して突っ込む」軌道になる)。
+        const diveLift = this.phillDiveLift01(e, gameTime);
+        if (diveLift > 0) {
+          const zoomPh = this.L.worldGroup.scale.x || 1;
+          phillDiveOff = -(this.screenH / zoomPh + scale * tex.height) * diveLift;
+        }
       }
       const sinceHit = now - e.lastHit;
       let flinchSqY = 1;
@@ -14990,7 +14999,7 @@ export class PixiScene {
       view.shadowGroundY = spy + scale * tex.height * (contentBottomFrac - 0.5); // 論理の足元(実体下端。リフト/スカッシュ無し)
       view.sprite.position.set(
         Math.round(spx + liftShake + lungeOffX),
-        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise),
+        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff),
       );
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
@@ -19213,7 +19222,7 @@ export class PixiScene {
     }
     // 被弾フラッシュは hitFlash スプライト(絵を加算で光らせる)へ移行。丸い白フィルは廃止(裏ボスを隠さない・社長指示)。
     // PACING_PUZZLE.md §10 バッチ3: 影/後光/羽/撒き羽根トリガはphillbossの時だけ(本体位置が確定した後=末尾)。
-    if (e.type === 'phillboss') this.drawPhillExtras(view, e, gameTime);
+    if (e.type === 'phillboss') this.drawPhillExtras(view, e, gameTime, now);
   }
 
   // =================================================================================================
@@ -19464,9 +19473,26 @@ export class PixiScene {
     return { alphaMul: ease, risePx: PHILL_INTRO_RISE_PX * (1 - ease) };
   }
 
+  /** dive(急降下)中の「天への昇り具合」0..1(0=地上・1=画面外)。本体の視覚オフセットと影の消灯で共用。
+   *  ★v0.25.3741(社長指示「一度天に昇って画面から消えてから勢いよく降りてきて」)。 */
+  private phillDiveLift01(e: Enemy, gameTime: number): number {
+    const bs = e.bossState ?? '';
+    if (bs === 'phill-dive-windup') {
+      const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.dive.windup));
+      const t = Math.min(1, prog / 0.45); // 前半45%で昇り切って画面外(以後は上空で追尾)
+      return t * t; // 加速上昇(慣性)
+    }
+    if (bs === 'phill-dive-fall') {
+      const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.dive.fallMs));
+      return 1 - t * t; // 加速降下(慣性=勢いよく)
+    }
+    return 0;
+  }
+
   /** drawEnemy()の末尾からphillbossの時だけ呼ばれる。本体位置(view.sprite)は確定済み=読むだけ。
-   *  演出時計は実時間(Date.now)=アテンションの時間停止(hitstop凍結now)中も登場・浮遊・後光が流れる。 */
-  private drawPhillExtras(view: ActorView, e: Enemy, gameTime: number): void {
+   *  演出時計は実時間(Date.now)=アテンションの時間停止(hitstop凍結now)中も登場・浮遊・後光が流れる。
+   *  now(凍結時計)は着地砂埃のlatch専用(技進行=gameTimeと同期して止まるのが正)。 */
+  private drawPhillExtras(view: ActorView, e: Enemy, gameTime: number, now: number): void {
     const id = e.id;
     const rnow = Date.now();
     const backC = this.ensurePhillBack(id);
@@ -19504,13 +19530,30 @@ export class PixiScene {
       const liftFrac = Math.max(0, floatT); // 上がっている時だけ絞る(下がっている時=通常影)
       const shW = PHILL_SHADOW_BASE_RX * bodyScale * (1 - 0.35 * liftFrac);
       const shH = PHILL_SHADOW_BASE_RY * bodyScale * (1 - 0.45 * liftFrac);
-      const shAlpha = 0.42 * (1 - 0.5 * liftFrac) * bodyAlpha;
+      // ★v0.25.3741: 急降下で天に昇っている間は足元影も消す(本体が画面外なのに影だけ残ると変)。
+      const diveHide = this.phillDiveLift01(e, gameTime);
+      const shAlpha = 0.42 * (1 - 0.5 * liftFrac) * bodyAlpha * (1 - diveHide);
       if (shW > 0.5 && shH > 0.5) shadow.ellipse(bodyX, groundY, shW, shH).fill({ color: 0x000000, alpha: shAlpha });
     }
 
     this.syncPhillWings(id, e, bodyX, bodyY, bodyScale, bodyAlpha, rnow);
     this.syncPhillHalo(id, bodyX, bodyY - view.sprite.height * 0.30, view.sprite.height, bodyAlpha, rnow);
     this.triggerPhillFeatherFx(id, e, bodyX, bodyY, gameTime, rnow);
+
+    // ★v0.25.3741(社長指示「砂埃つけて」): 急降下の着地砂埃(城ボスの着地と同じlatch+drawDust型)。
+    // クロックはnow(凍結時計)=技進行(gameTime)と同期して止まる。判定ゼロ=分類②(派手側に大きく)。
+    {
+      const isFall = (e.bossState ?? '') === 'phill-dive-fall';
+      const toImpact = isFall ? Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime) : 0;
+      const dustL = this.latchFx(`${id}:phill-dive-dust`, isFall, toImpact + DUST_MS, now, () => {
+        const impactFrac = (toImpact + DUST_MS) > 0 ? toImpact / (toImpact + DUST_MS) : 0;
+        return [e.aiTargetX ?? bodyX, e.aiTargetY ?? groundY, PH_T.dive.radius * DUST_STOMP_SCALE, impactFrac];
+      });
+      if (dustL && dustL.t >= dustL.d[3]) {
+        const dp = dustL.d[3] < 1 ? (dustL.t - dustL.d[3]) / (1 - dustL.d[3]) : 0;
+        this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp), dustL.t0);
+      }
+    }
   }
 
   /** §10-4/§10-12#12+v0.25.3724(社長指示「切らずに1枚で・蝶の羽みたいに」):

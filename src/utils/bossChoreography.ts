@@ -79,8 +79,10 @@ const SCRIPTS: Record<Exclude<ChoreographyBoss, 'giant' | 'glen'>, Record<string
     goldring: ['goldring', 'ringtoss', 'lightrain'],
     meteor: ['meteor', 'lancefan', 'ringtoss'],
     ringtoss: ['ringtoss', 'wingthrust', 'meteor'],
-    dive: ['dive', 'wingcombo', 'lancefan'],
-    summon: ['summon', 'lightrain', 'wingslash'],
+    // ★v0.25.3741(社長指示「召喚→急降下を台本化。どちらも単発では出さない」): 雑魚を呼んだら
+    // 本人が天に消えて急降下で戻る2手固定(phase2でも2手のまま)。diveの単独行は削除
+    // (単発抽選もphillScript側でfalse=急降下はこの連携経由でしか出ない)。
+    summon: ['summon', 'dive'],
     feathershot: ['feathershot', 'meteor', 'wingthrust'],
     // ★judgment/cage(カウンター必須)はこの表に載せない=`table[opening] ?? [opening]`のフォールバックで
     // 「自分自身1つだけ」になる(planBossChoreographyのslice(1)で連携キューは常に空)。§10-14#7の
