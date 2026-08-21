@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.3759 — 運用一本化 初期展開①: 重複文書の統廃合(退避4本)【2026-08-21 20:53 JST】
+
+DOC_OPS_REDESIGN.md §5①。走査(役割・git日付・被参照数・CLAUDE.md言及)→一次判定則で判定。
+- **退避(archive/へ移動+元パスに1行スタブ)**: PACING_REDESIGN.md(CLAUDE.mdが「PUZZLEが勝つ」と
+  明記=判定則(1)で決着)/CHAT_HANDOFF.md(自ら旧宣言・DESIGN_CHAT_GUIDE.mdを指名)/
+  CHANGELOG.md(v0.12.2で凍結・3基準全てchangelog.ts)/GHOST_ONLINE.md(失効を自己申告)。
+- **現状維持**: STORY系5本(担当区間が別)・TEST系3本(自動/実機/受け渡しの三役)・TUTORIAL系2本
+  (横断メモとM0設計)・HANDOFF_CODEX/AI_DIRECTOR_HANDOFF(専用役)・research台帳の疑い群
+  (主題別で重複の確証なし=触らない)。
+- 社長裁定が必要な割れは無し。CLAUDE.md内のPACING_REDESIGN参照(★未決の書き先等)は④で改訂予定。
+- 文書のみ=ゲーム内容の変更なし。次=②STATUS初版。
+
 ## v0.25.3758 — ドキュメント運用の一本化: 設計確定(監査10巡通過)・DOC_OPS_REDESIGN.md新設【2026-08-21 20:43 JST】
 
 情報錯綜対策の運用再設計が監査10巡(計55件指摘・全反映)で「通る」。確定仕様をDOC_OPS_REDESIGN.mdに
