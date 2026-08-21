@@ -299,18 +299,66 @@ describe('★突進のカウンター(弾き返し)の配線の不変条件(§5-
     ).toBe(true);
   });
 
-  it("★`st === 'thor-dash-move'` を突進専用層へ振り分ける行が**2本**ある(プレイヤー経路・守護霊経路)", () => {
-    const branches = lines.filter(l => /st === 'thor-dash-move'/.test(l) && /thorDashCounterHit\(/.test(l));
+  it('★この層は**座標を1pxも書かない**(patch.x / patch.y への代入が無い)', () => {
+    const body = blockAfter(lines, /const thorDashCounterHit = \(/, /^\s*\};\s*$/);
+    expect(body.length, 'thorDashCounterHit の本体を走査できていない(走査そのものが壊れた)')
+      .toBeGreaterThan(3);
+    // §5-2「★弾き返しの効かせ方」の MUST。流用元のミゲルのように patch.x/patch.y へ直接書くと
+    // **150px の1フレームテレポート**=CLAUDE.md「★動きの絶対ルール: 慣性」違反になる。
+    // 運ぶのは counter-leap の補間の仕事で、この層は**到達点だけ**を差し替える。
+    for (const f of ['x', 'y'] as const) {
+      const bad = body.filter(l => new RegExp(`patch\\.${f}\\s*=(?!=)`).test(l));
+      expect(
+        bad.length,
+        `thorDashCounterHit の中で patch.${f} を書いている=150pxの1フレームテレポート(慣性MUST違反)。`
+        + '座標はここでは1pxも書かない(§5-2「★弾き返しの効かせ方」)。'
+        + `\n走査=\n${bad.map(b => b.trim()).join('\n')}`,
+      ).toBe(0);
+    }
+  });
+
+  it('★行き先は必ず `clampRectToPlayableArea` を通す(CLAUDE.md Y方向の掟)', () => {
+    const body = blockAfter(lines, /const thorDashCounterHit = \(/, /^\s*\};\s*$/);
+    expect(body.length, 'thorDashCounterHit の本体を走査できていない(走査そのものが壊れた)')
+      .toBeGreaterThan(3);
     expect(
-      branches.length,
-      '走行中の突進を thorDashCounterHit へ振り分ける行が増減した。共通カウンターブロックには'
-      + '**プレイヤー経路と守護霊(ゴースト)経路の2本**があり、片方だけ thorCounterHit のままだと'
-      + 'その経路でだけ弾き返し(§4-1 受け入れ条件3)が消える。'
-      + `\n走査=\n${branches.map(b => b.trim()).join('\n')}`,
-    ).toBe(2);
-    // 守護霊経路だけが GhostCounterFire(gFire)を渡す=2本が別経路であることの証明。
-    expect(branches.filter(l => /gFire/.test(l)).length, '守護霊経路(gFire を渡す方)が1本ではない').toBe(1);
-    expect(branches.filter(l => !/gFire/.test(l)).length, 'プレイヤー経路が1本ではない').toBe(1);
+      body.some(l => /clampRectToPlayableArea\(/.test(l)),
+      '弾き返しの行き先が「行ける帯」の純関数(clampRectToPlayableArea)を通っていない。'
+      + 'アクターを新しく動かす時は必ず通す(CLAUDE.md「Y方向に何かを動かす時の必須チェック」)。',
+    ).toBe(true);
+    // 通した結果を使わずに生値を書いていないこと(=クランプが飾りになっていない)の証明。
+    expect(
+      body.some(l => /patch\.aiTargetX\s*=(?!=)/.test(l) && /placed\./.test(l)),
+      'クランプ結果(placed)ではない生値を aiTargetX へ書いている',
+    ).toBe(true);
+    expect(
+      body.some(l => /patch\.aiTargetY\s*=(?!=)/.test(l) && /placed\./.test(l)),
+      'クランプ結果(placed)ではない生値を aiTargetY へ書いている',
+    ).toBe(true);
+  });
+
+  it('★`thorDashCounterHit(` の呼び出しは**3本**(プレイヤー/守護霊/到達カプセル)', () => {
+    // ★v0.25.3799(検収監査6巡目 重大1): 旧テストは「`st === 'thor-dash-move'` と
+    // `thorDashCounterHit(` が**同じ行**にある行数=2」で固めていた。ところが3本目
+    // (=到達フレームの斬り抜けカプセル経路)は `thor-dash-move` ハンドラの**中**から呼ぶので
+    // 同一行に現れず、**3本目を thorCounterHit へ戻す変異が緑を通っていた**
+    // (=斬り抜けの間合いで取ったカウンターだけ弾き返しが消える)。よって**呼び出し総数**で固定する。
+    const calls = lines.filter(l => /thorDashCounterHit\(/.test(l));
+    expect(
+      calls.length,
+      '突進専用層(thorDashCounterHit)の呼び出し本数が増減した。内訳は'
+      + '**①共通カウンターブロックのプレイヤー経路 ②同・守護霊(ゴースト)経路 ③到達フレームの'
+      + '斬り抜けカプセル経路**の3本。1本でも thorCounterHit へ戻すと、その間合いで取った'
+      + 'カウンターだけ弾き返し(§4-1 受け入れ条件3)が消える。'
+      + `\n走査=\n${calls.map(b => b.trim()).join('\n')}`,
+    ).toBe(3);
+    // 内訳の証明: ①②は `st === 'thor-dash-move'` で振り分ける2本(守護霊だけが gFire を渡す)。
+    const dispatch = calls.filter(l => /st === 'thor-dash-move'/.test(l));
+    expect(dispatch.length, "共通カウンターブロックの振り分け(st === 'thor-dash-move' の行)が2本ではない").toBe(2);
+    expect(dispatch.filter(l => /gFire/.test(l)).length, '守護霊経路(gFire を渡す方)が1本ではない').toBe(1);
+    expect(dispatch.filter(l => !/gFire/.test(l)).length, 'プレイヤー経路が1本ではない').toBe(1);
+    // ③は同じハンドラの中から呼ぶので `st === …` を伴わない=残り1本。
+    expect(calls.length - dispatch.length, '到達カプセル経路(3本目)が1本ではない').toBe(1);
   });
 });
 
@@ -319,6 +367,14 @@ describe('★突進のカウンター(弾き返し)の配線の不変条件(§5-
 // `aiStartedAt` も繰り下げる)に回帰テストが無かった。この1行が消えても全テストが緑=**解除の瞬間に
 // イージング曲線上を凍結時間ぶんワープする**(慣性MUST違反)が黙って復活する。
 // =================================================================================================
+// ★訂正(v0.25.3799・検収監査6巡目 重大2): 旧コメントは「凍結中に進んではいけない時計は**3本セット**」と
+// **閉じた集合**として宣言していたが、これは事実として誤り。`kbOnlyStop` の枝は `boss.type === 'thor'` の
+// 中ではなく**裏ボス4体が共有する枝**で、この枝を通る州のうち burst / radial / skadi-ice / skadi-blade は
+// **`bossBurstNextAt`(絶対時刻)** を読んで次弾を撃つのに繰り下げていない=**4本目**がある
+// (鞭/バッシュでミーミル/ヨルムンガルド/スカジの連射中を押すと、凍結が明けた瞬間に1発が間隔を
+// 無視して飛ぶ)。**トールには出ない**ので本バッチ由来の回帰ではなく、直すかどうかは裏ボス3体の
+// 挙動が変わる仕様変更=**research/THOR_ISSEN_REWORK.md §9-11 で社長裁定待ち**。
+// よってここで固めるのは**トールの突進が読む時計3本**に限る(集合を閉じない)。
 describe('★ノックバック"だけ"で止まっている間の時計の繰り下げ(§5-2 周辺・慣性MUST)', () => {
   const text = Object.values(LOOP_SOURCES)[0] ?? '';
   const lines = codeLines(text);
@@ -332,7 +388,10 @@ describe('★ノックバック"だけ"で止まっている間の時計の繰�
       + '補間を aiStartedAt 基準で回しているので、bossStateUntil / bossNextActionAt だけを繰り下げると'
       + '**解除の瞬間にイージング曲線上を凍結時間ぶんワープ**する(慣性MUST違反=v0.25.3793 中3の再発)。',
     ).toBe(true);
-    // 凍結中に進んではいけない時計は3本セット。1本でも欠けると「解除の瞬間に何かが飛ぶ」。
+    // ★**トールの突進が読む時計は3本**(bossStateUntil / bossNextActionAt / aiStartedAt)。
+    // 1本でも欠けると「解除の瞬間に突進の何かが飛ぶ」。
+    // ※これは**トールの突進についての集合**であって、この枝を通る全州の集合ではない
+    //   (裏ボス3体の連射が読む bossBurstNextAt は繰り下げていない=上のコメントの4本目)。
     for (const f of ['bossStateUntil', 'bossNextActionAt', 'aiStartedAt']) {
       expect(
         body.some(l => new RegExp(`patch\\.${f}\\s*=(?!=)`).test(l) && /kbDtMs/.test(l)),
