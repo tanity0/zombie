@@ -1,5 +1,7 @@
 # AIディレクター 引き継ぎ記録 (L4D2型・難易度の“緩急”管理)
 
+> **この文書は設計時の姿です。現行仕様の正はコード+DEVELOPMENT_LOG。案件の状態は PROJECT_STATUS.md を見る。**
+
 最終更新: v0.25.1284 / branch `claude/chat-context-continuity-saxlH` / HEAD (このコミット)
 基準点(“面白い”状態への復帰点): **commit `b1eae30` (v0.25.1263)**。崩れたら `git checkout b1eae30`。
 （ローカルタグ `diff-baseline-1263` は作成済みだが、このgitプロキシがタグpushを拒否するため remote には無い。commit hash で管理。）

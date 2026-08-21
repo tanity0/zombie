@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.3762 — 運用一本化③: 設計書の状態記述掃除+バナー(37本)【2026-08-21 21:20 JST】
+
+DOC_OPS_REDESIGN §5③をSonnetバッチで実施・検収済み。バナー「この文書は設計時の姿…状態は
+PROJECT_STATUS.md」を過去分35本へ挿入(GAME_SPECは既存注記へ統合・提案稿は文言変え)。状態記述の
+撤去: PACING_PUZZLE(古い「実装待ち」9行+§8「着手前」+§10-20ステータス行)/EVENT_QUEST_DESIGN/
+BOSS_RANGE_REWORK/FX_GAP_LEDGER/ANOMALY_SUBWEAPONS。★未決・裁定済み・版数付き完了記録・実装順・
+受け入れ条件は保持(規約どおり)。迷った7箇所は触らず温存(バッチ報告に列挙・実害なし)。
+状態変化: DOC_OPS_REDESIGN.md 運用一本化 初期展開 → 実装中(残り: ④CLAUDE.md改訂)。
+文書のみ=ゲーム内容の変更なし。
+
 ## v0.25.3761 — 運用一本化②(完了): STATUS初版=③32本・④0本【2026-08-21 21:07 JST】
 
 Sonnet走査(DOC_OPS_REDESIGN §5②)完了。③実機未確認(過去分・暫定)=32文書。④完了アーカイブ=0本

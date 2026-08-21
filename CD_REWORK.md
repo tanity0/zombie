@@ -1,5 +1,7 @@
 # クールダウン(CD)再設計 — 決定記録と設計中の論点(v0.25.2444〜)
 
+> **この文書は設計時の姿です。現行仕様の正はコード+DEVELOPMENT_LOG。案件の状態は PROJECT_STATUS.md を見る。**
+
 台帳: research/SKILL_EQUIP_LEDGER.md §A が前提。
 
 ## 確定(社長裁定)

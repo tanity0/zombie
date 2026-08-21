@@ -1,5 +1,7 @@
 # 死神システム仕様 v1 (reaper_spec)
 
+> **この文書は設計時の姿です。現行仕様の正はコード+DEVELOPMENT_LOG。案件の状態は PROJECT_STATUS.md を見る。**
+
 作成: 2026-06-16 JST / 出典: 社長提供仕様
 
 ## 目的

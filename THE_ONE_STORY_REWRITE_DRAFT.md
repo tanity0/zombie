@@ -5,7 +5,7 @@
 **口調復元改稿: 2026-08-17 JST(社長発注文による第2稿)**  
 **指示書v2 反映: 2026-08-18 JST(第2稿 rev.2。実装との差異注記を各該当箇所へ明示・従来台詞の照合を再実施)**  
 参照実装: `tanity0/zombie` `claude/chat-context-continuity-saxlH` / `v0.25.3539`  
-状態: **提案稿。採用決定前のため、既存正史・実装を上書きしない。**
+> **この文書は未採用の提案稿です。採用決定前のため、既存正史・実装を上書きしない。現行仕様の正はコード+DEVELOPMENT_LOG。案件の状態は PROJECT_STATUS.md を見る。**
 
 > **rev.2(2026-08-18)でやったこと**: 本稿の**全ての【従来】台詞を実装コードと逐語照合**した
 > (`src/data/campaign.ts` / `src/utils/eventQuest.ts` / `src/data/ending.ts` / `src/hooks/useGameLoop.ts` /
