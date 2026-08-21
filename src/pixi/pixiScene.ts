@@ -1607,7 +1607,9 @@ const PHILL_FLOAT_PERIOD_MS = 3400;  // ゆっくり(慣性=sin波なので加�
 // 旧2列×3行の6分割は廃止。シート全体(3対が描き込まれた構図のまま)を本体の背中に1枚敷き、
 // **蝶の開閉**=横方向のすぼめ↔開き(scale.xのsin)+ごく小さな全体の傾ぎで羽ばたかせる。
 const PHILL_WING_H_FRAC = 1.15;          // 羽全体の高さ(本体表示高さ比・叩き台=本体よりひと回り大きく)
-const PHILL_WING_Y_OFF_FRAC = -0.52;     // 本体足元(bodyY)からの縦オフセット(本体高さ比・背中の高さへ)
+// ★v0.25.3726(社長報告「羽の位置上にズレてる」): bodyY=**本体スプライトの中心**(足元ではない)。
+// 旧-0.52は足元基準の誤認で頭上に浮いていた。背中=中心よりわずかに上へ。
+const PHILL_WING_Y_OFF_FRAC = -0.06;     // 本体中心からの縦オフセット(本体高さ比・背中の高さ)
 const PHILL_WING_FLAP_MS = 2400;         // 大きくゆっくり(フェーズ1基準・§10-1「大きくゆっくり羽ばたく」)
 const PHILL_WING_FLAP_MS_PHASE2 = 1300;  // フェーズ2は速くなる(§10-9)
 const PHILL_WING_FOLD_MIN = 0.55;        // 蝶の閉じ(scale.xの最小倍率)。1.0=全開
@@ -19234,7 +19236,13 @@ export class PixiScene {
   /** drawEnemy()の末尾からphillbossの時だけ呼ばれる。本体位置(view.sprite)は確定済み=読むだけ。 */
   private drawPhillExtras(view: ActorView, e: Enemy, gameTime: number, now: number): void {
     const id = e.id;
-    this.ensurePhillBack(id);
+    const backC = this.ensurePhillBack(id);
+    // ★v0.25.3726(社長報告「レイヤーもズレてる」): back(影/後光/羽)は**常に最下**を毎フレーム強制。
+    // 生成順(reparentとensureの前後)によってはbackが本体より手前に入る余地があったため、順序を
+    // タイミング依存にしない(構造的にz順を固定)。
+    if (backC.parent === this.L.phillLayer && this.L.phillLayer.getChildIndex(backC) !== 0) {
+      this.L.phillLayer.setChildIndex(backC, 0);
+    }
     const bodyX = view.sprite.x, bodyY = view.sprite.y;
     const bodyScale = Math.abs(view.sprite.scale.y) || 1;
     const bodyAlpha = view.sprite.alpha;
