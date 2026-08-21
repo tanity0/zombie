@@ -1610,7 +1610,10 @@ const PHILL_WING_ANCHOR: { x: number; y: number }[][] = [
   [{ x: 0.70, y: 0.42 }, { x: 0.30, y: 0.42 }], // 対1(中段・横に広がる=主翼)
   [{ x: 0.58, y: 0.24 }, { x: 0.42, y: 0.24 }], // 対2(手前・触手つき)
 ];
-const PHILL_WING_PAIR_H_PX = [126, 188, 168]; // 対ごとの表示高さ(px・主翼(対1)を一番大きく)
+// ★v0.25.3722(社長報告「せなかの羽が無い」の実バグ): 旧「表示高さpx × bodyScale」は bodyScale
+// (本体テクスチャ→表示の縮小率≈0.2)が**二重に掛かり**、羽が25〜37pxの豆粒=本体の陰に完全に
+// 隠れていた。**本体の表示高さに対する比率**で指定し直す(主翼(対1)=本体の約0.92倍=大きく)。
+const PHILL_WING_PAIR_H_FRAC = [0.61, 0.92, 0.82]; // 対ごとの高さ(本体表示高さ比・主翼を一番大きく)
 const PHILL_WING_FLAP_MS = 2400;         // 大きくゆっくり(フェーズ1基準・§10-1「大きくゆっくり羽ばたく」)
 const PHILL_WING_FLAP_MS_PHASE2 = 1300;  // フェーズ2は速くなる(§10-9)
 const PHILL_WING_FLAP_ROT = 0.30;        // 羽ばたきの回転振幅(rad)
@@ -19304,7 +19307,8 @@ export class PixiScene {
         const flap = Math.sin((now / flapEffMs) * Math.PI * 2 + phaseOff);
         const rotAmp = PHILL_WING_FLAP_ROT * (boosted ? PHILL_WING_ATTACK_BOOST * 0.6 : 1);
         const scaleAmp = PHILL_WING_FLAP_SCALE * (boosted ? PHILL_WING_ATTACK_BOOST * 0.6 : 1);
-        const sc = (PHILL_WING_PAIR_H_PX[pair] * bodyScale / Math.max(1, frameTex.height)) * (1 + flap * scaleAmp);
+        // bodyH=本体の表示高さ(px)。羽の高さは本体比(PAIR_H_FRAC)から出す=二重スケールしない。
+        const sc = (bodyH * PHILL_WING_PAIR_H_FRAC[pair] / Math.max(1, frameTex.height)) * (1 + flap * scaleAmp);
         sp.scale.set(sc, sc);
         sp.rotation = sign * flap * rotAmp; // 左右対称(内へ畳む/外へ開く)
         sp.position.set(bodyX + sign * pairXOffFrac[pair] * bodyW, bodyY + pairYOffFrac[pair] * bodyH);
