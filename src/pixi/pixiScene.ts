@@ -230,6 +230,7 @@ import {
   enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX, bossBehindFadeApplies,
   postZoomScreenY, postZoomLocalY, postZoomFadeAlpha, computeGroundBandLayout, groundStripT, GROUND_STRIP_REF_COUNT,
   worldGapBandHeight,
+  BOSS_SPRITE_FIT, BOSS_FIT_DEFAULT, // v0.25.3727: renderSpecへ移設(カメラの寄り先bossArtCenterと表を共有)
 } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
@@ -1654,6 +1655,7 @@ const PHILL_FEATHERSHOT_VIS_PX = 112;
 // ---- 登場シーン(§10-19・社長指示「羽が大量に吹き出してブワッと。その後、登場する感じで」) ----
 // ★v0.25.3725(社長指示・登場の順序確定): ①カメラ先行→②羽どばっ→③下からフェードイン+④羽が開く→⑤名前。
 const PHILL_INTRO_BURST_DELAY_MS = 520; // カメラのパン到着を待ってから羽根どばっ
+const PHILL_INTRO_ZOOM_HOLD_MS = 4200;  // v0.25.3727: 登場窓=等倍固定の長さ(カットイン明けまで・叩き台)
 const PHILL_INTRO_BODY_DELAY_MS = 800;  // 羽根どばっ→本体が現れ始めるまでの間(順序が肝)
 const PHILL_INTRO_BODY_FADE_MS = 900;   // 本体のフェード+下からのせり上がりの尺(慣性=ease)
 const PHILL_INTRO_RISE_PX = 150;        // 下からのズレ幅(視覚のみ=e.y/当たり判定は不変)
@@ -2644,28 +2646,8 @@ const BOSS_HITBOX_HINT_FILL_ALPHA = 0.08; // 最大時の面の濃さ(枠の中�
 // 裏ボスは「当たり判定=足元の帯(AABB=enemy.width×height)」と「絵(巨体)」を分離して描く(社長指示)。
 // fit = 絵の中での帯の位置・大きさ(0..1 の割合): w/h=帯が絵に占める幅/高さ, cx/cy=帯中心の絵内座標(左上原点)。
 // これで scale=(帯幅/fit.w)/texW から絵の実寸が決まり、帯=AABBの上に絵が正しく乗る。素材の額装が変わったら再計測。
-const BOSS_SPRITE_FIT: Record<string, { w: number; h: number; cx: number; cy: number }> = {
-  mimir:      { w: 0.55, h: 0.24, cx: 0.48, cy: 0.84 }, // 眼(縦長・v0.25.2934ドット版804×1024=旧849×1080とほぼ同アスペクト)。帯=絵の一番下のピクセル寄り(社長指示)。値は据え置き・実機でズレたら微調整。
-  // v0.25.3286(社長裁定=案②「影の起点を手調整」): 素材は余白ゼロ+3点接地(頭+コブ2つ)で自動補正
-  // (D-2b)が効かない唯一の個体。下部20%帯の不透明画素の重心=フレーム比0.395(実測)に合わせて
-  // cx 0.50→0.40。影と当たり帯が本体の質量の下に来る。視覚のみ・判定サイズ不変。
-  jormungand: { w: 0.91, h: 0.21, cx: 0.40, cy: 0.72 }, // 巨蛇(v0.25.2944ドット版1024×508)。帯=とぐろの下端。
-  skadi:      { w: 0.92, h: 0.19, cx: 0.49, cy: 0.88 }, // 氷の王(v0.25.2948ドット版824×888=旧1151×1243とほぼ同アスペクト)。帯=足元。値は据え置き・実機でズレたら微調整。
-  thor:       { w: 0.50, h: 0.20, cx: 0.52, cy: 0.93 }, // 鬼刀の武人(v0.25.2942ドット版1024×960=旧1132×1147とほぼ同アスペクト)。帯=両足の実測位置。値は据え置き・実機でズレたら微調整。
-  miguel:     { w: 0.50, h: 0.20, cx: 0.35, cy: 0.99 }, // 大天使ミゲル(797×1187)。thor流用+足元実測の叩き台(実機微調整前提)。
-  jibril:     { w: 0.50, h: 0.18, cx: 0.40, cy: 0.97 }, // 天使ジブリル(740×1267)。ミゲル流用+足元の叩き台(実機微調整前提)。
-  rafi:       { w: 0.50, h: 0.16, cx: 0.50, cy: 0.96 }, // 天使ラフィ(728×881・横広の獣性個体)。足元の叩き台(実機微調整前提)。
-  // PACING_PUZZLE.md §6.28-17/6.28-18/6.28-19(バッチM52・確定値=社長裁定済み。勝手に変えないこと)。
-  uri:        { w: 0.50, h: 0.18, cx: 0.47, cy: 0.97 }, // ウリ(760×1229・炎の光輪+血濡れの大剣)。
-  suriel:     { w: 0.50, h: 0.17, cx: 0.50, cy: 0.97 }, // スリィエル(616×1286・金の環が頭上に浮く)。
-  acrasiel:   { w: 0.55, h: 0.20, cx: 0.50, cy: 0.95 }, // アクラシエル(532×1208・脚が無い結晶)。
-  // §6.28-20(バッチM52・確定値): stage-2隠しボス「idol」(983×1334・等身大の人間・ハンドガンを構えて走る)。
-  idol:       { w: 0.42, h: 0.13, cx: 0.42, cy: 0.98 },
-  // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」バッチ1): phill.png(768×1024)。叩き台=天使系
-  // (miguel等)の型を流用した仮値(実機で社長が調整=バッチ2/3の描画配線で本格化)。
-  phillboss:  { w: 0.50, h: 0.20, cx: 0.50, cy: 0.97 },
-};
-const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85 };
+// v0.25.3727: BOSS_SPRITE_FIT / BOSS_FIT_DEFAULT は renderSpec.ts へ移設(カメラの寄り先
+// bossArtCenter と同じ表を読むため=「絵の中心に寄る」が描画とズレない)。値・意味は不変。
 // PACING_PUZZLE.md §6.28(バッチM53/M55/M57/M61/M62/M63): ゲート2ボスごとのフォールバック
 // (`?<boss>script=0`)。無効時は新規stateが一切発火しないため(angelBossTick.tsのLegacy実装が
 // 旧state名しか使わない)、新規の予告描画/tint(下記ANGEL_T4_*判定)も自動的に出ない=安全。
@@ -6847,7 +6829,13 @@ export class PixiScene {
       nearCount++;
       if (isLargeForZoom(e.type)) hasLargeForZoom = true;
     }
-    const czTarget = contextZoomTarget(nearCount, hasLargeForZoom, bossDistanceTarget);
+    let czTarget = contextZoomTarget(nearCount, hasLargeForZoom, bossDistanceTarget);
+    // ★v0.25.3727(社長指示「登場シーン、フィルだけ等倍に寄ってもらっていい？」): フィルの登場窓
+    // (スポーン→カットイン明けまで)は文脈ズームを**等倍(1.0)へ固定**。窓明けはバネが通常の
+    // ボス距離ズーム(giant級の引き)へ滑らかに戻す=切替の慣性は既存バネが担う。
+    for (const spawnAt of this.phillSpawnAt.values()) {
+      if (realNow - spawnAt < PHILL_INTRO_ZOOM_HOLD_MS) { czTarget = 1; break; }
+    }
     // v0.25.3019(社長裁定「案2で少し慣性を入れたら?」): 交戦中は臨界減衰バネで距離に直結+慣性。
     // 非交戦(戻り/群衆)は従来の1次イージングのまま。切替時は速度を捨てて次の交戦を素の状態で始める。
     if (this.bossCameraEngaged) {

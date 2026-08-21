@@ -381,6 +381,9 @@ import {
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { airHopEase01 } from '../utils/airHop';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
+// v0.25.3727(社長指示「全ボス、アテンションは絵の中心で見せて」): 出現アテンションの寄り先を
+// 帯(判定)中心から**絵の中心**へ。表はrenderSpec(描画と同じBOSS_SPRITE_FIT)=絵とカメラが一致。
+import { bossArtCenter } from '../pixi/renderSpec';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
   ZOOM_MIN_ABS,
@@ -2745,7 +2748,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().spawnGlow(castle.x, castle.y, GLOW_R_XXL, 'rgba(239,68,68,', 900);
           spawnBurst(castle.x, castle.y + 20, '#7f1d1d', 28);
           // アテンションは出現エフェクトが消えてから(=ぼやけ防止・社長指示)。下のディスパッチャが発火。
-          castleAttnRef.current = { at: newGameTime + 950, x: castle.x, y: castle.y };
+          // v0.25.3727: 寄り先=絵の中心(城ボスはBOSS_SPRITE_FIT表に無い=帯中心のまま返る。表に載せたら自動追従)。
+          {
+            const cAc = bossArtCenter(boss);
+            castleAttnRef.current = { at: newGameTime + 950, x: cAc.x, y: cAc.y };
+          }
         }
         // 城ボスの遅延アテンション発火(出現演出が落ち着いてからカメラを寄せる)。
         if (castleAttnRef.current.at > 0 && newGameTime >= castleAttnRef.current.at && !useGameStore.getState().attention) {
@@ -2869,8 +2876,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (捨てない=「毎回出す」)。
             {
               const glenCutin = bossCutinPayload('giantbat', storyStageId);
-              if (glenCutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { x: scx, y: scy, cutin: glenCutin };
-              else useGameStore.getState().triggerAttention(scx, scy, glenCutin);
+              const gAc = bossArtCenter(boss); // v0.25.3727: 寄り先=絵の中心
+              if (glenCutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { x: gAc.x, y: gAc.y, cutin: glenCutin };
+              else useGameStore.getState().triggerAttention(gAc.x, gAc.y, glenCutin);
             }
             playSfx('boss-appear');
           } else if (storyBossSpawnedRef.current && storyBossWinAtRef.current === 0) {
@@ -2928,8 +2936,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               e2.aiReadyAt = newGameTime + 2000;
               e2.glenVolleyAt = newGameTime; // 胴体弾の種付け(初弾はCD後・監査指摘)
               addEnemy(e2);
+              // v0.25.3727: カメラの寄り先=絵の中心。出現FX(リング/グロウ等)は従来どおり帯中心。
               const c2x = e2.x + e2.width / 2, c2y = e2.y + e2.height / 2;
-              useGameStore.getState().triggerAttention(c2x, c2y, glenForm2CutinPayload());
+              const c2Ac = bossArtCenter(e2);
+              useGameStore.getState().triggerAttention(c2Ac.x, c2Ac.y, glenForm2CutinPayload());
               playSfx('boss-appear');
               spawnFlash('rgba(127,29,29,0.28)', 420);
               spawnRing(c2x, c2y, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
@@ -3002,10 +3012,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // ★v0.25.3725(社長指示・登場の順序確定): ①**先にカメラを彼へ向ける**(素のアテンション=
             // パン360ms→ホールド1900ms。この間にpixi側が ②羽どばっ(+520ms) ③本体が下からズレて
             // フェードイン ④羽が背中から大きく開く、を演じる=§10-19確定版)。
-            useGameStore.getState().triggerAttention(pscx, pscy);
+            const pAc = bossArtCenter(pBoss); // v0.25.3727: 寄り先=絵の中心
+            useGameStore.getState().triggerAttention(pAc.x, pAc.y);
             // ⑤名前表示(カットイン)は従来どおり=下の共有ディスパッチャが「①のアテンション終了を
             // 待ってから」発火する(4127行の !attention ガードがその待ちを担う=+950は最早発火時刻)。
-            bountyAttnRef.current = { at: newGameTime + 950, x: pscx, y: pscy, cutin: bossCutinPayload('phillboss') };
+            bountyAttnRef.current = { at: newGameTime + 950, x: pAc.x, y: pAc.y, cutin: bossCutinPayload('phillboss') };
           }
         }
         // ★バッチ2(§10-2「angelBossTickの7人目」): 移動・技はisGate2AngelBoss編入により
@@ -3200,8 +3211,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 社長報告に明記済み・不要なら外せる)。監査指摘1: attention生存中は保留箱へ。
             {
               const g2Cutin = bossCutinPayload(gate2BossType);
-              if (g2Cutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { x: bx, y: by, cutin: g2Cutin };
-              else useGameStore.getState().triggerAttention(bx, by, g2Cutin);
+              const g2Ac = bossArtCenter(boss); // v0.25.3727: 寄り先=絵の中心(天使は縦長=従来は頭が切れていた)
+              if (g2Cutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { x: g2Ac.x, y: g2Ac.y, cutin: g2Cutin };
+              else useGameStore.getState().triggerAttention(g2Ac.x, g2Ac.y, g2Cutin);
             }
             activeGateRef.current = 2;
             useGameStore.setState({ eventBannerText: '深層への扉が閉ざされた', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
@@ -4125,7 +4137,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().spawnGlow(bx0, by0, GLOW_R_XXL, 'rgba(239,68,68,', 900);
           spawnBurst(bx0, by0 + 20, '#7f1d1d', 28);
           // アテンション+カットインは出現エフェクトが消えてから(城ボスと同じ950ms・下のディスパッチャが発火)。
-          bountyAttnRef.current = { at: atGameTime + 950, x: bx0, y: by0, cutin: bossCutinPayload(bType) };
+          {
+            const bAc = bossArtCenter(bountyE); // v0.25.3727: 寄り先=絵の中心(表に無い賞金首型は帯中心のまま)
+            bountyAttnRef.current = { at: atGameTime + 950, x: bAc.x, y: bAc.y, cutin: bossCutinPayload(bType) };
+          }
         };
         // 賞金首の遅延アテンション発火(出現演出が落ち着いてからカメラを寄せる。城ボスと同じ並び)。
         if (bountyAttnRef.current && newGameTime >= bountyAttnRef.current.at && !useGameStore.getState().attention) {

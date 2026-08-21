@@ -311,3 +311,45 @@ export const worldGapBandHeight = (farH: number, screenH: number, minZoom: numbe
   const safeMinZoom = Math.max(0.001, Math.min(1, minZoom));
   return Math.max(0, (1 - safeMinZoom) / safeMinZoom * (centerY - farH));
 };
+
+// ---- ボスの「絵」と「帯(判定)」の対応表(v0.25.3727でpixiScene.tsから移設) ------------------------
+// 帯(width/height=当たり判定)が絵(スプライト)内のどこを占めるか。w/h=絵に対する帯の比率、
+// cx/cy=帯の中心が絵のどのフラクション位置にあるか。描画(pixiScene)と、カメラの寄り先
+// (bossArtCenter・下記)が同じ表を読む=「絵の中心に寄る」が判定とズレない。
+// レンダラ非依存の純データ(移設のみ・値は不変。個別の経緯コメントは各行=旧pixiScene位置から継承)。
+// aspect=素材テクスチャの h/w(実寸から算出・カメラの寄り先の導出用。描画はテクスチャ実寸を直接使う)。
+export const BOSS_SPRITE_FIT: Record<string, { w: number; h: number; cx: number; cy: number; aspect: number }> = {
+  mimir:      { w: 0.55, h: 0.24, cx: 0.48, cy: 0.84, aspect: 1024 / 804 },
+  jormungand: { w: 0.91, h: 0.21, cx: 0.40, cy: 0.72, aspect: 508 / 1024 }, // v0.25.3286: 3点接地の実測cx=0.40
+  skadi:      { w: 0.92, h: 0.19, cx: 0.49, cy: 0.88, aspect: 888 / 824 },
+  thor:       { w: 0.50, h: 0.20, cx: 0.52, cy: 0.93, aspect: 960 / 1024 },
+  miguel:     { w: 0.50, h: 0.20, cx: 0.35, cy: 0.99, aspect: 1187 / 797 },
+  jibril:     { w: 0.50, h: 0.18, cx: 0.40, cy: 0.97, aspect: 1267 / 740 },
+  rafi:       { w: 0.50, h: 0.16, cx: 0.50, cy: 0.96, aspect: 881 / 728 },
+  // §6.28-17/18/19(確定値=社長裁定済み。勝手に変えないこと)。
+  uri:        { w: 0.50, h: 0.18, cx: 0.47, cy: 0.97, aspect: 1229 / 760 },
+  suriel:     { w: 0.50, h: 0.17, cx: 0.50, cy: 0.97, aspect: 1286 / 616 },
+  acrasiel:   { w: 0.55, h: 0.20, cx: 0.50, cy: 0.95, aspect: 1208 / 532 },
+  idol:       { w: 0.42, h: 0.13, cx: 0.42, cy: 0.98, aspect: 1334 / 983 }, // §6.28-20(確定値)
+  phillboss:  { w: 0.50, h: 0.20, cx: 0.50, cy: 0.97, aspect: 1024 / 768 }, // §10バッチ1の叩き台
+};
+export const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85, aspect: 1 };
+
+/**
+ * ★v0.25.3727(社長指示「全ボス、(アテンションは)絵の中心で見せて。恐らく全員中心にならない」):
+ * ボスの**絵(スプライト)の中心**のワールド座標。従来のアテンションは帯(判定)の中心=足元寄りに
+ * 寄っていたため、絵が縦長のボスほど頭が上へ切れていた。出現アテンション等のカメラ寄り先はこの関数を
+ * 使う。導出は描画(pixiScene 14878-14883)と同じ**幅基準**: spriteW=e.width/fit.w、
+ * spriteH=spriteW×aspect(=scale×tex.height と等価)。表に無い型(城ボス等の別描画経路)は
+ * **帯中心のまま**返す=安全側(勝手にズラさない)。
+ */
+export const bossArtCenter = (
+  e: { type: string; x: number; y: number; width: number; height: number },
+): { x: number; y: number } => {
+  const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
+  const fit = BOSS_SPRITE_FIT[e.type];
+  if (!fit) return { x: cx, y: cy };
+  const spriteW = e.width / fit.w;
+  const spriteH = spriteW * fit.aspect;
+  return { x: cx + (0.5 - fit.cx) * spriteW, y: cy + (0.5 - fit.cy) * spriteH };
+};
