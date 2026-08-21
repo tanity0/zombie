@@ -58,7 +58,7 @@ import {
   skillMagnetAmmoRangeMult, skillOverclockChance, skillCooldownMult, skillGoldRushMult, strikerMeleeMult,
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isGameTimeStopped, enemyMeleeDist,
   isAttackLocked, // v0.25.2589: 死亡モーション中/アテンション演出中は自動攻撃を止める共通ゲート
-  ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS,
+  ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_FOCUS_Y_FRAC,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
   HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, AMMO_MAX,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED,
@@ -2034,8 +2034,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().clearAttention();
           } else {
             const gb = useGameStore.getState().gameBounds;
-            const focusX = att.x - gb.width / 2;   // 注目点を画面中央に
-            const focusY = att.y - gb.height / 2;
+            const focusX = att.x - gb.width / 2;   // 注目点を画面中央に(横は幾何中央のまま)
+            // ★v0.25.3742(社長診断): 縦は遠景帯のぶん「可視領域内の真ん中」=画面高の60%位置に置く
+            // (幾何中央50%だと対象が上に寄って見える)。定数はgameStore.ATTENTION_FOCUS_Y_FRAC。
+            const focusY = att.y - gb.height * ATTENTION_FOCUS_Y_FRAC;
             const smooth = (t: number) => { const c = Math.max(0, Math.min(1, t)); return c * c * (3 - 2 * c); };
             let cx: number, cy: number;
             if (el < ATTENTION_IN_MS) {

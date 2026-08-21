@@ -1882,6 +1882,11 @@ export const CORRIDOR_CAMERA_DOWN_FRAC = 0.16;
 export const CAMERA_DANGER_RADIUS = 150;                          // この距離内に敵が居たら「危険時」とみなす(px)
 export const CAMERA_SNAP_DIST = 600;                             // これ以上離れたら即スナップ(開始/復帰/瞬間移動対策)
 // アテンション・シネマティック(レスキュー/ジャイアント出現): 現地へ高速パン→ホールド→高速で戻る。その間 時間停止。
+// ★v0.25.3742(社長診断「アテンションのズレ=被写体深度(遠景)を考慮してない。プレイヤーの可視領域
+// 内での真ん中に。敵が上に寄ってるのは遠景分を考慮してないから」): 画面上部は遠景帯(森/地平線)が
+// 占めるため、実プレイ可視領域の中央は画面の幾何中央(50%)より下にある。アテンションの寄せ先は
+// 対象を**画面高のこの割合**の位置に置く(0.5=旧来の幾何中央)。叩き台=実機で調整。
+export const ATTENTION_FOCUS_Y_FRAC = 0.60;
 export const ATTENTION_IN_MS = 360;   // 現地への高速パン(in)
 export const ATTENTION_HOLD_MS = 1900; // 現地ホールド(社長指示で0.5秒短縮: 2400→1900)
 export const ATTENTION_OUT_MS = 360;  // プレイヤーへ高速で戻る(out)
