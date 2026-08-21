@@ -107,7 +107,9 @@ export const pickPhillMove = (
     lightrain: gates.lightrainReady, goldring: gates.goldringReady,
     summon: gates.summonReady,
     judgment: gates.requiredReady && gates.judgmentReady,
-    cage: gates.requiredReady && gates.cageReady,
+    // ★v0.25.3740(社長指示「裁きの光の中身を羽根の檻に差し替え」): 檻はjudgment(裁きの光)の
+    // 発動内容に統合=単独抽選から除外(同じ檻が2枠から出ない)。キー/CD台帳は互換のため残す。
+    cage: false,
   },
   rand,
 );

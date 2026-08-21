@@ -310,14 +310,17 @@ export const ANGEL_PHILL_TUNING: AngelPhillTuning = {
   // windup 1200→1800: 予兆「天の光のスポットライト」(pixi側)のフェードイン→ホールド→フェードアウトを
   // 収める尺。フェードアウト完了(≈92%)後に発動が来る体感に同期(叩き台)。
   lightrain: { windup: 1800, shotCount: 6, shotGapMs: 220, radius: 70, recover: withRecoverFloor(700), cdMs: 10000 },
-  lancefan: { windup: 700, shotsPerVolley: 5, volleys: 2, volleyGapMs: 450, spreadDeg: 60, recover: withRecoverFloor(600) },
+  // ★v0.25.3740(社長指示「光槍の扇 回数を7回、間隔を200に変更」): volleys 2→7・volleyGapMs 450→200。
+  lancefan: { windup: 700, shotsPerVolley: 5, volleys: 7, volleyGapMs: 200, spreadDeg: 60, recover: withRecoverFloor(600) },
   wingslash: { windup: 700, active: 150, recover: withRecoverFloor(700), range: 310, halfWidth: 44 },
   wingthrust: { windup: 950, active: 130, recover: withRecoverFloor(700), range: 340, halfWidth: 36 },
   wingcombo: { windup: 650, active1: 130, gapMs: 260, active2: 130, recover: withRecoverFloor(800), range: 300, halfWidth: 40 },
   summon: { windup: 900, recover: withRecoverFloor(700) },
   goldring: { windup: 1600, active: 260, recover: withRecoverFloor(900), radius: 220, cdMs: 10000 },
   judgment: { trackMs: 2200, active: 260, recover: withRecoverFloor(900), radius: 90, cdMs: 10000 },
-  cage: { trackMs: 2400, active: 260, recover: withRecoverFloor(900), startRadius: 260, closeRadius: 70, cdMs: 10000 },
+  // ★v0.25.3740(社長指示「裁きの光の中身を羽根の檻に差し替え/閉じるまで1800・初期半径1000・
+  // 閉じ切り200」): ph-judgment(裁きの光)の発動が檻(この州)になる。単独抽選(cage枠)は廃止。
+  cage: { trackMs: 1800, active: 260, recover: withRecoverFloor(900), startRadius: 1000, closeRadius: 200, cdMs: 10000 },
   meteor: { windup: 900, count: 4, gapMs: 220, turnRateDeg: 70, recover: withRecoverFloor(700) },
   ringtoss: { windup: 700, outMs: 380, backMs: 380, recover: withRecoverFloor(700), range: 620, halfWidth: 40 },
   dive: { windup: 900, fallMs: 420, recover: withRecoverFloor(900), radius: 110 },

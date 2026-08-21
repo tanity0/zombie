@@ -2854,10 +2854,11 @@ export const runPhillTick = (
     ph.goldringReadyAt = newGameTime + PH_T.goldring.cdMs;
   };
   const beginJudgment = (): void => {
-    patch.bossState = 'phill-judgment-windup';
-    patch.bossStateUntil = newGameTime + PH_T.judgment.trackMs;
-    patch.aiTargetX = pcx; patch.aiTargetY = pcy;
+    // ★v0.25.3740(社長指示「裁きの光の中身を、羽根の檻に差し替え」): 発動内容=檻(cage州)へ委譲。
+    // 抽選キー(ph-judgment)・技名「裁きの光」・天の光の予兆はそのまま。judgment側のCDも寝かせる
+    // (同じ檻が2枠から連発しないため。cage側のCDはbeginCage内で打刻)。
     ph.judgmentReadyAt = newGameTime + PH_T.judgment.cdMs;
+    beginCage();
   };
   const beginCage = (): void => {
     patch.bossState = 'phill-cage-windup';

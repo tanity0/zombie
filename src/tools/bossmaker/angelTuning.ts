@@ -394,7 +394,7 @@ const PH_SEC = {
   lightrain: '祝福(ph-lightrain)', lancefan: '光槍の扇(ph-lancefan)',
   wingslash: '羽斬り(ph-wingslash)', wingthrust: '羽突き(ph-wingthrust)', wingcombo: '羽連撃(ph-wingcombo)',
   summon: '召喚(ph-summon)', goldring: '金環(ph-goldring)',
-  judgment: '裁きの光★必須(ph-judgment)', cage: '羽根の檻★必須(ph-cage)',
+  judgment: '裁きの光=羽根の檻★必須(ph-judgment)', cage: '(檻の中身・単独抽選なし)(ph-cage)',
   meteor: 'エルデの流星(ph-meteor)', ringtoss: '光輪投げ(ph-ringtoss)', dive: '急降下(ph-dive)',
   feathershot: '羽根散弾(ph-feathershot)',
 };
