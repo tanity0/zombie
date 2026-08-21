@@ -257,7 +257,7 @@ import {
 // 純関数(値をテストで固定できる形)。ここに直書きすると「ゼロ化/符号反転」が緑を通る。
 // ★v0.25.3809(8巡目 重大1/3): counter-leap の**起点/到達点の分岐そのもの**も同じ葉へ出した
 // (共通層に三項で書いてある間は「両側を既定式にする」変異が走査を素通りするため)。
-import { thorDashPushbackFromEnemy, counterLeapOrigin, counterLeapTarget } from '../utils/thorDashPushback';
+import { thorDashPushbackFromEnemy, counterLeapOrigin, counterLeapTarget, counterLeapPos } from '../utils/thorDashPushback';
 import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
 // §4: トールの突進をカウンターした時の弾き返し距離。**ミゲル/ウリと共有の既存の合流点をそのまま使う**
 // (新しい定数を作らない=research/THOR_ISSEN_REWORK.md §4-1)。
@@ -5437,6 +5437,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 経過だけが進み続け、**解除の瞬間にイージング曲線上を凍結時間ぶんワープ**する
                   // (=慣性MUST違反。しかも上下に飛ぶので地平線フェード/可視域の副作用も同時に踏む)。
                   // この裏ボス経路で `aiStartedAt` を読むのは突進だけなので、他ボスの挙動は変わらない。
+                  // ★**繰り下げていない4本目の時計がある**: この枝を通る裏ボス3体の連射州(burst/radial/
+                  // skadi-ice/skadi-blade)は `bossBurstNextAt`(絶対時刻)を読むのに繰り下げていない
+                  // =凍結が明けた瞬間に1発が間隔を無視して飛ぶ。**トールには出ない**が、
+                  // **§9-11 で社長裁定待ち**(「3本で閉じている」と読まないこと)。
+                  // ★位置(XY)のワープも直っていない(直したのは時間軸だけ)= **§9-9**。
                   if (boss.aiStartedAt !== undefined) patch.aiStartedAt = boss.aiStartedAt + kbDtMs;
                 } else {
                   // ★v0.25.3785(検収監査 中E): 技を**frozen**(罠のroot/紫の完全気絶/気絶/浮き/ワープ)で
@@ -5598,46 +5603,40 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.aiTargetX = leapTo.x; patch.aiTargetY = leapTo.y;
                 patch.bossBurstLeft = 0;
               };
-              // ★突進(thor-dash-*)専用のカウンター反応(§4-1「来た方向へ弾き返す」)。
-              // 共通の thorCounterHit を、**弾き返しの行き先(aimAt)を渡して**呼ぶだけの薄い層。
-              // ★v0.25.3785(検収監査 重大D): 旧実装は `aiFrom` だけを弾き返し位置へ差し替えていたので、
-              // counter-leap(aiFrom→aiTarget の補間)の**到達点が弾き返しの有無で1pxも変わらなかった**
-              // (=150pxの弾き返しが実質存在しない)。流用元のミゲル(angelBossTick の dashCountered)は
-              // 弾き返し後 `bossState='chase'` へ戻すので、**押された位置がそのまま最終位置**になる。
-              // ここでは**最終位置をミゲルに合わせ**(=弾き返し位置)、そこへ**counter-leap の補間で運ぶ**。
-              // ミゲルのように patch.x/patch.y へ直接書くと 150px の1フレームテレポート=慣性MUST違反
-              // (CLAUDE.md「★動きの絶対ルール: 慣性」)になるため、**座標はここでは1pxも書かない**。
+              // ★突進(thor-dash-*)のカウンター反応(§4-1「来た方向へ弾き返す」)は
+              // **共通層 `thorCounterHit` を `aimAt` 付きで呼ぶ**ことで表す。
               //
-              // ★v0.25.3808(検収監査7巡目 重大1/2/3)で構造を変えた。旧実装は
-              //   ①共通層を呼ぶ → ②`patch.aiTargetX/Y` を上書きする
-              // という**順序契約**で、共通層が自分で `aiTargetX/Y` を書くため
-              // **呼び出しを2行下げるだけで弾き返しが丸ごと消えた**(重大1)。さらに
-              // 8引数を組む束縛が配線側に残っていたので **`from`/`to` を入れ替えるだけで前進**(重大2)、
-              // 走査が「`placed.` を使う代入が在るか」しか見ていないので**後段で捨てる**(重大3)。
-              // ⇒ **行き先は引数(aimAt)で渡し、束縛は `thorDashPushbackFromEnemy` へ入れ、
-              //    この層は `patch` を1つも書かない**。3つとも構造ごと消える。
-              // ★v0.25.3809(8巡目 重大3/低9): `fromAt`(跳びの起点)も引数で受け取って共通層へ素通しする
-              // =斬り抜け経路が持っていた「呼んでから `patch.aiFromX/Y` を上書きする」順序契約を消す。
-              // 「行ける帯」の文脈は**組み立てごと純関数へ入れた**ので、ここは `pst` をそのまま渡す
-              // (フィールドを1つずつ書かない=`labTheme` 以外を差し替える細工が構造的にできない)。
-              const thorDashCounterHit = (
-                hitX: number, hitY: number, ghost?: GhostCounterFire, fromAt?: { x: number; y: number },
-              ) => {
-                // 専用CD(thorDashReadyAt)は thorCounterHit が州(thor-dash-*)を見て一括で打刻する
-                // =ここには書かない(同じ値を2箇所に書くと必ず片方だけ古くなる)。
-                // 弾き返すのは**ボス**であってプレイヤーではない(v0.25.3784 重大2)。
-                const pst = useGameStore.getState();
-                thorCounterHit(hitX, hitY, ghost, {
-                  aimAt: thorDashPushbackFromEnemy(boss, player, pst, AN_C.dashCounterPushbackPx),
-                  fromAt,
-                });
-              };
+              // ★v0.25.3810(9巡目 重大2): 以前あった中間層 `thorDashCounterHit` を**廃した**。
+              // あの層は受け取った `fromAt` を共通層へ**素通しするだけ**で、テストは「呼び出し側」と
+              // 「共通層」の両端しか見ていなかった ⇒ 監査の実測で
+              //  ・仮引数を `_fromAt` にリネームして転送行を削る → **全緑・typecheck通過**
+              //  ・転送時に `fromAt: fromAt ? { x: bcx, y: bcy } : undefined` へ書き換える → **全緑**
+              // =**斬り抜けカプセル経路の起点だけが黙って壊れる**(8巡目 重大3の完全再現)。
+              // 素通しの層を1枚減らせば、素通しの検査そのものが要らなくなる。**3つの呼び出し側が
+              // 共通層を直接呼び、行き先はその場で `thorDashPushbackFromEnemy` から出す。**
+              // (引数の並びは 3経路とも同じ形。走査は「`aimAt:` 付きの呼び出しが3本あるか」で見る。)
+              // ★経緯(構造の理由・削らないこと):
+              // ・v0.25.3785 重大D= 旧実装は `aiFrom` だけを弾き返し位置へ差し替えていたので、
+              //   counter-leap(aiFrom→aiTarget の補間)の**到達点が弾き返しの有無で1pxも変わらなかった**。
+              //   流用元のミゲル(angelBossTick の dashCountered)は弾き返し後 `bossState='chase'` へ戻すので
+              //   **押された位置がそのまま最終位置**になる ⇒ ここでも**最終位置をミゲルに合わせ**、
+              //   そこへ **counter-leap の補間で運ぶ**。ミゲルのように patch.x/patch.y へ直接書くと
+              //   150px の1フレームテレポート=慣性MUST違反(CLAUDE.md「★動きの絶対ルール: 慣性」)。
+              // ・v0.25.3808 重大1/2/3= 行き先は**引数(aimAt)**で渡し、8引数の束縛は
+              //   `thorDashPushbackFromEnemy` が持つ(順序契約・取り違え・後段で捨てる、が構造ごと消える)。
+              // ・v0.25.3809 重大3/低9= 起点(`fromAt`)も同じ形の引数。「行ける帯」の文脈は
+              //   `thorPlayableAreaCtx` が組む(配線は store をそのまま渡すだけ)。
+              // ・専用CD(thorDashReadyAt)は `thorCounterHit` が州(thor-dash-*)を見て一括で打刻する
+              //   =呼び出し側には書かない(同じ値を2箇所に書くと必ず片方だけ古くなる)。
+              // ・弾き返すのは**ボス**であってプレイヤーではない(v0.25.3784 重大2)。
               // ★v0.25.3780(§8-2): トール専用だった `thorBodyOverlapNow`(体の重なりだけで成立)は撤去した。
               // トールも他ボスと同じ宣言表(counterReach.ts)へ乗ったので、成立域の判定は
-              // `hiddenReachOverlapNow()` 1本になった(硬直/飛び掛かりの溜めは宣言 'body'=挙動据え置き)。
-              // ★飛び掛かりの溜め('hidden:jump-windup')が 'body' のままなのは**裁定待ちであって対象外ではない**
-              // ——赤い着地円を描いているのに体に当てないと取れない=research/THOR_ISSEN_REWORK.md §9-12
-              // (推薦は 'circle' へ揃える側)。「据え置き」と読んで再検討を打ち切らないこと。
+              // `hiddenReachOverlapNow()` 1本になった。
+              // ★飛び掛かりの溜め('hidden:jump-windup')は **v0.25.3810 で 'circle'(着地円)へ揃えた**
+              // ——§8-2 の包括裁定「赤いのにカウンターできないは聞くまでもなく直すでしょ」に該当。
+              // 突進の溜め('hidden:thor-dash-windup')は **'body' のまま=裁定待ちであって対象外ではない**
+              // (赤い流星ラインを描いているのに線の上では取れない= research/THOR_ISSEN_REWORK.md §9-3。
+              // 推薦は「全突進と同じ 'body' 据え置き」側だが、**同じ『赤 vs 成立域』の件**である)。
               // W7統一(PACING_PUZZLE.md §6.28-13/§6.28-21★3・バッチM52): 裏ボス3体(mimir/jormungand/
               // skadi)のカウンター成立処理。演出/反撃ダメージはthorCounterHitと同一だが、この3体は
               // 旋回運動を持たないため THOR_ORBIT_DIST 依存の後退ジャンプ(counter-leap)は行わず、
@@ -5950,7 +5949,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 成立時の反応(counter-leap/演出)はボスごとに違うので、そこだけ分ける。
                   // ★v0.25.3785(中H): 突進の走りだけは弾き返し(§4-1)を足した層を通す。
                   if (boss.type === 'thor') {
-                    if (st === 'thor-dash-move') thorDashCounterHit(bcx, bcy);
+                    if (st === 'thor-dash-move') thorCounterHit(bcx, bcy, undefined, { aimAt: thorDashPushbackFromEnemy(boss, player, useGameStore.getState(), AN_C.dashCounterPushbackPx) });
                     else thorCounterHit(bcx, bcy);
                   } else hiddenBossCounterHit(bcx, bcy);
                   hiddenBossCountered = true;
@@ -5982,7 +5981,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       sfxGain: npcSfxDistGain(bcx, bcy, pcx, pcy, gcSt.camera, gcSt.gameBounds),
                     };
                     if (boss.type === 'thor') {
-                      if (st === 'thor-dash-move') thorDashCounterHit(bcx, bcy, gFire);
+                      if (st === 'thor-dash-move') thorCounterHit(bcx, bcy, gFire, { aimAt: thorDashPushbackFromEnemy(boss, player, useGameStore.getState(), AN_C.dashCounterPushbackPx) });
                       else thorCounterHit(bcx, bcy, gFire);
                     } else hiddenBossCounterHit(bcx, bcy, gFire);
                     ghostCountered = true;
@@ -6466,6 +6465,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
                 const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
                 const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / HB_TH.issen.dashMs));
+                // ★この補間は**等速**=CLAUDE.md「★動きの絶対ルール: 慣性」に違反している(jump-attack と
+                // thor-dash-move は既に airHopEase01 を通しており、**一閃だけが取り残されている**)。
+                // **§9-10 で社長裁定待ち**(適用先の選択。「等速で良い」という結論ではない)。
                 patch.x = (fx + (tx - fx) * t) - boss.width / 2;
                 patch.y = (fy + (ty - fy) * t) - boss.height / 2;
                 let lux = tx - fx, luy = ty - fy;
@@ -6655,6 +6657,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 let dCountered = false;
                 if (dElapsed >= HB_TH.dash.moveMs) {
                   // 到達=斬り抜け1回(払いのカプセルを流用=ミゲルが harai を流用しているのと同じ作法)。
+                  // ★寸法(払いの 310)は**§4に指定が無いまま入れた流用値**=**§9-2 で社長裁定待ち**
+                  // (ミゲルの1.6倍。結論として読まないこと)。斬り抜けが赤い線の終点より先まで届く件は **§9-5**。
                   let ddirx = dtx - dfx, ddiry = dty - dfy;
                   const ddl2 = Math.hypot(ddirx, ddiry) || 1; ddirx /= ddl2; ddiry /= ddl2;
                   const sx = dnx, sy = dny;
@@ -6668,7 +6672,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       // ★v0.25.3809(8巡目 重大3): 旧実装は**呼んだ後に `patch.aiFromX/Y` を上書き**する
                       // 順序契約だった(=この2行を呼び出しの前へ移すだけで起点が既定へ戻り、
                       // 斬り抜け経路だけが黙って壊れる)。**引数(fromAt)で渡す**形にして構造ごと消す。
-                      thorDashCounterHit((sx + ex) / 2, (sy + ey) / 2, undefined, { x: dnx, y: dny });
+                      // ★v0.25.3810(9巡目 重大2): 中間層(thorDashCounterHit)は廃した。あの層は
+                      // `fromAt` を素通しするだけで、素通しをやめる変異(仮引数のリネーム+転送行の削除)が
+                      // **全緑**だった=この経路の起点だけが黙って壊れる。共通層を直接呼ぶ。
+                      thorCounterHit((sx + ex) / 2, (sy + ey) / 2, undefined, { aimAt: thorDashPushbackFromEnemy(boss, player, useGameStore.getState(), AN_C.dashCounterPushbackPx), fromAt: { x: dnx, y: dny } });
                       dCountered = true;
                     } else {
                       const died = damagePlayer(boss.damage, 'トールの突進', pcx, pcy, undefined, undefined, 'thor-dash'); // G4a計測タグ(記録専用)
@@ -6723,8 +6730,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
                 const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
                 const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / HB_TH.counterLeapMs));
-                patch.x = (fx + (tx - fx) * t) - boss.width / 2;
-                patch.y = (fy + (ty - fy) * t) - boss.height / 2;
+                // ★v0.25.3810(9巡目 重大1): **弾き返しを実際に運ぶ計算**=補間そのものも純関数へ出した
+                // (counterLeapPos)。9巡かけて固めたのは「到達点を書く所」だけで、ここは無検査だった
+                // ⇒ 到達点を読むのをやめる/直後に起点で上書きする、のどちらも**全緑**で
+                // 「ボスが1pxも動かない」(v0.25.3785 重大D)が戻せた。値は旧実装と同値(等速のまま)。
+                const leapPos = counterLeapPos({ x: fx, y: fy }, { x: tx, y: ty }, t);
+                patch.x = leapPos.x - boss.width / 2;
+                patch.y = leapPos.y - boss.height / 2;
                 bs.vx = 0; bs.vy = 0;
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'chase';

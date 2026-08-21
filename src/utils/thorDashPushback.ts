@@ -96,6 +96,28 @@ export const counterLeapOrigin = (
   fromAt: { x: number; y: number } | undefined, bcx: number, bcy: number,
 ): { x: number; y: number } => (fromAt ? { x: fromAt.x, y: fromAt.y } : { x: bcx, y: bcy });
 
+/**
+ * `counter-leap` の**補間位置(中心座標)**を返す(★v0.25.3810・検収監査9巡目 重大1)。
+ * `counterLeapOrigin`(起点)/ `counterLeapTarget`(到達点)と対で、**弾き返しを実際に運ぶ計算**。
+ *
+ * なぜ純関数か: 9巡かけて固めたのは「到達点を**書く**所」だけで、**それを読んでボスを動かす補間**
+ * には値テストも走査も1本も無かった。監査の実測では
+ *  ・到達点を読むのをやめて `const tx = bcx, ty = bcy;` にする → **全緑**
+ *  ・補間の直後に `patch.x = fx - boss.width/2;` を足して起点へ固定する → **全緑**
+ * ⇒ **ボスが1pxも動かない**(v0.25.3785 重大D の完全再現)が、**ワンライナーで**戻せた。
+ * 補間そのものをここへ出し、**t=0で起点・t=1で到達点・中間が単調**を値で固定する。
+ *
+ * `t01` は内側でも 0〜1 へ丸める(呼び出し側の `Math.max/min` が消えても端で暴れない)。
+ * ★**等速のまま**(旧実装と1文字も変えていない)。イージングを入れるかは §9-10 で社長裁定待ち
+ * ——**「等速が正しい」という結論ではない**(CLAUDE.md 慣性MUSTには現に違反している)。
+ */
+export const counterLeapPos = (
+  from: { x: number; y: number }, to: { x: number; y: number }, t01: number,
+): { x: number; y: number } => {
+  const t = Math.max(0, Math.min(1, t01));
+  return { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+};
+
 export interface ThorDashPushbackInput {
   /** 突進の起点(`Enemy.aiFromX/aiFromY`)。**「来た方向」はこの2点から作る。** */
   fromX: number; fromY: number;

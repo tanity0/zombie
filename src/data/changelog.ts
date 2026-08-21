@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3810',
+    items: [
+      'トールの飛びかかりを、足元に出る赤い着地円の中でもカウンターできるようになりました(これまでは体に当てないと弾けませんでした)。',
+    ],
+  },
+  {
     version: '0.25.3809',
     items: [
       'ゲーム内容の変更はありません(トールの突進まわりの内部整理と、壊れても気づけるようにするテストの追加のみ)。',

@@ -164,13 +164,19 @@ export const COUNTER_REACH_DECL: Readonly<Record<string, CounterReachKind>> = {
   'hidden:tsuki-recover': 'body',
   'hidden:harai-windup': 'band',          // 払い=帯 310×80(半幅40。ロック済みの並行ライン)
   'hidden:harai-recover': 'body',
-  // ★飛び掛かり=**赤い着地円を描いているのに成立域は体**。同じ着地円を持つラフィ('rafi:jump-windup')と
-  // 賞金首('bounty:leap-windup')は 'circle' で、**トールだけが例外**。据え置く理由は設計書のどこにも
-  // 無いので、**research/THOR_ISSEN_REWORK.md §9-12(社長裁定待ち)を見よ**——「対象外」と読んで
-  // 再検討を打ち切らないこと(推薦は 'circle' へ揃える側)。
-  'hidden:jump-windup': 'body',
+  // ★飛び掛かり=着地円(★v0.25.3810 で `'body'` → `'circle'` へ揃えた・§9-12)。
+  // 社長の包括裁定(§8-2)「赤いのにカウンターできないは**聞くまでもなく**直すでしょ」に該当する件
+  // ——赤い塗り(`0xff2a2a`)+赤い縁の着地円を描いている(`pixiScene.ts` の `showLandingCircle`)のに、
+  // 宣言だけ `'body'`=体に当てないと取れなかった。**成立域が広がる**(=ジャンプが返しやすくなる)。
+  // 式は同じ着地円を持つラフィ('rafi:jump-windup')・賞金首('bounty:leap-windup')と同型
+  // (中心=ロック済みの着地点 `aiTarget` / 半径=`HB_TH.jump.radius`。新しい数字は作っていない)。
+  'hidden:jump-windup': 'circle',
   'hidden:jump-recover': 'body',
-  'hidden:thor-dash-windup': 'body',      // 突進=流星ライン(裏ボスdash/ミゲル踏み込みと同型=図形reachは持たない)
+  // ★突進の溜め=**赤い流星ラインを描いているのに、線の上では取れず体に当てないと取れない**。
+  // 裏ボスdash/ミゲル踏み込みと同型(全突進が 'body')という理由で据え置いているが、これは
+  // **トール2「赤いのにカウンターできない」と同じクラスの件**= **§9-3 で社長裁定待ち**
+  // (推薦は 'body' 据え置き側だが、**結論として読まないこと**)。
+  'hidden:thor-dash-windup': 'body',
   // ★v0.25.3785(検収監査 中H): 走り(thor-dash-move)も表へ載せた。裏ボスの突進は実行中の州('dash')が
   // 載っているのに、トールの走りだけが表の外で生の rectsOverlap で解決されていた=§5-2の狙い
   // (トールも他ボスと同じ表へ乗せる)から外れる唯一の州だった。宣言は裏ボス 'hidden:dash' と同じ 'body'
@@ -231,7 +237,8 @@ export const HIDDEN_COUNTER_RECOVER_STATES: readonly string[] = [
 // ★v0.25.3785(検収監査 中H): トールの走り(thor-dash-move)も同じ列へ。**他ボスは同名の州を持たない**
 // ので mimir/jormungand/skadi の挙動は1つも変わらない。成立域は宣言 'body' = 旧実装(ハンドラ内の
 // 生の rectsOverlap)と同じ図形なので、プレイヤー側の取り方も変わらない。
-// (弾き返し=突進専用の反応は useGameLoop の thorDashCounterHit が担当する。)
+// (弾き返し=突進の成立時に `thorCounterHit` へ `aimAt` を渡す形で効かせる。v0.25.3810 で
+//  中間層 `thorDashCounterHit` は廃止=3つの呼び出し側が共通層を直接呼ぶ。)
 export const HIDDEN_COUNTER_ACTIVE_STATES: readonly string[] = ['dash', 'thor-dash-move'];
 
 /**
@@ -337,6 +344,11 @@ export const counterReachShapeFor = (key: string, ctx: CounterReachCtx): Counter
       return band(fx, fy, tx, ty, HB_TH.issen.halfWidth);
     case 'hidden:harai-windup':
       return band(fx, fy, tx, ty, HB_TH.harai.halfWidth);
+    case 'hidden:jump-windup':
+      // ★v0.25.3810(§9-12・§8-2の包括裁定): 赤い着地円=成立域。中心はロック済みの着地点
+      // (`aiTarget`。pixiScene の `showLandingCircle` が同じ2値で赤い円を描く)、半径は技のテーブル。
+      // 形はラフィ/賞金首の跳びかかりと**同じ式**(`{ kind:'circle', cx: tx, cy: ty, radius }`)。
+      return { kind: 'circle', cx: tx, cy: ty, radius: HB_TH.jump.radius };
     case 'hidden:tsuki-windup': {
       // 突きの赤帯は**狙い点そのものを終点にしない**(狙い点=プレイヤー位置で射程より近い/遠い)。
       // 始点=ボス中心、終点=狙いへの単位ベクトル×range。実行(`tsuki`)で作られる帯と同じ式

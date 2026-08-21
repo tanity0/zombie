@@ -45,6 +45,8 @@ export const THOR_MOVE_WEIGHTS: BossMoveWeights<ThorMove> = {
   harai: { melee: 60, near: 50, mid: 0, far: 0 },
   // 突進(新技・§4)。**叩き台**: スカジ/ミーミルの突進の行をそのまま流用(新しい数字を発明しない)。
   // 中〜遠の間合い詰め=一閃と役割が重なるので、実機で配分を見る前提。
+  // ★**research/THOR_ISSEN_REWORK.md §9-1 で社長裁定待ち**(結論として読まないこと)——far:55 は
+  // 指定なしで入れた値で、遠距離の一閃が45%まで落ちる。推薦は far を 30 へ(突きと同格)。
   dash: { melee: 0, near: 0, mid: 20, far: 55 },
 };
 

@@ -205,11 +205,26 @@ describe('⑤ トール: 赤い予告の図形=成立域(§8-2)', () => {
     expect(inCounterReach(near, playerAt(250, 300), BOSS)).toBe(false);
   });
 
-  it('硬直と飛び掛かりの溜め・突進は従来どおり「体の重なり」(挙動を変えていない州)', () => {
+  it('硬直と突進の溜めは従来どおり「体の重なり」(挙動を変えていない州)', () => {
     for (const k of ['hidden:issen-recover', 'hidden:tsuki-recover', 'hidden:harai-recover',
-      'hidden:jump-windup', 'hidden:jump-recover', 'hidden:thor-dash-windup', 'hidden:thor-dash-recover']) {
+      'hidden:jump-recover', 'hidden:thor-dash-windup', 'hidden:thor-dash-recover']) {
       expect(counterReachKindFor(k), k).toBe('body');
     }
+  });
+
+  // ★v0.25.3810(§9-12・§8-2 の包括裁定「赤いのにカウンターできないは聞くまでもなく直すでしょ」):
+  // ジャンプの溜めだけ `'body'` で、**赤い着地円を描いているのに体に当てないと取れなかった**。
+  // ラフィ・賞金首の跳びかかりと同じ `'circle'` へ揃えた=**成立域が広がる**(挙動が動いた唯一の州)。
+  it('★飛び掛かりの溜めは着地円(circle・中心=ロック済みの着地点/半径=jump.radius)', () => {
+    expect(counterReachKindFor('hidden:jump-windup')).toBe('circle');
+    const at = { ...CTX, aiTargetX: 300, aiTargetY: 40 };
+    const j = counterReachShapeFor('hidden:jump-windup', at);
+    // 中心も半径もラフィ('rafi:jump-windup')・賞金首('bounty:leap-windup')と**同じ式**。
+    expect(j.kind === 'circle' && [j.cx, j.cy, j.radius]).toEqual([300, 40, HB_TH.jump.radius]);
+    // 赤い円の中(体には触れていない)で成立する=これが §9-12 の是正の中身。
+    expect(inCounterReach(j, playerAt(300, 40), BOSS)).toBe(true);
+    // 円の外(半径+自機半径より遠い)では成立しない=「赤くないのに当たる」を作っていない。
+    expect(inCounterReach(j, playerAt(300 + HB_TH.jump.radius + 200, 40), BOSS)).toBe(false);
   });
 
   it('★他ボスの宣言が1つも変わっていない(除外撤去がトール以外へ波及していない)', () => {

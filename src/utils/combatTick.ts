@@ -61,6 +61,9 @@ import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffec
 import { npcSfxDistGain } from './npcSfx'; // CRIT-UNIFY §9.3: ゴーストのブラストパリィ成立SEの距離減衰(escort/他ゴースト経路と同流儀)
 import { applyBossPostureDamage } from './bossPosture'; // v0.25.2946: 裏ボス体当たりの受け流し(体幹削り)
 import { shouldSkipBossContactParry } from './counterReach'; // v0.25.3809(8巡目 重大4): 受け流しへ落とさない州の述語(純関数)
+// v0.25.3810(9巡目 重大3): counter-leap の起点/到達点は useGameLoop と**同じ純関数**から出す
+// (このファイルに複製の既定式が残っていて、台帳の外なので `* 0`/符号反転が全緑だった)。
+import { counterLeapOrigin, counterLeapTarget } from './thorDashPushback';
 // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王(barrage-king)=反射弾のダメ・体勢削り倍率+貫通1。
 import { barrageKingMult, BARRAGE_KING_PIERCE } from './skillEffectsB7';
 
@@ -413,8 +416,14 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       const te = useGameStore.getState().enemies.find(en => en.id === hit.id);
       if (!te || te.type !== 'thor') continue;
       const tcx = te.x + te.width / 2, tcy = te.y + te.height / 2;
-      const lx = tcx - bpcx, ly = tcy - bpcy;
-      const ll = Math.hypot(lx, ly) || 1;
+      // ★v0.25.3810(9巡目 重大3): ここは counter-leap の**複製実装**だった——起点と到達点を
+      // useGameLoop の共通層と**同じ既定式で直書き**していて、台帳(useGameLoop.ts しか走査しない)の
+      // 外にあったため、監査の実測で **`* 0` にする / 符号を反転する のどちらも全緑**だった
+      // (=パリィ後の後退が消える/逆方向へ跳ぶ)。さらに §9-10(ease)や §9-6c(起点)が裁定された時に
+      // **片方だけ直って挙動が割れる**。⇒ 新設した純関数を通す(**値は1つも変わっていない**:
+      // counterLeapOrigin(undefined,…)=そのボス中心 / counterLeapTarget(undefined,…)=旧式と同一)。
+      const leapFrom = counterLeapOrigin(undefined, tcx, tcy);
+      const leapTo = counterLeapTarget(undefined, bpcx, bpcy, tcx, tcy, tunables.thorOrbitDist);
       useGameStore.setState(st => ({
         enemies: st.enemies.map(en => en.id === hit.id ? {
           ...en,
@@ -423,9 +432,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           // 旧Date.now()(絶対時刻≒1.7e12)だと出口判定 newGameTime >= bossStateUntil が永久に
           // 到達せず、**counter-leapが導入以来一度も終わっていなかった**(=パリィ後退が機能せず)。
           bossStateUntil: useGameStore.getState().gameTime + tunables.thorCounterLeapMs,
-          aiFromX: tcx, aiFromY: tcy,
-          aiTargetX: bpcx + (lx / ll) * tunables.thorOrbitDist,
-          aiTargetY: bpcy + (ly / ll) * tunables.thorOrbitDist,
+          aiFromX: leapFrom.x, aiFromY: leapFrom.y,
+          aiTargetX: leapTo.x, aiTargetY: leapTo.y,
         } : en),
       }));
     }
