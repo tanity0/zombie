@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3777',
+    items: [
+      'ゲーム内容の変更はありません(進行ボードの更新と開発文書の記述是正)。',
+    ],
+  },
+  {
     version: '0.25.3776',
     items: [
       'ゲーム内容の変更はありません(トール技台本の裁定記録: 突進の新設と、溜め中のカウンター成立域を赤帯へ揃える方針)。',

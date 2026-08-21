@@ -331,8 +331,11 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
   STATUSを直してから写す)。**毎回同じアーティファクトを更新し、毎回の返信にリンクを貼る**。
   URL(固定・設計チャットが更新): https://claude.ai/code/artifact/195b5630-8606-4f35-8f1e-ee413ff34d4f
   (更新方法: scratchpadのzombie-tasks.htmlを編集して同パスで再publish。別セッションからは
-  Artifactツールに`url`でこのURLを渡す=新規URLを作らない。**再publish前に必ず現物を読み、
-  ボード上部「📮 Claudeへの伝言」の未処理分を回収してから上書きする**)。
+  Artifactツールに`url`でこのURLを渡す=新規URLを作らない。**再publish前に必ず現物と
+  コメントを読み、未処理の社長コメントを回収してから上書きする**)。
+  **社長の書き込みは標準のコメント機能**(ボード上で文字列を選択→コメント)。設計チャットは
+  `Artifact` の `action:"comments"` で読み、処理したらその場に返答を書き残す(ボードはログ化せず、
+  案件が次に動いた更新で古い返答も消す=社長指示v0.25.3772)。
 
 ## Branch lock (READ FIRST — overrides everything)
 - **The ONLY development branch is `claude/chat-context-continuity-saxlH`.**
