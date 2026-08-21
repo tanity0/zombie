@@ -5425,6 +5425,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const kbDtMs = deltaTime * 1000;
                   if (boss.bossStateUntil !== undefined) patch.bossStateUntil = boss.bossStateUntil + kbDtMs;
                   patch.bossNextActionAt = (boss.bossNextActionAt ?? newGameTime) + kbDtMs;
+                  // ★v0.25.3793(検収監査 中3): **`aiStartedAt` も同じだけ繰り下げる**。
+                  // トールの突進(`thor-dash-move`)だけが位置の補間を `aiStartedAt` 基準で回している
+                  // (他の移動技=issen-dash / jump-attack / counter-leap は全部 `bossStateUntil` 基準)。
+                  // 上の2行だけを繰り下げると、ノックバックで止められている間も `aiStartedAt` からの
+                  // 経過だけが進み続け、**解除の瞬間にイージング曲線上を凍結時間ぶんワープ**する
+                  // (=慣性MUST違反。しかも上下に飛ぶので地平線フェード/可視域の副作用も同時に踏む)。
+                  // この裏ボス経路で `aiStartedAt` を読むのは突進だけなので、他ボスの挙動は変わらない。
+                  if (boss.aiStartedAt !== undefined) patch.aiStartedAt = boss.aiStartedAt + kbDtMs;
                 } else {
                   // ★v0.25.3785(検収監査 中E): 技を**frozen**(罠のroot/紫の完全気絶/気絶/浮き/ワープ)で
                   // 潰して chase へ落とす時も、突進の専用CDを打刻する。旧実装は「カウンターで潰れた」経路

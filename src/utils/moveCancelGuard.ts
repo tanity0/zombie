@@ -37,6 +37,14 @@ export const isNeutralMoveState = (state: string | null | undefined): boolean =>
 /**
  * 状態名を「技」と「段階」に割る。中立・解釈できない名前は null。
  * `-active` は付く実装と付かない実装(接尾辞なし=実行中)の両方があるので、どちらも `active` に寄せる。
+ *
+ * ★命名規約の**唯一の例外**(v0.25.3793・research/THOR_ISSEN_REWORK.md §5-7): トールの突進の実行中は
+ * `thor-dash-move` という州名なので、ここでは `move='thor-dash-move'` / `phase='active'` と解釈される
+ * (`-move` は既知の接尾辞ではない)= **溜め(`thor-dash-windup`→move='thor-dash')/硬直
+ * (`thor-dash-recover`→move='thor-dash')と技名が割れる**。他の全実装は実行中を `<move>`(接尾辞なし)で
+ * 書いている。**今のところ誤検知も見逃しも出ない**(割れているのは技名だけで、windup→active の
+ * 同一技チェーンは `ALLOWED_MOVE_CHAINS` にも違反表にも現れない)。**州名を変える方が参照箇所が多く
+ * 危険**なので、規約の例外として残す方を採った。新しい技を足す時にこの形を真似しないこと。
  */
 export const parseMovePhase = (state: string | null | undefined): MovePhaseRef | null => {
   if (isNeutralMoveState(state)) return null;

@@ -146,6 +146,24 @@ describe('⑤ トール: 赤い予告の図形=成立域(§8-2)', () => {
     }
   });
 
+  // ★v0.25.3793(検収監査 重大1): **2巡連続で実機から消えた挙動に回帰テストが1本も無かった**。
+  // v0.25.3784→3785 の事故は「走行中の突進が共通カウンターブロックに載っていない」=
+  // `HIDDEN_COUNTER_ACTIVE_STATES` から `'thor-dash-move'` が抜けることで再発する。ところが
+  // ⑤の既存3本は**「載っていない」側(not.toContain)しか固定していなかった**ので、この行を
+  // 消しても全テストが緑のまま通ってしまった。**載っている側**を固定する。
+  it('★走行中の突進(thor-dash-move)が実行中カウンター州の一覧に載っている(消すと弾き返し/専用CDが実機から消える)', () => {
+    expect(HIDDEN_COUNTER_ACTIVE_STATES).toContain('thor-dash-move');
+    // 宣言は裏ボスの突進('hidden:dash')と同じ 'body'=成立域は旧実装(生の rectsOverlap)と同一。
+    // ここが 'band'/'circle'/'none' へ動くと、走行中の取り方が黙って変わる。
+    expect(COUNTER_REACH_DECL['hidden:thor-dash-move']).toBe('body');
+    expect(counterReachKindFor('hidden:thor-dash-move')).toBe('body');
+    // 実際の図形も体の重なり=重なっていれば成立・離れていれば不成立(宣言が飾りでないこと)。
+    const shape = counterReachShapeFor('hidden:thor-dash-move', CTX);
+    expect(shape.kind).toBe('body');
+    expect(inCounterReach(shape, playerAt(0, 0), BOSS)).toBe(true);
+    expect(inCounterReach(shape, playerAt(300, 0), BOSS)).toBe(false);
+  });
+
   it('★無の境地(紫)は一覧に載っていない+宣言も none=二重に閉じてある(§1-1 受け入れ条件2)', () => {
     expect(HIDDEN_COUNTER_WINDUP_STATES).not.toContain('issen-nihil');
     expect(HIDDEN_COUNTER_RECOVER_STATES).not.toContain('issen-nihil');
