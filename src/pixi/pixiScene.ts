@@ -1611,9 +1611,11 @@ const PHILL_WING_H_FRAC = 1.15;          // 羽全体の高さ(本体表示高�
 // ★v0.25.3726(社長報告「羽の位置上にズレてる」): bodyY=**本体スプライトの中心**(足元ではない)。
 // 旧-0.52は足元基準の誤認で頭上に浮いていた。背中=中心よりわずかに上へ。
 const PHILL_WING_Y_OFF_FRAC = -0.06;     // 本体中心からの縦オフセット(本体高さ比・背中の高さ)
-const PHILL_WING_FLAP_MS = 2400;         // 大きくゆっくり(フェーズ1基準・§10-1「大きくゆっくり羽ばたく」)
-const PHILL_WING_FLAP_MS_PHASE2 = 1300;  // フェーズ2は速くなる(§10-9)
-const PHILL_WING_FOLD_MIN = 0.55;        // 蝶の閉じ(scale.xの最小倍率)。1.0=全開
+// ★v0.25.3732(社長指示「羽の動き、もう少し波を大きくゆっくり」): 周期2400→3600・閉じ0.55→0.38
+// (=開閉の振幅を拡大)。フェーズ2も同比率で遅く(1300→1950・「P2は速い」の相対関係は維持)。
+const PHILL_WING_FLAP_MS = 3600;         // 大きくゆっくり(フェーズ1基準・§10-1「大きくゆっくり羽ばたく」)
+const PHILL_WING_FLAP_MS_PHASE2 = 1950;  // フェーズ2は速くなる(§10-9)
+const PHILL_WING_FOLD_MIN = 0.38;        // 蝶の閉じ(scale.xの最小倍率)。1.0=全開
 const PHILL_WING_TILT_ROT = 0.05;        // 全体のごく小さな傾ぎ(rad)
 const PHILL_WING_ATTACK_BOOST = 2.6;     // 技3/4/5発動中は速く大きく振る倍率(動きは大きく=v3443)
 // ---- 羽攻撃の武器スプライト(§10-10): phill-wing-attack.png(436×512) ----
@@ -12177,8 +12179,10 @@ export class PixiScene {
           this.spawnPhillFeathers(phLastPos.x, phLastPos.y, PHILL_FEATHER_DEATH_COUNT, now);
           this.phillLastPos.delete(id);
         }
+        // ★v0.25.3732: backはview.containerの子になった(z順の構造固定)ため、上のview.container.destroy
+        // ({children:true})で既に破棄済み。二重destroyを避けるガード付きで台帳だけ確実に片付ける。
         const phBack = this.phillBack.get(id);
-        if (phBack) { phBack.destroy({ children: true }); this.phillBack.delete(id); }
+        if (phBack) { if (!phBack.destroyed) phBack.destroy({ children: true }); this.phillBack.delete(id); }
         this.phillWingSprites.delete(id);
         this.phillHalo.delete(id);
         this.phillHaloBoostAt.delete(id);
@@ -19255,15 +19259,16 @@ export class PixiScene {
     const rnow = Date.now();
     const backC = this.ensurePhillBack(id);
     const frontC = this.ensurePhillFront();
-    // ★v0.25.3730(社長報告「羽がまだ場合によっては前に来てる」・v3726の強化版): phillLayer内の
-    // z順を[back(0)=影/後光/羽 → 本体(1) → … → front(末尾)=撒き羽根/羽攻撃の武器絵]の3層構造で
-    // **毎フレーム全部**強制する。v3726はbackを最下へ送るだけだったので、本体(view.container)側が
-    // 後から追加された別の子(武器絵など)との相対順に負ける余地が残っていた。
+    // ★v0.25.3732(社長報告「まだ羽が前に来る時とない時がある」・構造で封じる最終形):
+    // back(影/後光/羽)を**本体と同じview.containerの中の最下(index0)**へ入れる。
+    // v3726/v3730のphillLayer内の兄弟順の強制は「毎フレームのどこかで誰かが並び替える」余地に
+    // 負け続けたので、並び替えの影響をそもそも受けない親子関係にする。view.containerは位置(0,0)の
+    // 素通しコンテナ(中のspriteがworld座標を直接持つ)なので、backの中のworld座標はそのまま有効。
+    // 本体sprite(index1以降)より必ず下=羽が本体の前に出る経路が構造的に存在しない。
+    if (backC.parent !== view.container) view.container.addChildAt(backC, 0);
+    else if (view.container.getChildIndex(backC) !== 0) view.container.setChildIndex(backC, 0);
+    // front(撒き羽根/羽攻撃の武器絵)はphillLayer直下の末尾=view.containerより常に前。
     const layer = this.L.phillLayer;
-    if (backC.parent === layer && layer.getChildIndex(backC) !== 0) layer.setChildIndex(backC, 0);
-    if (view.container.parent === layer && layer.children.length > 1 && layer.getChildIndex(view.container) !== 1) {
-      layer.setChildIndex(view.container, 1);
-    }
     if (frontC.parent === layer && layer.getChildIndex(frontC) !== layer.children.length - 1) {
       layer.setChildIndex(frontC, layer.children.length - 1);
     }
