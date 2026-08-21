@@ -4207,6 +4207,20 @@ export class PixiScene {
   // PACING_PUZZLE.md §10-20#4(EX結界/南の膜): 金色の光の膜(通路幅いっぱいの横帯・加算・ゆらぎ)。
   // world座標(worldGroup内=アクターと同じ変換)で描く(4巡目#3/5巡目#3・6巡目#2)。
   private exBarrierGfx = new Graphics();
+  // ★検収監査#3(v3751): 膜の出現/消滅にease付きフェードを入れる(CLAUDE.md慣性則「パッと出て
+  // 止まる禁止」)。判定(playableAreaのクランプ)側は即時のまま=描画だけの平滑化。
+  private exBarrierAlpha = 0;
+  // フェードアウト中(store側は既にnullに戻っている)も直前の位置に帯を描き続けるための記憶。
+  private exBarrierLastNorthY: number | null = null;
+  private exBarrierLastSouthY: number | null = null;
+  // ★検収監査#1(v3751): 広間(通路スケールアップ)のcontainer.scale方式のまま、travel自体を
+  // 「その場のhallSで割った前進量」を積算するオドメーター式にして、床パターンの見かけの流速が
+  // container.scale分だけ速くなる(=足が滑る)のを打ち消す。単純な travel/hallS(現在地) の
+  // 割り算だと、広間手前で既に大きいtravelの絶対値のせいで導関数が負になり得て「床が逆走」する
+  // 新たな破綻を生むため、必ずフレームごとの前進量だけをhallSで割って積み上げる。
+  private exCorridorTravelAccum = 0;
+  private exCorridorTravelPrevY: number | null = null;
+  private exCorridorTravelWasEx = false;
   /** 前線(m0AdvanceLimitX)は戦闘中だけ消える=出入りするので、慣性つきでフェードさせる。 */
   private m0FrontLineAlpha = 0;
   /**
@@ -7682,17 +7696,30 @@ export class PixiScene {
     {
       const g = this.exBarrierGfx;
       g.clear();
-      if (s.corridorMode && !s.indoorMode && (s.exBarrier.northLockY != null || s.exBarrier.southLockY != null)) {
+      // 直前に見えていた位置を記憶(消滅フェード中はstore側が既にnullでも、この位置で描き続ける)。
+      if (s.exBarrier.northLockY != null) this.exBarrierLastNorthY = s.exBarrier.northLockY;
+      if (s.exBarrier.southLockY != null) this.exBarrierLastSouthY = s.exBarrier.southLockY;
+      const barrierActive = s.corridorMode && !s.indoorMode && (s.exBarrier.northLockY != null || s.exBarrier.southLockY != null);
+      // ★検収監査#3(v3751・CLAUDE.md慣性則「パッと出て止まる禁止」): 出現/消滅にease付きフェードを
+      // 入れる(判定=playableAreaのクランプは即時のまま。ここは描画だけの平滑化)。
+      this.exBarrierAlpha += ((barrierActive ? 1 : 0) - this.exBarrierAlpha) * 0.10;
+      if (this.exBarrierAlpha > 0.01) {
         g.blendMode = 'add';
-        const flick = 0.85 + 0.15 * Math.sin(now / 260);
+        const flick = (0.85 + 0.15 * Math.sin(now / 260)) * this.exBarrierAlpha;
         const halfW = EX_HALL_LATERAL_CLAMP;
         const drawBand = (yLock: number) => {
           const th = 46;
           g.rect(-halfW, yLock - th / 2, halfW * 2, th).fill({ color: 0xf2c14e, alpha: 0.28 * flick });
           g.rect(-halfW, yLock - 3, halfW * 2, 6).fill({ color: 0xfff3c4, alpha: 0.55 * flick });
         };
-        if (s.exBarrier.northLockY != null) drawBand(s.exBarrier.northLockY);
-        if (s.exBarrier.southLockY != null) drawBand(s.exBarrier.southLockY);
+        // 現在値優先・無ければ(消滅フェード中)直前の記憶位置を使う。
+        const northY = s.exBarrier.northLockY ?? (barrierActive ? null : this.exBarrierLastNorthY);
+        const southY = s.exBarrier.southLockY ?? (barrierActive ? null : this.exBarrierLastSouthY);
+        if (northY != null) drawBand(northY);
+        if (southY != null) drawBand(southY);
+      } else {
+        this.exBarrierLastNorthY = null;
+        this.exBarrierLastSouthY = null;
       }
     }
     // v0.25.3054: 施設フェードの適用(POI建物3種+サークル+拠点サークル+影リクエスト)。
@@ -8801,11 +8828,31 @@ export class PixiScene {
   // 完全m0のまま通常描画で上に乗る(背景のみ・ゲーム状態への書き込みなし)。travel=player.y に1:1連動
   // =前進すると通路がプレイヤーの速度そのもので流れる。幾何はcorridorLayer側のCFG(footYr=0.744)で
   // プレイヤー=画面中央前提に再調整済み(プレビューのCORRIDOR_CFGは不変)。
+  // ★検収監査#1(v3751): 「論理px」の前進量を、通過中の広間スケールhallSぶん割り引いて積算する
+  // オドメーター(距離計)。hallS=1(通路)の区間ではraw travelと数値が一致し続ける(=M6は
+  // このメソッド自体を呼ばないので無関係・EXも広間の外では従来と同じ見え方)。
+  private exCorridorTravel(playerY: number, hallSNow: number): number {
+    if (!this.exCorridorTravelWasEx || this.exCorridorTravelPrevY === null) {
+      this.exCorridorTravelAccum = -playerY; // 初回/EX復帰直後は継ぎ目なく素通しの値から再基準化
+    } else {
+      const dyForward = this.exCorridorTravelPrevY - playerY; // 北(奥)へ進むと正
+      if (Math.abs(dyForward) > 500) {
+        this.exCorridorTravelAccum = -playerY; // 大きなワープ(リトライ等)は積分せず再基準化
+      } else {
+        this.exCorridorTravelAccum += dyForward / Math.max(0.0001, hallSNow);
+      }
+    }
+    this.exCorridorTravelPrevY = playerY;
+    this.exCorridorTravelWasEx = true;
+    return this.exCorridorTravelAccum;
+  }
+
   private syncCorridorBackdrop(now: number, shakeY = 0) {
     const s = useGameStore.getState();
     const on = s.corridorMode && !s.indoorMode;
     if (!on) {
       if (this.corridorBackdrop) this.corridorBackdrop.container.visible = false;
+      this.exCorridorTravelWasEx = false; // §検収#1: 通路を離れたら次回EX突入時に再基準化する
       return;
     }
     if (!this.corridorBackdrop) {
@@ -8825,13 +8872,12 @@ export class PixiScene {
     // M6(stage-6)はex=false=dispScale固定1.0=既存のx/y代入と数値上まったく同じ結果になる
     // (pivot/positionの式は scale=1 のとき常に旧来のcontainer.x/y代入と一致する・下記コメント参照)。
     const ex = s.corridorMode && !s.indoorMode && isExStageRun();
+    if (!ex) this.exCorridorTravelWasEx = false; // M6(stage-6)はオドメーターを使わない=常にfalseへ
     const hallT = ex ? exHallScaleT(s.player.y + s.player.height / 2) : 0;
     const hallS = 1 + (EX_HALL_SCALE - 1) * hallT;
     const dispScale = ex ? hallS * gz : 1;
-    // 支点(pivot): 横=world x=0の画面位置(既存)。縦=通路自身の「d=0(=プレイヤーの立ち位置)」の
-    // 足元ライン(H*CFG.footYr)——アクター側zoomの正確な支点(farBackdropHeight/画面中央)とは別だが、
-    // 通路の投影自体がd=0をこのラインへ描く設計のため、通路にとっての自然な「プレイヤー足元」は
-    // ここ=床がここを中心に伸縮すれば剥がれて見えない(3巡目#5相当・受け入れ条件対応)。
+    // 支点(pivot): 横=world x=0の画面位置(既存)。縦=通路の内部基準点(H*footYr。scale=1時に
+    // 旧来のcontainer.y代入と数値一致させるための「ローカル」参照点)。
     const pivotLocalX = this.screenW / 2;
     const pivotLocalY = this.screenH * CORRIDOR_GAME_CFG.footYr;
     const targetScreenX = worldZeroScreenX;
@@ -8840,15 +8886,27 @@ export class PixiScene {
     // 通常ステージは地面ごと揺れる=「カメラの揺れ」に見えるが、洋館では画面の大半(通路背景)が
     // 動かず**アクターだけがジッタ**して見える。縦シェイク(sy×ズーム)を背景にも掛けて揃える
     // (討伐崩壊シェイクに限らず、カウンター等の全シェイクが対象。視覚のみ・判定/カメラ不変)。
-    const targetScreenY = shakeY * gz + pivotLocalY;
+    // ★検収監査#2(v3751): EXは縦アンカーを「通路の内部基準点」ではなく**プレイヤー足元の実
+    // スクリーンY**(world/worldGroup変換込み=CORRIDOR_CAMERA_DOWN_FRACのカメラ下げも自動的に
+    // 反映される)へ切り替える。M6(ex=false)は従来どおりpivotLocalY基準=1バイトも変わらない。
+    let targetScreenY = shakeY * gz + pivotLocalY;
+    if (ex) {
+      const footWorldY = s.player.y + s.player.height; // 足元(下端。obstacle衝突と同じ「下端=足」)
+      targetScreenY = (this.L.world.position.y + footWorldY) * gz + this.L.worldGroup.position.y;
+    }
     this.corridorBackdrop.container.pivot.set(pivotLocalX, pivotLocalY);
     this.corridorBackdrop.container.position.set(targetScreenX, targetScreenY);
     this.corridorBackdrop.container.scale.set(dispScale);
     // §10-20#2: 奥壁のworld固定位置(travel空間)。北端-6000の300px奥=6300。
     const EX_BACK_TRAVEL = -EX_NORTH_LIMIT_Y + 300;
-    this.corridorBackdrop.update(-s.player.y, this.screenW, this.screenH, now, ex ? {
+    // ★検収監査#1(v3751): EXはtravelをそのまま渡さず、hallSで割り引いたオドメーター値を渡す
+    // (container.scale=hallS×gzで拡大される絵と、その絵の中を流れる床パターンの速度が相殺し合い、
+    // 見かけの流速がアクターのズーム連動速度gzだけに一致する=足が滑らない)。M6はraw travelのまま。
+    const travelForCorridor = ex ? this.exCorridorTravel(s.player.y, hallS) : -s.player.y;
+    this.corridorBackdrop.update(travelForCorridor, this.screenW, this.screenH, now, ex ? {
       isEx: true,
       exBackTravel: EX_BACK_TRAVEL,
+      exBackRawTravel: -s.player.y, // 奥壁の距離計算は素のtravelを使う(オドメーター補正と混ぜない)
       exDispScaleForCap: dispScale,
     } : undefined);
   }

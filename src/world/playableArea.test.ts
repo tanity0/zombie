@@ -231,13 +231,26 @@ describe('clampRectToPlayableArea(EX専用拡張・exStage省略時はM6と無�
     expect(r.y).toBe(EX_SURIEL_NORTH_LOCK_Y);
   });
 
-  it('exPlayerBarrier.southLockYがあると膜より手前(南)へ戻れない(退路封鎖)', () => {
+  it('exPlayerBarrier.southLockYがあると膜より手前(南)へ戻れない(退路封鎖)。検収監査#4: 矩形の下端(足)が' +
+     '膜の内側(southLockY以下)に収まるよう、halfぶん手前でクランプする(上端基準の旧実装は足がheightぶんはみ出ていた)', () => {
     const ctx: PlayableAreaCtx = {
       ...corridorCtx, exStage: true, corridorRunInActive: true,
       exPlayerBarrier: { northLockY: null, southLockY: EX_SURIEL_SOUTH_LOCK_Y },
     };
     const r = clampRectToPlayableArea(0, -2000, w, h, ctx);
-    expect(r.y).toBe(EX_SURIEL_SOUTH_LOCK_Y);
+    expect(r.y).toBe(EX_SURIEL_SOUTH_LOCK_Y - h); // 下端(r.y+h)がちょうどsouthLockYに一致=はみ出さない
+    expect(r.y + h).toBe(EX_SURIEL_SOUTH_LOCK_Y);
+  });
+
+  it('検収監査#4: 結界(北)は上端が超えない(矩形全体が内側)。膜(南)は下端(足)が超えない(矩形全体が内側)', () => {
+    const ctx: PlayableAreaCtx = {
+      ...corridorCtx, exStage: true, corridorRunInActive: true,
+      exPlayerBarrier: { northLockY: EX_SURIEL_NORTH_LOCK_Y, southLockY: EX_SURIEL_SOUTH_LOCK_Y },
+    };
+    const rNorth = clampRectToPlayableArea(0, EX_SURIEL_NORTH_LOCK_Y - 500, w, h, ctx);
+    expect(rNorth.y).toBeGreaterThanOrEqual(EX_SURIEL_NORTH_LOCK_Y); // 上端が結界より奥(小さいy)へ出ない
+    const rSouth = clampRectToPlayableArea(0, EX_SURIEL_SOUTH_LOCK_Y + 500, w, h, ctx);
+    expect(rSouth.y + h).toBeLessThanOrEqual(EX_SURIEL_SOUTH_LOCK_Y); // 下端(足)が膜より手前(大きいy)へ出ない
   });
 
   it('結界の内側に居る移動はそのまま(南北とも)', () => {

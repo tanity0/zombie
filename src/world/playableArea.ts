@@ -114,9 +114,16 @@ export const clampRectToPlayableArea = (
     if (ctx.exStage) ny = Math.max(EX_NORTH_LIMIT_Y, ny);
   }
   // §10-20#3(c)/#4: 結界(北)・南の膜。プレイヤーの移動クランプだけに渡される(呼び出し側の作法)。
+  // ★検収監査#4(v3751): yはtop-left基準なので、上端(=ny)を直接ロック値と比べると南の膜側で
+  // 矩形の下端(足)がheightぶんはみ出す(「足が1体分はみ出す」の実体)。横クランプ(exHallLateralClamp)
+  // ・チュートリアルY制限と同じ作法=**中心**をロック値±halfへクランプし、矩形全体が膜の内側に
+  // 収まる形へ揃える(北側は数値上ny基準と一致=無変化。南側だけ実質的にheightぶん手前へ動く)。
   if (ctx.exPlayerBarrier) {
-    if (ctx.exPlayerBarrier.northLockY != null) ny = Math.max(ny, ctx.exPlayerBarrier.northLockY);
-    if (ctx.exPlayerBarrier.southLockY != null) ny = Math.min(ny, ctx.exPlayerBarrier.southLockY);
+    const half = h / 2;
+    let centerY = ny + half;
+    if (ctx.exPlayerBarrier.northLockY != null) centerY = Math.max(centerY, ctx.exPlayerBarrier.northLockY + half);
+    if (ctx.exPlayerBarrier.southLockY != null) centerY = Math.min(centerY, ctx.exPlayerBarrier.southLockY - half);
+    ny = centerY - half;
   }
   return { x: nx, y: ny };
 };

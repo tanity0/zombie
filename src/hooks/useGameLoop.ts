@@ -2974,6 +2974,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // 撃破後の金箱(§10-20#10・検収監査#5訂正): 前フレームまでに立った予約フラグを**このtickの
+        // 冒頭で**消費する(=下のクリア打刻でフラグを立てても同tickでは絶対に読まない=真の次フレーム
+        // 以降になる)。座標=撃破後にプレイヤーが必ず通る広間北部(0,-3600)付近(結界-3700の手前)。
+        if (surielChestPendingRef.current) {
+          surielChestPendingRef.current = false;
+          useGameStore.getState().addPickup({ id: 'ex-suriel-chest', x: -8, y: -3600 - 8, type: 'bounty-chest', value: 1 });
+        }
+
         // --- EX関所「スリィエル」(PACING_PUZZLE.md §10-20#3: EX専用3点セット) -------------------
         // 既存gate2機構(gate2Pending/activeEvent/beginArenaEvent)は一切使わない(3巡目監査#1/#2):
         // 現行gate2は発火・消費・クリア打刻の全てが死神/ゲート1/囲い/区域儀式と同居しており、
@@ -3035,12 +3043,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (addPickupは移動可能帯クランプを通るため、結界ctxが1フレームでも残ると南へ寄せられる)。
             surielChestPendingRef.current = true;
           }
-        }
-        // 撃破後の金箱(§10-20#10): 打刻フレームの次フレーム以降にaddPickup。座標=撃破後にプレイヤーが
-        // 必ず通る広間北部(0,-3600)付近(結界-3700の手前)。
-        if (surielChestPendingRef.current) {
-          surielChestPendingRef.current = false;
-          useGameStore.getState().addPickup({ id: 'ex-suriel-chest', x: -8, y: -3600 - 8, type: 'bounty-chest', value: 1 });
         }
 
         // --- EXボス「フィル(変異体)」(PACING_PUZZLE.md §10・バッチ2=angelBossTickの7人目) ---
@@ -12268,7 +12270,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (!pressureOutdoor && pressureCastRef.current.pendingCast) {
           pressureCastRef.current.pendingCast = null;
         }
-        if (pressureOutdoor && !danceTest && !indoor && !confining) {
+        // PACING_PUZZLE.md §10-20#9(検収監査#6・v3751): `?puzzle=0`時に生きるこの旧経路(関所の配役)にも
+        // isExStageRun()ガードを足す(他の湧きガード3箇所と同じ扱い。EXは完全封鎖=雑魚を一切出さない)。
+        if (pressureOutdoor && !danceTest && !indoor && !confining && !isExStageRun()) {
           if (gatePressureRef.current.castFirstNow || gatePressureRef.current.castSecondNow) {
             if (!pressureCastRef.current.order) {
               pressureCastRef.current.order = specialCastOrder(getCurrentStyle(), Math.random());
