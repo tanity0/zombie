@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3756',
+    items: [
+      'EXステージ改修(洋館通路化)の検収が完了しました。ゲーム内容の変更はありません(内部の安全ガード追加のみ)。',
+    ],
+  },
+  {
     version: '0.25.3755',
     items: [
       'EXステージの検収修正(3巡目): 大広間へのズームがなめらかに始まりなめらかに終わるように戻しました(前回修正で等速になっていたのを復元)。遷移帯での床の流れの精度も向上。',

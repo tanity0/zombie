@@ -103,7 +103,8 @@ export const exHallScaleT = (y: number, zones: ExHallZone[] = EX_HALL_ZONES): nu
     if (y <= p0.y && y >= p1.y) {
       const frac = p0.y === p1.y ? 0 : (p0.y - y) / (p0.y - p1.y);
       const hallS = p0.hallS + (p1.hallS - p0.hallS) * frac;
-      return (hallS - 1) / (EX_HALL_SCALE - 1);
+      // EX_HALL_SCALE=1(広間無効化)でゼロ除算→NaNが横クランプ経由でプレイヤー座標へ伝播するのを防ぐ
+      return EX_HALL_SCALE <= 1 ? 0 : (hallS - 1) / (EX_HALL_SCALE - 1);
     }
   }
   return 0; // どの区間にも属さない(スタート手前 or 定義域より奥)=平坦(通常通路幅)
