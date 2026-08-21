@@ -78,15 +78,46 @@
 ## ③実機未確認(過去分・暫定)
 
 ※着地済みだが社長の実機OKの記録が文書に無いもの。ボール=なし。話題に出たら未完テーブルへ戻す。
-(②初期走査で記入)
 
 | 案件キー(文書単位) | 主な内容 | 最終更新日 | 版数 |
 |---|---|---|---|
+| AI_DIRECTOR_HANDOFF.md | AIディレクターで緩急管理 | 2026-08-02 | v0.25.1284 |
+| ANOMALY_SUBWEAPONS.md | サブウェポン異常動作モード | 2026-08-13 | v0.25.3308 |
+| BOT_AND_GHOST.md | 実機テストAI→ゴースト助っ人化 | 2026-08-05 | v0.25.2431 |
+| CD_REWORK.md | クールダウン(CD)再設計 | 2026-08-02 | v0.25.2444 |
+| COOP_ONLINE.md | 乱入型協力プレイの通信基盤 | 2026-08-02 | v0.25.2585 |
+| DISTRIBUTION_REDESIGN.md | 敵分布のハイブリッド再構築 | 2026-08-02 | v0.25.1292 |
+| ESCORT_ADVANCE.md | 進軍NPCの前進仕様改良 | 2026-08-03 | ─ |
+| GAME_SPEC.md | ゲーム全体仕様の索引 | 2026-08-02 | v0.25.1226 |
+| HANDOFF_DANCE_AUDIO.md | ダンスタイムBGM軽量化問題 | 2026-08-02 | ─ |
+| M2_LAB_CORRIDOR_SPEC.md | M2研究所の横長廊下+ステルス | 2026-08-02 | v0.25.2175 |
+| MOVEMENT_REWORK.md | 移動速度の再設計(速度ランプ) | 2026-08-02 | v0.25.2442 |
+| OPENING_REVIVAL_SPEC.md | OP再生処置シーン実装 | 2026-08-02 | v0.25.2167 |
+| SKILL_SUBWEAPON_MATRIX.md | スキル×サブウェポン適用監査 | 2026-08-02 | v0.25.1702 |
+| STORY_ARCHIVE.md | 資料室レコード正本(逆転記) | 2026-08-02 | v0.25.2172 |
+| STORY_M0_M3.md | 『the ONE』M0〜M3制作差分 | 2026-08-18 | v0.25.1834 |
+| STORY_M4_EX.md | 『the ONE』M4〜EX正史 | 2026-08-02 | v0.25.2172 |
+| STORY_UI_SPEC.md | ストーリー情報UI・UX仕様 | 2026-08-02 | ─ |
+| TEST_DESIGN.md | テスト設計(事故の3型分類) | 2026-08-09 | v0.25.3084 |
+| TUTORIAL_NOTES.md | チュートリアル特別仕様メモ | 2026-08-02 | ─ |
+| reaper_spec.md | 死神システム(深奥警告)仕様 | 2026-08-02 | ─ |
+| research/BOSS_GAUNTLET.md | 全ボス×botテスト設計 | 2026-08-19 | v0.25.3600 |
+| research/BOSS_RANGE_REWORK.md | 城ボス距離帯の再設計 | 2026-08-02 | v0.25.2456 |
+| research/ESCALATION_AGENDA.md | 攻撃を派手にする相談 | 2026-08-12 | v0.25.3181 |
+| research/FX_GAP_LEDGER.md | 技×ヴィジュアル棚卸し補完 | 2026-08-07 | v0.25.2463 |
+| research/GHOST_BOSS.md | 守護霊ボス「幻影」設計 | 2026-08-20 | ─ |
+| research/GROWTH.md | 永続育成(強化)設計 | 2026-08-20 | ─ |
+| research/IDOL_ELEMER_TRACE.md | アイドル←エレメールトレース | 2026-08-02 | v0.25.2619 |
+| research/INERTIA_LEDGER.md | 動きの慣性 違反台帳 | 2026-08-15 | v0.25.3444 |
+| research/LIGHT_REWORK.md | 光の描写の全面改善 | 2026-08-13 | v0.25.2633 |
+| research/MOVE_CANCEL_RULE.md | 技キャンセル禁止規則 | 2026-08-16 | v0.25.3518 |
+| research/STAGE_DIFFICULTY.md | ステージ難度の階段(再バランス) | 2026-08-20 | ─ |
+| research/SUBQUESTS.md | サブクエスト設計 | 2026-08-19 | ─ |
 
 ## ④完了アーカイブ
 
 ※社長の実機OK/完了扱いの記録があるもの(根拠=版数のDEVLOGエントリ)。
-(②初期走査で記入)
+※初期走査(2026-08-21)ではDEVLOGに社長の実機OKの引用が見つかった文書は0本=全て③へ(厳密ルールどおり)。
 
 | 案件キー(文書単位) | 主な内容 | 根拠版数 |
 |---|---|---|
