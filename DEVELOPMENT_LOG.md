@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.3743 — EXエンディング「最終調査記録」実装(フィル撃破→フェード→タイプライター)【2026-08-21 13:47 JST】
+
+- 社長指示: フィル撃破後は帰還サークルではなく、撃破イベント終了後そのままフェードアウト→
+  エンディング(支給原稿をキーボード打ち込み風に表示して流す)。
+- **流れ**: フィル死亡→死亡アテンション+崩壊(bossCorpse)を見せ終える→黒フェード1.1s
+  (GameHUDのexOutroFadingオーバーレイ・boolean購読=再レンダー規律OK)→1.4sで勝利確定→
+  App.handleVictoryがstage-ex1なら**リザルトの前に**gameState 'exEnding'へ→終了タップでリザルト。
+  useGameLoopのbeginReturnPhase(帰還サークル)は廃止。クリア記録(markStageCleared)は従来どおり。
+- **ExEndingScreen(新設)**: 原稿台帳=src/data/exEnding.ts(社長原稿・一言一句そのまま・「⸻」で
+  7セクション)。軍の端末ログ風(等幅・薄緑・カーソル点滅)。34ms/字+改行170ms+区切り1400ms
+  (叩き台)。タップ押しっぱなしで7倍速。エンディングBGM(ending.mp3)をマウント中再生
+  (EndingScreenと同じ作法)。負荷1/10(ゲーム停止中の単独DOM)。
+- GameState unionに'exEnding'追加。exOutroFadingはresetGameでリセット(次ランの黒画面残留防止)。
+- 検証: typecheck 0 / lint 0(warning8は既存)。実機確認は社長に依頼。
+
 ## v0.25.3742 — アテンションの寄り先を「可視領域内の真ん中」へ(遠景帯補正)【2026-08-21 13:37 JST】
 
 - 社長診断「これ被写体深度を考慮してないでしょ。プレイヤーの可視領域内での真ん中だよ。

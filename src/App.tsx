@@ -4,6 +4,7 @@ import MissionSelect from './components/MissionSelect';
 import TitleScreen from './components/TitleScreen';
 import GameOverScreen from './components/GameOverScreen';
 import EndingScreen from './components/EndingScreen';
+import ExEndingScreen from './components/ExEndingScreen';
 import LoadingScreen from './components/LoadingScreen';
 import OrientationGuard from './components/OrientationGuard';
 import OpeningScene from './components/OpeningScene';
@@ -424,6 +425,9 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       // M7(stage-7)クリア → リザルトの後(メニューに戻る時)に通常エンディングを流す予約。
       if (!revisitRun && stageId === 'stage-7') pendingEndingRef.current = true;
     }
+    // ★v0.25.3743(社長指示): EX(フィル戦)勝利は帰還サークル無し=撃破イベント後フェードアウト→
+    // **先にEXエンディング(最終調査記録のタイプライター)**を流し、終了後にリザルト(victory)へ。
+    if (stageId === 'stage-ex1') { setGameState('exEnding'); return; }
     setGameState('victory');
   };
 
@@ -502,6 +506,9 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
 
       {/* the ONE 通常エンディング(聴取記録→暗転→PHILL→スタッフロール)。終了でメニューへ。 */}
       {!bare && gameState === 'ending' && <EndingScreen onDone={finishEnding} />}
+
+      {/* ★v0.25.3743: EXエンディング(フィル撃破後・最終調査記録のタイプライター)。終了でリザルトへ。 */}
+      {!bare && gameState === 'exEnding' && <ExEndingScreen onDone={() => setGameState('victory')} />}
       
       {/* プレイ中の差し込み口(BOSS_MAKER.md §19-5)。道具ページだけがボスメーカーUIを渡す。
           本編は undefined なので何も描かない=本編の負荷は変わらない。 */}

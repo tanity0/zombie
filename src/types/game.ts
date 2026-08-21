@@ -8,7 +8,7 @@ import type { AvatarId } from '../data/avatars'; // アバターシステム(試
 import type { SwordLungePlan } from '../utils/swordLunge'; // 剣ボスの踏み込み計画(依存ゼロの純関数モジュール=循環しない)。
 
 // Game state types
-export type GameState = 'title' | 'menu' | 'loading' | 'playing' | 'paused' | 'gameOver' | 'victory' | 'returned' | 'ending';
+export type GameState = 'title' | 'menu' | 'loading' | 'playing' | 'paused' | 'gameOver' | 'victory' | 'returned' | 'ending' | 'exEnding';
 
 // Character class types
 export type CharacterClass = 'warrior' | 'mage' | 'rogue' | 'necromancer';

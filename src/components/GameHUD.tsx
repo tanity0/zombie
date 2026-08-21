@@ -64,6 +64,8 @@ const GameHUD: React.FC = () => {
   // イベント発生告知バナー(コンボ表示付近。コンボがあればその下にずらす)。
   const eventBannerText = useGameStore(state => state.eventBannerText);
   const eventBannerUntil = useGameStore(state => state.eventBannerUntil);
+  // ★v0.25.3743: EX(フィル戦)勝利の黒フェード(boolean購読=1回だけ変化・毎フレーム再描画なし)。
+  const exOutroFading = useGameStore(state => state.exOutroFading);
   // 配列ではなく派生値だけ購読(敵の移動で配列参照が毎フレーム変わっても、件数/ボス有無が
   // 変わらなければ再描画しない)。FPS/負荷表示は PerfOverlay へ分離済み。
   const formattedTime = formatTime(gameTime / 1000);
@@ -95,6 +97,16 @@ const GameHUD: React.FC = () => {
   return (
     <div className="absolute inset-0 z-40 pointer-events-none text-white">
       <LowHpVignette />
+      {/* ★v0.25.3743(社長指示): フィル撃破イベント後、帰還サークル無しでそのままフェードアウト
+          →EXエンディングへ。CSSアニメ1.1秒(状態は1回の切替のみ=毎フレーム再描画なし)。 */}
+      {exOutroFading && (
+        <div
+          className="absolute inset-0 z-[90] bg-black"
+          style={{ animation: 'exOutroFadeIn 1.1s ease-in forwards' }}
+        >
+          <style>{'@keyframes exOutroFadeIn{from{opacity:0}to{opacity:1}}'}</style>
+        </div>
+      )}
       {/* Acquisition popup — shows for 5s after picking up notable items. */}
       {itemGetVisible && (
         <div

@@ -4577,6 +4577,9 @@ interface GameState {
   // 帰還サークル: フィナーレ撃破/終了アイテム後に出現。中心に dwellMs(ms)とどまると gameWon。null=非表示。
   // revealedAt: 洋館通路ゴールの「近づくとフェードイン」打刻(gameTime)。undefined=まだ透明(通路のみ使用)。
   returnCircle: { x: number; y: number; radius: number; dwellMs: number; revealedAt?: number } | null;
+  // ★v0.25.3743(社長指示): EX(フィル戦)勝利は帰還サークル無し=撃破イベント終了後に画面を
+  // フェードアウトしてからエンディングへ。trueの間GameHUDが全画面黒フェードを掛ける(表示専用)。
+  exOutroFading: boolean;
   // 商人「帰還」で任意撤収したフラグ(Game.tsx が監視→onReturn)。スコア計上・クリアボーナス/進行なし・装備は持ち帰り。
   gameReturned: boolean;
   // Start-screen setting: melee-kill ammo drop rate (percent).
@@ -5488,6 +5491,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   medicineUsedAt: 0,
   medicinePromptVisible: false,
   returnCircle: null,
+  exOutroFading: false,
   gameReturned: false,
   meleeAmmoDropPercent: DEFAULT_MELEE_DROP_PCT, // v0.25.2152: UI撤去=コード既定で固定(適正値はテスト算出中)
   ammoPickupAmounts: loadAmmoPickupAmounts(),
@@ -17100,6 +17104,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         m0CritDrill: false,
         m0AdvanceLimitX: farBackdrop === 'tutorial' ? M0_CONVO_ADVANCE_LIMIT_X : null,
         gameReturned: false,
+        exOutroFading: false, // ★v0.25.3743: EX勝利フェードの残留防止(次ランで黒画面のままになる事故)
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
         // 四神舞(ダンスフロア)状態を初期化。これを忘れると再プレイ時に lastTapAt 等が前ゲームのまま残り、

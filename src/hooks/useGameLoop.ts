@@ -1103,6 +1103,8 @@ const FORCE_IDOL = evParam('idolnow') === '1';
 // テスト/練習用の強制出現(?phillnow=1)は下の使用箇所で`FORCE_PHILL || practiceForces('phillnow')`
 // として読む(giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
 const PHILL_SPAWN_DEPTH = evNum('philldepth', 9000);
+// ★v0.25.3743: フィル撃破イベント終了→黒フェード(GameHUD)→勝利確定までの尺(フェード1.1s+余白)。
+const PHILL_OUTRO_FADE_MS = 1400;
 const FORCE_PHILL = evParam('phillnow') === '1';
 // PACING_PUZZLE.md §6.38 B1(賞金首): デバッグ出現専用(`?bountynow=1`+`?bountytype=ranged|melee|balance|maiko`)。
 // §6.38 掲載裁定(B4): 練習出撃(変異体対策室)は`practiceForces('bountynow')`でこの経路へ相乗りする
@@ -1591,6 +1593,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」): 出現済みか(二重スポーン防止)+スポーン座標
   // (撃破検知後にこの座標へbeginReturnPhaseするため)。
   const phillBossSpawnedRef = useRef(false);
+  // ★v0.25.3743: フィル撃破イベント終了(アテンション+崩壊が消えた)を検知した時刻。黒フェードの起点。
+  const phillOutroAtRef = useRef<number | null>(null);
   const phillBossSpawnPosRef = useRef({ x: 0, y: 0 });
   const glenRoarQueuedRef = useRef(false); // M7: 咆哮を会話キューへ積んだか
   const glenRoarShownRef = useRef(false);  // M7: 咆哮が実際に表示されたか(表示終了後の出現ゲート)
@@ -2685,6 +2689,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           storyBossSpawnedRef.current = false; // the ONE ストーリーボス進行も新ランで再アーム
           storyBossWinAtRef.current = 0;
           phillBossSpawnedRef.current = false; // EXボス「フィル(変異体)」も新ランで再アーム
+          phillOutroAtRef.current = null;      // ★v0.25.3743: 撃破フェードの打刻も再アーム
           phillBossSpawnPosRef.current = { x: 0, y: 0 };
           glenRoarQueuedRef.current = false;
           glenRoarShownRef.current = false;
@@ -3034,11 +3039,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 経路を漏れなく拾う。旧EXのuseGameLoop 2858と同じ型・#1不変条件+gate2Clearedゲートにより
         // EXにphillbossは1体しか存在しない)。EXクリアフラグは通常ステージと同じ経路
         // (App.tsx handleVictory → markStageCleared)で自動的に付く=専用フラグは不要と判断。
-        if (phillBossSpawnedRef.current && !useGameStore.getState().returnCircle && !useGameStore.getState().gameWon) {
-          const phillAlive = useGameStore.getState().enemies.some(e => e.type === 'phillboss');
-          if (!phillAlive) {
-            useGameStore.getState().beginReturnPhase(phillBossSpawnPosRef.current.x, phillBossSpawnPosRef.current.y);
-            playSfx('event-start');
+        // ★v0.25.3743(社長指示「フィル撃破後、撃破イベントが終わったらゴールサークルではなく、
+        // そのままフェードアウトしてからエンディングへ」): 帰還サークル(beginReturnPhase)を廃止。
+        // 死亡アテンション+崩壊(bossCorpse)を見せ終えたら黒フェード(GameHUDのexOutroFading)→
+        // フェードし切ってから勝利確定=App.handleVictoryがEXエンディング(最終調査記録)へ遷移する。
+        if (phillBossSpawnedRef.current && !useGameStore.getState().gameWon) {
+          const gsPh = useGameStore.getState();
+          const phillAlive = gsPh.enemies.some(e => e.type === 'phillboss');
+          if (!phillAlive && !gsPh.attention && !gsPh.bossCorpse) {
+            if (phillOutroAtRef.current === null) {
+              phillOutroAtRef.current = nowMs;
+              useGameStore.setState({ exOutroFading: true });
+            } else if (nowMs >= phillOutroAtRef.current + PHILL_OUTRO_FADE_MS) {
+              useGameStore.setState({ gameWon: true });
+            }
           }
         }
 
