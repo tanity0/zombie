@@ -28,7 +28,7 @@ L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動�
 - **有効化の順番（Codex推奨・重要）**: まず可視化(A) → 数値が体感と合ったら **RELAXだけ**接続 → 最後に **Performance高でBuildUp**。
   いきなり湧きを変えない（事故時に原因が分からなくなる）。
 
-## 2. 実装済み（ステップA・読むだけ）
+## 2. 実装記録（ステップA・読むだけ）
 - **信号算出（純関数）** `src/utils/aiDirector.ts`
   - `stepDirector(prev, inputs, dtSec)` → `DirectorState`。Date.now/Math.random不使用（resume安全）。
   - Intensity: 被弾スパイク＋低HP＋**近接敵数**＋**危険敵の存在(dangerBias)**。上げ速い/下げ遅い。
@@ -46,7 +46,7 @@ L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動�
   緊張曲線(Intensity面＋Performance線＋マクロ帯)＋難易度スコアをSVGで静的表示。
 - **テスト** `src/utils/aiDirector.test.ts`（16ケース）: 分離ルール/3状態遷移/PEAK後RELAX/スコア集計/relaxSpawnAdjust 等。
 
-## 2.5 実装済み（ステップB・RELAXだけ実接続）
+## 2.5 実装記録（ステップB・RELAXだけ実接続）
 - **調整の算出（純関数）** `src/utils/aiDirector.ts` の `relaxSpawnAdjust(macro)`。RELAX中だけ
   `{ escMult:0, intervalMult:1.35, capMult:0.85 }`、それ以外は全部1倍(無補正)。定数は
   `RELAX_ESC_MULT/RELAX_INTERVAL_MULT/RELAX_CAP_MULT`(全部私案・チューニング可)。
@@ -61,7 +61,7 @@ L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動�
 - **可視化** `DirectorOverlay.tsx` の見出しが有効なフラグに応じて `(RELAX applied)`/`(BUILDUP applied)`/
   `(RELAX+BUILDUP applied)` に変わる(適用中の目印)。
 
-## 2.6 実装済み（ステップC・Performance高でBuildUp強化）
+## 2.6 実装記録（ステップC・Performance高でBuildUp強化）
 - **調整の算出（純関数）** `src/utils/aiDirector.ts` の `buildupSpawnAdjust(macro, performance)`。
   **BUILD_UP中だけ** `escBoost = performance × BUILDUP_ESC_BOOST_MAX(0.25)` を返す。PEAK/RELAX中は常に0。
 - **Bとの非対称(意図的)**: Bは3レバー(escalation/湧き間隔/湧き上限)で安全側に強く効かせる“ブレーキ”。
@@ -72,7 +72,7 @@ L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動�
 - **★スコア/経験値/レベル速度には一切触れていない**(社長指示で触ってはいけないシステム。Codex原案の
   「報酬も少し上げる」は採用しなかった)。
 
-## 2.7 実装済み（難易度⑤・DirectorRank=台本＋前フェーズ評価。社長合意・v0.25.1284で一気に実装）
+## 2.7 実装記録（難易度⑤・DirectorRank=台本＋前フェーズ評価。社長合意・v0.25.1284で一気に実装）
 - **背景**: Codex提案「BUILD_UP/PEAK/RELAXだけでは“休んだあとまた試験”になりやすく、
   “熟せてる感”を作るHARVESTが要る」を受け、社長と方式を協議。結論は**台本(①)が骨格・
   前フェーズの成績が次フェーズの強さを決める・リアルタイムはブレーキ専用**（RE4のランク方式に近い）。
