@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3788',
+    items: [
+      'ゲーム内容の変更はありません(設計の記録のみ)。',
+    ],
+  },
+  {
     version: '0.25.3787',
     items: [
       'トールの突進を修正しました。突進中に刀を構えるようになり、斬り抜けの斬撃も見えるようになっています。',
