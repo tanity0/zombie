@@ -3393,6 +3393,8 @@ export class PixiScene {
   // 撒き羽根の専用コンテナ。生存中は本体view.container内のindex1(羽=back(0)の上・本体絵の下)、
   // 本体退場後はphillLayer直下に作り直して死亡の余韻(舞い続ける羽根)を保つ。
   private phillFeatherC: Container | null = null;
+  // ★v0.25.3739: 「祝福」(技1・旧「光の雨」)の予兆=天の光のスポットライト(加算Graphics・windup中のみ)。
+  private phillBlessingGfx: Graphics | null = null;
   // ★v0.25.3730(社長報告「登場シーンが止まってる」): 撒き羽根はアテンションの時間停止(凍結now)に
   // 依存しない自前の実時間時計で更新する(登場の羽根どばっが時間停止中も舞い続けるため)。
   private lastPhillFeatherStepAt: number | null = null;
@@ -14584,6 +14586,8 @@ export class PixiScene {
   // (CLAUDE.md「ズーム対応はレイヤーごとに漏れて潜伏する」と同型の地雷)。
   // ここで初期化するのは view.* の見た目状態だけ(store読み書きなし=CLAUDE.md「PixiJSは描画のみ」)。
   private resetActorFxDefaults(view: ActorView, e: Enemy): void {
+    // ★v0.25.3739: 祝福の予兆スポットライトの既定OFF(残留描画防止の掟=描く分岐より前で毎フレclear)。
+    if (e.type === 'phillboss' && this.phillBlessingGfx && !this.phillBlessingGfx.destroyed) this.phillBlessingGfx.clear();
     // Above-sprite layer(前半): 攻撃予告(赤い線/帯/円/扇)。**tele レイヤー**へ描く。
     // 体力バー/ボスマーカーは同じ描画順のまま overlay(後半・drawHealthBar 以降)へ分けた。
     // 分けている理由は alpha だけ(予告は自分の位置でフェードする=TELEGRAPH_OWN_FADE)。
@@ -16933,7 +16937,12 @@ export class PixiScene {
       // drawKatanaSlash/Readyのtargetをphillへ差し替え済み)。他の予告円/帯はview.tele(=o)へ描く=
       // view.container(=phillLayer内)の子なので自然に専用レイヤーへ収まる(追加の配線不要)。
       // =============================================================================================
-      // ---- フィル: 光の雨(技1)=時間差の小円5〜6個→光柱(§10-3の1) ----
+      // ---- フィル: 祝福(技1・旧「光の雨」)の予兆=天の光のスポットライト(v0.25.3739・社長指示) ----
+      // 判定ゼロ=分類②(派手枠)。フェードアウトが完全に終わってから発動(=着弾予告の小円)が来る。
+      else if (e.type === 'phillboss' && bs === 'phill-lightrain-windup') {
+        this.drawPhillBlessingSpotlights(e, gameTime);
+      }
+      // ---- フィル: 祝福(技1)=時間差の小円5〜6個→光柱(§10-3の1) ----
       else if (e.type === 'phillboss' && bs === 'phill-lightrain-active') {
         // 位置/時刻はe.phillLightrainQueue(バッチ3で新設したangelBossTickからのミラー・§10バッチ3)。
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
@@ -19217,6 +19226,63 @@ export class PixiScene {
     this.L.phillLayer.addChild(c);
     this.phillFeatherC = c;
     return c;
+  }
+
+  /**
+   * ★v0.25.3739(社長指示「祝福」改名+予兆): 画面全体に**上から天の光=眩しいスポットライト**を
+   * 地面へ投射し、**フェードアウトが完全に終わってから発動**する。判定ゼロ=分類②(派手枠)。
+   * レイヤーはfeatherC内index0(羽の上・本体の下=「本体が常に一番上」の裁定に従う)。
+   * 可視域(screenW/H÷zoom)から幅と柱の上端を計算=ズーム最引き(?zoomlock=0.4)でも破綻しない。
+   * クロックはgameTime(技の進行と同期=アテンション等の時間停止中は予兆ごと止まるのが正)。
+   */
+  private drawPhillBlessingSpotlights(e: Enemy, gameTime: number): void {
+    let g = this.phillBlessingGfx;
+    if (!g || g.destroyed) {
+      g = new Graphics();
+      g.blendMode = 'add';
+      this.phillBlessingGfx = g;
+    }
+    const fc = this.ensurePhillFeatherC();
+    if (g.parent !== fc) fc.addChildAt(g, 0); // 撒き羽根より下=光の中を羽根が舞う
+    g.clear();
+    const windup = PH_T.lightrain.windup;
+    const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / windup));
+    // フェードイン(0→22%)→ホールド→フェードアウト(62%→92%で完全消灯)→残り8%は暗転間=発動へ。
+    const tIn = Math.min(1, prog / 0.22);
+    const easeIn = tIn * tIn * (3 - 2 * tIn);       // 慣性(smoothstep)
+    const tOut = Math.max(0, Math.min(1, (prog - 0.62) / 0.30));
+    const easeOut = 1 - tOut * tOut * (3 - 2 * tOut);
+    const a = easeIn * easeOut;
+    if (a <= 0.002) return;
+    const ply = useGameStore.getState().player;
+    const pcx = ply.x + ply.width / 2;
+    const groundBaseY = ply.y + ply.height;
+    const zoom = this.L.worldGroup.scale.x || 1;
+    const viewW = this.screenW / zoom;
+    const viewH = this.screenH / zoom;
+    const topY = groundBaseY - viewH; // 画面上端を必ず突き抜ける長さ(可視域から算出)
+    const n = 5;
+    for (let i = 0; i < n; i++) {
+      const baseX = pcx + ((i + 0.5) / n - 0.5) * viewW * 1.05; // 可視幅ぜんぶに等間隔
+      const sway = Math.sin(gameTime / 900 + i * 1.7) * viewW * 0.012; // ごくゆっくり揺らぐ(慣性)
+      const footX = baseX + sway;
+      const footY = groundBaseY + (i % 2 === 0 ? 0 : viewH * 0.10); // 前後差で地面に散らす
+      const footW = viewW * 0.085;  // 地面の光だまり幅
+      const topW = footW * 0.45;    // 天側は絞る=スポットライトの円錐
+      // 外光(柔らかい台形)
+      g.poly([
+        { x: footX - footW / 2, y: footY }, { x: footX + footW / 2, y: footY },
+        { x: footX + topW / 2, y: topY }, { x: footX - topW / 2, y: topY },
+      ]).fill({ color: 0xfff3c8, alpha: 0.20 * a });
+      // 芯(眩しさ)
+      g.poly([
+        { x: footX - footW * 0.22, y: footY }, { x: footX + footW * 0.22, y: footY },
+        { x: footX + topW * 0.20, y: topY }, { x: footX - topW * 0.20, y: topY },
+      ]).fill({ color: 0xffffff, alpha: 0.17 * a });
+      // 地面の光だまり(投射)
+      g.ellipse(footX, footY, footW * 0.78, footW * 0.24).fill({ color: 0xfff7dc, alpha: 0.32 * a });
+      g.ellipse(footX, footY, footW * 0.42, footW * 0.13).fill({ color: 0xffffff, alpha: 0.22 * a });
+    }
   }
 
   /**

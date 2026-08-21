@@ -3,7 +3,7 @@
 // 数値の根拠は PACING_PUZZLE.md §10-3/§10-9/§10-13(技セット)・§10-14#7/§10-15#5(カウンター必須の規約)。
 //
 // 技14(実在13。#13「吸引+金環」は§10-14#14で落とされ、番号だけ14まで進んでいる):
-// lightrain(1光の雨) lancefan(2光槍の扇) wingslash(3羽斬り) wingthrust(4羽突き) wingcombo(5羽連撃)
+// lightrain(1祝福・旧「光の雨」) lancefan(2光槍の扇) wingslash(3羽斬り) wingthrust(4羽突き) wingcombo(5羽連撃)
 // summon(6召喚) goldring(7金環) judgment(8裁きの光★必須) cage(9羽根の檻★必須) meteor(10エルデの流星)
 // ringtoss(11光輪投げ) dive(12急降下) feathershot(14羽根散弾)。
 import { bossZoneForDistance, phaseForHealth, pickWeightedMove, type BossMoveWeights } from './bossScript';

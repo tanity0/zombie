@@ -276,7 +276,7 @@ export const ANGEL_ACRASIEL_TUNING: AngelAcrasielTuning = {
 // フィル(phillboss・PACING_PUZZLE.md §10・バッチ2)
 // =================================================================================================
 export interface AngelPhillTuning extends AngelSharedHolder {
-  /** 光の雨(技1): 時間差の小円5〜6個→光柱。 */
+  /** 祝福(技1・旧「光の雨」): 天の光の予兆→時間差の小円5〜6個→光柱。 */
   lightrain: { windup: number; shotCount: number; shotGapMs: number; radius: number; recover: number; cdMs: number };
   /** 光槍の扇(技2): 共通赤弾5本×2回。 */
   lancefan: { windup: number; shotsPerVolley: number; volleys: number; volleyGapMs: number; spreadDeg: number; recover: number };
@@ -306,7 +306,10 @@ export interface AngelPhillTuning extends AngelSharedHolder {
 
 export const ANGEL_PHILL_TUNING: AngelPhillTuning = {
   common: ANGEL_COMMON_TUNING, // ★7人目も同じ実体(複製しない)
-  lightrain: { windup: 1200, shotCount: 6, shotGapMs: 220, radius: 70, recover: withRecoverFloor(700), cdMs: 10000 },
+  // ★v0.25.3739(社長指示): 技1は「祝福」に改名(キーはlightrainのまま=保存データ/州名の互換維持)。
+  // windup 1200→1800: 予兆「天の光のスポットライト」(pixi側)のフェードイン→ホールド→フェードアウトを
+  // 収める尺。フェードアウト完了(≈92%)後に発動が来る体感に同期(叩き台)。
+  lightrain: { windup: 1800, shotCount: 6, shotGapMs: 220, radius: 70, recover: withRecoverFloor(700), cdMs: 10000 },
   lancefan: { windup: 700, shotsPerVolley: 5, volleys: 2, volleyGapMs: 450, spreadDeg: 60, recover: withRecoverFloor(600) },
   wingslash: { windup: 700, active: 150, recover: withRecoverFloor(700), range: 310, halfWidth: 44 },
   wingthrust: { windup: 950, active: 130, recover: withRecoverFloor(700), range: 340, halfWidth: 36 },

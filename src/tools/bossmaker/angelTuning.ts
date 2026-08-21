@@ -391,7 +391,7 @@ const AC_HELP: Record<string, string> = {
 // フィル(phillboss・PACING_PUZZLE.md §10-17・angelBossTickの7人目=バッチ2)
 // ================================================================================================
 const PH_SEC = {
-  lightrain: '光の雨(ph-lightrain)', lancefan: '光槍の扇(ph-lancefan)',
+  lightrain: '祝福(ph-lightrain)', lancefan: '光槍の扇(ph-lancefan)',
   wingslash: '羽斬り(ph-wingslash)', wingthrust: '羽突き(ph-wingthrust)', wingcombo: '羽連撃(ph-wingcombo)',
   summon: '召喚(ph-summon)', goldring: '金環(ph-goldring)',
   judgment: '裁きの光★必須(ph-judgment)', cage: '羽根の檻★必須(ph-cage)',
@@ -559,7 +559,7 @@ const AC_PLAYABLES: readonly PlayableAction[] = [
   play('ac-gaze', '凝視', AC_SEC.gaze),
 ];
 const PH_PLAYABLES: readonly PlayableAction[] = [
-  play('ph-lightrain', '光の雨', PH_SEC.lightrain),
+  play('ph-lightrain', '祝福', PH_SEC.lightrain),
   play('ph-lancefan', '光槍の扇', PH_SEC.lancefan),
   play('ph-wingslash', '羽斬り', PH_SEC.wingslash),
   play('ph-wingthrust', '羽突き', PH_SEC.wingthrust),
