@@ -306,6 +306,7 @@ import { isExStageRun, phillBossSpawnReady, surielGateSpawnReady, surielGateClea
 import {
   EX_SURIEL_TRIGGER_Y, EX_SURIEL_NORTH_LOCK_Y, EX_SURIEL_SOUTH_LOCK_Y,
   EX_PHILL_TRIGGER_Y, EX_PHILL_SOUTH_LOCK_Y,
+  exPhillNorthCenterLimitY,
 } from '../world/exHall';
 import {
   parseBotSkill, botSkillProfile, dodgeVector, dodgeToInput, dodgeOverridesAttack,
@@ -387,7 +388,7 @@ import { airHopEase01 } from '../utils/airHop';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 // v0.25.3727(社長指示「全ボス、アテンションは絵の中心で見せて」): 出現アテンションの寄り先を
 // 帯(判定)中心から**絵の中心**へ。表はrenderSpec(描画と同じBOSS_SPRITE_FIT)=絵とカメラが一致。
-import { bossArtCenter } from '../pixi/renderSpec';
+import { bossArtCenter, BOSS_SPRITE_FIT } from '../pixi/renderSpec';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
   ZOOM_MIN_ABS,
@@ -3052,8 +3053,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 以後の移動・技選択はrunAngelBossTickの通常呼び出しが自動的に拾う(専用ブロック不要)。
         if (isExStageRun() && !danceTest && !indoor && !labTheme && !phillBossSpawnedRef.current
             && (!noSpawn || practiceForces('phillnow'))) {
-          const pcxPhill = player.x + player.width / 2;
-          const pcyPhill = player.y + player.height / 2;
+          // §10-20-FB1-3(ボスモードのフィル部屋「ステージがおかしい・出現位置も」・実在確認済み):
+          // 強制出現(?phillnow=1/練習枠)は自然到達(プレイヤーy<=EX_PHILL_TRIGGER_Y)を経ないため、
+          // プレイヤーが通路の走り込み直後(y≈0)に居るタイミングで発火し、広間(EX_PHILL_HALL)の外=
+          // 通路の細いままの舞台でフィルが出現していた(=報告の「ステージがおかしい」の実体)。
+          // 強制出現の場合だけ、まずプレイヤーを本編の戦闘開始位置(EX_PHILL_TRIGGER_Y)へ即テレポート
+          // してから出現位置を計算する(自然発火は無変更=他ボスの練習部屋・自然発火の挙動には触れない。
+          // このブロック自体がphillboss専用)。
+          // ★検収監査#5(FB1バッチ・2巡目): canForceGateBossNow(bossTest.ts)と同じ作法で
+          // corridorRunInActive(走り込み入力ロック)が終わるまで待つ(走り込み中にテレポート+出現すると
+          // 「強制的に上へ歩かされながら」の実機事故と同型になる・v0.25.2610の教訓の再発防止)。
+          const forcedPhillSpawn = (FORCE_PHILL || practiceForces('phillnow'))
+            && !useGameStore.getState().corridorRunInActive;
+          if (forcedPhillSpawn) {
+            useGameStore.setState(st => ({
+              player: { ...st.player, x: 0, y: EX_PHILL_TRIGGER_Y, vx: 0, vy: 0, lastDirection: { x: 0, y: -1 } },
+            }));
+          }
+          // テレポート後の最新値を使う(このtick冒頭で捕えたplayerは強制テレポートを反映しない)。
+          const playerForPhill = forcedPhillSpawn ? useGameStore.getState().player : player;
+          const pcxPhill = playerForPhill.x + playerForPhill.width / 2;
+          const pcyPhill = playerForPhill.y + playerForPhill.height / 2;
           // §10-20#7: 洋館通路化により「深度」はMath.hypotではなく-yで測る(通路はyだけが進む一本道)。
           const depthPhill = -pcyPhill;
           // ★不変条件「天使は同時に1体」(§10-14#1・v0.25.3721検収監査#2): 別のゲート2天使が
@@ -3063,14 +3083,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             e => e.type !== 'phillboss' && isGate2AngelBoss(e.type) && e.bossState != null);
           if (!otherAngelActivePhill
               && (phillBossSpawnReady(gateMetaRef.current.gate2Cleared, depthPhill, PHILL_SPAWN_DEPTH, otherAngelActivePhill)
-                || FORCE_PHILL || practiceForces('phillnow'))) {
+                || forcedPhillSpawn)) {
             phillBossSpawnedRef.current = true;
             // 出現位置: プレイヤーの前方(進行方向)。城/ストーリーボスと同じ「前方出現」の型。
-            let phDirX = player.vx ?? 0, phDirY = player.vy ?? 0;
-            if (Math.abs(phDirX) + Math.abs(phDirY) < 0.01 && player.lastDirection) { phDirX = player.lastDirection.x; phDirY = player.lastDirection.y; }
+            let phDirX = playerForPhill.vx ?? 0, phDirY = playerForPhill.vy ?? 0;
+            if (Math.abs(phDirX) + Math.abs(phDirY) < 0.01 && playerForPhill.lastDirection) { phDirX = playerForPhill.lastDirection.x; phDirY = playerForPhill.lastDirection.y; }
             if (Math.abs(phDirX) + Math.abs(phDirY) < 0.01) phDirY = -1;
             const phDirLen = Math.hypot(phDirX, phDirY) || 1;
             const pscx = pcxPhill + (phDirX / phDirLen) * STORY_BOSS_SPAWN_DIST;
+            // ★検収監査#1/#2(FB1バッチ・2巡目): 「手前まで広めて」はEX_PHILL_HALL.southY自体の拡張で
+            // 実現した(exHall.ts参照)。ここでの個別南シフトは撤去=出現間合いは他のストーリーボスと
+            // 同じSTORY_BOSS_SPAWN_DIST(380)のまま(旧実装は380→80pxへ縮めてしまっていた)。
             const pscy = pcyPhill + (phDirY / phDirLen) * STORY_BOSS_SPAWN_DIST;
             const pBoss = spawnEnemyAt('phillboss', pscx - 30, pscy - 15, newGameTime);
             // HP台帳の上書き(§10-14#3・幻影のスポーン時上書きと同作法=唯一の実効HP)。
@@ -3089,6 +3112,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               exStage: useGameStore.getState().corridorMode && isExStageRun(), // §10-20#7: フィル広間の横幅拡大
             });
             pBoss.x = pClamped.x; pBoss.y = pClamped.y;
+            // §10-20-FB1-1(実機FB): スプライト上端が可視域上端を越えない北限(中心y)を適用。
+            // 判定(world/store側)で完結させる=pixiSceneには置かない(CLAUDE.md描画/ロジック分離)。
+            {
+              const gsPhLimit = useGameStore.getState();
+              const phFit = BOSS_SPRITE_FIT.phillboss; // ★検収監査#4: fit値は呼び出し側(ロジック層)が持つ
+              const limitCenterY = exPhillNorthCenterLimitY(
+                playerForPhill.y + playerForPhill.height / 2, gsPhLimit.viewZoom, pBoss.width, gsPhLimit.gameBounds.height,
+                phFit.w, phFit.aspect, phFit.cy,
+              );
+              const curCenterY = pBoss.y + pBoss.height / 2;
+              if (curCenterY < limitCenterY) pBoss.y = limitCenterY - pBoss.height / 2;
+            }
             pBoss.vx = 0; pBoss.vy = 0;
             pBoss.dormant = false; // 出現した瞬間から戦闘
             pBoss.bossState = 'chase'; // バッチ1は置物=直進するだけ(技はバッチ2)

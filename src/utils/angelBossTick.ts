@@ -76,6 +76,8 @@ import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playable
 // (orbitRadius≒250)が素の通路幅±170で壁に貼り付いて破綻するのを防ぐため、天使6体共通のこの
 // クランプにもexStageを渡す。isExStageRun()は他ステージ(EX以外)では常にfalse=M6含め無変化。
 import { isExStageRun } from './exStage';
+import { exPhillNorthCenterLimitY } from '../world/exHall'; // §10-20-FB1-1: フィルの上端クランプ
+import { BOSS_SPRITE_FIT } from '../pixi/renderSpec'; // ★検収監査#4: fit値はロジック層(ここ)が持つ
 // 剣ボスの踏み込み(社長指示v0.25.3524)。慣性つきの位置だけを返す純関数(判定には一切触らない)。
 import { planSwordLunge, isSwordLungeLive, swordLungeCenterAt } from './swordLunge';
 
@@ -460,6 +462,18 @@ const applyPatch = (id: string, patch: Partial<Enemy>): void => {
       };
       const c = clampRectToPlayableArea(patch.x ?? boss.x, patch.y ?? boss.y, boss.width, boss.height, ctx);
       patch.x = c.x; patch.y = c.y;
+      // §10-20-FB1-1(実機FB「フィルの戦場が端っこ過ぎる...ボスも上端は越えない程度に」):
+      // フィルだけ、スプライト上端が可視域上端を越えない北限(中心y)を追加で適用。
+      // 判定はここ(world/store側の可動クランプ)で完結=pixiSceneには判定を置かない。
+      if (boss.type === 'phillboss' && ctx.exStage) {
+        const phFit = BOSS_SPRITE_FIT.phillboss;
+        const limitCenterY = exPhillNorthCenterLimitY(
+          st0.player.y + st0.player.height / 2, st0.viewZoom, boss.width, st0.gameBounds.height,
+          phFit.w, phFit.aspect, phFit.cy,
+        );
+        const curCenterY = patch.y + boss.height / 2;
+        if (curCenterY < limitCenterY) patch.y = limitCenterY - boss.height / 2;
+      }
     }
   }
   useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === id ? { ...e, ...patch } : e) }));

@@ -7681,10 +7681,14 @@ export class PixiScene {
         this.m0FrontLineAlpha = 0; this.m0FrontLineX = null; // 別ステージへ移ったら次の訓練で0から立ち上がる
       }
     }
-    // PACING_PUZZLE.md §10-20#4(EX結界/南の膜): スリィエル/フィル存命中、プレイヤーを閉じ込める
-    // 「金色の光の膜」(通路幅いっぱいの横帯・加算・ゆらぎ=天使の結界の画。攻撃判定ではないので赤/紫は
-    // 使わない)。world座標(worldGroup内)に描く=クランプ(playableArea)と同じ変換を受けるので
-    // ズームや通路カメラ下げでもズレない。横幅=広間の横クランプ(EX_HALL_LATERAL_CLAMP)と同一定数。
+    // PACING_PUZZLE.md §10-20-FB1-2(実機FB「あとこの線も、城ボスのサークルと同じにして」):
+    // スリィエル/フィル存命中、プレイヤーを閉じ込める境界線。**城ボス戦の境界サークル
+    // (castleFightRingGfx・v0.25.3055「制限ラインを薄く表示するのはいいが、中は塗るな」)と
+    // 同じ意匠の直線版**(同じ色0xf87171/0xfecaca・同じ二重ストローク幅4/1.5・同じオフセット6px・
+    // 同じ脈動式rPulse=0.5+0.5*sin(now/300)。judgmentは不変=見た目のみ差し替え)。中は塗らない
+    // (円→直線なので「中」に相当する塗りはそもそも無い)。world座標(worldGroup内)に描く=
+    // クランプ(playableArea)と同じ変換を受けるのでズームや通路カメラ下げでもズレない。
+    // 横幅=広間の横クランプ(EX_HALL_LATERAL_CLAMP)と同一定数。
     {
       const g = this.exBarrierGfx;
       g.clear();
@@ -7693,22 +7697,27 @@ export class PixiScene {
       if (s.exBarrier.southLockY != null) this.exBarrierLastSouthY = s.exBarrier.southLockY;
       const barrierActive = s.corridorMode && !s.indoorMode && (s.exBarrier.northLockY != null || s.exBarrier.southLockY != null);
       // ★検収監査#3(v3751・CLAUDE.md慣性則「パッと出て止まる禁止」): 出現/消滅にease付きフェードを
-      // 入れる(判定=playableAreaのクランプは即時のまま。ここは描画だけの平滑化)。
+      // 入れる(判定=playableAreaのクランプは即時のまま。ここは描画だけの平滑化)。城ボスのring同様
+      // 0.08〜0.10のease(castleRingAlphaは0.08・既存の踏襲で0.10のまま=数値上の意味は同じ性質)。
       this.exBarrierAlpha += ((barrierActive ? 1 : 0) - this.exBarrierAlpha) * 0.10;
       if (this.exBarrierAlpha > 0.01) {
-        g.blendMode = 'add';
-        const flick = (0.85 + 0.15 * Math.sin(now / 260)) * this.exBarrierAlpha;
+        const rPulse = 0.5 + 0.5 * Math.sin(now / 300); // castleFightRingGfxと同じ脈動式
         const halfW = EX_HALL_LATERAL_CLAMP;
-        const drawBand = (yLock: number) => {
-          const th = 46;
-          g.rect(-halfW, yLock - th / 2, halfW * 2, th).fill({ color: 0xf2c14e, alpha: 0.28 * flick });
-          g.rect(-halfW, yLock - 3, halfW * 2, 6).fill({ color: 0xfff3c4, alpha: 0.55 * flick });
+        // ★検収監査#6(FB1バッチ・2巡目): 副線(内側の細いストローク)は城サークルの「radius-6」と同じ
+        // 「常に内側」の意匠に揃える。北結界(存命中はこれより奥=北(小さいy)へ進めない)の内側=南
+        // (yLock+6)。南の膜(存命中はこれより手前=南(大きいy)へ戻れない)の内側=北(yLock-6・現状どおり)。
+        const drawLine = (yLock: number, innerOffsetSign: 1 | -1) => {
+          g.moveTo(-halfW, yLock).lineTo(halfW, yLock)
+            .stroke({ width: 4, color: 0xf87171, alpha: this.exBarrierAlpha * (0.16 + 0.08 * rPulse) });
+          const innerY = yLock + 6 * innerOffsetSign;
+          g.moveTo(-halfW, innerY).lineTo(halfW, innerY)
+            .stroke({ width: 1.5, color: 0xfecaca, alpha: this.exBarrierAlpha * (0.26 + 0.10 * rPulse) });
         };
         // 現在値優先・無ければ(消滅フェード中)直前の記憶位置を使う。
         const northY = s.exBarrier.northLockY ?? (barrierActive ? null : this.exBarrierLastNorthY);
         const southY = s.exBarrier.southLockY ?? (barrierActive ? null : this.exBarrierLastSouthY);
-        if (northY != null) drawBand(northY);
-        if (southY != null) drawBand(southY);
+        if (northY != null) drawLine(northY, 1);
+        if (southY != null) drawLine(southY, -1);
       } else {
         this.exBarrierLastNorthY = null;
         this.exBarrierLastSouthY = null;

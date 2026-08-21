@@ -8,6 +8,8 @@
 // **同じ補間値tから**広がる(6巡目#3: 絵のS倍とクランプの拡幅が別式だとズレる)。
 
 import { CORRIDOR_LATERAL_CLAMP } from '../utils/corridorProjection';
+// §10-20-FB1-1(実機FB): フィルのスプライト上端が可視域上端を越えない北限の導出に使う。
+import { CAMERA_HORIZON_FRAC } from '../utils/cameraZoom';
 
 // §10-20#2: 全長の北端。corridorは元々北の上限が無い(横と南端のみ)ため、EXだけこの絶対クランプを足す。
 export const EX_NORTH_LIMIT_Y = -6000;
@@ -33,8 +35,11 @@ export interface ExHallZone {
 
 // §10-20#6: 関所(スリィエル)広間=y-3000±700。
 export const EX_SURIEL_HALL: ExHallZone = { southY: -2300, northY: -3700 };
-// §10-20#7: フィル広間=y-4800〜-6000。
-export const EX_PHILL_HALL: ExHallZone = { southY: -4800, northY: -6000 };
+// §10-20#7: フィル広間=y-4500〜-6000。★検収監査#1(FB1バッチ・2巡目): 社長の言葉「手前まで広めて」=
+// **移動可能域そのものの拡張**。旧-4800から300px南(手前)へ広げた(叩き台)。ブレークポイント表
+// (buildExHallBreakpoints)がこのゾーン定義を直接読むため、絵のS倍(exHallScaleT)・移動クランプ
+// (exHallLateralClamp)・流速(exHallTravel)が全て自動でこの新しい南端に追随する(単一の出どころ)。
+export const EX_PHILL_HALL: ExHallZone = { southY: -4500, northY: -6000 };
 export const EX_HALL_ZONES: ExHallZone[] = [EX_SURIEL_HALL, EX_PHILL_HALL];
 
 // 関所(スリィエル)の発火/結界のy(§10-20#3・#4)。
@@ -45,6 +50,44 @@ export const EX_SURIEL_SOUTH_LOCK_Y = EX_SURIEL_HALL.southY; // 5巡目#1: 南�
 // フィルの出現/南封鎖のy(§10-20#7・#5末尾)。
 export const EX_PHILL_TRIGGER_Y = -5000; // 旧・深度9000は廃止
 export const EX_PHILL_SOUTH_LOCK_Y = EX_PHILL_HALL.southY; // 出現と同時に南端を閉鎖(開放は不要=終幕直結)
+
+// --- §10-20-FB1-1(実機FB「フィルの戦場が端っこ過ぎる」): 戦場の南方向拡張+上端クランプ ------------
+// 社長の言葉: 「壁が見えるのはいいが、遠景的なノリのはずなのでもう少し手前まで広めて、さすがにボスも
+// 上端は越えない程度にして。(浮いてる分被ってるのは違和感ないが、越えていっちゃってる。)」
+// ★検収監査#1/#2(FB1バッチ・2巡目): 「手前まで広めて」=**移動可能域の拡張**であって出現位置だけの
+// 個別シフトではない。旧実装(出現座標にだけ+300)は間合いをSTORY_BOSS_SPAWN_DIST(380)→80pxへ
+// 縮めてしまっていた(密着開始の副作用)。EX_PHILL_HALL.southYを直接動かす方式(上記)へ差し替えた
+// ため、出現位置側の個別オフセットは撤去=出現間合いは従来どおりSTORY_BOSS_SPAWN_DIST(380)を維持する。
+
+// ボスのスプライト上端が可視域上端を越えないための、boss中心yの下限(=これより北(小さいy)へは
+// 行けない)。「カメラの均衡構図」(bossCameraLeadYが縦先読みの基準にしているpBal=(1+CAMERA_HORIZON_FRAC)/2
+// と同じ導出)を使い、**先読みが効いていない(未収束)状態を基準に保守的に**求める(先読みが実際に効けば
+// ボスは更に画面中央側へ寄るので、この下限より安全側にしか動かない)。
+const CAMERA_BALANCE_FRAC = (1 + CAMERA_HORIZON_FRAC) / 2;
+
+/**
+ * §10-20-FB1-1: フィル(phillboss)のスプライト上端が可視域上端を越えないための中心yの下限。
+ * ズーム(zoom=state.viewZoom相当)を考慮する(引くほど許容範囲が狭まる)。
+ * 浮遊オフセット(戦闘中の演出的な上下ゆらぎ)は**呼び出し側がbossWidthPxへ反映しない限り関知しない**
+ * ——この関数はstoreのboss.x/y(=判定の実体)だけを見るため、pixiScene側だけで完結する視覚専用の
+ * 上下オフセット(急降下(dive)技の「天に昇って画面外へ」等)はそもそもboss.yを書き換えないので、
+ * この制約と衝突しない(=「意図的な画面外へ昇る演出は仕様として除外」が自然に満たされる)。
+ * ★検収監査#4(FB1バッチ・2巡目): スプライトの寸法(fitW/fitAspect/fitCy=旧BOSS_SPRITE_FIT.phillboss)は
+ * 呼び出し側から引数で渡す(world層がpixi/renderSpec.tsを直接importしない=world→pixiの依存を消す。
+ * CLAUDE.md「world/は renderer-agnostic」を文字どおり守る)。呼び出し側はbossArtCenterと同じ
+ * BOSS_SPRITE_FIT.phillossを読んで渡すこと(値の出どころは1本のまま=ズレない)。
+ * 受け入れ条件はexHall.test.tsで固定(zoomが1のときと引いたときの単調性・boss.widthに対する単調性)。
+ */
+export const exPhillNorthCenterLimitY = (
+  playerCenterY: number, zoom: number, bossWidthPx: number, viewportHeightPx: number,
+  fitW: number, fitAspect: number, fitCy: number,
+): number => {
+  const z = Math.max(0.05, zoom); // 0除算/極端値の安全弁
+  const spriteW = bossWidthPx / fitW;      // bossArtCenterと同じ導出(spriteW→aspectでspriteHへ)
+  const spriteH = spriteW * fitAspect;
+  const topOffsetAboveCenter = fitCy * spriteH; // 絵の上端が判定中心よりどれだけ上にあるか
+  return playerCenterY + topOffsetAboveCenter - (CAMERA_BALANCE_FRAC * viewportHeightPx) / z;
+};
 
 // --- §10-20#5 検収監査#1(3巡目・v3753): hallS(y)を「smoothstepをN本の線形サブ区間で近似した
 // 区分線形関数」として1箇所(ブレークポイント表)で定義し、exHallScaleT(絵/クランプ)とexHallTravel

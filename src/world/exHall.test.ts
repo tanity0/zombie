@@ -4,7 +4,7 @@ import {
   exHallScaleT, exHallLateralClampFromT, exHallLateralClamp, exHallTravel,
   EX_SURIEL_HALL, EX_PHILL_HALL, EX_HALL_TRANSITION_PX, EX_HALL_SCALE,
   EX_SURIEL_TRIGGER_Y, EX_HALL_LATERAL_CLAMP, EX_NORTH_LIMIT_Y, EX_BACK_WORLD_Y,
-  EX_HALL_RAMP_SUBSEGMENTS,
+  EX_HALL_RAMP_SUBSEGMENTS, exPhillNorthCenterLimitY,
 } from './exHall';
 import { CORRIDOR_LATERAL_CLAMP } from '../utils/corridorProjection';
 
@@ -26,6 +26,35 @@ describe('exHallScaleT — 広間の外/内側', () => {
   it('2つの広間の間(通常通路区間)はt=0(遷移帯の外)', () => {
     // スリィエル北端-3700から遷移帯400pxぶん離れた場所は完全に通常幅。
     expect(exHallScaleT(-3700 - EX_HALL_TRANSITION_PX)).toBe(0);
+  });
+});
+
+// PACING_PUZZLE.md §10-20-FB1-1検収監査#1(FB1バッチ・2巡目「手前まで広めて」=移動可能域の拡張):
+// EX_PHILL_HALL.southYを直接動かしたので、絵のS倍(exHallScaleT)・移動クランプ(exHallLateralClamp)・
+// 流速(exHallTravel)が**この同じブレークポイント表から自動で追随する**ことを固定する。
+describe('EX_PHILL_HALL拡張(検収監査#1) — 絵/クランプ/流速が同じブレークポイント表に自動追随する', () => {
+  it('フィル広間の南端は旧値(-4800)より300px手前(-4500)に拡張されている', () => {
+    expect(EX_PHILL_HALL.southY).toBe(-4500);
+  });
+  it('旧南端(-4800)は拡張後は広間の内部=t=1(=以前は境界だった位置が今は余裕を持って内側)', () => {
+    expect(exHallScaleT(-4800)).toBe(1);
+  });
+  it('新しい南端(EX_PHILL_HALL.southY)ちょうどで絵のスケールt=1が完了している', () => {
+    expect(exHallScaleT(EX_PHILL_HALL.southY)).toBe(1);
+  });
+  it('新しい南端で横クランプが広間フル幅(EX_HALL_LATERAL_CLAMP)まで拡幅されている', () => {
+    expect(exHallLateralClamp(EX_PHILL_HALL.southY)).toBe(EX_HALL_LATERAL_CLAMP);
+  });
+  it('新しい南端の遷移帯入口(旧南端相当より更に手前)ではまだ通常通路幅(t=0)のまま', () => {
+    expect(exHallScaleT(EX_PHILL_HALL.southY + EX_HALL_TRANSITION_PX)).toBeCloseTo(0, 9);
+  });
+  it('exHallTravelもEX_PHILL_HALL.southYの拡張に追随する(新しい南端の内側=局所傾き1/EX_HALL_SCALE)', () => {
+    // 広間の内部(南端の少し奥=既にt=1の平坦区間)で、O(y)の局所傾き(dO/d前進距離)が
+    // 1/EX_HALL_SCALEと一致すること=新しい南端がそのまま「広間フル幅」として積分に反映されている。
+    const y = EX_PHILL_HALL.southY - 100; // 新南端の100px奥(広間の内部・平坦区間)
+    const h = 0.5;
+    const slope = (exHallTravel(y - h) - exHallTravel(y + h)) / (2 * h);
+    expect(slope).toBeCloseTo(1 / EX_HALL_SCALE, 6);
   });
 });
 
@@ -199,5 +228,50 @@ describe('exHallScaleT / exHallTravel — 同一のブレークポイント表�
       const hallS = 1 + (EX_HALL_SCALE - 1) * t;
       expect(slope).toBeCloseTo(1 / hallS, 3);
     }
+  });
+});
+
+// PACING_PUZZLE.md §10-20-FB1-1(実機FB「フィルの戦場が端っこ過ぎる...ボスも上端は越えない程度に」)。
+// ★検収監査#4(FB1バッチ・2巡目): world層はpixi/renderSpec.tsをimportしない=fitW/fitAspect/fitCyは
+// テスト側でも呼び出し側と同じ値(BOSS_SPRITE_FIT.phillboss相当)を直接渡す。
+const PHILL_FIT_W = 0.25, PHILL_FIT_ASPECT = 1024 / 768, PHILL_FIT_CY = 0.97;
+
+describe('exPhillNorthCenterLimitY — スプライト上端が可視域上端を越えない北限(中心y)', () => {
+  const playerCenterY = -5200;
+  const viewportH = 800;
+  const limit = (zoom: number, bossWidthPx: number, viewportHeightPx: number, cy = PHILL_FIT_CY) =>
+    exPhillNorthCenterLimitY(playerCenterY, zoom, bossWidthPx, viewportHeightPx, PHILL_FIT_W, PHILL_FIT_ASPECT, cy);
+
+  it('妥当な範囲の値を返す(退化・NaN・巨大値にならない)', () => {
+    const v = limit(1, 60, viewportH);
+    expect(Number.isFinite(v)).toBe(true);
+    expect(v).toBeLessThan(playerCenterY); // プレイヤーより北(小さいy)側に許容域がある
+    expect(v).toBeGreaterThan(playerCenterY - viewportH); // だが画面高を超えて北へ飛ぶような値でもない
+  });
+
+  it('ズームアウト(zoom<1)ほど北限が緩む(より北まで許容=limitCenterYが小さくなる・画面が広く映るため)', () => {
+    expect(limit(0.5, 60, viewportH)).toBeLessThan(limit(1, 60, viewportH));
+  });
+
+  it('ズームイン(zoom>1)ほど北限が厳しくなる(より南までしか許容しない)', () => {
+    expect(limit(1.3, 60, viewportH)).toBeGreaterThan(limit(1, 60, viewportH));
+  });
+
+  it('スプライト(bossWidthPx)が大きいほど北限が厳しくなる(より南までしか許容しない=単調増加)', () => {
+    expect(limit(1, 80, viewportH)).toBeGreaterThan(limit(1, 40, viewportH));
+  });
+
+  it('playerCenterYが動いた分、北限もそのまま平行移動する(オフセットの形)', () => {
+    const base = limit(1, 60, viewportH);
+    const shifted = exPhillNorthCenterLimitY(playerCenterY - 500, 1, 60, viewportH, PHILL_FIT_W, PHILL_FIT_ASPECT, PHILL_FIT_CY);
+    expect(shifted).toBeCloseTo(base - 500, 6);
+  });
+
+  it('画面高(viewportHeightPx)が大きいほど北限が緩む(より北まで許容=見える範囲が広いため)', () => {
+    expect(limit(1, 60, 1000)).toBeLessThan(limit(1, 60, 600));
+  });
+
+  it('fitCy(絵の中でスプライト上端が判定中心よりどれだけ上にあるか)が大きいほど北限が厳しくなる=単調増加', () => {
+    expect(limit(1, 60, viewportH, 1.2)).toBeGreaterThan(limit(1, 60, viewportH, 0.7));
   });
 });

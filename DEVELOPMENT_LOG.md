@@ -1,5 +1,102 @@
 # Development Log
 
+## v0.25.3769 — EX洋館通路化: FB1検収6件の修正(§10-20-FB1)【2026-08-21 22:47 JST】
+
+実装チャット(Sonnetサブエージェント)がFB1バッチ(直前エントリ)の検収で出た6件を修正。
+編集のみ・コミット/pushはこのバッチでは行っていない。
+
+**状態変化: PACING_PUZZLE.md §10-20 EX洋館通路化 → 検収中(残り: FB1検収6件修正の社長実機再確認待ち)**
+
+- **#1(重・移動可能域の拡張)**: `EX_PHILL_HALL.southY`を-4800→**-4500**(300px南)へ直接拡張
+  (`src/world/exHall.ts`)。ブレークポイント表(`buildExHallBreakpoints`)がゾーン定義を直接読むため、
+  絵のS倍(`exHallScaleT`)・移動クランプ(`exHallLateralClamp`)・流速(`exHallTravel`)が全て自動で
+  追随する。`EX_PHILL_SOUTH_LOCK_Y`は`EX_PHILL_HALL.southY`からの導出値なのでこれも自動追随
+  (個別変更不要)。テスト追加: 旧南端(-4800)が拡張後は広間内部(t=1)になること・新南端でt=1完了/
+  横クランプフル幅になること・exHallTravelの局所傾きが新南端の内側で1/EX_HALL_SCALEと一致すること。
+  ※副次的な実在確認: この300px拡張により、スリィエル広間の北端ランプアウト終点(y=-4100)とフィル
+  広間の新しい南端ランプイン起点(y=-4100)が**ちょうど接続**し、2広間間の平坦区間(旧300px)が
+  消えた(通常通路幅へ一瞬だけ戻ってすぐ次の広間が始まる形になる)。仕様上の指示どおりの数値変更の
+  帰結として記録するのみに留め、独自判断での追加調整はしていない。
+- **#2(中・出現間合いの復元)**: #1でEX_PHILL_HALL自体を拡張したため、出現座標への個別南シフト
+  (旧`EX_PHILL_ARENA_SOUTH_SHIFT_PX`)を撤去。出現間合いは他のストーリーボスと同じ
+  `STORY_BOSS_SPAWN_DIST`(380px)のまま(旧実装は380→80pxへ縮めてしまっていた)。
+- **#3(中・設計書の旧記述訂正)**: PACING_PUZZLE.md:7738-7739の「金色の光の膜・加算・赤/紫は使わない」
+  を、FB1-2で正になった意匠(城ボス境界サークルの直線版=二重ストローク・赤系0xf87171/0xfecaca・
+  脈動)へ書き換え(旧文は残さず、FB1-2による更新である旨を明記)。
+- **#4(中・world→pixi importの解消)**: `exPhillNorthCenterLimitY`のシグネチャに`fitW/fitAspect/fitCy`
+  を引数として追加し、`src/world/exHall.ts`から`import { BOSS_SPRITE_FIT } from '../pixi/renderSpec'`を
+  削除(world層はpixi/を一切importしなくなった)。呼び出し側(`useGameLoop.ts`・`angelBossTick.ts`。
+  どちらも既にロジック層からrenderSpecを読む前例=`bossArtCenter`がある)が`BOSS_SPRITE_FIT.phillboss`
+  を読んで渡す形に配線し直した。テストもfit値をローカル定数で直接渡す形に変更(world層のテストが
+  pixi/へ依存しないまま)+fitCyに対する単調性テストを追加。
+- **#5(中・走り込み中のテレポート防止)**: フィル強制出現(FB1-3のテレポート)に
+  `!corridorRunInActive`ガードを追加(`bossTest.ts`の`canForceGateBossNow`と同じ作法)。走り込み
+  入力ロック中はテレポート/出現とも発火しない=ロック解除後の最初のフレームで発火する。
+- **#6(小・結界線の副線の向き)**: 城サークルの「radius-6=常に内側」の意匠に合わせ、`exBarrierGfx`の
+  副線(細いストローク)のオフセット方向を北結界=+6(内側=南)・南の膜=-6(内側=北・現状どおり)へ
+  分岐(`pixiScene.ts`の`drawLine`に`innerOffsetSign`引数を追加)。
+- **変更ファイル**: `src/world/exHall.ts`+test(#1南端拡張・#2旧シフト撤去・#4引数化) /
+  `src/hooks/useGameLoop.ts`(#2出現座標復元・#4呼び出し配線・#5ガード追加) /
+  `src/utils/angelBossTick.ts`(#4呼び出し配線) / `src/pixi/pixiScene.ts`(#6副線向き) /
+  `PACING_PUZZLE.md`(#3旧記述訂正)。
+- **検証**: `npm run typecheck`(0エラー)・`npm run lint`(0エラー・warning8=既存分のみ)。
+  `npx vitest run`で関連13ファイル227件通過(exHall.test.tsに#1/#4向けテストを追加・削除で
+  純増、ほか無変更で全通過)。M6(stage-6)への影響なし(全変更がEX/phillboss専用ブロック内)。
+
+## v0.25.3769 — EX洋館通路化: 実機FB1バッチ(§10-20-FB1-1/-2/-3)の修正【2026-08-21 22:47 JST】
+
+実装チャット(Sonnetサブエージェント)がPACING_PUZZLE.md §10-20-FB1-1/-2/-3(社長の実機FB→
+コーディネーター記録済み)を実装。編集のみ・コミット/pushはこのバッチでは行っていない。
+
+**状態変化: PACING_PUZZLE.md §10-20 EX洋館通路化 → 検収中(残り: FB1-1/FB1-2/FB1-3の社長実機
+再確認待ち)**
+
+- **FB1-1(フィルの戦場が上端すぎる+見切れる)**:
+  - 出現位置(=home)を`EX_PHILL_ARENA_SOUTH_SHIFT_PX`(叩き台300px)ぶん手前(南)へ寄せた
+    (`useGameLoop.ts`のフィル出現ブロック・pscy計算)。
+  - **新設**: `exPhillNorthCenterLimitY(playerCenterY, zoom, bossWidthPx, viewportHeightPx)`
+    (`src/world/exHall.ts`・純関数)。フィルのスプライト上端が可視域上端を越えない中心yの下限を、
+    「カメラの均衡構図(先読み未収束を想定した保守的な基準・bossCameraLeadYのpBalと同じ導出)」と
+    「bossArtCenterと同じスプライト寸法の導出式(BOSS_SPRITE_FIT.phillboss)」から求める。
+    先読み(bossCameraLeadY)は未収束の間は効かないため見込まない=安全側。急降下(dive)の
+    「天に昇って画面外へ」は演出がpixi側限定(boss.yを書き換えない)なので自然に対象外。
+  - 適用箇所: ①フィル出現時の初期クランプ(useGameLoop.ts、既存のclampRectToPlayableArea呼び出しの
+    直後) ②毎フレームの移動クランプ(`angelBossTick.ts`のapplyPatch・`boss.type==='phillboss'`限定)。
+    判定はworld/store側(pixiSceneには判定を置いていない)。
+  - テスト追加(`exHall.test.ts`): 妥当な値域・ズームアウトで緩む/ズームインで厳しくなる・
+    スプライト幅に対して単調増加・画面高が大きいほど緩む・playerCenterYに対する平行移動、の6件。
+- **FB1-2(金の膜を城ボス境界サークルと同じ意匠に)**:
+  - **「城ボスのサークル」と同定したシンボル**: `pixiScene.ts`の`castleFightRingGfx`
+    (v0.25.3055「城ボス戦の時は移動できる距離を制限。制限ラインを薄く表示するのはいいが、中は
+    塗るな」・`castleRingAlpha`でease)。意匠=二重ストローク(外側width4色0xf87171・内側width1.5
+    色0xfecaca、6pxオフセット)+脈動`rPulse=0.5+0.5*Math.sin(now/300)`+alpha式
+    `0.16+0.08*rPulse`/`0.26+0.10*rPulse`。
+  - EXの膜(`exBarrierGfx`)をこの意匠の**直線版**(円→水平線、他は同一の色/幅/オフセット/脈動式)へ
+    差し替え。加算合成(blendMode='add')だった旧デザインを廃し、城ボスと同じ通常合成に統一。
+    判定(playableAreaのクランプ)は不変。フェード(exBarrierAlpha・ease 0.10/frame)は維持。
+- **FB1-3(ボスモードのフィル部屋がおかしい)**:
+  - **実在確認の結果**: ステージID解決自体は正しい(`bossTest.ts`の`{boss:'phillboss',
+    stageId:'stage-ex1',param:'phillnow'}`・`ghostDossier.ts`の`stageId:'stage-ex1'`・
+    `getSelectedStageId()`は`practiceActiveSlot()`を優先して読む=`stage-ex1`が返る=corridorMode/
+    isExStageRun()は正しくtrueになる)。**真因はボス出現ロジック側**: 強制出現
+    (`FORCE_PHILL`/`practiceForces('phillnow')`)は自然到達条件(プレイヤーy<=EX_PHILL_TRIGGER_Y=
+    -5000)を経ずに即発火するため、練習開始直後(プレイヤーy≈0・走り込み直後)の**通路の細いまま**の
+    位置でフィルが出現していた(EX_PHILL_HALL=y-4800〜-6000の外)。
+  - **修正**: 強制出現の場合だけ、プレイヤーを`(x:0, y:EX_PHILL_TRIGGER_Y)`へ即テレポート
+    (`vx/vy=0`・`lastDirection={x:0,y:-1}`=北向きで確定させ、以後の出現位置計算=プレイヤー前方
+    380px+南シフト300pxを本編と同じ形で機能させる)してから、出現位置の計算をテレポート後の
+    最新値(`playerForPhill`)で行うよう配線し直した(このtick冒頭で捕えていた`player`はローカル
+    スナップショットのままなので反映されない=`useGameStore.getState().player`で取り直す必要が
+    あった)。FB1-1の上端クランプは同じ出現コードパスを通るため自動的に効く。自然到達の経路・
+    他ボスの練習部屋は本ブロック(phillboss専用)の外なので無変更。
+- **変更ファイル**: `src/world/exHall.ts`+test(FB1-1純関数+定数) / `src/hooks/useGameLoop.ts`
+  (FB1-1南シフト・上端クランプ適用・FB1-3テレポート配線) / `src/utils/angelBossTick.ts`
+  (FB1-1毎フレームクランプ) / `src/pixi/pixiScene.ts`(FB1-2意匠差し替え)。
+- **検証**: `npm run typecheck`(0エラー)・`npm run lint`(0エラー・warning8=既存分のみ)。
+  `npx vitest run`で関連13ファイル221件通過(exHall.test.tsに6件追加、ほか無変更で全通過)。
+  M6(stage-6)への影響なし(FB1-1/-3はphillboss専用ブロック内、FB1-2はexBarrierGfx=EX専用レイヤー
+  のみ)。実機確認(社長)は未実施——次の検収で確認をお願いします。
+
 ## v0.25.3769 — §10-20-FB1-3(ボスモードのフィル部屋是正)をFB1バッチへ追加【2026-08-21 22:17 JST】
 
 社長実機報告「ボスモードのフィルのステージがおかしい。出現位置とかも」→FB1バッチの範囲に追加
