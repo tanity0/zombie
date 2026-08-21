@@ -145,7 +145,7 @@ import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
-  BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, zoomCompensatedWorldDistance, ZOOM_MIN_ABS,
+  BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
 import { airHopHeight01 } from '../utils/airHop';
 import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE, PHILL_FEATHER_NATIVE_ANGLE } from '../utils/bladeArt';
@@ -2674,25 +2674,19 @@ const isAngelFlashTailState = (bs: string | undefined): boolean =>
 const HIT_SHAKE_MS = 220;
 const HIT_SHAKE_PX = 4;
 // プレイヤーが裏ボスの当たり判定(帯)より奥=裏に回り込んだとき、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
-const BOSS_BEHIND_ALPHA = 0.5;
-// #2(社長指示): 裏に回って 0.5 まで薄くなった後、さらに奥(=手前へ遠ざかる)へ離れたら、
-// 画面上のこの距離でさらに薄くする。カメラを引いた時はワールド距離を1/zoom倍へ広げ、見た目を保つ。
-const BOSS_BEHIND_NEAR_SCREEN_PX = 70;
-const BOSS_BEHIND_FAR_SCREEN_PX = 220;
-// v0.25.2622(社長裁定「0.15で」): #2の行き先を **0(完全透明)→0.15** へ。
-//
-// なぜ変えたか: 0まで落ちると**当たり判定はあるのに1ピクセルも見えない**状態になり、
-// 社長報告「当たり判定だけあって透明だから何もできずにやられる」が巨体4体
-// (mimir/jormungand/skadi/thor)で成立していた。近接圏(#3)の外に居れば誰でも踏める。
-// また CLAUDE.md に「BOSS_BEHIND_ALPHA=0.5 は**裏に回り込んでも薄く見える**ための floor=意図的」と
-// 明記されており、**0まで落とす#2はその意図と矛盾していた**(社長指示どうしの衝突)。
-// 0.15 は「自機を隠さない」という#2の狙いを保ったまま、**輪郭は残る**ようにする折衷値(社長裁定)。
-// ※小さい絵のボス(idol/天使)はそもそも #1〜#2 を通らない(v0.25.2615・bossBehindFadeApplies)。
-const BOSS_BEHIND_FAR_ALPHA = 0.15;
-// ★v0.25.3735(社長指示「フィルの裏の半透明が過剰・もう少し緩和」): フィルは絵が約2倍(v3730)で
-// 透けの効く範囲が他ボスより広く深いため、フィル限定で近/遠とも浅めに緩和(叩き台)。
-const PHILL_BEHIND_ALPHA = 0.68;
-const PHILL_BEHIND_FAR_ALPHA = 0.5;
+// ★v0.25.3736(社長指示2026-08-21・全ボス共通の新カーブ): 濃さは**「プレイヤーがボスの絵のどの
+// 高さに居るか」**で決める(旧: 画面px固定の2段カーブ「奥ほど薄い」は廃止)。
+//  ①プレイヤーの足元が絵の下端に被る程度までは**不透明**
+//  ②ボスの足元ゾーン(最も被る高さ)で**30%見える**(=一番薄い)
+//  ③頭らへんで**50%見える**へ戻す(それより奥はそのまま)
+// 絵の高さ基準なのでズームもボスごとのサイズ差(フィルの2倍等)も自動で吸収される。
+// 旧裁定(事実として記す): 近0.5はfloor意図(v1599)/遠0.15(v2622)/近接圏0.5下限(#3)。
+// いずれも本カーブ(社長指示)で置き換え。v3735のフィル限定緩和も不要になり撤去。
+const BOSS_BEHIND_V2_FOOT_ALPHA = 0.30; // ②ボスの足元ゾーン=30%見える
+const BOSS_BEHIND_V2_HEAD_ALPHA = 0.50; // ③頭らへん=50%見える
+const BOSS_BEHIND_V2_FOOT_REL = 0.28;   // ②の高さ(絵の表示高さ比・叩き台)
+const BOSS_BEHIND_V2_HEAD_REL = 0.85;   // ③の高さ(絵の表示高さ比・叩き台)
+const BOSS_BEHIND_V2_FREE_FRAC = 0.55;  // ①の深さ(プレイヤー身長比・叩き台)
 /**
  * v0.25.2623(社長報告「まだアイドルワープすると絵が消える」): **戦っているボスは、位置の都合で
  * 見えなくならない。**
@@ -2714,11 +2708,6 @@ const PHILL_BEHIND_FAR_ALPHA = 0.5;
 const BOSS_MIN_VISIBLE_ALPHA = 0.15;
 /** 位置由来のフェード(地平線/手前/裏回り)に下限を敷く。ボス以外・存在の法則には使わない。 */
 const bossPositionAlpha = (a: number): number => Math.max(BOSS_MIN_VISIBLE_ALPHA, a);
-// #3(社長指示v0.25.1599): 裏に回っても「近接攻撃距離くらい」までは完全透明にせず、半透明
-// (=BOSS_BEHIND_ALPHA)を下限に保つ。#2で0へ薄くなる区間でも、この距離以内なら0.5で止める。
-// 距離アンカーは近接攻撃距離(gameStore の MELEE_RADIUS=74)に合わせた視覚用の複製値(描画は
-// ゲーム定数へ結合させない方針)。当たり判定/近接判定は不変=見た目の下限だけを足す。
-const BOSS_BEHIND_MELEE_PX = 74;
 // PACING_PUZZLE.md §6.38 v9(完全コピー原則): 賞金首の出現魔法陣の尺。城ボスのcastleSummonCircle
 // (syncCastle内SUMMON_MS)と同じ1100ms=「同じ機構」(値の出どころを分けない)。
 const BOUNTY_SUMMON_MS = 1100;
@@ -14984,38 +14973,25 @@ export class PixiScene {
       } else {
       const behindDist = fb.footY - (ply.y + ply.height);   // 正 = プレイヤーが帯より奥
       const inHoriz = (ply.x + ply.width) > (spx - spriteW / 2) && ply.x < (spx + spriteW / 2);
-      // ★v0.25.3735(社長指示「フィルの裏の半透明が過剰。結構上の方に行っても半透明のまま=緩和」):
-      // フィルは絵が約2倍(v3730)で透けの効く横帯・縦の届きが他ボスより広く深い。フィル限定で
-      // 近0.5→0.68・遠0.15→0.50に緩和(叩き台)。他ボスはBOSS_BEHIND_ALPHA=0.5等の既存裁定のまま。
-      const behindNearAlpha = e.type === 'phillboss' ? PHILL_BEHIND_ALPHA : BOSS_BEHIND_ALPHA;
-      const behindFarAlpha = e.type === 'phillboss' ? PHILL_BEHIND_FAR_ALPHA : BOSS_BEHIND_FAR_ALPHA;
+      // ★v0.25.3736(社長指示・全ボス共通の新カーブ): 濃さ=「プレイヤーがボスの絵のどの高さに居るか」。
+      // ①足元被り(自分の身長の半分ほど)まで=不透明 ②ボスの足元ゾーン=30%見える(一番薄い)
+      // ③頭らへん=50%見える。絵の表示高さ基準=ズームもボスのサイズ差も自動で吸収。
+      // 旧#1/#2(画面px2段)・#3(近接圏0.5下限)はこのカーブに置き換え(裁定の経緯は定数側コメント)。
+      const freePx = ply.height * BOSS_BEHIND_V2_FREE_FRAC;
       let behindTarget: number;
-      if (!inHoriz || behindDist <= 0) {
+      if (!inHoriz || behindDist <= freePx) {
         behindTarget = 1;
       } else {
-        // #1: 画面上0→70pxで1.0→0.5。ズーム引き中はワールド側の距離を比例して広げる。
-        const behindDistanceScale = zoomCompensatedWorldDistance(1, this.contextZoom);
-        const behindNearPx = BOSS_BEHIND_NEAR_SCREEN_PX * behindDistanceScale;
-        const behindFarPx = BOSS_BEHIND_FAR_SCREEN_PX * behindDistanceScale;
-        const t = Math.min(1, behindDist / behindNearPx);
-        let a = 1 - t * t * (1 - behindNearAlpha);
-        // #2: さらに奥へ離れたら0.5→0.15。画面上の終点はズームに関係なく220px。
-        if (behindDist > behindNearPx) {
-          // v0.25.2622(社長裁定「0.15で」): 0ではなく BOSS_BEHIND_FAR_ALPHA まで。
-          const t2 = Math.min(1, (behindDist - behindNearPx) / (behindFarPx - behindNearPx));
-          a = behindNearAlpha + (behindFarAlpha - behindNearAlpha) * t2;
-        }
-        behindTarget = a;
-      }
-      // #3(社長指示v0.25.1599): 近接攻撃距離くらいに居る間は完全透明にせず、半透明(0.5)を下限に保つ。
-      // プレイヤー中心→当たり判定帯(AABB)の最近点までの2D距離で判定(gameStoreの近接判定と同じ帯基準)。
-      // #2で0へ薄くなる区間でも、近接圏内なら 0.5 で止める(#1/#2のカーブ値自体は不変)。
-      {
-        const plcx = ply.x + ply.width / 2, plcy = ply.y + ply.height / 2;
-        const nx = Math.max(e.x, Math.min(plcx, e.x + e.width));
-        const ny = Math.max(e.y, Math.min(plcy, e.y + e.height));
-        if (Math.hypot(plcx - nx, plcy - ny) <= BOSS_BEHIND_MELEE_PX) {
-          behindTarget = Math.max(behindTarget, behindNearAlpha);
+        const spriteH = Math.max(1, Math.abs(view.sprite.height));
+        const rel = (behindDist - freePx) / spriteH; // 0=①の境界、≈1=絵の頭頂
+        if (rel <= BOSS_BEHIND_V2_FOOT_REL) {
+          const t = rel / BOSS_BEHIND_V2_FOOT_REL;
+          const ease = t * t * (3 - 2 * t); // 慣性(smoothstep)
+          behindTarget = 1 + (BOSS_BEHIND_V2_FOOT_ALPHA - 1) * ease;
+        } else {
+          const t = Math.min(1, (rel - BOSS_BEHIND_V2_FOOT_REL) / (BOSS_BEHIND_V2_HEAD_REL - BOSS_BEHIND_V2_FOOT_REL));
+          const ease = t * t * (3 - 2 * t);
+          behindTarget = BOSS_BEHIND_V2_FOOT_ALPHA + (BOSS_BEHIND_V2_HEAD_ALPHA - BOSS_BEHIND_V2_FOOT_ALPHA) * ease;
         }
       }
       // 透ける/戻るを滑らかにフェード。速度は障害物の透けの2倍(社長指示)= 1-(1-lerp)^2。
