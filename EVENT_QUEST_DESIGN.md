@@ -91,11 +91,12 @@ v1章は「過去にこう作った」の説明であって v2 の仕様では�
 
 | ブロッカー | 何が決まっていないか | **止まる範囲(ここだけ)** | 決まらないと何が起きるか |
 |---|---|---|---|
-| **★未決 #16**(§2-4) | 囲いの**発火6条件**を勝利の必須経路の前提にしてよいか | **§2-4「★他イベントとの同時成立」の発火ゲート(6条件)の1箇所だけ**。§2-4 の残り(編成・**発火時の順序**・`hordeSpawnRef` 潰し・id セットでの完了判定・90秒・時間切れの専用枝・floor)と §2-3 / §2-5〜§2-11 は **#16 と独立=先に実装してよい** | 円に入っても**何も起きず、合図も無い**まま城ボスが出ない=**原因の見えない勝利不能ラン**(賞金首の索敵圏に円が重なると永久) |
+| **★未決 #16**(§2-4) | 囲いの**発火6条件**を勝利の必須経路の前提にしてよいか | **§2-4「★他イベントとの同時成立」の発火ゲート(6条件)の1箇所だけ**。§2-4 の残り(編成・**発火時の順序**・`hordeSpawnRef` 潰し・id セットでの完了判定・90秒・時間切れの専用枝・**プリエンプション保護と後始末**)と §2-3 / §2-5〜§2-11 は **#16 と独立=先に実装してよい** | 円に入っても**何も起きず、合図も無い**まま城ボスが出ない=**原因の見えない勝利不能ラン**(賞金首の索敵圏に円が重なると永久) |
 | **★未決 #5**(§2-8) | **納品の成立の仕方**(3秒滞在 / 従来の確認ダイアログ) | **§2-8 の「納品成立の契機」と「素通り防止」だけ**。納品ロック(入力/被弾/レベルアップ)・ワープの2段・`delivering` の円の扱い・§2-10 の永続記録は **(A)(B) どちらでも同じ**=先に実装してよい | 滞在を積む実体が無く、**離指→「帰還しますか?」→はい**で**サンプルを渡さずリザルトへ行ける**(納品記録なし・次ステージ解放なし) |
 
-> **ブロッカーはこの2つだけ**(★未決は全部で19件あるが、残る17件は「実装を止める」ものではない=
-> 本文の現行仕様のまま実装してよく、裁定が出たらその値/見せ方を差し替える)。
+> **ブロッカーはこの2つだけ**(★未決は全部で**18件**=#1・#2・#4〜#19。#3 は欠番。
+> 残る**16件**は「実装を止める」ものではない=本文の現行仕様のまま実装してよく、
+> 裁定が出たらその値/見せ方を差し替える)。
 
 **★この章の完了判定はすべて「イベント側の事実」で決まる。会話には依存しない。**
 レスキュー完了=**敵の全滅の瞬間**、納品成立=**3秒滞在が満了した瞬間**。会話はその後キューへ流すだけで、
@@ -356,11 +357,17 @@ v2の3〜4巡目はこれを「遠景に重なると薄くなるだけ」と読�
     *描画都合の値を判定に使わない* を守る。ここで決まるのは「矢印を描くか」だけで、ゲームの挙動は動かない)。
   - しきい値の値そのものは**新設しない**(「0より大きいか」で判定する。実機で「薄いのに矢印が出ない」と
     分かったら社長が絞る)。
-- **確定②: 出現位置の側でも地平線から離す。** §2-3 の出現規則に
-  **「候補点は、プレイヤーの足元Yより上(=−Y側)へ `EVENT_NPC_MIN_DISTANCE`(=460)以上離れない」**を足す
-  (実在定数を流用=新しい距離定数を作らない)。**これは renderer 非依存の world 条件**なので store 側に書ける。
-  カメラはプレイヤーを追うので、この条件だけで「出た瞬間に地平線帯の中」は構造的に起きなくなる。
-  ※**その後プレイヤーが南へ歩けば二人は帯に入りうる**(位置では守り切れない)。そこは確定①が受け持つ。
+- **確定②: 出現位置の側には、地平線を避ける規則を足さない。**
+  - 理由: 出現位置の規則は「**プレイヤーの進行方向へ 500〜1000px 先**」(既存の距離帯 `RESCUE_SPAWN_DIST_MIN/MAX`
+    を流用)。ここに「プレイヤーより上(−Y側)へは◯◯px までしか置かない」を足すと、
+    **プレイヤーが北(−Y)へ走っている時だけ進行方向の候補が全部棄却される**=
+    **「進行方向へ出す」という仕様そのものを、向きによって壊す**ことになる(=仕様変更)。
+  - **位置では守り切れない**のも事実(出た時に帯の外でも、その後プレイヤーが南へ歩けば帯に入る)。
+  - **帯に入っても迷子にならないこと**は確定①(縁矢印)が担保する。加えて、
+    **プレイヤーが近づけば二人の画面Yは下がって帯から出る**(カメラがプレイヤーを追う)ので、
+    **矢印で向かえば必ず見える**。
+  - ※もし実機で「出た瞬間に見えないのが不親切」と分かった場合は、**出現規則を変える前に
+    ★未決へ上げる**(進行方向の仕様に触れるため、設計チャットでは決めない)。
 - clamp(`clampRectToPlayableArea`)は**通してよいが、④⑤の担保にはならない**ことを前提に置く。
 - 出現の**告知と誘導**は §2-9(見せ方の細部だけ ★未決 §2-15 #4)。
 
@@ -410,11 +417,15 @@ v2の3〜4巡目はこれを「遠景に重なると薄くなるだけ」と読�
     (`radius-4` の淡い塗り / `radius` の太いストローク / `radius-3` の細いストローク)。
 - **色は ★未決 §2-15 #10 の裁定に従う**(#10 の案(C)=「円の見た目自体を危険色にする」が選ばれたら危険色)。
   **裁定前の叩き台は、既存の horde 囲いと同じ青 `0x38bdf8`**(`syncArena` の horde 色をそのまま使う=新色を作らない)。
-- **発火時は「消して入れ替える」のではなく、同じ見た目のまま短くクロスフェードして引き継ぐ**:
-  `activeEvent`(`rescueQuest`)が立ったフレームから **200ms** かけて
-  待機円の alpha を 1→0、`syncArena` 側は既存どおり通常表示(=重なっている間だけ二重に見えるが、
-  **層・合成・半径・中心が同一なので絵は完全に重なる**=「同心円が2本」にはならない)。
-  **200ms は新しい体験の数字ではなく、絵の入れ替わりを目に見せないための描画都合の値**(叩き台)。
+- **発火時の引き継ぎ(絵を1フレームも動かさない)**:
+  - **叩き台の色(=horde と同じ青)のままなら、`activeEvent` が立ったフレームで待機円の描画をやめる。**
+    `syncArena` が**同じ層・同じ合成・同じ中心・同じ半径・同じ式**(`pulse = 0.5 + 0.5*sin(now/260)` ほか)で
+    描き始めるので、**絵は完全に同一=途切れも飛びも起きない**。クロスフェードは要らない。
+  - **#10 の裁定で待機中の円だけ色/濃さを変えた場合**は、その差分ぶんだけ **200ms のクロスフェード**で
+    `syncArena` の絵へ寄せる(待機円の alpha を 1→0)。
+    ※**`blendMode='add'` なので、重なっている間は加算で少し明るくなる**。だから
+    **同じ絵の時はクロスフェードしない**(明るさが動く方が目立つ)。
+  - **200ms は新しい体験の数字ではなく、絵の入れ替わりを目に見せないための描画都合の値**(叩き台)。
 - 地平線フェードは**掛けない/免除もしない**(=`arenaGfx` と同じ扱い。上の floor 撤回に揃える)。
 
 ### ★出現点の距離上限(原点から)
@@ -464,8 +475,9 @@ v2初稿はワープ(§2-8)にだけ慣性を指定し、**4:00 の出現その�
 4. 出現点の**原点からの距離が 3000 未満**である(空き地探索を振り切っても候補が1つも無かった場合を除く)。
    ※S5はこの条件を**毎回免除される側に倒れる**(§2-3「★S5では例外ではなく既定」)ので、
    **この条件の検証は S1/S3/S4 で行う**。
-4b. **出現の瞬間、二人組がプレイヤーの足元Yより上(−Y側)へ 460px 以上離れていない**
-   (=出た瞬間に地平線フェードの帯の中に居る、が構造的に起きない)。
+4b. **プレイヤーが北(−Y)へ走り続けた状態で 4:00 を迎えても、出現位置の規則(進行方向 500〜1000px 先)が
+   そのまま働く**(=地平線を避けるために進行方向の候補を棄却する、という規則を足していない)。
+   出た瞬間に地平線フェードで薄い場合は**縁矢印が出ている**(条件2)。
 5. `?zoomlock=0.4`(最大引き)で 4:00 を迎え、二人組が画面に入る位置まで歩いた時、
    **二人組の絵と円の中心・半径がズレない**(円の一部だけが描かれる/円と二人組の位置がずれる、が起きない)。
    引きで地平線の帯が広がって二人組が薄くなった場合は、**画面内でも縁矢印が出る**(条件2と同じ担保)。
@@ -481,9 +493,9 @@ v2初稿はワープ(§2-8)にだけ慣性を指定し、**4:00 の出現その�
    (コード上に 240 のベタ書きが1つも無い=`ARENA_EVENT_RADIUS` の複製が存在しない)。
 9b. **プレイヤーを二人組より下(+Y)/上(−Y)に置いても、円の見た目の大きさと発火距離がズレない**
    (=待機中の円に `depthScale` が掛かっていない。actorLayer ではなく groundLayer に描いている)。
-10. **発火した瞬間に、円が飛ばない・同心円が2本にならない**
-    (待機中の円と `syncArena` の円が**同じ層(groundLayer)・同じ合成(add)・同じ中心・同じ半径**で描かれ、
-    200ms のクロスフェードで入れ替わる。層/合成/半径が入れ替わって絵が動く、が起きない)。
+10. **発火した瞬間に、円が飛ばない・同心円が2本にならない・明るさが跳ねない**
+    (待機中の円と `syncArena` の円が**同じ層(groundLayer)・同じ合成(add)・同じ中心・同じ半径・同じ式**で
+    描かれ、同フレームで引き継ぐ。層/合成/半径が入れ替わって絵が動く/加算で一瞬明るくなる、が起きない)。
 
 ---
 
@@ -495,7 +507,17 @@ v2初稿はワープ(§2-8)にだけ慣性を指定し、**4:00 の出現その�
     中身が別物(あちらは `rescueSurvivors` を守る)。混同しないこと。
   - **円の中心 = 二人組の座標**(プレイヤーの進入点ではない)。進入点(=円の縁)を中心にすると
     **二人組が円の外へ出る**。
-  - 半径は既存の `ARENA_EVENT_RADIUS`(**値は 240**)を流用(叩き台)。
+  - 半径は既存の `ARENA_EVENT_RADIUS`(**値は 240**)を流用(叩き台)。**読む先は store の
+    `eventQuestNpc.triggerRadius`**(§2-3。描画と判定で同じ値を読む)。
+  - **★「サークルに入った」の判定式(確定・1行)**:
+    **プレイヤーの中心点**(`player.x + player.width/2`, `player.y + player.height/2`)と
+    **円の中心の距離が `triggerRadius` 以下**なら「入った」。
+    - **矩形では判定しない**(足元矩形・当たり判定矩形のどちらも使わない)。
+    - **実在の前例と同じ式**: `isInReturnCircle`(`Math.hypot(rc.x - px, rc.y - py) <= rc.radius`・
+      px/py はプレイヤー中心)/ 救助イベントのホールド判定 / 拠点確保の在内判定
+      (`Math.hypot(x - base.x, y - base.y) <= BASE_CAPTURE_RADIUS`)。
+      **このゲームの「円の中に居るか」は全部これ**なので、新しい流儀を作らない。
+    - **§2-8 の納品の滞在判定も同じ式**(そちらは既存の `isInReturnCircle` をそのまま使う)。
 
 ### ★★発火時の手順は「この順番」でしか成立しない(順序を番号で確定する)
 
@@ -822,23 +844,38 @@ kind 'rescue'|'horde')が進行中なら、それを強制解除してゲート�
 12. 削岩型の赤い突き予告帯と実際の判定が一致している
     (確認手段: **`src/utils/drillerAi.test.ts`(`§9-4 間合い3分岐` ほか)が緑のまま**であること)。
 13. 囲いの最中にワクチンで復活しても、囲い・拘束・敵の進捗が維持される(囲いが勝手に畳まれない)。
-14. **囲いの敵が円の上端(=地平線フェード帯)に居ても、半透明で見えないまま殴ってこない**
-    (`rescueQuest` の囲いが立っている間は、そのイベントの敵にも floor が効いている・§2-3)。
-    足元影も一緒に消えていないこと。
-15. **囲いが終わった瞬間に floor が外れる**(以後この敵/この場所は通常のフェードに戻る)。
+14. **囲いの敵の見え方が、通常の囲いの敵と1つも変わらない**(地平線フェード・足元影ともに
+    この改修で例外を作っていない=floor を敷いていない・§2-3)。
+15. **★ゲート発火待ちの状態(未確認境界を踏破した直後)でレスキューの囲いに入っても、
+    囲いが外から畳まれない。** 敵が突然消えない/円に入り直しても即座に畳まれる無限ループにならない
+    (=プリエンプションが `aePre.rescueQuest !== true` で保護されている)。
+15b. **★どんな理由であれ `activeEvent` が消えた時、`rescueClearedAt` が必ず立つ。**
+    検証: 囲いの最中に `endArenaEvent()` が外から呼ばれた状況を作っても(ゲート優先の強制解除など)、
+    **その後 5:00 以降に城ボスが出る**(=勝利不能ランにならない)。
+16. **レスキューの囲いが終わった直後の数秒に、プレイヤーの足元で通常の囲い/退屈補正の囲いが開かない**
+    (次回タイマーを押し戻してある)。
+17. **同じフレームに `beginArenaEvent` が2回呼ばれない**(レスキューの発火が既存の if/else 連鎖の中にある)。
+    検証: レスキューの円の中でゲート境界を踏んでも、**片方だけが発火し、もう片方は待つ**。
 
 ---
 
 ## 2-5. レスキュー完了と受注会話
 
-- **レスキュー完了 = 囲いの敵が全滅した瞬間**(または §2-4 の90秒タイムアウト)。
+- **レスキュー完了 = 囲いの敵が全滅した瞬間**。**完了として扱う契機は次の3つで、どれも同じ経路へ入れる**:
+  1. **全滅**(`cleared`)
+  2. **90秒の時間切れ**(`timedOut`・§2-4。失敗ではなく強制クリア扱い)
+  3. **★囲いが外から畳まれた**(`activeEvent` が消えたのに未打刻・§2-4「★★立っている自分の囲いを、
+     ゲート囲いが外から畳む」の後始末)
   その瞬間に **`rescueClearedAt` を打刻する**。これが城ボスの押し出し条件の基準時刻(§2-6)。
+  **3つとも、プレイヤーから見える終わり方は同じ**(駆除成功→受注会話)。
 - 同じ瞬間に **「受注時」の通信**(§2-13 の①〜③)を左上の会話(`enqueueNpcDialogue`)へ**流すだけ**。
   **会話は完了判定に一切関与しない**(会話の終了を待たない。原稿が0行のステージ=S5でも完了する)。
 - 会話の本文は §2-13 を**一言一句そのまま**。話者名は `グレン`/`ミラ`(`NpcDialogue` のバストアップ対応)。
 
 **受け入れ条件**
 1. 全滅の直後に `rescueClearedAt` が立ち、受注時の会話が1回だけ流れる(2回流れない)。
+1b. **上の3契機のどれで終わっても、`rescueClearedAt` が立つのは1回だけ**(全滅と後始末が同じフレームに
+   重なっても、会話が2回流れない/打刻が上書きされない)。
 2. **原稿が0行のステージでも `rescueClearedAt` が立つ**(会話が無いせいで完了しない、が起きない)。
 3. 会話の本文・話者・順序が §2-13 と1文字も違わない。
 4. **受注会話の開始と同じフレームで城ボスが湧かない**(城ボスの出現は最短でも
@@ -915,8 +952,27 @@ kind 'rescue'|'horde')が進行中なら、それを強制解除してゲート�
   `useGameLoop` の城ボス遅延アテンションのディスパッチャが **`triggerAttention(...)` を呼んだのと
   同じ行で** `castleAttnDoneAt = newGameTime` を打刻する(=「実際に張った」という**事実**を記録する)。
   `resetGame` で 0 に戻す。
-- **HUD の表示条件は `castleAttnDoneAt > 0` の1本だけ。**
-  `castleEvent.bossSpawned` も `attention` も見ない(2つを組み合わせた瞬間に上の 950ms 窓が復活する)。
+### ★★「`castleAttnDoneAt > 0` の1本だけ」は**撤回する**(クエストと無関係な全ランで黄色の行が出る)
+
+**事実(実在確認)**: `castleAttnDoneAt` を打刻することになるディスパッチャ
+(`castleAttnRef.current.at > 0 && newGameTime >= at && !attention` の中で `triggerAttention` を呼ぶ箇所)は、
+**クエストの有無を一切見ていない**。城ボスのアテンションは
+**対象外ステージでも・納品済みステージでも・`?castlenow=1` でも・練習でも張られる**。
+→ 表示条件を「`castleAttnDoneAt > 0` の1本だけ」にすると、
+**レスキューを1度もやっていないラン全部で `[搬送体(変異)の討伐 0/1]` が出る。**
+しかも城ボスを倒すと `1/1` → `[サンプルを届ける]` に変わり、
+**納品という契機が起こらないので永久に消えない**(消す契機が納品しかないため)。
+
+- **確定: 表示条件は次の AND にする。**
+  1. **このランでクエストが進行中** = **レスキュー完了済み(`rescueClearedAt > 0`)かつ 納品が未成立**
+     (=`eventQuestNpc.status` が `accepted` / `warping` / `delivering` のいずれか。
+     `completed` / `gone` / `hidden` / `rescue` では出ない)
+  2. **`castleAttnDoneAt > 0`**(アテンションが実際に張られた)
+- **`castleEvent.bossSpawned` も `attention` も見ない**(2つを組み合わせた瞬間に上の 950ms 窓が復活する)。
+  **950ms 窓を潰したいのは `bossSpawned`/`attention` の組み合わせの話**であって、
+  **クエスト在否の AND とは無関係**(=1に足しても窓は復活しない)。
+- **「1本だけ」という言い切りは撤回する。** 条件は2つ。**増やしてよいのはここまで**
+  (3つ目を足したくなったら ★未決へ)。
 - **`castleAttnRef` は `useGameLoop` 内の `useRef` で store に無い=HUD からは読めない**ので使わない。
   **判定を useRef や描画都合の値から作らない**(CLAUDE.md「判定は world/store 側に置く」)。
 - **メインクエストらしく色を変える**: 黄色系(叩き台 `#facc15`)。通常サブクエ(白/達成で緑)と差別化する。
@@ -940,6 +996,10 @@ kind 'rescue'|'horde')が進行中なら、それを強制解除してゲート�
 1. 城ボス出現アテンションより前には表示されない。**城ボスが湧いてからアテンションが始まるまでの
    950ms の間も出ない**(=`bossSpawned` を見ていない)。
 1b. アテンションが終わった直後には**必ず出ている**(「出ないまま」に倒れない)。
+1c. **★クエストと無関係なランでは1度も出ない。** 具体的に、次のどれでも黄色の行が出ないこと:
+   ①stage-2/6/7/ex ②**納品済み(クリア済み)ステージへの再出撃** ③フリー出撃 ④練習/ガントレット/ベンチ
+   ⑤**`?castlenow=1` / `FORCE_CASTLE_BOSS` で城ボスを出した確認ラン**(レスキュー未完了)。
+   **とくに⑤で出ると、`1/1` に変わったあと納品が起きないので画面から永久に消えない。**
 2. 常にサブクエスト欄の最上段に出る(自動サブクエより上)。
 3. 通常サブクエと色が明確に違う。
 4. この行の追加で**自動サブクエの枠数(2)が減らない**。`SUBQUEST_SAVE_KEY` の保存内容が
@@ -1035,15 +1095,58 @@ kind 'rescue'|'horde')が進行中なら、それを強制解除してゲート�
      `useGameLoop` はそれを `movePlayer(inputState, ...)` へそのまま渡している。
      → **`touchActive`/`swipeDirection` を落としても、WASD/矢印キーでは普通に歩ける**
      (=納品ロック中にサークルから歩いて出られる)。
-     **→ 移動計算の入口で弾く(確定)**: **`gameStore` の `movePlayer` の冒頭で
-     `deliveryLocked` なら即 return する。** フィールドを個別に落とす形にしない
-     (落とし忘れの経路がこの先も増え続けるため。入口1点で閉じる)。
-     攻撃・サブウェポン・フリックも同様に**それぞれの入口で `deliveryLocked` を見て弾く**
-     (入力フィールドを毎フレーム書き換えて回らない=React再描画規律にも優しい)。
+     **★★3巡目の「`movePlayer` の冒頭で `deliveryLocked` なら即 return する」は撤回する。**
+     **事実(実在確認)**: `movePlayer` は移動だけの関数ではない。同じ1回の `set()` の中で
+     **`vx` / `vy` / `direction` / `lastDirection` / `isMoving` / `aimX` / `aimY` /
+     速度ランプ(`speedRampSustainMs` ほか)/ `marksmanMovingSince` / PHILL のレティクル**まで
+     **毎フレーム書いている**。入口で return すると**それら全部が最後の値のまま7〜10秒フリーズする**:
+     ①走りながら滞在が満了すると、会話中ずっと**その場で走行アニメが回り続ける**(`isMoving` が true のまま)
+     ②**カメラが移動時の引きズームで固定**される ③`isMoving` 駆動の効果が出続ける
+     ④**速度が1フレームで 0**(座標だけ止まる)=**加減速の無い停止**=CLAUDE.md「★動きの絶対ルール: 慣性」違反。
+     **→ 確定: 早期 return はしない。`movePlayer` の中で「入力が無いもの」として通す。**
+     `deliveryLocked` の時は **`tx = ty = 0`** に落とし、**`swipeDirection` / `dashOverride`(ワイヤー/一閃/
+     ホップ)/ スライド(`shijinSlideUntil`)も無視する**(=強制移動の上書きも掛けない)。
+     - **事実(実在確認)**: 速度は
+       `vx = player.vx + (tx * moveSpeed * speedScale - player.vx) * alpha` で目標へ寄せる形。
+       `alpha = inertiaAlpha(deltaTime, PLAYER_INERTIA_TAU)`、**`PLAYER_INERTIA_TAU = 0.06`(60ms)**
+       (社長指示v0.25.3618「プレイヤーの移動に少し慣性入れて」で 0 から入った値)。
+       → **目標を 0 にするだけで 60ms かけて自然に減速し、`isMoving` も自動で false に落ちる**
+       (慣性MUSTを満たす。新しい減速処理を1つも書かない)。
+     - **被弾ノックバック(`knockbackUntil` の枝)は従来どおり通す**——③で被弾自体を弾くので新規には
+       発生しないが、ロック直前に食らった吹き飛びが残っている場合は**最後まで減衰させる**
+       (途中で瞬間停止させない)。
+     - 「入口1点で閉じる」という趣旨は保てる(**書き換えるのは `tx/ty` を決める箇所1つだけ**で、
+       個別の入力フィールドを毎フレーム落として回らない=React再描画規律にも優しい)。
    - **③被ダメージを `damagePlayer` の入口で無条件に弾く。**
      **プレイヤー被弾の入口は `damagePlayer`**(実在確認: 冒頭が `if (player.invulnerable) return false;`)。
      ここに **`deliveryLocked` なら即 `return false`** の1行を足す。
      ※`takeDamage` という関数は**このコードベースに存在しない**。
+
+### ★攻撃の入口を全部名指しする(★銃は「入力」ではない=入力側だけ塞ぐと撃ち続ける)
+
+**事実(実在確認)**: **銃の自動射撃は入力を1つも通らない。** `useGameLoop` が毎フレーム
+`fireWeapon(activeGun, postReloadPlayer, enemies)` を呼び、`fireWeapon` の中身は
+`if (now - weapon.lastFired < effCooldown) return [];` の**クールダウン駆動**。
+→ **タップ/フリック側だけ塞いでも、納品ロック中ずっと敵を撃ち続ける**(=「操作でも敵の攻撃でも
+結果が変わらない」を満たさない)。
+
+**確定: 止める(撃たせない)。** 納品は「渡して終わる」場面で、戦闘の続きではないため。
+入口は次の**5つ**で、それぞれ実在の判定へ `deliveryLocked` を足す:
+
+| # | 入口(実在) | いま見ているゲート | どうする |
+|---|---|---|---|
+| 1 | **銃の自動射撃**(`useGameLoop` の `fireWeapon(...)` 呼び出し) | `isAttackLocked()` ほか | **`isAttackLocked()` に `deliveryLocked` を足す**(下記) |
+| 2 | **タップ/離指の近接・カウンター・PHILL**(`VirtualJoystick` の `release` → `triggerCounter()`) | `isAttackLocked()` | 同上(1と同時に閉じる) |
+| 3 | **マウス左右クリック**(`MouseControls` → `performTapAction` / `performFlickAction`) | **`isInputLocked()` のみ** | **`isInputLocked()` に `deliveryLocked` を足す**(下記) |
+| 4 | **キーボードのフリック/カウンターキー**(`useGameControls` の keydown) | **`isGameTimeStopped()` のみ** | **その2つの枝に `deliveryLocked` を1条件足す**(既存の `isGameTimeStopped()` は残す=他の挙動を変えない) |
+| 5 | **サブウェポンの自動発動**(`useGameLoop` の「サブ発動入口」= `inReturnCircle` 変数を全サブが通る1箇所) | `SKATER_LOCK_ENABLED && skaterRiding` | **その変数の式に `deliveryLocked` を足す**(全サブが1箇所で閉じる) |
+
+- **`isAttackLocked()` / `isInputLocked()` に足す(確定)**:
+  実在の定義は **`isInputLocked() = isPaused || player.health <= 0 || corridorRunInActive || isGameTimeStopped()`**、
+  **`isAttackLocked() = isInputLocked() || attention !== null`**。
+  **`isInputLocked()` に `deliveryLocked` を足せば `isAttackLocked()` も同時に閉じる**(=1〜3が1行で片付く)。
+  `isPaused` を使わずに「入力を無視する」を実現する、という §2-8 の趣旨とも整合する。
+- **キーボードの移動(4以外)**は `movePlayer` 側(上記②)で止まる。**判定を2重に書かない。**
 4. **完了時の会話**(§2-13 の「完了時」)をキューへ流す
 5. **会話キューが空になった時(0行なら即時)に `gameWon`**
 
@@ -1091,28 +1194,56 @@ kind 'rescue'|'horde')が進行中なら、それを強制解除してゲート�
 `createEventQuestNpc` の初期値は **`true`**(生成直後は「外に居た」扱い)で、`false` にするのは
 `acceptEventQuest` / `completeEventQuest` の2箇所だけ。
 → v2は §2-2B でその2つを走らせないので**現状は true のまま残る**が、
-**v1の状態機械をそのまま流用して書き直すと、この分岐だけ残って納品が永久に成立しない**
-(プレイヤーは城ボスを倒したその場=**最初から円の中**に居るので、「一度外へ出る」が起きない)。
+**v1の状態機械をそのまま流用して書き直すと、この分岐だけ残って納品が永久に成立しない**。
 
-- **確定**: **`delivering` へ入る瞬間に `leftSinceAccept` 相当を `true` にし、`dwellMs = 0` にする。
-  以後は無条件で `dwellMs` を積む**(「一度外へ出るまで待つ」ガードを納品には掛けない)。
-- 理由: v1のガードは「受領→その場で即納品」の連鎖を防ぐためのもので、
-  v2の納品は**その前に城ボス1体を倒している**=連鎖の心配が無い。
+**★3巡目の根拠「プレイヤーは倒したその場=最初から円の中に居る」は誤りなので書き直す(実在確認)**:
+帰還サークルは **`beginReturnPhase(castleEvent.x, castleEvent.y)`**——第3引数 `avoidPlayer` が
+**既定 true** で呼ばれており、中身は
+**「プレイヤーとの距離が `RETURN_CIRCLE_AVOID_DIST`(=240)未満なら、プレイヤーから 240px 離れた点へ動かす」**。
+円の半径は **`RETURN_CIRCLE_RADIUS`=95**。
+→ **出現の瞬間、プレイヤーは必ず円の中心から 240px 以上離れている=円の外に居る。**
+「倒したその場で既に円の中」は**構造的に起きない**(この前提の上に載っていた検証手順も成り立たなかった)。
 
-### ★納品ロック中の「割り込みポーズ」の扱い(1行で確定する)
+- **確定(結論は変えない): 納品には「一度外へ出るまで待つ」ガードを掛けない。**
+  `delivering` へ入る瞬間に `leftSinceAccept` 相当を **`true`** にし、`dwellMs = 0` にする。以後は無条件で積む。
+- **正しい理由**: ①v1のガードは「受領→その場で即納品」の**連鎖**を防ぐためのもので、v2の納品は
+  その前に城ボス1体を倒している=連鎖の心配が無い ②二人組は**帰還サークルへ後から飛来する**ので、
+  「二人が来る前にプレイヤーが円の中に立っていた」場合でも滞在が始まらないのは**理由の無い足止め**になる。
+- ※上の事実(プレイヤーは円の外から始まる)は**ガードを外す理由にはならないが、外しても害が無いことの裏付け**
+  にはなる(=どちらにしても普通は一度外に居る)。
+
+### ★納品ロック中の「割り込みポーズ」の扱い(`isPaused` を立てる実在6箇所を全部裁く)
 
 **事実(実在確認)**: `deliveryLocked` は `isPaused` を使わない(上記)が、**`isPaused` は他所からも立つ**。
-- **レベルアップ**: `levelUp()` が `levelUpIntroUntil` を打刻し、`useGameLoop` が
-  `if (introUntil > 0 && Date.now() >= introUntil) { showUpgradeMenu: true, isPaused: true, levelUpIntroUntil: 0 }` を実行する。
-  **城ボス撃破直後は経験値が大量に入るのでレベルアップは普通に起こる。**
-- ポーズ操作 / `backgrounded` も同様に `isPaused` を立てうる。
-- `isPaused` が立つと `updateNpcDialogue` が呼ばれない(§2-8 冒頭)=**完了会話が止まる**。
+`isPaused` が立つと `updateNpcDialogue` が呼ばれない(§2-8 冒頭)=**完了会話が止まる**。
+**`isPaused: true` を書いている実在の箇所は次の6つ**(1つも落とさずに扱いを決める):
 
-- **確定: 納品ロック中はレベルアップの選択メニューを開かない(保留する)。**
+| # | 実在の経路 | 入力が要るか | 納品ロック中に起こるか | 扱い(確定) |
+|---|---|---|---|---|
+| 1 | **レベルアップの選択メニュー**(`useGameLoop`: `if (introUntil > 0 && Date.now() >= introUntil) { showUpgradeMenu: true, isPaused: true, levelUpIntroUntil: 0 }`) | **不要(自動)** | **普通に起こる**(城ボス撃破で経験値が大量に入る) | **開かない=保留**(下記) |
+| 2 | **武器商人サークルの滞在**(`updateMerchantDwell`: 円内に `MERCHANT_TALK_DWELL_MS` 居ると `showShopMenu: true, isPaused: true`) | **不要(自動)** | **起こりうる**(帰還サークルと商人サークルが近いと、立っているだけで開く) | **滞在を積まない=開かない**(下記) |
+| 3 | **宝箱ピックアップ**(`collectPickup` の `case 'chest'`: `showUpgradeMenu: true, isPaused: true`) | **不要(磁力で拾えば起きる)** | **起こりうる**(城ボスのドロップが磁力圏内にあると拾う) | **開かない**(下記 ＋ ★未決 #19) |
+| 4 | **チュートリアルポップ**(`showTutorialPopup`: `tutorialPopup, tutorialPopupShown: true, isPaused: true`) | 不要(条件成立で自動) | 起こりうる | **出さない=既読も付けない**(次のランで出る) |
+| 5 | **確保済み拠点の武器庫サークル**(`triggerCounter` の中: `showShopMenu: true, isPaused: true`) | **要る(離指=攻撃入力)** | **起きない**(攻撃入口を全部塞いだので `triggerCounter` が走らない) | **追加対応なし** |
+| 6 | **帰還確認ダイアログ**(`requestStoryReturnPrompt`: `storyReturnPromptVisible, isPaused: true`) | 要る(離指) | **起きない**(★未決 #5 が(A)なら発火自体を塞ぐ・(B)なら納品の前に閉じている) | **追加対応なし** |
+| — | ポーズ操作 / `backgrounded` | 要る/端末都合 | 起こりうる | **塞がない**(下記) |
+
+- **①確定: 納品ロック中はレベルアップの選択メニューを開かない(保留する)。**
   上のメニュー開き条件へ **`&& !deliveryLocked`** を足す。`levelUpIntroUntil` は**この分岐の中でしか 0 にされない**ので、
   **保留してもフラグは消えず、ロックが解けた瞬間に開く**(取りこぼさない)。
   ※ただしリザルトへ遷移した後に開く必要は無い——`gameWon` 後にメニューが開かないことは既存の
   リザルト遷移側の挙動に従う(**この設計で新しい分岐を足さない**)。
+- **②確定: 納品ロック中は商人サークルの滞在を積まない。**
+  `updateMerchantDwell` の早期 return の条件(`!inCircle || showShopMenu || showUpgradeMenu || gameTime < shopReopenAt`)へ
+  **`deliveryLocked`** を足す(=`merchantDwellMs` が 0 に戻るだけ)。**何も失われない**
+  (ロック解除の直後はリザルトへ行くので、そもそも買い物の場面ではない)。
+- **③確定: 納品ロック中は宝箱の選択メニューを開かない。** `collectPickup` の `case 'chest'` で
+  `deliveryLocked` の間は `showUpgradeMenu` / `isPaused` を立てない。
+  ※**この1回の選択は失われる**(レベルアップと違って保留するフラグが無い)。
+  **失ってよいかは ★未決 §2-15 #19**(本文の現行仕様=開かない、は据え置き。**ブロッカーではない**)。
+- **④確定: 納品ロック中はチュートリアルポップを出さない。**
+  `showTutorialPopup` の冒頭で `deliveryLocked` なら**何もせずに返す**
+  (`tutorialPopupShown` も既読も付けない=次のランで出る。**失われない**)。
 - **ポーズ操作・`backgrounded` は塞がない**(端末の都合で止まるのは従来どおり)。
   止まっている間は会話も進まないが、**復帰すれば続きから進む**(時間駆動なので巻き戻らない)。
   ※事実として併記: これらまで塞ぐと「ゲームを一時中断できない7〜10秒」を作ることになるため、塞がない側を推薦した。
@@ -1134,15 +1265,29 @@ kind 'rescue'|'horde')が進行中なら、それを強制解除してゲート�
    着地(`delivering`)してから3秒で納品が成立する。
 5. 納品成立後、**敵の攻撃を連続で受けてもプレイヤーのHPが1も減らない**
    (`damagePlayer` が入口で弾いている。被弾無敵タイマーに頼っていないので**10秒経っても切れない**)。
-4b. **`delivering` に入った瞬間から滞在メーターが進む**(プレイヤーが城ボスを倒したその場=
-   最初から円の中に立ったままでも進む。「一度円の外へ出ないと進まない」が起きない)。
+4b. **`delivering` に入った瞬間から滞在メーターが進む。**
+   検証手順(実機): 城ボス撃破 → 帰還サークルは**プレイヤーから 240px 以上離れた所に出る**ので、
+   ①**そこへ歩いて入り、そのまま立ち続ける** → 3秒で納品が成立する。
+   ②**二人の飛来より先に円の中に入って立っていた**場合でも、`delivering` に入った時点から3秒で成立する
+   (「一度円の外へ出ないと進まない」が起きない)。
 4c. **★納品が成立する前に、指を離してもリザルトへ行けない**(「帰還しますか?」の確認ダイアログが
    出ない=サンプルを渡さずにクリアできない)。**対象外ステージ・クリア済みランでは従来どおり出る。**
 6. **納品成立後にサークルを出ようとしても、攻撃しようとしても何も起きない。**
-   **★PC(キーボード)で WASD / 矢印キーを押し続けてもプレイヤーが1pxも動かない**
-   (=入力フィールドを落とす形ではなく、`movePlayer` の入口で弾いている)。
+   **★PC(キーボード)で WASD / 矢印キーを押し続けてもプレイヤーが移動しない**
+   (=入力フィールドを落とす形ではなく、`movePlayer` の中で入力を 0 として扱っている)。
+6a-1. **★走りながら納品が成立した時、その場で走行アニメが回り続けない。**
+   `isMoving` が false に落ち、**60ms(`PLAYER_INERTIA_TAU`)かけて減速して止まる**
+   (1フレームで速度が 0 になる=加減速の無い停止、が起きない)。
+   カメラの移動時ズームも待機側へ戻る。
+6a-2. **★納品ロック中、銃が1発も撃たれない**(自動射撃はクールダウン駆動で入力を通らないため、
+   入力側だけ塞いだ実装だと撃ち続ける)。**サブウェポンも1つも発動しない。**
+   マウス左右クリック・キーボードのフリック/カウンターキーでも何も起きない。
 6b. **納品ロック中にレベルアップしても、選択メニューが会話を止めない**
    (メニューはロック解除後に開く。**レベルアップそのものが消えない**=保留されている)。
+6c. **★納品ロック中に、勝手にメニューが開いて会話が止まらない。** 具体的に:
+   ①帰還サークルが**商人サークルと重なっていても**ショップが開かない
+   ②**宝箱を磁力で拾っても**装備選択が開かない ③チュートリアルポップが出ない。
+   **どの場合も `isPaused` が true にならない**(=会話が最後まで実時間で進み、リザルトへ到達する)。
 7. **納品成立後も会話が実時間で進む**(1行あたり `NPC_DIALOGUE_MS` で送られる)。**画面が固まらない。**
    会話が終わると(0行なら即時)リザルトへ遷移する(再滞在・入り直し・追加操作を一切要求しない)。
    **`isPaused` が納品によって `true` になっていない。**
@@ -1187,6 +1332,16 @@ playerCenter / hunters / screamers / questTargets / bossMark` で、
 - **確定: `syncArrows` に「レスキュー未完了の待機中のトリガー円(=二人組の座標)」を渡す引数を1本足す**
   (`baseSites` / `hunters` / `screamers` と同じ作法=**配列で渡して既存の縁矢印の描き方を流用する**)。
   渡すのは `status === 'rescue'`(未完了)の間だけ。完了(`accepted` 以降)になったら**空を渡す**。
+- **★確定: この矢印だけ「出す条件」を広げる(§2-3 の floor 撤回とセット)。**
+  **事実(実在確認)**: `syncArrows` の各対象は
+  **`if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue;`**
+  (=post-zoom の実画面座標で画面内なら描かない)で統一されている。
+  レスキュー地点の枝だけ、この条件を
+  **「画面外 **または** `horizonActorAlpha(二人組のy)` がほぼ0(=地平線フェードで実質見えない)」**へ広げる。
+  - **`horizonActorAlpha` は同じクラスの private メソッド**なので、**`syncArrows` の中だけで完結する**
+    (store / world に描画都合の値を1バイトも持ち込まない)。
+  - **他の対象(拠点/城/商人/帰還サークル/ハンター等)の条件は1つも変えない。**
+  - これで「**画面内なのに透明で、矢印も出ない死角**」が閉じる(地平線フェード自体は不変のまま)。
 - **色は城ボス(赤)・商人(`0xfbbf24`)・帰還サークル(`0x34d399`)と重複しない既存系統から選ぶ**
   (どれを使うかは ★未決 §2-15 #4 の見せ方と一緒に裁定する)。
 - **これを §2-14 の実装マップにも行として載せる**(載せないと「縁矢印は既存で足りる」と読まれて
@@ -1199,6 +1354,10 @@ playerCenter / hunters / screamers / questTargets / bossMark` で、
 4. **レスキュー未完了の間、二人組の位置が常に分かる。**
    4:00 で二人組を一度も見ずに反対方向へ 3000px 走り続けても、**位置の手がかりが画面から消えない**
    (=見失って勝てなくなる状態が作れない)。
+5. **★二人組が地平線フェードで薄くなった/消えた時、画面内でも縁矢印が出る**
+   (=「画面内なのに透明で、矢印も出ない」死角が無い)。`?zoomlock=0.4` でも同じ。
+6. **この条件変更が他の縁矢印に波及していない**(拠点/城/商人/帰還サークル/ハンター/叫喚は
+   従来どおり**画面外の時だけ**出る)。
 
 ---
 
@@ -1220,22 +1379,28 @@ playerCenter / hunters / screamers / questTargets / bossMark` で、
   城ボス討伐より後なので、**納品の瞬間に揃って `markStageCleared` が走る**。
 - **二人組の消滅は永続**: `delivered` のステージには以後レスキューが出ず、二人も出ない。
 
-### ★★`forced` / `sub` を読んでいる場所は `subsAllCompletedFromMeta` だけではない(全部直す)
+### ★★`forced` / `sub` に触っている場所は**8つ**(読み手6+**書き手2**)。全部直す
 
-**事実(実在確認)**: `getEventQuestMeta(...)` の `.forced` / `.sub` を読んでいる実在の箇所は**6つ**。
-1つでも取り残すと「納品したのに未達成表示」「納品したのに次の出撃でまた二人が出る」が残る。
+**事実(実在確認)**: `getEventQuestMeta(...)` を呼んでいる実在の箇所は(テストを除いて)**8つ**。
+**うち2つは読み手ではなく書き手**で、3巡目の表は**書き手を1行も載せていなかった**。
+表をチェックリストに使うと**読み手だけ `delivered` になり、書き手は `sub` を書き続ける**
+=**納品しても永久に未クリア・次ステージが解放されない・次のランでまたレスキューが出る**。
 
-| 読んでいる場所(実在・シンボル) | 今 何を読んでいる | v2でどうする |
-|---|---|---|
-| `src/utils/storyProgress.ts` `subsAllCompletedFromMeta()` | `.sub` | `delivered` へ(EX解放の鎖・下記) |
-| **`src/components/MissionSelect.tsx`(サブ進捗 n/N)** | `const subQuestDone = stage.subs.length > 0 && getEventQuestMeta(stage.id).sub;`(その下の `subTotal` / `subCleared` が使う) | **`delivered` へ** |
-| **`src/components/MissionSelect.tsx`(サブ任務カードの CLEAR バッジ)** | `getEventQuestMeta(stage.id).sub && <span>CLEAR</span>` | **`delivered` へ** |
-| `src/store/gameStore.ts` `resetGame` の二人組の出現ゲート | `qGone = bossMakerRoom \|\| !qCfg \|\| getEventQuestMeta(...).sub` | **`delivered` へ**(納品済みステージに二人を出さない) |
-| `src/store/gameStore.ts` `acceptEventQuest` の `forcedPending` | `.forced` | **v1経路ごと撤去**(§2-2B) |
-| `src/data/progress.ts` `syncQuestStageClear` の `forcedOk` | `!cfg.forced \|\| getEventQuestMeta(...).forced` | **`delivered` へ**(§2-10) |
+| # | 触っている場所(実在・シンボル) | 読/書 | 今 何をしている | v2でどうする |
+|---|---|---|---|---|
+| 1 | `src/utils/storyProgress.ts` `subsAllCompletedFromMeta()` | 読 | `getEventQuestMeta(id).sub` | **`delivered` へ**(EX解放の鎖・下記) |
+| 2 | **`src/components/MissionSelect.tsx`(サブ進捗 n/N)** | 読 | `const subQuestDone = stage.subs.length > 0 && getEventQuestMeta(stage.id).sub;`(その下の `subTotal` / `subCleared` が使う) | **`delivered` へ** |
+| 3 | **`src/components/MissionSelect.tsx`(サブ任務カードの CLEAR バッジ)** | 読 | `getEventQuestMeta(stage.id).sub && <span>CLEAR</span>` | **`delivered` へ** |
+| 4 | `src/store/gameStore.ts` `resetGame` の二人組の出現ゲート | 読 | `qGone = bossMakerRoom \|\| !qCfg \|\| getEventQuestMeta(...).sub` | **`delivered` へ**(+§2-1 の除外条件もここへ足す) |
+| 5 | `src/store/gameStore.ts` `acceptEventQuest` の `forcedPending` | 読 | `cfg.forced && !getEventQuestMeta(stageId).forced` | **v1経路ごと撤去**(§2-2B) |
+| 6 | `src/data/progress.ts` `syncQuestStageClear` の `forcedOk` | 読 | `!cfg.forced \|\| getEventQuestMeta(stageId).forced` | **`delivered` へ**(§2-10) |
+| **7** | **`src/store/gameStore.ts` `completeEventQuest`** | **★書き** | `const meta = getEventQuestMeta(stageId);` → `setEventQuestMeta(stageId, { ...meta, forced: true })`(強制納品)/ `{ ...meta, sub: true }`(サブ納品)の**2分岐** | **★`setEventQuestMeta(stageId, { ...meta, delivered: true })` の1本にする**(`forced`/`sub` の分岐ごと廃止)。**これが v2 唯一の書き手** |
+| **8** | **`src/store/gameStore.ts` `completeEventEncounter`**(M5の「遭遇のみ」) | **★書き** | `setEventQuestMeta(stageId, { ...meta, sub: true })` | **★撤去**(§2-14 の `encounterOnly` 撤去とセット。v2ではS5も納品する=遭遇のみが無くなる) |
 
-→ **MissionSelect の2箇所を落とすと、納品してもミッション一覧のサブ任務が永久に未達成のまま**になり、
+→ **書き手(7・8)を落とすと、読み手だけ直っていても何も達成にならない。**
+→ **MissionSelect の2箇所(2・3)を落とすと、納品してもミッション一覧のサブ任務が永久に未達成のまま**になり、
 「次ステージは解放されたのに、そのステージのサブは未達成」というちぐはぐが残る。
+→ **`delivered` を書く場所は 7 の1箇所だけ**(納品成立の瞬間・§2-8)。**2箇所以上作らない。**
 
 ### ★S5にサブ任務カードが無い(v2ではS5も同じクエストを回すのに、S5だけ表示が出ない)
 
@@ -1273,6 +1438,10 @@ MissionSelect の進捗は `stage.subs.length > 0` を前提にしているの�
 4. S1・S3・S4 の3本を納品した状態でM7クリア→ED後に**グレンの薬**が付与される。
 5. S5を納品しても薬の付与条件のカウントは増えない(3本の判定に影響しない)。
 6. 練習ラン中は上記の永続書き込みが1つも起きない(`practiceGuard` の関所で塞がれている)。
+7. **★`delivered` を `true` にする実在のコードが1箇所だけ**(`completeEventQuest`)。
+   **`sub` / `forced` を書く行がコードベースに1つも残っていない**
+   (`completeEventQuest` の2分岐・`completeEventEncounter` の両方を直してある)。
+   検証: 納品 → **ミッション選択で CLEAR が付く**(=読み手だけ直して書き手が古い、が起きない)。
 
 ---
 
@@ -1326,8 +1495,8 @@ MissionSelect の進捗は `stage.subs.length > 0` を前提にしているの�
 | 「会話中に城ボスの出現演出が割り込まない」(v2 1巡目の受け入れ条件) | **撤回**。会話終了待ちは「会話に依存しない」という中核原則と排他。**同フレームで湧かない**(最短3.0秒後)へ差し替え(§2-5) |
 | 「`rescue` 状態では会話サークルも滞在アークも描かない」(v2 2巡目) | **撤回**。`syncArena` は `if (!ae) return;` で **`activeEvent` が立つまで円を描かない**ので、そのままだと**待機中に「どこに入れば始まるか」の絵が画面に無い**。`syncEventQuestNpc` に**トリガー円専用の枝**を足す(半径240・`near` を通さない)(§2-3) |
 | 「出現の円は `spawnRing` 2枚で現れる」だけの記述(v2 2巡目) | **不足**。`spawnRing` は数百msの一過性の演出。**待機中ずっと出ている円の描画担当を別に名指しする**(§2-3) |
-| 「未完了の間は地平線フェードの**対象外**にする」(v2 3巡目) | **修正**。完全免除(alpha=1固定)だと**遠景の森に重なって不透明のまま浮く**。**floor 方式**(`Math.max(horizonAlpha, OBSTACLE_SEE_THROUGH_ALPHA)`)へ(§2-3) |
-| 「フェードの免除対象は**二人組**」(v2 3巡目) | **不足**。**囲いの敵にも掛ける**(全滅させないと勝てない相手が半透明で殴ってくる)。対象は「このイベントの見せ物一式」(§2-3) |
+| 「未完了の間は地平線フェードの**対象外**にする」(v2 3巡目) | **撤回**(→ 一度 floor 方式へ直したが、その floor 自体も**5巡目で撤回**。下の該当行を見る) |
+| 「フェードの免除対象は**二人組**」(v2 3巡目) | **撤回**(→ 一度「見せ物一式」へ広げたが、**免除そのものを5巡目で撤回**。下の該当行を見る) |
 | 「出現点の上限が破れるのは**プレイヤー自身が3000px以遠に居る時**」(v2 3巡目) | **誤り**。プレイヤーが3000以遠でも、進行方向が原点側なら候補は3000未満に取れる。条件は「**振り切っても候補が1つも無い**」で書く。**S5は2か所目確保の瞬間にプレイヤーが必ず3070〜3330pxに居る**(`BASE_SITE_RADIUS`=3200 ± `BASE_CAPTURE_RADIUS`=130)=**例外ではなく既定**(§2-3・★未決 #17) |
 | 「敵を配置してから `beginArenaEvent`」/ 順序の未記載(v2 3巡目) | **確定**。①`beginArenaEvent` ②配置 ③`hordeSpawnRef` を潰す。逆順だと `isArenaSweepProtected` が**削岩型だけ**を守り、ゾンビ系4体が消える(§2-4) |
 | 「完了判定は id セットの**生存数**が0か」だけの記述(v2 3巡目) | **不足**。死体(`corpseUntil` 付き)が配列に残る。**`isCorpse(e)` は生存に数えない**(§2-4) |
@@ -1336,6 +1505,18 @@ MissionSelect の進捗は `stage.subs.length > 0` を前提にしているの�
 | 「納品成立=3秒滞在の満了」を**確定仕様**として書く(v2 3巡目) | **修正**。滞在を数える実体が無い(`updateReturnPhase` の通常ストーリー枝は `dwellMs = inside ? 1 : 0`)。しかも**離指→「帰還しますか?」→はいで即 `gameWon`** =納品せずクリアできる。**本文は ★未決 #5 の(A)を前提とした条件付き**として書き直した(§2-8) |
 | 「レスキュー地点の誘導は既存の縁矢印で足りる」(v2 3巡目) | **不足**。`syncArrows` は **`eventQuestNpc` を受け取っていない**し、`questTargets` はv2では常に空。**引数を1本足して配線する**(§2-9) |
 | 「`delivered` への差し替えは `subsAllCompletedFromMeta` だけ」(v2 3巡目) | **不足**。`MissionSelect.tsx` に**2箇所**(サブ進捗 n/N と CLEAR バッジ)、`resetGame` の `qGone`、`syncQuestStageClear` の `forcedOk` がある。落とすと**納品しても一覧が永久に未達成**(§2-10) |
+| 「未完了の間は地平線フェードに **floor(0.35)** を敷く」(v2 3〜4巡目) | **★撤回**。`horizonActorAlpha` のしきい値は**遠景森の足元ライン(=地平線)**由来で、目的は「地平線より上=空に絵を出さない」(実在コメント「空に浮かない」×3箇所)。floor を敷くと**二人組・円の上半分・囲いの敵・その影が空の上に35%で浮く**。帯は引くほど広がるので `?zoomlock=0.4` で悪化。**フェードは1バイトも触らず、誘導配線側(縁矢印の条件を「画面外 or 地平線で実質見えない」へ広げる)で担保する**(§2-3 / §2-9) |
+| 「囲いの敵にも floor を掛ける(免除は見せ物一式)」(v2 4巡目) | **撤回**(上と同根)。**囲いの敵は他の囲いと同じ扱いのまま=例外を作らない**(§2-3) |
+| 「待機中のトリガー円は `syncEventQuestNpc` が描く」(v2 4巡目) | **★撤回**。`eventNpcGfx` は **actorLayer(Y-sort)・通常合成・`circle(0, -8*d, radius*d)`(depthScale倍+中心ズレ)**、`arenaGfx` は **groundLayer・`blendMode='add'`・world座標・等倍**。**半径1px一致が構造的に不可能**で、発火時に層/合成/半径が同時に入れ替わって絵が飛ぶ。さらに `ARENA_EVENT_RADIUS` は **`useGameLoop` の非export定数**=実装者が240をベタ書きする(二重管理)。→ **半径を store の `eventQuestNpc.triggerRadius` に持たせ、待機円は groundLayer の専用 Graphics(add・等倍)で描き、発火時は同じ見た目のまま200msでクロスフェード**(§2-3) |
+| 「§2-7 の表示条件は `castleAttnDoneAt > 0` の**1本だけ**」(v2 4巡目) | **★撤回**。打刻するディスパッチャは**クエストの有無を一切見ていない**ので、`?castlenow=1`・フリー・練習・**納品済みステージ**など**レスキューを1度もやっていないラン全部**で黄色の行が出る(しかも `1/1` に変わった後、納品が起きないので**永久に消えない**)。→ **「クエスト進行中(レスキュー完了済み・未納品)」との AND**(950ms窓の話とは無関係)(§2-7) |
+| 「納品ロックは `movePlayer` の冒頭で早期 return」(v2 4巡目) | **★撤回**。`movePlayer` は `vx/vy`・`direction`・`isMoving`・`lastDirection`・`aim`・速度ランプまで毎フレーム書いており、return すると**7〜10秒フリーズ**(その場で走行アニメが回り続ける/カメラが移動ズームのまま/**速度が1フレームで0=慣性MUST違反**)。→ **早期 return はせず、`deliveryLocked` の時は `tx=ty=0` として通す**(`PLAYER_INERTIA_TAU`=0.06 で自然に減速し `isMoving` も落ちる)(§2-8) |
+| 「攻撃・サブ・フリックも**それぞれの入口**で弾く」だけの記述(v2 4巡目) | **不足**。**銃の自動射撃は入力ではなくクールダウン駆動**(`fireWeapon` の `now - lastFired < effCooldown`)なので、入力側だけ塞ぐと**ロック中ずっと撃ち続ける**。→ **入口5つを実在名で列挙**(`isInputLocked`/`isAttackLocked`/`MouseControls`/`useGameControls` の2枝/サブ発動入口の `inReturnCircle`)(§2-8) |
+| 「投影影の除外は `hidden` だけ」(v2 4巡目) | **不足**。実在の条件は **`if (eventNpc.status !== 'completed')`** なので、**`gone`(納品済み=二人が出ないラン)でも影が落ち続ける**(v0.25.3054 で直したのと同型の残り1件)。→ **描画していない全状態(`gone`/`hidden`/フェード満了後の`completed`)を走査から外す**+`warping` は `heightPx` で高度ぶん縮める(§2-2B) |
+| 「出現位置は `beginReturnPhase` の空き地探索を流用」(v2 3〜4巡目) | **不足**。流用元が屋外で見るのは**木の幹・松明・城の3つだけ**で、**街プロップ(S3)・病院・武器庫・警察署を1つも見ていない**(プレイヤーの `resolveOutOfSolids` は全部見る)。→ **「立てるか」の判定は `resolveOutOfSolids` を通す**+商人/拠点サークルは距離条件で避ける(§2-3) |
+| 「プレイヤーは倒したその場=最初から円の中に居る」(v2 4巡目の根拠) | **誤り**。帰還サークルは `avoidPlayer` 既定 true で **`RETURN_CIRCLE_AVOID_DIST`=240** だけプレイヤーから離して置かれ、半径は **95**。→ **出現の瞬間、プレイヤーは必ず円の外**。`leftSinceAccept` ガードを外す**結論は妥当なので変えず、根拠だけ書き直した**(§2-8) |
+| 「発火6条件が満たされない間は待てば解ける」(v2 4巡目の含み) | **不足**。通常囲い/退屈補正の囲いの**次回時刻は発火した時にだけ先送りされる**ので、塞がれている間もタイマーは進み、**空いた瞬間にプレイヤーの足元(=レスキューの円の中)で開く**=**周期的に再発する**。→ この事実を #16 の材料へ併記し、**レスキュー発火時に通常囲いの次回タイマーを押し戻す**を本文で確定(§2-4) |
+| 「同フレーム衝突は発火条件で防ぐ」(v2 4巡目の含み) | **不足**。既存の抽選は**1本の if/else 連鎖**で構造的に排他しているが、レスキューを別の if に書くとその外に出る(ゲート発火待ちのフレームで**両方が `beginArenaEvent` を呼ぶ**)。→ **レスキューの発火を既存の連鎖の中(ゲート2の後・退屈補正の前)に入れる**(§2-4) |
+| 「`activeEvent` はシングルトンなので**発火**さえ守ればよい」(v2 4巡目) | **★致命的な不足**。**既に走っている囲いを外から強制解除する経路が実在する**(ゲート発火待ちのプリエンプション: `aePre.kind !== 'boss'` なら `endArenaEvent()`)。レスキューは `kind:'horde'` なので**対象**で、`cleared`/`timedOut` のどちらも通らずに畳まれる=**`rescueClearedAt` が立たず城ボスが永久に出ない(勝利不能)**+入る→畳まれるの**無限ループ**。→ **①プリエンプションに `aePre.rescueQuest !== true` の保護を足す ②`activeEvent` が消えたのに未打刻なら強制クリア扱いで打刻する後始末を置く(本命)**(§2-4) |
 | v1「強制クエスト=ネームド(パンプキン/犬)討伐」 | 廃止。討伐対象は**城ボス(搬送体)**(§2-6)。ネームド湧きは走らせない(§2-2B) |
 | v1「サブ『とにかくサンプルを集めてきて』」 | 廃止(サンプル系は右上の自動サブクエが担う)。二人組=城ボスクエスト専任 |
 | v1「二人組は開始時から場に配置」 | 廃止。4:00 まで場に居ない(§2-2) |
@@ -1411,23 +1592,31 @@ MissionSelect の進捗は `stage.subs.length > 0` を前提にしているの�
 | **「生存数0」の定義** | `src/utils/enemyUtils.ts` `isCorpse(e)`(=`e.corpseUntil !== undefined`)。**死体は生存に数えない**。削岩型も `corpseEligible` は true(`enemyUtils.test.ts` が pumpkin と同値で固定)なので、数えると**全滅させても90秒の時間切れまで終わらない**(§2-4) |
 | **イベント識別フラグ** | `src/types/game.ts` `ActiveEvent` に **`rescueQuest?: boolean` を追加**(前例=同じ型の `policeArena?: boolean`)。時間切れの専用枝・完了判定のスコープはこのフラグで分岐する(§2-4) |
 | **完了判定のスコープ** | `useGameLoop` の `const eventEnemies = ...enemies.filter(e => e.fromEvent).length` は**グローバル**。レスキューでは**このイベントで湧かせた個体の id セット**で数える(§2-4) |
-| **発火ゲート(6条件)** | 既存抽選と同じ: `activeEvent === null` / `bossChasing` / `isHiddenBoss` / `hunterRef.current.phase` / `redNight?.phase` / `isBountyType`(§2-4)。既存の並びは `useGameLoop` の `arenaReady` / `gateEventReady` にある |
-| **納品ロック(`isPaused` を使わない)** | 入力遮断=**`src/store/gameStore.ts` `movePlayer` の冒頭で `deliveryLocked` なら即 return**(+攻撃/サブウェポン/フリックの各入口も同様)。**`touchActive`/`swipeDirection` を落とす形は撤回**——キーボードは `src/hooks/useGameControls.ts` が `setState({ inputState })` で `inputState.up/down/left/right` を書き、`useGameLoop` が `movePlayer(inputState, …)` へ渡すので**素通りする**(§2-8)。被弾遮断=`gameStore.ts` **`damagePlayer` の入口**(冒頭が `if (player.invulnerable) return false;`)。**`takeDamage` という関数は存在しない**。`invulnerable` / `INVULN_MS`(=1000)は使わない |
-| **納品ロック中のレベルアップ保留** | `src/hooks/useGameLoop.ts` の `if (introUntil > 0 && Date.now() >= introUntil) { showUpgradeMenu: true, isPaused: true, levelUpIntroUntil: 0 }` に **`&& !deliveryLocked`** を足す。`levelUpIntroUntil` はこの分岐でしか 0 にされない=**保留してもレベルアップは消えず、解除後に開く**(§2-8) |
+| **発火ゲート(6条件)** | 既存抽選と同じ: `activeEvent === null` / `bossChasing` / `isHiddenBoss` / `hunterRef.current.phase` / `redNight?.phase` / `isBountyType`(§2-4)。既存の並びは `useGameLoop` の `arenaReady` / `gateEventReady` にある。**★ここだけが ★未決 #16 のブロッカー**(§2-4 の他は独立) |
+| **★発火のコードを置く場所(同フレーム衝突の構造的排他)** | `src/hooks/useGameLoop.ts` の `const ae = ...activeEvent; if (!ae) { if (gateFireOk && gate1Ready) {…} else if (gateFireOk && shouldTriggerGate2({…})) {…} else if (puzzleActiveNow) {…退屈補正…} else {…2分タイマー…} }` の**連鎖の中**へ、**ゲート2の後・`else if (puzzleActiveNow)` の前**に枝を1本足す。別の if に書くと**ゲート発火待ちのフレームで両方が `beginArenaEvent` を呼ぶ**(後勝ちで上書き＋先に置いた敵が一掃で消える。エラーは出ない)(§2-4) |
+| **★★プリエンプションからの保護(勝利不能の本体)** | `src/hooks/useGameLoop.ts` の **`const aePre = useGameStore.getState().activeEvent; if (gateFireOk && activeGateRef.current == null && aePre && aePre.kind !== 'boss') { … endArenaEvent(); }`**(コメント=「ゲート発火待ち…城ボス以外のイベント(レスキュー/退屈囲い)が進行中なら強制解除」)。**レスキューは `kind:'horde'` なので対象**で、`endArenaEvent()` は `cleared`/`timedOut` を通らない=**`rescueClearedAt` が立たないまま囲いが畳まれ、城ボスが永久に出ない**。→ **①条件へ `aePre.rescueQuest !== true` を足す**(`kind !== 'boss'` と同じ形)(§2-4) |
+| **★★後始末(本命の防御)** | store に **`rescueArenaStartedAt`(数値・0=未)**を追加(発火時に打刻・`resetGame` で 0)。`useGameLoop` の二人組ブロックで毎フレーム **`rescueArenaStartedAt > 0 && rescueClearedAt === 0 && activeEvent?.rescueQuest !== true`** なら**強制クリア扱いで §2-5 の完了経路へ入れる**。`endArenaEvent()` を外から呼ぶ経路は今後も増えるので、**経路ごとに塞ぐのではなく状態で救う**(§2-4 / §2-5) |
+| **★通常囲いの次回タイマーの押し戻し** | レスキュー発火時に **`nextArenaAtRef.current = newGameTime + ARENA_FIRE_INTERVAL_MS`(=120000)** と **`boredomArenaNextEligibleAtRef.current = newGameTime + BOREDOM_ARENA_CD_MS`(=120000・`src/utils/boredomArena.ts`)** を代入する。**どちらも発火時にしか先送りされない**ので、書かないとレスキュー直後にプレイヤーの足元(通常囲い/退屈囲いはどちらも中心=プレイヤー中心)で次の囲いが開く(§2-4) |
+| **★出現位置の「立てるか」判定** | `src/store/gameStore.ts` **`resolveOutOfSolids`**(=`movePlayer` が呼ぶ唯一の遮蔽物連鎖: 木→松明→城→街プロップ→病院→武器庫→警察署)へ候補矩形を通し、**押し戻された候補は棄却**する。**`beginReturnPhase` の空き地探索は「角度を振って半径を広げる」形だけを流用**——その中の障害物集合(`trunkRect` / `torchRect` / `castleRect` の3つだけ)は**足りない**。武器商人・拠点サークルは `resolveOutOfSolids` に**入っていない**(=プレイヤーを止めない)ので、距離条件で別に避ける(§2-3) |
+| **納品ロック: 移動(`isPaused` を使わない)** | **`src/store/gameStore.ts` `movePlayer` の中で `deliveryLocked` なら `tx = ty = 0`**(+`swipeDirection`/`dashOverride`/スライドも無視)。**★冒頭の早期 return は禁止**——同じ `set()` が `vx/vy`・`direction`・`lastDirection`・`isMoving`・`aimX/aimY`・速度ランプ・`marksmanMovingSince`・PHILLレティクルまで書いているため、return すると全部が固まる(走行アニメが回り続ける/移動ズームのまま/**1フレームで速度0=慣性MUST違反**)。`alpha = inertiaAlpha(dt, PLAYER_INERTIA_TAU)`、**`PLAYER_INERTIA_TAU = 0.06`** なので目標0で60msかけて自然に止まる。**`touchActive`/`swipeDirection` を落とす形も撤回**——キーボードは `src/hooks/useGameControls.ts` が `setState({ inputState })` で `inputState.up/down/left/right` を書き、`useGameLoop` が `movePlayer(inputState, …)` へ渡すので素通りする(§2-8) |
+| **納品ロック: 攻撃(入口5つ)** | ①**銃の自動射撃**=`useGameLoop` の `fireWeapon(activeGun, …)`(**入力を通らない**。`fireWeapon` は `now - weapon.lastFired < effCooldown` の**クールダウン駆動**) ②離指の近接/カウンター/PHILL=`VirtualJoystick` の `release` → `triggerCounter()` ③マウス=`MouseControls` → `performTapAction` / `performFlickAction` ④キーボード=`useGameControls` の keydown(`isFlickKey` / `isCounterKey` の2枝) ⑤サブウェポン=`useGameLoop` の**サブ発動入口**(全サブが通る `inReturnCircle` 変数)。**実装: `isInputLocked()` に `deliveryLocked` を足す**(実在=`isPaused \|\| player.health <= 0 \|\| corridorRunInActive \|\| isGameTimeStopped()`)と ①②③ が同時に閉じる(`isAttackLocked() = isInputLocked() \|\| attention !== null` なので自動で伝播)。④は2枝が **`isGameTimeStopped()` しか見ていない**ので個別に1条件足す。⑤は変数の式に足す(§2-8) |
+| **納品ロック: 被弾** | `gameStore.ts` **`damagePlayer` の入口**(冒頭が `if (player.invulnerable) return false;`)に `deliveryLocked` なら `return false` を足す。**`takeDamage` という関数は存在しない**。`invulnerable` / `INVULN_MS`(=1000)は使わない |
+| **納品ロック中の割り込みポーズ(`isPaused` を立てる実在6箇所)** | ①**レベルアップ**=`useGameLoop` の `if (introUntil > 0 && Date.now() >= introUntil) { showUpgradeMenu: true, isPaused: true, levelUpIntroUntil: 0 }` に **`&& !deliveryLocked`**(`levelUpIntroUntil` はこの分岐でしか 0 にされない=**保留しても消えず解除後に開く**) ②**商人サークルの滞在**=`gameStore.updateMerchantDwell` の早期return条件に `deliveryLocked` を足す(**入力不要で自動的に開く**) ③**宝箱**=`collectPickup` の `case 'chest'` の `showUpgradeMenu: true, isPaused: true` を立てない(**磁力で拾えば起きる**・★未決 #19) ④**チュートリアルポップ**=`showTutorialPopup` 冒頭で `deliveryLocked` なら既読も付けずに返す ⑤確保済み拠点の武器庫(`triggerCounter` 内)・⑥`requestStoryReturnPrompt` は**入力経由なので上の攻撃ロックで閉じる**=追加対応なし。ポーズ操作/`backgrounded` は塞がない(§2-8) |
 | **素通り防止(#5が(A)の場合)** | `src/store/gameStore.ts` `requestStoryReturnPrompt` の早期 return 条件へ「クエストの納品が未成立」を1つ足す(足さないと**離指→「帰還しますか?」→はい→即 `gameWon`** でサンプルを渡さずクリアできる)。`updateReturnPhase` はクエスト中に `gameWon` を立てない=**`gameWon` を書くのは会話キューが空になった1箇所だけ**(§2-8) |
 | **納品の滞在を積む枝** | `src/store/gameStore.ts` `updateReturnPhase` の `if (state.finaleDefeated && !state.corridorMode)` の枝は **`dwellMs = inside ? 1 : 0`(在内フラグ)で滞在を積まない**。クエスト中は `deltaTime*1000` を足す専用の枝を通す。**`delivering` へ入る瞬間に `leftSinceAccept` 相当を true・`dwellMs=0` にして以後は無条件で積む**(§2-8) |
-| **★アテンション完了の打刻(HUDの読む先)** | `src/store/gameStore.ts` に **`castleAttnDoneAt`(数値・0=未)** を追加し、`src/hooks/useGameLoop.ts` の城ボス遅延アテンションのディスパッチャ(`castleAttnRef.current.at > 0 && newGameTime >= at && !attention` の中)で **`triggerAttention(...)` を呼ぶのと同じ行で打刻**する。`resetGame` で 0 に戻す。**HUD は `castleAttnDoneAt > 0` の1本だけを読む**(`castleEvent.bossSpawned` と `attention` の組み合わせは**出現〜950msの間に真になる**ため使わない・§2-7) |
-| **★待機中のトリガー円の描画** | `src/pixi/pixiScene.ts` `syncEventQuestNpc` に `status === 'rescue'` 専用の枝を足す(半径 `ARENA_EVENT_RADIUS`=240・中心=二人組・`near` を通さない)。**`syncArena` は触らない**(`if (!ae) return;` なので `activeEvent` が立つまで何も描かない=待機中の円を描く実体が他に無い)。発火した瞬間にこの枝の描画をやめる(`syncArena` と二重に描かない)(§2-3) |
-| **★レスキュー地点の縁矢印の配線** | `src/pixi/pixiScene.ts` `syncArrows` は **`eventQuestNpc` を受け取っていない**(引数は pickups/castle/merchant/_camera/castleVisible/event/pois/baseSites/escorts/playerCenter/hunters/screamers/questTargets/bossMark)。`baseSites`/`hunters` と同じ作法で**配列引数を1本足し、呼び出し側で `status === 'rescue'` の間だけ渡す**。`questTargets` はv1のネームド用=v2では常に空なので流用できない(§2-9) |
-| **★囲いの敵の地平線フェード floor** | `src/pixi/pixiScene.ts` の敵本体(`const horizonAlpha = e.type === 'phillboss' ? 1 : this.horizonActorAlpha(fb.footY);`)と足元影(`if (horizonAlpha <= 0) continue;`)。**`rescueQuest` の囲いが立っている間だけ、そのイベントの敵にも floor を敷く**。floor 値は新設せず `OBSTACLE_SEE_THROUGH_ALPHA`(=0.35)を流用(§2-3) |
-| **★`delivered` を読む先(6箇所・全部直す)** | `src/utils/storyProgress.ts` `subsAllCompletedFromMeta` / **`src/components/MissionSelect.tsx` の2箇所**(`const subQuestDone = stage.subs.length > 0 && getEventQuestMeta(stage.id).sub;` と CLEAR バッジの `getEventQuestMeta(stage.id).sub`) / `src/store/gameStore.ts` `resetGame` の `qGone` / `src/data/progress.ts` `syncQuestStageClear` の `forcedOk` / `acceptEventQuest` の `forcedPending`(v1経路ごと撤去)(§2-10) |
-| **二人組の投影影** | `src/pixi/pixiScene.ts` の `syncLocalEventLighting(...)` 呼び出しは **`s.eventQuestNpc` を渡している**。`hidden` の間は走査から外す(遠方座標へ差し替える城/商人と同じ作法・v0.25.3054のコメント参照)(§2-2B) |
-| **地平線フェードの floor(二人組)** | `src/pixi/pixiScene.ts` `syncEventQuestNpc` の `horizonActorAlpha(npc.y) <= 0` 早期returnと `eventNpcView.alpha = horizonAlpha * statusAlpha` の乗算。**`rescue`/`accepted` の間だけ `Math.max(horizonAlpha, OBSTACLE_SEE_THROUGH_ALPHA)` にする**(**完全免除=1固定にはしない**。遠景の森に重なって不透明のまま浮く)(§2-3)。※`horizonActorAlpha` は **private・カメラ相対**なので store からは呼べない |
+| **★アテンション完了の打刻(HUDの読む先)** | `src/store/gameStore.ts` に **`castleAttnDoneAt`(数値・0=未)** を追加し、`src/hooks/useGameLoop.ts` の城ボス遅延アテンションのディスパッチャ(`castleAttnRef.current.at > 0 && newGameTime >= at && !attention` の中)で **`triggerAttention(...)` を呼ぶのと同じ行で打刻**する。`resetGame` で 0 に戻す。**★HUD の表示条件は `castleAttnDoneAt > 0` **かつ** 「このランでクエストが進行中(`rescueClearedAt > 0` かつ納品未成立=`eventQuestNpc.status` が `accepted`/`warping`/`delivering`)」の AND**。ディスパッチャは**クエストの有無を一切見ていない**ので、`castleAttnDoneAt` 単独だと `?castlenow=1`・フリー・練習・**納品済みステージ**でも黄色の行が出て、`1/1` に変わった後**永久に消えない**。`castleEvent.bossSpawned` と `attention` の組み合わせは**出現〜950msの間に真になる**ため使わない(§2-7) |
+| **★待機中のトリガー円の描画** | `src/pixi/pixiScene.ts` に **`arenaGfx` と同じ作法の専用 Graphics を1つ新設**し、**`L.groundLayer` へ `arenaGfx` の隣に addChild + `blendMode = 'add'`**(world座標直描き・depthScaleなし)。半径は **store の `eventQuestNpc.triggerRadius`** を読む。**`syncEventQuestNpc`(=`eventNpcGfx`・actorLayer・通常合成・`circle(0, -8*d, radius*d)`)には描かない**——層/合成/depthScale が違い**半径が構造的に一致しない**。**`syncArena` も触らない**(`if (!ae) return;` なので待機中は何も描かない)。発火時は**同フレームで `syncArena` の円へ引き継ぐ**(同じ式で描くので絵は完全に同一。色を変えた場合だけ200msでクロスフェード)(§2-3) |
+| **★半径の唯一の出どころ** | `src/types/game.ts` `EventQuestNpc` に **`triggerRadius: number` を追加**(既存の `radius`=会話サークル64 とは別)。値は `useGameLoop` が出現時に `ARENA_EVENT_RADIUS` を代入する(**この定数は `useGameLoop` のモジュールローカルで `export` されていない**=pixi から import できない。**export化も移設もせず、値を store 経由で渡す**)。進入判定も描画もこの1つを読む(§2-3) |
+| **★レスキュー地点の縁矢印の配線** | `src/pixi/pixiScene.ts` `syncArrows` は **`eventQuestNpc` を受け取っていない**(引数は pickups/castle/merchant/_camera/castleVisible/event/pois/baseSites/escorts/playerCenter/hunters/screamers/questTargets/bossMark)。`baseSites`/`hunters` と同じ作法で**配列引数を1本足し、呼び出し側で `status === 'rescue'` の間だけ渡す**。`questTargets` はv1のネームド用=v2では常に空なので流用できない。**★この枝だけ「画面内なら `continue`」(`tx>=0 && tx<=screenW && ty>=0 && ty<=screenH`)を「画面外 or `horizonActorAlpha(npc.y)` がほぼ0」へ広げる**(同クラスの private メソッドなので `syncArrows` 内で完結。他の対象の条件は変えない)(§2-9) |
+| **★地平線フェードは触らない(floor 撤回)** | `src/pixi/pixiScene.ts` の `horizonActorAlpha` / 敵本体の `const horizonAlpha = e.type === 'phillboss' ? 1 : this.horizonActorAlpha(fb.footY);` / 足元影の `if (horizonAlpha <= 0) continue;` / `syncEventQuestNpc` の `horizonAlpha <= 0` 早期return——**この4箇所を1バイトも変えない**。しきい値は `horizonForestFootWorldY = camera.y + horizonActorHideScreenY()`(=**遠景森レイヤーの下端 − `HORIZON_ACTOR_HIDE_OFFSET_PX`**)で、目的は「**地平線より上=空に絵を出さない**」。floor を敷くと空の上に絵と影が浮く(§2-3) |
+| **★`delivered` に触る先(8箇所=読み6+書き2・全部直す)** | **読み**: `src/utils/storyProgress.ts` `subsAllCompletedFromMeta` / **`src/components/MissionSelect.tsx` の2箇所**(`const subQuestDone = stage.subs.length > 0 && getEventQuestMeta(stage.id).sub;` と CLEAR バッジ) / `src/store/gameStore.ts` `resetGame` の `qGone` / `src/data/progress.ts` `syncQuestStageClear` の `forcedOk` / `acceptEventQuest` の `forcedPending`(v1経路ごと撤去)。**★書き(3巡目の表に無かった)**: **`gameStore.completeEventQuest`**(`setEventQuestMeta(stageId, {...meta, forced:true})` と `{...meta, sub:true}` の2分岐 → **`{...meta, delivered:true}` の1本へ**=v2唯一の書き手)/ **`gameStore.completeEventEncounter`**(`{...meta, sub:true}` → **撤去**)。**書き手を直さないと、読み手だけ `delivered` になって永久に未クリア**(§2-10) |
+| **★二人組の投影影(除外条件を書き換える)** | `src/pixi/pixiScene.ts` の `syncLocalEventLighting(...)` 呼び出しは **`s.eventQuestNpc` を渡している**。関数の中で積んでいる行は **`if (eventNpc.status !== 'completed') { push(eventNpc.x, eventNpc.y, …) }`**=**`completed` しか見ていない**ので、**`gone`(納品済み=二人が出ないラン)でも影が落ち続ける**(v0.25.3054 で城/商人を直した時の**残り1件**)。→ **「描画していない全状態(`gone` / `hidden` / フェード満了後の `completed`)」を走査から外す**。`warping` は外さず、`ShadowCasterReq.heightPx`(救援アライの飛来が使う実在フィールド)で高度ぶん縮める(§2-2B) |
 | 城ボスのゲート | `src/hooks/useGameLoop.ts` の `castleBossReady`(**AND は時間条件の項だけに掛ける**・§2-6)。出現ブロックと出現アテンション(`castleAttnRef`)は**演出不変** |
 | 帰還サークル出現 | `src/hooks/useGameLoop.ts`(`finaleDefeated` → `beginReturnPhase(castleEvent.x, y)`) / 実体は `src/store/gameStore.ts` の `beginReturnPhase`(半径 `RETURN_CIRCLE_RADIUS`=95) |
 | 納品の滞在・会話・報酬 | `src/hooks/useGameLoop.ts` の二人組の滞在状態機械(`EVENT_QUEST_DWELL_MS`=3000・`leftSinceAccept` ガード)。**v1の受注分岐は殺す**(§2-2B) |
 | 帰還の完了判定 | `src/store/gameStore.ts` `updateReturnPhase`(★通常ストーリーは滞在ではなく**離指→確認ダイアログ**: `requestStoryReturnPrompt` / `answerStoryReturnPrompt`。後者は `isPaused: true` を伴う) |
 | 二人組の状態・生成・出現ゲート | `src/store/gameStore.ts`: `createEventQuestNpc`、距離定数 `EVENT_NPC_MIN_DISTANCE`(460)/`EVENT_NPC_MAX_DISTANCE`(950)、`EVENT_NPC_INTERACT_RADIUS`(64)、`resetGame` の出現ゲート。型は `src/types/game.ts` の `EventQuestStatus` / `EventQuestNpc`(**v2で状態を拡張**・§2-2B) |
+| **★§2-1 の除外を書く先(1箇所)** | `src/store/gameStore.ts` `resetGame` の **`const qGone = bossMakerRoom \|\| !qCfg \|\| getEventQuestMeta(getSelectedStageId()).sub;`**——**今は3条件しか見ていない**(練習/ガントレット/ベンチ/通路/訓練/屋内/ラボ/EX/再訪/フリーを1つも見ていない)。ここへ `isPracticeRun()` / `isGauntletRun()` / `isExStageRun()` / `getSelectedFreeMode()` / `state.benchmarkRun` / 同関数内のローカル `corridorMode` / `indoor` / `stageTheme === 'lab'` / `farBackdrop === 'tutorial'` / `state.pendingRevisit` を足す(`.sub` は `delivered` へ)。**判定を2箇所に分けない**(§2-1) |
 | **★`EventQuestNpc` に足すフィールド(現行は8つしか無い)** | 現行は `x / y / radius / status / questIndex / fadeStartedAt / dwellMs / leftSinceAccept` **だけ**で、**飛び去り・飛来を表せるフィールドが1つも無い**。足すもの: **`moveStartedAt`(段の開始 gameTime)/ `moveFromX` `moveFromY`(始点)/ `moveToX` `moveToY`(終点)/ `movePhase`(`'crouch' \| 'flyout' \| 'flyin'`)**。`createEventQuestNpc` の初期値と `resetGame` も同じコミットで直す(§2-8) |
 | **★ワープの段を進める場所** | **`src/hooks/useGameLoop.ts` の二人組ブロック(1箇所)が毎フレーム段を進め、座標を store へ書く。** `pixiScene` は**書かない**(CLAUDE.md「PixiJS only draws」「判定は world/store 側」)。**描画側で始点↔終点を補間して二人を動かす実装にしない**(store の `x/y` が動かないと縁矢印・投影影・`zIndex` が全部ズレる)。**4:00 の飛来の始点** = **着地点から見てプレイヤーと反対側へ `EVENT_NPC_MIN_DISTANCE`(460)離れた点**(実在定数を流用=新しい距離定数を作らない。プレイヤーの手前を横切らず「遠くから降りてきた」に読める。**カメラを参照しない**ので store 側で計算できる)。**着地点(=終点)だけが以後の位置なので、`clampRectToPlayableArea` を通すのは着地点**(飛行中の途中座標は通さない)(§2-3 / §2-8) |
 | 受注/完了のアクション | `src/store/gameStore.ts`: `acceptEventQuest`(**ネームド湧きを内包=v2では走らせない**) / `completeEventQuest`(**報酬付与口はここ**。`EVENT_QUEST_REWARD_GOLD`=100 の扱いは ★未決 #7) |
@@ -1520,7 +1709,8 @@ MissionSelect の進捗は `stage.subs.length > 0` を前提にしているの�
     毎フレーム自動解除される被弾無敵で、7〜10秒の待ちには使えない(§2-8)。
 27. **城ボスの出現アテンションは出現の 950ms 後**(`castleAttnRef.current = { at: newGameTime + 950 }`)。
     ディレイ0だと受注会話の1行目に被る(§2-6)。`castleAttnRef` は `useRef` で **store に無い**ので
-    HUD の表示条件には使えない(読むのは `castleEvent.bossSpawned` と `attention`・§2-7)。
+    HUD の表示条件には使えない(→ store に `castleAttnDoneAt` を足して打刻し、**クエスト進行中との AND**で
+    読む・§2-7 / 事実61)。
 28. **`EVENT_QUEST_CONFIG['stage-5']` は `encounterOnly: true`** で、`acceptEventQuest` の冒頭に
     `if (cfg.encounterOnly) return;` がある。**撤去しないとS5だけ永久に納品できない**
     (原稿0行なので画面上は「何も起きない」だけで原因が見つけにくい)。
@@ -1538,8 +1728,9 @@ MissionSelect の進捗は `stage.subs.length > 0` を前提にしているの�
 33. **`syncEventQuestNpc` の会話サークルは半径 `EVENT_NPC_INTERACT_RADIUS`(=64)・青 `0x60a5fa`で、
     しかも `near`(半径+72)に入った時だけ描く**。囲いのトリガー円(240)とは**別物**(§2-3)。
 34. **敵にも地平線フェードが掛かる**(`e.type === 'phillboss' ? 1 : this.horizonActorAlpha(fb.footY)`)。
-    足元影は `if (horizonAlpha <= 0) continue;` で丸ごと落ちる。**囲いの敵は免除対象外のままだと
-    半透明で殴ってくる**(§2-3)。実在の透け床は `OBSTACLE_SEE_THROUGH_ALPHA`(=0.35)。
+    足元影は `if (horizonAlpha <= 0) continue;` で丸ごと落ちる。
+    **※これは「地平線より上に絵を出さない」ための仕様であって不具合ではない**(→ 事実51)。
+    **囲いの敵にも例外を作らない**(=フェードは触らない)。見失い対策は縁矢印側(§2-9)(§2-3)。
 35. **キーボードの移動は `touchActive`/`swipeDirection` を通らない。**
     `useGameControls.ts` が `useGameStore.setState({ inputState })` で `inputState.up/down/left/right` を
     書き、`useGameLoop` が `movePlayer(inputState, …)` へ渡す。
@@ -1561,8 +1752,9 @@ MissionSelect の進捗は `stage.subs.length > 0` を前提にしているの�
     `levelUpIntroUntil` は**この分岐でしか 0 にされない**ので、条件を足して保留しても**取りこぼさない**(§2-8)。
 40. **`syncArrows` は `eventQuestNpc` を受け取っていない**(§2-9)。`questTargets` はv1のネームド用で
     v2では常に空。**レスキュー地点の縁矢印は配線を1本足さないと1本も出ない。**
-41. **`.forced`/`.sub` の読み手は6箇所**(`subsAllCompletedFromMeta` / `MissionSelect.tsx` ×2 /
-    `resetGame` の `qGone` / `syncQuestStageClear` の `forcedOk` / `acceptEventQuest` の `forcedPending`)(§2-10)。
+41. **`.forced`/`.sub` に触るのは8箇所**——**読み手6**(`subsAllCompletedFromMeta` / `MissionSelect.tsx` ×2 /
+    `resetGame` の `qGone` / `syncQuestStageClear` の `forcedOk` / `acceptEventQuest` の `forcedPending`)
+    **+ 書き手2**(`completeEventQuest` / `completeEventEncounter`)。→ 事実60(§2-10)。
 42. **`SUB_RESCUE_MISSION` は stage-1/3/4 の `subs` にしか入っていない**。stage-5 は `subs: []` で
     `storyCanon.test.ts` が `expect(st('stage-5').subs).toEqual([])` を固定(★未決 #18)。
 43. **囲いの発火6条件の自己解消性**(★未決 #16 の材料): `activeEvent`=有限 / `bossChasing`=帰巣で解ける /
@@ -1576,6 +1768,66 @@ MissionSelect の進捗は `stage.subs.length > 0` を前提にしているの�
     (`enemyUtils.test.ts` が pumpkin と同値で固定)(§2-4)。
 45. **拠点確保の在内半径は `BASE_CAPTURE_RADIUS`=130、拠点の輪は 3200**。
     → **2か所目を確保した瞬間、プレイヤーは必ず原点から 3070〜3330px に居る**=常に3000の外(★未決 #17)。
+46. **★走っている `activeEvent` を外から強制解除する経路が実在する。** `useGameLoop` の
+    `if (gateFireOk && activeGateRef.current == null && aePre && aePre.kind !== 'boss') { … endArenaEvent(); }`
+    (ゲート発火待ちのプリエンプション・社長決定v0.25.1555)。**保護されているのは `kind:'boss'` だけ**なので
+    `kind:'horde'` のレスキューは対象。`endArenaEvent()` は `cleared`/`timedOut` を通らない(§2-4)。
+47. **既存の囲いの発火は1本の if/else 連鎖**(`if (!ae) { gate1 → gate2 → 退屈補正 → 2分タイマー }`)で
+    構造的に排他している。**別の if に書くとこの保証の外へ出る**(§2-4)。
+48. **通常囲いの次回時刻は「発火した時にだけ」先送りされる**(`nextArenaAtRef.current = newGameTime +
+    ARENA_FIRE_INTERVAL_MS`(=120000)/ `boredomArenaNextEligibleAtRef.current = newGameTime +
+    BOREDOM_ARENA_CD_MS`(=120000))。**塞がれている間も時刻は進む**=空いた瞬間に発火しうる。
+    しかも**通常囲い/退屈補正の囲いはどちらも中心=プレイヤー中心**(`{ kind, x: pcx, y: pcy, … }`)(§2-4)。
+49. **`ARENA_EVENT_RADIUS` は `useGameLoop.ts` のモジュールローカル定数で `export` されていない**
+    (`const ARENA_EVENT_RADIUS = 240;`)。`pixiScene` からは読めない(§2-3)。
+50. **`syncArena` の円と `syncEventQuestNpc` の円は、層も合成も座標系も違う。**
+    `arenaGfx` = `L.groundLayer` の子・`blendMode='add'`・**world座標に直描き**(`g.circle(ae.x, ae.y, ae.radius)`)。
+    `eventNpcGfx` = `L.actorLayer` の子 `eventNpcView`(`zIndex = npc.y`)の中・通常合成・
+    **`g.circle(0, -8 * d, npc.radius * d)`**(`d = depthScale(npc.y)`)。**半径1px一致は構造的に不可能**(§2-3)。
+51. **地平線フェードのしきい値は遠景森の下端**: `horizonForestFootWorldY = camera.y +
+    horizonActorHideScreenY()`、`horizonActorHideScreenY() = L.horizonForest.y + L.horizonForest.height −
+    HORIZON_ACTOR_HIDE_OFFSET_PX`。実在コメントは「**地平線際は出さない(空に浮かない描画と整合)**」
+    「地平線で透明化(**空に浮かない**)」「さらに地平線フェード(**空に浮かない**=他アクターと同じ)」の**3箇所**。
+    →**「遠景に重なると薄くなる」装置ではない**。floor を敷くと空の上に絵と影が浮く(§2-3)。
+52. **`movePlayer` は移動だけの関数ではない。** 同じ `set()` で `vx`/`vy`/`direction`/`lastDirection`/
+    `isMoving`(`speedNow > moveSpeed * 0.15`)/`aimX`/`aimY`/速度ランプ/`marksmanMovingSince`/
+    PHILLレティクルを毎フレーム書く。**冒頭の早期returnは全部を凍らせる**(§2-8)。
+53. **`PLAYER_INERTIA_TAU = 0.06`(60ms)**(社長指示v0.25.3618で 0 から変更)。
+    `vx = player.vx + (tx*moveSpeed*speedScale − player.vx) * inertiaAlpha(dt, tau)` なので、
+    **目標を0にすれば60msで自然に減速し `isMoving` も落ちる**(§2-8)。
+54. **銃の自動射撃は入力を1つも通らない。** `useGameLoop` が毎フレーム `fireWeapon(activeGun, …)` を呼び、
+    中身は `if (now - weapon.lastFired < effCooldown) return [];` の**クールダウン駆動**。
+    **入力側だけ塞ぐと納品ロック中も撃ち続ける**(§2-8)。
+55. **共通ゲートは2本**: `isInputLocked() = isPaused || player.health <= 0 || corridorRunInActive ||
+    isGameTimeStopped()` / `isAttackLocked() = isInputLocked() || attention !== null`。
+    **`MouseControls` は `isInputLocked()` しか見ておらず、`useGameControls` の flick/counter 枝は
+    `isGameTimeStopped()` しか見ていない**(§2-8)。
+56. **`isPaused: true` を書く実在の箇所は6つ**: レベルアップのメニュー / **`updateMerchantDwell`**(円内滞在で
+    **入力不要で自動的に**ショップが開く)/ **`collectPickup` の `case 'chest'`**(磁力で拾えば装備選択が開く)/
+    `showTutorialPopup` / `triggerCounter` 内の確保済み拠点の武器庫 / `requestStoryReturnPrompt`(§2-8)。
+57. **`syncLocalEventLighting` の二人組の除外条件は `status !== 'completed'` の1つだけ**
+    (`if (eventNpc.status !== 'completed') { push(eventNpc.x, eventNpc.y, …) }`)。
+    → **`gone` でも投影影が落ち続ける**(v0.25.3054 と同型の残り1件)。影の高度は
+    `ShadowCasterReq.heightPx` で表す(§2-2B)。
+58. **`resolveOutOfSolids`(プレイヤーが立てるかの唯一の関数)が見るのは
+    木→松明→城→街プロップ→病院→武器庫→警察署**(labThemeなら壁/プロップ)。
+    一方 **`beginReturnPhase` の空き地探索が屋外で見るのは木の幹・松明・城の3つだけ**。
+    **武器商人と拠点サークルはどちらにも入っていない**(=プレイヤーを止めない)(§2-3)。
+59. **帰還サークルは `beginReturnPhase(castleEvent.x, castleEvent.y)`= `avoidPlayer` 既定 true** で呼ばれ、
+    **`RETURN_CIRCLE_AVOID_DIST`=240** 未満ならプレイヤーから240px離す。半径は **`RETURN_CIRCLE_RADIUS`=95**。
+    → **出現の瞬間、プレイヤーは必ず円の外**(「倒したその場が円の中」は起きない)(§2-8)。
+60. **`getEventQuestMeta` の呼び出しは(テストを除き)8箇所**で、**うち2つは書き手**
+    (`completeEventQuest` の `forced:true` / `sub:true` の2分岐、`completeEventEncounter` の `sub:true`)。
+    3巡目の表は読み手6つしか載せていなかった(§2-10)。
+61. **城ボスの遅延アテンションのディスパッチャはクエストの有無を見ていない**
+    (`castleAttnRef.current.at > 0 && newGameTime >= at && !attention` の3条件だけ)。
+    **`?castlenow=1` でも納品済みステージでもフリーでも張られる**(§2-7)。
+62. **二人組の出現ゲート(`resetGame` の `qGone`)は3条件しか見ていない**
+    (`bossMakerRoom || !qCfg || meta.sub`)。練習/ガントレット/ベンチ/通路/訓練/屋内/ラボ/EX/再訪/
+    フリーは1つも見ていない(§2-1)。
+63. **`isInReturnCircle` は「プレイヤー中心 vs 円中心の距離 <= 半径」**
+    (`Math.hypot(rc.x - px, rc.y - py) <= rc.radius`)。救助のホールド判定・拠点確保の在内判定も同じ形=
+    **このゲームの「円の中に居るか」は全部これ**(§2-4)。
 
 ### 性能(CLAUDE.md「Performance review」)
 
@@ -1591,13 +1843,21 @@ per-frame の新規走査も追加しない(判定は時刻/フラグの比較�
 > 書かれていないので**実装者が勝手に決めてしまう**箇所。すべて**ゲームの見え方・挙動・体験**に触れるため
 > 設計チャットでは決めない。各項に **①問題 ②選べる案 ③推薦1つ** を書く(過去の裁定は事実として併記)。
 >
-> **全17件**(#1・#2・#4〜#18。**#3 は本文へ降ろしたため欠番**——番号を詰めると本文からの参照が
-> 全部ずれるので詰めない)。うち **#11〜#14・#16〜#18 は「設計の穴」ではなく仕様判断**
+> **全18件**(#1・#2・#4〜#19。**#3 は本文へ降ろしたため欠番**——番号を詰めると本文からの参照が
+> 全部ずれるので詰めない)。うち **#11〜#14・#16〜#19 は「設計の穴」ではなく仕様判断**
 > (物語の確定稿・拒否不能な必須経路・拘束時間・憲法テストの書き換え・**勝利不能へ倒れるゲート**・
-> **S5の出現規則**・**S5のサブ任務カード**)なので、**設計チャットでは決めずに社長へ戻す**。
+> **S5の出現規則**・**S5のサブ任務カード**・**納品ロック中に失う宝箱の1回**)なので、
+> **設計チャットでは決めずに社長へ戻す**。
 >
-> **★#16 は「これが決まるまで囲いを実装しない」ブロッカー**(裁定前に実装すると、
-> 原因の見えない勝利不能ランを実機に持ち込むことになる)。
+> ### ★★実装を止めるのは **#16 と #5 の2件だけ**(範囲も限定・§2-0 のブロッカー表と同じ)
+> | 止める件 | **止まる範囲(ここだけ)** | 先に実装してよい部分 |
+> |---|---|---|
+> | **#16** | **§2-4「★他イベントとの同時成立」の発火ゲート(6条件)の1箇所** | §2-4 の編成・発火時の順序・`hordeSpawnRef` 潰し・id セットでの完了判定・90秒・時間切れの専用枝・プリエンプション保護・後始末、および §2-3 / §2-5〜§2-11 の全部 |
+> | **#5** | **§2-8 の「納品成立の契機」と「素通り防止」だけ** | 納品ロック(移動/攻撃/被弾/割り込みポーズ)・ワープの2段・`delivering` の円の扱い・§2-10 の永続記録 |
+>
+> **残る16件は実装を止めない**(本文の現行仕様のまま作り、裁定が出たら値/見せ方を差し替える)。
+> ※3巡目までは §2-0 の表が「ブロッカー2つ」なのに §2-15 の注記が #16 しか書いておらず、
+> **どこまで止まるのかも書いていなかった**。上の表が正(§2-0 と同じ内容)。
 
 **#1 レスキューの囲いの中身(敵の数・種別・配置)**
 - **①問題**: 「赤色の槍と、数体の敵台本」の**「数体」の中身が未指定**。数・種別・配置が決まっていない。
@@ -1654,6 +1914,9 @@ per-frame の新規走査も追加しない(判定は時刻/フラグの比較�
   (B) 従来どおり確認ダイアログを出し、「はい」で納品を始める / (C) 納品の後にもう一度確認を出す。
 - **③推薦**: **(A)**。二重確認は社長指示の「追加の操作は要らない」に反するため。
   対象外ステージ・クリア済みランは**従来どおり確認を出す**(変更なし)。
+- **★止まる範囲**: **§2-8 の「納品成立の契機」と「素通り防止(`requestStoryReturnPrompt`)」だけ**。
+  納品ロックの中身(移動/攻撃/被弾/割り込みポーズ)・ワープの2段・`delivering` の円の扱い・
+  §2-10 の永続記録は **(A)(B) どちらでも同じ**なので**先に実装してよい**。
 
 **#6 レスキュー地点に「まだ行っていない」まま城ボス時刻を過ぎた時の、二人組側の見え方**
 - **①問題**: 二人組はサークルの中で襲われ続けている(囲いは未発火)状態が延々続く。**その間の見た目**
@@ -1749,6 +2012,16 @@ per-frame の新規走査も追加しない(判定は時刻/フラグの比較�
 - **③推薦**: **(A) 90秒**。編成が「赤い削岩型1体+数体」で既存hordeより重く、
   取り残しの保険が働く前に正攻法で倒し切れる余地を残したいため。
   ※事実として併記: 実在値は `ARENA_HORDE_DURATION_MS`=40000 / `ARENA_BOSS_DURATION_MS`=60000。
+- **★4巡目までに無かった材料(90秒の意味が変わる2点・事実)**:
+  1. **90秒は「最悪ここまで閉じ込められる時間」ではなくなった。**
+     §2-4 の後始末を入れたので、**囲いが外から畳まれた場合はその瞬間に完了扱い**になる
+     (=90秒を待たない)。90秒が効くのは「敵が1体取り残されて `cleared` が立たない」場合だけ。
+  2. **90秒の間、通常囲いの次回タイマーは進み続ける**(#16 の材料と同じ事実)。
+     レスキュー発火時に押し戻す(§2-4 で確定)ので**この囲いの直後には開かない**が、
+     **90秒が長いほど「レスキュー中に他の側イベントが待たされる」時間も伸びる**。
+  - → **#16 と連動**: #16 で「阻止条件を外す(A)」が選ばれると、レスキューの囲いが他イベントと
+    重なる状況が増えるので、**閉じ込め時間は短い方が安全側**に寄る((B) 60秒が相対的に良くなる)。
+    **#16 と同時に裁定してもらうのが早い。**
 
 **#14 ★`src/data/storyCanon.test.ts` の書き換え(憲法テストに触れる)**
 - **①問題**: §2-14 で `encounterOnly` を撤去すると、`storyCanon.test.ts` の
@@ -1791,6 +2064,19 @@ per-frame の新規走査も追加しない(判定は時刻/フラグの比較�
     賞金首は起き続け、円は二度と発火しない。** 円は「進行方向500〜1000px先」に出るので普通に起こりうる。
   - **もう1つの実害は待ち時間そのもの**: 最悪ケースでは複数の条件が数珠つなぎになり、
     **合図が無いまま数十秒〜1分以上「入っても何も起きない」**が続く。
+  - **★4巡目に無かった材料①: 阻止は「一度待てば解ける」ではなく、周期的に再発する(実在確認)。**
+    通常囲い/退屈補正の囲いの次回時刻(`nextArenaAtRef` / `boredomArenaNextEligibleAtRef`)は
+    **発火した時にだけ先送りされる**ので、塞がっている間もタイマーは進む。
+    しかも**どちらも円の中心=プレイヤーの中心**。
+    → **条件が空いた瞬間、プレイヤーの足元(=レスキューの円の中)で通常の囲いが開き、
+    その40〜60秒ぶん条件1(`activeEvent === null`)がまた塞がる。** これがランのあいだ繰り返される。
+    (§2-4 で「レスキュー発火時に通常囲いのタイマーを押し戻す」を確定したが、**それは発火した後の話**で、
+    **発火する前に塞がれ続ける問題には効かない**。)
+  - **★4巡目に無かった材料②: 発火した後も、外から畳まれる経路が実在する**(§2-4「★★立っている自分の
+    囲いを、ゲート囲いが外から畳む」)。**①のプリエンプション保護と②の後始末を入れる前提**で
+    この6条件を読むこと。**後始末(=`activeEvent` が消えたのに未打刻なら強制クリア)を入れておけば、
+    #16 がどちらに裁定されても「原因の見えない勝利不能」は後段で1回止まる**
+    (ただし**円に入っても発火しない**という体験そのものは残るので、#16 の裁定は依然必要)。
 - **②選べる案**:
   (A) **賞金首と裏ボスを発火の阻止条件から外す**(残るのは `activeEvent` / `bossChasing` / ハンター / 紅き夜)。
       どちらも `activeEvent` **ではない**ので、`endArenaEvent` の `fromEvent` 全消しで
@@ -1808,7 +2094,9 @@ per-frame の新規走査も追加しない(判定は時刻/フラグの比較�
   結局は待たせる。**ただし②の懸念(裏ボスと囲いが重なる状況が増える)は残る**ので、
   (A) を採る場合は **裏ボスだけ阻止条件に残す (A′)** も選べる形にしておく。
 - ※これは**ゲームの挙動・体験に触れる**ので、監査役と2人では決めない。
-  **裁定が出るまで §2-4 の囲いを実装しない。**
+  **★止まるのは §2-4 の「発火ゲート(6条件)」の1箇所だけ**(§2-0 / §2-15 冒頭の表)。
+  §2-4 の残り(編成・発火時の順序・`hordeSpawnRef` 潰し・id セットでの完了判定・90秒・時間切れの
+  専用枝・プリエンプション保護・後始末)と §2-3 / §2-5〜§2-11 は**先に実装してよい**。
 
 **#17 ★S5の出現点の規則(「原点3000未満」がS5では毎回破れる)**
 - **①問題**: §2-3 は出現点に「原点からの距離が `AREA_THRESHOLDS[1]`=3000 未満」の上限を課している。
@@ -1825,8 +2113,17 @@ per-frame の新規走査も追加しない(判定は時刻/フラグの比較�
   (B) **S5もS1/S3/S4と同じ規則のまま**(=毎回フォールバックする。上限は「たまたま通れば効く」扱い)。
   (C) **S5だけ上限を拠点の輪に合わせて緩める**(例: 原点から `BASE_SITE_RADIUS`+α 未満)。
 - **③推薦**: **(A)**。理由 = ①S5のレスキューは「拠点を2つ取った直後」に起きる出来事なので、
-  **物語としても取った拠点のそばに出るのが自然** ②拠点の周りは**プレイヤーが今まさに確保した安全地帯**なので
-  難度の担保になる ③例外分岐が「S5はこう」の1本で済み、(C) のような**新しいしきい値を発明しない**。
+  **物語としても取った拠点のそばに出るのが自然** ②例外分岐が「S5はこう」の1本で済み、
+  (C) のような**新しいしきい値を発明しない**。
+- **★推薦(A)の弱点も事実として併記する(4巡目は「安全地帯だから難度の担保になる」とだけ書いていた)**:
+  1. **拠点は原点3200の輪の上=`AREA_THRESHOLDS[1]`(3000)より常に外**。つまり
+     **「拠点の近傍」に出す=デンジャーゾーンの中に出す**ことを毎回確定させる、という意味になる。
+     (A) は「上限を守る」案ではなく、**上限を最初から諦めて置き場所だけ決める**案。
+  2. **拠点は失陥する**(§2-11・`status: 'captured' → 'open'`)。**確保直後は安全でも、
+     レスキュー中〜城ボスまでの間に安全でなくなりうる**ので、「安全地帯だから難度の担保になる」は
+     **成立しない**(この理由は取り下げた)。
+  - → **(A) の実質的な利点は「置き場所が説明できること」と「例外が1本で済むこと」**であって、
+    難度の担保ではない。難度をどうするかは #15 と同じ扱い(実機で重ければ後から絞る)。
 - ※これは**難度と体験**に触れるので社長裁定。本文の現行仕様=S1/S3/S4と同じ規則、は据え置く。
 
 **#18 ★S5にサブ任務カードを出すか(憲法テストに触れる・#14 と連動)**
@@ -1850,3 +2147,23 @@ per-frame の新規走査も追加しない(判定は時刻/フラグの比較�
   (`SUB_QUEST_STAGE_IDS` は書き換えない)。カードが並ぶのと解放条件は別物。
   ※#11(`EVENT_QUEST_ENCOUNTER_LINES` の廃止)と #14(`encounterOnly` の固定削除)と**同じテストファイル**を
   触るので、**3件まとめて裁定してもらうのが早い**。
+
+**#19 納品ロック中に宝箱を拾った時の「装備選択1回」を失ってよいか(★ブロッカーではない)**
+- **①問題**: 納品ロック中は `isPaused` を立てられない(立てると会話が止まって**永久フリーズ**・§2-8)。
+  ところが **事実(実在確認)**: `collectPickup` の `case 'chest'`(ボスドロップの宝箱)は
+  **`showUpgradeMenu: true, isPaused: true` を立てる**うえ、**入力が要らない**(磁力で拾えば起きる)。
+  城ボスのドロップが磁力圏内にあると、**納品後の7〜10秒の間に開きうる**。
+  レベルアップ(#1の①)は `levelUpIntroUntil` が消えないので**保留できる**が、
+  **宝箱には保留する受け皿が無い**(その場で `upgradeOptions` を作って開く形)。
+  → 開かない=**その1回の選択が失われる**。
+- **②選べる案**:
+  (A) **開かない(失う)**。納品ロック中は `showUpgradeMenu` / `isPaused` を立てない。
+  (B) **保留箱を作る**(「開くべきメニューが1件ある」を store に持たせ、ロック解除後に開く)。
+      ※ただし解除後はすぐ `gameWon` へ行くので、**結局リザルト遷移と競合する**
+      (=新しい仕組みを1つ増やして、実際に開く保証は得られない)。
+  (C) **納品ロック中はピックアップの回収自体を止める**(足元に残す)。
+      ※ロック中はプレイヤーが動けず、解除後はリザルトなので**結局拾えない**=(A)と同じ結果になる。
+- **③推薦**: **(A)**。理由 = ①納品後は**そのままリザルトへ行く**ので、そこで選ぶ装備が効くのは
+  「持ち帰り(`takeHomeEquipment`)」だけで、**得られるものが小さい** ②(B)(C)は**新しい仕組みを増やして
+  結果は変わらない** ③会話が止まって `gameWon` に到達しない事故の方が桁違いに重い。
+- ※**ブロッカーではない**(本文の現行仕様=(A)で実装してよい。裁定で (B) になったらその時に足す)。
