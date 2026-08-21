@@ -70,6 +70,7 @@ import {
   createCounterThreatState, type BotPersona, type RusherTrackState, type CounterThreatState,
   separationAdjust, escapeIfStuck, createBotStuckState, type BotStuckState, // ★v0.25.3596: 実機側(useGameLoop)と同じ最終入力調整をヘッドレスにも
 } from './playtestBot';
+import { botHoldsMeleeForNihil } from './thorNihil'; // §8-4: トールの紫円の中では近接を振らない(master/skilled)
 import { pickUpgradeByPolicy, mulberry32 } from './botUpgradePolicy';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
@@ -601,7 +602,12 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   useGameStore.getState().movePlayer(finalInput, dt);
   autoFireGun();
   // v0.25.3064: 目的地ステア中に見つけた卵も叩く(useGameLoop側と同じ)。
-  if ((mineAdj.wantsMelee || objSteerAdj?.wantsMelee || wantsCounterReaction) && !attackSuppressedByDodge) useGameStore.getState().triggerCounter();
+  // ★v0.25.3780(§8-4): トールの紫円(無の境地)の中では master/skilled は近接を振らない
+  // (振ると必中一閃が飛ぶ)。novice/casual は完全なno-op。実機側(useGameLoop)と同じ1本の純関数。
+  const nihilHold = botHoldsMeleeForNihil(
+    botSkillProfile(skill), player.x + player.width / 2, player.y + player.height / 2, enemies);
+  if (!nihilHold
+    && (mineAdj.wantsMelee || objSteerAdj?.wantsMelee || wantsCounterReaction) && !attackSuppressedByDodge) useGameStore.getState().triggerCounter();
   if (decision.wantsWeaponSwitch) cycleActiveGun();
 
   useGameStore.getState().updateEnemies(dt);

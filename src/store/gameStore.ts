@@ -147,6 +147,8 @@ import {
   glenForm1TransitionReady, type GlenTrailPoint,
 } from '../utils/glenChain';
 import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
+// ★近接スイング確定の打刻(1本の純関数)。research/THOR_ISSEN_REWORK.md §1-3。
+import { stampMeleeSwingCommit } from '../utils/thorNihil';
 import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
@@ -4137,6 +4139,7 @@ const applySlasherChainStrike = (
     return { swung: false, hit: false, finish: false, killed: 0 };
   }
   get().markMeleeSwingFx(); // 追撃も近接スイングの二次モーション(踏み込み)を出す(描画のみ)
+  get().commitMeleeSwing(); // ★近接スイング確定の打刻(4経路の1つ=スラッシャー追撃・§1-3)
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
   // 追撃の射程は初撃時に記録した slasherReach を使う(ストライカーの溜めで伸びた射程が初撃で消費されても、
@@ -4914,6 +4917,9 @@ interface GameState {
   setSlasherCombo: (readyAt: number, step: number) => void;
   pumpSlasherQueuedTap: () => void; // スラッシャー先行入力の自動発動(毎フレーム・useGameLoopから)
   markMeleeSwingFx: () => void; // 近接スイング演出の起点を更新(描画のみ)。追撃など別経路から呼ぶ。
+  // ★近接スイング確定の専用打刻(player.meleeSwingCommitAt)。**近接を振った箇所だけ**が呼ぶ
+  // (カウンター成立の演出/ショップ経路からは呼ばない)。トールの必中一閃の引き金がこれを読む。
+  commitMeleeSwing: () => void;
   markFirstAidPoseFx: () => void; // 救急鞄スキル発動演出の起点を更新(描画のみ)。払い出しの瞬間に呼ぶ。
   markCastleBossSpawned: () => void;
   // 囲い系イベント: 開始(activeEvent をセット＋囲い周辺の通常敵を一掃)/ 終了(activeEvent=null＋残存イベント敵を撤去)。
@@ -5367,6 +5373,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     reloadEndsAt: 0,
     reloadingWeaponId: '',
     meleeSwingAt: 0,
+    meleeSwingCommitAt: 0,
     firstAidPoseAt: 0,
     magBonus: 0,
     reloadMult: 1,
@@ -6305,6 +6312,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           counterCooldownEnd: counterCd,
         }
       }));
+      get().commitMeleeSwing(); // ★近接スイング確定の打刻(4経路の1つ=刀・§1-3)
       // 刀でも松明・卵を破壊できる(刀の間合いの円)。
       get().breakPropsAlong(pcx, pcy, 1, 0, 0, katanaRange(player), meleeDamage * 2.5);
       return { swung: false, hit: false, finish: false, killed: 0 };
@@ -6332,6 +6340,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           counterCooldownEnd: now + (counterWindowMs + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS) * meleeCooldownMult(player),
         }
       }));
+      get().commitMeleeSwing(); // ★近接スイング確定の打刻(4経路の1つ=鞭・§1-3)
       set({ whipSwingFxAt: now }); // 鞭を振る音SEのトリガ(命中の有無に関わらず鳴る)
       // 鞭の軌跡 + 当たり範囲の可視化(全長を即表示→フェード。太い帯=当たり範囲)。
       get().spawnEffect({
@@ -6822,6 +6831,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           })
         : state.projectiles
     }));
+
+    get().commitMeleeSwing(); // ★近接スイング確定の打刻(4経路の1つ=ナイフ・§1-3)
 
     for (const id of grenadesToDetonate) {
       const grenade = projectiles.find(p => p.id === id);
@@ -13557,6 +13568,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({ player: { ...state.player, meleeSwingAt: Date.now() } }));
   },
 
+  // ★v0.25.3780(research/THOR_ISSEN_REWORK.md §1-3): 近接スイング確定の**専用打刻**。
+  // 打刻を書くのは**この1本だけ**(中身は純関数 stampMeleeSwingCommit)。呼ぶのは
+  // 「プレイヤーの近接スイングが確定した箇所」だけで、**カウンター成立の演出(markMeleeSwingFx)や
+  // 武器庫サークルのショップ(counterWindowEnd)からは呼ばない**。
+  // 将来ナイフ系の新武器/新しい振り方を足したら**そこにも呼ぶのが規則**
+  // (呼び出し箇所の件数は src/utils/meleeSwingCommit.test.ts が固定していて、増減すると落ちる)。
+  commitMeleeSwing: () => {
+    set(state => ({ player: stampMeleeSwingCommit(state.player, Date.now()) }));
+  },
+
   markFirstAidPoseFx: () => {
     set(state => ({ player: { ...state.player, firstAidPoseAt: Date.now() } }));
   },
@@ -16950,6 +16971,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadEndsAt: 0,
           reloadingWeaponId: '',
           meleeSwingAt: 0,
+          meleeSwingCommitAt: 0,
           firstAidPoseAt: 0,
           magBonus: 0,
           reloadMult: 1,

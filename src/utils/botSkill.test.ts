@@ -412,6 +412,30 @@ describe('攻撃側ダイヤルの単調性(engageDist/dodgeVsAttack・不変条
       expect(BOT_SKILL_PROFILES[order[i]].dodgeVsAttack).toBeLessThanOrEqual(BOT_SKILL_PROFILES[order[i - 1]].dodgeVsAttack);
     }
   });
+
+  // ★v0.25.3780(research/THOR_ISSEN_REWORK.md §8-4・社長裁定「マスターとスキルドは覚える」):
+  // トールの紫円(無の境地)の中では近接を振らない、を学習しているか。既存の seesBossCounterPhases と
+  // 同じ「段ごとの真偽ダイヤル」なので単調性も同じ流儀で固定する。
+  it('respectsNihilCircleは段が上がるほど単調非減少(master/skilledだけが覚える)', () => {
+    const order = ['novice', 'casual', 'skilled', 'master'] as const;
+    for (let i = 1; i < order.length; i++) {
+      expect(Number(BOT_SKILL_PROFILES[order[i]].respectsNihilCircle))
+        .toBeGreaterThanOrEqual(Number(BOT_SKILL_PROFILES[order[i - 1]].respectsNihilCircle));
+    }
+    expect(BOT_SKILL_PROFILES.novice.respectsNihilCircle).toBe(false);
+    expect(BOT_SKILL_PROFILES.casual.respectsNihilCircle).toBe(false);
+    expect(BOT_SKILL_PROFILES.skilled.respectsNihilCircle).toBe(true);
+    expect(BOT_SKILL_PROFILES.master.respectsNihilCircle).toBe(true);
+  });
+
+  it('★紫の円は回避脅威に足していない(帯としても円としても拾わない=立っているだけなら安全)', () => {
+    const thorNihil = {
+      id: 'n', type: 'thor', bossState: 'issen-nihil',
+      x: 0, y: 0, width: 40, height: 40,
+      aiFromX: 0, aiFromY: 0, aiTargetX: 310, aiTargetY: 0,
+    } as unknown as Enemy;
+    expect(telegraphDodge(60, 0, thorNihil)).toHaveLength(0);
+  });
 });
 
 // ★v0.25.2432: ボットがボスの技を1つも避けなかった穴の回帰テスト。

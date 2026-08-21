@@ -20,7 +20,7 @@ export type HiddenMoveKey =
   | 'mi-bite' | 'mi-laser' | 'mi-dash' | 'mi-burst' | 'mi-radial'
   | 'jo-coil' | 'jo-dash' | 'jo-burst' | 'jo-radial'
   | 'sk-ice' | 'sk-blade' | 'sk-cage' | 'sk-dash' | 'sk-burst' | 'sk-radial'
-  | 'th-issen' | 'th-tsuki' | 'th-harai' | 'th-jump';
+  | 'th-issen' | 'th-tsuki' | 'th-harai' | 'th-jump' | 'th-dash';
 
 /**
  * どのボスがどの技を持つか。**パネルの playables と、再生時の取り違え防止の両方がこれを読む**
@@ -30,7 +30,7 @@ export const HIDDEN_MOVES_BY_TYPE: Readonly<Record<string, readonly HiddenMoveKe
   mimir: ['mi-bite', 'mi-laser', 'mi-dash', 'mi-burst', 'mi-radial'],
   jormungand: ['jo-coil', 'jo-dash', 'jo-burst', 'jo-radial'],
   skadi: ['sk-ice', 'sk-blade', 'sk-cage', 'sk-dash', 'sk-burst', 'sk-radial'],
-  thor: ['th-issen', 'th-tsuki', 'th-harai', 'th-jump'],
+  thor: ['th-issen', 'th-tsuki', 'th-harai', 'th-jump', 'th-dash'],
 };
 
 /**

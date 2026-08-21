@@ -19,6 +19,7 @@ import { isHiddenControllerBoss } from '../../utils/hiddenBossPlayback';
 import { BOSS_MAKER_BOSSES, parseBossMakerBoss } from '../../utils/bossTest';
 import { RANGE_BY_CATEGORY } from '../../utils/weaponUtils';
 import { BOSS_RECOVER_FLOOR_MS } from '../../utils/bossTelegraph';
+import { ANGEL_MIGUEL_TUNING } from '../../utils/angelScript'; // §4: トールの突進はミゲルの踏み込みと同値(流用の記録)
 import type { TuningField } from './bossTuning';
 
 type Rec = Record<string, unknown>;
@@ -180,10 +181,18 @@ describe('既定値が移設前の実装値と完全一致(値を1つも変え�
     expect(HIDDEN_SKADI_TUNING_DEFAULTS.cage).toEqual({ windup: 1000, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 900), cdMs: 12000, ringRadius: 180, count: 8 });
   });
 
+  // ★v0.25.3780(research/THOR_ISSEN_REWORK.md §1〜§4・社長指示2026-08-20/21): 一閃の2段化(紫300+赤500)・
+  // 突きの予告1100/帯300・払いの予告600・新技「突進」。**社長が指定した値だけ**が動いている:
+  //  一閃 windup 2400→500(+ nihilMs/nihilRadius 新設)/ 突き windup 1000→1100・range 240→300 /
+  //  払い windup 1000→600。**dashMs/range/halfWidth/recover・突きのms/trackFrac/recover・
+  //  払いのactive/range/halfWidth/recover は1つも動かしていない**(不変の宣言をここで機械検査する)。
   it('トール(社長が実機で決めた値は1つも動かない)', () => {
-    expect(HIDDEN_THOR_TUNING_DEFAULTS.issen).toEqual({ windup: 2400, dashMs: 280, range: 310, halfWidth: 80, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 900) });
-    expect(HIDDEN_THOR_TUNING_DEFAULTS.tsuki).toEqual({ windup: 1000, ms: 180, range: 240, halfWidth: 15, trackFrac: 0.5, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 600) });
-    expect(HIDDEN_THOR_TUNING_DEFAULTS.harai).toEqual({ windup: 1000, active: 220, range: 310, halfWidth: 40, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 700) });
+    expect(HIDDEN_THOR_TUNING_DEFAULTS.issen).toEqual({ nihilMs: 300, nihilRadius: 200, windup: 500, dashMs: 280, range: 310, halfWidth: 80, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 900) });
+    expect(HIDDEN_THOR_TUNING_DEFAULTS.tsuki).toEqual({ windup: 1100, ms: 180, range: 300, halfWidth: 15, trackFrac: 0.5, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 600) });
+    expect(HIDDEN_THOR_TUNING_DEFAULTS.harai).toEqual({ windup: 600, active: 220, range: 310, halfWidth: 40, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 700) });
+    // 新技「突進」(§4)。既定は**ミゲルの踏み込みと同値**=新しい数字を発明していないことの記録。
+    expect(HIDDEN_THOR_TUNING_DEFAULTS.dash).toEqual({ windup: 700, moveMs: 230, strikeMs: 110, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 800), cdMs: 6000 });
+    expect(HIDDEN_THOR_TUNING_DEFAULTS.dash).toEqual(ANGEL_MIGUEL_TUNING.dash);
     expect(HIDDEN_THOR_TUNING_DEFAULTS.jump).toEqual({ triggerHits: 3, triggerWindowMs: 6000, windup: 700, ms: 360, radius: 70, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 900) });
     expect(HIDDEN_THOR_TUNING_DEFAULTS.counterLeapMs).toBe(260);
     expect(HIDDEN_THOR_TUNING_DEFAULTS.backstep).toEqual({ minIntervalMs: 3000, maxIntervalMs: 6000, distPx: 90, ms: 180 });

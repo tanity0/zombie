@@ -1,5 +1,91 @@
 # Development Log
 
+## v0.25.3780 — トール技台本の実装(一閃2段化+必中一閃/突き・払いの予告/新技「突進」/赤カウンターの是正)+流星文法横展開の設計(§11)【2026-08-22 02:21 JST】
+
+**同梱(設計のみ・ゲーム内容の変更なし)**: `PACING_PUZZLE.md §11 流星文法の横展開(円/扇/持続ループ)` を新規執筆(社長GO 2026-08-21「して」)。
+現行配線の走査で判明した事実を土台にした監査前v1。**状態変化: 流星文法の横展開 → 設計中(残り: 設計監査→★未決3件の社長裁定→発注)**。
+★未決3件=①円の残り時間をどの軸に載せるか(推薦=角度=パイ。半径にすると「赤い所にしか当たらない」と誤読され赤と判定の一致が崩れて見えるため) ②T6「溜めで太くなる線」を流星へ寄せるか温存するか(推薦=温存) ③進捗を持たない円に流星を載せるか(推薦=今回は載せない)。
+
+発注仕様: `research/THOR_ISSEN_REWORK.md`(★未決ゼロ・設計監査2巡通過)の §1〜§5・§8 全項目。
+
+**状態変化: トール技台本 → 検収中(残り: 実機確認=紫円が見えているか・500msの手応え・突進の間合い / ★未決4件の社長裁定=§9)**
+
+### 実装した内容
+1. **§1 一閃の2段化**: `issen-nihil`(紫の円・300ms・ダメージなし・カウンター不可)→ `issen-windup`(赤500ms)→
+   従来の `issen-dash`。州名に `-windup` を付けていないのは、付けると `isBossCounterableNowApprox`(語尾判定)と
+   `botSkill` の帯脅威(`bs.endsWith('-windup')`)が「カウンターできる赤帯」と誤答するため(§5-1)。
+   紫の間は `thorFlashTint` を**呼ばない**(300msしかないので通すと紫の間じゅう体が赤く光る)。体は白⇔紫の往復。
+2. **§1-3 必中一閃**: 近接スイング専用の打刻 `player.meleeSwingCommitAt` を新設し、**スイングが確定する4経路**
+   (ナイフ/刀/鞭/スラッシャー追撃)から `commitMeleeSwing()` を呼ぶ。**カウンター成立の演出(`markMeleeSwingFx`
+   =7箇所)とショップ経路(`counterWindowEnd`)からは呼ばない**。引き金は「打刻が前フレームから進んだか」の
+   **エッジ**で見る(打刻=Date.now系 / 州の残り時間=gameTime系。**時計を混ぜない**)。
+   即発動時は `Enemy.issenGuaranteedUntil`(gameTime)を立て、`issen-dash` の被弾解決で
+   `counterWindowEnd` の分岐を**スキップして damagePlayer へ直行**する(閉じるのは対プレイヤーのみ。
+   `applyGhostAllyCapsuleHit` は現行どおり)。ダッシュを抜ける時に必ず 0 へ落とす。
+3. **§2 突き**: 予告 1000→1100ms / 帯 240→300px(半幅15=全幅30は不変)。溜め中に**赤い帯**を出す(裁定3)。
+   帯は「狙い点そのもの」ではなく「狙いの向き×range」で組む——描画・カウンター成立域・実行時の帯の**3つとも同じ式**。
+4. **§3 払い**: 予告 1000→600ms。他は不変。
+5. **§4 新技「突進」**: `thor-dash-windup / thor-dash-move / thor-dash-recover`(裏ボス3体の `dash-*` と
+   **別名**にした=同じ if/else 連鎖を通るため同名だと裏ボスのハンドラが動く)。ミゲル型で
+   windup700/moveMs230/strikeMs110/recover800/cdMs6000(=`ANGEL_MIGUEL_TUNING.dash` と同値)。
+   予告=赤の流星ライン(`dashLineTick` 流用)。カウンター成立時は既存 `AN_C.dashCounterPushbackPx`(150)で
+   来た方向へ弾き返し、位置は `clampRectToPlayableArea` を通す。移動は `airHopEase01`(慣性MUST)。
+   台本 `SCRIPTS.thor.dash = ['dash','tsuki','tsuki']` を追加。**既存4起点と他ボスの台本は1文字も変えていない**。
+6. **§8-2 赤カウンターの是正**: `hiddenBossCounterableNow` の `boss.type !== 'thor'` 除外を撤去し、
+   トールを他ボスと同じ宣言表(`counterReach.ts`)へ乗せた。各州のハンドラに散っていた
+   `thorBodyOverlapNow()` のカウンター判定は**全部撤去**(判定の場所を1本にした)。
+   溜め=赤帯(一閃310×80 / 突き300×30 / 払い310×80)、硬直と飛び掛かりの溜めと突進=従来どおり 'body'。
+   守護霊側も同じ判定へ寄せた(旧: トールだけ語尾で概算する `isBossCounterableNowApprox`。拾う州は同一)。
+7. **§8-4 ボット**: `BotSkillProfile.respectsNihilCircle`(master/skilled=true, novice/casual=false)。
+   実機(useGameLoop)とヘッドレス(playtestDriver)の**両方**の近接発火口に同じ純関数
+   `botHoldsMeleeForNihil()` を掛けた。紫円は**回避脅威には足していない**。半径は台帳を読む(複製なし)。
+8. **§5 配線**: 型(`bossState` union / `Enemy.issenGuaranteedUntil` / `Enemy.thorDashReadyAt` /
+   `Player.meleeSwingCommitAt`)・`ghostTelegraph`(紫=none / 突進=shared band + ghost band + none)・
+   `moveReaction`(`issen-nihil`→`thor-issen`、`thor-dash` 新設)・`moveCancelGuard`(`issen-nihil -> issen` を
+   理由つきで申告)・`?thorscript=0`(紫も必中も出る。切るのは硬直と連携キューだけ=現行の切り分けを維持)・
+   ボスメーカー(`issen.nihilMs`/`nihilRadius` 欄+突進の節と ▸`th-dash`。▸の粒度は「一閃=1本」のまま)・
+   予告SE(一閃1回につき警告音1回=紫の開始のみ / `katana-dash` は通常・必中とも)・
+   突進の土煙台帳(「突進という動作を持つ全員」へ登録)。
+   **死にコード `pickThorCombo` / `thorComboChance` / `THOR_COMBO_NEAR_MAX` とそのテストを削除**
+   (連携の正本は `bossChoreography.SCRIPTS.thor` の1箇所)。生きていた「払いの間合いゲート250」だけ
+   `THOR_HARAI_MAX_DIST` へ改名して残した。
+
+### 追加した純関数とテスト(実装精度の規律4)
+- `src/utils/thorNihil.ts`(新規・レンダラ/store非依存の葉): 州名定数・半径の唯一の読み口・打刻の純関数・
+  円の内外判定・スイングのエッジ判定・必中の引き金・必中窓・ボットの「振らない」判定。
+- `src/utils/thorNihil.test.ts`(19件): 半径が**1定数**から来ること(ボスメーカーで動かすと引き金域と
+  ボットの域が**同時に**動く)/ カウンター演出・ショップでは立たないこと / 紫の州以外では立たないこと /
+  1つの無の境地で1回だけ / 必中窓 / ボットの段差と単調性。
+- `src/utils/meleeSwingCommit.test.ts`(4件): **打刻の呼び出し口の件数を4に固定**(増減したら落ちて
+  「新しい近接に打刻を足したか?」を人に問う)。`markMeleeSwingFx` と混ざっていないことも検査。
+- `bossChoreography.test.ts`: `planBossChoreography('thor','dash',phase)` / 既存4起点の不変 / 他ボスの不変 /
+  同じ技(tsuki)の連続がキューで潰れないこと / 3手が枠内に収まること。
+- `counterReach.test.ts`: トールの州が一覧に載ったこと / 紫が二重に閉じていること / 寸法が台帳直読みであること /
+  突きの帯が「狙いの向き×range」で組まれること / **他ボスの宣言が1つも変わっていないこと**。
+- `moveCancelGuard.test.ts` / `moveReaction.test.ts` / `botSkill.test.ts` / `thorScript.test.ts` にも追補。
+
+### 検証
+- `npm run typecheck` エラー0 / `npm run lint` エラー0(warning 8=既存)。
+- `npx vitest run` = 4457 passed。失敗5件は**すべてこのバッチの前から落ちていたもの**(clean tree で再現確認済み):
+  `ghostTelegraph`×2(angelBossTick の backroll/quickblades 未分類 + phill-judgment-windup の死にキー)/
+  `angelPlayback` phillboss / `sim` の移動ランプ / `bountyTick` 舞妓(**乱数依存のフレーク**。
+  clean tree で 6回中3回落ちることを確認)。
+- **実機確認は未実施**(社長の実機待ち)。§7-7「紫の円が実機で見えているか」はここでは確定していない。
+
+### 自己点検(実装精度の規律5)
+- 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に**抵触しない**。トールはステージ5の裏ボスで
+  初心者ゾーン外、変更はトール1体の技と、その技に反応する台帳(予告/カウンター/ボット)に閉じている。
+- 他ボスへの波及なし: `boss.type !== 'thor'` の撤去は**トールの州名を裏ボス3体が1つも持たない**ため
+  評価結果が変わらず(テストで固定)、台本表の追加も `SCRIPTS.thor` の新キー1本だけ。
+
+### ★未決(社長裁定待ち・`research/THOR_ISSEN_REWORK.md` §9に詳細)
+1. **突進の抽選重み**(仕様に指定なし)。スカジの突進の行を流用=遠距離で一閃の相対頻度が下がる。
+2. **突進の斬り抜けカプセルの寸法**(仕様に指定なし)。ミゲル型に倣い**払いの帯を流用**(310×80)。
+   ミゲル(190)より1.6倍長い。
+3. **突進の溜め中のカウンター成立域**。§4-1(「裏ボスダッシュ/ミゲルと同じ作り」)に従い 'body' にした。
+   §8-2の受け入れ条件1を「帯」と読むなら**全突進を一緒に変える話**になるので止めて上げる。
+4. §8-1(赤500ms)/§8-5(半径200px)/§4-1(ミゲル同値)は裁定済みの叩き台=実機の手応え待ち。
+
 ## v0.25.3779 — 裁定2件: EX解放条件(サンプル回収に読み替え)+private化は(b)Cloudflareで確定【2026-08-22 01:53 JST】
 
 - **二人組v2 ①EX解放条件=裁定確定・★未決ゼロ**。社長案「こいつ倒してサンプル集めてきて。って城ボスの

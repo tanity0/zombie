@@ -30,6 +30,7 @@ export const MOVE_REACTION_KEYS = [
   'g-talon', 'g-boon', 'g-reach', 'g-nihil',
   'g-tailslam', // v0.25.3139: 尻尾の叩きつけ→弾連射(帯の一撃。連射する弾は既存の胴体弾='g-parts')
   'thor-issen', 'thor-tsuki', 'thor-harai', 'thor-jump',
+  'thor-dash', // v0.25.3780: トールの新技「突進」(research/THOR_ISSEN_REWORK.md §4)
   // v0.25.2603(社長指示「ちゃんと広げて揃えましょう」): **残り全ボスの近接/AoE技**。
   // ここが城ボス+トールだけで止まっていたため、天使6体/アイドル/裏ボス3体は「弾を撃つ技」しか
   // 記録されず(BULLET_MOVE_KEYS=v0.25.2543で全数化済み)、評点・技への反応・避け方向の全部が
@@ -140,7 +141,11 @@ const SELF_EXPOSURE: Partial<Record<MoveReactionKey, {
 // 名前が他ボスと衝突する状態('harai'等はミゲルも使う)があるため必ずtypeでゲートする。
 const GIANT_MOVE_RE = /^g-([a-z]+)/;
 const THOR_STATE_TO_MOVE: Readonly<Record<string, MoveReactionKey>> = {
+  // ★'issen-nihil'(段1=紫の円)も**同じ 'thor-issen' キー**へ寄せる(掟: その技の全フェーズを1キーへ)。
+  // 載せ忘れるとエピソードが紫→赤の境目で閉じて開き直す=**1つの一閃が2回に数えられる**(v0.25.3780)。
+  'issen-nihil': 'thor-issen',
   'issen-windup': 'thor-issen', 'issen-dash': 'thor-issen', 'issen-recover': 'thor-issen',
+  'thor-dash-windup': 'thor-dash', 'thor-dash-move': 'thor-dash', 'thor-dash-recover': 'thor-dash',
   'tsuki-windup': 'thor-tsuki', 'tsuki': 'thor-tsuki', 'tsuki-recover': 'thor-tsuki',
   'harai-windup': 'thor-harai', 'harai': 'thor-harai', 'harai-recover': 'thor-harai',
   'jump-windup': 'thor-jump', 'jump-attack': 'thor-jump', 'jump-recover': 'thor-jump',

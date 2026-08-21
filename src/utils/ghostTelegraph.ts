@@ -115,6 +115,7 @@ put(LEDGER, [
   'mdash-windup', 'harai-windup', 'tate-windup', 'sweep-windup', 'downslash-windup',
   'thrust-windup', 'ring-move-windup', 'ring-beam-windup', 'dash-windup', 'laser-windup',
   'coil-windup', 'issen-windup', 'tsuki-windup',
+  'thor-dash-windup', // v0.25.3780: トールの突進(§4)。裏ボスの dash-windup と同じ流星ライン=語尾ルールで拾える
   // 既存表が状態名で名指ししている実行フェーズ(トール)。
   'harai', 'issen-dash', 'tsuki',
   // PACING_PUZZLE.md §10(フィル・バッチ2): 溜め開始(begin*)でaiFrom/aiTargetをロックする3技の溜め。
@@ -132,6 +133,7 @@ put(LEDGER, [
   'dash',          // 裏ボス3体の突進(mimir/jormungand/skadi)
   'coil',          // ヨルムンガルドの巻き付き薙ぎ
   'mdash-move',    // ミゲルの踏み込み突進
+  'thor-dash-move', // v0.25.3780: トールの突進の走り(ミゲル mdash-move と同型=語尾が '-windup' でない実行フェーズ)
   'tate',          // ミゲルの縦払い
   'sweep',         // ラフィ/ウリ/スリィエルの薙ぎ
   'downslash',     // ウリの振り下ろし
@@ -238,6 +240,7 @@ put(LEDGER, [
   'radial-recover', 'ring-recover', 'ring-spin-recover', 'skadi-blade-recover', 'skadi-ice-recover',
   'spear-recover', 'spike-recover', 'sweep-recover', 'tate-recover', 'thrust-recover',
   'tsuki-recover', 'volley-recover', 'warp-recover',
+  'thor-dash-recover', // v0.25.3780: トールの突進の硬直(§4)
   'driller-thrust-recover', // PACING_PUZZLE.md §9-4(削岩型): 突きの硬直。
   // PACING_PUZZLE.md §10(フィル・バッチ2): 硬直(全技共通)+blast溜め明けで既に判定が終わっている実行フェーズ。
   'phill-wingslash-recover', 'phill-wingthrust-recover', 'phill-wingcombo-recover',
@@ -295,6 +298,17 @@ put(LEDGER, IDOL_SHOT_SLOTS.flatMap(m => [`idol-${m}-windup`, `idol-${m}-fire`])
 put(LEDGER, IDOL_SHOT_SLOTS.map(m => `idol-${m}-recover`), {
   coverage: 'none',
   note: '硬直(技は終わっている)=避ける図形は無い。ここはむしろカウンターの窓側の話。',
+});
+// ★v0.25.3780(research/THOR_ISSEN_REWORK.md §5-3/§5-4): トールの「無の境地」(紫の円)。
+// **帯として登録しない**(円であって帯ではない)+**回避脅威にも足さない**(円の中に立っているだけでは
+// 何も起きない=ダメージを持たない技)。円が言っているのは「**振るな**」であって「立ち入るな」ではないので、
+// 回避ベクトルへ足すと逆に「安全な場所から追い出す」誤った挙動になる。
+// 近接を止める側(master/skilled)は botSkill の respectsNihilCircle が別経路で見る(§8-4)。
+put(LEDGER, ['issen-nihil'], {
+  coverage: 'none',
+  note: 'トール「無の境地」=紫の円。判定を持たない予告(ダメージなし・カウンター不可)なので'
+    + '避ける図形は無い。危険は次の段(issen-windup の赤帯)。円の中で**近接を振ると必中一閃**が来るが、'
+    + 'それは「位置」ではなく「行動」の禁止=回避ベクトルではなく botSkill.respectsNihilCircle が扱う。',
 });
 put(LEDGER, ['idol-rest'], {
   coverage: 'none',

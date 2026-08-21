@@ -28,7 +28,7 @@ import {
   BOUNTY_BALANCE_TUNING as BB_T, BOUNTY_MAIKO_TUNING as MK_T,
 } from './bountyScript';
 import { BR_TRIPLE_HALF_WIDTH, BR_TRIPLE_REACH, brTripleAngles } from './bountyTriple';
-import { HIDDEN_JORMUNGAND_TUNING as HB_JO } from './hiddenBossScript';
+import { HIDDEN_JORMUNGAND_TUNING as HB_JO, HIDDEN_THOR_TUNING as HB_TH } from './hiddenBossScript';
 import { MIMIR_BITE_RADIUS } from './bodyCenteredAoe';
 import { ANGEL_RAFI_TUNING as RF_T, ANGEL_ACRASIEL_TUNING as AC_T } from './angelScript';
 import { IDOL_TUNING } from './idolScript';
@@ -150,6 +150,22 @@ export const COUNTER_REACH_DECL: Readonly<Record<string, CounterReachKind>> = {
   'hidden:radial-recover': 'body',
   'hidden:skadi-ice-recover': 'body',
   'hidden:skadi-blade-recover': 'body',
+  // ---- トール(★v0.25.3780・research/THOR_ISSEN_REWORK.md §8-2) ----
+  // 社長裁定「赤いのにカウンターできないは聞くまでもなく直すでしょ」。トールだけは
+  // `hiddenBossCounterableNow` が `boss.type !== 'thor'` で**この表を素通り**しており、
+  // 溜め中は「体の重なり」でしか成立しなかった(=赤い帯の中に居ても取れない)。
+  // 除外を撤去して他ボスと同じ宣言表に乗せ、**赤い予告の図形=成立域**へ揃える。
+  'hidden:issen-nihil': 'none',           // ★紫=無の境地。円の中でも体が重なっても成立しない(§1-1)
+  'hidden:issen-windup': 'band',          // 一閃=帯 310×80(ロック済みの aiFrom→aiTarget)
+  'hidden:issen-recover': 'body',
+  'hidden:tsuki-windup': 'band',          // 突き=帯 300×30(**毎フレーム引き直す**=遅延追従する狙い)
+  'hidden:tsuki-recover': 'body',
+  'hidden:harai-windup': 'band',          // 払い=帯 310×80(ロック済みの並行ライン)
+  'hidden:harai-recover': 'body',
+  'hidden:jump-windup': 'body',           // 飛び掛かり=着地円だが、成立域は従来どおり体(§8-2の対象外=挙動据え置き)
+  'hidden:jump-recover': 'body',
+  'hidden:thor-dash-windup': 'body',      // 突進=流星ライン(裏ボスdash/ミゲル踏み込みと同型=図形reachは持たない)
+  'hidden:thor-dash-recover': 'body',
 
   // ---- 天使(州名が6体で衝突するので boss.type をキーにする) ----
   'rafi:sweep': 'band',                   // ラフィ 薙ぎ=帯 310×40(監査 B-6。ミゲル/ウリ/スリィエルと同型)
@@ -186,10 +202,16 @@ export const COUNTER_REACH_DECL: Readonly<Record<string, CounterReachKind>> = {
 // 中身は移設前と1バイトも同じ(§6.28-13 #8/§6.28-21★3)。
 export const HIDDEN_COUNTER_WINDUP_STATES: readonly string[] = [
   'aim-burst', 'aim-radial', 'dash-windup', 'laser-windup', 'bite-windup', 'coil-windup', 'cage-windup',
+  // ★v0.25.3780(§8-2): トールもこの一覧へ。**他ボスは同名の州を持たないので挙動は1つも変わらない**
+  // (mimir/jormungand/skadi は issen-*/tsuki-*/harai-*/jump-*/thor-dash-* のどれにも入らない)。
+  // ★`issen-nihil` は**載せない**(紫=カウンター不可)。
+  'issen-windup', 'tsuki-windup', 'harai-windup', 'jump-windup', 'thor-dash-windup',
 ];
 export const HIDDEN_COUNTER_RECOVER_STATES: readonly string[] = [
   'burst-recover', 'radial-recover', 'dash-recover', 'laser-recover',
   'skadi-ice-recover', 'skadi-blade-recover', 'bite-recover', 'coil-recover', 'cage-recover',
+  // ★v0.25.3780(§8-2): トールの硬直(従来どおり「体の重なり」で成立=宣言は 'body')。
+  'issen-recover', 'tsuki-recover', 'harai-recover', 'jump-recover', 'thor-dash-recover',
   // §6.33: 'laser-broken' は載せない(監査指摘6)。中断の報酬(カウンター成立扱い)は既に
   // 支払い済みで、ここに載せると1本のレーザーからカウンター報酬が2回出る+1700msの
   // パニッシュ窓が体当てで短縮される。laser-broken中は普通に殴る(それが報酬)。
@@ -269,6 +291,25 @@ export const counterReachShapeFor = (key: string, ctx: CounterReachCtx): Counter
       return { kind: 'circle', cx: ctx.bcx, cy: ctx.bcy, radius: MIMIR_BITE_RADIUS };
     case 'hidden:coil-windup':
       return band(fx, fy, tx, ty, HB_JO.coil.halfWidth);
+    // ---- トール(v0.25.3780) ----
+    case 'hidden:issen-nihil':
+      return { kind: 'none' };            // ★紫=カウンター不可(§1-1・裁定「紫の文法」)
+    case 'hidden:issen-windup':
+      return band(fx, fy, tx, ty, HB_TH.issen.halfWidth);
+    case 'hidden:harai-windup':
+      return band(fx, fy, tx, ty, HB_TH.harai.halfWidth);
+    case 'hidden:tsuki-windup': {
+      // 突きの赤帯は**狙い点そのものを終点にしない**(狙い点=プレイヤー位置で射程より近い/遠い)。
+      // 始点=ボス中心、終点=狙いへの単位ベクトル×range。実行(`tsuki`)で作られる帯と同じ式
+      // (useGameLoop の tsuki-windup→tsuki 遷移・pixiScene の予告と3つとも同じ組み方)。
+      const dx = tx - ctx.bcx, dy = ty - ctx.bcy;
+      const l = Math.hypot(dx, dy) || 1;
+      return band(
+        ctx.bcx, ctx.bcy,
+        ctx.bcx + (dx / l) * HB_TH.tsuki.range, ctx.bcy + (dy / l) * HB_TH.tsuki.range,
+        HB_TH.tsuki.halfWidth,
+      );
+    }
 
     // ---- 天使 ----
     case 'rafi:sweep':

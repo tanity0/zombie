@@ -222,6 +222,7 @@ const SK_HELP: Record<string, string> = {
 const TH_SEC = {
   move: '動きと間合い', backstep: 'バックステップ', orbitStep: '旋回ステップ', slowWalk: 'ゆっくり歩き',
   issen: '一閃(th-issen)', tsuki: '突き(th-tsuki)', harai: '払い(th-harai)', jump: '飛び掛かり(th-jump)',
+  dash: '突進(th-dash)',
 };
 
 const thorFields = (): TuningField[] => {
@@ -233,6 +234,7 @@ const thorFields = (): TuningField[] => {
   const ts = mk(TH_SEC.tsuki, 'move');
   const ha = mk(TH_SEC.harai, 'move');
   const jp = mk(TH_SEC.jump, 'move');
+  const dh = mk(TH_SEC.dash, 'move');
   return [
     mv('orbit.distPx', '旋回する距離', 'px', 50, 800, 10, '中心間の目標距離。既定216=ハンドガン射程176+40(=撃たれにくい間合い)'),
     mv('orbit.approachSlack', '接近⇄旋回の余裕', 'px', 0, 400, 10, 'この幅の中では切り替えない(ハンチング防止)'),
@@ -258,7 +260,10 @@ const thorFields = (): TuningField[] => {
     sw('slowWalk.minIntervalMs', '間隔 下限', 'ms', 0, 20000, 100),
     sw('slowWalk.maxIntervalMs', '間隔 上限', 'ms', 0, 20000, 100),
 
-    is('issen.windup', '予告', 'ms', 0, 6000, 50, `${HINT_WINDUP}。半幅80+自機14=94px → 900ms以上ないと見てから避けられない`),
+    // ★一閃は2段(research/THOR_ISSEN_REWORK.md §1)。▸の粒度は「一閃=1本」のまま=押すと**紫から**再生される。
+    is('issen.nihilMs', '無の境地(紫)の時間', 'ms', 0, 3000, 50, '段1。紫の円を出すだけ(ダメージなし・カウンター不可)。この後に赤の予告が来る'),
+    is('issen.nihilRadius', '無の境地(紫)の半径', 'px', 20, 600, 10, '**紫の円の絵・必中の引き金・ボットが振るのを止める範囲**が同時に動く。円の中で近接を振ると必中一閃'),
+    is('issen.windup', '予告', 'ms', 0, 6000, 50, `${HINT_WINDUP}。段2(赤)。紫300+赤500=読み時間800ms`),
     is('issen.dashMs', '走る時間', 'ms', 20, 2000, 20, '終着点まで一気に移動する時間'),
     is('issen.range', 'ラインの長さ', 'px', 10, 800, 10, '赤い帯=判定。終着点までの距離'),
     is('issen.halfWidth', 'ラインの半幅', 'px', 4, 200, 5, '赤い帯=判定'),
@@ -283,6 +288,12 @@ const thorFields = (): TuningField[] => {
     jp('jump.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
     jp('jump.triggerHits', '発火する被弾数', 'num', 1, 20, 1, '画面外からこの回数撃たれると間合いを詰める'),
     jp('jump.triggerWindowMs', '被弾を数える時間', 'ms', 500, 30000, 500),
+
+    dh('dash.windup', '予告', 'ms', 0, 5000, 50, `${HINT_WINDUP}。赤い流星ライン(カウンター可)`),
+    dh('dash.moveMs', '走る時間', 'ms', 50, 2000, 10, '短いほど鋭く踏み込む'),
+    dh('dash.strikeMs', '斬り抜けの判定', 'ms', 10, 2000, 10, `${HINT_ACTIVE}。カプセルの寸法は払いの帯を流用する`),
+    dh('dash.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    dh('dash.cdMs', 'クールダウン', 'ms', 0, 30000, 500, 'この技だけの再使用待ち'),
   ];
 };
 
@@ -291,10 +302,12 @@ const TH_HELP: Record<string, string> = {
   [TH_SEC.backstep]: '近づかれている間、たまに後ろへ跳ぶ。攻撃サイクルとは独立(次の技の時刻はずれない)。',
   [TH_SEC.orbitStep]: '適正距離を保っている間、たまに接線方向へ弾む。等速の円運動に緩急を付ける役。',
   [TH_SEC.slowWalk]: 'たまに歩みを緩める。接近/後退/旋回のどれにも一律で掛かる一時的な減速。',
-  [TH_SEC.issen]: '溜めて赤いラインを引き、そのライン上だけを一閃する。**赤い帯=判定**なので長さ/半幅を動かしたら予告も見直す。',
+  [TH_SEC.issen]: '**必ず2段**で出る。①無の境地=紫の円(何も起きない。ただし**この円の中で近接を振ると即・必中の一閃**が来る)'
+    + '②一閃=赤いラインを引いてそのライン上だけを斬る(従来どおりカウンター可)。**赤い帯=判定**なので長さ/半幅を動かしたら予告も見直す。',
   [TH_SEC.tsuki]: '本体は動かず間合いだけが伸びる細い突き。溜め中の追従を上げるほど避けにくくなる。',
   [TH_SEC.harai]: 'ロックした並行ライン上を薙ぐ。横へ抜ける技。',
   [TH_SEC.jump]: '画面外から撃たれ続けた時の答え。着地点に赤い円=**円から歩いて出られる予告か**が公平の物差し。',
+  [TH_SEC.dash]: 'ミゲル型の踏み込み突進。カウンターすると**来た方向へ弾き返す**(素通り事故の対策・ミゲル/ウリと共有の設定)。',
 };
 
 // ================================================================================================
@@ -331,6 +344,7 @@ const TH_PLAYABLES: readonly PlayableAction[] = [
   play('th-tsuki', '突き', TH_SEC.tsuki),
   play('th-harai', '払い', TH_SEC.harai),
   play('th-jump', '飛び掛かり', TH_SEC.jump),
+  play('th-dash', '突進', TH_SEC.dash),
 ];
 
 /** ▸を押した時の実行(4体で同じ1本。ボス側の要求箱へ渡すだけ)。 */

@@ -45,6 +45,12 @@ const SCRIPTS: Record<Exclude<ChoreographyBoss, 'giant' | 'glen'>, Record<string
   thor: {
     issen: ['issen', 'harai', 'tsuki'], tsuki: ['tsuki', 'issen', 'harai'],
     harai: ['harai', 'tsuki', 'issen'], jump: ['jump', 'harai', 'tsuki'],
+    // ★research/THOR_ISSEN_REWORK.md §4(社長裁定2026-08-21「突進足して。で、突 突 を付けて」):
+    // 新技「突進」の起点にだけ台本を1本足す。**既存4起点(issen/tsuki/harai/jump)は1文字も変えない**
+    // ——起点は既に4本すべて埋まっていて、突き起点に新台本を置くと既存の `['tsuki','issen','harai']` を
+    // 潰すことになる(社長が避けていたのはこの上書き)。3手なので trimForPhase(Phase1=2/Phase2+=3)の
+    // 枠内に収まる=長さの特例もフェーズ条件も要らない。
+    dash: ['dash', 'tsuki', 'tsuki'],
   },
   miguel: {
     dash: ['dash', 'harai', 'volley'], harai: ['harai', 'volley', 'dash'], volley: ['volley', 'dash', 'harai'],

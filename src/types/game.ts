@@ -156,6 +156,22 @@ export interface Player extends DashLocomotionState {
   // 近接スイング演出用タイムスタンプ(Date.now)。描画のみ=スイングの二次モーション(踏み込み/振り抜き)の起点。
   // 0=未スイング。判定・射程には不干渉(renderer が読むだけ)。
   meleeSwingAt: number;
+  /**
+   * ★**近接スイングが確定した瞬間の打刻(単位 = `Date.now()` のエポックms)**。
+   * research/THOR_ISSEN_REWORK.md §1-3(必中一閃)の引き金**専用**。0=未スイング。
+   *
+   * `meleeSwingAt` とは**別に持つ**理由(実在確認済み): `markMeleeSwingFx()` は
+   * **カウンター成立の演出**からも7箇所で呼ばれる(=カウンターしたら必中一閃が出てしまう)。
+   * `counterWindowEnd` も武器庫サークルでショップを開いた時に開く(=振っていないのに引き金が引ける)。
+   * よって「**プレイヤーが近接を振った**」だけを表す打刻を1本立てる。
+   *
+   * 打刻の規則: **プレイヤーの近接スイングが確定する箇所すべて**で `commitMeleeSwing()` を呼ぶ
+   * (将来ナイフ系の新武器や新しい振り方を足したら**そこにも打つ**)。呼び出し箇所の件数は
+   * `meleeSwingCommit.test.ts` が固定していて、増減すると落ちて人に問う。
+   * **時計を混ぜないこと**: 州の残り時間(`bossStateUntil`)は gameTime 系。引き金は
+   * 「前フレームから進んだか」の**エッジ**で見る(絶対時刻の引き算をしない)。
+   */
+  meleeSwingCommitAt: number;
   // 救急鞄スキル発動演出用タイムスタンプ(Date.now)。描画のみ=払い出しの瞬間に「振り抜きポーズ+鞄を掲げる」
   // 一拍の起点(社長指示v0.25.1656)。0=未発動。判定・射程・払い出しロジックには不干渉(renderer が読むだけ)。
   firstAidPoseAt: number;
@@ -769,6 +785,15 @@ export interface Enemy {
   //  coil-windup/coil/coil-recover = ヨルムンガルド「うねり」(近帯・Phase2限定)。
   //  cage-windup/cage/cage-recover = スカジ「氷結の檻」(全帯・Phase3限定)。
   //  issen-recover/tsuki-recover/harai-recover = トール 一閃/突き/払いの硬直【新設】(jump-recoverは既存のまま)。
+  // research/THOR_ISSEN_REWORK.md(社長指示2026-08-20/21): トールの一閃を2段化+新技「突進」。
+  //  issen-nihil = 一閃の段1「無の境地」。**紫の円**(半径 issen.nihilRadius)を出すだけでダメージなし・
+  //   カウンター不可。300ms後に必ず issen-windup(段2=赤)へ進む。この円の中で**プレイヤーが近接を振ると
+  //   即 issen-dash**(=必中一閃。Enemy.issenGuaranteedUntil が立ちカウンター経路を閉じる)。
+  //   ★接尾辞 '-windup' を**付けない**のは、付けると isBossCounterableNowApprox(語尾判定)と
+  //   botSkill の帯脅威(bs.endsWith('-windup'))が「カウンターできる赤帯」と誤答するため。
+  //  thor-dash-windup/thor-dash-move/thor-dash-recover = トール「突進」(ミゲル型)。
+  //   ★裏ボス3体の 'dash-windup'/'dash'/'dash-recover' とは**別名**にしてある(同じ状態機械=
+  //   useGameLoop の同じ if/else 連鎖を通るため、同名にすると裏ボスの突進ハンドラが動いてしまう)。
   // PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)専用の状態(他ボスと名前が衝突しないよう
   // idol-接頭辞を付ける。近づくほど安全=全ボスの逆で、他ボスの語彙を流用しない独立の状態機械)。
   //  idol-aim-windup/idol-aim/idol-aim-recover = 狙い撃ち(遠)。
@@ -793,6 +818,8 @@ export interface Enemy {
     | 'coil-windup' | 'coil' | 'coil-recover'
     | 'cage-windup' | 'cage' | 'cage-recover'
     | 'issen-recover' | 'tsuki-recover' | 'harai-recover'
+    | 'issen-nihil'
+    | 'thor-dash-windup' | 'thor-dash-move' | 'thor-dash-recover'
     | 'idol-aim-windup' | 'idol-aim' | 'idol-aim-recover'
     | 'idol-fan-windup' | 'idol-fan' | 'idol-fan-recover'
     | 'idol-roll-windup' | 'idol-roll' | 'idol-roll-recover'
@@ -918,6 +945,17 @@ export interface Enemy {
   mimirLaserReadyAt?: number;
   jormCoilReadyAt?: number;     // ヨルムンガルド うねり専用CD(7000ms・Phase2)
   skadiCageReadyAt?: number;    // スカジ 氷結の檻専用CD(12000ms・Phase3)
+  // research/THOR_ISSEN_REWORK.md §4: トール「突進」専用CD(6000ms・ミゲルの mDashReadyAt と同じ作法)。
+  thorDashReadyAt?: number;
+  /**
+   * research/THOR_ISSEN_REWORK.md §1-3(必中一閃)。**単位=gameTime(ms)**。
+   * 無の境地(紫円)の中で近接を振られて**即発動した** `issen-dash` の終了時刻。
+   * この時刻まで、`issen-dash` の被弾解決は `player.counterWindowEnd` を**見ずに** damagePlayer へ直行する
+   * (= 引き金になった振りが開けたカウンター窓で必中一閃が弾かれるのを防ぐ)。
+   * 通常の一閃(赤予告を経たもの)では**立てない**=従来どおりカウンターできる。
+   * `issen-dash` を抜ける時に必ず 0 へ落とす(次の技がカウンター不能にならないように)。
+   */
+  issenGuaranteedUntil?: number;
   // §6.28(バッチM55/M58/M61-63): フェーズを持つ新規ボス(ジブリル/ラフィ/ウリ/スリィエル/アクラシエル)
   // 共通のHP段階トラッカー(ジャイアント専用のgiantPhaseとは別・無改変)。値の意味・閾値は各ボスのtick関数側。
   bossPhase?: 1 | 2 | 3;

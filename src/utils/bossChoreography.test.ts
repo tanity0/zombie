@@ -18,7 +18,7 @@ describe('planBossChoreography', () => {
       mimir: ['bite', 'radial', 'burst', 'laser', 'dash'],
       jormungand: ['radial', 'burst', 'dash', 'coil'],
       skadi: ['ice', 'blade', 'dash', 'burst', 'radial', 'cage'],
-      thor: ['issen', 'tsuki', 'harai', 'jump'],
+      thor: ['issen', 'tsuki', 'harai', 'jump', 'dash'],
       miguel: ['dash', 'harai', 'volley'],
       jibril: ['lantern', 'consecrate', 'volley'],
       rafi: ['bone', 'jump', 'sweep'],
@@ -54,6 +54,49 @@ describe('planBossChoreography', () => {
       expect(plan.slice(1)).not.toContain('nihil');
       expect(plan.slice(1)).not.toContain('trijump');
     }
+  });
+});
+
+// ★research/THOR_ISSEN_REWORK.md §4(社長裁定2026-08-21「突進足して。で、突 突 を付けて」)。
+describe('トールの新起点「突進」(v0.25.3780)', () => {
+  it("planBossChoreography('thor','dash',phase) が ['dash','tsuki','tsuki'](Phase1は先頭2手)", () => {
+    expect(planBossChoreography('thor', 'dash', 1)).toEqual(['dash', 'tsuki']);
+    expect(planBossChoreography('thor', 'dash', 2)).toEqual(['dash', 'tsuki', 'tsuki']);
+    expect(planBossChoreography('thor', 'dash', 3)).toEqual(['dash', 'tsuki', 'tsuki']);
+  });
+
+  it('★既存4起点(issen/tsuki/harai/jump)が1文字も変わっていない', () => {
+    expect(planBossChoreography('thor', 'issen', 3)).toEqual(['issen', 'harai', 'tsuki']);
+    expect(planBossChoreography('thor', 'tsuki', 3)).toEqual(['tsuki', 'issen', 'harai']);
+    expect(planBossChoreography('thor', 'harai', 3)).toEqual(['harai', 'tsuki', 'issen']);
+    expect(planBossChoreography('thor', 'jump', 3)).toEqual(['jump', 'harai', 'tsuki']);
+    // Phase1(先頭2手)も不変
+    expect(planBossChoreography('thor', 'issen', 1)).toEqual(['issen', 'harai']);
+    expect(planBossChoreography('thor', 'jump', 1)).toEqual(['jump', 'harai']);
+  });
+
+  it('★他ボスの台本が1つも変わっていない(長さと中身)', () => {
+    expect(planBossChoreography('miguel', 'dash', 3)).toEqual(['dash', 'harai', 'volley']);
+    expect(planBossChoreography('mimir', 'dash', 3)).toEqual(['dash', 'bite', 'burst']);
+    expect(planBossChoreography('jormungand', 'dash', 3)).toEqual(['dash', 'coil', 'burst']);
+    expect(planBossChoreography('skadi', 'dash', 3)).toEqual(['dash', 'ice', 'blade']);
+    expect(planBossChoreography('giant', 'dash', 3)).toEqual(['dash', 'stomp', 'bolt']);
+    expect(planBossChoreography('glen', 'dash', 3)).toEqual(['dash', 'talon']); // reachは恒久除外(v0.25.3033)
+  });
+
+  it('同じ技(tsuki)が連続する台本を、キューの取り出し(slice)が潰さない', () => {
+    // 実戦のキューは `plan(...).slice(1)` を積んで先頭から1つずつ消費する。重複を潰す実装ではない。
+    const plan = planBossChoreography('thor', 'dash', 2);
+    const queue = plan.slice(1);
+    expect(queue).toEqual(['tsuki', 'tsuki']);
+    const [first, ...rest] = queue;
+    expect(first).toBe('tsuki');
+    expect(rest).toEqual(['tsuki']); // 2手目も残る(重複が消えていない)
+  });
+
+  it('3手なのでキュー上限(Phase1=2 / Phase2+=3)の枠内に収まる=長さの特例が要らない', () => {
+    expect(planBossChoreography('thor', 'dash', 1).length).toBe(2);
+    expect(planBossChoreography('thor', 'dash', 2).length).toBe(3);
   });
 });
 

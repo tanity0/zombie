@@ -93,6 +93,19 @@ describe('ALLOWED_MOVE_CHAINS(設計された連携の申告)', () => {
   it('ミゲルの払い→縦払いは申告済み(状態名 harai → tate-windup)', () => {
     expect(moveCancelViolation('harai', 'tate-windup')).toBeNull();
   });
+  // ★v0.25.3780(research/THOR_ISSEN_REWORK.md §5-7): 一閃の2段化。
+  it('トールの無の境地→一閃は申告済み(状態名 issen-nihil → issen-windup)', () => {
+    expect(moveCancelViolation('issen-nihil', 'issen-windup')).toBeNull();
+  });
+  it('★必中一閃(issen-nihil → issen-dash)は申告不要=そもそも違反にならない', () => {
+    // issen-dash は '-windup' で終わらない=次の技の**溜め**ではないので、規則の対象外。
+    expect(moveCancelViolation('issen-nihil', 'issen-dash')).toBeNull();
+  });
+  it('トールの突進は通常の連携(硬直→次の技)なので申告が要らない', () => {
+    expect(moveCancelViolation('thor-dash-recover', 'tsuki-windup')).toBeNull();
+    expect(moveCancelViolation('thor-dash-windup', 'thor-dash-move')).toBeNull();
+    expect(moveCancelViolation('thor-dash-move', 'thor-dash-recover')).toBeNull();
+  });
   it('申告されていない同型の遷移は違反のまま(申告が効きすぎないこと)', () => {
     expect(moveCancelViolation('bm-charge', 'bm-combo1-windup')).not.toBeNull();
   });

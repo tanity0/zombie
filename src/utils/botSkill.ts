@@ -76,6 +76,15 @@ export interface BotSkillProfile {
    * **毎フレーム最良の脅威を取り直し、CDが明けていれば即撃つ**(counterEager)。master のみ true。
    */
   counterEager?: boolean;
+  /**
+   * ★v0.25.3780(社長裁定「マスターとスキルドは覚える」・research/THOR_ISSEN_REWORK.md §8-4):
+   * トールの**紫の円(無の境地)の中では近接を振らない**を学習しているか。
+   * true = master/skilled(円の中に居る間は振らずに待つ/離れる) / false = novice/casual(踏んで食らう)。
+   * **止める対象は「振ること」だけ**で、紫の円は回避脅威には足さない(立っているだけなら安全)。
+   * 判定と半径は `thorNihil.botHoldsMeleeForNihil()`(=必中の引き金と同じ定数)を読む。
+   * `seesBossCounterPhases` と同じ「段ごとの真偽ダイヤル」= 新しい仕組みを発明しない。
+   */
+  respectsNihilCircle: boolean;
 }
 
 // 段階表(叩き台・実機とソークで調整する)。
@@ -95,18 +104,22 @@ export const BOT_SKILL_PROFILES: Record<BotSkill, BotSkillProfile> = {
   //  - **カウンターの見える範囲**を `seesBossCounterPhases` で刻む(skilled/master のみ、ボスの
   //    受け流し可能フェーズまで見る)。counterChance(試行確率)は従来どおり。
   novice:  { reactionMs: 500, counterChance: 0.25, dodge: 'projectile', targeting: 'nearest', surroundCount: 2, disengageHp: 0.5, dodgeStrength: 0.25,
-             engageDist: 200, dodgeVsAttack: 0.5,  avoidContactDist: 0,   meleeVsDanger: true,  warpReact: false, upgradePolicy: 'random', seesBossCounterPhases: false },
+             engageDist: 200, dodgeVsAttack: 0.5,  avoidContactDist: 0,   meleeVsDanger: true,  warpReact: false, upgradePolicy: 'random', seesBossCounterPhases: false,
+             respectsNihilCircle: false },
   casual:  { reactionMs: 250, counterChance: 0.65, dodge: 'projectile', targeting: 'nearest', surroundCount: 3, disengageHp: 0.4, dodgeStrength: 0.45,
-             engageDist: 260, dodgeVsAttack: 0.5,  avoidContactDist: 0,   meleeVsDanger: true,  warpReact: false, upgradePolicy: 'random', seesBossCounterPhases: false },
+             engageDist: 260, dodgeVsAttack: 0.5,  avoidContactDist: 0,   meleeVsDanger: true,  warpReact: false, upgradePolicy: 'random', seesBossCounterPhases: false,
+             respectsNihilCircle: false },
   skilled: { reactionMs: 150, counterChance: 0.85, dodge: 'all',        targeting: 'threat',  surroundCount: 5, disengageHp: 0.3, dodgeStrength: 0.7,
-             engageDist: 340, dodgeVsAttack: 0.4,  avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy', seesBossCounterPhases: true },
+             engageDist: 340, dodgeVsAttack: 0.4,  avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy', seesBossCounterPhases: true,
+             respectsNihilCircle: true },
   // ★master の surroundCount 8→5(v0.25.3560・社長報告「混戦になると自分から突っ込んで行ってる」)。
   // 事実として: 8 は v0.25.2364 の裁定「上手いほど囲まれても粘る」(当時の実測で退避が早いほど
   // masterの撃破数が最下位になった)に由来する。現時点の実機では「8体まで退避しない」が
   // 突っ込み死の主因になっているため 5(skilledと同値)へ下げる。単調性(上位ほど≧)は維持。
   master:  { reactionMs: 80,  counterChance: 1.0,  dodge: 'all',        targeting: 'optimal', surroundCount: 5, disengageHp: 0.2, dodgeStrength: 1,
              engageDist: 420, dodgeVsAttack: 0.25, avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy', seesBossCounterPhases: true,
-             counterEager: true }, // ★v0.25.3618: 全部カウンターする勢い(CD内で)
+             counterEager: true, // ★v0.25.3618: 全部カウンターする勢い(CD内で)
+             respectsNihilCircle: true }, // ★v0.25.3780: トールの紫円の中では振らない(§8-4)
 };
 
 export const botSkillProfile = (skill: BotSkill = DEFAULT_BOT_SKILL): BotSkillProfile =>

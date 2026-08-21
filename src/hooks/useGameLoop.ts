@@ -230,7 +230,6 @@ import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs
 import {
   isCounterablePhase, phaseJustChanged, BOSS_ALERT_SFX_KEY,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
-  isBossCounterableNowApprox, // 守護霊のカウンター演出判別(ghostDriverと同じ近似・演出のみ)
 } from '../utils/bossScript';
 import {
   mimirPhaseForHealth, pickMimirMove, type MimirMove,
@@ -248,8 +247,16 @@ import {
 import {
   skadiPhaseForHealth, pickSkadiMove, type SkadiMove,
 } from '../utils/skadiScript';
-import { pickThorMove, thorPhaseForHealth } from '../utils/thorScript';
+import { pickThorMove, thorPhaseForHealth, type ThorMove } from '../utils/thorScript';
+// research/THOR_ISSEN_REWORK.md §1(無の境地・必中一閃)の判定は**全部この純関数群**が持つ
+// (useGameLoop に判定を直書きしない=実装精度の規律4)。
+import {
+  shouldTriggerGuaranteedIssen, isGuaranteedIssenNow, botHoldsMeleeForNihil,
+} from '../utils/thorNihil';
 import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
+// §4: トールの突進をカウンターした時の弾き返し距離。**ミゲル/ウリと共有の既存の合流点をそのまま使う**
+// (新しい定数を作らない=research/THOR_ISSEN_REWORK.md §4-1)。
+import { ANGEL_COMMON_TUNING as AN_C } from '../utils/angelScript';
 import { bossNeutralDelayMs, bossRebuildIdForEnemy } from '../utils/bossRebuild';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
@@ -1524,10 +1531,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
   // thorPrevHealth/thorRangedHits: トール専用(ジャンプ攻撃のトリガー判定=遠距離からの連続被弾を数える)。
   // 他の裏ボス(mimir/jormungand/skadi)では未使用のまま(無害)。
-  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; disengageSince: number | undefined; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number; thorNextSlowWalkAt: number; thorSlowWalkUntil: number; mimirAimVX: number; mimirAimVY: number; mimirLockSfxUntil: number; mimirBrokenSfxUntil: number }>(
+  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; disengageSince: number | undefined; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number; thorNextSlowWalkAt: number; thorSlowWalkUntil: number; thorPrevSwingCommitAt: number; thorNihilFiredFor: number; mimirAimVX: number; mimirAimVY: number; mimirLockSfxUntil: number; mimirBrokenSfxUntil: number }>(
     // mimirAimVX/VY=§6.33追尾照準の速度(dashDirX/Yと同じ「コントローラ内スクラッチ」扱い=storeへは
     // 位置aiTargetX/Yのみ書く)。mimirLockSfxUntil/mimirBrokenSfxUntil=ロックSE/中断SEの重複再生防止打刻。
-    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0, mimirAimVX: 0, mimirAimVY: 0, mimirLockSfxUntil: 0, mimirBrokenSfxUntil: 0 }
+    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0, thorPrevSwingCommitAt: 0, thorNihilFiredFor: -1, mimirAimVX: 0, mimirAimVY: 0, mimirLockSfxUntil: 0, mimirBrokenSfxUntil: 0 }
   );
   // ?gateboss=1 診断: ラン開始後に1回だけそのステージのゲート2ボスをforce-spawnしたかどうか。
   const gatebossForceRef = useRef(false);
@@ -2643,7 +2650,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
-          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0, mimirAimVX: 0, mimirAimVY: 0, mimirLockSfxUntil: 0, mimirBrokenSfxUntil: 0 };
+          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0, thorPrevSwingCommitAt: 0, thorNihilFiredFor: -1, mimirAimVX: 0, mimirAimVY: 0, mimirLockSfxUntil: 0, mimirBrokenSfxUntil: 0 };
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
@@ -5292,6 +5299,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
             // トール専用: 弾を持たないため、画面外からの攻撃(この時点のonScreen=false)を連続で
             // 被弾したらジャンプ攻撃で間合いを詰める(社長修正指示)。他の裏ボスでは無害(参照されない)。
+            // ★v0.25.3780(§1-3): 必中一閃の引き金は「近接スイングの打刻が**前フレームから進んだか**」の
+            // エッジで見る。ここで前フレームの値をローカルへ退避してから今フレームの値で更新する
+            // (**時計を混ぜない**: 打刻は Date.now系 / 州の残り時間は gameTime系。引き算で混ぜない)。
+            let thorPrevSwingCommit = 0;
             if (boss.type === 'thor') {
               const prevHp = bs.thorPrevHealth;
               if (prevHp >= 0 && boss.health < prevHp && !onScreen) {
@@ -5299,6 +5310,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               bs.thorRangedHits = bs.thorRangedHits.filter(t => newGameTime - t <= HB_TH.jump.triggerWindowMs);
               bs.thorPrevHealth = boss.health;
+              thorPrevSwingCommit = bs.thorPrevSwingCommitAt;
+              bs.thorPrevSwingCommitAt = useGameStore.getState().player.meleeSwingCommitAt;
             }
 
             if (disengage.ready && !inDeep) {
@@ -5533,15 +5546,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.aiTargetY = pcy + (ly / ll) * HB_TH.orbit.distPx;
                 patch.bossBurstLeft = 0;
               };
-              // 近接距離(社長指示「通常の近接攻撃距離」=MELEE_RADIUS)での接触+カウンター窓中かの判定に使う
-              // 生の帯AABB(裏ボスの当たり判定と同基準・collisionUtils.tsのisHiddenBossTypeと同じ考え方)。
-              const thorBodyOverlapNow = () => {
-                const cp = useGameStore.getState().player;
-                return {
-                  overlap: rectsOverlap({ x: boss.x, y: boss.y, width: boss.width, height: boss.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height }),
-                  counterActive: Date.now() <= cp.counterWindowEnd,
-                };
-              };
+              // ★v0.25.3780(§8-2): トール専用だった `thorBodyOverlapNow`(体の重なりだけで成立)は撤去した。
+              // トールも他ボスと同じ宣言表(counterReach.ts)へ乗ったので、成立域の判定は
+              // `hiddenReachOverlapNow()` 1本になった(硬直/飛び掛かりの溜めは宣言 'body'=挙動据え置き)。
               // W7統一(PACING_PUZZLE.md §6.28-13/§6.28-21★3・バッチM52): 裏ボス3体(mimir/jormungand/
               // skadi)のカウンター成立処理。演出/反撃ダメージはthorCounterHitと同一だが、この3体は
               // 旋回運動を持たないため THOR_ORBIT_DIST 依存の後退ジャンプ(counter-leap)は行わず、
@@ -5706,18 +5713,36 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 else if (next && boss.type === 'skadi') beginSkadiMove(next as SkadiMove);
                 else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
               };
-              // トール: 一閃/突き/払いのwindup開始(方向ロック等)を1箇所へ集約し、確定済み台本からも呼ぶ。
-              const beginThorMove = (move: 'issen' | 'tsuki' | 'harai') => {
+              // トール: 各技のwindup開始(方向ロック等)を1箇所へ集約し、確定済み台本からも呼ぶ。
+              const beginThorMove = (move: ThorMove) => {
+                // ★予告SEは技1本につき1回(§5-10)。一閃は2段になっても**紫の開始時だけ**鳴る
+                // (段2=赤へ進む所では鳴らさない=下の issen-nihil ハンドラは playSfx を呼んでいない)。
                 if (THOR_SCRIPT_ENABLED) playSfx(BOSS_ALERT_SFX_KEY);
                 const aim = lockAttackAim();
                 if (move === 'issen') {
-                  patch.bossState = 'issen-windup';
-                  patch.bossStateUntil = newGameTime + HB_TH.issen.windup;
+                  // ★一閃は必ず2段(research/THOR_ISSEN_REWORK.md §1)。段1=無の境地(紫の円・300ms)。
+                  // 狙いのロックは**ここで1回だけ**行い、段2で取り直さない(居合の型=「もう振り向かない」)。
+                  // ?thorscript=0 でも紫の段は出す(§5-8: 技の見た目そのもの。台本フラグが切るのは硬直と連携キューだけ)。
+                  // ★州名は**文字列リテラルで書く**(定数を代入しない)。ghostTelegraph.test.ts の
+                  // 完全性検査が useGameLoop.ts をソース走査して州名を拾うため、定数にすると
+                  // 「実装したのに台帳に載っていない技」が検知できなくなる(v0.25.2613の注記と同じ理由)。
+                  // 判定側(thorNihil.ts の州名定数)との一致は thorNihil.test.ts が固定する。
+                  patch.bossState = 'issen-nihil';
+                  patch.bossStateUntil = newGameTime + HB_TH.issen.nihilMs;
+                  patch.issenGuaranteedUntil = 0; // 前の一閃の必中フラグが残っていたら必ず落とす
                   const ddx0 = aim.x - bcx, ddy0 = aim.y - bcy;
                   const ddl0 = Math.hypot(ddx0, ddy0) || 1;
                   patch.aiFromX = bcx; patch.aiFromY = bcy;
                   patch.aiTargetX = bcx + (ddx0 / ddl0) * HB_TH.issen.range;
                   patch.aiTargetY = bcy + (ddy0 / ddl0) * HB_TH.issen.range;
+                  bs.thorNihilFiredFor = -1; // この無の境地ではまだ1度も必中発動していない
+                } else if (move === 'dash') {
+                  // ★新技「突進」(§4・ミゲル型)。溜め→直進→斬り抜け→硬直。予告=赤の流星ライン。
+                  // 終点=狙い対象の位置を**溜め開始でロック**(掟W4。ミゲルの beginMiguelDash と同じ)。
+                  patch.bossState = 'thor-dash-windup';
+                  patch.bossStateUntil = newGameTime + HB_TH.dash.windup;
+                  patch.aiFromX = bcx; patch.aiFromY = bcy;
+                  patch.aiTargetX = aim.x; patch.aiTargetY = aim.y;
                 } else if (move === 'tsuki') {
                   patch.bossState = 'tsuki-windup';
                   patch.bossStateUntil = newGameTime + HB_TH.tsuki.windup;
@@ -5738,7 +5763,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const thorRecoverAdvance = () => {
                 const [next, ...rest] = boss.bossScriptQueue ?? [];
                 patch.bossScriptQueue = rest;
-                if (next === 'issen' || next === 'tsuki' || next === 'harai') beginThorMove(next);
+                if (next === 'issen' || next === 'tsuki' || next === 'harai' || next === 'dash') beginThorMove(next);
                 else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
               };
               // トール: 飛び掛かりの開始。実戦(画面外から3回被弾)と ボスメーカーの▸が**同じ1本**を通る
@@ -5780,6 +5805,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   case 'th-issen': beginThorMove('issen'); break;
                   case 'th-tsuki': beginThorMove('tsuki'); break;
                   case 'th-harai': beginThorMove('harai'); break;
+                  // ★▸の粒度は「一閃=1本」のまま(§5-9)。押したら**紫から**再生される
+                  // (紫だけを単独再生するボタンは作らない=実戦に存在しない状態を作らないため)。
+                  case 'th-dash': beginThorMove('dash'); break;
                   case 'th-jump': beginThorJump(); break;
                 }
               };
@@ -5811,7 +5839,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   counterActive: Date.now() <= cp.counterWindowEnd,
                 };
               };
-              const hiddenBossCounterableNow = BOSS_COUNTER_ENABLED && boss.type !== 'thor'
+              // ★v0.25.3780(§8-2・社長裁定「赤いのにカウンターできないは聞くまでもなく直すでしょ」):
+              // 旧実装はここに `boss.type !== 'thor'` があり、**トールだけが宣言表(counterReach)を素通り**して
+              // 各州のハンドラが `thorBodyOverlapNow()` を直接呼んでいた=溜め中は「体の重なり」でしか
+              // 成立せず、**赤い帯の中に居ても取れなかった**。除外を撤去して他ボスと同じ表へ乗せる。
+              // ・トールの州(issen-windup/tsuki-windup/harai-windup/jump-windup/thor-dash-windup と各recover)は
+              //   counterReach.ts の HIDDEN_COUNTER_*_STATES へ追加済み。**他ボスは同名の州を持たない**ので
+              //   この撤去は mimir/jormungand/skadi の挙動を1つも変えない。
+              // ・紫の州(issen-nihil)は一覧に**載せていない**+宣言も 'none'=二重に閉じてある。
+              const hiddenBossCounterableNow = BOSS_COUNTER_ENABLED
                 && (isCounterablePhase(st, HIDDEN_BOSS_COUNTER_WINDUPS, HIDDEN_BOSS_COUNTER_RECOVERS)
                   || HIDDEN_COUNTER_ACTIVE_STATES.includes(st))
                 // §6.33 案G(社長裁定): 新挙動のレーザー溜めは弱点窓(発射前900ms)の間だけ体当て
@@ -5822,7 +5858,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (hiddenBossCounterableNow) {
                 const { overlap, counterActive } = hiddenReachOverlapNow();
                 if (overlap && counterActive) {
-                  hiddenBossCounterHit(bcx, bcy);
+                  // 成立時の反応(counter-leap/演出)はボスごとに違うので、そこだけ分ける。
+                  if (boss.type === 'thor') thorCounterHit(bcx, bcy);
+                  else hiddenBossCounterHit(bcx, bcy);
                   hiddenBossCountered = true;
                 }
               }
@@ -5834,13 +5872,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 同フレームにプレイヤーの成立(overlap&&窓)が立っている時はプレイヤー優先(体験を変えない)。
               let ghostCountered = false;
               if (!hiddenBossCountered) {
-                const ghostCounterableNow = boss.type === 'thor'
-                  ? isBossCounterableNowApprox(boss.aiPhase, st)
-                  : hiddenBossCounterableNow;
-                // プレイヤー成立の有無を見るだけの照会なので、**プレイヤーと同じ成立域**で引く
-                // (トールは体の重なり / 裏3体は図形reach=v0.25.3591)。
+                // ★v0.25.3780(§8-2): トールも4体共通の州リストへ乗ったので、守護霊側も同じ判定を使う
+                // (旧: トールだけ語尾で概算する isBossCounterableNowApprox を通していた。**同じ州集合**
+                //  =-windup/-recover なので拾う州は変わらない。紫の issen-nihil は語尾を持たないため
+                //  旧経路でも新経路でも「機会」に数えられない=一致)。
+                const ghostCounterableNow = hiddenBossCounterableNow;
+                // プレイヤー成立の有無を見るだけの照会なので、**プレイヤーと同じ成立域**(図形reach)で引く。
                 const { overlap: pOverlap, counterActive: pActive } = ghostCounterableNow
-                  ? (boss.type === 'thor' ? thorBodyOverlapNow() : hiddenReachOverlapNow())
+                  ? hiddenReachOverlapNow()
                   : { overlap: false, counterActive: false };
                 if (ghostCounterableNow && !(pOverlap && pActive)) {
                   const gClaim = consumeGhostCounterClaim(boss.id, Date.now());
@@ -5913,11 +5952,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   bs.vx = 0; bs.vy = 0;
                 } else if (boss.type === 'thor') {
                   if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
-                    // トール専用: 弾もダッシュも使わない刀3種を距離帯の役割から選ぶ。
-                    // 払いは250px以内、一閃は遠距離ほど重く、突きは中距離の主砲。
+                    // トール専用: 弾を使わない刀技+突進を距離帯の役割から選ぶ。
+                    // 払いは250px以内、一閃は遠距離ほど重く、突きは中距離の主砲、突進は中〜遠の間合い詰め。
                     const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
                     const distance = Math.hypot(dpx, dpy);
-                    const pick = pickThorMove(distance, (boss.bossPhase ?? 1) as 1 | 2 | 3);
+                    // §4: 突進だけ専用CD(ミゲルの mDashReadyAt と同じ作法)。
+                    const thorDashReady = newGameTime >= (boss.thorDashReadyAt ?? 0);
+                    const pick = pickThorMove(distance, (boss.bossPhase ?? 1) as 1 | 2 | 3, Math.random, thorDashReady);
                     patch.bossScriptQueue = planBossChoreography('thor', pick, boss.bossPhase ?? 1).slice(1);
                     // §6.28-10行1〜3「+SE【新設】」: 予告SEを新設(図形/リード/硬直=既存値は無改変)。
                     // windup開始のセットアップ(方向ロック等)はbeginThorMoveへ集約(値は不変・純関数化のみ)。
@@ -6281,13 +6322,42 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.skadiCageReadyAt = newGameTime + HB_SK.cage.cdMs;
                   hiddenRecoverAdvance('cage');
                 }
-              } else if (st === 'issen-windup') {
-                // 一閃: 3秒溜め・静止(赤い明滅は描画側=pixiSceneがbossStateを見て演出・社長指示)。
-                // 方向は選択時(action-roll)に既にロック済み=溜め中は相手側を切り替えない(社長修正指示)。
-                const { overlap, counterActive } = thorBodyOverlapNow();
-                if (overlap && counterActive) {
-                  thorCounterHit(bcx, bcy);
+              } else if (st === 'issen-nihil') {
+                // ★段1「無の境地」(research/THOR_ISSEN_REWORK.md §1-1)。
+                // **紫の円を出すだけ**——ダメージ無し・カウンター不可(ここに thorCounterHit を書かない。
+                // 上の共通カウンターブロックも `issen-nihil` を州リストに載せていないので二重に閉じてある)。
+                // 300ms 使い切ったら**必ず**段2(issen-windup=赤)へ。ここから chase へ戻る経路は無い。
+                //
+                // ★必中一閃(§1-3): 紫円の内側で**プレイヤーが近接を振った**フレームなら、残りの紫予告と
+                // 段2の赤予告500msを丸ごと捨てて即 issen-dash へ。狙いは**振ってきた相手へ取り直す**。
+                if (shouldTriggerGuaranteedIssen({
+                  bossState: st, bcx, bcy, pcx, pcy,
+                  prevCommitAt: thorPrevSwingCommit,
+                  curCommitAt: useGameStore.getState().player.meleeSwingCommitAt,
+                  alreadyFired: bs.thorNihilFiredFor === (boss.bossStateUntil ?? 0),
+                })) {
+                  bs.thorNihilFiredFor = boss.bossStateUntil ?? 0; // 1つの無の境地から発動できるのは1回
+                  const gdx = pcx - bcx, gdy = pcy - bcy;
+                  const gdl = Math.hypot(gdx, gdy) || 1;
+                  patch.aiFromX = bcx; patch.aiFromY = bcy;
+                  patch.aiTargetX = bcx + (gdx / gdl) * HB_TH.issen.range;
+                  patch.aiTargetY = bcy + (gdy / gdl) * HB_TH.issen.range;
+                  patch.bossState = 'issen-dash';
+                  patch.bossStateUntil = newGameTime + HB_TH.issen.dashMs;
+                  // ★これが「必中」の実体(§5-2 やること②)。issen-dash の被弾解決は帯に触れた時点で
+                  // counterWindowEnd を見る経路を持つので、**引き金になった振りが開けた窓で必ず弾かれる**。
+                  // このフラグが立っている間だけその分岐をスキップして damagePlayer へ直行する。
+                  patch.issenGuaranteedUntil = newGameTime + HB_TH.issen.dashMs;
+                  playSfx('katana-dash'); // §5-10: ダッシュ音は通常・必中とも鳴らす
                 } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'issen-windup';
+                  patch.bossStateUntil = newGameTime + HB_TH.issen.windup;
+                }
+              } else if (st === 'issen-windup') {
+                // 一閃の段2(赤500ms)・静止(赤い明滅は描画側=pixiSceneがbossStateを見て演出・社長指示)。
+                // 方向は段1の開始時に既にロック済み=段2で取り直さない(居合の型・社長修正指示)。
+                // カウンターは**赤い帯**で成立する(§8-2。判定は上の共通ブロック=counterReach の宣言表)。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'issen-dash';
                   patch.bossStateUntil = newGameTime + HB_TH.issen.dashMs;
                   // v0.25.3700: 一閃=ダッシュ斬りの発動音(プレイヤーの刀ダッシュ斬りと同じ近似)。
@@ -6308,9 +6378,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 let countered = false;
+                // ★必中一閃(§1-3)。**「windupを経ていないから当たらない」ではない**——ここ(実行中の帯)にも
+                // counterWindowEnd を見るカウンター経路があり、引き金になった近接の振りは**同じtickで窓を開ける**
+                // ので、放っておくと必中どころか「ほぼ確実にカウンターされる」。フラグが立っている間だけ
+                // この分岐をスキップして damagePlayer へ直行する(閉じるのは**対プレイヤーの経路だけ**で、
+                // 下の applyGhostAllyCapsuleHit=守護霊側は現行どおり)。通常の一閃では立たない=従来どおり返せる。
+                const issenGuaranteed = isGuaranteedIssenNow(boss.issenGuaranteedUntil, newGameTime);
                 if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, HB_TH.issen.halfWidth) <= pr) { // v0.25.3496: 描いてある四角
                   const cp = useGameStore.getState().player;
-                  if (Date.now() <= cp.counterWindowEnd) {
+                  if (!issenGuaranteed && Date.now() <= cp.counterWindowEnd) {
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
@@ -6322,7 +6398,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // G4b(§2.9): 一閃はゴースト(守護霊)にも当たる(同じ線分カプセル・同じboss.damage・同じフレーム。
                 // 連続ヒットはdamageSummonのi-frameが間引く。プレイヤー側の判定は上のブロックのまま1bit不変)。
                 applyGhostAllyCapsuleHit(fx, fy, tx, ty, HB_TH.issen.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-issen');
-                if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
+                if (countered) {
+                  // 通常の一閃がカウンターで中断された(必中中はここへ来ない)。念のため必ず落とす。
+                  patch.issenGuaranteedUntil = 0;
+                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  // ★必中フラグは issen-dash を抜ける時に**必ず**落とす(立ちっぱなしで
+                  // 次の技までカウンター不能にしない=§1-3 受け入れ条件10)。
+                  patch.issenGuaranteedUntil = 0;
                   // §6.28-10「全技に硬直(recover)を新設」: 硬直900ms・青白tint(描画側)。既存のリード/
                   // 射程/半幅/カウンター等は無改変。?thorscript=0の間は現行どおり即chase復帰。
                   if (THOR_SCRIPT_ENABLED) { patch.bossState = 'issen-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_TH.issen.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
@@ -6340,10 +6422,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const naimX = adl > 0.001 ? aimX + (adx / adl) * trackStep : aimX;
                 const naimY = adl > 0.001 ? aimY + (ady / adl) * trackStep : aimY;
                 patch.aiTargetX = naimX; patch.aiTargetY = naimY; // 溜め中は遅延追従する狙い点を保持
-                const { overlap, counterActive } = thorBodyOverlapNow();
-                if (overlap && counterActive) {
-                  thorCounterHit(bcx, bcy);
-                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                // ★v0.25.3780(§2 裁定3): 溜め中も**赤い帯 300×30**を出す(描画=pixiScene / カウンター成立域=
+                // counterReach の 'hidden:tsuki-windup')。帯は毎フレームこの遅延追従の狙いから引き直され、
+                // **実行時に作られる帯と同じ式**(始点=ボス中心・終点=単位ベクトル×range)で組まれる。
+                // カウンターは上の共通ブロックが解決する(ここには書かない=§8-2で宣言表へ揃えた)。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'tsuki';
                   patch.bossStateUntil = newGameTime + HB_TH.tsuki.ms;
                   // 突く方向=遅延した狙い点(naim)への向き。射程ぶん伸ばして突きラインを確定。
@@ -6384,10 +6467,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
               } else if (st === 'harai-windup') {
                 // 払い: 溜め中は本体静止(社長指示・立ち止まる)。ロック済みの並行ラインを予告表示(描画側)。
-                const { overlap, counterActive } = thorBodyOverlapNow();
-                if (overlap && counterActive) {
-                  thorCounterHit(bcx, bcy);
-                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                // カウンターは上の共通ブロックが**赤い帯**で解決する(§8-2)。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'harai';
                   patch.bossStateUntil = newGameTime + HB_TH.harai.active;
                   playSfx('thor-sweep');
@@ -6420,36 +6501,91 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (THOR_SCRIPT_ENABLED) { patch.bossState = 'harai-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_TH.harai.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
                 }
-              } else if (st === 'issen-recover') {
-                // §6.28-10「分岐する連携」: 硬直明けに確率(Phase2=50%/Phase3=70%)で2発目。
-                // 2発目の技は"その瞬間の距離"だけで決まる(プレイヤーが選ぶ・§6.28-10表)。硬直中も
-                // カウンター可(W7)。
-                const { overlap, counterActive } = thorBodyOverlapNow();
-                if (overlap && counterActive) {
-                  thorCounterHit(bcx, bcy);
-                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+              } else if (st === 'issen-recover' || st === 'tsuki-recover' || st === 'harai-recover'
+                || st === 'thor-dash-recover') {
+                // 硬直明けに台本の次の手へ(無ければchase)。硬直中のカウンター(W7)は
+                // ★v0.25.3780(§8-2)から**上の共通ブロック**が宣言表('body')で解決する
+                // (per-handler の thorBodyOverlapNow は撤去=判定の場所を1本にした)。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  // §4: 突進の専用CDは硬直明けに置く(ミゲルの mDashReadyAt と同じ作法)。
+                  if (st === 'thor-dash-recover') patch.thorDashReadyAt = newGameTime + HB_TH.dash.cdMs;
                   thorRecoverAdvance();
                 }
-              } else if (st === 'tsuki-recover') {
-                const { overlap, counterActive } = thorBodyOverlapNow();
-                if (overlap && counterActive) {
-                  thorCounterHit(bcx, bcy);
-                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
-                  thorRecoverAdvance();
+              } else if (st === 'thor-dash-windup') {
+                // ★新技「突進」の溜め(§4・ミゲル型)。静止+赤い流星ライン予告(描画側)。
+                // カウンターは共通ブロックが解決する(宣言='body'=裏ボスの突進/ミゲル踏み込みと同型)。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'thor-dash-move';
+                  patch.bossStateUntil = newGameTime + HB_TH.dash.moveMs + HB_TH.dash.strikeMs;
+                  patch.aiStartedAt = newGameTime;
+                  playSfx('katana-dash'); // 突っ込む瞬間の技SE(一閃のダッシュと同じ近似)
                 }
-              } else if (st === 'harai-recover') {
-                const { overlap, counterActive } = thorBodyOverlapNow();
-                if (overlap && counterActive) {
-                  thorCounterHit(bcx, bcy);
-                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
-                  thorRecoverAdvance();
+              } else if (st === 'thor-dash-move') {
+                // 突進(実行): ロック済みの終点まで直進 → 到達で斬り抜け1回。
+                // ★カウンター成立時は**来た方向へ弾き返す**(§4-1)。既存 dashCounterPushbackPx(ミゲル/ウリと
+                // 共有の合流点)をそのまま使う=新しい機構も新しい定数も作らない。
+                const dfx = boss.aiFromX ?? bcx, dfy = boss.aiFromY ?? bcy;
+                const dtx = boss.aiTargetX ?? bcx, dty = boss.aiTargetY ?? bcy;
+                const thorDashCountered = (hx: number, hy: number): void => {
+                  thorCounterHit(hx, hy);
+                  patch.thorDashReadyAt = newGameTime + HB_TH.dash.cdMs;
+                  let bdx = dtx - dfx, bdy = dty - dfy;
+                  const bl = Math.hypot(bdx, bdy) || 1; bdx /= bl; bdy /= bl;
+                  // 位置は「行ける帯」の定義(clampRectToPlayableArea)を必ず通す(CLAUDE.md Y方向の掟)。
+                  const pst = useGameStore.getState();
+                  const px2 = pst.player.x - bdx * AN_C.dashCounterPushbackPx;
+                  const py2 = pst.player.y - bdy * AN_C.dashCounterPushbackPx;
+                  const placed = clampRectToPlayableArea(px2, py2, pst.player.width, pst.player.height, {
+                    farBackdrop: pst.farBackdrop,
+                    labTheme: pst.stageTheme === 'lab',
+                    corridorMode: pst.corridorMode,
+                    m0AdvanceLimitX: null,
+                    corridorRunInActive: pst.corridorRunInActive,
+                  });
+                  useGameStore.setState(stt => ({ player: { ...stt.player, x: placed.x, y: placed.y } }));
+                };
+                // 通過中(体の重なり)もカウンターを取れる=ミゲルと同じ(素通りして背後から斬られない)。
+                const cpNow = useGameStore.getState().player;
+                const dashBodyCountered = rectsOverlap(
+                  { x: boss.x, y: boss.y, width: boss.width, height: boss.height },
+                  { x: cpNow.x, y: cpNow.y, width: cpNow.width, height: cpNow.height })
+                  && Date.now() <= cpNow.counterWindowEnd;
+                if (dashBodyCountered) thorDashCountered(bcx, bcy);
+                const dElapsed = newGameTime - (boss.aiStartedAt ?? newGameTime);
+                // ★慣性(CLAUDE.md MUST): 等速の線形補間ではなく、両端で速度0の曲線で運ぶ
+                // (ジャンプ滑空 v0.25.3076 と同じ airHopEase01)。ワープに見せない。
+                const dMoveT = Math.max(0, Math.min(1, dElapsed / HB_TH.dash.moveMs));
+                const dnx = dfx + (dtx - dfx) * airHopEase01(dMoveT);
+                const dny = dfy + (dty - dfy) * airHopEase01(dMoveT);
+                if (!dashBodyCountered) { patch.x = dnx - boss.width / 2; patch.y = dny - boss.height / 2; }
+                let dCountered = dashBodyCountered;
+                if (!dashBodyCountered && dElapsed >= HB_TH.dash.moveMs) {
+                  // 到達=斬り抜け1回(払いのカプセルを流用=ミゲルが harai を流用しているのと同じ作法)。
+                  let ddirx = dtx - dfx, ddiry = dty - dfy;
+                  const ddl2 = Math.hypot(ddirx, ddiry) || 1; ddirx /= ddl2; ddiry /= ddl2;
+                  const sx = dnx, sy = dny;
+                  const ex = dnx + ddirx * HB_TH.harai.range, ey = dny + ddiry * HB_TH.harai.range;
+                  const dpr = Math.max(player.width, player.height) / 2;
+                  if (distToBandRect({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }, HB_TH.harai.halfWidth) <= dpr) {
+                    const cp = useGameStore.getState().player;
+                    if (Date.now() <= cp.counterWindowEnd) {
+                      thorDashCountered((sx + ex) / 2, (sy + ey) / 2);
+                      dCountered = true;
+                    } else {
+                      const died = damagePlayer(boss.damage, 'トールの突進', pcx, pcy, undefined, undefined, 'thor-dash'); // G4a計測タグ(記録専用)
+                      if (died) triggerPlayerDeath(pcx, pcy);
+                    }
+                  }
+                  // G4b(§2.9): 突進の斬り抜けもゴースト(守護霊)に当たる(トール3技と同じ作法)。
+                  applyGhostAllyCapsuleHit(sx, sy, ex, ey, HB_TH.harai.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-dash');
+                }
+                if (!dCountered && newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  if (THOR_SCRIPT_ENABLED) { patch.bossState = 'thor-dash-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_TH.dash.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
+                  else { patch.bossState = 'chase'; patch.thorDashReadyAt = newGameTime + HB_TH.dash.cdMs; patch.bossNextActionAt = thorNextActionDelay(); }
                 }
               } else if (st === 'jump-windup') {
-                // ジャンプ攻撃の溜め(短め)。静止・カウンター可能(社長指示)。
-                const { overlap, counterActive } = thorBodyOverlapNow();
-                if (overlap && counterActive) {
-                  thorCounterHit(bcx, bcy);
-                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                // ジャンプ攻撃の溜め(短め)。静止・カウンター可能(社長指示・共通ブロックが解決)。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'jump-attack';
                   patch.bossStateUntil = newGameTime + HB_TH.jump.ms;
                   patch.aiFromX = bcx; patch.aiFromY = bcy;
@@ -6479,11 +6615,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_TH.jump.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
                 }
               } else if (st === 'jump-recover') {
-                // 着地後の硬直。静止・カウンター可能。
-                const { overlap, counterActive } = thorBodyOverlapNow();
-                if (overlap && counterActive) {
-                  thorCounterHit(bcx, bcy);
-                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                // 着地後の硬直。静止・カウンター可能(v0.25.3780から共通ブロックが解決)。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   thorRecoverAdvance();
                 }
               } else if (st === 'counter-leap') {
@@ -6887,7 +7020,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // その脅威へのカウンター機会は**永久に失われる**。masterは dodge:'all' で回避ベクトルが
         // ほぼ常時立つため、dodgeVsAttack=0.25 の抑制に25%の確率で食われ続けていた
         // (=「masterほどカウンターしない」の残り半分)。回避と防御反応は競合させない。
-        if ((botMineAdj?.wantsMelee || botObjSteerAdj?.wantsMelee) && !botAttackSuppressedByDodge || botWantsCounterReaction) useGameStore.getState().triggerCounter(); // M34: 卵叩き / M37: 人間反応カウンター
+        // ★v0.25.3780(§8-4・社長裁定「マスターとスキルドは覚える」): トールの紫円(無の境地)の中では
+        // **近接を振らない**を学習している段(master/skilled)は、この1tickの近接を丸ごと見送る
+        // (振ると必中一閃が飛んでくる)。novice/casual は respectsNihilCircle=false=完全なno-op。
+        const botNihilHold = BOT_PERSONA !== null && botHoldsMeleeForNihil(
+          botSkillProfile(BOT_SKILL),
+          player.x + player.width / 2, player.y + player.height / 2, enemies);
+        if (!botNihilHold
+          && ((botMineAdj?.wantsMelee || botObjSteerAdj?.wantsMelee) && !botAttackSuppressedByDodge || botWantsCounterReaction)) useGameStore.getState().triggerCounter(); // M34: 卵叩き / M37: 人間反応カウンター
         if (botDecision?.wantsWeaponSwitch) {
           const botPlayer = useGameStore.getState().player;
           const botGuns = getGuns(botPlayer);

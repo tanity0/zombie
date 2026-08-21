@@ -15,7 +15,7 @@ import {
 import { IDOL_WINDUP_STATES, IDOL_RECOVER_STATES, IDOL_REST_STATE } from './idolTick';
 import { BOUNTY_MELEE_TUNING as BM_T, BOUNTY_BALANCE_TUNING as BB_T, BOUNTY_MAIKO_TUNING as MK_T } from './bountyScript';
 import { ANGEL_RAFI_TUNING as RF_T, ANGEL_ACRASIEL_TUNING as AC_T } from './angelScript';
-import { HIDDEN_JORMUNGAND_TUNING as HB_JO } from './hiddenBossScript';
+import { HIDDEN_JORMUNGAND_TUNING as HB_JO, HIDDEN_THOR_TUNING as HB_TH } from './hiddenBossScript';
 import { MIMIR_BITE_RADIUS } from './bodyCenteredAoe';
 
 const CTX = { bcx: 0, bcy: 0, pcx: 100, pcy: 0 };
@@ -128,5 +128,73 @@ describe('④ 幾何: 体に触れていなくても赤の中なら成立 / 赤�
   it('★狙撃の溜めはカウンター可能州の一覧からも外れている(接触でも取れない=紫と一貫)', () => {
     expect(BOUNTY_WINDUP_STATES).not.toContain('bm-snipe-windup');
     expect(BOUNTY_RECOVER_STATES).toContain('bm-snipe-recover'); // 硬直は従来どおり可
+  });
+});
+
+// ================================================================================================
+// ★v0.25.3780(research/THOR_ISSEN_REWORK.md §8-2・社長裁定「赤いのにカウンターできないは
+// 聞くまでもなく直すでしょ」): トールを宣言表へ乗せた。旧実装は `hiddenBossCounterableNow` の
+// `boss.type !== 'thor'` でこの表を素通りし、溜め中は**体の重なりだけ**で成立していた。
+// ================================================================================================
+describe('⑤ トール: 赤い予告の図形=成立域(§8-2)', () => {
+  it('溜めの3州(一閃/突き/払い)+新技の突進が、カウンター可能州の一覧に載っている', () => {
+    for (const st of ['issen-windup', 'tsuki-windup', 'harai-windup', 'jump-windup', 'thor-dash-windup']) {
+      expect(HIDDEN_COUNTER_WINDUP_STATES, st).toContain(st);
+    }
+    for (const st of ['issen-recover', 'tsuki-recover', 'harai-recover', 'jump-recover', 'thor-dash-recover']) {
+      expect(HIDDEN_COUNTER_RECOVER_STATES, st).toContain(st);
+    }
+  });
+
+  it('★無の境地(紫)は一覧に載っていない+宣言も none=二重に閉じてある(§1-1 受け入れ条件2)', () => {
+    expect(HIDDEN_COUNTER_WINDUP_STATES).not.toContain('issen-nihil');
+    expect(HIDDEN_COUNTER_RECOVER_STATES).not.toContain('issen-nihil');
+    expect(HIDDEN_COUNTER_ACTIVE_STATES).not.toContain('issen-nihil');
+    const shape = counterReachShapeFor('hidden:issen-nihil', { ...CTX, aiFromX: 0, aiFromY: 0, aiTargetX: 310, aiTargetY: 0 });
+    expect(shape.kind).toBe('none');
+    // 円の中に居ても・体に重なっていても成立しない。
+    expect(inCounterReach(shape, playerAt(100, 0), BOSS)).toBe(false);
+    expect(inCounterReach(shape, playerAt(0, 0), BOSS)).toBe(false);
+  });
+
+  it('寸法は台帳を直読みしている(一閃=issen.halfWidth / 払い=harai.halfWidth)', () => {
+    const at = { ...CTX, aiFromX: 0, aiFromY: 0, aiTargetX: 310, aiTargetY: 0 };
+    const i = counterReachShapeFor('hidden:issen-windup', at);
+    expect(i.kind === 'band' && i.bands[0].halfWidth).toBe(HB_TH.issen.halfWidth);
+    const h = counterReachShapeFor('hidden:harai-windup', at);
+    expect(h.kind === 'band' && h.bands[0].halfWidth).toBe(HB_TH.harai.halfWidth);
+  });
+
+  it('★突きの帯は「狙い点そのもの」ではなく「狙いの向き×range」で組む(実行時の帯と同じ式)', () => {
+    // 狙い点(aiTarget)は射程より**手前**(80px)。帯は range(300)まで伸びていなければならない。
+    const near = counterReachShapeFor('hidden:tsuki-windup', { ...CTX, aiTargetX: 80, aiTargetY: 0 });
+    expect(near.kind === 'band' && near.bands[0]).toEqual({
+      fx: 0, fy: 0, tx: HB_TH.tsuki.range, ty: 0, halfWidth: HB_TH.tsuki.halfWidth,
+    });
+    // 狙い点が射程より**遠く**(900px)ても帯の長さは range のまま。
+    const far = counterReachShapeFor('hidden:tsuki-windup', { ...CTX, aiTargetX: 900, aiTargetY: 0 });
+    expect(far.kind === 'band' && far.bands[0].tx).toBe(HB_TH.tsuki.range);
+    // 帯の中(体には触れていない)でカウンターが成立する=これが§8-2の是正の中身。
+    expect(inCounterReach(near, playerAt(250, 0), BOSS)).toBe(true);
+    expect(inCounterReach(near, playerAt(250, 300), BOSS)).toBe(false);
+  });
+
+  it('硬直と飛び掛かりの溜め・突進は従来どおり「体の重なり」(挙動を変えていない州)', () => {
+    for (const k of ['hidden:issen-recover', 'hidden:tsuki-recover', 'hidden:harai-recover',
+      'hidden:jump-windup', 'hidden:jump-recover', 'hidden:thor-dash-windup', 'hidden:thor-dash-recover']) {
+      expect(counterReachKindFor(k), k).toBe('body');
+    }
+  });
+
+  it('★他ボスの宣言が1つも変わっていない(除外撤去がトール以外へ波及していない)', () => {
+    expect(counterReachKindFor('hidden:dash-windup')).toBe('body');   // 裏ボス3体の突進
+    expect(counterReachKindFor('hidden:dash')).toBe('body');
+    expect(counterReachKindFor('hidden:bite-windup')).toBe('circle'); // ミーミル
+    expect(counterReachKindFor('hidden:coil-windup')).toBe('band');   // ヨルムンガルド
+    expect(counterReachKindFor('hidden:laser-windup')).toBe('body');
+    // 裏ボス3体はトールの州を1つも持たない=一覧へ足しても評価対象にならない。
+    for (const st of ['issen-windup', 'tsuki-windup', 'harai-windup', 'thor-dash-windup', 'issen-nihil']) {
+      expect(HIDDEN_COUNTER_ACTIVE_STATES, st).not.toContain(st);
+    }
   });
 });

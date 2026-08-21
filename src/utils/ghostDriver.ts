@@ -451,6 +451,8 @@ const GHOST_DODGE_PROFILE: BotSkillProfile = {
   warpReact: false, upgradePolicy: 'random', dodgeStrength: 1,
   // ★v0.25.3554: 守護霊はカウンターを撃たない(counterChance:0)ので、この項目は無関係=false。
   seesBossCounterPhases: false,
+  // ★v0.25.3780: 同じ理由(守護霊は近接を振らない)でトールの紫円の学習も無関係=false。
+  respectsNihilCircle: false,
 };
 
 /**

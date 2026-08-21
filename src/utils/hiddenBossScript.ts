@@ -183,14 +183,28 @@ export interface HiddenThorTuning extends HiddenSharedHolder {
   orbitStep: { minIntervalMs: number; maxIntervalMs: number; distPx: number; ms: number };
   /** たまに2秒さらに1/2の速度で歩く。 */
   slowWalk: { ms: number; mult: number; minIntervalMs: number; maxIntervalMs: number };
-  /** 一閃(溜め→高速移動。判定は赤いライン上のみ)。 */
-  issen: { windup: number; dashMs: number; range: number; halfWidth: number; recover: number };
+  /**
+   * 一閃(2段固定・research/THOR_ISSEN_REWORK.md §1)。
+   *  段1 = 無の境地(`issen-nihil`): `nihilMs` の間、半径 `nihilRadius` の**紫の円**を出すだけ
+   *        (ダメージ無し・カウンター不可)。この円の中でプレイヤーが近接を振ると**必中一閃**へ飛ぶ。
+   *  段2 = 一閃(`issen-windup` → `issen-dash`): 赤い帯 `range`×`halfWidth` の予告 `windup` ののち
+   *        `dashMs` で走り抜ける(従来どおりカウンター可)。
+   * ★`nihilRadius` は**紫円の絵と必中の引き金域とボットの「振らない」範囲の3つが読む唯一の定数**
+   *   (どこにも複製しない=片方だけ動く実装を作らない)。
+   */
+  issen: { nihilMs: number; nihilRadius: number; windup: number; dashMs: number; range: number; halfWidth: number; recover: number };
   /** 突き(本体は動かず間合いだけ伸びる細い帯)。trackFrac=溜め中の狙い追従(プレイヤー速度比)。 */
   tsuki: { windup: number; ms: number; range: number; halfWidth: number; trackFrac: number; recover: number };
   /** 払い(ロック済みの並行ライン)。 */
   harai: { windup: number; active: number; range: number; halfWidth: number; recover: number };
   /** 飛び掛かり(画面外からの被弾が続いた時の間合い詰め)。 */
   jump: { triggerHits: number; triggerWindowMs: number; windup: number; ms: number; radius: number; recover: number };
+  /**
+   * 突進(research/THOR_ISSEN_REWORK.md §4・**ミゲル型**)。溜め→直進→斬り抜け→硬直。
+   * 斬り抜けのカプセル寸法は**払い(harai)の range/halfWidth を流用**する
+   * (ミゲルが `MG_T.harai` を流用しているのと同じ作法。別欄にはしない)。
+   */
+  dash: { windup: number; moveMs: number; strikeMs: number; recover: number; cdMs: number };
   /** カウンター成立時の後退ジャンプ。 */
   counterLeapMs: number;
 }
@@ -203,11 +217,17 @@ export const HIDDEN_THOR_TUNING: HiddenThorTuning = {
   backstep: { minIntervalMs: 3000, maxIntervalMs: 6000, distPx: 90, ms: 180 },
   orbitStep: { minIntervalMs: 2500, maxIntervalMs: 5000, distPx: 70, ms: 160 },
   slowWalk: { ms: 2000, mult: 0.5, minIntervalMs: 5000, maxIntervalMs: 9000 },
-  // 社長指示v0.25.3461「一閃、もう少し発動早くていい」で 3000→2400。半幅80+自機14=94px → 必要900ms。
-  issen: { windup: 2400, dashMs: 280, range: 310, halfWidth: 80, recover: withRecoverFloor(900) },
-  tsuki: { windup: 1000, ms: 180, range: 240, halfWidth: 15, trackFrac: 0.5, recover: withRecoverFloor(600) },
-  harai: { windup: 1000, active: 220, range: 310, halfWidth: 40, recover: withRecoverFloor(700) },
+  // 一閃(2段化・社長指示 2026-08-20 / research/THOR_ISSEN_REWORK.md §1):
+  //   紫300ms(無の境地)+ 赤500ms(旧2400)= 読み時間 800ms。半径200pxは**叩き台**(§8-5「そのままで一旦様子見」)。
+  //   事実として: 台帳の旧コメントには「半幅80+自機14=94px → 必要900ms」という見積もりがある(v0.25.3461の根拠)。
+  //   500msでは帯の外へ走って逃げるのはほぼ不可能=「カウンターで返す技」に寄る、という前提での指定(§8-1裁定済み)。
+  issen: { nihilMs: 300, nihilRadius: 200, windup: 500, dashMs: 280, range: 310, halfWidth: 80, recover: withRecoverFloor(900) },
+  tsuki: { windup: 1100, ms: 180, range: 300, halfWidth: 15, trackFrac: 0.5, recover: withRecoverFloor(600) },
+  harai: { windup: 600, active: 220, range: 310, halfWidth: 40, recover: withRecoverFloor(700) },
   jump: { triggerHits: 3, triggerWindowMs: 6000, windup: 700, ms: 360, radius: 70, recover: withRecoverFloor(900) },
+  // 突進(新技・§4)。既定は**ミゲルの踏み込みと同値**(ANGEL_MIGUEL_TUNING.dash)=新しい数字を発明しない。
+  // 体格も間合いも違うので実機で詰める前提の叩き台。
+  dash: { windup: 700, moveMs: 230, strikeMs: 110, recover: withRecoverFloor(800), cdMs: 6000 },
   counterLeapMs: 260,
 };
 

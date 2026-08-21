@@ -88,6 +88,8 @@ import {
   HIDDEN_SKADI_TUNING as HB_SK,
   HIDDEN_THOR_TUNING as HB_TH,
 } from '../utils/hiddenBossScript';
+// research/THOR_ISSEN_REWORK.md §1: 紫円の**半径は台帳の1定数**(判定・ボット・絵が同じ値を読む)。
+import { THOR_NIHIL_STATE, thorNihilRadius } from '../utils/thorNihil';
 import { biteJawFrame } from '../utils/biteJawMotion';
 // PACING_PUZZLE.md §6.33(LASER-TRACK): カラオケ塗り/ロック/弱点窓の進行は純関数から引く(判定と同じ式)。
 import {
@@ -16050,7 +16052,29 @@ export class PixiScene {
     if (e.type === 'thor') {
       const slashFx = this.thorSlashFx.get(e.id);
       if (slashFx) slashFx.visible = false; // 既定で非表示。実行ステートのみ下で表示する
-      if (e.bossState === 'issen-windup') {
+      if (e.bossState === THOR_NIHIL_STATE) {
+        // ★段1「無の境地」(research/THOR_ISSEN_REWORK.md §1-1)。**紫の円**=「振るな」の合図。
+        // ・体のティントは**紫**。`thorFlashTint`(ダメージの瞬間の400ms前から赤く鋭く点滅)は
+        //   **絶対に呼ばない**——紫の段は300msしかないので同じ式を通すと紫の間じゅう体が赤く光り、
+        //   「赤=危険/カウンター対象」の文法と真っ向から食い違う(§1-1)。赤フラッシュは段2から。
+        // ・円そのものは下の共通ブロック(thorNihilCircleTick)が慣性つきで開閉する。
+        const nblink = 0.5 + 0.5 * Math.sin(now / 200);
+        // 白 ⇔ 紫(0xc084fc)の間をゆっくり往復=「息を詰める」予兆。赤は1bitも混ぜない。
+        const nr = Math.round(0xff - (0xff - 0xc0) * nblink);
+        const ng = Math.round(0xff - (0xff - 0x84) * nblink);
+        const nb = 0xff;
+        view.sprite.tint = (nr << 16) | (ng << 8) | nb;
+        // 型を発明しない: 既存の windupTremorPx(溜め終盤の震え)を紫段でも使う。
+        const nprog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_TH.issen.nihilMs));
+        const ntr = windupTremorPx(nprog, now);
+        view.sprite.position.x += ntr;
+        // 居合腰の構えは段1から始める(狙いは段1でロック済み=段2で取り直さない)。
+        {
+          const nfx = e.aiFromX ?? cx, nfy = e.aiFromY ?? cy;
+          const ntx = e.aiTargetX ?? cx, nty = e.aiTargetY ?? cy;
+          this.drawThorIaiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.32, ntx - nfx, nty - nfy, nprog * 0.5, now);
+        }
+      } else if (e.bossState === 'issen-windup') {
         // 一閃の溜め: ピクセルが赤くゆっくり点滅(社長指示)。方向は選択時に既にロック済み=
         // 溜め中はプレイヤーを追わない(社長修正指示。aiFromX/Y→aiTargetX/Yは固定値)。
         // 放つ前=普通の赤いダメージゾーン(社長指示: レーザーの二重線ではなく矩形の塗り)。
@@ -16111,6 +16135,36 @@ export class PixiScene {
         // 見た目の切っ先も遅れて追う=当たり判定と一致)。aiTarget未設定時のみプレイヤー中心にフォールバック。
         this.drawThorTsukiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.55, prog, now,
           e.aiTargetX ?? (pl.x + pl.width / 2), e.aiTargetY ?? (pl.y + pl.height / 2));
+        // ★v0.25.3780(§2 裁定3): 溜め中も**赤い帯(tsuki.range × tsuki.halfWidth×2)**を出す。
+        // 旧: 「溜め中は方向が未確定=予告ラインなし」(社長指示v0.25.1621)。裁定3で改めた。
+        // 帯は**その瞬間の狙いから組む**: 始点=ボス中心、終点=狙い点への単位ベクトル×range。
+        // **狙い点そのものを終点にしない**(狙い点=プレイヤー位置で射程より近い/遠く、実行時の帯とズレる)。
+        // 寸法は台帳直読み=pixiScene に 300/15 の直書きを作らない(受け入れ条件3)。
+        // 判定(counterReach 'hidden:tsuki-windup')と実行(tsuki)の帯も**同じ式**で組んである。
+        {
+          const taimX = e.aiTargetX ?? (pl.x + pl.width / 2), taimY = e.aiTargetY ?? (pl.y + pl.height / 2);
+          const tdx = taimX - cx, tdy = taimY - cy;
+          const tdl = Math.hypot(tdx, tdy) || 1;
+          const ttx = cx + (tdx / tdl) * HB_TH.tsuki.range, tty = cy + (tdy / tdl) * HB_TH.tsuki.range;
+          const thw = HB_TH.tsuki.halfWidth;
+          const tnx = -(tdy / tdl), tny = tdx / tdl;   // 進行方向に直交
+          const tux = tdx / tdl, tuy = tdy / tdl;      // 軸方向(両端の延長)
+          const tpulse = 0.5 + 0.5 * Math.sin(now / 110);
+          // 一閃/払いと同じ流星の描き→消し(新しい意匠を発明しない)。
+          const tMet = PixiScene.meteorPhase(prog);
+          const tvfx = cx + (ttx - cx) * tMet.er, tvfy = cy + (tty - cy) * tMet.er;
+          const tvtx = cx + (ttx - cx) * tMet.p, tvty = cy + (tty - cy) * tMet.p;
+          const tVisible = tMet.p - tMet.er > 0.001;
+          const tpts = [
+            tvfx - tux * thw + tnx * thw, tvfy - tuy * thw + tny * thw,
+            tvtx + tux * thw + tnx * thw, tvty + tuy * thw + tny * thw,
+            tvtx + tux * thw - tnx * thw, tvty + tuy * thw - tny * thw,
+            tvfx - tux * thw - tnx * thw, tvfy - tuy * thw - tny * thw,
+          ];
+          if (tVisible) o.poly(tpts).fill({ color: 0xff2a2a, alpha: ((0.12 + 0.22 * prog) + 0.08 * tpulse) * TELEGRAPH_FILL_MULT });
+          if (FX_RING_ENABLED) this.drawTelegraphBand(view, cx, cy, ttx, tty, thw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * tpulse, 0, prog);
+          else if (tVisible) o.poly(tpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * tpulse });
+        }
       } else if (e.bossState === 'tsuki') {
         // 突き(実行): 溜め中(tsuki-windup)は方向が未確定(社長指示=予告ラインなし)なので、
         // 実行の瞬間だけプレイヤーの斬撃と同じピクセル演出を表示。180msをそのまま1本の
@@ -16188,15 +16242,30 @@ export class PixiScene {
           const jumpFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
           if (jumpFlash !== null) view.sprite.tint = jumpFlash;
         }
+      } else if (e.bossState === 'thor-dash-windup' || e.bossState === 'thor-dash-move') {
+        // ★新技「突進」(§4・ミゲル型)。溜め中は赤い流星ライン(下の共通ブロックが dashLineTick で描く)+
+        // ダメージ瞬間の400ms前フラッシュ(他3技と同じ)。実行中は白へ戻す。
+        view.sprite.tint = 0xffffff;
+        if (e.bossState === 'thor-dash-windup') {
+          const dFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
+          if (dFlash !== null) view.sprite.tint = dFlash;
+          // ★予兆(既存の型を流用): 震え+後ずさり(裏ボスの突進windupと同じ windupBackstepOffset)。
+          const dprog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_TH.dash.windup));
+          const dtx0 = e.aiTargetX ?? cx, dty0 = e.aiTargetY ?? cy;
+          const ddx0 = dtx0 - cx, ddy0 = dty0 - cy; const ddl0 = Math.hypot(ddx0, ddy0) || 1;
+          const doff = windupBackstepOffset(dprog, now, -ddx0 / ddl0, -ddy0 / ddl0, 8);
+          view.sprite.position.x += doff.x; view.sprite.position.y += doff.y;
+        }
       } else if (
         e.bossState === 'issen-recover' || e.bossState === 'tsuki-recover'
         || e.bossState === 'harai-recover' || e.bossState === 'jump-recover'
+        || e.bossState === 'thor-dash-recover'
       ) {
         // §6.28-10「全技に硬直(recover)を新設」+ 受け入れ条件7(W6・硬直=青白tint)。jump-recoverは
         // 既存(900ms・無改変)だが、青白tintの配線が未実装だったのでここで一緒に揃える(硬直の存在自体・
         // 長さ・カウンター可否は何も変えない=表示だけの追補)。
         view.sprite.tint = BOSS_RECOVER_TINT;
-        if (e.bossState !== 'jump-recover') {
+        if (e.bossState !== 'jump-recover' && e.bossState !== 'thor-dash-recover') {
           const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
           const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
           const recoverStyle: SwordSwingStyle = e.bossState === 'issen-recover'
@@ -16208,6 +16277,22 @@ export class PixiScene {
         }
       } else {
         view.sprite.tint = 0xffffff;
+      }
+      // ★v0.25.3780(§1-1): 無の境地の**紫の円**。慣性つきで開閉する(パッと出てパッと消えるのは
+      // CLAUDE.md「動きの絶対ルール」違反)。必中で早く切り上げられても、ここが閉じを最後まで演じる。
+      // 半径は `thorNihilRadius()`=判定・ボットと**同じ1つの定数**(片方だけ動く実装にしない)。
+      this.thorNihilCircleTick(
+        view, o, `${e.id}:thornihil`, e.bossState === THOR_NIHIL_STATE,
+        cx, cy, thorNihilRadius(),
+        HB_TH.issen.nihilMs - Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime), now,
+      );
+      // ★v0.25.3780(§4): 突進の赤い流星ライン(裏ボスの突進/ミゲル踏み込みと同じ作り=意匠を発明しない)。
+      {
+        const dOn = e.bossState === 'thor-dash-windup';
+        const dRemain = (e.bossStateUntil ?? gameTime) - gameTime;
+        const dtx = e.aiTargetX ?? cx, dty = e.aiTargetY ?? cy;
+        this.dashLineTick(o, `${e.id}:thordash`, dOn, dRemain, cx, cy, dtx, dty, now,
+          1 - dRemain / HB_TH.dash.windup);
       }
       // トールの斬撃演出(刀+ストリーク)を出し切らせる(社長指示v0.25.2408)。トールは**実行中
       // (issen-dash/tsuki/harai)にもカウンターが成立する**(useGameLoop のライン判定が
@@ -17584,6 +17669,9 @@ export class PixiScene {
       // 追加: 裏ボス3体(mimir/jormungand/skadi)の 'dash' / ミゲル 'mdash-move' / ウリ 'thrust'(踏み込み突き)/
       // idol 'idol-roll'(離脱ローリング)。既存: トール 'issen-dash'・'tsuki'。
       const dashBoss = e.bossState === 'issen-dash' || e.bossState === 'tsuki'
+        // ★v0.25.3780: トールの新技「突進」(§4)。**突進という動作を持つ全員**の台帳なので
+        // 新技を足した回に必ずここへも登録する(v0.25.2426/3521/3584 と同型の漏れを作らない)。
+        || e.bossState === 'thor-dash-move'
         || e.bossState === 'dash' || e.bossState === 'mdash-move'
         || e.bossState === 'thrust' || e.bossState === 'idol-roll'
         || e.bossState === 'idol-nade' // v0.25.3444: 手榴弾のバックロールも同じ蹴り出し土煙
@@ -20116,6 +20204,48 @@ export class PixiScene {
     // 終点リング: 溜め後半で立ち上がり、消え段階では薄れていく。
     const ringA = Math.max(0, (p - 0.5) * 2) * (0.45 + 0.4 * pulse) * (1 - er);
     if (ringA > 0.02) o.circle(tx, ty, 9 + 3 * pulse).stroke({ width: 2, color: core, alpha: ringA });
+  }
+
+  // ================================================================================================
+  // トール「無の境地」の紫円(research/THOR_ISSEN_REWORK.md §1-1・v0.25.3780)
+  // ================================================================================================
+  // 円は**開閉に必ず加減速を入れる**(CLAUDE.md「動きの絶対ルール: 慣性」)。
+  //  開き: 半径 0→1 を ease-out(THOR_NIHIL_EASE_MS)/ 閉じ: ease-in で縮めながらフェード。
+  // 州が消えた後の「閉じ」を演じるため、dashLineTick と同じ arm+latch の型を使う
+  // (必中一閃で300msを待たず切り上げられた時も、閉じは最後まで再生される)。
+  // 色は既存の紫(ミーミルのレーザーと同じ 0x9333ea / 0xc084fc)=色文法「紫=カウンター不可」。
+  private nihilCircleArm = new Map<string, number[]>();
+  private static readonly THOR_NIHIL_EASE_MS = 120;
+  private thorNihilCircleTick(
+    view: ActorView, o: Graphics, key: string, active: boolean,
+    cx: number, cy: number, radius: number, elapsedMs: number, now: number,
+  ): void {
+    const draw = (dx: number, dy: number, r: number, a: number): void => {
+      if (r <= 1 || a <= 0.02) return;
+      const pulse = 0.5 + 0.5 * Math.sin(now / 130);
+      // 塗り: 面が無いと「線が1本ある」だけに見える(小さくて見えない=存在しないのと同じ)。
+      o.circle(dx, dy, r).fill({ color: 0x9333ea, alpha: (0.13 + 0.07 * pulse) * a * TELEGRAPH_FILL_MULT });
+      // 縁: **既存の帯予告と同じ濃さ以上**で描く(薄い紫は「出ていない」のと同じ・§1-1)。
+      if (FX_RING_ENABLED) this.drawTelegraphRing(view, dx, dy, r, 0xc084fc, (0.55 + 0.25 * pulse) * a, 1);
+      else o.circle(dx, dy, r).stroke({ width: 3, color: 0xc084fc, alpha: (0.6 + 0.3 * pulse) * a });
+      // 内側の細い輪=「間合いの内側」を目で追えるようにする第2の線(判定は外周のまま)。
+      o.circle(dx, dy, r * 0.72).stroke({ width: 2, color: 0xc084fc, alpha: 0.35 * a });
+    };
+    if (active) {
+      const openT = Math.max(0, Math.min(1, elapsedMs / PixiScene.THOR_NIHIL_EASE_MS));
+      const k = 1 - Math.pow(1 - openT, 3); // ease-out cubic(加速して開き、減速して止まる)
+      this.nihilCircleArm.set(key, [cx, cy, radius, k]);
+      draw(cx, cy, radius * k, 1);
+      return;
+    }
+    const armed = this.nihilCircleArm.get(key);
+    const el = this.latchFx(key, armed !== undefined, PixiScene.THOR_NIHIL_EASE_MS, now, () => armed!);
+    if (armed) this.nihilCircleArm.delete(key);
+    if (el) {
+      const k0 = el.d[3] ?? 1;
+      const shrink = el.t * el.t; // ease-in(ゆっくり縮み始めて最後に速い)
+      draw(el.d[0], el.d[1], el.d[2] * k0 * (1 - shrink), 1 - el.t);
+    }
   }
 
   // 溜め完走→「描き切った線が始点から蒸発する」消えアニメの管理(v0.25.3343)。

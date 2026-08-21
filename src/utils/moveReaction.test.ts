@@ -58,6 +58,20 @@ describe('moveReaction: moveKeyForEnemy(技キーの導出)', () => {
     expect(moveKeyForEnemy(thor('backstep'))).toBeNull();
   });
 
+  // ★v0.25.3780(research/THOR_ISSEN_REWORK.md §5-5): 一閃の2段化+新技「突進」。
+  it('★無の境地(紫)も一閃と同じキーへ寄る=1つの一閃が2回に数えられない', () => {
+    expect(moveKeyForEnemy(thor('issen-nihil'))).toBe('thor-issen');
+    // 紫→赤→ダッシュ→硬直が全部同じキー=1エピソード。
+    for (const st of ['issen-nihil', 'issen-windup', 'issen-dash', 'issen-recover'] as const) {
+      expect(moveKeyForEnemy(thor(st)), st).toBe('thor-issen');
+    }
+  });
+  it('突進の全フェーズが thor-dash へ寄る', () => {
+    for (const st of ['thor-dash-windup', 'thor-dash-move', 'thor-dash-recover'] as const) {
+      expect(moveKeyForEnemy(thor(st)), st).toBe('thor-dash');
+    }
+  });
+
   // v0.25.2603(社長指示「ちゃんと広げて揃えましょう」): 残り全ボスの近接/AoE技も台帳へ。
   // **同名の状態を型で正しく振り分けること**が要点(名前は複数のボスで衝突している)。
   it('同名bossStateでもtypeごとに別の技キーへ振り分ける(名前の衝突を型で解く)', () => {
