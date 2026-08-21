@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3760',
+    items: [
+      'ゲーム内容の変更はありません(開発文書: 案件台帳PROJECT_STATUS.mdを新設)。',
+    ],
+  },
+  {
     version: '0.25.3759',
     items: [
       'ゲーム内容の変更はありません(開発文書の整理: 旧文書4本をアーカイブへ退避)。',
