@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3833',
+    items: [
+      'ゲーム内容の変更はありません(不具合を切り分けるための開発用スイッチを足しました)。',
+    ],
+  },
+  {
     version: '0.25.3832',
     items: [
       '洋館の通路(ステージ6・EX)で、画面の上の方に横一直線の切れ目が出ていたのを直しました。遠くの暗がりの継ぎ目が原因です。',

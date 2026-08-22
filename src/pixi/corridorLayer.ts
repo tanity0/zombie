@@ -31,6 +31,23 @@ export const CORRIDOR_BG_X_OVERSCAN = 420;
 // ★2026-08-22: 遠方フェード2枚(床側/天井側)を消失点で重ねる幅。0にすると2枚の端が
 // 非整数境界でぶつかり、**倍率と無関係に画面の26%へ横一直線の切れ目**が出る(社長報告)。
 export const DARK_SEAM_OVERLAP_PX = 3;
+
+// ★切り分け用スイッチ(2026-08-22・社長の「どこに居ても同じ高さで切れる」の犯人特定用)。
+// 消失点(画面の26%)には**4つのもの**が重なっている。1つずつ消して線が残るかを見る。
+//   ?nodark=1  … 遠方フェード(床側/天井側の暗幕)を消す
+//   ?nomesh=1  … 床メッシュと天井メッシュを消す(=通路の床と天井が丸ごと消える)
+//   ?noback=1  … 奥壁(ステンドグラス)を消す
+//   ?nopillar=1… 柱と壁灯を消す
+// **どれかで線が消えたら、それが犯人**。複数同時指定も可。実機で1回試すためだけのもので、
+// 既定では全て off(挙動は1つも変わらない)。
+const qFlag = (k: string): boolean =>
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get(k) === '1';
+export const CORRIDOR_DEBUG = {
+  noDark: qFlag('nodark'),
+  noMesh: qFlag('nomesh'),
+  noBack: qFlag('noback'),
+  noPillar: qFlag('nopillar'),
+};
 // 通路テクスチャ一覧(ensureLoadedと共有)。
 export const CORRIDOR_TEXTURE_NAMES = [
   'floor', 'ceiling', 'floor-goal',
@@ -327,6 +344,8 @@ export class CorridorLayer {
     // 対処: **境界を整数へ丸め、2枚を DARK_SEAM_OVERLAP_PX だけ重ねる**。
     // αの最大値・グラデの形・色は1つも変えていない(=「遠くが闇に沈む」演出は不変)。
     const hy = Math.round(horizonY);
+    this.floorDark.visible = !CORRIDOR_DEBUG.noDark;
+    this.ceilDark.visible = !CORRIDOR_DEBUG.noDark;
     this.floorDark.position.set(-CORRIDOR_BG_X_OVERSCAN, hy - DARK_SEAM_OVERLAP_PX);
     this.floorDark.width = W + CORRIDOR_BG_X_OVERSCAN * 2;
     this.floorDark.height = H - hy + DARK_SEAM_OVERLAP_PX;
@@ -342,6 +361,8 @@ export class CorridorLayer {
   // 床(Mode-7): 画面の各行の奥行き d を逆算し、床テクスチャの該当行を台形メッシュへ写す。
   private updateFloor(travel: number, W: number, H: number): void {
     if (!this.floor) return;
+    this.floor.mesh.visible = !CORRIDOR_DEBUG.noMesh; // ★切り分け用(?nomesh=1)
+    if (CORRIDOR_DEBUG.noMesh) return;
     const { positions, uvs, geom } = this.floor;
     const horizonY = H * CFG.horizonYr;
     const footY0 = H * CFG.footYr;
@@ -408,6 +429,8 @@ export class CorridorLayer {
   // 天井(Mode-7): 床の上下反転。消失点より上の帯に張る。横は中央1/CEIL_SCALE幅を使用。
   private updateCeiling(travel: number, W: number, H: number): void {
     if (!this.ceil) return;
+    this.ceil.mesh.visible = !CORRIDOR_DEBUG.noMesh; // ★切り分け用(?nomesh=1)
+    if (CORRIDOR_DEBUG.noMesh) return;
     const { positions, uvs, geom } = this.ceil;
     const horizonY = H * CFG.horizonYr;
     const ceilY0 = H * CEIL_Y0_R;
@@ -436,6 +459,14 @@ export class CorridorLayer {
 
   // ⑤ 壁灯(柱と柱の中間・左右の壁ライン上): 柱の投影を半間隔ずらして流用=同じ循環に乗る。
   private updateWallLamps(travel: number, W: number, H: number, now: number): void {
+    if (CORRIDOR_DEBUG.noPillar) { // ★切り分け用(?nopillar=1): 柱と同じ列に並ぶ壁灯も一緒に消す
+      for (const sp of this.candleSharp) sp.visible = false;
+      for (const sp of this.candleBlur) sp.visible = false;
+      for (const g of this.glowMain) g.visible = false;
+      for (const g of this.glowCore) g.visible = false;
+      for (const g of this.glowFloor) g.visible = false;
+      return;
+    }
     const lamps = projectCorridorPillars(travel + CFG.spacing / 2, W, H, CFG);
     const tSec = now / 1000;
     const candleTex = this.tex['candle'];
@@ -495,6 +526,11 @@ export class CorridorLayer {
 
   // ⑥ 奥壁(ステンドグラス窓)+月明かり。壁の帯だけを切り出したサブテクスチャを常に遠方=farblurとクロスフェード。
   private updateBack(travel: number, W: number, H: number, opts?: CorridorLayerFrameOpts): void {
+    if (CORRIDOR_DEBUG.noBack) { // ★切り分け用(?noback=1)
+      this.backSharp.visible = this.backBlur.visible = false;
+      this.moonWindow.visible = this.moonShaft.visible = this.moonFloor.visible = false;
+      return;
+    }
     const bt = this.backSharpFrame;
     if (!bt || bt.width <= 0) { this.backSharp.visible = false; this.backBlur.visible = false;
       this.moonWindow.visible = this.moonShaft.visible = this.moonFloor.visible = false; return; }
@@ -556,6 +592,11 @@ export class CorridorLayer {
 
   // ⑦ 柱(奥→手前)。距離フェードは alpha、被写界深度はシャープ+ブラーのクロスフェード。
   private updatePillars(travel: number, W: number, H: number): void {
+    if (CORRIDOR_DEBUG.noPillar) { // ★切り分け用(?nopillar=1): 柱を全部隠す
+      for (const sp of this.pillarSharp) sp.visible = false;
+      for (const sp of this.pillarBlur) sp.visible = false;
+      return;
+    }
     const pillars = projectCorridorPillars(travel, W, H, CFG);
     for (let i = 0; i < this.pillarSharp.length; i++) {
       const sharp = this.pillarSharp[i], blur = this.pillarBlur[i];
