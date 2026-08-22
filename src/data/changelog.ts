@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3826',
+    items: [
+      '通常のハンターに見つかるまでの猶予は5秒のままです(前の版で3秒にしていたのを元に戻しました)。',
+    ],
+  },
+  {
     version: '0.25.3825',
     items: [
       '通常のハンターに見つかるまでの猶予が3秒になりました(これまでは5秒)。視界に入ったら早めに離れてください。',
