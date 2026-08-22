@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3825',
+    items: [
+      '通常のハンターに見つかるまでの猶予が3秒になりました(これまでは5秒)。視界に入ったら早めに離れてください。',
+    ],
+  },
+  {
     version: '0.25.3824',
     items: [
       'デンジャーゾーンのハンターは、姿を見せずに「何かに見られている…」だけが先に届き、10秒後に現れるようになりました(その間に倒すことはできません)。',
