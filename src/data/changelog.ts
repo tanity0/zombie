@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3827',
+    items: [
+      'ゲーム内容の変更はありません(賞金首の出現場所について仕様が決まりました。実装はこの後です)。',
+    ],
+  },
+  {
     version: '0.25.3826',
     items: [
       '通常のハンターに見つかるまでの猶予は5秒のままです(前の版で3秒にしていたのを元に戻しました)。',
