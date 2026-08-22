@@ -28,6 +28,9 @@ export const CFG: CorridorConfig = { ...CORRIDOR_CFG, horizonYr: 0.26, footYr: 0
 // 横移動対応(v0.25.2113): 通路はworld x=0に固定し、pixiSceneがカメラx分だけcontainerを逆シフトする。
 // その際に黒背景が切れないよう左右に持たせる余白(px)。クランプ±170×ズーム+余裕。
 export const CORRIDOR_BG_X_OVERSCAN = 420;
+// ★2026-08-22: 遠方フェード2枚(床側/天井側)を消失点で重ねる幅。0にすると2枚の端が
+// 非整数境界でぶつかり、**倍率と無関係に画面の26%へ横一直線の切れ目**が出る(社長報告)。
+export const DARK_SEAM_OVERLAP_PX = 3;
 // 通路テクスチャ一覧(ensureLoadedと共有)。
 export const CORRIDOR_TEXTURE_NAMES = [
   'floor', 'ceiling', 'floor-goal',
@@ -314,10 +317,22 @@ export class CorridorLayer {
     this.updateCeiling(travel, W, H);
     // ④ 遠方フェード配置。bgと同じ横オーバースキャン(v0.25.2132: カメラのプレイヤー追従で
     // containerごと横シフトしても黒グラデの縁(=v0.25.2124の「四角い黒い切れ目」の正体)が画面に入らない)。
-    this.floorDark.position.set(-CORRIDOR_BG_X_OVERSCAN, horizonY);
-    this.floorDark.width = W + CORRIDOR_BG_X_OVERSCAN * 2; this.floorDark.height = H - horizonY;
+    // ★社長報告2026-08-22「どこに居ても、コンボが表示される高さ辺りが必ず切れている」の修正。
+    // 実測: 切れ目は画面の27.1%、horizonY(=H*0.26)の位置に**倍率と無関係に固定**で出ていた。
+    // 正体は消失点の「継ぎ目」3つが同じ一行に重なっていたこと——
+    //   ① floorDark(上端でα=1)と ceilDark(下端でα=1)が **horizonY ちょうどで接していた**
+    //   ② その horizonY が **非整数**(H=844 なら 219.44)なので、2枚のスプライトの端が
+    //      半端なピクセルになり、間に隙間/濃淡のムラが出る(res:1/3 の縮小で更に目立つ)
+    //   ③ 床メッシュが `horizonY + 1` から始まる=**1px の素抜け**が同じ行にある
+    // 対処: **境界を整数へ丸め、2枚を DARK_SEAM_OVERLAP_PX だけ重ねる**。
+    // αの最大値・グラデの形・色は1つも変えていない(=「遠くが闇に沈む」演出は不変)。
+    const hy = Math.round(horizonY);
+    this.floorDark.position.set(-CORRIDOR_BG_X_OVERSCAN, hy - DARK_SEAM_OVERLAP_PX);
+    this.floorDark.width = W + CORRIDOR_BG_X_OVERSCAN * 2;
+    this.floorDark.height = H - hy + DARK_SEAM_OVERLAP_PX;
     this.ceilDark.position.set(-CORRIDOR_BG_X_OVERSCAN, 0);
-    this.ceilDark.width = W + CORRIDOR_BG_X_OVERSCAN * 2; this.ceilDark.height = horizonY;
+    this.ceilDark.width = W + CORRIDOR_BG_X_OVERSCAN * 2;
+    this.ceilDark.height = hy + DARK_SEAM_OVERLAP_PX;
 
     this.updateWallLamps(travel, W, H, now);
     this.updateBack(travel, W, H, opts);
@@ -333,7 +348,10 @@ export class CorridorLayer {
     const denom = footY0 - horizonY;
     for (let i = 0; i < FLOOR_ROWS; i++) {
       const t = i / (FLOOR_ROWS - 1);
-      const y = horizonY + 1 + (H - horizonY - 1) * t; // 消失点直下から画面下端まで
+      // ★2026-08-22: 旧 `horizonY + 1` は消失点に **1px の素抜け**(床も天井も無い行)を作っていた。
+      // 天井メッシュは horizonY ちょうどまで来ているので、床も horizonY から始めて隙間を閉じる。
+      // s のゼロ割は下行の `Math.max(0.02, …)` が従来どおり吸収する(挙動不変)。
+      const y = horizonY + (H - horizonY) * t; // 消失点から画面下端まで
       const s = Math.max(0.02, (y - horizonY) / denom);
       const d = CFG.focal * (1 / s - 1);
       const fw = 2 * W * CFG.aisleHalfXr * s * FLOOR_W_MULT;
