@@ -920,8 +920,9 @@ export interface Enemy {
   bountyLastEngagedAt?: number;
   // 滞在満了→帰巣完了後にフェード退場を開始した gameTime。未設定=退場中でない。
   bountyDepartAt?: number;
-  // PACING_PUZZLE.md「★賞金首の活動限界と帰巣ヒステリシス」(社長裁定2026-08-22): 活動限界
-  // (原点から BOUNTY_ACTIVITY_LIMIT_PX)を超えて**追跡を打ち切り帰巣中**か。true の間は
+  // PACING_PUZZLE.md「★賞金首の活動限界と帰巣ヒステリシス」★v2(社長裁定2026-08-22「半径は敵を
+  // 起点としたい」): 活動限界(**巣 homeX/homeY から BOUNTY_ACTIVITY_RADIUS_FROM_HOME_PX**)を
+  // 超えて**追跡を打ち切り帰巣中**か。true の間は
   // **被弾では交戦に戻らない**(プレイヤーが BOUNTY_AGGRO_RANGE_DEFAULT 以内へ近づいた時だけ戻る)。
   // 判定の正本は src/utils/bountyTick.ts の decideBountyLeash(純関数)。
   bountyHoming?: boolean;

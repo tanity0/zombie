@@ -10,7 +10,8 @@ import {
   BOUNTY_NATURAL_FIRST_MS, BOUNTY_NATURAL_MAX_COUNT, BOUNTY_NATURAL_SPAWN_AT_MS,
   BR_SHOT_UNIT_MS,
   bountyBeyondActivityLimit, bountyHomingReengaged, decideBountyLeash,
-  BOUNTY_ACTIVITY_LIMIT_PX, BOUNTY_AGGRO_RANGE_DEFAULT,
+  BOUNTY_ACTIVITY_RADIUS_FROM_HOME_PX, BOUNTY_AGGRO_RANGE_DEFAULT,
+  bountySpawnCenter, BOUNTY_SPAWN_Y_ABS_PX, BOUNTY_SPAWN_X_ABS_LIMIT_PX,
   requestBountyMovePlay, bountyPlaybackActive, getBountyPlayback, clearBountyPlayback,
   BOUNTY_MOVES_BY_TYPE,
   type BountySfx, type BountyMoveKey,
@@ -219,9 +220,10 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
 
   /** 賞金首1体+プレイヤーの盤面を作り、tickを手動で進めるヘルパ(idolTick.test.tsのsetupを踏襲)。 */
   const setup = (over: Partial<Enemy> = {}) => {
-    // 盤面の置き場所: 原点から hypot(2000,2000)≈2828px = **活動限界(BOUNTY_ACTIVITY_LIMIT_PX=5000)の内側**。
-    // ★ここを限界の外(旧: 50000,50000)へ置くと、賞金首は毎フレーム帰巣を選ぶので技の状態機械が一切回らない
-    // (社長裁定2026-08-22「活動限界」)。座標を動かす時はこの制約を必ず守ること。
+    // 盤面の置き場所: **巣(homeX/homeY)を現在地に置く**=活動限界
+    // (BOUNTY_ACTIVITY_RADIUS_FROM_HOME_PX=1200・巣からの半径)の内側から始まる。
+    // ★homeを設定せず遠くへ置くと帰巣ラッチの挙動が変わるので、座標を動かす時もhomeを一緒に動かすこと
+    // (社長裁定2026-08-22「活動限界」★v2=半径は敵(巣)を起点)。
     const e = spawnEnemyAt('bounty-ranged', 2000, 2000, START_GT);
     e.dormant = true;
     e.homeX = e.x; e.homeY = e.y;
@@ -416,7 +418,7 @@ describe('runBountyTick — B2a 技の状態機械', () => {
     type: EnemyType, playerOffset: { x: number; y: number }, over: Partial<Enemy> = {},
     sfxOverride?: BountySfx,
   ) => {
-    const e = spawnEnemyAt(type, 2000, 2000, START_GT); // 活動限界(5000px)の内側に置く=帰巣を選ばせない
+    const e = spawnEnemyAt(type, 2000, 2000, START_GT); // 巣=現在地(活動限界1200pxの内側)=帰巣を選ばせない
     e.dormant = false; // 技テストは交戦中から始める(起床演出待ちを省く)
     e.homeX = e.x; e.homeY = e.y;
     e.aggroRange = 200;
@@ -1497,7 +1499,7 @@ describe('runBountyTick — ボスメーカーの個別再生(▸)', () => {
   const START_GT = 10_000_000;
 
   const setupPlay = (type: EnemyType, playerOffset: { x: number; y: number }, over: Partial<Enemy> = {}) => {
-    const e = spawnEnemyAt(type, 2000, 2000, START_GT); // 活動限界(5000px)の内側に置く=帰巣を選ばせない
+    const e = spawnEnemyAt(type, 2000, 2000, START_GT); // 巣=現在地(活動限界1200pxの内側)=帰巣を選ばせない
     e.dormant = false;
     e.homeX = e.x; e.homeY = e.y;
     e.aggroRange = 200;
@@ -1624,7 +1626,7 @@ describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.
   const START_GT = 10_000_000;
   /** ▸個別再生で技を1つ強制発動する盤面(抽選・距離帯・CDをバイパス=州を狙って作れる)。 */
   const setupMove = (type: EnemyType, move: BountyMoveKey, playerOffset: { x: number; y: number }) => {
-    const e = spawnEnemyAt(type, 2000, 2000, START_GT); // 活動限界(5000px)の内側に置く=帰巣を選ばせない
+    const e = spawnEnemyAt(type, 2000, 2000, START_GT); // 巣=現在地(活動限界1200pxの内側)=帰巣を選ばせない
     e.dormant = false;
     e.homeX = e.x; e.homeY = e.y;
     e.aggroRange = 200;
@@ -1783,28 +1785,90 @@ describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.
 });
 
 
-// PACING_PUZZLE.md「★賞金首の活動限界と帰巣ヒステリシス」(社長裁定2026-08-22)
-describe('賞金首の活動限界(原点から5000px)', () => {
-  it('限界の値は5000px(=未確認汚染エリア area 3 に跨がない)', () => {
-    expect(BOUNTY_ACTIVITY_LIMIT_PX).toBe(5000);
+// PACING_PUZZLE.md「★賞金首の活動限界と帰巣ヒステリシス」→「確定仕様(★v2)」(社長裁定2026-08-22
+// 「半径は敵を起点としたい」)。★v1の「原点から5000px」は撤回=巣からの半径1本になった。
+describe('賞金首の湧き位置(研究領域へ固定)', () => {
+  it('固定値: y=±2250(研究領域1500〜2999の真ん中)/ x上限=±1983', () => {
+    expect(BOUNTY_SPAWN_Y_ABS_PX).toBe(2250);
+    expect(BOUNTY_SPAWN_X_ABS_LIMIT_PX).toBe(1983);
   });
 
-  it('デンジャーゾーン(3000〜4999)までは限界の内側=許す', () => {
-    expect(bountyBeyondActivityLimit(3000, 0)).toBe(false);
-    expect(bountyBeyondActivityLimit(4999, 0)).toBe(false);
+  it('yの符号はプレイヤーの居る側(y>0なら+2250 / y<0なら-2250)', () => {
+    expect(bountySpawnCenter(0, 800).y).toBe(2250);
+    expect(bountySpawnCenter(0, 4000).y).toBe(2250);
+    expect(bountySpawnCenter(0, -800).y).toBe(-2250);
+    expect(bountySpawnCenter(0, -4000).y).toBe(-2250);
+    expect(bountySpawnCenter(0, 0).y).toBe(2250); // y=0ちょうどは正側(上下どちらでも同距離)
   });
 
-  it('5000ちょうどから外(=帰巣)', () => {
-    expect(bountyBeyondActivityLimit(5000, 0)).toBe(true);
-    expect(bountyBeyondActivityLimit(0, -5000)).toBe(true);
-    expect(bountyBeyondActivityLimit(6000, 6000)).toBe(true);
+  it('xはプレイヤーのxに合わせる(範囲内ならそのまま)', () => {
+    expect(bountySpawnCenter(0, 100).x).toBe(0);
+    expect(bountySpawnCenter(1200, 100).x).toBe(1200);
+    expect(bountySpawnCenter(-1983, 100).x).toBe(-1983);
+    expect(bountySpawnCenter(1983, 100).x).toBe(1983);
   });
 
-  it('★原点距離1本(巣からの半径ではない)=斜めでも同じ線', () => {
-    // 3-4-5の直角三角形: (3000,4000)はちょうど5000。
-    expect(Math.hypot(3000, 4000)).toBe(5000);
-    expect(bountyBeyondActivityLimit(3000, 4000)).toBe(true);
-    expect(bountyBeyondActivityLimit(2999, 4000)).toBe(false);
+  it('★xは|x|≤1983へクランプ(超えると原点2999pxの外=area 2に出てしまう)', () => {
+    expect(bountySpawnCenter(5000, 100).x).toBe(1983);
+    expect(bountySpawnCenter(-5000, 100).x).toBe(-1983);
+    expect(bountySpawnCenter(1984, 100).x).toBe(1983);
+    expect(bountySpawnCenter(-1984, -100).x).toBe(-1983);
+  });
+
+  it('★【未確認侵入を防ぐ根拠】どんなプレイヤー位置でも原点距離が2250〜2999pxに収まる(=area 1)', () => {
+    // 最小=x=0のとき2250ちょうど。最大=|x|=1983のとき hypot(1983,2250)≈2999.13(<3000=area 2の入口)。
+    expect(Math.hypot(0, 2250)).toBe(2250);
+    expect(Math.hypot(1983, 2250)).toBeCloseTo(2999.13, 2);
+    expect(Math.hypot(1983, 2250)).toBeLessThan(3000);
+    const xs = [-99999, -5000, -1984, -1983, -1200, -1, 0, 1, 1200, 1983, 1984, 5000, 99999];
+    const ys = [-9000, -2250, -1, 0, 1, 2250, 9000];
+    for (const px of xs) for (const py of ys) {
+      const c = bountySpawnCenter(px, py);
+      const d = Math.hypot(c.x, c.y);
+      expect(d).toBeGreaterThanOrEqual(2250);
+      expect(d).toBeLessThanOrEqual(2999.2);
+      expect(d).toBeLessThan(3000); // area 2(r≥3000)へ湧かない
+      expect(Math.abs(c.y)).toBe(2250);
+      expect(Math.abs(c.x)).toBeLessThanOrEqual(1983);
+    }
+  });
+
+  it('★活動限界(巣から1200px)を足しても未確認汚染エリア(r≥5000)へ届かない', () => {
+    const worst = Math.hypot(1983, 2250) + BOUNTY_ACTIVITY_RADIUS_FROM_HOME_PX; // ≈4199.1
+    expect(worst).toBeLessThan(5000);
+    expect(5000 - worst).toBeGreaterThan(800); // 余裕801px(設計書の数字)
+  });
+});
+
+describe('賞金首の活動限界(巣から1200px)', () => {
+  it('限界の値は1200px(巣起点。原点距離の線は使わない)', () => {
+    expect(BOUNTY_ACTIVITY_RADIUS_FROM_HOME_PX).toBe(1200);
+  });
+
+  it('境界: 1199=内側 / 1200ちょうど=内側 / 1201=外', () => {
+    expect(bountyBeyondActivityLimit(1199, 0, 0, 0)).toBe(false);
+    expect(bountyBeyondActivityLimit(1200, 0, 0, 0)).toBe(false);
+    expect(bountyBeyondActivityLimit(1201, 0, 0, 0)).toBe(true);
+  });
+
+  it('★巣起点=原点からの距離では判定しない(巣が深部でも、巣に居れば内側)', () => {
+    // 原点から6000px(=旧v1なら「限界の外」)でも、巣がそこなら内側。
+    expect(bountyBeyondActivityLimit(6000, 0, 6000, 0)).toBe(false);
+    // 逆に原点近くでも、巣から1200px超なら外。
+    expect(bountyBeyondActivityLimit(0, 0, 1300, 0)).toBe(true);
+  });
+
+  it('斜めでも巣からの半径1本(3-4-5)', () => {
+    // 巣(2000,2000)から (720,960) ずらすと距離ちょうど1200。
+    expect(Math.hypot(720, 960)).toBe(1200);
+    expect(bountyBeyondActivityLimit(2720, 2960, 2000, 2000)).toBe(false);
+    expect(bountyBeyondActivityLimit(2721, 2960, 2000, 2000)).toBe(true);
+  });
+
+  it('★巣(homeX/homeY)が未定義なら限界の外と判定しない(安全側)', () => {
+    expect(bountyBeyondActivityLimit(99999, 99999)).toBe(false);
+    expect(bountyBeyondActivityLimit(99999, 99999, 0, undefined)).toBe(false);
+    expect(bountyBeyondActivityLimit(99999, 99999, undefined, 0)).toBe(false);
   });
 });
 
@@ -1816,9 +1880,10 @@ describe('帰巣ヒステリシス(帰巣→交戦は380px以内だけ・被弾�
     expect(bountyHomingReengaged(0)).toBe(true);
   });
 
+  // 巣は原点(0,0)固定。centerX が「巣からの距離」そのものになる読み方でテストする。
   const leash = (over: Partial<Parameters<typeof decideBountyLeash>[0]>) => decideBountyLeash({
-    homing: false, centerX: 0, centerY: 0, distanceToPlayer: 100, msSinceHit: 999_999,
-    leashRadiusPx: 700, ...over,
+    homing: false, centerX: 0, centerY: 0, homeX: 0, homeY: 0,
+    distanceToPlayer: 100, msSinceHit: 999_999, leashRadiusPx: 700, ...over,
   });
 
   it('限界の内側では従来どおり bountyEngagedNow(距離700 or 被弾3秒)で交戦', () => {
@@ -1829,13 +1894,13 @@ describe('帰巣ヒステリシス(帰巣→交戦は380px以内だけ・被弾�
       .toEqual({ engaged: true, homing: false });
   });
 
-  it('★限界を超えたら追跡を打ち切って帰巣(交戦→帰巣は緩い)', () => {
-    expect(leash({ centerX: 5000, distanceToPlayer: 400 })).toEqual({ engaged: false, homing: true });
+  it('★限界(巣から1200px)を超えたら追跡を打ち切って帰巣(交戦→帰巣は緩い)', () => {
+    expect(leash({ centerX: 1201, distanceToPlayer: 400 })).toEqual({ engaged: false, homing: true });
   });
 
   it('★帰巣中は被弾しても交戦に戻らない(逃げ撃ちハメの封じ込め)', () => {
     // 直前に被弾(msSinceHit=0)+距離700未満でも、帰巣中なら engaged=false のまま。
-    expect(leash({ homing: true, centerX: 5200, distanceToPlayer: 600, msSinceHit: 0 }))
+    expect(leash({ homing: true, centerX: 1500, distanceToPlayer: 600, msSinceHit: 0 }))
       .toEqual({ engaged: false, homing: true });
     // 巣へ戻って限界の内側に入っても、380pxより遠ければまだ帰巣中。
     expect(leash({ homing: true, centerX: 1000, distanceToPlayer: 381, msSinceHit: 0 }))
@@ -1843,35 +1908,40 @@ describe('帰巣ヒステリシス(帰巣→交戦は380px以内だけ・被弾�
   });
 
   it('★帰巣中でも「限界の内側」でプレイヤーが380px以内へ詰めれば再交戦(正しく詰めているのに手が出せない、を作らない)', () => {
-    expect(leash({ homing: true, centerX: 4000, distanceToPlayer: 380, msSinceHit: 999_999 }))
+    expect(leash({ homing: true, centerX: 1000, distanceToPlayer: 380, msSinceHit: 999_999 }))
       .toEqual({ engaged: true, homing: false });
   });
 
   it('★【差し戻し是正】限界の外では、距離380px(=再交戦の線ちょうど)でも再交戦しない', () => {
     // 旧実装は380pxだけを見ていたため engaged:true を返し、プレイヤーが密着している限り
     // 賞金首が限界の外へどこまでも追ってきた=裁定の目的(未確認汚染エリアへ入れない)が未達だった。
-    expect(leash({ homing: true, centerX: 5000, distanceToPlayer: 380, msSinceHit: 999_999 }))
+    expect(leash({ homing: true, centerX: 1201, distanceToPlayer: 380, msSinceHit: 999_999 }))
       .toEqual({ engaged: false, homing: true });
-    expect(leash({ homing: true, centerX: 5000, distanceToPlayer: 0, msSinceHit: 0 }))
+    expect(leash({ homing: true, centerX: 1201, distanceToPlayer: 0, msSinceHit: 0 }))
       .toEqual({ engaged: false, homing: true });
   });
 
   it('★交戦→帰巣は密着していても立つ(限界の外に出た時点で打ち切り)', () => {
-    expect(leash({ homing: false, centerX: 6000, distanceToPlayer: 380 }))
+    expect(leash({ homing: false, centerX: 2000, distanceToPlayer: 380 }))
       .toEqual({ engaged: false, homing: true });
-    expect(leash({ homing: false, centerX: 6000, distanceToPlayer: 0 }))
+    expect(leash({ homing: false, centerX: 2000, distanceToPlayer: 0 }))
       .toEqual({ engaged: false, homing: true });
   });
 
   it('限界の内側へ戻ってから初めて再交戦の線が効く(反転しない)', () => {
     // 限界の外に居る間はラッチが立ったまま=毎フレーム反転しない。
-    expect(leash({ homing: true, centerX: 5001, distanceToPlayer: 100 }))
+    expect(leash({ homing: true, centerX: 1201, distanceToPlayer: 100 }))
       .toEqual({ engaged: false, homing: true });
-    // 内側(4999)へ戻り、かつ380px以内で交戦へ。
-    expect(leash({ homing: true, centerX: 4999, distanceToPlayer: 380 }))
+    // 内側(1200ちょうど)へ戻り、かつ380px以内で交戦へ。
+    expect(leash({ homing: true, centerX: 1200, distanceToPlayer: 380 }))
       .toEqual({ engaged: true, homing: false });
     // 内側でも381pxなら帰巣継続。
-    expect(leash({ homing: true, centerX: 4999, distanceToPlayer: 381 }))
+    expect(leash({ homing: true, centerX: 1200, distanceToPlayer: 381 }))
       .toEqual({ engaged: false, homing: true });
+  });
+
+  it('★巣が未定義の個体は限界で帰巣しない(安全側=交戦判定は従来どおり)', () => {
+    expect(leash({ homeX: undefined, homeY: undefined, centerX: 99999, distanceToPlayer: 600 }))
+      .toEqual({ engaged: true, homing: false });
   });
 });

@@ -151,7 +151,7 @@ import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, c
 import {
   runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
   bountyPlaybackActive, clearBountyPlayback,
-  bountySpawnBlocked, bountyNaturalSpawnReady, anyBountyEngaged,
+  bountySpawnBlocked, bountyNaturalSpawnReady, anyBountyEngaged, bountySpawnCenter,
   type BountySfx,
 } from '../utils/bountyTick';
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 頭脳(decideGhostの対プレイヤーアダプタ)+技の状態機械。
@@ -4299,9 +4299,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const spawnBountyEncounter = (bType: EnemyType, atGameTime: number): void => {
           useGameStore.setState({ eventBannerText: '賞金首出現', eventBannerUntil: atGameTime + BOUNTY_APPEAR_BANNER_MS });
           const pcx1 = player.x + player.width / 2, pcy1 = player.y + player.height / 2;
-          const bAng = Math.random() * Math.PI * 2;
-          const bDist = 700 + Math.random() * 300; // 絶対700〜1000px(§2)
-          const bx0 = pcx1 + Math.cos(bAng) * bDist, by0 = pcy1 + Math.sin(bAng) * bDist;
+          // ★湧き位置は研究領域(area 1)へ固定(PACING_PUZZLE.md §6.38「確定仕様(★v2)」・
+          // 社長裁定2026-08-22)。y=±2250(研究領域の真ん中・符号はプレイヤーの居る側)、
+          // x はプレイヤーに合わせて |x|≤1983 へクランプ。式は純関数 bountySpawnCenter が正本。
+          // 旧「プレイヤーから700〜1000px・方角ランダム」は廃止。
+          const bSpawn = bountySpawnCenter(pcx1, pcy1);
+          const bx0 = bSpawn.x, by0 = bSpawn.y;
           const bountyE = spawnEnemyAt(bType, bx0 - 22, by0 - 22, atGameTime);
           const bClamped = clampRectToPlayableArea(bountyE.x, bountyE.y, bountyE.width, bountyE.height, {
             farBackdrop: useGameStore.getState().farBackdrop,

@@ -137,21 +137,67 @@ export const bountyEngagedNow = (sig: BountyEngagedSignals, leashRadiusPx: numbe
   !sig.dormant && (sig.distance < leashRadiusPx || sig.msSinceHit <= BOUNTY_HIT_ENGAGE_MS);
 
 /**
- * PACING_PUZZLE.md「★賞金首の活動限界と帰巣ヒステリシス」(社長裁定2026-08-22)。
+ * PACING_PUZZLE.md「★賞金首の活動限界と帰巣ヒステリシス」→「確定仕様(★v2)」(社長裁定2026-08-22)。
+ * **賞金首の湧き位置を研究領域(area 1・原点から1500〜2999px)へ固定する。**
+ *
+ *         ┌────────────────┼────────────────┐  研究領域の外縁 2999px
+ *         │        ●───────┼───────●        │  ← y = ±2250(研究領域の真ん中)
+ *         │      x=-1983    0      x=+1983  │
+ *         └────────────────┼────────────────┘  研究領域の内縁 1500px
+ *
+ * - **y = 原点から 2250px 固定**(1500〜2999 の真ん中)。**符号はプレイヤーの居る側**
+ *   (プレイヤーの y が負なら y = -2250。y=0 ちょうどは正側=上下どちらでも同じ距離なので任意)。
+ * - **x はプレイヤーの x に合わせ、|x| ≤ 1983px へクランプ**
+ *   (`√(1983² + 2250²) ≈ 2999.1` = 研究領域の外縁。これを超えると area 2 に出てしまう)。
+ * - 旧「プレイヤーから 700〜1000px・方角ランダム」は**廃止**(社長裁定v2)。
+ *
+ * これが**活動限界(巣から1200px)が未確認汚染エリア(r≥5000)へ届かない根拠**でもある——
+ * 最遠に湧いても 2999 + 1200 = 4199px で 801px 余る。
+ */
+/** 湧きの y(絶対値)。研究領域 1500〜2999 の真ん中。 */
+export const BOUNTY_SPAWN_Y_ABS_PX = 2250;
+/** 湧きの x の上限(絶対値)。hypot(1983, 2250) ≈ 2999.1 < 3000 = area 2 の入口。 */
+export const BOUNTY_SPAWN_X_ABS_LIMIT_PX = 1983;
+
+/** 賞金首の湧き位置(中心)。プレイヤーの中心座標を渡す。 */
+export const bountySpawnCenter = (
+  playerCenterX: number, playerCenterY: number,
+): { x: number; y: number } => ({
+  x: Math.max(-BOUNTY_SPAWN_X_ABS_LIMIT_PX, Math.min(BOUNTY_SPAWN_X_ABS_LIMIT_PX, playerCenterX)),
+  y: playerCenterY < 0 ? -BOUNTY_SPAWN_Y_ABS_PX : BOUNTY_SPAWN_Y_ABS_PX,
+});
+
+/**
+ * PACING_PUZZLE.md「★賞金首の活動限界と帰巣ヒステリシス」→「確定仕様(★v2)」(社長裁定2026-08-22
+ * 「半径は敵を起点としたい」)。
  *
  * 社長の懸念: 「賞金首は序盤なので、戦闘中に無限に移動すれば、深部に行っちゃってて、そこで逃げるか
  * 倒すと、**気づけば深部にいる**」。`bountyEngagedNow` は距離と被弾しか見ていないので、プレイヤーが
  * 引きながら戦えば賞金首を何pxでも深部へ運べた(リーシュ=「プレイヤーが離れたら戻る」であって
  * 「賞金首がどこまで行けるか」の上限ではない)。
  *
- * **活動限界 = 原点から 5000px 未満**(=未確認汚染エリア(area 3)に跨がない。デンジャー(area 2・
- * 3000〜4999)までは許す)。**巣からの半径は設けない**——原点距離1本なので巣がどこでも同じ線になる。
+ * **活動限界 = 巣(`homeX/homeY`)から 1200px**。これを超えたら追跡を打ち切って帰巣する。
+ * **原点距離の線は使わない**(v1の「原点5000px未満」は撤回)。湧きが研究領域へ固定された
+ * (`bountySpawnCenter`)ので、最も外寄りに湧いても原点2999px=ゲート1発生地点(r≥5000)まで
+ * 猶予2001pxあり、半径1200pxでは **2999+1200=4199px** で **801px余る**=原理的に未確認へ入れない。
+ * デンジャーゾーン(area 2)までは許す(社長「デンジャーについては、しゃーなし」)。
  */
-export const BOUNTY_ACTIVITY_LIMIT_PX = 5000;
+export const BOUNTY_ACTIVITY_RADIUS_FROM_HOME_PX = 1200;
 
-/** 賞金首の中心が活動限界の外か(原点距離1本)。 */
-export const bountyBeyondActivityLimit = (centerX: number, centerY: number): boolean =>
-  Math.hypot(centerX, centerY) >= BOUNTY_ACTIVITY_LIMIT_PX;
+/**
+ * 賞金首が活動限界の外か(巣からの半径1本)。**引数は全て同じ座標系**(中心なら中心同士・
+ * 左上なら左上同士)で渡すこと——半径1200pxに対して半身ぶんのズレは無害だが、意味の混線を残さない。
+ *
+ * **`homeX/homeY` が未定義の個体は「限界の外ではない」(false)を返す=安全側**。巣が分からない個体で
+ * 帰巣ラッチを立てると、帰る先が無いまま交戦へ戻れなくなる(既存の帰巣処理は home 未設定を
+ * 「現在地を巣として即dormant化」で拾う防御的フォールバックなので、そこへ勝手に落とさない)。
+ */
+export const bountyBeyondActivityLimit = (
+  centerX: number, centerY: number, homeX?: number, homeY?: number,
+): boolean => {
+  if (homeX === undefined || homeY === undefined) return false; // 巣が無い個体は限界を判定しない(安全側)
+  return Math.hypot(centerX - homeX, centerY - homeY) > BOUNTY_ACTIVITY_RADIUS_FROM_HOME_PX;
+};
 
 /**
  * 帰巣中の再交戦判定のうち**距離の側**(ヒステリシス・厳しい側)。**被弾では戻らない**——プレイヤーが
@@ -170,6 +216,9 @@ export interface BountyLeashInput {
   homing: boolean;
   centerX: number;
   centerY: number;
+  /** 巣の座標(enemy.homeX/homeY)。**centerX/centerY と同じ座標系**で渡す。未定義なら限界を判定しない。 */
+  homeX?: number;
+  homeY?: number;
   distanceToPlayer: number;
   msSinceHit: number;
   leashRadiusPx: number;
@@ -181,7 +230,7 @@ export interface BountyLeashDecision { engaged: boolean; homing: boolean }
  *
  * | 向き | 条件 |
  * |---|---|
- * | 交戦 → 帰巣 | 活動限界(5000px)の外に出た(**緩い**。プレイヤーが密着していても立てる) |
+ * | 交戦 → 帰巣 | 活動限界(巣から1200px)の外に出た(**緩い**。プレイヤーが密着していても立てる) |
  * | 帰巣 → 交戦 | **活動限界の内側** かつ プレイヤーが380px以内(**厳しい**)。**被弾では戻らない** |
  *
  * **再交戦には「活動限界の内側であること」が要る。** 380pxだけを条件にすると、プレイヤーが密着して
@@ -191,7 +240,7 @@ export interface BountyLeashDecision { engaged: boolean; homing: boolean }
  * 戻ってから380px以内で初めて交戦へ戻る。
  */
 export const decideBountyLeash = (input: BountyLeashInput): BountyLeashDecision => {
-  const beyond = bountyBeyondActivityLimit(input.centerX, input.centerY);
+  const beyond = bountyBeyondActivityLimit(input.centerX, input.centerY, input.homeX, input.homeY);
   if (input.homing) {
     const reengage = !beyond && bountyHomingReengaged(input.distanceToPlayer);
     return reengage ? { engaged: true, homing: false } : { engaged: false, homing: true };
@@ -2096,6 +2145,9 @@ export const runBountyTick = (
   const leash = decideBountyLeash({
     homing: wasHoming,
     centerX: bcx, centerY: bcy,
+    // 巣は左上基準(スポーン時に enemy.x/y をそのまま入れている)なので、中心基準へ揃えてから渡す。
+    homeX: bounty.homeX !== undefined ? bounty.homeX + bounty.width / 2 : undefined,
+    homeY: bounty.homeY !== undefined ? bounty.homeY + bounty.height / 2 : undefined,
     distanceToPlayer: dist,
     msSinceHit: nowMs - bounty.lastHit,
     leashRadiusPx: leashRadius,
