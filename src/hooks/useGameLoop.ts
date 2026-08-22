@@ -682,9 +682,10 @@ const HUNTER_MAX_PER_RUN = Infinity;       // 1出撃あたりの上限なし(CD
 const HUNTER_RESPAWN_CD_MIN_MS = 150000;   // 再出現CD最短(150秒=2.5分。長め)
 const HUNTER_RESPAWN_CD_SPAN_MS = 90000;   // +0〜90秒(=150〜240秒)
 const HUNTER_DETECT_RANGE = HUNTER_VISION_RANGE; // 索敵範囲(=視界範囲。描画/ジャンプ範囲と共有)
-// ★緩和(社長指示2026-08-22「見られている の通信の後、10秒後に仕様は緩和しよう。特別ルールではなく常時」):
-// 5000 → 10000。凶悪(VICIOUS_DISCOVER_DELAY_MS)と揃えて「予兆 → 10秒 → 発見」の形を通常ハンターにも敷く。
-const HUNTER_DISCOVER_MS = 10000;          // 検知範囲に10秒残ると発見
+// ★社長裁定2026-08-22(分ける): **通常ハンターは今まで通り 5000**。一度10000へ揃えたが撤回した——
+// 通常ハンターは索敵フェーズで**既に盤面に居る**(姿が見えている)ので、猶予を延ばす必要がない。
+// 「現れずに10秒の猶予」が要るのは、**まだ姿が無い**デンジャーの凶悪ハンターだけ(VICIOUS_DISCOVER_DELAY_MS)。
+const HUNTER_DISCOVER_MS = 5000;           // 検知範囲に5秒残ると発見
 const HUNTER_SEARCH_MAX_MS = 26000;        // 索敵のまま未発見が続くと立ち去る(フェードアウト開始)。
                                             // ただし索敵範囲にプレイヤーが入っている間はこのタイマーを都度リセットする(社長指示)。
 const HUNTER_REINFORCE_1_MS = 20000;       // 追跡20秒で2体目
@@ -1309,7 +1310,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // dormant(aggroRange=0=自動起床しない静止個体)としてスポーンし、10秒後に起こしてchaseへ移す。
     // ここはその「予兆で置いた個体」のid(''=居ない)。★索敵フェーズ(phase='search')は復活させない
     // ——視界サークルの明滅・再配置ラッシュ(v0.25.1531/1532)が戻るため、通るのは従来の凶悪経路のまま。
-    viciousPendingId: '',
     // 社長指示v0.25.2317: 「去っていった」アナウンスを索敵タイムアウトの立ち去りにも出す。ただし
     // プレイヤーが一度も気づいていない索敵個体の退場まで報せるとネタバレになるので、気づかせた
     // (「何かに見られている…」or「発見された！」を出した)出撃だけを対象にするためのフラグ。
@@ -2596,7 +2596,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           m0CritLandedRef.current = false;
           m0LatePopupRef.current = null;
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
-          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0, viciousPendingId: '', noticed: false };
+          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0, noticed: false };
           hunterKillsRef.current = [];
           hunterPrevHpRef.current = -1;
           hunterLastDmgAtRef.current = -1e9;
@@ -4065,39 +4065,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (viciousReady) {
               // M20追補(v0.25.1533/1534): 索敵フェーズは無し。入場検知から VICIOUS_DISCOVER_DELAY_MS
               // 待ってから、索敵をスキップして「見つかった状態」(chase)へ直接発動する。
-              // ★緩和(社長指示2026-08-22「『見られている』の通信の後、10秒後に…特別ルールではなく常時」):
-              // その**待ちの入り口**で予兆の3点(hunter-alert SE + バナー「何かに見られている…」+
-              // 方角マーカー hunterAlerted)を出す。方角マーカーは敵1体に付く旗なので、個体自体を
-              // 待ちの頭で置く(dormant + aggroRange=0 = 自動起床しない静止個体)。
+              // ★社長裁定2026-08-22(分ける): その**待ちの入り口**で「通信」だけを出す——
+              // **hunter-alert SE + バナー「何かに見られている…」の2点。個体は置かない**
+              // (社長「デンジャーハンターだけ**現れずに**10秒の猶予」)。
+              //   方角マーカーは「敵1体に付く旗」なので出すには個体が要るが、置くと
+              //   ①10秒間そのハンターを**倒せてしまう**(デンジャーに拠点0で入った罰が無効化できる)
+              //   ②`syncHunterVision` が薄紫の視界サークルを描く(v0.25.1533で撤去したものが戻る)
+              //   の2つが付いてくる。**姿を見せない**ことでどちらも起きない。
               // ★索敵フェーズ(phase='search')は復活させない=通るのはこの凶悪経路のまま
               // (視界サークルの明滅・再配置ラッシュ v0.25.1531/1532 の経路には入らない)。
               if (H.viciousPendingAt === 0) {
                 H.viciousPendingAt = newGameTime;
-                const preSpawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
-                H.viciousPendingId = spawnHunter(true, preSpawnPos); // search=true=静止(dormant/aggroRange0)
-                useGameStore.setState(st => ({ enemies: st.enemies.map(e => e.id === H.viciousPendingId ? { ...e, hunterAlerted: true } : e) }));
                 playSfx('hunter-alert'); // 予兆SE(通常ハンターの「見られている」と同じ音)
                 H.noticed = true;        // 気づかせた=立ち去りもアナウンスしてよい出撃(v0.25.2317)
                 useGameStore.setState({ eventBannerText: '何かに見られている…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               }
               if (newGameTime - H.viciousPendingAt >= VICIOUS_DISCOVER_DELAY_MS) {
-                // 予兆で置いた個体を起こす。10秒の間に倒された場合だけ、従来どおり新しく1体湧かせる
-                // (「デンジャーに拠点0で入った罰」を予兆で無効化できてしまわないように)。
-                const pending = useGameStore.getState().enemies.find(e => e.id === H.viciousPendingId);
-                let atX: number, atY: number;
-                if (pending) {
-                  H.primaryId = H.viciousPendingId;
-                  useGameStore.setState(st => ({ enemies: st.enemies.map(e => e.id === H.primaryId ? { ...e, dormant: false, aggroRange: undefined, hunterAlerted: true } : e) }));
-                  atX = pending.x + pending.width / 2; atY = pending.y + pending.height / 2;
-                } else {
-                  const spawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
-                  H.primaryId = spawnHunter(false, spawnPos); // search=false=最初から発見済み(alerted)
-                  atX = spawnPos.x; atY = spawnPos.y;
-                }
+                // 猶予の間は姿が無いので、ここで従来どおり「見つかった状態」の1体を湧かせる
+                // (=罰が予兆で無効化されることもない)。
+                const spawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
+                H.primaryId = spawnHunter(false, spawnPos); // search=false=最初から発見済み(alerted)
+                const atX = spawnPos.x, atY = spawnPos.y;
                 H.phase = 'chase'; H.chaseStartAt = newGameTime; H.reinforced = 0;
                 H.vicious = true;
                 H.viciousPendingAt = 0;
-                H.viciousPendingId = '';
                 H.eventsThisRun += 1;
                 useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
                 useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
@@ -4105,14 +4096,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 useGameStore.getState().triggerAttention(atX, atY);
               }
             } else {
-              // 条件が崩れた(退避/拠点制圧等)=待機解除。予兆で置いた個体もここで引き上げる
-              // (置きっぱなしにすると、条件が崩れた後も静止したハンターが盤面に残る)。
-              if (H.viciousPendingId !== '') {
-                const goneId = H.viciousPendingId;
-                useGameStore.setState(st => ({ enemies: st.enemies.filter(e => e.id !== goneId) }));
-                H.viciousPendingId = '';
-                H.noticed = false;
-              }
+              // 条件が崩れた(退避/拠点制圧等)=待機解除。個体は置いていないので引き上げるものは無いが、
+              // 予兆だけ出して発動しなかった出撃を「気づかせた」に数えない(立ち去りアナウンスの対象外)。
+              if (H.viciousPendingAt !== 0) H.noticed = false;
               H.viciousPendingAt = 0;
               if (newGameTime >= HUNTER_START_MS && H.eventsThisRun < HUNTER_MAX_PER_RUN && newGameTime >= H.nextEligibleAt && !spawnBlocked) {
               // 旧・優勢判定(6項目中4つ以上)。バッチ7で既定は退屈シグナルへ統合するが、?events=0の
