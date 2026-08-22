@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3819',
+    items: [
+      'ゲーム内容の変更はありません(二人組クエストの納品方法と、ボス撃破後の余韻の仕様が決まりました)。',
+    ],
+  },
+  {
     version: '0.25.3818',
     items: [
       'トールの突進が、走っている間も体に当たるようになりました。走る道すじには、実際の当たり判定とぴったり同じ形の赤い帯が出ます(赤の外なら当たりません)。ボットも避けます。',
