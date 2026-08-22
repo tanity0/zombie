@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3822',
+    items: [
+      'ゲーム内容の変更はありません(賞金首の行動範囲とハンターの予告について仕様が決まりました。実装はこの後です)。',
+    ],
+  },
+  {
     version: '0.25.3821',
     items: [
       'ゲーム内容の変更はありません(開発の進め方の規約を1つ足しました)。',
