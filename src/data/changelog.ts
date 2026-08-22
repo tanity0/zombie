@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3814',
+    items: [
+      'ゲーム内容の変更はありません(トールの技台本が実機確認待ちに入りました)。',
+    ],
+  },
+  {
     version: '0.25.3813',
     items: [
       'トールの突進からの連携が、戦闘の序盤(HPが多いうち)でも「突進→突き→突き」になりました(これまで序盤だけ突きが1回でした)。',
