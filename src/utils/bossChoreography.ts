@@ -1,14 +1,24 @@
 /**
  * ボスの攻撃を単発抽選ではなく、前の技が次の技を成立させる短い台本へ変換する。
- * 先頭は抽選済みの始動技。Phase1は学習しやすい2手、後半は3手を基本にする。
+ * 先頭は抽選済みの始動技。Phase1は学習しやすい2手、後半は3手を基本にする
+ * (★例外=`FULL_LENGTH_OPENINGS` に載った起点だけ Phase1 でも切らない)。
  */
 import { BOSS_STRING_REST_MS } from './bossTelegraph';
 export type ChoreographyBoss =
   | 'giant' | 'glen' | 'mimir' | 'jormungand' | 'skadi' | 'thor'
   | 'miguel' | 'jibril' | 'rafi' | 'uri' | 'suriel' | 'acrasiel' | 'phillboss';
 
-const trimForPhase = (moves: readonly string[], phase: number): string[] =>
-  moves.slice(0, phase <= 1 ? 2 : 3);
+const trimForPhase = (moves: readonly string[], phase: number, fullLength = false): string[] =>
+  moves.slice(0, fullLength || phase > 1 ? 3 : 2);
+
+/**
+ * ★長さの特例(research/THOR_ISSEN_REWORK.md §9-13・社長指示「突進足して。で、突 突 を付けて」):
+ * ここに載った `<boss>:<opening>` の起点だけは **Phase1 でも台本を切らない**。
+ * トールの突進は台本そのものが `['dash','tsuki','tsuki']`=社長が名指しした「突 突」なので、
+ * Phase1(HP100〜60%)で先頭2手に切られると **指定の連携が戦闘の最初の4割で一度も出ない**。
+ * **載せた起点以外・他ボスの挙動は1つも変わらない**(既定は従来どおり Phase1=2手)。
+ */
+const FULL_LENGTH_OPENINGS: ReadonlySet<string> = new Set(['thor:dash']);
 
 const GIANT: Record<string, readonly string[]> = {
   stomp: ['stomp', 'jump', 'sweep'], sweep: ['sweep', 'bolt', 'dash'],
@@ -48,12 +58,12 @@ const SCRIPTS: Record<Exclude<ChoreographyBoss, 'giant' | 'glen'>, Record<string
     // ★research/THOR_ISSEN_REWORK.md §4(社長裁定2026-08-21「突進足して。で、突 突 を付けて」):
     // 新技「突進」の起点にだけ台本を1本足す。**既存4起点(issen/tsuki/harai/jump)は1文字も変えない**
     // ——起点は既に4本すべて埋まっていて、突き起点に新台本を置くと既存の `['tsuki','issen','harai']` を
-    // 潰すことになる(社長が避けていたのはこの上書き)。3手なので trimForPhase(Phase1=2/Phase2+=3)の
-    // 枠内に収まる=長さの特例もフェーズ条件も要らない。
-    // ★この「枠内に収まるので特例は要らない」という推論は **§9-13 が『見落としていた』と認定した当のもの**
-    // (Phase1 は先頭2手に切られるので `['dash','tsuki']`=**社長指定の「突 突」が HPバーの最初の4割で
-    // 出ない**)。**research/THOR_ISSEN_REWORK.md §9-13 で社長裁定待ち**(推薦=突進の台本だけ
-    // 長さの特例でPhase1も3手)。**結論として読まないこと**——裁定が出たらここが動く。
+    // 潰すことになる(社長が避けていたのはこの上書き)。
+    // ★かつてここには「3手なので trimForPhase(Phase1=2/Phase2+=3)の枠内に収まる=長さの特例も
+    // フェーズ条件も要らない」と書いてあったが、**この推論は誤り**だった——Phase1 は先頭2手に
+    // 切られるので `['dash','tsuki']`=**社長指定の「突 突」が HPバーの最初の4割で出なかった**。
+    // **§9-13 の実施で `FULL_LENGTH_OPENINGS` に `thor:dash` を載せ、Phase1 でも3手そのまま
+    // 出す**ようにしてある(=長さの特例は「要る」)。
     dash: ['dash', 'tsuki', 'tsuki'],
   },
   miguel: {
@@ -113,7 +123,7 @@ export const planBossChoreography = (
     moves = moves.filter((m, i) => i === 0
       || (m !== 'reach' && (opts?.glenBigMoves === true || (m !== 'nihil' && m !== 'trijump'))));
   }
-  return trimForPhase(moves, phase);
+  return trimForPhase(moves, phase, FULL_LENGTH_OPENINGS.has(`${boss}:${opening}`));
 };
 
 /**

@@ -59,8 +59,9 @@ describe('planBossChoreography', () => {
 
 // ★research/THOR_ISSEN_REWORK.md §4(社長裁定2026-08-21「突進足して。で、突 突 を付けて」)。
 describe('トールの新起点「突進」(v0.25.3780)', () => {
-  it("planBossChoreography('thor','dash',phase) が ['dash','tsuki','tsuki'](Phase1は先頭2手)", () => {
-    expect(planBossChoreography('thor', 'dash', 1)).toEqual(['dash', 'tsuki']);
+  // ★§9-13 実施(社長指示「突 突 を付けて」): 突進の起点だけ長さの特例で **Phase1 でも3手**。
+  it("planBossChoreography('thor','dash',phase) が全フェーズで ['dash','tsuki','tsuki']", () => {
+    expect(planBossChoreography('thor', 'dash', 1)).toEqual(['dash', 'tsuki', 'tsuki']);
     expect(planBossChoreography('thor', 'dash', 2)).toEqual(['dash', 'tsuki', 'tsuki']);
     expect(planBossChoreography('thor', 'dash', 3)).toEqual(['dash', 'tsuki', 'tsuki']);
   });
@@ -94,9 +95,28 @@ describe('トールの新起点「突進」(v0.25.3780)', () => {
     expect(rest).toEqual(['tsuki']); // 2手目も残る(重複が消えていない)
   });
 
-  it('3手なのでキュー上限(Phase1=2 / Phase2+=3)の枠内に収まる=長さの特例が要らない', () => {
-    expect(planBossChoreography('thor', 'dash', 1).length).toBe(2);
-    expect(planBossChoreography('thor', 'dash', 2).length).toBe(3);
+  // ★§9-13 の値テスト: 特例は「トールの突進起点1本だけ」に閉じていること。
+  // 「長さの特例が漏れていない」ことの機械検査=**dash起点だけ phase1 で3手 / 他4起点は2手**。
+  it('★長さの特例: 突進起点だけ phase1 で3手・既存4起点は phase1 で2手のまま', () => {
+    expect(planBossChoreography('thor', 'dash', 1).length).toBe(3);
+    for (const opening of ['issen', 'tsuki', 'harai', 'jump']) {
+      expect(planBossChoreography('thor', opening, 1).length).toBe(2);
+    }
+  });
+
+  it('★phase2以降はトールの全5起点が3手(特例の有無で差が出ない)', () => {
+    for (const opening of ['dash', 'issen', 'tsuki', 'harai', 'jump']) {
+      for (const phase of [2, 3]) {
+        expect(planBossChoreography('thor', opening, phase).length).toBe(3);
+      }
+    }
+  });
+
+  it('★特例が他ボスへ漏れていない: 全ボスの dash 起点は phase1 で2手のまま(トールを除く)', () => {
+    const dashBosses = ['giant', 'mimir', 'jormungand', 'skadi', 'miguel'] as const;
+    for (const boss of dashBosses) {
+      expect(planBossChoreography(boss, 'dash', 1).length).toBe(2);
+    }
   });
 });
 
