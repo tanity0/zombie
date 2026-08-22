@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3829',
+    items: [
+      'ゲーム内容の変更はありません(開発環境の不具合に自動の対処を入れました)。',
+    ],
+  },
+  {
     version: '0.25.3828',
     items: [
       '賞金首は研究対象区域に現れるようになりました。あなたの居る側の同じあたりに出て、そこから一定の範囲より先へは追ってきません(離れると巣へ帰ります)。',
