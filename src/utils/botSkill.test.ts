@@ -489,6 +489,24 @@ describe('telegraphDodge — ボスの予告(赤い円/帯)を避ける', () => 
     expect(telegraphDodge(10, 10, boss())).toHaveLength(0);
   });
 
+  // ★v0.25.3818(社長裁定 §9-6「突進の走行中の体当たり」=(B)「当てる」の条件②)。走行中(`thor-dash-move`)は巨体の AABB が
+  // 接触ダメージを持つ(combatTick のトール除外から外れている)のに、旧リストは `-windup` と
+  // 明示3州しか拾わず**ボットには走りが見えていなかった**。これが抜けると
+  // 「赤い帯は描いてあるのにボットだけ避けない」= ボス戦の計測が当たり放題の数字に戻る。
+  it('★トールの突進の走り(thor-dash-move)を帯として避ける', () => {
+    const thor = (bossState: string): Enemy => boss({
+      type: 'thor', bossState, width: 140, height: 70,
+      aiFromX: 0, aiFromY: 0, aiTargetX: 600, aiTargetY: 0,
+    } as Partial<Enemy>);
+    const run = telegraphDodge(300, 10, thor('thor-dash-move'));
+    expect(run, '走行中(thor-dash-move)が帯脅威として出ていない').toHaveLength(1);
+    expect(Math.abs(run[0].uy), '線(x軸)に直交する向きへ退いていない').toBeGreaterThan(0.9);
+    // 溜め(-windup)は従来どおり拾う=今回の追加が既存の経路を壊していないことの対照。
+    expect(telegraphDodge(300, 10, thor('thor-dash-windup'))).toHaveLength(1);
+    // 硬直(-recover)は帯を出さない=「走行中だけ足した」ことの証明(常時脅威にしていない)。
+    expect(telegraphDodge(300, 10, thor('thor-dash-recover'))).toHaveLength(0);
+  });
+
   // ★段階の扱い: 'aoe' は「何かしら避ける段階なら全部が対象」。既定(casual='none')は不変。
   it("赤い予告は 'none' 以外の全段階が扱う(既定 casual は避けないまま=既存ランを動かさない)", () => {
     expect(dodgeHandles('none', 'aoe')).toBe(false);

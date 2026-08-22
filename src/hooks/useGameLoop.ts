@@ -6473,11 +6473,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
                 const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
                 const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / HB_TH.issen.dashMs));
-                // ★この補間は**等速**=CLAUDE.md「★動きの絶対ルール: 慣性」に違反している(jump-attack と
-                // thor-dash-move は既に airHopEase01 を通しており、**一閃だけが取り残されている**)。
-                // **§9-10 で社長裁定待ち**(適用先の選択。「等速で良い」という結論ではない)。
-                patch.x = (fx + (tx - fx) * t) - boss.width / 2;
-                patch.y = (fy + (ty - fy) * t) - boss.height / 2;
+                // ★v0.25.3818(社長裁定 §9-10「等速の線形補間(慣性MUST違反)」= **(b)**): **慣性(ease)を入れた**。同じファイルの
+                // `jump-attack` / `thor-dash-move` が既に通している `airHopEase01`(smootherstep=
+                // 両端で速度0)を掛けるだけで、**新しい定数も新しい曲線も発明していない**。
+                // t=0 で 0・t=1 で 1 に必ず一致するので、**始点・終着点・所要時間(`issen.dashMs`=280ms)
+                // は1pxも1msも変わらない**。当たり判定はこの位置ではなく**焼き付けた帯**
+                // (下の `distToBandRect(from→to, halfWidth)`)が持っており、`t` を一切読まないので
+                // **必中一閃を含めヒットのタイミング・範囲は不変**。変わるのは絵の速度配分だけ。
+                const et = airHopEase01(t);
+                patch.x = (fx + (tx - fx) * et) - boss.width / 2;
+                patch.y = (fy + (ty - fy) * et) - boss.height / 2;
                 let lux = tx - fx, luy = ty - fy;
                 const lul = Math.hypot(lux, luy) || 1; lux /= lul; luy /= lul;
                 const lineLen = Math.hypot(tx - fx, ty - fy);
@@ -6665,8 +6670,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 let dCountered = false;
                 if (dElapsed >= HB_TH.dash.moveMs) {
                   // 到達=斬り抜け1回(払いのカプセルを流用=ミゲルが harai を流用しているのと同じ作法)。
-                  // ★寸法(払いの 310)は**§4に指定が無いまま入れた流用値**=**§9-2 で社長裁定待ち**
-                  // (ミゲルの1.6倍。結論として読まないこと)。斬り抜けが赤い線の終点より先まで届く件は **§9-5**。
+                  // ★寸法(払いの 310)は**§4に指定が無いまま入れた流用値**=**§9-2「斬り抜けカプセルの寸法」で
+                  // 社長裁定待ち**(ミゲルの1.6倍。結論として読まないこと)。
+                  // ※「斬り抜けが赤い線の終点より先まで届く」件(§9-5「突進の赤い線と斬り抜けのズレ」)は
+                  //   **★v0.25.3818 の裁定(a)で解決済み**——**判定は1pxも変えず、赤い線の方を
+                  //   ここと同じ `+ 進行方向 × HB_TH.harai.range` まで伸ばした**(`pixiScene` の
+                  //   `dashLineStrikeEnd`)。**この式を変えるなら描画側も同じ値を読んでいることを確認する。**
                   let ddirx = dtx - dfx, ddiry = dty - dfy;
                   const ddl2 = Math.hypot(ddirx, ddiry) || 1; ddirx /= ddl2; ddiry /= ddl2;
                   const sx = dnx, sy = dny;

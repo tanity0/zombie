@@ -27,6 +27,8 @@
 //
 // レンダラ非依存・store非依存の葉。import してよいのは型と world の純関数だけ。
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
+// ★v0.25.3818(§9-10「等速の線形補間(慣性MUST違反)」裁定(b)): 弾き返しの運びに慣性を入れる。既存の共有イージング(smootherstep)。
+import { airHopEase01 } from './airHop';
 import type { Enemy, Player } from '../types/game';
 
 /** 「行ける帯」の文脈を組む時に読む**store の4フィールド**(構造だけを要求する=store 非依存)。 */
@@ -108,13 +110,20 @@ export const counterLeapOrigin = (
  * 補間そのものをここへ出し、**t=0で起点・t=1で到達点・中間が単調**を値で固定する。
  *
  * `t01` は内側でも 0〜1 へ丸める(呼び出し側の `Math.max/min` が消えても端で暴れない)。
- * ★**等速のまま**(旧実装と1文字も変えていない)。イージングを入れるかは §9-10 で社長裁定待ち
- * ——**「等速が正しい」という結論ではない**(CLAUDE.md 慣性MUSTには現に違反している)。
+ *
+ * ★v0.25.3818(社長裁定 §9-10「等速の線形補間(慣性MUST違反)」= **(b)**): **慣性(ease)を入れた**。時間 `t01` を `airHopEase01`
+ * (smootherstep = 両端で速度0)へ通してから距離に掛ける。同じファイルの `jump-attack` /
+ * `thor-dash-move` が既に通している関数で、**新しい定数も新しい曲線も発明していない**。
+ * `airHopEase01` は t=0 で 0・t=1 で 1 に必ず一致するので、
+ * **起点・到達点・所要時間(`counterLeapMs`)・判定は1pxも1msも変わらない**——変わるのは
+ * 「150pxをどう配分して運ぶか」(=飛行中の速度カーブ)だけ。
+ * ※smootherstep は左右対称なので **t=0.5 はちょうど中点のまま**。慣性が入った証拠は端寄りに出る
+ *   (t=0.25 → 進捗 10.35% / t=0.75 → 89.65%)。
  */
 export const counterLeapPos = (
   from: { x: number; y: number }, to: { x: number; y: number }, t01: number,
 ): { x: number; y: number } => {
-  const t = Math.max(0, Math.min(1, t01));
+  const t = airHopEase01(Math.max(0, Math.min(1, t01)));
   return { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
 };
 

@@ -149,7 +149,9 @@ import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
-import { airHopHeight01 } from '../utils/airHop';
+import { airHopHeight01, airHopEase01 } from '../utils/airHop';
+// ★v0.25.3818(§9-6「突進の走行中の体当たり」裁定(B)): 突進の走行中の赤い帯は「AABB の掃過領域」=判定と厳密に同じ形で描く。
+import { sweptRectHull, dashLineStrikeEnd, dashLineEraseRescale } from '../utils/geometry';
 import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE, PHILL_FEATHER_NATIVE_ANGLE } from '../utils/bladeArt';
 import { bossWideShotZoom } from '../utils/cameraZoom';
 import {
@@ -16310,12 +16312,25 @@ export class PixiScene {
         HB_TH.issen.nihilMs - Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime), now,
       );
       // ★v0.25.3780(§4): 突進の赤い流星ライン(裏ボスの突進/ミゲル踏み込みと同じ作り=意匠を発明しない)。
+      // ★v0.25.3818(§9-5「突進の赤い線と斬り抜けのズレ」裁定(a)): 線の終点は**斬り抜けの終端**まで伸ばす。到達後の斬り抜けカプセルは
+      // 「到達点 + 進行方向 × HB_TH.harai.range」まで届くので、旧実装(到達点で止まる線)は
+      // **赤くない所に判定がある**状態だった。判定は1pxも変えず、線だけを実態へ合わせる。
       {
         const dOn = e.bossState === 'thor-dash-windup';
         const dRemain = (e.bossStateUntil ?? gameTime) - gameTime;
         const dtx = e.aiTargetX ?? cx, dty = e.aiTargetY ?? cy;
-        this.dashLineTick(o, `${e.id}:thordash`, dOn, dRemain, cx, cy, dtx, dty, now,
+        const dEnd = dashLineStrikeEnd(e.aiFromX ?? cx, e.aiFromY ?? cy, dtx, dty, HB_TH.harai.range);
+        this.dashLineTick(o, `${e.id}:thordash`, dOn, dRemain, cx, cy, dEnd.x, dEnd.y, now,
           1 - dRemain / HB_TH.dash.windup);
+      }
+      // ★v0.25.3818(§9-6「突進の走行中の体当たり」裁定(B)「当てる」の条件①): 走行中は**体幅ぶんの赤い帯**を描く。
+      // 形は判定(AABB の掃過)と厳密に一致する(`sweptRectHull`)。②bot への通知は botSkill 側。
+      if (e.bossState === 'thor-dash-move') {
+        this.drawThorDashBodyBand(
+          o, e.x, e.y, e.width, e.height,
+          e.aiTargetX ?? cx, e.aiTargetY ?? cy,
+          gameTime - (e.aiStartedAt ?? gameTime), HB_TH.dash.moveMs, now,
+        );
       }
       // トールの斬撃演出(刀+ストリーク)を出し切らせる(社長指示v0.25.2408)。トールは**実行中
       // (issen-dash/tsuki/harai)にもカウンターが成立する**(useGameLoop のライン判定が
@@ -16885,8 +16900,14 @@ export class PixiScene {
         const mprog = bs === 'mdash-windup'
           ? 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MG_T.dash.windup
           : 1;
-        const merase = bs === 'mdash-windup' ? 0 : Math.min(1, elapsed / MG_T.dash.moveMs);
-        this.drawAngelDashLine(o, cx, cy, tx, ty, now, mprog, merase);
+        const merase0 = bs === 'mdash-windup' ? 0 : Math.min(1, elapsed / MG_T.dash.moveMs);
+        // ★v0.25.3818(§9-5「突進の赤い線と斬り抜けのズレ」裁定(a)): 線の終点を**斬り抜けの終端**(到達点 + 進行方向 × harai.range)
+        // まで伸ばす。到達後のカプセル(angelBossTick の mdash-move)はそこまで判定を持っているので、
+        // 旧実装は「赤くない所に判定がある」だった。**判定は1pxも変えない=線だけを実態へ合わせる。**
+        // 消し(erase)は線が長くなったぶん縮めるので、走者が食った先端の世界座標は不変。
+        const mEnd = dashLineStrikeEnd(fx, fy, tx, ty, MG_T.harai.range);
+        const merase = dashLineEraseRescale(merase0, Math.hypot(tx - cx, ty - cy), MG_T.harai.range);
+        this.drawAngelDashLine(o, cx, cy, mEnd.x, mEnd.y, now, mprog, merase);
         if (bs === 'mdash-windup' || elapsed < MG_T.dash.moveMs) {
           const remaining = (e.bossStateUntil ?? gameTime) - gameTime;
           const swordAlpha = bs === 'mdash-windup'
@@ -17049,8 +17070,13 @@ export class PixiScene {
           const uprog = bs === 'thrust-windup'
             ? 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / UR_T.thrust.windup
             : 1;
-          const uerase = bs === 'thrust-windup' ? 0 : Math.min(1, elapsed / UR_T.thrust.moveMs);
-          this.drawAngelDashLine(o, cx, cy, tx, ty, now, uprog, uerase);
+          const uerase0 = bs === 'thrust-windup' ? 0 : Math.min(1, elapsed / UR_T.thrust.moveMs);
+          // ★v0.25.3818(§9-5「突進の赤い線と斬り抜けのズレ」裁定(a)): ミゲルの踏み込みと**同じ形・同じ描画経路**(drawAngelDashLine)を
+          // 共有していて、同じズレ(到達点 + 進行方向 × UR_T.thrust.range まで判定が届く)を持っていた。
+          // 裁定の文言は「全突進」なので同じ直しを当てる。**判定は1pxも変えていない。**
+          const uEnd = dashLineStrikeEnd(fx, fy, tx, ty, UR_T.thrust.range);
+          const uerase = dashLineEraseRescale(uerase0, Math.hypot(tx - cx, ty - cy), UR_T.thrust.range);
+          this.drawAngelDashLine(o, cx, cy, uEnd.x, uEnd.y, now, uprog, uerase);
         }
         if (bs === 'thrust-windup' || (bs === 'thrust' && elapsed < UR_T.thrust.moveMs)) {
           const remaining = (e.bossStateUntil ?? gameTime) - gameTime;
@@ -20159,6 +20185,37 @@ export class PixiScene {
         efx - nx * halfWidth, efy - ny * halfWidth,
       ]).stroke({ width: 2, color: strokeColor, alpha: strokeA });
     }
+  }
+
+  // ★突進の**走行中の体当たり**を伝える赤い帯(research/THOR_ISSEN_REWORK.md §9-6「突進の走行中の体当たり」社長裁定(B)・v0.25.3818)。
+  //
+  // 裁定は「当てる。ただし**①走行中も体幅ぶんの赤い帯 ②botへの通知**を同時に入れて1セット」。
+  // その①がこれ。**形は `sweptRectHull`(判定と同じ AABB の掃過領域)そのもの**で、
+  // 帯プリミティブ(`drawAngelZoneCapsule`)は使わない——走行中の判定は帯ではなく
+  // **ボスの AABB とプレイヤーの AABB の重なり**(`combatTick.applyContactDamage`)なので、
+  // 帯で描くと斜め移動の半幅と両端のキャップぶんだけ絵と判定がズレる(理由は `sweptRectHull` の
+  // コメント)。色・塗り/縁の濃さは既存の赤い帯と同じ語彙(0xff2a2a / 0xff3b3b)を使う=見た目を発明しない。
+  //
+  // 「これから体が通る所」だけを描く(始点=**今のボスの矩形** / 終点=**走りの到達点の矩形**)ので、
+  // ボスが進むにつれて帯は自然に短くなり、走り終わり(moveMs)には体そのものへ縮む。
+  // 走り終わり以降(斬り抜けの110ms)は描かない——止まった体が接触ダメージを持つのは chase と同じで、
+  // そこに赤を置くと「常時赤い」になり①の意味が消えるため。
+  //
+  // 出現/消滅は**加減速つき**(CLAUDE.md「★動きの絶対ルール: 慣性」)。パッと出てパッと消えない。
+  // 負荷1/10: 走行中(230ms)だけ・共有の per-frame Graphics に poly 1枚+stroke 1本。
+  private static readonly THOR_DASH_BAND_FADE_MS = 60;
+  private drawThorDashBodyBand(
+    o: Graphics, ex: number, ey: number, w: number, h: number,
+    endCx: number, endCy: number, elapsedMs: number, moveMs: number, now: number,
+  ): void {
+    if (elapsedMs < 0 || elapsedMs >= moveMs) return;
+    const F = PixiScene.THOR_DASH_BAND_FADE_MS;
+    const k = airHopEase01(Math.min(1, elapsedMs / F)) * airHopEase01(Math.min(1, (moveMs - elapsedMs) / F));
+    if (k <= 0.002) return;
+    const poly = sweptRectHull(ex, ey, w, h, endCx - w / 2, endCy - h / 2);
+    const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+    o.poly(poly).fill({ color: 0xff2a2a, alpha: (0.34 + 0.08 * pulse) * k * TELEGRAPH_FILL_MULT });
+    o.poly(poly).stroke({ width: 2, color: 0xff3b3b, alpha: (0.72 + 0.15 * pulse) * k });
   }
 
   // §6.38実機FB7(社長指示2026-08-15): drawAngelZoneCapsuleのdashLineTick相当ラッチ。

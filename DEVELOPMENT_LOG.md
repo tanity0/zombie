@@ -1,5 +1,85 @@
 # Development Log
 
+## v0.25.3818 — 社長裁定3件を実装(突進を当てる+赤い帯 / 赤い線を斬り抜けの終端へ / 一閃と跳びに慣性)【2026-08-22 09:40 JST】
+
+社長裁定「**1:B 2:a 3:b**」(research/THOR_ISSEN_REWORK.md §9 冒頭の裁定表)を**そのまま実装**した。
+**3件とも「当たり判定・難易度・所要時間は1pxも1msも動かさない」**——動いたのは
+**①走行中の接触ダメージの有無 ②赤い予告の長さと形 ③飛行中の速度カーブ**の3つだけ。
+
+### 裁定1 = §9-6「突進の走行中の体当たり」=(B)「当てる」(★1セット3点で実装)
+- **(1) 接触ダメージを戻した**: `src/utils/combatTick.ts` の `applyContactDamage` のトール除外へ
+  `&& enemy.bossState !== 'thor-dash-move'` を復帰(v0.25.3808 の暫定退避を裁定で解除)。
+  **`shouldSkipBossContactParry`(`counterReach.ts`)は無改変で残置**——受け流しがカウンターを
+  丸ごと横取りする実バグ(v0.25.3785 重大A)は、除外を外した瞬間に復活するため。
+  併せて `combatTick.ts` の「今この行は到達不能」というコメントを実態(=現役の分岐)へ打ち直した。
+- **(2) 走行中の赤い帯**: `pixiScene.drawThorDashBodyBand`(新設)。形は**帯プリミティブではなく
+  `sweptRectHull`**(`src/utils/geometry.ts` に新設した純関数)=**AABB が直線移動した掃過領域の凸包**。
+  走行中の判定は帯ではなく **AABB どうしの重なり**なので、帯で描くと斜め移動の半幅と両端キャップぶん
+  絵と判定がズレる。凸包なら軸平行=長方形/斜め=六角形で**厳密に一致**する。
+  始点は**今のボスの矩形**・終点は**到達点の矩形**なので、走るにつれて帯が短くなる(=これから体が通る所だけが赤い)。
+  走り終わり(`moveMs`)以降は描かない(止まった体が接触ダメージを持つのは `chase` と同じで、そこに赤を
+  置くと「常時赤い」になり①の意味が消えるため)。出現/消滅は `airHopEase01` で加減速(慣性MUST)。
+  色・濃さは既存の赤い帯と同じ語彙(0xff2a2a / 0xff3b3b + `TELEGRAPH_FILL_MULT`)=見た目を発明していない。
+- **(3) ボットに見せた**: `src/utils/botSkill.ts` `telegraphDodge` の `banded` へ `bs === 'thor-dash-move'`。
+- **v0.25.3809 で入れたカウンター連鎖は無改変**(宣言表 `'hidden:thor-dash-move': 'body'` /
+  `HIDDEN_COUNTER_ACTIVE_STATES` / `thorCounterHit` の弾き返し・専用CD)。テストも全緑のまま。
+
+### 裁定2 = §9-5「突進の赤い線と斬り抜けのズレ」=(a)「線を斬り抜けの終端まで延ばす」
+- 新設した純関数 **`dashLineStrikeEnd`**(終点 = 到達点 + 進行方向 × 斬り抜けの range)と
+  **`dashLineEraseRescale`**(線が長くなっても「走者が食った先端」の世界座標が動かないよう割合を縮める)を
+  `src/utils/geometry.ts` へ置き、**描画側だけ**が使う(判定側の式は1文字も変えていない)。
+- **適用は3体**: トール(`HB_TH.harai.range`=310)/ ミゲル `mdash`(`MG_T.harai.range`)/
+  **ウリ `thrust`(`UR_T.thrust.range`)**。ウリは裁定文の列挙には無かったが、**同じ `drawAngelDashLine` を
+  共有し、同じ「到達点の先まで判定が届く」形**を持っていたので同じ直しを当てた(判定は不変)。
+- **適用しなかったのは2つ、理由は「伸ばす先が無い」**: 裏ボス3体の `dash` と 馬乗りの `bm-charge` は
+  **到達後の斬り抜けカプセルを持たない**(裏ボスは走行時間ぶんの距離が終点そのもの/馬乗りは終点で
+  360度ムチ=別の円の予告へ繋ぐ)。ここで線を伸ばすと逆に「**赤いのに当たらない**」を作ってしまう。
+
+### 裁定3 = §9-10「等速の線形補間(慣性MUST違反)」=(b)「counter-leap + issen-dash に ease」
+- `counterLeapPos`(`src/utils/thorDashPushback.ts`)と `issen-dash` の位置補間(`useGameLoop.ts`)の
+  **時間 `t` を `airHopEase01`(smootherstep)へ通した**。新しい定数も曲線も発明していない。
+- **`backstep` / `orbit-step` は対象外**(裁定どおり・等速のまま)。
+- **必中一閃(280ms)のヒットは不変**: `issen-dash` の当たり判定は**焼き付けた帯**
+  (`distToBandRect(from→to, halfWidth)`)で、進行度 `t` もボスの現在位置も読まない。テストで固定した。
+- ★**事実の訂正**: 発注文の受け入れ条件にあった「t=0.5 が中点で**ない**ことを確認」は、
+  `airHopEase01` が**左右対称の smootherstep** なので**成立しない**(ease(0.5)=0.5=中点のまま)。
+  慣性が入った証拠は端寄りに出る(**ease(0.25)=0.103515625 / ease(0.75)=0.896484375**)ので、
+  テストはそちらを値でアサートした。
+
+### 変更ファイル(`git status` で数えた=10本 + 版2本)
+コード5: `src/utils/combatTick.ts` / `src/utils/botSkill.ts` / `src/utils/geometry.ts` /
+`src/utils/thorDashPushback.ts` / `src/hooks/useGameLoop.ts`、描画1: `src/pixi/pixiScene.ts`、
+テスト4: `src/utils/geometry.test.ts` / `src/utils/thorNihil.test.ts` / `src/utils/botSkill.test.ts` /
+`src/utils/combatTick.test.ts`、版2: `package.json` / `src/data/changelog.ts`。
+**`counterReach.ts` は1文字も触っていない**(残置が裁定の条件)。
+
+### 検証
+- `npm run typecheck` = 通過 / `npm run lint` = **error 0**(warning 8=既存)。
+- `npx vitest run` = **4543 passed / 1 failed**。落ちた1本は `src/store/sim.test.ts` の移動速度ランプ
+  (**このバッチ以前から赤い別案件**。指示により当該ファイルには触れていない)。
+- 追加した値テスト: `sweptRectHull` の掃過形(掃過途中21コマ×4隅が全て帯の内側=「赤くないのに当たる」が
+  出ないことの機械化)/ `dashLineStrikeEnd`・`dashLineEraseRescale` の値 / `counterLeapPos` の
+  ease(t=0.25/0.75 の実値+両端不動+両端で遅い)/ `issen-dash` の ease と「帯が t を読まない」ソース走査 /
+  `telegraphDodge` が `thor-dash-move` を帯として拾う(`-recover` では拾わない=常時脅威化していない)。
+
+### 自己点検(実装精度の規律5)
+憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)には**抵触しない**——3件ともステージ5の裏ボス戦
+(トール)と、ミゲル/ウリの技の**描画**に閉じており、湧き・ランク・演目の抽選には触れていない。
+
+**状態変化: トール技台本 → 実機確認待ち(裁定3件を実装。★未決は 8件 のまま=今回の3件は裁定済みなので未決ではない)**
+
+### ※この版に混ざった運用事故(設計チャット側・記録)
+
+v0.25.3817 のコミットで `src/data/changelog.ts` を `git add` した際、**実装サブエージェントが同じファイルへ
+書いていた本バッチの告知を巻き込んで push した**——実装コードは未コミットだったので、**まだ入っていない
+変更を「入った」と告知した状態**になった。本版で実装が着地したので、告知の版番号を 3817 → **3818** へ
+付け替えて整合させた(告知文そのものは書き直していない)。
+
+抜けていた点: `git show --stat` の**ファイル一覧は照合した**が、**行数の異常(自分の変更は6行のはずが14行)を
+開いて確かめなかった**。ファイル名の一致だけでは巻き込みは捕まらない。
+再発防止は CLAUDE.md へ追記(サブエージェントが走っている間はそのエージェントが触りうるファイルを
+`git add` しない / add 直後・commit 前に `git diff --cached` を必ず読む / 共有ファイルは発注文で触らせない)。
+
 ## v0.25.3817 — イベント抑止の原則を確定(時限の無い相手=交戦中だけ止める)【2026-08-22 09:52 JST】
 
 社長の仕分け: **「登場後、時限の無いものは交戦中のみ。城ボス、裏ボスは登場したら時限が無い。

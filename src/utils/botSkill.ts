@@ -330,8 +330,13 @@ export const telegraphDodge = (pcx: number, pcy: number, e: Enemy): DodgeThreat[
   }
 
   // --- 帯(溜め中/実行中で始点・終点を持つ技すべて) ---
+  // ★v0.25.3818(社長裁定 §9-6「突進の走行中の体当たり」= (B)「当てる」の条件②): トールの突進の**走り**(`thor-dash-move`)を
+  // 帯脅威へ足す。走行中は巨体の AABB が接触ダメージを持つ(`combatTick.applyContactDamage` の
+  // トール除外から外れている)のに、旧リストは `-windup` と明示3州しか拾っていなかったため
+  // **ボットには走りが見えていなかった**=避けられなかった。描画側の赤い帯(条件①)と対で入れる。
   const banded = (ph.startsWith('g-') && (ph.endsWith('-windup') || ph.endsWith('-active') || ph.endsWith('-charge')))
-    || bs.endsWith('-windup') || bs === 'harai' || bs === 'issen-dash' || bs === 'tsuki';
+    || bs.endsWith('-windup') || bs === 'harai' || bs === 'issen-dash' || bs === 'tsuki'
+    || bs === 'thor-dash-move';
   if (banded && e.aiFromX !== undefined && e.aiTargetX !== undefined) {
     push(bandThreat(pcx, pcy, e.aiFromX, e.aiFromY ?? e.y, e.aiTargetX, e.aiTargetY ?? e.y, DODGE_BAND_HALF_WIDTH));
   }

@@ -426,8 +426,36 @@ describe('★counter-leap の補間(counterLeapPos)= 弾き返しを実際に運
       expect(xs[i], `x が t=${i} で進んでいない(起点or到達点へ固定されている)`).toBeLessThan(xs[i - 1]);
       expect(ys[i], `y が t=${i} で進んでいない`).toBeGreaterThan(ys[i - 1]);
     }
-    // 半分の時点は**ちょうど中点**(現行は等速=線形。§9-10 で ease を入れるならこの1行が動く)。
+    // 半分の時点は**ちょうど中点**。★v0.25.3818 で ease(`airHopEase01`=smootherstep)を入れたが、
+    // smootherstep は左右対称で ease(0.5)=0.5 なので、**この行は裁定後も動かない**。
     expect(counterLeapPos(FROM, TO, 0.5)).toEqual({ x: 325, y: 20 });
+  });
+
+  // ★v0.25.3818(社長裁定 §9-10「等速の線形補間(慣性MUST違反)」=(b)「ease を入れる」): 150px の弾き返しが**等速で運ばれない**ことを
+  // 値で固定する。等速へ戻す変異(`airHopEase01(` を消す)は、下の t=0.25 / 0.75 で必ず落ちる
+  // (t=0.5 は smootherstep が対称なので中点のまま=あの1行だけでは等速と区別できない)。
+  describe('★慣性(§9-10「等速の線形補間(慣性MUST違反)」裁定(b)・v0.25.3818)= 加速→減速で運ぶ', () => {
+    const A = { x: 0, y: 0 }, B = { x: 1000, y: 0 };
+    it('★t=0.25 は距離の25%より手前 / t=0.75 は75%より先(=等速ではない)', () => {
+      // smootherstep: 0.25 → 0.103515625 / 0.75 → 0.896484375(airHopEase01 の値そのもの)。
+      expect(counterLeapPos(A, B, 0.25).x).toBeCloseTo(103.515625, 6);
+      expect(counterLeapPos(A, B, 0.75).x).toBeCloseTo(896.484375, 6);
+      // 等速(=250 / 750)から離れていること。この2行が等速回帰の検出器。
+      expect(counterLeapPos(A, B, 0.25).x).toBeLessThan(250);
+      expect(counterLeapPos(A, B, 0.75).x).toBeGreaterThan(750);
+    });
+    it('★両端は動かない(到達点・所要時間・判定は1pxも変わっていないことの証明)', () => {
+      expect(counterLeapPos(A, B, 0)).toEqual(A);
+      expect(counterLeapPos(A, B, 1)).toEqual(B);
+    });
+    it('★始まりと終わりは遅い(=両端で速度0。1フレームぶんの進みで比べる)', () => {
+      const step = 1 / 60;
+      const head = counterLeapPos(A, B, step).x - counterLeapPos(A, B, 0).x;
+      const mid = counterLeapPos(A, B, 0.5 + step).x - counterLeapPos(A, B, 0.5).x;
+      const tail = counterLeapPos(A, B, 1).x - counterLeapPos(A, B, 1 - step).x;
+      expect(head).toBeLessThan(mid);
+      expect(tail).toBeLessThan(mid);
+    });
   });
 
   it('t は 0〜1 へ丸める(呼び出し側の clamp が消えても端で暴れない)', () => {
@@ -1077,5 +1105,41 @@ describe('ボット(§8-4 受け入れ条件1/2/3/4)', () => {
     expect(v('novice')).toBeLessThanOrEqual(v('casual'));
     expect(v('casual')).toBeLessThanOrEqual(v('skilled'));
     expect(v('skilled')).toBeLessThanOrEqual(v('master'));
+  });
+});
+
+// =================================================================================================
+// ★v0.25.3818(社長裁定 §9-10「等速の線形補間(慣性MUST違反)」=(b)): `issen-dash`(280ms・通常/必中の両方)の位置補間にも慣性を入れた。
+// `counterLeapPos` は純関数なので**値**で固定できるが(上の describe)、一閃の補間は
+// `useGameLoop.ts` の州の枝に直書きされているので、ここはソース走査で固定する。
+// 守りたいのは2つだけ:
+//  ① 位置に掛かる `t` が **ease を通っている**(等速へ戻す変異=`airHopEase01(` を外す、で落ちる)
+//  ② **当たり判定の帯は `t` を読まない**(=ease を入れてもヒットのタイミング・範囲が動かない証明)
+// =================================================================================================
+describe('★一閃(issen-dash)の位置補間に慣性が入っている(§9-10「等速の線形補間(慣性MUST違反)」裁定(b)・v0.25.3818)', () => {
+  const text = Object.values(LOOP_SOURCES)[0] ?? '';
+  const lines = codeLines(text);
+  const body = blockAfter(lines, /\} else if \(st === 'issen-dash'\) \{/, /\} else if \(st === 'harai'\) \{/);
+
+  it('useGameLoop.ts の issen-dash の枝を読めている(走査そのものが壊れていない)', () => {
+    expect(body.length).toBeGreaterThan(10);
+  });
+
+  it('★位置は ease を通した t で補間する(等速へ戻すとここで落ちる)', () => {
+    const eased = body.filter(l => /const et = airHopEase01\(t\)/.test(l));
+    expect(eased.length, 'issen-dash の枝に `const et = airHopEase01(t)` が無い(=等速に戻っている)').toBe(1);
+    const posWrites = body.filter(l => /patch\.(x|y) = \(f[xy] \+ \(t[xy] - f[xy]\) \*/.test(l));
+    expect(posWrites.length, 'patch.x / patch.y の補間が2本ではない').toBe(2);
+    for (const l of posWrites) {
+      expect(l, `位置補間が生の t を掛けている(慣性が抜けている): ${l.trim()}`).toMatch(/\* et\)/);
+    }
+  });
+
+  it('★当たり判定の帯は t を1つも読まない(=ease を入れても必中の280msのヒットが動かない証明)', () => {
+    const band = body.filter(l => /distToBandRect\(/.test(l));
+    expect(band.length, 'issen-dash の帯判定が1本ではない').toBe(1);
+    // 帯は「焼き付けた始点(fx,fy)→終着点(tx,ty)」で、進行度(t / et)も現在位置(patch.x)も読まない。
+    expect(band[0]).toMatch(/\{ x: fx, y: fy \}, \{ x: tx, y: ty \}, HB_TH\.issen\.halfWidth/);
+    expect(band[0]).not.toMatch(/\bet\b|\bt\b\s*[*)]/);
   });
 });
