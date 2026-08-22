@@ -13,6 +13,11 @@ Top-down HD-2D survival game. React + Zustand (simulation) + PixiJS (rendering).
 | プレイヤー向け更新情報 | src/data/changelog.ts(ゲーム内表示の正) |
 | 計測・調査の台帳 | research/ |
 | 実機テストの受け渡し | TEST_HANDOFF/(掟=同README.md) |
+- **★リポジトリを重くしない(2026-08-22・実測)**: `.git` が **3.5GB**(クローン時の転送 **993MB**)、
+  作業ツリー込み **4.8GB** まで膨らんでいる。**コンテナ起動時の再クローンを不安定にしている疑いが強い**
+  (この日、ローカルだけが過去へ巻き戻る事故が3回)。**スクリーンショットを `TEST_HANDOFF/results/` へ
+  撮り貯めない**(現状 PNG 748枚=618MB。掟は同README)。新しい大きなバイナリを足す時は、
+  **本当に配信物か(`public/` に置くべきものか)を先に確かめる。**
 | 設計チャットの運転マニュアル | DESIGN_CHAT_GUIDE.md |
 | ゲーム素材 | public/(=配信されるものだけを置く) |
 - **読み(セッション開始時の1回)**: このメニュー → PROJECT_STATUS.md → 担当案件の設計書。
