@@ -408,7 +408,7 @@ import {
   bossWideShotZoom,
   bossCameraLeadX, // v0.25.3063: 横のボス先読み(社長裁定「2をまず揃える」)
 } from '../utils/cameraZoom';
-import { isGhostEligibleBoss,
+import {
   advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss, bossRetreatKeepRadiusPx,
   facilitiesLocked, // v0.25.3054: ボス戦中の施設ロック(発火ゲート)
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
@@ -682,7 +682,9 @@ const HUNTER_MAX_PER_RUN = Infinity;       // 1出撃あたりの上限なし(CD
 const HUNTER_RESPAWN_CD_MIN_MS = 150000;   // 再出現CD最短(150秒=2.5分。長め)
 const HUNTER_RESPAWN_CD_SPAN_MS = 90000;   // +0〜90秒(=150〜240秒)
 const HUNTER_DETECT_RANGE = HUNTER_VISION_RANGE; // 索敵範囲(=視界範囲。描画/ジャンプ範囲と共有)
-const HUNTER_DISCOVER_MS = 5000;           // 検知範囲に5秒残ると発見
+// ★緩和(社長指示2026-08-22「見られている の通信の後、10秒後に仕様は緩和しよう。特別ルールではなく常時」):
+// 5000 → 10000。凶悪(VICIOUS_DISCOVER_DELAY_MS)と揃えて「予兆 → 10秒 → 発見」の形を通常ハンターにも敷く。
+const HUNTER_DISCOVER_MS = 10000;          // 検知範囲に10秒残ると発見
 const HUNTER_SEARCH_MAX_MS = 26000;        // 索敵のまま未発見が続くと立ち去る(フェードアウト開始)。
                                             // ただし索敵範囲にプレイヤーが入っている間はこのタイマーを都度リセットする(社長指示)。
 const HUNTER_REINFORCE_1_MS = 20000;       // 追跡20秒で2体目
@@ -977,9 +979,11 @@ const evNum = (key: string, def: number): number => {
 const RESCUE_SPAWN_DIST_MIN = evNum('rescuemin', 500);
 const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 // PACING_PUZZLE.md §5.21 M20追補(社長設計v0.25.1533・修正v0.25.1534): 凶悪ハンターは索敵フェーズを
-// 廃止し、デンジャー入場(制圧0)から約3秒後に索敵をスキップして「見つかった状態」(chase)で発動する。
+// 廃止し、デンジャー入場(制圧0)から一定時間後に索敵をスキップして「見つかった状態」(chase)で発動する。
 // 視界サークル/再配置ラッシュは凶悪版では出さない(撤去)。`?viciousdelay=<ms>`で調整可(実機調整前提)。
-const VICIOUS_DISCOVER_DELAY_MS = evNum('viciousdelay', 3000);
+// ★緩和(社長指示2026-08-22): 3000 → 10000。待ちの入り口で予兆(「何かに見られている…」)を出し、
+// この10秒が明けてから発見(chase)。通常ハンターのHUNTER_DISCOVER_MSと同値=「特別ルールではなく常時」。
+const VICIOUS_DISCOVER_DELAY_MS = evNum('viciousdelay', 10000);
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボスをプレイヤーの近く(画面外)へ即出現
 // PACING_PUZZLE.md §6.28-13 W7 / §6.28-21★3(バッチM52): カウンター(パリィ)作法の統一。
@@ -1300,6 +1304,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // M20追補(社長設計v0.25.1533/1534): 索敵フェーズ廃止=デンジャー入場から約3秒後に発見済み(chase)で
     // 直接発動する。この「入場を検知してから発動までの3秒」の起点時刻(0=未検知/待機中でない)。
     viciousPendingAt: 0,
+    // ★緩和(社長指示2026-08-22「『見られている』の通信の後、10秒後」): 待ちの入り口で予兆
+    // (hunter-alert SE + バナー + 方角マーカー)を出すため、凶悪ハンターは**待ちの頭で**
+    // dormant(aggroRange=0=自動起床しない静止個体)としてスポーンし、10秒後に起こしてchaseへ移す。
+    // ここはその「予兆で置いた個体」のid(''=居ない)。★索敵フェーズ(phase='search')は復活させない
+    // ——視界サークルの明滅・再配置ラッシュ(v0.25.1531/1532)が戻るため、通るのは従来の凶悪経路のまま。
+    viciousPendingId: '',
     // 社長指示v0.25.2317: 「去っていった」アナウンスを索敵タイムアウトの立ち去りにも出す。ただし
     // プレイヤーが一度も気づいていない索敵個体の退場まで報せるとネタバレになるので、気づかせた
     // (「何かに見られている…」or「発見された！」を出した)出撃だけを対象にするためのフラグ。
@@ -2586,7 +2596,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           m0CritLandedRef.current = false;
           m0LatePopupRef.current = null;
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
-          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0, noticed: false };
+          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0, viciousPendingId: '', noticed: false };
           hunterKillsRef.current = [];
           hunterPrevHpRef.current = -1;
           hunterLastDmgAtRef.current = -1e9;
@@ -3383,7 +3393,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
            } else if (puzzleActiveNow) {
             // M20 軸1: 退屈補正の囲い(社長設計)。boredomDirector/upswingの退屈シグナルが完全に
             // 立ち上がった時に囲いhordeを1回差し込む(通常プレイ専用の新経路)。
-            const hiddenBossAliveBA = useGameStore.getState().enemies.some(e => isHiddenBoss(e.type));
+            // PACING_PUZZLE.md「★イベント抑止の原則」(社長仕分け2026-08-22): 裏ボス/城ボスは時限が
+            // 無いので**存命**で止めると待っても解けない窓ができる。**交戦中(bossFightNow=bossEngagedNow)**
+            // へ戻す。
+            const bossEngagedBA = useGameStore.getState().bossFightNow;
             const redNightActiveNowBA = useGameStore.getState().redNight?.phase === 'active';
             const boredomReady = hunterBoredomReady(boredomBonus(upswingRef.current.boredMs, boredStartMsForAggro(currentStageAggro())));
             const fireBoredomArena = shouldFireBoredomArena({
@@ -3391,7 +3404,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               gameTime: newGameTime,
               nextEligibleAt: boredomArenaNextEligibleAtRef.current,
               bossChasing: useGameStore.getState().bossChasing,
-              hiddenBossAlive: hiddenBossAliveBA,
+              bossEngaged: bossEngagedBA,
               hunterIdle: hunterRef.current.phase === 'idle',
               redNightActive: redNightActiveNowBA,
               boredomReady,
@@ -3414,10 +3427,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
            } else {
             // 発火: activeEvent中でない・次回発火時刻に到達(=約2分ごと)。排他制御は activeEvent と nextArenaAtRef で担保。
             // ?arenanow 指定時は初回を即時(nextArenaAtRef=0 初期化)→以降も2分間隔。
-            // 裏ボスが存命の間はイベントを発生させない(社長指示)。bossChasing(追跡中)だけだと出現直後/帰巣/
-            // 画面外など非追跡の隙間で発火してしまう(社長報告バグ)ので「裏ボスが1体でも居る」で判定する。
+            // 旧: 裏ボスが存命の間はイベントを発生させない(bossChasing だけだと出現直後/帰巣/画面外の
+            // 隙間で発火するため「裏ボスが1体でも居る」で見ていた)。
             // ハンター追跡中(phase≠idle)は他イベントを発生させない(社長指示:同時1イベントまで)。
-            const hiddenBossAlive = useGameStore.getState().enemies.some(e => isHiddenBoss(e.type));
+            // ★イベント抑止の原則(2026-08-22): 「裏ボス存命」→「ボスと交戦中」へ。賞金首(時限制)の
+            // 存命ブロック(bountyBlocksArena)だけは据え置き=60秒で必ず解ける。
+            const bossEngagedArena = useGameStore.getState().bossFightNow;
             // バッチ7(憲法第5条): 紅き月と重ねない+ピンチ救済発動中/解除後10秒は発火しない。
             // ?events=0で本ゲートを無効化(囲いは従来どおり2分ごとのランダム発火に戻る)。
             const redNightActiveNow = useGameStore.getState().redNight?.phase === 'active';
@@ -3443,8 +3458,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (v0.25.3549「湧いたが未交戦の窓」)と同じ構造。基準を**存命(dormant含む)**へ。
             // 賞金首側は元からactiveEvent中に湧かない(bountySpawnBlocked)ので、これで両向きに排他が閉じる。
             const bountyBlocksArena = useGameStore.getState().enemies.some(e => isBountyType(e.type));
-            const gateEventReady = pendingGE != null && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && !redNightActiveNow && !bountyBlocksArena;
-            const arenaReady = gateEventReady || ((FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && arenaProducerOk && !bountyBlocksArena);
+            const gateEventReady = pendingGE != null && !useGameStore.getState().bossChasing && !bossEngagedArena && hunterRef.current.phase === 'idle' && !redNightActiveNow && !bountyBlocksArena;
+            const arenaReady = gateEventReady || ((FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !bossEngagedArena && hunterRef.current.phase === 'idle' && arenaProducerOk && !bountyBlocksArena);
             if (arenaReady) {
               const pcx = player.x + player.width / 2;
               const pcy = player.y + player.height / 2;
@@ -3784,7 +3799,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.setState({ redNight: { phase: 'active', activeAt: newGameTime, endAt: newGameTime + 3600000 } });
             }
           } else if (!rn && !redNightFiredRef.current && newGameTime >= redNightFireAtRef.current && !rnGs.bossChasing
-              && !rnGs.enemies.some(e => isHiddenBoss(e.type)) // 裏ボス存命中は紅き夜を発火させない(イベント抑止と同基準)
+              && !rnGs.bossFightNow // ★イベント抑止の原則(2026-08-22): 裏ボス「存命中」→ボスと「交戦中」
               && areaZoneIndexFor(rnDepth) >= 2 && rnProducerOk) {
             // 社長指示v0.25.3317: 7:00固定・毎ラン確定(発生率の抽選は廃止)。条件が塞がっている間は
             // このelse-ifが通らない=満たした瞬間に発火する(自然遅延は従来どおり)。
@@ -3876,14 +3891,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 失敗後の再武装(v0.25.2389): 警察署から十分離れたら、また挑めるように戻す。
             // 「報酬を取り上げる」のではなく「一度出るまで掴まない」形にして無限ループだけを断つ。
             if (!policeArmedRef.current && isPoliceRearmed(player, ppos)) policeArmedRef.current = true;
-            const hiddenBossAlivePolice = pgs.enemies.some(e => isHiddenBoss(e.type));
             // v0.25.3054(社長報告「ボス戦中に拠点発見すると閉じ込められて…ボスは去っていきバグる」):
-            // 既存の除外は裏ボス(bossChasing/hiddenBossAlive)だけで、**城ボス等との交戦中が素通り**だった。
             // ボス交戦中(+復帰猶予)は発火させない(施設ロックfacilitiesLocked=商人/POIと同じ関所)。
+            // ★イベント抑止の原則(2026-08-22): 裏ボスの「存命」判定は撤去し、**交戦中に一本化**
+            // (facilitiesLockedはbossFightNow=bossEngagedNow基準なので裏ボスもここに含まれる)。
             if (
               policeArmedRef.current &&
               isNearPolice(player, ppos) &&
-              !pgs.bossChasing && !hiddenBossAlivePolice && hunterRef.current.phase === 'idle' &&
+              !pgs.bossChasing && hunterRef.current.phase === 'idle' &&
               !facilitiesLocked(pgs.bossFightNow, pgs.bossFightLastTrueAt, newGameTime)
             ) {
               // §7-16: アリーナの中心は建物の位置そのものではなく policeArenaCenter(建物の手前)。
@@ -4048,23 +4063,57 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               gate1PassedThisRun: gate1PassedThisRunRef.current, // このランでゲート1通過=停止・次ランで復活(社長決定v0.25.1669)
             });
             if (viciousReady) {
-              // M20追補(v0.25.1533/1534): 索敵フェーズは無し。入場検知から約3秒(VICIOUS_DISCOVER_DELAY_MS)
+              // M20追補(v0.25.1533/1534): 索敵フェーズは無し。入場検知から VICIOUS_DISCOVER_DELAY_MS
               // 待ってから、索敵をスキップして「見つかった状態」(chase)へ直接発動する。
-              if (H.viciousPendingAt === 0) H.viciousPendingAt = newGameTime;
+              // ★緩和(社長指示2026-08-22「『見られている』の通信の後、10秒後に…特別ルールではなく常時」):
+              // その**待ちの入り口**で予兆の3点(hunter-alert SE + バナー「何かに見られている…」+
+              // 方角マーカー hunterAlerted)を出す。方角マーカーは敵1体に付く旗なので、個体自体を
+              // 待ちの頭で置く(dormant + aggroRange=0 = 自動起床しない静止個体)。
+              // ★索敵フェーズ(phase='search')は復活させない=通るのはこの凶悪経路のまま
+              // (視界サークルの明滅・再配置ラッシュ v0.25.1531/1532 の経路には入らない)。
+              if (H.viciousPendingAt === 0) {
+                H.viciousPendingAt = newGameTime;
+                const preSpawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
+                H.viciousPendingId = spawnHunter(true, preSpawnPos); // search=true=静止(dormant/aggroRange0)
+                useGameStore.setState(st => ({ enemies: st.enemies.map(e => e.id === H.viciousPendingId ? { ...e, hunterAlerted: true } : e) }));
+                playSfx('hunter-alert'); // 予兆SE(通常ハンターの「見られている」と同じ音)
+                H.noticed = true;        // 気づかせた=立ち去りもアナウンスしてよい出撃(v0.25.2317)
+                useGameStore.setState({ eventBannerText: '何かに見られている…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              }
               if (newGameTime - H.viciousPendingAt >= VICIOUS_DISCOVER_DELAY_MS) {
-                const spawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
-                H.primaryId = spawnHunter(false, spawnPos); // search=false=最初から発見済み(alerted)
+                // 予兆で置いた個体を起こす。10秒の間に倒された場合だけ、従来どおり新しく1体湧かせる
+                // (「デンジャーに拠点0で入った罰」を予兆で無効化できてしまわないように)。
+                const pending = useGameStore.getState().enemies.find(e => e.id === H.viciousPendingId);
+                let atX: number, atY: number;
+                if (pending) {
+                  H.primaryId = H.viciousPendingId;
+                  useGameStore.setState(st => ({ enemies: st.enemies.map(e => e.id === H.primaryId ? { ...e, dormant: false, aggroRange: undefined, hunterAlerted: true } : e) }));
+                  atX = pending.x + pending.width / 2; atY = pending.y + pending.height / 2;
+                } else {
+                  const spawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
+                  H.primaryId = spawnHunter(false, spawnPos); // search=false=最初から発見済み(alerted)
+                  atX = spawnPos.x; atY = spawnPos.y;
+                }
                 H.phase = 'chase'; H.chaseStartAt = newGameTime; H.reinforced = 0;
                 H.vicious = true;
                 H.viciousPendingAt = 0;
+                H.viciousPendingId = '';
                 H.eventsThisRun += 1;
                 useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
                 useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
                 spawnFlash('rgba(180,40,40,0.18)', 220);
-                useGameStore.getState().triggerAttention(spawnPos.x, spawnPos.y);
+                useGameStore.getState().triggerAttention(atX, atY);
               }
             } else {
-              H.viciousPendingAt = 0; // 条件が崩れた(退避/拠点制圧等)=待機解除
+              // 条件が崩れた(退避/拠点制圧等)=待機解除。予兆で置いた個体もここで引き上げる
+              // (置きっぱなしにすると、条件が崩れた後も静止したハンターが盤面に残る)。
+              if (H.viciousPendingId !== '') {
+                const goneId = H.viciousPendingId;
+                useGameStore.setState(st => ({ enemies: st.enemies.filter(e => e.id !== goneId) }));
+                H.viciousPendingId = '';
+                H.noticed = false;
+              }
+              H.viciousPendingAt = 0;
               if (newGameTime >= HUNTER_START_MS && H.eventsThisRun < HUNTER_MAX_PER_RUN && newGameTime >= H.nextEligibleAt && !spawnBlocked) {
               // 旧・優勢判定(6項目中4つ以上)。バッチ7で既定は退屈シグナルへ統合するが、?events=0の
               // 従来復帰用にロジック自体は残す。
@@ -4319,17 +4368,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (!danceTest && !indoor && !storyBoss && !isExStageRun() && !tutorialStage && !noSpawn) {
           const bgs = useGameStore.getState();
           const bountyAliveNow = bgs.enemies.some(e => isBountyType(e.type));
-          const bHiddenBossAlive = bgs.enemies.some(e => isHiddenBoss(e.type));
           const bAreaForGate = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
-          // ★v0.25.3549: 「交戦中」ではなく「場に居るか」。城ボスは5:00に城へ湧くので、プレイヤーが
-          // 着くまで bossFightNow=false のままで、その窓に繰り越しの賞金首が入り込んでいた。
-          // 賞金首自身は除く(isGhostEligibleBoss=交戦ボス−賞金首)=同時1体の制御は bountyAlive が担う。
-          const bBossAlive = bgs.enemies.some(e => isGhostEligibleBoss(e.type));
+          // ★イベント抑止の原則(社長仕分け2026-08-22): 城ボス/裏ボスは時限が無いので「存命」で
+          // 止めると待っても解けない窓ができる。**交戦中(bossFightNow)へ一本化**し、v0.25.3549の
+          // 存命ブロック(bBossAlive=交戦ボス−賞金首 / bHiddenBossAlive=裏ボス)は撤去した。
+          // 賞金首同士の「同時1体」は bountyAlive が担う(ここではない)。
           const bBlocked = bountySpawnBlocked({
             bossFightNow: bgs.bossFightNow,
-            bossAlive: bBossAlive,
             activeEvent: !!bgs.activeEvent,
-            hiddenBossAlive: bHiddenBossAlive,
             redNightActive: bgs.redNight?.phase === 'active',
             area: bAreaForGate,
             // PACING_PUZZLE.md §10-12#8(旧storyBossOnlyフィールドの意味流用をやめる): 意味と名前を

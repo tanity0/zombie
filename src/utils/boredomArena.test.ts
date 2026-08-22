@@ -6,7 +6,7 @@ const baseInput = {
   gameTime: BOREDOM_ARENA_START_MS,
   nextEligibleAt: 0,
   bossChasing: false,
-  hiddenBossAlive: false,
+  bossEngaged: false,
   hunterIdle: true,
   redNightActive: false,
   boredomReady: true,
@@ -36,9 +36,9 @@ describe('shouldFireBoredomArena', () => {
     expect(shouldFireBoredomArena({ ...baseInput, enabled: false })).toBe(false);
   });
 
-  it('does not fire while the boss is chasing or a hidden boss is alive', () => {
+  it('does not fire while the boss is chasing or the player is engaged with a boss', () => {
     expect(shouldFireBoredomArena({ ...baseInput, bossChasing: true })).toBe(false);
-    expect(shouldFireBoredomArena({ ...baseInput, hiddenBossAlive: true })).toBe(false);
+    expect(shouldFireBoredomArena({ ...baseInput, bossEngaged: true })).toBe(false);
   });
 
   it('does not fire while the hunter is not idle (exclusive with hunter events)', () => {

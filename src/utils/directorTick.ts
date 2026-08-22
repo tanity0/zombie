@@ -41,7 +41,7 @@ import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDir
 import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
-import { bossEngagedNow, bossEngagementDistancePx, engagedBossSlotKeys, isEngageableBoss, isGhostEligibleBoss } from './bossEngagement';
+import { bossEngagedNow, bossEngagementDistancePx, bossRelaxWithTail, engagedBossSlotKeys, isEngageableBoss, isGhostEligibleBoss } from './bossEngagement';
 import { markBossesEncountered } from './bossEncounter'; // BOSS_MAKER.md §20-5: ボスラッシュの解放記録
 import {
   tickPlayerTraits, loadPlayerProfile, effectiveGhostProfile, bossStyleSlotKey,
@@ -185,6 +185,10 @@ const BOSS_RELAX_ENABLED = typeof window === 'undefined'
 // 交戦判定のヒステリシス用に前フレームの結果を保持する。距離だけから毎フレーム再計算するので、
 // ラン跨ぎで残っても最悪1フレーム余分に交戦中と見なすだけ(実害なし)。
 let bossRelaxPrev = false;
+// 社長指示2026-08-22「城ボス倒したあと、10秒はリラックスのままで」: 最後に交戦中だったゲーム内時刻。
+// 施設ロック(facilitiesLocked)と同型の尾(bossRelaxWithTail・10秒)を張るために持ち回る。
+// ラン跨ぎ(gameTimeが0へ戻る)はbossRelaxWithTail側のnow<lastTrueAtガードで無効化される。
+let bossRelaxLastTrueAt = 0;
 
 // PACING_PUZZLE.md §7-11c(2): ランク床(決定済み仕様)。既定ON。?rankfloor=0で無効化(比較用)。
 const RANK_FLOOR_ENABLED = typeof window === 'undefined'
@@ -356,12 +360,16 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   // `?bossrelax=0` で従来挙動(コマどおりに湧く)へ戻る。
   // 距離も見る(社長指摘v0.25.2416): 起きたボスが遠くへ取り残されると、距離を見ないと**湧きが永久に
   // リラックスのまま**になる。ヒステリシス用に前フレームの判定を持ち回る(境界での振動防止)。
-  const bossRelax = BOSS_RELAX_ENABLED && bossEngagedNow(
+  const bossEngagedRaw = BOSS_RELAX_ENABLED && bossEngagedNow(
     useGameStore.getState().enemies,
     player.x + player.width / 2, player.y + player.height / 2,
     bossRelaxPrev,
   );
-  bossRelaxPrev = bossRelax;
+  bossRelaxPrev = bossEngagedRaw; // ヒステリシスに渡すのは**生の交戦判定**(尾を含めない)
+  // ★社長指示2026-08-22「城ボス倒したあと、10秒はリラックスのままで」: 交戦終了から10秒は
+  // リラックスを維持する(撃破/離脱は区別しない)。判定は施設ロックと同型の純関数へ切り出し済み。
+  if (bossEngagedRaw) bossRelaxLastTrueAt = gameTime;
+  const bossRelax = BOSS_RELAX_ENABLED && bossRelaxWithTail(bossEngagedRaw, bossRelaxLastTrueAt, gameTime);
   // PACING_PUZZLE.md §7-11c(2): ランク床(案A)。ステージ×経過msから現在の床を毎tick再計算し、
   // minRankへ焼く(査定側のapplyRankDeltaはstate.minRankを下限として読むので、降格もこれより下へは
   // 落ちない)。?rankfloor=0で無効化(常に1=床なし)。

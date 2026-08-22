@@ -920,6 +920,11 @@ export interface Enemy {
   bountyLastEngagedAt?: number;
   // 滞在満了→帰巣完了後にフェード退場を開始した gameTime。未設定=退場中でない。
   bountyDepartAt?: number;
+  // PACING_PUZZLE.md「★賞金首の活動限界と帰巣ヒステリシス」(社長裁定2026-08-22): 活動限界
+  // (原点から BOUNTY_ACTIVITY_LIMIT_PX)を超えて**追跡を打ち切り帰巣中**か。true の間は
+  // **被弾では交戦に戻らない**(プレイヤーが BOUNTY_AGGRO_RANGE_DEFAULT 以内へ近づいた時だけ戻る)。
+  // 判定の正本は src/utils/bountyTick.ts の decideBountyLeash(純関数)。
+  bountyHoming?: boolean;
   // PACING_PUZZLE.md §6.38 B2(バス停「取り巻き召喚」): この敵が賞金首の取り巻きなら親bounty.idを持つ
   // (交戦開始時に1回だけ2体・再召喚なし)。bountyTick.tsが賞金首の退場時にこのidを一緒に片付ける。
   bountyEscortId?: string;

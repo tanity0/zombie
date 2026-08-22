@@ -9,6 +9,8 @@ import {
   BOUNTY_LINGER_MS, BOUNTY_HIT_ENGAGE_MS, BOUNTY_BASE_HP, BOUNTY_DEPART_FADE_MS,
   BOUNTY_NATURAL_FIRST_MS, BOUNTY_NATURAL_MAX_COUNT, BOUNTY_NATURAL_SPAWN_AT_MS,
   BR_SHOT_UNIT_MS,
+  bountyBeyondActivityLimit, bountyHomingReengaged, decideBountyLeash,
+  BOUNTY_ACTIVITY_LIMIT_PX, BOUNTY_AGGRO_RANGE_DEFAULT,
   requestBountyMovePlay, bountyPlaybackActive, getBountyPlayback, clearBountyPlayback,
   BOUNTY_MOVES_BY_TYPE,
   type BountySfx, type BountyMoveKey,
@@ -62,7 +64,7 @@ describe('bountyLingerExpired — 滞在1分(gameTime基準・§2)', () => {
 
 describe('bountySpawnBlocked — 抑止ゲート(B1で用意・B4でuseGameLoop.tsの自然湧きへ配線)', () => {
   const ok = (): Parameters<typeof bountySpawnBlocked>[0] => ({
-    bossFightNow: false, bossAlive: false, activeEvent: false, hiddenBossAlive: false, redNightActive: false,
+    bossFightNow: false, activeEvent: false, redNightActive: false,
     area: 2, suppressBounties: false, labTheme: false, corridorMode: false, tutorialStage: false,
   });
   it('全条件クリアならブロックしない', () => {
@@ -70,9 +72,7 @@ describe('bountySpawnBlocked — 抑止ゲート(B1で用意・B4でuseGameLoop.
   });
   it('各条件が単独でブロックする', () => {
     expect(bountySpawnBlocked({ ...ok(), bossFightNow: true })).toBe(true);
-    expect(bountySpawnBlocked({ ...ok(), bossAlive: true })).toBe(true);
     expect(bountySpawnBlocked({ ...ok(), activeEvent: true })).toBe(true);
-    expect(bountySpawnBlocked({ ...ok(), hiddenBossAlive: true })).toBe(true);
     expect(bountySpawnBlocked({ ...ok(), redNightActive: true })).toBe(true);
     expect(bountySpawnBlocked({ ...ok(), area: 1 })).toBe(true); // 初心者ゾーン(憲法第4条・エリア0-1)
     expect(bountySpawnBlocked({ ...ok(), area: 0 })).toBe(true);
@@ -219,14 +219,17 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
 
   /** 賞金首1体+プレイヤーの盤面を作り、tickを手動で進めるヘルパ(idolTick.test.tsのsetupを踏襲)。 */
   const setup = (over: Partial<Enemy> = {}) => {
-    const e = spawnEnemyAt('bounty-ranged', 50000, 50000, START_GT); // 原点から遠く離す=施設/街プロップと無縁
+    // 盤面の置き場所: 原点から hypot(2000,2000)≈2828px = **活動限界(BOUNTY_ACTIVITY_LIMIT_PX=5000)の内側**。
+    // ★ここを限界の外(旧: 50000,50000)へ置くと、賞金首は毎フレーム帰巣を選ぶので技の状態機械が一切回らない
+    // (社長裁定2026-08-22「活動限界」)。座標を動かす時はこの制約を必ず守ること。
+    const e = spawnEnemyAt('bounty-ranged', 2000, 2000, START_GT);
     e.dormant = true;
     e.homeX = e.x; e.homeY = e.y;
     e.aggroRange = 200;
     Object.assign(e, over);
     useGameStore.setState(s => ({
       enemies: [e],
-      player: { ...s.player, x: 50000 + 5000, y: 50000, health: 9999, maxHealth: 9999 }, // 索敵範囲外に配置
+      player: { ...s.player, x: 2000 + 5000, y: 2000, health: 9999, maxHealth: 9999 }, // 索敵範囲外に配置
     }));
     let gt = START_GT;
     const s = createBountyTickState();
@@ -258,7 +261,7 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
   it('★戦闘中リセット: 交戦中(距離<リーシュ半径)を保ち続けると60秒を超えても退場しない', () => {
     // プレイヤーを起床範囲の内側(=交戦中)へ置く。
     const { id, step } = setup();
-    useGameStore.setState(s => ({ player: { ...s.player, x: 50000 + 100, y: 50000 } }));
+    useGameStore.setState(s => ({ player: { ...s.player, x: 2000 + 100, y: 2000 } }));
     // 起床(1tick)。
     step(16);
     expect(useGameStore.getState().enemies.find(e => e.id === id)?.dormant).toBe(false);
@@ -273,7 +276,7 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
   it('★紫(bossFullStunUntil)中は座標が動かない(カウンターのノックバック座標を上書きしない)', () => {
     const { id, step } = setup();
     // 起床させて追跡させる(=通常は毎tick位置が動く状態を作る)。
-    useGameStore.setState(s => ({ player: { ...s.player, x: 50000 + 100, y: 50000 } }));
+    useGameStore.setState(s => ({ player: { ...s.player, x: 2000 + 100, y: 2000 } }));
     step(16); // 起床
     step(16); // 追跡へ移行(§6.38 v9で起床即chase=既に追跡中)
     const before = useGameStore.getState().enemies.find(e => e.id === id)!;
@@ -297,7 +300,7 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
   // knockbackUntil/liftUntilはDate.now基準。ここではnowMs(=runBountyTickの第5引数)を直接操作して確認する。
   it('★ノックバック中(knockbackUntil)も座標が動かない(chase移動で上書きしない)', () => {
     const { id, step } = setup();
-    useGameStore.setState(s => ({ player: { ...s.player, x: 50000 + 100, y: 50000 } }));
+    useGameStore.setState(s => ({ player: { ...s.player, x: 2000 + 100, y: 2000 } }));
     step(16); // 起床
     step(16); // 追跡へ
     const knockbackUntilMs = useGameStore.getState().gameTime + 500; // このテストではnowMsにもgameTimeを流用している
@@ -317,7 +320,7 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
   // かつ解除の瞬間にstale windupが即着弾しない)。気絶/拘束/浮き/紫は従来どおり中断のまま。
   it('★ノックバック連打でも技はキャンセルされない(社長裁定v0.25.3497)', () => {
     const { id, step } = setup();
-    useGameStore.setState(s => ({ player: { ...s.player, x: 50000 + 100, y: 50000 } }));
+    useGameStore.setState(s => ({ player: { ...s.player, x: 2000 + 100, y: 2000 } }));
     step(16); // 起床
     step(16); // 追跡へ
     const until0 = useGameStore.getState().gameTime + 5000;
@@ -346,7 +349,7 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
   // 紫(体勢崩し)は従来どおり技を中断する(「止める」ではなく「崩す」効果なので扱いが違う)。
   it('紫(bossFullStun)は従来どおり技を中断してchaseへ戻す', () => {
     const { id, step } = setup();
-    useGameStore.setState(s => ({ player: { ...s.player, x: 50000 + 100, y: 50000 } }));
+    useGameStore.setState(s => ({ player: { ...s.player, x: 2000 + 100, y: 2000 } }));
     step(16); step(16);
     useGameStore.setState(s => ({
       enemies: s.enemies.map(e => e.id === id
@@ -363,11 +366,11 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
   it('★帰巣完了→dormant+新しい1分: 離脱→帰巣→到着でdormant化し、以後また1分カウントが始まる', () => {
     const { id, step } = setup();
     // 起床させ、直後に離れる(交戦解除→リーシュ発火)。
-    useGameStore.setState(s => ({ player: { ...s.player, x: 50000 + 100, y: 50000 } }));
+    useGameStore.setState(s => ({ player: { ...s.player, x: 2000 + 100, y: 2000 } }));
     step(16); // 起床
     expect(useGameStore.getState().enemies.find(e => e.id === id)?.dormant).toBe(false);
     // §6.38 v9で起床演出は撤去=即chase。ここでプレイヤーを大きく離す(リーシュ半径700pxの外)。
-    useGameStore.setState(s => ({ player: { ...s.player, x: 50000 + 5000, y: 50000 } }));
+    useGameStore.setState(s => ({ player: { ...s.player, x: 2000 + 5000, y: 2000 } }));
     // 猶予(1.2秒)+帰巣移動が完了するまで刻む(帰巣速度はBOSS_LEASH_RETURN_SPEED_MULT×speed)。
     for (let i = 0; i < 2000; i++) {
       step(50);
@@ -377,8 +380,8 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
     expect(arrived?.dormant).toBe(true);
     // 障害物衝突(resolveBountyMove・B1.5-4)が街プロップ等で数px押し出す場合があるため、
     // ここでは「巣のすぐ近くに戻った」ことだけを見る(ぴったり一致は求めない=状態機械の検証が主眼)。
-    expect(Math.abs(arrived!.x - 50000)).toBeLessThan(10);
-    expect(Math.abs(arrived!.y - 50000)).toBeLessThan(10);
+    expect(Math.abs(arrived!.x - 2000)).toBeLessThan(10);
+    expect(Math.abs(arrived!.y - 2000)).toBeLessThan(10);
     // 到着直後は新しい1分の起点(bountyLastEngagedAt)がリセットされている=まだ59秒では退場しない。
     step(BOUNTY_LINGER_MS - 2000);
     expect(useGameStore.getState().enemies.find(e => e.id === id)).toBeDefined();
@@ -413,7 +416,7 @@ describe('runBountyTick — B2a 技の状態機械', () => {
     type: EnemyType, playerOffset: { x: number; y: number }, over: Partial<Enemy> = {},
     sfxOverride?: BountySfx,
   ) => {
-    const e = spawnEnemyAt(type, 50000, 50000, START_GT);
+    const e = spawnEnemyAt(type, 2000, 2000, START_GT); // 活動限界(5000px)の内側に置く=帰巣を選ばせない
     e.dormant = false; // 技テストは交戦中から始める(起床演出待ちを省く)
     e.homeX = e.x; e.homeY = e.y;
     e.aggroRange = 200;
@@ -1450,27 +1453,31 @@ describe('runBountyTick — B2a 技の状態機械', () => {
 });
 
 
-describe('★【回帰・v0.25.3549】城ボスと賞金首の同時出現', () => {
-  // 社長報告「小ボスと城ボスが5分に同時に出てきてます」。
-  // 城ボスは5:00に**城の位置へ湧く**ので、プレイヤーが着くまで bossFightNow(=交戦距離判定)はfalse。
-  // その「湧いたが未交戦」の窓に、3:00から繰り越された賞金首が入り込んでいた。
+describe('★イベント抑止の原則(社長仕分け2026-08-22)= 時限の無い相手は「交戦中」だけ止める', () => {
+  // 物差しは1つ:その相手に「時限」があるか。
+  // 城ボス/裏ボスは倒すまで居る(時限なし)ので**存命**で止めると待っても解けない窓ができる → 交戦中だけ。
+  // これは v0.25.3549(「湧いたが未交戦の城ボス」を bossAlive で塞いだ)を**意図して戻したもの**。
+  // 賞金首は BOUNTY_LINGER_MS=60秒で退場する(時限あり)ので、呼び出し側の存命ブロックは据え置き。
   const base = (): Parameters<typeof bountySpawnBlocked>[0] => ({
-    bossFightNow: false, bossAlive: false, activeEvent: false, hiddenBossAlive: false, redNightActive: false,
+    bossFightNow: false, activeEvent: false, redNightActive: false,
     area: 2, suppressBounties: false, labTheme: false, corridorMode: false, tutorialStage: false,
   });
 
-  it('★城ボスが湧いていれば、まだ交戦していなくても賞金首は出ない', () => {
-    expect(bountySpawnBlocked({ ...base(), bossFightNow: false, bossAlive: true })).toBe(true);
+  it('★ボスと交戦中なら賞金首は出ない', () => {
+    expect(bountySpawnBlocked({ ...base(), bossFightNow: true })).toBe(true);
   });
 
-  it('★【不変条件】裏ボスと城ボスで扱いが揃っている(片方だけ交戦基準にしない)', () => {
-    // 裏ボスは最初から「存命」で見ていたのに、城ボスだけ「交戦中」基準だったのが穴だった。
-    expect(bountySpawnBlocked({ ...base(), hiddenBossAlive: true })).toBe(true);
-    expect(bountySpawnBlocked({ ...base(), bossAlive: true })).toBe(true);
-  });
-
-  it('ボスが場に居なければ従来どおり出せる', () => {
+  it('★ボスが湧いていても未交戦なら賞金首は出せる(存命では止めない=永久に塞がる窓を作らない)', () => {
+    // 「ボスが場に居るか」を表す入力はもう存在しない=構造として存命では止められない。
     expect(bountySpawnBlocked(base())).toBe(false);
+  });
+
+  it('抑止ゲートは存命系の入力を一切持たない(bossAlive/hiddenBossAliveを再追加させない)', () => {
+    const keys = Object.keys(base()).sort();
+    expect(keys).toEqual([
+      'activeEvent', 'area', 'bossFightNow', 'corridorMode', 'labTheme',
+      'redNightActive', 'suppressBounties', 'tutorialStage',
+    ]);
   });
 });
 
@@ -1490,7 +1497,7 @@ describe('runBountyTick — ボスメーカーの個別再生(▸)', () => {
   const START_GT = 10_000_000;
 
   const setupPlay = (type: EnemyType, playerOffset: { x: number; y: number }, over: Partial<Enemy> = {}) => {
-    const e = spawnEnemyAt(type, 50000, 50000, START_GT);
+    const e = spawnEnemyAt(type, 2000, 2000, START_GT); // 活動限界(5000px)の内側に置く=帰巣を選ばせない
     e.dormant = false;
     e.homeX = e.x; e.homeY = e.y;
     e.aggroRange = 200;
@@ -1617,7 +1624,7 @@ describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.
   const START_GT = 10_000_000;
   /** ▸個別再生で技を1つ強制発動する盤面(抽選・距離帯・CDをバイパス=州を狙って作れる)。 */
   const setupMove = (type: EnemyType, move: BountyMoveKey, playerOffset: { x: number; y: number }) => {
-    const e = spawnEnemyAt(type, 50000, 50000, START_GT);
+    const e = spawnEnemyAt(type, 2000, 2000, START_GT); // 活動限界(5000px)の内側に置く=帰巣を選ばせない
     e.dormant = false;
     e.homeX = e.x; e.homeY = e.y;
     e.aggroRange = 200;
@@ -1772,5 +1779,99 @@ describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.
     expect(boss().bossState).toBe('chase');
     expect(boss().health).toBeLessThan(hp);
     expect(useGameStore.getState().player.health).toBe(php);
+  });
+});
+
+
+// PACING_PUZZLE.md「★賞金首の活動限界と帰巣ヒステリシス」(社長裁定2026-08-22)
+describe('賞金首の活動限界(原点から5000px)', () => {
+  it('限界の値は5000px(=未確認汚染エリア area 3 に跨がない)', () => {
+    expect(BOUNTY_ACTIVITY_LIMIT_PX).toBe(5000);
+  });
+
+  it('デンジャーゾーン(3000〜4999)までは限界の内側=許す', () => {
+    expect(bountyBeyondActivityLimit(3000, 0)).toBe(false);
+    expect(bountyBeyondActivityLimit(4999, 0)).toBe(false);
+  });
+
+  it('5000ちょうどから外(=帰巣)', () => {
+    expect(bountyBeyondActivityLimit(5000, 0)).toBe(true);
+    expect(bountyBeyondActivityLimit(0, -5000)).toBe(true);
+    expect(bountyBeyondActivityLimit(6000, 6000)).toBe(true);
+  });
+
+  it('★原点距離1本(巣からの半径ではない)=斜めでも同じ線', () => {
+    // 3-4-5の直角三角形: (3000,4000)はちょうど5000。
+    expect(Math.hypot(3000, 4000)).toBe(5000);
+    expect(bountyBeyondActivityLimit(3000, 4000)).toBe(true);
+    expect(bountyBeyondActivityLimit(2999, 4000)).toBe(false);
+  });
+});
+
+describe('帰巣ヒステリシス(帰巣→交戦は380px以内だけ・被弾では戻らない)', () => {
+  it('再交戦の線は既存の起床範囲380px(新しい数字を作らない)', () => {
+    expect(BOUNTY_AGGRO_RANGE_DEFAULT).toBe(380);
+    expect(bountyHomingReengaged(380)).toBe(true);
+    expect(bountyHomingReengaged(381)).toBe(false);
+    expect(bountyHomingReengaged(0)).toBe(true);
+  });
+
+  const leash = (over: Partial<Parameters<typeof decideBountyLeash>[0]>) => decideBountyLeash({
+    homing: false, centerX: 0, centerY: 0, distanceToPlayer: 100, msSinceHit: 999_999,
+    leashRadiusPx: 700, ...over,
+  });
+
+  it('限界の内側では従来どおり bountyEngagedNow(距離700 or 被弾3秒)で交戦', () => {
+    expect(leash({ centerX: 1000, distanceToPlayer: 699 })).toEqual({ engaged: true, homing: false });
+    expect(leash({ centerX: 1000, distanceToPlayer: 701 })).toEqual({ engaged: false, homing: false });
+    // 被弾3秒以内なら距離が離れていても交戦(既存仕様=限界の内側では生きている)
+    expect(leash({ centerX: 1000, distanceToPlayer: 5000, msSinceHit: BOUNTY_HIT_ENGAGE_MS }))
+      .toEqual({ engaged: true, homing: false });
+  });
+
+  it('★限界を超えたら追跡を打ち切って帰巣(交戦→帰巣は緩い)', () => {
+    expect(leash({ centerX: 5000, distanceToPlayer: 400 })).toEqual({ engaged: false, homing: true });
+  });
+
+  it('★帰巣中は被弾しても交戦に戻らない(逃げ撃ちハメの封じ込め)', () => {
+    // 直前に被弾(msSinceHit=0)+距離700未満でも、帰巣中なら engaged=false のまま。
+    expect(leash({ homing: true, centerX: 5200, distanceToPlayer: 600, msSinceHit: 0 }))
+      .toEqual({ engaged: false, homing: true });
+    // 巣へ戻って限界の内側に入っても、380pxより遠ければまだ帰巣中。
+    expect(leash({ homing: true, centerX: 1000, distanceToPlayer: 381, msSinceHit: 0 }))
+      .toEqual({ engaged: false, homing: true });
+  });
+
+  it('★帰巣中でも「限界の内側」でプレイヤーが380px以内へ詰めれば再交戦(正しく詰めているのに手が出せない、を作らない)', () => {
+    expect(leash({ homing: true, centerX: 4000, distanceToPlayer: 380, msSinceHit: 999_999 }))
+      .toEqual({ engaged: true, homing: false });
+  });
+
+  it('★【差し戻し是正】限界の外では、距離380px(=再交戦の線ちょうど)でも再交戦しない', () => {
+    // 旧実装は380pxだけを見ていたため engaged:true を返し、プレイヤーが密着している限り
+    // 賞金首が限界の外へどこまでも追ってきた=裁定の目的(未確認汚染エリアへ入れない)が未達だった。
+    expect(leash({ homing: true, centerX: 5000, distanceToPlayer: 380, msSinceHit: 999_999 }))
+      .toEqual({ engaged: false, homing: true });
+    expect(leash({ homing: true, centerX: 5000, distanceToPlayer: 0, msSinceHit: 0 }))
+      .toEqual({ engaged: false, homing: true });
+  });
+
+  it('★交戦→帰巣は密着していても立つ(限界の外に出た時点で打ち切り)', () => {
+    expect(leash({ homing: false, centerX: 6000, distanceToPlayer: 380 }))
+      .toEqual({ engaged: false, homing: true });
+    expect(leash({ homing: false, centerX: 6000, distanceToPlayer: 0 }))
+      .toEqual({ engaged: false, homing: true });
+  });
+
+  it('限界の内側へ戻ってから初めて再交戦の線が効く(反転しない)', () => {
+    // 限界の外に居る間はラッチが立ったまま=毎フレーム反転しない。
+    expect(leash({ homing: true, centerX: 5001, distanceToPlayer: 100 }))
+      .toEqual({ engaged: false, homing: true });
+    // 内側(4999)へ戻り、かつ380px以内で交戦へ。
+    expect(leash({ homing: true, centerX: 4999, distanceToPlayer: 380 }))
+      .toEqual({ engaged: true, homing: false });
+    // 内側でも381pxなら帰巣継続。
+    expect(leash({ homing: true, centerX: 4999, distanceToPlayer: 381 }))
+      .toEqual({ engaged: false, homing: true });
   });
 });

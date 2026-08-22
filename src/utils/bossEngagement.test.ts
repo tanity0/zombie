@@ -7,6 +7,7 @@ import {
   facilitiesLocked, FACILITY_REENABLE_MS,
   isLeashableBoss, BOSS_DISENGAGE_GRACE_MS, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC,
   isGhostEligibleBoss,
+  bossRelaxWithTail, BOSS_RELAX_TAIL_MS,
 } from './bossEngagement';
 
 // 近く(プレイヤーは原点)に居るボスとして呼ぶ短縮形。距離のテストは最後の describe で別に行う。
@@ -167,5 +168,33 @@ describe('facilitiesLocked: ボス交戦中+復帰猶予の施設ロック', () 
   });
   it('一度も交戦していなければロックしない', () => {
     expect(facilitiesLocked(false, 0, 999_999)).toBe(false);
+  });
+});
+
+// 社長指示2026-08-22「城ボス倒したあと、10秒はリラックスのままで」
+describe('bossRelaxWithTail: ボス戦後10秒の余韻(施設ロックと同型の尾)', () => {
+  it('尾は10秒(値で固定)', () => {
+    expect(BOSS_RELAX_TAIL_MS).toBe(10_000);
+  });
+  it('交戦中は当然true', () => {
+    expect(bossRelaxWithTail(true, 0, 1_000)).toBe(true);
+  });
+  it('交戦終了から10秒未満はリラックス継続=倒した直後に雑魚がドッと湧かない', () => {
+    expect(bossRelaxWithTail(false, 60_000, 60_000)).toBe(true);
+    expect(bossRelaxWithTail(false, 60_000, 69_999)).toBe(true);
+  });
+  it('10秒ちょうどで通常の湧きへ戻る', () => {
+    expect(bossRelaxWithTail(false, 60_000, 70_000)).toBe(false);
+    expect(bossRelaxWithTail(false, 60_000, 80_000)).toBe(false);
+  });
+  it('一度も交戦していなければ尾は張らない', () => {
+    expect(bossRelaxWithTail(false, 0, 999_999)).toBe(false);
+  });
+  it('ラン跨ぎ(gameTimeが0へ戻る)で前ランの残り火が効かない', () => {
+    expect(bossRelaxWithTail(false, 300_000, 0)).toBe(false);
+    expect(bossRelaxWithTail(false, 300_000, 5_000)).toBe(false);
+  });
+  it('施設ロック(700ms)より長い=ボス後の余韻の方が尾が長い', () => {
+    expect(BOSS_RELAX_TAIL_MS).toBeGreaterThan(FACILITY_REENABLE_MS);
   });
 });

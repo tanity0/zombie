@@ -69,9 +69,7 @@ describe('小ボス(賞金首)のステージ固定割当', () => {
     // (ここを見ないテストは「新しいゲートが無くても通ってしまう」ので意味がない)。
     const notBlocked = bountySpawnBlocked({
       bossFightNow: false,
-      bossAlive: false,
       activeEvent: false,
-      hiddenBossAlive: false,
       redNightActive: false,
       area: 3,               // 初心者ゾーン(0-1)の外
       suppressBounties: false,

@@ -9,7 +9,12 @@ export interface BoredomArenaGateInput {
   gameTime: number;
   nextEligibleAt: number;
   bossChasing: boolean;
-  hiddenBossAlive: boolean;
+  /**
+   * PACING_PUZZLE.md「★イベント抑止の原則」(社長仕分け2026-08-22): 旧`hiddenBossAlive`(裏ボス
+   * **存命**)から**ボスと交戦中**(`bossFightNow` = `bossEngagedNow`)へ。時限の無い相手(城ボス/
+   * 裏ボス)を存命で止めると、待っても解けない=イベントが永久に出ない窓ができるため。
+   */
+  bossEngaged: boolean;
   hunterIdle: boolean;
   redNightActive: boolean;
   boredomReady: boolean;
@@ -19,7 +24,7 @@ export const shouldFireBoredomArena = (input: BoredomArenaGateInput): boolean =>
   if (!input.enabled) return false;
   if (input.gameTime < BOREDOM_ARENA_START_MS) return false;
   if (input.gameTime < input.nextEligibleAt) return false;
-  if (input.bossChasing || input.hiddenBossAlive) return false;
+  if (input.bossChasing || input.bossEngaged) return false;
   if (!input.hunterIdle) return false;
   if (input.redNightActive) return false;
   if (!input.boredomReady) return false;

@@ -137,6 +137,76 @@ export const bountyEngagedNow = (sig: BountyEngagedSignals, leashRadiusPx: numbe
   !sig.dormant && (sig.distance < leashRadiusPx || sig.msSinceHit <= BOUNTY_HIT_ENGAGE_MS);
 
 /**
+ * PACING_PUZZLE.md「★賞金首の活動限界と帰巣ヒステリシス」(社長裁定2026-08-22)。
+ *
+ * 社長の懸念: 「賞金首は序盤なので、戦闘中に無限に移動すれば、深部に行っちゃってて、そこで逃げるか
+ * 倒すと、**気づけば深部にいる**」。`bountyEngagedNow` は距離と被弾しか見ていないので、プレイヤーが
+ * 引きながら戦えば賞金首を何pxでも深部へ運べた(リーシュ=「プレイヤーが離れたら戻る」であって
+ * 「賞金首がどこまで行けるか」の上限ではない)。
+ *
+ * **活動限界 = 原点から 5000px 未満**(=未確認汚染エリア(area 3)に跨がない。デンジャー(area 2・
+ * 3000〜4999)までは許す)。**巣からの半径は設けない**——原点距離1本なので巣がどこでも同じ線になる。
+ */
+export const BOUNTY_ACTIVITY_LIMIT_PX = 5000;
+
+/** 賞金首の中心が活動限界の外か(原点距離1本)。 */
+export const bountyBeyondActivityLimit = (centerX: number, centerY: number): boolean =>
+  Math.hypot(centerX, centerY) >= BOUNTY_ACTIVITY_LIMIT_PX;
+
+/**
+ * 帰巣中の再交戦判定のうち**距離の側**(ヒステリシス・厳しい側)。**被弾では戻らない**——プレイヤーが
+ * `BOUNTY_AGGRO_RANGE_DEFAULT`(380px=既存の起床範囲の流用。新しい数字を作らない)以内へ
+ * 近づいた時だけ交戦へ戻る。**この距離だけでは再交戦しない**——`decideBountyLeash` が
+ * 「活動限界の内側であること」も併せて要求する(限界の外で密着されると無制限に引っ張れるため)。
+ *
+ * なぜ要るか: 活動限界だけを入れると、限界の外に立って撃つだけで「交戦に戻る→追う→限界を超える→
+ * 帰る」を往復させられる=逃げ撃ち(ハメ)の土台になる。被弾で戻らなくすると成立しない。
+ */
+export const bountyHomingReengaged = (distanceToPlayer: number): boolean =>
+  distanceToPlayer <= BOUNTY_AGGRO_RANGE_DEFAULT;
+
+export interface BountyLeashInput {
+  /** 前フレームまでに帰巣ラッチが立っていたか(enemy.bountyHoming)。 */
+  homing: boolean;
+  centerX: number;
+  centerY: number;
+  distanceToPlayer: number;
+  msSinceHit: number;
+  leashRadiusPx: number;
+}
+export interface BountyLeashDecision { engaged: boolean; homing: boolean }
+
+/**
+ * 交戦/帰巣の2状態を1本で決める(実装精度の規律4: 配線ロジックを純関数へ)。
+ *
+ * | 向き | 条件 |
+ * |---|---|
+ * | 交戦 → 帰巣 | 活動限界(5000px)の外に出た(**緩い**。プレイヤーが密着していても立てる) |
+ * | 帰巣 → 交戦 | **活動限界の内側** かつ プレイヤーが380px以内(**厳しい**)。**被弾では戻らない** |
+ *
+ * **再交戦には「活動限界の内側であること」が要る。** 380pxだけを条件にすると、プレイヤーが密着して
+ * いる限り帰巣ラッチが立たず、賞金首は**限界の外へどこまでも追ってくる**=この裁定の目的
+ * (「賞金首を未確認汚染エリアへ入れない」)そのものが達成されない。
+ * 毎フレーム反転は起きない——**限界の外では再交戦しない**のでラッチは立ったまま。限界の内側へ
+ * 戻ってから380px以内で初めて交戦へ戻る。
+ */
+export const decideBountyLeash = (input: BountyLeashInput): BountyLeashDecision => {
+  const beyond = bountyBeyondActivityLimit(input.centerX, input.centerY);
+  if (input.homing) {
+    const reengage = !beyond && bountyHomingReengaged(input.distanceToPlayer);
+    return reengage ? { engaged: true, homing: false } : { engaged: false, homing: true };
+  }
+  if (beyond) return { engaged: false, homing: true }; // 密着していても立てる(交戦→帰巣は緩い)
+  return {
+    engaged: bountyEngagedNow(
+      { dormant: false, distance: input.distanceToPlayer, msSinceHit: input.msSinceHit },
+      input.leashRadiusPx,
+    ),
+    homing: false,
+  };
+};
+
+/**
  * §6.38 v6 A-2(B4配線): useGameLoop.tsの3系統(囲い/レスキュー・紅き夜・叫喚)が賞金首の交戦中に
  * 割り込まないためのゲート。pickActiveBounty+bountyEngagedNowをそのまま束ねただけ(判定を複製しない)。
  * 賞金首が居ない/dormantなら false(=他イベントを妨げない)。
@@ -1871,6 +1941,7 @@ export const runBountyTick = (
       patch.vx = 0;
       patch.vy = 0;
       patch.bossLeashSince = undefined;
+      patch.bountyHoming = false; // 起床=帰巣ラッチは必ず降ろす(巣で起きた個体が帰巣中のまま動かないのを防ぐ)
       patch.bountyLastEngagedAt = newGameTime;
       patch.bountyDepartAt = undefined;
       applyPatch(bounty.id, patch);
@@ -2019,7 +2090,18 @@ export const runBountyTick = (
 
   // ---- 交戦判定+リーシュ(§2/v6 A-3・B-4) ---------------------------------------------------
   const leashRadius = bossLeashDistancePx(bounty.type, false);
-  const engaged = bountyEngagedNow({ dormant: false, distance: dist, msSinceHit: nowMs - bounty.lastHit }, leashRadius);
+  // ★活動限界+帰巣ヒステリシス(社長裁定2026-08-22): 交戦/帰巣の2状態は純関数 decideBountyLeash が正本。
+  // 帰巣ラッチ(bountyHoming)が立っている間は**被弾では交戦に戻らない**(380px以内へ近づいた時だけ)。
+  const wasHoming = bounty.bountyHoming === true;
+  const leash = decideBountyLeash({
+    homing: wasHoming,
+    centerX: bcx, centerY: bcy,
+    distanceToPlayer: dist,
+    msSinceHit: nowMs - bounty.lastHit,
+    leashRadiusPx: leashRadius,
+  });
+  const engaged = leash.engaged;
+  if (leash.homing !== wasHoming) patch.bountyHoming = leash.homing;
   if (engaged) {
     patch.bountyLastEngagedAt = newGameTime; // 交戦中は毎フレームリセット(§2)
     if (bounty.bossLeashSince !== undefined) patch.bossLeashSince = undefined;
@@ -2030,7 +2112,9 @@ export const runBountyTick = (
     const midMove = (patch.bossState ?? bounty.bossState) !== undefined && (patch.bossState ?? bounty.bossState) !== 'chase';
     const grace = advanceBossDisengageGrace(true, bounty.bossLeashSince, newGameTime);
     if (grace.since !== bounty.bossLeashSince) patch.bossLeashSince = grace.since;
-    if (grace.ready && !midMove) {
+    // 活動限界による帰巣は**猶予を待たずに即**打ち切る(裁定「これを超えたら追跡を打ち切って帰巣」)。
+    // 技の実行中(midMove)だけは従来どおり満了まで延期する(半端な状態を残さない既存の掟)。
+    if ((grace.ready || leash.homing) && !midMove) {
       // 帰巣: 巣(homeX/homeY)へゆっくり歩いて戻りつつ回復(giantbatのリーシュと同じ土管)。
       const hx = bounty.homeX, hy = bounty.homeY;
       if (hx !== undefined && hy !== undefined) {
@@ -2051,6 +2135,7 @@ export const runBountyTick = (
         const arrivedNow = Math.hypot(hx - clamped.x, hy - clamped.y) <= ARRIVE_EPS_PX;
         if (arrivedNow) {
           patch.dormant = true;
+          patch.bountyHoming = false; // 巣に着いた=帰巣ラッチを降ろす(次はdormantの起床判定へ戻る)
           patch.bountyLastEngagedAt = newGameTime; // 新しい1分(§2「接敵が切れて巣に戻ったら新しい1分」)
           patch.bountyDepartAt = undefined;
           patch.bossLeashSince = undefined;
@@ -2061,6 +2146,7 @@ export const runBountyTick = (
       } else {
         // homeX/homeYが未設定(スポーン側の不備・防御的フォールバック): 現在地をそのまま巣として即帰巣扱い。
         patch.dormant = true;
+        patch.bountyHoming = false;
         patch.bountyLastEngagedAt = newGameTime;
         patch.bossLeashSince = undefined;
         resetBrShotCycle(s); // §6.38 v10 #7: リーシュ帰巣(dormant化)=バス停の射撃サイクルをクリア
@@ -2121,22 +2207,18 @@ export const runBountyTick = (
 // (「デバッグのみ」なので意図的にバイパス=検証を止めない)。
 // ---------------------------------------------------------------------------------------------
 export interface BountySpawnBlockInput {
-  bossFightNow: boolean;   // ボス戦中(施設ロックと同じ土管)
-  activeEvent: boolean;    // 囲い/救助等のイベント中
-  hiddenBossAlive: boolean; // 裏ボス(mimir等)存命中
   /**
-   * ★v0.25.3549(社長報告「小ボスと城ボスが5分に同時に出てきてます」): **交戦ボスが場に居るか**
-   * (賞金首自身は除く=`isGhostEligibleBoss`)。
+   * ボスと**交戦中**か(`bossEngagedNow` = 距離 + `dormant`。施設ロックと同じ土管)。
    *
-   * なぜ `bossFightNow` だけでは足りなかったか: あちらは `bossEngagedNow` = **プレイヤーとの距離**で
-   * 決まる「交戦中か」の判定。城ボスは 5:00(`CASTLE_BOSS_MIN_TIME_MS`)に**城の位置へ湧く**ので、
-   * プレイヤーが着くまでは `bossFightNow === false`。**その「湧いたが未交戦」の窓に賞金首が入り込む。**
-   * 3:00の賞金首が抑止(初心者ゾーン/緩コマ等)で繰り越されていると、ゲートが開いた瞬間=まさにこの窓に
-   * 落ちて、**城ボスと小ボスが同時に出る**。
-   *
-   * 裏ボス(`hiddenBossAlive`)は最初から**存命**で見ていた。城ボスだけ交戦基準だったのが非対称=これが穴。
+   * PACING_PUZZLE.md「★イベント抑止の原則」(社長仕分け2026-08-22)で**この1本に戻した**。
+   * 旧実装は v0.25.3549 で `bossAlive`(交戦ボスが場に居るか=賞金首を除く)と
+   * `hiddenBossAlive`(裏ボス存命)を足していたが、城ボス/裏ボスには**時限が無い**ので
+   * 「存命」で止めると**待っても解けない窓**ができる(倒すまでイベントが永久に出ない)。
+   * 物差しは「その相手に時限があるか」——時限が無い相手は**交戦中だけ**止める。
+   * 賞金首同士の「同時1体」は呼び出し側の `bountyAlive` が担う(ここではない)。
    */
-  bossAlive: boolean;
+  bossFightNow: boolean;
+  activeEvent: boolean;    // 囲い/救助等のイベント中
   redNightActive: boolean; // 紅き夜中
   area: number;            // 憲法第4条: 初心者ゾーン(エリア0-1)では出さない
   // PACING_PUZZLE.md §10-12#8(EXボス「フィル(変異体)」バッチ1): 旧`storyBossOnly`フィールドの
@@ -2148,7 +2230,7 @@ export interface BountySpawnBlockInput {
   tutorialStage: boolean;  // チュートリアル(farBackdrop==='tutorial')
 }
 export const bountySpawnBlocked = (input: BountySpawnBlockInput): boolean =>
-  input.bossFightNow || input.bossAlive || input.activeEvent || input.hiddenBossAlive || input.redNightActive
+  input.bossFightNow || input.activeEvent || input.redNightActive
   || input.area <= 1 || input.suppressBounties || input.labTheme || input.corridorMode || input.tutorialStage;
 
 // ---------------------------------------------------------------------------------------------

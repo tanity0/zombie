@@ -165,6 +165,27 @@ export const facilitiesLocked = (
 ): boolean =>
   bossFightNow || (bossFightLastTrueAt > 0 && now - bossFightLastTrueAt < FACILITY_REENABLE_MS);
 
+// ---------------------------------------------------------------------------------------------
+// ボス戦後の余韻(社長指示2026-08-22「城ボス倒したあと、10秒はリラックスのままで」)
+// ---------------------------------------------------------------------------------------------
+// 旧: directorTick の `bossRelax` は `bossEngagedNow` の生値だったので、交戦が切れた**その1フレームで**
+// 湧きが通常へ戻る=倒した直後に雑魚がドッと湧く(余韻がない)。
+// 新: 施設ロック(facilitiesLocked)と**同型の尾**を付ける。新しい仕組みは作らず、しきい値だけ10秒。
+// **撃破/離脱は区別しない**(社長の言葉は「倒したあと」だが、逃げ切った直後に通常の湧きへ戻るのも
+// 同じく荒いため=交戦終了から10秒で1本。社長裁定=推薦どおり)。
+// コマ進行(koma.elapsedMs)の停止も `if (!bossRelax)` のまま自動でこの尾に乗る。
+export const BOSS_RELAX_TAIL_MS = 10000;
+/**
+ * 交戦中、または交戦が切れてから BOSS_RELAX_TAIL_MS 未満か。
+ * `lastTrueAt` は「最後に交戦中だったゲーム内時刻」(呼び出し側が持ち回る)。
+ * ラン跨ぎで gameTime が 0 へ戻った場合(now < lastTrueAt)は尾を無効にする=前ランの残り火で
+ * 開幕がリラックスに落ちない。
+ */
+export const bossRelaxWithTail = (
+  engagedNow: boolean, lastTrueAt: number, now: number,
+): boolean =>
+  engagedNow || (lastTrueAt > 0 && now >= lastTrueAt && now - lastTrueAt < BOSS_RELAX_TAIL_MS);
+
 /** 範囲外が連続BOSS_DISENGAGE_GRACE_MS(現行1.2秒)続いた時だけ離脱。1フレームでも戻れば予兆を取り消す。 */
 export const advanceBossDisengageGrace = (
   outside: boolean, since: number | undefined, now: number,
