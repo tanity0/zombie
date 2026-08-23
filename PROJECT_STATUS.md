@@ -116,6 +116,7 @@
 | research/ESCALATION_AGENDA.md | 攻撃を派手にする相談 | 2026-08-12 | v0.25.3181 |
 | research/FX_GAP_LEDGER.md | 技×ヴィジュアル棚卸し補完 | 2026-08-07 | v0.25.2463 |
 | research/GHOST_BOSS.md | 守護霊ボス「幻影」設計 | 2026-08-20 | ─ |
+| research/SAME_ARENA.md | プレイヤー/守護霊/幻影を同じ土俵に立たせる計画(★未決Q1〜Q4=社長裁定待ち) | 2026-08-23 | ─ |
 | research/GROWTH.md | 永続育成(強化)設計 | 2026-08-20 | ─ |
 | research/IDOL_ELEMER_TRACE.md | アイドル←エレメールトレース | 2026-08-02 | v0.25.2619 |
 | research/INERTIA_LEDGER.md | 動きの慣性 違反台帳 | 2026-08-15 | v0.25.3444 |
