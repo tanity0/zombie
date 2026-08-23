@@ -6569,13 +6569,18 @@ export class PixiScene {
     // 犯人は `?hidelayer=gapband` で確定(社長が実機で特定)。
     // この帯は §6.37 v4「上接合」——**引きで遠景が縮んだ時に、遠景の下端と地面の上端の間に開く隙間**を
     // 埋めるためのもの。よって**遠景そのものが無いステージでは要らない**。
-    // ところが洋館通路(corridorMode)・屋内・ラボは、遠景の各層(far/hz/nh/ff/リッジ)を
-    // `!s.corridorMode` 等で除外済みなのに、**この帯だけ除外し忘れていた**。
+    // ところが洋館通路(corridorMode)は、遠景の各層(far/hz/nh/ff/リッジ)を `!s.corridorMode` で
+    // 除外済みなのに、**この帯だけ除外し忘れていた**。
     // 遠景が無いと `farBackdropHeight()` は意味のある値を返さないので、帯が的外れな高さに置かれ、
     // **画面を横切る帯として見えていた**(社長「隙間が広がったり細くなったりする」=下の featherPx が
     // ズーム依存なので、引き具合で帯の位置と重なり量が動く)。
-    const gs = useGameStore.getState();
-    if (gs.corridorMode || gs.indoorMode || this.isLabStage) {
+    // ★対象は corridorMode **だけ**にする(2026-08-22 の自己訂正)。
+    // 一度は indoorMode / lab も一緒に止めたが、**ラボと訓練(洞窟)には遠景がある**
+    // (`farBackdropHeight()` が `LAB_FAR_BOUNDARY_YR` / `TUTORIAL_FAR_HEIGHT_RATIO` の
+    // 専用値を返す=境界が実在する)ので、そこでは帯は本来の仕事をしている。
+    // **社長の報告は洋館通路だけ**であり、他所で隙間が見えている報告は無い。
+    // 「A を直せと言われたら A だけ」(CLAUDE.md)に戻す。
+    if (useGameStore.getState().corridorMode) {
       if (this.worldGapBand) this.worldGapBand.visible = false;
       return;
     }
