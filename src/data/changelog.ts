@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3841',
+    items: [
+      '「紅き月」の発生が6分から7分になりました。',
+    ],
+  },
+  {
     version: '0.25.3840',
     items: [
       '「刈り入れ」の時間帯に、赤い強個体が出なくなりました(サクサク刈って稼ぐ時間帯です)。',

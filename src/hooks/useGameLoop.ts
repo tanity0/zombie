@@ -637,7 +637,10 @@ const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。�
 // 社長指示v0.25.3317: 紅き月は**7:00固定発動・毎ラン確定**(旧: 5〜9分ランダム判定×発生率30%を廃止)。
 // 城ボス(5:00)後の延長帯に入った者への洗礼という位置づけ。条件(デンジャーゾーン以深/緩コマ/
 // ボス・裏ボス中は延期)は従来どおり=満たすまで毎フレーム再判定で自然に遅延する。
-const RED_NIGHT_FIRE_AT_MS = 360000; // 6:00(v8.3・社長裁定2026-08-15「紅き月を6分に」。旧7:00=賞金首2体目と重なるため移動)
+// ★社長指示2026-08-23「紅き月を7にずらそう」: 7:00へ戻す。
+// 経緯: 元は7:00固定(v0.25.3317)→ 賞金首の2体目が7:00に来るため6:00へ避難(v8.3・2026-08-15)
+// → **その賞金首2体目を廃止した(BOUNTY_NATURAL_SPAWN_AT_MS=[3:00]・v0.25.3840)ので避ける理由が消えた**。
+const RED_NIGHT_FIRE_AT_MS = 420000; // 7:00
 // PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): 追補2の「円内10体burst配置(ambient)」は撤去。
 // ゲート1の基本沸きは通常沸き(koma maintenance)の無限流入方式へ置き換え(permeable=trueで境界を
 // 越えて流入)。§5.21-追補4(v0.25.1553): koma目標/CDをピーク・CD0に強制する分岐は撤回済み=
@@ -1452,7 +1455,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const hunterPrevHpRef = useRef(-1);   // 前フレームHP(被弾検出)
   const hunterLastDmgAtRef = useRef(-1e9); // 最後に被弾した gameTime
   const redNightFiredRef = useRef(false); // 紅き夜は1ラン1回のみ。発火済みフラグ。
-  const redNightFireAtRef = useRef(RED_NIGHT_FIRE_AT_MS); // 発火時刻(7:00固定・v0.25.3317)。
+  const redNightFireAtRef = useRef(RED_NIGHT_FIRE_AT_MS); // 発火時刻(RED_NIGHT_FIRE_AT_MS固定=毎ラン確定・v0.25.3317)。
   const lastSeenGameTimeRef = useRef(0);
   // Air-dropped supply timer. Tracks the gameTime of the last map ammo drop
   // and the (randomized) wait until the next one, so resupply crates appear at
@@ -2586,7 +2589,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           hordeSpawnRef.current = { spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT };
           gateEventPendingRef.current = null; // バッチ5追補も新ランでリセット
           redNightFiredRef.current = false;
-          redNightFireAtRef.current = RED_NIGHT_FIRE_AT_MS; // 新ランでも7:00固定(v0.25.3317)
+          redNightFireAtRef.current = RED_NIGHT_FIRE_AT_MS; // 新ランでも同じ時刻に固定(v0.25.3317)
           rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
           tutorialConvoQueuedRef.current = false; // チュートリアルM0序盤会話も新ランで再有効化
           runStageIdRef.current = null;          // ステージidのキャッシュも新ランで読み直す(§6.24-UX)

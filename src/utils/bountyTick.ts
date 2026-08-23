@@ -2295,8 +2295,8 @@ export const bountySpawnBlocked = (input: BountySpawnBlockInput): boolean =>
  * 表の長さがそのまま1ランの上限(BOUNTY_NATURAL_MAX_COUNT)なので、7:00の要素を落とすだけで
  * 「1ランに1体」になる(判定側の式は不変)。抑止ゲートで遅れた場合は解禁済みのまま=ゲートが
  * 開き次第出る(時刻を過ぎたら失効はしない)。
- * ※紅き夜は6:00(useGameLoop.RED_NIGHT_FIRE_AT_MS)。旧7:00の賞金首と重ねないための移動だったが、
- *   賞金首が3:00だけになった今も6:00のまま=変更しない(社長指示の範囲外)。 */
+ * ※紅き夜は7:00へ戻した(useGameLoop.RED_NIGHT_FIRE_AT_MS・社長指示2026-08-23)。6:00へ避難していたのは
+ *   7:00の賞金首2体目と重ねないためで、その2体目を廃止したので理由が消えた。 */
 export const BOUNTY_NATURAL_SPAWN_AT_MS: readonly number[] = [180000];
 export const BOUNTY_NATURAL_MAX_COUNT = BOUNTY_NATURAL_SPAWN_AT_MS.length;
 /** 互換: 初回の解禁時刻(テスト・既存参照用)。 */
