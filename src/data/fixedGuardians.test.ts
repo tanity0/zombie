@@ -16,7 +16,8 @@ import { bossStylePerfScore } from '../utils/playerTraits';
 import { BULLET_MOVE_KEYS, MOVE_REACTION_KEYS } from '../utils/moveReaction';
 import { createWeapon } from '../utils/weaponUtils';
 import { aggregateEquipBonus, equipmentById, equipMaxHealthOf } from './equipment';
-import { PLAYER_BASE_HP, PLAYER_BASE_SPEED } from '../store/gameStore';
+import { PLAYER_BASE_SPEED } from '../store/gameStore';
+import { PLAYER_PROFILES } from './playerProfiles'; // ラン開始HPの正本(=クラス表)
 import { FIXED_GUARDIAN_IDS } from '../../shared/fixedGuardianIds.mjs';
 
 describe('固定の先人守護霊20体', () => {
@@ -66,7 +67,11 @@ describe('固定の先人守護霊20体', () => {
         expect(equipmentById(equipment[slot])?.slot, `${g.name}:${slot}`).toBe(slot);
       }
       expect(snap.equipBonus, g.name).toEqual(aggregateEquipBonus(equipment));
-      expect(snap.maxHealth, g.name).toBe(PLAYER_BASE_HP + equipMaxHealthOf(equipment));
+      // ★v0.25.3855(社長発見「みんな130を初期値としてるよね?」): ラン開始HPの正本は
+      // `PLAYER_PROFILES[class].maxHp`(130)。`gameStore.PLAYER_BASE_HP`(120)ではない
+      // (実際の式は `maxHealth = profile.maxHp + 装備 + 育成`)。旧テストは120側を固定していたため
+      // **10ズレたまま「一致している」と主張していた**。
+      expect(snap.maxHealth, g.name).toBe(PLAYER_PROFILES[g.classId].maxHp + equipMaxHealthOf(equipment));
       expect(snap.speed, g.name).toBe(PLAYER_BASE_SPEED);
       expect(snap.critChance, g.name).toBe(0);
       expect(snap.magBonus, g.name).toBe(0);
@@ -102,7 +107,7 @@ describe('固定の先人守護霊20体', () => {
 
   it('個性の核になる特殊値を保持する', () => {
     const byName = (name: string) => FIXED_GUARDIANS.find(g => g.name === name)!;
-    expect(byName('黒鉄').profile.snapshot?.maxHealth).toBe(330);
+    expect(byName('黒鉄').profile.snapshot?.maxHealth).toBe(340); // 130 + 装備210(旧: 120基準で330)
     expect(byName('ユキ').profile.mobility).toBe(1);
     expect(byName('遠見').profile.preferredDist).toBe(420);
     expect(byName('早瀬').profile.snapshot?.equipBonus?.fireRateMult).toBe(1.1);

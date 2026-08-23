@@ -11,6 +11,10 @@
 // 置けない(headless縛り)。武器を載せる最後の一手は ghostBuild.ts が担当する。
 import type { CharacterClass, Player, PlayerBuildSnapshot, Summon } from '../types/game';
 import type { AvatarId } from '../data/avatars';
+// ★research/SAME_ARENA.md §4-c(社長方針2026-08-23「持つべき情報はビルド」): 記録から**引ける数値は
+// 引く**ために、今の数値表(クラス表・装備表)をここで参照する。どちらも data の葉=循環なし。
+import { PLAYER_PROFILES } from '../data/playerProfiles';
+import { aggregateEquipBonus, equipMaxHealthOf } from '../data/equipment';
 
 /**
  * 同行守護霊の写し(BOT_AND_GHOST.md §2.15「討伐に付き合ってくれた人のビルドとステータス」/
@@ -114,16 +118,37 @@ export const buildHasLoadout = (snap: PlayerBuildSnapshot | undefined): boolean 
  */
 export const buildPseudoPlayer = (snap: PlayerBuildSnapshot | undefined, live: Player): Player => {
   if (!snap) return live;
+  // ★★research/SAME_ARENA.md §4-c(社長方針2026-08-23):
+  // 「**持つべき情報はビルドであって、何を持ってるのか?さえ分かれば、あとはゲーム内の規定数値に
+  //   変換すればいいだけ。後から数値仕様が変わっても勝手に揃うはず**」
+  //
+  // ⇒ **持ち物(クラス・装備・スキル・武器の識別子)から引ける数値は、記録の値を信じず"今の表"から引く。**
+  // 記録に焼かれた数値は**識別子が欠けている旧データのフォールバック**としてだけ使う。
+  //
+  // これが無いと何が起きるか(実例・v0.25.3854で社長が発見): 固定守護霊の記録は
+  // `maxHealth = 120 + 装備` で焼かれていたが、**プレイヤーの実際の初期HPは 130**
+  // (`PLAYER_PROFILES[class].maxHp`)。**記録が数値を持っていたせいで、基準値が動いた事実に
+  // 追随できず10ズレたまま固まっていた。** 下の導出にすると、この種のズレは**構造的に起きない**。
+  const equipment = snap.equipment ?? live.equipment;
+  const cls = snap.characterClass ?? live.characterClass;
+  const classMaxHp = cls ? PLAYER_PROFILES[cls]?.maxHp : undefined;
+  // 装備の効果は**100%持ち物から引ける**(記録のequipBonusは信じない=改造耐性にもなる)。
+  const derivedEquipBonus = snap.equipment ? aggregateEquipBonus(snap.equipment) : undefined;
+  // 最大HP=クラスの素のHP+装備のHP加算。クラスが判らない旧データだけ記録の数値へ落ちる。
+  // ※永続強化(育成)のHP加算は**この式に含めない**——別軸で、かつ社長裁定2026-08-23で保留中。
+  const derivedMaxHealth = classMaxHp !== undefined && snap.equipment
+    ? classMaxHp + equipMaxHealthOf(snap.equipment)
+    : undefined;
   return {
     ...live,
-    maxHealth: snap.maxHealth,
+    maxHealth: derivedMaxHealth ?? snap.maxHealth,
     speed: snap.speed,
     level: snap.level,
-    characterClass: snap.characterClass ?? live.characterClass,
+    characterClass: cls,
     skills: snap.skills ?? live.skills,
     skillLevels: snap.skillLevels ?? live.skillLevels,
-    equipment: snap.equipment ?? live.equipment,
-    equipBonus: snap.equipBonus ?? live.equipBonus,
+    equipment,
+    equipBonus: derivedEquipBonus ?? snap.equipBonus ?? live.equipBonus,
     critChance: snap.critChance ?? live.critChance,
     magBonus: snap.magBonus ?? live.magBonus,
     reloadMult: snap.reloadMult ?? live.reloadMult,

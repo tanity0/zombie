@@ -6,6 +6,7 @@ import {
   CHARACTER_SUBWEAPON_KEYS, MAX_EQUIPPED_SKILLS, classSubWeaponFor, skillMaxLevel,
 } from './campaign';
 import { aggregateEquipBonus, equipmentById, equipMaxHealthOf } from './equipment';
+import { PLAYER_PROFILES } from './playerProfiles'; // クラスの素のHP(=ラン開始値の正本)
 import { BULLET_MOVE_KEYS, MOVE_REACTION_KEYS, type MoveReactionTable } from '../utils/moveReaction';
 import type { PlayerProfile } from '../utils/playerTraits';
 
@@ -86,8 +87,14 @@ const moveReactionsFor = (reaction: FixedGuardianReaction): MoveReactionTable =>
   }])) as MoveReactionTable;
 };
 
-// 現行ラン開始値(gameStore.PLAYER_BASE_*)。固定データをstoreへ依存させないため、テストで正本との一致を固定する。
-const FIXED_BUILD_BASE_HP = 120;
+// 現行ラン開始値。固定データをstoreへ依存させないため、テストで正本との一致を固定する。
+// ★v0.25.3855(社長発見「みんな130を初期値としてるよね?」): **HPは `gameStore.PLAYER_BASE_HP`(120)ではなく
+// `PLAYER_PROFILES[class].maxHp`(130)が実際のラン開始値**だった(`gameStore` の
+// `maxHealth = profile.maxHp + 装備 + 育成`)。旧コメントが「gameStore.PLAYER_BASE_*」と書いていたため
+// 120 で辻褄が合っているように見え、**10ズレたまま誰も気づかなかった**。クラス表から引く形に直す。
+// ※そもそも消費側(`playerBuild.buildPseudoPlayer`)が**持ち物から引き直す**ようになった(§4-c)ので、
+//   この焼き値は「識別子が欠けた旧データ用のフォールバック」でしかない。**それでも正しい値を焼く**
+//   (嘘の数値を残すと、次に誰かがそれを根拠にする)。
 const FIXED_BUILD_BASE_SPEED = 87;
 
 const gear = (body: string, arms: string, accessory: string): EquipLoadout => ({ body, arms, accessory });
@@ -159,7 +166,7 @@ const fixedGuardian = (s: GuardianSpec): FixedGuardian => {
       srcClass: s.classId,
       srcName: s.name,
       snapshot: {
-        maxHealth: FIXED_BUILD_BASE_HP + equipMaxHealthOf(s.equipment),
+        maxHealth: PLAYER_PROFILES[s.classId].maxHp + equipMaxHealthOf(s.equipment),
         speed: FIXED_BUILD_BASE_SPEED,
         level: 20,
         gunKeys: [s.gunKey],

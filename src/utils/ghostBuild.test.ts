@@ -11,7 +11,8 @@ import { snapshotPlayerBuild, buildPseudoPlayer, buildHasLoadout } from './playe
 import { resolveGhostBuild, ghostActorPlayer, clearGhostBuildCache, ghostBuildFor } from './ghostBuild';
 import { createWeapon, gunShotBaseDamage, gunShotCritChance } from './weaponUtils';
 import { ghostCounterDamage } from './ghostCounter';
-import type { Player, Summon, SubWeaponKey } from '../types/game';
+import type { Player, Summon, SubWeaponKey, EquipLoadout } from '../types/game';
+import { aggregateEquipBonus } from '../data/equipment';
 
 const freshPlayer = (): Player => {
   useGameStore.getState().resetGame('warrior');
@@ -19,6 +20,10 @@ const freshPlayer = (): Player => {
 };
 
 /** 「計測時はこういうビルドだった」を作る(装備銃=スナイパー・近接=対変異体ナイフ・スキル2種・装備火力+20%)。 */
+// パリティ検証用の実在する装備一式(数値は表から引く=写経しない)。
+const PARITY_GEAR: EquipLoadout = { body: 'special-body', arms: 'arms-firepower-5', accessory: 'accessory-crit-5' };
+const PARITY_BONUS = aggregateEquipBonus(PARITY_GEAR);
+
 const buildRun = (): Player => {
   const base = freshPlayer();
   const sniper = createWeapon('rifle-t2');
@@ -32,7 +37,10 @@ const buildRun = (): Player => {
     critChance: 0.2,
     magBonus: 4,
     reloadMult: 0.7,
-    equipBonus: { ...base.equipBonus, damageMult: 1.2, critBonus: 0.06 },
+    // ★v0.25.3855(SAME_ARENA §4-c「持つべき情報はビルド」): 装備効果は**持ち物から引き直される**ので、
+    // 「装備は空なのに equipBonus だけ盛る」という**実在しない状態**はもう作れない。実際の装備を着せる。
+    equipment: PARITY_GEAR,
+    equipBonus: aggregateEquipBonus(PARITY_GEAR),
     health: 50, maxHealth: 100,
   };
 };
@@ -52,7 +60,7 @@ describe('snapshotPlayerBuild: 計測時ビルドの写し(純粋コピー)', ()
     expect(snap.critChance).toBe(0.2);
     expect(snap.magBonus).toBe(4);
     expect(snap.reloadMult).toBe(0.7);
-    expect(snap.equipBonus?.damageMult).toBeCloseTo(1.2, 6);
+    expect(snap.equipBonus?.damageMult).toBeCloseTo(PARITY_BONUS.damageMult, 6); // 数値は装備表から引く(§4-c)
     expect(snap.characterClass).toBe('warrior');
     expect(buildHasLoadout(snap)).toBe(true);
   });
@@ -155,10 +163,13 @@ describe('パリティ(式の複製禁止の機械化): 同じビルドならプ
     const asPlayer = { ...runPlayer, weapons: [gun], activeWeaponId: gun.id };
     expect(gunShotBaseDamage(gun, build.player, 0)).toBeCloseTo(gunShotBaseDamage(gun, asPlayer, 0), 9);
     expect(gunShotCritChance(gun, build.player, 0)).toBeCloseTo(gunShotCritChance(gun, asPlayer, 0), 9);
-    // 装備火力+20%が実際に乗っている(素の武器性能ではない=§2.11訂正の眼目)
-    expect(gunShotBaseDamage(gun, build.player, 0)).toBeCloseTo(gun.damage * 1.2, 6);
-    // クリ率=武器基礎(スナイパー=0.23)+本体0.2+装備0.06
-    expect(gunShotCritChance(gun, build.player, 0)).toBeCloseTo((gun.critChance ?? 0) + 0.2 + 0.06, 6);
+    // 装備の火力倍率が実際に乗っている(素の武器性能ではない=§2.11訂正の眼目)。
+    // ★数値は装備表から引く(写経しない)=表を変えてもこのテストは勝手に揃う(§4-c)。
+    expect(PARITY_BONUS.damageMult).toBeGreaterThan(1); // 前提: この一式は火力を持つ
+    expect(gunShotBaseDamage(gun, build.player, 0)).toBeCloseTo(gun.damage * PARITY_BONUS.damageMult, 6);
+    // クリ率=武器基礎+本体0.2+装備のcritBonus
+    expect(gunShotCritChance(gun, build.player, 0))
+      .toBeCloseTo((gun.critChance ?? 0) + 0.2 + PARITY_BONUS.critBonus, 6);
   });
 
   it('カウンター反撃ダメージがプレイヤーの式(counterReplyDamage)と一致する', () => {

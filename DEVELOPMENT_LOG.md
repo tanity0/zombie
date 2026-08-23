@@ -1,5 +1,51 @@
 # Development Log
 
+## v0.25.3855 — ★原則「記録が持つのは持ち物。数値は今の表から引く」+ 初期HP 120/130 の食い違いを解消【2026-08-23 22:12】
+
+社長「**持つべき情報はビルドであって、何を持ってるのか?さえ分かれば、あとはゲーム内の規定数値
+(HPに限らず全数値)に変換すればいいだけであれば / 後から数値仕様が変わっても、勝手に揃うはず**」。
+
+### 発端: 社長が「みんな130を初期値としてるよね?」と気づいた
+v0.25.3853 で幻影HPが 130→240 になった件を調べたところ、**増分の主因は装備(+120)**で正常だったが、
+**素のHPが 120 と 130 で食い違っていた**:
+- `gameStore.PLAYER_BASE_HP = 120` … **もうプレイヤーの初期HPではない**(実際の式は
+  `maxHealth = profile.maxHp + 装備 + 育成` で `profile.maxHp = STANDARD_MAX_HP = 130`)
+- 固定守護霊20人の記録は **120 側**で焼かれ、コメントは「現行ラン開始値(gameStore.PLAYER_BASE_*)」、
+  テストも `PLAYER_BASE_HP + 装備` で固定 ⇒ **記録・コメント・テストの3つが120側で辻褄が合い、
+  10ズレたまま誰も気づかなかった。**
+
+### 実装(§4-c として設計書へ格上げ)
+1. **`playerBuild.buildPseudoPlayer` を唯一の変換点として、引ける数値を"今の表"から引く**
+   (ここを直せば**守護霊と幻影の両方**が同時に従う):
+   - **最大HP** = `PLAYER_PROFILES[class].maxHp + equipMaxHealthOf(equipment)`
+   - **装備効果** = `aggregateEquipBonus(equipment)`(**改造耐性**にもなる=盛った equipBonus は効かない)
+   - **記録の数値は、識別子が欠けた旧データのフォールバックとしてだけ**使う。
+   - **引けないもの(クリ率/装填加算/リロード倍率)は記録のまま**——レベルアップで積んだ本人の選択で、
+     持ち物から引けない=これ自体がビルドの一部。
+2. `fixedGuardians` の焼き値も `PLAYER_PROFILES[classId].maxHp` へ。**消費側が引き直すので飾りだが、
+   嘘の数値を残すと次に誰かが根拠にする**ため正しい値を焼く。`FIXED_BUILD_BASE_HP` は削除。
+3. **テストから数値の写経を撤去**。`expect(...).toBe(1.2)` を `aggregateEquipBonus(gear).damageMult` へ。
+   `ghostBuild.test.ts` の `buildRun()` は「**装備は空なのに equipBonus だけ盛る**」という
+   実在しない状態を作っていたので、実在する装備一式(`PARITY_GEAR`)を着せる形に直した。
+
+### 効き方
+固定守護霊のHPが **240→250 / 330→340**(素のHPが 120→130 になったぶん)。
+
+### 掟(今後)
+- **記録に数値を足したくなったら、まず「持ち物から引けないか」を考える。引けるなら足さない。**
+- **テストにも数値を写経しない。** 写経したテストは、表を変えた時に**「一致している」と嘘をつく**
+  (今回の10ズレがまさにそれ)。
+
+**変更ファイル**: `src/utils/playerBuild.ts`, `src/data/fixedGuardians.ts`, `src/data/fixedGuardians.test.ts`,
+`src/utils/ghostBuild.test.ts`, `src/utils/buildDerivation.test.ts`(新規), `research/SAME_ARENA.md`,
+`package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`
+**検証**: typecheck 0 / lint 0エラー(既存warning 8)/ `src/utils` + `src/data` = **3711件緑**。
+新規 `buildDerivation.test.ts` **6件**で原則を機械化(**記録の maxHealth が嘘でも持ち物から正しい値が出る**/
+**盛った equipBonus は効かない**/装備を差し替えれば結果が動く=表を引いている証拠/
+識別子が欠けた旧データだけ記録へ落ちる/レベルアップ由来は記録のまま)。
+**負荷スコア**: 0/10(ビルド解決は実体1体につき1回のメモ化済み。導出はその1回の中)。
+**状態変化**: ★オンライン計画 → 次=**O-3**(裁定待ちのブロッカーは無し)。
+
 ## v0.25.3854 — オンライン計画 O-5: 幻影の中身が「他人」になる【2026-08-23 21:32】
 
 社長「進めて」。**幻影は常に同じ1人(`strongestGuardian()`)だった**——癖も、ビルドも、名前も。
