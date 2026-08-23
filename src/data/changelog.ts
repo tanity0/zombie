@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3848',
+    items: [
+      'ゲーム内容の変更はありません(オンライン計画 O-1 の設計を詰めました)。',
+    ],
+  },
+  {
     version: '0.25.3847',
     items: [
       'ゲーム内容の変更はありません(守護霊・幻影を同じ条件で戦わせる計画をマイルストーン化しました)。',

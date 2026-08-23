@@ -1,5 +1,48 @@
 # Development Log
 
+## v0.25.3848 — オンライン計画 O-1 の詳細設計(発注できる粒度まで)【2026-08-23 17:42】
+
+社長「**o-1詳しく**」。SAME_ARENA.md §3-b として記録。
+
+### ★安い理由(実コードで確認)
+**`ghostActorPlayer(build, actor)`(`utils/ghostBuild.ts:79`)の第2引数は構造型**
+`{x,y,width,height,health,maxHealth}` **であって Summon 型ではない**。`Enemy` はこの形をそのまま満たすので、
+**幻影を渡すだけで通る=新しい計算式を1本も書かない**。`resolveGhostBuild(snap, live)` も純関数で流用可。
+⇒ 規模を「中」→ **「中の下」**へ再評価。実体は**型2つ・分岐2箇所・スポーン1行・キャッシュ1箇所**。
+
+### ★O-1 で必ず直す実バグ予備軍(走査で発見)
+`ghostBuildFor`(`utils/ghostBuild.ts:64`)のメモ化が **`cached = { id, build }` の1件だけ**。
+守護霊が同時1体の今は露見していないが、**守護霊と幻影が同時に居ると id が交互に変わり、
+毎フレーム `resolveGhostBuild`(武器生成を含む)を作り直す**。
+コメント自身が警告している v0.25.2525 の実バグと同型なので、**O-1で id キーの Map へ広げる**。
+
+### 作業(A〜E)
+- **A 型**: `Enemy` に `phantomBuild?: PlayerBuildSnapshot` / `phantomSubWeaponCooldowns?` を追加。
+  `phantomDash`(刀/ワイヤー)は **O-4**、銃の実体(`phantomWeapons`/リロード)は **O-2** に回す。
+- **B 主語の解決**: `combatActorPlayer(ghostId?)` → **`combatActorPlayer(actorId?)`**。
+  `undefined`→本物のプレイヤー(**1bit不変**)/ Summon / **Enemy(`guardian-phantom`)** の順で解決。
+- **C 書き込みの振り分け**: `setActorSubWeaponCooldown` に Enemy 枝(宛先=`phantomSubWeaponCooldowns`)。
+  CD補正(オーバークロック→タイムキーパー)は**プレイヤーと同じ純関数**を幻影のビルドを主語に通す。
+- **D スポーン**: 幻影のスポーンは**コード中1箇所だけ**(`useGameLoop.ts:6971`)。そこで `phantomBuild` を積む。
+  **O-1では自分のプロファイル**を使い、他人のビルドへの差し替えは **O-5**。
+- **E キャッシュ**: 上記の Map 化。
+
+### 受け入れ条件(6項目)
+①疑似Playerが幻影の座標/HP+ビルドを載せて返る ②幻影のCD帳簿がプレイヤー・守護霊と独立
+③**プレイヤー単体の挙動が1bitも変わらない** ④ビルド無し時は `null` で従来経路へ落ちる
+⑤**守護霊と幻影が同時でも `resolveGhostBuild` が毎フレーム走らない**(テストを同コミットで)
+⑥**この段ではまだ何も強くならない**(配管だけ。強さは O-2)。
+
+### ★未決Q6を起票(計画のブロッカーではない)
+**幻影を本番のどこに出すか。** 現状は**デバッグ/練習の「決闘」枠でしか出ない**
+(`FORCE_PHANTOM || practiceForces('phantomnow')`)。O-1〜O-5 はどこに出ても同じように効くので
+ブロッカーではないが、「世界中のデータと戦う」を体験として成立させるにはいつか決める必要がある。
+推薦: **O-2 が着地して"強い幻影"が実際に立ってから決める**。
+
+**変更ファイル**: `research/SAME_ARENA.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`
+**検証**: 文書のみ(コード変更なし)。
+**状態変化**: ★オンライン計画 → 次=**O-1(詳細設計済み・着手可能)**。
+
 ## v0.25.3847 — 段0完了 → 「★オンライン計画」としてマイルストーン化(O-1〜O-7)【2026-08-23 17:35】
 
 社長指示「**この開発は長期にわたるのであれば、段階式にして、隙間隙間で進めていくので、全設計が
