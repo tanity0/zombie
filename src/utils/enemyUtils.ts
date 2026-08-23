@@ -565,6 +565,8 @@ export const getEnemyBaseSize = (type: EnemyType): { width: number; height: numb
 // FlarePseudoSummon=utils/flareGun.ts も構造的に一致する。§6.6 M29)。
 export interface SummonTargetLike {
   kind: Summon['kind'];
+  /** 守護霊が紐付いているボスのid(v0.25.3862: ボスのヘイト追従で「自分に紐付いた霊か」を見る)。 */
+  ghostBossId?: string;
   x: number;
   y: number;
   width: number;
@@ -598,6 +600,17 @@ export const resolveEnemyTarget = (
   if (mobGhostRules && gameTimeNow !== undefined
       && enemy.ghostHateUntil !== undefined && gameTimeNow < enemy.ghostHateUntil) {
     const g = summons.find(s => s.kind === 'ghost-ally');
+    if (g) return { x: g.x + g.width / 2, y: g.y + g.height / 2, isSummon: true, hidden: false };
+  }
+  // ★社長指示2026-08-23「**守護霊が狙う敵は敵からも狙って**」(v0.25.3862)。
+  // ボスは `bossHate.ts` のヘイト系(与ダメージのバケツ+粘着)で `hateTarget` を持っており、
+  // **技の狙い**(resolveBossHateAim=windup時)は既にそれを見ている。しかし**この関数(=移動/追跡の
+  // ターゲット)はヘイトを一切見ておらず距離だけで決めていた**ため、
+  // **「撃つのは守護霊、歩いて行くのはプレイヤー」**という食い違いが起きていた。
+  // ⇒ ヘイトが守護霊に向いているボスは、**移動の狙いも守護霊**にする(技と移動で主語を揃える)。
+  // 守護霊が居ない/紐付きが違う個体なら従来どおり距離規則へ落ちる=1bit不変。
+  if (!mobGhostRules && enemy.hateTarget === 'ghost') {
+    const g = summons.find(s => s.kind === 'ghost-ally' && (s.ghostBossId === undefined || s.ghostBossId === enemy.id));
     if (g) return { x: g.x + g.width / 2, y: g.y + g.height / 2, isSummon: true, hidden: false };
   }
   let bestX = px;

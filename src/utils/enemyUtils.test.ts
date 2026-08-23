@@ -582,3 +582,43 @@ describe('resistsChipKnockback(弾・爆発では押されない型)', () => {
     }
   });
 });
+
+describe('★守護霊が狙う敵は敵からも狙う(社長指示2026-08-23・v0.25.3862)', () => {
+  // ボスは `bossHate` のヘイトで **技の狙い** を守護霊へ向けていたが、**移動のターゲット**は
+  // 距離だけで決めていた=「撃つのは守護霊、歩いて行くのはプレイヤー」。技と移動で主語を揃える。
+  const boss = (over: Partial<Enemy> = {}): Enemy => ({
+    ...spawnEnemyAt('giantbat', 0, 0, 0),
+    id: 'boss-1', x: 0, y: 0, width: 60, height: 60, ...over,
+  } as Enemy);
+  const ghostAt = (x: number, y: number, bossId?: string) =>
+    ([{ kind: 'ghost-ally' as const, x, y, width: 32, height: 48, ghostBossId: bossId }]);
+  const player = { x: 100, y: 0, width: 32, height: 48 } as Player;
+
+  it('hateTarget が ghost なら、遠くても守護霊を追う', () => {
+    const t = resolveEnemyTarget(boss({ hateTarget: 'ghost' }), player, ghostAt(3000, 0, 'boss-1'), 200, false, 0);
+    expect(t.isSummon).toBe(true);
+    expect(t.x).toBe(3000 + 16);
+  });
+
+  it('hateTarget が player なら従来どおり(距離規則)=1bit不変', () => {
+    const t = resolveEnemyTarget(boss({ hateTarget: 'player' }), player, ghostAt(3000, 0, 'boss-1'), 200, false, 0);
+    expect(t.isSummon).toBe(false);
+    expect(t.x).toBe(100 + 16);
+  });
+
+  it('hateTarget 未設定でも従来どおり(既存セーブ/旧経路が壊れない)', () => {
+    const t = resolveEnemyTarget(boss(), player, ghostAt(3000, 0, 'boss-1'), 200, false, 0);
+    expect(t.isSummon).toBe(false);
+  });
+
+  it('★別のボスに紐付いた守護霊は追わない(自分の霊だけ)', () => {
+    const t = resolveEnemyTarget(boss({ hateTarget: 'ghost' }), player, ghostAt(3000, 0, 'other-boss'), 200, false, 0);
+    expect(t.isSummon).toBe(false);
+  });
+
+  it('★雑魚には効かない(雑魚は従来どおり ghostHateUntil のラッチだけ)', () => {
+    const mob = { ...spawnEnemyAt('zombie', 0, 0, 0), id: 'z1', x: 0, y: 0, hateTarget: 'ghost' } as Enemy;
+    const t = resolveEnemyTarget(mob, player, ghostAt(3000, 0, undefined), 200, false, 0);
+    expect(t.isSummon).toBe(false);
+  });
+});

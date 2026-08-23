@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3862',
+    items: [
+      '守護霊に狙いを向けたボスが、攻撃だけでなく移動でも守護霊を追うようになりました(これまでは撃つ相手と歩いて行く相手が食い違っていました)。',
+    ],
+  },
+  {
     version: '0.25.3861',
     items: [
       'ゲーム内容の変更はありません(幻影の立ち位置に関する設計の裁定を記録しました)。',
