@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3851',
+    items: [
+      '幻影(決闘の相手)が、記録どおりの銃と近接武器を持つようになりました。',
+    ],
+  },
+  {
     version: '0.25.3850',
     items: [
       '幻影(決闘の相手)が、記録どおりのスキルと装備の強さで戦うようになりました。',

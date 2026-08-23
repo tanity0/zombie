@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useGameStore, combatActorPlayer, setActorSubWeaponCooldown } from '../store/gameStore';
 import { clearGhostBuildCache, actorBuildFor, resolveGhostBuild } from './ghostBuild';
-import { phantomAtkMults } from './phantomTick';
+import { phantomAtkMults, actorGunFor, actorMeleeFor } from './phantomTick';
 import { strongestGuardian } from '../data/fixedGuardians';
 import type { Enemy, PlayerBuildSnapshot } from '../types/game';
 
@@ -132,5 +132,29 @@ describe('O-1/O-2 の土台: resolveGhostBuild は幻影のスナップショッ
     const b = resolveGhostBuild(snap, useGameStore.getState().player);
     expect(b.fromSnapshot).toBe(true);
     expect(b.player.skills).toEqual(snap!.skills);
+  });
+});
+
+describe('★幻影は「記録されたその人そのもの」(社長裁定2026-08-23)', () => {
+  it('記録に銃があれば、幻影は記録の銃を持つ(初期銃へ落とさない)', () => {
+    const snap = strongestGuardian().profile.snapshot ?? undefined;
+    useGameStore.setState({ enemies: [makePhantom(snap)] });
+    const gun = actorGunFor(PHANTOM_ID);
+    expect(gun).toBeTruthy();
+    expect(gun!.key).toBe(snap!.activeGunKey);
+  });
+
+  it('記録に近接武器があれば、幻影は記録の近接武器を持つ', () => {
+    const snap = strongestGuardian().profile.snapshot ?? undefined;
+    useGameStore.setState({ enemies: [makePhantom(snap)] });
+    const melee = actorMeleeFor(PHANTOM_ID);
+    expect(melee).toBeTruthy();
+    expect(melee!.key).toBe(snap!.meleeKey);
+  });
+
+  it('記録が無い(旧データ)時は undefined=呼び出し側が従来の初期武器へ落ちる', () => {
+    useGameStore.setState({ enemies: [makePhantom(undefined)] });
+    expect(actorGunFor(PHANTOM_ID)).toBeUndefined();
+    expect(actorMeleeFor(PHANTOM_ID)).toBeUndefined();
   });
 });

@@ -48,6 +48,7 @@ import {
 import { strongestGuardian } from '../data/fixedGuardians';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { GUARDIAN_PHANTOM_LABEL } from './bossPractice';
+import { actorBuildFor } from './ghostBuild'; // SAME_ARENA: 記録どおりの武器を守護霊と同じ道具で引く
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from './phantomScript';
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
@@ -115,8 +116,10 @@ const phantomGunKey = (): string | undefined =>
  * (呼び出し側はスポーン時に焼いた倍率を渡す。既定1=育成なしと同値)。
  */
 export const phantomMeleeDamage = (growthAtkMult = 1, phantomId?: string): number => {
+  // ★社長裁定2026-08-23: 記録に近接武器があれば**記録どおり**。無い時だけ従来のクラス初期近接。
+  const recorded = phantomId !== undefined ? actorMeleeFor(phantomId) : undefined;
   const key = PLAYER_PROFILES[strongestGuardian().classId]?.meleeKey;
-  const base = (key ? createWeapon(key).damage : null) ?? GP_T.melee.damage;
+  const base = recorded?.damage ?? ((key ? createWeapon(key).damage : null) ?? GP_T.melee.damage);
   // ★SAME_ARENA O-2: 記録どおりのスキル/装備の倍率を乗せる(主語=幻影の疑似Player)。
   // `phantomId` 未指定 or ビルド無し=倍率1で従来と1bit同じ。**クリは近接では従来どおり未適用**
   // (「クリは未適用(叩き台)」は既存仕様なので、この段では変えない=仕様変更をしない)。
@@ -146,6 +149,21 @@ export interface PhantomAtkMults {
   /** 常時掛かる倍率(バーサーカー/錬金/カウンターマスター覚醒 × 装備damageMult)。ビルド無しは1。 */
   outgoingMult: number;
 }
+/**
+ * ★社長裁定2026-08-23: 幻影は**記録されたその人そのもの**。銃・近接武器も記録どおりにする。
+ * `resolveGhostBuild` が既にスナップショットから `gun` / `melee` を復元しているので、
+ * **守護霊とまったく同じ道具**をそのまま引くだけ(武器復元の式を複製しない)。
+ * 記録が無い(旧データ/ビルド未設定)場合は undefined を返し、呼び出し側が従来の初期武器へ落ちる。
+ */
+const actorBuildOf = (phantomId: string) => {
+  const st = useGameStore.getState();
+  const e = st.enemies.find(x => x.id === phantomId && x.type === 'guardian-phantom');
+  if (!e?.phantomBuild) return null;
+  return actorBuildFor(e.id, e.phantomBuild, st.player);
+};
+export const actorGunFor = (phantomId: string): Weapon | undefined => actorBuildOf(phantomId)?.gun;
+export const actorMeleeFor = (phantomId: string): Weapon | undefined => actorBuildOf(phantomId)?.melee;
+
 export const phantomAtkMults = (
   phantomId: string, gun: Pick<Weapon, 'critChance'> | undefined, gameTime: number,
 ): PhantomAtkMults => {
@@ -264,11 +282,19 @@ const gunOwner = (s: PhantomTickState): Player => ({
  * リロードを1tick進める(プレイヤー/守護霊と同じ純関数・リザーブ∞)。
  * 「リロード中/マガジン0は射程0=撃たない」も守護霊と同じ形にする。
  */
-const stepPhantomGun = (s: PhantomTickState, nowMs: number): void => {
+const stepPhantomGun = (s: PhantomTickState, nowMs: number, phantomId?: string): void => {
   if (!s.gun) {
-    const key = phantomGunKey();
-    if (!key) return;
-    s.gun = createWeapon(key);
+    // ★社長裁定2026-08-23「**とにかくオンラインにある他人の実データなので、初期か初期じゃないか
+    // とかの議論があるのがおかしい**」: 幻影は**記録されたその人そのもの**。記録に銃があれば
+    // 記録の銃を持つ(旧v0.25.3641「スキルがまだ無いから武器も初期で」は、その前提=スキル未実装が
+    // O-2で消えたので失効)。記録が無い(旧データ/ビルド未設定)時だけ従来のクラス初期銃へ落ちる。
+    const recorded = phantomId !== undefined ? actorGunFor(phantomId) : undefined;
+    if (recorded) { s.gun = { ...recorded }; }
+    else {
+      const key = phantomGunKey();
+      if (!key) return;
+      s.gun = createWeapon(key);
+    }
   }
   const owner = gunOwner(s);
   const finished = finishWeaponReload(s.gun, owner, Number.POSITIVE_INFINITY, nowMs);
@@ -575,7 +601,7 @@ export const runPhantomTick = (
   const parried = consumePhantomParry(phantom, s, player, bcx, bcy, sfx, patch, newGameTime);
 
   // ---- 銃の状態(リロード)を進める --------------------------------------------------------------
-  stepPhantomGun(s, nowMs);
+  stepPhantomGun(s, nowMs, phantom.id);
 
   // ---- 頭脳(★技中の概念が無くなったので毎tick呼ぶ=弾回避・危険記憶が常時効く) -------------------
   const decision = decidePhantom(phantom, s, player, st0.projectiles, newGameTime, nowMs);
