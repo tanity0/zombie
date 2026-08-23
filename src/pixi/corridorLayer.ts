@@ -47,6 +47,7 @@ export const CORRIDOR_DEBUG = {
   noMesh: qFlag('nomesh'),
   noBack: qFlag('noback'),
   noPillar: qFlag('nopillar'),
+  noBg: qFlag('nobg'),
 };
 // 通路テクスチャ一覧(ensureLoadedと共有)。
 export const CORRIDOR_TEXTURE_NAMES = [
@@ -324,8 +325,22 @@ export class CorridorLayer {
     this.ensureLoaded();
     // 背景は常に全画面+横オーバースキャン(v0.25.2113: 横移動でcontainerごと逆シフトするため、
     // シフトしても黒背景の切れ目が出ないよう左右に余白を持たせる)。
-    this.bg.position.set(-CORRIDOR_BG_X_OVERSCAN, 0);
-    this.bg.width = W + CORRIDOR_BG_X_OVERSCAN * 2; this.bg.height = H;
+    // ★社長報告2026-08-22「上に行かなくても、距離が離れるだけで出てくる。つまりズームアウトで
+    // 必ず出てくる」= **これが決定打**。通路背景の container には
+    // `dispScale =(広間スケール)×(ワールドズーム)` が掛かるため、**ズームアウトで dispScale < 1**
+    // になると、ローカル [0,H] 固定だったこの黒背景が**画面より小さく縮み、端が線として見えていた**。
+    // 横には元から ±420px の余白があったのに、**縦だけ余白ゼロ**だったのが原因。
+    // 実測: dispScale=0.40 のとき bg が覆うのは画面 322〜? だけで、その外側は素の描画面が出る。
+    // 対処: **縦にも画面1つ分ずつ余白を持たせる**(上下 CORRIDOR_BG_Y_OVERSCAN=H)。
+    //   合成後の高さ = (H + 2H) × dispScale。最小 dispScale(=ZOOM_MIN_ABS 0.40 × 広間1.0)でも
+    //   3H × 0.40 = 1.2H > H で画面を覆い切る。支点が足元(画面の約64%)に寄っている分も吸収する。
+    // ※遠方フェード(floorDark/ceilDark)はグラデの分布が変わると演出が変わるので**広げない**。
+    //   その外側はこの bg の単色(0x0a0709=遠方の闇と同色)が受け持つ。
+    this.bg.visible = !CORRIDOR_DEBUG.noBg; // ★切り分け用(?nobg=1)
+    const bgOverscanY = H; // 上下それぞれ画面1つ分
+    this.bg.position.set(-CORRIDOR_BG_X_OVERSCAN, -bgOverscanY);
+    this.bg.width = W + CORRIDOR_BG_X_OVERSCAN * 2;
+    this.bg.height = H + bgOverscanY * 2;
     const horizonY = H * CFG.horizonYr;
     if (!this.ready) return;
 
