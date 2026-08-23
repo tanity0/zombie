@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3861',
+    items: [
+      'ゲーム内容の変更はありません(幻影の立ち位置に関する設計の裁定を記録しました)。',
+    ],
+  },
+  {
     version: '0.25.3860',
     items: [
       '幻影(決闘の相手)のパリィの上手さ・反応速度・見た目が、その回の人物のものになりました(これまで一部だけ別人のままでした)。',
