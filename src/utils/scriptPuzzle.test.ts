@@ -6,7 +6,7 @@ import {
   decideNextSpawn,
   peakRedTier,
   nextKomaKind, KOMA_ORDER, KOMA_START_KIND, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
-  chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp,
+  chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp, noRedTierForKoma,
   isScriptCleared, selectRotationPattern, LOWER_MIX_CHANCE, LOWER_MIX_CHANCE_HIT,
   ZERO_NUISANCE, type NuisanceCounts,
 } from './scriptPuzzle';
@@ -217,7 +217,7 @@ describe('M6 §4-C: 4コマサイクル', () => {
 
   it('chaff weights per koma: relax 6:4:0 / harvest 7:3:0 / normal・peak default 5:3:1', () => {
     expect(chaffWeightsForKoma('relax')).toEqual({ bat: 6, skeleton: 4, zombie: 0 });
-    expect(chaffWeightsForKoma('harvest')).toEqual({ bat: 7, skeleton: 3, zombie: 0 });
+    expect(chaffWeightsForKoma('harvest')).toEqual({ bat: 7, skeleton: 3, zombie: 1 });
     expect(chaffWeightsForKoma('normal')).toEqual(CHAFF_WEIGHTS_DEFAULT);
     expect(chaffWeightsForKoma('peak')).toEqual(CHAFF_WEIGHTS_DEFAULT);
   });
@@ -374,5 +374,22 @@ describe('peakRedTier(ピークの赤い個体1体・社長裁定v0.25.3546)', (
     // ここを赤くすると「1体だけ強い」ではなく台本そのものが強化されてしまう。
     expect(peakRedTier('peak', 'nuisance', false)).toBeUndefined();
     expect(peakRedTier('peak', 'special', false)).toBeUndefined();
+  });
+});
+
+describe('★ハーベストの売り=サクサク刈れる(社長指示2026-08-23)', () => {
+  it('ハーベストのゾンビは約10%(7:3:1=9.1%)。既存の bat7:skel3 は動かさない', () => {
+    const w = chaffWeightsForKoma('harvest');
+    expect(w).toEqual({ bat: 7, skeleton: 3, zombie: 1 });
+    const total = w.bat + w.skeleton + w.zombie;
+    const zombieRate = w.zombie / total;
+    expect(zombieRate).toBeGreaterThan(0.08);
+    expect(zombieRate).toBeLessThan(0.12);
+  });
+  it('★赤い個体を出さないのはハーベストだけ(他コマは従来どおり抽選する)', () => {
+    expect(noRedTierForKoma('harvest')).toBe(true);
+    expect(noRedTierForKoma('relax')).toBe(false);
+    expect(noRedTierForKoma('normal')).toBe(false);
+    expect(noRedTierForKoma('peak')).toBe(false); // ピークは確定赤1体を置くコマ=禁止と両立しない
   });
 });

@@ -541,10 +541,12 @@ const DDA_COLOR_ESC_K = 2.5;   // esc=1 で色出現率 ×3.5(私案)
 const DDA_COLOR_SUM_CAP = 0.85; // 色付き合計確率の上限(無色を必ず一定残す)
 // DISTRIBUTION_REDESIGN.md③: rareMult はシーン(緩=0/無双=0.5/関所≥1.2)×Rank増幅の演出レバー。
 // レアの基礎率(COLOR_RATE_BY_AREA)は距離のまま=土台。rareMult=1で従来と完全一致。
-const rollColorTierForArea = (area: number, esc = 0, rareMult = 1): EnemyColorTier | undefined => {
+// noRed=true で**赤の帯だけを0**にする(社長指示2026-08-23・ハーベストのコマ)。赤に当たっていた
+// 確率は無色へ落ちる(青・紫の率は変わらない)。判定の根拠は scriptPuzzle.ts の `noRedTierForKoma`。
+const rollColorTierForArea = (area: number, esc = 0, rareMult = 1, noRed = false): EnemyColorTier | undefined => {
   const base = COLOR_RATE_BY_AREA[area] ?? COLOR_RATE_BY_AREA[0];
   const boost = (1 + Math.max(0, esc) * DDA_COLOR_ESC_K) * Math.max(0, rareMult);
-  let b = base[0] * boost, p = base[1] * boost, red = base[2] * boost;
+  let b = base[0] * boost, p = base[1] * boost, red = noRed ? 0 : base[2] * boost;
   const sum = b + p + red;
   if (sum > DDA_COLOR_SUM_CAP) { const s = DDA_COLOR_SUM_CAP / sum; b *= s; p *= s; red *= s; }
   const r = Math.random();
@@ -630,7 +632,8 @@ const buildEnemy = (
   isWave = false,
   esc = 0, // 難易度③: 強さ(色ティア)escalation。0=現状据え置き。
   rareMult = 1, // DISTRIBUTION_REDESIGN.md③: シーン/Rank連動のレア演出倍率。1=現状据え置き。
-  forcedColorTier?: EnemyColorTier // PACING_PUZZLE.md §5.21 M20 stage③: 抽選を経ずtierを強制指定(囲いゲート1の全個体レア化)。
+  forcedColorTier?: EnemyColorTier, // PACING_PUZZLE.md §5.21 M20 stage③: 抽選を経ずtierを強制指定(囲いゲート1の全個体レア化)。
+  noRedTier = false, // 社長指示2026-08-23: ハーベストのコマは赤を出さない(forcedColorTier指定時はそちらが優先)。
 ): Enemy => {
   const stats = ENEMY_STATS[type];
   // 強さ一定タイプ(ジャイアント/死神)＋ラボ専用敵は距離・色・時間でスケールしない(固定難易度・社長指定)。
@@ -645,7 +648,7 @@ const buildEnemy = (
   );
   // 色付き(固定難易度タイプには付かない)。色ごとの倍率を強さに乗せる。
   // §5.21-追補7: 攻撃/HPを別倍率で分離(colorDmgMult/colorHpMult → diffDmg/diffHp)。
-  const colorTier = fixed ? undefined : (forcedColorTier ?? rollColorTierForArea(area, esc, rareMult));
+  const colorTier = fixed ? undefined : (forcedColorTier ?? rollColorTierForArea(area, esc, rareMult, noRedTier));
   const colorDmgMult = colorTier ? COLOR_TIER_DMG_MULT[colorTier] : 1;
   const colorHpMult = colorTier ? COLOR_TIER_HP_MULT[colorTier] : 1;
   // 最終倍率 = エリア基礎難易度 × 色付き倍率。固定難易度タイプ = 1。
@@ -720,7 +723,10 @@ export const generateEnemy = (
   mix?: ChaffMix, // PACING_REDESIGN.mdバッチ3.5-A: チャフ(bat/skeleton/zombie)の役割配合。省略=従来どおり。
   // ★v0.25.3546(ピークの赤い個体1体): 色抽選(rollColorTierForArea)を経ずtierを強制指定する。
   // 省略=従来どおり抽選。`spawnEnemyAtWithTier` の generateEnemy 版(あちらは座標指定の兄弟)。
-  forcedColorTier?: EnemyColorTier
+  forcedColorTier?: EnemyColorTier,
+  // ★社長指示2026-08-23(ハーベストは赤を出さない): 抽選から赤の帯だけを外す。省略=従来どおり。
+  // forcedColorTier を渡した場合はそちらが優先(強制指定は抽選を経ないため)。
+  noRedTier = false,
 ): Enemy => {
   // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
   const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
@@ -773,7 +779,7 @@ export const generateEnemy = (
       y = vy0 - halfH + Math.random() * viewportHeight;
       break;
   }
-  return buildEnemy(type, x, y, gameTime, false, esc, rareMult, forcedColorTier);
+  return buildEnemy(type, x, y, gameTime, false, esc, rareMult, forcedColorTier, noRedTier);
 };
 
 // Spawn an enemy at a specific world position (used for Reaper, scripted

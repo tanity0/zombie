@@ -78,7 +78,7 @@ import {
   ZERO_NUISANCE, NUISANCE_TYPES,
   nextKomaKind, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
   chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp,
-  peakRedTier,
+  peakRedTier, noRedTierForKoma,
   isScriptCleared, selectRotationPattern, allPatternsSeen,
   type FormationPattern, type NuisanceCounts, type SpecialType, type KomaKind4, type ChaffRampState,
 } from './scriptPuzzle';
@@ -663,6 +663,9 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     const puzzleEnemy = generateEnemy(
       gameTime, player, spawnBounds, materializedType, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc,
       [], [], 1, false, [], undefined, forcedTier,
+      // ★社長指示2026-08-23: ハーベストのコマは赤い個体を出さない(判定は noRedTierForKoma が正本)。
+      // koma.kind で見る(spawnKomaではない)=peakRedTier/被弾ホールドと同じ基準に揃える。
+      noRedTierForKoma(koma.kind),
     );
     if (forcedTier) koma.peakRedSpawned = true;
     // 叫喚の一本化(社長裁定v0.25.1378): 旧ディレクターが持っていた叫喚固有の扱いを特別枠側へ

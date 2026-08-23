@@ -1,5 +1,43 @@
 # Development Log
 
+## v0.25.3840 — ハーベスト=赤禁止+ゾンビ約10% / 賞金首は1ランに1体(3:00)【2026-08-23 12:10】
+
+社長指示3件。**ハーベストの売り=「サクサク刈れて経験値稼ぎできる」**(社長の言葉)を守るための調整。
+
+### ★診断: 「ハーベストなのに赤が出た」の真因 = ステージ6は全域エリア3
+社長の疑問「もしかしたらハーベストでも台本次第で赤が出てきたのか? ピークの」に対する答えは**いいえ**。
+`enemyUtils.areaIndexForPos` に **`if (corridorSpawnEnabled) return 3;`**(v0.25.2128・社長指示)があり、
+**ステージ6(洋館通路)は距離に関係なく全域が「未確認汚染」(index3)扱い**。
+`COLOR_RATE_BY_AREA[3] = [青7% / 紫2% / **赤1%**]` なので、**開幕0秒から赤が1%で抽選される**。
+ハーベストは満量目標・CD×0.5=全コマ中いちばん湧くコマなので、その1%を短時間に何度も引く。
+- 台本は無関係(ハーベストは `inScriptKoma = normal || peak` で**台本を引かない**。かつ台本が決めるのは
+  邪魔者の並びだけで色は決めていない)。
+- ピークの確定赤(`peakRedTier`)も無関係(`koma.kind === 'peak'` かつそのコマ最初のチャフ限定)。
+
+### 変更
+1. **ハーベストは赤を出さない**(社長指示「赤い強個体敵は出ない」)。`scriptPuzzle.noRedTierForKoma`
+   (純関数=判定の正本)を新設し、`rollColorTierForArea` → `buildEnemy` → `generateEnemy` へ
+   `noRedTier` を通した。**赤の帯だけを0**にするので、赤に当たっていたぶんは**無色**へ落ちる
+   (青・紫の率は不変。盤面数・湧きCD・バースト禁止(§0.5)には一切触れない)。
+   判定は `koma.kind` で見る(`spawnKoma` ではない)=`peakRedTier`・被弾ホールドと同じ基準。
+2. **ハーベストにゾンビ約10%**(社長指示「基本は今のままで、10%くらいゾンビの出現」)。
+   `chaffWeightsForKoma('harvest')` を `{bat:7, skeleton:3, zombie:0}` → **`zombie:1`**。
+   既存の 7:3 は動かしていないので実出現率は **1/11 = 9.1%**。
+3. **賞金首は1ランに1体(3:00)**(社長指示「ステージに賞金首は3分の1体だけにして」)。
+   `BOUNTY_NATURAL_SPAWN_AT_MS` を `[180000, 420000]` → **`[180000]`**。表の長さがそのまま上限
+   (`BOUNTY_NATURAL_MAX_COUNT`)なので、**判定式(`bountyNaturalSpawnReady`)は一切変えていない**。
+   紅き夜の6:00(`RED_NIGHT_FIRE_AT_MS`)は7:00の賞金首を避けるための移動だったが、**指示の範囲外
+   なので動かしていない**(要否は社長判断)。
+
+**変更ファイル**: `src/utils/scriptPuzzle.ts`, `src/utils/enemyUtils.ts`, `src/utils/directorTick.ts`,
+`src/utils/bountyTick.ts`, `src/hooks/useGameLoop.ts`(コメント追随のみ), `src/utils/scriptPuzzle.test.ts`,
+`src/utils/bountyTick.test.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`
+**検証**: typecheck 0 / lint 0エラー(既存warning 8) / `scriptPuzzle.test.ts` + `bountyTick.test.ts` = 187件緑。
+不変条件を2本追加(ゾンビ率が8〜12%に入ること / 赤禁止はハーベストだけでピークは対象外)。
+賞金首テストは「7:00の2体目は廃止=1体消化後は何時でも出ない」へ書き換え。
+**負荷スコア**: 1/10(既存の抽選に分岐を1つ足しただけ。per-frameの新規コストなし)。
+**状態変化**: なし(バランス調整)。
+
 ## v0.25.3839 — ★トラブルシューティング索引を新設(同じ外し方を5回繰り返した反省)【2026-08-23 11:49】
 
 社長「**繰り返さないためのトラブルシューティングみたいのないの?**」。**在った**(ENGINEERING_NOTES

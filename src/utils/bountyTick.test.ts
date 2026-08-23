@@ -125,13 +125,14 @@ describe('bountyNaturalSpawnReady — 自然湧きの固定スケジュール(§
     expect(BOUNTY_NATURAL_SPAWN_AT_MS[0]).toBe(180000);
     expect(bountyNaturalSpawnReady({ ...ok(), gameTime: BOUNTY_NATURAL_FIRST_MS - 1 })).toBe(false);
   });
-  it('1ランに最大2回=spawnCountが上限に達したら不可', () => {
+  it('★1ランに1体だけ=spawnCountが上限に達したら不可(社長指示2026-08-23)', () => {
+    expect(BOUNTY_NATURAL_MAX_COUNT).toBe(1);
     expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: BOUNTY_NATURAL_MAX_COUNT, gameTime: 10000000 })).toBe(false);
   });
-  it('2体目は7:00まで不可(v8.3・固定スケジュール)', () => {
-    expect(BOUNTY_NATURAL_SPAWN_AT_MS[1]).toBe(420000);
-    expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: 1, gameTime: 420000 - 1 })).toBe(false);
-    expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: 1, gameTime: 420000 })).toBe(true);
+  it('★7:00の2体目は廃止=1体消化後は何時になっても出ない(社長指示2026-08-23。旧v8.3は[3:00,7:00])', () => {
+    expect(BOUNTY_NATURAL_SPAWN_AT_MS).toEqual([180000]);
+    expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: 1, gameTime: 420000 })).toBe(false);
+    expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: 1, gameTime: 10000000 })).toBe(false);
   });
   it('同時1体まで=既に賞金首が場に居るなら不可', () => {
     expect(bountyNaturalSpawnReady({ ...ok(), bountyAlive: true })).toBe(false);

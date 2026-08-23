@@ -194,13 +194,33 @@ export const nextKomaKind = (kind: KomaKind4): KomaKind4 =>
 export const KOMA_BASE_MS = 40000;          // 各コマ基本40秒(社長決定v0.25.1384)
 export const KOMA_EXTENSION_MAX_MS = 30000; // 通常/ピークの処理待ち延長上限(叩き台。超えたら強制切替)
 
-// チャフ度数(§4-C各コマの役割)。リラックス=bat6:skel4:zombie0/ハーベスト=bat7:skel3:zombie0/
+// チャフ度数(§4-C各コマの役割)。リラックス=bat6:skel4:zombie0/ハーベスト=bat7:skel3:zombie1/
 // 通常・ピーク=基本セット5:3:1。
+// ★社長指示2026-08-23「基本は今のままで、10%くらいゾンビの出現」: ハーベストの zombie 0→1。
+//   既存の 7:3 は動かさずゾンビを足したので、実際の出現率は 1/11 = **9.1%**(「10%くらい」の範囲)。
 export const chaffWeightsForKoma = (kind: KomaKind4): ChaffWeights => {
   if (kind === 'relax') return { bat: 6, skeleton: 4, zombie: 0 };
-  if (kind === 'harvest') return { bat: 7, skeleton: 3, zombie: 0 };
+  if (kind === 'harvest') return { bat: 7, skeleton: 3, zombie: 1 };
   return CHAFF_WEIGHTS_DEFAULT;
 };
+
+/**
+ * ★ハーベストでは赤い個体を出さない(社長指示2026-08-23)。
+ *
+ * 社長の言葉: 「**ハーベストなのに赤も出てきて全然刈れなかった。ハーベストはサクサク刈れて
+ * 経験値稼ぎできる！が売りなので**」。
+ *
+ * ★なぜ「エリア3〜4だけの話」で済まないのか(社長の疑問への答え=このゲート要否の根拠):
+ * **ステージ6(洋館通路)は `areaIndexForPos` が全域 index3 を返す**(v0.25.2128・社長指示)。
+ * つまり `COLOR_RATE_BY_AREA[3] = [青7% / 紫2% / **赤1%**]` が**開幕0秒から効いている**。
+ * しかもハーベストは満量目標・CD半分=全コマ中いちばん湧くので、1%が短時間に何度も抽選される。
+ * 「ステージ6の割と序盤に赤が出た」は正常動作であって、ピークの確定赤(`peakRedTier`)でも
+ * 台本(ハーベストは台本を引かない)でもない。
+ *
+ * 赤だけを落とし、青・紫は残す(社長指示は「赤い強個体敵は出ない」)。実装は抽選側で赤の帯を
+ * 0にするだけなので、赤に当たっていたぶんは**無色**へ落ちる=盤面数・湧きCDには一切触らない。
+ */
+export const noRedTierForKoma = (kind: KomaKind4): boolean => kind === 'harvest';
 
 // チャフ目標(§4-C・上限capに対する比率)。リラックス40%/ハーベスト100%/通常50%/ピーク100%。
 export const chaffTargetForKoma = (kind: KomaKind4, cap: number): number => {

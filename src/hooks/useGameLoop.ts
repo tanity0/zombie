@@ -4388,7 +4388,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // **180秒はどの通常コマにも入らない**ため賞金首①が構造的に3:00へ出られなかった
           // (詳細は bountyTick.ts の BountyNaturalSpawnInput.calmOk のコメント)。
           // v8.3(社長裁定2026-08-15「3分と7分にして」): CD方式を廃止し固定スケジュール
-          // (BOUNTY_NATURAL_SPAWN_AT_MS=[3:00,7:00])。n回目の解禁時刻はspawnCountで表を引く。
+          // (BOUNTY_NATURAL_SPAWN_AT_MS=[3:00]・社長指示2026-08-23で7:00を廃止=1ランに1体)。
           const bReady = bountyNaturalSpawnReady({
             gameTime: newGameTime,
             spawnCount: bountyNaturalRef.current.count,
