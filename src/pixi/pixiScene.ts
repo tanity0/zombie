@@ -6565,6 +6565,20 @@ export class PixiScene {
    */
   private syncWorldGapBand() {
     if (!this.worldGapMask) return;
+    // ★社長報告2026-08-22「ステージが切れてる/絵が分断されて隙間が入る・ズームで広がったり細くなる」の修正。
+    // 犯人は `?hidelayer=gapband` で確定(社長が実機で特定)。
+    // この帯は §6.37 v4「上接合」——**引きで遠景が縮んだ時に、遠景の下端と地面の上端の間に開く隙間**を
+    // 埋めるためのもの。よって**遠景そのものが無いステージでは要らない**。
+    // ところが洋館通路(corridorMode)・屋内・ラボは、遠景の各層(far/hz/nh/ff/リッジ)を
+    // `!s.corridorMode` 等で除外済みなのに、**この帯だけ除外し忘れていた**。
+    // 遠景が無いと `farBackdropHeight()` は意味のある値を返さないので、帯が的外れな高さに置かれ、
+    // **画面を横切る帯として見えていた**(社長「隙間が広がったり細くなったりする」=下の featherPx が
+    // ズーム依存なので、引き具合で帯の位置と重なり量が動く)。
+    const gs = useGameStore.getState();
+    if (gs.corridorMode || gs.indoorMode || this.isLabStage) {
+      if (this.worldGapBand) this.worldGapBand.visible = false;
+      return;
+    }
     const farH = this.farBackdropHeight();
     const zoom = this.wgZoom();
     const offsetY = this.wgOffsetY();
