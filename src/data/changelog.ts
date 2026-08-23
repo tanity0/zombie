@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3853',
+    items: [
+      '幻影(決闘の相手)のHPが、記録どおりの値になりました(タフになります)。',
+    ],
+  },
+  {
     version: '0.25.3852',
     items: [
       'ゲーム内容の変更はありません(設計メモの更新)。',

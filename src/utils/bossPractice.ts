@@ -305,9 +305,12 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
   //   一致は**全クラスの maxHp が同値(STANDARD_MAX_HP)であること**に依存している。
   //   クラス別HPを導入するとズレる——その前提は bossPractice.test.ts でテスト化してある。
   if (slot.bossType === 'guardian-phantom') {
+    // ★社長裁定2026-08-23「HPもステータス通りに。」: 実戦と同じく**記録の maxHealth が正本**。
+    // 記録が無いときだけ従来の式(台帳クラスの初期HP+育成)へ落ちる=実戦側と同じフォールバック。
     return guardianPhantomHealth(
       PLAYER_PROFILES[strongestGuardian().classId].maxHp
       + growthMaxHpBonus(activeUpgradeLevel(loadPlayerUpgrades(), 'health')),
+      strongestGuardian().profile.snapshot?.maxHealth,
     );
   }
   const gate = (GATE_BOSS_HEALTH as Partial<Record<EnemyType, number>>)[slot.bossType];

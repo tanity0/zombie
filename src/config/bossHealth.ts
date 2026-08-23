@@ -58,8 +58,16 @@ export const HIDDEN_BOSS_HEALTH = {
 // ※これに伴い基準クラスは「守護霊台帳の最強クラス」から**そのランのプレイヤーのクラス**へ入れ替わった
 //   (呼び出し側が渡す基準HPがプレイヤーのもののため)。今日は全クラス同値(STANDARD_MAX_HP)なので
 //   挙動は変わらないが、将来クラスごとにHP差を付けるとここで差が出る。
-export const guardianPhantomHealth = (playerBaseMaxHp: number): number =>
-  Math.max(1, Math.round(playerBaseMaxHp));
+// ★社長裁定2026-08-23「**HPもステータス通りに。**」(research/SAME_ARENA.md §4-a の原則
+// 「幻影は記録されたその人そのもの」の適用): **記録に maxHealth があれば、それがHPの正本**。
+// 記録が無い(旧データ/ビルド未設定)ときだけ、従来どおり `playerBaseMaxHp`(=そのランのプレイヤーの
+// ddaBaseHp・GROWTH.md v4)へ落ちる=互換のフォールバック。
+export const guardianPhantomHealth = (playerBaseMaxHp: number, recordedMaxHealth?: number): number => {
+  if (recordedMaxHealth !== undefined && Number.isFinite(recordedMaxHealth) && recordedMaxHealth > 0) {
+    return Math.max(1, Math.round(recordedMaxHealth));
+  }
+  return Math.max(1, Math.round(playerBaseMaxHp));
+};
 
 // ENEMY_STATS['guardian-phantom'].health 用の**プレースホルダ**。ENEMY_STATS は import 時評価で
 // 焼かれてしまうため、実効HPはスポーン側(useGameLoop の幻影スポーン1箇所)が

@@ -6974,13 +6974,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (= player.ddaBaseHp。装備補正は含めない)。ENEMY_STATS の値は import 時評価の
             // プレースホルダなので、城ボスの stageBossHealthFor と同じ作法でここで必ず上書きする
             // (幻影のスポーンはこの1箇所だけ=渡し忘れが構造的に起きない)。
-            gpE.health = gpE.maxHealth = guardianPhantomHealth(player.ddaBaseHp);
             // ★research/SAME_ARENA.md O-1: 幻影が「誰のビルドで戦うか」をここで積む。
             // **幻影のスポーンはこの1箇所だけ**なので渡し忘れが構造的に起きない(HPと同じ作法)。
             // 中身は **`strongestGuardian()` の記録**=頭脳(`phantomTick.phantomProfile`)と
             // **同じ人物**に揃える(ビルドだけ別人にすると「誰と戦っているか」が壊れる)。
             // O-5 でここを**オンラインの他人のレコード**へ差し替える(頭脳とビルドを一緒に入れ替える)。
             gpE.phantomBuild = strongestGuardian().profile.snapshot ?? undefined;
+            // ★社長裁定2026-08-23「HPもステータス通りに。」: HPも**記録の値**が正本。
+            // ビルドを積んだ**後**に決めること(順序を入れ替えると記録が読めない)。
+            // 記録が無いときだけ従来どおり player.ddaBaseHp(GROWTH.md v4)へ落ちる。
+            gpE.health = gpE.maxHealth = guardianPhantomHealth(player.ddaBaseHp, gpE.phantomBuild?.maxHealth);
             // CLAUDE.md MUST: 湧き位置も「行ける帯」へクランプ(プレイヤーが追えない場所に置かない)。
             const gpClamped = clampRectToPlayableArea(gpE.x, gpE.y, gpE.width, gpE.height, {
               farBackdrop: useGameStore.getState().farBackdrop,

@@ -1,5 +1,39 @@
 # Development Log
 
+## v0.25.3853 — 幻影のHPも記録どおりへ(★未決Q4が消滅)【2026-08-23 20:34】
+
+社長裁定「**HPもステータス通りに。**」= `SAME_ARENA.md §4-a` の原則「幻影は記録されたその人そのもの」の適用。
+
+### 実装
+- **`guardianPhantomHealth(playerBaseMaxHp, recordedMaxHealth?)`**(HPの正本=`config/bossHealth.ts`)に
+  第2引数を追加。**記録に `maxHealth` があればそれが正本**。無い/不正値(0・NaN)のときだけ、
+  従来どおり `playerBaseMaxHp`(そのランのプレイヤーの `ddaBaseHp`・GROWTH.md v4)へ落ちる。
+  **判定を正本1箇所に置いた**ので、実戦・練習表示・ボスメーカーが同じ規則を引く。
+- **実戦(スポーン)**: `phantomBuild` を積んだ**後**にHPを決めるよう順序を入れ替えた
+  (先にHPを書いていると記録が読めない)。
+- **練習/ボスメーカーの表示HP**(`bossPractice.practiceBossHealth`)も同じ引数を渡し、
+  **表示と実戦が原理的に一致する**という既存の不変条件を維持。
+
+### 効き方(実測)
+**幻影のHP 130 → 240(約1.85倍)。** 記録側 `FIXED_BUILD_BASE_HP(120) + 装備のHP加算` が正本になったため。
+**決闘は明確に長くなる**(社長裁定「ゲームデータ上のデメリットでないなら、余計なことは開発後に調整」に従い、
+バランスは実機で見てから調整する)。
+
+### ★未決Q4(幻影のHPを 3000 のままか 1200 か)は**消滅**
+**HPは記録が決める**ので、固定値をどこに置くかという問いが成立しなくなった。
+
+**変更ファイル**: `src/config/bossHealth.ts`, `src/hooks/useGameLoop.ts`, `src/utils/bossPractice.ts`,
+`src/utils/bossPractice.test.ts`, `research/SAME_ARENA.md`, `PROJECT_STATUS.md`, `package.json`,
+`src/data/changelog.ts`, `DEVELOPMENT_LOG.md`
+**検証**: typecheck 0 / lint 0エラー(既存warning 8)/ `bossPractice` 28件・`playerUpgrades` 8件・
+`phantomBuild` 14件・`phantomTick` 29件 = **全緑**。HPテストを新仕様へ書き換え+
+**「記録が無い/不正値のときは従来へ落ちる」**を新規に固定。
+フルスイートの赤は **flaky台帳(ENGINEERING_NOTES §既存のflakyテスト一覧)に載っている既知の2件のみ**
+(`sim.test.ts` の移動ランプ=決定論的な既存の赤 / 乱数flaky1件)。**新しい赤は無し。**
+**負荷スコア**: 0/10(スポーン時の値の出どころが変わるだけ)。
+**状態変化**: ★オンライン計画 → **§4-a の原則に従っていない値は、保留中の永続強化を除いてゼロ**。
+**裁定待ちのブロッカーは無し。次=O-5**。
+
 ## v0.25.3852 — 裁定記録: 永続強化(幻影の育成倍率)は保留=現状維持【2026-08-23 18:52】
 
 社長裁定「**永続強化は一旦保留**」。`SAME_ARENA.md §4-a` と `PROJECT_STATUS.md` に記録(コード変更なし)。

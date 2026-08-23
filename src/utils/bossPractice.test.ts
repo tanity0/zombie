@@ -246,16 +246,30 @@ describe('決闘(幻影)の掲載枠', () => {
     }
   });
 
-  // research/GROWTH.md v4: 幻影HP=「初期プレイヤーHP+育成の体力加算」。練習画面の表示と実戦(スポーン時に
-  // 書き込む値)が原理的に一致する、という不変条件はこの等値で守る(表示だけは有効段数の直読みが許される
-  // 唯一の例外=出撃前は焼き値が存在しないため)。
-  it('HPは裏ボス方式(倍率を通さない)= 育成込みの初期プレイヤーHPと一致', () => {
+  // ★社長裁定2026-08-23「HPもステータス通りに。」(SAME_ARENA §4-a の原則「記録されたその人そのもの」):
+  // 幻影HPの正本は**記録の maxHealth**。練習画面の表示と実戦(スポーン時に書き込む値)が原理的に
+  // 一致する、という不変条件はこの等値で守る。
+  // 旧仕様(GROWTH.md v4)=「初期プレイヤーHP+育成の体力加算」は**記録が無いときのフォールバック**へ降格。
+  it('★HPは記録どおり(snapshot.maxHealth)= 練習表示と実戦が一致する', () => {
+    const recorded = strongestGuardian().profile.snapshot?.maxHealth;
+    expect(recorded).toBeTruthy();
     expect(practiceBossHealth(practiceSlotByKey(GUARDIAN_PHANTOM_SLOT_KEY)!)).toBe(
       guardianPhantomHealth(
         PLAYER_PROFILES[strongestGuardian().classId].maxHp
         + growthMaxHpBonus(activeUpgradeLevel(loadPlayerUpgrades(), 'health')),
+        recorded,
       ),
     );
+    // 記録が正本=記録の値そのもの(丸めのみ)。
+    expect(practiceBossHealth(practiceSlotByKey(GUARDIAN_PHANTOM_SLOT_KEY)!)).toBe(Math.round(recorded!));
+  });
+
+  it('★記録が無い(旧データ)ときだけ、従来どおり育成込みの初期プレイヤーHPへ落ちる', () => {
+    const base = PLAYER_PROFILES[strongestGuardian().classId].maxHp
+      + growthMaxHpBonus(activeUpgradeLevel(loadPlayerUpgrades(), 'health'));
+    expect(guardianPhantomHealth(base, undefined)).toBe(Math.round(base));
+    expect(guardianPhantomHealth(base, 0)).toBe(Math.round(base));      // 不正値も無視
+    expect(guardianPhantomHealth(base, Number.NaN)).toBe(Math.round(base));
   });
 
   // ★前提の機械化(GROWTH.md v4・検収監査の指摘2): 上の等値は、実戦の基準クラス
