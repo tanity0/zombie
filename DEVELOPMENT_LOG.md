@@ -1,5 +1,44 @@
 # Development Log
 
+## v0.25.3846 — 段0の走査: 別財布は守護霊にもう実装済みだった(腐ったコメントに騙されていた)【2026-08-23 17:55】
+
+社長裁定「**ゲームデータ上のデメリットでないなら、余計なことは開発後に調整です。**」を SAME_ARENA.md
+§4-b へ記録し、**D1(再バランス)/ D2(強さの天井)/ D3(運用)は着手を止める理由にしない**と確定。
+**★未決Q1(強さの天井)は「決めない」で決着**(素のまま出して実機で調整)。
+止める理由になるのは D5(実行時=強glowの同時数)だけで、これは段3の同時上限として織り込み済み。
+
+そのまま段0(現在地の確定・判断不要の走査)に着手した。
+
+### ★最大の発見: **別財布は守護霊についてもう実装済みだった**
+`Summon.ghostSubWeaponCooldowns`(`types/game.ts:1139`)を `combatActorPlayer` が疑似Playerの
+`subWeaponCooldowns` に載せ(`gameStore.ts:3312`)、書き戻しも宛先を振り分けている(`gameStore.ts:3348`)。
+発動口の **`subSubject(key)`(`useGameLoop.ts:7706`)は、ゴースト自前の帳簿で CD 明けを判定**していた。
+- `shouldGhostClaimSub` は**財布ではなく「いつ使うと決めるか」の頻度ノブ**。この2つを混同していた。
+- **誤認の原因は `useGameLoop.ts:7674` 付近の腐ったコメント**(「CD…は従来のまま共有の1本=
+  1つの財布」)。**v0.25.2541 の別財布化に追随しておらず、実装より上に古い説明が乗っていた。**
+  これを根拠に社長へ「守護霊とプレイヤーはサブを取り合う」と**誤って報告した**(v0.25.3843の記録も同様)。
+  → コメントを訂正し、**「判定の正は `subSubject` の実装」と明記**。台帳(GHOST_PARITY_LEDGER)の
+  ★裁定にも訂正を追記した。
+- ⇒ **段1の「別財布」の残作業は「幻影に自前の帳簿を持たせる」だけに縮んだ**(守護霊側は追加作業なし)。
+
+### 段0で確認できた配線(実コード・grep実測)
+- 守護霊の疑似Player: `combatActorPlayer(summonId)` 稼働。使用箇所 `useGameLoop.ts:7393/8064/8317/9880`。
+- `subSubject` を通る種(主語がゴーストへ切り替わる)= **6種**: heavy-grenade(7723) / marksman-trap(7770) /
+  decoy(8053) / shield(8108) / turret(8179) / fire-knife(8524)。wire-anchor は別経路(9675)で予約を消費。
+- **幻影のサブ・スキル・装備の配線は0件**(`phantom` × sub/skill/equip の grep がゼロ)。
+
+**残りの段0**: GHOST-SUBS-FINAL 系(molotov/homing/first-aid-kit/support-sniper/striker-quick-mag/
+drone-boomerang/flare-gun/junk-weapon)の経路確認と、CD概念なし4種(whip/alchemy・sage-stone/shijin/
+striker-hunting)の現状。
+
+**教訓(ENGINEERING_NOTES §0 の実例が1つ増えた)**: 「設計書のステータス行は腐る」は**コードコメントにも
+起きる**。実装が変わってもコメントは追随しないので、**コメントを根拠に現在地を報告してはいけない**。
+
+**変更ファイル**: `src/hooks/useGameLoop.ts`(コメント訂正のみ), `research/SAME_ARENA.md`,
+`research/GHOST_PARITY_LEDGER.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`
+**検証**: typecheck 0。コード変更はコメントのみ(挙動不変)。
+**状態変化**: SAME_ARENA → **段0 実施中**(Q1裁定済み・Q2〜Q4は裁定待ち)。
+
 ## v0.25.3845 — SAME_ARENA.md 新設: プレイヤー/守護霊/幻影を同じ土俵に立たせる計画【2026-08-23 16:35】
 
 社長「**プレイヤー、守護霊、幻影 / 全て同じ土俵で戦わせたい。サブウェポン、スキル、ステータス /

@@ -7675,9 +7675,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 解決する。既定オーナー=プレイヤー(この場合、従来の挙動と1bitも変わらない)。ゴースト
         // (ghost-ally)が「次のサブ発動1回」を予約(ghostSubClaim)している間は、予約を消費できる種
         // (=入口を通すだけで自然に動く種: heavy-grenade/marksman-trap/decoy/shield/turret/fire-knife)が
-        // ゴーストをオーナーとして発動する。CD・発動条件(装備/CD明け/帰還サークル/刀封印)は従来のまま
-        // 共有の1本=「1つの財布」(ゴースト個別のCD/在庫は無い)。弾薬・スクラップ等の資源も消費しない
-        // (上記6種は元々資源を使わない)。
+        // ゴーストをオーナーとして発動する。
+        // ★このコメントは v0.25.2541 まで「CDは共有の1本=1つの財布」と書かれていたが**もう嘘**
+        //   (v0.25.3846で訂正)。実際は下の `subSubject` が `combatActorPlayer(summonId)` を通して
+        //   **ゴースト自前のCD帳簿(`Summon.ghostSubWeaponCooldowns`)**を見ている=**別財布**。
+        //   腐ったこのコメントを根拠に「守護霊とプレイヤーはサブを取り合う」と誤って報告した実例あり
+        //   (2026-08-23・設計チャット)。**判定の正は `subSubject` の実装。**
+        // 弾薬・スクラップ等の資源は消費しない(対象の種は元々資源を使わない)。
         const playerOwner = playerAsOwner(subWeaponPlayer);
         const ghostAllyForSub = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
         let subOwner: SubWeaponOwner = ghostAllyForSub?.ghostSubClaim ? ghostAsOwner(ghostAllyForSub) : playerOwner;
