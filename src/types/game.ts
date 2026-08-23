@@ -613,6 +613,18 @@ export interface Enemy {
   gpHitAt?: number;
   /** 無敵で無効化した打撃の時刻(描画=小さな白点滅の起点。ヒットSEは鳴らさない)。 */
   gpBlockedAt?: number;
+  /**
+   * research/SAME_ARENA.md O-1: 幻影が「誰のビルドで戦うか」。スポーン時(useGameLoop の1箇所)に
+   * 積む。**守護霊の `Summon.ghostBuild` と同じ型**なので、`resolveGhostBuild` /
+   * `ghostActorPlayer` がそのまま流用できる(式を複製しない)。
+   * 未設定=従来どおり(ビルド無し=初期装備の決闘)。
+   */
+  phantomBuild?: PlayerBuildSnapshot;
+  /**
+   * research/SAME_ARENA.md O-1: 幻影**自前**のサブウェポンCD帳簿(gameTime基準)。
+   * 守護霊の `Summon.ghostSubWeaponCooldowns` と同型=**3者が別財布**(社長裁定2026-08-23)。
+   */
+  phantomSubWeaponCooldowns?: Partial<Record<SubWeaponKey, number>>;
   /** パリィ成立の時刻。**次tickの phantomTick が消費**して即反撃を1回割り込ませる(ハンドシェイク)。 */
   gpParriedAt?: number;
   /** 幻影が銃弾をパリィした打刻(gameTime)。同tickの弾ヒット処理が消費して弾を打ち返す(v0.25.3665)。 */

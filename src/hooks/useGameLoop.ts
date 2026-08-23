@@ -90,6 +90,7 @@ import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
 import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2, practiceBossType } from '../utils/bossPractice';
+import { strongestGuardian } from '../data/fixedGuardians'; // SAME_ARENA O-1: 幻影のビルド(頭脳と同じ人物)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { bossCutinPayload, glenForm2CutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
 import { clampRectToPlayableArea } from '../world/playableArea';
@@ -6974,6 +6975,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // プレースホルダなので、城ボスの stageBossHealthFor と同じ作法でここで必ず上書きする
             // (幻影のスポーンはこの1箇所だけ=渡し忘れが構造的に起きない)。
             gpE.health = gpE.maxHealth = guardianPhantomHealth(player.ddaBaseHp);
+            // ★research/SAME_ARENA.md O-1: 幻影が「誰のビルドで戦うか」をここで積む。
+            // **幻影のスポーンはこの1箇所だけ**なので渡し忘れが構造的に起きない(HPと同じ作法)。
+            // 中身は **`strongestGuardian()` の記録**=頭脳(`phantomTick.phantomProfile`)と
+            // **同じ人物**に揃える(ビルドだけ別人にすると「誰と戦っているか」が壊れる)。
+            // O-5 でここを**オンラインの他人のレコード**へ差し替える(頭脳とビルドを一緒に入れ替える)。
+            gpE.phantomBuild = strongestGuardian().profile.snapshot ?? undefined;
             // CLAUDE.md MUST: 湧き位置も「行ける帯」へクランプ(プレイヤーが追えない場所に置かない)。
             const gpClamped = clampRectToPlayableArea(gpE.x, gpE.y, gpE.width, gpE.height, {
               farBackdrop: useGameStore.getState().farBackdrop,

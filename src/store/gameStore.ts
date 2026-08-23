@@ -68,7 +68,7 @@ import { resetModeBags } from '../utils/modeBag';
 // v0.25.2514(§2.11 裁定1): 計測時ビルドの疑似Player(被ダメ補正の主語)。純関数・store非依存。
 // v0.25.2553(§2.16 A): 同行守護霊の写し(撃破記録へ添える持ち主名+ビルド)。同じく純関数。
 import { buildPseudoPlayer, findGhostAlly, ghostAllySnapshot, type GhostAllySnapshot } from '../utils/playerBuild';
-import { clearGhostBuildCache, ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild'; // ラン境界でビルドのメモ化を捨てる / 守護霊の疑似Player(裁定1)
+import { clearGhostBuildCache, ghostBuildFor, ghostActorPlayer, actorBuildFor } from '../utils/ghostBuild'; // ラン境界でビルドのメモ化を捨てる / 守護霊の疑似Player(裁定1)
 import { beginGhostOnlineRun, type GhostFeedbackTarget, type GhostSource } from '../utils/ghostOnline';
 // 刀の一閃 / ワイヤーのロコモーション上書き(プレイヤーと守護霊で共有する状態機械・裁定2)。
 import { dashModeAt, dashOverride, dashStateOf, emptyDashState } from '../utils/dashLocomotion';
@@ -3288,11 +3288,33 @@ const meleeFinisherAt = (
 //                   player.x / subWeapons / katanaDashUntil / wireDashUntil … の読みが全部そのまま通る。
 // 書き込みだけは主語ごとに宛先が違うので setActorDashState で振り分ける。
 // ---------------------------------------------------------------------------
-export const combatActorPlayer = (ghostId?: string): Player | null => {
+/**
+ * research/SAME_ARENA.md O-1: 幻影(`guardian-phantom`)を1枚の疑似Playerへ詰め替える。
+ * 中身は守護霊とまったく同じ3つ: ①`Enemy.phantomBuild` のビルド(スキル/装備/クリ率/サブ)
+ * ②**幻影実体**の座標・寸法・HP(距離依存のスナイパー倍率と失HP依存のバーサーカー倍率を
+ * 幻影基準で評価するため) ③幻影自前のサブCD帳簿(別財布)。
+ * ビルドが無い(=旧来の決闘)場合は **null** を返し、呼び出し側は従来経路へ落ちる。
+ */
+const phantomActorPlayerById = (actorId: string, st: GameState): Player | null => {
+  const e = st.enemies.find(x => x.id === actorId && x.type === 'guardian-phantom');
+  if (!e || !e.phantomBuild) return null;
+  const build = actorBuildFor(e.id, e.phantomBuild, st.player);
+  if (!build) return null;
+  return {
+    ...ghostActorPlayer(build, e),
+    subWeaponCooldowns: e.phantomSubWeaponCooldowns ?? EMPTY_SUB_COOLDOWNS,
+  };
+};
+
+export const combatActorPlayer = (actorId?: string): Player | null => {
   const st = useGameStore.getState();
-  if (ghostId === undefined) return st.player;
-  const g = st.summons.find(s => s.id === ghostId && s.kind === 'ghost-ally');
-  if (!g) return null;
+  if (actorId === undefined) return st.player;
+  const g = st.summons.find(s => s.id === actorId && s.kind === 'ghost-ally');
+  // ★research/SAME_ARENA.md O-1: 守護霊で見つからなければ**幻影(Enemy)**として解決する。
+  // 幻影は敵シャーシに乗っているが、`ghostActorPlayer` の第2引数は
+  // `{x,y,width,height,health,maxHealth}` の**構造型**なので Enemy をそのまま渡せる
+  // =新しい計算式を1本も書かずに「プレイヤーの形」へ詰め替えられる。
+  if (!g) return phantomActorPlayerById(actorId, st);
   const build = ghostBuildFor(g, st.player);
   if (!build) return null;
   // §2.11追補(v0.25.2541・GHOST-SAME-SPEC): サブCDは**ゴースト自前の帳簿**を重ねる
@@ -3343,9 +3365,20 @@ export const setActorSubWeaponCooldown = (
   const cd = applySubCooldownSkills(skillOverclockChance(actor), skillCooldownMult(actor), delta);
   if (cd.overclockProc) return; // 成立=CDを付けない(プレイヤーと同じ)
   const effReadyAt = cd.deltaMs === delta ? readyAt : gameTime + cd.deltaMs;
+  const st = useGameStore.getState();
+  if (st.summons.some(x => x.id === ghostId && x.kind === 'ghost-ally')) {
+    useGameStore.setState(s => ({
+      summons: s.summons.map(x => x.id === ghostId
+        ? { ...x, ghostSubWeaponCooldowns: { ...(x.ghostSubWeaponCooldowns ?? {}), [key]: effReadyAt } }
+        : x),
+    }));
+    return;
+  }
+  // ★research/SAME_ARENA.md O-1: 幻影(Enemy)の帳簿。宛先が違うだけで、上のCD補正
+  // (オーバークロック→タイムキーパー)は**守護霊・プレイヤーと同じ純関数**を通っている。
   useGameStore.setState(s => ({
-    summons: s.summons.map(x => x.id === ghostId
-      ? { ...x, ghostSubWeaponCooldowns: { ...(x.ghostSubWeaponCooldowns ?? {}), [key]: effReadyAt } }
+    enemies: s.enemies.map(x => x.id === ghostId && x.type === 'guardian-phantom'
+      ? { ...x, phantomSubWeaponCooldowns: { ...(x.phantomSubWeaponCooldowns ?? {}), [key]: effReadyAt } }
       : x),
   }));
 };

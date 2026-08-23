@@ -1,5 +1,58 @@
 # Development Log
 
+## v0.25.3850 — オンライン計画 O-1+O-2: 幻影が記録どおりのスキル・装備の強さで戦う【2026-08-23 18:34】
+
+社長「**2まで**」= O-1「幻影を『プレイヤーの形』に詰め替える」+ O-2「幻影が記録どおりの強さで戦う」を実装。
+
+### O-1(土台)
+- **A 型**: `Enemy` に **`phantomBuild?: PlayerBuildSnapshot`** と **`phantomSubWeaponCooldowns?`** を追加
+  (守護霊の `Summon.ghostBuild` / `ghostSubWeaponCooldowns` と**同型**=同じ関数が流用できる)。
+- **B 主語の解決**: `combatActorPlayer(ghostId?)` → **`(actorId?)`**。`undefined`→本物のプレイヤー
+  (**1bit不変**)/ Summon / **Enemy(`guardian-phantom`)** の順で解決。
+  `ghostActorPlayer` の第2引数が `{x,y,width,height,health,maxHealth}` の**構造型**なので、
+  **Enemy をそのまま渡せた=新しい計算式を1本も書いていない**。
+- **C 書き込みの振り分け**: `setActorSubWeaponCooldown` に幻影枝(宛先=`phantomSubWeaponCooldowns`)。
+  CD補正(オーバークロック→タイムキーパー)は**プレイヤー・守護霊と同じ純関数**を通る。
+- **D スポーン**: 幻影のスポーン(`useGameLoop.ts` の**1箇所だけ**)で `phantomBuild` を積む。
+  中身は **`strongestGuardian().profile.snapshot`**=**頭脳(`phantomProfile`)と同じ人物**に揃えた
+  (設計書は「自分のプロファイル」と書いていたが、頭脳が最強データ固定なので**ビルドだけ別人にすると
+  『誰と戦っているか』が壊れる**。O-5で頭脳ごと他人へ差し替える)。
+- **E キャッシュ(実バグ予備軍の修正)**: `ghostBuildFor` のメモ化が **1件だけ**で、
+  **守護霊と幻影が同時に居ると id が交互に変わり毎フレーム `resolveGhostBuild`(createWeaponを含む)を
+  作り直す**状態だった。**id をキーにした Map(上限8)へ拡張**し、主語を問わない入口
+  `actorBuildFor(id, snap, live)` を追加。
+
+### O-2(記録どおりの強さ)
+- `phantomTick.phantomAtkMults(phantomId, gun, gameTime)` を新設。**プレイヤーと同じ純関数**
+  (`gunShotCritChance` / `skillCritMult` / `skillOutgoingDamageMult` / `equipBonus.damageMult`)を、
+  主語だけ幻影の疑似Playerに差し替えて呼ぶ=**式を複製していない**。
+- **銃**: `gun.damage × (crit ? critMult : 1) × outgoingMult × growth × PVP_SCALE`。
+  クリ率も「武器+本体クリ率+装備critBonus+スキル」の**同じ式**になった。
+- **近接**: `phantomMeleeDamage(growth, phantomId)` に倍率を追加。
+  **近接のクリは従来どおり未適用**(既存仕様=叩き台。この段では仕様変更をしない)。
+- **★育成倍率の二重掛けを回避**: `skillOutgoingDamageMult` は内部で `player.growthAtkMult` を掛けるが、
+  この系統の育成は **GROWTH.md v4 裁定「幻影も反映」= プレイヤー本人の育成**をスポーン時に焼いた
+  `s.growthAtkMult` が持つ(記録主の育成ではない=既存仕様)。よって疑似Playerの `growthAtkMult` を
+  **1に潰し**、呼び出し側の `× s.growthAtkMult` を残した=**掛かる回数は従来どおり1回**。
+- **ビルドが無い場合は倍率1・クリは武器の素の確率**=**従来と1bit同じ**(旧来の決闘は不変)。
+
+### 触っていないもの(仕様変更をしない)
+- **幻影の銃・近接武器は「初期武器」のまま**(社長裁定v0.25.3641)。**★Q7 の裁定待ち**——
+  O-2 でスキルが乗った今、この裁定の前提(「スキルがまだ無いから武器も初期で」)は消えている。
+  コード側にも「スキル再現が入る第3弾で戻す候補」と明記されている。**戻すのは1行**。
+- 幻影のサブウェポン(O-3)・刀/ワイヤー(O-4)・出現条件(★Q6)。
+
+**変更ファイル**: `src/types/game.ts`, `src/utils/ghostBuild.ts`, `src/store/gameStore.ts`,
+`src/hooks/useGameLoop.ts`, `src/utils/phantomTick.ts`, `src/utils/phantomBuild.test.ts`(新規),
+`PROJECT_STATUS.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`
+**検証**: typecheck 0 / lint 0エラー(既存warning 8)/ **`npm test` = 4584件緑**。
+新規テスト `phantomBuild.test.ts` **11件**で受け入れ条件を機械化(詰め替え/別財布/ビルド無しはnull/
+引数なしは本物のプレイヤー/**2体交互でも同一参照=毎フレーム作り直さない**/倍率が乗る/育成の二重掛けなし)。
+**唯一の赤 `src/store/sim.test.ts` の移動ランプは既存fail(タスク#41・本変更と無関係)。**
+**負荷スコア**: 1/10。per-frameの新規描画なし。むしろ **E のキャッシュ修正で、守護霊と幻影が同時に
+居る場合の毎フレーム `createWeapon` が消える=軽くなる方向**。
+**状態変化**: ★オンライン計画 → **O-1/O-2 完了。次=O-5(その前に★Q7の裁定)**。
+
 ## v0.25.3849 — 「望んでいる形」への最短路を確定+マイルストーン名を平易化【2026-08-23 17:57】
 
 社長「**結局どうするのが一番望んでる形に仕上がるの?**」+「**O-1の意味がわからないからちゃんと説明しろ**」。

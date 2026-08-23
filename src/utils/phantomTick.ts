@@ -29,6 +29,9 @@ import {
   useGameStore, resolveBountyMove, CRIT_DAMAGE_MULT, knockbackSpeedFor,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
+  // ★research/SAME_ARENA.md O-2: 幻影の攻撃力を**プレイヤーと同じ純関数**で評価する
+  // (式を複製しない=「写すな、共通化しろ」)。主語だけ幻影の疑似Playerに差し替える。
+  combatActorPlayer, skillCritMult, skillOutgoingDamageMult,
 } from '../store/gameStore';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { createEnemyProjectile } from './enemyUtils';
@@ -36,6 +39,7 @@ import { distToBandRect } from './geometry';
 import {
   createWeapon, effectiveFireCooldown, beginWeaponReload, finishWeaponReload,
   projectileFlightStats, zoomedGunRange, RANGE_BY_CATEGORY,
+  gunShotCritChance,
 } from './weaponUtils';
 import { GRAVITY_SHOT_BOSS_SLOW_MULT } from './skillEffectsB7';
 import {
@@ -110,10 +114,51 @@ const phantomGunKey = (): string | undefined =>
  * 廃止**した——初回値を焼くと、強化画面で段数を変えてもリロードするまで反映されないため
  * (呼び出し側はスポーン時に焼いた倍率を渡す。既定1=育成なしと同値)。
  */
-export const phantomMeleeDamage = (growthAtkMult = 1): number => {
+export const phantomMeleeDamage = (growthAtkMult = 1, phantomId?: string): number => {
   const key = PLAYER_PROFILES[strongestGuardian().classId]?.meleeKey;
   const base = (key ? createWeapon(key).damage : null) ?? GP_T.melee.damage;
-  return base * growthAtkMult;
+  // ★SAME_ARENA O-2: 記録どおりのスキル/装備の倍率を乗せる(主語=幻影の疑似Player)。
+  // `phantomId` 未指定 or ビルド無し=倍率1で従来と1bit同じ。**クリは近接では従来どおり未適用**
+  // (「クリは未適用(叩き台)」は既存仕様なので、この段では変えない=仕様変更をしない)。
+  const outgoing = phantomId !== undefined
+    ? phantomAtkMults(phantomId, undefined, useGameStore.getState().gameTime).outgoingMult
+    : 1;
+  return base * outgoing * growthAtkMult;
+};
+
+/**
+ * ★research/SAME_ARENA.md O-2: 幻影の攻撃倍率を**プレイヤーとまったく同じ式**で出す。
+ *
+ * 主語(`combatActorPlayer(phantom.id)`)は `Enemy.phantomBuild` のスキル/装備/クリ率を着た疑似Player。
+ * ビルドが無い(旧来の決闘)場合は `null` が返るので、**倍率は素通し=従来と1bit同じ**。
+ *
+ * ★育成倍率の二重掛け防止(重要): `skillOutgoingDamageMult` は内部で `player.growthAtkMult` を
+ * 掛ける。一方この系統の育成は **research/GROWTH.md v4 の裁定「幻影も反映」= プレイヤー本人の育成**を
+ * スポーン時に焼いて `s.growthAtkMult` で持っている(記録主の育成ではない=既存仕様)。
+ * よって疑似Playerの `growthAtkMult` は **1 に潰し**、呼び出し側の `× s.growthAtkMult` を残す。
+ * これで**掛かる回数は従来どおり1回**=挙動の意図を変えない。
+ */
+export interface PhantomAtkMults {
+  /** クリ判定に使う確率(武器+本体クリ率+装備critBonus+スキル)。ビルド無しは武器の素の確率。 */
+  critChance: number;
+  /** クリ時に掛ける倍率(crit-upスキル込み)。ビルド無しは CRIT_DAMAGE_MULT。 */
+  critMult: number;
+  /** 常時掛かる倍率(バーサーカー/錬金/カウンターマスター覚醒 × 装備damageMult)。ビルド無しは1。 */
+  outgoingMult: number;
+}
+export const phantomAtkMults = (
+  phantomId: string, gun: Pick<Weapon, 'critChance'> | undefined, gameTime: number,
+): PhantomAtkMults => {
+  const raw = combatActorPlayer(phantomId);
+  if (!raw) {
+    return { critChance: gun?.critChance ?? 0, critMult: CRIT_DAMAGE_MULT, outgoingMult: 1 };
+  }
+  const actor: Player = { ...raw, growthAtkMult: 1 }; // 上のコメント=二重掛け防止
+  return {
+    critChance: gun ? gunShotCritChance(gun, actor, gameTime) : 0,
+    critMult: skillCritMult(actor, CRIT_DAMAGE_MULT),
+    outgoingMult: skillOutgoingDamageMult(actor) * (actor.equipBonus?.damageMult ?? 1),
+  };
 };
 
 // =================================================================================================
@@ -363,7 +408,7 @@ export const decidePhantom = (
       gunDamage: s.gun?.damage ?? 0,
       gunIntervalMs: s.gun ? effectiveFireCooldown(s.gun, gunOwner(s)) : 500,
       gunRangePx: phantomGunRangePx(s),
-      meleeDamage: phantomMeleeDamage(s.growthAtkMult), // 初期近接武器の実ダメージ(v0.25.3641裁定)+育成
+      meleeDamage: phantomMeleeDamage(s.growthAtkMult, phantom.id), // 初期近接武器の実ダメージ(v0.25.3641裁定)+育成+O-2の倍率
     },
     gameTime,
     nowMs,
@@ -384,7 +429,8 @@ export const decidePhantom = (
  */
 const swingPhantomMelee = (
   bcx: number, bcy: number, player: Player, sfx: PhantomSfx, patch: Partial<Enemy>,
-  newGameTime: number, growthAtkMult: number,
+  // ★SAME_ARENA O-2: `phantomId` を受け取り、近接ダメージにも記録どおりのスキル/装備倍率を乗せる。
+  newGameTime: number, growthAtkMult: number, phantomId: string,
 ): void => {
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const ang = Math.atan2(pcy - bcy, pcx - bcx);
@@ -402,7 +448,7 @@ const swingPhantomMelee = (
   const hpBefore = useGameStore.getState().player.health;
   useGameStore.getState().damagePlayer(
     // 対人1/10(社長裁定2026-08-20「プレイヤー同士の戦いではダメージ1/10で一旦」)。
-    phantomMeleeDamage(growthAtkMult) * PVP_DAMAGE_SCALE, GUARDIAN_PHANTOM_MELEE_SOURCE, bcx, bcy, GUARDIAN_PHANTOM_TYPE,
+    phantomMeleeDamage(growthAtkMult, phantomId) * PVP_DAMAGE_SCALE, GUARDIAN_PHANTOM_MELEE_SOURCE, bcx, bcy, GUARDIAN_PHANTOM_TYPE,
   );
   // 被弾SEはここで鳴らす: damagePlayer 直呼びは「本当に何も出ない」前例がある(gameStore の注記)。
   if (useGameStore.getState().player.health < hpBefore) sfx.hurt();
@@ -421,13 +467,18 @@ const firePhantomShot = (
   const p = st.player;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
   const flight = projectileFlightStats(gun);
-  // クリ(台帳武器が実際に持つ確率)も撃つ=同条件。弾の見た目は変えない(共通の赤い二重丸)。
-  const crit = rand() < (gun.critChance ?? 0);
+  // ★SAME_ARENA O-2: クリ率も倍率も**プレイヤーと同じ純関数**で出す(主語=幻影の疑似Player)。
+  // ビルドが無ければ従来どおり「武器の素のクリ率 × CRIT_DAMAGE_MULT・倍率1」=1bit不変。
+  // 弾の見た目は変えない(全ボス共通の赤い二重丸=CLAUDE.mdの弾の文法)。
+  const m = phantomAtkMults(phantom.id, gun, newGameTime);
+  const crit = rand() < m.critChance;
   st.addProjectile(createEnemyProjectile(
     phantom, p, pcx, pcy, bcx, bcy,
     // research/GROWTH.md v4: 幻影の銃にも育成の攻撃力を掛ける(スポーン時に焼いた倍率)。
     // 対人1/10(社長裁定2026-08-20)も弾の生成時に掛ける(被弾側=combatTickは共通経路なので触らない)。
-    { speed: flight.speed, damage: Math.max(1, Math.round(gun.damage * (crit ? CRIT_DAMAGE_MULT : 1) * s.growthAtkMult * PVP_DAMAGE_SCALE)), size: flight.size },
+    { speed: flight.speed, damage: Math.max(1, Math.round(
+      gun.damage * (crit ? m.critMult : 1) * m.outgoingMult * s.growthAtkMult * PVP_DAMAGE_SCALE,
+    )), size: flight.size },
   ));
   s.gun = { ...gun, magazine: Math.max(0, (gun.magazine ?? 0) - 1), lastFired: Date.now() };
   patch.gpShotAt = newGameTime;
@@ -479,7 +530,7 @@ const consumePhantomParry = (
       knockbackUntil: Date.now() + PHANTOM_PARRY_SHOVE_MS,
       knockbackMs: PHANTOM_PARRY_SHOVE_MS,
     } }));
-    swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult);
+    swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult, phantom.id);
     s.nextMeleeAt = newGameTime + PHANTOM_MELEE_PERIOD_MS;
   }
   return true;
@@ -564,7 +615,7 @@ export const runPhantomTick = (
   if (!parried
     && newGameTime >= s.nextMeleeAt
     && edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach) {
-    swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult);
+    swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult, phantom.id);
     s.nextMeleeAt = newGameTime + PHANTOM_MELEE_PERIOD_MS;
   }
 
