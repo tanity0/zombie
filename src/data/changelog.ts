@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3857',
+    items: [
+      'タイトル画面の年表に、日付だけでなく時刻も出るようになりました(過去の記録にも遡って表示されます)。',
+    ],
+  },
+  {
     version: '0.25.3856',
     items: [
       '幻影(決闘の相手)が手榴弾を投げてくるようになりました。紫色で、カウンターでは打ち返せません。',

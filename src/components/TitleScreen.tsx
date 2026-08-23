@@ -88,9 +88,16 @@ const chronicleIconSrc = (e: ChronicleEntry): string | null => {
 };
 
 // 「初ミッション」行の実日付表示(社長指示v0.25.1772)。例: 2026/7/16
-const formatChronicleDate = (at: number): string => {
+// ★社長指示2026-08-23「年表に時刻も打刻」: 日付だけでなく**時刻(時:分)**まで出す。
+// `ChronicleEntry.at` は元から `Date.now()`(ミリ秒)なので、**記録側は一切変えずに表示だけで済む**
+// (既存プレイヤーの過去の記録にも遡って時刻が出る)。
+// 旧名 `formatChronicleDate` は「日時をグレーで」というコメントに対して日付しか出しておらず、
+// **名前と実装が食い違っていた**ので `...DateTime` へ改名した。
+const formatChronicleDateTime = (at: number): string => {
   const d = new Date(at);
-  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
 };
 
 const ChronicleTimeline: React.FC = () => {
@@ -171,7 +178,7 @@ const ChronicleTimeline: React.FC = () => {
               className="block leading-snug"
               style={{ color: 'rgba(255,255,255,0.42)', fontSize: '10.5px', letterSpacing: '0.08em', marginTop: 2 }}
             >
-              {formatChronicleDate(startAt)}
+              {formatChronicleDateTime(startAt)}
             </span>
           </li>
           {entries.map((e) => (
@@ -221,7 +228,7 @@ const ChronicleTimeline: React.FC = () => {
                   className="block leading-snug"
                   style={{ color: 'rgba(255,255,255,0.42)', fontSize: '10.5px', letterSpacing: '0.08em', marginTop: 2 }}
                 >
-                  {formatChronicleDate(e.at)}
+                  {formatChronicleDateTime(e.at)}
                 </span>
               </li>
             </React.Fragment>
