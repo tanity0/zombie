@@ -247,6 +247,11 @@ const BOUNTY_PRACTICE_SLOTS: readonly PracticeSlot[] = BOUNTY_PRACTICE_TYPES.map
 export const GUARDIAN_PHANTOM_SLOT_KEY = 'guardian-phantom@practice';
 /** 一覧・リザルト・頭上ラベルの表示名。**唯一の出どころ**(pixiSceneもここを読む)。 */
 export const GUARDIAN_PHANTOM_LABEL = `${strongestGuardian().name}(幻影)`;
+/**
+ * ★ボスモード(練習一覧)の表示名(社長指示2026-08-23)。**人物名を出さない**=中身は毎回ちがう人物
+ * (SAME_ARENA O-5)なので、一覧で特定の名前を名乗ると嘘になる。
+ */
+export const GUARDIAN_PHANTOM_PRACTICE_LABEL = '幻影';
 /** 立ち絵に使うクラス(台帳の最強データのクラス。**唯一の出どころ**=pixiSceneもここを読む)。 */
 export const GUARDIAN_PHANTOM_CLASS: CharacterClass = strongestGuardian().classId;
 const GUARDIAN_PHANTOM_SLOT: PracticeSlot = {
@@ -257,7 +262,11 @@ const GUARDIAN_PHANTOM_SLOT: PracticeSlot = {
   bossType: 'guardian-phantom',
   stageId: 'stage-1',
   param: 'phantomnow',
-  label: GUARDIAN_PHANTOM_LABEL,
+  // ★社長指示2026-08-23「ボスモードの鴉の名前を幻影に」: **一覧では人物名を出さず「幻影」**。
+  // research/SAME_ARENA.md O-5 で**中身は毎回ちがう人物**になったので、一覧に特定の人物名
+  //(旧: 台帳の最強データ=「鴉(幻影)」)を出すと嘘になる。実際に誰が来たかは
+  // 出撃後の頭上ラベル・討伐バナー(`phantomDisplayLabel()`=その回の人格)が出す。
+  label: GUARDIAN_PHANTOM_PRACTICE_LABEL,
   reachable: false, // 本編のどこにも置かれていない(実験枠)
   alwaysUnlocked: true,
 };

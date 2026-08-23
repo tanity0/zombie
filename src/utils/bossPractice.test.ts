@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, practiceSlotByKey, practiceBossHealth,
-  practiceSlotUnlocked, GUARDIAN_PHANTOM_SLOT_KEY, GUARDIAN_PHANTOM_LABEL,
+  practiceSlotUnlocked, GUARDIAN_PHANTOM_SLOT_KEY, GUARDIAN_PHANTOM_LABEL, GUARDIAN_PHANTOM_PRACTICE_LABEL,
 } from './bossPractice';
 import { GHOST_DOSSIER_SLOTS } from './ghostDossier';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
@@ -281,8 +281,15 @@ describe('決闘(幻影)の掲載枠', () => {
     expect(new Set(values).size).toBe(1);
   });
 
-  it('表示名は守護霊台帳の人物名から組む(名前を写経しない)', () => {
+  it('★ボスモードの一覧は人物名を出さず「幻影」(社長指示2026-08-23)', () => {
+    // SAME_ARENA O-5 で**中身は毎回ちがう人物**になったので、一覧に特定の人物名を出すと嘘になる。
+    expect(practiceSlotByKey(GUARDIAN_PHANTOM_SLOT_KEY)!.label).toBe(GUARDIAN_PHANTOM_PRACTICE_LABEL);
+    expect(practiceSlotByKey(GUARDIAN_PHANTOM_SLOT_KEY)!.label).not.toContain(strongestGuardian().name);
+  });
+
+  it('ゲーム内の表示名(フォールバック)は台帳の人物名から組む(名前を写経しない)', () => {
+    // 実際の頭上ラベル・討伐バナーは `phantomDisplayLabel()`(その回の人格)が出す。
+    // この定数は**人格が未設定のときのフォールバック**で、人物名の出どころは台帳のまま。
     expect(GUARDIAN_PHANTOM_LABEL).toContain(strongestGuardian().name);
-    expect(practiceSlotByKey(GUARDIAN_PHANTOM_SLOT_KEY)!.label).toBe(GUARDIAN_PHANTOM_LABEL);
   });
 });

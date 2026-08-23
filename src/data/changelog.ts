@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3858',
+    items: [
+      'ボスモードの一覧で、決闘の相手が「幻影」と表示されるようになりました(毎回ちがう人物が来るため)。',
+    ],
+  },
+  {
     version: '0.25.3857',
     items: [
       'タイトル画面の年表に、日付だけでなく時刻も出るようになりました(過去の記録にも遡って表示されます)。',
