@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3843',
+    items: [
+      'ゲーム内容の変更はありません(守護霊・幻影のサブウェポン設計の裁定を記録しました)。',
+    ],
+  },
+  {
     version: '0.25.3842',
     items: [
       'EXステージの行き止まりで、壁の向こう側にまで蝋燭の光が続いて見えてしまう問題を直しました。',
