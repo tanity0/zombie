@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3838',
+    items: [
+      'EXボス(フィル)の羽や後光の絵が、技のあとに薄く残ってしまうことがあったのを直しました。',
+    ],
+  },
+  {
     version: '0.25.3837',
     items: [
       'ゲーム内容の変更はありません(前の版で研究所と洞窟にも及ぼしていた修正を、洋館の通路だけに戻しました)。',

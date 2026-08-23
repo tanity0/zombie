@@ -14750,6 +14750,18 @@ export class PixiScene {
     if (e.type === 'phillboss' && this.phillBlessingGfx && !this.phillBlessingGfx.destroyed) this.phillBlessingGfx.clear();
     // ★v0.25.3740: 光輪投げの輪も既定OFF(該当stateの分岐だけが今フレーム分を表示する)。
     if (e.type === 'phillboss') { const rt = this.phillRingtossSprites.get(e.id); if (rt && !rt.destroyed) rt.visible = false; }
+    // ★v0.25.3838(社長報告「素材が薄く残ってる」): フィルの**本体以外の絵**(足元影・羽シート・
+    // 後光・キラキラ)も既定OFFに入れる。これらを点けるのは `drawPhillExtras` だが、それは
+    // **`drawEnemy` の最終行**なので、**drawEnemy が途中で例外を投げると点け直されない**——
+    // その時この既定OFFが無いと、**前フレームの絵が alpha ごと焼き付く**。
+    // 同型の事故を過去に2回踏んでいる(v0.25.3324 hitFlash / v0.25.3207 既定OFFがtryの中)。
+    // 正常時は drawPhillExtras が毎フレーム必ず点け直すので、見た目は1つも変わらない。
+    if (e.type === 'phillboss') {
+      const phSh = this.phillShadow.get(e.id); if (phSh && !phSh.destroyed) phSh.clear();
+      const phWg = this.phillWingSprites.get(e.id); if (phWg) for (const sp of phWg) if (sp && !sp.destroyed) sp.visible = false;
+      const phHa = this.phillHalo.get(e.id); if (phHa && !phHa.destroyed) phHa.visible = false;
+      const phSp = this.phillSparkles.get(e.id); if (phSp) for (const q of phSp) if (q?.sp && !q.sp.destroyed) q.sp.visible = false;
+    }
     // Above-sprite layer(前半): 攻撃予告(赤い線/帯/円/扇)。**tele レイヤー**へ描く。
     // 体力バー/ボスマーカーは同じ描画順のまま overlay(後半・drawHealthBar 以降)へ分けた。
     // 分けている理由は alpha だけ(予告は自分の位置でフェードする=TELEGRAPH_OWN_FADE)。
@@ -14814,6 +14826,13 @@ export class PixiScene {
       // 分岐(drawPhillWingReady/Slash)だけが点ける。
       const wingFx = this.phillWingFx.get(e.id);
       if (wingFx) wingFx.visible = false;
+      // ★v0.25.3838のバグ修正(社長報告「素材が薄く残ってる」): **突き専用プールが既定OFFに
+      // 入っていなかった**。v0.25.3740 で `phillWingThrustFx` を新設した時、点ける側
+      // (drawPhillWingThrust)だけ足して**消す側(ここ)を足し忘れた**。
+      // これは v0.25.3458 で立てた教訓——「**同じコンテナを使い回す描画で子を足したら、
+      // "消す側"の全経路も同時に直す**」——の**そのままの再発**。
+      const wingThrustFx = this.phillWingThrustFx.get(e.id);
+      if (wingThrustFx) wingThrustFx.visible = false;
     }
     // §6.38 B1/B2b(賞金首): 出現魔法陣+武器スプライト+鞭スミアも同じ作法で既定OFF。
     // ★v0.25.3383のバグ修正: この一群は元々isGate2AngelBoss(e.type)ブロックの中に置かれていたため、
