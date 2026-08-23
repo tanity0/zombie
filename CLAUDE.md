@@ -9,6 +9,7 @@ Top-down HD-2D survival game. React + Zustand (simulation) + PixiJS (rendering).
 | 仕様 | 各設計書(現在の主戦場=PACING_PUZZLE.md。**設計書に状態は書かない**) |
 | 履歴(いつ何をしたか) | DEVELOPMENT_LOG.md(毎push追記。「## vX.Y.Z」見出しでgrepして引く) |
 | 教訓・地雷 | ENGINEERING_NOTES.md |
+| **不具合の切り分け(★症状から引く)** | **ENGINEERING_NOTES.md §0 トラブルシューティング索引**(症状→最初の1手→過去の実例。**推測に入る前にここを引く**) |
 | 恒常ルール | この CLAUDE.md |
 | プレイヤー向け更新情報 | src/data/changelog.ts(ゲーム内表示の正) |
 | 計測・調査の台帳 | research/ |
@@ -406,8 +407,16 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
    抵触しないか」をDEVELOPMENT_LOGの実装結果に明記する。
 6. **教訓は即機械化**: バグを直したら、再発しうる教訓を`constitution.test.ts`(不変条件なら)か
    `ENGINEERING_NOTES.md`(知識なら)に追記してから完了とする。
-7. **調査・地雷の参照**: バグ調査、描画/音声/集計/スポーン系に触る前に **ENGINEERING_NOTES.md**
-   (診断の型・プロジェクト固有の地雷・逆引き表)の該当節を読む。
+7. **★調査は「索引を引く」から始める(2026-08-22 の反省で強化)**: バグ調査、描画/音声/集計/スポーン系に
+   触る前に **ENGINEERING_NOTES.md §0 トラブルシューティング索引**を引く(症状表→該当節)。
+   **推測でコードを読み始めない。** 索引に無ければ `grep -n "<症状の語>" ENGINEERING_NOTES.md
+   DEVELOPMENT_LOG.md CLAUDE.md` → `grep -rn "tsNum(\|tsBool(\|hidelayer" src/`(**切り分け用の
+   URLツマミは大抵もう在る**)。
+   - **★2回外したら推測をやめ、既存の網羅的な消去法へ切り替える**(7-3の実行形)。
+   - **★自作の切り分けスイッチで消去法をやらない。** 自作スイッチは「自分が疑っている範囲」しか
+     覆っておらず、**推測の延長にすぎない**(2026-08-22: 自作4スイッチが犯人の層を最初から除外して
+     いたため「全部消しても消えない」と誤報告した)。網羅的に作られた既存の道具(`?hidelayer=all` 等)を使う。
+   - **★直したら §0 の症状表に1行足す**(節を書き足すだけでは次の人が見つけられない=索引が生まれた理由)。
 (設計チャット側の対応義務: 各バッチの仕様に「受け入れ条件」を明記し、曖昧な表('少数'等)を残さない。)
 
 ## ★品質監査サブエージェント(社長指示 v0.25.2704・以後の必須手順)

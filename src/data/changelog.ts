@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3839',
+    items: [
+      'ゲーム内容の変更はありません(開発用の不具合切り分け手順書を整備しました)。',
+    ],
+  },
+  {
     version: '0.25.3838',
     items: [
       'EXボス(フィル)の羽や後光の絵が、技のあとに薄く残ってしまうことがあったのを直しました。',
