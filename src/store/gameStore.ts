@@ -200,7 +200,8 @@ import {
   recordSlotFilled,
   type RunTelemetryEquipSnapshot, type RunTelemetryEquipSlotSnapshot,
 } from '../utils/runTelemetry';
-import { isPracticeRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
+import { isPracticeRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice';
+import { phantomDisplayLabel } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の表示名はその回の人格 // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
 // research/GHOST_BOSS.md v6: 幻影が受ける打撃の関所(被弾無敵+パリィ)。**7系統の全てがここを通る**。
 import { phantomHitGate, type PhantomDamageSource, type PhantomHitGateResult } from '../utils/phantomGate';
 import { ensureProjectileOrigin } from '../utils/projectileOrigin';
@@ -1394,6 +1395,9 @@ export const enemyDeathLabel = (type: string): string => {
   if (type === 'giantbat') {
     return CASTLE_BOSS_NAME_BY_STAGE[getSelectedStageId() ?? ''] ?? ENEMY_DEATH_LABELS.giantbat;
   }
+  // ★research/SAME_ARENA.md O-5: 幻影は**その回の人格**の名前を出す(城ボスがステージで変わるのと
+  // 同じ作法)。人格が未設定なら `phantomDisplayLabel()` が台帳の最強データへ落ちる=従来と1bit同じ。
+  if (type === 'guardian-phantom') return phantomDisplayLabel();
   return ENEMY_DEATH_LABELS[type] ?? '変異体';
 };
 

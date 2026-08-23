@@ -90,7 +90,7 @@ import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
 import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2, practiceBossType } from '../utils/bossPractice';
-import { strongestGuardian } from '../data/fixedGuardians'; // SAME_ARENA O-1: 幻影のビルド(頭脳と同じ人物)
+import { pickPhantomIdentity, setPhantomIdentity, getPhantomIdentity, phantomDisplayLabel, clearPhantomIdentity } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の人格(癖・ビルド・HP・名前を1人から)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { bossCutinPayload, glenForm2CutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
 import { clampRectToPlayableArea } from '../world/playableArea';
@@ -2683,6 +2683,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
           phantomForceRef.current = false; // ?phantomnow=1 の force-spawn も新ランで再アーム(research/GHOST_BOSS.md)
+          // ★SAME_ARENA O-5: 幻影の人格も新ランで捨てる。持ち越すと**前のランの他人**の癖・名前で
+          // 戦うことになる(v0.25.3838のボスリラックス跨ぎと同型の"ラン跨ぎの漏れ")。
+          clearPhantomIdentity();
           phantomStateRef.current = createPhantomTickState(); // 幻影のラン内状態も新ランでリセット
           bountyStateRef.current = createBountyTickState(); // 賞金首のラン内状態も新ランでリセット(§6.38 B2a)
           clearBountyPlayback(); // ボスメーカーの個別再生も新ランで解除(idolと同じ理由=v0.25.2625の教訓)
@@ -6962,7 +6965,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // pixiScene が e.spawnedAt 基準で描く(足元の簡易魔法陣+下から立ち上がるフェードイン)。
           if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current) {
             phantomForceRef.current = true;
-            const gpName = enemyDeathLabel('guardian-phantom');
+            // ★research/SAME_ARENA.md O-5: 幻影の「中身」をここで1回だけ決める。
+            // ①オンラインの実プレイヤー ②固定20人から抽選、の順。**癖・ビルド・HP・名前を
+            // 必ずこの1人から取る**(装備だけ他人にすると「戦い方が同じ1体」のままになる)。
+            setPhantomIdentity(pickPhantomIdentity(getSelectedStageId()));
+            const gpName = phantomDisplayLabel();
             useGameStore.setState({ eventBannerText: gpName, eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             const gpPcx = player.x + player.width / 2, gpPcy = player.y + player.height / 2;
             // 距離は叩き台(実機調整前提): 画面内に収まり、出現演出が見える位置で正対させる。
@@ -6979,7 +6986,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 中身は **`strongestGuardian()` の記録**=頭脳(`phantomTick.phantomProfile`)と
             // **同じ人物**に揃える(ビルドだけ別人にすると「誰と戦っているか」が壊れる)。
             // O-5 でここを**オンラインの他人のレコード**へ差し替える(頭脳とビルドを一緒に入れ替える)。
-            gpE.phantomBuild = strongestGuardian().profile.snapshot ?? undefined;
+            gpE.phantomBuild = getPhantomIdentity()?.profile.snapshot ?? undefined;
             // ★社長裁定2026-08-23「HPもステータス通りに。」: HPも**記録の値**が正本。
             // ビルドを積んだ**後**に決めること(順序を入れ替えると記録が読めない)。
             // 記録が無いときだけ従来どおり player.ddaBaseHp(GROWTH.md v4)へ落ちる。

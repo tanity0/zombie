@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3854',
+    items: [
+      '幻影(決闘の相手)が、毎回ちがう人物になりました。名前・戦い方・装備・HPがその人のものになります。',
+    ],
+  },
+  {
     version: '0.25.3853',
     items: [
       '幻影(決闘の相手)のHPが、記録どおりの値になりました(タフになります)。',

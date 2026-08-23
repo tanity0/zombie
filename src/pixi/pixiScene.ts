@@ -179,7 +179,8 @@ import {
 import { telegraphProgress01 } from '../utils/bossTelegraph';
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 表示名・立ち絵クラスの正本(台帳)と、技の寸法テーブル。
 // **判定(phantomTick)と同じ1箇所**を読むので「赤いのに当たらない」が起きない。
-import { GUARDIAN_PHANTOM_LABEL, GUARDIAN_PHANTOM_CLASS } from '../utils/bossPractice';
+import { GUARDIAN_PHANTOM_CLASS } from '../utils/bossPractice';
+import { phantomDisplayLabel } from '../utils/phantomIdentity'; // SAME_ARENA O-5
 import { GUARDIAN_PHANTOM_TUNING as GP_T } from '../utils/phantomScript';
 import { isMarkedBossVisible, bossMarkFor, type MarkBox } from '../utils/bossMarker';
 import {
@@ -15333,7 +15334,8 @@ export class PixiScene {
     // クエスト目標個体(questTarget)も同様(名前は個体のquestName。同時1体なので負荷は同等)。
     // research/GHOST_BOSS.md(幻影): 頭上に「鴉(幻影)」を出す。**宿敵ラベルの機構をそのまま流用**
     // (生成は湧き時1回だけ=Pixi Text でよい/同時1体)。名前の出どころは台帳1箇所(GUARDIAN_PHANTOM_LABEL)。
-    const phantomLabelText = e.type === 'guardian-phantom' ? GUARDIAN_PHANTOM_LABEL : null;
+    // ★SAME_ARENA O-5: その回の人格の名前(未設定なら台帳の最強データ=従来表示)。
+    const phantomLabelText = e.type === 'guardian-phantom' ? phantomDisplayLabel() : null;
     if (e.isNamed || e.questTarget || phantomLabelText) {
       let label = this.namedFoeLabels.get(e.id);
       if (!label) {

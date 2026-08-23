@@ -1,5 +1,51 @@
 # Development Log
 
+## v0.25.3854 — オンライン計画 O-5: 幻影の中身が「他人」になる【2026-08-23 21:32】
+
+社長「進めて」。**幻影は常に同じ1人(`strongestGuardian()`)だった**——癖も、ビルドも、名前も。
+装備だけ他人にしても**戦い方が同じ1体**では「誰と戦っているか」が生まれないので、
+**癖・ビルド・HP・名前を必ず同じ1人から取る**形にした。
+
+### 新しい葉: `src/utils/phantomIdentity.ts`
+幻影の「中身」を1人ぶんの人格(`PhantomIdentity`)として扱う。**判定と抽選だけ**を持ち、
+HP/武器/倍率の式は持たない(それは `phantomTick` と `bossHealth` の仕事)。乱数は注入可能。
+- **選び方**: ①**オンラインの実プレイヤー**(このランで取得済みの候補があれば)
+  → ②**固定の先人守護霊20人から1人**(ラン毎に抽選)。
+  ⇒ **オフラインでも「常に同じ1人」は解消する**(②だけで毎回違う人になる)。
+- 候補は**ボススロット別**に取ってあるので、スロットを持たない幻影は**取得済みのどれか1枠を借りる**
+  (枠の選び方に意味は無い=誰と戦うかは中身で決まる)。
+- `setPhantomIdentity` / `getPhantomIdentity` / `clearPhantomIdentity` / `phantomDisplayLabel`。
+
+### 配線(4つとも同じ人格から)
+| | 変更 |
+|---|---|
+| **癖** | `phantomTick.phantomProfile()` が人格の profile を読む。**キャッシュを人格キー付き**にした(旧: 単一キャッシュ=人格を跨いで固まる) |
+| **ビルド** | スポーンで `phantomBuild = 人格.profile.snapshot` |
+| **HP** | 同じ snapshot の `maxHealth`(v0.25.3853の経路をそのまま通る) |
+| **名前** | `enemyDeathLabel('guardian-phantom')` と pixiScene の頭上ラベル、近接の被弾文言(`guardianPhantomMeleeSource()`)が人格に追従。**旧モジュール定数 `GUARDIAN_PHANTOM_LABEL` は互換として残置** |
+
+### ラン跨ぎの漏れを塞いだ
+新ランの初期化で `clearPhantomIdentity()` を呼ぶ。**持ち越すと前のランの他人の癖・名前で戦う**
+(v0.25.3838 のボスリラックス跨ぎと同型)。
+
+### ★未決Q8を起票(推薦=今は広げない)
+候補の取得(`beginGhostOnlineRun`)は**プレイヤーが守護霊スキルを装備している時だけ**走る
+(スキル装備の対価としてオンラインが使える、という既存設計)。よって**幻影が実プレイヤーになるのは
+「そのランで守護霊オンラインが動いていた場合」に限られる**。幻影のためにも取りに行くと
+①毎ラン通信が発生 ②守護霊スキルの対価という設計が緩む。
+**O-5 のフォールバック(固定20人から抽選)で「常に同じ1人」は既に解消しているので、
+通信の設計を変えるのは ★未決Q6(本番のどこに出すか)と一緒に決めるのが自然。**
+
+**変更ファイル**: `src/utils/phantomIdentity.ts`(新規), `src/utils/phantomIdentity.test.ts`(新規),
+`src/utils/phantomTick.ts`, `src/hooks/useGameLoop.ts`, `src/store/gameStore.ts`, `src/pixi/pixiScene.ts`,
+`research/SAME_ARENA.md`, `PROJECT_STATUS.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`
+**検証**: typecheck 0 / lint 0エラー(既存warning 8)/ **`src/utils` 全210ファイル・3573件緑**。
+新規 `phantomIdentity.test.ts` **9件**で受け入れ条件を機械化(常に同じ1人ではない/**癖・ビルド・名前が
+同じ1人から来る**/乱数が壊れても落ちない/オフラインは固定20人へ落ちる/表示名が人格に追従/
+**ラン境界で捨てられる**/**人格を跨いでキャッシュが固まらない**/未設定なら従来と1bit不変)。
+**負荷スコア**: 1/10(スポーン時に1回抽選するだけ。per-frameは人格キー比較1回)。
+**状態変化**: ★オンライン計画 → **O-1/O-2/O-5 完了。次=O-3(幻影がサブウェポンを使う)**。
+
 ## v0.25.3853 — 幻影のHPも記録どおりへ(★未決Q4が消滅)【2026-08-23 20:34】
 
 社長裁定「**HPもステータス通りに。**」= `SAME_ARENA.md §4-a` の原則「幻影は記録されたその人そのもの」の適用。

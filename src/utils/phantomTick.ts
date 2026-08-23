@@ -48,13 +48,18 @@ import {
 import { strongestGuardian } from '../data/fixedGuardians';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { GUARDIAN_PHANTOM_LABEL } from './bossPractice';
-import { actorBuildFor } from './ghostBuild'; // SAME_ARENA: 記録どおりの武器を守護霊と同じ道具で引く
+import { actorBuildFor } from './ghostBuild';
+import { getPhantomIdentity, phantomDisplayLabel } from './phantomIdentity'; // SAME_ARENA O-5: その回の人格 // SAME_ARENA: 記録どおりの武器を守護霊と同じ道具で引く
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from './phantomScript';
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
 export const GUARDIAN_PHANTOM_TYPE: EnemyType = 'guardian-phantom';
 
 /** 被弾の出どころ表示(死亡ログ等)。名前は台帳1箇所から作る(人物名を写経しない)。 */
+// ★O-5: 人格が変わると名前も変わるので関数にする(旧: モジュール定数)。
+// 未設定なら従来と同じ文字列=1bit不変。
+export const guardianPhantomMeleeSource = (): string => `${phantomDisplayLabel()}の斬撃`;
+/** 互換: 旧定数(未設定時の表示=従来値)。 */
 export const GUARDIAN_PHANTOM_MELEE_SOURCE = `${GUARDIAN_PHANTOM_LABEL}の斬撃`;
 
 // =================================================================================================
@@ -64,12 +69,16 @@ export const GUARDIAN_PHANTOM_MELEE_SOURCE = `${GUARDIAN_PHANTOM_LABEL}の斬撃
  * 幻影の頭脳へ渡すプロファイル。**守護霊台帳の最強データ(strongestGuardian)そのもの**を
  * `GhostProfile` の形へ写すだけ(値を発明しない)。
  */
-let profileCache: GhostProfile | null = null;
+// ★research/SAME_ARENA.md O-5: 幻影の癖は**その回の人格**(`phantomIdentity`)から取る。
+// 人格はスポーンで1回決まり、以後ランタイムで変わらないので**人格ごとに1回だけ**組んで使い回す。
+// 人格が未設定(旧経路)なら従来どおり台帳の最強データ=**1bit同じ**。
+let profileCache: { key: string; value: GhostProfile } | null = null;
 export const phantomProfile = (): GhostProfile => {
-  // 台帳は**不変の定数**(ランタイムで書き換わらない)ので1回だけ組んで使い回す。
-  if (profileCache) return profileCache;
-  const p = strongestGuardian().profile;
-  profileCache = {
+  const identity = getPhantomIdentity();
+  const key = identity?.name ?? '__strongest__';
+  if (profileCache && profileCache.key === key) return profileCache.value;
+  const p = identity?.profile ?? strongestGuardian().profile;
+  const built: GhostProfile = {
     reactionMs: p.reactionMs,
     counterChance: p.counterChance,
     preferredDist: p.preferredDist,
@@ -82,7 +91,8 @@ export const phantomProfile = (): GhostProfile => {
     // 技への反応表は**渡さない**: 表のキーは「ボスの技」で、幻影から見た相手はプレイヤー=
     // 技キーが引けない。渡しても常にフォールバックになるだけなので配線しない。
   };
-  return profileCache;
+  profileCache = { key, value: built };
+  return built;
 };
 
 /**
@@ -474,7 +484,7 @@ const swingPhantomMelee = (
   const hpBefore = useGameStore.getState().player.health;
   useGameStore.getState().damagePlayer(
     // 対人1/10(社長裁定2026-08-20「プレイヤー同士の戦いではダメージ1/10で一旦」)。
-    phantomMeleeDamage(growthAtkMult, phantomId) * PVP_DAMAGE_SCALE, GUARDIAN_PHANTOM_MELEE_SOURCE, bcx, bcy, GUARDIAN_PHANTOM_TYPE,
+    phantomMeleeDamage(growthAtkMult, phantomId) * PVP_DAMAGE_SCALE, guardianPhantomMeleeSource(), bcx, bcy, GUARDIAN_PHANTOM_TYPE,
   );
   // 被弾SEはここで鳴らす: damagePlayer 直呼びは「本当に何も出ない」前例がある(gameStore の注記)。
   if (useGameStore.getState().player.health < hpBefore) sfx.hurt();
