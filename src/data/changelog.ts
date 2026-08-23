@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3842',
+    items: [
+      'EXステージの行き止まりで、壁の向こう側にまで蝋燭の光が続いて見えてしまう問題を直しました。',
+    ],
+  },
+  {
     version: '0.25.3841',
     items: [
       '「紅き月」の発生が6分から7分になりました。',

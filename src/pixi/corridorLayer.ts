@@ -117,6 +117,17 @@ const BACK_H_MULT = 1.40;      // 壁コンテンツの表示高=柱の高さ×�
 const BACK_GLASS_CY = 0.45;    // ガラス(窓)中心の高さ(切り出し後コンテンツ高の上からの比率・月明かりのアンカー)
 // PACING_PUZZLE.md §10-20#2(EX舞台の洋館通路化): 奥壁world固定化に伴う破綻防止。
 const EX_BACK_MIN_D = 300;          // dの下限(北端クランプで実際にはこれ未満にならないが二重の安全弁)。
+// ★灯りが奥壁を突き抜ける件の修正(社長報告2026-08-23「EXだけ、一番上の壁の行き止まりで、蝋燭は
+// ここまでのはずなのに、光だけさらに奥の方にも配置されてしまう」)で、奥壁の深さを updateWallLamps
+// からも引く必要が出たため、updateBack の中にあった式をここへ1本化した(2箇所で別々に計算しない)。
+const backWallDepth = (travel: number, opts?: CorridorLayerFrameOpts): number =>
+  (opts?.isEx && opts.exBackTravel != null)
+    ? Math.max(EX_BACK_MIN_D, opts.exBackTravel - travel)
+    : BACK_DEPTH;
+// 奥壁の手前どれだけで灯りを打ち切るか。M6の LAMP_MAX_DEPTH = BACK_DEPTH - 300 と同じ 300 を使う
+// (新しい数字を作らない)。この手前 LAMP_CUT_FADE_PX でフェードして消える=パッと消えない(慣性MUST)。
+const LAMP_BACK_MARGIN_PX = 300;
+const LAMP_CUT_FADE_PX = 300;
 const EX_BACK_MAX_FINAL_H_MULT = 1.6; // ★4巡目#7: 最終合成後(投影×広間S×worldズーム)の表示高キャップ(画面高比・叩き台)。
 
 /** pixiScene.tsから毎フレーム渡すEX(stage-ex1)固有の描画オプション(§10-20#2/#8/#11)。省略時=M6と1バイトも変わらない。 */
@@ -368,7 +379,7 @@ export class CorridorLayer {
     this.ceilDark.width = W + CORRIDOR_BG_X_OVERSCAN * 2;
     this.ceilDark.height = hy + DARK_SEAM_OVERLAP_PX;
 
-    this.updateWallLamps(travel, W, H, now);
+    this.updateWallLamps(travel, W, H, now, opts);
     this.updateBack(travel, W, H, opts);
     this.updatePillars(travel, W, H);
   }
@@ -473,7 +484,7 @@ export class CorridorLayer {
   }
 
   // ⑤ 壁灯(柱と柱の中間・左右の壁ライン上): 柱の投影を半間隔ずらして流用=同じ循環に乗る。
-  private updateWallLamps(travel: number, W: number, H: number, now: number): void {
+  private updateWallLamps(travel: number, W: number, H: number, now: number, opts?: CorridorLayerFrameOpts): void {
     if (CORRIDOR_DEBUG.noPillar) { // ★切り分け用(?nopillar=1): 柱と同じ列に並ぶ壁灯も一緒に消す
       for (const sp of this.candleSharp) sp.visible = false;
       for (const sp of this.candleBlur) sp.visible = false;
@@ -484,16 +495,29 @@ export class CorridorLayer {
     }
     const lamps = projectCorridorPillars(travel + CFG.spacing / 2, W, H, CFG);
     const tSec = now / 1000;
+    // ★奥壁より奥の灯りを出さない(社長報告2026-08-23)。
+    // LAMP_MAX_DEPTH は BACK_DEPTH から作った【定数】なので、M6(奥壁=固定4200)では常に壁の300px手前で
+    // 正しく止まる。しかし**EXの奥壁はworld固定=近づくと迫ってくる**(backWallDepth)ため、
+    // backD が LAMP_MAX_DEPTH(3900)を下回った瞬間から、深さ backD〜3900 の灯りが**壁の裏**に居座る。
+    // 行き止まり(backD→EX_BACK_MIN_D=300)ではほぼ全部が壁の向こうになり、しかもグローは奥壁より後に
+    // addChild されている=壁の上から加算で塗られるので「光だけ奥に続く」に見えていた。
+    // ⇒ 打ち切りを**実際の奥壁の深さに追随**させる。ハードに消すと灯りがパッと消えるので
+    //   (慣性MUST・旧コメントが定数化で避けようとした副作用そのもの)、手前 LAMP_CUT_FADE_PX で減光する。
+    const backD = backWallDepth(travel, opts);
+    const lampCutDepth = Math.min(LAMP_MAX_DEPTH, backD - LAMP_BACK_MARGIN_PX);
     const candleTex = this.tex['candle'];
     for (let i = 0; i < this.candleSharp.length; i++) {
       const cs = this.candleSharp[i], cb = this.candleBlur[i];
       const gm = this.glowMain[i], gc = this.glowCore[i], gf = this.glowFloor[i];
       const m = lamps[i];
-      const active = m && m.depth >= 60 && m.depth <= LAMP_MAX_DEPTH;
+      const active = m && m.depth >= 60 && m.depth <= lampCutDepth;
       if (!active) { for (const s of [cs, cb, gm, gc, gf]) s.visible = false; continue; }
       // 灯り専用フェード(新幾何の可視帯に合わせる。詳細はLAMP_FADE_*のコメント)。
       const sVal = CFG.focal / (CFG.focal + m.depth);
-      const lampFade = Math.max(0, Math.min(1, (sVal - LAMP_FADE_S0) / LAMP_FADE_RANGE));
+      // 奥壁の手前 LAMP_CUT_FADE_PX で 1→0 へ落とす。燭台とグローの**両方**に同じ係数を掛ける
+      // (片方だけ残ると「蝋燭は無いのに光だけある」という今回の症状の別型になる)。
+      const cutFade = Math.max(0, Math.min(1, (lampCutDepth - m.depth) / LAMP_CUT_FADE_PX));
+      const lampFade = Math.max(0, Math.min(1, (sVal - LAMP_FADE_S0) / LAMP_FADE_RANGE)) * cutFade;
       // わずかに通路の内側へ寄せる(柱の縁から灯りが覗く位置・v0.25.2115)。
       const lampX = W / 2 + (m.x - W / 2) * LAMP_INSET;
 
@@ -530,10 +554,11 @@ export class CorridorLayer {
       const ly = m.y - m.h * GLOW_Y_R * LAMP_SPAN_SCALE;
       const gt = this.glowTex!;
       const gd = gt.width || 256;
-      // 本体グロー。
-      gm.position.set(lampX, ly); gm.scale.set((r * 2) / gd); gm.alpha = lampFade * 0.85 * flick; gm.visible = true;
+      // 本体グロー。★visible は無条件trueにしない(v0.25.3842): 上の cutFade で α が0まで落ちるので、
+      // 加算スプライトを0αのまま描き続けない=「絵が薄く残る」定型(ENGINEERING_NOTES §0)を作らない。
+      gm.position.set(lampX, ly); gm.scale.set((r * 2) / gd); gm.alpha = lampFade * 0.85 * flick; gm.visible = gm.alpha > 0.004;
       // 明るい芯。
-      gc.position.set(lampX, ly); gc.scale.set((r * 0.8) / gd); gc.alpha = Math.min(1, lampFade * 0.9 * flick); gc.visible = true;
+      gc.position.set(lampX, ly); gc.scale.set((r * 0.8) / gd); gc.alpha = Math.min(1, lampFade * 0.9 * flick); gc.visible = gc.alpha > 0.004;
       // 足元の照り返しは廃止(v0.25.2149負荷対策)。プールは残すが常時非表示。
       gf.visible = false;
     }
@@ -554,9 +579,7 @@ export class CorridorLayer {
     // ★検収監査#1(2巡目・v3752): travel(第一引数)がexHallTravel=O(y)へ置き換わったため、奥壁の
     // exBackTravelも同じO空間の値(exHallTravel(EX_BACK_WORLD_Y))を渡せばよい=素のtravelを別扱い
     // する必要が無くなった(旧rawTravelForBackの分離は廃止)。
-    const backD = (opts?.isEx && opts.exBackTravel != null)
-      ? Math.max(EX_BACK_MIN_D, opts.exBackTravel - travel)
-      : BACK_DEPTH;
+    const backD = backWallDepth(travel, opts); // 式は backWallDepth に1本化(updateWallLamps も同じ値を引く)
     const s = CFG.focal / (CFG.focal + backD);
     const horizonY = H * CFG.horizonYr;
     const footY = horizonY + (H * CFG.footYr - horizonY) * s;
