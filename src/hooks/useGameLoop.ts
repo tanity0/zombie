@@ -8600,7 +8600,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const ghostOwned = fkOwner.kind === 'ghost-ally';
           // v0.25.2472: ターゲット選択は照準の合流点(純関数)へ。プレイヤー=従来の最寄り非リーパー
           // (手順まで同一=挙動不変)/ゴースト=紐付きボス優先。
-          const target = pickSubAimTarget(fkOwner, ghostSubBossId, useGameStore.getState().enemies);
+          // ★research/SAME_ARENA.md O-3b: 幻影が投げる時の狙いは**プレイヤー**(手榴弾と同型)。
+          const fkHostile = isHostileOwner(fkOwner);
+          const target = fkHostile
+            ? { x: player.x, y: player.y, width: player.width, height: player.height }
+            : pickSubAimTarget(fkOwner, ghostSubBossId, useGameStore.getState().enemies);
           if (target) {
             const aimX = target.x + target.width / 2 - pcx;
             const aimY = target.y + target.height / 2 - pcy;
@@ -8620,13 +8624,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               createdAt: Date.now(),
               passthrough: false,
               hitEnemies: [],
-              hostile: false,
+              // ★SAME_ARENA O-3b(手榴弾と同型): 幻影の投擲は**プレイヤーに当たり**(hostile)、
+              // **カウンターできない**(noCounter=紫の文法)。既定は従来どおり=1bit不変。
+              hostile: fkHostile,
+              noCounter: fkHostile ? true : undefined,
               reflected: false,
               area: FIRE_KNIFE_RADIUS_BY_LEVEL[level], // 爆発半径(命中後の爆発で参照)
               ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
+              ownerPhantom: fkHostile ? true : undefined, // 視覚専用マーカー(紫tint=カウンター不可)
             });
             // v0.25.2480: ゴースト発動時のみ投擲点(オーナー中心)で距離減衰(プレイヤー発動は従来どおり等倍)。
-            const knifeGain = ghostOwned ? subSfxGainAt(pcx, pcy) : 1;
+            const knifeGain = (ghostOwned || fkHostile) ? subSfxGainAt(pcx, pcy) : 1; // 幻影発も距離減衰(SAME_ARENA O-3b)
             if (knifeGain > 0) playSfx('shot-damage', knifeGain);
             setActorSubWeaponCooldown(ownerGhostId(fkOwner), 'fire-knife', gameTime + FIRE_KNIFE_COOLDOWN_BY_LEVEL[level]);
             consumeGhostSubClaim(fkOwner); // G2.6

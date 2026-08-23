@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3859',
+    items: [
+      '幻影(決闘の相手)が火炎ナイフも投げてくるようになりました。紫色で、カウンターでは打ち返せません。',
+    ],
+  },
+  {
     version: '0.25.3858',
     items: [
       'ボスモードの一覧で、決闘の相手が「幻影」と表示されるようになりました(毎回ちがう人物が来るため)。',
