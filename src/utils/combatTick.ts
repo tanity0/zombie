@@ -663,7 +663,9 @@ export const applyEnemyProjectileHits = (
   let reflectedAny = false;
   for (const proj of incoming) {
     const currentPlayer = useGameStore.getState().player;
-    if (now <= currentPlayer.counterWindowEnd) {
+    // ★紫の文法(SAME_ARENA O-3): `noCounter` の弾は**打ち返せない**。既定(未設定)は従来どおり反射する
+    // ので、この条件は既存の弾を1bitも変えない。
+    if (now <= currentPlayer.counterWindowEnd && !proj.noCounter) {
       // 反射1回分は共有関数(主語=プレイヤー。ghostId未指定=従来と1bit同値)。
       applyCounterReflect(proj.id, now, currentPlayer, tunables);
       reflectedAny = true;

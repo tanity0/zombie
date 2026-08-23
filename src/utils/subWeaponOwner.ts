@@ -12,7 +12,9 @@
 //   宛先の決定は ownerGhostId(下)を使う。
 
 export interface SubWeaponOwner {
-  kind: 'player' | 'ghost-ally';
+  // ★research/SAME_ARENA.md O-3: 幻影(`guardian-phantom`)を主語に加える。守護霊との決定的な違いは
+  // **狙う相手がプレイヤー**であること=効果を敵対側(`hostile`)で撒く必要がある(下の isHostileOwner)。
+  kind: 'player' | 'ghost-ally' | 'phantom';
   /** 当たり判定 左上x/y と寸法(プレイヤー/ゴースト本体と同じ形)。 */
   x: number;
   y: number;
@@ -47,6 +49,27 @@ export const playerAsOwner = (
   summonId: null,
 });
 
+/**
+ * ★SAME_ARENA O-3: 幻影(敵シャーシ)をオーナーとして渡す。
+ * `summonId` は幻影の enemy.id を載せる(CD帳簿の宛先解決=`setActorSubWeaponCooldown` が
+ * 守護霊で見つからなければ幻影として書く、という既存の分岐にそのまま乗る)。
+ */
+export const phantomAsOwner = (
+  phantom: OwnerBodyLike & { id: string },
+  facing: { x: number; y: number } | null = null,
+): SubWeaponOwner => ({
+  kind: 'phantom',
+  x: phantom.x,
+  y: phantom.y,
+  width: phantom.width,
+  height: phantom.height,
+  facing,
+  summonId: phantom.id,
+});
+
+/** 効果を敵対側(プレイヤーを狙う)で撒く主語か。幻影だけ true。 */
+export const isHostileOwner = (o: SubWeaponOwner): boolean => o.kind === 'phantom';
+
 /** ゴースト(kind='ghost-ally')をオーナーとして渡す。facing はゴーストの水平向き(1|-1)。 */
 export const ghostAsOwner = (
   ghost: OwnerBodyLike & { id: string; ghostFacing?: 1 | -1 },
@@ -65,8 +88,11 @@ export const ghostAsOwner = (
  * combatActorPlayer / setActorDashState / setActorSubWeaponCooldown へ渡す ghostId と同じ意味
  * (§2.11追補 v0.25.2541: 状態は主語ごと=CD帳簿・分身・地雷チャージの宛先を決める1本)。
  */
+// ★SAME_ARENA O-3: 名前は `ownerGhostId` のままだが、**CD帳簿の宛先id**を返す関数。
+// 幻影も自前の帳簿を持つ(`Enemy.phantomSubWeaponCooldowns`)ので、幻影のidも返す
+// (`setActorSubWeaponCooldown` が「守護霊で見つからなければ幻影」の順で宛先を解決する)。
 export const ownerGhostId = (o: SubWeaponOwner): string | undefined =>
-  o.kind === 'ghost-ally' ? (o.summonId ?? undefined) : undefined;
+  (o.kind === 'ghost-ally' || o.kind === 'phantom') ? (o.summonId ?? undefined) : undefined;
 
 export const ownerCenterX = (o: OwnerBodyLike): number => o.x + o.width / 2;
 export const ownerCenterY = (o: OwnerBodyLike): number => o.y + o.height / 2;

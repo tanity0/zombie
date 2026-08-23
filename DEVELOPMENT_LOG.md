@@ -1,5 +1,50 @@
 # Development Log
 
+## v0.25.3856 — オンライン計画 O-3a: 幻影がサブウェポンを使う(土台+手榴弾)【2026-08-23 22:15】
+
+社長「次へ」。O-3 に着手し、**実配線を洗った結果「守護霊には無い設計面が3つ」**出たので、
+**土台でその3つを全部片付ける**形にした(残りの種は同じ型の繰り返しになる)。
+
+### ★守護霊には無かった3点(と、その解)
+| # | 何が違うか | 解 |
+|---|---|---|
+| 1 | **狙う相手がプレイヤー**。`pickSubAimTarget` は敵しか返さない | `isHostileOwner(owner)` で分岐し、幻影のときはプレイヤー中心へ向ける |
+| 2 | 効果を**敵対側**で撒く必要がある | `Projectile.hostile` を主語で決める(既存フラグがそのまま使えた) |
+| 3 | ★**素通しだと打ち返せてしまう** | `combatTick` のカウンター反射は**全hostile弾を無条件で返していた**。`Projectile.noCounter` を新設して除外 |
+
+**#3 が最大の発見。** これが無いと「**紫(カウンター不可)のはずの技をカウンターで打ち返せる**」= 色の文法違反
+になっていた。既定(未設定)は従来どおり反射するので、**既存の弾は1bitも変わらない**。
+★この `noCounter` は**既存タスク#37「アイドルの手榴弾: カウンター不可+紫文法へ」の土台**にもなる。
+
+### 実装
+- `types/game.ts`: `Projectile.noCounter`(紫の文法)/ `Projectile.ownerPhantom`(視覚専用の紫マーカー)/
+  `Enemy.gpSubClaim` `Enemy.gpLastSubUseAt`(サブ使用の予約。守護霊の `ghostSubClaim` と同型)。
+- `combatTick`: カウンター反射を `!proj.noCounter` で門番。
+- `subWeaponOwner`: `kind` に `'phantom'` を追加、`phantomAsOwner` / `isHostileOwner` を新設。
+  `ownerGhostId` は幻影のidも返す(CD帳簿の宛先解決が既存の分岐にそのまま乗る=**3者が別財布**)。
+- `phantomTick`: 予約を立てる。判断は**守護霊と同じ純関数** `shouldGhostClaimSub` に
+  **記録の癖**(`profile.subUsesPerMin`)を渡す=「誰と戦っているか」がサブの頻度にも出る。
+- `useGameLoop`: サブ発動口で幻影を主語に解決(`subSubject` に幻影枝。判定式は守護霊と**まったく同じ**
+  「その種を持っている+自前CDが明けている」)。予約の消費も同じ作法。
+- **手榴弾**: 幻影が投げる時は**プレイヤーを狙い**・`hostile`・`noCounter`・紫tint。
+- `pixiScene`: 主語マーカーの3箇所に紫を追加(`PHANTOM_SUB_TINT`)。判定には一切使わない。
+
+### 残り(O-3b)
+molotov / homing / support-sniper / striker-quick-mag / drone-boomerang / flare-gun / junk-weapon /
+marksman-trap / decoy / shield / turret / fire-knife。**土台が済んだので同じ型の繰り返し**
+(狙い先の分岐+`hostile`/`noCounter`/紫マーカーを渡すだけ)。
+CD概念を持たない4種(whip/alchemy・sage-stone/shijin/striker-hunting)は従来どおり **O-6** 送り。
+
+**変更ファイル**: `src/types/game.ts`, `src/utils/combatTick.ts`, `src/utils/subWeaponOwner.ts`,
+`src/utils/phantomTick.ts`, `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`,
+`src/utils/phantomSubs.test.ts`(新規), `research/SAME_ARENA.md`, `PROJECT_STATUS.md`,
+`package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`
+**検証**: typecheck 0 / lint 0エラー(既存warning 8)/ `src/utils` + `src/data` = **3714件緑**。
+新規 `phantomSubs.test.ts` 4件(幻影だけが敵対側の主語/CD帳簿の宛先idが返る/座標を持つ/向きの既定)。
+**唯一の赤は flaky台帳掲載の舞妓の乱数flaky(実測1/3)=本変更と無関係。**
+**負荷スコア**: 1/10(予約の判定が1フレーム1回。弾は既存の経路)。
+**状態変化**: ★オンライン計画 → **O-3a 完了。次=O-3b**。
+
 ## v0.25.3855 — ★原則「記録が持つのは持ち物。数値は今の表から引く」+ 初期HP 120/130 の食い違いを解消【2026-08-23 22:12】
 
 社長「**持つべき情報はビルドであって、何を持ってるのか?さえ分かれば、あとはゲーム内の規定数値

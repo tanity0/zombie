@@ -625,6 +625,14 @@ export interface Enemy {
    * 守護霊の `Summon.ghostSubWeaponCooldowns` と同型=**3者が別財布**(社長裁定2026-08-23)。
    */
   phantomSubWeaponCooldowns?: Partial<Record<SubWeaponKey, number>>;
+  /**
+   * ★research/SAME_ARENA.md O-3: 「次のサブ発動1回」を幻影がオーナーとして使う予約。
+   * 守護霊の `Summon.ghostSubClaim` と同型で、判断も**同じ純関数**(`shouldGhostClaimSub` に
+   * 記録の `subUsesPerMin` を渡す)。実際の発動はサブ入口が次フレーム以降にCD明けで解決する。
+   */
+  gpSubClaim?: boolean;
+  /** 幻影が最後にサブを実際に使った時刻(ms・Date.now基準)。予約間隔の起点。 */
+  gpLastSubUseAt?: number;
   /** パリィ成立の時刻。**次tickの phantomTick が消費**して即反撃を1回割り込ませる(ハンドシェイク)。 */
   gpParriedAt?: number;
   /** 幻影が銃弾をパリィした打刻(gameTime)。同tickの弾ヒット処理が消費して弾を打ち返す(v0.25.3665)。 */
@@ -1596,6 +1604,19 @@ export interface Projectile {
   // passthrough behavior for sniper/grenade).
   pierce?: number;
   hostile: boolean;
+  /**
+   * ★紫の文法(CLAUDE.md「色と形の文法」): **カウンター/打ち返しの対象外**。
+   * research/SAME_ARENA.md O-3(幻影のサブウェポン)で新設。既定(未設定)=従来どおり**打ち返せる**
+   * ので、この1行は既存の弾を1bitも変えない。
+   * ※`combatTick.tickProjectilePlayerCollisions` の反射は**素通しで全hostile弾を返していた**ため、
+   *   これを付けないと「紫のはずの技をカウンターで打ち返せる」=文法違反になる。
+   */
+  noCounter?: boolean;
+  /**
+   * ★視覚専用マーカー(SAME_ARENA O-3): 幻影が撒いた物=**紫**(=カウンターできない)。
+   * `ownerGhost`(守護霊=青白tint)と同じ枠組みで、判定には一切使わない。
+   */
+  ownerPhantom?: boolean;
   reflected: boolean;
   // Gun crit flag — legacy generation-time roll. CRIT-UNIFY §9.1(this batch) stopped rolling
   // this at fire time; new code should carry `critChance` instead and roll at hit time

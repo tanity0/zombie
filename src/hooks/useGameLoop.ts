@@ -378,7 +378,7 @@ import { recordRunFinal, getRunTelemetrySnapshot } from '../utils/runTelemetry';
 import { decideBotShopPurchase } from '../utils/botShopPolicy';
 import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement, recordPhillHeadshot, recordHomingHold } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, ghostIsMovingNow, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
-import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
+import { playerAsOwner, ghostAsOwner, phantomAsOwner, isHostileOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
 import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化
 import { resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
@@ -7701,7 +7701,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 弾薬・スクラップ等の資源は消費しない(対象の種は元々資源を使わない)。
         const playerOwner = playerAsOwner(subWeaponPlayer);
         const ghostAllyForSub = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
-        let subOwner: SubWeaponOwner = ghostAllyForSub?.ghostSubClaim ? ghostAsOwner(ghostAllyForSub) : playerOwner;
+        // ★research/SAME_ARENA.md O-3: 幻影も主語になれる。守護霊が予約していない時だけ見る
+        // (同一フレームで主語になれるのは1人=既存の作法をそのまま延長)。
+        const phantomForSub = ghostAllyForSub?.ghostSubClaim
+          ? undefined
+          : useGameStore.getState().enemies.find(e => e.type === 'guardian-phantom' && e.gpSubClaim);
+        let subOwner: SubWeaponOwner = ghostAllyForSub?.ghostSubClaim
+          ? ghostAsOwner(ghostAllyForSub)
+          : phantomForSub
+            ? phantomAsOwner(phantomForSub)
+            : playerOwner;
         // v0.25.2472: ゴースト発動時の照準先=紐付きボス(pickSubAimTargetがowner.kindを見るので、
         // プレイヤー発動時はこのidが渡っていても一切使われない=従来どおり最寄りの敵)。
         const ghostSubBossId = ghostAllyForSub?.ghostBossId;
@@ -7710,8 +7719,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // v0.25.2541: 実際に撃った主語(firedOwner)で判定する(ゴーストが予約中でもプレイヤーが
         // 撃った場合は予約を下ろさない=下の subSubject でフォールバックした時のため)。
         const consumeGhostSubClaim = (firedOwner: SubWeaponOwner) => {
-          if (firedOwner.kind !== 'ghost-ally') return;
           const claimedId = firedOwner.summonId;
+          // ★SAME_ARENA O-3: 幻影も同じ作法で予約を下ろす(宛先が enemies になるだけ)。
+          if (firedOwner.kind === 'phantom') {
+            subOwner = playerOwner;
+            useGameStore.setState(st => ({
+              enemies: st.enemies.map(e => e.id === claimedId
+                ? { ...e, gpSubClaim: false, gpLastSubUseAt: Date.now() }
+                : e),
+            }));
+            return;
+          }
+          if (firedOwner.kind !== 'ghost-ally') return;
           subOwner = playerOwner;
           useGameStore.setState(st => ({
             summons: st.summons.map(s => s.id === claimedId
@@ -7725,6 +7744,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // サブは従来どおり出る=ゴーストが持っていない種でプレイヤーの発動が止まる事故を作らない)。
         // 予約が無い間は常に {subWeaponPlayer, playerOwner} = 従来と1bit同じ。
         const subSubject = (key: SubWeaponKey): { actor: Player; owner: SubWeaponOwner } => {
+          // ★SAME_ARENA O-3: 幻影も守護霊と**まったく同じ条件**(その種を持っている+自前CDが明けている)。
+          // `combatActorPlayer` は幻影も解決するので、判定式は1本のまま。
+          if (subOwner.kind === 'phantom' && subOwner.summonId) {
+            const pa = combatActorPlayer(subOwner.summonId);
+            if (
+              pa && pa.subWeapons.includes(key) &&
+              !subWeaponBlockedByKatana(pa, key) &&
+              gameTime >= (pa.subWeaponCooldowns[key] ?? 0)
+            ) return { actor: pa, owner: subOwner };
+            return { actor: subWeaponPlayer, owner: playerOwner };
+          }
           if (subOwner.kind === 'ghost-ally' && subOwner.summonId) {
             const ga = combatActorPlayer(subOwner.summonId);
             if (
@@ -7755,9 +7785,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const ghostOwned = hgOwner.kind === 'ghost-ally';
           // v0.25.2472: ターゲット選択は照準の合流点(純関数)へ。プレイヤー=従来の最寄り非リーパー
           // (手順まで同一=挙動不変)/ゴースト=紐付きボス優先。
-          const target = pickSubAimTarget(hgOwner, ghostSubBossId, useGameStore.getState().enemies);
-          const aimX = target ? target.x + target.width / 2 - pcx : hgOwner.facing?.x ?? 1;
-          const aimY = target ? target.y + target.height / 2 - pcy : hgOwner.facing?.y ?? 0;
+          // ★research/SAME_ARENA.md O-3: **幻影が投げる時の狙いはプレイヤー**(守護霊/プレイヤーは敵を狙う)。
+          // ここが「主語を差し替えるだけでは済まない」唯一の点=効果を敵対側へ向ける必要がある。
+          const hostileOwned = isHostileOwner(hgOwner);
+          const hgAimTo = hostileOwned
+            ? { x: player.x + player.width / 2, y: player.y + player.height / 2 }
+            : (() => {
+              const t = pickSubAimTarget(hgOwner, ghostSubBossId, useGameStore.getState().enemies);
+              return t ? { x: t.x + t.width / 2, y: t.y + t.height / 2 } : null;
+            })();
+          const aimX = hgAimTo ? hgAimTo.x - pcx : hgOwner.facing?.x ?? 1;
+          const aimY = hgAimTo ? hgAimTo.y - pcy : hgOwner.facing?.y ?? 0;
           const mag = Math.max(0.001, Math.hypot(aimX, aimY));
           const baseDir = { x: aimX / mag, y: aimY / mag };
           const angles = GRENADE_SPREAD_BY_LEVEL[level] ?? GRENADE_SPREAD_BY_LEVEL[1];
@@ -7779,9 +7817,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               createdAt: Date.now(),
               passthrough: false,
               hitEnemies: [],
-              hostile: false,
+              // ★SAME_ARENA O-3: 幻影が投げた物は**プレイヤーに当たる**(hostile)。
+              hostile: hostileOwned,
+              // ★紫の文法(CLAUDE.md): サブウェポンは**カウンターできない**。プレイヤーが使う時も
+              // カウンター対象ではないので、これで対称が保たれる。この1行が無いと
+              // `combatTick` の反射が全hostile弾を素通しで返す=「紫なのに打ち返せる」になる。
+              noCounter: hostileOwned ? true : undefined,
               reflected: false,
               ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
+              ownerPhantom: hostileOwned ? true : undefined, // 視覚専用マーカー(紫tint=カウンター不可)
             });
           });
           setActorSubWeaponCooldown(ownerGhostId(hgOwner), 'heavy-grenade', gameTime + HEAVY_GRENADE_COOLDOWN_MS);

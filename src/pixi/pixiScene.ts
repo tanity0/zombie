@@ -1935,6 +1935,8 @@ const TORCH_FLAME_SCALE = 0.55;
 const FLAME_ART_H_PER_R = 6.5;
 const TORCH_REFLECTION_W = 92;
 const TORCH_REFLECTION_H = 24;
+// ★紫=カウンターできない攻撃(CLAUDE.md「色と形の文法」)。幻影のサブウェポン用の視覚専用tint。
+const PHANTOM_SUB_TINT = 0xc084fc;
 const STRONG_GLOW_RADIUS = 44;
 // 強glowの大きさ倍率。**既定 1.3(社長裁定v0.25.2686。旧 1.7)。**
 //
@@ -20862,7 +20864,7 @@ export class PixiScene {
       if (v.sprite.texture !== tex) v.sprite.texture = tex;
       const scale = tex.height > 0 ? DECOY_DISPLAY_H / tex.height : 1;
       v.sprite.scale.set(scale * sqx, scale * sqy);
-      v.sprite.tint = p.ownerGhost ? GHOST_ALLY_TINT : 0xffffff;
+      v.sprite.tint = p.ownerPhantom ? PHANTOM_SUB_TINT : (p.ownerGhost ? GHOST_ALLY_TINT : 0xffffff); // 紫=カウンター不可(SAME_ARENA O-3)
     }
   }
 
@@ -20904,7 +20906,7 @@ export class PixiScene {
     if (tex) {
       if (v.sprite.texture !== tex) v.sprite.texture = tex;
       v.sprite.scale.set(FIRE_KNIFE_DISPLAY_LEN / FIRE_KNIFE_NATIVE_LEN);
-      v.sprite.tint = p.ownerGhost ? GHOST_ALLY_TINT : 0xffffff;
+      v.sprite.tint = p.ownerPhantom ? PHANTOM_SUB_TINT : (p.ownerGhost ? GHOST_ALLY_TINT : 0xffffff); // 紫=カウンター不可(SAME_ARENA O-3)
     }
     const g = v.gfx;
     g.clear();
@@ -20986,7 +20988,7 @@ export class PixiScene {
       // スプライト描画(紫背景は読込時に透過済み)。前方=照準へ回転(art は砲身が下向き基準)、全方位=回転なし。
       v.sprite.visible = true;
       v.sprite.texture = tex;
-      v.sprite.tint = p.ownerGhost ? GHOST_ALLY_TINT : 0xffffff;
+      v.sprite.tint = p.ownerPhantom ? PHANTOM_SUB_TINT : (p.ownerGhost ? GHOST_ALLY_TINT : 0xffffff); // 紫=カウンター不可(SAME_ARENA O-3)
       const targetH = 54;
       const sc = targetH / tex.height;
       v.sprite.scale.set(sc);

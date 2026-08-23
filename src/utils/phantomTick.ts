@@ -44,6 +44,7 @@ import {
 import { GRAVITY_SHOT_BOSS_SLOW_MULT } from './skillEffectsB7';
 import {
   decideGhost, GHOST_COUNTER_MELEE_PERIOD_MS, type GhostDecision, type GhostProfile,
+  shouldGhostClaimSub,
 } from './ghostDriver';
 import { strongestGuardian } from '../data/fixedGuardians';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
@@ -612,6 +613,13 @@ export const runPhantomTick = (
 
   // ---- 銃の状態(リロード)を進める --------------------------------------------------------------
   stepPhantomGun(s, nowMs, phantom.id);
+  // ★research/SAME_ARENA.md O-3: サブウェポン使用の**予約**。守護霊(G2.6)と同じ純関数・同じ考え方
+  // (「CDが明けていて交戦中なら使う」)。実際の発動はサブ入口(useGameLoop)がCD明けに解決して
+  // 予約を下ろす。頻度は**記録の癖**(profile.subUsesPerMin)=誰と戦っているかがここにも出る。
+  if (!phantom.gpSubClaim
+    && shouldGhostClaimSub(phantom.gpLastSubUseAt ?? 0, nowMs, phantomProfile().subUsesPerMin)) {
+    patch.gpSubClaim = true;
+  }
 
   // ---- 頭脳(★技中の概念が無くなったので毎tick呼ぶ=弾回避・危険記憶が常時効く) -------------------
   const decision = decidePhantom(phantom, s, player, st0.projectiles, newGameTime, nowMs);

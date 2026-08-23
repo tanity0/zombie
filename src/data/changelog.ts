@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3856',
+    items: [
+      '幻影(決闘の相手)が手榴弾を投げてくるようになりました。紫色で、カウンターでは打ち返せません。',
+    ],
+  },
+  {
     version: '0.25.3855',
     items: [
       '守護霊・幻影の強さが、記録の数値ではなく「何を持っているか」から計算されるようになりました(初期HPの食い違いで10ズレていたのも直っています)。',
