@@ -189,6 +189,14 @@ let bossRelaxPrev = false;
 // 施設ロック(facilitiesLocked)と同型の尾(bossRelaxWithTail・10秒)を張るために持ち回る。
 // ラン跨ぎ(gameTimeが0へ戻る)はbossRelaxWithTail側のnow<lastTrueAtガードで無効化される。
 let bossRelaxLastTrueAt = 0;
+// ★バグ修正2026-08-22: 上の2つは**モジュールスコープ**なので出撃をまたいでも残る。
+// `bossRelaxWithTail` の `now >= lastTrueAt` ガードは「gameTime が前ランの記録より小さい間」しか効かず、
+// **ラン2で同じ時刻に到達すると前ランの記憶で10秒間リラックスになる**(実害: その10秒だけ湧きが静かになる)。
+// resetGame から明示的に呼んで消す。
+export const resetBossRelaxState = (): void => {
+  bossRelaxPrev = false;
+  bossRelaxLastTrueAt = 0;
+};
 
 // PACING_PUZZLE.md §7-11c(2): ランク床(決定済み仕様)。既定ON。?rankfloor=0で無効化(比較用)。
 const RANK_FLOOR_ENABLED = typeof window === 'undefined'

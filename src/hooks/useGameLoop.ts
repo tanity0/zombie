@@ -311,6 +311,7 @@ import {
   selectPattern,
   nuisanceTarget,
   type FormationPattern, type NuisanceCounts, type KomaKind4, type ChaffRampState, type NuisanceType,
+  KOMA_START_KIND,
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
@@ -362,7 +363,7 @@ import {
   runGhostAndTraitsStep,
   // 賞金首(§6.38 B1.5-5)の出現バナー用。useGameLoop.ts側の同名ローカル定数(既存・別件・値は同じ3500)
   // と衝突するため別名でimportする(そちらを触るのは本発注の範囲外)。
-  EVENT_BANNER_MS as BOUNTY_APPEAR_BANNER_MS,
+  EVENT_BANNER_MS as BOUNTY_APPEAR_BANNER_MS, resetBossRelaxState
 } from '../utils/directorTick';
 import { debtFor, debtTempoEaseMult, CAST_DEBT_MAX } from '../utils/boardDebt';
 import { resetPityDrop } from '../utils/pityState';
@@ -1379,7 +1380,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // ★v0.25.3546: ピークの「赤い個体1体」をこのコマで出したか。
     peakRedSpawned: boolean;
   }>({
-    kind: 'relax', elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
+    kind: KOMA_START_KIND, elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
     lastPatternId: null, acc: createKomaAccumulator(), provisionalDelta: null, pendingFinalDelta: null,
     chaffRamp: { target: 1, msSinceRampMs: 0 }, belowTargetMs: 0, excitedThisKoma: false, peakRedSpawned: false,
   });
@@ -2643,12 +2644,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }));
           }
           puzzleKomaRef.current = {
-            kind: 'relax', elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
+            kind: KOMA_START_KIND, elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
             lastPatternId: null, acc: createKomaAccumulator(), provisionalDelta: null, pendingFinalDelta: null,
             chaffRamp: { target: 1, msSinceRampMs: 0 }, belowTargetMs: 0, excitedThisKoma: false, peakRedSpawned: false,
           };
           puzzleSoftenRef.current = createSoftenState();
           puzzleCdRef.current = { lastBaseSpawnAt: 0, lastNuisanceSpawnAt: 0, lastSpecialSpawnAt: 0 };
+          // ★バグ修正2026-08-22: ボス強制リラックスの尾(10秒)はdirectorTickのモジュール変数に
+          // 持っているので、出撃をまたぐと前ランの記録が残る(ラン2で同じ時刻に到達すると
+          // 10秒だけ湧きが静かになる)。ここで消す。※gameStoreから呼ぶとdirectorTickとの
+          // 循環importになるため、既にdirectorTickを読んでいるこちら側でリセットする。
+          resetBossRelaxState();
           puzzleHitRef.current = { prevHp: -1, lastHitAt: -1e9 };
           rankPaceRef.current = { state: createRankPaceState(), prevKills: 0 }; // M50: 連続査定も新ランでリセット
           setPuzzleDebug(null);

@@ -45,7 +45,7 @@ import { weaknessCritBonus } from './weaknessCrit';
 import { applyEnemyCritPenalty, projectileHitCritChance } from './critPenalty';
 import { phaseAt } from './difficultyDirector';
 import { createPuzzleClockState, createKomaAccumulator, createSoftenState, createRankPaceState, clampRank } from './rankAssessor';
-import { ZERO_NUISANCE, selectPattern, nuisanceTarget, type NuisanceType } from './scriptPuzzle';
+import { ZERO_NUISANCE, selectPattern, nuisanceTarget, KOMA_START_KIND, type NuisanceType } from './scriptPuzzle';
 import { createPinchState } from './pityDirector';
 import { createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust } from './aiDirector';
 import { spawnEscalation } from './difficultyScaler'; // AI_DIRECTOR_METRICS計測(v0.25.3477): headless側でも難易度③(戦力連動escalation)を実機と同じ式で再現するために使う(下記PlaytestTickOptions.directorApplyのコメント参照)。
@@ -136,7 +136,7 @@ export interface PlaytestRefs {
 // useGameLoop.ts の useRef 初期値と同じ形(M9-A extraction時点のスナップショット)。
 export const createPlaytestRefs = (): PlaytestRefs => {
   const komaState: KomaState = {
-    kind: 'relax', elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
+    kind: KOMA_START_KIND, elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
     lastPatternId: null, acc: createKomaAccumulator(), provisionalDelta: null, pendingFinalDelta: null,
     chaffRamp: { target: 1, msSinceRampMs: 0 }, belowTargetMs: 0, excitedThisKoma: false, peakRedSpawned: false,
   };

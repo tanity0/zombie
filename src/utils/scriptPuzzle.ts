@@ -179,7 +179,15 @@ export const decideNextSpawn = (input: BoardMaintenanceInput): PuzzleSpawnDecisi
 // ---- M6 §4-C: 4コマサイクル(リラックス→ハーベスト→通常→ピーク)【旧4-C(RELAX⇄HARVEST交互)は廃止】
 
 export type KomaKind4 = 'relax' | 'harvest' | 'normal' | 'peak';
-export const KOMA_ORDER: KomaKind4[] = ['relax', 'harvest', 'normal', 'peak']; // ラン開始=リラックスから
+export const KOMA_ORDER: KomaKind4[] = ['relax', 'harvest', 'normal', 'peak']; // サイクルの並び(開始位置は下のKOMA_START_KIND)
+// ★社長裁定2026-08-22「ハーベストスタートに変更」: ラン開始のコマ。旧: 'relax'。
+// なぜ変えたか(社長報告): **ステージ6(洋館通路)を上へ走り抜けると、ほとんど敵に会わずクリアできた。**
+// 実測——通路の直進所要は約32.5秒(3390px ÷ 104.4px/s)に対し、緩コマは40秒。つまり
+// **緩が終わる前にゴールに着く**=ラン全体が「チャフ目標1体・湧きCD2秒」の緩のまま終わっていた。
+// (2026-08-16 に緩の係数を cap×0.4→×0.1 へ絞ったことで、この構造が表面化した)。
+// ハーベスト開始なら開幕から満量(cap)を目標にランプするので、短いステージでも遊びが立つ。
+// サイクルは harvest → normal → peak → relax → harvest … と回る(KOMA_ORDER の並びは不変)。
+export const KOMA_START_KIND: KomaKind4 = 'harvest';
 export const nextKomaKind = (kind: KomaKind4): KomaKind4 =>
   KOMA_ORDER[(KOMA_ORDER.indexOf(kind) + 1) % KOMA_ORDER.length];
 

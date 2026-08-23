@@ -5,7 +5,7 @@ import {
   NUISANCE_CD_MS, SPECIAL_CD_MS, POST_HIT_GUARD_MS, pickChaffType, CHAFF_WEIGHTS_DEFAULT,
   decideNextSpawn,
   peakRedTier,
-  nextKomaKind, KOMA_ORDER, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
+  nextKomaKind, KOMA_ORDER, KOMA_START_KIND, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
   chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp,
   isScriptCleared, selectRotationPattern, LOWER_MIX_CHANCE, LOWER_MIX_CHANCE_HIT,
   ZERO_NUISANCE, type NuisanceCounts,
@@ -188,7 +188,21 @@ describe('緩コマ(relax/harvest)の邪魔者補充停止', () => {
 });
 
 describe('M6 §4-C: 4コマサイクル', () => {
-  it('KOMA_ORDER is relax→harvest→normal→peak, run starts at relax, and nextKomaKind cycles it', () => {
+  // ★社長裁定2026-08-22「ハーベストスタートに変更」。ステージ6(通路)は直進32.5秒に対し緩コマ40秒で、
+  // **緩が終わる前にゴールへ着く**=ラン全体が「チャフ目標1体」のまま終わっていた(社長報告
+  // 「上に突っ走るとほとんど敵と会わずにクリアできる」)。開始コマを値で固定し、静かに戻らないようにする。
+  it('★ラン開始のコマは harvest(緩ではない)。サイクルは harvest→normal→peak→relax', () => {
+    expect(KOMA_START_KIND).toBe('harvest');
+    expect(nextKomaKind(KOMA_START_KIND)).toBe('normal');
+    expect(nextKomaKind('normal')).toBe('peak');
+    expect(nextKomaKind('peak')).toBe('relax');
+    expect(nextKomaKind('relax')).toBe('harvest');
+    // 開始コマの目標がチャフ満量であること(緩=cap*0.1 ではない)
+    expect(chaffTargetForKoma(KOMA_START_KIND, 10)).toBe(10);
+    expect(chaffTargetForKoma('relax', 10)).toBe(1);
+  });
+
+  it('KOMA_ORDER is relax→harvest→normal→peak, and nextKomaKind cycles it', () => {
     expect(KOMA_ORDER).toEqual(['relax', 'harvest', 'normal', 'peak']);
     expect(nextKomaKind('relax')).toBe('harvest');
     expect(nextKomaKind('harvest')).toBe('normal');
