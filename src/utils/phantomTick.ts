@@ -50,7 +50,7 @@ import { strongestGuardian } from '../data/fixedGuardians';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { GUARDIAN_PHANTOM_LABEL } from './bossPractice';
 import { actorBuildFor } from './ghostBuild';
-import { getPhantomIdentity, phantomDisplayLabel } from './phantomIdentity'; // SAME_ARENA O-5: その回の人格 // SAME_ARENA: 記録どおりの武器を守護霊と同じ道具で引く
+import { getPhantomIdentity, phantomDisplayLabel, phantomClassId } from './phantomIdentity'; // SAME_ARENA O-5: その回の人格 // SAME_ARENA: 記録どおりの武器を守護霊と同じ道具で引く
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from './phantomScript';
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
@@ -117,7 +117,7 @@ const PHANTOM_PARRY_SHOVE_MS = 180;
  * 旧: snapshot.activeGunKey(handgun-t3=計測時の装備)——スキル再現が入る第3弾で戻す候補。
  */
 const phantomGunKey = (): string | undefined =>
-  PLAYER_PROFILES[strongestGuardian().classId]?.gunKey;
+  PLAYER_PROFILES[phantomClassId()]?.gunKey; // ★O-5: フォールバックの初期銃も**その回の人格のクラス**
 
 /**
  * 近接ダメージ=台帳クラスの**初期近接武器の実ダメージ**(rogue=machete-t3)。同裁定。
@@ -129,7 +129,7 @@ const phantomGunKey = (): string | undefined =>
 export const phantomMeleeDamage = (growthAtkMult = 1, phantomId?: string): number => {
   // ★社長裁定2026-08-23: 記録に近接武器があれば**記録どおり**。無い時だけ従来のクラス初期近接。
   const recorded = phantomId !== undefined ? actorMeleeFor(phantomId) : undefined;
-  const key = PLAYER_PROFILES[strongestGuardian().classId]?.meleeKey;
+  const key = PLAYER_PROFILES[phantomClassId()]?.meleeKey; // ★O-5: 同上
   const base = recorded?.damage ?? ((key ? createWeapon(key).damage : null) ?? GP_T.melee.damage);
   // ★SAME_ARENA O-2: 記録どおりのスキル/装備の倍率を乗せる(主語=幻影の疑似Player)。
   // `phantomId` 未指定 or ビルド無し=倍率1で従来と1bit同じ。**クリは近接では従来どおり未適用**

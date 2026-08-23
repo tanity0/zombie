@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   pickFixedPhantom, pickPhantomIdentity, setPhantomIdentity, getPhantomIdentity,
-  clearPhantomIdentity, phantomDisplayLabel,
+  clearPhantomIdentity, phantomDisplayLabel, phantomClassId,
 } from './phantomIdentity';
 import { phantomProfile } from './phantomTick';
 import { FIXED_GUARDIANS, strongestGuardian } from '../data/fixedGuardians';
@@ -76,5 +76,26 @@ describe('O-5 頭脳(癖)も人格から来る', () => {
     const p = phantomProfile();
     expect(p.counterChance).toBe(strongestGuardian().profile.counterChance);
     expect(p.preferredDist).toBe(strongestGuardian().profile.preferredDist);
+  });
+});
+
+describe('★O-5の取りこぼし: 人格から取っていなかった値(v0.25.3860で修正)', () => {
+  // 「別人と戦っているのに、パリィの上手さ・反応速度・立ち絵だけ台帳の最強データ(鴉)」
+  // という状態だった。人格を切り替えたら全部追従することを固定する。
+  it('クラス(立ち絵・初期武器のフォールバック)が人格に追従する', () => {
+    const other = FIXED_GUARDIANS.find(g => g.classId !== strongestGuardian().classId);
+    expect(other, '台帳にクラス違いが1人も居ないとこのテストは意味を持たない').toBeTruthy();
+    setPhantomIdentity({ name: other!.name, profile: other!.profile, source: 'fixed' });
+    expect(phantomClassId()).toBe(other!.classId);
+  });
+
+  it('人格が未設定なら台帳の最強データのクラス(=従来と1bit同じ)', () => {
+    expect(phantomClassId()).toBe(strongestGuardian().classId);
+  });
+
+  it('人格はパリィ率・反応速度を持っている(gameStore がここから引く)', () => {
+    const id = pickFixedPhantom(() => 0.6);
+    expect(typeof id.profile.counterChance).toBe('number');
+    expect(typeof id.profile.reactionMs).toBe('number');
   });
 });

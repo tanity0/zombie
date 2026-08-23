@@ -1,5 +1,32 @@
 # Development Log
 
+## v0.25.3860 — O-5の取りこぼし修正: パリィ率・反応速度・クラスも人格から【2026-08-23 22:34】
+
+社長の問い「**これいま、幻影とプレイヤーのダメージ量の計算フェア?**」を確かめる過程で、
+**O-5(人格化)の取りこぼしを3つ**見つけたので先に直した。
+
+### 何が漏れていたか
+v0.25.3854(O-5)で癖・ビルド・HP・名前は人格から取るようにしたが、**以下は台帳の最強データ(鴉)固定
+のまま残っていた**=「**別人と戦っているのに、パリィの上手さと反応速度と立ち絵だけ鴉**」。
+
+| 値 | どこ | 修正 |
+|---|---|---|
+| **パリィ成立率** | `gameStore.ts:2612` `strongestGuardian().profile.counterChance` | その回の人格の `counterChance` |
+| **反応速度** | `gameStore.ts:2619` `strongestGuardian().profile.reactionMs` | その回の人格の `reactionMs` |
+| **クラス**(立ち絵・初期武器のフォールバック) | `phantomTick` の `phantomGunKey` / `phantomMeleeDamage` | 新設 `phantomClassId()`=人格の `srcClass` |
+
+いずれも**人格が未設定なら台帳へ落ちる**ので、旧経路は1bit不変。
+
+**教訓**: 「人格から取る」という原則を入れた時、**同じ値を読んでいる箇所を全部洗えていなかった**。
+CLAUDE.md「同じ"動作"を持つ全員に付ける」の変種で、**今回は「同じ"出どころ"を読む全箇所」**だった。
+
+**変更ファイル**: `src/store/gameStore.ts`, `src/utils/phantomIdentity.ts`, `src/utils/phantomTick.ts`,
+`src/utils/phantomIdentity.test.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`
+**検証**: typecheck 0 / lint 0エラー(既存warning 8)/ phantom系3スイート **55件緑**。
+`phantomIdentity.test.ts` を12件へ拡張(クラスが人格に追従/未設定は台帳へ/人格がパリィ率と反応速度を持つ)。
+**負荷スコア**: 0/10。
+**状態変化**: ★オンライン計画 → O-3b-2 は据え置き(この版は O-5 の取りこぼし修正)。
+
 ## v0.25.3859 — O-3b-1: 幻影の投擲系を完了(火炎ナイフ)+ 残りは同型ではないと判明【2026-08-23 22:26】
 
 社長「次へ」。O-3b に着手。

@@ -12,6 +12,7 @@
 // 掟: このモジュールは**判定と抽選だけ**。HP/武器/倍率の式は持たない(それは phantomTick と
 // bossHealth の仕事)。乱数は注入可能=テストで固定できる。
 import type { PlayerProfile } from './playerTraits';
+import type { CharacterClass } from '../types/game';
 import { FIXED_GUARDIANS, strongestGuardian } from '../data/fixedGuardians';
 import { resolveRemoteGhost } from './ghostOnline';
 import { ENGAGEABLE_BOSS_TYPES, isGhostEligibleBoss } from './bossEngagement';
@@ -84,6 +85,13 @@ export const setPhantomIdentity = (identity: PhantomIdentity | null): void => { 
 export const getPhantomIdentity = (): PhantomIdentity | null => current;
 /** ラン境界・テスト用。 */
 export const clearPhantomIdentity = (): void => { current = null; };
+
+/**
+ * ★その回の人格の「クラス」(立ち絵・初期武器のフォールバックに使う)。
+ * `PlayerProfile.srcClass` が計測時のクラス。未設定/欠損なら台帳の最強データへ落ちる。
+ */
+export const phantomClassId = (): CharacterClass =>
+  (current?.profile.srcClass as CharacterClass | undefined) ?? strongestGuardian().classId;
 
 /** 表示名(「◯◯(幻影)」)。未設定なら台帳の最強データ=従来の表示と1bit同じ。 */
 export const phantomDisplayLabel = (): string =>

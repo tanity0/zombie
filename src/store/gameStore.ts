@@ -201,7 +201,7 @@ import {
   type RunTelemetryEquipSnapshot, type RunTelemetryEquipSlotSnapshot,
 } from '../utils/runTelemetry';
 import { isPracticeRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice';
-import { phantomDisplayLabel } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の表示名はその回の人格 // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
+import { phantomDisplayLabel, getPhantomIdentity } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の表示名はその回の人格 // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
 // research/GHOST_BOSS.md v6: 幻影が受ける打撃の関所(被弾無敵+パリィ)。**7系統の全てがここを通る**。
 import { phantomHitGate, type PhantomDamageSource, type PhantomHitGateResult } from '../utils/phantomGate';
 import { ensureProjectileOrigin } from '../utils/projectileOrigin';
@@ -2595,7 +2595,7 @@ export const INVULN_MS = 1000; // 社長裁定v0.25.3599(700→1000。多段技�
  *
  * ここが「呼び出し側が値を渡す」担当(葉は型以外を import しない):
  *  - 被弾無敵の長さ  = プレイヤーと同じ `INVULN_MS` を**直接参照**(写経しない)
- *  - パリィ成立率    = 台帳 `strongestGuardian().profile.counterChance`(=プレイヤーのカウンターの鏡)
+ *  - パリィ成立率    = **その回の人格**の `counterChance`(=プレイヤーのカウンターの鏡・SAME_ARENA O-5)
  *  - パリィCD        = `phantomScript` の1箇所
  * **幻影以外の敵に対しては恒等**(通常敵のダメージ・副作用に1bitも影響しない)。
  */
@@ -2609,8 +2609,17 @@ const gatePhantomHit = (
   flightMs: typeof source === 'string' ? undefined : source.flightMs,
   invulnMs: INVULN_MS,
   // 台帳読みは幻影の時だけ(通常敵のホットパスに台帳アクセスを持ち込まない)。
-  counterChance: isGuardianPhantom(enemy.type) ? strongestGuardian().profile.counterChance : 0,
-  reactionMs: isGuardianPhantom(enemy.type) ? strongestGuardian().profile.reactionMs : 0,
+  // ★v0.25.3860(O-5の取りこぼし修正): **その回の人格**のパリィ率を使う。
+  // O-5 で癖・ビルド・HP・名前は人格から取るようにしたが、**ここだけ台帳の最強データ(鴉)固定のまま
+  // 残っていた**=「別人と戦っているのにパリィの上手さだけ鴉」という状態だった。
+  // 人格が未設定(旧経路)なら従来どおり台帳へ落ちる=1bit不変。
+  counterChance: isGuardianPhantom(enemy.type)
+    ? (getPhantomIdentity()?.profile.counterChance ?? strongestGuardian().profile.counterChance)
+    : 0,
+  // ★同上(O-5の取りこぼし): 反応速度も**その回の人格**から。
+  reactionMs: isGuardianPhantom(enemy.type)
+    ? (getPhantomIdentity()?.profile.reactionMs ?? strongestGuardian().profile.reactionMs)
+    : 0,
   parryCdMs: GP_T.parryCdMs,
   // 近接パリィの窓: **storeに入った**スイング打刻を起点に、プレイヤーと同じ長さだけ開く
   // (幻影tickのパッチ合成が同フレーム後段なら1フレーム(16ms)の取りこぼしが出るが許容=仕様)。

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3860',
+    items: [
+      '幻影(決闘の相手)のパリィの上手さ・反応速度・見た目が、その回の人物のものになりました(これまで一部だけ別人のままでした)。',
+    ],
+  },
+  {
     version: '0.25.3859',
     items: [
       '幻影(決闘の相手)が火炎ナイフも投げてくるようになりました。紫色で、カウンターでは打ち返せません。',
