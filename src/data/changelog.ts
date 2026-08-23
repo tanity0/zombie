@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3844',
+    items: [
+      'ゲーム内容の変更はありません(開発環境の不具合対策を更新しました)。',
+    ],
+  },
+  {
     version: '0.25.3843',
     items: [
       'ゲーム内容の変更はありません(守護霊・幻影のサブウェポン設計の裁定を記録しました)。',
