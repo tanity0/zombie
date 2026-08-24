@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   useGameStore, MELEE_WINDUP_MS, meleeWindupMs, COUNTER_WINDOW, COUNTER_COOLDOWN,
-  MELEE_LUNGE_PX, MELEE_LUNGE_MS, knockbackSpeedFor, PLAYER_BASE_SPEED,
+  MELEE_LUNGE_PX, MELEE_LUNGE_MS, WHIP_LUNGE_PX, meleeLungePx, knockbackSpeedFor, PLAYER_BASE_SPEED,
 } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setTreesDisabled } from '../world/trees';
@@ -105,6 +105,17 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
     const p = useGameStore.getState().player;
     expect(p.lungeVx).toBeLessThan(0); // 後退中に振れば後ろへ踏み込む(=斬る向きと一致)
     expect(Math.abs(p.lungeVx)).toBeCloseTo(knockbackSpeedFor(MELEE_LUNGE_PX, MELEE_LUNGE_MS), 3);
+  });
+
+  // ★社長指示2026-08-24「鞭は踏み込み20で」。武器ごとの値は meleeLungePx に集約する
+  // (前隙の meleeWindupMs と同じ作法=測る側3箇所が必ずこの関数を通る)。
+  it('鞭の踏み込みは20px・それ以外は50px(武器別は1つの関数に集約)', () => {
+    const p = useGameStore.getState().player;
+    expect(meleeLungePx({ ...p, subWeapons: [] })).toBe(MELEE_LUNGE_PX);
+    expect(meleeLungePx({ ...p, subWeapons: ['whip'] })).toBe(WHIP_LUNGE_PX);
+    expect(WHIP_LUNGE_PX).toBe(20);
+    // 鞭はリーチ150px(素の近接74pxの倍)なので、踏み込みは短くて良い=長物の性格が一貫する。
+    expect(WHIP_LUNGE_PX).toBeLessThan(MELEE_LUNGE_PX);
   });
 
   it('踏み込みの速度は素の足より十分速い(=回避として成立する)', () => {

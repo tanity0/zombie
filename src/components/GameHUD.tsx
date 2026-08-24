@@ -311,7 +311,17 @@ const GameHUD: React.FC = () => {
                   {katanaEquipped
                     // 刀/小烏丸(村雨)とも、背中に背負う鞘入り刀の絵(katana-item)をそのままアイコンへ流用(社長指示)。
                     ? <img src={spritePath('katana-item')} alt="" className="w-9 h-9 object-contain" draggable={false} />
-                    : whipEquipped ? '➰'
+                    // ★社長指示2026-08-24「武器アイコンも鞭にして」: 絵文字(➰)をやめ、実物の鞭の絵
+                    // (sprites/whip.png=在世界の鞭と同じ素材)を使う。素材は横長7:1なので、
+                    // 44pxの枠にそのまま入れると細い線になる ⇒ **斜めにして枠の対角へ通す**
+                    // (柄→しなりが読める向き。刀が katana-item を流用しているのと同じ発想)。
+                    : whipEquipped
+                      ? <img
+                          src={spritePath('whip')} alt=""
+                          className="w-10 max-w-none object-contain"
+                          style={{ imageRendering: 'pixelated', transform: 'rotate(-38deg) scale(1.45)' }}
+                          draggable={false}
+                        />
                     : hasWeaponIcon(melee.key)
                       ? <img src={spritePath(weaponIconName(melee.key!))} alt="" className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
                       : '🔪'}

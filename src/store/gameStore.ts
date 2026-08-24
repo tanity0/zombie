@@ -1186,6 +1186,18 @@ export const MELEE_WINDUP_MS = 200;
 export const MELEE_LUNGE_PX = 50;
 export const MELEE_LUNGE_MS = 90;
 /**
+ * ★鞭の踏み込み距離(社長指示2026-08-24「鞭は踏み込み20で」)。
+ * 鞭はリーチ150px(素の近接74pxの倍)なので、**そもそも踏み込む必要が薄い**。
+ * 同じ50px踏み込むと「長物なのに毎回懐へ入る」ちぐはぐな動きになる=20pxに留める。
+ */
+export const WHIP_LUNGE_PX = 20;
+/**
+ * その主語の**踏み込み距離**。`meleeWindupMs` と同じ作法で、**武器ごとの値をここ1箇所に集める**
+ * (踏み込みを測る側=プレイヤー/守護霊/幻影の3箇所が必ずこの関数を通る)。
+ */
+export const meleeLungePx = (player: Player): number =>
+  player.subWeapons.includes('whip') ? WHIP_LUNGE_PX : MELEE_LUNGE_PX;
+/**
  * その主語(プレイヤー / 疑似Player)の**近接の前隙**。前隙を測る側は `MELEE_WINDUP_MS` を
  * 直接読まず**必ずこの関数を通す**——武器ごとに変えたくなった時、**ここ1箇所に分岐を足せば
  * 判定も絵も同時に追従する**(測る場所が散らばっていると、片方だけ直って嘘の絵になる)。
@@ -6264,7 +6276,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const ld = p.lastDirection ?? { x: 1, y: 0 };
       const lm = Math.hypot(ld.x, ld.y);
       if (lm > 0.001) {
-        const spd = knockbackSpeedFor(MELEE_LUNGE_PX, MELEE_LUNGE_MS);
+        const spd = knockbackSpeedFor(meleeLungePx(p), MELEE_LUNGE_MS); // 武器別(鞭=20px)
         set(state => ({ player: {
           ...state.player,
           lungeVx: (ld.x / lm) * spd,

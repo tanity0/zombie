@@ -36,7 +36,7 @@ import {
   MELEE_WINDUP_MS,                              // 近接の前隙(プレイヤーと同じ1本を読む)
   KNOCKBACK_SPEED, KNOCKBACK_DURATION,          // カウンターされた側のノックバック=**敵と同じ量**(社長指示)
   meleeSwingBaseDamage,                         // プレイヤーの近接素ダメージ(式を複製しない)
-  MELEE_LUNGE_PX, MELEE_LUNGE_MS, knockbackSpeedFor, // ★踏み込み(プレイヤーと同じ値を読む)
+  meleeLungePx, MELEE_LUNGE_MS, knockbackSpeedFor, // ★踏み込み(プレイヤーと同じ関数=武器別も揃う)
 } from '../store/gameStore';
 import { HUMAN_REACTION_MS } from './bossSkeleton'; // ★人の反応時間(このゲームの正本)。幻影の反応下限に使う
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
@@ -737,7 +737,7 @@ export const runPhantomTick = (
     // (knockbackVx/Vy/Until)へ載せる=updateEnemies 側の壁・「行ける帯」のクランプをそのまま通る
     // (v0.25.3875 で帯クランプを足した経路。自前で座標を書くとまた同じ穴を開ける)。
     {
-      const lspd = knockbackSpeedFor(MELEE_LUNGE_PX, MELEE_LUNGE_MS);
+      const lspd = knockbackSpeedFor(meleeLungePx(combatActorPlayer(phantom.id) ?? player), MELEE_LUNGE_MS);
       const la = patch.gpSwingAngle ?? 0;
       const lnow = Date.now();
       patch.knockbackVx = Math.cos(la) * lspd;

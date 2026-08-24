@@ -83,7 +83,7 @@ import {
   EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の7: ボット購買ポリシー②(装備区画)の価格表
   REFLECT_DAMAGE_MULTIPLIER, // v0.25.3665: 幻影の弾パリィ(打ち返し)=プレイヤーの打ち返しと同じ倍率規則
   meleeWindupMs, // ★近接の前隙(SAME_ARENA.md §7)。武器ごとに変わるので必ずこの関数を通す
-  MELEE_LUNGE_PX, MELEE_LUNGE_MS, // ★踏み込み(プレイヤー/守護霊/幻影で同じ値。速度は既存の knockbackSpeedFor で導く)
+  meleeLungePx, MELEE_LUNGE_MS, // ★踏み込み(3者で同じ関数=武器別も揃う。速度は既存の knockbackSpeedFor で導く)
   KILLFX_TOTAL_MS, // KILL処刑演出の尺(前隙の解決で近接SEを抑止する条件・旧VirtualJoystickから移設)
 } from '../store/gameStore';
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
@@ -9607,7 +9607,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const tdy = (boundBoss ? boundBoss.y + boundBoss.height / 2 : ghostNow.y) - (ghostNow.y + ghostNow.height / 2);
                     const tl = Math.hypot(tdx, tdy);
                     if (tl > 0.001) {
-                      const lspd = knockbackSpeedFor(MELEE_LUNGE_PX, MELEE_LUNGE_MS);
+                      const lspd = knockbackSpeedFor(meleeLungePx(ghostOwner), MELEE_LUNGE_MS); // 守護霊も装備どおり(鞭=20px)
                       useGameStore.setState(st => ({ summons: st.summons.map(sm => sm.id === ghostNow.id
                         ? { ...sm, gLungeVx: (tdx / tl) * lspd, gLungeVy: (tdy / tl) * lspd, gLungeUntil: nowMs + MELEE_LUNGE_MS }
                         : sm) }));
