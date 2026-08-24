@@ -2570,7 +2570,8 @@ export const DRONE_BOOM_STOP_DMG_DIV = 4;                  // 停止中の1ヒ�
 export const DRONE_BOOM_SAFETY_MS = 12000;                 // 安全消滅(戻れない場合の保険)
 
 // Easing factor for a given time constant. tau <= 0 means instant (alpha = 1).
-const inertiaAlpha = (deltaTime: number, tau: number): number =>
+// export: sim.test が「慣性が実際に配線されているか」を**定数を写経せずに**検証するため(v0.25.3863)。
+export const inertiaAlpha = (deltaTime: number, tau: number): number =>
   tau <= 0 ? 1 : 1 - Math.exp(-deltaTime / tau);
 
 // スコア集計用のエリート/ボス判定(gameplayの isBossType とは別。社長指示=elite:pumpkin / boss:giantbat のみ)。

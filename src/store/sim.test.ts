@@ -10,7 +10,10 @@ import {
   bossCritCdMult, BOSS_CRIT_CD_MULT, STUN_DURATION_MS, canShoveEnemy,
   KNOCKBACK_DURATION,
   migrateCompanionFromLegacy,
+  // ★v0.25.3863: 慣性の定数と式を**写経せず import**する(調整しても勝手に揃う)。
+  PLAYER_INERTIA_TAU, inertiaAlpha,
 } from './gameStore';
+import { RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1(ランプの正本)
 import { BOSS_STOP_DR_IMMUNE_MS } from '../utils/bossStopDr';
 import type { Enemy } from '../types/game';
 
@@ -147,37 +150,57 @@ describe('headless simulation invariants', () => {
     expect(s.player.health).toBeLessThanOrEqual(s.player.maxHealth);
   });
 
+  // ★v0.25.3863(タスク#41の解消): このテストは長く**決定論的に赤**だった。
+  // 原因は実装ではなく**テストが古かった**こと——`PLAYER_INERTIA_TAU` は
+  // **社長指示v0.25.3618「プレイヤーの移動に少し慣性入れて」で 0 → 0.06 になった**のに、
+  // テストは「完全即応」時代の前提で**1フレーム目の `vx` が基礎速度と一致する**ことを期待していた
+  // (実測 21.147 = 86.13 × alpha 0.2425 = ちょうど慣性1フレームぶん)。
+  //
+  // ★書き直しの方針: このテストの仕事は**「ランプが movePlayer に結線されているか」**(タイトルどおり)。
+  // ランプ自体の数値は純関数側(`utils/speedRamp.test.ts`)が持っている。よって
+  // **ランプの状態(sustainMs)で検証し、慣性の調整では二度と壊れないようにする**。
+  // 慣性が配線されていること自体も1本だけ見るが、**定数は import して写経しない**
+  // (写経したテストは、値を変えた時に「一致している」と嘘をつく=v0.25.3855の教訓)。
   it('MOVEMENT_REWORK.md 仕様1: 速度ボーナスはランプで立ち上がり、急な切り返し/停止でゼロへ戻る(movePlayer結線の裏取り)', () => {
     useGameStore.getState().resetGame('warrior');
     // ランナーLv3のみ装備(P=1.20固定。マークスマンはmage専用・ウォームアップ/装備は未所持=中立の1)。
     useGameStore.setState(s => ({ player: { ...s.player, skills: ['runner'], skillLevels: { runner: 3 } } }));
-    const baseSpeed = useGameStore.getState().player.speed; // PLAYER_BASE_SPEED(基礎速度・即応でランプ対象外)
+    const baseSpeed = useGameStore.getState().player.speed; // PLAYER_BASE_SPEED(基礎速度・ランプ対象外)
     const noInput: InputState = { up: false, down: false, left: false, right: false };
     const rightInput: InputState = { up: false, down: false, left: false, right: true };
     const leftInput: InputState = { up: false, down: false, left: true, right: false };
     const dt = 1 / 60;
+    const dtMs = dt * 1000;
 
-    // 1フレーム目: ランプはほぼ0なので+20%はまだほとんど乗っていない(基礎速度に近い)。
+    // ① 1フレーム目: ランプは1フレームぶんしか積まれていない=ボーナスはまだ乗っていない。
     useGameStore.getState().movePlayer(rightInput, dt);
-    const vxFrame1 = useGameStore.getState().player.vx;
-    expect(vxFrame1).toBeGreaterThan(baseSpeed * 0.99);
-    expect(vxFrame1).toBeLessThan(baseSpeed * 1.02);
+    expect(useGameStore.getState().player.speedRampSustainMs).toBeCloseTo(dtMs, 3);
+    expect(useGameStore.getState().player.speedRampSustainMs / RAMP_FULL_MS).toBeLessThan(0.02);
 
-    // 90フレーム(≈1500ms=RAMP_FULL_MS)同方向へ走り続けるとフルランプ(+20%満額)に達する。
+    // ①-b 慣性が配線されていること(1フレーム目の vx は目標速度の alpha 倍で立ち上がる)。
+    //     tau は import する=慣性を調整してもこのテストは勝手に揃う。
+    const alpha = inertiaAlpha(dt, PLAYER_INERTIA_TAU);
+    expect(useGameStore.getState().player.vx).toBeCloseTo(baseSpeed * alpha, 1);
+
+    // ② 90フレーム(≈1500ms=RAMP_FULL_MS)同方向へ走り続けるとフルランプに達する。
     for (let i = 0; i < 89; i++) useGameStore.getState().movePlayer(rightInput, dt);
-    const vxFull = useGameStore.getState().player.vx;
-    expect(vxFull).toBeCloseTo(baseSpeed * 1.20, 0);
+    expect(useGameStore.getState().player.speedRampSustainMs).toBeGreaterThanOrEqual(RAMP_FULL_MS);
+    // ②-b 速度が満額(+20%)に届くのは**慣性が収束してから**。ランプが上がり続けている間は
+    //     vx が目標を追いかけている途中なので、数フレーム走らせて落ち着かせてから見る
+    //     (旧テストはここを分けておらず、慣性導入で 0.6 ほど足りずに落ちていた)。
+    for (let i = 0; i < 10; i++) useGameStore.getState().movePlayer(rightInput, dt);
+    expect(useGameStore.getState().player.vx).toBeCloseTo(baseSpeed * 1.20, 0);
 
-    // 75°以上の急な切り返し(右→左=180°)で即ゼロへ戻る=基礎速度のみに戻る。
+    // ③ 75°以上の急な切り返し(右→左=180°)で**ランプが即ゼロへ戻る**。
+    //    ※vx は慣性で数フレームかけて戻るので、ここでは vx ではなくランプを見る。
     useGameStore.getState().movePlayer(leftInput, dt);
-    const vxAfterTurn = useGameStore.getState().player.vx;
-    expect(Math.abs(vxAfterTurn)).toBeCloseTo(baseSpeed, 0);
+    expect(useGameStore.getState().player.speedRampSustainMs).toBe(0);
 
-    // 停止でもゼロへ戻る: 直後に同方向へ走ってもフレーム1からやり直しになる。
+    // ④ 停止でもゼロへ戻る: 直後に同方向へ走ってもフレーム1からやり直しになる。
     useGameStore.getState().movePlayer(noInput, dt);
+    expect(useGameStore.getState().player.speedRampSustainMs).toBe(0);
     useGameStore.getState().movePlayer(rightInput, dt);
-    const vxAfterStopResume = useGameStore.getState().player.vx;
-    expect(vxAfterStopResume).toBeLessThan(baseSpeed * 1.02);
+    expect(useGameStore.getState().player.speedRampSustainMs).toBeCloseTo(dtMs, 3);
   });
 
   it('eggcarrier (ghost) scatters a 3-egg burst then holds for the CD', () => {
