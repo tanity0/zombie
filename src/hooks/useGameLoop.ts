@@ -9421,7 +9421,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 守護霊も閉じ込められる。判定はプレイヤーと**同じ純関数**(clampRectInsideCircle)・同じ
               // 除外条件(rescue / confinesPlayer=false は拘束しない)。円外へ出る→リーシュ距離を超えて
               // ワープで戻る、の往復が「どっか行った」の正体でもある。
-              const resolved = { x: nx, y: ny };
+              // ★v0.25.3875(社長報告2026-08-24「守護霊はそっちまで追いかけて行って、プレイヤーだけ
+              // 置いてけぼりにされた」): 守護霊の移動は**囲い(円)の拘束しか掛かっておらず**、
+              // 「行ける帯」(clampRectToPlayableArea)を通していなかった。標的が帯の外へ出ると
+              // (=押し道具の穴。同版で別途修正)守護霊だけがそこまで追い、プレイヤーは追えない。
+              // §2.11追補「守護霊は独立した2人目のプレイヤー」= **プレイヤーが行けない場所へは行かない**。
+              // v0.25.2589 で円の拘束は入れたが、帯が残っていた(同じ事故の残り半分)。
+              const gPlaced = clampRectToPlayableArea(nx, ny, ghostNow.width, ghostNow.height, {
+                farBackdrop: useGameStore.getState().farBackdrop,
+                labTheme,
+                corridorMode: useGameStore.getState().corridorMode,
+                m0AdvanceLimitX: useGameStore.getState().m0AdvanceLimitX,
+                corridorRunInActive: useGameStore.getState().corridorRunInActive,
+              }, ghostNow.x);
+              const resolved = { x: gPlaced.x, y: gPlaced.y };
               {
                 const ae = useGameStore.getState().activeEvent;
                 if (ae && ae.kind !== 'rescue' && ae.confinesPlayer !== false) {

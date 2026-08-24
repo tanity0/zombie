@@ -10975,7 +10975,23 @@ export const useGameStore = create<GameState>((set, get) => ({
           const kbCenterY = kb.y + enemy.height / 2;
           const clampedCenterX = Math.max(pcx - (recycleHalfW - bufferX), Math.min(pcx + (recycleHalfW - bufferX), kbCenterX));
           const clampedCenterY = Math.max(pcy - (recycleHalfH - bufferY), Math.min(pcy + (recycleHalfH - bufferY), kbCenterY));
-          return { ...enemy, x: clampedCenterX - enemy.width / 2, y: clampedCenterY - enemy.height / 2 };
+          // ★v0.25.3875(社長報告2026-08-24「鞭で移動不可のほうにとんでって、そこから攻撃された」):
+          // ここは**画面外リサイクル境界**しか見ておらず、**「行ける帯」(clampRectToPlayableArea)を
+          // 通していなかった**。追跡AI側(このifブロックの外)は通しているので、**押し道具で飛ばした時
+          // だけ**プレイヤーが入れない場所へ敵を置ける穴になっていた。鞭は WHIP_KNOCKBACK_SPEED=600
+          // =通常の4.5倍なので、いちばん簡単にこの穴を踏む。
+          // CLAUDE.md「アクターを新しく動かす時は、必ず clampRectToPlayableArea を通す」。
+          const kbCtx: PlayableAreaCtx = {
+            farBackdrop: state.farBackdrop, labTheme,
+            corridorMode: state.corridorMode,
+            m0AdvanceLimitX: state.m0AdvanceLimitX,
+            corridorRunInActive: state.corridorRunInActive,
+          };
+          const kbPlaced = clampRectToPlayableArea(
+            clampedCenterX - enemy.width / 2, clampedCenterY - enemy.height / 2,
+            enemy.width, enemy.height, kbCtx, enemy.x,
+          );
+          return { ...enemy, x: kbPlaced.x, y: kbPlaced.y };
         }
 
         // v0.25.2895: 裏ボス4体/天使6体/アイドル(=isHiddenBoss)はここで抜ける。上のノックバック
