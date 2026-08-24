@@ -1149,6 +1149,14 @@ export interface Summon {
   // 近接スイング(通常スイング/刀の一閃)を起点に開く。窓中に自分へ当たった敵弾を反射する
   // (反射のたびに COUNTER_EXTEND_PER_HIT で延長=プレイヤーと同じ連続反射)。他kindでは常にundefined。
   ghostCounterWindowEnd?: number;
+  /**
+   * ★守護霊の近接の前隙(社長裁定2026-08-24・SAME_ARENA.md §7)。振り始めた時刻(**nowMs**)。
+   * `MELEE_WINDUP_MS` 経過後に useGameLoop が判定を解決する。プレイヤー(`pendingSwingAt`)・
+   * 幻影(`gpPendingSwingAt`)と同じ分割=「守りの窓は即・攻めは200ms後」。
+   */
+  gPendingSwingAt?: number;
+  /** その振りがカウンター狙いだったか(前隙をまたいで運ぶ。解決時の演出/請求の出し分けに使う)。 */
+  gPendingSwingWasCounter?: boolean;
   // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 召喚時に載せる「計測時ビルドの写し」。ゴーストの武器・
   // スキル・装備・クリ率はこれから復元する(欠損=旧プロファイル→召喚時のプレイヤー装備へフォールバック)。
   ghostBuild?: PlayerBuildSnapshot;

@@ -9535,12 +9535,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               //     プレイヤーと同じ条件・同じ効果で発動(共通ヘルパ=store.fireGhostMeleeSwingSubs)。
               //     SEはゴースト位置で距離減衰(除外4)。刀モード中は subWeaponBlockedByKatana が
               //     プレイヤーと同じく全サブを止めるので、一閃から呼んでも何も出ない(=同じ条件)。
-              const onGhostMeleeSwing = (swingX: number, swingY: number): void => {
+              // ★前隙(SAME_ARENA.md §7)で2つに割った。窓は**振り始め**に開き(守りは即応)、
+              // 相乗りサブは**判定と同時**に出す(プレイヤーの triggerCounter と同じ流儀)。
+              // 刀の一閃(triggerKatanaDash)は §7 で「別扱いで保留」なので従来どおり両方を即発火する。
+              const openGhostSwingWindow = (): void => {
                 useGameStore.setState(st => ({
                   summons: st.summons.map(s => s.id === ghostNow.id
                     ? { ...s, ghostCounterWindowEnd: nowMs + COUNTER_WINDOW }
                     : s),
                 }));
+              };
+              const fireGhostSwingSubs = (swingX: number, swingY: number): void => {
                 const subs = useGameStore.getState().fireGhostMeleeSwingSubs(ghostNow.id);
                 if (subs.boomerang || subs.junk) {
                   const subGain = npcSfxDistGain(swingX, swingY, gfxPcx, gfxPcy, gfxCam, gfxGb);
@@ -9550,6 +9555,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
               };
+              const onGhostMeleeSwing = (swingX: number, swingY: number): void => {
+                openGhostSwingWindow(); fireGhostSwingSubs(swingX, swingY);
+              };
+              // ★前隙の進行(社長裁定2026-08-24): 近接の意図が立った最初のフレームでは**振り始める**だけ
+              // (窓を開いて打刻)。判定は MELEE_WINDUP_MS 後のフレームで、下の近接ブロックが解決する。
+              // カウンター狙いだったかは前隙をまたいで運ぶ(解決時の decision は別物になっているため)。
+              let ghostMeleeResolvesNow = false;
+              let ghostPendWasCounter = false;
+              {
+                const pend = ghostNow.gPendingSwingAt;
+                if (pend !== undefined) {
+                  if (nowMs - pend >= MELEE_WINDUP_MS) {
+                    ghostMeleeResolvesNow = true;
+                    ghostPendWasCounter = ghostNow.gPendingSwingWasCounter === true;
+                    useGameStore.setState(st => ({ summons: st.summons.map(sm => sm.id === ghostNow.id
+                      ? { ...sm, gPendingSwingAt: undefined, gPendingSwingWasCounter: undefined } : sm) }));
+                  }
+                } else if (decision.action === 'melee' && boundBoss && !ghostKatana) {
+                  openGhostSwingWindow(); // 守りの窓は今すぐ開く
+                  useGameStore.setState(st => ({ summons: st.summons.map(sm => sm.id === ghostNow.id
+                    ? { ...sm, gPendingSwingAt: nowMs, gPendingSwingWasCounter: decision.meleeIsCounterAttempt }
+                    : sm) }));
+                }
+              }
               if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana) {
                 // 銃 = **計測時ビルドのアクティブ銃**。マガジン/発射間隔/リロードはプレイヤーと同じ、
                 // リザーブ弾だけはプレイヤーと完全分離して非消費(除外4)。
@@ -9652,7 +9681,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     useGameStore.getState().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG, btcx - gmcx, bccy - gmcy);
                   }
                 }
-              } else if (decision.action === 'melee' && boundBoss) {
+              } else if (ghostMeleeResolvesNow && boundBoss) {
                 // 近接 = **計測時ビルドの近接武器**でスイング。channel=null(escortと同じ「プレイヤー起因
                 // ではない」扱い=botTelemetryの近接/銃比率を汚さない)。
                 // v0.25.2514(§2.11訂正): ダメージ/クリはプレイヤーの近接スイングと**同じ純関数**を通す
@@ -9664,8 +9693,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const btcx = boundBoss.x + boundBoss.width / 2, btcy = boundBoss.y;
                 const bccy = boundBoss.y + boundBoss.height / 2;
                 const gmcx = resolved.x + ghostNow.width / 2, gmcy = resolved.y + ghostNow.height / 2;
-                // v0.25.2525(発注A/C): このスイングで弾反射の窓を開き、相乗り型サブの入口も通す。
-                onGhostMeleeSwing(gmcx, gmcy);
+                // v0.25.2525(発注A/C): 相乗り型サブの入口を通す。**弾反射の窓は振り始めで開いてある**
+                // (前隙・SAME_ARENA.md §7)ので、ここでは開き直さない=窓が200ms後ろへずれない。
+                fireGhostSwingSubs(gmcx, gmcy);
                 // v0.25.2525(発注B・台帳§3-3): 気絶敵へのフィニッシュ(処刑)。プレイヤーのナイフ
                 // スイングと**同じ裁定+同じ素ダメージ式**(applyGhostMeleeFinisher → resolveStunnedMeleeHit)。
                 // 成立時はダメージ/金の数字/気絶解除/浮きまで共有アクション側で適用済み(クリ抽選は
@@ -9683,7 +9713,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // ghostDriverが実際にカウンター狙いで振ったかどうか(decision.meleeIsCounterAttempt)を
                 // そのまま見る。旧実装は「射程内かつボスが成立しうる状態」なら通常近接(meleeBias抽選)の
                 // 振りにも真になっていたため、狙っていないスイングでも請求が積まれていた。
-                const wasCounterMelee = decision.meleeIsCounterAttempt;
+                // ★前隙をまたいで運んだ値を使う(解決フレームの decision は別の意図になっている)。
+                const wasCounterMelee = ghostPendWasCounter;
                 // BOT_AND_GHOST.md §2.8 G2.5: ヘイト計測用にゴースト起因と明示する(damageChannelは
                 // 従来どおりnull=botTelemetryのプレイヤー計測は汚さない・独立したパラメータ)。
                 // フィニッシュ成立時はダメージ/数字を共有アクションが既に出しているので二重に出さない。
