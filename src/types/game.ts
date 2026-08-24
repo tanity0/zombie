@@ -128,6 +128,13 @@ export interface Player extends DashLocomotionState {
    * 減衰は被弾ノックバックと同じ形(初速最大→線形に0)。壁・行ける帯は movePlayer が共通で通す。
    */
   lungeVx: number; lungeVy: number; lungeUntil: number;
+  /**
+   * ★対人トラップの効果が切れる時刻(Date.now・0=効果なし)。仕様の正=research/SAME_ARENA.md §3-g。
+   * 幻影のトラップに触れた時だけ立つ(**対人のみ**)。効果中は①移動が等倍のみ ②貰うクリ率アップ
+   * ③リロード1.5倍 ④サブのCD短縮系が無効。判定は `utils/trapDebuff.isTrapDebuffed()` の1本。
+   * 敵側の拘束(`Enemy.rootUntil`)とは**別物**(あちらは gameTime 系・その場に固定)。
+   */
+  trapDebuffUntil: number;
   counterCooldownEnd: number;   // ms timestamp; cannot open another window until this
   lastCounterSuccessTime: number; // for the success flash effect
   // RE-style resources. Each gun family has a category-specific RESERVE pool

@@ -4,6 +4,7 @@ import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { aimEnemyDist2, isCorpse } from './enemyUtils';
 import { zoomCompensatedWorldDistance } from './cameraZoom';
 import { bigBulletSizeMult } from './skillEffectsB7';
+import { isTrapDebuffed, TRAP_PVP_RELOAD_MULT } from './trapDebuff';
 
 // プレイヤー中心→敵 の二乗距離。**全ての敵で「当たり判定の矩形の最近点」**まで測る(v0.25.3170・
 // 社長指示「当たり判定の四隅でみて」)。中心基準だと巨体の縁に立っていても射程外扱いになる。
@@ -240,7 +241,11 @@ const RELOAD_TIME_MULT = 2;
 // 旧ウォームアップ(出撃60秒間リロード時間×0.80)は§23-1裁定で退役=削除済み。
 export const effectiveReloadMs = (w: Weapon, p: Player): number =>
   // 装備(腕・取り回し系)のリロード短縮を乗算(中立=1)。
-  Math.max(250, (w.reloadMs ?? 0) * RELOAD_TIME_MULT * p.reloadMult * (p.equipBonus?.reloadMult ?? 1));
+  // ★対人トラップ効果中は 1.5倍(社長指示2026-08-25・SAME_ARENA §3-g)。**下限250msはそのまま**
+  // (掛けてから max を取る=短い銃でも必ず遅くなる、を保つ)。幻影の疑似Playerは
+  // `trapDebuffUntil` を持たないので常に1倍=対人のみ。
+  Math.max(250, (w.reloadMs ?? 0) * RELOAD_TIME_MULT * p.reloadMult * (p.equipBonus?.reloadMult ?? 1)
+    * (isTrapDebuffed(p) ? TRAP_PVP_RELOAD_MULT : 1));
 
 // 社長指示v0.25.3300 バーサーカー覚醒(Lv3): HP40%以下の間、銃の連射速度+10%(実効cooldown÷1.1)。
 export const BERSERKER_AWAKEN_HP_FRAC = 0.4;

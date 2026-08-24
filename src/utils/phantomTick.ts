@@ -58,6 +58,7 @@ import { GUARDIAN_PHANTOM_LABEL } from './bossPractice';
 import { actorBuildFor } from './ghostBuild';
 import { getPhantomIdentity, phantomDisplayLabel, phantomClassId } from './phantomIdentity'; // SAME_ARENA O-5: その回の人格 // SAME_ARENA: 記録どおりの武器を守護霊と同じ道具で引く
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from './phantomScript';
+import { isTrapDebuffed, TRAP_ROOT_CRIT_BONUS } from './trapDebuff';
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
 export const GUARDIAN_PHANTOM_TYPE: EnemyType = 'guardian-phantom';
@@ -222,13 +223,21 @@ export const actorMeleeFor = (phantomId: string): Weapon | undefined => actorBui
 export const phantomAtkMults = (
   phantomId: string, gun: Pick<Weapon, 'critChance'> | undefined, gameTime: number,
 ): PhantomAtkMults => {
+  // ★対人トラップ効果中は「クリティカル率アップ」(社長指示2026-08-25)。**貰う側が貰いやすくなる**
+  // 向きで、敵側の `TRAP_ROOT_CRIT_BONUS`(拘束中の敵は+10%クリを貰う)の鏡。同じ +0.10 を使う
+  // =数字を2組に持たない。**幻影の近接は元からクリ抽選が無い**(phantomMeleeDamage の
+  // 「クリは未適用(叩き台)」)ので、現状これが効くのは**幻影の銃だけ**。
+  const trapBonus = isTrapDebuffed(useGameStore.getState().player) ? TRAP_ROOT_CRIT_BONUS : 0;
   const raw = combatActorPlayer(phantomId);
   if (!raw) {
-    return { critChance: gun?.critChance ?? 0, critMult: CRIT_DAMAGE_MULT, outgoingMult: 1 };
+    return {
+      critChance: gun ? Math.min(1, (gun.critChance ?? 0) + trapBonus) : 0,
+      critMult: CRIT_DAMAGE_MULT, outgoingMult: 1,
+    };
   }
   const actor: Player = { ...raw, growthAtkMult: 1 }; // 上のコメント=二重掛け防止
   return {
-    critChance: gun ? gunShotCritChance(gun, actor, gameTime) : 0,
+    critChance: gun ? Math.min(1, gunShotCritChance(gun, actor, gameTime) + trapBonus) : 0,
     critMult: skillCritMult(actor, CRIT_DAMAGE_MULT),
     outgoingMult: skillOutgoingDamageMult(actor) * (actor.equipBonus?.damageMult ?? 1),
   };

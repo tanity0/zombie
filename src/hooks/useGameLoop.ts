@@ -88,6 +88,7 @@ import {
   KILLFX_TOTAL_MS, // KILL処刑演出の尺(前隙の解決で近接SEを抑止する条件・旧VirtualJoystickから移設)
 } from '../store/gameStore';
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
+import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // ★対人トラップの効果時間(SAME_ARENA §3-g)
 import { glenScriptApplies } from '../utils/giantScript';
 import { glenPartCountFull, glenRemovedPartAnchors, GLEN_FORM1_HP_MULT } from '../utils/glenChain';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
@@ -487,6 +488,8 @@ const HEAVY_GRENADE_KNOCKBACK_MULT = 3.6;
 const MARKSMAN_TRAP_COOLDOWN_MS = 6500;
 const MARKSMAN_TRAP_DURATION_MS = 9000;
 const MARKSMAN_TRAP_STUN_MS = 3000;
+/** 敵対トラップが「プレイヤーを捕まえた」印(trap.hitEnemies は敵idの器なので専用キーを1つ置く)。 */
+const HOSTILE_TRAP_PLAYER_KEY = '__player__';
 const MARKSMAN_TRAP_CRIT_BONUS = 0.10;
 const MARKSMAN_TRAP_RADIUS_BY_LEVEL = [0, 50, 78, 106]; // レベルで範囲を明確に拡大(+28/Lv。旧44/52/60)
 const STRIKER_QUICK_MAG_COOLDOWN_BY_LEVEL = [0, 10000, 8000, 6000];
@@ -10715,10 +10718,47 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // ★敵対(幻影)のトラップはこの走査から外す(社長指示2026-08-25で幻影も設置できるようにした)。
-        // この走査は `enemies` を捕まえる=味方側のトラップ専用の経路。敵対の物を通すと、
+        // ★敵対(幻影)のトラップは**別の走査**で解決する(社長裁定2026-08-25・SAME_ARENA §3-g)。
+        // 下の味方側の走査は `enemies` を捕まえる形なので、敵対の物をここへ通すと
         // **幻影が自分のトラップにハマる**(v0.25.3879 で塞いだ自爆)がそのまま復活する。
-        // 敵対トラップのプレイヤーへの効き方は O-3b-2 の残り(種ごとの宛先配線)。
+        // 敵対トラップは拘束(rootUntil)を**使わない**——プレイヤーをその場に固定する手段が
+        // このゲームに1つも無く、新設すると★未決9「雑魚の永久足止め」をプレイヤー側で再現するため。
+        // 代わりに社長指定の4効果(移動が等倍のみ/貰うクリ率+10%/リロード1.5倍/サブCD短縮無効)を
+        // `player.trapDebuffUntil` の1本で掛ける(効果の中身は utils/trapDebuff.ts)。
+        {
+          const hostileTraps = useGameStore.getState().projectiles.filter(p => p.weaponType === 'trap' && p.hostile === true);
+          if (hostileTraps.length > 0) {
+            const htP = useGameStore.getState().player;
+            const htPx = htP.x + htP.width / 2, htPy = htP.y + htP.height / 2;
+            const htPr = Math.max(htP.width, htP.height) / 2;
+            for (const trap of hostileTraps) {
+              const tx = trap.x + trap.width / 2;
+              const ty = trap.y + trap.height / 2;
+              const radius = trap.area ?? MARKSMAN_TRAP_RADIUS_BY_LEVEL[1];
+              const maxTargets = Math.max(1, trap.count ?? 1);
+              const already = new Set(trap.hitEnemies);
+              if (already.size >= maxTargets) { removeProjectile(trap.id); continue; }
+              if (already.has(HOSTILE_TRAP_PLAYER_KEY)) continue; // 同じ罠で二重に掛けない
+              // 味方側と同じ「体が円に触れたら捕獲」(selectTrapTargets と同じ考え方の1体版)。
+              if (Math.hypot(htPx - tx, htPy - ty) > radius + htPr) continue;
+              useGameStore.setState(st => ({
+                player: { ...st.player, trapDebuffUntil: Date.now() + TRAP_PVP_DEBUFF_MS },
+                projectiles: st.projectiles.map(pp =>
+                  pp.id === trap.id ? { ...pp, hitEnemies: [...pp.hitEnemies, HOSTILE_TRAP_PLAYER_KEY] } : pp),
+              }));
+              // 捕獲FXは味方側と同じ形・同じ尺(紫=カウンター不可の文法ではなく、これは
+              // 攻撃ではなく状態異常なので、既存トラップのシアンをそのまま使う)。
+              spawnRing(tx, ty, 8, radius + 12, 'rgba(56,189,248,0.9)', 3, 360);
+              spawnBurst(tx, ty, '#38bdf8', 14);
+              useGameStore.getState().spawnGlow(tx, ty, radius + 28, 'rgba(56,189,248,', 320);
+              spawnRing(htPx, htPy, 5, 28, 'rgba(125,211,252,0.86)', 2, 260);
+              // SEは付けない: 味方側のトラップ捕獲も無音なので、対人だけ音を足すと非対称になる
+              // (音を足すなら両方=別件。素材も無い)。
+              if (already.size + 1 >= maxTargets) removeProjectile(trap.id);
+            }
+          }
+        }
+
         const armedTraps = useGameStore.getState().projectiles.filter(p => p.weaponType === 'trap' && p.hostile !== true);
         for (const trap of armedTraps) {
           const tx = trap.x + trap.width / 2;

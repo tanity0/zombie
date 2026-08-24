@@ -206,6 +206,7 @@ import { phantomDisplayLabel, getPhantomIdentity } from '../utils/phantomIdentit
 import { phantomHitGate, playerIframeApplies, type PhantomDamageSource, type PhantomHitGateResult } from '../utils/phantomGate';
 import { ensureProjectileOrigin } from '../utils/projectileOrigin';
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from '../utils/phantomScript';
+import { isTrapDebuffed, trapGatedOverclockChance, trapGatedCooldownMult, TRAP_ROOT_CRIT_BONUS } from '../utils/trapDebuff';
 import { strongestGuardian } from '../data/fixedGuardians';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
@@ -2950,7 +2951,6 @@ const MINE_AMBUSH_TIME_MS = 150000;
 const MELEE_FINISH_COMBO_WINDOW_MS = 7000;
 const GRENADE_BOUNCE_DAMPING = 0.86;
 const GRENADE_ROLL_DRAG = 1.45;
-const TRAP_ROOT_CRIT_BONUS = 0.10;
 
 /**
  * 近接ヒットの実効クリ率(唯一の式・v0.25.2514で4箇所の同型コードから抽出=値は不変)。
@@ -3449,7 +3449,13 @@ export const setActorSubWeaponCooldown = (
   if (!actor) return;
   const gameTime = useGameStore.getState().gameTime;
   const delta = readyAt - gameTime;
-  const cd = applySubCooldownSkills(skillOverclockChance(actor), skillCooldownMult(actor), delta);
+  // ★対人トラップ効果中は「CD短縮系も無効」(社長指示2026-08-25)。actor が幻影/守護霊の時は
+  // `trapDebuffUntil` を持たない=常に素通し(対人のみ)。
+  const cd = applySubCooldownSkills(
+    trapGatedOverclockChance(actor, skillOverclockChance(actor)),
+    trapGatedCooldownMult(actor, skillCooldownMult(actor)),
+    delta,
+  );
   if (cd.overclockProc) return; // 成立=CDを付けない(プレイヤーと同じ)
   const effReadyAt = cd.deltaMs === delta ? readyAt : gameTime + cd.deltaMs;
   const st = useGameStore.getState();
@@ -4191,7 +4197,11 @@ const placeSensorMineOnSwing = (
   const smFootY = ownerFootY(owner);
   // §6.8 M31と同じ抽選=発動(設置)時。オーバークロック→タイムキーパーの適用は合流点と同じ
   // 共有純関数(G2.6 CD正規化・挙動不変。チャージ再充填CDは常に正なので抽選条件も従来と等価)。
-  const smCd = applySubCooldownSkills(skillOverclockChance(actor), skillCooldownMult(actor), SENSOR_MINE_CHARGE_COOLDOWN_MS);
+  const smCd = applySubCooldownSkills(
+    trapGatedOverclockChance(actor, skillOverclockChance(actor)),      // ★対人トラップ中は短縮無効
+    trapGatedCooldownMult(actor, skillCooldownMult(actor)),
+    SENSOR_MINE_CHARGE_COOLDOWN_MS,
+  );
   const smDuration = smCd.deltaMs;
   const mine: SensorMineState = {
     id: `smine-${sensorMineSeq++}`, x: smFootX, y: smFootY, placedAt: gameTime, triggeredAt: 0,
@@ -5485,6 +5495,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     lungeVx: 0,
     lungeVy: 0,
     lungeUntil: 0,
+    trapDebuffUntil: 0,
     counterCooldownEnd: 0,
     lastCounterSuccessTime: 0,
     ammoHandgun: AMMO_INITIAL.handgun,
@@ -5855,7 +5866,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       );
       const rampFrac = effectiveRampFrac(nextSpeedRamp, SPEED_RAMP_ENABLED);
 
-      const moveSpeed = dashOv
+      // ★対人トラップ効果中は「移動が等倍のみ」(社長指示2026-08-25・SAME_ARENA §3-g)。
+      // かさまし%(ランナー/マークスマン/消費カード/装備)・スケーター×3・ダッシュ系
+      // (一閃/ワイヤー/ホップ)・四神スライドを**まとめて素の足で頭打ち**にする。
+      // 個別に潰さず1本の min で抑えるのは、①将来の移動手段が自動で入る ②「等倍のみ」という
+      // 社長の言葉がそのままコードの形になる、の2点から(リロード中の減速など**素より遅い**ものは
+      // min なのでそのまま残る)。
+      const trapDebuffed = isTrapDebuffed(player, nowMs);
+      const rawMoveSpeed = dashOv
         ? dashOv.speed
         : sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000)
         // スキル: スケーター = 通常歩行の移動速度 ×3(特殊ロコモーションは対象外。社長指示で段階的に
@@ -5880,6 +5898,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             skillRunnerSpeedMult(player) * marksmanSpeedMult(player) * consumableSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1),
             rampFrac,
           );
+      const moveSpeed = trapDebuffed ? Math.min(rawMoveSpeed, player.speed) : rawMoveSpeed;
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;
@@ -5937,8 +5956,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 初速最大→線形に0(ノックバックと同じ形)。**回避に使うので出だしが最も速い**
         // ——加速から入ると避け始めが遅れて間に合わない(社長の狙い「早めに着地」)。
         const d = Math.max(0, (player.lungeUntil - kbNow) / MELEE_LUNGE_MS); // 1→0
-        vx = (player.lungeVx ?? 0) * d;
-        vy = (player.lungeVy ?? 0) * d;
+        // ★踏み込みも「移動」なのでトラップ効果中は素の足で頭打ち(上の moveSpeed と同じ理屈)。
+        // 被弾ノックバック(上の枝)は**掛けられている力**なので対象外=そのまま飛ぶ。
+        const lungeCap = trapDebuffed
+          ? Math.min(1, player.speed / Math.max(1, Math.hypot(player.lungeVx ?? 0, player.lungeVy ?? 0)))
+          : 1;
+        vx = (player.lungeVx ?? 0) * d * lungeCap;
+        vy = (player.lungeVy ?? 0) * d * lungeCap;
       } else if (skaterStopping) {
         const d = Math.exp(-deltaTime / 0.05); // 約50msの時定数で素早く0へ
         vx = player.vx * d;
@@ -9887,7 +9911,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 成功=CDを設定しない(既存値は発動時点で既に明けている=即再使用可)。CD無しサブはここを
       // 通らない=自然に対象外)。sensor-mine/support-sniperの手動実装も同じ関数を通る。
       const delta = readyAt - state.gameTime;
-      const cd = applySubCooldownSkills(skillOverclockChance(state.player), skillCooldownMult(state.player), delta);
+      const cd = applySubCooldownSkills(
+        trapGatedOverclockChance(state.player, skillOverclockChance(state.player)), // ★対人トラップ中は短縮無効
+        trapGatedCooldownMult(state.player, skillCooldownMult(state.player)),
+        delta,
+      );
       if (cd.overclockProc) {
         recordOverclockProc(); // M35: 成立回数の計測のみ
         // §21(B5)枠光: 視覚のみ・判定/CDには不干渉(CDは元々「即再使用可」のまま=返り値以外は従来どおり)。
@@ -17247,6 +17275,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     lungeVx: 0,
     lungeVy: 0,
     lungeUntil: 0,
+    trapDebuffUntil: 0,
           counterCooldownEnd: 0,
           lastCounterSuccessTime: 0,
           ammoHandgun: AMMO_INITIAL.handgun,
