@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3864',
+    items: [
+      '変異体対策室でも守護霊を選べるようになりました(キャラクター選択の下に並びます)。',
+    ],
+  },
+  {
     version: '0.25.3863',
     items: [
       'ゲーム内容の変更はありません(自動テストの古い前提を直しました)。',

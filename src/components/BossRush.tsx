@@ -10,8 +10,8 @@
 //   (社長指摘v0.25.2862・BOSS_MAKER.md §20-8-e)。
 import React, { useMemo, useState } from 'react';
 import { Lock, Swords, Heart, MapPin } from 'lucide-react';
-import { CHARACTER_CLASSES, getStage } from '../data/campaign';
-import { enemyDeathLabel } from '../store/gameStore';
+import { CHARACTER_CLASSES, getStage, COMPANION_SKILL_KEYS, SKILLS } from '../data/campaign';
+import { enemyDeathLabel, useGameStore } from '../store/gameStore';
 import { bossIconSrc } from '../utils/bossIcon';
 import { bossHintsFor } from '../data/bossHints';
 import { loadEncounteredBosses } from '../utils/bossEncounter';
@@ -60,6 +60,15 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
   const encountered = useMemo(() => loadEncounteredBosses(), []);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [cls, setCls] = useState<CharacterClass>('warrior');
+  // ★守護霊の選択(社長指示2026-08-24)。**正本は gameStore の1本**(キャラ選択の守護霊枠と共有)。
+  // CLAUDE.md「React re-render discipline」: 毎フレーム変わる物ではないので、必要な値だけを個別に購読する。
+  const companionSkill = useGameStore(state => state.companionSkill);
+  const setCompanionSkill = useGameStore(state => state.setCompanionSkill);
+  const ownedSkills = useGameStore(state => state.ownedSkills);
+  const ownedCompanions = useMemo(
+    () => COMPANION_SKILL_KEYS.filter(k => ownedSkills.includes(k)),
+    [ownedSkills],
+  );
 
   const open = openKey ? PRACTICE_SLOTS.find(s => s.slotKey === openKey) ?? null : null;
   // 解放判定は台帳側の1本(practiceSlotUnlocked)=遭遇記録 or 常時解放枠(幻影)。
@@ -135,9 +144,34 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
               >{c.name}</button>
             ))}
           </div>
-          {/* 守護霊の選択は置かない(社長指示v0.25.2857): 装備画面で組んだスキルがそのまま乗る。 */}
+          {/* ★社長指示2026-08-24「ui変わったから変異対策室で守護霊の選択肢も追加 キャラ選択の並びに」。
+              旧v0.25.2857 は「守護霊の選択は置かない=**装備画面で組んだスキルがそのまま乗る**」だったが、
+              **その装備画面の同行者欄は 2026-08-20 の社長指示で撤去され、キャラ選択の守護霊枠へ移設**
+              された。⇒ 旧裁定の前提そのものが消えたので、ここにも選択を置く。
+              状態は `gameStore.companionSkill`(=キャラ選択の守護霊枠と**同じ1つの正本**)を直接読み書きする
+              =この画面で選び直すと本編側の選択も変わる(二重管理を作らない)。 */}
+          <div className="mt-2.5 mb-1.5 text-[9px] font-semibold tracking-[0.2em] text-fuchsia-200/60">守護霊</div>
+          <div className="flex flex-wrap gap-1">
+            <button
+              type="button"
+              onClick={() => setCompanionSkill(null)}
+              className={`px-2.5 py-1.5 text-[11px] ${companionSkill === null ? 'bg-fuchsia-500/40 text-white' : 'bg-white/5 text-white/55'}`}
+            >なし</button>
+            {ownedCompanions.map(k => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setCompanionSkill(k)}
+                className={`px-2.5 py-1.5 text-[11px] ${companionSkill === k ? 'bg-fuchsia-500/40 text-white' : 'bg-white/5 text-white/55'}`}
+              >{SKILLS[k].name}</button>
+            ))}
+          </div>
+          {ownedCompanions.length === 0 && (
+            <p className="mt-1 text-[10px] text-white/35">まだ守護霊を持っていません(ガチャで入手)。</p>
+          )}
           <p className="mt-2 text-[10px] leading-relaxed text-white/35">
             装備・スキル・サブウェポンは装備画面のものがそのまま使えます。<br />
+            守護霊はここでの選択が本編にも反映されます。<br />
             練習の結果は記録・進行・所持金に一切残りません。
           </p>
         </section>
