@@ -8191,7 +8191,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const uy = dir.y / dmag;
           const nowMs = Date.now();
           // 同時設置は1個: 既存のデコイがあれば消す。
-          for (const d of useGameStore.getState().projectiles.filter(p => p.weaponType === 'decoy')) {
+          // ★v0.25.3884: **自分の側のデコイだけ**消す(社長指示2026-08-25で幻影も置くようになった)。
+          // 側を見ないと、プレイヤーが置き直した瞬間に**幻影のデコイまで消える**(逆も同じ)。
+          const dcHostile = isHostileOwner(dcOwner);
+          for (const d of useGameStore.getState().projectiles.filter(p => p.weaponType === 'decoy' && (p.hostile === true) === dcHostile)) {
             removeProjectile(d.id);
             decoyPulseRef.current.delete(d.id);
           }
@@ -9032,8 +9035,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const decoyRange = decoy.area ?? 0; // Lv別射程(設置時に load 済み)
               let nearest: Projectile | null = null;
               let nearestD2 = decoyRange * decoyRange;
+              // ★v0.25.3884(社長指示「デコイ、敵の弾を消す」): **自分から見た敵の弾**を落とす。
+              // 味方のデコイ=hostileな弾(敵弾)を落とす(従来どおり)。
+              // 幻影のデコイ=hostileでない弾(=プレイヤーの弾)を落とす。
+              // 判定は「弾の側 === デコイの側」なら見送る、の1本=**同じ側の弾は絶対に撃たない**。
+              const decoyHostile = decoy.hostile === true;
               for (const b of dstate.projectiles) {
-                if (!b.hostile) continue; // 敵弾のみ。味方弾/プレイヤー弾には干渉しない。
+                if ((b.hostile === true) === decoyHostile) continue;
+                if (b.weaponType === 'decoy' || b.weaponType === 'turret'
+                  || b.weaponType === 'shield' || b.weaponType === 'trap') continue; // 設置物は弾ではない
                 const bx = b.x + b.width / 2;
                 const by = b.y + b.height / 2;
                 const d2 = (bx - dcx) * (bx - dcx) + (by - dcy) * (by - dcy);
