@@ -46,6 +46,17 @@ interface WriteSite {
 const WRITE_SITES: readonly WriteSite[] = [
   { field: 'counterWindowEnd', where: 'プレイヤー初期状態(0)', stamped: false, why: '初期化=振っていない' },
   { field: 'meleeSwingAt', where: 'プレイヤー初期状態(0)', stamped: false, why: '初期化=振っていない' },
+  // ★v0.25.3869(社長裁定「近接前隙を200にして」・SAME_ARENA.md §7): 指を離した瞬間の起点。
+  // 判定は MELEE_WINDUP_MS 後に triggerCounter が解決するので、**打刻もそちらで1回だけ**打つ。
+  // 前隙中にカウンターされた振りは解決されない=打刻も出ない(振りが中断されたのだから正しい)。
+  {
+    field: 'meleeSwingAt', where: '前隙の起点(beginMeleeSwing)', stamped: false,
+    why: '同じ振りを triggerCounter 側(前隙の解決)で1回打刻する。ここでも打つと1振り2打刻になる',
+  },
+  {
+    field: 'counterWindowEnd', where: '前隙の起点(beginMeleeSwing)', stamped: false,
+    why: '同上(守りの窓を先に開くだけ。振りが確定するのは解決地点)',
+  },
   {
     field: 'counterWindowEnd', where: '武器庫サークルでショップを開く', stamped: false,
     why: '§1-3が名指しで「打たない」と決めた経路(近接を振っていないのに窓だけ開く)',

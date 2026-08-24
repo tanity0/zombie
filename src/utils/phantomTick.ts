@@ -26,13 +26,18 @@
 //  - 慣性: 振りの絵(踏み込み→戻り)は描画側(pixiScene)がイーズで出す。判定は即発の1回。
 import type { Enemy, EnemyType, Player, Projectile, Weapon } from '../types/game';
 import {
-  useGameStore, resolveBountyMove, CRIT_DAMAGE_MULT, knockbackSpeedFor,
+  useGameStore, resolveBountyMove, CRIT_DAMAGE_MULT,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
   // ★research/SAME_ARENA.md O-2: 幻影の攻撃力を**プレイヤーと同じ純関数**で評価する
   // (式を複製しない=「写すな、共通化しろ」)。主語だけ幻影の疑似Playerに差し替える。
   combatActorPlayer, skillCritMult, skillOutgoingDamageMult,
+  // ★SAME_ARENA.md §7(前隙・社長裁定2026-08-24)
+  MELEE_WINDUP_MS,                              // 近接の前隙(プレイヤーと同じ1本を読む)
+  KNOCKBACK_SPEED, KNOCKBACK_DURATION,          // カウンターされた側のノックバック=**敵と同じ量**(社長指示)
+  meleeSwingBaseDamage,                         // プレイヤーの近接素ダメージ(式を複製しない)
 } from '../store/gameStore';
+import { HUMAN_REACTION_MS } from './bossSkeleton'; // ★人の反応時間(このゲームの正本)。幻影の反応下限に使う
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { createEnemyProjectile } from './enemyUtils';
 import { distToBandRect } from './geometry';
@@ -80,7 +85,13 @@ export const phantomProfile = (): GhostProfile => {
   if (profileCache && profileCache.key === key) return profileCache.value;
   const p = identity?.profile ?? strongestGuardian().profile;
   const built: GhostProfile = {
-    reactionMs: p.reactionMs,
+    // ★人間の反応下限でクランプ(社長裁定2026-08-24「原則同じ条件にして」・SAME_ARENA.md §7)。
+    // 台帳の値は 100〜130ms で、**人間には出せない速さ**(このゲーム自身が
+    // `bossSkeleton.HUMAN_REACTION_MS = 250` を「人の反応時間」として持ち、カウンター可能な
+    // 予告の下限 550ms をそこから導いて機械検査している)。近接に前隙200msが入った今、
+    // クランプしないと**幻影だけが前隙に「反応で後出し」でき、社長は予測しかできない**という
+    // 最悪の不公平になる。下限を入れれば両者とも予測=対等。
+    reactionMs: Math.max(HUMAN_REACTION_MS, p.reactionMs),
     counterChance: p.counterChance,
     preferredDist: p.preferredDist,
     meleeBias: p.meleeBias,
@@ -103,12 +114,9 @@ export const phantomProfile = (): GhostProfile => {
  */
 export const PHANTOM_MELEE_PERIOD_MS = GHOST_COUNTER_MELEE_PERIOD_MS;
 
-/**
- * パリィ成立でプレイヤーを弾く量(px)と時間(ms)。**設計書に指定が無いので実装で埋めた叩き台**
- * (「プレイヤー小ノックバック」だけが指定)。近接の間合いを一度切る程度の小さい値にしてある。
- */
-const PHANTOM_PARRY_SHOVE_PX = 46;
-const PHANTOM_PARRY_SHOVE_MS = 180;
+// ★旧 PHANTOM_PARRY_SHOVE_PX/MS(幻影専用の小さい叩き台)は撤去した。
+// 社長指示2026-08-24「カウンターされた側はノックバックも敵と同じく」により、
+// 敵と共通の KNOCKBACK_SPEED / KNOCKBACK_DURATION を使う(対称性のため専用値を持たない)。
 
 /**
  * ★社長裁定v0.25.3641「いまってスキルまだ無いんだよね?そしたら武器とかも初期で」:
@@ -464,24 +472,77 @@ export const decidePhantom = (
  *   一致しない ②爆風経路の帯はプレイヤーがカウンターで弾ける=裁定「カウンターは幻影に成立
  *   しない」が裏口から破れる(GHOST_BOSS.md v6 2.)。
  */
+/**
+ * ★幻影の近接がプレイヤーのカウンター窓に入った時の解決(社長裁定2026-08-24)。
+ * **プレイヤーが敵をカウンターした時と同じ扱い**にする(既存の文法から外さない):
+ *  - 幻影のダメージは通らない(0)
+ *  - 幻影は**振りが中断**され(`gpPendingSwingAt` を落とす)、**敵と同じノックバック**を受ける
+ *    (社長指示「カウンターされた側はノックバックも敵と同じく」= `KNOCKBACK_SPEED`/`KNOCKBACK_DURATION`)
+ *  - 青いカウンター成立の絵+SE(既存プールのみ・新規素材なし)
+ * ダメージ量は幻影側の合流点(`damageEnemy` → `phantomHitGate`)に任せる=対人スケールもパリィも
+ * そこで一度に裁かれる(ここで独自に減算しない=写経しない)。
+ */
+const counteredByPlayer = (
+  bcx: number, bcy: number, player: Player, sfx: PhantomSfx, patch: Partial<Enemy>, phantomId: string,
+): void => {
+  const g = useGameStore.getState();
+  patch.gpPendingSwingAt = undefined; // 振りは出ない(中断)
+  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+  const dl = Math.max(0.001, Math.hypot(bcx - pcx, bcy - pcy));
+  const now = Date.now();
+  // 敵がカウンターされた時と同じノックバック(量・時間とも同じ定数)。
+  useGameStore.setState(st => ({ enemies: st.enemies.map(e => e.id === phantomId ? {
+    ...e,
+    knockbackVx: ((bcx - pcx) / dl) * KNOCKBACK_SPEED,
+    knockbackVy: ((bcy - pcy) / dl) * KNOCKBACK_SPEED,
+    knockbackUntil: now + KNOCKBACK_DURATION,
+    knockbackShoveUntil: now + KNOCKBACK_DURATION,
+  } : e) }));
+  // カウンター反撃(プレイヤーの近接ダメージ)。合流点を通すので幻影のパリィ/対人倍率が正しく効く。
+  // crit=true(カウンターは確定クリ)。gpSource='counter' で幻影ゲートへ「近接カウンター」と伝える
+  // = 対人スケール・パリィ・i-frame の扱いが全部その1本で正しく裁かれる(ここで独自計算しない)。
+  g.damageEnemy(
+    phantomId, meleeSwingBaseDamage(player.weapons.find(w => w.isMelee), player),
+    false, true, false, 'other', 'player', null, 1, 'counter',
+  );
+  sfx.parry();
+  g.spawnRing(bcx, bcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+  g.spawnBurst(bcx, bcy, '#38bdf8', 14);
+  g.spawnGlow(bcx, bcy, 43, 'rgba(56,189,248,', 360);
+  g.spawnCallout(bcx, bcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+  g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, bcx, bcy);
+};
+
 const swingPhantomMelee = (
   bcx: number, bcy: number, player: Player, sfx: PhantomSfx, patch: Partial<Enemy>,
   // ★SAME_ARENA O-2: `phantomId` を受け取り、近接ダメージにも記録どおりのスキル/装備倍率を乗せる。
-  newGameTime: number, growthAtkMult: number, phantomId: string,
+  _newGameTime: number, growthAtkMult: number, phantomId: string,
 ): void => {
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const ang = Math.atan2(pcy - bcy, pcx - bcx);
   const tx = bcx + Math.cos(ang) * GP_T.melee.reach;
   const ty = bcy + Math.sin(ang) * GP_T.melee.reach;
-  patch.gpSwingAt = newGameTime;
-  patch.gpSwingAngle = ang;
-  sfx.swing();
+  // ★gpSwingAt / gpSwingAngle は**振り始め**で打ってある(=幻影のカウンター窓の起点)。
+  // ここで打ち直すと窓が前隙ぶん後ろへずれ、「後出しが勝つ」が壊れる(v0.25.3869で踏んだ実バグ)。
+  sfx.swing(); // 刃が走る音は判定と同時(プレイヤーの近接SEも解決地点で鳴らしている)
   const playerRadius = Math.max(player.width, player.height) / 2;
   if (distToBandRect({ x: pcx, y: pcy }, { x: bcx, y: bcy }, { x: tx, y: ty }, GP_T.melee.halfWidth) > playerRadius) return;
   // fromX/fromY を渡さないとプレイヤーのノックバックが出ない(GHOST_BOSS.md 監査4周目#1)。
   // ★v0.25.3640(成果物監査Q1-3): damagePlayer の戻り値は「プレイヤーが死んだか」であって
   // 「当たったか」ではない(旧実装はこれを landed と誤読し、被弾SEが一度も鳴らなかった)。
   // 実際にHPが減ったか(=i-frame中でない有効打か)を前後比較で判定して鳴らす。
+  // ★プレイヤーのカウンター(社長裁定2026-08-24「原則同じ条件にして」・SAME_ARENA.md §7)。
+  // これ以前は**プレイヤーが幻影の近接を止める手段が1つも存在しなかった**(幻影の近接は
+  // damagePlayer 直呼びで、カウンター成立域の宣言表 COUNTER_REACH_DECL に幻影の項が1行も無い)。
+  // 一方 幻影はプレイヤーの近接を窓で弾き反撃まで出していた=最大の非対称。ここで対称にする。
+  // ※事実として、GHOST_BOSS.md v6 では「カウンターは幻影に成立しない」と裁定されていた。
+  //   2026-08-24 の「原則同じ条件」でその前提が変わったので、今はこちらが正。
+  // 判定はプレイヤー側の窓1本(`counterWindowEnd`)。窓は指を離した瞬間に開くので、
+  // **幻影より後に振った(=後出しした)プレイヤーだけが間に合う**=「後出しが勝つ」。
+  if (Date.now() <= useGameStore.getState().player.counterWindowEnd) {
+    counteredByPlayer(bcx, bcy, player, sfx, patch, phantomId);
+    return;
+  }
   const hpBefore = useGameStore.getState().player.health;
   useGameStore.getState().damagePlayer(
     // 対人1/10(社長裁定2026-08-20「プレイヤー同士の戦いではダメージ1/10で一旦」)。
@@ -556,16 +617,20 @@ const consumePhantomParry = (
   // 殴っていない本人が押される**という意味不明な絵になる。どちらも近接射程内の時だけ出す
   // (「見たまんまが当たり判定」文法。パリィ自体のスパーク・SEは幻影の位置の演出なので無条件)。
   if (edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach) {
-    // プレイヤーを小さく弾く(弾かれた手応え)。距離・時間は設計書に指定が無いので叩き台。
+    // ★カウンターされた側の扱い(社長指示2026-08-24「カウンターされた側はノックバックも敵と同じく」)。
+    // 弾かれたのだから **前隙中の振りは出ない(中断)** し、**敵がカウンターされた時と同じ量**の
+    // ノックバックを受ける(`KNOCKBACK_SPEED`/`KNOCKBACK_DURATION`)。旧実装は幻影専用の
+    // 小さい叩き台(46px/…)だったので、対称性のために共通定数へ揃えた。
     const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
     const dl = Math.max(0.001, Math.hypot(pcx - bcx, pcy - bcy));
-    const spd = knockbackSpeedFor(PHANTOM_PARRY_SHOVE_PX, PHANTOM_PARRY_SHOVE_MS);
+    const kbNow = Date.now();
     useGameStore.setState(stt => ({ player: {
       ...stt.player,
-      knockbackVx: ((pcx - bcx) / dl) * spd,
-      knockbackVy: ((pcy - bcy) / dl) * spd,
-      knockbackUntil: Date.now() + PHANTOM_PARRY_SHOVE_MS,
-      knockbackMs: PHANTOM_PARRY_SHOVE_MS,
+      pendingSwingAt: 0, // 振りは出ない(中断)
+      knockbackVx: ((pcx - bcx) / dl) * KNOCKBACK_SPEED,
+      knockbackVy: ((pcy - bcy) / dl) * KNOCKBACK_SPEED,
+      knockbackUntil: kbNow + KNOCKBACK_DURATION,
+      knockbackMs: KNOCKBACK_DURATION,
     } }));
     swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult, phantom.id);
     s.nextMeleeAt = newGameTime + PHANTOM_MELEE_PERIOD_MS;
@@ -656,11 +721,23 @@ export const runPhantomTick = (
   // ---- 近接(即発ミラー・自前周期タイマー単独) -----------------------------------------------------
   // ★`decision.action==='melee'` は門番にしない: decideGhost が melee 意図を返すのは縁74px以内だけで、
   //   reach160の外側が死ぬ(GHOST_BOSS.md v6 2.)。距離は decideGhost へ注入したのと同じ edgeDistTo。
+  // ★前隙(社長裁定2026-08-24・SAME_ARENA.md §7): 振り**始め**にカウンター窓(gpSwingAt)を開き、
+  // 判定は MELEE_WINDUP_MS 後に解決する=プレイヤーと同条件。
   if (!parried
+    && phantom.gpPendingSwingAt === undefined
     && newGameTime >= s.nextMeleeAt
     && edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach) {
-    swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult, phantom.id);
+    // 振り始め: 窓・絵・SE だけ(プレイヤーの beginMeleeSwing と同じ分割)。
+    patch.gpSwingAt = newGameTime;
+    patch.gpSwingAngle = Math.atan2((player.y + player.height / 2) - bcy, (player.x + player.width / 2) - bcx);
+    patch.gpPendingSwingAt = newGameTime;
     s.nextMeleeAt = newGameTime + PHANTOM_MELEE_PERIOD_MS;
+  }
+  // 前隙の解決(カウンターされていれば gpPendingSwingAt は既に消えている=ここへ来ない)。
+  const pend = phantom.gpPendingSwingAt;
+  if (pend !== undefined && newGameTime - pend >= MELEE_WINDUP_MS) {
+    patch.gpPendingSwingAt = undefined;
+    swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult, phantom.id);
   }
 
   applyPatch(phantom.id, patch);

@@ -648,6 +648,12 @@ export interface Enemy {
   gpParryCdUntil?: number;
   /** 即発近接を振った時刻(描画=斬撃弧+踏み込みの起点)。 */
   gpSwingAt?: number;
+  /**
+   * ★幻影の近接の前隙(社長裁定2026-08-24・SAME_ARENA.md §7)。振り始めた時刻(**gameTime**)。
+   * `MELEE_WINDUP_MS` 経過後に `runPhantomTick` が判定を解決する。undefined=前隙中の振りは無い。
+   * **プレイヤーにカウンターされたら消す**(=振りが中断される。プレイヤー側の `pendingSwingAt` と同型)。
+   */
+  gpPendingSwingAt?: number;
   /** その振りの向き(rad)。判定に使ったカプセルと同じ角度を描画へ渡す。 */
   gpSwingAngle?: number;
   /** 銃を撃った時刻(描画=マズルフラッシュ+反動の起点)。 */

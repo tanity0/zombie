@@ -19,7 +19,8 @@ import { COUNTER_REACH_DECL } from './counterReach';
 import { usesPostureSystem, applyBossPostureDamage } from './bossPosture';
 import { strongestGuardian } from '../data/fixedGuardians';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { useGameStore, INVULN_MS, MELEE_RADIUS, COUNTER_WINDOW } from '../store/gameStore';
+import { useGameStore, INVULN_MS, MELEE_RADIUS, COUNTER_WINDOW, MELEE_WINDUP_MS, KNOCKBACK_SPEED, KNOCKBACK_DURATION } from '../store/gameStore';
+import { HUMAN_REACTION_MS } from './bossSkeleton';
 import { spawnEnemyAt } from './enemyUtils';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
@@ -72,13 +73,19 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('① 即発近接(予告なし・プレイヤーと同じ周期)', () => {
-  it('射程内なら1tick目で振り、当たればプレイヤーのHPが減る(溜めを待たない)', () => {
+  // ★v0.25.3869(社長裁定「近接前隙を200にして」): 振り**始め**にカウンター窓(gpSwingAt)が開き、
+  // **判定は MELEE_WINDUP_MS 後**に出る。プレイヤーと完全に同条件(SAME_ARENA.md §7)。
+  it('射程内なら1tick目で振り始め、判定は前隙(200ms)後に出る', () => {
     const { step, cur } = setup(60); // reach=MELEE_RADIUS(74)内(v0.25.3667で160→74)
     const hp0 = useGameStore.getState().player.health;
     step(16);
     const gp = cur();
-    expect(gp.gpSwingAt).toBeDefined();                       // 振った(=即発)
+    expect(gp.gpSwingAt).toBeDefined();                       // 振り始めた(=窓が開いた)
+    expect(gp.gpPendingSwingAt).toBeDefined();                // 前隙の最中
     expect(gp.bossState).toBeUndefined();                     // 州機械は使わない(予告も硬直も無い)
+    expect(useGameStore.getState().player.health).toBe(hp0);  // ★前隙中はまだ当たらない
+    step(MELEE_WINDUP_MS);
+    expect(cur().gpPendingSwingAt).toBeUndefined();           // 解決済み
     // 初期近接武器の実ダメージ(v0.25.3641裁定)×対人1/10(社長裁定2026-08-20)。
     expect(useGameStore.getState().player.health).toBe(hp0 - phantomMeleeDamage() * PVP_DAMAGE_SCALE);
   });
@@ -90,6 +97,7 @@ describe('① 即発近接(予告なし・プレイヤーと同じ周期)', () =
     step(PHANTOM_MELEE_PERIOD_MS - 100);
     expect(cur().gpSwingAt).toBe(first);                      // 周期の途中では振らない
     step(200);
+    step(16);
     expect(cur().gpSwingAt).toBeGreaterThan(first);           // 周期が明けたら振る
   });
 
@@ -100,6 +108,55 @@ describe('① 即発近接(予告なし・プレイヤーと同じ周期)', () =
     )).toBeGreaterThan(GP_T.melee.reach);
     step(16);
     expect(cur().gpSwingAt).toBeUndefined();
+  });
+});
+
+// ★社長裁定2026-08-24「プレイと幻影は、原則同じ条件にして」「カウンターされた側はノックバックも敵と同じく」
+// (research/SAME_ARENA.md §7)。前隙200msが入ったことで、**プレイヤーが幻影の近接をカウンターできる**
+// ようになった——それ以前は幻影の近接が damagePlayer 直呼びで、止める手段が1つも無かった(最大の非対称)。
+describe('★プレイヤーが幻影の近接をカウンターする(v0.25.3869)', () => {
+  it('カウンター窓が開いていれば、幻影の斬撃は通らず幻影が反撃を受ける', () => {
+    const { cur } = setup(60);
+    const s = createPhantomTickState();
+    runPhantomTick(cur(), s, START_GT + 16, 0.016, 1, START_GT + 16, NOOP_PHANTOM_SFX, () => 0.999);
+    expect(cur().gpPendingSwingAt).toBeDefined(); // 幻影は前隙中
+    // プレイヤーが窓を開けている(=幻影より後に振った状態)。
+    useGameStore.setState(ps => ({ player: { ...ps.player, counterWindowEnd: Date.now() + 10_000 } }));
+    const hpPlayer = useGameStore.getState().player.health;
+    const hpPhantom = cur().health;
+    const gt = START_GT + 16 + MELEE_WINDUP_MS;
+    runPhantomTick(cur(), s, gt, 0.016, 1, gt, NOOP_PHANTOM_SFX, () => 0.999);
+    expect(useGameStore.getState().player.health).toBe(hpPlayer); // 斬撃は通らない
+    expect(cur().health).toBeLessThan(hpPhantom);                 // 幻影が反撃を受ける
+    expect(cur().gpPendingSwingAt).toBeUndefined();               // 振りは中断
+  });
+
+  it('カウンターされた幻影は「敵と同じ」ノックバックを受ける(社長指示)', () => {
+    const { cur } = setup(60);
+    const s = createPhantomTickState();
+    runPhantomTick(cur(), s, START_GT + 16, 0.016, 1, START_GT + 16, NOOP_PHANTOM_SFX, () => 0.999);
+    useGameStore.setState(ps => ({ player: { ...ps.player, counterWindowEnd: Date.now() + 10_000 } }));
+    const gt = START_GT + 16 + MELEE_WINDUP_MS;
+    runPhantomTick(cur(), s, gt, 0.016, 1, gt, NOOP_PHANTOM_SFX, () => 0.999);
+    const gp = cur();
+    // 量が敵のカウンターノックバックと同一(専用の叩き台を持たない=対称性のため)。
+    expect(Math.hypot(gp.knockbackVx ?? 0, gp.knockbackVy ?? 0)).toBeCloseTo(KNOCKBACK_SPEED, 3);
+    expect((gp.knockbackUntil ?? 0) - Date.now()).toBeGreaterThan(KNOCKBACK_DURATION - 100);
+  });
+
+  it('窓が閉じていれば従来どおり幻影の斬撃が通る(窓の有無だけが分岐)', () => {
+    const { cur } = setup(60);
+    const s = createPhantomTickState();
+    runPhantomTick(cur(), s, START_GT + 16, 0.016, 1, START_GT + 16, NOOP_PHANTOM_SFX, () => 0.999);
+    useGameStore.setState(ps => ({ player: { ...ps.player, counterWindowEnd: 0 } }));
+    const hpPlayer = useGameStore.getState().player.health;
+    const gt = START_GT + 16 + MELEE_WINDUP_MS;
+    runPhantomTick(cur(), s, gt, 0.016, 1, gt, NOOP_PHANTOM_SFX, () => 0.999);
+    expect(useGameStore.getState().player.health).toBeLessThan(hpPlayer);
+  });
+
+  it('幻影の反応は人間の下限(HUMAN_REACTION_MS)より速くならない', () => {
+    expect(phantomProfile().reactionMs).toBeGreaterThanOrEqual(HUMAN_REACTION_MS);
   });
 });
 
@@ -303,14 +360,19 @@ describe('★成果物監査の再発防止(v0.25.3640)', () => {
     const st = useGameStore.getState();
     const e = st.enemies[0];
     const s = createPhantomTickState();
-    runPhantomTick(e, s, START_GT + 16, 0.016, 1, START_GT + 16, sfx, () => 0.999);
-    expect(hurt).toBe(1); // 当たった=鳴る
+    runPhantomTick(e, s, START_GT + 16, 0.016, 1, START_GT + 16, sfx, () => 0.999); // 振り始め(前隙)
+    expect(hurt).toBe(0); // ★前隙中はまだ当たっていない
+    const gt1 = START_GT + 16 + MELEE_WINDUP_MS;
+    runPhantomTick(useGameStore.getState().enemies[0], s, gt1, 0.016, 1, gt1, sfx, () => 0.999);
+    expect(hurt).toBe(1); // 前隙が明けて当たった=鳴る
     // HPが実際に減らなかった時は鳴らない。**i-frameでは検証できない**(v0.25.3866の裁定で幻影の
     // 近接はプレイヤーのi-frameを無視して通るようになったため)。代わりに訓練(M0)の「HP1で
     // 踏みとどまる」を使う=amountが0にクランプされHPが動かない、まさに旧バグと同じ形。
     useGameStore.setState(ps => ({ farBackdrop: 'tutorial', player: { ...ps.player, health: 1 } }));
     const s2 = createPhantomTickState();
     runPhantomTick(useGameStore.getState().enemies[0], s2, START_GT + 5000, 0.016, 1, START_GT + 5000, sfx, () => 0.999);
+    const gt2 = START_GT + 5000 + MELEE_WINDUP_MS;
+    runPhantomTick(useGameStore.getState().enemies[0], s2, gt2, 0.016, 1, gt2, sfx, () => 0.999);
     expect(useGameStore.getState().player.health).toBe(1); // 減っていない
     expect(hurt).toBe(1); // 増えない
     void step; // setupのヘルパは未使用(直接tickで検証)
@@ -325,6 +387,8 @@ describe('★成果物監査の再発防止(v0.25.3640)', () => {
     const before = useGameStore.getState().player.health;
     const s2 = createPhantomTickState();
     runPhantomTick(useGameStore.getState().enemies[0], s2, START_GT + 16, 0.016, 1, START_GT + 16, NOOP_PHANTOM_SFX, () => 0.999);
+    const gt3 = START_GT + 16 + MELEE_WINDUP_MS;
+    runPhantomTick(useGameStore.getState().enemies[0], s2, gt3, 0.016, 1, gt3, NOOP_PHANTOM_SFX, () => 0.999);
     expect(useGameStore.getState().player.health).toBeLessThan(before);
     void step;
   });
