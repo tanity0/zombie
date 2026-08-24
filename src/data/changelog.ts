@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3871',
+    items: [
+      'ゲーム内容の変更はありません(自動テストが30%の確率で失敗していた問題を直しました)。',
+    ],
+  },
+  {
     version: '0.25.3870',
     items: [
       '守護霊の近接にも同じ0.2秒の前隙が入りました。これでプレイヤー・守護霊・幻影の3人が、近接について完全に同じ条件で戦います。',

@@ -1376,7 +1376,14 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossPhase).toBe(2);
     });
 
+    // ★v0.25.3871(flaky修正): このテストは **30%の確率で落ちていた**。原因はテスト側の思い込みで、
+    // v0.25.3584「舞妓にもバックロール追加」以降、**近距離の取り掛かりは毎回 `MK_T.backRoll.chance`
+    // (=0.3)の抽選**で、当たればバックロール・外れれば毬の薙ぎ、に分岐している。
+    // テストは薙ぎが必ず出る前提のまま放置されていたので、CIが乱数で赤くなっていた。
+    // ⇒ **抽選を明示的に外して**(Math.random=1)薙ぎの枝を確定させる。抽選そのものは
+    //    直後のテストで別に固定する(枝を隠さない=「直したら仕様が消えた」を防ぐ)。
     it('型Bの近距離は毬の薙ぎ・連(mk-naginata1→mk-naginata2)の2段になる', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(1); // バックロール抽選を必ず外す(1 < 0.3 は偽)
       const { id, step } = setupType('bounty-maiko', { x: 60, y: 0 }, { bossPhase: 2 });
       step(16);
       const e1 = useGameStore.getState().enemies.find(x => x.id === id);
@@ -1387,6 +1394,15 @@ describe('runBountyTick — B2a 技の状態機械', () => {
         if (useGameStore.getState().enemies.find(x => x.id === id)?.bossState === 'mk-naginata2-windup') { sawStep2 = true; break; }
       }
       expect(sawStep2).toBe(true);
+    });
+
+    // 上のテストが外した枝を、ここで**値で**固定する(抽選が消えたら落ちる)。
+    it('型Bの近距離はバックロール抽選に当たるとバックロールへ入る(MK_T.backRoll.chance)', () => {
+      expect(MK_T.backRoll.chance).toBeGreaterThan(0); // 抽選が存在すること自体を固定
+      vi.spyOn(Math, 'random').mockReturnValue(0);     // 必ず当たる(0 < chance)
+      const { id, step } = setupType('bounty-maiko', { x: 60, y: 0 }, { bossPhase: 2 });
+      step(16);
+      expect(useGameStore.getState().enemies.find(x => x.id === id)?.bossState).toBe('mk-backroll');
     });
 
     it('毬回し(自分中心円)は強制発火させると円内のプレイヤーへダメージを与え続ける', () => {
