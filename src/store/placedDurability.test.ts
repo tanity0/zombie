@@ -18,7 +18,7 @@ const placeTurret = (hostile: boolean): string => {
     player: { ...s.player, x: ORIGIN, y: ORIGIN },
     projectiles: [...s.projectiles, {
       id, x: ORIGIN, y: ORIGIN, width: 16, height: 16, speed: 0, damage: 0,
-      direction: { x: 0, y: 0 }, weaponType: 'turret', createdAt: Date.now(),
+      direction: { x: 0, y: 0 }, weaponType: 'turret', createdAt: Date.now(), duration: 10_000,
       passthrough: false, hitEnemies: [], hostile, reflected: false,
       placedHp: PLACED_DURABILITY.turret, placedMaxHp: PLACED_DURABILITY.turret,
     }],

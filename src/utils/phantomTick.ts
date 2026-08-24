@@ -708,7 +708,14 @@ export const runPhantomTick = (
   // ★research/SAME_ARENA.md O-3: サブウェポン使用の**予約**。守護霊(G2.6)と同じ純関数・同じ考え方
   // (「CDが明けていて交戦中なら使う」)。実際の発動はサブ入口(useGameLoop)がCD明けに解決して
   // 予約を下ろす。頻度は**記録の癖**(profile.subUsesPerMin)=誰と戦っているかがここにも出る。
-  if (!phantom.gpSubClaim
+  // ★v0.25.3881: **持っていても幻影がまだ使えない種(白リスト外)しか無いなら予約しない**。
+  // v0.25.3879 で白リストを入れた時の抜け——予約は「サブを使いたい」だけを見ていたので、
+  // 設置系しか持っていない幻影は**予約を上げたまま永久に発動できず**、`gpLastSubUseAt` も
+  // 更新されないので**毎tick予約し続ける**状態になっていた(実害は小さいが、予約が主語を
+  // 押さえ続ける=将来の取り合いで事故る形)。使える種を1つも持っていないなら最初から予約しない。
+  const canUseAnySub = (combatActorPlayer(phantom.id)?.subWeapons ?? []).some(k => phantomSupportsSub(k));
+  if (canUseAnySub
+    && !phantom.gpSubClaim
     && shouldGhostClaimSub(phantom.gpLastSubUseAt ?? 0, nowMs, phantomProfile().subUsesPerMin)) {
     patch.gpSubClaim = true;
   }
