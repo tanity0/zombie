@@ -82,7 +82,7 @@ import {
   SHOP_MEDKIT_COST, // SKILL_BUILD_REDESIGN.md §15-1(B0): ボット購買ポリシーの救急価格
   EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の7: ボット購買ポリシー②(装備区画)の価格表
   REFLECT_DAMAGE_MULTIPLIER, // v0.25.3665: 幻影の弾パリィ(打ち返し)=プレイヤーの打ち返しと同じ倍率規則
-  MELEE_WINDUP_MS, // ★近接の前隙(SAME_ARENA.md §7)。前隙の解決タイミングに使う
+  meleeWindupMs, // ★近接の前隙(SAME_ARENA.md §7)。武器ごとに変わるので必ずこの関数を通す
   KILLFX_TOTAL_MS, // KILL処刑演出の尺(前隙の解決で近接SEを抑止する条件・旧VirtualJoystickから移設)
 } from '../store/gameStore';
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
@@ -6891,7 +6891,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // **前隙中にカウンターされたら pendingSwingAt は 0 に戻っている**=ここへ来ない(振りが中断)。
         {
           const pendAt = useGameStore.getState().player.pendingSwingAt;
-          if (pendAt > 0 && Date.now() - pendAt >= MELEE_WINDUP_MS) {
+          // 前隙の長さは**武器で変わる**(ナイフ200 / 鞭250・社長指示2026-08-24)。
+          if (pendAt > 0 && Date.now() - pendAt >= meleeWindupMs(useGameStore.getState().player)) {
             useGameStore.setState(st => ({ player: { ...st.player, pendingSwingAt: 0 } }));
             const counter = useGameStore.getState().triggerCounter(pendAt);
             // 近接SE(旧 VirtualJoystick の指離しハンドラから移設・条件は1bit同じ)。
@@ -9566,7 +9567,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               {
                 const pend = ghostNow.gPendingSwingAt;
                 if (pend !== undefined) {
-                  if (nowMs - pend >= MELEE_WINDUP_MS) {
+                  if (nowMs - pend >= meleeWindupMs(ghostOwner)) { // 守護霊も装備どおりの前隙(鞭なら250)
                     ghostMeleeResolvesNow = true;
                     ghostPendWasCounter = ghostNow.gPendingSwingWasCounter === true;
                     useGameStore.setState(st => ({ summons: st.summons.map(sm => sm.id === ghostNow.id

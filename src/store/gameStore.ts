@@ -1168,6 +1168,19 @@ export const COUNTER_WINDOW = 400; // ms the window stays open after trigger
  * 打ち合いは「後から振った方の窓が、先に振った方の斬撃を捕まえる」=後出しが勝つ。
  */
 export const MELEE_WINDUP_MS = 200;
+/**
+ * ★鞭の前隙(社長指示2026-08-24「鞭は250くらいにしたい」)。鞭はリーチ150pxの**長物**で、
+ * 描画も倍(`WHIP_DRAW_MS`=440)・CDも +`WHIP_COOLDOWN_EXTRA_MS` と、元から「重い」側に寄せてある。
+ * 前隙もナイフ(200)より長い=**リーチと引き換えに出が遅い**という一貫した性格になる。
+ */
+export const WHIP_WINDUP_MS = 250;
+/**
+ * その主語(プレイヤー / 疑似Player)の**近接の前隙**。装備で変わるので、前隙を測る側は
+ * `MELEE_WINDUP_MS` を直接読まず**必ずこの関数を通す**(武器ごとの値が1箇所に集まる)。
+ * 刀の一閃(`triggerKatanaDash`)はこの経路を通らない=別建て(SAME_ARENA.md §7-2)。
+ */
+export const meleeWindupMs = (player: Player): number =>
+  player.subWeapons.includes('whip') ? WHIP_WINDUP_MS : MELEE_WINDUP_MS;
 export const COUNTER_COOLDOWN = 420; // ms between counters (anti-spam)
 // PHILL銃の狙いサークル: 距離(レティクルの前方距離)と「吸い付き」半径(この距離内に頭があればスナップ)。
 export const PHILL_AIM_RANGE = 130; // レティクル基準距離(手前寄りに。旧190)
