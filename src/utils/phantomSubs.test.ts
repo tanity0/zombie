@@ -95,16 +95,25 @@ describe('O-3 紫の文法: 幻影のサブはカウンターで打ち返せな�
 // 白リスト(PHANTOM_SUPPORTED_SUBS)を**値で**固定しておく——新しい種を実装した時にここへ足すのが
 // 「実装した」の定義になり、足し忘れ=自爆の再発が構造的に起きない。
 describe('★幻影が主語になれるサブの白リスト(自爆バグの再発防止・v0.25.3879)', () => {
-  it('設置系(トラップ/デコイ/タレット/盾/地雷)は幻影の主語にならない', () => {
+  // ★社長指示2026-08-25「とりあえず幻影も設置してください」で設置系を解禁した。
+  // 解禁の前提は v0.25.3880 の耐久(プレイヤーが壊せる)+ 置いた物へ `hostile: true`。
+  it('設置系(トラップ/デコイ/タレット/盾/地雷)も幻影の主語になれる', () => {
     for (const k of ['marksman-trap', 'decoy', 'turret', 'shield', 'sensor-mine'] as SubWeaponKey[]) {
-      expect(phantomSupportsSub(k)).toBe(false);
+      expect(phantomSupportsSub(k)).toBe(true);
     }
   });
 
-  it('実装済み(手榴弾=O-3a / 火炎ナイフ=O-3b-1)だけが主語になれる', () => {
+  it('投擲系(手榴弾=O-3a / 火炎ナイフ=O-3b-1)も従来どおり主語になれる', () => {
     expect(phantomSupportsSub('heavy-grenade')).toBe(true);
     expect(phantomSupportsSub('fire-knife')).toBe(true);
-    expect([...PHANTOM_SUPPORTED_SUBS].sort()).toEqual(['fire-knife', 'heavy-grenade']);
+  });
+
+  it('未実装の種は主語にならない(白リストが「実装した」の定義であり続ける)', () => {
+    // 近接相乗り系・ロック系・自分に効く系は O-3b-2 の残り。ここが true になったら
+    // 「宛先の配線も済んでいる」ことを意味する=足す時は必ず配線とセットで。
+    for (const k of ['drone-boomerang', 'homing', 'first-aid-kit', 'junk-weapon'] as SubWeaponKey[]) {
+      expect(phantomSupportsSub(k)).toBe(false);
+    }
   });
 
   it('白リストは実在するサブウェポンのキーだけを含む(綴り間違いで永久に無効化されない)', () => {

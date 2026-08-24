@@ -1018,6 +1018,12 @@ export const applyContactDamage = (
   // ワイヤーアンカーの高速移動中/敵吸着コンボ中は敵接触ダメージを無効化(敵弾は別経路でそのまま当たる)。
   // スラム後ジャンプ離脱(ホップ)中も同じく無効(DEVELOPMENT_LOG v0.25.2487・接触無効の合流点)。
   const wpImmune = collPlayer;
+  // ★踏み込み中は「敵への接触ダメージ」だけ無敵(社長指示2026-08-25「敵への接触ダメージのみ無敵」)。
+  // **技・弾・予告には無敵ではない**——踏み込みは「速く動いて避ける」道具であって
+  // 「判定をすり抜ける」道具ではない(SAME_ARENA.md §7-4)。ここを広げると、今日作った
+  // 同条件の土俵(近接/カウンターは無敵を貫通する)が崩れる。
+  // 狙い: 前隙の頭で群れへ突っ込んだ瞬間に、避けようのない体当たりで削られるのを防ぐ。
+  const lungeContactImmune = Date.now() < (collPlayer.lungeUntil ?? 0);
   const wireDashingNow = Date.now() < wpImmune.wireDashUntil || Date.now() < wpImmune.wireHopUntil || !!wpImmune.wireStuckEnemyId;
   // 突進(ダッシュ)カウンター: 突進中(aiPhase==='charge')の敵にカウンター窓中で接触すると弾く
   // (無傷＋敵へのダメージ無し＋2倍ノックバックで突進中断)。ジャンプ着地と同じ「弾き」挙動。
@@ -1142,6 +1148,9 @@ export const applyContactDamage = (
         : { id: enemy.id, ux: 0, uy: -1 });
       return;
     }
+    // ★踏み込み中は接触ダメージを通さない(社長指示2026-08-25)。ここは**体当たり(接触)の唯一の
+    // 合流点**なので、この1行で「接触だけ無敵」が成立する——技・弾・予告は別経路なので影響しない。
+    if (lungeContactImmune) return;
     const damageWasApplied = !collPlayer.invulnerable;
     const rnMelee = redNightActive ? 2 : 1;
     // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の接触ダメージも×SCREAMER_BUFF_MULT。

@@ -7893,7 +7893,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             createdAt: Date.now(),
             passthrough: false,
             hitEnemies: [],
-            hostile: false,
+            hostile: isHostileOwner(mtOwner), // ★幻影が置いた物は敵対=宛先がプレイヤー側(社長指示2026-08-25)
             reflected: false,
             area: MARKSMAN_TRAP_RADIUS_BY_LEVEL[level],
             count: level,
@@ -8194,7 +8194,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             createdAt: nowMs,
             passthrough: false,
             hitEnemies: [],
-            hostile: false,
+            hostile: isHostileOwner(dcOwner), // ★幻影が置いた物は敵対=宛先がプレイヤー側(社長指示2026-08-25)
             reflected: false,
             decoyLandAt: nowMs + DECOY_THROW_MS,
             area: DECOY_RANGE_BY_LEVEL[level], // 射程(Lv別。描画のサークル半径と共有)
@@ -8261,7 +8261,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             createdAt: nowMs,
             passthrough: false,
             hitEnemies: [],
-            hostile: false,
+            hostile: isHostileOwner(shOwner), // ★幻影が置いた物は敵対=宛先がプレイヤー側(社長指示2026-08-25)
             reflected: false,
             // スキル: ナイト = 盾の最大HP ×1.5。
             shieldHp: Math.round(SHIELD_HP_BY_LEVEL[level] * skillSummonHpMult(useGameStore.getState().player)),
@@ -8295,7 +8295,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const uy = dir.y / dmag;
           const nowMs = Date.now();
           // 同時設置は1個: 既存タレットがあれば消す(デコイ/シールドと同じ流儀)。
-          for (const t of useGameStore.getState().projectiles.filter(p => p.weaponType === 'turret')) {
+          for (const t of useGameStore.getState().projectiles.filter(p => p.weaponType === 'turret' && p.hostile !== true)) { // ★敵対タレットは味方用の走査から外す(同上)
             removeProjectile(t.id);
             turretFireRef.current.delete(t.id);
           }
@@ -8323,7 +8323,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             createdAt: nowMs,
             passthrough: false,
             hitEnemies: [],
-            hostile: false,
+            hostile: isHostileOwner(trOwner), // ★幻影が置いた物は敵対=宛先がプレイヤー側(社長指示2026-08-25)
             reflected: false,
             turretMode: 'forward', // 設置時は必ず前方集中モードで開始
             ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
@@ -9973,7 +9973,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const tgPy = tGainState.player.y + tGainState.player.height / 2;
           const tgCam = tGainState.camera;
           const tgGb = tGainState.gameBounds;
-          for (const turret of useGameStore.getState().projectiles.filter(p => p.weaponType === 'turret')) {
+          for (const turret of useGameStore.getState().projectiles.filter(p => p.weaponType === 'turret' && p.hostile !== true)) { // ★同上
             const tcx = turret.x + turret.width / 2;
             const tcy = turret.y + turret.height / 2;
             // --- 消滅時の小爆発(既存ヘビーグレネード爆発を流用、控えめ威力/範囲)。味方/プレイヤーは無傷。
@@ -10642,7 +10642,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        const armedTraps = useGameStore.getState().projectiles.filter(p => p.weaponType === 'trap');
+        // ★敵対(幻影)のトラップはこの走査から外す(社長指示2026-08-25で幻影も設置できるようにした)。
+        // この走査は `enemies` を捕まえる=味方側のトラップ専用の経路。敵対の物を通すと、
+        // **幻影が自分のトラップにハマる**(v0.25.3879 で塞いだ自爆)がそのまま復活する。
+        // 敵対トラップのプレイヤーへの効き方は O-3b-2 の残り(種ごとの宛先配線)。
+        const armedTraps = useGameStore.getState().projectiles.filter(p => p.weaponType === 'trap' && p.hostile !== true);
         for (const trap of armedTraps) {
           const tx = trap.x + trap.width / 2;
           const ty = trap.y + trap.height / 2;

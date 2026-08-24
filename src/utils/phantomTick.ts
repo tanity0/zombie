@@ -135,6 +135,15 @@ export const PHANTOM_MELEE_PERIOD_MS = GHOST_COUNTER_MELEE_PERIOD_MS;
 export const PHANTOM_SUPPORTED_SUBS: readonly SubWeaponKey[] = [
   'heavy-grenade', // O-3a(v0.25.3856)
   'fire-knife',    // O-3b-1(v0.25.3859)
+  // ★O-3b-2 設置系(社長指示2026-08-25「とりあえず幻影も設置してください」)。
+  // 解禁の前提だった「プレイヤーが壊せる」は v0.25.3880(PLACED_DURABILITY)で揃った。
+  // 解禁と同時に**置いた物へ `hostile: true` を焼く**(=宛先がプレイヤー側になる)ので、
+  // v0.25.3879 の自爆(自分しか対象がいない)は再発しない。
+  'marksman-trap',
+  'decoy',
+  'turret',
+  'shield',
+  'sensor-mine',
 ];
 /** その種を幻影が主語として使えるか(未実装の種は必ずプレイヤーへフォールバックする)。 */
 export const phantomSupportsSub = (key: SubWeaponKey): boolean =>

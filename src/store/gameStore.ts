@@ -1203,7 +1203,7 @@ export const PLACED_DURABILITY = {
   turret: 70,
 } as const;
 
-export const MELEE_LUNGE_PX = 50;
+export const MELEE_LUNGE_PX = 30; // 社長調整2026-08-25(50→30)
 export const MELEE_LUNGE_MS = 90;
 /**
  * ★鞭の踏み込み距離(社長指示2026-08-24「鞭は踏み込み20で」)。
