@@ -708,6 +708,16 @@ const HUNTER_MAX_ALIVE = 3;                // 同時最大3体
 const HUNTER_BASE_SAFE_RADIUS = 150;       // 開放前を含む拠点へこの距離まで近づくとハンターが撤退
 const HUNTER_FLEE_SPEED = 300;             // 撤退移動速度(px/s)
 const HUNTER_DESPAWN_DIST = 1500;          // 撤退でプレイヤーからこの距離離れたら消滅
+/**
+ * ★撤退の誘導(社長指示2026-08-25「ハンターが帰るまでの誘導に1秒を追加。拠点、エリア切替」)。
+ * **拠点へ逃げ込んだ / エリアを出た**の2つは、それまで**その場で即座に**撤退へ切り替わっていた
+ * =CLAUDE.md「動きの絶対ルール: 慣性」の「パッと切り替わる動きは禁止」に当たる
+ * (追ってきた相手が1フレームで踵を返す=現実に無い)。引き金の瞬間にバナーだけ出し、
+ * **1秒だけ追跡を続けてから**向き直って逃げる=「諦める間」が見える。
+ * ※「追跡の上限で諦める(chasedOut)」と「演出で退く(retreatCinematic)」は社長が挙げていないので
+ *   **従来どおり即時**(「Aを直して」と言われたらAだけ)。
+ */
+const HUNTER_RETREAT_LEADIN_MS = 1000;
 // 優勢判定(6項目中 HUNTER_FAV_SCORE_NEEDED 以上で成立)
 const HUNTER_FAV_NODAMAGE_MS = 20000;      // 直近20秒ノーダメージ
 const HUNTER_FAV_KILLS_20S = 12;           // 直近20秒の撃破数が多い
@@ -1318,6 +1328,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // M20追補(社長設計v0.25.1533/1534): 索敵フェーズ廃止=デンジャー入場から約3秒後に発見済み(chase)で
     // 直接発動する。この「入場を検知してから発動までの3秒」の起点時刻(0=未検知/待機中でない)。
     viciousPendingAt: 0,
+    // ★撤退の誘導(社長指示2026-08-25)。拠点/エリア切替の引き金を引いた gameTime(0=引いていない)。
+    // ここから HUNTER_RETREAT_LEADIN_MS 後に retreat へ移す。
+    retreatLeadInAt: 0,
     // ★緩和(社長指示2026-08-22「『見られている』の通信の後、10秒後」): 待ちの入り口で予兆
     // (hunter-alert SE + バナー + 方角マーカー)を出すため、凶悪ハンターは**待ちの頭で**
     // dormant(aggroRange=0=自動起床しない静止個体)としてスポーンし、10秒後に起こしてchaseへ移す。
@@ -2609,7 +2622,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           m0CritLandedRef.current = false;
           m0LatePopupRef.current = null;
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
-          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0, noticed: false };
+          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0, noticed: false, retreatLeadInAt: 0 };
           hunterKillsRef.current = [];
           hunterPrevHpRef.current = -1;
           hunterLastDmgAtRef.current = -1e9;
@@ -4225,10 +4238,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // M20追補(社長明確化v0.25.1534)「デンジャーを出る=手前へ戻る」: 凶悪ハンターはプレイヤーが
               // デンジャーより手前(area<2=r<3000)へ後退したら逃げ去る。前進(ゲート1方向)はゲート発生側で処理。
               const viciousRetreated = H.vicious && areaZoneIndexFor(Math.hypot(hpx, hpy)) < 2;
-              if (nearAnyBase || retreatCinematic || chasedOut || viciousRetreated) {
+              // ★撤退の誘導(社長指示2026-08-25): **拠点/エリア切替の2つだけ**、引き金の瞬間に
+              // バナーを出して1秒追跡を続け、そのあと向き直って逃げる(即座に踵を返さない)。
+              const leadInTrigger = nearAnyBase || viciousRetreated;
+              if (leadInTrigger && H.retreatLeadInAt === 0) {
+                H.retreatLeadInAt = newGameTime;
+                useGameStore.setState({ eventBannerText: 'ハンターが退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              }
+              const leadInDone = H.retreatLeadInAt > 0 && newGameTime - H.retreatLeadInAt >= HUNTER_RETREAT_LEADIN_MS;
+              // 演出・追跡上限は従来どおり即時(社長が挙げていない=触らない)。
+              if (leadInDone || retreatCinematic || chasedOut) {
                 useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, hunterFleeing: true, dormant: false, aiPhase: undefined } : e) }));
                 H.phase = 'retreat';
-                useGameStore.setState({ eventBannerText: 'ハンターが退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+                H.retreatLeadInAt = 0;
+                // 誘導を通っていない経路(演出/諦め)ではここでバナーを出す(通った経路では二重に出さない)。
+                if (!leadInDone) useGameStore.setState({ eventBannerText: 'ハンターが退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               }
             }
           } else if (H.phase === 'retreat') {

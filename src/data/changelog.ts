@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3883',
+    items: [
+      'ハンターが引き上げる時、その場で即座に踵を返さず、1秒だけ追ってから向き直るようになりました(拠点へ逃げ込んだ時・エリアを出た時)。',
+      '「ハンターが退いていく」の表示はこれまでどおり引き金の瞬間に出るので、1秒は「諦める間」として見えます。',
+    ],
+  },
+  {
     version: '0.25.3882',
     items: [
       '近接の踏み込みを30pxにしました(旧50px)。',
