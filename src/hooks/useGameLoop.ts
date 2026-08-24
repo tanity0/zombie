@@ -83,6 +83,7 @@ import {
   EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の7: ボット購買ポリシー②(装備区画)の価格表
   REFLECT_DAMAGE_MULTIPLIER, // v0.25.3665: 幻影の弾パリィ(打ち返し)=プレイヤーの打ち返しと同じ倍率規則
   meleeWindupMs, // ★近接の前隙(SAME_ARENA.md §7)。武器ごとに変わるので必ずこの関数を通す
+  PLACED_DURABILITY, // ★設置物の耐久台帳(社長指示2026-08-24)
   meleeLungePx, MELEE_LUNGE_MS, // ★踏み込み(3者で同じ関数=武器別も揃う。速度は既存の knockbackSpeedFor で導く)
   KILLFX_TOTAL_MS, // KILL処刑演出の尺(前隙の解決で近接SEを抑止する条件・旧VirtualJoystickから移設)
 } from '../store/gameStore';
@@ -7897,6 +7898,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             area: MARKSMAN_TRAP_RADIUS_BY_LEVEL[level],
             count: level,
             ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
+            // ★耐久(社長指示2026-08-24)。壊せるのは敵対側(幻影)の設置物だけ=判定は破壊側。
+            placedHp: PLACED_DURABILITY['marksman-trap'],
+            placedMaxHp: PLACED_DURABILITY['marksman-trap'],
           });
           spawnRing(pcx, pcy, 4, MARKSMAN_TRAP_RADIUS_BY_LEVEL[level],
             ghostOwned ? 'rgba(159,216,255,0.5)' : 'rgba(56,189,248,0.46)', 2, 280);
@@ -8183,6 +8187,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             damage: level >= 3 ? DECOY_LV3_EXPLOSION_DAMAGE : 0,
             direction: { x: ux, y: uy },
             weaponType: 'decoy',
+            placedHp: PLACED_DURABILITY.decoy,      // ★耐久(社長指示2026-08-24)
+            placedMaxHp: PLACED_DURABILITY.decoy,
             weaponKey: 'sub-decoy',
             duration: DECOY_THROW_MS + DECOY_DURATION_BY_LEVEL[level],
             createdAt: nowMs,
@@ -8310,6 +8316,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             damage: 0,
             direction: { x: ux, y: uy }, // 設置時の向き(前方集中モードの砲身方向)
             weaponType: 'turret',
+            placedHp: PLACED_DURABILITY.turret,     // ★耐久(社長指示2026-08-24)
+            placedMaxHp: PLACED_DURABILITY.turret,
             weaponKey: 'sub-turret',
             duration: TURRET_DURATION_BY_LEVEL[level],
             createdAt: nowMs,

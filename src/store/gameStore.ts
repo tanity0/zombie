@@ -1183,6 +1183,26 @@ export const MELEE_WINDUP_MS = 200;
  * (=引きながらの牽制)。**入力に対する結果が常に一定**——社長指摘「前に出るのか出ないのか
  * 分からない方が使いづらい」により、当初案の「敵がいる時だけ詰める」は取り下げた。
  */
+/**
+ * ★設置物の耐久値(社長指示2026-08-24「それぞれに耐久値設定して」)。
+ *
+ * **壊せるのは敵対側(幻影)が置いた物だけ**(社長「もちろん幻影のに決まってんだろ」)。
+ * 自分の設置物は壊れない=誤爆で自分のタレットを壊す事故を作らない。
+ *
+ * 単位はダメージ。目安は**近接の素ダメージ**(ファイティングナイフ=22)で:
+ *  - トラップ / 地雷 = **1撃**(仕掛け物は脆い。踏まずに処理できるのが遊びの主眼)
+ *  - デコイ = **2撃**(囮なので少しだけ粘る)
+ *  - タレット = **3撃**(居座って撃ち続ける=盤面でいちばん硬い)
+ * **盾は対象外**——`SHIELD_HP_BY_LEVEL`(10/30/60)+接触ダメージという**独自の体系**を既に持っており、
+ * ここへ混ぜると耐久の意味が二重になる(社長の「選り分け」で対象外に置いた物)。
+ */
+export const PLACED_DURABILITY = {
+  'marksman-trap': 20,
+  'sensor-mine': 20,
+  decoy: 45,
+  turret: 70,
+} as const;
+
 export const MELEE_LUNGE_PX = 50;
 export const MELEE_LUNGE_MS = 90;
 /**
@@ -5054,6 +5074,11 @@ interface GameState {
   // Projectile actions
   addProjectile: (projectile: Projectile) => void;
   removeProjectile: (id: string) => void;
+  /**
+   * ★敵対側(幻影)の設置物へダメージ(社長指示2026-08-24「それぞれに耐久値設定して」)。
+   * 近接スイングの合流点から1回だけ呼ぶ。壊した数を返す(SE/演出の出し分け用)。
+   */
+  damageHostilePlacements: (cx: number, cy: number, radius: number, damage: number) => number;
   updateProjectiles: (deltaTime: number) => void;
   stickFireKnife: (id: string, enemyId: string, x: number, y: number, fuseMs: number) => void; // 発火ナイフを敵に刺す(追従+遅延爆発)
   // weaponKey: 反射弾の帰属を差し替える(既定=元の弾のまま=プレイヤーの反射と1bit同値)。
@@ -6644,6 +6669,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         return Math.hypot(gx - pcx, gy - pcy) <= meleeRange;
       })
       .map(p => p.id);
+    // ★敵対側(幻影)の設置物を近接で壊す(社長指示2026-08-24「それぞれに耐久値設定して」)。
+    // 近接スイングの合流点はここ1箇所なので、刀/鞭/ナイフのどれで振っても同じ1本を通る。
+    // 自分の設置物は `hostile !== true` なので対象外(誤爆で自分のタレットを壊さない)。
+    {
+      const brokenPlaced = get().damageHostilePlacements(pcx, pcy, meleeRange, meleeDamage);
+      if (brokenPlaced > 0) {
+        // 壊した手応え(既存プールのみ・新規素材なし)。判定は上で済んでいるので絵だけ。
+        get().spawnBurst(pcx, pcy, '#fbbf24', 10 * brokenPlaced);
+        get().spawnRing(pcx, pcy, 6, 46, 'rgba(251,191,36,0.85)', 3, 300);
+      }
+    }
     const trapShoves = projectiles
       .filter(p => p.weaponType === 'trap')
       .filter(p => {
@@ -14104,6 +14140,40 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
+  // ★敵対側(幻影)の設置物を近接で壊す(社長指示2026-08-24)。
+  // **自分の設置物は対象にしない**(社長「もちろん幻影のに決まってんだろ」)=判定は `hostile === true` の1本。
+  // 盾は対象外(`shieldHp` という独自の耐久体系を既に持っているため。社長の選り分けで対象外)。
+  // 地雷は projectiles ではなく `sensorMines` に居るので、同じ関数の中で両方を見る
+  // (呼ぶ側が2種類の器を知らなくて済む=次に設置物が増えてもここだけ足せばよい)。
+  damageHostilePlacements: (cx, cy, radius, damage) => {
+    if (damage <= 0) return 0;
+    let broken = 0;
+    const hitsCircle = (x: number, y: number, w: number, h: number): boolean => {
+      const nx = Math.max(x, Math.min(cx, x + w));
+      const ny = Math.max(y, Math.min(cy, y + h));
+      return Math.hypot(cx - nx, cy - ny) <= radius;
+    };
+    const now = Date.now();
+    set(state => {
+      const projectiles = state.projectiles.flatMap(p => {
+        if (p.placedHp === undefined || p.hostile !== true) return [p];
+        if (!hitsCircle(p.x, p.y, p.width, p.height)) return [p];
+        const hp = p.placedHp - damage;
+        if (hp <= 0) { broken += 1; return []; }
+        return [{ ...p, placedHp: hp, placedHitAt: now }];
+      });
+      const sensorMines = state.sensorMines.filter(m => {
+        if (m.hp === undefined || !m.hostile) return true;
+        if (Math.hypot(cx - m.x, cy - m.y) > radius) return true;
+        const hp = m.hp - damage;
+        if (hp <= 0) { broken += 1; return false; }
+        m.hp = hp;
+        return true;
+      });
+      return { projectiles, sensorMines };
+    });
+    return broken;
+  },
   removeProjectile: (id) => {
     set(state => ({
       projectiles: state.projectiles.filter(p => p.id !== id)

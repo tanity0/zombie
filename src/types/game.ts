@@ -1690,6 +1690,16 @@ export interface Projectile {
   // durability; each enemy body contact removes 1 (timed by SHIELD_HIT_INTERVAL).
   // `shieldMaxHp` is kept for the damage-state visual only.
   shieldHp?: number;
+  /**
+   * ★設置物の耐久(社長指示2026-08-24「それぞれに耐久値設定して」)。
+   * 対象=タレット/デコイ/トラップ(盾は専用の `shieldHp` を従来どおり使う=体系が別)。
+   * **敵対側(幻影)が置いた物をプレイヤーが近接で壊す**ための値。0以下で消滅。
+   * 台帳は `gameStore.PLACED_DURABILITY`(1箇所)。
+   */
+  placedHp?: number;
+  placedMaxHp?: number;
+  /** 被弾時刻(描画のヒットフラッシュ用・判定には使わない)。 */
+  placedHitAt?: number;
   shieldMaxHp?: number;
   shieldHitAt?: number; // 直近に耐久を削られた時刻(Date.now)。描画側の被弾シェイク/フラッシュ用(視覚のみ)。
   // Set when a melee shield-bash shoves the wall: the wall slides seamlessly,
