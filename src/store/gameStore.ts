@@ -8622,7 +8622,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   triggerKatanaDash: (dirX, dirY, ghostId) => {
     const now = Date.now();
-    const { enemies, breakableProps, isPaused } = get();
+    // 敵・破壊オブジェクトはここでは読まない(★着地時に実経路で取り直す=SAME_ARENA.md §7-2)。
+    const { isPaused } = get();
     // v0.25.2518(裁定2): 主語(オーナー)。未指定=プレイヤー本体(従来と完全同一)。
     const player = combatActorPlayer(ghostId);
     if (!player) return false;
@@ -8640,30 +8641,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
 
-    // 通過予定経路(始点→終点の線分+半幅)に掛かる敵をまとめて斬る。
-    // ダメージは経路確定時に一括適用する(移動自体はKATANA_DASH_MSかけて行う)。
-    const targetIds: string[] = [];
-    for (const e of enemies) {
-      if (e.type === 'reaper' && !e.reaperChaser) continue;
-      if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 一閃ダッシュの標的選定から除外
-      const ex = e.x + e.width / 2 - pcx;
-      const ey = e.y + e.height / 2 - pcy;
-      const along = ex * ux + ey * uy;
-      if (along < -e.width / 2 || along > KATANA_DASH_DISTANCE + e.width / 2) continue;
-      const perp = Math.abs(ex * uy - ey * ux);
-      if (perp <= KATANA_DASH_HIT_HALF_WIDTH + e.width / 2) targetIds.push(e.id);
-    }
-    // 経路上の破壊可能オブジェクト(松明など)も壊す。
-    const propTargetIds: string[] = [];
-    for (const prop of breakableProps) {
-      const ex = prop.footX - pcx;
-      const ey = prop.footY - pcy;
-      const along = ex * ux + ey * uy;
-      if (along < -prop.width / 2 || along > KATANA_DASH_DISTANCE + prop.width / 2) continue;
-      const perp = Math.abs(ex * uy - ey * ux);
-      if (perp <= KATANA_DASH_HIT_HALF_WIDTH + prop.width / 2) propTargetIds.push(prop.id);
-    }
-
+    // ★社長裁定2026-08-24(SAME_ARENA.md §7-2「一閃は着地後の判定」): **標的の選定を着地時に行う。**
+    // 旧: 発動の瞬間に「**予定**経路(始点→始点+154px)」で標的を確定していた。これだと
+    //  ①壁で止まっても予定どおり斬れる(見たまんまが当たり判定に反する)
+    //  ②移動の180msぶん敵が動いても反映されない=**一閃をかわす手段が無い**
+    // 新: 始点と向きだけを焼き、**着地した実位置**まで(=実際に通った経路)で取り直す。
+    //  ⇒ 新しい数字を足さずに **KATANA_DASH_MS(180ms)がそのまま前隙**になる。
+    // ※ダメージ適用が着地後なのは従来どおり(下の setTimeout。ヒットストップが移動窓を食う対策)。
     // 村雨はクールダウン無し: ダッシュ終了時刻をそのままCD終了にして実質0に。
     const cooldownEnd = mura ? now + KATANA_DASH_MS : now + KATANA_DASH_MS + KATANA_DASH_COOLDOWN_MS;
     // 状態機械そのもの(距離/所要時間/硬直/CD)は主語によらず同じ1組を書く。
@@ -8727,13 +8711,41 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ダッシュの移動ウィンドウ(KATANA_DASH_MS)が凍結に食われてプレイヤーが
     // 動かないため。まず移動だけ走らせ、到達後に斬る。
     // 「斬」を出す位置 = ダッシュ軌道(始点→終点)の真ん中(発動時に確定)。
-    const zanX = pcx + ux * KATANA_DASH_DISTANCE / 2;
-    const zanY = pcy + uy * KATANA_DASH_DISTANCE / 2;
-    if (targetIds.length > 0 || propTargetIds.length > 0) {
-      setTimeout(() => {
+    setTimeout(() => {
         // 主語を着地時点で再解決する(run reset / 刀を外した / **守護霊が解散した** をここで弾く)。
         const striker = combatActorPlayer(ghostId);
         if (!striker || !isKatanaMode(striker)) return;
+        // ★実際に通った経路(始点=発動位置 / 終点=着地した実位置)。壁で止まればここが短くなる。
+        const endX = striker.x + striker.width / 2, endY = striker.y + striker.height / 2;
+        const travel = Math.hypot(endX - pcx, endY - pcy);
+        // 距離0(その場で止められた)なら斬らない。向きは焼いた ux/uy をそのまま使う
+        // (実位置がわずかに横へずれても「振った向き」は変わらないため)。
+        const targetIds: string[] = [];
+        const propTargetIds: string[] = [];
+        if (travel > 1) {
+          for (const e of get().enemies) {
+            if (e.type === 'reaper' && !e.reaperChaser) continue;
+            if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 一閃ダッシュの標的選定から除外
+            const ex = e.x + e.width / 2 - pcx;
+            const ey = e.y + e.height / 2 - pcy;
+            const along = ex * ux + ey * uy;
+            if (along < -e.width / 2 || along > travel + e.width / 2) continue;
+            const perp = Math.abs(ex * uy - ey * ux);
+            if (perp <= KATANA_DASH_HIT_HALF_WIDTH + e.width / 2) targetIds.push(e.id);
+          }
+          for (const prop of get().breakableProps) {
+            const ex = prop.footX - pcx;
+            const ey = prop.footY - pcy;
+            const along = ex * ux + ey * uy;
+            if (along < -prop.width / 2 || along > travel + prop.width / 2) continue;
+            const perp = Math.abs(ex * uy - ey * ux);
+            if (perp <= KATANA_DASH_HIT_HALF_WIDTH + prop.width / 2) propTargetIds.push(prop.id);
+          }
+        }
+        if (targetIds.length === 0 && propTargetIds.length === 0) return; // 空振り(=かわされた)
+        // 「斬」を出す位置 = **実際に通った軌道**の真ん中。
+        const zanX = pcx + ux * travel / 2;
+        const zanY = pcy + uy * travel / 2;
         const result = targetIds.length > 0
           ? get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true, ghostId)
           : { finish: false };
@@ -8766,8 +8778,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           get().spawnBlood(zanX, zanY, -Math.PI / 2 - 0.16, 260);
           get().spawnBlood(zanX, zanY, -Math.PI / 2 + 0.16, 260);
         }
-      }, KATANA_DASH_MS);
-    }
+    }, KATANA_DASH_MS);
     return true;
   },
 
