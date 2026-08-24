@@ -340,12 +340,16 @@ export const weaponIconName = (key: string): string => `weapons/${key}`;
 // Effective firing range per gun family (px). A gun only fires when an enemy
 // is within this reach, so the player doesn't burn rounds into empty space.
 // RE-flavored: shotgun is close-quarters, rifle reaches far, handgun is mid.
+// ★社長調整2026-08-24: ショットガン140 / ハンドガン170 / ライフル250 / グレネード250。
+// 旧: 120 / 176 / 312 / 312。**射程差を詰める方向**(ライフルの312は他の2倍以上あった)。
+// グレネードは t1/t2 が下の GLAUNCHER_ROLL_DETONATE_PX でショットガン・ハンドガンの値を引くので、
+// **この表を直すだけで t1=140 / t2=170 / t3=250 に揃う**(数字を2箇所に書かない)。
 export const RANGE_BY_CATEGORY: Record<AmmoType, number> = {
-  handgun: 176,
-  shotgun: 120,
-  rifle: 312,
+  handgun: 170,
+  shotgun: 140,
+  rifle: 250,
   phill: 260, // 手動照準の精密射撃。自動射程判定には使わない(自動射撃しない)。
-  glauncher: 312 // グレネードガン=rifle-t3(グレネードランチャー)と同じ自動射程(v0.25.3290叩き台)
+  glauncher: 250 // グレネードガン t3 の自動射程(社長調整2026-08-24。旧312)
 };
 
 // 社長指示v0.25.3438「t1-t2のグレネードは手榴弾と同様にころがって爆発に変更。t1はショットガン距離で
@@ -353,8 +357,8 @@ export const RANGE_BY_CATEGORY: Record<AmmoType, number> = {
 // 爆発する道のり(px)=そのまま実効射程なので、fireWeaponの射程ゲートもこの値で引く
 // (312のままだと爆発点より遠い敵に撃ち始めて一生届かない)。t3はこの表に無い=従来どおり。
 export const GLAUNCHER_ROLL_DETONATE_PX: Record<string, number> = {
-  'glauncher-t1': RANGE_BY_CATEGORY.shotgun,  // 120
-  'glauncher-t2': RANGE_BY_CATEGORY.handgun,  // 176
+  'glauncher-t1': RANGE_BY_CATEGORY.shotgun,  // 140(社長調整2026-08-24)
+  'glauncher-t2': RANGE_BY_CATEGORY.handgun,  // 170(同上)
 };
 
 /**
