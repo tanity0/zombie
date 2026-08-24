@@ -22,6 +22,39 @@ import type { Enemy } from '../types/game';
 export const PHANTOM_GATE_TYPE = 'guardian-phantom';
 
 /**
+ * ★被弾無敵(i-frame)を**近接・近接カウンターは無視して通る**という規則(社長裁定2026-08-20
+ * 「近接攻撃は無敵時間無視で(近接にCDがあるので)」)。
+ *
+ * **これは幻影⇄プレイヤーの双方向で同じ**(社長裁定2026-08-24「無敵時間については、幻影側に
+ * プレイヤーも合わせて」)。ここが唯一の出どころで、幻影側(下の `phantomHitGate` ①)と
+ * プレイヤー側(`gameStore.damagePlayer` の i-frame 門)が**同じ1本を読む**=片側だけ直る事故を
+ * 構造的に潰す(SAME_ARENA.md の原則「写すな、共通化しろ」)。
+ *
+ * 理由: 銃の連射が i-frame を張り続けると、CD持ちの近接がそこへ吸われて「近接が効かない」体感に
+ * なる。近接は互いに②のパリィ(幻影=窓 / プレイヤー=カウンター窓)で守る。
+ * 弾・遠隔(サブ/爆発)は従来どおり i-frame で弾く(CDの無い連射から1秒1発を守る本来の役目)。
+ */
+export const iframeAppliesToSource = (source: PhantomHitSource): boolean =>
+  source !== 'melee' && source !== 'counter';
+
+/**
+ * ★プレイヤー側の門(上の規則の裏返し)。**幻影の近接だけがプレイヤーの i-frame を無視する。**
+ *
+ * 判定に `damagerType` を使えるのは、**幻影が `damagePlayer` へこの型名を渡す経路が
+ * `phantomTick.swingPhantomMelee` の1本しか無い**ため(近接スイング。パリィ成立後の反撃も
+ * 同じ関数を通る=`consumePhantomParry` → `swingPhantomMelee`)。幻影の**弾・サブウェポン**は
+ * `damagerType` を渡さない共通経路(`combatTick` の飛び道具・爆発)を通るので、
+ * **従来どおり i-frame で弾かれる**=幻影側①と対称。
+ *
+ * ⚠️ 将来 幻影の弾がこの型名を渡すようになったら、ここに `source` の区別を足すこと
+ * (この関数を1つ増やすだけで両側が揃う形にしてある)。
+ *
+ * @param damagerType `damagePlayer` の damagerType 引数(未指定=通常の敵・環境ダメージ)。
+ */
+export const playerIframeApplies = (damagerType?: string): boolean =>
+  damagerType !== PHANTOM_GATE_TYPE;
+
+/**
  * 打撃の出どころ。**パリィできるのは 'melee' と 'bullet'**。
  *  - 'melee'   … プレイヤー(と分身/守護霊)の近接スイング全般=パリィ可(弾いて次tickに近接反撃)。
  *                成立条件は**幻影のスイングが開けた窓の中か**だけ(抽選しない)。幻影のスイングは
@@ -164,7 +197,7 @@ export const phantomHitGate = (input: PhantomHitGateInput): PhantomHitGateResult
   // 「近接攻撃は無敵時間無視で(近接にCDがあるので)」)。銃連射が i-frame を張り続けるせいで
   // CD持ちの近接が吸われて「近接が効かない」体感になっていた。近接は②の窓パリィだけで守る。
   // 弾・遠隔(サブ/爆発)は従来どおり無敵で弾く(CDの無い連射から1秒1発を守る本来の役目)。
-  const invulnApplies = input.source !== 'melee' && input.source !== 'counter';
+  const invulnApplies = iframeAppliesToSource(input.source);
   const hitAt = input.gpHitAt;
   if (invulnApplies && hitAt !== undefined && input.gameTime - hitAt < input.invulnMs) {
     return { damage: 0, effects: false, blocked: true, parried: false, patch: { gpBlockedAt: input.gameTime }, damageScale: scale };

@@ -12,7 +12,7 @@ import {
   runPhantomTick, createPhantomTickState, pickActivePhantom, phantomProfile, edgeDistTo,
   PHANTOM_MELEE_PERIOD_MS, GUARDIAN_PHANTOM_TYPE, NOOP_PHANTOM_SFX,
 } from './phantomTick';
-import { phantomHitGate } from './phantomGate';
+import { phantomHitGate, playerIframeApplies } from './phantomGate';
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from './phantomScript';
 import { phantomMeleeDamage } from './phantomTick';
 import { COUNTER_REACH_DECL } from './counterReach';
@@ -305,12 +305,42 @@ describe('★成果物監査の再発防止(v0.25.3640)', () => {
     const s = createPhantomTickState();
     runPhantomTick(e, s, START_GT + 16, 0.016, 1, START_GT + 16, sfx, () => 0.999);
     expect(hurt).toBe(1); // 当たった=鳴る
-    // プレイヤーがi-frame中は減らない=鳴らない。
-    useGameStore.setState(ps => ({ player: { ...ps.player, invulnerable: true, invulnerableTime: Date.now() } }));
+    // HPが実際に減らなかった時は鳴らない。**i-frameでは検証できない**(v0.25.3866の裁定で幻影の
+    // 近接はプレイヤーのi-frameを無視して通るようになったため)。代わりに訓練(M0)の「HP1で
+    // 踏みとどまる」を使う=amountが0にクランプされHPが動かない、まさに旧バグと同じ形。
+    useGameStore.setState(ps => ({ farBackdrop: 'tutorial', player: { ...ps.player, health: 1 } }));
     const s2 = createPhantomTickState();
     runPhantomTick(useGameStore.getState().enemies[0], s2, START_GT + 5000, 0.016, 1, START_GT + 5000, sfx, () => 0.999);
+    expect(useGameStore.getState().player.health).toBe(1); // 減っていない
     expect(hurt).toBe(1); // 増えない
     void step; // setupのヘルパは未使用(直接tickで検証)
+  });
+
+  // ★社長裁定2026-08-24「無敵時間については、幻影側にプレイヤーも合わせて。
+  //   (これは幻影とプレイヤー間だけの制約のはず)」
+  it('裁定v0.25.3866: 幻影の近接はプレイヤーのi-frameを無視して通る(幻影側①と対称)', () => {
+    const { step } = setup(40);
+    // プレイヤーをi-frame中にする(直前に何かで被弾した状態)。
+    useGameStore.setState(ps => ({ player: { ...ps.player, invulnerable: true, invulnerableTime: Date.now() } }));
+    const before = useGameStore.getState().player.health;
+    const s2 = createPhantomTickState();
+    runPhantomTick(useGameStore.getState().enemies[0], s2, START_GT + 16, 0.016, 1, START_GT + 16, NOOP_PHANTOM_SFX, () => 0.999);
+    expect(useGameStore.getState().player.health).toBeLessThan(before);
+    void step;
+  });
+
+  it('裁定v0.25.3866の適用範囲: 通常の敵・環境ダメージのi-frameは従来どおり効く', () => {
+    useGameStore.setState(ps => ({ player: { ...ps.player, health: 9999, maxHealth: 9999, invulnerable: true, invulnerableTime: Date.now() } }));
+    const before = useGameStore.getState().player.health;
+    // damagerType 未指定=通常の敵・環境(飛び道具・爆発・地雷など全ての共通経路)。
+    useGameStore.getState().damagePlayer(50, 'テスト');
+    expect(useGameStore.getState().player.health).toBe(before);
+    // 幻影の型名を渡した時だけ門が開く(規則の唯一の出どころ=playerIframeApplies)。
+    expect(playerIframeApplies(undefined)).toBe(true);
+    expect(playerIframeApplies('zombie')).toBe(true);
+    expect(playerIframeApplies(GUARDIAN_PHANTOM_TYPE)).toBe(false);
+    useGameStore.getState().damagePlayer(50, 'テスト', undefined, undefined, GUARDIAN_PHANTOM_TYPE);
+    expect(useGameStore.getState().player.health).toBeLessThan(before);
   });
 
   it('監査C: 0ダメージのヒットはゲートを通らない(無害な弾でi-frameが始まらない)', () => {

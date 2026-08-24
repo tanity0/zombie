@@ -203,7 +203,7 @@ import {
 import { isPracticeRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice';
 import { phantomDisplayLabel, getPhantomIdentity } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の表示名はその回の人格 // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
 // research/GHOST_BOSS.md v6: 幻影が受ける打撃の関所(被弾無敵+パリィ)。**7系統の全てがここを通る**。
-import { phantomHitGate, type PhantomDamageSource, type PhantomHitGateResult } from '../utils/phantomGate';
+import { phantomHitGate, playerIframeApplies, type PhantomDamageSource, type PhantomHitGateResult } from '../utils/phantomGate';
 import { ensureProjectileOrigin } from '../utils/projectileOrigin';
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from '../utils/phantomScript';
 import { strongestGuardian } from '../data/fixedGuardians';
@@ -8963,7 +8963,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove) => {
     const { player } = get();
 
-    if (player.invulnerable) return false;
+    // ★被弾無敵(i-frame)。**幻影の近接だけはこれを無視して通る**(社長裁定2026-08-24
+    // 「無敵時間については、幻影側にプレイヤーも合わせて。これは幻影とプレイヤー間だけの制約のはず」)。
+    // 幻影側は 2026-08-20 の裁定で既に「近接・近接カウンターは i-frame 無視」になっており、
+    // プレイヤー側だけが除外していなかった=幻影の近接が銃の i-frame に吸われる非対称があった。
+    // 規則の正本は phantomGate の1本(playerIframeApplies / iframeAppliesToSource)。
+    // **通常の敵・環境ダメージには1bitも影響しない**(damagerType が幻影の時だけ門が開く)。
+    if (player.invulnerable && playerIframeApplies(damagerType)) return false;
 
     // 社長指示v0.25.3300 ナイト覚醒(Lv3): 一定確率(KNIGHT_AWAKEN_NULLIFY_CHANCE=20%。
     // 社長「10%でもいいかも?バランス次第」)で被ダメージを完全無効化。盾色の小フラッシュだけ出す
