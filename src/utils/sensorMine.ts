@@ -62,7 +62,9 @@ export const placeSensorMine = (
 
 export interface SensorMineTickInput {
   mines: readonly SensorMineState[];
-  enemies: readonly { x: number; y: number }[]; // 敵の中心座標(敵のみ。プレイヤー/召喚/護衛は渡さない)
+  enemies: readonly { x: number; y: number }[]; // 敵の中心座標(敵のみ。召喚/護衛は渡さない)
+  /** ★幻影の地雷(hostile)が感知する相手=プレイヤー中心。省略=感知しない(従来と同値)。 */
+  player?: readonly { x: number; y: number }[];
   gameTime: number;
   sensorRadius?: number; // 既定 SENSOR_MINE_RADIUS
   fuseMs?: number;       // 既定 SENSOR_MINE_FUSE_MS
@@ -80,6 +82,8 @@ export interface SensorMineTickResult {
 export const tickSensorMines = ({
   mines,
   enemies,
+  /** ★幻影の地雷が感知する相手(=プレイヤー中心)。未指定=感知しない(味方の地雷しか無い従来と同値)。 */
+  player = [],
   gameTime,
   sensorRadius = SENSOR_MINE_RADIUS,
   fuseMs = SENSOR_MINE_FUSE_MS,
@@ -99,8 +103,12 @@ export const tickSensorMines = ({
       }
       continue;
     }
+    // ★v0.25.3885(社長指示「センサー地雷 もそのまま敵対」): 感知する相手を**側で入れ替える**。
+    // 味方の地雷=敵を感知(従来どおり)/ 幻影の地雷=**プレイヤーを感知**。
+    // 半径・信管・爆発の式は共通のまま(数字を2組に分けない)。
+    const watch = m.hostile ? player : enemies;
     let sensed = false;
-    for (const e of enemies) {
+    for (const e of watch) {
       const dx = e.x - m.x;
       const dy = e.y - m.y;
       if (dx * dx + dy * dy <= r2) { sensed = true; break; }

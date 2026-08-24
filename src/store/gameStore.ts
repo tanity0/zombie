@@ -6709,8 +6709,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     // シールドバッシュ: メレー範囲に壁があれば、その壁を法線方向(敵側)へシームレスに
     // 押し出す(トラップの押し出しと同じ shove 機構)。壁が始点→終点で掃過する範囲の
     // 敵全部に近接×SHIELD_BASH_DAMAGE_MULT と押し出し方向への強ノックバックを与える。
+    // ★社長裁定2026-08-25(推薦を採用): **幻影の盾はバッシュで押せない**。
+    // 押せると「敵の盾を奪って自分の武器にする」ことになり、耐久(PLACED_DURABILITY)を
+    // 設定した意味が薄れる。敵対の盾は**近接で耐久を削って壊すだけ**。
     const shieldShoves = projectiles
-      .filter(p => p.weaponType === 'shield')
+      .filter(p => p.weaponType === 'shield' && p.hostile !== true)
       .filter(p => {
         const nx = Math.max(p.x, Math.min(pcx, p.x + p.width));
         const ny = Math.max(p.y, Math.min(pcy, p.y + p.height));

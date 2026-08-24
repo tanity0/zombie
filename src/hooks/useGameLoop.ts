@@ -10007,7 +10007,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const tgPy = tGainState.player.y + tGainState.player.height / 2;
           const tgCam = tGainState.camera;
           const tgGb = tGainState.gameBounds;
-          for (const turret of useGameStore.getState().projectiles.filter(p => p.weaponType === 'turret' && p.hostile !== true)) { // ★同上
+          for (const turret of useGameStore.getState().projectiles.filter(p => p.weaponType === 'turret')) {
+            // ★v0.25.3885(社長指示「自動タレットもそのまま敵対で」): 幻影のタレットは**プレイヤーを狙う**。
+            // 標的の取り方と撃つ弾の側だけを分け、間隔・射程・Lv・弾種の抽選は**共通のまま**
+            // (数字を2組に分けない=片方だけ調整されてズレる事故を作らない)。
+            const tHostile = turret.hostile === true;
+            const tgtCx = tgPx, tgtCy = tgPy; // 敵対タレットの標的=プレイヤー中心
             const tcx = turret.x + turret.width / 2;
             const tcy = turret.y + turret.height / 2;
             // --- 消滅時の小爆発(既存ヘビーグレネード爆発を流用、控えめ威力/範囲)。味方/プレイヤーは無傷。
@@ -10032,6 +10037,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 useGameStore.getState().spawnGlow(tcx, tcy, GLOW_R_XS, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               }
               const tWalls = aoeWalls(tcx, tcy);
+              if (tHostile) {
+                // ★幻影のタレットの消滅爆発はプレイヤーへ(壁越し不可・距離減衰は味方版と同じ式)。
+                const pdist = Math.hypot(tgtCx - tcx, tgtCy - tcy);
+                if (pdist <= tBlastR && !(tWalls.length > 0 && segmentBlocked(tcx, tcy, tgtCx, tgtCy, tWalls))) {
+                  const pfall = 1 - pdist / tBlastR;
+                  const pdmg = Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * tExMult * (0.55 + pfall * 0.45) * PVP_DAMAGE_SCALE));
+                  useGameStore.getState().damagePlayer(pdmg, '幻影のタレット', tcx, tcy);
+                }
+                continue;
+              }
               for (const enemy of useGameStore.getState().enemies) {
                 if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
                 const ex = enemy.x + enemy.width / 2;
@@ -10063,14 +10078,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (mode === 'omni') {
               if (!fireReady) continue;
               // 全方位: 射程内の最も近い敵を狙う(近い敵優先)。範囲内に敵がいなければ撃たない。
-              const target = useGameStore.getState().enemies
-                .filter(e => e.type !== 'reaper' || e.reaperChaser)
-                .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - tcx, e.y + e.height / 2 - tcy) }))
-                .filter(h => h.d <= TURRET_OMNI_RANGE)
-                .sort((a, b) => a.d - b.d)[0]?.e;
-              if (!target) continue;
-              const ax = target.x + target.width / 2 - tcx;
-              const ay = target.y + target.height / 2 - tcy;
+              let ax: number, ay: number;
+              if (tHostile) {
+                // 幻影のタレット: 射程内ならプレイヤーを狙う。
+                if (Math.hypot(tgtCx - tcx, tgtCy - tcy) > TURRET_OMNI_RANGE) continue;
+                ax = tgtCx - tcx; ay = tgtCy - tcy;
+              } else {
+                const target = useGameStore.getState().enemies
+                  .filter(e => e.type !== 'reaper' || e.reaperChaser)
+                  .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - tcx, e.y + e.height / 2 - tcy) }))
+                  .filter(h => h.d <= TURRET_OMNI_RANGE)
+                  .sort((a, b) => a.d - b.d)[0]?.e;
+                if (!target) continue;
+                ax = target.x + target.width / 2 - tcx;
+                ay = target.y + target.height / 2 - tcy;
+              }
               const am = Math.max(0.001, Math.hypot(ax, ay));
               dir = { x: ax / am, y: ay / am };
             } else {
@@ -10082,15 +10104,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               const fx = Math.cos(aim);
               const fy = Math.sin(aim);
-              const hasFwdTarget = useGameStore.getState().enemies.some(e => {
-                if (e.type === 'reaper' && !e.reaperChaser) return false;
-                const dx = e.x + e.width / 2 - tcx;
-                const dy = e.y + e.height / 2 - tcy;
+              // 射線帯の判定は共通の式。見る相手だけ側で入れ替える(幻影=プレイヤー / 味方=敵)。
+              const inFwdBand = (cx: number, cy: number): boolean => {
+                const dx = cx - tcx, dy = cy - tcy;
                 const along = dx * fx + dy * fy;          // 前方への射影
                 if (along <= 0 || along > TURRET_FWD_RANGE) return false;
                 const perp = Math.abs(dx * fy - dy * fx); // 射線からの直交距離
                 return perp <= TURRET_FWD_LINE_HALF_W;
-              });
+              };
+              const hasFwdTarget = tHostile
+                ? inFwdBand(tgtCx, tgtCy)
+                : useGameStore.getState().enemies.some(e =>
+                    (e.type !== 'reaper' || e.reaperChaser) && inFwdBand(e.x + e.width / 2, e.y + e.height / 2));
               if (!hasFwdTarget) {
                 // 射程に敵なし: ゆっくり回転して索敵(発射しない)。向きを store へ反映し砲身を回す。
                 const na = aim + TURRET_SCAN_SPEED * (deltaTime / 1000);
@@ -10116,7 +10141,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 speed: TURRET_FWD_BULLET_SPEED, damage: TURRET_LAUNCHER_DAMAGE,
                 direction: dir, weaponType: 'rifle', weaponKey: GRENADE_WEAPON_KEY,
                 duration: 1400, createdAt: nowMs,
-                passthrough: true, hitEnemies: [], hostile: false, reflected: false,
+                passthrough: true, hitEnemies: [], hostile: tHostile, reflected: false, // ★幻影のタレットの弾は敵対
                 ownerGhost: turret.ownerGhost, // 視覚専用: ゴースト設置タレットの弾も青白
               });
               { const g = npcSfxDistGain(tcx, tcy, tgPx, tgPy, tgCam, tgGb); if (g > 0) playSfx('rifle-fire', g); }
@@ -10130,7 +10155,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 speed: spd, damage: dmg, direction: dir,
                 weaponType: 'handgun', weaponKey: 'sub-turret',
                 duration: 1400, createdAt: nowMs,
-                passthrough: false, hitEnemies: [], hostile: false, reflected: false,
+                passthrough: false, hitEnemies: [], hostile: tHostile, reflected: false, // ★幻影のタレットの弾は敵対
                 ownerGhost: turret.ownerGhost, // 視覚専用: ゴースト設置タレットの弾も青白
               });
               { const g = npcSfxDistGain(tcx, tcy, tgPx, tgPy, tgCam, tgGb); if (g > 0) playSfx('handgun-fire', g); }
@@ -10400,6 +10425,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const smResult = tickSensorMines({
               mines: smStore.sensorMines,
               enemies: smStore.enemies.map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 })),
+              // ★幻影の地雷はプレイヤーを感知する(社長指示2026-08-25)。
+              player: [{ x: smStore.player.x + smStore.player.width / 2, y: smStore.player.y + smStore.player.height / 2 }],
               gameTime,
             });
             if (smResult.changed) smStore.setSensorMines(smResult.mines);
@@ -10448,6 +10475,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().spawnExplosionFx(mine.x, mine.y, smBlastR); // v0.25.3283: 爆発flipbook
               const smWalls = aoeWalls(mine.x, mine.y);
               let smHitCount = 0;
+              if (mine.hostile) {
+                // ★幻影の地雷はプレイヤーへ(社長指示2026-08-25)。距離減衰・壁越し不可は味方版と同じ式。
+                const smP = useGameStore.getState().player;
+                const spx = smP.x + smP.width / 2, spy = smP.y + smP.height / 2;
+                const sdist = Math.hypot(spx - mine.x, spy - mine.y);
+                if (sdist <= smBlastR && !(smWalls.length > 0 && segmentBlocked(mine.x, mine.y, spx, spy, smWalls))) {
+                  const sfall = 1 - sdist / smBlastR;
+                  const sdmg = Math.max(1, Math.round(SENSOR_MINE_DAMAGE * (0.55 + sfall * 0.45) * PVP_DAMAGE_SCALE));
+                  useGameStore.getState().damagePlayer(sdmg, '幻影の地雷', mine.x, mine.y);
+                }
+                continue;
+              }
               for (const enemy of useGameStore.getState().enemies) {
                 if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
                 const ex = enemy.x + enemy.width / 2;
