@@ -211,7 +211,10 @@ export interface HiddenThorTuning extends HiddenSharedHolder {
 
 export const HIDDEN_THOR_TUNING: HiddenThorTuning = {
   common: HIDDEN_COMMON_TUNING, // ★4体で同じ実体(複製しない)
-  orbit: { distPx: 216, approachSlack: 60, speedMult: 2 / 3, radiusCorrect: 4 },
+  // ★v0.25.3877: 176→170(ハンドガン射程の社長調整v0.25.3876)に追随して 216→210。
+  // この値の意図は「**プレイヤーのハンドガンが届く距離+40**」で、射程を縮めたのに216のままだと
+  // 意図が静かに壊れる(トールだけ相対的に遠くなる)。hiddenBossTuning.test.ts の写し検査が捕まえた。
+  orbit: { distPx: 210, approachSlack: 60, speedMult: 2 / 3, radiusCorrect: 4 },
   approachSpeed: 43.5,
   retreatSpeed: 43.5,
   backstep: { minIntervalMs: 3000, maxIntervalMs: 6000, distPx: 90, ms: 180 },

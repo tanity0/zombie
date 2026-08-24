@@ -36,6 +36,7 @@ import {
   MELEE_WINDUP_MS,                              // 近接の前隙(プレイヤーと同じ1本を読む)
   KNOCKBACK_SPEED, KNOCKBACK_DURATION,          // カウンターされた側のノックバック=**敵と同じ量**(社長指示)
   meleeSwingBaseDamage,                         // プレイヤーの近接素ダメージ(式を複製しない)
+  MELEE_LUNGE_PX, MELEE_LUNGE_MS, knockbackSpeedFor, // ★踏み込み(プレイヤーと同じ値を読む)
 } from '../store/gameStore';
 import { HUMAN_REACTION_MS } from './bossSkeleton'; // ★人の反応時間(このゲームの正本)。幻影の反応下限に使う
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
@@ -731,6 +732,19 @@ export const runPhantomTick = (
     patch.gpSwingAt = newGameTime;
     patch.gpSwingAngle = Math.atan2((player.y + player.height / 2) - bcy, (player.x + player.width / 2) - bcx);
     patch.gpPendingSwingAt = newGameTime;
+    // ★踏み込み(社長裁定2026-08-24・同条件原則): プレイヤーと**同じ距離・同じ時間**で、
+    // 振る向き(=プレイヤーの方)へ短く鋭く滑る。無敵は無い。減衰は敵共通のノックバックの器
+    // (knockbackVx/Vy/Until)へ載せる=updateEnemies 側の壁・「行ける帯」のクランプをそのまま通る
+    // (v0.25.3875 で帯クランプを足した経路。自前で座標を書くとまた同じ穴を開ける)。
+    {
+      const lspd = knockbackSpeedFor(MELEE_LUNGE_PX, MELEE_LUNGE_MS);
+      const la = patch.gpSwingAngle ?? 0;
+      const lnow = Date.now();
+      patch.knockbackVx = Math.cos(la) * lspd;
+      patch.knockbackVy = Math.sin(la) * lspd;
+      patch.knockbackUntil = lnow + MELEE_LUNGE_MS;
+      patch.knockbackShoveUntil = lnow + MELEE_LUNGE_MS; // ボス扱いの押しガードを自前の踏み込みには開ける
+    }
     s.nextMeleeAt = newGameTime + PHANTOM_MELEE_PERIOD_MS;
   }
   // 前隙の解決(カウンターされていれば gpPendingSwingAt は既に消えている=ここへ来ない)。

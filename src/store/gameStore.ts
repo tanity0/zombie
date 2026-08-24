@@ -1169,6 +1169,23 @@ export const COUNTER_WINDOW = 400; // ms the window stays open after trigger
  */
 export const MELEE_WINDUP_MS = 200;
 /**
+ * ★近接の踏み込み(社長裁定2026-08-24・SAME_ARENA.md §7-4)。前隙の**頭**で `lastDirection` へ滑る。
+ *
+ * 狙い(社長の言葉): 「踏み込む(しゃがみ)を早めに着地させれば、自ずと回避にも使える様になる」。
+ * 前隙200msの内訳が **0〜90ms=踏み込み(移動) → 90〜200ms=足を着いて振りかぶる → 200ms=斬る**
+ * になり、**物理的に正しい順序**(踏み込んで、足を着いて、振る)になる。
+ *
+ * 速度域: 50px/90ms = 平均555px/s = 素の足(`PLAYER_BASE_SPEED`=87px/s)の**約6.4倍**=回避の速さ。
+ * 刀の一閃(154px/180ms)より遅く短いので**一閃の格は保たれる**。
+ * **無敵は付けない**(社長「無敵はつけない。すでにカウンターがあるので」)=「速く動いて避ける」であって
+ * 「判定をすり抜ける」ではない。今日作った同条件の土俵を壊さない。
+ * 向きは `lastDirection`=**近接を振る向きと同じ**。前進中は前へ・後退中は後ろへ踏み込む
+ * (=引きながらの牽制)。**入力に対する結果が常に一定**——社長指摘「前に出るのか出ないのか
+ * 分からない方が使いづらい」により、当初案の「敵がいる時だけ詰める」は取り下げた。
+ */
+export const MELEE_LUNGE_PX = 50;
+export const MELEE_LUNGE_MS = 90;
+/**
  * その主語(プレイヤー / 疑似Player)の**近接の前隙**。前隙を測る側は `MELEE_WINDUP_MS` を
  * 直接読まず**必ずこの関数を通す**——武器ごとに変えたくなった時、**ここ1箇所に分岐を足せば
  * 判定も絵も同時に追従する**(測る場所が散らばっていると、片方だけ直って嘘の絵になる)。
@@ -5428,6 +5445,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     lastDirection: null,
     counterWindowEnd: 0,
     pendingSwingAt: 0,
+    lungeVx: 0,
+    lungeVy: 0,
+    lungeUntil: 0,
     counterCooldownEnd: 0,
     lastCounterSuccessTime: 0,
     ammoHandgun: AMMO_INITIAL.handgun,
@@ -5865,6 +5885,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 被弾ノックバック中は入力を無視して、減衰する弾き出し速度で滑る(ジャンプ攻撃被弾など)。
       const kbNow = Date.now();
       const kbActive = player.knockbackUntil !== undefined && kbNow < player.knockbackUntil;
+      // ★踏み込み(SAME_ARENA.md §7-4)。**被弾ノックバックの方が強い**(殴られたら自分の踏み込みは
+      // 上書きされる)。無敵は付いていないので、踏み込み中に当たれば普通に食らう=避けるのは腕。
+      const lungeActive = !kbActive && kbNow < (player.lungeUntil ?? 0);
       // スケーター急停止中: 入力を無視して残速度を素早く減衰(tau=50ms)=ほんの少し慣性のある急停止。
       const skaterStopping = !kbActive && kbNow < player.skaterStopUntil;
       let vx: number, vy: number;
@@ -5873,6 +5896,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         const decay = Math.max(0, (player.knockbackUntil! - kbNow) / (player.knockbackMs ?? PLAYER_KNOCKBACK_MS)); // 1→0
         vx = (player.knockbackVx ?? 0) * decay;
         vy = (player.knockbackVy ?? 0) * decay;
+      } else if (lungeActive) {
+        // 初速最大→線形に0(ノックバックと同じ形)。**回避に使うので出だしが最も速い**
+        // ——加速から入ると避け始めが遅れて間に合わない(社長の狙い「早めに着地」)。
+        const d = Math.max(0, (player.lungeUntil - kbNow) / MELEE_LUNGE_MS); // 1→0
+        vx = (player.lungeVx ?? 0) * d;
+        vy = (player.lungeVy ?? 0) * d;
       } else if (skaterStopping) {
         const d = Math.exp(-deltaTime / 0.05); // 約50msの時定数で素早く0へ
         vx = player.vx * d;
@@ -6227,6 +6256,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         counterCooldownEnd: now + (COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
       },
     }));
+    // ★踏み込み(社長裁定2026-08-24)。前隙の頭で `lastDirection` へ短く鋭く滑る。
+    // 減衰は被弾ノックバックと**同じ器**を使う=壁と「行ける帯」のクランプを movePlayer 側で
+    // 丸ごと共有できる(踏み込みは今日いちばん帯の穴を踏みやすい機能なので、自前で座標を書かず
+    // 既存の共通経路へ載せる。v0.25.3875 の事故と同型を作らないため)。
+    {
+      const ld = p.lastDirection ?? { x: 1, y: 0 };
+      const lm = Math.hypot(ld.x, ld.y);
+      if (lm > 0.001) {
+        const spd = knockbackSpeedFor(MELEE_LUNGE_PX, MELEE_LUNGE_MS);
+        set(state => ({ player: {
+          ...state.player,
+          lungeVx: (ld.x / lm) * spd,
+          lungeVy: (ld.y / lm) * spd,
+          lungeUntil: now + MELEE_LUNGE_MS,
+        } }));
+      }
+    }
     // ★鞭のしなり(社長指示2026-08-24)。**前隙の頭で出す**のが肝——3コマ素材が
     // 「巻く→S字→伸び切る」なので、前隙の間にしなり、判定の瞬間に伸び切って打つ、が絵で成立する
     // (馬乗りには入っていたのにプレイヤーには入っていなかった)。判定は持たない=分類②の絵。
@@ -17113,6 +17159,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           aimY: 0,
           counterWindowEnd: 0,
     pendingSwingAt: 0,
+    lungeVx: 0,
+    lungeVy: 0,
+    lungeUntil: 0,
           counterCooldownEnd: 0,
           lastCounterSuccessTime: 0,
           ammoHandgun: AMMO_INITIAL.handgun,

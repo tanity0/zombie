@@ -6,7 +6,10 @@
 //  ③ 前隙の解決は**自分が張ったCDに引っかからない**(引っかかると判定が永久に出ない)。
 //  ④ 窓とCDの終了時刻は**指を離した時刻**が基準(解決時刻を基準にすると1周期200ms伸びる=弱体化)。
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useGameStore, MELEE_WINDUP_MS, meleeWindupMs, COUNTER_WINDOW, COUNTER_COOLDOWN } from './gameStore';
+import {
+  useGameStore, MELEE_WINDUP_MS, meleeWindupMs, COUNTER_WINDOW, COUNTER_COOLDOWN,
+  MELEE_LUNGE_PX, MELEE_LUNGE_MS, knockbackSpeedFor, PLAYER_BASE_SPEED,
+} from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
@@ -79,6 +82,34 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
 
   it('前隙は200ms(社長裁定)。この値がしゃがみ絵の長さの唯一の出どころ', () => {
     expect(MELEE_WINDUP_MS).toBe(200);
+  });
+
+  // ★踏み込み(社長裁定2026-08-24・SAME_ARENA.md §7-4)
+  it('踏み込みは前隙の頭で始まり、前隙より早く終わる(=足を着いてから振る)', () => {
+    setup();
+    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 1, y: 0 } } }));
+    const t0 = Date.now();
+    useGameStore.getState().beginMeleeSwing();
+    const p = useGameStore.getState().player;
+    expect(p.lungeVx).toBeGreaterThan(0);          // 向いている方向へ
+    expect(p.lungeVy).toBe(0);
+    expect(p.lungeUntil).toBeGreaterThanOrEqual(t0);
+    // ★社長の狙い「早めに着地させれば回避にも使える」= 踏み込みは前隙の中で**先に終わる**。
+    expect(MELEE_LUNGE_MS).toBeLessThan(MELEE_WINDUP_MS);
+  });
+
+  it('踏み込みは向きの逆でも同じ長さ(入力に対する結果が一定=前に出るか分からない、にしない)', () => {
+    setup();
+    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: -1, y: 0 }, counterCooldownEnd: 0, pendingSwingAt: 0 } }));
+    useGameStore.getState().beginMeleeSwing();
+    const p = useGameStore.getState().player;
+    expect(p.lungeVx).toBeLessThan(0); // 後退中に振れば後ろへ踏み込む(=斬る向きと一致)
+    expect(Math.abs(p.lungeVx)).toBeCloseTo(knockbackSpeedFor(MELEE_LUNGE_PX, MELEE_LUNGE_MS), 3);
+  });
+
+  it('踏み込みの速度は素の足より十分速い(=回避として成立する)', () => {
+    const spd = knockbackSpeedFor(MELEE_LUNGE_PX, MELEE_LUNGE_MS) / 2; // 平均速度(初速最大→0の線形)
+    expect(spd).toBeGreaterThan(PLAYER_BASE_SPEED * 3);
   });
 
   // ★社長裁定2026-08-24「200でいこ」: 一度 鞭だけ250msにしたが撤回。**全武器200ms**。

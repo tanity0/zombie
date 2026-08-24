@@ -83,6 +83,7 @@ import {
   EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の7: ボット購買ポリシー②(装備区画)の価格表
   REFLECT_DAMAGE_MULTIPLIER, // v0.25.3665: 幻影の弾パリィ(打ち返し)=プレイヤーの打ち返しと同じ倍率規則
   meleeWindupMs, // ★近接の前隙(SAME_ARENA.md §7)。武器ごとに変わるので必ずこの関数を通す
+  MELEE_LUNGE_PX, MELEE_LUNGE_MS, // ★踏み込み(プレイヤー/守護霊/幻影で同じ値。速度は既存の knockbackSpeedFor で導く)
   KILLFX_TOTAL_MS, // KILL処刑演出の尺(前隙の解決で近接SEを抑止する条件・旧VirtualJoystickから移設)
 } from '../store/gameStore';
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
@@ -9427,6 +9428,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // (=押し道具の穴。同版で別途修正)守護霊だけがそこまで追い、プレイヤーは追えない。
               // §2.11追補「守護霊は独立した2人目のプレイヤー」= **プレイヤーが行けない場所へは行かない**。
               // v0.25.2589 で円の拘束は入れたが、帯が残っていた(同じ事故の残り半分)。
+              // ★踏み込み中は移動先に踏み込み速度を足す(初速最大→線形に0=プレイヤーと同じ形)。
+              // このあと帯・円のクランプを通るので、踏み込みでも守護霊は帯から出ない。
+              {
+                const lu = ghostNow.gLungeUntil ?? 0;
+                if (nowMs < lu) {
+                  const d = Math.max(0, (lu - nowMs) / MELEE_LUNGE_MS);
+                  nx += (ghostNow.gLungeVx ?? 0) * d * deltaTime;
+                  ny += (ghostNow.gLungeVy ?? 0) * d * deltaTime;
+                }
+              }
               const gPlaced = clampRectToPlayableArea(nx, ny, ghostNow.width, ghostNow.height, {
                 farBackdrop: useGameStore.getState().farBackdrop,
                 labTheme,
@@ -9588,6 +9599,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 } else if (decision.action === 'melee' && boundBoss && !ghostKatana) {
                   openGhostSwingWindow(); // 守りの窓は今すぐ開く
+                  // ★踏み込み(社長裁定2026-08-24・同条件原則): プレイヤー・幻影と同じ距離/時間で
+                  // 標的の方へ滑る。守護霊の移動は下の resolved で「行ける帯」を通るので、
+                  // 座標を直に書かず **次フレーム以降の移動へ足す速度** として持たせる。
+                  {
+                    const tdx = (boundBoss ? boundBoss.x + boundBoss.width / 2 : ghostNow.x) - (ghostNow.x + ghostNow.width / 2);
+                    const tdy = (boundBoss ? boundBoss.y + boundBoss.height / 2 : ghostNow.y) - (ghostNow.y + ghostNow.height / 2);
+                    const tl = Math.hypot(tdx, tdy);
+                    if (tl > 0.001) {
+                      const lspd = knockbackSpeedFor(MELEE_LUNGE_PX, MELEE_LUNGE_MS);
+                      useGameStore.setState(st => ({ summons: st.summons.map(sm => sm.id === ghostNow.id
+                        ? { ...sm, gLungeVx: (tdx / tl) * lspd, gLungeVy: (tdy / tl) * lspd, gLungeUntil: nowMs + MELEE_LUNGE_MS }
+                        : sm) }));
+                    }
+                  }
                   useGameStore.setState(st => ({ summons: st.summons.map(sm => sm.id === ghostNow.id
                     ? { ...sm, gPendingSwingAt: nowMs, gPendingSwingWasCounter: decision.meleeIsCounterAttempt }
                     : sm) }));

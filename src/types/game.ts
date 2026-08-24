@@ -121,6 +121,13 @@ export interface Player extends DashLocomotionState {
    * ここには含めない(守りは即応・攻めは約束)。
    */
   pendingSwingAt: number;
+  /**
+   * ★近接の踏み込み(社長裁定2026-08-24・SAME_ARENA.md §7-4)。前隙の**頭**で
+   * `lastDirection` へ短く鋭く滑る。**無敵は付けない**(社長「無敵はつけない。すでにカウンターがある」)
+   * =「速く動いて物理的に避ける」であって「すり抜ける」ではない。
+   * 減衰は被弾ノックバックと同じ形(初速最大→線形に0)。壁・行ける帯は movePlayer が共通で通す。
+   */
+  lungeVx: number; lungeVy: number; lungeUntil: number;
   counterCooldownEnd: number;   // ms timestamp; cannot open another window until this
   lastCounterSuccessTime: number; // for the success flash effect
   // RE-style resources. Each gun family has a category-specific RESERVE pool
@@ -1157,6 +1164,8 @@ export interface Summon {
   gPendingSwingAt?: number;
   /** その振りがカウンター狙いだったか(前隙をまたいで運ぶ。解決時の演出/請求の出し分けに使う)。 */
   gPendingSwingWasCounter?: boolean;
+  /** ★踏み込み(社長裁定2026-08-24)。プレイヤー・幻影と同じ距離/時間で標的へ滑る。無敵は無い。 */
+  gLungeVx?: number; gLungeVy?: number; gLungeUntil?: number;
   // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 召喚時に載せる「計測時ビルドの写し」。ゴーストの武器・
   // スキル・装備・クリ率はこれから復元する(欠損=旧プロファイル→召喚時のプレイヤー装備へフォールバック)。
   ghostBuild?: PlayerBuildSnapshot;
