@@ -123,7 +123,7 @@ import {
 
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
-  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, RETIRED_SUB_WEAPONS, SKILL_KEYS, SKILLS, OBTAINABLE_SKILL_KEYS, COMPANION_SKILL_KEYS, BESTIARY,
+  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, RETIRED_SUB_WEAPONS, SKILLS, OBTAINABLE_SKILL_KEYS, COMPANION_SKILL_KEYS, BESTIARY,
   gachaPullCostFor, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillIcon, type SkillRarity, type Stage
 } from '../data/campaign';
@@ -284,6 +284,9 @@ const RARITY_TEXT: Record<SkillRarity, string> = {
 // SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止)+§1-3/§20(B4・同行者枠の正式化): 出撃前スキル
 // 持ち込みUIは撤去済み。装備メニューに残るのは「同行者」選択(守護霊系3種=COMPANION_SKILL_KEYS。
 // 単一選択=gameStore.companionSkill/setCompanionSkillが正式フィールド。候補列挙のみここで使う)。
+// **所持判定は掛けない**: 守護霊は全員が最初から所持(DEFAULT_OWNED_SKILLS)・ガチャ対象外
+// (GACHA_EXCLUDED_SKILLS)・同行者枠=スキル枠の外(RUN_DRAFT_EXCLUDED_SKILLS)なので、
+// 「解禁済みだけ出す」は成立しない(社長指摘2026-08-24)。3種は常に並ぶ。
 
 // PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-3: ミッション種別ラベル。文字で識別できるように
 // し、色だけに依存しない(「色だけに依存せず、文字でも識別可能にする」)。stage.kind から導出する
@@ -389,7 +392,6 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 装備(サブ/スキル)はトップの独立「装備メニュー」で選び、store に永続。出撃時に resetGame が反映。
   const equippedSubs = useGameStore(state => state.pendingLoadout);
   const companionSkill = useGameStore(state => state.companionSkill);
-  const ownedSkills = useGameStore(state => state.ownedSkills);
   const ownedSkillLevels = useGameStore(state => state.ownedSkillLevels);
   const setPendingLoadout = useGameStore(state => state.setPendingLoadout);
   const setCompanionSkill = useGameStore(state => state.setCompanionSkill);
@@ -1028,7 +1030,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 </button>
                 {/* レア度表記は出さない(社長指示2026-08-20「超レアとか消して。もはやスキル枠とは別枠なので」)。
                     スキルアイコン(①単体ファイル ②1枚シート ③絵文字の優先順=UpgradeMenuと同じ文法)を付ける。 */}
-                {SKILL_KEYS.filter(k => COMPANION_SKILL_KEYS.includes(k) && ownedSkills.includes(k)).map(k => {
+                {COMPANION_SKILL_KEYS.map(k => {
                   const on = companionSkill === k;
                   return (
                     <button
@@ -1057,11 +1059,6 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                     </button>
                   );
                 })}
-                {SKILL_KEYS.filter(k => COMPANION_SKILL_KEYS.includes(k) && ownedSkills.includes(k)).length === 0 && (
-                  <p className="rounded-none bg-purple-400/5 px-3 py-3 text-[11px] leading-snug text-white/50">
-                    解禁済みの守護霊がありません。
-                  </p>
-                )}
               </div>
             </div>
           </div>

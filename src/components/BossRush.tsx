@@ -62,13 +62,12 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
   const [cls, setCls] = useState<CharacterClass>('warrior');
   // ★守護霊の選択(社長指示2026-08-24)。**正本は gameStore の1本**(キャラ選択の守護霊枠と共有)。
   // CLAUDE.md「React re-render discipline」: 毎フレーム変わる物ではないので、必要な値だけを個別に購読する。
+  // 守護霊は**全員が最初から所持**(campaign.DEFAULT_OWNED_SKILLS)で**ガチャ対象外**
+  // (GACHA_EXCLUDED_SKILLS「最初から全員所持なのでガチャに出す意味が無い」)。さらに同行者枠=
+  // runBuild/レア度枠の外(RUN_DRAFT_EXCLUDED_SKILLS)なので**スキル枠でもない**。よって所持判定は
+  // 掛けない(社長指摘2026-08-24「守護霊はガチャ関係なく初期からだよ。というかスキル枠ではなくなったはず」)。
   const companionSkill = useGameStore(state => state.companionSkill);
   const setCompanionSkill = useGameStore(state => state.setCompanionSkill);
-  const ownedSkills = useGameStore(state => state.ownedSkills);
-  const ownedCompanions = useMemo(
-    () => COMPANION_SKILL_KEYS.filter(k => ownedSkills.includes(k)),
-    [ownedSkills],
-  );
 
   const open = openKey ? PRACTICE_SLOTS.find(s => s.slotKey === openKey) ?? null : null;
   // 解放判定は台帳側の1本(practiceSlotUnlocked)=遭遇記録 or 常時解放枠(幻影)。
@@ -157,7 +156,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
               onClick={() => setCompanionSkill(null)}
               className={`px-2.5 py-1.5 text-[11px] ${companionSkill === null ? 'bg-fuchsia-500/40 text-white' : 'bg-white/5 text-white/55'}`}
             >なし</button>
-            {ownedCompanions.map(k => (
+            {COMPANION_SKILL_KEYS.map(k => (
               <button
                 key={k}
                 type="button"
@@ -166,9 +165,6 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
               >{SKILLS[k].name}</button>
             ))}
           </div>
-          {ownedCompanions.length === 0 && (
-            <p className="mt-1 text-[10px] text-white/35">まだ守護霊を持っていません(ガチャで入手)。</p>
-          )}
           <p className="mt-2 text-[10px] leading-relaxed text-white/35">
             装備・スキル・サブウェポンは装備画面のものがそのまま使えます。<br />
             守護霊はここでの選択が本編にも反映されます。<br />
