@@ -71,6 +71,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // ★KILL処刑演出v2(社長指示v0.25.3603): 拍の長さはstore側の定数が正(hitstopの長さと同じ出どころ)。
   KILLFX_CROUCH_MS, KILLFX_LEAP_MS, KILLFX_HOLD_MS, KILLFX_SLASH_MS, KILLFX_RETURN_MS, KILLFX_LAND_MS,
   KILLFX_BURST_AT_MS, KILLFX_BLOOD_LAG_MS, KILLFX_TOTAL_MS,
+  MELEE_WINDUP_MS, // ★近接の前隙。しゃがみ絵の長さをここから導く(SAME_ARENA.md §7)
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -1332,7 +1333,12 @@ const MUZZLE_ANCHOR_Y = 0.5;
 
 const PLAYER_FIRE_RECOIL_PX = 3.2;    // 銃口と逆向き(=後方)へ体が下がる最大px
 const PLAYER_FIRE_RECOIL_SQUASH = 0.04; // 反動で軽く縦に縮む量
-const PLAYER_MELEE_SWING_MS = 280;    // 近接スイングの踏み込み→振り抜き→復帰の長さ(社長指示でもう少しスローに: 200→220→250→280。視覚のみ=攻撃レート/判定は別ゲート・不変)
+// ★近接の前隙(社長裁定2026-08-24・SAME_ARENA.md §7): **しゃがみの絵の長さ=判定が出るまでの時間**に揃える。
+// 以前は「しゃがみ112ms(280×0.4)の絵を出しながら、判定は指を離した瞬間(0ms)に出ていた」=絵が嘘を
+// ついていた。いまは判定が MELEE_WINDUP_MS 後に出るので、**絵と判定を同じ数字から導いて二度とズラさない**。
+// 振り抜き(後半)の長さは従来どおり(280×0.6=168ms)を維持する=斬った実感を痩せさせない。
+const PLAYER_MELEE_FOLLOW_MS = 168;   // 振り抜き→復帰(従来値。ここだけは絵の都合で決めてよい)
+const PLAYER_MELEE_SWING_MS = MELEE_WINDUP_MS + PLAYER_MELEE_FOLLOW_MS; // = 368ms
 const WIRE_SLAM_JUMP_H = 92;          // アンカー大技の見た目ジャンプ高さ(px・負方向=上)。引き上げ→斬り下ろしの弧。
 // スラム後ジャンプ離脱(ホップ)の見た目弧の高さ(px・負方向=上)。DEVELOPMENT_LOG v0.25.2487・
 // 判定/座標には影響しない描画専用値(叩き台・実機調整前提)。スラムより短い離脱動作なので控えめ。
@@ -1341,7 +1347,9 @@ const WIRE_HOP_DUST_SCALE = 1.4;      // ホップ着地の砂埃スケール(�
 const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
 const PLAYER_MELEE_STRETCH = 0.09;    // 振り抜きピークの横ストレッチ
-const MELEE_POSE_READY_FRAC = 0.4; // 近接専用ポーズ: 構え絵を出すスイング進行の割合(以降は振り抜き絵)。社長指示v0.25.1620・叩き台
+// 近接専用ポーズ: 構え(しゃがみ)絵を出すスイング進行の割合(以降は振り抜き絵)。
+// ★数字を直接書かない: 前隙(MELEE_WINDUP_MS)から導く=「しゃがんでいる間は当たらない」が絵で一致する。
+const MELEE_POSE_READY_FRAC = MELEE_WINDUP_MS / PLAYER_MELEE_SWING_MS;
 // 救急鞄スキル発動演出(社長指示v0.25.1656): 払い出しの瞬間に「振り抜きポーズ+鞄を頭上へ掲げる」一拍。全て叩き台=実機調整前提。
 const PLAYER_FIRSTAID_POSE_MS = 620;        // ポーズ+鞄掲げの表示長(描画のみ・判定不変)
 const PLAYER_FIRSTAID_BAG_SCALE = 0.92;     // 掲げる鞄の大きさ(体高basis の割合)

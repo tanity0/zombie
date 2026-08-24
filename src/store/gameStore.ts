@@ -1161,6 +1161,13 @@ const tagRemove = (id: string, cause: string): void => {
 // lifts their finger (or presses Space on PC) and stays open briefly. Any
 // hostile projectile that hits the player during the window is reflected.
 export const COUNTER_WINDOW = 400; // ms the window stays open after trigger
+/**
+ * ★近接の前隙(社長裁定2026-08-24「近接前隙を200にして」・SAME_ARENA.md §7)。
+ * 指を離した瞬間に**カウンター窓とCDは張る**が、**当たり判定はこの時間だけ遅れて出る**。
+ * しゃがみの絵(`MELEE_POSE_READY_FRAC`)はこの数字から導く=**唯一の出どころ**。
+ * 打ち合いは「後から振った方の窓が、先に振った方の斬撃を捕まえる」=後出しが勝つ。
+ */
+export const MELEE_WINDUP_MS = 200;
 export const COUNTER_COOLDOWN = 420; // ms between counters (anti-spam)
 // PHILL銃の狙いサークル: 距離(レティクルの前方距離)と「吸い付き」半径(この距離内に頭があればスナップ)。
 export const PHILL_AIM_RANGE = 130; // レティクル基準距離(手前寄りに。旧190)
@@ -4872,7 +4879,10 @@ interface GameState {
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
-  triggerCounter: () => CounterTriggerResult;
+  /** @param swingStartAt 窓/CDの基準時刻(前隙の起点=指を離した時刻)。省略時は今。 */
+  triggerCounter: (swingStartAt?: number) => CounterTriggerResult;
+  /** ★前隙の起点。窓/CD/絵だけを打ち、判定は `MELEE_WINDUP_MS` 後に useGameLoop が解決する。 */
+  beginMeleeSwing: () => boolean;
   // Katana actions. performKatanaStrike cuts the given enemies with katana
   // melee rules (crit, knockback, shared kill rewards). 近接フィニッシュは
   // 一閃のみ: allowFinisher は dash 経由でだけ true になる。
@@ -5400,6 +5410,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     invulnerableTime: 0,
     lastDirection: null,
     counterWindowEnd: 0,
+    pendingSwingAt: 0,
     counterCooldownEnd: 0,
     lastCounterSuccessTime: 0,
     ammoHandgun: AMMO_INITIAL.handgun,
@@ -6179,7 +6190,29 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  triggerCounter: () => {
+  // ★近接の前隙の起点(社長裁定2026-08-24・SAME_ARENA.md §7)。
+  // **指を離した瞬間にやること**=カウンター窓を開く / 近接CDを張る / スイング絵の起点を打つ /
+  // 前隙の打刻。**判定は出さない**——useGameLoop が MELEE_WINDUP_MS 後に triggerCounter を呼ぶ。
+  // 「守りは即応(窓は今すぐ開く) / 攻めは約束(斬撃は200ms後)」がこの分割の意味。
+  // 刀・鞭・スラッシャーの分岐は triggerCounter の中にあるので、窓/CDの正確な値はそちらが
+  // `swingAt` を基準に**張り直す**(ここで張るのは前隙中に守りが効くための暫定=同値かより短い)。
+  beginMeleeSwing: () => {
+    const now = Date.now();
+    const p = get().player;
+    if (now < p.counterCooldownEnd) return false;
+    if (p.pendingSwingAt > 0) return false; // 既に前隙中(二重に振らない)
+    set(state => ({
+      player: {
+        ...state.player,
+        pendingSwingAt: now,
+        meleeSwingAt: now,
+        counterWindowEnd: now + COUNTER_WINDOW,
+        counterCooldownEnd: now + (COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
+      },
+    }));
+    return true;
+  },
+  triggerCounter: (swingStartAt?: number) => {
     const now = Date.now();
     const {
       player, gameTime, realGameTime, enemies, projectiles,
@@ -6220,7 +6253,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
     // Respect cooldown — no swing, no knockback, no window.
-    if (now < player.counterCooldownEnd) {
+    // ★前隙の解決(swingStartAt 指定)は**この門を通さない**: CDは `beginMeleeSwing` が
+    // 指を離した瞬間に検査して張ってある。ここで再検査すると自分が張ったCDに引っかかって
+    // 判定が永久に出ない(=近接が完全に死ぬ)。
+    if (swingStartAt === undefined && now < player.counterCooldownEnd) {
       return { swung: false, hit: false, finish: false, killed: 0 };
     }
 
@@ -6229,6 +6265,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     // (lastCounterSuccessTime打刻の7箇所)が refundCounterCooldown(src/utils/counterMaster.ts)を呼ぶ。
     // 素振り(不成立スイング)のCDはスキル有無に関わらず同一=素振りDPS不変。
     const counterWindowMs = COUNTER_WINDOW;
+    // ★前隙(SAME_ARENA.md §7): 窓とCDは**指を離した瞬間**が基準。判定だけが200ms遅れて
+    // ここへ来るので、`now`(=判定時刻)ではなく `swingAt`(=離した時刻)から張る。
+    // これをしないと窓が200ms後ろへずれ、CDも1周期あたり200ms伸びてしまう(実質の弱体化)。
+    // 演出の時刻(エフェクトのcreatedAt等)は従来どおり `now` のまま=絵は今この瞬間に出る。
+    const swingAt = swingStartAt ?? now;
 
     // 近接スイングの揺れは「通常ヒット時のみ」(空振りは揺らさない/フィニッシュ・カウンターは
     // それぞれのインパクト演出に任せる)。判定が出揃う関数末尾で発火する(社長指示)。
@@ -6351,11 +6392,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (isKatanaMode(player)) {
       // 村雨は打ち返し(カウンター)もクールダウン無しで連発可能。刀は通常CD。
       // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
-      const counterCd = hasMurasame(player) ? now : now + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(player);
+      const counterCd = hasMurasame(player) ? now : swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(player);
       set(state => ({
         player: {
           ...state.player,
-          counterWindowEnd: now + counterWindowMs,
+          counterWindowEnd: swingAt + counterWindowMs,
           counterCooldownEnd: counterCd,
         }
       }));
@@ -6382,9 +6423,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(state => ({
         player: {
           ...state.player,
-          counterWindowEnd: now + counterWindowMs,
+          counterWindowEnd: swingAt + counterWindowMs,
           // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
-          counterCooldownEnd: now + (counterWindowMs + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS) * meleeCooldownMult(player),
+          counterCooldownEnd: swingAt + (counterWindowMs + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS) * meleeCooldownMult(player),
         }
       }));
       get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=鞭・§1-3)
@@ -6827,10 +6868,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           : state.hitstopUntil,
       player: {
         ...state.player,
-        meleeSwingAt: now, // 近接スイング演出の起点(描画のみ)。この set はスイング確定時のみ走る。
-        counterWindowEnd: now + counterWindowMs,
+        meleeSwingAt: swingAt, // 近接スイング演出の起点(描画のみ)。★前隙の起点=指を離した時刻に揃える(200ms後に絵を出し直さない)。
+        counterWindowEnd: swingAt + counterWindowMs,
         // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
-        counterCooldownEnd: now + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
+        counterCooldownEnd: swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
         huntingCharged: false,
         huntingChargeStartedAt: 0,
         knifeComboCount: knifeCombo.count,
@@ -17010,6 +17051,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           aimX: 1,
           aimY: 0,
           counterWindowEnd: 0,
+    pendingSwingAt: 0,
           counterCooldownEnd: 0,
           lastCounterSuccessTime: 0,
           ammoHandgun: AMMO_INITIAL.handgun,

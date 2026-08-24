@@ -114,6 +114,13 @@ export interface Player extends DashLocomotionState {
   // Counter-on-release state. Releasing the touch opens a brief window
   // during which any incoming hostile projectile is reflected.
   counterWindowEnd: number;     // ms timestamp; window is open while now <= this
+  /**
+   * ★近接の前隙(社長裁定2026-08-24・SAME_ARENA.md §7): 指を離した時刻(Date.now)。
+   * `MELEE_WINDUP_MS` 経過後に **useGameLoop が判定を解決**する。0=前隙中の振りは無い。
+   * **カウンターされたら 0 に戻す**(=振りが中断される)。窓・CDは指を離した瞬間に張るので
+   * ここには含めない(守りは即応・攻めは約束)。
+   */
+  pendingSwingAt: number;
   counterCooldownEnd: number;   // ms timestamp; cannot open another window until this
   lastCounterSuccessTime: number; // for the success flash effect
   // RE-style resources. Each gun family has a category-specific RESERVE pool

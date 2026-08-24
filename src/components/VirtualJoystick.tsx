@@ -1,13 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { playSfx, playEnemyDeath } from '../audio/audioManager';
+import { playSfx } from '../audio/audioManager';
 import {
   useGameStore,
   isInputLocked,
   isAttackLocked, // v0.25.2589: 死亡モーション/アテンション/帰還サークル内の攻撃禁止(共通ゲート)
   KATANA_FLICK_WINDOW_MS,
   KATANA_FLICK_MIN_DIST,
-  KATANA_FLICK_MIN_SPEED,
-  KILLFX_TOTAL_MS, // KILL処刑演出中の通常近接SE抑止(FB5/FB7)
+  KATANA_FLICK_MIN_SPEED, // KILL処刑演出中の通常近接SE抑止(FB5/FB7)
 } from '../store/gameStore';
 import {
   RHYTHM_FLICK_FIRE_DIST,
@@ -45,7 +44,7 @@ const VirtualJoystick: React.FC = () => {
   const setSwipeDirection = useGameStore(state => state.setSwipeDirection);
   const setTouchActive = useGameStore(state => state.setTouchActive);
   const setLastDirection = useGameStore(state => state.setLastDirection);
-  const triggerCounter = useGameStore(state => state.triggerCounter);
+  const beginMeleeSwing = useGameStore(state => state.beginMeleeSwing);
   const triggerKatanaDash = useGameStore(state => state.triggerKatanaDash);
   const triggerWireAnchor = useGameStore(state => state.triggerWireAnchor);
   const rhythmInput = useGameStore(state => state.rhythmInput);
@@ -160,19 +159,11 @@ const VirtualJoystick: React.FC = () => {
         tryFireKatanaDash();
         // ワイヤーアンカーも同様にフリックで発動(フリック方向に刺す)。未装備なら無害。
         tryFireWireAnchor();
-        // カウンターは従来どおり「指を離した瞬間」に発火(刀装備中はナイフスイープなしで窓だけ開く)。
-        const counter = triggerCounter();
-        // 鞭装備中はナイフ用の汎用音を出さない(鞭専用SE=whip-swing/whip-hit に任せる)。
-        const isWhip = useGameStore.getState().player.subWeapons.includes('whip');
-        // ★実機FB5(v0.25.3611「まだKILL演出確定時に通常の近接SEが鳴ってる」)+FB7(v0.25.3614):
-        // KILL処刑演出がこのスイングで発動した場合に加え、**演出の最中の追加タップ**でも通常の近接SE
-        // (振り音/フィニッシュ音)を出さない——演出側が斬撃直後に専用SEを鳴らす。
-        const kfxNow = useGameStore.getState().killFx;
-        const killFxJustFired = !!kfxNow && Date.now() - kfxNow.startAt < KILLFX_TOTAL_MS;
-        if (counter.swung && !isWhip && !killFxJustFired) playSfx('melee');
-        if (counter.finish && !killFxJustFired) playSfx('melee-finish');
-        else if (counter.hit && !isWhip && !killFxJustFired) playSfx('slash-damage');
-        if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
+        // ★近接の前隙(社長裁定2026-08-24・SAME_ARENA.md §7): 「指を離した瞬間」に開くのは
+        // **カウンター窓とCDと絵**だけで、**当たり判定は MELEE_WINDUP_MS(200ms)後**に
+        // useGameLoop が解決する(近接SE・キル音もそちらへ移した=判定と同時に鳴らすため)。
+        // 守りは即応・攻めは約束。刀ダッシュ/ワイヤーのフリックは上のとおり従来どおり即発火。
+        beginMeleeSwing();
       }
     }
     // スケボー(新仕様): この接触が「タップ」(短く小移動)だったかを記録し、次回押下のダブルタップ判定に使う。
@@ -200,7 +191,7 @@ const VirtualJoystick: React.FC = () => {
     setDelta({ x: 0, y: 0 });
     setTouchActive(false);
     setSwipeDirection(null);
-  }, [setSwipeDirection, setTouchActive, triggerCounter, rhythmInput, tryFireKatanaDash, tryFireWireAnchor, dismountSkater]);
+  }, [setSwipeDirection, setTouchActive, beginMeleeSwing, rhythmInput, tryFireKatanaDash, tryFireWireAnchor, dismountSkater]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // 操作不可(ヘリ登場/セリフ/一時停止/死亡)中は移動・向き・攻撃を一切受け付けない(社長指示)。

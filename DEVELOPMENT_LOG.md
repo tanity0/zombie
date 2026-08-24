@@ -1,5 +1,56 @@
 # Development Log
 
+## v0.25.3868 — ★近接に前隙200ms(社長裁定)。判定を関数ごと遅らせる方式【2026-08-24 18:12 JST】
+
+**社長裁定**: 「近接前隙を**200**にして、あとは実装して」「カウンターされた側はノックバックも敵と同じく」
+仕様の正本は **research/SAME_ARENA.md §7**(この版で新設)。
+
+### 直した「絵の嘘」
+しゃがみの絵は**既に112ms分あった**(`MELEE_POSE_READY_FRAC=0.4` × `PLAYER_MELEE_SWING_MS=280`)のに、
+**ダメージは指を離した瞬間(0ms)に確定していた**。CLAUDE.md「見たまんまが当たり判定」を
+**プレイヤーに有利な側で**破っている唯一の箇所だった。
+
+### 方式: 800行の `triggerCounter` を割らない
+中身を分割せず、**関数の呼び出しごと200ms遅らせた**。回帰面を最小にするため:
+- `beginMeleeSwing()`(新設・小さい): 指を離した瞬間に**窓/CD/絵の起点/前隙の打刻**だけを行う。
+- `useGameLoop` が毎フレーム `player.pendingSwingAt` を見て、200ms経過で
+  **既存の `triggerCounter(pendAt)` をそのまま呼ぶ**。800行の中身は無改変。
+
+### 実装で踏んだ罠2つ(どちらも「近接が完全に死ぬ」級)
+1. **自分で張ったCDに自分で引っかかる。** `beginMeleeSwing` がCDを張るので、200ms後の
+   `triggerCounter` は先頭のCD門で必ず早期returnし、**判定が永久に出ない**。
+   ⇒ `swingStartAt` 指定時はCD門を通さない(CDは begin 側で検査済み)。
+2. **窓とCDが200ms後ろへずれる。** 解決時刻を基準に張ると1周期あたり200ms伸びる=実質の弱体化。
+   ⇒ 窓/CDの4箇所を `now` から **`swingAt`(=指を離した時刻)** 基準へ変更。演出の時刻は `now` のまま
+   (絵は今この瞬間に出す)。
+
+### 絵の同期(数字を1本に)
+`pixiScene`: `PLAYER_MELEE_SWING_MS = MELEE_WINDUP_MS + PLAYER_MELEE_FOLLOW_MS(168)` = **368ms**、
+`MELEE_POSE_READY_FRAC = MELEE_WINDUP_MS / PLAYER_MELEE_SWING_MS`。
+**しゃがみ絵の長さが前隙そのものになった**=二度とズレない。振り抜き168msは従来値を維持。
+
+### 近接SEの移設
+指離しハンドラ(`VirtualJoystick`)は判定結果を持たなくなったので、近接SE(`melee`/`melee-finish`/
+`slash-damage`/キル音)を `useGameLoop` の解決地点へ移した(条件は1bit同じ)。
+
+### 変更ファイル
+`src/types/game.ts`(`pendingSwingAt`)/ `src/store/gameStore.ts`(`MELEE_WINDUP_MS`・`beginMeleeSwing`・
+`swingAt` 基準)/ `src/hooks/useGameLoop.ts`(解決+SE)/ `src/components/VirtualJoystick.tsx`(前隙の起点へ)/
+`src/pixi/pixiScene.ts`(絵の同期)/ `src/store/meleeWindup.test.ts`(新規5件)/ `research/SAME_ARENA.md` §7
+
+### テスト
+新規5件(窓/CDは即開く・前隙中は無ダメージ・二度振れない・自CDに阻まれない・基準時刻・値=200)。
+`sim.test`(40)+`skills.test`(83)緑。typecheck 0 / lint エラー0(warning 8=既存)。
+
+### 負荷
+1/10(毎フレーム数値比較1回)。
+
+### 次(この版に含まれていない)
+**幻影・守護霊側の前隙**/ プレイヤーが幻影の近接をカウンターする経路の新設 /
+**カウンターされた側の中断+ノックバック(社長指示)**/ 幻影の反応下限250ms。
+
+**状態変化: ★オンライン計画 → 実装中(近接前隙 S-1 着地・残り S-2〜S-4)**
+
 ## v0.25.3867 — 対等の台帳を取った(社長指摘「原則同じ条件にして、と伝えてるよね?」)【2026-08-24 11:20 JST】
 
 **社長指摘(2026-08-24)**: 「プレイと幻影(ないしは守護霊)は、原則同じ条件にして、と伝えてるよね?」

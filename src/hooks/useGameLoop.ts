@@ -82,6 +82,8 @@ import {
   SHOP_MEDKIT_COST, // SKILL_BUILD_REDESIGN.md §15-1(B0): ボット購買ポリシーの救急価格
   EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の7: ボット購買ポリシー②(装備区画)の価格表
   REFLECT_DAMAGE_MULTIPLIER, // v0.25.3665: 幻影の弾パリィ(打ち返し)=プレイヤーの打ち返しと同じ倍率規則
+  MELEE_WINDUP_MS, // ★近接の前隙(SAME_ARENA.md §7)。前隙の解決タイミングに使う
+  KILLFX_TOTAL_MS, // KILL処刑演出の尺(前隙の解決で近接SEを抑止する条件・旧VirtualJoystickから移設)
 } from '../store/gameStore';
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
 import { glenScriptApplies } from '../utils/giantScript';
@@ -6879,6 +6881,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (!bossCtrlErrLogged) { bossCtrlErrLogged = true; console.error('[hiddenBoss] controller error (suppressed after first):', err); }
           reportSuppressedError('hiddenBoss', err); // v0.25.3324: 実機で見えない握り潰し例外を左下に出す
          }
+        }
+
+        // --- ★近接の前隙の解決(社長裁定2026-08-24・SAME_ARENA.md §7) ---------------------
+        // 指を離した瞬間(`beginMeleeSwing`)から MELEE_WINDUP_MS 経過したら、**既存の
+        // triggerCounter をそのまま呼んで**判定・ダメージ・キル・スイング入口のサブを解決する
+        // (800行の中身には一切手を入れない=回帰面を最小にする方針)。窓/CDの基準時刻として
+        // 前隙の起点を渡すので、窓もCDも「指を離した瞬間」から数えたままになる。
+        // **前隙中にカウンターされたら pendingSwingAt は 0 に戻っている**=ここへ来ない(振りが中断)。
+        {
+          const pendAt = useGameStore.getState().player.pendingSwingAt;
+          if (pendAt > 0 && Date.now() - pendAt >= MELEE_WINDUP_MS) {
+            useGameStore.setState(st => ({ player: { ...st.player, pendingSwingAt: 0 } }));
+            const counter = useGameStore.getState().triggerCounter(pendAt);
+            // 近接SE(旧 VirtualJoystick の指離しハンドラから移設・条件は1bit同じ)。
+            const isWhip = useGameStore.getState().player.subWeapons.includes('whip');
+            const kfxNow = useGameStore.getState().killFx;
+            const killFxJustFired = !!kfxNow && Date.now() - kfxNow.startAt < KILLFX_TOTAL_MS;
+            if (counter.swung && !isWhip && !killFxJustFired) playSfx('melee');
+            if (counter.finish && !killFxJustFired) playSfx('melee-finish');
+            else if (counter.hit && !isWhip && !killFxJustFired) playSfx('slash-damage');
+            if (counter.killed > 0) playEnemyDeath();
+          }
         }
 
         // --- idol(stage-2隠しボス)専用ブロック(PACING_PUZZLE.md §6.28-20・社長指示で配置確定 v0.25.2382) ---
