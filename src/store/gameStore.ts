@@ -1169,18 +1169,15 @@ export const COUNTER_WINDOW = 400; // ms the window stays open after trigger
  */
 export const MELEE_WINDUP_MS = 200;
 /**
- * ★鞭の前隙(社長指示2026-08-24「鞭は250くらいにしたい」)。鞭はリーチ150pxの**長物**で、
- * 描画も倍(`WHIP_DRAW_MS`=440)・CDも +`WHIP_COOLDOWN_EXTRA_MS` と、元から「重い」側に寄せてある。
- * 前隙もナイフ(200)より長い=**リーチと引き換えに出が遅い**という一貫した性格になる。
- */
-export const WHIP_WINDUP_MS = 250;
-/**
- * その主語(プレイヤー / 疑似Player)の**近接の前隙**。装備で変わるので、前隙を測る側は
- * `MELEE_WINDUP_MS` を直接読まず**必ずこの関数を通す**(武器ごとの値が1箇所に集まる)。
+ * その主語(プレイヤー / 疑似Player)の**近接の前隙**。前隙を測る側は `MELEE_WINDUP_MS` を
+ * 直接読まず**必ずこの関数を通す**——武器ごとに変えたくなった時、**ここ1箇所に分岐を足せば
+ * 判定も絵も同時に追従する**(測る場所が散らばっていると、片方だけ直って嘘の絵になる)。
+ *
+ * **現在は全武器200ms**。一度 鞭だけ250msにしたが、**社長裁定2026-08-24「200でいこ」で撤回**
+ * (鞭は `WHIP_DAMAGE_MULT`=0.25 の低ダメージ役なので、出まで遅くすると重くなり過ぎる)。
  * 刀の一閃(`triggerKatanaDash`)はこの経路を通らない=別建て(SAME_ARENA.md §7-2)。
  */
-export const meleeWindupMs = (player: Player): number =>
-  player.subWeapons.includes('whip') ? WHIP_WINDUP_MS : MELEE_WINDUP_MS;
+export const meleeWindupMs = (_player: Player): number => MELEE_WINDUP_MS;
 export const COUNTER_COOLDOWN = 420; // ms between counters (anti-spam)
 // PHILL銃の狙いサークル: 距離(レティクルの前方距離)と「吸い付き」半径(この距離内に頭があればスナップ)。
 export const PHILL_AIM_RANGE = 130; // レティクル基準距離(手前寄りに。旧190)
@@ -1460,6 +1457,13 @@ export const WHIP_HIT_HALF_WIDTH = 60;                           // カプセル
 export const WHIP_LENGTH_BY_LEVEL = [0, 150, 150, 150] as const; // 進行方向の射程。鞭の判定はレベルで変えない(全Lv共通150)
 // 鞭の描画(lash表示)時間。従来220msの倍。描画延長分だけクールダウンも後ろへずらす。
 export const WHIP_DRAW_MS = 440;
+/**
+ * ★しなり(スネア)の折れの強さ(社長指示2026-08-24「かなり強めに折れるくらいに入れたい」)。
+ * 巻き・S字のコマを**射程より大きく**描く倍率。スネアは判定を持たない「派手さの絵」
+ * (CLAUDE.md 2分類の②)なので、判定より外へはみ出してよい——むしろ等倍だと本体に隠れて
+ * 「しなっていること」が伝わらない(踏み鳴らしの砂埃 DUST_STOMP_SCALE=2.2 と同じ理屈)。
+ */
+export const WHIP_SNARE_BEND_SCALE = 1.45;
 export const WHIP_COOLDOWN_EXTRA_MS = WHIP_DRAW_MS - 220;        // = 220: 描画を倍にした増分
 export const WHIP_AMMO_DROP_CHANCE = 0.20;                       // 鞭ヒット時の弾薬ドロップ率(仕様)
 export const WHIP_CHARGE_HITS_BY_LEVEL = [0, 40, 35, 30] as const; // ハリケーン必要ヒット数(Lv1=40、レベルが上がるごとに-5で軽くなる)
@@ -6223,6 +6227,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         counterCooldownEnd: now + (COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
       },
     }));
+    // ★鞭のしなり(社長指示2026-08-24)。**前隙の頭で出す**のが肝——3コマ素材が
+    // 「巻く→S字→伸び切る」なので、前隙の間にしなり、判定の瞬間に伸び切って打つ、が絵で成立する
+    // (馬乗りには入っていたのにプレイヤーには入っていなかった)。判定は持たない=分類②の絵。
+    if (p.subWeapons.includes('whip')) {
+      const ld = p.lastDirection ?? { x: 1, y: 0 }; // 未設定=右向き(他の鞭経路と同じ既定)
+      const lmag = Math.max(0.001, Math.hypot(ld.x, ld.y));
+      get().spawnEffect({
+        kind: 'whipsnare',
+        id: `fx-whipsnare-${now}`,
+        fromX: p.x + p.width / 2, fromY: p.y + p.height / 2,
+        angle: Math.atan2(ld.y / lmag, ld.x / lmag),
+        len: WHIP_LENGTH_BY_LEVEL[whipLevel(p)],
+        createdAt: now,
+        windupMs: meleeWindupMs(p),
+        duration: meleeWindupMs(p) + WHIP_DRAW_MS,
+      });
+    }
     return true;
   },
   triggerCounter: (swingStartAt?: number) => {

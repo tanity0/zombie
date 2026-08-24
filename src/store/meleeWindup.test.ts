@@ -6,7 +6,7 @@
 //  ③ 前隙の解決は**自分が張ったCDに引っかからない**(引っかかると判定が永久に出ない)。
 //  ④ 窓とCDの終了時刻は**指を離した時刻**が基準(解決時刻を基準にすると1周期200ms伸びる=弱体化)。
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useGameStore, MELEE_WINDUP_MS, WHIP_WINDUP_MS, meleeWindupMs, COUNTER_WINDOW, COUNTER_COOLDOWN } from './gameStore';
+import { useGameStore, MELEE_WINDUP_MS, meleeWindupMs, COUNTER_WINDOW, COUNTER_COOLDOWN } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
@@ -81,13 +81,12 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
     expect(MELEE_WINDUP_MS).toBe(200);
   });
 
-  // ★社長指示2026-08-24「鞭は250くらいにしたい」。武器ごとの値は meleeWindupMs に集約する
-  // (前隙を測る側が MELEE_WINDUP_MS を直読みすると、鞭だけ絵と判定がズレる)。
-  it('鞭は250ms・それ以外は200ms(武器ごとの前隙は1つの関数に集約)', () => {
+  // ★社長裁定2026-08-24「200でいこ」: 一度 鞭だけ250msにしたが撤回。**全武器200ms**。
+  // 測る側は必ず meleeWindupMs を通す(直読みが増えると、武器別にした時に片方だけ直って
+  // 絵と判定がズレる)。この不変条件を値で固定しておく。
+  it('前隙は全武器200ms(測る側は meleeWindupMs を通る)', () => {
     const p = useGameStore.getState().player;
     expect(meleeWindupMs({ ...p, subWeapons: [] })).toBe(MELEE_WINDUP_MS);
-    expect(meleeWindupMs({ ...p, subWeapons: ['whip'] })).toBe(WHIP_WINDUP_MS);
-    expect(WHIP_WINDUP_MS).toBe(250);
-    expect(WHIP_WINDUP_MS).toBeGreaterThan(MELEE_WINDUP_MS); // リーチと引き換えに出が遅い
+    expect(meleeWindupMs({ ...p, subWeapons: ['whip'] })).toBe(MELEE_WINDUP_MS);
   });
 });

@@ -72,6 +72,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   KILLFX_CROUCH_MS, KILLFX_LEAP_MS, KILLFX_HOLD_MS, KILLFX_SLASH_MS, KILLFX_RETURN_MS, KILLFX_LAND_MS,
   KILLFX_BURST_AT_MS, KILLFX_BLOOD_LAG_MS, KILLFX_TOTAL_MS,
   MELEE_WINDUP_MS, // ★近接の前隙。しゃがみ絵の長さをここから導く(SAME_ARENA.md §7)
+  WHIP_SNARE_BEND_SCALE, // ★鞭のしなり(スネア)の折れの強さ(社長指示2026-08-24)
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -23919,6 +23920,8 @@ export class PixiScene {
         if (e.radius <= SMALL_GLOW_SPRITE_RADIUS_MAX) this.drawSmallGlowSprite(e, now);
         else if (STRONG_GLOW_DISABLED) this.hideEffectView(e.id); // ?glow=0 診断: 強glowを描かない(既存プールviewも隠す)
         else this.drawStrongGlowSprite(e, now);
+      } else if (e.kind === 'whipsnare') {
+        this.drawWhipSnareSprite(e, now);
       } else if (e.kind === 'whip') {
         this.drawWhipSprite(e, now);
       } else if (e.kind === 'firejet') {
@@ -24311,6 +24314,52 @@ export class PixiScene {
 
   // 鞭 lash を実スプライトで描画。手元(WHIP_SPRITE_ANCHOR)をプレイヤー位置に固定し、
   // 振り方向へ回転、手元→先端が strike 距離(reach)に一致するよう伸縮。一振りごとにフェード。
+  /**
+   * ★鞭のしなり(スネア・社長指示2026-08-24「かなり強めに折れるくらいに入れたい」)。
+   * 素材 `fx/whip-smear-0/1/2` は **①小さく巻く → ②S字にしなる → ③伸び切って打つ** の3コマ。
+   * **前隙にそのまま重ねる**: 前隙の前半=①、後半=②、判定が出てから=③。
+   * これで「しなって溜めて、当たる瞬間に伸び切る」が絵と判定で一致する(見たまんまが当たり判定)。
+   *
+   * 掟:
+   *  - **本体に追従させない**。柄の位置・角度は spawn 時に焼いてある(馬乗りの
+   *    `drawBountyWhipSmear` と同じ「空中に残った軌跡」の作法・v0.25.3520の社長指示)。
+   *  - **しなりのコマは判定より大きく**(`WHIP_SNARE_BEND_SCALE`)。判定を持たない分類②の絵なので、
+   *    等倍だと本体に隠れて「しなり」が見えない。
+   *  - **慣性**: 伸びはイーズで出す(パッと出て止まらない)。
+   *  - コスト: プールsprite 1枚・テクスチャ差し替えのみ(per-frame Graphics なし)= 1/10。
+   */
+  private drawWhipSnareSprite(e: Extract<VisualEffect, { kind: 'whipsnare' }>, now: number) {
+    const el = now - e.createdAt;
+    const t = Math.min(1, el / e.duration);
+    let sprite = this.effects.get(e.id);
+    if (!(sprite instanceof Sprite)) {
+      if (sprite) sprite.destroy();
+      sprite = new Sprite();
+      (sprite as Sprite).anchor.set(PixiScene.WHIP_SMEAR_GRIP_X, PixiScene.WHIP_SMEAR_GRIP_Y);
+      (sprite as Sprite).blendMode = 'add';
+      this.L.effectLayer.addChild(sprite);
+      this.effects.set(e.id, sprite);
+    }
+    const sp = sprite as Sprite;
+    // コマ: 前隙の前半=巻き / 後半=S字 / 前隙明け=伸び切り。
+    const w = Math.max(1, e.windupMs);
+    const f: 0 | 1 | 2 = el < w * 0.5 ? 0 : el < w ? 1 : 2;
+    const tex = getTexture(`fx/whip-smear-${f}`);
+    if (!tex) { sp.visible = false; return; }
+    if (sp.texture !== tex) sp.texture = tex;
+    // 長さ: しなり中は「まだ伸びていない」ので短く、伸び切りで射程ちょうど。
+    // イーズ(慣性MUST): 溜めの間にゆっくり伸び → 判定の瞬間に一気に伸び切る。
+    const grow = f === 2 ? 1 : 0.55 + 0.35 * (el / w) * (el / w); // 0.55→0.90(加速)
+    const bend = f === 2 ? 1 : PixiScene.WHIP_SNARE_BEND;         // 折れを大きく見せる
+    const drawLen = Math.max(40, e.len * grow * bend);
+    sp.rotation = e.angle - PixiScene.WHIP_SMEAR_INTRINSIC;
+    sp.scale.set(drawLen / Math.max(1, Math.max(tex.width, tex.height)));
+    sp.position.set(e.fromX, e.fromY); // ★焼いた位置=本体が動いても置き去りになる
+    // 前隙中は濃く見せる(しなりを見せるのが目的)。伸び切ってからフェード。
+    sp.alpha = t < 0.5 ? 1 : Math.max(0, 1 - (t - 0.5) / 0.5);
+    sp.visible = true;
+  }
+
   private drawWhipSprite(e: Extract<VisualEffect, { kind: 'whip' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     let sprite = this.effects.get(e.id);
@@ -25201,6 +25250,8 @@ export class PixiScene {
   private static readonly WHIP_SMEAR_GRIP_X = 0.08;
   private static readonly WHIP_SMEAR_GRIP_Y = 0.95;
   private static readonly WHIP_SMEAR_INTRINSIC = -Math.PI / 4;
+  /** プレイヤーのしなり(スネア)の折れの強さ。正本は gameStore.WHIP_SNARE_BEND_SCALE。 */
+  private static readonly WHIP_SNARE_BEND = WHIP_SNARE_BEND_SCALE;
   /** ★v0.25.3573: 鞭スミア3コマの固定再生時間(ms)。終わりが命中に一致するよう残り時間から逆算する。 */
   private static readonly WHIP_SMEAR_MS = 140;
   /** ★v0.25.3573(社長指示「先端寄りに」): スミアの起点=判定の帯のこの割合の地点(残りを先端まで覆う)。 */
