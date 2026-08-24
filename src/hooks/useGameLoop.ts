@@ -161,6 +161,7 @@ import {
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 頭脳(decideGhostの対プレイヤーアダプタ)+技の状態機械。
 import {
   runPhantomTick, createPhantomTickState, pickActivePhantom, type PhantomSfx,
+  phantomSupportsSub, // ★幻影が主語になれるサブの白リスト(未実装の種は自爆するのでプレイヤーへ落とす)
 } from '../utils/phantomTick';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
@@ -7775,6 +7776,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (subOwner.kind === 'phantom' && subOwner.summonId) {
             const pa = combatActorPlayer(subOwner.summonId);
             if (
+              // ★社長報告2026-08-24「幻影が自分のデコイに消されてたり、自分のトラップにハマってる」:
+              // **まだ実装していない種まで幻影が主語になれていた**のが真因。設置系(トラップ/デコイ/
+              // タレット/盾/地雷)は全部「`enemies` を走査して敵を捕まえる」形なので、幻影が置くと
+              // 宛先にプレイヤーが入らず、**自分だけが候補になる**=自爆する。
+              // 実装済みの種の白リスト(phantomSupportsSub)を通す=未実装はプレイヤーへフォールバック。
+              phantomSupportsSub(key) &&
               pa && pa.subWeapons.includes(key) &&
               !subWeaponBlockedByKatana(pa, key) &&
               gameTime >= (pa.subWeaponCooldowns[key] ?? 0)

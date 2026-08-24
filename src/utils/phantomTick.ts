@@ -24,7 +24,7 @@
 //    `knockbackShoveUntil` / `liftUntil` / decideGhost の内部CD・リロードは `Date.now()`。
 //    **混ぜて比較しない**。このファイルは両方を引数で受け取り、それぞれの世界の中だけで比較する。
 //  - 慣性: 振りの絵(踏み込み→戻り)は描画側(pixiScene)がイーズで出す。判定は即発の1回。
-import type { Enemy, EnemyType, Player, Projectile, Weapon } from '../types/game';
+import type { Enemy, EnemyType, Player, Projectile, SubWeaponKey, Weapon } from '../types/game';
 import {
   useGameStore, resolveBountyMove, CRIT_DAMAGE_MULT,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
@@ -114,6 +114,32 @@ export const phantomProfile = (): GhostProfile => {
  * 死ぬため使わない)。個性は**間合いの取り方**(preferredDist / 移動リズム)として残る。
  */
 export const PHANTOM_MELEE_PERIOD_MS = GHOST_COUNTER_MELEE_PERIOD_MS;
+
+/**
+ * ★幻影が**主語になれるサブウェポン**(research/SAME_ARENA.md O-3)。
+ *
+ * 社長報告2026-08-24(実機): 「幻影が自分のデコイに消されてたり、自分のトラップにハマってる」。
+ * 真因は**この白リストが無かったこと**——サブの主語ディスパッチ(useGameLoop)は「その種を持っていて
+ * 自前CDが明けていれば幻影が主語」という汎用の式なので、**まだ実装していない種まで幻影が使えていた**。
+ *
+ * 設置系(トラップ/デコイ/タレット/盾/地雷)は例外なく **「`enemies` を走査して敵を捕まえる」** 形で
+ * 書かれている。幻影は `enemies` の一員なので、幻影が置くと:
+ *  - **宛先にプレイヤーが入らない**(プレイヤーは `enemies` に居ない)=そもそも機能しない
+ *  - **自分自身が唯一の候補になる**=自分のトラップで拘束され、自分のデコイに処理される(=自爆)
+ * つまり「所有者判定が抜けている」のではなく、**設置系はまだ幻影に対応していない**のが正しい理解
+ * (SAME_ARENA §3-d「残りのサブは同型の繰り返しではない」がまさにこれを指していた)。
+ *
+ * ⇒ **実装済みの種だけをここに列挙する。**新しい種を O-3b-2 で実装したら、その時ここへ足す
+ * (白リストを増やすのが「実装した」の定義になる=取りこぼしが構造的に起きない)。
+ */
+export const PHANTOM_SUPPORTED_SUBS: readonly SubWeaponKey[] = [
+  'heavy-grenade', // O-3a(v0.25.3856)
+  'fire-knife',    // O-3b-1(v0.25.3859)
+];
+/** その種を幻影が主語として使えるか(未実装の種は必ずプレイヤーへフォールバックする)。 */
+export const phantomSupportsSub = (key: SubWeaponKey): boolean =>
+  PHANTOM_SUPPORTED_SUBS.includes(key);
+
 
 // ★旧 PHANTOM_PARRY_SHOVE_PX/MS(幻影専用の小さい叩き台)は撤去した。
 // 社長指示2026-08-24「カウンターされた側はノックバックも敵と同じく」により、

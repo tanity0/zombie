@@ -1,3 +1,6 @@
+import { phantomSupportsSub, PHANTOM_SUPPORTED_SUBS } from './phantomTick';
+import { SUB_WEAPON_KEYS } from '../data/campaign';
+import type { SubWeaponKey } from '../types/game';
 // research/SAME_ARENA.md O-3「幻影がサブウェポンを使う」の土台の受け入れ条件。
 // 守護霊との決定的な違い=**狙う相手がプレイヤー**なので、効果を敵対側(hostile)で撒く必要があり、
 // かつ**紫の文法=カウンターできない**を守る必要がある(素通しだと打ち返せてしまう)。
@@ -83,5 +86,28 @@ describe('O-3 紫の文法: 幻影のサブはカウンターで打ち返せな�
     applyEnemyProjectileHits(0, useGameStore.getState().player, false, 0, 0, NOOP_FX, TUNABLES);
     const after = useGameStore.getState().projectiles.find(x => x.id === proj.id);
     expect(after?.reflected ?? false).toBe(true);
+  });
+});
+
+// ★社長報告2026-08-24(実機): 「幻影が自分のデコイに消されてたり、自分のトラップにハマってる」。
+// 真因=**未実装の種まで幻影が主語になれていた**。設置系は例外なく「`enemies` を走査して敵を捕まえる」
+// 形なので、幻影が置くと**宛先にプレイヤーが入らず自分だけが候補になる**=自爆する。
+// 白リスト(PHANTOM_SUPPORTED_SUBS)を**値で**固定しておく——新しい種を実装した時にここへ足すのが
+// 「実装した」の定義になり、足し忘れ=自爆の再発が構造的に起きない。
+describe('★幻影が主語になれるサブの白リスト(自爆バグの再発防止・v0.25.3879)', () => {
+  it('設置系(トラップ/デコイ/タレット/盾/地雷)は幻影の主語にならない', () => {
+    for (const k of ['marksman-trap', 'decoy', 'turret', 'shield', 'sensor-mine'] as SubWeaponKey[]) {
+      expect(phantomSupportsSub(k)).toBe(false);
+    }
+  });
+
+  it('実装済み(手榴弾=O-3a / 火炎ナイフ=O-3b-1)だけが主語になれる', () => {
+    expect(phantomSupportsSub('heavy-grenade')).toBe(true);
+    expect(phantomSupportsSub('fire-knife')).toBe(true);
+    expect([...PHANTOM_SUPPORTED_SUBS].sort()).toEqual(['fire-knife', 'heavy-grenade']);
+  });
+
+  it('白リストは実在するサブウェポンのキーだけを含む(綴り間違いで永久に無効化されない)', () => {
+    for (const k of PHANTOM_SUPPORTED_SUBS) expect(SUB_WEAPON_KEYS).toContain(k);
   });
 });
