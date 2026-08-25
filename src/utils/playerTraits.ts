@@ -36,7 +36,7 @@ import {
   type MeleeSpacingState, type MeleeSpacingProfile,
 } from './meleeSpacing';
 import { bitePhaseOf, isBiteSubject } from './enemyBite';
-import { isTrueBossType } from './enemyUtils';
+import { isBiteExemptType } from './enemyUtils';
 import { isHiddenBoss } from './enemyUtils';
 import { enemyHitStrip } from '../pixi/renderSpec';
 import {
@@ -397,7 +397,7 @@ const counterOpportunityOpen = (
 ): boolean => enemies.some(e => {
   const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
   if (Math.hypot(ecx - pcx, ecy - pcy) > OPPORTUNITY_RANGE) return false;
-  if (isBiteSubject(e, isTrueBossType)) return bitePhaseOf(e, gameTime) !== 'none';
+  if (isBiteSubject(e, isBiteExemptType)) return bitePhaseOf(e, gameTime) !== 'none';
   return isBossCounterableNowApprox(e.aiPhase, e.bossState);
 });
 

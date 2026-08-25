@@ -18,6 +18,7 @@
 //  3. **踏み込みは絵で見せ、敵の当たり判定は動かさない。** 判定を動かすと壁・「行ける帯」の
 //     クランプを自前で書くことになり、v0.25.3875 と同型の穴を作る(CLAUDE.md「Visual vs hitbox」)。
 import type { Enemy, EnemyType } from '../types/game';
+import { isTrueBossType } from './enemyUtils';
 
 export interface BiteSpec {
   /** 発火と判定に共通で使う半径(px)。★2つに割らないこと。 */
@@ -56,8 +57,19 @@ export const BITE_DEFAULT: BiteSpec = {
  */
 export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {};
 
+/**
+ * ★ボス・賞金首の噛みつきの硬直(=CD)。社長の問い2026-08-25「ボスに関しては、CD少なめの
+ * 近接台本の扱いになるのかな?」→ そのとおり。**技の合間のつなぎ**として置くので、
+ * 雑魚(600ms)より長い CD にする(雑魚の実効周期は台本500ms+硬直600ms=約1.1秒)。
+ * 射程は**体の大きさに比例**する既存の式(判定帯+30px)がそのまま効くので、巨大ボスほど自然に広い。
+ * 値は叩き台(実機調整前提・社長裁定「まず推薦で入れてみて」)。
+ */
+export const BITE_BOSS_RECOVER_MS = 1500;
+
 export const biteSpecFor = (type: EnemyType): BiteSpec => ({
   ...BITE_DEFAULT,
+  // ★ボス・賞金首は「技の合間のつなぎ」なので硬直(CD)を長めに(社長裁定2026-08-25)。
+  ...(isTrueBossType(type) ? { recoverMs: BITE_BOSS_RECOVER_MS } : {}),
   ...(BITE_BY_TYPE[type] ?? {}),
 });
 
@@ -219,7 +231,7 @@ export const isInBiteRect = (
  *   射程に入ったら噛みつきをするっていう台本です」)。旧実装は `aiPhase` が付いているだけで
  *   除外していたため、**ゾンビは近づくと必ず zrush に入る=噛みつきの対象に一度もならなかった**。
  * - **接触ダメージを持たない敵**(plant など damage<=0): 噛ませても0なので触らない。
- * - **死神の非追跡個体**: 無敵の徘徊体。他の系統でも一律に除外している。
+ * - `isBoss` で渡された型(現在は `isBiteExemptType` = 死神 / 幻影)。
  */
 /**
  * ★「技ではない」= 噛みつきの対象であり続ける aiPhase(移動のリズムでしかないもの)。
@@ -227,14 +239,19 @@ export const isInBiteRect = (
  */
 const BITE_OK_PHASES = new Set<string>(['zpause', 'zrush']);
 
+/** ★技ではない bossState(=追いかけているだけ)。ここ以外の州は技本体なので噛みつきの対象外。 */
+const BITE_OK_BOSS_STATES = new Set<string>(['chase']);
+
 export const isBiteSubject = (
-  enemy: Pick<Enemy, 'type' | 'aiPhase' | 'damage' | 'reaperChaser'>,
+  enemy: Pick<Enemy, 'type' | 'aiPhase' | 'bossState' | 'damage'>,
   isBoss: (t: EnemyType) => boolean,
 ): boolean => {
   if (isBoss(enemy.type)) return false;
   if (enemy.aiPhase !== undefined && !BITE_OK_PHASES.has(enemy.aiPhase)) return false;
+  // ★ボス・賞金首の技の最中(`bossState`)も対象外=**技の当たり判定が本体**(社長「技の時は当然
+  // 当たり判定復活やろ」)。追いかけているだけ(`chase`)と、州を持たない待機は噛みつきの対象。
+  if (enemy.bossState !== undefined && !BITE_OK_BOSS_STATES.has(enemy.bossState)) return false;
   if ((enemy.damage ?? 0) <= 0) return false;
-  if (enemy.type === 'reaper' && !enemy.reaperChaser) return false;
   return true;
 };
 

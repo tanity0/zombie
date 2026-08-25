@@ -1,9 +1,10 @@
-import { isTrueBossType, isBossType } from './enemyUtils';
+import { isTrueBossType, isBossType, isBiteExemptType } from './enemyUtils';
 import { describe, it, expect } from 'vitest';
 import {
   BITE_DEFAULT, BITE_BY_TYPE, biteSpecFor, bitePhaseOf, biteProgress,
   biteLungeFrac, bitePointFrom, biteReachRect, isInBiteRect, isBiteSubject,
   biteWallRect, BITE_WALL_W, BITE_WALL_H, isBiteWallOpen, biteBodyOverlapsPlayer, canStartBite,
+  BITE_BOSS_RECOVER_MS,
 } from './enemyBite';
 import type { Enemy } from '../types/game';
 
@@ -258,17 +259,36 @@ describe('★突進(zrush)の間は噛みつきを構えない(v0.25.3919)', () 
 // 「パンプキンとか突っ込むとまだダメージ食らうな」。真因=噛みつきの除外に `isBossType` を流用しており、
 // この表は**HPバー等の別目的**でエリート"雑魚"(パンプキン/削岩型/大コウモリ/実験体3/ハンター)まで
 // 含んでいた。専用の `isTrueBossType` へ切り替えた(v0.25.3920)。
-describe('★噛みつきの除外は「本物のボス」だけ(v0.25.3920)', () => {
+describe('★噛みつきの除外は死神と幻影だけ(v0.25.3921)', () => {
   it('エリート雑魚は噛みつきの対象(=触れただけでは痛くない)', () => {
     for (const t of ['pumpkin', 'driller', 'giantbat', 'lab-zombie-3', 'hunter'] as const) {
-      expect(isTrueBossType(t)).toBe(false);
+      expect(isBiteExemptType(t)).toBe(false);
     }
   });
-  it('本物のボス・賞金首・死神は従来どおり除外', () => {
+  it('★ボスと賞金首も噛みつきの対象(社長裁定2026-08-25「賞金首もボスと同様の枠組み」)', () => {
     for (const t of ['jormungand', 'mimir', 'thor', 'skadi', 'miguel', 'idol', 'phillboss',
-      'guardian-phantom', 'bounty-melee', 'reaper'] as const) {
-      expect(isTrueBossType(t)).toBe(true);
+      'bounty-melee', 'bounty-ranged'] as const) {
+      expect(isBiteExemptType(t)).toBe(false);
     }
+  });
+  it('死神(無敵の徘徊体)と幻影(自前の近接を持つ)だけ除外', () => {
+    expect(isBiteExemptType('reaper')).toBe(true);
+    expect(isBiteExemptType('guardian-phantom')).toBe(true);
+  });
+  it('ボス・賞金首の硬直(CD)は雑魚より長い=技の合間のつなぎ', () => {
+    expect(biteSpecFor('jormungand').recoverMs).toBe(BITE_BOSS_RECOVER_MS);
+    expect(biteSpecFor('bounty-melee').recoverMs).toBe(BITE_BOSS_RECOVER_MS);
+    expect(biteSpecFor('zombie').recoverMs).toBeLessThan(BITE_BOSS_RECOVER_MS);
+    expect(isTrueBossType('jormungand')).toBe(true); // CDの切替はこの述語で決まる
+  });
+  it('★技の最中(bossState)は噛みつきの対象外=技の当たり判定が本体', () => {
+    const j = (bossState?: string) => ({
+      type: 'jormungand' as const, aiPhase: undefined, bossState, damage: 20,
+    } as Parameters<typeof isBiteSubject>[0]);
+    expect(isBiteSubject(j('chase'), isBiteExemptType)).toBe(true);       // 追いかけているだけ
+    expect(isBiteSubject(j(undefined), isBiteExemptType)).toBe(true);     // 州なし
+    expect(isBiteSubject(j('dash'), isBiteExemptType)).toBe(false);       // 技の最中
+    expect(isBiteSubject(j('laser-fire'), isBiteExemptType)).toBe(false);
   });
   it('★HPバー等の「ボス扱い」(isBossType)は1bitも変えていない=エリート雑魚は今もボス扱い', () => {
     for (const t of ['pumpkin', 'driller', 'giantbat', 'lab-zombie-3', 'hunter'] as const) {
