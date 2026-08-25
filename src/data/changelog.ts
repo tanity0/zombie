@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3899',
+    items: [
+      'ゲーム内容の変更はありません(敵の噛みつきに踏み込みを足す設計を確定しました。実装はこの後です)。',
+    ],
+  },
+  {
     version: '0.25.3898',
     items: [
       'ゲーム内容の変更はありません(敵の接触ダメージを「噛みつき」に作り直す設計を確定しました。実装はこの後です)。',
