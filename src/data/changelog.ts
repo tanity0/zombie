@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3913',
+    items: [
+      '敵の「すり抜け防止の壁」を足元の小さな箱に変更。敵の攻撃範囲へ歩いて入れるようになり、噛みつきが当たるようになりました。',
+    ],
+  },
+  {
     version: '0.25.3912',
     items: [
       '噛みつきが当たらなかった不具合を修正(敵に押し出された状態だと判定を外していました)。',

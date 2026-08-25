@@ -121,6 +121,34 @@ export const bitePointFrom = (
 };
 
 /** 判定の四角(左上と寸法)。**赤く描く形とまったく同じ**もの。 */
+/**
+ * ★「敵を貫通しないための壁」の箱(社長裁定2026-08-25)。
+ *
+ * 社長「**攻撃の当たり判定はプレイヤーは歩いて入れる。重なる。(予告線と同じ)**
+ * あくまで、敵を貫通しないための**壁判定は固定**」。
+ *
+ * ★なぜ分けるか(v0.25.3912の失敗): 壁を**敵の当たり判定そのもの(帯)**にしていたため、
+ * プレイヤーは帯の外へ押し出され続け、**攻撃の四角(帯+30px)の中に立っていられなかった**
+ * =「プレイヤーからぶつかりに行かないと当たり判定がほぼ出ない」。
+ * 壁を**足元の小さな固定の箱**にすれば、攻撃の四角は**歩いて入って重なれる領域**になる
+ * (予告線と同じ扱い=重なるのが普通で、押し出されない)。
+ *
+ * 値は叩き台(実機調整前提)。**全ての通常敵で同じ**(社長「固定」)。
+ * 足元 = 当たり判定の下辺(このプロジェクトの物の置き方=`obstacles.ts` の footRect と同じ)。
+ */
+export const BITE_WALL_W = 24;
+export const BITE_WALL_H = 14;
+
+/** 上の「壁」の実体。敵の当たり判定(AABB)の**足元中央**に固定サイズで置く。 */
+export const biteWallRect = (
+  e: Pick<Enemy, 'x' | 'y' | 'width' | 'height'>,
+): { x: number; y: number; width: number; height: number } => ({
+  x: e.x + e.width / 2 - BITE_WALL_W / 2,
+  y: e.y + e.height - BITE_WALL_H,
+  width: BITE_WALL_W,
+  height: BITE_WALL_H,
+});
+
 export interface BiteRect { x: number; y: number; w: number; h: number }
 
 /**

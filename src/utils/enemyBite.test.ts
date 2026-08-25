@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   BITE_DEFAULT, BITE_BY_TYPE, biteSpecFor, bitePhaseOf, biteProgress,
   biteLungeFrac, bitePointFrom, biteReachRect, isInBiteRect, isBiteSubject,
+  biteWallRect, BITE_WALL_W, BITE_WALL_H,
 } from './enemyBite';
 import type { Enemy } from '../types/game';
 
@@ -167,5 +168,41 @@ describe('★接近リズム(zpause/zrush)は技ではない=噛みつきの対�
 
   it('技を持たない個体は従来どおり対象', () => {
     expect(isBiteSubject(zombie(undefined), notBoss)).toBe(true);
+  });
+});
+
+// ★社長裁定2026-08-25「攻撃の当たり判定はプレイヤーは歩いて入れる。重なる。(予告線と同じ)
+// あくまで、敵を貫通しないための壁判定は固定」。
+// v0.25.3912 の失敗=壁を「敵の当たり判定そのもの」にしたため、プレイヤーが攻撃の四角の中に
+// 立っていられず「ぶつかりに行かないと当たらない」状態になった。
+describe('★壁の箱と攻撃の箱を分ける(v0.25.3913)', () => {
+  const small = { x: 0, y: 0, width: 36, height: 36 };   // ゾンビ相当
+  const large = { x: 0, y: 0, width: 120, height: 120 }; // 大型相当
+
+  it('壁は敵の大きさによらず固定サイズ(社長「壁判定は固定」)', () => {
+    for (const e of [small, large]) {
+      const w = biteWallRect(e);
+      expect(w.width).toBe(BITE_WALL_W);
+      expect(w.height).toBe(BITE_WALL_H);
+    }
+  });
+
+  it('壁は足元(当たり判定の下辺)の中央に置く', () => {
+    const w = biteWallRect(small);
+    expect(w.x + w.width / 2).toBe(small.x + small.width / 2);
+    expect(w.y + w.height).toBe(small.y + small.height); // 下辺=足元
+  });
+
+  it('★歩いて入れる: 壁に一切触れずに攻撃の四角と重なれる場所がある(これが無いと一生当たらない)', () => {
+    const cx = small.x + small.width / 2, cy = small.y + small.height / 2;
+    // プレイヤーは敵の左側。攻撃の四角=敵の当たり判定を左へ30px伸ばしたもの。
+    const r = biteReachRect({ cx, cy, w: small.width, h: small.height }, cx - 200, cy, 30);
+    const wall = biteWallRect(small);
+    // 壁の左端よりさらに左(=押し出されない位置)に立つ。
+    const player = { x: wall.x - 28, y: cy - 14, width: 28, height: 28 };
+    const touchesWall = player.x < wall.x + wall.width && player.x + player.width > wall.x
+      && player.y < wall.y + wall.height && player.y + player.height > wall.y;
+    expect(touchesWall).toBe(false);        // 壁には触れていない=歩ける
+    expect(isInBiteRect(r, player)).toBe(true); // それでも攻撃の四角には重なっている
   });
 });
