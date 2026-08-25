@@ -54,13 +54,19 @@ export interface MeleeSpacingState {
   holdCount: number;      // 射程内に居られたのに一度も振らなかった
   swingSum: number;       // 全イベントの振った回数の合計(=積極性)
   backStepSumPx: number;  // 振り逃げた回の「下がった距離」合計
+  /** ★一度も振らずに離れた回の「下がった距離」合計(社長の問い2026-08-25
+   *  「一切振らずに逃げる人もいると思うけど、その辺も平気?」)。**振り逃げとは別勘定**——
+   *  混ぜると「振ってから下がる人」と「そもそも振らない人」が同じ数字になり、癖が消える。 */
+  holdBackStepSumPx: number;
+  holdBackStepCount: number;
   crossings: number;      // 射程の境界を跨いだ回数(出入り両方)
 }
 
 export const createMeleeSpacingState = (): MeleeSpacingState => ({
   episodes: [], inside: new Set(), lastSwingAt: null,
   n: 0, swingLagSumMs: 0, swingLagCount: 0, preSwingCount: 0,
-  swingLeaveCount: 0, holdCount: 0, swingSum: 0, backStepSumPx: 0, crossings: 0,
+  swingLeaveCount: 0, holdCount: 0, swingSum: 0, backStepSumPx: 0,
+  holdBackStepSumPx: 0, holdBackStepCount: 0, crossings: 0,
 });
 
 export interface MeleeSpacingTickInput {
@@ -128,6 +134,11 @@ export const stepMeleeSpacing = (st: MeleeSpacingState, input: MeleeSpacingTickI
     } else if (!stillInside) {
       // 一度も振らずに相手が離れた/自分が離れた=「待ち(振らない)」。
       st.holdCount += 1;
+      // ★ここでも下がった距離を測る。**「振らない人」の中にも2種類いる**——
+      // その場で待ち構える人(≒0px)と、間合いに入られたら振らずに逃げる人(大きい)。
+      // holdRate だけだとこの2人が同じになるので、距離で分ける。
+      st.holdBackStepSumPx += Math.hypot(pcx - ep.enteredPcx, pcy - ep.enteredPcy);
+      st.holdBackStepCount += 1;
       closeEpisode(st, ep);
     }
   }
@@ -152,12 +163,21 @@ const closeEpisode = (st: MeleeSpacingState, ep: SpacingEpisode): void => {
 export interface MeleeSpacingProfile {
   /** 決着した接敵イベント数(n=0 は「記録なし」=消費側は従来のメトロノームへ落ちる)。 */
   n: number;
-  /** ★連続量: 進入→最初の振り までの平均ms(抽選しない)。 */
-  swingLagMs: number;
+  /**
+   * ★連続量: 進入→最初の振り までの平均ms(抽選しない)。
+   * **一度も振らなかった人は `null`**(0にしない——0は「進入と同時に振る最速の人」を意味してしまい、
+   * 「一切振らない人」の真逆に化ける。house style は `playerTraits.ts` の `number | null` と同じ)。
+   */
+  swingLagMs: number | null;
   /** ★連続量: 射程の境界を跨いだ回数/分(けん制の出入りの多さ・抽選しない)。 */
   reentryPerMin: number;
-  /** ★連続量: 振り逃げた時に下がった距離の平均px(抽選しない)。 */
-  backStepPx: number;
+  /** ★連続量: 振り逃げた時に下がった距離の平均px(抽選しない)。振り逃げが無ければ `null`。 */
+  backStepPx: number | null;
+  /**
+   * ★連続量: **一度も振らずに離れた**時に下がった距離の平均px(抽選しない)。
+   * 待ち構える人は≒0、振らずに逃げる人は大きい。該当が無ければ `null`。
+   */
+  holdBackStepPx: number | null;
   /**
    * ★連続量: 1回の接敵あたり何回振るか(抽選しない)。**「積極的に振ってくる」癖の本体**
    * (社長の問い2026-08-25)。遅れ(swingLagMs)が同じでも、1回で引く人と振り続ける人はここで分かれる。
@@ -176,9 +196,10 @@ export const foldMeleeSpacing = (st: MeleeSpacingState, elapsedMs: number): Mele
   const min = Math.max(elapsedMs, 1) / 60000;
   return {
     n,
-    swingLagMs: st.swingLagCount > 0 ? st.swingLagSumMs / st.swingLagCount : 0,
+    swingLagMs: st.swingLagCount > 0 ? st.swingLagSumMs / st.swingLagCount : null,
     reentryPerMin: st.crossings / min,
-    backStepPx: st.swingLeaveCount > 0 ? st.backStepSumPx / st.swingLeaveCount : 0,
+    backStepPx: st.swingLeaveCount > 0 ? st.backStepSumPx / st.swingLeaveCount : null,
+    holdBackStepPx: st.holdBackStepCount > 0 ? st.holdBackStepSumPx / st.holdBackStepCount : null,
     swingsPerEpisode: n > 0 ? st.swingSum / n : 0,
     preSwingRate: n > 0 ? st.preSwingCount / n : 0,
     swingLeaveRate: n > 0 ? st.swingLeaveCount / n : 0,

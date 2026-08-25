@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3909',
+    items: [
+      'ゲーム内容の変更はありません(幻影・守護霊が引き継ぐ「間合いの癖」の計測を、一切近接を振らない人でも正しく残るように修正)。',
+    ],
+  },
+  {
     version: '0.25.3908',
     items: [
       'ゲーム内容の変更はありません(近接の「間合いの癖」を記録する土台を入れました。守護霊・幻影への反映は次の更新からです)。',

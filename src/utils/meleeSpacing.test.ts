@@ -99,7 +99,59 @@ describe('接敵イベントの分類(社長の5つの癖)', () => {
   it('★記録が無ければ n=0(消費側は従来のメトロノームへ落ちる合図)', () => {
     const p = foldMeleeSpacing(createMeleeSpacingState(), 1000);
     expect(p.n).toBe(0);
-    expect(p.swingLagMs).toBe(0);
+    // ★0ではなく null。0だと消費側が「進入と同時に振る最速の人」と読む=真逆の癖になる。
+    expect(p.swingLagMs).toBeNull();
+    expect(p.backStepPx).toBeNull();
+    expect(p.holdBackStepPx).toBeNull();
+  });
+
+  // -------------------------------------------------------------------------------------------
+  // ★社長の問い2026-08-25「一切振らずに逃げる人もいると思うけど、その辺も平気?」
+  // 平気にするために2つ直した(v0.25.3909): ①測れなかった連続量は null ②振らずに離れた距離も測る。
+  // -------------------------------------------------------------------------------------------
+  it('★一切振らない人: swingLagMs は null(0=最速 と混ざらない)・積極性は0', () => {
+    const st = createMeleeSpacingState();
+    tick(st, 0, [enemy('z', 50)]);
+    tick(st, 500, []);
+    tick(st, 1000, [enemy('z', 50)]);
+    tick(st, 1500, []);
+    const p = foldMeleeSpacing(st, 1500);
+    expect(p.n).toBe(2);
+    expect(p.holdRate).toBe(1);
+    expect(p.swingsPerEpisode).toBe(0);
+    expect(p.swingLagMs).toBeNull();   // 「振らなかった」を「即振り」と読ませない
+    expect(p.backStepPx).toBeNull();   // 振り逃げが1件も無い
+  });
+
+  it('★振らない人の中の2種類: 待ち構える人(≒0px)と、振らずに逃げる人(下がる)を距離で分ける', () => {
+    const stand = createMeleeSpacingState();
+    tick(stand, 0, [enemy('z', 50)]);
+    tick(stand, 500, []);              // その場のまま相手が離れた
+
+    const flee = createMeleeSpacingState();
+    tick(flee, 0, [enemy('z', 50)]);
+    tick(flee, 500, [enemy('z', 50)], false, -40); // 自分が40px下がって射程外へ
+
+    const a = foldMeleeSpacing(stand, 500), b = foldMeleeSpacing(flee, 500);
+    expect(a.holdRate).toBe(1);
+    expect(b.holdRate).toBe(1);        // holdRate だけでは同じ人に見える
+    expect(a.holdBackStepPx).toBeCloseTo(0);
+    expect(b.holdBackStepPx).toBeCloseTo(40); // ここで初めて別人になる
+  });
+
+  it('★振り逃げの距離に「振らずに逃げた」ぶんは混ざらない(別勘定)', () => {
+    const st = createMeleeSpacingState();
+    // 1件目: 振らずに40px下がって射程外(0 → -40。敵は x=50 なので距離90>74)
+    tick(st, 0, [enemy('z', 50)]);
+    tick(st, 200, [enemy('z', 50)], false, -40);
+    // 2件目: 振ってから80px下がって射程外(-40 → -120。敵は x=20 なので距離140>74)
+    tick(st, 400, [enemy('w', 20)], false, -40);
+    tick(st, 500, [enemy('w', 20)], true, -40);
+    tick(st, 700, [enemy('w', 20)], false, -120);
+    const p = foldMeleeSpacing(st, 700);
+    expect(p.swingLeaveRate).toBeCloseTo(0.5); // 2件のうち1件だけが振り逃げ
+    expect(p.backStepPx).toBeCloseTo(80);      // 振り逃げの距離
+    expect(p.holdBackStepPx).toBeCloseTo(40);  // 振らずに逃げた距離(混ざっていない)
   });
 
   it('★複数の敵が同時に居ても、進入ごとに1件ずつ数える', () => {

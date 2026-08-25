@@ -1,5 +1,36 @@
 # Development Log
 
+## v0.25.3909 - 間合いの癖: 「一切振らない人」を正しく残す(SAME_ARENA §8・Phase A追補)【2026-08-25 17:28 JST】
+
+**社長の問い**: 「一切振らずに逃げる人もいると思うけど、その辺も平気?」 → **平気ではなかった。2件直した。**
+
+1. **★測れなかった連続量が `0` になっていた(罠)**。一度も振らない人は `swingLagMs = 0` になり、
+   消費側はこれを**「進入と同時に振る最速の人」**と読む=**癖の真逆**に化ける。`backStepPx` も同じ。
+   ⇒ `swingLagMs` / `backStepPx` / `holdBackStepPx` を `number | null` にし、該当0件なら `null` を返す
+   (`playerTraits.ts` の `number | null` と同じ作法。消費側はその癖だけフォールバックへ落ちる)。
+2. **★「振らずに逃げる」こと自体を測っていなかった**。後退距離は振り逃げ(`swingLeaveCount`)の時しか
+   足しておらず、一切振らない人の後退は記録されない。`holdRate` は「振らなかった」しか言わないので、
+   **その場で待ち構える人と、入られたら振らずに逃げる人が同じ数字**になっていた。
+   ⇒ `holdBackStepPx`(振らずに離れた回の後退距離)を**別勘定**で追加。混ぜると
+   「振ってから下がる人」と「そもそも振らない人」が溶けるので、`backStepPx` とは分けたまま。
+
+**なお、一切振らない人の幻影はスイング窓を一度も開かない=パリィが一度も起きない。**
+これは不具合ではなく**狙いどおりの「癖が出た」状態**(設計書にも明記)。
+
+**変更ファイル**: `src/utils/meleeSpacing.ts` / `src/utils/meleeSpacing.test.ts`(9→12件) /
+`research/SAME_ARENA.md` §8。
+
+**検証**: `npx vitest run src/utils/meleeSpacing.test.ts` 12 passed / typecheck 0 / lint 0 errors(warning 8は既存)。
+新規テスト3件で「一切振らない人」を固定: ①`swingLagMs`/`backStepPx` が `null`・`swingsPerEpisode=0`
+②待ち構える人(≒0px)と振らずに逃げる人(40px)が `holdBackStepPx` で分かれる ③振り逃げ80pxと
+振らずに逃げた40pxが混ざらない。
+
+**自己点検**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(計測のみ。まだ誰も消費していない)。
+
+**次の受け渡し**: Phase B=`tickPlayerTraits` への配線と、`phantomTick`/`ghostDriver` の820msメトロノーム置換。
+
+**状態変化**: なし(§8 Phase A の追補)。
+
 ## v0.25.3908 — 近接の「間合いの癖」計測の土台(SAME_ARENA §8・Phase A)【2026-08-25 17:19 JST】
 
 **社長GO**: 「はい」。★未決4件は推薦どおり(実射程 / N=16 / 欠損はメトロノームへ / カウンター可の振りだけ)。
