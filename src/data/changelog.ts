@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3927',
+    items: [
+      'ゲーム内容の変更はありません(カウンターの成立時間についての決定を設計書に記録しました)。',
+    ],
+  },
+  {
     version: '0.25.3926',
     items: [
       'カウンターが成立するのは「刃が実際に出ている間」だけになりました。予告を見て先に振っておくと取れていたのを、振るタイミングを合わせる勝負に変えています。',
