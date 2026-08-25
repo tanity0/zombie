@@ -247,9 +247,11 @@ export const checkPlayerPickupCollisions = (
   const isMagnetPickup = (t: Pickup['type']): boolean =>
     t === 'ammo-handgun' || t === 'ammo-shotgun' || t === 'ammo-rifle' || t === 'ammo-phill' ||
     t === 'strap' || t === 'treasure' ||
-    // §6.38 B3(賞金首の金箱): v2 F「マグネット挙動=既存treasureと同じ規約」→treasureと同枠に入れる
-    // (weapon-crate/chest等の「設置物」枠(常に従来の矩形)ではなく、コイン系の拡大対象へ)。
-    t === 'bounty-chest' ||
+    // ★社長裁定2026-08-25「金箱は箱扱いで」: 金箱をコイン系から**外した**。
+    // これで金箱は weapon-crate / chest と同じ「設置物」枠=**常に従来の矩形**になる
+    // (遠くから誤って開かない)。同日の「犬は箱を触らない」裁定と扱いが揃った。
+    // なお v0.25.36xx(§6.38 B3・v2 F)では逆に「マグネット挙動=既存treasureと同じ規約」と
+    // 裁定されており treasure と同枠に置いていた——事実として併記しておく(今の正は上の裁定)。
     (magnetAwaken && (t === 'experience' || t === 'health' || t === 'magnet' || t === 'bomb' || t === 'quick-magazine'));
 
   // Pickups don't carry width/height in the type, so treat them as the

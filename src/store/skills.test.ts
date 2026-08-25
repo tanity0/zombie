@@ -282,6 +282,17 @@ describe('magnet: ammo pickup range mult (+10/20/30%) (§6.8 M31)', () => {
     // 覚醒(Lv3): 経験値も拡大対象。武器箱(設置物)は常に従来矩形
     expect(checkPlayerPickupCollisions(player, [ammo, coin, xp, crate], 1.3, true)).toEqual(['a', 'c', 'x']);
   });
+  // ★社長裁定2026-08-25「金箱は箱扱いで」。以前(§6.38 B3・v2 F)は「マグネット挙動=既存treasureと
+  // 同じ規約」でコイン側に置かれていた——**同日の「犬は箱を触らない」と扱いを揃えた**のが今の正。
+  it('checkPlayerPickupCollisions: ★金箱は箱=マグネットで広がらない(宝箱・武器箱と同じ設置物枠)', () => {
+    const player = { x: 0, y: 0, width: 32, height: 32 } as unknown as Player;
+    const gold = { id: 'g', x: 50, y: 8, type: 'bounty-chest', value: 1 } as unknown as Pickup;
+    const chest = { id: 'h', x: 50, y: 8, type: 'chest', value: 1 } as unknown as Pickup;
+    const coin = { id: 'c', x: 50, y: 8, type: 'treasure', value: 1 } as unknown as Pickup;
+    // Lv3でも覚醒でも、箱2種は拡大矩形に入らない。コイン(トレジャー)だけが拾える。
+    expect(checkPlayerPickupCollisions(player, [gold, chest, coin], 1.3)).toEqual(['c']);
+    expect(checkPlayerPickupCollisions(player, [gold, chest, coin], 1.3, true)).toEqual(['c']);
+  });
 });
 
 // 社長指示v0.25.3300: 覚醒(Lv3)効果の純関数群。
