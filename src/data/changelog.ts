@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3890',
+    items: [
+      'ゲーム内容の変更はありません(ドッグの案を1つ取り下げ、選べる案を設計資料に整理しました)。',
+    ],
+  },
+  {
     version: '0.25.3889',
     items: [
       'ゲーム内容の変更はありません(幻影の召喚系4種の仕様を設計資料に確定しました)。',
