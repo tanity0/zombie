@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3916',
+    items: [
+      '変異体(削岩型)の突きに槍(ドリル)の絵を追加しました。溜めで引いて構え、突きで伸び切ります。',
+    ],
+  },
+  {
     version: '0.25.3915',
     items: [
       '赤い予告の色の濃さを全ての技で統一しました(いちばん薄かったものに合わせています)。',

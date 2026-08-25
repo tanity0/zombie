@@ -15564,8 +15564,11 @@ export class PixiScene {
           dfx - dux * dhw - dnx * dhw, dfy - duy * dhw - dny * dhw,
         ];
         const aFade = aT < 0.4 ? 1 : 1 - (aT - 0.4) / 0.6;  // 伸び切ってからフェード
-        o.poly(apts).fill({ color: 0xffe4b0, alpha: 0.55 * aFade });
-        o.poly(apts).stroke({ width: 3, color: 0xffb347, alpha: 0.85 * aFade });
+        // ★突きの残光(帯)は薄く残すだけにして、主役は槍そのものにする
+        // (社長指示2026-08-25「削岩機、ちゃんと槍用のエフェクト出して」)。
+        o.poly(apts).fill({ color: 0xffe4b0, alpha: 0.20 * aFade });
+        // ★槍(ドリル)本体。伸び具合は上の ease-out(ext)をそのまま使う=絵と判定が同じ動き。
+        this.drawDrillerSpear(o, dfx, dfy, dtx, dty, dhw, ext, aFade, true, now);
       } else {
         const dprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (DRILLER_THRUST_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
         const dpulse = 0.55 + 0.45 * Math.sin(now / 80);
@@ -15582,6 +15585,16 @@ export class PixiScene {
         if (dVisible) o.poly(dpts).fill({ color: 0xff2a2a, alpha: telFillA(dprog, dpulse) * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, dfx, dfy, dtx, dty, dhw, 0xff3b3b, telStrokeA(dprog, dpulse), 0, dprog);
         else if (dVisible) o.poly(dpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(dprog, dpulse) });
+        // ★溜め中の「構え」: 槍を**後ろへ引いて**溜める(慣性=引く量は ease-in で増え、
+        // 直前に震える)。突きの瞬間に前へ伸びるので、引く→放つ の加減速が絵で読める。
+        {
+          const pull = dhw * 1.6 * (dprog * dprog);                  // ease-in で深く引く
+          const tre = windupTremorPx(dprog, now);                    // 直前の震え(既存の共通式)
+          const rx = dfx - dux * pull + dnx * tre, ry = dfy - duy * pull + dny * tre;
+          // 構えの長さは判定の全長ではなく穂まわりだけ(まだ届いていないことを絵で示す)。
+          const readyExt = Math.min(1, (dhw * 4.2) / Math.max(1, Math.hypot(dtx - dfx, dty - dfy)));
+          this.drawDrillerSpear(o, rx, ry, dtx, dty, dhw, readyExt, 0.55 + 0.35 * dprog, false, now);
+        }
       }
     }
     if (isBountyType(e.type)) {
@@ -21840,6 +21853,67 @@ export class PixiScene {
    * fx/fy→tx/tyを全長で描く**(後方互換。実行中=全形表示の描画はここを経由しない/prog未指定のまま
    * 呼ぶことで維持される)。
    */
+  /**
+   * ★削岩型(driller)の槍=ドリルの絵(社長指示2026-08-25「削岩機、ちゃんと槍用のエフェクト出して」)。
+   *
+   * 素材が無いので**手描き**(柄+ドリルの穂+螺旋の刻み+先端の白熱)。専用画像が届いたら差し替える。
+   * ★分類①(危険を伝える絵・CLAUDE.md): 穂の**根元〜先端が判定の帯と同じ線分**に乗り、
+   * 太さも判定の半幅(`DRILLER_THRUST_HALF_WIDTH`)に揃える=見たまんまが当たり判定。
+   * ★慣性(CLAUDE.md MUST): 伸び具合 `ext` は呼び出し側が ease で渡す(等速で出さない)。
+   *
+   * @param ext  0..1。0=まだ根元 / 1=判定の全長まで伸び切った。
+   * @param hot  true=突きの最中(白熱) / false=溜め中の構え(金属色)。
+   */
+  private drawDrillerSpear(
+    o: Graphics, fx: number, fy: number, tx: number, ty: number,
+    halfWidth: number, ext: number, alpha: number, hot: boolean, now: number,
+  ) {
+    if (alpha <= 0.01 || ext <= 0.001) return;
+    const ddx = tx - fx, ddy = ty - fy;
+    const L = Math.hypot(ddx, ddy) || 1;
+    const ux = ddx / L, uy = ddy / L;
+    const nx = -uy, ny = ux;
+    const len = L * ext;
+    const headLen = Math.min(len, halfWidth * 3.4);   // 穂(ドリル)の長さ
+    const shaftLen = Math.max(0, len - headLen);
+    const sw = halfWidth * 0.40;                      // 柄の半幅(穂より細い=槍のシルエット)
+    const bx = fx, by = fy;
+    const kx = bx + ux * shaftLen, ky = by + uy * shaftLen;  // 穂の根元
+    const hx = bx + ux * len, hy = by + uy * len;            // 先端
+    const shaftCol = hot ? 0xb9c2cc : 0x8b939e;
+    const headCol = hot ? 0xfff3d0 : 0xc8ced6;
+    // 柄(根元→穂の根元)。
+    if (shaftLen > 1) {
+      o.poly([
+        bx + nx * sw, by + ny * sw, kx + nx * sw, ky + ny * sw,
+        kx - nx * sw, ky - ny * sw, bx - nx * sw, by - ny * sw,
+      ]).fill({ color: shaftCol, alpha: alpha * 0.95 });
+      o.poly([
+        bx + nx * sw, by + ny * sw, kx + nx * sw, ky + ny * sw,
+        kx - nx * sw, ky - ny * sw, bx - nx * sw, by - ny * sw,
+      ]).stroke({ width: 1.5, color: 0x4b535d, alpha: alpha * 0.8 });
+    }
+    // 穂(ドリル)=判定の半幅いっぱいの三角形。
+    o.poly([kx + nx * halfWidth, ky + ny * halfWidth, hx, hy, kx - nx * halfWidth, ky - ny * halfWidth])
+      .fill({ color: headCol, alpha });
+    o.poly([kx + nx * halfWidth, ky + ny * halfWidth, hx, hy, kx - nx * halfWidth, ky - ny * halfWidth])
+      .stroke({ width: 2, color: hot ? 0xffb347 : 0x6b737d, alpha: alpha * 0.9 });
+    // 螺旋の刻み3本(回っているように見せる=突きの最中だけ位相を回す)。
+    const spin = hot ? (now / 40) % 1 : 0;
+    for (let i = 0; i < 3; i++) {
+      const u0 = ((i + spin) / 3) % 1;                 // 0..1(根元→先端)
+      const w = halfWidth * (1 - u0);                  // 先細り
+      const px0 = kx + ux * headLen * u0, py0 = ky + uy * headLen * u0;
+      o.moveTo(px0 + nx * w, py0 + ny * w).lineTo(px0 - nx * w, py0 - ny * w)
+        .stroke({ width: 1.6, color: hot ? 0xffd58a : 0x9aa3ae, alpha: alpha * 0.75 });
+    }
+    // 先端の白熱(突きの最中だけ)。派手さの絵=分類②なので判定より少し大きくてよい。
+    if (hot) {
+      o.circle(hx, hy, halfWidth * 0.55).fill({ color: 0xffffff, alpha: alpha * 0.55 });
+      o.circle(hx, hy, halfWidth * 1.05).fill({ color: 0xffb347, alpha: alpha * 0.22 });
+    }
+  }
+
   private drawTelegraphBand(
     view: ActorView, fx: number, fy: number, tx: number, ty: number, halfWidth: number, tint: number, alpha: number, idx = 0,
     prog?: number, eraseOverride?: number,
