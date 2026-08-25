@@ -115,6 +115,54 @@ export const bitePointFrom = (
   return { x: ecx + (dx / d) * lungePx, y: ecy + (dy / d) * lungePx };
 };
 
+/**
+ * ★この敵が噛みつき台本の対象か(=**通常の接触ダメージを持たなくなる敵**)。
+ * ここが「噛む側」と「触れたら痛い側」を分ける唯一の境目なので、
+ * **接触ダメージを飛ばす判定と、噛みつきを走らせる判定は必ずこの1本を使う**
+ * (2箇所に書くと、片方だけ条件が変わって「噛まないのに触っても痛くない敵」が生まれる)。
+ *
+ * 対象外(=従来どおり触れたら痛い):
+ * - **ボス**: 体当たりの意味が違う(社長「技の時は当然当たり判定復活やろ」)。
+ * - **技の最中(`aiPhase` あり)**: 突進などは体当たりそのものが技。
+ * - **接触ダメージを持たない敵**(plant など damage<=0): 噛ませても0なので触らない。
+ * - **死神の非追跡個体**: 無敵の徘徊体。他の系統でも一律に除外している。
+ */
+export const isBiteSubject = (
+  enemy: Pick<Enemy, 'type' | 'aiPhase' | 'damage' | 'reaperChaser'>,
+  isBoss: (t: EnemyType) => boolean,
+): boolean => {
+  if (isBoss(enemy.type)) return false;
+  if (enemy.aiPhase !== undefined) return false;
+  if ((enemy.damage ?? 0) <= 0) return false;
+  if (enemy.type === 'reaper' && !enemy.reaperChaser) return false;
+  return true;
+};
+
+/**
+ * 今このフレームで**新しく構え始められる**か。
+ * 拘束(rootUntil)・気絶(stunUntil)中は構えない=**罠で止めた敵は噛んでこない**
+ * (拘束の意味が「止める」なので、止まっているのに噛むのは矛盾する)。
+ */
+export const canStartBite = (
+  enemy: Pick<Enemy, 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil'>,
+  gameTime: number,
+): boolean => {
+  if (enemy.biteAt !== undefined && enemy.biteAt > 0) return false;      // もう構えている
+  if (gameTime < (enemy.biteReadyAt ?? 0)) return false;                 // 硬直中
+  if (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil) return false;
+  if (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) return false;
+  return true;
+};
+
+/** 噛みの解決フレームか(台本の合計を過ぎた最初のフレーム)。解決したら `biteAt` を0へ戻す。 */
+export const isBiteResolveDue = (
+  enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number,
+): boolean => {
+  if (enemy.biteAt === undefined || enemy.biteAt <= 0) return false;
+  const spec = biteSpecFor(enemy.type);
+  return gameTime >= enemy.biteAt + spec.windupMs + spec.biteMs;
+};
+
 /** 予告した円の中にプレイヤーが居るか(掟2: 敵の実位置は見ない)。 */
 export const isInBiteCircle = (
   biteX: number, biteY: number, pcx: number, pcy: number, rangePx: number,

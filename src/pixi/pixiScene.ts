@@ -179,6 +179,7 @@ import {
   BOUNTY_BALANCE_TUNING as BB_T, BOUNTY_MAIKO_TUNING as MK_T,
 } from '../utils/bountyScript';
 import { telegraphProgress01 } from '../utils/bossTelegraph';
+import { biteSpecFor } from '../utils/enemyBite'; // ★噛みつきの台帳(PACING_PUZZLE §12)
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 表示名・立ち絵クラスの正本(台帳)と、技の寸法テーブル。
 // **判定(phantomTick)と同じ1箇所**を読むので「赤いのに当たらない」が起きない。
 import { GUARDIAN_PHANTOM_CLASS } from '../utils/bossPractice';
@@ -3226,6 +3227,7 @@ export class PixiScene {
   private bloodSpikeGfx = new Graphics();
   private bossFireGfx = new Graphics();                    // ジブリルのランタン火(紫の単発火)を一括描画(予告=赤円/有効=紫火)
   private sensorMineGfx = new Graphics();                  // センサー地雷(sensor-mine)を一括描画(待機=ディスク+ランプ/感知=赤点滅テレグラフ)
+  private enemyBiteGfx = new Graphics();                   // ★噛みつき(PACING_PUZZLE §12)の予告円を一括描画
   private supportSniperSprite: Sprite | null = null;       // 援護射撃(support-sniper)のNPC(同時1人・護衛軍人スプライト流用のプールSprite)
   private flareGunViews = new Map<string, { container: Container; flameArt: Sprite; flame: Graphics; light: Sprite }>(); // フレアガン(flare-gun)の火(makeGroundFireView流用・同時1-2個)
   private effects = new Map<string, EffectView>();
@@ -7650,6 +7652,7 @@ export class PixiScene {
     this.syncBloodSpikes(s.bloodSpikes, s.gameTime, now); // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
     this.syncSensorMines(s.sensorMines, s.gameTime, now); // センサー地雷(待機ディスク/感知後2秒の赤点滅テレグラフ)
+    this.syncEnemyBites(s.enemies, s.gameTime);          // ★噛みつきの予告円(§12・予告した点に描く)
     this.syncFlareGun(s.flareGunFlares, s.gameTime, now); // フレアガン(飛翔→着弾中3秒の火・molotovの火を流用)
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
@@ -12929,6 +12932,43 @@ export class PixiScene {
   // (爆発範囲の赤円+ランプ赤点滅)。ジブリル火(syncBossFires)と同系の「共有Graphics1枚へ一括描画」方式
   // (同時最大5個+小プリミティブ数個=軽い。新規の強glowは使わない)。設置/感知/起爆の判定は sim 側
   // (gameStore/useGameLoop)が担い、ここは s.sensorMines を読んで描くだけ(CLAUDE.md「PixiJSは描画のみ」)。
+  /**
+   * ★噛みつきの予告円(PACING_PUZZLE.md §12・社長「0msで赤く点滅 が噛みつき、全敵共通」)。
+   *
+   * **描くのは "予告した点"(`biteX/biteY`)であって敵の位置ではない。** これが判定と一致する場所で、
+   * 壁で踏み込みが止まっても円と判定がズレない(§12の掟2)。
+   *
+   * ★**紅き夜対策(社長裁定「点滅が視認できればどちらでも」)**: 紅き夜は画面全体に血赤の
+   * カラーマトリクスが掛かる**上に敵ダメージ2倍**の時間帯なので、赤一色で点滅させると
+   * **いちばん読ませたい場面で沈む**。そこで**明度で立てる**——点滅の明側を白熱(白寄り)にし、
+   * 暗側を赤にする。色相ではなく明暗のコントラストなので赤い画面でも残る。
+   * 被弾フラッシュは全画面の白なので、こちらは「足元の円」という形で区別できる。
+   */
+  private syncEnemyBites(enemies: Enemy[], gameTime: number) {
+    const g = this.enemyBiteGfx;
+    if (!g.parent) this.L.groundLayer.addChild(g);
+    g.clear();
+    for (const e of enemies) {
+      if (e.biteAt === undefined || e.biteAt <= 0) continue;
+      const spec = biteSpecFor(e.type);
+      const total = spec.windupMs + spec.biteMs;
+      const t = gameTime - e.biteAt;
+      if (t < 0 || t > total) continue;
+      const bx = e.biteX ?? (e.x + e.width / 2);
+      const by = e.biteY ?? (e.y + e.height / 2);
+      if (this.distanceOutsideViewport(bx, by, spec.rangePx + 40) > 0) continue;
+      const p = t / total;                       // 0..1
+      // 点滅は終盤ほど速く(センサー地雷と同じ「警報」の作法。矩形波=現実のランプに忠実)。
+      const period = 150 - 90 * p;               // 150ms → 60ms
+      const on = Math.floor(t / Math.max(30, period)) % 2 === 0;
+      const rim = on ? 0xfff0f0 : 0xff2a2a;      // 明側=白熱 / 暗側=赤(紅き夜でも明暗で残る)
+      g.circle(bx, by, spec.rangePx)
+        .fill({ color: 0xff2a2a, alpha: ((on ? 0.16 : 0.05) + 0.10 * p) * TELEGRAPH_FILL_MULT });
+      g.circle(bx, by, spec.rangePx)
+        .stroke({ width: on ? 3 : 2, color: rim, alpha: (on ? 0.95 : 0.35) + 0.05 * p });
+    }
+  }
+
   private syncSensorMines(mines: SensorMineState[], gameTime: number, now: number) {
     const g = this.sensorMineGfx;
     if (!g.parent) this.L.groundLayer.addChild(g);
@@ -15132,7 +15172,21 @@ export class PixiScene {
       }
       // V1(3)→v0.25.2478: 接触ダメージを与えた瞬間の「しゃがみ込み→食いつき」2拍(社長指示)。視覚のみ。
       let lungeOffX = 0, lungeOffY = 0, lungeSqX = 1;
-      const sinceLunge = e.lastContactAttackAt !== undefined ? now - e.lastContactAttackAt : -1;
+      // ★v0.25.3902(PACING_PUZZLE §12): 「しゃがみ込み→食いつき」2拍は、これまで
+      // **ダメージが入った"後"**に再生される反応だった。噛みつき台本が入ったので、
+      // **噛んでいる最中**に再生する予告へ反転させる(=新しい絵を作らずに予告になる)。
+      // 500ms(溜め300+噛み200)を既存の2拍の尺(CONTACT_LUNGE_MS)へ線形に写す。
+      // 噛みつきを持たない敵(ボス/技中)は従来どおり lastContactAttackAt を見る。
+      const biteSpecNow = biteSpecFor(e.type);
+      const biteElapsed = (e.biteAt !== undefined && e.biteAt > 0) ? gameTime - e.biteAt : -1;
+      const biteTotalMs = biteSpecNow.windupMs + biteSpecNow.biteMs;
+      const sinceLunge = (biteElapsed >= 0 && biteElapsed <= biteTotalMs)
+        ? biteElapsed * (CONTACT_LUNGE_MS / biteTotalMs)
+        : (e.lastContactAttackAt !== undefined ? now - e.lastContactAttackAt : -1);
+      // 噛みの区間(後半200ms)だけ絵を小刻みに震わせる(社長「絵の振動も入れつつ表現」)。
+      const biteShake = (biteElapsed >= biteSpecNow.windupMs && biteElapsed <= biteTotalMs)
+        ? Math.sin(biteElapsed / 18) * 1.6
+        : 0;
       if (sinceLunge >= 0 && sinceLunge < CONTACT_LUNGE_MS) {
         const pose = contactLungePose(sinceLunge / CONTACT_LUNGE_MS);
         const lang = e.lastContactAttackDir ?? 0;
@@ -15154,7 +15208,7 @@ export class PixiScene {
       const contentBottomFrac = this.textureContentBottomFrac(tex);
       view.shadowGroundY = spy + scale * tex.height * (contentBottomFrac - 0.5); // 論理の足元(実体下端。リフト/スカッシュ無し)
       view.sprite.position.set(
-        Math.round(spx + liftShake + lungeOffX),
+        Math.round(spx + liftShake + lungeOffX + biteShake),
         Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff),
       );
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
@@ -15287,7 +15341,21 @@ export class PixiScene {
       // V1(3)→v0.25.2478: 接触ダメージを与えた瞬間の「しゃがみ込み→食いつき」2拍(社長指示)。
       // 対象は「接触ダメージを持つ全員」=この汎用経路(通常敵)と上の裏ボス経路の両方に置く。視覚のみ。
       let lungeOffX = 0, lungeOffY = 0, lungeSqX = 1;
-      const sinceLunge = e.lastContactAttackAt !== undefined ? now - e.lastContactAttackAt : -1;
+      // ★v0.25.3902(PACING_PUZZLE §12): 「しゃがみ込み→食いつき」2拍は、これまで
+      // **ダメージが入った"後"**に再生される反応だった。噛みつき台本が入ったので、
+      // **噛んでいる最中**に再生する予告へ反転させる(=新しい絵を作らずに予告になる)。
+      // 500ms(溜め300+噛み200)を既存の2拍の尺(CONTACT_LUNGE_MS)へ線形に写す。
+      // 噛みつきを持たない敵(ボス/技中)は従来どおり lastContactAttackAt を見る。
+      const biteSpecNow = biteSpecFor(e.type);
+      const biteElapsed = (e.biteAt !== undefined && e.biteAt > 0) ? gameTime - e.biteAt : -1;
+      const biteTotalMs = biteSpecNow.windupMs + biteSpecNow.biteMs;
+      const sinceLunge = (biteElapsed >= 0 && biteElapsed <= biteTotalMs)
+        ? biteElapsed * (CONTACT_LUNGE_MS / biteTotalMs)
+        : (e.lastContactAttackAt !== undefined ? now - e.lastContactAttackAt : -1);
+      // 噛みの区間(後半200ms)だけ絵を小刻みに震わせる(社長「絵の振動も入れつつ表現」)。
+      const biteShake = (biteElapsed >= biteSpecNow.windupMs && biteElapsed <= biteTotalMs)
+        ? Math.sin(biteElapsed / 18) * 1.6
+        : 0;
       if (sinceLunge >= 0 && sinceLunge < CONTACT_LUNGE_MS) {
         const pose = contactLungePose(sinceLunge / CONTACT_LUNGE_MS);
         const lang = e.lastContactAttackDir ?? 0;
@@ -15314,8 +15382,9 @@ export class PixiScene {
         }
       }
       // V1(3): 前のめりの前方オフセット(位置はここが最終確定点=雪原補正の後に足す)。
-      if (lungeOffX !== 0 || lungeOffY !== 0) {
-        view.sprite.position.x += lungeOffX;
+      // ★噛みの区間だけ小刻みな振動を足す(社長「絵の振動も入れつつ表現」・視覚のみ)。
+      if (lungeOffX !== 0 || lungeOffY !== 0 || biteShake !== 0) {
+        view.sprite.position.x += lungeOffX + biteShake;
         view.sprite.position.y += lungeOffY;
       }
       view.sprite.visible = true;
