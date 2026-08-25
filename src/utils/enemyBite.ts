@@ -19,6 +19,7 @@
 //     クランプを自前で書くことになり、v0.25.3875 と同型の穴を作る(CLAUDE.md「Visual vs hitbox」)。
 import type { Enemy, EnemyType } from '../types/game';
 import { isTrueBossType } from './enemyUtils';
+import { isPassThroughPhase, isPassThroughBossState } from './enemyMotion';
 
 export interface BiteSpec {
   /** 発火と判定に共通で使う半径(px)。★2つに割らないこと。 */
@@ -231,8 +232,9 @@ export const isInBiteRect = (
  * (2箇所に書くと、片方だけ条件が変わって「噛まないのに触っても痛くない敵」が生まれる)。
  *
  * 対象外(=従来どおり触れたら痛い):
- * - **ボス**: 体当たりの意味が違う(社長「技の時は当然当たり判定復活やろ」)。
- * - **技の最中**: 突進(`charge`)・飛びかかり(`jump`)などは体当たりそのものが技。
+ * - **体をぶつけに行く技の最中**(社長2026-08-25「技というのは体をぶつけに行く技ね」):
+ *   突進(`charge`)・飛びかかり(`jump`)・トールの一閃/突き・ミゲルの踏み込み等。
+ *   **レーザー/弾/設置/叫びの最中は含まない**——体をぶつけていないので触れても痛くない。
  *   ★ただし**ゾンビの接近リズム(`zpause`→`zrush`)は技ではない**(社長報告2026-08-25
  *   「足が速くなってついてくる攻撃だと思うけど、これも最終的には噛みつきです。
  *   射程に入ったら噛みつきをするっていう台本です」)。旧実装は `aiPhase` が付いているだけで
@@ -254,11 +256,13 @@ export const isBiteSubject = (
   isBoss: (t: EnemyType) => boolean,
 ): boolean => {
   if (isBoss(enemy.type)) return false;
-  if (enemy.aiPhase !== undefined && !BITE_OK_PHASES.has(enemy.aiPhase)) return false;
-  // ★ボス・賞金首の技の最中(`bossState`)も対象外=**技の当たり判定が本体**(社長「技の時は当然
-  // 当たり判定復活やろ」)。追いかけているだけ(`chase`)と、州を持たない待機は噛みつきの対象。
-  if (enemy.bossState !== undefined && !BITE_OK_BOSS_STATES.has(enemy.bossState)) return false;
   if ((enemy.damage ?? 0) <= 0) return false;
+  // ★接触ダメージが復活するのは「**体をぶつけに行く技**」の最中だけ(社長2026-08-25
+  // 「技というのは体をぶつけに行く技ね」)。突進・飛び掛かり・滞空の実行中は**体当たりが技本体**なので、
+  // 触れたら痛い側に戻す。レーザー・弾・設置・叫び等は体をぶつけていないので**触れても痛くない**。
+  // ★表は発明しない: `enemyMotion` の「ダッシュ/滞空中はオブジェクトを貫通」の表をそのまま使う
+  // (=このプロジェクトが既に「体を投げ出している状態」として定義している唯一の場所)。
+  if (isPassThroughPhase(enemy.aiPhase) || isPassThroughBossState(enemy.bossState)) return false;
   return true;
 };
 
@@ -268,7 +272,7 @@ export const isBiteSubject = (
  * (拘束の意味が「止める」なので、止まっているのに噛むのは矛盾する)。
  */
 export const canStartBite = (
-  enemy: Pick<Enemy, 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'aiPhase'>,
+  enemy: Pick<Enemy, 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'aiPhase' | 'bossState'>,
   gameTime: number,
 ): boolean => {
   // ★突進中(ゾンビの `zrush`=2秒間2倍速)は構えない(社長報告2026-08-25「ゾンビが走ってこなくなった
@@ -279,6 +283,11 @@ export const canStartBite = (
   // **2秒の突進が一度も走らなくなっていた**。
   // ⇒ 突進の間は噛まない。「止まる→噛む→走る」の順で両方が出る。
   if (enemy.aiPhase === 'zrush') return false;
+  // ★技を出している最中は構え始めない(噛みつきは**技の合間のつなぎ**)。
+  // 接触ダメージの有無(上の `isBiteSubject`)とは**別の話**なので、判定もここに分けて置く——
+  // レーザー中の敵は「触れても痛くない(接触なし)」が「噛みつきも始めない」。
+  if (enemy.aiPhase !== undefined && !BITE_OK_PHASES.has(enemy.aiPhase)) return false;
+  if (enemy.bossState !== undefined && !BITE_OK_BOSS_STATES.has(enemy.bossState)) return false;
   if (enemy.biteAt !== undefined && enemy.biteAt > 0) return false;      // もう構えている
   if (gameTime < (enemy.biteReadyAt ?? 0)) return false;                 // 硬直中
   if (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil) return false;
@@ -320,22 +329,6 @@ export const biteBodyOverlapsPlayer = (
  * 踏み込みは**溜めから始まっている**(`biteLungeFrac` は溜めで半分出る)ので、
  * 開けるのは**台本の間ずっと**(溜め+噛み)。
  */
-/**
- * ★踏み込みの上書きを**やめる**べきか(安全弁・v0.25.3922)。
- *
- * 踏み込みは「発火時に焼いた起点+向き」へ**絶対座標で**位置を書く。そのため、台本の最中に
- * **別の系(ワープ/リーシュ/強いノックバック/イベントの再配置)が敵を動かすと、次のフレームで
- * 起点まで引き戻される**=遠くへ飛んだように見える。
- * 起点から踏み込み量の3倍以上離れていたら「これは踏み込みではない移動」と判断して上書きを諦める。
- */
-export const biteLungeDerailed = (
-  enemy: Pick<Enemy, 'type' | 'x' | 'y' | 'biteX' | 'biteY'>,
-): boolean => {
-  if (enemy.biteX === undefined || enemy.biteY === undefined) return true;
-  const lp = biteSpecFor(enemy.type).lungePx;
-  return Math.hypot(enemy.x - enemy.biteX, enemy.y - enemy.biteY) > lp * 3;
-};
-
 export const isBiteWallOpen = (
   enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number,
 ): boolean => bitePhaseOf(enemy, gameTime) !== 'none';

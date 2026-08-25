@@ -1113,9 +1113,8 @@ export const applyContactDamage = (
       enemies: st.enemies.map(e => {
         const st0 = biteStarts.find(b2 => b2.id === e.id);
         if (st0) return {
-          ...e, biteAt: gameTime,
-          // ★踏み込みの起点と向きを焼く(追尾しない=横へ避けられる)。
-          biteX: e.x, biteY: e.y, biteDirX: st0.dirX, biteDirY: st0.dirY,
+          // ★踏み込みの向きを焼く(追尾しない=横へ避けられる)。起点は持たない(v0.25.3923)。
+          ...e, biteAt: gameTime, biteDirX: st0.dirX, biteDirY: st0.dirY,
         };
         if (biteClears.includes(e.id)) {
           return {

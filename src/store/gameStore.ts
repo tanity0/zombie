@@ -236,7 +236,7 @@ import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
-import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, biteLungeDerailed } from '../utils/enemyBite';
+import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor } from '../utils/enemyBite';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
@@ -13070,12 +13070,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★噛みつきの踏み込み(社長裁定2026-08-25「30PX移動してくる」)。台本の間は通常の接近を止め、
         // **発火時に焼いた起点+向き**へ `biteLungeFrac`(溜めでじわり→噛みで伸び切る=慣性)で進む。
         // 追尾しない=横へ避けられる。壁(すり抜け防止)はこの間だけ開いている(上の movePlayer 側)。
-        if (isBiteSubject(enemy, isBiteExemptType) && bitePhaseOf(enemy, gameTime) !== 'none'
-          && !biteLungeDerailed(enemy)) {
+        if (isBiteSubject(enemy, isBiteExemptType) && bitePhaseOf(enemy, gameTime) !== 'none') {
+          // ★踏み込みは**相対移動**で書く(v0.25.3923・社長報告「一発で画面外に出ようとしている
+          // みたいな警告が出る」「近接何回か振ってるとすごい吹っ飛ぶ」)。
+          // ★真因: 旧実装は「発火時に焼いた起点 + 進捗」を**絶対座標で毎フレーム書いて**いた。
+          // 敵の位置は**他の系も書く**(ノックバック/リーシュ/ボスの状態機械/イベントの再配置)ので、
+          // 絶対座標で上書きすると**それらと殴り合い、片方の書き込み量がそのまま飛距離になる**。
+          // 相対(このフレームぶんの増分だけ足す)にすれば、他の系と自然に合成されて暴れない。
           const lp = biteSpecFor(enemy.type).lungePx;
-          const f = biteLungeFrac(enemy, gameTime);
-          const ox = enemy.biteX ?? enemy.x, oy = enemy.biteY ?? enemy.y;
-          const bmoved = resolveMove(ox + (enemy.biteDirX ?? 0) * lp * f, oy + (enemy.biteDirY ?? 0) * lp * f);
+          const fNow = biteLungeFrac(enemy, gameTime);
+          const fPrev = biteLungeFrac(enemy, gameTime - deltaTime * 1000);
+          const step = lp * Math.max(0, fNow - fPrev);   // このフレームで進むぶんだけ
+          const bmoved = resolveMove(
+            enemy.x + (enemy.biteDirX ?? 0) * step,
+            enemy.y + (enemy.biteDirY ?? 0) * step,
+          );
           return { ...enemy, vx: 0, vy: 0, x: bmoved.x, y: bmoved.y };
         }
 

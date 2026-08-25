@@ -293,14 +293,29 @@ describe('★噛みつきの除外は死神と幻影だけ(v0.25.3921)', () => {
     expect(biteSpecFor('zombie').recoverMs).toBeLessThan(BITE_BOSS_RECOVER_MS);
     expect(isTrueBossType('jormungand')).toBe(true); // CDの切替はこの述語で決まる
   });
-  it('★技の最中(bossState)は噛みつきの対象外=技の当たり判定が本体', () => {
+  // ★社長2026-08-25「技というのは**体をぶつけに行く技**ね」
+  // 「**体とは切り離された技** 例えば刃飛ばすとか、剣で斬る とかの時は、通常通り」
+  // ⇒ 接触ダメージが戻るのは体当たり系だけ。刃・弾・レーザーの最中は触れても痛くない(=噛みつき仕様のまま)。
+  it('★接触ダメージが戻るのは「体をぶつけに行く技」だけ', () => {
     const j = (bossState?: string) => ({
       type: 'jormungand' as const, aiPhase: undefined, bossState, damage: 20,
     } as Parameters<typeof isBiteSubject>[0]);
     expect(isBiteSubject(j('chase'), isBiteExemptType)).toBe(true);       // 追いかけているだけ
     expect(isBiteSubject(j(undefined), isBiteExemptType)).toBe(true);     // 州なし
-    expect(isBiteSubject(j('dash'), isBiteExemptType)).toBe(false);       // 技の最中
-    expect(isBiteSubject(j('laser-fire'), isBiteExemptType)).toBe(false);
+    expect(isBiteSubject(j('dash'), isBiteExemptType)).toBe(false);       // 突進=体当たりが技本体
+    expect(isBiteSubject(j('jump-attack'), isBiteExemptType)).toBe(false); // 飛び掛かり=同上
+    // ★体から切り離された技は「通常通り」=触れても痛くない
+    expect(isBiteSubject(j('laser-fire'), isBiteExemptType)).toBe(true);
+    expect(isBiteSubject(j('volley'), isBiteExemptType)).toBe(true);
+    expect(isBiteSubject(j('harai'), isBiteExemptType)).toBe(true);       // 剣で斬る
+  });
+
+  it('★ただし技を出している最中は噛みつきを構え始めない(噛みつきは技の合間のつなぎ)', () => {
+    const base = { biteAt: undefined, biteReadyAt: 0, rootUntil: undefined, stunUntil: undefined, aiPhase: undefined };
+    expect(canStartBite({ ...base, bossState: 'chase' }, 1000)).toBe(true);
+    expect(canStartBite({ ...base, bossState: undefined }, 1000)).toBe(true);
+    expect(canStartBite({ ...base, bossState: 'laser-fire' }, 1000)).toBe(false);
+    expect(canStartBite({ ...base, bossState: 'harai' }, 1000)).toBe(false);
   });
   it('★HPバー等の「ボス扱い」(isBossType)は1bitも変えていない=エリート雑魚は今もボス扱い', () => {
     for (const t of ['pumpkin', 'driller', 'giantbat', 'lab-zombie-3', 'hunter'] as const) {
