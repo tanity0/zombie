@@ -248,8 +248,24 @@ export const isInBiteRect = (
  */
 const BITE_OK_PHASES = new Set<string>(['zpause', 'zrush']);
 
-/** ★技ではない bossState(=追いかけているだけ)。ここ以外の州は技本体なので噛みつきの対象外。 */
+/** ★技ではない bossState(=追いかけているだけ)。 */
 const BITE_OK_BOSS_STATES = new Set<string>(['chase']);
+
+/**
+ * ★技が始まったか(=噛みつきの台本を**中断すべき**か)。
+ *
+ * ★v0.25.3924(社長報告2026-08-25「丸いサークル系の予告技が、本体にしかダメージ判定が
+ * なくなっちゃってるかも。赤い判定の中にいるのに、本体とずれた位置に立ってると食らわない」):
+ * **真因**——噛みつきの踏み込みは `updateEnemies` の敵ループで**早期returnして位置を書く**。
+ * 構えた直後に技へ入ると、その敵は台本が終わるまで**AIの本体を丸ごと飛ばされる**ので、
+ * **着地爆発や踏み鳴らしの円(`pumpkinBlasts` への push)が実行されない**=円の判定が消える。
+ * よって「技が始まったら噛みつきは中断する」を明示の規則にする。
+ */
+export const isBiteInterruptedByMove = (
+  enemy: Pick<Enemy, 'aiPhase' | 'bossState'>,
+): boolean =>
+  (enemy.aiPhase !== undefined && !BITE_OK_PHASES.has(enemy.aiPhase))
+  || (enemy.bossState !== undefined && !BITE_OK_BOSS_STATES.has(enemy.bossState));
 
 export const isBiteSubject = (
   enemy: Pick<Enemy, 'type' | 'aiPhase' | 'bossState' | 'damage'>,
@@ -286,8 +302,7 @@ export const canStartBite = (
   // ★技を出している最中は構え始めない(噛みつきは**技の合間のつなぎ**)。
   // 接触ダメージの有無(上の `isBiteSubject`)とは**別の話**なので、判定もここに分けて置く——
   // レーザー中の敵は「触れても痛くない(接触なし)」が「噛みつきも始めない」。
-  if (enemy.aiPhase !== undefined && !BITE_OK_PHASES.has(enemy.aiPhase)) return false;
-  if (enemy.bossState !== undefined && !BITE_OK_BOSS_STATES.has(enemy.bossState)) return false;
+  if (isBiteInterruptedByMove(enemy)) return false;
   if (enemy.biteAt !== undefined && enemy.biteAt > 0) return false;      // もう構えている
   if (gameTime < (enemy.biteReadyAt ?? 0)) return false;                 // 硬直中
   if (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil) return false;

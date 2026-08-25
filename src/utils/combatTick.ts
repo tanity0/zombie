@@ -38,7 +38,7 @@ import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkColli
 // ★全敵共通の噛みつき(PACING_PUZZLE.md §12・社長発案2026-08-25)。
 import {
   biteSpecFor, biteReachRect, isInBiteRect, isBiteSubject, canStartBite, isBiteResolveDue,
-  biteBodyOverlapsPlayer, BITE_CANCEL_DR_MS,
+  biteBodyOverlapsPlayer, BITE_CANCEL_DR_MS, isBiteInterruptedByMove,
 } from './enemyBite';
 import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { EGG_BLAST_RADIUS } from '../world/mines';
@@ -1075,7 +1075,7 @@ export const applyContactDamage = (
     const knocked = !biteDrOn && e.knockbackUntil !== undefined && kbNow < e.knockbackUntil;
     if (biting) {
       // 構えている最中に**技へ入った**なら、その噛みは中断(技の当たり判定が本体になる)。
-      if (!isBiteSubject(e, isBiteExemptType) || knocked) {
+      if (!isBiteSubject(e, isBiteExemptType) || knocked || isBiteInterruptedByMove(e)) {
         biteClears.push(e.id);
         if (knocked) biteDrIds.push(e.id); // 中断した=次はしばらく振り切られる
         continue;

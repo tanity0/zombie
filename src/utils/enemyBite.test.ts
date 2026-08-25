@@ -4,6 +4,7 @@ import {
   BITE_DEFAULT, BITE_BY_TYPE, biteSpecFor, bitePhaseOf, biteProgress,
   biteLungeFrac, bitePointFrom, biteReachRect, isInBiteRect, isBiteSubject,
   biteWallRect, BITE_WALL_W, BITE_WALL_H, isBiteWallOpen, biteBodyOverlapsPlayer, canStartBite,
+  isBiteInterruptedByMove,
   BITE_BOSS_RECOVER_MS,
 } from './enemyBite';
 import type { Enemy } from '../types/game';
@@ -321,5 +322,23 @@ describe('★噛みつきの除外は死神と幻影だけ(v0.25.3921)', () => {
     for (const t of ['pumpkin', 'driller', 'giantbat', 'lab-zombie-3', 'hunter'] as const) {
       expect(isBossType(t)).toBe(true);
     }
+  });
+});
+
+// ★社長報告2026-08-25「丸いサークル系の予告技が、本体にしかダメージ判定がなくなっちゃってるかも。
+// 赤い判定の中にいるのに、本体とずれた位置に立ってると食らわない」。
+// 真因=噛みつきの踏み込みが `updateEnemies` の敵ループで早期returnして位置を書くため、
+// 構えた直後に技へ入るとその敵のAIが丸ごと飛ばされ、**着地爆発/踏み鳴らしの円が push されない**。
+describe('★技が始まったら噛みつきは中断する(v0.25.3924)', () => {
+  it('技(着地・踏み鳴らし・レーザー等)の最中は中断対象', () => {
+    expect(isBiteInterruptedByMove({ aiPhase: 'g-stomp-active', bossState: undefined })).toBe(true);
+    expect(isBiteInterruptedByMove({ aiPhase: 'jump', bossState: undefined })).toBe(true);
+    expect(isBiteInterruptedByMove({ aiPhase: undefined, bossState: 'laser-fire' })).toBe(true);
+  });
+  it('接近リズムと追跡は中断しない(噛みつきが成立する状態)', () => {
+    expect(isBiteInterruptedByMove({ aiPhase: 'zpause', bossState: undefined })).toBe(false);
+    expect(isBiteInterruptedByMove({ aiPhase: 'zrush', bossState: undefined })).toBe(false);
+    expect(isBiteInterruptedByMove({ aiPhase: undefined, bossState: 'chase' })).toBe(false);
+    expect(isBiteInterruptedByMove({ aiPhase: undefined, bossState: undefined })).toBe(false);
   });
 });

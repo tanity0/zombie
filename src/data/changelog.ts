@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3924',
+    items: [
+      '着地や踏み鳴らしなど「赤い円」の技が、円の中に立っていてもダメージにならないことがある不具合を修正しました。',
+    ],
+  },
+  {
     version: '0.25.3923',
     items: [
       '近接を振ると敵が遠くへ吹き飛ぶ不具合を修正しました。',
