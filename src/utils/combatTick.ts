@@ -1052,11 +1052,23 @@ export const applyContactDamage = (
   const biteStarts: { id: string; dirX: number; dirY: number }[] = [];
   const biteHits: { id: string; dmg: number; x: number; y: number }[] = [];
   const biteClears: string[] = [];
+  const kbNow = Date.now(); // ノックバック判定用(knockbackUntil は Date.now 系)
   for (const e of collEnemies) {
     if (isCorpse(e)) continue;
-    if (!isBiteSubject(e, isBossType)) continue;
+    const biting = e.biteAt !== undefined && e.biteAt > 0;
+    // ★構え**始める**条件だけを isBiteSubject で絞る。既に構えている個体は必ずここを通す。
+    // (v0.25.3914の穴: 構えた直後に技へ入る=`aiPhase` が付いて対象外になると、`biteAt` が
+    //  立ったまま二度と解決されず、**その個体は以後一度も噛めなくなる**。人狼の突進のように
+    //  「普段は噛む→技に入る」敵で必ず起きる。)
+    if (!biting && !isBiteSubject(e, isBossType)) continue;
     const spec = biteSpecFor(e.type);
-    if (e.biteAt !== undefined && e.biteAt > 0) {
+    // ★こちらの攻撃で**ノックバック中**の敵は噛まない(社長報告2026-08-25「いま攻撃当てても
+    // お構いなしに噛みつきが来るから必ず食らう」)。構え中なら中断し、構えていないなら始めない。
+    // 時計に注意: `knockbackUntil` は `Date.now()` 系(gameTime系ではない)。
+    const knocked = e.knockbackUntil !== undefined && kbNow < e.knockbackUntil;
+    if (biting) {
+      // 構えている最中に**技へ入った**なら、その噛みは中断(技の当たり判定が本体になる)。
+      if (!isBiteSubject(e, isBossType) || knocked) { biteClears.push(e.id); continue; }
       if (!isBiteResolveDue(e, gameTime)) continue;              // まだ台本の途中
       // ★判定=**噛みの瞬間に敵の体とプレイヤーが重なっているか**(社長裁定2026-08-25)。
       // 踏み込み中は壁が開いているので、敵は赤く光ったままプレイヤーへ覆いかぶさる。
@@ -1070,7 +1082,7 @@ export const applyContactDamage = (
         biteHits.push({ id: e.id, dmg: e.damage * rn * sc, x: px, y: py });
       }
       biteClears.push(e.id);                                      // 当たっても外しても台本は終わる
-    } else if (canStartBite(e, gameTime)) {
+    } else if (!knocked && canStartBite(e, gameTime)) {
       // ★発火も判定と**同じ四角**で見る(v0.25.3904)。中心間の距離で見ていた旧実装は
       // 体の大きい敵ほど発火しなかった(ゾンビは触れても中心間34px>30px=一生噛めない)。
       const eb = enemyContactBox(e);

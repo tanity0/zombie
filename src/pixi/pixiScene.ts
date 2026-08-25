@@ -2645,6 +2645,23 @@ const TELEGRAPH_FILL_MULT = typeof window === 'undefined'
   ? 0.4
   : Number(new URLSearchParams(window.location.search).get('bandfill') ?? 0.4) || 0.4;
 
+// ★予告の赤の濃さは**全技で共通**(社長裁定2026-08-25「全部色の濃さを揃えたい。**一番薄いやつに揃えて**」)。
+// 直す前は塗り・線とも技ごとに手書きの式で、塗りのピークが 0.18〜0.46、線が 0.46〜0.95 とバラついていた
+// (社長が気づいた入口=雑魚の槍(driller)の突き予告が、いちばん濃い帯の式を使っていた)。
+// ここの2つが**唯一の出どころ**。今後の新しい予告もこれを呼ぶこと(式を新しく書かない)。
+//
+// 揃え先は**既存で一番薄かった値**: 塗りのピーク 0.28(旧 `0.16 + 0.12*pulse` の頂点)/
+// 線のピーク 0.70(旧 `0.40 + 0.30*pulse` の頂点)。
+// 形(薄く始まり、溜めの進行 prog で濃くなり、pulse で脈打つ)は従来の文法をそのまま保つ。
+export const TELEGRAPH_FILL_PEAK = 0.28;
+export const TELEGRAPH_STROKE_PEAK = 0.70;
+/** 予告の**塗り**のalpha(prog/pulseとも0..1)。呼び出し側で `* TELEGRAPH_FILL_MULT` する。 */
+const telFillA = (prog: number, pulse: number): number =>
+  TELEGRAPH_FILL_PEAK * (0.40 + 0.35 * Math.max(0, Math.min(1, prog)) + 0.25 * Math.max(0, Math.min(1, pulse)));
+/** 予告の**線**のalpha(同上)。線は塗りより濃い=形が読める、の関係は維持する。 */
+const telStrokeA = (prog: number, pulse: number): number =>
+  TELEGRAPH_STROKE_PEAK * (0.45 + 0.35 * Math.max(0, Math.min(1, prog)) + 0.20 * Math.max(0, Math.min(1, pulse)));
+
 // v0.25.3083(社長指示「マシンガンみたいに銃口から速射して流れ撃ってくエフェクト」・掃射=stage-5の大技):
 // 絵だけの値。判定・秒数・角度には一切関わらない。
 const SWEEPBEAM_SHOT_MS = 55;          // 1発の間隔(約18発/秒=マシンガンのテンポ)
@@ -9711,8 +9728,8 @@ export class PixiScene {
         const R = PUMPKIN_EXPLOSION_RADIUS;
         // 社長指示v0.25.1612「赤の外=安全」: 当たり判定は世界座標の真円(半径R+自機半径)。縦潰し楕円だと
         // 上下に立つと赤の外でも食らうので真円(ry=R)で判定を覆う(判定は不変=見た目だけ実寸に一致)。
-        g.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
-        g.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+        g.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * TELEGRAPH_FILL_MULT });
+        g.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
         continue;
       }
       // ダッシュ突進予告(犬/lab-zombie-2/ジャイアントバット): 溜め中(windup)に移動先まで赤ラインで距離表示。
@@ -12525,8 +12542,8 @@ export class PixiScene {
       const R = SKADI_ICE_RADIUS;
       // 赤いテレグラフ円(2秒でフェードイン)。社長指示v0.25.1612「赤の外=安全」: 当たり判定は世界座標の
       // 真円(半径R+自機半径)なので縦潰しをやめ真円(ry=R)で覆う(判定は不変)。
-      g.ellipse(m.x, m.y, R, R).fill({ color: 0xff2a2a, alpha: (0.05 + 0.18 * t + 0.06 * pulse) * TELEGRAPH_FILL_MULT });
-      g.ellipse(m.x, m.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * t + 0.12 * pulse });
+      g.ellipse(m.x, m.y, R, R).fill({ color: 0xff2a2a, alpha: telFillA(t, pulse) * TELEGRAPH_FILL_MULT });
+      g.ellipse(m.x, m.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(t, pulse) });
       // 氷塊スプライト(下からせり上がり)。
       const tex = getTexture('skadi-ice-block');
       if (tex) {
@@ -12711,8 +12728,8 @@ export class PixiScene {
       const total = Math.max(1, sp.fireAt - sp.bornAt);
       const t = Math.max(0, Math.min(1, (gameTime - sp.bornAt) / total));
       const R = AC_T.spear.radius;
-      g.ellipse(sp.x, sp.y, R, R).fill({ color: 0xff2a2a, alpha: (0.05 + 0.18 * t + 0.06 * pulse) * TELEGRAPH_FILL_MULT });
-      g.ellipse(sp.x, sp.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * t + 0.12 * pulse });
+      g.ellipse(sp.x, sp.y, R, R).fill({ color: 0xff2a2a, alpha: telFillA(t, pulse) * TELEGRAPH_FILL_MULT });
+      g.ellipse(sp.x, sp.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(t, pulse) });
       if (tex) {
         seen.add(sp.id);
         let vsp = this.acrasielSpearPool.get(sp.id);
@@ -12956,8 +12973,8 @@ export class PixiScene {
         const blinkOn = Math.floor((gameTime - m.triggeredAt) / 90) % 2 === 0;
         const p = Math.max(0, Math.min(1, (gameTime - m.triggeredAt) / SENSOR_MINE_FUSE_MS));
         g.circle(m.x, m.y - 2, 2.4).fill({ color: 0xff3b3b, alpha: blinkOn ? 0.95 : 0.25 });
-        g.circle(m.x, m.y, SENSOR_MINE_RADIUS).fill({ color: 0xff2a2a, alpha: ((blinkOn ? 0.10 : 0.04) + 0.08 * p) * TELEGRAPH_FILL_MULT });
-        g.circle(m.x, m.y, SENSOR_MINE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: (blinkOn ? 0.5 : 0.2) + 0.25 * p });
+        g.circle(m.x, m.y, SENSOR_MINE_RADIUS).fill({ color: 0xff2a2a, alpha: telFillA(p, blinkOn ? 1 : 0) * TELEGRAPH_FILL_MULT });
+        g.circle(m.x, m.y, SENSOR_MINE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(p, blinkOn ? 1 : 0) });
       }
     }
   }
@@ -15562,9 +15579,9 @@ export class PixiScene {
           dvtx + dux * dhw - dnx * dhw, dvty + duy * dhw - dny * dhw,
           dvfx - dux * dhw - dnx * dhw, dvfy - duy * dhw - dny * dhw,
         ];
-        if (dVisible) o.poly(dpts).fill({ color: 0xff2a2a, alpha: (0.12 + 0.22 * dprog + 0.08 * dpulse) * TELEGRAPH_FILL_MULT });
-        if (FX_RING_ENABLED) this.drawTelegraphBand(view, dfx, dfy, dtx, dty, dhw, 0xff3b3b, (0.32 + 0.4 * dprog) + 0.15 * dpulse, 0, dprog);
-        else if (dVisible) o.poly(dpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * dprog) + 0.15 * dpulse });
+        if (dVisible) o.poly(dpts).fill({ color: 0xff2a2a, alpha: telFillA(dprog, dpulse) * TELEGRAPH_FILL_MULT });
+        if (FX_RING_ENABLED) this.drawTelegraphBand(view, dfx, dfy, dtx, dty, dhw, 0xff3b3b, telStrokeA(dprog, dpulse), 0, dprog);
+        else if (dVisible) o.poly(dpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(dprog, dpulse) });
       }
     }
     if (isBountyType(e.type)) {
@@ -15920,8 +15937,8 @@ export class PixiScene {
         // 判定=自分中心の円(BM_T.whip360.radius)。赤円と判定は同じ値=厳密一致。
         const prog = telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil);
         const pulse = 0.5 + 0.5 * Math.sin(now / 90);
-        o.circle(cx, cy, BM_T.whip360.radius).fill({ color: 0xff2a2a, alpha: (0.10 + 0.20 * prog) * TELEGRAPH_FILL_MULT * (0.7 + 0.3 * pulse) });
-        o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.35 + 0.4 * prog });
+        o.circle(cx, cy, BM_T.whip360.radius).fill({ color: 0xff2a2a, alpha: telFillA(prog, pulse) * TELEGRAPH_FILL_MULT });
+        o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) });
         // 振りかぶり: 角速度をprog^2で上げる(0からいきなり回さない=慣性)。
         const windAng = prog * prog * 1.6 * Math.PI * 2;
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy - e.height * 0.2, windAng, 170 * (0.7 + 0.3 * prog), 0.9,
@@ -16020,8 +16037,8 @@ export class PixiScene {
           : 1;
         // 跳びかかりの着地円(T5式=水鳥/ジャイアント跳躍と同じ収縮リング文法。しゃがみ→着地円)。
         const lx = e.aiTargetX ?? cx, ly = e.aiTargetY ?? cy;
-        o.circle(lx, ly, BB_T.leap.radius).fill({ color: 0xff2a2a, alpha: (0.15 + 0.25 * prog) * TELEGRAPH_FILL_MULT });
-        o.circle(lx, ly, BB_T.leap.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.4 + 0.4 * prog });
+        o.circle(lx, ly, BB_T.leap.radius).fill({ color: 0xff2a2a, alpha: telFillA(prog, 1) * TELEGRAPH_FILL_MULT });
+        o.circle(lx, ly, BB_T.leap.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) });
         if (bs2 === 'leap-air') {
           const airProg = Math.max(0, Math.min(1, 1 - (untilW - gameTime) / BB_T.leap.airMs));
           o.circle(lx, ly, BB_T.leap.radius * (1.6 - 0.6 * airProg)).stroke({ width: 2, color: 0xffe0e0, alpha: 0.5 * (1 - airProg) });
@@ -16190,7 +16207,7 @@ export class PixiScene {
         const nx = -ddy / ddl, ny = ddx / ddl; // 進行方向に直交する単位ベクトル
         const ux = ddx / ddl, uy = ddy / ddl;  // 軸方向の単位ベクトル(両端の延長に使う)
         const hw = HB_TH.issen.halfWidth;
-        const zoneFill = (0.12 + 0.22 * prog) + 0.08 * pulse;
+        const zoneFill = telFillA(prog, pulse);
         // v0.25.3496: 面も流星の可視区間へ(縁だけ流星だと消しが面に隠れて読めない)。
         const iMet = PixiScene.meteorPhase(prog);
         const ivfx = fx + (tx - fx) * iMet.er, ivfy = fy + (ty - fy) * iMet.er;
@@ -16205,8 +16222,8 @@ export class PixiScene {
         if (iVisible) o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436)。
         // v0.25.3477: 帯も赤ラインと同じ流星の描き→消し(このブロックはissen-windup限定=常にwindup中)。
-        if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * pulse, 0, prog);
-        else if (iVisible) o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
+        if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hw, 0xff3b3b, telStrokeA(prog, pulse), 0, prog);
+        else if (iVisible) o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) });
         // 社長指示: 一閃の溜めは刀を腰に構えて(居合腰)ゆっくり溜める。方向はロック済み(fx,fy→tx,ty)。
         this.drawThorIaiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.32, tx - fx, ty - fy, prog, now);
       } else if (e.bossState === 'issen-dash') {
@@ -16254,9 +16271,9 @@ export class PixiScene {
             tvtx + tux * thw - tnx * thw, tvty + tuy * thw - tny * thw,
             tvfx - tux * thw - tnx * thw, tvfy - tuy * thw - tny * thw,
           ];
-          if (tVisible) o.poly(tpts).fill({ color: 0xff2a2a, alpha: ((0.12 + 0.22 * prog) + 0.08 * tpulse) * TELEGRAPH_FILL_MULT });
-          if (FX_RING_ENABLED) this.drawTelegraphBand(view, cx, cy, ttx, tty, thw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * tpulse, 0, prog);
-          else if (tVisible) o.poly(tpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * tpulse });
+          if (tVisible) o.poly(tpts).fill({ color: 0xff2a2a, alpha: telFillA(prog, tpulse) * TELEGRAPH_FILL_MULT });
+          if (FX_RING_ENABLED) this.drawTelegraphBand(view, cx, cy, ttx, tty, thw, 0xff3b3b, telStrokeA(prog, tpulse), 0, prog);
+          else if (tVisible) o.poly(tpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, tpulse) });
         }
       } else if (e.bossState === 'tsuki') {
         // 突き(実行): 溜め中(tsuki-windup)は方向が未確定(社長指示=予告ラインなし)なので、
@@ -16280,7 +16297,7 @@ export class PixiScene {
           const hnx = -hdy / hdl, hny = hdx / hdl; // 進行方向に直交する単位ベクトル
           const hux = hdx / hdl, huy = hdy / hdl;  // 軸方向の単位ベクトル(両端の延長に使う)
           const hhw = HB_TH.harai.halfWidth;
-          const hFill = 0.12 + 0.22 * prog + 0.08 * pulse;
+          const hFill = telFillA(prog, pulse);
           // v0.25.3496: 面・白芯も流星の可視区間へ(一閃と同じ直し)。
           const hMet = PixiScene.meteorPhase(prog);
           const hvfx = fx + (tx - fx) * hMet.er, hvfy = fy + (ty - fy) * hMet.er;
@@ -16295,8 +16312,8 @@ export class PixiScene {
           if (hVisible) o.poly(hpts).fill({ color: 0xff2a2a, alpha: hFill * TELEGRAPH_FILL_MULT });
           // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436)。
           // v0.25.3477: 帯も赤ラインと同じ流星の描き→消し(このifはharai-windup限定=常にwindup中)。
-          if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hhw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * pulse, 0, prog);
-          else if (hVisible) o.poly(hpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
+          if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hhw, 0xff3b3b, telStrokeA(prog, pulse), 0, prog);
+          else if (hVisible) o.poly(hpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) });
           if (hVisible) o.moveTo(hvfx, hvfy).lineTo(hvtx, hvty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' }); // 薙ぎの軸(白芯)
           // 柄を手元に置き、攻撃方向から140度引いた大薙ぎの開始姿勢へ構える。実行は同じ姿勢から
           // 200度振り切るため、構え→振り→残心が連続する。
@@ -16324,10 +16341,10 @@ export class PixiScene {
           const R = HB_TH.jump.radius;
           // 社長指示v0.25.1612「赤の外=安全」: 当たり判定は世界座標の真円(半径R+自機半径)。地面に寝かせた
           // 縦潰し楕円(旧ry=R*0.55)だと上下に立つと赤の外でも食らうので、真円(ry=R)で判定を覆う(判定は不変)。
-          o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+          o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * TELEGRAPH_FILL_MULT });
           // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436・城ボスと同じ意匠を残りのボスへ横展開)。
           if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, 0.45 + 0.3 * pulse);
-          else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+          else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
         }
         if (e.bossState === 'jump-attack') {
           // §5.25 M24: jumpだけ「ダメージ瞬間」=着地(jump-attack終わり)。windupではなく空中フェーズの
@@ -16593,10 +16610,10 @@ export class PixiScene {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_MI.bite.windup));
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         const R = MIMIR_BITE_RADIUS_VIS;
-        o.ellipse(cx, cy, R, R).fill({ color: 0xff2a2a, alpha: ((0.14 + 0.14 * prog) + 0.08 * pulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(cx, cy, R, R).fill({ color: 0xff2a2a, alpha: telFillA(prog, pulse) * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, R, 0xff3b3b, (0.35 + 0.35 * prog) + 0.15 * pulse);
-        else o.ellipse(cx, cy, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: (0.35 + 0.35 * prog) + 0.15 * pulse });
+        else o.ellipse(cx, cy, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) });
       }
       // FX-V3V4(V3-1): 噛みつきの牙。**「噛みつき」という動作の実装経路は2つ**あり、こちらが
       // 裏ボス側(mimir の bossState 経路)。もう1つは城ボスの g-bite(下の giantbat ブロック)。
@@ -17099,10 +17116,10 @@ export class PixiScene {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         const R = HB_TH.jump.radius; // = RAFI_JUMP_RADIUS(同値・§6.28-8「=HB_TH.jump.radius(同値)」)
-        o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, 0.45 + 0.3 * pulse);
-        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
       }
       // ---- ウリ(§6.28-17・M61新規): 大薙ぎ(横・内径あり)=T3帯。差し戻し(社長裁定): ドーナツの
       // くり抜きではなく、始点(aiFromX/Y)そのものを溜め開始時に内径ぶん前へ出してある
@@ -17214,10 +17231,10 @@ export class PixiScene {
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         // v0.25.2579: GIANT_STOMP_RADIUS流用をやめ、判定(angelBossTick)と同じSURIEL_RINGSPIN_RADIUSで描く。
         // 踏み鳴らしの範囲拡大(92→縁+92導出)でスリィエルだけ「赤が判定より大きい」に割れるのを防ぐ(分類①)。
-        o.ellipse(cx, cy, SR_T.ringspin.radius, SR_T.ringspin.radius).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(cx, cy, SR_T.ringspin.radius, SR_T.ringspin.radius).fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, SR_T.ringspin.radius, 0xff3b3b, 0.45 + 0.3 * pulse);
-        else o.ellipse(cx, cy, SR_T.ringspin.radius, SR_T.ringspin.radius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+        else o.ellipse(cx, cy, SR_T.ringspin.radius, SR_T.ringspin.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
         // ★予兆一括バッチ(v0.25.3344・レシピ1): 構え(環を引き寄せる動作)の代わりに震え。
         if (bs === 'ring-spin-windup') {
           const rsProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SR_T.ringspin.windup));
@@ -17288,10 +17305,10 @@ export class PixiScene {
         // 今は偶然どちらも92なので絵と判定が一致しているが、ボスメーカーで片方だけ動かした瞬間に
         // 「赤いのに当たらない/赤くないのに当たる」になる。**判定が読む欄に揃える。**
         const warpR = AC_T.warp.impactRadius;
-        o.ellipse(tx, ty, warpR, warpR).fill({ color: 0xff2a2a, alpha: (0.05 + 0.18 * t + 0.06 * pulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(tx, ty, warpR, warpR).fill({ color: 0xff2a2a, alpha: telFillA(t, pulse) * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, warpR, 0xff3b3b, 0.2 + 0.45 * t + 0.12 * pulse);
-        else o.ellipse(tx, ty, warpR, warpR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * t + 0.12 * pulse });
+        else o.ellipse(tx, ty, warpR, warpR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(t, pulse) });
       }
       // ---- アクラシエル: 収縮→爆発=T2大円。「最大の反撃窓」(§6.28-19) ----
       // ★v0.25.3148(バグ修正): **溜め(burst-windup 1200ms)の間、赤い円が一度も出ていなかった**。
@@ -17305,9 +17322,9 @@ export class PixiScene {
         const bprog = bwind
           ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.burst.windup))
           : 1;
-        o.ellipse(cx, cy, AC_T.burst.radius, AC_T.burst.radius).fill({ color: 0xff2a2a, alpha: ((bwind ? 0.06 + 0.12 * bprog : 0.18) + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(cx, cy, AC_T.burst.radius, AC_T.burst.radius).fill({ color: 0xff2a2a, alpha: telFillA(bwind ? bprog : 1, pulse) * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
-        const bring = (bwind ? 0.2 + 0.3 * bprog : 0.5) + 0.3 * pulse;
+        const bring = telStrokeA(bwind ? bprog : 1, pulse);
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, AC_T.burst.radius, 0xff3b3b, bring);
         else o.ellipse(cx, cy, AC_T.burst.radius, AC_T.burst.radius).stroke({ width: 2, color: 0xff3b3b, alpha: bring });
         // FX-V2b #2: 結晶の槍の断片が4〜6片(ACRASIEL_BURST_FRAG_COUNT)放射する(既存リングに添える・②)。
@@ -17359,9 +17376,9 @@ export class PixiScene {
         for (const q of e.phillLightrainQueue ?? []) {
           if (gameTime >= q.at) continue; // 発火済み(保険=既にキューから外れている想定)
           o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius)
-            .fill({ color: 0xff2a2a, alpha: (0.14 + 0.14 * pulse) * TELEGRAPH_FILL_MULT });
+            .fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * TELEGRAPH_FILL_MULT });
           if (FX_RING_ENABLED) this.drawTelegraphRing(view, q.x, q.y, PH_T.lightrain.radius, 0xff3b3b, 0.4 + 0.3 * pulse);
-          else o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.4 + 0.3 * pulse });
+          else o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
         }
       }
       // ---- フィル: 羽斬り(技3・物理①)=T3帯+羽攻撃の武器スプライト(掟W9=構え+実行の両方に出す) ----
@@ -17444,7 +17461,7 @@ export class PixiScene {
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.goldring.windup));
         o.ellipse(cx, cy, PH_T.goldring.radius, PH_T.goldring.radius)
-          .fill({ color: 0xff2a2a, alpha: ((0.06 + 0.12 * prog) + 0.10 * pulse) * TELEGRAPH_FILL_MULT });
+          .fill({ color: 0xff2a2a, alpha: telFillA(prog, pulse) * TELEGRAPH_FILL_MULT });
         const ringA = (0.2 + 0.3 * prog) + 0.25 * pulse;
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, PH_T.goldring.radius, 0xffd166, ringA);
         else o.ellipse(cx, cy, PH_T.goldring.radius, PH_T.goldring.radius).stroke({ width: 2, color: 0xffd166, alpha: ringA });
@@ -17457,9 +17474,9 @@ export class PixiScene {
         // ★v0.25.3740(社長指示): 天から光を注ぐ(祝福と同型・ただし**予兆中ずっと点灯**=光の長さで判別)。
         // ※裁きの光の中身は檻(cage州)へ差し替え済み=通常この州は来ないが、旧再生互換で絵は残す。
         this.drawPhillJudgmentSkylight(e, tx, ty, R, gameTime, PH_T.judgment.trackMs);
-        o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: (0.18 + 0.14 * pulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, 0.5 + 0.3 * pulse);
-        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.5 + 0.3 * pulse });
+        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
       }
       // ---- フィル: 羽根の檻(技9★カウンター必須)=全方位から収縮する円(判定なし)→閉じ切る瞬間に
       // blast(§10-9の9)。中心は溜め開始でロック=以後追尾しない。 ----
@@ -17472,9 +17489,9 @@ export class PixiScene {
         // ★v0.25.3740(社長指示): 裁きの光(=中身は檻)の予兆=天から光が注ぎ**予兆中ずっと点灯**。
         // 柱の幅は収縮円に追従=閉じるほど光も絞られる(祝福の「消えてから発動」との判別要素)。
         this.drawPhillJudgmentSkylight(e, tx, ty, R, gameTime, PH_T.cage.trackMs);
-        o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: (0.10 + 0.20 * prog + 0.10 * pulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: telFillA(prog, pulse) * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, 0.35 + 0.4 * prog + 0.2 * pulse);
-        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.35 + 0.4 * prog + 0.2 * pulse });
+        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) });
       }
       // ---- フィル: 光輪投げ(技11)=往復とも帯判定(横に避ける・§10-9の11) ----
       else if (e.type === 'phillboss' && (bs === 'phill-ringtoss-windup' || bs === 'phill-ringtoss-out' || bs === 'phill-ringtoss-back' || bs === 'phill-ringtoss-recover')) {
@@ -17495,9 +17512,9 @@ export class PixiScene {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         const R = this.phillZoomSafeRadius(PH_T.dive.radius);
-        o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, 0.45 + 0.3 * pulse);
-        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
       }
       // ---- スリィエル: 単眼の凝視(小技)=T4のみ(図形なし・tintは上で設定済み) ----
       // ---- 上記いずれにも該当しない状態(chase/volley/bolt-windup/counter-leap等)は図形なし ----
@@ -17690,9 +17707,9 @@ export class PixiScene {
             this.fxLatches.delete(`${e.id}:suriel-spin-complete`);
           } else if (elapsed < spinL.d[0] + spinL.d[1]) {
             const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-            o.ellipse(spinL.d[2], spinL.d[3], SR_T.ringspin.radius, SR_T.ringspin.radius).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+            o.ellipse(spinL.d[2], spinL.d[3], SR_T.ringspin.radius, SR_T.ringspin.radius).fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * TELEGRAPH_FILL_MULT });
             if (FX_RING_ENABLED) this.drawTelegraphRing(view, spinL.d[2], spinL.d[3], SR_T.ringspin.radius, 0xff3b3b, 0.45 + 0.3 * pulse);
-            else o.ellipse(spinL.d[2], spinL.d[3], SR_T.ringspin.radius, SR_T.ringspin.radius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+            else o.ellipse(spinL.d[2], spinL.d[3], SR_T.ringspin.radius, SR_T.ringspin.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
           }
         }
 
@@ -17767,9 +17784,9 @@ export class PixiScene {
             this.fxLatches.delete(`${e.id}:acrasiel-burst-complete`);
           } else if (elapsed < burstL.d[0] + burstL.d[1]) {
             const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-            o.ellipse(burstL.d[2], burstL.d[3], AC_T.burst.radius, AC_T.burst.radius).fill({ color: 0xff2a2a, alpha: (0.18 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+            o.ellipse(burstL.d[2], burstL.d[3], AC_T.burst.radius, AC_T.burst.radius).fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * TELEGRAPH_FILL_MULT });
             if (FX_RING_ENABLED) this.drawTelegraphRing(view, burstL.d[2], burstL.d[3], AC_T.burst.radius, 0xff3b3b, 0.5 + 0.3 * pulse);
-            else o.ellipse(burstL.d[2], burstL.d[3], AC_T.burst.radius, AC_T.burst.radius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.5 + 0.3 * pulse });
+            else o.ellipse(burstL.d[2], burstL.d[3], AC_T.burst.radius, AC_T.burst.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
             // FX-V2b #2: 生きているブロックと同じ断片放射をここでも完走させる(既存の掟)。
             const burstTailT = Math.max(0, Math.min(1, (elapsed - burstL.d[0]) / Math.max(1, burstL.d[1])));
             for (let i = 0; i < ACRASIEL_BURST_FRAG_COUNT; i++) {
@@ -18028,7 +18045,7 @@ export class PixiScene {
         // 縁取りだけを素材A-2へ差し替える(円=A-1と同じ考え方)。
         // 素材は上の pts と同じ矩形にぴったり重なる(drawTelegraphBand が同じ式で寸法を出す)。
         if (visible) o.poly(pts).fill({ color: 0xff2a2a, alpha: fillA * TELEGRAPH_FILL_MULT });
-        if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, Math.min(1, strokeA + 0.2), 0, prog);
+        if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, strokeA, 0, prog);
         else if (visible) o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
       };
       // 共通ヘルパ(M66): 扇形(帯が回転する技のwindup予告=最終的に薙ぐ全域を先出しする)。innerR>0で
@@ -19066,9 +19083,9 @@ export class PixiScene {
         // 判定側(gameStore.tsのpumpkinBlasts)も同じフィールドを読むため、図形と判定は必ず一致する。
         const gStompR = e.gStompRadius ?? GIANT_STOMP_RADIUS;
         // 面(内側の赤い塗り)=「どこが危ないか」は据え置き。輪だけを素材A-1へ差し替える(v0.25.2395)。
-        o.ellipse(cx, cy, gStompR, gStompR).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * gPulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(cx, cy, gStompR, gStompR).fill({ color: 0xff2a2a, alpha: telFillA(1, gPulse) * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, gStompR, 0xff3b3b, 0.55 + 0.35 * gPulse);
-        else o.ellipse(cx, cy, gStompR, gStompR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
+        else o.ellipse(cx, cy, gStompR, gStompR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) });
       } else if (gph === 'g-sweep-windup' || gph === 'g-sweep-active') {
         // T3(赤い角ばった四角ゾーン)。トール払い/ミゲル払いと同じ意匠(poly fill+stroke)。
         const gfx = e.aiFromX ?? cx, gfy = e.aiFromY ?? cy;
@@ -19079,7 +19096,7 @@ export class PixiScene {
         const gux = gddx / gddl, guy = gddy / gddl;
         const ghw = GIANT_SWEEP_HALF_WIDTH;
         const gprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
-        const gZoneFill = gph === 'g-sweep-active' ? 0.3 : (0.12 + 0.22 * gprog) + 0.08 * gPulse;
+        const gZoneFill = telFillA(gph === 'g-sweep-active' ? 1 : gprog, gPulse);
         // ★v0.25.3496(社長指示「その上で、流星にして」): 溜め中は**面と白芯も流星の可視区間へ縮める**。
         // 従来は縁取り(drawTelegraphBand)だけが流星で、面と白芯は全長のまま描かれていたため、
         // **消しが面の下に隠れて流星が読めなかった**(=「消え切った瞬間が当たり」の文法が伝わらない)。
@@ -19100,9 +19117,9 @@ export class PixiScene {
         if (gVisible) o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT });
         // v0.25.3477: 帯の流星描き→消しはwindup限定(activeは全形のまま=従来どおり。gprogはactive中は
         // 窓の異なる時計を流用しているだけの値なので、そのままmeteorPhaseへ渡さない)。
-        if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, Math.min(1, (0.32 + 0.4 * gprog) + 0.15 * gPulse + 0.2), 0,
+        if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, telStrokeA(gprog, gPulse), 0,
           gph === 'g-sweep-windup' ? gprog : undefined);
-        else if (gVisible) o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * gprog) + 0.15 * gPulse });
+        else if (gVisible) o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(gprog, gPulse) });
         // 白芯も可視区間だけ(面と同じ理由=流星の頭と消しを隠さない)。
         if (gVisible) o.moveTo(gvfx, gvfy).lineTo(gvtx, gvty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: 0.35 + 0.35 * gprog, cap: 'round' });
       } else if (gph === 'g-jump-windup' || gph === 'g-jump-air') {
@@ -19112,9 +19129,9 @@ export class PixiScene {
         const gtx = (e.aiTargetX ?? e.x) + e.width / 2, gty = (e.aiTargetY ?? e.y) + e.height / 2;
         const gR = e.gJumpRadius ?? GIANT_JUMP_RADIUS;
         // 着地予告も同じ素材(A-1)。円の予告はゲーム中で意匠を揃える(踏み鳴らしと同じ輪に見える)。
-        o.ellipse(gtx, gty, gR, gR).fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * gPulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(gtx, gty, gR, gR).fill({ color: 0xff2a2a, alpha: telFillA(1, gPulse) * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, gtx, gty, gR, 0xff3b3b, 0.55 + 0.35 * gPulse);
-        else o.ellipse(gtx, gty, gR, gR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
+        else o.ellipse(gtx, gty, gR, gR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) });
       } else if (gph === 'g-trijump-windup' || gph === 'g-trijump-air') {
         // 連続ジャンプ(グレン専用・v0.25.2430): **3つの着地円を溜め開始から全部見せる**。
         // 座標は gameStore が glenTriJumpPoints で確定して持たせた `gTriJumpPts` をそのまま読む
@@ -19127,9 +19144,9 @@ export class PixiScene {
           // 次に落ちてくる1つ(i===done)は濃く、その先は薄く=順番が読める。
           const lead = i === done ? 1 : 0.55;
           o.ellipse(tjx, tjy, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_RADIUS)
-            .fill({ color: 0xff2a2a, alpha: ((0.16 + 0.12 * gPulse) * lead) * TELEGRAPH_FILL_MULT });
+            .fill({ color: 0xff2a2a, alpha: telFillA(1, gPulse) * lead * TELEGRAPH_FILL_MULT });
           if (FX_RING_ENABLED) this.drawTelegraphRing(view, tjx, tjy, GLEN_TRIJUMP_RADIUS, 0xff3b3b, (0.55 + 0.35 * gPulse) * lead, i - done);
-          else o.ellipse(tjx, tjy, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: (0.45 + 0.3 * gPulse) * lead });
+          else o.ellipse(tjx, tjy, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) * lead });
         }
       } else if (gph === 'g-bite-windup' || gph === 'g-bite-hold' || gph === 'g-bite-active') {
         // M66 stage-1「噛みつき」: T3前方の短い帯(足元の円=stompと図形で区別)。holdは"間"=図形は
@@ -19170,8 +19187,8 @@ export class PixiScene {
         const dtx = (e.aiTargetX ?? e.x) + e.width / 2, dty = (e.aiTargetY ?? e.y) + e.height / 2;
         const dtotal = GIANT_DIVE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
         const dt = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / dtotal));
-        o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).fill({ color: 0xff2a2a, alpha: (0.05 + 0.18 * dt + 0.06 * gPulse) * TELEGRAPH_FILL_MULT });
-        o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * dt + 0.12 * gPulse });
+        o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).fill({ color: 0xff2a2a, alpha: telFillA(dt, gPulse) * TELEGRAPH_FILL_MULT });
+        o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(dt, gPulse) });
       } else if (gph === 'g-quad-windup') {
         // M66 stage-4「三連突進」の各回: T1ライン+終点リング(既存dashと同じ意匠)。
         // v0.25.3049(社長裁定「カウンター不能技に。紫線に変更で」): 突進の体当たりはパリィ表外=
@@ -19198,7 +19215,7 @@ export class PixiScene {
         // M66 stage-4「氷結波」(大技): windupは最終到達半径(400)/開始半径(60)の輪郭だけを薄く先出し
         // (塗り潰さない=「今爆ぜる」ではない)。
         const nprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_NOVA_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
-        o.ellipse(cx, cy, GIANT_NOVA_RADIUS_END, GIANT_NOVA_RADIUS_END).stroke({ width: 2, color: 0xff3b3b, alpha: (0.16 + 0.22 * nprog) + 0.08 * gPulse });
+        o.ellipse(cx, cy, GIANT_NOVA_RADIUS_END, GIANT_NOVA_RADIUS_END).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(nprog, gPulse) });
         o.ellipse(cx, cy, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_START).stroke({ width: 2, color: 0xff5a5a, alpha: (0.16 + 0.22 * nprog) + 0.08 * gPulse });
       } else if (gph === 'g-nova-active') {
         // 判定はその瞬間の輪のみ(内側=既に通過した場所は当たらない・全ボス共通「離れれば安全」の
@@ -19234,10 +19251,10 @@ export class PixiScene {
         const wprog = gph === 'g-wing-windup'
           ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_WING_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
           : 1;
-        const wFill = gph === 'g-wing-active' ? 0.3 : (0.12 + 0.16 * wprog) + 0.08 * gPulse;
+        const wFill = telFillA(gph === 'g-wing-active' ? 1 : wprog, gPulse);
         o.ellipse(wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS).fill({ color: 0xff2a2a, alpha: (wFill) * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, wcx, wcy, GIANT_WING_RADIUS, 0xff3b3b, (0.42 + 0.38 * wprog) + 0.15 * gPulse);
-        else o.ellipse(wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: (0.35 + 0.3 * wprog) + 0.12 * gPulse });
+        else o.ellipse(wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(wprog, gPulse) });
       } else if (gph === 'g-sweepbeam-windup' || gph === 'g-sweepbeam-active') {
         // M66 stage-5「掃射」(大技): 細いT3帯(半幅30)が120°を回転する。懐(回転の中心付近)が
         // 安全=帯の始点を中心からGIANT_SWEEPBEAM_INNER_RADIUSぶん前へ出した扇/カプセル(ドーナツの
@@ -19439,7 +19456,7 @@ export class PixiScene {
             const defx = h.capsule.fx + ddx * er, defy = h.capsule.fy + ddy * er;
             const detx = h.capsule.fx + ddx * zp, dety = h.capsule.fy + ddy * zp;
             if (FX_RING_ENABLED) {
-              this.drawTelegraphBand(view, defx, defy, detx, dety, hw, strokeCol, 0.2 + 0.5 * zp + 0.12 * gPulse, delayBandIdx++);
+              this.drawTelegraphBand(view, defx, defy, detx, dety, hw, strokeCol, telStrokeA(zp, gPulse), delayBandIdx++);
             } else {
               o.poly([
                 defx + nx * hw, defy + ny * hw,
@@ -20245,8 +20262,8 @@ export class PixiScene {
     // ★薄い下地は**出さない**(社長指示v0.25.3474「赤帯の薄い下地はいらない。ラインと同じ仕様にして」)。
     //   帯は線と同じく「流星が描き→後ろから消え、消え切った瞬間に判定」だけで読ませる。
     if (zp - er <= 0.001) return; // 消し切った(or まだ何も無い)
-    const zoneFill = (0.12 + 0.22 * zp) + 0.08 * pulse;
-    const strokeA = (0.32 + 0.4 * zp) + 0.15 * pulse;
+    const zoneFill = telFillA(zp, pulse);
+    const strokeA = telStrokeA(zp, pulse);
     const SEGS = 8;
     for (let i = 0; i < SEGS; i++) {
       const s0 = er + (zp - er) * (i / SEGS);
@@ -20305,8 +20322,8 @@ export class PixiScene {
     if (k <= 0.002) return;
     const poly = sweptRectHull(ex, ey, w, h, endCx - w / 2, endCy - h / 2);
     const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-    o.poly(poly).fill({ color: 0xff2a2a, alpha: (0.34 + 0.08 * pulse) * k * TELEGRAPH_FILL_MULT });
-    o.poly(poly).stroke({ width: 2, color: 0xff3b3b, alpha: (0.72 + 0.15 * pulse) * k });
+    o.poly(poly).fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * k * TELEGRAPH_FILL_MULT });
+    o.poly(poly).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * k });
   }
 
   // §6.38実機FB7(社長指示2026-08-15): drawAngelZoneCapsuleのdashLineTick相当ラッチ。
@@ -25731,8 +25748,8 @@ export class PixiScene {
     if (bs === 'mk-spin-windup' || bs === 'mk-spin') {
       const prog = bs === 'mk-spin-windup' ? telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil) : 1;
       const pulse = 0.5 + 0.5 * Math.sin(now / 90);
-      o.circle(cx, cy, MK_T.spin.radius).fill({ color: 0xff2a2a, alpha: (0.12 + 0.22 * prog) * TELEGRAPH_FILL_MULT * (0.7 + 0.3 * pulse) });
-      o.circle(cx, cy, MK_T.spin.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.35 + 0.4 * prog });
+      o.circle(cx, cy, MK_T.spin.radius).fill({ color: 0xff2a2a, alpha: telFillA(prog, pulse) * TELEGRAPH_FILL_MULT });
+      o.circle(cx, cy, MK_T.spin.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) });
       // 毬が周囲を高速で回る(判定=円そのもの。速い周回で「回している」感=派手側)。
       const spinAng = now / (bs === 'mk-spin' ? 40 : 90);
       // 技表GO: 技前=一瞬止まってふくらむ(スカッシュ・windup側のみ)。
@@ -25761,8 +25778,8 @@ export class PixiScene {
       // 変則ディレイ(区間=予告+移動の合算)の内訳を描画側は知らないため、着地円は静的な強い表示で
       // 出す(位置/半径=判定と厳密一致。ズレるのはフィルの立ち上がり演出だけ=安全上は無関係)。
       const pulse = 0.55 + 0.45 * Math.sin(now / 70);
-      o.circle(lx, ly, radius).fill({ color: 0xff2a2a, alpha: 0.3 * pulse * TELEGRAPH_FILL_MULT });
-      o.circle(lx, ly, radius).stroke({ width: isFinal ? 4 : 2.5, color: 0xff3b3b, alpha: 0.7 });
+      o.circle(lx, ly, radius).fill({ color: 0xff2a2a, alpha: telFillA(1, 1) * pulse * TELEGRAPH_FILL_MULT });
+      o.circle(lx, ly, radius).stroke({ width: isFinal ? 4 : 2.5, color: 0xff3b3b, alpha: telStrokeA(1, 1) });
       // 技表GO: 乱舞=バウンドごとに回転加速+花びら増量(hop1<hop2<hop3)。
       const hopIdx = bs === 'mk-suiu-hop1' ? 1 : bs === 'mk-suiu-hop2' ? 2 : 3;
       const spinDiv = [0, 90, 72, 54][hopIdx]; // 小さいほど速い(hop1=90→hop3=54)
@@ -25819,7 +25836,7 @@ export class PixiScene {
       const t = Math.max(0, Math.min(1, 1 - remain / total));
       const px = bs === 'mk-boom-out' ? bfx + (btx - bfx) * t : btx + (bfx - btx) * t;
       const py = bs === 'mk-boom-out' ? bfy + (bty - bfy) * t : bty + (bfy - bty) * t;
-      o.circle(px, py, MK_T.boom.hitRadius).fill({ color: 0xff2a2a, alpha: 0.35 * TELEGRAPH_FILL_MULT });
+      o.circle(px, py, MK_T.boom.hitRadius).fill({ color: 0xff2a2a, alpha: telFillA(1, 1) * TELEGRAPH_FILL_MULT });
       o.circle(px, py, MK_T.boom.hitRadius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.6 });
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', px, py, now / 30, 62, 0.98);
       // ★慣性バッチ: 射出スピンの残像(motion trail)。往路・復路とも毬の軌跡へ約30ms間隔で

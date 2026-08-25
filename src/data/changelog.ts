@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3915',
+    items: [
+      '赤い予告の色の濃さを全ての技で統一しました(いちばん薄かったものに合わせています)。',
+      'こちらの攻撃を当てて敵をのけぞらせると、敵の噛みつきが中断されるようになりました。',
+    ],
+  },
+  {
     version: '0.25.3914',
     items: [
       '噛みつきを作り直しました。赤く光った敵が踏み込んで覆いかぶさってきて、重なっていたらダメージ。',
