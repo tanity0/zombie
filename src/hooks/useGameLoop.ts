@@ -7338,7 +7338,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           // 魔法陣演出は Pixi 側(syncAlchemyCircle)が足元の常設地面スプライトを
           // alpha=溜め進捗で連続フェード描画する(手続き的リングは廃止)。
-          // TODO(錬金術): 被弾でチャネル中断するか(現状は中断しない)。
+          // ★被弾でチャネル中断するかは research/SAME_ARENA.md §3-d-3 の★未決1(社長裁定待ち)。
+          // 現状は**中断しない**(移動/刀ブロック/レア在席のみ中断)。
+          // 未決をコメントに置くと誰にも届かないので、判断は設計書側にある(実装精度の規律1)。
         } else if ((alcPlayer.alchemyChannelStartedAt ?? 0) !== 0) {
           useGameStore.getState().updateAlchemyChannel(0); // 移動/ブロック/レアで中断
         }
