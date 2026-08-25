@@ -1,5 +1,6 @@
 // M2チュートリアル(社長指示v0.25.2251)の発火条件。
-// 肝は「索敵は**見つかる前**に出す」= 休眠中の敵にしか反応しない + 距離が視界(200)より外であること。
+// 肝は「索敵は**見つかる前**に出す」= 休眠中の敵にしか反応しない + 距離が視界(LAB_VISION_RANGE)より外であること。
+// ※数値はここに書かない(v0.25.3903で200→180。定数を追う形にしておけば調整で嘘にならない)。
 import { describe, it, expect } from 'vitest';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial, LAB_TUTORIAL_APPROACH_PX } from './labTutorial';
 import { LAB_VISION_RANGE } from './labStealth';

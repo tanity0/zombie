@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3903',
+    items: [
+      'ステージ2(研究所)の敵の索敵範囲を少しだけ狭くしました。見つからずに進める余地が広がります。',
+    ],
+  },
+  {
     version: '0.25.3902',
     items: [
       '★敵が「触れたら痛い」から「噛みついてくる」に変わりました。近づくと足元に赤い円が点滅し、0.5秒かけて踏み込みながら噛んできます。円から逃げれば当たりません。',
