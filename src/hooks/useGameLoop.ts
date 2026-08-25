@@ -8158,23 +8158,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             if (!activeFetch.collected && nowMs >= activeFetch.collectAt) {
               const state = useGameStore.getState();
-              const eligiblePickups = state.pickups
-                .filter(p => p.type !== 'health' || state.player.health < state.player.maxHealth)
-                // クイックマガジンはドッグに拾わせない(社長指示v0.25.2409)。使うタイミングを
-                // プレイヤーが選ぶ拾い物なので、ドッグが勝手に回収すると効果が空撃ちになる。
-                .filter(p => p.type !== 'quick-magazine')
-                .filter(p => {
-                  if (
-                    p.throwStartAt !== undefined &&
-                    p.throwDuration !== undefined &&
-                    nowMs - p.throwStartAt < p.throwDuration
-                  ) {
-                    return false;
-                  }
-                  const px = p.x + 8;
-                  const py = p.y + 8;
-                  return Math.hypot(px - activeFetch.targetX, py - activeFetch.targetY) <= activeFetch.radius;
-                });
+              // ★v0.25.3896: ここは以前**狙いを選ぶ側とは別の、緩いフィルタ**だった
+              // (狙いでは card-key 等を外すのに、着いてから拾う時は外していなかった=
+              //  半径内に紛れていれば拾えた)。社長裁定「犬は箱を触らない」を満たすには
+              // **両方の入口を同じ台帳に通す**必要があるので、狙い側と同じ1本にした。
+              // 挙動の差分は「触らないと決めた物を、着いてからも触らなくなる」だけ。
+              const eligiblePickups = dogEligiblePickups({
+                pickups: state.pickups,
+                cx: activeFetch.targetX, cy: activeFetch.targetY, radius: activeFetch.radius,
+                nowMs,
+                skipHealth: state.player.health >= state.player.maxHealth, // 満タンなら肉は拾わない(従来どおり)
+              });
 
               if (eligiblePickups.length > 0) {
                 const hasAmmoPickup = eligiblePickups.some(p =>

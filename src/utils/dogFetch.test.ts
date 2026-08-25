@@ -12,17 +12,22 @@ const at = (type: PickupType, x: number, y: number, extra: Partial<Pickup> = {})
 const base = { cx: 0, cy: 0, radius: 100, nowMs: 10_000, skipHealth: false };
 
 describe('ドッグが触る物の台帳(utils/dogFetch)', () => {
-  it('★任務が詰む物は触らない(card-key / lab-clear-item)+開ける物・使う物も対象外', () => {
+  it('★任務が詰む物は触らない(card-key / lab-clear-item)+開ける物3種・使う物も対象外', () => {
+    // ★社長裁定2026-08-25「犬は箱を触らない」: 武器箱だけでなく**宝箱・金箱**も除外。
+    // 金箱は武器箱が5%の抽選で変化したもの=同じ箱なのに扱いが割れていた(v0.25.3644の足し忘れ)。
     expect([...DOG_EXCLUDED_TYPES].sort()).toEqual(
-      ['card-key', 'lab-clear-item', 'quick-magazine', 'weapon-crate'].sort(),
+      ['bounty-chest', 'card-key', 'chest', 'lab-clear-item', 'quick-magazine', 'weapon-crate'].sort(),
     );
     const picks = DOG_EXCLUDED_TYPES.map(t => at(t, 0, 0));
     expect(dogEligiblePickups({ ...base, pickups: picks })).toEqual([]);
   });
 
-  it('★箱系(宝箱・金箱・トレジャー・武器ドロップ)は触れる(社長裁定=除外リストを増やさない)', () => {
-    const picks: Pickup[] = [at('chest', 0, 0), at('bounty-chest', 1, 0), at('treasure', 2, 0), at('weapon-drop', 3, 0)];
-    expect(dogEligiblePickups({ ...base, pickups: picks })).toHaveLength(4);
+  it('★箱(宝箱・金箱)は触らないが、拾う物(トレジャー・武器ドロップ)は触る', () => {
+    // 「犬は"拾う物"を拾う。"開ける物"には触らない」の1本。境界をここで固定する。
+    const boxes: Pickup[] = [at('chest', 0, 0), at('bounty-chest', 1, 0)];
+    expect(dogEligiblePickups({ ...base, pickups: boxes })).toEqual([]);
+    const loot: Pickup[] = [at('treasure', 2, 0), at('weapon-drop', 3, 0)];
+    expect(dogEligiblePickups({ ...base, pickups: loot })).toHaveLength(2);
   });
 
   it('半径の外は対象外(境界=半径ちょうどは入る)', () => {
