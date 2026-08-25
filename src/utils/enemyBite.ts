@@ -252,6 +252,32 @@ const BITE_OK_PHASES = new Set<string>(['zpause', 'zrush']);
 const BITE_OK_BOSS_STATES = new Set<string>(['chase']);
 
 /**
+ * ★「**体をぶつけに行く技**」の実行中か(=接触ダメージが本体なので、噛みつきの対象から外す)。
+ *
+ * 土台は `enemyMotion` の貫通表(ダッシュ/滞空中は地上物をすり抜ける)。ただし**あちらは
+ * 「地上物をすり抜けるか」の表**で、こちらは「**体が武器か**」の表——**同じではない**。
+ * 実際、下の4つは体をぶつけに来るのに貫通表には入っていなかった(v0.25.3925 の監査で発覚):
+ * トールの突進 / ミゲルの踏み込み / 賞金首(近接型)の突進 / 賞金首の飛び掛かり滞空。
+ * これらは**赤い帯や予告を出しているのに接触ダメージだけ失っていた**
+ * =CLAUDE.md の絶対禁止「赤いのに当たらない」。
+ *
+ * ★新しい「体当たり技」を足したら**この表にも足す**(貫通表とは別に持つ)。
+ */
+const BODY_SLAM_BOSS_STATES = new Set<string>([
+  'thor-dash-move',  // トールの突進(赤い体の帯を描いている)
+  'mdash-move',      // ミゲルの踏み込み
+  'bm-charge',       // 賞金首(近接型)の突進
+  'leap-air',        // 賞金首の飛び掛かり(滞空)
+]);
+
+export const isBodySlamNow = (
+  enemy: Pick<Enemy, 'aiPhase' | 'bossState'>,
+): boolean =>
+  isPassThroughPhase(enemy.aiPhase)
+  || isPassThroughBossState(enemy.bossState)
+  || (enemy.bossState !== undefined && BODY_SLAM_BOSS_STATES.has(enemy.bossState));
+
+/**
  * ★技が始まったか(=噛みつきの台本を**中断すべき**か)。
  *
  * ★v0.25.3924(社長報告2026-08-25「丸いサークル系の予告技が、本体にしかダメージ判定が
@@ -278,7 +304,7 @@ export const isBiteSubject = (
   // 触れたら痛い側に戻す。レーザー・弾・設置・叫び等は体をぶつけていないので**触れても痛くない**。
   // ★表は発明しない: `enemyMotion` の「ダッシュ/滞空中はオブジェクトを貫通」の表をそのまま使う
   // (=このプロジェクトが既に「体を投げ出している状態」として定義している唯一の場所)。
-  if (isPassThroughPhase(enemy.aiPhase) || isPassThroughBossState(enemy.bossState)) return false;
+  if (isBodySlamNow(enemy)) return false;
   return true;
 };
 
@@ -287,8 +313,26 @@ export const isBiteSubject = (
  * 拘束(rootUntil)・気絶(stunUntil)中は構えない=**罠で止めた敵は噛んでこない**
  * (拘束の意味が「止める」なので、止まっているのに噛むのは矛盾する)。
  */
+/**
+ * ★「止まっている/眠っている敵は噛まない」の唯一の述語(v0.25.3925)。
+ *
+ * 監査で発覚: `canStartBite` は**構え始め**しか見ておらず、**構えた後に**気絶/拘束/持ち上げ/
+ * 体勢崩し(紫)が入っても**噛みつきは走り切っていた**。
+ * 「黄色く気絶して棒立ちの敵に近づいたら噛まれる」「罠で拘束した敵が噛んでくる」という、
+ * 止める効果の意味そのものを壊す挙動になっていた。**構え始めと中断で同じ述語を使う。**
+ * `dormant`(眠っている敵)も追加——壁越しに眠ったまま噛んでくる経路があった。
+ */
+export const isBiteFrozen = (
+  enemy: Pick<Enemy, 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant'>,
+  gameTime: number,
+): boolean =>
+  enemy.dormant === true
+  || (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil)
+  || (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil)
+  || (enemy.liftUntil !== undefined && gameTime < enemy.liftUntil);
+
 export const canStartBite = (
-  enemy: Pick<Enemy, 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'aiPhase' | 'bossState'>,
+  enemy: Pick<Enemy, 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
   gameTime: number,
 ): boolean => {
   // ★突進中(ゾンビの `zrush`=2秒間2倍速)は構えない(社長報告2026-08-25「ゾンビが走ってこなくなった
@@ -305,8 +349,7 @@ export const canStartBite = (
   if (isBiteInterruptedByMove(enemy)) return false;
   if (enemy.biteAt !== undefined && enemy.biteAt > 0) return false;      // もう構えている
   if (gameTime < (enemy.biteReadyAt ?? 0)) return false;                 // 硬直中
-  if (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil) return false;
-  if (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) return false;
+  if (isBiteFrozen(enemy, gameTime)) return false;
   return true;
 };
 

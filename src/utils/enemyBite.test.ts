@@ -4,7 +4,7 @@ import {
   BITE_DEFAULT, BITE_BY_TYPE, biteSpecFor, bitePhaseOf, biteProgress,
   biteLungeFrac, bitePointFrom, biteReachRect, isInBiteRect, isBiteSubject,
   biteWallRect, BITE_WALL_W, BITE_WALL_H, isBiteWallOpen, biteBodyOverlapsPlayer, canStartBite,
-  isBiteInterruptedByMove,
+  isBiteInterruptedByMove, isBodySlamNow, isBiteFrozen,
   BITE_BOSS_RECOVER_MS,
 } from './enemyBite';
 import type { Enemy } from '../types/game';
@@ -331,7 +331,7 @@ describe('★噛みつきの除外は死神と幻影だけ(v0.25.3921)', () => {
 // 構えた直後に技へ入るとその敵のAIが丸ごと飛ばされ、**着地爆発/踏み鳴らしの円が push されない**。
 describe('★技が始まったら噛みつきは中断する(v0.25.3924)', () => {
   it('技(着地・踏み鳴らし・レーザー等)の最中は中断対象', () => {
-    expect(isBiteInterruptedByMove({ aiPhase: 'g-stomp-active', bossState: undefined })).toBe(true);
+    expect(isBiteInterruptedByMove({ aiPhase: 'g-stomp-windup', bossState: undefined })).toBe(true);
     expect(isBiteInterruptedByMove({ aiPhase: 'jump', bossState: undefined })).toBe(true);
     expect(isBiteInterruptedByMove({ aiPhase: undefined, bossState: 'laser-fire' })).toBe(true);
   });
@@ -340,5 +340,50 @@ describe('★技が始まったら噛みつきは中断する(v0.25.3924)', () =
     expect(isBiteInterruptedByMove({ aiPhase: 'zrush', bossState: undefined })).toBe(false);
     expect(isBiteInterruptedByMove({ aiPhase: undefined, bossState: 'chase' })).toBe(false);
     expect(isBiteInterruptedByMove({ aiPhase: undefined, bossState: undefined })).toBe(false);
+  });
+});
+
+// ★v0.25.3925(監査で発覚): 「体をぶつけに行く技」の表は、`enemyMotion` の貫通表(地上物をすり抜けるか)
+// **とは別物**。実際に4つ漏れていて、赤い帯/予告を出しているのに接触ダメージだけ消えていた
+// =CLAUDE.md の絶対禁止「赤いのに当たらない」。
+describe('★体当たり技の表の漏れ(v0.25.3925)', () => {
+  it('トールの突進・ミゲルの踏み込み・賞金首の突進/飛び掛かりは体当たり技', () => {
+    for (const bs of ['thor-dash-move', 'mdash-move', 'bm-charge', 'leap-air'] as const) {
+      expect(isBodySlamNow({ aiPhase: undefined, bossState: bs })).toBe(true);
+    }
+  });
+  it('貫通表にある体当たり技も従来どおり体当たり技', () => {
+    expect(isBodySlamNow({ aiPhase: 'charge', bossState: undefined })).toBe(true);
+    expect(isBodySlamNow({ aiPhase: 'jump', bossState: undefined })).toBe(true);
+    expect(isBodySlamNow({ aiPhase: undefined, bossState: 'issen-dash' })).toBe(true);
+  });
+  it('体から切り離された技は体当たり技ではない(触れても痛くない)', () => {
+    for (const bs of ['laser-fire', 'harai', 'volley', 'lance'] as const) {
+      expect(isBodySlamNow({ aiPhase: undefined, bossState: bs })).toBe(false);
+    }
+  });
+});
+
+// ★v0.25.3925(監査で発覚): 構え**始め**しか止める効果を見ておらず、構えた後に気絶/拘束/持ち上げ/
+// 眠りが入っても噛みつきは走り切っていた=「止める効果」の意味そのものが壊れていた。
+describe('★止まっている敵は噛まない(構え始めと中断で同じ述語・v0.25.3925)', () => {
+  const at = (o: Record<string, unknown>) => ({
+    rootUntil: undefined, stunUntil: undefined, liftUntil: undefined, dormant: undefined, ...o,
+  } as Parameters<typeof isBiteFrozen>[0]);
+  it('気絶・拘束・持ち上げ・眠りは「止まっている」', () => {
+    expect(isBiteFrozen(at({ stunUntil: 2000 }), 1000)).toBe(true);
+    expect(isBiteFrozen(at({ rootUntil: 2000 }), 1000)).toBe(true);
+    expect(isBiteFrozen(at({ liftUntil: 2000 }), 1000)).toBe(true);
+    expect(isBiteFrozen(at({ dormant: true }), 1000)).toBe(true);
+  });
+  it('期限が切れていれば止まっていない', () => {
+    expect(isBiteFrozen(at({ stunUntil: 500 }), 1000)).toBe(false);
+    expect(isBiteFrozen(at({}), 1000)).toBe(false);
+  });
+  it('★眠っている敵は構え始めない(壁越しに眠ったまま噛む経路を塞ぐ)', () => {
+    const base = { biteAt: undefined, biteReadyAt: 0, rootUntil: undefined, stunUntil: undefined,
+      liftUntil: undefined, aiPhase: undefined, bossState: undefined };
+    expect(canStartBite({ ...base, dormant: true }, 1000)).toBe(false);
+    expect(canStartBite({ ...base, dormant: false }, 1000)).toBe(true);
   });
 });

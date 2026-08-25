@@ -38,7 +38,7 @@ import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkColli
 // ★全敵共通の噛みつき(PACING_PUZZLE.md §12・社長発案2026-08-25)。
 import {
   biteSpecFor, biteReachRect, isInBiteRect, isBiteSubject, canStartBite, isBiteResolveDue,
-  biteBodyOverlapsPlayer, BITE_CANCEL_DR_MS, isBiteInterruptedByMove,
+  biteBodyOverlapsPlayer, BITE_CANCEL_DR_MS, isBiteInterruptedByMove, isBiteFrozen,
 } from './enemyBite';
 import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { EGG_BLAST_RADIUS } from '../world/mines';
@@ -1075,7 +1075,9 @@ export const applyContactDamage = (
     const knocked = !biteDrOn && e.knockbackUntil !== undefined && kbNow < e.knockbackUntil;
     if (biting) {
       // 構えている最中に**技へ入った**なら、その噛みは中断(技の当たり判定が本体になる)。
-      if (!isBiteSubject(e, isBiteExemptType) || knocked || isBiteInterruptedByMove(e)) {
+      // ★止まっている敵(気絶/拘束/持ち上げ/眠り)は噛み切らない=構え始めと同じ述語で中断する。
+      if (!isBiteSubject(e, isBiteExemptType) || knocked || isBiteInterruptedByMove(e)
+        || isBiteFrozen(e, gameTime)) {
         biteClears.push(e.id);
         if (knocked) biteDrIds.push(e.id); // 中断した=次はしばらく振り切られる
         continue;

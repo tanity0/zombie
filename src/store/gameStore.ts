@@ -4548,6 +4548,12 @@ export const buildCorpseFromKill = (
     aiPhase: undefined,
     aiPhaseUntil: undefined,
     stunUntil: undefined,
+    // ★v0.25.3925: 噛みつきの状態も落とす。残すと**死体が赤く点滅して噛む構えのポーズ**を取る
+    // (描画は corpse を見ていない)=「予告は絶対に嘘をつかない」の破れ。判定側も corpse は
+    // ループの手前で弾かれるので、消さないと永久に立ったままになる。
+    biteAt: 0,
+    biteDirX: undefined,
+    biteDirY: undefined,
     knockbackVx: dirX * speed,
     knockbackVy: dirY * speed,
     knockbackUntil: now + KNOCKBACK_DURATION,
