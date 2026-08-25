@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3918',
+    items: [
+      'オープニングが、スキップボタン以外の場所を触っても飛んでしまう不具合を修正しました。スキップは右下のボタンだけになります。',
+    ],
+  },
+  {
     version: '0.25.3917',
     items: [
       '噛みつきの中断に逓減を入れました。一度のけぞらせて中断させると、しばらくは振り切って噛みついてきます(撃ち続けるだけで無敵になるのを防ぐため)。',

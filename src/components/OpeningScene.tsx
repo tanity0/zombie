@@ -409,11 +409,6 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const walkAudioRef = useRef<HTMLAudioElement | null>(null); // 廊下BGM(遠くのラジオ・歩き中だけループ)
   const panRef = useRef<HTMLAudioElement[]>([]);     // パン!SE×2(発砲は場面転換後に鳴るため別管理)
   const heartRef = useRef<HTMLAudioElement[]>([]);   // 蘇生パート: [0]=会話中の心拍ループ / [1]=最終行後の一発(ループとは別要素)
-  // 廊下→アリーナの瞬間切替の直後だけ、全画面onClick={finish}(OPスキップ)を無視する猶予(社長指示
-  // v0.25.2177系フォロー)。歩行入力の指離しがちょうどこの瞬間をまたぐと、離した位置に(既に
-  // マウント済みの)アリーナ側の全画面が来ていてclickとして拾われ、無音でOP全体が飛ぶ経路があった。
-  // 0=ガード無効(?opening=2/3直行や通常のスキップ操作はここに触れないため即座にスキップできる)。
-  const skipGuardUntilRef = useRef(0);
   const stopArena = () => { audioRef.current.forEach(a => { a.pause(); a.src = ''; }); audioRef.current = []; };
   // 廊下BGMを止める(OPスキップ / アンマウント)。アリーナ2音源と重ねない。
   const stopWalkBgm = () => { const a = walkAudioRef.current; if (a) { a.pause(); a.src = ''; } walkAudioRef.current = null; };
@@ -438,16 +433,6 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   // rewindBgm: OP明けのタイトルBGMは必ず曲頭から(v0.25.2104)。過去にタイトル曲を再生済みだと
   // onDone側のsetBgmScene('menu')が同srcのため停止位置から途中再開してしまうのを防ぐ。
   const finish = () => { if (!doneRef.current) { doneRef.current = true; stopAudio(); rewindBgm(); onDone(); } };
-  // 全画面タップ=OPスキップ。廊下→アリーナ切替直後の誤爆だけ猶予(skipGuardUntilRef)で無視する
-  // (以降の通常のスキップ操作・?opening=2/3直行には一切影響しない=ガードは既定0で無効のため)。
-  const handleSkipTap = () => {
-    if (performance.now() < skipGuardUntilRef.current) {
-      if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'skipBlocked' });
-      return;
-    }
-    if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'skipAllowed' });
-    finish();
-  };
   // 【iOS保険・v0.25.2177系フォロー】WebKit実機で「muted指定を無視して一瞬鳴る」前科があるため、
   // 事前解錠(プライミング、下のpanRef/heartRef/audioRef生成部)は【muted+volume=0の二重ガード】にし、
   // 解錠後もその無音状態のまま止め置く(unmuteしない)。実際に聞かせる本再生は必ずこの関数を通し、
@@ -805,10 +790,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         }
         if (worldX >= maxX - 0.5) {
           if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'walkDone' });
-          // OPスキップ誤爆ガード(社長指示v0.25.2177系フォロー): 廊下→アリーナの瞬間切替で、歩行入力を
-          // 離す操作がアリーナ側の全画面onClick={finish}にclickとして拾われ無音でOP全体が飛ぶ経路の対策。
-          // 切替直後の300msだけスキップを無視する(以降・?opening=2/3直行はこのrefに触れないため無効のまま)。
-          skipGuardUntilRef.current = performance.now() + 300 + WALK_FADEOUT_MS;
+          // ★v0.25.3918: 全画面タップのスキップを廃止したので、切替直後の「誤爆ガード」も不要になった
+          // (指を離した先にスキップの当たり判定が無い=そもそも飛ばない)。
           // 社長指示v0.25.2413: 即切り替えず、**廊下側で2秒フェードアウト**してからアリーナへ。
           // rAF は return して止める=主人公は右端に立ったまま静かに暗転する(歩行入力も効かない)。
           // BGMも同じ2秒で引く(絵と音の暗転を揃える。以後は walkFadingRef が二重フェードを防ぐ)。
@@ -859,10 +842,14 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
 
   return (
     <div
-      onClick={handleSkipTap}
+      // ★v0.25.3918(社長報告2026-08-25「OPでスキップボタンじゃないところ押してもスキップされちゃった
+      // (撃つシーンだけかも?)」): **全画面タップ=OPスキップの配線を廃止**した。
+      // 社長の見立てどおりで、歩きシーンだけが `stopPropagation` で守られており、
+      // **それ以外の場面(射撃シーン含む)はどこを押してもここへ届いてOPが飛んでいた**。
+      // スキップは**右下のボタンだけ**にする(ボタンは titleReveal 以外は常時出ている)。
       // z-index はタイトルのモーダル(更新情報等)より上・OrientationGuard(9999)より下。
       // タイトルフェードイン中(titleReveal)は背景を透過し、下のタイトル画面を透かして見せる。
-      style={{ position: 'fixed', inset: 0, background: titleReveal ? 'transparent' : '#000', overflow: 'hidden', zIndex: 9990, cursor: 'pointer' }}
+      style={{ position: 'fixed', inset: 0, background: titleReveal ? 'transparent' : '#000', overflow: 'hidden', zIndex: 9990 }}
     >
       <style>{css}</style>
 
