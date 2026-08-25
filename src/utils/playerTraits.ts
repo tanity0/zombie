@@ -31,6 +31,12 @@ import { snapshotPlayerBuild, type GhostAllySnapshot } from './playerBuild';
 import { isGhostEligibleBoss } from './bossEngagement';
 import { bossClockDurationMs } from './bossClock'; // v0.25.2577: 撃破タイム=ボスごと交戦時計(共有)
 import { isBossCounterableNowApprox } from './bossScript';
+import {
+  createMeleeSpacingState, stepMeleeSpacing, foldMeleeSpacing, blendMeleeSpacing,
+  type MeleeSpacingState, type MeleeSpacingProfile,
+} from './meleeSpacing';
+import { bitePhaseOf, isBiteSubject } from './enemyBite';
+import { isBossType } from './enemyUtils';
 import { isHiddenBoss } from './enemyUtils';
 import { enemyHitStrip } from '../pixi/renderSpec';
 import {
@@ -156,6 +162,12 @@ export interface PlayerProfile {
   punish?: PunishProfile;
   /** G4a(§2.9(3)): サブウェポンの様式カウンタ(ボス交戦区間に限定しない=ラン単位でEMA)。 */
   subStyles: SubStyleProfile;
+  /**
+   * ★§8(SAME_ARENA): 近接の間合いの癖。**旧プロファイルには無い**=欠損可
+   * (消費側は欠損ならその癖だけ従来のフォールバックへ落ちる)。軸1(共通スタイル)のみ——
+   * ボス別スロット(`BossStyleSlot`)へは写さない(技への反応表と同じ扱い)。
+   */
+  meleeSpacing?: MeleeSpacingProfile;
   /** v0.25.2467(社長指示): 計測時のクラス(ゴーストの絵の選択用)。旧プロファイルには無い=任意。 */
   srcClass?: string;
   /** v0.25.2468(社長指示「HPというか全ステータスをそのまま再現」): 計測時のステータスの写し。
@@ -327,6 +339,10 @@ interface Session {
   // (v0.25.2493・撃破の瞬間のlastGameTimeで確定=同tick精度)。ally=撃破の瞬間に同行していた
   // 守護霊の写し(v0.25.2553・§2.16 A。不在ならnull)。
   clearedSlots: { key: string; clearTimeMs: number; ally: GhostAllySnapshot | null }[];
+  // ---- §8(SAME_ARENA): 近接の間合いの癖 ----
+  spacing: MeleeSpacingState;
+  /** `meleeSwingCommitAt` の前tick値(エッジ検知。絶対時刻の引き算をしない=打刻の掟どおり)。 */
+  lastSeenSwingCommitAt: number | null;
 }
 
 let session: Session | null = null;
@@ -365,6 +381,24 @@ const startSession = (gameTime: number): Session => ({
   punish: createPunishEpisodeState(),
   punishTally: createPunishTally(),
   clearedSlots: [],
+  spacing: createMeleeSpacingState(),
+  lastSeenSwingCommitAt: null,
+});
+
+/**
+ * ★§8: 「今、**カウンターを狙える攻撃**が自分へ向かって来ているか」(計測専用)。
+ * ボスは既存の近似判定(`isBossCounterableNowApprox`)、通常敵は**噛みつき台本の最中**を機会とみなす。
+ * ★噛みつきの判定成立は最後の200msだけ(社長裁定2026-08-25)だが、**人が「来る」と認識するのは
+ * 赤点滅の始まり**なので、機会の開始は台本の開始に取る(反応の速さを測るための起点)。
+ * 距離は既存の `OPPORTUNITY_RANGE` を流用=新しい間合いを発明しない。
+ */
+const counterOpportunityOpen = (
+  enemies: readonly Enemy[], pcx: number, pcy: number, gameTime: number,
+): boolean => enemies.some(e => {
+  const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+  if (Math.hypot(ecx - pcx, ecy - pcy) > OPPORTUNITY_RANGE) return false;
+  if (isBiteSubject(e, isBossType)) return bitePhaseOf(e, gameTime) !== 'none';
+  return isBossCounterableNowApprox(e.aiPhase, e.bossState);
 });
 
 // G4a(§2.9(2))の計測定数(計測専用・挙動には無関係)。
@@ -446,6 +480,8 @@ export interface PendingSessionRecord {
   dodgeDirSample: DodgeDirTally;
   /** GHOST-CMD-2A: 隙コマンドのセッション集計(文脈ごとのrush/shoot票)。 */
   punishSample: PunishTally;
+  /** ★§8: 近接の間合いの癖のセッション標本(接敵0件なら n=0=前回値を保つ)。 */
+  meleeSpacingSample: MeleeSpacingProfile | null;
   srcClass: string | null;
   snapshot: PlayerBuildSnapshot | null;
   /** v0.25.2477: セッション確定時点のプレイヤー名(loadPlayerName=無ければ生成される)。 */
@@ -569,6 +605,8 @@ const endSession = (): void => {
       moveTally: moveResult.tally,
       dodgeDirSample: moveResult.dodgeDir,
       punishSample, // GHOST-CMD-2A: 隙コマンドの票(文脈別)
+      // ★§8: 間合いの癖(接敵イベント0件なら n=0 → blend が前回値を保つ)。
+      meleeSpacingSample: foldMeleeSpacing(s.spacing, durationMs),
       srcClass, snapshot, srcName,
     });
   }
@@ -615,6 +653,8 @@ export const applyPendingSession = (prev: PlayerProfile | null, r: PendingSessio
     dodgeDir: blendDodgeDirStat(base.dodgeDir, r.dodgeDirSample, EMA_ALPHA),
     // GHOST-CMD-2A: 隙コマンドも同じ数式を文脈ごとに適用(票0の文脈は前回値を維持=欠損なら欠損のまま)。
     punish: blendPunishProfile(base.punish, r.punishSample, EMA_ALPHA),
+    // ★§8: 間合いの癖も同じ数式。**nullのノブは前回値を保つ**(測れなかったを0で上書きしない)。
+    meleeSpacing: blendMeleeSpacing(base.meleeSpacing, r.meleeSpacingSample, EMA_ALPHA),
     // サブ様式はボス交戦区間に限定しない=セッションではなくラン単位(subStyleレコード)で更新する。
     subStyles: base.subStyles,
     // v0.25.2467: 計測時のクラス(このセッションで観測できなければ前回値を保持)。
@@ -644,7 +684,12 @@ export interface PlayerTraitsTickInput {
     speed?: number; level?: number;
     /** GHOST-CMD-2A(§2.18追補): カウンター成立の錨点(Date.now基準・player.lastCounterSuccessTime)。
      * afterCounter文脈の窓判定に使う。省略(旧呼び出し/テスト)= その文脈は開かない。 */
-    lastCounterSuccessTime?: number };
+    lastCounterSuccessTime?: number;
+    /**
+     * ★§8(間合いの癖): 「**プレイヤーが近接を振った**」の打刻(`Date.now`)。カウンター演出からは
+     * 打たれない専用の打刻なので、これのエッジ=本人が振った瞬間。省略(旧呼び出し/テスト)=振らない扱い。
+     */
+    meleeSwingCommitAt?: number };
   /** v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元になる本人オブジェクト。
    * 省略可(旧呼び出し/テスト)=その場合はビルド項目なしの旧snapshot相当だけを記録する。 */
   buildSource?: Player;
@@ -705,6 +750,22 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
     s.motionTicks += 1;
     const moveSpeed = Math.hypot(pcx - s.lastPcx, pcy - s.lastPcy) / (dtMs / 1000);
     if (moveSpeed < STATIONARY_SPEED_MAX_PX_PER_SEC) s.stationaryTicks += 1;
+  }
+
+  // ---- §8(SAME_ARENA): 近接の間合いの癖。**ボスに限らない**(雑魚に間合いへ入られた時の癖も
+  // 幻影/守護霊が使う)ので、boss の早期returnより前で回す。
+  {
+    const commitAt = input.player.meleeSwingCommitAt ?? 0;
+    const swungThisTick = s.lastSeenSwingCommitAt !== null && commitAt !== s.lastSeenSwingCommitAt;
+    s.lastSeenSwingCommitAt = commitAt;
+    stepMeleeSpacing(s.spacing, {
+      enemies: input.enemies,
+      pcx, pcy,
+      reachPx: MELEE_RADIUS_MIRROR,
+      gameTime: input.gameTime,
+      swungThisTick,
+      counterWindowOpen: counterOpportunityOpen(input.enemies, pcx, pcy, input.gameTime),
+    });
   }
 
   const boss = nearestEngagedBoss(pcx, pcy, input.enemies);

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3911',
+    items: [
+      'ゲーム内容の変更はありません(近接の間合いの癖の計測を実際に開始。次回以降の守護霊・幻影がこれを引き継ぎます)。',
+    ],
+  },
+  {
     version: '0.25.3910',
     items: [
       'ゲーム内容の変更はありません(幻影・守護霊が引き継ぐ癖の計測に「カウンター狙いで振りに行くか」を追加。狙って外した振りも残るようになりました)。',

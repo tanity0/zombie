@@ -1,5 +1,41 @@
 # Development Log
 
+## v0.25.3911 - 間合いの癖の計測を実際に回す(SAME_ARENA §8・Phase B-1)【2026-08-25 17:53 JST】
+
+**Phase A で作った台帳(`meleeSpacing.ts`)は、まだ誰も呼んでいなかった**=1件も記録されていない。
+ここで `tickPlayerTraits` へ配線し、プロファイルへ焼くところまで通した。
+
+- **振りの検知**: `player.meleeSwingCommitAt` のエッジ。**`meleeSwingAt` ではない**——あちらは
+  カウンター成立の演出からも7箇所で打たれるので、「本人が振った」にならない(型の docコメントに明記済み)。
+- **ボスに限らない**: `nearestEngagedBoss` の早期returnより**前**で回す。雑魚に間合いへ入られた時の
+  癖も幻影/守護霊が使うため。射程は既存の `MELEE_RADIUS_MIRROR`(=74)を流用=新しい間合いを発明しない。
+- **カウンター機会の判定**(`counterOpportunityOpen`): ボスは既存の `isBossCounterableNowApprox`、
+  通常敵は**噛みつき台本の最中**(`bitePhaseOf !== 'none'`)。距離は既存の `OPPORTUNITY_RANGE` を流用。
+  ★判定成立は最後の200msだけ(社長裁定2026-08-25)だが、**人が「来る」と認識するのは赤点滅の始まり**
+  なので、反応の速さを測る起点は台本の開始に取る。
+- **プロファイルへの混合**(`blendMeleeSpacing`): `dodgeDir`/`punish` と同じ流儀
+  (標本なし=前回値 / 初回=標本そのまま / 率・平均はEMA / `n` は累計)。
+  **★null のノブは前回値を保つ**(「測れなかった」で癖を消さない=v0.25.3909の掟の徹底)。
+  置き場は軸1(共通スタイル)のみ——ボス別スロット(`BossStyleSlot`)へは写さない(技への反応表と同じ扱い)。
+
+**変更ファイル**: `src/utils/meleeSpacing.ts`(blend追加) / `src/utils/meleeSpacing.test.ts`(16→21件) /
+`src/utils/playerTraits.ts`(セッション状態・標本・混合) / `src/utils/directorTick.ts`(打刻を渡す1行)。
+
+**検証**: `npx vitest run src/utils/meleeSpacing.test.ts src/utils/playerTraits.test.ts` 110 passed /
+typecheck 0 / lint 0 errors(warning 8は既存)。
+
+**★調査で分かったこと(サブウェポンの癖・社長の問い2026-08-25)**: `subStyles` は3つ計測しているが、
+**実際に消費されているのはホーミングの溜め時間(`homing.holdMsAvg`)だけ**。
+`wire.slamRatio` と `shield.bashPerPlacement/bashDamageFrac` は**計測だけで消費側が存在しない**(死蔵)。
+幻影は白リスト制でホーミング自体がまだ主語になれないので、渡していないのは漏れではない。
+⇒ 死蔵2件の配線は仕様判断が要るため社長へ選択肢を出す(このコミットでは触っていない)。
+
+**自己点検**: 憲法第4条・第5条に抵触しない(計測のみ。消費側は次のB-2で入れる)。
+
+**次の受け渡し**: Phase B-2=`phantomTick`/`ghostDriver` の820msメトロノームを記録値+袋へ置換。
+
+**状態変化**: なし(§8 Phase B-1)。
+
 ## v0.25.3910 - カウンター狙いの振りを別勘定にする(SAME_ARENA §8・Phase A追補2)【2026-08-25 17:37 JST】
 
 **社長の指摘**: 「もちろん、カウンター狙いで振る人はいる。それも別で癖は取れるよね」 → 取れる。**ただし分けないと壊れる。**

@@ -255,3 +255,35 @@ export const foldMeleeSpacing = (st: MeleeSpacingState, elapsedMs: number): Mele
     counterAimLagMs: st.caLagCount > 0 ? st.caLagSumMs / st.caLagCount : null,
   };
 };
+
+/**
+ * ★セッション標本をプロファイルへ混ぜる(`blendDodgeDirStat` / `blendPunishProfile` と同じ流儀)。
+ * - 標本が無い(`null` / `n===0`)なら**前回値をそのまま**返す(欠損は欠損のまま=消費側がフォールバック)。
+ * - 前回値が無ければ標本そのまま(初回)。
+ * - **null のノブは前回値を保つ**(「測れなかった」を0で上書きしない=v0.25.3909の掟)。
+ * - `n` は累計(「どれだけ観測したか」なので足す。率・平均はEMA)。
+ */
+export const blendMeleeSpacing = (
+  prev: MeleeSpacingProfile | undefined,
+  sample: MeleeSpacingProfile | null,
+  alpha: number,
+): MeleeSpacingProfile | undefined => {
+  if (!sample || sample.n <= 0) return prev;
+  if (!prev) return sample;
+  const ema = (a: number, b: number): number => a * (1 - alpha) + b * alpha;
+  const emaN = (a: number | null, b: number | null): number | null =>
+    b === null ? a : a === null ? b : ema(a, b);
+  return {
+    n: prev.n + sample.n,
+    swingLagMs: emaN(prev.swingLagMs, sample.swingLagMs),
+    reentryPerMin: ema(prev.reentryPerMin, sample.reentryPerMin),
+    backStepPx: emaN(prev.backStepPx, sample.backStepPx),
+    holdBackStepPx: emaN(prev.holdBackStepPx, sample.holdBackStepPx),
+    swingsPerEpisode: ema(prev.swingsPerEpisode, sample.swingsPerEpisode),
+    preSwingRate: ema(prev.preSwingRate, sample.preSwingRate),
+    swingLeaveRate: ema(prev.swingLeaveRate, sample.swingLeaveRate),
+    holdRate: ema(prev.holdRate, sample.holdRate),
+    counterAimRate: emaN(prev.counterAimRate, sample.counterAimRate),
+    counterAimLagMs: emaN(prev.counterAimLagMs, sample.counterAimLagMs),
+  };
+};

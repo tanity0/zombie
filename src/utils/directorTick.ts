@@ -786,6 +786,9 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
       speed: player.speed, level: player.level, // v0.25.2468: 計測時ステータスの写し用
       // GHOST-CMD-2A(§2.18追補): カウンター成立直後の追撃窓(afterCounter文脈)の錨点。
       lastCounterSuccessTime: player.lastCounterSuccessTime,
+      // ★§8(SAME_ARENA・間合いの癖): 「本人が近接を振った」の打刻。カウンター演出からは打たれない
+      // 専用の打刻(meleeSwingAt ではなくこちら)なので、エッジ=本人の意思の振り。
+      meleeSwingCommitAt: player.meleeSwingCommitAt,
     },
     // v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元。写し取りはplayerTraits側の
     // 純関数(snapshotPlayerBuild)がボス交戦中のtickだけ行う=ここは本人オブジェクトを渡すだけ。

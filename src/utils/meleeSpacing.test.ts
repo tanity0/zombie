@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  createMeleeSpacingState, stepMeleeSpacing, foldMeleeSpacing,
+  createMeleeSpacingState, stepMeleeSpacing, foldMeleeSpacing, blendMeleeSpacing,
   PRE_SWING_WINDOW_MS, SWING_LEAVE_WINDOW_MS,
+  type MeleeSpacingProfile,
 } from './meleeSpacing';
 
 // ★近接の「間合いの癖」の計測(SAME_ARENA §8)。社長が挙げた5つの癖が、
@@ -212,5 +213,45 @@ describe('接敵イベントの分類(社長の5つの癖)', () => {
     tick(st, 0, [enemy('a', 50), enemy('b', -50)]);
     tick(st, 1000, []);
     expect(foldMeleeSpacing(st, 1000).n).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// ★プロファイルへの混合(v0.25.3911・Phase B-1)。dodgeDir/punish と同じ流儀:
+// 標本なし=前回値を保つ / 初回=標本そのまま / **null のノブは前回値を壊さない**。
+// ---------------------------------------------------------------------------------------------
+const prof = (o: Partial<MeleeSpacingProfile>): MeleeSpacingProfile => ({
+  n: 10, swingLagMs: 300, reentryPerMin: 4, backStepPx: 20, holdBackStepPx: 10,
+  swingsPerEpisode: 1, preSwingRate: 0.2, swingLeaveRate: 0.3, holdRate: 0.1,
+  counterAimRate: 0.5, counterAimLagMs: 260, ...o,
+});
+
+describe('プロファイルへの混合(blendMeleeSpacing)', () => {
+  it('前回値が無ければ標本そのまま(初回)', () => {
+    expect(blendMeleeSpacing(undefined, prof({}), 0.3)).toEqual(prof({}));
+  });
+
+  it('標本が無い/n=0 なら前回値をそのまま返す(欠損で上書きしない)', () => {
+    const prev = prof({});
+    expect(blendMeleeSpacing(prev, null, 0.3)).toBe(prev);
+    expect(blendMeleeSpacing(prev, prof({ n: 0 }), 0.3)).toBe(prev);
+  });
+
+  it('★標本側が null のノブは前回値を保つ(「測れなかった」で癖を消さない)', () => {
+    const prev = prof({ swingLagMs: 300, counterAimRate: 0.5 });
+    const next = blendMeleeSpacing(prev, prof({ swingLagMs: null, counterAimRate: null }), 0.5);
+    expect(next?.swingLagMs).toBe(300);
+    expect(next?.counterAimRate).toBe(0.5);
+  });
+
+  it('前回値が null で標本にあれば標本を採る(初めて測れた)', () => {
+    const next = blendMeleeSpacing(prof({ swingLagMs: null }), prof({ swingLagMs: 400 }), 0.5);
+    expect(next?.swingLagMs).toBe(400);
+  });
+
+  it('率・平均はEMA / n は累計', () => {
+    const next = blendMeleeSpacing(prof({ holdRate: 0, n: 10 }), prof({ holdRate: 1, n: 6 }), 0.5);
+    expect(next?.holdRate).toBeCloseTo(0.5);
+    expect(next?.n).toBe(16);
   });
 });
