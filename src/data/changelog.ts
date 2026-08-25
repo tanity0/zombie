@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3928',
+    items: [
+      '噛みつきをカウンター不可にしました。構えている敵は紫に光ります(紫=カウンターできない攻撃)。避けてください。',
+    ],
+  },
+  {
     version: '0.25.3927',
     items: [
       'ゲーム内容の変更はありません(カウンターの成立時間についての決定を設計書に記録しました)。',

@@ -48,7 +48,10 @@ export const BITE_DEFAULT: BiteSpec = {
   biteMs: 200,
   lungePx: 30,
   recoverMs: 600,   // 叩き台。0にすると外した敵が即再構えでずっと噛みつき状態になる
-  counterable: true, // 一旦カウンター可の赤
+  // ★社長裁定2026-08-25「噛みつきはやはり紫にする」。当初は「一旦カウンター可の赤。あまりに簡単に
+  // なったら紫にする可能性もあり」という条件付きの赤で、その条件が引かれた形。
+  // 紫=カウンター不可(CLAUDE.md 色と形の文法②)。**点滅の色も紫に揃える**(pixiScene の biteTint)。
+  counterable: false,
 };
 
 /**

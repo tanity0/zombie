@@ -46,8 +46,7 @@ import {
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore, isSeekerActive, skillLevel, counterReplyDamage, enemyDeathLabel, combatActorPlayer,
   ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
-  COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, COUNTER_WINDOW,
-  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
+  COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
   KNOCKBACK_DURATION, KNOCKBACK_SPEED, COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, STUN_DURATION_MS,
@@ -1132,15 +1131,17 @@ export const applyContactDamage = (
   for (const h of biteHits) {
     const he = useGameStore.getState().enemies.find(x => x.id === h.id);
     if (!he) continue;
-    // ★カウンター可(赤)なら、窓が開いていた時は既存の突進パリィと**同じ1本**へ流す
-    // (Counter!表示・確定クリ反撃・ノックバック・CDリファンドまで全部そこで解決済み)。
-    // 台帳の `counterable` を false にすれば紫(カウンター不可)へ切り替わる=触るのは1箇所。
-    // ★カウンターが成立するのは**最後の200ms(噛みの区間)だけ**(社長指示2026-08-25)。
-    // 溜め(前半300ms)の間に振っておいた"置き"では通らず、**噛みに合わせて振った時だけ**成立する。
+    // ★噛みつきは**紫=カウンター不可**(社長裁定2026-08-25「噛みつきはやはり紫にする」)。
+    // 台帳が `counterable: false` なので、下の分岐は**今は通らない**——絵の点滅も紫(pixiScene)で、
+    // 判定と色は**必ず一対**で切り替える(片方だけ変えると色の文法が破れる)。
+    // 赤(カウンター可)へ戻す時は台帳の1行を true にすればここが生き返る:
+    // 窓が開いていれば既存の突進パリィと**同じ1本**へ流す(Counter!表示・確定クリ反撃・
+    // ノックバック・CDリファンドまで全部そこで解決済み)。その場合の成立条件は
+    // **噛みの区間(最後の200ms)に振った時だけ**——溜めの間の"置き"では通らない。
     // 時計をまたがないよう「窓が開いてから何ms経ったか」で見る
-    // (biteAt は gameTime 系 / counterWindowEnd は Date.now 系なので直接引き算しない)。
+    // (biteAt は gameTime 系 / カウンター窓は Date.now 系なので直接引き算しない)。
     const heSpec = biteSpecFor(he.type);
-    const windowOpenedAgo = Date.now() - (collPlayer.counterWindowEnd - COUNTER_WINDOW);
+    const windowOpenedAgo = Date.now() - collPlayer.counterWindowStart;
     if (heSpec.counterable && counterActiveNow && windowOpenedAgo <= heSpec.biteMs) {
       dashParried.push(h.id); continue;
     }

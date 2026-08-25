@@ -15335,12 +15335,17 @@ export class PixiScene {
       const biteShake = (biteElapsed >= biteSpecNow.windupMs && biteElapsed <= biteTotalMs)
         ? Math.sin(biteElapsed / 18) * 1.6
         : 0;
-      // ★噛みつき中は**本体の絵**が赤く点滅する(社長指示2026-08-25「赤点滅するのは本体の絵ね」)。
-      // 終盤ほど速く点滅(足元の四角と同じ周期)。**明側を白熱にして明暗で立てる**ので、
-      // 紅き夜(画面全体が血赤)でも沈まない。適用は tint を確定させる場所の**後**で行う。
+      // ★噛みつき中は**本体の絵**が点滅する(社長指示2026-08-25「点滅するのは本体の絵ね」)。
+      // ★色は**紫**(社長裁定2026-08-25「噛みつきはやはり紫にする」)。
+      // CLAUDE.md の色と形の文法: 赤=カウンター/回避の対象 / **紫=カウンターできない攻撃**。
+      // 判定側(`BITE_DEFAULT.counterable = false`)と**必ず一対**で切り替えること
+      // ——ここだけ紫にすると「紫なのにカウンターできる」、あちらだけ変えると
+      // 「赤いのにカウンターできない」になり、どちらも文法違反になる。
+      // 終盤ほど速く点滅。**明側を白熱にして明暗で立てる**ので、紅き夜(画面全体が血赤)でも沈まない。
+      // 適用は tint を確定させる場所の**後**で行う。
       const biteTint: number | null = (biteElapsed >= 0 && biteElapsed <= biteTotalMs)
         ? (Math.floor(biteElapsed / Math.max(30, 150 - 90 * (biteElapsed / biteTotalMs))) % 2 === 0
-            ? 0xffffff : 0xff3020)
+            ? 0xffffff : 0x9333ea)
         : null;
       if (sinceLunge >= 0 && sinceLunge < CONTACT_LUNGE_MS) {
         const pose = contactLungePose(sinceLunge / CONTACT_LUNGE_MS);

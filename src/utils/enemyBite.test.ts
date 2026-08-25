@@ -26,8 +26,10 @@ describe('噛みつきの台帳', () => {
     expect(BITE_DEFAULT.windupMs + BITE_DEFAULT.biteMs).toBe(500); // 社長「500msかけて」
   });
 
-  it('★一旦カウンター可(赤)。紫へ切り替える時はこの1箇所だけを触る', () => {
-    expect(BITE_DEFAULT.counterable).toBe(true);
+  it('★紫=カウンター不可(社長裁定2026-08-25「噛みつきはやはり紫にする」)', () => {
+    // 当初は条件付きの赤(「あまりに簡単になったら紫にする」)。その条件が引かれた。
+    // ★判定と絵の点滅色は必ず一対。ここを true に戻す時は pixiScene の biteTint も赤へ戻すこと。
+    expect(BITE_DEFAULT.counterable).toBe(false);
   });
 
   it('今は全敵が既定値(敵ごとの上書きは空)=調整はこの表へ足していく', () => {
