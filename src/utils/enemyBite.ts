@@ -160,18 +160,25 @@ export const bitePointFrom = (
  */
 export const BITE_CANCEL_DR_MS = 3000;
 
-export const BITE_WALL_W = 24;
-export const BITE_WALL_H = 14;
+/**
+ * ★v0.25.3922(社長報告2026-08-25「ボスに壁判定が無いかも?」): **固定サイズをやめ、体の大きさに比例**
+ * させる。24×14 の固定だと、ヨルムンガンドのような巨体では**足元の点にしか壁が無い**=素通しに見える。
+ * 係数は**雑魚が今までと同じ大きさになる値**を選んである(ゾンビ 36×36 → 23.8×14.4 ≒ 従来の 24×14)ので、
+ * 雑魚の当たり心地は変わらない。下限も従来値に置いて、小さい敵が薄くならないようにする。
+ */
+export const BITE_WALL_W = 24;   // 下限
+export const BITE_WALL_H = 14;   // 下限
+export const BITE_WALL_W_FRAC = 0.66;
+export const BITE_WALL_H_FRAC = 0.40;
 
-/** 上の「壁」の実体。敵の当たり判定(AABB)の**足元中央**に固定サイズで置く。 */
+/** 上の「壁」の実体。敵の当たり判定(AABB)の**足元中央**に置く。 */
 export const biteWallRect = (
   e: Pick<Enemy, 'x' | 'y' | 'width' | 'height'>,
-): { x: number; y: number; width: number; height: number } => ({
-  x: e.x + e.width / 2 - BITE_WALL_W / 2,
-  y: e.y + e.height - BITE_WALL_H,
-  width: BITE_WALL_W,
-  height: BITE_WALL_H,
-});
+): { x: number; y: number; width: number; height: number } => {
+  const w = Math.max(BITE_WALL_W, e.width * BITE_WALL_W_FRAC);
+  const h = Math.max(BITE_WALL_H, e.height * BITE_WALL_H_FRAC);
+  return { x: e.x + e.width / 2 - w / 2, y: e.y + e.height - h, width: w, height: h };
+};
 
 export interface BiteRect { x: number; y: number; w: number; h: number }
 
@@ -313,6 +320,22 @@ export const biteBodyOverlapsPlayer = (
  * 踏み込みは**溜めから始まっている**(`biteLungeFrac` は溜めで半分出る)ので、
  * 開けるのは**台本の間ずっと**(溜め+噛み)。
  */
+/**
+ * ★踏み込みの上書きを**やめる**べきか(安全弁・v0.25.3922)。
+ *
+ * 踏み込みは「発火時に焼いた起点+向き」へ**絶対座標で**位置を書く。そのため、台本の最中に
+ * **別の系(ワープ/リーシュ/強いノックバック/イベントの再配置)が敵を動かすと、次のフレームで
+ * 起点まで引き戻される**=遠くへ飛んだように見える。
+ * 起点から踏み込み量の3倍以上離れていたら「これは踏み込みではない移動」と判断して上書きを諦める。
+ */
+export const biteLungeDerailed = (
+  enemy: Pick<Enemy, 'type' | 'x' | 'y' | 'biteX' | 'biteY'>,
+): boolean => {
+  if (enemy.biteX === undefined || enemy.biteY === undefined) return true;
+  const lp = biteSpecFor(enemy.type).lungePx;
+  return Math.hypot(enemy.x - enemy.biteX, enemy.y - enemy.biteY) > lp * 3;
+};
+
 export const isBiteWallOpen = (
   enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number,
 ): boolean => bitePhaseOf(enemy, gameTime) !== 'none';

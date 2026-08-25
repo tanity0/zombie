@@ -181,12 +181,24 @@ describe('★壁の箱と攻撃の箱を分ける(v0.25.3913)', () => {
   const small = { x: 0, y: 0, width: 36, height: 36 };   // ゾンビ相当
   const large = { x: 0, y: 0, width: 120, height: 120 }; // 大型相当
 
-  it('壁は敵の大きさによらず固定サイズ(社長「壁判定は固定」)', () => {
-    for (const e of [small, large]) {
-      const w = biteWallRect(e);
-      expect(w.width).toBe(BITE_WALL_W);
-      expect(w.height).toBe(BITE_WALL_H);
-    }
+  // ★v0.25.3922(社長報告「ボスに壁判定が無いかも?」): 固定サイズをやめ、体の大きさに比例させた。
+  // 固定だと巨体では足元の点にしか壁が無く、素通しに見えるため。
+  it('雑魚の壁は従来と同じ大きさのまま(係数はそう選んである)', () => {
+    const w = biteWallRect(small);              // ゾンビ相当 36×36
+    expect(w.width).toBeCloseTo(BITE_WALL_W, 0); // 36×0.66 = 23.8 ≒ 24
+    expect(w.height).toBeCloseTo(BITE_WALL_H, 0); // 36×0.40 = 14.4 ≒ 14
+  });
+
+  it('★巨体は壁も大きくなる(素通しにならない)', () => {
+    const w = biteWallRect(large);              // 120×120
+    expect(w.width).toBeGreaterThan(BITE_WALL_W * 2);
+    expect(w.height).toBeGreaterThan(BITE_WALL_H * 2);
+  });
+
+  it('小さい敵でも下限を割らない', () => {
+    const w = biteWallRect({ x: 0, y: 0, width: 10, height: 10 });
+    expect(w.width).toBe(BITE_WALL_W);
+    expect(w.height).toBe(BITE_WALL_H);
   });
 
   it('壁は足元(当たり判定の下辺)の中央に置く', () => {

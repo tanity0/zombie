@@ -236,7 +236,7 @@ import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
-import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor } from '../utils/enemyBite';
+import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, biteLungeDerailed } from '../utils/enemyBite';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
@@ -13070,7 +13070,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★噛みつきの踏み込み(社長裁定2026-08-25「30PX移動してくる」)。台本の間は通常の接近を止め、
         // **発火時に焼いた起点+向き**へ `biteLungeFrac`(溜めでじわり→噛みで伸び切る=慣性)で進む。
         // 追尾しない=横へ避けられる。壁(すり抜け防止)はこの間だけ開いている(上の movePlayer 側)。
-        if (isBiteSubject(enemy, isBiteExemptType) && bitePhaseOf(enemy, gameTime) !== 'none') {
+        if (isBiteSubject(enemy, isBiteExemptType) && bitePhaseOf(enemy, gameTime) !== 'none'
+          && !biteLungeDerailed(enemy)) {
           const lp = biteSpecFor(enemy.type).lungePx;
           const f = biteLungeFrac(enemy, gameTime);
           const ox = enemy.biteX ?? enemy.x, oy = enemy.biteY ?? enemy.y;

@@ -926,6 +926,10 @@ export const dashParriedEnemyPatch = (
   const ux = ndx / d, uy = ndy / d;
   return {
     ...e,
+    // ★噛みつきもここで中断する(v0.25.3922)。消さないと `biteAt` が生きたまま残り、
+    // 踏み込みの絶対座標の上書きが**弾き飛ばしたノックバックを打ち消して起点へ引き戻す**。
+    biteAt: 0,
+    biteReadyAt: gameTimeNow + biteSpecFor(e.type).recoverMs,
     // 突進/ジャンプ中断。※ COUNTER_UNINTERRUPTIBLE_PHASES の技だけは技を消さない(社長指示v0.25.3145)。
     ...(keepPhase ? {} : {
       aiPhase: undefined,
