@@ -39,7 +39,7 @@ import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkColli
 // ★全敵共通の噛みつき(PACING_PUZZLE.md §12・社長発案2026-08-25)。
 import {
   biteSpecFor, biteReachRect, isInBiteRect, isBiteSubject, canStartBite, isBiteResolveDue,
-  biteBodyOverlapsPlayer,
+  biteBodyOverlapsPlayer, BITE_CANCEL_DR_MS,
 } from './enemyBite';
 import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { EGG_BLAST_RADIUS } from '../world/mines';
@@ -1053,6 +1053,7 @@ export const applyContactDamage = (
   const biteHits: { id: string; dmg: number; x: number; y: number }[] = [];
   const biteClears: string[] = [];
   const kbNow = Date.now(); // ノックバック判定用(knockbackUntil は Date.now 系)
+  const biteDrIds: string[] = []; // ノックバックで中断した個体(中断の逓減を開始する)
   for (const e of collEnemies) {
     if (isCorpse(e)) continue;
     const biting = e.biteAt !== undefined && e.biteAt > 0;
@@ -1065,10 +1066,17 @@ export const applyContactDamage = (
     // ★こちらの攻撃で**ノックバック中**の敵は噛まない(社長報告2026-08-25「いま攻撃当てても
     // お構いなしに噛みつきが来るから必ず食らう」)。構え中なら中断し、構えていないなら始めない。
     // 時計に注意: `knockbackUntil` は `Date.now()` 系(gameTime系ではない)。
-    const knocked = e.knockbackUntil !== undefined && kbNow < e.knockbackUntil;
+    // ★ただし**逓減する**(社長報告2026-08-25「なんどでもノックバックさせれて攻撃あたらん」):
+    // 1度中断したら `BITE_CANCEL_DR_MS` の間は振り切って噛む=撃ち続けるだけの無限ロックを防ぐ。
+    const biteDrOn = e.biteNoCancelUntil !== undefined && gameTime < e.biteNoCancelUntil;
+    const knocked = !biteDrOn && e.knockbackUntil !== undefined && kbNow < e.knockbackUntil;
     if (biting) {
       // 構えている最中に**技へ入った**なら、その噛みは中断(技の当たり判定が本体になる)。
-      if (!isBiteSubject(e, isBossType) || knocked) { biteClears.push(e.id); continue; }
+      if (!isBiteSubject(e, isBossType) || knocked) {
+        biteClears.push(e.id);
+        if (knocked) biteDrIds.push(e.id); // 中断した=次はしばらく振り切られる
+        continue;
+      }
       if (!isBiteResolveDue(e, gameTime)) continue;              // まだ台本の途中
       // ★判定=**噛みの瞬間に敵の体とプレイヤーが重なっているか**(社長裁定2026-08-25)。
       // 踏み込み中は壁が開いているので、敵は赤く光ったままプレイヤーへ覆いかぶさる。
@@ -1107,7 +1115,10 @@ export const applyContactDamage = (
           biteX: e.x, biteY: e.y, biteDirX: st0.dirX, biteDirY: st0.dirY,
         };
         if (biteClears.includes(e.id)) {
-          return { ...e, biteAt: 0, biteReadyAt: gameTime + biteSpecFor(e.type).recoverMs };
+          return {
+            ...e, biteAt: 0, biteReadyAt: gameTime + biteSpecFor(e.type).recoverMs,
+            ...(biteDrIds.includes(e.id) ? { biteNoCancelUntil: gameTime + BITE_CANCEL_DR_MS } : {}),
+          };
         }
         return e;
       }),

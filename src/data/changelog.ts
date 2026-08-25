@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3917',
+    items: [
+      '噛みつきの中断に逓減を入れました。一度のけぞらせて中断させると、しばらくは振り切って噛みついてきます(撃ち続けるだけで無敵になるのを防ぐため)。',
+    ],
+  },
+  {
     version: '0.25.3916',
     items: [
       '変異体(削岩型)の突きに槍(ドリル)の絵を追加しました。溜めで引いて構え、突きで伸び切ります。',

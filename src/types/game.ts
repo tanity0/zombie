@@ -474,6 +474,8 @@ export interface Enemy {
   biteY?: number;
   biteDirX?: number;
   biteDirY?: number;
+  /** ★中断の逓減(`BITE_CANCEL_DR_MS`)。この gameTime まではノックバックで噛みつきが止まらない。 */
+  biteNoCancelUntil?: number;
   biteReadyAt?: number;
   // Visual-only lift reaction for boss melee finisher-grade hits.
   liftUntil?: number;
