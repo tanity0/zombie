@@ -6,7 +6,12 @@
 //     →200msで前かがみに噛む。**逃げれば空振り**。
 //
 // ★この台本の3つの掟(どれか1つでも崩すと文法が壊れる):
-//  1. **発火の30pxと、噛みの判定の30pxは同じ1つの数**(社長「あくまで当たり判定は30px範囲ね」)。
+//  1. **判定＝敵のもともとの当たり判定の箱を、プレイヤーが居る側にだけ30px伸ばした四角**
+//     (社長2026-08-25「上下左右に30px伸ばすイメージ。100*50の当たり判定を持つ敵なら、
+//      上にプレイヤーがいれば上に30px伸ばした範囲(その場合、下左右には伸ばさない)」)。
+//     ★**中心からの距離ではない**——中心で測ると体の大きい敵ほど届かなくなる。
+//     実際 v0.25.3902 は中心間30pxで見ており、**ゾンビ(36px)は触れても中心間34px**で
+//     一生噛めなかった(社長報告「噛みつき、ゾンビとか漏れてるな」)。
 //     踏み込み20pxは「距離を詰める見せ方」であって、判定を伸ばす値ではない。
 //  2. **判定は"予告した点"で取り、敵が実際にどこに居るかは見ない。** 壁際でも赤い円と判定が
 //     絶対にズレない(「赤いのに当たらない/赤くないのに当たる」の禁止)。
@@ -114,6 +119,39 @@ export const bitePointFrom = (
   if (d < 0.001) return { x: ecx, y: ecy };
   return { x: ecx + (dx / d) * lungePx, y: ecy + (dy / d) * lungePx };
 };
+
+/** 判定の四角(左上と寸法)。**赤く描く形とまったく同じ**もの。 */
+export interface BiteRect { x: number; y: number; w: number; h: number }
+
+/**
+ * ★噛みつきの判定範囲(社長2026-08-25)。
+ * 敵のもともとの当たり判定の箱を、**プレイヤーが居る側の1辺だけ** `rangePx` 伸ばす。
+ * 例: 100×50 の敵の**上**にプレイヤーが居れば、上へ30px伸ばした 100×80 の四角
+ * (下・左・右は伸ばさない)。
+ *
+ * 向きは**縦横のどちらに寄っているか**で決める(|dx| と |dy| の大きい方)。
+ * こうすると①体の大きい敵ほど自然に遠くまで届く ②形が四角のままなので**描いた絵と判定が完全に一致**する
+ * (「赤いのに当たらない/赤くないのに当たる」を作らない)。
+ */
+export const biteReachRect = (
+  box: { cx: number; cy: number; w: number; h: number },
+  pcx: number, pcy: number, rangePx: number,
+): BiteRect => {
+  const dx = pcx - box.cx, dy = pcy - box.cy;
+  const r: BiteRect = { x: box.cx - box.w / 2, y: box.cy - box.h / 2, w: box.w, h: box.h };
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    if (dx >= 0) r.w += rangePx;            // 右へ伸ばす
+    else { r.x -= rangePx; r.w += rangePx; } // 左へ伸ばす
+  } else {
+    if (dy >= 0) r.h += rangePx;            // 下へ伸ばす
+    else { r.y -= rangePx; r.h += rangePx; } // 上へ伸ばす
+  }
+  return r;
+};
+
+/** 判定の四角の中にプレイヤー(中心)が居るか。**発火時に焼いた四角**で見る(掟2)。 */
+export const isInBiteRect = (r: BiteRect, pcx: number, pcy: number): boolean =>
+  pcx >= r.x && pcx <= r.x + r.w && pcy >= r.y && pcy <= r.y + r.h;
 
 /**
  * ★この敵が噛みつき台本の対象か(=**通常の接触ダメージを持たなくなる敵**)。

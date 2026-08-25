@@ -465,12 +465,16 @@ export interface Enemy {
    */
   biteAt?: number;
   /**
-   * 噛む点(=赤い円の中心=判定の中心)。**発火の瞬間に確定して焼く**。
+   * 判定の四角の**左上**。**発火の瞬間に確定して焼く**
+   * (敵の当たり判定の箱を、プレイヤーが居る側へ `rangePx` だけ伸ばした四角)。
    * 判定はこの点で取り、**敵が実際にどこに居るかは見ない**——壁際でも
    * 「赤い円と違う所で噛まれる」が起きないようにするため(§12の掟2)。
    */
   biteX?: number;
   biteY?: number;
+  /** 判定の四角の寸法(発火時に焼く)。`biteX/biteY` が左上、これが幅・高さ。 */
+  biteW?: number;
+  biteH?: number;
   /** 噛み終わってから次に構えられる gameTime(硬直)。外した敵が即再構えするのを防ぐ。 */
   biteReadyAt?: number;
   // Visual-only lift reaction for boss melee finisher-grade hits.

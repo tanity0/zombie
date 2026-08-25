@@ -35,17 +35,17 @@ import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
 import { PHILL_COUNTER_RECOVER_MS } from './phillScript'; // §10-15#2: フィル後追い分岐の硬直長
 import { activeFlareTargets } from './flareGun';
 import { getActiveGun, GHOST_REFLECT_WEAPON_KEY } from './weaponUtils';
-import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkCollision } from './collisionUtils';
+import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkCollision, enemyContactBox } from './collisionUtils';
 // ★全敵共通の噛みつき(PACING_PUZZLE.md §12・社長発案2026-08-25)。
 import {
-  biteSpecFor, bitePointFrom, isInBiteCircle, isBiteSubject, canStartBite, isBiteResolveDue,
+  biteSpecFor, biteReachRect, isInBiteRect, isBiteSubject, canStartBite, isBiteResolveDue,
 } from './enemyBite';
 import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { EGG_BLAST_RADIUS } from '../world/mines';
 import {
   useGameStore, isSeekerActive, skillLevel, counterReplyDamage, enemyDeathLabel, combatActorPlayer,
   ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
-  COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
+  COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, COUNTER_WINDOW,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
   KNOCKBACK_DURATION, KNOCKBACK_SPEED, COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
@@ -1048,7 +1048,7 @@ export const applyContactDamage = (
   // ==========================================================================================
   const bcx = collPlayer.x + collPlayer.width / 2;
   const bcy = collPlayer.y + collPlayer.height / 2;
-  const biteStarts: { id: string; x: number; y: number }[] = [];
+  const biteStarts: { id: string; r: { x: number; y: number; w: number; h: number } }[] = [];
   const biteHits: { id: string; dmg: number; x: number; y: number }[] = [];
   const biteClears: string[] = [];
   for (const e of collEnemies) {
@@ -1057,9 +1057,11 @@ export const applyContactDamage = (
     const spec = biteSpecFor(e.type);
     if (e.biteAt !== undefined && e.biteAt > 0) {
       if (!isBiteResolveDue(e, gameTime)) continue;              // まだ台本の途中
-      const px = e.biteX ?? (e.x + e.width / 2);
-      const py = e.biteY ?? (e.y + e.height / 2);
-      if (isInBiteCircle(px, py, bcx, bcy, spec.rangePx)) {
+      // ★判定は**発火時に焼いた四角**(敵の当たり判定をプレイヤー側へ30px伸ばしたもの)。
+      // 敵が実際にどこへ動いたかは見ない=赤く描いた四角と1pxもズレない。
+      const rr = { x: e.biteX ?? 0, y: e.biteY ?? 0, w: e.biteW ?? 0, h: e.biteH ?? 0 };
+      const px = rr.x + rr.w / 2, py = rr.y + rr.h / 2;
+      if (rr.w > 0 && isInBiteRect(rr, bcx, bcy)) {
         // 接触ダメージと同じ倍率の掛け方(紅き夜×2 / 叫喚の強化窓)。
         const rn = redNightActive ? 2 : 1;
         const sc = (screamerBuffUntil > gameTime && e.type !== 'screamer') ? SCREAMER_BUFF_MULT : 1;
@@ -1067,19 +1069,21 @@ export const applyContactDamage = (
       }
       biteClears.push(e.id);                                      // 当たっても外しても台本は終わる
     } else if (canStartBite(e, gameTime)) {
-      const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-      const dx = bcx - ecx, dy = bcy - ecy;
-      if (dx * dx + dy * dy <= spec.rangePx * spec.rangePx) {
-        const bp = bitePointFrom(ecx, ecy, bcx, bcy, spec.lungePx);
-        biteStarts.push({ id: e.id, x: bp.x, y: bp.y });
-      }
+      // ★発火も判定と**同じ四角**で見る(v0.25.3904)。中心間の距離で見ていた旧実装は
+      // 体の大きい敵ほど発火しなかった(ゾンビは触れても中心間34px>30px=一生噛めない)。
+      const eb = enemyContactBox(e);
+      const rr = biteReachRect(
+        { cx: eb.x + eb.width / 2, cy: eb.y + eb.height / 2, w: eb.width, h: eb.height },
+        bcx, bcy, spec.rangePx,
+      );
+      if (isInBiteRect(rr, bcx, bcy)) biteStarts.push({ id: e.id, r: rr });
     }
   }
   if (biteStarts.length > 0 || biteClears.length > 0) {
     useGameStore.setState(st => ({
       enemies: st.enemies.map(e => {
         const st0 = biteStarts.find(b2 => b2.id === e.id);
-        if (st0) return { ...e, biteAt: gameTime, biteX: st0.x, biteY: st0.y };
+        if (st0) return { ...e, biteAt: gameTime, biteX: st0.r.x, biteY: st0.r.y, biteW: st0.r.w, biteH: st0.r.h };
         if (biteClears.includes(e.id)) {
           return { ...e, biteAt: 0, biteReadyAt: gameTime + biteSpecFor(e.type).recoverMs };
         }
@@ -1093,7 +1097,15 @@ export const applyContactDamage = (
     // ★カウンター可(赤)なら、窓が開いていた時は既存の突進パリィと**同じ1本**へ流す
     // (Counter!表示・確定クリ反撃・ノックバック・CDリファンドまで全部そこで解決済み)。
     // 台帳の `counterable` を false にすれば紫(カウンター不可)へ切り替わる=触るのは1箇所。
-    if (biteSpecFor(he.type).counterable && counterActiveNow) { dashParried.push(h.id); continue; }
+    // ★カウンターが成立するのは**最後の200ms(噛みの区間)だけ**(社長指示2026-08-25)。
+    // 溜め(前半300ms)の間に振っておいた"置き"では通らず、**噛みに合わせて振った時だけ**成立する。
+    // 時計をまたがないよう「窓が開いてから何ms経ったか」で見る
+    // (biteAt は gameTime 系 / counterWindowEnd は Date.now 系なので直接引き算しない)。
+    const heSpec = biteSpecFor(he.type);
+    const windowOpenedAgo = Date.now() - (collPlayer.counterWindowEnd - COUNTER_WINDOW);
+    if (heSpec.counterable && counterActiveNow && windowOpenedAgo <= heSpec.biteMs) {
+      dashParried.push(h.id); continue;
+    }
     // 無敵中(INVULN_MS=1000)は damagePlayer が弾く=群れで同時に噛まれても食らう量は増えない。
     // 演出も「実際に入った時だけ」出す(弾かれた時に赤フラッシュが出ると嘘になる)。
     const wasVulnerable = !useGameStore.getState().player.invulnerable;

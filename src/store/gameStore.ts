@@ -234,6 +234,10 @@ import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
 import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
+// ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
+// 「噛みつき側の敵か」と「敵の当たり判定の箱」をここでも使う。
+import { isBiteSubject } from '../utils/enemyBite';
+import { enemyContactBox } from '../utils/collisionUtils';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
@@ -5995,6 +5999,29 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
         newX = solidResolved.x;
         newY = solidResolved.y;
+        // ★敵をすり抜けない(社長報告2026-08-25「敵をプレイヤーはすり抜けない。今回から
+        // ダメージ食らわないのですり抜けるようになっちゃった」)。
+        // 噛みつき化(PACING_PUZZLE §12)で通常敵の接触ダメージを外した結果、
+        // **体で止められることも無くなり素通りできてしまった**——押し返していたのは
+        // 被弾のノックバックだったため。壁と**同じ器**(resolveAabb)で塞ぐ。
+        // 対象は噛みつき側の敵だけ(=接触ダメージを失った敵)。ボス・技中の敵は従来どおり
+        // 接触ダメージで痛いので、体で塞ぐと二重に厳しくなるため入れない。
+        {
+          const blockers: Rect[] = [];
+          for (const en of state.enemies) {
+            if (isCorpse(en)) continue;
+            if (!isBiteSubject(en, isBossType)) continue;
+            const eb = enemyContactBox(en);
+            // 遠い個体は捨てる(全個体との矩形解決を毎フレームやらない)。
+            if (Math.abs(eb.x - newX) > 160 || Math.abs(eb.y - newY) > 160) continue;
+            blockers.push({ x: eb.x, y: eb.y, width: eb.width, height: eb.height });
+          }
+          if (blockers.length > 0) {
+            const r = resolveAabb({ x: newX, y: newY, width: player.width, height: player.height }, blockers);
+            newX = r.x;
+            newY = r.y;
+          }
+        }
         // 「プレイヤーが行ける帯」のクランプ(チュートリアル上下左右/ステージ2上下固定/洋館通路
         // 左右+下限)は src/world/playableArea.ts の clampRectToPlayableArea に一本化してある
         // (v0.25.2391・アイテム/敵の湧きクランプと同じ関数を見る=ズレ防止)。計算・適用順(tutorial→

@@ -12954,17 +12954,20 @@ export class PixiScene {
       const total = spec.windupMs + spec.biteMs;
       const t = gameTime - e.biteAt;
       if (t < 0 || t > total) continue;
-      const bx = e.biteX ?? (e.x + e.width / 2);
-      const by = e.biteY ?? (e.y + e.height / 2);
-      if (this.distanceOutsideViewport(bx, by, spec.rangePx + 40) > 0) continue;
+      const bx = e.biteX ?? 0, by = e.biteY ?? 0;
+      const rw = e.biteW ?? 0, rh = e.biteH ?? 0;
+      if (rw <= 0 || rh <= 0) continue;
+      if (this.distanceOutsideViewport(bx + rw / 2, by + rh / 2, Math.max(rw, rh) / 2 + 60) > 0) continue;
       const p = t / total;                       // 0..1
       // 点滅は終盤ほど速く(センサー地雷と同じ「警報」の作法。矩形波=現実のランプに忠実)。
       const period = 150 - 90 * p;               // 150ms → 60ms
       const on = Math.floor(t / Math.max(30, period)) % 2 === 0;
       const rim = on ? 0xfff0f0 : 0xff2a2a;      // 明側=白熱 / 暗側=赤(紅き夜でも明暗で残る)
-      g.circle(bx, by, spec.rangePx)
+      // ★判定とまったく同じ四角を描く(社長2026-08-25「上下左右に30px伸ばすイメージ」)。
+      // 円ではなく四角なのは判定が四角だから——形が違うと「赤いのに当たらない」が生まれる。
+      g.rect(bx, by, rw, rh)
         .fill({ color: 0xff2a2a, alpha: ((on ? 0.16 : 0.05) + 0.10 * p) * TELEGRAPH_FILL_MULT });
-      g.circle(bx, by, spec.rangePx)
+      g.rect(bx, by, rw, rh)
         .stroke({ width: on ? 3 : 2, color: rim, alpha: (on ? 0.95 : 0.35) + 0.05 * p });
     }
   }
@@ -15356,6 +15359,13 @@ export class PixiScene {
       const biteShake = (biteElapsed >= biteSpecNow.windupMs && biteElapsed <= biteTotalMs)
         ? Math.sin(biteElapsed / 18) * 1.6
         : 0;
+      // ★噛みつき中は**本体の絵**が赤く点滅する(社長指示2026-08-25「赤点滅するのは本体の絵ね」)。
+      // 終盤ほど速く点滅(足元の四角と同じ周期)。**明側を白熱にして明暗で立てる**ので、
+      // 紅き夜(画面全体が血赤)でも沈まない。適用は tint を確定させる場所の**後**で行う。
+      const biteTint: number | null = (biteElapsed >= 0 && biteElapsed <= biteTotalMs)
+        ? (Math.floor(biteElapsed / Math.max(30, 150 - 90 * (biteElapsed / biteTotalMs))) % 2 === 0
+            ? 0xffffff : 0xff3020)
+        : null;
       if (sinceLunge >= 0 && sinceLunge < CONTACT_LUNGE_MS) {
         const pose = contactLungePose(sinceLunge / CONTACT_LUNGE_MS);
         const lang = e.lastContactAttackDir ?? 0;
@@ -15404,6 +15414,9 @@ export class PixiScene {
         : (e.isNamed || e.questTarget)
           ? NAMED_TINT
           : (RARE_BODY_TINT_ENABLED && e.colorTier) ? ENEMY_COLOR_TIER_BODY_TINT[e.colorTier] : 0xffffff;
+      // ★噛みつきの赤点滅は**最後に上書き**する(宿敵の金・レア色・幻影のダークより優先)。
+      // 「今から噛む」は生死に関わる情報なので、見た目の個性より読めることを優先する。
+      if (biteTint !== null) view.sprite.tint = biteTint;
     } else {
       view.sprite.skew.x = 0;
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below

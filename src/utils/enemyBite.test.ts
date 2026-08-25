@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   BITE_DEFAULT, BITE_BY_TYPE, biteSpecFor, bitePhaseOf, biteProgress,
-  biteLungeFrac, bitePointFrom, isInBiteCircle,
+  biteLungeFrac, bitePointFrom, biteReachRect, isInBiteRect,
 } from './enemyBite';
 import type { Enemy } from '../types/game';
 
@@ -71,7 +71,47 @@ describe('踏み込みの見た目(★プレイヤーの踏み込みとは逆の
   });
 });
 
-describe('★掟1〜3: 判定は「予告した点」の30px円', () => {
+describe('★判定の四角(社長2026-08-25「プレイヤーが居る側にだけ30px伸ばす」)', () => {
+  const box = { cx: 0, cy: 0, w: 100, h: 50 }; // 社長の例: 100×50 の敵
+
+  it('上にプレイヤーが居れば上へ30px伸び、下左右は伸びない', () => {
+    const r = biteReachRect(box, 0, -200, 30);
+    expect(r).toEqual({ x: -50, y: -55, w: 100, h: 80 }); // 高さ50→80(上へだけ)
+  });
+
+  it('右にプレイヤーが居れば右へだけ伸びる', () => {
+    const r = biteReachRect(box, 200, 0, 30);
+    expect(r).toEqual({ x: -50, y: -25, w: 130, h: 50 });
+  });
+
+  it('左・下も同じ(伸びるのは1辺だけ)', () => {
+    expect(biteReachRect(box, -200, 0, 30)).toEqual({ x: -80, y: -25, w: 130, h: 50 });
+    expect(biteReachRect(box, 0, 200, 30)).toEqual({ x: -50, y: -25, w: 100, h: 80 });
+  });
+
+  it('斜めは寄っている方の軸で決める(|dx| と |dy| の大きい方)', () => {
+    expect(biteReachRect(box, 100, 10, 30).w).toBe(130);  // 横寄り=横へ
+    expect(biteReachRect(box, 10, 100, 30).h).toBe(80);   // 縦寄り=縦へ
+  });
+
+  it('★体の大きい敵ほど自然に遠くまで届く(中心距離ではなく体の縁から測るため)', () => {
+    // ゾンビ相当(幅20×高36の帯)と、その2倍の体。どちらも縁から30px先まで届く。
+    const small = biteReachRect({ cx: 0, cy: 0, w: 20, h: 36 }, 0, -100, 30);
+    const big = biteReachRect({ cx: 0, cy: 0, w: 40, h: 72 }, 0, -100, 30);
+    expect(-small.y).toBe(18 + 30);  // 小さい体: 半分の高さ18 + 30
+    expect(-big.y).toBe(36 + 30);    // 大きい体: 半分の高さ36 + 30
+  });
+
+  it('★焼いた四角の中に居れば当たり、外へ逃げれば空振り(境界を固定)', () => {
+    const r = biteReachRect(box, 0, -200, 30);
+    expect(isInBiteRect(r, 0, -55)).toBe(true);   // 上端ちょうど=当たる
+    expect(isInBiteRect(r, 0, -55.1)).toBe(false); // 1px外=空振り
+    expect(isInBiteRect(r, 0, 0)).toBe(true);      // 体の中
+    expect(isInBiteRect(r, 60, -30)).toBe(false);  // 横は伸びていないので外
+  });
+});
+
+describe('踏み込みの見た目の点(絵だけに使う)', () => {
   it('噛む点=敵の中心からプレイヤー方向へ lungePx だけ進んだ所', () => {
     const p = bitePointFrom(0, 0, 100, 0, 20);
     expect(p.x).toBeCloseTo(20);
@@ -85,14 +125,9 @@ describe('★掟1〜3: 判定は「予告した点」の30px円', () => {
     expect(bitePointFrom(50, 50, 50, 50, 20)).toEqual({ x: 50, y: 50 });
   });
 
-  it('★判定は予告した点の30px円=踏み込みは判定を伸ばさない(掟1・掟3)', () => {
-    // 敵(0,0)・プレイヤー(45,0)。発火時に噛む点は (20,0) に確定する。
+  it('踏み込みの点は絵のためのもの(判定はこれを使わない)', () => {
+    // 判定は上の四角。ここは「絵がどこまで出るか」を決めるだけ。
     const bp = bitePointFrom(0, 0, 45, 0, 20);
-    // 予告した点から見て 25px なので当たる(元の敵位置からは45px=範囲外でも)
-    expect(isInBiteCircle(bp.x, bp.y, 45, 0, 30)).toBe(true);
-    // 予告した点から 31px 逃げれば空振り(社長「500以内に逃げれば避けれないと意味がない」)
-    expect(isInBiteCircle(bp.x, bp.y, 51.1, 0, 30)).toBe(false);
-    // 境界(ちょうど30px)は当たる
-    expect(isInBiteCircle(bp.x, bp.y, 50, 0, 30)).toBe(true);
+    expect(Math.hypot(bp.x, bp.y)).toBeCloseTo(20);
   });
 });
