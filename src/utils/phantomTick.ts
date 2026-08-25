@@ -26,6 +26,7 @@
 //  - 慣性: 振りの絵(踏み込み→戻り)は描画側(pixiScene)がイーズで出す。判定は即発の1回。
 import type { Enemy, EnemyType, Player, Projectile, SubWeaponKey, Weapon } from '../types/game';
 import {
+  isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore, resolveBountyMove, CRIT_DAMAGE_MULT,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
@@ -588,7 +589,7 @@ const swingPhantomMelee = (
   //   2026-08-24 の「原則同じ条件」でその前提が変わったので、今はこちらが正。
   // 判定はプレイヤー側の窓1本(`counterWindowEnd`)。窓は指を離した瞬間に開くので、
   // **幻影より後に振った(=後出しした)プレイヤーだけが間に合う**=「後出しが勝つ」。
-  if (Date.now() <= useGameStore.getState().player.counterWindowEnd) {
+  if (isCounterActive(useGameStore.getState().player, Date.now())) {
     counteredByPlayer(bcx, bcy, player, sfx, patch, phantomId);
     return;
   }

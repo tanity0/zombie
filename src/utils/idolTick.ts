@@ -9,11 +9,11 @@
 import type { Enemy } from '../types/game';
 import { GLOW_R_L } from './glowTiers';
 import {
+  isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore, counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT, counterMasterAwakenBuffPatch,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossCritCdMult, bossSlowMult, enemyDeathLabel,
-  knockbackSpeedFor,
-} from '../store/gameStore';
+  knockbackSpeedFor } from '../store/gameStore';
 import { getActiveGun } from './weaponUtils';
 import { createEnemyProjectile } from './enemyUtils';
 // ★v0.25.3591(監査 research/COUNTER_REACH_AUDIT.md): カウンター成立域=赤い予告の図形。
@@ -353,7 +353,7 @@ export const runIdolTick = (
       { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
       { x: idol.x, y: idol.y, width: idol.width, height: idol.height },
     );
-    if (overlap && Date.now() <= cp.counterWindowEnd) { counterHit(icx, icy); countered = true; }
+    if (overlap && isCounterActive(cp, Date.now())) { counterHit(icx, icy); countered = true; }
     else {
       const claim = consumeGhostCounterClaim(idol.id, Date.now());
       if (claim) {

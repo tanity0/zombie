@@ -2,7 +2,10 @@ import { Player, Enemy, Projectile, Pickup, VisualEffect } from '../types/game';
 import { getEnemyColor, isPumpkinTier } from './enemyUtils';
 import { drawSprite, preloadSprites } from './spriteLoader';
 import { effectiveReloadMs } from './weaponUtils';
-import { MELEE_RADIUS, SHAKE_MS } from '../store/gameStore';
+import {
+  isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
+  MELEE_RADIUS, SHAKE_MS,
+} from '../store/gameStore';
 import { FONT_STACK } from '../config/font';
 
 // Kick off image loads as soon as the renderer module is imported. The
@@ -27,7 +30,7 @@ const drawCounterShield = (
   const baseRadius = MELEE_RADIUS;
   const now = Date.now();
 
-  if (now <= player.counterWindowEnd) {
+  if (isCounterActive(player, now)) {
     ctx.save();
     ctx.fillStyle = 'rgba(251, 191, 36, 0.10)';
     ctx.beginPath();

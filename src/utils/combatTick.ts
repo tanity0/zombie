@@ -43,6 +43,7 @@ import {
 import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { EGG_BLAST_RADIUS } from '../world/mines';
 import {
+  isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore, isSeekerActive, skillLevel, counterReplyDamage, enemyDeathLabel, combatActorPlayer,
   ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
   COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, COUNTER_WINDOW,
@@ -209,7 +210,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   const bp = useGameStore.getState().player;
   const bpcx = bp.x + bp.width / 2;
   const bpcy = bp.y + bp.height / 2;
-  const counterActive = Date.now() <= bp.counterWindowEnd;
+  const counterActive = isCounterActive(bp, Date.now());
   // ★v0.25.3591: noDamage=この爆風のパリィは**体勢だけ削ってHPダメージは0**(飛んでくる刃を弾いた時)。
   const parriedEnemyIds: { id: string; bx: number; by: number; noDamage?: boolean }[] = [];
   // G4b: 爆発/カプセルの合流点=ここでゴーストも受ける(タグ付き21箇所超を一括カバー)。対象は
@@ -669,7 +670,7 @@ export const applyEnemyProjectileHits = (
     const currentPlayer = useGameStore.getState().player;
     // ★紫の文法(SAME_ARENA O-3): `noCounter` の弾は**打ち返せない**。既定(未設定)は従来どおり反射する
     // ので、この条件は既存の弾を1bitも変えない。
-    if (now <= currentPlayer.counterWindowEnd && !proj.noCounter) {
+    if (isCounterActive(currentPlayer, now) && !proj.noCounter) {
       // 反射1回分は共有関数(主語=プレイヤー。ghostId未指定=従来と1bit同値)。
       applyCounterReflect(proj.id, now, currentPlayer, tunables);
       reflectedAny = true;
@@ -1035,7 +1036,7 @@ export const applyContactDamage = (
   const wireDashingNow = Date.now() < wpImmune.wireDashUntil || Date.now() < wpImmune.wireHopUntil || !!wpImmune.wireStuckEnemyId;
   // 突進(ダッシュ)カウンター: 突進中(aiPhase==='charge')の敵にカウンター窓中で接触すると弾く
   // (無傷＋敵へのダメージ無し＋2倍ノックバックで突進中断)。ジャンプ着地と同じ「弾き」挙動。
-  const counterActiveNow = Date.now() <= wpImmune.counterWindowEnd;
+  const counterActiveNow = isCounterActive(wpImmune, Date.now());
   const dashParried: string[] = [];
   // V1(3)(FX_GAP_LEDGER.md・社長指示「敵がプレイヤーに触れてダメージ与える時、強めに前屈みに歪む」):
   // 接触ダメージが実際に入った敵へ lastContactAttackAt(+向き)を打刻する(描画専用・判定不変)。

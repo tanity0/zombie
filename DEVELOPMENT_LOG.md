@@ -1,5 +1,39 @@
 # Development Log
 
+## v0.25.3926 - カウンターは「刃が出ている間」だけ(社長裁定2026-08-25)【2026-08-25 21:02 JST】
+
+社長「サークル予告系の技へのカウンターのしやすさが跳ね上がった。赤い予告が出たら、そこに向かって
+近接放てばほぼ確実にカウンター取れる」→「**振り抜きの最後の200msだけをカウンター取れる時間にすれば
+いいのか?**」→「やってみよ」。
+
+- **原因**: カウンターの判定は `now <= counterWindowEnd` **だけ**で、窓は振り始めから **400ms**
+  (`COUNTER_WINDOW`)開いていた。よって**予告を見て先に振っておけば、着弾時に窓が生きている**=確実に取れた。
+  静止した長いサークル予告と相性が最悪だった。
+- **直し方(社長案)**: 窓を **[start, end]** の区間にし、`start = 振り始め + MELEE_WINDUP_MS(200)`。
+  = **刃が実際に出ている間だけ**カウンターが成立する。前隙(200ms)明けと一致するので、
+  「見たまんまが当たり判定」がカウンターにもそのまま通る。**先出しして待つ**が効かなくなった。
+- **適用範囲=全カウンター**(社長の推薦どおり): サークル/帯の爆風・噛みつき・突進/飛び掛かりのパリィ・
+  弾の反射。**特例を作らず、プレイヤーの振り側に1本のルールを置く**形にした。
+- **判定を1本化**: `isCounterActive(player, now)` を新設し、**読み手29箇所を機械置換**
+  (`Date.now() <= X.counterWindowEnd` 形の分岐が gameStore/useGameLoop/angelBossTick/bountyTick/
+  idolTick/combatTick/phantomTick/renderUtils に散っていた)。書き手には `counterWindowStart` を追加。
+- **触っていないもの**: 近接の**攻撃範囲テレグラフの絵**(黄色いリーチリング+三日月)は**振り始めから**出す。
+  ここはカウンター判定ではなく振りの絵で、絞ると三日月が一度も出なくなる(実際に一度そうなった)。
+  武器庫サークルのショップ経由の窓は振っていない=前隙が無いので `start = now`(即時有効)。
+
+**変更ファイル**: `src/types/game.ts`(`counterWindowStart`) / `src/store/gameStore.ts`(述語+書き手8箇所) /
+`src/utils/combatTick.ts` / `src/utils/angelBossTick.ts` / `src/utils/bountyTick.ts` /
+`src/utils/idolTick.ts` / `src/utils/phantomTick.ts` / `src/utils/renderUtils.ts` /
+`src/hooks/useGameLoop.ts` / `src/pixi/pixiScene.ts` / `src/utils/thorNihil.test.ts`(配線検査の語を更新)。
+
+**検証**: **`npm test` フル** = 287 files / **4733 passed**(skip 10)。typecheck 0 / lint 0 errors(warning 8は既存)。
+※広く効く判定なのでフルを回した。途中、機械置換が**述語の定義自身を書き換えて無限再帰**になり
+102件落ちた(その場で修正・全緑を確認)。
+
+**数値は叩き台**。「まだ簡単/厳しすぎ」があれば `MELEE_WINDUP_MS` ではなく**窓の開始オフセット**を別定数に分ける。
+
+**状態変化**: なし。
+
 ## v0.25.3925 - 噛みつき横断監査(サブエージェント3体)の(A)を反映【2026-08-25 20:36 JST】
 
 社長「他にもありそう。関連想定シナリオを組んでサブエージェントで洗った方がいいかも」。

@@ -729,7 +729,8 @@ describe('★突進のカウンター(弾き返し)の配線の不変条件(§5-
       .toBeGreaterThan(3);
     // 帯の判定とカウンター窓の分岐が同じブロックに在ること(=切り出した場所が本当に「そこ」である証明)。
     expect(capsuleBlock.some(l => /distToBandRect\(/.test(l)), '斬り抜けの帯の判定がブロックの中に無い').toBe(true);
-    expect(capsuleBlock.some(l => /counterWindowEnd/.test(l)), 'カウンター窓を見る分岐がブロックの中に無い').toBe(true);
+    // v0.25.3926: カウンター成立の判定は `isCounterActive`(窓は [start, end]=刃が出ている間だけ)に一本化された。
+    expect(capsuleBlock.some(l => /isCounterActive|counterWindowEnd/.test(l)), 'カウンター窓を見る分岐がブロックの中に無い').toBe(true);
     const capsuleCalls = capsuleBlock.filter(l => DASH_AIM.test(l));
     expect(
       capsuleCalls.length,

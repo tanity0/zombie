@@ -17,12 +17,12 @@
 //    pumpkin 由来の値は**テーブル側で複製**し、実体との一致を bountyScript.test.ts が機械検査する。
 import type { Enemy, EnemyType } from '../types/game';
 import {
+  isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore, HUNTER_LEAVE_FADE_MS, resolveBountyMove,
   counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT, counterMasterAwakenBuffPatch,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, knockbackSpeedFor, enemyDeathLabel,
-  bossSlowMult,
-} from '../store/gameStore';
+  bossSlowMult } from '../store/gameStore';
 // ★予告寸法は依存ゼロの葉(bountyDims.ts)が正=ここでは使うだけ+従来の消費者(pixiScene/テスト)の
 // ために named re-export する。gameStoreから直接importしない理由はbountyDims.ts冒頭を読むこと
 // (循環import起動全損 v0.25.3390 の再発防止)。
@@ -2099,7 +2099,7 @@ export const runBountyTick = (
       { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
       { x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height },
     );
-    if (inReach && Date.now() <= cp.counterWindowEnd) {
+    if (inReach && isCounterActive(cp, Date.now())) {
       bountyCounterHit(bounty, bcx, bcy, sfx);
       countered = true;
       s.comboStep = 0;

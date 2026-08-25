@@ -12,6 +12,7 @@ import { getTutorial, type TutorialId } from '../data/tutorials';
 import { LAB_VISION_RANGE } from '../utils/labStealth';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import {
+  isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore,
   INVULN_MS,
   STUN_DURATION_MS,
@@ -6019,7 +6020,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
                     { x: boss.x, y: boss.y, width: boss.width, height: boss.height },
                   ),
-                  counterActive: Date.now() <= cp.counterWindowEnd,
+                  counterActive: isCounterActive(cp, Date.now()),
                 };
               };
               // ★v0.25.3780(§8-2・社長裁定「赤いのにカウンターできないは聞くまでもなく直すでしょ」):
@@ -6588,7 +6589,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const issenGuaranteed = isGuaranteedIssenNow(boss.issenGuaranteedUntil);
                 if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, HB_TH.issen.halfWidth) <= pr) { // v0.25.3496: 描いてある四角
                   const cp = useGameStore.getState().player;
-                  if (!issenGuaranteed && Date.now() <= cp.counterWindowEnd) {
+                  if (!issenGuaranteed && isCounterActive(cp, Date.now())) {
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
@@ -6653,7 +6654,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 let countered = false;
                 if (Math.hypot(pcx - cxp, pcy - cyp) <= HB_TH.tsuki.halfWidth + pr) {
                   const cp = useGameStore.getState().player;
-                  if (Date.now() <= cp.counterWindowEnd) {
+                  if (isCounterActive(cp, Date.now())) {
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
@@ -6688,7 +6689,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 let countered = false;
                 if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, HB_TH.harai.halfWidth) <= pr) { // v0.25.3496: 描いてある四角
                   const cp = useGameStore.getState().player;
-                  if (Date.now() <= cp.counterWindowEnd) {
+                  if (isCounterActive(cp, Date.now())) {
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
@@ -6770,7 +6771,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const dpr = Math.max(player.width, player.height) / 2;
                   if (distToBandRect({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }, HB_TH.harai.halfWidth) <= dpr) {
                     const cp = useGameStore.getState().player;
-                    if (Date.now() <= cp.counterWindowEnd) {
+                    if (isCounterActive(cp, Date.now())) {
                       // 跳びの起点は**このフレームで実際に居る場所**(=上で patch.x へ書いた到達点)。
                       // フレーム頭の bcx/bcy のままだと1フレームだけ後ろへ戻って見える。
                       // ★v0.25.3809(8巡目 重大3): 旧実装は**呼んだ後に `patch.aiFromX/Y` を上書き**する

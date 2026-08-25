@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3926',
+    items: [
+      'カウンターが成立するのは「刃が実際に出ている間」だけになりました。予告を見て先に振っておくと取れていたのを、振るタイミングを合わせる勝負に変えています。',
+    ],
+  },
+  {
     version: '0.25.3925',
     items: [
       'トールの突進・ミゲルの踏み込み・賞金首(近接型)の突進と飛び掛かりが、当たらなくなっていた不具合を修正しました。',

@@ -113,7 +113,15 @@ export interface Player extends DashLocomotionState {
   aimY: number;
   // Counter-on-release state. Releasing the touch opens a brief window
   // during which any incoming hostile projectile is reflected.
-  counterWindowEnd: number;     // ms timestamp; window is open while now <= this
+  /**
+   * ★カウンターが**有効になる**時刻(ms・Date.now基準)。窓は [start, end]。
+   * v0.25.3926(社長裁定2026-08-25「振り抜きの最後の200msだけをカウンター取れる時間にすればいい」):
+   * 旧実装は振り始めから終わりまで(400ms)ずっと有効だったので、**予告を見て先に振っておけば確実に取れた**
+   * (サークル予告の技が特に顕著)。`start = 振り始め + MELEE_WINDUP_MS` にすることで、
+   * **刃が実際に出ている間だけ**カウンターが成立する=「見たまんまが当たり判定」がカウンターにも通る。
+   */
+  counterWindowStart: number;
+  counterWindowEnd: number;     // ms timestamp; window is open while start <= now <= this
   /**
    * ★近接の前隙(社長裁定2026-08-24・SAME_ARENA.md §7): 指を離した時刻(Date.now)。
    * `MELEE_WINDUP_MS` 経過後に **useGameLoop が判定を解決**する。0=前隙中の振りは無い。

@@ -1173,6 +1173,17 @@ export const COUNTER_WINDOW = 400; // ms the window stays open after trigger
  */
 export const MELEE_WINDUP_MS = 200;
 /**
+ * ★カウンターが成立するか(唯一の判定・v0.25.3926)。
+ * 社長裁定2026-08-25「振り抜きの最後の200msだけをカウンター取れる時間にすればいい」。
+ * **刃が実際に出ている間だけ**成立する(窓は [start, end]・start = 振り始め + `MELEE_WINDUP_MS`)。
+ * 旧実装は窓の終わりしか見ていなかったので、予告を見て**先に振っておけば確実に取れた**。
+ */
+// ★型はインラインのオブジェクト literal で書かない: `meleeSwingCommit.test.ts` の台帳スキャナが
+// 「`counterWindowEnd:` を書いている場所」として数えてしまうため(Pickなら書き込みではないと分かる)。
+export const isCounterActive = (
+  p: Pick<Player, 'counterWindowStart' | 'counterWindowEnd'>, now: number,
+): boolean => now >= p.counterWindowStart && now <= p.counterWindowEnd;
+/**
  * ★近接の踏み込み(社長裁定2026-08-24・SAME_ARENA.md §7-4)。前隙の**頭**で `lastDirection` へ滑る。
  *
  * 狙い(社長の言葉): 「踏み込む(しゃがみ)を早めに着地させれば、自ずと回避にも使える様になる」。
@@ -5499,6 +5510,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     invulnerable: false,
     invulnerableTime: 0,
     lastDirection: null,
+    counterWindowStart: 0,
     counterWindowEnd: 0,
     pendingSwingAt: 0,
     lungeVx: 0,
@@ -6351,6 +6363,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...state.player,
         pendingSwingAt: now,
         meleeSwingAt: now,
+        counterWindowStart: now + MELEE_WINDUP_MS,
         counterWindowEnd: now + COUNTER_WINDOW,
         counterCooldownEnd: now + (COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
       },
@@ -6549,6 +6562,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           swipeStrength: 1,
           player: {
             ...player,
+            counterWindowStart: now + MELEE_WINDUP_MS,
             counterWindowEnd: now + COUNTER_WINDOW,
             counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
           },
@@ -6575,6 +6589,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(state => ({
         player: {
           ...state.player,
+          counterWindowStart: swingAt + MELEE_WINDUP_MS,
           counterWindowEnd: swingAt + counterWindowMs,
           counterCooldownEnd: counterCd,
         }
@@ -6602,6 +6617,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(state => ({
         player: {
           ...state.player,
+          counterWindowStart: swingAt + MELEE_WINDUP_MS,
           counterWindowEnd: swingAt + counterWindowMs,
           // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
           counterCooldownEnd: swingAt + (counterWindowMs + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS) * meleeCooldownMult(player),
@@ -7062,6 +7078,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       player: {
         ...state.player,
         meleeSwingAt: swingAt, // 近接スイング演出の起点(描画のみ)。★前隙の起点=指を離した時刻に揃える(200ms後に絵を出し直さない)。
+        counterWindowStart: swingAt + MELEE_WINDUP_MS,
         counterWindowEnd: swingAt + counterWindowMs,
         // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
         counterCooldownEnd: swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
@@ -13505,7 +13522,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 難しいので、窓中は能動的に半径内で弾く=パリィ用ブラストをプレイヤー中心(半径=meleeR)に積み、既存の
       // パリィ経路(無効化+Counter!+スカジへ反撃ダメージ)を再利用する。
       const pr = Math.max(player.width, player.height) / 2;
-      const counterOpen = now <= player.counterWindowEnd;
+      const counterOpen = isCounterActive(player, now);
       const meleeR = huntingMeleeRadius(player);
       // ★v0.25.3591(社長指示「ラフィの骨刃は、ラフィ倒したら消えて」): 刃は**その持ち主が居る間だけ**
       // 生きている(旧: 骨刃は持ち主を見ておらず、ラフィ討伐後も飛び続けて当たっていた)。
@@ -13887,7 +13904,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   openCounterWindow: () => {
     const now = Date.now();
     set(state => ({
-      player: { ...state.player, counterWindowEnd: now + COUNTER_WINDOW },
+      // 武器庫サークルのショップ等、振っていない経路。前隙が無いので即時に有効。
+      player: { ...state.player, counterWindowStart: now, counterWindowEnd: now + COUNTER_WINDOW },
     }));
   },
 
@@ -17332,7 +17350,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           lastDirection: null,
           aimX: 1,
           aimY: 0,
-          counterWindowEnd: 0,
+          counterWindowStart: 0,
+    counterWindowEnd: 0,
     pendingSwingAt: 0,
     lungeVx: 0,
     lungeVy: 0,
