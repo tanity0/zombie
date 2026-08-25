@@ -103,6 +103,18 @@ describe('★幻影が主語になれるサブの白リスト(自爆バグの再
     }
   });
 
+  // ★社長裁定2026-08-25「4種ともやる」。ドッグは**拾わずに消す**(社長「触れて消すだけ…邪魔だけする」)
+  // =取得ではないので「霊は世界の物を自分の物にしない」線を跨がない。仕様=SAME_ARENA §3-d-4。
+  it('召喚系のうちドッグは幻影の主語になれる(拾わずに消す配線が済んでいる)', () => {
+    expect(phantomSupportsSub('dog')).toBe(true);
+  });
+
+  it('召喚系の残り3種(分身/錬金術/援護射撃)はまだ主語にならない', () => {
+    for (const k of ['shadow-clone', 'alchemy', 'support-sniper'] as SubWeaponKey[]) {
+      expect(phantomSupportsSub(k)).toBe(false);
+    }
+  });
+
   it('投擲系(手榴弾=O-3a / 火炎ナイフ=O-3b-1)も従来どおり主語になれる', () => {
     expect(phantomSupportsSub('heavy-grenade')).toBe(true);
     expect(phantomSupportsSub('fire-knife')).toBe(true);

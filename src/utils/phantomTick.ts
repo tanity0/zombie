@@ -145,6 +145,10 @@ export const PHANTOM_SUPPORTED_SUBS: readonly SubWeaponKey[] = [
   'turret',
   'shield',
   'sensor-mine',
+  // ★O-3b-2 召喚系(社長裁定2026-08-25「4種ともやる」)。ドッグは**拾わずに消す**
+  // (社長「犬は触れて消すだけ…要は邪魔だけするっていう」)=取得ではないので
+  // 「霊は世界の物を自分の物にしない」線を跨がない。仕様=SAME_ARENA §3-d-4。
+  'dog',
 ];
 /** その種を幻影が主語として使えるか(未実装の種は必ずプレイヤーへフォールバックする)。 */
 export const phantomSupportsSub = (key: SubWeaponKey): boolean =>

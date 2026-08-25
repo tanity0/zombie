@@ -88,6 +88,7 @@ import {
   KILLFX_TOTAL_MS, // KILL処刑演出の尺(前隙の解決で近接SEを抑止する条件・旧VirtualJoystickから移設)
 } from '../store/gameStore';
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
+import { DOG_EXCLUDED_TYPES, dogEligiblePickups } from '../utils/dogFetch'; // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // ★対人トラップの効果時間(SAME_ARENA §3-g)
 import { glenScriptApplies } from '../utils/giantScript';
 import { glenPartCountFull, glenRemovedPartAnchors, GLEN_FORM1_HP_MULT } from '../utils/glenChain';
@@ -1493,6 +1494,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const prevHealthRef = useRef(0);
   const gameOverTriggeredRef = useRef(false);
   const dogFetchRef = useRef<DogFetchJob | null>(null);
+  /** ★幻影のドッグ(拾わずに消す)。プレイヤーの枠と取り合わないよう主語ごとに持つ。 */
+  const phantomDogRef = useRef<DogFetchJob | null>(null);
   // Katana auto-slash timer (gameTime-based so it pauses with the game).
   const lastKatanaSlashRef = useRef(0);
   // ホーミング弾のロック状態(前フレームと比較して変化時のみ store を更新)。
@@ -2747,6 +2750,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           deepBgmPhaseRef.current = 'shallow'; releaseDeepReverseBgm(); // 深層BGMも初期化
           // 進行中サブウェポンのトラッキング(前ランの古いID/座標)を破棄=新ランへの持ち越し防止。
           dogFetchRef.current = null;            // 進行中のドッグ取得をキャンセル
+          phantomDogRef.current = null;          // ★幻影のドッグも同時にキャンセル
           decoyPulseRef.current.clear();         // デコイ/シールド/タレット/ブーメランのパルス記録
           shieldHitRef.current.clear();
           turretFireRef.current.clear();
@@ -8003,6 +8007,104 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // ★幻影のドッグ(社長裁定2026-08-25「犬は触れて消すだけ…要は邪魔だけするっていう」)。
+        // プレイヤー版と**引き金・対象リスト・レベル別半径・CD・往復時間・噛みを完全に共有**し、
+        // 違いは2つだけ: ①目標に着いたら**拾う代わりに消す** ②道中で噛む相手が**プレイヤー**。
+        // 別ブロックにしてあるのは、上の走査が `enemies` と `state.player` を直に見る
+        // プレイヤー専用の形だから(混ぜると v0.25.3879 の自爆と同型を作る)。仕様=SAME_ARENA §3-d-4。
+        {
+          const { actor: pdActor, owner: pdOwner } = subSubject('dog');
+          if (isHostileOwner(pdOwner) && pdActor.subWeapons.includes('dog')) {
+            const pdLevel = Math.max(1, Math.min(3, pdActor.subWeaponLevels.dog ?? 1));
+            const pdNow = Date.now();
+            const job = phantomDogRef.current;
+            const pdHomeX = ownerCenterX(pdOwner);
+            const pdHomeY = ownerCenterY(pdOwner);
+            if (job) {
+              // 噛み: 往復の補間位置がプレイヤーに近づいたら1回だけ。ダメージは対人補正込み。
+              const t = Math.max(0, Math.min(1, (pdNow - job.startedAt) / DOG_FETCH_DURATION_MS));
+              const outFrac = DOG_FETCH_PICKUP_MS / DOG_FETCH_DURATION_MS;
+              let dx: number, dy: number;
+              if (t <= outFrac) {
+                const k = t / Math.max(0.001, outFrac);
+                dx = job.fromX + (job.targetX - job.fromX) * k;
+                dy = job.fromY + (job.targetY - job.fromY) * k;
+              } else {
+                const k = (t - outFrac) / Math.max(0.001, 1 - outFrac);
+                dx = job.targetX + (pdHomeX - job.targetX) * k;
+                dy = job.targetY + (pdHomeY - job.targetY) * k;
+              }
+              const pdSt = useGameStore.getState();
+              const ppx = pdSt.player.x + pdSt.player.width / 2;
+              const ppy = pdSt.player.y + pdSt.player.height / 2;
+              if (!job.bitten.has('__player__') && Math.hypot(ppx - dx, ppy - dy) <= DOG_BITE_RADIUS) {
+                job.bitten.add('__player__');
+                const bite = Math.max(1, Math.round(DOG_BITE_DAMAGE * PVP_DAMAGE_SCALE));
+                useGameStore.getState().damagePlayer(bite, '幻影のドッグ', dx, dy);
+                spawnBurst(ppx, ppy, '#cbd5e1', 4);
+              }
+              // 到着: **拾わずに消す**(誰の持ち物にもならない=取得ではない)。
+              if (!job.collected && pdNow >= job.collectAt) {
+                const gone = dogEligiblePickups({
+                  pickups: useGameStore.getState().pickups,
+                  cx: job.targetX, cy: job.targetY, radius: job.radius, nowMs: pdNow,
+                  skipHealth: false, // 相手が満タンかは邪魔する側に関係ない=満タンでも消しに行く
+                });
+                if (gone.length > 0) {
+                  spawnRing(job.targetX, job.targetY, 5, job.radius, 'rgba(203,213,225,0.34)', 2, 240);
+                  gone.slice(0, DOG_COLLECT_BURST_LIMIT).forEach(p => spawnBurst(p.x + 8, p.y + 8, '#cbd5e1', 5));
+                  gone.forEach(p => useGameStore.getState().removePickup(p.id));
+                  playSfx('pickup');
+                }
+                job.collected = true;
+              }
+              if (pdNow >= job.finishAt) {
+                phantomDogRef.current = null;
+                setActorSubWeaponCooldown(ownerGhostId(pdOwner), 'dog', gameTime + DOG_PICKUP_COOLDOWN_BY_LEVEL[pdLevel]);
+              }
+            } else {
+              // 出発: 狙いは**幻影から見て**半径内の拾い物のうち最寄り(=プレイヤー版と同じ選び方)。
+              const pdSt = useGameStore.getState();
+              const cand = dogEligiblePickups({
+                pickups: pdSt.pickups,
+                cx: pdHomeX, cy: pdHomeY,
+                radius: DOG_FETCH_TARGET_RADIUS_BY_LEVEL[pdLevel],
+                nowMs: pdNow,
+                skipHealth: false,
+              }).sort((a, b) => {
+                const ax = a.x + 8 - pdHomeX, ay = a.y + 8 - pdHomeY;
+                const bx = b.x + 8 - pdHomeX, by = b.y + 8 - pdHomeY;
+                return ax * ax + ay * ay - (bx * bx + by * by);
+              })[0];
+              if (cand) {
+                const tX = cand.x + 8, tY = cand.y + 8;
+                phantomDogRef.current = {
+                  collectAt: pdNow + DOG_FETCH_PICKUP_MS,
+                  finishAt: pdNow + DOG_FETCH_DURATION_MS,
+                  startedAt: pdNow,
+                  fromX: pdHomeX, fromY: pdHomeY,
+                  targetX: tX, targetY: tY,
+                  radius: DOG_COLLECT_RADIUS_BY_LEVEL[pdLevel],
+                  collected: false,
+                  bitten: new Set<string>(),
+                };
+                spawnEffect({
+                  kind: 'dogFetch',
+                  id: `fx-phantom-dog-${Math.floor(pdNow)}-${cand.id}`,
+                  fromX: pdHomeX, fromY: pdHomeY,
+                  targetX: tX, targetY: tY,
+                  toX: pdHomeX, toY: pdHomeY,
+                  createdAt: pdNow,
+                  pickupAt: pdNow + DOG_FETCH_PICKUP_MS,
+                  duration: DOG_FETCH_DURATION_MS,
+                });
+              } else {
+                setActorSubWeaponCooldown(ownerGhostId(pdOwner), 'dog', gameTime + DOG_EMPTY_RETRY_MS);
+              }
+            }
+          }
+        }
+
         if (
           subWeaponPlayer.subWeapons.includes('dog') &&
           !subWeaponBlockedByKatana(subWeaponPlayer, 'dog')
@@ -8120,7 +8222,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 目標アイテム(カードキー/武器箱/クリアアイテム)はドッグで遠隔回収させない(壁越し誤発火防止)。
               // クイックマガジンも対象外(社長指示v0.25.2409)。**回収側(collectAt)だけでなくここでも外す**=
               // 外し忘れると「クイックマガジンへ走って行って何も拾わずCDだけ消費する」空振りになる。
-              .filter(p => p.type !== 'card-key' && p.type !== 'weapon-crate' && p.type !== 'lab-clear-item' && p.type !== 'quick-magazine')
+              // ★台帳は utils/dogFetch.DOG_EXCLUDED_TYPES の1本(社長裁定2026-08-25
+              // 「犬がそのレベルで拾うものをそのまま移せばいい」=幻影が消せる物と同じリスト)。
+              // 値は従来と1つも変わっていない(card-key/weapon-crate/lab-clear-item/quick-magazine)。
+              .filter(p => !DOG_EXCLUDED_TYPES.includes(p.type))
               .filter(p => p.type !== 'health' || state.player.health < state.player.maxHealth)
               .filter(p => {
                 if (
