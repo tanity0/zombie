@@ -244,9 +244,17 @@ export const isBiteSubject = (
  * (拘束の意味が「止める」なので、止まっているのに噛むのは矛盾する)。
  */
 export const canStartBite = (
-  enemy: Pick<Enemy, 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil'>,
+  enemy: Pick<Enemy, 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'aiPhase'>,
   gameTime: number,
 ): boolean => {
+  // ★突進中(ゾンビの `zrush`=2秒間2倍速)は構えない(社長報告2026-08-25「ゾンビが走ってこなくなった
+  // ような?」)。**数字で確認した真因**: ゾンビの絵は幅113px=足元の判定帯が約62px。
+  // 噛みつきの射程は「判定+30px」なので、プレイヤーの体(28px)込みで**中心間およそ75px**で発火する。
+  // ところがゾンビが停止→突進のリズムに入る距離は `MELEE_RADIUS` = **74px**。**ほぼ同じ**なので、
+  // 範囲に入った瞬間に噛みつきが始まり、踏み込み(500ms)が通常の移動を上書きして
+  // **2秒の突進が一度も走らなくなっていた**。
+  // ⇒ 突進の間は噛まない。「止まる→噛む→走る」の順で両方が出る。
+  if (enemy.aiPhase === 'zrush') return false;
   if (enemy.biteAt !== undefined && enemy.biteAt > 0) return false;      // もう構えている
   if (gameTime < (enemy.biteReadyAt ?? 0)) return false;                 // 硬直中
   if (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil) return false;

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   BITE_DEFAULT, BITE_BY_TYPE, biteSpecFor, bitePhaseOf, biteProgress,
   biteLungeFrac, bitePointFrom, biteReachRect, isInBiteRect, isBiteSubject,
-  biteWallRect, BITE_WALL_W, BITE_WALL_H, isBiteWallOpen, biteBodyOverlapsPlayer,
+  biteWallRect, BITE_WALL_W, BITE_WALL_H, isBiteWallOpen, biteBodyOverlapsPlayer, canStartBite,
 } from './enemyBite';
 import type { Enemy } from '../types/game';
 
@@ -235,5 +235,20 @@ describe('★噛みつきの台本(v0.25.3914)', () => {
     expect(biteLungeFrac(e, 1150)).toBeLessThan(0.25);   // 溜め中盤=まだ出ていない(ease-in)
     expect(biteLungeFrac(e, 1300)).toBeCloseTo(0.5);     // 溜め終わり=半分
     expect(biteLungeFrac(e, 1500)).toBe(1);              // 噛みの瞬間=伸び切る
+  });
+});
+
+// ★社長報告2026-08-25「ゾンビが走ってこなくなったような?」の再発検知器。
+// 数字: ゾンビの足元の判定帯は約62px幅 → 噛みつきの射程「判定+30px」はプレイヤーの体込みで
+// 中心間およそ75px。停止→突進のリズムに入る距離(MELEE_RADIUS)は74px。**ほぼ同じ**なので、
+// 突進中も噛めると踏み込みが移動を上書きして2秒の突進が一度も走らない。
+describe('★突進(zrush)の間は噛みつきを構えない(v0.25.3919)', () => {
+  const base = { biteAt: undefined, biteReadyAt: 0, rootUntil: undefined, stunUntil: undefined };
+  it('zrush 中は構えない(走りを最後まで見せる)', () => {
+    expect(canStartBite({ ...base, aiPhase: 'zrush' }, 1000)).toBe(false);
+  });
+  it('停止(zpause)中と通常時は構える', () => {
+    expect(canStartBite({ ...base, aiPhase: 'zpause' }, 1000)).toBe(true);
+    expect(canStartBite({ ...base, aiPhase: undefined }, 1000)).toBe(true);
   });
 });

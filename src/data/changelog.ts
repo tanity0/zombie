@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3919',
+    items: [
+      'ゾンビが突進してこなくなっていた不具合を修正しました。「止まる→噛みつく→走る」の順で両方が出ます。',
+    ],
+  },
+  {
     version: '0.25.3918',
     items: [
       'オープニングが、スキップボタン以外の場所を触っても飛んでしまう不具合を修正しました。スキップは右下のボタンだけになります。',
