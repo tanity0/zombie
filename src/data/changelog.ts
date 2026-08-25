@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3901',
+    items: [
+      'ゲーム内容の変更はありません(噛みつきの土台を入れました。実際に噛んでくるのは次の更新からです)。',
+    ],
+  },
+  {
     version: '0.25.3900',
     items: [
       'ゲーム内容の変更はありません(噛みつきの当たり判定の決めを設計資料に追記しました)。',

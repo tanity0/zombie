@@ -458,6 +458,21 @@ export interface Enemy {
   // Root state from traps. This only stops movement; it does not make the
   // enemy a critical/finisher target.
   rootUntil?: number;
+  /**
+   * ★全敵共通の「噛みつき」(PACING_PUZZLE.md §12・社長発案2026-08-25)。
+   * 台本を始めた gameTime。0/未設定=噛んでいない。区間の判定は `utils/enemyBite.bitePhaseOf`。
+   * **敵側の他のタイマー(rootUntil / stunUntil)と同じ gameTime 系**(Date.now と混ぜない)。
+   */
+  biteAt?: number;
+  /**
+   * 噛む点(=赤い円の中心=判定の中心)。**発火の瞬間に確定して焼く**。
+   * 判定はこの点で取り、**敵が実際にどこに居るかは見ない**——壁際でも
+   * 「赤い円と違う所で噛まれる」が起きないようにするため(§12の掟2)。
+   */
+  biteX?: number;
+  biteY?: number;
+  /** 噛み終わってから次に構えられる gameTime(硬直)。外した敵が即再構えするのを防ぐ。 */
+  biteReadyAt?: number;
   // Visual-only lift reaction for boss melee finisher-grade hits.
   liftUntil?: number;
   // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get
