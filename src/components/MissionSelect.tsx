@@ -393,6 +393,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const equippedSubs = useGameStore(state => state.pendingLoadout);
   const companionSkill = useGameStore(state => state.companionSkill);
   const ownedSkillLevels = useGameStore(state => state.ownedSkillLevels);
+  // 装備メニュー最下部の「取得済みスキル」一覧(社長指示2026-08-25)。
+  // ★React再描画規律: これは**メニュー画面でしか読まない永続値**(ガチャで増える)で、
+  // ラン中に毎フレーム書き換わる類ではないので、配列購読でも毎フレーム再描画は起きない。
+  const ownedSkills = useGameStore(state => state.ownedSkills);
   const setPendingLoadout = useGameStore(state => state.setPendingLoadout);
   const setCompanionSkill = useGameStore(state => state.setCompanionSkill);
   // アバターシステム(試験・第1弾)。装備メニュー内の独立枠。プリミティブ(string|null)購読のみ=React再描画規律に沿う。
@@ -1138,6 +1142,55 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 );
               })}
             </div>
+          </div>
+          {/* ★取得済みスキル一覧(社長指示2026-08-25「装備の一番下に取得済みスキル一覧を表示」)。
+              **読むだけの一覧**(ここでは選べない)——スキルの持ち込みは廃止済みで、ラン中は
+              レベルアップの抽選で組む(SKILL_BUILD_REDESIGN.md §16-10 ★A)。
+              「何を解禁したか」を確認する場所が無かったので、装備の下に置く。
+              並びは**レア度の高い順→名前順**(超レア→レア→通常)。 */}
+          <div>
+            <div className="px-1 mb-1.5 flex items-baseline justify-between">
+              <span className="text-[11px] uppercase tracking-widest text-purple-200/70">取得済みスキル</span>
+              <span className="text-[10px] text-white/40 tabular-nums">{ownedSkills.length}/{OBTAINABLE_SKILL_KEYS.length}</span>
+            </div>
+            {ownedSkills.length === 0 ? (
+              <p className="px-1 text-[11px] text-white/40">まだありません（強化訓練で解禁）</p>
+            ) : (
+              <div className="menu-stagger grid grid-cols-2 gap-2">
+                {[...ownedSkills]
+                  .sort((x, y) => {
+                    const rank: Record<SkillRarity, number> = { super: 0, rare: 1, normal: 2 };
+                    const d = rank[SKILLS[x].rarity] - rank[SKILLS[y].rarity];
+                    return d !== 0 ? d : SKILLS[x].name.localeCompare(SKILLS[y].name, 'ja');
+                  })
+                  .map(k => {
+                    const lv = ownedSkillLevels[k] ?? 1;
+                    const max = skillMaxLevel(k);
+                    return (
+                      <div
+                        key={k}
+                        className="ff7r-fade-right flex items-center gap-2 rounded-none px-3 py-2.5 text-left text-white/85"
+                      >
+                        <span className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10 overflow-hidden">
+                          {(() => {
+                            const single = skillSingleIconName(k);
+                            if (single) return <img src={spritePath(single)} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />;
+                            const st = skillSheet && hasSkillIcon(k) ? skillIconStyle(k, skillSheet.url, 36, skillSheet) : null;
+                            return st ? <span style={st} aria-hidden /> : skillIcon(k);
+                          })()}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex w-full items-baseline justify-between gap-2">
+                            <span className={`truncate text-[13px] font-semibold ${RARITY_TEXT[SKILLS[k].rarity]}`}>{SKILLS[k].name}</span>
+                            <span className="shrink-0 text-[10px] text-white/45 tabular-nums">{lv >= max ? 'MAX' : `Lv${lv}`}</span>
+                          </span>
+                          <span className="block text-[10px] leading-snug text-white/50">{skillDescForLevel(k, lv)}</span>
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
           </div>
           <p className="text-[11px] text-white/45 text-center">
             サブ: {equippedSubs.length === 0 ? 'なし' : equippedSubs.map(k => subWeaponDisplayName(k)).join(' / ')}
