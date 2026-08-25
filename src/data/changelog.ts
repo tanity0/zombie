@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3889',
+    items: [
+      'ゲーム内容の変更はありません(幻影の召喚系4種の仕様を設計資料に確定しました)。',
+    ],
+  },
+  {
     version: '0.25.3888',
     items: [
       'ゲーム内容の変更はありません(幻影の錬金術=召喚の台本と、記録する「癖」の形を設計資料に起票しました)。',
