@@ -1061,7 +1061,7 @@ export const applyContactDamage = (
       // 敵が実際にどこへ動いたかは見ない=赤く描いた四角と1pxもズレない。
       const rr = { x: e.biteX ?? 0, y: e.biteY ?? 0, w: e.biteW ?? 0, h: e.biteH ?? 0 };
       const px = rr.x + rr.w / 2, py = rr.y + rr.h / 2;
-      if (rr.w > 0 && isInBiteRect(rr, bcx, bcy)) {
+      if (rr.w > 0 && isInBiteRect(rr, collPlayer)) {
         // 接触ダメージと同じ倍率の掛け方(紅き夜×2 / 叫喚の強化窓)。
         const rn = redNightActive ? 2 : 1;
         const sc = (screamerBuffUntil > gameTime && e.type !== 'screamer') ? SCREAMER_BUFF_MULT : 1;
@@ -1076,7 +1076,7 @@ export const applyContactDamage = (
         { cx: eb.x + eb.width / 2, cy: eb.y + eb.height / 2, w: eb.width, h: eb.height },
         bcx, bcy, spec.rangePx,
       );
-      if (isInBiteRect(rr, bcx, bcy)) biteStarts.push({ id: e.id, r: rr });
+      if (isInBiteRect(rr, collPlayer)) biteStarts.push({ id: e.id, r: rr });
     }
   }
   if (biteStarts.length > 0 || biteClears.length > 0) {

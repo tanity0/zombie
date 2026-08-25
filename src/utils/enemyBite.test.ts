@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   BITE_DEFAULT, BITE_BY_TYPE, biteSpecFor, bitePhaseOf, biteProgress,
-  biteLungeFrac, bitePointFrom, biteReachRect, isInBiteRect,
+  biteLungeFrac, bitePointFrom, biteReachRect, isInBiteRect, isBiteSubject,
 } from './enemyBite';
 import type { Enemy } from '../types/game';
 
@@ -102,12 +102,25 @@ describe('★判定の四角(社長2026-08-25「プレイヤーが居る側に�
     expect(-big.y).toBe(36 + 30);    // 大きい体: 半分の高さ36 + 30
   });
 
-  it('★焼いた四角の中に居れば当たり、外へ逃げれば空振り(境界を固定)', () => {
-    const r = biteReachRect(box, 0, -200, 30);
-    expect(isInBiteRect(r, 0, -55)).toBe(true);   // 上端ちょうど=当たる
-    expect(isInBiteRect(r, 0, -55.1)).toBe(false); // 1px外=空振り
-    expect(isInBiteRect(r, 0, 0)).toBe(true);      // 体の中
-    expect(isInBiteRect(r, 60, -30)).toBe(false);  // 横は伸びていないので外
+  // ★v0.25.3912: 判定は**プレイヤーの体(矩形)**が四角に重なるか。中心点ではない
+  // (中心点だと「体で押し出される」仕様と食い違い、構造的に一生当たらない)。
+  const pl = (cx: number, cy: number) => ({ x: cx - 14, y: cy - 14, width: 28, height: 28 });
+
+  it('★焼いた四角にプレイヤーの体が重なれば当たり、外へ逃げれば空振り(境界を固定)', () => {
+    const r = biteReachRect(box, 0, -200, 30);   // 上へ30px伸びた四角(y: -55 〜 +25)
+    expect(isInBiteRect(r, pl(0, -68))).toBe(true);  // 体の下端が1px入っている=当たる
+    expect(isInBiteRect(r, pl(0, -70))).toBe(false); // 体ごと外=空振り
+    expect(isInBiteRect(r, pl(0, 0))).toBe(true);    // 体の中
+    expect(isInBiteRect(r, pl(90, -30))).toBe(false); // 横は伸びていないので外
+  });
+
+  it('★押し出されて敵に接している時は、必ず攻撃の四角に重なる(「一生当たらない」の再発検知器)', () => {
+    // 「通れない箱」=敵の当たり判定そのもの。プレイヤーはそこへ体で押し出されて止まる。
+    // その状態(体の右端が敵の左端にちょうど接する)で、攻撃の四角に重なっていること。
+    const eb = { x: -50, y: -25, width: 100, height: 50 };
+    const pcx = eb.x - 14, pcy = 0;               // 押し出されて接した位置
+    const r = biteReachRect({ cx: 0, cy: 0, w: eb.width, h: eb.height }, pcx, pcy, 30);
+    expect(isInBiteRect(r, pl(pcx, pcy))).toBe(true);
   });
 });
 
@@ -129,5 +142,30 @@ describe('踏み込みの見た目の点(絵だけに使う)', () => {
     // 判定は上の四角。ここは「絵がどこまで出るか」を決めるだけ。
     const bp = bitePointFrom(0, 0, 45, 0, 20);
     expect(Math.hypot(bp.x, bp.y)).toBeCloseTo(20);
+  });
+});
+
+// ★社長報告2026-08-25「ゾンビは相変わらずぶつかるだけで攻撃される」。
+// 真因=ゾンビは近接範囲に入ると必ず 'zpause'→'zrush' に入るのに、旧実装は
+// 「aiPhase が付いている=技の最中」として噛みつきの対象から外していた
+// =**接触ダメージのまま一度も噛みつきに乗らなかった**。
+describe('★接近リズム(zpause/zrush)は技ではない=噛みつきの対象(v0.25.3912)', () => {
+  const notBoss = () => false;
+  const zombie = (aiPhase?: string) => ({
+    type: 'zombie' as const, aiPhase, damage: 10, reaperChaser: undefined,
+  } as Parameters<typeof isBiteSubject>[0]);
+
+  it('zpause / zrush は噛みつきの対象(=接触ダメージを持たない)', () => {
+    expect(isBiteSubject(zombie('zpause'), notBoss)).toBe(true);
+    expect(isBiteSubject(zombie('zrush'), notBoss)).toBe(true);
+  });
+
+  it('技(突進/飛びかかり)は従来どおり体当たりが本体=対象外', () => {
+    expect(isBiteSubject(zombie('charge'), notBoss)).toBe(false);
+    expect(isBiteSubject(zombie('jump'), notBoss)).toBe(false);
+  });
+
+  it('技を持たない個体は従来どおり対象', () => {
+    expect(isBiteSubject(zombie(undefined), notBoss)).toBe(true);
   });
 });

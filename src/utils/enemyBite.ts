@@ -149,9 +149,21 @@ export const biteReachRect = (
   return r;
 };
 
-/** 判定の四角の中にプレイヤー(中心)が居るか。**発火時に焼いた四角**で見る(掟2)。 */
-export const isInBiteRect = (r: BiteRect, pcx: number, pcy: number): boolean =>
-  pcx >= r.x && pcx <= r.x + r.w && pcy >= r.y && pcy <= r.y + r.h;
+/**
+ * 判定の四角に**プレイヤーの体(矩形)が重なっているか**。**発火時に焼いた四角**で見る(掟2)。
+ *
+ * ★v0.25.3912(社長報告「今のままだと一生攻撃が当たらない」): 旧実装は**プレイヤーの中心点**で
+ * 見ていた。ところが同じ v0.25.3903 で「敵をすり抜けない」=**プレイヤーの体全体**が敵の箱の外へ
+ * 押し出されるようになったので、**押し出された体の中心は、体の半分ぶん(14px)だけ必ず遠い**。
+ * 「通れない箱(体で押し出す)」と「攻撃の箱(点で判定する)」が食い違っていたのが真因で、
+ * **両方を体(矩形)で見れば構造的に一致する**——押し出されて接している=攻撃の箱に必ず重なる
+ * (通れない箱 ⊆ 攻撃の箱 なので、これは常に成り立つ)。
+ */
+export const isInBiteRect = (
+  r: BiteRect, player: { x: number; y: number; width: number; height: number },
+): boolean =>
+  player.x < r.x + r.w && player.x + player.width > r.x
+  && player.y < r.y + r.h && player.y + player.height > r.y;
 
 /**
  * ★この敵が噛みつき台本の対象か(=**通常の接触ダメージを持たなくなる敵**)。
@@ -161,16 +173,26 @@ export const isInBiteRect = (r: BiteRect, pcx: number, pcy: number): boolean =>
  *
  * 対象外(=従来どおり触れたら痛い):
  * - **ボス**: 体当たりの意味が違う(社長「技の時は当然当たり判定復活やろ」)。
- * - **技の最中(`aiPhase` あり)**: 突進などは体当たりそのものが技。
+ * - **技の最中**: 突進(`charge`)・飛びかかり(`jump`)などは体当たりそのものが技。
+ *   ★ただし**ゾンビの接近リズム(`zpause`→`zrush`)は技ではない**(社長報告2026-08-25
+ *   「足が速くなってついてくる攻撃だと思うけど、これも最終的には噛みつきです。
+ *   射程に入ったら噛みつきをするっていう台本です」)。旧実装は `aiPhase` が付いているだけで
+ *   除外していたため、**ゾンビは近づくと必ず zrush に入る=噛みつきの対象に一度もならなかった**。
  * - **接触ダメージを持たない敵**(plant など damage<=0): 噛ませても0なので触らない。
  * - **死神の非追跡個体**: 無敵の徘徊体。他の系統でも一律に除外している。
  */
+/**
+ * ★「技ではない」= 噛みつきの対象であり続ける aiPhase(移動のリズムでしかないもの)。
+ * ここに入っていない技(`charge`/`jump` 等)は従来どおり**体当たりが技本体**=接触ダメージを持つ。
+ */
+const BITE_OK_PHASES = new Set<string>(['zpause', 'zrush']);
+
 export const isBiteSubject = (
   enemy: Pick<Enemy, 'type' | 'aiPhase' | 'damage' | 'reaperChaser'>,
   isBoss: (t: EnemyType) => boolean,
 ): boolean => {
   if (isBoss(enemy.type)) return false;
-  if (enemy.aiPhase !== undefined) return false;
+  if (enemy.aiPhase !== undefined && !BITE_OK_PHASES.has(enemy.aiPhase)) return false;
   if ((enemy.damage ?? 0) <= 0) return false;
   if (enemy.type === 'reaper' && !enemy.reaperChaser) return false;
   return true;
