@@ -4520,6 +4520,30 @@ export const overclockAwakenReloadPatch = (p: Player): Partial<Player> => {
 
 // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-1): 死体が攻撃者→敵方向へ飛ぶ実距離(px)。
 export const KILL_LAUNCH_DIST_PX = 50;
+/**
+ * ★死体の「潰れて消える」時間(社長指示2026-08-25「雑魚敵を倒した時、突然パっと消えちゃうので、
+ * すこし吹っ飛んで潰れて消えるようにして」)。
+ *
+ * 直す前は **吹っ飛び(KNOCKBACK_DURATION=280ms)が終わった瞬間に配列から消える**だけで、
+ * 描画側は死体かどうかを見ていなかった=**パッと消える**。吹っ飛びの後ろにこの尺を足し、
+ * その間に**縦に潰れて横に広がりながら透明になる**(=地面に落ちて崩れる)。
+ */
+export const KILL_CORPSE_SQUASH_MS = 220;
+/**
+ * 死体の潰れ具合(描画のみ・判定には一切関与しない)。`corpseUntil` の手前
+ * `KILL_CORPSE_SQUASH_MS` の区間だけ効く。慣性の掟: **出だしが速く、終わりでゆるむ**
+ * (落ちて叩きつけられる動き=ease-out)。
+ */
+export const corpseSquashNow = (
+  e: { corpseUntil?: number }, now: number,
+): { sqX: number; sqY: number; alpha: number } => {
+  const until = e.corpseUntil ?? 0;
+  const left = until - now;
+  if (until <= 0 || left >= KILL_CORPSE_SQUASH_MS) return { sqX: 1, sqY: 1, alpha: 1 };
+  const t = Math.max(0, Math.min(1, 1 - left / KILL_CORPSE_SQUASH_MS));
+  const k = 1 - (1 - t) * (1 - t); // ease-out
+  return { sqX: 1 + 0.45 * k, sqY: 1 - 0.85 * k, alpha: 1 - k };
+};
 
 /**
  * KILLされた通常敵を「死体」(corpseUntil付きEnemy)に変換する(§26-1)。攻撃者→敵の方向へ
@@ -4553,7 +4577,9 @@ export const buildCorpseFromKill = (
   return {
     ...enemy,
     health: 0,
-    corpseUntil: now + KNOCKBACK_DURATION,
+    // ★吹っ飛び(KNOCKBACK_DURATION)の**後ろに潰れの尺を足す**(社長指示2026-08-25)。
+    // 飛距離の積分は `knockbackUntil` を見ているので、ここを伸ばしても**飛び方は1bitも変わらない**。
+    corpseUntil: now + KNOCKBACK_DURATION + KILL_CORPSE_SQUASH_MS,
     corpseStartX: enemy.x, // v0.25.3272: 実時間の解析積分用の発射起点(スロー中でも飛距離50pxを保証)
     corpseStartY: enemy.y,
     aiPhase: undefined,

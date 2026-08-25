@@ -2,7 +2,7 @@
 // §26-3: ①死体がKB付きで残り期限で消える ②死体は接触ダメージを与えない/受けない
 // ③パニッシャー所持時、死体moverが隣の敵を巻き込む ④ボス/ネームドの死亡演出は不変。
 import { describe, it, expect, vi } from 'vitest';
-import { useGameStore, KNOCKBACK_DURATION, KILL_LAUNCH_DIST_PX, knockbackSpeedFor, PUNISHER_TWO_BEAT_MS } from './gameStore';
+import { useGameStore, KNOCKBACK_DURATION, KILL_LAUNCH_DIST_PX, knockbackSpeedFor, PUNISHER_TWO_BEAT_MS, corpseSquashNow, KILL_CORPSE_SQUASH_MS } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { checkPlayerEnemyCollisions } from '../utils/collisionUtils';
 import { isCorpse } from '../utils/enemyUtils';
@@ -32,7 +32,9 @@ describe('KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26)', () => {
     expect(after).toBeTruthy(); // 即消滅していない=死体として残っている
     expect(after!.health).toBe(0);
     expect(isCorpse(after!)).toBe(true);
-    expect(after!.corpseUntil).toBe(now + KNOCKBACK_DURATION);
+    // ★v0.25.3930: 吹っ飛び(KNOCKBACK_DURATION)の**後ろに潰れの尺**が足された。
+    // 飛距離の積分は knockbackUntil を見ているので、飛び方そのものは不変(下の行で固定)。
+    expect(after!.corpseUntil).toBe(now + KNOCKBACK_DURATION + KILL_CORPSE_SQUASH_MS);
     expect(after!.knockbackUntil).toBe(now + KNOCKBACK_DURATION);
     // 攻撃者(プレイヤー)→敵は+x方向なので、死体も+x側へ飛ぶ。
     expect(after!.knockbackVx).toBeGreaterThan(0);
@@ -97,8 +99,8 @@ describe('KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26)', () => {
     useGameStore.getState().damageEnemy(id, 999);
     expect(useGameStore.getState().enemies.find(e => e.id === id)).toBeTruthy();
 
-    // 期限(KNOCKBACK_DURATION)の手前ではまだ残る。
-    now += KNOCKBACK_DURATION - 20;
+    // 期限(吹っ飛び+潰れ)の手前ではまだ残る。
+    now += KNOCKBACK_DURATION + KILL_CORPSE_SQUASH_MS - 20;
     useGameStore.getState().updateEnemies(1 / 60);
     expect(useGameStore.getState().enemies.find(e => e.id === id)).toBeTruthy();
 
@@ -208,5 +210,41 @@ describe('KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26)', () => {
     expect(after!.health).toBe(0);
 
     spy.mockRestore();
+  });
+});
+
+// ★社長指示2026-08-25「雑魚敵を倒した時、突然パっと消えちゃうので、すこし吹っ飛んで潰れて
+// 消えるようにして」。吹っ飛び(KNOCKBACK_DURATION)の後ろに潰れの尺を足した(v0.25.3930)。
+describe('★死体は潰れて消える(v0.25.3930)', () => {
+  it('吹っ飛びが終わるまでは潰れない(飛んでいる間は普通の姿)', () => {
+    const until = 10_000;
+    const sq = corpseSquashNow({ corpseUntil: until }, until - KILL_CORPSE_SQUASH_MS - 1);
+    expect(sq.sqX).toBe(1);
+    expect(sq.sqY).toBe(1);
+    expect(sq.alpha).toBe(1);
+  });
+
+  it('★最後の区間で縦に潰れ・横に広がり・透明になる', () => {
+    const until = 10_000;
+    const mid = corpseSquashNow({ corpseUntil: until }, until - KILL_CORPSE_SQUASH_MS / 2);
+    expect(mid.sqY).toBeLessThan(1);   // 縦に潰れる
+    expect(mid.sqX).toBeGreaterThan(1); // 横に広がる
+    expect(mid.alpha).toBeLessThan(1);  // 薄くなる
+    const end = corpseSquashNow({ corpseUntil: until }, until);
+    expect(end.alpha).toBeCloseTo(0);   // 消え切る
+  });
+
+  it('慣性: 出だしが速く終わりでゆるむ(ease-out=落ちて叩きつけられる動き)', () => {
+    const until = 10_000;
+    const q1 = corpseSquashNow({ corpseUntil: until }, until - KILL_CORPSE_SQUASH_MS * 0.75); // t=0.25
+    const q3 = corpseSquashNow({ corpseUntil: until }, until - KILL_CORPSE_SQUASH_MS * 0.25); // t=0.75
+    const end = corpseSquashNow({ corpseUntil: until }, until);                                // t=1
+    // **最初の1/4で進む量 > 最後の1/4で進む量**(同じ長さの区間どうしを比べる)。
+    expect(1 - q1.alpha).toBeGreaterThan(q3.alpha - end.alpha);
+  });
+
+  it('死体でない敵(corpseUntil なし)は一切変形しない', () => {
+    const sq = corpseSquashNow({}, 10_000);
+    expect(sq).toEqual({ sqX: 1, sqY: 1, alpha: 1 });
   });
 });

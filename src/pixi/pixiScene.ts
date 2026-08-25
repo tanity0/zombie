@@ -28,6 +28,7 @@ import type {
   GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショットの渦(v0.25.3276)
 } from '../types/game';
 import {
+  corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
   useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
@@ -15362,8 +15363,13 @@ export class PixiScene {
       view.shadowScale = sc;
       view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY;
       // faceMul(③振り向き)は符号を持つ=ミラー。歩幅スカッシュ(motSqX/Y)は他の変形と同じ掛け算合成。
-      const scaleX = sc * breath.x * aiSqX * lungeSqX * motSqX * faceMul;
-      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY * motSqY);
+      // ★死体は**縦に潰れて横に広がりながら**消える(社長指示2026-08-25「突然パっと消えちゃうので、
+      // すこし吹っ飛んで潰れて消えるようにして」)。判定には一切関与しない純粋な描画。
+      // 潰れの式は sim 側の純関数(corpseSquashNow)を読むだけ=尺と形の出どころを1箇所に保つ。
+      const corpseSq = corpseSquashNow(e, now);
+      const scaleX = sc * breath.x * aiSqX * lungeSqX * motSqX * faceMul * corpseSq.sqX;
+      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY * motSqY * corpseSq.sqY);
+      if (corpseSq.alpha < 1) view.container.alpha *= corpseSq.alpha;
       // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
       // 中心からずれた個体は横に流れて見える。重心が footX に乗るよう x を寄せる(視覚のみ)。
       if (this.snowStage || this.battlefieldStage) {

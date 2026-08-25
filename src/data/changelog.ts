@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3930',
+    items: [
+      '倒した敵が、少し吹っ飛んだあと潰れながら消えるようになりました(いきなり消えなくなります)。',
+    ],
+  },
+  {
     version: '0.25.3929',
     items: [
       'ゲーム内容の変更はありません(自動テストのスクリプトが、ステージを指定して回せるようになりました)。',
