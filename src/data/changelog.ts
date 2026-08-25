@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3895',
+    items: [
+      'ゲーム内容の変更はありません(ドッグと箱の扱いに食い違いが見つかったので、資料に記録しました)。',
+    ],
+  },
+  {
     version: '0.25.3894',
     items: [
       '★幻影がドッグを連れてくるようになりました。犬は落ちている物へ走って行き、拾うのではなく消していきます——取られる前に拾ってください。',
