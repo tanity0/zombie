@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3907',
+    items: [
+      'ゲーム内容の変更はありません(過去の設計裁定を掘り起こして、設計資料の推薦を訂正しました)。',
+    ],
+  },
+  {
     version: '0.25.3906',
     items: [
       'ゲーム内容の変更はありません(幻影と守護霊の近接に「その人の間合いの癖」を持たせる設計を起票しました)。',
