@@ -62,7 +62,11 @@ for (const c of cfg.configs) {
 
   // extraQuery(任意): ラン別の追加URLパラメータ("bountynow=1&bountytype=melee" 等)。
   // クリ計測のボス戦ラン(REQUEST 2026-08-15)のために追加。未指定なら従来と同一URL。
-  const url = `${baseUrl}?smoke=1&bot=${c.persona ?? 'standard'}&stage=stage-1${c.extraQuery ? `&${c.extraQuery}` : ''}`;
+  // ★stage(任意・v0.25.3929): ステージをランごとに変えられる。既定は従来どおり stage-1。
+  //   旧実装は `stage=stage-1` を直書きしていて、`stage` は**先勝ち**なので extraQuery でも
+  //   上書きできず、**stage-2 以降のランが作れなかった**(2026-08-25のテストで実際に詰まり、
+  //   テストチャットが手作業で回避した)。依頼側が書けるようにする。
+  const url = `${baseUrl}?smoke=1&bot=${c.persona ?? 'standard'}&stage=${c.stage ?? 'stage-1'}${c.extraQuery ? `&${c.extraQuery}` : ''}`;
   const t0 = Date.now();
   console.log(`[run] ${c.name} → ${url}`);
   await page.goto(url, { waitUntil: 'load' });

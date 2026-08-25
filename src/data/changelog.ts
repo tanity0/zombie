@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3929',
+    items: [
+      'ゲーム内容の変更はありません(自動テストのスクリプトが、ステージを指定して回せるようになりました)。',
+    ],
+  },
+  {
     version: '0.25.3928',
     items: [
       '噛みつきをカウンター不可にしました。構えている敵は紫に光ります(紫=カウンターできない攻撃)。避けてください。',

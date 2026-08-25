@@ -1,11 +1,12 @@
 {
   "baseUrl": "local",
-  "mode": "standard",
-  "note": "2026-08-25の依頼。A=通常ラン3本(botrun-local.mjs既定・stage1x2 + stage2x1)→ B=ボスガントレット(?gauntlet=1&bot=standard&botskill=master をheadedで放置)。知りたいのは『敵が無害化していないか』と『固まらないか』の2点のみ。バランス・勝率・見た目の評価は対象外。★最重要の判定: 全ランで damageTaken が 0 なら重大(敵が攻撃してきていない)。",
-  "url": "/zombie/?bot=standard&autotut=1",
-  "gauntletUrl": "/zombie/?gauntlet=1&bot=standard&botskill=master",
-  "runs": 3,
   "headless": false,
   "viewport": { "width": 1280, "height": 800 },
-  "minVersion": "0.25.3928"
+  "minVersion": "0.25.3928",
+  "note": "2026-08-25追試。噛みつきが実際に当たっている直接証拠を取るのが目的。configs配列=botrun-local.mjs がそのまま読める形(前回この形になっておらず手作業回避が発生した)。stage はランごとに指定できる(v0.25.3929でスクリプト側を対応)。Bのガントレットは今回不要。",
+  "configs": [
+    { "name": "bite-evidence-stage1-a", "persona": "standard", "stage": "stage-1", "extraQuery": "autotut=1" },
+    { "name": "bite-evidence-stage1-b", "persona": "rusher", "stage": "stage-1", "extraQuery": "autotut=1" },
+    { "name": "bite-evidence-stage2", "persona": "standard", "stage": "stage-2", "extraQuery": "autotut=1" }
+  ]
 }
