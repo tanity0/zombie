@@ -1,12 +1,11 @@
 {
   "baseUrl": "local",
-  "mode": "gauntlet",
-  "note": "botrunスクリプトは使わない。REQUEST.mdの手順どおりheadedでURLを開いて放置する。botskill=masterは必須(トールの紫円の新仕様がmaster/skilled限定のため)。devサーバ利用時はpull後に必ず再起動する(版ラベルが古いまま焼かれる事故が前回発生)。 今回の新規観測点: トールの突進の赤い帯が出ているか / 賞金首4枠で活動限界(巣から1200px)が誤爆して戦闘にならないか。",
-  "url": "/zombie/?gauntlet=1&bot=standard&botskill=master",
+  "mode": "standard",
+  "note": "2026-08-25の依頼。A=通常ラン3本(botrun-local.mjs既定・stage1x2 + stage2x1)→ B=ボスガントレット(?gauntlet=1&bot=standard&botskill=master をheadedで放置)。知りたいのは『敵が無害化していないか』と『固まらないか』の2点のみ。バランス・勝率・見た目の評価は対象外。★最重要の判定: 全ランで damageTaken が 0 なら重大(敵が攻撃してきていない)。",
+  "url": "/zombie/?bot=standard&autotut=1",
+  "gauntletUrl": "/zombie/?gauntlet=1&bot=standard&botskill=master",
+  "runs": 3,
   "headless": false,
-  "viewport": {
-    "width": 1280,
-    "height": 800
-  },
-  "minVersion": "0.25.3828"
+  "viewport": { "width": 1280, "height": 800 },
+  "minVersion": "0.25.3928"
 }
