@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3893',
+    items: [
+      'ゲーム内容の変更はありません(幻影のドッグの仕様が決まりました。実装はこの後です)。',
+    ],
+  },
+  {
     version: '0.25.3892',
     items: [
       'ゲーム内容の変更はありません(対戦の設計判断のために参考資料を1件足しました)。',
