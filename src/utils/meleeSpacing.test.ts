@@ -16,7 +16,8 @@ const tick = (
   enemies: ReturnType<typeof enemy>[],
   swungThisTick = false,
   pcx = 0, pcy = 0,
-) => stepMeleeSpacing(st, { enemies, pcx, pcy, reachPx: 74, gameTime, swungThisTick });
+  counterWindowOpen = false,
+) => stepMeleeSpacing(st, { enemies, pcx, pcy, reachPx: 74, gameTime, swungThisTick, counterWindowOpen });
 
 describe('接敵イベントの分類(社長の5つの癖)', () => {
   it('①進入してから振るまでの遅れを測る(連続量・抽選なし)', () => {
@@ -152,6 +153,58 @@ describe('接敵イベントの分類(社長の5つの癖)', () => {
     expect(p.swingLeaveRate).toBeCloseTo(0.5); // 2件のうち1件だけが振り逃げ
     expect(p.backStepPx).toBeCloseTo(80);      // 振り逃げの距離
     expect(p.holdBackStepPx).toBeCloseTo(40);  // 振らずに逃げた距離(混ざっていない)
+  });
+
+  // -------------------------------------------------------------------------------------------
+  // ★社長の指摘2026-08-25「もちろん、カウンター狙いで振る人はいる。それも別で癖は取れるよね」
+  // カウンター窓の中の振りは**間合いの癖から外して別勘定**にする(v0.25.3910)。
+  // -------------------------------------------------------------------------------------------
+  it('★カウンター窓の中の振りは間合いの癖に数えない(反応の速さが遅れに紛れない)', () => {
+    const st = createMeleeSpacingState();
+    tick(st, 0, [enemy('z', 50)]);                           // 進入
+    tick(st, 200, [enemy('z', 50)], false, 0, 0, true);       // 窓が開いた(まだ振らない)
+    tick(st, 400, [enemy('z', 50)], true, 0, 0, true);        // 窓の中で振った(=カウンター狙い)
+    tick(st, 900, []);                                       // 離れて決着
+    const p = foldMeleeSpacing(st, 900);
+    // 間合い側では「自分からは振らない人」に見える(これが正しい——技に反応しただけ)
+    expect(p.holdRate).toBe(1);
+    expect(p.swingsPerEpisode).toBe(0);
+    expect(p.swingLagMs).toBeNull();
+    // カウンター側に立つ
+    expect(p.counterAimRate).toBe(1);
+    expect(p.counterAimLagMs).toBe(200); // 窓が開いてから振るまで
+  });
+
+  it('★「狙って振ったが外した」も残る(成立だけを数える counterChance では取れない)', () => {
+    const st = createMeleeSpacingState();
+    // 機会1: 窓の中で振った(当たったかどうかはここでは見ない)
+    tick(st, 0, [], true, 0, 0, true);
+    tick(st, 100, []);          // 窓が閉じる
+    // 機会2: 窓が開いたが振らなかった
+    tick(st, 200, [], false, 0, 0, true);
+    tick(st, 300, []);
+    const p = foldMeleeSpacing(st, 300);
+    expect(p.counterAimRate).toBeCloseTo(0.5);
+  });
+
+  it('★同じ窓で連打しても1票(窓の数で割る率が1を超えない)', () => {
+    const st = createMeleeSpacingState();
+    tick(st, 0, [], true, 0, 0, true);
+    tick(st, 50, [], true, 0, 0, true);
+    tick(st, 100, [], true, 0, 0, true);
+    tick(st, 200, []);
+    const p = foldMeleeSpacing(st, 200);
+    expect(p.counterAimRate).toBe(1);
+    expect(p.counterAimLagMs).toBe(0); // 最初の振りの遅れだけを見る
+  });
+
+  it('★カウンター窓を一度も見ていなければ null(0=「一度も狙わない人」と混ざらない)', () => {
+    const st = createMeleeSpacingState();
+    tick(st, 0, [enemy('z', 50)]);
+    tick(st, 500, []);
+    const p = foldMeleeSpacing(st, 500);
+    expect(p.counterAimRate).toBeNull();
+    expect(p.counterAimLagMs).toBeNull();
   });
 
   it('★複数の敵が同時に居ても、進入ごとに1件ずつ数える', () => {

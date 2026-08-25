@@ -51,7 +51,17 @@ export interface MeleeSpacingState {
   swingLagCount: number;
   preSwingCount: number;
   swingLeaveCount: number;
-  holdCount: number;      // 射程内に居られたのに一度も振らなかった
+  holdCount: number;      // 射程内に居られたのに一度も振らなかった(=自分からは振らない)
+  // ---- ★カウンター狙いの癖(別勘定・社長の指摘2026-08-25) ----
+  caOpportunities: number; // 窓が開いた回数(機会)
+  /** そのうち**窓の中で振った**回数(1窓1票)。既存の `counterChance` は**成立**しか数えていないので、
+   *  「狙って振ったが外した」はここにしか残らない。 */
+  caSwings: number;
+  caLagSumMs: number;      // 窓が開く → 振る までの合計ms(振った窓のみ)
+  caLagCount: number;
+  caWasOpen: boolean;      // 立ち上がり検知
+  caOpenAt: number | null;
+  caSwungThisWindow: boolean;
   swingSum: number;       // 全イベントの振った回数の合計(=積極性)
   backStepSumPx: number;  // 振り逃げた回の「下がった距離」合計
   /** ★一度も振らずに離れた回の「下がった距離」合計(社長の問い2026-08-25
@@ -67,6 +77,8 @@ export const createMeleeSpacingState = (): MeleeSpacingState => ({
   n: 0, swingLagSumMs: 0, swingLagCount: 0, preSwingCount: 0,
   swingLeaveCount: 0, holdCount: 0, swingSum: 0, backStepSumPx: 0,
   holdBackStepSumPx: 0, holdBackStepCount: 0, crossings: 0,
+  caOpportunities: 0, caSwings: 0, caLagSumMs: 0, caLagCount: 0,
+  caWasOpen: false, caOpenAt: null, caSwungThisWindow: false,
 });
 
 export interface MeleeSpacingTickInput {
@@ -78,6 +90,13 @@ export interface MeleeSpacingTickInput {
   gameTime: number;
   /** このtickにプレイヤーが振ったか(呼び出し側が meleeSwingAt の変化で検出する=時計を混ぜない)。 */
   swungThisTick: boolean;
+  /**
+   * ★その時**カウンターが成立しうる窓**が開いているか(社長の指摘2026-08-25
+   * 「もちろん、カウンター狙いで振る人はいる。それも別で癖は取れるよね」)。
+   * 窓の中の振りは**間合いの癖から外して別勘定にする**——混ぜると
+   * 「相手の技に反応して振った人」が「間合いに入られたら即振る人」に化ける(反応の速さが遅れに紛れる)。
+   */
+  counterWindowOpen: boolean;
 }
 
 /**
@@ -86,7 +105,26 @@ export interface MeleeSpacingTickInput {
  */
 export const stepMeleeSpacing = (st: MeleeSpacingState, input: MeleeSpacingTickInput): void => {
   const { pcx, pcy, reachPx, gameTime } = input;
-  if (input.swungThisTick) {
+
+  // ---- ★カウンター窓(別勘定)。立ち上がりで機会を1つ数え、窓の中の初振りを1票として記録する。
+  const open = input.counterWindowOpen;
+  if (open && !st.caWasOpen) {
+    st.caOpportunities += 1;
+    st.caOpenAt = gameTime;
+    st.caSwungThisWindow = false;
+  }
+  if (!open) st.caOpenAt = null;
+  st.caWasOpen = open;
+  if (open && input.swungThisTick && !st.caSwungThisWindow) {
+    st.caSwings += 1;
+    st.caSwungThisWindow = true;
+    if (st.caOpenAt !== null) { st.caLagSumMs += gameTime - st.caOpenAt; st.caLagCount += 1; }
+  }
+
+  // ★窓の中の振りは**間合いの癖には数えない**。
+  // 結果として「窓が開いた時だけ振る人」は間合い側では `holdRate=1`(自分からは振らない)になり、
+  // カウンター側で `counterAimRate` が立つ——**2つ合わせて初めてその人になる**。
+  if (input.swungThisTick && !open) {
     st.lastSwingAt = gameTime;
     // 開いている episode すべてに1回ぶん数える(=積極性)。最初の1回だけ遅れ(lag)の基準にする。
     for (const ep of st.episodes) {
@@ -187,8 +225,17 @@ export interface MeleeSpacingProfile {
   preSwingRate: number;
   /** 離散の材料: 振った後すぐ射程外へ出た割合(袋へ)。 */
   swingLeaveRate: number;
-  /** 離散の材料: 一度も振らずに終えた割合(=待ち構える人。袋へ)。 */
+  /** 離散の材料: 一度も振らずに終えた割合(=**自分からは**振らない人。袋へ)。 */
   holdRate: number;
+  /**
+   * ★離散の材料: **カウンター窓が開いた機会のうち、窓の中で振った割合**(袋へ)。
+   * 社長の指摘2026-08-25「カウンター狙いで振る人はいる。それも別で癖は取れるよね」。
+   * 既存の `playerTraits.counterChance` は**成立**しか数えていない(`notifyCounterHit`)ので、
+   * **「狙って振ったが外した」はここにしか残らない**。機会0なら `null`。
+   */
+  counterAimRate: number | null;
+  /** ★連続量: 窓が開いてから振るまでの平均ms(**成立でなく試行**の反応速度。抽選しない)。該当0なら `null`。 */
+  counterAimLagMs: number | null;
 }
 
 export const foldMeleeSpacing = (st: MeleeSpacingState, elapsedMs: number): MeleeSpacingProfile => {
@@ -204,5 +251,7 @@ export const foldMeleeSpacing = (st: MeleeSpacingState, elapsedMs: number): Mele
     preSwingRate: n > 0 ? st.preSwingCount / n : 0,
     swingLeaveRate: n > 0 ? st.swingLeaveCount / n : 0,
     holdRate: n > 0 ? st.holdCount / n : 0,
+    counterAimRate: st.caOpportunities > 0 ? st.caSwings / st.caOpportunities : null,
+    counterAimLagMs: st.caLagCount > 0 ? st.caLagSumMs / st.caLagCount : null,
   };
 };
