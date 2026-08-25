@@ -44,7 +44,7 @@ export const BITE_DEFAULT: BiteSpec = {
   rangePx: 30,
   windupMs: 300,
   biteMs: 200,
-  lungePx: 20,
+  lungePx: 30,
   recoverMs: 600,   // 叩き台。0にすると外した敵が即再構えでずっと噛みつき状態になる
   counterable: true, // 一旦カウンター可の赤
 };
@@ -250,6 +250,35 @@ export const isBiteResolveDue = (
   const spec = biteSpecFor(enemy.type);
   return gameTime >= enemy.biteAt + spec.windupMs + spec.biteMs;
 };
+
+/**
+ * ★噛みの瞬間の判定(社長裁定2026-08-25)。
+ *
+ * 社長「30PXで反応、30PX移動してくる、この際、**壁判定は通過可能になり、当たり判定の瞬間に
+ * 被っていたらダメージ**、壁判定に戻す。で繰り返せば?」
+ * 「すると、**赤く光った敵がプレイヤーにかぶさってくる形**になる。絵としてわかりやすくなる」
+ *
+ * ⇒ **専用の当たり判定の四角を持たない**。噛みの瞬間に**敵の体とプレイヤーが重なっていたら**当たり。
+ * 絵(赤く光る敵そのもの)と判定が同一なので、「赤いのに当たらない」が原理的に起こらない。
+ * 併せて**当たり判定の線は描かない**(社長「興ざめなので」)。
+ */
+export const biteBodyOverlapsPlayer = (
+  enemyBox: { x: number; y: number; width: number; height: number },
+  player: { x: number; y: number; width: number; height: number },
+): boolean =>
+  player.x < enemyBox.x + enemyBox.width && player.x + player.width > enemyBox.x
+  && player.y < enemyBox.y + enemyBox.height && player.y + player.height > enemyBox.y;
+
+/**
+ * ★噛みつきの踏み込み中は「すり抜け防止の壁」を開ける(社長「この際、壁判定は通過可能になり」)。
+ * 開けないと**覆いかぶされない**=踏み込んだ先でプレイヤーを押し出してしまい、
+ * 「被っていたらダメージ」が成立しない。噛みが終われば壁は戻る。
+ * 踏み込みは**溜めから始まっている**(`biteLungeFrac` は溜めで半分出る)ので、
+ * 開けるのは**台本の間ずっと**(溜め+噛み)。
+ */
+export const isBiteWallOpen = (
+  enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number,
+): boolean => bitePhaseOf(enemy, gameTime) !== 'none';
 
 /** 予告した円の中にプレイヤーが居るか(掟2: 敵の実位置は見ない)。 */
 export const isInBiteCircle = (

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   BITE_DEFAULT, BITE_BY_TYPE, biteSpecFor, bitePhaseOf, biteProgress,
   biteLungeFrac, bitePointFrom, biteReachRect, isInBiteRect, isBiteSubject,
-  biteWallRect, BITE_WALL_W, BITE_WALL_H,
+  biteWallRect, BITE_WALL_W, BITE_WALL_H, isBiteWallOpen, biteBodyOverlapsPlayer,
 } from './enemyBite';
 import type { Enemy } from '../types/game';
 
@@ -15,11 +15,11 @@ const at = (biteAt: number | undefined): Pick<Enemy, 'type' | 'biteAt'> =>
   ({ type: 'zombie', biteAt } as Pick<Enemy, 'type' | 'biteAt'>);
 
 describe('噛みつきの台帳', () => {
-  it('社長指定の叩き台がそのまま入っている(30px / 300ms / 200ms / 20px)', () => {
+  it('社長指定の叩き台がそのまま入っている(30px / 300ms / 200ms / 踏み込み30px)', () => {
     expect(BITE_DEFAULT.rangePx).toBe(30);
     expect(BITE_DEFAULT.windupMs).toBe(300);
     expect(BITE_DEFAULT.biteMs).toBe(200);
-    expect(BITE_DEFAULT.lungePx).toBe(20);
+    expect(BITE_DEFAULT.lungePx).toBe(30); // 社長裁定2026-08-25「30PX移動してくる」(旧20px)
     expect(BITE_DEFAULT.windupMs + BITE_DEFAULT.biteMs).toBe(500); // 社長「500msかけて」
   });
 
@@ -204,5 +204,36 @@ describe('★壁の箱と攻撃の箱を分ける(v0.25.3913)', () => {
       && player.y < wall.y + wall.height && player.y + player.height > wall.y;
     expect(touchesWall).toBe(false);        // 壁には触れていない=歩ける
     expect(isInBiteRect(r, player)).toBe(true); // それでも攻撃の四角には重なっている
+  });
+});
+
+// ★社長裁定2026-08-25(台本の確定形):
+// 「30PXで反応、30PX移動してくる、この際、**壁判定は通過可能になり、当たり判定の瞬間に
+//  被っていたらダメージ**、壁判定に戻す。で繰り返せば?」
+// 「すると、**赤く光った敵がプレイヤーにかぶさってくる形**になる。絵としてわかりやすくなる」
+describe('★噛みつきの台本(v0.25.3914)', () => {
+  const zom = (biteAt?: number) => ({ type: 'zombie' as const, biteAt });
+
+  it('台本の間は壁が開く(=覆いかぶされる)。終われば壁は戻る', () => {
+    const e = zom(1000);
+    expect(isBiteWallOpen(e, 1000)).toBe(true);   // 溜め開始
+    expect(isBiteWallOpen(e, 1400)).toBe(true);   // 噛みの最中
+    expect(isBiteWallOpen(e, 1500)).toBe(false);  // 台本終了=壁が戻る
+    expect(isBiteWallOpen(zom(undefined), 1000)).toBe(false); // 構えていない時は常に壁
+  });
+
+  it('★判定は「噛みの瞬間に敵の体とプレイヤーが重なっているか」だけ(専用の四角を持たない)', () => {
+    const enemyBox = { x: 0, y: 0, width: 36, height: 36 };
+    expect(biteBodyOverlapsPlayer(enemyBox, { x: 20, y: 20, width: 28, height: 28 })).toBe(true);
+    expect(biteBodyOverlapsPlayer(enemyBox, { x: 36, y: 0, width: 28, height: 28 })).toBe(false); // 接しているだけ=外
+    expect(biteBodyOverlapsPlayer(enemyBox, { x: 200, y: 0, width: 28, height: 28 })).toBe(false);
+  });
+
+  it('踏み込みは溜めでじわり→噛みで伸び切る(慣性・CLAUDE.md「加減速のない動きは禁止」)', () => {
+    const e = zom(1000);                                 // biteAt=0 は「構えていない」の意味なので使わない
+    expect(biteLungeFrac(e, 1000)).toBe(0);
+    expect(biteLungeFrac(e, 1150)).toBeLessThan(0.25);   // 溜め中盤=まだ出ていない(ease-in)
+    expect(biteLungeFrac(e, 1300)).toBeCloseTo(0.5);     // 溜め終わり=半分
+    expect(biteLungeFrac(e, 1500)).toBe(1);              // 噛みの瞬間=伸び切る
   });
 });

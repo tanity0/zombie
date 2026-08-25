@@ -236,7 +236,7 @@ import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
-import { isBiteSubject, biteWallRect } from '../utils/enemyBite';
+import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor } from '../utils/enemyBite';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
@@ -6013,6 +6013,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           for (const en of state.enemies) {
             if (isCorpse(en)) continue;
             if (!isBiteSubject(en, isBossType)) continue;
+            // ★噛みつきの踏み込み中は壁を開ける(社長裁定2026-08-25「この際、壁判定は通過可能になり、
+            // 当たり判定の瞬間に被っていたらダメージ、壁判定に戻す」)。開けないと覆いかぶされない。
+            if (isBiteWallOpen(en, state.gameTime)) continue;
             const eb = biteWallRect(en);
             // 遠い個体は捨てる(全個体との矩形解決を毎フレームやらない)。
             if (Math.abs(eb.x - newX) > 160 || Math.abs(eb.y - newY) > 160) continue;
@@ -13063,6 +13066,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         const dx = tgt.x - (enemy.x + enemy.width / 2);
         const dy = tgt.y - (enemy.y + enemy.height / 2);
         const distance = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
+
+        // ★噛みつきの踏み込み(社長裁定2026-08-25「30PX移動してくる」)。台本の間は通常の接近を止め、
+        // **発火時に焼いた起点+向き**へ `biteLungeFrac`(溜めでじわり→噛みで伸び切る=慣性)で進む。
+        // 追尾しない=横へ避けられる。壁(すり抜け防止)はこの間だけ開いている(上の movePlayer 側)。
+        if (isBiteSubject(enemy, isBossType) && bitePhaseOf(enemy, gameTime) !== 'none') {
+          const lp = biteSpecFor(enemy.type).lungePx;
+          const f = biteLungeFrac(enemy, gameTime);
+          const ox = enemy.biteX ?? enemy.x, oy = enemy.biteY ?? enemy.y;
+          const bmoved = resolveMove(ox + (enemy.biteDirX ?? 0) * lp * f, oy + (enemy.biteDirY ?? 0) * lp * f);
+          return { ...enemy, vx: 0, vy: 0, x: bmoved.x, y: bmoved.y };
+        }
 
         // ゾンビ専用AI: ×1.2 でフラフラ接近。プレイヤーの近接範囲に入ると 1秒停止→2秒間2倍速 を繰り返す。
         if (enemy.type === 'zombie') {

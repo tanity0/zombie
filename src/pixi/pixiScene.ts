@@ -3227,7 +3227,6 @@ export class PixiScene {
   private bloodSpikeGfx = new Graphics();
   private bossFireGfx = new Graphics();                    // ジブリルのランタン火(紫の単発火)を一括描画(予告=赤円/有効=紫火)
   private sensorMineGfx = new Graphics();                  // センサー地雷(sensor-mine)を一括描画(待機=ディスク+ランプ/感知=赤点滅テレグラフ)
-  private enemyBiteGfx = new Graphics();                   // ★噛みつき(PACING_PUZZLE §12)の予告円を一括描画
   private supportSniperSprite: Sprite | null = null;       // 援護射撃(support-sniper)のNPC(同時1人・護衛軍人スプライト流用のプールSprite)
   private flareGunViews = new Map<string, { container: Container; flameArt: Sprite; flame: Graphics; light: Sprite }>(); // フレアガン(flare-gun)の火(makeGroundFireView流用・同時1-2個)
   private effects = new Map<string, EffectView>();
@@ -7652,7 +7651,6 @@ export class PixiScene {
     this.syncBloodSpikes(s.bloodSpikes, s.gameTime, now); // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
     this.syncSensorMines(s.sensorMines, s.gameTime, now); // センサー地雷(待機ディスク/感知後2秒の赤点滅テレグラフ)
-    this.syncEnemyBites(s.enemies, s.gameTime);          // ★噛みつきの予告円(§12・予告した点に描く)
     this.syncFlareGun(s.flareGunFlares, s.gameTime, now); // フレアガン(飛翔→着弾中3秒の火・molotovの火を流用)
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
@@ -12932,46 +12930,6 @@ export class PixiScene {
   // (爆発範囲の赤円+ランプ赤点滅)。ジブリル火(syncBossFires)と同系の「共有Graphics1枚へ一括描画」方式
   // (同時最大5個+小プリミティブ数個=軽い。新規の強glowは使わない)。設置/感知/起爆の判定は sim 側
   // (gameStore/useGameLoop)が担い、ここは s.sensorMines を読んで描くだけ(CLAUDE.md「PixiJSは描画のみ」)。
-  /**
-   * ★噛みつきの予告円(PACING_PUZZLE.md §12・社長「0msで赤く点滅 が噛みつき、全敵共通」)。
-   *
-   * **描くのは "予告した点"(`biteX/biteY`)であって敵の位置ではない。** これが判定と一致する場所で、
-   * 壁で踏み込みが止まっても円と判定がズレない(§12の掟2)。
-   *
-   * ★**紅き夜対策(社長裁定「点滅が視認できればどちらでも」)**: 紅き夜は画面全体に血赤の
-   * カラーマトリクスが掛かる**上に敵ダメージ2倍**の時間帯なので、赤一色で点滅させると
-   * **いちばん読ませたい場面で沈む**。そこで**明度で立てる**——点滅の明側を白熱(白寄り)にし、
-   * 暗側を赤にする。色相ではなく明暗のコントラストなので赤い画面でも残る。
-   * 被弾フラッシュは全画面の白なので、こちらは「足元の円」という形で区別できる。
-   */
-  private syncEnemyBites(enemies: Enemy[], gameTime: number) {
-    const g = this.enemyBiteGfx;
-    if (!g.parent) this.L.groundLayer.addChild(g);
-    g.clear();
-    for (const e of enemies) {
-      if (e.biteAt === undefined || e.biteAt <= 0) continue;
-      const spec = biteSpecFor(e.type);
-      const total = spec.windupMs + spec.biteMs;
-      const t = gameTime - e.biteAt;
-      if (t < 0 || t > total) continue;
-      const bx = e.biteX ?? 0, by = e.biteY ?? 0;
-      const rw = e.biteW ?? 0, rh = e.biteH ?? 0;
-      if (rw <= 0 || rh <= 0) continue;
-      if (this.distanceOutsideViewport(bx + rw / 2, by + rh / 2, Math.max(rw, rh) / 2 + 60) > 0) continue;
-      const p = t / total;                       // 0..1
-      // 点滅は終盤ほど速く(センサー地雷と同じ「警報」の作法。矩形波=現実のランプに忠実)。
-      const period = 150 - 90 * p;               // 150ms → 60ms
-      const on = Math.floor(t / Math.max(30, period)) % 2 === 0;
-      const rim = on ? 0xfff0f0 : 0xff2a2a;      // 明側=白熱 / 暗側=赤(紅き夜でも明暗で残る)
-      // ★判定とまったく同じ四角を描く(社長2026-08-25「上下左右に30px伸ばすイメージ」)。
-      // 円ではなく四角なのは判定が四角だから——形が違うと「赤いのに当たらない」が生まれる。
-      g.rect(bx, by, rw, rh)
-        .fill({ color: 0xff2a2a, alpha: ((on ? 0.16 : 0.05) + 0.10 * p) * TELEGRAPH_FILL_MULT });
-      g.rect(bx, by, rw, rh)
-        .stroke({ width: on ? 3 : 2, color: rim, alpha: (on ? 0.95 : 0.35) + 0.05 * p });
-    }
-  }
-
   private syncSensorMines(mines: SensorMineState[], gameTime: number, now: number) {
     const g = this.sensorMineGfx;
     if (!g.parent) this.L.groundLayer.addChild(g);

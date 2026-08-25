@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3914',
+    items: [
+      '噛みつきを作り直しました。赤く光った敵が踏み込んで覆いかぶさってきて、重なっていたらダメージ。',
+      '当たり判定の四角い線の表示をやめました。',
+    ],
+  },
+  {
     version: '0.25.3913',
     items: [
       '敵の「すり抜け防止の壁」を足元の小さな箱に変更。敵の攻撃範囲へ歩いて入れるようになり、噛みつきが当たるようになりました。',

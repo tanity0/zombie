@@ -39,6 +39,7 @@ import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkColli
 // ★全敵共通の噛みつき(PACING_PUZZLE.md §12・社長発案2026-08-25)。
 import {
   biteSpecFor, biteReachRect, isInBiteRect, isBiteSubject, canStartBite, isBiteResolveDue,
+  biteBodyOverlapsPlayer,
 } from './enemyBite';
 import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { EGG_BLAST_RADIUS } from '../world/mines';
@@ -1048,7 +1049,7 @@ export const applyContactDamage = (
   // ==========================================================================================
   const bcx = collPlayer.x + collPlayer.width / 2;
   const bcy = collPlayer.y + collPlayer.height / 2;
-  const biteStarts: { id: string; r: { x: number; y: number; w: number; h: number } }[] = [];
+  const biteStarts: { id: string; dirX: number; dirY: number }[] = [];
   const biteHits: { id: string; dmg: number; x: number; y: number }[] = [];
   const biteClears: string[] = [];
   for (const e of collEnemies) {
@@ -1057,11 +1058,12 @@ export const applyContactDamage = (
     const spec = biteSpecFor(e.type);
     if (e.biteAt !== undefined && e.biteAt > 0) {
       if (!isBiteResolveDue(e, gameTime)) continue;              // まだ台本の途中
-      // ★判定は**発火時に焼いた四角**(敵の当たり判定をプレイヤー側へ30px伸ばしたもの)。
-      // 敵が実際にどこへ動いたかは見ない=赤く描いた四角と1pxもズレない。
-      const rr = { x: e.biteX ?? 0, y: e.biteY ?? 0, w: e.biteW ?? 0, h: e.biteH ?? 0 };
-      const px = rr.x + rr.w / 2, py = rr.y + rr.h / 2;
-      if (rr.w > 0 && isInBiteRect(rr, collPlayer)) {
+      // ★判定=**噛みの瞬間に敵の体とプレイヤーが重なっているか**(社長裁定2026-08-25)。
+      // 踏み込み中は壁が開いているので、敵は赤く光ったままプレイヤーへ覆いかぶさる。
+      // 専用の四角を持たない=絵と判定が同一(「赤いのに当たらない」が原理的に起きない)。
+      const eb = enemyContactBox(e);
+      const px = eb.x + eb.width / 2, py = eb.y + eb.height / 2;
+      if (biteBodyOverlapsPlayer(eb, collPlayer)) {
         // 接触ダメージと同じ倍率の掛け方(紅き夜×2 / 叫喚の強化窓)。
         const rn = redNightActive ? 2 : 1;
         const sc = (screamerBuffUntil > gameTime && e.type !== 'screamer') ? SCREAMER_BUFF_MULT : 1;
@@ -1076,14 +1078,22 @@ export const applyContactDamage = (
         { cx: eb.x + eb.width / 2, cy: eb.y + eb.height / 2, w: eb.width, h: eb.height },
         bcx, bcy, spec.rangePx,
       );
-      if (isInBiteRect(rr, collPlayer)) biteStarts.push({ id: e.id, r: rr });
+      if (isInBiteRect(rr, collPlayer)) {
+        const ecx = eb.x + eb.width / 2, ecy = eb.y + eb.height / 2;
+        const dl = Math.max(0.001, Math.hypot(bcx - ecx, bcy - ecy));
+        biteStarts.push({ id: e.id, dirX: (bcx - ecx) / dl, dirY: (bcy - ecy) / dl });
+      }
     }
   }
   if (biteStarts.length > 0 || biteClears.length > 0) {
     useGameStore.setState(st => ({
       enemies: st.enemies.map(e => {
         const st0 = biteStarts.find(b2 => b2.id === e.id);
-        if (st0) return { ...e, biteAt: gameTime, biteX: st0.r.x, biteY: st0.r.y, biteW: st0.r.w, biteH: st0.r.h };
+        if (st0) return {
+          ...e, biteAt: gameTime,
+          // ★踏み込みの起点と向きを焼く(追尾しない=横へ避けられる)。
+          biteX: e.x, biteY: e.y, biteDirX: st0.dirX, biteDirY: st0.dirY,
+        };
         if (biteClears.includes(e.id)) {
           return { ...e, biteAt: 0, biteReadyAt: gameTime + biteSpecFor(e.type).recoverMs };
         }
