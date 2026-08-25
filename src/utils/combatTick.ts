@@ -29,8 +29,7 @@ import { GLOW_R_L } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
   isBossType, isHiddenBoss, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile, isCorpse,
-  isGuardianPhantom,
-} from './enemyUtils';
+  isGuardianPhantom, isTrueBossType } from './enemyUtils';
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
 import { PHILL_COUNTER_RECOVER_MS } from './phillScript'; // §10-15#2: フィル後追い分岐の硬直長
 import { activeFlareTargets } from './flareGun';
@@ -1061,7 +1060,7 @@ export const applyContactDamage = (
     // (v0.25.3914の穴: 構えた直後に技へ入る=`aiPhase` が付いて対象外になると、`biteAt` が
     //  立ったまま二度と解決されず、**その個体は以後一度も噛めなくなる**。人狼の突進のように
     //  「普段は噛む→技に入る」敵で必ず起きる。)
-    if (!biting && !isBiteSubject(e, isBossType)) continue;
+    if (!biting && !isBiteSubject(e, isTrueBossType)) continue;
     const spec = biteSpecFor(e.type);
     // ★こちらの攻撃で**ノックバック中**の敵は噛まない(社長報告2026-08-25「いま攻撃当てても
     // お構いなしに噛みつきが来るから必ず食らう」)。構え中なら中断し、構えていないなら始めない。
@@ -1072,7 +1071,7 @@ export const applyContactDamage = (
     const knocked = !biteDrOn && e.knockbackUntil !== undefined && kbNow < e.knockbackUntil;
     if (biting) {
       // 構えている最中に**技へ入った**なら、その噛みは中断(技の当たり判定が本体になる)。
-      if (!isBiteSubject(e, isBossType) || knocked) {
+      if (!isBiteSubject(e, isTrueBossType) || knocked) {
         biteClears.push(e.id);
         if (knocked) biteDrIds.push(e.id); // 中断した=次はしばらく振り切られる
         continue;
@@ -1266,7 +1265,7 @@ export const applyContactDamage = (
     // ★噛みつき(§12)の対象になった敵は、**触れてもダメージを与えない**。
     // 攻撃は上の噛みつき台本(30px圏で構える→500ms→予告した点で判定)へ一本化された。
     // ボス・技の最中(aiPhase)・接触ダメージ0の敵はここを通らない=従来どおり触れたら痛い。
-    if (isBiteSubject(enemy, isBossType)) return;
+    if (isBiteSubject(enemy, isTrueBossType)) return;
     // ★踏み込み中は接触ダメージを通さない(社長指示2026-08-25)。ここは**体当たり(接触)の唯一の
     // 合流点**なので、この1行で「接触だけ無敵」が成立する——技・弾・予告は別経路なので影響しない。
     if (lungeContactImmune) return;

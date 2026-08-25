@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3920',
+    items: [
+      'パンプキン・削岩型・大コウモリ・実験体3・ハンターも噛みつきに変わりました(触れただけではダメージを受けません)。',
+    ],
+  },
+  {
     version: '0.25.3919',
     items: [
       'ゾンビが突進してこなくなっていた不具合を修正しました。「止まる→噛みつく→走る」の順で両方が出ます。',

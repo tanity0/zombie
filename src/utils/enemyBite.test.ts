@@ -1,3 +1,4 @@
+import { isTrueBossType, isBossType } from './enemyUtils';
 import { describe, it, expect } from 'vitest';
 import {
   BITE_DEFAULT, BITE_BY_TYPE, biteSpecFor, bitePhaseOf, biteProgress,
@@ -250,5 +251,28 @@ describe('★突進(zrush)の間は噛みつきを構えない(v0.25.3919)', () 
   it('停止(zpause)中と通常時は構える', () => {
     expect(canStartBite({ ...base, aiPhase: 'zpause' }, 1000)).toBe(true);
     expect(canStartBite({ ...base, aiPhase: undefined }, 1000)).toBe(true);
+  });
+});
+
+// ★社長報告2026-08-25「通常時の当たり判定が消えて、噛みつき仕様になった敵と、なってない敵がいるね」
+// 「パンプキンとか突っ込むとまだダメージ食らうな」。真因=噛みつきの除外に `isBossType` を流用しており、
+// この表は**HPバー等の別目的**でエリート"雑魚"(パンプキン/削岩型/大コウモリ/実験体3/ハンター)まで
+// 含んでいた。専用の `isTrueBossType` へ切り替えた(v0.25.3920)。
+describe('★噛みつきの除外は「本物のボス」だけ(v0.25.3920)', () => {
+  it('エリート雑魚は噛みつきの対象(=触れただけでは痛くない)', () => {
+    for (const t of ['pumpkin', 'driller', 'giantbat', 'lab-zombie-3', 'hunter'] as const) {
+      expect(isTrueBossType(t)).toBe(false);
+    }
+  });
+  it('本物のボス・賞金首・死神は従来どおり除外', () => {
+    for (const t of ['jormungand', 'mimir', 'thor', 'skadi', 'miguel', 'idol', 'phillboss',
+      'guardian-phantom', 'bounty-melee', 'reaper'] as const) {
+      expect(isTrueBossType(t)).toBe(true);
+    }
+  });
+  it('★HPバー等の「ボス扱い」(isBossType)は1bitも変えていない=エリート雑魚は今もボス扱い', () => {
+    for (const t of ['pumpkin', 'driller', 'giantbat', 'lab-zombie-3', 'hunter'] as const) {
+      expect(isBossType(t)).toBe(true);
+    }
   });
 });

@@ -225,6 +225,26 @@ export const isGate2AngelBoss = (t: EnemyType): boolean => t === 'miguel' || t =
 // botObjective・アイコン等の「pumpkin固有」(§9-7②)はこの述語を通さない=対象外のまま。
 export const isPumpkinTier = (t: EnemyType): boolean => t === 'pumpkin' || t === 'driller';
 
+/**
+ * ★噛みつき(PACING_PUZZLE §12)の対象外にする「**本物のボス**」。
+ *
+ * ★なぜ `isBossType` を流用しないか(社長報告2026-08-25「通常時の当たり判定が消えて、噛みつき仕様に
+ * なった敵と、なってない敵がいるね」「パンプキンとか突っ込むとまだダメージ食らうな」):
+ * `isBossType` は **HPバー/体勢値/致命の一撃/崩壊演出をボス扱いにするための別目的の表**で、
+ * **パンプキン・削岩型・大コウモリ・実験体3・ハンターというエリート"雑魚"まで入っている**。
+ * これを噛みつきの除外に流用していたため、プレイヤーから見て雑魚の敵が
+ * 「触れたら痛い」まま残り、社長が見た食い違いになっていた。
+ *
+ * 除外するのは: 裏ボス4体 / 天使6体 / アイドル / フィル / 幻影 / 賞金首4種 / 死神。
+ * ★賞金首と死神(無敵の徘徊チェイサー)は**独自の台本・存在意義がある**ため現時点では除外に含める
+ * (噛みつきへ寄せるかは社長裁定待ち)。
+ */
+export const isTrueBossType = (t: EnemyType): boolean =>
+  t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' ||
+  t === 'miguel' || t === 'jibril' || t === 'rafi' || t === 'uri' || t === 'suriel' ||
+  t === 'acrasiel' || t === 'idol' || t === 'phillboss' || t === 'reaper' ||
+  isBountyType(t) || isGuardianPhantom(t);
+
 export const isBossType = (t: EnemyType): boolean =>
   isPumpkinTier(t) || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
   t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' ||

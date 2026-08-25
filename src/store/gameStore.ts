@@ -115,7 +115,7 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isTrueBossType } from '../utils/enemyUtils';
 // research/STAGE_DIFFICULTY.md: ステージ難度の階段。係数の判断(計測路なら1.0)はこのヘルパ1本。
 import { stageBossDiffMults } from '../utils/stageDiffMults';
 // §6.38 B4(クリーンアップ): 実効難易度倍率の式はbountyValue.ts(依存ゼロに近い葉。詳細はファイル冒頭の
@@ -6012,7 +6012,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const blockers: Rect[] = [];
           for (const en of state.enemies) {
             if (isCorpse(en)) continue;
-            if (!isBiteSubject(en, isBossType)) continue;
+            if (!isBiteSubject(en, isTrueBossType)) continue;
             // ★噛みつきの踏み込み中は壁を開ける(社長裁定2026-08-25「この際、壁判定は通過可能になり、
             // 当たり判定の瞬間に被っていたらダメージ、壁判定に戻す」)。開けないと覆いかぶされない。
             if (isBiteWallOpen(en, state.gameTime)) continue;
@@ -13070,7 +13070,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★噛みつきの踏み込み(社長裁定2026-08-25「30PX移動してくる」)。台本の間は通常の接近を止め、
         // **発火時に焼いた起点+向き**へ `biteLungeFrac`(溜めでじわり→噛みで伸び切る=慣性)で進む。
         // 追尾しない=横へ避けられる。壁(すり抜け防止)はこの間だけ開いている(上の movePlayer 側)。
-        if (isBiteSubject(enemy, isBossType) && bitePhaseOf(enemy, gameTime) !== 'none') {
+        if (isBiteSubject(enemy, isTrueBossType) && bitePhaseOf(enemy, gameTime) !== 'none') {
           const lp = biteSpecFor(enemy.type).lungePx;
           const f = biteLungeFrac(enemy, gameTime);
           const ox = enemy.biteX ?? enemy.x, oy = enemy.biteY ?? enemy.y;
