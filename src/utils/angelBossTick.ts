@@ -30,8 +30,8 @@ import { distToSegment } from './levelUpGate';
 // v0.25.3496: 帯(drawAngelZoneCapsule=四角)の判定は四角そのもの。ビーム/レーザー(線)はdistToSegmentのまま。
 import { distToBandRect } from './geometry';
 // ★v0.25.3591: カウンター成立域(赤い予告の図形)の宣言表=全系統で1箇所(counterReach.ts)。
-import { counterReachShapeFor, inCounterReach } from './counterReach';
-import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY, isBossCounterableNowApprox } from './bossScript';
+import { counterReachShapeFor, inCounterReach, isCounterOpportunityNow } from './counterReach';
+import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY } from './bossScript';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
@@ -300,9 +300,12 @@ const reachOverlapNow = (boss: Enemy, state: string): { overlap: boolean; counte
 //    広げるには概算(語尾判定)ではなく州名リストの集約が要るので、ここでは記録に留める(★未決のまま)。
 // 同フレームにプレイヤーの成立(overlap&&窓)が立っている時はプレイヤー優先(体験を1bitも変えない)。
 const takeGhostAngelCounter = (boss: Enemy): GhostCounterFire | null => {
-  // ★カウンター憲法(v0.25.3947): 守護霊もプレイヤーと同じ基準=面成立は体当たり技の最中のみ。
-  if (!isBodySlamNow(boss)) return null;
-  if (!isBossCounterableNowApprox(boss.aiPhase, boss.bossState)) return null;
+  // ★カウンター憲法(v0.25.3947)→★v0.25.3962修正(社長報告「守護霊がカウンターとれなくなってる」):
+  // v3947の絞りは isBodySlamNow(体当たり中)**かつ**旧approx(語尾-windup/-recover)で、体当たり州は
+  // 語尾を持たないため**両立する州が存在せず守護霊の天使カウンターが全滅**していた。憲法の基準
+  // 「判定が生きている間だけ」に正しく揃える=**実行中の成立州(isCounterOpportunityNow)か
+  // 体当たり中(isBodySlamNow)**なら請求を消費できる。面成立(溜め/硬直)は引き続き不成立。
+  if (!isCounterOpportunityNow(boss) && !isBodySlamNow(boss)) return null;
   if (boss.type === 'jibril' && boss.bossState === 'warp-recover') return null;
   const { overlap, counterActive } = bodyOverlapNow(boss);
   if (overlap && counterActive) return null; // プレイヤー成立が同フレームに立つ→各州の分岐に譲る

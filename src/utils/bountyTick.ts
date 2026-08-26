@@ -95,6 +95,8 @@ import { counterReachShapeFor, inCounterReach, type CounterReachShape } from './
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { refundCounterCooldown } from './counterMaster';
+import { consumeGhostCounterClaim, applyGhostCounterEffect } from './ghostCounter'; // ★v0.25.3962: 守護霊カウンターの消費(賞金首側の配線)
+import { npcSfxDistGain } from './npcSfx';
 import { getActiveGun } from './weaponUtils';
 import { GLOW_R_L } from './glowTiers';
 // §4②輸入=ミーミル型レーザー: mimirLaserTrack.tsの純関数をそのまま使う(複製しない=誤学習防止)。
@@ -2112,6 +2114,25 @@ export const runBountyTick = (
       resetBrShotCycle(s); // §6.38 v10 #7: カウンターからのchase復帰=バス停の射撃サイクルをクリア
       patch.bossState = 'chase';
       patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+    } else {
+      // ★v0.25.3962(社長報告「守護霊がカウンターとれなくなってる」): v3949で賞金首にも守護霊を
+      // 召喚するようにしたが、**請求の消費側がこのファイルに未配線**だった(ghostDriverは
+      // bm-charge等を狙って振り、請求はTTL150msで黙って消えていた)。他ボスと同じ作法:
+      // プレイヤー成立が無いフレームだけ請求を消費し、技中断+chase復帰はプレイヤー成立と同じ。
+      const gClaim = consumeGhostCounterClaim(bounty.id, Date.now());
+      if (gClaim) {
+        const gSt = useGameStore.getState();
+        applyGhostCounterEffect(
+          bounty, bcx, bcy,
+          { claim: gClaim, sfxGain: npcSfxDistGain(bcx, bcy, pcx, pcy, gSt.camera, gSt.gameBounds) },
+          (k, gain) => (k === 'counter' ? sfx.counter(gain) : sfx.reward(gain)),
+        );
+        countered = true;
+        s.comboStep = 0;
+        resetBrShotCycle(s);
+        patch.bossState = 'chase';
+        patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+      }
     }
   }
 

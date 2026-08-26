@@ -1146,6 +1146,7 @@ import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 import {
   counterReachShapeFor, inCounterReach,
   HIDDEN_COUNTER_ACTIVE_STATES,
+  isCounterOpportunityNow, // ★v0.25.3962: 守護霊の請求消費ゲート(実行中の成立州)
 } from '../utils/counterReach';
 
 
@@ -6073,11 +6074,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // (旧: トールだけ語尾で概算する isBossCounterableNowApprox を通していた。**同じ州集合**
                 //  =-windup/-recover なので拾う州は変わらない。紫の issen-nihil は語尾を持たないため
                 //  旧経路でも新経路でも「機会」に数えられない=一致)。
-                const ghostCounterableNow = hiddenBossCounterableNow;
-                // プレイヤー成立の有無を見るだけの照会なので、**プレイヤーと同じ成立域**(図形reach)で引く。
-                const { overlap: pOverlap, counterActive: pActive } = ghostCounterableNow
+                // ★v0.25.3962(社長報告「守護霊がカウンターとれなくなってる」): v3947の憲法実装で
+                // 消費ゲートが ACTIVE 2州(dash/thor-dash-move)だけに絞られ、ghostDriver が狙う
+                // 実行中の成立州(issen-dash/tsuki/harai等=COUNTER_OPPORTUNITY_STATES)の請求が
+                // **積まれても消費されず全滅**していた。憲法の基準どおり「判定が生きている実行中」
+                // 全体で消費できるよう広げる(溜め/硬直の面成立は引き続き無し)。
+                const ghostCounterableNow = hiddenBossCounterableNow
+                  || (BOSS_COUNTER_ENABLED && isCounterOpportunityNow(boss));
+                // プレイヤー成立の有無を見るだけの照会。ACTIVE州は**プレイヤーと同じ成立域**(図形reach)、
+                // それ以外の実行中州は各州ハンドラの判定時置換に譲る近似=窓が開いていればプレイヤー優先。
+                const { overlap: pOverlap, counterActive: pActive } = hiddenBossCounterableNow
                   ? hiddenReachOverlapNow()
-                  : { overlap: false, counterActive: false };
+                  : { overlap: ghostCounterableNow, counterActive: ghostCounterableNow && isCounterActive(useGameStore.getState().player, Date.now()) };
                 if (ghostCounterableNow && !(pOverlap && pActive)) {
                   const gClaim = consumeGhostCounterClaim(boss.id, Date.now());
                   if (gClaim) {

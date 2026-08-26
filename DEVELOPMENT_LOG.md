@@ -1,5 +1,27 @@
 # Development Log
 
+## v0.25.3962 — 守護霊カウンター全滅の修正(憲法実装v3947の消費側取りこぼし3箇所) 【2026-08-26 21:07 JST】
+- **経緯**: 社長実機報告「おそらく守護霊がカウンターとれなくなってる」。
+- **診断**: 守護霊のカウンター=①ghostDriverが成立州を見てスイング(請求TTL150ms) ②各ボスの
+  tickが請求を消費して成立、の2段。**v3947の憲法実装は①のAI側(COUNTER_OPPORTUNITY_STATES)は
+  直したが、②の消費ゲートが3系統で閉じたまま**だった:
+  - **天使6**(angelBossTick takeGhostAngelCounter): `isBodySlamNow && 旧approx(語尾-windup/-recover)`
+    の両立ゲート——体当たり州は語尾を持たないため**両立する州が0=全滅**。
+  - **裏ボス4**(useGameLoop hidden-bossブロック): 消費が ACTIVE 2州(dash/thor-dash-move)のみ。
+    ghostDriverが狙う issen-dash/tsuki/harai/jump-attack 等の請求は**積まれても消費されず失効**。
+  - **賞金首4**(bountyTick): v3949で守護霊召喚を追加したが**消費側がファイルに未配線**(元から無い)。
+- **修正**(いずれも憲法の基準「判定が生きている実行中だけ」のまま。溜め/硬直の面成立は復活させない):
+  - 天使: ゲートを `isCounterOpportunityNow || isBodySlamNow` へ(旧approx依存を撤去)。
+  - 裏ボス: 消費ゲートを `ACTIVE ∪ isCounterOpportunityNow` へ。実行中州はプレイヤー窓が開いて
+    いればプレイヤー優先(各州ハンドラの判定時置換に譲る)。
+  - 賞金首: ACTIVEブロックにプレイヤー不成立時の請求消費を配線(applyGhostCounterEffect+
+    技中断+chase復帰=プレイヤー成立と同じ)。
+  - idolは対象外: 削除された面成立と一緒に消えた消費は憲法上正当(爆風パリィ/弾反射経路は生きている)。
+- **検証**: typecheck 0 / lint 0 errors / フルスイート 4760 passed。
+- **(B)積み**: 消費ゲート3箇所の配線テスト(tick関数のスキャフォールドが重く未着手。純関数層は
+  counterReach.test の機械検査が既存)。
+- **自己点検**: 憲法(判定と窓の重なりのみ成立)に整合。プレイヤーのカウンター判定・ボスの挙動は不変。
+
 ## v0.25.3961 — 馬乗りの3連コンボ予告を900/500/900に(社長指示) 【2026-08-26 20:51 JST】
 - **指示**: 「3連コンボ、900、500、900で。」
 - **変更**: `src/utils/bountyScript.ts` BOUNTY_MELEE_TUNING.combo.windup [480,480,900]→**[900,500,900]**。
