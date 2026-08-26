@@ -57,6 +57,34 @@ describe('通常ストーリーの帰還確認', () => {
   });
 });
 
+// ★社長指示2026-08-26「ステージ6のゴールは話したらすぐ帰還しますか?になるタイプに揃える」(v0.25.3956)
+describe('M6洋館通路のゴール=離指で即confirm(EXは対象外)', () => {
+  beforeEach(() => {
+    useGameStore.getState().resetGame('warrior');
+    // M6通路: ボス討伐条件なし(finaleDefeated=false)でもゴールで確認が出る。
+    useGameStore.setState({
+      gameWon: false, finaleDefeated: false, corridorMode: true,
+      storyReturnPromptVisible: false, isPaused: false, gameTime: 10_000,
+    });
+    placeReturnCircleOnPlayer(0, 0); // revealedAt=0=フェードは十分昔に完了済み
+  });
+
+  it('ゴール(フェード完了後)で離指要求→確認が開く', () => {
+    expect(useGameStore.getState().requestStoryReturnPrompt()).toBe(true);
+    expect(useGameStore.getState().storyReturnPromptVisible).toBe(true);
+  });
+
+  it('ゴールがまだフェードイン中は開かない(滞在タイマーと同じ扱い)', () => {
+    placeReturnCircleOnPlayer(0, 9_900); // revealedAt=9900・gameTime=10000=フェード(700ms)未完
+    expect(useGameStore.getState().requestStoryReturnPrompt()).toBe(false);
+  });
+
+  it('未告知(revealedAt無し=まだ透明)のゴールでは開かない', () => {
+    placeReturnCircleOnPlayer(0);
+    expect(useGameStore.getState().requestStoryReturnPrompt()).toBe(false);
+  });
+});
+
 describe('既存の帰還ホールド', () => {
   beforeEach(() => {
     useGameStore.getState().resetGame('warrior');

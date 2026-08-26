@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.3956', items: ['ステージ6(洋館通路)のゴールを他ステージと同じ型にしました: ゴールの円の中で指を離すとすぐ「帰還しますか?」の確認が出ます(5秒滞在の自動帰還も従来どおり残ります)。'] },
   {
     version: '0.25.3955',
     items: [

@@ -15898,9 +15898,21 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   requestStoryReturnPrompt: () => {
     const state = get();
+    // ★社長指示2026-08-26「ステージ6のゴールは話したらすぐ帰還しますか?になるタイプに揃える」:
+    // 旧: corridorMode を丸ごと除外=M6洋館通路のゴールは5秒ホールドのみだった。M6も通常ストーリーと
+    // 同じ「サークル内で指を離す→即confirm」へ。EX(stage-ex1)はフィル戦→専用エンディングの流れなので
+    // 従来どおり除外。M6のゴールはボス討伐条件が無い(finaleDefeated不要)ため、その条件はM6では免除。
+    // ゴールがまだフェードイン中(revealedAt+CORRIDOR_GOAL_FADE_MS前)は滞在タイマーと同じく受け付けない。
+    const m6CorridorGoal = state.corridorMode && !isExStageRun();
+    const corridorGoalReady = !state.corridorMode
+      || (m6CorridorGoal && state.returnCircle?.revealedAt !== undefined
+        && state.gameTime >= state.returnCircle.revealedAt + CORRIDOR_GOAL_FADE_MS);
     if (
-      state.storyReturnPromptVisible || state.gameWon || !state.finaleDefeated ||
-      state.corridorMode || !isInReturnCircle(state.player, state.returnCircle)
+      state.storyReturnPromptVisible || state.gameWon ||
+      (!state.finaleDefeated && !m6CorridorGoal) ||
+      (state.corridorMode && isExStageRun()) ||
+      !corridorGoalReady ||
+      !isInReturnCircle(state.player, state.returnCircle)
     ) return false;
     set({
       storyReturnPromptVisible: true,
