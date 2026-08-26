@@ -3664,6 +3664,10 @@ const grantMeleeKillRewards = (
     useGameStore.setState(state => ({ enemies: [...state.enemies, ...corpseAdds] }));
   }
   for (const { enemy, finisher } of killed) {
+    // ★v0.25.3965(実機kblog「消失 bounty-ranged cause=不明」の真相): 近接キルは全経路この
+    // ヘルパーを通るのにタグが無く、近接で倒したボス級(死体化しない=即除去)が全部「不明」と
+    // 出ていた(社長「賞金首なら倒したわ」で発覚)。死体化する通常敵は後のクランブルで再タグされる。
+    tagRemove(enemy.id, 'kill'); // 消失ログ用: 近接撃破
     // PACING_REDESIGN.mdバッチ2(計測): 近接全経路のキルを種別+スタイル集計へ記録(挙動には影響しない)。
     // バッチ3.5-Bの追補: 型ごとの最終キル時刻も記録(問題児リフラクトリ判定用)。
     recordKill(enemy.type, 'melee', get().gameTime);
@@ -10729,6 +10733,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 従来どおり即除去(getsDramaticDeath/bossCorpse演出はそのまま・挙動不変)。
         // §6.38 B2b(持ち越し②): 賞金首の討伐でも退場時と同じく取り巻き(bountyEscortId一致)を
         // 一緒に片付ける(退場時のclearBountyEscortsと対=削除経路が2本に割れて片方だけ残る事故の防止)。
+        if (!corpseEligible(enemy) && isBountyType(enemy.type)) {
+          updatedEnemies.forEach(e => { if (e.bountyEscortId === id) tagRemove(e.id, 'bountyGone'); }); // 消失ログ用: 討伐に伴う取り巻き一掃(v0.25.3965)
+        }
         const enemiesAfterKill = corpseEligible(enemy)
           ? updatedEnemies.map(e => e.id === id ? buildCorpseFromKill(e, state.player) : e)
           : updatedEnemies.filter(e => e.id !== id && !(isBountyType(enemy.type) && e.bountyEscortId === id));
