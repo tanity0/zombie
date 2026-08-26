@@ -1091,6 +1091,33 @@ export const setBgmActive = async (nextActive: boolean) => {
   applyRadioLayerAudio(); // ラジオ層もBGM有効/無効に追従(無効化時は確実に止まる)
 };
 
+// ★EXステージのボスBGM切替(社長指示2026-08-26「EXステージは、フィルと出会うまで音楽はステージ6で。
+// フィルと出会ったらフィル戦BGMに切り替えて」「切り替えるときは元のBGMをフェードアウト後に、
+// フェードせずにはっきり流し始めて」・v0.25.3953)。
+// 元曲をfadeOutMsで無音まで落とし切ってから、新曲を**実効音量で即**(フェードイン無し)始める。
+// 呼び出しはuseGameLoop(遭遇のエッジ検知)。同じ曲への再要求・メニュー復帰(bgmActive=false)は無害。
+let bossBgmFadeToken = 0;
+export const crossToBossBgm = (variant: string, fadeOutMs = 800): void => {
+  ensureBgm();
+  const nextSrc = GAME_BGM[variant] ?? GAME_BGM.default;
+  if (bgmBaseTrack === nextSrc) return; // 既に切替済み
+  bgmBaseTrack = nextSrc;
+  currentGameVariant = variant;
+  if (!bgm || !bgmActive || muted) { setBgmTrack(nextSrc); return; }
+  const token = ++bossBgmFadeToken;
+  const startVol = effectiveBgmVolume() * (danceBeatDuckActive ? DANCE_BGM_BEAT_DUCK : 1);
+  const t0 = performance.now();
+  const step = () => {
+    if (token !== bossBgmFadeToken || !bgm) return;
+    const k = Math.min(1, (performance.now() - t0) / fadeOutMs);
+    const v = startVol * (1 - k);
+    if (bgmGain) bgmGain.gain.value = v; else bgm.volume = v;
+    if (k < 1) requestAnimationFrame(step);
+    else setBgmTrack(nextSrc); // 新曲はフェード無し=playBgmRobustが実効音量で即再生(社長指示)
+  };
+  requestAnimationFrame(step);
+};
+
 // 画面に応じてBGMを切替: menu=タイトル曲(public/audio/title.mp3) / game=ステージ曲 / off=停止。
 // menu→game でステージ曲へ、game→menu でタイトル曲へ自動で差し替わる(applyDanceAudio が bgmBaseTrack を流す)。
 // ブラウザの自動再生制限で menu の初回はユーザー操作まで鳴らないことがあるため、初回タップで再度呼ぶ。

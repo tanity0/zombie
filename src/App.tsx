@@ -210,6 +210,9 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     if (!benchmark) {
       const selStage = getStage(getSelectedStageId());
       preloadStageBgm(selStage?.bgm ?? (selStage?.theme === 'lab' ? 'lab' : 'default'));
+      // ★EXステージ(社長指示2026-08-26): 開始曲はstage6、フィル遭遇で'ex'へ切り替わるので、
+      // 切替曲も先読みしておく(「フェード無しではっきり流し始める」瞬間のロード遅延対策)。
+      if (selStage?.id === 'stage-ex1') preloadStageBgm('ex');
     }
     const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)
       ? characterClass as CharacterClass

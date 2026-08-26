@@ -426,7 +426,7 @@ import {
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
 import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, zoomedGunRange, isDirectGunWeaponKey, isGrenadeGunKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, crossToBossBgm } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
@@ -1536,6 +1536,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // M51: ジャイアント新スクリプトの予告SE(全技共通=hunter-alert流用・社長裁定6.26-9 #5)。
   // 直前フレームのaiPhaseを覚えておき、5つの溜め(windup)ステートへ切り替わった瞬間だけ1回鳴らす。
   const giantWindupSfxRef = useRef<string | undefined>(undefined);
+  // ★EXステージのボスBGM切替(社長指示2026-08-26)。遭遇エッジの検知フラグ(条件が消えたら自動で再武装)。
+  const phillBgmRef = useRef(false);
   // v0.25.3700(社長指示「ボスの技にも対応するSEを」): 被弾SEの合流点用・前フレームのHP。
   // damagePlayer直呼びの技(トール一閃・ミゲル払いの命中・舞妓の毬回し・馬乗りのムチ360等)は
   // combatTickの被弾SE経路(爆風/弾/接触)に乗らず**当たっても無音**だった。HP減少のエッジ検知
@@ -9279,6 +9281,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (gPhase === 'g-nihil-chant1') playSfx('glen-nihil', 1, GLEN_NIHIL_SE_MS);
           }
           giantWindupSfxRef.current = isGiantWindupNow ? gPhase : undefined;
+        }
+
+        // ★EXステージのボスBGM切替(社長指示2026-08-26「フィルと出会うまで音楽はステージ6で。
+        // 出会ったらフィル戦BGMに切り替えて」): 遭遇の合図=交戦立ち上がりの打刻(bossOpeningHoldAt・
+        // directorTickの開幕3秒ホールドと同じ1点)をエッジ検知して 'ex'(ex-battle.mp3)へ。
+        // 元曲のフェードアウト→新曲はフェード無し、は crossToBossBgm(audioManager)側の掟。
+        // リトライ等でフィル(未遭遇個体)に戻ると条件がfalseになり自動で再武装する。
+        {
+          const phillEngagedNow = useGameStore.getState().enemies.some(
+            e => e.type === 'phillboss' && e.bossOpeningHoldAt !== undefined);
+          if (phillEngagedNow && !phillBgmRef.current) { phillBgmRef.current = true; crossToBossBgm('ex'); }
+          else if (!phillEngagedNow) phillBgmRef.current = false;
         }
 
         // v0.25.3700: 被弾SEの合流点(上のprevPlayerHpRef参照)。HPが実際に減ったフレームだけ1回。
