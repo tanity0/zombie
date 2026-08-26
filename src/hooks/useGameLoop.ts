@@ -2782,7 +2782,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // phaseAt()を軽量に再呼び出しする(同種の再計算は無視できるコスト・既存踏襲)。
         // PACING_PUZZLE.md §10-14#4(解放): EXはstoryBossOnlyを廃止したのでstoryBoss=falseになり、
         // ここは**コード変更なしで自然に解放される**(壁4でゲート発火が要るため=通常台本パズルは必須)。
-        const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && phaseAt(newGameTime).kind !== 'boss';
+        // ★社長指示2026-08-26「(ボスモードに)ほかにもあれば撤去して」: 練習ラン(ボスモード)は
+        // 台本パズル/イベント(囲い・紅き月・叫喚・イベント関所・退屈アリーナ)を丸ごと止める。
+        // ボスモードは「1体と戦うだけ」の場(湧きはv2452のnoSpawnで既に停止済み=これはイベント側の親ゲート)。
+        const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && !isPracticeRun() && phaseAt(newGameTime).kind !== 'boss';
         // §5.21追補(社長報告v0.25.1848「ゲート1、クリアしなくても奥に行けちゃう」の修正):
         // ゲート(境界囲い1/2)の発火は地理トリガー(境界踏破)なので、コマ/フェーズ表とは無関係に働く。
         // 旧実装は puzzleActiveNow(=フェーズ表がboss扱いの7:00-7:30はfalse)でゲートしていたため、

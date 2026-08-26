@@ -104,7 +104,7 @@ import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
-import { BOSS_NEUTRAL_EXTRA_MS } from '../utils/bossRebuild'; // ★社長指示2026-08-26「技の間隔をあける」= 城ボスにも(v0.25.3952)
+import { BOSS_NEUTRAL_EXTRA_MS, BOSS_NEUTRAL_MULT } from '../utils/bossRebuild'; // ★社長指示2026-08-26「技の間隔をあける」= 城ボスにも(v0.25.3952)
 import { softCapCritChance } from '../utils/critSoftCap';
 import {
   type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath, sanitizeNamedFoe,
@@ -11735,7 +11735,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const finishGiantStageMove = (moveId: GiantStageMoveId, cdMs: number): Partial<Enemy> => ({
             gStageReadyAt: { ...enemy.gStageReadyAt, [moveId]: atkCdUntil(cdMs) },
             ...critFlinchPatch(cdMs), // v0.25.2603: ステージ固有技も同じひるみ(窓外は空=無改変)
-            aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + BOSS_NEUTRAL_EXTRA_MS), // ★v0.25.3952: 技間の全体仕切り
+            aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + BOSS_NEUTRAL_EXTRA_MS * BOSS_NEUTRAL_MULT), // ★v0.25.3952: 技間の全体仕切り
             aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
             aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
             gQuadIndex: undefined, giantActiveHit: undefined,
@@ -11874,7 +11874,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const finishGlenMove = (moveId: GlenMoveId, cdMs: number): Partial<Enemy> => ({
             gGlenReadyAt: { ...enemy.gGlenReadyAt, [moveId]: atkCdUntil(cdMs) },
             ...critFlinchPatch(cdMs), // v0.25.2603: グレンの技も同じひるみ(窓外は空=無改変)
-            aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + BOSS_NEUTRAL_EXTRA_MS), // ★v0.25.3952: 技間の全体仕切り
+            aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + BOSS_NEUTRAL_EXTRA_MS * BOSS_NEUTRAL_MULT), // ★v0.25.3952: 技間の全体仕切り
             aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
             aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
             giantActiveHit: undefined,
@@ -12104,7 +12104,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   // ★社長指示2026-08-26「技から次の技…間隔をあける」(v0.25.3952): 城ボスの次行動は技ごとの
                   // 独立CD制で全体の仕切りが無かった(v2603と同じ穴の平時版)。全体の仕切り aiReadyAt へ
                   // 中立台帳と同じ +BOSS_NEUTRAL_EXTRA_MS(600ms)を毎技後に入れる(critFlinchPatchのmaxが後勝ち)。
-                  aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + BOSS_NEUTRAL_EXTRA_MS),
+                  aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + BOSS_NEUTRAL_EXTRA_MS * BOSS_NEUTRAL_MULT),
                   aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
                   aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
                   gStompRadius: undefined, gJumpRadius: undefined, // M65: 溜め開始で毎回上書きされるが後片付けとして明示的にクリア
@@ -17550,7 +17550,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         eventQuestNpc: (() => {
           const qCfg = getEventQuestConfig(getSelectedStageId());
           // ボスメーカーの部屋では二人組クエストNPCも出さない(社長指示v0.25.2628「npcじゃま」)。
-          const qGone = bossMakerRoom || !qCfg || getEventQuestMeta(getSelectedStageId()).sub;
+          // ★社長指示2026-08-26「ボスモードに二人組がいるのはおかしい」: 練習ラン(ボスモード)も出さない
+          // (商人のv3138と同じ扱い。ゲートにisPracticeRun()が漏れていた)。
+          const qGone = bossMakerRoom || isPracticeRun() || !qCfg || getEventQuestMeta(getSelectedStageId()).sub;
           return qGone ? { ...createEventQuestNpc(), status: 'gone' as const } : createEventQuestNpc();
         })(),
         eventQuestActive: null,

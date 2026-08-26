@@ -19,7 +19,7 @@ import { createEnemyProjectile } from './enemyUtils';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { distToBandRect } from './geometry'; // v0.25.3496: 帯の判定=描いてある四角
 import { phaseJustChanged } from './bossScript';
-import { BOSS_NEUTRAL_EXTRA_MS } from './bossRebuild'; // ★v0.25.3952: 技間インターバルの1ノブ
+import { BOSS_NEUTRAL_EXTRA_MS, BOSS_NEUTRAL_MULT } from './bossRebuild'; // ★v0.25.3952: 技間インターバルの1ノブ
 import { neutralVerb, pickStringScript, restMsFor, punishTrigger, advanceLingerMs, type NeutralVerb } from './bossSkeleton';
 import { resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from './bossHate';
 import {
@@ -365,7 +365,7 @@ export const runIdolTick = (
     patch.bossState = IDOL_REST_STATE;
     // ★社長指示2026-08-26「技から次の技…間隔をあける」(v0.25.3952): 偶像はストリング(連段)設計なので、
     // 技間ではなく**ストリング終端の休符**へ中立台帳と同じ +BOSS_NEUTRAL_EXTRA_MS(600ms)を足す。
-    patch.bossStateUntil = newGameTime + restMsFor(phase, IDOL_REST) * bossCritCdMult(fresh(), newGameTime) + BOSS_NEUTRAL_EXTRA_MS;
+    patch.bossStateUntil = newGameTime + (restMsFor(phase, IDOL_REST) * bossCritCdMult(fresh(), newGameTime) + BOSS_NEUTRAL_EXTRA_MS) * BOSS_NEUTRAL_MULT; // ★v0.25.3954「最低でも今の倍」
   };
 
   const toRecover = (m: IdolMove): void => {

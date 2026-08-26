@@ -67,6 +67,8 @@ export const bossRebuildIdForEnemy = (type: EnemyType): BossRebuildId | null => 
  * 城ボスは技ごとの個別CD(aiReadyAt)、偶像は休符(IDOL_TUNING)=別系。賞金首は BOUNTY_NEUTRAL_MS(同版で+600)。
  */
 export const BOSS_NEUTRAL_EXTRA_MS = 600;
+/** ★社長指示2026-08-26「全ボス、技と技の間のインターバルは最低でも今の倍で」: 全体倍率(叩き台=2)。 */
+export const BOSS_NEUTRAL_MULT = 2;
 
 /** フェーズは1始まり。未定義の上位フェーズは最後の値を引き継ぐ=後半で遅く戻らない。 */
 export const bossNeutralDelayMs = (
@@ -77,5 +79,5 @@ export const bossNeutralDelayMs = (
   const bands = BOSS_COMBAT_PROFILES[id].neutralMs;
   const band = bands[Math.min(bands.length - 1, Math.max(0, Math.floor(phase) - 1))];
   const r = Math.max(0, Math.min(1, rand()));
-  return BOSS_NEUTRAL_EXTRA_MS + band.min + (band.max - band.min) * r;
+  return (BOSS_NEUTRAL_EXTRA_MS + band.min + (band.max - band.min) * r) * BOSS_NEUTRAL_MULT; // ★倍率=社長指示2026-08-26「最低でも今の倍」
 };

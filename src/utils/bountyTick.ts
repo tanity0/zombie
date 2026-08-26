@@ -557,8 +557,8 @@ const BR_ESCORT_TYPE: EnemyType = 'zombie';
 // 距離帯・突進・360度ムチ・3段コンボ・懲罰狙撃の数値は **BM_T(bountyScript.ts)** が正
 // (突進=werewolf輸入 / 狙撃=idol snipe輸入。その旨と公平の物差しの検算もテーブル側に書いてある)。
 /** 次の行動抽選までの中立時間(idolのIDOL_TUNING.neutral相当の叩き台)。 */
-// ★社長指示2026-08-26「技から次の技…もう少し間隔をあける」(v0.25.3949): 350→950(+600・叩き台=台帳のBOSS_NEUTRAL_EXTRA_MSと同幅。実機で絞る)。
-const BOUNTY_NEUTRAL_MS = 950;
+// ★社長指示2026-08-26「技から次の技…もう少し間隔をあける」(v3949: 350→950)→「最低でも今の倍で」(v0.25.3954: 950→1900)。
+const BOUNTY_NEUTRAL_MS = 1900;
 
 /** 帯(カプセル)の当たり判定を1件積む(idolTick.hitCapsuleと同型・技ごとにダメージ/KBを持つ)。 */
 const hitCapsule = (
