@@ -118,6 +118,12 @@ export interface PhantomHitGateInput {
   /** [0,1) の乱数(テストで固定できるよう注入口にする)。 */
   rand?: () => number;
   /**
+   * ★SAME_ARENA §9(対人体勢・v0.25.3969): 幻影が紫(行動不能)中か。true の間は
+   * **i-frameもパリィも通らず、全ての打撃が素通しで当たる**(「紫→致命」がパリィで潰れない)。
+   * 呼び出し側(gatePhantomHit)が isPvpIncapacitated で計算して渡す。未指定=false(恒等)。
+   */
+  incapacitated?: boolean;
+  /**
    * 対人ダメージスケール(社長裁定2026-08-20「プレイヤー同士の戦いではダメージ1/10で一旦」)。
    * 呼び出し側が幻影の時だけ PVP_DAMAGE_SCALE を渡す。未指定=1(スケールなし)。
    * ③通過時の damage に掛かり、戻り値 damageScale としても返す(近接掃引系=amount0で
@@ -191,6 +197,12 @@ const phantomParryLands = (input: PhantomHitGateInput): boolean => {
 export const phantomHitGate = (input: PhantomHitGateInput): PhantomHitGateResult => {
   if (input.enemyType !== PHANTOM_GATE_TYPE) return passThrough(input.amount);
   const scale = input.pvpDamageScale ?? 1;
+
+  // ★SAME_ARENA §9: 紫(行動不能)中は i-frame もパリィも無し=全打撃が素通しで当たる。
+  // (i-frame の起点 gpHitAt もあえて打たない——紫3秒の間は連続で殴れる=削り切った側への報酬。)
+  if (input.incapacitated === true) {
+    return { damage: input.amount * scale, effects: true, blocked: false, parried: false, patch: {}, damageScale: scale };
+  }
 
   // ① 被弾無敵(プレイヤーと同じ i-frame)。無敵中はHPも副作用も動かさない。
   // ★近接('melee')と近接カウンター('counter')は無敵を**無視して通る**(社長裁定2026-08-20

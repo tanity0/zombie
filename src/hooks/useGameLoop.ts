@@ -148,6 +148,7 @@ import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty, projectileHitCritChance } from '../utils/critPenalty';
 import { softCapCritChance, orCombineChance } from '../utils/critSoftCap';
 import { critDecayOnHit } from '../utils/critDecay'; // ★§13-3e クリ減衰(社長裁定2026-08-26)
+import { isPvpIncapacitated, tickPvpPosture } from '../utils/pvpPosture'; // ★SAME_ARENA §9(対人体勢)
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
@@ -7710,8 +7711,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const attackLocked = isAttackLocked();
         // 社長指示v0.25.3300 シーカー仕様変更: 半透明中は攻撃できない(覚醒Lv3は半透明中も攻撃可)。
         const seekerLocked = isSeekerActive(postReloadPlayer, gameTime) && skillLevel(postReloadPlayer, 'seeker') < 3;
+        // ★SAME_ARENA §9(対人体勢): 紫(3秒)+致命後daze(2秒)中は銃の自動射撃も止まる。
+        const pvpLocked = isPvpIncapacitated(postReloadPlayer.pvpPosture, gameTime);
         // PHILL銃は自動射撃しない(指離しの手動発砲のみ=firePhillShot)。
-        if (activeGun && !katanaActive && !skaterLocked && !attackLocked && !seekerLocked && activeGun.category !== 'phill') {
+        if (activeGun && !katanaActive && !skaterLocked && !attackLocked && !seekerLocked && !pvpLocked && activeGun.category !== 'phill') {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
             // handgun系のうちマシンピストル(=サブマシンガン, handgun-t3)だけ専用音、それ以外(ハンドガン/二丁)はhandgun-fire。
@@ -7761,7 +7764,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // 刀装備中は他のサブウェポンを発動させない(許可制、現状すべて停止)。
-        const subWeaponPlayer = useGameStore.getState().player;
+        const subWeaponPlayerRaw = useGameStore.getState().player;
+        // ★SAME_ARENA §9(対人体勢): 紫/daze中はプレイヤーのサブ発動入口を塞ぐ——subWeaponsを空にした
+        // 写しを主語にする=以下全ブロックの includes 判定が一括で落ちる(幻影/守護霊のサブは
+        // combatActorPlayer(summonId) 経由の別主語なので影響しない)。CD・所持は不変=明けたら再開。
+        const subWeaponPlayer = isPvpIncapacitated(subWeaponPlayerRaw.pvpPosture, gameTime)
+          ? { ...subWeaponPlayerRaw, subWeapons: [] }
+          : subWeaponPlayerRaw;
         // MOVEMENT_REWORK.md 仕様2(社長確定v0.25.2442): スケーター乗車中のサブウェポン発動封印
         // (以下このブロック内の全サブ=heavy-grenade/marksman-trap/striker-quick-mag/
         // dog/decoy/shield/turret/molotov/support-sniper/first-aid-kit/fire-knife/homingロック取得が
@@ -7828,6 +7837,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ★SAME_ARENA O-3: 幻影も守護霊と**まったく同じ条件**(その種を持っている+自前CDが明けている)。
           // `combatActorPlayer` は幻影も解決するので、判定式は1本のまま。
           if (subOwner.kind === 'phantom' && subOwner.summonId) {
+            // ★SAME_ARENA §9(対人体勢): 幻影が紫/daze中はサブも出せない(プレイヤー側の入口封鎖と対称)。
+            const phBroken = useGameStore.getState().enemies.find(e => e.id === subOwner.summonId);
+            if (phBroken && isPvpIncapacitated(phBroken.pvpPosture, gameTime)) {
+              return { actor: subWeaponPlayer, owner: playerOwner };
+            }
             const pa = combatActorPlayer(subOwner.summonId);
             if (
               // ★社長報告2026-08-24「幻影が自分のデコイに消されてたり、自分のトラップにハマってる」:
@@ -9244,6 +9258,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Update enemies
         // 敵の移動のみ MOVE_SPEED_MULT 倍速(攻撃タイマー等はtimestamp基準で影響なし)。
         updateEnemies(deltaTime * MOVE_SPEED_MULT);
+        // ★SAME_ARENA §9(対人体勢): プレイヤー側の経過(紫明け=満タンへ/回復8秒後3%毎秒)。
+        // 幻影と戦って初めて pvpPosture が生まれる=通常プレイでは undefined のまま毎フレーム no-op。
+        {
+          const pvpNow = useGameStore.getState().player.pvpPosture;
+          if (pvpNow) {
+            const pvpNext = tickPvpPosture(pvpNow, gameTime, deltaTime);
+            if (pvpNext) useGameStore.setState(st => ({ player: { ...st.player, pvpPosture: pvpNext } }));
+          }
+        }
+
         // ?kblog=1: 敵の1フレーム大移動(飛び)と消失(原因名)を観測(診断専用・既定OFF)。
         if (KB_LOG) {
           const prev = kbLogPrevRef.current;

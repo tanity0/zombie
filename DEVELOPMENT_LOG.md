@@ -1,5 +1,26 @@
 # Development Log
 
+## v0.25.3969 — 対人体勢システム(SAME_ARENA §9・社長指示2026-08-26+裁定3件) 【2026-08-26 23:01 JST】
+- **仕様**: research/SAME_ARENA.md §9(監査1巡+裁定3件反映済み)が正本。要点:
+  双方対称の隠し体勢(最大100・削り率/回復はボスと同値)/クリ被弾で移動2/3×3秒/体勢0=紫3秒行動不能/
+  紫中の近接=致命(×5+最大HP25%)+daze2秒+再ブレイクロック6秒/削りは本人由来の有効打のみ
+  (counter0.20・melee0.04・gun-crit0.05・reflect0.05)/裁定①幻影の近接クリ新設 ②致命の威力 ③クリ率対称。
+- **実装**: `src/utils/pvpPosture.ts` 新設(純関数・全時刻gameTime)。
+  幻影側=phantomTick(tick/紫停止/2/3減速/近接クリ/致命)+phantomGate(紫中はi-frame/パリィ無し)+
+  damageEnemy中央(counter/gun-crit/reflectの削り+クリ減速+紫入りの前隙・予約破棄)+近接site1(melee削り/致命)。
+  プレイヤー側=movePlayer(2/3減速+紫の入力無視=skater型の慣性減衰)+beginMeleeSwing/一閃/ワイヤー/
+  銃自動射撃/サブ入口の紫ゲート+combatTick(幻影弾のpvpCrit/reflected被弾で削り)。
+  弾に`pvpCrit`旗を新設(ダメージは焼き込み済み=旗は削りと減速の合図のみ)。
+- **ついでの実バグ修正**: 近接site1の通常枝に対人スケール(gpDmgScale)が未適用だった
+  (gatePhantomHitのdamageScaleを気絶枝だけが使っていた=幻影への通常近接が5倍痛かった)。
+- **テスト**: pvpPosture.test.ts 9本(削り率/紫/ロック/ラチェット/回復/致命/減速)+
+  pvpPostureStore.test.ts 3本(紫中の行動ゲート/紫入りの窓破棄)。meleeSwingCommitの打刻台帳に
+  playerPvpChipPatch(閉じる側)を宣言。フルスイート 4781 passed。
+- **検証**: typecheck 0 / lint 0 errors / フルスイート 4781 passed。Opus検収監査(場面2)は
+  push時点で進行中——(A)指摘が出れば追い版(v3970〜)で反映し、そのエントリに結果を書く。
+- **自己点検**: 憲法(カウンター成立=判定と窓の重なりのみ)に非抵触。通常戦(対雑魚・対ボス)は
+  発生源ゲート(isGuardianPhantom/pvpCrit旗)により1bit不変。
+
 ## v0.25.3968 — 銃クリの減衰(§13-3e・社長発案→同日裁定確定) 【2026-08-26 22:08 JST】
 - **裁定**(チャットで確定): 命中ベース+0.5秒窓の刻み上限(1窓−1%・最大−10%・下限1%)/
   **敵毎**に記憶/**武器切替でフルに戻る**(スイッチの有用性)/回復=当てていない間+1%/0.5秒/

@@ -45,6 +45,10 @@ interface WriteSite {
  */
 const WRITE_SITES: readonly WriteSite[] = [
   { field: 'counterWindowEnd', where: 'プレイヤー初期状態(0)', stamped: false, why: '初期化=振っていない' },
+  {
+    field: 'counterWindowEnd', where: '対人体勢の紫入り(playerPvpChipPatch)', stamped: false,
+    why: '★SAME_ARENA §9: 紫に入った瞬間、開いている窓を破棄(0へ)=閉じる側・振っていない',
+  },
   { field: 'meleeSwingAt', where: 'プレイヤー初期状態(0)', stamped: false, why: '初期化=振っていない' },
   // ★v0.25.3869(社長裁定「近接前隙を200にして」・SAME_ARENA.md §7): 指を離した瞬間の起点。
   // 判定は MELEE_WINDUP_MS 後に triggerCounter が解決するので、**打刻もそちらで1回だけ**打つ。

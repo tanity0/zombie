@@ -3,7 +3,12 @@
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(src/utils)。
 
 import type { EnemyColorTier, EnemyType } from '../types/game';
-import { isBossType } from './enemyUtils';
+import { isBossType, isGuardianPhantom } from './enemyUtils';
+
+// ★SAME_ARENA §9 裁定③(社長2026-08-26「対人ではボス補正を外して対称」): 幻影はisBossTypeだが
+// クリ率ペナルティ(×0.5+下限5%)の**適用除外**。同じビルドなら双方同じ頻度でクリが出る。
+const critPenaltyApplies = (t: EnemyType | undefined): boolean =>
+  t !== undefined && isBossType(t) && !isGuardianPhantom(t);
 
 export const CRIT_RATE_FLOOR = 0.05; // 素の初期クリ率(開始ナイフ knife-t1 = 5%)。レア敵でもこれ未満には下げない。
 
@@ -36,6 +41,7 @@ export const applyEnemyCritPenalty = (
   baseCrit: number,
   enemy: { type?: EnemyType; colorTier?: EnemyColorTier; isNamed?: boolean },
 ): number => {
+  if (enemy.type && isGuardianPhantom(enemy.type)) return baseCrit; // 裁定③: 幻影は補正なし(対称)
   if (enemy.type && isBossType(enemy.type)) {
     return Math.min(baseCrit, Math.max(CRIT_RATE_FLOOR, baseCrit * BOSS_CRIT_CHANCE_MULT));
   }
@@ -51,6 +57,6 @@ export const applyEnemyCritPenalty = (
 export const projectileHitCritChance = (
   critChance: number,
   enemy: { type?: EnemyType },
-): number => (enemy.type && isBossType(enemy.type))
+): number => critPenaltyApplies(enemy.type)
   ? applyEnemyCritPenalty(critChance, { type: enemy.type })
   : critChance;

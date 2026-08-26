@@ -248,8 +248,13 @@ import {
 } from '../utils/bossEngagement';
 import {
   applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal, isBossPostureBroken,
-  tickBossPosture, type BossPostureImpact,
+  tickBossPosture, postureChipMult, type BossPostureImpact,
 } from '../utils/bossPosture';
+// ★SAME_ARENA §9(対人体勢システム・社長指示2026-08-26)。プレイヤーと幻影が対称に持つ隠し体勢。
+import {
+  chipPvpPosture, markPvpCritSlow, isPvpIncapacitated, isPvpFatalTarget,
+  pvpFatalDamage, pvpAfterFatal, pvpMoveMult, type PvpImpact,
+} from '../utils/pvpPosture';
 // PACING_PUZZLE.md「★ボスの「止める効果」の作り直し」①逓減(DR)。「止める」効果
 // (ノックバック/黄色クリの窓/罠の拘束/気絶)を1カテゴリに統合して数える単一の関門(bossStopDr.ts参照)。
 import { evaluateBossStopDr } from '../utils/bossStopDr';
@@ -2768,7 +2773,21 @@ const gatePhantomHit = (
   gpHitAt: enemy.gpHitAt,
   gpParryCdUntil: enemy.gpParryCdUntil,
   rand,
+  // ★SAME_ARENA §9(対人体勢): 紫中はi-frame/パリィなしで素通し(「紫→致命」がパリィで潰れない)。
+  incapacitated: isGuardianPhantom(enemy.type) && isPvpIncapacitated(enemy.pvpPosture, gameTime),
 });
+
+/**
+ * ★SAME_ARENA §9(対人体勢): プレイヤー側の体勢を削るパッチ。**紫入りの瞬間**は、開いている
+ * カウンター窓・前隙中の振り・被弾無敵を全て破棄する(§9「紫に入った瞬間に破棄」——
+ * ボスの giantDelayedHits 破棄(v0.25.3037)と同型)。呼び出し側は set() で player へ合成するだけ。
+ */
+export const playerPvpChipPatch = (p: Player, impact: PvpImpact, gameTime: number): Partial<Player> => {
+  const { next, broke } = chipPvpPosture(p.pvpPosture, impact, gameTime, postureChipMult());
+  return broke
+    ? { pvpPosture: next, counterWindowStart: 0, counterWindowEnd: 0, pendingSwingAt: 0, invulnerable: false }
+    : { pvpPosture: next };
+};
 // テスト診断フラグ(依頼#7・v0.25.2546): ?ghostlog=1 で守護霊の被弾源タグをconsoleへ出す。
 // 記録専用=判定・挙動・描画には一切影響しない(window不在のヘッドレステストでは常にfalse)。
 export const GHOST_DMG_LOG_ENABLED =
@@ -6003,7 +6022,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             skillRunnerSpeedMult(player) * marksmanSpeedMult(player) * consumableSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1),
             rampFrac,
           );
-      const moveSpeed = trapDebuffed ? Math.min(rawMoveSpeed, player.speed) : rawMoveSpeed;
+      // ★SAME_ARENA §9(対人体勢): クリ被弾の2/3減速(幻影と対称・移動速度のみ=攻撃CDは触らない)。
+      const moveSpeed = (trapDebuffed ? Math.min(rawMoveSpeed, player.speed) : rawMoveSpeed)
+        * pvpMoveMult(player.pvpPosture, state.gameTime);
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;
@@ -6051,6 +6072,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const lungeActive = !kbActive && kbNow < (player.lungeUntil ?? 0);
       // スケーター急停止中: 入力を無視して残速度を素早く減衰(tau=50ms)=ほんの少し慣性のある急停止。
       const skaterStopping = !kbActive && kbNow < player.skaterStopUntil;
+      // ★SAME_ARENA §9(対人体勢): 紫(3秒)+致命後daze(2秒)中は入力を無視して残速度を減衰
+      // (skaterStopUntilと同じ型=慣性MUSTに従い瞬間停止にしない)。被弾KBはそのまま食らう(上が優先)。
+      const pvpFrozen = !kbActive && isPvpIncapacitated(player.pvpPosture, state.gameTime);
       let vx: number, vy: number;
       if (kbActive) {
         // 持続時間は**その吹き飛び自身の値**で割る(技ごとに変わるため。未指定=従来の共通値)。
@@ -6068,7 +6092,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           : 1;
         vx = (player.lungeVx ?? 0) * d * lungeCap;
         vy = (player.lungeVy ?? 0) * d * lungeCap;
-      } else if (skaterStopping) {
+      } else if (skaterStopping || pvpFrozen) {
         const d = Math.exp(-deltaTime / 0.05); // 約50msの時定数で素早く0へ
         vx = player.vx * d;
         vy = player.vy * d;
@@ -6440,6 +6464,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   beginMeleeSwing: () => {
     const now = Date.now();
     const p = get().player;
+    if (isPvpIncapacitated(p.pvpPosture, get().gameTime)) return false; // ★SAME_ARENA §9: 紫/daze中は振れない(窓も開かない)
     if (now < p.counterCooldownEnd) return false;
     if (p.pendingSwingAt > 0) return false; // 既に前隙中(二重に振らない)
     set(state => ({
@@ -6946,7 +6971,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
       if (isGuardianPhantom(enemy.type)) {
         const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
-        if (!gp.effects) { survivors.push({ ...enemy, ...gp.patch }); continue; }
+        if (!gp.effects) {
+          // ★SAME_ARENA §9(対人体勢): 幻影のパリィ成立=プレイヤーが「カウンターを取られた」
+          // =プレイヤーの体勢を counter(0.20)で削る(紫入り時の窓・前隙破棄は playerPvpChipPatch)。
+          if (gp.parried) set(st => ({ player: { ...st.player, ...playerPvpChipPatch(st.player, 'counter', st.gameTime) } }));
+          survivors.push({ ...enemy, ...gp.patch });
+          continue;
+        }
         gpHitPatch = { id: enemy.id, patch: gp.patch }; // 有効打=i-frame の起点を set() で合成する
         gpDmgScale = gp.damageScale;
       }
@@ -7026,7 +7057,26 @@ export const useGameStore = create<GameState>((set, get) => ({
       const crit = m0CritLocked
         ? m0ForceCritNow
         : Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
-      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
+      // ★v0.25.3969: 対人スケール(gpDmgScale)を通常近接にも掛ける——gatePhantomHitの戻り値
+      // damageScale は「自前のダメージ計算に掛けるため」に返っているのに、この枝だけ未適用だった
+      // (気絶フィニッシュ枝は適用済み=幻影への通常近接だけ対人1/5が効いていない実バグ)。幻影以外は×1で恒等。
+      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
+      // ★SAME_ARENA §9(対人体勢): 紫中の幻影への近接=致命の一撃(×5+最大HP25%・裁定②)。
+      // 紫でなければ melee(0.04)の削り+クリなら2/3減速。
+      let pvpMeleePatch: Partial<Enemy> = {};
+      if (isGuardianPhantom(enemy.type)) {
+        if (isPvpFatalTarget(enemy.pvpPosture, gameTime)) {
+          dmg = pvpFatalDamage(dmg, enemy.maxHealth);
+          pvpMeleePatch = { pvpPosture: pvpAfterFatal(enemy.pvpPosture, gameTime) };
+          bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height }); // 既存のKill!演出プールを流用(§9 UI最小)
+        } else {
+          const r = chipPvpPosture(enemy.pvpPosture, 'melee', gameTime, postureChipMult());
+          const ps = crit ? markPvpCritSlow(r.next, gameTime) : r.next;
+          pvpMeleePatch = r.broke
+            ? { pvpPosture: ps, gpPendingSwingAt: undefined, gpParriedAt: undefined } // 紫入り: 前隙・予約を破棄(§9)
+            : { pvpPosture: ps };
+        }
+      }
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
@@ -7087,6 +7137,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断(laser-broken遷移+中断CD+体幹'counter')
+          ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(melee削り/2/3減速/致命後daze)
         });
       } else {
         // Knockback is on cooldown for this enemy (recently shoved): don't shove
@@ -7104,6 +7155,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: 同上
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
+          ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(同上)
         });
       }
     }
@@ -8079,7 +8131,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
       if (isGuardianPhantom(enemy.type)) {
         const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
-        if (!gp.effects) { survivors.push({ ...enemy, ...gp.patch }); continue; }
+        if (!gp.effects) {
+          // ★SAME_ARENA §9: 幻影のパリィ成立=**プレイヤー本人**の刀だけ体勢counter削り(守護霊の刀は対象外)。
+          if (gp.parried && !isGhost) set(st => ({ player: { ...st.player, ...playerPvpChipPatch(st.player, 'counter', st.gameTime) } }));
+          survivors.push({ ...enemy, ...gp.patch }); continue;
+        }
         gpHitPatch = { id: enemy.id, patch: gp.patch };
         gpDmgScale = gp.damageScale;
       }
@@ -8381,7 +8437,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
       if (isGuardianPhantom(enemy.type)) {
         const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
-        if (!gp.effects) { survivors.push({ ...enemy, ...gp.patch }); continue; }
+        if (!gp.effects) {
+          // ★SAME_ARENA §9: 幻影のパリィ成立=鞭はプレイヤー本人の武器なので体勢counter削り。
+          if (gp.parried) set(st => ({ player: { ...st.player, ...playerPvpChipPatch(st.player, 'counter', st.gameTime) } }));
+          survivors.push({ ...enemy, ...gp.patch }); continue;
+        }
         gpHitPatch = { id: enemy.id, patch: gp.patch };
         gpDmgScale = gp.damageScale;
       }
@@ -8921,6 +8981,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = combatActorPlayer(ghostId);
     if (!player) return false;
     if (!isKatanaMode(player) || isPaused) return false;
+    if (ghostId === undefined && isPvpIncapacitated(get().player.pvpPosture, get().gameTime)) return false; // ★SAME_ARENA §9: 紫/daze中
     // 発動中(移動中)〜着地後の硬直中は新しい一閃を出せない = モーション
     // キャンセル不可 + 後隙。村雨でも共通(連発は硬直0.2sぶん間隔が空く)。
     if (now < player.katanaRecoveryUntil) return false;
@@ -9084,6 +9145,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = combatActorPlayer(ghostId);
     if (!player) return false;
     if (isPaused) return false;
+    if (ghostId === undefined && isPvpIncapacitated(get().player.pvpPosture, gameTime)) return false; // ★SAME_ARENA §9: 紫/daze中
     if (!player.subWeapons.includes('wire-anchor')) return false;
     if (subWeaponBlockedByKatana(player, 'wire-anchor')) return false;
     // 刺し待ち〜移動中は新しいフリックを受けない。CD 中も不可。
@@ -10679,8 +10741,23 @@ export const useGameStore = create<GameState>((set, get) => ({
       const mobHatePatch = (eff > 0 && hateSource === 'ghost' && !isBossType(enemy.type))
         ? { ghostHateUntil: state.gameTime + GHOST_MOB_HATE_MS }
         : {};
+      // ★SAME_ARENA §9(対人体勢・v0.25.3969): 幻影の隠し体勢。プレイヤー本人起因の成立
+      // (counter/gun-crit/reflect)だけが削り、クリ被弾で2/3減速3秒。melee 0.04と致命は
+      // damageEnemyを通らない近接site1側(排他)。usesPostureSystem外なのでボスの紫系とは独立。
+      let pvpPatch: Partial<Enemy> = {};
+      if (isGuardianPhantom(enemy.type) && hateSource === 'player' && newHealth > 0) {
+        let pvpState = enemy.pvpPosture;
+        if (resolvedImpact === 'counter' || resolvedImpact === 'gun-crit' || resolvedImpact === 'reflect') {
+          const r = chipPvpPosture(pvpState, resolvedImpact, state.gameTime, postureChipMult() * postureImpactMult);
+          pvpState = r.next;
+          // 紫入りの瞬間: 前隙中の振り・予約カウンターを破棄(§9「紫に入った瞬間に破棄」)。
+          if (r.broke) pvpPatch = { gpPendingSwingAt: undefined, gpParriedAt: undefined };
+        }
+        if (crit) pvpState = markPvpCritSlow(pvpState, state.gameTime);
+        if (pvpState !== enemy.pvpPosture) pvpPatch = { ...pvpPatch, pvpPosture: pvpState };
+      }
       const updatedEnemies = enemies.map(e =>
-        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch } : e
+        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch, ...pvpPatch } : e
       );
       
       // Check if enemy was killed

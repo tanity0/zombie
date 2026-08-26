@@ -38,7 +38,13 @@ import {
   KNOCKBACK_SPEED, KNOCKBACK_DURATION,          // カウンターされた側のノックバック=**敵と同じ量**(社長指示)
   meleeSwingBaseDamage,                         // プレイヤーの近接素ダメージ(式を複製しない)
   meleeLungePx, MELEE_LUNGE_MS, knockbackSpeedFor, // ★踏み込み(プレイヤーと同じ関数=武器別も揃う)
+  playerPvpChipPatch,                           // ★SAME_ARENA §9: プレイヤー体勢の削り(紫入りの破棄込み)
 } from '../store/gameStore';
+// ★SAME_ARENA §9(対人体勢): 幻影・プレイヤーが対称に持つ隠し体勢の純関数。
+import {
+  tickPvpPosture, isPvpIncapacitated, isPvpFatalTarget, pvpFatalDamage, pvpAfterFatal,
+  markPvpCritSlow, pvpMoveMult,
+} from './pvpPosture';
 import { HUMAN_REACTION_MS } from './bossSkeleton'; // ★人の反応時間(このゲームの正本)。幻影の反応下限に使う
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { createEnemyProjectile } from './enemyUtils';
@@ -590,17 +596,45 @@ const swingPhantomMelee = (
   //   2026-08-24 の「原則同じ条件」でその前提が変わったので、今はこちらが正。
   // 判定はプレイヤー側の窓1本(`counterWindowEnd`)。窓は指を離した瞬間に開くので、
   // **幻影より後に振った(=後出しした)プレイヤーだけが間に合う**=「後出しが勝つ」。
-  if (isCounterActive(useGameStore.getState().player, Date.now())) {
+  const gNow = useGameStore.getState();
+  const gt = gNow.gameTime;
+  // ★SAME_ARENA §9: プレイヤーが紫(行動不能)中はカウンター判定を通さない(窓は紫入りで破棄済み+
+  // 新しく開けない、の二重化。ここは三重目の保険=「紫→致命」がカウンターで潰れない)。
+  if (!isPvpIncapacitated(gNow.player.pvpPosture, gt) && isCounterActive(gNow.player, Date.now())) {
     counteredByPlayer(bcx, bcy, player, sfx, patch, phantomId);
     return;
   }
-  const hpBefore = useGameStore.getState().player.health;
+  // ★裁定①(社長2026-08-26): 幻影の近接にもクリを新設(記録どおりの武器クリ率で抽選=プレイヤーと対称)。
+  // 旧「クリは近接では未適用(叩き台)」はこの裁定で置き換え。クリ成立=ダメージ×critMult+
+  // 相手(プレイヤー)に2/3減速3秒(§9)。
+  const meleeW = actorMeleeFor(phantomId);
+  const mm = phantomAtkMults(phantomId, meleeW, gt);
+  const crit = meleeW !== undefined && Math.random() < mm.critChance;
+  let dmg = phantomMeleeDamage(growthAtkMult, phantomId) * (crit ? mm.critMult : 1) * PVP_DAMAGE_SCALE;
+  // ★SAME_ARENA §9: 紫中のプレイヤーへの近接=致命の一撃(×5+最大HP25%・裁定②)。
+  const fatalHit = isPvpFatalTarget(gNow.player.pvpPosture, gt);
+  if (fatalHit) dmg = pvpFatalDamage(dmg, gNow.player.maxHealth);
+  const hpBefore = gNow.player.health;
   useGameStore.getState().damagePlayer(
-    // 対人1/10(社長裁定2026-08-20「プレイヤー同士の戦いではダメージ1/10で一旦」)。
-    phantomMeleeDamage(growthAtkMult, phantomId) * PVP_DAMAGE_SCALE, guardianPhantomMeleeSource(), bcx, bcy, GUARDIAN_PHANTOM_TYPE,
+    // 対人スケール(社長裁定2026-08-20)は上のdmgで適用済み。
+    dmg, guardianPhantomMeleeSource(), bcx, bcy, GUARDIAN_PHANTOM_TYPE,
   );
   // 被弾SEはここで鳴らす: damagePlayer 直呼びは「本当に何も出ない」前例がある(gameStore の注記)。
-  if (useGameStore.getState().player.health < hpBefore) sfx.hurt();
+  const landed = useGameStore.getState().player.health < hpBefore;
+  if (landed) {
+    sfx.hurt();
+    // ★SAME_ARENA §9: 有効打のみ体勢に響く——melee(0.04)の削り+クリなら2/3減速。致命なら満タン+daze2秒。
+    useGameStore.setState(st => {
+      if (fatalHit) {
+        return { player: { ...st.player, pvpPosture: pvpAfterFatal(st.player.pvpPosture, st.gameTime) } };
+      }
+      const chipped = playerPvpChipPatch(st.player, 'melee', st.gameTime);
+      const merged = crit
+        ? { ...chipped, pvpPosture: markPvpCritSlow(chipped.pvpPosture ?? st.player.pvpPosture, st.gameTime) }
+        : chipped;
+      return { player: { ...st.player, ...merged } };
+    });
+  }
 };
 
 /** 弾を1発撃つ(全ボス共通の赤い二重丸=絵替えしない)。飛翔特性はプレイヤーの実弾と同じ共通ヘルパ。 */
@@ -623,14 +657,18 @@ const firePhantomShot = (
   // ★§13-3e クリ減衰(社長裁定2026-08-26・SAME_ARENA対称): 幻影の銃もプレイヤーと同じ減衰を受ける
   // (相手=プレイヤー1人・武器を持ち替えれば戻る)。発射時ロールなので時刻は発射時で近似。
   const crit = rand() < critDecayOnHit(`gp:${phantom.id}`, gun.key ?? 'gp-gun', newGameTime, m.critChance);
-  st.addProjectile(createEnemyProjectile(
-    phantom, p, pcx, pcy, bcx, bcy,
-    // research/GROWTH.md v4: 幻影の銃にも育成の攻撃力を掛ける(スポーン時に焼いた倍率)。
-    // 対人1/10(社長裁定2026-08-20)も弾の生成時に掛ける(被弾側=combatTickは共通経路なので触らない)。
-    { speed: flight.speed, damage: Math.max(1, Math.round(
-      gun.damage * (crit ? m.critMult : 1) * m.outgoingMult * s.growthAtkMult * PVP_DAMAGE_SCALE,
-    )), size: flight.size },
-  ));
+  st.addProjectile({
+    ...createEnemyProjectile(
+      phantom, p, pcx, pcy, bcx, bcy,
+      // research/GROWTH.md v4: 幻影の銃にも育成の攻撃力を掛ける(スポーン時に焼いた倍率)。
+      // 対人1/10(社長裁定2026-08-20)も弾の生成時に掛ける(被弾側=combatTickは共通経路なので触らない)。
+      { speed: flight.speed, damage: Math.max(1, Math.round(
+        gun.damage * (crit ? m.critMult : 1) * m.outgoingMult * s.growthAtkMult * PVP_DAMAGE_SCALE,
+      )), size: flight.size },
+    ),
+    // ★SAME_ARENA §9: クリ旗を弾に載せる(被弾側=combatTickが体勢削り(gun-crit)+2/3減速の合図に使う)。
+    ...(crit ? { pvpCrit: true } : {}),
+  });
   s.gun = { ...gun, magazine: Math.max(0, (gun.magazine ?? 0) - 1), lastFired: Date.now() };
   patch.gpShotAt = newGameTime;
   patch.gpShotAngle = Math.atan2(pcy - bcy, pcx - bcx);
@@ -723,6 +761,19 @@ export const runPhantomTick = (
   const bcx = phantom.x + phantom.width / 2, bcy = phantom.y + phantom.height / 2;
   const patch: Partial<Enemy> = {};
 
+  // ---- ★SAME_ARENA §9(対人体勢): 経過(紫明け=満タンへ/回復8秒後3%毎秒)+紫・daze中は完全停止 ----
+  // 紫は専用フィールド(pvpPosture.breakUntil)。isFrozen(stun/root/lift)と混ぜない=トラップ拘束で
+  // 致命が出る誤爆を構造的に防ぐ(§9)。被弾側の素通し(i-frame/パリィ無効)は phantomHitGate が持つ。
+  {
+    const pvpTick = tickPvpPosture(phantom.pvpPosture, newGameTime, deltaTime);
+    if (pvpTick) patch.pvpPosture = pvpTick;
+    if (isPvpIncapacitated(pvpTick ?? phantom.pvpPosture, newGameTime)) {
+      patch.vx = 0; patch.vy = 0;
+      applyPatch(phantom.id, patch);
+      return;
+    }
+  }
+
   // ---- 気絶・拘束・浮き: 何もしない(★ノックバックは含めない=殴っても止まらない) ----------------
   if (isFrozen(phantom, newGameTime, nowMs)) { applyPatch(phantom.id, patch); return; }
 
@@ -763,7 +814,8 @@ export const runPhantomTick = (
   // =押されるがままになる(プレイヤーも押し合いの対象になる世界=同条件の範囲内)。
   const shoved = nowMs < (phantom.knockbackShoveUntil ?? 0);
   if (!shoved) {
-    const dt = deltaTime * moveSpeedMult * phantomSlowMult(phantom, newGameTime);
+    // ★SAME_ARENA §9: クリ被弾の2/3減速(pvpMoveMult)。ボスのbossSlowUntil無視(D4)はそのまま。
+    const dt = deltaTime * moveSpeedMult * phantomSlowMult(phantom, newGameTime) * pvpMoveMult(phantom.pvpPosture, newGameTime);
     if (decision.moveX !== 0 || decision.moveY !== 0) {
       const spd = phantom.speed * dt;
       const c = resolveMove(phantom.x + decision.moveX * spd, phantom.y + decision.moveY * spd, phantom);

@@ -51,6 +51,9 @@ const POSTURE_CHIP_MULT = typeof window === 'undefined'
   ? DEFAULT_POSTURE_CHIP_MULT
   : parsePostureChipMult(new URLSearchParams(window.location.search).get('posturechip'));
 
+/** ★SAME_ARENA §9: 対人の体勢削り(pvpPosture)にも同じ `?posturechip=` を掛ける(手綱を1本に保つ)。 */
+export const postureChipMult = (): number => POSTURE_CHIP_MULT;
+
 const IMPACT_RATIO: Record<BossPostureImpact, number> = {
   counter: 0.20,
   melee: 0.04,

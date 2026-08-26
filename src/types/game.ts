@@ -70,6 +70,20 @@ export interface DashLocomotionState {
 }
 
 // Player types
+/**
+ * ★対人の体勢システム(SAME_ARENA.md §9・社長指示2026-08-26)の状態。プレイヤー(Player.pvpPosture)と
+ * 幻影(Enemy.pvpPosture)が同じ形で持つ。ボスの体勢(bossPosture)とは独立——「見えない値」なので
+ * 紫ゲージUI・ブレイク報酬などボス用の枝に繋がない。時刻は全て gameTime 基準。
+ */
+export interface PvpPostureState {
+  posture: number;       // 現在値(0..PVP_POSTURE_MAX)。紫中は0、致命/紫明けで満タンへ戻る
+  recoveryCap: number;   // 回復上限のラチェット(75/50/25%を割ったらそこまで)
+  lastChipAt: number;    // 最後に削られた時刻(回復開始の起点)
+  breakUntil?: number;   // 紫(行動不能)の終了時刻。posture>0でこれが立っている間=致命後のdaze
+  lockUntil?: number;    // 再ブレイクロック(この間は削れない)
+  slowUntil?: number;    // クリ被弾の移動2/3減速の終了時刻
+}
+
 export interface Player extends DashLocomotionState {
   x: number;
   y: number;
@@ -122,6 +136,12 @@ export interface Player extends DashLocomotionState {
    */
   counterWindowStart: number;
   counterWindowEnd: number;     // ms timestamp; window is open while start <= now <= this
+  /**
+   * ★対人の体勢(SAME_ARENA.md §9・社長指示2026-08-26)。プレイヤーと幻影が対称に持つ隠し値。
+   * 削りの発生源が対人(幻影戦)にしか無いため、通常プレイでは undefined のまま=1bitも動かない。
+   * 全時刻は gameTime 基準(ポーズで止まる)。実装の正本は utils/pvpPosture.ts。
+   */
+  pvpPosture?: PvpPostureState;
   /**
    * ★近接の前隙(社長裁定2026-08-24・SAME_ARENA.md §7): 指を離した時刻(Date.now)。
    * `MELEE_WINDUP_MS` 経過後に **useGameLoop が判定を解決**する。0=前隙中の振りは無い。
@@ -804,6 +824,8 @@ export interface Enemy {
   screamNextAt?: number;
   // ボス共通の体勢値。未設定時はボス種別ごとの最大値として扱う。
   bossPosture?: number;
+  /** ★対人の体勢(SAME_ARENA.md §9)。幻影専用(プレイヤー側は Player.pvpPosture)。 */
+  pvpPosture?: PvpPostureState;
   bossPostureRecoveryCap?: number;
   bossPostureLastDamageAt?: number;
   bossPostureLockUntil?: number;
@@ -1658,6 +1680,8 @@ export interface Projectile {
   weaponKey?: string;
   ownerType?: EnemyType; // 敵弾の発射元タイプ(盾への被ダメージ算定などに使用)。
   ownerId?: string;      // 敵弾の発射元の個体ID(発射元が倒れたら在弾を消す等に使用)。
+  /** ★SAME_ARENA §9: 幻影の弾のクリ旗(ダメージは焼き込み済み=旗は被弾側の体勢削り+2/3減速の合図だけ)。 */
+  pvpCrit?: boolean;
   // GHOST-BULLET-TECH(BOT_AND_GHOST.md §2.9・**記録専用**): 発射元の技キー(moveReaction.tsの台帳)。
   // 「弾も技」=被弾を技別の反応表へ帰属させ、守護霊が弾技ごとの得手不得手を再現するために持つ。
   // **判定・ダメージ・弾の挙動・ボス側には一切影響しない**(createEnemyProjectileが1箇所で付ける)。

@@ -54,7 +54,9 @@ import {
   bossCritCdMult,
   REFLECT_DAMAGE_MULTIPLIER, // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王の倍率計算に使う基準値
   counterMasterAwakenBuffPatch, // v0.25.3303 カウンターマスター覚醒(成立後3秒+30%)
+  playerPvpChipPatch, // ★SAME_ARENA §9(対人体勢): 幻影の弾クリ/弾パリィ返しの被弾でプレイヤー体勢を削る
 } from '../store/gameStore';
+import { markPvpCritSlow } from './pvpPosture'; // ★SAME_ARENA §9: クリ被弾の2/3減速
 // v0.25.3496(社長指示「四角の帯に当たりも戻して」): 帯の判定は描いてある四角そのもの。
 import { distToBandRect } from './geometry';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
@@ -686,6 +688,18 @@ export const applyEnemyProjectileHits = (
       if (wasVulnerable) {
         fx.playSfx('player-damage');
         fx.spawnFlash('rgba(239,68,68,0.22)', 200);
+        // ★SAME_ARENA §9(対人体勢): 幻影由来の弾が**効いた**(i-frame外)時だけ体勢に響く。
+        //  - pvpCrit(幻影の銃クリ)= gun-crit 5%削り+移動2/3減速3秒
+        //  - reflected&&hostile(幻影の弾パリィで打ち返された自弾)= reflect 5%削り
+        // どちらの旗も幻影しか立てない=通常戦では1bitも動かない。
+        if (proj.pvpCrit === true) {
+          useGameStore.setState(st => {
+            const chipped = playerPvpChipPatch(st.player, 'gun-crit', st.gameTime);
+            return { player: { ...st.player, ...chipped, pvpPosture: markPvpCritSlow(chipped.pvpPosture ?? st.player.pvpPosture, st.gameTime) } };
+          });
+        } else if (proj.reflected === true) {
+          useGameStore.setState(st => ({ player: { ...st.player, ...playerPvpChipPatch(st.player, 'reflect', st.gameTime) } }));
+        }
       }
       useGameStore.getState().removeProjectile(proj.id);
       fx.spawnBurst(
