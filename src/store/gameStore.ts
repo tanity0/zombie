@@ -6323,6 +6323,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // スケボー(新仕様): ダブルタップで乗車。skater 未装備/既に乗車中は無視。
   mountSkater: () => {
     const { player, gameTime } = get();
+    if (isPvpIncapacitated(player.pvpPosture, gameTime)) return; // ★SAME_ARENA §9(検収監査 重大①): 紫/daze中は乗車不可(白リスト)
     if (!hasSkill(player, 'skater') || player.skaterRiding) return;
     set({ player: { ...get().player, skaterRiding: true, skaterRideStartAt: gameTime } });
   },
@@ -6529,6 +6530,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // フレアガン/ジャンクウェポン)もまとめて止まる。降車は既存トグルのまま即時=「降りて即反撃」は成立。
     // 復帰フラグ `?skaterlock=0`。
     if (SKATER_LOCK_ENABLED && player.skaterRiding) return { swung: false, hit: false, finish: false, killed: 0 };
+    // ★SAME_ARENA §9(対人体勢・v0.25.3970 検収監査 重大①): 紫/daze中は近接・カウンター・
+    // この入口から出る全サブ(センサー地雷/フレアガン/ジャンク等)をまとめて止める。
+    // beginMeleeSwing側のゲートだけではPC入力(performTapAction→直呼び)が素通りだった。
+    if (isPvpIncapacitated(player.pvpPosture, gameTime)) return { swung: false, hit: false, finish: false, killed: 0 };
     // 社長指示v0.25.3300 シーカー仕様変更: 半透明中は攻撃できない(覚醒Lv3は半透明中も攻撃可)。
     if (isSeekerActive(player, gameTime) && skillLevel(player, 'seeker') < 3) return { swung: false, hit: false, finish: false, killed: 0 };
     // 訓練(M0)の封印(社長指示v0.25.2293): **近接チュートリアルで解禁されるまで振れない**。
@@ -6987,7 +6992,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         bashHitEnemy = true; // 敵にヒット → 後でストップ
         slashAt.push({ x: ecx, y: ecy });
         meleeHitEnemyIds.push(enemy.id);
-        const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT * gpDmgScale;
+        let dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT * gpDmgScale;
+        // ★SAME_ARENA §9(検収監査 重大③): バッシュも近接=致命+melee削りの対象(site1と同型)。
+        let bashPvpPatch: Partial<Enemy> = {};
+        if (isGuardianPhantom(enemy.type)) {
+          if (isPvpFatalTarget(enemy.pvpPosture, gameTime)) {
+            dmg = pvpFatalDamage(dmg, enemy.maxHealth);
+            bashPvpPatch = { pvpPosture: pvpAfterFatal(enemy.pvpPosture, gameTime) };
+            bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
+          } else {
+            const r = chipPvpPosture(enemy.pvpPosture, 'melee', gameTime, postureChipMult());
+            bashPvpPatch = r.broke
+              ? { pvpPosture: r.next, gpPendingSwingAt: undefined, gpParriedAt: undefined }
+              : { pvpPosture: r.next };
+          }
+        }
         recordShieldBashDamage(dmg); // G4a(§2.9(3)・記録専用): バッシュ与ダメの様式カウンタ
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
         const newHealth = Math.max(0, enemy.health - dmg);
@@ -7001,6 +7020,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackUntil: now + KNOCKBACK_DURATION,
           knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+          ...bashPvpPatch, // ★SAME_ARENA §9: 対人体勢
         });
         continue;
       }
@@ -7221,8 +7241,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       player: {
         ...state.player,
         meleeSwingAt: swingAt, // 近接スイング演出の起点(描画のみ)。★前隙の起点=指を離した時刻に揃える(200ms後に絵を出し直さない)。
-        counterWindowStart: swingAt, // 隻狼型(v0.25.3943)
-        counterWindowEnd: swingAt + COUNTER_ACCEPT_MS,
+        // ★SAME_ARENA §9(検収監査 重大②): この振りの最中に紫へ入った(幻影のパリィ等)なら、
+        // 破棄した窓をここで開き直さない(旧: 無条件書き=紫入り直後300ms弾パリィが生きていた)。
+        counterWindowStart: isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt, // 隻狼型(v0.25.3943)
+        counterWindowEnd: isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt + COUNTER_ACCEPT_MS,
         // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
         counterCooldownEnd: swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
         huntingCharged: false,
@@ -8202,7 +8224,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeHitCritChance(KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)], player, gameTime, enemy);
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
-      const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
+      let dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
+      // ★SAME_ARENA §9(検収監査 重大③): 刀にも致命(×5+最大HP25%)とmelee削り(site1と同型)。
+      // 本人由来のみ=守護霊の刀(isGhost)は削らない・致命も出さない。
+      let pvpMeleePatch: Partial<Enemy> = {};
+      if (isGuardianPhantom(enemy.type) && !isGhost) {
+        if (isPvpFatalTarget(enemy.pvpPosture, gameTime)) {
+          dmg = pvpFatalDamage(dmg, enemy.maxHealth);
+          pvpMeleePatch = { pvpPosture: pvpAfterFatal(enemy.pvpPosture, gameTime) };
+          katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
+        } else {
+          const r = chipPvpPosture(enemy.pvpPosture, 'melee', gameTime, postureChipMult());
+          const ps = crit ? markPvpCritSlow(r.next, gameTime) : r.next;
+          pvpMeleePatch = r.broke
+            ? { pvpPosture: ps, gpPendingSwingAt: undefined, gpParriedAt: undefined }
+            : { pvpPosture: ps };
+        }
+      }
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
@@ -8245,6 +8283,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
+          ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(刀のmelee削り/致命後daze)
         });
       } else {
         survivors.push({
@@ -8258,6 +8297,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: 同上
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
+          ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(同上)
         });
       }
     }
@@ -8495,7 +8535,22 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
-      const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
+      let dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
+      // ★SAME_ARENA §9(検収監査 重大③): 鞭にも致命(×5+最大HP25%)とmelee削り(site1と同型・鞭はプレイヤー本人のみの武器)。
+      let pvpMeleePatch: Partial<Enemy> = {};
+      if (isGuardianPhantom(enemy.type)) {
+        if (isPvpFatalTarget(enemy.pvpPosture, gameTime)) {
+          dmg = pvpFatalDamage(dmg, enemy.maxHealth);
+          pvpMeleePatch = { pvpPosture: pvpAfterFatal(enemy.pvpPosture, gameTime) };
+          whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
+        } else {
+          const r = chipPvpPosture(enemy.pvpPosture, 'melee', gameTime, postureChipMult());
+          const ps = crit ? markPvpCritSlow(r.next, gameTime) : r.next;
+          pvpMeleePatch = r.broke
+            ? { pvpPosture: ps, gpPendingSwingAt: undefined, gpParriedAt: undefined }
+            : { pvpPosture: ps };
+        }
+      }
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
@@ -8526,6 +8581,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
         ...(bossBump?.patch ?? {}), // 紫カウント/発動を反映(最後に展開して優先=刀5490と同じ作法)
         ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
+        ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(鞭のmelee削り/致命後daze)
       });
     }
 
@@ -9771,6 +9827,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { player } = get();
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== 'phill-revolver') return;
+    if (isPvpIncapacitated(player.pvpPosture, get().gameTime)) return; // ★SAME_ARENA §9(検収監査 重大①): 紫/daze中は撃てない
     // 社長指示v0.25.3300 シーカー仕様変更: 半透明中は攻撃できない(覚醒Lv3は可)。
     if (isSeekerActive(player, get().gameTime) && skillLevel(player, 'seeker') < 3) return;
     // 吸い付き中の敵(movePlayer が算出した phillSnapEnemyId)を発砲時点で確認。
@@ -10694,13 +10751,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       const meleeFatal = viaMeleeFinish && hateSource === 'player' && postureImpact === 'heavy'
         ? applyBrokenMeleeFatal(enemy, gatedAmount, state.gameTime)
         : null;
+      // ★SAME_ARENA §9(検収監査 重大③): 中央経路を通る近接(gpSource='melee'=スラッシャー追撃等)も
+      // 紫中の幻影には致命の一撃(×5+最大HP25%)。適用は下のpvpPatch(pvpAfterFatal)と対。
+      const pvpFatal = gpSource === 'melee' && isGuardianPhantom(enemy.type) && hateSource === 'player'
+        && isPvpFatalTarget(enemy.pvpPosture, state.gameTime)
+        ? pvpFatalDamage(gatedAmount, enemy.maxHealth)
+        : null;
       if (meleeFatal) bossFatalAt = {
         x: enemy.x + enemy.width / 2,
         y: enemy.y + enemy.height / 2,
         labelY: enemy.y - 6,
         w: enemy.width, h: enemy.height,
       };
-      const resolvedAmount = meleeFatal?.damage ?? gunReward?.damage ?? gatedAmount;
+      const resolvedAmount = meleeFatal?.damage ?? pvpFatal ?? gunReward?.damage ?? gatedAmount;
       // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
       const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(resolvedAmount / 2)) : resolvedAmount;
       appliedDamage = eff; // §6.21 M46計測用(set後にchannel別加算)
@@ -10746,15 +10809,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       // damageEnemyを通らない近接site1側(排他)。usesPostureSystem外なのでボスの紫系とは独立。
       let pvpPatch: Partial<Enemy> = {};
       if (isGuardianPhantom(enemy.type) && hateSource === 'player' && newHealth > 0) {
-        let pvpState = enemy.pvpPosture;
-        if (resolvedImpact === 'counter' || resolvedImpact === 'gun-crit' || resolvedImpact === 'reflect') {
-          const r = chipPvpPosture(pvpState, resolvedImpact, state.gameTime, postureChipMult() * postureImpactMult);
-          pvpState = r.next;
+        if (pvpFatal !== null) {
+          // 致命が刺さった: 紫解除+満タン+daze2秒+再ブレイクロック(近接site群と同じ後始末)。
+          pvpPatch = { pvpPosture: pvpAfterFatal(enemy.pvpPosture, state.gameTime) };
+        } else {
+          let pvpState = enemy.pvpPosture;
+          let pvpBroke = false;
+          if (resolvedImpact === 'counter' || resolvedImpact === 'gun-crit' || resolvedImpact === 'reflect') {
+            const r = chipPvpPosture(pvpState, resolvedImpact, state.gameTime, postureChipMult() * postureImpactMult);
+            pvpState = r.next; pvpBroke = r.broke;
+          } else if (gpSource === 'melee') {
+            // 中央経路の近接(スラッシャー追撃等)= melee 0.04(検収監査 重大③)。
+            const r = chipPvpPosture(pvpState, 'melee', state.gameTime, postureChipMult());
+            pvpState = r.next; pvpBroke = r.broke;
+          }
           // 紫入りの瞬間: 前隙中の振り・予約カウンターを破棄(§9「紫に入った瞬間に破棄」)。
-          if (r.broke) pvpPatch = { gpPendingSwingAt: undefined, gpParriedAt: undefined };
+          if (pvpBroke) pvpPatch = { gpPendingSwingAt: undefined, gpParriedAt: undefined };
+          if (crit) pvpState = markPvpCritSlow(pvpState, state.gameTime);
+          if (pvpState !== enemy.pvpPosture) pvpPatch = { ...pvpPatch, pvpPosture: pvpState };
         }
-        if (crit) pvpState = markPvpCritSlow(pvpState, state.gameTime);
-        if (pvpState !== enemy.pvpPosture) pvpPatch = { ...pvpPatch, pvpPosture: pvpState };
       }
       const updatedEnemies = enemies.map(e =>
         e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch, ...pvpPatch } : e
@@ -14106,6 +14179,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // useGameLoopが毎フレーム呼ぶ。予約なし/チェーン無し/CD中は即return=実質ゼロコスト。
     const s0 = get();
     const p = s0.player;
+    if (isPvpIncapacitated(p.pvpPosture, s0.gameTime)) return; // ★SAME_ARENA §9(検収監査 重大①): 紫/daze中は先行入力の自動追撃も出ない(予約は保持=明けたら従来判定)
     if (!p.slasherQueuedTap || p.slasherChainReadyAt <= 0) return;
     if (s0.realGameTime < p.slasherChainReadyAt) return;
     set(state => ({ player: { ...state.player, slasherQueuedTap: false } }));
@@ -14512,6 +14586,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           damage: p.damage * multiplier,
           hostile: asHostile,
           reflected: true,
+          // ★SAME_ARENA §9(検収監査 軽⑧): クリ旗は反射で消す——幻影のクリ弾を打ち返し、さらに
+          // 打ち返されて戻ってきた弾が「クリでもないのに2/3減速」を付けるラリー汚染を防ぐ。
+          pvpCrit: undefined,
           // 反射した敵弾は貫通しない=最初に当たった1体で消える(社長指示)。以前は貫通(plow through)していた。
           passthrough: false,
           hitEnemies: [],
@@ -15530,6 +15607,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   startReload: (weaponId) => {
     set(state => {
       const p = state.player;
+      if (isPvpIncapacitated(p.pvpPosture, state.gameTime)) return {}; // ★SAME_ARENA §9(検収監査 重大①): 紫/daze中はリロード開始不可(白リスト)
       const w = p.weapons.find(g => g.id === weaponId);
       if (!w || !w.ammoType) return {};
       const reload = beginWeaponReload(w, p, ammoPoolFor(p, w.ammoType));

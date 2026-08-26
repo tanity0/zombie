@@ -39,7 +39,9 @@ import {
   meleeSwingBaseDamage,                         // プレイヤーの近接素ダメージ(式を複製しない)
   meleeLungePx, MELEE_LUNGE_MS, knockbackSpeedFor, // ★踏み込み(プレイヤーと同じ関数=武器別も揃う)
   playerPvpChipPatch,                           // ★SAME_ARENA §9: プレイヤー体勢の削り(紫入りの破棄込み)
+  skillBenkeiCritBonus, skillKnifeMasterMeleeCrit, // ★裁定①: 近接クリ式のミラー(検収監査 中⑥)
 } from '../store/gameStore';
+import { softCapCritChance } from './critSoftCap'; // ★§13-3d: 近接クリ式のミラーに同じソフトキャップ
 // ★SAME_ARENA §9(対人体勢): 幻影・プレイヤーが対称に持つ隠し体勢の純関数。
 import {
   tickPvpPosture, isPvpIncapacitated, isPvpFatalTarget, pvpFatalDamage, pvpAfterFatal,
@@ -189,8 +191,9 @@ export const phantomMeleeDamage = (growthAtkMult = 1, phantomId?: string): numbe
   const key = PLAYER_PROFILES[phantomClassId()]?.meleeKey; // ★O-5: 同上
   const base = recorded?.damage ?? ((key ? createWeapon(key).damage : null) ?? GP_T.melee.damage);
   // ★SAME_ARENA O-2: 記録どおりのスキル/装備の倍率を乗せる(主語=幻影の疑似Player)。
-  // `phantomId` 未指定 or ビルド無し=倍率1で従来と1bit同じ。**クリは近接では従来どおり未適用**
-  // (「クリは未適用(叩き台)」は既存仕様なので、この段では変えない=仕様変更をしない)。
+  // `phantomId` 未指定 or ビルド無し=倍率1で従来と1bit同じ。※クリ倍率はこの関数では掛けない
+  // ——v0.25.3970(裁定①)で近接クリが新設されたが、抽選と倍率は swingPhantomMelee 側が掛ける
+  // (この関数は「素ダメージ」の唯一の式のまま)。
   const outgoing = phantomId !== undefined
     ? phantomAtkMults(phantomId, undefined, useGameStore.getState().gameTime).outgoingMult
     : 1;
@@ -237,8 +240,8 @@ export const phantomAtkMults = (
 ): PhantomAtkMults => {
   // ★対人トラップ効果中は「クリティカル率アップ」(社長指示2026-08-25)。**貰う側が貰いやすくなる**
   // 向きで、敵側の `TRAP_ROOT_CRIT_BONUS`(拘束中の敵は+10%クリを貰う)の鏡。同じ +0.10 を使う
-  // =数字を2組に持たない。**幻影の近接は元からクリ抽選が無い**(phantomMeleeDamage の
-  // 「クリは未適用(叩き台)」)ので、現状これが効くのは**幻影の銃だけ**。
+  // =数字を2組に持たない。※v0.25.3970(裁定①): 幻影の近接クリは swingPhantomMelee 側が
+  // **プレイヤーの近接式のミラー**(ソフトキャップ込み)で別に組む=この関数(銃の式)は銃専用のまま。
   const trapBonus = isTrapDebuffed(useGameStore.getState().player) ? TRAP_ROOT_CRIT_BONUS : 0;
   const raw = combatActorPlayer(phantomId);
   if (!raw) {
@@ -558,9 +561,11 @@ const counteredByPlayer = (
   // カウンター反撃(プレイヤーの近接ダメージ)。合流点を通すので幻影のパリィ/対人倍率が正しく効く。
   // crit=true(カウンターは確定クリ)。gpSource='counter' で幻影ゲートへ「近接カウンター」と伝える
   // = 対人スケール・パリィ・i-frame の扱いが全部その1本で正しく裁かれる(ここで独自計算しない)。
+  // ★SAME_ARENA §9(検収監査 重大④): postureImpact='counter' を渡す=幻影の対人体勢を0.20削る
+  // (damageEnemy中央のpvp chipがresolvedImpact==='counter'で拾う。ボス体勢はusesPostureSystem外=不変)。
   g.damageEnemy(
     phantomId, meleeSwingBaseDamage(player.weapons.find(w => w.isMelee), player),
-    false, true, false, 'other', 'player', null, 1, 'counter',
+    false, true, false, 'other', 'player', 'counter', 1, 'counter',
   );
   sfx.parry();
   g.spawnRing(bcx, bcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
@@ -607,9 +612,21 @@ const swingPhantomMelee = (
   // ★裁定①(社長2026-08-26): 幻影の近接にもクリを新設(記録どおりの武器クリ率で抽選=プレイヤーと対称)。
   // 旧「クリは近接では未適用(叩き台)」はこの裁定で置き換え。クリ成立=ダメージ×critMult+
   // 相手(プレイヤー)に2/3減速3秒(§9)。
+  // ★検収監査 中⑥: クリ率は**プレイヤーの近接式のミラー**で組む(meleeHitCritChanceと同じ項:
+  // 武器クリ率+本体critChance+対人トラップ+弁慶+ナイフマスター→ソフトキャップ§13-3d)。
+  // 銃の式(phantomAtkMults=quickMag/装備クリが乗り・ソフトキャップ無し)を流用しない。
+  // 対象がプレイヤーなので弱点/敵補正の項は無し(=対称)。
   const meleeW = actorMeleeFor(phantomId);
-  const mm = phantomAtkMults(phantomId, meleeW, gt);
-  const crit = meleeW !== undefined && Math.random() < mm.critChance;
+  const mActor = combatActorPlayer(phantomId);
+  const meleeCritChance = meleeW !== undefined && mActor
+    ? softCapCritChance(
+        (meleeW.critChance ?? 0) + mActor.critChance
+        + (isTrapDebuffed(gNow.player) ? TRAP_ROOT_CRIT_BONUS : 0)
+        + skillBenkeiCritBonus(mActor, gt) + skillKnifeMasterMeleeCrit(mActor),
+      )
+    : 0;
+  const mm = phantomAtkMults(phantomId, meleeW, gt); // critMult(クリ倍率)はここから(倍率の対称化は(B))
+  const crit = Math.random() < meleeCritChance;
   let dmg = phantomMeleeDamage(growthAtkMult, phantomId) * (crit ? mm.critMult : 1) * PVP_DAMAGE_SCALE;
   // ★SAME_ARENA §9: 紫中のプレイヤーへの近接=致命の一撃(×5+最大HP25%・裁定②)。
   const fatalHit = isPvpFatalTarget(gNow.player.pvpPosture, gt);
@@ -768,7 +785,15 @@ export const runPhantomTick = (
     const pvpTick = tickPvpPosture(phantom.pvpPosture, newGameTime, deltaTime);
     if (pvpTick) patch.pvpPosture = pvpTick;
     if (isPvpIncapacitated(pvpTick ?? phantom.pvpPosture, newGameTime)) {
-      patch.vx = 0; patch.vy = 0;
+      // ★慣性MUST(検収監査 中⑤): 瞬間停止にせず、プレイヤーの紫(skaterStop型)と同じ
+      // 「入力無視+残速度の減衰」で滑って止まる(tau≈50ms)。
+      const d = Math.exp(-deltaTime / 0.05);
+      const nvx = (phantom.vx ?? 0) * d, nvy = (phantom.vy ?? 0) * d;
+      if (Math.abs(nvx) > 1 || Math.abs(nvy) > 1) {
+        const c = resolveMove(phantom.x + nvx * deltaTime, phantom.y + nvy * deltaTime, phantom);
+        patch.x = c.x; patch.y = c.y;
+      }
+      patch.vx = nvx; patch.vy = nvy;
       applyPatch(phantom.id, patch);
       return;
     }

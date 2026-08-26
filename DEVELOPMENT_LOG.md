@@ -1,5 +1,29 @@
 # Development Log
 
+## v0.25.3970 — 対人体勢システムの検収監査(場面2)反映: 重大4件+中2件+軽2件を修正 【2026-08-26 23:21 JST】
+- **Opus検収監査の結果(v3969に対して)**: (A)重大4件——①紫中でも攻撃できる経路が残存
+  (刀オート斬撃/PC入力のtriggerCounter直呼び/PHILL銃/スラッシャー先行入力+リロード・スケボー乗車の
+  白リスト未ゲート) ②triggerCounter末尾のsetが破棄した窓を開き直す=紫入り直後300ms弾パリィが成立
+  ③melee削りと致命が素手ナイフ経路のみ(刀/鞭/バッシュ/スラッシャーで不発) ④counter 0.20の削りが
+  プレイヤー→幻影方向に未配線(counteredByPlayerがpostureImpact=nullで中央を素通り)。
+- **修正**: ①triggerCounter/firePhillShot/pumpSlasherQueuedTap/mountSkater/startReload/刀オート斬撃に
+  紫ゲート ②最終setの窓書き込みを紫チェック付きに+combatTickの弾パリィにも紫ガード
+  ③刀・鞭・バッシュに致命+melee削り(site1と同型)、中央経路(gpSource='melee'=スラッシャー追撃)にも
+  致命+melee削り ④counteredByPlayerがpostureImpact='counter'を渡す(中央のpvp chipが0.20削る)。
+- **(中)**: ⑤幻影の紫を瞬間停止→慣性つき停止(tau50ms・プレイヤー側と同型・慣性MUST)
+  ⑥幻影の近接クリ率を銃の式(phantomAtkMults)からプレイヤー近接式のミラー(武器+本体+対人トラップ+
+  弁慶+ナイフマスター→ソフトキャップ§13-3d)へ。
+- **(軽)**: ⑦弾の体勢削りを「実際にHPが減った有効打」限定に(ナイト覚醒の完全無効化で削れない)
+  ⑧反射でpvpCrit旗を消す(ラリーで減速が汚染されない)。(C)記述2件(近接クリ無しの旧コメント等)修正。
+- **監査の確認事項(良)**: 通常戦(対雑魚・対ボス)への影響ゼロは監査側でも恒等性を確認済み。
+  時計はgameTimeで統一済み。
+- **(B)積み**(この巡では直さない・別案件): 紫の行動白リスト網羅テスト(bossFullStunCoverage同型)/
+  swingPhantomMeleeのrand注入(テスト固定用)/幻影の銃クリ率もソフトキャップ未通過(既存)/
+  クリ**倍率**の非対称(プレイヤー→幻影=BOSS_CRIT_DAMAGE_MULT・幻影→プレイヤー=CRIT_DAMAGE_MULT)/
+  幻影のトラップ+10%がbossTrapCrit独立枝に落ちる捻れ/紫+トラップ拘束時に気絶枝が致命枝より先に走る/
+  紫の解除点がphantomTickのtick依存。
+- **検証**: typecheck 0 / lint 0 errors / フルスイート 4782 passed(紫ゲートのstoreテスト+1)。
+
 ## v0.25.3969 — 対人体勢システム(SAME_ARENA §9・社長指示2026-08-26+裁定3件) 【2026-08-26 23:01 JST】
 - **仕様**: research/SAME_ARENA.md §9(監査1巡+裁定3件反映済み)が正本。要点:
   双方対称の隠し体勢(最大100・削り率/回復はボスと同値)/クリ被弾で移動2/3×3秒/体勢0=紫3秒行動不能/

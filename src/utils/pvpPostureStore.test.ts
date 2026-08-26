@@ -33,6 +33,18 @@ describe('対人体勢: プレイヤーの紫(行動不能)ゲート', () => {
     expect(Math.abs(p.vx)).toBeLessThan(100); // 入力(右)で加速せず、残速度が減衰している
   });
 
+  it('紫中は triggerCounter(PC入力の直呼び経路)も不発・リロードも始まらない(検収監査 重大①)', () => {
+    const gt = useGameStore.getState().gameTime;
+    useGameStore.setState(s => ({ player: { ...s.player, pvpPosture: breakState(gt) } }));
+    const r = useGameStore.getState().triggerCounter();
+    expect(r.swung).toBe(false);
+    const gunId = useGameStore.getState().player.weapons.find(w => !w.isMelee)?.id;
+    if (gunId) {
+      useGameStore.getState().startReload(gunId);
+      expect(useGameStore.getState().player.reloadingWeaponId).not.toBe(gunId);
+    }
+  });
+
   it('紫入り(playerPvpChipPatch)で窓・前隙・無敵が破棄される', () => {
     const gt = useGameStore.getState().gameTime;
     const p0 = {

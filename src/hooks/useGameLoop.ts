@@ -7740,7 +7740,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // nearest non-stunned enemy first (stunned fallback = finisher chance),
         // Hunting-Lv3-equivalent reach, one cut per interval. Guns and the
         // release knife sweep are disabled while the katana is owned.
-        if (katanaActive && !attackLocked) { // v0.25.2589: オート斬撃も死亡/アテンション中は止める
+        if (katanaActive && !attackLocked && !pvpLocked) { // v0.25.2589: オート斬撃も死亡/アテンション中は止める。★§9(検収監査 重大①): 紫/daze中も止める
           if (gameTime < lastKatanaSlashRef.current) lastKatanaSlashRef.current = 0; // new run
           if (gameTime - lastKatanaSlashRef.current >= KATANA_SLASH_INTERVAL_MS) {
             const kp = useGameStore.getState().player;

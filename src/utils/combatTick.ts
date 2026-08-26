@@ -56,7 +56,7 @@ import {
   counterMasterAwakenBuffPatch, // v0.25.3303 カウンターマスター覚醒(成立後3秒+30%)
   playerPvpChipPatch, // ★SAME_ARENA §9(対人体勢): 幻影の弾クリ/弾パリィ返しの被弾でプレイヤー体勢を削る
 } from '../store/gameStore';
-import { markPvpCritSlow } from './pvpPosture'; // ★SAME_ARENA §9: クリ被弾の2/3減速
+import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_ARENA §9: クリ被弾の2/3減速+紫中の弾パリィ停止
 // v0.25.3496(社長指示「四角の帯に当たりも戻して」): 帯の判定は描いてある四角そのもの。
 import { distToBandRect } from './geometry';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
@@ -671,7 +671,9 @@ export const applyEnemyProjectileHits = (
     const currentPlayer = useGameStore.getState().player;
     // ★紫の文法(SAME_ARENA O-3): `noCounter` の弾は**打ち返せない**。既定(未設定)は従来どおり反射する
     // ので、この条件は既存の弾を1bitも変えない。
-    if (isCounterActive(currentPlayer, now) && !proj.noCounter) {
+    // ★SAME_ARENA §9(検収監査 重大②): 紫/daze中は弾パリィも成立しない(窓が残っていても)。
+    if (isCounterActive(currentPlayer, now) && !proj.noCounter
+      && !isPvpIncapacitated(currentPlayer.pvpPosture, gameTime)) {
       // 反射1回分は共有関数(主語=プレイヤー。ghostId未指定=従来と1bit同値)。
       applyCounterReflect(proj.id, now, currentPlayer, tunables);
       reflectedAny = true;
@@ -684,14 +686,17 @@ export const applyEnemyProjectileHits = (
       // createEnemyProjectile が付ける `srcMoveKey`)。旧実装は「giantbat の弾=g-bolt」という
       // 発射元タイプ推定だったが、弾技を全ボスへ広げたので弾のタグを読むだけにする
       // (giantbat 新スクリプトの咆哮弾は同じ 'g-bolt' が載る=旧挙動と同値)。
+      const pvpHpBefore = useGameStore.getState().player.health;
       const playerDied = useGameStore.getState().damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2, undefined, undefined, proj.srcMoveKey);
       if (wasVulnerable) {
         fx.playSfx('player-damage');
         fx.spawnFlash('rgba(239,68,68,0.22)', 200);
-        // ★SAME_ARENA §9(対人体勢): 幻影由来の弾が**効いた**(i-frame外)時だけ体勢に響く。
-        //  - pvpCrit(幻影の銃クリ)= gun-crit 5%削り+移動2/3減速3秒
-        //  - reflected&&hostile(幻影の弾パリィで打ち返された自弾)= reflect 5%削り
-        // どちらの旗も幻影しか立てない=通常戦では1bitも動かない。
+      }
+      // ★SAME_ARENA §9(対人体勢): 幻影由来の弾が**効いた**(実際にHPが減った=有効打)時だけ体勢に響く
+      // (検収監査 軽⑦: ナイト覚醒Lv3の完全無効化など0ダメージ化した弾では削らない。幻影の近接側と同基準)。
+      //  - pvpCrit(幻影の銃クリ)= gun-crit 5%削り+移動2/3減速3秒
+      //  - reflected(幻影の弾パリィで打ち返された自弾。敵対×reflectedは幻影しか作らない)= reflect 5%削り
+      if (useGameStore.getState().player.health < pvpHpBefore) {
         if (proj.pvpCrit === true) {
           useGameStore.setState(st => {
             const chipped = playerPvpChipPatch(st.player, 'gun-crit', st.gameTime);
