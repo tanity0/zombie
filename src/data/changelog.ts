@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.3939', items: ['ゲーム内容の変更はありません(雑魚のクリティカル率の調査結果を設計書へ記録)'] },
   { version: '0.25.3938', items: ['削岩型の突きの絵を、手描きの槍から「白い風圧」へ差し替え(トールの突き・バス停の三段突きと同じ絵)'] },
   { version: '0.25.3937', items: ['ゲーム内容の変更はありません(開発環境の巻き戻り現象の原因究明結果を記録)'] },
   {
