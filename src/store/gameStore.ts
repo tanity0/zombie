@@ -7054,7 +7054,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         slasherLungeTo = { dirX: dx / dn, dirY: dy / dn, dist };
       }
       if (slasherForce || now >= (enemy.knockbackImmuneUntil ?? 0)) {
-        const norm = Math.max(0.001, dist);
+        // ★v0.25.3959(社長報告「近接当てると飛んでっちゃう」・?kblog=1実測「KB開始 bat 予定281567px」):
+        // 方向の正規化は**中心差分の長さ**で割る。dist(enemyMeleeDist)はv0.25.3170から判定矩形の
+        // 最近点距離=密着(中心が帯内)で0になり、dx/0.001×speedで数百万px/sのKBが出ていた。
+        // falloff(減衰)は従来どおり判定距離distを使う(挙動不変)。
+        const norm = Math.max(0.001, Math.hypot(dx, dy));
         const falloff = 1 - dist / meleeRange;
         const speed = slasherForce
           ? knockbackSpeedFor(SLASHER_FORCE_KB_PX, KNOCKBACK_DURATION)
@@ -7482,7 +7486,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const bossSlow = crit ? bossCritStopPatch(enemy, gameTime, player.stunDurationMult ?? 1) : null; // ボスは半減(v0.25.2422)
       const stunUntil = (crit && !bossSlow && !isBossType(enemy.type)) ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil;
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
-        const norm = Math.max(0.001, dist);
+        // ★v0.25.3959: 本体の近接(site1)と同じ修正——方向の正規化は中心差分で(密着0割れKB対策)。
+        const norm = Math.max(0.001, Math.hypot(dx, dy));
         const falloff = 1 - dist / meleeRange;
         const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5); // v0.25.3260: 50px化(3257)を社長指示で撤回=従来値へ
         survivors.push({

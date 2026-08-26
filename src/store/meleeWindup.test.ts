@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   useGameStore, MELEE_WINDUP_MS, meleeWindupMs, COUNTER_WINDOW, COUNTER_ACCEPT_MS, isCounterActive, meleeLungePx, isRunningForMeleeLunge, MELEE_LUNGE_WALK_PX, COUNTER_COOLDOWN,
-  MELEE_LUNGE_PX, MELEE_LUNGE_MS, WHIP_LUNGE_PX, knockbackSpeedFor, PLAYER_BASE_SPEED,
+  MELEE_LUNGE_PX, MELEE_LUNGE_MS, WHIP_LUNGE_PX, knockbackSpeedFor, PLAYER_BASE_SPEED, KNOCKBACK_SPEED,
 } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setTreesDisabled } from '../world/trees';
@@ -164,5 +164,23 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
     const p = useGameStore.getState().player;
     expect(meleeWindupMs({ ...p, subWeapons: [] })).toBe(MELEE_WINDUP_MS);
     expect(meleeWindupMs({ ...p, subWeapons: ['whip'] })).toBe(MELEE_WINDUP_MS);
+  });
+
+  // ★v0.25.3959(社長報告「近接当てると飛んでっちゃう」・?kblog=1実測「KB開始 bat 予定281567px」):
+  // 密着(プレイヤー中心が敵の判定帯の中)で殴ると、方向の正規化に判定距離(最近点=0)を使っていた
+  // せいで dx/0.001×speed=数百万px/s のノックバックが出ていた。速度は常に KNOCKBACK_SPEED 以下。
+  it('密着で殴ってもノックバック速度が爆発しない(0割れ回帰テスト)', () => {
+    const { id } = setup();
+    // 敵をプレイヤーとほぼ同座標へ(中心差分は小さいが非ゼロ・判定帯は重なる=最近点距離0)。
+    useGameStore.setState(s => ({
+      enemies: s.enemies.map(e => e.id === id ? { ...e, x: ORIGIN + 4, y: ORIGIN + 2 } : e),
+    }));
+    useGameStore.getState().beginMeleeSwing();
+    const pendAt = useGameStore.getState().player.pendingSwingAt;
+    useGameStore.getState().triggerCounter(pendAt);
+    const e = useGameStore.getState().enemies.find(en => en.id === id)!;
+    const kbSpeed = Math.hypot(e.knockbackVx ?? 0, e.knockbackVy ?? 0);
+    expect(kbSpeed).toBeGreaterThan(0); // ノックバック自体は付いている
+    expect(kbSpeed).toBeLessThanOrEqual(KNOCKBACK_SPEED + 1e-6); // 爆発しない(≦133px/s)
   });
 });

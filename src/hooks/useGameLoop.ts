@@ -9230,9 +9230,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           for (const [id, p0] of prev) {
             if (!seen.has(id)) {
-              const line = `${(gameTime / 1000).toFixed(1)}s 消失 ${p0.type} at (${Math.round(p0.x)},${Math.round(p0.y)}) cause=${ENEMY_REMOVE_CAUSE.get(id) ?? '不明(台帳に無し)'}`;
-              console.warn('[kblog]', line);
-              kbLogPush(line); // 画面表示(KbLogOverlay)用
+              const cause = ENEMY_REMOVE_CAUSE.get(id) ?? '不明(台帳に無し)';
+              // ★v0.25.3959(社長報告「なんか大量に出てきちゃう」): 通常の撃破(kill)とボム一括(bomb)は
+              // 正常な消え方=ノイズなのでログに出さない。それ以外(cap/labNoPlace/不明 等)だけが疑い筋。
+              if (cause !== 'kill' && cause !== 'bomb' && cause !== 'reset') {
+                const line = `${(gameTime / 1000).toFixed(1)}s 消失 ${p0.type} at (${Math.round(p0.x)},${Math.round(p0.y)}) cause=${cause}`;
+                console.warn('[kblog]', line);
+                kbLogPush(line); // 画面表示(KbLogOverlay)用
+              }
               prev.delete(id);
             }
           }
