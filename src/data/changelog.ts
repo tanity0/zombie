@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3964',
+    items: ['ゲーム内容の変更はありません(調査用ログの精度向上: 賞金首の正規退場が「原因不明の消失」と表示されていたのを直しました)。'],
+  },
+  {
     version: '0.25.3963',
     items: [
       '幻影戦: デコイは対人戦の弾に対してだけ迎撃範囲が半分になりました(通常の敵の弾に対しては今までどおり)。',

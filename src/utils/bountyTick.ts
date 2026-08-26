@@ -22,7 +22,7 @@ import {
   counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT, counterMasterAwakenBuffPatch,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, knockbackSpeedFor, enemyDeathLabel,
-  bossSlowMult } from '../store/gameStore';
+  bossSlowMult, ENEMY_REMOVE_CAUSE } from '../store/gameStore';
 // ★予告寸法は依存ゼロの葉(bountyDims.ts)が正=ここでは使うだけ+従来の消費者(pixiScene/テスト)の
 // ために named re-export する。gameStoreから直接importしない理由はbountyDims.ts冒頭を読むこと
 // (循環import起動全損 v0.25.3390 の再発防止)。
@@ -592,7 +592,10 @@ const summonBountyEscorts = (bounty: Enemy, newGameTime: number): void => {
 
 /** 賞金首の退場・討伐に合わせて取り巻きも一緒に片付ける(§4②・B-4「削られた個体の再出現はなし」と対)。 */
 const clearBountyEscorts = (bountyId: string): void => {
-  useGameStore.setState(st => ({ enemies: st.enemies.filter(e => e.bountyEscortId !== bountyId) }));
+  useGameStore.setState(st => {
+    st.enemies.forEach(e => { if (e.bountyEscortId === bountyId) ENEMY_REMOVE_CAUSE.set(e.id, 'bountyGone'); }); // 消失ログ用(v0.25.3964)
+    return { enemies: st.enemies.filter(e => e.bountyEscortId !== bountyId) };
+  });
 };
 
 // =================================================================================================
@@ -2011,6 +2014,7 @@ export const runBountyTick = (
     } else if (newGameTime - bounty.bountyDepartAt >= BOUNTY_DEPART_FADE_MS) {
       // フェード完了=消滅(描画側はbountyDepartAtからの経過でαを落とす)。取り巻きも一緒に片付ける。
       clearBountyEscorts(bounty.id);
+      ENEMY_REMOVE_CAUSE.set(bounty.id, 'bountyGone'); // 消失ログ用: 滞在時間切れの正規退場(v0.25.3964・実機で cause=不明 と出ていた対策)
       useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.id !== bounty.id) }));
       return;
     }
