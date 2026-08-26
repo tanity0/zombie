@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3936',
+    items: [
+      '変異体(削岩型)の突きの予告を1秒に伸ばしました(約0.75秒→1秒)。',
+    ],
+  },
+  {
     version: '0.25.3935',
     items: [
       'ボス系の足元に出ていた当たり判定の枠を非表示にしました(触れてもダメージを受けなくなったため、役目を終えました)。',
