@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.3957 — 近接の踏み込みを二段階化(止/歩=20px・走=従来)+?kblog=1診断ツマミ(社長指示) 【2026-08-26 19:09 JST】
+- **指示**: 「近接の挙動を二段階に変える。止まってる時および歩きの状態で話すと、20pxの移動。走ってる時だと現状の距離移動。」+継続報告「近接当てると飛んでっちゃうし、動いてて突然消えちゃう敵もいる。」
+- **実装(二段階踏み込み)** `src/store/gameStore.ts`:
+  - `MELEE_LUNGE_WALK_PX=20`(止・歩時の踏み込み)/ `meleeLungePx(player, running)` が running=false なら `min(20, 通常値)` を返す(鞭でも20px)。
+  - 走り判定 `isRunningForMeleeLunge`: スティック入力が強い(`swipeStrength>=0.7`)**または**実速度が `speed×0.75` 以上。`beginMeleeSwing` が指を離した瞬間の swipe 状態で判定(VirtualJoystick の release() は swipe クリア前に beginMeleeSwing を呼ぶ配線を確認済み)。
+  - 幽霊/幻影(ghostDriver)は従来どおり常に走り扱い=挙動不変(コメントに保留として明記)。
+- **実装(診断ツマミ)** `src/hooks/useGameLoop.ts`: `?kblog=1` で毎フレーム敵の移動量を監視し、
+  ①1フレーム96px超の大移動(type/aiPhase/bossState/kb/stun/corpse付き)②敵の消失(`ENEMY_REMOVE_CAUSE` の原因名付き)を console.warn に出す。既定OFF=ゲーム内容の変更なし。
+  「飛んでっちゃう」「突然消える」の実機再現時に原因名を直接取るための観測器。
+- **テスト** `src/store/meleeWindup.test.ts`: 二段階の px 値・走り判定・方向対称性(静止スイング=歩き段の速度)を追加/更新。13/13 green。
+- **検証**: typecheck 0 / lint 0 errors / meleeWindup 13 passed。
+- **自己点検**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(近接の踏み込み距離とログのみ。カウンター窓・判定・威力は不変)。
+
 ## v0.25.3956 — ステージ6のゴールを「離指で即confirm」型へ統一(社長指示) 【2026-08-26 19:35 JST】
 
 社長指示「ステージ6のゴールは話したらすぐ帰還しますか?になるタイプに揃える」。

@@ -1240,8 +1240,32 @@ export const WHIP_LUNGE_PX = 20;
  * その主語の**踏み込み距離**。`meleeWindupMs` と同じ作法で、**武器ごとの値をここ1箇所に集める**
  * (踏み込みを測る側=プレイヤー/守護霊/幻影の3箇所が必ずこの関数を通る)。
  */
-export const meleeLungePx = (player: Player): number =>
-  player.subWeapons.includes('whip') ? WHIP_LUNGE_PX : MELEE_LUNGE_PX;
+/**
+ * ★近接の踏み込みを二段階に(社長指示2026-08-26「止まってる時および歩きの状態で放すと、20pxの移動。
+ * 走ってる時だと現状の距離移動」・v0.25.3957)。
+ * 「走り」の判定は2本のOR(どちらも叩き台・実機で絞る):
+ *  - スティックの傾きが強い(>=0.7)まま指を離した=タッチの走り
+ *  - 実速度が自分の基礎速度の75%以上=キーボード/バフ/スケーター等(リロード減速中でも傾きで拾える)
+ */
+export const MELEE_LUNGE_WALK_PX = 20;
+export const MELEE_RUN_STICK_MIN = 0.7;
+export const MELEE_RUN_SPEED_FRAC = 0.75;
+export const isRunningForMeleeLunge = (
+  p: Pick<Player, 'vx' | 'vy' | 'speed'>,
+  swipeDirection: { x: number; y: number } | null,
+  swipeStrength: number,
+): boolean =>
+  (swipeDirection !== null && swipeStrength >= MELEE_RUN_STICK_MIN)
+  || Math.hypot(p.vx, p.vy) >= p.speed * MELEE_RUN_SPEED_FRAC;
+/**
+ * running=false(止まり/歩き)なら一律 MELEE_LUNGE_WALK_PX(20)。走りは従来の武器別距離。
+ * 鞭は元から20px=どちらでも20(変化なし)。守護霊/幻影は接近から振る=常に「走り」扱いで従来どおり
+ * (自分の傾き入力を持たないため。非対称が気になれば各自の実速度判定を配線する=保留)。
+ */
+export const meleeLungePx = (player: Player, running: boolean = true): number => {
+  const runPx = player.subWeapons.includes('whip') ? WHIP_LUNGE_PX : MELEE_LUNGE_PX;
+  return running ? runPx : Math.min(MELEE_LUNGE_WALK_PX, runPx);
+};
 /**
  * その主語(プレイヤー / 疑似Player)の**近接の前隙**。前隙を測る側は `MELEE_WINDUP_MS` を
  * 直接読まず**必ずこの関数を通す**——武器ごとに変えたくなった時、**ここ1箇所に分岐を足せば
@@ -6417,7 +6441,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const ld = p.lastDirection ?? { x: 1, y: 0 };
       const lm = Math.hypot(ld.x, ld.y);
       if (lm > 0.001) {
-        const spd = knockbackSpeedFor(meleeLungePx(p), MELEE_LUNGE_MS); // 武器別(鞭=20px)
+        // ★二段階の踏み込み(v0.25.3957): 指を離した瞬間の走り/歩きで距離を分ける。
+        // swipeDirection/swipeStrength は release() が状態を消す**前**にここへ来る(VirtualJoystickの順序)。
+        const runningNow = isRunningForMeleeLunge(p, get().swipeDirection, get().swipeStrength);
+        const spd = knockbackSpeedFor(meleeLungePx(p, runningNow), MELEE_LUNGE_MS); // 武器別(走り: 鞭=20px/ナイフ=30px、歩き=一律20px)
         set(state => ({ player: {
           ...state.player,
           lungeVx: (ld.x / lm) * spd,

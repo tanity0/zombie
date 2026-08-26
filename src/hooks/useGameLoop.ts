@@ -920,6 +920,11 @@ const LADDER_ENABLED = evParam('ladder') !== '0';
 // PACING_REDESIGN.mdバッチ7: イベントプロデューサー(囲い/紅き月/ハンター/叫びの発火ゲート)。
 // ?events=0 で従来のランダム発火(本バッチ以前の挙動)に完全復帰(切り分け用)。
 const EVENTS_ENABLED = evParam('events') !== '0';
+// ★診断ツマミ(社長報告2026-08-26「近接当てると飛んでっちゃう」「動いてて突然消えちゃう敵もいる」・
+// v0.25.3957): `?kblog=1` で「敵の1フレーム大移動(=飛び/テレポート)」と「敵の消失(原因名つき)」を
+// consoleへ出す。既定OFF=製品挙動に一切影響しない。自作の当てずっぽうスイッチではなく、
+// 既存の消失台帳(ENEMY_REMOVE_CAUSE)を読む観測器(CLAUDE.md 実装精度の規律7)。
+const KB_LOG = evParam('kblog') === '1';
 // PACING_REDESIGN.mdバッチ3.5-A: チャフ配合(bat/skeleton/zombieの役割配合)。?mix=0で従来の
 // エリア重み任せに完全復帰。
 const MIX_ENABLED = evParam('mix') !== '0';
@@ -1536,6 +1541,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // M51: ジャイアント新スクリプトの予告SE(全技共通=hunter-alert流用・社長裁定6.26-9 #5)。
   // 直前フレームのaiPhaseを覚えておき、5つの溜め(windup)ステートへ切り替わった瞬間だけ1回鳴らす。
   const giantWindupSfxRef = useRef<string | undefined>(undefined);
+  const kbLogPrevRef = useRef<Map<string, { x: number; y: number; type: string }>>(new Map()); // ?kblog=1専用
   // ★EXステージのボスBGM切替(社長指示2026-08-26)。遭遇エッジの検知フラグ(条件が消えたら自動で再武装)。
   const phillBgmRef = useRef(false);
   // v0.25.3700(社長指示「ボスの技にも対応するSEを」): 被弾SEの合流点用・前フレームのHP。
@@ -9190,6 +9196,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Update enemies
         // 敵の移動のみ MOVE_SPEED_MULT 倍速(攻撃タイマー等はtimestamp基準で影響なし)。
         updateEnemies(deltaTime * MOVE_SPEED_MULT);
+        // ?kblog=1: 敵の1フレーム大移動(飛び)と消失(原因名)を観測(診断専用・既定OFF)。
+        if (KB_LOG) {
+          const prev = kbLogPrevRef.current;
+          const cur = useGameStore.getState().enemies;
+          const seen = new Set<string>();
+          for (const e of cur) {
+            seen.add(e.id);
+            const p0 = prev.get(e.id);
+            if (p0) {
+              const d = Math.hypot(e.x - p0.x, e.y - p0.y);
+              if (d > 96) { // 通常移動/ノックバック(~7px/フレーム)では絶対に出ない距離=飛び/テレポートだけ拾う
+                console.warn(`[kblog] 大移動 ${e.type} ${Math.round(d)}px (${Math.round(p0.x)},${Math.round(p0.y)})→(${Math.round(e.x)},${Math.round(e.y)}) aiPhase=${e.aiPhase ?? '-'} bossState=${e.bossState ?? '-'} kb=${e.knockbackUntil !== undefined && Date.now() < e.knockbackUntil} stun=${e.stunUntil !== undefined && gameTime < e.stunUntil} corpse=${e.corpseUntil !== undefined}`);
+              }
+            }
+            prev.set(e.id, { x: e.x, y: e.y, type: e.type });
+          }
+          for (const [id, p0] of prev) {
+            if (!seen.has(id)) {
+              console.warn(`[kblog] 消失 ${p0.type} at (${Math.round(p0.x)},${Math.round(p0.y)}) cause=${ENEMY_REMOVE_CAUSE.get(id) ?? '不明(台帳に無し)'}`);
+              prev.delete(id);
+            }
+          }
+        }
 
 
         // 敵のジャンプ攻撃(aiPhase 'jump')/ダッシュ攻撃(aiPhase 'charge')でも障害物を破壊(裏ボスと同仕様)。
