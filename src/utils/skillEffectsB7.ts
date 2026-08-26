@@ -76,11 +76,13 @@ export const executionShockParams = (level: number): ExecutionShock => EXECUTION
 // ---- グラビティショット(rare): 射撃ヒットの20/30/40%で爆縮(引き寄せ120px/s×0.4s・半径100/120/140)
 // (v0.25.3703・社長指示でキル時→ヒット時へ。抽選関数自体は不変=呼び出し時機だけが変わった) ----
 export interface GravityShotProc { chance: number; radius: number }
+// ★社長指示2026-08-26「グラビティショット、100%発動に変更」(v0.25.3955): 全Lvで発動100%へ
+// (Lv差は半径と覚醒のみ)。旧値20/30/40%は事実として: v0.25.3703(ヒット時化)までの叩き台。
 export const GRAVITY_SHOT_BY_LEVEL: readonly GravityShotProc[] = [
   { chance: 0, radius: 0 },
-  { chance: 0.2, radius: 100 },
-  { chance: 0.3, radius: 120 },
-  { chance: 0.4, radius: 140 },
+  { chance: 1.0, radius: 100 },
+  { chance: 1.0, radius: 120 },
+  { chance: 1.0, radius: 140 },
 ];
 export const GRAVITY_SHOT_PULL_SPEED = 120; // px/s(§16-5判定叩き台。全Lv共通)
 export const GRAVITY_SHOT_PULL_MS = 400;    // 0.4s(全Lv共通)

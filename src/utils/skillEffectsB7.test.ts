@@ -79,15 +79,12 @@ describe('execution-shock: 半径80/100/120・近接表示ダメの30/40/50%', (
   });
 });
 
-describe('gravity-shot: キルの20/30/40%で爆縮(半径100/120/140・引き寄せ120px/s×0.4s)', () => {
-  it('発動(rng<chance)ならLv別半径を返す', () => {
+// ★社長指示2026-08-26「グラビティショット、100%発動に変更」(v0.25.3955): 全Lv常時発動・Lv差は半径のみ。
+describe('gravity-shot: ヒット時100%で爆縮(半径100/120/140・引き寄せ120px/s×0.4s)', () => {
+  it('所持していれば常に発動し、Lv別半径を返す(rngの値に依らない)', () => {
     expect(rollGravityShotWell(1, constRng(0))).toEqual({ radius: 100 });
-    expect(rollGravityShotWell(2, constRng(0.29))).toEqual({ radius: 120 });
-    expect(rollGravityShotWell(3, constRng(0.39))).toEqual({ radius: 140 });
-  });
-  it('非発動ならnull', () => {
-    expect(rollGravityShotWell(1, constRng(0.2))).toBeNull();
-    expect(rollGravityShotWell(3, constRng(0.4))).toBeNull();
+    expect(rollGravityShotWell(2, constRng(0.5))).toEqual({ radius: 120 });
+    expect(rollGravityShotWell(3, constRng(0.999))).toEqual({ radius: 140 });
   });
   it('未所持は常にnull', () => expect(rollGravityShotWell(0, constRng(0))).toBeNull());
   it('引き寄せ速度・持続は全Lv共通(120px/s・0.4s)', () => {

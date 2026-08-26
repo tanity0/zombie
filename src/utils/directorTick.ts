@@ -111,9 +111,12 @@ export const EVENT_BANNER_MS = 3500;      // イベント発生告知バナー�
  * クロージャ・実装精度の規律4)。判定・値は移設前と同一(挙動不変)。
  */
 export const isEnemyCapProtected = (
-  e: Pick<Enemy, 'type' | 'fixed' | 'fromEvent' | 'isNamed' | 'questTarget' | 'isWave' | 'spawnedAt'>,
+  e: Pick<Enemy, 'type' | 'fixed' | 'fromEvent' | 'isNamed' | 'questTarget' | 'isWave' | 'spawnedAt' | 'stunUntil'>,
   gameTime: number,
 ): boolean =>
+  // ★v0.25.3956(社長報告「クリティカルになって…消えちゃう敵がいる」): 気絶中(=クリのフィニッシュ
+  // 受付中)は消さない。ご褒美の窓の最中に上限カリングで消えるのは理不尽(プラント消失の疑い筋①)。
+  (e.stunUntil !== undefined && gameTime < e.stunUntil) ||
   !!e.fixed ||
   !!e.fromEvent ||
   !!e.isNamed ||
@@ -1051,10 +1054,10 @@ export interface RecycleCullCtx {
 export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
   const {
     labTheme, indoor, gameBounds, player, playerCenterX, playerCenterY, gameTime,
-    spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc, playerAreaIdx, enemyCap, puzzleActiveNow,
+    spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc, playerAreaIdx, enemyCap,
     labSpawnAggroRange,
     labVisited,
-  } = ctx;
+  } = ctx; // puzzleActiveNow は v0.25.3956 で未使用化(カリングは常に可視域外限定)。ctx型は互換のため残す
 
   // VS-style recycling: when an enemy drifts far beyond the viewport,
   // bring it back just outside the current screen instead of letting the
@@ -1102,6 +1105,9 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // 上限(MAX_ENEMIES)を食い潰し、湧きが完全停止する不具合を防ぐ。遠ざかった休眠個体は「休眠のまま」
     // 画面近くへ湧き直す(=近づけば起きる)。caps・休眠仕様は不変。城ボス/裏ボスは labTheme では出ない。
     if (enemy.dormant && !labTheme) return enemy;
+    // ★v0.25.3956: 気絶中(クリのフィニッシュ受付)もリサイクルしない——気絶した敵を残して移動すると
+    // 画面外でテレポート湧き直し(HP新品)=「消えた」ように見える(プラント消失の疑い筋②)。
+    if (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) return enemy;
     // ノックバック中(カウンター等で吹き飛び中)はリサイクルしない。吹き飛んだ敵がリサイクル境界を越えた瞬間に
     // 別の湧き位置へテレポート湧き直し=「消えて違うところにリスポーン」していた(社長報告)。吹き飛ばし演出は
     // そのまま飛んで着地させ、瞬間移動だけ防ぐ。着地後(ノックバック終了後)に遠ければ通常どおりリサイクルされる。
@@ -1257,7 +1263,12 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
       isProtected,
       // 監査v0.25.3008: リサイクル矩形と同じく縦中心を湧き帯ぶん北へ(可視域の実態に合わせる)。
       { centerX: playerCenterX, centerY: playerCenterY - spawnViewOffsetY, halfW: recycleHalfW, halfH: recycleHalfH },
-      puzzleActiveNow
+      // ★社長報告2026-08-26「消えちゃう敵がいる。いまはプラントが消えた」(v0.25.3956):
+      // 旧: restrictToOffscreen=puzzleActiveNow。**ボスフェーズ(7:00-7:30)や練習ランでは false**になり、
+      // 上限超過時に**画面内の敵(遠い順)を消していた**=目の前の敵が突然消える。§5.7の規約
+      // 「在席は強制消去しない・自然消化」はパズルON時に限る条件ではないので、常に可視域外に限定する
+      // (?puzzle=0 の切り分け時だけ旧挙動が要るなら evParam を足す=今は不要と判断)。
+      true
     );
 
     const toRemoveIds = new Set(

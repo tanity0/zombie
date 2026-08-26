@@ -564,10 +564,13 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
 
   return (
     <div
-      className="screen-in min-h-screen w-full flex items-center justify-center px-3"
+      // ★社長報告2026-08-26「リザルト画面がボタンのところが切れちゃってる。ギリギリ押せるって感じ」:
+      // 旧: 外枠が min-h-screen(=100vh)。モバイルのブラウザUI(URLバー等)ぶん実表示より縦長になり、
+      // 中央寄せの結果パネル下端(=ボタン)が画面外へはみ出していた。動的ビューポート(100dvh)へ。
+      className="screen-in min-h-[100dvh] w-full flex items-center justify-center px-3"
       style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
     >
-      <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none">
+      <div className="glass-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none pb-[env(safe-area-inset-bottom)]">
         <div className="px-4 pt-5 pb-2 text-center">
           <h2 className={`text-2xl font-semibold tracking-tight ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
             {isBenchmark ? 'ベンチ結果' : won ? '任務達成' : withdraw ? '帰還' : '任務失敗'}
@@ -1149,7 +1152,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
           style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
         >
-          <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none">
+          <div className="glass-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none pb-[env(safe-area-inset-bottom)]">
             {openRecord ? (
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">回収資料</div>

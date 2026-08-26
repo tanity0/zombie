@@ -230,7 +230,11 @@ const ShopMenu: React.FC = () => {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center px-3 pointer-events-auto">
       <div className="absolute inset-0 bg-black/55" />
-      <div className="relative glass-panel rounded-none w-full max-w-lg overflow-hidden">
+      {/* ★社長報告2026-08-26「武器商人メニューがスクロールできない」: パネルが画面より高くなると
+          overflow-hiddenで下がただ切れていた(スクロール手段なし)。パネルを画面内(max-h-[86dvh])に
+          収めた縦フレックスにし、中身(商品/装備)だけをスクロール領域にする。ヘッダと「帰還/閉じる」は
+          常に見える(スクロールで迷子にしない)。 */}
+      <div className="relative glass-panel rounded-none w-full max-w-lg overflow-hidden max-h-[86dvh] flex flex-col">
         <div className="px-4 pt-4 pb-2 flex items-start justify-between gap-3">
           <div>
             <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200/65">WEAPON MERCHANT</div>
@@ -242,6 +246,7 @@ const ShopMenu: React.FC = () => {
           </div>
         </div>
 
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="px-4 pb-3 grid grid-cols-2 gap-2">
           {entries.map(entry => {
             const canBuy = !entry.disabled && player.straps >= entry.cost;
@@ -339,8 +344,9 @@ const ShopMenu: React.FC = () => {
             </button>
           </div>
         )}
+        </div>
 
-        <div className="px-4 pb-4 space-y-2">
+        <div className="px-4 pb-4 space-y-2 shrink-0">
           <button
             onClick={() => { playSfx('ui-select'); returnToBase(); }}
             className="w-full rounded-none bg-amber-400/15 py-2.5 text-sm font-bold text-amber-100"
