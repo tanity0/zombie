@@ -597,7 +597,10 @@ export interface Enemy {
     // PACING_PUZZLE.md §9-4(削岩型の突き): 開始時にaiFromX/Y→aiTargetX/Yへ方向と帯(長さ200×半幅12)を
     // ロックし、activeで1回だけカプセル判定を積む(§6.28共通T3ゾーンと同型)。§9-8④: moveCancelGuardの
     // 観測対象外(watchはgauntletのみ+drillerは計測路に出ない)。
-    | 'driller-thrust-windup' | 'driller-thrust-active' | 'driller-thrust-recover';
+    | 'driller-thrust-windup' | 'driller-thrust-active' | 'driller-thrust-recover'
+    // ★社長指示2026-08-26「自転車、着地後1秒硬直」: 犬型(werewolf)の突進が終わった後の硬直。
+    // 汎用'recover'はパンプキン型の描画(着地スカッシュ/盾落下)に結び付いているため別名にする。
+    | 'dash-recover';
   aiPhaseUntil?: number; // 現フェーズの終了 gameTime
   aiReadyAt?: number;    // 次に特殊行動を開始できる gameTime(連発防止)
   aiTargetX?: number;    // 突進/着地の狙い座標(行動開始時のプレイヤー位置スナップ)

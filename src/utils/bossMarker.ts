@@ -28,7 +28,9 @@ import { isHiddenBoss, isBountyType } from './enemyUtils';
 export const isMarkedBoss = (e: Pick<Enemy, 'type' | 'isStoryBoss'>): boolean =>
   isHiddenBoss(e.type) || e.isStoryBoss === true || isBountyType(e.type);
 
-/** 賞金首の矢印マーカー有効距離(§6.38 B1.5-5)。この型だけの距離ゲート。 */
+/** 賞金首の矢印マーカー有効距離(§6.38 B1.5-5)。
+ * ★2026-08-26 社長指示「いる間はマーク表示。近づいたらじゃなくて」で**距離ゲートは撤廃**
+ * (isMarkedBossVisible は賞金首なら常にtrue)。定数は経緯の記録として残す(参照ゼロなら将来削除可)。 */
 export const BOUNTY_MARK_MAX_DIST_PX = 1200;
 
 /**
@@ -41,10 +43,13 @@ export const isMarkedBossVisible = (
   playerCx: number,
   playerCy: number,
 ): boolean => {
-  if (!isMarkedBoss(e) || !isEngagedBoss(e, now)) return false;
-  if (!isBountyType(e.type)) return true;
-  const d = Math.hypot((e.x + e.width / 2) - playerCx, (e.y + e.height / 2) - playerCy);
-  return d <= BOUNTY_MARK_MAX_DIST_PX;
+  void playerCx; void playerCy; // ★引数は互換のため残す(賞金首の距離ゲート撤廃で未使用化・下記)
+  if (!isMarkedBoss(e)) return false;
+  // ★社長指示2026-08-26「賞金首はいる間はマーク表示してあげよう。近づいたらじゃなくて」:
+  // 賞金首は**滞在中ずっと**出す——距離1200pxゲートと交戦ゲートの両方を外す(去り(return)中も、
+  // 消えるまでは「いる」)。なお v§6.38 B1.5-5 では「有効距離1200px」と裁定されていた(事実)。
+  if (isBountyType(e.type)) return true;
+  return isEngagedBoss(e, now);
 };
 
 /**

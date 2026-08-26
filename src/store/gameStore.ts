@@ -2155,6 +2155,9 @@ export const DASH_ATTACK_HOMING = 0.05;
 export const DASH_WINDUP_BACKSTEP_MULT = 0.35;
 export const WEREWOLF_CHARGE_MAX_MS = 2800; // 突進の最大時間(到達できなくても打ち切り)。距離2倍化に合わせ延長。
 export const WEREWOLF_COOLDOWN_MS = 1200;  // 突進後、次の溜めまでの猶予(基本CD)
+// ★社長指示2026-08-26「自転車、着地後1秒硬直」: 突進の終わり(到達/打ち切り/衝突)後、その場で1秒動けない
+// (CDと並走する追加の硬直。werewolf本種のみ=lab-zombie-2/giantbat/hunterは対象外)。
+export const WEREWOLF_DASH_RECOVER_MS = 1000;
 // 突進後、上記の基本CDに加えてランダムな追加クールダウン(3〜10秒)を持たせる。
 // 頻繁に突進してくるのを抑える(社長指示)。突進ごとに毎回ランダム抽選。
 // 犬型(werewolf/lab-zombie-2)は charge 終了時の aiReadyAt に、giantbat は専用スケジューラ gbDashReadyAt に上乗せ。
@@ -2169,7 +2172,11 @@ export const GIANTBAT_DASH_CD_MS = 7000;
 export const PUMPKIN_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70;
 export const PUMPKIN_CROUCH_MS = 3000;     // 縮み溜め
 export const PUMPKIN_JUMP_MS = 1000;       // ジャンプ(着地まで)
-export const PUMPKIN_RECOVER_MS = 1000;    // 着地後の停止
+export const PUMPKIN_RECOVER_MS = 1000;    // 着地後の停止(汎用: ハンター/ラボゾンビ3等)
+// ★社長指示2026-08-26「パンプキン、着地後硬直2秒を追加」: パンプキン本種のみ着地硬直を2秒に。
+// 他のジャンプ型(ハンター/ラボゾンビ3)は指示の対象外=従来の1秒のまま。描画(pixiScene の
+// 着地スカッシュ起点)も同じ関数を引く=判定と絵の出どころを1本に保つ。
+export const pumpkinRecoverMs = (type: Enemy['type']): number => (type === 'pumpkin' ? 2000 : PUMPKIN_RECOVER_MS);
 export const PUMPKIN_COOLDOWN_MS = 800;    // 復帰後、次の溜めまでの猶予
 export const PUMPKIN_JUMP_HEIGHT = 90;     // ジャンプの見た目の高さ(px・描画のみ)
 export const PUMPKIN_LAND_SHAKE_MS = 220;  // 着地時の画面揺れ
@@ -12988,13 +12995,22 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ecx = enemy.x + enemy.width / 2;
           const ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
+          // ★社長指示2026-08-26「自転車、着地後1秒硬直」: 突進明けの硬直中はその場で停止(移動もチェイスもしない)。
+          if (enemy.aiPhase === 'dash-recover') {
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) return { ...enemy, vx: 0, vy: 0, aiPhase: undefined };
+            return { ...enemy, vx: 0, vy: 0 };
+          }
+          // 突進明けの遷移: werewolf本種のみ硬直(dash-recover)へ。他の犬型は従来どおり即チェイス復帰。
+          const dashEndPatch: Partial<Enemy> = enemy.type === 'werewolf'
+            ? { aiPhase: 'dash-recover', aiPhaseUntil: atkUntil(WEREWOLF_DASH_RECOVER_MS), aiStartedAt: gameTime }
+            : { aiPhase: undefined };
           if (enemy.aiPhase === 'charge') {
             const tx = enemy.aiTargetX ?? pcx;
             const ty = enemy.aiTargetY ?? pcy;
             const cdx = tx - ecx, cdy = ty - ecy;
             const cdist = Math.hypot(cdx, cdy);
             if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: atkCdUntil(WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type)) };
+              return { ...enemy, vx: 0, vy: 0, ...dashEndPatch, aiReadyAt: atkCdUntil(WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type)) };
             }
             // 基本は固定ターゲットへ直進。毎フレームほんの少しだけ現在のプレイヤー位置へ寄せる(弱いホーミング・社長指示)。
             const hpx = pcx - ecx, hpy = pcy - ecy;
@@ -13017,7 +13033,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             const blocked = Math.abs(moved.x - rawX) > 0.5 || Math.abs(moved.y - rawY) > 0.5;
             if (hitShield || blocked) {
               if (hitShield) shieldBlocks.push({ x: moved.x + enemy.width / 2, y: moved.y + enemy.height / 2, kind: 'dash' });
-              return { ...enemy, x: moved.x, y: moved.y, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: atkCdUntil(WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type)) };
+              return { ...enemy, x: moved.x, y: moved.y, vx: 0, vy: 0, ...dashEndPatch, aiReadyAt: atkCdUntil(WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type)) };
             }
             return { ...enemy, vx: cvx, vy: cvy, x: moved.x, y: moved.y };
           }
@@ -13094,13 +13110,13 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (shieldRects.length > 0 &&
                 shieldRects.some(s => rectsOverlap({ x: nx, y: ny, width: enemy.width, height: enemy.height }, s))) {
               shieldBlocks.push({ x: nx + enemy.width / 2, y: ny + enemy.height / 2, kind: 'jump' });
-              return { ...enemy, x: nx, y: ny, vx: 0, vy: 0, aiPhase: 'recover', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(PUMPKIN_RECOVER_MS) };
+              return { ...enemy, x: nx, y: ny, vx: 0, vy: 0, aiPhase: 'recover', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(pumpkinRecoverMs(enemy.type)) };
             }
             if (t >= 1) {
               pumpkinLanded = true; // 着地 → set 後に画面揺れ
               // 着地爆発(範囲狭め)。被弾判定/FX は useGameLoop が pumpkinBlasts を消化して行う。
               pumpkinBlasts.push({ x: tx + enemy.width / 2, y: ty + enemy.height / 2, radius: PUMPKIN_EXPLOSION_RADIUS, damage: enemy.damage, enemyId: enemy.id });
-              return { ...enemy, x: tx, y: ty, vx: 0, vy: 0, aiPhase: 'recover', aiPhaseUntil: atkUntil(PUMPKIN_RECOVER_MS) };
+              return { ...enemy, x: tx, y: ty, vx: 0, vy: 0, aiPhase: 'recover', aiPhaseUntil: atkUntil(pumpkinRecoverMs(enemy.type)) };
             }
             return { ...enemy, x: nx, y: ny, vx: 0, vy: 0 }; // 空中は障害物を飛び越える(衝突無視)
           }
