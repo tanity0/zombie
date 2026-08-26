@@ -273,12 +273,20 @@ const BODY_SLAM_BOSS_STATES = new Set<string>([
   'leap-air',        // 賞金首の飛び掛かり(滞空)
 ]);
 
+// ★検収監査2巡目(A)(2026-08-26・v0.25.3948): 貫通表は「地上物をすり抜けるか」の表で、
+// こちらは「体が武器か」の表——同じではない(上のコメントどおり)。**逆向きの差分**(貫通表に
+// 居るが体をぶつけに行っていない州)を引く: 偶像の離脱ローリング(idol-roll)は逃げる移動であって
+// 攻撃ではないのに、表の流用で「触れたら痛い+受け流し可」になっていた。
+const PASS_THROUGH_NOT_BODY_SLAM = new Set<string>(['idol-roll']);
+
 export const isBodySlamNow = (
   enemy: Pick<Enemy, 'aiPhase' | 'bossState'>,
-): boolean =>
-  isPassThroughPhase(enemy.aiPhase)
-  || isPassThroughBossState(enemy.bossState)
-  || (enemy.bossState !== undefined && BODY_SLAM_BOSS_STATES.has(enemy.bossState));
+): boolean => {
+  if (enemy.bossState !== undefined && PASS_THROUGH_NOT_BODY_SLAM.has(enemy.bossState)) return false;
+  return isPassThroughPhase(enemy.aiPhase)
+    || isPassThroughBossState(enemy.bossState)
+    || (enemy.bossState !== undefined && BODY_SLAM_BOSS_STATES.has(enemy.bossState));
+};
 
 /**
  * ★技が始まったか(=噛みつきの台本を**中断すべき**か)。

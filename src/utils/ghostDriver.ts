@@ -24,9 +24,9 @@ import type { Enemy, Projectile, SkillKey } from '../types/game';
 import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile } from './botSkill';
 // v0.25.2470: 雑魚回避(非ボス判定)用 / ENEMY_PROJECTILE_DURATION=弾の寿命(tankした弾技の弾を無視し続ける長さ)
 import { isBossType, aimEnemyDist2, ENEMY_PROJECTILE_DURATION } from './enemyUtils';
-import { isBossCounterableNowApprox } from './bossScript';
+import { isCounterOpportunityNow } from './counterReach'; // ★憲法(v0.25.3948)
 import {
-  isGiantAimWindup, isGiantDeadWindup, isGiantWatchActivePhase,
+  isGiantAimWindup, isGiantDeadWindup,
   ghostAimSwingNow, ghostAimLeadMs, ghostAimSlowness01,
 } from './ghostCounterAim'; // A-2(社長裁定v0.25.2600): 着弾の瞬間から逆算して振る(純関数・store非依存)
 import { ghostExtraTelegraphDodge, isTelegraphActive, type GhostDodgeThreat } from './ghostTelegraph'; // §2.12 要件7: 予告台帳(全ボス)
@@ -744,9 +744,10 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   const targetIsGiant = target.type === 'giantbat';
   const aimWindup = targetIsGiant && isGiantAimWindup(target.aiPhase);
   const deadWindup = targetIsGiant && isGiantDeadWindup(target.aiPhase);
-  const counterable = inMeleeRange && !deadWindup
-    && (isBossCounterableNowApprox(target.aiPhase, target.bossState)
-      || (targetIsGiant && isGiantWatchActivePhase(target.aiPhase)));
+  // ★カウンター憲法(v0.25.3948・検収監査2巡目(A)): 旧 isBossCounterableNowApprox(語尾=windup/recover)
+  // だと、憲法で消えた面成立の窓を**回避をやめて棒立ちで待ち、予告を食らう**。
+  // 「今カウンターが成立しうる州」(isCounterOpportunityNow)だけを待つ。溜め中は下の分岐で回避が勝つ。
+  const counterable = inMeleeRange && !deadWindup && isCounterOpportunityNow(target);
   const counterGaveUp = counterable && ghostCounterWaitExpired(ghost.counterPendingAt, nowMs);
   const counterWatching = counterable && !counterGaveUp;
 
@@ -760,7 +761,9 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     return [-ry * orbitSign * frac, rx * orbitSign * frac];
   };
   let moveX = 0, moveY = 0;
-  if (reaction === 'counter' && !counterGaveUp) {
+  if (reaction === 'counter' && !counterGaveUp && (isCounterOpportunityNow(target) || activeDodge === null)) {
+    // ★憲法(v0.25.3948): 機会の無い州(溜め等)で回避すべき脅威があるなら、待たずに回避へ落ちる
+    // (旧: 溜め中も静止して存在しない窓を待った)。機会が来たら(実行中)従来どおり詰めて待つ。
     // G4b 'counter': その技をカウンターしにいく=この技の間は回避せず近接間合いへ詰め、
     // 射程内では静止して窓(counterable)を待つ。リズムのゲートも通さない(「行く」と決めた行動は確実に出す)。
     // ※この静止は§2.12追補でも維持=「カウンター待ちしている」という意味のある静止(窓リング表示つき)。

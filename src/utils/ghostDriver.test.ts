@@ -1,3 +1,5 @@
+// ★カウンター憲法(v0.25.3948): 「カウンター可能局面」の代表例を issen-windup → issen-dash へ差し替えた。
+// 憲法で溜め(windup)は成立機会から消えたため(isCounterOpportunityNow)、待つ価値のある州=実行中で表す。
 // BOT_AND_GHOST.md G2(ゴースト本体)。純関数の意思決定(decideGhost)+補助関数を検証する。
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
@@ -256,7 +258,7 @@ describe('§2.12 要件3: 予告中だけ安全マージンを足して退避す
     // 距離200 = preferredDist(180)の帯(±40)の中=平時なら動かない。予告中は目標が300へ伸びるので下がる。
     // v0.25.2610: マージンが乗るのは 'fallback'(=タイムアウト安全弁)と「カウンターを諦めた」時だけに
     // なった(記録なしは既定の袋を引くようになったため)。ここでは持ち越しロールで fallback を明示して測る。
-    const boss = mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'issen-dash' });
     const ghost = mkGhost({
       x: 0, y: 0, width: 0, height: 0, dangerSeenAt: 0,
       moveRoll: { moveKey: 'thor-issen', decision: 'fallback' as const, rolledAtMs: 5000 },
@@ -278,7 +280,7 @@ describe('§2.12 要件3: 予告中だけ安全マージンを足して退避す
   });
 
   it("'tank'ロール(苦手技=食らいに行く)の時はマージンを足さない", () => {
-    const boss = mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'issen-dash' });
     const ghost = mkGhost({ x: 0, y: 0, width: 0, height: 0, dangerSeenAt: 0 });
     const profile: GhostProfile = {
       ...PROFILE, meleeBias: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 0, hitRate: 1 } },
@@ -304,7 +306,7 @@ describe('§2.12 要件4: 移動リズム(平時のみ)・危険時は必ず動�
   });
 
   it('危険時(予告中)はリズムを無視して必ず動く', () => {
-    const boss = mkBoss({ x: 1000, y: 0, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 1000, y: 0, bossState: 'issen-dash' });
     const d = decideGhost(baseDriverInput({
       ghost: mkGhost({ x: 0, y: 0 }), enemies: [boss],
       profile: { ...PROFILE, mobility: 0, stationaryFrac: 1 }, // 平時なら絶対に止まる設定
@@ -327,7 +329,7 @@ describe('§2.12 要件4: 移動リズム(平時のみ)・危険時は必ず動�
 });
 
 describe('§2.12 要件6: カウンター待ちは約1秒で見切って離脱する', () => {
-  const bossNear = (): Enemy => mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+  const bossNear = (): Enemy => mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
 
   it('見切る前は窓を見ている(銃で代替しない)', () => {
     const d = decideGhost(baseDriverInput({
@@ -349,7 +351,7 @@ describe('§2.12 要件6: カウンター待ちは約1秒で見切って離脱�
   });
 
   it("見切った後は'counter'ロールでも張り付かない(間合いへ戻る=離脱)", () => {
-    const boss = mkBoss({ x: 30, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 30, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
     const profile: GhostProfile = {
       ...PROFILE, meleeBias: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } },
     };
@@ -399,7 +401,7 @@ describe('§2.12追補: オービット(社長裁定「ぼーっと立たない�
   });
 
   it('カウンター待ち(射程内)の静止だけは維持される=意味のある静止', () => {
-    const boss = mkBoss({ x: 30, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 30, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
     const profile: GhostProfile = {
       ...PROFILE, meleeBias: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } },
     };
@@ -520,8 +522,8 @@ describe('decideGhost: 攻撃(近接/銃)', () => {
     expect(d.action).toBe('none');
   });
 
-  it('カウンター可能局面(windup)は即座に撃たず、reactionMs経過後に成立する', () => {
-    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+  it('カウンター可能局面(実行中=憲法v0.25.3948で溜めは機会から除外)は即座に撃たず、reactionMs経過後に成立する', () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
     const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
     const first = decideGhost(baseDriverInput({ ghost, enemies: [boss], nowMs: 0 }));
     expect(first.action).toBe('none'); // reactionMs(200)未経過
@@ -537,7 +539,7 @@ describe('decideGhost: 攻撃(近接/銃)', () => {
   });
 
   it('カウンター不成立の抽選(rand>=counterChance)でも、カウンター可能局面の間は銃で代替しない', () => {
-    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
     const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
     const d = decideGhost(baseDriverInput({
       ghost, enemies: [boss], nowMs: 1000, profile: { ...PROFILE, counterChance: 0 }, rand: () => 0.5,
@@ -652,7 +654,7 @@ describe('G4b rollGhostMoveReaction: ロールの状態機械(純関数)', () =>
   // (社長報告「データ持ってないAIが遠くをキープしててほぼ何もしない。ボスがくると逃げるだけ」)。
   it('n=0(記録なし)の技・表に無い技は「既定の配分」で引く(fallbackではない)', () => {
     expect(GHOST_MOVE_ROLL_MIN_N).toBe(1);
-    const boss = mkBoss({ bossState: 'issen-windup' });
+    const boss = mkBoss({ bossState: 'issen-dash' });
     const none = { 'thor-issen': { n: GHOST_MOVE_ROLL_MIN_N - 1, counterRate: 1, hitRate: 0 } };
     for (const table of [none, {}, undefined]) {
       resetGhostCommandBags();
@@ -664,7 +666,7 @@ describe('G4b rollGhostMoveReaction: ロールの状態機械(純関数)', () =>
 
   it('既定の配分は counter4 / dodge4 / tank2(社長承認「カウンター4割・回避4割・耐える2割」)', () => {
     expect(GHOST_DEFAULT_MOVE_STAT).toEqual({ n: 10, counterRate: 0.4, hitRate: 0.2 });
-    const boss = mkBoss({ bossState: 'issen-windup' });
+    const boss = mkBoss({ bossState: 'issen-dash' });
     // 新品の袋(counter4 / dodge4 / tank2)からの初引き: v=r*10 → <4=counter / <8=dodge / 残り=tank
     for (const [r, want] of [[0, 'counter'], [0.39, 'counter'], [0.5, 'dodge'], [0.79, 'dodge'], [0.9, 'tank']] as const) {
       resetGhostCommandBags();
@@ -673,7 +675,7 @@ describe('G4b rollGhostMoveReaction: ロールの状態機械(純関数)', () =>
   });
 
   it('n=1は確定行動(§2.18裁定「仕様として許容」): 乱数によらず記録の1枚がそのまま出る', () => {
-    const boss = mkBoss({ bossState: 'issen-windup' });
+    const boss = mkBoss({ bossState: 'issen-dash' });
     const one = { 'thor-issen': { n: 1, counterRate: 1, hitRate: 0 } };
     for (const r of [0, 0.5, 0.999]) {
       resetGhostCommandBags();
@@ -685,7 +687,7 @@ describe('G4b rollGhostMoveReaction: ロールの状態機械(純関数)', () =>
   // (n=5, 0.3/0.4: counter=round(1.5)=2 / tank=min(round(2.0)=2, 3)=2 / dodge=1)。新品の袋からの
   // 初引きは残枚数から一様=乱数の区間が枚数比になる。
   it('n>=1: 袋式の1枚引き(新品の袋: r<2/5→counter / r<3/5→dodge / 残り→tank)', () => {
-    const boss = mkBoss({ bossState: 'issen-windup' });
+    const boss = mkBoss({ bossState: 'issen-dash' });
     const first = (r: number) => {
       resetGhostCommandBags(); // 新品の袋からの初引きを見る(引くたび袋は減る=毎回リセット)
       return rollGhostMoveReaction(undefined, boss, TABLE, 0, () => r)?.decision;
@@ -697,7 +699,7 @@ describe('G4b rollGhostMoveReaction: ロールの状態機械(純関数)', () =>
   });
 
   it('袋は引き切りで割合=記録どおり(5回の決定の内訳が枚数と一致する)', () => {
-    const boss = mkBoss({ bossState: 'issen-windup' });
+    const boss = mkBoss({ bossState: 'issen-dash' });
     const tally = { counter: 0, dodge: 0, tank: 0, fallback: 0 };
     // 技1回=1引き。技の解決(prev=undefinedで渡す)を5回繰り返す=同じ袋から5枚引き切る。
     for (const r of [0.99, 0.01, 0.62, 0.34, 0.77]) {
@@ -730,7 +732,7 @@ describe('G4b rollGhostMoveReaction: ロールの状態機械(純関数)', () =>
 
   it('タイムアウト(同一技が異常に長い)は fallback=従来挙動へ落とす(振り直しはしない)', () => {
     const prev: GhostMoveRoll = { moveKey: 'thor-issen', decision: 'tank', rolledAtMs: 0 };
-    const boss = mkBoss({ bossState: 'issen-windup' });
+    const boss = mkBoss({ bossState: 'issen-dash' });
     const after = rollGhostMoveReaction(prev, boss, TABLE, GHOST_MOVE_ROLL_TIMEOUT_MS + 1, randNever);
     expect(after?.decision).toBe('fallback');
     expect(after?.moveKey).toBe('thor-issen');
@@ -748,7 +750,7 @@ describe('G4b decideGhost: 技への反応の再現(ロールが挙動を切り�
     // 既存テスト「回避が間合い管理より優先される」と同じ脅威配置(着地点はゴーストのすぐ+x側=
     // 回避なら-x)だが、bossStateが技(issen-windup)でロールがtank→回避せず素の接近(+x)に戻る。
     const boss = mkBoss({
-      x: 1000, y: 0, bossState: 'issen-windup',
+      x: 1000, y: 0, bossState: 'issen-dash',
       aiPhase: 'jump' as Enemy['aiPhase'], aiTargetX: 15, aiTargetY: 10,
     });
     const ghost = mkGhost({ x: 0, y: 0 });
@@ -759,7 +761,7 @@ describe('G4b decideGhost: 技への反応の再現(ロールが挙動を切り�
   });
 
   it("'counter': 窓が開いたら counterChance に関係なく必ず構える(既存カウンター試行を優先発動)", () => {
-    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
     const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
     const profile: GhostProfile = { ...PROFILE, counterChance: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } } };
     const first = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 0, rand: () => 0.5 }));
@@ -773,7 +775,7 @@ describe('G4b decideGhost: 技への反応の再現(ロールが挙動を切り�
   });
 
   it("'counter': 射程外なら回避もmobilityゲートも通さず間合いへ詰める(カウンターしにいく)", () => {
-    const boss = mkBoss({ x: 300, y: 0, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 300, y: 0, bossState: 'issen-dash' });
     const ghost = mkGhost({ x: 0, y: 0 });
     const profile: GhostProfile = { ...PROFILE, mobility: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } } };
     const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, rand: () => 0.5 }));
@@ -782,7 +784,7 @@ describe('G4b decideGhost: 技への反応の再現(ロールが挙動を切り�
   });
 
   it("'dodge'相当のロール: この技では構えない(counterChance=1でもcounterWillAttempt=false)", () => {
-    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
     const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
     const profile: GhostProfile = { ...PROFILE, counterChance: 1, moveReactions: { 'thor-issen': { n: 5, counterRate: 0, hitRate: 0 } } };
     const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, rand: () => 0.5 }));
@@ -793,7 +795,7 @@ describe('G4b decideGhost: 技への反応の再現(ロールが挙動を切り�
   // §2.18裁定(GHOST-CMD-1): 旧「n<3はfallback」→新ゲートn<1。n=0(記録なし)だけが従来挙動へ落ちる
   // (n=1は確定行動=仕様として許容・記録がある所を集計デフォで上書きしない)。
   it('n=0(記録なし)でも既定の袋を引く(v0.25.2610・旧: fallback)', () => {
-    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
     const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
     const profile: GhostProfile = { ...PROFILE, counterChance: 1, moveReactions: { 'thor-issen': { n: 0, counterRate: 0, hitRate: 1 } } };
     resetGhostCommandBags();
@@ -803,7 +805,7 @@ describe('G4b decideGhost: 技への反応の再現(ロールが挙動を切り�
   });
 
   it('ロールは技1回につき1回=2tick目も同じ決定を持ち越す(振り直さない)', () => {
-    const boss = mkBoss({ x: 300, y: 0, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 300, y: 0, bossState: 'issen-dash' });
     const ghost = mkGhost({ x: 0, y: 0 });
     const profile: GhostProfile = { ...PROFILE, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } } };
     const first = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 0, rand: () => 0.5 }));
@@ -1290,7 +1292,7 @@ describe('GHOST-COUNTER-PARITY: カウンター成立可能なCDをプレイヤ�
   });
 
   it('カウンターするつもりで振ったスイングは820ms周期でしか成立できない(通常近接CD=600msだけでは再試行できない)', () => {
-    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
     const ghost0 = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
 
     // 1回目: reactionMs(200)経過後に成立(既存挙動と同じ)。
@@ -1352,9 +1354,9 @@ describe('GHOST-COUNTER-PARITY: カウンター成立可能なCDをプレイヤ�
   });
 
   it('ボスが「成立しうる状態」でも、ghostDriverが見切って通常近接で振った時はmeleeIsCounterAttempt=falseのまま(意図しないスイングで請求を積まない)', () => {
-    // bossState='issen-windup' はisBossCounterableNowApprox上は「成立しうる」状態のまま(見切り後も変わらない)。
+    // bossState='issen-dash' はisBossCounterableNowApprox上は「成立しうる」状態のまま(見切り後も変わらない)。
     // 旧実装(useGameLoop側でボス状態を独立に再計算)だとここが誤ってtrueになっていた(社長指示3の対象バグ)。
-    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
     const ghost = mkGhost({
       x: 0, y: 0, width: 10, height: 10,
       counterPendingAt: 0, counterWillAttempt: false, // GHOST_COUNTER_WAIT_MS経過で見切り済みにする

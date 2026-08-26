@@ -288,6 +288,32 @@ export const HIDDEN_COUNTER_ACTIVE_STATES: readonly string[] = ['dash', 'thor-da
  *
  * **挙動は1bitも変えていない**(`enemy.type === 'thor' && enemy.bossState === 'thor-dash-move'` と同値)。
  */
+/**
+ * ★カウンター憲法(社長裁定2026-08-26・v0.25.3948): 「**今この州でカウンターが成立しうるか**」の
+ * 近似(守護霊のAI用)。憲法で面成立(溜め/硬直/待機/気絶/空中)が消えたため、旧
+ * `isBossCounterableNowApprox`(語尾=windup/recover判定)で窓を待つと**成立しない窓に棒立ちして
+ * 予告を食らう**(検収監査2巡目(A))。残った成立経路の州だけを列挙する:
+ * - 実行中の判定時置換カウンター(トール/天使/賞金首の各activeハンドラ)
+ * - 体当たり技の接触パリィ/受け流し(charge / g-dash-charge / 体当たりboss州)
+ * 爆風パリィ・弾反射は「州」ではなく瞬間なので、待ち行動の対象にしない(回避が正解)。
+ * ※州名は各ボスで共有されるものがある(harai/tate/sweep等)=同名他ボスも機会ありと見なす近似で良い
+ *   (AIの行動選択用であって判定ではない)。実リストとの同期は counterReach.test.ts が機械検査する。
+ */
+export const COUNTER_OPPORTUNITY_STATES: readonly string[] = [
+  // 裏ボス系ACTIVE(useGameLoop)+体当たりboss州(combatTickの受け流し)
+  'dash', 'thor-dash-move', 'issen-dash', 'tsuki', 'harai', 'jump-attack', 'jump-attack-air',
+  // 賞金首ACTIVE(bountyTick)+体当たり
+  'bm-charge', 'bm-whip360', 'mk-spin', 'leap', 'leap-air',
+  // 天使の実行中(判定時置換 or 体当たり)
+  'mdash-move', 'tate', 'sweep', 'downslash', 'thrust', 'ring-active', 'ring-spin',
+];
+export const isCounterOpportunityNow = (
+  enemy: { type: string; aiPhase?: string; bossState?: string },
+): boolean =>
+  (enemy.bossState !== undefined && COUNTER_OPPORTUNITY_STATES.includes(enemy.bossState))
+  || enemy.aiPhase === 'charge'
+  || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-dash-charge');
+
 export const shouldSkipBossContactParry = (
   enemyType: string, bossState: string | undefined,
 ): boolean => enemyType === 'thor' && bossState === 'thor-dash-move';

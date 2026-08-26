@@ -365,6 +365,11 @@ describe('★体当たり技の表の漏れ(v0.25.3925)', () => {
       expect(isBodySlamNow({ aiPhase: undefined, bossState: bs })).toBe(false);
     }
   });
+  // ★検収監査2巡目(A)(v0.25.3948): 逆向きの差分——貫通表に居るが「体をぶつけに行く技」ではないもの。
+  // 偶像の離脱ローリングは逃げる移動。表の流用で「触れたら痛い+受け流し可」になっていた穴を塞ぐ。
+  it('憲法: 偶像の離脱ローリング(idol-roll)は体当たり技ではない(貫通はするが武器ではない)', () => {
+    expect(isBodySlamNow({ aiPhase: undefined, bossState: 'idol-roll' })).toBe(false);
+  });
 });
 
 // ★v0.25.3925(監査で発覚): 構え**始め**しか止める効果を見ておらず、構えた後に気絶/拘束/持ち上げ/
