@@ -1176,14 +1176,14 @@ export const COUNTER_WINDOW = 400; // ms of one swing cycle (windup 200 + blade 
 export const MELEE_WINDUP_MS = 200;
 /**
  * ★カウンターの受付時間(社長裁定2026-08-26「せきろうにしようか」・隻狼型)。
- * **受付は「押した瞬間」から COUNTER_ACCEPT_MS だけ**(窓 = [押した瞬間, +200ms])。
+ * **受付は「押した瞬間」から COUNTER_ACCEPT_MS だけ**(窓 = [押した瞬間, +300ms]・v0.25.3951で200→300へ延長)。
  * - 予告文法「赤が消え切った瞬間=当たり」と押す瞬間が一致する(目と指が同じ時刻を見る)。
  * - 早置きは**窓が先に切れて失敗**する=v0.25.3926の狙い(「先に振っておけば確実」潰し)は保たれる。
  * - 過去の裁定(事実): v0.25.3926(2026-08-25)は「刃が出ている200msだけ」=[+200,+400]のダクソ型
  *   だった。実機で「合わせるのが難しい」(予告の消え切りと押しどきが200〜400msズレる)ため隻狼型へ。
  * 隻狼の実数値: 発生0F・受付12F(0.2秒)=本値と同一。
  */
-export const COUNTER_ACCEPT_MS = 200; // ms the acceptance window stays open FROM the trigger
+export const COUNTER_ACCEPT_MS = 300; // ms the acceptance window stays open FROM the trigger(社長裁定2026-08-26「300msに100延長で」。隻狼型導入時v0.25.3943は200=隻狼の12Fと同値だった=事実)
 /**
  * ★カウンターが成立するか(唯一の判定・v0.25.3926で1本化)。
  */
