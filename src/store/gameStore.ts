@@ -2771,6 +2771,13 @@ const GHOST_DMG_LOG_MAX = 14;
 let ghostDmgLines: string[] = [];
 export const ghostDamageLogLines = (): string[] => ghostDmgLines;
 export const resetGhostDamageLog = (): void => { ghostDmgLines = []; };
+// v0.25.3958: ?kblog=1 の観測結果(敵の大移動/消失)を**画面に出す**ための行バッファ(スマホ実機では
+// コンソールが見られないため・ghostlogと同型)。モジュール変数+表示側(KbLogOverlay)が1秒間隔で
+// 読むだけ=毎フレームの購読・再レンダーを一切増やさない。書き込み元は useGameLoop の kblog 観測器。
+const KB_LOG_MAX = 14;
+let kbLogLines: string[] = [];
+export const kbLogPush = (line: string): void => { kbLogLines = [...kbLogLines, line].slice(-KB_LOG_MAX); };
+export const kbLogLinesGet = (): string[] => kbLogLines;
 // v0.25.2599(社長報告「まだ守護霊だけ死に絵がない」): 守護霊が落ちた瞬間の「倒れた絵」を出すための
 // **視覚専用の控え**。守護霊の実体は死亡と同時に summons から消える(damageSummonのfilter)ため、
 // レンダラは state から倒れた姿を描けない=寄りズームの先に何も居ない状態だった。

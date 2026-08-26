@@ -82,4 +82,41 @@ describe('runOffscreenRecycleAndCull — 賞金首は距離リサイクル対象
     expect(after?.x).toBe(999999);
     expect(after?.y).toBe(999999);
   });
+
+  // ★v0.25.3958(社長報告「動いてて突然消えちゃう敵」「クリティカル解除されたら消えた(プラント)」):
+  // エリア外タイプ(areaInvalid)の強制回収は、可視域(ズーム最大引き考慮)の中では発動しない。
+  // plant はエリア0で出現重み0=プレイヤーがエリア境界をまたいだ瞬間に画面内で湧き直っていた真因。
+  describe('areaInvalid回収は可視域の外に出てから(§5.7 画面内の敵は強制消去しない)', () => {
+    const mkPlant = (cx: number, over: Partial<Enemy> = {}): Enemy => ({
+      id: 'plant-1', type: 'plant', x: cx - 22, y: -22, width: 44, height: 44,
+      health: 100, maxHealth: 100, damage: 10, speed: 0, lastHit: 0, lastShot: 0,
+      dormant: false, spawnedAt: 0, ...over,
+    } as Enemy);
+    // baseCtx: gameBounds 800×600 → 可視半幅=400×(1/ZOOM_MIN_ABS 0.4)=1000 / 回収半幅=1000+240=1240。
+    const ctx = { ...baseCtx, gameTime: 10_000, playerAreaIdx: 0 };
+
+    it('画面内(プレイヤーの目の前)のエリア外タイプは回収しない=消えない・湧き直らない', () => {
+      useGameStore.setState({ enemies: [mkPlant(0)] });
+      runOffscreenRecycleAndCull(ctx);
+      const after = useGameStore.getState().enemies.find(e => e.id === 'plant-1');
+      expect(after?.type).toBe('plant');
+      expect(after?.x).toBe(-22); // 位置もそのまま(ワープしない)
+    });
+
+    it('気絶(クリ)解除直後でも画面内なら回収しない(「解除されたら消えた」の再発防止)', () => {
+      useGameStore.setState({ enemies: [mkPlant(0, { stunUntil: 9_000 })] }); // gameTime=10000で解除済み
+      runOffscreenRecycleAndCull(ctx);
+      const after = useGameStore.getState().enemies.find(e => e.id === 'plant-1');
+      expect(after?.type).toBe('plant');
+      expect(after?.x).toBe(-22);
+    });
+
+    it('可視域の外(回収余白の内側)に出たエリア外タイプは従来どおり回収される=仕組み自体は不変', () => {
+      useGameStore.setState({ enemies: [mkPlant(1100)] }); // 可視半幅1000の外・回収半幅1240の内
+      runOffscreenRecycleAndCull(ctx);
+      const after = useGameStore.getState().enemies.find(e => e.id === 'plant-1');
+      expect(after).toBeDefined(); // idは使い回し(消えるのではなく湧き直し)
+      expect(after?.x).not.toBe(1100 - 22); // 元の位置には居ない=回収された
+    });
+  });
 });

@@ -1170,7 +1170,16 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     const areaInvalid = !preserveEnemyState && !enemy.isWave && !enemy.fromEvent && !enemy.sceneSpawn
       && aliveMs > 5000
       && !isValidForArea(enemy.type, playerAreaIdx);
-    if ((!offRect && !areaInvalid) || waveProtected) return enemy;
+    // ★v0.25.3958(社長報告2026-08-26「動いてて突然消えちゃう敵もいる」「クリティカル解除されたら消えた」):
+    // areaInvalid(現在エリアで重み0のタイプ)の強制回収は**画面内でも**発動していた——プレイヤーが
+    // エリア境界をまたいだ瞬間、追ってきた敵が目の前で別の敵に湧き直る=「突然消える」。気絶(クリ)中は
+    // v3956の保護で守られるが、**解除された次のフレーム**にこの経路で即消えていた(報告と一致)。
+    // §5.7「画面内の敵は強制消去しない」の裁定に揃え、可視域(ズーム最大引き考慮)の外に出てから回収する。
+    // エリア純度の仕組み自体は不変(視界から外れ次第、余白240pxを待たずに即回収)。ghostの例外化
+    // (「割と消える」)と同根のバグの、タイプ個別対処ではない恒久版。
+    const outsideView = Math.abs(enemyCenterX - playerCenterX) > recycleHalfW - OFFSCREEN_RECYCLE_MARGIN
+      || Math.abs(enemyCenterY - (playerCenterY - spawnViewOffsetY)) > recycleHalfH - OFFSCREEN_RECYCLE_MARGIN;
+    if ((!offRect && !(areaInvalid && outsideView)) || waveProtected) return enemy;
     // 研究所スキンはリサイクル先もラボ用ゾンビに固定(森敵を出さない)。
     const recycleType = preserveEnemyState ? enemy.type : (labTheme ? selectLabEnemyType(gameTime) : undefined);
     const replacement = generateEnemy(
@@ -1198,7 +1207,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
         labVisited ?? null, visionCircles,
       );
       // 通った道しか置き場が無い場合は再配置せず、その個体をそのまま消す(=画面外で静かに退場)。
-      if (!placed) return null;
+      if (!placed) { ENEMY_REMOVE_CAUSE.set(enemy.id, 'labNoPlace'); return null; } // 消失ログ用(v0.25.3958)
       replacement.x = placed.x;
       replacement.y = placed.y;
     } else if (SPAWN_CLAMP_ENABLED && useGameStore.getState().corridorMode) {

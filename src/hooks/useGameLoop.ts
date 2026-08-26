@@ -60,7 +60,7 @@ import {
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isGameTimeStopped, enemyMeleeDist,
   isAttackLocked, // v0.25.2589: 死亡モーション中/アテンション演出中は自動攻撃を止める共通ゲート
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_FOCUS_Y_FRAC,
-  ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
+  ENEMY_REMOVE_CAUSE, kbLogPush, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
   HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, AMMO_MAX,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED,
   DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, DEATH_SLOW_SCALE, // v0.25.2586: 死亡の寄り+スロー
@@ -1541,7 +1541,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // M51: ジャイアント新スクリプトの予告SE(全技共通=hunter-alert流用・社長裁定6.26-9 #5)。
   // 直前フレームのaiPhaseを覚えておき、5つの溜め(windup)ステートへ切り替わった瞬間だけ1回鳴らす。
   const giantWindupSfxRef = useRef<string | undefined>(undefined);
-  const kbLogPrevRef = useRef<Map<string, { x: number; y: number; type: string }>>(new Map()); // ?kblog=1専用
+  const kbLogPrevRef = useRef<Map<string, { x: number; y: number; type: string; kbU?: number }>>(new Map()); // ?kblog=1専用
   // ★EXステージのボスBGM切替(社長指示2026-08-26)。遭遇エッジの検知フラグ(条件が消えたら自動で再武装)。
   const phillBgmRef = useRef(false);
   // v0.25.3700(社長指示「ボスの技にも対応するSEを」): 被弾SEの合流点用・前フレームのHP。
@@ -9201,20 +9201,38 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const prev = kbLogPrevRef.current;
           const cur = useGameStore.getState().enemies;
           const seen = new Set<string>();
+          const wallNow = Date.now();
           for (const e of cur) {
             seen.add(e.id);
             const p0 = prev.get(e.id);
+            // KB開始検知: knockbackUntil が新しく張られた瞬間に、予定飛距離(速度×残時間÷2=線形減衰)を出す。
+            // 通常の近接KB(~24px)は出さず、90px超(受け流しの弾き=約120px等)だけ拾う=「飛んでっちゃう」の犯人特定用。
+            if (e.knockbackUntil !== undefined && e.knockbackUntil > wallNow && p0 && p0.kbU !== e.knockbackUntil) {
+              const kbSpd = Math.hypot(e.knockbackVx ?? 0, e.knockbackVy ?? 0);
+              const estPx = (kbSpd * (e.knockbackUntil - wallNow)) / 1000 / 2;
+              if (estPx > 90) {
+                const line = `${(gameTime / 1000).toFixed(1)}s KB開始 ${e.type} 予定${Math.round(estPx)}px ${Math.round(e.knockbackUntil - wallNow)}ms aiPhase=${e.aiPhase ?? '-'} stun=${e.stunUntil !== undefined && gameTime < e.stunUntil}`;
+                console.warn('[kblog]', line);
+                kbLogPush(line);
+              }
+            }
             if (p0) {
               const d = Math.hypot(e.x - p0.x, e.y - p0.y);
               if (d > 96) { // 通常移動/ノックバック(~7px/フレーム)では絶対に出ない距離=飛び/テレポートだけ拾う
-                console.warn(`[kblog] 大移動 ${e.type} ${Math.round(d)}px (${Math.round(p0.x)},${Math.round(p0.y)})→(${Math.round(e.x)},${Math.round(e.y)}) aiPhase=${e.aiPhase ?? '-'} bossState=${e.bossState ?? '-'} kb=${e.knockbackUntil !== undefined && Date.now() < e.knockbackUntil} stun=${e.stunUntil !== undefined && gameTime < e.stunUntil} corpse=${e.corpseUntil !== undefined}`);
+                // 型が変わる大移動=距離リサイクル(同idで別の敵として湧き直し)。型を p0→e で明示する。
+                const typeLabel = p0.type === e.type ? e.type : `${p0.type}→${e.type}(リサイクル)`;
+                const line = `${(gameTime / 1000).toFixed(1)}s 大移動 ${typeLabel} ${Math.round(d)}px (${Math.round(p0.x)},${Math.round(p0.y)})→(${Math.round(e.x)},${Math.round(e.y)}) aiPhase=${e.aiPhase ?? '-'} bossState=${e.bossState ?? '-'} kb=${e.knockbackUntil !== undefined && Date.now() < e.knockbackUntil} stun=${e.stunUntil !== undefined && gameTime < e.stunUntil} corpse=${e.corpseUntil !== undefined}`;
+                console.warn('[kblog]', line);
+                kbLogPush(line); // 画面表示(KbLogOverlay)用。スマホ実機ではコンソールが見えない
               }
             }
-            prev.set(e.id, { x: e.x, y: e.y, type: e.type });
+            prev.set(e.id, { x: e.x, y: e.y, type: e.type, kbU: e.knockbackUntil });
           }
           for (const [id, p0] of prev) {
             if (!seen.has(id)) {
-              console.warn(`[kblog] 消失 ${p0.type} at (${Math.round(p0.x)},${Math.round(p0.y)}) cause=${ENEMY_REMOVE_CAUSE.get(id) ?? '不明(台帳に無し)'}`);
+              const line = `${(gameTime / 1000).toFixed(1)}s 消失 ${p0.type} at (${Math.round(p0.x)},${Math.round(p0.y)}) cause=${ENEMY_REMOVE_CAUSE.get(id) ?? '不明(台帳に無し)'}`;
+              console.warn('[kblog]', line);
+              kbLogPush(line); // 画面表示(KbLogOverlay)用
               prev.delete(id);
             }
           }

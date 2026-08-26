@@ -10,6 +10,7 @@ import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
 import DebugOverlay from './DebugOverlay';
 import GhostDamageLog from './GhostDamageLog';
+import KbLogOverlay from './KbLogOverlay';
 import DirectorOverlay from './DirectorOverlay';
 import StatsHud from './StatsHud';
 import RunHud from './RunHud';
@@ -248,6 +249,7 @@ const Game: React.FC<GameProps> = ({
       {showStatsOverlay && <PerfOverlay fps={fps} />}
       {debugOverlay && <DebugOverlay />}
       <GhostDamageLog />{/* v0.25.2591: ?ghostlog=1 の被弾ログを画面に出す(スマホでコンソールが見られないため) */}
+      <KbLogOverlay />{/* v0.25.3958: ?kblog=1 の敵大移動/消失ログを画面に出す(同上) */}
       {directorOverlay && <DirectorOverlay />}
       <DanceTapMeter />{/* テスト用タップms計測(?dev=0で非表示・ダンス中のみ) */}
       {benchmarkMode && (
