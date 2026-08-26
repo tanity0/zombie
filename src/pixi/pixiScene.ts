@@ -2694,13 +2694,17 @@ const STAGE5_BOSS_VISUAL_SCALE = 1.2;
 // ★確認用: 全敵の当たり判定「帯」をうっすら色付きで描くデバッグ表示。社長確認OK=通常時OFF(裏ボスの帯は別途常時表示)。
 const SHOW_HITBOX_STRIP = false;
 
-// v0.25.2590(社長指示「ボス系当たり判定がわかりづらい。かといって景観を損ねるのもなー。少しくらいなら妥協」):
-// **ボスの判定帯を、近づいた時だけ薄く**見せる(平時は完全に不可視=景観維持)。枠は当たり判定と同じ
-// 出どころ(裏ボス=生AABB / 他=enemyHitStrip)なので「見えている枠=触ると食らう枠」が厳密に一致する。
-// 数値は全て叩き台・実機調整前提。`?bosshitbox=0` で完全非表示(従来)へ復帰。
+// ★v0.25.3935(社長裁定2026-08-26「パンプキン含めて、ボス系の足元の当たり判定表示もういらないんじゃ?」):
+// **既定OFFにした。** この表示(v0.25.2590)の目的は社長の言葉どおり
+// 「ボス系当たり判定(**こっちが食らうのも**)がわかりづらい」——つまり**触ると食らう枠**を示すことだった。
+// 接触ダメージを噛みつきへ置き換えた今(v0.25.3920〜3928)、**体をぶつけに来る技の最中以外は
+// 触れても食らわない**ので、この枠は**もう嘘**になっている(「枠に触れたら食らう」と誤読させる)。
+// 役目を終えたので平時は出さない。**開発用としては残す**:
+//   - ボスメーカーの「判定」トグル(`bossMaker.showHitbox`)= 技の中に立って詰める用途。
+//   - `?bosshitbox=1` で明示的に復活(旧挙動の確認用)。
 const BOSS_HITBOX_HINT_ENABLED = (() => {
-  if (typeof window === 'undefined') return true;
-  return new URLSearchParams(window.location.search).get('bosshitbox') !== '0';
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('bosshitbox') === '1';
 })();
 // v0.25.2598(社長裁定A・社長報告「カウンターとっても黄色しびれ(移動半分)になってない時がある」):
 // **移動半減窓(bossSlowUntil)に視覚を付ける**。半減自体は全ての近接系カウンターで確実に入っていたが、
@@ -15517,14 +15521,11 @@ export class PixiScene {
       const hb = isHiddenBoss(e.type) ? { x: e.x, y: e.y, width: e.width, height: e.height } : enemyHitStrip(e);
       r.rect(hb.x, hb.y, hb.width, hb.height).fill({ color: 0xf97316, alpha: 0.07 + 0.04 * pulse });
       r.rect(hb.x, hb.y, hb.width, hb.height).stroke({ width: 2, color: 0xfb923c, alpha: 0.3 + 0.1 * pulse });
-    } else if (BOSS_HITBOX_HINT_ENABLED && isBossType(e.type)) {
-      // v0.25.2590(社長指示「ボス系当たり判定(こっちが食らうのも)わかりづらいから、なにか分かるものが
-      // ほしい。かといって景観を損ねるのもなー。少しくらいなら妥協」):
-      // **ボスだけ・近づいた時だけ**、足元の判定帯を薄い縁取りで示す。平時(離れている間)は完全に不可視
-      // =景観を損ねない。判定枠は**当たり判定と同じ出どころ**(裏ボス=生AABB / 他=enemyHitStrip)を
-      // 使うので「見えている枠=触ると食らう枠」が厳密に一致する(分類①の掟)。
-      // 濃さは距離で連続的に上げる(遠い=0 → BOSS_HITBOX_HINT_FULL_PXで最大)=近づくほど自然に浮かぶ。
-      // ?bosshitbox=0 で従来どおり完全非表示へ復帰。
+    } else if ((BOSS_HITBOX_HINT_ENABLED || useGameStore.getState().bossMaker.showHitbox) && isBossType(e.type)) {
+      // ★v0.25.3935: 既定では**ここへ来ない**(上のフラグが既定OFF)。来るのは
+      //  ①ボスメーカーの「判定」トグルON ②`?bosshitbox=1` の2つだけ=**開発用**。
+      // 判定枠は**当たり判定と同じ出どころ**(裏ボス=生AABB / 他=enemyHitStrip)を使うので
+      // 「見えている枠=判定」が厳密に一致する(分類①の掟)。
       const hb = isHiddenBoss(e.type) ? { x: e.x, y: e.y, width: e.width, height: e.height } : enemyHitStrip(e);
       const pl = useGameStore.getState().player;
       const px = pl.x + pl.width / 2, py = pl.y + pl.height / 2;

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3935',
+    items: [
+      'ボス系の足元に出ていた当たり判定の枠を非表示にしました(触れてもダメージを受けなくなったため、役目を終えました)。',
+    ],
+  },
+  {
     version: '0.25.3934',
     items: [
       'スラッシャー: 2発目以降も、近くに敵がいなくても振れるようになりました。',
