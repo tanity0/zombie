@@ -881,8 +881,14 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
 
   // ★社長指示2026-08-26「賞金首も出して守護霊」: **召喚だけ**賞金首を対象に加える(B-2裁定の更新)。
   // 台帳(ソロ/週間)・計測の除外(isGhostEligibleBoss)は据え置き=倒す義務のない相手を記録に混ぜない、は不変。
+  // ★v0.25.3972(社長報告「アイドルに守護霊出てこない」): `ghostSummonedOnce` 未打刻の個体だけが対象。
+  // 従来は交戦の**立ち上がりエッジ1tickだけ**が召喚機会で、その瞬間に前のボスの守護霊が退場アニメ中
+  // (summonsにまだ居る)だと機会が食い潰され、その交戦では二度と召喚されなかった(ボス連戦・
+  // ボスモードの連続出題で踏む)。個体ごとの1回旗に変えて「交戦中で未召喚なら毎tick試みる」へ堅牢化。
+  // 「守護霊が倒れても同じボスへ再召喚しない」(既存意図)は同じ旗がそのまま保証する。
   const boss = state.enemies.find(e =>
     (isGhostEligibleBoss(e.type) || isBountyType(e.type)) && e.dormant !== true
+    && e.ghostSummonedOnce !== true
     && Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy)
       <= bossEngagementDistancePx(e.type, false, e.isStoryBoss === true));
   if (!boss) return;
@@ -901,8 +907,11 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     return;
   }
   const delayedSummon = pendingRemoteGhostSlot === localSlot;
-  if (!rising && !delayedSummon) return; // 通常は交戦の立ち上がりだけ。取得待ち時だけ後続tickを許す。
+  // ★v0.25.3972: エッジ限定(旧: !rising && !delayedSummon で return)を撤廃。上の
+  // ghostSummonedOnce 旗が「1個体1回」を保証するので、交戦中で未召喚なら毎tick召喚を試みる
+  // (退場アニメ中の先客で機会が潰れない)。オンライン取得待ちだけは従来どおり保留する。
   if (delayedSummon && pickPending) return;
+  if (!delayedSummon && onlineMode && pickPending) { pendingRemoteGhostSlot = localSlot; return; }
   pendingRemoteGhostSlot = null;
   const remoteCandidate = requestedMode === 'random' || requestedMode === 'top'
     ? resolveRemoteGhost(localSlot)
@@ -1013,6 +1022,8 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   // リザルトが読むのはこの**不変の1枚**(summons配列を購読させない=React再描画規律)。
   useGameStore.setState(s => ({
     summons: [...s.summons, ghost],
+    // ★v0.25.3972: この個体への召喚は1回きり(旗)。倒れても同じ個体へは再召喚しない(従来意図)。
+    enemies: s.enemies.map(e => e.id === boss.id ? { ...e, ghostSummonedOnce: true } : e),
     ghostSummonedThisRun: true,
     ghostSourceThisRun: ghostSource,
     ghostFeedbackTargetThisRun: remote

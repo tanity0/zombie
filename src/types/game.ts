@@ -634,6 +634,8 @@ export interface Enemy {
   // BOT_AND_GHOST.md G2/§3裁定: ゴースト召喚成立の瞬間に health/maxHealth へ GHOST_BOSS_HP_MULT(1.6)を
   // 1回だけ適用したか(二重適用防止フラグ)。ゴーストが死んでも戻さない=trueのまま据え置く。
   ghostHpBoosted?: boolean;
+  /** ★v0.25.3972: この個体へ守護霊を召喚済み(1個体1回。倒れても同じ個体へは再召喚しない=従来意図の明示化)。 */
+  ghostSummonedOnce?: boolean;
   aggroRange?: number;
   fixed?: boolean;
   // PACING_PUZZLE.md §9-4/§9-7#6(削岩型): 近接武器の打撃を受けた瞬間 gameTime+2000 を書く。
