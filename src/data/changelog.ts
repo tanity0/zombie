@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.3937', items: ['ゲーム内容の変更はありません(開発環境の巻き戻り現象の原因究明結果を記録)'] },
   {
     version: '0.25.3936',
     items: [
