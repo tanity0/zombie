@@ -104,6 +104,7 @@ import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
+import { softCapCritChance } from '../utils/critSoftCap';
 import {
   type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath, sanitizeNamedFoe,
   NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, pickNamedEnemyName, normalizeNamedName,
@@ -2989,7 +2990,10 @@ export const meleeHitCritChance = (
 ): number => {
   const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
   const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
-  return applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+  // §13-3d(社長裁定2026-08-26): 積み上げの合計は**ハードキャップではなくソフトキャップ**を通す
+  // (30%までは素通し=これまでと同じ・超えた分だけ鈍って50%へ漸近)。**敵補正はその後**に掛ける
+  // =「雑魚補正(色階層)・ボス補正(×0.5+下限5%)」の意味は不変(社長質問2026-08-26への答え)。
+  return applyEnemyCritPenalty(softCapCritChance(meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
 };
 
 /**

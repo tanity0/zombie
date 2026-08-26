@@ -645,20 +645,24 @@ describe('headless simulation invariants', () => {
       z.health = 9999; // 生存させて damageNumber を確実に出す(倒れて即消滅しないように)
       useGameStore.setState({ enemies: [z], effects: [] });
     };
-    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5); // 0.05 < 0.5 < 1.0 な決定的な値
+    // §13-3d(ソフトキャップ v0.25.3942): クリ率は50%へ漸近するだけで**100%にはならない**ので、
+    // 「critChance=1 なら必ずクリ」は成立しなくなった。この test が守っている不変条件は
+    // 「**player.critChance が近接スイングにも乗る**」(社長指示)なので、素のナイフ(5%)では届かず、
+    // critChance を積むと届く値=0.3 を使う(素0.05 < 0.3 < ソフトキャップ後の実効49.5%)。
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.3);
 
     spawnCloseZombie();
     useGameStore.setState(s => ({ player: { ...s.player, critChance: 0, counterCooldownEnd: 0 } }));
     useGameStore.getState().triggerCounter();
     const critsWithoutBonus = useGameStore.getState().effects.filter(e => e.kind === 'damageNumber' && e.crit);
-    expect(critsWithoutBonus.length).toBe(0); // 0.05(素のナイフ)だけでは 0.5 に届かずクリティカルしない
+    expect(critsWithoutBonus.length).toBe(0); // 0.05(素のナイフ)だけでは 0.3 に届かずクリティカルしない
 
     spawnCloseZombie();
     // 直前のスイングが付けたカウンターCDを解除しないと2回目が不発(空振り)になるため明示的に0へ。
     useGameStore.setState(s => ({ player: { ...s.player, critChance: 1, counterCooldownEnd: 0 } }));
     useGameStore.getState().triggerCounter();
     const critsWithBonus = useGameStore.getState().effects.filter(e => e.kind === 'damageNumber' && e.crit);
-    expect(critsWithBonus.length).toBeGreaterThan(0); // player.critChance=1 が乗れば必ずクリティカルする
+    expect(critsWithBonus.length).toBeGreaterThan(0); // player.critChance が乗れば 0.3 を超えてクリティカルする
 
     randomSpy.mockRestore();
   });

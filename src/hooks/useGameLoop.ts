@@ -146,6 +146,7 @@ import { dashModeAt, dashOverride, dashStateOf, dashStep } from '../utils/dashLo
 import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定義から移設(式は無変更)
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty, projectileHitCritChance } from '../utils/critPenalty';
+import { softCapCritChance, orCombineChance } from '../utils/critSoftCap';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
@@ -11109,21 +11110,37 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // トラップ(root)中のクリ率+10%: ボスはクリペナルティ(-10%)と丁度相殺して実質0だったため、
           // ボスに限りペナルティを通さず既存値(MARKSMAN_TRAP_CRIT_BONUS=0.10)をそのまま適用
           // (社長指示v0.25.1688「ボスにはクリティカル率アップ(既存の値)」。ボス以外は従来どおり)。
-          const trapCritBonus =
+          // §13-3d(社長裁定2026-08-26「はい」): 銃も近接と同じ**ソフトキャップ**を通す。掛ける相手は
+          // 「合成後の実効値」なので、旧実装の**独立3ロールのOR**(基礎/トラップ/弱点)を**1つの確率へ
+          // 合成してから1回ロール**する形へ整理した。合成は `1-(1-a)(1-b)` =**OR と数学的に同じ**なので、
+          // ソフトキャップに掛からない範囲(合計30%以下)の確率は**1ptも変わらない**。
+          const trapActive =
             isDirectWeaponHit &&
             enemyForFx !== undefined &&
             enemyForFx.rootUntil !== undefined &&
-            gameTime < enemyForFx.rootUntil &&
-            Math.random() < (isBoss ? MARKSMAN_TRAP_CRIT_BONUS : applyEnemyCritPenalty(MARKSMAN_TRAP_CRIT_BONUS, enemyForFx));
-          // PACING_PUZZLE.md §5.6 M7: チャフ(バット/ゾンビ)の武器弱点=銃+10%。命中対象の型は
-          // ヒット時点でしか分からない(発射時は未確定)ため、ここで対象別に追加ロールする。
-          const weakCrit = WEAKCRIT_ENABLED && isDirectWeaponHit && enemyForFx
-            ? Math.random() < applyEnemyCritPenalty(weaknessCritBonus(enemyForFx.type, 'gun'), enemyForFx)
-            : false;
+            gameTime < enemyForFx.rootUntil;
+          // 社長指示v0.25.1688「ボスにはクリティカル率アップ(既存の値)」: ボスのトラップ+10%だけは
+          // ボス補正(×0.5)を通さない**別枠**。裁定を実装で倒さないため、合成に入れず独立ロールのまま残す。
+          const bossTrapCrit = isBoss && trapActive && Math.random() < MARKSMAN_TRAP_CRIT_BONUS;
+          // トラップ(root)中のクリ率+10%(ボス以外)。敵補正の掛け方は従来どおり項ごと。
+          const trapCritTerm = trapActive && !isBoss && enemyForFx
+            ? applyEnemyCritPenalty(MARKSMAN_TRAP_CRIT_BONUS, enemyForFx)
+            : 0;
+          // PACING_PUZZLE.md §5.6 M7: チャフ(バット/ゾンビ)の武器弱点=銃+10%/+20%。命中対象の型は
+          // ヒット時点でしか分からない(発射時は未確定)ため、ここで対象別に足す。
+          const weakCritTerm = WEAKCRIT_ENABLED && isDirectWeaponHit && enemyForFx
+            ? applyEnemyCritPenalty(weaknessCritBonus(enemyForFx.type, 'gun'), enemyForFx)
+            : 0;
           // CRIT-UNIFY §9.1: 生成時boolean抽選(旧projectile.crit)を廃止。critChance(数値)を運び、
           // 命中時に対象別(ボスは半減+下限5%・通常敵はそのまま)でロールする。
+          // §13-3d: **ソフトキャップ → そのあと敵補正**の順(近接と同じ)。雑魚補正(色階層)・ボス補正
+          // (×0.5+下限5%)の意味は不変で、掛かる相手が「鈍らせた後の実効値」になるだけ。
+          const critCombined = orCombineChance(
+            orCombineChance(projectile?.critChance ?? 0, trapCritTerm),
+            weakCritTerm,
+          );
           const baseCrit = enemyForFx
-            ? Math.random() < projectileHitCritChance(projectile?.critChance ?? 0, enemyForFx)
+            ? Math.random() < projectileHitCritChance(softCapCritChance(critCombined), enemyForFx)
             : false;
           // PHILL銃の頭部命中は確定ヘッドショット=クリティカル扱い(×1.5＋気絶＋headshot SE＋金VFX)。
           // 訓練(M0)の封印(社長指示v0.25.2293/2295): **教わるまでクリティカルは一切出さない**。
@@ -11141,7 +11158,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (headshot === true) recordPhillHeadshot();
           const hitCrit = (m0CritLocked || damage <= 0)
             ? false
-            : (baseCrit || trapCritBonus || weakCrit || headshotHit);
+            : (baseCrit || bossTrapCrit || headshotHit);
           // スキル: クリティカルD上昇(+0.5) / バーサーカー(失HP%で全攻撃増) / スナイパー(停止敵・遠距離増)。
           const skillPlayer = collisionState.player;
           // §6.10 M33⑩(★8裁定): 護衛NPC弾(weaponKey='escort')はプレイヤーの攻撃ではないため、
