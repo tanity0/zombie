@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3934',
+    items: [
+      'スラッシャー: 2発目以降も、近くに敵がいなくても振れるようになりました。',
+    ],
+  },
+  {
     version: '0.25.3933',
     items: [
       '倒した敵が青くなるのをやめました(潰れて消える動きはそのままです)。',

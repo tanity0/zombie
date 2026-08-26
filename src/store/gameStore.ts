@@ -4318,19 +4318,12 @@ const applySlasherChainStrike = (
   // 踏み込みの目標: 実際にノックバックした敵のうち**最寄り**(=いま切り結んでいる相手)。
   // 死んだ敵・押せなかった敵(ボス級)は目標にしない=v0.25.3400「KBしなかったら前進しない」を維持。
   let lungeTo: { dirX: number; dirY: number; dist: number } | null = null;
-  // ★v0.25.3616: 空振り判定を先に行う(誰も射程内に居なければ何も消費せずチェーン破棄→null)。
-  {
-    let anyInRange = false;
-    for (const e of get().enemies) {
-      if (e.type === 'reaper' && !e.reaperChaser) continue;
-      if (isCorpse(e)) continue;
-      if (enemyMeleeDist(pcx, pcy, e) <= meleeRange) { anyInRange = true; break; }
-    }
-    if (!anyInRange) {
-      get().setSlasherCombo(0, 0);
-      return null;
-    }
-  }
+  // ★v0.25.3934(社長報告2026-08-26「スラッシャー、まだ2段目以降空振りできない時がある? cd?」):
+  // 旧実装(v0.25.3616)は**射程内に誰も居なければ追撃そのものを出さず、チェーンを破棄して null**
+  // を返していた。**原因はCDではなくこの門**——2段目以降だけ「空振りできない」状態だった。
+  // v0.25.3931 で初撃の「命中しないとチェーンが始まらない」を外したので、**追撃側も揃える**:
+  // 誰も居なくても**振る**(段を消費してチェーンは進む)。前隙200msが入った今、
+  // 連撃の途中で相手が射程外へ出るのは普通に起きるため、そこで手が止まるのは操作として不自然。
   for (const e of get().enemies) {
     if (e.type === 'reaper' && !e.reaperChaser) continue;
     if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は追撃対象から除外

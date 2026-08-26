@@ -144,3 +144,34 @@ describe('スラッシャーのチェーン追撃(距離規約)', () => {
     spy.mockRestore();
   });
 });
+
+// ★社長報告2026-08-26「スラッシャー、まだ2段目以降空振りできない時がある? cd?」
+// 原因はCDではなく「射程内に誰も居なければ追撃を出さずチェーン破棄」の門(v0.25.3616)。
+// 初撃側は v0.25.3931 で命中条件を外してあるので、**追撃側も揃える**(v0.25.3934)。
+describe('★スラッシャーの追撃は空振りでも振れる(v0.25.3934)', () => {
+  it('射程内に誰も居なくても追撃は成立し、段が進む', () => {
+    let now = 1_000_000;
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    setupSlasherRun();
+    // チェーン開始済み・CDは明けている状態を作る(敵は1体も置かない=完全な空振り)。
+    const rt = 5_000; // resetGame 直後の realGameTime は0なので、明示的に進めた状態を作る
+    useGameStore.setState(s2 => ({
+      enemies: [],
+      realGameTime: rt,
+      player: {
+        ...s2.player,
+        slasherChainReadyAt: rt,   // CD明け(realGameTime と同値=もう振れる)
+        slasherStrikeStep: 0,
+        slasherReach: MELEE_RADIUS,
+      },
+    }));
+    const before = useGameStore.getState().player.slasherStrikeStep;
+    now += 10;
+    const r = useGameStore.getState().triggerCounter();
+    // ★空振りでも「振った」になり、段が1つ進む(=2発目以降が出せる)。
+    expect(r.swung).toBe(true);
+    expect(r.hit).toBe(false);
+    expect(useGameStore.getState().player.slasherStrikeStep).toBe(before + 1);
+    spy.mockRestore();
+  });
+});
