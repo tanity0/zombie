@@ -3367,6 +3367,10 @@ export class PixiScene {
   // 突きの白い風圧(fx/dash-wind・drawThrustWindと同じ規約)。boss.idごとに1枚のpooled sprite
   // (3段とも同時には出ない=使い回し)。
   private bountyThrustWindSprites = new Map<string, Sprite>();
+  // ★削岩型(driller)の突きの白い風圧(fx/dash-wind・drawThrustWindと同じ規約)。個体idごとに1枚の
+  // pooled sprite。社長指示2026-08-26「矢印みたいのじゃない、突きの時に出てる白い風みたいなエフェクト」
+  // =手描きの槍(v0.25.3931〜3936の旧実装)を撤去し、トールの突き/バス停三段突きと**同じ絵**へ統一した。
+  private drillerThrustWindSprites = new Map<string, Sprite>();
   // 馬乗り3段コンボの鞭スミア(fx/whip-smear-0/1/2・段対応)。コンボ段ごとに1枚のpooled sprite。
   private bountyWhipSmearSprites = new Map<string, Sprite>();
   // ★v0.25.3566: 360度薙ぎの追従アーク(pooled)と、突進の前振りの開始時刻(技の回数で焼く)。
@@ -12353,6 +12357,8 @@ export class PixiScene {
         if (bountyWeaponSp) { bountyWeaponSp.destroy(); this.bountyWeaponSprites.delete(id); }
         const bountyThrustWindSp = this.bountyThrustWindSprites.get(id);
         if (bountyThrustWindSp) { bountyThrustWindSp.destroy(); this.bountyThrustWindSprites.delete(id); }
+        const drillerThrustWindSp = this.drillerThrustWindSprites.get(id);
+        if (drillerThrustWindSp) { drillerThrustWindSp.destroy(); this.drillerThrustWindSprites.delete(id); }
         const bountyWhipSp = this.bountyWhipSmearSprites.get(id);
         if (bountyWhipSp) { bountyWhipSp.destroy(); this.bountyWhipSmearSprites.delete(id); }
         const bountyArc360Sp = this.bountyWhip360ArcSprites.get(id); // ★v0.25.3566
@@ -14886,6 +14892,11 @@ export class PixiScene {
     // ★v0.25.3383のバグ修正: この一群は元々isGate2AngelBoss(e.type)ブロックの中に置かれていたため、
     // 賞金首(ゲート2天使ではない)には一度も適用されていなかった(=絵が技終了後も
     // 消えずに残り続ける未発見バグ。社長指摘「絵が消えない/出ない」の類例として発見時に併修)。
+    // ★削岩型の突きの白い風圧も同じ作法で既定OFF(点けるのはdrawEnemyのactive分岐だけ)。
+    if (e.type === 'driller') {
+      const drillerWindSp = this.drillerThrustWindSprites.get(e.id);
+      if (drillerWindSp) drillerWindSp.visible = false;
+    }
     if (isBountyType(e.type)) {
       const bountySummonSp = this.bountySummonSprites.get(e.id);
       if (bountySummonSp) bountySummonSp.visible = false;
@@ -15591,8 +15602,19 @@ export class PixiScene {
         // ★突きの残光(帯)は薄く残すだけにして、主役は槍そのものにする
         // (社長指示2026-08-25「削岩機、ちゃんと槍用のエフェクト出して」)。
         o.poly(apts).fill({ color: 0xffe4b0, alpha: 0.20 * aFade });
-        // ★槍(ドリル)本体。伸び具合は上の ease-out(ext)をそのまま使う=絵と判定が同じ動き。
-        this.drawDrillerSpear(o, dfx, dfy, dtx, dty, dhw, ext, aFade, true, now);
+        // ★突きの絵は**白い風圧(fx/dash-wind)**(社長指示2026-08-26「矢印みたいのじゃなくて、
+        // 突きとかの時に出てる白い風みたいなエフェクト」)。トールの突き(drawKatanaSlashのstyle='thrust')・
+        // バス停の三段突きと**同じ drawThrustWind** を通す=同じ動作には同じ絵(CLAUDE.md)。
+        // ②派手さの絵=判定ゼロなので判定の帯より外へ広がってよい(先端は帯の先端に置く)。
+        {
+          let windSp = this.drillerThrustWindSprites.get(e.id);
+          if (!windSp) {
+            windSp = new Sprite(); windSp.anchor.set(0, 0.5); windSp.blendMode = 'add';
+            this.L.effectLayer.addChild(windSp); this.drillerThrustWindSprites.set(e.id, windSp);
+          }
+          // 慣性はdrawThrustWindの中(0→45%で減速しながら1.3倍まで伸び切る)。ttは突きの進行度。
+          this.drawThrustWind(windSp, dtx, dty, Math.atan2(ddy, ddx), ddl, aT);
+        }
       } else {
         const dprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (DRILLER_THRUST_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
         const dpulse = 0.55 + 0.45 * Math.sin(now / 80);
@@ -15609,16 +15631,8 @@ export class PixiScene {
         if (dVisible) o.poly(dpts).fill({ color: 0xff2a2a, alpha: telFillA(dprog, dpulse) * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, dfx, dfy, dtx, dty, dhw, 0xff3b3b, telStrokeA(dprog, dpulse), 0, dprog);
         else if (dVisible) o.poly(dpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(dprog, dpulse) });
-        // ★溜め中の「構え」: 槍を**後ろへ引いて**溜める(慣性=引く量は ease-in で増え、
-        // 直前に震える)。突きの瞬間に前へ伸びるので、引く→放つ の加減速が絵で読める。
-        {
-          const pull = dhw * 1.6 * (dprog * dprog);                  // ease-in で深く引く
-          const tre = windupTremorPx(dprog, now);                    // 直前の震え(既存の共通式)
-          const rx = dfx - dux * pull + dnx * tre, ry = dfy - duy * pull + dny * tre;
-          // 構えの長さは判定の全長ではなく穂まわりだけ(まだ届いていないことを絵で示す)。
-          const readyExt = Math.min(1, (dhw * 4.2) / Math.max(1, Math.hypot(dtx - dfx, dty - dfy)));
-          this.drawDrillerSpear(o, rx, ry, dtx, dty, dhw, readyExt, 0.55 + 0.35 * dprog, false, now);
-        }
+        // ★溜め中は赤帯の予告だけ(社長指示2026-08-26で手描きの槍を撤去)。
+        // 突きの絵は実行(active)の白い風圧が担う。
       }
     }
     if (isBountyType(e.type)) {
@@ -21877,67 +21891,6 @@ export class PixiScene {
    * fx/fy→tx/tyを全長で描く**(後方互換。実行中=全形表示の描画はここを経由しない/prog未指定のまま
    * 呼ぶことで維持される)。
    */
-  /**
-   * ★削岩型(driller)の槍=ドリルの絵(社長指示2026-08-25「削岩機、ちゃんと槍用のエフェクト出して」)。
-   *
-   * 素材が無いので**手描き**(柄+ドリルの穂+螺旋の刻み+先端の白熱)。専用画像が届いたら差し替える。
-   * ★分類①(危険を伝える絵・CLAUDE.md): 穂の**根元〜先端が判定の帯と同じ線分**に乗り、
-   * 太さも判定の半幅(`DRILLER_THRUST_HALF_WIDTH`)に揃える=見たまんまが当たり判定。
-   * ★慣性(CLAUDE.md MUST): 伸び具合 `ext` は呼び出し側が ease で渡す(等速で出さない)。
-   *
-   * @param ext  0..1。0=まだ根元 / 1=判定の全長まで伸び切った。
-   * @param hot  true=突きの最中(白熱) / false=溜め中の構え(金属色)。
-   */
-  private drawDrillerSpear(
-    o: Graphics, fx: number, fy: number, tx: number, ty: number,
-    halfWidth: number, ext: number, alpha: number, hot: boolean, now: number,
-  ) {
-    if (alpha <= 0.01 || ext <= 0.001) return;
-    const ddx = tx - fx, ddy = ty - fy;
-    const L = Math.hypot(ddx, ddy) || 1;
-    const ux = ddx / L, uy = ddy / L;
-    const nx = -uy, ny = ux;
-    const len = L * ext;
-    const headLen = Math.min(len, halfWidth * 3.4);   // 穂(ドリル)の長さ
-    const shaftLen = Math.max(0, len - headLen);
-    const sw = halfWidth * 0.40;                      // 柄の半幅(穂より細い=槍のシルエット)
-    const bx = fx, by = fy;
-    const kx = bx + ux * shaftLen, ky = by + uy * shaftLen;  // 穂の根元
-    const hx = bx + ux * len, hy = by + uy * len;            // 先端
-    const shaftCol = hot ? 0xb9c2cc : 0x8b939e;
-    const headCol = hot ? 0xfff3d0 : 0xc8ced6;
-    // 柄(根元→穂の根元)。
-    if (shaftLen > 1) {
-      o.poly([
-        bx + nx * sw, by + ny * sw, kx + nx * sw, ky + ny * sw,
-        kx - nx * sw, ky - ny * sw, bx - nx * sw, by - ny * sw,
-      ]).fill({ color: shaftCol, alpha: alpha * 0.95 });
-      o.poly([
-        bx + nx * sw, by + ny * sw, kx + nx * sw, ky + ny * sw,
-        kx - nx * sw, ky - ny * sw, bx - nx * sw, by - ny * sw,
-      ]).stroke({ width: 1.5, color: 0x4b535d, alpha: alpha * 0.8 });
-    }
-    // 穂(ドリル)=判定の半幅いっぱいの三角形。
-    o.poly([kx + nx * halfWidth, ky + ny * halfWidth, hx, hy, kx - nx * halfWidth, ky - ny * halfWidth])
-      .fill({ color: headCol, alpha });
-    o.poly([kx + nx * halfWidth, ky + ny * halfWidth, hx, hy, kx - nx * halfWidth, ky - ny * halfWidth])
-      .stroke({ width: 2, color: hot ? 0xffb347 : 0x6b737d, alpha: alpha * 0.9 });
-    // 螺旋の刻み3本(回っているように見せる=突きの最中だけ位相を回す)。
-    const spin = hot ? (now / 40) % 1 : 0;
-    for (let i = 0; i < 3; i++) {
-      const u0 = ((i + spin) / 3) % 1;                 // 0..1(根元→先端)
-      const w = halfWidth * (1 - u0);                  // 先細り
-      const px0 = kx + ux * headLen * u0, py0 = ky + uy * headLen * u0;
-      o.moveTo(px0 + nx * w, py0 + ny * w).lineTo(px0 - nx * w, py0 - ny * w)
-        .stroke({ width: 1.6, color: hot ? 0xffd58a : 0x9aa3ae, alpha: alpha * 0.75 });
-    }
-    // 先端の白熱(突きの最中だけ)。派手さの絵=分類②なので判定より少し大きくてよい。
-    if (hot) {
-      o.circle(hx, hy, halfWidth * 0.55).fill({ color: 0xffffff, alpha: alpha * 0.55 });
-      o.circle(hx, hy, halfWidth * 1.05).fill({ color: 0xffb347, alpha: alpha * 0.22 });
-    }
-  }
-
   private drawTelegraphBand(
     view: ActorView, fx: number, fy: number, tx: number, ty: number, halfWidth: number, tint: number, alpha: number, idx = 0,
     prog?: number, eraseOverride?: number,
@@ -27249,6 +27202,7 @@ export class PixiScene {
     for (const o of this.bountySummonSprites.values()) o.destroy();
     for (const o of this.bountyWeaponSprites.values()) o.destroy();
     for (const o of this.bountyThrustWindSprites.values()) o.destroy();
+    for (const o of this.drillerThrustWindSprites.values()) o.destroy();
     for (const o of this.bountyWhipSmearSprites.values()) o.destroy();
     for (const o of this.bountyWhip360ArcSprites.values()) o.destroy();
     for (const o of this.bountyWhipTipFlashSprites.values()) o.destroy();
