@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3966',
+    items: ['ゲーム内容の変更はありません(調査用の?kblog=1ログは一時停止中だけ表示するようにしました。プレイの邪魔になっていたため)。'],
+  },
+  {
     version: '0.25.3965',
     items: ['ゲーム内容の変更はありません(調査用ログの精度向上: 近接で倒したボス級が「原因不明の消失」と表示されていたのを直しました)。'],
   },
