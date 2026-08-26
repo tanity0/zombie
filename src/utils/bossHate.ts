@@ -33,6 +33,9 @@ const HATE_TRACKED_BOSS_TYPES = new Set<string>([
   'giantbat', 'idol', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel',
   'mimir', 'jormungand', 'skadi', 'thor',
   'phillboss', // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」): 守護霊と共闘できるボスに編入
+  // ★v0.25.3971(社長報告「賞金首が守護霊を狙わない」): v3949で賞金首にも守護霊を召喚するように
+  // なったのに、ヘイト対象表に未編入だった(バケツが積まれず bountyTick も常にプレイヤー狙いだった)。
+  'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
 ]);
 export const isHateTrackedBossType = (t: string): boolean => HATE_TRACKED_BOSS_TYPES.has(t);
 

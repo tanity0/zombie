@@ -96,6 +96,7 @@ import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { refundCounterCooldown } from './counterMaster';
 import { consumeGhostCounterClaim, applyGhostCounterEffect } from './ghostCounter'; // ★v0.25.3962: 守護霊カウンターの消費(賞金首側の配線)
+import { resolveBossHateAim, resolveBossLockedHateAim } from './bossHate'; // ★v0.25.3971: 賞金首もヘイト制で守護霊を狙う
 import { npcSfxDistGain } from './npcSfx';
 import { getActiveGun } from './weaponUtils';
 import { GLOW_R_L } from './glowTiers';
@@ -1972,10 +1973,21 @@ export const runBountyTick = (
   if (s.activeId !== bounty.id) { resetBountyRunState(s); s.activeId = bounty.id; }
 
   const player = useGameStore.getState().player;
-  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const bcx = bounty.x + bounty.width / 2, bcy = bounty.y + bounty.height / 2;
+  // ★v0.25.3971(社長報告「賞金首が守護霊を狙わない」): 賞金首もボス共通のヘイト制(BOT_AND_GHOST.md
+  // §2.8 G2.5)で狙いを決める。chase中は毎tick評価(粘着×1.3でパタパタしない)、技の実行中は
+  // ロック維持(resolveBossLockedHateAim=途中で狙いが揺れない・守護霊消滅時だけプレイヤーへ復帰)。
+  // 以下の pcx/pcy/dist は「今の狙い(プレイヤー or 守護霊)」を指す——追跡・間合い・技の照準が
+  // 丸ごとヘイト対象へ向く。守護霊不在なら常にプレイヤー=従来と1bit同じ。
+  const truePcx = player.x + player.width / 2, truePcy = player.y + player.height / 2;
+  const bountyInTechnique = (bounty.bossState ?? 'chase') !== 'chase' && bounty.bossState !== 'return';
+  const bountyAim = bountyInTechnique
+    ? resolveBossLockedHateAim(bounty, { x: truePcx, y: truePcy }, useGameStore.getState().summons)
+    : resolveBossHateAim(bounty, { x: truePcx, y: truePcy }, useGameStore.getState().summons, newGameTime);
+  const pcx = bountyAim.x, pcy = bountyAim.y;
   const dist = Math.hypot(pcx - bcx, pcy - bcy);
   const patch: Partial<Enemy> = {};
+  if (!bountyInTechnique && bountyAim.side !== bounty.hateTarget) patch.hateTarget = bountyAim.side;
 
   // ---- ボスメーカー: 単独再生の終わり(保険) ------------------------------------------------------
   // 通常は「技がchaseへ戻ったフレーム」(下の post-tick 判定)で終わる。ここは**割り込みで技が
