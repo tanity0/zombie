@@ -2151,7 +2151,12 @@ export { PUMPKIN_EXPLOSION_RADIUS };
 // PACING_PUZZLE.md §9-4(削岩型・driller): 突き(ヤリ攻撃)の溜め/判定/硬直/CD。間合い(接近/後退/構え)
 // と発動距離は src/utils/drillerAi.ts(純関数・テスト済み)を見る。ここは gameStore 内でしか使わない
 // 攻撃モーション寄りの値だけを持つ。値は全て叩き台(§9-6「バランスの最終値ではない」)。
-export const DRILLER_THRUST_WINDUP_MS = 700;   // 溜め(開始の瞬間に方向・帯をロック)
+// ★v0.25.3932(社長指示2026-08-26「削岩機の予告、少し伸ばしたい」): 700 → 900。
+// この値は `ENEMY_ATTACK_SPEED_MULT`(=GAME_SPEED・既定1.2)で割られるので、
+// **画面上の実効は 583ms → 750ms**。カウンター可能な予告の下限(MIN_COUNTER_TELEGRAPH_MS=550)に
+// 対して583msはギリギリだった——新しいカウンター規則(刃が出ている200msだけ成立=当たる
+// 200〜400ms前に振り始める必要がある)と、人の反応250msを足すと 450〜650ms 要るため。
+export const DRILLER_THRUST_WINDUP_MS = 900;   // 溜め(開始の瞬間に方向・帯をロック)
 export const DRILLER_THRUST_ACTIVE_MS = 220;   // 突き判定の表示(1回だけカプセルを積む・実効180ms相当)
 export const DRILLER_THRUST_RECOVER_MS = 400;  // 硬直
 export const DRILLER_THRUST_CD_MS = 3500;      // 次の突きまでのCD(生値。atkUntil式でENEMY_ATTACK_SPEED_MULT除算)

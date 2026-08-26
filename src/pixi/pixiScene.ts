@@ -182,7 +182,7 @@ import {
 } from '../utils/bountyScript';
 import { telegraphProgress01 } from '../utils/bossTelegraph';
 import {
-  biteLeadBlinkOn, bitePhaseOf, // ★予告の点滅(尺と明滅の出どころはsim側の純関数)
+  biteBlinkOn, bitePhaseOf, // ★溜め中の点滅(尺と明滅の出どころはsim側の純関数)
   biteSpecFor,
 } from '../utils/enemyBite'; // ★噛みつきの台帳(PACING_PUZZLE §12)
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 表示名・立ち絵クラスの正本(台帳)と、技の寸法テーブル。
@@ -15161,10 +15161,7 @@ export class PixiScene {
       // 500ms(溜め300+噛み200)を既存の2拍の尺(CONTACT_LUNGE_MS)へ線形に写す。
       // 噛みつきを持たない敵(ボス/技中)は従来どおり lastContactAttackAt を見る。
       const biteSpecNow = biteSpecFor(e.type);
-      // ★v0.25.3931(社長指示2026-08-26): 台本の頭に**予告(leadMs)**が入った。予告中は敵は動かず
-      // 点滅だけするので、**絵の2拍(しゃがみ→食いつき)は予告のぶんを差し引いた"モーション時間"**に写す。
-      const biteLead = biteSpecNow.leadMs;
-      const biteElapsed = (e.biteAt !== undefined && e.biteAt > 0) ? gameTime - e.biteAt - biteLead : -1;
+      const biteElapsed = (e.biteAt !== undefined && e.biteAt > 0) ? gameTime - e.biteAt : -1;
       const biteTotalMs = biteSpecNow.windupMs + biteSpecNow.biteMs;
       const sinceLunge = (biteElapsed >= 0 && biteElapsed <= biteTotalMs)
         ? biteElapsed * (CONTACT_LUNGE_MS / biteTotalMs)
@@ -15333,10 +15330,7 @@ export class PixiScene {
       // 500ms(溜め300+噛み200)を既存の2拍の尺(CONTACT_LUNGE_MS)へ線形に写す。
       // 噛みつきを持たない敵(ボス/技中)は従来どおり lastContactAttackAt を見る。
       const biteSpecNow = biteSpecFor(e.type);
-      // ★v0.25.3931(社長指示2026-08-26): 台本の頭に**予告(leadMs)**が入った。予告中は敵は動かず
-      // 点滅だけするので、**絵の2拍(しゃがみ→食いつき)は予告のぶんを差し引いた"モーション時間"**に写す。
-      const biteLead = biteSpecNow.leadMs;
-      const biteElapsed = (e.biteAt !== undefined && e.biteAt > 0) ? gameTime - e.biteAt - biteLead : -1;
+      const biteElapsed = (e.biteAt !== undefined && e.biteAt > 0) ? gameTime - e.biteAt : -1;
       const biteTotalMs = biteSpecNow.windupMs + biteSpecNow.biteMs;
       const sinceLunge = (biteElapsed >= 0 && biteElapsed <= biteTotalMs)
         ? biteElapsed * (CONTACT_LUNGE_MS / biteTotalMs)
@@ -15345,17 +15339,16 @@ export class PixiScene {
       const biteShake = (biteElapsed >= biteSpecNow.windupMs && biteElapsed <= biteTotalMs)
         ? Math.sin(biteElapsed / 18) * 1.6
         : 0;
-      // ★点滅は**モーションの手前の予告(leadMs)だけ**で、**はっきり2回光る**
-      // (社長指示2026-08-26「点滅をモーション時間の手前に時間足す形で、2回明るい点滅」)。
-      // モーション(溜め+噛み)に入ったら点滅は止み、**動きだけ**で読ませる。
+      // ★点滅は**溜め(300ms)の間に2回**(社長裁定2026-08-26「溜め300msの間に2回点滅にまとめで」)。
+      // 噛みの区間(後半200ms)では光らない=そこは**動きだけ**で読ませる。
       // ★色は**紫**(社長裁定2026-08-25「噛みつきはやはり紫にする」)。
       // CLAUDE.md の色と形の文法: 赤=カウンター/回避の対象 / **紫=カウンターできない攻撃**。
       // 判定側(`BITE_DEFAULT.counterable = false`)と**必ず一対**で切り替えること
       // ——ここだけ赤にすると「赤いのにカウンターできない」で文法違反になる。
       // **明側を白熱にして明暗で立てる**ので、紅き夜(画面全体が血赤)でも沈まない。
       // 明滅のON/OFFは sim 側の純関数(biteLeadBlinkOn)を読むだけ=尺の出どころを1箇所に保つ。
-      const biteTint: number | null = bitePhaseOf(e, gameTime) === 'lead'
-        ? (biteLeadBlinkOn(e, gameTime) ? 0xffffff : 0x9333ea)
+      const biteTint: number | null = bitePhaseOf(e, gameTime) === 'windup'
+        ? (biteBlinkOn(e, gameTime) ? 0xffffff : 0x9333ea)
         : null;
       if (sinceLunge >= 0 && sinceLunge < CONTACT_LUNGE_MS) {
         const pose = contactLungePose(sinceLunge / CONTACT_LUNGE_MS);

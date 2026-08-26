@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3932',
+    items: [
+      '噛みつきの点滅を、溜めの間に2回光る形にまとめました(全体の長さは元どおりです)。',
+      '変異体(削岩型)の突きの予告を長くしました(約0.58秒→約0.75秒)。',
+    ],
+  },
+  {
     version: '0.25.3931',
     items: [
       'スラッシャー: 初撃が空振りでも2発目以降を振れるようになりました。',
