@@ -4536,13 +4536,17 @@ export const KILL_CORPSE_SQUASH_MS = 220;
  */
 export const corpseSquashNow = (
   e: { corpseUntil?: number }, now: number,
-): { sqX: number; sqY: number; alpha: number } => {
+): { sqX: number; sqY: number; alpha: number; tint: number | null } => {
   const until = e.corpseUntil ?? 0;
   const left = until - now;
-  if (until <= 0 || left >= KILL_CORPSE_SQUASH_MS) return { sqX: 1, sqY: 1, alpha: 1 };
+  if (until <= 0 || left >= KILL_CORPSE_SQUASH_MS) return { sqX: 1, sqY: 1, alpha: 1, tint: null };
   const t = Math.max(0, Math.min(1, 1 - left / KILL_CORPSE_SQUASH_MS));
   const k = 1 - (1 - t) * (1 - t); // ease-out
-  return { sqX: 1 + 0.45 * k, sqY: 1 - 0.85 * k, alpha: 1 - k };
+  // ★絵全体が青くなって消えていく(社長指示2026-08-26)。素の色(白tint)から青へ寄せながら薄くなる。
+  // 潰れ・フェードと**同じ k** で動かす=3つで1つの動きとして読める(別々の時間軸にしない)。
+  const ch = (from: number, to: number) => Math.round(from + (to - from) * k);
+  const tint = (ch(0xff, 0x5b) << 16) | (ch(0xff, 0x9d) << 8) | ch(0xff, 0xff);
+  return { sqX: 1 + 0.45 * k, sqY: 1 - 0.85 * k, alpha: 1 - k, tint };
 };
 
 /**
@@ -7114,12 +7118,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         knifeComboUntil: knifeCombo.until,
         // スキル スラッシャー: この近接が命中(slashAt有)したらチェーンを開始(step=0・0.5秒後にチェーンCD明け)。
         // 命中しなければ非アクティブ(チェーン無し)。以後の追撃はチェーンCD明けのタップで出す。
-        slasherChainReadyAt: hasSkill(state.player, 'slasher') && slashAt.length > 0
+        // ★v0.25.3931(社長指示2026-08-26「スラッシャーを空振りでも2発目以降振れるようにして」):
+        // 旧実装は **命中(slashAt有)した時だけ**チェーンを開いていた=空振りすると2発目が出せなかった。
+        // 前隙200msが入って「振ってから当たるまで」に間ができた今、初撃が外れるのは普通に起きるので、
+        // **命中を条件にしない**(スキルを持っていて振ったなら連撃に入れる)。
+        slasherChainReadyAt: hasSkill(state.player, 'slasher')
           ? state.realGameTime + SLASHER_CHAIN_CD_MS
           : 0,
         slasherStrikeStep: 0,
         // 追撃用に「初撃時点の射程」を記録(state.player は更新前=huntingCharged がまだ true なので溜め延長を含む)。
-        slasherReach: hasSkill(state.player, 'slasher') && slashAt.length > 0 ? huntingMeleeRadius(state.player) : 0,
+        slasherReach: hasSkill(state.player, 'slasher') ? huntingMeleeRadius(state.player) : 0,
       },
       projectiles: grenadesToDetonate.length > 0 || trapShoves.length > 0 || hasShieldShove
         ? state.projectiles.map(p => {

@@ -232,6 +232,12 @@ describe('★死体は潰れて消える(v0.25.3930)', () => {
     expect(mid.alpha).toBeLessThan(1);  // 薄くなる
     const end = corpseSquashNow({ corpseUntil: until }, until);
     expect(end.alpha).toBeCloseTo(0);   // 消え切る
+    // ★絵全体が青くなって消えていく(社長指示2026-08-26)。白(素の色)→青へ寄る。
+    expect(mid.tint).not.toBeNull();
+    expect(end.tint).toBe(0x5b9dff);    // 消え際は青
+    const r = (t: number) => (t >> 16) & 0xff, b2 = (t: number) => t & 0xff;
+    expect(r(mid.tint!)).toBeLessThan(0xff);      // 赤成分が抜けていく
+    expect(b2(mid.tint!)).toBe(0xff);             // 青成分は保たれる
   });
 
   it('慣性: 出だしが速く終わりでゆるむ(ease-out=落ちて叩きつけられる動き)', () => {
@@ -245,6 +251,6 @@ describe('★死体は潰れて消える(v0.25.3930)', () => {
 
   it('死体でない敵(corpseUntil なし)は一切変形しない', () => {
     const sq = corpseSquashNow({}, 10_000);
-    expect(sq).toEqual({ sqX: 1, sqY: 1, alpha: 1 });
+    expect(sq).toEqual({ sqX: 1, sqY: 1, alpha: 1, tint: null }); // tint=null=色に触らない
   });
 });

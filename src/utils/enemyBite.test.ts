@@ -4,7 +4,7 @@ import {
   BITE_DEFAULT, BITE_BY_TYPE, biteSpecFor, bitePhaseOf, biteProgress,
   biteLungeFrac, bitePointFrom, biteReachRect, isInBiteRect, isBiteSubject,
   biteWallRect, BITE_WALL_W, BITE_WALL_H, isBiteWallOpen, biteBodyOverlapsPlayer, canStartBite,
-  isBiteInterruptedByMove, isBodySlamNow, isBiteFrozen,
+  isBiteInterruptedByMove, isBodySlamNow, isBiteFrozen, biteLeadBlinkOn,
   BITE_BOSS_RECOVER_MS,
 } from './enemyBite';
 import type { Enemy } from '../types/game';
@@ -39,20 +39,23 @@ describe('噛みつきの台帳', () => {
   });
 });
 
-describe('噛みつきの区間(300ms溜め → 200ms噛み)', () => {
+describe('噛みつきの区間(予告400ms → 300ms溜め → 200ms噛み)', () => {
   it('未発火は none / 溜め / 噛み / 終わったら none(境界を固定)', () => {
     expect(bitePhaseOf(at(undefined), 1000)).toBe('none');
     expect(bitePhaseOf(at(0), 1000)).toBe('none');
-    expect(bitePhaseOf(at(1000), 1000)).toBe('windup');   // 0ms
-    expect(bitePhaseOf(at(1000), 1299)).toBe('windup');   // 299ms
-    expect(bitePhaseOf(at(1000), 1300)).toBe('bite');     // 300ms=噛みへ
-    expect(bitePhaseOf(at(1000), 1499)).toBe('bite');     // 499ms
-    expect(bitePhaseOf(at(1000), 1500)).toBe('none');     // 500ms=終了
+    // ★v0.25.3931: 台本の頭に**予告(lead=400ms)**が入った。予告→溜め300→噛み200。
+    expect(bitePhaseOf(at(1000), 1000)).toBe('lead');     // 0ms=予告(動かず点滅だけ)
+    expect(bitePhaseOf(at(1000), 1399)).toBe('lead');     // 399ms
+    expect(bitePhaseOf(at(1000), 1400)).toBe('windup');   // 400ms=モーション開始
+    expect(bitePhaseOf(at(1000), 1699)).toBe('windup');   // 699ms
+    expect(bitePhaseOf(at(1000), 1700)).toBe('bite');     // 700ms=噛みへ
+    expect(bitePhaseOf(at(1000), 1899)).toBe('bite');     // 899ms
+    expect(bitePhaseOf(at(1000), 1900)).toBe('none');     // 900ms=終了
   });
 
   it('進捗は0..1にクランプされる(赤い点滅と絵の2拍が同じ値を見る)', () => {
     expect(biteProgress(at(1000), 1000)).toBeCloseTo(0);
-    expect(biteProgress(at(1000), 1250)).toBeCloseTo(0.5);
+    expect(biteProgress(at(1000), 1450)).toBeCloseTo(0.5); // 通し900msの半分
     expect(biteProgress(at(1000), 9999)).toBeCloseTo(1);
     expect(biteProgress(at(undefined), 1000)).toBe(0);
   });
@@ -61,10 +64,11 @@ describe('噛みつきの区間(300ms溜め → 200ms噛み)', () => {
 describe('踏み込みの見た目(★プレイヤーの踏み込みとは逆の形)', () => {
   it('ゆっくり出て、噛む瞬間に伸び切る(溜め終わりで半分・最後に1)', () => {
     expect(biteLungeFrac(at(1000), 1000)).toBeCloseTo(0);
+    expect(biteLungeFrac(at(1000), 1399)).toBeCloseTo(0); // ★予告中は1pxも動かない
     // 溜めは ease-in: 中間(150ms)ではまだ 1/8 しか出ていない=「じわっと」
-    expect(biteLungeFrac(at(1000), 1150)).toBeLessThan(0.2);
-    expect(biteLungeFrac(at(1000), 1300)).toBeCloseTo(0.5); // 溜め終わり=半分
-    expect(biteLungeFrac(at(1000), 1500)).toBeCloseTo(1);   // 噛み切って伸び切る
+    expect(biteLungeFrac(at(1000), 1550)).toBeLessThan(0.2);
+    expect(biteLungeFrac(at(1000), 1700)).toBeCloseTo(0.5); // 溜め終わり=半分
+    expect(biteLungeFrac(at(1000), 1900)).toBeCloseTo(1);   // 噛み切って伸び切る
   });
 
   it('★単調増加(引っ込んでから出る、のような不自然な動きをしない)', () => {
@@ -231,11 +235,13 @@ describe('★壁の箱と攻撃の箱を分ける(v0.25.3913)', () => {
 describe('★噛みつきの台本(v0.25.3914)', () => {
   const zom = (biteAt?: number) => ({ type: 'zombie' as const, biteAt });
 
-  it('台本の間は壁が開く(=覆いかぶされる)。終われば壁は戻る', () => {
+  it('★動いている間だけ壁が開く(=覆いかぶされる)。予告中と終了後は壁のまま', () => {
+    // v0.25.3931: 台本の頭に予告(lead=400ms)が入った。予告中は敵が動かないので壁は閉じたまま。
     const e = zom(1000);
-    expect(isBiteWallOpen(e, 1000)).toBe(true);   // 溜め開始
-    expect(isBiteWallOpen(e, 1400)).toBe(true);   // 噛みの最中
-    expect(isBiteWallOpen(e, 1500)).toBe(false);  // 台本終了=壁が戻る
+    expect(isBiteWallOpen(e, 1100)).toBe(false);  // 予告(動かない)
+    expect(isBiteWallOpen(e, 1500)).toBe(true);   // 溜め=踏み込み開始
+    expect(isBiteWallOpen(e, 1800)).toBe(true);   // 噛みの最中
+    expect(isBiteWallOpen(e, 1900)).toBe(false);  // 台本終了=壁が戻る
     expect(isBiteWallOpen(zom(undefined), 1000)).toBe(false); // 構えていない時は常に壁
   });
 
@@ -249,9 +255,9 @@ describe('★噛みつきの台本(v0.25.3914)', () => {
   it('踏み込みは溜めでじわり→噛みで伸び切る(慣性・CLAUDE.md「加減速のない動きは禁止」)', () => {
     const e = zom(1000);                                 // biteAt=0 は「構えていない」の意味なので使わない
     expect(biteLungeFrac(e, 1000)).toBe(0);
-    expect(biteLungeFrac(e, 1150)).toBeLessThan(0.25);   // 溜め中盤=まだ出ていない(ease-in)
-    expect(biteLungeFrac(e, 1300)).toBeCloseTo(0.5);     // 溜め終わり=半分
-    expect(biteLungeFrac(e, 1500)).toBe(1);              // 噛みの瞬間=伸び切る
+    expect(biteLungeFrac(e, 1550)).toBeLessThan(0.25);   // 溜め中盤=まだ出ていない(ease-in)
+    expect(biteLungeFrac(e, 1700)).toBeCloseTo(0.5);     // 溜め終わり=半分
+    expect(biteLungeFrac(e, 1900)).toBe(1);              // 噛みの瞬間=伸び切る
   });
 });
 
@@ -387,5 +393,27 @@ describe('★止まっている敵は噛まない(構え始めと中断で同じ
       liftUntil: undefined, aiPhase: undefined, bossState: undefined };
     expect(canStartBite({ ...base, dormant: true }, 1000)).toBe(false);
     expect(canStartBite({ ...base, dormant: false }, 1000)).toBe(true);
+  });
+});
+
+// ★社長指示2026-08-26「赤点滅をモーション時間の手前に時間足す形で、2回明るい点滅」。
+describe('★予告(lead)は動かず2回はっきり光る(v0.25.3931)', () => {
+  const z = { type: 'zombie' as const, biteAt: 1000 };
+  it('明→暗→明→暗 の2回(尺を2等分し各回の前半が明側)', () => {
+    const lead = BITE_DEFAULT.leadMs;               // 400ms
+    expect(biteLeadBlinkOn(z, 1000 + lead * 0.10)).toBe(true);  // 1回目 明
+    expect(biteLeadBlinkOn(z, 1000 + lead * 0.40)).toBe(false); // 1回目 暗
+    expect(biteLeadBlinkOn(z, 1000 + lead * 0.60)).toBe(true);  // 2回目 明
+    expect(biteLeadBlinkOn(z, 1000 + lead * 0.90)).toBe(false); // 2回目 暗
+  });
+  it('★モーションに入ったら点滅は止む(動きだけで読ませる)', () => {
+    const lead = BITE_DEFAULT.leadMs;
+    expect(biteLeadBlinkOn(z, 1000 + lead + 10)).toBe(false);
+    expect(biteLeadBlinkOn(z, 1000 + lead + 400)).toBe(false);
+  });
+  it('★予告中は壁を開けない(動かないので通す必要がない)', () => {
+    expect(isBiteWallOpen(z, 1000 + 100)).toBe(false);                       // lead
+    expect(isBiteWallOpen(z, 1000 + BITE_DEFAULT.leadMs + 100)).toBe(true);  // windup
+    expect(isBiteWallOpen(z, 1000 + 5000)).toBe(false);                      // 終了後
   });
 });

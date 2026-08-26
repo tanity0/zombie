@@ -22,6 +22,12 @@ import { isTrueBossType } from './enemyUtils';
 import { isPassThroughPhase, isPassThroughBossState } from './enemyMotion';
 
 export interface BiteSpec {
+  /**
+   * ★予告(社長指示2026-08-26「赤点滅をモーション時間の手前に時間足す形で、2回明るい点滅」)。
+   * **モーション(溜め+噛み)の手前に足す時間**。この間、敵は**動かず点滅だけ**する。
+   * 点滅の回数はこの尺を2等分して2回(下の `biteLeadBlinkOn`)。
+   */
+  leadMs: number;
   /** 発火と判定に共通で使う半径(px)。★2つに割らないこと。 */
   rangePx: number;
   /** 溜め(踏み込みながら反り返る)ms。 */
@@ -44,6 +50,7 @@ export interface BiteSpec {
 /** 既定値(叩き台・社長指定)。敵ごとの違いは下の上書き表にだけ書く。 */
 export const BITE_DEFAULT: BiteSpec = {
   rangePx: 30,
+  leadMs: 400,   // ★予告=2回の明るい点滅(社長指示2026-08-26)。この間は動かない。
   windupMs: 300,
   biteMs: 200,
   lungePx: 30,
@@ -77,7 +84,7 @@ export const biteSpecFor = (type: EnemyType): BiteSpec => ({
   ...(BITE_BY_TYPE[type] ?? {}),
 });
 
-export type BitePhase = 'none' | 'windup' | 'bite';
+export type BitePhase = 'none' | 'lead' | 'windup' | 'bite';
 
 /**
  * 今どの区間か。`biteAt` は gameTime 基準(敵側の他のタイマー=rootUntil/stunUntil と同じ系)。
@@ -88,8 +95,9 @@ export const bitePhaseOf = (enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: num
   const spec = biteSpecFor(enemy.type);
   const t = gameTime - enemy.biteAt;
   if (t < 0) return 'none';
-  if (t < spec.windupMs) return 'windup';
-  if (t < spec.windupMs + spec.biteMs) return 'bite';
+  if (t < spec.leadMs) return 'lead';                                   // 動かず点滅だけ
+  if (t < spec.leadMs + spec.windupMs) return 'windup';
+  if (t < spec.leadMs + spec.windupMs + spec.biteMs) return 'bite';
   return 'none';
 };
 
@@ -97,7 +105,7 @@ export const bitePhaseOf = (enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: num
 export const biteProgress = (enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number): number => {
   if (enemy.biteAt === undefined || enemy.biteAt <= 0) return 0;
   const spec = biteSpecFor(enemy.type);
-  const total = spec.windupMs + spec.biteMs;
+  const total = spec.leadMs + spec.windupMs + spec.biteMs;
   return Math.max(0, Math.min(1, (gameTime - enemy.biteAt) / total));
 };
 
@@ -110,7 +118,8 @@ export const biteProgress = (enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: nu
 export const biteLungeFrac = (enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number): number => {
   const spec = biteSpecFor(enemy.type);
   if (enemy.biteAt === undefined || enemy.biteAt <= 0) return 0;
-  const t = gameTime - enemy.biteAt;
+  // ★予告(leadMs)の間は**動かない**。踏み込みはモーションに入ってから始まる。
+  const t = gameTime - enemy.biteAt - spec.leadMs;
   if (t <= 0) return 0;
   if (t >= spec.windupMs + spec.biteMs) return 1;
   if (t < spec.windupMs) {
@@ -362,7 +371,7 @@ export const isBiteResolveDue = (
 ): boolean => {
   if (enemy.biteAt === undefined || enemy.biteAt <= 0) return false;
   const spec = biteSpecFor(enemy.type);
-  return gameTime >= enemy.biteAt + spec.windupMs + spec.biteMs;
+  return gameTime >= enemy.biteAt + spec.leadMs + spec.windupMs + spec.biteMs;
 };
 
 /**
@@ -392,7 +401,25 @@ export const biteBodyOverlapsPlayer = (
  */
 export const isBiteWallOpen = (
   enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number,
-): boolean => bitePhaseOf(enemy, gameTime) !== 'none';
+): boolean => {
+  const ph = bitePhaseOf(enemy, gameTime);
+  return ph === 'windup' || ph === 'bite'; // ★予告(lead)中は動かないので壁は閉じたまま
+};
+
+/**
+ * ★予告(lead)の点滅が今「明るい側」か(社長指示2026-08-26「2回明るい点滅」)。
+ * 尺を2等分して各回の前半55%を明側にする=**はっきり2回光る**。
+ * 予告以外の区間(溜め・噛み・非発動)では常に false=**点滅はモーションの手前だけ**。
+ */
+export const biteLeadBlinkOn = (
+  enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number,
+): boolean => {
+  if (bitePhaseOf(enemy, gameTime) !== 'lead') return false;
+  const spec = biteSpecFor(enemy.type);
+  const t = gameTime - (enemy.biteAt ?? 0);
+  const cyc = Math.max(1, spec.leadMs / 2);
+  return (t % cyc) < cyc * 0.55;
+};
 
 /** 予告した円の中にプレイヤーが居るか(掟2: 敵の実位置は見ない)。 */
 export const isInBiteCircle = (
