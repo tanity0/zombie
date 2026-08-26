@@ -42,7 +42,7 @@ describe('既定値=移設前の実装値(テーブル化で挙動が1つも変�
     expect(d.charge).toEqual({ windup: 600, maxMs: 2800, speedMult: 9, reach: 420, recover: 900 });
     expect(d.whip360).toEqual({ windup: 750, active: 420, radius: 170, damage: 12 });
     expect(d.combo).toEqual({
-      range: 130, halfWidth: 28, windup: [480, 480, 900], damage: [14, 14, 20],
+      range: 130, halfWidth: 28, windup: [900, 500, 900], damage: [14, 14, 20], // 社長指示2026-08-26「900、500、900で」
       stepRecover: 220, finishRecover: 1400, kb: { distPx: 70, ms: 220 },
     });
     expect(d.snipe).toEqual({ windup: 1100, active: 200, range: 900, halfWidth: 40, damage: 22, recover: 900 });

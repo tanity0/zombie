@@ -122,7 +122,7 @@ export const BOUNTY_MELEE_TUNING: BountyMeleeTuning = {
   combo: {
     range: 130,
     halfWidth: 28,
-    windup: [480, 480, 900],
+    windup: [900, 500, 900], // 社長指示2026-08-26「3連コンボ、900、500、900で」(旧: 480/480/900)
     damage: [14, 14, 20],
     stepRecover: 220,
     finishRecover: withRecoverFloor(1400),

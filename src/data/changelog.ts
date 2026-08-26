@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3961',
+    items: [
+      '賞金首「馬乗り」の3連コンボの予告時間を調整しました(1発目と3発目のタメを長く: 900/500/900ms)。',
+    ],
+  },
+  {
     version: '0.25.3960',
     items: [
       'パンプキンの着地後の硬直を2秒にしました(着地を狙って反撃できます)。',

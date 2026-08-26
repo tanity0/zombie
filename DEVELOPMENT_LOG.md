@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.3961 — 馬乗りの3連コンボ予告を900/500/900に(社長指示) 【2026-08-26 20:51 JST】
+- **指示**: 「3連コンボ、900、500、900で。」
+- **変更**: `src/utils/bountyScript.ts` BOUNTY_MELEE_TUNING.combo.windup [480,480,900]→**[900,500,900]**。
+  段間(stepRecover 220)・締め硬直(1400)・ダメージ([14,14,20])は不変。テストの期待値も更新。
+- **検証**: typecheck 0 / lint 0 errors / bountyScript+bountyTick+counterReach 168 passed。
+
 ## v0.25.3960 — 社長指示3件: パンプキン着地硬直2秒/自転車の突進後1秒硬直/賞金首マーク常時表示 【2026-08-26 20:44 JST】
 - **パンプキン着地硬直2秒**(指示「パンプキン、着地後硬直2秒を追加」): `pumpkinRecoverMs(type)` を新設し、
   **pumpkin本種のみ2000ms**(従来は汎用 PUMPKIN_RECOVER_MS=1000)。ハンター/ラボゾンビ3等の他の
