@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3967',
+    items: ['ゲーム内容の変更はありません(調査用の?kblog=1ログの表示を修正: 一時停止メニューの上に表示され、レベルアップ等では出なくなりました)。'],
+  },
+  {
     version: '0.25.3966',
     items: ['ゲーム内容の変更はありません(調査用の?kblog=1ログは一時停止中だけ表示するようにしました。プレイの邪魔になっていたため)。'],
   },
