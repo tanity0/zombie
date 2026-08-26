@@ -316,7 +316,10 @@ export const isCounterOpportunityNow = (
 
 export const shouldSkipBossContactParry = (
   enemyType: string, bossState: string | undefined,
-): boolean => enemyType === 'thor' && bossState === 'thor-dash-move';
+): boolean => (enemyType === 'thor' && bossState === 'thor-dash-move')
+  // ★v0.25.3949: 賞金首の突進(bm-charge)も同型——bountyTick側のフル報酬カウンター(ACTIVEリスト)に
+  // 委ね、受け流しに先取りさせない(賞金首が受け流し対象に入った同版の対)。
+  || bossState === 'bm-charge';
 
 /** 宣言を引く(未宣言=従来どおり体の重なり)。**新しい技は必ず表へ足す**(テストが落ちて教える)。 */
 export const counterReachKindFor = (key: string): CounterReachKind => COUNTER_REACH_DECL[key] ?? 'body';

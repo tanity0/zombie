@@ -82,6 +82,47 @@ describe('ボス接触受け流し: トールの突進の走行中(thor-dash-mov
     expect(useGameStore.getState().player.health).toBe(hp0);
   });
 
+  // ★社長報告2026-08-26「鋏変異のジャンプ攻撃がどうしてもカウンターできない」(v0.25.3949):
+  // 賞金首の体当たり技(leap-air)も受け流しの対象。飛んでくる体に窓を合わせれば無傷+体幹削り+拘束。
+  it('★鋏の飛び掛かり滞空(leap-air)=賞金首でも受け流しが立つ(v0.25.3949)', () => {
+    const e = spawnEnemyAt('bounty-balance', ORIGIN, ORIGIN, START_GT);
+    e.bossState = 'leap-air'; // BODY_SLAM_BOSS_STATES=体を投げ出している技
+    e.bossStateUntil = START_GT + 1000;
+    useGameStore.setState(s2 => ({
+      enemies: [e], gameTime: START_GT,
+      player: {
+        ...s2.player,
+        x: e.x + e.width / 2 - s2.player.width / 2,
+        y: e.y + e.height / 2 - s2.player.height / 2,
+        health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
+        counterWindowEnd: Date.now() + 5000,
+      },
+    }));
+    applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
+    const boss = useGameStore.getState().enemies[0];
+    expect(boss.rootUntil).toBe(START_GT + 900);
+    expect(useGameStore.getState().player.invulnerable).toBe(true);
+  });
+
+  it('★賞金首の突進(bm-charge)は受け流しに先取りさせない=bountyTick側のフル報酬カウンターへ委ねる', () => {
+    const e = spawnEnemyAt('bounty-melee', ORIGIN, ORIGIN, START_GT);
+    e.bossState = 'bm-charge';
+    e.bossStateUntil = START_GT + 1000;
+    useGameStore.setState(s2 => ({
+      enemies: [e], gameTime: START_GT,
+      player: {
+        ...s2.player,
+        x: e.x + e.width / 2 - s2.player.width / 2,
+        y: e.y + e.height / 2 - s2.player.height / 2,
+        health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
+        counterWindowEnd: Date.now() + 5000,
+      },
+    }));
+    applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
+    const boss = useGameStore.getState().enemies[0];
+    expect(boss.rootUntil).toBeUndefined(); // 受け流しは立たない(横取りしない)
+  });
+
   it('★体当たり技の最中(dash=貫通表)は接触判定が生きている=受け流しが立つ(憲法どおり残る側)', () => {
     // トールは専用州の早期returnがあるため、汎用 'dash' を持つ裏ボス(mimir)で確認する。
     const e = spawnEnemyAt('mimir', ORIGIN, ORIGIN, START_GT);

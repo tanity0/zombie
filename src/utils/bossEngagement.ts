@@ -51,6 +51,9 @@ export const isEngageableBoss = (type: EnemyType): boolean => ENGAGEABLE_BOSS_TY
  * データを相手として立てた実験枠」なので、ここへ入れると守護霊召喚(=守護霊 vs 守護霊)・撃破タイム・
  * ソロ/同行台帳・オンラインのスロット列に、本編の相手ではないものが混ざる。
  */
+/** ★開幕の間合い調整ターン(社長指示2026-08-26)。出会ってからこの時間は技を出さない(移動=chaseは続く)。 */
+export const BOSS_OPENING_HOLD_MS = 3000;
+
 export const isGhostEligibleBoss = (type: EnemyType): boolean =>
   ENGAGEABLE_BOSS_TYPES.has(type) && !isBountyType(type) && !isGuardianPhantom(type);
 

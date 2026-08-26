@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOSS_COMBAT_PROFILES, bossNeutralDelayMs, bossRebuildIdForEnemy } from './bossRebuild';
+import { BOSS_COMBAT_PROFILES, bossNeutralDelayMs, bossRebuildIdForEnemy, BOSS_NEUTRAL_EXTRA_MS } from './bossRebuild';
 
 describe('boss rebuild contract', () => {
   it('stage-1城ボスを対象に含めず、再構築対象16体を一元管理する', () => {
@@ -19,10 +19,11 @@ describe('boss rebuild contract', () => {
     }
   });
 
-  it('中立時間はフェーズ別の範囲内で、後半ほど長く戻らない', () => {
-    expect(bossNeutralDelayMs('acrasiel', 1, () => 0)).toBe(750);
-    expect(bossNeutralDelayMs('acrasiel', 2, () => 1)).toBe(850);
-    expect(bossNeutralDelayMs('acrasiel', 99, () => 0.5)).toBe(550);
+  it('中立時間はフェーズ別の範囲内+全体ノブ(BOSS_NEUTRAL_EXTRA_MS)で、後半ほど長く戻らない', () => {
+    // ★社長指示2026-08-26「技の間隔をあける」(v0.25.3949): 台帳全帯に +BOSS_NEUTRAL_EXTRA_MS(600)。
+    expect(bossNeutralDelayMs('acrasiel', 1, () => 0)).toBe(BOSS_NEUTRAL_EXTRA_MS + 750);
+    expect(bossNeutralDelayMs('acrasiel', 2, () => 1)).toBe(BOSS_NEUTRAL_EXTRA_MS + 850);
+    expect(bossNeutralDelayMs('acrasiel', 99, () => 0.5)).toBe(BOSS_NEUTRAL_EXTRA_MS + 550);
     for (const profile of Object.values(BOSS_COMBAT_PROFILES)) {
       expect(profile.neutralMs.every((b, i, a) => i === 0 || b.max <= a[i - 1].max)).toBe(true);
     }

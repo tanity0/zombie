@@ -28,7 +28,7 @@ import type { Enemy, Player } from '../types/game';
 import { GLOW_R_L } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
-  isBossType, isHiddenBoss, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile, isCorpse,
+  isBossType, isHiddenBoss, isBountyType, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile, isCorpse,
   isGuardianPhantom, isBiteExemptType } from './enemyUtils';
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
 import { PHILL_COUNTER_RECOVER_MS } from './phillScript'; // §10-15#2: フィル後追い分岐の硬直長
@@ -1249,7 +1249,14 @@ export const applyContactDamage = (
     // ★カウンター憲法(v0.25.3947): 受け流しは**接触ダメージが生きている瞬間**(体をぶつけに行く技の
     // 最中=isBiteSubjectがfalse)だけ。平時の追跡中の接触は攻撃判定ゼロ=成立しない
     // (v2946裁定「追跡中の体当たりは受け流し」は本憲法が上書き。isHiddenBossは裏4+天使6+idol+phillの12体)。
-    if (BOSS_CONTACT_PARRY_ENABLED && counterActiveNow && !bossParryRooted && !thorDashRunNow && isHiddenBoss(enemy.type)
+    // ★社長報告2026-08-26「鋏変異のジャンプ攻撃がどうしてもカウンターできない」(v0.25.3949):
+    // 賞金首も体当たり技の最中(leap-air等=接触判定が生きている)は受け流しの対象へ。
+    // 憲法改定で溜め中の着地円成立が消えた後、鋏の飛び掛かりは「飛んでくる体に触れて窓を閉じられ、
+    // 着地爆風のパリィも間に合わない」構造になっていた。飛行中の接触を受け流し(無傷+体幹削り+拘束)へ。
+    // bm-charge(突進)は bountyTick 側にフル報酬のカウンターがある=受け流しに先取りさせない
+    // (shouldSkipBossContactParry・トール突進v3785と同型)。
+    if (BOSS_CONTACT_PARRY_ENABLED && counterActiveNow && !bossParryRooted && !thorDashRunNow
+      && (isHiddenBoss(enemy.type) || isBountyType(enemy.type))
       && !isBiteSubject(enemy, isBiteExemptType)) {
       // v0.25.2954(社長指示「体当たりカウンターしたら少しノックバックしてから硬直にして」):
       // 押す向き=プレイヤー→ボス(離れる方向)。ゼロ距離の退避は上向き。

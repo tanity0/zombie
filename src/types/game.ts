@@ -978,7 +978,12 @@ export interface Enemy {
   // 描画はtelegraphProgress01(now, bossWindupStartAt, bossStateUntil)で導出する(*_VIS複製定数を
   // 作らない・v6 C-1の掟)。固定長のwindupはbossStateUntilだけで足りるため未設定のままでよい。
   bossWindupStartAt?: number;
-  bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
+  bossNextActionAt?: number;
+  // ★開幕の間合い調整ターン(社長指示2026-08-26「ボスと出会ってすぐに技出すの禁止。最初は3秒くらい
+  // 自分の得意な間合いに調整しにいくターン」・v0.25.3949): 交戦の立ち上がり(directorTick)で1回だけ
+  // 打刻し、bossNextActionAt / aiReadyAt(城ボス)を +BOSS_OPENING_HOLD_MS(3000)へ押し出す。
+  // undefined=まだ出会っていない。個体ごとに一度きり(ヒステリシス再進入では繰り返さない)。
+  bossOpeningHoldAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   // 剣を振るボスの「踏み込み」(社長指示v0.25.3524)。判定はロック済みで動かないまま、**本体だけ**を
   // 判定の手前まで慣性つきで詰める(=剣の絵が判定に届くようにする。難易度は変えない)。
   // 計画は技の溜めの終盤で1回だけ立て、以後は時計から位置を引く。**持ち時間で自然に切れる**ので、

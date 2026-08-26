@@ -41,7 +41,7 @@ import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDir
 import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
-import { bossEngagedNow, bossEngagementDistancePx, bossRelaxWithTail, engagedBossSlotKeys, isEngageableBoss, isGhostEligibleBoss } from './bossEngagement';
+import { bossEngagedNow, bossEngagementDistancePx, bossRelaxWithTail, engagedBossSlotKeys, isEngageableBoss, isGhostEligibleBoss, BOSS_OPENING_HOLD_MS } from './bossEngagement';
 import { markBossesEncountered } from './bossEncounter'; // BOSS_MAKER.md §20-5: ボスラッシュの解放記録
 import {
   tickPlayerTraits, loadPlayerProfile, effectiveGhostProfile, bossStyleSlotKey,
@@ -804,9 +804,36 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   // スロット単位に適用した純関数(engagedBossSlotKeys)。
   {
     const stageIdNow = getSelectedStageId();
+    const prevEngagedKeys = engagedSlotKeysPrev;
     engagedSlotKeysPrev = engagedBossSlotKeys(
       state.enemies, pcx, pcy, engagedSlotKeysPrev, t => bossStyleSlotKey(t, stageIdNow),
     );
+    // ★開幕の間合い調整ターン(社長指示2026-08-26「ボスと出会ってすぐに技出すの禁止。最初は3秒くらい
+    // 自分の得意な間合いに調整しにいくターン」): 交戦の立ち上がり(このスロット集合の新規追加)で、
+    // そのスロットに属するボス個体の技抽選を BOSS_OPENING_HOLD_MS(3秒)先へ押し出す。
+    // - bossNextActionAt = 賞金首/裏ボス/天使/フィル/偶像の技抽選ゲート
+    // - aiReadyAt = 城ボス(giantbat)の技抽選ゲート(v3032・bossNextActionAtは読まれない)
+    // 移動(chase=間合い管理)は止めない=「得意な間合いへ調整しにいく」は各自の追跡挙動がそのまま担う。
+    // 個体ごとに一度きり(bossOpeningHoldAt打刻)。ヒステリシス再進入では繰り返さない。
+    {
+      const risen = [...engagedSlotKeysPrev].filter(k => !prevEngagedKeys.has(k));
+      if (risen.length > 0) {
+        const risenSet = new Set(risen);
+        useGameStore.setState(st2 => ({
+          enemies: st2.enemies.map(e => {
+            if (e.bossOpeningHoldAt !== undefined || e.dormant === true) return e;
+            if (!isEngageableBoss(e.type)) return e;
+            if (!risenSet.has(bossStyleSlotKey(e.type, stageIdNow))) return e;
+            return {
+              ...e,
+              bossOpeningHoldAt: gameTime,
+              bossNextActionAt: Math.max(e.bossNextActionAt ?? 0, gameTime + BOSS_OPENING_HOLD_MS),
+              ...(e.type === 'giantbat' ? { aiReadyAt: Math.max(e.aiReadyAt ?? 0, gameTime + BOSS_OPENING_HOLD_MS) } : {}),
+            };
+          }),
+        }));
+      }
+    }
     tickBossClocks(engagedSlotKeysPrev, gameTime);
     // ボスラッシュの解放記録(BOSS_MAKER.md §20-5・社長仕様「一度ステージで出会ったことがあれば解放」)。
     // ★ここが**全ボスを1箇所で拾える唯一の合流点**。`engagedBossSlotKeys` は休眠(dormant)を除外し
@@ -849,9 +876,10 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     return; // 同時1体(既に居るなら新規召喚はしない)
   }
 
-  // §6.38 v6 B-2(賞金首): 守護霊召喚の対象からは賞金首を除く(倒す義務のない相手なので週間対象に混ぜない)。
+  // ★社長指示2026-08-26「賞金首も出して守護霊」: **召喚だけ**賞金首を対象に加える(B-2裁定の更新)。
+  // 台帳(ソロ/週間)・計測の除外(isGhostEligibleBoss)は据え置き=倒す義務のない相手を記録に混ぜない、は不変。
   const boss = state.enemies.find(e =>
-    isGhostEligibleBoss(e.type) && e.dormant !== true
+    (isGhostEligibleBoss(e.type) || isBountyType(e.type)) && e.dormant !== true
     && Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy)
       <= bossEngagementDistancePx(e.type, false, e.isStoryBoss === true));
   if (!boss) return;
