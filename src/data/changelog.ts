@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.3945', items: ['ゲーム内容の変更はありません(カウンター調査の記述を訂正)'] },
   { version: '0.25.3944', items: ['ゲーム内容の変更はありません(カウンター成立条件の調査結果を設計書へ記録)'] },
   {
     version: '0.25.3943',
