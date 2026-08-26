@@ -4541,17 +4541,15 @@ export const KILL_CORPSE_SQUASH_MS = 220;
  */
 export const corpseSquashNow = (
   e: { corpseUntil?: number }, now: number,
-): { sqX: number; sqY: number; alpha: number; tint: number | null } => {
+): { sqX: number; sqY: number; alpha: number } => {
+  // ★青く染めるのは**やめた**(社長裁定2026-08-26「敵倒した時の青くなるの、やはりやめる」)。
+  // 残すのは**潰れ+フェード**だけ(v0.25.3930の形)。色には一切触らない。
   const until = e.corpseUntil ?? 0;
   const left = until - now;
-  if (until <= 0 || left >= KILL_CORPSE_SQUASH_MS) return { sqX: 1, sqY: 1, alpha: 1, tint: null };
+  if (until <= 0 || left >= KILL_CORPSE_SQUASH_MS) return { sqX: 1, sqY: 1, alpha: 1 };
   const t = Math.max(0, Math.min(1, 1 - left / KILL_CORPSE_SQUASH_MS));
   const k = 1 - (1 - t) * (1 - t); // ease-out
-  // ★絵全体が青くなって消えていく(社長指示2026-08-26)。素の色(白tint)から青へ寄せながら薄くなる。
-  // 潰れ・フェードと**同じ k** で動かす=3つで1つの動きとして読める(別々の時間軸にしない)。
-  const ch = (from: number, to: number) => Math.round(from + (to - from) * k);
-  const tint = (ch(0xff, 0x5b) << 16) | (ch(0xff, 0x9d) << 8) | ch(0xff, 0xff);
-  return { sqX: 1 + 0.45 * k, sqY: 1 - 0.85 * k, alpha: 1 - k, tint };
+  return { sqX: 1 + 0.45 * k, sqY: 1 - 0.85 * k, alpha: 1 - k };
 };
 
 /**

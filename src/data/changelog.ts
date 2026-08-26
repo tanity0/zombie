@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3933',
+    items: [
+      '倒した敵が青くなるのをやめました(潰れて消える動きはそのままです)。',
+      '動作が重くなっていたのを軽くしました(倒した敵の影の計算をやめました)。',
+    ],
+  },
+  {
     version: '0.25.3932',
     items: [
       '噛みつきの点滅を、溜めの間に2回光る形にまとめました(全体の長さは元どおりです)。',

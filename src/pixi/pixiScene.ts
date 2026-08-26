@@ -166,7 +166,10 @@ import {
 // 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
 const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(巨大ボス遠距離を含む)を基準にする
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
-import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType, isPumpkinTier } from '../utils/enemyUtils';
+import {
+  isCorpse, // ★死体は投影影を落とさない(v0.25.3933)
+  getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType, isPumpkinTier,
+} from '../utils/enemyUtils';
 import {
   BOUNTY_DEPART_FADE_MS,
   // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15): 角度・タイミングは判定と同じ純関数から導く。
@@ -9972,6 +9975,12 @@ export class PixiScene {
         1.12
       );
       for (const enemy of enemies) {
+        // ★死体は投影影を落とさない(社長報告2026-08-26「ゲーム重くなったかも」・v0.25.3933)。
+        // CLAUDE.md「描画コストの実測値」より、このゲームで**高いのは強glowが落とす投影影だけ**
+        // (強glow1個ごとに世界中のアクターを走査して per-frame で描き直す)。ここに**死体が
+        // 混ざったまま**で、しかも v0.25.3930 で死体の寿命を 280ms → 500ms(**1.8倍**)にしたので、
+        // キルが続く場面ほど影を落とすアクターが増えていた。死体に影は要らない(消えゆくもの)。
+        if (isCorpse(enemy)) continue;
         const box = enemyFootBox(enemy);
         // PACING_PUZZLE.md §9-7#1(pixiSceneの影): driller はpumpkinと同格。
         const bossWeight = enemy.type === 'reaper' || enemy.type === 'giantbat' || isPumpkinTier(enemy.type)
@@ -15406,9 +15415,6 @@ export class PixiScene {
       // ★噛みつきの赤点滅は**最後に上書き**する(宿敵の金・レア色・幻影のダークより優先)。
       // 「今から噛む」は生死に関わる情報なので、見た目の個性より読めることを優先する。
       if (biteTint !== null) view.sprite.tint = biteTint;
-      // ★死体は最後に**青へ寄せて**消える(社長指示2026-08-26「絵全体が青くなって消えていく」)。
-      // 名前付き/レア/噛みつきのどのtintより**後**で上書きする=死体になった瞬間から色の主導権はこちら。
-      if (corpseSq.tint !== null) view.sprite.tint = corpseSq.tint;
     } else {
       view.sprite.skew.x = 0;
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
