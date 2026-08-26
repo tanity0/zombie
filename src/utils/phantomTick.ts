@@ -60,6 +60,7 @@ import { actorBuildFor } from './ghostBuild';
 import { getPhantomIdentity, phantomDisplayLabel, phantomClassId } from './phantomIdentity'; // SAME_ARENA O-5: その回の人格 // SAME_ARENA: 記録どおりの武器を守護霊と同じ道具で引く
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from './phantomScript';
 import { isTrapDebuffed, TRAP_ROOT_CRIT_BONUS } from './trapDebuff';
+import { critDecayOnHit } from './critDecay'; // ★§13-3e クリ減衰(SAME_ARENA対称)
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
 export const GUARDIAN_PHANTOM_TYPE: EnemyType = 'guardian-phantom';
@@ -619,7 +620,9 @@ const firePhantomShot = (
   // ビルドが無ければ従来どおり「武器の素のクリ率 × CRIT_DAMAGE_MULT・倍率1」=1bit不変。
   // 弾の見た目は変えない(全ボス共通の赤い二重丸=CLAUDE.mdの弾の文法)。
   const m = phantomAtkMults(phantom.id, gun, newGameTime);
-  const crit = rand() < m.critChance;
+  // ★§13-3e クリ減衰(社長裁定2026-08-26・SAME_ARENA対称): 幻影の銃もプレイヤーと同じ減衰を受ける
+  // (相手=プレイヤー1人・武器を持ち替えれば戻る)。発射時ロールなので時刻は発射時で近似。
+  const crit = rand() < critDecayOnHit(`gp:${phantom.id}`, gun.key ?? 'gp-gun', newGameTime, m.critChance);
   st.addProjectile(createEnemyProjectile(
     phantom, p, pcx, pcy, bcx, bcy,
     // research/GROWTH.md v4: 幻影の銃にも育成の攻撃力を掛ける(スポーン時に焼いた倍率)。

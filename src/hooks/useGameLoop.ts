@@ -147,6 +147,7 @@ import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty, projectileHitCritChance } from '../utils/critPenalty';
 import { softCapCritChance, orCombineChance } from '../utils/critSoftCap';
+import { critDecayOnHit } from '../utils/critDecay'; // ★§13-3e クリ減衰(社長裁定2026-08-26)
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
@@ -11253,9 +11254,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             orCombineChance(projectile?.critChance ?? 0, trapCritTerm),
             weakCritTerm,
           );
-          const baseCrit = enemyForFx
-            ? Math.random() < projectileHitCritChance(softCapCritChance(critCombined), enemyForFx)
-            : false;
+          // ★§13-3e クリ減衰(社長裁定2026-08-26「命中ベース・敵全体・武器切替で戻る・敵毎」):
+          // プレイヤーの直接武器の銃のみ。ソフトキャップ・敵補正まで済んだ実効値から、同じ敵への
+          // 連射(0.5秒窓ごと−1%・最大−10%・下限1%)を引く。初手はフル。台帳/回復/リセットは critDecay.ts。
+          const critEffective = enemyForFx
+            ? projectileHitCritChance(softCapCritChance(critCombined), enemyForFx)
+            : 0;
+          const critDecayed = enemyForFx && isDirectWeaponHit && projectile?.weaponKey
+            ? critDecayOnHit(`p:${enemyForFx.id}`, projectile.weaponKey, gameTime, critEffective)
+            : critEffective;
+          const baseCrit = enemyForFx ? Math.random() < critDecayed : false;
           // PHILL銃の頭部命中は確定ヘッドショット=クリティカル扱い(×1.5＋気絶＋headshot SE＋金VFX)。
           // 訓練(M0)の封印(社長指示v0.25.2293/2295): **教わるまでクリティカルは一切出さない**。
           // 実バグだった: 銃には「チャフ(バット/ゾンビ)の武器弱点=銃+10%」(§5.6 M7)があり、

@@ -106,6 +106,7 @@ import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
 import { BOSS_NEUTRAL_EXTRA_MS, BOSS_NEUTRAL_MULT } from '../utils/bossRebuild'; // ★社長指示2026-08-26「技の間隔をあける」= 城ボスにも(v0.25.3952)
 import { softCapCritChance } from '../utils/critSoftCap';
+import { resetCritDecay } from '../utils/critDecay'; // ★§13-3e クリ減衰(社長裁定2026-08-26)
 import {
   type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath, sanitizeNamedFoe,
   NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, pickNamedEnemyName, normalizeNamedName,
@@ -17093,6 +17094,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastKomaAssessmentInput: null,
     });
     state.enemies.forEach(e => tagRemove(e.id, 'reset')); // 消失ログ用: リスタートで全敵クリア
+    resetCritDecay(); // ★§13-3e クリ減衰の台帳を新ランでクリア(前ランの敵IDの記憶を持ち越さない)
     clearDestroyedObstacles(); // 裏ボスに壊された木/プロップの欠番を新ランで復活させる。
     const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)
       ? characterClass as CharacterClass
