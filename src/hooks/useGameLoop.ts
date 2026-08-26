@@ -9134,6 +9134,35 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (cloneGhost) runCloneTick(cloneGhost.ghostShadowClone, cloneGhost.id);
         }
 
+        // ★v0.25.3963(社長報告「相手の設置物壊せないよ?」): プレイヤー側の弾が幻影の設置物
+        // (デコイ/タレット/トラップ=placedHp持ち・地雷=hp持ち)に当たったら耐久を削って弾は消える。
+        // 従来は近接だけが壊せた(2026-08-24裁定の damageHostilePlacements)——弾との衝突が存在せず
+        // 「撃っても素通り」だった。盾(shieldHp)は同裁定の選り分けで対象外のまま(体系が別)。
+        // 敵対設置物が居る時(=実質幻影戦)だけ回るので通常プレイのコストはゼロ。
+        {
+          const pst = useGameStore.getState();
+          const hostilePlaced = pst.projectiles.filter(p => p.hostile === true
+            && (p.placedHp !== undefined)
+            && (p.decoyLandAt === undefined || Date.now() >= p.decoyLandAt)); // 投げ飛行中は除外
+          if (hostilePlaced.length > 0 || pst.sensorMines.some(m => m.hostile && m.hp !== undefined)) {
+            const NOT_BULLET = new Set(['grenade', 'trap', 'decoy', 'shield', 'turret',
+              'fire-knife-projectile', 'drone-boomerang-projectile']);
+            for (const b of pst.projectiles) {
+              if (b.hostile === true || NOT_BULLET.has(b.weaponType ?? '') || b.damage <= 0) continue;
+              const bx2 = b.x + b.width / 2, by2 = b.y + b.height / 2;
+              const hit = hostilePlaced.some(pl => bx2 >= pl.x && bx2 <= pl.x + pl.width
+                && by2 >= pl.y && by2 <= pl.y + pl.height)
+                || pst.sensorMines.some(m => m.hostile && m.hp !== undefined
+                  && Math.hypot(bx2 - m.x, by2 - m.y) <= Math.max(b.width, b.height) / 2 + 10);
+              if (!hit) continue;
+              const brokenByShot = useGameStore.getState().damageHostilePlacements(bx2, by2, Math.max(6, b.width / 2), b.damage);
+              removeProjectile(b.id); // 弾は設置物に消費される(貫通させない)
+              spawnBurst(bx2, by2, '#fbbf24', brokenByShot > 0 ? 12 : 4);
+              if (brokenByShot > 0) spawnRing(bx2, by2, 6, 46, 'rgba(251,191,36,0.85)', 3, 300);
+            }
+          }
+        }
+
         // デコイの迎撃パルス(設置中、0.5秒ごとに1発)。毎フレーム判定ではなく
         // パルス方式。距離は二乗比較。高速弾の取りこぼしは許容(swept判定なし)。
         {
@@ -9157,20 +9186,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const dcy = decoy.y + decoy.height / 2;
               const decoyRange = decoy.area ?? 0; // Lv別射程(設置時に load 済み)
               let nearest: Projectile | null = null;
-              let nearestD2 = decoyRange * decoyRange;
+              let nearestD2 = Infinity;
               // ★v0.25.3884(社長指示「デコイ、敵の弾を消す」): **自分から見た敵の弾**を落とす。
               // 味方のデコイ=hostileな弾(敵弾)を落とす(従来どおり)。
               // 幻影のデコイ=hostileでない弾(=プレイヤーの弾)を落とす。
               // 判定は「弾の側 === デコイの側」なら見送る、の1本=**同じ側の弾は絶対に撃たない**。
               const decoyHostile = decoy.hostile === true;
+              // ★v0.25.3963(社長指示「デコイ、対人戦の弾のみ、半分の範囲でしか反応しないようにして」):
+              // 対人戦(幻影戦)の弾だけ迎撃半径を1/2にする。幻影側のデコイの標的(プレイヤーの弾)は
+              // 全て対人戦の弾=常に半分。プレイヤー/守護霊側のデコイは**幻影が撃った弾だけ**半分
+              // (通常ボス・雑魚の弾は従来どおりの半径=挙動不変)。
+              const phantomIdsForDecoy = decoyHostile
+                ? null
+                : new Set(dstate.enemies.filter(e => isGuardianPhantom(e.type)).map(e => e.id));
               for (const b of dstate.projectiles) {
                 if ((b.hostile === true) === decoyHostile) continue;
                 if (b.weaponType === 'decoy' || b.weaponType === 'turret'
                   || b.weaponType === 'shield' || b.weaponType === 'trap') continue; // 設置物は弾ではない
+                const pvpShot = decoyHostile
+                  || (b.ownerId !== undefined && (phantomIdsForDecoy?.has(b.ownerId) ?? false));
+                const rng = pvpShot ? decoyRange / 2 : decoyRange;
                 const bx = b.x + b.width / 2;
                 const by = b.y + b.height / 2;
                 const d2 = (bx - dcx) * (bx - dcx) + (by - dcy) * (by - dcy);
-                if (d2 <= nearestD2) {
+                if (d2 <= rng * rng && d2 < nearestD2) {
                   nearestD2 = d2;
                   nearest = b;
                 }
