@@ -29,7 +29,7 @@ import type {
 } from '../types/game';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
-  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
@@ -13733,7 +13733,7 @@ export class PixiScene {
     }
 
     // 守護霊のカウンター窓リング(社長裁定v0.25.2532「カウンター待ち 出しましょう」)。
-    // 窓=ghostCounterWindowEnd(近接スイングで開く・COUNTER_WINDOWはプレイヤーと同定数・Date.now基準)。
+    // 窓=ghostCounterWindowEnd(近接スイングで開く・COUNTER_ACCEPT_MSはプレイヤーと同定数・Date.now基準)。
     // 見た目はプレイヤーの窓リング(counterReachRing)と同じ焼きテクスチャ+同じ約140msフラッシュ。
     // 半径はゴースト近接リーチの視覚用複製値74(ghostDriverのGHOST_MELEE_RANGEと同値。1542行の
     // 距離アンカーと同じ既存慣例。刀ビルドのリーチ差は実機確認後に調整=叩き台)。
@@ -13741,7 +13741,7 @@ export class PixiScene {
     if (this.ghostCounterRing) this.ghostCounterRing.visible = false; // 既定OFF(下で出す時だけON)
     const gWinEnd = lifecycleActive ? 0 : (s.ghostCounterWindowEnd ?? 0);
     if (now <= gWinEnd) {
-      const gOpenAt = gWinEnd - COUNTER_WINDOW;
+      const gOpenAt = gWinEnd - COUNTER_ACCEPT_MS; // 隻狼型(v0.25.3943)
       const gt = (now - gOpenAt) / 140;
       if (gt >= 0 && gt < 1) {
         const gr = 74;
@@ -26435,15 +26435,15 @@ export class PixiScene {
     // この**カウンター窓のリング+クレセント**。KILL全停止中は now が凍る=約140msで消えるはずの
     // フラッシュが停止の間ずっと最大表示で固まっていた。KILL処刑演出中は出さない(窓の判定は不変)。
     // ★ここは「近接の攻撃範囲テレグラフ(振りの絵)」であってカウンター判定ではない。
-    // v0.25.3926 でカウンターの有効時間を後ろ200msへ絞ったが、**絵は振り始めから出す**
-    // (絞ると、下の ft=(now-openAt)/140 が既に切れていて三日月が一度も出なくなる)。
+    // v0.25.3943(隻狼型): 受付窓は [押した瞬間, +200ms] になった。絵は従来どおり振り始め
+    // (=counterWindowStart=押した瞬間)から出す。
     if (now <= player.counterWindowEnd && counterFxVisible && !this.killFxActive()) {
       // 元の黄色い攻撃範囲テレグラフ(社長指示で復活)。細いリーチリング + さっと出て
       // 速く消える静止クレセント。クレセントは狙い方向を向き、腹が太く先端が細い。
       // ※近接スイングの見た目は別途2枚画像差し替えで描画(本ブロックは攻撃範囲の表示)。
       const dir = player.lastDirection;
       const head = dir ? Math.atan2(dir.y, dir.x) : -Math.PI / 2;
-      const openAt = player.counterWindowEnd - COUNTER_WINDOW;
+      const openAt = player.counterWindowStart; // 隻狼型(v0.25.3943): start=押した瞬間
       const ft = (now - openAt) / 140; // blade life ~140ms (a quick flash)
       if (ft < 1) {
         const fade = Math.max(0, 1 - ft);

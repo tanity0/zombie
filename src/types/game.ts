@@ -1187,7 +1187,7 @@ export interface Summon {
   // フラッシュのエッジ検知が無傷なのに誤発火するため専用フィールド)。他kindでは常にundefined。
   ghostInvulnUntil?: number;
   // v0.25.2525(GHOST-REFLECT-MELEE-SUBS・台帳§4-1「弾反射」): 守護霊のカウンター窓の終了時刻
-  // (Date.now基準)。プレイヤーの `counterWindowEnd` と**同じ意味・同じ定数(COUNTER_WINDOW)**で、
+  // (Date.now基準)。プレイヤーの `counterWindowEnd` と**同じ意味・同じ定数(COUNTER_ACCEPT_MS・v0.25.3943〜)**で、
   // 近接スイング(通常スイング/刀の一閃)を起点に開く。窓中に自分へ当たった敵弾を反射する
   // (反射のたびに COUNTER_EXTEND_PER_HIT で延長=プレイヤーと同じ連続反射)。他kindでは常にundefined。
   ghostCounterWindowEnd?: number;

@@ -7,7 +7,7 @@
 //  ④ 窓とCDの終了時刻は**指を離した時刻**が基準(解決時刻を基準にすると1周期200ms伸びる=弱体化)。
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  useGameStore, MELEE_WINDUP_MS, meleeWindupMs, COUNTER_WINDOW, COUNTER_COOLDOWN,
+  useGameStore, MELEE_WINDUP_MS, meleeWindupMs, COUNTER_WINDOW, COUNTER_ACCEPT_MS, isCounterActive, COUNTER_COOLDOWN,
   MELEE_LUNGE_PX, MELEE_LUNGE_MS, WHIP_LUNGE_PX, meleeLungePx, knockbackSpeedFor, PLAYER_BASE_SPEED,
 } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
@@ -43,7 +43,8 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
     expect(useGameStore.getState().beginMeleeSwing()).toBe(true);
     const p = useGameStore.getState().player;
     // ① 窓は今すぐ開く(守りは即応)。
-    expect(p.counterWindowEnd).toBeGreaterThanOrEqual(t0 + COUNTER_WINDOW - 50);
+    // 隻狼型(v0.25.3943): 受付は押した瞬間から COUNTER_ACCEPT_MS(200ms)。
+    expect(p.counterWindowEnd).toBeGreaterThanOrEqual(t0 + COUNTER_ACCEPT_MS - 50);
     expect(p.counterCooldownEnd).toBeGreaterThan(t0);
     expect(p.pendingSwingAt).toBeGreaterThan(0);
     // ② まだ誰も斬れていない(攻めは約束)。
@@ -74,10 +75,24 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
     const pendAt = useGameStore.getState().player.pendingSwingAt;
     useGameStore.getState().triggerCounter(pendAt);
     const p = useGameStore.getState().player;
-    expect(p.counterWindowEnd).toBe(pendAt + COUNTER_WINDOW);
+    // 隻狼型(v0.25.3943): 受付窓は [押した瞬間, +COUNTER_ACCEPT_MS]。CDのサイクル(COUNTER_WINDOW基準)は不変。
+    expect(p.counterWindowStart).toBe(pendAt);
+    expect(p.counterWindowEnd).toBe(pendAt + COUNTER_ACCEPT_MS);
     expect(p.counterCooldownEnd).toBe(pendAt + COUNTER_WINDOW + COUNTER_COOLDOWN);
     // 絵の起点も前隙の起点に揃っている(200ms後に振り直さない)。
     expect(p.meleeSwingAt).toBe(pendAt);
+  });
+
+  // ★隻狼型の受付(社長裁定2026-08-26「せきろうにしようか」・v0.25.3943)
+  it('隻狼型: 受付は押した瞬間から200ms。早置きは窓が先に切れて失敗する', () => {
+    setup();
+    useGameStore.getState().beginMeleeSwing();
+    const p = useGameStore.getState().player;
+    const t0 = p.pendingSwingAt;
+    expect(isCounterActive(p, t0)).toBe(true);                          // 押した瞬間=成立(発生0F)
+    expect(isCounterActive(p, t0 + COUNTER_ACCEPT_MS)).toBe(true);      // 窓の端まで成立
+    expect(isCounterActive(p, t0 + COUNTER_ACCEPT_MS + 1)).toBe(false); // 早置き→当たりが遅れて来たら失敗
+    expect(isCounterActive(p, t0 + 399)).toBe(false);                   // 旧仕様(刃が出ている間)の後半は不成立
   });
 
   it('前隙は200ms(社長裁定)。この値がしゃがみ絵の長さの唯一の出どころ', () => {

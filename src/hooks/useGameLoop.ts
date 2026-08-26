@@ -36,7 +36,7 @@ import {
   INTRO_DIALOGUE_TRIGGER_T,
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, SHIJIN_TECH_SHAKE_MS, SHIJIN_TECH_SHAKE_MAG,
-  COUNTER_WINDOW, // v0.25.2525: 守護霊の弾反射の窓(プレイヤーのcounterWindowEndと同じ定数)
+  COUNTER_ACCEPT_MS, // v0.25.2525→v0.25.3943: 守護霊の弾反射の窓(プレイヤーの受付と同じ定数)
   MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG,
   SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG,
   DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV, DRONE_BOOM_SPEED,
@@ -9721,7 +9721,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const openGhostSwingWindow = (): void => {
                 useGameStore.setState(st => ({
                   summons: st.summons.map(s => s.id === ghostNow.id
-                    ? { ...s, ghostCounterWindowEnd: nowMs + COUNTER_WINDOW }
+                    ? { ...s, ghostCounterWindowEnd: nowMs + COUNTER_ACCEPT_MS } // 隻狼型(v0.25.3943・プレイヤーと同値)
                     : s),
                 }));
               };

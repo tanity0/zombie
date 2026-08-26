@@ -1162,10 +1162,11 @@ const tagRemove = (id: string, cause: string): void => {
   }
 };
 
-// Counter-on-release tuning. The counter window opens the moment the player
-// lifts their finger (or presses Space on PC) and stays open briefly. Any
-// hostile projectile that hits the player during the window is reflected.
-export const COUNTER_WINDOW = 400; // ms the window stays open after trigger
+// Counter-on-release tuning. Any hostile attack/projectile that hits the player
+// while the acceptance window is open is countered/reflected.
+// ★v0.25.3943: COUNTER_WINDOW は「振り1サイクルの長さ」(前隙200+刃200)としてCD・演出の基準に残る。
+// **受付窓そのものは COUNTER_ACCEPT_MS(下)に分離した**——長さの意味が別物になったため。
+export const COUNTER_WINDOW = 400; // ms of one swing cycle (windup 200 + blade 200) — CD/演出の基準
 /**
  * ★近接の前隙(社長裁定2026-08-24「近接前隙を200にして」・SAME_ARENA.md §7)。
  * 指を離した瞬間に**カウンター窓とCDは張る**が、**当たり判定はこの時間だけ遅れて出る**。
@@ -1174,10 +1175,17 @@ export const COUNTER_WINDOW = 400; // ms the window stays open after trigger
  */
 export const MELEE_WINDUP_MS = 200;
 /**
- * ★カウンターが成立するか(唯一の判定・v0.25.3926)。
- * 社長裁定2026-08-25「振り抜きの最後の200msだけをカウンター取れる時間にすればいい」。
- * **刃が実際に出ている間だけ**成立する(窓は [start, end]・start = 振り始め + `MELEE_WINDUP_MS`)。
- * 旧実装は窓の終わりしか見ていなかったので、予告を見て**先に振っておけば確実に取れた**。
+ * ★カウンターの受付時間(社長裁定2026-08-26「せきろうにしようか」・隻狼型)。
+ * **受付は「押した瞬間」から COUNTER_ACCEPT_MS だけ**(窓 = [押した瞬間, +200ms])。
+ * - 予告文法「赤が消え切った瞬間=当たり」と押す瞬間が一致する(目と指が同じ時刻を見る)。
+ * - 早置きは**窓が先に切れて失敗**する=v0.25.3926の狙い(「先に振っておけば確実」潰し)は保たれる。
+ * - 過去の裁定(事実): v0.25.3926(2026-08-25)は「刃が出ている200msだけ」=[+200,+400]のダクソ型
+ *   だった。実機で「合わせるのが難しい」(予告の消え切りと押しどきが200〜400msズレる)ため隻狼型へ。
+ * 隻狼の実数値: 発生0F・受付12F(0.2秒)=本値と同一。
+ */
+export const COUNTER_ACCEPT_MS = 200; // ms the acceptance window stays open FROM the trigger
+/**
+ * ★カウンターが成立するか(唯一の判定・v0.25.3926で1本化)。
  */
 // ★型はインラインのオブジェクト literal で書かない: `meleeSwingCommit.test.ts` の台帳スキャナが
 // 「`counterWindowEnd:` を書いている場所」として数えてしまうため(Pickなら書き込みではないと分かる)。
@@ -6395,8 +6403,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...state.player,
         pendingSwingAt: now,
         meleeSwingAt: now,
-        counterWindowStart: now + MELEE_WINDUP_MS,
-        counterWindowEnd: now + COUNTER_WINDOW,
+        counterWindowStart: now, // 隻狼型(v0.25.3943): 受付は押した瞬間から
+        counterWindowEnd: now + COUNTER_ACCEPT_MS,
         counterCooldownEnd: now + (COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
       },
     }));
@@ -6594,8 +6602,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           swipeStrength: 1,
           player: {
             ...player,
-            counterWindowStart: now + MELEE_WINDUP_MS,
-            counterWindowEnd: now + COUNTER_WINDOW,
+            counterWindowStart: now, // 隻狼型(v0.25.3943)
+            counterWindowEnd: now + COUNTER_ACCEPT_MS,
             counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
           },
         });
@@ -6621,8 +6629,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(state => ({
         player: {
           ...state.player,
-          counterWindowStart: swingAt + MELEE_WINDUP_MS,
-          counterWindowEnd: swingAt + counterWindowMs,
+          counterWindowStart: swingAt, // 隻狼型(v0.25.3943): 受付は押した瞬間から
+          counterWindowEnd: swingAt + COUNTER_ACCEPT_MS,
           counterCooldownEnd: counterCd,
         }
       }));
@@ -6649,8 +6657,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(state => ({
         player: {
           ...state.player,
-          counterWindowStart: swingAt + MELEE_WINDUP_MS,
-          counterWindowEnd: swingAt + counterWindowMs,
+          counterWindowStart: swingAt, // 隻狼型(v0.25.3943)
+          counterWindowEnd: swingAt + COUNTER_ACCEPT_MS,
           // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
           counterCooldownEnd: swingAt + (counterWindowMs + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS) * meleeCooldownMult(player),
         }
@@ -7110,8 +7118,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       player: {
         ...state.player,
         meleeSwingAt: swingAt, // 近接スイング演出の起点(描画のみ)。★前隙の起点=指を離した時刻に揃える(200ms後に絵を出し直さない)。
-        counterWindowStart: swingAt + MELEE_WINDUP_MS,
-        counterWindowEnd: swingAt + counterWindowMs,
+        counterWindowStart: swingAt, // 隻狼型(v0.25.3943)
+        counterWindowEnd: swingAt + COUNTER_ACCEPT_MS,
         // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
         counterCooldownEnd: swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
         huntingCharged: false,
