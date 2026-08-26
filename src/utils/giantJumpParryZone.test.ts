@@ -79,7 +79,10 @@ describe('inGiantGlideBand: 幾何は滑空の帯(カプセル爆発)判定と�
   });
 });
 
-describe('プレイヤーの空中パリィ: 着地円の中でだけ成立する', () => {
+// ★カウンター憲法(社長裁定2026-08-26・v0.25.3947): 空中は「被弾しない」=攻撃判定ゼロなので、
+// 空中パリィ自体を撤去した(v2601の着地円成立は憲法が上書き)。上の幾何関数(着地円・帯)は
+// 爆風判定側が使い続けるため据え置き。ジャンプへの対処=回避+着地爆風のパリィ(判定の瞬間)。
+describe('プレイヤーの空中パリィ: 憲法により成立しない(空中=判定ゼロ)', () => {
   const setup = (landOffset: number) => {
     useGameStore.getState().resetGame('warrior');
     const now = Date.now();
@@ -94,15 +97,16 @@ describe('プレイヤーの空中パリィ: 着地円の中でだけ成立す�
     return useGameStore.getState().enemies.find(e => e.id === boss.id);
   };
 
-  it('着地点が自分の真上=円の中 → パリィ成立(体勢を20%削る)', () => {
+  it('憲法: 着地点が自分の真上(円の中)でも空中パリィは成立しない', () => {
     const after = setup(0);
-    expect(after?.bossPosture).toBe(64);
-  });
-
-  it('着地点が遠く=円の外 → 体が重なっていてもパリィしない(赤くないのに弾ける、を潰す)', () => {
-    const after = setup(1200);
     expect(after?.bossPosture).toBeUndefined();
     // 空中の相手からは被弾しない(この不変条件は据え置き=分岐①のreturnは変えていない)。
+    expect(useGameStore.getState().player.health).toBe(useGameStore.getState().player.maxHealth);
+  });
+
+  it('着地点が遠く=円の外でも同じく成立しない・被弾もしない', () => {
+    const after = setup(1200);
+    expect(after?.bossPosture).toBeUndefined();
     expect(useGameStore.getState().player.health).toBe(useGameStore.getState().player.maxHealth);
   });
 });

@@ -14,29 +14,30 @@ const enemy = (over: Partial<Enemy> = {}): Enemy =>
   ({ id: 'e1', type: 'giantbat', x: 100, y: 100, width: 40, height: 40, health: 100, ...over } as unknown as Enemy);
 
 describe('isDashParryCounterPhase: プレイヤーのdashParried対象フェーズ表と同一', () => {
-  it('汎用フェーズ(charge/recover/crouch/jump/g-jump-air)は型を問わずパリィ対象', () => {
-    for (const ph of ['charge', 'recover', 'crouch', 'jump', 'g-jump-air'] as Enemy['aiPhase'][]) {
-      expect(isDashParryCounterPhase({ type: 'pumpkin', aiPhase: ph })).toBe(true);
-    }
+  // ★カウンター憲法(社長裁定2026-08-26・v0.25.3947)「攻撃判定と窓が重なった時だけがカウンター成立」:
+  // 接触パリィは**接触ダメージが生きている突進の走りだけ**。空中(被弾しない=判定ゼロ)・
+  // recover/crouch(接触ダメージなし)・全g-*-recoverは対象外になった(W7/v3050/v2601/v3052は憲法が上書き)。
+  it('接触ダメージが生きている突進の走り(charge / g-dash-charge)だけがパリィ対象', () => {
+    expect(isDashParryCounterPhase({ type: 'pumpkin', aiPhase: 'charge' })).toBe(true);
+    expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: 'g-dash-charge' })).toBe(true);
   });
-  it('giantbat固有は実行中2種+全技の硬直(M51受け入れ条件5+v0.25.3050で後発技の硬直を追補)', () => {
+  it('憲法: recover/crouch/空中(jump/g-jump-air/g-trijump-air/g-glide-active)は判定ゼロ=対象外', () => {
+    for (const ph of ['recover', 'crouch', 'jump', 'g-jump-air'] as Enemy['aiPhase'][]) {
+      expect(isDashParryCounterPhase({ type: 'pumpkin', aiPhase: ph })).toBe(false);
+    }
+    expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: 'g-trijump-air' })).toBe(false);
+    expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: 'g-glide-active' })).toBe(false);
+  });
+  it('憲法: 城ボスの全硬直(g-*-recover)と実行中でも判定の無い薙ぎ(g-sweep-active)は対象外', () => {
     for (const ph of [
-      'g-dash-charge', 'g-sweep-active',
+      'g-sweep-active',
       'g-stomp-recover', 'g-sweep-recover', 'g-dash-recover', 'g-jump-recover', 'g-bolt-recover',
       'g-bite-recover', 'g-slam-recover', 'g-wing-recover', 'g-glide-recover', 'g-dive-recover',
       'g-quad-recover', 'g-nova-recover', 'g-trishot-recover', 'g-sweepbeam-recover',
       'g-trijump-recover', 'g-talon-recover', 'g-boon-recover', 'g-reach-recover', 'g-nihil-recover',
     ] as Enemy['aiPhase'][]) {
-      expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: ph })).toBe(true);
+      expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: ph })).toBe(false);
     }
-  });
-  it('三連跳びの空中(g-trijump-air)はgiantbatで空中族=パリィ対象(着地円条件は呼び出し側・v0.25.3050)', () => {
-    expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: 'g-trijump-air' })).toBe(true);
-    expect(isDashParryCounterPhase({ type: 'pumpkin', aiPhase: 'g-trijump-air' })).toBe(false);
-  });
-  it('滑空(g-glide-active)はgiantbatで空中族=パリィ対象(帯内条件は呼び出し側・v0.25.3052案う)', () => {
-    expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: 'g-glide-active' })).toBe(true);
-    expect(isDashParryCounterPhase({ type: 'pumpkin', aiPhase: 'g-glide-active' })).toBe(false);
   });
   it('giantbatのwindupは対象外(W4「予告を出したら必ず実行させる」を守護霊も破らない)', () => {
     for (const ph of ['g-stomp-windup', 'g-sweep-windup', 'g-dash-windup', 'g-jump-windup', 'g-bolt-windup'] as Enemy['aiPhase'][]) {

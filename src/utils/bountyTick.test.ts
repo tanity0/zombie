@@ -501,13 +501,14 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       expect(useGameStore.getState().pumpkinBlasts.length).toBeGreaterThan(before);
     });
 
-    it('押しのけはカウンター可能(windup中のカウンター成立でchaseへ即復帰=v3128の掟)', () => {
+    // ★カウンター憲法(社長裁定2026-08-26・v0.25.3947)「攻撃判定と窓が重なった時だけがカウンター成立」:
+    // 溜め(windup)中は攻撃判定ゼロ=カウンターは成立しない(v3128の掟W7は憲法が上書き)。
+    it('憲法: 押しのけの溜め中は、重なって窓を開けてもカウンターが成立しない(技は続行)', () => {
       const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.9); // v0.25.3517: 近距離の抽選を押しのけ側へ固定
       const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 });
       step(16);
       rnd.mockRestore();
       expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-push-windup');
-      // カウンター成立の条件(rectsOverlap+counterWindowEnd)を満たす: プレイヤーを重ねてカウンター窓を開く。
       const bounty = useGameStore.getState().enemies.find(e => e.id === id)!;
       useGameStore.setState(s => ({
         player: { ...s.player, x: bounty.x, y: bounty.y, counterWindowEnd: Date.now() + 5000 },
@@ -515,8 +516,8 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       const hpBefore = useGameStore.getState().enemies.find(e => e.id === id)!.health;
       step(16);
       const after = useGameStore.getState().enemies.find(e => e.id === id);
-      expect(after?.bossState).toBe('chase'); // 技が中断されchaseへ復帰(v3128)
-      expect(after!.health).toBeLessThan(hpBefore); // カウンター反撃ダメージが入っている
+      expect(after?.bossState).toBe('br-push-windup'); // 中断されない(溜めは続く)
+      expect(after!.health).toBe(hpBefore); // カウンター反撃も入らない
     });
 
     // §6.38実機FB5/FB6(致命): 体勢ブレイク(紫・bossFullStunUntil)が実行中の技を「技中断」扱いで
@@ -873,7 +874,9 @@ describe('runBountyTick — B2a 技の状態機械', () => {
         expect(sawTripleAgain).toBe(true);
       });
 
-      it('カウンター可(windup中): 成立でchaseへ即中断し残段を出さない(v3128の掟+v0.25.3477の作法)', () => {
+      // ★カウンター憲法(v0.25.3947): 溜め中は攻撃判定ゼロ=成立しない。三段突きのカウンターは
+      // 各突きの判定の瞬間(hitCapsule爆風のパリィ)だけに残る。
+      it('憲法: 三段突きの溜め中は、赤帯の中で窓を開けても成立しない(溜めは続く)', () => {
         const { id, step } = setupType('bounty-ranged', { x: 420, y: 0 }, { mimirLaserReadyAt: Number.MAX_SAFE_INTEGER, speed: 0 });
         step(16);
         expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-triple-windup');
@@ -884,16 +887,8 @@ describe('runBountyTick — B2a 技の状態機械', () => {
         const hpBefore = useGameStore.getState().enemies.find(e => e.id === id)!.health;
         step(16);
         const after = useGameStore.getState().enemies.find(e => e.id === id);
-        expect(after?.bossState).toBe('chase'); // 技が中断されchaseへ復帰(v3128)
-        expect(after!.health).toBeLessThan(hpBefore); // カウンター反撃ダメージが入っている
-        // 中断後、残りの段(br-triple-2/3)が出ないことを続けて確認する。
-        let sawLaterStep = false;
-        for (let i = 0; i < 20; i++) {
-          step(16);
-          const st2 = useGameStore.getState().enemies.find(e => e.id === id)?.bossState;
-          if (st2 === 'br-triple-2' || st2 === 'br-triple-3') sawLaterStep = true;
-        }
-        expect(sawLaterStep).toBe(false);
+        expect(after?.bossState).toBe('br-triple-windup'); // 中断されない
+        expect(after!.health).toBe(hpBefore); // 反撃も入らない
       });
 
       it('フルスタン(紫)成立でwindup中の技が即chaseへ中断される(FB6と同型)', () => {
@@ -1300,7 +1295,8 @@ describe('runBountyTick — B2a 技の状態機械', () => {
 
     // ★v0.25.3585(社長報告「舞妓の毱打ち以外の技、カウンター取れない」): 成立域を赤い予告の形に
     // 揃えた(薙ぎ=帯/回し=円/乱舞=着地円)。体に触れていなくても赤の中ならカウンターが通る。
-    it('毬の薙ぎはカウンター可: 帯の中(体に触れない距離)で成立し、chaseへ中断+反撃ダメージ', () => {
+    // ★カウンター憲法(v0.25.3947): 溜め中は不成立(v3585は憲法が上書き)。
+    it('憲法: 毬の薙ぎの溜め=帯の中でも不成立(薙ぎ自体は爆風パリィで返す)', () => {
       vi.spyOn(Math, 'random').mockReturnValue(0.9); // バックロールを外して薙ぎ固定
       const { id, step } = setupType('bounty-maiko', { x: 60, y: 0 });
       step(16);
@@ -1314,11 +1310,12 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       const hpBefore = b0.health;
       step(16);
       const after = useGameStore.getState().enemies.find(e => e.id === id);
-      expect(after?.bossState).toBe('chase');
-      expect(after!.health).toBeLessThan(hpBefore);
+      expect(after?.bossState).toBe('mk-naginata-windup'); // 溜めは続く(憲法)
+      expect(after!.health).toBe(hpBefore);
     });
 
-    it('毬回しはカウンター可: 赤円の中で成立(windup中・体に触れていない)', () => {
+    // ★カウンター憲法(v0.25.3947): 溜め中は不成立。実行中(mk-spin)の円は判定が生きている=残る。
+    it('憲法: 毬回しの溜め=赤円の中でも不成立(実行中の円カウンターは残る)', () => {
       vi.spyOn(Math, 'random').mockReturnValue(0.9); // 遠隔の抽選を回し側へ(0.9はboom/suiuに入らない)
       const { id, step } = setupType('bounty-maiko', { x: 250, y: 0 });
       step(16);
@@ -1331,11 +1328,12 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       const hpBefore = b0.health;
       step(16);
       const after = useGameStore.getState().enemies.find(e => e.id === id);
-      expect(after?.bossState).toBe('chase');
-      expect(after!.health).toBeLessThan(hpBefore);
+      expect(after?.bossState).toBe('mk-spin-windup'); // 溜めは続く(憲法)
+      expect(after!.health).toBe(hpBefore);
     });
 
-    it('水鳥乱舞はカウンター可: ホップ中に着地円の中で成立', () => {
+    // ★カウンター憲法(v0.25.3947): ホップ中=着地前は判定ゼロの円→不成立(対処=回避+着地爆風のパリィ)。
+    it('憲法: 水鳥乱舞のホップ中=着地円の中でも不成立', () => {
       vi.spyOn(Math, 'random').mockReturnValue(0.1); // 型2の遠隔抽選(<0.4)=水鳥乱舞
       const { id, step } = setupType('bounty-maiko', { x: 250, y: 0 });
       useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === id ? { ...e, bossPhase: 2 } : e)) }));
@@ -1356,8 +1354,8 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       const hpBefore = cur.health;
       step(16);
       const after = useGameStore.getState().enemies.find(e => e.id === id);
-      expect(after?.bossState).toBe('chase');
-      expect(after!.health).toBeLessThan(hpBefore);
+      expect(after?.bossState).not.toBe('chase'); // 中断されない(ホップは続く)
+      expect(after!.health).toBe(hpBefore);
     });
 
     it('型切替: HP50%以下になるとmk-reposeを経て型B(bossPhase=2)へ1回だけ切り替わる', () => {
@@ -1629,9 +1627,10 @@ describe('runBountyTick — ボスメーカーの個別再生(▸)', () => {
 // カウンター成立域=赤い予告の図形(v0.25.3591・research/COUNTER_REACH_AUDIT.md の是正)
 // =================================================================================================
 // 社長ゴール(言葉のまま):「(カウンターが)身体に触れているかで見ていて、実際カウンターできない技が多い」。
-// v0.25.3585(舞妓)で確立した型をそのまま横展開したので、テストも同じ型で固める:
-// **体に触れない位置に立ち、赤い図形の中でカウンター窓を開く → 成立して技が中断し、反撃ダメージが入る。**
-describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.25.3591 監査是正)', () => {
+// ★カウンター憲法(社長裁定2026-08-26・v0.25.3947)「攻撃判定と窓が重なった時だけがカウンター成立」:
+// 旧v3585/v3591の「溜め中に赤い図形の中で成立」は憲法が上書きした。同じ盤面で
+// **成立しない(溜めは続く・反撃も入らない)**ことを固める=windup成立を再導入したら落ちる網。
+describe('runBountyTick — 憲法: 溜め中は赤い図形の中でもカウンター不成立(v0.25.3947)', () => {
   beforeEach(() => {
     setTreesDisabled(true);
     setTorchesDisabled(true);
@@ -1682,7 +1681,7 @@ describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.
     return !(b.x < p.x + p.width && b.x + b.width > p.x && b.y < p.y + p.height && b.y + b.height > p.y);
   };
 
-  it('バス停 押しのけ(帯82×34): 体の外・帯の中で成立(監査C-1)', () => {
+  it('憲法: バス停 押しのけの溜め=帯の中でも不成立', () => {
     const { step, boss } = setupMove('bounty-ranged', 'br-push', { x: 60, y: 0 });
     const b0 = boss();
     expect(b0.bossState).toBe('br-push-windup');
@@ -1690,11 +1689,11 @@ describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.
     expect(notTouching(b0)).toBe(true);
     const hp = b0.health;
     step(16);
-    expect(boss().bossState).toBe('chase');
-    expect(boss().health).toBeLessThan(hp);
+    expect(boss().bossState).toBe('br-push-windup'); // 溜めは続く(憲法)
+    expect(boss().health).toBe(hp); // 反撃も入らない
   });
 
-  it('バス停 三段突き(帯300×34 ×3本): 250px先=体の外でも成立(監査B-1・実装コメントが「カウンターで対処する技」と明言していた)', () => {
+  it('憲法: バス停 三段突きの溜め=帯の中でも不成立(カウンターは各突きの判定の瞬間だけ)', () => {
     const { step, boss } = setupMove('bounty-ranged', 'br-triple', { x: 250, y: 0 });
     const b0 = boss();
     expect(b0.bossState).toBe('br-triple-windup');
@@ -1702,11 +1701,11 @@ describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.
     expect(notTouching(b0)).toBe(true);
     const hp = b0.health;
     step(16);
-    expect(boss().bossState).toBe('chase');
-    expect(boss().health).toBeLessThan(hp);
+    expect(boss().bossState).toBe('br-triple-windup'); // 溜めは続く(憲法)
+    expect(boss().health).toBe(hp); // 反撃も入らない
   });
 
-  it('馬乗り 3段コンボ(帯130×28): 体の外・帯の中で成立(監査C-2)', () => {
+  it('憲法: 馬乗り 3段コンボの溜め=帯の中でも不成立', () => {
     const { step, boss } = setupMove('bounty-melee', 'bm-combo', { x: 80, y: 0 });
     const b0 = boss();
     expect(b0.bossState).toBe('bm-combo1-windup');
@@ -1714,11 +1713,11 @@ describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.
     expect(notTouching(b0)).toBe(true);
     const hp = b0.health;
     step(16);
-    expect(boss().bossState).toBe('chase');
-    expect(boss().health).toBeLessThan(hp);
+    expect(boss().bossState).toBe('bm-combo1-windup'); // 溜めは続く(憲法)
+    expect(boss().health).toBe(hp); // 反撃も入らない
   });
 
-  it('鋏 薙ぎ払い(帯250×40): 150px先=体の外でも成立(監査C-3)', () => {
+  it('憲法: 鋏 薙ぎ払いの溜め=帯の中でも不成立', () => {
     const { step, boss } = setupMove('bounty-balance', 'bb-sweep', { x: 150, y: 0 });
     const b0 = boss();
     expect(b0.bossState).toBe('bb-sweep-windup');
@@ -1726,11 +1725,11 @@ describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.
     expect(notTouching(b0)).toBe(true);
     const hp = b0.health;
     step(16);
-    expect(boss().bossState).toBe('chase');
-    expect(boss().health).toBeLessThan(hp);
+    expect(boss().bossState).toBe('bb-sweep-windup'); // 溜めは続く(憲法)
+    expect(boss().health).toBe(hp); // 反撃も入らない
   });
 
-  it('鋏 薙ぎ3連発(帯200×30): 体の外・帯の中で成立(監査C-4)', () => {
+  it('憲法: 鋏 薙ぎ3連発の溜め=帯の中でも不成立', () => {
     const { step, boss } = setupMove('bounty-balance', 'bb-triple', { x: 150, y: 0 });
     const b0 = boss();
     expect(b0.bossState).toBe('bb-triple1-windup');
@@ -1738,11 +1737,11 @@ describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.
     expect(notTouching(b0)).toBe(true);
     const hp = b0.health;
     step(16);
-    expect(boss().bossState).toBe('chase');
-    expect(boss().health).toBeLessThan(hp);
+    expect(boss().bossState).toBe('bb-triple1-windup'); // 溜めは続く(憲法)
+    expect(boss().health).toBe(hp); // 反撃も入らない
   });
 
-  it('鋏 跳びかかり(着地円110): 着地円の中=遠く離れていても成立(監査B-4・着地円文法)', () => {
+  it('憲法: 鋏 跳びかかりの溜め=着地円の中でも不成立(対処=回避+着地爆風のパリィ)', () => {
     const { step, boss } = setupMove('bounty-balance', 'bb-leap', { x: 300, y: 0 });
     const b0 = boss();
     expect(b0.bossState).toBe('leap-windup');
@@ -1751,8 +1750,8 @@ describe('runBountyTick — カウンター成立域は赤い予告の図形(v0.
     expect(notTouching(b0)).toBe(true);
     const hp = b0.health;
     step(16);
-    expect(boss().bossState).toBe('chase');
-    expect(boss().health).toBeLessThan(hp);
+    expect(boss().bossState).toBe('leap-windup'); // 溜めは続く(憲法)
+    expect(boss().health).toBe(hp); // 反撃も入らない
   });
 
   it('★馬乗り 懲罰狙撃(紫): 帯の中でも体に重なっていてもカウンターできない(社長裁定「避けるだけの技」)', () => {

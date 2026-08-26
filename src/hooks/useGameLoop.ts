@@ -238,7 +238,7 @@ import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=
 import { projectileFlightMsTo } from '../utils/projectileOrigin'; // GHOST_BOSS.md v9: 弾の飛翔時間(距離÷速度)
 import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs, turretNextReadyAt } from '../utils/turretTuning';
 import {
-  isCounterablePhase, phaseJustChanged, BOSS_ALERT_SFX_KEY,
+  phaseJustChanged, BOSS_ALERT_SFX_KEY,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
 } from '../utils/bossScript';
 import {
@@ -249,7 +249,7 @@ import {
 import {
   MIMIR_LASER_WINDUP_MS, MIMIR_LASER_BROKEN_MS, MIMIR_LASER_INTERRUPTED_CD_MS,
   MIMIR_LASER_RANGE, MIMIR_LASER_HALF_WIDTH, MIMIR_LASER_FIRE_MS,
-  mimirLaserPhase, stepLaserAim, mimirTrackEnabled, canInterruptMimirLaser, mimirLaserTrackCaps, usesMimirLaser,
+  mimirLaserPhase, stepLaserAim, mimirTrackEnabled, mimirLaserTrackCaps, usesMimirLaser,
 } from '../utils/mimirLaserTrack';
 import {
   jormungandPhaseForHealth, pickJormungandMove, jormRadialSpinAngle, type JormungandMove,
@@ -1140,7 +1140,7 @@ import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3591(監査 research/COUNTER_REACH_AUDIT.md): カウンター成立域=赤い予告の図形。宣言表は1箇所。
 import {
   counterReachShapeFor, inCounterReach,
-  HIDDEN_COUNTER_WINDUP_STATES, HIDDEN_COUNTER_RECOVER_STATES, HIDDEN_COUNTER_ACTIVE_STATES,
+  HIDDEN_COUNTER_ACTIVE_STATES,
 } from '../utils/counterReach';
 
 
@@ -5998,8 +5998,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // ★v0.25.3591: 州リストは counterReach.ts へ移設(中身は同一)。理由は「テストできる場所へ
               // 置く」——このファイルはReactフックなのでユニットテストから読めず、**州リストと
               // カウンター成立域の宣言表の突き合わせ(新しい技の宣言漏れ検知)ができなかった**。
-              const HIDDEN_BOSS_COUNTER_WINDUPS = HIDDEN_COUNTER_WINDUP_STATES;
-              const HIDDEN_BOSS_COUNTER_RECOVERS = HIDDEN_COUNTER_RECOVER_STATES;
               // ★v0.25.3591(監査 B-2/B-3): 成立域は「赤い予告の図形」。噛みつき=自分中心円 r=216
               // (体は223×124=半幅124なので、**円の外周92pxのリングが丸ごと死角**だった)/
               // うねり=帯 310×40(帯はプレイヤーの位置に置かれるので、蛇の体に触れることはまず無い)。
@@ -6032,13 +6030,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               //   counterReach.ts の HIDDEN_COUNTER_*_STATES へ追加済み。**他ボスは同名の州を持たない**ので
               //   この撤去は mimir/jormungand/skadi の挙動を1つも変えない。
               // ・紫の州(issen-nihil)は一覧に**載せていない**+宣言も 'none'=二重に閉じてある。
+              // ★カウンター憲法(社長裁定2026-08-26「攻撃判定と窓が重なった時だけがカウンター成立」・
+              // v0.25.3947): 溜め/硬直の面成立を除去(W7/v3780は本憲法が上書き)。残るのは**体当たりが
+              // 技本体で接触判定が生きている実行中**(dash/thor-dash-move)のみ。トールの一閃/突き/払い等の
+              // 判定時置換カウンター(各州ハンドラ内)・爆風パリィ・弾反射は不変。レーザーの弱点窓ゲート
+              // (§6.33)は溜め成立ごと消えたため削除(近接ヒットで壊す別機構 mimirLaserBreakOnMeleeHit は不変)。
               const hiddenBossCounterableNow = BOSS_COUNTER_ENABLED
-                && (isCounterablePhase(st, HIDDEN_BOSS_COUNTER_WINDUPS, HIDDEN_BOSS_COUNTER_RECOVERS)
-                  || HIDDEN_COUNTER_ACTIVE_STATES.includes(st))
-                // §6.33 案G(社長裁定): 新挙動のレーザー溜めは弱点窓(発射前900ms)の間だけ体当て
-                // カウンター可(窓外3000ms全域で潰せた既存W7の穴を塞ぐ)。旧挙動(?mimirtrack=0)は従来どおり。
-                && !(MIMIR_TRACK_ENABLED && usesMimirLaser(boss.type) && st === 'laser-windup'
-                  && !canInterruptMimirLaser(boss.type, st, newGameTime, boss.bossStateUntil));
+                && HIDDEN_COUNTER_ACTIVE_STATES.includes(st);
               let hiddenBossCountered = false;
               if (hiddenBossCounterableNow) {
                 const { overlap, counterActive } = hiddenReachOverlapNow();

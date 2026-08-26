@@ -7,31 +7,20 @@
 // 状態文法(監査レポート§3-1): NEUTRAL(主戦帯を維持) → STRING(連段) → REST(休符) → NEUTRAL。
 // 懲罰(PUNISH)は中立中いつでも割り込む。**休符は必ず入る**(プレイヤーのターンを消さない)。
 import type { Enemy } from '../types/game';
-import { GLOW_R_L } from './glowTiers';
+// ★カウンター憲法(v0.25.3947): 面成立の専用関数 counterHit の削除に伴い、それ専用だった import
+// (GLOW_R_L / counterReplyDamage / クリ・演出定数 / getActiveGun / recordCritHit / refundCounterCooldown)を整理。
 import {
-  isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
-  useGameStore, counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT, counterMasterAwakenBuffPatch,
-  COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
-  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossCritCdMult, bossSlowMult, enemyDeathLabel,
+  useGameStore, bossCritCdMult, bossSlowMult, enemyDeathLabel,
   knockbackSpeedFor } from '../store/gameStore';
-import { getActiveGun } from './weaponUtils';
 import { createEnemyProjectile } from './enemyUtils';
-// ★v0.25.3591(監査 research/COUNTER_REACH_AUDIT.md): カウンター成立域=赤い予告の図形。
-// どの州がどの図形かは counterReach.ts の宣言表が正本(全系統で1箇所)。
-import { counterReachShapeFor, inCounterReach } from './counterReach';
 // v0.25.2617(社長報告「m2は移動できる範囲が限られてるのに、ボスだけその外に移動してる」):
 // プレイヤーの移動クランプと**同じ純関数**を使う。`playableArea.ts` は「行ける帯」の唯一の出どころで、
 // プレイヤー移動・湧き制限・帯の外の減光が全てここから導かれている。ボスだけがこれを通っていなかった。
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { distToBandRect } from './geometry'; // v0.25.3496: 帯の判定=描いてある四角
-import { isCounterablePhase, phaseJustChanged } from './bossScript';
+import { phaseJustChanged } from './bossScript';
 import { neutralVerb, pickStringScript, restMsFor, punishTrigger, advanceLingerMs, type NeutralVerb } from './bossSkeleton';
 import { resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from './bossHate';
-import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
-import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
-import { refundCounterCooldown } from './counterMaster';
-import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter';
-import { npcSfxDistGain } from './npcSfx';
 import {
   IDOL_TUNING, IDOL_STRING_LEN, IDOL_REST, IDOL_PUNISH, IDOL_NEUTRAL_BAND,
   IDOL_VERB_SPEED_MULT, IDOL_TIMING, IDOL_MOVES_ALL, IDOL_ORB_SPREAD_RAD,
@@ -188,7 +177,7 @@ export const runIdolTick = (
   deltaTime: number,
   moveSpeedMult: number,
   sfx: IdolSfx,
-  counterEnabled: boolean,
+  _counterEnabled: boolean, // ★カウンター憲法(v0.25.3947)で面成立が消えたため未使用(呼び出し側の形は変えない)
   onPlayerDeath: (x: number, y: number) => void,
 ): void => {
   const store = useGameStore.getState();
@@ -294,75 +283,11 @@ export const runIdolTick = (
     }
   }
 
-  // ---- カウンター(W7: windup中/硬直中/休符中の接触=可) -----------------------------------------
-  const counterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => {
-    if (ghost) {
-      applyGhostCounterEffect(idol, hx, hy, ghost, (k, g) => (k === 'counter' ? sfx.counter(g) : sfx.reward(g)));
-    } else {
-      notifyCounterHit();
-      notifyMoveCounter();
-      const cp = useGameStore.getState().player;
-      const pnow = Date.now();
-      const g = useGameStore.getState();
-      g.addMeleeFinishCombo(1);
-      sfx.counter();
-      g.spawnGlow(hx, hy, GLOW_R_L, 'rgba(56,189,248,', 360);
-      g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
-      g.markMeleeSwingFx();
-      g.spawnRing(hx, hy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-      g.spawnBurst(hx, hy, '#38bdf8', 14);
-      g.spawnCallout(hx, hy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-      useGameStore.setState(stt => ({ player: {
-        ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
-        counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
-        // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
-        ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
-      } }));
-      const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT);
-      useGameStore.getState().damageEnemy(idol.id, dmg, false, true, false, 'other', 'player', 'counter');
-      recordCritHit('guaranteed', true); // §7-11c(4): カウンター反撃(確定クリ・idolは常にボス)
-      useGameStore.getState().spawnDamageNumber(icx, idol.y, dmg, true);
-      sfx.reward();
-      useGameStore.getState().spawnRing(hx, hy, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
-      useGameStore.getState().spawnBurst(hx, hy, '#fde047', 10);
-      useGameStore.getState().spawnGlow(hx, hy, 34, 'rgba(253,224,71,', 240);
-    }
-    // カウンターはストリングを断ち切る=プレイヤーの勝ち。休符へ入れて必ずターンを渡す。
-    s.seq = []; s.step = 0; s.wavePending = false;
-    patch.bossState = IDOL_REST_STATE;
-    patch.bossStateUntil = newGameTime + restMsFor(phase, IDOL_REST) * bossCritCdMult(fresh(), newGameTime);
-  };
-
-  // 紫中はカウンターも取らない(裏ボス=frozen / 天使=fullStun分岐 と同じ。止まっている相手に
-  // カウンターは成立しない=紫はフィニッシュを入れる時間)。
-  // ★v0.25.3591(社長裁定「狙撃は避けるだけの技にしようかな」): 狙撃の溜め(idol-snipe-windup)は
-  // **紫=カウンター不可**へ。予告の帯900×40も紫で描く(色文法v0.25.2961)。硬直は従来どおり可。
-  // ※WINDUP_STATES は技一覧から機械的に組む台帳(予告の網羅テストが読む)なので**そちらは削らない**——
-  //   ここで1州だけ除外する(台帳=「予告がある州」/ この行=「カウンターが通る州」)。
-  const counterableNow = counterEnabled && !fullStun && st !== 'idol-snipe-windup'
-    && (isCounterablePhase(st, WINDUP_STATES, RECOVER_STATES) || st === IDOL_REST_STATE);
-  let countered = false;
-  if (counterableNow) {
-    const cp = useGameStore.getState().player;
-    // 成立域は宣言表(counterReach.ts)。拳=帯 90×30(赤い予告と同じ2点・同じ半幅)/ それ以外=体の重なり。
-    const overlap = inCounterReach(
-      counterReachShapeFor(`idol:${st}`, {
-        bcx: icx, bcy: icy, pcx, pcy,
-        aiFromX: idol.aiFromX, aiFromY: idol.aiFromY, aiTargetX: idol.aiTargetX, aiTargetY: idol.aiTargetY,
-      }),
-      { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
-      { x: idol.x, y: idol.y, width: idol.width, height: idol.height },
-    );
-    if (overlap && isCounterActive(cp, Date.now())) { counterHit(icx, icy); countered = true; }
-    else {
-      const claim = consumeGhostCounterClaim(idol.id, Date.now());
-      if (claim) {
-        const g = useGameStore.getState();
-        counterHit(icx, icy, { claim, sfxGain: npcSfxDistGain(icx, icy, pcx, pcy, g.camera, g.gameBounds) });
-        countered = true;
-      }
-    }
-  }
+  // ★カウンター憲法(社長裁定2026-08-26「攻撃判定と窓が重なった時だけがカウンター成立」・v0.25.3947):
+  // 偶像の面成立(全windup/全recover/**待機idol-rest**)を丸ごと除去した——どれも攻撃判定ゼロの成立
+  // だった(W7の横展開は本憲法が上書き)。偶像への対処=拳のストリングは hitCapsule 爆風パリィ
+  // (判定の瞬間)・弾は反射・全技回避可、が従来どおり残る。守護霊のカウンター請求も同基準で消える。
+  const countered = false;
 
   // 社長指示v0.25.3439: 銃技(aim/fan/snipe/orb/射撃部品)の起点=立ち絵で銃がある高さの、狙う側の
   // 絵の端(idolGunMuzzle・idolScript)。発射・ロック2点・予告線・武器絵が全て同じ純関数を読む。

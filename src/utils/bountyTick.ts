@@ -82,7 +82,7 @@ import {
   BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT,
 } from './bossEngagement';
 import { advanceLingerMs } from './bossSkeleton';
-import { isCounterablePhase, phaseJustChanged } from './bossScript';
+import { phaseJustChanged } from './bossScript';
 // §6.38 B2b: distToSegmentはgeometry.ts(依存ゼロ)から直接import(levelUpGate.ts経由をやめた)。
 // levelUpGate.tsが賞金首の技の実寸法をbountyTick.tsからimportする際、逆import(循環)を作らないため。
 import { distToBandRect } from './geometry';
@@ -489,8 +489,11 @@ export const BOUNTY_WINDUP_STATES: readonly string[] = [
 // ★v0.25.3585(社長報告「舞妓の毱打ち以外カウンター取れない」): 舞妓の実行中も開く——
 // 毬回しの回転中(mk-spin=360の振りと同型)と水鳥乱舞のホップ中(mk-suiu-hop*=着地円文法)。
 export const BOUNTY_ACTIVE_COUNTER_STATES: readonly string[] = [
-  'bm-charge', 'bm-whip360',
-  'mk-spin', 'mk-suiu-hop1', 'mk-suiu-hop2', 'mk-suiu-hop3',
+  // ★カウンター憲法(v0.25.3947): 判定が生きている実行中のみ。突進=体当たりが技本体(接触ダメージ生存)/
+  // 360ムチ=円の判定が実行中ずっと生きている / 毬回し=毬の円が生きている(+tryMovingCounter)。
+  // mk-suiu-hop1..3(水鳥乱舞のホップ)は**着地前=判定ゼロの円**だったため除去(v3585の裁定は本憲法が
+  // 上書き。対処=回避+着地爆風のパリィが残る)。
+  'bm-charge', 'bm-whip360', 'mk-spin',
 ];
 
 export const BOUNTY_RECOVER_STATES: readonly string[] = [
@@ -2080,9 +2083,11 @@ export const runBountyTick = (
 
   // ---- カウンター(W7: windup中/硬直中の接触=可。v3128の掟=成立で技中断+chase復帰) -----------------
   const stNow = patch.bossState !== undefined ? patch.bossState : (bounty.bossState ?? 'chase');
-  const counterableNow = counterEnabled
-    && (isCounterablePhase(stNow, BOUNTY_WINDUP_STATES, BOUNTY_RECOVER_STATES)
-      || BOUNTY_ACTIVE_COUNTER_STATES.includes(stNow)); // ★v0.25.3571: 突進の走り/360の振りも可
+  // ★カウンター憲法(社長裁定2026-08-26「攻撃判定と窓が重なった時だけがカウンター成立」・v0.25.3947):
+  // 溜め(windup)/硬直(recover)の面成立を除去(掟W7=v3128・裁定#9は本憲法が上書き)。残るのは
+  // **判定が生きている実行中**(ACTIVEリスト)だけ。各技への対処は hitCapsule 爆風パリィ(判定の瞬間)+
+  // 回避+弾反射が従来どおり残る。tryMovingCounter(ダメージ直前の1回)も判定時=不変。
+  const counterableNow = counterEnabled && BOUNTY_ACTIVE_COUNTER_STATES.includes(stNow);
   let countered = false;
   if (counterableNow) {
     const cp = useGameStore.getState().player;

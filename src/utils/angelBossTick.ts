@@ -36,6 +36,7 @@ import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの合流
+import { isBodySlamNow } from './enemyBite'; // ★カウンター憲法(v0.25.3947): 面成立は体当たり技の最中のみ
 import { npcSfxDistGain } from './npcSfx'; // v0.25.2480: 守護霊カウンターSEの距離減衰
 import { pickMiguelMove } from './miguelScript';
 import { pickJibrilMove, jibrilVolleyMode, JIBRIL_PHASE_HP_THRESHOLD, JIBRIL_EDGE_STICK_MS } from './jibrilScript';
@@ -250,7 +251,13 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
 };
 
+// ★カウンター憲法(社長裁定2026-08-26「攻撃判定と窓が重なった時だけがカウンター成立」・v0.25.3947):
+// このヘルパ(87箇所の面成立の合流点)は、**体をぶつけに行く技の最中(isBodySlamNow=接触判定が
+// 生きている=ミゲルの踏み込み等)だけ**成立を返す。溜め/硬直/追尾中/事後窓は攻撃判定ゼロ=全て不成立。
+// 各ハンドラ内の isCounterActive 直判定(判定時の置換カウンター)・爆風パリィ・弾反射はヘルパ不経由
+// =1bitも変わらない。過去の裁定(W7 v3128 / v3131 / v3591の着地円・事後窓 / §10-12#16)は本憲法が上書き。
 const bodyOverlapNow = (boss: Enemy): { overlap: boolean; counterActive: boolean } => {
+  if (!isBodySlamNow(boss)) return { overlap: false, counterActive: false };
   const cp = useGameStore.getState().player;
   return {
     overlap: rectsOverlap({ x: boss.x, y: boss.y, width: boss.width, height: boss.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height }),
@@ -265,6 +272,8 @@ const bodyOverlapNow = (boss: Enemy): { overlap: boolean; counterActive: boolean
  * 'sweep-windup' 等の州名が6体で衝突し、寸法が別テーブルだから)。
  */
 const reachOverlapNow = (boss: Enemy, state: string): { overlap: boolean; counterActive: boolean } => {
+  // ★カウンター憲法(v0.25.3947): bodyOverlapNow と同じゲート(上のコメント参照)。
+  if (!isBodySlamNow(boss)) return { overlap: false, counterActive: false };
   const cp = useGameStore.getState().player;
   const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
   return {
@@ -291,6 +300,8 @@ const reachOverlapNow = (boss: Enemy, state: string): { overlap: boolean; counte
 //    広げるには概算(語尾判定)ではなく州名リストの集約が要るので、ここでは記録に留める(★未決のまま)。
 // 同フレームにプレイヤーの成立(overlap&&窓)が立っている時はプレイヤー優先(体験を1bitも変えない)。
 const takeGhostAngelCounter = (boss: Enemy): GhostCounterFire | null => {
+  // ★カウンター憲法(v0.25.3947): 守護霊もプレイヤーと同じ基準=面成立は体当たり技の最中のみ。
+  if (!isBodySlamNow(boss)) return null;
   if (!isBossCounterableNowApprox(boss.aiPhase, boss.bossState)) return null;
   if (boss.type === 'jibril' && boss.bossState === 'warp-recover') return null;
   const { overlap, counterActive } = bodyOverlapNow(boss);

@@ -801,17 +801,13 @@ export const applyMineDamage = (fx: CombatEffects): void => {
  * 反撃報酬が単発ダッシュ等と不揃いだった。全g-*-recoverを追加(硬直はダメージを持たない=報酬窓のみ)。
  * 実行中(active/charge)は従来どおり増やさない——g-quad-chargeは社長裁定v0.25.3049で**カウンター不可**
  * (紫線)として確定済み=ここに加えないこと(ghostBossParry.testで機械化済み)。 */
+// ★カウンター憲法(社長裁定2026-08-26「攻撃判定と窓が重なった時だけがカウンター成立」・v0.25.3947):
+// **接触ダメージが生きている実行中だけ**を残す。旧リストの g-sweep-active と全 g-*-recover(硬直)は
+// 接触判定ゼロ(isBiteSubject=true で「触れても痛くない」)の面成立だった=憲法違反として除去。
+// 過去の裁定は事実として: W7(v3128 硬直中の接触=可)/v0.25.3050(全recover追加)は本憲法が上書きする。
+// 硬直への反撃は「近づいて殴る」(通常攻撃)で取る=カウンター報酬だけが消える。
 const GIANT_PARRYABLE_PHASES: readonly string[] = [
-  'g-dash-charge', 'g-sweep-active',
-  'g-stomp-recover', 'g-sweep-recover', 'g-dash-recover', 'g-jump-recover', 'g-bolt-recover',
-  // M65(stage-1固有技/大技)・M66(stage-3〜5固有技/大技)の硬直(v0.25.3050)
-  'g-bite-recover', 'g-slam-recover', 'g-wing-recover',
-  'g-glide-recover', 'g-dive-recover',
-  'g-quad-recover', 'g-nova-recover',
-  'g-trishot-recover', 'g-sweepbeam-recover',
-  // M67(グレン専用技)の硬直(v0.25.3050)
-  'g-trijump-recover', 'g-talon-recover', 'g-boon-recover', 'g-reach-recover', 'g-nihil-recover',
-  'g-tailslam-recover', // v0.25.3139: 尻尾の叩きつけ→弾連射の硬直=反撃窓
+  'g-dash-charge', // 突進の走り=貫通表(enemyMotion)に載る体当たり技=接触ダメージが生きている
 ];
 
 /** プレイヤーの接触パリィ(dashParried)が成立しうるフェーズか。applyContactDamage内の3分岐
@@ -886,11 +882,13 @@ export const inGiantGlideBand = (
 
 /** ※ v0.25.2601: `g-jump-air` はこの述語を通ったうえで **inGiantJumpLandingZone** も要る
  *   (位置条件はこの述語に持たせない=主語の座標を受け取らない純粋なフェーズ判定のまま保つ)。 */
+// ★カウンター憲法(v0.25.3947): 空中(jump/g-jump-air/g-trijump-air/g-glide-active=「空中は被弾しない」
+// と宣言している=判定ゼロ)・recover/crouch(接触ダメージなし)の面成立を除去。残るのは
+// **接触ダメージが生きている突進の走りだけ**(charge=貫通表の体当たり技 / giantのg-dash-charge)。
+// 過去の裁定は事実として: v2601(着地円内の空中カウンター)/v3050(三連跳び)/v3052(滑空)は本憲法が上書き。
+// ジャンプ系への対処は回避+着地爆風のパリィ(pumpkinBlasts経由=判定の瞬間)が残る。
 export const isDashParryCounterPhase = (enemy: Pick<Enemy, 'type' | 'aiPhase'>): boolean =>
-  enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air'
-  || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-trijump-air') // v0.25.3050: 三連跳びも空中族(着地円条件は呼び出し側=g-jump-airと同じ作法)
-  || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-glide-active') // v0.25.3052(案う): 滑空も空中族(帯内条件は呼び出し側)
-  || enemy.aiPhase === 'charge' || enemy.aiPhase === 'recover' || enemy.aiPhase === 'crouch'
+  enemy.aiPhase === 'charge'
   || (enemy.type === 'giantbat' && enemy.aiPhase !== undefined && GIANT_PARRYABLE_PHASES.includes(enemy.aiPhase));
 
 /** dashParried成立時の敵側変換(技の中断+攻め手から弾き飛ばすノックバック)。
@@ -1188,20 +1186,10 @@ export const applyContactDamage = (
     // 被弾しない(ダメージ=赤い帯のカプセル爆発+終点二撃目のみ)。カウンターは赤い帯の中でだけ。
     if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air' || enemy.aiPhase === 'g-trijump-air'
       || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-glide-active')) {
-      // v0.25.2601(社長裁定・第三案): 城ボスの飛び掛かりは**着地したら当たる位置**でだけ弾ける
-      // (赤い着地円=カウンターできる範囲、を一致させる)。空中で被弾しないこと自体は不変。
-      // 旧 'jump'(パンプキン等の非ボス)は対象外=従来どおり触れていれば弾ける。
-      const pCx = collPlayer.x + collPlayer.width / 2;
-      const pCy = collPlayer.y + collPlayer.height / 2;
-      const pRad = Math.max(collPlayer.width, collPlayer.height) / 2;
-      const jumpZoneOk = enemy.aiPhase === 'g-jump-air'
-        ? inGiantJumpLandingZone(pCx, pCy, pRad, enemy)
-        : enemy.aiPhase === 'g-trijump-air'
-          ? inGlenTriJumpLandingZone(pCx, pCy, pRad, enemy)
-          : enemy.aiPhase === 'g-glide-active'
-            ? inGiantGlideBand(pCx, pCy, pRad, enemy)
-            : true;
-      if (counterActiveNow && jumpZoneOk) dashParried.push(enemy.id);
+      // ★カウンター憲法(v0.25.3947): 空中は「被弾しない」と宣言している=接触の攻撃判定ゼロ。
+      // よって空中の接触パリィ(旧: 素のjump=どこでも/着地円・帯の中なら成立=v2601/v3050/v3052の裁定)は
+      // 憲法違反として除去した(過去の裁定は事実として上書き)。ジャンプ・滑空への対処は
+      // **回避+着地/帯の爆風パリィ**(pumpkinBlasts経由=判定の瞬間・従来どおり)が残る。
       return;
     }
     // 突進(charge)/ジャンプの着地硬直(recover)/溜め(crouch)も、カウンター窓中は弾く。
@@ -1212,17 +1200,17 @@ export const applyContactDamage = (
     // g-sweep-active)と硬直(g-*-recover=既にHITは終わっている)だけを対象にする(g-jump-airは
     // 直上のifで既に処理済み=ここへは到達しない)。
     const giantParryablePhase = enemy.type === 'giantbat' && enemy.aiPhase !== undefined &&
-      GIANT_PARRYABLE_PHASES.includes(enemy.aiPhase); // v0.25.2480: リストを守護霊経路と共有(同値・挙動不変)
-    if ((enemy.aiPhase === 'charge' || enemy.aiPhase === 'recover' || enemy.aiPhase === 'crouch' || giantParryablePhase) && counterActiveNow) {
+      GIANT_PARRYABLE_PHASES.includes(enemy.aiPhase); // v0.25.2480: リストを守護霊経路と共有
+    // ★カウンター憲法(v0.25.3947): recover/crouch は接触ダメージが無い(isBiteSubject=true)=判定ゼロの
+    // 面成立だったため除去。残るのは charge(貫通表の体当たり技=接触ダメージが生きている)のみ。
+    if ((enemy.aiPhase === 'charge' || giantParryablePhase) && counterActiveNow) {
       dashParried.push(enemy.id);
       return;
     }
     // 気絶中(フィニッシュ受付)の敵に触れても被弾しない。
-    // ただしカウンター窓中ならパリィ=弾き返す。カウンターの近接スイングがジャンプ敵を
-    // クリ気絶させると aiPhase が undefined にリセットされ、recover/charge 判定を抜けて
-    // ノックバックしなくなるため、気絶敵もカウンター中は dashParried で確実に弾く。
+    // ★カウンター憲法(v0.25.3947): 気絶中のパリィは「棒立ち=攻撃判定ゼロ」への成立だったため除去
+    // (ボス側3コントローラの掟「止まっている相手にカウンターは成立しない」と同じ側へ統一)。
     if (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) {
-      if (counterActiveNow) dashParried.push(enemy.id);
       return;
     }
     // v0.25.2946(社長裁定「体勢値は削ってあげたら?」): 裏ボス系(裏4体/天使6体/idol=体幹持ち)の
@@ -1258,7 +1246,11 @@ export const applyContactDamage = (
     //   `shouldSkipBossContactParry` へ出し、`'thor-dash-move'` で true を**値でアサート**する
     //   ことで、到達可能かどうかと無関係に生き続ける形にした。**挙動は1bitも変えていない。**
     const thorDashRunNow = shouldSkipBossContactParry(enemy.type, enemy.bossState);
-    if (BOSS_CONTACT_PARRY_ENABLED && counterActiveNow && !bossParryRooted && !thorDashRunNow && isHiddenBoss(enemy.type)) {
+    // ★カウンター憲法(v0.25.3947): 受け流しは**接触ダメージが生きている瞬間**(体をぶつけに行く技の
+    // 最中=isBiteSubjectがfalse)だけ。平時の追跡中の接触は攻撃判定ゼロ=成立しない
+    // (v2946裁定「追跡中の体当たりは受け流し」は本憲法が上書き。isHiddenBossは裏4+天使6+idol+phillの12体)。
+    if (BOSS_CONTACT_PARRY_ENABLED && counterActiveNow && !bossParryRooted && !thorDashRunNow && isHiddenBoss(enemy.type)
+      && !isBiteSubject(enemy, isBiteExemptType)) {
       // v0.25.2954(社長指示「体当たりカウンターしたら少しノックバックしてから硬直にして」):
       // 押す向き=プレイヤー→ボス(離れる方向)。ゼロ距離の退避は上向き。
       const pdx = (enemy.x + enemy.width / 2) - (collPlayer.x + collPlayer.width / 2);

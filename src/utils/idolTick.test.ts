@@ -532,8 +532,9 @@ describe('カウンター成立域は赤い予告の図形(v0.25.3591 監査是�
     return b.x < p.x + p.width && b.x + b.width > p.x && b.y < p.y + p.height && b.y + b.height > p.y;
   };
 
-  it('拳(帯90×30): 体に触れていない位置でも帯の中なら成立(監査C-5)', () => {
-    // idolの体は40×20=**全ボスで最小**。従来は「縦24px以内」まで近づかないと取れなかった。
+  // ★カウンター憲法(社長裁定2026-08-26・v0.25.3947): 溜め中の面成立(v3591 C-5)は憲法が上書き。
+  // 拳への対処=hitCapsule爆風のパリィ(判定の瞬間)+回避。
+  it('憲法: 拳の溜め=帯の中で窓を開けても成立しない(溜めは続く)', () => {
     const g = setupCounter(60);
     requestIdolMovePlay('punch', { solo: false, loop: false });
     g.step();
@@ -542,8 +543,8 @@ describe('カウンター成立域は赤い予告の図形(v0.25.3591 監査是�
     const hp = g.boss().health;
     openWindow();
     g.step();
-    expect(g.state()).toBe('idol-rest'); // カウンター成立=ストリングを断ち切って休符へ
-    expect(g.boss().health).toBeLessThan(hp);
+    expect(g.state()).toBe('idol-punch-windup'); // 中断されない(憲法)
+    expect(g.boss().health).toBe(hp);            // 反撃も入らない
   });
 
   it('★狙撃(紫): 帯の中でも体に重なっていても成立しない(社長裁定「避けるだけの技」)', () => {

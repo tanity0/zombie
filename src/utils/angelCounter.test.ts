@@ -56,10 +56,11 @@ const touching = (): boolean => {
   return b.x < p.x + p.width && b.x + b.width > p.x && b.y < p.y + p.height && b.y + b.height > p.y;
 };
 
-describe('ラフィ: 跳びかかりの成立域=着地円(監査B-5)', () => {
+// ★カウンター憲法(社長裁定2026-08-26・v0.25.3947): 溜め中の着地円成立(v3591 B-5)は憲法が上書き。
+describe('ラフィ: 跳びかかりの溜めはカウンター不成立(憲法・対処=回避+着地爆風のパリィ)', () => {
   beforeEach(() => { clearAngelPlayback(); });
 
-  it('着地円の中(=溜め開始でロックされた自分の足元)なら、遠く離れていてもカウンターが成立する', () => {
+  it('憲法: 着地円の中に立って窓を開けても、溜め中は成立しない', () => {
     const g = setup('rafi', 300);
     g.play('rf-jump');
     expect(g.state()).toBe('jump-windup');
@@ -67,8 +68,7 @@ describe('ラフィ: 跳びかかりの成立域=着地円(監査B-5)', () => {
     const hp = g.boss().health;
     openWindow();
     g.step();
-    // 成立の証拠=反撃ダメージ(ラフィは成立後、再ジャンプの溜めを取り直すので州は'jump-windup'のまま)。
-    expect(g.boss().health).toBeLessThan(hp);
+    expect(g.boss().health).toBe(hp); // 反撃は入らない(成立しない)
   });
 
   it('赤い円の外(着地点から遠い)へ歩けば成立しない=避けた側が正しく報われる', () => {
@@ -82,10 +82,12 @@ describe('ラフィ: 跳びかかりの成立域=着地円(監査B-5)', () => {
   });
 });
 
-describe('ラフィ: 薙ぎの実行中に帯カウンターがある(監査B-6・ミゲル/ウリ/スリィエルと同じ形)', () => {
+// ★カウンター憲法(v0.25.3947): ラフィの薙ぎのダメージは溜め明けの爆風で解決済み=実行中の帯は
+// 「判定後のカウンター専用窓」(v3591 B-6)だった→憲法が上書き。薙ぎは爆風パリィ(判定の瞬間)で返す。
+describe('ラフィ: 薙ぎの実行中の帯窓はカウンター不成立(憲法)', () => {
   beforeEach(() => { clearAngelPlayback(); });
 
-  it('赤い帯(310×40)の中に居れば、体に触れていなくても実行中に成立する', () => {
+  it('憲法: 実行中に帯の中で窓を開けても成立しない(技は完走する)', () => {
     const g = setup('rafi', 200);
     g.play('rf-sweep');
     expect(g.state()).toBe('sweep-windup');
@@ -95,28 +97,27 @@ describe('ラフィ: 薙ぎの実行中に帯カウンターがある(監査B-6�
     const hp = g.boss().health;
     openWindow();
     g.step();
-    expect(g.state()).toBe('chase');          // カウンター成立=技を中断
-    expect(g.boss().health).toBeLessThan(hp); // 反撃ダメージ
+    expect(g.state()).toBe('sweep');       // 中断されない
+    expect(g.boss().health).toBe(hp);      // 反撃も入らない
   });
 });
 
-describe('アクラシエル: 転移衝撃の成立域=赤円(監査A-4・カウンター手段が1つも無かった技)', () => {
+// ★カウンター憲法(v0.25.3947): 転移の予告円成立(v3591 A-4)は判定前=憲法が上書き。
+// 対処=予告1000msの間に赤円から歩いて出る(回避)。
+describe('アクラシエル: 転移衝撃の予告円はカウンター不成立(憲法・回避で対処)', () => {
   beforeEach(() => { clearAngelPlayback(); });
 
-  it('予告の1000msの間、赤円の中に居れば成立して衝撃が止まる', () => {
+  it('憲法: 予告の間、赤円の中で窓を開けても成立しない(転移は完走する)', () => {
     const g = setup('acrasiel', 300);
     g.play('ac-warp');
     g.until('warp-in');
     expect(g.state()).toBe('warp-in');
     const b = g.boss();
-    // 転移先(=赤円の中心)はランダム。判定と同じ aiTargetX/Y を読んでその中心に立つ。
     standAt(b.aiTargetX ?? 0, b.aiTargetY ?? 0);
     const hp = b.health;
-    const php = useGameStore.getState().player.health;
     g.step();
-    expect(g.state()).toBe('chase');
-    expect(g.boss().health).toBeLessThan(hp);
-    expect(useGameStore.getState().player.health).toBe(php); // 衝撃は出ない(潰した)
+    expect(g.state()).toBe('warp-in');       // 中断されない(予告は続く)
+    expect(g.boss().health).toBe(hp);        // 反撃も入らない
   });
 });
 

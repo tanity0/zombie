@@ -69,15 +69,37 @@ describe('ボス接触受け流し: トールの突進の走行中(thor-dash-mov
     expect(useGameStore.getState().player.health).toBeLessThan(hp0);
   });
 
-  it('★追跡中(chase)では従来どおり受け流しが立つ(除外がトールの全州へ広がっていない)', () => {
+  // ★カウンター憲法(社長裁定2026-08-26・v0.25.3947): 追跡中(chase)の接触は攻撃判定ゼロ
+  // (isBiteSubject=true で「触れても痛くない」)なので、受け流しも**立たない**
+  // (v2946「追跡中の体当たりは受け流し」は憲法が上書き)。
+  it('★追跡中(chase)は攻撃判定ゼロ=受け流しが立たない(憲法)', () => {
     setup('chase');
     const hp0 = useGameStore.getState().player.health;
     applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
     const boss = useGameStore.getState().enemies[0];
-    expect(boss.rootUntil).toBe(START_GT + 900); // BOSS_CONTACT_PARRY_ROOT_MS
-    expect(boss.bossPostureLastDamageAt).toBe(START_GT);
-    // 受け流しは**無傷**(プレイヤーは i-frame を得て被弾しない)。
+    expect(boss.rootUntil).toBeUndefined();
+    expect(boss.bossPostureLastDamageAt).toBeUndefined();
     expect(useGameStore.getState().player.health).toBe(hp0);
+  });
+
+  it('★体当たり技の最中(dash=貫通表)は接触判定が生きている=受け流しが立つ(憲法どおり残る側)', () => {
+    // トールは専用州の早期returnがあるため、汎用 'dash' を持つ裏ボス(mimir)で確認する。
+    const e = spawnEnemyAt('mimir', ORIGIN, ORIGIN, START_GT);
+    e.bossState = 'dash'; // PASS_THROUGH_BOSS_STATES=体を投げ出している技=接触判定が生きている
+    e.bossStateUntil = START_GT + 1000;
+    useGameStore.setState(s2 => ({
+      enemies: [e], gameTime: START_GT,
+      player: {
+        ...s2.player,
+        x: e.x + e.width / 2 - s2.player.width / 2,
+        y: e.y + e.height / 2 - s2.player.height / 2,
+        health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
+        counterWindowEnd: Date.now() + 5000,
+      },
+    }));
+    applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
+    const boss = useGameStore.getState().enemies[0];
+    expect(boss.rootUntil).toBe(START_GT + 900); // BOSS_CONTACT_PARRY_ROOT_MS
     expect(useGameStore.getState().player.invulnerable).toBe(true);
   });
 });
