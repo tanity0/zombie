@@ -2798,6 +2798,13 @@ const GHOST_DMG_LOG_MAX = 14;
 let ghostDmgLines: string[] = [];
 export const ghostDamageLogLines = (): string[] => ghostDmgLines;
 export const resetGhostDamageLog = (): void => { ghostDmgLines = []; };
+// v0.25.3981(社長報告「どの技にも一度もカウンターを決めていない」の実測用): 被弾ログと同じ画面枠へ
+// カウンター連鎖(監視/構え/成立/棄却)も書けるようにする汎用push。記録専用=判定・挙動・描画は不変。
+// 書き込み元は useGameLoop(監視・構え)と ghostCounter.ts(成立・棄却)。?ghostlog=1 の時だけ呼ばれる。
+export const ghostLogPush = (line: string): void => {
+  console.log('[GHOSTLOG]', line);
+  ghostDmgLines = [...ghostDmgLines, line].slice(-GHOST_DMG_LOG_MAX);
+};
 // v0.25.3958: ?kblog=1 の観測結果(敵の大移動/消失)を**画面に出す**ための行バッファ(スマホ実機では
 // コンソールが見られないため・ghostlogと同型)。モジュール変数+表示側(KbLogOverlay)が1秒間隔で
 // 読むだけ=毎フレームの購読・再レンダーを一切増やさない。書き込み元は useGameLoop の kblog 観測器。

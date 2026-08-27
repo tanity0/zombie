@@ -21,6 +21,7 @@ import {
   useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS, counterReplyDamage, COUNTER_ACCEPT_MS,
   COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
   COUNTER_HITSTOP_MS, COUNTER_ZOOM_MAG, GHOST_ZOOM_TRIAL_ENABLED, LATE_COUNTER_ENABLED,
+  GHOST_DMG_LOG_ENABLED, ghostLogPush,
 } from '../store/gameStore';
 // GHOST-COUNTER-PARITY(社長指示2「位置条件をプレイヤーと同じ『矩形が重なっている』へ。74pxの緩さを
 // 無くす」): 旧実装は GHOST_MELEE_RANGE(74px・敵の縁からの距離)で判定していたが、プレイヤーの接触
@@ -87,6 +88,18 @@ export const GHOST_COUNTER_CLAIM_MAX_AGE_MS = COUNTER_ACCEPT_MS; // プレイヤ
 
 let pendingClaim: GhostCounterClaim | null = null;
 
+// v0.25.3981(実測用・?ghostlog=1): 棄却理由の重複ログ抑止(同じ請求×同じ理由は1回だけ)。
+// peekは接触受け流し等から毎フレーム呼ばれるため、抑止しないと画面ログが1件で埋まる。記録専用。
+let lastRejectLogKey = '';
+const logReject = (reason: string, detail: string): void => {
+  if (!GHOST_DMG_LOG_ENABLED || pendingClaim === null) return;
+  const key = `${pendingClaim.atMs}:${reason}`;
+  if (key === lastRejectLogKey) return;
+  lastRejectLogKey = key;
+  const gt = useGameStore.getState().gameTime;
+  ghostLogPush(`${Math.round(gt / 100) / 10}s 棄却[${reason}] ${detail}`);
+};
+
 /** スイング側(useGameLoopのゴースト実行ブロック)が積む。常に最新1件だけ(同時ゴーストは1体)。 */
 export const setGhostCounterClaim = (claim: GhostCounterClaim): void => { pendingClaim = claim; };
 
@@ -101,13 +114,20 @@ export const setGhostCounterClaim = (claim: GhostCounterClaim): void => { pendin
  * i-frameで弾かれた時は更新されない)。`?lastcounter=1` で旧挙動へ復帰。
  */
 export const peekGhostCounterClaim = (nowMs: number, opts?: GhostClaimGateOpts): GhostCounterClaim | null => {
-  if (pendingClaim === null || nowMs - pendingClaim.atMs > GHOST_COUNTER_CLAIM_MAX_AGE_MS) return null;
+  if (pendingClaim === null) return null;
+  if (nowMs - pendingClaim.atMs > GHOST_COUNTER_CLAIM_MAX_AGE_MS) {
+    logReject('期限', `age=${Math.round(nowMs - pendingClaim.atMs)}ms`);
+    return null;
+  }
   const st = useGameStore.getState();
   const ghost = st.summons.find(s => s.kind === 'ghost-ally');
   // ★判定時置換ミラー(2026-08-27): 窓の生死は ghostCounterWindowEnd が正本(振り始めに+300で開き、
   // 被弾で0に閉じる=gameStore.damageSummon)。旧「lastHit > atMs」の被弾クローズはこの窓に含まれる。
   // ?lastcounter=1(LATE_COUNTER_ENABLED)は従来どおり被弾クローズだけを外す(atMs上限は残る)。
-  if (!LATE_COUNTER_ENABLED && ghost && nowMs > (ghost.ghostCounterWindowEnd ?? 0)) return null;
+  if (!LATE_COUNTER_ENABLED && ghost && nowMs > (ghost.ghostCounterWindowEnd ?? 0)) {
+    logReject('窓', `end=${ghost.ghostCounterWindowEnd ?? 0} now=${Math.round(nowMs)}`);
+    return null;
+  }
   // v0.25.2594(社長報告「守護霊がありえない位置でカウンター取ってる」): **成立の瞬間にその攻撃の
   // 当たる場所に居ること**を要求する(プレイヤー側は全経路が位置を必ず確かめている)。v0.25.2588で
   // 受付を150→400msへ広げた際に位置条件を写し忘れていたため、スイング後に離れても成立していた。
@@ -132,7 +152,10 @@ export const peekGhostCounterClaim = (nowMs: number, opts?: GhostClaimGateOpts):
   // 他経路は成立の瞬間に「攻撃の成立域 × 守護霊の体」を呼び出し側が再評価するので二重にしない。
   if (opts?.contactGate && ghost) {
     const boss = st.enemies.find(e => e.id === pendingClaim!.bossId);
-    if (boss && !checkCollision(playerHitbox(ghost), enemyContactBox(boss))) return null;
+    if (boss && !checkCollision(playerHitbox(ghost), enemyContactBox(boss))) {
+      logReject('位置', '接触ゲート(体の重なり)不成立');
+      return null;
+    }
   }
   return pendingClaim;
 };
@@ -144,6 +167,11 @@ export const consumeGhostCounterClaim = (
   const c = peekGhostCounterClaim(nowMs, opts);
   if (c === null || c.bossId !== bossId) return null;
   pendingClaim = null;
+  if (GHOST_DMG_LOG_ENABLED) {
+    const st = useGameStore.getState();
+    const bossType = st.enemies.find(e => e.id === bossId)?.type ?? bossId;
+    ghostLogPush(`${Math.round(st.gameTime / 100) / 10}s 成立 ${bossType}`);
+  }
   return c;
 };
 

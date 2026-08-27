@@ -87,6 +87,7 @@ import {
   PLACED_DURABILITY, // ★設置物の耐久台帳(社長指示2026-08-24)
   meleeLungePx, MELEE_LUNGE_MS, // ★踏み込み(3者で同じ関数=武器別も揃う。速度は既存の knockbackSpeedFor で導く)
   KILLFX_TOTAL_MS, // KILL処刑演出の尺(前隙の解決で近接SEを抑止する条件・旧VirtualJoystickから移設)
+  GHOST_DMG_LOG_ENABLED, ghostLogPush, // v0.25.3981: ?ghostlog=1 のカウンター連鎖ログ(記録専用・挙動不変)
 } from '../store/gameStore';
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
 import { DOG_EXCLUDED_TYPES, dogEligiblePickups } from '../utils/dogFetch'; // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
@@ -9722,6 +9723,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 },
                 gameTime, nowMs,
               });
+              // v0.25.3981(実測用・?ghostlog=1): カウンター監視の開始エッジ(錨が新しく張られた瞬間)を
+              // 画面ログへ。試行=抽選結果(しない=ロールがdodge/tank/抽選落ち)。記録専用・挙動不変。
+              if (GHOST_DMG_LOG_ENABLED
+                && ghostNow.ghostCounterPendingAt === undefined && decision.counterPendingAt !== undefined) {
+                ghostLogPush(`${Math.round(gameTime / 100) / 10}s 監視 ${boundBoss?.bossState ?? boundBoss?.aiPhase ?? '?'} 試行=${decision.counterWillAttempt ? 'する' : 'しない'}`);
+              }
 
               // v0.25.2514(監査項目7): 被弾ノックバック中は自分の移動を止める(プレイヤーがKB中に入力を
               // 無視されるのと同じ。実際の弾かれ移動は updateSummons が減衰しながら消化する)。
@@ -9963,6 +9970,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       bossId: boundBoss.id, ghostX: gscx, ghostY: gscy,
                       dmg: ghostCounterDamage(gun?.damage, ghostOwner), atMs: nowMs,
                     });
+                    // v0.25.3981(実測用・?ghostlog=1): 構え=請求を積んだ瞬間(通常近接)。記録専用。
+                    if (GHOST_DMG_LOG_ENABLED) {
+                      const remain = boundBoss.bossStateUntil !== undefined ? Math.round(boundBoss.bossStateUntil - gameTime) : -1;
+                      ghostLogPush(`${Math.round(gameTime / 100) / 10}s 構え ${boundBoss.bossState ?? boundBoss.aiPhase ?? '?'} 残${remain}ms`);
+                    }
                   }
                 }
               }
@@ -10064,9 +10076,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       bossId: boundBoss.id, ghostX: gmcx, ghostY: gmcy,
                       dmg: ghostCounterDamage(gun?.damage, ghostOwner), atMs: nowMs,
                     });
+                    // v0.25.3981(実測用・?ghostlog=1): 構え=請求を積んだ瞬間(刀の一閃)。記録専用。
+                    if (GHOST_DMG_LOG_ENABLED) {
+                      const remain = boundBoss.bossStateUntil !== undefined ? Math.round(boundBoss.bossStateUntil - gameTime) : -1;
+                      ghostLogPush(`${Math.round(gameTime / 100) / 10}s 構え(一閃) ${boundBoss.bossState ?? boundBoss.aiPhase ?? '?'} 残${remain}ms`);
+                    }
                   } else if (GHOST_FX_SHAKE_ENABLED) {
                     useGameStore.getState().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG, btcx - gmcx, bccy - gmcy);
                   }
+                }
+                // v0.25.3981(実測用・?ghostlog=1): 刀ビルドのカウンター試行が一閃を出せなかった
+                // (安全な着地方向なし/一閃CD中)=請求ゼロで終わる経路。記録専用・挙動不変。
+                if (GHOST_DMG_LOG_ENABLED && !dashed && wasCounterMelee) {
+                  ghostLogPush(`${Math.round(gameTime / 100) / 10}s 一閃不発 ${boundBoss.bossState ?? boundBoss.aiPhase ?? '?'}`);
                 }
               } else if (ghostMeleeResolvesNow
                 && boundBoss
