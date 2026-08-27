@@ -8430,10 +8430,33 @@ export class PixiScene {
       return;
     }
 
+    // ★崩落(v0.25.3983・社長指示「城ボス倒したら、城も崩れて消えて」): 震え(前23%)→加速沈下+
+    // フェード(残り)。慣性の掟=等速・瞬間消滅を作らない(震えが「崩れ始め」の予告、沈下は重力=t²で加速)。
+    // 終わったら以後この関数の頭で消したまま(壁判定・方角マーカーはstore/syncArrows側で同じ打刻を見る)。
+    const CASTLE_COLLAPSE_MS = 2200;
+    const colP = castle.collapsedAt !== undefined
+      ? Math.min(1, (now - castle.collapsedAt) / CASTLE_COLLAPSE_MS)
+      : null;
+    if (colP !== null && colP >= 1) {
+      this.castleView.visible = false;
+      this.castleShadow = null;
+      this.castleGlow.visible = false;
+      this.castleGlowBokeh.visible = false;
+      return;
+    }
+
     const d = this.depthScale(footY);
-    const pulse = castle.bossSpawned ? 0.75 + 0.25 * Math.sin(now / 260) : 0;
+    const pulse = (castle.bossSpawned && colP === null) ? 0.75 + 0.25 * Math.sin(now / 260) : 0;
     const targetH = CASTLE_TARGET_HEIGHT * d;
     const sc = targetH / tex.height;
+    const COLLAPSE_TREMOR_FRAC = 0.23;
+    const sinkP = colP === null ? 0 : Math.max(0, (colP - COLLAPSE_TREMOR_FRAC) / (1 - COLLAPSE_TREMOR_FRAC));
+    const sinkPx = sinkP * sinkP * targetH * 1.05; // 加速沈下(t²=重力)。1.05=丈の少し先まで沈めて確実に地面下へ
+    const tremorPx = colP === null ? 0
+      : Math.sin(now / 26) * (colP < COLLAPSE_TREMOR_FRAC
+        ? 3.5 * (0.4 + 0.6 * (colP / COLLAPSE_TREMOR_FRAC)) // 震えは徐々に強く(立ち上がりの慣性)
+        : 2.5 * (1 - sinkP));                               // 沈下中は減衰しながら揺れ続ける
+    const colFade = colP === null ? 1 : Math.max(0, 1 - sinkP * 1.15); // 沈み切る少し前に消え切る
 
     // 接地影は syncShadows のソフト方向影に統一(他のオブジェクトと同じプール経路)。
     // 幅は城スプライトの見た目幅基準だが、巨大ブロブを避けるため控えめに抑える。
@@ -8445,23 +8468,28 @@ export class PixiScene {
       rawW: tex.width * sc,
       rawH: tex.height * sc,
       texture: tex,
-      alpha: horizonAlpha * 0.8,
+      alpha: horizonAlpha * 0.8 * colFade,
     };
 
     this.castleView.visible = true;
-    this.castleView.position.set(Math.round(castle.x), Math.round(castle.y + CASTLE_FOOT_OFFSET_Y * d));
+    this.castleView.position.set(Math.round(castle.x + tremorPx), Math.round(castle.y + CASTLE_FOOT_OFFSET_Y * d + sinkPx));
     // プレイヤーが城の裏に回り込んだら透かす(木/壁/プロップと同じ規格)。将来のダンジョン系オブジェも同様に。
     const stMult = this.seeThroughMult(castle.x, footY, tex.width * sc, targetH);
     const targetAlpha = Math.min(0.96, horizonAlpha * 0.9) * stMult;
-    this.castleView.alpha += (targetAlpha - this.castleView.alpha) * this.seeThroughLerp;
+    if (colP !== null) {
+      // 崩落中はlerpを使わず直接(フェードの尺=崩落時計と1:1で決定的に)。
+      this.castleView.alpha = targetAlpha * colFade;
+    } else {
+      this.castleView.alpha += (targetAlpha - this.castleView.alpha) * this.seeThroughLerp;
+    }
     this.castleView.zIndex = footY;
 
     this.castleSprite.texture = tex;
     this.castleSprite.scale.set(sc);
 
-    // 光源DOF(v0.25.2666): ワールドYは「城の位置 + グローのローカルY」。
+    // 光源DOF(v0.25.2666): ワールドYは「城の位置 + グローのローカルY」。崩落中は消灯。
     this.placeDofGlow(
-      this.castleGlow, this.castleGlowBokeh, castle.bossSpawned,
+      this.castleGlow, this.castleGlowBokeh, castle.bossSpawned && colP === null,
       castle.y - targetH * 0.5, 0, -targetH * 0.5, targetH * 1.35, targetH * 0.9,
       0.14 + 0.08 * pulse,
     );
@@ -10027,7 +10055,7 @@ export class PixiScene {
       for (const entry of this.propObjs.values()) {
         push(entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.32), 0.6);
       }
-      push(castle.x, castle.y + CASTLE_FOOT_OFFSET_Y, 90 * this.depthScale(castle.y + CASTLE_FOOT_OFFSET_Y), castle.bossSpawned ? 1.15 : 0.82);
+      if (castle.collapsedAt === undefined) push(castle.x, castle.y + CASTLE_FOOT_OFFSET_Y, 90 * this.depthScale(castle.y + CASTLE_FOOT_OFFSET_Y), castle.bossSpawned ? 1.15 : 0.82); // v0.25.3983: 崩落した城は消す
       push(merchant.x, merchant.y, 82 * this.depthScale(merchant.y), 0.9);
       if (eventNpc.status !== 'completed') {
         push(eventNpc.x, eventNpc.y, 76 * this.depthScale(eventNpc.y), 0.9);
@@ -26692,7 +26720,8 @@ export class PixiScene {
     // ステージ2(ラボ/屋内)は城を描かないので、位置マーカーも出さない。
     // さらにボス出現まで(bossSpawned)はマーカー非表示(社長指示)。洋館再訪(the ONE)は目的地=洋館
     // なのでボス無しでも表示する(revisitMarker)。
-    if (castleVisible && (castle.bossSpawned || this.revisitMarker) && (castleX < 0 || castleX > this.screenW || castleY < 0 || castleY > this.screenH)) {
+    // v0.25.3983(社長指示「方角のマークも消えてね」): 崩落した城のマーカーは出さない(洋館再訪は別)。
+    if (castleVisible && ((castle.bossSpawned && castle.collapsedAt === undefined) || this.revisitMarker) && (castleX < 0 || castleX > this.screenW || castleY < 0 || castleY > this.screenH)) {
       const angle = Math.atan2(castleY - cyC, castleX - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
       let tdist = Infinity;

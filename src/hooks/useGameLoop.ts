@@ -1651,6 +1651,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
   const castleAttnRef = useRef<{ at: number; x: number; y: number }>({ at: 0, x: 0, y: 0 });
+  // v0.25.3983(城の崩壊・社長指示): 崩落開始(castleEvent.collapsedAt)後の追加の砂埃の波を1回ずつ積む
+  // (at=処理済みのcollapsedAt / wave=次に出す波の添字)。リセットは collapsedAt が消えた時(新しいラン)。
+  const castleCollapseDustRef = useRef<{ at: number; wave: number }>({ at: 0, wave: 0 });
   // §6.38 v9(完全コピー原則): 賞金首も城ボスと同じ「出現エフェクトが消えてからカメラアテンション
   // +カットイン」の並びにする(castleAttnRefと同型。null=予約なし)。
   const bountyAttnRef = useRef<{ at: number; x: number; y: number; cutin: ReturnType<typeof bossCutinPayload> } | null>(null);
@@ -2854,6 +2857,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           {
             const cAc = bossArtCenter(boss);
             castleAttnRef.current = { at: newGameTime + 950, x: cAc.x, y: cAc.y };
+          }
+        }
+        // v0.25.3983(城の崩壊・社長指示): 崩落中の追加の砂埃の波(開始時の1発はstore側。ここは
+        // 沈下が進む途中の0.7s/1.3sに足元へ2波=②派手さの絵・判定なし・event-only。カメラは向けない)。
+        {
+          const cco = useGameStore.getState().castleEvent;
+          const cdr = castleCollapseDustRef.current;
+          if (cco.collapsedAt === undefined) {
+            if (cdr.at !== 0) { cdr.at = 0; cdr.wave = 0; }
+          } else {
+            if (cdr.at !== cco.collapsedAt) { cdr.at = cco.collapsedAt; cdr.wave = 0; }
+            const colElapsed = Date.now() - cco.collapsedAt;
+            const CASTLE_FOOT_OFFSET_Y_MIRROR = 38; // gameStore/pixiSceneのCASTLE_FOOT_OFFSET_Yと同値(既存2箇所と同じ写し)
+            const DUST_WAVES_MS = [700, 1300];
+            while (cdr.wave < DUST_WAVES_MS.length && colElapsed >= DUST_WAVES_MS[cdr.wave]) {
+              const dfy = cco.y + CASTLE_FOOT_OFFSET_Y_MIRROR;
+              spawnBurst(cco.x - 45 + 90 * Math.random(), dfy - 6, cdr.wave === 0 ? '#9ca3af' : '#6b7280', 16);
+              spawnBurst(cco.x - 80, dfy - 2, '#6b7280', 10);
+              spawnBurst(cco.x + 80, dfy - 2, '#6b7280', 10);
+              spawnRing(cco.x, dfy, 16, 170 + 50 * cdr.wave, 'rgba(148,163,184,0.6)', 4, 700);
+              cdr.wave += 1;
+            }
           }
         }
         // 城ボスの遅延アテンション発火(出現演出が落ち着いてからカメラを寄せる)。

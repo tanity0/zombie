@@ -750,7 +750,31 @@ const castleFootY = (castle: CastleEvent): number => castle.y + CASTLE_FOOT_OFFS
 const castleRect = (castle: CastleEvent): Rect =>
   footRect(castle.x, castleFootY(castle), CASTLE_COLLISION_W, CASTLE_COLLISION_H);
 const resolveCastleCollision = (rect: Rect, castle: CastleEvent): { x: number; y: number } =>
-  resolveAabb(rect, [castleRect(castle)]);
+  // v0.25.3983: 崩落した城は壁ではない(絵と判定の一致。プレイヤー/敵の両呼び出し元へここ1箇所で効く)。
+  castle.collapsedAt !== undefined ? { x: rect.x, y: rect.y } : resolveAabb(rect, [castleRect(castle)]);
+
+// ★城の崩壊(社長指示2026-08-27「城ボス倒したら、城も崩れて消えて。(カメラは向けなくていいので)
+// 方角のマークも消えてね」): 城ボス=城の位置を巣(homeX/homeY)に持つ非ストーリーのgiantbat
+// (イベント囲いのミニボスgiantbatは巣が囲い座標=対象外。グレンはisStoryBossで対象外)。
+// 撃破の瞬間に collapsedAt(Date.now)を打刻する。効果は3つ——①描画(pixiScene.syncCastle)が
+// 崩落(震え→加速沈下+フェード=慣性の掟)を再生して以後描かない ②壁判定(上のresolveCastleCollision/
+// 弾の遮蔽)が消える ③方角マーカー(syncArrows)が消える。カメラは向けない(社長指示)。
+// 呼び出し元=キル合流点の2本(damageEnemyのkill分岐/近接キルヘルパー)。
+const collapseCastleOnBossDeath = (enemy: Enemy): void => {
+  const st = useGameStore.getState();
+  const castle = st.castleEvent;
+  if (castle.collapsedAt !== undefined) return;
+  if (enemy.type !== 'giantbat' || enemy.isStoryBoss) return;
+  if (enemy.homeX !== castle.x || enemy.homeY !== castle.y) return;
+  useGameStore.setState(s => ({ castleEvent: { ...s.castleEvent, collapsedAt: Date.now() } }));
+  // 崩落開始の砂埃+地響き(②派手さの絵=判定なし。以後の砂埃の波はuseGameLoopが時刻で積む)。
+  const fy = castleFootY(castle);
+  st.spawnBurst(castle.x, fy, '#9ca3af', 24);
+  st.spawnBurst(castle.x - 55, fy - 8, '#6b7280', 14);
+  st.spawnBurst(castle.x + 55, fy - 8, '#6b7280', 14);
+  st.spawnRing(castle.x, fy, 20, 230, 'rgba(148,163,184,0.75)', 6, 900);
+  st.triggerShake(650, 5);
+};
 // 武器商人はスタート地点(原点)に常駐(社長指示)。各拠点中央の「武器庫」から遠隔利用もできる。
 // 開始直後に誤発動しないよう、スポーン(原点)から少し上にずらして設置。
 const createWeaponMerchant = (): WeaponMerchant => ({
@@ -3717,6 +3741,8 @@ const grantMeleeKillRewards = (
       const qNext = questKillProgress(qs.eventQuestActive, qs.eventQuestGoalTier, qs.eventQuestKills, enemy);
       if (qNext !== null) useGameStore.setState({ eventQuestKills: qNext });
     }
+    // v0.25.3983(社長指示): 城ボス撃破→城の崩壊(近接全経路の合流点=ここ1箇所で拾える)。
+    collapseCastleOnBossDeath(enemy);
     // サブクエストのキル進捗(research/SUBQUESTS.md)。★近接キル確定点(2本のうちの1本)。
     applySubquestProgress(get, { type: 'kill', kill: subquestKillEventFrom(get(), enemy) });
     const ex = enemy.x + enemy.width / 2;
@@ -10950,6 +10976,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (subquestKilled) {
       const ske = subquestKilled as Enemy;
       applySubquestProgress(get, { type: 'kill', kill: subquestKillEventFrom(get(), ske) });
+      // v0.25.3983(社長指示): 城ボス撃破→城の崩壊(銃/接触/爆発/DoT経路。近接経路はgrantMeleeKillRewards側)。
+      collapseCastleOnBossDeath(ske);
     }
 
     // 裏ボスが完全気絶(紫)に移行: 紫の衝撃リング＋発光＋コールアウトで知らせる。
@@ -14643,7 +14671,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           .filter(prop => prop.type === 'torch' && prop.health > 0)
           .map(torchRect);
         // v0.25.3054: ボス戦中は城の判定を弾も素通し(絵と判定の一致・見えない壁を作らない)。
+        // v0.25.3983: 崩落した城も同じく弾を遮らない(壁判定の撤去と同じ理由)。
         return facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)
+          || castleEvent.collapsedAt !== undefined
           ? [...trunks, ...torches]
           : [...trunks, ...torches, castleRect(castleEvent)];
       };

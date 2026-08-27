@@ -1895,6 +1895,10 @@ export interface CastleEvent {
   y: number;
   bossSpawned: boolean;
   bossSummonAt?: number; // ボス出現の魔法陣演出を再生する Date.now(ms)。描画(pixiScene)が参照。
+  // v0.25.3983(社長指示2026-08-27「城ボス倒したら、城も崩れて消えて。方角のマークも消えてね」):
+  // 城ボス撃破の瞬間(Date.now)。設定されると ①描画(syncCastle)が崩落(震え→加速沈下+フェード)を
+  // 再生して以後描かない ②城の壁判定(resolveCastleCollision/弾の遮蔽)が消える ③方角マーカーが消える。
+  collapsedAt?: number;
 }
 
 // 囲い系イベント(小イベント=短時間の強制アリーナ戦/ミニボス戦)。
