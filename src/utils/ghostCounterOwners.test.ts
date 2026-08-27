@@ -53,30 +53,54 @@ describe('守護霊カウンター: 機会州の全数に消費担当がある(�
   });
 });
 
-// ★検収1巡(重2/重3/重5): 着弾逆算(構え)の対象=宣言表の予告だけ、の固定。
-// 表の各予告は「終了と同時に始まる判定」があり、その判定の州が担当表に載っていること
-// (=積んだ請求を拾う消費口が実在すること)を機械検査する。
+// ★検収1巡(重2/重3/重5)+2巡(重A/重B): 着弾逆算(構え)の対象=宣言表の予告だけ、の固定。
+// 表の各予告は「終了と同時に始まる判定」があり、その判定に消費口が実在すること(=機会州の担当か
+// 爆風のブラストパリィ)を機械検査する。キーは type:state(型ゲート=重A)。
 describe('着弾逆算の宣言表(IMPACT_AT_WINDUP_END_BOSS_STATES)', () => {
+  // 後続判定: 機会州(担当表の検査対象)か 'blast'(windup終了フレームで hitCapsule=pumpkinBlasts を積む技
+  // =combatTickのブラストパリィが請求を消費する)。
   const FOLLOW_UP: Record<string, string> = {
-    'issen-windup': 'issen-dash',
-    'tsuki-windup': 'tsuki',
-    'harai-windup': 'harai',
-    'bm-whip360-windup': 'bm-whip360',
-    'mk-spin-windup': 'mk-spin',
+    'thor:issen-windup': 'issen-dash',
+    'thor:tsuki-windup': 'tsuki',
+    'thor:harai-windup': 'harai',
+    'bounty-ranged:br-push-windup': 'blast',
+    'bounty-ranged:br-triple-windup': 'blast',
+    'bounty-melee:bm-whip360-windup': 'bm-whip360',
+    'bounty-melee:bm-combo1-windup': 'blast',
+    'bounty-melee:bm-combo2-windup': 'blast',
+    'bounty-melee:bm-combo3-windup': 'blast',
+    'bounty-balance:bb-sweep-windup': 'blast',
+    'bounty-balance:bb-triple1-windup': 'blast',
+    'bounty-balance:bb-triple2-windup': 'blast',
+    'bounty-balance:bb-triple3-windup': 'blast',
+    'bounty-maiko:mk-spin-windup': 'mk-spin',
+    'bounty-maiko:mk-naginata-windup': 'blast',
+    'bounty-maiko:mk-naginata1-windup': 'blast',
+    'bounty-maiko:mk-naginata2-windup': 'blast',
   };
-  it('表の全予告に「終了と同時の判定州」があり、それが機会州(=担当表の検査対象)に載っている', () => {
+  it('表の全予告に後続判定(機会州 or 爆風)がある', () => {
     for (const w of IMPACT_AT_WINDUP_END_BOSS_STATES) {
       const follow = FOLLOW_UP[w];
-      expect(follow, `予告 '${w}' の後続判定州がこのテストの表に無い`).toBeTruthy();
-      expect(COUNTER_OPPORTUNITY_STATES.includes(follow), `後続州 '${follow}' が機会州リストに無い=消費口が無い`).toBe(true);
+      expect(follow, `予告 '${w}' の後続判定がこのテストの表に無い`).toBeTruthy();
+      if (follow !== 'blast') {
+        expect(COUNTER_OPPORTUNITY_STATES.includes(follow), `後続州 '${follow}' が機会州リストに無い=消費口が無い`).toBe(true);
+      }
+    }
+    for (const k of Object.keys(FOLLOW_UP)) {
+      expect(IMPACT_AT_WINDUP_END_BOSS_STATES.includes(k), `検査表の '${k}' が宣言表に無い(表の腐り)`).toBe(true);
     }
   });
-  it('終わりに着弾しない予告・消費担当の無い予告は表に載せない(早振り/棒立ちの再発防止)', () => {
+  it('終わりに着弾しない予告・消費担当の無い予告・別ボスの同名州は対象にしない(早振り/棒立ちの再発防止)', () => {
     // トールjump(着地は+360ms後)/突進(到達に依存)/ミーミルのレーザー(紫=カウンター不可)/
-    // idolの全予告(消費担当なし)。載せると重2/重3(検収1巡)がそのまま戻る。
-    for (const w of ['jump-windup', 'thor-dash-windup', 'laser-windup',
-      'idol-snipe-windup', 'idol-punch-windup', 'idol-nade', 'idol-roll']) {
-      expect(impactAtWindupEnd(w), `'${w}' は着弾逆算の対象にしてはいけない`).toBe(false);
-    }
+    // idolの全予告(消費担当なし)/**ミゲルのharai-windup(同名州の型ゲート=重A)**。
+    expect(impactAtWindupEnd('thor', 'jump-windup')).toBe(false);
+    expect(impactAtWindupEnd('thor', 'thor-dash-windup')).toBe(false);
+    expect(impactAtWindupEnd('mimir', 'laser-windup')).toBe(false);
+    expect(impactAtWindupEnd('idol', 'idol-snipe-windup')).toBe(false);
+    expect(impactAtWindupEnd('idol', 'idol-punch-windup')).toBe(false);
+    expect(impactAtWindupEnd('idol', 'idol-nade')).toBe(false);
+    expect(impactAtWindupEnd('idol', 'idol-roll')).toBe(false);
+    expect(impactAtWindupEnd('miguel', 'harai-windup'), 'ミゲルの払い溜めをすくうと棒立ち(重3)がミゲルで戻る').toBe(false);
+    expect(impactAtWindupEnd('miguel', 'tate-windup')).toBe(false);
   });
 });

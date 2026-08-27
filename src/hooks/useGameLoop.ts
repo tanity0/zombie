@@ -9676,6 +9676,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   lastMeleeAt: ghostNow.ghostLastMeleeAt ?? 0,
                   counterPendingAt: ghostNow.ghostCounterPendingAt,
                   counterWillAttempt: ghostNow.ghostCounterWillAttempt,
+                  counterArmKey: ghostNow.ghostCounterArmKey, // ★検収2巡(中C)
                   // GHOST-COUNTER-PARITY: カウンター試行だけの周期(820ms)の起点を持ち越す。
                   lastCounterAttemptAt: ghostNow.ghostLastCounterAttemptAt,
                   moveRoll: prevMoveRoll,
@@ -9807,6 +9808,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ghostReloadEndsAt,
                   ghostReloadingWeaponId,
                   ghostCounterPendingAt: decision.counterPendingAt, ghostCounterWillAttempt: decision.counterWillAttempt,
+                  ghostCounterArmKey: decision.counterArmKey, // ★検収2巡(中C)
                   // GHOST-COUNTER-PARITY: カウンター試行専用CDの起点を持ち越す(通常近接CDとは別枠)。
                   ghostLastCounterAttemptAt: decision.lastCounterAttemptAt,
                   // G4b: 技への反応ロールを持ち越す(技の解決=decideGhostがundefinedを返したらクリア)。
@@ -12437,7 +12439,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const hitsForSummon = summonHits.filter(h => h.summonId === summonId);
               if (before && before.kind === 'ghost-ally') {
                 for (const h of hitsForSummon) {
-                  const en = enemies.find(e => e.id === h.enemyId);
+                  // ★検収2巡(中E): フレーム頭のスナップショット(enemies)ではなく**最新状態**を読む——
+                  // 同フレーム先行のプレイヤー受け流しが立てた rootUntil / 州変化を見ないと、
+                  // プレイヤー優先(拘束中は再受け流し禁止)が効かず同フレーム二重成立が起きる
+                  // (applyContactDamage側が getState() で読み直しているのと同じ理由)。
+                  const en = useGameStore.getState().enemies.find(e => e.id === h.enemyId);
                   if (en && tryGhostContactParry(en, before, gameTime,
                     gain => playSfx('counter', gain),
                     (x, y) => {
@@ -12458,7 +12464,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 .filter(h => h.enemyId !== parriedBossId)
                 .reduce<{ enemyId: string; damage: number } | null>((best, h) => (best === null || h.damage > best.damage ? h : best), null);
               if (hitFrom === null) continue; // 触れていたのは受け流したボスだけ=このフレームは無傷
-              const fromEnemy = enemies.find(e => e.id === hitFrom.enemyId);
+              const fromEnemy = useGameStore.getState().enemies.find(e => e.id === hitFrom.enemyId); // ★検収2巡(中E): 位置も最新で
               useGameStore.getState().damageSummon(summonId, hitFrom.damage,
                 fromEnemy ? fromEnemy.x + fromEnemy.width / 2 : undefined,
                 fromEnemy ? fromEnemy.y + fromEnemy.height / 2 : undefined,

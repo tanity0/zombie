@@ -108,15 +108,31 @@ export const ghostAimLeadMs = (slowness01: number): number =>
  * が全部同時に起きる。載せる条件は2つ: ①その予告の終了フレームから判定が生きる ②守護霊の消費担当
  * (GHOST_PARITY_LEDGER.md ★仕様の州→担当表)がその判定を拾う。
  */
+// ★検収2巡(重A): キーは**`type:state`(型ゲート付き)**——'harai-windup'等の州名はミゲル(天使)も
+// 使うため、州名だけの一致だと別ボスの消費担当の無い予告をすくい、棒立ち(重3)がそのボスで戻る
+// (moveReaction.ts「名前が他ボスと衝突する状態があるため必ずtypeでゲートする」と同じ作法)。
+// ★検収2巡(重B): 「windupの終了フレームでhitCapsule(爆風)を積む技」も条件①②を満たす
+// (消費担当=combatTickのブラストパリィ)ので全数載せる——載せないと、ACTIVE州を持たない技
+// (バス停の全技・馬乗りコンボ・バランスの薙ぎ/三連・舞子の薙刀)で構える契機がゼロになり、
+// **プレイヤーだけが弾けて守護霊は弾けない技**が残る。※mk-suiu-hop*は着地点が毎ホップ再抽選=
+// 守護霊の居場所と無関係なので対象外(保留)。
 export const IMPACT_AT_WINDUP_END_BOSS_STATES: readonly string[] = [
-  'issen-windup',  // トール: 終了と同時に issen-dash(カプセル判定・担当=capsule)
-  'tsuki-windup',  // トール: 終了と同時に tsuki(カプセル判定・担当=capsule)
-  'harai-windup',  // トール: 終了と同時に harai(カプセル判定・担当=capsule)
-  'bm-whip360-windup', // 賞金首馬乗り: 終了と同時に bm-whip360(円ACTIVE・担当=bounty-figure)
-  'mk-spin-windup',    // 賞金首舞子: 終了と同時に mk-spin(回転ACTIVE・担当=bounty-figure)
+  // トール: 終了と同時にカプセル判定(担当=capsule)
+  'thor:issen-windup', 'thor:tsuki-windup', 'thor:harai-windup',
+  // 賞金首バス停: 終了フレームで帯/三連の爆風を積む(担当=blast)
+  'bounty-ranged:br-push-windup', 'bounty-ranged:br-triple-windup',
+  // 賞金首馬乗り: 円ACTIVE(担当=bounty-figure)+3連コンボの各段(担当=blast)
+  'bounty-melee:bm-whip360-windup',
+  'bounty-melee:bm-combo1-windup', 'bounty-melee:bm-combo2-windup', 'bounty-melee:bm-combo3-windup',
+  // 賞金首バランス: 薙ぎ/三連(担当=blast)
+  'bounty-balance:bb-sweep-windup',
+  'bounty-balance:bb-triple1-windup', 'bounty-balance:bb-triple2-windup', 'bounty-balance:bb-triple3-windup',
+  // 賞金首舞子: 回転ACTIVE(担当=bounty-figure)+薙刀の各段(担当=blast)
+  'bounty-maiko:mk-spin-windup',
+  'bounty-maiko:mk-naginata-windup', 'bounty-maiko:mk-naginata1-windup', 'bounty-maiko:mk-naginata2-windup',
 ];
-export const impactAtWindupEnd = (bossState: string | undefined): boolean =>
-  bossState !== undefined && IMPACT_AT_WINDUP_END_BOSS_STATES.includes(bossState);
+export const impactAtWindupEnd = (enemyType: string, bossState: string | undefined): boolean =>
+  bossState !== undefined && IMPACT_AT_WINDUP_END_BOSS_STATES.includes(`${enemyType}:${bossState}`);
 
 /**
  * 逆算の判定: 「ダメージが出る瞬間」までの残りが実効先行時間以内なら、今このtickで振る。

@@ -1210,6 +1210,7 @@ export interface Summon {
   ghostLastMeleeAt?: number;   // 近接のクールダウンゲート(ms・Date.now基準)。
   ghostCounterPendingAt?: number;    // カウンター相当の機会が開いた時刻(undefined=機会なし)。
   ghostCounterWillAttempt?: boolean; // その機会で抽選済みの「試みるか」。
+  ghostCounterArmKey?: string;       // ★検収2巡(中C): 錨を張った時のボス州(州が変われば錨を張り直す)。
   // GHOST-COUNTER-PARITY(社長指示「プレイヤーと揃えろ」): カウンターが成立しうるスイングだけの
   // クールダウン起点(ms・Date.now基準)。ghostLastMeleeAt(通常近接=600ms・不変)とは別枠
   // (ghostDriver.GHOST_COUNTER_MELEE_PERIOD_MS=プレイヤーのCOUNTER_WINDOW+COUNTER_COOLDOWNと同期)。

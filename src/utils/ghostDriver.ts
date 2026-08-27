@@ -541,6 +541,7 @@ export interface GhostSelf {
   lastShotAt: number;   // ms(Date.now())
   lastMeleeAt: number;  // ms
   counterPendingAt?: number;    // カウンター相当の機会が開いた時刻(undefined=機会なし)
+  counterArmKey?: string;       // ★検収2巡(中C): その錨を張った時の州(州が変わったら錨を張り直す)
   counterWillAttempt?: boolean; // その機会で抽選済みの「試みるか」
   /**
    * GHOST-COUNTER-PARITY: 最後に「カウンターするつもりで」melee actionを出した時刻(ms・Date.now基準)。
@@ -607,6 +608,7 @@ export interface GhostDecision {
   lastShotAt: number;
   lastMeleeAt: number;
   counterPendingAt?: number;
+  counterArmKey?: string;
   counterWillAttempt?: boolean;
   lastCounterAttemptAt?: number; // GHOST-COUNTER-PARITY: 次tickへ持ち越す(GhostSelfと同じ意味)
   /**
@@ -754,16 +756,31 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // ★検収1巡(重2/重3/重5): 対象は総当たりではなく**宣言表(IMPACT_AT_WINDUP_END_BOSS_STATES)の
   // 予告だけ**——「終わりに着弾しない予告での早振り」「消費担当の無いidol/紫レーザーでの棒立ち」
   // 「ACTIVE州の反応遅延の消滅」を全部防ぐ(表の条件=①終了フレームから判定が生きる②消費担当がある)。
-  const windupImpactAt = impactAtWindupEnd(target.bossState)
+  // ★検収2巡(重A): 表は**型ゲート付き**(`type:state`)で引く——'harai-windup'等の州名はミゲルも使うため、
+  // 州名だけの一致だと別ボスの(消費担当の無い)予告をすくって棒立ちが戻る(moveReaction.tsと同じ作法)。
+  const windupImpactAt = impactAtWindupEnd(target.type, target.bossState)
     ? target.bossStateUntil
     : undefined;
   const counterable = inMeleeRange && !deadWindup
     && (isCounterOpportunityNow(target) || windupImpactAt !== undefined);
-  // ★検収1巡(重1): 着弾時刻が分かっている予告(表の州)では**見切らない**——見切りは「いつ成立するか
-  // 分からない窓に張り付き続ける」ことへの保険で、逆算対象には不要。旧のままだと長い予告(突き1100ms)で
-  // 速い霊ほど振る直前に見切ってしまい、続くACTIVE州でも構えないまま(counterPendingAtが残るため)だった。
-  const counterGaveUp = counterable && windupImpactAt === undefined
-    && ghostCounterWaitExpired(ghost.counterPendingAt, nowMs);
+  // ★検収2巡(中C): 構えの錨(counterPendingAt)は**州が変わったら張り直す**——予告(突き溜め1100ms)から
+  // ACTIVEへ持ち越すと、ACTIVE初フレームで見切り(1000ms超)が立って構えられないまま終わる。
+  // 張り直すのは錨(時刻)だけで、willAttempt(抽選)は引き直さない=1機会(同じ技)1回の掟。
+  const counterArmKeyNow = target.bossState ?? target.aiPhase;
+  // armKey未定義(旧データ/錨だけ渡された盤面)は「同じ州のまま」とみなす=張り直さない(安全側)。
+  const pendingAtCarried = ghost.counterPendingAt !== undefined
+    && ghost.counterArmKey !== undefined && ghost.counterArmKey !== counterArmKeyNow
+    ? nowMs
+    : ghost.counterPendingAt;
+  // ★検収1巡(重1)→2巡(中C/中D)で是正: 表の予告では「無条件で見切らない」ではなく、
+  // **見切りの基準を着弾時刻に置き換える**——着弾までの残りが GHOST_COUNTER_WAIT_MS を超える待ちだけ
+  // 見切る(=待ちの上限は復活。bossStateUntilが後退し続ける経路[賞金首KB中]でも無限棒立ちにならない)。
+  // 反応遅延型(ACTIVE州)は従来どおり counterPendingAt 起点の見切り。
+  const counterGaveUp = counterable && (
+    windupImpactAt !== undefined
+      ? windupImpactAt - gameTime > GHOST_COUNTER_WAIT_MS
+      : ghostCounterWaitExpired(pendingAtCarried, nowMs)
+  );
   const counterWatching = counterable && !counterGaveUp;
 
   // 間合い管理: preferredDist(平時)/+安全マージン(予告中)へ寄せる。
@@ -863,7 +880,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   let action: GhostDecision['action'] = 'none';
   let lastShotAt = ghost.lastShotAt;
   let lastMeleeAt = ghost.lastMeleeAt;
-  let counterPendingAt = ghost.counterPendingAt;
+  let counterPendingAt = pendingAtCarried; // ★検収2巡(中C): 州が変わっていれば張り直し済みの錨
   let counterWillAttempt = ghost.counterWillAttempt ?? false;
   let lastCounterAttemptAt = ghost.lastCounterAttemptAt;
   // GHOST-COUNTER-PARITY(社長指示3「意図しないスイングで請求を積まない」): この tick の melee が
@@ -921,13 +938,18 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // 近接を選ばなかった tick は、射程内なら銃で代替する(手を空けない)。
   // ただし**窓を見ている最中(counterWatching)は代替しない**=銃を挟まない(反応遅延で待っている/
   // 抽選に外れた、のどちらでも「その窓には手を出さない」で統一する)。見切った後は通常どおり撃つ。
-  if (action === 'none' && !counterWatching && gunReady && gunDist <= weapon.gunRangePx) {
+  // ★検収2巡(軽G): 例外=**表の予告(windupImpactAt)を見ているが「振らない」と抽選済み**の霊は撃つ——
+  // 予告は最長1秒超あり、試みない霊まで黙らせるのは今回の対象拡大で新しく生まれた沈黙(ACTIVE州の
+  // 従来挙動は不変=振らない霊も従来どおり手を止める)。
+  const gunHeldByWatch = counterWatching && (counterWillAttempt || windupImpactAt === undefined);
+  if (action === 'none' && !gunHeldByWatch && gunReady && gunDist <= weapon.gunRangePx) {
     action = 'shoot'; lastShotAt = nowMs;
   }
 
   return {
     moveX, moveY, action, targetId: target.id, facing,
     lastShotAt, lastMeleeAt, counterPendingAt, counterWillAttempt,
+    counterArmKey: counterPendingAt !== undefined ? counterArmKeyNow : undefined, // ★検収2巡(中C)
     lastCounterAttemptAt, meleeIsCounterAttempt,
     moveRoll, dangerSeenAt, dangerLastAt, orbitSign, tankedBulletKey, tankedBulletUntil,
     // GHOST-CMD-2A: 隙の文脈とモードを次tickへ持ち越す(窓が閉じたら両方undefined=通常へ戻る)。
