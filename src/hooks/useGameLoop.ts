@@ -264,7 +264,7 @@ import { pickThorMove, thorPhaseForHealth, type ThorMove } from '../utils/thorSc
 // research/THOR_ISSEN_REWORK.md §1(無の境地・必中一閃)の判定は**全部この純関数群**が持つ
 // (useGameLoop に判定を直書きしない=実装精度の規律4)。
 import {
-  shouldTriggerGuaranteedIssen, isGuaranteedIssenNow, botHoldsMeleeForNihil,
+  shouldTriggerGuaranteedIssen, isGuaranteedIssenNow, botHoldsMeleeForNihil, thorNihilRadius,
 } from '../utils/thorNihil';
 // §4-1 受け入れ条件3 / §5-2「★弾き返しの効かせ方」: 突進カウンターの弾き返しの**行き先計算**も
 // 純関数(値をテストで固定できる形)。ここに直書きすると「ゼロ化/符号反転」が緑を通る。
@@ -6569,11 +6569,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 //
                 // ★必中一閃(§1-3): 紫円の内側で**プレイヤーが近接を振った**フレームなら、残りの紫予告と
                 // 段2の赤予告500msを丸ごと捨てて即 issen-dash へ。狙いは**振ってきた相手へ取り直す**。
+                // ★v0.25.3991(社長報告「無の境地に、近接当てても一閃即発動してこない」): 引き金Bを追加
+                // ——**本人の近接がトールに当たった**(Enemy.meleeHitAt=既存スタンプ)なら距離を問わず発動。
+                // 従来のA(円内での振り)だけだと、リーチの長い近接(刀の一閃154px+/鞭/オート斬撃)は
+                // 当てた瞬間の自機中心が円200pxの外で、当てても発動しなかった。
+                if (GHOST_DMG_LOG_ENABLED) {
+                  const curC = useGameStore.getState().player.meleeSwingCommitAt;
+                  if (curC > thorPrevSwingCommit && curC > 0) {
+                    ghostLogPush(`${Math.round(newGameTime / 100) / 10}s 無境地振り dist=${Math.round(Math.hypot(pcx - bcx, pcy - bcy))}/r${thorNihilRadius()}`);
+                  }
+                  if (boss.meleeHitAt !== undefined && newGameTime - boss.meleeHitAt <= 50) {
+                    ghostLogPush(`${Math.round(newGameTime / 100) / 10}s 無境地ヒット打刻`);
+                  }
+                }
                 if (shouldTriggerGuaranteedIssen({
                   bossState: st, bcx, bcy, pcx, pcy,
                   prevCommitAt: thorPrevSwingCommit,
                   curCommitAt: useGameStore.getState().player.meleeSwingCommitAt,
                   alreadyFired: bs.thorNihilFiredFor === (boss.bossStateUntil ?? 0),
+                  meleeHitAt: boss.meleeHitAt,
+                  nowGameTime: newGameTime,
+                  nowMs: Date.now(),
                 })) {
                   bs.thorNihilFiredFor = boss.bossStateUntil ?? 0; // 1つの無の境地から発動できるのは1回
                   const gdx = pcx - bcx, gdy = pcy - bcy;

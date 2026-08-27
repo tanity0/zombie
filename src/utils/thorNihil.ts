@@ -39,6 +39,15 @@ export const isInsideNihilCircle = (
 export const meleeSwingCommitted = (prevCommitAt: number, curCommitAt: number): boolean =>
   curCommitAt > 0 && curCommitAt > prevCommitAt;
 
+/** 「本人の近接が当たった」引き金の受付幅(ms・gameTime系)。打刻フレームと判定フレームの
+ * ズレ(0〜1フレーム)を吸収するだけの短い窓=後出しの延命窓ではない。 */
+export const NIHIL_MELEE_HIT_ACCEPT_MS = 100;
+/** ヒット(meleeHitAt)を「本人の振り」に紐づける上限(ms・Date.now系どうしの比較)。
+ * 刀の一閃はスイング確定(triggerKatanaDash)から着弾まで最大~360ms(移動180+判定遅延)なので余裕を
+ * 持って700ms。守護霊の刀ヒット(meleeHitAtが守護霊経由でも打たれる既存実装)だけでは発動させない
+ * ためのゲート=「本人が直近で振っていて、その帰結として当たった」時だけBを認める。 */
+export const NIHIL_MELEE_HIT_SWING_LINK_MS = 700;
+
 export interface GuaranteedIssenInput {
   /** 今のボスの州(`Enemy.bossState`)。 */
   bossState: string | undefined;
@@ -54,19 +63,35 @@ export interface GuaranteedIssenInput {
   alreadyFired: boolean;
   /** 紫円の半径(既定=台帳)。 */
   radius?: number;
+  /** ★v0.25.3991: 近接がこのボスに**当たった**打刻(`Enemy.meleeHitAt`=既存の§5.21-追補8スタンプ・gameTime系)。 */
+  meleeHitAt?: number;
+  /** 今フレームのgameTime(meleeHitAtと同じ時計。Date.now系のcommitAtとは混ぜない)。 */
+  nowGameTime?: number;
+  /** 今フレームのDate.now(curCommitAtと同じ時計。「本人が直近で振ったか」のリンク判定に使う)。 */
+  nowMs?: number;
 }
 
 /**
- * 必中一閃(§1-3)の引き金。**紫の州**の間に**紫円の内側で**近接スイングが確定したフレームだけ true。
- * - カウンター成立の演出(`markMeleeSwingFx`)や武器庫サークル(`counterWindowEnd`)では**立たない**
- *   ——ここが読むのは近接スイング専用の打刻だけだから。
- * - 円の**外側**で振っても立たない(300ms満了後に通常の赤予告へ進む)。
+ * 必中一閃(§1-3)の引き金。**紫の州**の間に、次の**どちらか**が起きたフレームだけ true:
+ *  A) **紫円の内側で**近接スイングが確定した(従来=空振りでも円内なら発動)。
+ *  B) ★v0.25.3991(社長報告「無の境地に、近接当てても一閃即発動してこない」): **本人の近接が
+ *     トールに当たった**(距離を問わない)。従来はAだけで、リーチの長い近接(刀の一閃154px+/鞭/
+ *     オート斬撃)は**当てた瞬間の自機中心が円200pxの外**にあり、当てても発動しなかった。
+ * - カウンター成立の演出(`markMeleeSwingFx`)や武器庫サークル(`counterWindowEnd`)では**立たない**。
+ * - 円の**外側**での空振りは従来どおり立たない(満了後に通常の赤予告へ進む)。
  */
 export const shouldTriggerGuaranteedIssen = (i: GuaranteedIssenInput): boolean =>
   i.bossState === THOR_NIHIL_STATE
   && !i.alreadyFired
-  && meleeSwingCommitted(i.prevCommitAt, i.curCommitAt)
-  && isInsideNihilCircle(i.bcx, i.bcy, i.pcx, i.pcy, i.radius ?? thorNihilRadius());
+  && (
+    (meleeSwingCommitted(i.prevCommitAt, i.curCommitAt)
+      && isInsideNihilCircle(i.bcx, i.bcy, i.pcx, i.pcy, i.radius ?? thorNihilRadius()))
+    || (i.meleeHitAt !== undefined && i.nowGameTime !== undefined
+      && i.nowGameTime - i.meleeHitAt <= NIHIL_MELEE_HIT_ACCEPT_MS
+      // 「本人が直近で振っている」リンク(Date.now系どうし): 守護霊/分身のヒット打刻だけでは発動しない。
+      && i.nowMs !== undefined && i.curCommitAt > 0
+      && i.nowMs - i.curCommitAt <= NIHIL_MELEE_HIT_SWING_LINK_MS)
+  );
 
 /**
  * 必中一閃が「カウンターされない」か(§1-3・§5-2やること②)。

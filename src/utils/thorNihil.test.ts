@@ -122,6 +122,33 @@ describe('必中一閃の引き金(§1-3 受け入れ条件1/2/7)', () => {
   it('1つの無の境地から発動できるのは1回(2重発火の防止)', () => {
     expect(shouldTriggerGuaranteedIssen({ ...base, alreadyFired: true })).toBe(false);
   });
+
+  // ★v0.25.3991(社長報告「無の境地に、近接当てても一閃即発動してこない」): 引き金B=
+  // 本人の近接が**当たった**(Enemy.meleeHitAt)なら円の外からでも発動。リーチの長い近接
+  // (刀の一閃154px+/鞭)は当てた瞬間の自機中心が円200pxの外にあり、Aだけでは発動しなかった。
+  describe('引き金B: 当てたら発動(v0.25.3991)', () => {
+    // 円の外(pcx=R+150)+振りのエッジは前フレームで済んでいる(prev===cur)=Aは立たない状態。
+    const hitBase = {
+      ...base, pcx: R + 150, prevCommitAt: 1016, curCommitAt: 1016,
+      meleeHitAt: 5000, nowGameTime: 5016, nowMs: 1400,
+    };
+    it('本人の近接が当たった直後(受付100ms内)は円の外でも立つ', () => {
+      expect(shouldTriggerGuaranteedIssen(hitBase)).toBe(true);
+    });
+    it('ヒット打刻が古い(100ms超)なら立たない', () => {
+      expect(shouldTriggerGuaranteedIssen({ ...hitBase, nowGameTime: 5200 })).toBe(false);
+    });
+    it('本人が直近で振っていない(守護霊/分身のヒット打刻だけ)なら立たない', () => {
+      expect(shouldTriggerGuaranteedIssen({ ...hitBase, nowMs: 1016 + 701 })).toBe(false);
+      expect(shouldTriggerGuaranteedIssen({ ...hitBase, curCommitAt: 0, prevCommitAt: 0 })).toBe(false);
+    });
+    it('紫の州でなければ立たない(Bも州ゲートの内側)', () => {
+      expect(shouldTriggerGuaranteedIssen({ ...hitBase, bossState: 'issen-windup' })).toBe(false);
+    });
+    it('発動済みなら立たない(Bも1回制限の内側)', () => {
+      expect(shouldTriggerGuaranteedIssen({ ...hitBase, alreadyFired: true })).toBe(false);
+    });
+  });
 });
 
 describe('必中の「カウンターされない」窓(§1-3 受け入れ条件5/9/10)', () => {
