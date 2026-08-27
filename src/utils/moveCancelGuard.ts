@@ -114,7 +114,7 @@ export const ALLOWED_MOVE_CHAINS: Readonly<Record<string, string>> = {
     + '縦払いは改めて狙いをロックし直す(掟W4)ので予告も出る。',
   'issen-nihil -> issen':
     '社長指示(2026-08-20・research/THOR_ISSEN_REWORK.md §1): 一閃は**必ず2段の台本**。'
-    + '段1「無の境地」(紫の円)は**攻撃ではなく**、持ち時間(issen.nihilMs=300ms)を**使い切った時にだけ**'
+    + '段1「無の境地」(紫の円)は**攻撃ではなく**、持ち時間(issen.nihilMs=2000ms・2026-08-27社長指示で300→2000)を**使い切った時にだけ**'
     + '段2(issen-windup=赤)へ渡す=途中で切っていない。'
     + '※必中一閃(紫の円の中で近接を振った時の issen-nihil → issen-dash)は、issen-dash が windup ではないので'
     + 'そもそも違反にならない=申告不要。',

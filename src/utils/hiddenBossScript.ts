@@ -221,10 +221,11 @@ export const HIDDEN_THOR_TUNING: HiddenThorTuning = {
   orbitStep: { minIntervalMs: 2500, maxIntervalMs: 5000, distPx: 70, ms: 160 },
   slowWalk: { ms: 2000, mult: 0.5, minIntervalMs: 5000, maxIntervalMs: 9000 },
   // 一閃(2段化・社長指示 2026-08-20 / research/THOR_ISSEN_REWORK.md §1):
-  //   紫300ms(無の境地)+ 赤500ms(旧2400)= 読み時間 800ms。半径200pxは**叩き台**(§8-5「そのままで一旦様子見」)。
+  //   紫2000ms(無の境地・社長指示2026-08-27「構えを2秒に変更で」。旧300)+ 赤500ms(旧2400)
+  //   = 読み時間 2500ms。半径200pxは**叩き台**(§8-5「そのままで一旦様子見」)。
   //   事実として: 台帳の旧コメントには「半幅80+自機14=94px → 必要900ms」という見積もりがある(v0.25.3461の根拠)。
   //   500msでは帯の外へ走って逃げるのはほぼ不可能=「カウンターで返す技」に寄る、という前提での指定(§8-1裁定済み)。
-  issen: { nihilMs: 300, nihilRadius: 200, windup: 500, dashMs: 280, range: 310, halfWidth: 80, recover: withRecoverFloor(900) },
+  issen: { nihilMs: 2000, nihilRadius: 200, windup: 500, dashMs: 280, range: 310, halfWidth: 80, recover: withRecoverFloor(900) },
   tsuki: { windup: 1100, ms: 180, range: 300, halfWidth: 15, trackFrac: 0.5, recover: withRecoverFloor(600) },
   harai: { windup: 600, active: 220, range: 310, halfWidth: 40, recover: withRecoverFloor(700) },
   jump: { triggerHits: 3, triggerWindowMs: 6000, windup: 700, ms: 360, radius: 70, recover: withRecoverFloor(900) },
