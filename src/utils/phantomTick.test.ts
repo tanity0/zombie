@@ -115,7 +115,7 @@ describe('① 即発近接(予告なし・プレイヤーと同じ周期)', () =
 // (research/SAME_ARENA.md §7)。前隙200msが入ったことで、**プレイヤーが幻影の近接をカウンターできる**
 // ようになった——それ以前は幻影の近接が damagePlayer 直呼びで、止める手段が1つも無かった(最大の非対称)。
 describe('★プレイヤーが幻影の近接をカウンターする(v0.25.3869)', () => {
-  it('カウンター窓が開いていれば、幻影の斬撃は通らず幻影が反撃を受ける', () => {
+  it('カウンター窓が開いていれば、幻影の斬撃は通らず幻影の体勢だけが削れる(社長指示2026-08-27)', () => {
     const { cur } = setup(60);
     const s = createPhantomTickState();
     runPhantomTick(cur(), s, START_GT + 16, 0.016, 1, START_GT + 16, NOOP_PHANTOM_SFX, () => 0.999);
@@ -124,10 +124,14 @@ describe('★プレイヤーが幻影の近接をカウンターする(v0.25.386
     useGameStore.setState(ps => ({ player: { ...ps.player, counterWindowEnd: Date.now() + 10_000 } }));
     const hpPlayer = useGameStore.getState().player.health;
     const hpPhantom = cur().health;
+    const postureBefore = cur().pvpPosture?.posture;
     const gt = START_GT + 16 + MELEE_WINDUP_MS;
     runPhantomTick(cur(), s, gt, 0.016, 1, gt, NOOP_PHANTOM_SFX, () => 0.999);
     expect(useGameStore.getState().player.health).toBe(hpPlayer); // 斬撃は通らない
-    expect(cur().health).toBeLessThan(hpPhantom);                 // 幻影が反撃を受ける
+    // ★社長指示2026-08-27「近接カウンターはカウンターされた側の体勢値だけ削れる」:
+    // HPダメージは出ない(旧: meleeSwingBaseDamageの確定クリ)。体勢(counter 0.20)だけが削れる。
+    expect(cur().health).toBe(hpPhantom);
+    expect(cur().pvpPosture?.posture ?? Number.POSITIVE_INFINITY).toBeLessThan(postureBefore ?? Number.POSITIVE_INFINITY);
     expect(cur().gpPendingSwingAt).toBeUndefined();               // 振りは中断
   });
 

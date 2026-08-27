@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.3984 — 幻影戦: 近接カウンター=体勢のみ削る(HPダメージ廃止・双方向) 【2026-08-27 15:12 JST】
+- **社長指示**: 「幻影との闘いで、近接カウンターはカウンターされた側の体勢値だけ削れる に変更しよう」
+- **変更(phantomTick.ts・双方向で対称)**:
+  - プレイヤーが幻影の近接をカウンター(`counteredByPlayer`): 旧「meleeSwingBaseDamageの確定クリ」を
+    撤去=`damageEnemy(amount=0, crit=false, postureImpact='counter')` で**体勢0.20だけ**削る
+    (amount=0でもdamageEnemy中央のpvp chipはresolvedImpact==='counter'で削れることを確認済み。
+    crit=false化でクリ付随の移動半減も出ない)。中断・KB・青い成立の絵は不変。
+  - 幻影がプレイヤーの近接をパリィ(`consumePhantomParry`): 旧D3「周期無視の即反撃
+    (swingPhantomMelee)」を撤去——KBと同フレームの即反撃は回避不能で実質カウンター確定ダメージ
+    だった。体勢0.20はgameStoreのgp.parried側(3箇所)で削り済み=不変。中断・KB・絵は不変。
+  - **弾パリィ(reflect 0.05+打ち返し弾ダメージ)は対象外=現状維持**(社長の質問に回答済み。
+    揃えるかは別裁定)。
+- **仕様**: research/SAME_ARENA.md §9 に裁定を追記(★近接カウンター=体勢のみ)。
+- **テスト**: phantomTick.test.ts のカウンター試験を新仕様へ(HP不変+体勢減を固定)。35件green。
+  typecheck+lint 0エラー。
+- 自己点検: 憲法第4条・第5条に非抵触(対人戦のみ・ボス/雑魚戦の判定/値は不変)。
+- 状態変化: 対人体勢システム → 近接カウンター体勢のみ化 実装済み(実機確認待ち)
+
 ## v0.25.3983 — 城ボス撃破で城が崩れて消える(壁判定・方角マーカーも撤去) 【2026-08-27 15:05 JST】
 - **社長指示**: 「城ボス倒したら、城も崩れて消えて。(カメラは向けなくていいので)方角のマークも消えてね」
 - **仕組み**: `CastleEvent.collapsedAt`(Date.now)を新設。城ボス=**城の位置を巣(homeX/homeY)に持つ

@@ -36,7 +36,6 @@ import {
   // ★SAME_ARENA.md §7(前隙・社長裁定2026-08-24)
   MELEE_WINDUP_MS,                              // 近接の前隙(プレイヤーと同じ1本を読む)
   KNOCKBACK_SPEED, KNOCKBACK_DURATION,          // カウンターされた側のノックバック=**敵と同じ量**(社長指示)
-  meleeSwingBaseDamage,                         // プレイヤーの近接素ダメージ(式を複製しない)
   meleeLungePx, MELEE_LUNGE_MS, knockbackSpeedFor, // ★踏み込み(プレイヤーと同じ関数=武器別も揃う)
   playerPvpChipPatch,                           // ★SAME_ARENA §9: プレイヤー体勢の削り(紫入りの破棄込み)
   skillBenkeiCritBonus, skillKnifeMasterMeleeCrit, // ★裁定①: 近接クリ式のミラー(検収監査 中⑥)
@@ -558,15 +557,12 @@ const counteredByPlayer = (
     knockbackUntil: now + KNOCKBACK_DURATION,
     knockbackShoveUntil: now + KNOCKBACK_DURATION,
   } : e) }));
-  // カウンター反撃(プレイヤーの近接ダメージ)。合流点を通すので幻影のパリィ/対人倍率が正しく効く。
-  // crit=true(カウンターは確定クリ)。gpSource='counter' で幻影ゲートへ「近接カウンター」と伝える
-  // = 対人スケール・パリィ・i-frame の扱いが全部その1本で正しく裁かれる(ここで独自計算しない)。
-  // ★SAME_ARENA §9(検収監査 重大④): postureImpact='counter' を渡す=幻影の対人体勢を0.20削る
-  // (damageEnemy中央のpvp chipがresolvedImpact==='counter'で拾う。ボス体勢はusesPostureSystem外=不変)。
-  g.damageEnemy(
-    phantomId, meleeSwingBaseDamage(player.weapons.find(w => w.isMelee), player),
-    false, true, false, 'other', 'player', 'counter', 1, 'counter',
-  );
+  // ★社長指示2026-08-27「幻影との闘いで、近接カウンターはカウンターされた側の体勢値だけ削れる」:
+  // 旧: meleeSwingBaseDamage の確定クリ(HPダメージ)+体勢0.20。新: **HPダメージ0・体勢0.20のみ**。
+  // amount=0 でも damageEnemy 中央の pvp chip は resolvedImpact==='counter' で削る(newHealth>0ゲートのみ)。
+  // crit=false(確定クリ廃止に伴い、クリ付随の移動半減=bossCritSlowPatchも発生させない)。
+  // gpSource='counter' は維持=幻影ゲートで「近接カウンター」(パリィ不可・i-frame貫通)のまま。
+  g.damageEnemy(phantomId, 0, false, false, false, 'other', 'player', 'counter', 1, 'counter');
   sfx.parry();
   g.spawnRing(bcx, bcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
   g.spawnBurst(bcx, bcy, '#38bdf8', 14);
@@ -694,11 +690,13 @@ const firePhantomShot = (
 
 /**
  * パリィ成立の合図(gameStore の phantomGate が立てた `gpParriedAt`)を消費して、
- * **近接周期を無視して1回だけ即反撃**する(D3)。反撃後は周期タイマーをリセットする。
+ * 成立の絵+カウンターされた側(プレイヤー)の中断/ノックバックを出す。
+ * ★社長指示2026-08-27「体勢値だけ削れる」: 旧D3の「周期無視の即反撃」は撤去(実質カウンター確定
+ * ダメージだった)。体勢0.20の削りは gameStore の gp.parried 側で適用済み。
  */
 const consumePhantomParry = (
   phantom: Enemy, s: PhantomTickState, player: Player, bcx: number, bcy: number,
-  sfx: PhantomSfx, patch: Partial<Enemy>, newGameTime: number,
+  sfx: PhantomSfx, _patch: Partial<Enemy>, _newGameTime: number,
 ): boolean => {
   const at = phantom.gpParriedAt;
   if (at === undefined || at <= s.lastParryConsumedAt) return false;
@@ -740,8 +738,9 @@ const consumePhantomParry = (
       knockbackUntil: kbNow + KNOCKBACK_DURATION,
       knockbackMs: KNOCKBACK_DURATION,
     } }));
-    swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult, phantom.id);
-    s.nextMeleeAt = newGameTime + PHANTOM_MELEE_PERIOD_MS;
+    // ★社長指示2026-08-27「近接カウンターはカウンターされた側の体勢値だけ削れる」: 旧「周期無視の
+    // 即反撃(swingPhantomMelee)」を撤去——KBと同フレームの即反撃は実質「カウンターの確定ダメージ」
+    // だった。体勢0.20はパリィ成立時(gameStoreのgp.parried側)で削り済み。以後の攻撃は通常周期で。
   }
   return true;
 };
