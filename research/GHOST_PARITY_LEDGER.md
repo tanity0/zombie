@@ -1185,8 +1185,9 @@ botSkill.ts無改変・BOT_AND_GHOST.md編集禁止・気絶/硬直の判定を�
 プレイヤー不成立のフレームだけ守護霊を同じ式で判定する(同フレーム二重成立の禁止=L4のテスト対象)。
 1. **裏4+トール ACTIVE図形**(useGameLoop hiddenブロック): hiddenReachOverlapNow と同じ判定を
    守護霊の体+窓で再評価。成立→既存 thorCounterHit / hiddenBossCounterHit(GhostCounterFire)。
-2. **裏4+トールの判定時置換カプセル技**(一閃/突き/払い/突進斬り抜け/ミーミルレーザー):
-   applyGhostAllyCapsuleHit の**戻り値を 'countered'|'hit'|'miss' に変更**(R5)。窓が生きていれば
+2. **裏4+トールの判定時置換カプセル技**(一閃/突き/払い/突進斬り抜けの**4箇所**。
+   ※ミーミルレーザーは紫=カウンター不可の色文法どおり**対象外**——検収1巡(中6)で記述を実装に合わせて是正):
+   applyGhostAllyCapsuleHit の**戻り値を種別付きに変更**(R5)。窓が生きていれば
    ダメージを出さずに 'countered' を返し、**呼び出し5箇所がプレイヤー側と同じ countered を立てて
    技を中断**(per-bossハンドラ=thorCounterHit/hiddenBossCounterHit を呼ぶ)。プレイヤーが同
    フレームに成立済みなら守護霊は評価しない。
@@ -1196,7 +1197,11 @@ botSkill.ts無改変・BOT_AND_GHOST.md編集禁止・気絶/硬直の判定を�
    は現行のghost成立分岐と同じものを共有**(L3)。
 4. **天使6**(angelBossTick): プレイヤーの成立式と同形へ——
    `(isCounterOpportunityNow(boss) || isBodySlamNow(boss)) && 体の重なり(bodyOverlapNowと同じ
-   生矩形判定を守護霊で) && 窓`(M5。天使のACTIVE州はプレイヤー側も'body'成立なので図形表は不要)。
+   生矩形判定を守護霊で) && 窓`(M5)。
+   **★検収1巡(重4)=裁定待ち**: 守護霊は縁74pxで止まる+体28pxのため「体の重なり」は自力では
+   起きない=その場で振る技(tate/sweep/downslash/thrust/ring-*)は実質成立ゼロ、成立するのは
+   体当たり(mdash-move)だけ。①技の判定図形で再評価へ広げる(推薦)②現状(体当たりのみ)を受容
+   ③天使だけ旧式(州+請求)へ戻す——の3案を社長へ提示中。裁定まで現実装(②の形)を維持。
 5. **城ボス(giantbat/グレン)**: 爆風(combatTick 請求消費)と接触パリィ(applyGhostBossParry)は
    既に「当たる/触れる瞬間」型=**窓の定義変更が効くだけ**。現行のpeek位置ゲート・inAttackZoneを維持。
 6. **汎用ボス接触**(useGameLoop 敵→summon接触ブロック): 交戦対象ボス(isEngageableBoss)の本体
@@ -1211,7 +1216,8 @@ botSkill.ts無改変・BOT_AND_GHOST.md編集禁止・気絶/硬直の判定を�
 `COUNTER_OPPORTUNITY_STATES`(ghostDriverが構える州)の全数に消費担当を割り当てる:
 | 州 | 消費担当 |
 |---|---|
-| dash / thor-dash-move | 1(ACTIVE図形)+6(接触。thor-dash-moveはshouldSkipで6から除外→1が担当) |
+| dash | 6(接触・到達フレームで先着=プレイヤー側と同型の順序)+1(ACTIVE図形=接近中の従担当)(検収1巡・中7の実態注記) |
+| thor-dash-move | 1(ACTIVE図形)+2(カプセル斬り抜け)。接触はshouldSkipで除外 |
 | issen-dash / tsuki / harai | 2(カプセル) |
 | jump-attack / jump-attack-air(トール/ラフィ) | **着地爆風=5の爆風経路**(着地AoEはpumpkinBlasts)+滞空中の体当たりは6(接触) |
 | bm-charge | 3(賞金首ACTIVE図形。接触6はshouldSkipで除外=3が担当) |
@@ -1221,10 +1227,17 @@ botSkill.ts無改変・BOT_AND_GHOST.md編集禁止・気絶/硬直の判定を�
 | aiPhase='charge' / g-dash-charge(城ボス系) | 5(applyGhostBossParry=現行のまま) |
 ※担当の無い州を作らない。新しい技/州を足す時はこの表とテストに足す(counterReach.test.tsと同じ流儀)。
 
-### 構え(ghostDriver)の狙い直し(監査R4反映)
-- **溜め(windup)中に構えられるようにする**: 機会条件へ「着弾時刻の分かる予告中」
-  (bossStateUntil/aiPhaseUntil を持つwindup州・予告台帳の対象)を追加。
-- **振る時刻=着弾予定時刻から逆算**: 既存A-2(giantbat限定)を着弾予告全般へ一般化。
+### 構え(ghostDriver)の狙い直し(監査R4反映・検収1巡 重1/重2/重3/重5で改訂)
+- **溜め(windup)中に構えられるようにする**: 機会条件へ加えるのは**宣言表
+  `IMPACT_AT_WINDUP_END_BOSS_STATES`(ghostCounterAim.ts)に載っている予告だけ**——
+  条件は①その予告の終了フレームから判定が生きる ②守護霊の消費担当がその判定を拾う。
+  総当たり(isTelegraphActive)にすると、終わりに着弾しない予告(トールjump/突進)での早振り(重2)・
+  消費担当の無いidol/紫レーザーでの棒立ち(重3=v3948の再発)・ACTIVE州の反応遅延消滅(重5)が起きる。
+  giantbatは既存のGIANT_IMPACT_AT_WINDUP_END(aiPhase基準)が引き続き担当。
+- **表の州では見切り(1000ms)を適用しない**(重1)——着弾時刻が分かっている待ちに見切りは不要。
+  旧のままだと長い予告(突き1100ms)で速い霊ほど振る直前に見切り、counterPendingAtが残るため
+  続くACTIVE州でも構えないままだった。
+- **振る時刻=着弾予定時刻から逆算**: 既存A-2(giantbat限定)を表の予告へ拡張。
   **leadの再定義(R4)**: 窓が[振り始め,+300]になったので、lead(着弾の何ms前に振り始めるか)は
   **[60, 280]msへclamp**して窓内に収める。個性は「遅い霊ほどleadが大きい=着弾時に窓の残りが
   少ない=着弾が予定よりズレる技・多段技で失敗しやすい」という形で**部分的に残る**

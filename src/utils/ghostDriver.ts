@@ -26,7 +26,7 @@ import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile } from '
 import { isBossType, aimEnemyDist2, ENEMY_PROJECTILE_DURATION } from './enemyUtils';
 import { isCounterOpportunityNow } from './counterReach'; // ★憲法(v0.25.3948)
 import {
-  isGiantAimWindup, isGiantDeadWindup,
+  isGiantAimWindup, isGiantDeadWindup, impactAtWindupEnd,
   ghostAimSwingNow, ghostAimLeadMs, ghostAimSlowness01,
 } from './ghostCounterAim'; // A-2(社長裁定v0.25.2600): 着弾の瞬間から逆算して振る(純関数・store非依存)
 import { ghostExtraTelegraphDodge, isTelegraphActive, type GhostDodgeThreat } from './ghostTelegraph'; // §2.12 要件7: 予告台帳(全ボス)
@@ -748,15 +748,22 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // だと、憲法で消えた面成立の窓を**回避をやめて棒立ちで待ち、予告を食らう**。
   // 「今カウンターが成立しうる州」(isCounterOpportunityNow)だけを待つ。溜め中は下の分岐で回避が勝つ。
   // ★判定時置換ミラー(社長裁定2026-08-27「守護霊もプレイヤーの動きに揃える」・GHOST_PARITY_LEDGER.md
-  // ★仕様v2 §構え): 成立が「攻撃の判定が守護霊に触れる瞬間×窓(振り始め+300ms)」になったので、
+  // ★仕様 §構え): 成立が「攻撃の判定が守護霊に触れる瞬間×窓(振り始め+300ms)」になったので、
   // プレイヤーの「赤が消え切る瞬間に押す」を写す——**着弾時刻の分かる予告中**も機会に加え、
-  // 振る時刻は着弾からの逆算(下の aimReady・A-2をgiantbat限定から全ボスへ一般化)。
-  const windupImpactAt = windupNow && !deadWindup
-    ? (target.bossStateUntil ?? target.aiPhaseUntil)
+  // 振る時刻は着弾からの逆算(下の aimReady・A-2をgiantbat限定から拡張)。
+  // ★検収1巡(重2/重3/重5): 対象は総当たりではなく**宣言表(IMPACT_AT_WINDUP_END_BOSS_STATES)の
+  // 予告だけ**——「終わりに着弾しない予告での早振り」「消費担当の無いidol/紫レーザーでの棒立ち」
+  // 「ACTIVE州の反応遅延の消滅」を全部防ぐ(表の条件=①終了フレームから判定が生きる②消費担当がある)。
+  const windupImpactAt = impactAtWindupEnd(target.bossState)
+    ? target.bossStateUntil
     : undefined;
   const counterable = inMeleeRange && !deadWindup
     && (isCounterOpportunityNow(target) || windupImpactAt !== undefined);
-  const counterGaveUp = counterable && ghostCounterWaitExpired(ghost.counterPendingAt, nowMs);
+  // ★検収1巡(重1): 着弾時刻が分かっている予告(表の州)では**見切らない**——見切りは「いつ成立するか
+  // 分からない窓に張り付き続ける」ことへの保険で、逆算対象には不要。旧のままだと長い予告(突き1100ms)で
+  // 速い霊ほど振る直前に見切ってしまい、続くACTIVE州でも構えないまま(counterPendingAtが残るため)だった。
+  const counterGaveUp = counterable && windupImpactAt === undefined
+    && ghostCounterWaitExpired(ghost.counterPendingAt, nowMs);
   const counterWatching = counterable && !counterGaveUp;
 
   // 間合い管理: preferredDist(平時)/+安全マージン(予告中)へ寄せる。

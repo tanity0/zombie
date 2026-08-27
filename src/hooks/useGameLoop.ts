@@ -12424,32 +12424,42 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             for (const h of summonHits) {
               perSummon.set(h.summonId, Math.max(perSummon.get(h.summonId) ?? 0, h.damage));
             }
-            for (const [summonId, dmg] of perSummon) {
+            for (const [summonId] of perSummon) {
               const before = useGameStore.getState().summons.find(su => su.id === summonId);
-              // v0.25.2514(監査項目7): 被弾ノックバックの向き=ダメージ源(接触した敵)の中心。
-              // 同フレームに複数体が触れている場合は最大ダメージを出した敵を源とする(perSummonの畳み込みと同じ基準)。
-              const hitFrom = summonHits
-                .filter(h => h.summonId === summonId)
-                .reduce<{ enemyId: string; damage: number } | null>((best, h) => (best === null || h.damage > best.damage ? h : best), null);
-              const fromEnemy = hitFrom ? enemies.find(e => e.id === hitFrom.enemyId) : undefined;
-              // ★判定時置換ミラー(2026-08-27・GHOST_PARITY_LEDGER.md ★仕様v2 §成立地点6): 交戦対象
+              // ★判定時置換ミラー(2026-08-27・GHOST_PARITY_LEDGER.md ★仕様 §成立地点6): 交戦対象
               // ボスの本体接触が守護霊に入る瞬間、窓が生きていれば接触受け流し(プレイヤーの受け流しの
-              // 写し=無傷+体幹削り+拘束+KB)。成立したらこの接触のダメージはスキップ。
-              // プレイヤー優先: プレイヤーの受け流し(applyContactDamage)はこのブロックより前に解決済みで、
-              // 成立していればボスは拘束中(rootUntil)=tryGhostContactParry が弾く。
-              if (fromEnemy && before && before.kind === 'ghost-ally'
-                && tryGhostContactParry(fromEnemy, before, gameTime,
-                  gain => playSfx('counter', gain),
-                  (x, y) => {
-                    const gpSt = useGameStore.getState();
-                    return npcSfxDistGain(x, y,
-                      gpSt.player.x + gpSt.player.width / 2, gpSt.player.y + gpSt.player.height / 2,
-                      gpSt.camera, gpSt.gameBounds);
-                  },
-                  { spawnRing, spawnBurst })) {
-                continue;
+              // 写し=無傷+体幹削り+拘束+KB)。
+              // ★検収1巡(中8): 適用単位はプレイヤー側(combatTickのforEach=敵ごと)と同じ**敵ごと**——
+              // 「最大ダメージの代表1体」で判定すると、①代表がボスの時に同時接触の雑魚まで巻き添えで
+              // 無効化 ②雑魚のダメージがボスより大きいとボスが触れているのに受け流しが走らない。
+              // 触れているボスを全数走査して受け流し、残りの敵の接触ダメージは従来どおり畳んで適用する。
+              let parriedBossId: string | null = null;
+              const hitsForSummon = summonHits.filter(h => h.summonId === summonId);
+              if (before && before.kind === 'ghost-ally') {
+                for (const h of hitsForSummon) {
+                  const en = enemies.find(e => e.id === h.enemyId);
+                  if (en && tryGhostContactParry(en, before, gameTime,
+                    gain => playSfx('counter', gain),
+                    (x, y) => {
+                      const gpSt = useGameStore.getState();
+                      return npcSfxDistGain(x, y,
+                        gpSt.player.x + gpSt.player.width / 2, gpSt.player.y + gpSt.player.height / 2,
+                        gpSt.camera, gpSt.gameBounds);
+                    },
+                    { spawnRing, spawnBurst })) {
+                    parriedBossId = en.id; // 請求は最新1件=受け流しは高々1体(プレイヤーの1窓1成立と同じ)
+                    break;
+                  }
+                }
               }
-              useGameStore.getState().damageSummon(summonId, dmg,
+              // v0.25.2514(監査項目7): 被弾ノックバックの向き=ダメージ源(接触した敵)の中心。
+              // 同フレームに複数体が触れている場合は最大ダメージを出した敵を源とする(受け流した敵は除外)。
+              const hitFrom = hitsForSummon
+                .filter(h => h.enemyId !== parriedBossId)
+                .reduce<{ enemyId: string; damage: number } | null>((best, h) => (best === null || h.damage > best.damage ? h : best), null);
+              if (hitFrom === null) continue; // 触れていたのは受け流したボスだけ=このフレームは無傷
+              const fromEnemy = enemies.find(e => e.id === hitFrom.enemyId);
+              useGameStore.getState().damageSummon(summonId, hitFrom.damage,
                 fromEnemy ? fromEnemy.x + fromEnemy.width / 2 : undefined,
                 fromEnemy ? fromEnemy.y + fromEnemy.height / 2 : undefined,
                 `contact:${fromEnemy?.type ?? 'unknown'}`);

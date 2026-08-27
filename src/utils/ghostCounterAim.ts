@@ -91,9 +91,32 @@ export const ghostAimSlowness01 = (reactionMs: number, minMs: number, maxMs: num
   return Math.max(0, Math.min(1, (reactionMs - minMs) / (maxMs - minMs)));
 };
 
-/** その霊の実効先行時間(ms)。遅い霊ほど早く振ってしまう=請求がTTL切れして失敗しやすい。 */
+/**
+ * その霊の実効先行時間(ms)。遅い霊ほど早く振る=**着弾時の窓の残り=300−lead**(最遅で70msしか
+ * 残らない)——「窓内=安全」ではない(検収監査・軽10)。着弾が予定よりズレる技・多段技で失敗する。
+ */
 export const ghostAimLeadMs = (slowness01: number): number =>
   GHOST_COUNTER_AIM_LEAD_MS + GHOST_COUNTER_AIM_EARLY_SPREAD_MS * Math.max(0, Math.min(1, slowness01));
+
+/**
+ * ★判定時置換ミラー検収1巡(2026-08-27・重2/重3/重5): 「予告の終わりに**即**・守護霊に消費担当のある
+ * 判定が始まる州」の宣言表(bossState基準・giantbatは既存のGIANT_IMPACT_AT_WINDUP_ENDが担当)。
+ * 着弾逆算(構え)の対象は**この表に載っている予告だけ**——総当たり(isTelegraphActive)にすると、
+ *  - 終わりに着弾しない予告(トールjump=着地は+360ms後/突進=到達に依存)で早振りして窓切れ(重2)
+ *  - 消費担当の無いボス(idol)や紫の予告(ミーミルのレーザー)で棒立ち待ち(重3=v3948の再発)
+ *  - 実行中(ACTIVE)州まで「州の終わり−lead」になり反応遅延の個性が消える(重5)
+ * が全部同時に起きる。載せる条件は2つ: ①その予告の終了フレームから判定が生きる ②守護霊の消費担当
+ * (GHOST_PARITY_LEDGER.md ★仕様の州→担当表)がその判定を拾う。
+ */
+export const IMPACT_AT_WINDUP_END_BOSS_STATES: readonly string[] = [
+  'issen-windup',  // トール: 終了と同時に issen-dash(カプセル判定・担当=capsule)
+  'tsuki-windup',  // トール: 終了と同時に tsuki(カプセル判定・担当=capsule)
+  'harai-windup',  // トール: 終了と同時に harai(カプセル判定・担当=capsule)
+  'bm-whip360-windup', // 賞金首馬乗り: 終了と同時に bm-whip360(円ACTIVE・担当=bounty-figure)
+  'mk-spin-windup',    // 賞金首舞子: 終了と同時に mk-spin(回転ACTIVE・担当=bounty-figure)
+];
+export const impactAtWindupEnd = (bossState: string | undefined): boolean =>
+  bossState !== undefined && IMPACT_AT_WINDUP_END_BOSS_STATES.includes(bossState);
 
 /**
  * 逆算の判定: 「ダメージが出る瞬間」までの残りが実効先行時間以内なら、今このtickで振る。
