@@ -624,6 +624,9 @@ export const BASE_SOLDIER_COUNT = BASE_SOLDIERS.length;
 // NPCセリフのHUD表示タイミング(gameTime ms)。1行の表示時間と、次の行までの間隔。
 export const NPC_DIALOGUE_MS = 2800;     // 1行の表示時間(ストーリーボスの終幕台詞の尺計算でも使用)
 export const NPC_DIALOGUE_GAP_MS = 500;  // 行間の空き(連続表示でも詰めすぎない)
+// ★v0.25.3989: アテンション(ボス出現カットイン)で通信を凍結した印。明けたエッジで表示中の行の
+// 尺を張り直すための1bit(モジュール変数=保存不要の揮発でよい)。
+let npcDialogueFrozeByAttention = false;
 const NPC_SAME_NPC_CD_MS = 10000; // 同一NPCの連続発話を抑制(管理表 8〜12秒)
 // 「敵に囲まれた時」検知/抑制(社長指示・管理表 High=危機/カテゴリCD必須)。
 const SURROUND_RADIUS = 200;      // この距離内の敵数で「囲まれ」を判定
@@ -11134,10 +11137,21 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 表示中が寿命切れなら消し、空いていてキューがあれば次を出す(時間停止なし)。変化があった時だけ set。
   updateNpcDialogue: (gameTime) => {
     const s = get();
+    // ★v0.25.3989(社長報告「守護霊登場時のセリフと退場時のセリフが通信に出てこない」・実測で確定):
+    // アテンション/カットイン(ボス出現演出)中は通信の時計を丸ごと凍結する。守護霊の登場セリフは
+    // ボス交戦の立ち上がり=カットインと**同じ瞬間**に積まれ、表示2.8秒(NPC_DIALOGUE_MS)が
+    // カットインの裏でまるごと過ぎていた(シミュ=gameTimeはアテンション中も走る)。凍結中は
+    // 表示切替も期限切れもしない(set無し=再レンダー増なし)。明けたエッジで表示中の行の尺を
+    // 張り直す=カットイン前に一瞬出た行も、明けてからフルに読める。
+    if (s.attention !== null) { npcDialogueFrozeByAttention = true; return; }
     let cur = s.npcDialogue;
     let queue = s.npcDialogueQueue;
     let nextAt = s.npcDialogueNextAt;
     let changed = false;
+    if (npcDialogueFrozeByAttention) {
+      npcDialogueFrozeByAttention = false;
+      if (cur) { cur = { ...cur, until: gameTime + NPC_DIALOGUE_MS }; changed = true; }
+    }
     if (cur && gameTime >= cur.until) { cur = null; nextAt = gameTime + NPC_DIALOGUE_GAP_MS; changed = true; }
     if (!cur && queue.length > 0 && gameTime >= nextAt) {
       const head = queue[0];
