@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOSS_COMBAT_PROFILES, bossNeutralDelayMs, bossRebuildIdForEnemy, BOSS_NEUTRAL_EXTRA_MS, BOSS_NEUTRAL_MULT } from './bossRebuild';
+import { BOSS_COMBAT_PROFILES, bossNeutralDelayMs, bossRebuildIdForEnemy, BOSS_NEUTRAL_LEDGER_MS, BOSS_NEUTRAL_CASTLE_MS, BOUNTY_NEUTRAL_RULED_MS, IDOL_NEUTRAL_RULED_MS } from './bossRebuild';
 
 describe('boss rebuild contract', () => {
   it('stage-1城ボスを対象に含めず、再構築対象16体を一元管理する', () => {
@@ -19,11 +19,14 @@ describe('boss rebuild contract', () => {
     }
   });
 
-  it('中立時間はフェーズ別の範囲内+全体ノブ(BOSS_NEUTRAL_EXTRA_MS)で、後半ほど長く戻らない', () => {
-    // ★社長指示2026-08-26「技の間隔をあける」(v0.25.3949): 台帳全帯に +BOSS_NEUTRAL_EXTRA_MS(600)。
-    expect(bossNeutralDelayMs('acrasiel', 1, () => 0)).toBe((BOSS_NEUTRAL_EXTRA_MS + 750) * BOSS_NEUTRAL_MULT);
-    expect(bossNeutralDelayMs('acrasiel', 2, () => 1)).toBe((BOSS_NEUTRAL_EXTRA_MS + 850) * BOSS_NEUTRAL_MULT);
-    expect(bossNeutralDelayMs('acrasiel', 99, () => 0.5)).toBe((BOSS_NEUTRAL_EXTRA_MS + 550) * BOSS_NEUTRAL_MULT);
+  it('★社長裁定2026-08-27: 技間は系ごとの固定値(城2.5s/賞金首2s/台帳1.5s/偶像1.2s・×2は削除)', () => {
+    // 過去の裁定(事実): v3949=+600 / v3954=×2(帯×フェーズの揺らぎ込み)。本裁定が上書き。
+    expect(bossNeutralDelayMs('acrasiel', 1, () => 0)).toBe(BOSS_NEUTRAL_LEDGER_MS);
+    expect(bossNeutralDelayMs('thor', 3, () => 1)).toBe(BOSS_NEUTRAL_LEDGER_MS);
+    expect(BOSS_NEUTRAL_LEDGER_MS).toBe(1500);
+    expect(BOSS_NEUTRAL_CASTLE_MS).toBe(2500);
+    expect(BOUNTY_NEUTRAL_RULED_MS).toBe(2000);
+    expect(IDOL_NEUTRAL_RULED_MS).toBe(1200);
     for (const profile of Object.values(BOSS_COMBAT_PROFILES)) {
       expect(profile.neutralMs.every((b, i, a) => i === 0 || b.max <= a[i - 1].max)).toBe(true);
     }

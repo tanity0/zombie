@@ -95,6 +95,7 @@ import { counterReachShapeFor, inCounterReach, type CounterReachShape } from './
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { refundCounterCooldown } from './counterMaster';
+import { BOUNTY_NEUTRAL_RULED_MS } from './bossRebuild'; // ★社長裁定2026-08-27: 賞金首の技間=2秒
 import { consumeGhostCounterClaim, applyGhostCounterEffect } from './ghostCounter'; // ★v0.25.3962: 守護霊カウンターの消費(賞金首側の配線)
 import { resolveBossHateAim, resolveBossLockedHateAim } from './bossHate'; // ★v0.25.3971: 賞金首もヘイト制で守護霊を狙う
 import { npcSfxDistGain } from './npcSfx';
@@ -559,9 +560,9 @@ const BR_ESCORT_TYPE: EnemyType = 'zombie';
 // ---- 馬乗り(bounty-melee) -------------------------------------------------------------------------
 // 距離帯・突進・360度ムチ・3段コンボ・懲罰狙撃の数値は **BM_T(bountyScript.ts)** が正
 // (突進=werewolf輸入 / 狙撃=idol snipe輸入。その旨と公平の物差しの検算もテーブル側に書いてある)。
-/** 次の行動抽選までの中立時間(idolのIDOL_TUNING.neutral相当の叩き台)。 */
-// ★社長指示2026-08-26「技から次の技…もう少し間隔をあける」(v3949: 350→950)→「最低でも今の倍で」(v0.25.3954: 950→1900)。
-const BOUNTY_NEUTRAL_MS = 1900;
+/** 次の行動抽選までの中立時間(中立の間は追跡・間合い管理が動く=静止しない)。 */
+// ★社長裁定2026-08-27「賞金首2秒・×2は削除」(過去の裁定=v3949: 350→950 / v3954: 950→1900 を上書き)。
+const BOUNTY_NEUTRAL_MS = BOUNTY_NEUTRAL_RULED_MS;
 
 /** 帯(カプセル)の当たり判定を1件積む(idolTick.hitCapsuleと同型・技ごとにダメージ/KBを持つ)。 */
 const hitCapsule = (

@@ -60,24 +60,24 @@ const ENEMY_PROFILE_IDS: Partial<Record<EnemyType, BossRebuildId>> = {
 export const bossRebuildIdForEnemy = (type: EnemyType): BossRebuildId | null => ENEMY_PROFILE_IDS[type] ?? null;
 
 /**
- * ★技間の追加インターバル(社長指示2026-08-26「技から次の技を出すとき、もう少し間隔をあけるなり、
- * 移動するなりを挟んでほしい。あまりにも怒涛の攻撃しかしてこない」・v0.25.3949)。
- * 台帳の全帯へ一律加算する1ノブ(叩き台=+600ms。実機で絞る)。中立の間は各自の追跡/旋回が動く
- * =「移動を挟む」は既存の中立挙動がそのまま担う。対象=この台帳を読む全員(天使6+フィル+裏4+トール)。
- * 城ボスは技ごとの個別CD(aiReadyAt)、偶像は休符(IDOL_TUNING)=別系。賞金首は BOUNTY_NEUTRAL_MS(同版で+600)。
+ * ★技間インターバルの再分類(社長裁定2026-08-27)。社長の言葉:
+ * 「インターバルは、自分の得意とする距離感に調整する時間なので止まるっていうのはおかしい。
+ *  つまりインターバルは移動系の行動はOK。むしろ静止はNG(硬直以外で)。
+ *  ボス種によっての静止は以下に分類し直す。×2は削除。
+ *  城ボス2.5秒 / 賞金首2秒 / 台帳系1.5秒 / アイドル1.2秒。開幕は据え置き」
+ * - 過去の裁定(事実): v0.25.3949「+600ms」→v0.25.3954「最低でも今の倍(×2)」。本裁定が両方を上書きし、
+ *   帯(neutralMs)による揺らぎ・フェーズ短縮も系ごとの固定値へ置き換えた(帯は台帳の記録として残置)。
+ * - インターバル中は各自の追跡/旋回/間合い管理が動く(静止しない)。偶像の休符(完全静止)も
+ *   移動へ置換(idolTick)。開幕3秒ホールド(bossOpeningHoldAt・v3952)は据え置き。
  */
-export const BOSS_NEUTRAL_EXTRA_MS = 600;
-/** ★社長指示2026-08-26「全ボス、技と技の間のインターバルは最低でも今の倍で」: 全体倍率(叩き台=2)。 */
-export const BOSS_NEUTRAL_MULT = 2;
+export const BOSS_NEUTRAL_LEDGER_MS = 1500;  // 台帳系(天使6+フィル+裏4+トール+ステージボス)
+export const BOSS_NEUTRAL_CASTLE_MS = 2500;  // 城ボス(aiReadyAtの全体仕切り。技ごとの個別CDとのmaxは従来どおり)
+export const BOUNTY_NEUTRAL_RULED_MS = 2000; // 賞金首(bountyTickが読む)
+export const IDOL_NEUTRAL_RULED_MS = 1200;   // 偶像(休符の長さ。idolTickが読む=静止ではなく移動)
 
-/** フェーズは1始まり。未定義の上位フェーズは最後の値を引き継ぐ=後半で遅く戻らない。 */
+/** 台帳系の技間(社長裁定2026-08-27=系ごとの固定値)。引数は互換のため残置(帯・乱数は使わない)。 */
 export const bossNeutralDelayMs = (
-  id: BossRebuildId,
-  phase: number,
-  rand: () => number = Math.random,
-): number => {
-  const bands = BOSS_COMBAT_PROFILES[id].neutralMs;
-  const band = bands[Math.min(bands.length - 1, Math.max(0, Math.floor(phase) - 1))];
-  const r = Math.max(0, Math.min(1, rand()));
-  return (BOSS_NEUTRAL_EXTRA_MS + band.min + (band.max - band.min) * r) * BOSS_NEUTRAL_MULT; // ★倍率=社長指示2026-08-26「最低でも今の倍」
-};
+  _id: BossRebuildId,
+  _phase: number,
+  _rand: () => number = Math.random,
+): number => BOSS_NEUTRAL_LEDGER_MS;

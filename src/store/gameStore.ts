@@ -104,7 +104,7 @@ import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
-import { BOSS_NEUTRAL_EXTRA_MS, BOSS_NEUTRAL_MULT } from '../utils/bossRebuild'; // ★社長指示2026-08-26「技の間隔をあける」= 城ボスにも(v0.25.3952)
+import { BOSS_NEUTRAL_CASTLE_MS } from '../utils/bossRebuild'; // ★社長裁定2026-08-27: 城ボスの技間=2.5秒(v3952の+600/v3954の×2を上書き)
 import { softCapCritChance } from '../utils/critSoftCap';
 import { resetCritDecay } from '../utils/critDecay'; // ★§13-3e クリ減衰(社長裁定2026-08-26)
 import {
@@ -11939,7 +11939,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const finishGiantStageMove = (moveId: GiantStageMoveId, cdMs: number): Partial<Enemy> => ({
             gStageReadyAt: { ...enemy.gStageReadyAt, [moveId]: atkCdUntil(cdMs) },
             ...critFlinchPatch(cdMs), // v0.25.2603: ステージ固有技も同じひるみ(窓外は空=無改変)
-            aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + BOSS_NEUTRAL_EXTRA_MS * BOSS_NEUTRAL_MULT), // ★v0.25.3952: 技間の全体仕切り
+            aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + BOSS_NEUTRAL_CASTLE_MS), // ★社長裁定2026-08-27: 城ボス2.5秒(移動は従来どおり=追跡が動く)
             aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
             aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
             gQuadIndex: undefined, giantActiveHit: undefined,
@@ -12078,7 +12078,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const finishGlenMove = (moveId: GlenMoveId, cdMs: number): Partial<Enemy> => ({
             gGlenReadyAt: { ...enemy.gGlenReadyAt, [moveId]: atkCdUntil(cdMs) },
             ...critFlinchPatch(cdMs), // v0.25.2603: グレンの技も同じひるみ(窓外は空=無改変)
-            aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + BOSS_NEUTRAL_EXTRA_MS * BOSS_NEUTRAL_MULT), // ★v0.25.3952: 技間の全体仕切り
+            aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + BOSS_NEUTRAL_CASTLE_MS), // ★社長裁定2026-08-27: 城ボス2.5秒(移動は従来どおり=追跡が動く)
             aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
             aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
             giantActiveHit: undefined,
@@ -12307,8 +12307,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                   ...enemy, ...phaseFields, ...readyPatch, vx: 0, vy: 0,
                   // ★社長指示2026-08-26「技から次の技…間隔をあける」(v0.25.3952): 城ボスの次行動は技ごとの
                   // 独立CD制で全体の仕切りが無かった(v2603と同じ穴の平時版)。全体の仕切り aiReadyAt へ
-                  // 中立台帳と同じ +BOSS_NEUTRAL_EXTRA_MS(600ms)を毎技後に入れる(critFlinchPatchのmaxが後勝ち)。
-                  aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + BOSS_NEUTRAL_EXTRA_MS * BOSS_NEUTRAL_MULT),
+                  // ★社長裁定2026-08-27: 城ボスの技間=2.5秒(critFlinchPatchのmaxが後勝ち)。
+                  aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + BOSS_NEUTRAL_CASTLE_MS),
                   aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
                   aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
                   gStompRadius: undefined, gJumpRadius: undefined, // M65: 溜め開始で毎回上書きされるが後片付けとして明示的にクリア

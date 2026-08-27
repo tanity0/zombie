@@ -19,11 +19,11 @@ import { createEnemyProjectile } from './enemyUtils';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { distToBandRect } from './geometry'; // v0.25.3496: 帯の判定=描いてある四角
 import { phaseJustChanged } from './bossScript';
-import { BOSS_NEUTRAL_EXTRA_MS, BOSS_NEUTRAL_MULT } from './bossRebuild'; // ★v0.25.3952: 技間インターバルの1ノブ
-import { neutralVerb, pickStringScript, restMsFor, punishTrigger, advanceLingerMs, type NeutralVerb } from './bossSkeleton';
+import { IDOL_NEUTRAL_RULED_MS } from './bossRebuild'; // ★社長裁定2026-08-27: 偶像のインターバル=1.2秒(移動しながら)
+import { neutralVerb, pickStringScript, punishTrigger, advanceLingerMs, type NeutralVerb } from './bossSkeleton';
 import { resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from './bossHate';
 import {
-  IDOL_TUNING, IDOL_STRING_LEN, IDOL_REST, IDOL_PUNISH, IDOL_NEUTRAL_BAND,
+  IDOL_TUNING, IDOL_STRING_LEN, IDOL_PUNISH, IDOL_NEUTRAL_BAND,
   IDOL_VERB_SPEED_MULT, IDOL_TIMING, IDOL_MOVES_ALL, IDOL_ORB_SPREAD_RAD,
   idolZone, idolPhaseForHealth, idolFanCount, idolOrbCount, idolWaveActive,
   idolStrings, idolShot, idolShotFireMs, idolMoveTiming, isIdolShot, idolGunMuzzle,
@@ -363,9 +363,10 @@ export const runIdolTick = (
     // ストリング終端=休符(必ず入る)。
     s.seq = []; s.step = 0;
     patch.bossState = IDOL_REST_STATE;
-    // ★社長指示2026-08-26「技から次の技…間隔をあける」(v0.25.3952): 偶像はストリング(連段)設計なので、
-    // 技間ではなく**ストリング終端の休符**へ中立台帳と同じ +BOSS_NEUTRAL_EXTRA_MS(600ms)を足す。
-    patch.bossStateUntil = newGameTime + (restMsFor(phase, IDOL_REST) * bossCritCdMult(fresh(), newGameTime) + BOSS_NEUTRAL_EXTRA_MS) * BOSS_NEUTRAL_MULT; // ★v0.25.3954「最低でも今の倍」
+    // ★社長裁定2026-08-27「アイドル1.2秒。×2は削除」: インターバルは間合い調整の時間=**移動しながら**
+    // (下のIDOL_REST_STATEブロックが中立と同じ語彙で動く)。クリのCD倍率(既存仕様v2422)は据え置き。
+    // 過去の裁定(事実): v3952=+600 / v3954=×2 / 旧休符1.7秒=完全静止。本裁定が上書き。
+    patch.bossStateUntil = newGameTime + IDOL_NEUTRAL_RULED_MS * bossCritCdMult(fresh(), newGameTime);
   };
 
   const toRecover = (m: IdolMove): void => {
@@ -567,11 +568,22 @@ export const runIdolTick = (
       }
     }
   } else if (st === IDOL_REST_STATE) {
-    // === REST: 完全静止。ここだけがプレイヤーのターン(0にはしない) ===
+    // === REST(インターバル): ★社長裁定2026-08-27「止まるのはおかしい。アイドルなら遠距離に逃げるべき。
+    // インターバルは移動系の行動はOK・静止はNG(硬直以外で)」——完全静止をやめ、中立と同じ移動語彙で
+    // 主戦帯へ調整する(遠すぎれば詰め・近すぎれば離脱・帯内は横回り=neutralVerbが距離から選ぶ)。
+    // 攻撃はしない(次のストリングは休符明けから)=「プレイヤーのターン」の意味は攻撃停止として残る。
+    {
+      const verb: NeutralVerb = neutralVerb(dist, IDOL_NEUTRAL_BAND, false);
+      const spd = idol.speed * IDOL_VERB_SPEED_MULT[verb] * dt * bossSlowMult(idol, newGameTime);
+      const ux = dist > 0.001 ? (pcx - icx) / dist : 0, uy = dist > 0.001 ? (pcy - icy) / dist : 0;
+      if (verb === 'close') { patch.x = idol.x + ux * spd; patch.y = idol.y + uy * spd; }
+      else if (verb === 'retreat') { patch.x = idol.x - ux * spd; patch.y = idol.y - uy * spd; }
+      else { patch.x = idol.x + (-uy * s.strafeDir) * spd; patch.y = idol.y + (ux * s.strafeDir) * spd; }
+    }
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
-      // 休符明けは**中立へ戻る**。ここで主戦帯まで歩き直す時間を必ず取る(ER原則③)。
+      // 休符明け=即・次の行動抽選が可能(間合い調整は休符中に済ませた。旧: さらに中立0.7〜1.3秒を足していた)。
       patch.bossState = 'chase';
-      patch.bossNextActionAt = newGameTime + IDOL_TUNING.neutral.minMs + Math.random() * (IDOL_TUNING.neutral.maxMs - IDOL_TUNING.neutral.minMs);
+      patch.bossNextActionAt = newGameTime;
     }
   } else if (st === 'idol-aim-windup') {
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
