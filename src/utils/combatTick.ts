@@ -763,7 +763,9 @@ export const applyEnemyProjectileHits = (
       for (const proj of ghostHits) {
         const liveGhost = useGameStore.getState().summons.find(s => s.id === ghostAlly.id);
         if (!liveGhost) break; // 直前の被弾で解散した=以降の弾は素通り(既存の damageSummon の解散と同じ扱い)
-        if (now <= (liveGhost.ghostCounterWindowEnd ?? 0)) {
+        // ★社長裁定2026-08-27「カウンター弾は再度カウンター不可」: noCounter(紫の文法・反射弾含む)は
+        // 守護霊も打ち返せない(プレイヤーの !proj.noCounter ゲートと同じ1本の文法)。
+        if (now <= (liveGhost.ghostCounterWindowEnd ?? 0) && !proj.noCounter) {
           // 倍率評価の主語=計測時ビルドの疑似Player(combatActorPlayer)。ビルド無し(旧プロファイル)の
           // 時は本人のプレイヤーで評価する=ghostBuild未搭載でも反射自体は成立する。
           const subject = combatActorPlayer(liveGhost.id) ?? useGameStore.getState().player;

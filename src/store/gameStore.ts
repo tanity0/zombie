@@ -14631,6 +14631,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           damage: p.damage * multiplier,
           hostile: asHostile,
           reflected: true,
+          // ★社長裁定2026-08-27「カウンター弾は再度カウンター不可にして」: 打ち返された弾は
+          // noCounter=紫の文法(打ち返し合いのラリー廃止)。プレイヤー側の再反射はcombatTickの
+          // !noCounterゲート、幻影側の弾パリィはuseGameLoopのgpBulletSourceゲート、守護霊の弾反射は
+          // combatTickのゴースト分岐、の3経路すべてこの1旗で閉じる。
+          noCounter: true,
           // ★SAME_ARENA §9(検収監査 軽⑧): クリ旗は反射で消す——幻影のクリ弾を打ち返し、さらに
           // 打ち返されて戻ってきた弾が「クリでもないのに2/3減速」を付けるラリー汚染を防ぐ。
           pvpCrit: undefined,

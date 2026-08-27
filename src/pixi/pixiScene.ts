@@ -23249,7 +23249,10 @@ export class PixiScene {
     }
 
     if (p.reflected) {
-      g.circle(0, 0, Math.max(p.width, p.height) * 0.7).fill({ color: 0xfcd34d });
+      // ★社長裁定2026-08-27「カウンター弾は再度カウンター不可」: 敵対の反射弾(幻影の打ち返し)は
+      // **紫**のハロー=カウンター不可の文法(CLAUDE.md「カウンター不可の弾は絵替えではなく紫」)。
+      // 味方側(プレイヤー/守護霊の打ち返し)は従来どおり金(敵に向かう弾=危険の文法の対象外)。
+      g.circle(0, 0, Math.max(p.width, p.height) * 0.7).fill({ color: p.hostile ? 0xa855f7 : 0xfcd34d });
     }
 
     switch (p.weaponType) {

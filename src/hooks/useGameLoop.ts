@@ -11466,7 +11466,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 橋は弾を受け取らない。**飛翔時間はここで出して打撃種別と一緒に運ぶ**(距離÷速度なので
           // 時計を跨がない・スロー/ヒットストップの影響も受けない)。速度0や発射点=着弾点の弾は
           // 「瞬間着弾=見てから反応できない」側に出る(割り算の前で分岐済み)。
-          const gpBulletSource = directPlayerGun
+          // ★社長裁定2026-08-27「カウンター弾は再度カウンター不可」: 反射弾(カウンター弾)は幻影の
+          // 弾パリィ抽選にも掛けない(noCounterの対称=プレイヤーも幻影の反射弾を打ち返せない)。
+          const gpBulletSource = directPlayerGun && !projectile?.reflected
             ? {
               kind: 'bullet' as const,
               flightMs: projectile && enemyForFx
