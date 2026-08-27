@@ -12505,8 +12505,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       return npcSfxDistGain(x, y,
                         gpSt.player.x + gpSt.player.width / 2, gpSt.player.y + gpSt.player.height / 2,
                         gpSt.camera, gpSt.gameBounds);
-                    },
-                    { spawnRing, spawnBurst })) {
+                    })) {
                     parriedBossId = en.id; // 請求は最新1件=受け流しは高々1体(プレイヤーの1窓1成立と同じ)
                     break;
                   }

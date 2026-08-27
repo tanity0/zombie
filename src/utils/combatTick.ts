@@ -64,7 +64,7 @@ import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
-import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect, applyGhostReflectCounterFx, type GhostCounterClaim } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流 / v0.25.2525: 弾反射の成立演出 / 2026-08-27: 判定時置換ミラー
+import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect, applyGhostReflectCounterFx, ghostCounterBlueLayer, type GhostCounterClaim } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流 / v0.25.2525: 弾反射の成立演出 / 2026-08-27: 判定時置換ミラー / v0.25.3985: 受け流しも同じ青い成立層
 import { npcSfxDistGain } from './npcSfx'; // CRIT-UNIFY §9.3: ゴーストのブラストパリィ成立SEの距離減衰(escort/他ゴースト経路と同流儀)
 import { applyBossPostureDamage } from './bossPosture'; // v0.25.2946: 裏ボス体当たりの受け流し(体幹削り)
 import { shouldSkipBossContactParry } from './counterReach'; // v0.25.3809(8巡目 重大4): 受け流しへ落とさない州の述語(純関数)
@@ -1063,7 +1063,6 @@ export const tryGhostContactParry = (
   gameTime: number,
   playCounterSfx: ((gain: number) => void) | null,
   sfxGainAt: (x: number, y: number) => number,
-  fx?: { spawnRing: CombatEffects['spawnRing']; spawnBurst: CombatEffects['spawnBurst'] },
 ): boolean => {
   if (!BOSS_CONTACT_PARRY_ENABLED) return false;
   if (!(isHiddenBoss(fromEnemy.type) || isBountyType(fromEnemy.type))) return false;
@@ -1094,12 +1093,13 @@ export const tryGhostContactParry = (
     // プレイヤー版の「invulnerable=true」に対応する守護霊のi-frame(専用フィールド=被弾音の誤発火なし)。
     summons: st.summons.map(su => su.id === ghost.id ? { ...su, ghostInvulnUntil: nowMs + INVULN_MS } : su),
   }));
+  // ★v0.25.3985(社長指示「カウンターはちゃんと幻影と同じにして。幻影はちゃんと出てるぽいので」):
+  // 受け流しの成立演出を幻影パリィ/他の守護霊成立経路と同じフルセット(青リング135+バースト+グロー+
+  // **Counter!コールアウト+停止/揺れ/寄りズーム**+counter SE)へ合流。旧: 小さいリング+音のみで、
+  // 成立しても「カウンターした」と読めなかった(実測: 2026-08-27スクショの40.8s成立が気づかれなかった)。
+  // fx引数は不要になった(ghostCounterBlueLayerがstoreのspawn系を直接呼ぶ=applyGhostCounterEffectと同型)。
   const gain = sfxGainAt(gcx, gcy);
-  if (playCounterSfx && gain > 0) playCounterSfx(gain);
-  if (fx) {
-    fx.spawnRing(gcx, gcy, 10, 60, 'rgba(56,189,248,0.85)', 3, 260);
-    fx.spawnBurst(gcx, gcy, '#38bdf8', 8);
-  }
+  ghostCounterBlueLayer(gcx, gcy, gain, playCounterSfx ? (key, g) => { if (key === 'counter') playCounterSfx(g); } : null);
   return true;
 };
 

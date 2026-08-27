@@ -201,7 +201,10 @@ export const ghostCounterDamage = (
  * glowは43=STRONG_GLOW_RADIUS(44)未満のプールsprite経路に抑える(v0.25.2479の掟。プレイヤーの95=
  * 強glowは真似ない)。除外1: 時間停止/スロー/ズーム(triggerHitImpact等)は絶対に呼ばない。
  */
-const ghostCounterBlueLayer = (
+// ★v0.25.3985(社長指示2026-08-27「カウンターはちゃんと幻影と同じにして」): export化——
+// 接触受け流し(combatTick.tryGhostContactParry)も同じ青い成立層(Counter!+停止/揺れ/寄りズーム)を
+// 出す。旧: 受け流しだけ小さいリング+音のみで、成立しても「カウンターした」と分からなかった。
+export const ghostCounterBlueLayer = (
   hitX: number, hitY: number, sfxGain: number,
   playSfxGain: ((key: 'counter' | 'headshot', gain: number) => void) | null,
 ): void => {
