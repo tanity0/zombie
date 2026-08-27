@@ -16745,17 +16745,21 @@ export class PixiScene {
       // T6: 狙い撃ち(終点リング無し=遠隔が通る・本体は来ない)。
       if (bs === 'idol-aim-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / idolAimWindupVis()));
+        // ★v0.25.3978: 狙い=**tickが書いたヘイト対象(aiTarget)**を読む(守護霊を狙う時に赤だけが
+        // プレイヤー向きになる嘘を修正)。未書込の1フレームだけプレイヤーへフォールバック。
         const pl = useGameStore.getState().player;
-        const px = pl.x + pl.width / 2, py = pl.y + pl.height / 2;
+        const px = e.aiTargetX ?? (pl.x + pl.width / 2), py = e.aiTargetY ?? (pl.y + pl.height / 2);
         const mz = gunMz(px);
         this.drawAngelBeamLine(o, mz.x, mz.y, px, py, idolBulletHalfWidthVis('aim'), prog, now);
       }
       // T6が扇状に3本(Phase2で5本): 連射。
       if (bs === 'idol-fan-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / idolFanWindupVis()));
+        // ★v0.25.3978: 狙い=tickが書いたヘイト対象(aiTarget)。詳細はidol-aim-windup側のコメント。
         const pl = useGameStore.getState().player;
-        const mz = gunMz(pl.x + pl.width / 2);
-        const ang = Math.atan2((pl.y + pl.height / 2) - mz.y, (pl.x + pl.width / 2) - mz.x);
+        const ax = e.aiTargetX ?? (pl.x + pl.width / 2), ay = e.aiTargetY ?? (pl.y + pl.height / 2);
+        const mz = gunMz(ax);
+        const ang = Math.atan2(ay - mz.y, ax - mz.x);
         const count = idolFanCount(e.bossPhase === 2 ? 2 : 1);
         // ★テーブルの値をそのまま読む(v0.25.2638)。ここに `0.14` を書いておくと、メーカーで
         // 開き角を変えた瞬間に**赤い線と実弾がズレる**(CLAUDE.md「赤いのに当たらない」の禁止事項)。
@@ -16776,9 +16780,11 @@ export class PixiScene {
       // T6線が扇状に(2発/Phase2は3発): 追尾弾の発射方向。弾自体が追ってくるので線は「発射の合図」。
       if (bs === 'idol-orb-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_TIMING.orb.windup));
+        // ★v0.25.3978: 狙い=tickが書いたヘイト対象(aiTarget)。詳細はidol-aim-windup側のコメント。
         const pl = useGameStore.getState().player;
-        const mz = gunMz(pl.x + pl.width / 2);
-        const base = Math.atan2((pl.y + pl.height / 2) - mz.y, (pl.x + pl.width / 2) - mz.x);
+        const ax = e.aiTargetX ?? (pl.x + pl.width / 2), ay = e.aiTargetY ?? (pl.y + pl.height / 2);
+        const mz = gunMz(ax);
+        const base = Math.atan2(ay - mz.y, ax - mz.x);
         const n = idolOrbCount(e.bossPhase === 2 ? 2 : 1);
         for (let k = 0; k < n; k++) {
           const a = base + (k - (n - 1) / 2) * IDOL_ORB_SPREAD_RAD;
@@ -16813,8 +16819,11 @@ export class PixiScene {
       }
       // T3(短): 至近の殴り。
       if (bs === 'idol-punch-windup') {
+        // ★v0.25.3978(社長報告「拳の当たり判定が予告通りではなさそう」): 狙い=tickが書いた
+        // ヘイト対象(aiTarget)。守護霊を狙う拳の赤帯がプレイヤー向きに出ていた嘘を修正。
         const pl = useGameStore.getState().player;
-        const ang = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
+        const ax = e.aiTargetX ?? (pl.x + pl.width / 2), ay = e.aiTargetY ?? (pl.y + pl.height / 2);
+        const ang = Math.atan2(ay - cy, ax - cx);
         const tx = cx + Math.cos(ang) * idolPunchRangeVis(), ty = cy + Math.sin(ang) * idolPunchRangeVis();
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / idolPunchWindupVis()));
         this.drawAngelZoneCapsule(view, o, cx, cy, tx, ty, idolPunchHalfWidthVis(), prog, now);

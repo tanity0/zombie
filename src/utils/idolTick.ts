@@ -327,6 +327,15 @@ export const runIdolTick = (
       patch.aiTargetX = mz.x + ((aim.x - mz.x) / dl) * IDOL_TUNING.shape.snipeRange;
       patch.aiTargetY = mz.y + ((aim.y - mz.y) / dl) * IDOL_TUNING.shape.snipeRange;
       patch.hateTarget = aim.side;
+    } else if (m === 'aim' || m === 'fan' || m === 'orb' || m === 'punch') {
+      // ★v0.25.3978(社長報告「アイドルの拳の当たり判定が予告通りではなさそう」): この4技は実行時に
+      // **ヘイト対象**(守護霊も含む)へ撃つのに、赤い予告だけがプレイヤー向きに描かれていた=
+      // 「赤いのに当たらない/赤くないのに当たる」。狙い(ヘイト対象の点)を aiTarget へ書き、
+      // 描画は**この2値を読むだけ**にする(判定はstore側・pixiは読むだけの掟)。溜め中は下の各
+      // windup分岐が毎フレーム追従更新する=最終フレームの値が実行時の hateAim() と一致する。
+      const aim = hateAim();
+      patch.aiTargetX = aim.x; patch.aiTargetY = aim.y;
+      patch.hateTarget = aim.side;
     } else if (m === 'roll' || m === 'nade') {
       // nade(v0.25.3444・社長指示「バックロールしながら手榴弾を投げる」)もrollと同じ後方ロックを取る
       // (距離=shape.rollDist・同じ動作は同じ数字)。投擲は溜め明け(idol-nade開始の瞬間)に行う。
@@ -586,6 +595,10 @@ export const runIdolTick = (
       patch.bossNextActionAt = newGameTime;
     }
   } else if (st === 'idol-aim-windup') {
+    { // ★v0.25.3978: 溜め中は狙い(ヘイト対象)を毎フレーム追従して aiTarget へ(赤い予告が読む)。
+      const aimT = hateAim();
+      patch.aiTargetX = aimT.x; patch.aiTargetY = aimT.y; patch.hateTarget = aimT.side;
+    }
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       const aim = hateAim();
       const mz = gunMuzzleFor(aim.x); // 社長指示v0.25.3439: 起点=銃口
@@ -595,6 +608,10 @@ export const runIdolTick = (
       toRecover('aim');
     }
   } else if (st === 'idol-fan-windup') {
+    { // ★v0.25.3978: 溜め中は狙い(ヘイト対象)を毎フレーム追従して aiTarget へ(赤い予告が読む)。
+      const aimT = hateAim();
+      patch.aiTargetX = aimT.x; patch.aiTargetY = aimT.y; patch.hateTarget = aimT.side;
+    }
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       const aim = hateAim();
       patch.hateTarget = aim.side;
@@ -610,6 +627,10 @@ export const runIdolTick = (
       toRecover('fan');
     }
   } else if (st === 'idol-orb-windup') {
+    { // ★v0.25.3978: 溜め中は狙い(ヘイト対象)を毎フレーム追従して aiTarget へ(赤い予告が読む)。
+      const aimT = hateAim();
+      patch.aiTargetX = aimT.x; patch.aiTargetY = aimT.y; patch.hateTarget = aimT.side;
+    }
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       const aim = hateAim();
       patch.hateTarget = aim.side;
@@ -681,6 +702,10 @@ export const runIdolTick = (
     }
     if (newGameTime >= (idol.bossStateUntil ?? 0)) toRecover('snipe');
   } else if (st === 'idol-punch-windup') {
+    { // ★v0.25.3978: 溜め中は狙い(ヘイト対象)を毎フレーム追従して aiTarget へ(赤い予告が読む)。
+      const aimT = hateAim();
+      patch.aiTargetX = aimT.x; patch.aiTargetY = aimT.y; patch.hateTarget = aimT.side;
+    }
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       const aim = hateAim();
       patch.hateTarget = aim.side;

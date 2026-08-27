@@ -559,3 +559,30 @@ describe('カウンター成立域は赤い予告の図形(v0.25.3591 監査是�
     expect(g.boss().health).toBe(hp);            // 反撃ダメージも入らない
   });
 });
+
+// ★v0.25.3978(社長報告「アイドルの拳の当たり判定が予告通りではなさそう」): 拳/狙い撃ち/扇/追尾弾は
+// 実行時にヘイト対象(守護霊も含む)へ撃つのに、赤い予告だけがプレイヤー向きに描かれていた。
+// 修正=tickが溜め中に狙いを aiTarget へ毎フレーム書き、描画はそれを読むだけ。ここでは
+// 「溜め中に aiTarget が狙いへ追従して書かれる」ことを固定する(描画はテスト対象外の掟)。
+describe('拳/狙い撃ちの予告向き: tickが書くaiTarget(ヘイト対象)に追従する', () => {
+  it('punchの溜め中、aiTargetが狙い(プレイヤー中心)へ毎フレーム追従する', () => {
+    const { step, state } = setup(120);
+    requestIdolMovePlay('punch', { solo: false, loop: false });
+    step();
+    expect(state()).toBe('idol-punch-windup');
+    useGameStore.setState(s => ({ player: { ...s.player, x: 300, y: 40 } }));
+    step();
+    const b = useGameStore.getState().enemies[0];
+    const pl = useGameStore.getState().player;
+    expect(b.aiTargetX).toBeDefined();
+    expect(Math.abs((b.aiTargetX ?? 0) - (pl.x + pl.width / 2))).toBeLessThan(1);
+    expect(Math.abs((b.aiTargetY ?? 0) - (pl.y + pl.height / 2))).toBeLessThan(1);
+  });
+  it('aimの溜め開始でも即aiTargetが書かれる(未書込の初回フレームを作らない)', () => {
+    const { step, state } = setup(400);
+    requestIdolMovePlay('aim', { solo: true, loop: false });
+    step();
+    expect(state()).toBe('idol-aim-windup');
+    expect(useGameStore.getState().enemies[0].aiTargetX).toBeDefined();
+  });
+});
