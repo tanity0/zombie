@@ -2,11 +2,10 @@
   "baseUrl": "local",
   "headless": false,
   "viewport": { "width": 1280, "height": 800 },
-  "minVersion": "0.25.3928",
-  "note": "2026-08-25追試。噛みつきが実際に当たっている直接証拠を取るのが目的。configs配列=botrun-local.mjs がそのまま読める形(前回この形になっておらず手作業回避が発生した)。stage はランごとに指定できる(v0.25.3929でスクリプト側を対応)。Bのガントレットは今回不要。",
+  "minVersion": "0.25.3991",
+  "note": "2026-08-27 通しE2E(REQUEST.md参照)。この config はパートC(回帰ボットラン)用。パートA+B(ボス直行スイープ)は node TEST_HANDOFF/run-e2e-sweep.mjs を使う。",
   "configs": [
-    { "name": "bite-evidence-stage1-a", "persona": "standard", "stage": "stage-1", "extraQuery": "autotut=1" },
-    { "name": "bite-evidence-stage1-b", "persona": "rusher", "stage": "stage-1", "extraQuery": "autotut=1" },
-    { "name": "bite-evidence-stage2", "persona": "standard", "stage": "stage-2", "extraQuery": "autotut=1" }
+    { "name": "e2e-regression-stage1", "persona": "standard", "stage": "stage-1", "extraQuery": "autotut=1" },
+    { "name": "e2e-regression-stage5", "persona": "standard", "stage": "stage-5", "extraQuery": "autotut=1" }
   ]
 }
