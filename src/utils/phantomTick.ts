@@ -38,6 +38,7 @@ import {
   KNOCKBACK_SPEED, KNOCKBACK_DURATION,          // カウンターされた側のノックバック=**敵と同じ量**(社長指示)
   meleeLungePx, MELEE_LUNGE_MS, knockbackSpeedFor, // ★踏み込み(プレイヤーと同じ関数=武器別も揃う)
   playerPvpChipPatch,                           // ★SAME_ARENA §9: プレイヤー体勢の削り(紫入りの破棄込み)
+  showPvpFatalOnPlayerPresentation,             // ★2026-08-27: 幻影→プレイヤーの致命もKILL演出(ズーム)
   skillBenkeiCritBonus, skillKnifeMasterMeleeCrit, // ★裁定①: 近接クリ式のミラー(検収監査 中⑥)
 } from '../store/gameStore';
 import { softCapCritChance } from './critSoftCap'; // ★§13-3d: 近接クリ式のミラーに同じソフトキャップ
@@ -636,6 +637,9 @@ const swingPhantomMelee = (
   const landed = useGameStore.getState().player.health < hpBefore;
   if (landed) {
     sfx.hurt();
+    // ★社長指示2026-08-27「幻影戦での致命はちゃんと双方、KILL演出して。(ズームする方)」:
+    // 幻影→プレイヤーの致命もプレイヤー→幻影と同じ演出(Kill!の赤い層+CD無視の最大ズーム)。
+    if (fatalHit) showPvpFatalOnPlayerPresentation(pcx, pcy, gNow.player.y - 6);
     // ★SAME_ARENA §9: 有効打のみ体勢に響く——melee(0.04)の削り+クリなら2/3減速。致命なら満タン+daze2秒。
     useGameStore.setState(st => {
       if (fatalHit) {

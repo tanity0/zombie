@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.3988 — 幻影戦の致命=双方KILL演出(最大ズーム) 【2026-08-27 16:10 JST】
+- **社長指示**: 「幻影戦での致命はちゃんと双方、KILL演出して。(ズームする方)」
+- **真因(双方向で別の穴)**:
+  - プレイヤー→幻影: 近接4系統(ナイフ/バッシュ/刀/鞭)の対人致命は bossFatalHits へ積んでいたが、
+    **ズームのゲート(`finisherHit || bossFinishHit`)を開く旗を立てていなかった**=Kill!の赤い層だけ
+    出てズーム(triggerFinishImpact force)が出ない。中央経路(スラッシャー追撃等のdamageEnemy)は
+    bossFatalAt に載らず演出ゼロ。
+  - 幻影→プレイヤー: 演出自体が未配線(ダメージ+体勢処理のみ)。
+- **修正**: ①4系統の対人致命で `bossFinishHit = true`(ボス致命と同じフル演出=CD無視の最大ズーム+
+  Kill!+KILL跳びつき) ②damageEnemyの `pvpFatal` も `bossFatalAt` へ(ボス致命と同じ出口)
+  ③`showPvpFatalOnPlayerPresentation` を新設(Kill!の赤い層+最大ズーム。跳びつき処刑アニメは
+  プレイヤーが実行者の絵なので受け側では出さない)、phantomTickの致命ヒット(有効打時)から発火。
+- テスト: phantomTick 35件green。typecheck+lint 0エラー。
+- 自己点検: 憲法第4条・第5条に非抵触(演出のみ・ダメージ/体勢処理は不変)。
+- 状態変化: 対人体勢システム → 致命の双方KILL演出 実装済み(実機確認待ち)
+
 ## v0.25.3987 — カウンター弾は再度カウンター不可(紫の文法・ラリー廃止) 【2026-08-27 15:46 JST】
 - **社長裁定**: 「カウンター弾は再度カウンター不可にして」
 - **変更**: `reflectProjectile` が反射弾に `noCounter: true` を焼く(紫の文法)。閉じた3経路——

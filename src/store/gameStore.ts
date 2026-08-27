@@ -4043,6 +4043,16 @@ const showBossFatalPresentation = (get: () => GameState, x: number, y: number, l
   });
 };
 
+// ★社長指示2026-08-27「幻影戦での致命はちゃんと双方、KILL演出して。(ズームする方)」:
+// **幻影→プレイヤー**の致命でも同じ演出を出すための出口(呼び出し元=phantomTickの致命ヒット)。
+// 内容=プレイヤー→幻影の致命と同じ「Kill!の赤い層+CD無視の最大ズーム(triggerFinishImpact force)」。
+// 跳びつき処刑アニメ(killFx)はプレイヤーが実行者の絵なので、受ける側では出さない(ズームする方のみ)。
+export const showPvpFatalOnPlayerPresentation = (x: number, y: number, labelY: number): void => {
+  const get = useGameStore.getState;
+  showBossFatalPresentation(get, x, y, labelY);
+  get().triggerFinishImpact(x, y, true);
+};
+
 // ★v0.25.3703(社長報告「パンプキンへの致命の一撃でKILL演出が出なかった。致命の一撃はCDないはず」):
 // KILL処刑演出(首元へ跳びつき→掻っ切り→帰還)の発火を1本化。v0.25.3622「KILL演出を致命の一撃にも
 // 流用」は**ナイフ経路だけ**に配線されており、①強個体(パンプキン等)の気絶中3×=E-1裁定の
@@ -7033,6 +7043,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             dmg = pvpFatalDamage(dmg, enemy.maxHealth);
             bashPvpPatch = { pvpPosture: pvpAfterFatal(enemy.pvpPosture, gameTime) };
             bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
+            bossFinishHit = true; // ★社長指示2026-08-27「幻影戦の致命もKILL演出(ズーム)」: 対人致命もフル演出ゲートを開く
           } else {
             const r = chipPvpPosture(enemy.pvpPosture, 'melee', gameTime, postureChipMult());
             bashPvpPatch = r.broke
@@ -7122,6 +7133,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           dmg = pvpFatalDamage(dmg, enemy.maxHealth);
           pvpMeleePatch = { pvpPosture: pvpAfterFatal(enemy.pvpPosture, gameTime) };
           bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height }); // 既存のKill!演出プールを流用(§9 UI最小)
+          bossFinishHit = true; // ★社長指示2026-08-27「幻影戦の致命もKILL演出(ズーム)」: 旧実装はこの旗が立たずズームのゲート(finisherHit||bossFinishHit)を通らなかった
         } else {
           const r = chipPvpPosture(enemy.pvpPosture, 'melee', gameTime, postureChipMult());
           const ps = crit ? markPvpCritSlow(r.next, gameTime) : r.next;
@@ -8266,6 +8278,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           dmg = pvpFatalDamage(dmg, enemy.maxHealth);
           pvpMeleePatch = { pvpPosture: pvpAfterFatal(enemy.pvpPosture, gameTime) };
           katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
+          bossFinishHit = true; // ★社長指示2026-08-27「幻影戦の致命もKILL演出(ズーム)」
         } else {
           const r = chipPvpPosture(enemy.pvpPosture, 'melee', gameTime, postureChipMult());
           const ps = crit ? markPvpCritSlow(r.next, gameTime) : r.next;
@@ -8576,6 +8589,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           dmg = pvpFatalDamage(dmg, enemy.maxHealth);
           pvpMeleePatch = { pvpPosture: pvpAfterFatal(enemy.pvpPosture, gameTime) };
           whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
+          bossFinishHit = true; // ★社長指示2026-08-27「幻影戦の致命もKILL演出(ズーム)」
         } else {
           const r = chipPvpPosture(enemy.pvpPosture, 'melee', gameTime, postureChipMult());
           const ps = crit ? markPvpCritSlow(r.next, gameTime) : r.next;
@@ -10797,7 +10811,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         && isPvpFatalTarget(enemy.pvpPosture, state.gameTime)
         ? pvpFatalDamage(gatedAmount, enemy.maxHealth)
         : null;
-      if (meleeFatal) bossFatalAt = {
+      // ★社長指示2026-08-27「幻影戦での致命はちゃんと双方、KILL演出して」: 対人致命(pvpFatal=
+      // スラッシャー追撃等の中央経路)もボス致命と同じフル演出(Kill!+CD無視の最大ズーム)へ載せる。
+      if (meleeFatal || pvpFatal !== null) bossFatalAt = {
         x: enemy.x + enemy.width / 2,
         y: enemy.y + enemy.height / 2,
         labelY: enemy.y - 6,
