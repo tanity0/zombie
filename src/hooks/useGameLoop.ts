@@ -9972,7 +9972,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     });
                     // v0.25.3981(実測用・?ghostlog=1): 構え=請求を積んだ瞬間(通常近接)。記録専用。
                     if (GHOST_DMG_LOG_ENABLED) {
-                      const remain = boundBoss.bossStateUntil !== undefined ? Math.round(boundBoss.bossStateUntil - gameTime) : -1;
+                      const impactAt = boundBoss.bossStateUntil ?? boundBoss.aiPhaseUntil; const remain = impactAt !== undefined ? Math.round(impactAt - gameTime) : -1;
                       ghostLogPush(`${Math.round(gameTime / 100) / 10}s 構え ${boundBoss.bossState ?? boundBoss.aiPhase ?? '?'} 残${remain}ms`);
                     }
                   }
@@ -10078,7 +10078,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     });
                     // v0.25.3981(実測用・?ghostlog=1): 構え=請求を積んだ瞬間(刀の一閃)。記録専用。
                     if (GHOST_DMG_LOG_ENABLED) {
-                      const remain = boundBoss.bossStateUntil !== undefined ? Math.round(boundBoss.bossStateUntil - gameTime) : -1;
+                      const impactAt = boundBoss.bossStateUntil ?? boundBoss.aiPhaseUntil; const remain = impactAt !== undefined ? Math.round(impactAt - gameTime) : -1;
                       ghostLogPush(`${Math.round(gameTime / 100) / 10}s 構え(一閃) ${boundBoss.bossState ?? boundBoss.aiPhase ?? '?'} 残${remain}ms`);
                     }
                   } else if (GHOST_FX_SHAKE_ENABLED) {

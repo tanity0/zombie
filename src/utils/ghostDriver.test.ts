@@ -1417,3 +1417,52 @@ describe('表の予告×離れた守護霊: 74px外でも構えて着弾逆算�
     expect(d.action).toBe('shoot'); // 見切り中=通常どおり撃つ(棒立ちしない)
   });
 });
+
+// ★v0.25.3982(社長スクショの実測ログで確定): 城ボス(giantbat)の着弾予告(aiPhase基準の
+// GIANT_IMPACT_AT_WINDUP_END)がv3979の距離ゲート撤廃から漏れていた——監視が密着になる技
+// (g-dash-charge)でしか始まらず、g-stomp/g-trishot/g-bolt等の予告は請求ゼロでゾーン被弾だけだった。
+describe('城ボスの着弾予告×離れた守護霊(v0.25.3982)', () => {
+  it('踏み鳴らし溜め(g-stomp-windup)を250px離れて監視し、着弾の直前にcounter意図の振りが出る', () => {
+    const boss = mkBoss({
+      id: 'g-1', type: 'giantbat', x: 270, y: 0, width: 40, height: 40,
+      aiPhase: 'g-stomp-windup' as Enemy['aiPhase'], aiPhaseUntil: 900,
+    } as Partial<Enemy>);
+    // t=500: remaining=400ms > lead≈93ms → まだ振らない。監視(pendingAt/willAttempt)は立つ。
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), // 縁まで250px(>74)=v3981以前は counterable=false
+      enemies: [boss],
+      gameTime: 500, nowMs: 500,
+    }));
+    expect(d1.counterPendingAt).toBe(500);
+    expect(d1.counterWillAttempt).toBe(true);
+    expect(d1.meleeIsCounterAttempt).toBe(false);
+    // t=850: remaining=50ms <= lead → counter意図の振り(請求はuseGameLoop側で積まれ、
+    // 消費は既存の爆風パリィ=combatTick.applyPumpkinBlastDamageのゾーン幾何が決める)。
+    const d2 = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 0, y: 0,
+        counterPendingAt: d1.counterPendingAt, counterWillAttempt: d1.counterWillAttempt,
+        counterArmKey: d1.counterArmKey,
+        lastCounterAttemptAt: d1.lastCounterAttemptAt,
+      }),
+      enemies: [boss],
+      gameTime: 850, nowMs: 850,
+    }));
+    expect(d2.action).toBe('melee');
+    expect(d2.meleeIsCounterAttempt).toBe(true);
+  });
+
+  it('死に予告(g-jump-windup=終わりに着弾しない)は離れていても構えない(従来どおり)', () => {
+    const boss = mkBoss({
+      id: 'g-1', type: 'giantbat', x: 270, y: 0, width: 40, height: 40,
+      aiPhase: 'g-jump-windup' as Enemy['aiPhase'], aiPhaseUntil: 900,
+    } as Partial<Enemy>);
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [boss],
+      gameTime: 850, nowMs: 850,
+    }));
+    expect(d.meleeIsCounterAttempt).toBe(false);
+    expect(d.counterPendingAt).toBeUndefined();
+  });
+});

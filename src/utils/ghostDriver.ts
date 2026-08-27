@@ -758,9 +758,14 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // 「ACTIVE州の反応遅延の消滅」を全部防ぐ(表の条件=①終了フレームから判定が生きる②消費担当がある)。
   // ★検収2巡(重A): 表は**型ゲート付き**(`type:state`)で引く——'harai-windup'等の州名はミゲルも使うため、
   // 州名だけの一致だと別ボスの(消費担当の無い)予告をすくって棒立ちが戻る(moveReaction.tsと同じ作法)。
+  // ★v0.25.3982(実測ログで確定・社長スクショ2026-08-27): 城ボス(giantbat)の着弾予告
+  // (GIANT_IMPACT_AT_WINDUP_END=aiPhase基準の既存表)も**同じ値に畳む**——v3979の距離ゲート撤廃を
+  // 宣言表(bossState基準)にだけ適用し、城ボスの表が漏れていた(監視がg-dash-charge=密着になる技
+  // でしか始まらず、g-stomp/g-trishot/g-bolt等の予告は請求ゼロでゾーン被弾するだけだった)。
+  // 消費側は爆風パリィ(blast)と弾反射(窓)が元から居る=構え側だけの写し漏れ。
   const windupImpactAt = impactAtWindupEnd(target.type, target.bossState)
     ? target.bossStateUntil
-    : undefined;
+    : (aimWindup ? target.aiPhaseUntil : undefined);
   // ★社長報告2026-08-27「やはり守護霊はカウンターを取ってない」(v0.25.3979): 表の予告中の構えを
   // **近接間合い(74px)でゲートしない**——守護霊は普段 preferredDist(180〜300px)で立つため、
   // 帯・円(リーチ170〜310px)の**成立域の中に居ても構えが一度も始まらなかった**(請求ゼロ)。
