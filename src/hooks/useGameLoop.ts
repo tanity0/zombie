@@ -388,7 +388,7 @@ import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileD
 import { recordRunFinal, getRunTelemetrySnapshot } from '../utils/runTelemetry';
 import { decideBotShopPurchase } from '../utils/botShopPolicy';
 import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement, recordPhillHeadshot, recordHomingHold } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
-import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, ghostIsMovingNow, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
+import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, ghostIsMovingNow, GHOST_MELEE_RANGE, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
 import { playerAsOwner, ghostAsOwner, phantomAsOwner, isHostileOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
 import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化
@@ -10068,6 +10068,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     useGameStore.getState().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG, btcx - gmcx, bccy - gmcy);
                   }
                 }
+              } else if (ghostMeleeResolvesNow
+                && boundBoss
+                && enemyMeleeDist(resolved.x + ghostNow.width / 2, resolved.y + ghostNow.height / 2, boundBoss) > GHOST_MELEE_RANGE) {
+                // ★v0.25.3979: 構えの距離ゲート撤廃(帯・円の成立域は74pxより広い)に伴う**空振り**——
+                // 近接の届かない距離で解決フレームを迎えた振りは、通常近接ぶんのダメージ/血/斬撃を
+                // 出さない(プレイヤーの「届かない振りは当たらない」と同じ)。カウンターの請求は
+                // 振り始めに積み済みで、成立は消費側の図形判定が決める=ここでは何もしない。
               } else if (ghostMeleeResolvesNow && boundBoss) {
                 // 近接 = **計測時ビルドの近接武器**でスイング。channel=null(escortと同じ「プレイヤー起因
                 // ではない」扱い=botTelemetryの近接/銃比率を汚さない)。

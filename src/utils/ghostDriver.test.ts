@@ -1367,3 +1367,53 @@ describe('GHOST-COUNTER-PARITY: カウンター成立可能なCDをプレイヤ�
     expect(d.meleeIsCounterAttempt).toBe(false); // が、カウンターするつもりの振りではない
   });
 });
+
+// ★v0.25.3979(社長報告「やはり守護霊はカウンターを取ってない」): 表の予告(着弾逆算)の構えは
+// **近接間合い74pxでゲートしない**——守護霊は普段 preferredDist(180〜300px)に立つため、帯・円
+// (リーチ170〜310px)の成立域内に居ても構えが始まらず、請求が一度も積まれなかった。
+// 離れた位置からの「構え→着弾逆算の振り(意図フラグ付き)」までの駆動連鎖を固定する。
+describe('表の予告×離れた守護霊: 74px外でも構えて着弾逆算で振る(v0.25.3979)', () => {
+  it('賞金首の360度ムチ溜め(750ms)を180px離れて監視し、着弾の直前に counter意図の振りが出る', () => {
+    const boss = mkBoss({
+      id: 'bm-1', type: 'bounty-melee', x: 200, y: 0, width: 40, height: 40,
+      bossState: 'bm-whip360-windup', bossStateUntil: 750,
+    } as Partial<Enemy>);
+    // t=600: まだ振らない(remaining=150ms > lead≈93ms)。構え(pendingAt/willAttempt)は立つ。
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), // 縁まで180px(>74)=旧実装なら counterable=false で終わり
+      enemies: [boss],
+      gameTime: 600, nowMs: 600,
+    }));
+    expect(d1.meleeIsCounterAttempt).toBe(false);
+    expect(d1.counterPendingAt).toBe(600);
+    expect(d1.counterWillAttempt).toBe(true);
+    expect(d1.action).not.toBe('shoot'); // 構え中は銃を挟まない(willAttempt=trueの霊)
+    // t=700: remaining=50ms <= lead → counter意図の振り(請求はこの瞬間に積まれる=useGameLoop側)。
+    const d2 = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 0, y: 0,
+        counterPendingAt: d1.counterPendingAt, counterWillAttempt: d1.counterWillAttempt,
+        counterArmKey: d1.counterArmKey,
+        lastCounterAttemptAt: d1.lastCounterAttemptAt,
+      }),
+      enemies: [boss],
+      gameTime: 700, nowMs: 700,
+    }));
+    expect(d2.action).toBe('melee');
+    expect(d2.meleeIsCounterAttempt).toBe(true);
+  });
+
+  it('着弾まで1秒超の予告(長い溜めの頭)は見切り扱い=まだ構えて突っ立たない', () => {
+    const boss = mkBoss({
+      id: 'bm-1', type: 'bounty-melee', x: 200, y: 0, width: 40, height: 40,
+      bossState: 'bm-whip360-windup', bossStateUntil: 2000,
+    } as Partial<Enemy>);
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [boss],
+      gameTime: 0, nowMs: 0,
+    }));
+    expect(d.meleeIsCounterAttempt).toBe(false);
+    expect(d.action).toBe('shoot'); // 見切り中=通常どおり撃つ(棒立ちしない)
+  });
+});

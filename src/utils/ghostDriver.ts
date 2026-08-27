@@ -761,8 +761,13 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   const windupImpactAt = impactAtWindupEnd(target.type, target.bossState)
     ? target.bossStateUntil
     : undefined;
-  const counterable = inMeleeRange && !deadWindup
-    && (isCounterOpportunityNow(target) || windupImpactAt !== undefined);
+  // ★社長報告2026-08-27「やはり守護霊はカウンターを取ってない」(v0.25.3979): 表の予告中の構えを
+  // **近接間合い(74px)でゲートしない**——守護霊は普段 preferredDist(180〜300px)で立つため、
+  // 帯・円(リーチ170〜310px)の**成立域の中に居ても構えが一度も始まらなかった**(請求ゼロ)。
+  // プレイヤーは帯の中なら距離に関係なく押して取れる=写し間違い。位置の真実は消費側の図形判定が
+  // 持っている(圏外の構えは空振りするだけ=誤爆しない)。実行州(ACTIVE)の監視は従来どおり74px。
+  const counterable = !deadWindup
+    && ((inMeleeRange && isCounterOpportunityNow(target)) || windupImpactAt !== undefined);
   // ★検収2巡(中C): 構えの錨(counterPendingAt)は**州が変わったら張り直す**——予告(突き溜め1100ms)から
   // ACTIVEへ持ち越すと、ACTIVE初フレームで見切り(1000ms超)が立って構えられないまま終わる。
   // 張り直すのは錨(時刻)だけで、willAttempt(抽選)は引き直さない=1機会(同じ技)1回の掟。
