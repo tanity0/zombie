@@ -2131,11 +2131,23 @@ export const runBountyTick = (
       patch.bossState = 'chase';
       patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
     } else {
-      // ★v0.25.3962(社長報告「守護霊がカウンターとれなくなってる」): v3949で賞金首にも守護霊を
-      // 召喚するようにしたが、**請求の消費側がこのファイルに未配線**だった(ghostDriverは
-      // bm-charge等を狙って振り、請求はTTL150msで黙って消えていた)。他ボスと同じ作法:
-      // プレイヤー成立が無いフレームだけ請求を消費し、技中断+chase復帰はプレイヤー成立と同じ。
-      const gClaim = consumeGhostCounterClaim(bounty.id, Date.now());
+      // ★判定時置換ミラー(社長裁定2026-08-27・GHOST_PARITY_LEDGER.md ★仕様v2 §成立地点3):
+      // 守護霊の成立=**プレイヤーと同じ成立域(inCounterReach・同じ図形)**へ守護霊の体(生の矩形=
+      // プレイヤーと同じ流儀)を入れて再評価+窓(振り始め+300ms・被弾クローズ)。
+      // 旧v3962の「請求があれば成立」は位置も攻撃判定も見ない面成立の残りだったため置換。
+      // プレイヤー優先: この else はプレイヤー不成立(inReach&&窓が揃わない)のフレームだけ。
+      const gGhost = useGameStore.getState().summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === bounty.id);
+      const gInReach = gGhost !== undefined && inCounterReach(
+        counterReachShapeFor(`bounty:${stNow}`, {
+          bcx, bcy, pcx, pcy,
+          aiFromX: bounty.aiFromX, aiFromY: bounty.aiFromY,
+          aiTargetX: bounty.aiTargetX, aiTargetY: bounty.aiTargetY,
+          tripleAng: bounty.bountyTripleAng,
+        }),
+        { x: gGhost.x, y: gGhost.y, width: gGhost.width, height: gGhost.height },
+        { x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height },
+      );
+      const gClaim = gInReach ? consumeGhostCounterClaim(bounty.id, Date.now()) : null;
       if (gClaim) {
         const gSt = useGameStore.getState();
         applyGhostCounterEffect(
@@ -2168,16 +2180,38 @@ export const runBountyTick = (
   const tryMovingCounter = (shape: CounterReachShape): boolean => {
     if (!counterEnabled || countered) return false;
     const cp = useGameStore.getState().player;
-    if (Date.now() > cp.counterWindowEnd) return false;
-    if (!inCounterReach(shape, { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
-      { x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height })) return false;
-    bountyCounterHit(bounty, bcx, bcy, sfx);
-    countered = true;
-    s.comboStep = 0;
-    resetBrShotCycle(s);
-    patch.bossState = 'chase';
-    patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
-    return true;
+    const bountyRect = { x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height };
+    if (Date.now() <= cp.counterWindowEnd
+      && inCounterReach(shape, { x: cp.x, y: cp.y, width: cp.width, height: cp.height }, bountyRect)) {
+      bountyCounterHit(bounty, bcx, bcy, sfx);
+      countered = true;
+      s.comboStep = 0;
+      resetBrShotCycle(s);
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+      return true;
+    }
+    // ★判定時置換ミラー(2026-08-27・仕様v2 §成立地点3/L3): 移動後の図形にも守護霊分岐
+    // (プレイヤー不成立時のみ=上のifを抜けた時)。後始末は上のプレイヤー成立・既存ghost成立と同じ。
+    const gGhost = useGameStore.getState().summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === bounty.id);
+    if (gGhost && inCounterReach(shape, { x: gGhost.x, y: gGhost.y, width: gGhost.width, height: gGhost.height }, bountyRect)) {
+      const gClaim = consumeGhostCounterClaim(bounty.id, Date.now());
+      if (gClaim) {
+        const gSt = useGameStore.getState();
+        applyGhostCounterEffect(
+          bounty, bcx, bcy,
+          { claim: gClaim, sfxGain: npcSfxDistGain(bcx, bcy, pcx, pcy, gSt.camera, gSt.gameBounds) },
+          (k, gain) => (k === 'counter' ? sfx.counter(gain) : sfx.reward(gain)),
+        );
+        countered = true;
+        s.comboStep = 0;
+        resetBrShotCycle(s);
+        patch.bossState = 'chase';
+        patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+        return true;
+      }
+    }
+    return false;
   };
 
   // ---- 交戦判定+リーシュ(§2/v6 A-3・B-4) ---------------------------------------------------

@@ -18,7 +18,7 @@
 //   - 成立演出(青Counter!+金クリ層)はハンドラ側=成立が確定した時だけ出す(嘘のCounter!を出さない)。
 import type { Player } from '../types/game';
 import {
-  useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS, counterReplyDamage,
+  useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS, counterReplyDamage, COUNTER_ACCEPT_MS,
   COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
   COUNTER_HITSTOP_MS, COUNTER_ZOOM_MAG, GHOST_ZOOM_TRIAL_ENABLED, LATE_COUNTER_ENABLED,
 } from '../store/gameStore';
@@ -42,18 +42,19 @@ export interface GhostCounterClaim {
   ghostX: number;   // スイング時のゴースト中心(城ボス系ノックバックの起点=攻め手から弾き飛ばす)
   ghostY: number;
   dmg: number;      // 確定クリのダメージ(ghostCounterDamage・借用装備基準/スキル倍率なし)
-  atMs: number;     // 請求時刻(Date.now)
+  atMs: number;     // ★判定時置換ミラー(2026-08-27): **振り始め**の時刻(Date.now)。旧: 前隙解決時。
 }
 
 /** 請求を覗く/消費する時の位置ゲートの切り替え(peek/consume 共通)。 */
 export interface GhostClaimGateOpts {
   /**
-   * 呼び出し側が既に**その攻撃のダメージゾーンの幾何**で「ゴーストが当たる位置に居る」ことを
-   * 確かめている経路(例: combatTickのブラスト判定 `inBlastGhost`)は true。
-   * この場合、下の「ボスの体の間合い」判定は掛けない(ゾーン型の技はボスの体の距離と無関係)。
-   * 既定(false/未指定)=接触型として扱い、成立の瞬間にボスの間合いに居ることを要求する。
+   * ★判定時置換ミラー(GHOST_PARITY_LEDGER.md ★仕様v2・監査R1): 位置ゲート(ボスの体との
+   * 矩形重なり)は**城ボスの接触パリィ(applyGhostBossParry)だけ**が要求する——他の経路は
+   * 成立の瞬間に「攻撃の成立域へ守護霊の体を入れて再評価」するので、請求側の位置条件は
+   * 二重かつ過剰(v2594/2597「ありえない位置でカウンター」の再発防止は城ボス経路にだけ残す)。
+   * 既定(false/未指定)= 位置ゲート無し。
    */
-  inAttackZone?: boolean;
+  contactGate?: boolean;
 }
 
 /**
@@ -73,8 +74,16 @@ export interface GhostClaimGateOpts {
  * その意図が明記されていたのに上書きしてしまった。
  * ※v0.25.2588で同時に入れた「被弾していたら請求無効」と、v0.25.2594の「成立の瞬間に間合いに居ること」は
  *   位置/被弾の条件であり有効なので残す(この差し戻しは長さだけ)。
+ *
+ * ★判定時置換ミラー(社長裁定2026-08-27「守護霊もプレイヤーの動きに揃える」・GHOST_PARITY_LEDGER.md
+ * ★仕様v2): TTL=150は廃止し、**窓=[振り始め, +COUNTER_ACCEPT_MS(300)]**へ(プレイヤーの隻狼型
+ * 受付=「押した瞬間から300ms」と同じ算術。前隙200msの間も窓は生きている=構え中の着弾を置換できる)。
+ * 窓の**生死の正本は既存の `ghostCounterWindowEnd`**(振り始めに+300で開き・被弾で0に閉じる=
+ * 監査M1「同じ窓を2つ持たない」)。atMs 上限は「直後の通常スイングで窓が開き直しても古い請求が
+ * 延命しない」保険。旧・後出し防止(TTLを短く保つ)は、消費側が全経路「攻撃の判定が生きている瞬間」
+ * にしか呼ばれなくなったこと(判定時置換)で置き換わる。
  */
-export const GHOST_COUNTER_CLAIM_TTL_MS = 150;
+export const GHOST_COUNTER_CLAIM_MAX_AGE_MS = COUNTER_ACCEPT_MS; // プレイヤーの受付と同じ定数を参照(手写し禁止)
 
 let pendingClaim: GhostCounterClaim | null = null;
 
@@ -92,10 +101,13 @@ export const setGhostCounterClaim = (claim: GhostCounterClaim): void => { pendin
  * i-frameで弾かれた時は更新されない)。`?lastcounter=1` で旧挙動へ復帰。
  */
 export const peekGhostCounterClaim = (nowMs: number, opts?: GhostClaimGateOpts): GhostCounterClaim | null => {
-  if (pendingClaim === null || nowMs - pendingClaim.atMs > GHOST_COUNTER_CLAIM_TTL_MS) return null;
+  if (pendingClaim === null || nowMs - pendingClaim.atMs > GHOST_COUNTER_CLAIM_MAX_AGE_MS) return null;
   const st = useGameStore.getState();
   const ghost = st.summons.find(s => s.kind === 'ghost-ally');
-  if (!LATE_COUNTER_ENABLED && ghost && ghost.lastHit > pendingClaim.atMs) return null; // 請求後に被弾=弾き失敗
+  // ★判定時置換ミラー(2026-08-27): 窓の生死は ghostCounterWindowEnd が正本(振り始めに+300で開き、
+  // 被弾で0に閉じる=gameStore.damageSummon)。旧「lastHit > atMs」の被弾クローズはこの窓に含まれる。
+  // ?lastcounter=1(LATE_COUNTER_ENABLED)は従来どおり被弾クローズだけを外す(atMs上限は残る)。
+  if (!LATE_COUNTER_ENABLED && ghost && nowMs > (ghost.ghostCounterWindowEnd ?? 0)) return null;
   // v0.25.2594(社長報告「守護霊がありえない位置でカウンター取ってる」): **成立の瞬間にその攻撃の
   // 当たる場所に居ること**を要求する(プレイヤー側は全経路が位置を必ず確かめている)。v0.25.2588で
   // 受付を150→400msへ広げた際に位置条件を写し忘れていたため、スイング後に離れても成立していた。
@@ -116,7 +128,9 @@ export const peekGhostCounterClaim = (nowMs: number, opts?: GhostClaimGateOpts):
   // プレイヤーの接触型カウンター(checkPlayerEnemyCollisions)は playerHitbox(2/3スケール矩形)と
   // enemyContactBox(敵の当たり判定帯)が**実際に重なっている**ことを要求する——同じ2関数を守護霊にも
   // 適用し、距離の閾値を持たない(74pxの手写しも二重定義もしない)。
-  if (!opts?.inAttackZone && ghost) {
+  // ★判定時置換ミラー(監査R1): 位置ゲートは**城ボスの接触パリィ経路(contactGate:true)だけ**。
+  // 他経路は成立の瞬間に「攻撃の成立域 × 守護霊の体」を呼び出し側が再評価するので二重にしない。
+  if (opts?.contactGate && ghost) {
     const boss = st.enemies.find(e => e.id === pendingClaim!.bossId);
     if (boss && !checkCollision(playerHitbox(ghost), enemyContactBox(boss))) return null;
   }

@@ -114,7 +114,7 @@ import { ammoDirectorRate } from '../utils/ammoDirector';
 import { shouldSpawnAirdrop } from '../utils/ammoAirdrop';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
-  applyGlenFloorDamage, applyGhostAllyCapsuleHit, applyGhostBossParry,
+  applyGlenFloorDamage, applyGhostAllyCapsuleHit, applyGhostBossParry, tryGhostContactParry,
   type CombatEffects, type CombatTunables,
 } from '../utils/combatTick';
 // SKILL_BUILD_REDESIGN.md §28(B7): 眠り9種の判定値・確率テーブル(純関数・rng注入でテスト済み)。
@@ -1148,7 +1148,8 @@ import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 import {
   counterReachShapeFor, inCounterReach,
   HIDDEN_COUNTER_ACTIVE_STATES,
-  isCounterOpportunityNow, // ★v0.25.3962: 守護霊の請求消費ゲート(実行中の成立州)
+  // ※v3962の isCounterOpportunityNow 消費ゲートは判定時置換ミラー(2026-08-27)で廃止
+  //  (州→担当は GHOST_PARITY_LEDGER.md ★仕様v2 の表=カプセル/爆風/接触が引き受ける)。
 } from '../utils/counterReach';
 
 
@@ -6071,24 +6072,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               //  - 裏3体: hiddenBossCounterableNow(プレイヤーと同じ州リスト・?bosscounter=0ゲート込み)。
               // 同フレームにプレイヤーの成立(overlap&&窓)が立っている時はプレイヤー優先(体験を変えない)。
               let ghostCountered = false;
-              if (!hiddenBossCountered) {
-                // ★v0.25.3780(§8-2): トールも4体共通の州リストへ乗ったので、守護霊側も同じ判定を使う
-                // (旧: トールだけ語尾で概算する isBossCounterableNowApprox を通していた。**同じ州集合**
-                //  =-windup/-recover なので拾う州は変わらない。紫の issen-nihil は語尾を持たないため
-                //  旧経路でも新経路でも「機会」に数えられない=一致)。
-                // ★v0.25.3962(社長報告「守護霊がカウンターとれなくなってる」): v3947の憲法実装で
-                // 消費ゲートが ACTIVE 2州(dash/thor-dash-move)だけに絞られ、ghostDriver が狙う
-                // 実行中の成立州(issen-dash/tsuki/harai等=COUNTER_OPPORTUNITY_STATES)の請求が
-                // **積まれても消費されず全滅**していた。憲法の基準どおり「判定が生きている実行中」
-                // 全体で消費できるよう広げる(溜め/硬直の面成立は引き続き無し)。
-                const ghostCounterableNow = hiddenBossCounterableNow
-                  || (BOSS_COUNTER_ENABLED && isCounterOpportunityNow(boss));
-                // プレイヤー成立の有無を見るだけの照会。ACTIVE州は**プレイヤーと同じ成立域**(図形reach)、
-                // それ以外の実行中州は各州ハンドラの判定時置換に譲る近似=窓が開いていればプレイヤー優先。
-                const { overlap: pOverlap, counterActive: pActive } = hiddenBossCounterableNow
-                  ? hiddenReachOverlapNow()
-                  : { overlap: ghostCounterableNow, counterActive: ghostCounterableNow && isCounterActive(useGameStore.getState().player, Date.now()) };
-                if (ghostCounterableNow && !(pOverlap && pActive)) {
+              if (!hiddenBossCountered && hiddenBossCounterableNow) {
+                // ★判定時置換ミラー(社長裁定2026-08-27「守護霊もプレイヤーの動きに揃える」・
+                // GHOST_PARITY_LEDGER.md ★仕様v2): 守護霊の成立=**プレイヤーと同じ成立域判定**
+                // (counterReachの図形)へ「守護霊の体(生の矩形=プレイヤーと同じ流儀)」と
+                // 「守護霊の窓(振り始め+300ms・被弾クローズ)」を入れて再評価する。
+                // 旧「isCounterOpportunityNow && 請求あり」(v3962)は、位置も攻撃判定も見ずに成立
+                // していた面成立の残り。ACTIVE図形州以外の実行州の担当は仕様v2の州→担当表どおり
+                // (issen-dash/tsuki/harai=カプセル判定時置換、jump=着地爆風+接触、等)。
+                // プレイヤー優先: 同フレームのプレイヤー成立(hiddenBossCountered)時はここへ来ない。
+                const gcGhost = useGameStore.getState().summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === boss.id);
+                const gOverlap = gcGhost !== undefined && inCounterReach(
+                  counterReachShapeFor(`hidden:${st}`, {
+                    bcx, bcy, pcx, pcy,
+                    aiFromX: boss.aiFromX, aiFromY: boss.aiFromY,
+                    aiTargetX: boss.aiTargetX, aiTargetY: boss.aiTargetY,
+                    landingLocked: THOR_SCRIPT_ENABLED,
+                  }),
+                  { x: gcGhost.x, y: gcGhost.y, width: gcGhost.width, height: gcGhost.height },
+                  { x: boss.x, y: boss.y, width: boss.width, height: boss.height },
+                );
+                if (gOverlap) {
                   const gClaim = consumeGhostCounterClaim(boss.id, Date.now());
                   if (gClaim) {
                     const gcSt = useGameStore.getState();
@@ -6620,7 +6624,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
                 // G4b(§2.9): 一閃はゴースト(守護霊)にも当たる(同じ線分カプセル・同じboss.damage・同じフレーム。
                 // 連続ヒットはdamageSummonのi-frameが間引く。プレイヤー側の判定は上のブロックのまま1bit不変)。
-                applyGhostAllyCapsuleHit(fx, fy, tx, ty, HB_TH.issen.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-issen');
+                // ★判定時置換ミラー(2026-08-27・仕様v2 §成立地点2): カプセルが守護霊に触れた瞬間、窓が
+                // 生きていれば置換(必中一閃中とプレイヤー成立フレームは対象外=プレイヤーと同じ規則/優先)。
+                {
+                  const gCap = applyGhostAllyCapsuleHit(fx, fy, tx, ty, HB_TH.issen.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-issen',
+                    (!countered && !issenGuaranteed) ? boss.id : undefined);
+                  if (gCap.kind === 'countered') {
+                    const gcSt = useGameStore.getState();
+                    thorCounterHit(gCap.ghostX, gCap.ghostY, { claim: gCap.claim, sfxGain: npcSfxDistGain(gCap.ghostX, gCap.ghostY, pcx, pcy, gcSt.camera, gcSt.gameBounds) });
+                    countered = true;
+                  }
+                }
                 if (countered) {
                   // 通常の一閃がカウンターで中断された(必中中はここへ来ない)。念のため必ず落とす。
                   patch.issenGuaranteedUntil = 0;
@@ -6683,7 +6697,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
                 // G4b(§2.9): 突きもゴーストに当たる(一閃と同じ作法)。
-                applyGhostAllyCapsuleHit(fx, fy, tx, ty, HB_TH.tsuki.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-tsuki');
+                // ★判定時置換ミラー(2026-08-27・仕様v2 §成立地点2): 触れた瞬間の置換(プレイヤー優先)。
+                {
+                  const gCap = applyGhostAllyCapsuleHit(fx, fy, tx, ty, HB_TH.tsuki.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-tsuki',
+                    !countered ? boss.id : undefined);
+                  if (gCap.kind === 'countered') {
+                    const gcSt = useGameStore.getState();
+                    thorCounterHit(gCap.ghostX, gCap.ghostY, { claim: gCap.claim, sfxGain: npcSfxDistGain(gCap.ghostX, gCap.ghostY, pcx, pcy, gcSt.camera, gcSt.gameBounds) });
+                    countered = true;
+                  }
+                }
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
                   if (THOR_SCRIPT_ENABLED) { patch.bossState = 'tsuki-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_TH.tsuki.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
@@ -6718,7 +6741,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
                 // G4b(§2.9): 払いもゴーストに当たる(一閃と同じ作法)。
-                applyGhostAllyCapsuleHit(fx, fy, tx, ty, HB_TH.harai.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-harai');
+                // ★判定時置換ミラー(2026-08-27・仕様v2 §成立地点2): 触れた瞬間の置換(プレイヤー優先)。
+                {
+                  const gCap = applyGhostAllyCapsuleHit(fx, fy, tx, ty, HB_TH.harai.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-harai',
+                    !countered ? boss.id : undefined);
+                  if (gCap.kind === 'countered') {
+                    const gcSt = useGameStore.getState();
+                    thorCounterHit(gCap.ghostX, gCap.ghostY, { claim: gCap.claim, sfxGain: npcSfxDistGain(gCap.ghostX, gCap.ghostY, pcx, pcy, gcSt.camera, gcSt.gameBounds) });
+                    countered = true;
+                  }
+                }
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossCircleDir = 1; // 払い後は既定の時計回りへ復帰(社長指示・据え置き)
                   if (THOR_SCRIPT_ENABLED) { patch.bossState = 'harai-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_TH.harai.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
@@ -6808,7 +6840,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     }
                   }
                   // G4b(§2.9): 突進の斬り抜けもゴースト(守護霊)に当たる(トール3技と同じ作法)。
-                  applyGhostAllyCapsuleHit(sx, sy, ex, ey, HB_TH.harai.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-dash');
+                  // ★判定時置換ミラー(2026-08-27・仕様v2 §成立地点2): 触れた瞬間の置換(プレイヤー優先)。
+                  const gCap = applyGhostAllyCapsuleHit(sx, sy, ex, ey, HB_TH.harai.halfWidth, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-dash',
+                    !dCountered ? boss.id : undefined);
+                  if (gCap.kind === 'countered') {
+                    const gcSt = useGameStore.getState();
+                    thorCounterHit(gCap.ghostX, gCap.ghostY,
+                      { claim: gCap.claim, sfxGain: npcSfxDistGain(gCap.ghostX, gCap.ghostY, pcx, pcy, gcSt.camera, gcSt.gameBounds) },
+                      { aimAt: thorDashPushbackFromEnemy(boss, player, gcSt, AN_C.dashCounterPushbackPx), fromAt: { x: dnx, y: dny } });
+                    dCountered = true;
+                  }
                 }
                 if (!dCountered && newGameTime >= (boss.bossStateUntil ?? 0)) {
                   if (THOR_SCRIPT_ENABLED) { patch.bossState = 'thor-dash-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_TH.dash.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
@@ -9885,7 +9926,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               {
                 const pend = ghostNow.gPendingSwingAt;
                 if (pend !== undefined) {
-                  if (nowMs - pend >= meleeWindupMs(ghostOwner)) { // 守護霊も装備どおりの前隙(鞭なら250)
+                  if (nowMs - pend >= meleeWindupMs(ghostOwner)) { // 前隙は現状全装備200ms固定(meleeWindupMsは引数を見ない。監査L2で旧「鞭250」表記を修正)
                     ghostMeleeResolvesNow = true;
                     ghostPendWasCounter = ghostNow.gPendingSwingWasCounter === true;
                     useGameStore.setState(st => ({ summons: st.summons.map(sm => sm.id === ghostNow.id
@@ -9910,6 +9951,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.setState(st => ({ summons: st.summons.map(sm => sm.id === ghostNow.id
                     ? { ...sm, gPendingSwingAt: nowMs, gPendingSwingWasCounter: decision.meleeIsCounterAttempt }
                     : sm) }));
+                  // ★判定時置換ミラー(社長裁定2026-08-27・GHOST_PARITY_LEDGER.md ★仕様v2): カウンター
+                  // 意図の構えは**振り始めの瞬間**に請求を積む(プレイヤーの「押した瞬間から受付」と同じ)。
+                  // 旧: 前隙解決時(+200ms)に積んでいた=構え中の着弾を一切取れなかった。
+                  // 窓の生死は openGhostSwingWindow が開いた ghostCounterWindowEnd が正本(被弾で閉じる)。
+                  if (decision.meleeIsCounterAttempt) {
+                    const gscx = ghostNow.x + ghostNow.width / 2, gscy = ghostNow.y + ghostNow.height / 2;
+                    setGhostCounterClaim({
+                      bossId: boundBoss.id, ghostX: gscx, ghostY: gscy,
+                      dmg: ghostCounterDamage(gun?.damage, ghostOwner), atMs: nowMs,
+                    });
+                  }
                 }
               }
               if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana) {
@@ -10078,19 +10130,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (wasCounterMelee) {
                   // v0.25.2480(社長裁定「1」=v0.25.2479★未決1解消): カウンター成立の効果は
                   // per-bossハンドラへ合流して本物化(パリィ=技の中断/反応遷移+確定クリ=bumpBossCrit)。
-                  // ここでは請求(claim)を積むだけ。成立演出(青Counter!+金クリ層+counter/headshot SEの
-                  // 距離減衰)もハンドラ側=成立が確定した時だけ出す(不成立の空振りに嘘のCounter!を
-                  // 出さない=CLAUDE.md「判定を持つ絵は判定に揃える」)。通常近接ぶんのダメージ/斬撃/血/SEは
-                  // 上の共通部で既に出ている=プレイヤーの「スイング(近接ダメージ)+成立(クリ反撃)」の
-                  // 二段構造と同じ。ダメージ式はプレイヤーのカウンター反撃と**同じ純関数**
-                  // (counterReplyDamage)で、基準銃=計測時ビルドのアクティブ銃・倍率=疑似Playerで評価
-                  // (v0.25.2514で「スキル倍率なし=v0.25.2459方針」を撤去=§2.11訂正)。消費側: thor/裏3=
-                  // hidden-bossブロック、idol=idolブロック、天使6=angelBossTick、城ボス系(giantbat)=
-                  // combatTick.applyGhostBossParry。
-                  setGhostCounterClaim({
-                    bossId: boundBoss.id, ghostX: gmcx, ghostY: gmcy,
-                    dmg: ghostCounterDamage(gun?.damage, ghostOwner), atMs: nowMs,
-                  });
+                  // ★判定時置換ミラー(2026-08-27): 請求は**振り始め**(gPendingSwingAt打刻時)に積み済み
+                  // ——ここ(前隙解決時)で積み直すと atMs が更新されて窓が200ms延命するので積まない。
+                  // 成立演出(青Counter!+金クリ層+counter/headshot SE)はハンドラ側=成立が確定した時だけ
+                  // 出す(不成立の空振りに嘘のCounter!を出さない)。通常近接ぶんのダメージ/斬撃/血/SEは
+                  // 上の共通部で既に出ている。消費側の台帳=GHOST_PARITY_LEDGER.md ★仕様v2の州→担当表。
                 } else if (GHOST_FX_SHAKE_ENABLED) {
                   // 通常ヒットのスイング揺れ(プレイヤーのtriggerCounter末尾と同型・方向=ゴースト→ボス)。
                   useGameStore.getState().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG, btcx - gmcx, bccy - gmcy);
@@ -12388,6 +12432,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 .filter(h => h.summonId === summonId)
                 .reduce<{ enemyId: string; damage: number } | null>((best, h) => (best === null || h.damage > best.damage ? h : best), null);
               const fromEnemy = hitFrom ? enemies.find(e => e.id === hitFrom.enemyId) : undefined;
+              // ★判定時置換ミラー(2026-08-27・GHOST_PARITY_LEDGER.md ★仕様v2 §成立地点6): 交戦対象
+              // ボスの本体接触が守護霊に入る瞬間、窓が生きていれば接触受け流し(プレイヤーの受け流しの
+              // 写し=無傷+体幹削り+拘束+KB)。成立したらこの接触のダメージはスキップ。
+              // プレイヤー優先: プレイヤーの受け流し(applyContactDamage)はこのブロックより前に解決済みで、
+              // 成立していればボスは拘束中(rootUntil)=tryGhostContactParry が弾く。
+              if (fromEnemy && before && before.kind === 'ghost-ally'
+                && tryGhostContactParry(fromEnemy, before, gameTime,
+                  gain => playSfx('counter', gain),
+                  (x, y) => {
+                    const gpSt = useGameStore.getState();
+                    return npcSfxDistGain(x, y,
+                      gpSt.player.x + gpSt.player.width / 2, gpSt.player.y + gpSt.player.height / 2,
+                      gpSt.camera, gpSt.gameBounds);
+                  },
+                  { spawnRing, spawnBurst })) {
+                continue;
+              }
               useGameStore.getState().damageSummon(summonId, dmg,
                 fromEnemy ? fromEnemy.x + fromEnemy.width / 2 : undefined,
                 fromEnemy ? fromEnemy.y + fromEnemy.height / 2 : undefined,

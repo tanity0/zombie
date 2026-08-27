@@ -1,5 +1,37 @@
 # Development Log
 
+## v0.25.3973 — 守護霊カウンターの判定時置換ミラー(社長裁定「守護霊もプレイヤーの動きに揃える」) 【2026-08-27 09:45 JST】
+- **経緯**: 社長報告「いまだに、守護霊がカウンターできてない」→ 診断=カウンター憲法(v3947)後も守護霊は
+  旧方式(前隙解決時に請求・TTL150ms・消費時に同州継続+矩形重なり)のままで、時間の勘定が構造的に閉じず
+  実質ゼロ化。idolは消費側ごと削除済み。裁定=案A(プレイヤーと同じ判定時置換)。
+- **仕様**: research/GHOST_PARITY_LEDGER.md ★仕様v2(設計監査1巡=重大5/中6/軽5を反映。州→担当表を新設)。
+- **実装**:
+  - 窓(ghostCounter.ts): 請求atMs=**振り始め**・有効=`ghostCounterWindowEnd`(振り始め+COUNTER_ACCEPT_MS
+    =300ms・被弾で閉じる=既存窓が正本・M1)+atMs上限(延命保険)。TTL150廃止
+    (GHOST_COUNTER_CLAIM_TTL_MS→GHOST_COUNTER_CLAIM_MAX_AGE_MS=COUNTER_ACCEPT_MS参照)。
+    位置ゲートは城ボス接触経路だけ(`contactGate` opts・R1=v2594/2597再発防止)。
+  - 成立地点: ①裏4+トールACTIVE図形=hiddenReachOverlapNowを守護霊の体で再評価(useGameLoop)
+    ②トール4技カプセル=applyGhostAllyCapsuleHitが判定時置換を返す(戻り値{kind}・呼び出し4箇所が
+    countered連動・必中一閃は対象外・R5。ミーミルレーザーは紫=対象外のまま)
+    ③賞金首=inCounterReach(同じ図形)を守護霊で再評価+tryMovingCounterにも同分岐(bountyTick)
+    ④天使=bodyOverlapNow(生矩形)の守護霊版を追加(angelBossTick・M5)
+    ⑤城ボス=既存(爆風+接触パリィ)に窓の定義変更だけ ⑥汎用ボス接触=tryGhostContactParry新設
+    (combatTick・プレイヤーの接触受け流しの写し=無傷+体幹heavy+拘束900ms+KB+i-frame。giantbat除外=M4)。
+  - 構え(ghostDriver): 着弾時刻の分かる予告中も機会に追加+着弾逆算(A-2)をgiantbat限定から全ボスへ一般化。
+    lead[70,230]は窓300の内側(R4=ghostCounterAim.tsの根拠コメント書き替え。旧個性「遅い霊はTTL切れで
+    必ず失敗」は算術的に消えた=事実として記載)。乱数消費順は変わる(意図的)。
+  - idol: プレイヤー同様に近接カウンター無し=対称(構えない現状を維持・変更なし)。
+- **テスト**: ghostCounter.test.ts全面改訂(窓の正本・被弾クローズ・contactGate)/
+  ghostCounterOwners.test.ts新設(機会州→消費担当の全数機械検査=R2/L4)/
+  ghostBountyCounter.test.ts新設(成立域×窓・圏外不成立・プレイヤー優先=L4)/
+  counterReach.test.tsの配線走査を2本宣言へ(受け流し述語=プレイヤー+守護霊ミラー)/
+  ghostCounterAim.test.tsを新窓の不変条件へ。対象スイート全緑(ghost系137+隣接214+新規3)。
+- **監査結論**: 設計監査1巡(重大5/中6/軽5)を仕様v2へ全反映(新規裁定は不要と判断=R2は担当割当・
+  R4は個性の変質を事実記載・M3は現状維持で見込みを留保)。検収監査は実装後の本push後に実施予定。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(ボスの守護霊周りのみ・
+  プレイヤーの判定/数値は不変=テストで担保)。
+- 状態変化: 守護霊カウンター判定時置換ミラー → 実装済み(検収監査待ち→実機確認待ち)
+
 ## v0.25.3972 — 「アイドルに守護霊出てこない」(社長報告)→ 召喚エッジの食い潰しを堅牢化 【2026-08-27 00:24 JST】
 - **診断**: ヘッドレス実測でidol単体の召喚は正常(idol固有の除外は無い)。真因候補=召喚機会が
   「交戦の立ち上がりエッジ1tick」限定で、**その瞬間に前のボスの守護霊が退場アニメ中(summonsに残存)

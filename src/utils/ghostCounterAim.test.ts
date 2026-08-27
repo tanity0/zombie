@@ -8,7 +8,7 @@ import {
   isGiantAimWindup, isGiantDeadWindup, isGiantWatchActivePhase,
   ghostAimSlowness01, ghostAimLeadMs, ghostAimSwingNow,
 } from './ghostCounterAim';
-import { GHOST_COUNTER_CLAIM_TTL_MS } from './ghostCounter';
+import { GHOST_COUNTER_CLAIM_MAX_AGE_MS } from './ghostCounter';
 import { GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS } from './ghostDriver';
 
 describe('着弾予告/死に予告の切り分け(表の自己整合)', () => {
@@ -47,17 +47,20 @@ describe('逆算: 速い霊は請求が生きているうちに当て、遅い�
   const leadOf = (reactionMs: number) =>
     ghostAimLeadMs(ghostAimSlowness01(reactionMs, GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS));
 
-  it('最速の霊の先行時間は請求TTLの内側(=着弾時にまだ請求が生きている)', () => {
+  it('最速の霊の先行時間は窓の内側(=着弾時にまだ請求が生きている)', () => {
     const lead = leadOf(GHOST_REACTION_MIN_MS);
     expect(lead).toBe(GHOST_COUNTER_AIM_LEAD_MS);
-    expect(lead).toBeLessThan(GHOST_COUNTER_CLAIM_TTL_MS); // ここが崩れると速い霊でも成立しなくなる
-    expect(lead).toBeGreaterThan(0);                       // 0以下=着弾後に振る=後出しになる
+    expect(lead).toBeLessThan(GHOST_COUNTER_CLAIM_MAX_AGE_MS); // ここが崩れると速い霊でも成立しなくなる
+    expect(lead).toBeGreaterThan(0);                           // 0以下=着弾後に振る=後出しになる
   });
 
-  it('最遅の霊の先行時間は請求TTLを超える(=早く振り過ぎて期限切れ→食らう)', () => {
+  // ★判定時置換ミラー(2026-08-27・監査R4): 窓が[振り始め,+300]に伸びたため、旧個性「最遅の霊は
+  // TTL150を超えて必ず失敗」は算術的に消えた(事実)。新しい不変条件=**最遅の霊でも lead は窓の内側**
+  // (着弾ズレ・多段技で不利になる形の個性は残るが、逆算そのものは全霊で成立可能)。
+  it('最遅の霊の先行時間も窓(振り始め+300ms)の内側に収まる', () => {
     const lead = leadOf(GHOST_REACTION_MAX_MS);
     expect(lead).toBe(GHOST_COUNTER_AIM_LEAD_MS + GHOST_COUNTER_AIM_EARLY_SPREAD_MS);
-    expect(lead).toBeGreaterThan(GHOST_COUNTER_CLAIM_TTL_MS);
+    expect(lead).toBeLessThan(GHOST_COUNTER_CLAIM_MAX_AGE_MS);
   });
 
   it('先行時間は反応の遅さに対して単調増加(速い人の霊ほど決まる)', () => {

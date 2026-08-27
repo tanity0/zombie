@@ -302,14 +302,18 @@ describe('★受け流しへ落とさない州(shouldSkipBossContactParry)= §5-
       return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
     });
     const calls = lines.filter(l => /shouldSkipBossContactParry\(/.test(l));
+    // ★判定時置換ミラー(2026-08-27・GHOST_PARITY_LEDGER.md ★仕様v2 §成立地点6): 2本目=守護霊の
+    // 接触受け流し(tryGhostContactParry)が同じ述語を通る(プレイヤーの写し)。台帳宣言=ちょうど2本。
     expect(
       calls.length,
-      '受け流しスキップの述語(shouldSkipBossContactParry)の呼び出しが1本ではない。'
+      '受け流しスキップの述語(shouldSkipBossContactParry)の呼び出しが2本(プレイヤー+守護霊ミラー)ではない。'
       + `\n走査=\n${calls.map(l => l.trim()).join('\n')}`,
-    ).toBe(1);
-    expect(calls[0], '述語に enemy.type / enemy.bossState を渡していない')
-      .toMatch(/shouldSkipBossContactParry\(\s*enemy\.type\s*,\s*enemy\.bossState\s*\)/);
-    expect(calls[0], '述語の結果を thorDashRunNow へ束ねていない').toMatch(/thorDashRunNow\s*=(?!=)/);
+    ).toBe(2);
+    const playerCall = calls.find(l => /shouldSkipBossContactParry\(\s*enemy\.type\s*,\s*enemy\.bossState\s*\)/.test(l));
+    expect(playerCall, 'プレイヤー側の述語呼び出し(enemy.type/enemy.bossState)が無い').toBeTruthy();
+    expect(playerCall, '述語の結果を thorDashRunNow へ束ねていない').toMatch(/thorDashRunNow\s*=(?!=)/);
+    const ghostCall = calls.find(l => /shouldSkipBossContactParry\(\s*fromEnemy\.type\s*,\s*fromEnemy\.bossState\s*\)/.test(l));
+    expect(ghostCall, '守護霊ミラー側の述語呼び出し(fromEnemy.type/fromEnemy.bossState)が無い').toBeTruthy();
     const gate = lines.filter(l => /BOSS_CONTACT_PARRY_ENABLED\s*&&/.test(l));
     expect(gate.length, 'ボス接触受け流しのゲート行が1本ではない').toBe(1);
     expect(

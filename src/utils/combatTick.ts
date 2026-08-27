@@ -49,6 +49,7 @@ import {
   COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
   KNOCKBACK_DURATION, KNOCKBACK_SPEED, COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
+  INVULN_MS, // ★判定時置換ミラー(2026-08-27): 守護霊の接触受け流しi-frame(プレイヤーのinvulnerable相当)
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, STUN_DURATION_MS,
   GIANT_SCRIPT_ENABLED, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_GLIDE_HALF_WIDTH,
   bossCritCdMult,
@@ -63,7 +64,7 @@ import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
-import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect, applyGhostReflectCounterFx } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流 / v0.25.2525: 弾反射の成立演出
+import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect, applyGhostReflectCounterFx, type GhostCounterClaim } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流 / v0.25.2525: 弾反射の成立演出 / 2026-08-27: 判定時置換ミラー
 import { npcSfxDistGain } from './npcSfx'; // CRIT-UNIFY §9.3: ゴーストのブラストパリィ成立SEの距離減衰(escort/他ゴースト経路と同流儀)
 import { applyBossPostureDamage } from './bossPosture'; // v0.25.2946: 裏ボス体当たりの受け流し(体幹削り)
 import { shouldSkipBossContactParry } from './counterReach'; // v0.25.3809(8巡目 重大4): 受け流しへ落とさない州の述語(純関数)
@@ -155,18 +156,36 @@ const damageGhostAllyByBossMove = (
  * ボス技ブロック(技のactive中・毎フレーム)から呼ぶ=タイミングも同じ。連続ヒットはdamageSummonの
  * i-frame(INVULN_MS)が間引く(プレイヤーのdamagePlayer i-frameと同型)。
  */
+// ★判定時置換ミラー(社長裁定2026-08-27・GHOST_PARITY_LEDGER.md ★仕様v2 §成立地点2/監査R5):
+// 戻り値で「何が起きたか」を呼び出し元へ返す——'countered'=窓が生きていた=ダメージを出さずに置換
+// (呼び出し元がプレイヤー側と同じ countered を立てて技を中断する)。'hit'=従来どおり被弾。'miss'=圏外。
+export type GhostCapsuleHitResult =
+  | { kind: 'countered'; claim: GhostCounterClaim; ghostX: number; ghostY: number }
+  | { kind: 'hit' }
+  | { kind: 'miss' };
 export const applyGhostAllyCapsuleHit = (
   fx0: number, fy0: number, tx0: number, ty0: number, halfWidth: number, damage: number,
   burst?: (x: number, y: number) => void, source?: string,
-): void => {
+  // 省略時=置換なし(従来挙動)。ボスidを渡した呼び出しだけが判定時置換の対象になる。
+  // 呼び出し元はプレイヤー成立フレームでは undefined を渡す(プレイヤー優先=同フレーム二重成立禁止)。
+  counterBossId?: string,
+): GhostCapsuleHitResult => {
   const ghost = findGhostAlly();
-  if (!ghost) return;
+  if (!ghost) return { kind: 'miss' };
   const gcx = ghost.x + ghost.width / 2, gcy = ghost.y + ghost.height / 2;
   const gr = Math.max(ghost.width, ghost.height) / 2;
   if (distToBandRect({ x: gcx, y: gcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, halfWidth) <= gr) {
+    // カプセルが守護霊に触れた瞬間=判定時。窓が生きていれば置換(ダメージも被弾打刻もしない)。
+    // 効果(青Counter!+確定クリ+技中断)は呼び出し元が per-boss ハンドラで適用する。
+    if (counterBossId !== undefined) {
+      const claim = consumeGhostCounterClaim(counterBossId, Date.now());
+      if (claim !== null) return { kind: 'countered', claim, ghostX: gcx, ghostY: gcy };
+    }
     // 被弾KBの源=技の起点(ボス側)=プレイヤー側のカプセル技被弾と同じ「飛んできた方から弾かれる」向き。
     damageGhostAllyByBossMove(ghost.id, damage, burst, fx0, fy0, source ?? 'capsule');
+    return { kind: 'hit' };
   }
+  return { kind: 'miss' };
 };
 
 // useGameLoop.ts側のローカル定数(値そのものは元のまま・二重管理を避けるため引数化)。
@@ -298,7 +317,9 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           //   プレイヤー側もこの技には「ボスの体との距離」判定が無く(ゾーンの幾何だけ)、
           //   **実質すでに同条件**というのが判断の根拠。
           //   ⇒ **「パリティが揃っていない」という理由でここを直さないこと。**
-          const gClaim = consumeGhostCounterClaim(b.enemyId, Date.now(), { inAttackZone: true });
+          // ★判定時置換ミラー(2026-08-27): 位置ゲートは既定OFFになった(inAttackZone opts は
+          // contactGate へ反転。この経路は inBlastGhost がゾーン幾何で確認済み=opts不要)。
+          const gClaim = consumeGhostCounterClaim(b.enemyId, Date.now());
           if (gClaim) {
             applyGhostCounterEffect(owner, gacx, gacy, { claim: gClaim, sfxGain: npcSfxDistGain(gacx, gacy, bpcx, bpcy, useGameStore.getState().camera, useGameStore.getState().gameBounds) }, (key, gain) => fx.playSfx(key, gain));
           } else {
@@ -986,10 +1007,11 @@ export const applyGhostBossParry = (
   sfxGainAt: (x: number, y: number) => number,
 ): void => {
   // v0.25.2597: ここは**接触型**(プレイヤー側の対応経路 dashParried は checkPlayerEnemyCollisions=
-  // 体が重なっていることが必須)。よって inAttackZone は渡さない=既定の間合い判定が掛かる。
-  // これが無いと giantbat の飛び掛かり(g-jump-air)/着地硬直(g-jump-recover)を**どんな距離からでも**
-  // 成立させてしまう(社長報告「赤いサークルとかなり離れた位置でカウンターを取っていた」)。
-  const claim = peekGhostCounterClaim(nowMs);
+  // 体が重なっていることが必須)。よって位置ゲートを掛ける(★判定時置換ミラー2026-08-27で既定OFFに
+  // なったため contactGate:true を明示)。これが無いと giantbat の飛び掛かり(g-jump-air)/着地硬直
+  // (g-jump-recover)を**どんな距離からでも**成立させてしまう(社長報告「赤いサークルとかなり離れた
+  // 位置でカウンターを取っていた」=監査R1の再発防止)。
+  const claim = peekGhostCounterClaim(nowMs, { contactGate: true });
   if (!claim) return;
   const state = useGameStore.getState();
   const boss = state.enemies.find(e => e.id === claim.bossId);
@@ -1011,7 +1033,7 @@ export const applyGhostBossParry = (
         : inGiantGlideBand(gcx, gcy, gr, boss);
     if (!inZone) return;
   }
-  if (consumeGhostCounterClaim(boss.id, nowMs) === null) return;
+  if (consumeGhostCounterClaim(boss.id, nowMs, { contactGate: true }) === null) return;
   // プレイヤーが弾けない状態(windup等=W4「予告を出したら必ず実行」)では成立させず請求を流す。
   // ※覗くだけで残さず「消費して流す」: windup中の請求が直後の実行(g-dash-charge等)へ持ち越されて
   //   中断する=実質windupパリィになるのを防ぐ(判定を広げない)。スイング自体は通常近接として落着済み。
@@ -1023,6 +1045,62 @@ export const applyGhostBossParry = (
   }));
   const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
   applyGhostCounterEffect(boss, bcx, bcy, { claim, sfxGain: sfxGainAt(bcx, bcy) }, playCounterSfx);
+};
+
+/**
+ * ★判定時置換ミラー(社長裁定2026-08-27・GHOST_PARITY_LEDGER.md ★仕様v2 §成立地点6):
+ * ボス本体の接触が守護霊にダメージを与える瞬間の「接触受け流し」。**プレイヤーの接触受け流し
+ * (applyContactDamage内・v2946/v3947/v3949)の写し**——同じ対象(裏4+天使6+idol+phill+賞金首)・
+ * 同じ除外(shouldSkipBossContactParry=専用フル報酬カウンター持ちの技/拘束中/噛みつき台本の対象)・
+ * 同じ効果(無傷+体幹'heavy'削り+拘束900ms+ノックバック+i-frame相当+counter SE+軽FX。
+ * フル報酬=確定クリ/技中断は付けない=プレイヤーと同じ「防御の動詞」)。
+ * 窓はプレイヤーの counterActiveNow の代わりに守護霊の請求(振り始め+300ms・被弾クローズ)。
+ * giantbat は対象外(isHiddenBoss/isBountyTypeに含まれない=applyGhostBossParryが担当・監査M4)。
+ * 戻り値 true = 受け流した(呼び出し側は damageSummon をスキップする)。
+ */
+export const tryGhostContactParry = (
+  fromEnemy: Enemy, ghost: { id: string; x: number; y: number; width: number; height: number },
+  gameTime: number,
+  playCounterSfx: ((gain: number) => void) | null,
+  sfxGainAt: (x: number, y: number) => number,
+  fx?: { spawnRing: CombatEffects['spawnRing']; spawnBurst: CombatEffects['spawnBurst'] },
+): boolean => {
+  if (!BOSS_CONTACT_PARRY_ENABLED) return false;
+  if (!(isHiddenBoss(fromEnemy.type) || isBountyType(fromEnemy.type))) return false;
+  if (shouldSkipBossContactParry(fromEnemy.type, fromEnemy.bossState)) return false;
+  if (fromEnemy.rootUntil !== undefined && gameTime < fromEnemy.rootUntil) return false; // 拘束中の再受け流し禁止(プレイヤーと同じ)
+  if (isBiteSubject(fromEnemy, isBiteExemptType)) return false;
+  const nowMs = Date.now();
+  const claim = consumeGhostCounterClaim(fromEnemy.id, nowMs);
+  if (claim === null) return false;
+  // 押す向き=守護霊→ボス(離れる方向)。ゼロ距離の退避は上向き(プレイヤー版と同式)。
+  const gcx = ghost.x + ghost.width / 2, gcy = ghost.y + ghost.height / 2;
+  const pdx = (fromEnemy.x + fromEnemy.width / 2) - gcx;
+  const pdy = (fromEnemy.y + fromEnemy.height / 2) - gcy;
+  const plen = Math.hypot(pdx, pdy);
+  const ux = plen > 0.001 ? pdx / plen : 0, uy = plen > 0.001 ? pdy / plen : -1;
+  useGameStore.setState(st => ({
+    enemies: st.enemies.map(e => {
+      if (e.id !== fromEnemy.id) return e;
+      const bump = applyBossPostureDamage(e, 'heavy', gameTime);
+      return {
+        ...e, ...(bump?.patch ?? {}),
+        rootUntil: gameTime + BOSS_CONTACT_PARRY_ROOT_MS, vx: 0, vy: 0,
+        knockbackVx: ux * KNOCKBACK_SPEED, knockbackVy: uy * KNOCKBACK_SPEED,
+        knockbackUntil: nowMs + KNOCKBACK_DURATION,
+        knockbackShoveUntil: nowMs + KNOCKBACK_DURATION,
+      };
+    }),
+    // プレイヤー版の「invulnerable=true」に対応する守護霊のi-frame(専用フィールド=被弾音の誤発火なし)。
+    summons: st.summons.map(su => su.id === ghost.id ? { ...su, ghostInvulnUntil: nowMs + INVULN_MS } : su),
+  }));
+  const gain = sfxGainAt(gcx, gcy);
+  if (playCounterSfx && gain > 0) playCounterSfx(gain);
+  if (fx) {
+    fx.spawnRing(gcx, gcy, 10, 60, 'rgba(56,189,248,0.85)', 3, 260);
+    fx.spawnBurst(gcx, gcy, '#38bdf8', 8);
+  }
+  return true;
 };
 
 // ① 敵接触ダメージ。カウンター/パリィ(dashParried)・ワイヤー無効・トール特例・ジャンプ空中/

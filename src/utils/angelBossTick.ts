@@ -309,6 +309,17 @@ const takeGhostAngelCounter = (boss: Enemy): GhostCounterFire | null => {
   if (boss.type === 'jibril' && boss.bossState === 'warp-recover') return null;
   const { overlap, counterActive } = bodyOverlapNow(boss);
   if (overlap && counterActive) return null; // プレイヤー成立が同フレームに立つ→各州の分岐に譲る
+  // ★判定時置換ミラー(社長裁定2026-08-27・GHOST_PARITY_LEDGER.md ★仕様v2 §成立地点4/監査M5):
+  // 位置条件=プレイヤーの成立式(bodyOverlapNow=**生の矩形の重なり**)と同形を守護霊で再評価する
+  // (体を置き換えただけ・M2「置換する元の判定が使っている体をそのまま使う」)。
+  // 旧v3962は州ゲート+請求存在だけで、守護霊がどこに居ても成立していた(面成立の残り)。
+  const gState = useGameStore.getState();
+  const gGhost = gState.summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === boss.id);
+  if (!gGhost) return null;
+  if (!rectsOverlap(
+    { x: boss.x, y: boss.y, width: boss.width, height: boss.height },
+    { x: gGhost.x, y: gGhost.y, width: gGhost.width, height: gGhost.height },
+  )) return null;
   const claim = consumeGhostCounterClaim(boss.id, Date.now());
   if (claim === null) return null;
   const st = useGameStore.getState();

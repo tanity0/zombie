@@ -747,7 +747,15 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // ★カウンター憲法(v0.25.3948・検収監査2巡目(A)): 旧 isBossCounterableNowApprox(語尾=windup/recover)
   // だと、憲法で消えた面成立の窓を**回避をやめて棒立ちで待ち、予告を食らう**。
   // 「今カウンターが成立しうる州」(isCounterOpportunityNow)だけを待つ。溜め中は下の分岐で回避が勝つ。
-  const counterable = inMeleeRange && !deadWindup && isCounterOpportunityNow(target);
+  // ★判定時置換ミラー(社長裁定2026-08-27「守護霊もプレイヤーの動きに揃える」・GHOST_PARITY_LEDGER.md
+  // ★仕様v2 §構え): 成立が「攻撃の判定が守護霊に触れる瞬間×窓(振り始め+300ms)」になったので、
+  // プレイヤーの「赤が消え切る瞬間に押す」を写す——**着弾時刻の分かる予告中**も機会に加え、
+  // 振る時刻は着弾からの逆算(下の aimReady・A-2をgiantbat限定から全ボスへ一般化)。
+  const windupImpactAt = windupNow && !deadWindup
+    ? (target.bossStateUntil ?? target.aiPhaseUntil)
+    : undefined;
+  const counterable = inMeleeRange && !deadWindup
+    && (isCounterOpportunityNow(target) || windupImpactAt !== undefined);
   const counterGaveUp = counterable && ghostCounterWaitExpired(ghost.counterPendingAt, nowMs);
   const counterWatching = counterable && !counterGaveUp;
 
@@ -761,9 +769,11 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     return [-ry * orbitSign * frac, rx * orbitSign * frac];
   };
   let moveX = 0, moveY = 0;
-  if (reaction === 'counter' && !counterGaveUp && (isCounterOpportunityNow(target) || activeDodge === null)) {
+  if (reaction === 'counter' && !counterGaveUp && (isCounterOpportunityNow(target) || windupImpactAt !== undefined || activeDodge === null)) {
     // ★憲法(v0.25.3948): 機会の無い州(溜め等)で回避すべき脅威があるなら、待たずに回避へ落ちる
     // (旧: 溜め中も静止して存在しない窓を待った)。機会が来たら(実行中)従来どおり詰めて待つ。
+    // ★判定時置換ミラー(2026-08-27): 着弾時刻の分かる予告中(windupImpactAt)は機会が**着弾時に存在する**
+    // ようになったので、プレイヤーが赤の中で構えるのと同じく待つ(v3948の「存在しない窓」前提が変わった)。
     // G4b 'counter': その技をカウンターしにいく=この技の間は回避せず近接間合いへ詰め、
     // 射程内では静止して窓(counterable)を待つ。リズムのゲートも通さない(「行く」と決めた行動は確実に出す)。
     // ※この静止は§2.12追補でも維持=「カウンター待ちしている」という意味のある静止(窓リング表示つき)。
@@ -871,9 +881,15 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     // 実効先行時間は反応の遅さで決まる決定的な値(乱数を使わない=意思決定の乱数消費順は不変)。
     // 遅い霊ほど早く振ってしまい請求がTTL切れして食らう=個性がそのまま結果に出る。
     // 着弾予告以外(実行中/硬直)は従来どおり反応遅延で振る(隙を叩く挙動は維持)。
-    const aimReady = aimWindup && target.aiPhaseUntil !== undefined
+    // ★判定時置換ミラー(2026-08-27): 着弾逆算をgiantbat限定(aimWindup)から**着弾時刻の分かる
+    // 予告全般**(windupImpactAt)へ一般化。giantbatは従来と同じ式に落ちる(aiPhaseUntil経由)。
+    // 逆算はgameTime系で完結・窓の生死はDate.now系で完結(2つの時計を直接比較しない=監査R4)。
+    const aimImpactAt = aimWindup && target.aiPhaseUntil !== undefined
+      ? target.aiPhaseUntil
+      : windupImpactAt;
+    const aimReady = aimImpactAt !== undefined
       ? ghostAimSwingNow(
-          target.aiPhaseUntil - gameTime,
+          aimImpactAt - gameTime,
           ghostAimLeadMs(ghostAimSlowness01(reactionMs, GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS)),
         )
       : nowMs - counterPendingAt >= reactionMs;
