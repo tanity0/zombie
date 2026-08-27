@@ -9682,6 +9682,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     
     // ダンスタイム中はレベルアップを保留(EXPは溜め続け、表示はカンスト)。終了時に一気に処理する。
     if (get().rhythm.active) return;
+    // ★v0.25.3980(社長報告「いっきにレベルアップ(2個とか3個)したとき、パワーアップ画面が1回しか
+    // 出ないかも」): **提示待ちの間(イントロ演出中/メニュー表示中)は次のlevelUp()を保留する**。
+    // 旧: 同一フレームに複数の経験値が入る(まとめ拾い・マグネット等)と levelUp() が連打され、
+    // upgradeOptions が上書きされて「レベルは複数上がるのに選べるのは1回」になっていた
+    // (ボス開始チェストの実装コメントに同じ罠の記述あり=v0.25.3137)。繰り越したEXPは
+    // 選択後の連鎖(selectUpgrade末尾)と毎フレーム再チェック(useGameLoop)が1回ずつ拾う=1レベル1提示。
+    if (get().showUpgradeMenu || get().levelUpIntroUntil > 0) return;
     // Check if player should level up
     const { player, enemies } = get();
     if (player.experience >= player.experienceToNextLevel) {
