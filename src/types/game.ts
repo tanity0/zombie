@@ -442,6 +442,12 @@ export interface Enemy {
   // 移動には一切使わない。時計は lastHit と同じ Date.now() 基準。Dir は敵→プレイヤーの角度(rad)。
   lastContactAttackAt?: number;
   lastContactAttackDir?: number;
+  // v0.25.3986(社長指示2026-08-27「カウンター取るとエフェクトの絵だけ残っちゃう。全部同じ原因だろう
+  // から直して」): この敵のカウンターが**成立した瞬間**の打刻。描画専用(pixiSceneのlatch系が
+  // 「着弾前に中断された技の絵」をキャンセルする判定に使う)。判定・ダメージ・移動には一切使わない。
+  // 時計は lastContactAttackAt と同じ Date.now() 基準。書き手=damageEnemy(postureImpact='counter')
+  // +ミーミルのレーザー直接経路(mimirLaserTrack)。
+  lastCounteredAt?: number;
   // Chase velocity (px/s), smoothed toward the heading so enemies have ~0.3s of
   // inertia and curve into turns instead of snapping.
   vx?: number;

@@ -1,5 +1,32 @@
 # Development Log
 
+## v0.25.3986 — カウンター中断でエフェクトの絵だけ残る問題を全面修正 【2026-08-27 15:42 JST】
+- **社長指示**: 「カウンター取るとエフェクトの絵だけ残っちゃうことが多い。全部同じ原因だろうから直して。
+  (射撃の爆発の絵とか、斬撃の弧とか もしかしたら武器もかも)」
+- **真因(走査済み・全部同じ原因)**: 描画側の「状態が消えても絵を出し切るlatch機構」(v3115「出し切る
+  約束」由来)が、**着弾前に中断された技まで**完了保険で再生していた。suriel/acrasielの*-complete latch
+  だけが正しい規則(着弾前の中断=予告ごとキャンセル)を持っていた=これを全域へ。
+- **規則(統一)**: **着弾(判定)前にカウンターで止めた技の絵は出ない/着弾後に止めた技の余韻は
+  出し切る**(v3115の約束と両立——約束の対象は「既に出た攻撃の振り抜き」)。
+- **仕組み**:
+  - `Enemy.lastCounteredAt`(Date.now・描画専用=lastContactAttackAtの前例)を新設。打刻は
+    ①damageEnemy中央(postureImpact='counter'=全カウンター経路9本の合流点)
+    ②mimirLaserTrack.mimirLaserBreakOnMeleeHit(damageEnemyを通らない唯一の中断経路)。
+  - pixiScene: `latchFx`の返り値に`dur`を追加+共通ヘルパ`latchCounterCancelled`(焼き付け後〜
+    着弾`t0+impactMs−許容34ms`の間の打刻ならlatchを破棄。技が生きている間=中断しないカウンター
+    〈トールissenGuaranteed等〉は消さない)。
+  - 適用: moveArtClock完了保険(城ボス10技の絵)/latchSwordCompletion(11本の剣=トール/ミゲル/
+    ラフィ/ウリ)/mimirjaw/giantjaw(顎)/sweepslash(斬撃の弧)/dust・crack・jdust・jcrack・
+    phill-dive-dust(砂埃と地割れ)/shock(衝撃波)/talonclaw(爪振り)/reachart(触手)/
+    nihil(唱)/acrasiel-spear-ready(槍の構え)/gaze-flash(発射閃光=エッジ発火型なので
+    「直近300ms内のカウンター」でエッジ自体を無効化)。
+  - **非対象(実態どおりなので触らない)**: 実行後の残心・recover系latch/プレイヤー側FX/
+    ワープ閃光/tailslam(中断不能)/talonmark・shock3(予約駆動=判定が実際に残る)。
+- 負荷: 1/10(打刻1フィールド+latch破棄の比較のみ。恒常コストなし)。
+- テスト: typecheck+lint 0エラー(描画側の絵の生死のみ。判定・ダメージ・挙動は不変)。
+- 自己点検: 憲法第4条・第5条に非抵触。
+- 状態変化: 実機FBスプリント2026-08-27 → FX残り修正 実装済み(実機確認待ち)
+
 ## v0.25.3985 — 守護霊の接触受け流しも「幻影と同じ」成立演出へ 【2026-08-27 15:34 JST】
 - **社長指示**: 「まずカウンターはちゃんと幻影と同じにして。幻影はちゃんと出てるぽいので」
   (前報の「接触受け流しは青リング+音だけ=Counter!もズームも出ない」への裁定)。

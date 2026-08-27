@@ -10869,8 +10869,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (pvpState !== enemy.pvpPosture) pvpPatch = { ...pvpPatch, pvpPosture: pvpState };
         }
       }
+      // v0.25.3986(描画専用打刻): カウンター成立の瞬間。全カウンター経路(9呼び出し元)がこの中央を
+      // postureImpact='counter' で通る。pixiSceneのlatch系が「着弾前に中断された技の絵」の破棄に使う。
+      const counteredPatch = postureImpact === 'counter' ? { lastCounteredAt: Date.now() } : {};
       const updatedEnemies = enemies.map(e =>
-        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch, ...pvpPatch } : e
+        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch } : e
       );
       
       // Check if enemy was killed

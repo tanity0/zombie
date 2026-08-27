@@ -292,6 +292,9 @@ export const mimirLaserBreakOnMeleeHit = (
       bossStateUntil: gameTime + MIMIR_LASER_BROKEN_MS,
       bossScriptQueue: [],
       mimirLaserReadyAt: gameTime + MIMIR_LASER_INTERRUPTED_CD_MS,
+      // v0.25.3986(描画専用打刻): この経路はdamageEnemyを通らない唯一のカウンター中断なのでここで打つ
+      // (pixiSceneのlatch系が「着弾前に中断された技の絵」の破棄に使う。Date.now基準=lastHitと同じ)。
+      lastCounteredAt: Date.now(),
       ...(posture?.patch ?? {}),
     },
     postureTriggered: posture?.triggered ?? false,
