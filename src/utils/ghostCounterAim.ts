@@ -130,6 +130,13 @@ export const IMPACT_AT_WINDUP_END_BOSS_STATES: readonly string[] = [
   // 賞金首舞子: 回転ACTIVE(担当=bounty-figure)+薙刀の各段(担当=blast)
   'bounty-maiko:mk-spin-windup',
   'bounty-maiko:mk-naginata-windup', 'bounty-maiko:mk-naginata1-windup', 'bounty-maiko:mk-naginata2-windup',
+  // ★写し修正(社長裁定2026-08-27「はい」・v0.25.3977): 天使の振り技に消費担当(angel-handler=
+  // 振りの図形での判定時置換)ができたので、「終了と同時に判定が始まる予告」を掲載する。
+  // 除外の理由も記す: rafi:sweep-windup=薙ぎがプレイヤー不成立(憲法)=写し先なし /
+  // uri:thrust-windup・miguel:mdash-windup=判定は移動到達後(終了と同時ではない)=ACTIVE監視に譲る。
+  'miguel:harai-windup', 'miguel:tate-windup',
+  'uri:sweep-windup', 'uri:downslash-windup',
+  'suriel:sweep-windup', 'suriel:ring-spin-windup', 'suriel:ring-beam-windup',
 ];
 export const impactAtWindupEnd = (enemyType: string, bossState: string | undefined): boolean =>
   bossState !== undefined && IMPACT_AT_WINDUP_END_BOSS_STATES.includes(`${enemyType}:${bossState}`);

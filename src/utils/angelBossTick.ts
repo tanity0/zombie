@@ -299,6 +299,35 @@ const reachOverlapNow = (boss: Enemy, state: string): { overlap: boolean; counte
 //    → 上と同じ「狭い側」。守護霊はこの2州でカウンターを取らない(取り逃すだけ=誤爆はしない)。
 //    広げるには概算(語尾判定)ではなく州名リストの集約が要るので、ここでは記録に留める(★未決のまま)。
 // 同フレームにプレイヤーの成立(overlap&&窓)が立っている時はプレイヤー優先(体験を1bitも変えない)。
+/**
+ * ★写し修正(社長裁定2026-08-27「はい」・GHOST_PARITY_LEDGER.md ★仕様 重4の解消):
+ * 天使の**振り技(判定時置換)**の守護霊分岐の共通部。プレイヤーと同じ図形判定は各ハンドラが
+ * **自分のローカル変数(帯・円)そのもの**で行い(二重実装しない)、ここは
+ * ①紐付き守護霊の体(中心+半径=プレイヤーの pr と同じ流儀)の提供
+ * ②成立時の請求消費+効果(青Counter!+確定クリ)——だけを共通化する。
+ * 技の中断(chase+nextActionDelay)はプレイヤー成立と同じ形で呼び出し側が patch する。
+ * ※旧実装は消費側が「体の重なり」だけで、振り技はプレイヤー(帯の中で成立)と食い違っていた=
+ *   守護霊が縁74pxで待つ限り実質成立ゼロだった(検収監査・重4)。
+ */
+const ghostAllyBodyFor = (bossId: string): { x: number; y: number; r: number } | null => {
+  const g = useGameStore.getState().summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === bossId);
+  if (!g) return null;
+  return { x: g.x + g.width / 2, y: g.y + g.height / 2, r: Math.max(g.width, g.height) / 2 };
+};
+const fireGhostStrikeCounter = (
+  boss: Enemy, hitX: number, hitY: number,
+  sfx: { counter: (gain?: number) => void; reward: (gain?: number) => void },
+): boolean => {
+  const gClaim = consumeGhostCounterClaim(boss.id, Date.now());
+  if (gClaim === null) return false;
+  const st = useGameStore.getState();
+  const pcx = st.player.x + st.player.width / 2, pcy = st.player.y + st.player.height / 2;
+  applyGhostCounterEffect(boss, hitX, hitY,
+    { claim: gClaim, sfxGain: npcSfxDistGain(hitX, hitY, pcx, pcy, st.camera, st.gameBounds) },
+    (key, gain) => (key === 'counter' ? sfx.counter(gain) : sfx.reward(gain)));
+  return true;
+};
+
 const takeGhostAngelCounter = (boss: Enemy): GhostCounterFire | null => {
   // ★カウンター憲法(v0.25.3947)→★v0.25.3962修正(社長報告「守護霊がカウンターとれなくなってる」):
   // v3947の絞りは isBodySlamNow(体当たり中)**かつ**旧approx(語尾-windup/-recover)で、体当たり州は
@@ -688,6 +717,15 @@ export const runMiguelTick = (
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
+    // ★写し修正(2026-08-27裁定「はい」): 守護霊も**同じ帯**で判定時置換(プレイヤー優先=!countered)。
+    if (!countered) {
+      const gb = ghostAllyBodyFor(miguel.id);
+      if (gb && distToBandRect({ x: gb.x, y: gb.y }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, MG_T.harai.halfWidth) <= gb.r
+        && fireGhostStrikeCounter(miguel, gb.x, gb.y, sfx)) {
+        countered = true;
+        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
+      }
+    }
     if (!countered && newGameTime >= (miguel.bossStateUntil ?? 0)) {
       if (st === 'harai') {
         sfx.alert();
@@ -794,6 +832,16 @@ export const runMiguelTick = (
         } else {
           const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の踏み込み`, pcx, pcy, undefined, undefined, 'miguel-mdash'); // G4a計測タグ(記録専用)
           if (died) onPlayerDeath(pcx, pcy);
+        }
+      }
+      // ★写し修正(2026-08-27裁定「はい」): 斬り抜けカプセルを守護霊でも同じ幾何で判定時置換
+      // (プレイヤー優先=!countered。中断はプレイヤーのdashCounteredではなくchase復帰の共通形)。
+      if (!countered) {
+        const gb = ghostAllyBodyFor(miguel.id);
+        if (gb && distToBandRect({ x: gb.x, y: gb.y }, { x: sx, y: sy }, { x: ex, y: ey }, MG_T.harai.halfWidth) <= gb.r
+          && fireGhostStrikeCounter(miguel, gb.x, gb.y, sfx)) {
+          countered = true;
+          patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
         }
       }
     }
@@ -937,6 +985,19 @@ export const runMiguelTickLegacy = (
       } else {
         const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の${st === 'harai' ? '払い' : '縦払い'}`, cxp, cyp, undefined, undefined, st === 'harai' ? 'miguel-harai' : 'miguel-tate'); // G4a計測タグ(記録専用)
         if (died) onPlayerDeath(pcx, pcy);
+      }
+    }
+    // ★写し修正(2026-08-27裁定「はい」): 守護霊も同じライン投影で判定時置換(プレイヤー優先)。
+    if (!countered) {
+      const gb = ghostAllyBodyFor(miguel.id);
+      if (gb) {
+        const gproj = Math.max(0, Math.min(lineLen, (gb.x - fx0) * lux + (gb.y - fy0) * luy));
+        const gcxp = fx0 + lux * gproj, gcyp = fy0 + luy * gproj;
+        if (Math.hypot(gb.x - gcxp, gb.y - gcyp) <= MG_T.harai.halfWidth + gb.r
+          && fireGhostStrikeCounter(miguel, gcxp, gcyp, sfx)) {
+          countered = true;
+          patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
+        }
       }
     }
     if (!countered && newGameTime >= (miguel.bossStateUntil ?? 0)) {
@@ -2105,6 +2166,15 @@ export const runUriTick = (
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
+    // ★写し修正(2026-08-27裁定「はい」): 守護霊も同じ帯で判定時置換(プレイヤー優先)。
+    if (!countered) {
+      const gb = ghostAllyBodyFor(uri.id);
+      if (gb && distToBandRect({ x: gb.x, y: gb.y }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, UR_T.sweep.halfWidth) <= gb.r
+        && fireGhostStrikeCounter(uri, gb.x, gb.y, sfx)) {
+        countered = true;
+        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
+      }
+    }
     if (!countered && newGameTime >= (uri.bossStateUntil ?? 0)) {
       patch.bossState = 'sweep-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(UR_T.sweep.recover, (uri.bossScriptQueue?.length ?? 0) > 0);
     }
@@ -2133,6 +2203,15 @@ export const runUriTick = (
       else {
         const died = useGameStore.getState().damagePlayer(uri.damage, `${enemyDeathLabel(uri.type)}の振り下ろし`, pcx, pcy, undefined, undefined, 'uri-downslash'); // G4a計測タグ(記録専用)
         if (died) onPlayerDeath(pcx, pcy);
+      }
+    }
+    // ★写し修正(2026-08-27裁定「はい」): 守護霊も同じ帯で判定時置換(プレイヤー優先)。
+    if (!countered) {
+      const gb = ghostAllyBodyFor(uri.id);
+      if (gb && distToBandRect({ x: gb.x, y: gb.y }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, UR_T.downslash.halfWidth) <= gb.r
+        && fireGhostStrikeCounter(uri, gb.x, gb.y, sfx)) {
+        countered = true;
+        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
       }
     }
     if (!countered && newGameTime >= (uri.bossStateUntil ?? 0)) {
@@ -2193,6 +2272,15 @@ export const runUriTick = (
         else {
           const died = useGameStore.getState().damagePlayer(uri.damage, `${enemyDeathLabel(uri.type)}の踏み込み突き`, pcx, pcy, undefined, undefined, 'uri-thrust'); // G4a計測タグ(記録専用)
           if (died) onPlayerDeath(pcx, pcy);
+        }
+      }
+      // ★写し修正(2026-08-27裁定「はい」): 突きカプセルを守護霊でも同じ幾何で判定時置換(プレイヤー優先)。
+      if (!countered) {
+        const gb = ghostAllyBodyFor(uri.id);
+        if (gb && distToBandRect({ x: gb.x, y: gb.y }, { x: sx, y: sy }, { x: ex, y: ey }, UR_T.thrust.halfWidth) <= gb.r
+          && fireGhostStrikeCounter(uri, gb.x, gb.y, sfx)) {
+          countered = true;
+          patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
         }
       }
     }
@@ -2413,6 +2501,15 @@ export const runSurielTick = (
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
+    // ★写し修正(2026-08-27裁定「はい」): 守護霊も同じビーム線分で判定時置換(1本目・プレイヤー優先)。
+    if (!countered) {
+      const gb = ghostAllyBodyFor(suriel.id);
+      if (gb && distToSegment({ x: gb.x, y: gb.y }, { x: fx0, y: fy0 }, { x: ex, y: ey }) <= SR_T.beam.halfWidth + gb.r
+        && fireGhostStrikeCounter(suriel, gb.x, gb.y, sfx)) {
+        countered = true;
+        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
+      }
+    }
     // v0.25.3200: Phase2の2本目のビーム(2本目の環→同じロック対象)。判定・威力・カウンターとも1本目と同一。
     // 二重ヒットは被弾i-frameが吸収する(1本目と同じ経路)。
     if (!countered && suriel.ring2X !== undefined && suriel.ring2Y !== undefined) {
@@ -2427,6 +2524,15 @@ export const runSurielTick = (
         } else {
           const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の射出`, pcx, pcy, undefined, undefined, 'suriel-ring'); // G4a計測タグ(記録専用)
           if (died) onPlayerDeath(pcx, pcy);
+        }
+      }
+      // ★写し修正(2026-08-27裁定「はい」): 2本目のビームも守護霊で同じ判定時置換(プレイヤー優先)。
+      if (!countered) {
+        const gb = ghostAllyBodyFor(suriel.id);
+        if (gb && distToSegment({ x: gb.x, y: gb.y }, { x: f2x, y: f2y }, { x: e2x, y: e2y }) <= SR_T.beam.halfWidth + gb.r
+          && fireGhostStrikeCounter(suriel, gb.x, gb.y, sfx)) {
+          countered = true;
+          patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
         }
       }
     }
@@ -2463,6 +2569,15 @@ export const runSurielTick = (
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
+    // ★写し修正(2026-08-27裁定「はい」): 守護霊も同じ回転円で判定時置換(プレイヤー優先)。
+    if (!countered) {
+      const gb = ghostAllyBodyFor(suriel.id);
+      if (gb && Math.hypot(gb.x - scx, gb.y - scy) <= SR_T.ringspin.radius + gb.r
+        && fireGhostStrikeCounter(suriel, gb.x, gb.y, sfx)) {
+        countered = true;
+        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
+      }
+    }
     if (!countered && newGameTime >= (suriel.bossStateUntil ?? 0)) {
       patch.bossState = 'ring-spin-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SR_T.ringspin.recover, (suriel.bossScriptQueue?.length ?? 0) > 0);
     }
@@ -2491,6 +2606,15 @@ export const runSurielTick = (
       else {
         const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の本体の薙ぎ`, pcx, pcy, undefined, undefined, 'suriel-sweep'); // G4a計測タグ(記録専用)
         if (died) onPlayerDeath(pcx, pcy);
+      }
+    }
+    // ★写し修正(2026-08-27裁定「はい」): 守護霊も同じ帯で判定時置換(プレイヤー優先)。
+    if (!countered) {
+      const gb = ghostAllyBodyFor(suriel.id);
+      if (gb && distToBandRect({ x: gb.x, y: gb.y }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, SR_T.sweep.halfWidth) <= gb.r
+        && fireGhostStrikeCounter(suriel, gb.x, gb.y, sfx)) {
+        countered = true;
+        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
       }
     }
     if (!countered && newGameTime >= (suriel.bossStateUntil ?? 0)) {
