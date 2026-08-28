@@ -1,5 +1,55 @@
 # Development Log
 
+## v0.25.4005 — PACING_PUZZLE §14-4「新たな死神」実装 途中経過push②(実装チャット・Sonnet) 【2026-08-28 19:26 JST】
+
+**WIP push**(見出し・内容は完了時に出荷版へ打ち直す。ゲーム内容の変更はまだ無い)。前回(v0.25.4004)に
+続き、死神本体+技「使者」の**移動・召喚・被弾ロジック本体**を実装した。
+
+### この時点で追加された変更
+- `src/hooks/useGameLoop.ts`(死神ブロック全体を書き換え・旧ワープ実装を撤去):
+  - 出現システム(深奥リスク・15分時間抽選・撃破escalation・区域バナー等)は**現行のまま維持**。
+  - 完全出現の判定を「主個体1体の生死」から**「isTerminalReaperな個体が1体でも生きているか
+    (anyBodyAlive)」へ広げた**(旧実装は撃破escalationの追加個体が主個体の死亡後に取り残されて
+    座標更新を失う既存バグを内包していた=これも同時に是正)。
+  - 本体の移動: `stepReaperBody`(直進、縁距離70px=`?rp2dist=`を切ったら旋回=`?rp2orbit=`)。
+    速度は`player.speed × ?rp2spd=`(素の実効速度・バフ除外)。`clampRectToPlayableArea`で
+    行ける帯をクランプ(CLAUDE.md MUST)。
+  - 技「使者」: 召喚主(summonerId)が10秒ごと(`?rp2int=`)に+1(上限`?rp2max=`)で
+    `encirclePoints`/`encircleRadiusPx`(ズームで割る囲み半径)を使い画面外へ囲み召喚。詠唱中
+    (`REAPER_CAST_MS`=650ms・叩き台)は召喚主だけ静止+SE(`phill-skylight`)。使者はプレイヤーの
+    「現在の」実効速度(バフ込み)×1.2(`?rp2mspd=`)で直進追尾。出現時`reaperWarpAlpha`を0→1で
+    フェードイン(慣性MUSTの型を流用)。召喚主が交代した時は前の召喚主の使者を消す(叩き台)。
+  - 撃破escalationの追加個体も`reaperChaser=true`にした(旧実装はfalseのままで距離リサイクル除外
+    /被弾/KB免除等から漏れる既存バグがあった=isTerminalReaper述語への集約で是正・中15)。
+  - `?rp2=1`でrisk即最大=完全出現(REAPER2_TEST)。
+- `src/config/reaper.ts`: `REAPER2_CONFIG`(§14-4-5の全ツマミ)新設。`REAPER_CONFIG`から
+  chaseSpeedMult/warp*/chaserHealth/contactDamage/canBeKilledを撤去(新設定へ統合、または不要化)。
+- `src/store/gameStore.ts`:
+  - `movePlayer`: 速度合成を`computeEffectiveMoveSpeed`(前回push)へ接続し、
+    `player.effectiveMoveSpeed`を毎tick保存。
+  - `canShoveEnemy`: 死神本体(isTerminalReaper)は押し道具を含め一切ノックバックしない
+    (新裁定=KB免除の唯一のチョーク点をここへ集約)。
+  - `knockbackCdReady`(reaper2.ts)を近接KB免疫CDの8箇所へ適用——hangedmanだけCDを無視して
+    毎ヒットKB(裁定済み#6/#8=多段あり・束ねない)。
+  - 使者(hangedman)の除外リスト: 計測(killTelemetry=recordKill)/近接フィニッシュ即死
+    (クリ→5秒スタン→フィニッシュの経路4箇所)/スコア(enemiesKilled等)を対象外にした。
+    体勢なし・湧き帳簿対象外は前回pushのCONSTANT_STRENGTH_TYPES/isEnemyCapProtectedで対応済み。
+    経験値/ドロップ0はENEMY_STATS.hangedman.experienceValue=0で既に満たしている(giantbat/reaperと同じ作法)。
+- `src/utils/bossPosture.ts`: `POSTURE_ELITE_TYPES`へ`'reaper'`を追加(体勢値あり・社長裁定)。
+  `bossPostureMax`に`?rp2post=`の専用分岐(強敵2体の60分岐へ埋没させない)。isEngageableBossには
+  入れない(bossEngagement.tsの既存の意図的な除外理由=ボス交戦の湧きリラックス/カメラを死神に
+  適用するとペーシング設計が壊れる、を尊重)。
+
+### まだ入っていない(次のpush以降)
+pixiScene.ts/renderUtils.ts/directorTick.ts等の残りの`'reaper'`直書き置換(型としての参照・
+描画/リサイクル関連)・テクスチャの新アート差し替え(reaper2-common/reaper2-hanged)・
+KILL!演出の順序(combatTick.tsのplayerEnemyCollisions・700ms遅延)・hangedmanの即死経路
+(isBiteExemptTypeは既に済み)・テスト追加分(囲み配置/population/KB特例は前々回pushで済み・
+本体移動/使者召喚の配線テストは未着手)・changelog/DEVLOGの出荷版打ち直し。
+
+- 検証: `npm run typecheck`(0エラー)・`npm run lint`(0エラー・既存warning 8件のみ)。
+- 状態変化: §14-4新死神 → 実装中(このpush時点では検収不可。次のWIP pushへ続く)。
+
 ## v0.25.4004 — PACING_PUZZLE §14-4「新たな死神」実装 途中経過push(実装チャット・Sonnet) 【2026-08-28 19:10 JST】
 
 **WIP push**(社長指示「作業は小さく刻んで随時push」・このコンテナは巻き戻り事故があるため。実際に

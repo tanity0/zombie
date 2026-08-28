@@ -103,7 +103,7 @@ import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGl
 import { pickPhantomIdentity, setPhantomIdentity, getPhantomIdentity, phantomDisplayLabel, clearPhantomIdentity } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の人格(癖・ビルド・HP・名前を1人から)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { bossCutinPayload, glenForm2CutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
-import { clampRectToPlayableArea } from '../world/playableArea';
+import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
 import { computeWireHopLanding, targetHalfDiagonal } from '../utils/wireHop';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
@@ -180,7 +180,7 @@ import { treesInRegion, trunkRect } from '../world/trees'; // resolveTreeCollisi
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
 import { markObstacleDestroyed } from '../world/destructibles';
 import { rollWeaponKey } from '../utils/weaponDrop';
-import type { AmmoType, Pickup, Projectile, EnemyType, Player, ShadowCloneState, SubWeaponKey, Summon, SkillKey } from '../types/game';
+import type { AmmoType, Pickup, Projectile, EnemyType, Player, ShadowCloneState, SubWeaponKey, Summon, SkillKey, Enemy } from '../types/game';
 import {
   checkCollision,
   enemyContactBox,
@@ -234,7 +234,8 @@ import {
   isGate2AngelBoss, // v0.25.3567: ボスメーカーの部屋で天使に旋回中心(home)を置くため
   resistsChipKnockback,
   isGuardianPhantom, // v0.25.3640: 幻影が弾いた弾の数字/SE抑止(成果物監査Q1-1)
-  isPumpkinTier // PACING_PUZZLE.md §9-7#1(削岩型): pumpkinの特別扱いをdrillerと共有する述語
+  isPumpkinTier, // PACING_PUZZLE.md §9-7#1(削岩型): pumpkinの特別扱いをdrillerと共有する述語
+  isReaperFamily, isTerminalReaper, isHangedman // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
 } from '../utils/enemyUtils';
 import { resolvePumpkinTier, allowDrillerForRun, allowLoggerForRun } from '../utils/drillerAi'; // PACING_PUZZLE.md §9-3/§14-3
 import { isBossMakerRun } from '../utils/bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdriller/loggerを出さない
@@ -442,7 +443,11 @@ import { labRadioMixT } from '../world/labRadioMix';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
 import { stepFollowChain, FOLLOW_SPEED_MULT } from '../utils/companionFollow';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
-import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
+import { REAPER_CONFIG, REAPER2_CONFIG, REAPER_TEST, REAPER2_TEST, reaperPassIntervalMs } from '../config/reaper';
+import { stepReaperBody, encircleRadiusPx, encirclePoints, corridorEncirclePoints, stepServantPopulation, knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4
+// PACING_PUZZLE.md §14-4-3(使者・叩き台): 詠唱の静止時間/出現フェードインの尺。専用の定数(値は叩き台)。
+const REAPER_CAST_MS = 650;         // 本体が「使者」を詠唱する間の停止時間(SE=phill-skylight)
+const REAPER_MATERIALIZE_MS = 420;  // 使者の出現フェードイン(reaperWarpAlpha 0→1)
 import {
   RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, rhythmIntervalForLevel, RHYTHM_LEAD_MS, rhythmBeatOffsetForLevel,
   RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_RESYNC_MS, RHYTHM_RESYNC_MIN_MS,
@@ -553,7 +558,7 @@ const shieldContactDamage = (enemy: { type: EnemyType; aiPhase?: string; bossSta
   // PACING_PUZZLE.md §9-7#1(盾への接触ダメージ表): driller はpumpkinと同格(jump相当の技を
   // 持たないため常に10。パンプキンのジャンプ着地分岐はdrillerには効かない=無害)。
   if (isPumpkinTier(t)) return enemy.aiPhase === 'jump' ? 30 : 10;
-  if (t === 'giantbat' || t === 'reaper' || isHiddenBoss(t)) {
+  if (t === 'giantbat' || isReaperFamily(t) || isHiddenBoss(t)) {
     if (isHiddenBoss(t)) return enemy.bossState === 'dash' ? 30 : 10; // 裏ボスは bossState で突進判定
     if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'charge') return 30;
     return 10;
@@ -562,7 +567,7 @@ const shieldContactDamage = (enemy: { type: EnemyType; aiPhase?: string; bossSta
 };
 // 敵弾が盾に当たった時の被ダメージ。城ボス/死神/裏ボスの弾は10、その他は1。
 const shieldBulletDamage = (ownerType?: EnemyType): number =>
-  (ownerType === 'giantbat' || ownerType === 'reaper' || (ownerType !== undefined && isHiddenBoss(ownerType))) ? 10 : 1;
+  (ownerType === 'giantbat' || (ownerType !== undefined && isReaperFamily(ownerType)) || (ownerType !== undefined && isHiddenBoss(ownerType))) ? 10 : 1;
 const SHIELD_PLACE_DISTANCE = 34;            // プレイヤー中心から設置足元までの距離
 // 当たり判定は木と同じく「下部のみ」の小さなフットプリント(敵もプレイヤーも貫通不可)。
 // スプライトはこの足元から上へ伸びる。絵に合わせた範囲。実機で微調整(TODO)。
@@ -1591,11 +1596,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 最初のフレームだけ setCorridorRadioMix(0) を1回呼んで止める(毎フレーム0を呼び続けない)。
   const labRadioActiveRef = useRef<boolean>(false);
   // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
-  const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number; lastWarpAt: number; lastTimeRollAt: number; timeSpawned: boolean; warpAnimStartAt: number; warpToX: number; warpToY: number; warpTeleported: boolean; defeatCount: number }>(
-    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 }
+  // PACING_PUZZLE.md §14-4(新死神・ワープ廃止): lastWarpAt/warpAnimStartAt/warpToX/Y/warpTeleported は
+  // 不要になった(直進+70px旋回に置換)。代わりに技「使者」の population 管理フィールドを持つ。
+  const reaperRef = useRef<{
+    risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number;
+    lastTimeRollAt: number; timeSpawned: boolean; defeatCount: number;
+    // §14-4-3: 使者は全体で共有の枠。summonerId=現在の「召喚主」(先頭の生存個体・叩き台)。
+    // castUntil=召喚主が詠唱で静止する終了時刻(gameTime・0=詠唱していない)。
+    summonerId: string | null; servantLastAddAt: number; castUntil: number;
+  }>(
+    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastTimeRollAt: 0, timeSpawned: false, defeatCount: 0, summonerId: null, servantLastAddAt: 0, castUntil: 0 }
   );
-  // 死神チェイサーが直近に見せた liftUntil(=近接フィニッシュ/boss-stun×5 被弾の印)。増えたら「食らった」と判定しワープ。
-  const reaperLiftRef = useRef(0);
   // 裏ボス(mimir/jormungand)コントローラの状態。spawned=この出撃で出現済みか(1回だけ)、
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
   // thorPrevHealth/thorRangedHits: トール専用(ジャンプ攻撃のトリガー判定=遠距離からの連続被弾を数える)。
@@ -1910,7 +1921,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // 直線(帯)攻撃: 起点から(dx,dy)方向 length まで、半幅 halfW の帯に入る敵へ。
     const rhythmLineAttack = (cx: number, cy: number, dx: number, dy: number, length: number, halfW: number, damage: number, kbMult: number, execute: boolean, kbMax = 3) => {
       for (const e of useGameStore.getState().enemies) {
-        if (e.type === 'reaper' && !e.reaperChaser) continue;
+        if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
         const rx = e.x + e.width / 2 - cx;
         const ry = e.y + e.height / 2 - cy;
         const along = rx * dx + ry * dy;
@@ -1943,7 +1954,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const blastR = GRENADE_BLAST_RADIUS * szExMult;
         const fxMs = GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS;
         const targets = useGameStore.getState().enemies
-          .filter(e => e.type !== 'reaper' || e.reaperChaser)
+          .filter(e => !isReaperFamily(e.type) || isTerminalReaper(e))
           .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - x, e.y + e.height / 2 - y) }))
           .sort((a, b) => a.d - b.d).slice(0, SUZAKU_MAX_TARGETS).map(h => h.e);
         spawnFlash('rgba(248,113,113,0.16)', 150);
@@ -1956,7 +1967,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().spawnGlow(bx, by, GLOW_R_S, 'rgba(248,113,113,', fxMs);
           useGameStore.getState().spawnExplosionFx(bx, by, blastR); // v0.25.3283: 爆発flipbook(全爆発共通)
           for (const e of useGameStore.getState().enemies) {
-            if (e.type === 'reaper' && !e.reaperChaser) continue;
+            if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
             const dist = Math.hypot(e.x + e.width / 2 - bx, e.y + e.height / 2 - by);
             if (dist > blastR) continue;
             const falloff = 1 - dist / blastR;
@@ -2019,7 +2030,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const meleeR = huntingMeleeRadius(p);
         spawnRing(pcx, pcy, 6, meleeR, 'rgba(167,139,250,0.6)', 2, 200);
         for (const e of useGameStore.getState().enemies) {
-          if (e.type === 'reaper' && !e.reaperChaser) continue;
+          if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
           const ex = e.x + e.width / 2;
           const ey = e.y + e.height / 2;
           const d = Math.hypot(ex - pcx, ey - pcy);
@@ -2726,7 +2737,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           wallDepthSyncRef.current = 0;
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
-          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
+          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastTimeRollAt: 0, timeSpawned: false, defeatCount: 0, summonerId: null, servantLastAddAt: 0, castUntil: 0 };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0, thorPrevSwingCommitAt: 0, thorNihilFiredFor: -1, mimirAimVX: 0, mimirAimVY: 0, mimirLockSfxUntil: 0, mimirBrokenSfxUntil: 0 };
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
@@ -4024,7 +4035,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (hasSkill(player, 'poi-bombing') && newGameTime >= poiBombingRef.current) {
           const bpcx = player.x + player.width / 2, bpcy = player.y + player.height / 2;
           const target = useGameStore.getState().enemies
-            .filter(e => e.type !== 'reaper' || e.reaperChaser)
+            .filter(e => !isReaperFamily(e.type) || isTerminalReaper(e))
             .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - bpcx, e.y + e.height / 2 - bpcy) }))
             .filter(h => h.d <= POI_BOMBING_RANGE)
             .sort((a, b) => a.d - b.d)[0]?.e;
@@ -4106,7 +4117,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           };
 
           // 「ボス/リーパー/演出中」= 出現禁止＆追跡中なら撤退。activeEvent は出現禁止のみ(追跡中は元々他イベント出ない)。
-          const giantOrReaper = hs.enemies.some(e => e.type === 'giantbat' || e.type === 'reaper');
+          const giantOrReaper = hs.enemies.some(e => e.type === 'giantbat' || isReaperFamily(e.type));
           const cinematic = hs.bossChasing || !!hs.attention || hs.redNight?.phase === 'active' || giantOrReaper;
           // 撤退トリガ用は attention を除外(ハンター発見時に自分で出すアテンションで即撤退しないように)。
           const retreatCinematic = hs.bossChasing || hs.redNight?.phase === 'active' || giantOrReaper;
@@ -4364,7 +4375,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const sS = useGameStore.getState();
           const aliveScreamer = sS.enemies.some(e => e.type === 'screamer');
           const sCinematic = sS.bossChasing || !!sS.attention || sS.redNight?.phase === 'active'
-            || sS.enemies.some(e => e.type === 'giantbat' || e.type === 'reaper');
+            || sS.enemies.some(e => e.type === 'giantbat' || isReaperFamily(e.type));
           // §6.38 v6 A-2(B4配線): 賞金首交戦中は叫喚型を先送りする。
           const sBlocked = sCinematic || !!sS.activeEvent || anyBountyEngaged(sS.enemies, player, Date.now());
           // バッチ7: 叫び(screamer)は関所中のみ発火(バッチ3のpressure≥0.80解禁と統合するまでの
@@ -4900,7 +4911,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const rs = reaperRef.current;
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
-          const depth = REAPER_TEST ? REAPER_CONFIG.extremeDepthPx + 1 : Math.hypot(pcx, pcy);
+          const depth = (REAPER_TEST || REAPER2_TEST) ? REAPER_CONFIG.extremeDepthPx + 1 : Math.hypot(pcx, pcy);
 
           // --- エリア(区域)遷移バナー: 距離帯を跨いだら区域名を表示(イベント発生と同じUI) ---
           // ゾーン判定は ZONE_CHECK_INTERVAL フレームに1回(間引き)。
@@ -5005,7 +5016,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           }
           const liveEnemies = useGameStore.getState().enemies;
-          const chaserAlive = rs.chaserId != null && liveEnemies.some(e => e.id === rs.chaserId);
+          // PACING_PUZZLE.md §14-4(新死神): 撃破escalationの追加個体もisTerminalReaperで数える
+          // (旧実装はchaserId=主個体1体しか見ておらず、追加個体が生きていても「全滅」扱いにしていた
+          // ——主個体だけ倒れると追加個体が取り残されて座標更新を失う既存バグの温床だった=中15で是正)。
+          const reaperBodiesNow = liveEnemies.filter(isTerminalReaper);
+          const anyBodyAlive = reaperBodiesNow.length > 0;
           // 裏ボスが画面内に居る間は「時間死神」の抽選を止める(距離死神は不変・社長指示)。
           // 画面内 ≒ プレイヤー中心(カメラ追従)±半画面+マージン。
           const reaperGB = useGameStore.getState().gameBounds;
@@ -5014,13 +5029,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             && Math.abs((e.y + e.height / 2) - pcy) <= reaperGB.height / 2 + BOSS_SCREEN_MARGIN);
           // 討伐/消滅 → クールダウン(リスク0へ。深奥に居続ければまた溜まる)。
           // 撃破escalation(社長指示): チェイサーを倒すたびに次の死神が1体ずつ増える(2体→3体…)=終わりに近づける。
-          // 逃げ切り(homeRadius帰還)は下の else 分岐が先に chaserId を null にするため、ここは「撃破」のみが該当。
-          if (rs.chaserId != null && !chaserAlive) { rs.defeatCount += 1; rs.chaserId = null; rs.risk = 0; rs.timeSpawned = false; rs.warpAnimStartAt = 0; }
+          // 逃げ切り(homeRadius帰還)は下の else 分岐が先に chaserId を null にするため、ここは「撃破(=波の全滅)」のみが該当。
+          if (rs.chaserId != null && !anyBodyAlive) {
+            rs.defeatCount += 1; rs.chaserId = null; rs.risk = 0; rs.timeSpawned = false;
+            // 本体の波が全滅=残っている使者も召喚主ごと消える(叩き台)。
+            if (liveEnemies.some(e => isHangedman(e.type))) {
+              const goneIds = new Set(liveEnemies.filter(e => isHangedman(e.type)).map(e => e.id));
+              for (const id of goneIds) ENEMY_REMOVE_CAUSE.set(id, 'chaser');
+              useGameStore.setState(st => ({ enemies: st.enemies.filter(e => !goneIds.has(e.id)) }));
+            }
+            rs.summonerId = null; rs.castUntil = 0;
+          }
 
           // PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): ゲート1がアクティブな間は死神(深奥リスク)
           // の抽選/蓄積そのものを凍結し、湧かせない(未達ペナルティ=effectiveReaperRiskFloorは維持。
           // ゲートが解ける=activeGateRef.currentがnullに戻ったタイミングでリスクは元の値から再開する)。
-          // 既に追跡中(chaserAlive)のチェイサーはこの抑止の対象外(既存の追跡/ワープ挙動は不変)。
+          // 既に追跡中(anyBodyAlive)の死神はこの抑止の対象外(既存の追跡挙動は不変)。
           // §5.21-追補5(社長決定v0.25.1555): 抑止をゲート1の「発火待ち」窓(gate1PendingRef=未確認境界を
           // 踏破済みでまだゲートが発火していない間)にも拡張する。未達ペナルティによる死神は、ゲートが
           // 実際に発火して決着してから初めて牙を剥くべきで、他イベント(城ボス等)待ちで発火が繰り延べ
@@ -5028,9 +5052,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // §5.21-追補5の対称拡張(社長実機報告v0.25.1579「ゲート2のボス戦中に死神が湧く」): 抑止を
           // ゲート2(activeGateRef===2)と発火待ち(gate2PendingRef)にも適用。ゲート2は深層境界(r>=7500)
           // =リスクが最速で溜まる深さ+ハード拘束(逃げられない)なので、ゲート1以上に死神が理不尽。
-          if (!chaserAlive && (activeGateRef.current !== null || gate1PendingRef.current || gate2PendingRef.current)) {
+          if (!anyBodyAlive && (activeGateRef.current !== null || gate1PendingRef.current || gate2PendingRef.current)) {
             // 抑止中: 何もしない(risk加減・気配演出・完全出現のいずれも止める)。
-          } else if (!chaserAlive) {
+          } else if (!anyBodyAlive) {
             // リスク更新(深奥滞在で増加・深奥外で減少)。
             // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1の未達ペナルティ中は、リスク蓄積の起点を
             // 未確認到達ライン(AREA_THRESHOLDS[2]=5000)へ前倒しする(既存の起点より緩くはならない)。
@@ -5076,6 +5100,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (Math.random() < chance) { rs.risk = REAPER_CONFIG.spawnRiskThreshold; rs.timeSpawned = true; } // 当選=完全出現(時間死神)
             }
 
+            // PACING_PUZZLE.md §14-4-5: ?rp2=1 は出撃直後にリスク最大=即・完全出現(テスト専用)。
+            if (REAPER2_TEST) rs.risk = REAPER_CONFIG.riskMax;
+
             // 完全出現(追跡)。リスク最大で、進行方向の画面外から1体だけ出す(前方から迫る)。
             if (rs.risk >= REAPER_CONFIG.spawnRiskThreshold) {
               let hx = player.vx ?? 0;
@@ -5089,31 +5116,37 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const spawnDist = Math.max(REAPER_CONFIG.spawnDistFromPlayer, offScreenDist);
               const sx = pcx + (hx / hlen) * spawnDist;
               const sy = pcy + (hy / hlen) * spawnDist;
+              // PACING_PUZZLE.md §14-4-2: 絵・挙動を新死神へ置換。本体HP/接触ダメ/体勢は?rp2*=で調整可
+              // (REAPER2_CONFIG)。speedフィールドは本体の直進基準速度の目安値(実移動はstepReaperBody
+              // 経由の専用管理・下の movement 節)。
               const chaser = spawnEnemyAt('reaper', sx - 40, sy - 40, newGameTime);
               chaser.reaperChaser = true;
-              chaser.health = REAPER_CONFIG.chaserHealth;
-              chaser.maxHealth = REAPER_CONFIG.chaserHealth;
-              chaser.damage = REAPER_CONFIG.contactDamage;
-              chaser.speed = getReaperChaseSpeed(player.speed); // 0.9倍速(ワープで回り込む)
+              chaser.health = REAPER2_CONFIG.bodyHealth;
+              chaser.maxHealth = REAPER2_CONFIG.bodyHealth;
+              chaser.damage = REAPER2_CONFIG.bodyContactDamage;
+              chaser.speed = player.speed * REAPER2_CONFIG.bodySpeedMult;
               addEnemy(chaser);
               // 撃破escalation(社長指示): これまでの撃破回数ぶん、追加の死神を同時に出す(2体→3体…)。
-              // 追加分は reaperChaser=false のまま=updateEnemies の通常チェイスで「歩いて追う」(ワープはchaser1体のみ)。
-              // HP/接触ダメはchaserと同じ弱体値=倒せる。画面外リングに散らす。
+              // §14-4(中15是正): 追加分も reaperChaser=true にする(=isTerminalReaper述語に乗る。
+              // 旧実装はfalseのままで、距離リサイクル除外/被弾/KB免除等から漏れる既存バグを内包していた)。
+              // 全員新死神の絵と挙動=同じ専用movementで直進+70px旋回する。画面外リングに散らす。
               for (let ri = 0; ri < rs.defeatCount; ri++) {
                 const ea = ((ri + 1) / (rs.defeatCount + 1)) * Math.PI * 2;
                 const ex = pcx + Math.cos(ea) * spawnDist, ey = pcy + Math.sin(ea) * spawnDist;
                 const extra = spawnEnemyAt('reaper', ex - 40, ey - 40, newGameTime);
-                extra.health = REAPER_CONFIG.chaserHealth; extra.maxHealth = REAPER_CONFIG.chaserHealth;
-                extra.damage = REAPER_CONFIG.contactDamage;
-                extra.speed = getReaperChaseSpeed(player.speed);
+                extra.reaperChaser = true;
+                extra.health = REAPER2_CONFIG.bodyHealth; extra.maxHealth = REAPER2_CONFIG.bodyHealth;
+                extra.damage = REAPER2_CONFIG.bodyContactDamage;
+                extra.speed = player.speed * REAPER2_CONFIG.bodySpeedMult;
                 addEnemy(extra);
               }
               useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG); // 死神召喚=強めの画面シェイク
               rs.chaserId = chaser.id;
               rs.chaserSpawnAt = newGameTime;
-              rs.lastWarpAt = newGameTime;
-              rs.warpAnimStartAt = 0; rs.warpTeleported = false;
-              reaperLiftRef.current = 0; // 新チェイサーの近接フィニッシュ検出を初期化
+              // §14-4-3(使者): 新しい波の召喚主=このchaser。使者人口を0から数え直す。
+              rs.summonerId = chaser.id;
+              rs.servantLastAddAt = newGameTime;
+              rs.castUntil = 0;
               rs.risk = REAPER_CONFIG.riskMax;
               spawnFlash('rgba(10,10,16,0.30)', 360);
               // 死神「完全出現」もカメラアテンション(社長指示)。裏ボス/城ボス出現と同じく、時間停止で現地へ
@@ -5125,80 +5158,115 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // プレイヤーがスタート(原点)付近 homeRadiusPx 内へ戻れば死神は去る=逃げ切り。リスクは0へクールダウン。
             // ただし「時間による死神」(timeSpawned)は時間制限のデスなので原点に戻っても去らない(逃げ場なし)。
             if (!rs.timeSpawned && Math.hypot(pcx, pcy) < REAPER_CONFIG.homeRadiusPx) {
-              if (rs.chaserId) ENEMY_REMOVE_CAUSE.set(rs.chaserId, 'chaser'); // 消失ログ用: 救助チェイサー除去
-              useGameStore.setState({ enemies: useGameStore.getState().enemies.filter(e => e.id !== rs.chaserId) });
+              const gsHome = useGameStore.getState();
+              const goneIds = new Set(
+                gsHome.enemies.filter(e => isTerminalReaper(e) || isHangedman(e.type)).map(e => e.id)
+              );
+              for (const id of goneIds) ENEMY_REMOVE_CAUSE.set(id, 'chaser'); // 消失ログ用: 救助チェイサー除去
+              if (goneIds.size > 0) useGameStore.setState({ enemies: gsHome.enemies.filter(e => !goneIds.has(e.id)) });
               rs.chaserId = null;
               rs.risk = 0;
-              rs.warpAnimStartAt = 0;
+              rs.summonerId = null;
+              rs.castUntil = 0;
             } else {
-              // 追跡: 0.9倍速(player.speed基準=成長反映・ダッシュ等は除外)。慣性は updateEnemies のチェイス inertia がかかる。
-              const targetSpeed = getReaperChaseSpeed(player.speed);
-              // 回り込みワープ: 一定間隔で、プレイヤーの上下左右いずれか(多少ランダム)へ warp して挟み込む。
-              // 社長指示: パッと消えてパッと出るのではなく、0.5s でフェードアウト→テレポート→0.5s でフェードイン。
-              const WARP_FADE = REAPER_CONFIG.warpFadeMs;
-              // 死神の現在位置とプレイヤーまでの距離。近接フィニッシュ被弾は liftUntil の増加で検出。
-              const chaserNow = useGameStore.getState().enemies.find(e => e.id === rs.chaserId);
-              const rcx = chaserNow ? chaserNow.x + chaserNow.width / 2 : pcx;
-              const rcy = chaserNow ? chaserNow.y + chaserNow.height / 2 : pcy;
-              const distToPlayer = Math.hypot(rcx - pcx, rcy - pcy);
-              const liftNow = chaserNow?.liftUntil ?? 0;
-              const finisherHit = liftNow > reaperLiftRef.current; // 近接フィニッシュ(boss-stun×5)を食らった
-              reaperLiftRef.current = Math.max(reaperLiftRef.current, liftNow);
-              // ワープ発火条件(社長指示):
-              //  (A) 一定間隔 かつ プレイヤーより warpDistPx 遠い時のみ=近接時はワープせず居座る(=近づいて消えない)。
-              //  (B) 近接フィニッシュを食らった時=距離不問で即・回り込み離脱。
-              const intervalWarp = newGameTime - rs.lastWarpAt >= REAPER_CONFIG.warpIntervalMs
-                && distToPlayer > REAPER_CONFIG.warpDistPx;
-              if (rs.warpAnimStartAt === 0 && (intervalWarp || finisherHit)) {
-                rs.lastWarpAt = newGameTime;
-                rs.warpAnimStartAt = newGameTime;
-                rs.warpTeleported = false;
-                const card = [[0, -1], [0, 1], [-1, 0], [1, 0]][Math.floor(Math.random() * 4)];
-                const jit = (Math.random() - 0.5) * REAPER_CONFIG.warpDistPx * 0.5;
-                rs.warpToX = pcx + card[0] * REAPER_CONFIG.warpDistPx + (card[0] === 0 ? jit : 0);
-                rs.warpToY = pcy + card[1] * REAPER_CONFIG.warpDistPx + (card[1] === 0 ? jit : 0);
-              }
-              // ワープアニメ進行(フェードのみ・移動は止める)。
-              let warpAlpha = 1;
-              let teleportNow = false;
-              const warping = rs.warpAnimStartAt > 0;
-              if (warping) {
-                const el = newGameTime - rs.warpAnimStartAt;
-                if (el < WARP_FADE) {
-                  warpAlpha = Math.max(0, 1 - el / WARP_FADE);       // 消える(フェードアウト)
-                } else if (el < WARP_FADE * 2) {
-                  if (!rs.warpTeleported) { teleportNow = true; rs.warpTeleported = true; } // 不可視の瞬間に瞬間移動
-                  warpAlpha = Math.min(1, (el - WARP_FADE) / WARP_FADE); // 出る(フェードイン)
-                } else {
-                  warpAlpha = 1; rs.warpAnimStartAt = 0; rs.warpTeleported = false; // アニメ終了
+              // PACING_PUZZLE.md §14-4-2(直進+70px旋回・ワープ廃止)+§14-4-3(技「使者」)。
+              // 本体は`stepReaperBody`(reaper2.ts)で毎フレーム座標を書く=updateEnemiesを素通りする
+              // 専用管理(旧ワープ実装と同じ理由=「歩いて追う」を自前で進めないと動かない)。
+              const bodyBaseSpeed = player.speed * REAPER2_CONFIG.bodySpeedMult; // 素の実効速度(バフ除外・社長の言葉)
+              const straightStepPx = bodyBaseSpeed * deltaTime * MOVE_SPEED_MULT; // 他の敵と同じテンポで掛ける(二重掛かり禁止)
+              const orbitStepPx = bodyBaseSpeed * REAPER2_CONFIG.orbitSpeedMult * deltaTime * MOVE_SPEED_MULT;
+              // 使者は「現在の」実効速度(バフ込み・毎フレーム参照=走っても振り切れない)×1.2。
+              const servantSpeed = (player.effectiveMoveSpeed ?? player.speed) * REAPER2_CONFIG.servantSpeedMult;
+              const servantStepPx = servantSpeed * deltaTime * MOVE_SPEED_MULT;
+              const reaperPlayableCtx: PlayableAreaCtx = {
+                farBackdrop: useGameStore.getState().farBackdrop,
+                labTheme: false, // このブロックの外側ガードで既にlabTheme除外済み
+                corridorMode: useGameStore.getState().corridorMode,
+                m0AdvanceLimitX: null, // 外側ガードでtutorialStageも除外済み
+                corridorRunInActive: useGameStore.getState().corridorRunInActive,
+              };
+
+              const gsTick = useGameStore.getState();
+              const bodiesNow = gsTick.enemies.filter(isTerminalReaper);
+              const servantsNow = gsTick.enemies.filter(e => isHangedman(e.type));
+              const patches = new Map<string, Partial<Enemy>>();
+
+              // --- 技「使者」: population管理(召喚主の交代・population歩進・囲み召喚) ---
+              if (bodiesNow.length > 0) {
+                const summonerAlive = bodiesNow.some(b => b.id === rs.summonerId);
+                if (!summonerAlive) {
+                  // 召喚主が交代(倒された/リサイクル消失)=前の召喚主の使者は消える(叩き台)。
+                  const orphaned = servantsNow.filter(s => s.summonerId !== undefined && s.summonerId === rs.summonerId);
+                  if (orphaned.length > 0) {
+                    const orphanIds = new Set(orphaned.map(s => s.id));
+                    for (const id of orphanIds) ENEMY_REMOVE_CAUSE.set(id, 'chaser');
+                    useGameStore.setState(st => ({ enemies: st.enemies.filter(e => !orphanIds.has(e.id)) }));
+                  }
+                  rs.summonerId = bodiesNow[0].id;
+                  rs.castUntil = 0;
+                }
+                // 使者は全体で共有の枠(裁定済み#7=本体の数によらず全体・叩き台)。
+                const pop = stepServantPopulation(
+                  { count: servantsNow.length, lastAddAt: rs.servantLastAddAt },
+                  newGameTime, REAPER2_CONFIG.servantAddIntervalMs, REAPER2_CONFIG.servantMax,
+                );
+                rs.servantLastAddAt = pop.lastAddAt;
+                if (pop.added) {
+                  rs.castUntil = newGameTime + REAPER_CAST_MS; // 詠唱: 本体停止+SE(召喚主のみ)
+                  playSfx('phill-skylight'); // 鐘の音(社長指示=フィルの光の技と同じSE)
+                  const gb = useGameStore.getState().gameBounds;
+                  const spawnZoomTarget = contextZoomTarget(0, true); // 死神系=大型(isLargeForZoom)前提の引き
+                  const radius = encircleRadiusPx(gb.width, gb.height, spawnZoomTarget, REAPER_CONFIG.spawnMarginPx);
+                  const corridor = useGameStore.getState().corridorMode;
+                  const ringPts = corridor
+                    ? corridorEncirclePoints(pcx, pcy, radius)
+                    : encirclePoints(1, pcx, pcy, radius, Math.random() * Math.PI * 2);
+                  const pt = ringPts[Math.floor(Math.random() * ringPts.length)];
+                  const servant = spawnEnemyAt('hangedman', pt.x - 23, pt.y - 46, newGameTime);
+                  servant.health = REAPER2_CONFIG.servantHealth;
+                  servant.maxHealth = REAPER2_CONFIG.servantHealth;
+                  servant.damage = REAPER2_CONFIG.servantContactDamage;
+                  servant.speed = servantSpeed;
+                  servant.summonerId = rs.summonerId ?? undefined;
+                  servant.reaperWarpAlpha = 0; // 出現時フェードイン(materializing・慣性MUST=既存の型を流用)
+                  addEnemy(servant);
                 }
               }
-              // 追跡移動: ワープ以外の通常フレームは、プレイヤーへ向かって歩いて詰める(近づく)。
-              // 死神チェイサーは updateEnemies を素通りする(専用管理)ため、ここで明示的に座標を進めないと
-              // 「ワープするだけで近づいてこない」状態になっていた(社長報告)。壁はすり抜け(reaper=passthrough)。
-              let chaseX: number | null = null, chaseY: number | null = null;
-              if (!warping && !teleportNow && chaserNow) {
-                const cdx = pcx - rcx, cdy = pcy - rcy;
-                const cl = Math.hypot(cdx, cdy) || 1;
-                const step = targetSpeed * deltaTime * MOVE_SPEED_MULT; // 他の敵と同じテンポ(1.2倍)
-                chaseX = chaserNow.x + (cdx / cl) * step;
-                chaseY = chaserNow.y + (cdy / cl) * step;
+
+              // --- 本体の移動(直進+70px旋回。詠唱中の召喚主だけ静止) ---
+              for (const e of bodiesNow) {
+                const casting = e.id === rs.summonerId && newGameTime < rs.castUntil;
+                if (casting) { patches.set(e.id, { vx: 0, vy: 0, damage: REAPER2_CONFIG.bodyContactDamage }); continue; }
+                const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+                const step = stepReaperBody(ecx, ecy, pcx, pcy, straightStepPx, orbitStepPx, REAPER2_CONFIG.orbitDistPx);
+                const rawX = step.x - e.width / 2, rawY = step.y - e.height / 2;
+                const clamped = clampRectToPlayableArea(rawX, rawY, e.width, e.height, reaperPlayableCtx, e.x);
+                patches.set(e.id, { x: clamped.x, y: clamped.y, damage: REAPER2_CONFIG.bodyContactDamage });
               }
-              useGameStore.setState({
-                enemies: useGameStore.getState().enemies.map(e =>
-                  e.id === rs.chaserId
-                    ? {
-                        ...e,
-                        ...(teleportNow
-                          ? { x: rs.warpToX - e.width / 2, y: rs.warpToY - e.height / 2, vx: 0, vy: 0 }
-                          : chaseX !== null ? { x: chaseX, y: chaseY as number } : {}),
-                        speed: warping ? 0 : targetSpeed, // ワープ中は静止(フェードで消えて別位置に出る)
-                        damage: REAPER_CONFIG.contactDamage,
-                        reaperWarpAlpha: warpAlpha,
-                      }
-                    : e
-                ),
-              });
+
+              // --- 使者の移動(プレイヤーへ直進のみ。地平線フェードはpixiScene側で対象外) ---
+              for (const e of servantsNow) {
+                const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+                const sdx = pcx - ecx, sdy = pcy - ecy;
+                const sl = Math.hypot(sdx, sdy) || 1;
+                const rawX = e.x + (sdx / sl) * servantStepPx;
+                const rawY = e.y + (sdy / sl) * servantStepPx;
+                const clamped = clampRectToPlayableArea(rawX, rawY, e.width, e.height, reaperPlayableCtx, e.x);
+                const materialize = Math.min(1, (newGameTime - (e.spawnedAt ?? newGameTime)) / REAPER_MATERIALIZE_MS);
+                patches.set(e.id, {
+                  x: clamped.x, y: clamped.y, damage: REAPER2_CONFIG.servantContactDamage,
+                  speed: servantSpeed, reaperWarpAlpha: materialize,
+                });
+              }
+
+              if (patches.size > 0) {
+                useGameStore.setState(st => ({
+                  enemies: st.enemies.map(e => {
+                    const p = patches.get(e.id);
+                    return p ? { ...e, ...p } : e;
+                  }),
+                }));
+              }
             }
           }
         }
@@ -7627,7 +7695,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const bcx = bp.x + bp.width / 2;
               const bcy = bp.y + bp.height / 2;
               const target = useGameStore.getState().enemies
-                .filter(e => e.type !== 'reaper' || e.reaperChaser)
+                .filter(e => !isReaperFamily(e.type) || isTerminalReaper(e))
                 .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - bcx, e.y + e.height / 2 - bcy) }))
                 .filter(h => h.d <= BYAKKO_RANGE)
                 .sort((a, b) => a.d - b.d)[0]?.e;
@@ -8289,7 +8357,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 dogY = activeFetch.targetY + (homeY - activeFetch.targetY) * k;
               }
               for (const enemy of bstate.enemies) {
-                if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
+                if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
                 if (activeFetch.bitten.has(enemy.id)) continue;
                 const ex = enemy.x + enemy.width / 2;
                 const ey = enemy.y + enemy.height / 2;
@@ -8710,7 +8778,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           let ssTarget: (typeof ssState.enemies)[number] | null = null;
           let ssBest = Infinity;
           for (const e of ssState.enemies) {
-            if (e.type === 'reaper' && !e.reaperChaser) continue;
+            if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
             const d = Math.hypot(e.x + e.width / 2 - ssPcx, e.y + e.height / 2 - ssPcy);
             if (d < ssBest) { ssBest = d; ssTarget = e; }
           }
@@ -8792,7 +8860,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const pcx2 = ssSubject.x + ssSubject.width / 2;
                 const pcy2 = ssSubject.y + ssSubject.height / 2;
                 for (const e of stNow.enemies) {
-                  if (e.type === 'reaper' && !e.reaperChaser) continue;
+                  if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
                   const d = Math.hypot(e.x + e.width / 2 - pcx2, e.y + e.height / 2 - pcy2);
                   if (d < best) { best = d; tgt = e; }
                 }
@@ -8915,7 +8983,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const kitStateAfterDispense = kitResult.dispense ? kitResult.nextState : kitStateNow;
           if (!kitStateAfterDispense.thrown && isFirstAidKitEmpty(kitStateAfterDispense, level)) {
             const target = useGameStore.getState().enemies
-              .filter(e => e.type !== 'reaper' || e.reaperChaser)
+              .filter(e => !isReaperFamily(e.type) || isTerminalReaper(e))
               .map(e => ({ enemy: e, dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy) }))
               .sort((a, b) => a.dist - b.dist)[0]?.enemy;
             if (target) {
@@ -9164,7 +9232,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const after = kit;
               if (!after.thrown && isFirstAidKitEmpty(after, lvl)) {
                 const bagTarget = useGameStore.getState().enemies
-                  .filter(e => e.type !== 'reaper' || e.reaperChaser)
+                  .filter(e => !isReaperFamily(e.type) || isTerminalReaper(e))
                   .map(e => ({ enemy: e, dist: Math.hypot(e.x + e.width / 2 - gcx, e.y + e.height / 2 - gcy) }))
                   .sort((a, b) => a.dist - b.dist)[0]?.enemy;
                 if (bagTarget) {
@@ -9601,7 +9669,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const est = useGameStore.getState();
             let dmoved = false;
             const ne = est.enemies.map(enemy => {
-              if (enemy.type === 'reaper') return enemy;
+              if (isReaperFamily(enemy.type)) return enemy;
               const r = resolveAabb({ x: enemy.x, y: enemy.y, width: enemy.width, height: enemy.height }, decoyBlocks);
               if (r.x === enemy.x && r.y === enemy.y) return enemy;
               dmoved = true;
@@ -10550,7 +10618,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 continue;
               }
               for (const enemy of useGameStore.getState().enemies) {
-                if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
+                if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
                 const ex = enemy.x + enemy.width / 2;
                 const ey = enemy.y + enemy.height / 2;
                 const dist = Math.hypot(ex - tcx, ey - tcy);
@@ -10587,7 +10655,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 ax = tgtCx - tcx; ay = tgtCy - tcy;
               } else {
                 const target = useGameStore.getState().enemies
-                  .filter(e => e.type !== 'reaper' || e.reaperChaser)
+                  .filter(e => !isReaperFamily(e.type) || isTerminalReaper(e))
                   .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - tcx, e.y + e.height / 2 - tcy) }))
                   .filter(h => h.d <= TURRET_OMNI_RANGE)
                   .sort((a, b) => a.d - b.d)[0]?.e;
@@ -10617,7 +10685,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const hasFwdTarget = tHostile
                 ? inFwdBand(tgtCx, tgtCy)
                 : useGameStore.getState().enemies.some(e =>
-                    (e.type !== 'reaper' || e.reaperChaser) && inFwdBand(e.x + e.width / 2, e.y + e.height / 2));
+                    (!isReaperFamily(e.type) || isTerminalReaper(e)) && inFwdBand(e.x + e.width / 2, e.y + e.height / 2));
               if (!hasFwdTarget) {
                 // 射程に敵なし: ゆっくり回転して索敵(発射しない)。向きを store へ反映し砲身を回す。
                 const na = aim + TURRET_SCAN_SPEED * (deltaTime / 1000);
@@ -10707,7 +10775,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             const dWalls = aoeWalls(dcx, dcy);
             for (const enemy of useGameStore.getState().enemies) {
-              if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
+              if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
               const ex = enemy.x + enemy.width / 2;
               const ey = enemy.y + enemy.height / 2;
               const dist = Math.hypot(ex - dcx, ey - dcy);
@@ -10828,7 +10896,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           const gWalls = aoeWalls(gx, gy);
           for (const enemy of useGameStore.getState().enemies) {
-            if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
+            if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
             const ex = enemy.x + enemy.width / 2;
             const ey = enemy.y + enemy.height / 2;
             const dist = Math.hypot(ex - gx, ey - gy);
@@ -10890,7 +10958,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const splashBase = shell.damage * GRENADE_BLAST_DAMAGE_MULT * exMult;
           const glWalls = aoeWalls(sx, sy);
           for (const splashEnemy of useGameStore.getState().enemies) {
-            if (splashEnemy.type === 'reaper' && !splashEnemy.reaperChaser) continue;
+            if (isReaperFamily(splashEnemy.type) && !isTerminalReaper(splashEnemy)) continue;
             const ex = splashEnemy.x + splashEnemy.width / 2;
             const ey = splashEnemy.y + splashEnemy.height / 2;
             const dist = Math.hypot(ex - sx, ey - sy);
@@ -10990,7 +11058,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 continue;
               }
               for (const enemy of useGameStore.getState().enemies) {
-                if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
+                if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
                 const ex = enemy.x + enemy.width / 2;
                 const ey = enemy.y + enemy.height / 2;
                 const dist = Math.hypot(ex - mine.x, ey - mine.y);
@@ -11085,7 +11153,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               const fkWalls = aoeWalls(bx, by);
               for (const enemy of useGameStore.getState().enemies) {
-                if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
+                if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
                 const ex = enemy.x + enemy.width / 2;
                 const ey = enemy.y + enemy.height / 2;
                 const dist = Math.hypot(ex - bx, ey - by);
@@ -11116,7 +11184,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 飛行中: 非リーパー敵への命中判定(1体目に刺さる)。
             let hit: typeof fkState.enemies[number] | undefined;
             for (const e of fkState.enemies) {
-              if (e.type === 'reaper' && !e.reaperChaser) continue;
+              if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
               if (checkCollision(knife, e)) { hit = e; break; }
             }
             if (hit) {
@@ -11153,7 +11221,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (phase === 'out' || phase === 'return') {
               // 貫通接触: 同一敵はこのフェーズで1回(hitEnemies)。行き/戻りで配列はリセット済み。
               for (const e of bs.enemies) {
-                if (e.type === 'reaper' && !e.reaperChaser) continue;
+                if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
                 if (boom.hitEnemies.includes(e.id)) continue;
                 if (!checkCollision(boom, e)) continue;
                 boom.hitEnemies.push(e.id); // store配列を直接更新(既存の貫通弾と同じ手法)
@@ -11190,7 +11258,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dmg = Math.max(1, Math.round((baseDamage / DRONE_BOOM_STOP_DMG_DIV) * pulseExMult * skillOutgoingDamageMult(pulsePlayer)));
                 const boomWalls = aoeWalls(bx, by);
                 for (const e of bs.enemies) {
-                  if (e.type === 'reaper' && !e.reaperChaser) continue;
+                  if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
                   const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
                   if (Math.hypot(ex - bx, ey - by) > r) continue;
                   if (boomWalls.length > 0 && segmentBlocked(bx, by, ex, ey, boomWalls)) continue; // 壁越し不可
@@ -11344,7 +11412,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const toKnockback: { id: string; dx: number; dy: number }[] = [];
             const movedEnemies = sstate.enemies.map(enemy => {
               // 死神/裏ボスは物理ブロックされず「すり抜け」るが、接触ダメージ(表)は盾に与える。
-              const passesThrough = enemy.type === 'reaper' || isHiddenBoss(enemy.type);
+              const passesThrough = isReaperFamily(enemy.type) || isHiddenBoss(enemy.type);
               const ebox = { x: enemy.x, y: enemy.y, width: enemy.width, height: enemy.height };
               let touched = false;
               for (const s of shieldRects) {
@@ -11785,7 +11853,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const splashBase = dmg * GRENADE_BLAST_DAMAGE_MULT * exMult;
             const glWalls = aoeWalls(blastX, blastY);
             for (const splashEnemy of useGameStore.getState().enemies) {
-              if (splashEnemy.id === enemyId || (splashEnemy.type === 'reaper' && !splashEnemy.reaperChaser)) continue;
+              if (splashEnemy.id === enemyId || (isReaperFamily(splashEnemy.type) && !isTerminalReaper(splashEnemy))) continue;
               const sx = splashEnemy.x + splashEnemy.width / 2;
               const sy = splashEnemy.y + splashEnemy.height / 2;
               const dist = Math.hypot(sx - blastX, sy - blastY);
@@ -11845,7 +11913,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const splashBase = dmg * (projectile.explodeDamageMult ?? 1) * exMult;
             const exWalls = aoeWalls(blastX, blastY);
             for (const splashEnemy of useGameStore.getState().enemies) {
-              if (splashEnemy.id === enemyId || (splashEnemy.type === 'reaper' && !splashEnemy.reaperChaser)) continue;
+              if (splashEnemy.id === enemyId || (isReaperFamily(splashEnemy.type) && !isTerminalReaper(splashEnemy))) continue;
               const sx = splashEnemy.x + splashEnemy.width / 2;
               const sy = splashEnemy.y + splashEnemy.height / 2;
               const dist = Math.hypot(sx - blastX, sy - blastY);
@@ -11872,13 +11940,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const bpSpeed = knockbackSpeedFor(BOMB_COUNTER_AWAKEN_KB_PX * skillExplosionKbMult(shotOwner), KNOCKBACK_DURATION);
               useGameStore.setState(state => ({
                 enemies: state.enemies.map(en => {
-                  if ((en.type === 'reaper' && !en.reaperChaser) || en.type === 'giantbat' || en.type === 'pumpkin') return en;
+                  if ((isReaperFamily(en.type) && !isTerminalReaper(en)) || en.type === 'giantbat' || en.type === 'pumpkin') return en;
                   if (isBossType(en.type) || en.corpseUntil !== undefined || en.aiPhase === 'jump') return en;
                   const ecx = en.x + en.width / 2, ecy = en.y + en.height / 2;
                   const bd = Math.hypot(ecx - blastX, ecy - blastY);
                   if (bd > exRadius || bd < 0.001) return en;
                   if (exWalls.length > 0 && segmentBlocked(blastX, blastY, ecx, ecy, exWalls)) return en;
-                  if (bpNow < (en.knockbackImmuneUntil ?? 0)) return en;
+                  if (!knockbackCdReady(en, bpNow)) return en;
                   return {
                     ...en,
                     knockbackVx: ((ecx - blastX) / bd) * bpSpeed,
@@ -11933,7 +12001,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             let target: typeof enemyForFx | undefined;
             let bestD2 = Infinity;
             for (const other of useGameStore.getState().enemies) {
-              if (other.id === enemyId || (other.type === 'reaper' && !other.reaperChaser)) continue;
+              if (other.id === enemyId || (isReaperFamily(other.type) && !isTerminalReaper(other))) continue;
               const d2 = (other.x + other.width / 2 - ox) ** 2 + (other.y + other.height / 2 - oy) ** 2;
               if (d2 < bestD2) { bestD2 = d2; target = other; }
             }
@@ -12077,13 +12145,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (速度=KNOCKBACK_SPEED・免疫CD=KNOCKBACK_IMMUNE_MSも近接と同じ)。免疫CD中は従来の
             // 小突きノックバックに落とす(近接同様「CD中はKB無し」だと弾の手応えが消えるため)。
             const asAwakenKb = !isAllyOwnedShot && skillLevel(shotOwner, 'attack-shooter') >= 3
-              && Date.now() >= (enemyForFx.knockbackImmuneUntil ?? 0);
+              && knockbackCdReady(enemyForFx, Date.now());
             if (asAwakenKb) {
               const asNow = Date.now();
               const asDirX = projectile.direction.x, asDirY = projectile.direction.y;
               useGameStore.setState(state => ({
                 enemies: state.enemies.map(en =>
-                  en.id === enemyId && en.corpseUntil === undefined && asNow >= (en.knockbackImmuneUntil ?? 0)
+                  en.id === enemyId && en.corpseUntil === undefined && knockbackCdReady(en, asNow)
                     ? {
                         ...en,
                         knockbackVx: asDirX * KNOCKBACK_SPEED,
@@ -12109,7 +12177,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ボスの移動半減+CD2倍+紫蓄積はdamageEnemy側で既に中央適用済み(crit=hitCritを渡してある)。
           // 通常敵の気絶は不変(stunDurationMultを乗せた従来どおりの5秒スタン)。
           if (hitCrit && !enemyKilled && enemyForFx) {
-            if (!isBoss) {
+            // PACING_PUZZLE.md §14-4-3(使者・hangedman): 近接フィニッシュ即死の対象外(除外リスト)=
+            // stunEnemy(通常5秒スタン)を通さない(体勢なし=止まらない、と対の裁定)。isBoss自体は
+            // クリダメ倍率等の別用途で共有されているため広げず、ここだけ個別に除外する。
+            if (!isBoss && !isHangedman(enemyForFx.type)) {
               // 気絶時間アップ(パッシブ): フィニッシュ受付時間を stunDurationMult 倍に。
               const stunMs = STUN_DURATION_MS * (useGameStore.getState().player.stunDurationMult ?? 1);
               useGameStore.getState().stunEnemy(enemyId, gameTime + stunMs);
@@ -12355,7 +12426,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (egDied) triggerPlayerDeath(egPcx, egPcy);
               }
               for (const enemy of useGameStore.getState().enemies) {
-                if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
+                if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
                 const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
                 if (Math.hypot(ecx - ex0, ecy - ey0) > EGG_BLAST_RADIUS) continue;
                 const egKilled = damageEnemy(enemy.id, MINE_DAMAGE, true);
@@ -12451,7 +12522,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const oxc = o.x + o.width / 2, oyc = o.y + o.height / 2;
                   const killed = useGameStore.getState().damageEnemy(o.id, dmg, true, false, false, wireChannel, wireHate); // 爆発=ボス非致死
                   spawnDamageNumber(oxc, o.y, dmg, true);
-                  if (!killed && nowW >= (o.knockbackImmuneUntil ?? 0)) {
+                  if (!killed && knockbackCdReady(o, nowW)) {
                     const kdx = oxc - ecx, kdy = oyc - ecy;
                     const kdd = Math.hypot(kdx, kdy) || 1;
                     useGameStore.setState({
@@ -12474,7 +12545,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnDamageNumber(ecx, e.y, dmg, false);
               useGameStore.getState().spawnSlash(ecx, ecy, 'rgba(186,230,253,0.95)');
               useGameStore.getState().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫(v0.25.2026)
-              if (!killed && nowW >= (e.knockbackImmuneUntil ?? 0)) {
+              if (!killed && knockbackCdReady(e, nowW)) {
                 const dx = ecx - pcx, dy = ecy - pcy;
                 const dd = Math.hypot(dx, dy) || 1;
                 useGameStore.setState({
@@ -12798,7 +12869,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   );
                   // Spawn a burst at every enemy slated to die
                   useGameStore.getState().enemies
-                    .filter(e => e.type !== 'reaper')
+                    .filter(e => !isReaperFamily(e.type))
                     .forEach(e => spawnBurst(
                       e.x + e.width / 2,
                       e.y + e.height / 2,
@@ -13997,7 +14068,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const bcKbMult = knockbackSpeedFor(bcKbPx, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED;
             const bcPunishIds: string[] = [];
             for (const e of useGameStore.getState().enemies) {
-              if ((e.type === 'reaper' && !e.reaperChaser) || e.aiPhase === 'jump') continue; // 深奥チェイサーは対象・空中無敵は対象外
+              if ((isReaperFamily(e.type) && !isTerminalReaper(e)) || e.aiPhase === 'jump') continue; // 深奥チェイサーは対象・空中無敵は対象外
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
               const dist = Math.hypot(ecx - bcx, ecy - bcy);
               if (dist > radius) continue;

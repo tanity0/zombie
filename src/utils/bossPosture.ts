@@ -1,12 +1,18 @@
 import type { Enemy, EnemyType } from '../types/game';
 import { isEngageableBoss } from './bossEngagement';
 import { isBountyType, isGuardianPhantom } from './enemyUtils';
+import { REAPER2_CONFIG } from '../config/reaper'; // PACING_PUZZLE.md §14-4-5(?rp2post=)
 
 // 社長指示v0.25.3295「パンプキンなどの強敵にも紫システムだけ追加」: 交戦ボスに加え、この強敵2体
 // (isBossTypeだがボス交戦システム=カメラ/湧き制御を持たない)も体勢値→紫の完全気絶を持つ。
 // **「だけ」の意味**: クリ減速(usesBossCrit)・ボスカメラ・湧きリラックス(isEngageableBoss)には
 // 入れない。体勢値の蓄積と紫だけをこの表で足す。
-export const POSTURE_ELITE_TYPES = new Set<EnemyType>(['pumpkin', 'lab-zombie-3']);
+//
+// PACING_PUZZLE.md §14-4-2(新死神・社長裁定2026-08-28「体勢値あり」): 死神も同じ理由でここへ追加する。
+// bossEngagement.tsが明示的に「死神はisEngageableBossへ入れない」と裁定している
+// (深層に居る間ずっと湧いている可能性があり、ボス交戦の湧きリラックス/カメラへ入れると
+// ペーシング設計が壊れる=既存の意図的な除外)。体勢値だけが欲しいこの型がまさにその用途。
+export const POSTURE_ELITE_TYPES = new Set<EnemyType>(['pumpkin', 'lab-zombie-3', 'reaper']);
 
 /** 体勢システムの判定に必要な最小形(タイプ+色ティア)。★v0.25.3547で色が入ったため型で受けない。 */
 export type PostureSubject = Pick<Enemy, 'type' | 'colorTier'>;
@@ -70,6 +76,9 @@ export const bossPostureMax = (e: PostureSubject): number => {
   // ★v0.25.3547: 赤い個体も強個体なので**同じ60**。格ごとに1つの数字にしておく(赤専用のティアを
   // 作らない)。ただし型の強個体2体より先に見る=赤いパンプキンでも60で変わらない。
   if (e.colorTier === 'red') return 60; // 叩き台(強個体の既存値と同値)
+  // PACING_PUZZLE.md §14-4-5(?rp2post=): 死神本体の体勢値は専用ツマミで調整(POSTURE_ELITE_TYPESの
+  // 60分岐より先に見る=強敵2体と同値に埋没させない)。
+  if (type === 'reaper') return REAPER2_CONFIG.bodyPosture;
   if (POSTURE_ELITE_TYPES.has(type)) return 60; // 強敵2体(v0.25.3295叩き台・城ボス80より軽い)
   if (type === 'giantbat') return 80;
   if (type === 'mimir' || type === 'jormungand' || type === 'skadi' || type === 'thor') return 120;

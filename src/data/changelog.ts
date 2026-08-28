@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4005',
+    items: [
+      '(作業中/内部反映のみ) ゲーム内容の変更はありません。新しい死神(PACING_PUZZLE.md §14-4)の実装途中経過です。',
+    ],
+  },
+  {
     version: '0.25.4004',
     items: [
       '(作業中/内部反映のみ) ゲーム内容の変更はありません。新しい死神(PACING_PUZZLE.md §14-4)の実装途中経過です。',
