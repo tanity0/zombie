@@ -12,7 +12,12 @@ import { REAPER2_CONFIG } from '../config/reaper'; // PACING_PUZZLE.md §14-4-5(
 // bossEngagement.tsが明示的に「死神はisEngageableBossへ入れない」と裁定している
 // (深層に居る間ずっと湧いている可能性があり、ボス交戦の湧きリラックス/カメラへ入れると
 // ペーシング設計が壊れる=既存の意図的な除外)。体勢値だけが欲しいこの型がまさにその用途。
-export const POSTURE_ELITE_TYPES = new Set<EnemyType>(['pumpkin', 'lab-zombie-3', 'reaper']);
+//
+// CLAUDE.md「敵の仕様は種類(区分)で固める」(社長指示2026-08-28): 強個体区分(driller/logger)には
+// 区分の仕様が全部付く=体勢値もその1つ。検収監査で未登録だった穴の補修(区分整合。パンプキンだけ
+// 付いていた状態を是正)。体勢量は既存エリートと同じ60(下のbossPostureMax「強敵区分」分岐に
+// 相乗り=専用の値を発明しない)。
+export const POSTURE_ELITE_TYPES = new Set<EnemyType>(['pumpkin', 'lab-zombie-3', 'reaper', 'driller', 'logger']);
 
 /** 体勢システムの判定に必要な最小形(タイプ+色ティア)。★v0.25.3547で色が入ったため型で受けない。 */
 export type PostureSubject = Pick<Enemy, 'type' | 'colorTier'>;
@@ -74,12 +79,12 @@ const IMPACT_RATIO: Record<BossPostureImpact, number> = {
 export const bossPostureMax = (e: PostureSubject): number => {
   const type = e.type;
   // ★v0.25.3547: 赤い個体も強個体なので**同じ60**。格ごとに1つの数字にしておく(赤専用のティアを
-  // 作らない)。ただし型の強個体2体より先に見る=赤いパンプキンでも60で変わらない。
+  // 作らない)。ただし型の強個体区分より先に見る=赤いパンプキンでも60で変わらない。
   if (e.colorTier === 'red') return 60; // 叩き台(強個体の既存値と同値)
   // PACING_PUZZLE.md §14-4-5(?rp2post=): 死神本体の体勢値は専用ツマミで調整(POSTURE_ELITE_TYPESの
-  // 60分岐より先に見る=強敵2体と同値に埋没させない)。
+  // 60分岐より先に見る=強敵区分と同値に埋没させない)。
   if (type === 'reaper') return REAPER2_CONFIG.bodyPosture;
-  if (POSTURE_ELITE_TYPES.has(type)) return 60; // 強敵2体(v0.25.3295叩き台・城ボス80より軽い)
+  if (POSTURE_ELITE_TYPES.has(type)) return 60; // 強敵区分(pumpkin/lab-zombie-3/driller/logger。v0.25.3295叩き台・城ボス80より軽い)
   if (type === 'giantbat') return 80;
   if (type === 'mimir' || type === 'jormungand' || type === 'skadi' || type === 'thor') return 120;
   // PACING_PUZZLE.md §6.38 v6 D-2(賞金首): パンプキン基準(60)×1.5=90(叩き台・実機調整前提)。

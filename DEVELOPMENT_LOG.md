@@ -1,5 +1,78 @@
 # Development Log
 
+## v0.25.4009 — PACING_PUZZLE §14-2伐採人 補修バッチ(実装チャット・Sonnet): 社長裁定2値+区分整合+検収監査6件 【2026-08-28 20:12 JST】
+
+v0.25.4002で実装した新型雑魚「伐採人」(logger)に対する、社長裁定2件・区分整合1件・検収監査の
+実装穴6件をまとめて是正。**状態変化: §14-2伐採人補修 → 着地(残り: 社長実機確認)**。
+
+### 群1: 社長裁定の数値(PACING_PUZZLE.md §14-2④に反映済み)
+- `LOGGER_SWEEP_WINDUP_MS`(`src/store/gameStore.ts`): 850→**1300**ms(社長裁定「横払いの予告を
+  もう少し長く」。実効約1083ms=driller-thrustの実効1000msより長くなり「槍より少し長め」が成立)。
+- `LOGGER_SWEEP_RECOVER_MS`(同ファイル): 400→**1000**ms(社長裁定「横払い後、硬直を1秒」)。
+- 帯(判定=長さ220×半幅26・前方130px中心・命中域90〜170)は1pxも変更していない(社長裁定
+  「張り付くと噛みついてくるので大丈夫」=現状維持)。
+
+### 群2: 強個体の区分整合(CLAUDE.md「敵の仕様は種類(区分)で固める」)
+- `POSTURE_ELITE_TYPES`(`src/utils/bossPosture.ts`): `['pumpkin', 'lab-zombie-3', 'reaper']` →
+  `'driller'`・`'logger'` を追加。体勢量は既存エリートと同じ60(`bossPostureMax`の60分岐に相乗り・
+  専用値は発明していない)。パンプキンで動いている体勢の配線(削り・崩れ・回復)は
+  `usesPostureSystem`/`bossPostureMax`/`applyBossPostureDamage`/`tickBossPosture` が全て
+  `POSTURE_ELITE_TYPES.has(type)` を経由する1本道のため、driller/loggerもコード変更なしでそのまま
+  効くことをコードリーディングで確認済み(新しい仕組みは足していない)。
+- 'reaper'の専用分岐(`REAPER2_CONFIG.bodyPosture`)と `?rp2post=` の特例には触れていない。
+
+### 群3: 検収監査の実装穴6件(見た目/表記の是正・判定は無改修)
+- **項目5(浮いている/回転しない)**: `src/pixi/pixiScene.ts` の logger 武器スプライト描画を全面
+  書き換え。旧実装はグリップそのものを帯の遠い側の点(体から100〜170px)へ置いていた=浮遊の原因。
+  グリップを体の手元(`gripX/gripY`=中心からLOGGER_GRIP_FWD_PX=34/LOGGER_GRIP_UP_PX=18)に固定
+  アンカーし、角度は「手元→狙点」(windup=帯始点/active=薙ぎの現在点/recover=帯終点)で毎フレーム
+  引き直すことで、狙点が帯上を滑るほど武器の回転も連続的に追従するようにした。
+- **項目6(§7-15統一型)**: windup開始からの経過msを`weaponSpawnEase`へ渡して下から慣性つき
+  ズレ+フェードインさせ、`logger-sweep-recover`州でも武器描画を継続してrecover残り時間で
+  同関数のフェードアウトを掛けた(旧実装はaiPhaseがwindup/active以外になった瞬間にvisible=falseの
+  二値切替=瞬間出現・瞬間消滅=CLAUDE.md慣性MUST違反だった)。
+- **項目7(artFade/depthScale追従)**: 武器スプライトは`view.container`ではなく`effectLayer`直下の
+  独立スプライトのため本体のalpha/scaleを自動継承しない。`artFade`(地平線フェード×手前フェード)を
+  alphaへ明示的に掛け、`CHAINSAW_LENGTH_PX`に`depthScaleEnemy(fb.footY)`を掛けて本体と同じ
+  擬似遠近スケールへ追従させた。
+- **項目8(nearest化)**: `src/pixi/pixiTextures.ts`の`reaper-chainsaw`テクスチャを
+  `scaleMode: 'linear'` → `'nearest'`へ変更(ドット絵の敵素材の標準作法に統一)。
+- **項目9(絵と判定の同期)**: 上記の角度計算(手元→薙ぎの現在点)により、武器の向きは薙ぎの
+  進行(swing 0→1)と同じ変数から導出されるようになり、活性化タイミング・向きのズレを解消。
+  赤帯(判定の正)は1pxも変更していない。
+- **項目10(図鑑・motion表記)**: `src/data/campaign.ts`のBESTIARY記述(伐採人=「チェーンソーで
+  距離を保ちながら横薙ぎを放つ。近接で殴ると距離を取る」)は実装と一致していることを確認(無修正)。
+  `src/pixi/enemyMotion.ts`の`ENEMY_MOTION_TABLE`に`logger`の行が無く、未登録の雑魚の既定
+  (`MOT_HOBBLER`=直立ゆったり千鳥足)へ落ちていた実バグを発見・是正: 伐採人の本体絵は
+  `reaper-common.png`(reaperと全く同じ絵)を流用しているため、`reaper`行(`kind: 'heavy'`)の値を
+  そのまま複製する行を追加した。
+
+### ★未解消(★未決 #補修5「伐採人チェーンソー2本見え」としてPACING_PUZZLE.md §14-2bへ追記・社長判断待ち)
+検収監査の「2本見える」の実体は、本体絵`reaper-common.png`に**チェーンソーが左肩に担がれた状態で
+最初から描き込まれている**ことだった(픽셀確認済み)。武器スプライトを重ねると windup/active 中は
+常に2本同時に見える。刃が頭巾と重なった1枚絵のためpixi側のマスク/クロップでは頭部を欠けさせずに
+武器だけを隠せず、素材差し替え(本体絵の作り直し)を伴う判断が必要=このバッチでは見送り、
+詳細と選択肢(案A=本体絵差し替え/案B=武器スプライト縮小)をPACING_PUZZLE.md §14-2bに記載した。
+上記項目5/6/7/9(手元アンカー・回転・フェード)はこの2本見え問題とは独立に正しい是正であり、
+実装済み。
+
+### テスト
+- `src/utils/loggerAi.test.ts`: `LOGGER_SWEEP_WINDUP_MS`/`LOGGER_SWEEP_RECOVER_MS`/
+  `LOGGER_SWEEP_CD_MS`の裁定どおりの生値+windup実効値がdriller-thrustより長いことを検算する
+  describeブロックを追加(gameStore.tsの定数を直接importして検証)。
+- `src/utils/bossPosture.test.ts`: driller/loggerがPOSTURE_ELITE_TYPESに入り、体勢システムを
+  持ち、最大値60で、カウンター5発で体勢が割れることを確認するdescribeブロックを追加。
+- `npm run typecheck`(エラー0)・`npm run lint`(エラー0・既存warning 8件のみ・本バッチ由来ではない)、
+  変更に関係するテストファイル8本(`bossPosture.test.ts`/`loggerAi.test.ts`/`drillerAi.test.ts`/
+  `enemyUtils.test.ts`/`enemyVariant.test.ts`/`enemyBite.test.ts`/`meleeExecute.test.ts`/
+  `directorTick.test.ts`=計212件)を`npx vitest run`で実行し全通過を確認。フルテスト/ビルドは
+  社長の明示指示が無いため回していない(Testing policy)。
+
+### 自己点検
+本バッチは既存の帯・間合い・ダメージ・CD・カウンター文法(群1の2値以外)を変更していない
+=CLAUDE.md「仕様変更のルール」に抵触しない。区分整合(群2)は既存の強個体テンプレへの相乗りで
+新しい仕組みを足していない=「敵の仕様は種類で固める」の趣旨どおり。
+
 ## v0.25.4008 — 踏み込み二値化+速度ランプ標準化(設計チャット直実装) 【2026-08-28 19:47 JST】
 
 社長裁定2件(2026-08-28)を1pushで実装。どちらも movePlayer 周辺の小変更のため、新死神エージェント

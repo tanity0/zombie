@@ -143,3 +143,31 @@ describe('★赤い個体=強個体(社長裁定v0.25.3547「強個体です」)
     expect(bossPostureMax({ type: 'mimir' })).toBe(120);
   });
 });
+
+// CLAUDE.md「敵の仕様は種類(区分)で固める」(社長指示2026-08-28): 強個体区分(driller/logger)には
+// 区分の仕様(体勢値)が全部付く。検収監査で未登録だった穴の補修(区分整合)。
+describe('★強個体区分の体勢整合(driller/logger・区分仕様の補修)', () => {
+  it('driller/loggerはpumpkin/lab-zombie-3と同じくPOSTURE_ELITE_TYPESに入っている', () => {
+    expect(POSTURE_ELITE_TYPES.has('driller')).toBe(true);
+    expect(POSTURE_ELITE_TYPES.has('logger')).toBe(true);
+  });
+
+  it('driller/loggerは体勢システムを持ち、最大値は既存エリートと同じ60', () => {
+    expect(usesPostureSystem({ type: 'driller' })).toBe(true);
+    expect(usesPostureSystem({ type: 'logger' })).toBe(true);
+    expect(bossPostureMax({ type: 'driller' })).toBe(60);
+    expect(bossPostureMax({ type: 'logger' })).toBe(60);
+  });
+
+  it('driller/loggerもカウンター5発で体勢が割れる(pumpkinと同じ配線に乗る)', () => {
+    for (const type of ['driller', 'logger'] as EnemyType[]) {
+      let e = boss(type);
+      for (let i = 0; i < 5; i++) {
+        const result = applyBossPostureDamage(e, 'counter', 1000 + i)!;
+        e = { ...e, ...result.patch };
+        expect(result.triggered).toBe(i === 4);
+      }
+      expect(e.bossPosture).toBe(0);
+    }
+  });
+});

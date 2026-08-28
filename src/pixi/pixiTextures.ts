@@ -750,9 +750,10 @@ export const ensureTextures = (): Promise<void> => {
       // (帯に合わせて回転+非一様伸縮するため)でlinear。
       { name: 'fx/jorm-coil-body', scaleMode: 'linear' as const },
       // PACING_PUZZLE.md §14-2①(伐採人・logger): チェーンソー武器(構え〜薙ぎで回転する)。
-      // drawBountyWeapon経由(bountyWeaponSpritesを流用=idolのハンドガンと同じ作法)で描画するため
-      // dash-wind等と同じ理由でlinear(回転のたびに拾う画素が変わるnearestのチラつきを避ける)。
-      { name: 'reaper-chainsaw', scaleMode: 'linear' as const },
+      // ★検収監査の補修(v0.25.4009・群3項目8): ドット絵の敵素材(hunter/idol等)はnearestが
+      // 標準作法(社長指示)。回転時のチラつきよりドット絵の統一が優先=nearestへ変更
+      // (旧linearの「回転のたびに拾う画素が変わるnearestのチラつきを避ける」判断は撤回)。
+      { name: 'reaper-chainsaw', scaleMode: 'nearest' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },

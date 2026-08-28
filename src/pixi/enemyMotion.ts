@@ -75,6 +75,12 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   giantbat: { kind: 'crawl', bobPx: 1.6, rockRad: 0.035, sqAmp: 0.035, strideHz: 1.8, uneven: 0.55, faceMove: false },
   // reaper=チェーンソーを掲げた襤褸外套(v0.25.2901)。裾を引きずって歩く=重い踏みしめ(正面絵)。
   reaper: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.1, uneven: 0.20, faceMove: false },
+  // ★検収監査の補修(v0.25.4009・群3項目10): PACING_PUZZLE.md §14-2(伐採人・logger)は本体絵を
+  // reaper-common.png(=上のreaper行と全く同じ絵)そのまま流用しているのに、この表に行が無く
+  // 未登録の雑魚の既定(MOT_HOBBLER=直立ゆったり千鳥足)へ落ちていた=強個体(pumpkinTier)の
+  // 重量感と絵が食い違っていたバグ。**同じ絵は同じ動き**(CLAUDE.md「同じ動作を持つ全員に付ける」の
+  // 絵版)なので、reaper行の値をそのまま複製する(新しい値を作らない)。
+  logger: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.1, uneven: 0.20, faceMove: false },
   // PACING_PUZZLE.md §14-4-3(使者・hangedman): 吊るされた人形が宙を滑って迫る=歩かずhover
   // (ghost/lich/plantと同じ扱い。足取りではなく吊られたまま左右へ揺れる不気味さを出す・叩き台)。
   hangedman: { kind: 'hover', bobPx: 2.2, rockRad: 0.022, sqAmp: 0, strideHz: 0.6, uneven: 0, faceMove: false },

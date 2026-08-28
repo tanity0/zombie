@@ -2256,14 +2256,15 @@ export const DRILLER_THRUST_HALF_WIDTH = 12;   // 帯の半幅(px・細め)=判�
 // PACING_PUZZLE.md §14-2(降格死神・伐採人=logger): §9(削岩型)の写し+差分4点のうちの②④。
 // 薙ぎ払い(横方向)の溜め/判定/硬直/CD。間合い(接近/後退/構え)と発動距離は
 // src/utils/loggerAi.ts(純関数・テスト済み)を見る。値は全て叩き台(§9-6/§14-2「バランスの最終値
-// ではない」)。CD3.5秒・硬直400msは§14-2④の裁定どおりdrillerと同値。
-// ★windupは「槍より少し長め」(§14-2④)= driller-thrustの**設計原案の生値**(§9-4起草時点の700)を
-// 基準に850とした(driller側は社長指示2026-08-26で1200まで生値を伸ばした=実効1000msへ調整済みだが、
-// §14-2の文中比較は起草時点の700msを指している。実効値はここでも「指定値÷ENEMY_ATTACK_SPEED_MULT
-// (既定1.2)」=850÷1.2≈708ms。実機で社長が調整する前提)。
-export const LOGGER_SWEEP_WINDUP_MS = 850;    // 溜め(開始の瞬間に方向・帯をロック)
+// ではない」)。CD3.5秒は§14-2④の裁定どおりdrillerと同値。
+// ★社長裁定2026-08-28(検収監査・PACING_PUZZLE.md §14-2④で確定): windup=1300ms
+// (旧850=driller-thrust[実効1000ms=生1200]と大差なく「少し長め」が体感できなかったため引き上げ。
+// 1300÷ENEMY_ATTACK_SPEED_MULT[既定1.2]≈実効1083ms=driller-thrustの実効1000msより長い=
+// 「槍より少し長め」が成立)。硬直=1000ms(社長裁定「横払い後、硬直を1秒」。旧400=drillerと同値
+// だったのを上書き=薙ぎの後は1秒の隙・カウンター/パニッシュの窓を広く取る)。
+export const LOGGER_SWEEP_WINDUP_MS = 1300;   // 溜め(開始の瞬間に方向・帯をロック)= 実効約1083ms
 export const LOGGER_SWEEP_ACTIVE_MS = 220;    // 薙ぎ判定の表示(1回だけカプセルを積む。driller-thrustと同値)
-export const LOGGER_SWEEP_RECOVER_MS = 400;   // 硬直(§14-2④「同値」)
+export const LOGGER_SWEEP_RECOVER_MS = 1000;  // 硬直(社長裁定2026-08-28「横払い後、硬直を1秒」)
 export const LOGGER_SWEEP_CD_MS = 3500;       // 次の薙ぎ払いまでのCD(生値。§14-2④「同値」)
 export const LOGGER_SWEEP_LENGTH = 220;       // 帯の全長(px)=判定と同寸(§14-2②「長さ220」)
 export const LOGGER_SWEEP_HALF_WIDTH = 26;    // 帯の半幅(px)=判定と同寸(§14-2②「半幅26」)

@@ -14969,7 +14969,7 @@ export class PixiScene {
     }
     // PACING_PUZZLE.md §14-2①(伐採人): チェーンソー武器(bountyWeaponSpritesをキー=e.idで流用。
     // idolのハンドガンと同じ作法=v0.25.3437)も同じく既定OFF。点けるのはdrawEnemyの
-    // windup/active分岐だけ。
+    // windup/active/recover分岐だけ(v0.25.4009: recoverも§7-15のフェードアウトで残すよう拡張)。
     if (e.type === 'logger') {
       const chainsawSp = this.bountyWeaponSprites.get(e.id);
       if (chainsawSp) chainsawSp.visible = false;
@@ -15716,9 +15716,25 @@ export class PixiScene {
     }
     // PACING_PUZZLE.md §14-2(伐採人・logger): §9の削岩型の突きブロックの写し+差分。
     // 帯の両端(aiFrom/aiTarget)は既にloggerSweepBandで「プレイヤー方向と直交する横帯」として
-    // ロック済みなので、ここは driller-thrust と同じ帯描画(sfx→stx)にチェーンソー武器の
-    // 構え〜薙ぎ(慣性MUST=加速→減速のease-in-out)を重ねるだけでよい(§14-2①③)。
-    if (e.type === 'logger' && (e.aiPhase === 'logger-sweep-windup' || e.aiPhase === 'logger-sweep-active')) {
+    // ロック済みなので、赤帯の描画は driller-thrust と同じ(sfx→stx)。
+    // ★検収監査の補修(v0.25.4009・群3項目5/6/7/9): 旧実装は武器スプライトの**グリップそのもの**を
+    // 帯の遠い側の点(体から100〜170px離れた空間)へ置いていた=「浮いている」の原因。かつ
+    // windup中もactive中もangleが不変(帯の直交方向を指すだけ)=「回転しない」の原因。かつ
+    // aiPhaseがwindup/active以外になった瞬間にvisible=falseへ二値で切る=パッと消える
+    // (CLAUDE.md 慣性MUST違反)。以下で3点とも直す: ①グリップは体の手元(cx/cy近傍・
+    // LOGGER_GRIP_*)に固定アンカー ②角度は「手元→狙点(windup=帯始点/active=薙ぎの現在点/
+    // recover=帯終点)」で毎フレーム引き直す=狙点が帯上を滑るほど角度も連続的に回る
+    // ③recoverでも赤帯なしで武器だけ§7-15(weaponSpawnEase)のease-out込みで残し、windup側も
+    // 同ease-inで出現させる。本体と同じ地平線/擬似遠近フェード(artFade/depthScaleEnemy)も
+    // 明示的に掛ける(武器スプライトは view.container ではなく effectLayer 直下=本体のalpha/scaleを
+    // 自動継承しないため)。
+    // ★未解消(★未決としてPACING_PUZZLE.md §14-2へ追記・社長判断待ち・詳細はそちらを参照):
+    // 本体絵 reaper-common.png には元々チェーンソーが左肩に担がれた状態で描き込まれており、
+    // この武器スプライトと同時に見えると「チェーンソーが2本」に見える実害が残る(実測・픽셀確認済み。
+    // 刃が頭巾と重なった1枚絵のためpixi側のマスク/クロップでは頭部を欠けさせずに武器だけを
+    // 隠せない=素材差し替えを伴う判断が必要)。このバッチでは上の3点(手元アンカー・回転・
+    // フェード)だけを直す(それ自体は独立して正しい是正=見た目のズレ・瞬間消滅は解消する)。
+    if (e.type === 'logger' && (e.aiPhase === 'logger-sweep-windup' || e.aiPhase === 'logger-sweep-active' || e.aiPhase === 'logger-sweep-recover')) {
       const sfx = e.aiFromX ?? cx, sfy = e.aiFromY ?? cy;
       const stx = e.aiTargetX ?? cx, sty = e.aiTargetY ?? cy;
       const sdx = stx - sfx, sdy = sty - sfy;
@@ -15726,14 +15742,16 @@ export class PixiScene {
       const snx = -sdy / sdl, sny = sdx / sdl; // 帯の半幅方向(長軸と直交)
       const sux = sdx / sdl, suy = sdy / sdl;  // 帯の長軸方向(=プレイヤー方向と直交)
       const shw = LOGGER_SWEEP_HALF_WIDTH;
-      // §14-2②: 体の前方(プレイヤー方向)は帯の長軸(sux,suy)をさらに90°回した向き。
-      // チェーンソーはこの向きへ構え、帯に沿って(sfx→stx)横に振り抜く。
-      const fwdX = suy, fwdY = -sux;
-      const weaponAngle = Math.atan2(fwdY, fwdX);
       // 支給素材(reaper-chainsaw.png)は柄(グリップの輪)が左上・刃先が右下(実測)。
       // グリップ位置=素材内の割合、intrinsicAngle=グリップ→刃先の向き(実測≈21°)。
       const CHAINSAW_GRIP_X = 0.11, CHAINSAW_GRIP_Y = 0.2, CHAINSAW_INTRINSIC = 0.365;
-      const CHAINSAW_LENGTH_PX = 100; // 叩き台=実機で社長が調整する前提(§9-6/§14-2と同じ扱い)
+      // ★項目7: 本体と同じ擬似遠近スケール(遠くの伐採人ほど小さく=depthScaleEnemy)を長さへ掛ける。
+      const CHAINSAW_LENGTH_PX = 100 * this.depthScaleEnemy(fb.footY); // 100=叩き台(§9-6/§14-2と同じ扱い)
+      // ★項目5: グリップは常に「体の手元」(中心からわずかに前方・肩の高さ)に固定する
+      // (帯の遠い側の点へは絶対に置かない=浮遊バグの再発防止)。fwdX/fwdY=体の前方(プレイヤー方向)。
+      const fwdX = suy, fwdY = -sux;
+      const LOGGER_GRIP_FWD_PX = 34, LOGGER_GRIP_UP_PX = 18;
+      const gripX = cx + fwdX * LOGGER_GRIP_FWD_PX, gripY = cy + fwdY * LOGGER_GRIP_FWD_PX - LOGGER_GRIP_UP_PX;
       if (e.aiPhase === 'logger-sweep-active') {
         // 慣性MUST(CLAUDE.md「動きの絶対ルール」): 加速→減速のease-in-out(smoothstep)で
         // 帯の始点(sfx)→終点(stx)を振り抜く。判定は積み済み=絵をどう動かしても判定は不変。
@@ -15750,10 +15768,12 @@ export class PixiScene {
         ];
         const aFade = swing < 0.75 ? 1 : 1 - (swing - 0.75) / 0.25; // 振り切ってからフェード
         o.poly(apts).fill({ color: 0xffb0a0, alpha: 0.22 * aFade });
-        // ★武器絵=チェーンソー(帯に沿って横に振り抜く。分類①=赤帯が判定の正・武器絵は多少ズレてよい)。
-        this.drawBountyWeapon(e.id, 'reaper-chainsaw', wx, wy, weaponAngle, CHAINSAW_LENGTH_PX, 0.95, 1, false,
+        // ★項目9: 角度=手元(グリップ)→薙ぎの現在点(wx,wy)。wxが帯上を滑るほど角度も連続的に
+        // 回る(旧実装は角度固定=「回転しない」の直接原因だった)。
+        const swingAngle = Math.atan2(wy - gripY, wx - gripX);
+        this.drawBountyWeapon(e.id, 'reaper-chainsaw', gripX, gripY, swingAngle, CHAINSAW_LENGTH_PX, 0.95 * artFade, 1, false,
           CHAINSAW_GRIP_X, CHAINSAW_GRIP_Y, CHAINSAW_INTRINSIC);
-      } else {
+      } else if (e.aiPhase === 'logger-sweep-windup') {
         const sprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (LOGGER_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
         const spulse = 0.55 + 0.45 * Math.sin(now / 80);
         const sMet = PixiScene.meteorPhase(sprog);
@@ -15769,9 +15789,25 @@ export class PixiScene {
         if (sVisible) o.poly(spts).fill({ color: 0xff2a2a, alpha: telFillA(sprog, spulse) * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, sfx, sfy, stx, sty, shw, 0xff3b3b, telStrokeA(sprog, spulse), 0, sprog);
         else if (sVisible) o.poly(spts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(sprog, spulse) });
-        // ★武器絵=構え(帯の始点側=sfxに構える。§14-2①「windup中=構え(帯の始点側に構える)」)。
-        this.drawBountyWeapon(e.id, 'reaper-chainsaw', sfx, sfy, weaponAngle, CHAINSAW_LENGTH_PX, 0.9, 1, false,
-          CHAINSAW_GRIP_X, CHAINSAW_GRIP_Y, CHAINSAW_INTRINSIC);
+        // ★項目5/6: 角度=手元→帯の始点(sfx側=これから薙ぐ方向への構え)。
+        // §7-15(weaponSpawnEase)でwindup開始からの経過msぶん、下から慣性つきズレ+フェードインする
+        // (旧実装はaiPhaseがwindupに入った瞬間に alpha=0.9 で即出現=パッと出る違反だった)。
+        const cockAngle = Math.atan2(sfy - gripY, sfx - gripX);
+        const windupDur = LOGGER_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+        const windupElapsed = windupDur - Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
+        const ease = weaponSpawnEase(windupElapsed, Infinity);
+        this.drawBountyWeapon(e.id, 'reaper-chainsaw', gripX, gripY + ease.dy, cockAngle, CHAINSAW_LENGTH_PX,
+          0.9 * artFade * ease.alphaMul, 1, false, CHAINSAW_GRIP_X, CHAINSAW_GRIP_Y, CHAINSAW_INTRINSIC);
+      } else {
+        // logger-sweep-recover(項目6): 判定はactiveで終わっているので赤帯は出さない。武器は
+        // 振り切った姿勢(手元→帯の終点=stx側)のまま保持し、§7-15の消滅イージング
+        // (recover残り時間=remain)で下へ沈みながらフェードアウトする(旧実装はaiPhaseがrecoverへ
+        // 変わった瞬間にvisible=false=瞬間消滅だった)。
+        const remain = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
+        const ease = weaponSpawnEase(Infinity, remain);
+        const endAngle = Math.atan2(sty - gripY, stx - gripX);
+        this.drawBountyWeapon(e.id, 'reaper-chainsaw', gripX, gripY + ease.dy, endAngle, CHAINSAW_LENGTH_PX,
+          0.9 * artFade * ease.alphaMul, 1, false, CHAINSAW_GRIP_X, CHAINSAW_GRIP_Y, CHAINSAW_INTRINSIC);
       }
     }
     if (isBountyType(e.type)) {
