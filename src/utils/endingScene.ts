@@ -9,7 +9,8 @@
 //   §1 兵士の発砲          → EndingSoldier.phase='fire' / lastShotAt(描画側がここからマズルフラッシュ/
 //                             トレイル/薬莢/反動の経過時間を逆算する。ここには視覚専用の値を持たせない)
 //   §7 慣性(兵士の停止/再発進) → phase='decel'/'accel' の velMult ease(EASE_MS)
-//   §9 兵士の群れ           → DEFAULT_ENDING_SOLDIER_TUNING(常在数はuseGameLoop側の?endsoldiers=)
+//   §9 兵士の群れ           → DEFAULT_ENDING_SOLDIER_TUNING(常在数・投入位置だけはgameStore側の
+//                             ?endsoldiers=/?endsoldx=等。tuning本体の実行時上書きは現状無い=検収C-1是正)
 //   §2 フィルの描画          → EndingPhillState.frame(pixi側はこれをそのままコマ番号として使う)
 //   §8 救護シーン           → EndingPhillState.phase='approachDecel'..'healReverse'+fallenSoldierAt()
 
@@ -43,7 +44,8 @@ export interface EndingSoldierTuning {
   bandHalfPx: number;                        // 初期/再投入時のY散らし半幅(playableAreaの帯に合わせる)
 }
 
-// ENDING_SCENE.md §9(叩き台)。実機調整用に useGameLoop が ?endsoldiers= 等で上書きして渡す。
+// ENDING_SCENE.md §9(叩き台)。呼び出し側(gameStore.updateEndingScene)はこの既定値のまま使う
+// (?endsoldiers=等のツマミは常在数・投入位置のみ。tuningの上書き配線は現状存在しない=検収C-1是正)。
 export const DEFAULT_ENDING_SOLDIER_TUNING: EndingSoldierTuning = {
   speedMin: 52, speedMax: 78,
   walkMsMin: 2500, walkMsMax: 5000,
@@ -221,13 +223,16 @@ export interface EndingPhillState {
   phase: EndingPhillPhase;
   phaseMs: number;
   frame: number;              // 表示コマ(walk=0..2/heal=0..5)。pixi側はそのままテクスチャ添字に使う。
+  animMs: number;             // 歩行アニメ用の蓄積時間(ms)。velMult連動で進む=減速中は脚もゆっくり
+                              // (検収A-4の足滑り対策。walk/approachDecel/accelで使い、フェーズ跨ぎで連続)。
   lastHealedIndex: number;    // 直近に救護し終えた倒れ兵士のindex(-1=まだ無し)
   targetIndex: number | null; // 現在アプローチ/救護中の倒れ兵士index(walk中はnull)
   velMult: number;            // 0..1。呼び出し側がこれを右移動の速度倍率として使う(§4のカメラ台車入力)。
 }
 
 export interface EndingPhillTuning {
-  approachTriggerPx: number; // 停止目標(倒れ兵士手前stopOffsetPx)までこの距離に入ったら減速開始
+  approachTriggerPx: number; // 停止目標(倒れ兵士手前stopOffsetPx)までこの距離に入ったらapproachDecelへ
+  approachDecelPx: number;   // 実際に速度が落ち始める距離(検収A-4: 240px漸近で9秒失速していたのを短く)
   stopOffsetPx: number;      // 倒れ兵士の手前何pxで止まるか(§8: 約60px)
   healFrameMs: number;       // heal 1コマの表示時間(§2/§8: 約280ms)
   healHoldMs: number;        // heal5コマ目の保持(§8: 約600ms)
@@ -237,6 +242,7 @@ export interface EndingPhillTuning {
 
 export const DEFAULT_ENDING_PHILL_TUNING: EndingPhillTuning = {
   approachTriggerPx: 240,
+  approachDecelPx: 90,
   stopOffsetPx: 60,
   healFrameMs: 280,
   healHoldMs: 600,
@@ -244,43 +250,52 @@ export const DEFAULT_ENDING_PHILL_TUNING: EndingPhillTuning = {
   walkFrameMs: 260,
 };
 
+// 停止判定のしきい値(px)。検収A-4: 旧2pxは床0.04×漸近と合わさり到達に9秒超掛かっていた。
+// 速度床0.3(下のclamp)と合わせて、減速開始から概ね1秒前後で救護へ入る。
+const APPROACH_STOP_EPS_PX = 8;
+
 export const createInitialEndingPhill = (): EndingPhillState => ({
-  phase: 'walk', phaseMs: 0, frame: 0, lastHealedIndex: -1, targetIndex: null, velMult: 1,
+  phase: 'walk', phaseMs: 0, frame: 0, animMs: 0, lastHealedIndex: -1, targetIndex: null, velMult: 1,
 });
 
 // walk中/accel中の歩行コマ(0,1,2,1のping-pong=中割りが自然に見える3コマの回し方。護衛と同型)。
+// 添字は animMs(velMult連動の蓄積時間)で回す=減速すると脚の回転も同率で遅くなる(検収A-4)。
 const WALK_FRAME_SEQ = [0, 1, 2, 1];
-const walkFrame = (phaseMs: number, tuning: EndingPhillTuning): number =>
-  WALK_FRAME_SEQ[Math.floor(phaseMs / tuning.walkFrameMs) % WALK_FRAME_SEQ.length];
+const walkFrame = (animMs: number, tuning: EndingPhillTuning): number =>
+  WALK_FRAME_SEQ[Math.floor(animMs / tuning.walkFrameMs) % WALK_FRAME_SEQ.length];
 
 // 1フレーム進める(純関数)。playerX=フィル(=プレイヤー実体)の現在のワールドX。
+// animMs は「このフレーム開始時点のvelMult」で進める(兵士側stepEndingSoldierの移動と同じ1フレーム遅延の流儀)。
 export const stepEndingPhill = (
   s: EndingPhillState, playerX: number, dtMs: number,
   tuning: EndingPhillTuning = DEFAULT_ENDING_PHILL_TUNING,
 ): EndingPhillState => {
   if (dtMs <= 0) return s;
   const phaseMs = s.phaseMs + dtMs;
+  const animMs = s.animMs + dtMs * s.velMult;
   switch (s.phase) {
     case 'walk': {
       const target = nextFallenSoldierAfter(s.lastHealedIndex, playerX);
       const stopX = target.x - tuning.stopOffsetPx;
       const dist = stopX - playerX;
       if (dist <= tuning.approachTriggerPx) {
-        return { ...s, phase: 'approachDecel', phaseMs: 0, velMult: 1, targetIndex: target.index, frame: walkFrame(0, tuning) };
+        return { ...s, phase: 'approachDecel', phaseMs: 0, animMs, velMult: 1, targetIndex: target.index, frame: walkFrame(animMs, tuning) };
       }
-      return { ...s, phaseMs, velMult: 1, frame: walkFrame(phaseMs, tuning) };
+      return { ...s, phaseMs, animMs, velMult: 1, frame: walkFrame(animMs, tuning) };
     }
     case 'approachDecel': {
       const target = fallenSoldierAt(s.targetIndex ?? 0);
       const stopX = target.x - tuning.stopOffsetPx;
       const dist = Math.max(0, stopX - playerX);
-      if (dist <= 2) {
-        return { ...s, phase: 'healForward', phaseMs: 0, velMult: 0, frame: 0 };
+      if (dist <= APPROACH_STOP_EPS_PX) {
+        return { ...s, phase: 'healForward', phaseMs: 0, animMs: 0, velMult: 0, frame: 0 };
       }
-      const velMult = tuning.approachTriggerPx > 0
-        ? Math.max(0.04, Math.min(1, dist / tuning.approachTriggerPx))
+      // 速度=距離比例(approachDecelPx内で1→0.3へ)。床0.3=歩き切って止まる(旧0.04は事実上の静止=
+      // 9秒の失速。検収A-4)。approachTriggerPx〜approachDecelPxの間はclampで1のまま=等速で寄る。
+      const velMult = tuning.approachDecelPx > 0
+        ? Math.max(0.3, Math.min(1, dist / tuning.approachDecelPx))
         : 0;
-      return { ...s, phaseMs, velMult, frame: walkFrame(phaseMs, tuning) };
+      return { ...s, phaseMs, animMs, velMult, frame: walkFrame(animMs, tuning) };
     }
     case 'healForward': {
       const frame = Math.min(5, Math.floor(phaseMs / tuning.healFrameMs));
@@ -302,9 +317,9 @@ export const stepEndingPhill = (
     case 'accel': {
       const t = Math.min(1, phaseMs / tuning.accelMs);
       if (t >= 1) {
-        return { ...s, phase: 'walk', phaseMs: 0, velMult: 1, frame: walkFrame(0, tuning) };
+        return { ...s, phase: 'walk', phaseMs: 0, animMs, velMult: 1, frame: walkFrame(animMs, tuning) };
       }
-      return { ...s, phaseMs, velMult: t, frame: walkFrame(phaseMs, tuning) };
+      return { ...s, phaseMs, animMs, velMult: t, frame: walkFrame(animMs, tuning) };
     }
     default:
       return s;

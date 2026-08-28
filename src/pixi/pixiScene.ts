@@ -987,6 +987,8 @@ const ENDING_HORIZON_SCALE = Math.max(0.2, tsNum('endhz', 0.65));
 // 薬莢/反動は全てコード生成)。数値は全て叩き台・実機調整用ツマミ付き。
 const ENDING_MUZZLE_FLASH_MS = Math.max(1, tsNum('endmuzzle', 100)); // §1「80〜120ms」
 const ENDING_TRACER_MS = Math.max(1, tsNum('endtracer', 120));       // §1「短命の黄色い線(120ms)」
+// 兵士のマズルフラッシュ基準幅(px)。検収A-2: 城ボス用の既定(275px)は兵士(表示高~65px)の4倍= 実寸へ。
+const ENDING_MUZZLE_SIZE_PX = Math.max(4, tsNum('endmuzzlesize', 40));
 const ENDING_TRACER_LEN_PX = Math.max(0, tsNum('endtracerlen', 46));
 const ENDING_SHELL_LIFE_S = Math.max(0.05, tsNum('endshell', 0.4));  // 薬莢が後方へ小放物線を描く時間
 const ENDING_RECOIL_MS = Math.max(1, tsNum('endrecoil', 140));       // §7「発砲の瞬間、体が2〜3px後ろへ跳ねて戻る」
@@ -22388,12 +22390,13 @@ export class PixiScene {
       const key = `end:${s.id}`;
       const sp = this.endingSoldierSprites.get(s.id);
       const w = sp ? Math.abs(sp.width) : 60, h = sp ? Math.abs(sp.height) : 90;
-      // 銃口位置(叩き台・§1「表示幅の前方+0.42×表示高、高さ中心-0.05×表示高」)。常に左向きなので前方=左(-x)。
+      // 銃口位置。常に左向きなので前方=左(-x)。高さは検収A-3の画素実測(銃身先端=上から84〜86%)
+      // に合わせて足元から0.15×表示高(旧: 高さ中心-0.05h=胸の高さで浮いていた)。
       const mx = s.x - w * 0.42;
-      const my = s.y - h * 0.5 - h * 0.05;
+      const my = s.y - h * 0.15;
       const sinceFire = s.lastShotAt > 0 ? now - s.lastShotAt : Infinity;
       if (sinceFire >= 0 && sinceFire < ENDING_MUZZLE_FLASH_MS) {
-        this.drawBossGunMuzzle(key, mx, my, Math.PI, 1 - sinceFire / ENDING_MUZZLE_FLASH_MS); // 左向き=角度π
+        this.drawBossGunMuzzle(key, mx, my, Math.PI, 1 - sinceFire / ENDING_MUZZLE_FLASH_MS, ENDING_MUZZLE_SIZE_PX); // 左向き=角度π
       } else {
         this.hideBossGunMuzzle(key);
       }
@@ -22435,8 +22438,9 @@ export class PixiScene {
     }
   }
 
-  // フィル(=プレイヤー実体・不可視のカメラ台車)専用スプライト(§2/§4)。素材は既定で左向きなので、
-  // 「左→右」の進行方向(社長の言葉)に合わせて水平反転する。**1系列1スケール**(監査A-2):
+  // フィル(=プレイヤー実体・不可視のカメラ台車)専用スプライト(§2/§4)。素材は既定で右向き
+  // (検収監査A-1の画素実見)なので「左→右」の進行方向(社長の言葉)にそのまま=反転しない。
+  // **1系列1スケール**(監査A-2):
   // walk-0の内容高を基準に決めたスケールを walk/heal 全コマへ使う(しゃがむと絵が低くなるのが正=
   // コマごとの正規化は禁止)。全コマ下端トリム済み(v4033)なので anchor(0.5,1)でそのまま接地する。
   private drawEndingPhill(phill: EndingPhillState | null, player: Player) {
@@ -22453,7 +22457,7 @@ export class PixiScene {
     }
     const scAbs = this.endingPhillScale ?? 1;
     sp.texture = tex;
-    sp.scale.set(-scAbs, scAbs); // 素材は既定左向き→右向きへ反転(実機で逆なら符号を戻す・叩き台)
+    sp.scale.set(scAbs, scAbs); // 素材は既定右向き=進行方向(右)とそのまま一致(検収A-1で反転を撤回)
     const fb = playerFootBox(player);
     sp.position.set(Math.round(fb.footX), Math.round(fb.footY));
     const ha = this.horizonActorAlpha(fb.footY);
@@ -22840,7 +22844,9 @@ export class PixiScene {
   // 技表GO(城ボス銃): マズルフラッシュ大。守護霊/プレイヤーのdrawMuzzleFlash(単一スプライト)とは別に、
   // 銃口ごと(idx単位)に1枚のpooled spriteを持つ(3挺同時発射があるため単一だと取り合いになる)。
   private bossGunMuzzleSprites = new Map<string, Sprite>();
-  private drawBossGunMuzzle(key: string, x: number, y: number, angle: number, life01: number): void {
+  // sizePx=閃光の基準表示幅(省略時=城ボスの「大」172×1.6)。エンディング兵士(表示高~65px)は
+  // 実寸に合わせて小さく渡す(検収A-2: 既定のままだと275pxで兵士の4倍を覆っていた)。
+  private drawBossGunMuzzle(key: string, x: number, y: number, angle: number, life01: number, sizePx: number = 172 * 1.6): void {
     if (!FX_RING_ENABLED || life01 <= 0.01) { this.hideBossGunMuzzle(key); return; }
     const tex = getTexture('fx/muzzle-flash');
     if (!tex) return;
@@ -22850,8 +22856,8 @@ export class PixiScene {
       this.L.effectLayer.addChild(sp); this.bossGunMuzzleSprites.set(key, sp);
     }
     if (sp.texture !== tex) sp.texture = tex;
-    // 「大」= プレイヤー/守護霊の閃光より一回り大きく(1.6倍を基準)、発火直後が最大でease-inで縮む。
-    const s = (172 * 1.6 / 172) * (0.6 + 0.4 * life01);
+    // 発火直後が最大でease-inで縮む。
+    const s = (sizePx / 172) * (0.6 + 0.4 * life01);
     sp.scale.set(s, s);
     sp.rotation = angle;
     sp.position.set(x, y);

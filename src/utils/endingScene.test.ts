@@ -191,6 +191,35 @@ describe('endingScene — フィルの救護状態機械(§2/§4/§8)', () => {
     expect(s.velMult).toBe(1);
   });
 
+  it('approachDecelは有限時間で救護へ収束し、途中の速度床は0.3(検収A-4=9秒失速の再発防止)', () => {
+    const t = DEFAULT_ENDING_PHILL_TUNING;
+    let s = createInitialEndingPhill();
+    const target = fallenSoldierAt(0);
+    const stopX = target.x - t.stopOffsetPx;
+    // 減速開始点の少し外側から、呼び出し側の実装どおり velMult×基準速度 で自走させて収束を見る。
+    let playerX = stopX - t.approachTriggerPx + 1;
+    const speedPxS = 220; // 仮の基準歩速。値は結論に効かない(床0.3がある限り有限時間で届く)
+    let elapsedMs = 0;
+    while (s.phase !== 'healForward' && elapsedMs < 10000) {
+      s = stepEndingPhill(s, playerX, 16, t);
+      if (s.phase === 'approachDecel') expect(s.velMult).toBeGreaterThanOrEqual(0.3);
+      playerX += speedPxS * s.velMult * (16 / 1000);
+      elapsedMs += 16;
+    }
+    expect(s.phase).toBe('healForward');
+    expect(elapsedMs).toBeLessThanOrEqual(2500); // 旧実装(床0.04・しきい値2px)は9秒超掛かっていた
+  });
+
+  it('歩行コマはvelMult連動のanimMsで進む(減速中は脚もゆっくり=足滑り対策・検収A-4)', () => {
+    const t = DEFAULT_ENDING_PHILL_TUNING;
+    let s: ReturnType<typeof createInitialEndingPhill> =
+      { ...createInitialEndingPhill(), phase: 'approachDecel', targetIndex: 0, velMult: 0.5, animMs: 0 };
+    const target = fallenSoldierAt(0);
+    const playerX = target.x - t.stopOffsetPx - 50; // 停止点まで50px(=減速域内・まだ止まらない)
+    s = stepEndingPhill(s, playerX, 100, t);
+    expect(s.animMs).toBeCloseTo(50); // 100ms × velMult0.5(フレーム開始時点の値)
+  });
+
   it('healForward中はvelMult=0(停止して救護動作に専念=判定なしの観賞シーン)', () => {
     let s: ReturnType<typeof createInitialEndingPhill> = { ...createInitialEndingPhill(), phase: 'healForward', phaseMs: 0, targetIndex: 0 };
     s = stepEndingPhill(s, 0, 50, DEFAULT_ENDING_PHILL_TUNING);
