@@ -8066,7 +8066,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ★SAME_ARENA §9(対人体勢): 紫/daze中はプレイヤーのサブ発動入口を塞ぐ——subWeaponsを空にした
         // 写しを主語にする=以下全ブロックの includes 判定が一括で落ちる(幻影/守護霊のサブは
         // combatActorPlayer(summonId) 経由の別主語なので影響しない)。CD・所持は不変=明けたら再開。
-        const subWeaponPlayer = isPvpIncapacitated(subWeaponPlayerRaw.pvpPosture, gameTime)
+        // エンディング(観賞シーン)も同じ入口で塞ぐ——手榴弾等「敵がいなくてもCD明けで出る」種が
+        // フィル(=プレイヤー実体)から出てしまうため(社長報告2026-08-29・ENDING_SCENE.md)。
+        const subWeaponPlayer = isPvpIncapacitated(subWeaponPlayerRaw.pvpPosture, gameTime) || endingStage
           ? { ...subWeaponPlayerRaw, subWeapons: [] }
           : subWeaponPlayerRaw;
         // MOVEMENT_REWORK.md 仕様2(社長確定v0.25.2442): スケーター乗車中のサブウェポン発動封印
