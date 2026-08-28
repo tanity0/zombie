@@ -6590,6 +6590,24 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const p = get().player;
     if (isPvpIncapacitated(p.pvpPosture, get().gameTime)) return false; // ★SAME_ARENA §9: 紫/daze中は振れない(窓も開かない)
+    // ★v0.25.4003(社長報告2026-08-28「スラッシャーが連撃うまくできない」): チェーン受付は
+    // triggerCounter側(PC直呼び)にしか無く、タッチのタップは下の通常CD門(820ms)が先に飲むため、
+    // チェーンCD(300ms)のリズムのタップが**予約もされずに捨てられていた**=タッチだけ連撃が
+    // 構造的に一度も出ない(前隙リワーク2026-08-24以降の退行)。PCと同じ受付をここに移植する:
+    // CD中=先行入力の予約(v3254) / 明けていれば即・追撃(前隙なし=PCと同じ) / 時間切れ=破棄して通常へ。
+    if (hasSkill(p, 'slasher') && p.slasherChainReadyAt > 0) {
+      const rgt = get().realGameTime;
+      if (rgt >= p.slasherChainReadyAt + SLASHER_CHAIN_TIMEOUT_MS) {
+        get().setSlasherCombo(0, 0); // 時間切れ=破棄して下の通常経路へ(このタップは新しい初撃の候補)
+      } else if (rgt < p.slasherChainReadyAt) {
+        set(state => ({ player: { ...state.player, slasherQueuedTap: true } }));
+        return false; // チェーンCD中=予約のみ(発動はuseGameLoopのpumpSlasherQueuedTap)
+      } else {
+        const chained = applySlasherChainStrike(get, p, get().gameTime, rgt);
+        if (chained) return true; // 追撃成立(空振りでも成立=v3934。窓・通常CD・前隙は開かない=PCのチェーン経路と同じ)
+        // null=不発条件(紫中等)→下の通常経路へ落とす
+      }
+    }
     if (now < p.counterCooldownEnd) return false;
     if (p.pendingSwingAt > 0) return false; // 既に前隙中(二重に振らない)
     set(state => ({
