@@ -1,5 +1,71 @@
 # Development Log
 
+## v0.25.4012 — PACING_PUZZLE §14-4新死神 3次補修バッチ(実装チャット・Sonnet) 【2026-08-28 21:01 JST】
+
+2巡目検収(HEAD 45cd9a8で実測済み)で残った重大4件のうち、機械的に直せる3件+表記1件を是正。
+障害物すり抜け(A-新2)と本体速度の恒久強化問題(C-1)は社長裁定待ち=このバッチでは触っていない
+(§14-4-7に★未決として記録)。**状態変化: §14-4新死神 → 3次補修済み(★未決2件=社長裁定待ち・
+確認検収待ち)**。
+
+### A-新1 使者のKB中は前進を止める
+`src/hooks/useGameLoop.ts`の使者ムーバ(旧5297-5310行付近)は`knockbackUntil`を見ず毎フレーム
+前進を書いており、KBスライド(gameStore.ts updateEnemies内・このムーバより後段で実行される
+唯一の適用点)と綱引きになっていた(検収実測: 弾KB[初速86]では1フレームも後退せず、KB窓280msの
+正味で20.2px近づいた・通常近接でも11.8px近づく)。
+判定を純関数`hangedmanKnockbackActive(e, nowMs)`(`src/utils/reaper2.ts`新設)へ切り出し、
+trueの間はx/yのパッチを書かない(damage/speed/reaperWarpAlphaだけ更新)ようにした。KBスライド
+だけが座標を動かすことで、他の全敵と同じ「KB中はチェイスしない」文法に揃う。
+テスト: `src/utils/reaper2.test.ts`に`hangedmanKnockbackActive`の単体テスト、
+`src/store/reaperDoubleDrive.test.ts`に「hangedmanKnockbackActiveがtrueの間は前進せず、
+updateEnemies(KBスライドの唯一の適用点)だけを回すと正味でプレイヤーから後退する」を追加。
+
+### A-新2 KILL!にズームアテンションを付ける
+`src/utils/combatTick.ts`のKILL!演出(絵+コールアウトのみ)に、幻影致命
+(`showPvpFatalOnPlayerPresentation`・gameStore.ts)と同じ「CD無視の最大ズーム」を追加。
+`CombatEffects`インターフェース(combatTick.ts)へ`triggerFinishImpact`の口を1本足し、
+useGameLoop.ts側の実装(`useGameStore.getState().triggerFinishImpact(...)`)・
+`NOOP_COMBAT_EFFECTS`(ヘッドレス用no-op)の両方に配線した。KILL!発火時に
+`fx.triggerFinishImpact(dx, dy, true)`を1回だけ呼ぶ(既存の致命演出と同じ経路=新発明なし)。
+
+### A-新3 廊下(洋館)で使者が同一座標に重なる
+corridorModeでは`corridorEncirclePoints`が常に2点しか返さず、呼び出し側の`ringPts[slot % 2]`で
+slot 0/2/4が完全同座標・同方向(=永久に重なる)になっていた(A-3の固定角化で決定論化した退行)。
+`corridorEncirclePoints`(`src/utils/reaper2.ts`)に`maxSlots`/`slotSpacingPx`引数を追加し、
+スロット数ぶんの点を返すように変更(旧2引数呼び出しは既定値で従来どおり2点=後方互換)。同じ側
+(左/右)に落ちるペアは進行軸(y=洋館の奥行き)方向へペアごと±spacing(既定132=使者の高さ92+
+マージン40・叩き台)でずらす。呼び出し側(useGameLoop.ts)は`corridorEncirclePoints(pcx, pcy,
+radius, REAPER2_CONFIG.servantMax)`へ変更。
+テスト: `src/utils/reaper2.test.ts`に「maxSlots=5では5スロットの座標が全て異なる」等を追加。
+
+### C-2 コールアウト文字を『KILL!』に
+`src/utils/combatTick.ts`の使者(hangedman)致命の`spawnCallout`文字列を`'Kill!'`→`'KILL!'`へ。
+実在確認: この文字列はcombatTick.ts内のローカルリテラルで、gameStore.tsの
+`showBossFatalPresentation`(幻影致命・強個体気絶3×等が共有)とは別のリテラル=共通文字列を割らずに
+死神側だけ直せた(あちらの'Kill!'表記は別裁定圏として触っていない)。
+
+### C-3 障害物すり抜けの記録(★未決 #R2-1)
+v0.25.4010の二重駆動解消(`updateEnemies`の汎用チェイスを本体/使者だけ早期returnで外した)で、
+`resolveMove`(障害物解決)と`stepAvoid`(回避)も一緒に外れており、木/バス/建物/城/壁をすり抜ける
+状態になっている(補修バッチ2次までは二重駆動の副作用として当たっていた=意図した衝突ではなかった)。
+このバッチでは挙動を変更せず、PACING_PUZZLE.md §14-4-7へ★未決として記録した(裁定待ち)。
+
+### ★未決2件(PACING_PUZZLE.md §14-4-7に記録・裁定待ち)
+- ★未決 #R2-1「死神・使者の障害物すり抜け」: 案A(すり抜けを正とする)/案B(他の敵と同じく衝突)。
+  推薦=案A。
+- ★未決 #R2-2「本体速度に恒久強化(速度)を含むか」: 実装=`player.speed`(恒久強化込み)。
+  推薦=現状維持(恒久強化込みのまま=死神は常にプレイヤーの素の足と等倍)。
+
+### 検証
+`npm run typecheck`(エラー0)・`npm run lint`(エラー0・warning8件は既存分=変更なし)。
+関連テスト: `src/utils/reaper2.test.ts`(25 tests)・`src/store/reaperDoubleDrive.test.ts`
+(4 tests)・`src/utils/combatTick.test.ts`(5 tests)・`src/utils/enemyVariant.test.ts`(10 tests)
+=全green。
+
+### 自己点検(実装精度の規律5)
+今回の変更は憲法テスト(constitution.test.ts)の対象範囲(シーン/演目/台本/しきい値)に触れていない。
+仕様変更(CLAUDE.md MUST)には該当しない(検収監査で確定した重大の機械的是正+記述是正のみ・
+仕様書の数値・意図は変更していない)。
+
 ## v0.25.4011 — skills.test のランナー覚醒テスト是正(設計チャット直実装) 【2026-08-28 20:35 JST】
 
 新死神補修(v0.25.4010)の検証で「既存の失敗」と報告された skills.test.ts のランナー覚醒テストは、

@@ -99,6 +99,10 @@ export interface CombatEffects {
   addMeleeFinishCombo: (amount?: number) => void;
   triggerPlayerDeath: (x: number, y: number) => void;
   markMeleeSwingFx: () => void;
+  // 補修バッチ3次(A-新2): 使者(hangedman)の接触致命にCD無視の最大ズームアテンションを付ける口。
+  // gameStore.tsのtriggerFinishImpact(既存の致命演出=幻影/裏ボス等の全致命が通る唯一の経路)と
+  // 同じシグネチャ(戻り値は呼び出し側で使わないためvoid化)。
+  triggerFinishImpact: (targetX: number, targetY: number, forceMaximumZoom?: boolean) => void;
 }
 
 // ヘッドレス(playtestDriver.ts)用: 全て何もしない(判定条件の評価そのものには影響しない)。
@@ -115,6 +119,7 @@ export const NOOP_COMBAT_EFFECTS: CombatEffects = {
   addMeleeFinishCombo: () => {},
   triggerPlayerDeath: () => {},
   markMeleeSwingFx: () => {},
+  triggerFinishImpact: () => {},
 };
 
 // ==== G4b(BOT_AND_GHOST.md §2.9・社長裁定「1:は当然当たらないと意味がない」v0.25.2454返信) ====
@@ -1417,13 +1422,20 @@ export const applyContactDamage = (
         // (gameStore.ts)と同じ「絵の型」をfx経由(ヘッドレス安全)で再現し、700ms(MELEE_FINISH_
         // SLOW_MS)ぶん見せ切ってから死亡演出タイムラインへ渡す(死亡側のズーム開始を700ms遅延=
         // 同フレーム上書きでKILLが潰れるのを防ぐ)。
+        // 補修バッチ3次(A-新2): 幻影の致命(showPvpFatalOnPlayerPresentation・gameStore.ts)と同じ
+        // 「絵+CD無視の最大ズーム」の型に揃え、triggerFinishImpact(force=true)を追加で発火する
+        // (仕様§14-4-3「KILL!コールアウト+ズーム(700ms)を先に見せ切ってから死亡演出」)。
         fx.spawnBurst(dx, dy, '#dc2626', 30);
         fx.spawnBurst(dx, dy, '#7f1d1d', 14);
         fx.spawnRing(dx, dy, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
         fx.spawnRing(dx, dy, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
         fx.spawnRing(dx, dy, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
         fx.spawnGlow(dx, dy, GLOW_R_S, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS);
-        fx.spawnCallout(dx, dy - 6, 'Kill!', '#ffe4e6', { bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_MS - 140, duration: MELEE_FINISH_SLOW_MS });
+        // C-2(記述の是正): 社長の言葉・仕様書は「KILL!」(全角/半角問わず大文字)。この経路(死神側)は
+        // gameStore.tsのshowBossFatalPresentationとは別の文字列リテラルなので、共通表記を割らずに
+        // ここだけ直せる(実在確認済み=あちらの'Kill!'は別裁定圏として触らない)。
+        fx.spawnCallout(dx, dy - 6, 'KILL!', '#ffe4e6', { bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_MS - 140, duration: MELEE_FINISH_SLOW_MS });
+        fx.triggerFinishImpact(dx, dy, true); // CD無視の最大ズーム(幻影致命と同じ型)
         setTimeout(() => fx.triggerPlayerDeath(dx, dy), MELEE_FINISH_SLOW_MS);
       } else {
         fx.triggerPlayerDeath(dx, dy);

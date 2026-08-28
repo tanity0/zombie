@@ -12,6 +12,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { useGameStore, KNOCKBACK_DURATION } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
+import { hangedmanKnockbackActive } from '../utils/reaper2';
 
 describe('updateEnemies — 死神本体/使者は汎用チェイスの対象外(補修バッチA-1)', () => {
   it('死神本体(reaperChaser=true)はupdateEnemiesだけでは1pxも動かない', () => {
@@ -58,6 +59,33 @@ describe('updateEnemies — 死神本体/使者は汎用チェイスの対象外
 
     const after = useGameStore.getState().enemies[0];
     expect(after.x).toBeGreaterThan(before.x); // KBスライドで+x方向へ動く=KB経路は生きている
+
+    spy.mockRestore();
+  });
+
+  it('★補修バッチ3次(A-新1)の再発防止: KB窓中はhangedmanKnockbackActiveがtrueを返し、\n     専用ムーバが前進パッチを出さない前提でupdateEnemiesだけを回すと、正味でプレイヤーから後退する', () => {
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    useGameStore.getState().resetGame('warrior');
+    const player = useGameStore.getState().player;
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    // プレイヤーの右300pxに使者を置き、KBはプレイヤーから離れる向き(+x)へ弾く。
+    const servant = spawnEnemyAt('hangedman', player.x + 300, player.y, useGameStore.getState().gameTime);
+    servant.knockbackVx = 200; // +x = プレイヤーから離れる向き
+    servant.knockbackVy = 0;
+    servant.knockbackUntil = Date.now() + KNOCKBACK_DURATION;
+    useGameStore.setState({ enemies: [servant] });
+    const before = useGameStore.getState().enemies[0];
+    const beforeDist = Math.hypot(before.x + before.width / 2 - pcx, before.y + before.height / 2 - pcy);
+
+    // useGameLoop.ts の使者ムーバが実際に呼ぶ判定(hangedmanKnockbackActive)がtrueなら、
+    // ムーバはこのフレームでx/yのパッチを出さない(=前進しない)。ここではその分岐だけを確認し、
+    // 実フレームの後段=updateEnemies(KBスライドの唯一の適用点)だけを回して正味の移動を見る。
+    expect(hangedmanKnockbackActive(before, Date.now())).toBe(true);
+    useGameStore.getState().updateEnemies(1 / 60);
+
+    const after = useGameStore.getState().enemies[0];
+    const afterDist = Math.hypot(after.x + after.width / 2 - pcx, after.y + after.height / 2 - pcy);
+    expect(afterDist).toBeGreaterThan(beforeDist); // 前進が止まっているので正味で後退する
 
     spy.mockRestore();
   });

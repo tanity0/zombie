@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   stepReaperBody, encircleRadiusPx, encirclePoints, corridorEncirclePoints,
-  servantTargetCount, knockbackCdReady,
+  servantTargetCount, knockbackCdReady, hangedmanKnockbackActive,
 } from './reaper2';
 
 describe('stepReaperBody — 直進+70px旋回(PACING_PUZZLE.md §14-4-2)', () => {
@@ -85,10 +85,47 @@ describe('encirclePoints — 均等配置(§14-4-3叩き台)', () => {
   });
 });
 
-describe('corridorEncirclePoints — 廊下縮退(左右2点)', () => {
-  it('左右2点のみ返す', () => {
+describe('corridorEncirclePoints — 廊下縮退(左右2点・補修バッチ3次A-新3)', () => {
+  it('引数省略時は従来どおり左右2点のみ返す(後方互換)', () => {
     const pts = corridorEncirclePoints(50, 50, 200);
     expect(pts).toEqual([{ x: -150, y: 50 }, { x: 250, y: 50 }]);
+  });
+
+  it('★重なり再発防止(A-新3): maxSlots=5では5スロットの座標が全て異なる(旧実装は0/2/4が同座標に重なっていた)', () => {
+    const pts = corridorEncirclePoints(50, 50, 200, 5);
+    expect(pts).toHaveLength(5);
+    const keys = pts.map(p => `${p.x},${p.y}`);
+    expect(new Set(keys).size).toBe(5); // 全点ユニーク
+  });
+
+  it('先頭2点(slot0/1)は従来の基準点のまま(左右・y不変)=見た目の縮退方針を崩さない', () => {
+    const pts = corridorEncirclePoints(50, 50, 200, 5);
+    expect(pts[0]).toEqual({ x: -150, y: 50 });
+    expect(pts[1]).toEqual({ x: 250, y: 50 });
+  });
+
+  it('同じ側(左/右)に落ちるペアは進行軸(y)方向へspacingぶんずれる', () => {
+    const pts = corridorEncirclePoints(50, 50, 200, 4, 100);
+    // slot0/2は左側(x=-150)・slot1/3は右側(x=250)。y方向にspacingぶん離れている。
+    expect(pts[0].x).toBe(pts[2].x);
+    expect(pts[1].x).toBe(pts[3].x);
+    expect(Math.abs(pts[2].y - pts[0].y)).toBe(100);
+    expect(Math.abs(pts[3].y - pts[1].y)).toBe(100);
+  });
+});
+
+describe('hangedmanKnockbackActive — 使者のKB中は専用ムーバの前進を止める(補修バッチ3次A-新1)', () => {
+  it('knockbackUntilが未来ならtrue(前進を止める)', () => {
+    expect(hangedmanKnockbackActive({ knockbackUntil: 2000 }, 1000)).toBe(true);
+  });
+
+  it('knockbackUntilが過去/現在ならfalse(前進してよい)', () => {
+    expect(hangedmanKnockbackActive({ knockbackUntil: 1000 }, 1000)).toBe(false);
+    expect(hangedmanKnockbackActive({ knockbackUntil: 500 }, 1000)).toBe(false);
+  });
+
+  it('knockbackUntil未指定は0扱い=常に前進してよい', () => {
+    expect(hangedmanKnockbackActive({}, 0)).toBe(false);
   });
 });
 

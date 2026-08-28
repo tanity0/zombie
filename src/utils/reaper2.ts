@@ -65,11 +65,34 @@ export const encirclePoints = (
 /**
  * 廊下系ステージ(研究所±200px帯・洋館corridorMode)の囲み配置の縮退(§14-4-3叩き台):
  * 円周が成立しないため左右2点+可視域外へ縮退する。
+ *
+ * 補修バッチ3次(A-新3): 呼び出し側(useGameLoop.ts)は`ringPts[slot % ringPts.length]`でスロット
+ * (0..servantMax-1)を引く。旧実装は常に2点しか返さなかったため、slot 0/2/4が同じ点(index0)・
+ * slot 1/3が同じ点(index1)に落ちて完全同座標・同方向=永久に重なっていた(補修バッチ2次の固定角化
+ * [A-3]で決定論化した退行=毎回ランダムだった旧々実装では気づかなかった)。
+ * `maxSlots`個の点を返すことで、呼び出し側の`slot % ringPts.length`がslotそのものと一致する
+ * (=1スロット1点)。同じ側(左/右)に落ちるペアは、進行軸(y=洋館の奥行き)方向へペアごとに
+ * ±slotSpacingPx ずつ互い違いにずらす(0=基準点のまま/以降 +1・-1・+2・-2…単位)。
+ * x(左右)ではなくy(奥行き)でずらすのは、corridorMode は横方向(x)を`CORRIDOR_LATERAL_CLAMP`で
+ * 狭く縛る一方、奥行き(y)には十分な余白があるため(`clampRectToPlayableArea`参照)。
+ * `slotSpacingPx`の既定132=使者の高さ92(`ENEMY_STATS.hangedman.height`)+マージン40(叩き台)。
+ * `maxSlots`既定2・`slotSpacingPx`既定132は後方互換(引数省略時は旧来の2点のみ・既存呼び出し不変)。
  */
-export const corridorEncirclePoints = (cx: number, cy: number, radius: number): Point[] => [
-  { x: cx - radius, y: cy },
-  { x: cx + radius, y: cy },
-];
+export const corridorEncirclePoints = (
+  cx: number, cy: number, radius: number, maxSlots = 2, slotSpacingPx = 132,
+): Point[] => {
+  const n = Math.max(1, Math.round(maxSlots));
+  const pts: Point[] = [];
+  for (let i = 0; i < n; i++) {
+    const side = i % 2 === 0 ? -1 : 1;
+    const tier = Math.floor(i / 2); // 0,0,1,1,2,2,... = 同じ側に落ちるペアの段
+    const tierMag = Math.ceil(tier / 2);
+    const tierSign = tier % 2 === 1 ? 1 : -1;
+    const yOffset = tier === 0 ? 0 : tierSign * tierMag * slotSpacingPx;
+    pts.push({ x: cx + side * radius, y: cy + yOffset });
+  }
+  return pts;
+};
 
 /**
  * PACING_PUZZLE.md §14-4-3(社長のゴール「使者は10秒に1体増える(最大5)。1体消えたら即補充される」・
@@ -99,3 +122,19 @@ export const servantTargetCount = (
 export const knockbackCdReady = (
   e: { type: string; knockbackImmuneUntil?: number }, now: number,
 ): boolean => e.type === 'hangedman' || now >= (e.knockbackImmuneUntil ?? 0);
+
+/**
+ * 補修バッチ3次(A-新1): 使者のKB中は専用ムーバ(useGameLoop.ts)の前進を止める判定(純関数)。
+ *
+ * §14-4-3「どのような攻撃でもノックバックする(CD無し)」=使者の唯一の防御手段。だが専用ムーバは
+ * `knockbackUntil`を見ず毎フレーム前進を書いており、KBスライド(gameStore.ts updateEnemies内の
+ * ノックバック適用ブロック=専用ムーバより後段で実行される・唯一の適用点)と綱引きになっていた
+ * (検収実測: 弾KB[初速86]では1フレームも後退せず、KB窓280msの正味で20.2px**近づいた**。
+ * 通常近接でも11.8px近づく)。
+ *
+ * 呼び出し側は`true`の間、x/yのパッチを書かない(=前進を出さない)。KBスライドだけが座標を動かす
+ * ことで、他の全敵の「KB中はチェイスしない」文法に揃う。
+ */
+export const hangedmanKnockbackActive = (
+  e: { knockbackUntil?: number }, nowMs: number,
+): boolean => nowMs < (e.knockbackUntil ?? 0);

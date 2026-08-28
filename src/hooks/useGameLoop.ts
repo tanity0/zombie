@@ -444,7 +444,7 @@ import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAV
 import { stepFollowChain, FOLLOW_SPEED_MULT } from '../utils/companionFollow';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER2_CONFIG, REAPER_TEST, REAPER2_TEST, reaperPassIntervalMs } from '../config/reaper';
-import { stepReaperBody, encircleRadiusPx, encirclePoints, corridorEncirclePoints, servantTargetCount, knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4
+import { stepReaperBody, encircleRadiusPx, encirclePoints, corridorEncirclePoints, servantTargetCount, knockbackCdReady, hangedmanKnockbackActive } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4
 // PACING_PUZZLE.md §14-4-3(使者・叩き台): 詠唱の静止時間/出現フェードインの尺。専用の定数(値は叩き台)。
 const REAPER_CAST_MS = 650;         // 本体が「使者」を詠唱する間の停止時間(SE=phill-skylight)
 const REAPER_MATERIALIZE_MS = 420;  // 使者の出現フェードイン(reaperWarpAlpha 0→1)
@@ -2504,6 +2504,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           addMeleeFinishCombo,
           triggerPlayerDeath,
           markMeleeSwingFx: () => useGameStore.getState().markMeleeSwingFx(),
+          // 補修バッチ3次(A-新2): 使者(hangedman)のKILL!にCD無視の最大ズームを付ける口。
+          triggerFinishImpact: (x, y, force) => { useGameStore.getState().triggerFinishImpact(x, y, force); },
         };
         const combatTunables: CombatTunables = {
           thorOrbitDist: HB_TH.orbit.distPx,
@@ -5243,8 +5245,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // (ringOffset+slot/max・波ごとに1回だけ抽選)を割り当てる。encirclePointsの均等割りを
                   // 実際に使う形にし、補充も死んだスロットと同じ角度へ出す(=常に円周に散る。旧実装は
                   // 毎回ランダム1点だったため5体が偏っていた)。
+                  // 補修バッチ3次(A-新3): corridorEncirclePointsへservantMaxを渡し、スロット数ぶんの
+                  // 点を返させる(旧実装は常に2点=slot 0/2/4が同座標に重なっていた)。
                   const ringPts = corridor
-                    ? corridorEncirclePoints(pcx, pcy, radius)
+                    ? corridorEncirclePoints(pcx, pcy, radius, REAPER2_CONFIG.servantMax)
                     : encirclePoints(REAPER2_CONFIG.servantMax, pcx, pcy, radius, rs.ringOffset);
                   const occupiedSlots = new Set(
                     servantsNow.map(s => s.reaperSlot).filter((slot): slot is number => slot !== undefined)
@@ -5295,14 +5299,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
 
               // --- 使者の移動(プレイヤーへ直進のみ。地平線フェードはpixiScene側で対象外) ---
+              // 補修バッチ3次(A-新1): KB中(knockbackUntilがアクティブな間)は前進パッチを書かない。
+              // KBスライド(gameStore.ts updateEnemies内のノックバック適用ブロック=このムーバより
+              // 後段で実行される唯一の適用点)だけが座標を動かすようにし、他の全敵と同じ
+              // 「KB中はチェイスしない」文法に揃える(旧実装はKB中も毎フレーム前進を上書きしており、
+              // KBスライドと綱引きになって正味で近づいていた=社長の言葉「どのような攻撃でも
+              // ノックバックする(CD無し)」=使者の唯一の防御手段が成立していなかった)。
               for (const e of servantsNow) {
+                const materialize = Math.min(1, (newGameTime - (e.spawnedAt ?? newGameTime)) / REAPER_MATERIALIZE_MS);
+                if (hangedmanKnockbackActive(e, Date.now())) {
+                  patches.set(e.id, {
+                    damage: REAPER2_CONFIG.servantContactDamage, speed: servantSpeed, reaperWarpAlpha: materialize,
+                  });
+                  continue;
+                }
                 const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
                 const sdx = pcx - ecx, sdy = pcy - ecy;
                 const sl = Math.hypot(sdx, sdy) || 1;
                 const rawX = e.x + (sdx / sl) * servantStepPx;
                 const rawY = e.y + (sdy / sl) * servantStepPx;
                 const clamped = clampRectToPlayableArea(rawX, rawY, e.width, e.height, reaperPlayableCtx, e.x);
-                const materialize = Math.min(1, (newGameTime - (e.spawnedAt ?? newGameTime)) / REAPER_MATERIALIZE_MS);
                 patches.set(e.id, {
                   x: clamped.x, y: clamped.y, damage: REAPER2_CONFIG.servantContactDamage,
                   speed: servantSpeed, reaperWarpAlpha: materialize,
