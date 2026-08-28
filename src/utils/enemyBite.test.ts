@@ -277,7 +277,7 @@ describe('★突進(zrush)の間は噛みつきを構えない(v0.25.3919)', () 
 // 含んでいた。専用の `isTrueBossType` へ切り替えた(v0.25.3920)。
 describe('★噛みつきの除外は死神と幻影だけ(v0.25.3921)', () => {
   it('エリート雑魚は噛みつきの対象(=触れただけでは痛くない)', () => {
-    for (const t of ['pumpkin', 'driller', 'giantbat', 'lab-zombie-3', 'hunter'] as const) {
+    for (const t of ['pumpkin', 'driller', 'logger', 'giantbat', 'lab-zombie-3', 'hunter'] as const) {
       expect(isBiteExemptType(t)).toBe(false);
     }
   });
@@ -322,7 +322,7 @@ describe('★噛みつきの除外は死神と幻影だけ(v0.25.3921)', () => {
     expect(canStartBite({ ...base, bossState: 'harai' }, 1000)).toBe(false);
   });
   it('★HPバー等の「ボス扱い」(isBossType)は1bitも変えていない=エリート雑魚は今もボス扱い', () => {
-    for (const t of ['pumpkin', 'driller', 'giantbat', 'lab-zombie-3', 'hunter'] as const) {
+    for (const t of ['pumpkin', 'driller', 'logger', 'giantbat', 'lab-zombie-3', 'hunter'] as const) {
       expect(isBossType(t)).toBe(true);
     }
   });

@@ -110,6 +110,13 @@ describe('resolveStunnedMeleeHit(気絶敵フィニッシュの裁定・プレ�
     expect(usesBossStunnedMelee('driller')).toBe(false);
   });
 
+  // PACING_PUZZLE.md §14-3裁定済み#2(伐採人・logger): driller同様pumpkinと同格。
+  it('★logger はpumpkinと同格(強個体として裁定される・HPに関わらず即死しない)', () => {
+    expect(resolveStunnedMeleeHit(stunned({ type: 'logger', health: 60, maxHealth: 100 }), 10, 500, BOSS_MULT))
+      .toEqual(resolveStunnedMeleeHit(stunned({ type: 'pumpkin', health: 60, maxHealth: 100 }), 10, 500, BOSS_MULT));
+    expect(usesBossStunnedMelee('logger')).toBe(false);
+  });
+
   it('usesBossStunnedMelee = isBossType − 強個体(呼び出し側はこれだけを見る)', () => {
     expect(usesBossStunnedMelee('giantbat')).toBe(true);
     expect(usesBossStunnedMelee('mimir')).toBe(true);

@@ -35,6 +35,11 @@ describe('isEnemyCapProtected — 上限カリングの保護表(§6.38 B1)', ()
     expect(isEnemyCapProtected(mk('driller'), 0)).toBe(isEnemyCapProtected(mk('pumpkin'), 0));
     expect(isEnemyCapProtected(mk('driller'), 0)).toBe(true);
   });
+  // PACING_PUZZLE.md §14-3裁定済み#2(伐採人・logger): driller同様pumpkinと同格でカリング保護される。
+  it('logger はpumpkinと同格でカリング保護される', () => {
+    expect(isEnemyCapProtected(mk('logger'), 0)).toBe(isEnemyCapProtected(mk('pumpkin'), 0));
+    expect(isEnemyCapProtected(mk('logger'), 0)).toBe(true);
+  });
   it('waveは猶予10秒だけ保護され、以後は保護されない', () => {
     expect(isEnemyCapProtected(mk('zombie', { isWave: true, spawnedAt: 0 }), 5000)).toBe(true);
     expect(isEnemyCapProtected(mk('zombie', { isWave: true, spawnedAt: 0 }), 10001)).toBe(false);
