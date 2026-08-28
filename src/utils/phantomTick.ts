@@ -40,7 +40,7 @@ import {
   playerPvpChipPatch,                           // ★SAME_ARENA §9: プレイヤー体勢の削り(紫入りの破棄込み)
   showPvpFatalOnPlayerPresentation,             // ★2026-08-27: 幻影→プレイヤーの致命もKILL演出(ズーム)
   skillBenkeiCritBonus, skillKnifeMasterMeleeCrit, // ★裁定①: 近接クリ式のミラー(検収監査 中⑥)
-  resolveShieldWalls, shieldPlayableCtx, shieldBlockingEnemyRects, // ★B6(盾押し・§6)
+  resolveShieldWalls, shieldPlayableCtx, // ★B6(盾押し・§6)
 } from '../store/gameStore';
 import { softCapCritChance } from './critSoftCap'; // ★§13-3d: 近接クリ式のミラーに同じソフトキャップ
 // ★SAME_ARENA §9(対人体勢): 幻影・プレイヤーが対称に持つ隠し体勢の純関数。
@@ -859,7 +859,10 @@ export const runPhantomTick = (
   }
 
   // ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8): 幻影も自分の盾を押せる
-  // (写しの口=プレイヤー/守護霊と同じ純関数)。所有者以外は押せない。
+  // (写しの口=プレイヤー/守護霊と同じ純関数)。所有者以外は押せない。敵は見ない=動く盾は
+  // 従来どおり敵を押し出す(ブルドーザー存続)。
+  // ★検収監査・軽6: 新たにgetState().projectilesを取り直さず、decidePhantomへ既に渡している
+  // st0.projectiles(このtickの先頭で1回だけ取得済み)へ相乗りする(新規の毎フレーム走査を増やさない)。
   {
     const pnMoveDx = (patch.x ?? phantom.x) - phantom.x;
     const pnMoveDy = (patch.y ?? phantom.y) - phantom.y;
@@ -867,7 +870,7 @@ export const runPhantomTick = (
       const pnRect = {
         x: patch.x ?? phantom.x, y: patch.y ?? phantom.y, width: phantom.width, height: phantom.height,
       };
-      for (const sh of useGameStore.getState().projectiles) {
+      for (const sh of st0.projectiles) {
         if (sh.weaponType !== 'shield') continue;
         if (sh.shieldOwnerKind !== 'phantom' || sh.shieldOwnerId !== phantom.id) continue;
         if (!rectsOverlap(pnRect, { x: sh.x, y: sh.y, width: sh.width, height: sh.height })) continue;
@@ -875,7 +878,6 @@ export const runPhantomTick = (
         const wallResolved = resolveShieldWalls(candidate);
         const placed = pushShieldRect(
           { x: wallResolved.x, y: wallResolved.y, width: sh.width, height: sh.height },
-          shieldBlockingEnemyRects(useGameStore.getState().enemies),
           shieldPlayableCtx(),
           sh.x,
         );

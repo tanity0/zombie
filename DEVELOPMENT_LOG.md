@@ -1,5 +1,62 @@
 # Development Log
 
+## v0.25.3997 — AI_HUMANIZE B6検収是正+社長裁定反映(ブルドーザー存続・足基準クランプ・EX/バッシュのクランプ穴) 【2026-08-28 16:07 JST】
+- **状態変化: ★AIの人間化 → B6補修済み(検収2巡目・ブルドーザー裁定反映)**
+- **実装**: research/AI_HUMANIZE.md §6 B6(v5・裁定済み#8の追補)の検収是正+社長裁定「そのブルドーザー
+  ってプレイヤーも可能?なら残して」の反映。対象=`src/world/shieldPush.ts`/`src/store/gameStore.ts`/
+  `src/hooks/useGameLoop.ts`/`src/utils/phantomTick.ts`/`src/types/game.ts`/`src/data/changelog.ts`。
+  1. **【裁定・最優先】ブルドーザー存続**: v0.25.3996で一時入れた「動く盾は敵の手前で止まる」を撤回。
+     `pushShieldRect`(`src/world/shieldPush.ts`)から敵ブロッカー引数を丸ごと削除(壁resolve+帯クランプ
+     のみに縮小)。押した盾が敵を押し出す挙動は、既存の「設置型シールド処理」(敵→盾の毎フレーム
+     `resolveAabb`・`useGameLoop.ts`)がそのまま担当=元から触っていない。`shieldBlockingEnemyRects`
+     (`gameStore.ts`)と関連呼び出し(movePlayer/守護霊/幻影の3経路)を撤去。
+  2. **【重大1】EXワープ修正**: `shieldPlayableCtx()`(`gameStore.ts`)に `exStage: state.corridorMode &&
+     isExStageRun()` を追加(プレイヤー移動クランプ・敵/湧きと同じ式)。旧コメント「exStageはプレイヤー
+     専用[CLAUDE.md]」は誤り(正本=`playableArea.ts`の`exStage`が「全アクター共通」)だったため書き
+     直した。EX広間で盾が±170へスナップしなくなる(検収監査・重大1=最大130pxワープの修正)。
+  3. **【重大2】バッシュ経路のクランプ**: シールドバッシュの飛び先(`SHIELD_BASH_SHOVE_DISTANCE=80`)
+     に`resolveShieldWalls`+`pushShieldRect`(壁resolve+帯クランプ)を追加(`gameStore.ts`のバッシュ
+     flatMap内)。距離・演出(swept/knockback/エフェクト位置)は同じ計算式のまま、クランプ後の座標を
+     使うよう差し替えただけ=挙動は「壁・帯の外へ出そうな時だけ手前に収まる」の1点のみ変化。
+  4. **【中3】クランプの基準=足(下辺)**: `clampRectToPlayableArea`(`playableArea.ts`)自体は無改変
+     (他アクターと共有)。`src/world/shieldPush.ts`側に「盾の足(y+height)を中心に見立てた高さ0の
+     代表矩形」でクランプし、結果を実寸へ戻す`clampShieldRectByFoot`を新設、`pushShieldRect`/
+     `clampShieldPlacementRect`の両方をこれ経由にした。帯の端での最大36pxのずれ(中心基準だった旧実装
+     の実測値)を解消。
+  5. **【中4】設置クランプのprevX**: `clampShieldPlacementRect`に任意の`prevX`引数を追加。設置呼び出し
+     (`useGameLoop.ts`)からプレイヤーの現在x(`useGameStore.getState().player.x`)を渡すようにし、M0
+     前進壁が戦闘中に前へ出た結果を設置スナップで没収しないようにした(v3498と同じ趣旨)。
+  6. **【中6】新規の毎フレーム走査を撤去**: 守護霊(`useGameLoop.ts`)・幻影(`phantomTick.ts`)の盾押し
+     ループが独自に`useGameStore.getState().projectiles`を取り直していたのを、既に同フレームで
+     取得済みの配列(守護霊=decideGhostへ渡す直前の1回・幻影=decidePhantomへ渡している`st0.projectiles`)
+     への相乗りへ差し替えた。
+  7. **【C13】`shieldOwnerKind`のJSDoc是正**(`types/game.ts`): 「undefined='player'と同義」→実装どおり
+     「undefined=押し不可(3経路とも厳密一致でゲートしており、誰も押せない盾になる。設置時に必ず
+     明示する)」へ書き直した。
+  8. **【C15】changelogの是正**(`src/data/changelog.ts`): v0.25.3996のエントリ文を実態(=素朴な実装を
+     正式化しただけ)へ打ち直し、v0.25.3997の新エントリ(裁定・EX・バッシュの3点)を先頭へ追加。
+- **(B) 積んだだけ(実装せず・検収監査の指摘。次回案件として別途起票)**:
+  - `resolveShieldWalls`と`movePlayer`本体の壁解決の一致を機械検査するテストが無い(現状は手動での
+    整合維持)。
+  - 「盾を止める敵箱」の定義(死体/reaper/裏ボス除外)が`useGameLoop.ts`の設置型シールド処理側にしか
+    無く、二重定義になりうる箇所の一本化。
+  - 囲い(アリーナ円)・城ボス円のクランプが盾のクランプに含まれていない(プレイヤーは別途
+    `clampRectInsideCircle`を通っているが、盾は未対応)。
+  - バッシュのshove補間窓(`TRAP_MELEE_SHOVE_SLIDE_MS`)と今回のクランプが同一フレームで重なるケースの
+    見た目の検算。
+  - 浮動小数点の境界(帯の端ちょうど)での1フレームだけの接触/すり抜けの可能性。
+  - ※検収監査「軽16=テストのprevX誤引数」は、今回`src/world/shieldPush.test.ts`を全面的に書き直した
+    際に副次的に解消済み(旧実装は`pushShieldRect(..., SHIELD.y)`とy値をprevX[x]へ渡す誤りがあった)。
+- **テスト**: `src/world/shieldPush.test.ts`(純関数・全面書き直し=①帯クランプ/②ブルドーザー存続
+  [敵配列を受け取らない型的固定]/③無入力不変/④足基準クランプ[lab上端]/⑤設置prevXでM0没収防止。
+  計10件)+`src/store/shieldPush.test.ts`(movePlayer配線・②ブルドーザー配線[敵の有無で押し先が
+  変わらないことの固定]/①足基準/EX伝播の新設describe1本を追加。計8件)。
+- **検証**: `npm run typecheck`(エラー0)/`npm run lint`(エラー0・warning8件は無関係の既存分)/
+  `npx vitest run src/world/shieldPush.test.ts src/store/shieldPush.test.ts src/world/playableArea.test.ts
+  src/world/exHall.test.ts src/utils/phantomTick.test.ts`(5ファイル・150件・全green)。
+- **自己点検**: 判定・ダメージ・バッシュの距離/演出/当たりは不変(変わったのはクランプの発火条件のみ)。
+  毎フレームの新規走査は増やしていない(#6で既存取得への相乗りへ縮小)。乱数は消費していない。
+
 ## v0.25.3996 — AI_HUMANIZE B6: 盾押し機構を実装 【2026-08-28 15:30 JST】
 - **状態変化: ★AIの人間化 → B6盾押し実装済み(検収待ち)**
 - **実装**: research/AI_HUMANIZE.md §6 B6(裁定済み#8=社長裁定2026-08-28「プレイヤーが取りうる行動は

@@ -88,7 +88,7 @@ import {
   meleeLungePx, MELEE_LUNGE_MS, // ★踏み込み(3者で同じ関数=武器別も揃う。速度は既存の knockbackSpeedFor で導く)
   KILLFX_TOTAL_MS, // KILL処刑演出の尺(前隙の解決で近接SEを抑止する条件・旧VirtualJoystickから移設)
   GHOST_DMG_LOG_ENABLED, ghostLogPush, // v0.25.3981: ?ghostlog=1 のカウンター連鎖ログ(記録専用・挙動不変)
-  resolveShieldWalls, shieldPlayableCtx, shieldBlockingEnemyRects, // ★B6(盾押し・§6)
+  resolveShieldWalls, shieldPlayableCtx, // ★B6(盾押し・§6)
 } from '../store/gameStore';
 import { pushShieldRect, clampShieldPlacementRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
@@ -8532,10 +8532,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const ghostOwned = shOwner.kind === 'ghost-ally';
           // ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8): 設置位置も壁+行ける帯へ是正する
           // (既存の穴=設置時は壁・帯を一切見ていなかった)。敵は見ない(設置に押し出し概念は無い)。
+          // ★検収監査・中4: prevXにプレイヤーの現在xを渡す(M0前進壁で「戦闘中に前へ出た結果を
+          // 没収しない」v3498と同じ趣旨=設置も広義の移動として跨ぎ判定に乗せる)。
           const placedWallResolved = resolveShieldWalls({ x: footX - shieldW / 2, y: footY - shieldH, width: shieldW, height: shieldH });
           const placedClamped = clampShieldPlacementRect(
             { x: placedWallResolved.x, y: placedWallResolved.y, width: shieldW, height: shieldH },
             shieldPlayableCtx(),
+            useGameStore.getState().player.x,
           );
           // 是正後の足元座標(演出=着地ダスト/SE距離減衰をここに揃える)。
           const placedFootX = placedClamped.x + shieldW / 2;
@@ -9757,6 +9760,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 ghostNow.ghostMoveRollKey !== undefined && ghostNow.ghostMoveRollDecision !== undefined
                   ? { moveKey: ghostNow.ghostMoveRollKey, decision: ghostNow.ghostMoveRollDecision, rolledAtMs: ghostNow.ghostMoveRollAt ?? 0 }
                   : undefined;
+              // ★B6是正(検収監査・軽6「新規の毎フレーム走査を撤去」): この後の盾押し(pushShieldRect)は
+              // decideGhostへ渡すのと同じ1回のprojectiles取得に相乗りする(2回目のgetState().projectiles
+              // を新設しない)。
+              const ghostProjectilesNow = useGameStore.getState().projectiles;
               const decision = decideGhost({
                 ghost: {
                   x: ghostNow.x, y: ghostNow.y, width: ghostNow.width, height: ghostNow.height,
@@ -9790,7 +9797,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 enemies: useGameStore.getState().enemies,
                 boundBossId: ghostNow.ghostBossId, // v0.25.2469: ボス束縛を純関数側でも明示
 
-                projectiles: useGameStore.getState().projectiles,
+                projectiles: ghostProjectilesNow,
                 // GHOST-SUBS-FINAL(v0.25.2563・裁定「クイマガ回収の割り込み=許容」): 自分が投げた
                 // マガジンが場に残っていれば、それを拾いに行く(間合い管理より優先・危険回避には譲る)。
                 // 飛翔中(着地前)は目標にしない=着地点で待たずに落ちる場所へ歩き出す形にする。
@@ -9890,14 +9897,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
 
               // ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8): 守護霊も自分の盾を押せる
-              // (写しの口=プレイヤーと同じ純関数)。所有者以外は押せない。
+              // (写しの口=プレイヤーと同じ純関数)。所有者以外は押せない。敵は見ない=動く盾は
+              // 従来どおり敵を押し出す(ブルドーザー存続)。
+              // ★検収監査・軽6: 新たにgetState().projectilesを取り直さず、decideGhostへ渡したのと
+              // 同じ1回分(ghostProjectilesNow)へ相乗りする(新規の毎フレーム走査を増やさない)。
               {
                 const gMoveDx = resolved.x - ghostNow.x;
                 const gMoveDy = resolved.y - ghostNow.y;
                 if (gMoveDx !== 0 || gMoveDy !== 0) {
                   const gRect = { x: resolved.x, y: resolved.y, width: ghostNow.width, height: ghostNow.height };
-                  const gProjectiles = useGameStore.getState().projectiles;
-                  for (const s of gProjectiles) {
+                  for (const s of ghostProjectilesNow) {
                     if (s.weaponType !== 'shield') continue;
                     if (s.shieldOwnerKind !== 'ghost-ally' || s.shieldOwnerId !== ghostNow.id) continue;
                     if (!rectsOverlap(gRect, { x: s.x, y: s.y, width: s.width, height: s.height })) continue;
@@ -9905,7 +9914,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const wallResolved = resolveShieldWalls(candidate);
                     const placed = pushShieldRect(
                       { x: wallResolved.x, y: wallResolved.y, width: s.width, height: s.height },
-                      shieldBlockingEnemyRects(useGameStore.getState().enemies),
                       shieldPlayableCtx(),
                       s.x,
                     );

@@ -1793,9 +1793,12 @@ export interface Projectile {
   shieldBreakAt?: number;
   /**
    * ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8): 押せるのは所有者だけ。
-   * `ownerGhost`(守護霊=青白tint)と違い**判定に使う**(押し許可の主語)。undefined='player'と
-   * 同義だが、明示のため設置時に必ず書く。`shieldOwnerId` は ghost-ally/phantom の主語id
-   * (Summon.id / Enemy.id)。player は null。
+   * `ownerGhost`(守護霊=青白tint)と違い**判定に使う**(押し許可の主語)。
+   * ★検収是正(C13): `undefined` は「'player'と同義」ではなく**押し不可**——movePlayer/守護霊/
+   * 幻影のいずれの押し判定も `shieldOwnerKind !== 'player' | 'ghost-ally' | 'phantom'` の厳密一致で
+   * ゲートしており、undefinedはどれとも一致しない。設置時に必ず明示すること(省略すると誰も
+   * 押せない盾になる)。`shieldOwnerId` は ghost-ally/phantom の主語id(Summon.id / Enemy.id)。
+   * player は null。
    */
   shieldOwnerKind?: 'player' | 'ghost-ally' | 'phantom';
   shieldOwnerId?: string | null;

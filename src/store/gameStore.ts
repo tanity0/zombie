@@ -5660,8 +5660,15 @@ export const resolveShieldWalls = (candidate: Rect): { x: number; y: number } =>
   });
 };
 
-// B6: `clampRectToPlayableArea` の文脈(プレイヤー移動・守護霊移動・phantomTick.playableCtx と同じ
-// 形。exStage/exPlayerBarrier はプレイヤー専用[CLAUDE.md]なので盾には渡さない=常に無効)。
+// B6: `clampRectToPlayableArea` の文脈(プレイヤー移動・守護霊移動・phantomTick.playableCtxと同じ形)。
+// ★検収是正(重大1・v0.25.3997): exStageは「プレイヤー専用」ではない——正本はplayableArea.tsの
+// PlayableAreaCtx.exStageコメント「全アクター共通(§10-20#6=スリィエルの周回もこの拡幅を受ける
+// 必要があるため)」で、実際プレイヤー移動クランプ(movePlayer内)も敵/湧きも同じ
+// `state.corridorMode && isExStageRun()` を渡している(6262行目付近と同型)。盾だけここを渡さないと
+// EX広間で盾のクランプだけ通常通路幅(±170)のまま据え置かれ、広間側(±340)へ出た瞬間に盾が
+// 170へ強制スナップされる(最大130pxワープ)。exPlayerBarrier(結界の南北膜)は§10-20#4の規約どおり
+// 「プレイヤーの移動クランプにのみ渡す」呼び出し側の作法なので、こちらは従来どおり盾へは渡さない
+// (盾は結界の対象アクターではない=渡さなくても常に無効)。
 export const shieldPlayableCtx = (): PlayableAreaCtx => {
   const s = useGameStore.getState();
   return {
@@ -5670,15 +5677,9 @@ export const shieldPlayableCtx = (): PlayableAreaCtx => {
     corridorMode: s.corridorMode,
     m0AdvanceLimitX: s.m0AdvanceLimitX,
     corridorRunInActive: s.corridorRunInActive,
+    exStage: s.corridorMode && isExStageRun(),
   };
 };
-
-// B6: 動いている盾が押し出してはいけない敵(=通常のブロック対象と同じ集合。死体/リーパー/裏ボスの
-// すり抜け勢は除く=useGameLoopの設置型シールド処理[敵→盾のresolveAabb]と同じ除外条件)。
-export const shieldBlockingEnemyRects = (enemies: readonly Enemy[]): Rect[] =>
-  enemies
-    .filter(e => !isCorpse(e) && e.type !== 'reaper' && !isHiddenBoss(e.type))
-    .map(e => ({ x: e.x, y: e.y, width: e.width, height: e.height }));
 
 export const useGameStore = create<GameState>((set, get) => ({
   player: {
@@ -6292,9 +6293,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       // 設置型シールドはプレイヤーを止めない: 触れたら進行方向へ盾を押す(邪魔しない)。
       // ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8): 押せるのは所有者(=自分が
-      // 置いた盾)だけ。動く盾は壁resolve+clampRectToPlayableAreaを通し、敵は押し出さない
-      // (押し先で重なるなら手前で止まる=ブルドーザー禁止)。押しはshove補間(220ms)を使わず
-      // 直接x/yを更新する(絵と判定の乖離防止・§6)。
+      // 置いた盾)だけ。動く盾は壁resolve+clampRectToPlayableAreaを通す(足基準)。敵は見ない=
+      // 動いている盾は従来どおり敵を押し出す(ブルドーザー存続・社長裁定2026-08-28「そのブルド
+      // ーザーってプレイヤーも可能?なら残して」。押し出し自体は既存の「設置型シールド処理」
+      // [敵→盾の毎フレームresolveAabb・useGameLoop]がそのまま担当=ここでは何もしない)。押しは
+      // shove補間(220ms)を使わず直接x/yを更新する(絵と判定の乖離防止・§6)。
       const pMoveDx = newX - player.x;
       const pMoveDy = newY - player.y;
       let pushedProjectiles: typeof state.projectiles | null = null;
@@ -6308,7 +6311,6 @@ export const useGameStore = create<GameState>((set, get) => ({
           const wallResolved = resolveShieldWalls(candidate);
           const placed = pushShieldRect(
             { x: wallResolved.x, y: wallResolved.y, width: s.width, height: s.height },
-            shieldBlockingEnemyRects(state.enemies),
             shieldPlayableCtx(),
             s.x,
           );
@@ -7036,8 +7038,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 「バッシュで自分とぶつかると動かない」(社長指示): バッシュ方向が盾をプレイヤー側へ押し込む向き
         // (盾→プレイヤー と同じ側=内積>0)なら、盾を自分に押し付ける形になるのでバッシュを発動しない。
         if (dux * (pcx - scx) + duy * (pcy - scy) > 0) return [];
-        const ex = p.x + dux * SHIELD_BASH_SHOVE_DISTANCE;
-        const ey = p.y + duy * SHIELD_BASH_SHOVE_DISTANCE;
+        const rawEx = p.x + dux * SHIELD_BASH_SHOVE_DISTANCE;
+        const rawEy = p.y + duy * SHIELD_BASH_SHOVE_DISTANCE;
+        // ★検収監査・重大2(3経路のうちバッシュだけ壁resolve+帯クランプが素通しだった): 移動(プレイヤー
+        // 押し)・守護霊/幻影押しと同じ壁resolve+clampRectToPlayableArea(足基準)をバッシュの飛び先にも
+        // 通す。距離(SHIELD_BASH_SHOVE_DISTANCE)・演出・当たり判定(=下のswept/knockback)は不変
+        // ——壁・行ける帯の外へ出そうになった時だけ、その手前に収まる。
+        const bashWallResolved = resolveShieldWalls({ x: rawEx, y: rawEy, width: p.width, height: p.height });
+        const bashClamped = pushShieldRect(
+          { x: bashWallResolved.x, y: bashWallResolved.y, width: p.width, height: p.height },
+          shieldPlayableCtx(),
+          p.x,
+        );
+        const ex = bashClamped.x;
+        const ey = bashClamped.y;
         // 始点〜終点の壁を覆う掃過AABB(敵の被弾判定用)。
         const swept = {
           x: Math.min(p.x, ex),
