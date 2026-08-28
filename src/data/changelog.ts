@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4018',
+    items: [
+      '死神とハンターに出現カットインが付きました。死神は「礼賛」、ハンターは「監視者」として、城ボスと同じ全身絵+名前の紹介が入ります(ハンターは発見された時・1波につき1回)。',
+    ],
+  },
+  {
     version: '0.25.4017',
     items: [
       '死神に捕まった時の覆いかぶさりが、本人の姿でプレイヤーの上に倒れ込むようになりました。',

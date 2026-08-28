@@ -40,6 +40,11 @@ const NAMED_BOSS_CUTIN_NAME: Partial<Record<EnemyType, string>> = {
   'bounty-melee': '馬乗り(変異)',
   'bounty-balance': '鋏(変異)',
   'bounty-maiko': '舞妓(変異)',
+  // 社長裁定2026-08-28「死神も紹介入れて。『礼賛』」「ハンターも入ってないっけ?入れて『監視者』」。
+  // 台帳の掟(名前を発明しない)に対し、これは社長支給の二つ名=そのまま登録。
+  // 死神=完全出現アテンション/ハンター=発見アテンション(1波1回)にカットインが乗る(useGameLoop)。
+  reaper: '礼賛',
+  hunter: '監視者',
 };
 
 /**

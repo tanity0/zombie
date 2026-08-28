@@ -4200,7 +4200,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
                 useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
                 spawnFlash('rgba(180,40,40,0.18)', 220);
-                useGameStore.getState().triggerAttention(atX, atY);
+                // 社長裁定2026-08-28「ハンターも入れて『監視者』」: 発見(1波1回)にカットイン。
+                useGameStore.getState().triggerAttention(atX, atY, bossCutinPayload('hunter'));
               }
             } else {
               // 条件が崩れた(退避/拠点制圧等)=待機解除。個体は置いていないので引き上げるものは無いが、
@@ -4282,7 +4283,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
                   spawnFlash('rgba(180,40,40,0.18)', 220);
                   // ハンター出現(発見)アテンション: カメラがハンターへ高速パン→ホールド→戻る(社長指示)。
-                  useGameStore.getState().triggerAttention(prim.x + prim.width / 2, prim.y + prim.height / 2);
+                  // 社長裁定2026-08-28「ハンターも入れて『監視者』」: 発見(1波1回)にカットイン。
+                  useGameStore.getState().triggerAttention(prim.x + prim.width / 2, prim.y + prim.height / 2, bossCutinPayload('hunter'));
                 }
               } else if (H.detectStartAt !== 0) {
                 H.detectStartAt = 0; // 範囲外へ逃げ切った=セーフ(検知リセット)
@@ -5157,7 +5159,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnFlash('rgba(10,10,16,0.30)', 360);
               // 死神「完全出現」もカメラアテンション(社長指示)。裏ボス/城ボス出現と同じく、時間停止で現地へ
               // 寄って戻るシネマティック。出現位置(画面外)へパンして死神を見せる。
-              useGameStore.getState().triggerAttention(sx, sy);
+              // 社長裁定2026-08-28「死神も紹介入れて。『礼賛』」: 城ボス等と同じ出現カットイン付き。
+              useGameStore.getState().triggerAttention(sx, sy, bossCutinPayload('reaper'));
               playSfx('boss-appear'); // 出現アテンションSE(裏ボスと同系)
             }
           } else {

@@ -54,8 +54,13 @@ describe('bossCutinName (名前の台帳・新名の発明なし)', () => {
     expect(bossCutinName('idol')).toBe('偶像');
     expect(bossCutinName('acrasiel')).toBe('アクラシエル');
   });
+  // 社長裁定2026-08-28: 死神「礼賛」・ハンター「監視者」が台帳入り(旧: 両方null=カットイン無し)。
+  it('死神=礼賛・ハンター=監視者(社長裁定2026-08-28の二つ名)', () => {
+    expect(bossCutinName('reaper')).toBe('礼賛');
+    expect(bossCutinName('hunter')).toBe('監視者');
+  });
   it('台帳に無い型はnull(カットイン無し)', () => {
-    expect(bossCutinName('hunter')).toBeNull();
-    expect(bossCutinName('reaper')).toBeNull();
+    expect(bossCutinName('zombie')).toBeNull();
+    expect(bossCutinName('logger')).toBeNull();
   });
 });
