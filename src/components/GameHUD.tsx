@@ -128,7 +128,7 @@ const GameHUD: React.FC = () => {
                   poiGetKind ? poiGetLabelClass : isTreasureGet ? 'text-amber-100/85' : isDataGet ? 'text-emerald-100/85' : 'text-purple-200/80'
                 }`}
               >
-                {poiGetKind ? poiGetLabel : isTreasureGet ? 'トレジャーを入手！' : isDataGet ? 'データを確保！' : '新しい銃器を入手！'}
+                {poiGetKind ? poiGetLabel : isTreasureGet ? 'TREASURE!' : isDataGet ? 'データを確保！' : '新しい銃器を入手！'}
               </div>
               <div
                 className="text-sm font-bold"

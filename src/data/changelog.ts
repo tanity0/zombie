@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4016',
+    items: [
+      'トレジャー入手時の見出しを「TREASURE!」に統一しました。',
+    ],
+  },
+  {
     version: '0.25.4015',
     items: [
       '死神と使者は、噛みつかなくなりました。代わりに「神付き」——プレイヤーに触れると時間が止まり、ゆっくり覆いかぶさってからダメージを受けます(触れた瞬間の前かがみモーションは無くなりました)。',
