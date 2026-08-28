@@ -243,9 +243,10 @@ describe('isBossType', () => {
 // PACING_PUZZLE.md §9-7#1(社長指示 2026-08-20・「同格」述語): driller はpumpkinと全ての
 // isBossType派生の特別扱いを共有する。ここに1本まとめて固定し、片方だけ直して取りこぼす事故を防ぐ。
 describe('isPumpkinTier(driller の「同格」= pumpkinと完全に同じ扱いを受けること)', () => {
-  it('pumpkin/driller だけがtrue', () => {
+  it('pumpkin/driller/logger だけがtrue', () => {
     expect(isPumpkinTier('pumpkin')).toBe(true);
     expect(isPumpkinTier('driller')).toBe(true);
+    expect(isPumpkinTier('logger')).toBe(true);
     expect(isPumpkinTier('giantbat')).toBe(false);
     expect(isPumpkinTier('zombie')).toBe(false);
   });
@@ -284,6 +285,23 @@ describe('isPumpkinTier(driller の「同格」= pumpkinと完全に同じ扱い
     expect(isArenaSweepProtected({ type: 'driller', fixed: undefined, questTarget: undefined }))
       .toBe(isArenaSweepProtected({ type: 'pumpkin', fixed: undefined, questTarget: undefined }));
     expect(isArenaSweepProtected({ type: 'driller', fixed: undefined, questTarget: undefined })).toBe(true);
+  });
+});
+
+// PACING_PUZZLE.md §14-3裁定済み#2(伐採人・logger): pumpkin/driller同様、isPumpkinTier経由で
+// 同じ特別扱いを受けることを確認する(上のdrillerブロックの縮小版=述語1本で共有される保証)。
+describe('isPumpkinTier(logger の「同格」= pumpkinと完全に同じ扱いを受けること)', () => {
+  it('isBossType/usesBossCrit/resistsChipKnockback/getsDeathAttention はpumpkinと同じ', () => {
+    expect(isBossType('logger')).toBe(isBossType('pumpkin'));
+    expect(usesBossCrit('logger')).toBe(usesBossCrit('pumpkin'));
+    expect(resistsChipKnockback('logger')).toBe(resistsChipKnockback('pumpkin'));
+    expect(getsDeathAttention('logger')).toBe(getsDeathAttention('pumpkin'));
+  });
+
+  it('corpseEligible/isArenaSweepProtected はpumpkinと同じ', () => {
+    expect(corpseEligible({ type: 'logger' })).toBe(corpseEligible({ type: 'pumpkin' }));
+    expect(isArenaSweepProtected({ type: 'logger', fixed: undefined, questTarget: undefined }))
+      .toBe(isArenaSweepProtected({ type: 'pumpkin', fixed: undefined, questTarget: undefined }));
   });
 });
 

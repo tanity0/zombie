@@ -63,6 +63,8 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // PACING_PUZZLE.md §9-2(削岩型): 判定サイズ・HP・攻撃・経験値=パンプキンと同値(「同格」)。
   // speed=75=bat と同値(社長指示「歩く速さはバットくらい」)。
   driller:   { width: 40, height: 40, speed: 75,  health: 150,  damage: 16,  experienceValue: 8 },
+  // PACING_PUZZLE.md §14-2(伐採人・logger): ENEMY_STATS=パンプキン/削岩型と同値(§9-2「同格」を継承)。
+  logger:    { width: 40, height: 40, speed: 75,  health: 150,  damage: 16,  experienceValue: 8 },
   // 新型(lich・ステージ4): 速度はゴースト(90)の1.2倍=108。旋回しながら詰めてくる(AIは store)。
   lich:      { width: 30, height: 30, speed: 108, health: 36,   damage: 12,  experienceValue: 4 },
   // 城ボス(ジャイアント)。ここは生成時の互換値(×ENEMY_HP_MULT=実効2500)。**出現時に台帳の値へ置換される**
@@ -223,7 +225,9 @@ export const isGate2AngelBoss = (t: EnemyType): boolean => t === 'miguel' || t =
 // isBossType/isEliteType等のpumpkin特別扱いを全てこの述語経由で共有する。
 // ★講習(reliefProgram)・囲いミニボス(useGameLoop:3255)・ホードN体目(useGameLoop:3319)・
 // botObjective・アイコン等の「pumpkin固有」(§9-7②)はこの述語を通さない=対象外のまま。
-export const isPumpkinTier = (t: EnemyType): boolean => t === 'pumpkin' || t === 'driller';
+// PACING_PUZZLE.md §14-3裁定済み#2(伐採人・logger): pumpkin/driller枠を更に分け合う「同格」の
+// 第3の型。isPumpkinTier経由の全ての効きへ自動で乗る(§9-7#1の列挙を参照)。
+export const isPumpkinTier = (t: EnemyType): boolean => t === 'pumpkin' || t === 'driller' || t === 'logger';
 
 /**
  * ★噛みつき(PACING_PUZZLE §12)の対象外にする「**本物のボス**」。
@@ -980,6 +984,7 @@ export const getEnemyColor = (type: EnemyType): string => {
     case 'werewolf': return '#6b3f1d';  // dark brown
     case 'pumpkin':  return '#f97316';  // orange
     case 'driller':  return '#d9a441';  // ヘルメットの琥珀(削岩型・PACING_PUZZLE.md §9-2)
+    case 'logger':   return '#c2410c';  // 錆びたチェーンソーの赤茶(伐採人・叩き台=実機調整前提。PACING_PUZZLE.md §14-2)
     case 'giantbat': return '#11122c';  // very dark
     case 'reaper':   return '#0a0a0a';  // pitch black
     case 'lich':     return '#7fb4e6';  // icy blue (ステージ4新型)

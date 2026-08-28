@@ -632,6 +632,11 @@ export interface Enemy {
     // ロックし、activeで1回だけカプセル判定を積む(§6.28共通T3ゾーンと同型)。§9-8④: moveCancelGuardの
     // 観測対象外(watchはgauntletのみ+drillerは計測路に出ない)。
     | 'driller-thrust-windup' | 'driller-thrust-active' | 'driller-thrust-recover'
+    // PACING_PUZZLE.md §14-2(降格死神=伐採人・logger。§9削岩型の写し+差分4点): 開始時に
+    // aiFromX/Y→aiTargetX/Yへ帯の両端(長さ220×半幅26・プレイヤー方向と直交する横帯)をロックし、
+    // activeで1回だけカプセル判定を積む(driller-thrustと同型)。§9-8④と同じくmoveCancelGuardの
+    // 観測対象外(watchはgauntletのみ+loggerは計測路に出ない)。
+    | 'logger-sweep-windup' | 'logger-sweep-active' | 'logger-sweep-recover'
     // ★社長指示2026-08-26「自転車、着地後1秒硬直」: 犬型(werewolf)の突進が終わった後の硬直。
     // 汎用'recover'はパンプキン型の描画(着地スカッシュ/盾落下)に結び付いているため別名にする。
     | 'dash-recover';
@@ -655,6 +660,8 @@ export interface Enemy {
   // PACING_PUZZLE.md §9-4/§9-7#6(削岩型): 近接武器の打撃を受けた瞬間 gameTime+2000 を書く。
   // 有効中はプレイヤー逆方向へspeed×1.5(通常移動より優先・突き3州には劣後=変位のみ重畳)。
   // 距離リサイクル/個体使い回しで必ずクリアする(directorTick.ts runOffscreenRecycleAndCull)。
+  // §14-2④(伐採人・logger): この機構をそのまま共有する(フィールドは共用。§9-7#6の述語も
+  // driller/logger両方へ適用=専用フィールドは新設しない)。
   drillerRetreatUntil?: number;
   // idol専用(§6.28-20・社長指示)の設置時の向き。true=水平ミラーして左向きで描画。既存の汎用
   // facingLeft機構は無い(ShadowCloneStateの同名フィールドとは別物=プレイヤー分身の描画専用)ため、
@@ -1342,6 +1349,10 @@ export type EnemyType =
   // 台本的にパンプキンと「同格」(同一枠を分け合う=isPumpkinTier)。一定距離を保ちドリルの突きを
   // 放ち、近接を食らうと離脱する。isBossType等の特別扱いはisPumpkinTier経由でpumpkinと共有する。
   | 'driller'
+  // PACING_PUZZLE.md §14(社長指示2026-08-28): 伐採人(logger)= 降格死神。仕様は driller の写し+
+  // 差分4点(絵=死神の立ち絵+チェーンソー武器/攻撃=横方向の薙ぎ払い/間合いが少し近い/予告が少し長め)。
+  // ステージ3以降、台本的にpumpkin/driller と「同格」(isPumpkinTier経由で特別扱いを共有)。
+  | 'logger'
   | 'giantbat'  // mini-boss every ~10 minutes
   | 'reaper'    // terminal entity at 30:00
   | 'lich'      // ステージ4の新型。ゴーストの1.2倍速でプレイヤーの周囲を旋回しながら詰める

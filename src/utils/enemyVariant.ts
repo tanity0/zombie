@@ -37,6 +37,9 @@ export const ENEMY_VARIANT_SETS: Readonly<Record<string, readonly string[]>> = {
   reaper: ['reaper-common'],               // 1種のみ(v0.25.2901)。見た目=チェーンソーを掲げた襤褸外套
   pumpkin: ['pumpkin-common'],             // 1種のみ(v0.25.2905)。見た目=蜘蛛の機械足の襤褸
   driller: ['driller-common'],             // 1種のみ(PACING_PUZZLE.md §9-2)。見た目=ドリル腕の作業員ゾンビ
+  // PACING_PUZZLE.md §14-2①(伐採人・logger): 本体=現行の死神の立ち絵をそのまま流用(reaperと同じ絵)。
+  // 武器(チェーンソー=reaper-chainsaw)は本体と別スプライトでpixiScene側が構え〜薙ぎで重ねて描く。
+  logger: ['reaper-common'],
 };
 
 /**
