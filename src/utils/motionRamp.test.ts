@@ -1,6 +1,9 @@
 // research/AI_HUMANIZE.md B3(§4「慣性」・CLAUDE.md動きの絶対ルール)。速度状態モデルの純関数テスト。
 import { describe, it, expect } from 'vitest';
-import { rampVelocity, withinDeadband, MOTION_RAMP_TAU_SEC, MOTION_DEADBAND_PX } from './motionRamp';
+import {
+  rampVelocity, withinDeadband, MOTION_RAMP_TAU_SEC, MOTION_DEADBAND_PX,
+  snapStoppedVelocity, STOP_SNAP_PX_PER_SEC,
+} from './motionRamp';
 
 describe('rampVelocity', () => {
   it('1tickで目標速度へ瞬間ジャンプしない(連続性=不連続に跳ばない)', () => {
@@ -49,5 +52,25 @@ describe('定数の健全性', () => {
   it('時定数は150〜250msの叩き台レンジ内', () => {
     expect(MOTION_RAMP_TAU_SEC).toBeGreaterThanOrEqual(0.15);
     expect(MOTION_RAMP_TAU_SEC).toBeLessThanOrEqual(0.25);
+  });
+});
+
+// ★B3検収(中6): 幻影の停止スナップ。
+describe('snapStoppedVelocity', () => {
+  it('閾値(4px/s)未満は厳密に(0,0)へスナップする', () => {
+    expect(snapStoppedVelocity({ vx: 3, vy: 0 })).toEqual({ vx: 0, vy: 0 });
+    expect(snapStoppedVelocity({ vx: 0, vy: STOP_SNAP_PX_PER_SEC - 0.01 })).toEqual({ vx: 0, vy: 0 });
+  });
+  it('閾値以上はそのまま(通常の減衰を妨げない)', () => {
+    const v = { vx: 100, vy: 0 };
+    expect(snapStoppedVelocity(v)).toEqual(v);
+  });
+  it('旧挙動(decision.moveX/Y===0で即vx=vy=0)との差は同tick=1フレーム以内: 閾値未満まで減衰した' +
+     'tickのうちに厳密な0になる(漸近減衰の尾を引かない)', () => {
+    // 既に閾値未満(3px/s)の状態から目標0へさらにランプしても閾値未満のまま=そのtickで即0スナップされる。
+    const nearStop = { vx: 3, vy: 0 };
+    const ramped = rampVelocity(nearStop, 0, 0, 1 / 60);
+    expect(Math.hypot(ramped.vx, ramped.vy)).toBeLessThan(STOP_SNAP_PX_PER_SEC);
+    expect(snapStoppedVelocity(ramped)).toEqual({ vx: 0, vy: 0 });
   });
 });

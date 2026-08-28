@@ -190,8 +190,11 @@ export const punishModeStat = (
 // 追加するのは「recover窓が開いてから最初の振り(swungThisTick)までのms」を3ビンへ積むだけの
 // 解像度上げ(既存のstun/afterCounter文脈には掛けない=発注仕様どおりrecoverのみ)。
 // =================================================================================================
-/** 3ビンの叩き台しきい値(§4⑦「即/普通/様子見」)。punishWindow.tsの外(microRhythmReplay.ts)の
- * サンプリング側 PUNISH_FAST_MS/PUNISH_NORMAL_MS と同じ境界(数値の複製ではなく別ファイルの定数)。 */
+/** 3ビンの叩き台しきい値(§4⑦「即/普通/様子見」)。★検収是正(中5・事実に反するコメントの訂正):
+ * これは**値の複製**である(punishWindow.tsの外=microRhythmReplay.tsのサンプリング側
+ * PUNISH_FAST_MS/PUNISH_NORMAL_MSと同じ150/500msを、循環import回避のため別ファイルに独立定義して
+ * いる)。「複製ではない」は誤り——ズレると録り(このファイルの3ビン境界)と写し(サンプリング側の
+ * 値の範囲)の境界が食い違う。値の一致はmicroRhythmReplay.test.tsの一致テストで機械検査する。 */
 export const PUNISH_SPEED_FAST_MS = 150;   // 叩き台
 export const PUNISH_SPEED_NORMAL_MS = 500; // 叩き台
 

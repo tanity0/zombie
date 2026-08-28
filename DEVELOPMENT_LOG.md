@@ -1,5 +1,76 @@
 # Development Log
 
+## v0.25.4001 — AI_HUMANIZE B3検収(2巡目): マイクロリズムの是正(仕様の正=research/AI_HUMANIZE.md §4・コミット16e4709) 【2026-08-28 17:40 JST】
+
+B3(マイクロリズム・v0.25.3998)の検収監査で出た重大3件・中7件・軽6件を実装。**仕様(挙動の意図)は
+一切変えず、実測プロファイルを持つ相手が実際に「止まりすぎて動かない/被弾直後に棒立ち/通常近接が
+速くなりすぎる」バグの是正のみ**。
+
+### 重大(判定・バランスに影響しうるもの)
+- **①止まりの占有率崩壊(重大1)**: 止まりエピソードの「発生確率」が旧`rand()<mobility`のままで、
+  長さだけエピソード化(平均〜数百ms)されたため占有率が反転していた(監査実測62.5%→4.8%)。
+  `microRhythmReplay.stillStartChance`(交互再生過程の逆算式・コメントに導出を明記)で、
+  旧`ghostMoveChance(mobility, stationaryFrac)`の占有率を保存するよう発生確率を逆算する形へ是正。
+  受け入れテスト: mobility 0.5/0.7/0.9 × 合成分布 × 60fps 20000〜30000tickシミュレートで
+  moving率が旧式の±10%以内(下の実測値参照)。
+- **②CD床クランプ(重大2)**: `sampleSwingIntervalMs`の戻り値(密ビンで200〜500ms)を
+  `GHOST_MELEE_COOLDOWN_MS`(600ms)未満にクランプしていなかった=通常近接が旧来より速くなりうる
+  (DPS増=バランス変更)バグ。下側クランプ(伸びる方向にだけ揺れる)を追加。
+- **⑥完全停止2枝(重大3・裁定v2534)**: 被弾直後モード「下がる」の帯内・「殴り返す」の射程内で
+  moveX/Y未設定のまま抜け、完全停止(0,0)に落ちる枝があった。両方に`orbitVec(GHOST_ORBIT_IDLE_FRAC)`
+  のドリフト床を追加。あわせて「殴り返す」は射程内ならpunishRushと同型でmeleeBias抽選を通さず即振り
+  になるよう配線。
+
+### 中(実測の質・録りの純度に関わるもの)
+- 中1: 止まりエピソード中も既存rand流を「引いて捨てる」ように是正(④と同型・消費順保全)。
+- 中2: 合成間合い分布の中心計算を`Math.round`→`Math.floor`へ(録り側`playerTraits.ts`の
+  `Math.floor(dist/50)`と揃える。最大+45pxのズレを解消)。
+- 中3: 録り①②⑥⑧(`stepMicroRhythm`)の呼び出しを`if (!boss) return`の後ろへ移動
+  (交戦中=ボスありゲートの内側でのみ積む。③④⑤⑦は元々ゲート済みだった)。
+- 中4: `saveProfile`のquota退避の落とし順に`microRhythm`を追加(moveHabits系→microRhythmの順で
+  段階的に落として再保存。サブ様式は現状落とす対象が無いため省略)。
+- 中5: `DIST_BUCKET_PX/COUNT`(playerTraits⇄microRhythmReplay)・`PUNISH_FAST/NORMAL_MS`
+  (punishWindow⇄microRhythmReplay)の複製定数一致テストを追加(bossTelegraph.test.tsと同型)。
+  `punishWindow.ts`の「数値の複製ではなく別ファイルの定数」という事実に反するコメントを訂正
+  (実際は意図的な複製=一致テストで機械検査する、と書き直した)。
+- 中6: 幻影(phantomTick.ts)の速度ランプに`snapStoppedVelocity`(停止判定閾値4px/s未満で即0へ
+  スナップ)を追加。スナイパー「停止敵」ボーナス(`sniperGunMult`)の判定タイミングを保つ。
+- 中7: 守護霊(useGameLoop.ts)のKB(被弾ノックバック)中は速度ベクトル状態ごと即0へ置換(プレイヤーと
+  同型)。旧: 目標速度だけ0にしてランプを続けていたため、KB中も残速度がなだらかに移動へ加算され続けて
+  いた(「自分の移動を止める」というコメントが実態と食い違っていた)。
+
+### 軽(注記・コメント・軽微な最適化)
+- 宙に浮いた(参照先の無い)JSDoc(①のはずが②の内容)を削除。
+- `profile.microRhythm`が無いプロファイル(大多数)では専用乱数流カーソルの生成自体を省略。
+- ⑥被弾直後モードの期限失効判定を、標的が1tick居ない経路にも適用。
+- `stepMicroRhythm`の`isMoving`入力(=`player.isMoving`)は強制移動(ノックバック等)も「移動」として
+  数える旨を§4①の定義との差としてコメントに明記(挙動は変えない)。
+- `ghostMoveChance`のJSDocを実態(①の占有率保存目標としても使われる)に合わせて更新。
+- 幻影の移動が実質静止(|v|が閾値未満)まで減衰した時は`resolveMove`(衝突解決)自体を呼ばない旧来の
+  節約を復帰(PVP気絶枝が既に持つ同型の節約と揃えた)。
+
+### 占有率保存の実測値(3点・decideGhost本体を通したend-to-end測定・20000tick/点)
+| mobility | 旧ghostMoveChance(targetOcc) | 新moving率 | ±10%以内 |
+|---|---|---|---|
+| 0.5 | 0.5750 | 0.5468 | ○ |
+| 0.7 | 0.6750 | 0.6740 | ○ |
+| 0.9 | 0.7750 | 0.7795 | ○ |
+
+### (B)積み(実装せず・別案件へ)
+- 占有率回帰テストのさらなる拡充(今回入れたのは3点の受け入れテストの最低限)。
+- 合成分布の妥当性不変条件(constitution.test.ts的な機械化)。
+- §7-3(ビット同一の意味)の注記。
+
+### 検証
+- `npm run typecheck` 0エラー / `npm run lint` 0エラー(既存warning8件のみ)。
+- 関連テスト明示実行(全green): `ghostDriver.test.ts`(136件)/`microRhythm.test.ts`(16件)/
+  `microRhythmReplay.test.ts`(22件)/`playerTraits.test.ts`(103件)/`motionRamp.test.ts`(10件)/
+  `punishWindow.test.ts`(17件)/`phantomTick.test.ts`(35件)= 計339件。
+- 自己点検: 判定・ダメージ・技性能・仕様の意図(慣性MUST/完全停止禁止/CD不変/停止敵ボーナス)は
+  変更していない。重大2(CD床クランプ)はDPS増を防ぐ側への是正であり、仕様変更ではなくバグ修正。
+
+### 状態変化: ★AIの人間化 → B3補修済み(検収2巡目)(残: なし。次は社長の実機確認待ち)
+
 ## v0.25.4000 — グレラン弾を独立弾種化(社長指示2026-08-28「グレランは弾を分けて」) 【2026-08-28 17:09 JST】
 - **裁定**: v3290「ライフル弾共用・専用弾経済は作らない」を社長裁定で撤回。グレランは専用リザーブ
   `Player.ammoGlauncher`(初期24・上限36・拾得+20=既存のAMMO_INITIAL/MAX/PICKUPのglauncherキーが実体化)。

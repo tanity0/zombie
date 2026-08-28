@@ -27,6 +27,9 @@ import { resetModeBags } from './modeBag'; // GHOST-CMD-2A: 隙コマンドの2�
 import { PUNISH_AFTER_COUNTER_MS } from './punishWindow';
 import { COUNTER_WINDOW, COUNTER_COOLDOWN } from '../store/gameStore'; // GHOST-COUNTER-PARITY: 定数を写さずimportして検証する
 import type { Enemy, Projectile } from '../types/game';
+import { mulberry32 } from './botUpgradePolicy'; // ★B3検収(重大1): 占有率保存の受け入れテスト用の決定的乱数流
+import { meanStillMs, stillStartChance, sampleStillMs } from './microRhythmReplay';
+import type { MicroBin3Dist } from './microRhythm';
 
 // §2.18(GHOST-CMD-1): 技への反応の決定はラン単位の袋(モジュールシングルトン)から引くようになった。
 // テスト間で袋(残枚数・連続tank回数)を持ち越さない=各テストは「ラン開始直後」から始まる。
@@ -1500,13 +1503,17 @@ describe('AI_HUMANIZE B3: マイクロリズムの写し(decideGhost)', () => {
     expect(Math.hypot(d.moveX, d.moveY)).toBeGreaterThan(0);
   });
 
-  it('①置換でmobilityが生きる: mobility=0(常に止まる)なら止まりエピソードへ入る', () => {
+  it('①置換でmobilityが生きる: mobility=0(常に止まる癖)なら止まりエピソードへ入りやすい', () => {
     const profile: GhostProfile = {
       ...PROFILE, mobility: 0, microRhythm: { stillness: { n: 20, rate0: 1, rate1: 0 } }, // 全て短い止まり
     };
+    // ★B3検収(重大1是正)以降、止まり開始確率は`rand() < mobility`そのものではなく、旧ghostMoveChance
+    // の占有率を保存するstillStartChance逆算式から出る(microRhythmReplay.stillStartChance参照)。
+    // mobility=0/既定stationaryFrac(0.35)/短い止まりのみ(平均100ms)だと開始確率は約0.257なので、
+    // 十分に高いrandで確実に「止まる」側を引く。
     const d = decideGhost(baseDriverInput({
       ghost: mkGhost({ orbitSign: 1 }), enemies: [boss()], boundBossId: 'boss-1', profile,
-      rand: () => 0.01, // 0.01<0=false(=止まる)
+      rand: () => 0.99,
       microSeed: 1,
     }));
     expect(d.microIdleUntil).toBeDefined();
@@ -1566,5 +1573,217 @@ describe('AI_HUMANIZE B3: マイクロリズムの写し(decideGhost)', () => {
     const b = withSynthesizedMicroRhythm({ ...PROFILE, stationaryFrac: 0.4, hitsPerMin: 5, preferredDist: 200 });
     expect(a.microRhythm).toEqual(b.microRhythm);
     expect(a.microRhythm).toBeDefined();
+  });
+
+  it('①エピソード中もrandを「引いて捨てる」(中1): stillnessあり合成分布でのrand消費回数は分布無しと不変', () => {
+    const countCalls = (profile: GhostProfile): number => {
+      let calls = 0;
+      const rand = () => { calls += 1; return 0.4; };
+      let ghost: GhostSelf = mkGhost({ orbitSign: 1 });
+      let gameTime = 0;
+      // 数tick回して「アイドル中(rand消費が無いと壊れる分岐)」も踏む。
+      for (let i = 0; i < 5; i++) {
+        const d = decideGhost(baseDriverInput({
+          ghost, enemies: [boss()], boundBossId: 'boss-1', profile, rand, microSeed: 11, gameTime, nowMs: gameTime,
+        }));
+        ghost = { ...ghost, microIdleUntil: d.microIdleUntil, microDrawIndex: d.microDrawIndex, orbitSign: d.orbitSign ?? 1 };
+        gameTime += 16;
+      }
+      return calls;
+    };
+    const without = countCalls(PROFILE);
+    const withStillness = countCalls({
+      ...PROFILE, mobility: 0.3,
+      microRhythm: { stillness: { n: 20, rate0: 1, rate1: 0 } }, // 短い止まりのみ=すぐアイドルへ入る
+    });
+    expect(withStillness).toBe(without);
+  });
+});
+
+// research/AI_HUMANIZE.md B3(§4マイクロリズムの写し・検収2巡目=B3検収の是正)。
+describe('AI_HUMANIZE B3検収: ①占有率の保存(重大1)', () => {
+  const TICK_MS = 1000 / 60;
+
+  /** decideGhostと同じ状態機械を直接シミュレートする(逆算式そのものの検算)。 */
+  const simulateFormula = (targetOcc: number, dist: MicroBin3Dist, seed: number, ticks: number): number => {
+    const rand = mulberry32(seed);
+    const meanStill = meanStillMs(dist);
+    let gameTime = 0, microIdleUntil = 0, movingTicks = 0;
+    for (let i = 0; i < ticks; i++) {
+      let moving: boolean;
+      const r = rand();
+      if (gameTime < microIdleUntil) {
+        moving = false;
+      } else {
+        const pStart = stillStartChance(targetOcc, meanStill, TICK_MS);
+        moving = r < 1 - pStart;
+        if (!moving) microIdleUntil = gameTime + sampleStillMs(dist, rand);
+      }
+      if (moving) movingTicks += 1;
+      gameTime += TICK_MS;
+    }
+    return movingTicks / ticks;
+  };
+
+  /**
+   * decideGhost本体を通したend-to-endの受け入れテスト。「止まりtickか」は外からは直接見えないが、
+   * `decision.microIdleUntil > その時のgameTime` であれば必ず「このtickは止まり(moving=false)」
+   * ——理由: moving=trueの時はmicroIdleUntilを一切更新しない(=入力時点で既にgameTime以下だった値の
+   * まま)。moving=falseの時(継続中/新規開始のどちらも)は必ずgameTimeより先の値になる。
+   */
+  const simulateViaDecideGhost = (mobility: number, seed: number, ticks: number): { movingRate: number; targetOcc: number } => {
+    const stationaryFrac = GHOST_DEFAULT_STATIONARY_FRAC;
+    const targetOcc = ghostMoveChance(mobility, stationaryFrac);
+    const profile = withSynthesizedMicroRhythm({
+      ...PROFILE, mobility, stationaryFrac, counterChance: 0, // カウンター待ちの静止(意味のある例外)を除外
+    });
+    const rand = mulberry32(seed);
+    let ghost: GhostSelf = mkGhost({ orbitSign: 1 });
+    let gameTime = 0;
+    let stillTicks = 0;
+    const bossE = mkBoss({ x: 400, y: 0 });
+    for (let i = 0; i < ticks; i++) {
+      const d = decideGhost(baseDriverInput({
+        ghost, enemies: [bossE], boundBossId: 'boss-1', profile, rand, microSeed: 4242, gameTime, nowMs: gameTime,
+      }));
+      if ((d.microIdleUntil ?? 0) > gameTime) stillTicks += 1;
+      ghost = {
+        ...ghost,
+        lastShotAt: d.lastShotAt, lastMeleeAt: d.lastMeleeAt, orbitSign: d.orbitSign ?? ghost.orbitSign,
+        microDrawIndex: d.microDrawIndex, microIdleUntil: d.microIdleUntil,
+        microMeleeCooldownMs: d.microMeleeCooldownMs, microDrawnDist: d.microDrawnDist,
+        microDrawnDistSig: d.microDrawnDistSig, microOrbitRedrawAt: d.microOrbitRedrawAt,
+        microHitReactMode: d.microHitReactMode, microHitReactUntil: d.microHitReactUntil,
+        microHitReactAnchor: d.microHitReactAnchor, microPunishDelayUntil: d.microPunishDelayUntil,
+        microDecisionMode: d.microDecisionMode, microDecisionUntil: d.microDecisionUntil,
+        counterPendingAt: d.counterPendingAt, counterWillAttempt: d.counterWillAttempt,
+        lastCounterAttemptAt: d.lastCounterAttemptAt,
+        punishContext: d.punishContext, punishMode: d.punishMode,
+      };
+      gameTime += TICK_MS;
+    }
+    return { movingRate: 1 - stillTicks / ticks, targetOcc };
+  };
+
+  it.each([0.5, 0.7, 0.9])('mobility=%s: 逆算式そのもののmoving率が旧ghostMoveChanceの±10%以内(合成分布・60fps長時間)', (mobility) => {
+    const targetOcc = ghostMoveChance(mobility, GHOST_DEFAULT_STATIONARY_FRAC);
+    const composed = withSynthesizedMicroRhythm({ ...PROFILE, mobility, stationaryFrac: GHOST_DEFAULT_STATIONARY_FRAC });
+    const dist = composed.microRhythm!.stillness!;
+    const movingRate = simulateFormula(targetOcc, dist, Math.round(mobility * 1009) + 3, 30000);
+    expect(movingRate).toBeGreaterThanOrEqual(targetOcc * 0.9);
+    expect(movingRate).toBeLessThanOrEqual(Math.min(1, targetOcc * 1.1));
+  });
+
+  it.each([0.5, 0.7, 0.9])('mobility=%s: decideGhost本体を通したmoving率も旧ghostMoveChanceの±10%以内(受け入れ条件)', (mobility) => {
+    const { movingRate, targetOcc } = simulateViaDecideGhost(mobility, Math.round(mobility * 733) + 7, 20000);
+    expect(movingRate).toBeGreaterThanOrEqual(targetOcc * 0.9);
+    expect(movingRate).toBeLessThanOrEqual(Math.min(1, targetOcc * 1.1));
+  });
+
+  it('⑧の凍結が動くtick単発で即再抽選されない(占有率是正後の固定): microDecisionModeは⑧分布の間隔が明けるまで同じモードを保つ', () => {
+    // decisionInterval=常に「遅い」(bin2)側=長い凍結。stillnessは無し(=常にmoving判定へ入る)にして
+    // 「動くtick」を連続させ、その間microDecisionModeが毎tick再抽選されていないことを見る。
+    const profile: GhostProfile = {
+      ...PROFILE, mobility: 1, counterChance: 0,
+      microRhythm: { decisionInterval: { n: 20, rate0: 0, rate1: 0 } }, // 遅い(bin2)のみ
+    };
+    let ghost: GhostSelf = mkGhost({ orbitSign: 1 });
+    let gameTime = 0;
+    const bossE = mkBoss({ x: 400, y: 0 });
+    const modes: Array<string | undefined> = [];
+    for (let i = 0; i < 5; i++) {
+      const d = decideGhost(baseDriverInput({
+        ghost, enemies: [bossE], boundBossId: 'boss-1', profile,
+        rand: () => 0.01, microSeed: 5, gameTime, nowMs: gameTime,
+      }));
+      modes.push(d.microDecisionMode);
+      ghost = {
+        ...ghost, orbitSign: d.orbitSign ?? 1, microDrawIndex: d.microDrawIndex,
+        microDecisionMode: d.microDecisionMode, microDecisionUntil: d.microDecisionUntil,
+        microIdleUntil: d.microIdleUntil,
+      };
+      gameTime += 16;
+    }
+    // 全tickが「動くtick」(mobility=1・stillness未指定)なのに、モードは1回引いたら固定=毎tick別モードに散らない。
+    expect(new Set(modes).size).toBe(1);
+  });
+});
+
+// research/AI_HUMANIZE.md B3(§4マイクロリズムの写し・検収2巡目=B3検収の是正)。
+describe('AI_HUMANIZE B3検収: ②CD床クランプ(重大2)', () => {
+  it('sampleSwingIntervalMsが密(短い)側を引いても、次の通常近接CDはGHOST_MELEE_COOLDOWN_MS(600ms)未満にならない', () => {
+    const denseBoss = mkBoss({ x: 40, y: 0 }); // 近接射程内
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 1,
+      microRhythm: { swingInterval: { n: 20, rate0: 1, rate1: 0 } }, // 密(bin0=200〜500ms)のみ
+    };
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ orbitSign: 1, lastMeleeAt: -1_000_000 }),
+      enemies: [denseBoss], boundBossId: 'boss-1', profile,
+      rand: () => 0.01, microSeed: 6, nowMs: 0, gameTime: 0,
+    }));
+    expect(d.action).toBe('melee');
+    expect(d.microMeleeCooldownMs).toBeDefined();
+    expect(d.microMeleeCooldownMs!).toBeGreaterThanOrEqual(600);
+  });
+});
+
+// research/AI_HUMANIZE.md B3(§4マイクロリズムの写し・検収2巡目=B3検収の是正)。
+describe('AI_HUMANIZE B3検収: ⑥完全停止2枝の是正(重大3)', () => {
+  it('「下がる」(mode0)は帯内(離脱済み)でも完全停止せずドリフト床(orbitVec)で動く', () => {
+    const farBoss = mkBoss({ x: 1000, y: 0 }); // GHOST_MOVE_BAND_PX*4より遠い=既に離脱済みの帯
+    const profile: GhostProfile = {
+      ...PROFILE, microRhythm: { hitReact: { n: 20, rate0: 1, rate1: 0 } }, // 常に「下がる」(bin0)
+    };
+    const ghost = mkGhost({ orbitSign: 1, lastHit: 100 });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [farBoss], boundBossId: 'boss-1', profile,
+      rand: () => 0.99, microSeed: 8, gameTime: 200, nowMs: 200,
+    }));
+    expect(d.microHitReactMode).toBe(0);
+    expect(Math.hypot(d.moveX, d.moveY)).toBeGreaterThan(0); // 完全停止(0,0)ではない
+  });
+
+  it('「殴り返す」(mode2)は射程内でも完全停止せずドリフト床(orbitVec)で動く', () => {
+    const nearBoss = mkBoss({ x: 40, y: 0 }); // 近接射程内
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, // meleeBias抽選では振らない設定でも即振り配線が効くかは別テストで見る
+      microRhythm: { hitReact: { n: 20, rate0: 0, rate1: 0 } }, // 常に「殴り返す」(bin2)
+    };
+    const ghost = mkGhost({ orbitSign: 1, lastHit: 100 });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [nearBoss], boundBossId: 'boss-1', profile,
+      rand: () => 0.99, microSeed: 9, gameTime: 200, nowMs: 200,
+    }));
+    expect(d.microHitReactMode).toBe(2);
+    expect(Math.hypot(d.moveX, d.moveY)).toBeGreaterThan(0); // 完全停止(0,0)ではない
+  });
+
+  it('「殴り返す」(mode2)は射程内ならmeleeBias抽選なしで即振り(punishRushと同型)', () => {
+    const nearBoss = mkBoss({ x: 40, y: 0 }); // 近接射程内
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, // meleeBias抽選に絶対乗らない設定
+      microRhythm: { hitReact: { n: 20, rate0: 0, rate1: 0 } }, // 常に「殴り返す」
+    };
+    const ghost = mkGhost({ orbitSign: 1, lastHit: 100, lastMeleeAt: -1_000_000 });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [nearBoss], boundBossId: 'boss-1', profile,
+      // randは常に1に近い値=meleeBias抽選(rand()<0)なら絶対外れる値。それでも振れることを見る。
+      rand: () => 0.999999, microSeed: 10, gameTime: 200, nowMs: 200,
+    }));
+    expect(d.action).toBe('melee');
+  });
+});
+
+describe('AI_HUMANIZE B3検収: 軽3(⑥期限失効の無標的経路)', () => {
+  it('標的が1tick居ない間も、期限切れのmicroHitReactModeはundefinedへ落ちる', () => {
+    const ghost = mkGhost({
+      orbitSign: 1, microHitReactMode: 2, microHitReactUntil: 100,
+    });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [], boundBossId: 'boss-1', profile: PROFILE, // 標的なし(boundBossId不在=フォールバックも空)
+      rand: () => 0.5, gameTime: 500, nowMs: 500, // 500 >= microHitReactUntil(100)=期限切れ
+    }));
+    expect(d.microHitReactMode).toBeUndefined();
   });
 });

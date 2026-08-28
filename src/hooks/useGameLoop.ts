@@ -9849,6 +9849,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
               // v0.25.2514(監査項目7): 被弾ノックバック中は自分の移動を止める(プレイヤーがKB中に入力を
               // 無視されるのと同じ。実際の弾かれ移動は updateSummons が減衰しながら消化する)。
+              // ★検収是正(中7・実態合わせ): 「止める」は速度ベクトル状態(Summon.vx/vy)ごと即0へ
+              // 置換する(プレイヤーと同型)。B3で速度ランプを導入した際、下のtargetVxを0にするだけで
+              // ランプ自体は続けていたため、KB中も残速度がなだらかに0へ減衰しながらnx/nyへ加算され続け
+              // ていた(=「自分の移動を止める」が実際には止まっていなかった)。
               const kbLocked = nowMs < (ghostNow.knockbackUntil ?? 0);
               // v0.25.2518(裁定2): 刀の一閃/ワイヤーのロコモーション上書きを**プレイヤーと同じ純関数**で
               // ゴースト実体のx/yへ乗せる。優先順(ワイヤー高速移動>ホップ>一閃>着地硬直)も
@@ -9877,9 +9881,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 暴れないよう、その時の実効速度で揃えておく(叩き台=瞬間の実移動量から逆算)。
                 ghostVxNext = deltaTime > 0 ? gStep.dx / deltaTime : 0;
                 ghostVyNext = deltaTime > 0 ? gStep.dy / deltaTime : 0;
+              } else if (kbLocked) {
+                // ★検収是正(中7): KB中はランプを通さず即0(プレイヤーのkbActive中と同型)。
+                // 残速度をKB変位(updateSummonsが別に減衰させる)へ持ち越さない=自分の移動が
+                // 本当に止まる。KBが明けた次tickは0速度から改めてランプで立ち上がる。
+                ghostVxNext = 0; ghostVyNext = 0;
+                nx = ghostNow.x; ny = ghostNow.y;
               } else {
-                const targetVx = kbLocked ? 0 : decision.moveX * ghostNow.speed;
-                const targetVy = kbLocked ? 0 : decision.moveY * ghostNow.speed;
+                const targetVx = decision.moveX * ghostNow.speed;
+                const targetVy = decision.moveY * ghostNow.speed;
                 const ramped = rampVelocity({ vx: ghostNow.vx ?? 0, vy: ghostNow.vy ?? 0 }, targetVx, targetVy, deltaTime);
                 ghostVxNext = ramped.vx; ghostVyNext = ramped.vy;
                 nx = ghostNow.x + ramped.vx * deltaTime;

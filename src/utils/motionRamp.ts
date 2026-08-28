@@ -32,3 +32,21 @@ export const rampVelocity = (
  */
 export const withinDeadband = (dx: number, dy: number, deadbandPx: number = MOTION_DEADBAND_PX): boolean =>
   Math.hypot(dx, dy) <= deadbandPx;
+
+/**
+ * ★B3検収(中6): 停止判定閾値(px/s)。gameStore.sniperGunMultの`stopped`判定
+ * (`Math.hypot(enemy.vx,enemy.vy) < 4`)と**同じ値の意図的な複製**(motionRampはstore非依存を保つため
+ * importしない=循環回避)。値がズレるとスナイパー「停止敵」ボーナスの発火タイミングだけがズレる。
+ */
+export const STOP_SNAP_PX_PER_SEC = 4;
+
+/**
+ * ランプ後の速度が停止判定閾値未満まで減衰していたら、厳密に(0,0)へスナップする。
+ * `rampVelocity`は目標0への収束が漸近的(理論上ちょうど0にはならない)——旧実装(B3以前)は
+ * `decision.moveX/Y===0`で**瞬間的に**vx=vy=0にしていたため、スナイパーの「停止敵」ボーナス判定
+ * (上のSTOP_SNAP_PX_PER_SEC未満)はその瞬間に揃っていた。閾値を跨いだtickで即0スナップすることで、
+ * ブール判定(停止か否か)自体は既にそのtickで真になっている状態を厳密な0で確定させ、以降の
+ * 描画/他ロジックが減衰の長い尾(残ジッタ)を拾わないようにする(§4検収・中6)。
+ */
+export const snapStoppedVelocity = (v: VelocityState): VelocityState =>
+  Math.hypot(v.vx, v.vy) < STOP_SNAP_PX_PER_SEC ? { vx: 0, vy: 0 } : v;

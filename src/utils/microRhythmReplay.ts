@@ -74,6 +74,57 @@ export const sampleStillMs = (dist: MicroBin3Dist | undefined, rand: () => numbe
   return STILL_MID_MS + STILL_MID_MS * rand(); // long: 600〜1200ms(叩き台=中央値の2倍を上限とする)
 };
 
+// ---- ①占有率の保存(B3検収・重大1): 止まりエピソード化で「動いているtick率」を旧来と揃える ----------
+/**
+ * ①止まりの長さ(ms)の期待値(=sampleStillMsが実際に返す値の平均。bin内一様分布の中点の加重和)。
+ * 欠損/n<=0はSTILL_MID_MS(中間ビンの代表値)を返す(呼び出し側は分布が無ければこの関数自体を呼ばない
+ * ので実際には使われないフォールバック)。
+ */
+export const meanStillMs = (dist: MicroBin3Dist | undefined): number => {
+  if (!dist || dist.n <= 0) return STILL_MID_MS;
+  const e0 = STILL_SHORT_MS / 2;                  // bin0: 一様[0, STILL_SHORT_MS)の平均
+  const e1 = (STILL_SHORT_MS + STILL_MID_MS) / 2; // bin1: 一様[STILL_SHORT_MS, STILL_MID_MS)の平均
+  const e2 = STILL_MID_MS * 1.5;                  // bin2: 一様[STILL_MID_MS, 2*STILL_MID_MS)の平均(sampleStillMsのlongと同じ範囲)
+  const r0 = clamp01(dist.rate0);
+  const r1 = clamp01(dist.rate1);
+  const r2 = Math.max(0, 1 - r0 - r1);
+  return r0 * e0 + r1 * e1 + r2 * e2;
+};
+
+/** 占有率導出の基準tick長(ms・叩き台=GHOST_ORBIT_FLIP_CHANCE等と同じ60fps規約)。 */
+export const MICRO_STILL_TICK_MS = 1000 / 60;
+
+/**
+ * ★占有率の保存(B3検収・重大1): 止まりを「エピソード化」(1回数百ms)する時に、時間占有率
+ * (動いているtick率)を旧`ghostMoveChance(mobility, stationaryFrac)`の値と一致させるための
+ * 「1tickあたりの止まり開始確率」を逆算する。
+ *
+ * 導出(交互再生過程=alternating renewal process): 「動いている」区間の平均長Ta・「止まっている」
+ * 区間の平均長Ts(=meanStillMs(dist))として、サイクル平均の占有率が
+ *   targetOcc = Ta / (Ta + Ts)                         … (1)
+ * を満たすようにしたい(targetOcc = 旧ghostMoveChanceの値=保存したい占有率)。
+ * 「動いている」区間は、周期dtMsの各tickごとに確率pで止まりエピソードを開始する幾何試行なので、
+ * 開始(=成功)までに費やす「動いている」tick数の期待値は幾何分布の平均 (1-p)/p 回、
+ * これにdtMsを掛けたものがTa:
+ *   Ta = dtMs * (1-p) / p                               … (2)
+ * (2)を(1)へ代入してpについて解く:
+ *   Ta = targetOcc/(1-targetOcc) * Ts =: K
+ *   dtMs*(1-p)/p = K  ⇔  1/p = 1 + K/dtMs  ⇔  p = dtMs / (dtMs + K)
+ * 境界確認: targetOcc→1(K→∞)でp→0(=止まらない)、targetOcc→0(K→0)でp→1(=毎tick止まる)と、
+ * 直感どおりの極限に一致する。受け入れ条件(占有率が旧ghostMoveChanceの±10%以内)はこの式が
+ * 保証する(旧: 発生率にmobilityをそのまま採用していたため、長さだけ伸びて占有率が反転していた
+ * =実測62.5%→4.8%の事故)。
+ */
+export const stillStartChance = (targetOcc: number, meanStillDurationMs: number, dtMs: number): number => {
+  const occ = clamp01(targetOcc);
+  if (occ >= 1) return 0; // 常に動く=止まりを一度も開始しない
+  if (dtMs <= 0) return clamp01(1 - occ); // 退避(理論上到達しない)
+  const ts = Math.max(0, meanStillDurationMs);
+  if (ts <= 0) return 0; // 止まりの長さが0なら「止まる」意味が無い=常に動く扱い
+  const k = (occ * ts) / (1 - occ);
+  return dtMs / (dtMs + k);
+};
+
 /** ②攻撃間隔(ms)。 */
 export const sampleSwingIntervalMs = (dist: MicroBin3Dist | undefined, rand: () => number): number => {
   const bin = pickBin3(dist, rand, 1);
@@ -126,7 +177,10 @@ const bin3Of = (rate0: number, rate1: number): MicroBin3Dist => ({ n: SYNTH_N, r
 
 /** 中心distPxを頂点にした三角分布(16ビン・叩き台=幅2バケット)。 */
 const triangularHist = (centerPx: number): MicroHistDist => {
-  const centerIdx = Math.max(0, Math.min(DIST_BUCKET_COUNT - 1, Math.round(centerPx / DIST_BUCKET_PX)));
+  // ★B3検収(中2): 録り側(playerTraits.ts)のbucket化はMath.floor(dist/DIST_BUCKET_PX)。ここも
+  // 同じ丸めに揃える(旧Math.roundだと合成中心が最大+45pxズレ、録り側と写し側で間合いの噛み合わせが
+  // ずれていた)。
+  const centerIdx = Math.max(0, Math.min(DIST_BUCKET_COUNT - 1, Math.floor(centerPx / DIST_BUCKET_PX)));
   const rates = new Array<number>(DIST_BUCKET_COUNT).fill(0);
   const SPREAD = 2; // 叩き台
   let sum = 0;

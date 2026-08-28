@@ -272,8 +272,10 @@ const EMA_ALPHA = 0.3;
 const MIN_SESSION_MS = 30_000;
 const REACTION_CLAMP_MIN = 100;
 const REACTION_CLAMP_MAX = 800;
-const DIST_BUCKET_PX = 50;
-const DIST_BUCKET_COUNT = 16; // 0..800px(BOT_AND_GHOST.md §2.6)
+// ★検収是正(中5): microRhythmReplay.ts側のDIST_BUCKET_PX/DIST_BUCKET_COUNT(同じ50px/16ビン)と
+// 値が一致している必要がある複製定数なのでexportする(一致テスト=microRhythmReplay.test.tsが機械検査)。
+export const DIST_BUCKET_PX = 50;
+export const DIST_BUCKET_COUNT = 16; // 0..800px(BOT_AND_GHOST.md §2.6)
 // MELEE_RADIUS(gameStore.ts)=74 の複製値。store非依存を保つためimportせず、同じ値をここへ複製する
 // (playtestBot.ts の MELEE_ENGAGE_DIST=80 が既存前例=このプロジェクトで確立済みの作法)。
 const MELEE_RADIUS_MIRROR = 74;
@@ -355,20 +357,41 @@ export const loadPlayerProfile = (): PlayerProfile | null => {
 const saveProfile = (p: PlayerProfile): void => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+    return;
   } catch {
-    // research/AI_HUMANIZE.md B1(§5 quota退避): 保存失敗時はmoveHabits(と族集計・累計生値)を落として
-    // 1回だけ再保存する(既存の集計=moveReactions/subStyles/bossStyles等を最後まで守る)。
-    if (p.moveHabits !== undefined || p.habitFamily !== undefined || p.habitFamilyRaw !== undefined) {
-      const { moveHabits: _moveHabits, habitFamily: _habitFamily, habitFamilyRaw: _habitFamilyRaw, ...rest } = p;
-      void _moveHabits; void _habitFamily; void _habitFamilyRaw;
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
-      } catch {
-        /* それでも失敗するなら諦める(次ランでまた測るだけ) */
-      }
-    }
-    /* 保存できなくても計測自体は成立する(次ランでまた測るだけ) */
+    /* quotaで落ちた場合は下の段階的トリムへ続く */
   }
+  // research/AI_HUMANIZE.md B1/B3(§5 quota退避・★検収是正 中4): 保存に失敗したら、
+  // moveHabits(と族集計・累計生値)→microRhythm(①〜⑧の分布。distDist/pinchDistDistもここに内包
+  // される)の順で**削れる物がある限り段階的に**落として再保存する(既存の集計=moveReactions/
+  // subStyles/bossStyles等を最後まで守る)。サブ様式(subStyles)は現状これ以上落とす対象が無い=
+  // 未実装のため省略(将来サブ様式側にも軽量化できる内訳が増えたらこの間に足す)。
+  // ★2段目以降は「1段目のtrimmed結果」の上に重ねる(1段目を試みずに2段目だけ落として保存する、
+  // という飛び級はしない=落とす量を必要最小限に保つ)。
+  let trimmed: PlayerProfile = p;
+  if (trimmed.moveHabits !== undefined || trimmed.habitFamily !== undefined || trimmed.habitFamilyRaw !== undefined) {
+    const { moveHabits: _moveHabits, habitFamily: _habitFamily, habitFamilyRaw: _habitFamilyRaw, ...rest } = trimmed;
+    void _moveHabits; void _habitFamily; void _habitFamilyRaw;
+    trimmed = rest;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      return;
+    } catch {
+      /* それでも収まらないなら次の段へ */
+    }
+  }
+  if (trimmed.microRhythm !== undefined) {
+    const { microRhythm: _microRhythm, ...rest2 } = trimmed;
+    void _microRhythm;
+    trimmed = rest2;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      return;
+    } catch {
+      /* それでも失敗するなら諦める(次ランでまた測るだけ) */
+    }
+  }
+  /* 保存できなくても計測自体は成立する(次ランでまた測るだけ) */
 };
 
 // ---- 計測セッション ---------------------------------------------------------------------------
@@ -917,21 +940,6 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
 
   const boss = nearestEngagedBoss(pcx, pcy, input.enemies);
 
-  // ★AI_HUMANIZE.md B3(§4①②④⑥⑧): マイクロリズム(操作の指紋)。**既存のこのtick関数への相乗り**
-  // (新規の毎フレーム走査・購読ゼロ)。入力源は player.isMoving(実移動の有無)+ player.lastDirection
-  // (8方向・キー/タッチ両方が更新する唯一の実在源=movementInputバグの是正・§4⑧⑫)。
-  stepMicroRhythm(s.micro, {
-    gameTime: input.gameTime,
-    isMoving: input.movementInput, // ★呼び出し側(directorTick.ts)がplayer.isMovingへ是正済み
-    lastDirection: input.player.lastDirection ?? null,
-    swungThisTick,
-    boss: boss ? { bcx: boss.x + boss.width / 2, bcy: boss.y + boss.height / 2 } : null,
-    pcx, pcy,
-    prevPcx: s.lastPcx, prevPcy: s.lastPcy,
-    dtMs,
-    justDamaged: healthDropped,
-  });
-
   // GHOST-CMD-2A(§2.18追補): 隙(punish window)の計測。3文脈の窓を毎tick判定し、**閉じた瞬間に
   // 1票**入れる(窓中に近接与ダメが出た=`rush`/出ない=`shoot`)。窓判定は消費側(ghostDriver)と
   // 共有の純関数(punishWindow.ts)=気絶/硬直の判定をここで発明しない。boss=null(交戦相手が
@@ -950,6 +958,28 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
     s.lastPcy = pcy;
     return;
   }
+
+  // ★AI_HUMANIZE.md B3(§4①②④⑥⑧): マイクロリズム(操作の指紋)。**既存のこのtick関数への相乗り**
+  // (新規の毎フレーム走査・購読ゼロ)。入力源は player.isMoving(実移動の有無)+ player.lastDirection
+  // (8方向・キー/タッチ両方が更新する唯一の実在源=movementInputバグの是正・§4⑧⑫)。
+  // ★検収是正(中3): ①②⑧(および④⑥)は**交戦中(ボスあり)ゲートの内側**でだけ積む(③〜⑦と同じ・
+  // §4「対ボス戦で録る」の大原則どおり)。旧実装はこの呼び出しが`if (!boss) return`より前にあり、
+  // ボス不在(雑魚戦のみ等)でも①②⑥⑧が積まれていた。
+  // ★軽注記(§4①の入力の差): isMoving=player.isMoving(実移動)は、被弾ノックバック等の**強制移動**も
+  // 「移動」として数える。§4①の定義(移動"入力"が途切れた区間)とは厳密には別物だが、
+  // movementInputがタッチで常時falseになる実在バグ(§4⑧参照)の是正としてisMoving採用が優先された
+  // 経緯があるため、この差は仕様として許容し挙動は変えない(注記のみ)。
+  stepMicroRhythm(s.micro, {
+    gameTime: input.gameTime,
+    isMoving: input.movementInput, // ★呼び出し側(directorTick.ts)がplayer.isMovingへ是正済み
+    lastDirection: input.player.lastDirection ?? null,
+    swungThisTick,
+    boss: { bcx: boss.x + boss.width / 2, bcy: boss.y + boss.height / 2 },
+    pcx, pcy,
+    prevPcx: s.lastPcx, prevPcy: s.lastPcy,
+    dtMs,
+    justDamaged: healthDropped,
+  });
 
   const dist = bossBandDist(pcx, pcy, boss);
   const bucket = Math.max(0, Math.min(DIST_BUCKET_COUNT - 1, Math.floor(dist / DIST_BUCKET_PX)));

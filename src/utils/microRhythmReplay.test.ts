@@ -5,8 +5,61 @@ import {
   pickBin3, pickHistBucket,
   sampleOrbitSign, synthesizeMicroRhythm,
   DIST_BUCKET_PX, DIST_BUCKET_COUNT,
+  PUNISH_FAST_MS, PUNISH_NORMAL_MS,
+  meanStillMs, stillStartChance,
 } from './microRhythmReplay';
 import type { MicroBin3Dist, MicroHistDist } from './microRhythm';
+import { STILL_MID_MS, STILL_SHORT_MS } from './microRhythm';
+// ★検収是正(中5): 録り側(playerTraits.ts)/共有(punishWindow.ts)の複製定数との一致を機械検査する
+// (bossTelegraph.test.ts「基準系の複製がズレていないこと」と同型の前例)。
+import { DIST_BUCKET_PX as TRAIT_DIST_BUCKET_PX, DIST_BUCKET_COUNT as TRAIT_DIST_BUCKET_COUNT } from './playerTraits';
+import { PUNISH_SPEED_FAST_MS, PUNISH_SPEED_NORMAL_MS } from './punishWindow';
+
+describe('複製定数がズレていないこと(中5)', () => {
+  it('DIST_BUCKET_PX/COUNT: playerTraits(録り)とmicroRhythmReplay(写し)が一致', () => {
+    expect(DIST_BUCKET_PX).toBe(TRAIT_DIST_BUCKET_PX);
+    expect(DIST_BUCKET_COUNT).toBe(TRAIT_DIST_BUCKET_COUNT);
+  });
+  it('PUNISH_FAST_MS/NORMAL_MS: punishWindow(録り)とmicroRhythmReplay(写し)が一致', () => {
+    expect(PUNISH_FAST_MS).toBe(PUNISH_SPEED_FAST_MS);
+    expect(PUNISH_NORMAL_MS).toBe(PUNISH_SPEED_NORMAL_MS);
+  });
+});
+
+// ★B3検収(重大1): 占有率保存の逆算式(meanStillMs/stillStartChance)そのものの単体テスト。
+describe('meanStillMs', () => {
+  it('bin0(short)のみなら期待値はSTILL_SHORT_MS/2(一様分布の中点)', () => {
+    expect(meanStillMs({ n: 10, rate0: 1, rate1: 0 })).toBeCloseTo(STILL_SHORT_MS / 2, 6);
+  });
+  it('bin2(long)のみなら期待値はSTILL_MID_MS*1.5(sampleStillMsのlong範囲と同じ中点)', () => {
+    expect(meanStillMs({ n: 10, rate0: 0, rate1: 0 })).toBeCloseTo(STILL_MID_MS * 1.5, 6);
+  });
+  it('欠損(undefined/n<=0)はSTILL_MID_MSへフォールバック', () => {
+    expect(meanStillMs(undefined)).toBe(STILL_MID_MS);
+    expect(meanStillMs({ n: 0, rate0: 1, rate1: 0 })).toBe(STILL_MID_MS);
+  });
+});
+
+describe('stillStartChance(①占有率保存の逆算式)', () => {
+  it('targetOcc→1で開始確率→0(=止まらない)', () => {
+    expect(stillStartChance(0.999999, 900, 1000 / 60)).toBeLessThan(0.001);
+  });
+  it('targetOcc→0で開始確率→1(=毎tick止まる)', () => {
+    expect(stillStartChance(0.000001, 900, 1000 / 60)).toBeGreaterThan(0.999);
+  });
+  it('targetOcc=1は0を返す(境界)', () => {
+    expect(stillStartChance(1, 900, 1000 / 60)).toBe(0);
+  });
+  it('導出式どおりに占有率を再現する(解析的な検算): p→動いている区間の平均長Ta→再構成した占有率がtargetOccと一致', () => {
+    const dt = 1000 / 60;
+    for (const [occ, ts] of [[0.6, 300], [0.325, 100], [0.825, 900]] as const) {
+      const p = stillStartChance(occ, ts, dt);
+      const ta = (dt * (1 - p)) / p; // 幾何分布の失敗回数期待値×dt(逆算の定義どおり)
+      const reconstructedOcc = ta / (ta + ts);
+      expect(reconstructedOcc).toBeCloseTo(occ, 5);
+    }
+  });
+});
 
 describe('専用乱数流', () => {
   it('同じ(seed,drawIndex)は常に同じ値を返す(決定的)', () => {

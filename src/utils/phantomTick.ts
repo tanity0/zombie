@@ -65,7 +65,7 @@ import {
   shouldGhostClaimSub, withSynthesizedMicroRhythm,
 } from './ghostDriver';
 import { hashSeed } from './microRhythmReplay'; // research/AI_HUMANIZE.md B3(§4専用乱数流のシード)
-import { rampVelocity } from './motionRamp'; // research/AI_HUMANIZE.md B3(§4慣性=速度状態モデル)
+import { rampVelocity, snapStoppedVelocity } from './motionRamp'; // research/AI_HUMANIZE.md B3(§4慣性=速度状態モデル)
 import { strongestGuardian } from '../data/fixedGuardians';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { GUARDIAN_PHANTOM_LABEL } from './bossPractice';
@@ -900,9 +900,18 @@ export const runPhantomTick = (
     // 目標速度へイーズで近づける(旧: 方向が無ければ即vx=vy=0の瞬間停止=CLAUDE.md違反だった)。
     const targetVx = decision.moveX * phantom.speed;
     const targetVy = decision.moveY * phantom.speed;
-    const ramped = rampVelocity({ vx: phantom.vx ?? 0, vy: phantom.vy ?? 0 }, targetVx, targetVy, dt);
-    const c = resolveMove(phantom.x + ramped.vx * dt, phantom.y + ramped.vy * dt, phantom);
-    patch.x = c.x; patch.y = c.y;
+    const rawRamped = rampVelocity({ vx: phantom.vx ?? 0, vy: phantom.vy ?? 0 }, targetVx, targetVy, dt);
+    // ★検収是正(中6): 停止判定閾値(4px/s)未満まで減衰したら即0へスナップする(漸近減衰の長い尾を
+    // 切る=スナイパー「停止敵」ボーナスの判定が長く尾を引かない。ブール判定自体は既にそのtickで
+    // 真になっている=旧`decision.moveX/Y===0`即ゼロとの差は同tick=1フレーム以内)。
+    const ramped = snapStoppedVelocity(rawRamped);
+    // ★検収是正(軽6): 実質静止(|v|が無視できるほど小さい)まで減衰したらresolveMove(衝突解決+
+    // 行ける帯クランプ)自体を呼ばない旧来の節約へ復帰(同じ節約は上のPVP気絶枝[中⑤]が既に持っている
+    // パターン=`Math.abs(nvx) > 1 || Math.abs(nvy) > 1`と同型)。
+    if (Math.abs(ramped.vx) > 1 || Math.abs(ramped.vy) > 1) {
+      const c = resolveMove(phantom.x + ramped.vx * dt, phantom.y + ramped.vy * dt, phantom);
+      patch.x = c.x; patch.y = c.y;
+    }
     patch.vx = ramped.vx; patch.vy = ramped.vy;
   }
 

@@ -49,6 +49,8 @@ import {
   createMicroRandCursor,
   sampleStillMs, sampleSwingIntervalMs, sampleDistPx, sampleOrbitSign, sampleHitReact,
   samplePunishDelayMs, sampleDecisionIntervalMs, synthesizeMicroRhythm,
+  // ★B3検収(重大1): 止まりエピソード化の占有率保存(§4①逆算式)。
+  meanStillMs, stillStartChance, MICRO_STILL_TICK_MS,
 } from './microRhythmReplay';
 
 // ---- プロファイル(playerTraits.PlayerProfileと同じノブ形。循環import回避のため型は独立定義) ----
@@ -369,6 +371,9 @@ export const ghostReactionMs = (reactionMs: number): number =>
  * §2.12(3): 平時に「このtickで動くか」の確率。動き続ける癖(mobility)と立ち止まる癖
  * (stationaryFrac)は測り方が別(入力ベース/変位ベース)なので、**両者の平均**を採る(叩き台)。
  * 既定値(mobility0.6 / stationaryFrac0.35)で 0.625 ≒ 従来の mobility 単独運用と同じ体感になる。
+ * ★検収是正(軽5・実態合わせ): B3以降、この戻り値は毎tick抽選だけでなく、①(止まりの長さ)分布
+ * 保持者の「止まりエピソード占有率」の**保存目標(targetOcc)**としても使われる
+ * (decideGhost内・microRhythmReplay.stillStartChance)。分布が無ければ従来どおり毎tick抽選のまま。
  */
 export const ghostMoveChance = (mobility: number, stationaryFrac?: number): number =>
   clamp01((clamp01(mobility) + (1 - clamp01(stationaryFrac ?? GHOST_DEFAULT_STATIONARY_FRAC))) / 2);
@@ -715,7 +720,6 @@ export interface GhostDecision {
 
 /** ④回り方の利きの再抽選タイマー(叩き台=旧`GHOST_ORBIT_FLIP_CHANCE`の平均反転間隔@60fpsに寄せる)。 */
 export const MICRO_ORBIT_REDRAW_MS = 1 / GHOST_ORBIT_FLIP_CHANCE * (1000 / 60); // ≈4170ms
-/** ①止まり: 通常近接CDの既定値へ寄せる合成が無い時のフォールバック(ghost.microMeleeCooldownMs未設定時)。 */
 
 /** 毎tick1回呼ぶ純関数。次tickへ持ち越す自己状態(lastShotAt等)も戻り値に含めて返す。 */
 export const decideGhost = (input: GhostDriverInput): GhostDecision => {
@@ -725,7 +729,11 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // (micro===undefinedの分岐は元のコードのまま=分布なしプロファイルの移動は現行とビット同一)。
   const micro = profile.microRhythm;
   const microSeed = input.microSeed ?? 0;
-  const microCursor = createMicroRandCursor(microSeed, ghost.microDrawIndex ?? 0);
+  // ★検収是正(軽2): microが無いプロファイル(大多数)ではカーソル(mulberry32の閉包)自体を作らない。
+  // 戻り値のmicroDrawIndexはindexを素通りさせるだけの軽量オブジェクトで足りる(mrandはどのみち呼ばれない)。
+  const microCursor = micro
+    ? createMicroRandCursor(microSeed, ghost.microDrawIndex ?? 0)
+    : { rand: () => 0, nextIndex: () => ghost.microDrawIndex ?? 0 };
   const mrand = microCursor.rand;
   const gcx = ghost.x + ghost.width / 2;
   const gcy = ghost.y + ghost.height / 2;
@@ -740,6 +748,10 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     const dx = pcx - gcx, dy = pcy - gcy;
     const d = Math.hypot(dx, dy);
     const [ux, uy] = d > GHOST_MOVE_BAND_PX ? norm(dx, dy) : [0, 0];
+    // ★検収是正(軽3): ⑥被弾直後モードの期限失効判定を無標的経路にも適用する(本線=行769以降の
+    // `if (gameTime >= microHitReactUntil) microHitReactMode = undefined;` と同じ判定。ここでだけ
+    // 素通しすると、標的が1tickだけ消えた間だけ期限切れのモードがそのまま持ち越される)。
+    const hitReactExpired = ghost.microHitReactUntil !== undefined && gameTime >= ghost.microHitReactUntil;
     return {
       moveX: ux, moveY: uy, action: 'none', targetId: null,
       facing: ux !== 0 ? (ux > 0 ? 1 : -1) : ghost.facing,
@@ -756,7 +768,8 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       microDrawIndex: microCursor.nextIndex(), microIdleUntil: ghost.microIdleUntil,
       microMeleeCooldownMs: ghost.microMeleeCooldownMs, microDrawnDist: ghost.microDrawnDist,
       microDrawnDistSig: ghost.microDrawnDistSig, microOrbitRedrawAt: ghost.microOrbitRedrawAt,
-      microHitReactMode: ghost.microHitReactMode, microHitReactUntil: ghost.microHitReactUntil,
+      microHitReactMode: hitReactExpired ? undefined : ghost.microHitReactMode,
+      microHitReactUntil: ghost.microHitReactUntil,
       microHitReactAnchor: ghost.microHitReactAnchor, microPunishDelayUntil: ghost.microPunishDelayUntil,
       microDecisionMode: ghost.microDecisionMode, microDecisionUntil: ghost.microDecisionUntil,
     };
@@ -962,12 +975,17 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   } else if (microHitReactMode !== undefined) {
     // ★AI_HUMANIZE.md B3(§4⑥の写し): 被弾直後1秒の反応(下がる/固まる/殴り返す)。
     // カウンター待ち・回避中・punishRush中には割り込まない(上位のまま=優先順は据え置き)。
+    // ★B3検収(重大3・裁定v2534): 3モードとも完全停止に落ちる枝を作らない=どのモードも
+    // 「動く条件を満たさない」時はorbitVec(GHOST_ORBIT_IDLE_FRAC)のドリフト床へ落とす
+    // (旧: 下がるの帯内・殴り返すの射程内でmoveX/Y未設定=完全停止のまま抜けていた)。
     if (microHitReactMode === 0) { // 下がる: 離脱ベクトルを強める(既存の後退ロジックを流用)
       if (edgeDist < GHOST_MOVE_BAND_PX * 4) [moveX, moveY] = norm(gcx - tcx, gcy - tcy);
+      else [moveX, moveY] = orbitVec(GHOST_ORBIT_IDLE_FRAC); // 既に離脱済みの帯内=ドリフト床
     } else if (microHitReactMode === 1) { // 固まる: 短停止(ドリフト床は維持=完全停止にしない)
       [moveX, moveY] = orbitVec(GHOST_ORBIT_IDLE_FRAC);
-    } else if (edgeDist > GHOST_MELEE_RANGE) { // 殴り返す: 射程内なら即振り(=移動は詰めるだけ)
-      [moveX, moveY] = norm(tcx - gcx, tcy - gcy);
+    } else { // 殴り返す(microHitReactMode === 2): 射程外なら詰める、射程内は下の即振り配線に任せる
+      if (edgeDist > GHOST_MELEE_RANGE) [moveX, moveY] = norm(tcx - gcx, tcy - gcy);
+      else [moveX, moveY] = orbitVec(GHOST_ORBIT_IDLE_FRAC); // 射程内=ドリフト床(完全停止にしない)
     }
   } else if (input.retrieveTarget) {
     // GHOST-SUBS-FINAL: 自分の落し物(クイックマガジン)を拾いに行く。間合い管理より優先だが、
@@ -995,15 +1013,27 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     const tankHolding = windupNow && reaction === 'tank';
 
     // ★AI_HUMANIZE.md B3(§4①の写し): 置換するのはghostMoveChanceの抽選のうちstationaryFrac由来の
-    // 「止まりの発生」だけ(mobilityは従来どおり効かせる)。分布保持者は止まりエピソードの長さを
-    // ①分布から引き、その間は毎tick再抽選しない(引かない人=旧来のghostMoveChanceのまま)。
+    // 「止まりの発生」だけ(mobilityは従来どおり効かせる——ghostMoveChance自体がmobility/stationaryFrac
+    // の平均で、下のtargetOccとして生きる)。分布保持者は止まりエピソードの長さを①分布から引き、
+    // その間は毎tick再抽選しない(引かない人=旧来のghostMoveChanceのまま)。
+    // ★占有率の保存(B3検収・重大1): エピソードの「発生確率」は旧ghostMoveChanceの占有率(動いている
+    // tick率)を保つよう stillStartChance で逆算する(旧: 発生率にmobilityをそのまま採用していたため、
+    // 長さだけ伸びて占有率が反転する事故=実測62.5%→4.8%)。導出式はmicroRhythmReplay.stillStartChance
+    // のコメント参照。
     let moving: boolean;
     if (mustMove) {
       moving = true;
     } else if (micro?.stillness) {
-      moving = gameTime < microIdleUntil ? false : rand() < clamp01(profile.mobility);
-      if (!moving && gameTime >= microIdleUntil) {
-        microIdleUntil = gameTime + sampleStillMs(micro.stillness, mrand);
+      // ★検収是正(中1): 止まりエピソード中も既存rand流を「引いて捨てる」(④と同型=消費順保全。
+      // 旧実装はアイドル中このrand()自体を呼ばず、専用流mrandとは別にrand消費回数がズレていた)。
+      const r = rand();
+      if (gameTime < microIdleUntil) {
+        moving = false;
+      } else {
+        const targetOcc = ghostMoveChance(profile.mobility, profile.stationaryFrac);
+        const pStart = stillStartChance(targetOcc, meanStillMs(micro.stillness), MICRO_STILL_TICK_MS);
+        moving = r < 1 - pStart;
+        if (!moving) microIdleUntil = gameTime + sampleStillMs(micro.stillness, mrand);
       }
     } else {
       moving = rand() < ghostMoveChance(profile.mobility, profile.stationaryFrac);
@@ -1126,10 +1156,16 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     // GHOST-CMD-2A: 隙コマンドで'rush'を引いている間は**meleeBias抽選を通さない**(「行くと決めた」ので
     // 確実に振る)。短絡評価なので rand も消費しない。気絶中の処刑は既存の applyGhostMeleeFinisher 経路
     // (useGameLoopの melee 実行ブロック)がそのまま面倒を見る=ここに処刑の分岐は作らない。
-    if (inMeleeRange && meleeReady && (punishRush || rand() < profile.meleeBias)) {
+    // ★B3検収(重大3): 「殴り返す」(microHitReactMode===2)は射程内(=inMeleeRange)なら
+    // punishRushと同型でmeleeBias抽選を通さず即振り(短絡評価なのでrandは消費しない=punishRushと同じ扱い)。
+    if (inMeleeRange && meleeReady && (punishRush || microHitReactMode === 2 || rand() < profile.meleeBias)) {
       action = 'melee'; lastMeleeAt = nowMs;
       // ★AI_HUMANIZE.md B3(§4②の写し): 次の通常近接までの間隔を②分布から引き直す。
-      if (micro?.swingInterval) microMeleeCooldownMs = sampleSwingIntervalMs(micro.swingInterval, mrand);
+      // ★B3検収(重大2): 「CD不変」の裁定=下側をGHOST_MELEE_COOLDOWN_MS(600ms)でクランプする
+      // (伸びる方向にだけ揺れる。短縮を許すと通常近接まで速くなりDPS増=バランス変更になってしまう)。
+      if (micro?.swingInterval) {
+        microMeleeCooldownMs = Math.max(GHOST_MELEE_COOLDOWN_MS, sampleSwingIntervalMs(micro.swingInterval, mrand));
+      }
     }
   }
   // 近接を選ばなかった tick は、射程内なら銃で代替する(手を空けない)。

@@ -1654,4 +1654,50 @@ describe('playerTraits B3: マイクロリズムの録り', () => {
     const after = loadPlayerProfile()!.microRhythm;
     expect(after?.swingInterval).toEqual(before?.swingInterval); // ②は前回値を保つ
   });
+
+  it('★検収是正(中3): ①⑥はボス不在(雑魚戦のみ)の間は積まれない(交戦中=ボスありゲートの内側)', () => {
+    // ボス不在(enemies:[])の間に、旧実装なら①(止まり)・⑥(被弾直後の反応)が積まれてしまう入力を混ぜる。
+    tickPlayerTraits(baseInput({ gameTime: 0, enemies: [], movementInput: true, player: playerAt(600) }));
+    tickPlayerTraits(baseInput({ gameTime: 200, enemies: [], movementInput: false, player: playerAt(600) })); // 止まり開始(ボス不在)
+    tickPlayerTraits(baseInput({
+      gameTime: 800, enemies: [], movementInput: true, player: playerAt(600, { health: 80 }), // 止まり終了+被弾(ボス不在)
+    }));
+    // ここでボスが現れて(既定enemies=[mkBoss()])交戦を続け、30秒フロアを満たす。
+    tickPlayerTraits(baseInput({ gameTime: 30_800, movementInput: true, player: playerAt(600, { health: 80 }) }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_900, movementInput: false, player: playerAt(600, { health: 80 }) }));
+    commitPendingTraits();
+    const p = loadPlayerProfile()!;
+    expect(p.microRhythm?.stillness).toBeUndefined(); // ①: ボス不在中の止まりエピソードは積まれない
+    expect(p.microRhythm?.hitReact).toBeUndefined();  // ⑥: ボス不在中の被弾は窓すら開かない
+  });
+
+  it('★検収是正(中4): quota失敗時はmicroRhythmを落として段階的に再保存する', () => {
+    const map = installStorage();
+    // localStorage.setItemを差し替え: "microRhythm"を含むペイロードだけquota超過で失敗させる
+    // (moveHabits等はこのセッションでは元々未記録=1段目は素通り、2段目[microRhythm落とし]が
+    // 実際に効くことを確認する)。
+    const store = (globalThis as unknown as { localStorage: Storage }).localStorage;
+    store.setItem = ((k: string, v: string) => {
+      if (v.includes('microRhythm')) throw new DOMException('quota exceeded', 'QuotaExceededError');
+      map.set(k, v);
+    }) as Storage['setItem'];
+
+    // しっかり②が録れるセッションを作る(microRhythmを持つプロファイルにする)。
+    tickPlayerTraits(baseInput({ gameTime: 0, player: playerAt(600, { meleeSwingCommitAt: 1 }) }));
+    tickPlayerTraits(baseInput({ gameTime: 100, player: playerAt(600, { meleeSwingCommitAt: 2 }) }));
+    tickPlayerTraits(baseInput({ gameTime: 400, player: playerAt(600, { meleeSwingCommitAt: 3 }) }));
+    tickPlayerTraits(baseInput({ gameTime: 30_400, player: playerAt(600, { meleeSwingCommitAt: 3 }) }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_500, player: playerAt(600, { meleeSwingCommitAt: 3 }) }));
+    commitPendingTraits();
+
+    const raw = map.get('zombie-ghost-profile-v1');
+    expect(raw).toBeDefined(); // 諦めずに最終的には保存できている
+    expect(raw).not.toContain('microRhythm');
+    const p = loadPlayerProfile();
+    expect(p).not.toBeNull();
+    expect(p!.microRhythm).toBeUndefined();
+    expect(p!.bossStyles?.thor).toBeDefined(); // 他の集計(軸2)は守られている
+  });
 });
