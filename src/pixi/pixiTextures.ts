@@ -749,6 +749,10 @@ export const ensureTextures = (): Promise<void> => {
       // FX-V2d(裏ボス便3・v0.25.2989): coilの胴体(横一直線にうねる大蛇の胴)。dash-windと同じ理由
       // (帯に合わせて回転+非一様伸縮するため)でlinear。
       { name: 'fx/jorm-coil-body', scaleMode: 'linear' as const },
+      // PACING_PUZZLE.md §14-2①(伐採人・logger): チェーンソー武器(構え〜薙ぎで回転する)。
+      // drawBountyWeapon経由(bountyWeaponSpritesを流用=idolのハンドガンと同じ作法)で描画するため
+      // dash-wind等と同じ理由でlinear(回転のたびに拾う画素が変わるnearestのチラつきを避ける)。
+      { name: 'reaper-chainsaw', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },

@@ -29,7 +29,7 @@ import type {
 } from '../types/game';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
-  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
@@ -14963,6 +14963,13 @@ export class PixiScene {
       const drillerWindSp = this.drillerThrustWindSprites.get(e.id);
       if (drillerWindSp) drillerWindSp.visible = false;
     }
+    // PACING_PUZZLE.md §14-2①(伐採人): チェーンソー武器(bountyWeaponSpritesをキー=e.idで流用。
+    // idolのハンドガンと同じ作法=v0.25.3437)も同じく既定OFF。点けるのはdrawEnemyの
+    // windup/active分岐だけ。
+    if (e.type === 'logger') {
+      const chainsawSp = this.bountyWeaponSprites.get(e.id);
+      if (chainsawSp) chainsawSp.visible = false;
+    }
     if (isBountyType(e.type)) {
       const bountySummonSp = this.bountySummonSprites.get(e.id);
       if (bountySummonSp) bountySummonSp.visible = false;
@@ -15699,6 +15706,66 @@ export class PixiScene {
         else if (dVisible) o.poly(dpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(dprog, dpulse) });
         // ★溜め中は赤帯の予告だけ(社長指示2026-08-26で手描きの槍を撤去)。
         // 突きの絵は実行(active)の白い風圧が担う。
+      }
+    }
+    // PACING_PUZZLE.md §14-2(伐採人・logger): §9の削岩型の突きブロックの写し+差分。
+    // 帯の両端(aiFrom/aiTarget)は既にloggerSweepBandで「プレイヤー方向と直交する横帯」として
+    // ロック済みなので、ここは driller-thrust と同じ帯描画(sfx→stx)にチェーンソー武器の
+    // 構え〜薙ぎ(慣性MUST=加速→減速のease-in-out)を重ねるだけでよい(§14-2①③)。
+    if (e.type === 'logger' && (e.aiPhase === 'logger-sweep-windup' || e.aiPhase === 'logger-sweep-active')) {
+      const sfx = e.aiFromX ?? cx, sfy = e.aiFromY ?? cy;
+      const stx = e.aiTargetX ?? cx, sty = e.aiTargetY ?? cy;
+      const sdx = stx - sfx, sdy = sty - sfy;
+      const sdl = Math.hypot(sdx, sdy) || 1;
+      const snx = -sdy / sdl, sny = sdx / sdl; // 帯の半幅方向(長軸と直交)
+      const sux = sdx / sdl, suy = sdy / sdl;  // 帯の長軸方向(=プレイヤー方向と直交)
+      const shw = LOGGER_SWEEP_HALF_WIDTH;
+      // §14-2②: 体の前方(プレイヤー方向)は帯の長軸(sux,suy)をさらに90°回した向き。
+      // チェーンソーはこの向きへ構え、帯に沿って(sfx→stx)横に振り抜く。
+      const fwdX = suy, fwdY = -sux;
+      const weaponAngle = Math.atan2(fwdY, fwdX);
+      // 支給素材(reaper-chainsaw.png)は柄(グリップの輪)が左上・刃先が右下(実測)。
+      // グリップ位置=素材内の割合、intrinsicAngle=グリップ→刃先の向き(実測≈21°)。
+      const CHAINSAW_GRIP_X = 0.11, CHAINSAW_GRIP_Y = 0.2, CHAINSAW_INTRINSIC = 0.365;
+      const CHAINSAW_LENGTH_PX = 100; // 叩き台=実機で社長が調整する前提(§9-6/§14-2と同じ扱い)
+      if (e.aiPhase === 'logger-sweep-active') {
+        // 慣性MUST(CLAUDE.md「動きの絶対ルール」): 加速→減速のease-in-out(smoothstep)で
+        // 帯の始点(sfx)→終点(stx)を振り抜く。判定は積み済み=絵をどう動かしても判定は不変。
+        const aDur = Math.max(1, LOGGER_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT);
+        const aT = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / aDur));
+        const swing = aT * aT * (3 - 2 * aT); // smoothstep=加速→減速
+        const wx = sfx + (stx - sfx) * swing, wy = sfy + (sty - sfy) * swing;
+        // 赤い塗りは薙ぎの位置まで追従して伸びる(刃が通った跡が赤く残る=分類①の帯を裏付ける)。
+        const apts = [
+          sfx - sux * shw + snx * shw, sfy - suy * shw + sny * shw,
+          wx + sux * shw + snx * shw, wy + suy * shw + sny * shw,
+          wx + sux * shw - snx * shw, wy + suy * shw - sny * shw,
+          sfx - sux * shw - snx * shw, sfy - suy * shw - sny * shw,
+        ];
+        const aFade = swing < 0.75 ? 1 : 1 - (swing - 0.75) / 0.25; // 振り切ってからフェード
+        o.poly(apts).fill({ color: 0xffb0a0, alpha: 0.22 * aFade });
+        // ★武器絵=チェーンソー(帯に沿って横に振り抜く。分類①=赤帯が判定の正・武器絵は多少ズレてよい)。
+        this.drawBountyWeapon(e.id, 'reaper-chainsaw', wx, wy, weaponAngle, CHAINSAW_LENGTH_PX, 0.95, 1, false,
+          CHAINSAW_GRIP_X, CHAINSAW_GRIP_Y, CHAINSAW_INTRINSIC);
+      } else {
+        const sprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (LOGGER_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+        const spulse = 0.55 + 0.45 * Math.sin(now / 80);
+        const sMet = PixiScene.meteorPhase(sprog);
+        const svfx = sfx + (stx - sfx) * sMet.er, svfy = sfy + (sty - sfy) * sMet.er;
+        const svtx = sfx + (stx - sfx) * sMet.p, svty = sfy + (sty - sfy) * sMet.p;
+        const sVisible = sMet.p - sMet.er > 0.001;
+        const spts = [
+          svfx - sux * shw + snx * shw, svfy - suy * shw + sny * shw,
+          svtx + sux * shw + snx * shw, svty + suy * shw + sny * shw,
+          svtx + sux * shw - snx * shw, svty + suy * shw - sny * shw,
+          svfx - sux * shw - snx * shw, svfy - suy * shw - sny * shw,
+        ];
+        if (sVisible) o.poly(spts).fill({ color: 0xff2a2a, alpha: telFillA(sprog, spulse) * TELEGRAPH_FILL_MULT });
+        if (FX_RING_ENABLED) this.drawTelegraphBand(view, sfx, sfy, stx, sty, shw, 0xff3b3b, telStrokeA(sprog, spulse), 0, sprog);
+        else if (sVisible) o.poly(spts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(sprog, spulse) });
+        // ★武器絵=構え(帯の始点側=sfxに構える。§14-2①「windup中=構え(帯の始点側に構える)」)。
+        this.drawBountyWeapon(e.id, 'reaper-chainsaw', sfx, sfy, weaponAngle, CHAINSAW_LENGTH_PX, 0.9, 1, false,
+          CHAINSAW_GRIP_X, CHAINSAW_GRIP_Y, CHAINSAW_INTRINSIC);
       }
     }
     if (isBountyType(e.type)) {
