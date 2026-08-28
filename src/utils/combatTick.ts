@@ -1162,15 +1162,30 @@ const resolveKamitsukiFx = (fx: CombatEffects): void => {
   //       ここをシフトすれば連動して直る。knockbackMsは持続時間[相対値]なのでシフト対象外)。
   // 0/未設定(=窓が閉じている)はシフトしない(ガード)。
   const shiftMs = kfx.durationMs;
+  // ★確認検収4巡目(A-2): 「v>0」だけ見ていたシフト条件は、**停止中に新規に立った窓**まで一緒に
+  // ずらしていた。ヒットストップはrAFループ(シミュレーション)しか止めないため、停止中のタップ/
+  // クリック入力(React/DOMハンドラは走る)が meleeSwingAt/counterWindowStart/pendingSwingAt/
+  // invulnerableTime を「今」(=停止開始[kfx.startAt]より後の実時刻)で新規に立てることがあり、
+  // それを見境なく+shiftMsすると振りの絵とカウンター窓が実攻撃から最大durationMsぶんズレていた
+  // (実測: 停止中+300msに立てた窓が解決後now+300に居るはずが、シフトでnow+300+durationMsへ飛ぶ)。
+  // 「停止開始時点(kfx.startAt)より前から走っていた窓」だけをシフト対象にする
+  // (PACING_PUZZLE.md §14-4-8bの#K-1裁定=停止中に立った窓は入力した瞬間が起点のまま動かさない)。
+  // これらのフィールドは値そのものが「窓が開いた瞬間の実時刻」(=起点)なので、v<=kfx.startAtが
+  // そのまま「起点が停止開始より前か」の判定になる。
+  const shiftIfStartedBefore = (v: number) => v > 0 && v <= kfx.startAt;
+  // enemyのknockbackUntilは対象外(この判定は付けない): KBはシミュレーション側だけが書き込む値で、
+  // シミュレーションは停止中は丸ごと凍っている(=停止中に新規のKBが生まれることが無い)。よって
+  // 「定義されていれば無条件にシフト」のままで安全(この関数に到達できている時点で起点は
+  // 停止開始以前=停止をまたいだ既存のKBだけが対象になる)。
   useGameStore.setState(s2 => ({
     player: {
       ...s2.player,
-      invulnerableTime: s2.player.invulnerableTime > 0 ? s2.player.invulnerableTime + shiftMs : s2.player.invulnerableTime,
-      counterWindowStart: s2.player.counterWindowStart > 0 ? s2.player.counterWindowStart + shiftMs : s2.player.counterWindowStart,
-      counterWindowEnd: s2.player.counterWindowEnd > 0 ? s2.player.counterWindowEnd + shiftMs : s2.player.counterWindowEnd,
-      counterCooldownEnd: s2.player.counterCooldownEnd > 0 ? s2.player.counterCooldownEnd + shiftMs : s2.player.counterCooldownEnd,
-      pendingSwingAt: s2.player.pendingSwingAt > 0 ? s2.player.pendingSwingAt + shiftMs : s2.player.pendingSwingAt,
-      meleeSwingAt: s2.player.meleeSwingAt > 0 ? s2.player.meleeSwingAt + shiftMs : s2.player.meleeSwingAt,
+      invulnerableTime: shiftIfStartedBefore(s2.player.invulnerableTime) ? s2.player.invulnerableTime + shiftMs : s2.player.invulnerableTime,
+      counterWindowStart: shiftIfStartedBefore(s2.player.counterWindowStart) ? s2.player.counterWindowStart + shiftMs : s2.player.counterWindowStart,
+      counterWindowEnd: shiftIfStartedBefore(s2.player.counterWindowEnd) ? s2.player.counterWindowEnd + shiftMs : s2.player.counterWindowEnd,
+      counterCooldownEnd: shiftIfStartedBefore(s2.player.counterCooldownEnd) ? s2.player.counterCooldownEnd + shiftMs : s2.player.counterCooldownEnd,
+      pendingSwingAt: shiftIfStartedBefore(s2.player.pendingSwingAt) ? s2.player.pendingSwingAt + shiftMs : s2.player.pendingSwingAt,
+      meleeSwingAt: shiftIfStartedBefore(s2.player.meleeSwingAt) ? s2.player.meleeSwingAt + shiftMs : s2.player.meleeSwingAt,
     },
     enemies: s2.enemies.map(e => e.knockbackUntil !== undefined ? { ...e, knockbackUntil: e.knockbackUntil + shiftMs } : e),
   }));
@@ -1481,7 +1496,10 @@ export const applyContactDamage = (
     // 「このtickでダメージが適用される接触」(damageWasApplied=true=i-frame中ではない)を、即時ダメージ+
     // 前かがみ変形(lastContactAttackAt)ではなく、時間停止(hitstop)+覆いかぶさりの予約に差し替える。
     // ヘッドレス(NOOP fx・A-4)・`?rp2kami=0`は素通り=下の即時経路がそのまま走る(現行挙動そのまま)。
-    if (KAMITSUKI_ENABLED && damageWasApplied && !isHeadlessFx
+    // ★確認検収4巡目(A-1): `collPlayer.health > 0` を追加(v0.25.4013の`wasAliveBeforeContact`と同じ
+    // 思想)。無いとHP0の死亡演出中もdamagePlayerがi-frameを張り直すため接触が1000msごとに再登録され、
+    // 死亡ズームの最中に600msの停止+紫の影がもう一度入っていた。
+    if (KAMITSUKI_ENABLED && damageWasApplied && !isHeadlessFx && collPlayer.health > 0
       && (isTerminalReaper(enemy) || isHangedman(enemy.type))) {
       kamitsukiTriggeredThisTick = true; // A-3: 1tickにつき1体
       const kNow = Date.now();

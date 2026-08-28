@@ -3672,9 +3672,18 @@ export class PixiScene {
   private killFxBloodPrevStep = 0;              // 実時間積分の前回時刻(タブ復帰の飛びはクランプ)
   private killFxVisPos: { x: number; y: number } | null = null; // 演出中のプレイヤー見た目位置(ズーム追尾用・FB4)
   // ★神付き(PACING_PUZZLE.md §14-4-8/8b)。store.kamitsukiFxを実時間(Date.now)で再生する描画専用一式
-  // (killFxと同じ流儀=hitstop中も動く)。figure=触れた個体が倒れ込むシルエット/shadow=プレイヤーを覆う影。
+  // (killFxと同じ流儀=hitstop中も動く)。figure=触れた個体(実スプライト)が倒れ込む絵/shadow=
+  // プレイヤーを覆う紫の影。
   private kamitsukiFigureSp: Sprite | null = null;
   private kamitsukiShadowSp: Sprite | null = null;
+  // ★確認検収4巡目(A-3): 期限到来の消え方を即消しではなく短いフェードにするための実時間状態
+  // (CLAUDE.md「動きの絶対ルール」MUST=出現/消滅にも慣性を入れる)。wasActive=前フレームまで
+  // 覆い中だったか/fadeStartAt=フェード開始実時刻(0=フェード中でない)/fadeFrom*=フェード開始時点の
+  // 表示alpha(そこから0まで減衰させる基準値)。
+  private kamitsukiWasActive = false;
+  private kamitsukiFadeStartAt = 0;
+  private kamitsukiFadeFromShadowAlpha = 0;
+  private kamitsukiFadeFromFigureAlpha = 0;
 
   // Atmosphere (screen space). gradeSprite multiplies the world cool; the warm
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
@@ -14163,21 +14172,45 @@ export class PixiScene {
    * なるような動作はせず、プレイヤーに触れると時間が止まって、ゆっくり覆いかぶさってダメージ」)。
    * store.kamitsukiFx(接触予約イベント)を実時間(Date.now)で再生する——全停止(hitstop)中も動くのは
    * この一式だけ(killFxと同じ流儀)。storeへは一切書かない(描画専用・判定/座標/カメラ/hitboxは不変)。
-   * ①触れた個体がプレイヤーの上へ倒れ込む簡易シルエット(叩き台) ②影がプレイヤーを覆う(暗い楕円)。
-   * 色は紫〜闇系(CLAUDE.md「攻撃ヴィジュアルの2分類」=回避不能なので赤[判定色]は使わない)。
-   * `contactLungePose`(前かがみ・拡大縮小の噛みつき文法)とは別の動き=並進+回転の「倒れ込み」で作る
-   * (A-1: 死神本体/使者へは lastContactAttackAt を打刻しないので contactLungePose 自体が出ない)。
-   * 動きは CLAUDE.md MUST(慣性)どおり smoothstep で加速→減速。 */
+   * ①触れた個体の**実スプライト**(死神=reaper2-common/使者=reaper2-hanged。enemyTexKeyと同じ
+   * 解決チェーン=v0.25.4013までの絵替え経路を共有)がプレイヤーの上へ倒れ込む ②影がプレイヤーを
+   * 覆う(暗い楕円)。★確認検収4巡目(A-3): 旧実装は放射対称の光玉(getSoftGlowTexture)を並進させて
+   * いただけで「個体が倒れ込む絵」が存在しなかった(rotation指定も放射対称ゆえ無効)。実スプライトへの
+   * 差し替えで解消する。色は紫〜闇系の影(shadow側)は維持しつつ、figure側は個体の姿を隠さないよう
+   * 自然な色(tint無し)で見せる。`contactLungePose`(前かがみ・拡大縮小の噛みつき文法)とは別の
+   * 動き=並進+回転の「倒れ込み」で作る(A-1: 死神本体/使者へは lastContactAttackAt を打刻しないので
+   * contactLungePose 自体が出ない)。動きは CLAUDE.md MUST(慣性)どおり smoothstep で加速→減速。
+   * 期限到来の消え方も即消しではなく KAMITSUKI_FADE_MS の短いフェード(同じくMUST=慣性)。 */
   private stepKamitsukiFx(): void {
+    const KAMITSUKI_FADE_MS = 120; // ★確認検収4巡目(B-5・この巡で同時解消): 消滅の即消し禁止
     const k = useGameStore.getState().kamitsukiFx;
     const durationMs = k?.durationMs ?? 0;
     const rt = k ? Date.now() - k.startAt : -1;
     const active = !!k && rt >= 0 && rt < durationMs;
     if (!active) {
+      // ★覆いが直前まで生きていた=期限到来(または予約消失)の直後。即消しではなく、直前フレームの
+      // 見た目(位置/回転/サイズ/テクスチャは維持したまま)から実時間でフェードアウトする。
+      if (this.kamitsukiWasActive) {
+        this.kamitsukiWasActive = false;
+        this.kamitsukiFadeStartAt = Date.now();
+      }
+      if (this.kamitsukiFadeStartAt > 0) {
+        const frt = Date.now() - this.kamitsukiFadeStartAt;
+        if (frt < KAMITSUKI_FADE_MS) {
+          const fu = Math.max(0, Math.min(1, frt / KAMITSUKI_FADE_MS));
+          const fade = 1 - fu * fu * (3 - 2 * fu); // smoothstep(加速→減速=CLAUDE.md MUST)で0まで減衰
+          if (this.kamitsukiShadowSp) { this.kamitsukiShadowSp.visible = true; this.kamitsukiShadowSp.alpha = this.kamitsukiFadeFromShadowAlpha * fade; }
+          if (this.kamitsukiFigureSp) { this.kamitsukiFigureSp.visible = true; this.kamitsukiFigureSp.alpha = this.kamitsukiFadeFromFigureAlpha * fade; }
+          return;
+        }
+        this.kamitsukiFadeStartAt = 0;
+      }
       if (this.kamitsukiFigureSp) this.kamitsukiFigureSp.visible = false;
       if (this.kamitsukiShadowSp) this.kamitsukiShadowSp.visible = false;
       return;
     }
+    this.kamitsukiWasActive = true;
+    this.kamitsukiFadeStartAt = 0; // 覆い中に再発火した場合の保険(通常はA-3多重発火防止で起きない)
     const u = Math.max(0, Math.min(1, rt / Math.max(1, durationMs)));
     const ease = u * u * (3 - 2 * u); // smoothstep=加速→減速(CLAUDE.md 動きの絶対ルール)
     if (!this.kamitsukiShadowSp) {
@@ -14188,6 +14221,8 @@ export class PixiScene {
       this.kamitsukiShadowSp = sp;
     }
     if (!this.kamitsukiFigureSp) {
+      // 実テクスチャは下で毎フレーム割り当てる(初期テクスチャは仮=Texture.WHITEでもよいが、
+      // 割当までの1フレームだけ真っ白矩形が出ないようソフトグローを暫定に置く)。
       const sp = new Sprite(getSoftGlowTexture());
       sp.anchor.set(0.5);
       this.L.effectLayer.addChild(sp);
@@ -14202,20 +14237,31 @@ export class PixiScene {
     shadow.height = k2.eh * 1.6 * (0.55 + 0.45 * ease);
     shadow.tint = 0x2e1065; // 暗紫(violet-950寄り)
     shadow.alpha = 0.55 * Math.min(1, ease / 0.4);
+    this.kamitsukiFadeFromShadowAlpha = shadow.alpha; // フェード開始時に基準として使う
     // ①触れた個体が倒れ込む: 元の位置→プレイヤー中心へ並進しつつ、終盤にかけて回転+扁平化で
     // 「上から覆いかぶさる」を作る(前かがみ噛みつきとは別の動き=並進+回転のみ・しゃがみ沈み込みは使わない)。
+    // ★確認検収4巡目(A-3): 個体の実スプライト(死神=reaper2-common/使者=reaper2-hanged)を
+    // enemyTexKeyと同じ解決チェーンで取得する。kamitsukiFxはtypeを持たないため isHangedman から復元
+    // (述語の対象=isTerminalReaper||isHangedman なので isHangedman=false は必ず'reaper'側)。
     const figure = this.kamitsukiFigureSp;
     figure.visible = true;
+    const figTexKey = this.enemyTexKey(k2.isHangedman ? 'hangedman' : 'reaper', k2.enemyId);
+    const figTex = getTexture(figTexKey) ?? getSoftGlowTexture(); // 保険(素材未ロード時は旧来のグロー玉)
+    if (figure.texture !== figTex) figure.texture = figTex;
     const fx0 = k2.ex, fy0 = k2.ey - k2.eh * 0.15;
     const fx1 = k2.px, fy1 = k2.py - k2.eh * 0.05;
     figure.position.set(fx0 + (fx1 - fx0) * ease, fy0 + (fy1 - fy0) * ease);
     const faceLeft = k2.ex > k2.px;
     figure.rotation = (faceLeft ? -1 : 1) * ease * 0.55;
     const squash = 1 - 0.35 * ease;
-    figure.width = k2.ew * (1.1 + 0.5 * ease) * squash;
-    figure.height = k2.eh * (1.1 + 0.5 * ease) / squash;
-    figure.tint = 0x581c87; // 紫〜闇系(赤=判定色は使わない)
-    figure.alpha = 0.75 * Math.min(1, ease / 0.25);
+    // 実テクスチャのアスペクトを保ったまま「元の当たり判定の大きさ」相当に収める(containScale=
+    // 死体/生体の絵の出どころと同じ考え方)。growth(1.1→1.6)は旧実装の見た目倍率を踏襲。
+    const baseScale = containScale(k2.ew, k2.eh, figTex.width, figTex.height);
+    const growth = 1.1 + 0.5 * ease;
+    figure.scale.set(baseScale * growth * squash, baseScale * growth / squash);
+    figure.tint = 0xffffff; // ★確認検収4巡目(A-3): 個体の姿をそのまま見せる(紫は影[shadow]側で表現済み)
+    figure.alpha = Math.min(1, ease / 0.25);
+    this.kamitsukiFadeFromFigureAlpha = figure.alpha; // フェード開始時に基準として使う
   }
 
   /** killFx粒子の実時間積分+描画(毎フレーム。粒子ゼロならプールを隠すだけ)。 */
@@ -15472,6 +15518,14 @@ export class PixiScene {
     view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop - kbHop - motBob));
     view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
     view.sprite.alpha = artFade; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
+    // ★神付き(§14-4-8/8b・確認検収4巡目A-3): 覆いかぶさり中は触れた個体の本体スプライトを隠す。
+    // stepKamitsukiFx が同じ個体の実テクスチャをコピーして凍結座標→プレイヤー中心へ倒し込む絵を
+    // 別スプライトで描くため、本体を隠さないと同じ絵が2枚(直立+倒れ込み)重なって見えてしまう。
+    // pixiは読むだけ(store/判定には触れない)。
+    const kfxCover = useGameStore.getState().kamitsukiFx;
+    if (kfxCover && kfxCover.enemyId === e.id && Date.now() - kfxCover.startAt < kfxCover.durationMs) {
+      view.sprite.alpha = 0;
+    }
 
     if (tex) {
       view.sprite.texture = tex;

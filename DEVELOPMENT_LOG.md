@@ -1,5 +1,63 @@
 # Development Log
 
+## v0.25.4017 — 神付き補修バッチ(検収監査の(A)3件・実装チャット・Sonnet) 【2026-08-28 23:05 JST】
+
+PACING_PUZZLE.md §14-4-8/8b「神付き」の検収監査4巡目(A)3件を実装。
+
+### 直した3件
+1. **死亡後の再予約を止める(A-1)**: `src/utils/combatTick.ts`(1484行付近)の神付き発火条件に
+   `collPlayer.health > 0` を追加(v0.25.4013の`wasAliveBeforeContact`と同じ思想)。無いとHP0の
+   死亡演出中もdamagePlayerがi-frameを張り直すため接触が1000msごとに再登録され、死亡ズームの最中に
+   600msの停止+紫の影がもう一度入っていた。
+2. **シフト対象を「停止前から走っていた窓」に限定(A-2)**: `src/utils/combatTick.ts`
+   `resolveKamitsukiFx`(1164行付近)。旧条件`v>0`だけでは、ヒットストップがrAFループしか止めない
+   ため、停止中のタップ/クリック入力(React/DOMハンドラは走る)が`meleeSwingAt`/`counterWindowStart`/
+   `pendingSwingAt`/`invulnerableTime`を「今」(=停止開始より後の実時刻)で新規に立てた場合も
+   もろとも+durationMsずらしてしまい、振りの絵とカウンター窓が実攻撃から最大durationMsぶんズレて
+   いた。`shiftIfStartedBefore(v) = v > 0 && v <= kfx.startAt`を導入し、この4フィールド(値そのものが
+   「窓が開いた瞬間の実時刻」=起点)に適用。`counterWindowEnd`/`counterCooldownEnd`(締切値)にも
+   同条件を機械的に適用(実質的に「締切が停止開始以前」という滅多に起きない側になるが、対象外の
+   フィールドを増やさない範囲での適用)。`enemies[].knockbackUntil`は対象外のまま(シミュレーションは
+   停止中丸ごと凍るためKBの新規発生自体が起きない=旧来の無条件シフトのままで安全)。
+   PACING_PUZZLE.md §14-4-8bの#K-1裁定の記録に運用細則を1行追記。
+3. **覆いかぶさりを「触れた個体のスプライト」にする(A-3)**: `src/pixi/pixiScene.ts`
+   `stepKamitsukiFx`(14171行付近)。旧実装は`getSoftGlowTexture()`(放射対称の光の球)を並進させて
+   いただけで、①個体が覆いかぶさる絵が存在しない ②rotation指定が放射対称ゆえ無効、だった。
+   `enemyTexKey(k2.isHangedman ? 'hangedman' : 'reaper', k2.enemyId)`(生体/死体と共有する既存の
+   解決チェーン)で個体の実テクスチャ(死神=reaper2-common/使者=reaper2-hanged)を取得し、
+   `containScale`でアスペクトを保ったまま倒れ込ませる(tint無し=個体の姿をそのまま見せる。紫の影は
+   shadow側で継続)。凍結中の本体スプライトとコピーの二重表示は、`drawEnemy`(15520行付近)で
+   「覆い中の対象個体だけ`view.sprite.alpha = 0`にする」方式で解消(pixiは読むだけ・store/判定は不変)。
+   期限到来の消え方も即消しから短いフェード(~120ms・smoothstep=CLAUDE.md慣性MUST)へ変更
+   (検収(B-5)の指摘だが、絵を触るこの項で同時に解消)。
+
+### テスト(同コミット)
+- `src/utils/combatTick.test.ts`: 新設2件(既存12件はそのまま=計14/14 green)。
+  - 「★プレイヤーがHP0(死亡演出中)の接触ではkamitsukiFxが登録されずhitstopも張られない(A-1)」:
+    health=0で接触してもkamitsukiFx=null・hitstopUntilが変化しないことを実測。
+  - 「★停止中に新規に立った窓(meleeSwingAt/counterWindowStart/pendingSwingAt)はシフトされない(A-2)」:
+    kfx予約後に停止中相当の実時刻でこの3フィールドを新規に立て、解決後も1msもずれず起点のまま
+    残ることを実測。既存の「停止前からのKBはシフトされる」「二重シフトなし」は無変更のままgreen。
+- `src/store/reaperDoubleDrive.test.ts`(4)・`src/utils/reaper2.test.ts`(25)・
+  `src/utils/enemyVariant.test.ts`(10)・`src/utils/counterReach.test.ts`(29)・
+  `src/utils/counterMaster.test.ts`(5)・`src/utils/combatCritParity.test.ts`(5)・
+  `src/utils/ghostKatanaWire.test.ts`(17)・`src/utils/bossEncounter.test.ts`(8)も実行し全green
+  (関連スコープ=接触ダメージ/カウンター窓/i-frame周辺)。
+- typecheck 0・lintエラー0(warning8件は既存・無関係)。項3(pixi描画コード)はプロジェクト方針
+  どおりユニットテスト対象外=目視は社長の実機。
+
+### 自己点検
+CLAUDE.md「実装精度の規律」5: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触
+(接触ダメージ値・KB量・カウンター窓の長さ・当たり判定は1bitも変えていない=タイミングの起点判定と
+覆いの絵[テクスチャ/フェード]のみの変更)。
+
+### 記述是正(検収C-1)
+v0.25.4015のDEVLOG「新設7件・計13」は誤りで、実測(`grep -c "  it("`)は**新設6件・計12**だった
+(既存6件[ボス接触受け流し5+使者KILL!1・後者は2段タイミングへ書き替え]+新設6件[神付きdescribe内]
+=12。旧エントリの文言は書き換えない=CLAUDE.md「『直した』と書く前の掟」どおりここに事実を記す)。
+
+- 状態変化: §14-4-8神付き → 補修済み(確認検収待ち)。
+
 ## v0.25.4016 — トレジャー入手見出しを「TREASURE!」に統一(社長指示・設計チャット直実装) 【2026-08-28 22:31 JST】
 
 社長指示2026-08-28「TREASURE! に統一」。GameHUD.tsx の入手トースト見出し「トレジャーを入手！」→

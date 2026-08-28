@@ -324,4 +324,73 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
     expect(useGameStore.getState().enemies.find(e => e.id === kbTarget.id)!.knockbackUntil).toBe(untilBefore);
     spy.mockRestore();
   });
+
+  // ★確認検収4巡目(A-1)・v0.25.4013と同型の再発防止: HP0でもdamagePlayerがi-frameを張り直すため
+  // damageWasAppliedがtrueになり続け、collPlayer.healthのガードが無いと死亡演出中も1000msごとに
+  // kamitsukiFxが再登録されて停止+紫の影が二重に入っていた。
+  it('★プレイヤーがHP0(死亡演出中)の接触ではkamitsukiFxが登録されずhitstopも張られない(A-1)', () => {
+    const e = spawnEnemyAt('hangedman', ORIGIN, ORIGIN, START_GT);
+    useGameStore.setState(s => ({
+      enemies: [e], gameTime: START_GT,
+      player: {
+        ...s.player,
+        x: e.x + e.width / 2 - s.player.width / 2,
+        y: e.y + e.height / 2 - s.player.height / 2,
+        health: 0, maxHealth: 130, invulnerable: false, invulnerableTime: 0,
+        counterWindowEnd: 0,
+      },
+    }));
+    const hitstopBefore = useGameStore.getState().hitstopUntil;
+    applyContactDamage(START_GT, false, 0, { ...NOOP_COMBAT_EFFECTS });
+    expect(useGameStore.getState().kamitsukiFx).toBeNull();
+    expect(useGameStore.getState().hitstopUntil).toBe(hitstopBefore);
+  });
+
+  // ★確認検収4巡目(A-2): #K-1のシフトが`v>0`だけ見ていたため、停止中(hitstop中もReact/DOMの入力
+  // ハンドラは走る)に新規に立った窓まで一緒にずらしてしまい、実攻撃から最大durationMsぶんズレていた。
+  // 「停止開始(kfx.startAt)より前から走っていた窓」だけをシフト対象にする運用細則(PACING_PUZZLE.md
+  // §14-4-8b追記)の実測: 停止開始より後に立てた窓は起点のまま(1msも動かない)。
+  it('★停止中に新規に立った窓(meleeSwingAt/counterWindowStart/pendingSwingAt)はシフトされない(A-2)', () => {
+    const N = 6_000_000;
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(N);
+    const e = spawnEnemyAt('hangedman', ORIGIN, ORIGIN, START_GT);
+    useGameStore.setState(s => ({
+      enemies: [e], gameTime: START_GT,
+      player: {
+        ...s.player,
+        x: e.x + e.width / 2 - s.player.width / 2,
+        y: e.y + e.height / 2 - s.player.height / 2,
+        health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
+        counterWindowStart: 0, counterWindowEnd: 0, pendingSwingAt: 0, meleeSwingAt: 0,
+      },
+    }));
+    const fx = { ...NOOP_COMBAT_EFFECTS };
+    // ①接触=神付きの予約が立つ(kfx.startAt=N=停止開始)。
+    applyContactDamage(START_GT, false, 0, fx);
+    expect(useGameStore.getState().kamitsukiFx?.enemyId).toBe(e.id);
+    // 停止中(N〜N+durationMs)にタップ入力があったと仮定し、meleeSwingAt/counterWindowStart/
+    // pendingSwingAtを「今」(=停止開始より後の実時刻)で新規に立てる。
+    const midFreeze = N + 300;
+    spy.mockReturnValue(midFreeze);
+    useGameStore.setState(s => ({
+      player: {
+        ...s.player,
+        meleeSwingAt: midFreeze, counterWindowStart: midFreeze, pendingSwingAt: midFreeze,
+        counterWindowEnd: midFreeze + 300, counterCooldownEnd: midFreeze + 700,
+      },
+    }));
+    // ②覆い時間(既定600ms)が明ける実時間まで進めて解決。
+    spy.mockReturnValue(N + REAPER2_CONFIG.kamitsukiMs + 50);
+    applyContactDamage(START_GT, false, 0, fx);
+    expect(useGameStore.getState().kamitsukiFx).toBeNull();
+    const p = useGameStore.getState().player;
+    // 停止開始(N)より後に立った窓=入力した瞬間が起点のまま。1msもずれない。
+    // (counterWindowEndは検証しない: damagePlayerが被弾成立でcounterWindowEndを0へ閉じる別仕様
+    // [LATE_COUNTER_ENABLED無効時]と混線するため、シフト対象外を確認する軸には使わない。)
+    expect(p.meleeSwingAt).toBe(midFreeze);
+    expect(p.counterWindowStart).toBe(midFreeze);
+    expect(p.pendingSwingAt).toBe(midFreeze);
+    expect(p.counterCooldownEnd).toBe(midFreeze + 700);
+    spy.mockRestore();
+  });
 });
