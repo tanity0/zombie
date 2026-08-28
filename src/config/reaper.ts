@@ -12,6 +12,9 @@ export const REAPER_TEST = url?.get('reapertest') === '1';
 // PACING_PUZZLE.md §14-4-5: ?rp2=1 で出撃直後にリスク最大=完全出現(テスト専用・既定OFF)。
 // ※M0(訓練)は死なない仕様のためテスト場所にしない(社長注記)。
 export const REAPER2_TEST = url?.get('rp2') === '1';
+// §14-4-8/8b(神付き): ?rp2kami=0 で無効化(現行の即時ダメージへ戻す・切り分け専用)。既定=有効。
+// 判定側(combatTick.ts)が読む=生URLSearchParams(tsNum/tsBoolはpixiScene専用の描画値・中12の作法)。
+export const KAMITSUKI_ENABLED = url?.get('rp2kami') !== '0';
 
 // §14-4-5のツマミ読み取りヘルパ。判定側の値は生URLSearchParamsで読む
 // (tsNum/tsBoolはpixiScene専用=描画値。中12「判定側はevNum/生URLSearchParams」の作法)。
@@ -78,6 +81,8 @@ export const REAPER2_CONFIG = {
   // 使者の接触ダメージ=999固定(社長裁定2026-08-28「既存の仕様で、ダメ999で」=専用即死ゲートではなく
   // 既存damagePlayer経路への999。ツマミ表(§14-4-5)に無い=既存reaperの999と同格の「表に出る」固定値)。
   servantContactDamage: 999,
+  // --- 神付き(§14-4-8/8b) ---
+  kamitsukiMs: numParam('rp2kamims', 600), // 覆いかぶさりの尺(ms)。叩き台=社長の言葉「ゆっくり覆いかぶさって」。
 } as const;
 
 // 深度(px)→ 横切り間隔(ms)。

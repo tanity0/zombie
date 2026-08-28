@@ -1,5 +1,72 @@
 # Development Log
 
+## v0.25.4015 — PACING_PUZZLE §14-4-8「神付き」実装(実装チャット・Sonnet) 【2026-08-28 22:27 JST】
+
+社長指示「死神と使者は噛みつき無し。代わりに神付き。前かがみになるような動作はせず、プレイヤーに
+触れると時間が止まって、ゆっくり覆いかぶさってダメージ。」を§14-4-8/8b(監査反映・裁定済み#K-1含む)
+どおりに実装。追加裁定(2026-08-28)「使者側のKILLは、紫で」も同時反映。
+
+### 実装
+- `src/store/gameStore.ts`: `kamitsukiFx`(接触予約。enemyId/ex,ey,ew,eh/px,py/startAt/durationMs/
+  damage/isHangedman/deathLabel/moveKey)を新設。killFxと同じ「描画はpixiが実時間チャンネルで読む・
+  判定/座標は不変」の型。初期値/resetGame両方にnull初期化。
+- `src/config/reaper.ts`: `KAMITSUKI_ENABLED`(`?rp2kami=0`で無効化)・`REAPER2_CONFIG.kamitsukiMs`
+  (`?rp2kamims=`・既定600)を追加。
+- `src/utils/combatTick.ts`(接触の唯一の合流点=applyContactDamage):
+  - **発火**: `isTerminalReaper(e) || isHangedman(e.type)`かつ「このtickでダメージが適用される接触」
+    (damageWasApplied=true=i-frame中でない)の時、即時damagePlayerの代わりに`kamitsukiFx`予約+
+    `hitstopUntil = now + kamitsukiMs`をセットしreturn(A-1: `lastContactAttackAt`を打刻しない=
+    前かがみ変形が出ない)。ヘッドレス(`fx === NOOP_COMBAT_EFFECTS`の厳密参照一致)・`?rp2kami=0`は
+    素通り=現行の即時経路のまま(playtestDriver.ts向け)。
+  - **1tickにつき1体(A-3)**: `kamitsukiTriggeredThisTick`フラグをforEach先頭で見て、発火済みなら
+    以降の接触解決を丸ごとno-opにする(forEachの実質break)。
+  - **解決(A-4・setTimeout禁止)**: `resolveKamitsukiFx`をapplyContactDamageの先頭で毎回呼ぶ(=唯一の
+    合流点が期限到来を見る)。実時間`Date.now() - startAt >= durationMs`で解決し、`damagePlayer`を
+    1回だけ呼ぶ。使者の致死はKILL!演出(`hangedmanKillPresentation`。ヘッドレス即時経路と共有する
+    1本へ統合)。isPaused中は解決しない(保険。実際は呼び出し元が既にisPaused中この関数自体を呼ばない)。
+  - **#K-1シフト(裁定済み・案A)**: 解決時に「停止明けに一括シフト」方式(1回だけ・二重シフト禁止)で
+    以下を`durationMs`ぶん後ろへずらす: プレイヤー`invulnerableTime`・`counterWindowStart`・
+    `counterWindowEnd`・`counterCooldownEnd`・`pendingSwingAt`・`meleeSwingAt`(いずれも0はガードして
+    シフトしない=窓が閉じている状態は動かさない)、および**全敵**の`knockbackUntil`(使者のKB凍結判定
+    `hangedmanKnockbackActive`はこの1フィールドだけを見るため連動して直る。`knockbackMs`は相対値な
+    のでシフト対象外)。
+  - **使者側KILL!=紫(追加裁定)**: `hangedmanKillPresentation`のコールアウト文字/背景・バースト2種・
+    リング3本・グローを赤/金(`#dc2626`/`#ffe4e6`/`0x7a1322`等)から紫〜闇系(`#a855f7`/`#3b0764`/
+    `#f3e8ff`/bg`0x581c87`等)へ変更。白ハイライトのリング1本は残す。プレイヤー側killFx・ボス/幻影
+    致命の`'Kill!'`は対象外(別裁定圏・未変更)。
+- `src/pixi/pixiScene.ts`: `stepKamitsukiFx`(叩き台の描画専用一式・killFxと同じ実時間[Date.now]
+  駆動)を新設し`drawPlayer`から毎フレーム呼ぶ。①触れた個体の簡易シルエットが敵位置→プレイヤー中心へ
+  並進+終盤に回転/扁平化で倒れ込む ②プレイヤーを覆う暗紫の楕円影。動きはsmoothstep(加速→減速=
+  CLAUDE.md MUST)。`contactLungePose`(前かがみ・拡大縮小の噛みつき文法)とは別の動き=並進+回転のみ。
+  色は紫〜闇系(赤=判定色は使わない)。hitbox/判定/カメラは不変(描画のみ)。
+
+### #K-1シフト対象の実測(停止をまたいだKBが生きること)
+`combatTick.test.ts`「★#K-1」: 使者の`knockbackUntil`(停止600msより短い残280ms)を、神付き解決時に
++600msシフト。シフト後`updateEnemies`(KBスライドの唯一の適用点)を単独で回し、実際にx座標が
+増える(=スライドが生きている)ことを実測。同じ予約で2回目の`applyContactDamage`を呼んでも
+`knockbackUntil`が動かないこと(二重シフト無し)も確認。
+
+### テスト(同コミット)
+- `src/utils/combatTick.test.ts`: 既存6件green(使者KILL!テストは①予約のみ→②覆い明けの解決で
+  1回だけ、の2段タイミングへ書き替え=神付きのダメージタイミング変更をそのまま反映)。
+  新設7件: 本体接触で即時ダメージにならず予約+hitstop/前かがみ非打刻・i-frame中は発火しない・
+  1tickにつき1体・横切りゴースト(reaperChaser=false)は対象外・ヘッドレスは即時適用・
+  KILL!が覆い明けの解決で1回だけ・#K-1シフト実測。計13/13 green。
+- `src/store/reaperDoubleDrive.test.ts`(4)・`src/utils/reaper2.test.ts`(25)・
+  `src/utils/enemyVariant.test.ts`(10)・関連combat系7ファイル(165)も実行し全green
+  (typecheck対象=ロジック変更の直接周辺のみ・関連スコープ)。
+- typecheck 0・lintエラー0(warning8件は既存・無関係)。
+
+### 自己点検
+CLAUDE.md「実装精度の規律」5: この変更は憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触
+(接触ダメージ値・KB量・カウンター規則は1bitも変えていない=タイミング[覆い600ms分の遅延]と
+前かがみ変形の有無・色のみの変更)。
+
+### ★未決
+無し(§14-4-8bの8項目+#K-1裁定どおりに実装。逸脱・独自判断なし)。
+
+- 状態変化: §14-4-8神付き → 実装済み(検収待ち)。
+
 ## v0.25.4014 — KILL処刑演出の短縮(社長調整・設計チャット直実装) 【2026-08-28 21:47 JST】
 
 社長指示2026-08-28「ダッシュを100ms 首元へダッシュを50ms 首元で一泊を220ms バックダッシュを80ms

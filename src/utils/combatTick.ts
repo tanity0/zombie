@@ -29,7 +29,9 @@ import { GLOW_R_L, GLOW_R_S } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
   isBossType, isHiddenBoss, isBountyType, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile, isCorpse,
-  isGuardianPhantom, isBiteExemptType, isHangedman } from './enemyUtils';
+  isGuardianPhantom, isBiteExemptType, isHangedman, isTerminalReaper } from './enemyUtils';
+// PACING_PUZZLE.md §14-4-8/8b(神付き): ?rp2kami=/?rp2kamims=(判定側=生URLSearchParams・中12の作法)。
+import { KAMITSUKI_ENABLED, REAPER2_CONFIG } from '../config/reaper';
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
 import { PHILL_COUNTER_RECOVER_MS } from './phillScript'; // §10-15#2: フィル後追い分岐の硬直長
 import { activeFlareTargets } from './flareGun';
@@ -1119,6 +1121,76 @@ export const tryGhostContactParry = (
   return true;
 };
 
+// PACING_PUZZLE.md §14-4-8/8b(神付き): 使者(hangedman)の接触致死=KILL!演出。
+// 社長追加裁定(2026-08-28)「使者側のKILLは、紫で」=死神本体側のkillFx等(赤/金)とは別の演出族へ
+// 色替え(紫〜闇系=カウンター不可の既存文法。白ハイライトのみ残す)。神付き経由の解決(resolveKamitsukiFx)と、
+// ヘッドレス/`?rp2kami=0`の即時経路(下のforEach内)の両方から呼ぶ1本(色の二重管理を避ける)。
+const hangedmanKillPresentation = (fx: CombatEffects, dx: number, dy: number): void => {
+  // PACING_PUZZLE.md §14-4-3(KILL!と死亡演出の順序): showBossFatalPresentation(gameStore.ts)と
+  // 同じ「絵の型」をfx経由(ヘッドレス安全)で再現し、700ms(MELEE_FINISH_SLOW_MS)ぶん見せ切ってから
+  // 死亡演出タイムラインへ渡す(死亡側のズーム開始を700ms遅延=同フレーム上書きでKILLが潰れるのを防ぐ)。
+  fx.spawnBurst(dx, dy, '#a855f7', 30);
+  fx.spawnBurst(dx, dy, '#3b0764', 14);
+  fx.spawnRing(dx, dy, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
+  fx.spawnRing(dx, dy, 8, 64, 'rgba(216,180,254,0.95)', 4, 380);
+  fx.spawnRing(dx, dy, 4, 34, 'rgba(126,34,206,0.75)', 3, 320);
+  fx.spawnGlow(dx, dy, GLOW_R_S, 'rgba(192,132,252,', MELEE_FINISH_SLOW_MS);
+  // C-2(記述の是正): 社長の言葉・仕様書は「KILL!」(全角/半角問わず大文字)。この経路(死神側)は
+  // gameStore.tsのshowBossFatalPresentationとは別の文字列リテラルなので、共通表記を割らずに
+  // ここだけ直せる(実在確認済み=あちらの'Kill!'は別裁定圏として触らない)。
+  fx.spawnCallout(dx, dy - 6, 'KILL!', '#f3e8ff', { bg: 0x581c87, holdMs: MELEE_FINISH_SLOW_MS - 140, duration: MELEE_FINISH_SLOW_MS });
+  fx.triggerFinishImpact(dx, dy, true); // CD無視の最大ズーム(幻影致命と同じ型)
+  setTimeout(() => fx.triggerPlayerDeath(dx, dy), MELEE_FINISH_SLOW_MS);
+};
+
+// PACING_PUZZLE.md §14-4-8/8b(神付き・A-4): kamitsukiFx予約の解決。setTimeout禁止=applyContactDamage
+// (=接触の唯一の合流点)が呼ばれるたびに実時間の期限到来をここで見る。通常は「hitstop明けの最初の
+// この関数呼び出し」で解決する(hitstopUntilが覆いの尺と同じ値で立っているため)。
+// isPaused中は解決しない(仕様どおり=実際は呼び出し元がisPaused中この関数自体を呼ばない・保険で二重に見る)。
+const resolveKamitsukiFx = (fx: CombatEffects): void => {
+  const st = useGameStore.getState();
+  const kfx = st.kamitsukiFx;
+  if (!kfx || st.isPaused) return;
+  if (Date.now() - kfx.startAt < kfx.durationMs) return; // まだ覆い中(通常はhitstopが覆っているので来ない)
+  useGameStore.setState({ kamitsukiFx: null });
+  // ★裁定済み#K-1(社長裁定2026-08-28「aで」=案A・PACING_PUZZLE.md §14-4-8b): 神付きの停止ぶん、
+  // 主要な実時間窓を後ろへずらす(=世界が止まる前の状態から続きが再生される)。
+  // 「停止明けに一括シフト」方式(1回だけ・二重シフト禁止)。対象はこの列挙が正:
+  //   プレイヤー: invulnerableTime(i-frame)・counterWindowStart/End(カウンター受付)・
+  //               counterCooldownEnd(カウンターCD)・pendingSwingAt/meleeSwingAt(前隙)。
+  //   敵: 全敵のknockbackUntil(使者のKB凍結判定hangedmanKnockbackActiveもこの1フィールドだけを見るため、
+  //       ここをシフトすれば連動して直る。knockbackMsは持続時間[相対値]なのでシフト対象外)。
+  // 0/未設定(=窓が閉じている)はシフトしない(ガード)。
+  const shiftMs = kfx.durationMs;
+  useGameStore.setState(s2 => ({
+    player: {
+      ...s2.player,
+      invulnerableTime: s2.player.invulnerableTime > 0 ? s2.player.invulnerableTime + shiftMs : s2.player.invulnerableTime,
+      counterWindowStart: s2.player.counterWindowStart > 0 ? s2.player.counterWindowStart + shiftMs : s2.player.counterWindowStart,
+      counterWindowEnd: s2.player.counterWindowEnd > 0 ? s2.player.counterWindowEnd + shiftMs : s2.player.counterWindowEnd,
+      counterCooldownEnd: s2.player.counterCooldownEnd > 0 ? s2.player.counterCooldownEnd + shiftMs : s2.player.counterCooldownEnd,
+      pendingSwingAt: s2.player.pendingSwingAt > 0 ? s2.player.pendingSwingAt + shiftMs : s2.player.pendingSwingAt,
+      meleeSwingAt: s2.player.meleeSwingAt > 0 ? s2.player.meleeSwingAt + shiftMs : s2.player.meleeSwingAt,
+    },
+    enemies: s2.enemies.map(e => e.knockbackUntil !== undefined ? { ...e, knockbackUntil: e.knockbackUntil + shiftMs } : e),
+  }));
+  const wasAliveBeforeContact = useGameStore.getState().player.health > 0;
+  // ④覆い切った瞬間にダメージ適用(§14-4-8③④)。fromX/Y=触れた個体の中心(発火時点・biteHits/通常接触と同型)。
+  const playerDied = useGameStore.getState().damagePlayer(
+    kfx.damage, kfx.deathLabel, kfx.ex, kfx.ey, undefined, undefined, kfx.moveKey,
+  );
+  fx.playSfx('player-damage');
+  fx.spawnFlash('rgba(239,68,68,0.22)', 200);
+  fx.spawnBurst(kfx.px, kfx.py, '#ef4444', 6);
+  if (playerDied && wasAliveBeforeContact) {
+    if (kfx.isHangedman) {
+      hangedmanKillPresentation(fx, kfx.px, kfx.py);
+    } else {
+      fx.triggerPlayerDeath(kfx.px, kfx.py);
+    }
+  }
+};
+
 // ① 敵接触ダメージ。カウンター/パリィ(dashParried)・ワイヤー無効・トール特例・ジャンプ空中/
 // 気絶/溜め特例まで丸ごと(本体)。gameTime は呼び出し元(フレーム冒頭のloopState)の値を使う
 // (stunUntilとの比較に使うだけで、接触判定自体はstoreから読み直したplayer/enemiesを使う)。
@@ -1128,6 +1200,13 @@ export const applyContactDamage = (
   screamerBuffUntil: number,
   fx: CombatEffects,
 ): void => {
+  // PACING_PUZZLE.md §14-4-8b(A-4): 神付きの予約解決はここが唯一の合流点(setTimeout禁止)。
+  // 登録(発火)は下のforEach内。予約が無ければ即return=通常フレームは従来どおり素通り。
+  resolveKamitsukiFx(fx);
+  // ヘッドレス(playtestDriver.tsがNOOP_COMBAT_EFFECTSを直に渡す経路)判定=神付きは覆いを挟まず
+  // 即時適用(現行挙動そのまま・仕様§14-4-8「ヘッドレス」項)。厳密な参照一致で見る
+  // (テストがNOOP_COMBAT_EFFECTSをspreadして一部だけ差し替えた場合は「実演出あり」経路として扱う)。
+  const isHeadlessFx = fx === NOOP_COMBAT_EFFECTS;
   // 直前のupdateEnemies等でplayer/enemiesの座標が動いた後なので、接触判定は最新状態(getState)で行う。
   // 移動後の位置で当たり/カウンター/ダッシュ弾きを正しく解決する。
   const collState = useGameStore.getState();
@@ -1154,6 +1233,9 @@ export const applyContactDamage = (
   // 通常敵・ボスを問わず「接触ダメージを持つ全員」が1箇所で対象になる。
   const contactLunges: { id: string; ang: number }[] = [];
   const bossContactParries: { id: string; ux: number; uy: number }[] = [];
+  // PACING_PUZZLE.md §14-4-8b(A-3): 神付きは1tickにつき1体。forEachは物理的にbreakできないため、
+  // 発火済みならこのフラグで以降の接触解決を丸ごとno-opにする(下のforEach冒頭で見る)。
+  let kamitsukiTriggeredThisTick = false;
 
   // ==========================================================================================
   // ★噛みつき(PACING_PUZZLE.md §12)。**接触の走査より先**に解決する。
@@ -1269,6 +1351,9 @@ export const applyContactDamage = (
   }
 
   playerEnemyCollisions.forEach(enemy => {
+    // PACING_PUZZLE.md §14-4-8b(A-3): 神付きは1tickにつき1体。既に発火していたら、この関数呼び出し
+    // (=このtick)の残りの接触解決を丸ごと打ち切る(forEachの実質break)。
+    if (kamitsukiTriggeredThisTick) return;
     if (wireDashingNow) return;
     // トール(ステージ5裏ボス)専用の攻撃実行中(chase/return以外のbossState)は、通常の接触ダメージを
     // 適用しない=各攻撃(一閃/突き/払い/ジャンプ攻撃)自身の当たり判定/カウンター処理に委ねる
@@ -1392,6 +1477,30 @@ export const applyContactDamage = (
     const rnMelee = redNightActive ? 2 : 1;
     // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の接触ダメージも×SCREAMER_BUFF_MULT。
     const scMelee = (screamerBuffUntil > gameTime && enemy.type !== 'screamer' && !isBossType(enemy.type)) ? SCREAMER_BUFF_MULT : 1;
+    // PACING_PUZZLE.md §14-4-8/8b(神付き・A-1〜A-6): 死神本体(isTerminalReaper)/使者(isHangedman)の
+    // 「このtickでダメージが適用される接触」(damageWasApplied=true=i-frame中ではない)を、即時ダメージ+
+    // 前かがみ変形(lastContactAttackAt)ではなく、時間停止(hitstop)+覆いかぶさりの予約に差し替える。
+    // ヘッドレス(NOOP fx・A-4)・`?rp2kami=0`は素通り=下の即時経路がそのまま走る(現行挙動そのまま)。
+    if (KAMITSUKI_ENABLED && damageWasApplied && !isHeadlessFx
+      && (isTerminalReaper(enemy) || isHangedman(enemy.type))) {
+      kamitsukiTriggeredThisTick = true; // A-3: 1tickにつき1体
+      const kNow = Date.now();
+      useGameStore.setState({
+        kamitsukiFx: {
+          enemyId: enemy.id,
+          ex: enemy.x + enemy.width / 2, ey: enemy.y + enemy.height / 2,
+          ew: enemy.width, eh: enemy.height,
+          px: collPlayer.x + collPlayer.width / 2, py: collPlayer.y + collPlayer.height / 2,
+          startAt: kNow, durationMs: REAPER2_CONFIG.kamitsukiMs,
+          damage: enemy.damage * rnMelee * scMelee,
+          isHangedman: isHangedman(enemy.type),
+          deathLabel: enemyDeathLabel(enemy.type),
+          moveKey: contactDamageMoveKey(enemy),
+        },
+        hitstopUntil: kNow + REAPER2_CONFIG.kamitsukiMs,
+      });
+      return; // A-1: lastContactAttackAtを打刻しない(前かがみ排除)。ダメージ・被弾FXは解決時まで出さない。
+    }
     // G4a(§2.9・記録専用): 体当たりそのものが技のダメージであるフェーズ(g-dash-charge/g-quad-charge)
     // だけ技キーを付ける(純関数contactDamageMoveKey)。それ以外の接触は従来どおりタグ無し。
     // ※g-glide-activeはv0.25.3052(案う)で空中族へ移動=ここへは到達しない(タグ表は記録専用なので残置)。
@@ -1422,25 +1531,9 @@ export const applyContactDamage = (
       const dx = collPlayer.x + collPlayer.width / 2;
       const dy = collPlayer.y + collPlayer.height / 2;
       if (isHangedman(enemy.type)) {
-        // PACING_PUZZLE.md §14-4-3(KILL!と死亡演出の順序・叩き台): showBossFatalPresentation
-        // (gameStore.ts)と同じ「絵の型」をfx経由(ヘッドレス安全)で再現し、700ms(MELEE_FINISH_
-        // SLOW_MS)ぶん見せ切ってから死亡演出タイムラインへ渡す(死亡側のズーム開始を700ms遅延=
-        // 同フレーム上書きでKILLが潰れるのを防ぐ)。
-        // 補修バッチ3次(A-新2): 幻影の致命(showPvpFatalOnPlayerPresentation・gameStore.ts)と同じ
-        // 「絵+CD無視の最大ズーム」の型に揃え、triggerFinishImpact(force=true)を追加で発火する
-        // (仕様§14-4-3「KILL!コールアウト+ズーム(700ms)を先に見せ切ってから死亡演出」)。
-        fx.spawnBurst(dx, dy, '#dc2626', 30);
-        fx.spawnBurst(dx, dy, '#7f1d1d', 14);
-        fx.spawnRing(dx, dy, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
-        fx.spawnRing(dx, dy, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
-        fx.spawnRing(dx, dy, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
-        fx.spawnGlow(dx, dy, GLOW_R_S, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS);
-        // C-2(記述の是正): 社長の言葉・仕様書は「KILL!」(全角/半角問わず大文字)。この経路(死神側)は
-        // gameStore.tsのshowBossFatalPresentationとは別の文字列リテラルなので、共通表記を割らずに
-        // ここだけ直せる(実在確認済み=あちらの'Kill!'は別裁定圏として触らない)。
-        fx.spawnCallout(dx, dy - 6, 'KILL!', '#ffe4e6', { bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_MS - 140, duration: MELEE_FINISH_SLOW_MS });
-        fx.triggerFinishImpact(dx, dy, true); // CD無視の最大ズーム(幻影致命と同じ型)
-        setTimeout(() => fx.triggerPlayerDeath(dx, dy), MELEE_FINISH_SLOW_MS);
+        // ★神付き(§14-4-8)がヘッドレス/`?rp2kami=0`で無効な時だけ通る即時経路(上のKAMITSUKI
+        // 分岐でreturn済みのため通常はここへ来ない)。演出は resolveKamitsukiFx と同じ1本を共有。
+        hangedmanKillPresentation(fx, dx, dy);
       } else {
         fx.triggerPlayerDeath(dx, dy);
       }

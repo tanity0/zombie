@@ -3671,6 +3671,10 @@ export class PixiScene {
   private killFxBlood: { x: number; y: number; vx: number; vy: number; size: number; born: number; life: number; tint: number }[] = [];
   private killFxBloodPrevStep = 0;              // 実時間積分の前回時刻(タブ復帰の飛びはクランプ)
   private killFxVisPos: { x: number; y: number } | null = null; // 演出中のプレイヤー見た目位置(ズーム追尾用・FB4)
+  // ★神付き(PACING_PUZZLE.md §14-4-8/8b)。store.kamitsukiFxを実時間(Date.now)で再生する描画専用一式
+  // (killFxと同じ流儀=hitstop中も動く)。figure=触れた個体が倒れ込むシルエット/shadow=プレイヤーを覆う影。
+  private kamitsukiFigureSp: Sprite | null = null;
+  private kamitsukiShadowSp: Sprite | null = null;
 
   // Atmosphere (screen space). gradeSprite multiplies the world cool; the warm
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
@@ -14155,6 +14159,65 @@ export class PixiScene {
     return !!k && Date.now() - k.startAt < KILLFX_TOTAL_MS;
   }
 
+  /** ★神付き(PACING_PUZZLE.md §14-4-8/8b「死神と使者は噛みつき無し。代わりに神付き。前かがみに
+   * なるような動作はせず、プレイヤーに触れると時間が止まって、ゆっくり覆いかぶさってダメージ」)。
+   * store.kamitsukiFx(接触予約イベント)を実時間(Date.now)で再生する——全停止(hitstop)中も動くのは
+   * この一式だけ(killFxと同じ流儀)。storeへは一切書かない(描画専用・判定/座標/カメラ/hitboxは不変)。
+   * ①触れた個体がプレイヤーの上へ倒れ込む簡易シルエット(叩き台) ②影がプレイヤーを覆う(暗い楕円)。
+   * 色は紫〜闇系(CLAUDE.md「攻撃ヴィジュアルの2分類」=回避不能なので赤[判定色]は使わない)。
+   * `contactLungePose`(前かがみ・拡大縮小の噛みつき文法)とは別の動き=並進+回転の「倒れ込み」で作る
+   * (A-1: 死神本体/使者へは lastContactAttackAt を打刻しないので contactLungePose 自体が出ない)。
+   * 動きは CLAUDE.md MUST(慣性)どおり smoothstep で加速→減速。 */
+  private stepKamitsukiFx(): void {
+    const k = useGameStore.getState().kamitsukiFx;
+    const durationMs = k?.durationMs ?? 0;
+    const rt = k ? Date.now() - k.startAt : -1;
+    const active = !!k && rt >= 0 && rt < durationMs;
+    if (!active) {
+      if (this.kamitsukiFigureSp) this.kamitsukiFigureSp.visible = false;
+      if (this.kamitsukiShadowSp) this.kamitsukiShadowSp.visible = false;
+      return;
+    }
+    const u = Math.max(0, Math.min(1, rt / Math.max(1, durationMs)));
+    const ease = u * u * (3 - 2 * u); // smoothstep=加速→減速(CLAUDE.md 動きの絶対ルール)
+    if (!this.kamitsukiShadowSp) {
+      const sp = new Sprite(getSoftGlowTexture());
+      sp.anchor.set(0.5);
+      sp.blendMode = 'multiply';
+      this.L.effectLayer.addChild(sp);
+      this.kamitsukiShadowSp = sp;
+    }
+    if (!this.kamitsukiFigureSp) {
+      const sp = new Sprite(getSoftGlowTexture());
+      sp.anchor.set(0.5);
+      this.L.effectLayer.addChild(sp);
+      this.kamitsukiFigureSp = sp;
+    }
+    const k2 = k!;
+    // ②影がプレイヤーを覆う(乗算の暗い楕円・序盤から素早く濃く出す=気配は早め)。
+    const shadow = this.kamitsukiShadowSp;
+    shadow.visible = true;
+    shadow.position.set(k2.px, k2.py);
+    shadow.width = k2.ew * 2.6 * (0.55 + 0.45 * ease);
+    shadow.height = k2.eh * 1.6 * (0.55 + 0.45 * ease);
+    shadow.tint = 0x2e1065; // 暗紫(violet-950寄り)
+    shadow.alpha = 0.55 * Math.min(1, ease / 0.4);
+    // ①触れた個体が倒れ込む: 元の位置→プレイヤー中心へ並進しつつ、終盤にかけて回転+扁平化で
+    // 「上から覆いかぶさる」を作る(前かがみ噛みつきとは別の動き=並進+回転のみ・しゃがみ沈み込みは使わない)。
+    const figure = this.kamitsukiFigureSp;
+    figure.visible = true;
+    const fx0 = k2.ex, fy0 = k2.ey - k2.eh * 0.15;
+    const fx1 = k2.px, fy1 = k2.py - k2.eh * 0.05;
+    figure.position.set(fx0 + (fx1 - fx0) * ease, fy0 + (fy1 - fy0) * ease);
+    const faceLeft = k2.ex > k2.px;
+    figure.rotation = (faceLeft ? -1 : 1) * ease * 0.55;
+    const squash = 1 - 0.35 * ease;
+    figure.width = k2.ew * (1.1 + 0.5 * ease) * squash;
+    figure.height = k2.eh * (1.1 + 0.5 * ease) / squash;
+    figure.tint = 0x581c87; // 紫〜闇系(赤=判定色は使わない)
+    figure.alpha = 0.75 * Math.min(1, ease / 0.25);
+  }
+
   /** killFx粒子の実時間積分+描画(毎フレーム。粒子ゼロならプールを隠すだけ)。 */
   private stepKillFxBlood(): void {
     if (this.killFxBlood.length === 0) {
@@ -14370,6 +14433,7 @@ export class PixiScene {
     // ★KILL処刑演出v2(社長指示v0.25.3603): 実時間駆動の しゃがみ→跳びつき→掻っ切り→帰還。
     // hitstop中(now凍結)でも Date.now で進む。描画のみ=store座標/判定は不変。
     this.stepKillFxBlood();
+    this.stepKamitsukiFx(); // ★神付き(§14-4-8): 実時間駆動の覆いかぶさり(描画のみ・hitstop中も動く)
     const killPose = killFxState ? this.applyKillFx(killFxState, fb.footX, fb.footY) : null;
     if (killPose) {
       actOffX += killPose.offX;

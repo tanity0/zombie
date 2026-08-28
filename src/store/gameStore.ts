@@ -5013,6 +5013,21 @@ interface GameState {
     startAt: number;                                 // 実時刻(Date.now)
     victims: { x: number; y: number }[];
   } | null;
+  // ★PACING_PUZZLE.md §14-4-8/8b(神付き): 死神本体(isTerminalReaper)/使者(isHangedman)の接触予約。
+  // 「①接触→②時間停止→③覆いかぶさり→④ダメージ確定→⑤時間再開」の②③をここに置く
+  // (A-4=setTimeout禁止。applyContactDamage[combatTick.ts]が唯一の合流点として期限到来を見て解決する)。
+  // 描画はpixiScene側が実時間(Date.now)チャンネルで読む(killFxと同じ型・hitstop凍結中も動く)。
+  kamitsukiFx: {
+    enemyId: string;
+    ex: number; ey: number; ew: number; eh: number; // 触れた個体(発火時点)の中心と寸法
+    px: number; py: number;                          // プレイヤー中心(発火時点)
+    startAt: number;                                 // 実時刻(Date.now)=覆いかぶさり開始
+    durationMs: number;                              // 覆い時間(?rp2kamims=)
+    damage: number;                                  // 適用予定ダメージ(倍率込みの確定値)
+    isHangedman: boolean;                            // KILL!演出分岐(§14-4-3の順序規定)
+    deathLabel: string;                               // enemyDeathLabel(enemy.type)(発火時点で確定)
+    moveKey?: string;                                 // contactDamageMoveKey(enemy)(G4a・記録専用)
+  } | null;
   // アテンション・シネマティック(レスキュー/ジャイアント出現): 現地へカメラパン→ホールド→戻る。
   // 駆動は実時間(startReal)。fromCam=開始時のカメラ(=戻り先)。null=非実行。
   attention: {
@@ -6039,6 +6054,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastWeaponGet: null,
   hitstopUntil: 0,
   killFx: null,
+  kamitsukiFx: null,
   attention: null,
   practiceWinPendingSince: null,
   timeSlowUntil: 0,
@@ -18300,6 +18316,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastWeaponGet: null,
         hitstopUntil: 0,
   killFx: null,
+  kamitsukiFx: null,
   attention: null,
   practiceWinPendingSince: null,
         timeSlowUntil: 0,
