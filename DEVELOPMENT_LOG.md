@@ -1,5 +1,98 @@
 # Development Log
 
+## v0.25.4002 — PACING_PUZZLE §14-2実装(実装チャット・Sonnet): 新型雑魚「伐採人」(logger)= 降格死神・§9削岩型の写し+差分4点 【2026-08-28 18:18 JST】
+
+PACING_PUZZLE.md §14-2/§14-3裁定済み#1・#2に基づき実装。§9(削岩型・driller)を丸ごと流用した上で
+差分4点(①絵=死神の立ち絵+チェーンソー武器 ②攻撃=横方向の薙ぎ払い ③間合いが少し近い ④予告が
+少し長め)だけを変えた新敵タイプ`'logger'`(和名=伐採人)を追加。**状態変化: §14伐採人 → 実装済み(検収待ち)**。
+
+### 実装した仕組み
+- 新敵タイプ `'logger'`。ENEMY_STATS/isPumpkinTier/isBossType等の同格特別扱いはpumpkin/driller同様
+  `isPumpkinTier`経由(§9-7#1)。絵=`reaper-common.png`流用(enemyVariant.logger)。
+- AI(`src/utils/loggerAi.ts`新設=drillerAi.tsの写し+差分): 好み帯110〜150px(driller=140〜190)。
+  薙ぎ払い3州(`logger-sweep-windup/active/recover`): windup(**850ms**・叩き台。driller=700ms設計時点比)
+  開始時に`loggerSweepBand`で**帯の長軸がプレイヤー方向と直交する**横帯(長さ220×半幅26)をロックし、
+  active移行の瞬間に1回だけカプセル判定をpumpkinBlastsへ積む(driller-thrustと同じレール)。
+  硬直400ms・CD3.5秒はdrillerと同値(§14-2④裁定)。カウンター成立はactiveのみ(windupでは成立させない
+  =§9-7#4の文法をそのまま継承)。
+- 近接被弾retreat(§9-4/§9-7#6)の機構(`drillerRetreatUntil`フィールド・`DRILLER_RETREAT_MS`/
+  `DRILLER_RETREAT_SPEED_MULT`・`isDrillerRetreating`)はdriller/logger間で完全共有。呼び出し側の
+  型ガードは新設の`isRetreatEligibleType`(driller/logger)へ統一。
+- 湧き分け: `resolvePumpkinTier`を2引数(allowDriller, allowLogger)→3択(pumpkin/driller/logger)へ
+  拡張。stage-3=pumpkin/logger 50%分け合い(`allowLoggerForRun`はstage-3〜7)、stage-4〜7=
+  pumpkin/driller/logger 3等分(叩き台)。判定位置(呼び出し側・gate系のみ)・計測路常にpumpkin・
+  同時数キャップ3種合算で2は§9-7/§9-8の裁定をそのまま継承。
+- リサイクル除外: 薙ぎ払い3州を距離リサイクルの除外対象に追加。新設の共有述語
+  `isKiteMidAttackPhase`(driller-thrust3州+logger-sweep3州)へdirectorTickの当該分岐を統一。
+- 描画(pixiScene.ts): windup=赤帯予告(driller-thrustと全く同じ描き方=帯の両端は既に
+  `loggerSweepBand`で直交ロック済みのため流用できた)。武器(チェーンソー=`reaper-chainsaw.png`)は
+  `drawBountyWeapon`経由・`bountyWeaponSprites`を流用(idolのハンドガンと同じ前例=v0.25.3437。
+  専用spriteマップは新設しなかった)。windup=帯の始点に構え、active=smoothstep(慣性MUST=加速→減速)
+  で帯の始点→終点へ振り抜き、赤い塗りが刃の位置まで追従して伸びる。
+
+### 帯の張り方(横向きの実装・§14-2②の核)
+削岩型の突き(driller-thrust)は帯の長軸が**プレイヤー方向と同軸**(体の正面へ突き出す)。伐採人の
+薙ぎ払いはこれと直交させる必要があった。`loggerSweepBand(ecx, ecy, pux, puy, forwardOffset, halfLength)`
+(`src/utils/loggerAi.ts`)が: ①プレイヤー方向の単位ベクトル`(pux,puy)`へ`forwardOffset`(=好み帯
+110〜150pxの中点=130px・叩き台)だけ進んだ点を帯の中心とし、②その点から`(pux,puy)`と直交する単位
+ベクトル`(-puy,pux)`方向へ`halfLength`(=110px。全長220の半分)ずつ両側へ伸ばして帯の両端を求める、
+という純関数。windup発動時にこの両端をそのまま`aiFromX/Y`・`aiTargetX/Y`へロックするので、
+以後の判定・pixiSceneの描画はdriller-thrustと**同じ「aiFrom→aiTargetを結ぶ帯」のコードパス**を
+再利用できた(帯の向き自体が直交している以外は幾何的に同型)。
+
+### `'driller'` 全grepヒットの適用・非適用(実装時に走査・全件列挙)
+実装前に `grep -rn "driller" src/` で列挙した20ファイル・約210ヒットを全て確認した。
+- **適用**(loggerにも同じ扱いを追加): `src/types/game.ts`(EnemyType/aiPhase州/drillerRetreatUntil
+  コメント) / `src/utils/enemyUtils.ts`(ENEMY_STATS/isPumpkinTier/getEnemyColor) /
+  `src/utils/enemyVariant.ts`(ENEMY_VARIANT_SETS) / `src/utils/drillerAi.ts`(resolvePumpkinTier拡張・
+  allowLoggerForRun新設・isRetreatEligibleType新設・isKiteMidAttackPhase新設) /
+  `src/utils/directorTick.ts`(PUZZLE_MANAGED_TYPES・resolvePumpkinTier呼び出し・リサイクル除外・
+  dangerBias) / `src/hooks/useGameLoop.ts`(resolvePumpkinTier呼び出し3箇所・SHIJIN_BOSS_TYPES) /
+  `src/store/gameStore.ts`(定数・enemyDeathLabel・AI3州・retreat共有化・SE) /
+  `src/pixi/pixiScene.ts`(帯描画・武器描画・可視性リセット) / `src/utils/combatTick.ts`(FX分岐・
+  死因ラベル) / `src/utils/ghostTelegraph.ts`(LEDGER band+none) / `src/utils/killTelemetry.ts` /
+  `src/utils/killTelemetryState.ts` / `src/data/campaign.ts`(図鑑) / `src/tools/zooViewer.ts` /
+  `src/utils/drillerAi.test.ts`(3択拡張に合わせ書き換え) / `src/utils/enemyUtils.test.ts` /
+  `src/utils/enemyBite.test.ts` / `src/utils/meleeExecute.test.ts` / `src/utils/directorTick.test.ts`
+  (計19ファイル)。
+- **非適用**(理由付き・2ファイル): `src/utils/exStage.ts` — 'driller'はコメント中の
+  「循環import回避の作法はdrillerAi/gauntletModeと同じ」という**モジュール名の言及のみ**で
+  driller固有ロジックではない。実質的な変更対象なし。
+  `src/utils/renderUtils.ts`(legacy Canvas2Dレンダラ) — 2箇所とも既に`isPumpkinTier(enemy.type)`
+  経由(型リテラルでの直接分岐ではない)なので、isPumpkinTierへlogger追加だけで自動的に既に効いている
+  (CLAUDE.md「PixiJSが唯一の現役レンダラ・legacy Canvas2Dは非メンテナンス」のため個別の絵の追従は
+  不要と判断。driller自身も専用スプライトファイルが無く同じ扱い)。
+- 新規追加ファイル(driller grepには出てこないが今回新設): `src/utils/loggerAi.ts`(純関数)・
+  `src/utils/loggerAi.test.ts`(テスト)・`src/pixi/pixiTextures.ts`(reaper-chainsawテクスチャ登録
+  =新素材の読み込み配線として必須)。
+
+### テスト
+`src/utils/loggerAi.test.ts`(新規・間合い3分岐110/150・発動距離160・帯ジオメトリ直交確認)/
+`src/utils/drillerAi.test.ts`(resolvePumpkinTier拡張=stage3 2種50%・stage4+ 3等分・
+allowLoggerForRun stage-3〜7ゲート・isRetreatEligibleType・isKiteMidAttackPhase)/
+`src/utils/enemyUtils.test.ts`(isPumpkinTier(logger)およびisBossType等の同格性)/
+`src/utils/enemyBite.test.ts`・`src/utils/meleeExecute.test.ts`・`src/utils/directorTick.test.ts`
+(driller同格テストの隣にlogger版を追加)。typecheck 0エラー・lint 0エラー・関連テスト10ファイル
+230件超 all green(憲法テスト`constitution.test.ts`13件も不変で通過)。
+
+### ★確認(未決事項なし)
+今回の実装範囲(§14-2/§14-3裁定済み#1・#2)に★未決は発生しなかった。§14-3の★確認#3
+(30:00終端リーパーの扱い)は今回の実装対象外(現行のまま維持=変更していない)。
+
+### 自己点検
+この変更は憲法第4条(初心者ゾーン不可侵)・第5条(緩を荒らさない)に抵触しない——loggerの実体化は
+既存のpumpkin枠(gate系プログラムのみ)の差し替えであり、FORMATION_TABLE・台本の確定表・
+初心者ゾーン抑止・緩コマの湧きロジックには一切触れていない(constitution.test.ts 13件が不変で通過)。
+
+### 環境メモ(このセッションで実際に発生・作業に影響したため記録)
+作業中、他セッション(設計チャット)がPACING_PUZZLE.md §14-4(第2部)を並行して複数回pushしており、
+このリモート環境ではその都度ローカルの**未コミットの編集(トラックされているファイルのみ)が
+無言で失われる**現象が複数回発生した(§9-4「巻き戻り対策」節の一般的な注意と同種の事故だが、
+今回はorigin自体は正常に前進しており、巻き戻り先も`0621fc40`固定ではなかった=CLAUDE.md記載の
+「ディスク凍結」事故とは別種)。対策として、まとまった変更ごとに`git fetch && git status`で
+消失の有無を確認し、消えていた編集は都度再適用した上で**小さく複数回push**した(最終的な内容は
+本エントリの通り)。今後同様の事故に備え、大きな編集をまとめて長時間放置しないことを推奨する。
+
 ## v0.25.4001 — AI_HUMANIZE B3検収(2巡目): マイクロリズムの是正(仕様の正=research/AI_HUMANIZE.md §4・コミット16e4709) 【2026-08-28 17:40 JST】
 
 B3(マイクロリズム・v0.25.3998)の検収監査で出た重大3件・中7件・軽6件を実装。**仕様(挙動の意図)は
