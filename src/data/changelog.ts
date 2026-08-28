@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4014',
+    items: [
+      'KILL処刑演出のテンポを短縮しました(しゃがみ100ms・首元ダッシュ50ms・一拍220ms・バックダッシュ80ms・スカッシュ70ms。斬撃は据え置き・全体785→690ms)。',
+    ],
+  },
+  {
     version: '0.25.4013',
     items: [
       '使者に捕まった時のKILL!演出(最大ズーム)が、死亡演出の最中に何度も再発火して画面がつっかえていたのを修正しました(1回だけ出ます)。',

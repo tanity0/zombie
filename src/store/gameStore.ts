@@ -2107,18 +2107,18 @@ export const MELEE_FINISH_ZOOM_CD_MS = 10000;
 // 発動は**寄りズームが入るフル演出(CD明け)の時だけ**(社長指示「ズームインが入るときだけ」)。
 // 実時間ms。合計=hitstop(全停止)の長さ——この間、動くのはpixi側の実時間駆動FXだけ
 // (社長指示「エフェクト中は時間ストップ(エフェクトは止めない)」)。数値は叩き台。
-export const KILLFX_CROUCH_MS = 110;   // しゃがみ(タメ・沈み込み)
+export const KILLFX_CROUCH_MS = 100;   // しゃがみ(タメ・沈み込み)(社長調整2026-08-28: 110→100)
 // ★実機FB6(社長指示v0.25.3613「ダッシュはしゃがみの絵で近づき、そのまま立ち上がって斬撃」):
 // 接近=**しゃがみ絵のままの低いダッシュ**(75ms・放物線なし)。FB5の「ジャンプ」は本裁定で更新
 // (経緯は事実として記録: FB4=ダッシュ75→FB5=ジャンプ150→FB6=しゃがみダッシュ75)。
-export const KILLFX_LEAP_MS = 75;      // 首元へしゃがみダッシュ(ease-out)
+export const KILLFX_LEAP_MS = 50;      // 首元へしゃがみダッシュ(ease-out)(社長調整2026-08-28: 75→50)
 // ★実機FB1(社長指示v0.25.3605): 貼り付き→噴出の間に「一拍」(しゃがみのまま溜める)。
-export const KILLFX_HOLD_MS = 245;     // 首元で一拍(FB6でダッシュ短縮分+75ms・斬撃時刻430は不変)
+export const KILLFX_HOLD_MS = 220;     // 首元で一拍(社長調整2026-08-28: 245→220。旧「斬撃時刻430不変」は本調整で430→370へ更新)
 export const KILLFX_SLASH_MS = 170;    // 掻っ切り(斬撃→血しぶきの順・下のBLOOD_LAG)
-export const KILLFX_RETURN_MS = 95;    // バックダッシュで戻る(FB5で半分・放物線なし)
-export const KILLFX_LAND_MS = 90;      // 滑り込み停止(スカッシュ)
+export const KILLFX_RETURN_MS = 80;    // バックダッシュで戻る(社長調整2026-08-28: 95→80・放物線なし)
+export const KILLFX_LAND_MS = 70;      // 滑り込み停止(スカッシュ)(社長調整2026-08-28: 90→70)
 /** 斬撃時刻(演出開始からのms)。刀の一閃流用の斬撃はここで出る。 */
-export const KILLFX_BURST_AT_MS = KILLFX_CROUCH_MS + KILLFX_LEAP_MS + KILLFX_HOLD_MS; // =430
+export const KILLFX_BURST_AT_MS = KILLFX_CROUCH_MS + KILLFX_LEAP_MS + KILLFX_HOLD_MS; // =370(社長調整2026-08-28)
 /** 斬撃→血しぶき/SE/KILL!文字までの間(FB5「斬撃→血しぶき」の順序)。 */
 export const KILLFX_BLOOD_LAG_MS = 90;
 export const KILLFX_TOTAL_MS =
