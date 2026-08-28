@@ -6,7 +6,12 @@ import { setEndingBgm } from '../audio/audioManager';
 // フェードアウト→入れ替わりに「the ONE」フェードイン→メニューへ。
 // - 台詞はタップで送り(オート送りもあり)。本文はサブ達成状況で変えない。
 // - スタッフロールは文面未支給のため最小(タイトルロゴ相当のテキストのみ)=TODO。
-// 負荷 1/10: 静的DOM+CSSトランジションのみ(ゲームループ/レンダラは停止済みの画面)。
+// - scenic(社長指示2026-08-29「このシーンを、グレン撃破後のミラの事情聴取の後ろに流して」):
+//   背後でエンディングステージ(戦場の観賞シーン)が動いている前提のオーバーレイモード。
+//   聴取記録中は薄い黒スクリム(「薄く黒を引いて文字を見やすく」)、暗転(word)以降は従来どおり
+//   全黒へフェード(慣性=background-colorのtransition)。z はSortieLoadingOverlay(z-[100])より
+//   上=レンダラ初期化中の黒繋ぎの上でも文字が読める。
+// 負荷 1/10: 静的DOM+CSSトランジションのみ(scenic時の背後のゲーム描画はステージ側の負荷)。
 
 type Phase = 'script' | 'word' | 'credits';
 
@@ -16,9 +21,14 @@ const CREDITS_MS = 3800;        // the ONE フェードイン表示時間
 
 interface EndingScreenProps {
   onDone: () => void;
+  /** 背後にエンディングステージを流すオーバーレイモード(上のコメント参照)。 */
+  scenic?: boolean;
 }
 
-const EndingScreen: React.FC<EndingScreenProps> = ({ onDone }) => {
+// scenic時のスクリム濃度(聴取記録中)。「薄く黒を引いて文字を見やすく」の叩き台。
+const SCENIC_SCRIM_ALPHA = 0.45;
+
+const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) => {
   // エンディングBGM(社長支給2026-08-20): この画面のマウント中だけ再生。通常BGMは gameState==='ending'
   // 中は App が setBgmScene('off') にしているので重ならない。
   useEffect(() => {
@@ -75,9 +85,17 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black select-none"
+      className={scenic ? 'fixed inset-0 z-[110] select-none' : 'fixed inset-0 z-50 bg-black select-none'}
       onClick={onTap}
-      style={{ touchAction: 'manipulation' }}
+      style={{
+        touchAction: 'manipulation',
+        ...(scenic
+          ? {
+              backgroundColor: phase === 'script' ? `rgba(0,0,0,${SCENIC_SCRIM_ALPHA})` : 'rgba(0,0,0,1)',
+              transition: 'background-color 900ms ease', // 暗転への移行も慣性(パッと黒にしない)
+            }
+          : {}),
+      }}
     >
       {/* 中央揃え・高さ50vhの帯の中で会話をローリング表示(社長指示v0.25.2194): 新しい行は下から
           積まれ、古い行は上へ流れて上端でフェードアウト(マスク)。長文で下が切れないよう窓を固定高に。 */}

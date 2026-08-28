@@ -1,5 +1,25 @@
 # Development Log
 
+## v0.25.4037 — 聴取記録の背後にエンディングシーンを流す(本番入口の確定・第1弾) 【2026-08-29 06:05 JST】
+
+社長指示「このシーンを、グレン撃破後のミラの事情聴取の後ろに流して。薄く黒を引いて文字を見やすく。
+BGMはエンディングのやつで」。
+
+- **遷移(App.tsx)**: M7勝利→リザルト「メニューに戻る」の聴取記録予約(pendingEndingRef)を、
+  旧 `setGameState('ending')`(黒画面)から **stage-endingへの出撃+EndingScreen(scenic)の
+  オーバーレイ**に差し替え。新state `endingOverlay`。終了は従来と同じ `finishEnding`
+  (endingSeen/薬/資料解放は1bit不変)→メニュー。旧 gameState='ending' 経路はフォールバックとして残置。
+- **スクリム(EndingScreen.tsx)**: `scenic` prop 新設。聴取記録中=rgba(0,0,0,0.45)(叩き台)、
+  暗転(「成し得なかった」)以降=全黒へ background-color 900ms ease でフェード(慣性MUST)。
+  z-[110]=SortieLoadingOverlay(z-[100])より上=レンダラ初期化中の黒繋ぎでも文字が読める。
+- **BGM**: オーバーレイ中はステージBGMをoff(App のBGM効果に endingOverlay 分岐追加)。
+  鳴るのはEndingScreen既存のエンディング曲(ending.mp3)のみ。`?ending=1`単体プレビューは
+  従来どおり(聴取記録なし・既定ステージBGM)。
+- ENDING_SCENE.md ★未決「本番の入り口」→確定として記録。
+- 検証: typecheck 0 / lint エラー0。自己点検: シミュレーション層は不変(App/画面のみ)=憲法に非抵触。
+- 状態変化: エンディング → 本番入口接続済み(M7勝利→聴取記録+戦場シーン)・社長の実機確認待ち
+  (確認ルート: M7クリア、または ?ending=1 は背景のみ)。
+
 ## v0.25.4036 — エンディング: フィルからサブウェポン(手榴弾)が出る不具合修正 【2026-08-29 05:45 JST】
 
 社長報告「フィルから手榴弾出てきちゃう」(実機・?ending=1)。

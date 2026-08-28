@@ -97,6 +97,11 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   // the ONE 通常エンディング(統合正本7章): M7(stage-7)勝利後、リザルトから「メニューに戻る」で
   // 聴取記録エンディングを挟む予約。出撃(startGame)でクリア=古い予約を持ち越さない。
   const pendingEndingRef = useRef(false);
+  // ★社長指示2026-08-29「このシーンを、グレン撃破後のミラの事情聴取の後ろに流して」:
+  // 聴取記録をエンディングステージ(戦場の観賞シーン)の上にオーバーレイで流すモード。
+  // true の間: gameState==='playing'(stage-ending)+EndingScreen(scenic)が上に重なる+
+  // ステージBGMはoff(BGMはEndingScreenのエンディング曲=ending.mp3だけ)。
+  const [endingOverlay, setEndingOverlay] = useState(false);
   const resetGame = useGameStore(state => state.resetGame);
   const gameStats = useGameStore(state => state.gameStats);
   // Pixi レンダラの初フレームが出るまで true にならない(PixiStage が setRendererReady)。
@@ -194,13 +199,16 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     // ステージBGMはステージデータから解決(stage.bgm 明示 > theme==='lab'は研究所曲 > 既定=stage1)。
     // ※ステージ2は屋外ラボ(indoorMode=false)なので、indoorMode ではなく theme で判定する。
     if (gameState === 'playing') {
+      // 聴取記録オーバーレイ中はステージBGMを鳴らさない(BGMはEndingScreenのエンディング曲のみ
+      // =社長指示2026-08-29「BGMはエンディングのやつで」)。
+      if (endingOverlay) { setBgmScene('off'); return; }
       const st = getStage(getSelectedStageId());
       const bgmKey = st?.bgm ?? (st?.theme === 'lab' ? 'lab' : 'default');
       setBgmScene('game', bgmKey);
     }
     else if (gameState === 'menu') setBgmScene('menu');
     else setBgmScene('off');
-  }, [gameState]);
+  }, [gameState, endingOverlay]);
   
   // retry=ゲームオーバー画面「もう一度プレイ」からの再出撃(社長指示v0.25.2462:
   // リトライは開始時の会話を飛ばす。M7はヘリ演出も無し=咆哮→即ボス)。
@@ -464,9 +472,13 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     setBenchmarkMode(false);
     setBenchmarkResult(null);
     // the ONE: M7勝利後の「メニューに戻る」は聴取記録エンディングを挟む(統合正本7章)。
+    // ★社長指示2026-08-29: 聴取記録の背後にエンディングステージ(戦場の観賞シーン)を流す——
+    // 黒画面のgameState='ending'ではなく、stage-endingへ出撃してその上にEndingScreen(scenic)を重ねる。
     if (pendingEndingRef.current) {
       pendingEndingRef.current = false;
-      setGameState('ending');
+      setEndingOverlay(true);
+      setSelectedStageId('stage-ending');
+      void startGame(useGameStore.getState().characterClass, false, true); // retry=true: 開始会話等をスキップ
       return;
     }
     setGameState('menu');
@@ -525,8 +537,15 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
           `compact` はスピナーと LOADING… のみでゲームタイトルを出さない。 */}
       {bare && gameState !== 'playing' && <LoadingScreen compact />}
 
-      {/* the ONE 通常エンディング(聴取記録→暗転→PHILL→スタッフロール)。終了でメニューへ。 */}
+      {/* the ONE 通常エンディング(聴取記録→暗転→PHILL→スタッフロール)。終了でメニューへ。
+          本経路は聴取記録オーバーレイ(下のscenic)へ移行済みだが、フォールバックとして残す。 */}
       {!bare && gameState === 'ending' && <EndingScreen onDone={finishEnding} />}
+
+      {/* ★社長指示2026-08-29: 聴取記録をエンディングステージ(戦場)の上に薄い黒スクリムで重ねる。
+          終了で従来と同じ finishEnding(endingSeen/資料解放)→メニューへ(Gameはアンマウント)。 */}
+      {!bare && endingOverlay && gameState === 'playing' && (
+        <EndingScreen scenic onDone={() => { setEndingOverlay(false); finishEnding(); }} />
+      )}
 
       {/* ★v0.25.3743: EXエンディング(フィル撃破後・最終調査記録のタイプライター)。終了でリザルトへ。 */}
       {!bare && gameState === 'exEnding' && <ExEndingScreen onDone={() => setGameState('victory')} />}

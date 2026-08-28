@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4037',
+    items: [
+      'エンディング: グレン撃破後の聴取記録の背後で、戦場のエンディングシーンが流れるようになりました(薄い黒のスクリム越し・BGMはエンディング曲)。',
+    ],
+  },
+  {
     version: '0.25.4036',
     items: [
       'エンディングシーン(開発中): フィルから手榴弾などのサブウェポンが出てしまう不具合を修正しました。',
