@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4038',
+    items: [
+      'ゲーム内容の変更はありません(開発内部: エンディング爆撃演出の素材受領・仕様書き・実装準備)。',
+    ],
+  },
+  {
     version: '0.25.4037',
     items: [
       'エンディング: グレン撃破後の聴取記録の背後で、戦場のエンディングシーンが流れるようになりました(薄い黒のスクリム越し・BGMはエンディング曲)。',

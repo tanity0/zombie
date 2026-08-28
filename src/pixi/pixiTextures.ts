@@ -531,6 +531,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'npc/phill-heal-4', scaleMode: 'nearest' },
       { name: 'npc/phill-heal-5', scaleMode: 'nearest' },
       { name: 'npc/soldier-fallen-0', scaleMode: 'nearest' },
+      // エンディング爆撃の弾(受領2026-08-29・ENDING_SCENE.md 演出仕様v3)。64×256・弾頭が下・
+      // 上部に速度線焼き込み・下端=着弾点(anchor 0.5,1)。
+      { name: 'fx/ending-bomb', scaleMode: 'nearest' },
       { name: 'npc/joseph-0', scaleMode: 'nearest' },
       { name: 'npc/joseph-1', scaleMode: 'nearest' },
       { name: 'npc/joseph-2', scaleMode: 'nearest' },    // 3コマ歩行(社長提供)
