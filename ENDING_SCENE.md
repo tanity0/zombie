@@ -18,7 +18,8 @@
 | 遠景パノラマ | **受領 2026-08-28** | `public/backgrounds/ending-far-battlefield.jpg`(2172×724・255KB) | 原本PNG 2172×724をJPG(q88)化(既存パノラマの作法・重量掟) |
 | 地面 | **受領 2026-08-28** | `public/backgrounds/ending-ground.jpg`(1254×1254・415KB) | 焦土+熾火。継ぎ目実測 LR8.8/TB8.6=シームレス実用域。JPG q88 |
 | 地平帯(遠景と地面の継ぎ) | **受領 2026-08-28** | `public/backgrounds/ending-horizon-ruins.png`(2172×397・806KB) | 廃墟スカイライン+夕陽の照り返し+煙。実アルファ付き(上端透過)。原本724高の透明上部327pxをトリム |
-| 近景/前景の遮蔽物 | 待ち | — | tutRocks/tutNearRocks/tutFrontRocks相当(戦場なら瓦礫・残骸等?) |
+| 近景バンド | **受領 2026-08-28** | `public/backgrounds/ending-near-rubble.png`(2172×497・1.2MB) | 瓦礫・焼けた車・土嚢・街灯・火+煙。実アルファ(下端接地251)。透明上部227pxトリム |
+| 前景バンド | 待ち | — | tutFrontRocks相当(最前面・暗め) |
 | 演出用の動く物(あれば) | 待ち | — | tutFlow1/2(川の流れ)相当の枠。戦場なら煙・火の粉等?(社長次第) |
 
 ## ★未決(素材が揃ってから社長と詰める)
