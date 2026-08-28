@@ -1133,4 +1133,6 @@ export const BESTIARY: BestiaryEntry[] = [
   { id: 'logger', name: '変異体(伐採人)', note: 'チェーンソーで距離を保ちながら横薙ぎを放つ。近接で殴ると距離を取る。' },
   { id: 'giantbat', name: '変異体(飛行型)', note: 'ステージ終盤に現れる大型個体。' },
   { id: 'reaper', name: '死神', note: '深奥リスクが高まると現れる、避けるべき存在。' },
+  // PACING_PUZZLE.md §14-4-3(使者・hangedman・★叩き台=出す): 死神本体の技「使者」。
+  { id: 'hangedman', name: '使者', note: '死神が鐘の音とともに画面外から呼び出す耐久武器。触れるとほぼ即死だが、あらゆる攻撃で押し返せる。' },
 ];

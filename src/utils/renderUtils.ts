@@ -1,5 +1,5 @@
 import { Player, Enemy, Projectile, Pickup, VisualEffect } from '../types/game';
-import { getEnemyColor, isPumpkinTier } from './enemyUtils';
+import { getEnemyColor, isPumpkinTier, isReaperFamily } from './enemyUtils';
 import { drawSprite, preloadSprites } from './spriteLoader';
 import { effectiveReloadMs } from './weaponUtils';
 import {
@@ -108,7 +108,7 @@ export const renderGame = (
   for (const enemy of enemies) {
     if (enemy.type === 'ghost') continue; // ghosts hover; no shadow
     // PACING_PUZZLE.md §9-7#1(legacy Canvas2Dレンダラの影): driller はpumpkinと同格。
-    const heavy = enemy.type === 'reaper' || enemy.type === 'giantbat' || isPumpkinTier(enemy.type);
+    const heavy = isReaperFamily(enemy.type) || enemy.type === 'giantbat' || isPumpkinTier(enemy.type);
     drawGroundShadow(
       ctx,
       enemy.x + enemy.width / 2 - camera.x,
@@ -129,7 +129,7 @@ export const renderGame = (
     0.6
   );
   for (const enemy of enemies) {
-    if (enemy.type === 'reaper') {
+    if (isReaperFamily(enemy.type)) {
       drawLightHalo(
         ctx,
         enemy.x + enemy.width / 2 - camera.x,
@@ -916,8 +916,8 @@ const drawEnemy = (
     ctx.restore();
     drawHealthBar(ctx, enemy, camera);
     // PACING_PUZZLE.md §9-7#1(legacy Canvas2Dレンダラのボスマーカー): driller はpumpkinと同格。
-    if (isPumpkinTier(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'reaper') {
-      drawBossMarker(ctx, cx, enemy.y - camera.y - 6, enemy.type === 'reaper' ? '#ef4444' : '#fde68a');
+    if (isPumpkinTier(enemy.type) || enemy.type === 'giantbat' || isReaperFamily(enemy.type)) {
+      drawBossMarker(ctx, cx, enemy.y - camera.y - 6, isReaperFamily(enemy.type) ? '#ef4444' : '#fde68a');
     }
     if (Date.now() - enemy.lastHit < 90) {
       ctx.save();
@@ -1138,8 +1138,8 @@ const drawEnemy = (
 
   // Boss marker: a small bat silhouette hovers above pumpkins, giant bats,
   // and the reaper. Bobs gently so the eye finds them in the crowd.
-  if (enemy.type === 'pumpkin' || enemy.type === 'giantbat' || enemy.type === 'reaper') {
-    drawBossMarker(ctx, cx, enemy.y - camera.y - 6, enemy.type === 'reaper' ? '#ef4444' : '#fde68a');
+  if (enemy.type === 'pumpkin' || enemy.type === 'giantbat' || isReaperFamily(enemy.type)) {
+    drawBossMarker(ctx, cx, enemy.y - camera.y - 6, isReaperFamily(enemy.type) ? '#ef4444' : '#fde68a');
   }
 
   if (Date.now() - enemy.lastHit < 90) {

@@ -25,11 +25,11 @@
 // gameOver遷移だけが起きない。
 
 import type { Enemy, Player } from '../types/game';
-import { GLOW_R_L } from './glowTiers';
+import { GLOW_R_L, GLOW_R_S } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
   isBossType, isHiddenBoss, isBountyType, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile, isCorpse,
-  isGuardianPhantom, isBiteExemptType } from './enemyUtils';
+  isGuardianPhantom, isBiteExemptType, isHangedman } from './enemyUtils';
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
 import { PHILL_COUNTER_RECOVER_MS } from './phillScript'; // §10-15#2: フィル後追い分岐の硬直長
 import { activeFlareTargets } from './flareGun';
@@ -1410,10 +1410,24 @@ export const applyContactDamage = (
       });
     }
     if (playerDied) {
-      fx.triggerPlayerDeath(
-        collPlayer.x + collPlayer.width / 2,
-        collPlayer.y + collPlayer.height / 2
-      );
+      const dx = collPlayer.x + collPlayer.width / 2;
+      const dy = collPlayer.y + collPlayer.height / 2;
+      if (isHangedman(enemy.type)) {
+        // PACING_PUZZLE.md §14-4-3(KILL!と死亡演出の順序・叩き台): showBossFatalPresentation
+        // (gameStore.ts)と同じ「絵の型」をfx経由(ヘッドレス安全)で再現し、700ms(MELEE_FINISH_
+        // SLOW_MS)ぶん見せ切ってから死亡演出タイムラインへ渡す(死亡側のズーム開始を700ms遅延=
+        // 同フレーム上書きでKILLが潰れるのを防ぐ)。
+        fx.spawnBurst(dx, dy, '#dc2626', 30);
+        fx.spawnBurst(dx, dy, '#7f1d1d', 14);
+        fx.spawnRing(dx, dy, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
+        fx.spawnRing(dx, dy, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
+        fx.spawnRing(dx, dy, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
+        fx.spawnGlow(dx, dy, GLOW_R_S, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS);
+        fx.spawnCallout(dx, dy - 6, 'Kill!', '#ffe4e6', { bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_MS - 140, duration: MELEE_FINISH_SLOW_MS });
+        setTimeout(() => fx.triggerPlayerDeath(dx, dy), MELEE_FINISH_SLOW_MS);
+      } else {
+        fx.triggerPlayerDeath(dx, dy);
+      }
     }
   });
   // v0.25.2946: 受け流しの反映=体幹削り+プレイヤーi-frame+軽い成立FX(重い演出は使わない=負荷方針)。

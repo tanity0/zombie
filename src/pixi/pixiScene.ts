@@ -169,6 +169,7 @@ import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOA
 import {
   isCorpse, // ★死体は投影影を落とさない(v0.25.3933)
   getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType, isPumpkinTier,
+  isReaperFamily, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
 } from '../utils/enemyUtils';
 import {
   BOUNTY_DEPART_FADE_MS,
@@ -487,6 +488,9 @@ const tsNum = (key: string, def: number): number => {
   const n = v == null ? NaN : Number(v);
   return Number.isFinite(n) ? n : def;
 };
+// PACING_PUZZLE.md §14-4-5(新死神・本体の表示スケール)。既定=1(絵はcontainScaleの当たり判定基準
+// フィットのまま・「実機で決定」= 社長が実機で ?rp2scale= を振って詰める前の暫定既定)。
+const RP2_SCALE = tsNum('rp2scale', 1);
 // ステージ3の追加雲(near層)を実機で詰めるツマミ(v0.25.3116/3117)。NaN=未指定(表の値を使う)。
 // **ビルドし直さずに**濃さ・森1からの距離・高さを詰めるための道具(遠景の層隠しツマミと同趣旨)。
 const S3_CLOUD_ALPHA_OVERRIDE = tsNum('s3cloud', NaN);
@@ -7345,7 +7349,7 @@ export class PixiScene {
     const rsp = this.reaperCrossSprite;
     if (rc && now - rc.startedAt >= 0 && now - rc.startedAt < rc.durationMs) {
       if (!rsp.texture || rsp.texture.width <= 1) {
-        const rtex = getTexture('reaper');
+        const rtex = getTexture('reaper2-common');
         if (rtex) rsp.texture = rtex;
       }
       const t = (now - rc.startedAt) / rc.durationMs;
@@ -10057,7 +10061,7 @@ export class PixiScene {
         if (isCorpse(enemy)) continue;
         const box = enemyFootBox(enemy);
         // PACING_PUZZLE.md §9-7#1(pixiSceneの影): driller はpumpkinと同格。
-        const bossWeight = enemy.type === 'reaper' || enemy.type === 'giantbat' || isPumpkinTier(enemy.type)
+        const bossWeight = isReaperFamily(enemy.type) || enemy.type === 'giantbat' || isPumpkinTier(enemy.type)
           ? 1.28
           : 1;
         push(box.footX, box.footY, box.boxW * 0.55 * this.depthScaleEnemy(box.footY), bossWeight);
@@ -15164,7 +15168,9 @@ export class PixiScene {
     view.container.zIndex = fb.footY;
     // PACING_PUZZLE.md §10-14#6(フィルは専用レイヤー=filteredWorldの外なので地平線フェードの対象外
     // =外すのが意図。浮遊ボスは遠近/地平線の演出そのものに乗らない)。
-    const horizonAlpha = e.type === 'phillboss' ? 1 : this.horizonActorAlpha(fb.footY);
+    // §14-4-3(使者・hangedman): 北側(画面奥)へ湧いた使者が地平線フェードで見えないまま迫ると
+    // 「囲まれている」の核心=視覚が伝わらない。使者も対象外にする(視覚のみ・判定は元から不変)。
+    const horizonAlpha = (e.type === 'phillboss' || isHangedman(e.type)) ? 1 : this.horizonActorAlpha(fb.footY);
     // 死神の回り込みワープ: 消える(0)→テレポート→出る(1) のフェード(useGameLoop が reaperWarpAlpha を駆動)。
     const reaperWarpFade = e.reaperWarpAlpha ?? 1;
     // 非ボス敵は「手前(画面最下端)で消える」near-plane フェードを掛ける。裏ボスは自前の裏回りフェード
@@ -19816,8 +19822,8 @@ export class PixiScene {
       ov.circle(cx, my, 1.4).fill({ color: 0x7dd3fc, alpha: pulse });
     }
     // PACING_PUZZLE.md §9-7#1(pixiSceneのボスマーカー): driller はpumpkinと同格。
-    if (isPumpkinTier(e.type) || e.type === 'giantbat' || e.type === 'reaper') {
-      this.drawBossMarker(ov, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
+    if (isPumpkinTier(e.type) || e.type === 'giantbat' || isReaperFamily(e.type)) {
+      this.drawBossMarker(ov, cx, e.y - 6, isReaperFamily(e.type) ? 0xef4444 : 0xfde68a, now);
     }
     // 拠点/レスキューの「専用敵」(fromEvent)は通常湧きと区別(社長指示・軽量マーク): 頭上に橙の下向き三角(脈動)。
     if (e.fromEvent) {
@@ -20347,7 +20353,7 @@ export class PixiScene {
       return { x: 1 + JORM_SLUG_SQX * w, y: 1 - JORM_SLUG_SQY * w };
     }
     // PACING_PUZZLE.md §9-7#1(pixiSceneの疑似呼吸): driller はpumpkinと同格。
-    const heavy = isPumpkinTier(e.type) || e.type === 'giantbat' || e.type === 'reaper' || e.type === 'hunter' || isHiddenBoss(e.type);
+    const heavy = isPumpkinTier(e.type) || e.type === 'giantbat' || isReaperFamily(e.type) || e.type === 'hunter' || isHiddenBoss(e.type);
     const amp = heavy ? 0.65 : 1;
     const phase = now / ENEMY_BREATH_MS * Math.PI * 2 + stablePhase(e.id);
     const inhale = Math.sin(phase);
@@ -20368,7 +20374,7 @@ export class PixiScene {
     }
     const hitT = Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_LIGHT_MS);
     // PACING_PUZZLE.md §9-7#1(pixiSceneのカリング保護対象の光): driller はpumpkinと同格。
-    const boss = isPumpkinTier(e.type) || e.type === 'giantbat' || e.type === 'reaper' || e.type === 'hunter' || isHiddenBoss(e.type);
+    const boss = isPumpkinTier(e.type) || e.type === 'giantbat' || isReaperFamily(e.type) || e.type === 'hunter' || isHiddenBoss(e.type);
     if (this.enemyCount >= ENEMY_LIGHT_CULL_COUNT && !boss && hitT <= 0) {
       view.light.visible = false;
       return;
@@ -22008,7 +22014,10 @@ export class PixiScene {
     const stage3BossMul = (this.daylight && type === 'giantbat') ? STAGE3_BOSS_VISUAL_SCALE : 1;
     const stage4VisMul = (this.snowStage && STAGE4_ENEMY_TYPES.has(type)) ? STAGE4_ENEMY_VISUAL_SCALE : 1;
     const stage5BossMul = (this.battlefieldStage && type === 'giantbat') ? STAGE5_BOSS_VISUAL_SCALE : 1;
-    return stage3BossMul * stage4VisMul * stage5BossMul;
+    // PACING_PUZZLE.md §14-4-5(?rp2scale=): 新死神本体だけの表示スケール調整(判定=hitboxは不変)。
+    // (このメソッドは type: string を受け取る=isReaperFamily[EnemyType専用]の代わりに直接比較する)
+    const rp2Mul = type === 'reaper' ? RP2_SCALE : 1;
+    return stage3BossMul * stage4VisMul * stage5BossMul * rp2Mul;
   }
 
   /**

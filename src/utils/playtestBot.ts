@@ -6,7 +6,7 @@
 import type { Enemy, InputState, Player, Projectile } from '../types/game';
 // ★v0.25.3554: 「この構えは弾ける」の唯一の出どころを共有する(写すな、共通化しろ)。
 import { isDashParryCounterPhase } from './combatTick';
-import { isCorpse, enemyRangeRect } from './enemyUtils';
+import { isCorpse, enemyRangeRect, isReaperFamily, isTerminalReaper } from './enemyUtils';
 
 // 'rusher' はPACING_PUZZLE.md §5.20(M19・深層ラッシュ試験専用)のペルソナ。既存の通常スモーク
 // (BOT_PERSONAS の巡回)には含めず、専用テストからのみ persona 名で直接呼び出す。
@@ -711,7 +711,7 @@ const findCounterThreat = (
   // 段階差は従来どおり試行確率(novice 25%〜master 100%)と反応遅延が付ける。
   for (const e of enemies) {
     if (isCorpse(e)) continue;
-    if (e.type === 'reaper' && !e.reaperChaser) continue;
+    if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
     if (e.aiPhase === 'jump') continue; // 空中は接触判定ごと無い(専用の検知が上にある)
     const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
     const dx = pcx - ecx, dy = pcy - ecy;

@@ -75,6 +75,9 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   giantbat: { kind: 'crawl', bobPx: 1.6, rockRad: 0.035, sqAmp: 0.035, strideHz: 1.8, uneven: 0.55, faceMove: false },
   // reaper=チェーンソーを掲げた襤褸外套(v0.25.2901)。裾を引きずって歩く=重い踏みしめ(正面絵)。
   reaper: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.1, uneven: 0.20, faceMove: false },
+  // PACING_PUZZLE.md §14-4-3(使者・hangedman): 吊るされた人形が宙を滑って迫る=歩かずhover
+  // (ghost/lich/plantと同じ扱い。足取りではなく吊られたまま左右へ揺れる不気味さを出す・叩き台)。
+  hangedman: { kind: 'hover', bobPx: 2.2, rockRad: 0.022, sqAmp: 0, strideHz: 0.6, uneven: 0, faceMove: false },
   'lab-zombie-1': { kind: 'walk', bobPx: 1.2, rockRad: 0.045, sqAmp: 0.028, strideHz: 1.8, uneven: 0.55, faceMove: false },
   'lab-zombie-2': { kind: 'walk', bobPx: 1.3, rockRad: 0.050, sqAmp: 0.030, strideHz: 2.0, uneven: 0.65, faceMove: false },
   // lab-zombie-3=**四つ這いの巨獣**(v0.25.2923で新絵・骨の尾)。heavy→crawlへ(見た目で判断)。

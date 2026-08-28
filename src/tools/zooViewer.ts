@@ -51,7 +51,9 @@ const ZAKO: CastEntry[] = [
   { type: 'lich', tex: 'lich-common', label: '機械死体 (lich)' },
   { type: 'screamer', tex: 'screamer-common', label: '絶叫 (screamer)' },
   { type: 'hunter', tex: 'hunter', label: '棺桶巨人 (hunter)' },
-  { type: 'reaper', tex: 'reaper-common', label: '襤褸外套 (reaper)' },
+  // PACING_PUZZLE.md §14-4(新死神・v0.25.4004): 旧絵(reaper-common)は伐採人(logger)へ降格。
+  { type: 'reaper', tex: 'reaper2-common', label: '死神(新) (reaper)' },
+  { type: 'hangedman', tex: 'reaper2-hanged', label: '使者 (hangedman)' },
   { type: 'lab-zombie-1', tex: 'lab-zombie/lab-zombie-lv1-male', label: '研究所Lv1' },
   { type: 'lab-zombie-2', tex: 'lab-zombie/lab-zombie-lv2', label: '研究所Lv2' },
   { type: 'lab-zombie-3', tex: 'lab-zombie/lab-zombie-lv3', label: '研究所Lv3' },

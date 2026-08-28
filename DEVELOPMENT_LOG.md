@@ -1,5 +1,37 @@
 # Development Log
 
+## v0.25.4006 — PACING_PUZZLE §14-4「新たな死神」実装 途中経過push③(実装チャット・Sonnet) 【2026-08-28 19:32 JST】
+
+**WIP push**(見出し・内容は完了時に出荷版へ打ち直す。ゲーム内容の変更はまだ無い)。残っていた
+`'reaper'`直書きの述語集約(描画/リサイクル/小ユーティリティ)+KILL!演出の順序を実装した。
+
+### この時点で追加された変更
+- `src/pixi/pixiScene.ts`: 横切り演出のテクスチャを`reaper2-common`へ、投影影の重み/ボスマーカー/
+  疑似呼吸/被弾光カリング保護の`'reaper'`直書きを`isReaperFamily`へ集約。`?rp2scale=`
+  (`stageEnemyVisualMul`経由・既定1)を新設。使者(hangedman)を地平線フェード対象外にした。
+- `src/utils/renderUtils.ts`(legacy Canvas2Dレンダラ・未メンテだが型は揃える): 影/光輪/ボスマーカー
+  4箇所を`isReaperFamily`へ集約。
+- `src/utils/directorTick.ts`: 上限カリング保護表にhangedmanを追加(湧き帳簿/ノルマ対象外)。
+  距離リサイクル除外を`isTerminalReaper`/`isHangedman`述語へ集約(重大6)。
+- `src/utils/katanaAuto.ts`/`escortAdvance.ts`/`marksmanTrap.ts`/`namedEnemy.ts`/`playtestBot.ts`:
+  残っていた`'reaper'`直書きを`isReaperFamily`/`isTerminalReaper`へ集約。
+- `src/utils/combatTick.ts`: 使者(hangedman)の接触で死んだ時、KILL!コールアウト+バースト/リング/
+  グロー(showBossFatalPresentationと同じ絵の型・fx経由でヘッドレス安全)を先に出し、700ms
+  (MELEE_FINISH_SLOW_MS)後に`fx.triggerPlayerDeath`を呼ぶ(死亡側のズーム開始を遅延・叩き台)。
+- `src/pixi/enemyMotion.ts`: hangedmanのモーション(hover=吊るされたまま滑る・叩き台)を追加。
+- `src/tools/zooViewer.ts`/`src/data/campaign.ts`(資料室図鑑): 死神の絵をreaper2-commonへ、
+  使者(hangedman)のエントリを追加(★出すかは叩き台=出す、の裁定どおり)。
+- `src/store/gameStore.ts`: ENEMY_DEATH_LABELSにhangedman='使者'を追加。近接フィニッシュ即死
+  (クリ→5秒スタン)の除外を残り1箇所(gun-crit経路のstunEnemy呼び出し)に追加(前回pushの4箇所と
+  合わせて計5箇所)。
+
+### まだ入っていない(次のpush以降)
+述語集約の機械検査(残数0の再確認)・音声/spriteAtlas等の周辺確認・関連ユニットテストの追加実行・
+changelog/DEVLOGの出荷版打ち直し・実機確認の依頼。
+
+- 検証: `npm run typecheck`(0エラー)・`npm run lint`(0エラー・既存warning 8件のみ)。
+- 状態変化: §14-4新死神 → 実装中(このpush時点では検収不可。次のpushで着地させる)。
+
 ## v0.25.4005 — PACING_PUZZLE §14-4「新たな死神」実装 途中経過push②(実装チャット・Sonnet) 【2026-08-28 19:26 JST】
 
 **WIP push**(見出し・内容は完了時に出荷版へ打ち直す。ゲーム内容の変更はまだ無い)。前回(v0.25.4004)に

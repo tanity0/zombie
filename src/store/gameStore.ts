@@ -1516,6 +1516,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   logger: '伐採人', // PACING_PUZZLE.md §14-3裁定済み#1(社長指示2026-08-28)
   giantbat: '変異体(飛行型)',
   reaper: '死神',
+  hangedman: '使者', // PACING_PUZZLE.md §14-4-3(死神の技「使者」が召喚する耐久武器)
   'lab-zombie-1': '研究施設の変異体(Lv1)',
   'lab-zombie-2': '研究施設の変異体(Lv2)',
   'lab-zombie-3': '研究施設の変異体(Lv3)',

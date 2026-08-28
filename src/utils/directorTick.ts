@@ -29,6 +29,9 @@ import {
   isBountyType,
   isGuardianPhantom,
   isPumpkinTier,
+  isReaperFamily,
+  isTerminalReaper,
+  isHangedman,
 } from './enemyUtils';
 import { resolvePumpkinTier, allowDrillerForRun, allowLoggerForRun, isKiteMidAttackPhase } from './drillerAi'; // PACING_PUZZLE.md §9/§14
 import { isBossMakerRun } from './bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdriller/loggerを出さない
@@ -122,10 +125,13 @@ export const isEnemyCapProtected = (
   !!e.fromEvent ||
   !!e.isNamed ||
   !!e.questTarget ||
-  e.type === 'reaper' || e.type === 'giantbat' || isPumpkinTier(e.type) ||
+  isReaperFamily(e.type) || e.type === 'giantbat' || isPumpkinTier(e.type) ||
   e.type === 'lab-zombie-3' ||
   isHiddenBoss(e.type) ||
   isBountyType(e.type) ||
+  // PACING_PUZZLE.md §14-4-3(使者・hangedman): 湧き帳簿/ノルマ(通常湧き上限カリング)の対象外。
+  // 死神本体の技として管理される耐久武器なので、上限カリングで消えると囲み召喚の意味が壊れる。
+  isHangedman(e.type) ||
   // research/GHOST_BOSS.md(守護霊ボス「幻影」): 上限カリングで消されない(戦っている相手が
   // 雑魚の数の都合で消えると戦闘そのものが成立しない=他のボス系と同じ保護)。
   isGuardianPhantom(e.type) ||
@@ -1116,7 +1122,11 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // 死神チェイサーも専用コントローラ(回り込みワープ)が座標を管理する=汎用の距離リサイクルで二重管理しない。
     // チェイサーはリサイクル余白(240px)の外側に湧くため、放置すると毎フレーム別の画面外へ飛ばされ続け、
     // 「死神がすぐどこかへ行ってしまう」原因になっていた(ワープ先回りはこの下の専用コントローラが担当)。
-    if (enemy.type === 'reaper' && enemy.reaperChaser) return enemy;
+    // PACING_PUZZLE.md §14-4-2(重大6): 述語をisTerminalReaperへ集約(旧実装は撃破escalationの
+    // 追加個体がこの除外から漏れる既存バグを内包していた=reaperChaser直書きの単純比較だったため)。
+    if (isTerminalReaper(enemy)) return enemy;
+    // §14-4-3(使者・hangedman): 同じ理由でリサイクル対象外(専用の追尾コントローラが座標を管理)。
+    if (isHangedman(enemy.type)) return enemy;
     // 囲い系イベントの敵は円内に留めるため距離リサイクル対象外(画面外送りしない)。
     if (enemy.fromEvent) return enemy;
     // §5.14 M13: 宿敵(ネームド)は距離リサイクル対象外(倒すかラン終了まで持ち越すかの2択に
@@ -1189,7 +1199,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // ghostはプレイヤーを中心に周回し続ける追従型なので、エリア2+で出会った個体をプレイヤーが
     // エリア0/1(拠点付近=ステージ1のメイン活動域。ghostは出現重み0)へ連れ帰ると、追従中(=画面内)
     // にもかかわらず5秒後に強制回収されていた。新規湧きの出現エリア制限(AREA_WEIGHT)自体は不変。
-    const preserveEnemyState = enemy.type === 'reaper' || enemy.type === 'ghost' || isBossType(enemy.type);
+    const preserveEnemyState = isReaperFamily(enemy.type) || enemy.type === 'ghost' || isBossType(enemy.type);
     const aliveMs = gameTime - (enemy.spawnedAt ?? 0);
     // DISTRIBUTION_REDESIGN.md①: sceneSpawn(台本のfeatured床/保証出現などでエリア不問に選ばれた)
     // も強制回収の対象外(画面外に離れた時の通常回収 OFFSCREEN_RECYCLE_MARGIN は従来どおり効く)。
@@ -1432,7 +1442,7 @@ export function runDirectorSignalStep(refs: DirectorSignalRefs, ctx: DirectorSig
     for (const e of ds.enemies) {
       if (e.type === 'hunter') events |= DIRECTOR_EVENT_BIT.hunter;
       else if (e.type === 'screamer') events |= DIRECTOR_EVENT_BIT.screamer;
-      else if (e.type === 'reaper') events |= DIRECTOR_EVENT_BIT.reaper;
+      else if (isReaperFamily(e.type)) events |= DIRECTOR_EVENT_BIT.reaper;
       if (e.isNamed) events |= DIRECTOR_EVENT_BIT.named; // §5.14 M13: 宿敵出現中(他イベントと排他ではない)
     }
     // PACING_PUZZLE.md バッチM2(§3-D): 本方式ON時のランク/盤面目標(?puzzle=0時はundefined

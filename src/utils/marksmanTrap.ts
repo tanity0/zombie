@@ -9,7 +9,7 @@
 //
 // レンダラ非依存の純関数(src/utils)=ヘッドレスでユニットテスト可能。
 import type { Enemy } from '../types/game';
-import { enemyRangeRect, isBossType, isCorpse } from './enemyUtils';
+import { enemyRangeRect, isBossType, isCorpse, isReaperFamily, isTerminalReaper } from './enemyUtils';
 
 /** トラップ中心から敵の「体の縁」までの距離。負なら中心が既に円の内側。
  * v0.25.3202(社長報告「トラップが密着してなくても関係なく必中になってる」): ボス系は幅/2の円近似を
@@ -47,7 +47,7 @@ export const selectTrapTargets = (
 ): Enemy[] => {
   if (remaining <= 0) return [];
   return enemies
-    .filter(e => e.type !== 'reaper' || e.reaperChaser)
+    .filter(e => !isReaperFamily(e.type) || isTerminalReaper(e))
     .filter(e => !isCorpse(e)) // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 捕獲対象から除外
     .filter(e => !alreadyHit.has(e.id))
     .map(e => ({ e, edge: trapEdgeDistance(trapCx, trapCy, e) }))
