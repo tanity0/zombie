@@ -1158,9 +1158,16 @@ const resolveKamitsukiFx = (fx: CombatEffects): void => {
   // 「停止明けに一括シフト」方式(1回だけ・二重シフト禁止)。対象はこの列挙が正:
   //   プレイヤー: invulnerableTime(i-frame)・counterWindowStart/End(カウンター受付)・
   //               counterCooldownEnd(カウンターCD)・pendingSwingAt/meleeSwingAt(前隙)。
-  //   敵: 全敵のknockbackUntil(使者のKB凍結判定hangedmanKnockbackActiveもこの1フィールドだけを見るため、
-  //       ここをシフトすれば連動して直る。knockbackMsは持続時間[相対値]なのでシフト対象外)。
-  // 0/未設定(=窓が閉じている)はシフトしない(ガード)。
+  //   敵: knockbackUntil(使者のKB凍結判定hangedmanKnockbackActiveもこの1フィールドだけを見るため、
+  //       ここをシフトすれば連動して直る)。
+  // ★記述是正(確認検収): 旧コメントは「全敵のknockbackUntilを無条件シフト」「knockbackMsは
+  // 持続時間[相対値]なのでシフト対象外」と書いていたが、どちらも誤りだった。
+  //   ・`Enemy`型(src/types/game.ts)に`knockbackMs`は存在しない(Player専用フィールド)。
+  //   ・「シミュレーションは停止中は丸ごと凍っている」の前提も偽——triggerCounter等のプレイヤー
+  //     入力はrAFループの外(React/DOMハンドラ)を走るため、停止中でも敵へ新規のknockbackUntilが
+  //     立つ。無条件シフトは、その新規KBまで一緒にずらして初速を約3.6倍に狂わせていた(実測)。
+  //   実際は下のA-3rのとおり「停止開始より前から走っていたKBだけ」を対象にする(起点型フィールドと
+  //   同じ扱い)。0/未設定(=窓が閉じている)はシフトしない(ガード)。
   const shiftMs = kfx.durationMs;
   // ★確認検収4巡目(A-2): 「v>0」だけ見ていたシフト条件は、**停止中に新規に立った窓**まで一緒に
   // ずらしていた。ヒットストップはrAFループ(シミュレーション)しか止めないため、停止中のタップ/
@@ -1173,22 +1180,62 @@ const resolveKamitsukiFx = (fx: CombatEffects): void => {
   // これらのフィールドは値そのものが「窓が開いた瞬間の実時刻」(=起点)なので、v<=kfx.startAtが
   // そのまま「起点が停止開始より前か」の判定になる。
   const shiftIfStartedBefore = (v: number) => v > 0 && v <= kfx.startAt;
-  // enemyのknockbackUntilは対象外(この判定は付けない): KBはシミュレーション側だけが書き込む値で、
-  // シミュレーションは停止中は丸ごと凍っている(=停止中に新規のKBが生まれることが無い)。よって
-  // 「定義されていれば無条件にシフト」のままで安全(この関数に到達できている時点で起点は
-  // 停止開始以前=停止をまたいだ既存のKBだけが対象になる)。
-  useGameStore.setState(s2 => ({
+  // ★確認検収(A-2r): 上のshiftIfStartedBeforeは「値=窓が開いた瞬間の起点」という前提で、
+  // invulnerableTime/counterWindowStart/pendingSwingAt/meleeSwingAtのような**起点型**フィールドにしか
+  // 通用しない。counterWindowEnd/counterCooldownEndは値そのものが**締切(未来のタイムスタンプ)**で、
+  // 「起点」を持たないので同じ述語をそのまま当てると壊れる:
+  //   ・counterWindowEnd(=counterWindowStart+固定幅)は、この述語だと「v<=kfx.startAt」が
+  //     ほぼ常に偽になり(窓の終端は開いた直後には未来なので)、シフトされない側が漏れる。
+  //     正しくは「ペアのcounterWindowStartが停止前起点かどうか」で決める(窓は起点と一緒に動かす。
+  //     Startだけシフトしてendがそのままだと窓が逆転/伸縮する)。
+  //   ・counterCooldownEnd(カウンターCD明けの締切のみ・起点フィールドを持たない)は、
+  //     「停止開始時点でまだ生きている締切」=停止直前(kfx生成時)にはv > kfx.startAtだった時だけ
+  //     シフトが正しい(実測: 近接直後に神付きへ突入すると、この判定漏れで停止中の820msぶん近接CDが
+  //     黙って焼かれていた=社長裁定の案A「停止ぶん延長」が最も普通の状況で効いていなかった)。
+  //     過去に切れていた締切(発火時点でv<=kfx.startAt)はシフトしない(既に明けているCDを蒸し返さない)。
+  //     ★ただし「発火時点でv>kfx.startAtだったか」を**解決時点の値だけ**では判定できない
+  //     (=起点を持たないため、停止中に新規のスイング/リファンドで新しい締切が立った場合も
+  //     見た目は同じ「vが未来のタイムスタンプ」になる。停止中に新規に立った締切まで一緒に
+  //     シフトすると、起点型フィールドと同じ「入力した瞬間を動かさない」原則が破れる)。
+  //     kfx生成時にスナップショット(counterCooldownEndAtStart)を持たせてあるので、
+  //     「解決時の値が発火時点のスナップショットと不変=停止中に誰も更新していない」時だけシフトする。
+  const counterCooldownEndUnchangedSinceStart = (v: number) => v === kfx.counterCooldownEndAtStart;
+  const shiftIfLiveDeadlineAtStart = (v: number) =>
+    counterCooldownEndUnchangedSinceStart(v) && kfx.counterCooldownEndAtStart > kfx.startAt;
+  useGameStore.setState(s2 => {
+    // 窓(Start/End)はペアで動かす: Endの可否はStart自身の起点判定で決める(Endに同じ述語を
+    // 当てると常に不成立になり反転窓を作るため。上のA-2rコメント参照)。
+    const counterWindowStartShifted = shiftIfStartedBefore(s2.player.counterWindowStart);
+    return {
     player: {
       ...s2.player,
       invulnerableTime: shiftIfStartedBefore(s2.player.invulnerableTime) ? s2.player.invulnerableTime + shiftMs : s2.player.invulnerableTime,
-      counterWindowStart: shiftIfStartedBefore(s2.player.counterWindowStart) ? s2.player.counterWindowStart + shiftMs : s2.player.counterWindowStart,
-      counterWindowEnd: shiftIfStartedBefore(s2.player.counterWindowEnd) ? s2.player.counterWindowEnd + shiftMs : s2.player.counterWindowEnd,
-      counterCooldownEnd: shiftIfStartedBefore(s2.player.counterCooldownEnd) ? s2.player.counterCooldownEnd + shiftMs : s2.player.counterCooldownEnd,
+      counterWindowStart: counterWindowStartShifted ? s2.player.counterWindowStart + shiftMs : s2.player.counterWindowStart,
+      counterWindowEnd: counterWindowStartShifted ? s2.player.counterWindowEnd + shiftMs : s2.player.counterWindowEnd,
+      counterCooldownEnd: shiftIfLiveDeadlineAtStart(s2.player.counterCooldownEnd) ? s2.player.counterCooldownEnd + shiftMs : s2.player.counterCooldownEnd,
       pendingSwingAt: shiftIfStartedBefore(s2.player.pendingSwingAt) ? s2.player.pendingSwingAt + shiftMs : s2.player.pendingSwingAt,
       meleeSwingAt: shiftIfStartedBefore(s2.player.meleeSwingAt) ? s2.player.meleeSwingAt + shiftMs : s2.player.meleeSwingAt,
     },
-    enemies: s2.enemies.map(e => e.knockbackUntil !== undefined ? { ...e, knockbackUntil: e.knockbackUntil + shiftMs } : e),
-  }));
+    // ★確認検収(A-3r): 「シミュレーションは停止中は丸ごと凍っている」は偽だった——
+    // プレイヤー入力(triggerCounter等)はReact/DOMハンドラ経由でrAFループの外を走るため、
+    // 停止中でも敵へ新規のknockbackUntilが立つ(例: 神付き中にカウンターで弾いた敵)。
+    // 起点型フィールドと同じ「停止開始より前から走っていたKBだけシフトする」判定に統一する。
+    // ★実在確認: `Enemy`型(src/types/game.ts)には`knockbackMs`が無い(持続時間の相対値を
+    // 保持しているのは`Player`側だけ)。よって`e.knockbackUntil - (e.knockbackMs ?? …)`はそのままでは
+    // 型が通らない(tscで実測: TS2551)。敵へのknockbackUntil付与箇所(gameStore.ts)を洗うと
+    // 大半(通常被弾・カウンター弾き=このバグの対象そのもの・突進弾き等)は`KNOCKBACK_DURATION`
+    // (280ms)で、一部の特殊系(スタン直後の据え置き等)だけ`now+100`のような短い個別値を使っている。
+    // 持続時間を敵ごとに保存する新フィールドを増設するのはこのバッチの範囲外(CLAUDE.md「敵の仕様は
+    // 種類で固める」= 個別拡張は指示が無い限りしない)なので、代表値`KNOCKBACK_DURATION`で
+    // 開始時刻を逆算する(=多数派の経路と、今回の実測バグの発生経路を正しく判定できる。
+    // 数十msだけ短い特殊系だけ境界が数十ms甘くなるが、無条件シフト[常に誤り]より厳密に改善)。
+    enemies: s2.enemies.map(e => {
+      if (e.knockbackUntil === undefined) return e;
+      const kbStartedAt = e.knockbackUntil - KNOCKBACK_DURATION;
+      return kbStartedAt <= kfx.startAt ? { ...e, knockbackUntil: e.knockbackUntil + shiftMs } : e;
+    }),
+    };
+  });
   const wasAliveBeforeContact = useGameStore.getState().player.health > 0;
   // ④覆い切った瞬間にダメージ適用(§14-4-8③④)。fromX/Y=触れた個体の中心(発火時点・biteHits/通常接触と同型)。
   const playerDied = useGameStore.getState().damagePlayer(
@@ -1499,7 +1546,12 @@ export const applyContactDamage = (
     // ★確認検収4巡目(A-1): `collPlayer.health > 0` を追加(v0.25.4013の`wasAliveBeforeContact`と同じ
     // 思想)。無いとHP0の死亡演出中もdamagePlayerがi-frameを張り直すため接触が1000msごとに再登録され、
     // 死亡ズームの最中に600msの停止+紫の影がもう一度入っていた。
-    if (KAMITSUKI_ENABLED && damageWasApplied && !isHeadlessFx && collPlayer.health > 0
+    // ★確認検収(A-1r): `collPlayer` はforEach手前のスナップショット(collState.player)なので、
+    // 同tickで先行する敵の接触により既にHP0になっていても、このforEachが回っている間は古い正のhealthを
+    // 読み続けてしまう(死神/使者が2体同フレームで接触すると後続が素通りする実測穴)。
+    // wasAliveBeforeContact(1192行)と同じ流儀で、判定の瞬間にstoreを読み直す。
+    if (KAMITSUKI_ENABLED && damageWasApplied && !isHeadlessFx
+      && useGameStore.getState().player.health > 0
       && (isTerminalReaper(enemy) || isHangedman(enemy.type))) {
       kamitsukiTriggeredThisTick = true; // A-3: 1tickにつき1体
       const kNow = Date.now();
@@ -1514,6 +1566,9 @@ export const applyContactDamage = (
           isHangedman: isHangedman(enemy.type),
           deathLabel: enemyDeathLabel(enemy.type),
           moveKey: contactDamageMoveKey(enemy),
+          // ★確認検収(A-2r): 締切型フィールドのシフト可否をresolveKamitsukiFxで判定するための
+          // 発火時点(=停止直前)スナップショット。collPlayerはこのforEach手前で読んだ最新state。
+          counterCooldownEndAtStart: collPlayer.counterCooldownEnd,
         },
         hitstopUntil: kNow + REAPER2_CONFIG.kamitsukiMs,
       });

@@ -5027,6 +5027,11 @@ interface GameState {
     isHangedman: boolean;                            // KILL!演出分岐(§14-4-3の順序規定)
     deathLabel: string;                               // enemyDeathLabel(enemy.type)(発火時点で確定)
     moveKey?: string;                                 // contactDamageMoveKey(enemy)(G4a・記録専用)
+    // ★確認検収(A-2r): counterCooldownEndは値そのものが「窓が開いた瞬間の起点」を持たない締切のみの
+    // フィールドなので、シフトすべきか(=停止前から生きていた締切か/停止中に新規に立った締切か)を
+    // 起点比較では判定できない。発火時点(=停止直前)のスナップショットをここへ持たせ、解決時に
+    // 「値が変わっていなければ停止前からの締切」として比較する(combatTick.tsのresolveKamitsukiFx参照)。
+    counterCooldownEndAtStart: number;
   } | null;
   // アテンション・シネマティック(レスキュー/ジャイアント出現): 現地へカメラパン→ホールド→戻る。
   // 駆動は実時間(startReal)。fromCam=開始時のカメラ(=戻り先)。null=非実行。

@@ -15,7 +15,7 @@
 // 併せて **`'chase'` では従来どおり受け流しが立つ**ことも固定する(=除外がトールの全州へ広がって
 // いないことの証明。広がると「トールには体当たりカウンターが一切効かない」に静かに変わる)。
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, KNOCKBACK_DURATION } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 import { applyContactDamage, NOOP_COMBAT_EFFECTS } from './combatTick';
 import { setTreesDisabled } from '../world/trees';
@@ -391,6 +391,111 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
     expect(p.counterWindowStart).toBe(midFreeze);
     expect(p.pendingSwingAt).toBe(midFreeze);
     expect(p.counterCooldownEnd).toBe(midFreeze + 700);
+    spy.mockRestore();
+  });
+
+  // ★確認検収(A-1r): `collPlayer`はforEach手前のスナップショットなので、同tickで先行の敵が
+  // 致死(HP0)にしても、そのforEachが回っている間は古い正のhealthを読み続けてしまい、後続の
+  // 使者/死神が「HP0でも」kamitsukiFxを登録してしまっていた(死亡演出中に停止+紫の影が入る)。
+  // 判定の瞬間にstoreを読み直す(wasAliveBeforeContactと同じ流儀)ことを固定する。
+  it('★同tickで先行の敵が致死(HP0)にした後続の使者は、kamitsukiFxを登録しない(A-1r)', () => {
+    // killer=横切りゴースト(reaperChaser=false)。isReaperFamily=trueでisBiteExemptTypeに乗るため
+    // 噛みつきへ回らず、isTerminalReaper=falseなので神付きでもない=即時damagePlayer経路を通る
+    // (「横切りゴースト(reaperChaser=false)は対象外=現行の即77のまま」テストと同型)。
+    const killer = spawnEnemyAt('reaper', ORIGIN, ORIGIN, START_GT);
+    killer.reaperChaser = false;
+    killer.damage = 99999; // 確実に致死
+    const servant = spawnEnemyAt('hangedman', ORIGIN, ORIGIN, START_GT);
+    useGameStore.setState(s => ({
+      // forEachはこの配列順=killerが先に処理される。
+      enemies: [killer, servant], gameTime: START_GT,
+      player: {
+        ...s.player,
+        x: killer.x + killer.width / 2 - s.player.width / 2,
+        y: killer.y + killer.height / 2 - s.player.height / 2,
+        health: 50, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
+        counterWindowEnd: 0,
+      },
+    }));
+    applyContactDamage(START_GT, false, 0, { ...NOOP_COMBAT_EFFECTS });
+    expect(useGameStore.getState().player.health).toBeLessThanOrEqual(0); // killerで致死
+    // 修正前はここでservant(hangedman)がstale collPlayer.health>0を読んで登録していた。
+    expect(useGameStore.getState().kamitsukiFx).toBeNull();
+  });
+
+  // ★確認検収(A-2r): shiftIfStartedBefore(v)=v>0&&v<=kfx.startAtは「値=起点」前提で、
+  // 締切のみのcounterCooldownEndには通用しない(締切は開いた直後から未来の値なので、この述語では
+  // ほぼ常にシフトされない側に落ちる)。近接を振った直後(=停止前から生きている締切)に神付きへ
+  // 突入した最も普通の状況で、社長裁定の案A「停止ぶん延長」が効いていなかった実測を固定する。
+  it('★#K-1(A-2r): 近接直後に神付きへ突入すると、停止前から生きていたcounterCooldownEndは停止ぶんシフトされる(CD焼け防止)', () => {
+    const N = 7_000_000;
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(N);
+    const e = spawnEnemyAt('hangedman', ORIGIN, ORIGIN, START_GT);
+    const cdEnd = N + 820; // 近接CD明けの締切=停止直前(kfx.startAt=N)の時点で既に生きている
+    useGameStore.setState(s => ({
+      enemies: [e], gameTime: START_GT,
+      player: {
+        ...s.player,
+        x: e.x + e.width / 2 - s.player.width / 2,
+        y: e.y + e.height / 2 - s.player.height / 2,
+        health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
+        counterWindowEnd: 0, counterCooldownEnd: cdEnd,
+      },
+    }));
+    const fx = { ...NOOP_COMBAT_EFFECTS };
+    // ①接触=神付きの予約が立つ(kfx.startAt=N)。counterCooldownEndはこの時点で既に生きている締切。
+    applyContactDamage(START_GT, false, 0, fx);
+    expect(useGameStore.getState().kamitsukiFx?.enemyId).toBe(e.id);
+    // ②覆い時間(既定600ms)が明ける実時間まで進めて解決。
+    spy.mockReturnValue(N + REAPER2_CONFIG.kamitsukiMs + 50);
+    applyContactDamage(START_GT, false, 0, fx);
+    expect(useGameStore.getState().kamitsukiFx).toBeNull();
+    // 修正前は無条件にシフト対象外(v<=kfx.startAtが常に偽)だったため、ここが cdEnd のまま
+    // (=停止中の600msぶん近接CDが黙って焼かれる)になっていた。
+    expect(useGameStore.getState().player.counterCooldownEnd).toBe(cdEnd + REAPER2_CONFIG.kamitsukiMs);
+    spy.mockRestore();
+  });
+
+  // ★確認検収(A-3r): 「シミュレーションは停止中は丸ごと凍っている」は偽——triggerCounter等の
+  // プレイヤー入力はReact/DOMハンドラ経由でrAFループの外を走るため、停止中でも敵へ新規の
+  // knockbackUntilが立つ。旧実装はknockbackUntilが定義されていれば無条件にシフトしていたため、
+  // 停止中に新規発生したKBまで一緒にずれて、解決の瞬間に「開始時刻が未来」になり
+  // (=decayカーブの後半から始まる形で)通常の約3.6倍飛んでいた。起点型フィールドと同じ
+  // 「停止開始より前から走っていたKBだけシフトする」判定を固定する。
+  it('★#K-1(A-3r): 停止中に新規に立った敵のknockbackUntilはシフトされない(=起点型フィールドと同じ扱い)', () => {
+    const N = 8_000_000;
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(N);
+    const player = useGameStore.getState().player;
+    const grabber = spawnEnemyAt('hangedman', ORIGIN, ORIGIN, START_GT);
+    const kbTarget = spawnEnemyAt('hangedman', player.x + 300, player.y, START_GT);
+    useGameStore.setState(s => ({
+      enemies: [grabber, kbTarget], gameTime: START_GT,
+      player: {
+        ...s.player,
+        x: grabber.x + grabber.width / 2 - s.player.width / 2,
+        y: grabber.y + grabber.height / 2 - s.player.height / 2,
+        health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
+        counterWindowEnd: 0,
+      },
+    }));
+    const fx = { ...NOOP_COMBAT_EFFECTS };
+    // ①接触(grabberのみプレイヤーに重なっている)=神付きの予約が立つ(kfx.startAt=N)。
+    applyContactDamage(START_GT, false, 0, fx);
+    expect(useGameStore.getState().kamitsukiFx?.enemyId).toBe(grabber.id);
+    // 停止中(N〜N+durationMs)にカウンターで弾いたと仮定し、kbTargetへ「今」起点の新規KBを立てる。
+    const midFreeze = N + 300;
+    spy.mockReturnValue(midFreeze);
+    useGameStore.setState(s => ({
+      enemies: s.enemies.map(e => e.id === kbTarget.id
+        ? { ...e, knockbackVx: 200, knockbackVy: 0, knockbackUntil: midFreeze + KNOCKBACK_DURATION }
+        : e),
+    }));
+    // ②覆い時間が明ける実時間まで進めて解決。
+    spy.mockReturnValue(N + REAPER2_CONFIG.kamitsukiMs + 50);
+    applyContactDamage(START_GT, false, 0, fx);
+    const after = useGameStore.getState().enemies.find(e2 => e2.id === kbTarget.id);
+    // 起点(停止開始Nより後=停止中に立った)なので1msもシフトされない。
+    expect(after?.knockbackUntil).toBe(midFreeze + KNOCKBACK_DURATION);
     spy.mockRestore();
   });
 });

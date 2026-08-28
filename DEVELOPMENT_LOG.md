@@ -1,5 +1,83 @@
 # Development Log
 
+## v0.25.4019 — 神付き最終補修バッチ(確認検収(A)6件+記述是正・実装チャット・Sonnet) 【2026-08-28 23:45 JST】
+
+PACING_PUZZLE.md §14-4-8/8b「神付き」の確認検収(検収規約2巡打ち切り=これが最終巡)。(A)6件を実装。
+
+### 直した6件
+1. **締切型フィールドのシフト述語(A-2r・最重要)**: `src/utils/combatTick.ts`
+   `resolveKamitsukiFx`(1164行付近)。v4017の`shiftIfStartedBefore(v)=v>0&&v<=kfx.startAt`は
+   「値=起点」前提で、締切のみの`counterCooldownEnd`/`counterWindowEnd`には通用しなかった
+   (締切は開いた直後から未来の値なので、この述語ではほぼ常にシフトされない側に落ちる)。
+   `counterWindowEnd`はペアの`counterWindowStart`が停止前起点かどうかで決める(窓を起点と一緒に
+   動かす)よう変更。`counterCooldownEnd`は起点を持たないため、kfx生成時点(=停止直前)の
+   スナップショット(`counterCooldownEndAtStart`・store型へ追加)を持たせ、解決時に「値が
+   スナップショットと不変=停止中に誰も更新していない」かつ「発火時点で締切がまだ生きていた
+   (`>kfx.startAt`)」時だけシフトする。**実測**: 近接を振った直後(=停止前から生きている締切)に
+   神付きへ突入する最も普通の状況で、社長裁定の案A「停止ぶん延長」が効かず停止中の600msぶん
+   近接CDが黙って焼かれていた。修正後は`counterCooldownEnd`が停止ぶん(+600ms)正しく延びる。
+2. **敵KBのシフトを起点判定に(A-3r)**: 同ファイル同関数。「シミュレーションは停止中は丸ごと
+   凍っている(=KBの新規発生自体が起きない)」という旧前提は偽——`triggerCounter`等のプレイヤー
+   入力はReact/DOMハンドラ経由でrAFループの外を走るため、停止中でも敵へ新規の`knockbackUntil`が
+   立つ。旧実装は`knockbackUntil`が定義されていれば無条件にシフトしていたため、停止中に新規発生
+   したKBまで一緒にずれ、解決の瞬間に「開始時刻が未来」になって初速がdecayカーブの後半から
+   始まる形になり、**実測で通常の約3.6倍飛んでいた**。起点型フィールドと同じ「停止開始より前から
+   走っていたKBだけシフトする」判定へ統一(`e.knockbackUntil - KNOCKBACK_DURATION <= kfx.startAt`)。
+   ★実在確認: `Enemy`型に`knockbackMs`は存在しない(Player専用)。敵へのKB付与箇所(gameStore.ts)を
+   洗うと大半(通常被弾・カウンター弾き=今回のバグの発生経路そのもの)は`KNOCKBACK_DURATION`
+   (280ms)で、一部の特殊系だけ短い個別値を使う。敵ごとに持続時間を保存する新フィールドの増設は
+   CLAUDE.md「敵の仕様は種類で固める」の範囲外なので、代表値`KNOCKBACK_DURATION`で近似
+   (無条件シフト[常に誤り]より厳密に改善。特殊系だけ境界が数十ms甘い)。
+3. **発火ガードのhealth参照を読み直しに(A-1r)**: 同ファイル1538行付近。`collPlayer`はforEach手前の
+   スナップショットのため、同tickで先行の敵が致死(HP0)にしても、そのforEachが回っている間は
+   古い正のhealthを読み続け、後続の使者/死神がkamitsukiFxを登録できてしまっていた。
+   `collPlayer.health > 0` を `useGameStore.getState().player.health > 0`(判定の瞬間の読み直し=
+   `wasAliveBeforeContact`と同じ流儀)へ差し替え。
+4. **覆いの絵のサイズを本体と一致させる(A-4r)**: `src/pixi/pixiScene.ts` `stepKamitsukiFx`。
+   旧実装は生の`e.width/height`(判定ボックス)に`containScale`をそのまま掛けていたが、本体描画
+   (`drawEnemy`)は`enemyFootBox()`が返す描画用拡大済みの箱(`e.width×ENEMY_VISUAL_SCALE[type]×
+   ENEMY_SIZE_MULT`)にcontainScaleを掛けたうえ、さらに`depthScaleEnemy`(遠近)×
+   `stageEnemyVisualMul`(死神はRP2_SCALE=2)まで掛けている。実在確認のうえ同じ式を写した結果、
+   **旧実装は本体の1/4〜1/3サイズで描かれていた**ことを確認。あわせて、本体と同寸に入れ替わる
+   ようになったため出現フェード(alpha 0→1・約170msの間どちらも見えない「神が消える」瞬間の
+   原因)を廃し、`figure.alpha=1`固定に変更。
+5. **影の置き去り解消(A-5r)**: 本体を隠す方式を`alpha=0`→`visible=false`に変更
+   (`actorDisplaySize`は`sprite.visible`だけを見て接地影/投影シルエットの有無を決めるため、
+   alpha方式は「絵は消えたのに影だけ残る」を作っていた)。`if(tex){...}else{...}`ブロックの
+   **外**(=tex分岐側の`visible=true`に上書きされない位置)へ移設。
+6. **フェード中の二重表示解消(A-6r)**: 本体を隠す条件(storeの`kamitsukiFx`)とfigureのフェード
+   (`stepKamitsukiFx`内・実時間駆動)が別々の期限を見ていたため、覆い解決の瞬間にstoreが
+   nullへ戻ると本体の隠蔽も即座に外れ、figureがフェードで消えている約120msの間だけ「直立本体」と
+   「倒れ込みコピー」が二重に見えていた。`stepKamitsukiFx`側が保持する
+   `kamitsukiCoveredEnemyId`(アクティブ開始〜フェード完了まで生存する新フィールド)を`drawEnemy`
+   側が見るよう統一し、両者の寿命を一致させた。
+
+### テスト(同コミット)
+- `src/utils/combatTick.test.ts`: 新設3件(既存14件はそのまま=計17/17 green)。
+  - 「同tickで先行の敵が致死(HP0)にした後続の使者は、kamitsukiFxを登録しない(A-1r)」
+  - 「近接直後に神付きへ突入すると、停止前から生きていたcounterCooldownEndは停止ぶんシフトされる
+    (CD焼け防止)(A-2r)」: 修正前は無条件にシフト対象外だったことを固定。
+  - 「停止中に新規に立った敵のknockbackUntilはシフトされない(A-3r)」
+- `src/store/reaperDoubleDrive.test.ts`(4)・`src/utils/reaper2.test.ts`(25)・
+  `src/utils/counterReach.test.ts`(29)も実行し全green。
+- typecheck 0・lintエラー0(warning8件は既存・無関係)。項4〜6(pixi描画コード)はプロジェクト方針
+  どおりユニットテスト対象外=目視は社長の実機。
+
+### 記述是正(このバッチで判明)
+- v0.25.4017 DEVLOGの「実質的に『締切が停止開始以前』という滅多に起きない側になる」は逆だった。
+  `counterCooldownEnd`は通常のプレイでは大半の時点で既に期限切れ(=`v<=kfx.startAt`)なので、
+  それが**多数派**で、シフトが必要な「締切がまだ生きている」側(直前に近接を振った直後)こそが
+  レアケースであり、かつ**そのレアケースこそが今回A-2rで直したバグの発生経路そのもの**だった。
+- v0.25.4017 DEVLOGの「シミュレーションは停止中丸ごと凍るためKBの新規発生自体が起きない」は偽
+  だった(A-3r参照。PC入力はrAFループの外を走るため停止中でも敵へ新規のKBが立つ)。
+
+### 自己点検
+CLAUDE.md「実装精度の規律」5: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触
+(接触ダメージ値・KB量・カウンター窓の長さ・当たり判定は1bitも変えていない=タイミングの起点判定・
+締切のスナップショット比較・覆いの絵[スケール/可視性/寿命]のみの変更)。
+
+- 状態変化: §14-4-8神付き → 最終補修済み・検収完走(残り: 社長実機確認)。
+
 ## v0.25.4018 — 出現カットイン追加: 死神「礼賛」・ハンター「監視者」(社長裁定・設計チャット直実装) 【2026-08-28 23:13 JST】
 
 社長裁定2026-08-28「死神も紹介入れて。『礼賛』」「ハンターも入ってないっけ?入れて『監視者』」。

@@ -3684,6 +3684,13 @@ export class PixiScene {
   private kamitsukiFadeStartAt = 0;
   private kamitsukiFadeFromShadowAlpha = 0;
   private kamitsukiFadeFromFigureAlpha = 0;
+  // ★確認検収(A-6r): 「本体を隠す条件」と「figureのフェード」が別々の期限(kfx.durationMs vs
+  // KAMITSUKI_FADE_MS)を見ていたため、覆い解決の瞬間にstoreのkamitsukiFxがnullへ戻ると
+  // drawEnemy側の隠蔽条件も即座に外れ、figureがフェードで消えている120msの間だけ
+  // 「直立した本体」と「倒れ込みコピー」が二重に見えていた。覆われている個体のidを
+  // アクティブ開始〜フェード完了まで(=このクラス側の実時間状態と同じ寿命)ここへ保持し、
+  // drawEnemyはstoreを見ずにこのidだけを見て隠す。
+  private kamitsukiCoveredEnemyId: string | null = null;
 
   // Atmosphere (screen space). gradeSprite multiplies the world cool; the warm
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
@@ -14207,10 +14214,14 @@ export class PixiScene {
       }
       if (this.kamitsukiFigureSp) this.kamitsukiFigureSp.visible = false;
       if (this.kamitsukiShadowSp) this.kamitsukiShadowSp.visible = false;
+      // ★確認検収(A-6r): フェードを完全に見せ切った(=もう二重表示の危険が無い)のでここで解除する。
+      this.kamitsukiCoveredEnemyId = null;
       return;
     }
     this.kamitsukiWasActive = true;
     this.kamitsukiFadeStartAt = 0; // 覆い中に再発火した場合の保険(通常はA-3多重発火防止で起きない)
+    // ★確認検収(A-6r): アクティブ開始〜フェード完了までの寿命でこのidを保持する(下で参照)。
+    this.kamitsukiCoveredEnemyId = k!.enemyId;
     const u = Math.max(0, Math.min(1, rt / Math.max(1, durationMs)));
     const ease = u * u * (3 - 2 * u); // smoothstep=加速→減速(CLAUDE.md 動きの絶対ルール)
     if (!this.kamitsukiShadowSp) {
@@ -14254,13 +14265,24 @@ export class PixiScene {
     const faceLeft = k2.ex > k2.px;
     figure.rotation = (faceLeft ? -1 : 1) * ease * 0.55;
     const squash = 1 - 0.35 * ease;
-    // 実テクスチャのアスペクトを保ったまま「元の当たり判定の大きさ」相当に収める(containScale=
-    // 死体/生体の絵の出どころと同じ考え方)。growth(1.1→1.6)は旧実装の見た目倍率を踏襲。
-    const baseScale = containScale(k2.ew, k2.eh, figTex.width, figTex.height);
+    // ★確認検収(A-4r): 旧実装は生の e.width/height(=判定ボックス)に containScale をそのまま
+    // 掛けていたが、本体描画(15534行付近drawEnemy)は enemyFootBox() が返す**描画用に拡大済みの箱**
+    // (e.width × ENEMY_VISUAL_SCALE[type] × ENEMY_SIZE_MULT)に containScale を掛けたうえで、
+    // さらに depthScaleEnemy(遠近)×stageEnemyVisualMul(死神はRP2_SCALE=2)まで掛けている。
+    // ここが抜けていたため本体の1/4〜1/3サイズで描かれていた(実測)。同じ式を実在確認のうえ写す
+    // (enemyFootBoxはtype/x/y/width/heightだけを見るので、kfxの中心座標ex/ey・半径ew/ehから
+    // 左上原点を逆算した最小Enemy形で呼べる=既存コード23091/23140行と同じ手筋)。
+    const figType: Enemy['type'] = k2.isHangedman ? 'hangedman' : 'reaper';
+    const figFb = enemyFootBox({ x: k2.ex - k2.ew / 2, y: k2.ey - k2.eh / 2, width: k2.ew, height: k2.eh, type: figType } as Enemy);
+    const baseScale = containScale(figFb.boxW, figFb.boxH, figTex.width, figTex.height)
+      * this.depthScaleEnemy(figFb.footY) * this.stageEnemyVisualMul(figType);
     const growth = 1.1 + 0.5 * ease;
     figure.scale.set(baseScale * growth * squash, baseScale * growth / squash);
     figure.tint = 0xffffff; // ★確認検収4巡目(A-3): 個体の姿をそのまま見せる(紫は影[shadow]側で表現済み)
-    figure.alpha = Math.min(1, ease / 0.25);
+    // ★確認検収(A-4r): 本体と同寸になったことで、出現フェード(alpha 0→1)は不要になった
+    // (本体を隠した瞬間に同じ大きさの絵へ入れ替わるのが正=社長裁定の意図。フェードで薄く透ける
+    // 約170msの間、本体もfigureも見えず「神が消える」瞬間があった旧実装の穴を塞ぐ)。
+    figure.alpha = 1;
     this.kamitsukiFadeFromFigureAlpha = figure.alpha; // フェード開始時に基準として使う
   }
 
@@ -15518,14 +15540,6 @@ export class PixiScene {
     view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop - kbHop - motBob));
     view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
     view.sprite.alpha = artFade; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
-    // ★神付き(§14-4-8/8b・確認検収4巡目A-3): 覆いかぶさり中は触れた個体の本体スプライトを隠す。
-    // stepKamitsukiFx が同じ個体の実テクスチャをコピーして凍結座標→プレイヤー中心へ倒し込む絵を
-    // 別スプライトで描くため、本体を隠さないと同じ絵が2枚(直立+倒れ込み)重なって見えてしまう。
-    // pixiは読むだけ(store/判定には触れない)。
-    const kfxCover = useGameStore.getState().kamitsukiFx;
-    if (kfxCover && kfxCover.enemyId === e.id && Date.now() - kfxCover.startAt < kfxCover.durationMs) {
-      view.sprite.alpha = 0;
-    }
 
     if (tex) {
       view.sprite.texture = tex;
@@ -15635,6 +15649,20 @@ export class PixiScene {
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
     }
     }
+    // ★神付き(§14-4-8/8b・確認検収4巡目A-3〜A-6r): 覆いかぶさり中(+その後の短いフェード中)は
+    // 触れた個体の本体スプライトを隠す。stepKamitsukiFx が同じ個体の実テクスチャをコピーして
+    // 凍結座標→プレイヤー中心へ倒し込む絵を別スプライトで描くため、本体を隠さないと同じ絵が
+    // 2枚(直立+倒れ込み)重なって見えてしまう。pixiは読むだけ(store/判定には触れない)。
+    // ★確認検収(A-5r): alpha=0ではなくvisibleで隠す(actorDisplaySizeはvisibleだけを見て接地影/
+    // 投影シルエットの有無を決めるため、alpha方式は「絵は消えたのに影だけ残る」を作っていた)。
+    // ★確認検収(A-6r): 判定はstoreのkamitsukiFx(覆い解決の瞬間にnullへ戻る)ではなく、
+    // stepKamitsukiFxが保持するkamitsukiCoveredEnemyId(アクティブ開始〜figureのフェード完了まで
+    // 生存)を見る。旧実装はstoreがnullへ戻った瞬間にこの隠蔽が外れ、figureがフェードで消えている
+    // 120msの間だけ「直立した本体」と「倒れ込みコピー」が二重に見えていた。
+    // ★このifは上のif(tex){...}else{...}ブロックの**外**(=どちらの分岐が visible を書き換えても
+    // 最後にここが上書きする)に置く——ブロック内に置くと、tex分岐側の`view.sprite.visible = true`が
+    // 後から上書きして隠蔽が効かない実測穴があった。
+    if (this.kamitsukiCoveredEnemyId === e.id) view.sprite.visible = false;
 
     // §5.14 M13: 宿敵の頭上に名前を常時表示(同時1体・生成は湧き時1回だけ=Pixi Text可)。
     // クエスト目標個体(questTarget)も同様(名前は個体のquestName。同時1体なので負荷は同等)。
