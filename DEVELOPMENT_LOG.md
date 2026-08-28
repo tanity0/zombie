@@ -1,5 +1,40 @@
 # Development Log
 
+## v0.25.3994 — AI_HUMANIZE B1(記録側=コマ台帳)を実装 【2026-08-28 14:27 JST】
+- **実装**: research/AI_HUMANIZE.md §6 B1(記録側・**挙動変更ゼロ=録るだけ**)。
+  - **新設**: `src/utils/habitEpisode.ts`(counterReach.tsと同じ「依存の軽い葉」=gameStore.tsを
+    import しない)。EPISODE_KEYS(34州=着弾宣言表2本から導出)/EPISODE_SHAPE_DECL(州→図形源=
+    declared17・live16・body-only1)/reachKeyFor(共有写像ヘルパ)/habitPos(band/circle/bodyの
+    ローカル座標正規化・§1-2)/settleEpisode(記録本体)/押下リング(`meleeSwingCommitAt`エッジ・
+    4件)/帰属(T+300ms後追い・[T-1500,T+300]・1押下1コマ)/族別集計(§1-4・n>=5でEMA)/
+    quota退避(moveHabits→家族集計の順で落として1回だけ再保存)。
+  - **図形源の内訳**(34州): ①declared=17州(bounty17系統+thor3。COUNTER_REACH_DECL経由=数値複製ゼロ)/
+    ②live=16州(天使7[miguel harai/tate・uri sweep/downslash・suriel sweep/ring-spin/ring-beam]+
+    giant9[stomp/sweep/slam/glide/dive/wing/trishot/reach/tailslam]。呼び出し側がその場で実寸法を
+    組んで渡す)/③body-only=1州(giantbat:g-bolt-windup=弾を撃つだけで近接図形を持たない)。
+  - **記録フック4箇所**(州満了エッジに`settleEpisode`を1行差すだけ): `src/utils/bountyTick.ts`
+    (14州)/`src/hooks/useGameLoop.ts`(トール3州)/`src/utils/angelBossTick.ts`(天使7州・
+    runMiguelTick/runUriTick/runSurielTickのみ=`?<boss>script=0`のLegacy経路は対象外)/
+    `src/store/gameStore.ts`(giantbat10州)。自分中心技(bm-whip360/mk-spin/g-stomp/g-wing/
+    suriel:ring-spin)は軸を明示的にbcx/bcyへ退化させ、前の技の残骸(stale aiFrom/aiTarget)が
+    差角へ混入しないようにした。
+  - **その他**: `player.lastDamagedAtGame`新設(`src/types/game.ts`・gameTime系・damagePlayerの
+    実ダメージ適用点で打刻=ctxHit専用)。`PlayerProfile.moveHabits`/`habitFamily`新設
+    (`src/utils/playerTraits.ts`・保留バッファ経由でcommit=既存の計測ゲートと同一
+    [撃破+リザルト通過・ゴーストラン全面除外]・isValidProfile後方互換)。
+- **未決に積んだ項目**: なし(§8への追記なし)。実装スコープの判断2点は設計判断ではなく実装細部として
+  ここに記録: ①ミゲルのLegacy経路(`?miguelscript=0`)は録らない(デバッグ用フォールバックのため)
+  ②`applyPendingHabits`はsubStyleと同じ保守側の作法(プロファイル未保存なら新規作成しない=
+  挙動1bit不変を優先)。
+- **検証**: `npm run typecheck`(エラー0)/`npm run lint`(エラー0・warning8件は無関係の既存分)/
+  `habitEpisode.test.ts`新設40件全green+`counterReach.test.ts`/`playerTraits.test.ts`/
+  `bountyTick.test.ts`/`giantScript.test.ts`/`thorNihil.test.ts`/`ghostDriver.test.ts`他
+  関連13ファイル計462件+habitEpisode 40件=全green(既存挙動に差分なし)。
+- **自己点検**: 憲法テスト(constitution.test.ts)は無改変=13件green。判定・移動・描画・既存の計測値には
+  1bitも触れていない(新設フィールドの読み取り専用の追記のみ・毎フレームの新規走査/購読は無し=
+  全てイベント駆動)。★実在確認の掟: 記録は裏で貯まるだけで画面には何も出ない=見た目の検収対象なし。
+- 状態変化: ★AIの人間化 → **B1実装済み(検収待ち)**
+
 ## v0.25.3993(文書のみ) — AI_HUMANIZE: 追補監査を完了し設計書をv4へ 【2026-08-28 13:20 JST】
 - **追補監査**(対象=汎化層§2-7/§1-4・§4④〜⑦・§4-8サブ): 重大8・中9・軽6+設問3(取るべき数値14個A〜N)。
   主な是正=押下打刻の正本は`meleeSwingCommitAt`エッジ(v3案は自己矛盾)/コマ確定はT+300ms後追い

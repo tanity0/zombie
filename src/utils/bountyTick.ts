@@ -35,6 +35,9 @@ import {
   BOUNTY_RANGED_TUNING as BR_T, BOUNTY_MELEE_TUNING as BM_T,
   BOUNTY_BALANCE_TUNING as BB_T, BOUNTY_MAIKO_TUNING as MK_T,
 } from './bountyScript';
+// research/AI_HUMANIZE.md B1(コマ台帳・記録専用): 賞金首17州(①declared=COUNTER_REACH_DECL経由)の
+// 州満了エッジに1行差す。
+import { settleEpisode } from './habitEpisode';
 // §6.38 v12「バス停の新技『三段突き』」(社長裁定2026-08-15): 3本の角度・タイミングは判定/描画が
 // 同じ純関数から導く(bountyTriple.ts=依存ゼロの葉。bountyDims.tsと同じ循環import防止の流儀)。
 import {
@@ -675,6 +678,32 @@ const beginBrLaser = ({ s, newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: Bounty
  * バス停(bounty-ranged)の1tick。中立(kite+ポツポツ撃ち)を土台に、押しのけ→レーザーの順で
  * 割り込みを判定する(§4「近接されたら押しのけ→距離を開け直す」が最優先の防御反応のため)。
  */
+/**
+ * research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了(windup終わり)の瞬間に呼ぶ。
+ * ①declared(COUNTER_REACH_DECLに宣言済み)しか対象にしないので liveShape は不要
+ * (settleEpisode内部が `bounty:${state}` を counterReachShapeFor でそのまま解決する=数値複製ゼロ)。
+ * pcx/pcy は**実プレイヤー中心**(ヘイトが逸れていても本人の実位置を録る=truePcx/truePcy)。
+ */
+const settleBountyHabit = (
+  bounty: Enemy, state: string, gameTime: number, bcx: number, bcy: number,
+  // 自分中心(軸退化)技(bm-whip360/mk-spin)は aiFromX/aiTargetX が前の技の残骸のままなので、
+  // ここで明示的に bcx/bcy を渡して軸を強制退化させる(§1-2「自分中心で軸が退化する州は0固定」)。
+  axisOverride?: { aiFromX: number; aiFromY: number; aiTargetX: number; aiTargetY: number },
+): void => {
+  const player = useGameStore.getState().player;
+  const truePcx = player.x + player.width / 2, truePcy = player.y + player.height / 2;
+  settleEpisode({
+    gameTime, enemyType: bounty.type, state,
+    bcx, bcy, pcx: truePcx, pcy: truePcy,
+    aiFromX: axisOverride?.aiFromX ?? bounty.aiFromX, aiFromY: axisOverride?.aiFromY ?? bounty.aiFromY,
+    aiTargetX: axisOverride?.aiTargetX ?? bounty.aiTargetX, aiTargetY: axisOverride?.aiTargetY ?? bounty.aiTargetY,
+    tripleAng: bounty.bountyTripleAng,
+    bossRect: { x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height },
+    playerHealth: player.health, playerMaxHealth: player.maxHealth,
+    lastDamagedAtGame: player.lastDamagedAtGame,
+  });
+};
+
 const tickRanged = (
   bounty: Enemy, s: BountyTickState, newGameTime: number, deltaTime: number, moveSpeedMult: number,
   dist: number, pcx: number, pcy: number, bcx: number, bcy: number, sfx: BountySfx,
@@ -864,6 +893,7 @@ const tickRanged = (
       const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
       const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
       hitCapsule(bounty, fx, fy, tx, ty, BR_T.push.halfWidth, BR_T.push.damage, BR_T.push.kb);
+      settleBountyHabit(bounty, 'br-push-windup', newGameTime, bcx, bcy);
       patch.bossState = 'br-push';
       patch.bossStateUntil = newGameTime + 120;
     }
@@ -983,6 +1013,7 @@ const tickRanged = (
     // だったが、本裁定「判定が始まったら追尾しない」により、赤帯が出た後の回避が全方向で成立する。
     if (newGameTime >= untilAt) {
       const ang = bounty.bountyTripleAng ?? Math.atan2(pcy - bcy, pcx - bcx);
+      settleBountyHabit(bounty, 'br-triple-windup', newGameTime, bcx, bcy);
       s.tripleStepStartAt = newGameTime;
       s.tripleHitFired = false;
       // 踏み込み(3段通しの1つの弧)の起点/向き/開始時刻をここで焼き付ける(mk-spinと同型)。
@@ -1184,6 +1215,7 @@ const tickMelee = (
   // ---- ダッシュ後の360度ムチ振り(社長指示v0.25.3473) -------------------------------------------
   if (st === 'bm-whip360-windup') {
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      settleBountyHabit(bounty, 'bm-whip360-windup', newGameTime, bcx, bcy, { aiFromX: bcx, aiFromY: bcy, aiTargetX: bcx, aiTargetY: bcy });
       patch.bossState = 'bm-whip360';
       patch.bossStateUntil = newGameTime + BM_T.whip360.active;
       s.whip360Hit = false;
@@ -1223,6 +1255,7 @@ const tickMelee = (
         bounty, fx, fy, tx, ty, BM_T.combo.halfWidth, BM_T.combo.damage[step],
         step === 2 ? BM_T.combo.kb : undefined,
       );
+      settleBountyHabit(bounty, st, newGameTime, bcx, bcy);
       if (step < 2) {
         patch.bossState = step === 0 ? 'bm-combo1-recover' : 'bm-combo2-recover';
         patch.bossStateUntil = newGameTime + BM_T.combo.stepRecover;
@@ -1380,6 +1413,7 @@ const tickBalance = (
       const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
       const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
       hitCapsule(bounty, fx, fy, tx, ty, BB_T.sweep.halfWidth, BB_T.sweep.damage);
+      settleBountyHabit(bounty, 'bb-sweep-windup', newGameTime, bcx, bcy);
       patch.bossState = 'bb-sweep-recover';
       patch.bossStateUntil = newGameTime + BB_T.sweep.recover;
     }
@@ -1398,6 +1432,7 @@ const tickBalance = (
       const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
       const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
       hitCapsule(bounty, fx, fy, tx, ty, BB_T.sweepTriple.halfWidth, BB_T.sweepTriple.damage);
+      settleBountyHabit(bounty, st, newGameTime, bcx, bcy);
       if (st === 'bb-triple3-windup') {
         patch.bossState = 'bb-sweep-recover';
         patch.bossStateUntil = newGameTime + BB_T.sweep.recover;
@@ -1649,6 +1684,7 @@ const tickMaiko = (
       const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
       const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
       hitCapsule(bounty, fx, fy, tx, ty, MK_T.naginata.halfWidth, MK_T.naginata.damage);
+      settleBountyHabit(bounty, 'mk-naginata-windup', newGameTime, bcx, bcy);
       patch.bossState = 'mk-naginata-recover';
       patch.bossStateUntil = newGameTime + MK_T.naginata.recover;
     }
@@ -1667,6 +1703,7 @@ const tickMaiko = (
       const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
       const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
       hitCapsule(bounty, fx, fy, tx, ty, MK_T.naginata.halfWidth, MK_T.naginata.damage);
+      settleBountyHabit(bounty, 'mk-naginata1-windup', newGameTime, bcx, bcy);
       patch.bossState = 'mk-naginata1-recover';
       patch.bossStateUntil = newGameTime + MK_T.naginata.stepRecover;
     }
@@ -1690,6 +1727,7 @@ const tickMaiko = (
       const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
       const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
       hitCapsule(bounty, fx, fy, tx, ty, MK_T.naginata.halfWidth, MK_T.naginata.damage);
+      settleBountyHabit(bounty, 'mk-naginata2-windup', newGameTime, bcx, bcy);
       s.comboStep = 0;
       patch.bossState = 'mk-naginata2-recover';
       patch.bossStateUntil = newGameTime + MK_T.naginata.recover;
@@ -1706,6 +1744,7 @@ const tickMaiko = (
   // ---- 毬回し(自分中心円) -----------------------------------------------------------------------
   if (st === 'mk-spin-windup') {
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      settleBountyHabit(bounty, 'mk-spin-windup', newGameTime, bcx, bcy, { aiFromX: bcx, aiFromY: bcy, aiTargetX: bcx, aiTargetY: bcy });
       patch.bossState = 'mk-spin';
       patch.bossStateUntil = newGameTime + MK_T.spin.active;
       sfx.spin?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)

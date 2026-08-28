@@ -54,6 +54,12 @@ import { loadPlayerName } from './playerName'; // v0.25.2477: 計測時のプレ
 import { GHOST_KNOB_SET_V, GHOST_PROFILE_DEFAULTS } from '../../shared/ghostSanitize.mjs';
 import { bossStyleSlotKey } from './ghostSlot';
 export { bossStyleSlotKey } from './ghostSlot';
+// research/AI_HUMANIZE.md B1(コマ台帳・記録専用): 押下エッジ検知+帰属確定は毎tick、
+// ラン単位のフォールドは決算(settlePendingTraits)時に読み出す。
+import {
+  notePressEdge, tickHabitEpisodeMaintenance, markHabitGhostRun, takeRunHabitFold, resetRunHabitState,
+  HABIT_FAMILY_KEYS, HABIT_RING_SIZE, type HabitEpisode, type HabitFamilyKey, type HabitFamilyStat,
+} from './habitEpisode';
 
 // ---- 保存フォーマット -------------------------------------------------------------------------
 /** G4a(§2.9(3)): サブウェポンの様式(第1弾はwire-anchor/shieldの2種)。nは計測に使った母数の累計。 */
@@ -189,6 +195,17 @@ export interface PlayerProfile {
    * 撃破が無いボス/計測不能な条件下では触らない=任意フィールド(後方互換=欠損可・v:1のまま)。
    */
   bossStyles?: Record<string, BossStyleSlot>;
+  /**
+   * research/AI_HUMANIZE.md B1(§1・コマ台帳): 対象州(episodeKey=`${enemyType}:${bossState}` or
+   * `giantbat:${aiPhase}`)ごとに直近10件のコマ(§1-1・量子化保存)。**軸1のみ**(ボス別スロットへは
+   * 複製しない=moveReactionsと同じ扱い)。旧プロファイルには無い=欠損可(消費側は空扱い)。
+   */
+  moveHabits?: Record<string, HabitEpisode[]>;
+  /**
+   * research/AI_HUMANIZE.md B1(§1-4・族別集計): band/circle/bodyの3族ごとにEMAで畳んだ代表値
+   * (発動条件=その族のコマ総数>=5。未達の族はキー自体が無い)。旧プロファイルには無い=欠損可。
+   */
+  habitFamily?: Partial<Record<HabitFamilyKey, HabitFamilyStat>>;
 }
 
 /**
@@ -258,7 +275,10 @@ const isValidProfile = (v: unknown): v is PlayerProfile => {
     && (o.punish === undefined || (typeof o.punish === 'object' && o.punish !== null))
     && (o.subStyles === undefined || (typeof o.subStyles === 'object' && o.subStyles !== null))
     // G5(§2.10仕様1): bossStylesは任意オブジェクトとして許容(後方互換=欠損可)。
-    && (o.bossStyles === undefined || (typeof o.bossStyles === 'object' && o.bossStyles !== null));
+    && (o.bossStyles === undefined || (typeof o.bossStyles === 'object' && o.bossStyles !== null))
+    // AI_HUMANIZE.md B1: moveHabits/habitFamilyも同じく任意オブジェクトとして許容(欠損可=旧プロファイル)。
+    && (o.moveHabits === undefined || (typeof o.moveHabits === 'object' && o.moveHabits !== null))
+    && (o.habitFamily === undefined || (typeof o.habitFamily === 'object' && o.habitFamily !== null));
 };
 
 // PACING_PUZZLE.md §10-12#4/§10-14#10(EXボス「フィル(変異体)」バッチ1): bossStylesのスロットキーも
@@ -304,6 +324,17 @@ const saveProfile = (p: PlayerProfile): void => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
   } catch {
+    // research/AI_HUMANIZE.md B1(§5 quota退避): 保存失敗時はmoveHabits(と族集計)を落として1回だけ
+    // 再保存する(既存の集計=moveReactions/subStyles/bossStyles等を最後まで守る)。
+    if (p.moveHabits !== undefined || p.habitFamily !== undefined) {
+      const { moveHabits: _moveHabits, habitFamily: _habitFamily, ...rest } = p;
+      void _moveHabits; void _habitFamily;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
+      } catch {
+        /* それでも失敗するなら諦める(次ランでまた測るだけ) */
+      }
+    }
     /* 保存できなくても計測自体は成立する(次ランでまた測るだけ) */
   }
 };
@@ -532,7 +563,19 @@ export interface PendingBossStyleRecord {
   ally: GhostAllySnapshot | null;
 }
 
-export type PendingTraitRecord = PendingSessionRecord | PendingSubStyleRecord | PendingBossStyleRecord;
+/**
+ * research/AI_HUMANIZE.md B1(§1・コマ台帳): ラン単位のフォールド1件ぶん。**EMAではなく生追記**
+ * (episodesはrunHabitEpisodes側で既にリング10件へ切り詰め済み=commit時は旧10件と新規件を結合して
+ * 再度リング10件へ切り詰めるだけ)。familyだけ既存の値とEMA混合する(§1-4)。
+ */
+export interface PendingHabitsRecord {
+  kind: 'habits';
+  episodes: Readonly<Record<string, readonly HabitEpisode[]>>;
+  family: Readonly<Partial<Record<HabitFamilyKey, HabitFamilyStat>>>;
+}
+
+export type PendingTraitRecord =
+  PendingSessionRecord | PendingSubStyleRecord | PendingBossStyleRecord | PendingHabitsRecord;
 
 let pendingRecords: PendingTraitRecord[] = [];
 
@@ -702,13 +745,20 @@ export interface PlayerTraitsTickInput {
 
 /** 毎tick1回、directorTickから呼ぶ。無効条件(非交戦/ゴースト同伴)ではスカラー比較のみで即return。 */
 export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
+  // AI_HUMANIZE.md B1: 押下リングのエッジ検知+帰属確定は交戦の有無に関わらず毎tick走らせる
+  // (境界での取りこぼしを避ける=全てイベント駆動・新規の走査ではない)。呼ぶ順は
+  // notePressEdge→tickHabitEpisodeMaintenanceの順(同tickの押下を帰属候補に含めるため)。
+  notePressEdge(input.gameTime, input.player.meleeSwingCommitAt ?? 0);
+  tickHabitEpisodeMaintenance(input.gameTime);
   if (input.ghostActive || input.ghostRunActive) {
     // §2.7 制約1: ゴースト同伴中/ゴーストが出うるラン(守護霊装備・?ghost=1)は計測しない。
     // 開いていたセッションがあれば保存せず破棄する
     // (「2人での戦い方」が次世代のゴーストへ紛れ込むのを防ぐ=劣化コピー防止)。
     // G4a: サブ様式のラン集計(ボス交戦に限定しない)も同じゲートに従う=このランの分は丸ごと破棄
     // (実際の破棄は foldSubStyleTallies がこのフラグを見て行う)。
+    // AI_HUMANIZE.md B1: コマ台帳も同じゲート(markHabitGhostRun→takeRunHabitFoldが丸ごと破棄)。
     subStyleGhostRun = true;
+    markHabitGhostRun();
     session = null;
     return;
   }
@@ -1021,6 +1071,50 @@ export const foldSubStyleTallies = (): void => {
 };
 
 /**
+ * research/AI_HUMANIZE.md B1(§1・コマ台帳): ラン境界でコマ台帳+族別集計を**保留バッファへ積む**
+ * (foldSubStyleTalliesと同じ流儀=即保存せず保留化)。settlePendingTraitsから呼ぶ(記録ゲートは
+ * 既存の計測ゲートと同一=撃破+リザルト通過のランのみ・ゴーストランは丸ごと破棄=社長裁定済み#5)。
+ */
+export const foldHabitEpisodes = (): void => {
+  const folded = takeRunHabitFold(); // ゴーストラン/無記録ならnull(内部で状態はリセット済み)
+  if (!folded) return;
+  pendingRecords.push({ kind: 'habits', episodes: folded.episodes, family: folded.family });
+};
+
+/**
+ * 純関数: 保留コマ台帳1件を旧プロファイルへ畳む。episodesは**生追記→リング10件へ切り詰め**
+ * (EMAしない・§1)。familyはEMA(α=EMA_ALPHA)で混合(§1-4。そのランでn<HABIT_FAMILY_MIN_N だった族は
+ * folded.familyにキー自体が無いので前回値をそのまま維持する)。
+ */
+export const applyPendingHabits = (prev: PlayerProfile, r: PendingHabitsRecord): PlayerProfile => {
+  const mergedEpisodes: Record<string, HabitEpisode[]> = { ...(prev.moveHabits ?? {}) };
+  for (const [key, incoming] of Object.entries(r.episodes)) {
+    const merged = [...(mergedEpisodes[key] ?? []), ...incoming];
+    mergedEpisodes[key] = merged.length > HABIT_RING_SIZE ? merged.slice(-HABIT_RING_SIZE) : merged;
+  }
+  const mergedFamily: Partial<Record<HabitFamilyKey, HabitFamilyStat>> = { ...(prev.habitFamily ?? {}) };
+  for (const fk of HABIT_FAMILY_KEYS) {
+    const sample = r.family[fk];
+    if (!sample) continue; // このランではn<HABIT_FAMILY_MIN_N=前回値を保つ(欠損を0で上書きしない)
+    const base = mergedFamily[fk];
+    mergedFamily[fk] = base === undefined
+      ? sample // 初回=そのまま
+      : {
+        n: base.n + sample.n,
+        avgPosA: Math.round(base.avgPosA * (1 - EMA_ALPHA) + sample.avgPosA * EMA_ALPHA),
+        avgPosB: Math.round(base.avgPosB * (1 - EMA_ALPHA) + sample.avgPosB * EMA_ALPHA),
+        avgPressOfs: sample.avgPressOfs === null
+          ? base.avgPressOfs
+          : base.avgPressOfs === null
+            ? sample.avgPressOfs
+            : Math.round(base.avgPressOfs * (1 - EMA_ALPHA) + sample.avgPressOfs * EMA_ALPHA),
+        pressRatePct: Math.round(base.pressRatePct * (1 - EMA_ALPHA) + sample.pressRatePct * EMA_ALPHA),
+      };
+  }
+  return { ...prev, moveHabits: mergedEpisodes, habitFamily: mergedFamily };
+};
+
+/**
  * 純関数: 保留サブ様式1件を旧foldSubStyleTallies後半と**同一の式**でプロファイルへ畳む。
  * prev=null(プロファイル未保存)のスキップは呼び出し側(commitPendingTraits)が行う:
  * ここで新規作成すると loadPlayerProfile()!==null になり、守護霊ランのゴーストが
@@ -1326,6 +1420,11 @@ export const commitPendingTraits = (): void => {
       const prev = loadPlayerProfile();
       if (prev === null) continue; // applyPendingSubStyleのコメント参照(新規作成はセッションだけ)
       saveProfile(applyPendingSubStyle(prev, r));
+    } else if (r.kind === 'habits') {
+      // AI_HUMANIZE.md B1: subStyleと同じ保守側の判断(新規作成はセッションだけ=挙動1bit不変を優先)。
+      const prev = loadPlayerProfile();
+      if (prev === null) continue;
+      saveProfile(applyPendingHabits(prev, r));
     } else {
       bossStyleRecords.push(r); // G5: 最後にまとめて適用する(下記)
     }
@@ -1362,6 +1461,7 @@ export const discardPendingTraits = (): void => {
  */
 export const settlePendingTraits = (optOut: boolean, adoptedSlotKeys?: readonly string[]): void => {
   foldSubStyleTallies();
+  foldHabitEpisodes(); // AI_HUMANIZE.md B1: コマ台帳+族別集計も同じ決算点で保留バッファへ積む
   if (optOut) { discardPendingTraits(); return; }
   pendingRecords = selectPendingForSettlement(pendingRecords, adoptedSlotKeys);
   commitPendingTraits();
@@ -1416,4 +1516,5 @@ export const resetPlayerTraits = (): void => {
   // v0.25.2514(裁定4): PHILL計測もラン単位=ラン境界でリセット。
   phillShots = 0;
   phillHeadshots = 0;
+  resetRunHabitState(); // AI_HUMANIZE.md B1: コマ台帳のラン単位状態(押下リング含む)も同じ境界でリセット
 };

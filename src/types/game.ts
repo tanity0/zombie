@@ -221,6 +221,13 @@ export interface Player extends DashLocomotionState {
    * 「前フレームから進んだか」の**エッジ**で見る(絶対時刻の引き算をしない)。
    */
   meleeSwingCommitAt: number;
+  /**
+   * research/AI_HUMANIZE.md B1(§1-1 ctxHit・記録専用): プレイヤーが最後にダメージを受けた瞬間の
+   * gameTime。0=未被弾(そのラン内)。**gameTime系**(meleeSwingCommitAtとは違いDate.now系ではない)
+   * =コマ記録側(habitEpisode.ts)がT(州満了時刻・gameTime)との差で「直近2秒被弾」を判定するための
+   * 打刻。判定・挙動には一切使わない(damagePlayerの実ダメージ適用箇所で打つだけ)。
+   */
+  lastDamagedAtGame: number;
   // 救急鞄スキル発動演出用タイムスタンプ(Date.now)。描画のみ=払い出しの瞬間に「振り抜きポーズ+鞄を掲げる」
   // 一拍の起点(社長指示v0.25.1656)。0=未発動。判定・射程・払い出しロジックには不干渉(renderer が読むだけ)。
   firstAidPoseAt: number;

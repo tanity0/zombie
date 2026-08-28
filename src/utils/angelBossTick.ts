@@ -31,6 +31,8 @@ import { distToSegment } from './levelUpGate';
 import { distToBandRect } from './geometry';
 // ★v0.25.3591: カウンター成立域(赤い予告の図形)の宣言表=全系統で1箇所(counterReach.ts)。
 import { counterReachShapeFor, inCounterReach, isCounterOpportunityNow } from './counterReach';
+// research/AI_HUMANIZE.md B1(コマ台帳・記録専用): 天使7州(miguel/uri/suriel)の州満了エッジに1行差す。
+import { settleEpisode, type CounterReachShape } from './habitEpisode';
 import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY } from './bossScript';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
@@ -688,6 +690,24 @@ export const runMiguelTick = (
     if (overlap && counterActive) {
       miguelCounterHit(mcx, mcy);
     } else if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
+      // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=帯(実行で使うのと同じ
+      // aiFrom/aiTarget×MG_T.harai.halfWidth)。tate-windupも同じtuning(向きが縦か横かの違いだけ)。
+      const habitBand: CounterReachShape = {
+        kind: 'band',
+        bands: [{
+          fx: miguel.aiFromX ?? mcx, fy: miguel.aiFromY ?? mcy,
+          tx: miguel.aiTargetX ?? mcx, ty: miguel.aiTargetY ?? mcy, halfWidth: MG_T.harai.halfWidth,
+        }],
+      };
+      settleEpisode({
+        gameTime: newGameTime, enemyType: 'miguel', state: st,
+        bcx: mcx, bcy: mcy, pcx, pcy,
+        aiFromX: miguel.aiFromX, aiFromY: miguel.aiFromY, aiTargetX: miguel.aiTargetX, aiTargetY: miguel.aiTargetY,
+        bossRect: { x: miguel.x, y: miguel.y, width: miguel.width, height: miguel.height },
+        liveShape: habitBand,
+        playerHealth: player.health, playerMaxHealth: player.maxHealth,
+        lastDamagedAtGame: player.lastDamagedAtGame,
+      });
       patch.bossState = st === 'harai-windup' ? 'harai' : 'tate';
       patch.bossStateUntil = newGameTime + MG_T.harai.active;
       sfx.sweep();
@@ -2145,6 +2165,23 @@ export const runUriTick = (
     if (overlap && counterActive) {
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
+      // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=帯(実行と同じaiFrom/aiTarget
+      // ×UR_T.sweep.halfWidth。始点は既にロック時に内径ぶん前へ出してある=実行のカプセルと同一)。
+      settleEpisode({
+        gameTime: newGameTime, enemyType: 'uri', state: 'sweep-windup',
+        bcx: ucx, bcy: ucy, pcx, pcy,
+        aiFromX: uri.aiFromX, aiFromY: uri.aiFromY, aiTargetX: uri.aiTargetX, aiTargetY: uri.aiTargetY,
+        bossRect: { x: uri.x, y: uri.y, width: uri.width, height: uri.height },
+        liveShape: {
+          kind: 'band',
+          bands: [{
+            fx: uri.aiFromX ?? ucx, fy: uri.aiFromY ?? ucy,
+            tx: uri.aiTargetX ?? ucx, ty: uri.aiTargetY ?? ucy, halfWidth: UR_T.sweep.halfWidth,
+          }],
+        },
+        playerHealth: player.health, playerMaxHealth: player.maxHealth,
+        lastDamagedAtGame: player.lastDamagedAtGame,
+      });
       patch.bossState = 'sweep'; patch.bossStateUntil = newGameTime + UR_T.sweep.active;
       sfx.sweep(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
@@ -2190,6 +2227,23 @@ export const runUriTick = (
     if (overlap && counterActive) {
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
+      // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=帯(実行と同じaiFrom/aiTarget
+      // ×UR_T.downslash.halfWidth)。
+      settleEpisode({
+        gameTime: newGameTime, enemyType: 'uri', state: 'downslash-windup',
+        bcx: ucx, bcy: ucy, pcx, pcy,
+        aiFromX: uri.aiFromX, aiFromY: uri.aiFromY, aiTargetX: uri.aiTargetX, aiTargetY: uri.aiTargetY,
+        bossRect: { x: uri.x, y: uri.y, width: uri.width, height: uri.height },
+        liveShape: {
+          kind: 'band',
+          bands: [{
+            fx: uri.aiFromX ?? ucx, fy: uri.aiFromY ?? ucy,
+            tx: uri.aiTargetX ?? ucx, ty: uri.aiTargetY ?? ucy, halfWidth: UR_T.downslash.halfWidth,
+          }],
+        },
+        playerHealth: player.health, playerMaxHealth: player.maxHealth,
+        lastDamagedAtGame: player.lastDamagedAtGame,
+      });
       patch.bossState = 'downslash'; patch.bossStateUntil = newGameTime + UR_T.downslash.active;
       sfx.sweep(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
@@ -2484,6 +2538,24 @@ export const runSurielTick = (
     if (overlap && counterActive) {
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
+      // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=ビームの帯('ring-active'で
+      // 実際に判定する式と同一——起点=環の到達点[aiFrom]、向き=aiFrom→aiTarget、長さ=SR_T.beam.range)。
+      {
+        const rbfx = suriel.aiFromX ?? scx, rbfy = suriel.aiFromY ?? scy;
+        const rbtx0 = suriel.aiTargetX ?? scx, rbty0 = suriel.aiTargetY ?? scy;
+        let rbdx = rbtx0 - rbfx, rbdy = rbty0 - rbfy;
+        const rbdl = Math.hypot(rbdx, rbdy) || 1; rbdx /= rbdl; rbdy /= rbdl;
+        const rbex = rbfx + rbdx * SR_T.beam.range, rbey = rbfy + rbdy * SR_T.beam.range;
+        settleEpisode({
+          gameTime: newGameTime, enemyType: 'suriel', state: 'ring-beam-windup',
+          bcx: scx, bcy: scy, pcx, pcy,
+          aiFromX: rbfx, aiFromY: rbfy, aiTargetX: rbex, aiTargetY: rbey,
+          bossRect: { x: suriel.x, y: suriel.y, width: suriel.width, height: suriel.height },
+          liveShape: { kind: 'band', bands: [{ fx: rbfx, fy: rbfy, tx: rbex, ty: rbey, halfWidth: SR_T.beam.halfWidth }] },
+          playerHealth: player.health, playerMaxHealth: player.maxHealth,
+          lastDamagedAtGame: player.lastDamagedAtGame,
+        });
+      }
       patch.bossState = 'ring-active'; patch.bossStateUntil = newGameTime + SR_T.ringshot.active;
       sfx.beam(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
@@ -2551,6 +2623,17 @@ export const runSurielTick = (
     if (overlap && counterActive) {
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
+      // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=自分中心円(実行'ring-spin'と
+      // 同じSR_T.ringspin.radius)。自分中心=軸退化(posB固定0・§1-2のbm-whip360/mk-spin/bite と同型)。
+      settleEpisode({
+        gameTime: newGameTime, enemyType: 'suriel', state: 'ring-spin-windup',
+        bcx: scx, bcy: scy, pcx, pcy,
+        aiFromX: scx, aiFromY: scy, aiTargetX: scx, aiTargetY: scy,
+        bossRect: { x: suriel.x, y: suriel.y, width: suriel.width, height: suriel.height },
+        liveShape: { kind: 'circle', cx: scx, cy: scy, radius: SR_T.ringspin.radius },
+        playerHealth: player.health, playerMaxHealth: player.maxHealth,
+        lastDamagedAtGame: player.lastDamagedAtGame,
+      });
       patch.bossState = 'ring-spin'; patch.bossStateUntil = newGameTime + SR_T.ringspin.active; patch.aiStartedAt = newGameTime;
       sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
@@ -2593,6 +2676,23 @@ export const runSurielTick = (
     if (overlap && counterActive) {
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
+      // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=帯(実行'sweep'と同じ
+      // aiFrom/aiTarget×SR_T.sweep.halfWidth)。
+      settleEpisode({
+        gameTime: newGameTime, enemyType: 'suriel', state: 'sweep-windup',
+        bcx: scx, bcy: scy, pcx, pcy,
+        aiFromX: suriel.aiFromX, aiFromY: suriel.aiFromY, aiTargetX: suriel.aiTargetX, aiTargetY: suriel.aiTargetY,
+        bossRect: { x: suriel.x, y: suriel.y, width: suriel.width, height: suriel.height },
+        liveShape: {
+          kind: 'band',
+          bands: [{
+            fx: suriel.aiFromX ?? scx, fy: suriel.aiFromY ?? scy,
+            tx: suriel.aiTargetX ?? scx, ty: suriel.aiTargetY ?? scy, halfWidth: SR_T.sweep.halfWidth,
+          }],
+        },
+        playerHealth: player.health, playerMaxHealth: player.maxHealth,
+        lastDamagedAtGame: player.lastDamagedAtGame,
+      });
       patch.bossState = 'sweep'; patch.bossStateUntil = newGameTime + SR_T.sweep.active;
       sfx.sweep(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }

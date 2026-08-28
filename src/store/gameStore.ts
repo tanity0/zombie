@@ -152,6 +152,8 @@ import {
 import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
 // ★近接スイング確定の打刻(1本の純関数)。research/THOR_ISSEN_REWORK.md §1-3。
 import { stampMeleeSwingCommit } from '../utils/thorNihil';
+// research/AI_HUMANIZE.md B1(コマ台帳・記録専用): giantbat系の州満了エッジに1行差す。
+import { settleEpisode, type CounterReachShape } from '../utils/habitEpisode';
 import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
@@ -5687,6 +5689,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     reloadingWeaponId: '',
     meleeSwingAt: 0,
     meleeSwingCommitAt: 0,
+    lastDamagedAtGame: 0,
     firstAidPoseAt: 0,
     magBonus: 0,
     reloadMult: 1,
@@ -9618,6 +9621,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           health: newHealth,
           invulnerable: amount > 0,
           invulnerableTime: Date.now(),
+          // research/AI_HUMANIZE.md B1(§1-1 ctxHit・記録専用): 実ダメージ(amount>0)の瞬間だけ打刻。
+          // gameTime系(判定・挙動には使わない=habitEpisode.tsの被弾コンテキスト判定専用)。
+          lastDamagedAtGame: amount > 0 ? state.gameTime : state.player.lastDamagedAtGame,
           // v0.25.2588(社長裁定「食らうタイミングをカウンターと見ない修正」): **被弾したらカウンター窓を
           // 閉じる**。他ゲーム(Sekiro/ソウル系/アーカム)と同じ二値=「被弾した=弾き失敗」へ揃える。
           // 旧: 窓さえ開いていれば被弾していてもカウンターが成立し、「Counter!と出たのにHPが減る」
@@ -11707,6 +11713,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.type === 'giantbat' && GIANT_SCRIPT_ENABLED) {
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
+          // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): giantbat系の州満了エッジ用ヘルパ。
+          // liveShape省略=body-only(g-bolt-windupのみ。EPISODE_SHAPE_DECLが自動でbodyへ落とす)。
+          const settleGiantHabit = (
+            phaseState: string,
+            opts?: { liveShape?: CounterReachShape; aiFromX?: number; aiFromY?: number; aiTargetX?: number; aiTargetY?: number },
+          ): void => {
+            settleEpisode({
+              gameTime, enemyType: 'giantbat', state: phaseState,
+              bcx: ecx, bcy: ecy, pcx, pcy,
+              aiFromX: opts?.aiFromX ?? enemy.aiFromX, aiFromY: opts?.aiFromY ?? enemy.aiFromY,
+              aiTargetX: opts?.aiTargetX ?? enemy.aiTargetX, aiTargetY: opts?.aiTargetY ?? enemy.aiTargetY,
+              bossRect: { x: enemy.x, y: enemy.y, width: enemy.width, height: enemy.height },
+              liveShape: opts?.liveShape,
+              playerHealth: player.health, playerMaxHealth: player.maxHealth,
+              lastDamagedAtGame: player.lastDamagedAtGame,
+            });
+          };
           // 連射/弱追尾中は技開始時に選んだ側だけを追う。ヘイト値の再評価は次の技開始まで行わない。
           const lockedHateAim = () => resolveBossLockedHateAim(enemy, { x: pcx, y: pcy }, summons);
           const healthFrac = enemy.maxHealth > 0 ? enemy.health / enemy.maxHealth : 1;
@@ -12165,6 +12188,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                 // 半径はwindup開始時にbeginGiantMove('stomp')が確定した値を読む(M65)。未設定
                 // (=旧セーブ/フォールバック経路)なら無倍率の生半径。描画側(pixiScene.ts)も同じ値を読む。
                 pumpkinBlasts.push({ x: ecx, y: ecy, radius: enemy.gStompRadius ?? GIANT_STOMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-stomp' });
+                // 自分中心(軸退化=posB固定0・§1-2の bm-whip360/mk-spin/bite と同型)。
+                settleGiantHabit('g-stomp-windup', {
+                  aiFromX: ecx, aiFromY: ecy, aiTargetX: ecx, aiTargetY: ecy,
+                  liveShape: { kind: 'circle', cx: ecx, cy: ecy, radius: enemy.gStompRadius ?? GIANT_STOMP_RADIUS },
+                });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-stomp-recover', aiPhaseUntil: atkUntil(stompRecoverMs) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
@@ -12179,6 +12207,10 @@ export const useGameStore = create<GameState>((set, get) => ({
                   x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: GIANT_SWEEP_HALF_WIDTH,
                   damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-sweep',
                   capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SWEEP_HALF_WIDTH },
+                });
+                settleGiantHabit('g-sweep-windup', {
+                  aiFromX: sfx, aiFromY: sfy, aiTargetX: stx, aiTargetY: sty,
+                  liveShape: { kind: 'band', bands: [{ fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SWEEP_HALF_WIDTH }] },
                 });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-sweep-active', aiPhaseUntil: atkUntil(GIANT_SWEEP_ACTIVE_MS) };
               }
@@ -12268,6 +12300,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             case 'g-bolt-windup': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 giantBoltFires.push(enemy); // 発射自体はset後(post-set)に既存addProjectile経路で行う
+                settleGiantHabit('g-bolt-windup'); // body-only(弾を撃つだけ=近接図形を持たない・§1-0③)
                 // 扇(fan)は1回で撃ち切るのでそのまま硬直へ。連射(burst)は専用ステートで残りを撃つ。
                 if ((enemy.gBoltPattern ?? 'fan') === 'burst') {
                   return {
@@ -12437,6 +12470,10 @@ export const useGameStore = create<GameState>((set, get) => ({
                   damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-slam',
                   capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SLAM_HALF_WIDTH },
                 });
+                settleGiantHabit('g-slam-windup', {
+                  aiFromX: sfx, aiFromY: sfy, aiTargetX: stx, aiTargetY: sty,
+                  liveShape: { kind: 'band', bands: [{ fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SLAM_HALF_WIDTH }] },
+                });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-slam-active', aiPhaseUntil: atkUntil(GIANT_SLAM_ACTIVE_MS) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
@@ -12466,6 +12503,17 @@ export const useGameStore = create<GameState>((set, get) => ({
                   capsule: {
                     fx: gfx + enemy.width / 2, fy: gfy + enemy.height / 2,
                     tx: gtx + enemy.width / 2, ty: gty + enemy.height / 2, halfWidth: GIANT_GLIDE_HALF_WIDTH,
+                  },
+                });
+                settleGiantHabit('g-glide-windup', {
+                  aiFromX: gfx + enemy.width / 2, aiFromY: gfy + enemy.height / 2,
+                  aiTargetX: gtx + enemy.width / 2, aiTargetY: gty + enemy.height / 2,
+                  liveShape: {
+                    kind: 'band',
+                    bands: [{
+                      fx: gfx + enemy.width / 2, fy: gfy + enemy.height / 2,
+                      tx: gtx + enemy.width / 2, ty: gty + enemy.height / 2, halfWidth: GIANT_GLIDE_HALF_WIDTH,
+                    }],
                   },
                 });
                 // v0.25.3075: **実際に飛び出す位置**を焼く(予告線の始点aiFromではなく現在地)。
@@ -12535,6 +12583,9 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 const dtx = enemy.aiTargetX ?? enemy.x, dty = enemy.aiTargetY ?? enemy.y;
                 pumpkinBlasts.push({ x: dtx + enemy.width / 2, y: dty + enemy.height / 2, radius: GIANT_DIVE_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-dive' });
+                settleGiantHabit('g-dive-windup', {
+                  liveShape: { kind: 'circle', cx: dtx + enemy.width / 2, cy: dty + enemy.height / 2, radius: GIANT_DIVE_RADIUS },
+                });
                 return { ...enemy, ...phaseFields, x: dtx, y: dty, vx: 0, vy: 0, aiPhase: 'g-dive-recover', aiPhaseUntil: atkUntil(scriptRestMs(GIANT_DIVE_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
@@ -12801,6 +12852,16 @@ export const useGameStore = create<GameState>((set, get) => ({
                   x: (tfx + rightTx) / 2, y: (tfy + rightTy) / 2, radius: GIANT_TRISHOT_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-trishot',
                   capsule: { fx: tfx, fy: tfy, tx: rightTx, ty: rightTy, halfWidth: GIANT_TRISHOT_HALF_WIDTH },
                 });
+                settleGiantHabit('g-trishot-windup', {
+                  aiFromX: tfx, aiFromY: tfy, aiTargetX: ttx, aiTargetY: tty,
+                  liveShape: {
+                    kind: 'band',
+                    bands: [
+                      { fx: tfx, fy: tfy, tx: leftTx, ty: leftTy, halfWidth: GIANT_TRISHOT_HALF_WIDTH },
+                      { fx: tfx, fy: tfy, tx: rightTx, ty: rightTy, halfWidth: GIANT_TRISHOT_HALF_WIDTH },
+                    ],
+                  },
+                });
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
                   aiPhase: 'g-trishot-active', aiPhaseUntil: atkUntil(GIANT_TRISHOT_ACTIVE_MS),
@@ -12835,6 +12896,12 @@ export const useGameStore = create<GameState>((set, get) => ({
                 pumpkinBlasts.push({
                   x: enemy.aiFromX ?? ecx, y: enemy.aiFromY ?? ecy,
                   radius: GIANT_WING_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-wing',
+                });
+                // 自分中心(軸退化=posB固定0)。中心=溜め開始位置(aiFromX/Y)。
+                settleGiantHabit('g-wing-windup', {
+                  aiFromX: enemy.aiFromX ?? ecx, aiFromY: enemy.aiFromY ?? ecy,
+                  aiTargetX: enemy.aiFromX ?? ecx, aiTargetY: enemy.aiFromY ?? ecy,
+                  liveShape: { kind: 'circle', cx: enemy.aiFromX ?? ecx, cy: enemy.aiFromY ?? ecy, radius: GIANT_WING_RADIUS },
                 });
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
@@ -12956,6 +13023,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               }
               // ②③ 各本を進める
               let rNewest: typeof shots[number] | undefined;
+              // research/AI_HUMANIZE.md B1: 「最後に判定を積んだ本」の帯(=州が硬直へ落ちる瞬間の実図形)。
+              let rLastFiredTx: number | undefined, rLastFiredTy: number | undefined;
               for (let i = 0; i < shots.length; i++) {
                 const sh = shots[i];
                 if (sh.fired) continue;
@@ -12971,6 +13040,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     capsule: { fx: ecx, fy: ecy, tx, ty, halfWidth: GLEN_REACH_HALF_WIDTH },
                   });
                   shots[i] = { ...sh, fired: true };
+                  rLastFiredTx = tx; rLastFiredTy = ty;
                   continue;
                 }
                 const stp = stepLaserAim(
@@ -12984,6 +13054,13 @@ export const useGameStore = create<GameState>((set, get) => ({
               }
               // ④ 全部撃ち終わったら硬直(=反撃窓)へ
               if (shots.length >= GLEN_REACH_SHOTS && shots.every(sh => sh.fired)) {
+                // research/AI_HUMANIZE.md B1: 州の満了=最後に判定を積んだ本の帯で録る(無ければ
+                // 既存のaiFrom/aiTarget=直前tickの表示用最新本にフォールバック・安全側)。
+                const rft = rLastFiredTx ?? enemy.aiTargetX ?? ecx, rfy = rLastFiredTy ?? enemy.aiTargetY ?? ecy;
+                settleGiantHabit('g-reach-windup', {
+                  aiFromX: ecx, aiFromY: ecy, aiTargetX: rft, aiTargetY: rfy,
+                  liveShape: { kind: 'band', bands: [{ fx: ecx, fy: ecy, tx: rft, ty: rfy, halfWidth: GLEN_REACH_HALF_WIDTH }] },
+                });
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0, gReachShots: undefined,
                   aiPhase: 'g-reach-recover', aiPhaseUntil: atkUntil(scriptRestMs(GLEN_REACH_RECOVER_MS)),
@@ -13044,6 +13121,10 @@ export const useGameStore = create<GameState>((set, get) => ({
                   x: (tfx + ttx) / 2, y: (tfy + tty) / 2, radius: GLEN_TAILSLAM_HALF_WIDTH,
                   damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-tailslam',
                   capsule: { fx: tfx, fy: tfy, tx: ttx, ty: tty, halfWidth: GLEN_TAILSLAM_HALF_WIDTH },
+                });
+                settleGiantHabit('g-tailslam-windup', {
+                  aiFromX: tfx, aiFromY: tfy, aiTargetX: ttx, aiTargetY: tty,
+                  liveShape: { kind: 'band', bands: [{ fx: tfx, fy: tfy, tx: ttx, ty: tty, halfWidth: GLEN_TAILSLAM_HALF_WIDTH }] },
                 });
                 glenTailSlammed = true; // 叩きつけた瞬間(set後に画面を揺らす)
                 return {
@@ -17741,6 +17822,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadingWeaponId: '',
           meleeSwingAt: 0,
           meleeSwingCommitAt: 0,
+          lastDamagedAtGame: 0,
           firstAidPoseAt: 0,
           magBonus: 0,
           reloadMult: 1,

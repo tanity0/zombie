@@ -365,6 +365,9 @@ import {
   HIDDEN_THOR_TUNING as HB_TH,
   HIDDEN_COMMON_TUNING_DEFAULTS,
 } from '../utils/hiddenBossScript';
+// research/AI_HUMANIZE.md B1(コマ台帳・記録専用): トール3州(thor:issen/tsuki/harai-windup)の
+// 州満了エッジに1行差す。①declared(COUNTER_REACH_DECL経由)なのでliveShapeは不要。
+import { settleEpisode } from '../utils/habitEpisode';
 import {
   takeHiddenBossPlay, settleHiddenBossPlayback, hiddenBossPlaybackActive, clearHiddenBossPlayback,
   isHiddenControllerBoss, type HiddenMoveKey,
@@ -6616,6 +6619,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 方向は段1の開始時に既にロック済み=段2で取り直さない(居合の型・社長修正指示)。
                 // カウンターは**赤い帯**で成立する(§8-2。判定は上の共通ブロック=counterReach の宣言表)。
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): ①declared
+                  // (COUNTER_REACH_DECLの'hidden:issen-windup'=帯)。
+                  settleEpisode({
+                    gameTime: newGameTime, enemyType: 'thor', state: 'issen-windup',
+                    bcx, bcy, pcx, pcy,
+                    aiFromX: boss.aiFromX, aiFromY: boss.aiFromY, aiTargetX: boss.aiTargetX, aiTargetY: boss.aiTargetY,
+                    bossRect: { x: boss.x, y: boss.y, width: boss.width, height: boss.height },
+                    playerHealth: player.health, playerMaxHealth: player.maxHealth,
+                    lastDamagedAtGame: player.lastDamagedAtGame,
+                  });
                   patch.bossState = 'issen-dash';
                   patch.bossStateUntil = newGameTime + HB_TH.issen.dashMs;
                   // v0.25.3700: 一閃=ダッシュ斬りの発動音(プレイヤーの刀ダッシュ斬りと同じ近似)。
@@ -6706,6 +6719,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // **実行時に作られる帯と同じ式**(始点=ボス中心・終点=単位ベクトル×range)で組まれる。
                 // カウンターは上の共通ブロックが解決する(ここには書かない=§8-2で宣言表へ揃えた)。
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): ①declared
+                  // (COUNTER_REACH_DECLの'hidden:tsuki-windup'=帯・毎フレーム狙い直す州=TRACKED_SHAPE_KEYS。
+                  // aiTargetは今フレームの追従点naimX/Y=stale値[前フレームのboss.aiTargetX]を使わない)。
+                  settleEpisode({
+                    gameTime: newGameTime, enemyType: 'thor', state: 'tsuki-windup',
+                    bcx, bcy, pcx, pcy,
+                    aiFromX: bcx, aiFromY: bcy, aiTargetX: naimX, aiTargetY: naimY,
+                    bossRect: { x: boss.x, y: boss.y, width: boss.width, height: boss.height },
+                    playerHealth: player.health, playerMaxHealth: player.maxHealth,
+                    lastDamagedAtGame: player.lastDamagedAtGame,
+                  });
                   patch.bossState = 'tsuki';
                   patch.bossStateUntil = newGameTime + HB_TH.tsuki.ms;
                   // 突く方向=遅延した狙い点(naim)への向き。射程ぶん伸ばして突きラインを確定。
@@ -6757,6 +6781,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 払い: 溜め中は本体静止(社長指示・立ち止まる)。ロック済みの並行ラインを予告表示(描画側)。
                 // カウンターは上の共通ブロックが**赤い帯**で解決する(§8-2)。
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): ①declared
+                  // (COUNTER_REACH_DECLの'hidden:harai-windup'=帯)。
+                  settleEpisode({
+                    gameTime: newGameTime, enemyType: 'thor', state: 'harai-windup',
+                    bcx, bcy, pcx, pcy,
+                    aiFromX: boss.aiFromX, aiFromY: boss.aiFromY, aiTargetX: boss.aiTargetX, aiTargetY: boss.aiTargetY,
+                    bossRect: { x: boss.x, y: boss.y, width: boss.width, height: boss.height },
+                    playerHealth: player.health, playerMaxHealth: player.maxHealth,
+                    lastDamagedAtGame: player.lastDamagedAtGame,
+                  });
                   patch.bossState = 'harai';
                   patch.bossStateUntil = newGameTime + HB_TH.harai.active;
                   playSfx('thor-sweep');
