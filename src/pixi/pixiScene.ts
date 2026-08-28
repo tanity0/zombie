@@ -24043,13 +24043,24 @@ export class PixiScene {
       case 'ammo-handgun':
       case 'ammo-shotgun':
       case 'ammo-rifle':
-      case 'ammo-phill': {
-        const box = p.type === 'ammo-shotgun' ? 0xb91c1c : p.type === 'ammo-rifle' ? 0xb45309 : p.type === 'ammo-phill' ? 0xf97316 : 0xa16207;
+      case 'ammo-phill':
+      case 'ammo-glauncher': {
+        // ★v0.25.3999: glauncher弾のケース追加(従来は分岐が無く代替の水色ドットに化けていた)。
+        // 帯色=オリーブ(擲弾)。弾頭はグレラン弾らしく丸头(他は尖った薬莢3本)。
+        const box = p.type === 'ammo-shotgun' ? 0xb91c1c : p.type === 'ammo-rifle' ? 0xb45309 : p.type === 'ammo-phill' ? 0xf97316 : p.type === 'ammo-glauncher' ? 0x65a30d : 0xa16207;
         g.rect(cx - 7, drawY - 4, 14, 9).fill({ color: 0x1f2937 });
         g.rect(cx - 7, drawY - 4, 14, 3).fill({ color: box });
-        g.rect(cx - 5, drawY - 6, 2, 3).fill({ color: 0xfde68a });
-        g.rect(cx - 1, drawY - 6, 2, 3).fill({ color: 0xfde68a });
-        g.rect(cx + 3, drawY - 6, 2, 3).fill({ color: 0xfde68a });
+        if (p.type === 'ammo-glauncher') {
+          // 丸头の擲弾2発(金帯つき)。
+          for (const ox of [-4, 2] as const) {
+            g.rect(cx + ox, drawY - 6, 3, 3).fill({ color: 0x4d7c0f });
+            g.circle(cx + ox + 1.5, drawY - 6, 1.5).fill({ color: 0xfde68a });
+          }
+        } else {
+          g.rect(cx - 5, drawY - 6, 2, 3).fill({ color: 0xfde68a });
+          g.rect(cx - 1, drawY - 6, 2, 3).fill({ color: 0xfde68a });
+          g.rect(cx + 3, drawY - 6, 2, 3).fill({ color: 0xfde68a });
+        }
         break;
       }
       case 'weapon-drop': {

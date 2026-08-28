@@ -1978,6 +1978,10 @@ export type PickupType =
   | 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle'
   | 'weapon-drop' | 'weapon-crate' | 'quick-magazine'
   | 'card-key' | 'lab-clear-item' | 'ammo-phill'
+  // ★v0.25.3999: グレラン弾。実は以前からドロップ生成側が `ammo-${AmmoType}` で作っていて
+  // (glauncher所持中に抽選で落ちる)、この列挙とキャストが4種と嘘をついていたため描画が
+  // 代替の水色ドットに化けていた(社長報告「水色の四角いドット」の正体)。
+  | 'ammo-glauncher'
   // 金箱(★v0.25.3644 社長裁定で統一): 見た目=gold-chest素材。出どころは②つ——
   // ①武器箱スポーン時に5%で変化(旧「秘密兵器箱」を改名・統一) ②賞金首討伐の確定ドロップ。
   // 中身=武器抽選3回+赤経験値20個+スクラップ10倍(旧中身のトレジャー×2+スクラップは削除)。

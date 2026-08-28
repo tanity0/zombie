@@ -4759,7 +4759,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   st.addPickup({
                     id: `m0-ammo-${newGameTime}`,
                     x: pcx + M0_AMMO_AHEAD_PX, y: pcy - 8,
-                    type: `ammo-${at}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+                    type: `ammo-${at}` as `ammo-${AmmoType}`, // v0.25.3999: 4種への嘘つきキャストを是正(glauncher弾が型検査をすり抜けて描画欠けしていた)
                     value: 0,
                   });
                 }
@@ -12219,7 +12219,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     id: `pickup-ammo-${enemy.id}`,
                     x: enemy.x + enemy.width / 2 - 8 + 16,
                     y: enemy.y + enemy.height / 2 - 8,
-                    type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+                    type: `ammo-${dropType}` as `ammo-${AmmoType}`, // v0.25.3999: 4種への嘘つきキャストを是正(glauncher弾が型検査をすり抜けて描画欠けしていた)
                     value: 0,
                     worldDrop: true
                   });
@@ -13757,7 +13757,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             id: `pickup-airdrop-${Math.floor(gameTime)}-${Math.floor(Math.random() * 1e6)}`,
             x: px - 8,
             y: py - 8,
-            type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+            type: `ammo-${dropType}` as `ammo-${AmmoType}`, // v0.25.3999: 4種への嘘つきキャストを是正(glauncher弾が型検査をすり抜けて描画欠けしていた)
             value: 0,
             worldDrop: true
           });
