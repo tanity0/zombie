@@ -34,12 +34,16 @@ export const ENEMY_VARIANT_SETS: Readonly<Record<string, readonly string[]>> = {
   // 新素材は最初から透過済みなので、色キーを通さない普通のロード経路に載せ替える意味も兼ねて表に入れる。
   screamer: ['screamer-common'],           // 1種のみ(v0.25.2882)
   werewolf: ['werewolf-common'],           // 1種のみ(v0.25.2901)。見た目=自転車に跨がる死体
-  reaper: ['reaper-common'],               // 1種のみ(v0.25.2901)。見た目=チェーンソーを掲げた襤褸外套
+  // PACING_PUZZLE.md §14-4-2(新死神・v0.25.4004): 旧絵(reaper-common)は伐採人(logger)へ降格し、
+  // 死神本体は新アート reaper2-common へ差し替え(社長支給)。
+  reaper: ['reaper2-common'],
   pumpkin: ['pumpkin-common'],             // 1種のみ(v0.25.2905)。見た目=蜘蛛の機械足の襤褸
   driller: ['driller-common'],             // 1種のみ(PACING_PUZZLE.md §9-2)。見た目=ドリル腕の作業員ゾンビ
-  // PACING_PUZZLE.md §14-2①(伐採人・logger): 本体=現行の死神の立ち絵をそのまま流用(reaperと同じ絵)。
+  // PACING_PUZZLE.md §14-2①(伐採人・logger): 本体=旧・死神の立ち絵をそのまま流用(reaperと同じ絵=降格元)。
   // 武器(チェーンソー=reaper-chainsaw)は本体と別スプライトでpixiScene側が構え〜薙ぎで重ねて描く。
   logger: ['reaper-common'],
+  // PACING_PUZZLE.md §14-4-3(使者・hangedman): 死神本体の技「使者」が召喚する耐久武器(社長支給)。
+  hangedman: ['reaper2-hanged'],
 };
 
 /**

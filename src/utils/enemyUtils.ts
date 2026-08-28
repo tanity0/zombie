@@ -71,7 +71,14 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // ので、この500が最終的なHPになることは無い(置換は useGameLoop:2545 城ボス / :2620 ストーリーボス)。
   // ※v0.25.3164まで**ストーリーボス(グレン/EX)だけ置換を通っておらず、実効2500のまま戦っていた**。
   giantbat:  { width: 60, height: 60, speed: 70,  health: 500,  damage: 19,  experienceValue: 30 },
-  reaper:    { width: 80, height: 80, speed: 130, health: 4000, damage: 999, experienceValue: 0 },
+  // PACING_PUZZLE.md §14-4-2(新死神・v0.25.4004): ここは生成時の互換値(スポーン直後にuseGameLoopが
+  // ?rp2bhp=/?rp2cdmg= 込みの実効値へ上書きする=giantbatの500行と同じ流儀)。
+  // 中11の是正: damageは999ではなく77(接触ダメージ。現行どおり=999は誤って一度も表に出ていなかった値)。
+  reaper:    { width: 80, height: 80, speed: 130, health: 66666, damage: 77, experienceValue: 0 },
+  // PACING_PUZZLE.md §14-4-3(使者・hangedman): 死神本体の技「使者」が画面外の囲みから召喚する耐久武器。
+  // ここも生成時の互換値(スポーン直後に?rp2hp=込みの実効値へ上書き)。damage=999は裁定済み#9
+  // (専用即死ゲートではなく既存damagePlayer経路への999=実質即死・本体77とは別の「表に出る」値)。
+  hangedman: { width: 46, height: 92, speed: 100, health: 2000, damage: 999, experienceValue: 0 },
   // 研究所専用ゾンビ(通常敵データ参考)。Lv1=雑魚〜 / Lv2=変異(中) / Lv3=巨体(パンプキン相当)。動きは通常チェイス。
   // 社長指示: 耐久値(health)はデフォルトに戻す(2倍化を撤回)。damage は据え置き(2倍のまま)。
   // 研究所(ステージ2)の敵は耐久値を全員2倍(社長指示)。lab-zombie はこのステージ専用。
@@ -245,23 +252,48 @@ export const isPumpkinTier = (t: EnemyType): boolean => t === 'pumpkin' || t ===
  * ために使う。
  */
 /**
+ * PACING_PUZZLE.md §14-4(中15・v0.25.4004): 死神(reaper)の型名ベタ書き(114箇所)を集約する述語。
+ * v3494「ベタ書きで編入漏れ→実機バグ」の再発防止として、`'reaper'`の直書きチェックはここへ寄せる。
+ *
+ * - `isReaperFamily(t)`: この敵タイプが死神系(横切り演出/本体とも)か。ボス表・色・射程等、
+ *   「型として死神扱いするか」を見る全箇所がここを通る。
+ * - `isTerminalReaper(e)`: **完全出現して実際に戦える個体**か(横切り演出の無敵ゴーストを除く)。
+ *   `reaperChaser=true` が「本体」の印(§14-4-2・撃破escalationの追加個体にも立てる)。
+ *   被弾/ノックバック/距離リサイクル除外/近接対象など「本物として扱ってよいか」を見る全箇所が
+ *   ここを通る(旧実装は `type==='reaper' && !reaperChaser` を114箇所中56箇所で直書きしていた)。
+ * - `isHangedman(t)`: 死神の技「使者」(§14-4-3)。**isReaperFamilyには含めない**——除外リスト
+ *   (計測/カウンター・体勢/湧き帳簿・近接フィニッシュ即死/経験値・ドロップ/スコア)は死神本体とは
+ *   別に個別管理する(死神家族の「無敵ゴースト」とは意味が違う=使者は普通に被弾・KBする実体)。
+ */
+export const isReaperFamily = (t: EnemyType): boolean => t === 'reaper';
+export const isTerminalReaper = (e: Pick<Enemy, 'type' | 'reaperChaser'>): boolean =>
+  e.type === 'reaper' && e.reaperChaser === true;
+export const isHangedman = (t: EnemyType): boolean => t === 'hangedman';
+
+/**
  * ★噛みつきの**対象外**(=従来どおり触れたら痛い)。
  * - **死神**: 無敵の徘徊チェイサー(触れたら終わり、が存在意義)。
  * - **幻影**: プレイヤーの写しで**自前の近接(前隙+踏み込み)を既に持つ**。
  * ★賞金首は**含まない**(社長裁定2026-08-25「賞金首もボスと同様の枠組み」)=ボスと同じく
  * 技の合間だけ噛む。
+ * ★PACING_PUZZLE.md §14-4-3(使者・hangedman・★確認=実装判断・最終報告に明記):
+ * 噛みつき(§12)は「構え→300ms踏み込み→200ms噛み」の予告つき台本で、通常敵の接触ダメージを
+ * これに一本化する再設計だった。しかし使者は社長の言葉どおり「捕まると一撃死」= **触れた瞬間**の
+ * 即時ダメージが仕様の核であり、噛みつきの予告遅延を挟むと「捕まった」の意味が変わってしまう。
+ * 死神本体と同じ「触れたら終わり」の存在意義を共有するため、ここへ含めて即時の
+ * damagePlayer経路(combatTick.tsのplayerEnemyCollisions)へ乗せる。
  */
 export const isBiteExemptType = (t: EnemyType): boolean =>
-  t === 'reaper' || isGuardianPhantom(t);
+  isReaperFamily(t) || isGuardianPhantom(t) || isHangedman(t);
 
 export const isTrueBossType = (t: EnemyType): boolean =>
   t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' ||
   t === 'miguel' || t === 'jibril' || t === 'rafi' || t === 'uri' || t === 'suriel' ||
-  t === 'acrasiel' || t === 'idol' || t === 'phillboss' || t === 'reaper' ||
+  t === 'acrasiel' || t === 'idol' || t === 'phillboss' || isReaperFamily(t) ||
   isBountyType(t) || isGuardianPhantom(t);
 
 export const isBossType = (t: EnemyType): boolean =>
-  isPumpkinTier(t) || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
+  isPumpkinTier(t) || t === 'giantbat' || isReaperFamily(t) || t === 'lab-zombie-3' ||
   t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' ||
   t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'phillboss' || t === 'hunter' || isBountyType(t) ||
   // research/GHOST_BOSS.md: 幻影もボス扱いの全既定(HPバー/体勢値=紫/致命の一撃/崩壊演出/
@@ -275,7 +307,7 @@ export const isBossType = (t: EnemyType): boolean =>
  * 賞金首もここへ追加登録する)。
  */
 export const isArenaSweepProtected = (e: Pick<Enemy, 'type' | 'fixed' | 'questTarget'>): boolean =>
-  e.type === 'reaper' || e.type === 'giantbat' || isPumpkinTier(e.type) ||
+  isReaperFamily(e.type) || e.type === 'giantbat' || isPumpkinTier(e.type) ||
   isHiddenBoss(e.type) || isBountyType(e.type) || !!e.fixed || !!e.questTarget;
 
 /**
@@ -553,7 +585,7 @@ const COLOR_TIER_SIZE_MULT: Record<EnemyColorTier, number> = RARE_TINT_ENABLED
   ? { blue: 1, purple: 1, red: 1 }
   : { blue: 1.1, purple: 1.2, red: 1.3 }; // 旧値(青1.1/紫1.2/赤1.3・+10%刻み)
 // 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
-const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol', 'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
+const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'hangedman', 'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol', 'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
   // research/GHOST_BOSS.md(幻影・裏ボス方式): エリア/距離/時間/色でスケールしない=色ティア抽選の対象外。
   'guardian-phantom',
   // PACING_PUZZLE.md §10-14#3(フィル): HPはスポーン時にSTAGE_BOSS_HEALTH_BY_STAGE['stage-ex1']で
@@ -721,8 +753,8 @@ const buildEnemy = (
   // research/STAGE_DIFFICULTY.md: HP係数は hpMult へ乗算。**非固定(=雑魚)の枝だけ**に掛ける
   // ——固定型(城ボス/賞金首/天使/裏ボス/ラボ敵ほか)はスポーン側の個別適用が担当なので、
   // ここで掛けると二重になる(除外の意図は diffDmg 側の fixed ガードと同じ)。
-  const hpMult = (type === 'reaper' || isHiddenBoss(type) || isGuardianPhantom(type)) ? 1 : (fixed ? ENEMY_HP_MULT : diffHp * ENEMY_HP_MULT * stageDiffHpMult);
-  const dmgMult = type === 'reaper' ? 1 : (fixed ? 1 : diffDmg);
+  const hpMult = (isReaperFamily(type) || isHangedman(type) || isHiddenBoss(type) || isGuardianPhantom(type)) ? 1 : (fixed ? ENEMY_HP_MULT : diffHp * ENEMY_HP_MULT * stageDiffHpMult);
+  const dmgMult = (isReaperFamily(type) || isHangedman(type)) ? 1 : (fixed ? 1 : diffDmg);
   const sizeMult = colorTier ? COLOR_TIER_SIZE_MULT[colorTier] : 1;
 
   return {

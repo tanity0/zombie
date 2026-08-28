@@ -38,8 +38,8 @@ describe('variantTextureName', () => {
     for (const [type, only] of [
       ['zombie', 'zombie-common'], ['plant', 'plant-common'], ['ghost', 'ghost-common'],
       ['screamer', 'screamer-common'], ['lich', 'lich-common'],
-      ['werewolf', 'werewolf-common'], ['reaper', 'reaper-common'],
-      ['pumpkin', 'pumpkin-common'],
+      ['werewolf', 'werewolf-common'], ['reaper', 'reaper2-common'],
+      ['pumpkin', 'pumpkin-common'], ['logger', 'reaper-common'], ['hangedman', 'reaper2-hanged'],
     ]) {
       const names = new Set(Array.from({ length: 200 }, (_, i) => variantTextureName(type, 'e' + i)));
       expect([...names], type).toEqual([only]);

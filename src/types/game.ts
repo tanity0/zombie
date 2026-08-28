@@ -105,6 +105,10 @@ export interface Player extends DashLocomotionState {
   width: number;
   height: number;
   speed: number;
+  // PACING_PUZZLE.md §14-4-2(新死神・着手前監査 重大4/5): movePlayer が毎tick書く「実効移動速度」
+  // (px/s・MOVE_SPEED_MULTは含まない=utils/playerMoveSpeed.ts参照)。ダッシュ/ランプ/トラップ頭打ち/
+  // PvP減速まで含めた「今まさに動ける速さ」。死神の技「使者」の追尾速度(×1.2)の元になる。
+  effectiveMoveSpeed?: number;
   health: number;
   maxHealth: number;
   experience: number;
@@ -558,10 +562,18 @@ export interface Enemy {
   sceneSpawn?: boolean;
   // 制圧イベント: この敵がどの拠点の攻撃者か(baseSites[].id)。未設定=通常敵。
   baseId?: string;
-  // 死神(深奥リスク)システム: 完全出現してプレイヤーを追う死神。速度は毎フレ player.speed×1.2 に追従。
+  // 死神(深奥リスク)システム: 完全出現してプレイヤーを追う死神本体(=isTerminalReaper・enemyUtils.ts)。
+  // PACING_PUZZLE.md §14-4(v0.25.4004〜): 撃破escalationの追加個体にも立てる(旧仕様は主個体のみで、
+  // 追加個体が距離リサイクル除外から漏れる既存バグがあった=isTerminalReaper述語への集約で是正)。
   reaperChaser?: boolean;
   // 回り込みワープの描画フェード(1=不透明 / 0=透明)。消える→テレポート→出る を 0.5s ずつで演出。
+  // ※死神本体自身のワープは§14-4で廃止(直進+旋回に置換)。このフィールドは他ボスの警戒ワープ
+  // (カウンターワープ等・useGameLoop「boss.reaperWarpAlpha」)が引き続き共有する汎用フィールド。
+  // §14-4-3(使者・hangedman): 出現時のフェードイン(materializing)にも流用する(0→1・叩き台)。
   reaperWarpAlpha?: number;
+  // PACING_PUZZLE.md §14-4-3(使者/hangedman): この使者個体を召喚した死神本体のenemy id。
+  // 召喚主が死亡/消滅すると、この summonerId を持つ使者は全員まとめて消える(叩き台)。
+  summonerId?: string;
   // 特殊AI(犬型=突進 / パンプキン=ジャンプ攻撃)の状態機械。すべて gameTime(ms)基準。
   //  werewolf: undefined→'windup'(減速)→'charge'(2倍速で aiTarget へ突進)→cooldown。
   //  pumpkin : undefined→'crouch'(縮みながら3秒溜め)→'jump'(1秒でaiTargetへ着地)→'recover'(1秒停止)。
@@ -1354,7 +1366,13 @@ export type EnemyType =
   // ステージ3以降、台本的にpumpkin/driller と「同格」(isPumpkinTier経由で特別扱いを共有)。
   | 'logger'
   | 'giantbat'  // mini-boss every ~10 minutes
-  | 'reaper'    // terminal entity at 30:00
+  // PACING_PUZZLE.md §14-4(社長指示2026-08-28「新たな死神」v1): 深奥リスク/時間抽選で完全出現する
+  // 終端個体。出現システム(risk/時間抽選/撃破escalation)は§5.21由来のまま。挙動は§14-4-2で刷新
+  // (プレイヤーの素の実効速度で直進+70px旋回・技=使者・被弾KBなし・体勢値あり)。
+  | 'reaper'
+  // PACING_PUZZLE.md §14-4-3(使者/hangedman): 死神本体が詠唱する技「使者」で画面外から囲み召喚される
+  // 耐久武器。isReaperFamilyには含めない(死神本体とは別述語で除外リストを持つ・enemyUtils.ts参照)。
+  | 'hangedman'
   | 'lich'      // ステージ4の新型。ゴーストの1.2倍速でプレイヤーの周囲を旋回しながら詰める
   | 'lab-zombie-1' // 研究所Lv1(通常・男女)
   | 'lab-zombie-2' // 研究所Lv2(変異・男女)

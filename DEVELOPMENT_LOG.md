@@ -1,5 +1,41 @@
 # Development Log
 
+## v0.25.4004 — PACING_PUZZLE §14-4「新たな死神」実装 途中経過push(実装チャット・Sonnet) 【2026-08-28 19:10 JST】
+
+**WIP push**(社長指示「作業は小さく刻んで随時push」・このコンテナは巻き戻り事故があるため。実際に
+このセッション中も1回、作業ツリーの未コミット変更が巻き戻る事故が発生し、以後は小刻みpushへ切替えた)。
+**見出し・内容は完了時に出荷版へ打ち直す。ゲーム内容の変更はまだ無い(=changelogは「作業中」表記)。**
+
+### この時点で入っている変更
+- `EnemyType`に `'hangedman'`(使者・§14-4-3)を追加。`reaperChaser`/`reaperWarpAlpha`のコメント更新+
+  使者の召喚主を指す`summonerId`フィールド新設。`Player.effectiveMoveSpeed`フィールド新設
+  (§14-4-2 重大4/5・movePlayerが毎tick書く実効速度)。
+- `src/utils/enemyUtils.ts`: 述語 `isReaperFamily`/`isTerminalReaper`/`isHangedman` を新設し、
+  `isBiteExemptType`/`isTrueBossType`/`isBossType`/`isArenaSweepProtected`/`CONSTANT_STRENGTH_TYPES`/
+  hpMult・dmgMult 分岐の `'reaper'` 直書きをこれへ集約(§14-4 中15の一部。他ファイルは後続pushで対応)。
+  `ENEMY_STATS.reaper`の damage を999→77へ是正(中11=現行は接触ダメージ77で毎フレーム上書きされ
+  999は一度も表に出ていなかった値)。`ENEMY_STATS.hangedman`新設(damage 999=裁定済み#9)。
+- `src/utils/playerMoveSpeed.ts`(新設・純関数+テスト11件): movePlayerの速度合成をそのまま切り出した
+  `computeEffectiveMoveSpeed`。movePlayer側の配線(呼び出し+`effectiveMoveSpeed`の保存)は次のpushで行う。
+- `src/utils/reaper2.ts`(新設・純関数+テスト17件): 死神本体の直進+70px旋回移動(`stepReaperBody`)・
+  使者の囲み配置(`encircleRadiusPx`/`encirclePoints`/`corridorEncirclePoints`)・使者の population 歩進
+  (`stepServantPopulation`)・KB特例(`knockbackCdReady`=hangedmanは免疫CDを無視)。
+- `src/utils/enemyVariant.ts`+test: `reaper`→`reaper2-common`(新アート・社長支給の`public/sprites/`に
+  既に配置済み)、`hangedman`→`reaper2-hanged`を登録(既存の`logger`=`reaper-common`=旧絵は不変)。
+- `PACING_PUZZLE.md` §14-4-4に **★確認#10**(使者の接触判定=噛みつき§12を経由しない即時経路へ乗せた
+  実装判断)を追記。
+
+### まだ入っていない(次のpush以降)
+useGameLoop.tsの死神ブロック本体の書き換え(直進+旋回・技「使者」の召喚/population/KILL!演出)・
+gameStore.tsの配線(movePlayerへcomputeEffectiveMoveSpeedを接続・canShoveEnemyの死神KB免除・
+POSTURE_ELITE_TYPESへreaper追加・knockbackCdReadyの適用・使者の除外リスト各所)・pixiScene/renderUtils/
+directorTick等の残りの`'reaper'`直書き置換・ズームツマミ`?rp2scale=`・テスト追加分。
+
+- 検証: `npm run typecheck`(0エラー)・`npm run lint`(0エラー・既存warning 8件のみ)・
+  `npx vitest run src/utils/reaper2.test.ts src/utils/playerMoveSpeed.test.ts src/utils/enemyUtils.test.ts
+  src/utils/enemyVariant.test.ts`(全green・115件)。
+- 状態変化: §14-4新死神 → 実装中(このpush時点では検収不可。次のWIP pushへ続く)。
+
 ## v0.25.4003 — スラッシャー連撃がタッチで出ない退行を修正(社長報告2026-08-28) 【2026-08-28 18:27 JST】
 - **症状**: 「スラッシャーが連撃うまくできない」(実機=タッチ)。PCでは正常。
 - **真因**: チェーン受付(継続+先行入力v3254)はtriggerCounter(PC直呼び)にしか無く、タッチの入り口
