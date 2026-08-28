@@ -1,5 +1,137 @@
 # Development Log
 
+## v0.25.4007 — PACING_PUZZLE §14-4「新たな死神」実装 着地(実装チャット・Sonnet) 【2026-08-28 19:35 JST】
+
+PACING_PUZZLE.md §14-4(監査反映v2)に基づき実装。前3回のWIP push(v0.25.4004〜4006)の総仕上げ。
+**状態変化: §14-4新死神 → 実装済み(検収待ち)**。
+
+### 実装した仕組み
+- **出現システムは現行のまま維持**(深奥リスク・15分時間抽選・撃破escalation・区域バナー・
+  ゲート抑止)。完全出現の判定を「主個体1体の生死」から「isTerminalReaperな個体が1体でも
+  生きているか」へ広げ、撃破escalationの追加個体が主個体の死亡後に座標更新を失う既存バグを
+  同時に是正した(§14-4-2重大6)。
+- **本体の移動**(`src/utils/reaper2.ts` `stepReaperBody`): プレイヤーへ直進し、縁距離70px
+  (`?rp2dist=`)を切ったら旋回(時計回り固定・`?rp2orbit=`)。速度=`player.speed`(素の実効速度・
+  スキル/スケーター/一時バフを含まない)×`?rp2spd=`。旧ワープ(4秒回り込み)は撤去。
+  `clampRectToPlayableArea`で行ける帯にクランプ(CLAUDE.md MUST)。
+- **技「使者」**: 召喚主(summonerId)が10秒ごと(`?rp2int=`)+1・上限`?rp2max=`(全体で共有の枠)。
+  詠唱中(`REAPER_CAST_MS`=650ms・叩き台)は召喚主だけ静止+SE(`phill-skylight`)。囲み配置は
+  `encircleRadiusPx`(画面対角÷ズーム+余白)+`encirclePoints`(均等配置)、洋館通路(corridorMode)
+  は`corridorEncirclePoints`(左右2点)へ縮退。使者は「現在の」実効速度(バフ込み・毎フレーム参照)
+  ×`?rp2mspd=`で直進追尾。地平線フェード対象外(囲まれている感を維持)。出現時`reaperWarpAlpha`
+  0→1でフェードイン(慣性MUST・既存の型を流用)。召喚主が交代した時は前の召喚主の使者を消す(叩き台)。
+- **被弾**: 本体HP=`?rp2bhp=`(既定66666・倒せる)、体勢値あり(`POSTURE_ELITE_TYPES`へ追加・
+  `?rp2post=`)、被弾KBなし(`canShoveEnemy`が`isTerminalReaper`を最優先で弾く=押し道具含め一切動かない)。
+  使者HP=`?rp2hp=`、接触999(既存damagePlayer経路・裁定済み#9・専用即死ゲートなし)、体勢なし、
+  どの攻撃でもKB(既定量・CD無し=`knockbackCdReady`がhangedmanだけ免疫CDを無視=多段有り裁定済み#8)。
+- **使者の接触死**: KILL!コールアウト+バースト/リング/グロー(`showBossFatalPresentation`と同じ
+  絵の型をfx経由=ヘッドレス安全)を先に見せ、700ms(`MELEE_FINISH_SLOW_MS`)後に死亡演出へ渡す
+  (`src/utils/combatTick.ts`のplayerEnemyCollisions)。
+- **除外リスト(使者)**: 計測(killTelemetry)・カウンター/体勢(体勢なし)・湧き帳簿/ノルマ
+  (`isEnemyCapProtected`/距離リサイクル)・近接フィニッシュ即死(クリ→5秒スタンの5箇所すべて除外)・
+  経験値/ドロップ0(`ENEMY_STATS.hangedman.experienceValue=0`)・スコア(enemiesKilled等)。
+  ★確認#10(実装判断・詳細はPACING_PUZZLE.md §14-4-4): 接触判定は噛みつき(§12)の予告つき台本を
+  経由せず、死神本体/幻影と同じ`isBiteExemptType`(=触れたら終わり枠)へ乗せた。
+- **新絵**: `reaper2-common.png`(死神本体・横切り演出にも流用)/`reaper2-hanged.png`(使者)を
+  `enemyVariant.ts`へ登録(全ステージ共通)。旧絵(reaper-common)は伐採人(logger)が引き続き使用。
+  和名「死神」を継ぐ(死因表示/資料室図鑑/動物園ビューア/enemyVariant/enemyMotion/renderSpec相当の
+  8箇所に登録)。使者=「使者」で新規登録。
+
+### `'reaper'`全grepヒット(114箇所・非テストファイル)の適用/非適用
+実装前に`grep -rn "'reaper'" src --include='*.ts' --include='*.tsx' | grep -v test`で列挙し(114箇所)、
+実装後に同じgrepを再実行して残数を照合した(現在32箇所。うち一部は今回新設したhangedman/POSTURE_ELITE_TYPES
+関連の追加分で、旧114箇所には含まれない。残り全ての「元の114箇所由来の直書き」は下記いずれかへ帰着した)。
+- **適用**(`isReaperFamily`/`isTerminalReaper`/`isHangedman`述語へ集約・全て確認済み):
+  `src/store/gameStore.ts`(約24箇所)/`src/hooks/useGameLoop.ts`(約40箇所)/
+  `src/utils/enemyUtils.ts`(isBiteExemptType/isTrueBossType/isBossType/isArenaSweepProtected/
+  hpMult・dmgMult分岐)/`src/pixi/pixiScene.ts`(横切りテクスチャ/投影影/ボスマーカー/疑似呼吸/
+  被弾光カリング/地平線フェード除外)/`src/utils/renderUtils.ts`(legacy Canvas2D・影/光輪/
+  ボスマーカー4箇所)/`src/utils/directorTick.ts`(上限カリング保護/距離リサイクル除外×2/
+  イベントビット)/`src/utils/katanaAuto.ts`/`escortAdvance.ts`/`marksmanTrap.ts`/`namedEnemy.ts`/
+  `playtestBot.ts`(各1箇所)。
+- **非適用**(意図的に据え置き・理由つき):
+  - データテーブルのリテラル(型名で照合するだけの配列/Set): `SHIJIN_BOSS_TYPES`(useGameLoop.ts)・
+    `LARGE_ZOOM_TYPES`(cameraZoom.ts)・`HEAVY_ENEMY_TYPES`(BenchmarkOverlay.tsx)・
+    `CONSTANT_STRENGTH_TYPES`/`POSTURE_ELITE_TYPES`(hangedman/reaperを追加はしたが述語化はしない=
+    データそのものだから)。
+  - `spawnEnemyAt('reaper', ...)`/`spawnEnemyAt('hangedman', ...)`(useGameLoop.ts): 生成する型を
+    指定しているだけで「チェック」ではない。
+  - `src/pixi/pixiScene.ts`の`stageEnemyVisualMul(type: string)`: private引数がEnemyType型で
+    ないため直接比較のまま(isReaperFamilyはEnemyType専用)。
+  - `src/utils/renderUtils.ts`の`case 'reaper':`(procedural描画の分岐identity・switch caseは
+    predicateで置き換える対象ではない)。
+  - `src/utils/homing.ts`/`src/utils/subWeaponOwner.ts`: プレイヤー/守護霊で共有する構造的型
+    (`type: string`)の汎用モジュール。EnemyTypeへ結合させない設計を優先し、意図的に残した。
+  - `src/utils/enemyUtils.ts`の`getEnemyColor`switch内`case 'reaper':`(defaultフォールバック
+    済みでhangedmanは自動的に赤扱い=素の敵体の色文法どおり)。
+  - スキルID('reaper'=近接フィニッシュ全体フィニッシュスキル)/`ChronicleKind`/`SkillKey`型宣言/
+    `ALCHEMY_RARE_TYPE`(意図的に死神ビジュアルを指定=正しい代入であって「チェック」ではない)/
+    `zooViewer.ts`(データ登録・reaper2-common/reaper2-hangedへ更新済み)は全て**同じ単語だが
+    別ドメイン**(社長裁定・敵タイプの死神とは無関係)につき対象外。
+  - `src/utils/enemyUtils.ts`のisReaperFamily/isTerminalReaper自身の定義(=正本)。
+
+### 実効速度の純関数(§14-4-2 重大4/5)
+`src/utils/playerMoveSpeed.ts`の`computeEffectiveMoveSpeed`。movePlayer(gameStore.ts)の速度合成
+(dashOverride/sliding/reloading/ランプ/トラップ頭打ち/PvP減速)をそのまま切り出した(挙動不変・
+移設のみ)。毎tick`player.effectiveMoveSpeed`へ保存し、死神の技「使者」の追尾速度(バフ込み×1.2)の
+元にする。死神**本体**は仕様どおり`player.speed`(素の足=恒久強化のみ・一時バフ除外)を直接使う——
+旧実装(`getReaperChaseSpeed(player.speed)`)も同じ`player.speed`を渡していたため、**この値そのものは
+変わっていない**。設計書が「既存バグ」と呼んでいたのは主に**旧chaseSpeedMult(0.9)による乗算経路**
+(ワープと組み合わせた別の速度設計)であり、今回はワープごと廃止して直進+70px旋回の新式(`?rp2spd=`)
+に置き換えたため、この経路の値そのものが一新されている(=旧経路との数値比較はもう成立しない)。
+
+### 囲み半径の式(§14-4-3 中8/中9)
+`encircleRadiusPx(screenW, screenH, spawnZoomTarget, marginPx) = hypot(screenW/2, screenH/2) / spawnZoomTarget + marginPx`
+(ズームで割る=通常湧きのspawnBounds拡張の作法。最大引き0.40でも画面内にポップしない)。
+
+### テスト用ツマミ一覧(§14-4-5・全て`src/config/reaper.ts`の`REAPER2_CONFIG`)
+| ツマミ | 既定 | 意味 |
+|---|---|---|
+| `?rp2=1` | ─ | 出撃直後にリスク最大=即・完全出現(テスト専用) |
+| `?rp2dist=` | 70 | 本体の旋回開始の縁距離(px) |
+| `?rp2orbit=` | 0.667 | 本体の旋回中の速度倍率 |
+| `?rp2spd=` | 1.0 | 本体の速度倍率(素の実効速度に対して) |
+| `?rp2mspd=` | 1.2 | 使者の速度倍率(プレイヤー現在速に対して) |
+| `?rp2hp=` | 2000 | 使者の耐久 |
+| `?rp2kb=` | 60 | 使者のノックバック量(px相当) |
+| `?rp2int=` | 10(秒) | 使者が増える間隔 |
+| `?rp2max=` | 5 | 使者の最大数 |
+| `?rp2scale=` | 1 | 本体の表示スケール(pixiScene・実機で調整前提) |
+| `?rp2bhp=` | 66666 | 本体のHP |
+| `?rp2post=` | 120 | 本体の体勢値 |
+| `?rp2cdmg=` | 77 | 本体の接触ダメージ |
+
+### テスト
+- 新設純関数(reaper2.ts): `stepReaperBody`/`encircleRadiusPx`/`encirclePoints`/
+  `corridorEncirclePoints`/`stepServantPopulation`/`knockbackCdReady`——17件(`reaper2.test.ts`)。
+- 実効速度純関数: `computeEffectiveMoveSpeed`——11件(`playerMoveSpeed.test.ts`、movePlayerの
+  分岐と1:1対応=バフ合成の等価性を検証)。
+- 既存テストの回帰確認(vitest run、関連ファイルを明示指定): enemyUtils/enemyVariant/directorTick/
+  katanaAuto/escortAdvance/marksmanTrap/namedEnemy/playtestBot/combatTick/bossPosture/enemyBite/
+  enemyStageDifficulty/directorTickCorridorClamp/bossFullStunCoverage/killCorpse/weaponUtils/
+  botSkill/combatCritParity/sim/meleeWindup/phantomTick/bossPractice/ghostDriver/bountyTick/
+  bossLockSim/idolTick/angelCounter/bossTelegraph——**33ファイル・888件・全green**。
+- 述語の網羅(reaper直書きの残数)は上の「全grepヒットの適用/非適用」節に列挙(機械テスト化は
+  Node fs依存がこのプロジェクトのtsconfigでは型解決できずtypecheckを壊すため断念し、
+  この手動監査列挙で代替した)。
+
+### 自己点検
+- 憲法第4条(初心者ゾーン不可侵)・第5条(緩を荒らさない)への抵触なし(死神の出現条件は§5.21由来の
+  現行システムを1つも変えていない=深奥/時間抽選のしきい値・確率は無改変)。
+- §14-4-6「ではない」条件を遵守: ボス戦UI(体勢ゲージ表示以外のカットイン・専用BGM)は追加せず、
+  30:00より前の出現条件も変えていない。数値は全て`REAPER2_CONFIG`経由のツマミで実機調整可能。
+
+### ★未確認事項・引き継ぎ
+- ★確認#10(接触判定の経路選択)は実装判断であり社長裁定ではない。詳細・違えば直す先は
+  PACING_PUZZLE.md §14-4-4参照。
+- 近接フィニッシュ即死の除外は5箇所(クリ→5秒スタンの発生源)を確認して塞いだが、
+  DoT/デコイ/地雷等の被弾クリ経路に見落としが無いかは実機での挙動確認を推奨する。
+- 実機でのビジュアル確認(新アートの見え方・`?rp2scale=`の適正値・使者の囲み配置の見え方)は
+  未実施(社長指示で実機確認は社長が行う運用のため)。
+
+- 検証: `npm run typecheck`(0エラー)・`npm run lint`(0エラー・既存warning 8件のみ・エラーなし)。
+- 状態変化: §14-4新死神 → 実装済み(検収待ち)。
+
 ## v0.25.4006 — PACING_PUZZLE §14-4「新たな死神」実装 途中経過push③(実装チャット・Sonnet) 【2026-08-28 19:32 JST】
 
 **WIP push**(見出し・内容は完了時に出荷版へ打ち直す。ゲーム内容の変更はまだ無い)。残っていた
