@@ -6,7 +6,7 @@ import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
   skillAttackShooterGunMult, skillRunnerSpeedMult, skillSeekerProcChance, isSeekerActive,
   skillMagnetAmmoRangeMult, skillOverclockChance, skillLastMagazineMult,
   // v0.25.3300 覚醒(Lv3)効果の純関数
-  skillComboMasterMult, huntingMeleeRadius, runnerAwakenDamageMult, skillExplosionKbMult,
+  skillComboMasterMult, huntingMeleeRadius, runnerAwakenDamageMult, RUNNER_AWAKEN_RAMP_FRAC_MIN, skillExplosionKbMult,
   sniperGunMult, MELEE_RADIUS,
   // v0.25.3303 カウンターマスター覚醒
   counterMasterAwakenBuffPatch, COUNTER_MASTER_AWAKEN_BUFF_MS, useGameStore,
@@ -23,6 +23,7 @@ import { checkPlayerPickupCollisions } from '../utils/collisionUtils';
 import { berserkerAwakenFireRateMult } from '../utils/weaponUtils';
 import { bomberMiniCount, buildBomberMinis } from '../utils/bomberScatter';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
+import { RAMP_FULL_MS } from '../utils/speedRamp';
 import type { Pickup } from '../types/game';
 import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
   gachaPullCost, gachaPullCostFor, GACHA_PRICE_STEPS, GACHA_PULL_COST_CAP, GACHA_REFUND_BY_RARITY,
@@ -331,9 +332,12 @@ describe('覚醒(Lv3)効果 v0.25.3300', () => {
     expect(buildBomberMinis(0, 0, 't', 1000, () => 0.5, 4)).toHaveLength(4);
   });
   it('runner覚醒: 加速中(ランプ半分以上)は被ダメ×0.8', () => {
-    const fast = { ...withSkill('runner', 3), speedRampSustainMs: 800 } as Player;
-    const slow = { ...withSkill('runner', 3), speedRampSustainMs: 700 } as Player;
-    const lv2 = { ...withSkill('runner', 2), speedRampSustainMs: 1500 } as Player;
+    // しきい値はRAMP_FULL_MSから導出(写経しない)。仕様1bで満額1500→1000になった時、
+    // 800/700の直書きが半分(500)を両方跨いで決定論的に赤くなった教訓(v0.25.4011)。
+    const half = RAMP_FULL_MS * RUNNER_AWAKEN_RAMP_FRAC_MIN;
+    const fast = { ...withSkill('runner', 3), speedRampSustainMs: half + 50 } as Player;
+    const slow = { ...withSkill('runner', 3), speedRampSustainMs: half - 50 } as Player;
+    const lv2 = { ...withSkill('runner', 2), speedRampSustainMs: RAMP_FULL_MS } as Player;
     expect(runnerAwakenDamageMult(fast)).toBeCloseTo(0.8);
     expect(runnerAwakenDamageMult(slow)).toBeCloseTo(1.0);
     expect(runnerAwakenDamageMult(lv2)).toBeCloseTo(1.0);

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4011',
+    items: [
+      'ゲーム内容の変更はありません(開発内部: v0.25.4008の速度ランプ変更に追従できていなかったテストを修正)。',
+    ],
+  },
+  {
     version: '0.25.4010',
     items: [
       '死神が2倍の大きさになりました(社長裁定)。',
