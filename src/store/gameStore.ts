@@ -11,6 +11,11 @@ import { bladeNativeAngle } from '../utils/bladeArt';
 import { applyGhostBuildToPlayer, soloGhostRequested } from '../utils/soloGhost';
 import { loadPlayerProfile } from '../utils/playerTraits';
 import { runClocks, resetRunClocks } from '../utils/runClocks';
+import type { EndingSoldier, EndingPhillState } from '../utils/endingScene'; // ENDING_SCENE.md 演出仕様v2
+import {
+  createInitialEndingSoldiers, createInitialEndingPhill, stepEndingSoldier, stepEndingPhill,
+  reenterEndingSoldierIfOffscreen,
+} from '../utils/endingScene';
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
@@ -2043,6 +2048,16 @@ const camNum = (key: string, def: number): number => {
   const n = v != null ? Number(v) : NaN;
   return Number.isFinite(n) ? n : def;
 };
+// ENDING_SCENE.md 演出仕様v2 §9(叩き台): 常在兵士数。実機調整用に?endsoldiers=で上書き。
+export const ENDING_SOLDIER_COUNT = Math.max(0, Math.round(camNum('endsoldiers', 8)));
+// §9: 初期配置の広がり(px)。出撃直後に画面外まで一様に散らす(1点に固まって見えないように・叩き台)。
+export const ENDING_SOLDIER_SPAWN_RIGHT_X = camNum('endsoldx', 2600);
+export const ENDING_SOLDIER_SPAWN_SPAN_X = camNum('endsoldspan', 2200);
+// §9(監査B-1対応): 左画面外へ抜けた兵士を右から再投入する境界。「ズーム外周(=1/ZOOM_MIN_ABS)+
+// マージン」で、最大まで引いた画面(?zoomlock=0.4)でも境界の外(見えない位置)で入れ替わるようにする
+// (CLAUDE.md「ズーム引き考慮」)。
+export const ENDING_SOLDIER_REENTRY_MARGIN_PX = camNum('endsoldmargin', 200);
+export const ENDING_SOLDIER_REENTRY_JITTER_PX = camNum('endsoldjitter', 300);
 export const CAMERA_FOLLOW_TAU = camNum('camtau', 0.16);          // 追従遅延(秒)。わずかな重さ。範囲0.08〜0.16
 export const CAMERA_DANGER_TAU = camNum('camdanger', 0.08);       // 危険時(接近戦)の追従遅延(秒)。安定。範囲0.04〜0.08
 export const CAMERA_RETURN_TAU = camNum('camret', 0.20);          // 停止時に先読みオフセットを戻す時定数(秒)。ピタ止まり回避。範囲0.12〜0.20
@@ -3036,7 +3051,10 @@ export const isAttackLocked = (): boolean => {
 
 export const isInputLocked = (): boolean => {
   const s = useGameStore.getState();
-  return s.isPaused || s.player.health <= 0 || s.corridorRunInActive || isGameTimeStopped();
+  // エンディング(仮組み)は「実際はプレイヤーもいない見せるだけのシーン」(裁定2026-08-28)。
+  // プレイヤー実体=不可視のカメラ台車(ENDING_SCENE.md 演出仕様v2 §4)なので、corridorRunInActive
+  // (自己解除する洋館の走り込み)とは別に、farBackdrop==='ending'の間は常時ロックする。
+  return s.isPaused || s.player.health <= 0 || s.corridorRunInActive || s.farBackdrop === 'ending' || isGameTimeStopped();
 };
 
 // 松明ドロップ率/内訳のしきい値は pityDirector.ts の BASE_DROP_TUNING(0.42/0.5/0.75/0.9)へ移動
@@ -4896,6 +4914,10 @@ interface GameState {
   // 制圧イベント: 4拠点(東西南北)。suppressionActive 時のみ有効(ステージ1メインミッション等)。
   baseSites: BaseSite[];
   escorts: EscortSoldier[];      // 護衛軍人NPC(4人・東西南北担当)。HPなし・前進&射撃&10秒占拠で解放。
+  // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2 §3): 専用配列。escortsに相乗りしない
+  // (セリフ4関数はtutorialしか見ておらず、混ぜると名前付きNPCが喋る事故になるため)。
+  endingSoldiers: EndingSoldier[];
+  endingPhill: EndingPhillState | null; // フィル(=プレイヤー実体)の状態機械。null=エンディング外。
   suppressionActive: boolean;    // 制圧イベント中か(通常は false=拠点なし)
   suppressionCaptureCount: number; // 制圧した累計回数(base-capture SE 検出用。軍人名簿indexはランダム割当)
   safeBaseId: string | null;     // 武器商人が現在いる拠点(=安全地帯。HP回復・陥落しない)
@@ -5539,6 +5561,10 @@ interface GameState {
   requestStoryReturnPrompt: () => boolean;              // 通常ストーリーの帰還地点内で操作を離したら確認を開く
   answerStoryReturnPrompt: (confirmed: boolean) => void;
   updateSuppression: (deltaTime: number) => { x: number; y: number }[]; // 毎フレーム: 制圧イベント。返り値=このフレームに護衛NPCが発砲した位置(NPC銃声の距離減衰再生用)
+  // 毎フレーム: エンディング(仮組み)の兵士/フィルの状態機械を1歩進める(ENDING_SCENE.md 演出仕様v2)。
+  // shots=このフレームに発砲した兵士の位置(SE距離減衰再生用)・phillVelMult=フィルの現在速度係数
+  // (呼び出し側=useGameLoopがカメラ台車の合成入力にこの倍率を掛ける)。farBackdrop!=='ending'ならno-op。
+  updateEndingScene: (deltaTime: number) => { shots: { x: number; y: number }[]; phillVelMult: number };
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
   pressLabButton: (id: string) => void;                 // ボタン押下→対応ドア解錠
   endIntroDialogue: () => void;   // 登場セリフ終了(ゲーム開始へ)
@@ -5902,6 +5928,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   storyReturnPromptVisible: false,
   baseSites: createBaseSites(),
   escorts: [],
+  endingSoldiers: [],
+  endingPhill: null,
   suppressionActive: false,
   suppressionCaptureCount: 0,
   safeBaseId: null,
@@ -17257,6 +17285,34 @@ export const useGameStore = create<GameState>((set, get) => ({
     return escortShots.map(s => ({ x: s.x, y: s.y }));
   },
 
+  // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2)。兵士(§1/§7/§9)とフィル(§2/§4/§8)の状態機械を
+  // 1歩進める純関数呼び出しをまとめただけ(判定は持たない=観賞シーン)。シミュレーションはここと
+  // useGameLoop側のみで行い、pixiScene は結果を読んで描くだけ(CLAUDE.md「Rendering vs. game logic」)。
+  updateEndingScene: (deltaTime) => {
+    const state = get();
+    if (state.farBackdrop !== 'ending') return { shots: [], phillVelMult: 1 };
+    const dtMs = deltaTime * 1000;
+    const now = state.gameTime;
+    // 兵士: 状態機械を1歩進め、左画面外(ズーム外周+マージン)へ抜けたら右から再投入(§9・監査B-1)。
+    const overscanHalfW = (state.gameBounds.width / 2) / ZOOM_MIN_ABS + ENDING_SOLDIER_REENTRY_MARGIN_PX;
+    const leftBoundX = state.player.x - overscanHalfW;
+    const rightEdgeX = state.player.x + overscanHalfW;
+    const shots: { x: number; y: number }[] = [];
+    const nextSoldiers = state.endingSoldiers.map(s => {
+      const stepped = stepEndingSoldier(s, dtMs, now);
+      if (stepped.lastShotAt === now && stepped.lastShotAt !== s.lastShotAt) shots.push({ x: stepped.x, y: stepped.y });
+      return reenterEndingSoldierIfOffscreen(stepped, leftBoundX, rightEdgeX, ENDING_SOLDIER_REENTRY_JITTER_PX);
+    });
+    // フィル(=プレイヤー実体・不可視のカメラ台車): 次の倒れ兵士への接近/救護の状態機械(§4/§8)。
+    // 位置はプレイヤーの中心Xを使う(足元Xだと幅ぶんズレる)。
+    let phillVelMult = 1;
+    const phill = state.endingPhill;
+    const nextPhill = phill ? stepEndingPhill(phill, state.player.x + state.player.width / 2, dtMs) : null;
+    if (nextPhill) phillVelMult = nextPhill.velMult;
+    set({ endingSoldiers: nextSoldiers, endingPhill: nextPhill });
+    return { shots, phillVelMult };
+  },
+
   openLabDoor: (id) => {
     set(state => ({ labDoors: state.labDoors.map(d => d.id === id ? { ...d, open: true } : d) }));
   },
@@ -18141,7 +18197,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // チュートリアル(地下洞窟)もヘリ降下演出なし(社長指示v0.25.1818「何もかも無し。全てイベントで特別仕様のみ」)。
         // 洋館(corridorMode)はヘリ登場なし=走り込み入場(v0.25.2110・社長指示)。
         // リトライ(もう一度プレイ)のM7はヘリも無し=即ボス(社長指示v0.25.2462)。
-        introUntil: (state.danceTestMode || farBackdrop === 'tutorial' || corridorMode
+        // エンディング(仮組み)もヘリ登場なし(ENDING_SCENE.md 演出仕様v2 §5)。
+        introUntil: (state.danceTestMode || farBackdrop === 'tutorial' || farBackdrop === 'ending' || corridorMode
           || (state.pendingRetryRun && getSelectedStageId() === 'stage-7')) ? 0 : -1,
         corridorRunInActive: corridorMode,
         introDialogueActive: false,
@@ -18246,6 +18303,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         baseSites: (corridorMode || farBackdrop === 'tutorial' || farBackdrop === 'ending') ? [] : createBaseSites(),
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
         escorts: escortRoster,
+        // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2 §3/§9): 専用配列を新ランごとに初期化
+        // (2周目に前回の兵士が残らないように)。escortsとは別配列(相乗りしない)。
+        endingSoldiers: farBackdrop === 'ending'
+          ? createInitialEndingSoldiers(ENDING_SOLDIER_COUNT, spawnTL.x + ENDING_SOLDIER_SPAWN_RIGHT_X, ENDING_SOLDIER_SPAWN_SPAN_X)
+          : [],
+        endingPhill: farBackdrop === 'ending' ? createInitialEndingPhill() : null,
         // 出撃時セリフ: 屋外(護衛NPCが居る出撃)のみ、実ロスターの1人をランダムで予約(フェイザー等の差し替えにも追従)。
         npcDialogue: null,
         npcDialogueNextAt: 0,

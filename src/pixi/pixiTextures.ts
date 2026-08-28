@@ -519,6 +519,18 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'npc/medic-walk-1', scaleMode: 'nearest' },
       { name: 'npc/medic-walk-2', scaleMode: 'nearest' },
       { name: 'npc/medic-walk-3', scaleMode: 'nearest' },
+      // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2)。フィル歩行3コマ+救護6コマ+倒れ兵士1枚
+      // (受領2026-08-28。ドット等倍・下端=接地でトリム済み)。
+      { name: 'npc/phill-walk-0', scaleMode: 'nearest' },
+      { name: 'npc/phill-walk-1', scaleMode: 'nearest' },
+      { name: 'npc/phill-walk-2', scaleMode: 'nearest' },
+      { name: 'npc/phill-heal-0', scaleMode: 'nearest' },
+      { name: 'npc/phill-heal-1', scaleMode: 'nearest' },
+      { name: 'npc/phill-heal-2', scaleMode: 'nearest' },
+      { name: 'npc/phill-heal-3', scaleMode: 'nearest' },
+      { name: 'npc/phill-heal-4', scaleMode: 'nearest' },
+      { name: 'npc/phill-heal-5', scaleMode: 'nearest' },
+      { name: 'npc/soldier-fallen-0', scaleMode: 'nearest' },
       { name: 'npc/joseph-0', scaleMode: 'nearest' },
       { name: 'npc/joseph-1', scaleMode: 'nearest' },
       { name: 'npc/joseph-2', scaleMode: 'nearest' },    // 3コマ歩行(社長提供)

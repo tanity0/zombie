@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4034',
+    items: [
+      'エンディングシーン(開発中・?ending=1): 兵士たちが不規則に歩いては立ち止まって発砲し、フィルが逆方向へ歩いて倒れた兵士を救護していく演出が入りました。',
+    ],
+  },
+  {
     version: '0.25.4033',
     items: [
       'HPオーブの器を元のガラス描画(モックの形)に戻しました(支給素材の輪は撤去)。',

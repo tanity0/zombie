@@ -27,6 +27,9 @@ import type {
   BloodSpike, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
   GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショットの渦(v0.25.3276)
 } from '../types/game';
+// ENDING_SCENE.md 演出仕様v2: 兵士/フィルの状態機械(純関数・シミュレーション)はここでは読むだけ。
+import type { EndingSoldier, EndingPhillState } from '../utils/endingScene';
+import { fallenSoldiersInRange } from '../utils/endingScene';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
   useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
@@ -980,6 +983,17 @@ const ENDING_ASH_COUNT = Math.max(0, Math.floor(tsNum('endash', 28)));
 // エンディングの地平帯(ending-horizon-ruins=遠景の手前側の森/廃墟シルエット)の縮小係数
 // (社長指示2026-08-28「遠景森 手前のもっと小さく」。0.65=叩き台・?endhz=で実機調整)。
 const ENDING_HORIZON_SCALE = Math.max(0.2, tsNum('endhz', 0.65));
+// ENDING_SCENE.md 演出仕様v2 §1(発砲の絵。実在部品はSE=npc-gunfireのみ・マズルフラッシュ/トレイル/
+// 薬莢/反動は全てコード生成)。数値は全て叩き台・実機調整用ツマミ付き。
+const ENDING_MUZZLE_FLASH_MS = Math.max(1, tsNum('endmuzzle', 100)); // §1「80〜120ms」
+const ENDING_TRACER_MS = Math.max(1, tsNum('endtracer', 120));       // §1「短命の黄色い線(120ms)」
+const ENDING_TRACER_LEN_PX = Math.max(0, tsNum('endtracerlen', 46));
+const ENDING_SHELL_LIFE_S = Math.max(0.05, tsNum('endshell', 0.4));  // 薬莢が後方へ小放物線を描く時間
+const ENDING_RECOIL_MS = Math.max(1, tsNum('endrecoil', 140));       // §7「発砲の瞬間、体が2〜3px後ろへ跳ねて戻る」
+const ENDING_RECOIL_PX = Math.max(0, tsNum('endrecoilpx', 3));
+const ENDING_SHOT_FX_CAP = 48; // トレイル/薬莢の同時上限(pooled・負荷1/10=CLAUDE.md性能規律)
+// §8: 倒れ兵士の描画範囲マージン(ズーム外周+これ・?zoomlock=0.4でも途切れないように=CLAUDE.mdズーム掟)。
+const ENDING_FALLEN_DRAW_MARGIN_PX = Math.max(0, tsNum('endfallenmargin', 200));
 // 横位置(画面幅比・叩き台=等間隔)。位相(phase)は本ごとにずらしてコマが揃わないようにする。
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
@@ -3647,6 +3661,16 @@ export class PixiScene {
   private baseSoldierFace = new Map<string, { px: number; face: number }>(); // 兵士の向き(前フレx差分で決定)
   private escortSprites = new Map<string, Sprite>(); // 護衛軍人NPC(前進・射撃)の立ち絵。shooter 素材を流用。
   private escortBlendSprites = new Map<string, Sprite>(); // クロスフェード対象NPCの「次コマ」重ね描き(滑らか化・視覚のみ)。
+  // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2): 兵士(§1/§9)・フィル(§2/§4)・倒れ兵士(§8)の描画専用プール。
+  private endingSoldierSprites = new Map<string, Sprite>(); // 兵士立ち絵(rescue/shooter 流用・2コマ歩行)
+  private endingSoldierShotSeen = new Map<string, number>(); // id→前フレームで見た lastShotAt(発砲の edge 検知用)
+  private endingMuzzleFx: { x: number; y: number; bornAt: number }[] = []; // トレイル+薬莢の元になる短命リスト(プールで上限)
+  private endingShellFx: { x: number; y: number; vx: number; vy: number; bornAt: number }[] = [];
+  private endingShotFxGfx = new Graphics(); // トレイル/薬莢の共有描画(毎フレームclear+fill・pooled sprite方針と同型)
+  private endingPhillSprite: Sprite | null = null; // フィル専用スプライト(=プレイヤー実体の位置に描く)
+  private endingPhillScale: number | null = null; // walk-0基準の1系列1スケール(監査A-2・コマごとに正規化しない)
+  private endingFallenSprites = new Map<number, Sprite>(); // 倒れ兵士(indexキー・ワールド固定=描画のみ)
+  private endingFallenShadowGfx = new Graphics(); // 倒れ兵士の専用楕円ソフト影(シルエット焼きは使わない・§6)
   private rescueFace = new Map<string, { vx: number; face: number }>(); // 向きの平滑化(EMA)＋ヒステリシス。パタパタ反転防止
   private enemyJumpHop = new Map<string, number>(); // ジャンプ中の最新ホップ高(px)。盾ブロック時の落下補間の起点に使う
   private enemyBlockFall = new Map<string, { from: number; start: number }>(); // 盾で弾かれて空中から落ちる演出(from→0へ補間)
@@ -4631,6 +4655,7 @@ export class PixiScene {
       this.armoryGfx, // §6.24 M48: 武器庫サークル(地面・world座標。病院と同じ)
       this.hunterVisionGfx, // ハンター視界範囲(薄紫・地面・world座標)
       this.pumpkinTelegraph,
+      this.endingFallenShadowGfx, // エンディング(仮組み)倒れ兵士の専用楕円ソフト影(§6)
       this.glowGroundLayer, // ★§4手順1: 強glowの光だまり(プレイヤーの光だまりより下=先に敷く)
       this.playerGroundPool,
       this.playerLight,
@@ -4716,6 +4741,7 @@ export class PixiScene {
     this.eventNpcView.addChild(this.eventNpcGfx, this.eventNpcGlowBokeh, this.eventNpcGlow, this.eventNpcSprite);
 
     this.L.effectLayer.addChild(this.playerFx);
+    this.L.effectLayer.addChild(this.endingShotFxGfx); // エンディング(仮組み)兵士の発砲トレイル/薬莢(§1)
     // 照準サークルは uiLayer(研究所の暗幕/森の暗転より上=環境光の影響外)へ。screen座標で描画する。
     this.L.uiLayer.addChild(this.reticleGfx);
     this.L.uiLayer.addChild(this.rescueSweatGfx); // 汗マーク=環境光の影響外(uiLayer)
@@ -7907,7 +7933,7 @@ export class PixiScene {
     this.syncFlareGun(s.flareGunFlares, s.gameTime, now); // フレアガン(飛翔→着弾中3秒の火・molotovの火を流用)
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
-    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now, s.effects, s.breakableProps);
+    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now, s.effects, s.breakableProps, s.endingSoldiers);
     this.syncShadowProbe(s.camera, now, s.effects); // 計測専用(ベンチ以外では count=0 で即 return)
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -8031,13 +8057,25 @@ export class PixiScene {
     this.syncHunterVision(s.enemies, now);
     this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
     this.drawSupportSniper(s.supportSniperNpc, s.gameTime); // 援護射撃NPC(非出撃の軍人立ち絵・画面縁のスライドイン→発射→後退)
+    // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2)。farBackdrop!=='ending'では endingSoldiers=[]/
+    // endingPhill=null なので各関数は自然に無visible化する(専用ゲートを増やさない=既存の空配列作法)。
+    this.drawEndingSoldiers(s.endingSoldiers, now);
+    this.updateEndingShotFx(s.endingSoldiers, now);
+    this.drawEndingPhill(s.endingPhill, s.player);
+    if (s.farBackdrop === 'ending') {
+      const overscanHalfW = (s.gameBounds.width / 2) / ZOOM_MIN_ABS + ENDING_FALLEN_DRAW_MARGIN_PX;
+      this.drawEndingFallenSoldiers(s.player.x - overscanHalfW, s.player.x + overscanHalfW);
+    } else if (this.endingFallenSprites.size > 0) {
+      this.drawEndingFallenSoldiers(0, -1); // 空区間=mark-and-sweepで全プルーン(farBackdropが変わった時の後始末)
+    }
     // ★realNow を渡す(v0.25.3168): 崩壊は**ヒットストップ中**に見せる演出なので、凍る `now` を
     // 渡すと死体自身の揺れ(sin)と明滅が**固定値**になり「揺れて崩れる」(v0.25.3072)が死ぬ。
     this.syncBossCorpse(s.bossCorpse, realNow);
     this.syncGiantDive(s.enemies, s.gameTime);
     // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
+    // エンディング(仮組み)は無限ループの観賞シーンなので除外(ENDING_SCENE.md 演出仕様v2 §5)。
     this.syncDeepZoneGrade(
-      !s.indoorMode && s.stageTheme !== 'lab' && !s.rhythm.active,
+      !s.indoorMode && s.stageTheme !== 'lab' && !s.rhythm.active && s.farBackdrop !== 'ending',
       Math.hypot(s.player.x + s.player.width / 2, s.player.y + s.player.height / 2),
       now,
       s.redNight?.phase === 'active',
@@ -11002,7 +11040,8 @@ export class PixiScene {
     baseSites: BaseSite[] = [],
     now = 0,
     effects: VisualEffect[] = [],
-    props: BreakableProp[] = []
+    props: BreakableProp[] = [],
+    endingSoldiers: EndingSoldier[] = [],
   ) {
     // ?shadow=0 診断(社長v0.25.1558): 全アクター足影オフ。両実装のプール影を全破棄して以降1枚も置かない。
     if (ACTOR_SHADOWS_DISABLED) {
@@ -11014,13 +11053,15 @@ export class PixiScene {
     }
     if (SILHOUETTE_SHADOWS_DISABLED) {
       if (this.shadowPoolV9.size > 0) this.clearShadowPoolV9(); // 経路切替時に新プールの残骸を消す
+      // ★エンディング(仮組み)は既定(V9)経路のみ対応。旧実装(?silshadow=0)はA/B比較用の診断経路
+      // なので、影が一部欠けても実害は無い(既定経路が正)。
       this.syncShadowsLegacy(player, enemies, summons, projectiles, escorts, rescueSurvivors, baseSites, now);
       return;
     }
     if (this.shadowPool.size > 0) {
       for (const [id, sp] of this.shadowPool) { sp.destroy(); this.shadowPool.delete(id); } // 経路切替時に旧プールの残骸を消す
     }
-    this.syncShadowsV9(player, enemies, summons, projectiles, escorts, rescueSurvivors, baseSites, now, effects, props);
+    this.syncShadowsV9(player, enemies, summons, projectiles, escorts, rescueSurvivors, baseSites, now, effects, props, endingSoldiers);
   }
 
   /**
@@ -11204,6 +11245,7 @@ export class PixiScene {
     now: number,
     effects: VisualEffect[],
     props: BreakableProp[],
+    endingSoldiers: EndingSoldier[] = [],
   ) {
     this.drainSilhouetteQueue(); // 裁定D
 
@@ -11255,7 +11297,9 @@ export class PixiScene {
     // ★致命1修正: `drawPlayer` は `introOffY=0`(飛び降り演出は廃止済み)で1pxも持ち上げていないため、
     // heliAboveAt由来の高さ計算は「廃止済み演出の残骸」で誤り=丸ごと削除(heightPxは常に0)。
     // 代わりに、本体がα0の間は影もα0にする(introFadeを shadowFade に掛ける)。
-    {
+    // エンディング(仮組み)はプレイヤー本体を非表示にしてフィル専用スプライトを描く
+    // (ENDING_SCENE.md 演出仕様v2 §4)。プレイヤー自身の影も出さない(下のフィル影が代わりに立つ)。
+    if (this.currentFarKey !== 'ending') {
       const pf = playerFootBox(player);
       const disp = this.actorDisplaySize(this.playerView);
       const rawW = disp?.w ?? pf.boxW * 0.55;
@@ -11407,6 +11451,32 @@ export class PixiScene {
         rawW: w, rawH: Math.abs(escSp.height), texture: escSp.texture,
         alpha: ha, flip: escSp.scale.x < 0,
       });
+    }
+    // ---- エンディング(仮組み)の兵士・フィル(既存の護衛と同じ接地影のplace()に相乗り・§6) ----
+    for (const es of endingSoldiers) {
+      const ha = this.horizonActorAlpha(es.y);
+      if (ha <= 0) continue;
+      const esSp = this.endingSoldierSprites.get(es.id);
+      if (!esSp || esSp.visible === false) continue;
+      const w = Math.abs(esSp.width);
+      if (w <= 0) continue;
+      place({
+        id: 'esold:' + es.id, x: es.x, y: es.y,
+        rawW: w, rawH: Math.abs(esSp.height), texture: esSp.texture,
+        alpha: ha, flip: esSp.scale.x < 0,
+      });
+    }
+    if (this.currentFarKey === 'ending' && this.endingPhillSprite?.visible) {
+      const phSp = this.endingPhillSprite;
+      const ha = this.horizonActorAlpha(phSp.y);
+      const w = Math.abs(phSp.width);
+      if (ha > 0 && w > 0) {
+        place({
+          id: 'endphill', x: phSp.x, y: phSp.y,
+          rawW: w, rawH: Math.abs(phSp.height), texture: phSp.texture,
+          alpha: ha, flip: phSp.scale.x < 0, scaleMult: PLAYER_SHADOW_SCALE,
+        });
+      }
     }
     // ---- 救助NPC(退場フェード=savedAt) ----
     for (const s of rescueSurvivors) {
@@ -12486,6 +12556,10 @@ export class PixiScene {
       }
     }
     this.drawPlayer(this.playerView, player, gameTime, now);
+    // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2 §2/§4「playerTextureNameの8コマ分岐に
+    // 3コマ素材を通さない」): プレイヤー本体+武器/背負い物等の重ね絵を丸ごと非表示にし、
+    // 代わりにフィル専用スプライト(drawEndingPhill)を同じ位置(=カメラ台車)に描く。
+    this.playerView.container.visible = this.currentFarKey !== 'ending';
     this.syncShadowClone(player);
 
     // Enemies (mark-and-sweep pool)
@@ -22270,6 +22344,152 @@ export class PixiScene {
         const bl = this.escortBlendSprites.get(id);
         if (bl) { bl.destroy(); this.escortBlendSprites.delete(id); }
       }
+    }
+  }
+
+  // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2 §1/§9)兵士の立ち絵。rescue/shooter素材を流用
+  // (2コマ歩行・常に左向き=右→左に歩き、立ち止まっても左の画面外の戦場へ発砲する)。
+  // シミュレーション(x/y/phase/velMult/lastShotAt)は endingScene.ts の純関数が決め、ここは読んで描くだけ。
+  private drawEndingSoldiers(soldiers: EndingSoldier[], now: number) {
+    const seen = new Set<string>();
+    const walkFrame = Math.floor(now / PixiScene.RESCUE_WALK_FRAME_MS) % 2;
+    for (const s of soldiers) {
+      seen.add(s.id);
+      let sp = this.endingSoldierSprites.get(s.id);
+      if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.endingSoldierSprites.set(s.id, sp); }
+      const moving = s.velMult > 0.05 && (s.phase === 'walk' || s.phase === 'decel' || s.phase === 'accel');
+      const tex = getTexture(`rescue/shooter-${moving ? walkFrame : 0}`) ?? getTexture('rescue/shooter-0');
+      if (!tex) { sp.visible = false; continue; }
+      sp.texture = tex;
+      const sc = this.humanNpcScale(tex.width, tex.height, s.y);
+      sp.scale.set(-sc, sc); // 常に左向き(faceSign=-1)
+      // 発砲の反動(§1/§7): 撃った瞬間に2〜3px後ろ(=右)へ跳ね、ease-outで戻る(慣性=瞬間停止しない)。
+      const sinceFire = now - s.lastShotAt;
+      const recoil = (s.lastShotAt > 0 && sinceFire >= 0 && sinceFire < ENDING_RECOIL_MS)
+        ? ENDING_RECOIL_PX * (1 - sinceFire / ENDING_RECOIL_MS)
+        : 0;
+      const ha = this.horizonActorAlpha(s.y);
+      sp.alpha = ha;
+      sp.visible = ha > 0;
+      sp.position.set(Math.round(s.x + recoil), Math.round(s.y));
+      sp.zIndex = s.y;
+    }
+    for (const [id, sp] of this.endingSoldierSprites) {
+      if (!seen.has(id)) { sp.destroy(); this.endingSoldierSprites.delete(id); this.endingSoldierShotSeen.delete(id); }
+    }
+  }
+
+  // 発砲の絵(§1・監査A-1/A-10): 実在部品はSE=npc-gunfireのみ。マズルフラッシュ(既存fx/muzzle-flash+
+  // drawBossGunMuzzleを流用=強glowの投影影コストとは無関係な単純Sprite)・トレイル(短命の黄色い線)・
+  // 薬莢(小放物線の白点)は全てここでコード生成する。lastShotAtの立ち上がり(edge)で1回だけ新規生成し、
+  // 継続するフラッシュのフェードは毎フレーム再計算するだけ(新規オブジェクトを積まない=負荷1/10)。
+  private updateEndingShotFx(soldiers: EndingSoldier[], now: number) {
+    for (const s of soldiers) {
+      const key = `end:${s.id}`;
+      const sp = this.endingSoldierSprites.get(s.id);
+      const w = sp ? Math.abs(sp.width) : 60, h = sp ? Math.abs(sp.height) : 90;
+      // 銃口位置(叩き台・§1「表示幅の前方+0.42×表示高、高さ中心-0.05×表示高」)。常に左向きなので前方=左(-x)。
+      const mx = s.x - w * 0.42;
+      const my = s.y - h * 0.5 - h * 0.05;
+      const sinceFire = s.lastShotAt > 0 ? now - s.lastShotAt : Infinity;
+      if (sinceFire >= 0 && sinceFire < ENDING_MUZZLE_FLASH_MS) {
+        this.drawBossGunMuzzle(key, mx, my, Math.PI, 1 - sinceFire / ENDING_MUZZLE_FLASH_MS); // 左向き=角度π
+      } else {
+        this.hideBossGunMuzzle(key);
+      }
+      // edge検知: 前フレームで見ていない新しい lastShotAt なら、トレイル+薬莢を1回だけ生成する。
+      const seenAt = this.endingSoldierShotSeen.get(s.id) ?? 0;
+      if (s.lastShotAt > 0 && s.lastShotAt !== seenAt) {
+        this.endingSoldierShotSeen.set(s.id, s.lastShotAt);
+        if (this.endingMuzzleFx.length >= ENDING_SHOT_FX_CAP) this.endingMuzzleFx.shift();
+        this.endingMuzzleFx.push({ x: mx, y: my, bornAt: now });
+        const shellCount = 2 + Math.floor(Math.random() * 2); // §1「2〜3px」の白点を2〜3発
+        for (let i = 0; i < shellCount; i++) {
+          if (this.endingShellFx.length >= ENDING_SHOT_FX_CAP) this.endingShellFx.shift();
+          this.endingShellFx.push({
+            x: mx + w * 0.15, y: my,
+            vx: 30 + Math.random() * 40, vy: -50 - Math.random() * 30, // 後方(=右)+上への小放物線
+            bornAt: now,
+          });
+        }
+      }
+    }
+    // トレイル/薬莢は共有Graphics 1本へ毎フレーム描き直す(pooled sprite方針=CLAUDE.md性能規律)。
+    const g = this.endingShotFxGfx;
+    g.clear();
+    for (let i = this.endingMuzzleFx.length - 1; i >= 0; i--) {
+      const f = this.endingMuzzleFx[i];
+      const age = now - f.bornAt;
+      if (age > ENDING_TRACER_MS) { this.endingMuzzleFx.splice(i, 1); continue; }
+      const a = 1 - age / ENDING_TRACER_MS;
+      g.moveTo(f.x, f.y).lineTo(f.x - ENDING_TRACER_LEN_PX * a, f.y).stroke({ width: 2, color: 0xfff2a8, alpha: a * 0.9 });
+    }
+    for (let i = this.endingShellFx.length - 1; i >= 0; i--) {
+      const sh = this.endingShellFx[i];
+      const age = (now - sh.bornAt) / 1000;
+      if (age > ENDING_SHELL_LIFE_S) { this.endingShellFx.splice(i, 1); continue; }
+      const x = sh.x + sh.vx * age;
+      const y = sh.y + sh.vy * age + 420 * age * age; // 重力で落ちる小放物線
+      const a = 1 - age / ENDING_SHELL_LIFE_S;
+      g.rect(x - 1, y - 1, 2, 2).fill({ color: 0xf3e6a0, alpha: a });
+    }
+  }
+
+  // フィル(=プレイヤー実体・不可視のカメラ台車)専用スプライト(§2/§4)。素材は既定で左向きなので、
+  // 「左→右」の進行方向(社長の言葉)に合わせて水平反転する。**1系列1スケール**(監査A-2):
+  // walk-0の内容高を基準に決めたスケールを walk/heal 全コマへ使う(しゃがむと絵が低くなるのが正=
+  // コマごとの正規化は禁止)。全コマ下端トリム済み(v4033)なので anchor(0.5,1)でそのまま接地する。
+  private drawEndingPhill(phill: EndingPhillState | null, player: Player) {
+    if (!phill) { if (this.endingPhillSprite) this.endingPhillSprite.visible = false; return; }
+    let sp = this.endingPhillSprite;
+    if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.endingPhillSprite = sp; }
+    const healing = phill.phase === 'healForward' || phill.phase === 'healHold' || phill.phase === 'healReverse';
+    const frame = Math.max(0, Math.min(healing ? 5 : 2, phill.frame));
+    const tex = getTexture(healing ? `npc/phill-heal-${frame}` : `npc/phill-walk-${frame}`) ?? getTexture('npc/phill-walk-0');
+    if (!tex) { sp.visible = false; return; }
+    if (this.endingPhillScale == null) {
+      const base = getTexture('npc/phill-walk-0');
+      if (base && base.height > 0) this.endingPhillScale = PixiScene.RESCUE_NPC_DISPLAY_H / base.height;
+    }
+    const scAbs = this.endingPhillScale ?? 1;
+    sp.texture = tex;
+    sp.scale.set(-scAbs, scAbs); // 素材は既定左向き→右向きへ反転(実機で逆なら符号を戻す・叩き台)
+    const fb = playerFootBox(player);
+    sp.position.set(Math.round(fb.footX), Math.round(fb.footY));
+    const ha = this.horizonActorAlpha(fb.footY);
+    sp.alpha = ha;
+    sp.visible = ha > 0;
+    sp.zIndex = fb.footY;
+  }
+
+  // 倒れ兵士(§8・監査A-9)。ワールド固定配置(fallenSoldiersInRangeが純関数で位置を返す)。
+  // 影はシルエット焼き(立ち姿前提)を使わず、専用の楕円ソフト影(叩き台)。描画のみ・判定なし。
+  private drawEndingFallenSoldiers(minX: number, maxX: number) {
+    const spots = fallenSoldiersInRange(minX, maxX);
+    const g = this.endingFallenShadowGfx;
+    g.clear();
+    const seen = new Set<number>();
+    for (const spot of spots) {
+      seen.add(spot.index);
+      let sp = this.endingFallenSprites.get(spot.index);
+      if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.endingFallenSprites.set(spot.index, sp); }
+      const tex = getTexture('npc/soldier-fallen-0');
+      if (!tex) { sp.visible = false; continue; }
+      sp.texture = tex;
+      const sc = this.humanNpcScale(tex.width, tex.height, spot.y) * 1.5; // 横たわる絵は幅が広いので少し大きめ(叩き台)
+      sp.scale.set(sc, sc);
+      const ha = this.horizonActorAlpha(spot.y);
+      sp.alpha = ha;
+      sp.visible = ha > 0;
+      sp.position.set(Math.round(spot.x), Math.round(spot.y));
+      sp.zIndex = spot.y - 1; // 兵士/フィルより僅かに奥(通り過ぎる時に足元へ隠れないよう手前寄りにはしない)
+      if (ha > 0) {
+        const w = Math.abs(sp.width);
+        g.ellipse(spot.x, spot.y - 2, w * 0.4, w * 0.13).fill({ color: 0x000000, alpha: 0.32 * ha });
+      }
+    }
+    for (const [idx, sp] of this.endingFallenSprites) {
+      if (!seen.has(idx)) { sp.destroy(); this.endingFallenSprites.delete(idx); }
     }
   }
 

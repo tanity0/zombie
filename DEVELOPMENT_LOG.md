@@ -1,5 +1,51 @@
 # Development Log
 
+## v0.25.4034 — エンディング演出バッチ: 兵士(発砲込み)+フィル(救護)実装(仕様v2準拠) 【2026-08-29 04:57 JST】
+
+ENDING_SCENE.md 演出仕様v2(10節)を実装(サブエージェント発注)。
+
+**新規純関数モジュール**: `src/utils/endingScene.ts`(+`endingScene.test.ts` 15件green)。
+- 兵士(`EndingSoldier`): `walk→decel→stopped→fire→accel→walk` の状態機械。個体ごとに歩速52〜78px/s・
+  歩行2.5〜5s・停止0.6〜1.2s・発砲1〜3発(300ms間隔)を乱数化(§9)。decel/accelはvelMultのease(200ms・
+  CLAUDE.md慣性MUST)。`reenterEndingSoldierIfOffscreen`で左画面外→右から再投入(プール・§9)。
+- 倒れ兵士: `fallenSoldierAt`/`fallenSoldiersInRange`/`nextFallenSoldierAfter`(trees.tsと同じ
+  「セル+ハッシュjitter」方式でワールド固定・900〜1400px間隔・§8)。
+- フィル(`EndingPhillState`): `walk→approachDecel→healForward→healHold→healReverse→accel→walk`。
+  次の倒れ兵士の手前60pxで距離ベースのeaseで減速→停止→heal0→5(280ms/コマ)→600ms保持→逆再生→
+  再発進(§8)。velMultが呼び出し側(useGameLoop)の合成入力速度倍率になる。
+
+**store(gameStore.ts)**: `endingSoldiers`/`endingPhill`を専用配列として追加(escortsに相乗りしない・
+§3)。`updateEndingScene`アクションを新設(毎フレーム兵士/フィルを1歩進め、発砲SE用の位置とフィルの
+velMultを返す)。resetGameで`createInitialEndingSoldiers`/`createInitialEndingPhill`により初期化
+(§3・2周目に前回の兵士が残らない)。`isInputLocked()`にfarBackdrop==='ending'を追加(§4・プレイヤー
+実体=不可視のカメラ台車を常時ロック)。introUntilのヘリ登場除外にendingを追加(§5)。
+`?endsoldiers=`(常在数・既定8)ほか`?endsold*`系ツマミ。
+
+**useGameLoop.ts**: `updateEndingScene`を呼び、返ったphillVelMultで合成入力(常時右)の速度を
+`deltaTime*MOVE_SPEED_MULT*phillVelMult*ENDING_PHILL_SPEED_MULT`にスケール(§4)。兵士の発砲位置を
+npcSfxDistGain経由で`npc-gunfire`のみ再生(§1「実在部品はSEのみ」)。深層域BGM eligibleにendingStage
+除外を追加(§5)。tutorialStageの縦カメラ固定分岐にendingStageを追加(§4・監査B-2)。`?endphspd=`。
+
+**pixiScene.ts**: `drawEndingSoldiers`(rescue/shooter流用・常時左向き・発砲反動オフセット)、
+`updateEndingShotFx`(マズルフラッシュ=既存`drawBossGunMuzzle`をid別keyで流用=強glow不使用・投影影
+コスト無し/トレイル=短命の線/薬莢=小放物線の白点。全てpooled・edge検知で1回だけ新規生成・§1)、
+`drawEndingPhill`(phill-walk/heal・walk-0基準の1系列1スケール・監査A-2)、`drawEndingFallenSoldiers`
+(ワールド固定・専用の楕円ソフト影=シルエット焼きは使わない・§8)を新設。プレイヤー本体(`playerView.
+container`)はcurrentFarKey==='ending'の間非表示にし、フィル専用スプライトへ差し替え(§2/§4)。
+兵士・フィルの接地影は既存の`syncShadowsV9`の`place()`へ相乗り(escortsと同型・§6)。深層域グレーディング
+(セピア)のeligibleにfarBackdrop!=='ending'を追加(§5)。pixiTextures.tsにphill-walk-0..2/
+phill-heal-0..5/soldier-fallen-0のテクスチャ登録を追加。
+
+**やらないこと(指示どおり)**: 尺・終わり方・文字・BGM・本番導線には触れていない(★未決のまま・
+無限ループでよい)。当たり判定は一切追加していない(観賞シーン)。
+
+**自己点検**: 憲法テスト(constitution.test.ts)対象外(エンディング専用ステージのため台本パズルの
+不変条件と無関係)。既存の敵/護衛/演出系の挙動は不変(新規分岐はfarBackdrop==='ending'限定)。
+- 検証: `npm run typecheck`0/`npm run lint`エラー0(warning9件は既存・無関係)。`endingScene.test.ts`
+  15件green。関連ユニット(`vitest related`)を確認して着地。
+- 状態変化: エンディング演出(仕様v2) → 実装済み(検収待ち)。次: 社長実機確認(?ending=1)→
+  見た目の叩き台数値(マズルフラッシュ位置/薬莢/フィルの向き反転が実機で正しいか等)の微調整。
+
 ## v0.25.4033 — 社長指示4件(HP枠素材撤去/エンディングUI非表示/黒煙サイズ違い/火の粉・灰)+walk-1接地是正 【2026-08-29 04:27 JST】
 
 社長指示2026-08-28の4件を直実装:

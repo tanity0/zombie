@@ -836,6 +836,12 @@ const BOT_GOAL: BotObjective = parseBotObjective(evParam('botgoal'));
 // {kind:'none'}だとbotは湧き位置に留まり、離れて湧くボスと一生出会わない(21枠中20枠が未接敵
 // タイムアウト・技の記録ゼロ)。ガントレット中は目的を「現在の枠のボスを狩る」に固定する。
 const GAUNTLET_BOT_HUNT = evParam('gauntlet') === '1';
+// ENDING_SCENE.md 演出仕様v2 §4: フィル(=プレイヤー実体・カメラ台車)の自動歩行速度倍率。
+// 既定1(通常のプレイヤー移動速度のまま)。実機調整用に?endphspd=で上書き(叩き台)。
+const ENDING_PHILL_SPEED_MULT = (() => {
+  const n = Number(evParam('endphspd'));
+  return Number.isFinite(n) && n > 0 ? n : 1;
+})();
 // BOT_AND_GHOST.md G2(デバッグ召喚): ?ghost=1 でボス交戦の立ち上がりにゴースト助っ人を自動召喚する。
 // G3以降は装備スキル「守護霊」(guardian-spirit)でも同じ召喚が有効(ghostRunEnabled=directorTick側でOR)。
 // このフラグは開発用として残す(装備なしでも従来どおり動く)。
@@ -4868,7 +4874,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 準備ゾーン(D-400)で逆再生版を先読み(pause)→深層(D)で play、out(D-200)で pause、浅く戻る(D-600)で解放。
         zoneTickRef.current++;
         if (zoneTickRef.current % ZONE_CHECK_INTERVAL === 0) {
-          const eligible = !danceTest && !indoor && !labTheme; // 屋外非ラボのみ深層域BGM対象
+          // 屋外非ラボのみ深層域BGM対象。エンディング(仮組み)は無限ループの観賞シーンなので除外
+          // (ENDING_SCENE.md 演出仕様v2 §5「72秒歩くと7500pxに達しセピア+逆再生BGMになる実測」)。
+          const eligible = !danceTest && !indoor && !labTheme && !endingStage;
           // ?deepzone=1 完全再現: eligible(屋外)なら距離を無視して深層扱い=状態機械が prep→deep へ進み逆再生BGMが発動。
           const dist = eligible
             ? (DEEP_ZONE_FORCE ? DEEP_BGM_D + 1000 : Math.hypot(player.x + player.width / 2, player.y + player.height / 2))
@@ -7534,13 +7542,39 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }));
         }
 
+        // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2 §4): 兵士/フィルの状態機械を1歩進める。
+        // フィル(=プレイヤー実体)は不可視のカメラ台車=corridorRunIn型(isInputLocked+合成入力)だが、
+        // 洋館の走り込み(corridorRunInActive)とは別物(自己解除しない・常時右へ)なので専用に扱う。
+        // isInputLocked は gameStore 側で farBackdrop==='ending' を常時ロック対象に含めている。
+        let endingPhillVelMult = 1;
+        if (endingStage) {
+          const endRes = useGameStore.getState().updateEndingScene(deltaTime);
+          endingPhillVelMult = endRes.phillVelMult;
+          // 兵士の発砲SE(§1「実在部品: SE=npc-gunfireのみ」)。距離減衰は護衛NPCの発砲音と同じ計算。
+          if (endRes.shots.length > 0) {
+            const esp = useGameStore.getState().player;
+            const espx = esp.x + esp.width / 2, espy = esp.y + esp.height / 2;
+            const escam = useGameStore.getState().camera, esgb = useGameStore.getState().gameBounds;
+            let bestGain = 0;
+            for (const f of endRes.shots) {
+              const g = npcSfxDistGain(f.x, f.y, espx, espy, escam, esgb);
+              if (g > bestGain) bestGain = g;
+            }
+            if (bestGain > 0) playSfx('npc-gunfire', bestGain);
+          }
+        }
         // Move player based on input or swipe direction
         // 移動のみ MOVE_SPEED_MULT 倍速(演出/進行は等速のまま=deltaTimeを据え置き)。
         // 洋館(ステージ6)開始の走り込み(v0.25.2110・ヘリ登場なし): 下(+y)開始のプレイヤーを
         // 到着点(y<=0)まで自動で上へ走らせる。実移動=歩行アニメ/護衛追走/カメラ追従は通常システム。
         // 入力はisInputLocked(corridorRunInActive)で遮断済み。安全弁: gameTime 6秒で強制解除。
         const corridorRunIn = useGameStore.getState().corridorRunInActive;
-        movePlayer(corridorRunIn ? { up: true, down: false, left: false, right: false } : inputState, deltaTime * MOVE_SPEED_MULT);
+        movePlayer(
+          corridorRunIn ? { up: true, down: false, left: false, right: false }
+            : endingStage ? { up: false, down: false, left: false, right: true }
+            : inputState,
+          deltaTime * MOVE_SPEED_MULT * (endingStage ? endingPhillVelMult * ENDING_PHILL_SPEED_MULT : 1),
+        );
         if (corridorRunIn) {
           const runSt = useGameStore.getState();
           if (runSt.player.y <= 0 || runSt.gameTime > 6000) runSt.clearCorridorRunIn();
@@ -7923,7 +7957,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (社長指示v0.25.1827「上下移動で地面がぬるっと動く体験は残しつつ、プレイヤーは画面位置固定」)。
         // 背景レイヤー(遠景/岩帯/川/霧/ツララ)は画面固定なので構図は不変、動くのは地面と周囲の物だけ。
         // 上下±50px(store側の透明な壁)がその可動域。横は通常追従のまま。
-        if (tutorialStage) {
+        // エンディング(仮組み)も縦カメラ固定(ENDING_SCENE.md 演出仕様v2 §4・構造踏襲=監査B-2)。
+        if (tutorialStage || endingStage) {
           camY = baseCamY;
           look.y = 0;
         }
