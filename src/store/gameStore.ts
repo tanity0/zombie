@@ -13023,7 +13023,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               }
               // ②③ 各本を進める
               let rNewest: typeof shots[number] | undefined;
-              // research/AI_HUMANIZE.md B1: 「最後に判定を積んだ本」の帯(=州が硬直へ落ちる瞬間の実図形)。
+              // research/AI_HUMANIZE.md B1: 「最後に判定を積んだ本」の帯(=州が硬直へ落ちる瞬間の実図形。
+              // ★検収是正(中2)の後もaiTarget表示用フォールバックとしてそのまま使う)。
               let rLastFiredTx: number | undefined, rLastFiredTy: number | undefined;
               for (let i = 0; i < shots.length; i++) {
                 const sh = shots[i];
@@ -13039,7 +13040,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                     damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-reach',
                     capsule: { fx: ecx, fy: ecy, tx, ty, halfWidth: GLEN_REACH_HALF_WIDTH },
                   });
-                  shots[i] = { ...sh, fired: true };
+                  // ★検収是正(中2): 判定を積んだ瞬間の帯(始点/終点)を本ごとに保持する
+                  // (満了時に「最後の1本」だけでなく全本をsettleEpisodeへ渡すため)。
+                  shots[i] = { ...sh, fired: true, fx: ecx, fy: ecy, tx, ty };
                   rLastFiredTx = tx; rLastFiredTy = ty;
                   continue;
                 }
@@ -13057,9 +13060,19 @@ export const useGameStore = create<GameState>((set, get) => ({
                 // research/AI_HUMANIZE.md B1: 州の満了=最後に判定を積んだ本の帯で録る(無ければ
                 // 既存のaiFrom/aiTarget=直前tickの表示用最新本にフォールバック・安全側)。
                 const rft = rLastFiredTx ?? enemy.aiTargetX ?? ecx, rfy = rLastFiredTy ?? enemy.aiTargetY ?? ecy;
+                // ★検収是正(中2): このサイクルで実際に張った全本(3本)をbandsへ列挙する(最寄りの1本で
+                // 正規化・sub=帯index=habitPos側の既存仕様どおり)。1本も判定を積めていない異常系だけ
+                // 従来のフォールバック帯(表示用の最新本)へ落とす。
+                const rBands = shots
+                  .filter((sh): sh is typeof sh & { fx: number; fy: number; tx: number; ty: number } =>
+                    sh.fired === true && sh.fx !== undefined && sh.fy !== undefined && sh.tx !== undefined && sh.ty !== undefined)
+                  .map(sh => ({ fx: sh.fx, fy: sh.fy, tx: sh.tx, ty: sh.ty, halfWidth: GLEN_REACH_HALF_WIDTH }));
                 settleGiantHabit('g-reach-windup', {
                   aiFromX: ecx, aiFromY: ecy, aiTargetX: rft, aiTargetY: rfy,
-                  liveShape: { kind: 'band', bands: [{ fx: ecx, fy: ecy, tx: rft, ty: rfy, halfWidth: GLEN_REACH_HALF_WIDTH }] },
+                  liveShape: {
+                    kind: 'band',
+                    bands: rBands.length > 0 ? rBands : [{ fx: ecx, fy: ecy, tx: rft, ty: rfy, halfWidth: GLEN_REACH_HALF_WIDTH }],
+                  },
                 });
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0, gReachShots: undefined,

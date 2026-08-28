@@ -765,7 +765,10 @@ export interface Enemy {
    * t0=この触手が生えた gameTime / a*=追尾照準の位置と速度 / idx=何本目 / fired=判定を出し終えたか。
    * ※`aiFromX/aiTargetX` は**最新の1本**を写す(既存の描画・ゴースト・記録がそこを読むため)。
    */
-  gReachShots?: { t0: number; ax: number; ay: number; avx: number; avy: number; idx: number; fired?: boolean }[];
+  // fx/fy/tx/ty(検収是正・中2): 判定を積んだ瞬間の帯の始点/終点(fired=true時のみ設定)。
+  // research/AI_HUMANIZE.md B1のsettleEpisodeが、このサイクルで実際に張った全本をbandsへ列挙するために使う
+  // (旧実装は最後の1本だけ写していた=多帯州の記録漏れ)。
+  gReachShots?: { t0: number; ax: number; ay: number; avx: number; avy: number; idx: number; fired?: boolean; fx?: number; fy?: number; tx?: number; ty?: number }[];
   // v0.25.3145(社長指示「触手、ミーミルレーザーと同じく切り返しで避ける3連技に変更」):
   // 溜め中に**慣性を持って追いかけてくる照準**の位置と速度。ミーミルのレーザーと同じ
   // `stepLaserAim`(mimirLaserTrack.ts)で更新する=避け方の文法を1本に保つ。

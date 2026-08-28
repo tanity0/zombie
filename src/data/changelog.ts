@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3995',
+    items: [
+      'AIの人間化: 記録側の検収是正。記録の条件・精度の修正のみで、ゲームの挙動・見た目に変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3994',
     items: [
       'AIの人間化: 記録側(コマ台帳)を実装しました。プレイの癖(技ごとの立ち位置・押すタイミング)を裏で記録するだけで、ゲームの挙動・見た目に変更はありません。',

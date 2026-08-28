@@ -1,5 +1,60 @@
 # Development Log
 
+## v0.25.3995 — AI_HUMANIZE B1検収監査の実装是正7件(記録側) 【2026-08-28 15:09 JST】
+- **状態変化: ★AIの人間化 → B1補修済み(検収2巡目)**
+- **実装**: research/AI_HUMANIZE.md B1(記録側=コマ台帳)の検収監査(コミット72e5d6b対象)で出た
+  実装是正7件。**挙動変更ゼロ(録るだけ)は不変**。
+  1. **【重大1】記録ゲートに「撃破」条件を実装**: `src/utils/playerTraits.ts` の `foldHabitEpisodes`
+     が、既存の撃破シグナル(保留バッファ内の `kind:'bossStyle'` レコード=`notifyBossClear`経由・
+     新しい判定は発明せず流用)を見て、そのランにボス撃破が1体も無ければコマ・族集計とも保存しない
+     ようにした。死にラン・撤収ランはコマを1件も保存しない。副産物として「optOutチェックボックスが
+     出ないままコマだけ保存される」穴(GameOverScreen)も同時に塞がった(撃破ランなら既存セッション
+     レコードがありチェックボックスが出る=`hasPendingTraitRecords()`と同一条件に揃った)。
+  2. **【中1】スリエルのビーム2本目**: `ring-beam-windup` のsettleで、Phase2の2本目(`ring2X/ring2Y`
+     起点・同じ狙い先・同寸法)が実在すれば `bands` へ2本渡すよう `surielRingBeamBands()` を新設
+     (`src/utils/angelBossTick.ts`)。
+  3. **【中2】グレン触手(g-reach)**: 最後の1本だけでなく、そのサイクルで実際に判定を積んだ全本
+     (最大3本)を `bands` へ列挙するようにした。`gReachShots` の各要素に発射時の帯(fx/fy/tx/ty)を
+     持たせ(`src/types/game.ts`)、満了時にfired済みの全本から組む(`src/store/gameStore.ts`)。
+  4. **【中3】74の数値複製に機械検査**: `habitEpisode.test.ts` に `HABIT_BODY_UNIT_PX === MELEE_RADIUS`
+     の一致テストを追加(gameStoreをテスト側だけでimport=`bossTelegraph.test.ts:47`と同型)。
+  5. **【中4】lastDamagedAtGameの番兵0**: `player.lastDamagedAtGame` の既定値0(未被弾)を被弾時刻として
+     扱わないよう `> 0` ガードを追加(`src/utils/habitEpisode.ts`)。ラン開始2秒以内の州満了で
+     ctxHit=1に化けないテストを追加。
+  6. **【中5】族別集計のしきい値を累計に**: ラン内の生カウント(count/sumPosA/sumPosB/pressCount/
+     sumPressOfs)をゲート無しでそのまま返すよう `habitEpisode.ts` の `takeRunHabitFold` を変更し、
+     `playerTraits.ts` 側で `habitFamilyRaw`(新設フィールド)へ**累計**、発動しきい値
+     (HABIT_FAMILY_MIN_N)は累計にだけ掛けるようにした(`habitFamily`はその累計から都度導出)。
+     1ラン2件×3ランで発動するテストを追加。
+     - **副産物で見つかった別バグの是正**: 上のテストの過程で、`applyPendingSession`
+       (`src/utils/playerTraits.ts`)が `moveHabits`/`habitFamily`/`habitFamilyRaw` を引き継がずに
+       プロファイルを上書きしていたため、**2ラン目以降のセッションcommitのたびに前ランまでの
+       コマ・族集計が消えていた**(=このバグがある限りB1の「直近10回のリングバッファ」も
+       「族の累計しきい値」も事実上機能しない)ことが判明したため、bossStylesと同じ扱いで
+       引き継ぐよう修正した(直接の依頼範囲ではないが、中5の受け入れ条件を満たすために必須の是正)。
+  7. **【§1-0例外】カウンター成立による州中断はコマを確定**: 天使7州
+     (miguel:harai/tate-windup・uri:sweep/downslash-windup・suriel:sweep/ring-spin/ring-beam-windup)の
+     `overlap && counterActive` 分岐でも、T=州の満了予定時刻のままsettleEpisodeを呼ぶようにした
+     (`src/utils/angelBossTick.ts`)。
+     - **★実在確認**: `bodyOverlapNow` は `isBodySlamNow(bossState)` が true の間だけ overlap を返す
+       設計(★カウンター憲法v0.25.3947)で、この7州のbossState文字列は現状
+       `BODY_SLAM_BOSS_STATES`/`PASS_THROUGH_BOSS_STATES`(`enemyMotion.ts`/`enemyBite.ts`)のどちらにも
+       載っていない=**この分岐は現状の実戦では到達しない**(挙動不変=実害ゼロ)ことを実測で確認した
+       (`src/utils/angelHabitCounterCancel.test.ts` の対照テスト)。成立例のテストは
+       `isBodySlamNow` をテスト側でスタブして分岐を強制到達させ、配線(T/形が正しいか)を検証した。
+- **あわせて**: `ctxHp`(30%)・`ctxHit`(2000ms)の発明定数のコードコメントに「叩き台」の語を追記
+  (§7-8実測主義)。DEVELOPMENT_LOG.md v0.25.3994エントリの誤記2件を是正
+  (「bounty17系統」→「bounty14」/既存の計測ゲートの行に「撃破条件はv0.25.3995で実装」を追記)。
+- **検証**: `npm run typecheck`(エラー0)/`npm run lint`(エラー0・warning8件は無関係の既存分)/
+  `habitEpisode.test.ts`(44件)/`playerTraits.test.ts`(93件)/`angelHabitCounterCancel.test.ts`(新設4件)/
+  `angelCounter.test.ts`(7件)/`bossTelegraph.test.ts`(26件)/`glenReachTrack.test.ts`(8件)/
+  `mimirLaserTrack.test.ts`(23件)/`ghostBossParry.test.ts`(11件)/`constitution.test.ts`(13件)=
+  全green(既存挙動に差分なし)。
+- **自己点検**: 憲法テスト(constitution.test.ts)は無改変=13件green。判定・移動・描画には1bitも
+  触れていない(記録専用レイヤへの追記のみ)。毎フレームの新規走査/購読・乱数・Date.now追加なし。
+  ★実在確認の掟: 項目7は上記のとおり「現状は到達しない分岐」であることを実測で確認済み
+  (=このpushで挙動が変わる箇所は無い)。
+
 ## v0.25.3994 — AI_HUMANIZE B1(記録側=コマ台帳)を実装 【2026-08-28 14:27 JST】
 - **実装**: research/AI_HUMANIZE.md §6 B1(記録側・**挙動変更ゼロ=録るだけ**)。
   - **新設**: `src/utils/habitEpisode.ts`(counterReach.tsと同じ「依存の軽い葉」=gameStore.tsを
@@ -8,7 +63,7 @@
     ローカル座標正規化・§1-2)/settleEpisode(記録本体)/押下リング(`meleeSwingCommitAt`エッジ・
     4件)/帰属(T+300ms後追い・[T-1500,T+300]・1押下1コマ)/族別集計(§1-4・n>=5でEMA)/
     quota退避(moveHabits→家族集計の順で落として1回だけ再保存)。
-  - **図形源の内訳**(34州): ①declared=17州(bounty17系統+thor3。COUNTER_REACH_DECL経由=数値複製ゼロ)/
+  - **図形源の内訳**(34州): ①declared=17州(bounty14系統+thor3。COUNTER_REACH_DECL経由=数値複製ゼロ)/
     ②live=16州(天使7[miguel harai/tate・uri sweep/downslash・suriel sweep/ring-spin/ring-beam]+
     giant9[stomp/sweep/slam/glide/dive/wing/trishot/reach/tailslam]。呼び出し側がその場で実寸法を
     組んで渡す)/③body-only=1州(giantbat:g-bolt-windup=弾を撃つだけで近接図形を持たない)。
@@ -21,7 +76,8 @@
   - **その他**: `player.lastDamagedAtGame`新設(`src/types/game.ts`・gameTime系・damagePlayerの
     実ダメージ適用点で打刻=ctxHit専用)。`PlayerProfile.moveHabits`/`habitFamily`新設
     (`src/utils/playerTraits.ts`・保留バッファ経由でcommit=既存の計測ゲートと同一
-    [撃破+リザルト通過・ゴーストラン全面除外]・isValidProfile後方互換)。
+    [撃破+リザルト通過・ゴーストラン全面除外]・isValidProfile後方互換)
+    (撃破条件はv0.25.3995で実装=検収監査重大1の是正)。
 - **未決に積んだ項目**: なし(§8への追記なし)。実装スコープの判断2点は設計判断ではなく実装細部として
   ここに記録: ①ミゲルのLegacy経路(`?miguelscript=0`)は録らない(デバッグ用フォールバックのため)
   ②`applyPendingHabits`はsubStyleと同じ保守側の作法(プロファイル未保存なら新規作成しない=

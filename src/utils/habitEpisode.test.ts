@@ -5,13 +5,17 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   EPISODE_KEYS, EPISODE_SHAPE_DECL, TRACKED_SHAPE_KEYS, reachKeyFor, habitPos,
-  HABIT_RING_SIZE, HABIT_FAMILY_MIN_N, HABIT_FAMILY_KEYS, familyRawToStat,
+  HABIT_RING_SIZE, HABIT_FAMILY_MIN_N, HABIT_FAMILY_KEYS, familyRawToStat, HABIT_BODY_UNIT_PX,
   settleEpisode, notePressEdge, tickHabitEpisodeMaintenance, markHabitGhostRun,
   takeRunHabitFold, resetRunHabitState,
   type HabitEpisode, type HabitFamilyRaw,
 } from './habitEpisode';
 import { IMPACT_AT_WINDUP_END_BOSS_STATES, GIANT_IMPACT_AT_WINDUP_END } from './ghostCounterAim';
 import { COUNTER_REACH_DECL, type CounterReachShape } from './counterReach';
+// ★検収是正(中3・74の数値複製に機械検査): habitEpisode.ts本体はstore非依存を保つためMELEE_RADIUSを
+// 複製している(HABIT_BODY_UNIT_PX)。ズレ検知はテスト側でgameStoreを直接importして行う
+// (bossTelegraph.test.ts:47の前例と同型=本体には持ち込まない)。
+import { MELEE_RADIUS } from '../store/gameStore';
 
 const BOSS_RECT = { x: -22, y: -22, width: 44, height: 44 };
 
@@ -169,6 +173,12 @@ describe('habitPos: circle / circle-or-body', () => {
   });
 });
 
+describe('HABIT_BODY_UNIT_PX(★検収是正・中3): gameStoreのMELEE_RADIUSと同値(複製のズレ検知)', () => {
+  it('HABIT_BODY_UNIT_PX = MELEE_RADIUS(bossTelegraph.test.ts:47と同型の機械検査)', () => {
+    expect(HABIT_BODY_UNIT_PX).toBe(MELEE_RADIUS);
+  });
+});
+
 describe('habitPos: body(縁基準・§1-2「中心距離は使わない」)', () => {
   it('縁距離(AABB最近点)/74・箱の内側は0', () => {
     const body: CounterReachShape = { kind: 'body' };
@@ -315,6 +325,27 @@ describe('ctxHp / ctxHit / seq', () => {
     expect(ep.ctxHp).toBe(0);
     expect(ep.ctxHit).toBe(0);
   });
+
+  // ★検収是正(中4・番兵0): player.lastDamagedAtGame の既定値は0(gameStore=まだ被弾していない)。
+  // 0を被弾時刻として扱うと、ラン開始2秒以内に満了する州(gameTime<=2000)がctxHit=1に化ける。
+  it('lastDamagedAtGame=0(未被弾の番兵)はラン開始2秒以内の州満了でもctxHit=1に化けない', () => {
+    const T = 1_500; // ラン開始2秒以内
+    settleEpisode(baseInput({
+      gameTime: T, playerHealth: 100, playerMaxHealth: 100, lastDamagedAtGame: 0,
+    }));
+    tickHabitEpisodeMaintenance(T + 300);
+    const ep = takeRunHabitFold()!.episodes['thor:issen-windup'][0];
+    expect(ep.ctxHit).toBe(0);
+  });
+  it('実際に0ms地点(gameTime=0)で被弾していた場合はlastDamagedAtGame>0で正しく1になる(0除外の副作用チェック)', () => {
+    const T = 1_500;
+    settleEpisode(baseInput({
+      gameTime: T, playerHealth: 100, playerMaxHealth: 100, lastDamagedAtGame: 1, // 1ms地点で被弾=正の値
+    }));
+    tickHabitEpisodeMaintenance(T + 300);
+    const ep = takeRunHabitFold()!.episodes['thor:issen-windup'][0];
+    expect(ep.ctxHit).toBe(1);
+  });
 });
 
 // ★circle-or-body(COUNTER_REACH_DECLの'hidden:jump-windup')は、EPISODE_KEYS(34州)の
@@ -365,8 +396,18 @@ describe('familyRawToStat: 発動条件(その族のコマ総数>=5)', () => {
   });
 });
 
-describe('族別集計はコマ記録と同じフックで畳まれる(band族に5件でfamilyが出る)', () => {
-  it('band族(issen-windup)を5回settleするとfamily.bandが出る', () => {
+describe('族別集計はコマ記録と同じフックで畳まれる(§1-4是正・検収監査中5: ラン内はしきい値ゲート無しで生カウントを返す)', () => {
+  it('band族(issen-windup)を1回settleしただけでもfolded.family.bandに生カウント(count=1)が出る', () => {
+    // 旧実装はここでHABIT_FAMILY_MIN_N(=5)未満を捨てていた(1ランに4件以下しか出ない族が
+    // 永久に集計されない穴)。ラン内はゲート無し=累計と閾値判定は呼び出し側(playerTraits)の責務。
+    const T = 10_000;
+    settleEpisode(baseInput({ gameTime: T }));
+    tickHabitEpisodeMaintenance(T + 300);
+    const folded = takeRunHabitFold()!;
+    expect(folded.family.band).toBeDefined();
+    expect(folded.family.band!.count).toBe(1);
+  });
+  it('band族(issen-windup)を5回settleするとcount=5の生カウントが返る', () => {
     const T0 = 10_000;
     for (let i = 0; i < 5; i++) {
       const T = T0 + i * 10_000;
@@ -374,8 +415,7 @@ describe('族別集計はコマ記録と同じフックで畳まれる(band族�
       tickHabitEpisodeMaintenance(T + 300);
     }
     const folded = takeRunHabitFold()!;
-    expect(folded.family.band).toBeDefined();
-    expect(folded.family.band!.n).toBe(5);
+    expect(folded.family.band!.count).toBe(5);
   });
 });
 
@@ -392,7 +432,13 @@ describe('保存サイズ: 34州×10件のコマ+族別集計15値でも30KB以�
       circle: { n: 999, avgPosA: 123, avgPosB: -45, avgPressOfs: -321, pressRatePct: 87 },
       body: { n: 999, avgPosA: 123, avgPosB: -45, avgPressOfs: -321, pressRatePct: 87 },
     };
-    const bytes = new TextEncoder().encode(JSON.stringify({ moveHabits, habitFamily })).length;
+    // ★検収是正(中5): habitFamilyRaw(累計の生値)も実運用で一緒に保存されるので検算に含める。
+    const habitFamilyRaw = {
+      band: { count: 9999, sumPosA: 123456.789, sumPosB: -45678.123, pressCount: 8888, sumPressOfs: -321987.6 },
+      circle: { count: 9999, sumPosA: 123456.789, sumPosB: -45678.123, pressCount: 8888, sumPressOfs: -321987.6 },
+      body: { count: 9999, sumPosA: 123456.789, sumPosB: -45678.123, pressCount: 8888, sumPressOfs: -321987.6 },
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify({ moveHabits, habitFamily, habitFamilyRaw })).length;
     expect(bytes).toBeLessThan(30 * 1024);
   });
 });

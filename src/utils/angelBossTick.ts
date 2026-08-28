@@ -687,18 +687,29 @@ export const runMiguelTick = (
       patch.x = lc.x - miguel.width / 2; patch.y = lc.y - miguel.height / 2;
     }
     const { overlap, counterActive } = bodyOverlapNow(miguel);
+    // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=帯(実行で使うのと同じ
+    // aiFrom/aiTarget×MG_T.harai.halfWidth)。tate-windupも同じtuning(向きが縦か横かの違いだけ)。
+    const habitBand: CounterReachShape = {
+      kind: 'band',
+      bands: [{
+        fx: miguel.aiFromX ?? mcx, fy: miguel.aiFromY ?? mcy,
+        tx: miguel.aiTargetX ?? mcx, ty: miguel.aiTargetY ?? mcy, halfWidth: MG_T.harai.halfWidth,
+      }],
+    };
     if (overlap && counterActive) {
+      // ★検収是正(§1-0例外・中6): 溜め中カウンター成立による州中断もコマを確定する
+      // (T=州の満了予定時刻のまま。天使系はここが無いと成立コマが構造的に1件も録れない)。
+      settleEpisode({
+        gameTime: miguel.bossStateUntil ?? newGameTime, enemyType: 'miguel', state: st,
+        bcx: mcx, bcy: mcy, pcx, pcy,
+        aiFromX: miguel.aiFromX, aiFromY: miguel.aiFromY, aiTargetX: miguel.aiTargetX, aiTargetY: miguel.aiTargetY,
+        bossRect: { x: miguel.x, y: miguel.y, width: miguel.width, height: miguel.height },
+        liveShape: habitBand,
+        playerHealth: player.health, playerMaxHealth: player.maxHealth,
+        lastDamagedAtGame: player.lastDamagedAtGame,
+      });
       miguelCounterHit(mcx, mcy);
     } else if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
-      // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=帯(実行で使うのと同じ
-      // aiFrom/aiTarget×MG_T.harai.halfWidth)。tate-windupも同じtuning(向きが縦か横かの違いだけ)。
-      const habitBand: CounterReachShape = {
-        kind: 'band',
-        bands: [{
-          fx: miguel.aiFromX ?? mcx, fy: miguel.aiFromY ?? mcy,
-          tx: miguel.aiTargetX ?? mcx, ty: miguel.aiTargetY ?? mcy, halfWidth: MG_T.harai.halfWidth,
-        }],
-      };
       settleEpisode({
         gameTime: newGameTime, enemyType: 'miguel', state: st,
         bcx: mcx, bcy: mcy, pcx, pcy,
@@ -2071,6 +2082,19 @@ export const runUriTick = (
     patch.x = c.x - uri.width / 2; patch.y = c.y - uri.height / 2;
   };
   const uriCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(uri, ucx, hx, hy, sfx, ghost);
+  // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): sweep-windup/downslash-windupの州満了
+  // エッジで共通に呼ぶ(自然満了・カウンター中断[検収是正・§1-0例外]の両方から同じヘルパを使う)。
+  const settleUriHabit = (state: string, liveShape: CounterReachShape, gameTimeForT: number): void => {
+    settleEpisode({
+      gameTime: gameTimeForT, enemyType: 'uri', state,
+      bcx: ucx, bcy: ucy, pcx, pcy,
+      aiFromX: uri.aiFromX, aiFromY: uri.aiFromY, aiTargetX: uri.aiTargetX, aiTargetY: uri.aiTargetY,
+      bossRect: { x: uri.x, y: uri.y, width: uri.width, height: uri.height },
+      liveShape,
+      playerHealth: player.health, playerMaxHealth: player.maxHealth,
+      lastDamagedAtGame: player.lastDamagedAtGame,
+    });
+  };
 
   // --- 技の開始(begin*)。実戦の抽選(下のchase分岐)と ボスメーカーの▸個別再生が**同じ1本**を通る ---
   const beginUriSweep = (): void => {
@@ -2162,26 +2186,21 @@ export const runUriTick = (
       patch.x = lc.x - uri.width / 2; patch.y = lc.y - uri.height / 2;
     }
     const { overlap, counterActive } = bodyOverlapNow(uri);
+    const uriSweepBand: CounterReachShape = {
+      kind: 'band',
+      bands: [{
+        fx: uri.aiFromX ?? ucx, fy: uri.aiFromY ?? ucy,
+        tx: uri.aiTargetX ?? ucx, ty: uri.aiTargetY ?? ucy, halfWidth: UR_T.sweep.halfWidth,
+      }],
+    };
     if (overlap && counterActive) {
+      // ★検収是正(§1-0例外・中6): 溜め中カウンター成立による州中断もコマを確定する(T=満了予定時刻)。
+      settleUriHabit('sweep-windup', uriSweepBand, uri.bossStateUntil ?? newGameTime);
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
       // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=帯(実行と同じaiFrom/aiTarget
       // ×UR_T.sweep.halfWidth。始点は既にロック時に内径ぶん前へ出してある=実行のカプセルと同一)。
-      settleEpisode({
-        gameTime: newGameTime, enemyType: 'uri', state: 'sweep-windup',
-        bcx: ucx, bcy: ucy, pcx, pcy,
-        aiFromX: uri.aiFromX, aiFromY: uri.aiFromY, aiTargetX: uri.aiTargetX, aiTargetY: uri.aiTargetY,
-        bossRect: { x: uri.x, y: uri.y, width: uri.width, height: uri.height },
-        liveShape: {
-          kind: 'band',
-          bands: [{
-            fx: uri.aiFromX ?? ucx, fy: uri.aiFromY ?? ucy,
-            tx: uri.aiTargetX ?? ucx, ty: uri.aiTargetY ?? ucy, halfWidth: UR_T.sweep.halfWidth,
-          }],
-        },
-        playerHealth: player.health, playerMaxHealth: player.maxHealth,
-        lastDamagedAtGame: player.lastDamagedAtGame,
-      });
+      settleUriHabit('sweep-windup', uriSweepBand, newGameTime);
       patch.bossState = 'sweep'; patch.bossStateUntil = newGameTime + UR_T.sweep.active;
       sfx.sweep(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
@@ -2224,26 +2243,21 @@ export const runUriTick = (
     }
   } else if (st === 'downslash-windup') {
     const { overlap, counterActive } = bodyOverlapNow(uri);
+    const uriDownslashBand: CounterReachShape = {
+      kind: 'band',
+      bands: [{
+        fx: uri.aiFromX ?? ucx, fy: uri.aiFromY ?? ucy,
+        tx: uri.aiTargetX ?? ucx, ty: uri.aiTargetY ?? ucy, halfWidth: UR_T.downslash.halfWidth,
+      }],
+    };
     if (overlap && counterActive) {
+      // ★検収是正(§1-0例外・中6): 溜め中カウンター成立による州中断もコマを確定する(T=満了予定時刻)。
+      settleUriHabit('downslash-windup', uriDownslashBand, uri.bossStateUntil ?? newGameTime);
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
       // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=帯(実行と同じaiFrom/aiTarget
       // ×UR_T.downslash.halfWidth)。
-      settleEpisode({
-        gameTime: newGameTime, enemyType: 'uri', state: 'downslash-windup',
-        bcx: ucx, bcy: ucy, pcx, pcy,
-        aiFromX: uri.aiFromX, aiFromY: uri.aiFromY, aiTargetX: uri.aiTargetX, aiTargetY: uri.aiTargetY,
-        bossRect: { x: uri.x, y: uri.y, width: uri.width, height: uri.height },
-        liveShape: {
-          kind: 'band',
-          bands: [{
-            fx: uri.aiFromX ?? ucx, fy: uri.aiFromY ?? ucy,
-            tx: uri.aiTargetX ?? ucx, ty: uri.aiTargetY ?? ucy, halfWidth: UR_T.downslash.halfWidth,
-          }],
-        },
-        playerHealth: player.health, playerMaxHealth: player.maxHealth,
-        lastDamagedAtGame: player.lastDamagedAtGame,
-      });
+      settleUriHabit('downslash-windup', uriDownslashBand, newGameTime);
       patch.bossState = 'downslash'; patch.bossStateUntil = newGameTime + UR_T.downslash.active;
       sfx.sweep(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
@@ -2428,6 +2442,42 @@ export const runSurielTick = (
     patch.x = c.x - suriel.width / 2; patch.y = c.y - suriel.height / 2;
   };
   const surielCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(suriel, scx, hx, hy, sfx, ghost);
+  // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 3つの溜め州(ring-beam-windup/
+  // ring-spin-windup/sweep-windup)の州満了エッジで共通に呼ぶ。自然満了・カウンター中断(検収是正・
+  // §1-0例外)の両方から同じヘルパを使うことで図形式のズレを起こさない。axisは呼び出し側が明示する
+  // (ring-spin-windupは自分中心=軸を強制退化させる従来仕様があるため、suriel.aiFromX等へ暗黙に
+  // フォールバックしない)。
+  const settleSurielHabit = (
+    state: string, liveShape: CounterReachShape, gameTimeForT: number,
+    axisFromX: number, axisFromY: number, axisTargetX: number, axisTargetY: number,
+  ): void => {
+    settleEpisode({
+      gameTime: gameTimeForT, enemyType: 'suriel', state,
+      bcx: scx, bcy: scy, pcx, pcy,
+      aiFromX: axisFromX, aiFromY: axisFromY, aiTargetX: axisTargetX, aiTargetY: axisTargetY,
+      bossRect: { x: suriel.x, y: suriel.y, width: suriel.width, height: suriel.height },
+      liveShape,
+      playerHealth: player.health, playerMaxHealth: player.maxHealth,
+      lastDamagedAtGame: player.lastDamagedAtGame,
+    });
+  };
+  // ★検収是正(中1): ring-beam-windupの帯を組む。Phase2は2本目(ring2起点・同じ狙い先・同寸法)が
+  // 実在すればbandsへ2本渡す(判定側'ring-active'の2本目と同じ式=座標源を共有)。
+  const surielRingBeamBands = (): { fx: number; fy: number; tx: number; ty: number; halfWidth: number }[] => {
+    const rbfx = suriel.aiFromX ?? scx, rbfy = suriel.aiFromY ?? scy;
+    const rbtx0 = suriel.aiTargetX ?? scx, rbty0 = suriel.aiTargetY ?? scy;
+    let rbdx = rbtx0 - rbfx, rbdy = rbty0 - rbfy;
+    const rbdl = Math.hypot(rbdx, rbdy) || 1; rbdx /= rbdl; rbdy /= rbdl;
+    const rbex = rbfx + rbdx * SR_T.beam.range, rbey = rbfy + rbdy * SR_T.beam.range;
+    const bands = [{ fx: rbfx, fy: rbfy, tx: rbex, ty: rbey, halfWidth: SR_T.beam.halfWidth }];
+    if (suriel.ring2X !== undefined && suriel.ring2Y !== undefined) {
+      let d2x = rbtx0 - suriel.ring2X, d2y = rbty0 - suriel.ring2Y;
+      const dl2 = Math.hypot(d2x, d2y) || 1; d2x /= dl2; d2y /= dl2;
+      const e2x = suriel.ring2X + d2x * SR_T.beam.range, e2y = suriel.ring2Y + d2y * SR_T.beam.range;
+      bands.push({ fx: suriel.ring2X, fy: suriel.ring2Y, tx: e2x, ty: e2y, halfWidth: SR_T.beam.halfWidth });
+    }
+    return bands;
+  };
 
   // --- 技の開始(begin*)。実戦の抽選(下のchase分岐)と ボスメーカーの▸個別再生が**同じ1本**を通る ---
   // 環の射出だけは「いまの環の位置」を起点に取るので、chase側で計算済みの待機点を渡す
@@ -2536,26 +2586,21 @@ export const runSurielTick = (
   } else if (st === 'ring-beam-windup') {
     const { overlap, counterActive } = bodyOverlapNow(suriel);
     if (overlap && counterActive) {
+      // ★検収是正(§1-0例外・中6): 溜め中カウンター成立による州中断もコマを確定する
+      // (T=州の満了予定時刻のまま。天使系はここが無いと成立コマが構造的に1件も録れない)。
+      settleSurielHabit(
+        'ring-beam-windup', { kind: 'band', bands: surielRingBeamBands() }, suriel.bossStateUntil ?? newGameTime,
+        suriel.aiFromX ?? scx, suriel.aiFromY ?? scy, suriel.aiTargetX ?? scx, suriel.aiTargetY ?? scy,
+      );
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
       // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=ビームの帯('ring-active'で
       // 実際に判定する式と同一——起点=環の到達点[aiFrom]、向き=aiFrom→aiTarget、長さ=SR_T.beam.range)。
-      {
-        const rbfx = suriel.aiFromX ?? scx, rbfy = suriel.aiFromY ?? scy;
-        const rbtx0 = suriel.aiTargetX ?? scx, rbty0 = suriel.aiTargetY ?? scy;
-        let rbdx = rbtx0 - rbfx, rbdy = rbty0 - rbfy;
-        const rbdl = Math.hypot(rbdx, rbdy) || 1; rbdx /= rbdl; rbdy /= rbdl;
-        const rbex = rbfx + rbdx * SR_T.beam.range, rbey = rbfy + rbdy * SR_T.beam.range;
-        settleEpisode({
-          gameTime: newGameTime, enemyType: 'suriel', state: 'ring-beam-windup',
-          bcx: scx, bcy: scy, pcx, pcy,
-          aiFromX: rbfx, aiFromY: rbfy, aiTargetX: rbex, aiTargetY: rbey,
-          bossRect: { x: suriel.x, y: suriel.y, width: suriel.width, height: suriel.height },
-          liveShape: { kind: 'band', bands: [{ fx: rbfx, fy: rbfy, tx: rbex, ty: rbey, halfWidth: SR_T.beam.halfWidth }] },
-          playerHealth: player.health, playerMaxHealth: player.maxHealth,
-          lastDamagedAtGame: player.lastDamagedAtGame,
-        });
-      }
+      // ★検収是正(中1): Phase2は2本目(ring2)もbandsへ列挙する(surielRingBeamBands参照)。
+      settleSurielHabit(
+        'ring-beam-windup', { kind: 'band', bands: surielRingBeamBands() }, newGameTime,
+        suriel.aiFromX ?? scx, suriel.aiFromY ?? scy, suriel.aiTargetX ?? scx, suriel.aiTargetY ?? scy,
+      );
       patch.bossState = 'ring-active'; patch.bossStateUntil = newGameTime + SR_T.ringshot.active;
       sfx.beam(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
@@ -2621,19 +2666,19 @@ export const runSurielTick = (
   } else if (st === 'ring-spin-windup') {
     const { overlap, counterActive } = bodyOverlapNow(suriel);
     if (overlap && counterActive) {
+      // ★検収是正(§1-0例外・中6): 溜め中カウンター成立による州中断もコマを確定する(T=満了予定時刻)。
+      settleSurielHabit(
+        'ring-spin-windup', { kind: 'circle', cx: scx, cy: scy, radius: SR_T.ringspin.radius },
+        suriel.bossStateUntil ?? newGameTime, scx, scy, scx, scy,
+      );
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
       // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=自分中心円(実行'ring-spin'と
       // 同じSR_T.ringspin.radius)。自分中心=軸退化(posB固定0・§1-2のbm-whip360/mk-spin/bite と同型)。
-      settleEpisode({
-        gameTime: newGameTime, enemyType: 'suriel', state: 'ring-spin-windup',
-        bcx: scx, bcy: scy, pcx, pcy,
-        aiFromX: scx, aiFromY: scy, aiTargetX: scx, aiTargetY: scy,
-        bossRect: { x: suriel.x, y: suriel.y, width: suriel.width, height: suriel.height },
-        liveShape: { kind: 'circle', cx: scx, cy: scy, radius: SR_T.ringspin.radius },
-        playerHealth: player.health, playerMaxHealth: player.maxHealth,
-        lastDamagedAtGame: player.lastDamagedAtGame,
-      });
+      settleSurielHabit(
+        'ring-spin-windup', { kind: 'circle', cx: scx, cy: scy, radius: SR_T.ringspin.radius },
+        newGameTime, scx, scy, scx, scy,
+      );
       patch.bossState = 'ring-spin'; patch.bossStateUntil = newGameTime + SR_T.ringspin.active; patch.aiStartedAt = newGameTime;
       sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
@@ -2673,26 +2718,27 @@ export const runSurielTick = (
     }
   } else if (st === 'sweep-windup') {
     const { overlap, counterActive } = bodyOverlapNow(suriel);
+    const sweepBand: CounterReachShape = {
+      kind: 'band',
+      bands: [{
+        fx: suriel.aiFromX ?? scx, fy: suriel.aiFromY ?? scy,
+        tx: suriel.aiTargetX ?? scx, ty: suriel.aiTargetY ?? scy, halfWidth: SR_T.sweep.halfWidth,
+      }],
+    };
     if (overlap && counterActive) {
+      // ★検収是正(§1-0例外・中6): 溜め中カウンター成立による州中断もコマを確定する(T=満了予定時刻)。
+      settleSurielHabit(
+        'sweep-windup', sweepBand, suriel.bossStateUntil ?? newGameTime,
+        suriel.aiFromX ?? scx, suriel.aiFromY ?? scy, suriel.aiTargetX ?? scx, suriel.aiTargetY ?? scy,
+      );
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
       // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=帯(実行'sweep'と同じ
       // aiFrom/aiTarget×SR_T.sweep.halfWidth)。
-      settleEpisode({
-        gameTime: newGameTime, enemyType: 'suriel', state: 'sweep-windup',
-        bcx: scx, bcy: scy, pcx, pcy,
-        aiFromX: suriel.aiFromX, aiFromY: suriel.aiFromY, aiTargetX: suriel.aiTargetX, aiTargetY: suriel.aiTargetY,
-        bossRect: { x: suriel.x, y: suriel.y, width: suriel.width, height: suriel.height },
-        liveShape: {
-          kind: 'band',
-          bands: [{
-            fx: suriel.aiFromX ?? scx, fy: suriel.aiFromY ?? scy,
-            tx: suriel.aiTargetX ?? scx, ty: suriel.aiTargetY ?? scy, halfWidth: SR_T.sweep.halfWidth,
-          }],
-        },
-        playerHealth: player.health, playerMaxHealth: player.maxHealth,
-        lastDamagedAtGame: player.lastDamagedAtGame,
-      });
+      settleSurielHabit(
+        'sweep-windup', sweepBand, newGameTime,
+        suriel.aiFromX ?? scx, suriel.aiFromY ?? scy, suriel.aiTargetX ?? scx, suriel.aiTargetY ?? scy,
+      );
       patch.bossState = 'sweep'; patch.bossStateUntil = newGameTime + SR_T.sweep.active;
       sfx.sweep(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }

@@ -58,7 +58,8 @@ export { bossStyleSlotKey } from './ghostSlot';
 // ラン単位のフォールドは決算(settlePendingTraits)時に読み出す。
 import {
   notePressEdge, tickHabitEpisodeMaintenance, markHabitGhostRun, takeRunHabitFold, resetRunHabitState,
-  HABIT_FAMILY_KEYS, HABIT_RING_SIZE, type HabitEpisode, type HabitFamilyKey, type HabitFamilyStat,
+  HABIT_FAMILY_KEYS, HABIT_RING_SIZE, familyRawToStat,
+  type HabitEpisode, type HabitFamilyKey, type HabitFamilyStat, type HabitFamilyRaw,
 } from './habitEpisode';
 
 // ---- 保存フォーマット -------------------------------------------------------------------------
@@ -202,10 +203,19 @@ export interface PlayerProfile {
    */
   moveHabits?: Record<string, HabitEpisode[]>;
   /**
-   * research/AI_HUMANIZE.md B1(§1-4・族別集計): band/circle/bodyの3族ごとにEMAで畳んだ代表値
-   * (発動条件=その族のコマ総数>=5。未達の族はキー自体が無い)。旧プロファイルには無い=欠損可。
+   * research/AI_HUMANIZE.md B1(§1-4・族別集計): band/circle/bodyの3族ごとの代表値
+   * (発動条件=**累計**コマ総数>=5。未達の族はキー自体が無い)。**検収是正(中5)**: 旧実装は
+   * ラン内件数へしきい値を掛けていた(1ランに5件出ない族は永久に積まれない穴)。ここは表示用の完成品
+   * (`habitFamilyRaw`から`familyRawToStat`で導出=単純平均・EMAではない)。旧プロファイルには無い=欠損可。
    */
   habitFamily?: Partial<Record<HabitFamilyKey, HabitFamilyStat>>;
+  /**
+   * research/AI_HUMANIZE.md B1(§1-4是正・検収監査中5): 族別集計の**生の累計**
+   * (count/sumPosA/sumPosB/pressCount/sumPressOfs・ラン跨ぎで単純加算)。`habitFamily`はここから
+   * `familyRawToStat`で毎回導出する(累計<HABIT_FAMILY_MIN_Nならそのランの`habitFamily`にキー無し)。
+   * 旧プロファイルには無い=欠損可(消費側はゼロから積み直す)。
+   */
+  habitFamilyRaw?: Partial<Record<HabitFamilyKey, HabitFamilyRaw>>;
 }
 
 /**
@@ -278,7 +288,9 @@ const isValidProfile = (v: unknown): v is PlayerProfile => {
     && (o.bossStyles === undefined || (typeof o.bossStyles === 'object' && o.bossStyles !== null))
     // AI_HUMANIZE.md B1: moveHabits/habitFamilyも同じく任意オブジェクトとして許容(欠損可=旧プロファイル)。
     && (o.moveHabits === undefined || (typeof o.moveHabits === 'object' && o.moveHabits !== null))
-    && (o.habitFamily === undefined || (typeof o.habitFamily === 'object' && o.habitFamily !== null));
+    && (o.habitFamily === undefined || (typeof o.habitFamily === 'object' && o.habitFamily !== null))
+    // ★検収是正(中5): habitFamilyRaw(累計の生値)も同じく任意オブジェクトとして許容(欠損可=旧プロファイル)。
+    && (o.habitFamilyRaw === undefined || (typeof o.habitFamilyRaw === 'object' && o.habitFamilyRaw !== null));
 };
 
 // PACING_PUZZLE.md §10-12#4/§10-14#10(EXボス「フィル(変異体)」バッチ1): bossStylesのスロットキーも
@@ -324,11 +336,11 @@ const saveProfile = (p: PlayerProfile): void => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
   } catch {
-    // research/AI_HUMANIZE.md B1(§5 quota退避): 保存失敗時はmoveHabits(と族集計)を落として1回だけ
-    // 再保存する(既存の集計=moveReactions/subStyles/bossStyles等を最後まで守る)。
-    if (p.moveHabits !== undefined || p.habitFamily !== undefined) {
-      const { moveHabits: _moveHabits, habitFamily: _habitFamily, ...rest } = p;
-      void _moveHabits; void _habitFamily;
+    // research/AI_HUMANIZE.md B1(§5 quota退避): 保存失敗時はmoveHabits(と族集計・累計生値)を落として
+    // 1回だけ再保存する(既存の集計=moveReactions/subStyles/bossStyles等を最後まで守る)。
+    if (p.moveHabits !== undefined || p.habitFamily !== undefined || p.habitFamilyRaw !== undefined) {
+      const { moveHabits: _moveHabits, habitFamily: _habitFamily, habitFamilyRaw: _habitFamilyRaw, ...rest } = p;
+      void _moveHabits; void _habitFamily; void _habitFamilyRaw;
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
       } catch {
@@ -566,12 +578,13 @@ export interface PendingBossStyleRecord {
 /**
  * research/AI_HUMANIZE.md B1(§1・コマ台帳): ラン単位のフォールド1件ぶん。**EMAではなく生追記**
  * (episodesはrunHabitEpisodes側で既にリング10件へ切り詰め済み=commit時は旧10件と新規件を結合して
- * 再度リング10件へ切り詰めるだけ)。familyだけ既存の値とEMA混合する(§1-4)。
+ * 再度リング10件へ切り詰めるだけ)。**検収是正(中5)**: familyは**しきい値ゲート無しの生カウント**
+ * (HabitFamilyRaw)——累計と発動しきい値の適用はapplyPendingHabits(このランを畳む側)が行う。
  */
 export interface PendingHabitsRecord {
   kind: 'habits';
   episodes: Readonly<Record<string, readonly HabitEpisode[]>>;
-  family: Readonly<Partial<Record<HabitFamilyKey, HabitFamilyStat>>>;
+  family: Readonly<Partial<Record<HabitFamilyKey, HabitFamilyRaw>>>;
 }
 
 export type PendingTraitRecord =
@@ -709,6 +722,15 @@ export const applyPendingSession = (prev: PlayerProfile | null, r: PendingSessio
     // G5(§2.10): このレコード自体はbossStylesを触らない(bossStyleレコードは別途最後に適用される)が、
     // ここで持ち越さないと以前保存済みのbossStylesが毎セッションcommitで消えてしまうため必ず引き継ぐ。
     bossStyles: base.bossStyles,
+    // ★検収是正(重大1/中5・見つかった副作用): このレコードもmoveHabits/habitFamily/habitFamilyRawには
+    // 触らない。旧実装はここで引き継がず、commitPendingTraits内で**session→habitsの順**に適用される時
+    // (habitsはfoldHabitEpisodesがsettlePendingTraits内で最後に積むため必ずsessionの後)、sessionの
+    // 保存がここを素通り(undefined)にして**前回までの累計コマ・族集計を毎ラン消していた**
+    // (2ラン目以降、族の累計が常にそのランぶんへリセットされる=検収是正・中5の「累計しきい値」テストで
+    // 実際に検出された)。bossStylesと同じ理由でここも必ず引き継ぐ。
+    moveHabits: base.moveHabits,
+    habitFamily: base.habitFamily,
+    habitFamilyRaw: base.habitFamilyRaw,
   };
 };
 
@@ -1078,13 +1100,26 @@ export const foldSubStyleTallies = (): void => {
 export const foldHabitEpisodes = (): void => {
   const folded = takeRunHabitFold(); // ゴーストラン/無記録ならnull(内部で状態はリセット済み)
   if (!folded) return;
+  // ★検収是正(重大1・記録ゲート): 「撃破」条件を追加。既存の撃破シグナル(notifyBossClear→
+  // s.clearedSlots→保留バッファへ積まれる kind:'bossStyle' レコード=新しい判定を発明せず流用)が
+  // このランに1件も無ければ、コマ・族集計とも保存しない(死にラン・撤収ランのコマは攻略前の位置=
+  // ノイズ/守護霊回は既存ゲートで別途丸ごと除外済み)。既存の計測ゲート(社長裁定2026-08-28
+  // 「撃破+リザルト通過のランのみ」)と同一条件へ揃える。
+  // これで「optOutチェックボックスが出ないままコマだけ保存される」穴(GameOverScreen)も同時に塞がる:
+  // 撃破ランなら pendingRecords に既に kind:'bossStyle' があり、GameOverScreen起動時の
+  // hasPendingTraitRecords() も true になる(=チェックボックスが出る)。
+  const hasBossDefeatThisRun = pendingRecords.some(r => r.kind === 'bossStyle');
+  if (!hasBossDefeatThisRun) return;
   pendingRecords.push({ kind: 'habits', episodes: folded.episodes, family: folded.family });
 };
 
 /**
  * 純関数: 保留コマ台帳1件を旧プロファイルへ畳む。episodesは**生追記→リング10件へ切り詰め**
- * (EMAしない・§1)。familyはEMA(α=EMA_ALPHA)で混合(§1-4。そのランでn<HABIT_FAMILY_MIN_N だった族は
- * folded.familyにキー自体が無いので前回値をそのまま維持する)。
+ * (EMAしない・§1)。
+ * ★検収是正(中5・§1-4): familyは**生の累計(count/sumPosA/sumPosB/pressCount/sumPressOfs)を
+ * 単純加算で保存**(`habitFamilyRaw`)し、表示用の`habitFamily`はその**累計**から`familyRawToStat`で
+ * 毎回導出する(発動しきい値HABIT_FAMILY_MIN_Nは累計にだけ掛かる=ラン内件数での足切りを廃止)。
+ * 旧実装(EMA混合)は「1ランに5件出ない族が永久に集計されない」穴があったため撤去。
  */
 export const applyPendingHabits = (prev: PlayerProfile, r: PendingHabitsRecord): PlayerProfile => {
   const mergedEpisodes: Record<string, HabitEpisode[]> = { ...(prev.moveHabits ?? {}) };
@@ -1092,26 +1127,28 @@ export const applyPendingHabits = (prev: PlayerProfile, r: PendingHabitsRecord):
     const merged = [...(mergedEpisodes[key] ?? []), ...incoming];
     mergedEpisodes[key] = merged.length > HABIT_RING_SIZE ? merged.slice(-HABIT_RING_SIZE) : merged;
   }
-  const mergedFamily: Partial<Record<HabitFamilyKey, HabitFamilyStat>> = { ...(prev.habitFamily ?? {}) };
+  const mergedRaw: Partial<Record<HabitFamilyKey, HabitFamilyRaw>> = { ...(prev.habitFamilyRaw ?? {}) };
   for (const fk of HABIT_FAMILY_KEYS) {
     const sample = r.family[fk];
-    if (!sample) continue; // このランではn<HABIT_FAMILY_MIN_N=前回値を保つ(欠損を0で上書きしない)
-    const base = mergedFamily[fk];
-    mergedFamily[fk] = base === undefined
-      ? sample // 初回=そのまま
+    if (!sample) continue; // このランはこの族の記録が0件=何も足さない(前回の累計をそのまま維持)
+    const base = mergedRaw[fk];
+    mergedRaw[fk] = base === undefined
+      ? { ...sample } // 初回=そのまま
       : {
-        n: base.n + sample.n,
-        avgPosA: Math.round(base.avgPosA * (1 - EMA_ALPHA) + sample.avgPosA * EMA_ALPHA),
-        avgPosB: Math.round(base.avgPosB * (1 - EMA_ALPHA) + sample.avgPosB * EMA_ALPHA),
-        avgPressOfs: sample.avgPressOfs === null
-          ? base.avgPressOfs
-          : base.avgPressOfs === null
-            ? sample.avgPressOfs
-            : Math.round(base.avgPressOfs * (1 - EMA_ALPHA) + sample.avgPressOfs * EMA_ALPHA),
-        pressRatePct: Math.round(base.pressRatePct * (1 - EMA_ALPHA) + sample.pressRatePct * EMA_ALPHA),
+        count: base.count + sample.count,
+        sumPosA: base.sumPosA + sample.sumPosA,
+        sumPosB: base.sumPosB + sample.sumPosB,
+        pressCount: base.pressCount + sample.pressCount,
+        sumPressOfs: base.sumPressOfs + sample.sumPressOfs,
       };
   }
-  return { ...prev, moveHabits: mergedEpisodes, habitFamily: mergedFamily };
+  const mergedFamily: Partial<Record<HabitFamilyKey, HabitFamilyStat>> = {};
+  for (const fk of HABIT_FAMILY_KEYS) {
+    const raw = mergedRaw[fk];
+    const stat = raw ? familyRawToStat(raw) : null; // 累計<HABIT_FAMILY_MIN_Nならnull=このランはキー無し
+    if (stat) mergedFamily[fk] = stat;
+  }
+  return { ...prev, moveHabits: mergedEpisodes, habitFamilyRaw: mergedRaw, habitFamily: mergedFamily };
 };
 
 /**

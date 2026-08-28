@@ -19,6 +19,8 @@ import {
 import { resetBotTelemetry, recordDamageDealt, recordSubUse } from './botTelemetry';
 import { savePlayerName } from './playerName'; // v0.25.2477: srcName(計測時のプレイヤー名)の固定用
 import type { Enemy } from '../types/game';
+// research/AI_HUMANIZE.md B1(コマ台帳・検収是正): 記録ゲート(重大1)・族しきい値の累計化(中5)の検証用。
+import { settleEpisode, tickHabitEpisodeMaintenance } from './habitEpisode';
 
 // jsdom を使わずに済む最小 localStorage スタブ(tutorialArchive.test.tsと同じ作法)。
 const installStorage = () => {
@@ -1374,6 +1376,112 @@ describe('playerTraits §2.16 B: リザルト年表のビュー(pendingBossClear
     expect(pendingBossClears()).toHaveLength(1);
     settlePendingTraits(false, ['thor']);
     expect(pendingBossClears()).toEqual([]);
+  });
+});
+
+// ============================================================================
+// research/AI_HUMANIZE.md B1(検収是正・重大1): 記録ゲートに「撃破」条件
+// ============================================================================
+describe('AI_HUMANIZE B1(検収是正・重大1): 記録ゲートに撃破条件', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  const recordThorIssenEpisode = (T: number): void => {
+    settleEpisode({
+      gameTime: T, enemyType: 'thor', state: 'issen-windup',
+      bcx: 0, bcy: 0, pcx: 100, pcy: 0,
+      bossRect: { x: -22, y: -22, width: 44, height: 44 },
+      playerHealth: 100, playerMaxHealth: 100, lastDamagedAtGame: undefined,
+    });
+    tickHabitEpisodeMaintenance(T + 300);
+  };
+
+  it('撃破ランはコマ台帳が保存される(対照)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
+    recordThorIssenEpisode(10_000);
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    settlePendingTraits(false);
+    expect(loadPlayerProfile()!.moveHabits?.['thor:issen-windup']?.length).toBe(1);
+  });
+
+  it('撃破が1体もないランはコマ台帳を1件も保存しない(死にラン/撤収ランはノイズ)', () => {
+    // 1本目: 撃破ありランで先にプロファイルを作る(コマ1件が保存される状態を用意)。
+    tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
+    recordThorIssenEpisode(10_000);
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    settlePendingTraits(false);
+    expect(loadPlayerProfile()!.moveHabits?.['thor:issen-windup']?.length).toBe(1);
+
+    // 2本目: 同じ州のコマをもう1件録るが、このランは撃破していない(notifyBossClearを呼ばない)。
+    resetPlayerTraits();
+    tickPlayerTraits(baseInput({ gameTime: 40_000, movementInput: true }));
+    recordThorIssenEpisode(50_000);
+    tickPlayerTraits(baseInput({ gameTime: 70_000, movementInput: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 70_100 }));
+    settlePendingTraits(false); // 撃破通知なし=死にラン/撤収ランと同じ扱い
+    // 撃破が無いので2件目は保存されず、1本目の1件のまま(増えていない)。
+    expect(loadPlayerProfile()!.moveHabits?.['thor:issen-windup']?.length).toBe(1);
+  });
+
+  it('撃破が無いランはoptOutチェックの元になるhasPendingTraitRecords()もfalseになる(穴の再発防止)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
+    recordThorIssenEpisode(10_000);
+    tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    // GameOverScreenのチェックボックス表示はマウント時のhasPendingTraitRecords()を見る
+    // (settlePendingTraits/foldHabitEpisodesより前)。撃破が無ければここも空のまま=
+    // 「チェックが出ないのにコマだけ保存される」穴が構造的に無いことを固定する。
+    expect(hasPendingTraitRecords()).toBe(false);
+  });
+});
+
+// ============================================================================
+// research/AI_HUMANIZE.md B1(検収是正・中5): 族別集計のしきい値は「累計」に掛かる
+// ============================================================================
+describe('AI_HUMANIZE B1(検収是正・中5): 族別しきい値は累計コマ総数に掛かる(ラン内件数の足切りを廃止)', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  // thor:issen-windupはband族(§1-2)。1ランに2件だけ録り、撃破1体で決算する。
+  const runWithTwoBandEpisodes = (startAt: number): void => {
+    tickPlayerTraits(baseInput({ gameTime: startAt, movementInput: true }));
+    settleEpisode({
+      gameTime: startAt + 1_000, enemyType: 'thor', state: 'issen-windup',
+      bcx: 0, bcy: 0, pcx: 100, pcy: 0,
+      bossRect: { x: -22, y: -22, width: 44, height: 44 },
+      playerHealth: 100, playerMaxHealth: 100, lastDamagedAtGame: undefined,
+    });
+    tickHabitEpisodeMaintenance(startAt + 1_300);
+    settleEpisode({
+      gameTime: startAt + 2_000, enemyType: 'thor', state: 'issen-windup',
+      bcx: 0, bcy: 0, pcx: 100, pcy: 0,
+      bossRect: { x: -22, y: -22, width: 44, height: 44 },
+      playerHealth: 100, playerMaxHealth: 100, lastDamagedAtGame: undefined,
+    });
+    tickHabitEpisodeMaintenance(startAt + 2_300);
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: startAt + 30_000, movementInput: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: startAt + 30_100 }));
+    settlePendingTraits(false);
+    resetPlayerTraits();
+  };
+
+  it('1ラン2件×3ラン(累計6件)でband族が発動する(1〜2ラン目=累計未達で欠損のまま)', () => {
+    runWithTwoBandEpisodes(0);
+    expect(loadPlayerProfile()!.habitFamily?.band).toBeUndefined(); // 累計2件=HABIT_FAMILY_MIN_N(5)未満
+    expect(loadPlayerProfile()!.habitFamilyRaw?.band?.count).toBe(2); // 生カウントは累計されている
+
+    runWithTwoBandEpisodes(100_000);
+    expect(loadPlayerProfile()!.habitFamily?.band).toBeUndefined(); // 累計4件=まだ未達
+    expect(loadPlayerProfile()!.habitFamilyRaw?.band?.count).toBe(4);
+
+    runWithTwoBandEpisodes(200_000);
+    const p = loadPlayerProfile()!;
+    expect(p.habitFamily?.band).toBeDefined(); // 累計6件>=5=発動
+    expect(p.habitFamily!.band!.n).toBe(6);
+    expect(p.habitFamilyRaw?.band?.count).toBe(6);
   });
 });
 

@@ -187,9 +187,9 @@ export interface HabitEpisode {
   sub: number;
   /** 押下相対時刻(ms)=押下−T。未押下はnull。-1500..500にクランプ。 */
   pressOfs: number | null;
-  /** その瞬間の自分のHP<=30%なら1。 */
+  /** その瞬間の自分のHP<=30%なら1(30%は叩き台・§7-8実測主義)。 */
   ctxHp: 0 | 1;
-  /** 直近2秒以内に被弾していたら1。 */
+  /** 直近2秒以内に被弾していたら1(2秒は叩き台・§7-8実測主義)。 */
   ctxHit: 0 | 1;
   /** そのランでこの州の着弾に遭った何回目か(1..20でカンスト)。 */
   seq: number;
@@ -381,8 +381,12 @@ export const settleEpisode = (input: SettleEpisodeInput): void => {
   const tx = input.aiTargetX ?? input.bcx, ty = input.aiTargetY ?? input.bcy;
   const pos = habitPos(shape, input.pcx, input.pcy, fx, fy, tx, ty, input.bossRect);
   if (pos === null) return; // none(紫)等
-  const ctxHp: 0 | 1 = input.playerMaxHealth > 0 && input.playerHealth / input.playerMaxHealth <= 0.3 ? 1 : 0;
-  const ctxHit: 0 | 1 = input.lastDamagedAtGame !== undefined
+  const ctxHp: 0 | 1 = input.playerMaxHealth > 0 && input.playerHealth / input.playerMaxHealth <= 0.3 ? 1 : 0; // 30%は叩き台(§7-8実測主義)
+  // ★検収是正(中4・番兵0): player.lastDamagedAtGame は gameStore の既定値が0(=まだ被弾していない)。
+  // 0を「被弾時刻」として扱うと、ラン開始2秒以内(gameTime<=2000)に満了する州が「直近2秒以内に
+  // 被弾していた」に化ける(0という時刻に被弾したと誤読するため)。`>0`ガードで未被弾を除外する。
+  // 2000msの窓自体も叩き台(§7-8実測主義)。
+  const ctxHit: 0 | 1 = input.lastDamagedAtGame !== undefined && input.lastDamagedAtGame > 0
     && input.gameTime - input.lastDamagedAtGame <= 2000 ? 1 : 0;
   pendingSettles.push({
     episodeKey, T: input.gameTime, attributeAt: input.gameTime + ATTRIBUTION_LEAD_MS,
@@ -409,18 +413,21 @@ export const tickHabitEpisodeMaintenance = (gameTime: number): void => {
 export const markHabitGhostRun = (): void => { runIsGhost = true; };
 
 /** ラン単位の蓄積を読み出して空にする(commit判断=playerTraits.ts側)。ゴーストランは丸ごとnull。
- * 何も録れていない(episodesが空かつ全族n<HABIT_FAMILY_MIN_N)場合もnull=プロファイルに触らない。 */
+ * 何も録れていない(episodesが空かつどの族も0件)場合もnull=プロファイルに触らない。
+ * ★検収是正(中5・§1-4): familyは**しきい値ゲート無しの生カウント**(HabitFamilyRaw)で返す
+ * (旧実装はここでHABIT_FAMILY_MIN_Nをラン内件数へ掛けており、1ランに5件出ない族が累計されず永久に
+ * 積まれなかった)。累計と発動しきい値の適用は呼び出し側(playerTraits.applyPendingHabits)の責務。 */
 export const takeRunHabitFold = (): {
   episodes: Readonly<Record<string, readonly HabitEpisode[]>>;
-  family: Readonly<Partial<Record<HabitFamilyKey, HabitFamilyStat>>>;
+  family: Readonly<Partial<Record<HabitFamilyKey, HabitFamilyRaw>>>;
 } | null => {
   const wasGhost = runIsGhost;
   const episodesSnapshot: Record<string, HabitEpisode[]> = {};
   runEpisodes.forEach((v, k) => { episodesSnapshot[k] = [...v]; });
-  const familySnapshot: Partial<Record<HabitFamilyKey, HabitFamilyStat>> = {};
+  const familySnapshot: Partial<Record<HabitFamilyKey, HabitFamilyRaw>> = {};
   for (const fk of HABIT_FAMILY_KEYS) {
-    const stat = familyRawToStat(familyRaw[fk]);
-    if (stat) familySnapshot[fk] = stat;
+    const raw = familyRaw[fk];
+    if (raw.count > 0) familySnapshot[fk] = { ...raw };
   }
   resetRunHabitState();
   if (wasGhost) return null;

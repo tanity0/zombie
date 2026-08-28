@@ -191,6 +191,11 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   // (ボス交戦セッション)が1件以上あるか。モジュールシングルトンをマウント時に1回だけ読む(リザルト
   // 表示中は不変)。チェック状態もローカルstateのみ=毎フレーム変化するstore購読なし(React再描画規律)。
   // ボス交戦なし/守護霊装備/?ghost=1のランは保留が空(そもそも計測されていない)のでチェックは出ない。
+  // ★検収是正(重大1・記録ゲート): AI_HUMANIZE.md B1のコマ台帳(moveHabits)も「撃破+リザルト通過」
+  // でしか保存されないよう揃えた(playerTraits.foldHabitEpisodesが撃破シグナル[pendingRecords内の
+  // kind:'bossStyle']を見て保存を止める)。撃破ランなら必ずbossStyleレコードが積まれているので、
+  // このチェックボックスが出るランと「コマが保存されうるラン」は常に一致する(=このチェックが
+  // 出ないままコマだけ保存される穴は無い)。
   const [hasPendingTraits] = useState(() => hasPendingTraitRecords());
   const [traitOptOut, setTraitOptOut] = useState(false);
   // BOT_AND_GHOST.md §2.13/§2.16 B: 撃破の年表。**マウント時に1回だけ**読む3つ(保留中の撃破/
