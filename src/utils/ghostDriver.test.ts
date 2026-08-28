@@ -18,6 +18,7 @@ import {
   GHOST_COUNTER_WAIT_MS, GHOST_DEFAULT_STATIONARY_FRAC, GHOST_APPROACH_MIN_CHANCE,
   GHOST_ORBIT_BASE_FRAC, GHOST_ORBIT_IDLE_FRAC, GHOST_ORBIT_TANK_FRAC, GHOST_BOSS_BODY_AVOID_PX,
   GHOST_COUNTER_MELEE_PERIOD_MS, // GHOST-COUNTER-PARITY(社長指示1)
+  withSynthesizedMicroRhythm, // research/AI_HUMANIZE.md B3(§3合成既定分布)
   type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput, type GhostMoveRoll,
 } from './ghostDriver';
 import { jumpDodge, botSkillProfile } from './botSkill';
@@ -1464,5 +1465,106 @@ describe('城ボスの着弾予告×離れた守護霊(v0.25.3982)', () => {
     }));
     expect(d.meleeIsCounterAttempt).toBe(false);
     expect(d.counterPendingAt).toBeUndefined();
+  });
+});
+
+// research/AI_HUMANIZE.md B3(§4マイクロリズムの写し)。decideGhost自身は`profile.microRhythm`の
+// **有無**だけで分岐する(scalarからの自動合成はしない=withSynthesizedMicroRhythmは呼び出し側の責務)。
+describe('AI_HUMANIZE B3: マイクロリズムの写し(decideGhost)', () => {
+  const boss = () => mkBoss({ x: 400, y: 0 });
+
+  it('分布なしプロファイル(microRhythm未定義)の移動は現行と一致(§7)', () => {
+    // 既存PROFILEはmicroRhythmを持たない=新規コードは一切分岐しない。同じrand列で決定的に
+    // 同じ結果になることを確認する(microSeedを渡しても分布が無ければ何も変わらない)。
+    const rand = () => 0.4;
+    const withoutSeed = decideGhost(baseDriverInput({
+      ghost: mkGhost({ orbitSign: 1 }), enemies: [boss()], boundBossId: 'boss-1', profile: PROFILE, rand,
+    }));
+    const withSeed = decideGhost(baseDriverInput({
+      ghost: mkGhost({ orbitSign: 1 }), enemies: [boss()], boundBossId: 'boss-1', profile: PROFILE, rand,
+      microSeed: 12345,
+    }));
+    expect(withSeed).toEqual(withoutSeed);
+  });
+
+  it('①置換でmobilityが生きる: mobility=1(常に動く)なら止まりエピソードに入らない', () => {
+    const profile: GhostProfile = {
+      ...PROFILE, mobility: 1, microRhythm: { stillness: { n: 20, rate0: 0, rate1: 0 } }, // rate2(long)=1
+    };
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ orbitSign: 1 }), enemies: [boss()], boundBossId: 'boss-1', profile,
+      rand: () => 0.99, // mobility判定は`rand() < mobility`。0.99<1=true(=動く)
+    }));
+    // 動く判定=true なので止まりエピソードは開始されない(microIdleUntil=0=未設定のまま)。
+    expect(d.microIdleUntil).toBe(0);
+    expect(Math.hypot(d.moveX, d.moveY)).toBeGreaterThan(0);
+  });
+
+  it('①置換でmobilityが生きる: mobility=0(常に止まる)なら止まりエピソードへ入る', () => {
+    const profile: GhostProfile = {
+      ...PROFILE, mobility: 0, microRhythm: { stillness: { n: 20, rate0: 1, rate1: 0 } }, // 全て短い止まり
+    };
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ orbitSign: 1 }), enemies: [boss()], boundBossId: 'boss-1', profile,
+      rand: () => 0.01, // 0.01<0=false(=止まる)
+      microSeed: 1,
+    }));
+    expect(d.microIdleUntil).toBeDefined();
+    expect(d.microIdleUntil).toBeGreaterThan(0);
+  });
+
+  it('④は既存の毎tick反転抽選を「引いて捨てる」=rand消費回数は分布の有無で変わらない', () => {
+    const countCalls = (profile: GhostProfile): number => {
+      let calls = 0;
+      const rand = () => { calls += 1; return 0.4; };
+      decideGhost(baseDriverInput({
+        ghost: mkGhost({ orbitSign: 1 }), enemies: [boss()], boundBossId: 'boss-1', profile,
+        rand, microSeed: 7,
+      }));
+      return calls;
+    };
+    const without = countCalls(PROFILE);
+    const withOrbit = countCalls({ ...PROFILE, microRhythm: { orbit: { n: 10, rightRate: 0.5 } } });
+    expect(withOrbit).toBe(without); // 既存rand流の消費回数は不変(専用流mrandは別カウンタ)
+  });
+
+  it('⑦punishRushへの合成: recover窓が開いた瞬間は⑦分布の遅延ぶんpunishRushが遅れる', () => {
+    const recoverBoss = mkBoss({ x: 40, y: 0, bossState: 'harai-recover' }); // 近接射程内
+    const profile: GhostProfile = {
+      ...PROFILE, punish: { recover: { n: 10, rushRate: 1 } },
+      // 遅延分布=常に「様子見」(bin2)側=500ms以上の遅延を引く前提のテスト。
+      microRhythm: { punishRecoverSpeed: { n: 10, rate0: 0, rate1: 0 } },
+    };
+    const d0 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ orbitSign: 1, lastMeleeAt: -1_000_000 }),
+      enemies: [recoverBoss], boundBossId: 'boss-1', profile,
+      rand: () => 0.01, nowMs: 0, gameTime: 0, microSeed: 3,
+    }));
+    // 窓が開いた直後(遅延中)はまだ詰めない=射程外なら接近しない(punishRushがまだ効いていない)。
+    expect(d0.microPunishDelayUntil).toBeDefined();
+    expect(d0.microPunishDelayUntil).toBeGreaterThan(0);
+    // 遅延が過ぎたnowMsで同じ窓の続きとして呼ぶと詰める側(punishRush有効)になる。
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        orbitSign: 1, lastMeleeAt: -1_000_000,
+        punishContext: 'recover', punishMode: 'rush', microPunishDelayUntil: d0.microPunishDelayUntil,
+      }),
+      enemies: [recoverBoss], boundBossId: 'boss-1', profile,
+      rand: () => 0.01, nowMs: d0.microPunishDelayUntil!, gameTime: 0, microSeed: 3,
+    }));
+    // 詰める判断が有効なら、射程内で近接を振っている(action==='melee')はず。
+    expect(d1.action).toBe('melee');
+  });
+
+  it('withSynthesizedMicroRhythm: 既にmicroRhythmを持つプロファイルは変更しない(実測が最優先)', () => {
+    const withReal: GhostProfile = { ...PROFILE, microRhythm: { orbit: { n: 99, rightRate: 0.9 } } };
+    expect(withSynthesizedMicroRhythm(withReal)).toBe(withReal);
+  });
+
+  it('withSynthesizedMicroRhythm: 欠損時は決定的にスカラーから合成する(同じスカラー→同じ分布)', () => {
+    const a = withSynthesizedMicroRhythm({ ...PROFILE, stationaryFrac: 0.4, hitsPerMin: 5, preferredDist: 200 });
+    const b = withSynthesizedMicroRhythm({ ...PROFILE, stationaryFrac: 0.4, hitsPerMin: 5, preferredDist: 200 });
+    expect(a.microRhythm).toEqual(b.microRhythm);
+    expect(a.microRhythm).toBeDefined();
   });
 });

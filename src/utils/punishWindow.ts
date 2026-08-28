@@ -18,6 +18,7 @@
 //
 // 純関数のみ(store/React/PixiJS非依存)=ヘッドレスでテスト可能。
 import type { Enemy } from '../types/game';
+import type { MicroBin3Dist } from './microRhythm'; // research/AI_HUMANIZE.md B3(§4⑦の保存形)
 
 /** 隙(punish window)の文脈。3つで1機構(§2.18追補「1つの機構で計測・再生」)。 */
 export type PunishContext = 'stun' | 'recover' | 'afterCounter';
@@ -182,3 +183,50 @@ export const punishModeStat = (
   const s = punish?.[ctx];
   return s === undefined ? undefined : { n: s.n, rate: s.rushRate };
 };
+
+// =================================================================================================
+// research/AI_HUMANIZE.md B3(§4⑦「硬直パニッシュの速さ」)。**この枠内で**録る=recover窓の定義
+// (isBossRecoverNowApprox・上と共通)も、窓の開閉判定(stepPunishEpisodes)も新規に発明しない。
+// 追加するのは「recover窓が開いてから最初の振り(swungThisTick)までのms」を3ビンへ積むだけの
+// 解像度上げ(既存のstun/afterCounter文脈には掛けない=発注仕様どおりrecoverのみ)。
+// =================================================================================================
+/** 3ビンの叩き台しきい値(§4⑦「即/普通/様子見」)。punishWindow.tsの外(microRhythmReplay.ts)の
+ * サンプリング側 PUNISH_FAST_MS/PUNISH_NORMAL_MS と同じ境界(数値の複製ではなく別ファイルの定数)。 */
+export const PUNISH_SPEED_FAST_MS = 150;   // 叩き台
+export const PUNISH_SPEED_NORMAL_MS = 500; // 叩き台
+
+/** 計測中の状態(recover窓の開き時刻+初振り検知)。セッション単位でplayerTraits.Sessionが1個持つ。 */
+export interface PunishSpeedState {
+  open: boolean;
+  openAt: number;
+  swung: boolean;
+}
+export const createPunishSpeedState = (): PunishSpeedState => ({ open: false, openAt: 0, swung: false });
+
+/** 集計(recoverだけの3ビン)。 */
+export interface PunishSpeedTally { n: number; fast: number; normal: number; slow: number }
+export const createPunishSpeedTally = (): PunishSpeedTally => ({ n: 0, fast: 0, normal: 0, slow: 0 });
+
+/**
+ * 毎tick1回。recover窓のエッジ(punishWindowsOpenの'recover'フラグ)を検知し、開いている間に
+ * 最初の振り(swungThisTick)が来た時点で「開き→振り」の遅れmsを1ビンへ積む。窓が閉じるまで
+ * 一度も振らなかった回は数えない(=硬直中に何もしなかった=このノブの対象外。仕様どおり)。
+ */
+export const stepPunishSpeed = (
+  st: PunishSpeedState, tally: PunishSpeedTally, recoverOpen: boolean, swungThisTick: boolean, gameTime: number,
+): void => {
+  if (recoverOpen && !st.open) { st.open = true; st.openAt = gameTime; st.swung = false; }
+  else if (!recoverOpen && st.open) { st.open = false; st.swung = false; }
+  if (st.open && swungThisTick && !st.swung) {
+    st.swung = true;
+    const lag = gameTime - st.openAt;
+    tally.n += 1;
+    if (lag < PUNISH_SPEED_FAST_MS) tally.fast += 1;
+    else if (lag < PUNISH_SPEED_NORMAL_MS) tally.normal += 1;
+    else tally.slow += 1;
+  }
+};
+
+/** セッション確定時: プロファイルへ焼く形(MicroBin3Dist)へ。0件はundefined(前回値を保つ)。 */
+export const foldPunishSpeed = (tally: PunishSpeedTally): MicroBin3Dist | undefined =>
+  tally.n > 0 ? { n: tally.n, rate0: tally.fast / tally.n, rate1: tally.normal / tally.n } : undefined;

@@ -62,8 +62,10 @@ import {
 import { GRAVITY_SHOT_BOSS_SLOW_MULT } from './skillEffectsB7';
 import {
   decideGhost, GHOST_COUNTER_MELEE_PERIOD_MS, type GhostDecision, type GhostProfile,
-  shouldGhostClaimSub,
+  shouldGhostClaimSub, withSynthesizedMicroRhythm,
 } from './ghostDriver';
+import { hashSeed } from './microRhythmReplay'; // research/AI_HUMANIZE.md B3(§4専用乱数流のシード)
+import { rampVelocity } from './motionRamp'; // research/AI_HUMANIZE.md B3(§4慣性=速度状態モデル)
 import { strongestGuardian } from '../data/fixedGuardians';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { GUARDIAN_PHANTOM_LABEL } from './bossPractice';
@@ -118,8 +120,12 @@ export const phantomProfile = (): GhostProfile => {
     // 技への反応表は**渡さない**: 表のキーは「ボスの技」で、幻影から見た相手はプレイヤー=
     // 技キーが引けない。渡しても常にフォールバックになるだけなので配線しない。
   };
-  profileCache = { key, value: built };
-  return built;
+  // ★AI_HUMANIZE.md B3(§3大原則「幻影は対幻影戦の数値だけ」): 台帳の`microRhythm`(対ボス戦の実測)は
+  // **上のbuiltへ複製しない**(守護霊専用のまま)。幻影は既存スカラーからの合成既定分布のみを持つ
+  // (第2弾で対幻影戦の実測が入るまでの叩き台=★確認#11(a)と同じ段階移行の考え方)。
+  const value = withSynthesizedMicroRhythm(built);
+  profileCache = { key, value };
+  return value;
 };
 
 /**
@@ -296,6 +302,19 @@ export interface PhantomTickState {
     dangerSeenAt?: number;
     dangerLastAt?: number;
     orbitSign?: 1 | -1;
+    // ---- research/AI_HUMANIZE.md B3(§4マイクロリズムの写し。ghostDriver.GhostSelf/GhostDecisionと同形) ----
+    microDrawIndex?: number;
+    microIdleUntil?: number;
+    microMeleeCooldownMs?: number;
+    microDrawnDist?: number;
+    microDrawnDistSig?: string;
+    microOrbitRedrawAt?: number;
+    microHitReactMode?: 0 | 1 | 2;
+    microHitReactUntil?: number;
+    microHitReactAnchor?: number;
+    microPunishDelayUntil?: number;
+    microDecisionMode?: 'approach' | 'retreat' | 'orbit-base' | 'orbit-tank' | 'orbit-idle';
+    microDecisionUntil?: number;
   };
   /** 次に近接を振ってよい時刻(gameTime基準)。プレイヤーの近接CDと同じ周期で進む。 */
   nextMeleeAt: number;
@@ -502,7 +521,24 @@ export const decidePhantom = (
       dangerSeenAt: s.ghost.dangerSeenAt,
       dangerLastAt: s.ghost.dangerLastAt,
       orbitSign: s.ghost.orbitSign,
+      // ★AI_HUMANIZE.md B3(§4マイクロリズムの写し): 自分の被弾打刻(⑥)・HP割合(⑤)+専用乱数流の持ち越し。
+      lastHit: phantom.lastHit,
+      hpFrac01: phantom.maxHealth > 0 ? phantom.health / phantom.maxHealth : 1,
+      microDrawIndex: s.ghost.microDrawIndex,
+      microIdleUntil: s.ghost.microIdleUntil,
+      microMeleeCooldownMs: s.ghost.microMeleeCooldownMs,
+      microDrawnDist: s.ghost.microDrawnDist,
+      microDrawnDistSig: s.ghost.microDrawnDistSig,
+      microOrbitRedrawAt: s.ghost.microOrbitRedrawAt,
+      microHitReactMode: s.ghost.microHitReactMode,
+      microHitReactUntil: s.ghost.microHitReactUntil,
+      microHitReactAnchor: s.ghost.microHitReactAnchor,
+      microPunishDelayUntil: s.ghost.microPunishDelayUntil,
+      microDecisionMode: s.ghost.microDecisionMode,
+      microDecisionUntil: s.ghost.microDecisionUntil,
     },
+    // ★AI_HUMANIZE.md B3(§4「専用乱数流」・シード=敵id): 既存randとは別系統。
+    microSeed: hashSeed(phantom.id),
     // 「標的が居ない時はプレイヤーへ寄る」フォールバック用の座標。幻影に守るべき主は居ないので
     // 自分自身を渡す=そのフォールバックは実質何もしない(標的は常に居るので通らない)。
     player: { x: phantom.x, y: phantom.y, width: phantom.width, height: phantom.height },
@@ -839,6 +875,19 @@ export const runPhantomTick = (
   s.ghost.dangerSeenAt = decision.dangerSeenAt;
   s.ghost.dangerLastAt = decision.dangerLastAt;
   s.ghost.orbitSign = decision.orbitSign;
+  // ★AI_HUMANIZE.md B3: マイクロリズムの持ち越し状態。
+  s.ghost.microDrawIndex = decision.microDrawIndex;
+  s.ghost.microIdleUntil = decision.microIdleUntil;
+  s.ghost.microMeleeCooldownMs = decision.microMeleeCooldownMs;
+  s.ghost.microDrawnDist = decision.microDrawnDist;
+  s.ghost.microDrawnDistSig = decision.microDrawnDistSig;
+  s.ghost.microOrbitRedrawAt = decision.microOrbitRedrawAt;
+  s.ghost.microHitReactMode = decision.microHitReactMode;
+  s.ghost.microHitReactUntil = decision.microHitReactUntil;
+  s.ghost.microHitReactAnchor = decision.microHitReactAnchor;
+  s.ghost.microPunishDelayUntil = decision.microPunishDelayUntil;
+  s.ghost.microDecisionMode = decision.microDecisionMode;
+  s.ghost.microDecisionUntil = decision.microDecisionUntil;
 
   // ---- 移動 ---------------------------------------------------------------------------------------
   // 押し道具(鞭・シールドバッシュ)の shove 窓の間は**自分の移動で x/y を上書きしない**
@@ -847,15 +896,14 @@ export const runPhantomTick = (
   if (!shoved) {
     // ★SAME_ARENA §9: クリ被弾の2/3減速(pvpMoveMult)。ボスのbossSlowUntil無視(D4)はそのまま。
     const dt = deltaTime * moveSpeedMult * phantomSlowMult(phantom, newGameTime) * pvpMoveMult(phantom.pvpPosture, newGameTime);
-    if (decision.moveX !== 0 || decision.moveY !== 0) {
-      const spd = phantom.speed * dt;
-      const c = resolveMove(phantom.x + decision.moveX * spd, phantom.y + decision.moveY * spd, phantom);
-      patch.x = c.x; patch.y = c.y;
-      patch.vx = decision.moveX * phantom.speed;
-      patch.vy = decision.moveY * phantom.speed;
-    } else {
-      patch.vx = 0; patch.vy = 0;
-    }
+    // ★AI_HUMANIZE.md B3(§4「慣性」・CLAUDE.md動きの絶対ルール): 速度ベクトル状態(Enemy.vx/vy)を
+    // 目標速度へイーズで近づける(旧: 方向が無ければ即vx=vy=0の瞬間停止=CLAUDE.md違反だった)。
+    const targetVx = decision.moveX * phantom.speed;
+    const targetVy = decision.moveY * phantom.speed;
+    const ramped = rampVelocity({ vx: phantom.vx ?? 0, vy: phantom.vy ?? 0 }, targetVx, targetVy, dt);
+    const c = resolveMove(phantom.x + ramped.vx * dt, phantom.y + ramped.vy * dt, phantom);
+    patch.x = c.x; patch.y = c.y;
+    patch.vx = ramped.vx; patch.vy = ramped.vy;
   }
 
   // ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8): 幻影も自分の盾を押せる

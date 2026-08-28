@@ -61,6 +61,16 @@ import {
   HABIT_FAMILY_KEYS, HABIT_RING_SIZE, familyRawToStat,
   type HabitEpisode, type HabitFamilyKey, type HabitFamilyStat, type HabitFamilyRaw,
 } from './habitEpisode';
+// research/AI_HUMANIZE.md B3(§4①②④⑥⑧・マイクロリズム=操作の指紋の録り+保存形+ブレンド)。
+import {
+  createMicroRhythmState, stepMicroRhythm, foldMicroRhythm, blendMicroRhythm,
+  type MicroRhythmState, type MicroRhythmProfile, type MicroHistDist,
+} from './microRhythm';
+// research/AI_HUMANIZE.md B3(§4⑦・punishWindow.tsの枠内で録る「recover窓開き→最初の振り」)。
+import {
+  createPunishSpeedState, createPunishSpeedTally, stepPunishSpeed, foldPunishSpeed,
+  type PunishSpeedState, type PunishSpeedTally,
+} from './punishWindow';
 
 // ---- 保存フォーマット -------------------------------------------------------------------------
 /** G4a(§2.9(3)): サブウェポンの様式(第1弾はwire-anchor/shieldの2種)。nは計測に使った母数の累計。 */
@@ -216,6 +226,14 @@ export interface PlayerProfile {
    * 旧プロファイルには無い=欠損可(消費側はゼロから積み直す)。
    */
   habitFamilyRaw?: Partial<Record<HabitFamilyKey, HabitFamilyRaw>>;
+  /**
+   * research/AI_HUMANIZE.md B3(§4マイクロリズム=操作の指紋): ①止まりの長さ/②攻撃間隔の揺らぎ/
+   * ③平時の間合い(16ビン分布のまま)/④回り方の利き/⑤ピンチの間合い/⑥被弾直後の反応/
+   * ⑦硬直パニッシュの速さ/⑧判断の間隔。**軸1のみ**(moveReactions/meleeSpacingと同じ扱い)。
+   * 旧プロファイルには無い=欠損可(消費側=ghostDriver.decideGhostは欠損時は分布欠損時の合成既定分布
+   * [scalar→synthesizeMicroRhythm]か旧来の挙動に従う)。
+   */
+  microRhythm?: MicroRhythmProfile;
 }
 
 /**
@@ -290,7 +308,9 @@ const isValidProfile = (v: unknown): v is PlayerProfile => {
     && (o.moveHabits === undefined || (typeof o.moveHabits === 'object' && o.moveHabits !== null))
     && (o.habitFamily === undefined || (typeof o.habitFamily === 'object' && o.habitFamily !== null))
     // ★検収是正(中5): habitFamilyRaw(累計の生値)も同じく任意オブジェクトとして許容(欠損可=旧プロファイル)。
-    && (o.habitFamilyRaw === undefined || (typeof o.habitFamilyRaw === 'object' && o.habitFamilyRaw !== null));
+    && (o.habitFamilyRaw === undefined || (typeof o.habitFamilyRaw === 'object' && o.habitFamilyRaw !== null))
+    // AI_HUMANIZE.md B3: microRhythm(①〜⑧)も同じく任意オブジェクトとして許容(欠損可=旧プロファイル)。
+    && (o.microRhythm === undefined || (typeof o.microRhythm === 'object' && o.microRhythm !== null));
 };
 
 // PACING_PUZZLE.md §10-12#4/§10-14#10(EXボス「フィル(変異体)」バッチ1): bossStylesのスロットキーも
@@ -386,6 +406,14 @@ interface Session {
   spacing: MeleeSpacingState;
   /** `meleeSwingCommitAt` の前tick値(エッジ検知。絶対時刻の引き算をしない=打刻の掟どおり)。 */
   lastSeenSwingCommitAt: number | null;
+  // ---- research/AI_HUMANIZE.md B3(§4マイクロリズム) ----
+  /** ①②④⑥⑧(操作の指紋の状態機械)。 */
+  micro: MicroRhythmState;
+  /** ⑤ピンチ(HP<=30%)の間合い16ビン(③=distBucketsと同じ刻み・別ヒストグラム)。 */
+  pinchDistBuckets: number[];
+  /** ⑦硬直パニッシュの速さ(recover窓開き→最初の振りまでのms・punishWindow.tsの枠内)。 */
+  punishSpeed: PunishSpeedState;
+  punishSpeedTally: PunishSpeedTally;
 }
 
 let session: Session | null = null;
@@ -426,6 +454,10 @@ const startSession = (gameTime: number): Session => ({
   clearedSlots: [],
   spacing: createMeleeSpacingState(),
   lastSeenSwingCommitAt: null,
+  micro: createMicroRhythmState(),
+  pinchDistBuckets: new Array(DIST_BUCKET_COUNT).fill(0) as number[],
+  punishSpeed: createPunishSpeedState(),
+  punishSpeedTally: createPunishSpeedTally(),
 });
 
 /**
@@ -470,6 +502,16 @@ const medianBucketDist = (buckets: readonly number[]): number | null => {
     if (cum >= half) return i * DIST_BUCKET_PX + DIST_BUCKET_PX / 2;
   }
   return (buckets.length - 1) * DIST_BUCKET_PX + DIST_BUCKET_PX / 2;
+};
+
+/**
+ * ★AI_HUMANIZE.md B3(§4③「既存の16ビンdistBucketsをfoldで中央値に潰して捨てず、分布のまま保存」):
+ * 生カウントを正規化した分布(sum≈1)へ。0件はundefined(=前回値を保つ・medianBucketDistと対の関数)。
+ */
+const distBucketsToHist = (buckets: readonly number[]): MicroHistDist | undefined => {
+  const total = buckets.reduce((a, b) => a + b, 0);
+  if (total === 0) return undefined;
+  return { n: total, rates: buckets.map(b => b / total) };
 };
 
 // enemyMeleeDist(gameStore.ts)と同式(BOT_AND_GHOST.md §2.6「ボスの判定帯への最近点距離」)。
@@ -525,6 +567,8 @@ export interface PendingSessionRecord {
   punishSample: PunishTally;
   /** ★§8: 近接の間合いの癖のセッション標本(接敵0件なら n=0=前回値を保つ)。 */
   meleeSpacingSample: MeleeSpacingProfile | null;
+  /** ★AI_HUMANIZE.md B3(§4マイクロリズム): ①②③④⑤⑥⑦⑧のセッション標本(項目ごとに欠損=undefined可)。 */
+  microRhythmSample: MicroRhythmProfile | null;
   srcClass: string | null;
   snapshot: PlayerBuildSnapshot | null;
   /** v0.25.2477: セッション確定時点のプレイヤー名(loadPlayerName=無ければ生成される)。 */
@@ -649,6 +693,20 @@ const endSession = (): void => {
   closePunishEpisodes(s.punish, s.punishTally, telemetryEnd.damageDealt.melee);
   const punishSample = s.punishTally;
 
+  // ★AI_HUMANIZE.md B3(§4マイクロリズム): ①②④⑥⑧(状態機械)+③⑤(既存16ビンdistBuckets/
+  // pinchDistBucketsを分布のまま保存=foldで中央値へ潰さない)+⑦(punishWindow.tsの枠内で録った
+  // recover窓の速さ)を1つのサンプルへまとめる。全項目0件ならmicroRhythmSample全体がnull
+  // (=applyPendingSessionのblendMicroRhythmがprevをそのまま返す=前回値を保つ)。
+  const microFold = foldMicroRhythm(s.micro);
+  const microSample: MicroRhythmProfile = {
+    ...microFold,
+    distDist: distBucketsToHist(s.distBuckets),
+    pinchDistDist: distBucketsToHist(s.pinchDistBuckets),
+    punishRecoverSpeed: foldPunishSpeed(s.punishSpeedTally),
+  };
+  const microRhythmSample: MicroRhythmProfile | null =
+    Object.values(microSample).some(v => v !== undefined) ? microSample : null;
+
   // v0.25.2476: サンプル計算は従来のまま。ここで保存せず保留バッファへ積む(EMA混合はcommit時)。
   // v0.25.2579: 軸1(共通スタイル)だけ30秒フロアの対象(撃破スロットは下のループで無条件に積む)。
   if (sessionLongEnough) {
@@ -663,6 +721,7 @@ const endSession = (): void => {
       punishSample, // GHOST-CMD-2A: 隙コマンドの票(文脈別)
       // ★§8: 間合いの癖(接敵イベント0件なら n=0 → blend が前回値を保つ)。
       meleeSpacingSample: foldMeleeSpacing(s.spacing, durationMs),
+      microRhythmSample, // ★AI_HUMANIZE.md B3
       srcClass, snapshot, srcName,
     });
   }
@@ -711,6 +770,8 @@ export const applyPendingSession = (prev: PlayerProfile | null, r: PendingSessio
     punish: blendPunishProfile(base.punish, r.punishSample, EMA_ALPHA),
     // ★§8: 間合いの癖も同じ数式。**nullのノブは前回値を保つ**(測れなかったを0で上書きしない)。
     meleeSpacing: blendMeleeSpacing(base.meleeSpacing, r.meleeSpacingSample, EMA_ALPHA),
+    // ★AI_HUMANIZE.md B3: マイクロリズム(①〜⑧)。項目ごとに欠損=前回値を保つ(blendMicroRhythm内)。
+    microRhythm: blendMicroRhythm(base.microRhythm, r.microRhythmSample ?? undefined, EMA_ALPHA),
     // サブ様式はボス交戦区間に限定しない=セッションではなくラン単位(subStyleレコード)で更新する。
     subStyles: base.subStyles,
     // v0.25.2467: 計測時のクラス(このセッションで観測できなければ前回値を保持)。
@@ -754,14 +815,27 @@ export interface PlayerTraitsTickInput {
      * ★§8(間合いの癖): 「**プレイヤーが近接を振った**」の打刻(`Date.now`)。カウンター演出からは
      * 打たれない専用の打刻なので、これのエッジ=本人が振った瞬間。省略(旧呼び出し/テスト)=振らない扱い。
      */
-    meleeSwingCommitAt?: number };
+    meleeSwingCommitAt?: number;
+    /**
+     * ★AI_HUMANIZE.md B3(§4⑧⑫の入力源是正): キー入力・タッチ(VirtualJoystick)の**両方**が更新する
+     * 唯一の実在源。旧`movementInput`(inputStateのbooleanのみ・タッチで常時false)の代わりに、
+     * マイクロリズム(①⑧)の方向判定はこちらを使う。省略(旧呼び出し/テスト)=方向不明扱い。
+     */
+    lastDirection?: { x: number; y: number } | null;
+  };
   /** v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元になる本人オブジェクト。
    * 省略可(旧呼び出し/テスト)=その場合はビルド項目なしの旧snapshot相当だけを記録する。 */
   buildSource?: Player;
   /** v0.25.3271: 記録時に選択していたアバター(gameStore.avatarId・視覚のみ)。省略/undefinedはnull扱い。 */
   avatarId?: AvatarId | null;
   enemies: readonly Enemy[];
-  /** このtickにプレイヤーの移動入力(上下左右いずれか)があったか。 */
+  /**
+   * このtickにプレイヤーが実際に動いていたか。
+   * ★AI_HUMANIZE.md B3(★入力源の既存バグ修正): 旧実装は `state.inputState.up||down||left||right`
+   * (キーボードのみ・タッチはinputStateを書かずswipeDirectionを書くため常時false=母数ゼロだった)。
+   * 呼び出し側(directorTick.ts)は `player.isMoving`(実速度ベース・キー/タッチ両方で正しく動く)を渡す
+   * =計測のみの修正でmobilityの値が正しくなる(挙動不変)。
+   */
   movementInput: boolean;
 }
 
@@ -808,7 +882,10 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
   s.totalTicks += 1;
   if (input.movementInput) s.movedTicks += 1;
 
-  if (s.lastHealth !== null && input.player.health < s.lastHealth) s.hits += 1;
+  // ★AI_HUMANIZE.md B3(§4⑥「被弾直後の反応」の入力): 被弾のエッジ検知(既存のhits計測と同じ判定を流用
+  // =2つ目の被弾判定を発明しない)。
+  const healthDropped = s.lastHealth !== null && input.player.health < s.lastHealth;
+  if (healthDropped) s.hits += 1;
   s.lastHealth = input.player.health;
 
   // G4a(§2.9(1)): 技への反応表のエピソード開閉+自己中心技の暴露判定+残響の確定(純関数)。
@@ -826,31 +903,44 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
 
   // ---- §8(SAME_ARENA): 近接の間合いの癖。**ボスに限らない**(雑魚に間合いへ入られた時の癖も
   // 幻影/守護霊が使う)ので、boss の早期returnより前で回す。
-  {
-    const commitAt = input.player.meleeSwingCommitAt ?? 0;
-    const swungThisTick = s.lastSeenSwingCommitAt !== null && commitAt !== s.lastSeenSwingCommitAt;
-    s.lastSeenSwingCommitAt = commitAt;
-    stepMeleeSpacing(s.spacing, {
-      enemies: input.enemies,
-      pcx, pcy,
-      reachPx: MELEE_RADIUS_MIRROR,
-      gameTime: input.gameTime,
-      swungThisTick,
-      counterWindowOpen: counterOpportunityOpen(input.enemies, pcx, pcy, input.gameTime),
-    });
-  }
+  const commitAt = input.player.meleeSwingCommitAt ?? 0;
+  const swungThisTick = s.lastSeenSwingCommitAt !== null && commitAt !== s.lastSeenSwingCommitAt;
+  s.lastSeenSwingCommitAt = commitAt;
+  stepMeleeSpacing(s.spacing, {
+    enemies: input.enemies,
+    pcx, pcy,
+    reachPx: MELEE_RADIUS_MIRROR,
+    gameTime: input.gameTime,
+    swungThisTick,
+    counterWindowOpen: counterOpportunityOpen(input.enemies, pcx, pcy, input.gameTime),
+  });
 
   const boss = nearestEngagedBoss(pcx, pcy, input.enemies);
+
+  // ★AI_HUMANIZE.md B3(§4①②④⑥⑧): マイクロリズム(操作の指紋)。**既存のこのtick関数への相乗り**
+  // (新規の毎フレーム走査・購読ゼロ)。入力源は player.isMoving(実移動の有無)+ player.lastDirection
+  // (8方向・キー/タッチ両方が更新する唯一の実在源=movementInputバグの是正・§4⑧⑫)。
+  stepMicroRhythm(s.micro, {
+    gameTime: input.gameTime,
+    isMoving: input.movementInput, // ★呼び出し側(directorTick.ts)がplayer.isMovingへ是正済み
+    lastDirection: input.player.lastDirection ?? null,
+    swungThisTick,
+    boss: boss ? { bcx: boss.x + boss.width / 2, bcy: boss.y + boss.height / 2 } : null,
+    pcx, pcy,
+    prevPcx: s.lastPcx, prevPcy: s.lastPcy,
+    dtMs,
+    justDamaged: healthDropped,
+  });
 
   // GHOST-CMD-2A(§2.18追補): 隙(punish window)の計測。3文脈の窓を毎tick判定し、**閉じた瞬間に
   // 1票**入れる(窓中に近接与ダメが出た=`rush`/出ない=`shoot`)。窓判定は消費側(ghostDriver)と
   // 共有の純関数(punishWindow.ts)=気絶/硬直の判定をここで発明しない。boss=null(交戦相手が
   // 消えた瞬間)は stun/recover が閉じる=開いていた窓はここで票になる。
-  stepPunishEpisodes(
-    s.punish, s.punishTally,
-    punishWindowsOpen(boss, input.gameTime, input.player.lastCounterSuccessTime, Date.now()),
-    getBotTelemetry().damageDealt.melee,
-  );
+  const punishOpen = punishWindowsOpen(boss, input.gameTime, input.player.lastCounterSuccessTime, Date.now());
+  stepPunishEpisodes(s.punish, s.punishTally, punishOpen, getBotTelemetry().damageDealt.melee);
+  // ★AI_HUMANIZE.md B3(§4⑦「硬直パニッシュの速さ」): 既存punishWindow.tsの枠内(recover窓の定義・
+  // 開閉判定は上と共有)で、recover窓開き→最初の振りまでのmsを録る。
+  stepPunishSpeed(s.punishSpeed, s.punishSpeedTally, punishOpen.recover, swungThisTick, input.gameTime);
 
   if (!boss) {
     s.wasOpportunity = false;
@@ -864,6 +954,10 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
   const dist = bossBandDist(pcx, pcy, boss);
   const bucket = Math.max(0, Math.min(DIST_BUCKET_COUNT - 1, Math.floor(dist / DIST_BUCKET_PX)));
   s.distBuckets[bucket] += 1;
+  // ★AI_HUMANIZE.md B3(§4⑤「ピンチの間合い」): HP<=30%(叩き台)の間だけ別の16ビンヒストグラムへ。
+  // ③と同じフック+ゲート違いだけ(新しい距離計算を発明しない=bossBandDist/bucketを再利用)。
+  const hpFrac = input.player.maxHealth > 0 ? input.player.health / input.player.maxHealth : 1;
+  if (hpFrac <= 0.3) s.pinchDistBuckets[bucket] += 1;
 
   // G4a(§2.9(2)) approachPerMin: **プレイヤー自身の移動による**接近量だけを積む(ボスの現在位置を
   // 固定して前tick位置→今tick位置の距離差を取る=ボス側が跳んで距離が縮んでも数えない。ボスの

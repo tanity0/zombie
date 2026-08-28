@@ -1513,3 +1513,145 @@ describe('playerTraits: bossStylesの旧EXスロットキー移行', () => {
     expect(p.bossStyles?.thor).toBeDefined();
   });
 });
+
+// research/AI_HUMANIZE.md B3(§4マイクロリズム=操作の指紋)。既存tick関数(tickPlayerTraits)への
+// 相乗りで①②③④⑤⑥⑦⑧を録る。ここでは「録り」側(playerTraits.ts+microRhythm.ts+punishWindow.tsの
+// 枠内で足した⑦)の統合テストを行う。movementInputは呼び出し側(directorTick.ts)が既に
+// player.isMoving(実速度ベース・キー/タッチ両方で正しく更新)へ是正済み=ここでは「isMovingが
+// 表す実移動の有無」という正しい入力契約のもとで録りが機能することを検証する(=タッチ経路の母数保証)。
+describe('playerTraits B3: マイクロリズムの録り', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  const playerAt = (x: number, extra: Record<string, unknown> = {}) =>
+    ({ x, y: 100, width: 20, height: 20, health: 100, maxHealth: 100, ...extra });
+
+  it('①⑧: 実移動(isMoving相当)の有無だけで母数が積まれる=movementInputバグ修正後の入力契約', () => {
+    // タッチはinputStateを書かない=旧実装ならmovementInputは常時false(母数ゼロ)。
+    // 是正後はplayer.isMoving相当のbooleanを渡すので、キー入力の有無に関係なく正しく積まれる。
+    // (30秒フロア=MIN_SESSION_MSを跨がないと軸1へ記録されないので、セッション長は30秒以上取る。)
+    tickPlayerTraits(baseInput({
+      gameTime: 0, movementInput: true,
+      player: playerAt(600, { lastDirection: { x: 1, y: 0 } }),
+    }));
+    tickPlayerTraits(baseInput({
+      gameTime: 200, movementInput: false, // 静止(タッチを離した)
+      player: playerAt(600, { lastDirection: { x: 1, y: 0 } }),
+    }));
+    tickPlayerTraits(baseInput({
+      gameTime: 800, movementInput: true, // 再びタッチで動かす(=止まりエピソード確定)
+      player: playerAt(650, { lastDirection: { x: -1, y: 0 } }),
+    }));
+    tickPlayerTraits(baseInput({
+      gameTime: 1_000, movementInput: true,
+      player: playerAt(700, { lastDirection: { x: -1, y: 0 } }),
+    }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true, player: playerAt(700, { lastDirection: { x: -1, y: 0 } }) }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100, movementInput: false, player: playerAt(700) }));
+    commitPendingTraits();
+    const p = loadPlayerProfile()!;
+    expect(p.microRhythm?.stillness?.n).toBeGreaterThan(0); // ①: 母数>0(タッチ経路でも積まれる)
+    expect(p.microRhythm?.decisionInterval).toBeDefined(); // ⑧: 方向反転(lastDirection)から母数が積まれる
+  });
+
+  it('②: 近接押下(meleeSwingCommitAtのエッジ)の間隔が3ビン分布として積まれる', () => {
+    const playerSwing = (commitAt: number) => playerAt(120, { meleeSwingCommitAt: commitAt });
+    tickPlayerTraits(baseInput({ gameTime: 0, player: playerSwing(1) }));
+    tickPlayerTraits(baseInput({ gameTime: 100, player: playerSwing(2) })); // 1回目の押下エッジ(基準点)
+    tickPlayerTraits(baseInput({ gameTime: 400, player: playerSwing(3) })); // 2回目=間隔300ms=密
+    tickPlayerTraits(baseInput({ gameTime: 30_400, player: playerSwing(3) }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_500, player: playerSwing(3) }));
+    commitPendingTraits();
+    const p = loadPlayerProfile()!;
+    expect(p.microRhythm?.swingInterval?.n).toBe(1);
+    expect(p.microRhythm?.swingInterval?.rate0).toBe(1); // 密
+  });
+
+  it('③: 平時の間合いは中央値へ潰さず16ビン分布のまま保存される(既存distBucketsの再利用)', () => {
+    // ボスは(100,100)40x40=中心(120,120)。複数の距離帯を踏ませて分布に幅を持たせる。
+    tickPlayerTraits(baseInput({ gameTime: 0, player: playerAt(170) }));    // 近距離
+    tickPlayerTraits(baseInput({ gameTime: 5_000, player: playerAt(600) })); // 遠距離
+    tickPlayerTraits(baseInput({ gameTime: 30_000, player: playerAt(600) }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100, player: playerAt(600) }));
+    commitPendingTraits();
+    const dist = loadPlayerProfile()!.microRhythm?.distDist;
+    expect(dist?.rates.length).toBe(16);
+    const nonZeroBuckets = dist!.rates.filter(r => r > 0).length;
+    expect(nonZeroBuckets).toBeGreaterThan(1); // 中央値1点に潰れていない=分布のまま
+    const sum = dist!.rates.reduce((a, b) => a + b, 0);
+    expect(sum).toBeCloseTo(1, 5);
+  });
+
+  it('⑤: HP<=30%の間だけ別の16ビンヒストグラムへ積む', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, player: playerAt(600, { health: 100 }) })); // 平時
+    tickPlayerTraits(baseInput({ gameTime: 10_000, player: playerAt(170, { health: 25, maxHealth: 100 }) })); // ピンチ
+    tickPlayerTraits(baseInput({ gameTime: 30_000, player: playerAt(170, { health: 25, maxHealth: 100 }) }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100, player: playerAt(170, { health: 25, maxHealth: 100 }) }));
+    commitPendingTraits();
+    const p = loadPlayerProfile()!;
+    expect(p.microRhythm?.pinchDistDist?.n).toBeGreaterThan(0);
+    expect(p.microRhythm?.distDist?.n).toBeGreaterThan(0); // ③は引き続き全体を録る(別勘定)
+  });
+
+  it('④: 接敵中の接線移動(接敵中ボス周りの横流れ)の向きを2カウンタへ積む', () => {
+    // ボス中心(120,120)固定。プレイヤーを右→上へ弧を描かせる=一貫した接線方向。
+    tickPlayerTraits(baseInput({ gameTime: 0, player: playerAt(220, { y: 120 }) }));
+    tickPlayerTraits(baseInput({ gameTime: 16, player: { x: 220, y: 20, width: 20, height: 20, health: 100, maxHealth: 100 } }));
+    tickPlayerTraits(baseInput({ gameTime: 30_016, player: { x: 220, y: 20, width: 20, height: 20, health: 100, maxHealth: 100 } }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100, player: { x: 220, y: 20, width: 20, height: 20, health: 100, maxHealth: 100 } }));
+    commitPendingTraits();
+    const orbit = loadPlayerProfile()!.microRhythm?.orbit;
+    expect(orbit?.n).toBeGreaterThan(0);
+  });
+
+  it('⑥: 被弾直後1秒の反応(下がる/固まる/殴り返す)が積まれる', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, player: playerAt(600, { health: 100 }) }));
+    tickPlayerTraits(baseInput({ gameTime: 100, player: playerAt(600, { health: 80 }) })); // 被弾
+    tickPlayerTraits(baseInput({ gameTime: 300, player: playerAt(600, { health: 80, meleeSwingCommitAt: 1 }) })); // 殴り返す
+    tickPlayerTraits(baseInput({ gameTime: 1_200, player: playerAt(600, { health: 80, meleeSwingCommitAt: 1 }) }));
+    tickPlayerTraits(baseInput({ gameTime: 30_200, player: playerAt(600, { health: 80, meleeSwingCommitAt: 1 }) }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_300, player: playerAt(600, { health: 80, meleeSwingCommitAt: 1 }) }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.microRhythm?.hitReact?.n).toBeGreaterThan(0);
+  });
+
+  it('⑦: recover窓開き→最初の振りまでの速さが録られる(punishWindow.tsの枠内)', () => {
+    const recoverBoss = mkBoss({ bossState: 'harai-recover' });
+    tickPlayerTraits(baseInput({ gameTime: 0, enemies: [recoverBoss], player: playerAt(150) }));
+    tickPlayerTraits(baseInput({
+      gameTime: 100, enemies: [recoverBoss], player: playerAt(150, { meleeSwingCommitAt: 1 }),
+    }));
+    tickPlayerTraits(baseInput({ gameTime: 30_100, enemies: [recoverBoss], player: playerAt(150, { meleeSwingCommitAt: 1 }) }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_200, player: playerAt(150, { meleeSwingCommitAt: 1 }) }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.microRhythm?.punishRecoverSpeed?.n).toBeGreaterThan(0);
+  });
+
+  it('全項目が撮れなかったセッションはmicroRhythmを前回値のまま保つ(0で上書きしない)', () => {
+    // 1回目: しっかり録る
+    tickPlayerTraits(baseInput({ gameTime: 0, player: playerAt(600, { meleeSwingCommitAt: 1 }) }));
+    tickPlayerTraits(baseInput({ gameTime: 100, player: playerAt(600, { meleeSwingCommitAt: 2 }) }));
+    tickPlayerTraits(baseInput({ gameTime: 400, player: playerAt(600, { meleeSwingCommitAt: 3 }) }));
+    tickPlayerTraits(baseInput({ gameTime: 30_400, player: playerAt(600, { meleeSwingCommitAt: 3 }) }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_500, player: playerAt(600, { meleeSwingCommitAt: 3 }) }));
+    commitPendingTraits();
+    const before = loadPlayerProfile()!.microRhythm;
+    expect(before?.swingInterval?.n).toBeGreaterThan(0);
+
+    // 2回目: 交戦はするが何も振らない(②は録れない)。それでも③は録れる=撃破+リザルト通過。
+    tickPlayerTraits(baseInput({ gameTime: 100_000, player: playerAt(600) }));
+    tickPlayerTraits(baseInput({ gameTime: 130_000, player: playerAt(600) }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 130_100, player: playerAt(600) }));
+    commitPendingTraits();
+    const after = loadPlayerProfile()!.microRhythm;
+    expect(after?.swingInterval).toEqual(before?.swingInterval); // ②は前回値を保つ
+  });
+});

@@ -1309,6 +1309,19 @@ export interface Summon {
   // 直近tickで実際に動いていたか(player.isMoving と同じ意味=速度が最大速の15%超)。
   // 「移動中のみ」で動く火炎瓶/援護射撃の主語判定に使う。
   ghostIsMoving?: boolean;
+  // ---- research/AI_HUMANIZE.md B3(§4マイクロリズムの写し。ghostDriver.GhostSelf/GhostDecisionと同形) ----
+  ghostMicroDrawIndex?: number;
+  ghostMicroIdleUntil?: number;
+  ghostMicroMeleeCooldownMs?: number;
+  ghostMicroDrawnDist?: number;
+  ghostMicroDrawnDistSig?: string;
+  ghostMicroOrbitRedrawAt?: number;
+  ghostMicroHitReactMode?: 0 | 1 | 2;
+  ghostMicroHitReactUntil?: number;
+  ghostMicroHitReactAnchor?: number;
+  ghostMicroPunishDelayUntil?: number;
+  ghostMicroDecisionMode?: 'approach' | 'retreat' | 'orbit-base' | 'orbit-tank' | 'orbit-idle';
+  ghostMicroDecisionUntil?: number;
 }
 
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';

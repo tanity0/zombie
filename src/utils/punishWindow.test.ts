@@ -6,6 +6,9 @@ import {
   activePunishContext, createPunishEpisodeState, createPunishTally, stepPunishEpisodes,
   closePunishEpisodes, blendPunishProfile, punishModeStat,
   PUNISH_AFTER_COUNTER_MS, PUNISH_CONTEXTS, PUNISH_DEFAULT_MODE,
+  // research/AI_HUMANIZE.md B3(§4⑦): recover窓開き→最初の振りの速さ。
+  createPunishSpeedState, createPunishSpeedTally, stepPunishSpeed, foldPunishSpeed,
+  PUNISH_SPEED_FAST_MS, PUNISH_SPEED_NORMAL_MS,
 } from './punishWindow';
 import type { Enemy } from '../types/game';
 
@@ -131,5 +134,48 @@ describe('punishWindow: プロファイル混合(dodgeDirと同じ数式)', () =
     expect(punishModeStat(undefined, 'stun')).toBeUndefined();
     expect(punishModeStat({}, 'recover')).toBeUndefined();
     expect(PUNISH_DEFAULT_MODE).toBe('rush'); // 社長裁定「数値がなければ詰めて叩く」
+  });
+});
+
+// research/AI_HUMANIZE.md B3(§4⑦「硬直パニッシュの速さ」): 既存punishWindow.tsの枠内で
+// recover窓開き→最初の振りまでのmsを録る解像度上げ。2つ目のrecover定義は発明しない。
+describe('punishWindow: ⑦硬直パニッシュの速さ(recoverの枠内)', () => {
+  it('recover窓が開いてから最初の振りまでの遅れを1ビンへ積む', () => {
+    const st = createPunishSpeedState();
+    const tally = createPunishSpeedTally();
+    stepPunishSpeed(st, tally, true, false, 1000); // 窓開き
+    stepPunishSpeed(st, tally, true, true, 1000 + PUNISH_SPEED_FAST_MS - 10); // 即振り
+    const sample = foldPunishSpeed(tally);
+    expect(sample?.n).toBe(1);
+    expect(sample?.rate0).toBe(1); // 即
+  });
+  it('窓が閉じるまで一度も振らなかった回は数えない', () => {
+    const st = createPunishSpeedState();
+    const tally = createPunishSpeedTally();
+    stepPunishSpeed(st, tally, true, false, 0);
+    stepPunishSpeed(st, tally, false, false, 500); // 振らずに閉じた
+    expect(foldPunishSpeed(tally)).toBeUndefined();
+  });
+  it('普通/様子見のビン境界', () => {
+    const st = createPunishSpeedState();
+    const tally = createPunishSpeedTally();
+    stepPunishSpeed(st, tally, true, false, 0);
+    stepPunishSpeed(st, tally, true, true, PUNISH_SPEED_FAST_MS + 10); // 普通
+    let sample = foldPunishSpeed(tally);
+    expect(sample?.rate1).toBe(1);
+
+    const st2 = createPunishSpeedState();
+    const tally2 = createPunishSpeedTally();
+    stepPunishSpeed(st2, tally2, true, false, 0);
+    stepPunishSpeed(st2, tally2, true, true, PUNISH_SPEED_NORMAL_MS + 10); // 様子見
+    sample = foldPunishSpeed(tally2);
+    expect(sample?.rate0).toBe(0);
+    expect(sample?.rate1).toBe(0);
+  });
+  it('recover以外の文脈は対象外(stun/afterCounterには掛けない=呼び出し側の責務だが窓flag自体で確認)', () => {
+    const st = createPunishSpeedState();
+    const tally = createPunishSpeedTally();
+    stepPunishSpeed(st, tally, false, true, 0); // recoverOpen=false中の振りは無視
+    expect(foldPunishSpeed(tally)).toBeUndefined();
   });
 });

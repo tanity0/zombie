@@ -54,7 +54,7 @@ import {
   displayGhostComment, GHOST_ARRIVAL_COMMENT_DEFAULT, GHOST_DEPARTURE_COMMENT_DEFAULT, loadGhostComments,
 } from './ghostComment';
 import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同行守護霊カードの写し(共通の1枚)
-import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
+import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, withSynthesizedMicroRhythm, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
 import {
   fixedGhostFeedbackTarget, isGhostOnlinePickPending, remoteGhostFeedbackTarget,
   resolveRemoteGhost, selectedGhostMode,
@@ -792,13 +792,19 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
       // ★§8(SAME_ARENA・間合いの癖): 「本人が近接を振った」の打刻。カウンター演出からは打たれない
       // 専用の打刻(meleeSwingAt ではなくこちら)なので、エッジ=本人の意思の振り。
       meleeSwingCommitAt: player.meleeSwingCommitAt,
+      // ★AI_HUMANIZE.md B3(§4⑧⑫の入力源是正): キー/タッチ両方が更新する唯一の実在源。
+      lastDirection: player.lastDirection,
     },
     // v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元。写し取りはplayerTraits側の
     // 純関数(snapshotPlayerBuild)がボス交戦中のtickだけ行う=ここは本人オブジェクトを渡すだけ。
     buildSource: player,
     avatarId: state.avatarId, // v0.25.3271: 守護霊へのアバター記録(記録時に選択していたアバター)
     enemies: state.enemies,
-    movementInput: state.inputState.up || state.inputState.down || state.inputState.left || state.inputState.right,
+    // ★AI_HUMANIZE.md B3(★入力源の既存バグ修正): 旧`state.inputState.*`はキーボードのみ(タッチは
+    // inputStateを書かずVirtualJoystickのswipeDirectionを書く=常時false=母数ゼロだった)。
+    // `player.isMoving`(実速度ベース・movePlayerがキー/タッチ両方で正しく更新)へ差し替える
+    // =計測のみの修正(挙動不変・mobilityの値だけ正しくなる)。
+    movementInput: player.isMoving,
   });
 
   // v0.25.2577(社長裁定「ボスごとのタイムにはしたいな」): 撃破タイム用の**ボスごと**交戦時計。
@@ -923,13 +929,17 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     : null;
   const remote = fixed ? null : remoteCandidate;
   const loadedProfile = loadPlayerProfile();
-  const profile = remote
+  const resolvedProfile = remote
     ? effectiveGhostProfile(remote.profile, remote.slot)
     : fixed
       ? fixed.profile
       : loadedProfile
         ? effectiveGhostProfile(loadedProfile, localSlot)
         : defaultGhostProfile();
+  // ★AI_HUMANIZE.md B3(§3「合成既定分布」): 実測(microRhythm)を持たない守護霊(固定20体/実測が薄い
+  // 実プレイヤー/オンライン遠隔)には、既存スカラーから決定的に合成した既定分布を埋める
+  // (実測が入り次第、実測が勝つ=withSynthesizedMicroRhythmは既にmicroRhythmがあれば何もしない)。
+  const profile = withSynthesizedMicroRhythm(resolvedProfile);
   const ghostSource = remote?.source ?? (fixed ? requestedMode : 'own');
   const localComments = ghostSource === 'own' ? loadGhostComments() : null;
   const arrivalComment = displayGhostComment(

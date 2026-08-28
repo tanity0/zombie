@@ -395,6 +395,8 @@ import { recordRunFinal, getRunTelemetrySnapshot } from '../utils/runTelemetry';
 import { decideBotShopPurchase } from '../utils/botShopPolicy';
 import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement, recordPhillHeadshot, recordHomingHold } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, ghostIsMovingNow, GHOST_MELEE_RANGE, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
+import { hashSeed } from '../utils/microRhythmReplay'; // research/AI_HUMANIZE.md B3(§4専用乱数流のシード)
+import { rampVelocity } from '../utils/motionRamp'; // research/AI_HUMANIZE.md B3(§4慣性=速度状態モデル)
 import { playerAsOwner, ghostAsOwner, phantomAsOwner, isHostileOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
 import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化
@@ -9693,8 +9695,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const leash = ghostLeashWarp(ghostNow, gsPlayer);
             if (leash) {
               // 追従リーシュ: プレイヤーから離れすぎたら瞬時にワープ(霊体なので許される・演出は後回し)。
+              // ★AI_HUMANIZE.md B3: ワープ後に旧位置ぶんの残速度が残ると変な滑りが出るので速度状態を0へ。
               useGameStore.setState(st => ({
-                summons: st.summons.map(s => s.id === ghostNow.id ? { ...s, x: leash.x, y: leash.y } : s),
+                summons: st.summons.map(s => s.id === ghostNow.id ? { ...s, x: leash.x, y: leash.y, vx: 0, vy: 0 } : s),
               }));
             } else {
               const boundBoss = useGameStore.getState().enemies.find(e => e.id === ghostNow.ghostBossId);
@@ -9790,7 +9793,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   lastCounterAtMs: ghostNow.ghostLastCounterAt,
                   punishContext: ghostNow.ghostPunishContext,
                   punishMode: ghostNow.ghostPunishMode,
+                  // ★AI_HUMANIZE.md B3(§4マイクロリズムの写し): 自分の被弾打刻(⑥)・HP割合(⑤)+
+                  // 専用乱数流の持ち越し状態。
+                  lastHit: ghostNow.lastHit,
+                  hpFrac01: ghostNow.maxHealth > 0 ? ghostNow.health / ghostNow.maxHealth : 1,
+                  microDrawIndex: ghostNow.ghostMicroDrawIndex,
+                  microIdleUntil: ghostNow.ghostMicroIdleUntil,
+                  microMeleeCooldownMs: ghostNow.ghostMicroMeleeCooldownMs,
+                  microDrawnDist: ghostNow.ghostMicroDrawnDist,
+                  microDrawnDistSig: ghostNow.ghostMicroDrawnDistSig,
+                  microOrbitRedrawAt: ghostNow.ghostMicroOrbitRedrawAt,
+                  microHitReactMode: ghostNow.ghostMicroHitReactMode,
+                  microHitReactUntil: ghostNow.ghostMicroHitReactUntil,
+                  microHitReactAnchor: ghostNow.ghostMicroHitReactAnchor,
+                  microPunishDelayUntil: ghostNow.ghostMicroPunishDelayUntil,
+                  microDecisionMode: ghostNow.ghostMicroDecisionMode,
+                  microDecisionUntil: ghostNow.ghostMicroDecisionUntil,
                 },
+                // ★AI_HUMANIZE.md B3(§4「専用乱数流」・シード=召喚id): 既存randとは別系統。
+                microSeed: hashSeed(ghostNow.id),
                 player: { x: gsPlayer.x, y: gsPlayer.y, width: gsPlayer.width, height: gsPlayer.height },
                 // v0.25.2470(社長裁定「雑魚は基本的に避けつつボスと戦う」): 全敵を渡す(雑魚回避の
                 // 反発ベクトル用)。狙いは boundBossId でボスに束縛されたまま=雑魚には流れない。
@@ -9829,7 +9850,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // v0.25.2514(監査項目7): 被弾ノックバック中は自分の移動を止める(プレイヤーがKB中に入力を
               // 無視されるのと同じ。実際の弾かれ移動は updateSummons が減衰しながら消化する)。
               const kbLocked = nowMs < (ghostNow.knockbackUntil ?? 0);
-              const step = kbLocked ? 0 : ghostNow.speed * deltaTime;
               // v0.25.2518(裁定2): 刀の一閃/ワイヤーのロコモーション上書きを**プレイヤーと同じ純関数**で
               // ゴースト実体のx/yへ乗せる。優先順(ワイヤー高速移動>ホップ>一閃>着地硬直)も
               // movePlayer と同一。被弾ノックバック中はプレイヤー同様KBが勝つ(kbLocked)。
@@ -9837,6 +9857,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const gDashMode = kbLocked ? null : dashModeAt(gDashState, nowMs);
               let nx: number;
               let ny: number;
+              // ★AI_HUMANIZE.md B3(§4「慣性」・CLAUDE.md動きの絶対ルール): 移動は速度ベクトル状態
+              // (Summon.vx/vy)を持ち、目標速度(decision.moveX/Y×speed)へイーズで近づける
+              // (旧: decision.moveX/Yへの直接積分=瞬間加減速)。オーバーシュートは目標が変わっても
+              // 残速度で流れることから自然に出る(専用の乱数・定数は足さない)。
+              let ghostVxNext: number, ghostVyNext: number;
               if (gDashMode !== null) {
                 const gStep = dashStep(
                   dashOverride(
@@ -9848,9 +9873,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 );
                 nx = ghostNow.x + gStep.dx;
                 ny = ghostNow.y + gStep.dy;
+                // 一閃/ワイヤー中は専用の移動式が勝つ(従来どおり)。速度状態はダッシュ終了後の慣性が
+                // 暴れないよう、その時の実効速度で揃えておく(叩き台=瞬間の実移動量から逆算)。
+                ghostVxNext = deltaTime > 0 ? gStep.dx / deltaTime : 0;
+                ghostVyNext = deltaTime > 0 ? gStep.dy / deltaTime : 0;
               } else {
-                nx = ghostNow.x + decision.moveX * step;
-                ny = ghostNow.y + decision.moveY * step;
+                const targetVx = kbLocked ? 0 : decision.moveX * ghostNow.speed;
+                const targetVy = kbLocked ? 0 : decision.moveY * ghostNow.speed;
+                const ramped = rampVelocity({ vx: ghostNow.vx ?? 0, vy: ghostNow.vy ?? 0 }, targetVx, targetVy, deltaTime);
+                ghostVxNext = ramped.vx; ghostVyNext = ramped.vy;
+                nx = ghostNow.x + ramped.vx * deltaTime;
+                ny = ghostNow.y + ramped.vy * deltaTime;
               }
               // v0.25.2469(社長指示): 霊体はオブジェクト(木・岩等)をすり抜ける。詰まって置き去りに
               // なる事故を根絶(リーシュワープ=瞬間追いつきの世界観とも整合)。判定はゴースト移動のみ=
@@ -9933,7 +9966,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
               useGameStore.setState(st => ({
                 summons: st.summons.map(s => s.id === ghostNow.id ? {
-                  ...s, x: resolved.x, y: resolved.y, ghostFacing: decision.facing,
+                  ...s, x: resolved.x, y: resolved.y,
+                  vx: ghostVxNext, vy: ghostVyNext, // ★AI_HUMANIZE.md B3(§4慣性): 速度状態を持ち越す
+                  ghostFacing: decision.facing,
                   ghostLastShotAt: decision.lastShotAt, ghostLastMeleeAt: decision.lastMeleeAt,
                   ghostWeapons,
                   ghostReloadEndsAt,
@@ -9960,6 +9995,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     ? true
                     : !kbLocked && ghostIsMovingNow(decision.moveX, decision.moveY),
                   ...(wantSubClaim ? { ghostSubClaim: true } : {}),
+                  // ★AI_HUMANIZE.md B3: マイクロリズムの持ち越し状態。
+                  ghostMicroDrawIndex: decision.microDrawIndex,
+                  ghostMicroIdleUntil: decision.microIdleUntil,
+                  ghostMicroMeleeCooldownMs: decision.microMeleeCooldownMs,
+                  ghostMicroDrawnDist: decision.microDrawnDist,
+                  ghostMicroDrawnDistSig: decision.microDrawnDistSig,
+                  ghostMicroOrbitRedrawAt: decision.microOrbitRedrawAt,
+                  ghostMicroHitReactMode: decision.microHitReactMode,
+                  ghostMicroHitReactUntil: decision.microHitReactUntil,
+                  ghostMicroHitReactAnchor: decision.microHitReactAnchor,
+                  ghostMicroPunishDelayUntil: decision.microPunishDelayUntil,
+                  ghostMicroDecisionMode: decision.microDecisionMode,
+                  ghostMicroDecisionUntil: decision.microDecisionUntil,
                 } : s),
               }));
 

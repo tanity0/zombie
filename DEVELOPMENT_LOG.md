@@ -1,5 +1,83 @@
 # Development Log
 
+## v0.25.3998 — AI_HUMANIZE B3: マイクロリズム(操作の指紋)を実装 【2026-08-28 16:51 JST】
+
+research/AI_HUMANIZE.md §4①〜⑧(録り)+速度状態モデル(慣性ランプ)+専用乱数流を実装(発注順どおり
+B6の次=B3。§6「⑧はB2の前提」)。**判定・ダメージ・技性能は不変**——変わるのは守護霊/幻影の
+移動の質感(慣性)と、実測プロファイルを持つ相手の移動リズム/攻撃間隔/間合い/回る向き/被弾直後の
+反応/硬直への踏み込みの速さ/判断のテンポ。
+
+### 入力源の既存バグ修正(§4⑧⑫)
+- `movementInput`(`state.inputState.up||down||left||right`)はタッチで常時false(タッチは
+  `inputState`を書かず`swipeDirection`を書く=母数ゼロ)だった。`directorTick.ts`
+  (`runGhostAndTraitsStep`)を`player.isMoving`(実速度ベース・キー/タッチ両方で正しく更新)へ差替え。
+- 調査の結果、`stationaryFrac`は元々**実座標の変位**で判定しており movementInput 非依存=無傷
+  だった(設計書の「疑い」は`mobility`単独の穴と判明。事実として記録)。
+- `tickPlayerTraits`へ`player.lastDirection`(8方向量子化の元)を新たに渡す配線を追加。
+
+### 録り(playerTraits.ts + 新設2ファイル + punishWindow.ts追補)
+- 新設 `src/utils/microRhythm.ts`: ①止まりの長さ/②攻撃間隔/④回り方の利き/⑥被弾直後の反応/
+  ⑧判断の間隔の状態機械+3ビン保存形(`MicroBin3Dist`)+16ビン保存形(`MicroHistDist`)+ブレンド。
+- ③平時の間合い/⑤ピンチの間合い: 既存の`distBuckets`(16ビン)をfoldで中央値へ潰さず、
+  正規化した分布のまま保存する経路を追加(`distBucketsToHist`)。⑤は同じ距離計算にHP<=30%ゲートを
+  掛けた別ヒストグラム(`pinchDistBuckets`)。
+- ⑦硬直パニッシュの速さ: **2つ目のrecover定義を発明せず**、`punishWindow.ts`へ
+  `stepPunishSpeed`/`foldPunishSpeed`を追補(recover窓開き→最初の振りまでのmsを3ビンへ)。
+- `PlayerProfile.microRhythm`(全項目任意=欠損可)を新設。`isValidProfile`/`applyPendingSession`/
+  `PendingSessionRecord`を配線。
+
+### 写し(ghostDriver.ts + 新設2ファイル + useGameLoop.ts + phantomTick.ts)
+- 新設 `src/utils/microRhythmReplay.ts`: 専用乱数流(`hashSeed`+`(seed,drawIndex)`ごとのmulberry32・
+  既存randとは別系統=消費順を汚さない)+3ビン/16ビンからの値サンプリング+
+  合成既定分布`synthesizeMicroRhythm`(§3「欠損時は既存スカラーから決定的に合成」)。
+- 新設 `src/utils/motionRamp.ts`: 速度ベクトル状態モデル(`rampVelocity`=既存`inertiaAlpha`を再利用・
+  新しい物理式は発明しない)+デッドバンド。
+- `decideGhost`(ghostDriver.ts)へ①②③④⑤⑥⑦⑧を配線。**`profile.microRhythm`の有無だけで分岐**
+  (欠損時は元のコード経路のまま=分布なしプロファイルの移動は現行とビット同一・下記★判断1参照)。
+- `useGameLoop.ts`(守護霊)・`phantomTick.ts`(幻影)を`rampVelocity`で慣性ランプへ配線
+  (旧: 方向ベクトル×speedの直接積分=瞬間加減速。phantomTick側は「方向が無ければ即vx=vy=0」の
+  瞬間停止もCLAUDE.md違反だったのでついでに解消)。
+- `directorTick.ts`(実プレイヤー/固定守護霊/オンライン遠隔)と`phantomTick.phantomProfile`(幻影)に
+  `withSynthesizedMicroRhythm`を配線(§3「固定守護霊20体も同じ」)。**幻影は対ボス戦の実測
+  `microRhythm`を複製しない**(§3大原則=幻影は対幻影戦の数値だけ。第2弾まではスカラー合成のみ)。
+- `Summon`型(types/game.ts)へ`ghostMicro*`12フィールド新設(GhostSelf/GhostDecisionと同形)。
+
+### ★判断1(設計判断ではなく実装方針・報告のため明記)
+§7の「B3の合成分布は全プロファイルに掛かるため§7-3のビット同一対象外」と、社長発注文にある
+「分布なしプロファイルの移動は現行と一致」という2つの要求は、素朴に両立しない
+(合成分布は§3により常に生成されうるため)。**decideGhost自身は`profile.microRhythm`の**有無**だけで
+分岐し、scalarからの自動合成はしない**設計にすることで両立させた: 合成(`withSynthesizedMicroRhythm`)は
+呼び出し側(directorTick.ts/phantomTick.ts)でだけ行い、`decideGhost`を直接呼ぶ既存の単体テスト・
+将来の呼び出しは「分布なし=旧コード経路」を保つ。実プレイの守護霊/幻影は結果として常に
+(実測または合成の)`microRhythm`を持つ=§3の意図どおり人間味が乗る。
+
+### テスト(新規3ファイル+3ファイルへ追補・vitest)
+- 新設: `microRhythm.test.ts`(16)/`microRhythmReplay.test.ts`(13)/`motionRamp.test.ts`(7)。
+- 追補: `punishWindow.test.ts`(+4=⑦)/`playerTraits.test.ts`(+8=①〜⑧録りのe2e)/
+  `ghostDriver.test.ts`(+7=①mobility生存・④引いて捨てるの消費順・⑦punishRush合成・
+  分布なし=現行一致・withSynthesizedMicroRhythmの決定性)。
+- 関連テスト全green(447 passed | 3 skipped、既存ghostDriver/phantomTick/playerTraits/punishWindow/
+  fixedGuardians/directorTick等19ファイルを明示実行)。typecheck 0エラー・lint 0エラー(既存警告8件のみ)。
+
+### 自己点検
+CLAUDE.md第4条(初心者ゾーン)・第5条(緩を荒らさない)には抵触しない(ボス台本・スポーン・
+難度カーブは1行も触っていない)。慣性MUST/②動きは大きく、はrampVelocity(既存inertiaAlpha再利用)+
+慣性ランプの速度連続性で満たす。判定・ダメージ・技性能への影響はなし(移動の質感と通常攻撃の
+間隔揺らぎのみが変わる=発注文の範囲内)。
+
+**状態変化: ★AIの人間化(守護霊の待機距離の遊び+幻影の癖+サブの様式) → B3実装済み(検収待ち)。
+残りはB2(守護霊再生・§7 未決の裁定後)→B5(サブ様式)→B7(無駄な行動と注意)。**
+
+### 変更ファイル
+新規: `src/utils/microRhythm.ts` / `microRhythm.test.ts` / `microRhythmReplay.ts` /
+`microRhythmReplay.test.ts` / `motionRamp.ts` / `motionRamp.test.ts`。
+編集: `src/utils/playerTraits.ts` / `playerTraits.test.ts` / `src/utils/punishWindow.ts` /
+`punishWindow.test.ts` / `src/utils/directorTick.ts` / `src/utils/ghostDriver.ts` /
+`ghostDriver.test.ts` / `src/utils/phantomTick.ts` / `src/hooks/useGameLoop.ts` /
+`src/types/game.ts` / `package.json` / `src/data/changelog.ts`。
+
+
+
 ## v0.25.3997 — AI_HUMANIZE B6検収是正+社長裁定反映(ブルドーザー存続・足基準クランプ・EX/バッシュのクランプ穴) 【2026-08-28 16:07 JST】
 - **状態変化: ★AIの人間化 → B6補修済み(検収2巡目・ブルドーザー裁定反映)**
 - **実装**: research/AI_HUMANIZE.md §6 B6(v5・裁定済み#8の追補)の検収是正+社長裁定「そのブルドーザー
