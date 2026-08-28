@@ -1418,14 +1418,18 @@ const STATUS_GREEN = 0x34d399;  // emerald-400: HP高(健全)
 const STATUS_RED = 0xf87171;    // red-400: HP低/危険
 const STATUS_YELLOW = 0xfbbf24; // amber-400: リロード/注意
 const STATUS_ALLY = 0x38bdf8;   // sky-400: 味方(救助対象)
-// BOT_AND_GHOST.md G2(未決4の裁定=霊体): ゴースト助っ人はプレイヤーの基本テクスチャ+青白tint+半透明。
-// 装備の見た目は再現しない(霊体だから見えなくても世界観として自然)。
-const GHOST_ALLY_TINT = 0x9fd8ff;
-const GHOST_ALLY_ALPHA = 0.7;
+// ★社長裁定2026-08-28「守護霊と幻影の透明色変えはやめる」: 守護霊は通常の見た目で描く
+// (青白tint・半透明を廃止=両定数を等倍へ。配線は全箇所この2定数経由なので値だけで切り替わる)。
+// 旧裁定(BOT_AND_GHOST.md G2: 青白0x9fd8ff×0.7の霊体)は事実として記す。装備絵を再現しない点は不変。
+const GHOST_ALLY_TINT = 0xffffff;
+const GHOST_ALLY_ALPHA = 1.0;
+// v0.25.3179(社長指示「召喚は金色半透明」)は**別裁定**なので維持: 召喚物の透明度はこちらを使う
+// (2026-08-28までGHOST_ALLY_ALPHAを共用していたが、上の裁定で守護霊側が等倍になったため分離)。
+const SUMMON_ALLY_ALPHA = 0.7;
 // research/GHOST_BOSS.md(守護霊ボス「幻影」)の描画パラメータ。
-// ★味方の守護霊(上のGHOST_ALLY_*)とは**扱いを分ける**: 幻影は敵として立っているので
-//   半透明にしない(alpha=1)。「薄い=味方の霊体」という既存の読み取りを崩さないため。
-const GUARDIAN_PHANTOM_TINT = 0x7b6a86;      // ダーク系(影のような人型に見せる)
+// ★社長裁定2026-08-28「守護霊と幻影の透明色変えはやめる」: ダークtint(旧0x7b6a86=影のような人型)を
+//   廃止し等倍で描く=「自分と同じ見た目がもう1人立っている」が意図。赤い目・名前表示は維持。
+const GUARDIAN_PHANTOM_TINT = 0xffffff;
 const GUARDIAN_PHANTOM_EYE_TINT = 0xff2a2a;  // 赤い目
 /** 赤い目=**小glowスプライト**の直径(world px・足元の遠近スケールを掛ける)。 */
 const GUARDIAN_PHANTOM_EYE_PX = 15;
@@ -13390,9 +13394,9 @@ export class PixiScene {
     const shakeX = hitT > 0 ? Math.sin(sinceHit / 16) * HIT_SHAKE_PX * hitT : 0;
     view.sprite.position.set(Math.round(fb.footX + shakeX), Math.round(fb.footY));
     view.container.zIndex = fb.footY;
-    // v0.25.3179(社長指示): 召喚は**金色半透明**。透明度は守護霊と同じ(GHOST_ALLY_ALPHA=0.7)に
-    // 揃える=「半透明の金色=味方」という1つの文法にする(敵は常に不透明なので混ざらない)。
-    view.container.alpha = GHOST_ALLY_ALPHA;
+    // v0.25.3179(社長指示): 召喚は**金色半透明**=「半透明の金色=味方」の文法(敵は常に不透明)。
+    // 2026-08-28の裁定で守護霊は等倍になったため、透明度は召喚専用定数(SUMMON_ALLY_ALPHA)を使う。
+    view.container.alpha = SUMMON_ALLY_ALPHA;
     if (tex) {
       view.sprite.texture = tex;
       const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
@@ -15483,8 +15487,8 @@ export class PixiScene {
       // §5.14 M13: 宿敵は専用tint=黄金(社長確定)。レアのtintより優先(被った場合、金が勝つ)。
       // 二人組クエストの強制目標個体(questTarget)も宿敵と同じ金tint+名前表示(EVENT_QUEST_DESIGN.md)。
       view.sprite.tint = e.type === 'guardian-phantom'
-        // research/GHOST_BOSS.md: 幻影は**必ず**ダークtint(宿敵金/レア色より優先)。
-        // 素材がプレイヤーの立ち絵そのものなので、tintが抜けると「自分がもう1人立っている」だけになる。
+        // 幻影のtint(宿敵金/レア色より優先)。社長裁定2026-08-28で等倍=「自分がもう1人立っている」が意図
+        // (旧: ダークtintで影のような人型に見せていた)。
         ? GUARDIAN_PHANTOM_TINT
         : (e.isNamed || e.questTarget)
           ? NAMED_TINT
