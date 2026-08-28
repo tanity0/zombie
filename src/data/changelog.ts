@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4032',
+    items: [
+      'ゲーム内容の変更はありません(開発内部: エンディングステージの地平帯シルエットを縮小・?endhz=で調整可)。',
+    ],
+  },
+  {
     version: '0.25.4031',
     items: [
       'ゲーム内容の変更はありません(開発内部: エンディング用「倒れている兵士」素材の取込)。',

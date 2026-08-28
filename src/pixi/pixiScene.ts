@@ -966,6 +966,9 @@ const ENDING_SMOKE_COUNT = 3; // 立てる本数(叩き台・社長指示「2〜
 const ENDING_SMOKE_PERIOD_MS = Math.max(500, tsNum('esmokeperiod', 4200)); // 1本が6コマを一巡する時間(ms)。叩き台
 const ENDING_SMOKE_HEIGHT_FRAC = Math.max(0.05, tsNum('esmokeheight', 0.30)); // 表示高さ(screenH比)。叩き台
 const ENDING_SMOKE_ALPHA = Math.max(0, Math.min(1, tsNum('esmokealpha', 0.75))); // 叩き台
+// エンディングの地平帯(ending-horizon-ruins=遠景の手前側の森/廃墟シルエット)の縮小係数
+// (社長指示2026-08-28「遠景森 手前のもっと小さく」。0.65=叩き台・?endhz=で実機調整)。
+const ENDING_HORIZON_SCALE = Math.max(0.2, tsNum('endhz', 0.65));
 // 横位置(画面幅比・叩き台=等間隔)。位相(phase)は本ごとにずらしてコマが揃わないようにする。
 const ENDING_SMOKE_X_FRACS = [0.22, 0.5, 0.78];
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
@@ -5272,7 +5275,9 @@ export class PixiScene {
     // 北部(snow)は遠景森が雪原に溶けて小さく見えるため、さらに拡大(社長指示v0.25.1886)。高さは-100px戻す(v0.25.1888)。
     const northExtra = this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_EXTRA_SCALE : 1;
     const northTrim = this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_HEIGHT_TRIM_PX : 0;
-    return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base * FAR_FOREST_SIZE_SCALE * northExtra - northTrim;
+    // エンディング: 地平帯(廃墟+木々のシルエット)を縮小(社長指示2026-08-28「手前のもっと小さく」)。
+    const endingScale = this.currentFarKey === 'ending' ? ENDING_HORIZON_SCALE : 1;
+    return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base * FAR_FOREST_SIZE_SCALE * northExtra * endingScale - northTrim;
   }
 
   private frontForestHeight() {
