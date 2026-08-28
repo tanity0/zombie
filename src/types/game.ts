@@ -574,6 +574,10 @@ export interface Enemy {
   // PACING_PUZZLE.md §14-4-3(使者/hangedman): この使者個体を召喚した死神本体のenemy id。
   // 召喚主が死亡/消滅すると、この summonerId を持つ使者は全員まとめて消える(叩き台)。
   summonerId?: string;
+  // PACING_PUZZLE.md §14-4-3(補修バッチA-3・囲み配置): この使者が占める囲みスロット(0〜rp2max-1)。
+  // スロットの角度は固定(波ごとのringOffset+スロット/最大数)なので、死亡→即補充されても
+  // 同じ角度へ出直す=常に円周上に散った配置を保つ(旧実装は毎回ランダム1点だったため5体が偏っていた)。
+  reaperSlot?: number;
   // 特殊AI(犬型=突進 / パンプキン=ジャンプ攻撃)の状態機械。すべて gameTime(ms)基準。
   //  werewolf: undefined→'windup'(減速)→'charge'(2倍速で aiTarget へ突進)→cooldown。
   //  pumpkin : undefined→'crouch'(縮みながら3秒溜め)→'jump'(1秒でaiTargetへ着地)→'recover'(1秒停止)。

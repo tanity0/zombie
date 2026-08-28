@@ -444,7 +444,7 @@ import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAV
 import { stepFollowChain, FOLLOW_SPEED_MULT } from '../utils/companionFollow';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER2_CONFIG, REAPER_TEST, REAPER2_TEST, reaperPassIntervalMs } from '../config/reaper';
-import { stepReaperBody, encircleRadiusPx, encirclePoints, corridorEncirclePoints, stepServantPopulation, knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4
+import { stepReaperBody, encircleRadiusPx, encirclePoints, corridorEncirclePoints, servantTargetCount, knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4
 // PACING_PUZZLE.md §14-4-3(使者・叩き台): 詠唱の静止時間/出現フェードインの尺。専用の定数(値は叩き台)。
 const REAPER_CAST_MS = 650;         // 本体が「使者」を詠唱する間の停止時間(SE=phill-skylight)
 const REAPER_MATERIALIZE_MS = 420;  // 使者の出現フェードイン(reaperWarpAlpha 0→1)
@@ -1603,9 +1603,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     lastTimeRollAt: number; timeSpawned: boolean; defeatCount: number;
     // §14-4-3: 使者は全体で共有の枠。summonerId=現在の「召喚主」(先頭の生存個体・叩き台)。
     // castUntil=召喚主が詠唱で静止する終了時刻(gameTime・0=詠唱していない)。
-    summonerId: string | null; servantLastAddAt: number; castUntil: number;
+    // waveStartAt(補修バッチA-2)=この波(完全出現)の開始時刻。servantTargetCount(reaper2.ts)の
+    // 枠計算の起点=ここから10秒ごとに+1。ringOffset(補修バッチA-3)=この波の囲みスロットの
+    // 起点角(波ごとに1回だけ抽選・固定)。どちらも完全出現のたびに(=新しい波が始まるたびに)採り直す。
+    summonerId: string | null; waveStartAt: number; ringOffset: number; castUntil: number;
   }>(
-    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastTimeRollAt: 0, timeSpawned: false, defeatCount: 0, summonerId: null, servantLastAddAt: 0, castUntil: 0 }
+    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastTimeRollAt: 0, timeSpawned: false, defeatCount: 0, summonerId: null, waveStartAt: 0, ringOffset: 0, castUntil: 0 }
   );
   // 裏ボス(mimir/jormungand)コントローラの状態。spawned=この出撃で出現済みか(1回だけ)、
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
@@ -2737,7 +2740,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           wallDepthSyncRef.current = 0;
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
-          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastTimeRollAt: 0, timeSpawned: false, defeatCount: 0, summonerId: null, servantLastAddAt: 0, castUntil: 0 };
+          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastTimeRollAt: 0, timeSpawned: false, defeatCount: 0, summonerId: null, waveStartAt: 0, ringOffset: 0, castUntil: 0 };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0, thorPrevSwingCommitAt: 0, thorNihilFiredFor: -1, mimirAimVX: 0, mimirAimVY: 0, mimirLockSfxUntil: 0, mimirBrokenSfxUntil: 0 };
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
@@ -5145,7 +5148,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               rs.chaserSpawnAt = newGameTime;
               // §14-4-3(使者): 新しい波の召喚主=このchaser。使者人口を0から数え直す。
               rs.summonerId = chaser.id;
-              rs.servantLastAddAt = newGameTime;
+              rs.waveStartAt = newGameTime; // 補修バッチA-2: servantTargetCountの起点(ここから10秒毎+1)
+              rs.ringOffset = Math.random() * Math.PI * 2; // 補修バッチA-3: この波の囲みスロットの起点角(固定)
               rs.castUntil = 0;
               rs.risk = REAPER_CONFIG.riskMax;
               spawnFlash('rgba(10,10,16,0.30)', 360);
@@ -5157,7 +5161,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           } else {
             // プレイヤーがスタート(原点)付近 homeRadiusPx 内へ戻れば死神は去る=逃げ切り。リスクは0へクールダウン。
             // ただし「時間による死神」(timeSpawned)は時間制限のデスなので原点に戻っても去らない(逃げ場なし)。
-            if (!rs.timeSpawned && Math.hypot(pcx, pcy) < REAPER_CONFIG.homeRadiusPx) {
+            // 補修バッチA-6(社長実機報告2026-08-28): `?rp2=1` はリスクを毎フレーム最大化する
+            // (REAPER2_TEST・上のブロック)ため、出撃地点(原点付近)へ完全出現→同フレームで
+            // homeRadiusPx内=即帰巣消滅→次フレーム再出現、を無限に繰り返し出現アテンションが
+            // 鳴り続けていた。REAPER2_TEST中はこの帰巣判定自体をスキップする(テスト専用ツマミの中だけの
+            // 変更・製品挙動=REAPER2_TESTがfalseの経路は1バイトも変えない)。
+            if (!REAPER2_TEST && !rs.timeSpawned && Math.hypot(pcx, pcy) < REAPER_CONFIG.homeRadiusPx) {
               const gsHome = useGameStore.getState();
               const goneIds = new Set(
                 gsHome.enemies.filter(e => isTerminalReaper(e) || isHangedman(e.type)).map(e => e.id)
@@ -5206,39 +5215,80 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   rs.castUntil = 0;
                 }
                 // 使者は全体で共有の枠(裁定済み#7=本体の数によらず全体・叩き台)。
-                const pop = stepServantPopulation(
-                  { count: servantsNow.length, lastAddAt: rs.servantLastAddAt },
-                  newGameTime, REAPER2_CONFIG.servantAddIntervalMs, REAPER2_CONFIG.servantMax,
+                // 補修バッチA-2(★重大バグ是正): 「枠(target)」をwaveStartAt基準の経過時間だけで求め、
+                // 現在数がそれを下回っていれば interval を待たず**このフレームで即座に**埋める
+                // (旧実装=stepServantPopulationは死亡検知を持たず、最大10秒の空白が生まれていた)。
+                const target = servantTargetCount(
+                  rs.waveStartAt, newGameTime, REAPER2_CONFIG.servantAddIntervalMs, REAPER2_CONFIG.servantMax,
                 );
-                rs.servantLastAddAt = pop.lastAddAt;
-                if (pop.added) {
+                const shortfall = Math.max(0, target - servantsNow.length);
+                if (shortfall > 0) {
                   rs.castUntil = newGameTime + REAPER_CAST_MS; // 詠唱: 本体停止+SE(召喚主のみ)
                   playSfx('phill-skylight'); // 鐘の音(社長指示=フィルの光の技と同じSE)
                   const gb = useGameStore.getState().gameBounds;
-                  const spawnZoomTarget = contextZoomTarget(0, true); // 死神系=大型(isLargeForZoom)前提の引き
+                  // 補修バッチA-4(囲み半径のズーム穴の是正): 既存の作法(useGameLoop.ts 13526-13528の
+                  // spawnZoomTarget)に揃え、交戦ボス同居時は最大引き(ZOOM_MIN_ABS=0.40=2.5倍引き)を
+                  // 優先する。旧実装(contextZoomTarget(0,true)で0.7止まり)では、最大引き時に
+                  // 使者が画面内へポップする穴があった。
+                  const bossCameraMayPull = gsTick.enemies.some(be => {
+                    if (!isEngageableBoss(be.type) || be.dormant === true) return false;
+                    const bdx = be.x + be.width / 2 - pcx, bdy = be.y + be.height / 2 - pcy;
+                    const bossCameraRange = bossEngagementDistancePx(be.type, true, be.isStoryBoss === true);
+                    return bdx * bdx + bdy * bdy <= bossCameraRange * bossCameraRange;
+                  });
+                  const spawnZoomTarget = bossCameraMayPull ? ZOOM_MIN_ABS : contextZoomTarget(0, true); // 死神系=大型(isLargeForZoom)前提の引き
                   const radius = encircleRadiusPx(gb.width, gb.height, spawnZoomTarget, REAPER_CONFIG.spawnMarginPx);
                   const corridor = useGameStore.getState().corridorMode;
+                  // 補修バッチA-3(取り囲む配置の是正): スロット(0..servantMax-1)へ固定角
+                  // (ringOffset+slot/max・波ごとに1回だけ抽選)を割り当てる。encirclePointsの均等割りを
+                  // 実際に使う形にし、補充も死んだスロットと同じ角度へ出す(=常に円周に散る。旧実装は
+                  // 毎回ランダム1点だったため5体が偏っていた)。
                   const ringPts = corridor
                     ? corridorEncirclePoints(pcx, pcy, radius)
-                    : encirclePoints(1, pcx, pcy, radius, Math.random() * Math.PI * 2);
-                  const pt = ringPts[Math.floor(Math.random() * ringPts.length)];
-                  const servant = spawnEnemyAt('hangedman', pt.x - 23, pt.y - 46, newGameTime);
-                  servant.health = REAPER2_CONFIG.servantHealth;
-                  servant.maxHealth = REAPER2_CONFIG.servantHealth;
-                  servant.damage = REAPER2_CONFIG.servantContactDamage;
-                  servant.speed = servantSpeed;
-                  servant.summonerId = rs.summonerId ?? undefined;
-                  servant.reaperWarpAlpha = 0; // 出現時フェードイン(materializing・慣性MUST=既存の型を流用)
-                  addEnemy(servant);
+                    : encirclePoints(REAPER2_CONFIG.servantMax, pcx, pcy, radius, rs.ringOffset);
+                  const occupiedSlots = new Set(
+                    servantsNow.map(s => s.reaperSlot).filter((slot): slot is number => slot !== undefined)
+                  );
+                  for (let i = 0; i < shortfall; i++) {
+                    let slot = 0;
+                    while (occupiedSlots.has(slot) && slot < REAPER2_CONFIG.servantMax) slot++;
+                    occupiedSlots.add(slot);
+                    const pt = ringPts[slot % Math.max(1, ringPts.length)];
+                    const servant = spawnEnemyAt('hangedman', pt.x - 23, pt.y - 46, newGameTime);
+                    servant.health = REAPER2_CONFIG.servantHealth;
+                    servant.maxHealth = REAPER2_CONFIG.servantHealth;
+                    servant.damage = REAPER2_CONFIG.servantContactDamage;
+                    servant.speed = servantSpeed;
+                    servant.summonerId = rs.summonerId ?? undefined;
+                    servant.reaperSlot = slot;
+                    servant.reaperWarpAlpha = 0; // 出現時フェードイン(materializing・慣性MUST=既存の型を流用)
+                    addEnemy(servant);
+                  }
                 }
               }
 
               // --- 本体の移動(直進+70px旋回。詠唱中の召喚主だけ静止) ---
               for (const e of bodiesNow) {
                 const casting = e.id === rs.summonerId && newGameTime < rs.castUntil;
-                if (casting) { patches.set(e.id, { vx: 0, vy: 0, damage: REAPER2_CONFIG.bodyContactDamage }); continue; }
+                // 補修バッチA-1(★罠「体勢を崩したら殴れる」を成立させる): updateEnemies側は今回から
+                // 本体の汎用チェイスを丸ごとスキップする(二重駆動の解消)ため、気絶/体勢崩れ/持ち上げ中に
+                // 座標を進めない責務はこの専用ムーバへ移した。bossSlowUntilは全停止ではなく既存の
+                // 全ボス共通チョーク(bossSlowMult)で減速するだけ(他ボスの黄色クリ半減と同じ扱い)。
+                const frozen = (newGameTime < (e.stunUntil ?? 0)) || (newGameTime < (e.bossFullStunUntil ?? 0))
+                  || (Date.now() < (e.liftUntil ?? 0));
+                if (casting || frozen) {
+                  patches.set(e.id, { vx: 0, vy: 0, damage: REAPER2_CONFIG.bodyContactDamage });
+                  continue;
+                }
+                const slowMult = bossSlowMult(e, newGameTime);
                 const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-                const step = stepReaperBody(ecx, ecy, pcx, pcy, straightStepPx, orbitStepPx, REAPER2_CONFIG.orbitDistPx);
+                // C-1(記述の是正): §14-4-2は「縁距離70px(縁基準)」。中心間距離から本体/プレイヤーの
+                // 半径ぶんを差し引いた縁距離で旋回判定する(?rp2dist=の意味を仕様書どおりにする)。
+                const edgeOffsetPx = e.width / 2 + player.width / 2;
+                const step = stepReaperBody(
+                  ecx, ecy, pcx, pcy,
+                  straightStepPx * slowMult, orbitStepPx * slowMult, REAPER2_CONFIG.orbitDistPx, edgeOffsetPx,
+                );
                 const rawX = step.x - e.width / 2, rawY = step.y - e.height / 2;
                 const clamped = clampRectToPlayableArea(rawX, rawY, e.width, e.height, reaperPlayableCtx, e.x);
                 patches.set(e.id, { x: clamped.x, y: clamped.y, damage: REAPER2_CONFIG.bodyContactDamage });

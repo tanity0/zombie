@@ -14000,6 +14000,16 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, vx: lvx, vy: lvy, x: lmoved.x, y: lmoved.y };
         }
 
+        // PACING_PUZZLE.md §14-4(補修バッチA-1・二重駆動の解消): 死神本体(isTerminalReaper)/
+        // 使者(isHangedman)は専用ムーバ(useGameLoop.ts・stepReaperBody/使者の直進)が毎フレーム
+        // 座標を直接書く。ここより手前(KB適用ブロック・isHiddenBoss等の早期return・liftUntil/
+        // stunUntilの判定枝・dormant/leash等)は**素通しのまま**にし、ここでは「歩いて追う」汎用
+        // チェイス(この下の既定コード=速度計算+慣性+resolveMove)だけをスキップする。
+        // ★実測(検収監査): この早期returnが無いと、専用ムーバが書いた座標をこの下の汎用チェイスが
+        // 同じフレームでさらに追加移動させ、本体は仕様の約2倍速・使者は約2.4倍速で寄っていた
+        // (70px旋回が密着高速回転に化ける/詠唱静止・体勢崩れ停止が効かない、の全ての元凶)。
+        if (isTerminalReaper(enemy) || isHangedman(enemy.type)) return enemy;
+
         // v0.25.3176(案4): 曲がる速さ(慣性tau)にも個体差を入れる。チャフの既存tauは0.30〜0.41sなので
         // ×0.75〜1.60 = **0.22〜0.65s** の幅になる=同じ型でも曲がり方が揃わない(壁で来なくなる)。
         const alpha = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed)

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   stepReaperBody, encircleRadiusPx, encirclePoints, corridorEncirclePoints,
-  stepServantPopulation, knockbackCdReady,
+  servantTargetCount, knockbackCdReady,
 } from './reaper2';
 
 describe('stepReaperBody — 直進+70px旋回(PACING_PUZZLE.md §14-4-2)', () => {
@@ -32,6 +32,22 @@ describe('stepReaperBody — 直進+70px旋回(PACING_PUZZLE.md §14-4-2)', () =
     const r = stepReaperBody(0, 0, 100, 0, 0, 5, 70);
     expect(r.x).toBeCloseTo(0, 6);
     expect(r.y).toBeCloseTo(0, 6);
+  });
+});
+
+describe('stepReaperBody — 縁基準(edgeOffsetPx・補修バッチC-1)', () => {
+  it('edgeOffsetPx=0(既定)は従来どおり中心間距離で判定する', () => {
+    // 中心距離90・縁距離70。offsetなしでは90>70=直進のまま。
+    const r = stepReaperBody(0, 0, 90, 0, 10, 5, 70);
+    expect(r.orbiting).toBe(false);
+  });
+
+  it('edgeOffsetPx>0を渡すと、中心距離が同じでも早く旋回へ切り替わる(縁基準)', () => {
+    // 中心距離90・縁距離70・offset25(本体/プレイヤーの半径ぶん)→縁距離換算65<70=旋回。
+    const r = stepReaperBody(0, 0, 90, 0, 10, 5, 70, 25);
+    expect(r.orbiting).toBe(true);
+    // 旋回半径は中心距離(90)のまま保たれる(縁基準はしきい値判定だけに効く)。
+    expect(Math.hypot(r.x - 90, r.y - 0)).toBeCloseTo(90, 6);
   });
 });
 
@@ -76,30 +92,29 @@ describe('corridorEncirclePoints — 廊下縮退(左右2点)', () => {
   });
 });
 
-describe('stepServantPopulation — 10秒毎+1・上限まで', () => {
-  it('interval未満なら増えない', () => {
-    const r = stepServantPopulation({ count: 1, lastAddAt: 1000 }, 5000, 10000, 5);
-    expect(r).toEqual({ count: 1, lastAddAt: 1000, added: false });
+describe('servantTargetCount — 枠(target)は10秒毎+1・上限まで(補修バッチA-2)', () => {
+  it('波の開始直後は枠1', () => {
+    expect(servantTargetCount(0, 0, 10000, 5)).toBe(1);
+    expect(servantTargetCount(1000, 9999, 10000, 5)).toBe(1);
   });
 
-  it('interval経過で+1', () => {
-    const r = stepServantPopulation({ count: 1, lastAddAt: 1000 }, 11000, 10000, 5);
-    expect(r).toEqual({ count: 2, lastAddAt: 11000, added: true });
+  it('interval経過ごとに枠が+1(現在数は無関係=枠だけを返す)', () => {
+    expect(servantTargetCount(0, 10000, 10000, 5)).toBe(2);
+    expect(servantTargetCount(0, 20000, 10000, 5)).toBe(3);
+    expect(servantTargetCount(0, 39999, 10000, 5)).toBe(4);
   });
 
-  it('上限に達したら増えない(interval経過でも)', () => {
-    const r = stepServantPopulation({ count: 5, lastAddAt: 1000 }, 99999, 10000, 5);
-    expect(r).toEqual({ count: 5, lastAddAt: 1000, added: false });
+  it('上限で頭打ち', () => {
+    expect(servantTargetCount(0, 999999, 10000, 5)).toBe(5);
   });
 
-  it('死亡で数が減った後、次のinterval到達で埋まっていく(即補充の歩進)', () => {
-    let s = { count: 3, lastAddAt: 0 }; // 1体死んで5→3(呼び出し側がcountを引いた想定)
-    s = stepServantPopulation(s, 10000, 10000, 5);
-    expect(s).toMatchObject({ count: 4, added: true });
-    s = stepServantPopulation(s, 20000, 10000, 5);
-    expect(s).toMatchObject({ count: 5, added: true });
-    s = stepServantPopulation(s, 30000, 10000, 5);
-    expect(s).toMatchObject({ count: 5, added: false }); // 上限で頭打ち
+  it('★1体消えたら即補充(重大バグ再発防止): 枠は現在数と無関係に進み続けるので、呼び出し側が「現在数<枠」を検知した瞬間、intervalを待たず即座に埋める対象になる', () => {
+    // 波開始から25秒後=枠3。5体いたうち2体が同フレームで死んで現在数3に減っても、
+    // 枠の計算(waveStartAt基準)はintervalの巻き戻り無しにそのまま3を返す=即補充可能。
+    const target = servantTargetCount(0, 25000, 10000, 5);
+    const currentCountAfterDeaths = 1; // 5体中4体が死んで1体だけ残った想定
+    expect(target).toBe(3);
+    expect(Math.max(0, target - currentCountAfterDeaths)).toBe(2); // このフレームで2体を即補充
   });
 });
 

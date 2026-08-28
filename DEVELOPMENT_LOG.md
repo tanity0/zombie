@@ -1,5 +1,99 @@
 # Development Log
 
+## v0.25.4010 — PACING_PUZZLE §14-4新死神 補修バッチ(実装チャット・Sonnet): 検収監査5件+社長実機報告1件+新裁定1件 【2026-08-28 20:30 JST】
+
+v0.25.4007で着地した新死神(§14-4)に対する、検収監査(Opus・HEAD 22d39c3で実測済み)の重大5件+
+社長の実機報告1件(A-6)+社長新裁定1件(A-7・死神の大きさ2倍)をまとめて是正。
+**状態変化: §14-4新死神 → 補修済み(2巡目検収待ち)**。
+
+### A-1 二重駆動の解消(最重要)
+専用ムーバ(`useGameLoop.ts`のstepReaperBody/使者の直進)が座標を書いた**あとに**、`updateEnemies`
+(`src/store/gameStore.ts`)の汎用チェイスが同じ個体をもう一度動かしていた(実測: 本体は仕様の約2倍速・
+使者は約2.4倍速で寄り、70px旋回が密着高速回転に化け、詠唱静止・体勢崩れ停止も効かなかった)。
+`updateEnemies`内の**汎用チェイス移動の直前**(14003行付近・慣性計算の手前)へ
+`if (isTerminalReaper(enemy) || isHangedman(enemy.type)) return enemy;` を追加し、汎用チェイスだけを
+スキップした。**丸ごと早期returnはしていない**——KB移動の適用ブロック(gameStore.ts:11593付近が唯一の
+適用点)・isHiddenBoss等の早期return・liftUntil/stunUntilの判定枝・dormant/leash判定は全てこの行より
+手前にあり、素通しのまま生きている。
+体勢を崩したら殴れる、を成立させる責務は専用ムーバ側(`useGameLoop.ts`)へ移した: 本体の
+`stepReaperBody`適用前に`stunUntil`/`bossFullStunUntil`/`liftUntil`を確認し、崩れ/気絶中は座標を
+進めない(`vx:0,vy:0`のパッチのみ)。`bossSlowUntil`(黄色クリ半減)は全停止ではなく、他の全ボス共通の
+`bossSlowMult`で直進/旋回のstepPxを減速するだけ(他ボスの黄色クリ半減と同じ扱い)。
+再発防止網: `src/store/reaperDoubleDrive.test.ts`(新設)。reaper本体(reaperChaser=true)/hangedmanを
+1体だけ置いて`updateEnemies`単独を回し、**座標が1pxも動かないこと**を固定。KBは早期returnの手前を
+通るため引き続き動くこと(hangedmanへknockbackVx/knockbackUntilを立てて回すと+x方向へスライドする)も
+同ファイルで確認済み。
+
+### A-2 使者「1体消えたら即補充」
+`src/utils/reaper2.ts`の`stepServantPopulation`(10秒interval+count束ね)を廃止し、`servantTargetCount`
+(波の開始waveStartAtからの経過時間だけで「枠」を返す純関数)へ置き換えた。呼び出し側
+(`useGameLoop.ts`)は毎フレーム`target - 現在の使者数`の不足分を**そのフレームで即座に**召喚する
+(intervalを待たない)。旧実装は死亡検知を持たず、死亡→次の+1判定まで最大10秒の空白があった
+(検収監査で確定した重大バグ)。`src/utils/reaper2.test.ts`の該当describeを`servantTargetCount`用へ
+書き直した(旧テスト「死亡で数が減った後、次のinterval到達で埋まっていく」は**10秒待ちを正として
+固定していた誤りテスト**=削除)。
+
+### A-3 囲み配置(取り囲む配置の是正)
+旧実装は`encirclePoints(1, …, Math.random()*2π)`=毎回ランダム1点で5体が偏っていた。使者ごとに
+囲みスロット(0..rp2max-1)を割り当て、角度=`ringOffset(波ごとに1回だけ抽選・固定) + slot/rp2max*2π`
+とした(`Enemy.reaperSlot`フィールドを新設・`src/types/game.ts`)。補充も死んだスロットの角度に出す
+(=常に円周上に散る)。`encirclePoints`の均等割りを実際に使う形にした(count=servantMaxで1回だけ呼び、
+スロットでindexする)。廊下(corridorMode)の左右2点縮退は現状維持(slot%2で振り分け)。
+
+### A-4 囲み半径のズーム穴
+`useGameLoop.ts`の`contextZoomTarget(0, true)`(=0.7止まり)を、既存の作法(13526-13528行の
+`bossCameraMayPull ? ZOOM_MIN_ABS : contextZoomTarget(...)`)に揃えた。交戦ボス(`isEngageableBoss`)が
+近くに居る間は最大引き(ZOOM_MIN_ABS=0.40=2.5倍引き)を優先するので、交戦ボス同居時でも使者が
+画面内へポップしない。
+
+### A-5 `?rp2kb=`の始末
+`src/config/reaper.ts`の`servantKnockback`(どこからも読まれていない死にツマミ)を削除。社長裁定
+「使者のKBは規定通り」(既存の各攻撃の既存KB量をそのまま・専用定数は発明しない)に従い配線はしない。
+PACING_PUZZLE.md §14-4-5のツマミ表・「ではない」条件の数値列からも落とした。
+
+### A-6 `?rp2=1`のアテンション無限ループ(社長実機報告2026-08-28)
+出撃地点が帰巣円(原点900px)の中にあるため、`?rp2=1`で「出現→同フレームで帰巣消滅→次フレーム再出現」を
+無限に繰り返し、出現アテンションSEが鳴り続けていた。`useGameLoop.ts`の帰巣判定(homeRadiusPx分岐)へ
+`!REAPER2_TEST`を追加してREAPER2_TEST中はスキップ(テスト専用ツマミの中だけの変更・製品挙動は不変)。
+
+### A-7 死神の大きさ2倍(社長裁定2026-08-28「死神の大きさを今の2倍くらいにして。全部ね」)
+`src/pixi/pixiScene.ts`の`RP2_SCALE = tsNum('rp2scale', 1)`の既定を**2**へ(本体・撃破escalationの
+追加個体は同じtype='reaper'なので全員に掛かる)。見た目のみ・判定(hitbox)は不変
+(`stageEnemyVisualMul`のtype比較=当たり判定計算には乗らない既存の分離)。使者(hangedman)と横切り演出
+(`reaperCrossSprite`の独立スケール計算)は対象外(type==='reaper'比較が自動でhangedmanを除外し、
+横切り演出はそもそもRP2_SCALEを参照していない)。
+
+### C 記述の是正(監査(C)6件・v0.25.4007のDEVLOG本文自体は書き換えない=履歴)
+- C-1 縁基準: §14-4-2「旋回=縁距離70px(縁基準)」に対し実装は中心間距離で判定していた。
+  `stepReaperBody`(`src/utils/reaper2.ts`)に`edgeOffsetPx`引数を追加し、呼び出し側
+  (`本体幅/2+プレイヤー幅/2`)を渡すことで縁基準の判定にした(旋回半径=中心距離は不変・軌道は連続)。
+  `?rp2dist=`の意味が仕様書どおりになった。
+- C-2 囲み配置: 実は「毎回ランダム1点」だった(A-3で是正)。
+- C-3 囲み半径: 実は`contextZoomTarget(0,true)`=0.7止まりだった(A-4で是正)。
+- C-4 詠唱静止: 二重駆動(A-1のバグ)のせいで実機では効いていなかった(A-1で是正=updateEnemies側の
+  汎用チェイスが詠唱中の座標も上書きしていたため)。
+- C-5 即補充テスト: `reaper2.test.ts`の「死亡で数が減った後、次のinterval到達で埋まっていく」は
+  10秒待ちを正として固定する誤りテストだった(A-2で書き直し)。
+- C-6 速度: 二重駆動により本体は約2倍速・使者は約2.4倍速で寄っていた(A-1で是正)。
+PACING_PUZZLE.md §14-4-5のツマミ表・囲み配置/ズームの記述・rp2scale既定値を実装に合わせて更新した。
+
+### 自己点検(実装精度の規律5)
+この変更はゲームの仕様・挙動・バランス・演出の意図を変えていない(全て検収監査で確定した「実装が
+記述と食い違っている」箇所の是正、社長の実機報告1件の対応、社長の明示裁定1件の反映)。
+CLAUDE.md「上下副作用チェック」対象の上下移動はなし。「敵の仕様は区分で固める」との抵触なし
+(reaper/hangedmanの区分内の挙動修正のみ・区分外の仕様追加なし)。
+
+### 検証
+`npm run typecheck`(エラー0)・`npm run lint`(エラー0)。関連テスト
+(`reaper2.test.ts`/`reaperDoubleDrive.test.ts`(新設)/`sim.test.ts`/`playerMoveSpeed.test.ts`/
+`constitution.test.ts`)を`npx vitest run`で実行、全て合格(既存の無関係な失敗1件=`skills.test.ts`の
+runner覚醒テストは本バッチと無関係・変更前から失敗していたことを確認済み)。フルtest/buildは
+社長指示が無いため未実行(Testing policy)。
+
+### 次回への申し送り
+★未決事項は無し(全ての判断項目が検収監査の推薦どおり・または社長裁定の範囲内で解決できた)。
+2巡目検収待ち。
+
 ## v0.25.4009 — PACING_PUZZLE §14-2伐採人 補修バッチ(実装チャット・Sonnet): 社長裁定2値+区分整合+検収監査6件 【2026-08-28 20:12 JST】
 
 v0.25.4002で実装した新型雑魚「伐採人」(logger)に対する、社長裁定2件・区分整合1件・検収監査の

@@ -13,14 +13,20 @@ export interface ChaseOrbitResult extends Point { orbiting: boolean; }
  *
  * `straightStepPx`/`orbitStepPx` は呼び出し側が `speed × deltaTime × MOVE_SPEED_MULT` まで
  * 計算済みの「このフレームで進む距離」を渡すこと(このモジュールはdeltaTime/速度を持たない)。
+ *
+ * `edgeOffsetPx`(補修バッチ・C-1): §14-4-2は「縁距離70px(縁基準)」だが、旧実装は中心間距離
+ * (bx,by)〜(px,py)をそのまま比較していた=`?rp2dist=`が縁基準の意味になっていなかった記述違反。
+ * 呼び出し側が「本体幅/2+プレイヤー幅/2」を渡すと、判定だけが中心距離からその分を差し引いた
+ * 縁距離になる(旋回の半径=中心距離はそのまま保つので軌道は連続)。既定0=旧来どおり中心基準。
  */
 export const stepReaperBody = (
   bx: number, by: number, px: number, py: number,
-  straightStepPx: number, orbitStepPx: number, orbitDistPx: number,
+  straightStepPx: number, orbitStepPx: number, orbitDistPx: number, edgeOffsetPx = 0,
 ): ChaseOrbitResult => {
   const dx = px - bx, dy = py - by;
   const dist = Math.hypot(dx, dy);
-  if (dist > orbitDistPx) {
+  const edgeDist = dist - edgeOffsetPx;
+  if (edgeDist > orbitDistPx) {
     if (dist < 0.001) return { x: bx, y: by, orbiting: false };
     const nx = dx / dist, ny = dy / dist;
     return { x: bx + nx * straightStepPx, y: by + ny * straightStepPx, orbiting: false };
@@ -65,22 +71,23 @@ export const corridorEncirclePoints = (cx: number, cy: number, radius: number): 
   { x: cx + radius, y: cy },
 ];
 
-export interface ServantPopulationState { count: number; lastAddAt: number; }
-export interface ServantPopulationResult extends ServantPopulationState { added: boolean; }
-
 /**
- * PACING_PUZZLE.md §14-4-3: 召喚開始から10秒ごとに+1・最大まで。耐久が尽きた使者の即補充は
- * 呼び出し側(死んだら数を減らしてから毎フレームこれを呼ぶ=次のintervalを待たず埋まる設計ではなく、
- * 「減った分はintervalを待たず次回のadd判定でcountが上限未満に戻るだけ」で表現する——
- * 「即補充」は呼び出し側が death 検出時に count を減算し、次にこの関数を呼んだ時 count<max なら
- * 即座に埋まるまでの待ち時間として現れる(この関数自体はintervalの歩進だけを見る純関数)。
+ * PACING_PUZZLE.md §14-4-3(社長のゴール「使者は10秒に1体増える(最大5)。1体消えたら即補充される」・
+ * 補修バッチA-2): 「枠(target)」と「現在数」を分離する。枠は波の開始(waveStartAt)から
+ * `intervalMs`ごとに+1(`max`で頭打ち)。呼び出し側は毎フレーム`target - 現在の使者数`を計算し、
+ * 不足分があれば**そのフレームで即座に**召喚する(intervalを待たない=1体消えたら即補充)。
+ *
+ * ★旧実装(stepServantPopulation)は「count」と「lastAddAt」を1本の状態に束ねていたため、
+ * 死亡で count が減っても次の +1 判定は lastAddAt 基準の interval を待たされていた(最大10秒の
+ * 空白=検収監査で確定した重大バグ)。target を「waveStartAt からの経過時間」だけで決める式に
+ * 分離すれば、死亡検知は呼び出し側の「現在数」を数え直すだけで済み、intervalの歩進と無関係に
+ * 即補充が成立する。
  */
-export const stepServantPopulation = (
-  state: ServantPopulationState, now: number, intervalMs: number, max: number,
-): ServantPopulationResult => {
-  if (state.count >= max) return { ...state, added: false };
-  if (now - state.lastAddAt < intervalMs) return { ...state, added: false };
-  return { count: state.count + 1, lastAddAt: now, added: true };
+export const servantTargetCount = (
+  waveStartAt: number, now: number, intervalMs: number, max: number,
+): number => {
+  const elapsed = Math.max(0, now - waveStartAt);
+  return Math.min(max, 1 + Math.floor(elapsed / Math.max(1, intervalMs)));
 };
 
 /**

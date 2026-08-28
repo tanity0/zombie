@@ -70,7 +70,9 @@ export const REAPER2_CONFIG = {
   // --- 技「使者」(§14-4-3) ---
   servantSpeedMult: numParam('rp2mspd', 1.2),  // 使者の速度倍率(プレイヤー「現在の」実効速度に対して・毎フレーム参照)。
   servantHealth: numParam('rp2hp', 2000),      // 使者の耐久(1体)。
-  servantKnockback: numParam('rp2kb', 60),     // 使者のノックバック量(px相当・KNOCKBACK_SPEED系との整合はgameStore側)。
+  // ★補修バッチA-5: 旧`servantKnockback`(?rp2kb=)はどこからも読まれていない死にツマミだった。
+  // 社長裁定「使者のKBは規定通り」(既存の各攻撃の既存KB量をそのまま・専用定数は発明しない)に
+  // 従い、配線はせず削除した(§14-4-5のツマミ表・DEVLOGからも落とす)。
   servantAddIntervalMs: numParam('rp2int', 10) * 1000, // 使者が増える間隔。
   servantMax: Math.max(0, Math.round(numParam('rp2max', 5))), // 使者の最大数(全体で共有の枠・叩き台)。
   // 使者の接触ダメージ=999固定(社長裁定2026-08-28「既存の仕様で、ダメ999で」=専用即死ゲートではなく

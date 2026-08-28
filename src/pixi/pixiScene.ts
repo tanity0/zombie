@@ -488,9 +488,12 @@ const tsNum = (key: string, def: number): number => {
   const n = v == null ? NaN : Number(v);
   return Number.isFinite(n) ? n : def;
 };
-// PACING_PUZZLE.md §14-4-5(新死神・本体の表示スケール)。既定=1(絵はcontainScaleの当たり判定基準
-// フィットのまま・「実機で決定」= 社長が実機で ?rp2scale= を振って詰める前の暫定既定)。
-const RP2_SCALE = tsNum('rp2scale', 1);
+// PACING_PUZZLE.md §14-4-5(新死神・本体の表示スケール)。社長裁定2026-08-28「死神の大きさを今の
+// 2倍くらいにして。全部ね」=既定2(見た目のみ・当たり判定=hitboxは不変。CLAUDE.md「Visual vs.
+// hitbox」)。撃破escalationの追加個体も同じtype='reaper'なので全員に掛かる。使者(hangedman)と
+// 横切り演出(reaperCrossSpriteの独立スケール計算)は対象外(裁定は「死神」本体のみ・stageEnemyVisualMul
+// のtype==='reaper'比較が自動でhangedmanを除外している)。実機で更に微調整する時は?rp2scale=のまま。
+const RP2_SCALE = tsNum('rp2scale', 2);
 // ステージ3の追加雲(near層)を実機で詰めるツマミ(v0.25.3116/3117)。NaN=未指定(表の値を使う)。
 // **ビルドし直さずに**濃さ・森1からの距離・高さを詰めるための道具(遠景の層隠しツマミと同趣旨)。
 const S3_CLOUD_ALPHA_OVERRIDE = tsNum('s3cloud', NaN);
