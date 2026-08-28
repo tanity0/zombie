@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4024',
+    items: [
+      'ゲーム内容の変更はありません(開発内部: エンディングシーン用の遠景素材の取込と設計書の新設)。',
+    ],
+  },
+  {
     version: '0.25.4023',
     items: [
       '戦況ライン(画面最上部の1px)の表示バグを修正: ランクが変わった後もベタ塗りが残り、両端のフェード・ピークの脈動・伸びる動きが隠れていました。ボス戦の金の帯も見える位置に直しました。',
