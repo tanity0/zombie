@@ -40,6 +40,7 @@ import {
   playerPvpChipPatch,                           // ★SAME_ARENA §9: プレイヤー体勢の削り(紫入りの破棄込み)
   showPvpFatalOnPlayerPresentation,             // ★2026-08-27: 幻影→プレイヤーの致命もKILL演出(ズーム)
   skillBenkeiCritBonus, skillKnifeMasterMeleeCrit, // ★裁定①: 近接クリ式のミラー(検収監査 中⑥)
+  resolveShieldWalls, shieldPlayableCtx, shieldBlockingEnemyRects, // ★B6(盾押し・§6)
 } from '../store/gameStore';
 import { softCapCritChance } from './critSoftCap'; // ★§13-3d: 近接クリ式のミラーに同じソフトキャップ
 // ★SAME_ARENA §9(対人体勢): 幻影・プレイヤーが対称に持つ隠し体勢の純関数。
@@ -49,6 +50,8 @@ import {
 } from './pvpPosture';
 import { HUMAN_REACTION_MS } from './bossSkeleton'; // ★人の反応時間(このゲームの正本)。幻影の反応下限に使う
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
+import { rectsOverlap } from '../world/obstacles'; // ★B6(盾押し・§6)
+import { pushShieldRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { createEnemyProjectile } from './enemyUtils';
 import { distToBandRect } from './geometry';
 import {
@@ -852,6 +855,34 @@ export const runPhantomTick = (
       patch.vy = decision.moveY * phantom.speed;
     } else {
       patch.vx = 0; patch.vy = 0;
+    }
+  }
+
+  // ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8): 幻影も自分の盾を押せる
+  // (写しの口=プレイヤー/守護霊と同じ純関数)。所有者以外は押せない。
+  {
+    const pnMoveDx = (patch.x ?? phantom.x) - phantom.x;
+    const pnMoveDy = (patch.y ?? phantom.y) - phantom.y;
+    if (pnMoveDx !== 0 || pnMoveDy !== 0) {
+      const pnRect = {
+        x: patch.x ?? phantom.x, y: patch.y ?? phantom.y, width: phantom.width, height: phantom.height,
+      };
+      for (const sh of useGameStore.getState().projectiles) {
+        if (sh.weaponType !== 'shield') continue;
+        if (sh.shieldOwnerKind !== 'phantom' || sh.shieldOwnerId !== phantom.id) continue;
+        if (!rectsOverlap(pnRect, { x: sh.x, y: sh.y, width: sh.width, height: sh.height })) continue;
+        const candidate = { x: sh.x + pnMoveDx, y: sh.y + pnMoveDy, width: sh.width, height: sh.height };
+        const wallResolved = resolveShieldWalls(candidate);
+        const placed = pushShieldRect(
+          { x: wallResolved.x, y: wallResolved.y, width: sh.width, height: sh.height },
+          shieldBlockingEnemyRects(useGameStore.getState().enemies),
+          shieldPlayableCtx(),
+          sh.x,
+        );
+        useGameStore.setState(st => ({
+          projectiles: st.projectiles.map(pr => pr.id === sh.id ? { ...pr, x: placed.x, y: placed.y } : pr),
+        }));
+      }
     }
   }
 

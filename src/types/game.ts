@@ -1791,6 +1791,14 @@ export interface Projectile {
   // Set when a melee shield-bash shoves the wall: the wall slides seamlessly,
   // then is force-destroyed once Date.now() reaches this timestamp (slide end).
   shieldBreakAt?: number;
+  /**
+   * ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8): 押せるのは所有者だけ。
+   * `ownerGhost`(守護霊=青白tint)と違い**判定に使う**(押し許可の主語)。undefined='player'と
+   * 同義だが、明示のため設置時に必ず書く。`shieldOwnerId` は ghost-ally/phantom の主語id
+   * (Summon.id / Enemy.id)。player は null。
+   */
+  shieldOwnerKind?: 'player' | 'ghost-ally' | 'phantom';
+  shieldOwnerId?: string | null;
   // Auto-turret: a stationary placed support unit (weaponType 'turret'). `direction`
   // holds the forward facing captured at placement. `turretMode` toggles between
   // 'forward' (tier-3 SMG, long straight line) and 'omni' (handgun, short radius)

@@ -88,7 +88,9 @@ import {
   meleeLungePx, MELEE_LUNGE_MS, // ★踏み込み(3者で同じ関数=武器別も揃う。速度は既存の knockbackSpeedFor で導く)
   KILLFX_TOTAL_MS, // KILL処刑演出の尺(前隙の解決で近接SEを抑止する条件・旧VirtualJoystickから移設)
   GHOST_DMG_LOG_ENABLED, ghostLogPush, // v0.25.3981: ?ghostlog=1 のカウンター連鎖ログ(記録専用・挙動不変)
+  resolveShieldWalls, shieldPlayableCtx, shieldBlockingEnemyRects, // ★B6(盾押し・§6)
 } from '../store/gameStore';
+import { pushShieldRect, clampShieldPlacementRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
 import { DOG_EXCLUDED_TYPES, dogEligiblePickups } from '../utils/dogFetch'; // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // ★対人トラップの効果時間(SAME_ARENA §3-g)
@@ -8528,10 +8530,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           }
           const ghostOwned = shOwner.kind === 'ghost-ally';
+          // ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8): 設置位置も壁+行ける帯へ是正する
+          // (既存の穴=設置時は壁・帯を一切見ていなかった)。敵は見ない(設置に押し出し概念は無い)。
+          const placedWallResolved = resolveShieldWalls({ x: footX - shieldW / 2, y: footY - shieldH, width: shieldW, height: shieldH });
+          const placedClamped = clampShieldPlacementRect(
+            { x: placedWallResolved.x, y: placedWallResolved.y, width: shieldW, height: shieldH },
+            shieldPlayableCtx(),
+          );
+          // 是正後の足元座標(演出=着地ダスト/SE距離減衰をここに揃える)。
+          const placedFootX = placedClamped.x + shieldW / 2;
+          const placedFootY = placedClamped.y + shieldH;
           addProjectile({
             id: `proj-shield-${nowMs}`,
-            x: footX - shieldW / 2,
-            y: footY - shieldH,
+            x: placedClamped.x,
+            y: placedClamped.y,
             width: shieldW,
             height: shieldH,
             speed: 0,
@@ -8549,11 +8561,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             shieldHp: Math.round(SHIELD_HP_BY_LEVEL[level] * skillSummonHpMult(useGameStore.getState().player)),
             shieldMaxHp: Math.round(SHIELD_HP_BY_LEVEL[level] * skillSummonHpMult(useGameStore.getState().player)),
             ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
+            shieldOwnerKind: shOwner.kind, // ★B6: 押し許可の主語('player'|'ghost-ally'|'phantom')
+            shieldOwnerId: ownerGhostId(shOwner) ?? null, // ★B6: ghost-ally/phantomの主語id(playerはnull)
           });
           // ガチャンッ!: 着地ダスト + 金属音(構えた感)。スプライト側で着地スラム。
-          spawnRing(footX, footY, 6, 64, ghostOwned ? 'rgba(159,216,255,0.7)' : 'rgba(203,213,225,0.7)', 3, 260);
+          spawnRing(placedFootX, placedFootY, 6, 64, ghostOwned ? 'rgba(159,216,255,0.7)' : 'rgba(203,213,225,0.7)', 3, 260);
           // v0.25.2480: ゴースト発動時のみ設置点で距離減衰(プレイヤー発動は従来どおり等倍)。
-          const shieldGain = ghostOwned ? subSfxGainAt(footX, footY) : 1;
+          const shieldGain = ghostOwned ? subSfxGainAt(placedFootX, placedFootY) : 1;
           if (shieldGain > 0) playSfx('shield-deploy', shieldGain);
           recordShieldPlacement(); // G4a(§2.9(3)・記録専用): shield設置1回の様式カウンタ
           setActorSubWeaponCooldown(ownerGhostId(shOwner), 'shield', gameTime + SHIELD_COOLDOWN_MS);
@@ -9872,6 +9886,33 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     { x: ae.x, y: ae.y, radius: ae.radius },
                   );
                   resolved.x = c.x; resolved.y = c.y;
+                }
+              }
+
+              // ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8): 守護霊も自分の盾を押せる
+              // (写しの口=プレイヤーと同じ純関数)。所有者以外は押せない。
+              {
+                const gMoveDx = resolved.x - ghostNow.x;
+                const gMoveDy = resolved.y - ghostNow.y;
+                if (gMoveDx !== 0 || gMoveDy !== 0) {
+                  const gRect = { x: resolved.x, y: resolved.y, width: ghostNow.width, height: ghostNow.height };
+                  const gProjectiles = useGameStore.getState().projectiles;
+                  for (const s of gProjectiles) {
+                    if (s.weaponType !== 'shield') continue;
+                    if (s.shieldOwnerKind !== 'ghost-ally' || s.shieldOwnerId !== ghostNow.id) continue;
+                    if (!rectsOverlap(gRect, { x: s.x, y: s.y, width: s.width, height: s.height })) continue;
+                    const candidate = { x: s.x + gMoveDx, y: s.y + gMoveDy, width: s.width, height: s.height };
+                    const wallResolved = resolveShieldWalls(candidate);
+                    const placed = pushShieldRect(
+                      { x: wallResolved.x, y: wallResolved.y, width: s.width, height: s.height },
+                      shieldBlockingEnemyRects(useGameStore.getState().enemies),
+                      shieldPlayableCtx(),
+                      s.x,
+                    );
+                    useGameStore.setState(st => ({
+                      projectiles: st.projectiles.map(pr => pr.id === s.id ? { ...pr, x: placed.x, y: placed.y } : pr),
+                    }));
+                  }
                 }
               }
 

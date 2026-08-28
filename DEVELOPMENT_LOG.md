@@ -1,5 +1,39 @@
 # Development Log
 
+## v0.25.3996 — AI_HUMANIZE B6: 盾押し機構を実装 【2026-08-28 15:30 JST】
+- **状態変化: ★AIの人間化 → B6盾押し実装済み(検収待ち)**
+- **実装**: research/AI_HUMANIZE.md §6 B6(裁定済み#8=社長裁定2026-08-28「プレイヤーが取りうる行動は
+  できるだけ実装してさせないと意味がないので、盾が押せないのはおかしい」)。
+  1. **押し**: 所有者(プレイヤー/守護霊/幻影)が自分の盾の矩形に接触したまま移動すると、盾がその
+     フレームの実効変位ぶん同じ方向へ動く。純関数 `pushShieldRect`/`clampShieldPlacementRect`
+     (`src/world/shieldPush.ts` 新設)へ切り出し、3者(`movePlayer`=`src/store/gameStore.ts`、
+     守護霊の移動確定=`src/hooks/useGameLoop.ts`、幻影=`src/utils/phantomTick.ts`)が同じ関数を通る
+     (「写しの口」)。所有者判定は新設フィールド `Projectile.shieldOwnerKind`/`shieldOwnerId`
+     (`src/types/game.ts`。設置時に必ず書く。`ownerGhost`は視覚専用のまま不変)で行い、所有者以外は
+     押せない。
+  2. **クランプ**: 動く盾は世界の壁(屋内=labMap壁+閉ドア/屋外=`resolveOutOfSolids`。`movePlayer`と
+     同じ2分岐を`resolveShieldWalls`[gameStore.ts新設・export]へ共有)→敵ブロッカー→
+     `clampRectToPlayableArea` の順に通す。設置位置も同じ壁解決+クランプ(敵は見ない)を通すよう
+     修正した(既存の穴=設置時は壁・帯を一切見ていなかった)。着地/SEの距離減衰も是正後の座標に揃えた。
+  3. **ブルドーザー禁止**: 動いている盾は、死体・リーパー・裏ボス(すり抜け勢)を除く敵のAABBを
+     `resolveAabb`の追加壁として解決する=押し先で敵と重なるならその手前で止まる(敵の座標は不変)。
+     静止中の盾→敵の既存ブロック/接触ダメージ処理(useGameLoop 11201行台)は無改変。
+  4. **バッシュ併存**: 既存のシールドバッシュ(shove補間・shoveStartX等)には触れていない。押しの
+     移動は直接x/y更新のみ(shoveStart系を一切書かない)=絵と判定の乖離なし。耐久/持続5秒/CD6秒/
+     新設置で旧盾消滅は無改変。
+  5. **写しの口**: 押し許可・壁解決・敵ブロック・クランプの4段は3者共通の関数(上記)。守護霊・幻影は
+     このバッチで「押せる能力」のみ付与(実際に押す行動判断はB5/B7の範囲外=このバッチでは触れていない)。
+- **テスト**(§7-9): `src/world/shieldPush.test.ts`(純関数9件・①クランプ/②ブルドーザー禁止/③無入力
+  不変)+`src/store/shieldPush.test.ts`(movePlayerの配線7件・④所有者ゲート[player/ghost-ally/phantom
+  3パターン]・接触判定・①②③の統合確認)= 新設16件。
+- **検証**: `npm run typecheck`(エラー0)/`npm run lint`(エラー0・warning8件は無関係の既存分)/
+  `npx vitest run src/store src/world src/utils`(273ファイル・4302件・全green。M9ボットスモーク含む
+  フル実行=既存挙動に差分なし)。
+- **自己点検**: 判定・ダメージ・バッシュ仕様は不変(唯一の新挙動=盾が動かせるようになったこと)。
+  毎フレームの新規走査/購読は無し(既存の盾×所有者の接触評価に相乗り)。乱数は消費していない。
+  盾の移動量=押す者のその瞬間の実効変位をそのまま渡しているため、新たな瞬間加速は発生しない
+  (慣性MUST)。
+
 ## v0.25.3995 — AI_HUMANIZE B1検収監査の実装是正7件(記録側) 【2026-08-28 15:09 JST】
 - **状態変化: ★AIの人間化 → B1補修済み(検収2巡目)**
 - **実装**: research/AI_HUMANIZE.md B1(記録側=コマ台帳)の検収監査(コミット72e5d6b対象)で出た

@@ -239,6 +239,7 @@ import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
 import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
+import { pushShieldRect } from '../world/shieldPush'; // B6(盾押し・§6): 純関数(src/world/shieldPush.test.ts)
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
 import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove } from '../utils/enemyBite';
@@ -5637,6 +5638,48 @@ export const resolveBountyMove = (
   );
 };
 
+// ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8)。設置型シールドは物理オブジェクト
+// (=誰が押していようと世界の壁と行ける帯には従う。守護霊自身が壁をすり抜ける[v0.25.2469]のとは別軸)。
+// プレイヤー移動(movePlayer)と同じ2分岐(屋内=labMap壁+閉ドア/屋外=resolveOutOfSolids)を
+// 1箇所に共有し、押し手(プレイヤー/守護霊/幻影)全員がこれを通る=「壁は世界に1つ」。
+export const resolveShieldWalls = (candidate: Rect): { x: number; y: number } => {
+  const s = useGameStore.getState();
+  if (s.indoorMode) {
+    const openIds = s.labDoors.filter(d => d.open).map(d => d.id);
+    return resolveAabb(candidate, [...labBlockingWalls(openIds), ...s.labProps.map(p => p.rect)]);
+  }
+  return resolveOutOfSolids(candidate, {
+    labTheme: s.stageTheme === 'lab',
+    farBackdrop: s.farBackdrop,
+    solidProps: s.breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar'),
+    castleEvent: s.castleEvent,
+    hospital: s.hospital, hospitalTaken: s.hospitalTaken,
+    armory: s.armory, armoryTaken: s.armoryTaken,
+    police: s.police, policeTaken: s.policeTaken,
+    facilitiesHidden: facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime),
+  });
+};
+
+// B6: `clampRectToPlayableArea` の文脈(プレイヤー移動・守護霊移動・phantomTick.playableCtx と同じ
+// 形。exStage/exPlayerBarrier はプレイヤー専用[CLAUDE.md]なので盾には渡さない=常に無効)。
+export const shieldPlayableCtx = (): PlayableAreaCtx => {
+  const s = useGameStore.getState();
+  return {
+    farBackdrop: s.farBackdrop,
+    labTheme: s.stageTheme === 'lab' && !s.indoorMode,
+    corridorMode: s.corridorMode,
+    m0AdvanceLimitX: s.m0AdvanceLimitX,
+    corridorRunInActive: s.corridorRunInActive,
+  };
+};
+
+// B6: 動いている盾が押し出してはいけない敵(=通常のブロック対象と同じ集合。死体/リーパー/裏ボスの
+// すり抜け勢は除く=useGameLoopの設置型シールド処理[敵→盾のresolveAabb]と同じ除外条件)。
+export const shieldBlockingEnemyRects = (enemies: readonly Enemy[]): Rect[] =>
+  enemies
+    .filter(e => !isCorpse(e) && e.type !== 'reaper' && !isHiddenBoss(e.type))
+    .map(e => ({ x: e.x, y: e.y, width: e.width, height: e.height }));
+
 export const useGameStore = create<GameState>((set, get) => ({
   player: {
     x: 0,
@@ -6248,7 +6291,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         newY = clamped.y;
       }
       // 設置型シールドはプレイヤーを止めない: 触れたら進行方向へ盾を押す(邪魔しない)。
-      // 押された盾は既存の毎フレーム処理(盾→敵 resolveAabb)で進行方向の敵を比例して押し出す。
+      // ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8): 押せるのは所有者(=自分が
+      // 置いた盾)だけ。動く盾は壁resolve+clampRectToPlayableAreaを通し、敵は押し出さない
+      // (押し先で重なるなら手前で止まる=ブルドーザー禁止)。押しはshove補間(220ms)を使わず
+      // 直接x/yを更新する(絵と判定の乖離防止・§6)。
       const pMoveDx = newX - player.x;
       const pMoveDy = newY - player.y;
       let pushedProjectiles: typeof state.projectiles | null = null;
@@ -6256,11 +6302,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         const playerRect = { x: newX, y: newY, width: player.width, height: player.height };
         for (const s of state.projectiles) {
           if (s.weaponType !== 'shield') continue;
-          if (rectsOverlap(playerRect, { x: s.x, y: s.y, width: s.width, height: s.height })) {
-            pushedProjectiles = (pushedProjectiles ?? state.projectiles).map(pr =>
-              pr.id === s.id ? { ...pr, x: pr.x + pMoveDx, y: pr.y + pMoveDy } : pr
-            );
-          }
+          if (s.shieldOwnerKind !== 'player') continue; // 所有者以外は押せない
+          if (!rectsOverlap(playerRect, { x: s.x, y: s.y, width: s.width, height: s.height })) continue;
+          const candidate: Rect = { x: s.x + pMoveDx, y: s.y + pMoveDy, width: s.width, height: s.height };
+          const wallResolved = resolveShieldWalls(candidate);
+          const placed = pushShieldRect(
+            { x: wallResolved.x, y: wallResolved.y, width: s.width, height: s.height },
+            shieldBlockingEnemyRects(state.enemies),
+            shieldPlayableCtx(),
+            s.x,
+          );
+          pushedProjectiles = (pushedProjectiles ?? state.projectiles).map(pr =>
+            pr.id === s.id ? { ...pr, x: placed.x, y: placed.y } : pr
+          );
         }
       }
 
