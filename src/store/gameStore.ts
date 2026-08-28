@@ -176,7 +176,8 @@ import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgr
 import type { KomaAssessmentInput } from '../utils/rankAssessor';
 import { getDirectorRewardMult } from '../utils/directorRankState';
 import { recordKill, recordSpawn } from '../utils/killTelemetryState';
-import { drillerZoneFor, drillerCanThrust, isDrillerRetreating, DRILLER_RETREAT_MS, DRILLER_RETREAT_SPEED_MULT } from '../utils/drillerAi';
+import { drillerZoneFor, drillerCanThrust, isDrillerRetreating, isRetreatEligibleType, DRILLER_RETREAT_MS, DRILLER_RETREAT_SPEED_MULT } from '../utils/drillerAi';
+import { loggerZoneFor, loggerCanSweep, loggerSweepBand, LOGGER_SWEEP_FORWARD_OFFSET } from '../utils/loggerAi'; // PACING_PUZZLE.md §14-2
 import { getPityDropTuning } from '../utils/pityState';
 import { pickNpcLine } from '../data/npcLines';
 import {
@@ -1503,6 +1504,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   plant: '変異体(定着型)',
   pumpkin: '変異体(肥大型)',
   driller: '削岩型', // PACING_PUZZLE.md §9-2(社長指示 2026-08-20)
+  logger: '伐採人', // PACING_PUZZLE.md §14-3裁定済み#1(社長指示2026-08-28)
   giantbat: '変異体(飛行型)',
   reaper: '死神',
   'lab-zombie-1': '研究施設の変異体(Lv1)',
@@ -2241,6 +2243,21 @@ export const DRILLER_THRUST_RECOVER_MS = 400;  // 硬直
 export const DRILLER_THRUST_CD_MS = 3500;      // 次の突きまでのCD(生値。atkUntil式でENEMY_ATTACK_SPEED_MULT除算)
 export const DRILLER_THRUST_LENGTH = 200;      // 帯の長さ(px)=判定と同寸
 export const DRILLER_THRUST_HALF_WIDTH = 12;   // 帯の半幅(px・細め)=判定と同寸
+
+// PACING_PUZZLE.md §14-2(降格死神・伐採人=logger): §9(削岩型)の写し+差分4点のうちの②④。
+// 薙ぎ払い(横方向)の溜め/判定/硬直/CD。間合い(接近/後退/構え)と発動距離は
+// src/utils/loggerAi.ts(純関数・テスト済み)を見る。値は全て叩き台(§9-6/§14-2「バランスの最終値
+// ではない」)。CD3.5秒・硬直400msは§14-2④の裁定どおりdrillerと同値。
+// ★windupは「槍より少し長め」(§14-2④)= driller-thrustの**設計原案の生値**(§9-4起草時点の700)を
+// 基準に850とした(driller側は社長指示2026-08-26で1200まで生値を伸ばした=実効1000msへ調整済みだが、
+// §14-2の文中比較は起草時点の700msを指している。実効値はここでも「指定値÷ENEMY_ATTACK_SPEED_MULT
+// (既定1.2)」=850÷1.2≈708ms。実機で社長が調整する前提)。
+export const LOGGER_SWEEP_WINDUP_MS = 850;    // 溜め(開始の瞬間に方向・帯をロック)
+export const LOGGER_SWEEP_ACTIVE_MS = 220;    // 薙ぎ判定の表示(1回だけカプセルを積む。driller-thrustと同値)
+export const LOGGER_SWEEP_RECOVER_MS = 400;   // 硬直(§14-2④「同値」)
+export const LOGGER_SWEEP_CD_MS = 3500;       // 次の薙ぎ払いまでのCD(生値。§14-2④「同値」)
+export const LOGGER_SWEEP_LENGTH = 220;       // 帯の全長(px)=判定と同寸(§14-2②「長さ220」)
+export const LOGGER_SWEEP_HALF_WIDTH = 26;    // 帯の半幅(px)=判定と同寸(§14-2②「半幅26」)
 
 // ==== M51: 城ボス「ジャイアント」新行動スクリプト(PACING_PUZZLE.md §6.26・裁定済み6.26-9) ====
 // `?giantscript=0` で旧挙動(このセクションを使わず、上の GIANTBAT_*/WEREWOLF_*/PUMPKIN_* 経由の
@@ -5216,7 +5233,8 @@ interface GameState {
   stunEnemy: (id: string, until: number) => void;
   rootEnemy: (id: string, until: number) => void;
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number, maxStrength?: number) => void;
-  // PACING_PUZZLE.md §9-4/§9-7#6(削岩型): 近接武器の打撃を受けた瞬間に呼ぶ。driller以外は無害(no-op)。
+  // PACING_PUZZLE.md §9-4/§9-7#6(削岩型)+§14-2④(伐採人も共有): 近接武器の打撃を受けた瞬間に呼ぶ。
+  // driller/logger以外は無害(no-op)。
   applyDrillerRetreat: (id: string) => void;
   openCounterWindow: () => void;
   setSlasherCombo: (readyAt: number, step: number) => void;
@@ -7322,8 +7340,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // research/GHOST_BOSS.md v6: 幻影の i-frame 打刻を合成する(有効打のときだけ)。
         const gp = gpHitPatch !== null && gpHitPatch.id === e.id ? gpHitPatch.patch : null;
         // PACING_PUZZLE.md §9-4/§9-7#6(削岩型・近接被弾での離脱): このスイングで近接ダメージを受けた
-        // driller に gameTime+2000 を書く(ナイフ/刀/鞭のスイング=この3関数+守護霊/分身は別途)。
-        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}), ...(e.type === 'driller' ? { drillerRetreatUntil: gameTime + DRILLER_RETREAT_MS } : {}) };
+        // driller/logger に gameTime+2000 を書く(ナイフ/刀/鞭のスイング=この3関数+守護霊/分身は別途)。
+        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}), ...(isRetreatEligibleType(e.type) ? { drillerRetreatUntil: gameTime + DRILLER_RETREAT_MS } : {}) };
         return gp ? { ...e, ...gp } : e;
       }),
       gameStats: {
@@ -7735,9 +7753,9 @@ export const useGameStore = create<GameState>((set, get) => ({
               ...(!isBossType(e.type) ? { ghostHateUntil: gameTime + GHOST_MOB_HATE_MS } : {}),
             }
             : { meleeAggro: true, meleeHitAt: gameTime }),
-          // PACING_PUZZLE.md §9-4/§9-7#6(削岩型): 守護霊(isGhost)/分身どちらの近接武器打撃も対象
-          // (isGhost分岐の外=両方に効かせる)。
-          ...(e.type === 'driller' ? { drillerRetreatUntil: gameTime + DRILLER_RETREAT_MS } : {}),
+          // PACING_PUZZLE.md §9-4/§9-7#6(削岩型・§14-2④でloggerも共有): 守護霊(isGhost)/分身
+          // どちらの近接武器打撃も対象(isGhost分岐の外=両方に効かせる)。
+          ...(isRetreatEligibleType(e.type) ? { drillerRetreatUntil: gameTime + DRILLER_RETREAT_MS } : {}),
         }
         : e),
       gameStats: {
@@ -8447,8 +8465,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       enemies: survivors.map(e => {
         const gp = gpHitPatch !== null && gpHitPatch.id === e.id ? gpHitPatch.patch : null;
         // PACING_PUZZLE.md §9-4/§9-7#6(削岩型・近接被弾での離脱): このスイングで近接ダメージを受けた
-        // driller に gameTime+2000 を書く(ナイフ/刀/鞭のスイング=この3関数+守護霊/分身は別途)。
-        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}), ...(e.type === 'driller' ? { drillerRetreatUntil: gameTime + DRILLER_RETREAT_MS } : {}) };
+        // driller/logger に gameTime+2000 を書く(ナイフ/刀/鞭のスイング=この3関数+守護霊/分身は別途)。
+        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}), ...(isRetreatEligibleType(e.type) ? { drillerRetreatUntil: gameTime + DRILLER_RETREAT_MS } : {}) };
         return gp ? { ...e, ...gp } : e;
       }),
       gameStats: {
@@ -8725,8 +8743,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       enemies: survivors.map(e => {
         const gp = gpHitPatch !== null && gpHitPatch.id === e.id ? gpHitPatch.patch : null;
         // PACING_PUZZLE.md §9-4/§9-7#6(削岩型・近接被弾での離脱): このスイングで近接ダメージを受けた
-        // driller に gameTime+2000 を書く(ナイフ/刀/鞭のスイング=この3関数+守護霊/分身は別途)。
-        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}), ...(e.type === 'driller' ? { drillerRetreatUntil: gameTime + DRILLER_RETREAT_MS } : {}) };
+        // driller/logger に gameTime+2000 を書く(ナイフ/刀/鞭のスイング=この3関数+守護霊/分身は別途)。
+        if (e.lastHit === now) return { ...e, meleeAggro: true, meleeHitAt: gameTime, ...(gp ?? {}), ...(isRetreatEligibleType(e.type) ? { drillerRetreatUntil: gameTime + DRILLER_RETREAT_MS } : {}) };
         return gp ? { ...e, ...gp } : e;
       }),
       gameStats: {
@@ -11340,6 +11358,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let giantBreathFired = false;    // g-quad-breath発動 → hurricane(ブレス=風の近似)
     // PACING_PUZZLE.md §9-4(削岩型): 突き発動の瞬間に thor-thrust(v3700の文法「突き=同じ動作は同じ音」)。
     let drillerThrustFired = false;
+    let loggerSweepFired = false; // PACING_PUZZLE.md §14-2④: 発動音はdrillerと同系流用(thor-thrust)
     const glenVolleyFires: string[] = []; // v0.25.3027: グレン第二形態の胴体弾(パーツV字斉射)。post-set で発射。
     const shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[] = []; // シールドで防いだ瞬間の接触点(FX/SE用)
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
@@ -13863,6 +13882,93 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, vx: dvx, vy: dvy, x: dmoved.x, y: dmoved.y };
         }
 
+        // PACING_PUZZLE.md §14-2(降格死神・伐採人=logger): §9(削岩型)の写し+差分4点。土台(優先順・
+        // clampRectToPlayableArea経由の移動・retreatが新規発動より優先等)はdrillerブロックと完全に同じ。
+        // 差分は②間合い(110〜150px)③薙ぎ払い(帯の長軸がプレイヤー方向と直交)④予告尺(850ms)のみ。
+        if (enemy.type === 'logger') {
+          const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+          // driller版と同じ理由(検収監査#4=CLAUDE.md上下副作用チェック)で行ける帯にクランプする。
+          const loggerClampMove = (mx: number, my: number): { x: number; y: number } => {
+            const moved = resolveMove(mx, my);
+            const ctx: PlayableAreaCtx = {
+              farBackdrop: state.farBackdrop, labTheme,
+              corridorMode: state.corridorMode,
+              m0AdvanceLimitX: state.m0AdvanceLimitX,
+              corridorRunInActive: state.corridorRunInActive,
+            };
+            return clampRectToPlayableArea(moved.x, moved.y, enemy.width, enemy.height, ctx, enemy.x);
+          };
+          // 薙ぎ払い3州: 進行中はここで完結させる(間合い/離脱の判定より優先。driller-thrustと同じ型)。
+          if (enemy.aiPhase === 'logger-sweep-windup') {
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              const sfx = enemy.aiFromX ?? ecx, sfy = enemy.aiFromY ?? ecy;
+              const stx = enemy.aiTargetX ?? ecx, sty = enemy.aiTargetY ?? ecy;
+              // 分類①(危険を伝える絵)=判定と厳密一致。帯(pixiScene)と同寸(長さ220×半幅26)のカプセルを
+              // activeへ移る瞬間に1回だけ積む(driller-thrust/g-bite/g-slamと同じ「windup末尾で1回積む」型)。
+              pumpkinBlasts.push({
+                x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: LOGGER_SWEEP_HALF_WIDTH,
+                damage: enemy.damage, enemyId: enemy.id, moveKey: 'logger-sweep',
+                capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: LOGGER_SWEEP_HALF_WIDTH },
+              });
+              loggerSweepFired = true; // post-set SE(thor-thrust=driller同系流用・§14-2④)
+              return { ...enemy, vx: 0, vy: 0, aiPhase: 'logger-sweep-active', aiPhaseUntil: atkUntil(LOGGER_SWEEP_ACTIVE_MS) };
+            }
+            return { ...enemy, vx: 0, vy: 0 };
+          }
+          if (enemy.aiPhase === 'logger-sweep-active') {
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              return { ...enemy, vx: 0, vy: 0, aiPhase: 'logger-sweep-recover', aiPhaseUntil: atkUntil(LOGGER_SWEEP_RECOVER_MS) };
+            }
+            return { ...enemy, vx: 0, vy: 0 };
+          }
+          if (enemy.aiPhase === 'logger-sweep-recover') {
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: 0, aiReadyAt: atkUntil(LOGGER_SWEEP_CD_MS) };
+            }
+            return { ...enemy, vx: 0, vy: 0 };
+          }
+          // 発動判定は常にプレイヤー基準の距離で見る(driller-thrustと同じ理由=§9-4踏襲)。
+          const pDx = pcx - ecx, pDy = pcy - ecy;
+          const pDist = Math.hypot(pDx, pDy);
+          // 離脱は新規の薙ぎ払い発動より先に判定する(driller版の検収監査#2をそのまま踏襲)。
+          if (isDrillerRetreating(enemy.drillerRetreatUntil, gameTime)) {
+            const rl = Math.max(0.001, pDist);
+            const rtvx = -(pDx / rl) * speed * DRILLER_RETREAT_SPEED_MULT;
+            const rtvy = -(pDy / rl) * speed * DRILLER_RETREAT_SPEED_MULT;
+            const ra = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed));
+            const rvx = (enemy.vx ?? rtvx) + (rtvx - (enemy.vx ?? rtvx)) * ra;
+            const rvy = (enemy.vy ?? rtvy) + (rtvy - (enemy.vy ?? rtvy)) * ra;
+            const rmoved = loggerClampMove(enemy.x + rvx * deltaTime, enemy.y + rvy * deltaTime);
+            return { ...enemy, vx: rvx, vy: rvy, x: rmoved.x, y: rmoved.y };
+          }
+          if (loggerCanSweep(pDist) && gameTime >= (enemy.aiReadyAt ?? 0)) {
+            const pl = Math.max(0.001, pDist);
+            const pux = pDx / pl, puy = pDy / pl;
+            // §14-2②: 帯の長軸はプレイヤー方向と直交する(突きの型=同軸とは違う)。純関数化した
+            // loggerSweepBand で両端を求め、そのままaiFrom/aiTargetへロックする(driller-thrustは
+            // aiFrom=自分中心/aiTarget=突き先端だったが、loggerは帯の両端そのものを持たせる=
+            // pixiSceneはdriller-thrustと同じ「aiFrom→aiTargetを結ぶ帯」を描くだけで済む)。
+            const band = loggerSweepBand(ecx, ecy, pux, puy, LOGGER_SWEEP_FORWARD_OFFSET, LOGGER_SWEEP_LENGTH / 2);
+            return {
+              ...enemy, vx: 0, vy: 0,
+              aiPhase: 'logger-sweep-windup', aiPhaseUntil: atkUntil(LOGGER_SWEEP_WINDUP_MS),
+              aiFromX: band.fx, aiFromY: band.fy,
+              aiTargetX: band.tx, aiTargetY: band.ty,
+            };
+          }
+          // 通常時: 間合い3分岐(接近/後退/構え)。driller-thrustと同じくtgt(召喚誘引込み)基準の
+          // dx/dy/distanceを使う(既存モブ移動の経路に乗せる=座標書き換えの新設をしない)。
+          const zone = loggerZoneFor(distance);
+          let ltvx = 0, ltvy = 0;
+          if (zone === 'approach') { ltvx = (dx / distance) * speed; ltvy = (dy / distance) * speed; }
+          else if (zone === 'backoff') { ltvx = -(dx / distance) * speed; ltvy = -(dy / distance) * speed; }
+          const la = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed));
+          const lvx = (enemy.vx ?? ltvx) + (ltvx - (enemy.vx ?? ltvx)) * la;
+          const lvy = (enemy.vy ?? ltvy) + (ltvy - (enemy.vy ?? ltvy)) * la;
+          const lmoved = loggerClampMove(enemy.x + lvx * deltaTime, enemy.y + lvy * deltaTime);
+          return { ...enemy, vx: lvx, vy: lvy, x: lmoved.x, y: lmoved.y };
+        }
+
         // v0.25.3176(案4): 曲がる速さ(慣性tau)にも個体差を入れる。チャフの既存tauは0.30〜0.41sなので
         // ×0.75〜1.60 = **0.22〜0.65s** の幅になる=同じ型でも曲がり方が揃わない(壁で来なくなる)。
         const alpha = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed)
@@ -14173,6 +14279,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (drillerThrustFired) {
       void import('../audio/audioManager').then(m => m.playSfx('thor-thrust'));
     }
+    // PACING_PUZZLE.md §14-2④(伐採人・logger): 薙ぎ払い発動音。「SEはdrillerと同系の流用でよい」の
+    // 裁定どおりdriller-thrustと同じthor-thrustを鳴らす。
+    if (loggerSweepFired) {
+      void import('../audio/audioManager').then(m => m.playSfx('thor-thrust'));
+    }
     // v0.25.3699(社長指示「グレンの第二形態はHP半分で」): 形態1はHPを**半分まで削った時点**で
     // 第二形態へ移行する(旧v0.25.3600: HP0=撃破で移行)。移行の絵と流れは撃破時と完全に同じ
     // triggerDramaticDeath(崩壊アテンション→glenForm2SpawnAt予約→useGameLoopが形態2を湧かす)を
@@ -14397,13 +14508,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-  // PACING_PUZZLE.md §9-4/§9-7#6(削岩型): 近接被弾で離脱(retreat)。呼び出し側(プレイヤー/守護霊/
-  // 分身の近接武器の打撃=ナイフ・刀・鞭のスイング/近接フィニッシュ/スラッシャー追撃)は全列挙して
-  // 呼ぶ(銃・爆発・サブ武器・カウンター反撃・DoTは対象外=呼ばない)。driller以外はno-op。
+  // PACING_PUZZLE.md §9-4/§9-7#6(削岩型)+§14-2④(伐採人もこの機構を共有): 近接被弾で離脱(retreat)。
+  // 呼び出し側(プレイヤー/守護霊/分身の近接武器の打撃=ナイフ・刀・鞭のスイング/近接フィニッシュ/
+  // スラッシャー追撃)は全列挙して呼ぶ(銃・爆発・サブ武器・カウンター反撃・DoTは対象外=呼ばない)。
+  // driller/logger以外はno-op(isRetreatEligibleType)。
   applyDrillerRetreat: (id) => {
     set(state => ({
       enemies: state.enemies.map(e =>
-        (e.id === id && e.type === 'driller') ? { ...e, drillerRetreatUntil: state.gameTime + DRILLER_RETREAT_MS } : e
+        (e.id === id && isRetreatEligibleType(e.type)) ? { ...e, drillerRetreatUntil: state.gameTime + DRILLER_RETREAT_MS } : e
       )
     }));
   },
