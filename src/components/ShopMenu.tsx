@@ -86,6 +86,8 @@ const ShopMenu: React.FC = () => {
       ammoShotgun: state.player.ammoShotgun,
       ammoRifle: state.player.ammoRifle,
       ammoPhill: state.player.ammoPhill,
+      ammoGlauncher: state.player.ammoGlauncher, // v0.25.4000: 独立プール化
+
       // 弾薬上限は育成の焼き値(research/GROWTH.md v4)。resetGame で1回作った安定参照なので
       // shallow 比較でも毎フレーム再描画にならない。
       growthAmmoMax: state.player.growthAmmoMax,
@@ -96,7 +98,7 @@ const ShopMenu: React.FC = () => {
   // 弾がMAXのタイプは購入不可(disabled)。
   const ammoNow: Record<AmmoType, number> = {
     handgun: player.ammoHandgun, shotgun: player.ammoShotgun, rifle: player.ammoRifle, phill: player.ammoPhill,
-    glauncher: player.ammoRifle
+    glauncher: player.ammoGlauncher // v0.25.4000: 独立プール化(旧: ammoRifle共用)
   };
   const ammoPickupAmounts = useGameStore(state => state.ammoPickupAmounts);
   const unlockedShopSkillCards = useGameStore(state => state.unlockedShopSkillCards);

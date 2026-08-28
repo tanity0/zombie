@@ -143,12 +143,12 @@ export const nextKnifeKey = (currentTier: number): string | undefined =>
   currentTier >= MAX_KNIFE_TIER ? undefined : MELEE_KEYS[currentTier];
 
 // Player-state field name that holds the pool for a given ammo type.
-export const AMMO_FIELD: Record<AmmoType, 'ammoHandgun' | 'ammoShotgun' | 'ammoRifle' | 'ammoPhill'> = {
+export const AMMO_FIELD: Record<AmmoType, 'ammoHandgun' | 'ammoShotgun' | 'ammoRifle' | 'ammoPhill' | 'ammoGlauncher'> = {
   handgun: 'ammoHandgun',
   shotgun: 'ammoShotgun',
   rifle: 'ammoRifle',
   phill: 'ammoPhill',
-  glauncher: 'ammoRifle' // グレネードガンはライフル弾共用(v0.25.3290・専用弾経済は作らない)
+  glauncher: 'ammoGlauncher' // ★v0.25.4000(社長指示「グレランは弾を分けて」): 独立プール化(旧: ammoRifle共用=v3290)
 };
 
 let weaponSeq = 0;

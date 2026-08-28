@@ -4721,7 +4721,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     useGameStore.setState(s2 => ({
                       player: {
                         ...s2.player,
-                        ammoHandgun: 0, ammoShotgun: 0, ammoRifle: 0,
+                        ammoHandgun: 0, ammoShotgun: 0, ammoRifle: 0, ammoGlauncher: 0,
                         weapons: s2.player.weapons.map(w => (w.id === gun.id ? { ...w, magazine: M0_SHOOT_ROUNDS * total } : w)),
                       },
                     }));
@@ -4734,7 +4734,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 useGameStore.setState(s2 => ({
                   player: {
                     ...s2.player,
-                    ammoHandgun: 0, ammoShotgun: 0, ammoRifle: 0,
+                    ammoHandgun: 0, ammoShotgun: 0, ammoRifle: 0, ammoGlauncher: 0,
                     weapons: s2.player.weapons.map(w => (w.isMelee ? w : { ...w, magazine: 0 })),
                   },
                 }));

@@ -43,6 +43,8 @@ const GameHUD: React.FC = () => {
     ammoShotgun: s.player.ammoShotgun,
     ammoRifle: s.player.ammoRifle,
     ammoPhill: s.player.ammoPhill,
+    ammoGlauncher: s.player.ammoGlauncher, // v0.25.4000: 独立プール化
+
     subWeapons: s.player.subWeapons,
     subWeaponLevels: s.player.subWeaponLevels,
     straps: s.player.straps,
@@ -272,7 +274,7 @@ const GameHUD: React.FC = () => {
         const melee = player.weapons.find(w => w.isMelee);
         const activeGun = guns.find(w => w.id === player.activeWeaponId) ?? guns[0];
         const ammoFieldFor = (t: AmmoType) =>
-          t === 'handgun' ? player.ammoHandgun : t === 'shotgun' ? player.ammoShotgun : t === 'phill' ? player.ammoPhill : player.ammoRifle;
+          t === 'handgun' ? player.ammoHandgun : t === 'shotgun' ? player.ammoShotgun : t === 'phill' ? player.ammoPhill : t === 'glauncher' ? player.ammoGlauncher : player.ammoRifle; // v0.25.4000: グレラン独立プール
         const murasameEquipped = player.subWeapons.includes('murasame');
         const katanaEquipped = murasameEquipped || player.subWeapons.includes('katana');
         const whipEquipped = !katanaEquipped && player.subWeapons.includes('whip');

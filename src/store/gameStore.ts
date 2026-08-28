@@ -299,7 +299,7 @@ const initialRhythm = (): RhythmState => ({
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
 // stocked) but ammo is hard to find, so the run is a slow drain on it.
-export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 24, rifle: 36, phill: 48, glauncher: 36 }; // glauncher=ライフル弾共用(実プールはammoRifle・v0.25.3290)
+export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 24, rifle: 36, phill: 48, glauncher: 36 }; // glauncher=★v0.25.4000で独立プール化(社長指示「グレランは弾を分けて」。旧v3290=rifle共用)
 // PACING_PUZZLE.md §5.5 M5(RE4式弾ドロップ・既定ON): ?ammosmart=0で従来(構え銃の弾種)へ。
 // useGameLoop側の銃キル経路と同名パラメータ(各自読む=既存camNum等と同じ流儀)。
 const AMMO_SMART_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('ammosmart') !== '0';
@@ -3797,7 +3797,7 @@ const grantMeleeKillRewards = (
       get().addPickup({
         id: `pickup-ammo-melee-${enemy.id}`,
         x: ex - 8 + 14, y: ey - 8,
-        type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+        type: `ammo-${dropType}` as `ammo-${AmmoType}`, // v0.25.4000: 5種目(glauncher)を落とせる嘘つきキャストを是正
         value: 0
       });
     }
@@ -5718,6 +5718,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     ammoShotgun: AMMO_INITIAL.shotgun,
     ammoRifle: AMMO_INITIAL.rifle,
     ammoPhill: AMMO_INITIAL.phill,
+    ammoGlauncher: AMMO_INITIAL.glauncher, // ★v0.25.4000: 独立プール(社長指示「グレランは弾を分けて」)
     // 育成の焼き値(research/GROWTH.md v4)。ここは**出撃前のプレースホルダ**=常に0段相当。
     // 実際の焼き込みは resetGame(出撃時に1回)。
     growthAtkMult: 1,
@@ -10468,6 +10469,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (state.player.ammoRifle >= state.player.growthAmmoMax.rifle) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
           ammoRifle: Math.min(state.player.growthAmmoMax.rifle, state.player.ammoRifle + shopAmmoAmount('rifle', state.ammoPickupAmounts))
+        });
+      }
+      if (key === 'ammo-glauncher' || ammoType === 'glauncher') { // ★v0.25.4000: グレラン弾の独立販売
+        // 上限は育成の焼き値(research/GROWTH.md v4「弾数」)。0段=AMMO_MAX素値と同じ。
+        if (state.player.ammoGlauncher >= state.player.growthAmmoMax.glauncher) return {}; // MAXなら購入不可
+        return spend(SHOP_AMMO_COST, {
+          ammoGlauncher: Math.min(state.player.growthAmmoMax.glauncher, state.player.ammoGlauncher + shopAmmoAmount('glauncher', state.ammoPickupAmounts))
         });
       }
       if (key === 'ammo-phill' || ammoType === 'phill') { // 研究所: 商人はPHILL弾のみ販売
@@ -15287,7 +15295,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       case 'ammo-handgun':
       case 'ammo-shotgun':
       case 'ammo-rifle':
-      case 'ammo-phill': {
+      case 'ammo-phill':
+      case 'ammo-glauncher': { // ★v0.25.4000: caseが無く拾っても弾が加算されていなかった(水色ドット問題の後段)
         const fam = pickup.type.slice('ammo-'.length) as AmmoType;
         const amount = get().ammoPickupAmounts[fam];
         get().addAmmo(fam, amount);
@@ -15635,7 +15644,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().addPickup({
           id: `pickup-torch-ammo-${prop.id}`,
           x, y,
-          type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+          type: `ammo-${dropType}` as `ammo-${AmmoType}`, // v0.25.4000: 5種目(glauncher)を落とせる嘘つきキャストを是正
           value: 0
         });
         return;
@@ -17889,6 +17898,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ammoShotgun: AMMO_INITIAL.shotgun,
           ammoRifle: AMMO_INITIAL.rifle,
           ammoPhill: AMMO_INITIAL.phill,
+          ammoGlauncher: AMMO_INITIAL.glauncher, // ★v0.25.4000: 独立プール(社長指示「グレランは弾を分けて」)
           // 育成の焼き値(上の「★焼き込みの原則」)。ラン中の参照先はここ。
           growthAtkMult: bakedGrowthAtkMult,
           growthScoreMult: bakedGrowthScoreMult,

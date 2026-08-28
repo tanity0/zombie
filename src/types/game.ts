@@ -172,6 +172,7 @@ export interface Player extends DashLocomotionState {
   ammoShotgun: number;
   ammoRifle: number;
   ammoPhill: number; // 研究所専用 PHILL銃のリザーブ弾。共有弾とは別プール。
+  ammoGlauncher: number; // ★v0.25.4000(社長指示「グレランは弾を分けて」): グレラン弾の独立リザーブ(旧: ammoRifle共用=v3290を裁定で覆した)。
   // ── 永続育成「強化」の焼き値(research/GROWTH.md v4「★焼き込みの原則」) ──────────────────
   // resetGame が有効段数から1回だけ算出して**Playerへ焼く**。ラン中・リザルトの参照は全てこの
   // 焼き値を読む(store の有効段数の直読みは禁止=「メーター変更は次の出撃から」を機械的に保証する)。
@@ -1419,7 +1420,8 @@ export interface Weapon {
 
 // Gun families. Each shares an ammo pool with the matching AmmoType.
 // 'glauncher' = 武器庫からのみ排出されるグレネード系銃器(社長指示v0.25.3290・第4枠)。
-// 弾薬はライフル弾を共用(AMMO_FIELDでammoRifleへマップ=専用弾経済は作らない・叩き台)。
+// 弾薬は★v0.25.4000で独立プール化(社長指示2026-08-28「グレランは弾を分けて」。
+// 旧v3290の「ライフル弾共用」裁定は事実として記す=AMMO_FIELDがammoGlauncherへマップ)。
 export type WeaponCategory = 'handgun' | 'shotgun' | 'rifle' | 'phill' | 'glauncher';
 export type AmmoType = WeaponCategory;
 
@@ -1664,6 +1666,7 @@ export type ShopItemKey =
   | 'ammo-shotgun'
   | 'ammo-rifle'
   | 'ammo-phill'
+  | 'ammo-glauncher' // ★v0.25.4000: グレラン弾の独立販売(社長指示「グレランは弾を分けて」)
   | 'buy-phill'   // 研究所(lab テーマ)で武器商人が無料配布する PHILL 銃
   | 'dog'
   | 'class-skill'
