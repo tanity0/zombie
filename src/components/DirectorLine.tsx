@@ -40,11 +40,13 @@ const DirectorLine: React.FC = () => {
   const fadePct = 22 * (1 - (rank - 1) / 6);
   const maskImg = `linear-gradient(to right, transparent 0%, black ${fadePct}%, black ${100 - fadePct}%, transparent 100%)`;
 
-  // ボス戦: 両端(フェード帯)を金に差し替え(叩き台)。フェード帯が畳まれるランク7では
-  // 「両端の最外2%だけ金」になるよう下限2%でフロアする(仕様§1-6の叩き台をそのまま反映)。
-  const colorBandPct = bossBattle ? Math.max(fadePct, 2) : fadePct;
+  // ボス戦: 両端を金に(叩き台)。★検収監査B-1: 金をフェード帯(0〜fadePct)に置くと、金が濃い場所ほど
+  // maskの透明度も高い=数式上「金が不透明で出る画素」が存在しない相殺が起きる。金の帯は
+  // **フェード帯のすぐ内側(不透明側・fadePct〜fadePct+3%)**へ置く(ランク7=フェード0では最外3%が金)。
+  const goldBandPct = 3;
   const edgeColor = bossBattle ? BOSS_GOLD : mainColor;
-  const backgroundImg = `linear-gradient(to right, ${edgeColor} 0%, ${mainColor} ${colorBandPct}%, ${mainColor} ${100 - colorBandPct}%, ${edgeColor} 100%)`;
+  const goldEnd = Math.min(50, fadePct + goldBandPct);
+  const backgroundImg = `linear-gradient(to right, ${edgeColor} 0%, ${edgeColor} ${goldEnd}%, ${mainColor} ${goldEnd + 2}%, ${mainColor} ${100 - goldEnd - 2}%, ${edgeColor} ${100 - goldEnd}%, ${edgeColor} 100%)`;
 
   const barStyle: React.CSSProperties = {
     position: 'absolute',
@@ -79,6 +81,10 @@ const DirectorLine: React.FC = () => {
           width: `${fillPct}vw`,
           height: 1,
           background: mainColor,
+          // ★検収監査(A)-1: baseはopacity:0(VitalsOrbの白フラッシュと同型)。これが無いと
+          // アニメ終了後(fill-mode=none)にbaseのopacity:1へ戻り、mask無しのベタ塗りが本体を
+          // 永久に覆う=両端フェード・脈動・ボス金・widthのtransitionが全部見えなくなる。
+          opacity: 0,
           animation: 'dlRankFlash 500ms ease-out 1',
           pointerEvents: 'none',
         }}
