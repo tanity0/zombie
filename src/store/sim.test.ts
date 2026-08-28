@@ -163,7 +163,8 @@ describe('headless simulation invariants', () => {
   // (写経したテストは、値を変えた時に「一致している」と嘘をつく=v0.25.3855の教訓)。
   it('MOVEMENT_REWORK.md 仕様1: 速度ボーナスはランプで立ち上がり、急な切り返し/停止でゼロへ戻る(movePlayer結線の裏取り)', () => {
     useGameStore.getState().resetGame('warrior');
-    // ランナーLv3のみ装備(P=1.20固定。マークスマンはmage専用・ウォームアップ/装備は未所持=中立の1)。
+    // ランナーLv3装備(×1.20)+仕様1b標準ボーナス(warrior=×1.1)= P=1.32
+    // (マークスマンなら標準が×1.2に置き換わる。装備/消費カードは未所持=中立の1)。
     useGameStore.setState(s => ({ player: { ...s.player, skills: ['runner'], skillLevels: { runner: 3 } } }));
     const baseSpeed = useGameStore.getState().player.speed; // PLAYER_BASE_SPEED(基礎速度・ランプ対象外)
     const noInput: InputState = { up: false, down: false, left: false, right: false };
@@ -179,17 +180,19 @@ describe('headless simulation invariants', () => {
 
     // ①-b 慣性が配線されていること(1フレーム目の vx は目標速度の alpha 倍で立ち上がる)。
     //     tau は import する=慣性を調整してもこのテストは勝手に揃う。
+    //     目標速度には1フレームぶんの微小ランプ(P=1.32の dtMs/RAMP_FULL_MS)が既に乗っている。
     const alpha = inertiaAlpha(dt, PLAYER_INERTIA_TAU);
-    expect(useGameStore.getState().player.vx).toBeCloseTo(baseSpeed * alpha, 1);
+    const frame1Target = baseSpeed * (1 + (1.32 - 1) * (dtMs / RAMP_FULL_MS));
+    expect(useGameStore.getState().player.vx).toBeCloseTo(frame1Target * alpha, 1);
 
-    // ② 90フレーム(≈1500ms=RAMP_FULL_MS)同方向へ走り続けるとフルランプに達する。
+    // ② 90フレーム(≈1500ms ≥ RAMP_FULL_MS)同方向へ走り続けるとフルランプに達する。
     for (let i = 0; i < 89; i++) useGameStore.getState().movePlayer(rightInput, dt);
     expect(useGameStore.getState().player.speedRampSustainMs).toBeGreaterThanOrEqual(RAMP_FULL_MS);
-    // ②-b 速度が満額(+20%)に届くのは**慣性が収束してから**。ランプが上がり続けている間は
+    // ②-b 速度が満額(P=1.32)に届くのは**慣性が収束してから**。ランプが上がり続けている間は
     //     vx が目標を追いかけている途中なので、数フレーム走らせて落ち着かせてから見る
     //     (旧テストはここを分けておらず、慣性導入で 0.6 ほど足りずに落ちていた)。
     for (let i = 0; i < 10; i++) useGameStore.getState().movePlayer(rightInput, dt);
-    expect(useGameStore.getState().player.vx).toBeCloseTo(baseSpeed * 1.20, 0);
+    expect(useGameStore.getState().player.vx).toBeCloseTo(baseSpeed * 1.32, 0);
 
     // ③ 75°以上の急な切り返し(右→左=180°)で**ランプが即ゼロへ戻る**。
     //    ※vx は慣性で数フレームかけて戻るので、ここでは vx ではなくランプを見る。

@@ -7,7 +7,7 @@
 //  ④ 窓とCDの終了時刻は**指を離した時刻**が基準(解決時刻を基準にすると1周期200ms伸びる=弱体化)。
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  useGameStore, MELEE_WINDUP_MS, meleeWindupMs, COUNTER_WINDOW, COUNTER_ACCEPT_MS, isCounterActive, meleeLungePx, isRunningForMeleeLunge, MELEE_LUNGE_WALK_PX, COUNTER_COOLDOWN,
+  useGameStore, MELEE_WINDUP_MS, meleeWindupMs, COUNTER_WINDOW, COUNTER_ACCEPT_MS, isCounterActive, meleeLungePx, isRunningForMeleeLunge, COUNTER_COOLDOWN,
   MELEE_LUNGE_PX, MELEE_LUNGE_MS, WHIP_LUNGE_PX, knockbackSpeedFor, PLAYER_BASE_SPEED, KNOCKBACK_SPEED,
 } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
@@ -95,13 +95,13 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
     expect(isCounterActive(p, t0 + 399)).toBe(false);                   // 旧仕様(刃が出ている間)の後半は不成立
   });
 
-  // ★二段階の踏み込み(社長指示2026-08-26・v0.25.3957)
-  it('二段階の踏み込み: 止まり/歩き=20px・走り=従来距離(ナイフ30/鞭20)', () => {
+  // ★踏み込みの二値化(社長指示2026-08-28「立ちと歩きの時はその場で振り で(移動無し)…中間が無くなる」)
+  it('二値化の踏み込み: 立ち/歩き=0px(その場で振る)・走り=従来距離(ナイフ30/鞭20)', () => {
     const knife = { subWeapons: [] } as unknown as Parameters<typeof meleeLungePx>[0];
     const whip = { subWeapons: ['whip'] } as unknown as Parameters<typeof meleeLungePx>[0];
-    expect(meleeLungePx(knife, false)).toBe(20); // 歩き
-    expect(meleeLungePx(knife, true)).toBe(30);  // 走り=現状
-    expect(meleeLungePx(whip, false)).toBe(20);  // 鞭は元から20=不変
+    expect(meleeLungePx(knife, false)).toBe(0); // 立ち/歩き=その場
+    expect(meleeLungePx(knife, true)).toBe(30); // 走り=現状
+    expect(meleeLungePx(whip, false)).toBe(0);  // 鞭も立ち/歩きはその場
     expect(meleeLungePx(whip, true)).toBe(20);
   });
   it('走り判定: スティック強傾き or 実速度75%以上のどちらかで走り', () => {
@@ -118,9 +118,10 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
   });
 
   // ★踏み込み(社長裁定2026-08-24・SAME_ARENA.md §7-4)
+  // 二値化(2026-08-28)後は踏み込みが出るのは走りのみ=vxを実速度に立てて「走り」で振る。
   it('踏み込みは前隙の頭で始まり、前隙より早く終わる(=足を着いてから振る)', () => {
     setup();
-    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 1, y: 0 } } }));
+    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 1, y: 0 }, vx: s.player.speed, vy: 0 } }));
     const t0 = Date.now();
     useGameStore.getState().beginMeleeSwing();
     const p = useGameStore.getState().player;
@@ -133,12 +134,21 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
 
   it('踏み込みは向きの逆でも同じ長さ(入力に対する結果が一定=前に出るか分からない、にしない)', () => {
     setup();
-    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: -1, y: 0 }, counterCooldownEnd: 0, pendingSwingAt: 0 } }));
+    // 走り(実速度75%以上)で後退しながら振る=従来の武器別距離(ナイフ30px)で後ろへ踏み込む。
+    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: -1, y: 0 }, vx: -s.player.speed, vy: 0, counterCooldownEnd: 0, pendingSwingAt: 0 } }));
     useGameStore.getState().beginMeleeSwing();
     const p = useGameStore.getState().player;
     expect(p.lungeVx).toBeLessThan(0); // 後退中に振れば後ろへ踏み込む(=斬る向きと一致)
-    // ★v0.25.3957(二段階の踏み込み): この盤面は静止して振っている=歩き段(20px)の速度になる。
-    expect(Math.abs(p.lungeVx)).toBeCloseTo(knockbackSpeedFor(MELEE_LUNGE_WALK_PX, MELEE_LUNGE_MS), 3);
+    expect(Math.abs(p.lungeVx)).toBeCloseTo(knockbackSpeedFor(MELEE_LUNGE_PX, MELEE_LUNGE_MS), 3);
+  });
+
+  it('★二値化(社長指示2026-08-28): 立ち/歩きで振ると踏み込み0=その場で振る', () => {
+    setup();
+    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 1, y: 0 }, vx: 0, vy: 0, counterCooldownEnd: 0, pendingSwingAt: 0 } }));
+    useGameStore.getState().beginMeleeSwing();
+    const p = useGameStore.getState().player;
+    expect(p.lungeVx).toBe(0);
+    expect(p.lungeVy).toBe(0);
   });
 
   // ★社長指示2026-08-24「鞭は踏み込み20で」。武器ごとの値は meleeLungePx に集約する

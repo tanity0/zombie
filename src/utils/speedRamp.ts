@@ -18,7 +18,8 @@ export const createSpeedRampState = (): SpeedRampState => ({
 
 // 数値は全て定数化(実機調整前提・MOVEMENT_REWORK.md記載値)。
 export const RAMP_RESET_ANGLE_DEG = 75;
-export const RAMP_FULL_MS = 1500;
+// 仕様1b(社長裁定2026-08-28「今の1秒で速度10%アップを全員標準仕様に」): 満額1500→1000ms。
+export const RAMP_FULL_MS = 1000;
 
 export interface StepSpeedRampInput {
   dtMs: number;

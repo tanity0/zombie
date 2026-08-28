@@ -60,7 +60,7 @@ import {
   // v0.25.2483(社長指示): フルランプ速度線のゲート=「移動速度+10%以上のステータス」判定に、
   // movePlayerがランプへ渡す「対象倍率の積P」と同じ純関数を使う(判定の二重実装をしない)。
   // 旧skillWarmUpSpeedMultは§23-1裁定で退役=消費カード「スピードブースト」のconsumableSpeedMultへ置換。
-  skillRunnerSpeedMult, marksmanSpeedMult, consumableSpeedMult,
+  skillRunnerSpeedMult, standardSpeedBonusMult, consumableSpeedMult,
   // ワイヤーアンカー・スラム後ジャンプ離脱(ホップ・DEVELOPMENT_LOG v0.25.2487): 見た目弧の進行度算出に使う。
   WIRE_HOP_MS,
   // v0.25.2599: 守護霊の倒れ絵(描画専用の控え。実体が消えた後もしゃがみ絵を出すため)。
@@ -26762,7 +26762,7 @@ export class PixiScene {
     );
     // v0.25.2483: フルランプ線は「移動速度+10%以上のステータス」がある時のみ(定数コメント参照)。
     // Pの組はmovePlayerの非リロード分岐と同一(リロード中ランナーの追加+10%は"ステータス"に数えない)。
-    const speedBonusP = skillRunnerSpeedMult(player) * marksmanSpeedMult(player)
+    const speedBonusP = skillRunnerSpeedMult(player) * standardSpeedBonusMult(player)
       * consumableSpeedMult(player, gameTime) * (player.equipBonus?.moveSpeedMult ?? 1);
     const rampFull = player.isMoving && player.speedRampSustainMs >= RAMP_FULL_MS
       && speedBonusP >= RAMP_SPEED_LINE_MIN_BONUS_MULT;

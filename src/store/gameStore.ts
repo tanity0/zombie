@@ -1287,13 +1287,13 @@ export const WHIP_LUNGE_PX = 20;
  * (踏み込みを測る側=プレイヤー/守護霊/幻影の3箇所が必ずこの関数を通る)。
  */
 /**
- * ★近接の踏み込みを二段階に(社長指示2026-08-26「止まってる時および歩きの状態で放すと、20pxの移動。
- * 走ってる時だと現状の距離移動」・v0.25.3957)。
- * 「走り」の判定は2本のOR(どちらも叩き台・実機で絞る):
+ * ★近接の踏み込みを二値化(社長指示2026-08-28「立ちと歩きの時はその場で振り で(移動無し)、
+ * 完全フリックしながらの離しで今の移動で。(中間が無くなるってこと)」・SAME_ARENA.md §7)。
+ * 旧v0.25.3957の中間段(歩き=20px)は廃止=立ち/歩きは踏み込み0px(その場で振る)。
+ * 「走り」の判定は現状維持の2本のOR(どちらも叩き台・実機で絞る):
  *  - スティックの傾きが強い(>=0.7)まま指を離した=タッチの走り
  *  - 実速度が自分の基礎速度の75%以上=キーボード/バフ/スケーター等(リロード減速中でも傾きで拾える)
  */
-export const MELEE_LUNGE_WALK_PX = 20;
 export const MELEE_RUN_STICK_MIN = 0.7;
 export const MELEE_RUN_SPEED_FRAC = 0.75;
 export const isRunningForMeleeLunge = (
@@ -1304,14 +1304,12 @@ export const isRunningForMeleeLunge = (
   (swipeDirection !== null && swipeStrength >= MELEE_RUN_STICK_MIN)
   || Math.hypot(p.vx, p.vy) >= p.speed * MELEE_RUN_SPEED_FRAC;
 /**
- * running=false(止まり/歩き)なら一律 MELEE_LUNGE_WALK_PX(20)。走りは従来の武器別距離。
- * 鞭は元から20px=どちらでも20(変化なし)。守護霊/幻影は接近から振る=常に「走り」扱いで従来どおり
+ * running=false(止まり/歩き)は踏み込み0(その場で振る)。走りは従来の武器別距離。
+ * 守護霊/幻影は接近から振る=常に「走り」扱いで従来どおり
  * (自分の傾き入力を持たないため。非対称が気になれば各自の実速度判定を配線する=保留)。
  */
-export const meleeLungePx = (player: Player, running: boolean = true): number => {
-  const runPx = player.subWeapons.includes('whip') ? WHIP_LUNGE_PX : MELEE_LUNGE_PX;
-  return running ? runPx : Math.min(MELEE_LUNGE_WALK_PX, runPx);
-};
+export const meleeLungePx = (player: Player, running: boolean = true): number =>
+  running ? (player.subWeapons.includes('whip') ? WHIP_LUNGE_PX : MELEE_LUNGE_PX) : 0;
 /**
  * その主語(プレイヤー / 疑似Player)の**近接の前隙**。前隙を測る側は `MELEE_WINDUP_MS` を
  * 直接読まず**必ずこの関数を通す**——武器ごとに変えたくなった時、**ここ1箇所に分岐を足せば
@@ -1685,14 +1683,15 @@ export const strikerMeleeMult = (player: Player): number => {
 // スカベンジャー: 弾薬取得後3秒、銃ダメージ ×1.1。
 export const scavengerGunMult = (player: Player, gameTime: number): number =>
   player.characterClass === 'necromancer' && gameTime < player.scavengerBuffUntil ? 1.1 : 1;
-// マークスマン: 移動速度 ×1.2(mageクラス固定)。
-// MOVEMENT_REWORK.md 仕様1(社長裁定v0.25.2442)で、旧来の個別条件(2秒以上連続移動で即発動・
-// 停止で即解除)は廃止し、共通の速度ランプ(src/utils/speedRamp.ts)へ統合した。この関数自体は
-// もう時間を見ない(常時 mage なら 1.2)——「効くまでの立ち上がり」は呼び出し側(movePlayer)が
-// 対象倍率の積 P に含めてランプへ渡すことで表現する。marksmanMovingSince(連続移動の開始時刻)は
-// スケーターバッシュの発動条件と頭上マーク通知の debounce キーとして引き続き使われるため残置。
-export const marksmanSpeedMult = (player: Player): number =>
-  player.characterClass === 'mage' ? 1.2 : 1;
+// 走り込みの標準速度ボーナス(MOVEMENT_REWORK.md 仕様1b・社長裁定2026-08-28
+// 「今の1秒で速度10%アップを全員標準仕様に。マークスマンは20%アップに」)。
+// 全クラス標準 ×1.1・マークスマン(mage)は標準の**置き換え**で ×1.2(積みではない)。
+// 「効くまでの立ち上がり」は呼び出し側(movePlayer)が対象倍率の積 P に含めて共通ランプ
+// (src/utils/speedRamp.ts・満額 RAMP_FULL_MS)へ渡すことで表現する。旧 marksmanSpeedMult
+// (mageのみ×1.2・仕様1で個別条件をランプへ統合済み)の後継。marksmanMovingSince(連続移動の
+// 開始時刻)はスケーターバッシュの発動条件と頭上マーク通知の debounce キーとして引き続き残置。
+export const standardSpeedBonusMult = (player: Player): number =>
+  player.characterClass === 'mage' ? 1.2 : 1.1;
 // ヘビーガンナー: 同一攻撃で2体以上に当てた後3秒、すべての爆発範囲 ×1.1。
 export const heavyGunnerExplosionMult = (player: Player, gameTime: number): number =>
   player.characterClass === 'warrior' && gameTime < player.heavyGunnerExpBuffUntil ? 1.1 : 1;
@@ -6129,7 +6128,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // MOVEMENT_REWORK.md 仕様1のランプに乗る。基礎速度(player.speed)・RELOAD_MOVE_SPEED_MULT・
       // スケーター×3はランプ対象外(即応のまま)。
       const skaterActive = hasSkill(player, 'skater') && player.skaterRiding;
-      const bonusMult = skillRunnerSpeedMult(player, reloading) * marksmanSpeedMult(player)
+      const bonusMult = skillRunnerSpeedMult(player, reloading) * standardSpeedBonusMult(player)
         * consumableSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1);
       const moveSpeed = computeEffectiveMoveSpeed({
         dashOverrideSpeed: dashOv ? dashOv.speed : null,
@@ -6640,7 +6639,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★二段階の踏み込み(v0.25.3957): 指を離した瞬間の走り/歩きで距離を分ける。
         // swipeDirection/swipeStrength は release() が状態を消す**前**にここへ来る(VirtualJoystickの順序)。
         const runningNow = isRunningForMeleeLunge(p, get().swipeDirection, get().swipeStrength);
-        const spd = knockbackSpeedFor(meleeLungePx(p, runningNow), MELEE_LUNGE_MS); // 武器別(走り: 鞭=20px/ナイフ=30px、歩き=一律20px)
+        const spd = knockbackSpeedFor(meleeLungePx(p, runningNow), MELEE_LUNGE_MS); // 武器別(走り: 鞭=20px/ナイフ=30px、立ち/歩き=0=その場で振る)
         set(state => ({ player: {
           ...state.player,
           lungeVx: (ld.x / lm) * spd,

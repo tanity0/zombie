@@ -13,8 +13,8 @@ import {
 describe('stepSpeedRamp (MOVEMENT_REWORK.md 仕様1)', () => {
   it('立ち上がり: 同じ方向へ走り続けるとsustainMsが積み上がり、RAMP_FULL_MSでrampFrac=1になる', () => {
     let state = createSpeedRampState();
-    // 100msずつ、同方向(1,0)へ15回 = 1500ms = RAMP_FULL_MS ぴったり。
-    for (let i = 0; i < 15; i++) {
+    // 100msずつ、同方向(1,0)へ RAMP_FULL_MS ぶんぴったり積む(定数は import=写経しない)。
+    for (let i = 0; i < RAMP_FULL_MS / 100; i++) {
       state = stepSpeedRamp(state, { dtMs: 100, moving: true, dirX: 1, dirY: 0 });
     }
     expect(state.sustainMs).toBe(RAMP_FULL_MS);
@@ -56,7 +56,7 @@ describe('stepSpeedRamp (MOVEMENT_REWORK.md 仕様1)', () => {
     }
     // 一度もリセットされていなければ 20 * 100ms = 2000ms 積み上がっているはず。
     expect(state.sustainMs).toBe(2000);
-    expect(rampFracOf(state)).toBe(1); // RAMP_FULL_MS(1500)を超えているのでクランプされて1。
+    expect(rampFracOf(state)).toBe(1); // RAMP_FULL_MS を超えているのでクランプされて1。
   });
 
   it('停止リセット: moving=falseの間はsustainMsが常に0(直前まで積んでいても即0)', () => {
