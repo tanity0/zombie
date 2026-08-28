@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4013',
+    items: [
+      '使者に捕まった時のKILL!演出(最大ズーム)が、死亡演出の最中に何度も再発火して画面がつっかえていたのを修正しました(1回だけ出ます)。',
+    ],
+  },
+  {
     version: '0.25.4012',
     items: [
       '死神の使者(耐久武器)は、攻撃を当てると必ず押し返せるようになりました(以前は撃っても近づかれ続けていた不具合を修正)。',

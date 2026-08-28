@@ -1395,6 +1395,10 @@ export const applyContactDamage = (
     // G4a(§2.9・記録専用): 体当たりそのものが技のダメージであるフェーズ(g-dash-charge/g-quad-charge)
     // だけ技キーを付ける(純関数contactDamageMoveKey)。それ以外の接触は従来どおりタグ無し。
     // ※g-glide-activeはv0.25.3052(案う)で空中族へ移動=ここへは到達しない(タグ表は記録専用なので残置)。
+    // ★確認検収3巡目(A)・v0.25.4013: 「生存→死亡の遷移」検知。致死後もhealth=0のまま接触が続くと
+    // damagePlayerは毎回died=trueを返すため、i-frame明け(約1秒)ごとにKILL!+最大ズームが再発火して
+    // 死亡ズームを2回潰していた。演出は遷移の1回だけ撃つ(同フレーム複数接触の二重発火もこれで塞がる)。
+    const wasAliveBeforeContact = useGameStore.getState().player.health > 0;
     const playerDied = useGameStore.getState().damagePlayer(enemy.damage * rnMelee * scMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, undefined, undefined, contactDamageMoveKey(enemy));
     if (damageWasApplied) {
       fx.playSfx('player-damage');
@@ -1414,7 +1418,7 @@ export const applyContactDamage = (
         ),
       });
     }
-    if (playerDied) {
+    if (playerDied && wasAliveBeforeContact) {
       const dx = collPlayer.x + collPlayer.width / 2;
       const dy = collPlayer.y + collPlayer.height / 2;
       if (isHangedman(enemy.type)) {

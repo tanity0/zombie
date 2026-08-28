@@ -144,3 +144,37 @@ describe('ボス接触受け流し: トールの突進の走行中(thor-dash-mov
     expect(useGameStore.getState().player.invulnerable).toBe(true);
   });
 });
+
+// ★確認検収3巡目(A)・v0.25.4013: 使者(hangedman)のKILL!演出は「生存→死亡の遷移」で1回だけ。
+// 致死後もhealth=0のまま接触が続くとdamagePlayerが毎回died=trueを返し、i-frame明けごとに
+// triggerFinishImpact(CD無視の最大ズーム)が再発火して死亡ズームを潰していた(実測: 2.83秒で3回)。
+describe('使者のKILL!演出: 死亡遷移で1回だけ(再接触・i-frame明けで再発火しない)', () => {
+  it('★致死接触の2回目以降はtriggerFinishImpactもKILL!コールアウトも出ない', () => {
+    const e = spawnEnemyAt('hangedman', ORIGIN, ORIGIN, START_GT);
+    useGameStore.setState(s => ({
+      enemies: [e], gameTime: START_GT,
+      player: {
+        ...s.player,
+        x: e.x + e.width / 2 - s.player.width / 2,
+        y: e.y + e.height / 2 - s.player.height / 2,
+        health: 50, maxHealth: 130, invulnerable: false, invulnerableTime: 0,
+        counterWindowEnd: 0,
+      },
+    }));
+    let impacts = 0; let callouts = 0;
+    const fx = {
+      ...NOOP_COMBAT_EFFECTS,
+      triggerFinishImpact: () => { impacts += 1; },
+      spawnCallout: () => { callouts += 1; },
+    };
+    applyContactDamage(START_GT, false, 0, fx);
+    expect(useGameStore.getState().player.health).toBe(0); // 999接触=即死
+    expect(impacts).toBe(1);
+    expect(callouts).toBe(1);
+    // i-frame明けを再現(useGameLoop.ts:7520と同じ解除)して再接触 → 演出は増えない。
+    useGameStore.setState(s => ({ player: { ...s.player, invulnerable: false, invulnerableTime: 0 } }));
+    applyContactDamage(START_GT + 1000, false, 0, fx);
+    expect(impacts).toBe(1);
+    expect(callouts).toBe(1);
+  });
+});
