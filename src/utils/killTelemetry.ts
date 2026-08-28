@@ -11,11 +11,12 @@ export type KillBucket = 'pumpkin' | 'werewolf' | 'plant' | 'ghost' | 'screamer'
 
 const TRACKED_TYPES = new Set<string>(['pumpkin', 'werewolf', 'plant', 'ghost', 'screamer']);
 
-// PACING_PUZZLE.md §9-3/§9-7#1(社長指示 2026-08-20): driller はpumpkin枠の実体化差し替え
-// (「同格」)なので、演目選定材料の集計もpumpkinバケツへ合流させる(KillBucketにdriller枠は増やさない
-// =台帳・演目判定は従来どおりpumpkinのまま消化する、という§9-3の「実体化のみ差し替え」原則の踏襲)。
+// PACING_PUZZLE.md §9-3/§9-7#1(社長指示 2026-08-20)+§14-3裁定済み#2(伐採人・logger):
+// driller/logger はpumpkin枠の実体化差し替え(「同格」)なので、演目選定材料の集計もpumpkinバケツへ
+// 合流させる(KillBucketにdriller/logger枠は増やさない=台帳・演目判定は従来どおりpumpkinのまま消化
+// する、という§9-3の「実体化のみ差し替え」原則の踏襲)。
 export const bucketForKill = (type: EnemyType): KillBucket =>
-  type === 'driller' ? 'pumpkin' : TRACKED_TYPES.has(type) ? (type as KillBucket) : 'chaff';
+  (type === 'driller' || type === 'logger') ? 'pumpkin' : TRACKED_TYPES.has(type) ? (type as KillBucket) : 'chaff';
 
 export type PlayStyle = '近接' | '遠距離' | 'バランス';
 

@@ -1130,6 +1130,7 @@ export const BESTIARY: BestiaryEntry[] = [
   { id: 'plant', name: '変異体(定着型)', note: '遠距離から攻撃。カウンターの的。' },
   { id: 'pumpkin', name: '変異体(肥大型)', note: '中ボス級。撃破で物資を落とす。' },
   { id: 'driller', name: '変異体(削岩型)', note: '一定距離を保ちドリルの突きを放つ。近接で殴ると距離を取る。' },
+  { id: 'logger', name: '変異体(伐採人)', note: 'チェーンソーで距離を保ちながら横薙ぎを放つ。近接で殴ると距離を取る。' },
   { id: 'giantbat', name: '変異体(飛行型)', note: 'ステージ終盤に現れる大型個体。' },
   { id: 'reaper', name: '死神', note: '深奥リスクが高まると現れる、避けるべき存在。' },
 ];

@@ -30,9 +30,9 @@ import {
   isGuardianPhantom,
   isPumpkinTier,
 } from './enemyUtils';
-import { resolvePumpkinTier, allowDrillerForRun } from './drillerAi'; // PACING_PUZZLE.md §9
-import { isBossMakerRun } from './bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdrillerを出さない
-import { isGauntletRun } from './gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdrillerを出さない
+import { resolvePumpkinTier, allowDrillerForRun, allowLoggerForRun, isKiteMidAttackPhase } from './drillerAi'; // PACING_PUZZLE.md §9/§14
+import { isBossMakerRun } from './bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdriller/loggerを出さない
+import { isGauntletRun } from './gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdriller/loggerを出さない
 import { selectCullCandidates } from './enemyCulling';
 import { enemyCountCap, ENEMY_COUNT_CEIL, type PhaseKind } from './difficultyDirector';
 import { stepDirector, applyRelaxSpawnCadence, type DirectorState } from './aiDirector';
@@ -96,7 +96,8 @@ export type Ref<T> = { current: T };
 // 値は元のまま(重複定義。元ファイル側の宣言はこの移設に伴い削除済み)。
 // PACING_PUZZLE.md §9-3(削岩型): driller はpumpkin枠の実体化差し替えなので、盤面カウント
 // (boardCount)にも同じくpumpkin相当として乗る(将棋盤の駒数=見た目に関わらず数える)。
-const PUZZLE_MANAGED_TYPES = new Set<EnemyType>(['bat', 'skeleton', 'zombie', 'plant', 'werewolf', 'pumpkin', 'driller', 'screamer', 'ghost']);
+// §14-3裁定済み#2: loggerもpumpkin枠の実体化差し替え(driller同様)なので同じく合算する。
+const PUZZLE_MANAGED_TYPES = new Set<EnemyType>(['bat', 'skeleton', 'zombie', 'plant', 'werewolf', 'pumpkin', 'driller', 'logger', 'screamer', 'ghost']);
 const DIRECTOR_NEAR_RADIUS = 240;         // Intensity の"近接敵"を数える半径(接触危険レンジ相当)
 const DIRECTOR_EGG_DANGER_RADIUS = 180;   // 抱卵型(ghost)が撒いた毒卵の"密度"を見る、プレイヤー中心の半径
 const DIRECTOR_EGG_DANGER_FULL = 3;       // この個数(近くに)でdanger最大(=1バーストぶんが足元に集まっている状態)
@@ -661,7 +662,10 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     // resolvePumpkinTier で実際に湧かせる型を差し替える。帳簿(scriptSpawned・下)は decision.type
     // (='pumpkin')のまま消化する=実体化のみの差し替え。
     const materializedType: EnemyType = decision.type === 'pumpkin'
-      ? resolvePumpkinTier(allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()))
+      ? resolvePumpkinTier(
+        allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()),
+        allowLoggerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()),
+      )
       : decision.type;
     const puzzleEnemy = generateEnemy(
       gameTime, player, spawnBounds, materializedType, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc,
@@ -1138,9 +1142,10 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // =「急に画面から消える」原因になっていた(社長報告: パンプキンのジャンプ/カウンター時)。攻撃を完遂させ、
     // 終わって(aiPhase解除)から遠ければ通常どおりリサイクルする。
     if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'charge') return enemy;
-    // PACING_PUZZLE.md §9-8②(削岩型の突き3州): windup中にリサイクルで飛ばすとロック済みの赤帯だけが
-    // 残る=「赤いのに当たらない」(絶対禁止)。pumpkinの aiPhase==='jump' 除外と同じ扱いで除外する。
-    if (enemy.aiPhase === 'driller-thrust-windup' || enemy.aiPhase === 'driller-thrust-active' || enemy.aiPhase === 'driller-thrust-recover') return enemy;
+    // PACING_PUZZLE.md §9-8②(削岩型の突き3州)+§14-2(伐採人の薙ぎ払い3州も同型): windup中に
+    // リサイクルで飛ばすとロック済みの赤帯だけが残る=「赤いのに当たらない」(絶対禁止)。pumpkinの
+    // aiPhase==='jump' 除外と同じ扱いで除外する(述語はdrillerAi.tsで両型共有)。
+    if (isKiteMidAttackPhase(enemy.aiPhase)) return enemy;
     // M66(PACING_PUZZLE.md §6.26-11・stage-3 急降下): 城ボスが「本体が不在(無敵ではなく居ない)」を
     // 表現するため、windup中は実座標を意図的に場外(GIANT_DIVE_AWAY_OFFSET)へ退避させている。この
     // 汎用オフスクリーンリサイクルに捕まると「急に元の場所へワープして戻ってくる」= dive の演出が
@@ -1257,8 +1262,8 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
         knockbackUntil: undefined,
         knockbackVx: undefined,
         knockbackVy: undefined,
-        // PACING_PUZZLE.md §9-7#6(削岩型): 距離リサイクル/個体使い回しで drillerRetreatUntil を
-        // 必ずクリアする(他タイプには存在しないフィールドなので無害)。
+        // PACING_PUZZLE.md §9-7#6(削岩型)+§14-2④(伐採人もこの機構を共有): 距離リサイクル/
+        // 個体使い回しで drillerRetreatUntil を必ずクリアする(driller/logger以外には無害)。
         drillerRetreatUntil: undefined,
         spawnedAt: gameTime
       };
@@ -1376,6 +1381,10 @@ export function runDirectorSignalStep(refs: DirectorSignalRefs, ctx: DirectorSig
       // 数える(pumpkinのjump/crouchと同格の扱い)。
       if (e.aiPhase === 'driller-thrust-active') dangerBias = Math.max(dangerBias, 1);
       else if (e.aiPhase === 'driller-thrust-windup') dangerBias = Math.max(dangerBias, 0.6);
+    } else if (e.type === 'logger') {
+      // PACING_PUZZLE.md §14-2(伐採人): 上のdrillerと同じ扱い(薙ぎ払いの予告/発動も危険バイアスへ)。
+      if (e.aiPhase === 'logger-sweep-active') dangerBias = Math.max(dangerBias, 1);
+      else if (e.aiPhase === 'logger-sweep-windup') dangerBias = Math.max(dangerBias, 0.6);
     } else if (e.type === 'screamer') {
       if (e.aiPhase === 'scream') dangerBias = Math.max(dangerBias, 0.7);
     } else if (e.type === 'plant') {

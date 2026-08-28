@@ -47,6 +47,7 @@ const ZAKO: CastEntry[] = [
   { type: 'werewolf', tex: 'werewolf-common', label: '自転車 (werewolf)' },
   { type: 'pumpkin', tex: 'pumpkin-common', label: '蜘蛛の機械足 (pumpkin)' },
   { type: 'driller', tex: 'driller-common', label: 'ドリル腕の作業員 (driller)' },
+  { type: 'logger', tex: 'reaper-common', label: '伐採人=チェーンソーの死神 (logger)' },
   { type: 'lich', tex: 'lich-common', label: '機械死体 (lich)' },
   { type: 'screamer', tex: 'screamer-common', label: '絶叫 (screamer)' },
   { type: 'hunter', tex: 'hunter', label: '棺桶巨人 (hunter)' },

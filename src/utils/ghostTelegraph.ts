@@ -219,6 +219,14 @@ put(LEDGER, ['driller-thrust-windup', 'driller-thrust-active'], {
   note: '削岩型の突き。帯(aiFrom→aiTarget)が危険。activeは1回だけカプセル判定が積まれた直後だが、'
     + '回避は安全側に広くて構わないので windup と同じ帯のまま扱う(g-bite-active等と同じ作法)。',
 });
+// PACING_PUZZLE.md §14-2(伐採人・logger): 薙ぎ払いもdriller-thrustと同じ帯駆動(aiFrom→aiTarget=
+// 帯の両端。長軸がプレイヤー方向と直交する横帯だが、ghostShape側は座標をそのまま結ぶだけなので
+// driller-thrustと同じ扱いで足せる)。
+put(LEDGER, ['logger-sweep-windup', 'logger-sweep-active'], {
+  coverage: 'ghost', ghostShape: { kind: 'band' },
+  note: '伐採人の薙ぎ払い。帯(aiFrom→aiTarget=帯の両端)が危険。activeは1回だけカプセル判定が積まれた'
+    + '直後だが、回避は安全側に広くて構わないので windup と同じ帯のまま扱う(driller-thrustと同じ作法)。',
+});
 put(LEDGER, ['g-dive-windup'], {
   coverage: 'both', sharedShape: 'band',
   ghostShape: { kind: 'circle-target', radius: DIVE_RADIUS_MIRROR, targetIsTopLeft: true },
@@ -242,6 +250,7 @@ put(LEDGER, [
   'thor-dash-recover', // v0.25.3780: トールの突進の硬直(§4)
   'quickblades-recover', // ★v0.25.3784: ラフィの刃2連射の硬直(v0.25.3592)。技は終わっている。
   'driller-thrust-recover', // PACING_PUZZLE.md §9-4(削岩型): 突きの硬直。
+  'logger-sweep-recover', // PACING_PUZZLE.md §14-2(伐採人): 薙ぎ払いの硬直。
   // PACING_PUZZLE.md §10(フィル・バッチ2): 硬直(全技共通)+blast溜め明けで既に判定が終わっている実行フェーズ。
   'phill-wingslash-recover', 'phill-wingthrust-recover', 'phill-wingcombo-recover',
   'phill-goldring-active', 'phill-goldring-recover',

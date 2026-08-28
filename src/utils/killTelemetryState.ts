@@ -36,10 +36,11 @@ export const recordKill = (type: EnemyType, method: 'gun' | 'melee', gameTimeMs?
   else totals.meleeKills += 1;
   if (gameTimeMs !== undefined) {
     lastKillAt[type] = gameTimeMs;
-    // PACING_PUZZLE.md §9-3/§9-7#1(社長指示 2026-08-20): driller はpumpkin枠の実体化差し替え
-    // (「同格」)なので、pumpkin役の不応期(PROBLEM_REFRACTORY_MS)もdrillerのキルで更新する
-    // (lastKillAtは型ごとのため、role='pumpkin'のキー側にも同時に書く)。
-    if (type === 'driller') lastKillAt['pumpkin'] = gameTimeMs;
+    // PACING_PUZZLE.md §9-3/§9-7#1(社長指示 2026-08-20)+§14-3裁定済み#2(伐採人・logger):
+    // driller/logger はpumpkin枠の実体化差し替え(「同格」)なので、pumpkin役の不応期
+    // (PROBLEM_REFRACTORY_MS)もdriller/loggerのキルで更新する(lastKillAtは型ごとのため、
+    // role='pumpkin'のキー側にも同時に書く)。
+    if (type === 'driller' || type === 'logger') lastKillAt['pumpkin'] = gameTimeMs;
   }
 };
 

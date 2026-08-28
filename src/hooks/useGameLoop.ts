@@ -236,9 +236,9 @@ import {
   isGuardianPhantom, // v0.25.3640: 幻影が弾いた弾の数字/SE抑止(成果物監査Q1-1)
   isPumpkinTier // PACING_PUZZLE.md §9-7#1(削岩型): pumpkinの特別扱いをdrillerと共有する述語
 } from '../utils/enemyUtils';
-import { resolvePumpkinTier, allowDrillerForRun } from '../utils/drillerAi'; // PACING_PUZZLE.md §9-3
-import { isBossMakerRun } from '../utils/bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdrillerを出さない
-import { isGauntletRun } from '../utils/gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdrillerを出さない
+import { resolvePumpkinTier, allowDrillerForRun, allowLoggerForRun } from '../utils/drillerAi'; // PACING_PUZZLE.md §9-3/§14-3
+import { isBossMakerRun } from '../utils/bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdriller/loggerを出さない
+import { isGauntletRun } from '../utils/gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdriller/loggerを出さない
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
 import { projectileFlightMsTo } from '../utils/projectileOrigin'; // GHOST_BOSS.md v9: 弾の飛翔時間(距離÷速度)
 import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs, turretNextReadyAt } from '../utils/turretTuning';
@@ -1881,8 +1881,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // Game loop
   useEffect(() => {
     // --- 四神舞(リズム)の攻撃実行ヘルパー(store=判定、loop=実行)。すべて軽量・短命VFX。
-    // PACING_PUZZLE.md §9-7#1(四神の対象): driller はpumpkinと同格(isPumpkinTier)なので合流させる。
-    const SHIJIN_BOSS_TYPES = new Set(['giantbat', 'pumpkin', 'driller', 'reaper']);
+    // PACING_PUZZLE.md §9-7#1(四神の対象): driller/logger はpumpkinと同格(isPumpkinTier)なので合流させる。
+    const SHIJIN_BOSS_TYPES = new Set(['giantbat', 'pumpkin', 'driller', 'logger', 'reaper']);
     const ARROW_VEC: Record<RhythmArrow, { x: number; y: number }> = {
       up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
     };
@@ -13498,7 +13498,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // PACING_PUZZLE.md §9-3②(関所の配役実体化): pending==='pumpkin'の時だけ実際に湧かせる
               // 型をresolvePumpkinTierで差し替える(帳簿=pressureCastRef.pendingCastは'pumpkin'のまま)。
               const materializedType: EnemyType = pending === 'pumpkin'
-                ? resolvePumpkinTier(allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()))
+                ? resolvePumpkinTier(
+                  allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()),
+                  allowLoggerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()),
+                )
                 : pending;
               const castEnemy = generateEnemy(gameTime, player, spawnBounds, materializedType, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
               addEnemy(castEnemy);
@@ -13537,7 +13540,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // PACING_PUZZLE.md §9-3②(関所の配役実体化・主題保証も関所配役の一部): type==='pumpkin'
               // の時だけ実際に湧かせる型をresolvePumpkinTierで差し替える(帳簿=satisfiedは'pumpkin'のまま)。
               const materializedType: EnemyType = type === 'pumpkin'
-                ? resolvePumpkinTier(allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()))
+                ? resolvePumpkinTier(
+                  allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()),
+                  allowLoggerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()),
+                )
                 : type;
               const guaranteedEnemy = generateEnemy(gameTime, player, spawnBounds, materializedType, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
               addEnemy(guaranteedEnemy);
@@ -13653,16 +13659,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 enemy = generateEnemy(gameTime, player, spawnBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, [], [], sceneRareMult);
               }
             }
-            // PACING_PUZZLE.md §9-3③(featured床=gate系プログラムの実体化・検収監査#1):
+            // PACING_PUZZLE.md §9-3③(featured床=gate系プログラムの実体化・検収監査#1)+
+            // §14-3裁定済み#2(伐採人も同じ実体化点):
             // 通常湧きループが gate系プログラム(effectiveGateProgram)の featured 経由で 'pumpkin' を
             // 引いた時も resolvePumpkinTier で差し替える(旧: ①台本nuisance/②関所配役だけで、
-            // **関所中の主たる湧き経路からdrillerが1体も出なかった**)。帳簿・キャップは pumpkin枠のまま
-            // (上の overCap は isPumpkinTier 合算で判定済み)。講習/回収(reliefProgram)は
+            // **関所中の主たる湧き経路からdriller/loggerが1体も出なかった**)。帳簿・キャップは pumpkin枠の
+            // まま(上の overCap は isPumpkinTier 合算で判定済み)。講習/回収(reliefProgram)は
             // effectiveGateProgram を持たないので自然に対象外(§9-8①)。
-            if (enemy.type === 'pumpkin' && effectiveGateProgram
-              && resolvePumpkinTier(allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun())) === 'driller') {
-              // 監査A: sceneRareMultを落とさない(落とすとdrillerだけ色ティア抽選が1.0に下がる=§9-7#3違反)。
-              enemy = generateEnemy(gameTime, player, spawnBounds, 'driller', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, [], [], sceneRareMult);
+            if (enemy.type === 'pumpkin' && effectiveGateProgram) {
+              const featuredTier = resolvePumpkinTier(
+                allowDrillerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()),
+                allowLoggerForRun(getSelectedStageId(), isBossMakerRun() || isGauntletRun()),
+              );
+              if (featuredTier !== 'pumpkin') {
+                // 監査A: sceneRareMultを落とさない(落とすとdriller/loggerだけ色ティア抽選が1.0に下がる=§9-7#3違反)。
+                enemy = generateEnemy(gameTime, player, spawnBounds, featuredTier, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, [], [], sceneRareMult);
+              }
             }
             // 洋館通路(corridorMode): 移動不可エリアに敵を沸かせない(社長指示v0.25.2391「ステージ2に
             // 限らず」)。プレイヤー移動と同じ帯定義(clampRectToPlayableArea)へ寄せる。ここは通常湧き

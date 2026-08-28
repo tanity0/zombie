@@ -255,6 +255,12 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       const dcx = b.capsule ? b.capsule.tx : b.x, dcy = b.capsule ? b.capsule.ty : b.y;
       fx.spawnRing(dcx, dcy, 4, 26, 'rgba(255,190,90,0.9)', 3, 240);
       fx.spawnBurst(dcx, dcy, '#fbbf24', 10);
+    } else if (b.moveKey === 'logger-sweep') {
+      // PACING_PUZZLE.md §14-2(伐採人の薙ぎ払い): driller-thrustと同じく雑魚の通常攻撃なので
+      // 全画面フラッシュは出さない。帯の長軸がプレイヤー方向と直交するため(突きと違い帯の端点は
+      // 「衝突点」ではない)、火花はプレイヤーの実位置に出す。色はチェーンソー=赤茶寄り。
+      fx.spawnRing(bpcx, bpcy, 4, 26, 'rgba(220,90,50,0.9)', 3, 240);
+      fx.spawnBurst(bpcx, bpcy, '#c2410c', 10);
     } else {
       fx.spawnFlash('rgba(255,150,60,0.16)', 200);
       fx.spawnRing(b.x, b.y, 6, b.radius, 'rgba(255,170,80,0.9)', 4, 300);
@@ -276,7 +282,10 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         const blastEnemyType = useGameStore.getState().enemies.find(e => e.id === b.enemyId)?.type;
         // G4a: b.moveKey=どの技の爆発か(記録専用タグ・未設定なら従来どおりundefined)。
         // 検収監査#6: 死因の技名はmoveKeyで分ける(削岩型の突きが「落下攻撃」と表示されていた)。
-        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${b.moveKey === 'driller-thrust' ? '突き' : '落下攻撃'}`, undefined, undefined, undefined, undefined, b.moveKey);
+        // 検収監査#6の継承(§14-2): 死因の技名はmoveKeyで分ける(伐採人の薙ぎ払いが「落下攻撃」と
+        // 表示される取りこぼしを防ぐ)。
+        const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い' : '落下攻撃';
+        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey);
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
         // v0.25.2653: **技ごとの押し量**(b.kbSpeed/kbMs)があればそれを使う。未指定=従来の共通値。
