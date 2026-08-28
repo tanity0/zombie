@@ -12,7 +12,7 @@ import { spritePath } from '../utils/spriteLoader';
 // 2段階hpHi/hpLo・裁定待ち)は変えない(MUST)。危険演出は足さない(液体の動きだけ=裁定に忠実)。
 //
 // DOM構造(監査A-2/A-3で確定): 暗い土台円+液体=canvas(opacity:0.7=旧<g opacity={0.7}>の継承)→
-// ガラスの輪(社長支給素材2026-08-28・hp-orb-glass.png)→ガラス艶/縁の代替→EXPリング・HP数字・
+// ガラス艶/縁(SVG・モックの形)→EXPリング・HP数字・
 // Lvバッジ・白フラッシュ=既存SVGを絶対配置でcanvasの上に重ねる。被弾パンチは key 再マウントを
 // やめ、常時マウントのまま el.animate()(WAAPI)で都度再生する(再マウントするとcanvasの波・
 // shownHpが被弾のたびに消えて波が最大になるべき瞬間に飛ぶ)。
@@ -32,16 +32,8 @@ const CY = SIZE / 2;
 const WINE_ORB_DISABLED = typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).get('wineorb') === '0';
 
-// 社長支給素材(2026-08-28): ガラスの輪(青みの透明リング・中心透過)。液体canvasの上・
-// EXPリング等の下に重ねる。原本1278px→256pxへ縮小済み(HUD表示は76px=3x端末でも228px・
-// リポジトリを重くしない掟)。この画像がオーブ外枠の「実素材」になるので、旧SVGのガラス艶
-// (ellipse)と紫の縁(stroke)は非表示にする(コード削除ではなくフラグで。?wineorb=0の旧経路では
-// 従来どおりSVGで出す)。
-const GLASS_RING_SRC = spritePath('hp-orb-glass');
-// 画像の輪は256x246キャンバスの外周ぎりぎりまで描かれている。オーブ本体(直径2*ORB_R)より
-// 少し大きく出し、EXPリング(RING_R)の内側に収まる範囲でオーブとの間を自然にする
-// (叩き台・実機で調整可)。
-const GLASS_RING_SCALE = 1.12;
+// ガラスの輪の実素材(hp-orb-glass.png)は社長指示2026-08-28「HPの渡した枠の素材、削除で
+// モックの形に揃えて」で撤去した。器の枠はモックどおりSVG(ガラス艶ellipse+紫の縁stroke)が正。
 
 // 液体シミュレーションの叩き台定数(UI_OVERHAUL.md §2の数値どおり。実機調整はここだけ触ればよい)。
 const FOLLOW_RATE = 3.2;     // shownHpの実HPへの指数追従(1/s・注ぎ/流出の速度感)
@@ -338,23 +330,6 @@ const VitalsOrb: React.FC = () => {
               style={{ position: 'absolute', inset: 0, width: SIZE, height: SIZE, opacity: 0.7 }}
             />
           )}
-          {/* 社長支給素材(2026-08-28)=ガラスの輪(青みの透明リング・中心透過)。液体canvasの上・
-              EXPリング等の下(叩き台のスケール・実機で調整可)。 */}
-          {!WINE_ORB_DISABLED && (
-            <img
-              src={GLASS_RING_SRC}
-              alt=""
-              draggable={false}
-              style={{
-                position: 'absolute',
-                left: CX - ORB_R * GLASS_RING_SCALE,
-                top: CY - ORB_R * GLASS_RING_SCALE,
-                width: ORB_R * 2 * GLASS_RING_SCALE,
-                height: ORB_R * 2 * GLASS_RING_SCALE,
-                pointerEvents: 'none',
-              }}
-            />
-          )}
           <svg
             width={SIZE}
             height={SIZE}
@@ -397,13 +372,9 @@ const VitalsOrb: React.FC = () => {
               </g>
             )}
 
-            {/* ガラスの艶・縁: 通常経路はガラスの輪画像が代替するのでSVG側は?wineorb=0の旧経路でのみ描く。 */}
-            {WINE_ORB_DISABLED && (
-              <>
-                <ellipse cx={CX} cy={CY - ORB_R * 0.42} rx={ORB_R * 0.6} ry={ORB_R * 0.32} fill="rgba(255,255,255,0.12)" />
-                <circle cx={CX} cy={CY} r={ORB_R} fill="none" stroke="rgba(192,132,252,0.4)" strokeWidth={1.5} />
-              </>
-            )}
+            {/* ガラスの艶・縁(モックの形=常時SVGで描く。社長指示2026-08-28で実素材の輪は撤去)。 */}
+            <ellipse cx={CX} cy={CY - ORB_R * 0.42} rx={ORB_R * 0.6} ry={ORB_R * 0.32} fill="rgba(255,255,255,0.12)" />
+            <circle cx={CX} cy={CY} r={ORB_R} fill="none" stroke="rgba(192,132,252,0.4)" strokeWidth={1.5} />
 
             {/* EXP リング: トラック + 進捗(細め・右ほど薄い) */}
             <g transform={`rotate(-90 ${CX} ${CY})`}>

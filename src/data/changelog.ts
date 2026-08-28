@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4033',
+    items: [
+      'HPオーブの器を元のガラス描画(モックの形)に戻しました(支給素材の輪は撤去)。',
+      'エンディングステージ(開発中): UIを全て非表示に・黒煙が大きさ違いの5本に・火の粉と灰が舞うようになりました。',
+    ],
+  },
+  {
     version: '0.25.4032',
     items: [
       'ゲーム内容の変更はありません(開発内部: エンディングステージの地平帯シルエットを縮小・?endhz=で調整可)。',

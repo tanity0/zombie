@@ -55,6 +55,7 @@ const GameHUD: React.FC = () => {
   );
   const setActiveWeapon = useGameStore(state => state.setActiveWeapon);
   const lastWeaponGet = useGameStore(state => state.lastWeaponGet);
+  const endingStage = useGameStore(state => state.farBackdrop === 'ending'); // UI系非表示(社長指示2026-08-28)
   // 時計/ボス警告は1秒粒度で十分。秒で購読し、毎フレーム再描画を避ける。
   const gameTime = useGameStore(state => Math.floor(state.gameTime / 1000)) * 1000;
   // 個別フィールドを購読(rhythm全体を購読すると resync の firstBeatAt 更新で毎フレーム再描画になり重い)。
@@ -95,6 +96,10 @@ const GameHUD: React.FC = () => {
     setAudioMutedState(next);
     setAudioMuted(next);
   };
+
+  // エンディングステージはUI系を全部出さない(社長指示2026-08-28「エンディングはUI系非表示」。
+  // boolean派生の購読=再レンダー規律どおり。フック群の後の早期returnなのでReactの規則にも適合)。
+  if (endingStage) return null;
 
   return (
     <div className="absolute inset-0 z-40 pointer-events-none text-white">

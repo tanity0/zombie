@@ -962,15 +962,25 @@ const STAGE1_SUN_X_FRAC = tsNum('s1sunx', 1 - CINE_SUN_X_FRAC);
 // M7雲アニメ(setStage7CloudAnim)と同じ「等分スライス」で切り出し、地平帯付近に数本を独立位相で
 // ループ再生する(叩き台。本数・位置・速度はコメントどおり社長の演出仕様待ち=ENDING_SCENE.md★未決)。
 const ENDING_SMOKE_COLS = 6;
-const ENDING_SMOKE_COUNT = 3; // 立てる本数(叩き台・社長指示「2〜3本」)
+// 大きさ違いの黒煙を数本(社長指示2026-08-28「黒煙は大きさ違うの何本か置いて」)。x=帯内の横位置比・
+// s=高さ倍率(ENDING_SMOKE_HEIGHT_FRACに乗る)。全て叩き台。
+const ENDING_SMOKE_PLACEMENT: { x: number; s: number }[] = [
+  { x: 0.10, s: 0.72 }, { x: 0.30, s: 1.18 }, { x: 0.50, s: 0.58 }, { x: 0.70, s: 0.95 }, { x: 0.88, s: 0.78 },
+];
+const ENDING_SMOKE_COUNT = ENDING_SMOKE_PLACEMENT.length;
 const ENDING_SMOKE_PERIOD_MS = Math.max(500, tsNum('esmokeperiod', 4200)); // 1本が6コマを一巡する時間(ms)。叩き台
 const ENDING_SMOKE_HEIGHT_FRAC = Math.max(0.05, tsNum('esmokeheight', 0.30)); // 表示高さ(screenH比)。叩き台
 const ENDING_SMOKE_ALPHA = Math.max(0, Math.min(1, tsNum('esmokealpha', 0.75))); // 叩き台
+// 火の粉・灰の舞い(社長指示2026-08-28「火の粉・灰の舞いはコードで出せ」)。素材なし・コード生成のみ。
+interface EndingAmbientP { sp: Sprite; kind: 'ember' | 'ash'; x: number; y: number; vx: number; vy: number; ph: number; sz: number }
+// 負荷1/10: 固定プール(既定64個)をエンディング中だけ動かす(判定・storeには一切触れない)。叩き台。
+const ENDING_AMBIENT_ENABLED = tsNum('endamb', 1) !== 0;
+const ENDING_EMBER_COUNT = Math.max(0, Math.floor(tsNum('endember', 36)));
+const ENDING_ASH_COUNT = Math.max(0, Math.floor(tsNum('endash', 28)));
 // エンディングの地平帯(ending-horizon-ruins=遠景の手前側の森/廃墟シルエット)の縮小係数
 // (社長指示2026-08-28「遠景森 手前のもっと小さく」。0.65=叩き台・?endhz=で実機調整)。
 const ENDING_HORIZON_SCALE = Math.max(0.2, tsNum('endhz', 0.65));
 // 横位置(画面幅比・叩き台=等間隔)。位相(phase)は本ごとにずらしてコマが揃わないようにする。
-const ENDING_SMOKE_X_FRACS = [0.22, 0.5, 0.78];
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
 // 森2境界霧の縦オフセット(社長指示v0.25.1881「100px上へ」)。正=上へ(px)。?nhmistup=で調整。
@@ -3744,6 +3754,10 @@ export class PixiScene {
   private endingSmokeGroup = new Container();
   private endingSmokeSprites: Sprite[] = Array.from({ length: ENDING_SMOKE_COUNT }, () => new Sprite(Texture.EMPTY));
   private endingSmokeFrames: Texture[] = []; // アトラスから切り出した6コマ
+  // 火の粉・灰の舞い(コード生成・エンディングのみ・叩き台)。
+  private endingAmbientGroup = new Container();
+  private endingAmbient: EndingAmbientP[] = [];
+  private endingAmbientLastNow = 0;
   private endingSmokePlaced = false;
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
   // v0.25.2660(LIGHT_REWORK §3 #1): 共有カーブ(45%でまだ0.55=中心付近が広く均一に濃い=塊に見える)
@@ -6342,11 +6356,73 @@ export class PixiScene {
       const frameIdx = Math.min(ENDING_SMOKE_COLS - 1, Math.floor(t * ENDING_SMOKE_COLS));
       const tex = this.endingSmokeFrames[frameIdx];
       if (tex && sp.texture !== tex) sp.texture = tex;
-      const h = this.screenH * ENDING_SMOKE_HEIGHT_FRAC;
+      const pl = ENDING_SMOKE_PLACEMENT[i % ENDING_SMOKE_PLACEMENT.length];
+      const h = this.screenH * ENDING_SMOKE_HEIGHT_FRAC * pl.s; // 大きさ違い(社長指示2026-08-28)
       sp.scale.set(h / Math.max(1, tex?.height ?? 1));
       sp.alpha = ENDING_SMOKE_ALPHA;
-      const xFrac = ENDING_SMOKE_X_FRACS[i % ENDING_SMOKE_X_FRACS.length];
-      sp.position.set(-marginX + bandW * xFrac, farH); // 底=地平帯の境界線(廃墟スカイラインと重ねる)
+      sp.position.set(-marginX + bandW * pl.x, farH); // 底=地平帯の境界線(廃墟スカイラインと重ねる)
+    }
+  }
+
+  // 火の粉(上昇・明滅)+灰(ゆっくり落下)の常時アンビエント。素材なし=グロー玉と白テクスチャの
+  // tintのみ。エンディング中だけ毎フレーム動く固定プール(負荷1/10)。数・密度は ?endember/?endash。
+  private applyEndingAmbient(active: boolean) {
+    const on = active && ENDING_AMBIENT_ENABLED;
+    this.endingAmbientGroup.visible = on;
+    if (!on) { this.endingAmbientLastNow = 0; return; }
+    const now = Date.now();
+    const dt = Math.min(0.05, this.endingAmbientLastNow ? (now - this.endingAmbientLastNow) / 1000 : 0.016);
+    this.endingAmbientLastNow = now;
+    const bandW = this.screenW * ZOOM_OVERSCAN;
+    const marginX = (bandW - this.screenW) / 2;
+    if (this.endingAmbient.length === 0 && (ENDING_EMBER_COUNT + ENDING_ASH_COUNT) > 0) {
+      const mk = (kind: 'ember' | 'ash') => {
+        const sp = new Sprite(kind === 'ember' ? getSoftGlowTexture() : Texture.WHITE);
+        sp.anchor.set(0.5);
+        sp.eventMode = 'none';
+        this.endingAmbientGroup.addChild(sp);
+        const p: EndingAmbientP = { sp, kind, x: 0, y: 0, vx: 0, vy: 0, ph: Math.random() * Math.PI * 2, sz: 0 };
+        this.resetEndingAmbient(p, true);
+        return p;
+      };
+      for (let i = 0; i < ENDING_EMBER_COUNT; i++) this.endingAmbient.push(mk('ember'));
+      for (let i = 0; i < ENDING_ASH_COUNT; i++) this.endingAmbient.push(mk('ash'));
+      // 黒煙と同じhzFixed(nearHorizonの手前)=画面固定の座標系。前景より奥だが空間全体に舞って見える。
+      this.hzFixed.addChildAt(this.endingAmbientGroup, this.hzFixed.getChildIndex(this.L.nearHorizon));
+    }
+    for (const p of this.endingAmbient) {
+      p.ph += dt * (p.kind === 'ember' ? 3.2 : 1.4);
+      p.x += (p.vx + Math.sin(p.ph) * (p.kind === 'ember' ? 14 : 22)) * dt; // 揺らぎ=慣性のあるドリフト
+      p.y += p.vy * dt;
+      if (p.kind === 'ember' ? p.y < -30 : p.y > this.screenH + 20) this.resetEndingAmbient(p, false);
+      if (p.x < -marginX - 40) p.x += bandW + 80; else if (p.x > -marginX + bandW + 40) p.x -= bandW + 80;
+      p.sp.position.set(p.x, p.y);
+      if (p.kind === 'ember') {
+        const tw = 0.55 + 0.45 * Math.sin(p.ph * 2.3); // 明滅
+        p.sp.alpha = 0.25 + 0.5 * tw;
+        p.sp.scale.set(p.sz / Math.max(1, p.sp.texture.width));
+      } else {
+        p.sp.alpha = 0.5;
+        p.sp.scale.set(p.sz / Math.max(1, p.sp.texture.width), p.sz / Math.max(1, p.sp.texture.height));
+      }
+    }
+  }
+  private resetEndingAmbient(p: EndingAmbientP, anywhere: boolean) {
+    const bandW = this.screenW * ZOOM_OVERSCAN;
+    const marginX = (bandW - this.screenW) / 2;
+    p.x = -marginX + Math.random() * bandW;
+    if (p.kind === 'ember') {
+      p.y = anywhere ? Math.random() * this.screenH : this.screenH + 10 + Math.random() * 30;
+      p.vx = (Math.random() - 0.5) * 10;
+      p.vy = -(22 + Math.random() * 34); // 火の粉=上昇
+      p.sz = 5 + Math.random() * 7;
+      p.sp.tint = Math.random() < 0.5 ? 0xffb340 : 0xff7a2a;
+    } else {
+      p.y = anywhere ? Math.random() * this.screenH : -20 - Math.random() * 30;
+      p.vx = (Math.random() - 0.5) * 8;
+      p.vy = 12 + Math.random() * 16; // 灰=ゆっくり落下
+      p.sz = 2 + Math.random() * 2.5;
+      p.sp.tint = 0x9aa0a3;
     }
   }
 
@@ -6925,6 +7001,7 @@ export class PixiScene {
     this.applyNearHorizon(s.nearHorizon); // 遠景森2(ステージ別)
     this.applyTutorialFrontFog(this.currentFarKey === 'tutorial'); // 手前霧のz移設(チュートリアルのみ)
     this.applyEndingSmoke(this.currentFarKey === 'ending'); // 黒煙アニメ(エンディング仮組みのみ・叩き台)
+    this.applyEndingAmbient(this.currentFarKey === 'ending'); // 火の粉・灰(コード生成・社長指示2026-08-28)
     this.applyDaylight(this.daylight);
     // ステージ4(snow)の地面だけ夜tintより少し明るく(社長指示v0.25.1997)。森/前景/他ステージは触らない。
     // applyDaylightのguard(day↔nightの変化時のみ)に依存せず毎フレーム確定=同値ならno-op(tint比較で早期スキップ)。?snowground=で調整(0.62=他ステージ夜と同値)。
