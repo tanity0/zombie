@@ -20,15 +20,51 @@
 | 地平帯(遠景と地面の継ぎ) | **受領 2026-08-28** | `public/backgrounds/ending-horizon-ruins.png`(2172×397・806KB) | 廃墟スカイライン+夕陽の照り返し+煙。実アルファ付き(上端透過)。原本724高の透明上部327pxをトリム |
 | 近景バンド | **受領 2026-08-28** | `public/backgrounds/ending-near-rubble.png`(2172×497・1.2MB) | 瓦礫・焼けた車・土嚢・街灯・火+煙。実アルファ(下端接地251)。透明上部227pxトリム |
 | 前景バンド | **受領 2026-08-28** | `public/backgrounds/ending-front-rubble.png` | 折れ梁・金網・有刺鉄線の暗いシルエット。※原本は市松模様が焼き込まれた偽透過(RGB)だったため、市松2色を推定してアルファを再構築(白煙の淡部は除去=前景帯なので許容)。プレビューで抜けを確認済み |
-| 演出用の動く物(あれば) | 待ち | — | tutFlow1/2(川の流れ)相当の枠。戦場なら煙・火の粉等?(社長次第) |
+| 黒煙アニメ | **受領 2026-08-28** | `public/backgrounds/ending-smoke-anim.png`(1428×1024=6コマ横並び・セル幅238) | 火元つき黒煙6本。原本1536×1024は列間隔が不均一だったため列検出→均等セルに再パック(stage7雲アニメと同じ「等分スライス」で使える形)。実アルファ付き |
 
-## ★未決(素材が揃ってから社長と詰める)
-- ステージの入り口(どこから遷移するか: エンディング分岐? 資料室? 勝利後?)
-- 「見せるだけ」の中身(歩けるのか・カメラだけか・登場人物・尺)
-- BGM/SE
+## 実装状況(仮組み・v0.25.4029〜)
+**「見せるだけ」の中身を確定して実装した**: プレイヤーが歩けるだけ。敵0・湧き0・イベント0・NPC0・
+目的なし。HUDは現行のまま(社長指示2026-08-28)。本番の入り口(勝利後遷移等)は未着手=下記★未決。
 
-## 実装メモ(着手時に)
-- farBackdrop キー(例 'ending')新設 → PixiStage.tsx の SORTIE_STAGE_TEXTURE_PATHS+注入列に追加
-  (位置結合の分割代入=両方を同順で・ファイル内コメントの掟どおり)。
-- ステージ定義(campaign.ts)は「見せるだけ」の性質が決まってから(敵0・UI最小の専用モードになる想定)。
-- 実装バッチ化の際は着手前監査を通す(新しい仕組み=エンディング演出システム)。
+- **ステージ定義**: `src/data/campaign.ts` の `stage-ending`(`kind:'ex'` + `hidden:true` = stage-ex2と
+  同じ作法でミッション一覧に一切出さない)。`farBackdrop:'ending'` / `nearHorizon:'ending'`。
+- **横長の移動可能帯**: `src/world/playableArea.ts` の `clampRectToPlayableArea` で
+  `farBackdrop==='tutorial'` の分岐に `'ending'` を相乗り(M0と同じ ±100px の帯。前進壁
+  `m0AdvanceLimitX` はM0台本専用値なのでエンディングでは誰もセットせず自然に無効)。
+- **素材注入**: `src/pixi/stageTextures.ts`(`SORTIE_STAGE_TEXTURE_PATHS`+`STAGE_TEXTURE_GROUPS.ending`+
+  `NEAR_HORIZON_TEXTURES.ending`+`stageTextureSkin.ts`)→ `src/pixi/PixiStage.tsx`(位置結合の分割代入に
+  `endFar/endGround/endHorizon/endNear/endFront/endSmoke`を追加・出撃ステージがendingの時だけロード=
+  既存の`neededStageTextures`の仕組みに乗せただけ)→ `src/pixi/pixiScene.ts` の
+  `setFarBackdropTexture/setGroundOverride/setHorizonOverride/setNearHorizonTexture/setFrontOverride`
+  にキー`'ending'`で注入。
+- **描画の専用比率**: 遠景の縦比率(`farBackdropHeight`)・地平帯Y・前景Yオフセット等は
+  **tutorial専用値を流用せず、city/stage5と同じ既定の汎用ロジックへ素通し**にした(実寸確認の結論=
+  戦場パノラマ2172×724はtutorialの洞窟専用比率を要さない・不要な特殊分岐を増やさない)。
+- **夜の暗転(ENV_TINT)を掛けない**: `pixiScene.ts` の `this.daylight` に `farBackdrop==='ending'` を
+  city同様に加えた(遠景/地面/地平帯/近景/前景の全レイヤーが夕暮れ素材の色をそのまま出す)。
+- **城の構造物**: `syncCastle` の「チュートリアルは城を出さない」分岐に `'ending'` を追加(見せるだけの
+  戦場にボス城のランドマークは不要)。
+- **黒煙アニメ(仮配線)**: `pixiScene.ts` に `setEndingSmokeAnim`+`applyEndingSmoke`(社長提供
+  `ending-smoke-anim.png`・6コマ横並びをstage7雲アニメと同じ等分スライスで切り出し)。地平帯の上・
+  近景帯の下(tutorialの岩間霧と同じ挿入位置)に3本、位相をずらした単純ループ(フェード/下降波なし=
+  最小実装)。本数・位置(`ENDING_SMOKE_X_FRACS`)・高さ・速度は全部叩き台コメント付き定数
+  (`?esmokeperiod=` 等で調整可)。**演出の作り込み(本数・動き・タイミング)は★未決のまま**。
+- **敵/湧き/イベントの全停止**: `src/hooks/useGameLoop.ts` に `endingStage`
+  (`farBackdrop==='ending'`)を新設し、`tutorialStage`が既に揃えていた抑止ゲート(通常湧き2経路・
+  城ボス・囲い/紅き夜イベント・ハンター・死神・賞金首・叫喚型ディレクター・弾薬エアドロップ・武器箱
+  補給)に同じ条件で相乗り(専用ゲートを新設せず既存の網羅的な消去法に従った=CLAUDE.md実装精度の
+  規律7)。`puzzleActiveNow`/`gateFireOk`の定義自体に`!endingStage`を足したので、そこから連鎖する
+  副次ゲート(叫喚型ディレクター含む)も一括で止まる。
+- **NPC0/寄り道POI0**: `src/store/gameStore.ts` の `escortRoster`(護衛4人)・`detourVisible`
+  (病院/武器庫/警察署)・`baseSites`(4拠点制圧)に `farBackdrop==='ending'` を追加して空にした。
+  木/松明/緑卵も `setTreesDisabled`/`setTorchesDisabled`/`setMinesDisabled` に相乗りさせて出さない。
+- **直行パラメータ `?ending=1`**: `src/App.tsx` に既存の `?smoke=1&stage=<id>` 直行と同型の
+  `useEffect`(タイトル/メニュー全skip→`setSelectedStageId('stage-ending')`→`startGame`)を追加。
+  `?ending=1&class=mage` のようにクラス指定も可(`?smoke`と同じ書式)。
+
+## ★未決(次に詰める)
+- **本番の入り口**(どこから遷移するか: エンディング分岐? 資料室? 勝利後?)。今回は開発用の
+  `?ending=1` のみで、本編導線には未接続。
+- 演出の中身(登場人物・カメラワーク・尺・黒煙以外の動く物があれば)。
+- BGM/SE(現状は既定BGMにフォールバック=専用曲は未指定)。
+- 黒煙アニメの仕上げ(本数・配置・速度・フェード等の演出作り込み。現状は叩き台の単純ループ)。

@@ -10,6 +10,7 @@ const LAYERS_BY_SKIN: Readonly<Record<string, readonly StageSkinLayer[]>> = {
   stage5: ALL,
   tutorial: ALL,
   stage7: ['far'],
+  ending: ALL, // エンディング(仮組み): 遠景/地面/地平帯/前景の4層とも社長支給テクスチャへ差し替える(ENDING_SCENE.md)
 };
 
 export const skinLayersExpectedFor = (

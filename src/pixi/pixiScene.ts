@@ -958,6 +958,16 @@ const STAGE1_CASTLE_PARALLAX_X = tsNum('s1castpara', 0.11);
 // M1にもM7の光源(cineSun)+放射(cineCloudLayers)を移植(社長v0.25.1946)。位置はM7(右0.62)を左へ反転=1-0.62=0.38、
 // スプライトも横反転(scale.x<0)。M1のみ・cineの残照/グレード/塵は載せない(光源と放射だけ)。?s1sunx= で左右調整。
 const STAGE1_SUN_X_FRAC = tsNum('s1sunx', 1 - CINE_SUN_X_FRAC);
+// エンディング(仮組み・社長提供2026-08-28)の黒煙アニメ。素材=6コマ横並び(1428×1024・セル幅238)。
+// M7雲アニメ(setStage7CloudAnim)と同じ「等分スライス」で切り出し、地平帯付近に数本を独立位相で
+// ループ再生する(叩き台。本数・位置・速度はコメントどおり社長の演出仕様待ち=ENDING_SCENE.md★未決)。
+const ENDING_SMOKE_COLS = 6;
+const ENDING_SMOKE_COUNT = 3; // 立てる本数(叩き台・社長指示「2〜3本」)
+const ENDING_SMOKE_PERIOD_MS = Math.max(500, tsNum('esmokeperiod', 4200)); // 1本が6コマを一巡する時間(ms)。叩き台
+const ENDING_SMOKE_HEIGHT_FRAC = Math.max(0.05, tsNum('esmokeheight', 0.30)); // 表示高さ(screenH比)。叩き台
+const ENDING_SMOKE_ALPHA = Math.max(0, Math.min(1, tsNum('esmokealpha', 0.75))); // 叩き台
+// 横位置(画面幅比・叩き台=等間隔)。位相(phase)は本ごとにずらしてコマが揃わないようにする。
+const ENDING_SMOKE_X_FRACS = [0.22, 0.5, 0.78];
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
 // 森2境界霧の縦オフセット(社長指示v0.25.1881「100px上へ」)。正=上へ(px)。?nhmistup=で調整。
@@ -3726,6 +3736,12 @@ export class PixiScene {
   private stage1MoonHalo = new Sprite(getMoonHaloTexture());
   private stage1MoonGlowZ = -1; // 光源グローのz順の適用済み値(?s1moonglowz=・変化時のみ並べ替え。社長指示v0.25.1959)
   private stage1IsM1 = getSelectedStageId() === 'stage-1'; // M1判定(レイアウト時に確定)
+  // エンディング(仮組み)の黒煙: hzFixed内(森2の手前=tutorialMistと同じ挿入位置)に置く簡易ループ。
+  // stage7雲アニメ(等分スライス)の作法を型に、フェード/下降波は持たせず単純ループにした叩き台。
+  private endingSmokeGroup = new Container();
+  private endingSmokeSprites: Sprite[] = Array.from({ length: ENDING_SMOKE_COUNT }, () => new Sprite(Texture.EMPTY));
+  private endingSmokeFrames: Texture[] = []; // アトラスから切り出した6コマ
+  private endingSmokePlaced = false;
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
   // v0.25.2660(LIGHT_REWORK §3 #1): 共有カーブ(45%でまだ0.55=中心付近が広く均一に濃い=塊に見える)
   // から、M6の壁灯と同じソフトカーブ(早く落ちて尾を引く=光に見える)へ差し替え。
@@ -6170,6 +6186,18 @@ export class PixiScene {
   setStage1MoonTexture(tex: Texture | null) {
     if (tex) { this.stage1MoonTex = tex; this.stage1Moon.texture = tex; }
   }
+  // エンディング(仮組み)の黒煙アニメ。素材は6コマ横並び(等分スライス=stage7雲アニメと同じ作法)。
+  setEndingSmokeAnim(atlas: Texture | null) {
+    if (!atlas) return;
+    const fw = Math.floor(atlas.width / ENDING_SMOKE_COLS);
+    const fh = atlas.height;
+    const frames: Texture[] = [];
+    for (let c = 0; c < ENDING_SMOKE_COLS; c++) {
+      frames.push(new Texture({ source: atlas.source, frame: new Rectangle(c * fw, 0, fw, fh) }));
+    }
+    this.endingSmokeFrames = frames;
+    for (const sp of this.endingSmokeSprites) sp.texture = frames[0];
+  }
   // 川の流れ(チュートリアル): 遠景に重ねるハイライト筋レイヤー(PixiStageが注入)。
   private riverFlowTexs: (Texture | null)[] = [null, null];
   private riverFlowSprites: TilingSprite[] = [];
@@ -6274,6 +6302,47 @@ export class PixiScene {
     }
     this.hzFixed.addChildAt(this.tutorialMist, this.hzFixed.getChildIndex(this.L.nearHorizon)); // 岩帯1の上・岩帯2の下(§6.37 v6: hzFixed内=バイアス打ち消しのみ)
     this.tutorialMist.visible = true;
+  }
+
+  // エンディング(仮組み)の黒煙: 岩間霧(tutorialMist)と同じ挿入位置(地平帯の上・近景帯の下)に
+  // 3本(既定)を独立位相の単純ループで置く。位置/本数/速度は全て叩き台(ENDING_SCENE.md★未決=
+  // 本番の演出仕様待ち)。フェード/下降波などstage7雲アニメの凝った演出は持たせない=最小実装。
+  private applyEndingSmoke(active: boolean) {
+    if (!active) {
+      if (this.endingSmokePlaced) this.endingSmokeGroup.visible = false;
+      return;
+    }
+    if (!this.endingSmokePlaced) {
+      this.endingSmokePlaced = true;
+      for (const sp of this.endingSmokeSprites) {
+        sp.anchor.set(0.5, 1); // 下端基準=地平帯から立ち上る絵
+        sp.eventMode = 'none';
+        this.endingSmokeGroup.addChild(sp);
+      }
+      this.hzFixed.addChildAt(this.endingSmokeGroup, this.hzFixed.getChildIndex(this.L.nearHorizon));
+    }
+    const ready = this.endingSmokeFrames.length === ENDING_SMOKE_COLS;
+    this.endingSmokeGroup.visible = ready;
+    if (!ready) return;
+    const farH = this.farBackdropHeight();
+    // 横帯はnearHorizonと同じズームオーバースキャン幅に広げて配る(?zoomlock=0.4でも途切れない・
+    // CLAUDE.md「ズーム引き考慮」)。位置は画面幅比の等間隔=叩き台。
+    const bandW = this.screenW * ZOOM_OVERSCAN;
+    const marginX = (bandW - this.screenW) / 2;
+    const now = Date.now();
+    for (let i = 0; i < this.endingSmokeSprites.length; i++) {
+      const sp = this.endingSmokeSprites[i];
+      const phase = i / this.endingSmokeSprites.length; // 本ごとに位相をずらす=コマが揃わない
+      const t = (((now / ENDING_SMOKE_PERIOD_MS) + phase) % 1 + 1) % 1;
+      const frameIdx = Math.min(ENDING_SMOKE_COLS - 1, Math.floor(t * ENDING_SMOKE_COLS));
+      const tex = this.endingSmokeFrames[frameIdx];
+      if (tex && sp.texture !== tex) sp.texture = tex;
+      const h = this.screenH * ENDING_SMOKE_HEIGHT_FRAC;
+      sp.scale.set(h / Math.max(1, tex?.height ?? 1));
+      sp.alpha = ENDING_SMOKE_ALPHA;
+      const xFrac = ENDING_SMOKE_X_FRACS[i % ENDING_SMOKE_X_FRACS.length];
+      sp.position.set(-marginX + bandW * xFrac, farH); // 底=地平帯の境界線(廃墟スカイラインと重ねる)
+    }
   }
 
   // 遠景森2をキー(s.nearHorizon)で出し分け。差分時にテクスチャ差し替え+再レイアウト、tint は昼夜連動。
@@ -6422,7 +6491,8 @@ export class PixiScene {
       // チュートリアル(洞窟)も同様に素材本来の明るさ(素材自体が暗所として描かれており、
       // ENV_TINTを重ねると川が読めなくなる=社長報告「そもそも川がない」v0.25.1807)。
       // それ以外(森/ラボ)は従来どおり環境の暗転tintを掛ける。
-      this.L.farBackdrop.tint = (desired === 'city' || desired === 'tutorial') ? 0xffffff : ENV_TINT;
+      // エンディング(仮組み)も同じ扱い=素材の色をそのまま出す(夕暮れ・社長指示2026-08-28)。
+      this.L.farBackdrop.tint = (desired === 'city' || desired === 'tutorial' || desired === 'ending') ? 0xffffff : ENV_TINT;
       // tileScale は resize() でしか計算されないため、差し替えテクスチャの寸法が違うと
       // 旧テクスチャ基準のスケールのまま=見た目が変わらない/崩れる。ここで再レイアウトする。
       this.layoutFarBackdrop();
@@ -6833,7 +6903,9 @@ export class PixiScene {
     const wantBloom = getBloomEnabled();
     if (wantBloom !== this.bloomActive) { this.bloomActive = wantBloom; this.rebuildWorldFilters(); }
     // 昼ステージ(正午)モード: 遠景キー 'city' の間は環境を昼へ。木tintより前に確定させる。
-    this.daylight = s.farBackdrop === 'city';
+    // エンディング(仮組み)も同じ扱い=夕暮れ素材の色をそのまま出す(ENV_TINTの夜暗転を掛けない・
+    // 社長指示2026-08-28「tutorial/cityと同じ扱い」)。
+    this.daylight = s.farBackdrop === 'city' || s.farBackdrop === 'ending';
     this.snowStage = s.farBackdrop === 'snow';
     this.battlefieldStage = s.farBackdrop === 'stage5';
     this.stage5Stage = s.farBackdrop === 'stage5';
@@ -6847,6 +6919,7 @@ export class PixiScene {
     }
     this.applyNearHorizon(s.nearHorizon); // 遠景森2(ステージ別)
     this.applyTutorialFrontFog(this.currentFarKey === 'tutorial'); // 手前霧のz移設(チュートリアルのみ)
+    this.applyEndingSmoke(this.currentFarKey === 'ending'); // 黒煙アニメ(エンディング仮組みのみ・叩き台)
     this.applyDaylight(this.daylight);
     // ステージ4(snow)の地面だけ夜tintより少し明るく(社長指示v0.25.1997)。森/前景/他ステージは触らない。
     // applyDaylightのguard(day↔nightの変化時のみ)に依存せず毎フレーム確定=同値ならno-op(tint比較で早期スキップ)。?snowground=で調整(0.62=他ステージ夜と同値)。
@@ -8466,7 +8539,8 @@ export class PixiScene {
 
   private syncCastle(castle: CastleEvent, now: number) {
     // チュートリアルは城(構造物)そのものを出さない(社長指示v0.25.1822「何もかも無し」・報告「ボス城がのこってる」)。
-    if (useGameStore.getState().farBackdrop === 'tutorial') {
+    // エンディング(仮組み)も同様=見せるだけのステージにボス城のランドマークは不要(ENDING_SCENE.md)。
+    if (useGameStore.getState().farBackdrop === 'tutorial' || useGameStore.getState().farBackdrop === 'ending') {
       this.castleView.visible = false;
       this.castleShadow = null;
       return;

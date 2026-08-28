@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4029',
+    items: [
+      'ゲーム内容の変更はありません(開発内部: エンディングステージの仮組み。?ending=1 で確認可)。',
+    ],
+  },
+  {
     version: '0.25.4028',
     items: [
       'ゲーム内容の変更はありません(開発内部: エンディングシーン用の前景バンド素材の取込)。',

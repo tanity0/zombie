@@ -584,6 +584,36 @@ export const STAGES: Stage[] = [
       ],
     },
   },
+  {
+    // エンディングシーン(仮組み・社長指示2026-08-28「エンディングシーン作ります。まずステージから
+    // (見せるだけのステージ)。横長で、チュートリアルステージみたいな構造。戦場です」)。
+    // 見せるだけ=敵0・湧き0・イベント0・NPC0・目的なし=プレイヤーが歩けるだけ(ENDING_SCENE.md)。
+    // ★未決(ENDING_SCENE.md): 本番の入り口(勝利後遷移か等)は今回のスコープ外。開発用の直行
+    // パラメータ `?ending=1` だけを用意する(App.tsx参照)。演出(登場人物/カメラ/尺/音)も★未決のまま。
+    id: 'stage-ending',
+    index: 200,
+    kind: 'ex', // hidden:trueと組み合わせてミッション一覧に一切出さない(stage-ex2と同じ作法)。
+    name: 'エンディング(仮)',
+    area: '戦場跡 / 見せるだけ',
+    unlockBy: null,
+    hidden: true, // 社長指示2026-08-28: ミッション一覧には出さない(開発用の直行パラメータ経由のみ)。
+    day: 99,
+    time: '--:--',
+    timeLabel: '(開発用)', // 正史外・叩き台
+    locationTitle: '戦場跡地',
+    farBackdrop: 'ending', // 遠景/地面/地平帯/近景/前景=社長支給5点(+黒煙アニメ)。pixiScene.ts参照
+    nearHorizon: 'ending',
+    subs: [],
+    main: {
+      code: 'ENDING',
+      title: 'エンディング(仮組み)',
+      summary: '開発用: 見せるだけのステージ。目的なし。',
+      synopsis: [],
+      briefing: [],
+      debrief: [],
+      dialogue: [],
+    },
+  },
 ];
 
 export const getStage = (id: string): Stage | undefined => STAGES.find(s => s.id === id);

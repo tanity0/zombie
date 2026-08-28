@@ -1,5 +1,33 @@
 # Development Log
 
+## v0.25.4029 — エンディングステージ 仮組み+直行パラメータ 【2026-08-29 03:21 JST】
+
+社長指示2026-08-28「エンディングシーン作ります。まずステージから(見せるだけのステージ)」を実装。
+中身=**プレイヤーが歩けるだけ**(敵0・湧き0・イベント0・NPC0・目的なし。HUDは現行のまま)。
+
+- **素材配線**: 社長支給5点(遠景/地面/地平帯/近景/前景)+黒煙アニメ(`ending-smoke-anim.png`・
+  6コマ横並び・今回受領)を `stageTextures.ts`→`PixiStage.tsx`→`pixiScene.ts` の既存パイプラインへ
+  farBackdropキー`'ending'`で注入。出撃ステージが`stage-ending`の時だけロードされる(既存の
+  `neededStageTextures` の仕組みに乗せただけ)。夜のENV_TINT暗転はcity同様に外し、夕暮れ素材の色を
+  そのまま出す。ボス城の構造物(syncCastle)はtutorial同様に出さない。
+- **黒煙アニメ(仮配線)**: `setEndingSmokeAnim`+`applyEndingSmoke`をpixiScene.tsに新設。
+  stage7雲アニメと同じ等分スライスで6コマを切り出し、地平帯の上に3本を位相ずらしの単純ループで
+  再生(フェード/下降波なし=最小実装・本数/位置/速度は叩き台コメント付き)。
+- **ステージ定義**: `campaign.ts` に `stage-ending`(`kind:'ex'`+`hidden:true`=stage-ex2と同じ作法で
+  ミッション一覧に非掲載)。横長の移動可能帯は `world/playableArea.ts` のM0クランプ(±100px)へ相乗り。
+- **敵/湧き/イベント/NPCの全停止**: `useGameLoop.ts` に `endingStage` を新設し、`tutorialStage` が
+  既に持つ抑止ゲート(通常湧き2経路・城ボス・囲い/紅き夜・ハンター・死神・賞金首・叫喚型・弾薬
+  エアドロップ・武器箱補給)へ全て相乗り(専用ゲート新設ではなく既存の網羅的な消去法に従った)。
+  `gameStore.ts` の護衛NPC(escortRoster)・寄り道POI(病院/武器庫/警察署・detourVisible)・4拠点
+  (baseSites)・木/松明/緑卵も同様に空にした。
+- **直行パラメータ `?ending=1`**: `App.tsx` に既存 `?smoke=1&stage=<id>` と同型の起動用useEffectを
+  追加(タイトル/メニュー全skip→即出撃)。本番の入り口(勝利後遷移等)は未接続=★未決のまま
+  (ENDING_SCENE.md参照)。
+- 検証: `npm run typecheck`(0エラー)・`npm run lint`(0エラー・既存警告9件のみ=新規エラーなし)・
+  `npx vitest run src/utils/constitution.test.ts`(13件green)。
+- 状態変化: エンディングシーン → **仮組み着地(`?ending=1`で確認可)・演出仕様待ち**(次=本番入り口の
+  導線設計・登場人物/カメラ/尺/BGM・黒煙アニメの作り込み)。
+
 ## v0.25.4028 — エンディングシーン: 前景バンド 受領・取込(偽透過の市松を除去) 【2026-08-29 03:01 JST】
 
 社長支給の前景バンド(折れ梁・金網・有刺鉄線・1918×820)は**市松模様が絵として焼き込まれた偽透過(RGB)**

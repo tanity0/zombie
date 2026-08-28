@@ -262,7 +262,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       };
       void (async () => {
         // 注意: 分割代入の並びは SORTIE_STAGE_TEXTURE_PATHS の並びと1:1対応(位置結合)。追加時は両方を同順で。
-        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s2Front, s2Front2, s2FarGlass, s2FarFrame, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground, tutFar, tutGround, tutFlow1, tutFlow2, tutRocks, tutNearRocks, tutFrontRocks, s7Far, s7Clouds, s1Sky, s1Castle, s1Moon] =
+        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s2Front, s2Front2, s2FarGlass, s2FarFrame, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground, tutFar, tutGround, tutFlow1, tutFlow2, tutRocks, tutNearRocks, tutFrontRocks, endFar, endGround, endHorizon, endNear, endFront, endSmoke, s7Far, s7Clouds, s1Sky, s1Castle, s1Moon] =
           await Promise.all(SORTIE_STAGE_TEXTURE_PATHS.map(load));
         if (cancelled || sceneRef.current !== scene) return;
         scene.setLabGroundTexture(labGround);            // 研究所スキンの床
@@ -297,6 +297,13 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
         scene.setHorizonOverride('snow', s4Horizon);     // 地平帯(遠景森1): 氷壁帯(ステージ4・下フェード)
         scene.setHorizonOverride('stage5', s5Horizon);   // 地平帯(遠景森1): 城塞の壁(ステージ5・社長提供)
         scene.setHorizonOverride('tutorial', tutRocks);  // 地平帯(遠景森1): 岩帯(チュートリアル・川に頭が少し被る配置)
+        // エンディング(仮組み・社長指示2026-08-28「見せるだけのステージ」・ENDING_SCENE.md)。
+        scene.setFarBackdropTexture('ending', endFar);   // 遠景=戦場パノラマ(社長提供)
+        scene.setGroundOverride('ending', endGround);    // 地面=焦土+熾火
+        scene.setHorizonOverride('ending', endHorizon);  // 地平帯=廃墟スカイライン
+        scene.setNearHorizonTexture('ending', endNear);  // 近景帯=瓦礫・焼けた車
+        scene.setFrontOverride('ending', endFront);      // 前景帯(最前面)=折れ梁・金網
+        scene.setEndingSmokeAnim(endSmoke);              // 黒煙アニメ(6コマ横並び・社長提供2026-08-28)
         // ステージ6(洋館通路): 通路テクスチャもローディング解除の条件に含める(v0.25.2122・
         // 社長報告「ローディング終わっても画像が読み込み終わってない」対策)。corridorModeはresetGame済み。
         if (useGameStore.getState().corridorMode) {

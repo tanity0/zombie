@@ -2476,6 +2476,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 通常湧き/コマ盤面/囲い・関所発火/城ボス/ハンター/叫喚型/死神/紅き夜を全て止める。
         // (farBackdrop==='tutorial' をrun識別に使うのは setTreesDisabled と同じ既存慣例。)
         const tutorialStage = loopState.farBackdrop === 'tutorial';
+        // エンディング(仮組み・社長指示2026-08-28「見せるだけのステージ」・ENDING_SCENE.md):
+        // 敵0・湧き0・イベント0=歩けるだけ。tutorialStageが揃えている「通常湧き/城ボス/囲い/
+        // 紅き夜/ハンター/死神/賞金首/叫喚型/アイテム空投/武器箱補給」の全抑止に相乗りする
+        // (専用ゲートを作らず既存の網羅的な消去法へ従う=CLAUDE.md実装精度の規律7)。
+        const endingStage = loopState.farBackdrop === 'ending';
         // 洋館(ステージ6)の走り込み入場中は敵を一切湧かせない(社長裁定v0.25.2789・案A)。
         // 走り込み中は isInputLocked(corridorRunInActive) で操作を奪っている一方、
         // isGameTimeStopped() には入らない=シミュレーションは走り続ける。さらに通路は
@@ -2822,14 +2827,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ★社長指示2026-08-26「(ボスモードに)ほかにもあれば撤去して」: 練習ラン(ボスモード)は
         // 台本パズル/イベント(囲い・紅き月・叫喚・イベント関所・退屈アリーナ)を丸ごと止める。
         // ボスモードは「1体と戦うだけ」の場(湧きはv2452のnoSpawnで既に停止済み=これはイベント側の親ゲート)。
-        const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && !isPracticeRun() && phaseAt(newGameTime).kind !== 'boss';
+        const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && !endingStage && !isPracticeRun() && phaseAt(newGameTime).kind !== 'boss';
         // §5.21追補(社長報告v0.25.1848「ゲート1、クリアしなくても奥に行けちゃう」の修正):
         // ゲート(境界囲い1/2)の発火は地理トリガー(境界踏破)なので、コマ/フェーズ表とは無関係に働く。
         // 旧実装は puzzleActiveNow(=フェーズ表がboss扱いの7:00-7:30はfalse)でゲートしていたため、
         // その時間帯に境界を跨ぐと発火が丸ごと止まり素通りできた(実測再現)。城ボスは城の固定位置・
         // ゲートは境界=地理的に重ならないため、実戦闘との排他は不要。フェーズ条件だけ外した版を使う。
         // PACING_PUZZLE.md §10-14#4(解放): 同上=storyBoss=falseで自然に解放(中盤スリィエルのゲート発火に必須)。
-        const gateFireOk = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage;
+        const gateFireOk = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && !endingStage;
 
         const castle = useGameStore.getState().castleEvent;
         // 城のフィナーレボス: 城に近づくと魔法陣の演出(錬金と同じ=magic-circle)で giantbat が出現(社長指示)。
@@ -2848,7 +2853,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         })();
         // PACING_PUZZLE.md §10-14#4(維持=storyBoss || isExStageRun): EXは城ボス(giantbat)の対象外
         // (最奥ボスはphillboss。城ボスの5分湧きイベントとphillbossを混在させない=旧EXボス廃止と同じ理由)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && (!noSpawn || practiceWantsCastleBoss()) && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady && !castleSpawnLocked) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && (!noSpawn || practiceWantsCastleBoss()) && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady && !castleSpawnLocked) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
@@ -3342,7 +3347,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // PACING_PUZZLE.md §10-14#4(維持): EXは連戦の圧を絞る(社長指摘「スリィエルの後の連戦なので
         // そこだけ注意」・§10-6)。囲い系イベント(強制アリーナ/ミニボス/救助/卵)は側イベントとして
         // 出さない=既定を維持。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !noSpawn) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn) {
           // PACING_PUZZLE.md §5.21-追補5(社長決定v0.25.1555): ゲート発火待ちが立っていて、かつ城ボス
           // 以外のイベント(レスキュー/退屈囲い=kind 'rescue'|'horde')が進行中なら、それを強制解除して
           // ゲートを発火可能にする(「ゲート>他イベント」の優先を発火時に効かせる)。城ボスは PHASE
@@ -3874,7 +3879,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 拠点近接 or 商人に話しかけると「やり過ごした」で即脱出(商人側は performAttack 内で処理)。
         // PACING_PUZZLE.md §10-14#4(維持): 紅き夜(時間経過の全体強化イベント)はEXでも出さない
         // (連戦バランスを守る側イベント抑止・既定は維持側)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !noSpawn) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn) {
           const rnGs = useGameStore.getState();
           const rn = rnGs.redNight;
 
@@ -4099,7 +4104,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // コントローラごと停止=死神をlabで止めるのと同じ扱い)。ストーリーボス専用ラン(M7)も出さない。
         // PACING_PUZZLE.md §10-14#4(維持): EXはstoryBossOnlyを廃止したが、この抑止の対象としては
         // 維持する(既存コメントが名指ししていた「M7/EX」の意図をisExStageRun()で引き継ぐ)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !noSpawn) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn) {
           const H = hunterRef.current;
           const hs = useGameStore.getState();
           const hpx = hs.player.x + hs.player.width / 2;
@@ -4378,7 +4383,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 忍び込むステージで画面外から通常敵を一斉強化されるのは設計と噛み合わないため止める。
         // PACING_PUZZLE.md §10-20#9(社長指示「このステージは雑魚敵も封鎖」): EXは通常湧きなし・
         // 死神なし。場に出る敵はスリィエル/フィル/フィルの召喚のみ=この叫喚型ディレクターも対象外。
-        if (!danceTest && !indoor && !labTheme && !puzzleActiveNow && !noSpawn && !isExStageRun()) {
+        if (!danceTest && !indoor && !labTheme && !puzzleActiveNow && !noSpawn && !isExStageRun() && !endingStage) {
           const sS = useGameStore.getState();
           const aliveScreamer = sS.enemies.some(e => e.type === 'screamer');
           const sCinematic = sS.bossChasing || !!sS.attention || sS.redNight?.phase === 'active'
@@ -4474,7 +4479,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 6は小ボス無し」)。本編S6は既存の corridorMode ゲートで既に塞がっているので、この台帳ゲートが
         // 実際に効くのは**S6の再訪/フリー周回**。出現位置・演出はspawnBountyEncounter共用。
         // PACING_PUZZLE.md §10-14#4(維持): 賞金首の自然湧きもEXでは止める(側イベント抑止)。
-        if (!danceTest && !indoor && !storyBoss && !isExStageRun() && !tutorialStage && !noSpawn) {
+        if (!danceTest && !indoor && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn) {
           const bgs = useGameStore.getState();
           const bountyAliveNow = bgs.enemies.some(e => isBountyType(e.type));
           const bAreaForGate = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
@@ -4914,7 +4919,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // v0.25.2130の「死神なし」裁定を撤回。ゴール設置済みなので時間切れの圧として死神を使う)。
         // 区域バナー/壁踏破/ゲート予約は下の内側ゲート(!corridorMode)が引き続きスキップする。
         // PACING_PUZZLE.md §10-14#4(維持): 死神(深奥リスク)もEXでは出さない(側イベント抑止)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !noSpawn) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn) {
           const rs = reaperRef.current;
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
@@ -13705,6 +13710,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           !storyBoss && // ストーリーボス専用ラン(M7)は通常湧きなし(統合正本10.3)
           !isExStageRun() && // §10-20#9: EXも通常湧きなし(スリィエル/フィル/フィルの召喚のみ)
           !tutorialStage && // チュートリアルは自動湧きなし(イベント湧きのみ予定・社長指示)
+          !endingStage && // エンディング(仮組み)も自動湧きなし(ENDING_SCENE.md)
           !confining &&
           !bossChasingNow && // 裏ボスが画面内で追跡中だけ通常湧きを止める(非追跡=画面外/帰巣中は湧く・社長指摘)
           !puzzleActiveNow &&
@@ -13900,7 +13906,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             (p.type === 'ammo-handgun' || p.type === 'ammo-shotgun' || p.type === 'ammo-rifle')
         ).length;
         const airdropTick = shouldSpawnAirdrop({
-          tutorialStage, // チュートリアルはアイテム(弾薬エアドロップ)も無し(社長指示v0.25.1818)
+          tutorialStage: tutorialStage || endingStage, // チュートリアル/エンディング(仮組み)はアイテム(弾薬エアドロップ)も無し(社長指示v0.25.1818・ENDING_SCENE.md)
           knifeMaster: hasSkill(useGameStore.getState().player, 'knife-master'), // ナイフマスターは弾薬ドロップ0%(社長指示)
           gameTime,
           worldAmmoCount,
@@ -13940,7 +13946,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const CRATE_UNLOCK_TIMES = [50000, 140000, 180000];
         const CRATE_FORCE_AFTER_MS = 60000;
         if (
-          !tutorialStage && // チュートリアルはアイテム(武器箱の定期投下)も無し(社長指示v0.25.1818)
+          !tutorialStage && !endingStage && // チュートリアル/エンディング(仮組み)はアイテム(武器箱の定期投下)も無し(社長指示v0.25.1818・ENDING_SCENE.md)
           cratesDroppedRef.current < CRATE_UNLOCK_TIMES.length &&
           gameTime >= CRATE_UNLOCK_TIMES[cratesDroppedRef.current] &&
           (curPhase.kind === 'buildup' ||

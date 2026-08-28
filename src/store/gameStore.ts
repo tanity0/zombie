@@ -17812,12 +17812,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ボスメーカーの部屋(BOSS_MAKER.md §1-1)は**壁なし・障害物なし・ボス1体だけ**。木が残っていると
       // 弾が木に当たって消える/ボスが引っかかる/方眼が読めない、で数字を詰める邪魔になる(社長指示v0.25.2628)。
       const bossMakerRoom = isBossMakerRun() && !state.danceTestMode;
-      setTreesDisabled(farBackdrop === 'stage5' || farBackdrop === 'tutorial' || corridorMode || bossMakerRoom);
+      // エンディング(仮組み)も同じ扱い=見せるだけのステージに木/松明/緑卵は不要(ENDING_SCENE.md)。
+      setTreesDisabled(farBackdrop === 'stage5' || farBackdrop === 'tutorial' || farBackdrop === 'ending' || corridorMode || bossMakerRoom);
       // チュートリアル: 松明(破壊可能プロップ=資材ドロップ源)も出さない(社長指示v0.25.1818
       // 「アイテムも通常NPCも何もかも無し。全てイベントで特別仕様のみ」)。
-      setTorchesDisabled(farBackdrop === 'tutorial' || corridorMode || bossMakerRoom);
+      setTorchesDisabled(farBackdrop === 'tutorial' || farBackdrop === 'ending' || corridorMode || bossMakerRoom);
       // チュートリアル: 緑卵(地雷)のワールド生成も出さない(社長指示v0.25.1820「緑卵も非表示」)。
-      setMinesDisabled(farBackdrop === 'tutorial' || corridorMode || bossMakerRoom);
+      setMinesDisabled(farBackdrop === 'tutorial' || farBackdrop === 'ending' || corridorMode || bossMakerRoom);
       // 飾りの花(判定なし・だが128pxの大きな絵)も部屋では出さない=画面にはプレイヤーとボスだけ。
       setFlowersDisabled(bossMakerRoom);
       // 洋館通路の湧き方向ゲート(上=奥 主体・左右は湧かせない)。generateEnemy が参照(新規/リサイクル両方)。
@@ -17840,7 +17841,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 屋外・森スキン・通路/ダンステストでない)にだけ立つ。3種の位置は、裏ボスのセクターを除いた
       // 残り3セクターへ毎ランランダムに割り当てる(assignDetourSectors。乱数はここで1度だけ引く=
       // hospital.ts/armory.ts/police.ts の各 *Pos はその結果を受け取るだけの純関数)。
-      const detourVisible = !state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode && !bossMakerRoom;
+      // エンディング(仮組み)は寄り道POI(病院/武器庫/警察署)も出さない=NPC0(ENDING_SCENE.md)。
+      const detourVisible = !state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode && !bossMakerRoom && farBackdrop !== 'ending';
       const detourSectors = detourVisible ? assignDetourSectors(bossSectorIndex(hiddenBoss)) : null;
       const spawnTL = indoor
         ? { x: LAB_PLAYER_SPAWN.x - PLAYER_HITBOX / 2, y: LAB_PLAYER_SPAWN.y - PLAYER_HITBOX / 2 }
@@ -17976,7 +17978,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // PACING_PUZZLE.md §10-20#1(★監査#1): corridor化だけではNPCは消えない(護衛4人の抑止は
       // pendingStoryBossのみ・EXはstoryBossOnlyを既に廃止済みでpendingStoryBossが立たない)。
       // EX専用分岐として明示的に除外する(社長裁定「景色全体が違う。NPCも居ちゃってる」)。
-      const escortRoster = (indoor || stageTheme === 'lab' || state.pendingStoryBoss || BOSS_TEST_RUN || isPracticeRun() || (corridorMode && isExStageRun())) ? []
+      // エンディング(仮組み)も護衛NPCを出さない=NPC0(見せるだけのステージ・ENDING_SCENE.md)。
+      const escortRoster = (indoor || stageTheme === 'lab' || state.pendingStoryBoss || BOSS_TEST_RUN || isPracticeRun() || (corridorMode && isExStageRun()) || farBackdrop === 'ending') ? []
         : farBackdrop === 'tutorial' ? makeTutorialCompanions(spawnTL.x, spawnTL.y)
         : makeEscorts(spawnTL.x, spawnTL.y, corridorMode);
       const sortieEsc = (escortRoster.length && farBackdrop !== 'tutorial') ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
@@ -18240,7 +18243,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 洋館通路は拠点なし(v0.25.2128)。**訓練(M0)も拠点なし**(社長報告v0.25.2313
         // 「チュートリアルステージに拠点サークルぽいのがある、削除」)。制圧イベント自体は
         // v0.25.1818で止めていたが、**サークルの実体(baseSites)は作られたままで描画されていた**。
-        baseSites: (corridorMode || farBackdrop === 'tutorial') ? [] : createBaseSites(),
+        baseSites: (corridorMode || farBackdrop === 'tutorial' || farBackdrop === 'ending') ? [] : createBaseSites(),
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
         escorts: escortRoster,
         // 出撃時セリフ: 屋外(護衛NPCが居る出撃)のみ、実ロスターの1人をランダムで予約(フェイザー等の差し替えにも追従)。

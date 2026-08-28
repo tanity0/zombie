@@ -39,6 +39,12 @@ export const SORTIE_STAGE_TEXTURE_PATHS = [
   'backgrounds/tutorial-horizon-rocks.png',
   'backgrounds/tutorial-near-rocks.png',
   'backgrounds/tutorial-front-rocks.png',
+  'backgrounds/ending-far-battlefield.jpg', // エンディング(仮組み)の遠景=戦場パノラマ(社長提供2026-08-28)
+  'backgrounds/ending-ground.jpg', // エンディングの地面(焦土+熾火)
+  'backgrounds/ending-horizon-ruins.png', // エンディングの地平帯(廃墟スカイライン)
+  'backgrounds/ending-near-rubble.png', // エンディングの近景帯(瓦礫・焼けた車)
+  'backgrounds/ending-front-rubble.png', // エンディングの前景帯(折れ梁・金網。最前面)
+  'backgrounds/ending-smoke-anim.png', // エンディングの黒煙アニメ(6コマ横並び・社長提供2026-08-28)
   'backgrounds/stage7-far.jpg', // M7の遠景(星雲・社長提供v0.25.1907)
   'backgrounds/stage7-clouds-anim.png', // M7の遠景に重ねる雲=6コマアニメアトラス(クロマキー60%・社長提供v0.25.1913)
   'backgrounds/stage1-sky-anim.jpg', // M1の遠景=星空6コマアニメ(縦1列×6行・社長提供v0.25.1931)
@@ -63,6 +69,8 @@ const STAGE_TEXTURE_GROUPS: Record<string, readonly SortieTexturePath[]> = {
   stage5: ['backgrounds/stage5-far.jpg', 'backgrounds/stage5-horizon.png', 'backgrounds/stage5-near-horizon.png', 'backgrounds/stage5-front.png', 'backgrounds/stage5-ground.jpg'],
   tutorial: ['backgrounds/tutorial-far.jpg', 'backgrounds/tutorial-ground.jpg', 'sprites/tutorial-river-flow-1.png', 'sprites/tutorial-river-flow-2.png', 'backgrounds/tutorial-horizon-rocks.png', 'backgrounds/tutorial-near-rocks.png', 'backgrounds/tutorial-front-rocks.png'],
   stage7: ['backgrounds/stage7-far.jpg', 'backgrounds/stage7-clouds-anim.png'],
+  // エンディング(仮組み・社長指示2026-08-28): 見せるだけステージ。ENDING_SCENE.md参照。
+  ending: ['backgrounds/ending-far-battlefield.jpg', 'backgrounds/ending-ground.jpg', 'backgrounds/ending-horizon-ruins.png', 'backgrounds/ending-near-rubble.png', 'backgrounds/ending-front-rubble.png', 'backgrounds/ending-smoke-anim.png'],
 };
 // 遠景森2(近景帯)はミッション個別キー(campaign の nearHorizon)で、farBackdrop とは独立に
 // グループを跨げる(例: M7=stage7遠景+『forest』の森シルエット・v0.25.1905)。キー→素材で直引き。
@@ -72,6 +80,7 @@ const NEAR_HORIZON_TEXTURES: Record<string, SortieTexturePath> = {
   lab: 'backgrounds/stage2-near-horizon2.png',
   stage5: 'backgrounds/stage5-near-horizon.png',
   tutorial: 'backgrounds/tutorial-near-rocks.png',
+  ending: 'backgrounds/ending-near-rubble.png', // エンディング(仮組み)の近景帯(ENDING_SCENE.md)
 };
 // キー(テーマ/遠景/遠景森2)から必要な素材集合を作る本体。出撃時(ストア)からも、出撃前の先読み
 // (ステージ定義)からも同じ規則で引けるように切り出してある。

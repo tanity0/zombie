@@ -92,6 +92,8 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   const preloadPromiseRef = useRef<Promise<void> | null>(null);
   const pendingBenchmarkRef = useRef(false);
   const smokeHandledRef = useRef(false);
+  // エンディングステージ(仮組み・社長指示2026-08-28)への直行パラメータ用ハンドル済みフラグ。
+  const endingStageParamHandledRef = useRef(false);
   // the ONE 通常エンディング(統合正本7章): M7(stage-7)勝利後、リザルトから「メニューに戻る」で
   // 聴取記録エンディングを挟む予約。出撃(startGame)でクリア=古い予約を持ち越さない。
   const pendingEndingRef = useRef(false);
@@ -310,6 +312,20 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     // 掛かっているモードはタイトルの現在モード表示(v0.25.2580)で見えるので、消す必要が無い。
     // ?retry=1(ボス戦テストメニュー用): 開始時会話をスキップ(GOの「もう一度プレイ」と同じ扱い)。
     void startGame(params.get('class') ?? 'warrior', benchmark, params.get('retry') === '1');
+  }, []);
+
+  // ★エンディングステージ(仮組み・社長指示2026-08-28)への直行パラメータ。`?ending=1`があれば
+  // タイトル/メニューを全スキップし、stage-ending(見せるだけ=敵0・湧き0・イベント0・NPC0)へ直接
+  // 出撃する。開発用のみ(本番の入り口=勝利後遷移等は★未決のまま・ENDING_SCENE.md)。
+  // ?smoke=1&stage=stage-ending でも同じ場所へ行けるが、覚えやすい専用ツマミとして別に用意する
+  // (?smoke系の作法=タイトル/メニュー全スキップ+直接startGameに同型で乗せる)。
+  useEffect(() => {
+    if (endingStageParamHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('ending') !== '1') return;
+    endingStageParamHandledRef.current = true;
+    setSelectedStageId('stage-ending');
+    void startGame(params.get('class') ?? 'warrior', false, params.get('retry') === '1');
   }, []);
 
   /**

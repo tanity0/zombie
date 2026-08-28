@@ -81,9 +81,11 @@ export const clampRectToPlayableArea = (
 ): { x: number; y: number } => {
   let nx = x;
   let ny = y;
-  // チュートリアル: 上下移動は中心(スポーンy=0)から±100pxまで。左はスタートから−100pxまで。
-  // 右は自由(帰還サークルへ進む)。台本の都合で作る「ここまで」の透明壁(m0AdvanceLimitX)も併せて適用。
-  if (ctx.farBackdrop === 'tutorial') {
+  // チュートリアル/エンディング(仮組み・社長指示2026-08-28「チュートリアルステージみたいな構造」・
+  // ENDING_SCENE.md): 上下移動は中心(スポーンy=0)から±100pxまで。左はスタートから−100pxまで。
+  // 右は自由。台本の前進壁(m0AdvanceLimitX)はチュートリアル台本専用の値なので、エンディングでは
+  // 誰も pendingM0 相当をセットしない=ctx.m0AdvanceLimitXが常にnullで自然に無効(壁は出ない)。
+  if (ctx.farBackdrop === 'tutorial' || ctx.farBackdrop === 'ending') {
     const half = h / 2;
     ny = Math.max(-TUTORIAL_MOVE_Y_LIMIT_PX - half, Math.min(TUTORIAL_MOVE_Y_LIMIT_PX - half, ny));
     nx = Math.max(TUTORIAL_MOVE_X_MIN_PX - w / 2, nx);
