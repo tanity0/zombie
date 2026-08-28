@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4031',
+    items: [
+      'ゲーム内容の変更はありません(開発内部: エンディング用「倒れている兵士」素材の取込)。',
+    ],
+  },
+  {
     version: '0.25.4030',
     items: [
       'ゲーム内容の変更はありません(開発内部: エンディング用フィルの歩行・救護アニメ素材の取込)。',
