@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4025',
+    items: [
+      'ゲーム内容の変更はありません(開発内部: エンディングシーン用の地面素材の取込)。',
+    ],
+  },
+  {
     version: '0.25.4024',
     items: [
       'ゲーム内容の変更はありません(開発内部: エンディングシーン用の遠景素材の取込と設計書の新設)。',
