@@ -14262,9 +14262,10 @@ export class PixiScene {
     const fx0 = k2.ex, fy0 = k2.ey - k2.eh * 0.15;
     const fx1 = k2.px, fy1 = k2.py - k2.eh * 0.05;
     figure.position.set(fx0 + (fx1 - fx0) * ease, fy0 + (fy1 - fy0) * ease);
-    const faceLeft = k2.ex > k2.px;
-    figure.rotation = (faceLeft ? -1 : 1) * ease * 0.55;
-    const squash = 1 - 0.35 * ease;
+    // ★社長指示2026-08-28「へんに曲げないで。ゆっくり被さるだけ。歪ませない」:
+    // 回転(±0.55rad)と扁平化(squash 0.35)を全廃。姿はそのまま、ゆっくり並進して重なるだけ。
+    figure.rotation = 0;
+    const squash = 1;
     // ★確認検収(A-4r): 旧実装は生の e.width/height(=判定ボックス)に containScale をそのまま
     // 掛けていたが、本体描画(15534行付近drawEnemy)は enemyFootBox() が返す**描画用に拡大済みの箱**
     // (e.width × ENEMY_VISUAL_SCALE[type] × ENEMY_SIZE_MULT)に containScale を掛けたうえで、

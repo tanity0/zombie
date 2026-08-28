@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4022',
+    items: [
+      '使者に捕まった時の覆いかぶさりから、体の回転・潰れをなくしました(姿のままゆっくり被さるだけ)。',
+    ],
+  },
+  {
     version: '0.25.4021',
     items: [
       '死神「礼賛」の動きを調整: 歩かず浮いて移動し、呼吸がかなりゆっくりになりました(終端存在の静かな威圧)。',
