@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4021',
+    items: [
+      '死神「礼賛」の動きを調整: 歩かず浮いて移動し、呼吸がかなりゆっくりになりました(終端存在の静かな威圧)。',
+    ],
+  },
+  {
     version: '0.25.4020',
     items: [
       '画面最上部の戦況ラインを、上から0pxの1本の細い線に一新しました。ランクに応じて中央から左右へ伸び、両端はふわっと透けて消えます。',

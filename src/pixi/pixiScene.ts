@@ -20540,7 +20540,10 @@ export class PixiScene {
     // PACING_PUZZLE.md §9-7#1(pixiSceneの疑似呼吸): driller はpumpkinと同格。
     const heavy = isPumpkinTier(e.type) || e.type === 'giantbat' || isReaperFamily(e.type) || e.type === 'hunter' || isHiddenBoss(e.type);
     const amp = heavy ? 0.65 : 1;
-    const phase = now / ENEMY_BREATH_MS * Math.PI * 2 + stablePhase(e.id);
+    // 礼賛(新死神本体)は呼吸をかなりゆっくり(社長指示2026-08-28「呼吸モーションかなりゆっくりにして」。
+    // 周期3倍=4500ms・叩き台。使者(hangedman)は従来周期のまま)。
+    const breathMs = e.type === 'reaper' ? ENEMY_BREATH_MS * 3 : ENEMY_BREATH_MS;
+    const phase = now / breathMs * Math.PI * 2 + stablePhase(e.id);
     const inhale = Math.sin(phase);
     const secondary = Math.sin(phase * 2 + 0.7) * 0.28;
     const wave = inhale * 0.72 + secondary;

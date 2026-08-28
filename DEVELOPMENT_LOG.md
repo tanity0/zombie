@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.4021 — 礼賛の浮遊化+呼吸スロー(社長指示・設計チャット直実装) 【2026-08-29 02:29 JST】
+
+社長指示2026-08-28「礼賛は呼吸モーションかなりゆっくりにして。歩く感じでは無い。浮いて移動する。」
+- enemyMotion.ts: reaper行を heavy(重い踏みしめ=旧チェーンソー絵の値)→ **hover**(常時浮遊ゆらぎ・
+  bobPx3.2/strideHz0.32=ghost/hangedmanよりゆっくり大きく・叩き台)。旧値はlogger(伐採人)行が継承済み。
+- pixiScene.ts enemyBreath: type==='reaper' のみ呼吸周期を3倍(1500→4500ms・叩き台)。使者は従来周期。
+- 視覚のみ=判定・移動速度・storeは不変。typecheck 0・lintエラー0・enemyMotion.test 10 green。
+- 状態変化: 礼賛モーション調整 → 着地(残り: 社長実機確認)。
+
 ## v0.25.4020 — UI刷新: プレイ中HUD先行バッチ(§1戦況ライン+§2ワインHP・実装チャット・Sonnet) 【2026-08-29 02:16 JST】
 
 UI_OVERHAUL.md(HEAD=ec94a3e・着手前監査A-1〜A-8反映済み)の先行バッチ(社長指示「取り急ぎ、

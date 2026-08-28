@@ -73,8 +73,11 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   // giantbat=城ボス。**唯一ステージ別絵が残る型**なので動きもステージ別(下の
   // GIANTBAT_MOTION_BY_BACKDROP)。この行は既定=ステージ1(馬ぐるま)/3(四足獣)の這い。
   giantbat: { kind: 'crawl', bobPx: 1.6, rockRad: 0.035, sqAmp: 0.035, strideHz: 1.8, uneven: 0.55, faceMove: false },
-  // reaper=チェーンソーを掲げた襤褸外套(v0.25.2901)。裾を引きずって歩く=重い踏みしめ(正面絵)。
-  reaper: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.1, uneven: 0.20, faceMove: false },
+  // reaper=新死神「礼賛」(白い吊り女神・reaper2-common)。社長指示2026-08-28
+  // 「歩く感じでは無い。浮いて移動する」——重い踏みしめ(旧絵の値)をやめ、常時の浮遊ゆらぎへ
+  // (ghost/hangedmanと同族・さらにゆっくり大きく=終端存在の静かな威圧。数値は叩き台)。
+  // ※旧チェーンソー絵の「裾を引きずる歩き」の値は下のlogger(伐採人)行が継承している。
+  reaper: { kind: 'hover', bobPx: 3.2, rockRad: 0.010, sqAmp: 0, strideHz: 0.32, uneven: 0, faceMove: false },
   // ★検収監査の補修(v0.25.4009・群3項目10): PACING_PUZZLE.md §14-2(伐採人・logger)は本体絵を
   // reaper-common.png(=上のreaper行と全く同じ絵)そのまま流用しているのに、この表に行が無く
   // 未登録の雑魚の既定(MOT_HOBBLER=直立ゆったり千鳥足)へ落ちていた=強個体(pumpkinTier)の
