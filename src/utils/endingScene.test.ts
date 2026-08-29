@@ -236,25 +236,42 @@ describe('endingScene — 爆撃(ENDING_SCENE.md 演出仕様v3.1)', () => {
     return { ...s, y };
   };
 
-  it('trySpawn: 画面内の兵士がアンカーになり、着弾点はその近く(X±60/Y±30〜70・帯クランプ内)', () => {
-    const soldiers = [soldierAt('a', 1000, 40)];
-    const b = trySpawnEndingBomb('b1', soldiers, -9999, 1000, 400, () => 0.5, T);
+  it('trySpawn: 兵士の予測位置(左進み込み)がアンカーになり、着弾点はその近く(X±60・帯クランプ内)', () => {
+    const s = soldierAt('a', 1000, 40);
+    const b = trySpawnEndingBomb('b1', [s], 1000, 400, () => 0.5, T);
     expect(b).not.toBeNull();
-    expect(Math.abs(b!.impactX - 1000)).toBeLessThanOrEqual(T.anchorOffsetXPx);
-    expect(Math.abs(b!.impactY - 40)).toBeGreaterThanOrEqual(T.anchorOffsetYMinPx - 1e-9);
-    expect(Math.abs(b!.impactY - 40)).toBeLessThanOrEqual(T.anchorOffsetYMaxPx + 1e-9);
+    const predictedX = s.x - s.speed * s.velMult * (T.fallMs / 1000); // 検収A-2: 落下中の左進みを先読み
+    expect(Math.abs(b!.impactX - predictedX)).toBeLessThanOrEqual(T.anchorOffsetXPx);
     expect(Math.abs(b!.impactY)).toBeLessThanOrEqual(T.bandClampYPx);
   });
 
-  it('trySpawn: 画面外の兵士・フィル回避帯内の兵士・転倒中の兵士はアンカーにならず、候補0なら見送り(監査A-1/A-2)', () => {
-    const offscreen = soldierAt('a', 5000);              // カメラ中心1000・半幅400×0.75=300の外
-    const nearPhill = soldierAt('b', 1100);              // フィル(=1000)の回避帯[820,1400]内
+  it('trySpawn: 着弾Yは必ず|y|≥60(検収A-1・案A: フィルの進路=中央帯には落とさない=「奥や手前に」)', () => {
+    for (const r of [0.05, 0.3, 0.5, 0.7, 0.95]) {
+      const s = soldierAt('a', 1000, 0); // 進路ど真ん中の兵士がアンカーでも
+      const b = trySpawnEndingBomb('b1', [s], 1000, 400, () => r, T);
+      expect(b).not.toBeNull();
+      expect(Math.abs(b!.impactY)).toBeGreaterThanOrEqual(T.minImpactAbsYPx);
+      expect(Math.abs(b!.impactY)).toBeLessThanOrEqual(T.bandClampYPx);
+    }
+  });
+
+  it('★再発防止(実機2026-08-29「爆撃が来ない」・検収A-1): 実寸の論理画面幅(405px)でも投下が成立する', () => {
+    // v0.25.4039はX方向のフィル回避帯が候補窓(可視半幅202×0.75)を包含し、投下成功率0.00%だった
+    // (検収監査の実測)。実在する画面寸(viewport.ts VIEW_CORE_W=405)で成立することを固定する。
+    const halfView = 405 / 2;
+    const s = soldierAt('a', 1000, 40); // カメラ中心付近に1人立っているだけの最小ケース
+    const b = trySpawnEndingBomb('b1', [s], 1000, halfView, () => 0.5, T);
+    expect(b).not.toBeNull();
+  });
+
+  it('trySpawn: 着弾時に画面外へ流れる兵士・転倒中の兵士はアンカーにならず、候補0なら見送り(検収A-1/A-2)', () => {
+    const offscreen = soldierAt('a', 5000);   // 着弾時カメラ中心(1000+94)±320の外
     const tumbling = { ...soldierAt('c', 1000), phase: 'downed' as const };
-    expect(trySpawnEndingBomb('b1', [offscreen, nearPhill, tumbling], 1000, 1000, 400, () => 0.5, T)).toBeNull();
+    expect(trySpawnEndingBomb('b1', [offscreen, tumbling], 1000, 400, () => 0.5, T)).toBeNull();
   });
 
   it('落下は重力加速(後半の方が速い)で、fallMs後に着弾(justExplodedは着弾フレームだけ)', () => {
-    let b = trySpawnEndingBomb('b1', [soldierAt('a', 0)], -9999, 0, 400, () => 0.5, T)!;
+    let b = trySpawnEndingBomb('b1', [soldierAt('a', 0)], 0, 400, () => 0.5, T)!;
     const y0 = endingBombFallY(b, T);
     expect(y0).toBeCloseTo(b.impactY - T.fallHeightPx);
     b = stepEndingBomb(b, T.fallMs * 0.25, T)!;
@@ -292,9 +309,14 @@ describe('endingScene — 爆撃(ENDING_SCENE.md 演出仕様v3.1)', () => {
     let s = blastEndingSoldiers([soldierAt('a', 1100)], 1000, 0, rand, T)[0];
     expect(isEndingSoldierTumbling(s)).toBe(true);
     const x0 = s.x;
-    s = stepEndingSoldier(s, ENDING_BLOWN_MS, 0, DEFAULT_ENDING_SOLDIER_TUNING, rand);
+    // 60fpsの実刻みで積分(検収B-3: 550msの1ステップは台形近似が粗く330pxに膨れる。実機は~220px)
+    for (let i = 0; i < Math.ceil(ENDING_BLOWN_MS / 16) + 1 && s.phase === 'blown'; i++) {
+      s = stepEndingSoldier(s, 16, 0, DEFAULT_ENDING_SOLDIER_TUNING, rand);
+    }
     expect(s.phase).toBe('downed');
-    expect(s.x).toBeGreaterThan(x0 + 100); // 「大きく」飛んでいる(初速1200×ease減衰)
+    const dist = s.x - x0;
+    expect(dist).toBeGreaterThan(180); // 「大きく」飛んでいる(初速1200×(1-t)²減衰の積分≈220px)
+    expect(dist).toBeLessThan(260);
     // 転倒中に左端を超えても再投入しない
     expect(reenterEndingSoldierIfOffscreen(s, s.x + 999, 0, 0, rand)).toBe(s);
     s = stepEndingSoldier(s, s.downDurationMs, 0, DEFAULT_ENDING_SOLDIER_TUNING, rand);

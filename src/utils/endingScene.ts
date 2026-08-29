@@ -392,8 +392,17 @@ export interface EndingBombTuning {
   anchorOffsetXPx: number;  // アンカー兵士からの着弾Xずらし(±)
   anchorOffsetYMinPx: number; anchorOffsetYMaxPx: number; // 奥/手前へのYずらし(絶対値の幅)
   bandClampYPx: number;     // 着弾Yのクランプ(監査C-2: 地平線フェード帯に入れない)
-  viewFracX: number;        // アンカー候補=カメラ中心±(可視半幅×この係数)(監査A-1)
-  phillAvoidBehindPx: number; phillAvoidAheadPx: number; // フィル回避帯(前方は落下中の前進を先読み・監査B-4)
+  viewFracX: number;        // アンカー候補=着弾時カメラ中心±(可視半幅×この係数)(監査A-1)
+  // ★フィルの回避は「Xで離す」のではなく「Y(奥/手前)で外す」(検収A-1・案A)。
+  // 実機の論理画面幅は405px(viewport.ts VIEW_CORE_W)=可視半幅202px しかなく、X方向の回避帯は
+  // どんな幅でも候補窓を食い潰して「爆撃が一生来ない」になる(v0.25.4039の実機バグ・実測0.00%)。
+  // フィルの進路はy≈0の中央帯なので、着弾|y|に下限を張れば「無反応のフィルの真横で爆発」は起きず、
+  // 社長の言葉「奥や手前に降ってきて」そのものになる。
+  minImpactAbsYPx: number;
+  // 着弾時刻のカメラ位置の先読み(検収A-2): カメラ(=フィル)は落下0.9秒で約94px右へ進むので、
+  // 候補窓を「着弾時のカメラ中心」で取る(投下時基準だと左寄りの着弾が画面外へ流れて見切れる)。
+  // アンカー兵士自身の左進みも予測位置(x - speed×velMult×落下秒)で織り込む(検収B-1も同時に消える)。
+  camLeadPx: number;
 }
 
 export const DEFAULT_ENDING_BOMB_TUNING: EndingBombTuning = {
@@ -411,29 +420,35 @@ export const DEFAULT_ENDING_BOMB_TUNING: EndingBombTuning = {
   anchorOffsetXPx: 60,
   anchorOffsetYMinPx: 30, anchorOffsetYMaxPx: 70,
   bandClampYPx: 90,
-  viewFracX: 0.75,
-  phillAvoidBehindPx: 180, phillAvoidAheadPx: 400,
+  viewFracX: 0.8,
+  minImpactAbsYPx: 60,
+  camLeadPx: 94, // ≈ PLAYER_WALK 104.4px/s × 0.9s(フィルが等速歩行の場合。停止中は右へ94px寄るだけ=可視域内)
 };
 
-// 投下を試みる(監査A-1/A-2)。画面内の通常フェーズ兵士から乱数でアンカーを選び、その足元近くへ落とす。
+// 投下を試みる(検収A-1/A-2反映版)。**着弾時刻**の画面内に立つ見込みの通常フェーズ兵士から乱数で
+// アンカーを選び、その予測位置の近くへ落とす。着弾Yは奥/手前(|y|≥minImpactAbsYPx)に限定=
+// 中央帯を歩くフィルの真横には落ちない(Xの回避帯は廃止・上のtuningコメント参照)。
 // 候補が居なければ null(呼び出し側が retryMs 後に再試行)。
 export const trySpawnEndingBomb = (
-  id: string, soldiers: EndingSoldier[], phillX: number, camCenterX: number, viewHalfWPx: number,
+  id: string, soldiers: EndingSoldier[], camCenterX: number, viewHalfWPx: number,
   rand: () => number = Math.random,
   tuning: EndingBombTuning = DEFAULT_ENDING_BOMB_TUNING,
 ): EndingBomb | null => {
   const halfW = viewHalfWPx * tuning.viewFracX;
-  const avoidMin = phillX - tuning.phillAvoidBehindPx;
-  const avoidMax = phillX + tuning.phillAvoidAheadPx;
-  const candidates = soldiers.filter(s =>
-    !isEndingSoldierTumbling(s) &&
-    Math.abs(s.x - camCenterX) <= halfW &&
-    (s.x < avoidMin || s.x > avoidMax));
+  const fallSec = tuning.fallMs / 1000;
+  const camAtImpact = camCenterX + tuning.camLeadPx; // 着弾時のカメラ中心(検収A-2)
+  const candidates = soldiers
+    .map(s => ({ s, predictedX: s.x - s.speed * s.velMult * fallSec })) // 兵士は左へ歩き続ける前提の予測
+    .filter(c => !isEndingSoldierTumbling(c.s) && Math.abs(c.predictedX - camAtImpact) <= halfW);
   if (candidates.length === 0) return null;
-  const anchor = candidates[Math.floor(rand() * candidates.length) % candidates.length];
-  const impactX = anchor.x + (rand() * 2 - 1) * tuning.anchorOffsetXPx;
+  const pick = candidates[Math.floor(rand() * candidates.length) % candidates.length];
+  const impactX = pick.predictedX + (rand() * 2 - 1) * tuning.anchorOffsetXPx;
   const side = rand() < 0.5 ? -1 : 1; // 奥(-)か手前(+)
-  const rawY = anchor.y + side * lerpRange(rand, tuning.anchorOffsetYMinPx, tuning.anchorOffsetYMaxPx);
+  let rawY = pick.s.y + side * lerpRange(rand, tuning.anchorOffsetYMinPx, tuning.anchorOffsetYMaxPx);
+  // フィル進路(中央帯)には落とさない: |y|の下限を張る(0ちょうどならside側へ)。
+  if (Math.abs(rawY) < tuning.minImpactAbsYPx) {
+    rawY = (rawY === 0 ? side : Math.sign(rawY)) * tuning.minImpactAbsYPx;
+  }
   const impactY = Math.max(-tuning.bandClampYPx, Math.min(tuning.bandClampYPx, rawY));
   return { id, impactX, impactY, phase: 'fall', phaseMs: 0, justExploded: false };
 };
@@ -443,7 +458,9 @@ export const stepEndingBomb = (
   b: EndingBomb, dtMs: number,
   tuning: EndingBombTuning = DEFAULT_ENDING_BOMB_TUNING,
 ): EndingBomb | null => {
-  if (dtMs <= 0) return b;
+  // dt=0(同一timestampのrAF)でも justExploded の edge は必ず下ろす(検収A-3: 残したまま返すと
+  // 呼び出し側がSE/シェイク/ノックバックを二重発火する)。
+  if (dtMs <= 0) return b.justExploded ? { ...b, justExploded: false } : b;
   const phaseMs = b.phaseMs + dtMs;
   if (b.phase === 'fall') {
     if (phaseMs >= tuning.fallMs) return { ...b, phase: 'explode', phaseMs: 0, justExploded: true };

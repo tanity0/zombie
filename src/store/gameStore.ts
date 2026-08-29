@@ -17347,7 +17347,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (bombs.filter(b => b.phase === 'fall').length < t.maxAirborne) {
           const camCenterX = state.player.x + state.player.width / 2; // カメラ中心≒プレイヤー中心(横追従)
           const nb = trySpawnEndingBomb(
-            `ending-bomb-${now}`, nextSoldiers, camCenterX, camCenterX, state.gameBounds.width / 2,
+            `ending-bomb-${now}`, nextSoldiers, camCenterX, state.gameBounds.width / 2,
             Math.random, t,
           );
           if (nb) {
@@ -18321,7 +18321,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // (ボスメーカーの部屋と同じ理由)。到達不能座標=不在の作法もそのまま流用する。
           // PACING_PUZZLE.md §10-20#1(★監査#1): M6通路はcorridor化だけでは商人が消えない仕様
           // (corridor除外なし)。EXだけ専用分岐で除外する(社長裁定「NPCも居ちゃってる」・護衛と同じ理由)。
-          : (farBackdrop === 'tutorial' || bossMakerRoom || isPracticeRun() || (corridorMode && isExStageRun()))
+          // エンディング(観賞シーン)も商人なし(社長報告2026-08-29「エンディングに武器商人がいる」。
+          // 既定配置 x:0,y:-130 は出撃地点の目の前=必ず視界に入っていた)。
+          : (farBackdrop === 'tutorial' || farBackdrop === 'ending' || bossMakerRoom || isPracticeRun() || (corridorMode && isExStageRun()))
             ? { x: 1e9, y: 1e9, radius: 0 }
             // 研究所(屋外・横長廊下)は上下固定クランプ(±100)の外(y:-130)に商人がいると一生話しかけ
             // られない(M2_LAB_CORRIDOR_SPEC.md ★未決2・社長承認で追加)。labThemeだけYを上書きし、

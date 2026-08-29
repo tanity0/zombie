@@ -22412,7 +22412,7 @@ export class PixiScene {
         const t = s.phase === 'blown' ? Math.min(1, s.phaseMs / ENDING_BLOWN_MS)
           : s.phase === 'getup' ? 1 - Math.min(1, s.phaseMs / ENDING_GETUP_MS)
           : 1;
-        const w = bodyLen * (0.35 + 0.45 * t); // 立ち(細)→横たわり(長)へ影も慣性で伸縮
+        const w = bodyLen * (0.45 + 0.65 * t); // 立ち(細)→横たわり(体長相当)へ影も慣性で伸縮(検収B-5: 短すぎ是正)
         tsg.ellipse(s.x, s.y + 2, Math.max(8, w / 2), 5).fill({ color: 0x000000, alpha: 0.22 * ha });
       }
     }
