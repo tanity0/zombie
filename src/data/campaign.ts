@@ -603,6 +603,7 @@ export const STAGES: Stage[] = [
     locationTitle: '戦場跡地',
     farBackdrop: 'ending', // 遠景/地面/地平帯/近景/前景=社長支給5点(+黒煙アニメ)。pixiScene.ts参照
     nearHorizon: 'ending',
+    bgm: 'ending', // エンディング曲(audio/ending.mp3・社長指示2026-08-29「BGMがエンディングになってない」)
     subs: [],
     main: {
       code: 'ENDING',

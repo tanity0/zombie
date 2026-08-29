@@ -25,6 +25,9 @@ const GAME_BGM: Record<string, string> = {
   stage6: `${import.meta.env.BASE_URL}audio/stage6.mp3`, // 古い洋館(ステージ6)。stage.bgm='stage6'
   stage7: `${import.meta.env.BASE_URL}audio/ashen-crown-oath.mp3`, // M7=ラスボス曲(社長提供・灰の冠の誓い)。stage.bgm='stage7'(v0.25.1940)
   ex: `${import.meta.env.BASE_URL}audio/ex-battle.mp3`, // EXステージ(洋館跡地=フィル戦)曲(社長提供2026-08-20)。stage.bgm='ex'
+  // エンディングステージ(観賞シーン)。聴取記録オーバーレイ中はApp側がシーンをoffにし、
+  // EndingScreenの専用要素(setEndingBgm)が同じ曲を鳴らす=二重再生にはならない。
+  ending: `${import.meta.env.BASE_URL}audio/ending.mp3`, // 社長指示2026-08-29「BGMがエンディングになってない」
 };
 // 深層域BGM(逆再生版)。屋外ステージごとに areverse 版を用意(命名 stageN-reverse.mp3)。
 // 深層域に入ると通常BGMを pause(位置保持)し、こちらを play で即時切替する(クロスフェード無し)。

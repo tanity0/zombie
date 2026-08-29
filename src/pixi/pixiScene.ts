@@ -982,10 +982,12 @@ interface EndingAmbientP { sp: Sprite; kind: 'ember' | 'ash'; x: number; y: numb
 const ENDING_AMBIENT_ENABLED = tsNum('endamb', 1) !== 0;
 const ENDING_EMBER_COUNT = Math.max(0, Math.floor(tsNum('endember', 36)));
 const ENDING_ASH_COUNT = Math.max(0, Math.floor(tsNum('endash', 28)));
-// エンディングの地平帯(ending-horizon-ruins=遠景の手前側の森/廃墟シルエット)の縮小係数
-// (社長指示2026-08-28「遠景森 手前のもっと小さく」=0.65 → 2026-08-29「もう少し小さく」=0.5。
-// ?endhz=で実機調整)。
-const ENDING_HORIZON_SCALE = Math.max(0.2, tsNum('endhz', 0.5));
+// エンディングの遠景森まわりの縮小係数2つ。
+// ★v0.25.4044で対象を訂正(社長指摘2026-08-29「遠景森小さくなってない。もしかして奥の方小さくしてる?」):
+// 「遠景森の手前の方」=遠景森2(nearHorizon=ending-near-rubble)であり、v4032/4041で縮めていた
+// 地平帯(遠景森1=ending-horizon-ruins・奥)は誤りだった→奥は等倍へ戻す。
+const ENDING_HORIZON_SCALE = Math.max(0.2, tsNum('endhz', 1));   // 奥(遠景森1・地平帯)。既定=等倍
+const ENDING_NEAR_SCALE = Math.max(0.2, tsNum('endnear', 0.6));  // 手前(遠景森2)。「もっと+もう少し小さく」=0.6叩き台
 // ENDING_SCENE.md 演出仕様v2 §1(発砲の絵。実在部品はSE=npc-gunfireのみ・マズルフラッシュ/トレイル/
 // 薬莢/反動は全てコード生成)。数値は全て叩き台・実機調整用ツマミ付き。
 const ENDING_MUZZLE_FLASH_MS = Math.max(1, tsNum('endmuzzle', 100)); // §1「80〜120ms」
@@ -6495,9 +6497,12 @@ export class PixiScene {
     const stage5 = this.nearHorizonKeyNow === 'stage5';
     const tutorial = this.nearHorizonKeyNow === 'tutorial'; // 岩帯2もステージ5と同じ実寸px指定
     const heightRatio = this.isLabStage ? LAB_NEAR_HORIZON_HEIGHT_RATIO : NEAR_HORIZON_HEIGHT_RATIO;
+    // エンディング: 遠景森2(手前の瓦礫バンド)を縮小(社長指示2026-08-29「遠景森の手前の方だけ小さく」。
+    // 底の位置は不変=上へ縮む)。
+    const endingNear = this.nearHorizonKeyNow === 'ending' ? ENDING_NEAR_SCALE : 1;
     const height = stage5 ? STAGE5_NEAR_HORIZON_HEIGHT_PX
       : tutorial ? TUTORIAL_NEAR_HORIZON_HEIGHT_PX
-      : this.screenH * heightRatio;
+      : this.screenH * heightRatio * endingNear;
     const bottom = stage5
       ? farH + STAGE5_NEAR_HORIZON_DOWN_PX
       : tutorial ? farH + TUTORIAL_NEAR_HORIZON_DOWN_PX
