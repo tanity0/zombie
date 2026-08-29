@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4045',
+    items: [
+      'エンディングシーン(開発中): 倒れている兵士の大きさを周りの兵士に合わせて縮めました。',
+    ],
+  },
+  {
     version: '0.25.4044',
     items: [
       'エンディングシーン(開発中): BGMがエンディング曲になりました。縮める対象を間違えていた遠景森を修正(手前の帯を小さく・奥の地平帯は元の大きさへ)。',

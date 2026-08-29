@@ -999,6 +999,9 @@ const ENDING_BOMB_SIZE_PX = Math.max(8, tsNum('endbombsize', 80));
 // 兵士の銃口高さ(足元からの表示高比)。検収A-3で0.15(画素実測の銃身先端)→社長指示2026-08-29
 // 「兵士の弾はもう少し上から出て」で0.25へ。?endmuzzley=で実機調整。
 const ENDING_MUZZLE_Y_FRAC = tsNum('endmuzzley', 0.25);
+// 倒れ兵士(救護対象)の表示倍率。1.5→1.0(社長指摘2026-08-29「周りと比べてでかい」=
+// contain-fit等倍で横たわる体長≒立ち兵士の身長になる)。
+const ENDING_FALLEN_SCALE = Math.max(0.2, tsNum('endfallen', 1.0));
 const ENDING_TRACER_LEN_PX = Math.max(0, tsNum('endtracerlen', 46));
 const ENDING_SHELL_LIFE_S = Math.max(0.05, tsNum('endshell', 0.4));  // 薬莢が後方へ小放物線を描く時間
 const ENDING_RECOIL_MS = Math.max(1, tsNum('endrecoil', 140));       // §7「発砲の瞬間、体が2〜3px後ろへ跳ねて戻る」
@@ -22581,7 +22584,9 @@ export class PixiScene {
       const tex = getTexture('npc/soldier-fallen-0');
       if (!tex) { sp.visible = false; continue; }
       sp.texture = tex;
-      const sc = this.humanNpcScale(tex.width, tex.height, spot.y) * 1.5; // 横たわる絵は幅が広いので少し大きめ(叩き台)
+      // 等倍=contain-fit(横たわる体長≒立ち兵士の身長65px)。旧×1.5は周りと比べて明確に大きかった
+      // (社長指摘2026-08-29「倒れてる兵士が周りと比べてでかい」)。?endfallen=で実機調整。
+      const sc = this.humanNpcScale(tex.width, tex.height, spot.y) * ENDING_FALLEN_SCALE;
       sp.scale.set(sc, sc);
       const ha = this.horizonActorAlpha(spot.y);
       sp.alpha = ha;
