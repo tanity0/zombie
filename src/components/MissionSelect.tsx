@@ -368,7 +368,10 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
         枠(panel)の中だけがスクロールする(スクロールバーは全要素で非表示済み・overscroll-contain)。 */}
     {/* fill=true(任務詳細): パネルを常に全高にする=内容が短くても最下部固定フッター(ジョブ選択)が
         画面下端に落ちる(社長指示v0.25.1852。max-h-fullのままだと短いページでパネルが縮み中腰になる)。 */}
-    <NoBounceScroller className={`max-w-3xl w-full glass-panel rounded-none overflow-y-auto overscroll-contain no-scrollbar ${fill ? 'h-full' : 'max-h-full'}`}>{children}</NoBounceScroller>
+    {/* overflow-x-hidden + pan-y(社長報告2026-08-29「横にずれたり」): メニューのページは縦専用。
+        iOSは overflow-y:auto だけだと横も auto 扱いになり、僅かな横はみ出しで横パンできてしまう。
+        Shell配下に横スクロール容器は無い(キャラ選択のチップ帯はShell外)ので一律に殺してよい。 */}
+    <NoBounceScroller className={`max-w-3xl w-full glass-panel rounded-none overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar ${fill ? 'h-full' : 'max-h-full'}`} style={{ touchAction: 'pan-y' }}>{children}</NoBounceScroller>
   </div>
   )
 );
@@ -783,7 +786,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           </button>
           {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。縁バウンスも殺す。
               続き矢印は作戦室色=アンバー。 */}
-          <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar" moreColor="rgba(255, 179, 64, 0.85)">
+          <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar" style={{ touchAction: 'pan-y' }} moreColor="rgba(255, 179, 64, 0.85)">
             <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
             {dsRow('装備', 'LOADOUT', 'サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
             {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}

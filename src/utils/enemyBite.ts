@@ -343,17 +343,16 @@ export const isBiteFrozen = (
   || (enemy.liftUntil !== undefined && gameTime < enemy.liftUntil);
 
 export const canStartBite = (
-  enemy: Pick<Enemy, 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
   gameTime: number,
 ): boolean => {
-  // ★突進中(ゾンビの `zrush`=2秒間2倍速)は構えない(社長報告2026-08-25「ゾンビが走ってこなくなった
-  // ような?」)。**数字で確認した真因**: ゾンビの絵は幅113px=足元の判定帯が約62px。
-  // 噛みつきの射程は「判定+30px」なので、プレイヤーの体(28px)込みで**中心間およそ75px**で発火する。
-  // ところがゾンビが停止→突進のリズムに入る距離は `MELEE_RADIUS` = **74px**。**ほぼ同じ**なので、
-  // 範囲に入った瞬間に噛みつきが始まり、踏み込み(500ms)が通常の移動を上書きして
-  // **2秒の突進が一度も走らなくなっていた**。
-  // ⇒ 突進の間は噛まない。「止まる→噛む→走る」の順で両方が出る。
-  if (enemy.aiPhase === 'zrush') return false;
+  // ★ゾンビは「ダッシュ中が噛みつき」(社長指示2026-08-29「ゾンビはダッシュ中が噛みつきで」)。
+  // 構え**始められる**のは zrush(2秒間2倍速の突進)中だけ——突進で飛び込んだ勢いのまま噛む。
+  // 歩き接近・停止(zpause)中は構えない。台本そのもの(紫点滅→溜め→前かがみ)は全敵共通のまま。
+  // なお v0.25.3919 の裁定は逆(zrush中は構えない=「止まる→噛む→走る」。当時の理由=突進が
+  // 一度も走らなくなる)。本指示で更新: 突進が噛みつきの運び手になるので、突進の走りが
+  // 噛みで削れるのは仕様どおり。停止側で噛まなくなるぶん「止まった瞬間に噛む」も消える。
+  if (enemy.type === 'zombie' && enemy.aiPhase !== 'zrush') return false;
   // ★技を出している最中は構え始めない(噛みつきは**技の合間のつなぎ**)。
   // 接触ダメージの有無(上の `isBiteSubject`)とは**別の話**なので、判定もここに分けて置く——
   // レーザー中の敵は「触れても痛くない(接触なし)」が「噛みつきも始めない」。

@@ -112,6 +112,26 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   const [loadOverlayTimedOut, setLoadOverlayTimedOut] = useState(false);
   // 音声のジェスチャ復帰保険(v0.25.2160): どのタップ/キーでも「context resume+止まったBGMの拾い直し」。
   useEffect(() => { attachAudioGestureRecovery(); }, []);
+  // ★iOSビューポートずれ復元(社長報告2026-08-29「横にずれたり、下が切れてたりする」):
+  // body は position:fixed だが、iOSはテキスト入力(守護霊部屋のプレイヤー名/コメント等)に
+  // フォーカスするとキーボードを避けてレイアウトビューポート自体をパンする。キーボードを閉じても
+  // このパンが残ることがあり、画面全体が横/縦にずれたまま(=下や右が切れて見える)になる。
+  // 入力を離れた時とキーボードが閉じた時に、原点(0,0)へ戻す。入力中は触らない(入力欄が隠れるため)。
+  useEffect(() => {
+    const restore = () => {
+      const ae = document.activeElement;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+      if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+    };
+    const deferredRestore = () => { window.setTimeout(restore, 60); };
+    window.addEventListener('focusout', deferredRestore);
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', deferredRestore);
+    return () => {
+      window.removeEventListener('focusout', deferredRestore);
+      vv?.removeEventListener('resize', deferredRestore);
+    };
+  }, []);
   useEffect(() => {
     if (gameState !== 'playing' || rendererReady) { setLoadOverlayTimedOut(false); return; }
     // PixiStage 側と同じく**進捗が止まっている時だけ**外す(v0.25.2224)。旧実装は絶対時間6秒で外していたため、

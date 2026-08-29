@@ -256,18 +256,20 @@ describe('★噛みつきの台本(v0.25.3914)', () => {
   });
 });
 
-// ★社長報告2026-08-25「ゾンビが走ってこなくなったような?」の再発検知器。
-// 数字: ゾンビの足元の判定帯は約62px幅 → 噛みつきの射程「判定+30px」はプレイヤーの体込みで
-// 中心間およそ75px。停止→突進のリズムに入る距離(MELEE_RADIUS)は74px。**ほぼ同じ**なので、
-// 突進中も噛めると踏み込みが移動を上書きして2秒の突進が一度も走らない。
-describe('★突進(zrush)の間は噛みつきを構えない(v0.25.3919)', () => {
-  const base = { biteAt: undefined, biteReadyAt: 0, rootUntil: undefined, stunUntil: undefined };
-  it('zrush 中は構えない(走りを最後まで見せる)', () => {
-    expect(canStartBite({ ...base, aiPhase: 'zrush' }, 1000)).toBe(false);
+// ★社長指示2026-08-29「ゾンビはダッシュ中が噛みつきで」。
+// v0.25.3919(zrush中は構えない=止まる→噛む→走る)の逆転: 噛みつきは突進(zrush)が運ぶ。
+// 歩き・停止(zpause)では構えない=「止まった瞬間に噛む」は出ない。
+describe('★ゾンビはダッシュ(zrush)中だけ噛みつきを構える(2026-08-29)', () => {
+  const base = { type: 'zombie' as const, biteAt: undefined, biteReadyAt: 0, rootUntil: undefined, stunUntil: undefined };
+  it('zrush(突進)中は構える', () => {
+    expect(canStartBite({ ...base, aiPhase: 'zrush' }, 1000)).toBe(true);
   });
-  it('停止(zpause)中と通常時は構える', () => {
-    expect(canStartBite({ ...base, aiPhase: 'zpause' }, 1000)).toBe(true);
-    expect(canStartBite({ ...base, aiPhase: undefined }, 1000)).toBe(true);
+  it('停止(zpause)中と歩き接近中は構えない', () => {
+    expect(canStartBite({ ...base, aiPhase: 'zpause' }, 1000)).toBe(false);
+    expect(canStartBite({ ...base, aiPhase: undefined }, 1000)).toBe(false);
+  });
+  it('ゾンビ以外はフェーズ無しでも従来どおり構える', () => {
+    expect(canStartBite({ ...base, type: 'skeleton', aiPhase: undefined }, 1000)).toBe(true);
   });
 });
 
@@ -315,7 +317,7 @@ describe('★噛みつきの除外は死神と幻影だけ(v0.25.3921)', () => {
   });
 
   it('★ただし技を出している最中は噛みつきを構え始めない(噛みつきは技の合間のつなぎ)', () => {
-    const base = { biteAt: undefined, biteReadyAt: 0, rootUntil: undefined, stunUntil: undefined, aiPhase: undefined };
+    const base = { type: 'skeleton' as const, biteAt: undefined, biteReadyAt: 0, rootUntil: undefined, stunUntil: undefined, aiPhase: undefined };
     expect(canStartBite({ ...base, bossState: 'chase' }, 1000)).toBe(true);
     expect(canStartBite({ ...base, bossState: undefined }, 1000)).toBe(true);
     expect(canStartBite({ ...base, bossState: 'laser-fire' }, 1000)).toBe(false);
@@ -389,7 +391,7 @@ describe('★止まっている敵は噛まない(構え始めと中断で同じ
     expect(isBiteFrozen(at({}), 1000)).toBe(false);
   });
   it('★眠っている敵は構え始めない(壁越しに眠ったまま噛む経路を塞ぐ)', () => {
-    const base = { biteAt: undefined, biteReadyAt: 0, rootUntil: undefined, stunUntil: undefined,
+    const base = { type: 'skeleton' as const, biteAt: undefined, biteReadyAt: 0, rootUntil: undefined, stunUntil: undefined,
       liftUntil: undefined, aiPhase: undefined, bossState: undefined };
     expect(canStartBite({ ...base, dormant: true }, 1000)).toBe(false);
     expect(canStartBite({ ...base, dormant: false }, 1000)).toBe(true);
