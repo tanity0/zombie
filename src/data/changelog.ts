@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4062',
+    items: [
+      '作戦室: 下に続きがある画面には、底に小さな下矢印が出るようになりました(最後まで見ると消えます)。',
+    ],
+  },
+  {
     version: '0.25.4061',
     items: [
       '作戦室: 画面の端で引っ張った時にヘッダーごと跳ねる動き(iOSのバウンス)を全メニュー画面で止めました。ヘッダーと枠は常に固定です。',

@@ -507,6 +507,32 @@
   display: none;
 }
 
+/* 続きインジケータ(社長指示2026-08-29「続きがあるやつは、あるのがわかる様に小さい下矢印」):
+   スクロール容器の底に貼り付く小さな下矢印。sticky+高さ0=内容のレイアウトに干渉しない。
+   下に続きがある間だけ表示(opacityはNoBounceScrollerが制御)・ゆっくり上下に揺れる(慣性)。 */
+.ds-scroll-more {
+  position: sticky;
+  bottom: 6px;
+  height: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  z-index: 30;
+}
+.ds-scroll-more > svg {
+  transform: translateY(-100%);
+  animation: dsMoreBob 1.5s ease-in-out infinite alternate;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.85));
+}
+@keyframes dsMoreBob {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(calc(-100% + 3px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-scroll-more > svg { animation: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ghost-dossier-enter { animation: none; }
 }

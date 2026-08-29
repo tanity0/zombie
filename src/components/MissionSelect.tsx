@@ -88,7 +88,7 @@ const PreClearBriefing: React.FC<{ synopsis: string[]; summary: string; resetKey
   );
 };
 import {
-  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, ChevronRight, Lock, Check, Sparkles, Ghost, Skull, TrendingUp
+  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronDown, ChevronLeft, ChevronRight, Lock, Check, Sparkles, Ghost, Skull, TrendingUp
 } from 'lucide-react';
 // 作戦室DS2化(UI_OVERHAUL.md §3 バッチ①): ホームの計器化+等高線マップ。旧ホームは?dshome=0で丸ごと復帰。
 import DsContourMap from './DsContourMap';
@@ -244,10 +244,34 @@ const DS_HOME_DISABLED = typeof window !== 'undefined'
 // - 縁以外の通常スクロールは素通し(スクロール感は不変)。横主軸のドラッグ・ピンチは触らない。
 // - 内側に別のスクロール容器(シート等)がありそちらがまだ動ける時も素通し(奪わない)。
 // - 内容が収まっている画面は上下とも縁=縦ドラッグ全部が死ぬ=完全に固定(それが望みの挙動)。
-const NoBounceScroller: React.FC<{ className?: string; style?: React.CSSProperties; children: React.ReactNode }> =
-  ({ className, style, children }) => {
+// ★続きインジケータ(社長指示2026-08-29「続きがあるやつは、あるのがわかる様に小さい下矢印」):
+// 下にまだ内容がある時だけ、容器の底に小さな下矢印を出す(sticky bottom+高さ0=レイアウト不干渉・
+// pointer-events:none)。底に着くとフェードで消える。内容が全部収まる画面には最初から出ない。
+// 再判定はscroll/resize/内容変化(MutationObserver)時のみ=毎フレーム処理なし(メニュー画面限定)。
+const NoBounceScroller: React.FC<{ className?: string; style?: React.CSSProperties; children: React.ReactNode; moreColor?: string }> =
+  ({ className, style, children, moreColor }) => {
     const ref = useRef<HTMLDivElement | null>(null);
     const start = useRef<{ x: number; y: number } | null>(null);
+    const [hasMore, setHasMore] = useState(false);
+    useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      const check = () => setHasMore(el.scrollHeight - el.clientHeight - el.scrollTop > 4);
+      check();
+      el.addEventListener('scroll', check, { passive: true });
+      window.addEventListener('resize', check);
+      // フォント/画像の遅延到着で高さが変わるケースの拾い直し(数回だけ・常駐タイマーなし)。
+      const t1 = window.setTimeout(check, 300);
+      const t2 = window.setTimeout(check, 1200);
+      const mo = new MutationObserver(check);
+      mo.observe(el, { childList: true, subtree: true });
+      return () => {
+        el.removeEventListener('scroll', check);
+        window.removeEventListener('resize', check);
+        window.clearTimeout(t1); window.clearTimeout(t2);
+        mo.disconnect();
+      };
+    }, []);
     useEffect(() => {
       const el = ref.current;
       if (!el) return;
@@ -282,7 +306,18 @@ const NoBounceScroller: React.FC<{ className?: string; style?: React.CSSProperti
       el.addEventListener('touchmove', onMove, { passive: false });
       return () => { el.removeEventListener('touchstart', onStart); el.removeEventListener('touchmove', onMove); };
     }, []);
-    return <div ref={ref} className={className} style={style}>{children}</div>;
+    return (
+      <div ref={ref} className={className} style={style}>
+        {children}
+        <div
+          className="ds-scroll-more"
+          style={{ opacity: hasMore ? 1 : 0, color: moreColor ?? 'rgba(216, 180, 254, 0.85)' }}
+          aria-hidden="true"
+        >
+          <ChevronDown size={15} />
+        </div>
+      </div>
+    );
   };
 
 const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: boolean }> = ({ children, fill, dsHome }) => (
@@ -746,8 +781,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <span className="ds-sortie-t1 block">出 撃</span>
             <ChevronRight size={18} />
           </button>
-          {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。縁バウンスも殺す。 */}
-          <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar">
+          {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。縁バウンスも殺す。
+              続き矢印は作戦室色=アンバー。 */}
+          <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar" moreColor="rgba(255, 179, 64, 0.85)">
             <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
             {dsRow('装備', 'LOADOUT', 'サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
             {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
