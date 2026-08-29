@@ -8193,7 +8193,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 社長裁定v0.25.3279(案A): 旧+120msだと消費側の減衰(残り÷KNOCKBACK_DURATION)が常に
         // ×0.43掛かり、実効≈51px/s(仕様§16-5の120px/sと乖離)だった。毎フレーム書き直す前提で
         // フル窓を与えると減衰≈1=実効が仕様どおりになり、渦が消えた後は自然に減衰する尾が付く。
-        knockbackUntil: gameTime + KNOCKBACK_DURATION,
+        // ★時計はDate.now(社長報告2026-08-29「引き寄せてる感じがしない。ほんと？」の真因):
+        // knockbackUntil の消費側(updateEnemies)は Date.now 基準。ここだけ gameTime(数十万ms)で
+        // 書いていたため常に「期限切れ」=吸引は一度も1pxも動いていなかった。
+        knockbackUntil: Date.now() + KNOCKBACK_DURATION,
       };
     });
     if (changed) set({ enemies: nextEnemies });

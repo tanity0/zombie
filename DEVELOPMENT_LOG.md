@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.4074 — グラビティショットの吸引が一度も効いていなかった(時計の食い違い) 【2026-08-30 02:37 JST】
+
+社長報告「グラビティショット、引き寄せてる感じがしない。ほんと？」→**「ほんと」ではなかった。**
+- **真因**: tickGravityWells の吸引書き込みが `knockbackUntil: gameTime + KNOCKBACK_DURATION`。
+  消費側(updateEnemies)は **Date.now 基準**で `now < knockbackUntil` を見るため、gameTime(数十万ms)
+  基準の期限は**常に過去**=速度は書かれるが1フレームも消費されない。**吸引は実装以来1pxも
+  動いていなかった**(ボスの移動半減 gravitySlowUntil は gameTime 系同士で整合=生きていた。
+  「範囲は?」の直前の質問への回答も、判定半径・ボス減速は正だが吸引の実効はゼロだった=訂正)。
+- **修正**: Date.now() 基準へ1行修正+回帰テスト新設(src/store/gravityWell.test.ts・3件:
+  半径内で「渦へ向かう速度+**Date.now基準の未来の期限**」/半径外は書かない/寿命400msで消滅)。
+- ENGINEERING_NOTES §0 症状表へ1行追記(「効いてる気がしない」→時計の突き合わせ)。
+- 検証: gravityWell.test 3件green / typecheck 0 / lint エラー0。
+- 状態変化: スキル → グラビティ吸引修正済み(実機確認待ち)。
+
+
 ## v0.25.4073 — M7(指定座標地点)の武器商人を除外 【2026-08-29 17:51 JST】
 
 社長報告「指定座標地点に武器商人がいる　いないはず」。

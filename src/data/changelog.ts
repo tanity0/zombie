@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4074',
+    items: [
+      'グラビティショット: 引き寄せが実際には一度も効いていなかった不具合を修正しました(内部時計の食い違い)。半径内の敵が渦の中心へ吸い込まれるようになります。',
+    ],
+  },
+  {
     version: '0.25.4073',
     items: [
       'M7(指定座標地点): 出撃地点前に武器商人が立っていたのを修正しました(一騎打ちステージには商人は出ません)。',
