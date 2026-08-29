@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4063',
+    items: [
+      'エンディングの聴取記録を新しい編集稿に差し替えました(言い回しの調整5箇所)。',
+    ],
+  },
+  {
     version: '0.25.4062',
     items: [
       '作戦室: 下に続きがある画面には、底に小さな下矢印が出るようになりました(最後まで見ると消えます)。',
