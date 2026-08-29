@@ -49,6 +49,9 @@ export const isNeutralMoveState = (state: string | null | undefined): boolean =>
 export const parseMovePhase = (state: string | null | undefined): MovePhaseRef | null => {
   if (isNeutralMoveState(state)) return null;
   const s = state as string;
+  // §15追尾相(v0.25.4075): `<move>-track` は「溜めの前半」扱い=同一技の track→windup は段階遷移で
+  // 違反にならず、**別の技のwindupがtrackを上書きしたら違反**として落ちる(windupと同じ守られ方)。
+  if (s.endsWith('-track')) return { move: s.slice(0, -'-track'.length), phase: 'windup' };
   if (s.endsWith('-windup')) return { move: s.slice(0, -'-windup'.length), phase: 'windup' };
   if (s.endsWith('-recover')) return { move: s.slice(0, -'-recover'.length), phase: 'recover' };
   if (s.endsWith('-active')) return { move: s.slice(0, -'-active'.length), phase: 'active' };

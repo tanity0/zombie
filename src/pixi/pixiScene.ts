@@ -19778,8 +19778,11 @@ export class PixiScene {
         o.ellipse(cx, cy, gStompR, gStompR).fill({ color: 0xff2a2a, alpha: telFillA(1, gPulse) * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, gStompR, 0xff3b3b, 0.55 + 0.35 * gPulse);
         else o.ellipse(cx, cy, gStompR, gStompR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) });
-      } else if (gph === 'g-sweep-windup' || gph === 'g-sweep-active') {
+      } else if (gph === 'g-sweep-windup' || gph === 'g-sweep-active' || gph === 'g-sweep-track') {
         // T3(赤い角ばった四角ゾーン)。トール払い/ミゲル払いと同じ意匠(poly fill+stroke)。
+        // §15追尾相(g-sweep-track): storeが毎フレーム書く生のaiFrom/aiTargetを読む=帯が本体+照準に
+        // ついて動く「照準表示」(全形・固定の薄さ・流星なし)。ロック(windup)からは現行描画が無改変で走る。
+        const gTrack = gph === 'g-sweep-track';
         const gfx = e.aiFromX ?? cx, gfy = e.aiFromY ?? cy;
         const gtx = e.aiTargetX ?? cx, gty = e.aiTargetY ?? cy;
         const gddx = gtx - gfx, gddy = gty - gfy;
@@ -19787,7 +19790,8 @@ export class PixiScene {
         const gnx = -gddy / gddl, gny = gddx / gddl;
         const gux = gddx / gddl, guy = gddy / gddl;
         const ghw = GIANT_SWEEP_HALF_WIDTH;
-        const gprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+        const gprog = gTrack ? 0.25
+          : Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
         const gZoneFill = telFillA(gph === 'g-sweep-active' ? 1 : gprog, gPulse);
         // ★v0.25.3496(社長指示「その上で、流星にして」): 溜め中は**面と白芯も流星の可視区間へ縮める**。
         // 従来は縁取り(drawTelegraphBand)だけが流星で、面と白芯は全長のまま描かれていたため、
@@ -19814,6 +19818,19 @@ export class PixiScene {
         else if (gVisible) o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(gprog, gPulse) });
         // 白芯も可視区間だけ(面と同じ理由=流星の頭と消しを隠さない)。
         if (gVisible) o.moveTo(gvfx, gvfy).lineTo(gvtx, gvty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: 0.35 + 0.35 * gprog, cap: 'round' });
+        // §15ロックの合図: 追尾相→windupの瞬間に全形の白い縁を1フラッシュ(60ms)。
+        // gTrackAimXが在る=track経由の印(?ttrack=0の従来経路では光らない=完全ロールバック)。
+        if (gph === 'g-sweep-windup' && e.gTrackAimX !== undefined) {
+          const lockAge = gameTime - (e.aiStartedAt ?? -1e9);
+          if (lockAge >= 0 && lockAge < 60) {
+            o.poly([
+              gfx - gux * ghw + gnx * ghw, gfy - guy * ghw + gny * ghw,
+              gtx + gux * ghw + gnx * ghw, gty + guy * ghw + gny * ghw,
+              gtx + gux * ghw - gnx * ghw, gty + guy * ghw - gny * ghw,
+              gfx - gux * ghw - gnx * ghw, gfy - guy * ghw - gny * ghw,
+            ]).stroke({ width: 4, color: 0xffffff, alpha: 0.9 * (1 - lockAge / 60) });
+          }
+        }
       } else if (gph === 'g-jump-windup' || gph === 'g-jump-air') {
         // T2(赤円・着地点)。溜め開始からロック済みの着地点(社長裁定6.26-9 #1)。着地AoE半径の生値は
         // PUMPKIN_EXPLOSION_RADIUS(6.26-6「現行不変」=定数そのものは変えない)。M65: windup開始時に

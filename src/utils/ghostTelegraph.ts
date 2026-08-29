@@ -100,6 +100,13 @@ put(LEDGER, ['g-nihil-chant1', 'g-nihil-chant2', 'g-nihil-chant3'], {
   coverage: 'shared', sharedShape: 'delayed',
   note: '虚無の三唱は giantDelayedHits の遅延円=既存表がキューを直接読む(唱えている間ずっと見える)。',
 });
+// §15追尾相パイロット(v0.25.4075): 追尾相は**まだ狙いが定まっていない照準表示**=避ける図形として
+// 拾わせない(coverage:'none')。ゴースト/ボットはロック(windup)から反応する=**現行の反応開始と同じ**。
+// 追尾相から避け始めさせるか(=ボスの当たりやすさが変わる)は全展開時の裁定(監査A14)。
+put(LEDGER, ['g-sweep-track'], {
+  coverage: 'none',
+  note: '§15追尾相(sweep)。狙いが動いている間は避ける対象にしない=反応はロック(windup)から(現行維持)。',
+});
 put(LEDGER, [
   // giantbat(城ボス/グレン/EX): 'g-' 接頭辞 + -windup/-active/-charge を既存表が帯として拾う。
   'g-sweep-windup', 'g-sweep-active', 'g-dash-windup', 'g-dash-charge',

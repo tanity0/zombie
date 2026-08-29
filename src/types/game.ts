@@ -620,6 +620,7 @@ export interface Enemy {
   //     chant3終了と同時に爆ぜる)
   aiPhase?: 'windup' | 'charge' | 'crouch' | 'jump' | 'recover' | 'zpause' | 'zrush' | 'scream'
     | 'g-stomp-windup' | 'g-stomp-recover'
+    | 'g-sweep-track' // §15追尾相パイロット(sweep限定): 歩いて詰めながら照準が慣性追尾→ロックで現行windupへ
     | 'g-sweep-windup' | 'g-sweep-active' | 'g-sweep-recover'
     | 'g-jump-windup' | 'g-jump-air' | 'g-jump-recover'
     | 'g-dash-windup' | 'g-dash-charge' | 'g-dash-recover'
@@ -774,6 +775,12 @@ export interface Enemy {
   avoid?: import('../utils/enemyMotion').AvoidState;
   gStompRadius?: number;
   gJumpRadius?: number;
+  // §15追尾相パイロット(sweep限定): 照準の永続状態(位置+速度=stepLaserAimの物理・gReachShotsのax/avxと同系)。
+  // 経由した印としてロック白フラッシュの表示条件にも使う(pixiScene・trackを通らないwindupでは光らせない)。
+  gTrackAimX?: number;
+  gTrackAimY?: number;
+  gTrackVx?: number;
+  gTrackVy?: number;
   // M66(PACING_PUZZLE.md §6.26-11・stage-1/3/4/5限定)。
   // 三連突進(quaddash)の何回目か(0始まり・固定3回で終了=giantQuadDashComplete)。
   gQuadIndex?: number;

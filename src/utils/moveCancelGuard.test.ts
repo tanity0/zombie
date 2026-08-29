@@ -12,6 +12,9 @@ describe('parseMovePhase(状態名 → 技と段階)', () => {
     expect(parseMovePhase('g-sweep-active')).toEqual({ move: 'g-sweep', phase: 'active' });
     expect(parseMovePhase('idol-roll-recover')).toEqual({ move: 'idol-roll', phase: 'recover' });
     expect(parseMovePhase('g-jump-air')).toEqual({ move: 'g-jump-air', phase: 'active' }); // 接尾辞なし=実行中
+    // §15追尾相: trackは「溜めの前半」=同一技のtrack→windupが段階遷移として通り、
+    // 別技のwindupがtrackを上書きしたら違反として落ちる(windupと同じ守られ方)。
+    expect(parseMovePhase('g-sweep-track')).toEqual({ move: 'g-sweep', phase: 'windup' });
   });
   it('中立はnull(技を出していない)', () => {
     for (const s of ['chase', 'return', 'idle', undefined, null, '']) {

@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.4075 — §15 2相テレグラフ: sweepパイロット実装(ボスメーカー確認可) 【2026-08-30 03:15 JST】
+
+社長GO「はい+ボスメーカーで確認させて」(Q1=a追いかけながら狙う/Q2=a中断は現行踏襲)。
+2巡目監査(A16件)を受け「全19技の一般化を紙で設計し切る」のをやめ、**sweep1技のパイロット**へ転換。
+- **実装**: `g-sweep-track`新設(types union)+beginGiantMove('sweep')でtrack経由(?ttrack=0で従来と
+  完全一致)+updateEnemiesのtrack case(歩いて詰める=resolveMove・照準=stepLaserAim慣性物理・
+  帯=自分中心→照準方向×固定RANGEを毎フレーム・満了で現行windupへ焼く+白フラッシュ60ms)。
+- **純関数層**: utils/telegraphTrack.ts(TELEGRAPH_TRACK_MS=500・?ttrack=・キャップは技専用固定値
+  157/313=監査A9対応・ランプ/振り切りなし=A10対応)+テスト4件(収束・行き過ぎ<12%・最高速頭打ち)。
+- **監査対応の要点**: A1=sweepの帯描画は生のaiFrom/aiTargetを読む経路と実在確認(latch非経由)/
+  A5=ghostTelegraph台帳の網羅テストが実際に`g-sweep-track`未分類で落ちた→'none'で分類(反応は
+  ロックから=現行維持・A14の裁定は全展開時)/A15=parseMovePhaseに`-track`=溜め前半を追加+テスト。
+- 検証: telegraphTrack 4件・moveCancelGuard 20件・ghostTelegraph/habitEpisode/giantScript/
+  constitution等 計196件green / typecheck 0 / lint エラー0。
+- 自己点検: ?ttrack=0で全経路が従来一致(track相に入らない)。ロック相の尺・判定・カウンター窓は不変。
+- 状態変化: §15 2相テレグラフ → sweepパイロット実装済み(ボスメーカー実機確認待ち。OKなら残り技へ展開設計)。
+
+
 ## v0.25.4074 — グラビティショットの吸引が一度も効いていなかった(時計の食い違い) 【2026-08-30 02:37 JST】
 
 社長報告「グラビティショット、引き寄せてる感じがしない。ほんと？」→**「ほんと」ではなかった。**

@@ -280,6 +280,7 @@ import {
   // 追尾照準は**レーザーと同じ物理**で動かす。数値・式をこちらへ複製しない(文法を1本に保つ)。
   stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT, glenReachAimStart,
 } from '../utils/mimirLaserTrack';
+import { TELEGRAPH_TRACK_MS, stepTrackAim } from '../utils/telegraphTrack'; // §15追尾相パイロット(sweep限定)
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 // 雑魚の個体差+役割(社長指示v0.25.3176・案4+案3)。向きと速さだけを曲げる純関数。
 import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils/chaffMotion';
@@ -12090,6 +12091,17 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const aim = resolveBossHateAim(enemy, { x: pcx, y: pcy }, summons, gameTime);
                 const ddl = Math.hypot(aim.x - ecx, aim.y - ecy) || 1;
                 const dirx = (aim.x - ecx) / ddl, diry = (aim.y - ecy) / ddl;
+                // §15パイロット(社長GO 2026-08-30「はい」): windupの前に追尾相(g-sweep-track)を挟む。
+                // ?ttrack=0 なら track に一切入らない=従来と完全一致(§15-7条件4のロールバック)。
+                if (TELEGRAPH_TRACK_MS > 0) {
+                  return {
+                    aiPhase: 'g-sweep-track', aiPhaseUntil: atkUntil(TELEGRAPH_TRACK_MS),
+                    aiFromX: ecx, aiFromY: ecy,
+                    aiTargetX: ecx + dirx * GIANT_SWEEP_RANGE, aiTargetY: ecy + diry * GIANT_SWEEP_RANGE,
+                    gTrackAimX: aim.x, gTrackAimY: aim.y, gTrackVx: 0, gTrackVy: 0,
+                    aiStartedAt: gameTime, hateTarget: aim.side,
+                  };
+                }
                 return {
                   aiPhase: 'g-sweep-windup', aiPhaseUntil: atkUntil(GIANT_SWEEP_WINDUP_MS),
                   aiFromX: ecx, aiFromY: ecy,
@@ -12410,6 +12422,45 @@ export const useGameStore = create<GameState>((set, get) => ({
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-stomp-recover', aiPhaseUntil: atkUntil(stompRecoverMs) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-sweep-track': {
+              // §15追尾相パイロット(sweep限定・Q1=a「追いかけながら狙う」):
+              // ①対象は技開始で固定(lockedHateAim=resolveBossLockedHateAim・既存の掟。監査A8)、位置は生を追う。
+              // ②本体は通常速度で対象へ歩いて詰める(resolveMove=壁/木/城/行ける帯の解決を通る既存の1本)。
+              // ③照準は stepLaserAim の慣性物理(振り切りなし・尺非依存=telegraphTrack.ts)。
+              // ④帯(照準表示)=その瞬間の自分中心→照準方向×固定RANGE(帯長は潰さない=§15-3)。
+              //   描画(pixiScene)と満了時の判定焼きは同じ aiFrom/aiTarget を読む=乖離しない。
+              // ⑤満了=ロック: その瞬間の値で現行のwindupへ(ロック相=現行そのもの・ギリギリ感不変)。
+              //   中断(気絶/紫)は既存の割り込みブロックが aiPhase を丸ごと消す=Q2=(a)現行踏襲。
+              const tAim = lockedHateAim();
+              const tCur = {
+                x: enemy.gTrackAimX ?? tAim.x, y: enemy.gTrackAimY ?? tAim.y,
+                vx: enemy.gTrackVx ?? 0, vy: enemy.gTrackVy ?? 0,
+              };
+              const tNext = stepTrackAim(tCur, tAim.x, tAim.y, deltaTime);
+              const tcdx = tAim.x - ecx, tcdy = tAim.y - ecy;
+              const tcdl = Math.hypot(tcdx, tcdy) || 1;
+              const tStep = enemy.speed * deltaTime;
+              const tMoved = resolveMove(enemy.x + (tcdx / tcdl) * tStep, enemy.y + (tcdy / tcdl) * tStep);
+              const tmcx = tMoved.x + enemy.width / 2, tmcy = tMoved.y + enemy.height / 2;
+              const ttdx = tNext.x - tmcx, ttdy = tNext.y - tmcy;
+              const ttdl = Math.hypot(ttdx, ttdy) || 1;
+              const tFields = {
+                gTrackAimX: tNext.x, gTrackAimY: tNext.y, gTrackVx: tNext.vx, gTrackVy: tNext.vy,
+                aiFromX: tmcx, aiFromY: tmcy,
+                aiTargetX: tmcx + (ttdx / ttdl) * GIANT_SWEEP_RANGE, aiTargetY: tmcy + (ttdy / ttdl) * GIANT_SWEEP_RANGE,
+              };
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return {
+                  ...enemy, ...phaseFields, ...tFields, x: tMoved.x, y: tMoved.y, vx: 0, vy: 0,
+                  aiPhase: 'g-sweep-windup', aiPhaseUntil: atkUntil(GIANT_SWEEP_WINDUP_MS),
+                  aiStartedAt: gameTime, // ロック白フラッシュ(60ms)の起点(pixiScene)
+                };
+              }
+              return {
+                ...enemy, ...phaseFields, ...tFields, x: tMoved.x, y: tMoved.y,
+                vx: (tcdx / tcdl) * enemy.speed, vy: (tcdy / tcdl) * enemy.speed,
+              };
             }
             case 'g-sweep-windup': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
