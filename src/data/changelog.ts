@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4041',
+    items: [
+      'エンディングシーン(開発中): 遠景森の手前のシルエット帯をもう一段小さくしました。',
+    ],
+  },
+  {
     version: '0.25.4040',
     items: [
       'エンディングシーン(開発中): 爆撃が一度も来ない不具合を修正(実際に降ってくるようになりました)。武器商人が居てしまう不具合も修正。',

@@ -983,8 +983,9 @@ const ENDING_AMBIENT_ENABLED = tsNum('endamb', 1) !== 0;
 const ENDING_EMBER_COUNT = Math.max(0, Math.floor(tsNum('endember', 36)));
 const ENDING_ASH_COUNT = Math.max(0, Math.floor(tsNum('endash', 28)));
 // エンディングの地平帯(ending-horizon-ruins=遠景の手前側の森/廃墟シルエット)の縮小係数
-// (社長指示2026-08-28「遠景森 手前のもっと小さく」。0.65=叩き台・?endhz=で実機調整)。
-const ENDING_HORIZON_SCALE = Math.max(0.2, tsNum('endhz', 0.65));
+// (社長指示2026-08-28「遠景森 手前のもっと小さく」=0.65 → 2026-08-29「もう少し小さく」=0.5。
+// ?endhz=で実機調整)。
+const ENDING_HORIZON_SCALE = Math.max(0.2, tsNum('endhz', 0.5));
 // ENDING_SCENE.md 演出仕様v2 §1(発砲の絵。実在部品はSE=npc-gunfireのみ・マズルフラッシュ/トレイル/
 // 薬莢/反動は全てコード生成)。数値は全て叩き台・実機調整用ツマミ付き。
 const ENDING_MUZZLE_FLASH_MS = Math.max(1, tsNum('endmuzzle', 100)); // §1「80〜120ms」
