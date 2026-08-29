@@ -976,6 +976,8 @@ const ENDING_SMOKE_COUNT = ENDING_SMOKE_PLACEMENT.length;
 const ENDING_SMOKE_PERIOD_MS = Math.max(500, tsNum('esmokeperiod', 4200)); // 1本が6コマを一巡する時間(ms)。叩き台
 const ENDING_SMOKE_HEIGHT_FRAC = Math.max(0.05, tsNum('esmokeheight', 0.30)); // 表示高さ(screenH比)。叩き台
 const ENDING_SMOKE_ALPHA = Math.max(0, Math.min(1, tsNum('esmokealpha', 0.75))); // 叩き台
+// 黒煙の下げ量(screenH比・社長指示2026-08-29「この赤く囲った雲、もう少し下へ」)。?esmokedown=で調整。
+const ENDING_SMOKE_DOWN_FRAC = tsNum('esmokedown', 0.08);
 // 火の粉・灰の舞い(社長指示2026-08-28「火の粉・灰の舞いはコードで出せ」)。素材なし・コード生成のみ。
 interface EndingAmbientP { sp: Sprite; kind: 'ember' | 'ash'; x: number; y: number; vx: number; vy: number; ph: number; sz: number }
 // 負荷1/10: 固定プール(既定64個)をエンディング中だけ動かす(判定・storeには一切触れない)。叩き台。
@@ -6405,7 +6407,8 @@ export class PixiScene {
       const h = this.screenH * ENDING_SMOKE_HEIGHT_FRAC * pl.s; // 大きさ違い(社長指示2026-08-28)
       sp.scale.set(h / Math.max(1, tex?.height ?? 1));
       sp.alpha = ENDING_SMOKE_ALPHA;
-      sp.position.set(-marginX + bandW * pl.x, farH); // 底=地平帯の境界線(廃墟スカイラインと重ねる)
+      // 底=地平帯の境界線+下げ量(社長指示2026-08-29「もう少し下へ」=廃墟の炎に食い込ませる)。
+      sp.position.set(-marginX + bandW * pl.x, farH + this.screenH * ENDING_SMOKE_DOWN_FRAC);
     }
   }
 

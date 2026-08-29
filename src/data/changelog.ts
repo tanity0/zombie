@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4046',
+    items: [
+      'エンディングシーン(開発中): 黒煙の位置を少し下げました(廃墟の炎の根元から立ち上る見た目に)。',
+    ],
+  },
+  {
     version: '0.25.4045',
     items: [
       'エンディングシーン(開発中): 倒れている兵士の大きさを周りの兵士に合わせて縮めました。',
