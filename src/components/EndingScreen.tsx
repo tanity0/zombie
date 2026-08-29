@@ -19,7 +19,11 @@ import { useGameStore } from '../store/gameStore';
 type Phase = 'script' | 'word' | 'credits' | 'finale';
 
 const LINE_AUTO_MS = 3200;      // オート送りの1行表示時間
-const FINAL_WORD_MS = 3200;     // 「成し得なかった」残留(1.8s)+フェードアウト(1.2s)+間
+// word相=最終行のその場残し(v0.25.4065・社長指示「成し得なかった だけのっこりつつ、英語も the と
+// ONE だけが残って消える感じで。順番に残って消えていく感じ」):
+// t=0 周囲の文字が消える(0.7s)→ 残るのは「成し得なかった」+ the + ONE(その場・大きさ不変)
+// → 1.8s 成し得なかった消える → 2.7s the消える → 3.5s ONEが最後に消える(→ the ONEタイトルへ)。
+const FINAL_WORD_MS = 4700;
 const CREDITS_MS = 3800;        // the ONE フェードイン表示時間
 const FINALE_SAFETY_MS = 6000;  // finaleの安全弁(直撃通知が来なくても終わる。通常は落下0.9s+フラッシュで終了)
 const FINALE_FLASH_MS = 260;    // 直撃の白フラッシュ保持(この後500ms easeで黒へ)
@@ -168,19 +172,72 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
         </div>
       )}
 
-      {/* 「成し得なかった」だけが残り、フェードアウト(社長指定v0.25.2191。v4055: 全黒化はせず戦場の上)。 */}
+      {/* word相(v0.25.4065・社長指示): 画面遷移せず**最終行がその場で削れていく**——周囲の文字が
+          消えて「成し得なかった」+英語ルビの the / ONE だけが残り(大きさ不変)、その後
+          成し得なかった→the→ONE の順で消えていく(ONEが最後=直後の the ONE タイトルへの橋)。
+          レイアウトはscript相と同一構造=遷移の瞬間に何も動かない(慣性=ポップ禁止)。 */}
       {phase === 'word' && (
-        <div className="flex h-full w-full items-center justify-center">
-          <style>{`@keyframes endWordOut{to{opacity:0}}`}</style>
-          <span
-            className="text-2xl font-semibold tracking-[0.2em] text-white/90"
-            style={{
-              fontFamily: 'Georgia, "Hiragino Mincho ProN", serif',
-              animation: 'endWordOut 1.2s ease-in 1.8s forwards',
-            }}
-          >
-            {ENDING_FINAL_WORD}
-          </span>
+        <div className="flex h-full w-full items-center justify-center px-6">
+          <style>{`@keyframes endSegOut{to{opacity:0}}`}</style>
+          <div className="flex w-full max-w-md flex-col" style={{ height: '50vh' }}>
+            <p
+              className="shrink-0 mb-4 text-center text-[13px] tracking-[0.2em] text-white/55"
+              style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif', animation: 'endSegOut .7s ease forwards' }}
+            >
+              {ENDING_HEADER}
+            </p>
+            <div
+              className="relative min-h-0 flex-1"
+              style={{
+                overflow: 'hidden',
+                maskImage: 'linear-gradient(to bottom, transparent 0%, black 26%, black 100%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 26%, black 100%)',
+              }}
+            >
+              <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end space-y-3">
+                {ENDING_SCRIPT.map((l, i) => {
+                  const isLast = i === ENDING_SCRIPT.length - 1;
+                  const fadeNow: React.CSSProperties = { animation: 'endSegOut .7s ease forwards' };
+                  if (!isLast) {
+                    return (
+                      <p
+                        key={i}
+                        className="text-[15px] leading-relaxed text-white/90"
+                        style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif', ...fadeNow }}
+                      >
+                        <span className="mr-2 text-white/55">{l.speaker}</span>
+                        「{l.text}」
+                      </p>
+                    );
+                  }
+                  const [jpPre] = l.text.split(ENDING_FINAL_WORD);
+                  const enSegs = (l.en ?? '').split(/(\bthe\b|\bONE\b)/);
+                  return (
+                    <p
+                      key={i}
+                      className="text-[15px] leading-relaxed text-white/90"
+                      style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
+                    >
+                      <span className="mr-2 text-white/55" style={fadeNow}>{l.speaker}</span>
+                      <span style={fadeNow}>「{jpPre}</span>
+                      <span style={{ animation: 'endSegOut .9s ease 1.8s forwards' }}>{ENDING_FINAL_WORD}</span>
+                      <span style={fadeNow}>」</span>
+                      {l.en && (
+                        <span className="block pl-8 pt-0.5 text-[10px] italic tracking-[0.06em] text-white/45">
+                          {enSegs.map((seg, si) =>
+                            seg === 'the' ? <span key={si} style={{ animation: 'endSegOut .7s ease 2.7s forwards' }}>the</span>
+                            : seg === 'ONE' ? <span key={si} style={{ animation: 'endSegOut .9s ease 3.5s forwards' }}>ONE</span>
+                            : <span key={si} style={fadeNow}>{seg}</span>
+                          )}
+                        </span>
+                      )}
+                    </p>
+                  );
+                })}
+              </div>
+            </div>
+            <p className="shrink-0 mt-4 text-center text-[10px] tracking-widest text-white/25" style={{ animation: 'endSegOut .7s ease forwards' }}>タップで進む</p>
+          </div>
         </div>
       )}
 

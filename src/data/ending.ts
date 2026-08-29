@@ -29,7 +29,7 @@ export const ENDING_SCRIPT: EndingLine[] = [
   { speaker: 'ノラ', text: 'そうです' },
   { speaker: '記録官', text: 'フィルの救命を継続した理由は' },
   { speaker: 'ノラ', text: '彼は戦争だらけの世界を、本気で救おうとした' },
-  { speaker: 'ノラ', text: 'こんな事、あの人にしか成し得なかった', en: 'He was the only one who could.' },
+  { speaker: 'ノラ', text: 'こんな事、あの人にしか成し得なかった', en: 'He was the only ONE who could.' },
 ];
 
 // 暗転時に画面中央へ残す語(最終台詞の結び)。フェードアウト後、入れ替わりに「the ONE」がフェードイン。

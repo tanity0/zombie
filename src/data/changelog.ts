@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4065',
+    items: [
+      'エンディング: 最後の台詞の結びを刷新。周りの文字が消えて「成し得なかった」と英語の the / ONE だけがその場に残り、順番に消えてタイトルへ繋がります。',
+    ],
+  },
+  {
     version: '0.25.4064',
     items: [
       'エンディング: 聴取記録の最後のノラの台詞に、小さな英語のルビが添えられるようになりました。',
