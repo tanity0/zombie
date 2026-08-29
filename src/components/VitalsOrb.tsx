@@ -33,7 +33,13 @@ const WINE_ORB_DISABLED = typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).get('wineorb') === '0';
 
 // ガラスの輪の実素材(hp-orb-glass.png)は社長指示2026-08-28「HPの渡した枠の素材、削除で
-// モックの形に揃えて」で撤去した。器の枠はモックどおりSVG(ガラス艶ellipse+紫の縁stroke)が正。
+// モックの形に揃えて」で撤去した(事実)。
+// ★2026-08-30: 社長が新しい外枠素材を支給(「HPの外枠素材」=紫のガラスリング)→ hp-orb-frame.png
+// として再導入。重ね順=液体(canvas)の上・SVG(艶/EXPリング/数字)の下——枠の帯はEXPリング帯と
+// 同じ半径帯に重なるので、EXPの白い進捗が枠の上に描かれて読める。`?hpframe=0` で非表示(比較用)。
+const HP_FRAME_DISABLED = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('hpframe') === '0';
+const FRAME_SCALE = 1.0; // 枠画像の一辺=SIZE×この値(叩き台。素材はリング外周≒画像端に正規化済み512px)
 
 // 液体シミュレーションの叩き台定数(UI_OVERHAUL.md §2の数値どおり。実機調整はここだけ触ればよい)。
 const FOLLOW_RATE = 3.2;     // shownHpの実HPへの指数追従(1/s・注ぎ/流出の速度感)
@@ -328,6 +334,22 @@ const VitalsOrb: React.FC = () => {
             <canvas
               ref={canvasRef}
               style={{ position: 'absolute', inset: 0, width: SIZE, height: SIZE, opacity: 0.7 }}
+            />
+          )}
+          {/* 外枠素材(社長支給2026-08-30)。液体の上・SVG(艶/EXPリング/数字)の下。 */}
+          {!HP_FRAME_DISABLED && (
+            <img
+              src={spritePath('hp-orb-frame')}
+              alt=""
+              draggable={false}
+              style={{
+                position: 'absolute',
+                left: CX - (SIZE * FRAME_SCALE) / 2,
+                top: CY - (SIZE * FRAME_SCALE) / 2,
+                width: SIZE * FRAME_SCALE,
+                height: SIZE * FRAME_SCALE,
+                pointerEvents: 'none',
+              }}
             />
           )}
           <svg

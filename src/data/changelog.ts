@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4076',
+    items: [
+      'HPオーブに新しい外枠(紫のガラスリング)が付きました。',
+    ],
+  },
+  {
     version: '0.25.4075',
     items: [
       '城ボスの薙ぎ払いに「追尾する予告」を試験導入: 溜めの前に0.5秒、赤い帯が薄い照準表示としてこちらを追いかけ、白い一瞬の光でロックしてから従来の溜めが始まります(避けるタイミングは従来と同じ・?ttrack=0で従来動作)。',
