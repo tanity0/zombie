@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4048',
+    items: [
+      'エンディングシーン(開発中): ステージ5と同じ「残照」(画面全体がうっすら赤くなる戦火のグレード)を掛けました。',
+    ],
+  },
+  {
     version: '0.25.4047',
     items: [
       'エンディングシーン(開発中): 爆撃で倒れた兵士は起き上がらなくなりました(倒れたまま)。行進の人数は画面外からの補充で保たれます。',

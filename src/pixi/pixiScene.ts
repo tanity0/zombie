@@ -4152,16 +4152,22 @@ export class PixiScene {
   // ステージ5の戦争照明(社長指示v0.25.1980)。上部の暗さを「単純に明るく」ではなく、炎のゆらめき照明+遠くの爆発フラッシュで戦争中感を出して照らす。加算。
   private updateStage5War(now: number) {
     const on = this.stage5Stage;
+    // エンディングにも**残照だけ**を掛ける(社長指示2026-08-29「ステージ5の様な少し画面が赤く
+    // なってるエフェクト入れて」)。炎のゆらめき/遠くの爆発フラッシュはstage5専用のまま。
+    const afterglowOn = on || this.currentFarKey === 'ending';
+    const w = this.screenW, h = this.screenH;
     if (this.stage5WarGroup.visible !== on) this.stage5WarGroup.visible = on;
     if (this.stage5FireGlow.visible !== on) this.stage5FireGlow.visible = on;
-    if (this.stage5Afterglow.visible !== on) this.stage5Afterglow.visible = on;
+    if (this.stage5Afterglow.visible !== afterglowOn) this.stage5Afterglow.visible = afterglowOn;
+    if (afterglowOn) {
+      // 残照: 暖色の全画面グレード(screen=明るい所へ暖色を足す)。夕焼け/戦火の残り。
+      // 濃さ: stage5=?s5afterglow= / エンディング=?endred=(独立に調整できるよう別ツマミ)。
+      this.stage5Afterglow.position.set(-1, -1);
+      this.stage5Afterglow.width = w + 2;
+      this.stage5Afterglow.height = h + 2;
+      this.stage5Afterglow.alpha = on ? tsNum('s5afterglow', 0.16) : Math.max(0, tsNum('endred', 0.16));
+    }
     if (!on) { for (const f of this.stage5Flashes) if (f.sprite.visible) f.sprite.visible = false; return; }
-    const w = this.screenW, h = this.screenH;
-    // 残照: 暖色の全画面グレード(screen=明るい所へ暖色を足す)。夕焼け/戦火の残り。?s5afterglow= で濃さ。
-    this.stage5Afterglow.position.set(-1, -1);
-    this.stage5Afterglow.width = w + 2;
-    this.stage5Afterglow.height = h + 2;
-    this.stage5Afterglow.alpha = tsNum('s5afterglow', 0.16);
     // マスク: 地平(森2の下端あたり)より上のみ描く=フラッシュ/火が森2を貫通して手前(フィールド)へ漏れない(社長指示v0.25.1984)。
     // stage5WarGroup/stage5WarMaskはどちらもhzFixedの子(§6.37 v6・同一変換空間)だが、中身(stage5FireGlow/stage5Afterglow)は
     // screen w/hをそのままローカル座標として使う=post-zoom変換を掛けない前提の実装。マスクだけpost-zoom化すると
