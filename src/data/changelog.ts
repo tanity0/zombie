@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4059',
+    items: [
+      '作戦室(新ホーム): 出撃ボタン内の「作戦地域: 〇〇」表記を外しました(上のマップに同じ情報があるため)。',
+    ],
+  },
+  {
     version: '0.25.4058',
     items: [
       '作戦室(新ホーム): 一部の作戦地域で等高線マップの線が薄く欠けて見える問題を是正しました。',

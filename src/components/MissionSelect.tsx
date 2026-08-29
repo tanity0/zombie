@@ -687,13 +687,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
             <DsContourMap stageId={nextStage?.id ?? 'stage-tutorial'} sectorLabel={nextStage?.locationTitle ?? '—'} />
           </div>
-          {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。名前は
-              「次に行く所」の提示であって直行ボタンではない(監査B-9=意図どおり)。 */}
+          {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。
+              サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
+              =マップのSECTORタグが同じ情報を持つため重複)。 */}
           <button type="button" className="ds-sortie menu-item-in" style={{ animationDelay: '75ms' }} onClick={goStageSelect}>
-            <span>
-              <span className="ds-sortie-t1 block">出 撃</span>
-              <span className="ds-sortie-t2 block">作戦地域: {nextStage?.locationTitle ?? '—'}</span>
-            </span>
+            <span className="ds-sortie-t1 block">出 撃</span>
             <ChevronRight size={18} />
           </button>
           <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>

@@ -685,12 +685,6 @@
   font-size: 19px;
   letter-spacing: 0.42em;
 }
-.ds-sortie .ds-sortie-t2 {
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  font-weight: 600;
-  opacity: 0.75;
-}
 .ds-sortie::before {
   content: "";
   position: absolute;
