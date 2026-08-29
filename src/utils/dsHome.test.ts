@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { STAGES } from '../data/campaign';
 import { emptyStoryFlags } from '../data/progress';
 import {
-  CONTOUR_BAND_EPS, CONTOUR_H, CONTOUR_HILL_INNER, CONTOUR_STEP, CONTOUR_THRESHOLDS, CONTOUR_W,
+  CONTOUR_BAND_EPS, CONTOUR_BAND_MIN_SAMPLES, CONTOUR_H, CONTOUR_HILL_INNER, CONTOUR_STEP,
+  CONTOUR_THRESHOLDS, CONTOUR_W,
   contourField, contourHills, nextOperationStage,
 } from './dsHome';
 
@@ -74,17 +75,17 @@ describe('contourHills / contourField(§3-2・監査B-4)', () => {
     }
   });
 
-  it('どのシードでも9本のしきい値すべてに塗り(サンプル)が出る', () => {
+  it('どのシードでも9本のしきい値すべてが線として見える(各バンド≥40サンプル=検収B-1)', () => {
     for (const id of allStageIds) {
       const field = contourField(contourHills(id));
       for (const t of CONTOUR_THRESHOLDS) {
         let count = 0;
-        for (let y = 0; y < CONTOUR_H && count === 0; y += CONTOUR_STEP) {
+        for (let y = 0; y < CONTOUR_H; y += CONTOUR_STEP) {
           for (let x = 0; x < CONTOUR_W; x += CONTOUR_STEP) {
-            if (Math.abs(field(x, y) - t) < CONTOUR_BAND_EPS) { count++; break; }
+            if (Math.abs(field(x, y) - t) < CONTOUR_BAND_EPS) count++;
           }
         }
-        expect(count, `stage=${id} threshold=${t.toFixed(2)}`).toBeGreaterThan(0);
+        expect(count, `stage=${id} threshold=${t.toFixed(2)}`).toBeGreaterThanOrEqual(CONTOUR_BAND_MIN_SAMPLES);
       }
     }
   });

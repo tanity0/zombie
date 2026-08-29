@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4058',
+    items: [
+      '作戦室(新ホーム): 一部の作戦地域で等高線マップの線が薄く欠けて見える問題を是正しました。',
+    ],
+  },
+  {
     version: '0.25.4057',
     items: [
       '作戦室のホーム画面を刷新しました(DS2風の計器デザイン・アンバー単色・次の作戦地域を映す等高線マップ・出撃行が主役の新レイアウト)。従来のホームには ?dshome=0 で戻せます。',

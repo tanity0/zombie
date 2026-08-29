@@ -77,18 +77,21 @@ const hillsForSeed = (seed: number): ContourHill[] => {
 export const contourField = (hills: readonly ContourHill[]) => (x: number, y: number): number =>
   hills.reduce((s, [hx, hy, r]) => s + Math.exp(-((x - hx) ** 2 + (y - hy) ** 2) / (2 * r * r)), 0);
 
-// 「9本すべてに塗りが出るか」を描画と同一のサンプリングで検査(描画コードの写し)。
+// 「9本すべてが**線として見える**か」を描画と同一のサンプリングで検査(描画コードの写し)。
+// ★検収監査B-1(v0.25.4058): 合格を「1サンプル以上」→「各バンド≥40サンプル」へ引き上げ。
+// 旧判定はstage-5の最下段が1.2pxの点7個(=見えない線)でも通っていた。40=モック原典の最小バンド
+// (39)相当。全実在stage idがsalt 0..15の中で合格することは実測済み(stage-5→2/stage-ex1→2/stage-7→1)。
+export const CONTOUR_BAND_MIN_SAMPLES = 40;
 const allBandsVisible = (hills: readonly ContourHill[]): boolean => {
   const field = contourField(hills);
-  const seen = new Array<boolean>(CONTOUR_THRESHOLDS.length).fill(false);
-  let remaining = seen.length;
+  const counts = new Array<number>(CONTOUR_THRESHOLDS.length).fill(0);
+  let remaining = counts.length;
   for (let y = 0; y < CONTOUR_H; y += CONTOUR_STEP) {
     for (let x = 0; x < CONTOUR_W; x += CONTOUR_STEP) {
       const v = field(x, y);
       for (let li = 0; li < CONTOUR_THRESHOLDS.length; li++) {
-        if (!seen[li] && Math.abs(v - CONTOUR_THRESHOLDS[li]) < CONTOUR_BAND_EPS) {
-          seen[li] = true;
-          if (--remaining === 0) return true;
+        if (counts[li] < CONTOUR_BAND_MIN_SAMPLES && Math.abs(v - CONTOUR_THRESHOLDS[li]) < CONTOUR_BAND_EPS) {
+          if (++counts[li] === CONTOUR_BAND_MIN_SAMPLES && --remaining === 0) return true;
         }
       }
     }
