@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ENDING_HEADER, ENDING_SCRIPT, ENDING_FINAL_WORD } from '../data/ending';
 import { setEndingBgm } from '../audio/audioManager';
+import { useGameStore } from '../store/gameStore';
 
 // 通常エンディング(社長編集稿v0.25.2191): 軍の聴取記録→暗転で「成し得なかった」だけが残り
 // フェードアウト→入れ替わりに「the ONE」フェードイン→メニューへ。
@@ -37,6 +38,11 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
   }, []);
   const [phase, setPhase] = useState<Phase>('script');
   const [lineIdx, setLineIdx] = useState(0); // 表示済みの行数-1(0=最初の1行のみ表示)
+  // scenic時: word(暗転)以降は背後の爆撃を止める(ENDING_SCENE.md v3.1 監査A-7——全黒の
+  // 「成し得なかった」「the ONE」の裏で爆発音とシェイクを鳴らさない)。滞空弾もstore側で消える。
+  useEffect(() => {
+    if (scenic && phase !== 'script') useGameStore.getState().setEndingBombing(false);
+  }, [scenic, phase]);
   const timerRef = useRef<number | null>(null);
   const doneRef = useRef(false);
 

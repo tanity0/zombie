@@ -1,5 +1,34 @@
 # Development Log
 
+## v0.25.4039 — エンディング爆撃の実装(演出仕様v3.1・着手前監査反映済み) 【2026-08-29 09:14 JST】
+
+着手前監査(Opus)の(A)9件・(C)4件を仕様v3.1として反映し、設計チャットが直接実装
+(天秤: endingScene/pixiSceneのエンディング節は直近の検収是正でコンテキスト保持済み=発注より直接が安)。
+
+- **endingScene.ts**: `EndingBomb`状態機械(fall→explode・重力加速`endingBombFallY`)/
+  `trySpawnEndingBomb`(アンカー兵士方式=画面内(±可視半幅×0.75)の兵士の足元近くへ落とす・
+  フィル回避帯[−180,+400]・候補0で見送り)/`blastEndingSoldiers`(楕円距離≦170で blown・
+  方向=爆心から離れる・|dx|<8は乱数)/兵士新フェーズ `blown(550ms)→downed(2.5〜4.5s)→
+  getup(450ms)→accel→walk`(転倒中は再投入しない)。テスト5件追加(22件green)。
+- **gameStore.ts**: `endingBombs`/`endingBombNextAt`/`endingBombingEnabled` state・
+  `ENDING_BOMB_TUNING`(ツマミ: ?endbomb=0/?endbombint=/?endbombr=/?endbombkb=/?endbombh=)・
+  updateEndingSceneに投下/着弾/ノックバック/`triggerShake(500,6)`を追加(SEは返り値explosions経由)・
+  `setEndingBombing`アクション。resetGame/初期stateの2箇所で初期化(監査B-2)。
+- **pixiScene.ts**: `drawEndingBombs`=弾スプライト+爆発flipbook(fx/explosion-0..5)を
+  **actorLayerにzIndex=着弾Y**で描く(監査A-4: effectLayerだと奥の爆発が手前の兵士に乗る)。
+  alpha/スケールは常に着弾点Y(B4)。兵士の一時転倒=**立ち絵を足元アンカーのまま回転**
+  (blown ease-out→±90°/getup ease戻し・テクスチャ差し替えなし=監査A-8/A-9)。転倒中は
+  立ちシルエット影→専用楕円影(監査B-3)・マズル残光消灯(監査B-6)。弾の表示高100px
+  (?endbombsize=・監査C-4)。
+- **EndingScreen.tsx**: scenic時、word(暗転)遷移で `setEndingBombing(false)`(監査A-7=
+  「成し得なかった」「the ONE」の裏で爆発音とシェイクを鳴らさない・滞空弾も消す)。
+- **useGameLoop.ts**: 爆発SE=既存キー'bomb'(距離減衰は発砲SEと同じnpcSfxDistGain)。
+- **★裁定2件は設計チャット推薦で倒した(社長へ報告済み・チャット参照)**: ①暗転以降の爆撃停止
+  ②一時転倒は回転表現(soldier-fallen-0を使わない=救護対象と画面上で区別が付く)。
+- 検証: typecheck 0 / lint エラー0 / endingScene 22件+憲法13件 green。自己点検: 変更は
+  エンディング専用系のみ=憲法(初心者ゾーン・緩)に非抵触。
+- 状態変化: エンディング爆撃 → 実装済み・検収監査へ(次エントリ)。
+
 ## v0.25.4038 — エンディング爆撃: 素材受領+演出仕様v3+テクスチャ登録(実装前の中間着地) 【2026-08-29 08:57 JST】
 
 社長指示「エンディングの爆撃用の弾 奥や手前に降ってきて大きく爆発する。と同時に、兵士が大きく

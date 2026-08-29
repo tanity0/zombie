@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4039',
+    items: [
+      'エンディングシーン(開発中): 爆撃が入りました。奥や手前に爆弾が降ってきて大きく爆発し、近くの兵士が大きく吹き飛んで倒れ、しばらくして起き上がります。',
+    ],
+  },
+  {
     version: '0.25.4038',
     items: [
       'ゲーム内容の変更はありません(開発内部: エンディング爆撃演出の素材受領・仕様書き・実装準備)。',

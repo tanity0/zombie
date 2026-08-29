@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
-  DEFAULT_ENDING_SOLDIER_TUNING, DEFAULT_ENDING_PHILL_TUNING,
+  DEFAULT_ENDING_SOLDIER_TUNING, DEFAULT_ENDING_PHILL_TUNING, DEFAULT_ENDING_BOMB_TUNING,
   spawnEndingSoldier, stepEndingSoldier, reenterEndingSoldierIfOffscreen, createInitialEndingSoldiers,
   fallenSoldierAt, nextFallenSoldierAfter, fallenSoldiersInRange,
   createInitialEndingPhill, stepEndingPhill,
+  trySpawnEndingBomb, stepEndingBomb, endingBombFallY, blastEndingSoldiers, isEndingSoldierTumbling,
+  ENDING_BLOWN_MS, ENDING_GETUP_MS,
 } from './endingScene';
 
 // 決定的な擬似乱数(テスト用)。0..1を固定シーケンスで返す。
@@ -224,5 +226,82 @@ describe('endingScene — フィルの救護状態機械(§2/§4/§8)', () => {
     let s: ReturnType<typeof createInitialEndingPhill> = { ...createInitialEndingPhill(), phase: 'healForward', phaseMs: 0, targetIndex: 0 };
     s = stepEndingPhill(s, 0, 50, DEFAULT_ENDING_PHILL_TUNING);
     expect(s.velMult).toBe(0);
+  });
+});
+
+describe('endingScene — 爆撃(ENDING_SCENE.md 演出仕様v3.1)', () => {
+  const T = DEFAULT_ENDING_BOMB_TUNING;
+  const soldierAt = (id: string, x: number, y = 0) => {
+    const s = spawnEndingSoldier(id, x, () => 0.5);
+    return { ...s, y };
+  };
+
+  it('trySpawn: 画面内の兵士がアンカーになり、着弾点はその近く(X±60/Y±30〜70・帯クランプ内)', () => {
+    const soldiers = [soldierAt('a', 1000, 40)];
+    const b = trySpawnEndingBomb('b1', soldiers, -9999, 1000, 400, () => 0.5, T);
+    expect(b).not.toBeNull();
+    expect(Math.abs(b!.impactX - 1000)).toBeLessThanOrEqual(T.anchorOffsetXPx);
+    expect(Math.abs(b!.impactY - 40)).toBeGreaterThanOrEqual(T.anchorOffsetYMinPx - 1e-9);
+    expect(Math.abs(b!.impactY - 40)).toBeLessThanOrEqual(T.anchorOffsetYMaxPx + 1e-9);
+    expect(Math.abs(b!.impactY)).toBeLessThanOrEqual(T.bandClampYPx);
+  });
+
+  it('trySpawn: 画面外の兵士・フィル回避帯内の兵士・転倒中の兵士はアンカーにならず、候補0なら見送り(監査A-1/A-2)', () => {
+    const offscreen = soldierAt('a', 5000);              // カメラ中心1000・半幅400×0.75=300の外
+    const nearPhill = soldierAt('b', 1100);              // フィル(=1000)の回避帯[820,1400]内
+    const tumbling = { ...soldierAt('c', 1000), phase: 'downed' as const };
+    expect(trySpawnEndingBomb('b1', [offscreen, nearPhill, tumbling], 1000, 1000, 400, () => 0.5, T)).toBeNull();
+  });
+
+  it('落下は重力加速(後半の方が速い)で、fallMs後に着弾(justExplodedは着弾フレームだけ)', () => {
+    let b = trySpawnEndingBomb('b1', [soldierAt('a', 0)], -9999, 0, 400, () => 0.5, T)!;
+    const y0 = endingBombFallY(b, T);
+    expect(y0).toBeCloseTo(b.impactY - T.fallHeightPx);
+    b = stepEndingBomb(b, T.fallMs * 0.25, T)!;
+    const dFirst = endingBombFallY(b, T) - y0;          // 前半1/4の落下量
+    const yq = endingBombFallY(b, T);
+    b = stepEndingBomb(b, T.fallMs * 0.5, T)!;          // t=0.75まで
+    b = { ...b, phaseMs: T.fallMs * 0.75 };
+    const dLater = endingBombFallY(b, T) - yq;          // 中盤2/4の落下量
+    expect(dLater).toBeGreaterThan(dFirst * 2);          // 加速している(等速ではない=慣性MUST)
+    b = stepEndingBomb(b, T.fallMs, T)!;                 // 着弾
+    expect(b.phase).toBe('explode');
+    expect(b.justExploded).toBe(true);
+    b = stepEndingBomb(b, 16, T)!;
+    expect(b.justExploded).toBe(false);                  // edgeは1フレームだけ
+    expect(stepEndingBomb(b, T.explodeMs, T)).toBeNull(); // 爆発表示が終わると消える
+  });
+
+  it('blast: 楕円半径内の兵士だけがblownになり、方向は爆心から離れる向き(監査A-3/A-5)', () => {
+    const near = soldierAt('near', 1100, 0);   // dx=+100 → 半径内・右へ飛ぶ
+    const far = soldierAt('far', 1400, 0);     // dx=+400 → 半径外
+    const deep = soldierAt('deep', 1000, 80);  // dx=0/dy=80×1.6=128 → 半径内・左右は乱数
+    const out = blastEndingSoldiers([near, far, deep], 1000, -40, () => 0.3, T);
+    expect(out[0].phase).toBe('blown');
+    expect(out[0].knockDirX).toBe(1);
+    expect(out[1].phase).toBe('walk');
+    // deep: dy=(80-(-40))×1.6=192 → 半径170の外。座標を変えて内側も確認
+    const deep2 = soldierAt('d2', 1005, -20);
+    const out2 = blastEndingSoldiers([deep2], 1000, -40, () => 0.3, T);
+    expect(out2[0].phase).toBe('blown');
+    expect([1, -1]).toContain(out2[0].knockDirX); // |dx|<8 → 左右は乱数のどちらか
+  });
+
+  it('一時転倒はblown→downed→getup→accel→walkと復帰し、転倒中は画面外でも再投入されない(監査B-1)', () => {
+    const rand = () => 0.5;
+    let s = blastEndingSoldiers([soldierAt('a', 1100)], 1000, 0, rand, T)[0];
+    expect(isEndingSoldierTumbling(s)).toBe(true);
+    const x0 = s.x;
+    s = stepEndingSoldier(s, ENDING_BLOWN_MS, 0, DEFAULT_ENDING_SOLDIER_TUNING, rand);
+    expect(s.phase).toBe('downed');
+    expect(s.x).toBeGreaterThan(x0 + 100); // 「大きく」飛んでいる(初速1200×ease減衰)
+    // 転倒中に左端を超えても再投入しない
+    expect(reenterEndingSoldierIfOffscreen(s, s.x + 999, 0, 0, rand)).toBe(s);
+    s = stepEndingSoldier(s, s.downDurationMs, 0, DEFAULT_ENDING_SOLDIER_TUNING, rand);
+    expect(s.phase).toBe('getup');
+    s = stepEndingSoldier(s, ENDING_GETUP_MS, 0, DEFAULT_ENDING_SOLDIER_TUNING, rand);
+    expect(s.phase).toBe('accel'); // 起き上がり後は既存のaccel easeを通ってwalkへ(慣性MUST)
+    s = stepEndingSoldier(s, DEFAULT_ENDING_SOLDIER_TUNING.easeMs, 0, DEFAULT_ENDING_SOLDIER_TUNING, rand);
+    expect(s.phase).toBe('walk');
   });
 });

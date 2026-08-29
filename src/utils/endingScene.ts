@@ -16,7 +16,12 @@
 
 // ---- 兵士 ---------------------------------------------------------------
 
-export type EndingSoldierPhase = 'walk' | 'decel' | 'stopped' | 'fire' | 'accel';
+// blown/downed/getup は爆撃(演出仕様v3.1)の一時転倒: 吹き飛び→横たわる→起き上がり→accel→walk復帰。
+export type EndingSoldierPhase = 'walk' | 'decel' | 'stopped' | 'fire' | 'accel' | 'blown' | 'downed' | 'getup';
+
+// 一時転倒のフェーズ時間(v3.1・叩き台)。回転演出がpixi側でも同じ時間を使うためexport。
+export const ENDING_BLOWN_MS = 550;  // 吹き飛び(ノックバック+倒れ込み回転)
+export const ENDING_GETUP_MS = 450;  // 起き上がり(回転戻し)。この後は既存accel(200ms)を通ってwalkへ
 
 export interface EndingSoldier {
   id: string;
@@ -32,6 +37,9 @@ export interface EndingSoldier {
   shotsFired: number;
   nextShotAtMs: number;    // fireフェーズ内、次弾を撃つ経過時間(ms)
   lastShotAt: number;      // 直近の発砲 gameTime(ms)。0=まだ未発砲。描画側のマズルフラッシュ/反動の起点。
+  knockDirX: number;       // 爆撃の吹き飛び方向(±1・v3.1)。blown中の移動と倒れ込み回転の向き。
+  knockV0: number;         // 吹き飛び初速(px/s・v3.1)。blown中に(1-t)²で減衰。
+  downDurationMs: number;  // downed(横たわり)の目標時間(ms・v3.1・個体乱数)
 }
 
 export interface EndingSoldierTuning {
@@ -77,6 +85,9 @@ export const spawnEndingSoldier = (
   shotsFired: 0,
   nextShotAtMs: 0,
   lastShotAt: 0,
+  knockDirX: 1,
+  knockV0: 0,
+  downDurationMs: 0,
 });
 
 // 出撃時の初期配置(常在N人・§9)。1点に固まらないよう、rightEdgeを基準に等間隔+個体乱数で散らす。
@@ -154,10 +165,33 @@ export const stepEndingSoldier = (
       }
       return { ...s, x, phaseMs, velMult: t };
     }
+    // ---- 爆撃の一時転倒(v3.1)。歩行のx(冒頭のvelMult移動)はvelMult=0で不動、blownだけ
+    //      ノックバック変位を別途足す。velocity=(1-t)²のease-out減衰(慣性MUST)。
+    case 'blown': {
+      const t0 = Math.max(0, Math.min(1, s.phaseMs / ENDING_BLOWN_MS));
+      const t1 = Math.max(0, Math.min(1, phaseMs / ENDING_BLOWN_MS));
+      const vAvg = s.knockV0 * (((1 - t0) ** 2) + ((1 - t1) ** 2)) / 2; // 区間平均速度(台形近似)
+      const bx = x + s.knockDirX * vAvg * dtSec;
+      if (phaseMs >= ENDING_BLOWN_MS) return { ...s, x: bx, phase: 'downed', phaseMs: 0, velMult: 0 };
+      return { ...s, x: bx, phaseMs, velMult: 0 };
+    }
+    case 'downed': {
+      if (phaseMs >= s.downDurationMs) return { ...s, x, phase: 'getup', phaseMs: 0, velMult: 0 };
+      return { ...s, x, phaseMs, velMult: 0 };
+    }
+    case 'getup': {
+      // 起き上がり(回転はpixi側がphaseMsから引く)→ 既存accel(200ms ease)を通ってwalkへ(慣性MUST)。
+      if (phaseMs >= ENDING_GETUP_MS) return { ...s, x, phase: 'accel', phaseMs: 0, velMult: 0 };
+      return { ...s, x, phaseMs, velMult: 0 };
+    }
     default:
       return { ...s, x };
   }
 };
+
+// 一時転倒中か(v3.1)。再投入スキップ(監査B-1)・発砲/マズル消灯(監査B-6)・影切替(監査B-3)の合流点。
+export const isEndingSoldierTumbling = (s: EndingSoldier): boolean =>
+  s.phase === 'blown' || s.phase === 'downed' || s.phase === 'getup';
 
 // 左画面外(呼び出し側がズーム外周+マージンで渡す)へ抜けたら右から再投入(プール・§9)。
 // 画面外でなければそのまま返す(無変更)。
@@ -167,6 +201,7 @@ export const reenterEndingSoldierIfOffscreen = (
   tuning: EndingSoldierTuning = DEFAULT_ENDING_SOLDIER_TUNING,
 ): EndingSoldier => {
   if (s.x >= leftBoundX) return s;
+  if (isEndingSoldierTumbling(s)) return s; // 転倒中は再投入しない(監査B-1。起き上がってから通常判定に戻る)
   return spawnEndingSoldier(s.id, rightEdgeX + lerpRange(rand, 0, spawnJitterX), rand, tuning);
 };
 
@@ -325,3 +360,125 @@ export const stepEndingPhill = (
       return s;
   }
 };
+
+// ---- 爆撃(ENDING_SCENE.md 演出仕様v3/v3.1) ------------------------------------
+// 奥や手前に降ってきて大きく爆発し、近くの兵士が大きくノックバックして倒れる(社長指示2026-08-29)。
+// 判定なし(観賞シーン)。落下は重力加速(慣性MUST)・着弾点はアンカー兵士方式(監査A-2=
+// 「と同時に兵士がノックバック」を毎回成立させる)。
+
+export type EndingBombPhase = 'fall' | 'explode';
+
+export interface EndingBomb {
+  id: string;
+  impactX: number;         // 着弾点(ワールド)。描画のzIndex/alpha/スケールも常にこのYを使う(監査B4)
+  impactY: number;
+  phase: EndingBombPhase;
+  phaseMs: number;
+  justExploded: boolean;   // 着弾フレームだけtrue(SE/シェイク/ノックバック適用のedge。次stepで下ろす)
+}
+
+export interface EndingBombTuning {
+  intervalMsMin: number; intervalMsMax: number; // 投下間隔(次の投下までの乱数幅)
+  retryMs: number;          // アンカー候補0人で見送った時の再試行間隔(監査A-2)
+  maxAirborne: number;      // 同時滞空数
+  fallMs: number;           // 落下所要(重力加速)
+  fallHeightPx: number;     // 落下開始高さ(監査A-6: 等倍可視半高300+220)
+  explodeMs: number;        // 爆発flipbookの表示時間(既存spawnExplosionFxと同じ460ms)
+  explosionRadiusPx: number;// 爆発絵の半径(幅=radius×2×1.1・既存作法)
+  knockRadiusPx: number;    // ノックバック楕円距離のしきい値(監査A-3: 絵の幅とほぼ一致させる)
+  knockDepthMult: number;   // 楕円距離のY圧縮(奥行き方向は見た目の距離感で締める)
+  knockV0PxS: number;       // 吹き飛び初速(px/s)。(1-t)²減衰×550ms=移動量≈v0×0.55/3
+  downMsMin: number; downMsMax: number; // 横たわり時間(個体乱数)
+  anchorOffsetXPx: number;  // アンカー兵士からの着弾Xずらし(±)
+  anchorOffsetYMinPx: number; anchorOffsetYMaxPx: number; // 奥/手前へのYずらし(絶対値の幅)
+  bandClampYPx: number;     // 着弾Yのクランプ(監査C-2: 地平線フェード帯に入れない)
+  viewFracX: number;        // アンカー候補=カメラ中心±(可視半幅×この係数)(監査A-1)
+  phillAvoidBehindPx: number; phillAvoidAheadPx: number; // フィル回避帯(前方は落下中の前進を先読み・監査B-4)
+}
+
+export const DEFAULT_ENDING_BOMB_TUNING: EndingBombTuning = {
+  intervalMsMin: 3500, intervalMsMax: 7000,
+  retryMs: 400,
+  maxAirborne: 2,
+  fallMs: 900,
+  fallHeightPx: 520,
+  explodeMs: 460,
+  explosionRadiusPx: 150,
+  knockRadiusPx: 170,
+  knockDepthMult: 1.6,
+  knockV0PxS: 1200,
+  downMsMin: 2500, downMsMax: 4500,
+  anchorOffsetXPx: 60,
+  anchorOffsetYMinPx: 30, anchorOffsetYMaxPx: 70,
+  bandClampYPx: 90,
+  viewFracX: 0.75,
+  phillAvoidBehindPx: 180, phillAvoidAheadPx: 400,
+};
+
+// 投下を試みる(監査A-1/A-2)。画面内の通常フェーズ兵士から乱数でアンカーを選び、その足元近くへ落とす。
+// 候補が居なければ null(呼び出し側が retryMs 後に再試行)。
+export const trySpawnEndingBomb = (
+  id: string, soldiers: EndingSoldier[], phillX: number, camCenterX: number, viewHalfWPx: number,
+  rand: () => number = Math.random,
+  tuning: EndingBombTuning = DEFAULT_ENDING_BOMB_TUNING,
+): EndingBomb | null => {
+  const halfW = viewHalfWPx * tuning.viewFracX;
+  const avoidMin = phillX - tuning.phillAvoidBehindPx;
+  const avoidMax = phillX + tuning.phillAvoidAheadPx;
+  const candidates = soldiers.filter(s =>
+    !isEndingSoldierTumbling(s) &&
+    Math.abs(s.x - camCenterX) <= halfW &&
+    (s.x < avoidMin || s.x > avoidMax));
+  if (candidates.length === 0) return null;
+  const anchor = candidates[Math.floor(rand() * candidates.length) % candidates.length];
+  const impactX = anchor.x + (rand() * 2 - 1) * tuning.anchorOffsetXPx;
+  const side = rand() < 0.5 ? -1 : 1; // 奥(-)か手前(+)
+  const rawY = anchor.y + side * lerpRange(rand, tuning.anchorOffsetYMinPx, tuning.anchorOffsetYMaxPx);
+  const impactY = Math.max(-tuning.bandClampYPx, Math.min(tuning.bandClampYPx, rawY));
+  return { id, impactX, impactY, phase: 'fall', phaseMs: 0, justExploded: false };
+};
+
+// 1フレーム進める。爆発表示が終わったら null(呼び出し側がfilterで除去)。
+export const stepEndingBomb = (
+  b: EndingBomb, dtMs: number,
+  tuning: EndingBombTuning = DEFAULT_ENDING_BOMB_TUNING,
+): EndingBomb | null => {
+  if (dtMs <= 0) return b;
+  const phaseMs = b.phaseMs + dtMs;
+  if (b.phase === 'fall') {
+    if (phaseMs >= tuning.fallMs) return { ...b, phase: 'explode', phaseMs: 0, justExploded: true };
+    return { ...b, phaseMs };
+  }
+  if (phaseMs >= tuning.explodeMs) return null;
+  return { ...b, phaseMs, justExploded: false };
+};
+
+// 落下中の描画Y(重力加速=等加速で impactY-fallHeightPx から impactY へ。慣性MUST・等速落下禁止)。
+export const endingBombFallY = (
+  b: EndingBomb,
+  tuning: EndingBombTuning = DEFAULT_ENDING_BOMB_TUNING,
+): number => {
+  const t = Math.max(0, Math.min(1, b.phaseMs / tuning.fallMs));
+  return b.impactY - tuning.fallHeightPx * (1 - t * t);
+};
+
+// 着弾のノックバック適用(監査A-3/A-5)。楕円距離(Yは knockDepthMult 倍で締める)内の通常フェーズ
+// 兵士を blown へ。方向は爆心から離れる向き(|dx|<8pxは左右乱数)。転倒中の兵士は重ね掛けしない。
+export const blastEndingSoldiers = (
+  soldiers: EndingSoldier[], bombX: number, bombY: number,
+  rand: () => number = Math.random,
+  tuning: EndingBombTuning = DEFAULT_ENDING_BOMB_TUNING,
+): EndingSoldier[] =>
+  soldiers.map(s => {
+    if (isEndingSoldierTumbling(s)) return s;
+    const dx = s.x - bombX;
+    const dy = (s.y - bombY) * tuning.knockDepthMult;
+    if (Math.hypot(dx, dy) > tuning.knockRadiusPx) return s;
+    const dir = dx > 8 ? 1 : dx < -8 ? -1 : (rand() < 0.5 ? -1 : 1);
+    return {
+      ...s, phase: 'blown' as const, phaseMs: 0, velMult: 0,
+      knockDirX: dir,
+      knockV0: tuning.knockV0PxS * (0.85 + rand() * 0.3), // 個体±15%(全員同じ弧にしない)
+      downDurationMs: lerpRange(rand, tuning.downMsMin, tuning.downMsMax),
+    };
+  });

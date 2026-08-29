@@ -11,10 +11,11 @@ import { bladeNativeAngle } from '../utils/bladeArt';
 import { applyGhostBuildToPlayer, soloGhostRequested } from '../utils/soloGhost';
 import { loadPlayerProfile } from '../utils/playerTraits';
 import { runClocks, resetRunClocks } from '../utils/runClocks';
-import type { EndingSoldier, EndingPhillState } from '../utils/endingScene'; // ENDING_SCENE.md 演出仕様v2
+import type { EndingSoldier, EndingPhillState, EndingBomb, EndingBombTuning } from '../utils/endingScene'; // ENDING_SCENE.md 演出仕様v2/v3.1
 import {
   createInitialEndingSoldiers, createInitialEndingPhill, stepEndingSoldier, stepEndingPhill,
   reenterEndingSoldierIfOffscreen,
+  DEFAULT_ENDING_BOMB_TUNING, trySpawnEndingBomb, stepEndingBomb, blastEndingSoldiers,
 } from '../utils/endingScene';
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
@@ -2058,6 +2059,17 @@ export const ENDING_SOLDIER_SPAWN_SPAN_X = camNum('endsoldspan', 2200);
 // (CLAUDE.md「ズーム引き考慮」)。
 export const ENDING_SOLDIER_REENTRY_MARGIN_PX = camNum('endsoldmargin', 200);
 export const ENDING_SOLDIER_REENTRY_JITTER_PX = camNum('endsoldjitter', 300);
+// 爆撃(ENDING_SCENE.md 演出仕様v3.1・監査B-5のツマミ)。pixi側も同じ定数を読む(半径/表示の整合)。
+export const ENDING_BOMB_ENABLED = camNum('endbomb', 1) !== 0;
+const ENDING_BOMB_INTERVAL_CENTER = camNum('endbombint', 5250); // 間隔中心ms(±33%で散る)
+export const ENDING_BOMB_TUNING: EndingBombTuning = {
+  ...DEFAULT_ENDING_BOMB_TUNING,
+  intervalMsMin: ENDING_BOMB_INTERVAL_CENTER * 0.67,
+  intervalMsMax: ENDING_BOMB_INTERVAL_CENTER * 1.33,
+  explosionRadiusPx: camNum('endbombr', DEFAULT_ENDING_BOMB_TUNING.explosionRadiusPx),
+  knockRadiusPx: camNum('endbombkb', DEFAULT_ENDING_BOMB_TUNING.knockRadiusPx),
+  fallHeightPx: camNum('endbombh', DEFAULT_ENDING_BOMB_TUNING.fallHeightPx),
+};
 export const CAMERA_FOLLOW_TAU = camNum('camtau', 0.16);          // 追従遅延(秒)。わずかな重さ。範囲0.08〜0.16
 export const CAMERA_DANGER_TAU = camNum('camdanger', 0.08);       // 危険時(接近戦)の追従遅延(秒)。安定。範囲0.04〜0.08
 export const CAMERA_RETURN_TAU = camNum('camret', 0.20);          // 停止時に先読みオフセットを戻す時定数(秒)。ピタ止まり回避。範囲0.12〜0.20
@@ -4918,6 +4930,9 @@ interface GameState {
   // (セリフ4関数はtutorialしか見ておらず、混ぜると名前付きNPCが喋る事故になるため)。
   endingSoldiers: EndingSoldier[];
   endingPhill: EndingPhillState | null; // フィル(=プレイヤー実体)の状態機械。null=エンディング外。
+  endingBombs: EndingBomb[];         // 爆撃の弾(演出仕様v3.1。判定なし・観賞)
+  endingBombNextAt: number;          // 次の投下を試みるgameTime(0=未初期化→updateEndingSceneが初回に設定)
+  endingBombingEnabled: boolean;     // 聴取記録のword(暗転)以降はfalse(監査A-7・EndingScreenが下ろす)
   suppressionActive: boolean;    // 制圧イベント中か(通常は false=拠点なし)
   suppressionCaptureCount: number; // 制圧した累計回数(base-capture SE 検出用。軍人名簿indexはランダム割当)
   safeBaseId: string | null;     // 武器商人が現在いる拠点(=安全地帯。HP回復・陥落しない)
@@ -5564,7 +5579,9 @@ interface GameState {
   // 毎フレーム: エンディング(仮組み)の兵士/フィルの状態機械を1歩進める(ENDING_SCENE.md 演出仕様v2)。
   // shots=このフレームに発砲した兵士の位置(SE距離減衰再生用)・phillVelMult=フィルの現在速度係数
   // (呼び出し側=useGameLoopがカメラ台車の合成入力にこの倍率を掛ける)。farBackdrop!=='ending'ならno-op。
-  updateEndingScene: (deltaTime: number) => { shots: { x: number; y: number }[]; phillVelMult: number };
+  updateEndingScene: (deltaTime: number) => { shots: { x: number; y: number }[]; explosions: { x: number; y: number }[]; phillVelMult: number };
+  // 爆撃のON/OFF(v3.1 監査A-7): 聴取記録のword(暗転)遷移でEndingScreenがfalseにする(滞空弾も消す)。
+  setEndingBombing: (enabled: boolean) => void;
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
   pressLabButton: (id: string) => void;                 // ボタン押下→対応ドア解錠
   endIntroDialogue: () => void;   // 登場セリフ終了(ゲーム開始へ)
@@ -5930,6 +5947,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   escorts: [],
   endingSoldiers: [],
   endingPhill: null,
+  endingBombs: [],
+  endingBombNextAt: 0,
+  endingBombingEnabled: true,
   suppressionActive: false,
   suppressionCaptureCount: 0,
   safeBaseId: null,
@@ -17290,7 +17310,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // useGameLoop側のみで行い、pixiScene は結果を読んで描くだけ(CLAUDE.md「Rendering vs. game logic」)。
   updateEndingScene: (deltaTime) => {
     const state = get();
-    if (state.farBackdrop !== 'ending') return { shots: [], phillVelMult: 1 };
+    if (state.farBackdrop !== 'ending') return { shots: [], explosions: [], phillVelMult: 1 };
     const dtMs = deltaTime * 1000;
     const now = state.gameTime;
     // 兵士: 状態機械を1歩進め、左画面外(ズーム外周+マージン)へ抜けたら右から再投入(§9・監査B-1)。
@@ -17298,19 +17318,63 @@ export const useGameStore = create<GameState>((set, get) => ({
     const leftBoundX = state.player.x - overscanHalfW;
     const rightEdgeX = state.player.x + overscanHalfW;
     const shots: { x: number; y: number }[] = [];
-    const nextSoldiers = state.endingSoldiers.map(s => {
+    let nextSoldiers = state.endingSoldiers.map(s => {
       const stepped = stepEndingSoldier(s, dtMs, now);
       if (stepped.lastShotAt === now && stepped.lastShotAt !== s.lastShotAt) shots.push({ x: stepped.x, y: stepped.y });
       return reenterEndingSoldierIfOffscreen(stepped, leftBoundX, rightEdgeX, ENDING_SOLDIER_REENTRY_JITTER_PX);
     });
+    // 爆撃(演出仕様v3.1): 弾を進め、着弾フレームで兵士へノックバック適用+シェイク。SEはuseGameLoop側
+    // (返り値explosions)。着弾点の選定はアンカー兵士方式(監査A-1/A-2=実効ズーム1の可視域内の兵士)。
+    const explosions: { x: number; y: number }[] = [];
+    let bombs = state.endingBombs;
+    let bombNextAt = state.endingBombNextAt;
+    if (ENDING_BOMB_ENABLED && state.endingBombingEnabled) {
+      const stepped: EndingBomb[] = [];
+      for (const b of bombs) {
+        const nb = stepEndingBomb(b, dtMs, ENDING_BOMB_TUNING);
+        if (!nb) continue; // 爆発表示が終わった弾は除去
+        if (nb.justExploded) {
+          explosions.push({ x: nb.impactX, y: nb.impactY });
+          nextSoldiers = blastEndingSoldiers(nextSoldiers, nb.impactX, nb.impactY, Math.random, ENDING_BOMB_TUNING);
+          get().triggerShake(500, 6); // 「大きく爆発」(叩き台・被弾シェイクと同系)
+        }
+        stepped.push(nb);
+      }
+      bombs = stepped;
+      const t = ENDING_BOMB_TUNING;
+      if (bombNextAt <= 0) bombNextAt = now + t.intervalMsMin + Math.random() * (t.intervalMsMax - t.intervalMsMin);
+      if (now >= bombNextAt) {
+        if (bombs.filter(b => b.phase === 'fall').length < t.maxAirborne) {
+          const camCenterX = state.player.x + state.player.width / 2; // カメラ中心≒プレイヤー中心(横追従)
+          const nb = trySpawnEndingBomb(
+            `ending-bomb-${now}`, nextSoldiers, camCenterX, camCenterX, state.gameBounds.width / 2,
+            Math.random, t,
+          );
+          if (nb) {
+            bombs = [...bombs, nb];
+            bombNextAt = now + t.intervalMsMin + Math.random() * (t.intervalMsMax - t.intervalMsMin);
+          } else {
+            bombNextAt = now + t.retryMs; // アンカー候補0人=見送り(監査A-2)
+          }
+        } else {
+          bombNextAt = now + t.retryMs;
+        }
+      }
+    } else if (bombs.length > 0) {
+      bombs = []; // OFF(暗転以降 or ?endbomb=0)は滞空弾も消す(全黒で見えない・監査A-7)
+    }
     // フィル(=プレイヤー実体・不可視のカメラ台車): 次の倒れ兵士への接近/救護の状態機械(§4/§8)。
     // 位置はプレイヤーの中心Xを使う(足元Xだと幅ぶんズレる)。
     let phillVelMult = 1;
     const phill = state.endingPhill;
     const nextPhill = phill ? stepEndingPhill(phill, state.player.x + state.player.width / 2, dtMs) : null;
     if (nextPhill) phillVelMult = nextPhill.velMult;
-    set({ endingSoldiers: nextSoldiers, endingPhill: nextPhill });
-    return { shots, phillVelMult };
+    set({ endingSoldiers: nextSoldiers, endingPhill: nextPhill, endingBombs: bombs, endingBombNextAt: bombNextAt });
+    return { shots, explosions, phillVelMult };
+  },
+
+  setEndingBombing: (enabled) => {
+    set(state => ({ endingBombingEnabled: enabled, endingBombs: enabled ? state.endingBombs : [] }));
   },
 
   openLabDoor: (id) => {
@@ -18309,6 +18373,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? createInitialEndingSoldiers(ENDING_SOLDIER_COUNT, spawnTL.x + ENDING_SOLDIER_SPAWN_RIGHT_X, ENDING_SOLDIER_SPAWN_SPAN_X)
           : [],
         endingPhill: farBackdrop === 'ending' ? createInitialEndingPhill() : null,
+        endingBombs: [],           // 爆撃(v3.1・監査B-2): 2周目に前回の弾を持ち越さない
+        endingBombNextAt: 0,
+        endingBombingEnabled: true,
         // 出撃時セリフ: 屋外(護衛NPCが居る出撃)のみ、実ロスターの1人をランダムで予約(フェイザー等の差し替えにも追従)。
         npcDialogue: null,
         npcDialogueNextAt: 0,

@@ -7550,8 +7550,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (endingStage) {
           const endRes = useGameStore.getState().updateEndingScene(deltaTime);
           endingPhillVelMult = endRes.phillVelMult;
-          // 兵士の発砲SE(§1「実在部品: SE=npc-gunfireのみ」)。距離減衰は護衛NPCの発砲音と同じ計算。
-          if (endRes.shots.length > 0) {
+          // 兵士の発砲SE(§1「実在部品: SE=npc-gunfireのみ」)+爆撃SE(v3.1・既存キー'bomb')。
+          // 距離減衰はどちらも護衛NPCの発砲音と同じ計算。
+          if (endRes.shots.length > 0 || endRes.explosions.length > 0) {
             const esp = useGameStore.getState().player;
             const espx = esp.x + esp.width / 2, espy = esp.y + esp.height / 2;
             const escam = useGameStore.getState().camera, esgb = useGameStore.getState().gameBounds;
@@ -7561,6 +7562,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (g > bestGain) bestGain = g;
             }
             if (bestGain > 0) playSfx('npc-gunfire', bestGain);
+            let boomGain = 0;
+            for (const f of endRes.explosions) {
+              const g = npcSfxDistGain(f.x, f.y, espx, espy, escam, esgb);
+              if (g > boomGain) boomGain = g;
+            }
+            if (boomGain > 0) playSfx('bomb', boomGain);
           }
         }
         // Move player based on input or swipe direction

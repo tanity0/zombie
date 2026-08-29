@@ -28,7 +28,8 @@ import type {
   GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショットの渦(v0.25.3276)
 } from '../types/game';
 // ENDING_SCENE.md 演出仕様v2: 兵士/フィルの状態機械(純関数・シミュレーション)はここでは読むだけ。
-import type { EndingSoldier, EndingPhillState } from '../utils/endingScene';
+import type { EndingSoldier, EndingPhillState, EndingBomb } from '../utils/endingScene';
+import { endingBombFallY, isEndingSoldierTumbling, ENDING_BLOWN_MS, ENDING_GETUP_MS } from '../utils/endingScene';
 import { fallenSoldiersInRange } from '../utils/endingScene';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
@@ -78,6 +79,7 @@ import {
   KILLFX_BURST_AT_MS, KILLFX_BLOOD_LAG_MS, KILLFX_TOTAL_MS,
   MELEE_WINDUP_MS, // ★近接の前隙。しゃがみ絵の長さをここから導く(SAME_ARENA.md §7)
   WHIP_SNARE_BEND_SCALE, // ★鞭のしなり(スネア)の折れの強さ(社長指示2026-08-24)
+  ENDING_BOMB_TUNING, // エンディング爆撃(v3.1): 爆発半径/落下高をstoreと同じ出どころから読む(絵と挙動の整合)
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -989,6 +991,8 @@ const ENDING_MUZZLE_FLASH_MS = Math.max(1, tsNum('endmuzzle', 100)); // §1「80
 const ENDING_TRACER_MS = Math.max(1, tsNum('endtracer', 120));       // §1「短命の黄色い線(120ms)」
 // 兵士のマズルフラッシュ基準幅(px)。検収A-2: 城ボス用の既定(275px)は兵士(表示高~65px)の4倍= 実寸へ。
 const ENDING_MUZZLE_SIZE_PX = Math.max(4, tsNum('endmuzzlesize', 40));
+// 爆撃の弾の表示高(px・v3.1 監査C-4: 素材64×256の等倍=兵士の4倍は使わない。兵士65pxの約1.5倍)。
+const ENDING_BOMB_SIZE_PX = Math.max(8, tsNum('endbombsize', 100));
 const ENDING_TRACER_LEN_PX = Math.max(0, tsNum('endtracerlen', 46));
 const ENDING_SHELL_LIFE_S = Math.max(0.05, tsNum('endshell', 0.4));  // 薬莢が後方へ小放物線を描く時間
 const ENDING_RECOIL_MS = Math.max(1, tsNum('endrecoil', 140));       // §7「発砲の瞬間、体が2〜3px後ろへ跳ねて戻る」
@@ -3673,6 +3677,9 @@ export class PixiScene {
   private endingPhillScale: number | null = null; // walk-0基準の1系列1スケール(監査A-2・コマごとに正規化しない)
   private endingFallenSprites = new Map<number, Sprite>(); // 倒れ兵士(indexキー・ワールド固定=描画のみ)
   private endingFallenShadowGfx = new Graphics(); // 倒れ兵士の専用楕円ソフト影(シルエット焼きは使わない・§6)
+  private endingBombSprites = new Map<string, Sprite>();     // 爆撃の弾(v3.1・落下中。actorLayer/zIndex=着弾Y)
+  private endingBombBoomSprites = new Map<string, Sprite>(); // 爆発flipbook(v3.1・spawnExplosionFxは使わない=監査A-4のYソート)
+  private endingTumbleShadowGfx = new Graphics(); // 一時転倒(blown/downed/getup)中の楕円ソフト影(監査B-3。fallen影とはclearタイミングが別)
   private rescueFace = new Map<string, { vx: number; face: number }>(); // 向きの平滑化(EMA)＋ヒステリシス。パタパタ反転防止
   private enemyJumpHop = new Map<string, number>(); // ジャンプ中の最新ホップ高(px)。盾ブロック時の落下補間の起点に使う
   private enemyBlockFall = new Map<string, { from: number; start: number }>(); // 盾で弾かれて空中から落ちる演出(from→0へ補間)
@@ -4658,6 +4665,7 @@ export class PixiScene {
       this.hunterVisionGfx, // ハンター視界範囲(薄紫・地面・world座標)
       this.pumpkinTelegraph,
       this.endingFallenShadowGfx, // エンディング(仮組み)倒れ兵士の専用楕円ソフト影(§6)
+      this.endingTumbleShadowGfx, // エンディング爆撃の一時転倒中の楕円ソフト影(v3.1 監査B-3)
       this.glowGroundLayer, // ★§4手順1: 強glowの光だまり(プレイヤーの光だまりより下=先に敷く)
       this.playerGroundPool,
       this.playerLight,
@@ -8064,6 +8072,7 @@ export class PixiScene {
     this.drawEndingSoldiers(s.endingSoldiers, now);
     this.updateEndingShotFx(s.endingSoldiers, now);
     this.drawEndingPhill(s.endingPhill, s.player);
+    this.drawEndingBombs(s.endingBombs); // 爆撃(v3.1)。空配列で自然に全プルーン(同上の空配列作法)
     if (s.farBackdrop === 'ending') {
       const overscanHalfW = (s.gameBounds.width / 2) / ZOOM_MIN_ABS + ENDING_FALLEN_DRAW_MARGIN_PX;
       this.drawEndingFallenSoldiers(s.player.x - overscanHalfW, s.player.x + overscanHalfW);
@@ -11456,6 +11465,7 @@ export class PixiScene {
     }
     // ---- エンディング(仮組み)の兵士・フィル(既存の護衛と同じ接地影のplace()に相乗り・§6) ----
     for (const es of endingSoldiers) {
+      if (isEndingSoldierTumbling(es)) continue; // 一時転倒中(爆撃v3.1)は立ちシルエット影をやめ楕円影へ(監査B-3・drawEndingSoldiers側)
       const ha = this.horizonActorAlpha(es.y);
       if (ha <= 0) continue;
       const esSp = this.endingSoldierSprites.get(es.id);
@@ -22355,6 +22365,8 @@ export class PixiScene {
   private drawEndingSoldiers(soldiers: EndingSoldier[], now: number) {
     const seen = new Set<string>();
     const walkFrame = Math.floor(now / PixiScene.RESCUE_WALK_FRAME_MS) % 2;
+    const tsg = this.endingTumbleShadowGfx;
+    tsg.clear(); // 一時転倒の影(v3.1 監査B-3)は毎フレーム描き直し(fallen影とは別Graphics=clear順の衝突なし)
     for (const s of soldiers) {
       seen.add(s.id);
       let sp = this.endingSoldierSprites.get(s.id);
@@ -22365,9 +22377,27 @@ export class PixiScene {
       sp.texture = tex;
       const sc = this.humanNpcScale(tex.width, tex.height, s.y);
       sp.scale.set(-sc, sc); // 常に左向き(faceSign=-1)
+      // 一時転倒(爆撃v3.1 監査A-8): 専用絵を使わず、足元アンカーのまま立ち絵を回転で倒す/起こす。
+      // blown=0→±90°のease-out(吹き飛びの勢いで倒れる)/downed=±90°のまま/getup=±90°→0のease-in。
+      // テクスチャ差し替えなし=ポップなし(慣性MUST)。救護対象のsoldier-fallen-0とは見た目が別物(監査A-9)。
+      const tumbling = isEndingSoldierTumbling(s);
+      if (tumbling) {
+        const dir = s.knockDirX >= 0 ? 1 : -1; // 吹き飛ぶ方向へ頭から倒れ込む(叩き台)
+        if (s.phase === 'blown') {
+          const t = Math.min(1, s.phaseMs / ENDING_BLOWN_MS);
+          sp.rotation = dir * (Math.PI / 2) * (1 - (1 - t) * (1 - t));
+        } else if (s.phase === 'downed') {
+          sp.rotation = dir * (Math.PI / 2);
+        } else { // getup
+          const t = Math.min(1, s.phaseMs / ENDING_GETUP_MS);
+          sp.rotation = dir * (Math.PI / 2) * (1 - t * t);
+        }
+      } else {
+        sp.rotation = 0;
+      }
       // 発砲の反動(§1/§7): 撃った瞬間に2〜3px後ろ(=右)へ跳ね、ease-outで戻る(慣性=瞬間停止しない)。
       const sinceFire = now - s.lastShotAt;
-      const recoil = (s.lastShotAt > 0 && sinceFire >= 0 && sinceFire < ENDING_RECOIL_MS)
+      const recoil = (!tumbling && s.lastShotAt > 0 && sinceFire >= 0 && sinceFire < ENDING_RECOIL_MS)
         ? ENDING_RECOIL_PX * (1 - sinceFire / ENDING_RECOIL_MS)
         : 0;
       const ha = this.horizonActorAlpha(s.y);
@@ -22375,6 +22405,16 @@ export class PixiScene {
       sp.visible = ha > 0;
       sp.position.set(Math.round(s.x + recoil), Math.round(s.y));
       sp.zIndex = s.y;
+      // 一時転倒中の影: 立ちシルエット影はsyncShadows側でスキップし(監査B-3)、ここで楕円ソフト影。
+      // 横たわる長さ≒表示高(回転で横に寝るため)。倒れ兵士(§6)と同じ淡い黒楕円。
+      if (tumbling && ha > 0) {
+        const bodyLen = Math.abs(sp.height);
+        const t = s.phase === 'blown' ? Math.min(1, s.phaseMs / ENDING_BLOWN_MS)
+          : s.phase === 'getup' ? 1 - Math.min(1, s.phaseMs / ENDING_GETUP_MS)
+          : 1;
+        const w = bodyLen * (0.35 + 0.45 * t); // 立ち(細)→横たわり(長)へ影も慣性で伸縮
+        tsg.ellipse(s.x, s.y + 2, Math.max(8, w / 2), 5).fill({ color: 0x000000, alpha: 0.22 * ha });
+      }
     }
     for (const [id, sp] of this.endingSoldierSprites) {
       if (!seen.has(id)) { sp.destroy(); this.endingSoldierSprites.delete(id); this.endingSoldierShotSeen.delete(id); }
@@ -22395,7 +22435,9 @@ export class PixiScene {
       const mx = s.x - w * 0.42;
       const my = s.y - h * 0.15;
       const sinceFire = s.lastShotAt > 0 ? now - s.lastShotAt : Infinity;
-      if (sinceFire >= 0 && sinceFire < ENDING_MUZZLE_FLASH_MS) {
+      // 一時転倒中は残光も消す(v3.1 監査B-6: 発砲直後に吹き飛ぶと回転しながら銃口が光り続ける)。
+      // ※fire→accel遷移後の残光(連射最終弾)は従来どおり出す(消すのは転倒だけ)。
+      if (!isEndingSoldierTumbling(s) && sinceFire >= 0 && sinceFire < ENDING_MUZZLE_FLASH_MS) {
         this.drawBossGunMuzzle(key, mx, my, Math.PI, 1 - sinceFire / ENDING_MUZZLE_FLASH_MS, ENDING_MUZZLE_SIZE_PX); // 左向き=角度π
       } else {
         this.hideBossGunMuzzle(key);
@@ -22464,6 +22506,56 @@ export class PixiScene {
     sp.alpha = ha;
     sp.visible = ha > 0;
     sp.zIndex = fb.footY;
+  }
+
+  // 爆撃(ENDING_SCENE.md 演出仕様v3.1)。弾=落下中スプライト/爆発=fx/explosion-0..5のflipbookを、
+  // どちらも actorLayer に zIndex=着弾Y で描く(監査A-4: effectLayerだと奥の爆発が手前の兵士の上に
+  // 乗ってしまう=「奥や手前に」の深度が壊れる)。alpha/スケールの基準も常に着弾Y(監査B4: 落下中の
+  // 現在Yで引くと上空で地平線フェードに食われて透明になる)。判定なし・プールsprite・負荷2/10。
+  private drawEndingBombs(bombs: EndingBomb[]) {
+    const seen = new Set<string>();
+    for (const b of bombs) {
+      seen.add(b.id);
+      if (b.phase === 'fall') {
+        let sp = this.endingBombSprites.get(b.id);
+        if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.endingBombSprites.set(b.id, sp); }
+        const tex = getTexture('fx/ending-bomb');
+        if (!tex) { sp.visible = false; continue; }
+        sp.texture = tex;
+        sp.scale.set(ENDING_BOMB_SIZE_PX / Math.max(1, tex.height));
+        const ha = this.horizonActorAlpha(b.impactY);
+        sp.alpha = ha;
+        sp.visible = ha > 0;
+        sp.position.set(Math.round(b.impactX), Math.round(endingBombFallY(b, ENDING_BOMB_TUNING)));
+        sp.zIndex = b.impactY;
+        const boom = this.endingBombBoomSprites.get(b.id);
+        if (boom) boom.visible = false;
+      } else { // explode
+        const sp = this.endingBombSprites.get(b.id);
+        if (sp) sp.visible = false;
+        let boom = this.endingBombBoomSprites.get(b.id);
+        if (!boom) { boom = new Sprite(); boom.anchor.set(0.5, 1); this.L.actorLayer.addChild(boom); this.endingBombBoomSprites.set(b.id, boom); }
+        // 既存の爆発flipbook(drawExplosionSprite)と同じコマ割り/幅/終端フェード(v0.25.3283の全爆発共通素材)。
+        const t = Math.min(1, b.phaseMs / ENDING_BOMB_TUNING.explodeMs);
+        const frame = Math.min(5, Math.floor(t * 6));
+        const tex = getTexture(`fx/explosion-${frame}`);
+        if (!tex) { boom.visible = false; continue; }
+        boom.texture = tex;
+        const width = ENDING_BOMB_TUNING.explosionRadiusPx * 2 * 1.1;
+        boom.scale.set(width / Math.max(1, tex.width));
+        boom.position.set(Math.round(b.impactX), Math.round(b.impactY));
+        boom.zIndex = b.impactY + 0.5; // 着弾点のすぐ手前(弾と同じYソート系)
+        const ha = this.horizonActorAlpha(b.impactY);
+        boom.alpha = (t > 0.85 ? Math.max(0, (1 - t) / 0.15) : 1) * ha;
+        boom.visible = boom.alpha > 0;
+      }
+    }
+    for (const [id, sp] of this.endingBombSprites) {
+      if (!seen.has(id)) { sp.destroy(); this.endingBombSprites.delete(id); }
+    }
+    for (const [id, sp] of this.endingBombBoomSprites) {
+      if (!seen.has(id)) { sp.destroy(); this.endingBombBoomSprites.delete(id); }
+    }
   }
 
   // 倒れ兵士(§8・監査A-9)。ワールド固定配置(fallenSoldiersInRangeが純関数で位置を返す)。
