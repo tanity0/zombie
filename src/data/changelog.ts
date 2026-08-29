@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4042',
+    items: [
+      'エンディングシーン(開発中): 兵士の発砲位置(銃口の高さ)を少し上げました。',
+    ],
+  },
+  {
     version: '0.25.4041',
     items: [
       'エンディングシーン(開発中): 遠景森の手前のシルエット帯をもう一段小さくしました。',

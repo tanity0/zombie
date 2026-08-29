@@ -994,6 +994,9 @@ const ENDING_TRACER_MS = Math.max(1, tsNum('endtracer', 120));       // §1「�
 const ENDING_MUZZLE_SIZE_PX = Math.max(4, tsNum('endmuzzlesize', 40));
 // 爆撃の弾の表示高(px・v3.1 監査C-4: 素材64×256の等倍=兵士の4倍は使わない。兵士65pxの約1.5倍)。
 const ENDING_BOMB_SIZE_PX = Math.max(8, tsNum('endbombsize', 100));
+// 兵士の銃口高さ(足元からの表示高比)。検収A-3で0.15(画素実測の銃身先端)→社長指示2026-08-29
+// 「兵士の弾はもう少し上から出て」で0.25へ。?endmuzzley=で実機調整。
+const ENDING_MUZZLE_Y_FRAC = tsNum('endmuzzley', 0.25);
 const ENDING_TRACER_LEN_PX = Math.max(0, tsNum('endtracerlen', 46));
 const ENDING_SHELL_LIFE_S = Math.max(0.05, tsNum('endshell', 0.4));  // 薬莢が後方へ小放物線を描く時間
 const ENDING_RECOIL_MS = Math.max(1, tsNum('endrecoil', 140));       // §7「発砲の瞬間、体が2〜3px後ろへ跳ねて戻る」
@@ -22431,10 +22434,10 @@ export class PixiScene {
       const key = `end:${s.id}`;
       const sp = this.endingSoldierSprites.get(s.id);
       const w = sp ? Math.abs(sp.width) : 60, h = sp ? Math.abs(sp.height) : 90;
-      // 銃口位置。常に左向きなので前方=左(-x)。高さは検収A-3の画素実測(銃身先端=上から84〜86%)
-      // に合わせて足元から0.15×表示高(旧: 高さ中心-0.05h=胸の高さで浮いていた)。
+      // 銃口位置。常に左向きなので前方=左(-x)。高さは足元からENDING_MUZZLE_Y_FRAC×表示高
+      // (検収A-3の画素実測0.15 → 社長指示「もう少し上から」で0.25・上の定数コメント参照)。
       const mx = s.x - w * 0.42;
-      const my = s.y - h * 0.15;
+      const my = s.y - h * ENDING_MUZZLE_Y_FRAC;
       const sinceFire = s.lastShotAt > 0 ? now - s.lastShotAt : Infinity;
       // 一時転倒中は残光も消す(v3.1 監査B-6: 発砲直後に吹き飛ぶと回転しながら銃口が光り続ける)。
       // ※fire→accel遷移後の残光(連射最終弾)は従来どおり出す(消すのは転倒だけ)。
