@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4056',
+    items: [
+      'エンディングシーン(開発中): しゃがむ兵士(爆撃で身構えた兵士・治療済みの兵士)の向きを左向きに修正しました。',
+    ],
+  },
+  {
     version: '0.25.4055',
     items: [
       'エンディング: 「成し得なかった」での暗転を廃止し、最後まで戦場の上で聴取記録が流れるようになりました。the ONEの後、爆撃がフィルに直撃——白いフラッシュから暗転して物語が終わります。',

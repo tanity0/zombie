@@ -22420,9 +22420,10 @@ export class PixiScene {
       if (!tex) { sp.visible = false; continue; }
       sp.texture = tex;
       if (tumbling) {
-        // しゃがみ絵は元から左向き=反転しない。大きさは頭合わせ(ENDING_WATCH_SCALE=歩き兵士と同じ頭サイズ)。
+        // しゃがみ絵(soldier-watch-0)は**素材が右向き**(社長指摘2026-08-29・画像拡大でも確認)
+        // →他の兵士と同じ左向きへ水平反転。大きさは頭合わせ(ENDING_WATCH_SCALE)。
         const wsc = this.humanNpcScale(tex.width, tex.height, s.y) * ENDING_WATCH_SCALE;
-        sp.scale.set(wsc, wsc);
+        sp.scale.set(-wsc, wsc);
         const dir = s.knockDirX >= 0 ? 1 : -1;
         if (s.phase === 'blown') {
           const t = Math.min(1, s.phaseMs / ENDING_BLOWN_MS);
@@ -22629,14 +22630,15 @@ export class PixiScene {
       sp.visible = sp.alpha > 0.003;
       sp.position.set(Math.round(spot.x), Math.round(spot.y));
       sp.zIndex = spot.y - 1; // 兵士/フィルより僅かに奥(通り過ぎる時に足元へ隠れないよう手前寄りにはしない)
-      // しゃがみ絵(治療済みだけフェードイン・同じ足元位置・素材は元から左向き=反転なし)
+      // しゃがみ絵(治療済みだけフェードイン・同じ足元位置)。素材は右向き(社長指摘2026-08-29で確定・
+      // 「元から左向き」の旧読みは誤り)→左向きへ水平反転(爆撃しゃがみと同じ向き)。
       let wsp = this.endingWatchSprites.get(spot.index);
       if (!wsp) { wsp = new Sprite(); wsp.anchor.set(0.5, 1); this.L.actorLayer.addChild(wsp); this.endingWatchSprites.set(spot.index, wsp); }
       const wtex = getTexture('npc/soldier-watch-0');
       if (wtex && healed) {
         wsp.texture = wtex;
         const wsc = this.humanNpcScale(wtex.width, wtex.height, spot.y) * ENDING_WATCH_SCALE;
-        wsp.scale.set(wsc, wsc);
+        wsp.scale.set(-wsc, wsc);
         wsp.alpha = ha * ease;
         wsp.visible = wsp.alpha > 0.003;
         wsp.position.set(Math.round(spot.x), Math.round(spot.y));

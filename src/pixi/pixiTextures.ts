@@ -534,7 +534,7 @@ export const ensureTextures = (): Promise<void> => {
       // エンディング爆撃の弾(受領2026-08-29・ENDING_SCENE.md 演出仕様v3)。64×256・弾頭が下・
       // 上部に速度線焼き込み・下端=着弾点(anchor 0.5,1)。
       { name: 'fx/ending-bomb', scaleMode: 'nearest' },
-      // 様子を見る兵士(受領2026-08-29・片膝で倒れ兵士を見守る・元から左向き)。224×256・内容bboxトリム済み。
+      // しゃがみ兵士(受領2026-08-29・片膝・**素材は右向き**=使用側で左向きへ反転)。224×256・内容bboxトリム済み。
       { name: 'npc/soldier-watch-0', scaleMode: 'nearest' },
       { name: 'npc/joseph-0', scaleMode: 'nearest' },
       { name: 'npc/joseph-1', scaleMode: 'nearest' },
