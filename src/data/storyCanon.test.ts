@@ -295,7 +295,7 @@ describe('通常エンディング(指示書5章)', () => {
       { speaker: 'ノラ', text: 'そうです' },
       { speaker: '記録官', text: 'フィルの救命を継続した理由は' },
       { speaker: 'ノラ', text: '彼は戦争だらけの世界を、本気で救おうとした' },
-      { speaker: 'ノラ', text: 'こんな事、あの人にしか成し得なかった' },
+      { speaker: 'ノラ', text: 'こんな事、あの人にしか成し得なかった', en: 'He was the only one who could.' },
     ]);
     expect(ENDING_FINAL_WORD).toBe('成し得なかった');
   });

@@ -7,6 +7,9 @@
 export interface EndingLine {
   speaker: string;
   text: string;
+  /** 小さく添える英語ルビ(社長指示2026-08-29「最後のノラのセリフだけ、自然な英語の感じで小さく
+   *  英語のルビふれる?」)。現在は最終行のみ。結び「the ONE」への橋になる自然な英文。 */
+  en?: string;
 }
 
 export const ENDING_HEADER = '［軍本部／聴取記録］';
@@ -26,7 +29,7 @@ export const ENDING_SCRIPT: EndingLine[] = [
   { speaker: 'ノラ', text: 'そうです' },
   { speaker: '記録官', text: 'フィルの救命を継続した理由は' },
   { speaker: 'ノラ', text: '彼は戦争だらけの世界を、本気で救おうとした' },
-  { speaker: 'ノラ', text: 'こんな事、あの人にしか成し得なかった' },
+  { speaker: 'ノラ', text: 'こんな事、あの人にしか成し得なかった', en: 'He was the only one who could.' },
 ];
 
 // 暗転時に画面中央へ残す語(最終台詞の結び)。フェードアウト後、入れ替わりに「the ONE」がフェードイン。

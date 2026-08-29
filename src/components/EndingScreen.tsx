@@ -153,6 +153,12 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
                   >
                     <span className="mr-2 text-white/55">{l.speaker}</span>
                     「{l.text}」
+                    {/* 英語ルビ(社長指示2026-08-29): 最終行だけ小さく添える。「the ONE」への橋。 */}
+                    {l.en && (
+                      <span className="block pl-8 pt-0.5 text-[10px] italic tracking-[0.06em] text-white/45">
+                        {l.en}
+                      </span>
+                    )}
                   </p>
                 ))}
               </div>

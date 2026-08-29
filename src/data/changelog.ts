@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4064',
+    items: [
+      'エンディング: 聴取記録の最後のノラの台詞に、小さな英語のルビが添えられるようになりました。',
+    ],
+  },
+  {
     version: '0.25.4063',
     items: [
       'エンディングの聴取記録を新しい編集稿に差し替えました(言い回しの調整5箇所)。',
