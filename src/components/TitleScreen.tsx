@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { assetUrl } from '../config/assetUrl';
 import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
+import NoBounceScroller from './NoBounceScroller';
 import { getLastHeartbeat } from '../utils/crashDiagnostics';
 import { CHANGELOG } from '../data/changelog';
 import { loadChronicle, getChronicleStartAt, type ChronicleEntry } from '../data/progress';
@@ -348,7 +349,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       {phase === 'notice' && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-4 py-6">
           <div className="relative flex max-h-full w-full max-w-md flex-col overflow-hidden" style={PANEL_STYLE}>
-            <div className="overflow-y-auto overscroll-contain touch-pan-y px-5 pt-5 pb-3 text-white/85" style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}>
+            {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開。全件リストは必ずあふれる) */}
+            <NoBounceScroller className="overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar px-5 pt-5 pb-3 text-white/85" style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}>
               <div className="flex items-center justify-between">
                 {/* 見出し: 小さめ＋細い紫下線(FF7R風) */}
                 <h2 className="pb-1 text-[13px] font-bold tracking-[0.18em] text-white" style={{ borderBottom: '1px solid rgba(168,85,247,0.6)' }}>
@@ -366,7 +368,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
                   </ul>
                 </div>
               ))}
-            </div>
+            </NoBounceScroller>
             <div className="px-4 pb-4 pt-2">
               {/* FF7R風: 四角いまま両サイドへフェード＋上下の枠線もフェード(共通 Ff7rButton)。 */}
               <Ff7rButton

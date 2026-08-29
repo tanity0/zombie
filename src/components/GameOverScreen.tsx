@@ -4,6 +4,7 @@ import { formatTime } from '../utils/renderUtils';
 import { calculateResultScore, topScoreItem } from '../utils/resultScoring';
 import { useGameStore, skillGoldRushMult } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
+import NoBounceScroller from './NoBounceScroller';
 import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon, equipScrapGold } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
 import type { EquipSlot } from '../types/game';
@@ -575,7 +576,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       className="screen-in min-h-[100dvh] w-full flex items-center justify-center px-3"
       style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
     >
-      <div className="glass-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none pb-[env(safe-area-inset-bottom)]">
+      {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開。リザルトは最長画面) */}
+      <NoBounceScroller className="glass-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
         <div className="px-4 pt-5 pb-2 text-center">
           <h2 className={`text-2xl font-semibold tracking-tight ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
             {isBenchmark ? 'ベンチ結果' : won ? '任務達成' : withdraw ? '帰還' : '任務失敗'}
@@ -1115,6 +1117,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           {/* 社長指示v0.25.2315: **クリア(任務達成)時だけ**は二択(もう一度プレイ/メニューに戻る)を
               やめて「OK」の一択にする。押した時の遷移は従来の「メニューに戻る」と同じ(=M7クリア後の
               通常エンディング予約もこの経路に乗っているので変えない)。死亡/撤退/ベンチは従来どおり二択。 */}
+          {/* ★アクションは sticky bottom で常時見える(UI監査2026-08-29 #5-A「固定するところは固定」。
+              長いリザルトでも最下部まで送らずに押せる。下地グラデで流れてくる内容を沈める)。 */}
+          <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-1" style={{ background: 'linear-gradient(to top, rgba(11,11,18,0.97) 72%, rgba(11,11,18,0))' }}>
           {won ? (
             <button
               onClick={settleAnd(onReturnToMenu)}
@@ -1146,8 +1151,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               </button>
             </div>
           )}
+          </div>
         </div>
-      </div>
+      </NoBounceScroller>
       {/* PACING_PUZZLE.md §6.17 M40 / STORY_UI_SPEC.md 5章: 「回収資料を見る」の一覧→本文モーダル。
           既存リザルトと同じトーン(glass-panel・金色明朝見出し)。強glow等の新規演出は使わない(負荷1/10)。
           一覧/本文どちらの「閉じる」も回収資料フロー全体を閉じてリザルトへ戻す(§5「閉じるとリザルト
@@ -1157,7 +1163,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
           style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
         >
-          <div className="glass-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none pb-[env(safe-area-inset-bottom)]">
+          <NoBounceScroller className="glass-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
             {openRecord ? (
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">回収資料</div>
@@ -1175,7 +1181,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => { playSfx('ui-select'); setOpenRecordId(null); setArchiveListOpen(true); }}
-                  className="mt-4 w-full rounded-none bg-purple-400/10 px-3 py-2 text-[12px] font-semibold text-white/85"
+                  className="sticky bottom-2 mt-4 w-full rounded-none bg-[#1a1426]/95 px-3 py-2 text-[12px] font-semibold text-white/85 backdrop-blur-sm"
                 >
                   一覧へ戻る
                 </button>
@@ -1198,13 +1204,13 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 <button
                   type="button"
                   onClick={closeArchive}
-                  className="mt-4 w-full rounded-none bg-purple-400/10 px-3 py-2 text-[12px] font-semibold text-white/85"
+                  className="sticky bottom-2 mt-4 w-full rounded-none bg-[#1a1426]/95 px-3 py-2 text-[12px] font-semibold text-white/85 backdrop-blur-sm"
                 >
                   閉じる
                 </button>
               </div>
             )}
-          </div>
+          </NoBounceScroller>
         </div>
       )}
       {/* 小烏丸解禁ポップアップ(社長指示): 裏ボス「トール」初回討伐のランのリザルトで1回だけ出す。

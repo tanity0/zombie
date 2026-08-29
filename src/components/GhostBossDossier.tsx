@@ -221,8 +221,10 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
         </div>
       </div>
 
-      <div className="grid h-[min(68svh,650px)] min-h-[500px] grid-cols-[56px_minmax(0,1fr)]">
-        <InnerPane as="nav" className="ghost-boss-rail overflow-y-auto border-r border-white/[0.07] bg-black/20 px-1.5 py-2" ariaLabel="ボス討伐記録">
+      {/* ★min-h-[500px]は撤去(UI監査2026-08-29 #7-1): min()で小画面に合わせた高さが500pxで
+          下げ止まり、SE級ではパネルがビューポートを越えて二段スクロール化していた。 */}
+      <div className="grid h-[min(68svh,650px)] grid-cols-[56px_minmax(0,1fr)]">
+        <InnerPane as="nav" className="ghost-boss-rail overflow-y-auto overflow-x-hidden touch-pan-y border-r border-white/[0.07] bg-black/20 px-1.5 py-2" ariaLabel="ボス討伐記録">
           {(['story', 'gate', 'hidden'] as const).map(category => (
             <div key={category} className="mb-2.5">
               <div className="mb-1 text-center text-[7px] font-bold tracking-[0.13em] text-white/25">{GHOST_DOSSIER_CATEGORY_LABEL[category]}</div>
@@ -257,7 +259,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
           ))}
         </InnerPane>
 
-        <InnerPane className="overflow-y-auto touch-pan-y">
+        <InnerPane className="overflow-y-auto overflow-x-hidden touch-pan-y">
           {!selectedCard ? <LockedDossier cleared={cleared} total={GHOST_DOSSIER_SLOTS.length} /> : (
             <div key={selectedItem.slotKey} className="ghost-dossier-enter relative min-h-full overflow-hidden px-3 pb-5 pt-3">
               {icon && (

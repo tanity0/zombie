@@ -120,7 +120,7 @@ export const BossScriptEditor = ({ api, onChanged, note, help }: {
                           onClick={() => run(() => api.edit({ t: 'removeStep', si, mi }))}>消す</button>
                       </div>
                       <div className="mb-0.5 text-[9px] text-white/40">この段を差し替え</div>
-                      <div className="flex max-h-32 flex-wrap gap-1 overflow-y-auto">
+                      <div className="flex max-h-32 flex-wrap gap-1 overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain">
                         {moves.map(mo => (
                           <button key={mo.key}
                             className={`${chip} ${mo.key === m.key ? 'bg-emerald-500/80 text-black' : 'bg-white/10 text-white/80'}`}
@@ -129,7 +129,7 @@ export const BossScriptEditor = ({ api, onChanged, note, help }: {
                         ))}
                       </div>
                       <div className="mb-0.5 mt-1 text-[9px] text-white/40">後ろに足す</div>
-                      <div className="flex max-h-32 flex-wrap gap-1 overflow-y-auto">
+                      <div className="flex max-h-32 flex-wrap gap-1 overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain">
                         {moves.map(mo => (
                           <button key={mo.key} className={`${chip} bg-sky-500/25 text-sky-100`}
                             onClick={() => run(() => api.edit({ t: 'insertStep', si, mi, move: mo.key }))}

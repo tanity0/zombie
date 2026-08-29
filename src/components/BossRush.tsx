@@ -86,6 +86,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
           onClick={() => setOpenKey(null)}
           className="text-[11px] text-purple-200/70 active:text-white"
         >← ボス一覧</button>
+        {/* ↑上の戻るはスクロールで流れるので、下のstickyフッタにも「一覧」を置いた(UI監査2026-08-29 #5-2)。 */}
 
         <section className="overflow-hidden border border-purple-200/10 bg-[#090b13]/80">
           <div className="flex items-center gap-3 border-b border-white/[0.06] bg-white/[0.025] px-3 py-3">
@@ -172,11 +173,21 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
           </p>
         </section>
 
-        <button
-          type="button"
-          onClick={() => onStartPractice(open, cls)}
-          className="w-full border border-emerald-400/50 bg-emerald-500/15 px-3 py-3 text-[14px] font-bold tracking-wide text-emerald-100 active:bg-emerald-500/30"
-        >演習する</button>
+        {/* ★sticky フッタ(UI監査2026-08-29 #5-1「固定するところは固定」): この画面唯一の主要動作
+            「演習する」を最下部まで送らなくても押せるようにする(missionDetailのジョブ選択と同型)。
+            左に小さく「一覧」も置く=詳細を送っても戻り導線が消えない(#5-2)。 */}
+        <div className="sticky bottom-0 z-20 -mx-3 flex items-stretch gap-2 px-3 pt-3 pb-1" style={{ background: 'linear-gradient(to top, rgba(11,11,18,0.97) 72%, rgba(11,11,18,0))' }}>
+          <button
+            type="button"
+            onClick={() => setOpenKey(null)}
+            className="shrink-0 border border-purple-300/25 bg-purple-400/10 px-3 text-[12px] font-semibold text-purple-100/85 active:bg-purple-400/20"
+          >一覧</button>
+          <button
+            type="button"
+            onClick={() => onStartPractice(open, cls)}
+            className="flex-1 border border-emerald-400/50 bg-emerald-500/15 px-3 py-3 text-[14px] font-bold tracking-wide text-emerald-100 active:bg-emerald-500/30"
+          >演習する</button>
+        </div>
       </div>
     );
   }

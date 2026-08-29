@@ -339,7 +339,7 @@ export default function GauntletRunner({ onStartSlot, onFinish }: GauntletRunner
   if (phase === 'done' && r) {
     const s = summarizeGauntlet(r.records);
     return (
-      <div className="fixed inset-0 z-[200] overflow-auto bg-black/95 p-3 text-[11px] text-white/85">
+      <div className="fixed inset-0 z-[200] overflow-auto overscroll-contain bg-black/95 p-3 text-[11px] text-white/85">
         <div className="mb-2 flex items-center gap-2">
           <span className="font-bold text-emerald-300">BOSS GAUNTLET 完走</span>
           <button

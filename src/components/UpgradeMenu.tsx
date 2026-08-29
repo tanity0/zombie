@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import NoBounceScroller from './NoBounceScroller';
 import { useGameStore, activeConsumableCount } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
 import { hasEquipIcon, equipIconName, equipmentById } from '../data/equipment';
@@ -89,7 +90,8 @@ const UpgradeMenu: React.FC = () => {
             {straps}
           </span>
         </div>
-        <div className="px-3 pb-4 flex flex-col gap-2 overflow-y-auto min-h-0 overscroll-contain touch-pan-y">
+        {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開・選択肢の見逃し対策) */}
+        <NoBounceScroller className="px-3 pb-4 flex flex-col gap-2 overflow-y-auto overflow-x-hidden min-h-0 overscroll-contain touch-pan-y no-scrollbar">
           {upgradeOptions.map(upgrade => {
             // SKILL_BUILD_REDESIGN.md §12-1/§17-1点3: スキル専業レベルアップ(新規取得 or Lv+1)。
             // 既存の装備/scrap/heal/knifeカードとは別レイアウト(レア度バッジ+残枠+除外ボタン)。
@@ -221,7 +223,7 @@ const UpgradeMenu: React.FC = () => {
               </button>
             );
           })}
-        </div>
+        </NoBounceScroller>
         {/* SKILL_BUILD_REDESIGN.md §16-10 ★C: リロール(有料・全引き直し)。スキル専業画面でのみ出す
             (装備3択=ボスドロップ宝箱にはリロール/バニッシュを作らない=既存仕様のまま)。 */}
         {isSkillDraft && (

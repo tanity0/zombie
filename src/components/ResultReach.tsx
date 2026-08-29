@@ -136,8 +136,11 @@ const ResultReach: React.FC<ResultReachProps> = ({
         {/* ---- 右: 横スクロールする壁(地層 + 竪坑) ---- */}
         <div
           ref={scrollerRef}
-          className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x"
-          style={{ scrollbarWidth: 'none' }}
+          // ★touch-action は pan-x pan-y(UI監査2026-08-29 #1-C): 旧 touch-pan-x は縦パンを完全禁止し、
+          // 高さ244px×パネル幅がリザルトの**縦スクロール死角**になっていた(指を置いた場所が悪いと
+          // リザルトが一切スクロールしない)。縦は overflow-y-hidden なのでこの箱は動かず、親へ抜ける。
+          className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+          style={{ scrollbarWidth: 'none', touchAction: 'pan-x pan-y' }}
         >
           <div className="relative h-full" style={{ width: wallW, minWidth: '100%' }}>
             {/* 地層(実距離スケール・壁の全幅に連続して敷く) */}

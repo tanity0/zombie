@@ -714,7 +714,7 @@ export const BossMakerPanel = () => {
           <div className="ml-auto shrink-0 text-[10px] text-amber-300">変更 {changed}</div>
         </div>
         {/* ⑤ アイコン + 横スクロール(縦持ちで潰れないように文字を持たせない) */}
-        <div className="flex gap-1 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+        <div className="flex gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-0.5" style={{ scrollbarWidth: 'none' }}>
           <button className={`${ico} ${invincible ? on : off}`} onClick={() => setBossMaker({ invincible: !invincible })} title="無敵" aria-label="無敵">🛡</button>
           <button className={`${ico} ${paused ? on : off}`} onClick={() => setBossMaker({ paused: !paused })} title="ボスの時間を止める" aria-label="停止">⏸</button>
           <button className={`${ico} ${showHitbox ? on : off}`} onClick={() => setBossMaker({ showHitbox: !showHitbox })} title="当たり判定" aria-label="判定">⬚</button>
@@ -799,7 +799,7 @@ export const BossMakerPanel = () => {
               ))}
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-1.5">
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain px-1.5">
               {/* 台本エディタは「行動パターン」タブの先頭(=ボスの手そのものなので一番上)。 */}
               {tab === 'behavior' && entry.scripts && (
                 <BossScriptEditor

@@ -1,4 +1,5 @@
 import React from 'react';
+import NoBounceScroller from './NoBounceScroller';
 import { shallow } from 'zustand/shallow';
 import {
   SHOP_AMMO_COST,
@@ -248,7 +249,8 @@ const ShopMenu: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開) */}
+        <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain no-scrollbar">
         <div className="px-4 pb-3 grid grid-cols-2 gap-2">
           {entries.map(entry => {
             const canBuy = !entry.disabled && player.straps >= entry.cost;
@@ -346,7 +348,7 @@ const ShopMenu: React.FC = () => {
             </button>
           </div>
         )}
-        </div>
+        </NoBounceScroller>
 
         <div className="px-4 pb-4 space-y-2 shrink-0">
           <button

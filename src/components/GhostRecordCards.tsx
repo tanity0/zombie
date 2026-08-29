@@ -225,9 +225,14 @@ export const BossClearCardRow: React.FC<{
   );
 };
 
-/** 撃破順のアイコン帯(年表の背骨)。左から撃破順に並べる。 */
+/** 撃破順のアイコン帯(年表の背骨)。左から撃破順に並べる。
+ *  ★スクロール作法(UI監査2026-08-29): 旧 `overscroll-contain`(両軸)は縦の連鎖まで遮断し、
+ *  リザルトの縦スクローラの中で**帯の上を縦になぞるとページが動かない**(守護霊部屋v4067と同型の病巣)。
+ *  横だけ contain(overscroll-x-contain)+縦は素通し(overflow-y-hidden)にする。
+ *  touch-action は付けない——pan-x にするとこの帯の高さぶんが縦スクロールの死角になる
+ *  (ResultReach.tsx の touch-pan-x が現にそうなっていた=同監査#1-C)。 */
 export const BossClearStrip: React.FC<{ cards: BossClearCard[] }> = ({ cards }) => (
-  <div className="flex items-center gap-1.5 overflow-x-auto overscroll-contain py-1">
+  <div className="flex items-center gap-1.5 overflow-x-auto overflow-y-hidden overscroll-x-contain py-1">
     {cards.map((c, i) => {
       const icon = bossIconSrc(c.bossType, c.stageId);
       return (

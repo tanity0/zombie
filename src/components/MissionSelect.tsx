@@ -88,10 +88,11 @@ const PreClearBriefing: React.FC<{ synopsis: string[]; summary: string; resetKey
   );
 };
 import {
-  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronDown, ChevronLeft, ChevronRight, Lock, Check, Sparkles, Ghost, Skull, TrendingUp
+  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, ChevronRight, Lock, Check, Sparkles, Ghost, Skull, TrendingUp
 } from 'lucide-react';
 // 作戦室DS2化(UI_OVERHAUL.md §3 バッチ①): ホームの計器化+等高線マップ。旧ホームは?dshome=0で丸ごと復帰。
 import DsContourMap from './DsContourMap';
+import NoBounceScroller from './NoBounceScroller';
 import { nextOperationStage } from '../utils/dsHome';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
@@ -238,103 +239,7 @@ type Screen =
 const DS_HOME_DISABLED = typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).get('dshome') === '0';
 
-// iOSのラバーバンド対策(社長指示2026-08-29「出撃のページ以外がまだヘッダーとか動く」):
-// stickyヘッダーは通常スクロール中は固定だが、iOSは容器の**縁で引っ張る**と内容ごと跳ねる
-// (=ヘッダーも動いて見える)。縁での縦ドラッグだけ preventDefault してバウンスを殺す。
-// - 縁以外の通常スクロールは素通し(スクロール感は不変)。横主軸のドラッグ・ピンチは触らない。
-// - 内側に別のスクロール容器(シート等)がありそちらがまだ動ける時も素通し(奪わない)。
-// - 内容が収まっている画面は上下とも縁=縦ドラッグ全部が死ぬ=完全に固定(それが望みの挙動)。
-// ★続きインジケータ(社長指示2026-08-29「続きがあるやつは、あるのがわかる様に小さい下矢印」):
-// 下にまだ内容がある時だけ、容器の底に小さな下矢印を出す(sticky bottom+高さ0=レイアウト不干渉・
-// pointer-events:none)。底に着くとフェードで消える。内容が全部収まる画面には最初から出ない。
-// 再判定はscroll/resize/内容変化(MutationObserver)時のみ=毎フレーム処理なし(メニュー画面限定)。
-const NoBounceScroller: React.FC<{ className?: string; style?: React.CSSProperties; children: React.ReactNode; moreColor?: string }> =
-  ({ className, style, children, moreColor }) => {
-    const ref = useRef<HTMLDivElement | null>(null);
-    const start = useRef<{ x: number; y: number } | null>(null);
-    const [hasMore, setHasMore] = useState(false);
-    useEffect(() => {
-      const el = ref.current;
-      if (!el) return;
-      const check = () => setHasMore(el.scrollHeight - el.clientHeight - el.scrollTop > 4);
-      check();
-      el.addEventListener('scroll', check, { passive: true });
-      window.addEventListener('resize', check);
-      // フォント/画像の遅延到着で高さが変わるケースの拾い直し(数回だけ・常駐タイマーなし)。
-      const t1 = window.setTimeout(check, 300);
-      const t2 = window.setTimeout(check, 1200);
-      const mo = new MutationObserver(check);
-      mo.observe(el, { childList: true, subtree: true });
-      return () => {
-        el.removeEventListener('scroll', check);
-        window.removeEventListener('resize', check);
-        window.clearTimeout(t1); window.clearTimeout(t2);
-        mo.disconnect();
-      };
-    }, []);
-    useEffect(() => {
-      const el = ref.current;
-      if (!el) return;
-      const onStart = (e: TouchEvent) => {
-        start.current = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
-      };
-      const onMove = (e: TouchEvent) => {
-        const s = start.current;
-        if (!s || e.touches.length !== 1) return;
-        const dx = e.touches[0].clientX - s.x;
-        const dy = e.touches[0].clientY - s.y;
-        if (Math.abs(dy) <= Math.abs(dx)) {
-          // ★横主軸は殺す(社長実機2026-08-29「中身を横に引っ張ると大きくズレる」)。
-          // このスクローラは縦専用なので、途中に本当に横へ動ける容器(overflow-x auto/scroll で
-          // 実オーバーフローあり)が無い限り、横ドラッグを丸ごと preventDefault する
-          // (v4068の touch-action: pan-y のJS版=touch-actionが効かない環境への保険)。
-          let hn: Element | null = e.target as Element | null;
-          while (hn && hn !== el) {
-            const hh = hn as HTMLElement;
-            if (hh.scrollWidth > hh.clientWidth + 1) {
-              const ox = getComputedStyle(hh).overflowX;
-              if (ox === 'auto' || ox === 'scroll') return; // 横に動ける内側容器=奪わない
-            }
-            hn = hn.parentElement;
-          }
-          e.preventDefault();
-          return;
-        }
-        // 内側のスクロール容器がその向きへまだ動けるなら奪わない
-        let node: Element | null = e.target as Element | null;
-        while (node && node !== el) {
-          const h = node as HTMLElement;
-          if (h.scrollHeight > h.clientHeight + 1) {
-            const oy = getComputedStyle(h).overflowY;
-            if (oy === 'auto' || oy === 'scroll') {
-              const nTop = h.scrollTop <= 0;
-              const nBot = h.scrollTop + h.clientHeight >= h.scrollHeight - 1;
-              if ((dy > 0 && !nTop) || (dy < 0 && !nBot)) return;
-            }
-          }
-          node = node.parentElement;
-        }
-        const atTop = el.scrollTop <= 0;
-        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
-        if ((dy > 0 && atTop) || (dy < 0 && atBottom)) e.preventDefault();
-      };
-      el.addEventListener('touchstart', onStart, { passive: true });
-      el.addEventListener('touchmove', onMove, { passive: false });
-      return () => { el.removeEventListener('touchstart', onStart); el.removeEventListener('touchmove', onMove); };
-    }, []);
-    return (
-      <div ref={ref} className={className} style={style}>
-        {children}
-        <div
-          className="ds-scroll-more"
-          style={{ opacity: hasMore ? 1 : 0, color: moreColor ?? 'rgba(216, 180, 254, 0.85)' }}
-          aria-hidden="true"
-        >
-          <ChevronDown size={15} />
-        </div>
-      </div>
-    );
-  };
+// NoBounceScroller(縁バウンス殺し+続き下矢印)は共有部品化した(UI監査2026-08-29で全画面へ展開)。
 
 const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: boolean }> = ({ children, fill, dsHome }) => (
   dsHome ? (
@@ -1092,8 +997,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const selectableClasses = isTutorial ? CHARACTER_CLASSES.filter(x => x.id === 'warrior') : CHARACTER_CLASSES;
     const effectiveClass = isTutorial ? 'warrior' : selectedClass;
     const c = CHARACTER_CLASSES.find(x => x.id === effectiveClass) ?? CHARACTER_CLASSES[0];
+    // maxHeight 100svh(UI監査2026-08-29 #11): body{position:fixed;height:100%}配下の inset-0 は
+    // iOSのURLバー表示中に可視域より縦長になり、下部UI(START/チップ帯)が画面外へ落ちる。
+    // Shellと同じく可視ビューポートでクランプ(未対応ブラウザでは無視=安全)。
     return (
-      <div className="screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none">
+      <div className="screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none" style={{ maxHeight: '100svh' }}>
         {/* 全画面=選択中キャラの立ち絵。クラス切替=key 再マウント。ロード完了後に下からスッと表示。 */}
         <CharPortrait key={effectiveClass} src={portraitSrcFor(effectiveClass)} alt={c.name} />
         {/* 視認性スクリム(上=戻る帯 / 下=情報・選択帯)。立ち絵の暗背景に馴染ませる。 */}
@@ -1156,7 +1064,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           </div>
 
           {/* キャラ選択(最下段。ドット絵チップ。タップで立ち絵＋情報が切替) */}
-          <div className="flex items-end gap-2 overflow-x-auto pb-0.5">
+          {/* 横帯の作法(UI監査2026-08-29 #9): 縦はhiddenで殺し、containは横だけ。 */}
+          <div className="flex items-end gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-0.5">
             {selectableClasses.map(cc => {
               const on = cc.id === selectedClass;
               return (
@@ -1244,8 +1153,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         {!isTutorial && ghostPickerOpen && (
           <div className="absolute inset-0 z-30" onClick={() => { playSfx('ui-select'); setGhostPickerOpen(false); }}>
             <div className="absolute inset-0 bg-black/70" />
-            <div
-              className="screen-in absolute inset-x-0 bottom-0 max-h-[70%] overflow-y-auto px-4 pt-4"
+            <NoBounceScroller
+              // スクロール作法(UI監査2026-08-29 #3): シートは縦専用+連鎖遮断+横パン封じ+続き下矢印。
+              className="screen-in absolute inset-x-0 bottom-0 max-h-[70%] overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar px-4 pt-4"
               style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 16px), 20px)' }}
               onClick={e => e.stopPropagation()}
             >
@@ -1293,7 +1203,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   );
                 })}
               </div>
-            </div>
+            </NoBounceScroller>
           </div>
         )}
       </div>
@@ -1565,7 +1475,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             className="fixed inset-0 z-50 flex items-center justify-center px-3"
             style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
           >
-            <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none">
+            <NoBounceScroller className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">資料</div>
                 <h3
@@ -1586,12 +1496,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <button
                   type="button"
                   onClick={closeArchiveRecord}
-                  className="mt-4 w-full rounded-none bg-purple-400/10 px-3 py-2 text-[12px] font-semibold text-white/85"
+                  className="sticky bottom-2 mt-4 w-full rounded-none bg-[#1a1426]/95 px-3 py-2 text-[12px] font-semibold text-white/85 backdrop-blur-sm"
                 >
                   閉じる
                 </button>
               </div>
-            </div>
+            </NoBounceScroller>
           </div>,
           document.body
         )}
@@ -1602,7 +1512,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             className="fixed inset-0 z-50 flex items-center justify-center px-3"
             style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
           >
-            <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none">
+            <NoBounceScroller className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">操作記録・{openTutorial.where}</div>
                 <h3
@@ -1643,12 +1553,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <button
                   type="button"
                   onClick={closeTutorial}
-                  className="mt-4 w-full rounded-none bg-purple-400/10 px-3 py-2 text-[12px] font-semibold text-white/85"
+                  className="sticky bottom-2 mt-4 w-full rounded-none bg-[#1a1426]/95 px-3 py-2 text-[12px] font-semibold text-white/85 backdrop-blur-sm"
                 >
                   閉じる
                 </button>
               </div>
-            </div>
+            </NoBounceScroller>
           </div>,
           document.body
         )}
@@ -1744,18 +1654,18 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
           style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
         >
-          <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none">
+          <NoBounceScroller className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
             <div className="px-4 py-5">
               <GhostAllyCard ally={openAlly} />
               <button
                 type="button"
                 onClick={() => { playSfx('ui-select'); setOpenAlly(null); }}
-                className="mt-4 w-full rounded-none bg-purple-400/10 px-3 py-2 text-[12px] font-semibold text-white/85"
+                className="sticky bottom-2 mt-4 w-full rounded-none bg-[#1a1426]/95 px-3 py-2 text-[12px] font-semibold text-white/85 backdrop-blur-sm"
               >
                 閉じる
               </button>
             </div>
-          </div>
+          </NoBounceScroller>
         </div>,
         document.body
       )}
@@ -2239,7 +2149,7 @@ const SkillGacha: React.FC = () => {
 
         {showList ? (
           // 一覧(サマリー): 10連で何が出たか振り返る。枠内のみスクロール(全画面/バー無し)。
-          <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-2">
+          <NoBounceScroller className="flex-1 overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain no-scrollbar px-3 py-2">
             <div className="mx-auto flex w-full max-w-md flex-col gap-1.5">
               {results.map((rr, i) => {
                 const rc = REVEAL_BY_RARITY[rr.rarity];
@@ -2264,7 +2174,7 @@ const SkillGacha: React.FC = () => {
                 );
               })}
             </div>
-          </div>
+          </NoBounceScroller>
         ) : (
         <>
         {/* 中央に1枚ずつ。◀▶でめくる(スクロール無し)。中央タップでも次へ。 */}
@@ -2411,7 +2321,7 @@ const SkillGacha: React.FC = () => {
           <img
             src={targetSrc}
             alt="的"
-            className="max-h-[46vh] w-auto max-w-[72%] object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.75)]"
+            className="max-h-[46svh] w-auto max-w-[72%] object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.75)]"
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
           />
           {/* 「撃つ」: ボタンではなく的の下の画像内テキスト(画面どこでもタップで発射)。 */}
