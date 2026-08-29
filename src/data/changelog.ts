@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4070',
+    items: [
+      'エンディング: 右下の一時停止ボタン(押せない)を撤去し、代わりに「スキップ ▶」を追加しました。タップ送りも連打で確実に進むようになりました。',
+    ],
+  },
+  {
     version: '0.25.4069',
     items: [
       'メニュー: 中身を横に引っ張ると大きくずれる問題への追加対策(横方向のドラッグを完全に無効化)。',

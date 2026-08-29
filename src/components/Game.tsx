@@ -88,6 +88,9 @@ const Game: React.FC<GameProps> = ({
   // レベル円/サブ武器欄/武器スロット/スコアは調整に不要。**派生boolean購読**なので
   // 毎フレーム再描画しない(CLAUDE.md React再描画の規律)。ライブ表示はメーカー側に残る。
   const makerHideHud = useGameStore(state => state.bossMaker.active && state.bossMaker.hideHud);
+  // エンディングステージ(観賞シーン): 一時停止ピルを出さない(社長報告2026-08-29「機能してない」——
+  // 聴取記録オーバーレイ(z-110)がタップを吸うので押せない。代わりのスキップはEndingScreen側)。
+  const endingStage = useGameStore(state => state.farBackdrop === 'ending');
   // 凍結診断オンスクリーン表示(?debug=1)。
   const debugOverlay = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
   // AIディレクターのライブ可視化。★v0.25.3594(社長指示「数値とるラン、ステータスをラン中に表示は
@@ -263,7 +266,7 @@ const Game: React.FC<GameProps> = ({
       {benchmarkMode && onBenchmarkComplete && (
         <BenchmarkOverlay fps={fps} onComplete={onBenchmarkComplete} />
       )}
-      {isTouch && !makerHideHud && <MobileControls />}
+      {isTouch && !makerHideHud && !endingStage && <MobileControls />}
       
       {/* §6.36 ボス出現カットイン(HUDより最前面・cutin窓の1.1秒だけ) */}
       <BossCutin />

@@ -114,7 +114,10 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
   return (
     <div
       className={scenic ? 'fixed inset-0 z-[110] select-none' : 'fixed inset-0 z-50 bg-black select-none'}
-      onClick={onTap}
+      // ★onPointerDown で送る(社長報告2026-08-29「ボタン連打すると、次のテキスト表示まで飛ばせない」):
+      // 旧 onClick はタップ中に指が数px動くとブラウザがパン扱いにして click を発火せず、
+      // 連打(=微妙に指が滑る)ほどタップが抜け落ちていた。pointerdown は指が触れた瞬間に必ず来る。
+      onPointerDown={onTap}
       style={{
         touchAction: 'manipulation',
         ...(scenic
@@ -126,11 +129,11 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
           : {}),
       }}
     >
-      {/* 中央揃え・高さ50vhの帯の中で会話をローリング表示(社長指示v0.25.2194): 新しい行は下から
+      {/* 中央揃え・高さ50svhの帯(vhはiOSでURLバー分ずれて下端が切れる=監査2026-08-29)の中で会話をローリング表示(社長指示v0.25.2194): 新しい行は下から
           積まれ、古い行は上へ流れて上端でフェードアウト(マスク)。長文で下が切れないよう窓を固定高に。 */}
       {phase === 'script' && (
         <div className="flex h-full w-full items-center justify-center px-6">
-          <div className="flex w-full max-w-md flex-col" style={{ height: '50vh' }}>
+          <div className="flex w-full max-w-md flex-col" style={{ height: '50svh' }}>
             <p
               className="shrink-0 mb-4 text-center text-[13px] tracking-[0.2em] text-white/55"
               style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
@@ -176,7 +179,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
       {phase === 'word' && (
         <div className="flex h-full w-full items-center justify-center px-6">
           <style>{`@keyframes endSegOut{to{opacity:0}}`}</style>
-          <div className="flex w-full max-w-md flex-col" style={{ height: '50vh' }}>
+          <div className="flex w-full max-w-md flex-col" style={{ height: '50svh' }}>
             <p
               className="shrink-0 mb-4 text-center text-[13px] tracking-[0.2em] text-white/55"
               style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif', animation: 'endSegOut .7s ease forwards' }}
@@ -236,6 +239,24 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
             <p className="shrink-0 mt-4 text-center text-[10px] tracking-widest text-white/25" style={{ animation: 'endSegOut .7s ease forwards' }}>タップで進む</p>
           </div>
         </div>
+      )}
+
+      {/* スキップ(社長指示2026-08-29「一時停止ボタンは機能してないので、取って、代わりにスキップを追加」):
+          OPのスキップと同じ見た目・位置(右下)。押した瞬間にエンディングを終えてメニューへ。
+          finale中は出さない(直撃〜暗転1.2秒を見せ切る)。下の一時停止ピル(MobileControls)は
+          エンディングステージでは非表示にした(Game.tsx)。 */}
+      {phase !== 'finale' && (
+        <button
+          type="button"
+          onPointerDown={(e) => { e.stopPropagation(); finish(); }}
+          style={{
+            position: 'absolute', bottom: 18, right: 18, zIndex: 10,
+            padding: '6px 14px', fontSize: 12, color: 'rgba(255,255,255,0.75)',
+            background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 999,
+          }}
+        >
+          スキップ ▶
+        </button>
       )}
 
       {/* フィナーレの直撃フラッシュ→暗転(v4055)。白は爆発光=瞬間点灯、黒へは500msのease。 */}
