@@ -238,6 +238,53 @@ type Screen =
 const DS_HOME_DISABLED = typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).get('dshome') === '0';
 
+// iOSのラバーバンド対策(社長指示2026-08-29「出撃のページ以外がまだヘッダーとか動く」):
+// stickyヘッダーは通常スクロール中は固定だが、iOSは容器の**縁で引っ張る**と内容ごと跳ねる
+// (=ヘッダーも動いて見える)。縁での縦ドラッグだけ preventDefault してバウンスを殺す。
+// - 縁以外の通常スクロールは素通し(スクロール感は不変)。横主軸のドラッグ・ピンチは触らない。
+// - 内側に別のスクロール容器(シート等)がありそちらがまだ動ける時も素通し(奪わない)。
+// - 内容が収まっている画面は上下とも縁=縦ドラッグ全部が死ぬ=完全に固定(それが望みの挙動)。
+const NoBounceScroller: React.FC<{ className?: string; style?: React.CSSProperties; children: React.ReactNode }> =
+  ({ className, style, children }) => {
+    const ref = useRef<HTMLDivElement | null>(null);
+    const start = useRef<{ x: number; y: number } | null>(null);
+    useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      const onStart = (e: TouchEvent) => {
+        start.current = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+      };
+      const onMove = (e: TouchEvent) => {
+        const s = start.current;
+        if (!s || e.touches.length !== 1) return;
+        const dx = e.touches[0].clientX - s.x;
+        const dy = e.touches[0].clientY - s.y;
+        if (Math.abs(dy) <= Math.abs(dx)) return; // 横主軸は対象外
+        // 内側のスクロール容器がその向きへまだ動けるなら奪わない
+        let node: Element | null = e.target as Element | null;
+        while (node && node !== el) {
+          const h = node as HTMLElement;
+          if (h.scrollHeight > h.clientHeight + 1) {
+            const oy = getComputedStyle(h).overflowY;
+            if (oy === 'auto' || oy === 'scroll') {
+              const nTop = h.scrollTop <= 0;
+              const nBot = h.scrollTop + h.clientHeight >= h.scrollHeight - 1;
+              if ((dy > 0 && !nTop) || (dy < 0 && !nBot)) return;
+            }
+          }
+          node = node.parentElement;
+        }
+        const atTop = el.scrollTop <= 0;
+        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+        if ((dy > 0 && atTop) || (dy < 0 && atBottom)) e.preventDefault();
+      };
+      el.addEventListener('touchstart', onStart, { passive: true });
+      el.addEventListener('touchmove', onMove, { passive: false });
+      return () => { el.removeEventListener('touchstart', onStart); el.removeEventListener('touchmove', onMove); };
+    }, []);
+    return <div ref={ref} className={className} style={style}>{children}</div>;
+  };
+
 const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: boolean }> = ({ children, fill, dsHome }) => (
   dsHome ? (
     // DS版ホームの地(UI_OVERHAUL.md §3-1-3): 背景=DS地(タイトル絵は使わない)+走査線+fill(全高)。
@@ -286,7 +333,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
         枠(panel)の中だけがスクロールする(スクロールバーは全要素で非表示済み・overscroll-contain)。 */}
     {/* fill=true(任務詳細): パネルを常に全高にする=内容が短くても最下部固定フッター(ジョブ選択)が
         画面下端に落ちる(社長指示v0.25.1852。max-h-fullのままだと短いページでパネルが縮み中腰になる)。 */}
-    <div className={`max-w-3xl w-full glass-panel rounded-none overflow-y-auto overscroll-contain no-scrollbar ${fill ? 'h-full' : 'max-h-full'}`}>{children}</div>
+    <NoBounceScroller className={`max-w-3xl w-full glass-panel rounded-none overflow-y-auto overscroll-contain no-scrollbar ${fill ? 'h-full' : 'max-h-full'}`}>{children}</NoBounceScroller>
   </div>
   )
 );
@@ -699,8 +746,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <span className="ds-sortie-t1 block">出 撃</span>
             <ChevronRight size={18} />
           </button>
-          {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。 */}
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar">
+          {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。縁バウンスも殺す。 */}
+          <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar">
             <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
             {dsRow('装備', 'LOADOUT', 'サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
             {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
@@ -709,7 +756,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             {dsRow('資料室', 'ARCHIVE', '記録・変異体資料', goArchive, 225, unreadArchiveCount > 0 ? 'NEW' : undefined)}
             {dsRow('守護霊', 'GUARDIANS', '名前・討伐記録', goGhost, 250)}
             {dsRow('変異体対策室', 'BESTIARY OPS', 'ボス再戦・練習', goBossRush, 275)}
-          </div>
+          </NoBounceScroller>
           <div className="ds-foot menu-item-in" style={{ animationDelay: '300ms' }}>
             <button
               type="button"
