@@ -403,9 +403,9 @@ export interface EndingBombTuning {
   // ★フィルの回避は「Xで離す」のではなく「Y(奥/手前)で外す」(検収A-1・案A)。
   // 実機の論理画面幅は405px(viewport.ts VIEW_CORE_W)=可視半幅202px しかなく、X方向の回避帯は
   // どんな幅でも候補窓を食い潰して「爆撃が一生来ない」になる(v0.25.4039の実機バグ・実測0.00%)。
-  // フィルの進路はy≈0の中央帯なので、着弾|y|に下限を張れば「無反応のフィルの真横で爆発」は起きず、
-  // 社長の言葉「奥や手前に降ってきて」そのものになる。
-  minImpactAbsYPx: number;
+  // ★v0.25.4052(社長指示「y軸でフィルがいるラインには落とさないで」): 旧「絶対座標|y|≥60」は
+  // フィルの実ライン(足元y)基準ではなかった→**フィルの実yからの最小距離**に変更。
+  phillLineClearYPx: number;
   // 着弾時刻のカメラ位置の先読み(検収A-2): カメラ(=フィル)は落下0.9秒で約94px右へ進むので、
   // 候補窓を「着弾時のカメラ中心」で取る(投下時基準だと左寄りの着弾が画面外へ流れて見切れる)。
   // アンカー兵士自身の左進みも予測位置(x - speed×velMult×落下秒)で織り込む(検収B-1も同時に消える)。
@@ -433,7 +433,7 @@ export const DEFAULT_ENDING_BOMB_TUNING: EndingBombTuning = {
   anchorOffsetYMinPx: 30, anchorOffsetYMaxPx: 70,
   bandClampYPx: 90,
   viewFracX: 0.8,
-  minImpactAbsYPx: 60,
+  phillLineClearYPx: 70,
   camLeadPx: 94, // ≈ PLAYER_WALK 104.4px/s × 0.9s(フィルが等速歩行の場合。停止中は右へ94px寄るだけ=可視域内)
   phillClearancePx: 120,
 };
@@ -443,7 +443,7 @@ export const DEFAULT_ENDING_BOMB_TUNING: EndingBombTuning = {
 // 中央帯を歩くフィルの真横には落ちない(Xの回避帯は廃止・上のtuningコメント参照)。
 // 候補が居なければ null(呼び出し側が retryMs 後に再試行)。
 export const trySpawnEndingBomb = (
-  id: string, soldiers: EndingSoldier[], camCenterX: number, viewHalfWPx: number,
+  id: string, soldiers: EndingSoldier[], camCenterX: number, phillY: number, viewHalfWPx: number,
   rand: () => number = Math.random,
   tuning: EndingBombTuning = DEFAULT_ENDING_BOMB_TUNING,
 ): EndingBomb | null => {
@@ -464,11 +464,17 @@ export const trySpawnEndingBomb = (
   }
   const side = rand() < 0.5 ? -1 : 1; // 奥(-)か手前(+)
   let rawY = pick.s.y + side * lerpRange(rand, tuning.anchorOffsetYMinPx, tuning.anchorOffsetYMaxPx);
-  // フィル進路(中央帯)には落とさない: |y|の下限を張る(0ちょうどならside側へ)。
-  if (Math.abs(rawY) < tuning.minImpactAbsYPx) {
-    rawY = (rawY === 0 ? side : Math.sign(rawY)) * tuning.minImpactAbsYPx;
+  // フィルのいるライン(実y)には落とさない(社長指示v0.25.4052): フィルyからの最小距離を張る。
+  const rel = rawY - phillY;
+  if (Math.abs(rel) < tuning.phillLineClearYPx) {
+    rawY = phillY + (rel === 0 ? side : Math.sign(rel)) * tuning.phillLineClearYPx;
   }
-  const impactY = Math.max(-tuning.bandClampYPx, Math.min(tuning.bandClampYPx, rawY));
+  let impactY = Math.max(-tuning.bandClampYPx, Math.min(tuning.bandClampYPx, rawY));
+  // 帯クランプで最小距離が潰れた場合(フィルが帯端に居る等)は反対側へ倒す。
+  if (Math.abs(impactY - phillY) < tuning.phillLineClearYPx) {
+    const flip = rel >= 0 ? -1 : 1;
+    impactY = Math.max(-tuning.bandClampYPx, Math.min(tuning.bandClampYPx, phillY + flip * tuning.phillLineClearYPx));
+  }
   return { id, impactX, impactY, phase: 'fall', phaseMs: 0, justExploded: false };
 };
 

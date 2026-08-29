@@ -2049,8 +2049,9 @@ const camNum = (key: string, def: number): number => {
   const n = v != null ? Number(v) : NaN;
   return Number.isFinite(n) ? n : def;
 };
-// ENDING_SCENE.md 演出仕様v2 §9(叩き台): 常在兵士数。実機調整用に?endsoldiers=で上書き。
-export const ENDING_SOLDIER_COUNT = Math.max(0, Math.round(camNum('endsoldiers', 8)));
+// ENDING_SCENE.md 演出仕様v2 §9(叩き台): 常在兵士数。8→10(社長指示2026-08-29「少し兵士増やして」)。
+// 実機調整用に?endsoldiers=で上書き。
+export const ENDING_SOLDIER_COUNT = Math.max(0, Math.round(camNum('endsoldiers', 10)));
 // §9: 初期配置の広がり(px)。出撃直後に画面外まで一様に散らす(1点に固まって見えないように・叩き台)。
 export const ENDING_SOLDIER_SPAWN_RIGHT_X = camNum('endsoldx', 2600);
 export const ENDING_SOLDIER_SPAWN_SPAN_X = camNum('endsoldspan', 2200);
@@ -17347,8 +17348,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (now >= bombNextAt) {
         if (bombs.filter(b => b.phase === 'fall').length < t.maxAirborne) {
           const camCenterX = state.player.x + state.player.width / 2; // カメラ中心≒プレイヤー中心(横追従)
+          const phillFootY = state.player.y + state.player.height;    // フィルの足元Y=兵士/着弾と同じ座標系
           const nb = trySpawnEndingBomb(
-            `ending-bomb-${now}`, nextSoldiers, camCenterX, state.gameBounds.width / 2,
+            `ending-bomb-${now}`, nextSoldiers, camCenterX, phillFootY, state.gameBounds.width / 2,
             Math.random, t,
           );
           if (nb) {
