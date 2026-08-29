@@ -18365,7 +18365,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           // (corridor除外なし)。EXだけ専用分岐で除外する(社長裁定「NPCも居ちゃってる」・護衛と同じ理由)。
           // エンディング(観賞シーン)も商人なし(社長報告2026-08-29「エンディングに武器商人がいる」。
           // 既定配置 x:0,y:-130 は出撃地点の目の前=必ず視界に入っていた)。
-          : (farBackdrop === 'tutorial' || farBackdrop === 'ending' || bossMakerRoom || isPracticeRun() || (corridorMode && isExStageRun()))
+          // ★storyBossステージ(M7=指定座標地点)も商人なし(社長報告2026-08-29「指定座標地点に
+          // 武器商人がいる。いないはず」。M7は会話→ボス→勝利だけの一騎打ちステージ=通常湧き/
+          // イベント全停止なのに、商人だけこの除外に入っていなかった。護衛NPC除外(escortRoster)と
+          // 同じ pendingStoryBoss を見る)。
+          : (farBackdrop === 'tutorial' || farBackdrop === 'ending' || state.pendingStoryBoss || bossMakerRoom || isPracticeRun() || (corridorMode && isExStageRun()))
             ? { x: 1e9, y: 1e9, radius: 0 }
             // 研究所(屋外・横長廊下)は上下固定クランプ(±100)の外(y:-130)に商人がいると一生話しかけ
             // られない(M2_LAB_CORRIDOR_SPEC.md ★未決2・社長承認で追加)。labThemeだけYを上書きし、

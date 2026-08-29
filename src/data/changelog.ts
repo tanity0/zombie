@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4073',
+    items: [
+      'M7(指定座標地点): 出撃地点前に武器商人が立っていたのを修正しました(一騎打ちステージには商人は出ません)。',
+    ],
+  },
+  {
     version: '0.25.4072',
     items: [
       'ナイフマスター: 通常攻撃(近接ヒット)が画面のコンボに直接加算されるようになりました。代わりにコンボ窓は3秒に短縮(コンボマスターを取ると延長は従来どおり上乗せ)。',
