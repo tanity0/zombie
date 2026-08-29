@@ -1004,6 +1004,10 @@ const ENDING_MUZZLE_Y_FRAC = tsNum('endmuzzley', 0.25);
 // 倒れ兵士(救護対象)の表示倍率。1.5→1.0(社長指摘2026-08-29「周りと比べてでかい」=
 // contain-fit等倍で横たわる体長≒立ち兵士の身長になる)。
 const ENDING_FALLEN_SCALE = Math.max(0.2, tsNum('endfallen', 1.0));
+// 様子を見る兵士(社長支給2026-08-29): 片膝=立ち兵士より低め(×0.8)・倒れ兵士の右横に配置(叩き台)。
+const ENDING_WATCH_SCALE = Math.max(0.2, tsNum('endwatch', 0.8));
+const ENDING_WATCH_OFFSET_X_PX = tsNum('endwatchx', 52);  // 倒れ兵士から右へ(フィルの救護位置=左側の反対)
+const ENDING_WATCH_OFFSET_Y_PX = tsNum('endwatchy', -10); // 少し奥(構図の重なり・zIndexで倒れ兵士より奥/手前が決まる)
 const ENDING_TRACER_LEN_PX = Math.max(0, tsNum('endtracerlen', 46));
 const ENDING_SHELL_LIFE_S = Math.max(0.05, tsNum('endshell', 0.4));  // 薬莢が後方へ小放物線を描く時間
 const ENDING_RECOIL_MS = Math.max(1, tsNum('endrecoil', 140));       // §7「発砲の瞬間、体が2〜3px後ろへ跳ねて戻る」
@@ -3687,6 +3691,7 @@ export class PixiScene {
   private endingPhillSprite: Sprite | null = null; // フィル専用スプライト(=プレイヤー実体の位置に描く)
   private endingPhillScale: number | null = null; // walk-0基準の1系列1スケール(監査A-2・コマごとに正規化しない)
   private endingFallenSprites = new Map<number, Sprite>(); // 倒れ兵士(indexキー・ワールド固定=描画のみ)
+  private endingWatchSprites = new Map<number, Sprite>(); // 様子を見る兵士(倒れ兵士の傍・片膝・左向き。社長支給2026-08-29)
   private endingFallenShadowGfx = new Graphics(); // 倒れ兵士の専用楕円ソフト影(シルエット焼きは使わない・§6)
   private endingBombSprites = new Map<string, Sprite>();     // 爆撃の弾(v3.1・落下中。actorLayer/zIndex=着弾Y)
   private endingBombBoomSprites = new Map<string, Sprite>(); // 爆発flipbook(v3.1・spawnExplosionFxは使わない=監査A-4のYソート)
@@ -22579,8 +22584,9 @@ export class PixiScene {
     }
   }
 
-  // 倒れ兵士(§8・監査A-9)。ワールド固定配置(fallenSoldiersInRangeが純関数で位置を返す)。
-  // 影はシルエット焼き(立ち姿前提)を使わず、専用の楕円ソフト影(叩き台)。描画のみ・判定なし。
+  // 倒れ兵士(§8・監査A-9)+様子を見る兵士(社長支給2026-08-29・片膝の見守り)。ワールド固定配置
+  // (fallenSoldiersInRangeが純関数で位置を返す)。影はシルエット焼き(立ち姿前提)を使わず、
+  // 専用の楕円ソフト影(叩き台)。描画のみ・判定なし。
   private drawEndingFallenSoldiers(minX: number, maxX: number) {
     const spots = fallenSoldiersInRange(minX, maxX);
     const g = this.endingFallenShadowGfx;
@@ -22606,9 +22612,34 @@ export class PixiScene {
         const w = Math.abs(sp.width);
         g.ellipse(spot.x, spot.y - 2, w * 0.4, w * 0.13).fill({ color: 0x000000, alpha: 0.32 * ha });
       }
+      // 様子を見る兵士(社長指示2026-08-29「倒れている兵士の近くにいる、様子を見る兵士。左向きにして
+      // 配置して」): 倒れ兵士の右横(フィルは左側の手前60pxで救護するので反対側)に片膝でしゃがみ、
+      // 左(=倒れ兵士の方)を向く。素材は元から左向き(顔・銃の向きを画素確認)=反転しない。
+      let wsp = this.endingWatchSprites.get(spot.index);
+      if (!wsp) { wsp = new Sprite(); wsp.anchor.set(0.5, 1); this.L.actorLayer.addChild(wsp); this.endingWatchSprites.set(spot.index, wsp); }
+      const wtex = getTexture('npc/soldier-watch-0');
+      if (!wtex) { wsp.visible = false; continue; }
+      wsp.texture = wtex;
+      const wx = spot.x + ENDING_WATCH_OFFSET_X_PX;
+      const wy = spot.y + ENDING_WATCH_OFFSET_Y_PX;
+      // 片膝=立ち兵士(65px)より低い(×0.8叩き台・?endwatch=)。
+      const wsc = this.humanNpcScale(wtex.width, wtex.height, wy) * ENDING_WATCH_SCALE;
+      wsp.scale.set(wsc, wsc);
+      const wha = this.horizonActorAlpha(wy);
+      wsp.alpha = wha;
+      wsp.visible = wha > 0;
+      wsp.position.set(Math.round(wx), Math.round(wy));
+      wsp.zIndex = wy;
+      if (wha > 0) {
+        const ww = Math.abs(wsp.width);
+        g.ellipse(wx, wy - 1, ww * 0.34, ww * 0.11).fill({ color: 0x000000, alpha: 0.3 * wha });
+      }
     }
     for (const [idx, sp] of this.endingFallenSprites) {
       if (!seen.has(idx)) { sp.destroy(); this.endingFallenSprites.delete(idx); }
+    }
+    for (const [idx, sp] of this.endingWatchSprites) {
+      if (!seen.has(idx)) { sp.destroy(); this.endingWatchSprites.delete(idx); }
     }
   }
 

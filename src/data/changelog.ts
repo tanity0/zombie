@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4049',
+    items: [
+      'エンディングシーン(開発中): 倒れている兵士の傍らに、片膝で様子を見る兵士が付き添うようになりました。',
+    ],
+  },
+  {
     version: '0.25.4048',
     items: [
       'エンディングシーン(開発中): ステージ5と同じ「残照」(画面全体がうっすら赤くなる戦火のグレード)を掛けました。',
