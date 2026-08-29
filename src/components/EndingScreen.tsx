@@ -9,16 +9,21 @@ import { useGameStore } from '../store/gameStore';
 // - スタッフロールは文面未支給のため最小(タイトルロゴ相当のテキストのみ)=TODO。
 // - scenic(社長指示2026-08-29「このシーンを、グレン撃破後のミラの事情聴取の後ろに流して」):
 //   背後でエンディングステージ(戦場の観賞シーン)が動いている前提のオーバーレイモード。
-//   聴取記録中は薄い黒スクリム(「薄く黒を引いて文字を見やすく」)、暗転(word)以降は従来どおり
-//   全黒へフェード(慣性=background-colorのtransition)。z はSortieLoadingOverlay(z-[100])より
-//   上=レンダラ初期化中の黒繋ぎの上でも文字が読める。
+//   薄い黒スクリム(「薄く黒を引いて文字を見やすく」)は**最後まで**掛かったまま(v4055・社長指示
+//   「成し得なかった で暗転するのやめよう。最後まで戦場で」=wordの全黒化を廃止)。
+//   the ONE の後は finale: 爆撃がフィルに直撃(store.triggerEndingFinaleBomb)→白フラッシュ→
+//   暗転→終了(社長指示「theONEのあと、爆撃がフィルに直撃した?!でフラッシュ暗転して終わり」)。
+//   z はSortieLoadingOverlay(z-[100])より上=レンダラ初期化中の黒繋ぎの上でも文字が読める。
 // 負荷 1/10: 静的DOM+CSSトランジションのみ(scenic時の背後のゲーム描画はステージ側の負荷)。
 
-type Phase = 'script' | 'word' | 'credits';
+type Phase = 'script' | 'word' | 'credits' | 'finale';
 
 const LINE_AUTO_MS = 3200;      // オート送りの1行表示時間
 const FINAL_WORD_MS = 3200;     // 「成し得なかった」残留(1.8s)+フェードアウト(1.2s)+間
 const CREDITS_MS = 3800;        // the ONE フェードイン表示時間
+const FINALE_SAFETY_MS = 6000;  // finaleの安全弁(直撃通知が来なくても終わる。通常は落下0.9s+フラッシュで終了)
+const FINALE_FLASH_MS = 260;    // 直撃の白フラッシュ保持(この後500ms easeで黒へ)
+const FINALE_END_MS = 1200;     // 直撃からonDoneまで(白260ms→黒へ500ms→黒で静止)
 
 interface EndingScreenProps {
   onDone: () => void;
@@ -38,11 +43,22 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
   }, []);
   const [phase, setPhase] = useState<Phase>('script');
   const [lineIdx, setLineIdx] = useState(0); // 表示済みの行数-1(0=最初の1行のみ表示)
-  // scenic時: word(暗転)以降は背後の爆撃を止める(ENDING_SCENE.md v3.1 監査A-7——全黒の
-  // 「成し得なかった」「the ONE」の裏で爆発音とシェイクを鳴らさない)。滞空弾もstore側で消える。
+  // フィナーレ(v4055): the ONE の後、フィルへ直撃弾を1発発注(通常投下はstore側で止まる)。
   useEffect(() => {
-    if (scenic && phase !== 'script') useGameStore.getState().setEndingBombing(false);
+    if (scenic && phase === 'finale') useGameStore.getState().triggerEndingFinaleBomb();
   }, [scenic, phase]);
+  // 直撃の着弾通知(gameTime)。0=未着弾。scenic以外は購読しない(常に0)。
+  const finaleHitAt = useGameStore(state => (scenic ? state.endingFinaleHitAt : 0));
+  const [flashStage, setFlashStage] = useState<'none' | 'flash' | 'black'>('none');
+  useEffect(() => {
+    if (!scenic || phase !== 'finale' || finaleHitAt <= 0 || doneRef.current) return;
+    setEndingBgm(false); // 直撃と同時に曲を断つ(爆発SEだけが残る)
+    setFlashStage('flash');
+    const t1 = window.setTimeout(() => setFlashStage('black'), FINALE_FLASH_MS);
+    const t2 = window.setTimeout(() => finish(), FINALE_END_MS);
+    return () => { window.clearTimeout(t1); window.clearTimeout(t2); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenic, phase, finaleHitAt]);
   const timerRef = useRef<number | null>(null);
   const doneRef = useRef(false);
 
@@ -60,7 +76,8 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
     onDone();
   };
 
-  // 次へ(タップ/オート共通)。script中=次の行、最終行→word(成し得なかった残留)→credits(the ONE)→onDone。
+  // 次へ(タップ/オート共通)。script中=次の行、最終行→word(成し得なかった残留)→credits(the ONE)→
+  // scenic: finale(直撃待ち。安全タイマー切れならfinish)/非scenic: onDone(旧来どおり)。
   const advance = () => {
     clearTimer();
     if (phase === 'script') {
@@ -68,8 +85,11 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
       else setPhase('word');
     } else if (phase === 'word') {
       setPhase('credits');
+    } else if (phase === 'credits') {
+      if (scenic) setPhase('finale');
+      else finish();
     } else {
-      finish();
+      finish(); // finaleの安全弁(通常は直撃のフラッシュ側がfinishする)
     }
   };
 
@@ -79,13 +99,14 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
     const delay =
       phase === 'script' ? LINE_AUTO_MS
       : phase === 'word' ? FINAL_WORD_MS
-      : CREDITS_MS;
+      : phase === 'credits' ? CREDITS_MS
+      : FINALE_SAFETY_MS;
     timerRef.current = window.setTimeout(advance, delay);
     return clearTimer;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, lineIdx]);
 
-  const onTap = () => advance();
+  const onTap = () => { if (phase !== 'finale') advance(); }; // finale中のタップは無効(直撃を見せ切る)
 
   const visibleLines = ENDING_SCRIPT.slice(0, lineIdx + 1);
 
@@ -97,8 +118,9 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
         touchAction: 'manipulation',
         ...(scenic
           ? {
-              backgroundColor: phase === 'script' ? `rgba(0,0,0,${SCENIC_SCRIM_ALPHA})` : 'rgba(0,0,0,1)',
-              transition: 'background-color 900ms ease', // 暗転への移行も慣性(パッと黒にしない)
+              // v4055(社長指示「最後まで戦場で」): スクリムは全フェーズ薄いまま。暗転は直撃の
+              // フラッシュオーバーレイ(下)だけが行う。
+              backgroundColor: `rgba(0,0,0,${SCENIC_SCRIM_ALPHA})`,
             }
           : {}),
       }}
@@ -140,7 +162,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
         </div>
       )}
 
-      {/* 暗転で「成し得なかった」だけが残り、フェードアウト(社長指定v0.25.2191)。 */}
+      {/* 「成し得なかった」だけが残り、フェードアウト(社長指定v0.25.2191。v4055: 全黒化はせず戦場の上)。 */}
       {phase === 'word' && (
         <div className="flex h-full w-full items-center justify-center">
           <style>{`@keyframes endWordOut{to{opacity:0}}`}</style>
@@ -166,6 +188,17 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
           </span>
           <span className="screen-in text-[11px] tracking-widest text-white/40">Thank you for playing</span>
         </div>
+      )}
+
+      {/* フィナーレの直撃フラッシュ→暗転(v4055)。白は爆発光=瞬間点灯、黒へは500msのease。 */}
+      {flashStage !== 'none' && (
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundColor: flashStage === 'flash' ? '#ffffff' : '#000000',
+            transition: flashStage === 'black' ? 'background-color 500ms ease' : 'none',
+          }}
+        />
       )}
     </div>
   );

@@ -383,6 +383,9 @@ export interface EndingBomb {
   phase: EndingBombPhase;
   phaseMs: number;
   justExploded: boolean;   // 着弾フレームだけtrue(SE/シェイク/ノックバック適用のedge。次stepで下ろす)
+  // フィナーレの直撃弾(v0.25.4055・社長指示「theONEのあと、爆撃がフィルに直撃した?!でフラッシュ
+  // 暗転して終わり」)。trueならフィル狙い(Yクリアランス適用外)・着弾でendingFinaleHitAtが立つ。
+  direct?: boolean;
 }
 
 export interface EndingBombTuning {

@@ -4934,7 +4934,8 @@ interface GameState {
   endingPhill: EndingPhillState | null; // フィル(=プレイヤー実体)の状態機械。null=エンディング外。
   endingBombs: EndingBomb[];         // 爆撃の弾(演出仕様v3.1。判定なし・観賞)
   endingBombNextAt: number;          // 次の投下を試みるgameTime(0=未初期化→updateEndingSceneが初回に設定)
-  endingBombingEnabled: boolean;     // 聴取記録のword(暗転)以降はfalse(監査A-7・EndingScreenが下ろす)
+  endingBombingEnabled: boolean;     // false=新規投下停止(v4055: フィナーレ発注時に下ろす。滞空弾は落ち切る)
+  endingFinaleHitAt: number;         // フィナーレ直撃弾の着弾gameTime(0=未着弾)。EndingScreenがフラッシュ暗転に使う
   suppressionActive: boolean;    // 制圧イベント中か(通常は false=拠点なし)
   suppressionCaptureCount: number; // 制圧した累計回数(base-capture SE 検出用。軍人名簿indexはランダム割当)
   safeBaseId: string | null;     // 武器商人が現在いる拠点(=安全地帯。HP回復・陥落しない)
@@ -5582,8 +5583,11 @@ interface GameState {
   // shots=このフレームに発砲した兵士の位置(SE距離減衰再生用)・phillVelMult=フィルの現在速度係数
   // (呼び出し側=useGameLoopがカメラ台車の合成入力にこの倍率を掛ける)。farBackdrop!=='ending'ならno-op。
   updateEndingScene: (deltaTime: number) => { shots: { x: number; y: number }[]; explosions: { x: number; y: number }[]; phillVelMult: number };
-  // 爆撃のON/OFF(v3.1 監査A-7): 聴取記録のword(暗転)遷移でEndingScreenがfalseにする(滞空弾も消す)。
+  // 爆撃の新規投下ON/OFF(滞空弾はどちらでも落ち切る=v4055で暗転前クリアは廃止)。
   setEndingBombing: (enabled: boolean) => void;
+  // フィナーレ(v4055・社長指示「theONEのあと、爆撃がフィルに直撃した?!でフラッシュ暗転して終わり」):
+  // 通常投下を止め、フィルの予測位置へ直撃弾(direct)を1発だけ落とす。着弾でendingFinaleHitAtが立つ。
+  triggerEndingFinaleBomb: () => void;
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
   pressLabButton: (id: string) => void;                 // ボタン押下→対応ドア解錠
   endIntroDialogue: () => void;   // 登場セリフ終了(ゲーム開始へ)
@@ -5952,6 +5956,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   endingBombs: [],
   endingBombNextAt: 0,
   endingBombingEnabled: true,
+  endingFinaleHitAt: 0,
   suppressionActive: false,
   suppressionCaptureCount: 0,
   safeBaseId: null,
@@ -17327,10 +17332,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
     // 爆撃(演出仕様v3.1): 弾を進め、着弾フレームで兵士へノックバック適用+シェイク。SEはuseGameLoop側
     // (返り値explosions)。着弾点の選定はアンカー兵士方式(監査A-1/A-2=実効ズーム1の可視域内の兵士)。
+    // ★弾のstepは常時(v4055): フィナーレの直撃弾は投下停止中(endingBombingEnabled=false)や
+    // ?endbomb=0でも必ず落ち切る。ゲートが効くのは**新規のランダム投下だけ**。
     const explosions: { x: number; y: number }[] = [];
     let bombs = state.endingBombs;
     let bombNextAt = state.endingBombNextAt;
-    if (ENDING_BOMB_ENABLED && state.endingBombingEnabled) {
+    let finaleHitAt = state.endingFinaleHitAt;
+    if (bombs.length > 0) {
       const stepped: EndingBomb[] = [];
       for (const b of bombs) {
         const nb = stepEndingBomb(b, dtMs, ENDING_BOMB_TUNING);
@@ -17338,11 +17346,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (nb.justExploded) {
           explosions.push({ x: nb.impactX, y: nb.impactY });
           nextSoldiers = blastEndingSoldiers(nextSoldiers, nb.impactX, nb.impactY, Math.random, ENDING_BOMB_TUNING);
-          get().triggerShake(500, 6); // 「大きく爆発」(叩き台・被弾シェイクと同系)
+          if (nb.direct) {
+            finaleHitAt = now; // フィル直撃(v4055)。EndingScreenがこれを見てフラッシュ暗転へ
+            get().triggerShake(700, 9); // 直撃はひときわ大きく
+          } else {
+            get().triggerShake(500, 6); // 「大きく爆発」(叩き台・被弾シェイクと同系)
+          }
         }
         stepped.push(nb);
       }
       bombs = stepped;
+    }
+    if (ENDING_BOMB_ENABLED && state.endingBombingEnabled) {
       const t = ENDING_BOMB_TUNING;
       if (bombNextAt <= 0) bombNextAt = now + t.intervalMsMin + Math.random() * (t.intervalMsMax - t.intervalMsMin);
       if (now >= bombNextAt) {
@@ -17363,8 +17378,6 @@ export const useGameStore = create<GameState>((set, get) => ({
           bombNextAt = now + t.retryMs;
         }
       }
-    } else if (bombs.length > 0) {
-      bombs = []; // OFF(暗転以降 or ?endbomb=0)は滞空弾も消す(全黒で見えない・監査A-7)
     }
     // フィル(=プレイヤー実体・不可視のカメラ台車): 次の倒れ兵士への接近/救護の状態機械(§4/§8)。
     // 位置はプレイヤーの中心Xを使う(足元Xだと幅ぶんズレる)。
@@ -17372,12 +17385,30 @@ export const useGameStore = create<GameState>((set, get) => ({
     const phill = state.endingPhill;
     const nextPhill = phill ? stepEndingPhill(phill, state.player.x + state.player.width / 2, dtMs) : null;
     if (nextPhill) phillVelMult = nextPhill.velMult;
-    set({ endingSoldiers: nextSoldiers, endingPhill: nextPhill, endingBombs: bombs, endingBombNextAt: bombNextAt });
+    set({ endingSoldiers: nextSoldiers, endingPhill: nextPhill, endingBombs: bombs, endingBombNextAt: bombNextAt, endingFinaleHitAt: finaleHitAt });
     return { shots, explosions, phillVelMult };
   },
 
   setEndingBombing: (enabled) => {
-    set(state => ({ endingBombingEnabled: enabled, endingBombs: enabled ? state.endingBombs : [] }));
+    set({ endingBombingEnabled: enabled }); // 新規投下のみ制御(滞空弾は落ち切る=v4055)
+  },
+
+  triggerEndingFinaleBomb: () => {
+    const state = get();
+    if (state.farBackdrop !== 'ending') return;
+    if (state.endingBombs.some(b => b.direct)) return; // 二重発注防止(冪等)
+    const px = state.player.x + state.player.width / 2;
+    const py = state.player.y + state.player.height; // 足元Y=兵士/着弾と同じ座標系
+    // フィルの着弾時刻の予測位置(歩行中=camLeadPx×velMult先・救護停止中=現在地)。
+    // 直撃演出なのでフィルラインのYクリアランスは通さない(trySpawnを使わず直に作る)。
+    const vel = state.endingPhill?.velMult ?? 1;
+    const bomb: EndingBomb = {
+      id: 'ending-finale-bomb',
+      impactX: px + ENDING_BOMB_TUNING.camLeadPx * vel,
+      impactY: py,
+      phase: 'fall', phaseMs: 0, justExploded: false, direct: true,
+    };
+    set(st => ({ endingBombingEnabled: false, endingBombs: [...st.endingBombs, bomb] }));
   },
 
   openLabDoor: (id) => {
@@ -18381,6 +18412,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         endingBombs: [],           // 爆撃(v3.1・監査B-2): 2周目に前回の弾を持ち越さない
         endingBombNextAt: 0,
         endingBombingEnabled: true,
+        endingFinaleHitAt: 0,
         // 出撃時セリフ: 屋外(護衛NPCが居る出撃)のみ、実ロスターの1人をランダムで予約(フェイザー等の差し替えにも追従)。
         npcDialogue: null,
         npcDialogueNextAt: 0,

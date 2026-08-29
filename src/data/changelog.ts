@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4055',
+    items: [
+      'エンディング: 「成し得なかった」での暗転を廃止し、最後まで戦場の上で聴取記録が流れるようになりました。the ONEの後、爆撃がフィルに直撃——白いフラッシュから暗転して物語が終わります。',
+    ],
+  },
+  {
     version: '0.25.4054',
     items: [
       'エンディングシーン(開発中): 爆撃を受けた兵士は倒れず、ノックバックしながらしゃがんで身構えるようになりました。',
