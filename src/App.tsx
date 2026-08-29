@@ -322,16 +322,18 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     void startGame(params.get('class') ?? 'warrior', benchmark, params.get('retry') === '1');
   }, []);
 
-  // ★エンディングステージ(仮組み・社長指示2026-08-28)への直行パラメータ。`?ending=1`があれば
-  // タイトル/メニューを全スキップし、stage-ending(見せるだけ=敵0・湧き0・イベント0・NPC0)へ直接
-  // 出撃する。開発用のみ(本番の入り口=勝利後遷移等は★未決のまま・ENDING_SCENE.md)。
-  // ?smoke=1&stage=stage-ending でも同じ場所へ行けるが、覚えやすい専用ツマミとして別に用意する
-  // (?smoke系の作法=タイトル/メニュー全スキップ+直接startGameに同型で乗せる)。
+  // ★エンディングへの直行パラメータ(社長指示2026-08-28/2026-08-29「?ending=1 これもうエンディング
+  // 場面に飛ばして。グレン倒した後の」)。タイトル/メニューを全スキップし:
+  //   ?ending=1 … **本番と同じ形**(グレン撃破後=聴取記録オーバーレイ+エンディングBGM+薄い黒スクリム)
+  //   ?ending=2 … 素通し(ステージだけ歩ける調整用。聴取記録なし・ステージBGM=エンディング曲)
+  // 終了処理も本番と同一(finishEnding)=endingSeen等のフラグも本番同様に立つ(開発チャネル前提)。
   useEffect(() => {
     if (endingStageParamHandledRef.current) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get('ending') !== '1') return;
+    const ep = params.get('ending');
+    if (ep !== '1' && ep !== '2') return;
     endingStageParamHandledRef.current = true;
+    if (ep === '1') setEndingOverlay(true); // 聴取記録を上に重ねる=本番導線と同じ描画・BGM経路
     setSelectedStageId('stage-ending');
     void startGame(params.get('class') ?? 'warrior', false, params.get('retry') === '1');
   }, []);

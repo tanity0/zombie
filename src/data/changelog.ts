@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4053',
+    items: [
+      'ゲーム内容の変更はありません(開発内部: ?ending=1がグレン撃破後と同じ聴取記録込みのエンディング場面に・素通しは?ending=2へ)。',
+    ],
+  },
+  {
     version: '0.25.4052',
     items: [
       'エンディングシーン(開発中): 爆弾がフィルの歩くライン(上下位置)には落ちなくなりました。兵士を8→10人に増員。',
