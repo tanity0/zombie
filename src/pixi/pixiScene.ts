@@ -1002,17 +1002,19 @@ const ENDING_TRACER_MS = Math.max(1, tsNum('endtracer', 120));       // §1「�
 const ENDING_MUZZLE_SIZE_PX = Math.max(4, tsNum('endmuzzlesize', 40));
 // 爆撃の弾の表示高(px・v3.1 監査C-4)。100→80(社長指示2026-08-29「爆撃の弾もう少し小さく」)。
 const ENDING_BOMB_SIZE_PX = Math.max(8, tsNum('endbombsize', 80));
-// 兵士の銃口高さ(足元からの表示高比)。検収A-3で0.15(画素実測の銃身先端)→社長指示2026-08-29
-// 「兵士の弾はもう少し上から出て」で0.25へ。?endmuzzley=で実機調整。
-const ENDING_MUZZLE_Y_FRAC = tsNum('endmuzzley', 0.25);
+// 兵士の銃口高さ(足元からの表示高比)。0.15(検収A-3)→0.25→**0.5**(社長指示2026-08-29
+// 「endmuzzley=0.5 で」=実機で決めた値の焼き込み)。?endmuzzley=で実機調整。
+const ENDING_MUZZLE_Y_FRAC = tsNum('endmuzzley', 0.5);
 // 倒れ兵士(救護対象)の表示倍率。1.5→1.0(社長指摘2026-08-29「周りと比べてでかい」=
 // contain-fit等倍で横たわる体長≒立ち兵士の身長になる)。
 const ENDING_FALLEN_SCALE = Math.max(0.2, tsNum('endfallen', 1.0));
-// 様子を見る兵士(社長支給2026-08-29): 大きさは**歩き兵士(shooter)と頭の大きさで揃える**(社長指示)。
-// 両素材を表示スケールで並べた画像比較の実見で×0.9=ヘルメットがほぼ同寸(1.0はわずかに頭が大きい)。
+// しゃがみ兵士絵(soldier-watch-0)の表示倍率。大きさは**歩き兵士(shooter)と頭の大きさで揃える**
+// (社長指示・両素材を表示スケールで並べた画像比較の実見で×0.9=ヘルメットほぼ同寸)。
+// ※用途変更(社長指示2026-08-29): 「傍にしゃがむ兵士」は廃止し、**フィルが治療した倒れ兵士が
+// しゃがみ絵に変わる**(=起き上がって座る)素材として使う。
 const ENDING_WATCH_SCALE = Math.max(0.2, tsNum('endwatch', 0.9));
-const ENDING_WATCH_OFFSET_X_PX = tsNum('endwatchx', 52);  // 倒れ兵士から右へ(フィルの救護位置=左側の反対)
-const ENDING_WATCH_OFFSET_Y_PX = tsNum('endwatchy', -10); // 少し奥(構図の重なり・zIndexで倒れ兵士より奥/手前が決まる)
+// 治療済み(倒れ→しゃがみ)への切替クロスフェード時間(ms・慣性MUST=瞬間差し替えのポップ禁止)。
+const ENDING_HEALED_FADE_MS = Math.max(1, tsNum('endhealfade', 400));
 const ENDING_TRACER_LEN_PX = Math.max(0, tsNum('endtracerlen', 46));
 const ENDING_SHELL_LIFE_S = Math.max(0.05, tsNum('endshell', 0.4));  // 薬莢が後方へ小放物線を描く時間
 const ENDING_RECOIL_MS = Math.max(1, tsNum('endrecoil', 140));       // §7「発砲の瞬間、体が2〜3px後ろへ跳ねて戻る」
@@ -3696,7 +3698,8 @@ export class PixiScene {
   private endingPhillSprite: Sprite | null = null; // フィル専用スプライト(=プレイヤー実体の位置に描く)
   private endingPhillScale: number | null = null; // walk-0基準の1系列1スケール(監査A-2・コマごとに正規化しない)
   private endingFallenSprites = new Map<number, Sprite>(); // 倒れ兵士(indexキー・ワールド固定=描画のみ)
-  private endingWatchSprites = new Map<number, Sprite>(); // 様子を見る兵士(倒れ兵士の傍・片膝・左向き。社長支給2026-08-29)
+  private endingWatchSprites = new Map<number, Sprite>(); // 治療済みの倒れ兵士のしゃがみ絵(soldier-watch-0・左向き)
+  private endingHealedAt = new Map<number, number>(); // index→治療済み表示へ切り替わった時刻(クロスフェード起点・視覚のみ)
   private endingFallenShadowGfx = new Graphics(); // 倒れ兵士の専用楕円ソフト影(シルエット焼きは使わない・§6)
   private endingBombSprites = new Map<string, Sprite>();     // 爆撃の弾(v3.1・落下中。actorLayer/zIndex=着弾Y)
   private endingBombBoomSprites = new Map<string, Sprite>(); // 爆発flipbook(v3.1・spawnExplosionFxは使わない=監査A-4のYソート)
@@ -8108,9 +8111,10 @@ export class PixiScene {
     this.drawEndingBombs(s.endingBombs); // 爆撃(v3.1)。空配列で自然に全プルーン(同上の空配列作法)
     if (s.farBackdrop === 'ending') {
       const overscanHalfW = (s.gameBounds.width / 2) / ZOOM_MIN_ABS + ENDING_FALLEN_DRAW_MARGIN_PX;
-      this.drawEndingFallenSoldiers(s.player.x - overscanHalfW, s.player.x + overscanHalfW);
+      this.drawEndingFallenSoldiers(s.player.x - overscanHalfW, s.player.x + overscanHalfW,
+        s.endingPhill?.lastHealedIndex ?? -1, now);
     } else if (this.endingFallenSprites.size > 0) {
-      this.drawEndingFallenSoldiers(0, -1); // 空区間=mark-and-sweepで全プルーン(farBackdropが変わった時の後始末)
+      this.drawEndingFallenSoldiers(0, -1, -1, now); // 空区間=mark-and-sweepで全プルーン(farBackdropが変わった時の後始末)
     }
     // ★realNow を渡す(v0.25.3168): 崩壊は**ヒットストップ中**に見せる演出なので、凍る `now` を
     // 渡すと死体自身の揺れ(sin)と明滅が**固定値**になり「揺れて崩れる」(v0.25.3072)が死ぬ。
@@ -22591,62 +22595,69 @@ export class PixiScene {
     }
   }
 
-  // 倒れ兵士(§8・監査A-9)+様子を見る兵士(社長支給2026-08-29・片膝の見守り)。ワールド固定配置
-  // (fallenSoldiersInRangeが純関数で位置を返す)。影はシルエット焼き(立ち姿前提)を使わず、
-  // 専用の楕円ソフト影(叩き台)。描画のみ・判定なし。
-  private drawEndingFallenSoldiers(minX: number, maxX: number) {
+  // 倒れ兵士(§8・監査A-9)。ワールド固定配置(fallenSoldiersInRangeが純関数で位置を返す)。
+  // 影はシルエット焼き(立ち姿前提)を使わず、専用の楕円ソフト影(叩き台)。描画のみ・判定なし。
+  // ★社長指示2026-08-29「フィルが治療したら、倒れてる兵士がしゃがみ絵になるようにして」:
+  // index ≤ lastHealedIndex(フィルは前から順に治療する=それ以前は全員治療済み)の兵士は
+  // 倒れ絵(soldier-fallen-0)→しゃがみ絵(soldier-watch-0・左向き)へクロスフェードで変わる。
+  // 切替の開始時刻はpixiローカルのMapで記録(indexが治療済みへ切り替わった描画フレーム=
+  // 治療完了の瞬間)。視覚のみの状態なのでstoreには持たない(Rendering vs. game logic)。
+  private drawEndingFallenSoldiers(minX: number, maxX: number, lastHealedIndex: number, now: number) {
     const spots = fallenSoldiersInRange(minX, maxX);
     const g = this.endingFallenShadowGfx;
     g.clear();
     const seen = new Set<number>();
     for (const spot of spots) {
       seen.add(spot.index);
+      const healed = spot.index <= lastHealedIndex;
+      if (!healed) this.endingHealedAt.delete(spot.index); // 周回リセット(resetGameでlastHealedIndex=-1)の巻き戻し
+      else if (!this.endingHealedAt.has(spot.index)) this.endingHealedAt.set(spot.index, now);
+      const healT = healed
+        ? Math.min(1, (now - (this.endingHealedAt.get(spot.index) ?? now)) / ENDING_HEALED_FADE_MS)
+        : 0;
+      const ease = healT * healT * (3 - 2 * healT); // smoothstep=入り/抜きに慣性
+      const ha = this.horizonActorAlpha(spot.y);
+      // 倒れ絵(治療済みはフェードアウト)
       let sp = this.endingFallenSprites.get(spot.index);
       if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.endingFallenSprites.set(spot.index, sp); }
       const tex = getTexture('npc/soldier-fallen-0');
       if (!tex) { sp.visible = false; continue; }
       sp.texture = tex;
-      // 等倍=contain-fit(横たわる体長≒立ち兵士の身長65px)。旧×1.5は周りと比べて明確に大きかった
-      // (社長指摘2026-08-29「倒れてる兵士が周りと比べてでかい」)。?endfallen=で実機調整。
+      // 等倍=contain-fit(横たわる体長≒立ち兵士の身長65px・v4045)。?endfallen=で実機調整。
       const sc = this.humanNpcScale(tex.width, tex.height, spot.y) * ENDING_FALLEN_SCALE;
       sp.scale.set(sc, sc);
-      const ha = this.horizonActorAlpha(spot.y);
-      sp.alpha = ha;
-      sp.visible = ha > 0;
+      sp.alpha = ha * (1 - ease);
+      sp.visible = sp.alpha > 0.003;
       sp.position.set(Math.round(spot.x), Math.round(spot.y));
       sp.zIndex = spot.y - 1; // 兵士/フィルより僅かに奥(通り過ぎる時に足元へ隠れないよう手前寄りにはしない)
-      if (ha > 0) {
-        const w = Math.abs(sp.width);
-        g.ellipse(spot.x, spot.y - 2, w * 0.4, w * 0.13).fill({ color: 0x000000, alpha: 0.32 * ha });
-      }
-      // 様子を見る兵士(社長指示2026-08-29「倒れている兵士の近くにいる、様子を見る兵士。左向きにして
-      // 配置して」): 倒れ兵士の右横(フィルは左側の手前60pxで救護するので反対側)に片膝でしゃがみ、
-      // 左(=倒れ兵士の方)を向く。素材は元から左向き(顔・銃の向きを画素確認)=反転しない。
+      // しゃがみ絵(治療済みだけフェードイン・同じ足元位置・素材は元から左向き=反転なし)
       let wsp = this.endingWatchSprites.get(spot.index);
       if (!wsp) { wsp = new Sprite(); wsp.anchor.set(0.5, 1); this.L.actorLayer.addChild(wsp); this.endingWatchSprites.set(spot.index, wsp); }
       const wtex = getTexture('npc/soldier-watch-0');
-      if (!wtex) { wsp.visible = false; continue; }
-      wsp.texture = wtex;
-      const wx = spot.x + ENDING_WATCH_OFFSET_X_PX;
-      const wy = spot.y + ENDING_WATCH_OFFSET_Y_PX;
-      // 片膝=立ち兵士(65px)より低い(×0.8叩き台・?endwatch=)。
-      const wsc = this.humanNpcScale(wtex.width, wtex.height, wy) * ENDING_WATCH_SCALE;
-      wsp.scale.set(wsc, wsc);
-      const wha = this.horizonActorAlpha(wy);
-      wsp.alpha = wha;
-      wsp.visible = wha > 0;
-      wsp.position.set(Math.round(wx), Math.round(wy));
-      wsp.zIndex = wy;
-      if (wha > 0) {
-        const ww = Math.abs(wsp.width);
-        g.ellipse(wx, wy - 1, ww * 0.34, ww * 0.11).fill({ color: 0x000000, alpha: 0.3 * wha });
+      if (wtex && healed) {
+        wsp.texture = wtex;
+        const wsc = this.humanNpcScale(wtex.width, wtex.height, spot.y) * ENDING_WATCH_SCALE;
+        wsp.scale.set(wsc, wsc);
+        wsp.alpha = ha * ease;
+        wsp.visible = wsp.alpha > 0.003;
+        wsp.position.set(Math.round(spot.x), Math.round(spot.y));
+        wsp.zIndex = spot.y - 1;
+      } else {
+        wsp.visible = false;
+      }
+      if (ha > 0) {
+        // 影: 倒れ(長い楕円)→しゃがみ(短い楕円)へ幅も同じeaseで縮む
+        const wLying = Math.abs(sp.width);
+        const wSit = wtex ? Math.abs(wsp.width) : wLying;
+        const shW = wLying * 0.4 * (1 - ease) + wSit * 0.34 * ease;
+        g.ellipse(spot.x, spot.y - 2, Math.max(6, shW), Math.max(4, shW * 0.32)).fill({ color: 0x000000, alpha: 0.32 * ha });
       }
     }
     for (const [idx, sp] of this.endingFallenSprites) {
       if (!seen.has(idx)) { sp.destroy(); this.endingFallenSprites.delete(idx); }
     }
     for (const [idx, sp] of this.endingWatchSprites) {
-      if (!seen.has(idx)) { sp.destroy(); this.endingWatchSprites.delete(idx); }
+      if (!seen.has(idx)) { sp.destroy(); this.endingWatchSprites.delete(idx); this.endingHealedAt.delete(idx); }
     }
   }
 
