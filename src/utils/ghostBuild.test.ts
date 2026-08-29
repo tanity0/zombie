@@ -87,7 +87,7 @@ describe('snapshotPlayerBuild: 計測時ビルドの写し(純粋コピー)', ()
 
 describe('buildPseudoPlayer: 既存の倍率関数へ渡す疑似Player', () => {
   it('ビルド項目はスナップショットで上書き・一時バフ窓は中立化', () => {
-    const live = { ...freshPlayer(), critChance: 0.99, quickMagCritUntil: 1e12, benkeiBuffUntil: 1e12, scavengerBuffUntil: 1e12, knifeComboCount: 9 };
+    const live = { ...freshPlayer(), critChance: 0.99, quickMagCritUntil: 1e12, benkeiBuffUntil: 1e12, scavengerBuffUntil: 1e12 };
     const snap = snapshotPlayerBuild(buildRun());
     const pseudo = buildPseudoPlayer(snap, live);
     expect(pseudo.critChance).toBe(0.2);            // 計測時ビルドの値(本人の0.99ではない)
@@ -97,7 +97,6 @@ describe('buildPseudoPlayer: 既存の倍率関数へ渡す疑似Player', () => 
     expect(pseudo.quickMagCritUntil).toBe(0);       // 本人の瞬間バフは持ち込まない
     expect(pseudo.benkeiBuffUntil).toBe(0);
     expect(pseudo.scavengerBuffUntil).toBe(0);
-    expect(pseudo.knifeComboCount).toBe(0);
   });
 
   it('スナップショットが欠損している項目は本人の値へフォールバック(後方互換)', () => {

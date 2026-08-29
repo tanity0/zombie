@@ -213,8 +213,7 @@ describe('除外1/4: 守護霊の刀は演出・計測をプレイヤー起因�
     const st = useGameStore.getState();
     expect(st.hitstopUntil ?? 0).toBe(0);        // 除外1: 時間停止なし
     expect(st.timeSlowUntil ?? 0).toBe(0);       // 除外1: スローなし
-    expect(st.meleeFinishComboCount).toBe(0);    // 本人のコンボ台帳は動かさない
-    expect(st.player.knifeComboCount).toBe(0);
+    expect(st.meleeFinishComboCount).toBe(0);    // 本人のコンボ台帳は動かさない(knifeCombo*は2026-08-29に表示コンボへ一本化済み)
     expect(st.gameStats.enemiesKilled).toBe(1);  // キル集計は damageEnemy 経路と同じ扱いで積む
   });
 

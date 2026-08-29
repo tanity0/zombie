@@ -8,10 +8,13 @@ const mk = (t: string, extra: Partial<Enemy> = {}) =>
   ({ type: t as Enemy['type'], ...extra }) as Pick<Enemy, 'type' | 'isStoryBoss'>;
 
 describe('誰にマークを出すか(「ボス交戦中」の定義)', () => {
-  it('裏ボス・天使・idol(=一騎打ちのボス)には出す', () => {
-    for (const t of ['mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol']) {
+  it('裏ボス・天使(=一騎打ちのボス)には出す', () => {
+    for (const t of ['mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel']) {
       expect(isMarkedBoss(mk(t)), t).toBe(true);
     }
+  });
+  it('★idol(ステージ2の裏ボス=偶像)には出さない(社長指示2026-08-29)', () => {
+    expect(isMarkedBoss(mk('idol'))).toBe(false);
   });
   it('ストーリーボス(グレン/未確認変異体)は個体フラグで拾う', () => {
     expect(isMarkedBoss(mk('giantbat', { isStoryBoss: true }))).toBe(true);

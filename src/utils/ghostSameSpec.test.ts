@@ -198,13 +198,13 @@ describe('B: 分身(shadow-clone)の主語ごと化(§2.11追補 帰結②)', ()
   it('ゴーストの分身の一撃は**本人のコンボ台帳を書かない**(★未決1と同じ扱い)', () => {
     place(snap(['shadow-clone']));
     useGameStore.setState(s => ({
-      player: { ...s.player, knifeComboCount: 7, knifeComboUntil: s.gameTime + 9999 },
+      meleeFinishComboCount: 7, meleeFinishComboUntil: s.gameTime + 9999,
       enemies: [],
     }));
     useGameStore.getState().fireGhostMeleeSwingSubs(GID);
     const clone = ghost()!.ghostShadowClone!;
     useGameStore.getState().shadowCloneStrike(clone, GID);
-    expect(useGameStore.getState().player.knifeComboCount).toBe(7); // 本人のコンボは動かない
+    expect(useGameStore.getState().meleeFinishComboCount).toBe(7); // 本人のコンボは動かない(2026-08-29一本化後は表示コンボで確認)
   });
 });
 

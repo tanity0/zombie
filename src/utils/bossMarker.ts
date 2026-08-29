@@ -26,7 +26,9 @@ import { isHiddenBoss, isBountyType } from './enemyUtils';
  * (`isMarkedBossVisible`側)。他の一騎打ちボスに距離ゲートは無い=既存仕様のまま。
  */
 export const isMarkedBoss = (e: Pick<Enemy, 'type' | 'isStoryBoss'>): boolean =>
-  isHiddenBoss(e.type) || e.isStoryBoss === true || isBountyType(e.type);
+  // ★ステージ2の裏ボス(idol=偶像)はマークを出さない(社長指示2026-08-29
+  // 「ステージ2の裏ボス(アイドル)はマーク出さない」)。isHiddenBoss には残す(射程矩形等は従来どおり)。
+  (isHiddenBoss(e.type) && e.type !== 'idol') || e.isStoryBoss === true || isBountyType(e.type);
 
 /** 賞金首の矢印マーカー有効距離(§6.38 B1.5-5)。
  * ★2026-08-26 社長指示「いる間はマーク表示。近づいたらじゃなくて」で**距離ゲートは撤廃**

@@ -1784,17 +1784,18 @@ export const skillKnifeMasterMeleeCrit = (player: Player): number => {
   return kl ? [0, 0.10, 0.15, 0.20][kl] : 0;
 };
 // 近接コンボ倍率(ナイフマスター × コンボマスター)。3つの近接ダメージ地点とカウンター斬撃で共通使用。
-//  ・knife-master: 近接ヒットで knifeComboCount を貯め、+2%/hit(上限+60%=×1.6、Lv3は15hitでカンスト。
-//    PACING_PUZZLE.md §6.22 M47仕様②=社長裁定でP1の[0,50,70,100]%からP2=[0,40,50,60]%へ圧縮)。窓3秒。
+//  ・knife-master: **表示コンボ(meleeFinishCombo)を読む**(社長指示2026-08-29「通常攻撃でコンボになる」
+//    =近接ヒットが表示コンボに加算されるようになったので専用台帳knifeCombo*は廃止・一本化)。
+//    +2%/hit(上限+60%=×1.6。PACING_PUZZLE.md §6.22 M47仕様②の率・上限は不変)。
 //  ・combo-master: フィニッシュコンボ(meleeFinishComboCount)生存中、+2%/combo(上限+50%)。
 // どちらも非装備なら ×1。窓の有効判定は呼び出し側の gameTime に依存。
 export const skillMeleeComboMult = (player: Player, gameTime: number, finishComboCount: number, finishComboUntil: number): number => {
   let mult = 1;
   const kl = skillLevel(player, 'knife-master');
-  if (kl && gameTime < player.knifeComboUntil) {
+  if (kl && gameTime < finishComboUntil) {
     const rate = [0, 0.02, 0.02, 0.04][kl]; // +2%/+2%/+4% per hit(不変)
     const cap = [0, 0.40, 0.50, 0.60][kl];  // 上限 +40%/+50%/+60%(§6.22 M47仕様②)
-    mult *= 1 + Math.min(cap, player.knifeComboCount * rate);
+    mult *= 1 + Math.min(cap, finishComboCount * rate);
   }
   mult *= skillComboMasterMult(player, gameTime, finishComboCount, finishComboUntil);
   return mult;
@@ -1821,19 +1822,13 @@ export const skillFinishComboWindowBonus = (player: Player): number => {
 };
 // 賢者の石: 鞭ハリケーンの半径/ダメージ +20%。
 export const sageStoneHurricaneMult = (player: Player): number => (hasSageStone(player) ? 1.2 : 1);
-// ナイフマスター: 近接ヒットでコンボを加算(窓3秒)。非ヒット/非装備時は据え置き。
-// 窓切れ後の最初のヒットは 1 にリセット。
-export const computeKnifeCombo = (
+// ナイフマスター: 近接ヒットの「表示コンボへの加算数」(社長指示2026-08-29で共有コンボへ一本化)。
+// そのスイングでフィニッシュが出た時はキル側の加算が立つので、二重取りしない(=0)。
+export const knifeMasterHitComboGain = (
   player: Player,
-  gameTime: number,
   hitLanded: boolean,
-): { count: number; until: number } => {
-  if (!hasSkill(player, 'knife-master') || !hitLanded) {
-    return { count: player.knifeComboCount, until: player.knifeComboUntil };
-  }
-  const alive = gameTime < player.knifeComboUntil;
-  return { count: alive ? player.knifeComboCount + 1 : 1, until: gameTime + 3000 };
-};
+  finishCountThisSwing: number,
+): number => (hasSkill(player, 'knife-master') && hitLanded && finishCountThisSwing === 0 ? 1 : 0);
 // スナイパー: 銃ダメージ ×(1 + 停止敵0.5 + 距離補正最大0.5)。refDist=狙撃最大射程(要調整)。
 // その85%地点で距離補正が+0.5上限に到達。射程自体は不変(ダメージのみ)。
 export const SNIPER_REF_DIST = 480;
@@ -3134,6 +3129,15 @@ export const SCREAMER_BUFF_MULT = 1.2; // 通常敵の移動速度・与ダメ�
 const SCREAMER_KEEP_RADIUS = 260;     // プレイヤーから保つ距離(px)。直進せず一定距離を保つ。
 const MINE_AMBUSH_TIME_MS = 150000;
 const MELEE_FINISH_COMBO_WINDOW_MS = 7000;
+// ★ナイフマスター(社長指示2026-08-29「通常攻撃でコンボになるんじゃなかったっけ？そうして」
+// 「窓が3秒に短縮。ただ、コンボマスターも取ると＋で延長」): 所持中は近接の通常ヒットも
+// 表示コンボ(meleeFinishCombo)に加算される代わりに、コンボ窓が3秒へ締まる。
+// コンボマスターの延長(+1.0/1.5/2.0s)と装備KILL猶予はその上に乗る(従来式のまま)。
+const KNIFE_MASTER_COMBO_WINDOW_MS = 3000;
+// フィニッシュコンボ窓(ms)。書き込み全箇所がこの1本を使う(旧: 4箇所にインライン式が散っていた)。
+export const meleeFinishComboWindowMs = (player: Player): number =>
+  ((hasSkill(player, 'knife-master') ? KNIFE_MASTER_COMBO_WINDOW_MS : MELEE_FINISH_COMBO_WINDOW_MS)
+    + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1);
 const GRENADE_BOUNCE_DAMPING = 0.86;
 const GRENADE_ROLL_DRAG = 1.45;
 
@@ -4583,13 +4587,16 @@ const applySlasherChainStrike = (
     }
   }
   // スキル: ナイフマスターのコンボ加算(§6.10 M33⑧: スラッシャー追撃のヒットでも貯める。倍率は既に乗っている)。
-  {
-    const slKnifeCombo = computeKnifeCombo(player, gameTime, hit);
-    if (slKnifeCombo.count !== player.knifeComboCount || slKnifeCombo.until !== player.knifeComboUntil) {
-      useGameStore.setState(state => ({
-        player: { ...state.player, knifeComboCount: slKnifeCombo.count, knifeComboUntil: slKnifeCombo.until },
-      }));
-    }
+  // 2026-08-29一本化: 表示コンボ(meleeFinishCombo)へ直接加算(専用台帳knifeCombo*は廃止)。
+  if (knifeMasterHitComboGain(player, hit, 0) > 0) {
+    useGameStore.setState(state => {
+      const next = state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + 1 : 1;
+      return {
+        meleeFinishComboCount: next,
+        meleeFinishComboUntil: gameTime + meleeFinishComboWindowMs(state.player),
+        gameStats: { ...state.gameStats, maxCombo: Math.max(state.gameStats.maxCombo, next) },
+      };
+    });
   }
   if (nextStep < maxHits) {
     get().setSlasherCombo(realGameTime + SLASHER_CHAIN_CD_MS, nextStep); // 次のチェーンCDを開始
@@ -5850,7 +5857,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
-    knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0, counterMasterBuffUntil: 0,
+    benkeiBuffUntil: 0, benkeiCdUntil: 0, counterMasterBuffUntil: 0,
     seekerUntil: 0, seekerCdUntil: 0,
     consumableScrapUntil: 0, consumableAttackUntil: 0, consumableSpeedUntil: 0,
     consumableXpUntil: 0, consumableProtectionUntil: 0,
@@ -7425,11 +7432,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const finisherHit = killed.some(k => k.finisher);
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
     const bossKilled = killed.some(k => isFinalBossKill(k.enemy));
-    // スキル: ナイフマスターの近接コンボ加算(近接ダメージが当たったスイングで +1)。
+    // スキル: ナイフマスター=近接ヒットも表示コンボに加算(2026-08-29一本化)。窓は共通ヘルパー
+    // (ナイフマスター所持=3s・非所持=7s・コンボマスター延長・装備KILL猶予込み)。
     const meleeHitLanded = slashAt.length > 0;
-    const knifeCombo = computeKnifeCombo(player, gameTime, meleeHitLanded);
-    // スキル: コンボマスター = フィニッシュコンボ窓 +1s。
-    const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
+    const comboGain = comboFinishCount + knifeMasterHitComboGain(player, meleeHitLanded, comboFinishCount);
+    const finishWindowMs = meleeFinishComboWindowMs(player);
     // §6.21 M46: 近接カウンター振り(通常ナイフ)の計測。channel='melee'。1振り=1回(hitCount=命中数)。
     const meleeSwingDamage = meleeDamageNumbers.reduce((sum, n) => sum + n.value, 0);
     recordDamageDealt('melee', meleeSwingDamage);
@@ -7454,20 +7461,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
         damageDealt: state.gameStats.damageDealt + meleeSwingDamage,
-        maxCombo: comboFinishCount > 0
+        maxCombo: comboGain > 0
           ? Math.max(
               state.gameStats.maxCombo,
               state.meleeFinishComboUntil >= gameTime
-                ? state.meleeFinishComboCount + comboFinishCount
-                : comboFinishCount
+                ? state.meleeFinishComboCount + comboGain
+                : comboGain
             )
           : state.gameStats.maxCombo
       },
       finaleDefeated: state.finaleDefeated || bossKilled,
-      meleeFinishComboCount: comboFinishCount > 0
-        ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
+      meleeFinishComboCount: comboGain > 0
+        ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboGain : comboGain)
         : state.meleeFinishComboCount,
-      meleeFinishComboUntil: comboFinishCount > 0
+      meleeFinishComboUntil: comboGain > 0
         ? gameTime + finishWindowMs
         : state.meleeFinishComboUntil,
       // フィニッシュで全停止ヒットストップ。スラッシャーリング始動時は新規追加を省くだけでなく、
@@ -7490,8 +7497,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         counterCooldownEnd: swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
         huntingCharged: false,
         huntingChargeStartedAt: 0,
-        knifeComboCount: knifeCombo.count,
-        knifeComboUntil: knifeCombo.until,
         // スキル スラッシャー: この近接が命中(slashAt有)したらチェーンを開始(step=0・0.5秒後にチェーンCD明け)。
         // 命中しなければ非アクティブ(チェーン無し)。以後の追撃はチェーンCD明けのタップで出す。
         // ★v0.25.3931(社長指示2026-08-26「スラッシャーを空振りでも2発目以降振れるようにして」):
@@ -7830,7 +7835,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const finisherHit = killed.some(k => k.finisher);
     // スキル: ナイフマスターのコンボ加算(§6.10 M33⑧: 分身のヒットでも貯める。倍率は既に乗っている)。
-    const cloneKnifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
+    // 2026-08-29一本化: 表示コンボへ直接加算(守護霊の分身は除外=二重取り防止・GHOST-BUILD-1 ★未決1)。
+    const cloneComboGain = isGhost ? 0 : knifeMasterHitComboGain(player, slashAt.length > 0, 0);
     // §6.21 M46: 分身(サブウェポン)によるダメージ計測。channel='other'(プレイヤー自身の近接カウンター
     // 振りではなくサブウェポンの自律攻撃のため。finisher即死もrecordFinisherKillの対象外=★未決事項参照)。
     const cloneStrikeDamage = damageNumbers.reduce((sum, n) => sum + n.value, 0);
@@ -7868,12 +7874,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
         damageDealt: state.gameStats.damageDealt + cloneStrikeDamage,
+        ...(cloneComboGain > 0
+          ? { maxCombo: Math.max(state.gameStats.maxCombo, (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount : 0) + cloneComboGain) }
+          : {}),
       },
-      // コンボ台帳(プレイヤーのナイフコンボ)は**プレイヤーの分身だけ**が書く(守護霊の分身で
-      // 本人のコンボが伸びると二重取りになる=刀/近接と同じ扱い・GHOST-BUILD-1 ★未決1)。
-      ...(isGhost ? {} : {
-        player: { ...state.player, knifeComboCount: cloneKnifeCombo.count, knifeComboUntil: cloneKnifeCombo.until },
-      }),
+      // コンボは**プレイヤーの分身だけ**が書く(守護霊の分身で本人のコンボが伸びると二重取り)。
+      ...(cloneComboGain > 0 ? {
+        meleeFinishComboCount: (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount : 0) + cloneComboGain,
+        meleeFinishComboUntil: gameTime + meleeFinishComboWindowMs(state.player),
+      } : {}),
       // hitstopはtriggerFinishImpact側でCD込みで一括管理(M21・§5.22)。ここでの個別設定は廃止。
     }));
 
@@ -8549,8 +8558,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const finisherHit = killed.some(k => k.finisher);
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
     const bossKilled = killed.some(k => isFinalBossKill(k.enemy));
-    const knifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
-    const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
+    // ナイフマスター(2026-08-29一本化): 通常ヒットも表示コンボへ(守護霊のスイングは除外)。
+    const comboGain = comboFinishCount + (isGhost ? 0 : knifeMasterHitComboGain(player, slashAt.length > 0, comboFinishCount));
+    const finishWindowMs = meleeFinishComboWindowMs(player);
     // §6.21 M46: 近接カウンター振り(刀のオート斬撃/一閃)の計測。channel='melee'。1呼び出し=1回(hitCount=命中数)。
     const katanaSwingDamage = damageNumbers.reduce((sum, n) => sum + n.value, 0);
     // 除外4(運用系): 守護霊起因はプレイヤーの計測(botTelemetry)に混ぜない
@@ -8579,12 +8589,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
         damageDealt: state.gameStats.damageDealt + katanaSwingDamage,
-        maxCombo: (comboFinishCount > 0 && !isGhost)
+        maxCombo: (comboGain > 0 && !isGhost)
           ? Math.max(
               state.gameStats.maxCombo,
               state.meleeFinishComboUntil >= gameTime
-                ? state.meleeFinishComboCount + comboFinishCount
-                : comboFinishCount
+                ? state.meleeFinishComboCount + comboGain
+                : comboGain
             )
           : state.gameStats.maxCombo
       },
@@ -8594,14 +8604,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (GHOST-BUILD-1 ★未決1と同じ扱い)。キル数/与ダメの集計は damageEnemy(ゴースト弾/近接も計上)と
       // 同じ扱いで積む=経路による食い違いを作らない。
       ...(isGhost ? {} : {
-        meleeFinishComboCount: comboFinishCount > 0
-          ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
+        meleeFinishComboCount: comboGain > 0
+          ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboGain : comboGain)
           : state.meleeFinishComboCount,
-        meleeFinishComboUntil: comboFinishCount > 0
+        meleeFinishComboUntil: comboGain > 0
           ? gameTime + finishWindowMs
           : state.meleeFinishComboUntil,
         // hitstopはtriggerFinishImpact側でCD込みで一括管理(M21・§5.22)。ここでの個別設定は廃止。
-        player: { ...state.player, knifeComboCount: knifeCombo.count, knifeComboUntil: knifeCombo.until },
       }),
     }));
 
@@ -8833,8 +8842,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const finisherHit = killed.some(k => k.finisher);
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
     const bossKilled = killed.some(k => isFinalBossKill(k.enemy));
-    const knifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
-    const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
+    // ナイフマスター(2026-08-29一本化): 通常ヒットも表示コンボへ。
+    const comboGain = comboFinishCount + knifeMasterHitComboGain(player, slashAt.length > 0, comboFinishCount);
+    const finishWindowMs = meleeFinishComboWindowMs(player);
     // §6.21 M46: 近接カウンター振り(鞭)の計測。channel='melee'。1振り=1回(hitCount=命中数)。
     const whipSwingDamage = damageNumbers.reduce((s, n) => s + n.value, 0);
     recordDamageDealt('melee', whipSwingDamage);
@@ -8859,17 +8869,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
         damageDealt: state.gameStats.damageDealt + whipSwingDamage,
-        maxCombo: comboFinishCount > 0
-          ? Math.max(state.gameStats.maxCombo, state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
+        maxCombo: comboGain > 0
+          ? Math.max(state.gameStats.maxCombo, state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboGain : comboGain)
           : state.gameStats.maxCombo,
       },
       finaleDefeated: state.finaleDefeated || bossKilled,
-      meleeFinishComboCount: comboFinishCount > 0
-        ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
+      meleeFinishComboCount: comboGain > 0
+        ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboGain : comboGain)
         : state.meleeFinishComboCount,
-      meleeFinishComboUntil: comboFinishCount > 0 ? gameTime + finishWindowMs : state.meleeFinishComboUntil,
+      meleeFinishComboUntil: comboGain > 0 ? gameTime + finishWindowMs : state.meleeFinishComboUntil,
       // hitstopはtriggerFinishImpact側でCD込みで一括管理(M21・§5.22)。ここでの個別設定は廃止。
-      player: { ...state.player, knifeComboCount: knifeCombo.count, knifeComboUntil: knifeCombo.until },
     }));
 
     // 鞭の時は近接攻撃のクレスト(slashストリーク)表現は出さない。鞭自身のlashスプライトのみ。
@@ -17459,9 +17468,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         : gain;
       return {
         meleeFinishComboCount: nextCombo,
-        // インライン実装3箇所(damageEnemy系)と同じ式に統一: combo-masterの窓延長ボーナスを含める
-        // (GAME_AUDIT #1: 本ヘルパーだけ延長が抜けており、カウンター/反射経由のコンボが短い窓になっていた)
-        meleeFinishComboUntil: state.gameTime + Math.round((MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(state.player)) * (state.player.equipBonus?.killGraceMult ?? 1)),
+        // 窓は共通ヘルパー(2026-08-29: ナイフマスター所持=3s・非所持=7s・combo-master延長・装備KILL猶予込み)
+        meleeFinishComboUntil: state.gameTime + Math.round(meleeFinishComboWindowMs(state.player)),
         gameStats: {
           ...state.gameStats,
           maxCombo: Math.max(state.gameStats.maxCombo, nextCombo)
@@ -18262,7 +18270,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
-          knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0, counterMasterBuffUntil: 0,
+          benkeiBuffUntil: 0, benkeiCdUntil: 0, counterMasterBuffUntil: 0,
           seekerUntil: 0, seekerCdUntil: 0,
           consumableScrapUntil: 0, consumableAttackUntil: 0, consumableSpeedUntil: 0,
           consumableXpUntil: 0, consumableProtectionUntil: 0,

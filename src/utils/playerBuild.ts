@@ -104,7 +104,9 @@ export const buildHasLoadout = (snap: PlayerBuildSnapshot | undefined): boolean 
  * liveの値をそのまま使う=従来の「今のプレイヤー値を借用」へ自然にフォールバックする。
  *
  * 中立化する項目(=ビルドではなく「その瞬間のプレイヤーのバフ窓」):
- *   quickMagCritUntil / benkeiBuffUntil / scavengerBuffUntil / knifeCombo* は0にする。
+ *   quickMagCritUntil / benkeiBuffUntil / scavengerBuffUntil は0にする。
+ *   (knifeCombo* は2026-08-29に表示コンボへ一本化=フィールド自体が廃止。ゴースト除外は
+ *    skillMeleeComboMult へ渡す finishCombo 引数を呼び出し側で0にする方式で維持。)
  *   ゴーストは弾薬を拾わず武器も持ち替えないので、これらの窓は本人のものを流用してはいけない
  *   (本人のバフがゴーストに乗る=ビルド再現ではなく二重取りになる)。関数自体は共通のまま通すので、
  *   将来ゴースト側でこれらの窓を持たせれば同じ式でそのまま効く。
@@ -160,8 +162,6 @@ export const buildPseudoPlayer = (snap: PlayerBuildSnapshot | undefined, live: P
     quickMagCritUntil: 0,
     benkeiBuffUntil: 0,
     scavengerBuffUntil: 0,
-    knifeComboCount: 0,
-    knifeComboUntil: 0,
     // SKILL_BUILD_REDESIGN.md §23: 消費カード(実プレイヤー限定・ガチャ外)も同じ理由で中立化する。
     // 本人が取得したバフがゴーストにも乗ると二重取りになる(上のコメントと同じ原則)。
     consumableScrapUntil: 0,

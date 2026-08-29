@@ -49,13 +49,13 @@ const withConsumableUntil = (field: 'consumableScrapUntil' | 'consumableAttackUn
     [field]: until,
   } as unknown as Player);
 
-// Minimal player shape for skillMeleeComboMult (reads skills + skillLevels + knifeCombo* only).
-const knifeMaster = (count: number, level = 1, until = 10_000): Player =>
-  ({ skills: ['knife-master'], skillLevels: { 'knife-master': level }, knifeComboCount: count, knifeComboUntil: until } as unknown as Player);
+// 2026-08-29一本化: knife-master は表示コンボ(meleeFinishCombo)を読む=count/until は引数で渡す。
+const knifeMaster = (level = 1): Player =>
+  ({ skills: ['knife-master'], skillLevels: { 'knife-master': level } } as unknown as Player);
 
 describe('knife-master combo damage (leveled +2%/+2%/+4% per hit, cap +40%/+50%/+60% — PACING_PUZZLE.md §6.22 M47仕様②)', () => {
   const at = (count: number, level = 1, until = 10_000) =>
-    skillMeleeComboMult(knifeMaster(count, level, until), 0, 0, 0);
+    skillMeleeComboMult(knifeMaster(level), 0, count, until);
 
   it('Lv1: +2%/hit, caps at +40% (×1.4)', () => {
     expect(at(0, 1)).toBeCloseTo(1.0);
@@ -77,14 +77,14 @@ describe('knife-master combo damage (leveled +2%/+2%/+4% per hit, cap +40%/+50%/
     expect(at(99, 3)).toBeCloseTo(1.6); // clamped
   });
 
-  it('reverts to ×1.0 once the 3s combo window has expired', () => {
-    // gameTime (0) >= knifeComboUntil (-1) → window dead
-    expect(skillMeleeComboMult(knifeMaster(40, 3, -1), 0, 0, 0)).toBeCloseTo(1.0);
+  it('reverts to ×1.0 once the combo window has expired', () => {
+    // gameTime (0) >= finishComboUntil (-1) → window dead
+    expect(skillMeleeComboMult(knifeMaster(3), 0, 40, -1)).toBeCloseTo(1.0);
   });
 
   it('is ×1.0 without the skill', () => {
-    const noSkill = { skills: [], knifeComboCount: 40, knifeComboUntil: 10_000 } as unknown as Player;
-    expect(skillMeleeComboMult(noSkill, 0, 0, 0)).toBeCloseTo(1.0);
+    const noSkill = { skills: [] } as unknown as Player;
+    expect(skillMeleeComboMult(noSkill, 0, 40, 10_000)).toBeCloseTo(1.0);
   });
 });
 
