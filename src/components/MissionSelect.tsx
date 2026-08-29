@@ -257,7 +257,10 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
       }}
     >
       <div className="ds-scanline" aria-hidden="true" />
-      <div className="relative h-full w-full overflow-y-auto overscroll-contain" style={{ maxWidth: 420 }}>{children}</div>
+      {/* ★固定化(社長指示2026-08-29「基本固定するところは固定して」): ラッパーはスクロールさせない。
+          スクロールするのは renderDsHome 内のリスト領域(ds-rows)だけ=計器(上段/マップ/出撃/フッタ)は
+          常に固定で、ブラウザのページスクロール感を出さない。 */}
+      <div className="relative h-full w-full overflow-hidden" style={{ maxWidth: 420 }}>{children}</div>
     </div>
   ) : (
   <div
@@ -283,7 +286,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
         枠(panel)の中だけがスクロールする(スクロールバーは全要素で非表示済み・overscroll-contain)。 */}
     {/* fill=true(任務詳細): パネルを常に全高にする=内容が短くても最下部固定フッター(ジョブ選択)が
         画面下端に落ちる(社長指示v0.25.1852。max-h-fullのままだと短いページでパネルが縮み中腰になる)。 */}
-    <div className={`max-w-3xl w-full glass-panel rounded-none overflow-y-auto overscroll-contain ${fill ? 'h-full' : 'max-h-full'}`}>{children}</div>
+    <div className={`max-w-3xl w-full glass-panel rounded-none overflow-y-auto overscroll-contain no-scrollbar ${fill ? 'h-full' : 'max-h-full'}`}>{children}</div>
   </div>
   )
 );
@@ -669,9 +672,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     );
     return (
       <>
-        {/* 内容列: flex-col+min-h-full=フッタが margin-top:auto で下端に付く。短い可視域(iPhone SE級)
-            ではShell側のoverflow-y-autoでパネル内スクロール(監査B-6)。入り=menu-item-inカスケード(監査B-7)。 */}
-        <div className="flex min-h-full w-full flex-col" style={{ padding: '10px 12px' }}>
+        {/* 内容列(★v0.25.4060で固定化・社長指示「基本固定するところは固定して」): 計器
+            (上段/飾り計器/マップ/出撃)とフッタは**固定**。スクロールするのは行リスト領域
+            (ds-rows・flex-1)だけで、通常の端末では行も全部収まる=何もスクロールしない。
+            短い可視域(iPhone SE級・監査B-6)でも動くのはリストだけ。入り=menu-item-inカスケード(監査B-7)。 */}
+        <div className="flex h-full w-full flex-col" style={{ padding: '10px 12px' }}>
           <div className="ds-top menu-item-in" style={{ animationDelay: '0ms' }}>
             <span className="ds-top-big">OPERATION ROOM</span>
             {/* 実データが引ける物だけ実値(§3-0): G=goldBalance。RANK等の嘘の数字は出さない。 */}
@@ -694,14 +699,17 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <span className="ds-sortie-t1 block">出 撃</span>
             <ChevronRight size={18} />
           </button>
-          <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
-          {dsRow('装備', 'LOADOUT', 'サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
-          {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
-          {dsRow('開発施設', 'R&D', 'スキル / サブ解放', () => { playSfx('ui-select'); setScreen({ name: 'weaponDev' }); }, 175)}
-          <div className="ds-glabel menu-item-in" style={{ animationDelay: '200ms' }}>RECORDS ── 記録</div>
-          {dsRow('資料室', 'ARCHIVE', '記録・変異体資料', goArchive, 225, unreadArchiveCount > 0 ? 'NEW' : undefined)}
-          {dsRow('守護霊', 'GUARDIANS', '名前・討伐記録', goGhost, 250)}
-          {dsRow('変異体対策室', 'BESTIARY OPS', 'ボス再戦・練習', goBossRush, 275)}
+          {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。 */}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar">
+            <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
+            {dsRow('装備', 'LOADOUT', 'サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
+            {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
+            {dsRow('開発施設', 'R&D', 'スキル / サブ解放', () => { playSfx('ui-select'); setScreen({ name: 'weaponDev' }); }, 175)}
+            <div className="ds-glabel menu-item-in" style={{ animationDelay: '200ms' }}>RECORDS ── 記録</div>
+            {dsRow('資料室', 'ARCHIVE', '記録・変異体資料', goArchive, 225, unreadArchiveCount > 0 ? 'NEW' : undefined)}
+            {dsRow('守護霊', 'GUARDIANS', '名前・討伐記録', goGhost, 250)}
+            {dsRow('変異体対策室', 'BESTIARY OPS', 'ボス再戦・練習', goBossRush, 275)}
+          </div>
           <div className="ds-foot menu-item-in" style={{ animationDelay: '300ms' }}>
             <button
               type="button"

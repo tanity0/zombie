@@ -497,6 +497,16 @@
   scrollbar-color: rgba(216, 180, 254, 0.25) transparent;
 }
 
+/* 作戦室のスクロール容器共通(社長指示2026-08-29「スクロール感がブラウザゲームっぽい。基本固定する
+   ところは固定して」): スクロールバーを出さない=アプリの操作感。スクロール自体は生きている。 */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ghost-dossier-enter { animation: none; }
 }

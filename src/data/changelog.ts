@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4060',
+    items: [
+      '作戦室: スクロールの挙動をアプリ寄りに調整しました。ホームは計器(マップ・出撃)とフッタを固定し、動くのはメニューリストだけに。スクロールバーも非表示にしました。',
+    ],
+  },
+  {
     version: '0.25.4059',
     items: [
       '作戦室(新ホーム): 出撃ボタン内の「作戦地域: 〇〇」表記を外しました(上のマップに同じ情報があるため)。',
