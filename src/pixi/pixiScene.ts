@@ -976,8 +976,12 @@ const ENDING_SMOKE_COUNT = ENDING_SMOKE_PLACEMENT.length;
 const ENDING_SMOKE_PERIOD_MS = Math.max(500, tsNum('esmokeperiod', 4200)); // 1本が6コマを一巡する時間(ms)。叩き台
 const ENDING_SMOKE_HEIGHT_FRAC = Math.max(0.05, tsNum('esmokeheight', 0.30)); // 表示高さ(screenH比)。叩き台
 const ENDING_SMOKE_ALPHA = Math.max(0, Math.min(1, tsNum('esmokealpha', 0.75))); // 叩き台
-// 黒煙の下げ量(screenH比・社長指示2026-08-29「この赤く囲った雲、もう少し下へ」)。?esmokedown=で調整。
-const ENDING_SMOKE_DOWN_FRAC = tsNum('esmokedown', 0.08);
+// 黒煙の下げ量(screenH比)。v4046で0.08にしたが「下げて欲しかったのは黒煙じゃない、白い雲」
+// (社長訂正2026-08-29)のため0へ戻した(=元の位置)。?esmokedown=は残置。
+const ENDING_SMOKE_DOWN_FRAC = tsNum('esmokedown', 0);
+// 白い雲(zoom-cloudのnear層=地平の白い雲帯・daylightステージ共通)のエンディングだけの下げ量(px)。
+// 社長指示2026-08-29「下げて欲しかったのは…白い雲だよ」。?endcloudy=で調整。
+const ENDING_CLOUD_DOWN_PX = tsNum('endcloudy', 55);
 // 火の粉・灰の舞い(社長指示2026-08-28「火の粉・灰の舞いはコードで出せ」)。素材なし・コード生成のみ。
 interface EndingAmbientP { sp: Sprite; kind: 'ember' | 'ash'; x: number; y: number; vx: number; vy: number; ph: number; sz: number }
 // 負荷1/10: 固定プール(既定64個)をエンディング中だけ動かす(判定・storeには一切触れない)。叩き台。
@@ -1004,8 +1008,9 @@ const ENDING_MUZZLE_Y_FRAC = tsNum('endmuzzley', 0.25);
 // 倒れ兵士(救護対象)の表示倍率。1.5→1.0(社長指摘2026-08-29「周りと比べてでかい」=
 // contain-fit等倍で横たわる体長≒立ち兵士の身長になる)。
 const ENDING_FALLEN_SCALE = Math.max(0.2, tsNum('endfallen', 1.0));
-// 様子を見る兵士(社長支給2026-08-29): 片膝=立ち兵士より低め(×0.8)・倒れ兵士の右横に配置(叩き台)。
-const ENDING_WATCH_SCALE = Math.max(0.2, tsNum('endwatch', 0.8));
+// 様子を見る兵士(社長支給2026-08-29): 大きさは**歩き兵士(shooter)と頭の大きさで揃える**(社長指示)。
+// 両素材を表示スケールで並べた画像比較の実見で×0.9=ヘルメットがほぼ同寸(1.0はわずかに頭が大きい)。
+const ENDING_WATCH_SCALE = Math.max(0.2, tsNum('endwatch', 0.9));
 const ENDING_WATCH_OFFSET_X_PX = tsNum('endwatchx', 52);  // 倒れ兵士から右へ(フィルの救護位置=左側の反対)
 const ENDING_WATCH_OFFSET_Y_PX = tsNum('endwatchy', -10); // 少し奥(構図の重なり・zIndexで倒れ兵士より奥/手前が決まる)
 const ENDING_TRACER_LEN_PX = Math.max(0, tsNum('endtracerlen', 46));
@@ -7844,7 +7849,9 @@ export class PixiScene {
         const cloudBottom = cfg.place === 'far'
           ? this.farBackdropHeight() + this.screenH * cfg.bottomFrac
           : isNear
-            ? this.farBackdropHeight() + S3_CLOUD_TOP_PX + ch // 上端=境界線+20px(下端はそこから帯の高さぶん)
+            // 上端=境界線+S3_CLOUD_TOP_PX(下端はそこから帯の高さぶん)。エンディングだけ更に下げる
+            // (社長指示2026-08-29「白い雲もう少し下へ」・ENDING_CLOUD_DOWN_PX)。
+            ? this.farBackdropHeight() + S3_CLOUD_TOP_PX + (this.currentFarKey === 'ending' ? ENDING_CLOUD_DOWN_PX : 0) + ch
             : this.screenH * cfg.bottomFrac;
         zc.position.set(isNear ? (this.screenW - zc.width) / 2 : -this.screenW * 0.03, cloudBottom - ch + bob);
         // 霧と同じく流れる: 自走ドリフト(層ごとに速度差・蓄積式)+カメラパララックス(手前ほど速い)。
