@@ -42,6 +42,11 @@ export const bootstrapRuntime = (): void => {
   try {
     void document.fonts.load(`700 30px "${FONT_FAMILY}"`);
     void document.fonts.load(`500 16px "${FONT_FAMILY}"`);
+    // 作戦室DS2化(UI_OVERHAUL.md §3-0): DS計器の英字=Rajdhani 3ウェイトも同じ場所で温める
+    // (字間.3〜.42emの計器がロード前後で組み直されるチラつき対策)。グローバルフォントは不変。
+    void document.fonts.load('300 13px "Rajdhani"');
+    void document.fonts.load('500 13px "Rajdhani"');
+    void document.fonts.load('600 13px "Rajdhani"');
   } catch {
     // document.fonts unsupported (very old browsers) — CSS @font-face still loads on use.
   }

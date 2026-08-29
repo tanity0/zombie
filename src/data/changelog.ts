@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4057',
+    items: [
+      '作戦室のホーム画面を刷新しました(DS2風の計器デザイン・アンバー単色・次の作戦地域を映す等高線マップ・出撃行が主役の新レイアウト)。従来のホームには ?dshome=0 で戻せます。',
+    ],
+  },
+  {
     version: '0.25.4056',
     items: [
       'エンディングシーン(開発中): しゃがむ兵士(爆撃で身構えた兵士・治療済みの兵士)の向きを左向きに修正しました。',

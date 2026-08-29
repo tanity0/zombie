@@ -1,5 +1,35 @@
 # Development Log
 
+## v0.25.4057 — 作戦室ホームをDS2化(UI_OVERHAUL.md §3バッチ①)=等高線マップ+アンバー計器+?dshome=0復帰 【2026-08-29 14:22 JST】
+
+UI_OVERHAUL.md §3-1/§3-2(着手前監査(A)11件反映版)の実装。ホーム画面の見た目だけ——Screen状態機械・
+遷移ハンドラ・モーダル・NEWバッジ算出・シミュレーション層は不変。
+- **MissionSelect.tsx**: DS2版ホーム`renderDsHome`新設(OPERATION ROOM+G実値/飾り計器行(DAYは
+  timeLabel持ちステージでは項目ごと省略=監査A-8)/等高線マップ/出撃=アンバー主役行→goStageSelect/
+  PREP・RECORDS行群/フッタ=lucide Settings+SYSTEMバージョン)。行はmin-height 44px(監査B-1)・
+  menu-item-inカスケード踏襲(監査B-7)・新行は自前でplaySfx('ui-select')(goStageSelect等の自前発音
+  ハンドラは二重に鳴らさない=監査A-2)。旧renderHome/HubButtonはlegacyとして残置し`?dshome=0`で
+  丸ごと復帰(監査B-5)。fixedモーダル2種は`renderHomeNotices`に切り出し両ホーム共通(JSX不変)。
+  Shellに`dsHome`判定を追加: DS地(radial #101315→#060708)+走査線+全高+max-width 420px中央寄せ
+  (監査A-3/A-4/B-6/B-8)。**DSラッパーの祖先にtransform/filter/backdrop-filter/contain/will-change
+  なし**(glass-panel不使用)=fixedモーダルがviewport全画面に出る配線。
+- **DsContourMap.tsx(新規)**: バッキング632×300固定・CSSで100%×150px・描画はstage idごとに1回
+  (rAFなし=負荷0/10)。丘中心だけstage idハッシュでシード(内側60%制限)・ルート/マーカー/ラベル固定
+  (監査A-9/A-10)・`?dsmap=0`で非表示。
+- **utils/dsHome.ts(新規・純関数)+dsHome.test.ts(9件)**: `nextOperationStage`(①main&&!hidden&&
+  解放済み ②未クリアの先頭 ③全クリア=最終 ④EXはcanShowEx&&未クリアで最優先。hidden除外は総当たりで
+  固定)+等高線の数式(contourHills/contourField)。**★§3-5報告#1**: 監査B-4の「内側60%制限で9本担保」
+  は実測不足(stage-7で最下段の線が存在せず)→決定的な再シード(salt 0..15先頭合格・全滅時はモック原典
+  配置へフォールバック)で受け入れ条件を担保(詳細はUI_OVERHAUL.md §3-5)。
+- **index.css**: `ds-`プレフィクスでDS計器CSS追記(トークン§3-0/走査線/菱形マーカー/出撃帯clip-path)
+  +Rajdhani @font-face 3ウェイト。**bootstrap.ts**: Orbitron温めと同じ場所でRajdhani 3ウェイトを
+  document.fonts.load。**public/fonts/**: rajdhani-{300,500,600}.woff2+OFL-Rajdhani.txt同梱
+  (latinサブセット計26KB)。グローバルフォント(--game-font/Orbitron)は1bit不変。
+- 検証: typecheck 0 / lint エラー0(warning 9=既存) / dsHome.test 9件green / constitution.test
+  13件green。自己点検: シミュレーション層(store/utils(dsHome除く)/world)に非接触=憲法第4条・第5条に
+  非抵触。ホーム以外の画面は未変更(Shellはds分岐追加のみ・非dsパスは従来コードそのまま)。
+- 状態変化: UI_OVERHAUL.md §3バッチ① → 検収待ち(残り: 検収監査→社長実機)
+
 ## v0.25.4056 — エンディング: しゃがみ兵士絵の向きを左へ修正(素材右向きの読み違い訂正) 【2026-08-29 13:12 JST】
 
 社長指摘「爆撃でしゃがむ兵士は左向きにして。いま右向きになってる」。

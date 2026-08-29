@@ -536,3 +536,269 @@
     filter: drop-shadow(0 0 2px rgba(255, 59, 59, 0.8));
   }
 }
+
+/* ============================================================
+   作戦室DS2化(UI_OVERHAUL.md §3 バッチ①)。ビジュアルの正=アーティファクトv3。
+   モックの .ds系CSSを ds- プレフィクスで移植(監査B-3: .inner/.tag/.mk 等の汎用名は使わない)。
+   ★禁止プロパティ(監査A-3): DSツリーのどの祖先にも transform / filter / backdrop-filter /
+   contain / will-change を付けない(fixedモーダル2種の含有ブロックを作り全画面を失う)。
+   ============================================================ */
+
+/* Rajdhani(DS計器の英字・latinサブセット3ウェイト・作戦室のDSサブツリー限定。
+   グローバルの --game-font(Orbitron)は不変=監査A-11)。 */
+@font-face {
+  font-family: "Rajdhani";
+  src: url("/zombie/fonts/rajdhani-300.woff2") format("woff2");
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Rajdhani";
+  src: url("/zombie/fonts/rajdhani-500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Rajdhani";
+  src: url("/zombie/fonts/rajdhani-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
+/* DSトークン(§3-0)+地。Shellのdsホーム面(ラッパー)に付ける。 */
+.ds-home {
+  --ds-bg: #060708;
+  --ds-panel: #0b0d0f;
+  --ds-line: #23272a;
+  --ds-amber: #ffb340;
+  --ds-amber-hi: #ffd28a;
+  --ds-ink: #e6e9e9;
+  --ds-dim: #79817f;
+  --ds-deco: #4b5254;
+  background: radial-gradient(140% 70% at 50% -10%, #101315 0%, var(--ds-bg) 55%);
+  color: var(--ds-ink);
+  font-family: "Rajdhani", system-ui, sans-serif;
+}
+/* 走査線(CSSのみ・負荷ゼロ)。モックの .ds::after と同値。内容(z-index:1側)の下に敷かれる。 */
+.ds-scanline {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255, 255, 255, 0.012) 3px 4px);
+}
+
+/* 上段: OPERATION ROOM + G(実値)。 */
+.ds-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--ds-dim);
+  border-bottom: 1px solid var(--ds-line);
+  padding-bottom: 6px;
+}
+.ds-top .ds-top-big {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  color: var(--ds-ink);
+}
+.ds-top .ds-top-v {
+  color: var(--ds-amber);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+/* 飾り計器行(読ませる情報ではなく「装置感」の演出。LAT/LON/SIGNALは固定文字列)。 */
+.ds-deco {
+  font-size: 8.5px;
+  letter-spacing: 0.12em;
+  color: var(--ds-deco);
+  display: flex;
+  gap: 10px;
+  padding: 4px 0 0;
+}
+
+/* 等高線マップの箱(DsContourMap.tsx)。 */
+.ds-map {
+  position: relative;
+  height: 150px;
+  margin: 8px 0 0;
+  border: 1px solid var(--ds-line);
+  overflow: hidden;
+  background: #08090a;
+}
+.ds-map canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.ds-map-tag {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  font-size: 9px;
+  letter-spacing: 0.3em;
+  color: var(--ds-dim);
+}
+.ds-map-label {
+  position: absolute;
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  color: var(--ds-amber-hi);
+}
+.ds-map-label::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  width: 10px;
+  height: 1px;
+  background: var(--ds-amber);
+}
+.ds-map-label i {
+  font-style: normal;
+  color: var(--ds-dim);
+  display: block;
+  font-size: 7.5px;
+}
+
+/* 出撃=アンバーの主役行(選択列だけが帯で発光・文字は黒)。右端の斜め切りはv3承認済みの唯一の例外。 */
+.ds-sortie {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  margin: 10px 0 4px;
+  padding: 10px 14px;
+  cursor: pointer;
+  background: linear-gradient(90deg, var(--ds-amber) 0%, #f09a1e 100%);
+  color: #12100a;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+}
+.ds-sortie .ds-sortie-t1 {
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: 0.42em;
+}
+.ds-sortie .ds-sortie-t2 {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  font-weight: 600;
+  opacity: 0.75;
+}
+.ds-sortie::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -5px;
+  width: 38%;
+  height: 1px;
+  background: linear-gradient(90deg, var(--ds-amber), transparent);
+}
+
+/* グループ見出し(PREP/RECORDS)+極細リストの行。 */
+.ds-glabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  letter-spacing: 0.34em;
+  color: var(--ds-dim);
+  margin: 11px 0 4px;
+}
+.ds-glabel::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--ds-line);
+}
+/* 行: 実タップ領域は min-height 44px(監査B-1: HIGの下限。見た目の密度はpaddingで寄せる)。 */
+.ds-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  padding: 7px 6px 7px 14px;
+  border-bottom: 1px solid #17191b;
+  cursor: pointer;
+}
+.ds-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--ds-dim);
+  rotate: 45deg;
+}
+.ds-row:hover,
+.ds-row:active {
+  background: rgba(255, 179, 64, 0.06);
+}
+.ds-row:hover::before,
+.ds-row:active::before {
+  background: var(--ds-amber);
+  border-color: var(--ds-amber);
+}
+.ds-row .ds-row-l {
+  font-weight: 500;
+  font-size: 13.5px;
+  letter-spacing: 0.06em;
+  color: var(--ds-ink);
+}
+.ds-row .ds-row-en {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: #565e60;
+  margin-top: -3px;
+  display: block;
+}
+.ds-row .ds-row-d {
+  margin-left: auto;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--ds-dim);
+  font-weight: 300;
+}
+.ds-row .ds-row-new {
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  color: #12100a;
+  background: var(--ds-amber);
+  padding: 1px 5px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+/* フッタ(歯車=オプション+SYSTEMバージョン)。 */
+.ds-foot {
+  margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--ds-line);
+  padding-top: 7px;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--ds-deco);
+}
+.ds-foot .ds-foot-gear {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ds-line);
+  color: var(--ds-dim);
+  cursor: pointer;
+}

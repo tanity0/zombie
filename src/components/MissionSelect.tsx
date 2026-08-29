@@ -88,8 +88,11 @@ const PreClearBriefing: React.FC<{ synopsis: string[]; summary: string; resetKey
   );
 };
 import {
-  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Sparkles, Ghost, Skull, TrendingUp
+  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, ChevronRight, Lock, Check, Sparkles, Ghost, Skull, TrendingUp
 } from 'lucide-react';
+// 作戦室DS2化(UI_OVERHAUL.md §3 バッチ①): ホームの計器化+等高線マップ。旧ホームは?dshome=0で丸ごと復帰。
+import DsContourMap from './DsContourMap';
+import { nextOperationStage } from '../utils/dsHome';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
 import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
@@ -230,7 +233,33 @@ type Screen =
   | { name: 'characterSelect'; stageId: string; mission?: SelectedMission }
   | { name: 'loadout' };
 
-const Shell: React.FC<{ children: React.ReactNode; fill?: boolean }> = ({ children, fill }) => (
+// 作戦室DS2化(UI_OVERHAUL.md §3-1-1・監査B-5): `?dshome=0` で旧ホーム(renderHome)へ丸ごと復帰。
+// 既定=DS版。実装層は config/devtools.ts のモジュール定数の型(LowHpVignette.tsx:5と同型)。
+const DS_HOME_DISABLED = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('dshome') === '0';
+
+const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: boolean }> = ({ children, fill, dsHome }) => (
+  dsHome ? (
+    // DS版ホームの地(UI_OVERHAUL.md §3-1-3): 背景=DS地(タイトル絵は使わない)+走査線+fill(全高)。
+    // safe-areaは外周paddingのまま(帯・罫はパネル幅いっぱいでモックの計器感は成立)。
+    // ★禁止プロパティ(監査A-3): このラッパー以下の祖先に transform/filter/backdrop-filter/
+    // contain/will-change を付けない(glass-panelも使わない)=fixedモーダル2種が全画面に出る。
+    // 内容列は max-width 420px 中央寄せ(監査B-8: モック=340px電話判の構図保持)。
+    // 縦に入らない端末(監査B-6)はパネル内スクロールを許容(overflow-y-auto)。
+    <div
+      className="screen-in ds-home relative h-full w-full flex flex-col items-center justify-start overflow-hidden"
+      style={{
+        maxHeight: '100svh',
+        paddingTop: 'max(env(safe-area-inset-top), 16px)',
+        paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 24px), 40px)',
+        paddingLeft: 'max(env(safe-area-inset-left), 12px)',
+        paddingRight: 'max(env(safe-area-inset-right), 12px)',
+      }}
+    >
+      <div className="ds-scanline" aria-hidden="true" />
+      <div className="relative h-full w-full overflow-y-auto overscroll-contain" style={{ maxWidth: 420 }}>{children}</div>
+    </div>
+  ) : (
   <div
     className="screen-in h-full w-full flex flex-col items-center justify-start bg-[#0b0b12] overflow-hidden"
     style={{
@@ -256,6 +285,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean }> = ({ childr
         画面下端に落ちる(社長指示v0.25.1852。max-h-fullのままだと短いページでパネルが縮み中腰になる)。 */}
     <div className={`max-w-3xl w-full glass-panel rounded-none overflow-y-auto overscroll-contain ${fill ? 'h-full' : 'max-h-full'}`}>{children}</div>
   </div>
+  )
 );
 
 // 戻る/タイトルは常時表示=スクロール領域の先頭で sticky 固定(社長指示)。背景＋blur で
@@ -402,6 +432,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // アバターシステム(試験・第1弾)。装備メニュー内の独立枠。プリミティブ(string|null)購読のみ=React再描画規律に沿う。
   const avatarId = useGameStore(state => state.avatarId);
   const setAvatarId = useGameStore(state => state.setAvatarId);
+  // DS版ホームの上段計器「G」(UI_OVERHAUL.md §3-0: 実データが引ける物だけ実値)。プリミティブ購読
+  // (number)のみ・メニュー時の購入操作でしか変わらない=React再レンダ規律に沿う。
+  const goldBalance = useGameStore(state => state.goldBalance);
   const [cleared, setCleared] = useState<Set<string>>(() => getClearedStages());
 
   // PACING_PUZZLE.md §6.18 バッチM41: 資料室(未読バッジ+閲覧)+「資料が追加されました」ポップアップ。
@@ -548,6 +581,15 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <HubButton icon={<Settings size={18} />} label="オプション" desc="音量・各種設定" onClick={() => setScreen({ name: 'options' })} delay={200} />
         <p className="pt-1 text-center text-[11px] text-white/35">v{__APP_VERSION__}</p>
       </div>
+      {renderHomeNotices()}
+    </>
+  );
+
+  // ホームのfixedモーダル2種(旧ホーム/DS版ホーム共通・UI_OVERHAUL.md §3-3-3の検収点)。JSXは従来の
+  // renderHome内にあったものをそのまま切り出し(見た目・挙動は不変)。DS版ではShellのDSラッパーに
+  // transform/filter/backdrop-filter/contain/will-change が無い(監査A-3)ので viewport全画面に出る。
+  const renderHomeNotices = () => (
+    <>
       {/* PACING_PUZZLE.md §6.18 M41 / STORY_UI_SPEC.md 8章: エンディング(勝利)後にメニューへ戻った時の
           「資料が追加されました」ポップアップ。ホーム表示(=マウント)時に非空なら1回だけ出す。閉じるだけで
           強制遷移なし(仕様書11章「非採用」)。見た目は既存モーダルと同じglass-panelトーン・強glowなし。 */}
@@ -599,6 +641,85 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       )}
     </>
   );
+
+  // ====================================================================
+  // ホーム(DS2版・UI_OVERHAUL.md §3-1。ビジュアルの正=アーティファクトv3「01 作戦室ホーム」)
+  // 旧renderHomeは ?dshome=0 用のlegacyとして残す(§3-1-1)。Screen状態機械・遷移ハンドラ・
+  // モーダル・NEWバッジ算出は現行のまま=このバッチで触るのはホーム画面の見た目だけ。
+  // ====================================================================
+  const renderDsHome = () => {
+    // 次の作戦地域(§3-1-2b・純関数)。cleared はホーム再表示のたびに最新state、storyFlags は描画時読取
+    // (renderStageSelectと同じ作法。メニュー画面のみの読取=毎フレーム再レンダなし)。
+    const nextStage = nextOperationStage(STAGES, cleared, getStoryFlags());
+    // DAYの掟(監査A-8): 次の作戦地域が timeLabel を持つ(=日時を意図的にぼかすステージ)場合は
+    // DAY項目ごと省く(数字で暴露しない)。
+    const showDay = !!nextStage && !nextStage.timeLabel;
+    // 新しい行は自分で playSfx('ui-select') を鳴らす(監査A-2: HubButton内蔵の音が消えるため)。
+    // goStageSelect / goArchive / goGhost / goBossRush は自前発音ハンドラ=ここでは鳴らさない(二重防止)。
+    const dsRow = (
+      label: string, en: string, desc: string, onClick: () => void, delay: number, badge?: string
+    ) => (
+      <button type="button" className="ds-row menu-item-in" style={{ animationDelay: `${delay}ms` }} onClick={onClick}>
+        <span>
+          <span className="ds-row-l">{label}{badge && <span className="ds-row-new">{badge}</span>}</span>
+          <span className="ds-row-en">{en}</span>
+        </span>
+        <span className="ds-row-d">{desc}</span>
+      </button>
+    );
+    return (
+      <>
+        {/* 内容列: flex-col+min-h-full=フッタが margin-top:auto で下端に付く。短い可視域(iPhone SE級)
+            ではShell側のoverflow-y-autoでパネル内スクロール(監査B-6)。入り=menu-item-inカスケード(監査B-7)。 */}
+        <div className="flex min-h-full w-full flex-col" style={{ padding: '10px 12px' }}>
+          <div className="ds-top menu-item-in" style={{ animationDelay: '0ms' }}>
+            <span className="ds-top-big">OPERATION ROOM</span>
+            {/* 実データが引ける物だけ実値(§3-0): G=goldBalance。RANK等の嘘の数字は出さない。 */}
+            <span>G <span className="ds-top-v">{goldBalance.toLocaleString()}</span></span>
+          </div>
+          {/* 飾り計器行: LAT/LON/SIGNALは固定文字列の飾り(§3-0)。DAYだけ実値。 */}
+          <div className="ds-deco menu-item-in" style={{ animationDelay: '25ms' }}>
+            <span>LAT 43.06N</span>
+            <span>LON 141.35E</span>
+            {showDay && <span>DAY {nextStage.day}</span>}
+            <span>SIGNAL ▮▮▮▯</span>
+          </div>
+          <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
+            <DsContourMap stageId={nextStage?.id ?? 'stage-tutorial'} sectorLabel={nextStage?.locationTitle ?? '—'} />
+          </div>
+          {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。名前は
+              「次に行く所」の提示であって直行ボタンではない(監査B-9=意図どおり)。 */}
+          <button type="button" className="ds-sortie menu-item-in" style={{ animationDelay: '75ms' }} onClick={goStageSelect}>
+            <span>
+              <span className="ds-sortie-t1 block">出 撃</span>
+              <span className="ds-sortie-t2 block">作戦地域: {nextStage?.locationTitle ?? '—'}</span>
+            </span>
+            <ChevronRight size={18} />
+          </button>
+          <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
+          {dsRow('装備', 'LOADOUT', 'サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
+          {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
+          {dsRow('開発施設', 'R&D', 'スキル / サブ解放', () => { playSfx('ui-select'); setScreen({ name: 'weaponDev' }); }, 175)}
+          <div className="ds-glabel menu-item-in" style={{ animationDelay: '200ms' }}>RECORDS ── 記録</div>
+          {dsRow('資料室', 'ARCHIVE', '記録・変異体資料', goArchive, 225, unreadArchiveCount > 0 ? 'NEW' : undefined)}
+          {dsRow('守護霊', 'GUARDIANS', '名前・討伐記録', goGhost, 250)}
+          {dsRow('変異体対策室', 'BESTIARY OPS', 'ボス再戦・練習', goBossRush, 275)}
+          <div className="ds-foot menu-item-in" style={{ animationDelay: '300ms' }}>
+            <button
+              type="button"
+              className="ds-foot-gear"
+              aria-label="オプション"
+              onClick={() => { playSfx('ui-select'); setScreen({ name: 'options' }); }}
+            >
+              <Settings size={14} />
+            </button>
+            <span>SYSTEM v{__APP_VERSION__}</span>
+          </div>
+        </div>
+        {renderHomeNotices()}
+      </>
+    );
+  };
 
   // ====================================================================
   // ステージ選択
@@ -1537,8 +1658,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // キャラ選択は全画面(立ち絵を画面いっぱい)なので Shell(中央パネル)を介さず単独描画。
   if (screen.name === 'characterSelect') return renderCharacterSelect(screen.stageId, screen.mission ?? 'main');
   return (
-    <Shell fill={screen.name === 'missionDetail'}>
-      {screen.name === 'home' && renderHome()}
+    <Shell fill={screen.name === 'missionDetail'} dsHome={!DS_HOME_DISABLED && screen.name === 'home'}>
+      {screen.name === 'home' && (DS_HOME_DISABLED ? renderHome() : renderDsHome())}
       {screen.name === 'stageSelect' && renderStageSelect()}
       {screen.name === 'missionDetail' && renderMissionDetail(screen.stageId, screen.mission ?? 'main')}
       {screen.name === 'loadout' && renderLoadout()}
