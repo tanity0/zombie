@@ -992,8 +992,8 @@ const ENDING_MUZZLE_FLASH_MS = Math.max(1, tsNum('endmuzzle', 100)); // §1「80
 const ENDING_TRACER_MS = Math.max(1, tsNum('endtracer', 120));       // §1「短命の黄色い線(120ms)」
 // 兵士のマズルフラッシュ基準幅(px)。検収A-2: 城ボス用の既定(275px)は兵士(表示高~65px)の4倍= 実寸へ。
 const ENDING_MUZZLE_SIZE_PX = Math.max(4, tsNum('endmuzzlesize', 40));
-// 爆撃の弾の表示高(px・v3.1 監査C-4: 素材64×256の等倍=兵士の4倍は使わない。兵士65pxの約1.5倍)。
-const ENDING_BOMB_SIZE_PX = Math.max(8, tsNum('endbombsize', 100));
+// 爆撃の弾の表示高(px・v3.1 監査C-4)。100→80(社長指示2026-08-29「爆撃の弾もう少し小さく」)。
+const ENDING_BOMB_SIZE_PX = Math.max(8, tsNum('endbombsize', 80));
 // 兵士の銃口高さ(足元からの表示高比)。検収A-3で0.15(画素実測の銃身先端)→社長指示2026-08-29
 // 「兵士の弾はもう少し上から出て」で0.25へ。?endmuzzley=で実機調整。
 const ENDING_MUZZLE_Y_FRAC = tsNum('endmuzzley', 0.25);

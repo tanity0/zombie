@@ -403,6 +403,11 @@ export interface EndingBombTuning {
   // 候補窓を「着弾時のカメラ中心」で取る(投下時基準だと左寄りの着弾が画面外へ流れて見切れる)。
   // アンカー兵士自身の左進みも予測位置(x - speed×velMult×落下秒)で織り込む(検収B-1も同時に消える)。
   camLeadPx: number;
+  // ★フィルからのX方向クリアランス(社長指示2026-08-29「フィルの近くには落とさないで」)。
+  // 着弾Xが着弾時フィル位置±この距離に入る場合、**候補を捨てずに着弾点を外へ押し出す**
+  // (候補フィルタで弾くとv4039の「候補0=爆撃が来ない」型に戻るため。押し出し量の最大は
+  // クリアランス幅≦120で、アンカーとの距離はノックバック楕円170内に収まる=「と同時に」は保たれる)。
+  phillClearancePx: number;
 }
 
 export const DEFAULT_ENDING_BOMB_TUNING: EndingBombTuning = {
@@ -423,6 +428,7 @@ export const DEFAULT_ENDING_BOMB_TUNING: EndingBombTuning = {
   viewFracX: 0.8,
   minImpactAbsYPx: 60,
   camLeadPx: 94, // ≈ PLAYER_WALK 104.4px/s × 0.9s(フィルが等速歩行の場合。停止中は右へ94px寄るだけ=可視域内)
+  phillClearancePx: 120,
 };
 
 // 投下を試みる(検収A-1/A-2反映版)。**着弾時刻**の画面内に立つ見込みの通常フェーズ兵士から乱数で
@@ -442,7 +448,13 @@ export const trySpawnEndingBomb = (
     .filter(c => !isEndingSoldierTumbling(c.s) && Math.abs(c.predictedX - camAtImpact) <= halfW);
   if (candidates.length === 0) return null;
   const pick = candidates[Math.floor(rand() * candidates.length) % candidates.length];
-  const impactX = pick.predictedX + (rand() * 2 - 1) * tuning.anchorOffsetXPx;
+  let impactX = pick.predictedX + (rand() * 2 - 1) * tuning.anchorOffsetXPx;
+  // フィルの近くには落とさない(上のtuningコメント参照): クリアランス内なら外周へ押し出す。
+  const dxPhill = impactX - camAtImpact; // 着弾時のフィル≒カメラ中心
+  if (Math.abs(dxPhill) < tuning.phillClearancePx) {
+    const pushSide = dxPhill !== 0 ? Math.sign(dxPhill) : (pick.predictedX >= camAtImpact ? 1 : -1);
+    impactX = camAtImpact + pushSide * tuning.phillClearancePx;
+  }
   const side = rand() < 0.5 ? -1 : 1; // 奥(-)か手前(+)
   let rawY = pick.s.y + side * lerpRange(rand, tuning.anchorOffsetYMinPx, tuning.anchorOffsetYMaxPx);
   // フィル進路(中央帯)には落とさない: |y|の下限を張る(0ちょうどならside側へ)。

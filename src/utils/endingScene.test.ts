@@ -264,6 +264,22 @@ describe('endingScene — 爆撃(ENDING_SCENE.md 演出仕様v3.1)', () => {
     expect(b).not.toBeNull();
   });
 
+  it('着弾Xはフィル(着弾時カメラ中心)から±クリアランス以上離れる(社長指示「フィルの近くには落とさないで」)', () => {
+    // アンカーの予測位置がちょうどフィルの真横に来るケースでも、候補は捨てず着弾点を外へ押し出す
+    // (候補フィルタで弾くとv4039の「候補0=爆撃が来ない」型に戻る)。
+    const camCenter = 1000;
+    const camAtImpact = camCenter + T.camLeadPx;
+    const s0 = soldierAt('a', 1000);
+    const sAtPhill = { ...s0, x: camAtImpact + s0.speed * s0.velMult * (T.fallMs / 1000) }; // 予測位置=フィル真横
+    const b = trySpawnEndingBomb('b1', [sAtPhill], camCenter, 400, () => 0.5, T);
+    expect(b).not.toBeNull();
+    expect(Math.abs(b!.impactX - camAtImpact)).toBeGreaterThanOrEqual(T.phillClearancePx);
+    // 押し出してもアンカーはノックバック楕円内(=「と同時に」が保たれる)
+    const dx = sAtPhill.x - sAtPhill.speed * sAtPhill.velMult * (T.fallMs / 1000) - b!.impactX;
+    const dy = (sAtPhill.y - b!.impactY) * T.knockDepthMult;
+    expect(Math.hypot(dx, dy)).toBeLessThanOrEqual(T.knockRadiusPx);
+  });
+
   it('trySpawn: 着弾時に画面外へ流れる兵士・転倒中の兵士はアンカーにならず、候補0なら見送り(検収A-1/A-2)', () => {
     const offscreen = soldierAt('a', 5000);   // 着弾時カメラ中心(1000+94)±320の外
     const tumbling = { ...soldierAt('c', 1000), phase: 'downed' as const };

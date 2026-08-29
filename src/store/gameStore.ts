@@ -2069,6 +2069,7 @@ export const ENDING_BOMB_TUNING: EndingBombTuning = {
   explosionRadiusPx: camNum('endbombr', DEFAULT_ENDING_BOMB_TUNING.explosionRadiusPx),
   knockRadiusPx: camNum('endbombkb', DEFAULT_ENDING_BOMB_TUNING.knockRadiusPx),
   fallHeightPx: camNum('endbombh', DEFAULT_ENDING_BOMB_TUNING.fallHeightPx),
+  phillClearancePx: camNum('endbombclear', DEFAULT_ENDING_BOMB_TUNING.phillClearancePx),
 };
 export const CAMERA_FOLLOW_TAU = camNum('camtau', 0.16);          // 追従遅延(秒)。わずかな重さ。範囲0.08〜0.16
 export const CAMERA_DANGER_TAU = camNum('camdanger', 0.08);       // 危険時(接近戦)の追従遅延(秒)。安定。範囲0.04〜0.08
