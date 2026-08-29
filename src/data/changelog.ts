@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4069',
+    items: [
+      'メニュー: 中身を横に引っ張ると大きくずれる問題への追加対策(横方向のドラッグを完全に無効化)。',
+    ],
+  },
+  {
     version: '0.25.4068',
     items: [
       'ゾンビ: 噛みつきはダッシュ(突進)中にだけ来るようになりました。立ち止まっている間や歩き接近中は噛みません。',

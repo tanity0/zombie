@@ -283,7 +283,23 @@ const NoBounceScroller: React.FC<{ className?: string; style?: React.CSSProperti
         if (!s || e.touches.length !== 1) return;
         const dx = e.touches[0].clientX - s.x;
         const dy = e.touches[0].clientY - s.y;
-        if (Math.abs(dy) <= Math.abs(dx)) return; // 横主軸は対象外
+        if (Math.abs(dy) <= Math.abs(dx)) {
+          // ★横主軸は殺す(社長実機2026-08-29「中身を横に引っ張ると大きくズレる」)。
+          // このスクローラは縦専用なので、途中に本当に横へ動ける容器(overflow-x auto/scroll で
+          // 実オーバーフローあり)が無い限り、横ドラッグを丸ごと preventDefault する
+          // (v4068の touch-action: pan-y のJS版=touch-actionが効かない環境への保険)。
+          let hn: Element | null = e.target as Element | null;
+          while (hn && hn !== el) {
+            const hh = hn as HTMLElement;
+            if (hh.scrollWidth > hh.clientWidth + 1) {
+              const ox = getComputedStyle(hh).overflowX;
+              if (ox === 'auto' || ox === 'scroll') return; // 横に動ける内側容器=奪わない
+            }
+            hn = hn.parentElement;
+          }
+          e.preventDefault();
+          return;
+        }
         // 内側のスクロール容器がその向きへまだ動けるなら奪わない
         let node: Element | null = e.target as Element | null;
         while (node && node !== el) {
