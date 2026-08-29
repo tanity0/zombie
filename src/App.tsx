@@ -539,7 +539,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
           `compact` はスピナーと LOADING… のみでゲームタイトルを出さない。 */}
       {bare && gameState !== 'playing' && <LoadingScreen compact />}
 
-      {/* the ONE 通常エンディング(聴取記録→暗転→PHILL→スタッフロール)。終了でメニューへ。
+      {/* the ONE 通常エンディング(聴取記録→成し得なかった+the/ONEが順に消える)。終了でメニューへ。
           本経路は聴取記録オーバーレイ(下のscenic)へ移行済みだが、フォールバックとして残す。 */}
       {!bare && gameState === 'ending' && <EndingScreen onDone={finishEnding} />}
 

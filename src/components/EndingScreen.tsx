@@ -3,28 +3,28 @@ import { ENDING_HEADER, ENDING_SCRIPT, ENDING_FINAL_WORD } from '../data/ending'
 import { setEndingBgm } from '../audio/audioManager';
 import { useGameStore } from '../store/gameStore';
 
-// 通常エンディング(社長編集稿v0.25.2191): 軍の聴取記録→暗転で「成し得なかった」だけが残り
-// フェードアウト→入れ替わりに「the ONE」フェードイン→メニューへ。
+// 通常エンディング(社長編集稿v0.25.2191): 軍の聴取記録→「成し得なかった」+the/ONEが残って
+// 順番に消える(word相)→メニューへ。
 // - 台詞はタップで送り(オート送りもあり)。本文はサブ達成状況で変えない。
-// - スタッフロールは文面未支給のため最小(タイトルロゴ相当のテキストのみ)=TODO。
+// - 「the ONE / Thank you for playing」の中央画面(旧credits相)は廃止(社長指示2026-08-29
+//   「最後のthe ONE thankyou for のところいらない」)。ONEが消えたら直接フィナーレへ。
 // - scenic(社長指示2026-08-29「このシーンを、グレン撃破後のミラの事情聴取の後ろに流して」):
 //   背後でエンディングステージ(戦場の観賞シーン)が動いている前提のオーバーレイモード。
 //   薄い黒スクリム(「薄く黒を引いて文字を見やすく」)は**最後まで**掛かったまま(v4055・社長指示
 //   「成し得なかった で暗転するのやめよう。最後まで戦場で」=wordの全黒化を廃止)。
-//   the ONE の後は finale: 爆撃がフィルに直撃(store.triggerEndingFinaleBomb)→白フラッシュ→
-//   暗転→終了(社長指示「theONEのあと、爆撃がフィルに直撃した?!でフラッシュ暗転して終わり」)。
+//   word相のONEが消えた後は finale: 爆撃がフィルに直撃(store.triggerEndingFinaleBomb)→
+//   白フラッシュ→暗転→終了(社長指示「爆撃がフィルに直撃した?!でフラッシュ暗転して終わり」)。
 //   z はSortieLoadingOverlay(z-[100])より上=レンダラ初期化中の黒繋ぎの上でも文字が読める。
 // 負荷 1/10: 静的DOM+CSSトランジションのみ(scenic時の背後のゲーム描画はステージ側の負荷)。
 
-type Phase = 'script' | 'word' | 'credits' | 'finale';
+type Phase = 'script' | 'word' | 'finale';
 
 const LINE_AUTO_MS = 3200;      // オート送りの1行表示時間
 // word相=最終行のその場残し(v0.25.4065・社長指示「成し得なかった だけのっこりつつ、英語も the と
 // ONE だけが残って消える感じで。順番に残って消えていく感じ」):
 // t=0 周囲の文字が消える(0.7s)→ 残るのは「成し得なかった」+ the + ONE(その場・大きさ不変)
-// → 1.8s 成し得なかった消える → 2.7s the消える → 3.5s ONEが最後に消える(→ the ONEタイトルへ)。
+// → 1.8s 成し得なかった消える → 2.7s the消える → 3.5s ONEが最後に消える(→ 直接フィナーレへ)。
 const FINAL_WORD_MS = 4700;
-const CREDITS_MS = 3800;        // the ONE フェードイン表示時間
 const FINALE_SAFETY_MS = 6000;  // finaleの安全弁(直撃通知が来なくても終わる。通常は落下0.9s+フラッシュで終了)
 const FINALE_FLASH_MS = 260;    // 直撃の白フラッシュ保持(この後500ms easeで黒へ)
 const FINALE_END_MS = 1200;     // 直撃からonDoneまで(白260ms→黒へ500ms→黒で静止)
@@ -47,7 +47,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
   }, []);
   const [phase, setPhase] = useState<Phase>('script');
   const [lineIdx, setLineIdx] = useState(0); // 表示済みの行数-1(0=最初の1行のみ表示)
-  // フィナーレ(v4055): the ONE の後、フィルへ直撃弾を1発発注(通常投下はstore側で止まる)。
+  // フィナーレ(v4055): word相のONEが消えた後、フィルへ直撃弾を1発発注(通常投下はstore側で止まる)。
   useEffect(() => {
     if (scenic && phase === 'finale') useGameStore.getState().triggerEndingFinaleBomb();
   }, [scenic, phase]);
@@ -80,7 +80,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
     onDone();
   };
 
-  // 次へ(タップ/オート共通)。script中=次の行、最終行→word(成し得なかった残留)→credits(the ONE)→
+  // 次へ(タップ/オート共通)。script中=次の行、最終行→word(成し得なかった+the/ONE残留)→
   // scenic: finale(直撃待ち。安全タイマー切れならfinish)/非scenic: onDone(旧来どおり)。
   const advance = () => {
     clearTimer();
@@ -88,8 +88,6 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
       if (lineIdx < ENDING_SCRIPT.length - 1) setLineIdx(i => i + 1);
       else setPhase('word');
     } else if (phase === 'word') {
-      setPhase('credits');
-    } else if (phase === 'credits') {
       if (scenic) setPhase('finale');
       else finish();
     } else {
@@ -103,7 +101,6 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
     const delay =
       phase === 'script' ? LINE_AUTO_MS
       : phase === 'word' ? FINAL_WORD_MS
-      : phase === 'credits' ? CREDITS_MS
       : FINALE_SAFETY_MS;
     timerRef.current = window.setTimeout(advance, delay);
     return clearTimer;
@@ -157,7 +154,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
                   >
                     <span className="mr-2 text-white/55">{l.speaker}</span>
                     「{l.text}」
-                    {/* 英語ルビ(社長指示2026-08-29): 最終行だけ小さく添える。「the ONE」への橋。 */}
+                    {/* 英語ルビ(社長指示2026-08-29): 最終行だけ小さく添える。word相で the/ONE が残る仕込み。 */}
                     {l.en && (
                       <span className="block pl-8 pt-0.5 text-[10px] italic tracking-[0.06em] text-white/45">
                         {l.en}
@@ -174,7 +171,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
 
       {/* word相(v0.25.4065・社長指示): 画面遷移せず**最終行がその場で削れていく**——周囲の文字が
           消えて「成し得なかった」+英語ルビの the / ONE だけが残り(大きさ不変)、その後
-          成し得なかった→the→ONE の順で消えていく(ONEが最後=直後の the ONE タイトルへの橋)。
+          成し得なかった→the→ONE の順で消えていく(ONEが最後に残る=物語の結語)。
           レイアウトはscript相と同一構造=遷移の瞬間に何も動かない(慣性=ポップ禁止)。 */}
       {phase === 'word' && (
         <div className="flex h-full w-full items-center justify-center px-6">
@@ -238,18 +235,6 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
             </div>
             <p className="shrink-0 mt-4 text-center text-[10px] tracking-widest text-white/25" style={{ animation: 'endSegOut .7s ease forwards' }}>タップで進む</p>
           </div>
-        </div>
-      )}
-
-      {phase === 'credits' && (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3">
-          <span
-            className="screen-in text-2xl font-semibold tracking-[0.3em] text-white/90"
-            style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif', paddingLeft: '0.3em' }}
-          >
-            the ONE
-          </span>
-          <span className="screen-in text-[11px] tracking-widest text-white/40">Thank you for playing</span>
         </div>
       )}
 

@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.4066 — エンディング: credits相(the ONE / Thank you for playing)廃止 【2026-08-29 16:15 JST】
+
+社長指示「最後のthe ONE thankyou for のところいらない」。
+- **EndingScreenのcredits相(中央の「the ONE / Thank you for playing」画面)を削除**。
+  Phase型から'credits'除去・CREDITS_MS削除・advance()は word→(scenic: finale / 非scenic: finish)へ直結。
+- 新しい流れ: 聴取記録 → 成し得なかった+the/ONEが順に消える(ONE最後・4.7s)→ そのまま爆撃が
+  フィルへ直撃 → 白フラッシュ→暗転→終了。タイトル画面を挟む呼吸は無し(word相の3.5s以降の
+  「ONEだけが残る」1.2sがそのまま溜めになる)。
+- コメントの実態合わせ: EndingScreen冒頭/ending.ts/App.tsxの「the ONEフェードイン→スタッフロール」
+  記述を現在の流れに訂正(台本データ・テストは不変)。
+- 検証: typecheck 0 / lint エラー0(storyCanonは台本不変のため影響なし)。
+- 状態変化: エンディング → 結び再調整済み(実機確認は?ending=1)。
+
+
 ## v0.25.4065 — エンディング結び: その場残し(成し得なかった+the/ONE)→順番に消える 【2026-08-29 16:01 JST】
 
 社長指示「そこで、成し得なかった だけのっこりつつ、英語も the と ONE だけが残って消える感じで。

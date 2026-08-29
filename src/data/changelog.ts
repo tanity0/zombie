@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4066',
+    items: [
+      'エンディング: 「the ONE / Thank you for playing」の画面を廃止しました。文字が消えた直後、そのまま爆撃の直撃(フラッシュ暗転)で物語が終わります。',
+    ],
+  },
+  {
     version: '0.25.4065',
     items: [
       'エンディング: 最後の台詞の結びを刷新。周りの文字が消えて「成し得なかった」と英語の the / ONE だけがその場に残り、順番に消えてタイトルへ繋がります。',
