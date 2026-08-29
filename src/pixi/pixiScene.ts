@@ -29,7 +29,7 @@ import type {
 } from '../types/game';
 // ENDING_SCENE.md 演出仕様v2: 兵士/フィルの状態機械(純関数・シミュレーション)はここでは読むだけ。
 import type { EndingSoldier, EndingPhillState, EndingBomb } from '../utils/endingScene';
-import { endingBombFallY, isEndingSoldierTumbling, ENDING_BLOWN_MS, ENDING_GETUP_MS } from '../utils/endingScene';
+import { endingBombFallY, isEndingSoldierTumbling, ENDING_BLOWN_MS } from '../utils/endingScene';
 import { fallenSoldiersInRange } from '../utils/endingScene';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
@@ -22409,27 +22409,30 @@ export class PixiScene {
       let sp = this.endingSoldierSprites.get(s.id);
       if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.endingSoldierSprites.set(s.id, sp); }
       const moving = s.velMult > 0.05 && (s.phase === 'walk' || s.phase === 'decel' || s.phase === 'accel');
-      const tex = getTexture(`rescue/shooter-${moving ? walkFrame : 0}`) ?? getTexture('rescue/shooter-0');
+      // ★爆撃を受けた兵士(v0.25.4054・社長指示「倒れるのではなく、ノックバックしながらしゃがむ」):
+      // 90°回転の転倒(v4039〜4053)を撤回し、**しゃがみ絵(soldier-watch-0)へ切り替えて滑る**。
+      // 切替は着弾の爆発フラッシュと同フレーム=閃光が覆う瞬間に替わる。blown中は吹き飛び方向へ
+      // 傾いた姿勢からease-outで起き直る(慣性=姿勢の動きは連続)。downed=しゃがんだまま(終端)。
+      const tumbling = isEndingSoldierTumbling(s);
+      const tex = tumbling
+        ? (getTexture('npc/soldier-watch-0') ?? getTexture('rescue/shooter-0'))
+        : (getTexture(`rescue/shooter-${moving ? walkFrame : 0}`) ?? getTexture('rescue/shooter-0'));
       if (!tex) { sp.visible = false; continue; }
       sp.texture = tex;
-      const sc = this.humanNpcScale(tex.width, tex.height, s.y);
-      sp.scale.set(-sc, sc); // 常に左向き(faceSign=-1)
-      // 一時転倒(爆撃v3.1 監査A-8): 専用絵を使わず、足元アンカーのまま立ち絵を回転で倒す/起こす。
-      // blown=0→±90°のease-out(吹き飛びの勢いで倒れる)/downed=±90°のまま/getup=±90°→0のease-in。
-      // テクスチャ差し替えなし=ポップなし(慣性MUST)。救護対象のsoldier-fallen-0とは見た目が別物(監査A-9)。
-      const tumbling = isEndingSoldierTumbling(s);
       if (tumbling) {
-        const dir = s.knockDirX >= 0 ? 1 : -1; // 吹き飛ぶ方向へ頭から倒れ込む(叩き台)
+        // しゃがみ絵は元から左向き=反転しない。大きさは頭合わせ(ENDING_WATCH_SCALE=歩き兵士と同じ頭サイズ)。
+        const wsc = this.humanNpcScale(tex.width, tex.height, s.y) * ENDING_WATCH_SCALE;
+        sp.scale.set(wsc, wsc);
+        const dir = s.knockDirX >= 0 ? 1 : -1;
         if (s.phase === 'blown') {
           const t = Math.min(1, s.phaseMs / ENDING_BLOWN_MS);
-          sp.rotation = dir * (Math.PI / 2) * (1 - (1 - t) * (1 - t));
-        } else if (s.phase === 'downed') {
-          sp.rotation = dir * (Math.PI / 2);
-        } else { // getup
-          const t = Math.min(1, s.phaseMs / ENDING_GETUP_MS);
-          sp.rotation = dir * (Math.PI / 2) * (1 - t * t);
+          sp.rotation = dir * 0.35 * (1 - t) * (1 - t); // 爆風で仰け反った傾き(~20°)→ease-outで踏ん張って起き直る
+        } else {
+          sp.rotation = 0; // しゃがんで構えたまま
         }
       } else {
+        const sc = this.humanNpcScale(tex.width, tex.height, s.y);
+        sp.scale.set(-sc, sc); // shooter素材は右向き→常に左向きへ反転(faceSign=-1)
         sp.rotation = 0;
       }
       // 発砲の反動(§1/§7): 撃った瞬間に2〜3px後ろ(=右)へ跳ね、ease-outで戻る(慣性=瞬間停止しない)。
@@ -22442,15 +22445,11 @@ export class PixiScene {
       sp.visible = ha > 0;
       sp.position.set(Math.round(s.x + recoil), Math.round(s.y));
       sp.zIndex = s.y;
-      // 一時転倒中の影: 立ちシルエット影はsyncShadows側でスキップし(監査B-3)、ここで楕円ソフト影。
-      // 横たわる長さ≒表示高(回転で横に寝るため)。倒れ兵士(§6)と同じ淡い黒楕円。
+      // しゃがみ中の影: 立ちシルエット影はsyncShadows側でスキップし(監査B-3)、ここで楕円ソフト影
+      // (v4054: しゃがみ姿勢なので伸縮なしの短い楕円=治療済み倒れ兵士のしゃがみ影と同型)。
       if (tumbling && ha > 0) {
-        const bodyLen = Math.abs(sp.height);
-        const t = s.phase === 'blown' ? Math.min(1, s.phaseMs / ENDING_BLOWN_MS)
-          : s.phase === 'getup' ? 1 - Math.min(1, s.phaseMs / ENDING_GETUP_MS)
-          : 1;
-        const w = bodyLen * (0.45 + 0.65 * t); // 立ち(細)→横たわり(体長相当)へ影も慣性で伸縮(検収B-5: 短すぎ是正)
-        tsg.ellipse(s.x, s.y + 2, Math.max(8, w / 2), 5).fill({ color: 0x000000, alpha: 0.22 * ha });
+        const w = Math.abs(sp.width);
+        tsg.ellipse(s.x, s.y + 1, Math.max(8, w * 0.34), 5).fill({ color: 0x000000, alpha: 0.26 * ha });
       }
     }
     for (const [id, sp] of this.endingSoldierSprites) {

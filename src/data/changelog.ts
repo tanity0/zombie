@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4054',
+    items: [
+      'エンディングシーン(開発中): 爆撃を受けた兵士は倒れず、ノックバックしながらしゃがんで身構えるようになりました。',
+    ],
+  },
+  {
     version: '0.25.4053',
     items: [
       'ゲーム内容の変更はありません(開発内部: ?ending=1がグレン撃破後と同じ聴取記録込みのエンディング場面に・素通しは?ending=2へ)。',
