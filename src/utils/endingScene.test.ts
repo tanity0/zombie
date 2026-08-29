@@ -5,7 +5,7 @@ import {
   fallenSoldierAt, nextFallenSoldierAfter, fallenSoldiersInRange,
   createInitialEndingPhill, stepEndingPhill,
   trySpawnEndingBomb, stepEndingBomb, endingBombFallY, blastEndingSoldiers, isEndingSoldierTumbling,
-  ENDING_BLOWN_MS, ENDING_GETUP_MS,
+  ENDING_BLOWN_MS,
 } from './endingScene';
 
 // 決定的な擬似乱数(テスト用)。0..1を固定シーケンスで返す。
@@ -320,7 +320,7 @@ describe('endingScene — 爆撃(ENDING_SCENE.md 演出仕様v3.1)', () => {
     expect([1, -1]).toContain(out2[0].knockDirX); // |dx|<8 → 左右は乱数のどちらか
   });
 
-  it('一時転倒はblown→downed→getup→accel→walkと復帰し、転倒中は画面外でも再投入されない(監査B-1)', () => {
+  it('転倒はblown→downedで終端(起き上がらない=社長指示2026-08-29)。補充は画面外reenterのみ', () => {
     const rand = () => 0.5;
     let s = blastEndingSoldiers([soldierAt('a', 1100)], 1000, 0, rand, T)[0];
     expect(isEndingSoldierTumbling(s)).toBe(true);
@@ -333,13 +333,15 @@ describe('endingScene — 爆撃(ENDING_SCENE.md 演出仕様v3.1)', () => {
     const dist = s.x - x0;
     expect(dist).toBeGreaterThan(180); // 「大きく」飛んでいる(初速1200×(1-t)²減衰の積分≈220px)
     expect(dist).toBeLessThan(260);
-    // 転倒中に左端を超えても再投入しない
-    expect(reenterEndingSoldierIfOffscreen(s, s.x + 999, 0, 0, rand)).toBe(s);
-    s = stepEndingSoldier(s, s.downDurationMs, 0, DEFAULT_ENDING_SOLDIER_TUNING, rand);
-    expect(s.phase).toBe('getup');
-    s = stepEndingSoldier(s, ENDING_GETUP_MS, 0, DEFAULT_ENDING_SOLDIER_TUNING, rand);
-    expect(s.phase).toBe('accel'); // 起き上がり後は既存のaccel easeを通ってwalkへ(慣性MUST)
-    s = stepEndingSoldier(s, DEFAULT_ENDING_SOLDIER_TUNING.easeMs, 0, DEFAULT_ENDING_SOLDIER_TUNING, rand);
-    expect(s.phase).toBe('walk');
+    // 旧downDurationMs(2.5〜4.5s)を大きく超えても起き上がらない=終端
+    s = stepEndingSoldier(s, 60000, 0, DEFAULT_ENDING_SOLDIER_TUNING, rand);
+    expect(s.phase).toBe('downed');
+    // blown中は画面外でも再投入しない(動きの完走を守る)
+    const mid = { ...s, phase: 'blown' as const, phaseMs: 0 };
+    expect(reenterEndingSoldierIfOffscreen(mid, mid.x + 999, 0, 0, rand)).toBe(mid);
+    // downed(終端)は画面外へ抜けたら右から新規walkerとして補充される(人数が痩せない唯一の回収口)
+    const recycled = reenterEndingSoldierIfOffscreen(s, s.x + 999, 5000, 0, rand);
+    expect(recycled.phase).toBe('walk');
+    expect(recycled.x).toBeGreaterThanOrEqual(5000);
   });
 });

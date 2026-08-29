@@ -16,12 +16,15 @@
 
 // ---- 兵士 ---------------------------------------------------------------
 
-// blown/downed/getup は爆撃(演出仕様v3.1)の一時転倒: 吹き飛び→横たわる→起き上がり→accel→walk復帰。
+// blown/downed は爆撃(演出仕様v3.1)の転倒: 吹き飛び→横たわったまま(社長指示2026-08-29
+// 「爆撃で倒れたら兵士は起こさないで」=downedは終端。起き上がらない)。画面外へ抜けたら
+// 右から新規walkerとして補充される(reenter参照)=シーンの人数は痩せない。
+// 'getup' はv4039〜4046の起き上がり演出の名残(現在はどこからも遷移しない・pixi側の回転戻し分岐も休眠)。
 export type EndingSoldierPhase = 'walk' | 'decel' | 'stopped' | 'fire' | 'accel' | 'blown' | 'downed' | 'getup';
 
-// 一時転倒のフェーズ時間(v3.1・叩き台)。回転演出がpixi側でも同じ時間を使うためexport。
+// 転倒のフェーズ時間(v3.1・叩き台)。回転演出がpixi側でも同じ時間を使うためexport。
 export const ENDING_BLOWN_MS = 550;  // 吹き飛び(ノックバック+倒れ込み回転)
-export const ENDING_GETUP_MS = 450;  // 起き上がり(回転戻し)。この後は既存accel(200ms)を通ってwalkへ
+export const ENDING_GETUP_MS = 450;  // (未使用・上記のとおり残置)
 
 export interface EndingSoldier {
   id: string;
@@ -176,11 +179,12 @@ export const stepEndingSoldier = (
       return { ...s, x: bx, phaseMs, velMult: 0 };
     }
     case 'downed': {
-      if (phaseMs >= s.downDurationMs) return { ...s, x, phase: 'getup', phaseMs: 0, velMult: 0 };
+      // 終端(社長指示2026-08-29「爆撃で倒れたら兵士は起こさないで」)。起き上がらない。
+      // 補充は画面外へ抜けた時のreenter(右から新規walker)が担う。downDurationMsはもう見ない。
       return { ...s, x, phaseMs, velMult: 0 };
     }
     case 'getup': {
-      // 起き上がり(回転はpixi側がphaseMsから引く)→ 既存accel(200ms ease)を通ってwalkへ(慣性MUST)。
+      // 現在は到達しない(downedが終端)。残置理由は型定義のコメント参照。
       if (phaseMs >= ENDING_GETUP_MS) return { ...s, x, phase: 'accel', phaseMs: 0, velMult: 0 };
       return { ...s, x, phaseMs, velMult: 0 };
     }
@@ -201,7 +205,10 @@ export const reenterEndingSoldierIfOffscreen = (
   tuning: EndingSoldierTuning = DEFAULT_ENDING_SOLDIER_TUNING,
 ): EndingSoldier => {
   if (s.x >= leftBoundX) return s;
-  if (isEndingSoldierTumbling(s)) return s; // 転倒中は再投入しない(監査B-1。起き上がってから通常判定に戻る)
+  // blown(吹き飛び中)だけは画面外でも動きを完走させる(監査B-1)。downed(横たわり=終端)は
+  // 画面外へ抜けた時点で右から新規walkerとして補充する(社長指示「起こさないで」の下で
+  // シーンの人数を痩せさせないための唯一の回収口。画面外なので消えるところは見えない)。
+  if (s.phase === 'blown') return s;
   return spawnEndingSoldier(s.id, rightEdgeX + lerpRange(rand, 0, spawnJitterX), rand, tuning);
 };
 

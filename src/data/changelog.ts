@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4047',
+    items: [
+      'エンディングシーン(開発中): 爆撃で倒れた兵士は起き上がらなくなりました(倒れたまま)。行進の人数は画面外からの補充で保たれます。',
+    ],
+  },
+  {
     version: '0.25.4046',
     items: [
       'エンディングシーン(開発中): 黒煙の位置を少し下げました(廃墟の炎の根元から立ち上る見た目に)。',
