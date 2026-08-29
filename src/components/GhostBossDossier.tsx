@@ -1,5 +1,5 @@
-import React from 'react';
-import { Heart, Users, Clock3, Activity, ChevronRight, Sparkles } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Heart, Users, Clock3, Activity, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 import { CHARACTER_CLASSES, SKILLS } from '../data/campaign';
 import { equipmentById } from '../data/equipment';
 import { fixedGuardianLeadersForBoss } from '../data/fixedGuardians';
@@ -16,6 +16,48 @@ import type { BossStyleSlot } from '../utils/playerTraits';
 import { fixedGhostStatKey, type FixedGhostStat, type GhostInboxItem } from '../utils/ghostOnline';
 import { weaponDisplayName } from '../utils/weaponUtils';
 import type { EquipSlot, PlayerBuildSnapshot } from '../types/game';
+
+// 図鑑パネル内(レール/詳細)の枠内スクロール容器。
+// ★overscroll-contain を付けない(社長報告2026-08-29「守護霊部屋のスクロールもおかしい」の修正):
+// ページ(Shell)の中の入れ子スクロールに contain を付けると、枠がスクロール不要な時・枠の端に
+// 達した時に**ページ側へのスクロール連鎖まで遮断**され、パネルの上をなぞってもページが動かない
+// (特にiOS)。連鎖は素通しにし、ページ端のバウンス殺しは外側の NoBounceScroller が受け持つ。
+// 下矢印は「続きがあるやつは、あるのがわかる様に小さい下矢印」(社長指示2026-08-29)の枠内版
+// (.ds-scroll-more = MissionSelect の NoBounceScroller と同じ見た目・レールの隠れボス対策)。
+const InnerPane: React.FC<{ as?: 'nav' | 'div'; className: string; ariaLabel?: string; children: React.ReactNode }> =
+  ({ as = 'div', className, ariaLabel, children }) => {
+    const ref = useRef<HTMLElement | null>(null);
+    const [hasMore, setHasMore] = useState(false);
+    useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      const check = () => setHasMore(el.scrollHeight - el.clientHeight - el.scrollTop > 4);
+      check();
+      el.addEventListener('scroll', check, { passive: true });
+      window.addEventListener('resize', check);
+      const mo = new MutationObserver(check);
+      mo.observe(el, { childList: true, subtree: true });
+      return () => { el.removeEventListener('scroll', check); window.removeEventListener('resize', check); mo.disconnect(); };
+    }, []);
+    const Tag = as;
+    // ★矢印はスクロール容器の「外」(absolute)に置く。中に置くと sticky+svg で scrollHeight が
+    // 数px 増え、オーバーフローの無いペインまで「スクロール可能」になってジェスチャを掴む
+    // (実測: 詳細ペイン sh574→576 でページスクロールが死んだ)。外なら sh は増えない。
+    return (
+      <div className="relative min-h-0">
+        <Tag ref={(el: HTMLElement | null) => { ref.current = el; }} className={`${className} h-full`} aria-label={ariaLabel}>
+          {children}
+        </Tag>
+        <div
+          className="ds-scroll-more"
+          style={{ position: 'absolute', bottom: 6, left: 0, right: 0, opacity: hasMore ? 1 : 0, color: 'rgba(216, 180, 254, 0.85)' }}
+          aria-hidden="true"
+        >
+          <ChevronDown size={15} />
+        </div>
+      </div>
+    );
+  };
 
 const CATEGORY_ACCENT: Record<GhostDossierCategory, string> = {
   story: 'rgba(125, 211, 252, 0.85)',
@@ -180,7 +222,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
       </div>
 
       <div className="grid h-[min(68svh,650px)] min-h-[500px] grid-cols-[56px_minmax(0,1fr)]">
-        <nav className="ghost-boss-rail overflow-y-auto overscroll-contain border-r border-white/[0.07] bg-black/20 px-1.5 py-2" aria-label="ボス討伐記録">
+        <InnerPane as="nav" className="ghost-boss-rail overflow-y-auto border-r border-white/[0.07] bg-black/20 px-1.5 py-2" ariaLabel="ボス討伐記録">
           {(['story', 'gate', 'hidden'] as const).map(category => (
             <div key={category} className="mb-2.5">
               <div className="mb-1 text-center text-[7px] font-bold tracking-[0.13em] text-white/25">{GHOST_DOSSIER_CATEGORY_LABEL[category]}</div>
@@ -213,9 +255,9 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
               </div>
             </div>
           ))}
-        </nav>
+        </InnerPane>
 
-        <div className="overflow-y-auto overscroll-contain touch-pan-y">
+        <InnerPane className="overflow-y-auto touch-pan-y">
           {!selectedCard ? <LockedDossier cleared={cleared} total={GHOST_DOSSIER_SLOTS.length} /> : (
             <div key={selectedItem.slotKey} className="ghost-dossier-enter relative min-h-full overflow-hidden px-3 pb-5 pt-3">
               {icon && (
@@ -324,7 +366,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
               </div>
             </div>
           )}
-        </div>
+        </InnerPane>
       </div>
     </section>
   );

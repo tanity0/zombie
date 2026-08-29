@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4067',
+    items: [
+      '守護霊: 討伐記録パネルの上をなぞってもページがスクロールしない問題を修正しました。ボス一覧に続きがある時は小さな下矢印が出ます。',
+    ],
+  },
+  {
     version: '0.25.4066',
     items: [
       'エンディング: 「the ONE / Thank you for playing」の画面を廃止しました。文字が消えた直後、そのまま爆撃の直撃(フラッシュ暗転)で物語が終わります。',
