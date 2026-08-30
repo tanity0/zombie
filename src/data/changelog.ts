@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4082',
+    items: [
+      'HPオーブ: 液体の揺れが大きく長く続くようになり、上部の白い艶の楕円を取り除きました。',
+    ],
+  },
+  {
     version: '0.25.4081',
     items: [
       'カウンターでボスの技を中断させた時、まだ発生していない予約攻撃(城ボスの三連射の三拍目など)の予告と攻撃が残って後から発動する不具合を修正しました。地面に残った血溜まりなどは従来どおり残ります。',

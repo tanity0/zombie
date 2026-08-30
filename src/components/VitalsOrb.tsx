@@ -62,9 +62,11 @@ const liquidTexture = (): HTMLImageElement | null => {
 
 // 液体シミュレーションの叩き台定数(UI_OVERHAUL.md §2の数値どおり。実機調整はここだけ触ればよい)。
 const FOLLOW_RATE = 3.2;     // shownHpの実HPへの指数追従(1/s・注ぎ/流出の速度感)
-const DECAY_RATE = 1.9;      // 波の振幅減衰(1/s・ワイン=粘る)
-const AMPLITUDE_K = 0.55;    // ΔHP比→振幅の加算係数
-const AMPLITUDE_CAP = 0.16;  // 振幅の上限(ORB_R比)
+// ★v0.25.4082(社長指示「もう少し長く激しく」): 減衰1.9→1.0(揺れが約2倍長く続く)・
+// 振幅係数0.55→0.9/上限0.16→0.26(波が約1.6倍高い)。
+const DECAY_RATE = 1.0;      // 波の振幅減衰(1/s・ワイン=粘る)
+const AMPLITUDE_K = 0.9;     // ΔHP比→振幅の加算係数
+const AMPLITUDE_CAP = 0.26;  // 振幅の上限(ORB_R比)
 const RIPPLE_DURATION = 900; // 着水波紋の寿命(ms)
 const STOP_HP_EPS = 0.001;   // 停止条件: shownHpと実HPの差
 const STOP_AMP_EPS = 0.02;   // 停止条件: 振幅
@@ -441,8 +443,8 @@ const VitalsOrb: React.FC = () => {
               </g>
             )}
 
-            {/* ガラスの艶・縁(モックの形=常時SVGで描く。社長指示2026-08-28で実素材の輪は撤去)。 */}
-            <ellipse cx={CX} cy={CY - ORB_R * 0.42} rx={ORB_R * 0.6} ry={ORB_R * 0.32} fill="rgba(255,255,255,0.12)" />
+            {/* ガラスの縁(モックの形=常時SVGで描く)。上部の白い艶楕円は社長指示2026-08-30
+                「ベタ塗りの白い楕円は消して」で撤去(液体テクスチャ+外枠素材が質感を持つため不要に)。 */}
             <circle cx={CX} cy={CY} r={ORB_R} fill="none" stroke="rgba(192,132,252,0.4)" strokeWidth={1.5} />
 
             {/* EXP リング: トラック + 進捗(細め・右ほど薄い) */}
