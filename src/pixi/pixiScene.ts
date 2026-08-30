@@ -274,6 +274,7 @@ import type { Rect } from '../world/obstacles';
 import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/rescue';
 import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
 import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
+import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt } from '../utils/circleSweep';
 
 // --- 深層域グレーディング(退色した暖色セピア) -----------------------------
 // 深層域に入っている間だけ、ゲーム画面全体を退色セピアにする描画のみの演出(当たり判定等には不干渉)。
@@ -2714,6 +2715,17 @@ const GUN_RECOIL_PX = 58;     // 反動で後ろへ下がる量
 const GUN_MUZZLE_FLASH_MS = 110; // 技表GO: マズルフラッシュ大の可視窓(発射直後だけ)
 const FX_RING_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('fxring') !== '0';
+
+// ★赤円の予告を「グラデ赤の帯マスク」で外枠→内側へ流す(社長指示2026-08-30)。
+// 社長の言葉: 「まず今のサークル絵はそのまま動かさない。で、フェードイン アウトのグラデ赤が
+//   この絵をマスク的に外枠から内側に流れる(そこだけサークル絵が表示される)。消えきったタイミングで発動」
+// ⇒ **円の絵(色・濃度・縁の焼き素材)は1バイトも変えない。アルファに帯のマスクを掛けるだけ。**
+//    半径=判定範囲は1pxも動かさない(赤と判定の一致は保たれる)。
+// ツマミ: ?csweep=0(丸ごとロールバック=現行の据え置き円に戻る)/ ?csweepw=(帯の半幅・半径比)/
+//         ?csweepease=0(等速に戻す)。
+const CIRCLE_SWEEP_ON = tsBool('csweep', true);
+const CIRCLE_SWEEP_W = tsNum('csweepw', CIRCLE_SWEEP_HALF_W);
+const CIRCLE_SWEEP_EASE = tsBool('csweepease', true);
 
 // v0.25.3093(社長指示「ゲーム内の予告系の赤をさらに薄くしたい」): 予告の**面の塗り**全部に掛ける減光。
 // v0.25.3068では帯だけ0.75で、円/扇は対象外だった。今回は**円・扇・帯を1つの値に統一**して0.5へ。
@@ -10099,8 +10111,20 @@ export class PixiScene {
         const R = PUMPKIN_EXPLOSION_RADIUS;
         // 社長指示v0.25.1612「赤の外=安全」: 当たり判定は世界座標の真円(半径R+自機半径)。縦潰し楕円だと
         // 上下に立つと赤の外でも食らうので真円(ry=R)で判定を覆う(判定は不変=見た目だけ実寸に一致)。
-        g.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * TELEGRAPH_FILL_MULT });
-        g.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
+        // ★v0.25.4092(社長指示2026-08-30): 絵はそのまま・グラデ赤の帯マスクを外枠→内側へ流す。
+        //   **帯が中心で消え切った瞬間=着地(判定発生)**。滞空の進行は aiStartedAt→aiPhaseUntil から出す
+        //   (どちらも gameTime 基準)。片方でも欠けていたら現行の据え置き円に落とす。
+        const jFrom = e.aiStartedAt, jTo = e.aiPhaseUntil;
+        const jTotal = jFrom !== undefined && jTo !== undefined ? jTo - jFrom : 0;
+        const jFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
+        if (CIRCLE_SWEEP_ON && jTotal > 0 && jFrom !== undefined) {
+          const jProg = Math.max(0, Math.min(1, (gameTime - jFrom) / jTotal));
+          const jMask = this.drawSweepCircleFill(g, tx, ty, R, jProg, 0xff2a2a, jFillA);
+          g.circle(tx, ty, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * jMask });
+        } else {
+          g.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: jFillA });
+          g.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
+        }
         continue;
       }
       // ダッシュ突進予告(犬/lab-zombie-2/ジャイアントバット): 溜め中(windup)に移動先まで赤ラインで距離表示。
@@ -19812,9 +19836,17 @@ export class PixiScene {
         // 判定側(gameStore.tsのpumpkinBlasts)も同じフィールドを読むため、図形と判定は必ず一致する。
         const gStompR = e.gStompRadius ?? GIANT_STOMP_RADIUS;
         // 面(内側の赤い塗り)=「どこが危ないか」は据え置き。輪だけを素材A-1へ差し替える(v0.25.2395)。
-        o.ellipse(cx, cy, gStompR, gStompR).fill({ color: 0xff2a2a, alpha: telFillA(1, gPulse) * TELEGRAPH_FILL_MULT });
-        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, gStompR, 0xff3b3b, 0.55 + 0.35 * gPulse);
-        else o.ellipse(cx, cy, gStompR, gStompR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) });
+        // ★v0.25.4092(社長指示2026-08-30): 絵はそのまま・グラデ赤の帯マスクを外枠→内側へ流す。
+        //   消え切った瞬間=踏み鳴らしの発生。溜めの進行は gRemain と実効windupから出す。
+        const gStompTotal = GIANT_STOMP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+        const gStompRemain = (e.aiPhaseUntil ?? gameTime) - gameTime;
+        const gStompProg = gStompTotal > 0 ? Math.max(0, Math.min(1, 1 - gStompRemain / gStompTotal)) : 1;
+        const gStompFillA = telFillA(1, gPulse) * TELEGRAPH_FILL_MULT;
+        const gStompMask = CIRCLE_SWEEP_ON
+          ? this.drawSweepCircleFill(o, cx, cy, gStompR, gStompProg, 0xff2a2a, gStompFillA)
+          : (o.ellipse(cx, cy, gStompR, gStompR).fill({ color: 0xff2a2a, alpha: gStompFillA }), 1);
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, gStompR, 0xff3b3b, (0.55 + 0.35 * gPulse) * gStompMask);
+        else o.ellipse(cx, cy, gStompR, gStompR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) * gStompMask });
       } else if (gph === 'g-sweep-windup' || gph === 'g-sweep-active' || gph === 'g-sweep-track') {
         // T3(赤い角ばった四角ゾーン)。トール払い/ミゲル払いと同じ意匠(poly fill+stroke)。
         // §15追尾相(g-sweep-track): storeが毎フレーム書く生のaiFrom/aiTargetを読む=帯が本体+照準に
@@ -22831,6 +22863,38 @@ export class PixiScene {
    * `radius` は**当たり判定の半径をそのまま渡す**こと。素材は外周がキャンバス端に一致する真円に
    * 正規化してあるので、直径に合わせれば輪の外周が判定と一致する。
    */
+  /**
+   * ★赤円の予告を「グラデ赤の帯マスク」で **外枠 → 内側** へ流す(社長指示2026-08-30)。
+   *
+   * **円の絵は現行のまま**(色・濃度・縁の焼き素材を1バイトも変えない)。
+   * 帯が乗っている所だけ絵が見えるよう、**アルファにマスクを掛けるだけ**。
+   * **帯が中心で消え切った瞬間 = 判定発生**(= 線・帯の流星と同じ「消え切り=当たり」)。
+   *
+   * 帯の外側に出た半径は描かないので、円の塗りは**現行より必ず少ない**(性能は下がらない)。
+   * 判定半径 `radius` は1pxも動かさない=「赤いのに当たらない/赤くないのに当たる」を作らない。
+   *
+   * @param prog 溜めの進行 0→1(1=発生の瞬間)
+   * @returns 半径 `radius` の位置での帯の濃さ(0〜1)。**縁(焼きリング)のアルファへ掛ける倍率**。
+   */
+  private drawSweepCircleFill(
+    o: Graphics, cx: number, cy: number, radius: number, prog: number, color: number, peakAlpha: number,
+  ): number {
+    const halfW = Math.max(1, radius * CIRCLE_SWEEP_W);
+    const band = circleSweepBand(prog, radius, halfW, CIRCLE_SWEEP_EASE);
+    const lo = Math.max(0, band - halfW);
+    const hi = Math.min(radius, band + halfW);
+    if (hi > lo) {
+      const step = (hi - lo) / CIRCLE_SWEEP_STEPS;
+      for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
+        const r = lo + step * (i + 0.5);
+        const a = peakAlpha * circleSweepAlphaAt(r, band, halfW);
+        if (a <= 0.003) continue;
+        o.circle(cx, cy, r).stroke({ width: step + 0.6, color, alpha: a });
+      }
+    }
+    return circleSweepAlphaAt(radius, band, halfW);
+  }
+
   private drawTelegraphRing(view: ActorView, cx: number, cy: number, radius: number, tint: number, alpha: number, idx = 0): void {
     if (!FX_RING_ENABLED) return;
     const tex = getTexture('fx/telegraph-ring');
