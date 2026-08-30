@@ -69,7 +69,7 @@ import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD
 import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect, applyGhostReflectCounterFx, ghostCounterBlueLayer, type GhostCounterClaim } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流 / v0.25.2525: 弾反射の成立演出 / 2026-08-27: 判定時置換ミラー / v0.25.3985: 受け流しも同じ青い成立層
 import { npcSfxDistGain } from './npcSfx'; // CRIT-UNIFY §9.3: ゴーストのブラストパリィ成立SEの距離減衰(escort/他ゴースト経路と同流儀)
 import { applyBossPostureDamage } from './bossPosture'; // v0.25.2946: 裏ボス体当たりの受け流し(体幹削り)
-import { shouldSkipBossContactParry } from './counterReach'; // v0.25.3809(8巡目 重大4): 受け流しへ落とさない州の述語(純関数)
+import { shouldSkipBossContactParry, skipThorDashRunContactDamage } from './counterReach'; // v0.25.3809(8巡目 重大4): 受け流しへ落とさない州の述語(純関数)
 // v0.25.3810(9巡目 重大3): counter-leap の起点/到達点は useGameLoop と**同じ純関数**から出す
 // (このファイルに複製の既定式が残っていて、台帳の外なので `* 0`/符号反転が全緑だった)。
 import { counterLeapOrigin, counterLeapTarget } from './thorDashPushback';
@@ -1432,6 +1432,10 @@ export const applyContactDamage = (
     // (社長指示)を維持する。
     if (enemy.type === 'thor' && enemy.bossState && enemy.bossState !== 'chase' && enemy.bossState !== 'return'
       && enemy.bossState !== 'thor-dash-move') return;
+    // ★§9-6b(社長裁定2026-08-30=推薦(a)): 走行中でも**カウンター窓が開いている間だけ**は接触を落とす。
+    // 「カウンターが成立する1フレーム前に必ず1発もらう」(2箇所が別の時刻の座標を見ている順序依存)を
+    // 消すのが目的。窓を開けていなければ従来どおり当たる=§9-6の裁定(当てる)は変えない。
+    if (skipThorDashRunContactDamage(enemy.type, enemy.bossState, counterActiveNow)) return;
     // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間はプレイヤーは被弾しない。
     // カウンター窓中ならカウンター成立=クリティカル反撃(ヘッドショット)を返す。
     // M51: ジャイアント新スクリプトの飛び掛かり滞空(g-jump-air)も同じ扱い(既存'jump'と同義)。

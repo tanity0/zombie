@@ -14,7 +14,8 @@
 // 帯の文脈を偽装する)は無検査のまま `useGameLoop.ts` に残っていた=監査の実測で**全緑**。
 // よって **`Enemy`/`Player` から引数を組む所まで**この葉へ入れ(`thorDashPushbackFromEnemy`)、
 // 配線側は「呼んで `aimAt` に渡す」1文だけにする。引数は8個の名前付きオブジェクトから
-// **2個の実体(boss, player)** へ縮み、取り違えの面積そのものが小さくなる。
+// **1個の実体(boss)** へ縮み(★v0.25.4087 §9-6c の裁定で player も不要になった)、
+// 取り違えの面積そのものが小さくなる。
 //
 // ★v0.25.3809(検収監査8巡目 重大1/3・低9): さらに3つを配線から引き取った。
 //  ・`counterLeapTarget` / `counterLeapOrigin` = **共通層の分岐そのもの**。共通層に
@@ -29,7 +30,7 @@
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 // ★v0.25.3818(§9-10「等速の線形補間(慣性MUST違反)」裁定(b)): 弾き返しの運びに慣性を入れる。既存の共有イージング(smootherstep)。
 import { airHopEase01 } from './airHop';
-import type { Enemy, Player } from '../types/game';
+import type { Enemy } from '../types/game';
 
 /** 「行ける帯」の文脈を組む時に読む**store の4フィールド**(構造だけを要求する=store 非依存)。 */
 export interface ThorPlayableAreaState {
@@ -132,8 +133,14 @@ export interface ThorDashPushbackInput {
   fromX: number; fromY: number;
   /** 突進の到達点(`Enemy.aiTargetX/aiTargetY`)。 */
   toX: number; toY: number;
-  /** プレイヤー中心(弾き返しの基準点。流用元のミゲル/ウリと同じ)。 */
-  pcx: number; pcy: number;
+  /**
+   * 弾き返しの基準点=**ボスの現在中心**(★§9-6c 社長裁定2026-08-30=推薦(a))。
+   * 旧はプレイヤー中心(流用元のミゲル/ウリの式)。ミゲルの走行カウンターは**プレイヤー専用**
+   * だったので「プレイヤーの手前=来た方向」で一致していたが、守護霊も突進を取れるようになった今は
+   * **プレイヤーから離れた場所で取るとボスが前進しうる**(社長の言葉「来た方向へ弾き返す」に反する)。
+   * ボスの現在中心を起点にすれば、**誰が取っても必ず来た方向へ pushbackPx ぶん下がる**。
+   */
+  originX: number; originY: number;
   /**
    * 弾き返す距離(px)。呼び出し側が `ANGEL_COMMON_TUNING.dashCounterPushbackPx`(=ミゲル/ウリと
    * 共有の合流点)を渡す。**ここで既定値を持たない**=新しい数字の出どころを作らないため。
@@ -152,24 +159,23 @@ export interface ThorDashPushbackInput {
  *
  * 計算は3段:
  *  1. 突進の進行方向(from→to)の単位ベクトルを作る。
- *  2. **プレイヤー中心から、その進行方向の逆へ `pushbackPx`** ぶん離れた点(=来た方向へ退ける)。
+ *  2. **ボスの現在中心から、その進行方向の逆へ `pushbackPx`** ぶん離れた点(=来た方向へ退ける)。
  *  3. 「行ける帯」(`clampRectToPlayableArea`)を通す(CLAUDE.md「Y方向に何かを動かす時の必須チェック」)。
  *     ※トールの戦場(ステージ5)は tutorial/lab/corridor のどれにも当たらないので実質そのまま返る。
  *       通しているのは「行ける帯の定義を1本に保つ」ための作法(§9-8 の事実メモ)。
  *
- * ★起点をプレイヤー中心に取っているのは流用元のミゲルの式そのまま。守護霊(ゴースト)が
- * プレイヤーから離れた場所で取ると「来た方向へ下がる」にならない件は **§9-6c で社長裁定待ち**
- * (ここでは式を変えない=裁定前に見え方を動かさない)。
+ * ★起点は**ボスの現在中心**(§9-6c 社長裁定=推薦(a)・v0.25.4087)。旧はプレイヤー中心だった
+ * (流用元のミゲルの式)。誰が取っても「来た方向へ下がる」を満たすのは前者だけ。
  */
 export const thorDashPushbackTarget = (i: ThorDashPushbackInput): { x: number; y: number } => {
   let bdx = i.toX - i.fromX;
   let bdy = i.toY - i.fromY;
-  // 起点と到達点が同じ(=方向が作れない)時は 0 ベクトルのまま進む。結果はプレイヤー中心そのもの
-  // (旧実装と同じ挙動。`|| 1` は 0 除算よけであって方向を作るものではない)。
+  // 起点と到達点が同じ(=方向が作れない)時は 0 ベクトルのまま進む。結果は起点(ボスの現在中心)
+  // そのもの(`|| 1` は 0 除算よけであって方向を作るものではない)。
   const bl = Math.hypot(bdx, bdy) || 1;
   bdx /= bl; bdy /= bl;
-  const bx2 = i.pcx - bdx * i.pushbackPx;
-  const by2 = i.pcy - bdy * i.pushbackPx;
+  const bx2 = i.originX - bdx * i.pushbackPx;
+  const by2 = i.originY - bdy * i.pushbackPx;
   const placed = clampRectToPlayableArea(bx2 - i.bossW / 2, by2 - i.bossH / 2, i.bossW, i.bossH, i.area);
   return { x: placed.x + i.bossW / 2, y: placed.y + i.bossH / 2 };
 };
@@ -177,8 +183,6 @@ export const thorDashPushbackTarget = (i: ThorDashPushbackInput): { x: number; y
 /** 束縛に必要な**ボス側**の最小形(`Enemy` の部分集合)。 */
 export type ThorDashPushbackBoss =
   Pick<Enemy, 'x' | 'y' | 'width' | 'height' | 'aiFromX' | 'aiFromY' | 'aiTargetX' | 'aiTargetY'>;
-/** 束縛に必要な**プレイヤー側**の最小形(`Player` の部分集合)。 */
-export type ThorDashPushbackPlayer = Pick<Player, 'x' | 'y' | 'width' | 'height'>;
 
 /**
  * ★配線から**束縛ごと**引き取った層(v0.25.3808・検収監査7巡目 重大2)。
@@ -190,16 +194,15 @@ export type ThorDashPushbackPlayer = Pick<Player, 'x' | 'y' | 'width' | 'height'
  *  - 起点/到達点が未設定(突進以外の州から呼ばれた等)なら**ボスの現在中心**で埋める
  *    = 方向が作れない ⇒ プレイヤー中心が返る(旧配線と同値)。
  *  - **矩形の寸法はボスの当たり判定**(`width/height`)。0 を渡すと帯クランプが点で効く。
- *  - **弾き返しの基準点はプレイヤーの中心**(左上ではない)。
+ *  - **弾き返しの基準点はボスの現在中心**(§9-6c 裁定=推薦(a)・v0.25.4087。旧はプレイヤー中心)。
  *  - ★v0.25.3809(8巡目 低9): **「行ける帯」の文脈の組み立てもここ**(`thorPlayableAreaCtx`)。
  *    第3引数は組み上がった `PlayableAreaCtx` ではなく**store の状態そのもの**を受け取るので、
  *    配線側でフィールドを1つずつ差し替える細工ができない。
  *
- * ※基準点をプレイヤー中心に取っていること自体の是非は **§9-6c で社長裁定待ち**(式は変えない)。
+ * ※基準点は §9-6c の社長裁定(推薦(a))で**ボスの現在中心**に確定した(v0.25.4087)。
  */
 export const thorDashPushbackFromEnemy = (
   boss: ThorDashPushbackBoss,
-  player: ThorDashPushbackPlayer,
   state: ThorPlayableAreaState,
   pushbackPx: number,
 ): { x: number; y: number } => {
@@ -208,7 +211,9 @@ export const thorDashPushbackFromEnemy = (
   return thorDashPushbackTarget({
     fromX: boss.aiFromX ?? bcx, fromY: boss.aiFromY ?? bcy,
     toX: boss.aiTargetX ?? bcx, toY: boss.aiTargetY ?? bcy,
-    pcx: player.x + player.width / 2, pcy: player.y + player.height / 2,
+    // ★§9-6c(社長裁定=推薦(a)): 起点は**ボスの現在中心**。プレイヤーは引数から外してある
+    // =「基準点を取り違える」細工の面積そのものを消す(v0.25.4087)。
+    originX: bcx, originY: bcy,
     pushbackPx,
     bossW: boss.width, bossH: boss.height,
     area: thorPlayableAreaCtx(state),

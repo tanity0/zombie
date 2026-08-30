@@ -321,6 +321,23 @@ export const shouldSkipBossContactParry = (
   // 委ね、受け流しに先取りさせない(賞金首が受け流し対象に入った同版の対)。
   || bossState === 'bm-charge';
 
+/**
+ * ★§9-6b(社長裁定2026-08-30=推薦(a)): トールの突進の**走行中(`thor-dash-move`)の接触ダメージを、
+ * カウンター窓が開いている間だけ免除**する。
+ *
+ * なぜ要るか: 走行中の重なりは2箇所が別々の時刻の座標で見ている——共通カウンターブロック(ボスtick)は
+ * **フレーム頭**の座標、接触ダメージ(`applyContactDamage`)は**そのフレームで進めた後**の座標。
+ * よって重なり始めのフレームは「接触側だけが重なっている」状態になり、**カウンターが成立する1フレーム前に
+ * 必ず1発もらう**(トール4技のうちこの技だけ手触りが割れる)。窓が開いている瞬間だけ接触を落とせば、
+ * 「読み勝ったのに削られる」が消え、**窓を開けていない時は従来どおり当たる**=§9-6の裁定(当てる)は不変。
+ *
+ * 純関数にしてある理由(CLAUDE.md 実装精度の規律4): 配線に `&& !(… && counterActiveNow)` を書き足すだけだと、
+ * 条件の片側を落とす変異がテストを素通りする(この案件で実測済みの型)。
+ */
+export const skipThorDashRunContactDamage = (
+  enemyType: string, bossState: string | undefined, counterWindowOpen: boolean,
+): boolean => enemyType === 'thor' && bossState === 'thor-dash-move' && counterWindowOpen;
+
 /** 宣言を引く(未宣言=従来どおり体の重なり)。**新しい技は必ず表へ足す**(テストが落ちて教える)。 */
 export const counterReachKindFor = (key: string): CounterReachKind => COUNTER_REACH_DECL[key] ?? 'body';
 

@@ -499,18 +499,18 @@ describe('★counter-leap の補間(counterLeapPos)= 弾き返しを実際に運
 });
 
 describe('★弾き返しの行き先(純関数 thorDashPushbackTarget)= §4-1 受け入れ条件3の値', () => {
-  it('★プレイヤー中心から**来た方向へ** pushbackPx ぶん退けた点を返す(ゼロ化も符号反転もここで落ちる)', () => {
-    // 突進は左(x=0)から右(x=100)へ走ってきた。プレイヤーは x=500 に居る。
+  it('★ボスの現在中心から**来た方向へ** pushbackPx ぶん退けた点を返す(ゼロ化も符号反転もここで落ちる)', () => {
+    // 突進は左(x=0)から右(x=100)へ走ってきた。ボスは今 x=500 に居る(§9-6c: 起点=ボスの現在中心)。
     // ⇒ ボスは「来た方向」= 左へ 150px 退く = x=350。
     const r = thorDashPushbackTarget({
-      fromX: 0, fromY: 0, toX: 100, toY: 0, pcx: 500, pcy: 0,
+      fromX: 0, fromY: 0, toX: 100, toY: 0, originX: 500, originY: 0,
       pushbackPx: PUSH, bossW: 140, bossH: 140, area: OPEN_AREA,
     });
     expect(r.x, '弾き返し量がゼロ化されている/向きが逆(前へ引き寄せている)').toBe(500 - PUSH);
     expect(r.y).toBe(0);
     // 逆向き(右→左に走ってきた)なら、退く先も逆になる。
     const rev = thorDashPushbackTarget({
-      fromX: 100, fromY: 0, toX: 0, toY: 0, pcx: 500, pcy: 0,
+      fromX: 100, fromY: 0, toX: 0, toY: 0, originX: 500, originY: 0,
       pushbackPx: PUSH, bossW: 140, bossH: 140, area: OPEN_AREA,
     });
     expect(rev.x).toBe(500 + PUSH);
@@ -518,7 +518,7 @@ describe('★弾き返しの行き先(純関数 thorDashPushbackTarget)= §4-1 �
 
   it('★退く距離は**厳密に** pushbackPx(斜めでも短くならない=正規化している証明)', () => {
     const r = thorDashPushbackTarget({
-      fromX: 0, fromY: 0, toX: 300, toY: 400, pcx: 1000, pcy: 1000, // 進行方向 (0.6, 0.8)
+      fromX: 0, fromY: 0, toX: 300, toY: 400, originX: 1000, originY: 1000, // 進行方向 (0.6, 0.8)
       pushbackPx: PUSH, bossW: 140, bossH: 140, area: OPEN_AREA,
     });
     expect(Math.hypot(r.x - 1000, r.y - 1000)).toBeCloseTo(PUSH, 9);
@@ -528,17 +528,17 @@ describe('★弾き返しの行き先(純関数 thorDashPushbackTarget)= §4-1 �
 
   it('★弾き返し量を変えると行き先も同じだけ動く(定数が飾りになっていない)', () => {
     const at = (push: number) => thorDashPushbackTarget({
-      fromX: 0, fromY: 0, toX: 100, toY: 0, pcx: 500, pcy: 0,
+      fromX: 0, fromY: 0, toX: 100, toY: 0, originX: 500, originY: 0,
       pushbackPx: push, bossW: 140, bossH: 140, area: OPEN_AREA,
     }).x;
-    expect(at(0)).toBe(500);       // 0を渡した時だけプレイヤー中心と同じになる
+    expect(at(0)).toBe(500);       // 0を渡した時だけ起点(ボスの現在中心)と同じになる
     expect(at(300)).toBe(200);
     expect(at(PUSH) - at(0)).toBe(-PUSH);
   });
 
-  it('起点と到達点が同じ(方向が作れない)時はプレイヤー中心を返す(0除算しない・旧実装と同値)', () => {
+  it('起点と到達点が同じ(方向が作れない)時は起点(ボスの現在中心)を返す(0除算しない)', () => {
     const r = thorDashPushbackTarget({
-      fromX: 42, fromY: 42, toX: 42, toY: 42, pcx: 500, pcy: 300,
+      fromX: 42, fromY: 42, toX: 42, toY: 42, originX: 500, originY: 300,
       pushbackPx: PUSH, bossW: 140, bossH: 140, area: OPEN_AREA,
     });
     expect(r).toEqual({ x: 500, y: 300 });
@@ -549,14 +549,14 @@ describe('★弾き返しの行き先(純関数 thorDashPushbackTarget)= §4-1 �
     // 収める計算(clampRectToPlayableArea)なので、帯の外へ弾き返そうとすると**中心が ±LAB_Y で止まる**。
     const bossH = 140;
     const outside = thorDashPushbackTarget({
-      fromX: 0, fromY: 5000, toX: 0, toY: 0, pcx: 0, pcy: LAB_Y + 400, // 上へ走ってきた=下へ弾く
+      fromX: 0, fromY: 5000, toX: 0, toY: 0, originX: 0, originY: LAB_Y + 400, // 上へ走ってきた=下へ弾く
       pushbackPx: PUSH, bossW: 140, bossH, area: { ...OPEN_AREA, labTheme: true },
     });
     // 矩形の下端まで帯の内側へ収まる=中心は ±LAB_CORRIDOR_Y_LIMIT_PX ちょうどで止まる。
     expect(outside.y, '帯クランプを通していない(生の座標をそのまま返している)').toBe(LAB_Y);
     // 帯の内側で完結する場合はクランプが効かない(=無条件に潰していない)ことも見る。
     const inside = thorDashPushbackTarget({
-      fromX: 0, fromY: 100, toX: 0, toY: 0, pcx: 0, pcy: 0,
+      fromX: 0, fromY: 100, toX: 0, toY: 0, originX: 0, originY: 0,
       pushbackPx: 10, bossW: 140, bossH, area: { ...OPEN_AREA, labTheme: true },
     });
     expect(inside.y).toBe(10);
@@ -572,37 +572,45 @@ describe('★弾き返しの行き先(純関数 thorDashPushbackTarget)= §4-1 �
 // のどれも**全緑**を通った。よって `Enemy`/`Player` から引数を組む所を
 // `thorDashPushbackFromEnemy` へ引き取り、**ここで値としてアサートする**。
 // =================================================================================================
-describe('★弾き返しの束縛(thorDashPushbackFromEnemy)= Enemy/Player から引数を組む所も値で固める', () => {
+describe('★弾き返しの束縛(thorDashPushbackFromEnemy)= Enemy から引数を組む所も値で固める', () => {
   /** 中心 (bcx,bcy)・寸法 w×h・突進 from→to を持つボス。 */
   const bossAt = (bcx: number, bcy: number, w: number, h: number,
     dash?: { fromX: number; fromY: number; toX: number; toY: number }) => ({
     x: bcx - w / 2, y: bcy - h / 2, width: w, height: h,
     aiFromX: dash?.fromX, aiFromY: dash?.fromY, aiTargetX: dash?.toX, aiTargetY: dash?.toY,
   });
-  /** 中心 (pcx,pcy)・寸法 w×h のプレイヤー。 */
-  const playerAt = (pcx: number, pcy: number, w = 32, h = 48) =>
-    ({ x: pcx - w / 2, y: pcy - h / 2, width: w, height: h });
 
-  it('★進行方向は from→to(入れ替えるとプレイヤーの向こう側へ前進する=ここで落ちる)', () => {
-    // 左(x=0)から右(x=100)へ走ってきた。プレイヤーは x=500。⇒ 来た方向=左へ150px = x=350。
+  it('★進行方向は from→to(入れ替えるとボスの向こう側へ前進する=ここで落ちる)', () => {
+    // 左(x=0)から右(x=100)へ走ってきた。ボスは今 x=500。⇒ 来た方向=左へ150px = x=350。
     const r = thorDashPushbackFromEnemy(
-      bossAt(400, 0, 140, 140, { fromX: 0, fromY: 0, toX: 100, toY: 0 }),
-      playerAt(500, 0), OPEN_STATE, PUSH,
+      bossAt(500, 0, 140, 140, { fromX: 0, fromY: 0, toX: 100, toY: 0 }), OPEN_STATE, PUSH,
     );
-    expect(r.x, 'from/to を入れ替えている(=プレイヤーの向こう側へ前進する)').toBe(500 - PUSH);
+    expect(r.x, 'from/to を入れ替えている(=来た方向と逆へ前進する)').toBe(500 - PUSH);
     expect(r.y).toBe(0);
     // 実際に入れ替えた時の値=「間違いの側」も名指しで固定しておく(取り違えが同じ値にならない証明)。
     expect(500 + PUSH).not.toBe(500 - PUSH);
   });
 
-  it('★弾き返しの基準はプレイヤーの**中心**(左上を渡すと半身ぶんズレる=ここで落ちる)', () => {
-    const pw = 32, ph = 48;
+  it('★§9-6c: 弾き返しの基準は**ボスの現在中心**(プレイヤー位置は結果に一切効かない)', () => {
+    // 社長裁定2026-08-30=推薦(a)。守護霊がプレイヤーから離れた場所で取っても
+    // 「来た方向へ150px下がる」が必ず成立する=**プレイヤーの座標は式に入らない**。
+    const boss = bossAt(500, 0, 140, 140, { fromX: 0, fromY: 0, toX: 100, toY: 0 });
+    expect(thorDashPushbackFromEnemy(boss, OPEN_STATE, PUSH)).toEqual({ x: 500 - PUSH, y: 0 });
+    // ボスの中心が動けば行き先も同じだけ動く(=基準がボスであることの証明)。
+    const moved = bossAt(900, 40, 140, 140, { fromX: 0, fromY: 0, toX: 100, toY: 0 });
+    expect(thorDashPushbackFromEnemy(moved, OPEN_STATE, PUSH)).toEqual({ x: 900 - PUSH, y: 40 });
+    // 旧実装(プレイヤー中心基準)なら、ボスをどこへ動かしても同じ点を返していた=その退行はここで落ちる。
+    expect(thorDashPushbackFromEnemy(moved, OPEN_STATE, PUSH).x)
+      .not.toBe(thorDashPushbackFromEnemy(boss, OPEN_STATE, PUSH).x);
+  });
+
+  it('★基準はボスの**中心**(左上を渡すと半身ぶんズレる=ここで落ちる)', () => {
+    const w = 140, h = 140;
     const r = thorDashPushbackFromEnemy(
-      bossAt(400, 700, 140, 140, { fromX: 0, fromY: 0, toX: 100, toY: 0 }),
-      playerAt(500, 700, pw, ph), OPEN_STATE, PUSH,
+      bossAt(500, 700, w, h, { fromX: 0, fromY: 0, toX: 100, toY: 0 }), OPEN_STATE, PUSH,
     );
     expect(r.x).toBe(500 - PUSH);
-    expect(r.y, 'プレイヤーの左上(y=700-ph/2)を基準にしている').toBe(700);
+    expect(r.y, 'ボスの左上(y=700-h/2)を基準にしている').toBe(700);
   });
 
   it('★矩形の寸法はボスの当たり判定(0を渡すと結果が変わる=ここで落ちる)', () => {
@@ -612,13 +620,13 @@ describe('★弾き返しの束縛(thorDashPushbackFromEnemy)= Enemy/Player か�
     const h = 140;
     const CORRIDOR_STATE = { ...OPEN_STATE, corridorMode: true };
     const r = thorDashPushbackFromEnemy(
-      bossAt(0, 900, 140, h, { fromX: 0, fromY: 5000, toX: 0, toY: 0 }), // 上へ走ってきた=下へ弾く
-      playerAt(0, 800), CORRIDOR_STATE, PUSH,
+      bossAt(0, 800, 140, h, { fromX: 0, fromY: 5000, toX: 0, toY: 0 }), // 上へ走ってきた=下へ弾く
+      CORRIDOR_STATE, PUSH,
     );
     expect(r.y, 'ボスの寸法(height)を渡していない').toBe(CORRIDOR_BOTTOM_LIMIT + h / 2);
     // 寸法ゼロの「間違いの側」と同じ値にならないこと(=このアサートが効いている証明)。
     const zeroSized = thorDashPushbackTarget({
-      fromX: 0, fromY: 5000, toX: 0, toY: 0, pcx: 0, pcy: 800,
+      fromX: 0, fromY: 5000, toX: 0, toY: 0, originX: 0, originY: 800,
       pushbackPx: PUSH, bossW: 0, bossH: 0, area: thorPlayableAreaCtx(CORRIDOR_STATE),
     });
     expect(zeroSized.y).toBe(CORRIDOR_BOTTOM_LIMIT);
@@ -626,25 +634,22 @@ describe('★弾き返しの束縛(thorDashPushbackFromEnemy)= Enemy/Player か�
   });
 
   it('★帯の文脈はそのまま通す(偽装すると帯の外を返す=ここで落ちる)', () => {
-    const args = [
-      bossAt(0, LAB_Y + 800, 140, 140, { fromX: 0, fromY: 5000, toX: 0, toY: 0 }),
-      playerAt(0, LAB_Y + 400),
-    ] as const;
-    const inLab = thorDashPushbackFromEnemy(args[0], args[1], { ...OPEN_STATE, stageTheme: 'lab' }, PUSH);
-    const faked = thorDashPushbackFromEnemy(args[0], args[1], OPEN_STATE, PUSH);
+    const boss = bossAt(0, LAB_Y + 400, 140, 140, { fromX: 0, fromY: 5000, toX: 0, toY: 0 });
+    const inLab = thorDashPushbackFromEnemy(boss, { ...OPEN_STATE, stageTheme: 'lab' }, PUSH);
+    const faked = thorDashPushbackFromEnemy(boss, OPEN_STATE, PUSH);
     expect(inLab.y).toBe(LAB_Y);
     expect(faked.y, '帯の文脈が結果に効いていない(=クランプが飾りになっている)').not.toBe(inLab.y);
   });
 
-  it('突進の起点/到達点が無い時はボスの現在中心で埋める(方向が作れない=プレイヤー中心を返す)', () => {
-    const r = thorDashPushbackFromEnemy(bossAt(123, 456, 140, 140), playerAt(500, 300), OPEN_STATE, PUSH);
-    expect(r).toEqual({ x: 500, y: 300 });
+  it('突進の起点/到達点が無い時はボスの現在中心で埋める(方向が作れない=ボス中心を返す)', () => {
+    const r = thorDashPushbackFromEnemy(bossAt(123, 456, 140, 140), OPEN_STATE, PUSH);
+    expect(r).toEqual({ x: 123, y: 456 });
   });
 
-  it('★弾き返し量はそのまま効く(ゼロ化するとプレイヤー中心に戻る)', () => {
-    const b = bossAt(400, 0, 140, 140, { fromX: 0, fromY: 0, toX: 100, toY: 0 });
-    expect(thorDashPushbackFromEnemy(b, playerAt(500, 0), OPEN_STATE, 0).x).toBe(500);
-    expect(thorDashPushbackFromEnemy(b, playerAt(500, 0), OPEN_STATE, 300).x).toBe(200);
+  it('★弾き返し量はそのまま効く(ゼロ化するとボスの現在中心に戻る)', () => {
+    const b = bossAt(500, 0, 140, 140, { fromX: 0, fromY: 0, toX: 100, toY: 0 });
+    expect(thorDashPushbackFromEnemy(b, OPEN_STATE, 0).x).toBe(500);
+    expect(thorDashPushbackFromEnemy(b, OPEN_STATE, 300).x).toBe(200);
   });
 });
 
@@ -662,7 +667,7 @@ describe('★突進のカウンター(弾き返し)の配線の不変条件(§5-
   // (本体の途中にオブジェクトの閉じを1つ作るだけでブロックが縮み、以降の禁止検査が見えなくなった)。
   const commonBody = () => braceBlockAfter(lines, /const thorCounterHit = \(/);
   /** 突進のカウンター=共通層を `aimAt` 付きで呼ぶ**その1行**の形(3経路とも同じ束縛)。 */
-  const DASH_AIM = /aimAt: thorDashPushbackFromEnemy\(boss, player, useGameStore\.getState\(\), AN_C\.dashCounterPushbackPx\)/;
+  const DASH_AIM = /aimAt: thorDashPushbackFromEnemy\(boss, useGameStore\.getState\(\), AN_C\.dashCounterPushbackPx\)/;
 
   it('★共通層の起点/到達点は**純関数の戻り値をそのまま**書く(分岐を層の中に残さない)', () => {
     const body = commonBody();

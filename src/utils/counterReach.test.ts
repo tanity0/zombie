@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
   COUNTER_REACH_DECL, counterReachKindFor, counterReachShapeFor, inCounterReach,
   HIDDEN_COUNTER_WINDUP_STATES, HIDDEN_COUNTER_RECOVER_STATES, HIDDEN_COUNTER_ACTIVE_STATES,
-  shouldSkipBossContactParry,
+  shouldSkipBossContactParry, skipThorDashRunContactDamage,
 } from './counterReach';
 import {
   BOUNTY_WINDUP_STATES, BOUNTY_RECOVER_STATES, BOUNTY_ACTIVE_COUNTER_STATES,
@@ -322,5 +322,21 @@ describe('★受け流しへ落とさない州(shouldSkipBossContactParry)= §5-
       + '突進のカウンター(Counter!/クリ反撃/counter-leap/弾き返し/専用CD)が丸ごと消える(v0.25.3785 重大A)。'
       + `\n走査=\n${gate[0].trim()}`,
     ).toMatch(/!thorDashRunNow/);
+  });
+});
+
+describe('★§9-6b 走行中の接触免除(skipThorDashRunContactDamage)= 社長裁定2026-08-30 推薦(a)', () => {
+  it('トールの走行中(thor-dash-move)は、カウンター窓が開いている時だけ接触を落とす', () => {
+    expect(skipThorDashRunContactDamage('thor', 'thor-dash-move', true)).toBe(true);
+    // 窓を開けていなければ従来どおり当たる=§9-6の裁定(走行中の体当たりは当てる)を壊していない。
+    expect(skipThorDashRunContactDamage('thor', 'thor-dash-move', false)).toBe(false);
+  });
+
+  it('走行中以外・トール以外へは効かない(免除を広げていない)', () => {
+    for (const st of ['thor-dash-windup', 'thor-dash-recover', 'issen-dash', 'tsuki', 'harai', 'chase', undefined]) {
+      expect(skipThorDashRunContactDamage('thor', st, true), `州 ${String(st)} まで免除している`).toBe(false);
+    }
+    expect(skipThorDashRunContactDamage('miguel', 'thor-dash-move', true)).toBe(false);
+    expect(skipThorDashRunContactDamage('giantbat', 'thor-dash-move', true)).toBe(false);
   });
 });

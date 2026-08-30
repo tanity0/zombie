@@ -5724,12 +5724,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 経過だけが進み続け、**解除の瞬間にイージング曲線上を凍結時間ぶんワープ**する
                   // (=慣性MUST違反。しかも上下に飛ぶので地平線フェード/可視域の副作用も同時に踏む)。
                   // この裏ボス経路で `aiStartedAt` を読むのは突進だけなので、他ボスの挙動は変わらない。
-                  // ★**繰り下げていない4本目の時計がある**: この枝を通る裏ボス3体の連射州(burst/radial/
-                  // skadi-ice/skadi-blade)は `bossBurstNextAt`(絶対時刻)を読むのに繰り下げていない
-                  // =凍結が明けた瞬間に1発が間隔を無視して飛ぶ。**トールには出ない**が、
-                  // **§9-11 で社長裁定待ち**(「3本で閉じている」と読まないこと)。
-                  // ★位置(XY)のワープも直っていない(直したのは時間軸だけ)= **§9-9**。
                   if (boss.aiStartedAt !== undefined) patch.aiStartedAt = boss.aiStartedAt + kbDtMs;
+                  // ★v0.25.4087(§9-11 社長裁定=推薦(b)): **4本目の時計 `bossBurstNextAt` も繰り下げる**。
+                  // この枝を通る裏ボス3体の連射州(burst / radial / skadi-ice / skadi-blade)は次弾の
+                  // 発射時刻を絶対時刻で持つので、繰り下げないと**凍結が明けた瞬間に1発が間隔を無視して
+                  // 飛ぶ**(上の `aiStartedAt` と同じ型の事故で、軸が位置ではなく発射間隔)。
+                  // トールは `bossBurstNextAt` を読まないので、この行でトールの挙動は変わらない。
+                  if (boss.bossBurstNextAt !== undefined) patch.bossBurstNextAt = boss.bossBurstNextAt + kbDtMs;
+                  // ★位置(XY)のワープ = §9-9(社長裁定=推薦(b))。下の `thor-dash-move` 限定の平行移動で対応。
                 } else {
                   // ★v0.25.3785(検収監査 中E): 技を**frozen**(罠のroot/紫の完全気絶/気絶/浮き/ワープ)で
                   // 潰して chase へ落とす時も、突進の専用CDを打刻する。旧実装は「カウンターで潰れた」経路
@@ -6242,7 +6244,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 成立時の反応(counter-leap/演出)はボスごとに違うので、そこだけ分ける。
                   // ★v0.25.3785(中H): 突進の走りだけは弾き返し(§4-1)を足した層を通す。
                   if (boss.type === 'thor') {
-                    if (st === 'thor-dash-move') thorCounterHit(bcx, bcy, undefined, { aimAt: thorDashPushbackFromEnemy(boss, player, useGameStore.getState(), AN_C.dashCounterPushbackPx) });
+                    if (st === 'thor-dash-move') thorCounterHit(bcx, bcy, undefined, { aimAt: thorDashPushbackFromEnemy(boss, useGameStore.getState(), AN_C.dashCounterPushbackPx) });
                     else thorCounterHit(bcx, bcy);
                   } else hiddenBossCounterHit(bcx, bcy);
                   hiddenBossCountered = true;
@@ -6284,7 +6286,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       sfxGain: npcSfxDistGain(bcx, bcy, pcx, pcy, gcSt.camera, gcSt.gameBounds),
                     };
                     if (boss.type === 'thor') {
-                      if (st === 'thor-dash-move') thorCounterHit(bcx, bcy, gFire, { aimAt: thorDashPushbackFromEnemy(boss, player, useGameStore.getState(), AN_C.dashCounterPushbackPx) });
+                      if (st === 'thor-dash-move') thorCounterHit(bcx, bcy, gFire, { aimAt: thorDashPushbackFromEnemy(boss, useGameStore.getState(), AN_C.dashCounterPushbackPx) });
                       else thorCounterHit(bcx, bcy, gFire);
                     } else hiddenBossCounterHit(bcx, bcy, gFire);
                     ghostCountered = true;
@@ -7062,7 +7064,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       // ★v0.25.3810(9巡目 重大2): 中間層(thorDashCounterHit)は廃した。あの層は
                       // `fromAt` を素通しするだけで、素通しをやめる変異(仮引数のリネーム+転送行の削除)が
                       // **全緑**だった=この経路の起点だけが黙って壊れる。共通層を直接呼ぶ。
-                      thorCounterHit((sx + ex) / 2, (sy + ey) / 2, undefined, { aimAt: thorDashPushbackFromEnemy(boss, player, useGameStore.getState(), AN_C.dashCounterPushbackPx), fromAt: { x: dnx, y: dny } });
+                      thorCounterHit((sx + ex) / 2, (sy + ey) / 2, undefined, { aimAt: thorDashPushbackFromEnemy(boss, useGameStore.getState(), AN_C.dashCounterPushbackPx), fromAt: { x: dnx, y: dny } });
                       dCountered = true;
                     } else {
                       const died = damagePlayer(boss.damage, 'トールの突進', pcx, pcy, undefined, undefined, 'thor-dash'); // G4a計測タグ(記録専用)
@@ -7077,7 +7079,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const gcSt = useGameStore.getState();
                     thorCounterHit(gCap.ghostX, gCap.ghostY,
                       { claim: gCap.claim, sfxGain: npcSfxDistGain(gCap.ghostX, gCap.ghostY, pcx, pcy, gcSt.camera, gcSt.gameBounds) },
-                      { aimAt: thorDashPushbackFromEnemy(boss, player, gcSt, AN_C.dashCounterPushbackPx), fromAt: { x: dnx, y: dny } });
+                      { aimAt: thorDashPushbackFromEnemy(boss, gcSt, AN_C.dashCounterPushbackPx), fromAt: { x: dnx, y: dny } });
                     dCountered = true;
                   }
                 }
