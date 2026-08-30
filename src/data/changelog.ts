@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4098',
+    items: [
+      '城ボスの飛び掛かり(ジャンプ着地)の赤い円にも、踏み鳴らしと同じ「外から内へ流れて消える」帯が付きました。帯が中心で消え切った瞬間が着地です。',
+    ],
+  },
+  {
     version: '0.25.4097',
     items: [
       '【緊急修正】前の更新(v0.25.4096)でゲームが起動せず画面が真っ暗になっていました。起動するように直しました。',

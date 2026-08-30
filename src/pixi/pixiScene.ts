@@ -36,7 +36,7 @@ import {
   useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
-  GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
+  GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS, GIANT_JUMP_AIR_MS, PUMPKIN_JUMP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
   GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
   GIANT_SLAM_WINDUP_MS, GIANT_SLAM_HALF_WIDTH, GLEN_BOON_WINDUP_MS,
@@ -10116,11 +10116,15 @@ export class PixiScene {
         // ★v0.25.4092(社長指示2026-08-30): 絵はそのまま・グラデ赤の帯マスクを外枠→内側へ流す。
         //   **帯が中心で消え切った瞬間=着地(判定発生)**。滞空の進行は aiStartedAt→aiPhaseUntil から出す
         //   (どちらも gameTime 基準)。片方でも欠けていたら現行の据え置き円に落とす。
-        const jFrom = e.aiStartedAt, jTo = e.aiPhaseUntil;
-        const jTotal = jFrom !== undefined && jTo !== undefined ? jTo - jFrom : 0;
+        // ★v0.25.4098: 進行は**「着地までの残り」÷「滞空の総時間(定数)」**で出す。
+        //   旧版は `aiStartedAt` が欠けていると**黙って据え置き円へ落ちる**形で、
+        //   「効いていないのか落ちているのか」が実機から判別できなかった(社長報告の切り分けを難しくした)。
+        //   `aiPhaseUntil`(=着地時刻)だけで出せるので、落ちる枝そのものを無くす。
+        const jTotal = (PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT) / (e.type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1);
         const jFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
-        if (CIRCLE_SWEEP_ON && jTotal > 0 && jFrom !== undefined) {
-          const jProg = Math.max(0, Math.min(1, (gameTime - jFrom) / jTotal));
+        if (CIRCLE_SWEEP_ON && jTotal > 0) {
+          const jToLand = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
+          const jProg = Math.max(0, Math.min(1, 1 - jToLand / jTotal));
           const jMask = this.drawSweepCircleFill(g, tx, ty, R, jProg, 0xff2a2a, jFillA);
           g.circle(tx, ty, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * jMask });
         } else {
@@ -19929,9 +19933,21 @@ export class PixiScene {
         const gtx = (e.aiTargetX ?? e.x) + e.width / 2, gty = (e.aiTargetY ?? e.y) + e.height / 2;
         const gR = e.gJumpRadius ?? GIANT_JUMP_RADIUS;
         // 着地予告も同じ素材(A-1)。円の予告はゲーム中で意匠を揃える(踏み鳴らしと同じ輪に見える)。
-        o.ellipse(gtx, gty, gR, gR).fill({ color: 0xff2a2a, alpha: telFillA(1, gPulse) * TELEGRAPH_FILL_MULT });
-        if (FX_RING_ENABLED) this.drawTelegraphRing(view, gtx, gty, gR, 0xff3b3b, 0.55 + 0.35 * gPulse);
-        else o.ellipse(gtx, gty, gR, gR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) });
+        // ★v0.25.4098(社長報告2026-08-31「ジャンプがなってない。踏み倒し?は、なってる」):
+        //   踏み鳴らしだけ帯マスクを付けて**この飛び掛かりを取りこぼしていた**。CLAUDE.md
+        //   「同じ"動作"を持つ全員に付ける(同じ動作が aiPhase / g-* / bossState の複数経路に分かれている)」
+        //   の取りこぼしそのもの。**消え切り=着地**なので、進行は「着地までの残り」で出す
+        //   (windup 中は『このフェーズの残り + 滞空』/ 滞空中はそのまま)。
+        const gJumpAirMs = GIANT_JUMP_AIR_MS / ENEMY_ATTACK_SPEED_MULT;
+        const gJumpTotal = GIANT_JUMP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT + gJumpAirMs;
+        const gJumpToLand = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) + (gph === 'g-jump-windup' ? gJumpAirMs : 0);
+        const gJumpProg = Math.max(0, Math.min(1, 1 - gJumpToLand / gJumpTotal));
+        const gJumpFillA = telFillA(1, gPulse) * TELEGRAPH_FILL_MULT;
+        const gJumpMask = CIRCLE_SWEEP_ON
+          ? this.drawSweepCircleFill(o, gtx, gty, gR, gJumpProg, 0xff2a2a, gJumpFillA)
+          : (o.ellipse(gtx, gty, gR, gR).fill({ color: 0xff2a2a, alpha: gJumpFillA }), 1);
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, gtx, gty, gR, 0xff3b3b, (0.55 + 0.35 * gPulse) * gJumpMask);
+        else o.ellipse(gtx, gty, gR, gR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) * gJumpMask });
       } else if (gph === 'g-trijump-windup' || gph === 'g-trijump-air') {
         // 連続ジャンプ(グレン専用・v0.25.2430): **3つの着地円を溜め開始から全部見せる**。
         // 座標は gameStore が glenTriJumpPoints で確定して持たせた `gTriJumpPts` をそのまま読む
