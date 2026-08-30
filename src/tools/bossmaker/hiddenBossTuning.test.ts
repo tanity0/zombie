@@ -189,7 +189,7 @@ describe('既定値が移設前の実装値と完全一致(値を1つも変え�
   it('トール(社長が実機で決めた値は1つも動かない)', () => {
     // nihilMs 300→2000(社長指示2026-08-27「構えを2秒に変更で」)。
     expect(HIDDEN_THOR_TUNING_DEFAULTS.issen).toEqual({ nihilMs: 2000, nihilRadius: 200, windup: 500, dashMs: 280, range: 310, halfWidth: 80, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 900) });
-    expect(HIDDEN_THOR_TUNING_DEFAULTS.tsuki).toEqual({ windup: 1100, ms: 180, range: 300, halfWidth: 15, trackFrac: 0.5, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 600) });
+    expect(HIDDEN_THOR_TUNING_DEFAULTS.tsuki).toEqual({ windup: 1100, ms: 180, range: 300, halfWidth: 15, trackFrac: 0.8, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 600) });
     expect(HIDDEN_THOR_TUNING_DEFAULTS.harai).toEqual({ windup: 600, active: 220, range: 310, halfWidth: 40, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 700) });
     // 新技「突進」(§4)。既定は**ミゲルの踏み込みと同値**=新しい数字を発明していないことの記録。
     expect(HIDDEN_THOR_TUNING_DEFAULTS.dash).toEqual({ windup: 700, moveMs: 230, strikeMs: 110, recover: Math.max(BOSS_RECOVER_FLOOR_MS, 800), cdMs: 6000 });

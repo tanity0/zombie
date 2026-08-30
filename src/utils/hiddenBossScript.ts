@@ -226,7 +226,8 @@ export const HIDDEN_THOR_TUNING: HiddenThorTuning = {
   //   事実として: 台帳の旧コメントには「半幅80+自機14=94px → 必要900ms」という見積もりがある(v0.25.3461の根拠)。
   //   500msでは帯の外へ走って逃げるのはほぼ不可能=「カウンターで返す技」に寄る、という前提での指定(§8-1裁定済み)。
   issen: { nihilMs: 2000, nihilRadius: 200, windup: 500, dashMs: 280, range: 310, halfWidth: 80, recover: withRecoverFloor(900) },
-  tsuki: { windup: 1100, ms: 180, range: 300, halfWidth: 15, trackFrac: 0.5, recover: withRecoverFloor(600) },
+  // trackFrac 0.5→0.8(v0.25.4086・社長指示2026-08-30「突きの追従0.8で」)。
+  tsuki: { windup: 1100, ms: 180, range: 300, halfWidth: 15, trackFrac: 0.8, recover: withRecoverFloor(600) },
   harai: { windup: 600, active: 220, range: 310, halfWidth: 40, recover: withRecoverFloor(700) },
   jump: { triggerHits: 3, triggerWindowMs: 6000, windup: 700, ms: 360, radius: 70, recover: withRecoverFloor(900) },
   // 突進(新技・§4)。既定は**ミゲルの踏み込みと同値**(ANGEL_MIGUEL_TUNING.dash)=新しい数字を発明しない。
