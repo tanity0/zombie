@@ -274,7 +274,7 @@ import type { Rect } from '../world/obstacles';
 import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/rescue';
 import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
 import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
-import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt } from '../utils/circleSweep';
+import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt } from '../utils/circleSweep';
 
 // --- 深層域グレーディング(退色した暖色セピア) -----------------------------
 // 深層域に入っている間だけ、ゲーム画面全体を退色セピアにする描画のみの演出(当たり判定等には不干渉)。
@@ -2726,6 +2726,11 @@ const FX_RING_ENABLED = typeof window === 'undefined'
 const CIRCLE_SWEEP_ON = tsBool('csweep', true);
 const CIRCLE_SWEEP_W = tsNum('csweepw', CIRCLE_SWEEP_HALF_W);
 const CIRCLE_SWEEP_EASE = tsBool('csweepease', true);
+// ★v0.25.4093: 帯の濃さの倍率。初版は現行の塗りα(0.098)をそのまま使っていて**画面に出なかった**。
+const CIRCLE_SWEEP_A = tsNum('csweepa', CIRCLE_SWEEP_ALPHA_MULT);
+// ★v0.25.4093: 縁(焼きリング)も帯でマスクするか。既定 true(社長指示「そこだけサークル絵が表示される」)。
+// `?csweepring=1` にすると縁だけ常時表示=判定半径がいつでも読める(§11-7 受け入れ条件2 の形)。
+const CIRCLE_SWEEP_RING_ALWAYS = tsBool('csweepring', false);
 
 // v0.25.3093(社長指示「ゲーム内の予告系の赤をさらに薄くしたい」): 予告の**面の塗り**全部に掛ける減光。
 // v0.25.3068では帯だけ0.75で、円/扇は対象外だった。今回は**円・扇・帯を1つの値に統一**して0.5へ。
@@ -22887,12 +22892,12 @@ export class PixiScene {
       const step = (hi - lo) / CIRCLE_SWEEP_STEPS;
       for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
         const r = lo + step * (i + 0.5);
-        const a = peakAlpha * circleSweepAlphaAt(r, band, halfW);
+        const a = Math.min(1, peakAlpha * CIRCLE_SWEEP_A) * circleSweepAlphaAt(r, band, halfW);
         if (a <= 0.003) continue;
         o.circle(cx, cy, r).stroke({ width: step + 0.6, color, alpha: a });
       }
     }
-    return circleSweepAlphaAt(radius, band, halfW);
+    return CIRCLE_SWEEP_RING_ALWAYS ? 1 : circleSweepAlphaAt(radius, band, halfW);
   }
 
   private drawTelegraphRing(view: ActorView, cx: number, cy: number, radius: number, tint: number, alpha: number, idx = 0): void {

@@ -5,11 +5,13 @@ const R = 100;
 const HW = R * CIRCLE_SWEEP_HALF_W;
 
 describe('circleSweep(赤円の帯マスク・外→内)', () => {
-  it('溜めの頭では帯が円の外に居る=絵が1pxも見えない', () => {
+  it('★溜めの1フレーム目から外枠に帯が乗っている(v0.25.4093: 初版は最初の2割が真っ白だった)', () => {
     const band = circleSweepBand(0, R, HW);
-    expect(band).toBeCloseTo(R + HW, 6);
-    // 円のどこを見ても濃さ0(帯の内縁がちょうど R に接している)
-    expect(circleSweepAlphaAt(R, band, HW)).toBeCloseTo(0, 6);
+    expect(band).toBeCloseTo(R, 6);
+    // 外枠(=判定半径)の位置がいちばん濃い=「どこが危ないか」が1フレーム目に出る
+    expect(circleSweepAlphaAt(R, band, HW)).toBeCloseTo(1, 6);
+    // 内側は帯の半幅ぶんだけフェードして消える
+    expect(circleSweepAlphaAt(R - HW, band, HW)).toBe(0);
     expect(circleSweepAlphaAt(0, band, HW)).toBe(0);
   });
 
