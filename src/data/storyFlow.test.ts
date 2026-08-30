@@ -71,13 +71,13 @@ describe('サブ未完了一周(通常ED→ヒント1回→本文は共通)', ()
 
 describe('サブ3本完了一周+再訪+EX(正史ルート通し)', () => {
   it('サブ納品(1/3/4)→ED→薬+資料→再訪available→薬使用→EX解放→EXクリア', () => {
-    // 1) メイン進行+サブ納品(ゲーム内 completeEventQuest 相当=meta.sub)。
+    // 1) メイン進行+サブ納品(ゲーム内 completeEventQuest 相当=v2はmeta.deliveredの1本・§2-10)。
     for (let i = 1; i <= 7; i++) markStageCleared(`stage-${i}`);
     for (const id of ['stage-1', 'stage-3', 'stage-4']) {
-      setEventQuestMeta(id, { ...getEventQuestMeta(id), sub: true });
+      setEventQuestMeta(id, { ...getEventQuestMeta(id), delivered: true });
     }
-    // stage-5 の遭遇(completeEventEncounter 相当)は判定に影響しない。
-    setEventQuestMeta('stage-5', { ...getEventQuestMeta('stage-5'), sub: true });
+    // stage-5 の納品(v2ではS5も同じクエストを納品する。§2-11)は3本の判定に影響しない。
+    setEventQuestMeta('stage-5', { ...getEventQuestMeta('stage-5'), delivered: true });
     expect(subsAllCompletedFromMeta()).toBe(true);
 
     // 2) ED終了(App.finishEnding 相当): medicine 経路=薬付与+資料「グレンの薬」解放。

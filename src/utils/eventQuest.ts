@@ -24,7 +24,14 @@ export interface EventQuestConfig {
   sub: EventQuestSubGoal;
   // 統合正本M5(4.5)/指示書: 遭遇のみ。サークル滞在で確定会話を流して完了(クエスト受注・報酬なし)。
   // 完了はサブ納品と同じ永続フラグ(meta.sub)=以後そのステージに二人は出現しない。
+  // v2(EVENT_QUEST_DESIGN.md §2-2B/§2-11): v2ではacceptEventQuest/completeEventEncounterは
+  // 呼ばれない死に経路(useGameLoopのdelivering→completedがcompleteEventQuestを直接呼ぶ)なので、
+  // このフラグはもうS5の納品可否に影響しない。撤去自体は★未決#14(storyCanonテストの書き換え)の
+  // 裁定が出るまで保留(フラグを消すとCIの固定テストが落ちる)。
   encounterOnly?: boolean;
+  // v2(§2-11「ステージ5のみ: 拠点2か所確保が先行条件」): レスキュー出現の追加ゲート。
+  // 未設定(他ステージ)は先行条件なし=4:00のみで出現。
+  basesRequired?: number;
 }
 
 // ステージ毎の設定。ここに無いステージには二人は出現しない(社長裁定#6)。
@@ -33,7 +40,7 @@ export const EVENT_QUEST_CONFIG: Record<string, EventQuestConfig> = {
   'stage-1': { forced: true,  namedTypes: ['pumpkin', 'werewolf'], sub: { tier: null,     count: 10 } },
   'stage-3': { forced: false, namedTypes: ['pumpkin', 'werewolf'], sub: { tier: 'blue',   count: 5 } },
   'stage-4': { forced: false, namedTypes: ['pumpkin', 'werewolf'], sub: { tier: 'purple', count: 5 } },
-  'stage-5': { forced: false, namedTypes: ['pumpkin', 'werewolf'], sub: { tier: 'red',    count: 5 }, encounterOnly: true },
+  'stage-5': { forced: false, namedTypes: ['pumpkin', 'werewolf'], sub: { tier: 'red',    count: 5 }, encounterOnly: true, basesRequired: 2 },
 };
 
 // ───────────────────────────────────────────────────────────────────────────

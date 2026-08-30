@@ -12,8 +12,9 @@ export const subsAllCompleted = (subDone: (stageId: string) => boolean): boolean
   SUB_QUEST_STAGE_IDS.every(id => subDone(id));
 
 // 実接続用: 永続の二人組クエストメタ(eventQuestMeta)から3本完了を判定。
+// v2(EVENT_QUEST_DESIGN.md §2-10): 完了フラグは delivered 基準(旧 .sub は撤去)。
 export const subsAllCompletedFromMeta = (): boolean =>
-  subsAllCompleted(id => getEventQuestMeta(id).sub);
+  subsAllCompleted(id => getEventQuestMeta(id).delivered);
 
 // 洋館［SUB］再訪カードの表示状態(統合正本9.2/9.4・指示書7.1)。
 //   hidden    = 出さない(条件未成立)

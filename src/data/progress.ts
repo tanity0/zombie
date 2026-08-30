@@ -349,22 +349,29 @@ export const setGateMeta = (stageId: string, meta: GateMeta): void => {
 
 // ───────────────────────────────────────────────────────────────────────────
 // 二人組(クエストNPC)の進捗メタ(EVENT_QUEST_DESIGN.md・社長裁定v0.25.1686)。ステージ毎に
-// 「強制クエスト納品済み(forced)」「サブ納品済み(sub)」を永続保持(GateMeta と同じ方針)。
-//   ・サブ納品済み=二人は以後そのステージに出現しない。
+// 「納品済み(delivered)」を永続保持(GateMeta と同じ方針)。
+//   ・納品済み=二人は以後そのステージに出現しない。
 //   ・完了は1度きり(受注のみで死亡した場合は次runで再受注可=run内状態は保存しない)。
 // 旧v0.25.1684の 'zombie.progress.eventQuestDone'(stageIdのSet)は目標なし時代の完了フラグ
 // なので読まずに廃棄する(resetProgressで掃除)。
-export interface EventQuestMeta { forced: boolean; sub: boolean; }
+// v2(EVENT_QUEST_DESIGN.md §2-10): 完了フラグは delivered(納品成立)の1本へ作り替えた。
+// 旧 forced/sub は v1 の名残(acceptEventQuest/completeEventEncounterはv2では呼ばれない死に経路だが、
+// ★未決#14「storyCanonテストの書き換え」の裁定が出るまでencounterOnlyごと撤去しない=型を壊さない
+// ためoptionalで残す。v2で読み書きするのはdeliveredだけ)。
+export interface EventQuestMeta { delivered: boolean; forced?: boolean; sub?: boolean; }
 const EVENT_QUEST_META_KEY = 'zombie.progress.eventQuestMeta';
 const LEGACY_EVENT_QUEST_DONE_KEY = 'zombie.progress.eventQuestDone';
 type EventQuestMetaMap = Record<string, EventQuestMeta>;
 
-export const emptyEventQuestMeta = (): EventQuestMeta => ({ forced: false, sub: false });
+export const emptyEventQuestMeta = (): EventQuestMeta => ({ delivered: false });
 
 const isValidEventQuestMeta = (v: unknown): v is EventQuestMeta => {
   if (!v || typeof v !== 'object') return false;
   const m = v as Partial<EventQuestMeta>;
-  return typeof m.forced === 'boolean' && typeof m.sub === 'boolean';
+  if (typeof m.delivered !== 'boolean') return false;
+  if (m.forced !== undefined && typeof m.forced !== 'boolean') return false;
+  if (m.sub !== undefined && typeof m.sub !== 'boolean') return false;
+  return true;
 };
 
 const loadEventQuestMetaMap = (): EventQuestMetaMap => {
@@ -432,12 +439,14 @@ export const markCastleBossCleared = (stageId: string): void => {
 // 強制を課さないステージ(cfg.forced=false: 3/4/5)は最初からクリア済み扱い=城ボスのみで解放。
 // クエスト設定の無いステージはこの関数は何もしない(従来どおり勝利時 markStageCleared)。
 // 城ボス討伐時と強制クエスト納品時の両方から呼ぶ(冪等)。
+// v2(EVENT_QUEST_DESIGN.md §2-10): S1/S3/S4/S5は同じ1本のクエスト(レスキュー→城ボス→納品)を
+// 回すので、ステージによって条件が変わる理由がもう無い。★`cfg.forced`は読まない
+// (`!cfg.forced || …`を残すと forced:false の S3/S4/S5 は常に true=納品せずに解放される事故になる)。
 export const syncQuestStageClear = (stageId: string): void => {
   if (!stageId) return;
   const cfg = getEventQuestConfig(stageId);
   if (!cfg) return;
-  const forcedOk = !cfg.forced || getEventQuestMeta(stageId).forced;
-  if (forcedOk && getCastleBossCleared(stageId)) markStageCleared(stageId);
+  if (getEventQuestMeta(stageId).delivered && getCastleBossCleared(stageId)) markStageCleared(stageId);
 };
 
 // ───────────────────────────────────────────────────────────────────────────

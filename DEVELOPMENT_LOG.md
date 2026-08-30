@@ -1,5 +1,90 @@
 # Development Log
 
+## v0.25.4099 — 二人組クエストv2 B4「納品と誘導と記録」着地(最終バッチ)【2026-08-31 02:59 JST】
+
+EVENT_QUEST_DESIGN.md §2-17 の発注区切りに従い、B4(納品と誘導と記録)を実装。B1〜B3の上に、
+§2-8(ワープ・納品・入力ロック)・§2-9(縁矢印)・§2-10(永続の鎖)・§2-11(S5の先行条件)を配線した。
+これでB1〜B4が全て着地し、二人組クエストv2は実装完了(実機確認待ち)。
+
+- **§2-8 ワープ・納品・入力ロック**:
+  - **`accepted→warping`**(既存の状態遷移)で、レスキュー地点に居る二人がその場で
+    しゃがみ(溜め)→バックジャンプ離脱(既存の救難信号アライ型・`RESCUE_ALLY_CROUCH_MS`/
+    `RESCUE_ALLY_FLYOUT_MS`)を開始するよう配線。離脱が満了したフレームに、帰還サークルの縁寄りへ
+    向けた飛来(`RESCUE_ALLY_FLYIN_MS`+`RESCUE_ALLY_HOP_PX`の弧)を続けて開始する
+    (「消滅→飛来」の2段。座標を書き換えるだけの瞬間移動にしない=CLAUDE.md慣性MUST)。
+    着地点・始点のジオメトリは新規純関数 `src/utils/rescueQuestWarp.ts`(`computeWarpLandingPoint` /
+    `computeWarpFlyinStart`・テスト10件)に切り出した。着地点は「プレイヤーの反対側・縁寄り
+    (半径×0.75)」で、構造的にプレイヤーと重ならない。飛来の始点は4:00出現と同じ式
+    (`EVENT_NPC_MIN_DISTANCE`=460の再利用)。
+  - **納品の3秒滞在**: `delivering` の間、`isInReturnCircle(player, returnCircle)` が真のフレームだけ
+    `eventQuestNpc.dwellMs` を積み、偽になったフレームで0に戻す(既存の作法どおり)。
+    `EVENT_QUEST_DWELL_MS`(3000)満了で納品成立→①`completeEventQuest()`(記録+報酬+`status→completed`)
+    ②`deliveryLocked:true` ③完了時会話をenqueue、の順で実行。
+  - **納品ロック(`deliveryLocked`)** は `isPaused` を使わない(時間駆動の会話が進まず永久フリーズするため)。
+    `isInputLocked()`(→`isAttackLocked()`も自動で伝播)に1条件足し、攻撃入口5つ
+    (銃自動射撃・近接カウンター・マウス・キーボードのフリック/カウンターキー・サブウェポン自動発動の
+    `inReturnCircle`変数)を閉じた。移動は`movePlayer`の早期returnではなく、目標`tx=ty=0`に落として
+    既存の慣性(`PLAYER_INERTIA_TAU`)で自然減速させる(早期returnだと走行アニメ/カメラズーム/速度が
+    その場で固まり慣性MUST違反になるため)。被弾は`damagePlayer`入口で無条件棄却。
+    割り込みポーズ4種(レベルアップメニュー/商人サークル滞在/宝箱メニュー/チュートリアルポップ)は
+    個別に`deliveryLocked`ガードを追加(レベルアップは演出は止めずメニューだけ保留=解除後に開く)。
+  - **素通り防止**: `requestStoryReturnPrompt`の早期return条件へ
+    `deliveryLocked || status==='warping' || status==='delivering'` の3項ORを追加
+    (「納品未成立の間ずっと」ではない=`?castlenow=1`等の納品経路に乗らないランは従来どおり帰れる)。
+  - **`gameWon`判定**: `npcDialogue===null && npcDialogueQueue.length===0`のANDを、`deliveryLocked`を
+    ゲートに使って(enqueueより後で)毎フレーム評価。真になったフレームで`gameWon:true`と同じ`set()`で
+    `deliveryLocked:false`に戻す(1フレームも「gameWonかつdeliveryLocked」の窓を作らない)。
+    原稿0行のS5は同じフレームでgameWonになる(仕様どおり)。
+  - **納品メーターの表示**: `syncReturnCircle`(pixiScene)が`eventQuestNpc.status==='delivering'`の間
+    だけ、分子分母を`eventQuestNpc.dwellMs`/`EVENT_QUEST_DWELL_MS`に差し替えて既存の緑アークを描く
+    (通常ストーリー枝の`updateReturnPhase`は1バイトも変えていない=`dwellMs=inside?1:0`のまま)。
+- **§2-9 縁矢印**: `pixiScene.syncArrows`に`rescuePoints`引数を追加(手本は`hunters`/`screamers`。
+  `baseSites`/`questTargets`が持つ`ARROW_NEAR_RADIUS`=500の距離足切りは書いていない=見失うと
+  勝利不能になるため距離条件なし)。`status==='rescue'`(未完了)の間だけ渡し、完了後は空配列。
+  この枝だけ「画面外 **または** `horizonActorAlpha(npc.y)`がほぼ0(地平線フェードで実質見えない)」の
+  条件へ広げた(他の対象=拠点/城/商人/帰還サークル/ハンター/叫喚の条件は1つも変えていない)。
+- **§2-10 永続記録・次ステージ解放・EX解放の鎖**: `EventQuestMeta`を`delivered`基準へ作り替えた
+  (旧`forced`/`sub`はoptionalで残置=★未決#14「storyCanonテストの書き換え」の裁定が出るまで
+  `encounterOnly`ごと撤去しない。v2の読み書きは`delivered`のみ)。`completeEventQuest`をv1の
+  forced/sub 2分岐から`delivered`の1本(v2唯一の書き手)へ書き換え、`syncQuestStageClear`は
+  `!cfg.forced || …`の項を落として`delivered && castleBossCleared`の2条件だけにした。
+  **これで★未決#25(B1着地でstage-1の次ステージ解放が止まる)を解消**——`.forced`を読まなくなった
+  ことで、stage-1もS3/S4/S5と同じ`delivered`基準に揃った。読み書き8箇所
+  (`storyProgress.subsAllCompletedFromMeta`/`MissionSelect.tsx`2箇所/`resetGame`の`qGone`/
+  `syncQuestStageClear`/`completeEventQuest`/`acceptEventQuest`・`completeEventEncounter`は
+  死に経路のまま据え置き)を`delivered`へ揃えた。`storyFlow.test.ts`の該当アサーションも
+  `sub:true`→`delivered:true`へ更新。
+- **§2-11 S5先行条件(拠点2か所確保)**: `EVENT_QUEST_CONFIG['stage-5']`に`basesRequired:2`を追加。
+  `basesEverCaptured`(単調ラッチ・書き手は二人組ブロック1箇所)を毎フレーム
+  `Math.max(現在値, 確保数)`で更新し、①⑦のレスキュー出現条件を新規純関数
+  `rescueQuestSpawnReady`(`src/utils/rescueQuestGate.ts`・テスト4件)へ集約
+  (「4:00 と 拠点2か所確保 の遅い方」。他ステージは`basesRequired`未設定なので時刻のみ)。
+  `GameHUD.tsx`に`RescueBasesGatePill`(§2-7と同じ黄色・別コンポーネント)を新設し、
+  `[拠点確保 n/2]`をレスキュー出現まで表示する。
+- **範囲外の確認**: `src/pixi/pixiScene.ts`の赤円予告(`drawSweepCircleFill`/`circleSweep`)と
+  `playerDeathWatch.ts`/死亡監視ブロックは1バイトも触っていない。`PROJECT_STATUS.md`も触っていない。
+- **★未決の追加**: なし(設計書に無い値・未定義の挙動には当たらなかった。帰還サークルの着地点の
+  縁比率0.75は見た目の置き場所のみで判定・バランスに影響しないため叩き台としてそのまま実装)。
+- **状態変化: 二人組クエストv2 → 実装完了(B1〜B4着地・実機確認待ち)。**
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(触れたのは納品/入力ロック/
+  誘導/永続記録の配線のみ。数値・カーブ・閾値は既存の叩き台をそのまま採用し変更していない)。
+- **付記(このセッションで発見・無関係)**: 着手時、`src/utils/bountyDims.ts`/`bountyTick.ts`に
+  循環import対策(v0.25.4097の緊急修正)が別セッションにより並行してコミットされていた
+  (8612f96/1cc6104/93c7f08。B4の担当範囲外のファイルで、本バッチの差分とは無関係)。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(warning9件は既存・無関係)。
+  **`npm test`をフル実行**(社長指示どおりB4のみ1回)——`rescueQuestWarp.test.ts`(新規6件)+
+  `rescueQuestGate.test.ts`(新規4件)を含め5172件中5160件緑。**残り2件の失敗はいずれもB4の変更と
+  無関係**: ①`src/utils/combatTick.test.ts`のトール突進(thor-dash-move)接触ダメージ1件
+  (`git stash`でB4の変更を退避し素のHEADで再実行しても同じ箇所で同じ失敗=既存の別バッチ由来。
+  combatTick.ts/thor関連ファイルはB4で1バイトも触っていない) ②`rescueQuestWarp.test.ts`の
+  退化ケース1件は自分のテストの期待値が実装の正しい仕様(フォールバック角0の反対側=+πで着地)と
+  逆になっていたバグで、その場で修正し緑化済み(最終実行結果に反映済み)。
+- 実機確認(社長・任意): 城の変異体(危険変異体)を倒す→帰還サークルへ二人が飛来するか(座標が
+  瞬間移動しない)→サークルの外周に緑の滞在アークが3秒かけて伸びるか→3秒後に完了会話が流れ
+  終わるとリザルトへ行くか(会話中は移動/攻撃/被弾が無効)→レスキュー未完了の間、姿が見えない方角に
+  水色の矢印が出るか→S1で城ボスを倒して納品すると次ステージが解放されるか(#25の確認)→S5は
+  拠点を2か所取るまでレスキューが出ないか。
+
 ## v0.25.4098 — 赤円の帯を「飛び掛かり(ジャンプ着地)」にも付ける(社長報告2026-08-31)【2026-08-31 03:12 JST】
 
 **社長報告: 「赤いサークル、ジャンプがなってないんだ。踏み倒し?は、なってる」。**

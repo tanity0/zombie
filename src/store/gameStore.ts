@@ -3085,7 +3085,9 @@ export const isInputLocked = (): boolean => {
   // エンディング(仮組み)は「実際はプレイヤーもいない見せるだけのシーン」(裁定2026-08-28)。
   // プレイヤー実体=不可視のカメラ台車(ENDING_SCENE.md 演出仕様v2 §4)なので、corridorRunInActive
   // (自己解除する洋館の走り込み)とは別に、farBackdrop==='ending'の間は常時ロックする。
-  return s.isPaused || s.player.health <= 0 || s.corridorRunInActive || s.farBackdrop === 'ending' || isGameTimeStopped();
+  // deliveryLocked(二人組クエストv2 §2-8・納品ロック): isPausedは使わない(会話が時間駆動で
+  // isPaused中は進まず永久フリーズするため)。ここに足せば isAttackLocked も自動で伝播する。
+  return s.isPaused || s.player.health <= 0 || s.corridorRunInActive || s.farBackdrop === 'ending' || isGameTimeStopped() || s.deliveryLocked;
 };
 
 // 松明ドロップ率/内訳のしきい値は pityDirector.ts の BASE_DROP_TUNING(0.42/0.5/0.75/0.9)へ移動
@@ -6361,7 +6363,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Target direction from swipe (touch) or keys.
       let tx = 0;
       let ty = 0;
-      if (dashOv) {
+      if (state.deliveryLocked) {
+        // 二人組クエストv2 §2-8(納品ロック): 早期returnはしない(この関数はvx/vy/direction/
+        // isMoving/aim/速度ランプまで毎フレーム書いており、returnすると走行アニメ・カメラズームが
+        // 固定されたまま7〜10秒フリーズし、速度も1フレームで0=CLAUDE.md「慣性MUST」違反になる)。
+        // 目標だけ0にし、swipeDirection/dashOverride(ワイヤー/一閃/ホップ)/スライドも無視する
+        // (=強制移動の上書きも掛けない)。alpha=inertiaAlpha(dt, PLAYER_INERTIA_TAU)で自然に減速する。
+        tx = 0;
+        ty = 0;
+      } else if (dashOv) {
         // ワイヤー高速移動/ホップは「毎フレーム目標へ向け直す」ホーミング(アンカー地点/着地点)、
         // 一閃は固定方向、着地硬直は(0,0)=停止。中身は dashLocomotion.dashOverride が持つ。
         tx = dashOv.tx;
@@ -9869,6 +9879,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove) => {
     const { player } = get();
 
+    // 二人組クエストv2 §2-8(納品ロック): 納品成立後は被弾を入口で無条件に棄却する。
+    // invulnerable(INVULN_MS=1000)は自動失効するため使えない(会話は7〜10秒続く)。
+    if (get().deliveryLocked) return false;
+
     // ★被弾無敵(i-frame)。**幻影の近接だけはこれを無視して通る**(社長裁定2026-08-24
     // 「無敵時間については、幻影側にプレイヤーも合わせて。これは幻影とプレイヤー間だけの制約のはず」)。
     // 幻影側は 2026-08-20 の裁定で既に「近接・近接カウンターは i-frame 無視」になっており、
@@ -10970,7 +10984,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const mdx = weaponMerchant.x - pcx;
     const mdy = weaponMerchant.y - pcy;
     const inCircle = mdx * mdx + mdy * mdy <= weaponMerchant.radius * weaponMerchant.radius;
-    if (!inCircle || s.showShopMenu || s.showUpgradeMenu || s.gameTime < s.shopReopenAt) {
+    // 二人組クエストv2 §2-8(納品ロック②): 帰還サークルと商人サークルが重なっていても、納品ロック中は
+    // 滞在を積まない=ショップが開かない(何も失われない。ロック解除の直後はリザルトへ行くため)。
+    if (!inCircle || s.showShopMenu || s.showUpgradeMenu || s.gameTime < s.shopReopenAt || s.deliveryLocked) {
       if (s.merchantDwellMs !== 0) set({ merchantDwellMs: 0 });
       return;
     }
@@ -11062,52 +11078,35 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   completeEventQuest: () => {
-    // 納品(EVENT_QUEST_DESIGN.md): 報酬ゴールド(永続残高へ即時)+段階を永続記録。
-    //  ・強制納品 → forcedフラグ+次ステージ解放同期(城ボスフラグと揃えばクリア扱い)。
-    //    二人は残り、サブの受付へ戻る(一度離れてから再滞在3秒で受注)。
-    //  ・サブ納品 → subフラグ=以後そのステージに二人は出現しない。そのプレイでは消さない
-    //    (fadeStartedAtは立てず立ち姿のまま・以後何も起きない)。
-    // v2(EVENT_QUEST_DESIGN.md §2-2B・B1「型と器」): v1の「forced納品→受付へ戻す」経路は
-    // acceptEventQuest(v1の受領入口)がuseGameLoop側から呼ばれなくなったため、
-    // active==='forced' にはもう到達しない(eventQuestActiveが'forced'になる書き手が無い)。
-    // 型維持のため status は退役した'available'の代わりに'hidden'(=描画なしの休止状態)を置く。
-    // このif分岐そのものの要否(v2で単一のrescue経済に統合するか)はB2/B4で設計判断する。
+    // 納品成立(EVENT_QUEST_DESIGN.md §2-8手順1・2・5 / §2-10): useGameLoopの二人組ブロックが
+    // delivering の3秒滞在を満了させたフレームに呼ぶ(§2-2B 遷移5)。
+    // v2(§2-10「delivered を書く場所は completeEventQuest の1箇所だけ」): v1の forced/sub
+    // 2分岐(acceptEventQuest経由でしか到達しない死に経路)は廃止し、delivered の1本だけを書く。
+    // S1/S3/S4/S5は同じ1本のクエストを回すので、ステージによって書き方を変える理由はもう無い。
     const stageId = getSelectedStageId();
-    const active = get().eventQuestActive;
+    // 手順2(報酬付与口): 中身は★未決#7(社長裁定待ち)。裁定が出るまでは現行の
+    // EVENT_QUEST_REWARD_GOLD=100を据え置く(★未決#7推薦(A)=体験を後退させない)。
     // スキル: ゴールドラッシュ(§6.10 M33⑪) = 永続ゴールド獲得 ×1.2/1.35/1.5(Lv・四捨五入)。
     // research/GROWTH.md v4: 育成のゴールド倍率(焼き値)も同じ算出行に掛ける(useGameLoop 側の
     // 吹き出し表示コピーも同じ式=表示と付与額を一致させる)。
     get().addGold(Math.round(EVENT_QUEST_REWARD_GOLD * skillGoldRushMult(get().player) * get().player.growthGoldMult));
+    // 手順1(クリア記録・永続): delivered を唯一の書き手として立てる。
     const meta = getEventQuestMeta(stageId);
-    if (active === 'forced') {
-      setEventQuestMeta(stageId, { ...meta, forced: true });
-      syncQuestStageClear(stageId);
-      set(state => ({
-        eventQuestNpc: {
-          ...state.eventQuestNpc,
-          status: 'hidden',
-          dwellMs: 0,
-          leftSinceAccept: false
-        },
-        eventQuestActive: null,
-        eventQuestKills: 0,
-        eventQuestGoalCount: 0,
-        eventQuestGoalTier: null
-      }));
-    } else {
-      setEventQuestMeta(stageId, { ...meta, sub: true });
-      set(state => ({
-        eventQuestNpc: {
-          ...state.eventQuestNpc,
-          status: 'completed',
-          dwellMs: 0
-        },
-        eventQuestActive: null,
-        eventQuestKills: 0,
-        eventQuestGoalCount: 0,
-        eventQuestGoalTier: null
-      }));
-    }
+    setEventQuestMeta(stageId, { ...meta, delivered: true });
+    // §2-10「syncQuestStageClearの呼び出し口を消さない」: 納品の瞬間にここで次ステージ解放を同期する
+    // (リザルトを見る前でも記録される=受け入れ条件2)。
+    syncQuestStageClear(stageId);
+    set(state => ({
+      eventQuestNpc: {
+        ...state.eventQuestNpc,
+        status: 'completed', // §2-2B 遷移5
+        dwellMs: 0
+      },
+      eventQuestActive: null,
+      eventQuestKills: 0,
+      eventQuestGoalCount: 0,
+      eventQuestGoalTier: null
+    }));
   },
   
   // Enemy actions
@@ -15734,6 +15733,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // Boss-drop treasure chest. Behaves like a level-up's upgrade menu
         // but without bumping the level or resetting XP. Player just gets
         // a free pick.
+        // 二人組クエストv2 §2-8(納品ロック③): 納品ロック中は選択メニューを開かない(磁力で拾っても
+        // isPausedを立てない=会話が止まらない)。この1回の選択は失われる(★未決#19・ブロッカーではない)。
+        if (get().deliveryLocked) break;
         const upgradeOptions = generateEquipmentChoices(get().player);
         set(state => ({
           upgradeOptions,
@@ -16494,6 +16496,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       set({ tutorialPopupShown: true });
       return;
     }
+    // 二人組クエストv2 §2-8(納品ロック④): 納品ロック中は出さない=既読も付けない(次のランで出る)。
+    if (get().deliveryLocked) return;
     // 挿絵の優先順: img(事前収録の手本アセット)> SVG図解。社長決定v0.25.1839「基本的に全部
     // 事前に手本を見せるカタチ」=表示直前のライブキャプチャは廃止(素材は一度収録して使い回す)。
     set({ tutorialPopup: p, tutorialPopupShown: true, isPaused: true }); // 表示中はゲーム停止
@@ -16855,12 +16859,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     const corridorGoalReady = !state.corridorMode
       || (m6CorridorGoal && state.returnCircle?.revealedAt !== undefined
         && state.gameTime >= state.returnCircle.revealedAt + CORRIDOR_GOAL_FADE_MS);
+    // 二人組クエストv2 §2-8「素通り防止」: 離指は isAttackLocked() の判定より前に無条件で
+    // 呼ばれるため、isInputLocked() に deliveryLocked を足しただけではここは塞げない
+    // (VirtualJoystick.release のコメント「押しっぱなしからの指離しは素通りする」)。
+    // 「納品が未成立の間ずっと」ではなく、deliveryLocked / warping / delivering の3項のORで
+    // 塞ぐ(納品経路に一度も乗らないラン=?castlenow=1等では帰る手段を残す)。
+    const questReturnBlocked = state.deliveryLocked
+      || state.eventQuestNpc.status === 'warping'
+      || state.eventQuestNpc.status === 'delivering';
     if (
       state.storyReturnPromptVisible || state.gameWon ||
       (!state.finaleDefeated && !m6CorridorGoal) ||
       (state.corridorMode && isExStageRun()) ||
       !corridorGoalReady ||
-      !isInReturnCircle(state.player, state.returnCircle)
+      !isInReturnCircle(state.player, state.returnCircle) ||
+      questReturnBlocked
     ) return false;
     set({
       storyReturnPromptVisible: true,
@@ -18630,7 +18643,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           const qGone = bossMakerRoom || isPracticeRun() || isGauntletRun() || isExStageRun()
             || getSelectedFreeMode() || state.benchmarkRun || corridorMode || indoor
             || stageTheme === 'lab' || farBackdrop === 'tutorial' || state.pendingRevisit
-            || !qCfg || getEventQuestMeta(getSelectedStageId()).sub;
+            // §2-10: 完了フラグは delivered 基準(旧 .sub は撤去)。
+            || !qCfg || getEventQuestMeta(getSelectedStageId()).delivered;
           return qGone ? { ...createEventQuestNpc(), status: 'gone' as const } : createEventQuestNpc();
         })(),
         eventQuestActive: null,

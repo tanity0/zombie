@@ -90,11 +90,13 @@ import {
   GHOST_DMG_LOG_ENABLED, ghostLogPush, // v0.25.3981: ?ghostlog=1 のカウンター連鎖ログ(記録専用・挙動不変)
   resolveShieldWalls, shieldPlayableCtx, // ★B6(盾押し・§6)
   spawnRescueQuestPoint, EVENT_NPC_MIN_DISTANCE, // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2)
+  isInReturnCircle, // 二人組クエストv2(§2-8・B4): 納品の3秒滞在の判定(returnCircle.radiusは対象のフィールドをそのまま読む)
 } from '../store/gameStore';
 import { resolveRescueSpawnDirection } from '../utils/rescueQuestSpawn'; // 二人組クエストv2(§2-3・B2)
 import {
   shouldFireRescueQuestArena, shouldFoldRescueHold, rescueQuestArenaOutcome, computeQuestGateOk,
 } from '../utils/rescueQuestArena'; // 二人組クエストv2(§2-4/§2-5/§2-6・B3)
+import { computeWarpLandingPoint, computeWarpFlyinStart } from '../utils/rescueQuestWarp'; // 二人組クエストv2(§2-8・B4)
 import { pushShieldRect, clampShieldPlacementRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
 import { DOG_EXCLUDED_TYPES, dogEligiblePickups } from '../utils/dogFetch'; // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
@@ -419,14 +421,17 @@ import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClamp
 import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChronicle, recordChronicleGlobalFirst, updateStoryFlags } from '../data/progress';
 import { exposeKomaLog, logKomaSummary } from '../utils/komaLog';
 // 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
-// v1の受領(accept)会話まわり(EVENT_QUEST_LINES_FORCED/EVENT_QUEST_ENCOUNTER_LINES/
-// getEventQuestConfig)はB1で呼び出し元ごと退役(§2-2B)=import不要。
+// v1の受領(accept)会話まわり(EVENT_QUEST_LINES_FORCED/EVENT_QUEST_ENCOUNTER_LINES)は
+// B1で呼び出し元ごと退役(§2-2B)=import不要。
 // eventQuestSubAcceptLinesはv2(EVENT_QUEST_DESIGN.md §2-5・§2-13・B3)がレスキュー完了(受注)の
 // 瞬間に流す会話として再度必要になったため再importする(会話は流すだけ・完了判定には関与しない)。
+// getEventQuestConfigはB4(§2-11)がS5だけの先行条件(basesRequired)を読むため再importする。
 import {
   eventQuestSubAcceptLines,
   eventQuestSubCompleteLines,
+  getEventQuestConfig,
 } from '../utils/eventQuest';
+import { rescueQuestSpawnReady } from '../utils/rescueQuestGate'; // 二人組クエストv2(§2-11・B4)
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { airHopEase01 } from '../utils/airHop';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
@@ -1050,8 +1055,12 @@ const evNum = (key: string, def: number): number => {
 const RESCUE_SPAWN_DIST_MIN = evNum('rescuemin', 500);
 const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): レスキュー地点の出現時刻(4:00)。
-// S5だけの追加条件(拠点2か所ラッチとの遅い方・§2-11)はB4の範囲(★未決ではなく発注の区切りどおり)。
+// S5だけの追加条件(拠点2か所ラッチとの遅い方・§2-11)はB4で下の判定式に合流させる
+// (getEventQuestConfig(stageId)?.basesRequired・S5のみ設定=stage-5のconfigの1項)。
 const RESCUE_QUEST_SPAWN_AT_MS = 4 * 60 * 1000;
+// 二人組クエストv2(§2-8・B4): 帰還サークルへの着地点=「縁寄り」(中心からradius*この比率)。
+// 見た目の置き場所のみで判定・バランスには影響しない(叩き台。実機調整前提)。
+const WARP_LANDING_EDGE_FRAC = 0.75;
 // PACING_PUZZLE.md §5.21 M20追補(社長設計v0.25.1533・修正v0.25.1534): 凶悪ハンターは索敵フェーズを
 // 廃止し、デンジャー入場(制圧0)から一定時間後に索敵をスキップして「見つかった状態」(chase)で発動する。
 // 視界サークル/再配置ラッシュは凶悪版では出さない(撤去)。`?viciousdelay=<ms>`で調整可(実機調整前提)。
@@ -8305,7 +8314,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // dog/decoy/shield/turret/molotov/support-sniper/first-aid-kit/fire-knife/homingロック取得が
         // 共通でこの1変数のnot判定を通る=「サブ発動入口」を1箇所で塞ぐ)。`?skaterlock=0`で復帰。
         // 社長指示v0.25.3318: 帰還サークル(ゴール)内の攻撃停止は撤廃(指離せば即ゴールなので不要)。
-        const inReturnCircle = (SKATER_LOCK_ENABLED && subWeaponPlayer.skaterRiding);
+        // 二人組クエストv2 §2-8(納品ロック・入口5): サブウェポンの自動発動はこの1変数を全サブが通るので
+        // ここへ deliveryLocked を足せば1箇所で閉じる(CLAUDE.md「同じ判定を2箇所に書かない」)。
+        const inReturnCircle = (SKATER_LOCK_ENABLED && subWeaponPlayer.skaterRiding) || useGameStore.getState().deliveryLocked;
 
         // G2.6(BOT_AND_GHOST.md §2.8): サブウェポン発動の入口はオーナー(座標・向き・受け手)に対して
         // 解決する。既定オーナー=プレイヤー(この場合、従来の挙動と1bitも変わらない)。ゴースト
@@ -10931,6 +10942,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const rqNpc = rqGs.eventQuestNpc;
           const rqPcx = player.x + player.width / 2, rqPcy = player.y + player.height / 2;
 
+          // ★basesEverCaptured(§2-11・§2-14「このランの状態フィールド」⑥): S5だけの先行条件の
+          // ラッチ。書き手はここ1箇所(store拠点tick側には書かない=判定を2箇所に分けない)。
+          // 単調(下げない)・増えたフレームだけset()する(毎フレームset()しない=React再描画規律)。
+          const capturedNow = rqGs.baseSites.filter(b => b.status === 'captured').length;
+          const basesEverCapturedNow = Math.max(rqGs.basesEverCaptured, capturedNow);
+          if (basesEverCapturedNow !== rqGs.basesEverCaptured) {
+            useGameStore.setState({ basesEverCaptured: basesEverCapturedNow });
+          }
+
           // ★★後始末(EVENT_QUEST_DESIGN.md §2-4「立っている自分の囲いを、ゲート囲いが外から畳む」
           // の本命の防御・§2-5契機③・B3): どんな理由であれactiveEventが消えたのにrescueClearedAtが
           // 未打刻なら、強制クリア扱いで打刻する(全滅・時間切れは下のarenaブロックで先に打刻済みなので
@@ -10945,8 +10965,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().enqueueNpcDialogue(eventQuestSubAcceptLines(getSelectedStageId()));
           }
 
-          // ①⑦ hidden→rescue(状態で書く・§2-2B確定)。
-          if (rqNpc.status === 'hidden' && !rqGs.bossChasing && newGameTime >= RESCUE_QUEST_SPAWN_AT_MS) {
+          // ①⑦ hidden→rescue(状態で書く・§2-2B確定)。§2-11: S5だけ「4:00 と 拠点2か所確保 の
+          // 遅い方」(getEventQuestConfig().basesRequiredが未設定の他ステージは時刻のみ)。
+          const rqBasesRequired = getEventQuestConfig(getSelectedStageId())?.basesRequired;
+          if (rqNpc.status === 'hidden' && !rqGs.bossChasing
+            && rescueQuestSpawnReady(newGameTime, RESCUE_QUEST_SPAWN_AT_MS, basesEverCapturedNow, rqBasesRequired)) {
             const firstSpawn = rqGs.rescueSpawnedAt === 0;
             let landX: number, landY: number;
             if (firstSpawn) {
@@ -10996,10 +11019,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               ? { eventQuestNpc: { ...s2.eventQuestNpc, status: 'accepted' } } : {}));
           }
 
-          // ③ accepted→warping(状態で書く・§2-2B確定)。実際の飛び去り〜飛来経路はB4(§2-8)。
+          // ③ accepted→warping(状態で書く・§2-2B確定)。§2-8「消える側(レスキュー地点)=飛び去り」の
+          // しゃがみ(溜め)を今居る場所(rqNpc.x/y=レスキュー地点)で開始する(⑥と同じcrouch→flyoutの型)。
+          // flyout満了後、下の汎用movePhase進行コードが status==='warping' を見て自動で飛来(flyin)へ
+          // つなぐ(§2-14「実装マップ」B4担当分)。
           if (rqNpc.status === 'accepted' && rqGs.returnCircle != null) {
             useGameStore.setState(s2 => (s2.eventQuestNpc.status === 'accepted'
-              ? { eventQuestNpc: { ...s2.eventQuestNpc, status: 'warping' } } : {}));
+              ? { eventQuestNpc: { ...s2.eventQuestNpc, status: 'warping', movePhase: 'crouch', moveStartedAt: newGameTime, hopPx: 0 } } : {}));
           }
 
           // 移動段(crouch/flyout/flyin)の毎フレーム進行(§2-14「★ワープの段を進める場所」)。
@@ -11038,8 +11064,31 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const el = newGameTime - rqNpc.moveStartedAt;
             if (el >= RESCUE_ALLY_FLYOUT_MS) {
               // ⑥ 完了: hiddenを書く(status==='rescue'だった時だけ=退場中の値と一致)。位置は保持する。
+              // §2-8「消滅→飛来の2段」: status==='warping'の時だけ、消えた直後に帰還サークルへ向けた
+              // 飛来(flyin)を続けて開始する(座標を書き換えるだけの瞬間移動にしない=慣性MUST)。
               useGameStore.setState(s2 => {
                 const n = s2.eventQuestNpc;
+                const rc = s2.returnCircle;
+                if (n.status === 'warping' && rc) {
+                  const land = computeWarpLandingPoint({
+                    circleX: rc.x, circleY: rc.y, radius: rc.radius,
+                    playerX: rqPcx, playerY: rqPcy, edgeFrac: WARP_LANDING_EDGE_FRAC,
+                  });
+                  const from = computeWarpFlyinStart({
+                    landX: land.x, landY: land.y, playerX: rqPcx, playerY: rqPcy,
+                    minDistance: EVENT_NPC_MIN_DISTANCE,
+                  });
+                  return {
+                    eventQuestNpc: {
+                      ...n, x: from.x, y: from.y,
+                      moveStartedAt: newGameTime,
+                      moveFromX: from.x, moveFromY: from.y,
+                      moveToX: land.x, moveToY: land.y,
+                      movePhase: 'flyin',
+                      hopPx: 0,
+                    },
+                  };
+                }
                 const wasHiding = n.status === 'rescue';
                 return {
                   eventQuestNpc: { ...n, hopPx: 0, movePhase: null, ...(wasHiding ? { status: 'hidden' as const } : {}) },
@@ -11053,50 +11102,58 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // 二人組(クエストNPC)の滞在納品(EVENT_QUEST_DESIGN.md・社長裁定v0.25.1686)。
-        // v2(EVENT_QUEST_DESIGN.md §2-2B・B1「型と器」): v1の「サークル3秒滞在で受領」経路
-        // (旧 status:'available'・acceptEventQuest 呼び出し)は§2-2Bのとおり殺す
-        // (EventQuestStatusの拡張で'available'が退役したため、型として復元できない=削除)。
-        // 残すのは v2 が「納品成立の瞬間」として流用する completeEventQuest への→completedの1本
-        // (§2-2B 遷移5)だけ。旧'accepted'の滞在納品(下のブロック)はv2の'accepted'の意味(囲い
-        // クリア〜城ボス撃破の待機。§2-2B)と食い違うが、②(rescueClearedAt>0)がB2単独では発火
-        // しないため'accepted'へ到達する経路がまだ無く、この食い違いはB2では観測されない。
-        // 本来の姿への書き直し(§2-8の納品本体)はB4の範囲。
-        //  ・accepted: 目標達成(eventQuestKills>=Goal)後のみ、一度サークルを出てから再滞在3秒で納品=報酬。
-        //  ・leftSinceAccept: 直前のやり取り以降に一度外へ出るまでメーターを進めない(即発火防止)。
+        // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-8・B4): 納品(delivering)の3秒滞在と、
+        // 会話キューが空になった時のgameWon評価。v1の「サークル3秒滞在で受領」経路
+        // (leftSinceAccept等)はB1〜B2の型変更で既に到達不能(§2-2B)なので、ここはv2の納品本体
+        // として書き直す(旧コードの残置ではなく置き換え)。
         if (!indoor && !labTheme) {
-          const q = useGameStore.getState().eventQuestNpc;
-          if (q.status === 'accepted') {
-            const qpcx = player.x + player.width / 2, qpcy = player.y + player.height / 2;
-            const qdx = q.x - qpcx, qdy = q.y - qpcy;
-            const inside = qdx * qdx + qdy * qdy <= q.radius * q.radius;
+          const dqNpc = useGameStore.getState().eventQuestNpc;
+          if (dqNpc.status === 'delivering') {
+            const dqState = useGameStore.getState();
+            // ★★積むのは「プレイヤーが帰還サークルの中に居るフレーム」だけ(§2-8確定)。
+            // 判定は実在のisInReturnCircle 1本(新しい距離判定を書かない)。偽になったフレームで
+            // dwellMs=0に戻す(=既存の作法に揃える。「保持して途中から再開」という前例はこのゲームに無い)。
+            const inside = isInReturnCircle(dqState.player, dqState.returnCircle);
             if (!inside) {
-              // サークル外: 「また来た」扱いに武装。滞在はリセット。
-              if (!q.leftSinceAccept || q.dwellMs !== 0) {
-                useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, leftSinceAccept: true, dwellMs: 0 } }));
+              if (dqNpc.dwellMs !== 0) {
+                useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, dwellMs: 0 } }));
               }
-            } else if (q.leftSinceAccept) {
-              const qsNow = useGameStore.getState();
-              const turnInReady = qsNow.eventQuestKills >= qsNow.eventQuestGoalCount;
-              if (turnInReady) {
-                const nd = q.dwellMs + deltaTime * 1000;
-                const qStageId = getSelectedStageId();
-                if (nd < EVENT_QUEST_DWELL_MS) {
-                  useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, dwellMs: nd } }));
-                } else {
-                  // 納品。サブは完了会話(統合正本の確定稿)を流す(強制納品の会話は正本に無い=従来どおり無し)。
-                  const wasSub = useGameStore.getState().eventQuestActive === 'sub';
-                  useGameStore.getState().completeEventQuest();
-                  if (wasSub) useGameStore.getState().enqueueNpcDialogue(eventQuestSubCompleteLines(qStageId));
-                  spawnRing(q.x, q.y - 22, 12, 62, 'rgba(253,230,138,0.85)', 3, 520);
-                  useGameStore.getState().spawnGlow(q.x, q.y - 30, GLOW_R_M, 'rgba(253,230,138,', 520);
-                  // §6.10 M33⑪: ゴールドラッシュの獲得倍率を表示にも反映(付与額=completeEventQuestと同じ式)。
-                  // research/GROWTH.md v4: 育成のゴールド倍率(焼き値)も同じ算出行に掛ける(表示=付与額)。
-                  useGameStore.getState().spawnCallout(q.x, q.y - 76, `+${Math.round(EVENT_QUEST_REWARD_GOLD * skillGoldRushMult(useGameStore.getState().player) * useGameStore.getState().player.growthGoldMult)}G`, '#fde68a');
-                  playSfx('event-clear');
-                }
+            } else {
+              const nd = dqNpc.dwellMs + deltaTime * 1000;
+              if (nd < EVENT_QUEST_DWELL_MS) {
+                useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, dwellMs: nd } }));
+              } else {
+                // 納品成立の瞬間(§2-8手順1〜4をこの順で実行)。
+                const stageId = getSelectedStageId();
+                const npcPos = { x: dqNpc.x, y: dqNpc.y };
+                // 手順1・2・5: クリア記録(delivered)+報酬付与口+status→completed(completeEventQuestに集約)。
+                useGameStore.getState().completeEventQuest();
+                // 手順3: 納品ロックを掛ける(isPausedは使わない・§2-8)。①〜④の各入口はこのフラグを見る。
+                useGameStore.setState({ deliveryLocked: true });
+                // 手順4: 完了時の会話をキューへ(S5は原稿0行=enqueueしても両方空のまま)。
+                useGameStore.getState().enqueueNpcDialogue(eventQuestSubCompleteLines(stageId));
+                // 演出は既存の受注/完了と同じ資材を流用(判定は済んでいるので描画のみ)。
+                spawnRing(npcPos.x, npcPos.y - 22, 12, 62, 'rgba(253,230,138,0.85)', 3, 520);
+                useGameStore.getState().spawnGlow(npcPos.x, npcPos.y - 30, GLOW_R_M, 'rgba(253,230,138,', 520);
+                // §6.10 M33⑪: ゴールドラッシュの獲得倍率を表示にも反映(付与額=completeEventQuestと同じ式)。
+                // research/GROWTH.md v4: 育成のゴールド倍率(焼き値)も同じ算出行に掛ける(表示=付与額)。
+                useGameStore.getState().spawnCallout(npcPos.x, npcPos.y - 76, `+${Math.round(EVENT_QUEST_REWARD_GOLD * skillGoldRushMult(useGameStore.getState().player) * useGameStore.getState().player.growthGoldMult)}G`, '#fde68a');
+                playSfx('event-clear');
               }
             }
+          }
+
+          // 手順5(§2-8確定判定式): npcDialogue===null && npcDialogueQueue.length===0のANDが真になった
+          // フレームでgameWon。deliveryLockedをゲートに使うことで「hidden/rescue/accepted/warping/
+          // delivering/completedの6状態(goneだけ除く)で走らせる」要求を、状態を1つずつ列挙せず満たす
+          // (deliveryLockedはこの窓の間しかtrueにならないため=gone等では自動的に評価が素通りする)。
+          // 上のenqueueNpcDialogueより後でfreshに読むので、原稿0行のS5は同じフレームでgameWonになる
+          // (§2-8「原稿0行のとき: 両方が空のまま=同じフレームでgameWon」どおり)。
+          const gwState = useGameStore.getState();
+          if (gwState.deliveryLocked && gwState.npcDialogue === null && gwState.npcDialogueQueue.length === 0) {
+            // ★deliveryLockedを落とす場所②(手順5・§2-8「落とす場所」確定): gameWon:trueと同じsetで
+            // falseに戻す(別フレームで落とさない=1フレームでも「gameWonかつdeliveryLocked」の窓を作らない)。
+            useGameStore.setState({ gameWon: true, deliveryLocked: false });
           }
         }
 
@@ -14491,9 +14548,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         updateEffects(deltaTime);
 
         // LEVEL UP 演出(スロー)が終わったら選択肢メニューを開く(社長指示: 先に演出→その後に選択)。
+        // 二人組クエストv2 §2-8(納品ロック①): 納品ロック中はメニューを開かず保留する(演出は抑えない=
+        // 既にgainExperience側で走り切っている)。levelUpIntroUntilはこの分岐でしか0にされないので、
+        // 保留してもフラグは消えず、ロック解除後に開く(取りこぼさない)。
         {
           const introUntil = useGameStore.getState().levelUpIntroUntil;
-          if (introUntil > 0 && Date.now() >= introUntil) {
+          if (introUntil > 0 && Date.now() >= introUntil && !useGameStore.getState().deliveryLocked) {
             useGameStore.setState({ showUpgradeMenu: true, isPaused: true, levelUpIntroUntil: 0 });
           }
         }

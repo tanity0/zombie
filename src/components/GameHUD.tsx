@@ -12,6 +12,31 @@ import { LowHpVignette } from './LowHpVignette';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 import DirectorLine from './DirectorLine';
+import { getSelectedStageId } from '../data/progress';
+import { getEventQuestConfig } from '../utils/eventQuest';
+
+// 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-11・B4): S5だけの先行条件(拠点2か所確保)の掲示。
+// サブクエスト欄の最上段に[拠点確保 n/2]。§2-7と同じ「メイン扱い」の色・同じ別コンポーネント
+// (state.subquestsには触れない)。レスキュー出現(rescueSpawnedAt>0またはstatusがhiddenを離れた)と
+// ともに消え、以後はRescueQuestGoalPill(§2-7)に置き換わる。basesRequired未設定のステージ(S1/S3/S4)
+// では出さない(getEventQuestConfigはステージ設定の静的値=ラン中に変わらないため直接読む。
+// GameOverScreen/DebugOverlayのgetSelectedStageId直呼びと同じ作法)。
+const RescueBasesGatePill: React.FC = () => {
+  const status = useGameStore(s => s.eventQuestNpc.status);
+  const spawnedOnce = useGameStore(s => s.rescueSpawnedAt > 0);
+  const captured = useGameStore(s => s.basesEverCaptured);
+  const basesRequired = getEventQuestConfig(getSelectedStageId())?.basesRequired;
+  if (basesRequired === undefined || status !== 'hidden' || spawnedOnce) return null;
+  const n = Math.min(captured, basesRequired);
+  return (
+    <div
+      className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums"
+      style={{ color: '#facc15' }}
+    >
+      {`[拠点確保 ${n}/${basesRequired}]`}
+    </div>
+  );
+};
 
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-7・B3): 城ボスの出現アテンション後に出す黄色い討伐行。
 // v1の受領制ピル(EventQuestPill・eventQuestActive等)はv2でこの表示に置き換わるため撤去(§2-14)。
@@ -259,6 +284,7 @@ const GameHUD: React.FC = () => {
           right: 'max(env(safe-area-inset-right), 12px)',
         }}
       >
+        <RescueBasesGatePill />
         <RescueQuestGoalPill />
         <SubquestHud />
       </div>

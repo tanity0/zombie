@@ -80,6 +80,7 @@ import {
   MELEE_WINDUP_MS, // ★近接の前隙。しゃがみ絵の長さをここから導く(SAME_ARENA.md §7)
   WHIP_SNARE_BEND_SCALE, // ★鞭のしなり(スネア)の折れの強さ(社長指示2026-08-24)
   ENDING_BOMB_TUNING, // エンディング爆撃(v3.1): 爆発半径/落下高をstoreと同じ出どころから読む(絵と挙動の整合)
+  EVENT_QUEST_DWELL_MS, // 二人組クエストv2(§2-8・B4): 納品3秒メーターの分母(RETURN_CIRCLE_HOLD_MSと同値=既存アークを流用)
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -8231,10 +8232,13 @@ export class PixiScene {
     const questTargets = s.enemies.filter(e => e.questTarget).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
     // 叫喚型(screamer)は同時1体だけ(ディレクター管理)なので検知条件なしで常に方角を示す(優先処理対象)。
     const liveScreamers = s.enemies.filter(e => e.type === 'screamer').map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
+    // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-9・B4): レスキュー未完了(status==='rescue')の間だけ渡す。
+    // 完了(accepted以降)/hidden/gone/warping等は空(=矢印を消す。§2-9「完了になったら空を渡す」)。
+    const rescuePoints = s.eventQuestNpc.status === 'rescue' ? [{ x: s.eventQuestNpc.x, y: s.eventQuestNpc.y }] : [];
     // v0.25.3054: 施設フェード中は施設系の矢印/マーカーも出さない(城=castleVisible、商人=radius0で
     // 縁矢印を殺す、POI/拠点=空配列)。ボスマーク・アイテム・ハンター等の非施設マーカーは従来どおり。
     const facHidden = facFade < 0.5;
-    this.syncArrows(s.pickups, s.castleEvent, facHidden ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab') && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, {
+    this.syncArrows(s.pickups, s.castleEvent, facHidden ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab') && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, rescuePoints, {
       targets: markedBosses,
       // 距離は**ボスメーカーの部屋の中だけ常時**表示(社長指示v0.25.2657)。本編は数字を出さない=
       // マーク(方角)だけ。道具としての計測値をゲーム画面へ持ち込まない。
@@ -22141,8 +22145,15 @@ export class PixiScene {
     g.circle(cx, cy, rc.radius - 3).stroke({ width: 2, color, alpha: a });
     // 滞在進捗を外周の円弧で表示(上端始点・時計回り)。arc 前に moveTo して地面を横切る線を防ぐ。
     // 洋館通路のゴールは5秒ホールド(v0.25.2132)=分母をモードで切替(判定側updateReturnPhaseと同じ)。
-    const holdMs = corridor ? CORRIDOR_RETURN_HOLD_MS : RETURN_CIRCLE_HOLD_MS;
-    const frac = Math.max(0, Math.min(1, rc.dwellMs / holdMs));
+    // 二人組クエストv2(§2-8「★★ただし『3秒滞在のメーター』は帰還サークル側に必ず出す」・B4):
+    // delivering中はupdateReturnPhaseのdwellMs(通常ストーリー枝は1/3000で固定=動かない)ではなく、
+    // eventQuestNpc.dwellMs / EVENT_QUEST_DWELL_MS を分子分母に差し替える。値は3000で既存と同じ尺
+    // (=意匠・色・太さは1バイトも変えない。新しい絵は作らない)。
+    const questNpc = stateNow.eventQuestNpc;
+    const inDelivery = questNpc.status === 'delivering';
+    const holdMs = inDelivery ? EVENT_QUEST_DWELL_MS : (corridor ? CORRIDOR_RETURN_HOLD_MS : RETURN_CIRCLE_HOLD_MS);
+    const dwellForArc = inDelivery ? questNpc.dwellMs : rc.dwellMs;
+    const frac = Math.max(0, Math.min(1, dwellForArc / holdMs));
     if (frac > 0) {
       const start = -Math.PI / 2;
       const rr = rc.radius + 5;
@@ -27725,6 +27736,11 @@ export class PixiScene {
     hunters: { x: number; y: number }[] = [],
     screamers: { x: number; y: number }[] = [],
     questTargets: { x: number; y: number }[] = [],
+    // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-9・B4): 4:00〜レスキュー完了までの誘導。
+    // `status==='rescue'`(未完了)の間だけ渡される(完了/hidden/gone/warping等は空配列)。
+    // 手本は hunters/screamers/returnCircle の枝(距離足切りは掛けない=baseSites/questTargetsの
+    // ARROW_NEAR_RADIUS=500の距離足切りを写すと、見失って勝てなくなる状態を作ってしまう)。
+    rescuePoints: { x: number; y: number }[] = [],
     // 交戦中のボス(社長指示v0.25.2657)。位置決めは utils/bossMarker.ts の純関数、ここは描くだけ。
     bossMark: { targets: { x: number; y: number; width: number; height: number }[]; showDistance: boolean }
       = { targets: [], showDistance: false }
@@ -27992,6 +28008,38 @@ export class PixiScene {
       g.moveTo(ex + 6 + Math.cos(a0R) * 3.2, ey - 1 + Math.sin(a0R) * 3.2)
         .arc(ex + 6, ey - 1, 3.2, a0R, a1R)
         .stroke({ width: 1.1, color, alpha: 0.6 + 0.3 * pulse });
+      const hx = ex + dx * 15, hy = ey + dy * 15;
+      const ca = Math.cos(angle), sa = Math.sin(angle);
+      const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+      g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+    }
+
+    // 二人組クエストv2・レスキュー未完了の誘導(EVENT_QUEST_DESIGN.md §2-9・B4)。
+    // 「制限時間なし=見失うと城ボスが出ず勝利不能」なので、この枝だけ「画面内でも地平線フェードで
+    // 実質見えない」時に出す(距離足切りは掛けない・§2-3のfloor撤回とセット)。
+    for (const rp of rescuePoints) {
+      const tx = toScreenX(rp.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScreenY(rp.y);
+      const onScreen = tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH;
+      // §2-9「画面外 or horizonActorAlpha(npc.y)がほぼ0(=地平線フェードで実質見えない)」。
+      // 他の対象(拠点/城/商人/帰還サークル/ハンター/叫喚)の条件は1つも変えない=この枝だけで完結。
+      if (onScreen && this.horizonActorAlpha(rp.y) > 0.02) continue;
+      const angle = Math.atan2(ty - cyC, tx - cxC);
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      let tdist = Infinity;
+      if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+      else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+      if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+      else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+      if (!isFinite(tdist)) continue;
+      const ex = cxC + dx * tdist;
+      const ey = cyC + dy * tdist;
+      // 色は城(赤)/商人(0xfbbf24)/帰還サークル(0x34d399)と重複しない既存系統(★未決#4の見せ方裁定待ち)。
+      const color = 0x38bdf8; // 出現時のトリガー円(spawnRing)と同じ水色
+      g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.88 });
+      g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.92 });
+      g.circle(ex, ey - 3, 2.4).fill({ color, alpha: 0.75 + 0.2 * pulse }); // 頭
+      g.rect(ex - 4, ey + 1, 8, 4).fill({ color, alpha: 0.6 + 0.25 * pulse }); // 肩(escortの矢印と同じ人型シルエット)
       const hx = ex + dx * 15, hy = ey + dy * 15;
       const ca = Math.cos(angle), sa = Math.sin(angle);
       const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];

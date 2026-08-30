@@ -781,7 +781,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const wallMeta = unlocked ? getWallMeta(stage.id) : null;
     const bestRank = wallMeta && wallMeta.rankReached.some(Boolean) ? clampRank(wallMeta.selfHighestRank) : null;
     // 任意サブ(二人組クエスト)の納品状況(表示用CLEAR)。メニュー描画時のみのlocalStorage読取。
-    const subQuestDone = stage.subs.length > 0 && getEventQuestMeta(stage.id).sub;
+    const subQuestDone = stage.subs.length > 0 && getEventQuestMeta(stage.id).delivered;
     // 洋館［SUB］再訪(stage-6のみ・統合正本9章)。ここでは行の状態表示のみ(導線は詳細ページ)。
     const revisitState = stage.id === 'stage-6'
       ? revisitCardState(getStoryFlags(), subsAllCompletedFromMeta())
@@ -930,7 +930,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       <div key={s.id} className="rounded-none bg-purple-400/5 px-3 py-2">
                         <div className="text-[13px] font-semibold text-white">
                           {s.title}
-                          {getEventQuestMeta(stage.id).sub && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">CLEAR</span>}
+                          {getEventQuestMeta(stage.id).delivered && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">CLEAR</span>}
                         </div>
                         <div className="text-[11px] text-white/55">{s.desc}</div>
                       </div>
