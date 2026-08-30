@@ -763,6 +763,15 @@ export interface Enemy {
   gpShotAt?: number;
   /** その射撃の向き(rad)。 */
   gpShotAngle?: number;
+  // ---- O-3b-2 召喚系(分身・援護射撃)・research/SAME_ARENA.md §3-d-4(社長裁定「そのままの仕様で」) ----
+  /** 幻影が出した分身(プレイヤーの store.shadowClone / 守護霊の Summon.ghostShadowClone と同型・同ルール)。
+   * 狙いだけプレイヤーへ向ける(器・寿命・攻撃間隔・最大1体は共通)。 */
+  gpShadowClone?: ShadowCloneState;
+  /** 「移動中のみ進む」サブ(援護射撃)の主語判定用。プレイヤーの isMoving と同じしきい値
+   * (`ghostIsMovingNow`)で `runPhantomTick` が毎tick書く。 */
+  gpIsMoving?: boolean;
+  /** 援護射撃の専用タイマー(store.supportSniperCdMs / Summon.ghostSupportSniperCdMs と同型・移動中のみ進む)。 */
+  gpSupportSniperCdMs?: number;
   // 連続ジャンプ(グレン専用・v0.25.2430)。3つの着地点を**溜め開始でまとめてロック**して持ち回る。
   // 平たい配列 [x1,y1,x2,y2,x3,y3](中心座標)。判定側と描画側が同じ配列を読む=図形と判定が必ず一致する。
   gTriJumpPts?: number[];

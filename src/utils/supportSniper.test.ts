@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  computeSupportSniperTick, computeSupportSniperEntry, pickSupportSniperSoldier,
+  computeSupportSniperTick, computeSupportSniperEntry, computeSupportSniperFarCorner, pickSupportSniperSoldier,
   SUPPORT_SNIPER_CD_MS_BY_LEVEL,
 } from './supportSniper';
 
@@ -127,5 +127,37 @@ describe('computeSupportSniperEntry', () => {
     const e = computeSupportSniperEntry(400, 300, 400, 300, view);
     expect(e).not.toBeNull();
     expect(e!.y).toBe(600); // 下縁
+  });
+});
+
+// ★O-3b-2(research/SAME_ARENA.md §3-d-4): 幻影版の出現点=「プレイヤーから一番遠い隅」。
+describe('computeSupportSniperFarCorner(幻影版・社長裁定「一番遠い隅から」)', () => {
+  const view = { left: 0, top: 0, right: 800, bottom: 600 };
+
+  it('プレイヤーが左上寄りなら、一番遠い隅=右下', () => {
+    const c = computeSupportSniperFarCorner(100, 100, view);
+    expect(c.x).toBe(800);
+    expect(c.y).toBe(600);
+  });
+
+  it('プレイヤーが右下寄りなら、一番遠い隅=左上', () => {
+    const c = computeSupportSniperFarCorner(700, 500, view);
+    expect(c.x).toBe(0);
+    expect(c.y).toBe(0);
+  });
+
+  it('向き(dirX/dirY)は隅からプレイヤーへの単位ベクトル', () => {
+    const c = computeSupportSniperFarCorner(700, 500, view);
+    // 隅(0,0)→プレイヤー(700,500)の方向
+    const len = Math.hypot(700 - 0, 500 - 0);
+    expect(c.dirX).toBeCloseTo(700 / len);
+    expect(c.dirY).toBeCloseTo(500 / len);
+  });
+
+  it('4隅のどれかに厳密に一致する(中間点を作らない)', () => {
+    const c = computeSupportSniperFarCorner(250, 550, view);
+    const onCorner =
+      (c.x === view.left || c.x === view.right) && (c.y === view.top || c.y === view.bottom);
+    expect(onCorner).toBe(true);
   });
 });

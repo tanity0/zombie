@@ -3247,9 +3247,11 @@ export class PixiScene {
   // v0.25.2541(§2.11追補「分身は主語ごとに1体」): **同じ一式を主語ごとに1組**持つ
   // (player=プレイヤーの分身 / ghost=守護霊の分身。描画コードは1本=drawCloneSlot を共有し、
   //  差分は絵の主語(クラス/近接武器)と tint/alpha だけ)。
-  private cloneSlots: Record<'player' | 'ghost', CloneSlotSprites> = {
+  // ★O-3b-2(SAME_ARENA §3-d-4): 幻影の分身も同じ一式(phantom枠)を1組持つ。
+  private cloneSlots: Record<'player' | 'ghost' | 'phantom', CloneSlotSprites> = {
     player: makeCloneSlot(),
     ghost: makeCloneSlot(),
+    phantom: makeCloneSlot(),
   };
   // 守護霊(ghost-ally)のアニメ状態(v0.25.2475・視覚のみ)。歩き推定=前フレーム位置との差分(store追加なし)。
   private ghostAnim: { id: string; prevX: number; prevY: number; movingUntil: number } | null = null;
@@ -15154,6 +15156,20 @@ export class PixiScene {
       cloneGhost?.ghostBuild?.meleeKey ?? player.weapons.find(w => w.isMelee)?.key,
       GHOST_ALLY_TINT, GHOST_ALLY_ALPHA,
     );
+    // ★O-3b-2(SAME_ARENA §3-d-4): 幻影の分身。絵の主語=生成時のクラス(guardianPhantomTextureと
+    // 同じ ALLY_PLAIN_EQUIP)、色=紫(PHANTOM_SUB_TINT・カウンター不可のサブ共通文法)。
+    const clonePhantom = useGameStore.getState().enemies.find(e => e.type === 'guardian-phantom' && e.gpShadowClone);
+    const phantomClone = clonePhantom?.gpShadowClone ?? null;
+    const phantomTexSubject = phantomClone
+      ? { ...player, characterClass: phantomClone.characterClass, equipment: ALLY_PLAIN_EQUIP }
+      : player;
+    this.drawCloneSlot(
+      this.cloneSlots.phantom,
+      phantomClone,
+      phantomTexSubject,
+      clonePhantom?.phantomBuild?.meleeKey ?? player.weapons.find(w => w.isMelee)?.key,
+      PHANTOM_SUB_TINT, 1,
+    );
   }
 
   /**
@@ -22737,6 +22753,8 @@ export class PixiScene {
     const px = npc.x + npc.dirX * offset;
     const py = npc.y + npc.dirY * offset;
     sp.texture = tex;
+    // ★O-3b-2(SAME_ARENA §3-d-4): 幻影が呼んだNPCは紫(PHANTOM_SUB_TINT・カウンター不可のサブ共通文法)。
+    sp.tint = npc.hostile ? PHANTOM_SUB_TINT : 0xffffff;
     // スケール=護衛軍人と同じ humanNpcScale(プレイヤー同寸・遠近込み)。
     const sc = this.humanNpcScale(tex.width, tex.height, py);
     const faceSign = npc.dirX >= 0 ? 1 : -1; // 向き=敵の方向。発射後も変えない(そのまま後退)

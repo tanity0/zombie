@@ -4324,10 +4324,14 @@ const fireJunkWeaponOnSwing = (
 // 型・寿命・攻撃間隔・CD・Lv別値は**同じ**(ゴースト専用の別モデルは作らない)。
 // ---------------------------------------------------------------------------
 
-/** 主語の分身枠を読む(ghostId 未指定=プレイヤー)。居なければ null。 */
+/** 主語の分身枠を読む(ghostId 未指定=プレイヤー)。居なければ null。
+ * ★O-3b-2(SAME_ARENA.md §3-d-4): ghostId が守護霊(summons)で見つからなければ**幻影(enemies)**
+ * として解決する(setActorSubWeaponCooldownと同じ「守護霊→幻影」の順で宛先を解決する作法)。 */
 export const shadowCloneOf = (state: GameState, ghostId?: string): ShadowCloneState | null => {
   if (ghostId === undefined) return state.shadowClone;
-  return state.summons.find(s => s.id === ghostId && s.kind === 'ghost-ally')?.ghostShadowClone ?? null;
+  const ghost = state.summons.find(s => s.id === ghostId && s.kind === 'ghost-ally');
+  if (ghost) return ghost.ghostShadowClone ?? null;
+  return state.enemies.find(e => e.id === ghostId && e.type === 'guardian-phantom')?.gpShadowClone ?? null;
 };
 
 /** 主語の分身枠へ書く(setActorDashStateと同型の宛先振り分け)。 */
@@ -4336,8 +4340,16 @@ const setActorShadowClone = (ghostId: string | undefined, clone: ShadowCloneStat
     useGameStore.setState({ shadowClone: clone });
     return;
   }
+  const st = useGameStore.getState();
+  if (st.summons.some(x => x.id === ghostId && x.kind === 'ghost-ally')) {
+    useGameStore.setState(s => ({
+      summons: s.summons.map(x => x.id === ghostId ? { ...x, ghostShadowClone: clone ?? undefined } : x),
+    }));
+    return;
+  }
+  // ★O-3b-2: 守護霊で見つからなければ幻影(Enemy)の枠へ。
   useGameStore.setState(s => ({
-    summons: s.summons.map(x => x.id === ghostId ? { ...x, ghostShadowClone: clone ?? undefined } : x),
+    enemies: s.enemies.map(x => x.id === ghostId && x.type === 'guardian-phantom' ? { ...x, gpShadowClone: clone ?? undefined } : x),
   }));
 };
 
@@ -4347,8 +4359,11 @@ const setActorShadowClone = (ghostId: string | undefined, clone: ShadowCloneStat
  * (相乗り型サブ3種と同じ形)。生成したら true。
  * ※ subWeaponBlockedByKatana はプレイヤー経路では常に false(刀モードは triggerCounter が
  *   手前で return する)= 相乗り型サブ3種と同じ扱い。守護霊の一閃から呼ばれた時に効く。
+ * ★O-3b-2(SAME_ARENA.md §3-d-4): 幻影の近接スイング(phantomTick.runPhantomTick)からも
+ * **この1本**を通す(export済み)。owner.kind==='phantom' でも分岐は増えない
+ * (setActorShadowClone / ownerGhostId が宛先を吸収する)。
  */
-const spawnShadowCloneOnSwing = (
+export const spawnShadowCloneOnSwing = (
   get: () => GameState, actor: Player, owner: SubWeaponOwner, gameTime: number,
 ): boolean => {
   const ghostId = ownerGhostId(owner);
@@ -5149,6 +5164,10 @@ interface GameState {
   shadowCloneStrike: (clone: ShadowCloneState, ghostId?: string) => void; // 分身がその場で近接攻撃(プレイヤーの近接処理＋スキル効果を共用)
   tickShadowClone: (ghostId?: string) => void;           // 毎フレーム: 1秒ごとの自動攻撃と寿命(5秒)消滅を進める
   expireShadowClone: (ghostId?: string) => void;         // 分身を消滅させCD(3s)開始(寿命切れ/画面外)
+  // ★O-3b-2(SAME_ARENA.md §3-d-4): 幻影の分身は enemies を攻撃する shadowCloneStrike を流用しない
+  // (幻影自身が enemies の一員=自爆する。設置系で踏んだ事故と同型)。**標的=プレイヤー固定**の
+  // 別経路(他の幻影サブ=ドッグ/タレット/地雷と同じ「フラットダメージ・クリ無し・iframeは通常どおり」)。
+  phantomShadowCloneStrike: (clone: ShadowCloneState, phantomId: string) => void;
 
   // 火炎瓶(molotov)サブウェポン。現在のサイクルの投下進捗(純関数 computeMolotovTick の状態)。
   // null=アイドル(次サイクルはCD明けで開始)。判定自体は src/utils/molotov.ts、ここは適用のみ。
@@ -7912,9 +7931,50 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!isGhost) applyVampireMeleeHeal(get, player, cloneHitEnemyIds, ccx, ccy);
   },
 
+  // ★O-3b-2(SAME_ARENA.md §3-d-4「そのままの仕様で」): 幻影の分身は enemies ではなく
+  // **プレイヤーへ**近接する。宛先が「enemiesを走査する」既存 shadowCloneStrike のままだと、
+  // 幻影自身が enemies の一員なので**自分だけが唯一の候補になる**(設置系で踏んだ自爆と同型)。
+  // 器(生成/寿命/攻撃間隔/最大1体)は共通のまま、**当たり判定だけ**プレイヤー1点固定にする。
+  // 紫の文法(SAME_ARENA §3-d-4「幻影のサブは紫の文法」)に合わせ、他の幻影サブ
+  // (ドッグ/タレット/地雷)と同じ簡易ダメージ扱いにする: クリ無し・対人体勢チップ無し・
+  // カウンター不可(判定自体が近接カウンターの窓を一切見ない)・i-frameは通常どおり
+  // (damagePlayer へ damagerType を渡さない=近接i-frameバイパスの対象に**含めない**)。
+  phantomShadowCloneStrike: (clone, phantomId) => {
+    const st = get();
+    const actor = combatActorPlayer(phantomId);
+    if (!actor) return;
+    const { player } = st;
+    const ccx = clone.x + clone.width / 2;
+    const ccy = clone.y + clone.height / 2;
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    // 射程は**既存の分身と同じ式**(huntingMeleeRadius)。標的だけプレイヤー1点にする。
+    const meleeRange = huntingMeleeRadius(actor);
+    if (Math.hypot(pcx - ccx, pcy - ccy) > meleeRange) return;
+    const walls = meleeWallsAround(get, ccx, ccy, meleeRange);
+    if (walls.length > 0 && segmentBlocked(ccx, ccy, pcx, pcy, walls)) return;
+    const melee = actor.weapons.find(w => w.isMelee);
+    const base = meleeSwingBaseDamage(melee, actor);
+    // O-2(写すな、共通化しろ): phantomAtkMults と同じ二重掛け防止——combatActorPlayer が返す
+    // actor.growthAtkMult は記録スナップショットの値なので1へ潰し、**現在の育成**
+    // (GROWTH.md v4「幻影も反映」)を呼び出し側の掛け算として別途乗せる。
+    const outgoing = skillOutgoingDamageMult({ ...actor, growthAtkMult: 1 })
+      * (actor.equipBonus?.damageMult ?? 1) * (player.growthAtkMult ?? 1);
+    const dmg = Math.max(1, Math.round(base * outgoing * PVP_DAMAGE_SCALE));
+    const hpBefore = player.health;
+    get().damagePlayer(dmg, `${phantomDisplayLabel()}の分身`, ccx, ccy);
+    const landed = get().player.health < hpBefore;
+    // 紫(PHANTOM_SUB_TINT系)の斬撃+リング。着弾時のみバーストを足す(ドッグ被弾の前例と同型)。
+    get().spawnSlash(ccx, ccy, 'rgba(192,132,252,0.95)');
+    get().spawnRing(ccx, ccy, 6, 40, 'rgba(192,132,252,0.7)', 3, 240);
+    if (landed) get().spawnBurst(pcx, pcy, '#c084fc', 6);
+  },
+
   // 毎フレーム: 分身の自動近接(1秒ごと×最大5回)を進め、寿命(5秒)到達 or 回数上限で消滅。
   // v0.25.2541: 主語ごと(ghostId 未指定=プレイヤーの枠=従来と完全同一)。寿命・攻撃間隔・
   // 回数上限は同じ定数=ゴースト用の別ルールは無い。
+  // ★O-3b-2: 主語が幻影(guardian-phantom)なら phantomShadowCloneStrike(標的=プレイヤー)を、
+  // それ以外(プレイヤー/守護霊=従来)は shadowCloneStrike(標的=enemies)を呼ぶ。
   tickShadowClone: (ghostId) => {
     const clone = shadowCloneOf(get(), ghostId);
     if (!clone) return;
@@ -7924,7 +7984,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
     if (gameTime >= clone.nextAttackAt) {
-      get().shadowCloneStrike(clone, ghostId);
+      const isPhantom = ghostId !== undefined && get().enemies.some(e => e.id === ghostId && e.type === 'guardian-phantom');
+      if (isPhantom) get().phantomShadowCloneStrike(clone, ghostId as string);
+      else get().shadowCloneStrike(clone, ghostId);
       const after = shadowCloneOf(get(), ghostId);
       if (after) {
         setActorShadowClone(ghostId, {

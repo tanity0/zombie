@@ -196,7 +196,7 @@ import {
 import { tickSensorMines, SENSOR_MINE_DAMAGE, SENSOR_MINE_RADIUS } from '../utils/sensorMine';
 import { dueArmedEggs, eggsToChainArm, EGG_BLAST_RADIUS } from '../world/mines';
 import {
-  computeSupportSniperTick, computeSupportSniperEntry, pickSupportSniperSoldier,
+  computeSupportSniperTick, computeSupportSniperEntry, computeSupportSniperFarCorner, pickSupportSniperSoldier,
   SUPPORT_SNIPER_CD_MS_BY_LEVEL, SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_INSET,
 } from '../utils/supportSniper';
 import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
@@ -9009,26 +9009,42 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const ssSubject = (ssNpc.ownerGhostId !== undefined
                 ? combatActorPlayer(ssNpc.ownerGhostId)
                 : null) ?? stNow.player;
-              // 狙った敵の現在位置へ(発射までの250msで倒されていたら、その時点の最寄り敵へ持ち替え)。
-              let tgt = stNow.enemies.find(e => e.id === ssNpc.targetEnemyId) ?? null;
-              if (!tgt) {
-                let best = Infinity;
-                const pcx2 = ssSubject.x + ssSubject.width / 2;
-                const pcy2 = ssSubject.y + ssSubject.height / 2;
-                for (const e of stNow.enemies) {
-                  if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
-                  const d = Math.hypot(e.x + e.width / 2 - pcx2, e.y + e.height / 2 - pcy2);
-                  if (d < best) { best = d; tgt = e; }
-                }
-              }
+              // ★O-3b-2(SAME_ARENA §3-d-4): 幻影が呼んだNPCは**プレイヤーを狙う**
+              // (社長裁定「そのままプレイヤーに」)。狙いの持ち替えロジック(敵全滅時のフォールバック)は
+              // 対象が無いので通らない=プレイヤーへ固定で狙う。
               let aimX = ssNpc.dirX, aimY = ssNpc.dirY; // 敵が全滅していたら向きのまま撃つ(害なし)
-              if (tgt) {
-                const tx = tgt.x + tgt.width / 2 - fireX;
-                const ty = tgt.y + tgt.height / 2 - muzzleY;
+              if (ssNpc.hostile) {
+                const tx = stNow.player.x + stNow.player.width / 2 - fireX;
+                const ty = stNow.player.y + stNow.player.height / 2 - muzzleY;
                 const tm = Math.max(0.001, Math.hypot(tx, ty));
                 aimX = tx / tm; aimY = ty / tm;
+              } else {
+                // 狙った敵の現在位置へ(発射までの250msで倒されていたら、その時点の最寄り敵へ持ち替え)。
+                let tgt = stNow.enemies.find(e => e.id === ssNpc.targetEnemyId) ?? null;
+                if (!tgt) {
+                  let best = Infinity;
+                  const pcx2 = ssSubject.x + ssSubject.width / 2;
+                  const pcy2 = ssSubject.y + ssSubject.height / 2;
+                  for (const e of stNow.enemies) {
+                    if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
+                    const d = Math.hypot(e.x + e.width / 2 - pcx2, e.y + e.height / 2 - pcy2);
+                    if (d < best) { best = d; tgt = e; }
+                  }
+                }
+                if (tgt) {
+                  const tx = tgt.x + tgt.width / 2 - fireX;
+                  const ty = tgt.y + tgt.height / 2 - muzzleY;
+                  const tm = Math.max(0.001, Math.hypot(tx, ty));
+                  aimX = tx / tm; aimY = ty / tm;
+                }
               }
-              addProjectile(buildSupportSniperShot(ssSubject, fireX, muzzleY, { x: aimX, y: aimY }, gameTime));
+              const ssShot = buildSupportSniperShot(ssSubject, fireX, muzzleY, { x: aimX, y: aimY }, gameTime);
+              // ★SAME_ARENA §3-d-4「幻影のサブは紫の文法」: 幻影が呼んだ弾はプレイヤーに当たり
+              // (hostile)、カウンターできない(noCounter)。ダメージ基準(buildSupportSniperShot)は
+              // 1バイトも変えず、宛先マーカーだけ上書きする。
+              addProjectile(ssNpc.hostile
+                ? { ...ssShot, hostile: true, noCounter: true, ownerPhantom: true }
+                : ssShot);
               // SE: プレイヤーのスナイパー発砲音(rifle-fire)を護衛NPCと同じ npcSfxDistGain で距離減衰。
               const ssPl = stNow.player;
               const g = npcSfxDistGain(
@@ -9485,6 +9501,62 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // ---- 援護射撃(support-sniper)★O-3b-2(SAME_ARENA §3-d-4・社長裁定「そのままプレイヤーに、
+        // プレイヤーから一番遠い隅からtier1のマグナム仕様」) ----
+        // CD進行/発射可否は**プレイヤー・守護霊と同じ純関数**(computeSupportSniperTick)。
+        // 出現点だけが違う: プレイヤー/守護霊=狙う敵の反対側の縁(computeSupportSniperEntry)、
+        // 幻影=**プレイヤーから一番遠い隅**(computeSupportSniperFarCorner)。プレイヤー版の
+        // 出現点(computeSupportSniperEntry の呼び出し)は上のブロックのまま1バイトも変えていない。
+        if (phantomForSub) {
+          const pSub = phantomForSub;
+          const pActor = combatActorPlayer(pSub.id);
+          if (
+            pActor && !inReturnCircle
+            && pActor.subWeapons.includes('support-sniper')
+            && !subWeaponBlockedByKatana(pActor, 'support-sniper')
+          ) {
+            const pLevel = Math.max(1, Math.min(3, pActor.subWeaponLevels['support-sniper'] ?? 1));
+            const pCdMs = SUPPORT_SNIPER_CD_MS_BY_LEVEL[pLevel];
+            const pSsState = useGameStore.getState();
+            const pTick = computeSupportSniperTick({
+              deltaMs: deltaTime * 1000,
+              isMoving: pSub.gpIsMoving ?? false,
+              hasEnemy: !pSsState.supportSniperNpc, // 標的=プレイヤー固定=常に狙える(NPC枠が空いていれば撃てる)
+              cdRemainingMs: pSub.gpSupportSniperCdMs ?? pCdMs,
+              cooldownMs: pCdMs,
+            });
+            let pNext = pTick.cdRemainingMs;
+            if (pTick.fire) {
+              // スキル補正(オーバークロック→タイムキーパー)は守護霊と同じ共有純関数を、幻影自身の
+              // ビルドを主語に通す。計測(recordSubUse等)は除外4=積まない(守護霊と同じ扱い)。
+              pNext = applySubCooldownSkills(
+                skillOverclockChance(pActor), skillCooldownMult(pActor), pTick.cdRemainingMs).deltaMs;
+            }
+            if (pNext !== (pSub.gpSupportSniperCdMs ?? pCdMs)) {
+              useGameStore.setState(st => ({
+                enemies: st.enemies.map(e => e.id === pSub.id ? { ...e, gpSupportSniperCdMs: pNext } : e),
+              }));
+            }
+            if (pTick.fire && !pSsState.supportSniperNpc) {
+              const p2 = pSsState.player;
+              const p2cx = p2.x + p2.width / 2, p2cy = p2.y + p2.height / 2;
+              const corner = computeSupportSniperFarCorner(
+                p2cx, p2cy,
+                { left: p2cx - gameBounds.width / 2, top: p2cy - gameBounds.height / 2, right: p2cx + gameBounds.width / 2, bottom: p2cy + gameBounds.height / 2 },
+              );
+              useGameStore.getState().setSupportSniperNpc({
+                id: Date.now(),
+                x: corner.x, y: corner.y, dirX: corner.dirX, dirY: corner.dirY,
+                soldierIndex: pickSupportSniperSoldier(
+                  pSsState.escorts.map(e => e.soldierIndex), BASE_SOLDIER_COUNT, PHASER_INDEX),
+                spawnedAt: gameTime, firedAt: 0, targetEnemyId: '', // 標的=プレイヤー固定(未使用)
+                ownerGhostId: pSub.id, // 弾の倍率評価の主語=この幻影(combatActorPlayerが解決する)
+                hostile: true, // ★紫の文法: プレイヤーに当たり、カウンター不可
+              });
+            }
+          }
+        }
+
         // 分身(サブウェポン): 画面外で消滅(攻撃なし)、画面内なら1秒ごとの自動近接(5秒)を進める。
         // v0.25.2541(§2.11追補): **主語ごとに1回ずつ**回す(プレイヤーの枠=従来と同じ順序・同じ規則、
         // 守護霊の枠=同じ関数・同じしきい値。ゴースト用の別ルールは無い)。
@@ -9507,6 +9579,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           runCloneTick(useGameStore.getState().shadowClone);
           const cloneGhost = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally' && s.ghostShadowClone);
           if (cloneGhost) runCloneTick(cloneGhost.ghostShadowClone, cloneGhost.id);
+          // ★O-3b-2(SAME_ARENA §3-d-4): 幻影の分身も同じ器(消滅/自動近接)を同じ関数で進める
+          // (tickShadowClone側が主語=幻影なら phantomShadowCloneStrike=プレイヤー標的へ分岐する)。
+          const clonePhantom = useGameStore.getState().enemies.find(e => e.type === 'guardian-phantom' && e.gpShadowClone);
+          if (clonePhantom) runCloneTick(clonePhantom.gpShadowClone, clonePhantom.id);
         }
 
         // ★v0.25.3963(社長報告「相手の設置物壊せないよ?」): プレイヤー側の弾が幻影の設置物

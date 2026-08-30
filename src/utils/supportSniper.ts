@@ -29,6 +29,9 @@ export interface SupportSniperNpcState {
   // NPC枠自体は「同時1人」の世界の枠のまま(センサー地雷の盤面と同じ流儀)=呼び出しは早い者勝ちで、
   // 埋まっている間はもう一方のタイマーが満タン保持で待つ(既存の待ち規則をそのまま使う)。
   ownerGhostId?: string;
+  /** ★O-3b-2(research/SAME_ARENA.md §3-d-4): 幻影が呼んだNPCか。true の間だけ標的=プレイヤー・
+   * 撃つ弾は紫(noCounter)。未設定/false=従来どおり(プレイヤー/守護霊が呼び、敵を狙う)。 */
+  hostile?: boolean;
 }
 
 // 登場NPCの選定: 軍人名簿(0..soldierCount-1)から「この出撃で護衛に出ている軍人(deployedIndices)」を
@@ -115,4 +118,31 @@ export const computeSupportSniperEntry = (
   else if (dy < -1e-6) t = Math.min(t, (view.top - playerY) / dy);
   if (!Number.isFinite(t) || t < 0) return null;
   return { x: playerX + dx * t, y: playerY + dy * t, dirX: -dx, dirY: -dy };
+};
+
+// ★O-3b-2(research/SAME_ARENA.md §3-d-4・社長裁定「そのままプレイヤーに、プレイヤーから一番
+// 遠い隅から tier1のマグナム仕様」): 幻影版の出現点。プレイヤー版(上のcomputeSupportSniperEntry=
+// 狙う敵の反対側の縁)とは出現点の決め方だけが違う——狙う相手(=プレイヤー)から**画面の4隅の中で
+// 最も遠い隅**を選ぶ(遠くから飛んでくるので弾が長く見える=読んで避けられる)。
+// 向き(dirX/dirY)はNPCが撃つ方向=その隅からプレイヤーへ。
+export const computeSupportSniperFarCorner = (
+  playerX: number, playerY: number,
+  view: ViewRect,
+): { x: number; y: number; dirX: number; dirY: number } => {
+  const corners = [
+    { x: view.left, y: view.top },
+    { x: view.right, y: view.top },
+    { x: view.left, y: view.bottom },
+    { x: view.right, y: view.bottom },
+  ];
+  let best = corners[0];
+  let bestDist = -Infinity;
+  for (const c of corners) {
+    const d = Math.hypot(c.x - playerX, c.y - playerY);
+    if (d > bestDist) { bestDist = d; best = c; }
+  }
+  const dx = playerX - best.x;
+  const dy = playerY - best.y;
+  const len = Math.max(0.001, Math.hypot(dx, dy));
+  return { x: best.x, y: best.y, dirX: dx / len, dirY: dy / len };
 };

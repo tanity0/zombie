@@ -41,7 +41,9 @@ import {
   showPvpFatalOnPlayerPresentation,             // ★2026-08-27: 幻影→プレイヤーの致命もKILL演出(ズーム)
   skillBenkeiCritBonus, skillKnifeMasterMeleeCrit, // ★裁定①: 近接クリ式のミラー(検収監査 中⑥)
   resolveShieldWalls, shieldPlayableCtx, // ★B6(盾押し・§6)
+  spawnShadowCloneOnSwing, // ★O-3b-2(SAME_ARENA §3-d-4): 分身の生成入口。player/ghost-allyと同じ1本
 } from '../store/gameStore';
+import { phantomAsOwner } from './subWeaponOwner'; // ★O-3b-2: 分身の生成入口へ渡すオーナー形
 import { softCapCritChance } from './critSoftCap'; // ★§13-3d: 近接クリ式のミラーに同じソフトキャップ
 // ★SAME_ARENA §9(対人体勢): 幻影・プレイヤーが対称に持つ隠し体勢の純関数。
 import {
@@ -62,7 +64,7 @@ import {
 import { GRAVITY_SHOT_BOSS_SLOW_MULT } from './skillEffectsB7';
 import {
   decideGhost, GHOST_COUNTER_MELEE_PERIOD_MS, type GhostDecision, type GhostProfile,
-  shouldGhostClaimSub, withSynthesizedMicroRhythm,
+  shouldGhostClaimSub, withSynthesizedMicroRhythm, ghostIsMovingNow,
 } from './ghostDriver';
 import { hashSeed } from './microRhythmReplay'; // research/AI_HUMANIZE.md B3(§4専用乱数流のシード)
 import { rampVelocity, snapStoppedVelocity } from './motionRamp'; // research/AI_HUMANIZE.md B3(§4慣性=速度状態モデル)
@@ -168,6 +170,12 @@ export const PHANTOM_SUPPORTED_SUBS: readonly SubWeaponKey[] = [
   // (社長「犬は触れて消すだけ…要は邪魔だけするっていう」)=取得ではないので
   // 「霊は世界の物を自分の物にしない」線を跨がない。仕様=SAME_ARENA §3-d-4。
   'dog',
+  // ★O-3b-2 召喚系・残り2種(社長裁定2026-08-25「そのまま」/「そのままプレイヤーに、
+  // プレイヤーから一番遠い隅からtier1のマグナム仕様」・仕様確定=SAME_ARENA §3-d-4)。
+  // 分身=既存の器をそのまま鏡に(狙いだけプレイヤーへ)。援護射撃=既存の武器仕様のまま、
+  // 出現点だけ「プレイヤーから一番遠い隅」(computeSupportSniperFarCorner)。
+  'shadow-clone',
+  'support-sniper',
 ];
 /** その種を幻影が主語として使えるか(未実装の種は必ずプレイヤーへフォールバックする)。 */
 export const phantomSupportsSub = (key: SubWeaponKey): boolean =>
@@ -888,6 +896,9 @@ export const runPhantomTick = (
   s.ghost.microPunishDelayUntil = decision.microPunishDelayUntil;
   s.ghost.microDecisionMode = decision.microDecisionMode;
   s.ghost.microDecisionUntil = decision.microDecisionUntil;
+  // ★O-3b-2(SAME_ARENA §3-d-4): 援護射撃(support-sniper)の「移動中のみ進む」専用タイマーが読む
+  // 主語判定。守護霊(ghostIsMoving)と同じしきい値・同じ純関数(ghostIsMovingNow)。
+  patch.gpIsMoving = ghostIsMovingNow(decision.moveX, decision.moveY);
 
   // ---- 移動 ---------------------------------------------------------------------------------------
   // 押し道具(鞭・シールドバッシュ)の shove 窓の間は**自分の移動で x/y を上書きしない**
@@ -981,6 +992,17 @@ export const runPhantomTick = (
   if (pend !== undefined && newGameTime - pend >= MELEE_WINDUP_MS) {
     patch.gpPendingSwingAt = undefined;
     swingPhantomMelee(bcx, bcy, player, sfx, patch, newGameTime, s.growthAtkMult, phantom.id);
+    // ★O-3b-2(SAME_ARENA §3-d-4「そのままの仕様で」): 分身(shadow-clone)は近接スイングへ
+    // 相乗りする「相乗り型サブ」——プレイヤーの triggerCounter / 守護霊の fireGhostMeleeSwingSubs
+    // が通るのと**同じ1本**(spawnShadowCloneOnSwing)。プレイヤー/守護霊もヒット結果を見ずに
+    // 毎スイングで通しているので、ここも swingPhantomMelee の結果(命中/カウンター)を見ない。
+    const cloneActor = combatActorPlayer(phantom.id);
+    if (cloneActor) {
+      spawnShadowCloneOnSwing(
+        () => useGameStore.getState(), cloneActor,
+        phantomAsOwner(phantom, { x: s.ghost.facing, y: 0 }), newGameTime,
+      );
+    }
   }
 
   applyPatch(phantom.id, patch);
