@@ -822,6 +822,20 @@ CLAUDE.md の「Empirical render budget」節と `research/LIGHT_REWORK.md` の�
 `gameStore > ghostBuild > weaponUtils`。**増えていないか**を見る)。③今回の修正=寸法定数を依存ゼロの葉
 `src/utils/bountyDims.ts` へ移動し、gameStore側からの到達枝(levelUpGate→bountyTick)を切った。
 
+**★2回目が起きた(v0.25.4096・2026-08-31)**: B2が `gameStore.ts` に
+`import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyTick'` を1行足して**同じ環を再生産**した
+(`bountyTick` のモジュール初期化 `BOUNTY_DEPART_BANNER_MS = EVENT_BANNER_MS` がTDZ)。
+**同じ行の3行下に「bountyTick.tsを直接importすると循環」と書いてあったのに踏んだ。**
+madge の環は **1本 → 6本**に増えていたが、lint/typecheck/test は全部緑だった。
+修正は v0.25.3390 と同じ形(定数を葉 `bountyDims.ts` へ移す)。
+
+**★機械化した(v0.25.4097・社長承認)**: `scripts/check-circular-imports.mjs` を新設し、
+**CI(`.github/workflows/ci.yml` の Typecheck の直後)で回す**。既知の環を allowlist に固定し、
+**allowlist に無い環が1つでも出たら落ちる**(本数だけ数えると「1本直して1本増えた」を見逃すので
+**環の中身で照合**する。環の回転は正規化してから比べる)。
+**既知の環を減らせたら allowlist からも消すこと**(消さないと網が緩んだまま残る)。
+手元でも `node scripts/check-circular-imports.mjs`(約8秒)で同じ判定ができる。
+
 **掟**:
 - **gameStore(または他の巨大ハブ)がimportするファイルに、gameStoreをimportするファイルをimportさせない。**
   新しいimportを足す時は「この枝でハブに戻る道ができないか」を考える。迷ったら madge を1回回す(8秒)。

@@ -26,6 +26,11 @@ jobs:
         run: npm run lint
       - name: Typecheck
         run: npm run typecheck
+      # ★循環importの回帰ガード(社長承認2026-08-31)。lint/typecheck/test/build は循環importを
+      # 全部素通りし、壊れるのは本番バンドルの評価順=「起動直後に真っ暗」だけ(v0.25.3390 / v0.25.4096)。
+      # 既知の環は scripts/check-circular-imports.mjs の ALLOWED に固定してあり、増えたらここで落ちる。
+      - name: Circular imports
+        run: node scripts/check-circular-imports.mjs
       - name: Unit tests
         run: npm test
       - name: Worker tests
