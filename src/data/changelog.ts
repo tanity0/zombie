@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4080',
+    items: [
+      'HPオーブの中身が発光する液体のテクスチャになりました(波・水位の動きはそのまま)。',
+    ],
+  },
+  {
     version: '0.25.4079',
     items: [
       '城ボスの薙ぎ払い(試験中): 追尾する予告の時間を0.5秒→1秒に延長しました(ロック後の溜め=避けるタイミングは変わりません)。',

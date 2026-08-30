@@ -44,6 +44,22 @@ const FRAME_SCALE = 1.0; // 枠画像の一辺=SIZE×この値(叩き台。素�
 // 中心が画像中心より14px上(512px基準・表示で約2px)に描かれていたため、画素を+14px下へ平行移動して
 // 画像中心=リング中心に正規化した。コード側は中心一致(CX/CY)のまま=オフセット補正を持たない。
 
+// ★液体の中身テクスチャ(社長支給2026-08-30「HPバーの液体の中身」+「マスクとして使えば液体っぽく
+// なる？」→はい): 波形パス(=今の水の動きの塗り)をclipにして、この球素材をオーブにフィットさせて
+// drawImageする。水位・波・慣性は現行のまま、塗りの質感だけが素材になる。素材は球のbboxで正方形
+// クロップ→256pxに正規化済み(=マスク円いっぱいに乗る)。`?hpliquid=0`で従来のグラデ塗りへ復帰。
+const HP_LIQUID_DISABLED = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('hpliquid') === '0';
+let hpLiquidImg: HTMLImageElement | null = null;
+const liquidTexture = (): HTMLImageElement | null => {
+  if (HP_LIQUID_DISABLED || typeof window === 'undefined') return null;
+  if (!hpLiquidImg) {
+    hpLiquidImg = new Image();
+    hpLiquidImg.src = spritePath('hp-orb-liquid');
+  }
+  return hpLiquidImg;
+};
+
 // 液体シミュレーションの叩き台定数(UI_OVERHAUL.md §2の数値どおり。実機調整はここだけ触ればよい)。
 const FOLLOW_RATE = 3.2;     // shownHpの実HPへの指数追従(1/s・注ぎ/流出の速度感)
 const DECAY_RATE = 1.9;      // 波の振幅減衰(1/s・ワイン=粘る)
@@ -127,8 +143,25 @@ const drawLiquid = (
   const grad = ctx.createLinearGradient(CX, baseTopY, CX, CY + ORB_R);
   grad.addColorStop(0, hpHi);
   grad.addColorStop(1, hpLo);
-  ctx.fillStyle = grad;
-  ctx.fill();
+  const tex = liquidTexture();
+  if (tex && tex.complete && tex.naturalWidth > 0) {
+    // 素材テクスチャ経路: 波形パス(カレントパス)をマスクにして球素材を描く。テクスチャは波の中心
+    // オフセットの半分だけ縦に揺れる(=中身も液面と同源の慣性で動く。±数px)。マージン4pxは
+    // その揺れで円の縁に隙間が出ないための余白。上に従来グラデを薄く重ね、HP残量による
+    // 2段階の色変化(明→暗)の情報を保つ。
+    ctx.save();
+    ctx.clip();
+    const bob = waveOffset(CX, tSec, amplitudePx) * 0.5;
+    ctx.drawImage(tex, CX - ORB_R - 4, CY - ORB_R - 4 + bob, ORB_R * 2 + 8, ORB_R * 2 + 8);
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = grad;
+    ctx.fillRect(leftX, CY - ORB_R - 4, rightX - leftX, bottomY - (CY - ORB_R - 4));
+    ctx.restore();
+  } else {
+    // 従来経路(?hpliquid=0 / 素材ロード前): グラデ塗り。
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
 
   // 液面ハイライト線(白35%・波線・弦幅を使ってよい唯一の場所)。
   const chordHalf = Math.sqrt(Math.max(0, ORB_R * ORB_R - (baseTopY - CY) ** 2));
@@ -313,7 +346,18 @@ const VitalsOrb: React.FC = () => {
     state.ctx = ctx;
     drawLiquid(ctx, state, healthRef.current, Math.max(1, maxHealthRef.current), performance.now() / 1000);
     ensureRunning();
+    // 液体テクスチャのロード完了で1回描き直す(初回マウント時にロードが間に合わず、波が止まった
+    // まま=rAFが再始動しないと従来塗りのまま静止し続けるのを防ぐ)。
+    const tex = liquidTexture();
+    const onTexLoad = tex && !tex.complete
+      ? () => {
+        const st = animRef.current;
+        if (st?.ctx) drawLiquid(st.ctx, st, healthRef.current, Math.max(1, maxHealthRef.current), performance.now() / 1000);
+      }
+      : null;
+    if (tex && onTexLoad) tex.addEventListener('load', onTexLoad);
     return () => {
+      if (tex && onTexLoad) tex.removeEventListener('load', onTexLoad);
       if (state.rafId != null) cancelAnimationFrame(state.rafId);
       state.rafId = null;
       state.ctx = null;
