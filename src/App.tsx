@@ -292,10 +292,15 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     useGameStore.getState().setPendingRevisit(revisitRun);
     useGameStore.getState().setPendingCorridor(corridorRun);
     useGameStore.getState().setPendingHiddenBoss(stageForRun?.hiddenBoss ?? null);
+    // EVENT_QUEST_DESIGN.md §2-1「★★『このランでクエストが有効か』の唯一の出どころ」(★v3 5巡目 監査A-3):
+    // resetGame の qGone が state.benchmarkRun を読むので、resetGame より**前**にセットする
+    // (resetGame はこのフラグを読みも書きもしない=前に置いても他の挙動は1つも変わらない)。
+    // 旧: resetGame の後で立てていたため qGone が前ランの値を読み、BENCHで二人組が出る/
+    // BENCH直後の通常出撃でクエストが丸ごと消える事故があった。
+    useGameStore.getState().setBenchmarkRun(benchmark);
     resetGame(validClass);
     // サブクエスト(research/SUBQUESTS.md): 補充は **resetGame の後**(中12: reset で消えるため)。
     // ベンチ(BENCH)は benchmarkRun で、練習/ガントレットは refillSubquests 内の isPracticeRun で除外。
-    useGameStore.getState().setBenchmarkRun(benchmark);
     useGameStore.getState().refillSubquests();
     clearSfxThrottle(); // ラン開始でSEスロットル記録をリセット(前ランの終わり際の音が次ラン頭でブロックされるのを防ぐ)
     // 出撃ごとの会話は選択ミッションから設定。フリー(周回)/未選択/ベンチ/再訪(通信なし)は空=会話なし。

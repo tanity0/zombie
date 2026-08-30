@@ -1730,7 +1730,12 @@ export interface WeaponMerchant {
 }
 
 // gone = 過去のプレイで完了(納品)済みのステージ: 二人はそのステージに以後出現しない(社長指示v0.25.1684)。
-export type EventQuestStatus = 'available' | 'accepted' | 'completed' | 'gone';
+// v2(二人組クエストv2・EVENT_QUEST_DESIGN.md §2-2B)で6値へ拡張:
+// hidden(0:00〜レスキュー出現前 / 裏ボス戦闘中) → rescue(出現〜囲いクリア) → accepted(囲いクリア〜城ボス撃破)
+// → warping(撃破〜帰還サークルへの飛来) → delivering(帰還サークル到着〜納品成立) → completed(納品後)。
+// gone は resetGame の qGone の1箇所だけが書く(§2-1)。状態遷移の書き手は useGameLoop の二人組ブロックのみ
+// (§2-2B)——このコミットでは型と初期値だけを直し、遷移そのものは書かない(B1「型と器」)。
+export type EventQuestStatus = 'hidden' | 'rescue' | 'accepted' | 'warping' | 'delivering' | 'completed' | 'gone';
 
 export interface EventQuestNpc {
   x: number;
@@ -1746,6 +1751,22 @@ export interface EventQuestNpc {
   // false の間は滞在メーターが進まない=受領/納品の直後にその場に立ち続けても次の段階が即発火しない
   // (社長指示v0.25.1684の「また…すると完了」のガード。受領→納品→次クエスト受付の全てに適用)。
   leftSinceAccept: boolean;
+  // v2(EVENT_QUEST_DESIGN.md §2-2B / §2-14)。飛び去り(warping前)・飛来(warping→delivering)を表す。
+  // 状態遷移そのものはB2以降(useGameLoopの二人組ブロック)が書く。型と初期値だけがこのコミットの範囲。
+  moveStartedAt: number;   // 移動段の開始 gameTime
+  moveFromX: number;       // 移動の始点
+  moveFromY: number;
+  moveToX: number;         // 移動の終点
+  moveToY: number;
+  // 'crouch'|'flyout'|'flyin' の3段。「移動していない」を表す値が無かった(★v3 5巡目 監査(B)#8)ため
+  // null を補う(発火条件「飛来/退場のどちらでもない」を null で表す)。
+  movePhase: 'crouch' | 'flyout' | 'flyin' | null;
+  // 現在の弧の高さ(px・0=接地)。弧を y に焼き込むと depthScale/zIndex/horizonActorAlpha が全部
+  // y から作られるため描画が壊れる(§2-14「★二人組の接地影に高度を渡す」)。y は常に地面の足元Y。
+  hopPx: number;
+  // 囲いのトリガー円の半径。唯一の出どころは useGameLoop が出現時に代入する ARENA_EVENT_RADIUS
+  // (§2-14「★半径の唯一の出どころ」)。このコミットでは未使用のプレースホルダ(B2で配線)。
+  triggerRadius: number;
 }
 
 // Projectile types

@@ -169,6 +169,7 @@ import {
   getEventQuestMeta, setEventQuestMeta, markCastleBossCleared, syncQuestStageClear,
   updateStoryFlags, markMissionCleared,
   isKogarasuUnlocked, markKogarasuUnlocked,
+  getSelectedFreeMode,
   type WallMeta,
 } from '../data/progress';
 // 城ボスの個体名の正本(カットイン台帳)。死因・討伐バナー・年表など全UIが同じ名前を引く。
@@ -808,14 +809,29 @@ const createEventQuestNpc = (): EventQuestNpc => {
   const angle = Math.random() * Math.PI * 2;
   const dist = EVENT_NPC_MIN_DISTANCE + Math.random() * (EVENT_NPC_MAX_DISTANCE - EVENT_NPC_MIN_DISTANCE);
   return {
+    // v2(EVENT_QUEST_DESIGN.md §2-2B): 生成時のx/yは「まだ決まっていない値」。実際の出現位置は
+    // 4:00の出現時にB2が§2-3の規則で上書きする(生成時の乱数配置は使わない)。
     x: Math.cos(angle) * dist,
     y: Math.sin(angle) * dist,
     radius: EVENT_NPC_INTERACT_RADIUS,
-    status: 'available',
+    // v2: 初期status='hidden'(旧'available'は退役。描画スイッチはstatusなのでこれが無いと
+    // 0:00から二人が立ったままになる=syncEventQuestNpcのhidden早期returnと対の変更)。
+    status: 'hidden',
     questIndex: 0,
     fadeStartedAt: 0,
     dwellMs: 0,
     leftSinceAccept: true, // 生成直後は「外に居た」扱い=初回はそのまま受領できる
+    // v2で追加(§2-14「EventQuestNpcに足すフィールド」)。値はB2(飛び去り/飛来の配線)が書く。
+    moveStartedAt: 0,
+    moveFromX: 0,
+    moveFromY: 0,
+    moveToX: 0,
+    moveToY: 0,
+    movePhase: null,
+    hopPx: 0,
+    // 唯一の出どころはuseGameLoopが出現時に代入するARENA_EVENT_RADIUS(§2-14)。B1では未配線のため
+    // プレースホルダの0(design backlog §2-16 (B)#8「triggerRadiusの初期値も未指定」)。
+    triggerRadius: 0,
   };
 };
 // 二人組(クエストNPC)の受領方式(社長指示v0.25.1681): 会話ポップアップ廃止。会話サークル内に
@@ -4908,6 +4924,15 @@ interface GameState {
   eventQuestKills: number;
   eventQuestGoalCount: number;               // N(forced=1 / sub=設定値)
   eventQuestGoalTier: EnemyColorTier | null; // sub の対象色(null=全キル)
+  // ── 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-14「このランの状態フィールド」)。
+  // 全部 store(useRefにしない=HUD/描画が読む・ラン跨ぎで消える必要がある)。resetGameで全部リセット。
+  // 状態遷移そのものの書き手は useGameLoop の二人組ブロック1箇所(§2-2B)=B2以降で配線する。
+  rescueClearedAt: number;      // レスキュー完了の打刻(0=未)
+  rescueArenaStartedAt: number; // 囲いの発火打刻・後始末用(0=未)
+  deliveryLocked: boolean;      // 納品ロック(既定false)
+  castleAttnDoneAt: number;     // アテンション成立の打刻(0=未)
+  rescueSpawnedAt: number;      // レスキュー地点の出現抽選を1度だけにする打刻(0=未抽選)
+  basesEverCaptured: number;    // S5だけの先行条件のラッチ(単調・下げない。0=未)
   // ── サブクエスト(research/SUBQUESTS.md)。受注せず出撃時に2枠まで自動補充される小目標。
   // 二人組クエスト(上のeventQuest*)とは完全に別系統。HUDは右上のEventQuestPillと同じ縦積み。
   // subquests は**進捗が動いた時にだけ**書き換わる(毎フレームではない=React再描画規律を満たす)。
@@ -5959,6 +5984,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   eventQuestKills: 0,
   eventQuestGoalCount: 0,
   eventQuestGoalTier: null,
+  rescueClearedAt: 0,
+  rescueArenaStartedAt: 0,
+  deliveryLocked: false,
+  castleAttnDoneAt: 0,
+  rescueSpawnedAt: 0,
+  basesEverCaptured: 0,
   subquests: [],
   subquestGoldEarned: 0,
   subquestClearSeq: 0,
@@ -10954,9 +10985,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   completeEventQuest: () => {
     // 納品(EVENT_QUEST_DESIGN.md): 報酬ゴールド(永続残高へ即時)+段階を永続記録。
     //  ・強制納品 → forcedフラグ+次ステージ解放同期(城ボスフラグと揃えばクリア扱い)。
-    //    二人は残り、サブの受付(available)へ戻る(一度離れてから再滞在3秒で受注)。
+    //    二人は残り、サブの受付へ戻る(一度離れてから再滞在3秒で受注)。
     //  ・サブ納品 → subフラグ=以後そのステージに二人は出現しない。そのプレイでは消さない
     //    (fadeStartedAtは立てず立ち姿のまま・以後何も起きない)。
+    // v2(EVENT_QUEST_DESIGN.md §2-2B・B1「型と器」): v1の「forced納品→受付へ戻す」経路は
+    // acceptEventQuest(v1の受領入口)がuseGameLoop側から呼ばれなくなったため、
+    // active==='forced' にはもう到達しない(eventQuestActiveが'forced'になる書き手が無い)。
+    // 型維持のため status は退役した'available'の代わりに'hidden'(=描画なしの休止状態)を置く。
+    // このif分岐そのものの要否(v2で単一のrescue経済に統合するか)はB2/B4で設計判断する。
     const stageId = getSelectedStageId();
     const active = get().eventQuestActive;
     // スキル: ゴールドラッシュ(§6.10 M33⑪) = 永続ゴールド獲得 ×1.2/1.35/1.5(Lv・四捨五入)。
@@ -10970,7 +11006,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(state => ({
         eventQuestNpc: {
           ...state.eventQuestNpc,
-          status: 'available',
+          status: 'hidden',
           dwellMs: 0,
           leftSinceAccept: false
         },
@@ -18503,18 +18539,32 @@ export const useGameStore = create<GameState>((set, get) => ({
               : createWeaponMerchant(),
         // 二人組(クエストNPC): クエスト設定のあるステージ(1/3/4/5)のみ出現(社長裁定v0.25.1686 #6)。
         // サブ納品済みステージにも以後出現しない(そのプレイ中に消えないのは completeEventQuest 側)。
+        // v2(EVENT_QUEST_DESIGN.md §2-1): 通常出撃のみに絞る。「このランでクエストが有効か」の
+        // 唯一の出どころ=この qGone(以後は eventQuestNpc.status !== 'gone' の1本を読む・§2-1)。
         eventQuestNpc: (() => {
           const qCfg = getEventQuestConfig(getSelectedStageId());
           // ボスメーカーの部屋では二人組クエストNPCも出さない(社長指示v0.25.2628「npcじゃま」)。
           // ★社長指示2026-08-26「ボスモードに二人組がいるのはおかしい」: 練習ラン(ボスモード)も出さない
           // (商人のv3138と同じ扱い。ゲートにisPracticeRun()が漏れていた)。
-          const qGone = bossMakerRoom || isPracticeRun() || !qCfg || getEventQuestMeta(getSelectedStageId()).sub;
+          // v2 §2-1: ガントレット/EX/フリー(周回)/ベンチ/洋館通路/訓練M0/屋内・ラボ/再訪も追加で除外
+          // (以前は4条件しか見ておらず、これらのランでも二人組が出てしまっていた)。
+          const qGone = bossMakerRoom || isPracticeRun() || isGauntletRun() || isExStageRun()
+            || getSelectedFreeMode() || state.benchmarkRun || corridorMode || indoor
+            || stageTheme === 'lab' || farBackdrop === 'tutorial' || state.pendingRevisit
+            || !qCfg || getEventQuestMeta(getSelectedStageId()).sub;
           return qGone ? { ...createEventQuestNpc(), status: 'gone' as const } : createEventQuestNpc();
         })(),
         eventQuestActive: null,
         eventQuestKills: 0,
         eventQuestGoalCount: 0,
         eventQuestGoalTier: null,
+        // 二人組クエストv2のこのラン状態フィールド(§2-14)。ラン跨ぎで残さない。
+        rescueClearedAt: 0,
+        rescueArenaStartedAt: 0,
+        deliveryLocked: false,
+        castleAttnDoneAt: 0,
+        rescueSpawnedAt: 0,
+        basesEverCaptured: 0,
         // サブクエスト: ラン内の表示/集計はここで空に戻す(補充は startGame が resetGame の**後**に呼ぶ)。
         // subquestClearSeq はセッション通しの通し番号なので**リセットしない**(0へ戻すと
         // useGameLoop側の「変化したら鳴らす」が出撃の瞬間に誤爆する)。

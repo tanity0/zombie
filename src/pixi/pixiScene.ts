@@ -8914,6 +8914,13 @@ export class PixiScene {
       this.npcShadow = null;
       return;
     }
+    // v2(EVENT_QUEST_DESIGN.md §2-2B / §2-14 C-3): 0:00〜レスキュー出現前 / 裏ボス戦闘中は
+    // 場に居ない(円も出ない)。gone の直後・!tex の早期returnより前に置く(実在確認済みの位置)。
+    if (npc.status === 'hidden') {
+      this.eventNpcView.visible = false;
+      this.npcShadow = null;
+      return;
+    }
     const tex = getTexture('quest-futari');
     if (!tex) {
       this.eventNpcView.visible = false;
@@ -8949,7 +8956,10 @@ export class PixiScene {
     const dx = npc.x - pcx;
     const dy = npc.y - pcy;
     // 受領済み(accepted)も納品の対話対象なのでサークルを見せる(社長指示v0.25.1684の「同じ動作」)。
-    const near = (npc.status === 'available' || npc.status === 'accepted')
+    // v2(§2-2B): 旧'available'は退役(B1でEventQuestStatusから除去)。'accepted'の描画の要否
+    // (v2は§2-2B受け入れ条件1bで「触れそうな印を出さない」)はB2の描画対応で扱う=このコミットでは
+    // 型変更に伴う機械的な置き換えのみ('available'の分岐を削っただけ・挙動は変えない)。
+    const near = npc.status === 'accepted'
       && dx * dx + dy * dy <= (npc.radius + 72) * (npc.radius + 72);
     const statusAlpha = npc.status === 'completed'
       ? Math.max(0, 1 - fadeElapsed / EVENT_NPC_FADE_MS)
@@ -8990,7 +9000,8 @@ export class PixiScene {
     // 滞在受領の進捗メーター(社長指示v0.25.1681): 拠点解放の制圧アークと同じ意匠(白いアーク・12時起点)。
     // 3秒(=EVENT_QUEST_DWELL_MS。useGameLoopが dwellMs を加算)で満了=自動受領。
     // 受領済み(accepted)は納品の再滞在メーターとして同じアークを使う(社長指示v0.25.1684)。
-    if ((npc.status === 'available' || npc.status === 'accepted') && npc.dwellMs > 0) {
+    // v2: 旧'available'は退役(B1でEventQuestStatusから除去)。
+    if (npc.status === 'accepted' && npc.dwellMs > 0) {
       const frac = Math.max(0, Math.min(1, npc.dwellMs / EVENT_QUEST_DWELL_VIS_MS));
       const start = -Math.PI / 2, rr = (npc.radius + 6) * d, cyq = -8 * d;
       g.moveTo(Math.cos(start) * rr, cyq + Math.sin(start) * rr)

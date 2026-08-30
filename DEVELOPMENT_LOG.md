@@ -1,5 +1,41 @@
 # Development Log
 
+## v0.25.4091 — 二人組クエストv2 B1「型と器」着地 【2026-08-30 23:53 JST】
+
+EVENT_QUEST_DESIGN.md §2-17 の発注区切りに従い、B1(型と器)だけを実装。状態遷移・出現・囲い・
+納品などのロジック(B2〜B4)は1行も書いていない。
+- **型**: `EventQuestStatus` を `available|accepted|completed|gone`(4値)→
+  `hidden|rescue|accepted|warping|delivering|completed|gone`(7値・設計書の6状態テーブル+`gone`)へ
+  拡張。`EventQuestNpc` に `moveStartedAt/moveFromX/moveFromY/moveToX/moveToY/movePhase/hopPx/
+  triggerRadius` を追加(§2-14)。`movePhase` は `'crouch'|'flyout'|'flyin'|null`
+  (「移動していない」を表す値が無かった=設計書§2-16(B)#8の指摘どおり `null` を補った)。
+- **器**: `createEventQuestNpc` の初期 `status` を `'hidden'` に変更(旧`'available'`)。store に
+  §2-14の状態フィールド6つ(`rescueClearedAt`/`rescueArenaStartedAt`/`deliveryLocked`/
+  `castleAttnDoneAt`/`rescueSpawnedAt`/`basesEverCaptured`)を追加し、`resetGame`で全部リセット。
+- **除外**: `resetGame` の `qGone` へ §2-1 が名指しした8条件(`isGauntletRun`/`isExStageRun`/
+  `getSelectedFreeMode`/`benchmarkRun`/`corridorMode`/`indoor`/`stageTheme==='lab'`/
+  `farBackdrop==='tutorial'`/`pendingRevisit`)を追加(旧は4条件のみ)。
+  `App.tsx` の `setBenchmarkRun(benchmark)` を `resetGame(validClass)` の**前**へ移動(§2-1 監査A-3)。
+- **描画**: `syncEventQuestNpc`(pixiScene.ts)に `hidden` の早期return を追加(`gone`の直後・`!tex`の前)。
+- **型変更の副作用の直し**(既存挙動を保つための機械的な修正・詳細は完了報告): `EventQuestStatus`
+  から`'available'`が消えたため、v1の受領(サークル3秒滞在→`acceptEventQuest`)フローが型として
+  成立しなくなった。§2-2Bが「殺す」と明記している実体そのものなので、`useGameLoop`の該当ブロック
+  から accept 側の枝を削り(turn-in側=`completeEventQuest`への→completedの1本は温存)、
+  `pixiScene.ts`/`gameStore.ts`側の`'available'`比較も削除。**status は初期値`'hidden'`のままB2の
+  配線が無いと動かないため、この削除自体は今回のランで観測可能な挙動を1つも変えていない。**
+- **状態変化**: 二人組クエストv2 → 実装中(B1着地・残り B2/B3/B4)。
+- **★未決**: EVENT_QUEST_DESIGN.md §2-15 #25「B1着地でstage-1の次ステージ解放が止まる」を新規追加
+  (実装中に発見)。`stage-1`は`EVENT_QUEST_CONFIG.forced===true`で、`syncQuestStageClear`の
+  `forcedOk`はv1の`.forced`フラグを見ているが、その唯一の書き手(`acceptEventQuest`経由の
+  `completeEventQuest`forced分岐)が今回の型変更で到達不能になった。§2-10(`delivered`への一本化・
+  B4範囲)が着地するまで、**stage-1だけ**城ボスを倒しても次ステージが解放されない可能性がある。
+  `progress.ts`はB1の指示範囲外のため実装せず、設計書に選べる案(a/b/c)と推薦(a=様子見)を書いて停止。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(状態機械の配線には触れていない)。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(warning9件は既存・無関係)。
+  テスト・ビルドは社長指示が無いため未実行(CLAUDE.mdのテスト運用どおり)。
+- 実機確認は不要(見た目の変化は「二人組が0:00から出なくなる」のみ)。ただし上記★未決#25のとおり、
+  **stage-1をこのタイミングで実機クリアまで確認すると次ステージが解放されない**点に注意。
+
 ## v0.25.4090 — オンライン計画1マイルストーン: 幻影の分身・援護射撃(検収済み) 【2026-08-30 16:06 JST】
 
 社長指示2026-08-30「オンライン化の件も」= research/SAME_ARENA.md O-3b-2 召喚系のうち、

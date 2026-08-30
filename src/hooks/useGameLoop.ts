@@ -413,9 +413,10 @@ import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClamp
 import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChronicle, recordChronicleGlobalFirst, updateStoryFlags } from '../data/progress';
 import { exposeKomaLog, logKomaSummary } from '../utils/komaLog';
 // 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
+// v1の受領(accept)会話まわり(EVENT_QUEST_LINES_FORCED/EVENT_QUEST_ENCOUNTER_LINES/
+// eventQuestSubAcceptLines/getEventQuestConfig)はB1で呼び出し元ごと退役(§2-2B)=import不要。
 import {
-  getEventQuestConfig, EVENT_QUEST_LINES_FORCED, EVENT_QUEST_ENCOUNTER_LINES,
-  eventQuestSubAcceptLines, eventQuestSubCompleteLines,
+  eventQuestSubCompleteLines,
 } from '../utils/eventQuest';
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { airHopEase01 } from '../utils/airHop';
@@ -10723,16 +10724,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // §6.28-19(バッチM63): アクラシエルの結晶の槍(設置→2秒後に一度だけ起爆)。
         tickAcrasielSpears(newGameTime, triggerPlayerDeath, ANGEL_SFX);
 
-        // 二人組(クエストNPC)の滞在受領/納品(EVENT_QUEST_DESIGN.md・社長裁定v0.25.1686)。
-        // サークル内3秒(EVENT_QUEST_DWELL_MS)=拠点解放と同じ進捗メーター(pixiSceneがdwellMsを描く)。
-        //  ・available: 3秒で受領。強制(未納品・stage-1)→ネームド出現(acceptEventQuest内)、
-        //    それ以外→サブ受注。台詞は種別で出し分け(★仮テキスト=会話は後で社長が詰める)。
+        // 二人組(クエストNPC)の滞在納品(EVENT_QUEST_DESIGN.md・社長裁定v0.25.1686)。
+        // v2(EVENT_QUEST_DESIGN.md §2-2B・B1「型と器」): v1の「サークル3秒滞在で受領」経路
+        // (旧 status:'available'・acceptEventQuest 呼び出し)は§2-2Bのとおり殺す
+        // (EventQuestStatusの拡張で'available'が退役したため、型として復元できない=削除)。
+        // 残すのは v2 が「納品成立の瞬間」として流用する completeEventQuest への→completedの1本
+        // (§2-2B 遷移5)だけ。ただし status を'accepted'へ進める書き手はB2以降が配線するまで存在せず、
+        // 生成直後の初期statusは'hidden'なので、この下のブロックはB1単独では実行されない
+        // (=「二人組が0:00から出なくなるだけ」で挙動は変わらない)。
         //  ・accepted: 目標達成(eventQuestKills>=Goal)後のみ、一度サークルを出てから再滞在3秒で納品=報酬。
         //  ・leftSinceAccept: 直前のやり取り以降に一度外へ出るまでメーターを進めない(即発火防止)。
-        //  ・completed/gone: 何も起きない(二人は立ち姿のまま/次run以降は不出現)。
         if (!indoor && !labTheme) {
           const q = useGameStore.getState().eventQuestNpc;
-          if (q.status === 'available' || q.status === 'accepted') {
+          if (q.status === 'accepted') {
             const qpcx = player.x + player.width / 2, qpcy = player.y + player.height / 2;
             const qdx = q.x - qpcx, qdy = q.y - qpcy;
             const inside = qdx * qdx + qdy * qdy <= q.radius * q.radius;
@@ -10743,34 +10747,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             } else if (q.leftSinceAccept) {
               const qsNow = useGameStore.getState();
-              const turnInReady = q.status === 'accepted' && qsNow.eventQuestKills >= qsNow.eventQuestGoalCount;
-              if (q.status === 'available' || turnInReady) {
+              const turnInReady = qsNow.eventQuestKills >= qsNow.eventQuestGoalCount;
+              if (turnInReady) {
                 const nd = q.dwellMs + deltaTime * 1000;
                 const qStageId = getSelectedStageId();
                 if (nd < EVENT_QUEST_DWELL_MS) {
                   useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, dwellMs: nd } }));
-                } else if (q.status === 'available') {
-                  // M5(統合正本4.5)= 遭遇のみ: 確定会話を流して完了(受注・報酬なし)。
-                  if (getEventQuestConfig(qStageId)?.encounterOnly) {
-                    useGameStore.getState().completeEventEncounter();
-                    useGameStore.getState().enqueueNpcDialogue(EVENT_QUEST_ENCOUNTER_LINES);
-                    spawnRing(q.x, q.y - 22, 12, 62, 'rgba(96,165,250,0.82)', 3, 520);
-                    useGameStore.getState().spawnGlow(q.x, q.y - 30, GLOW_R_M, 'rgba(96,165,250,', 520);
-                    playSfx('event-start');
-                  } else {
-                    useGameStore.getState().acceptEventQuest();
-                    const accepted = useGameStore.getState();
-                    if (accepted.eventQuestNpc.status === 'accepted') {
-                      // 会話=統合正本の確定稿(強制=M1初遭遇 / サブ=ステージ別の受注会話)。
-                      accepted.enqueueNpcDialogue(
-                        accepted.eventQuestActive === 'forced' ? EVENT_QUEST_LINES_FORCED : eventQuestSubAcceptLines(qStageId)
-                      );
-                      spawnRing(q.x, q.y - 22, 12, 62, 'rgba(96,165,250,0.82)', 3, 520);
-                      accepted.spawnGlow(q.x, q.y - 30, GLOW_R_M, 'rgba(96,165,250,', 520);
-                      accepted.spawnCallout(q.x, q.y - 76, 'QUEST', '#bfdbfe');
-                      playSfx('event-start');
-                    }
-                  }
                 } else {
                   // 納品。サブは完了会話(統合正本の確定稿)を流す(強制納品の会話は正本に無い=従来どおり無し)。
                   const wasSub = useGameStore.getState().eventQuestActive === 'sub';
