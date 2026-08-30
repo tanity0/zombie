@@ -2729,6 +2729,13 @@ const TELEGRAPH_FILL_MULT = typeof window === 'undefined'
   ? 0.4
   : Number(new URLSearchParams(window.location.search).get('bandfill') ?? 0.4) || 0.4;
 
+// §15磨き(社長GO 2026-08-30「はい」=予告全体の出と終わり(ロック遷移)に慣性・sweepパイロット限定):
+// 照準表示(g-sweep-track)はパッと出さず濃度をイーズインし、ロック(windup)開始時は薄い全形が
+// 残像として消えながら流星の描き始めへ引き継ぐ(濃度の段差を消す)。**絵の透明度だけ**=
+// 判定・時間・照準物理(telegraphTrack.ts)は不変。消え際(active後の蒸発)は現行のまま。
+const SWEEP_TRACK_FADE_IN_MS = 180; // 出現の濃度イーズイン(easeOutCubic=減速して到着)
+const SWEEP_LOCK_FADE_MS = 150;     // ロック時の照準表示の残像(二乗減衰)
+
 // ★予告の赤の濃さは**全技で共通**(社長裁定2026-08-25「全部色の濃さを揃えたい。**一番薄いやつに揃えて**」)。
 // 直す前は塗り・線とも技ごとに手書きの式で、塗りのピークが 0.18〜0.46、線が 0.46〜0.95 とバラついていた
 // (社長が気づいた入口=雑魚の槍(driller)の突き予告が、いちばん濃い帯の式を使っていた)。
@@ -19792,6 +19799,10 @@ export class PixiScene {
         const ghw = GIANT_SWEEP_HALF_WIDTH;
         const gprog = gTrack ? 0.25
           : Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+        // §15磨き: 照準表示の出現イーズイン(0→1)。track以外は常に1=従来の濃度と完全一致。
+        const gTrackEase = gTrack
+          ? 1 - (1 - Math.max(0, Math.min(1, (gameTime - (e.aiStartedAt ?? gameTime)) / SWEEP_TRACK_FADE_IN_MS))) ** 3
+          : 1;
         const gZoneFill = telFillA(gph === 'g-sweep-active' ? 1 : gprog, gPulse);
         // ★v0.25.3496(社長指示「その上で、流星にして」): 溜め中は**面と白芯も流星の可視区間へ縮める**。
         // 従来は縁取り(drawTelegraphBand)だけが流星で、面と白芯は全長のまま描かれていたため、
@@ -19810,25 +19821,32 @@ export class PixiScene {
           gvfx - gux * ghw - gnx * ghw, gvfy - guy * ghw - gny * ghw,
         ];
         bandsThisFrame.push([gfx, gfy, gtx, gty, ghw]); // 衝撃波の対象は**判定どおりの全長**(絵の縮みに引きずられない)
-        if (gVisible) o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT });
+        if (gVisible) o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase });
         // v0.25.3477: 帯の流星描き→消しはwindup限定(activeは全形のまま=従来どおり。gprogはactive中は
         // 窓の異なる時計を流用しているだけの値なので、そのままmeteorPhaseへ渡さない)。
-        if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, telStrokeA(gprog, gPulse), 0,
+        if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, telStrokeA(gprog, gPulse) * gTrackEase, 0,
           gph === 'g-sweep-windup' ? gprog : undefined);
-        else if (gVisible) o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(gprog, gPulse) });
+        else if (gVisible) o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(gprog, gPulse) * gTrackEase });
         // 白芯も可視区間だけ(面と同じ理由=流星の頭と消しを隠さない)。
-        if (gVisible) o.moveTo(gvfx, gvfy).lineTo(gvtx, gvty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: 0.35 + 0.35 * gprog, cap: 'round' });
-        // §15ロックの合図: 追尾相→windupの瞬間に全形の白い縁を1フラッシュ(60ms)。
-        // gTrackAimXが在る=track経由の印(?ttrack=0の従来経路では光らない=完全ロールバック)。
+        if (gVisible) o.moveTo(gvfx, gvfy).lineTo(gvtx, gvty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: (0.35 + 0.35 * gprog) * gTrackEase, cap: 'round' });
+        // §15ロックの合図+薄→濃の慣性: 追尾相→windupの瞬間に全形の白い縁を1フラッシュ(60ms)し、
+        // 照準表示(trackの薄い全形)は150msの残像として消えながら流星の描き始めへ引き継ぐ(濃度の段差を
+        // 消す=「はい」2026-08-30)。gTrackAimXが在る=track経由の印(?ttrack=0の従来経路では両方出ない
+        // =完全ロールバック)。全形=判定どおりのロック済み帯なので「赤いのに当たらない」は生まない。
         if (gph === 'g-sweep-windup' && e.gTrackAimX !== undefined) {
           const lockAge = gameTime - (e.aiStartedAt ?? -1e9);
+          const gFullPts = [
+            gfx - gux * ghw + gnx * ghw, gfy - guy * ghw + gny * ghw,
+            gtx + gux * ghw + gnx * ghw, gty + guy * ghw + gny * ghw,
+            gtx + gux * ghw - gnx * ghw, gty + guy * ghw - gny * ghw,
+            gfx - gux * ghw - gnx * ghw, gfy - guy * ghw - gny * ghw,
+          ];
+          if (lockAge >= 0 && lockAge < SWEEP_LOCK_FADE_MS) {
+            const gRem = (1 - lockAge / SWEEP_LOCK_FADE_MS) ** 2;
+            o.poly(gFullPts).fill({ color: 0xff2a2a, alpha: telFillA(0.25, gPulse) * TELEGRAPH_FILL_MULT * gRem });
+          }
           if (lockAge >= 0 && lockAge < 60) {
-            o.poly([
-              gfx - gux * ghw + gnx * ghw, gfy - guy * ghw + gny * ghw,
-              gtx + gux * ghw + gnx * ghw, gty + guy * ghw + gny * ghw,
-              gtx + gux * ghw - gnx * ghw, gty + guy * ghw - gny * ghw,
-              gfx - gux * ghw - gnx * ghw, gfy - guy * ghw - gny * ghw,
-            ]).stroke({ width: 4, color: 0xffffff, alpha: 0.9 * (1 - lockAge / 60) });
+            o.poly(gFullPts).stroke({ width: 4, color: 0xffffff, alpha: 0.9 * (1 - lockAge / 60) });
           }
         }
       } else if (gph === 'g-jump-windup' || gph === 'g-jump-air') {

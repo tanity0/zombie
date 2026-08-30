@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4078',
+    items: [
+      '城ボスの薙ぎ払い予告(試験中)を磨きました: 照準表示がふわっと現れ、ロック時は薄い表示が残像として溜めの描き込みへ滑らかに引き継がれます(避けるタイミングは変わりません)。',
+    ],
+  },
+  {
     version: '0.25.4077',
     items: [
       'HPオーブの外枠(ガラスリング)が少し上にずれていたのを修正しました。',
