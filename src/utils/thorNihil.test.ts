@@ -15,7 +15,7 @@ import {
 // ★v0.25.3809: 共通層の**分岐そのもの**(counterLeapOrigin/counterLeapTarget)と
 // **帯の文脈の組み立て**(thorPlayableAreaCtx)まで純関数へ出した(8巡目 重大1/3・低9)。
 import {
-  thorDashPushbackTarget, thorDashPushbackFromEnemy,
+  thorDashPushbackTarget, thorDashPushbackFromEnemy, thorDashLineShift,
   counterLeapOrigin, counterLeapTarget, counterLeapPos, thorPlayableAreaCtx,
 } from './thorDashPushback';
 import { HIDDEN_THOR_TUNING as HB_TH } from './hiddenBossScript';
@@ -928,6 +928,13 @@ const AI_WRITE_LEDGER: { where: string; match: RegExp; count: number }[] = [
   { where: '同上(Y)', match: /^patch\.aiTargetY = nay$/, count: 1 },
   { where: 'トールの突き溜め中の遅延追従照準X(naimX)', match: /^patch\.aiTargetX = naimX$/, count: 1 },
   { where: '同上(Y)', match: /^patch\.aiTargetY = naimY$/, count: 1 },
+  // ---- ★§9-9(社長裁定2026-08-30=推薦(b)・v0.25.4088): ノックバック凍結中に滑った分だけ
+  //      突進の線を**平行移動**する(純関数 thorDashLineShift の戻り値をそのまま書く)。
+  //      **4本セット**(起点/到達点のXY)で1つの平行移動=どれか1本でも欠けると線が曲がる。
+  { where: '§9-9 突進の線の平行移動: 起点X', match: /^patch\.aiFromX = shifted\.fromX$/, count: 1 },
+  { where: '§9-9 同上(起点Y)', match: /^patch\.aiFromY = shifted\.fromY$/, count: 1 },
+  { where: '§9-9 同上(到達点X)', match: /^patch\.aiTargetX = shifted\.toX$/, count: 1 },
+  { where: '§9-9 同上(到達点Y)', match: /^patch\.aiTargetY = shifted\.toY$/, count: 1 },
 ];
 
 /** 行末コメントを落として `;` で割り、**1代入=1要素**にする(★v0.25.3810・行末への追記対策)。 */
@@ -1174,5 +1181,56 @@ describe('★一閃(issen-dash)の位置補間に慣性が入っている(§9-10
     // 帯は「焼き付けた始点(fx,fy)→終着点(tx,ty)」で、進行度(t / et)も現在位置(patch.x)も読まない。
     expect(band[0]).toMatch(/\{ x: fx, y: fy \}, \{ x: tx, y: ty \}, HB_TH\.issen\.halfWidth/);
     expect(band[0]).not.toMatch(/\bet\b|\bt\b\s*[*)]/);
+  });
+});
+
+describe('★§9-9 線ごと平行移動(thorDashLineShift)= 社長裁定2026-08-30 推薦(b)', () => {
+  const LINE = { fromX: 0, fromY: 0, toX: 400, toY: 0 };
+  const AREA = OPEN_AREA;
+
+  it('滑っていない(実位置=補間位置)なら線は1pxも動かない', () => {
+    // t=0.5 の補間位置(smootherstep は対称なので中点)。
+    const r = thorDashLineShift(LINE, 200, 0, 0.5, 140, 140, AREA);
+    expect(r).toEqual(LINE);
+  });
+
+  it('★横へ滑った分だけ**両端**が同じだけ動く(=平行移動。向きと長さが変わらない)', () => {
+    // t=0.5 の補間位置は (200,0)。実位置が (200,90) = 真下へ90px滑った。
+    const r = thorDashLineShift(LINE, 200, 90, 0.5, 140, 140, AREA);
+    expect(r).toEqual({ fromX: 0, fromY: 90, toX: 400, toY: 90 });
+    // 向き(from→to)と長さは不変=「線ごと平行移動」であって曲げていない。
+    expect(Math.hypot(r.toX - r.fromX, r.toY - r.fromY))
+      .toBeCloseTo(Math.hypot(LINE.toX - LINE.fromX, LINE.toY - LINE.fromY), 9);
+  });
+
+  it('★進行方向にもズレていれば同じだけ動く(残り距離は保たれる=ワープしない)', () => {
+    const r = thorDashLineShift(LINE, 260, 0, 0.5, 140, 140, AREA);
+    expect(r).toEqual({ fromX: 60, fromY: 0, toX: 460, toY: 0 });
+    // 平行移動後の「今の補間位置」は実位置と一致する=解除の瞬間に戻らない(これが§9-9の目的)。
+    const easeHalf = 0.5; // smootherstep(0.5) = 0.5
+    expect(r.fromX + (r.toX - r.fromX) * easeHalf).toBe(260);
+  });
+
+  it('★自己補正: 一度平行移動したら、同じ実位置では次のフレームに動かない(蓄積しない)', () => {
+    const once = thorDashLineShift(LINE, 200, 90, 0.5, 140, 140, AREA);
+    const twice = thorDashLineShift(once, 200, 90, 0.5, 140, 140, AREA);
+    expect(twice).toEqual(once);
+  });
+
+  it('★到達点は「行ける帯」を通す(押し出しで帯の外へ出た線をそのまま走らせない)', () => {
+    // 研究所(lab)の帯は上下が ±LAB_CORRIDOR_Y_LIMIT_PX。帯の外へ平行移動しようとすると到達点が止まる。
+    const lab = { ...OPEN_AREA, labTheme: true };
+    const r = thorDashLineShift(LINE, 200, LAB_Y + 500, 0.5, 140, 140, lab);
+    expect(r.toY, '到達点が帯クランプを通っていない').toBe(LAB_Y);
+    // 起点は補間のアンカーなので素通し(位置そのものは突進ハンドラが毎フレームクランプする)。
+    expect(r.fromY).toBe(LAB_Y + 500);
+  });
+
+  it('進捗の端(t=0 / t=1)でも補間位置が起点・到達点に一致する(ズレを作らない)', () => {
+    expect(thorDashLineShift(LINE, 0, 0, 0, 140, 140, AREA)).toEqual(LINE);
+    expect(thorDashLineShift(LINE, 400, 0, 1, 140, 140, AREA)).toEqual(LINE);
+    // 範囲外の t を渡しても内側で 0..1 に丸める(呼び出し側の clamp が消えても暴れない)。
+    expect(thorDashLineShift(LINE, 400, 0, 1.8, 140, 140, AREA)).toEqual(LINE);
+    expect(thorDashLineShift(LINE, 0, 0, -0.4, 140, 140, AREA)).toEqual(LINE);
   });
 });

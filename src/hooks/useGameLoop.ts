@@ -273,7 +273,7 @@ import {
 // 純関数(値をテストで固定できる形)。ここに直書きすると「ゼロ化/符号反転」が緑を通る。
 // ★v0.25.3809(8巡目 重大1/3): counter-leap の**起点/到達点の分岐そのもの**も同じ葉へ出した
 // (共通層に三項で書いてある間は「両側を既定式にする」変異が走査を素通りするため)。
-import { thorDashPushbackFromEnemy, counterLeapOrigin, counterLeapTarget, counterLeapPos } from '../utils/thorDashPushback';
+import { thorDashPushbackFromEnemy, counterLeapOrigin, counterLeapTarget, counterLeapPos, thorDashLineShift, thorPlayableAreaCtx } from '../utils/thorDashPushback';
 import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
 // §4: トールの突進をカウンターした時の弾き返し距離。**ミゲル/ウリと共有の既存の合流点をそのまま使う**
 // (新しい定数を作らない=research/THOR_ISSEN_REWORK.md §4-1)。
@@ -5731,7 +5731,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 飛ぶ**(上の `aiStartedAt` と同じ型の事故で、軸が位置ではなく発射間隔)。
                   // トールは `bossBurstNextAt` を読まないので、この行でトールの挙動は変わらない。
                   if (boss.bossBurstNextAt !== undefined) patch.bossBurstNextAt = boss.bossBurstNextAt + kbDtMs;
-                  // ★位置(XY)のワープ = §9-9(社長裁定=推薦(b))。下の `thor-dash-move` 限定の平行移動で対応。
+                  // ★§9-9(社長裁定2026-08-30=推薦(b)「線ごと平行移動」・対象はまず突進だけ):
+                  // 凍結中は状態機械が丸ごとスキップされるので位置は書かれないが、`updateEnemies` の
+                  // 押し出し(バッシュ714 / 鞭600)は**ボスを実際に横へ滑らせる**。解除の瞬間に突進
+                  // ハンドラが `aiFrom→aiTarget` の絶対位置を書き戻すと、滑った分が1フレームで消える
+                  // =最大約100pxのワープ(慣性MUST違反)。**滑った差を線ごと平行移動**して、押された
+                  // 位置から続きを走らせる。向き・残り距離・イージング・所要時間・判定は1つも変えない。
+                  if (boss.type === 'thor' && boss.bossState === 'thor-dash-move'
+                    && boss.aiFromX !== undefined && boss.aiFromY !== undefined
+                    && boss.aiTargetX !== undefined && boss.aiTargetY !== undefined) {
+                    // 補間の起点時刻は**繰り下げ後**(上の行で書いた patch)を読む=解除後にハンドラが
+                    // 使う時計と同じ経過になる。
+                    const kbStartedAt = patch.aiStartedAt ?? boss.aiStartedAt ?? newGameTime;
+                    const kbSt = useGameStore.getState();
+                    const shifted = thorDashLineShift(
+                      { fromX: boss.aiFromX, fromY: boss.aiFromY, toX: boss.aiTargetX, toY: boss.aiTargetY },
+                      boss.x + boss.width / 2, boss.y + boss.height / 2,
+                      (newGameTime - kbStartedAt) / HB_TH.dash.moveMs,
+                      boss.width, boss.height, thorPlayableAreaCtx(kbSt),
+                    );
+                    patch.aiFromX = shifted.fromX; patch.aiFromY = shifted.fromY;
+                    patch.aiTargetX = shifted.toX; patch.aiTargetY = shifted.toY;
+                  }
                 } else {
                   // ★v0.25.3785(検収監査 中E): 技を**frozen**(罠のroot/紫の完全気絶/気絶/浮き/ワープ)で
                   // 潰して chase へ落とす時も、突進の専用CDを打刻する。旧実装は「カウンターで潰れた」経路

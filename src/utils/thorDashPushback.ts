@@ -128,6 +128,47 @@ export const counterLeapPos = (
   return { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
 };
 
+/**
+ * ★§9-9(社長裁定2026-08-30=推薦(b)「線ごと平行移動」): ノックバックで**凍結中に横へ滑った分**を、
+ * 突進の線(`aiFrom`→`aiTarget`)へそのまま足して**線ごと平行移動**する純関数。
+ *
+ * 何が問題だったか: 凍結中(`kbOnlyStop`)は `thor-dash-move` の状態機械が丸ごとスキップされるので
+ * 位置は書かれない。一方 `updateEnemies` の押し出しは押し道具(シールドバッシュ714 / 鞭600)で
+ * **ボスを実際に横へ滑らせる**(最大約100px)。解除の瞬間、突進ハンドラは `aiFrom→aiTarget` の
+ * **絶対位置**を書き戻すので、滑った分が1フレームで消える=**最大約100pxのワープ**(慣性MUST違反)。
+ * 線ごと平行移動すれば、走る向き・残り距離・イージング・所要時間・判定は1つも変わらず、
+ * **押された位置から続きを走る**(=現実の物理)になる。
+ *
+ * 自己補正: 「今フレームの実位置」と「今の線が指す補間位置」の差を毎フレーム足すので、平行移動した
+ * 次のフレームは差が0になる(蓄積しない)。滑り続けている間だけ差が出る。
+ *
+ * `moveT01` は**生の進捗**(elapsed / moveMs)。内側で `airHopEase01`(突進ハンドラと同じ曲線)へ通す
+ * =補間式を2箇所に持たない。到達点は `clampRectToPlayableArea` を通す(CLAUDE.md「Y方向の掟」:
+ * 押し出しで帯の外へ出た線をそのまま走らせない)。
+ */
+export interface ThorDashLine { fromX: number; fromY: number; toX: number; toY: number }
+
+export const thorDashLineShift = (
+  line: ThorDashLine,
+  actualCx: number, actualCy: number,
+  moveT01: number,
+  bossW: number, bossH: number,
+  area: PlayableAreaCtx,
+): ThorDashLine => {
+  const ease = airHopEase01(Math.max(0, Math.min(1, moveT01)));
+  const expX = line.fromX + (line.toX - line.fromX) * ease;
+  const expY = line.fromY + (line.toY - line.fromY) * ease;
+  const dx = actualCx - expX, dy = actualCy - expY;
+  if (dx === 0 && dy === 0) return line;
+  const placed = clampRectToPlayableArea(
+    line.toX + dx - bossW / 2, line.toY + dy - bossH / 2, bossW, bossH, area,
+  );
+  return {
+    fromX: line.fromX + dx, fromY: line.fromY + dy,
+    toX: placed.x + bossW / 2, toY: placed.y + bossH / 2,
+  };
+};
+
 export interface ThorDashPushbackInput {
   /** 突進の起点(`Enemy.aiFromX/aiFromY`)。**「来た方向」はこの2点から作る。** */
   fromX: number; fromY: number;
