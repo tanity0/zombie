@@ -260,7 +260,7 @@ import {
 } from '../utils/bossEngagement';
 import {
   applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal, isBossPostureBroken,
-  tickBossPosture, postureChipMult, type BossPostureImpact,
+  tickBossPosture, postureChipMult, keepBurstDelayedHits, type BossPostureImpact,
 } from '../utils/bossPosture';
 // ★SAME_ARENA §9(対人体勢システム・社長指示2026-08-26)。プレイヤーと幻影が対称に持つ隠し体勢。
 import {
@@ -11765,6 +11765,14 @@ export const useGameStore = create<GameState>((set, get) => ({
               ...enemy, vx: 0, vy: 0,
               ...(stMv ? { gStageReadyAt: { ...enemy.gStageReadyAt, [stMv]: atkCdUntil(stageCdMs[stMv]) } } : {}),
               ...(glMv ? { gGlenReadyAt: { ...enemy.gGlenReadyAt, [glMv]: atkCdUntil(glenCdMs[glMv]) } } : {}),
+              // ★v0.25.4081(社長報告「まだ技エフェクトがカウンターで残ってる。例えば城5の3連打ち」):
+              // 中断=技のキャンセルなのに、予約済みの未起爆遅延ヒット(三連射の三拍目・滑空二撃目等)は
+              // 残っていた——しかも気絶中は消化ループ(下のgiantDelayedHitsブロック)がこの早期returnで
+              // 届かないため、帯が凍って残り気絶明けに発火する。紫(v0.25.3037)と同じ規則で未起爆だけ
+              // 破棄する(burst=床など世界に出た危険物は残す)。
+              ...(enemy.giantDelayedHits !== undefined
+                ? { giantDelayedHits: keepBurstDelayedHits(enemy.giantDelayedHits) }
+                : {}),
               aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
               aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
               aiReadyAt: enemy.stunUntil + 300, // 気絶明け後しばらくは特殊行動を再発動しない

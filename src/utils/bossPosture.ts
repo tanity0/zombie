@@ -30,6 +30,17 @@ export type PostureSubject = Pick<Enemy, 'type' | 'colorTier'>;
  * 対象は**ピークの確定赤に限らず、すべての赤い個体**(深いエリアの色抽選で出た赤も同じ)。
  * 色で2種類の赤を作るとプレイヤーに説明できないため。
  */
+/**
+ * 未起爆の遅延ヒット(=まだ発生していない技の一部。三連射の三拍目・滑空二撃目・氷・爪痕・血溜まりの
+ * 未着弾ぶん)だけを捨て、起爆済み(burst=true=床として世界に出た危険物)は残す共通規則。
+ * 使う場面は2つ——①紫(体勢ブレイク・v0.25.3037裁定「技そのものはキャンセル・世界に出た危険物は残す」)
+ * ②カウンター/気絶の技中断(v0.25.4081・社長報告「まだ技エフェクトがカウンターで残ってる。例えば
+ * 城5の3連打ち」——中断はaiPhaseとCDだけ処理して予約済みの三拍目を残しており、気絶中は消化ループも
+ * 早期returnで止まるため、帯が凍って残り気絶明けに発火していた)。同じ式を2箇所に書かない。
+ */
+export const keepBurstDelayedHits = (hits: NonNullable<Enemy['giantDelayedHits']>): Enemy['giantDelayedHits'] =>
+  hits.filter(h => h.burst === true);
+
 export const usesPostureSystem = (e: PostureSubject): boolean =>
   // ★research/GHOST_BOSS.md v5/v6(社長裁定「そもそも紫ゲージ無くす」): 幻影は**体勢値を持たない**。
   // プレイヤーには体勢値が無いので、持たせると「全て同条件」が成立しない(紫の5秒フルスタンが
@@ -140,7 +151,7 @@ export const applyBossPostureDamage = (
       // 三連突進の氷/翼撃三拍目/血の弧の未着弾ぶん)は紫の瞬間に破棄する。既に起爆済みで床として
       // 残っている物(burst=true・血溜まり等)は「もう世界に出た危険物」なので残す(裁定=B現状維持)。
       ...(enemy.giantDelayedHits !== undefined
-        ? { giantDelayedHits: enemy.giantDelayedHits.filter(h => h.burst === true) }
+        ? { giantDelayedHits: keepBurstDelayedHits(enemy.giantDelayedHits) }
         : {}),
     },
     triggered: true,

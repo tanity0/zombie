@@ -3,7 +3,7 @@ import type { Enemy, EnemyType } from '../types/game';
 import {
   applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal,
   bossPostureMax, tickBossPosture, usesPostureSystem, POSTURE_ELITE_TYPES, BOSS_POSTURE_BREAK_MS, BOSS_POSTURE_REBREAK_LOCK_MS,
-  BOSS_FATAL_DAZE_MS, parsePostureChipMult, DEFAULT_POSTURE_CHIP_MULT,
+  BOSS_FATAL_DAZE_MS, parsePostureChipMult, DEFAULT_POSTURE_CHIP_MULT, keepBurstDelayedHits,
 } from './bossPosture';
 
 // PACING_PUZZLE.md §7-11c-1: `?posturechip=<倍率>`のパース(純関数)。実際の乗算はモジュール読み込み
@@ -111,6 +111,18 @@ describe('boss posture', () => {
     expect(r.triggered).toBe(true);
     expect(r.patch.giantDelayedHits).toHaveLength(1);
     expect(r.patch.giantDelayedHits![0].burst).toBe(true);
+  });
+
+  it('keepBurstDelayedHits: 未起爆だけ捨て・burst(床)は残す(黄スタン中断もこの1本を使う・v0.25.4081)', () => {
+    // 社長報告2026-08-30「まだ技エフェクトがカウンターで残ってる。例えば城5の3連打ち」——
+    // カウンター(黄スタン)の技中断が三連射の三拍目(未起爆の遅延ヒット)を残していた対策。
+    const hits = [
+      { x: 0, y: 0, radius: 40, bornAt: 0, fireAt: 900 },                             // 三拍目(未起爆)→破棄
+      { x: 1, y: 1, radius: 40, bornAt: 0, fireAt: 100, burst: true, floorUntil: 4000 }, // 起爆済みの床→残す
+    ] as NonNullable<Enemy['giantDelayedHits']>;
+    const kept = keepBurstDelayedHits(hits)!;
+    expect(kept).toHaveLength(1);
+    expect(kept[0].burst).toBe(true);
   });
 });
 
