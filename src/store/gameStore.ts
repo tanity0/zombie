@@ -126,7 +126,10 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS } from '../utils/enemyUtils';
+// 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
+import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyTick';
+import { rescueSpawnCandidates } from '../utils/rescueQuestSpawn';
 // research/STAGE_DIFFICULTY.md: ステージ難度の階段。係数の判断(計測路なら1.0)はこのヘルパ1本。
 import { stageBossDiffMults } from '../utils/stageDiffMults';
 // §6.38 B4(クリーンアップ): 実効難易度倍率の式はbountyValue.ts(依存ゼロに近い葉。詳細はファイル冒頭の
@@ -459,7 +462,9 @@ const MERCHANT_REOPEN_DELAY_MS = 1500;
 // 話しかけれる」=旧・近接スイング開店を置換)。
 // 社長指示v0.25.3326「武器商人開くの2秒に変更」: 3000→2000(商人のみ。帰還/クエスト円の3秒は不変)。
 export const MERCHANT_TALK_DWELL_MS = 2000;
-const EVENT_NPC_MIN_DISTANCE = 460;
+// EVENT_QUEST_DESIGN.md §2-14「★ワープの段を進める場所」(B2): 飛来の始点の距離としてuseGameLoopが
+// importして流用する(値の複製を作らない=ARENA_EVENT_RADIUSと同じ扱い)。export化のみ・値は不変。
+export const EVENT_NPC_MIN_DISTANCE = 460;
 const EVENT_NPC_MAX_DISTANCE = 950;
 const EVENT_NPC_INTERACT_RADIUS = 64;
 export const SHOP_AMMO_COST = 10;
@@ -5786,6 +5791,80 @@ export const resolveBountyMove = (
       facilitiesHidden: facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime),
     },
   );
+};
+
+// EVENT_QUEST_DESIGN.md §2-3(二人組クエストv2・B2): レスキュー出現位置を決める。
+// ジオメトリ(候補列)はsrc/utils/rescueQuestSpawn.tsの純関数に委ね、ここは
+// 「立てる場所か」の判定(resolveBountyMove)と「諦める順序」の適用だけを行う(§2-14「★出現位置の
+// 「立てるか」判定」「★候補が全滅した時に諦める順序」)。
+// dirX/dirY/forwardDist/perpSign/ringStepは呼び出し側(useGameLoopの二人組ブロック)が引く
+// (RESCUE_SPAWN_DIST_MIN/MAX・ARENA_EVENT_RADIUSはuseGameLoopのモジュールローカル定数のため。
+// §2-14「★半径の唯一の出どころ」と同じ理由でexport化・移設はしない)。
+export const spawnRescueQuestPoint = (
+  dirX: number, dirY: number, forwardDist: number, perpSign: 1 | -1, ringStep: number,
+): { x: number; y: number } => {
+  const s = useGameStore.getState();
+  const p = s.player;
+  const px = p.x + p.width / 2, py = p.y + p.height / 2;
+  const half = PLAYER_HITBOX / 2;
+
+  const candidates = rescueSpawnCandidates({
+    playerX: px, playerY: py, dirX, dirY, forwardDist, perpSign, perpOffset: 200, ringStep,
+  });
+
+  // 確定②-b(社長裁定2026-08-30): 他イベントの範囲(activeEventサークル・種別問わず + 賞金首の索敵圏)。
+  const otherEventCircles: { x: number; y: number; radius: number }[] = [];
+  if (s.activeEvent) otherEventCircles.push({ x: s.activeEvent.x, y: s.activeEvent.y, radius: s.activeEvent.radius });
+  for (const e of s.enemies) {
+    if (isBountyType(e.type) && !isCorpse(e)) {
+      otherEventCircles.push({
+        x: e.x + e.width / 2, y: e.y + e.height / 2,
+        radius: e.aggroRange ?? BOUNTY_AGGRO_RANGE_DEFAULT,
+      });
+    }
+  }
+  // 確定②: 武器商人・拠点サークル(絵の重なりだけを避ける=resolveOutOfSolidsには入っていない)。
+  const merchantBaseCircles: { x: number; y: number; radius: number }[] = [
+    { x: s.weaponMerchant.x, y: s.weaponMerchant.y, radius: s.weaponMerchant.radius },
+    ...s.baseSites.map(b => ({ x: b.x, y: b.y, radius: BASE_CAPTURE_RADIUS })),
+  ];
+
+  const inAnyCircle = (cx: number, cy: number, circles: { x: number; y: number; radius: number }[]): boolean =>
+    circles.some(c => { const dx = cx - c.x, dy = cy - c.y; return dx * dx + dy * dy < c.radius * c.radius; });
+  const originOk = (cx: number, cy: number): boolean => (cx * cx + cy * cy) < AREA_THRESHOLDS[1] * AREA_THRESHOLDS[1];
+  const standable = (cx: number, cy: number): boolean => {
+    const placed = resolveBountyMove(cx - half, cy - half, { width: PLAYER_HITBOX, height: PLAYER_HITBOX });
+    return placed.x === cx - half && placed.y === cy - half;
+  };
+
+  // ★候補が全滅した時に諦める順序(§2-3): ①原点3000未満→②商人/拠点→②-b他イベント→の順に諦め、
+  // ③resolveOutOfSolids(standable)は最後まで守る。どの段でも「出さない」は選ばない。
+  const tryStage = (requireOrigin: boolean, requireMerchantBase: boolean, requireOtherEvent: boolean): { x: number; y: number } | null => {
+    for (const c of candidates) {
+      if (requireOrigin && !originOk(c.x, c.y)) continue;
+      if (requireMerchantBase && inAnyCircle(c.x, c.y, merchantBaseCircles)) continue;
+      if (requireOtherEvent && inAnyCircle(c.x, c.y, otherEventCircles)) continue;
+      if (standable(c.x, c.y)) return { x: c.x, y: c.y };
+    }
+    return null;
+  };
+
+  let picked =
+    tryStage(true, true, true) ??
+    tryStage(false, true, true) ??
+    tryStage(false, false, true) ??
+    tryStage(false, false, false);
+
+  if (!picked) {
+    // 最終フォールバック(確定①の例外): 押し戻された座標をそのまま採る(collectPickupの着地点と同じ作法)。
+    const c = candidates[0];
+    const placed = resolveBountyMove(c.x - half, c.y - half, { width: PLAYER_HITBOX, height: PLAYER_HITBOX });
+    picked = { x: placed.x + half, y: placed.y + half };
+  }
+
+  // 確定③: 着地点だけclampRectToPlayableAreaも通す(S1/S3/S4/S5ではno-op。他ステージへ流用された時の保険)。
+  const clamped = clampRectToPlayableArea(picked.x - half, picked.y - half, PLAYER_HITBOX, PLAYER_HITBOX, shieldPlayableCtx());
+  return { x: clamped.x + half, y: clamped.y + half };
 };
 
 // ★B6(盾押し機構・research/AI_HUMANIZE.md §6・裁定済み#8)。設置型シールドは物理オブジェクト

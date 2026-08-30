@@ -89,7 +89,9 @@ import {
   KILLFX_TOTAL_MS, // KILL処刑演出の尺(前隙の解決で近接SEを抑止する条件・旧VirtualJoystickから移設)
   GHOST_DMG_LOG_ENABLED, ghostLogPush, // v0.25.3981: ?ghostlog=1 のカウンター連鎖ログ(記録専用・挙動不変)
   resolveShieldWalls, shieldPlayableCtx, // ★B6(盾押し・§6)
+  spawnRescueQuestPoint, EVENT_NPC_MIN_DISTANCE, // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2)
 } from '../store/gameStore';
+import { resolveRescueSpawnDirection } from '../utils/rescueQuestSpawn'; // 二人組クエストv2(§2-3・B2)
 import { pushShieldRect, clampShieldPlacementRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
 import { DOG_EXCLUDED_TYPES, dogEligiblePickups } from '../utils/dogFetch'; // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
@@ -1035,6 +1037,9 @@ const evNum = (key: string, def: number): number => {
 };
 const RESCUE_SPAWN_DIST_MIN = evNum('rescuemin', 500);
 const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
+// 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): レスキュー地点の出現時刻(4:00)。
+// S5だけの追加条件(拠点2か所ラッチとの遅い方・§2-11)はB4の範囲(★未決ではなく発注の区切りどおり)。
+const RESCUE_QUEST_SPAWN_AT_MS = 4 * 60 * 1000;
 // PACING_PUZZLE.md §5.21 M20追補(社長設計v0.25.1533・修正v0.25.1534): 凶悪ハンターは索敵フェーズを
 // 廃止し、デンジャー入場(制圧0)から一定時間後に索敵をスキップして「見つかった状態」(chase)で発動する。
 // 視界サークル/再配置ラッシュは凶悪版では出さない(撤去)。`?viciousdelay=<ms>`で調整可(実機調整前提)。
@@ -10724,14 +10729,147 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // §6.28-19(バッチM63): アクラシエルの結晶の槍(設置→2秒後に一度だけ起爆)。
         tickAcrasielSpears(newGameTime, triggerPlayerDeath, ANGEL_SFX);
 
+        // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-2B・B2「出現と遷移」): 状態遷移7本の唯一の
+        // 書き手(CLAUDE.md「判定はworld/store側に置く」・§2-2B「状態遷移を書くのはuseGameLoopの
+        // 二人組ブロックだけ」)。①⑦は状態で書く(エッジで書くと復帰/初回出現の機会が1フレームで
+        // 消費され、二度と成立しない=勝利不能。§2-2B確定)。
+        //  ①⑦ hidden→rescue: 4:00超過 && bossChasing===falseのフレームに出す/戻す。rescueSpawnedAt
+        //     (0=未抽選)で初回抽選(§2-3の出現位置探索)と復帰(保持位置へ戻す)を区別する。
+        //  ⑥ rescue→hidden: bossChasing===true && rescueArenaStartedAt===0(自分の囲いが未発火)の間、
+        //     退場(crouch→flyout)を再生し、flyout満了のフレームにhiddenを書く(位置は保持)。
+        //  ② rescue→accepted: rescueClearedAt>0(§2-4/§2-5=B3が打刻)を検知したら進める。B3が
+        //     未着地の間は rescueClearedAt が常に0なので、この行はB2単独では発火しない。
+        //  ③ accepted→warping: returnCircleが非nullかつstatus==='accepted'なら状態で進める(エッジで
+        //     書くと「円が出た後にacceptedへ進んだラン」で二度と成立しない=§2-2B確定)。実際の飛び去り
+        //     〜帰還サークルへの飛来の経路(§2-8)はB4の範囲のため、このコミットは状態遷移のみ行う。
+        //  ④ warping→delivering: movePhase==='flyin'の着地が完了したフレーム(status==='warping'の
+        //     時だけ。B4がwarpingの飛来を配線すれば、下の汎用移動処理がそのまま拾う)。
+        //  ⑤ delivering→completed: 既存のcompleteEventQuest(→'completed')を流用(B1で確定済み)。
+        //     納品の3秒滞在・入力ロック等の本体(§2-8)はB4の範囲。
+        // ★B4の範囲外の注記: S5だけの追加ゲート(§2-11・拠点2か所ラッチ)は④の時刻条件に含めていない
+        // (basesEverCapturedの消費はB4の範囲)。§2-9(縁矢印)もB4=このコミットでは配線しない。
+        if (!indoor && !labTheme) {
+          const rqGs = useGameStore.getState();
+          const rqNpc = rqGs.eventQuestNpc;
+          const rqPcx = player.x + player.width / 2, rqPcy = player.y + player.height / 2;
+
+          // ①⑦ hidden→rescue(状態で書く・§2-2B確定)。
+          if (rqNpc.status === 'hidden' && !rqGs.bossChasing && newGameTime >= RESCUE_QUEST_SPAWN_AT_MS) {
+            const firstSpawn = rqGs.rescueSpawnedAt === 0;
+            let landX: number, landY: number;
+            if (firstSpawn) {
+              const dir = resolveRescueSpawnDirection(player.lastDirection, Math.random() * Math.PI * 2);
+              const forwardDist = RESCUE_SPAWN_DIST_MIN + Math.random() * (RESCUE_SPAWN_DIST_MAX - RESCUE_SPAWN_DIST_MIN);
+              const perpSign: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
+              const point = spawnRescueQuestPoint(dir.x, dir.y, forwardDist, perpSign, ARENA_EVENT_RADIUS + 50);
+              landX = point.x; landY = point.y;
+            } else {
+              // ⑦復帰: 保持していた同じ位置へ(再抽選しない・§2-2B確定)。
+              landX = rqNpc.x; landY = rqNpc.y;
+            }
+            // 飛来の始点=着地点から見てプレイヤーと反対側へEVENT_NPC_MIN_DISTANCE離れた点(§2-14)。
+            const dlx = landX - rqPcx, dly = landY - rqPcy;
+            const dlen = Math.hypot(dlx, dly) || 1;
+            const fromX = landX + (dlx / dlen) * EVENT_NPC_MIN_DISTANCE;
+            const fromY = landY + (dly / dlen) * EVENT_NPC_MIN_DISTANCE;
+            useGameStore.setState(s2 => ({
+              eventQuestNpc: {
+                ...s2.eventQuestNpc,
+                status: 'rescue',
+                x: fromX, y: fromY,
+                moveStartedAt: newGameTime,
+                moveFromX: fromX, moveFromY: fromY,
+                moveToX: landX, moveToY: landY,
+                movePhase: 'flyin',
+                hopPx: 0,
+                triggerRadius: ARENA_EVENT_RADIUS,
+              },
+              ...(firstSpawn ? { rescueSpawnedAt: newGameTime } : {}),
+            }));
+            // 囲いのトリガー円=既存の囲い発火と同じspawnRing2枚の拡大(§2-3「★出現そのものの慣性」)。
+            spawnRing(landX, landY, ARENA_EVENT_RADIUS * 0.2, ARENA_EVENT_RADIUS, 'rgba(56,189,248,0.9)', 6, 700);
+            spawnRing(landX, landY, ARENA_EVENT_RADIUS, ARENA_EVENT_RADIUS + 30, 'rgba(56,189,248,0.9)', 3, 760);
+          }
+
+          // ⑥ rescue→hidden の退場を開始(状態自体はまだ'rescue'のまま・§2-2B確定)。
+          if (rqNpc.status === 'rescue' && rqNpc.movePhase === null && rqGs.bossChasing && rqGs.rescueArenaStartedAt === 0) {
+            useGameStore.setState(s2 => ({
+              eventQuestNpc: { ...s2.eventQuestNpc, movePhase: 'crouch', moveStartedAt: newGameTime, hopPx: 0 },
+            }));
+          }
+
+          // ② rescue→accepted(§2-4/§2-5=B3が rescueClearedAt を打刻するまで発火しない)。
+          if (rqNpc.status === 'rescue' && rqNpc.movePhase === null && rqGs.rescueClearedAt > 0) {
+            useGameStore.setState(s2 => (s2.eventQuestNpc.status === 'rescue'
+              ? { eventQuestNpc: { ...s2.eventQuestNpc, status: 'accepted' } } : {}));
+          }
+
+          // ③ accepted→warping(状態で書く・§2-2B確定)。実際の飛び去り〜飛来経路はB4(§2-8)。
+          if (rqNpc.status === 'accepted' && rqGs.returnCircle != null) {
+            useGameStore.setState(s2 => (s2.eventQuestNpc.status === 'accepted'
+              ? { eventQuestNpc: { ...s2.eventQuestNpc, status: 'warping' } } : {}));
+          }
+
+          // 移動段(crouch/flyout/flyin)の毎フレーム進行(§2-14「★ワープの段を進める場所」)。
+          // storeが座標/hopPxを毎フレーム書く(pixiSceneは描くだけ=CLAUDE.md「PixiJS only draws」)。
+          if (rqNpc.movePhase === 'flyin') {
+            const el = newGameTime - rqNpc.moveStartedAt;
+            if (el >= RESCUE_ALLY_FLYIN_MS) {
+              // ④ warping→delivering(着地完了)。status==='warping'の時だけ次の状態へ進める。
+              useGameStore.setState(s2 => {
+                const n = s2.eventQuestNpc;
+                const wasWarping = n.status === 'warping';
+                return {
+                  eventQuestNpc: {
+                    ...n, x: n.moveToX, y: n.moveToY, hopPx: 0, movePhase: null,
+                    ...(wasWarping ? { status: 'delivering' as const, dwellMs: 0 } : {}),
+                  },
+                };
+              });
+            } else {
+              const t = Math.max(0, Math.min(1, el / RESCUE_ALLY_FLYIN_MS));
+              const ex = 1 - (1 - t) * (1 - t); // 水平ease-out(勢いよく出て着地で減速・RESCUE_ALLYと同じ式)
+              const nx = rqNpc.moveFromX + (rqNpc.moveToX - rqNpc.moveFromX) * ex;
+              const ny = rqNpc.moveFromY + (rqNpc.moveToY - rqNpc.moveFromY) * ex;
+              const hop = Math.sin(Math.PI * t) * RESCUE_ALLY_HOP_PX;
+              useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, x: nx, y: ny, hopPx: hop } }));
+            }
+          } else if (rqNpc.movePhase === 'crouch') {
+            const el = newGameTime - rqNpc.moveStartedAt;
+            if (el >= RESCUE_ALLY_CROUCH_MS) {
+              useGameStore.setState(s2 => ({
+                eventQuestNpc: { ...s2.eventQuestNpc, movePhase: 'flyout', moveStartedAt: newGameTime },
+              }));
+            }
+            // クラウチ中は位置・hopPxとも動かさない(離脱の溜め)。
+          } else if (rqNpc.movePhase === 'flyout') {
+            const el = newGameTime - rqNpc.moveStartedAt;
+            if (el >= RESCUE_ALLY_FLYOUT_MS) {
+              // ⑥ 完了: hiddenを書く(status==='rescue'だった時だけ=退場中の値と一致)。位置は保持する。
+              useGameStore.setState(s2 => {
+                const n = s2.eventQuestNpc;
+                const wasHiding = n.status === 'rescue';
+                return {
+                  eventQuestNpc: { ...n, hopPx: 0, movePhase: null, ...(wasHiding ? { status: 'hidden' as const } : {}) },
+                };
+              });
+            } else {
+              const t = Math.max(0, Math.min(1, el / RESCUE_ALLY_FLYOUT_MS));
+              const hop = Math.sin(Math.PI * t) * RESCUE_ALLY_HOP_PX;
+              useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, hopPx: hop } }));
+            }
+          }
+        }
+
         // 二人組(クエストNPC)の滞在納品(EVENT_QUEST_DESIGN.md・社長裁定v0.25.1686)。
         // v2(EVENT_QUEST_DESIGN.md §2-2B・B1「型と器」): v1の「サークル3秒滞在で受領」経路
         // (旧 status:'available'・acceptEventQuest 呼び出し)は§2-2Bのとおり殺す
         // (EventQuestStatusの拡張で'available'が退役したため、型として復元できない=削除)。
         // 残すのは v2 が「納品成立の瞬間」として流用する completeEventQuest への→completedの1本
-        // (§2-2B 遷移5)だけ。ただし status を'accepted'へ進める書き手はB2以降が配線するまで存在せず、
-        // 生成直後の初期statusは'hidden'なので、この下のブロックはB1単独では実行されない
-        // (=「二人組が0:00から出なくなるだけ」で挙動は変わらない)。
+        // (§2-2B 遷移5)だけ。旧'accepted'の滞在納品(下のブロック)はv2の'accepted'の意味(囲い
+        // クリア〜城ボス撃破の待機。§2-2B)と食い違うが、②(rescueClearedAt>0)がB2単独では発火
+        // しないため'accepted'へ到達する経路がまだ無く、この食い違いはB2では観測されない。
+        // 本来の姿への書き直し(§2-8の納品本体)はB4の範囲。
         //  ・accepted: 目標達成(eventQuestKills>=Goal)後のみ、一度サークルを出てから再滞在3秒で納品=報酬。
         //  ・leftSinceAccept: 直前のやり取り以降に一度外へ出るまでメーターを進めない(即発火防止)。
         if (!indoor && !labTheme) {

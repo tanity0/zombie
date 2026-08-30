@@ -1,5 +1,76 @@
 # Development Log
 
+## v0.25.4094 — 二人組クエストv2 B2「出現と遷移」着地 【2026-08-31 00:49 JST】
+
+EVENT_QUEST_DESIGN.md §2-17 の発注区切りに従い、B2(出現と遷移)を実装。B1で入った型と器の上に、
+§2-2B の状態遷移7本と §2-3 の出現位置/飛来を配線した。囲い戦闘(§2-4)・完了と受注会話(§2-5)・
+城ボスのゲート(§2-6)・HUDの行(§2-7)はB3、納品・縁矢印・永続の鎖・S5先行条件(§2-8〜§2-11)はB4で
+未実装(範囲外)。
+
+- **状態遷移7本(`src/hooks/useGameLoop.ts` の二人組ブロック1箇所・書き手はここだけ)**:
+  - **①⑦ hidden→rescue(状態で書く)**: `status==='hidden' && !bossChasing && newGameTime>=
+    RESCUE_QUEST_SPAWN_AT_MS(4:00)` の間ずっと評価する条件式(エッジではない)。`rescueSpawnedAt===0`
+    なら §2-3 の出現位置探索で初回抽選(①)、`>0` なら保持していた `npc.x/y` へそのまま戻す(⑦=復帰・
+    再抽選しない)。どちらも `movePhase:'flyin'` を開始し、飛来の始点はEVENT_NPC_MIN_DISTANCE(460)
+    離れた「着地点から見てプレイヤーと反対側」の点(gameStore.tsで`export`化・値は不変)。
+  - **⑥ rescue→hidden**: `status==='rescue' && movePhase===null && bossChasing && rescueArenaStartedAt
+    ===0` で `movePhase:'crouch'` を開始(状態はまだ`rescue`のまま)。crouch→flyoutを再生し、flyout
+    満了のフレームに`hidden`を書く(位置=npc.x/yは保持し、書き換えない)。
+  - **② rescue→accepted**: `rescueClearedAt>0` を検知したら進める状態watch。§2-4/§2-5(B3)がこの
+    フィールドを打刻するまでB2単独では発火しない(rescueClearedAtは常に0のため)。
+  - **③ accepted→warping(状態で書く)**: `returnCircle!=null && status==='accepted'`。エッジで書くと
+    「円が出た後にacceptedへ進んだラン」で二度と成立しない=§2-2B確定どおり状態式にした。実際の
+    飛び去り〜帰還サークルへの飛来経路(§2-8)はB4の範囲のため、このコミットは状態遷移のみ。
+  - **④ warping→delivering**: 汎用の移動進行コード(crouch/flyout/flyinの3段を毎フレーム補間)が
+    `movePhase==='flyin'`の着地完了を検知した時、`status==='warping'`ならここで`delivering`+
+    `dwellMs:0`へ進める。B4がwarping用のflyin開始を配線すれば、この汎用コードがそのまま拾う
+    (今回は誰もwarping中にflyinを開始しないため未到達)。
+  - **⑤ delivering→completed**: 既存の`completeEventQuest`(B1で確定済みの`→'completed'`書き込み)を
+    そのまま流用。§2-8の納品本体(3秒滞在・入力ロック等)はB4。
+  - 移動段の補間は救難信号アライと同じ式(水平ease-out `1-(1-t)²` + `sin(πt)*RESCUE_ALLY_HOP_PX`の
+    弧)をstore側で毎フレーム計算し`npc.x/y/hopPx`へ書く(pixiSceneは描くだけ)。
+- **出現位置(§2-3)**: `src/utils/rescueQuestSpawn.ts`(新規・純関数+テスト8件)が候補列のジオメトリ
+  (中心線=`player.lastDirection`基準・距離帯RESCUE_SPAWN_DIST_MIN/MAX・±200pxの直交オフセット+
+  `beginReturnPhase`と同じ形の角度振り空き地探索)を作り、`src/store/gameStore.ts`の新規
+  `spawnRescueQuestPoint`が判定(`resolveBountyMove`=施設/木/松明/街プロップ等・他イベントサークル
+  ・賞金首索敵圏・商人/拠点サークル・原点3000px)を諦める順序どおりに適用する(§2-3「★候補が全滅
+  した時に諦める順序」)。最終フォールバックは`resolveOutOfSolids`の押し戻し座標をそのまま採用
+  (`collectPickup`と同じ作法)。**S5の追加ゲート(§2-11・拠点2か所ラッチ)はB4の範囲のため、この
+  コミットでは全ステージ共通の「4:00超過」のみで判定する**(`basesEverCaptured`は書いていない)。
+- **待機中のトリガー円(§2-3)**: `src/pixi/pixiScene.ts`に`questTriggerGfx`(`arenaGfx`と同じ作法=
+  `L.groundLayer`・加算合成・world座標直描き・depthScaleなし)を新設。半径は`eventQuestNpc.
+  triggerRadius`(`ARENA_EVENT_RADIUS`の唯一の出どころ・二重管理なし)。`status==='rescue'`の間
+  描き続け、退場中(`movePhase==='flyout'`)はflyoutの進み具合に合わせてフェードアウトする。
+  **`activeEvent?.rescueQuest`による停止条件はB3の範囲のため未配線**(自分の囲いがまだ無いので
+  現状は`rescue`である限り常に描かれる=観測できる範囲では問題ない)。
+- **`accepted`のv1 UI撤去(§2-2B受け入れ条件1b)**: `syncEventQuestNpc`の`near`判定を`false`固定に
+  し、青い会話サークル・白い滞在アーク(旧`EVENT_QUEST_DWELL_VIS_MS`基準・使われなくなったため定数ごと
+  削除)・頭上の緑リングの描画コードを削除。distance計算に使っていた`player`引数も不要になったため
+  シグネチャから外した(呼び出し側も追従)。
+- **`hopPx`の反映**: 本体は`npc.y - hopPx`で描画(depthScale/zIndex/horizonActorAlphaは地面の`npc.y`
+  のまま=不変)。接地影(`BuildingShadowReq`に`heightPx?`を追加・`place()`へ素通し)にも`heightPx:
+  npc.hopPx`を渡し、飛んでいる間は影が足元から離れて縮む(護衛/救援アライと同じ作法)。
+- **投影影の除外条件(§2-2B受け入れ条件4/4b/4d)**: `syncLocalEventLighting`の走査条件を
+  `status !== 'completed'`から「このフレームに絵を描いていない状態か」(`gone`/`hidden`/フェード
+  満了後の`completed`/`warping`)へ書き換え。`gone`(納品済みステージ)でも影が落ち続けていた
+  v0.25.3054と同型の事故がもう1件残っていたのを合わせて塞いだ。
+- **範囲外(未着手)の確認**: 囲い戦闘(§2-4)・完了と受注会話(§2-5)・城ボスのゲート(§2-6)・HUDの行
+  (§2-7)・納品/入力ロック(§2-8)・縁矢印(§2-9)・永続の鎖(§2-10)・S5先行条件(§2-11)・
+  `src/data/progress.ts`・`PROJECT_STATUS.md`は1バイトも触っていない。
+- **★未決の追加**: なし。設計書に無い値・未定義の挙動には当たらなかった(rescueClearedAt/
+  returnCircleの「B2単独では発火しない」経路はいずれも§2-17の発注区切りどおりB3/B4が埋める前提の
+  もので、未決ではなく計画どおりの空白)。
+- **状態変化: 二人組クエストv2 → 実装中(B2着地・残り B3/B4)。**
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(囲い/ゲート/難度の値には
+  一切触れていない。触れたのは出現位置・状態遷移・描画のみ)。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(warning9件は既存・無関係)。
+  `npx vitest run src/utils/rescueQuestSpawn.test.ts`(新規8件・緑)+関連既存テスト
+  (`eventQuest.test.ts`/`storyCanon.test.ts`/`practiceGuard.test.ts`/`enemyUtils.test.ts`/
+  `constitution.test.ts`)137件緑。テスト・ビルドのフル実行は社長指示が無いため未実行
+  (CLAUDE.mdのテスト運用どおり)。
+- 実機確認(社長・任意): 4:00で二人組+青い円が進行方向側に飛来で出るか/裏ボス戦闘中は消えて
+  戦闘後に同じ場所へ戻るか。円に入っても現状は何も起きない(B3待ち=想定どおり)。
+
 ## v0.25.4093 — 赤円の帯が「画面に出ていなかった」のを直す(社長報告「なってない」)【2026-08-31 00:21 JST】
 
 **社長報告: 「なってない。赤サークル」。** 実測で原因が割れた——**マスクは動いていたが、絵が薄すぎて

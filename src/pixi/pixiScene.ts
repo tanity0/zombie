@@ -617,7 +617,10 @@ const EVENT_NPC_TARGET_HEIGHT = 108;
 // グレッグ/ジュン(チュートリアル随行)・商人・二人組・救助NPCは対象外。
 // 視覚のみ=当たり判定は不変(CLAUDE.md「Visual vs. hitbox」)。会話立ち絵はNpcDialogue側で適用。
 const NPC8_SCALE = 0.9; // 0.8→0.9(社長指示v0.25.1859)
-const EVENT_QUEST_DWELL_VIS_MS = 3000; // 二人組の滞在受領メーターの満了時間(gameStore.EVENT_QUEST_DWELL_MSと一致)
+// v2(EVENT_QUEST_DESIGN.md §2-2B・B2): 旧v1の白い滞在アーク(このpixiScene側の複製定数を分母に
+// 使っていた)を撤去したため不要になった。§2-14「★納品の3秒滞在のメーターを描く場所」により、
+// B4が足す帰還サークル側の新しいアークはstore側のEVENT_QUEST_DWELL_MSを分母にする(この複製は
+// 使わない=削除)。
 const EVENT_NPC_FADE_MS = 1100;
 // 鞭ハリケーン竜巻スプライト(視覚のみ。吸引半径/ダメージは store 定義のまま)。
 const WHIP_HURRICANE_ANCHOR_Y = 0.92;   // テクスチャ内の地面の渦(根元)位置(縦長竜巻)
@@ -3193,6 +3196,9 @@ interface BuildingShadowReq {
   alpha: number;         // 位置由来(horizonActorAlpha等)のみ
   shadowFade?: number;   // 退場由来のみ(既定1。例: イベントNPC完了後のフェード)
   isStatic?: boolean; // 建物=距離クロスフェード対象(木/壁/プロップ/city propsと同じ扱い)
+  // EVENT_QUEST_DESIGN.md §2-14「★二人組の接地影に高度を渡す」: 浮遊時の高さ(px)。省略=0(地上)。
+  // 護衛/救援アライがShadowCasterReq.heightPxへ渡しているのと同じ作法(place()でそのまま素通しする)。
+  heightPx?: number;
 }
 
 /** 新影プールの1体ぶん(接地2枚+シルエットメッシュ)。裁定I: メッシュはdestroyせずvisible=falseで温存。 */
@@ -3688,6 +3694,11 @@ export class PixiScene {
   private groundReflPool: Sprite[] = [];
   private groundReflUsed = 0;
   private arenaGfx = new Graphics(); // 囲い系イベントの柵リング(半透明の光る円ストローク・world座標)
+  // EVENT_QUEST_DESIGN.md §2-3/§2-14「★待機中のトリガー円」(B2): レスキュー地点の待機円。
+  // arenaGfxと同じ作法(groundLayer・加算合成・world座標直描き・depthScaleなし)の専用Graphics
+  // (syncEventQuestNpc=actorLayer・通常合成・depthScaleありの会話サークルとは構造的に半径が
+  // 一致しないため=撤回済みの旧案。arenaGfxの隣に置く新設の1枚)。
+  private questTriggerGfx = new Graphics();
   private returnGfx = new Graphics(); // 帰還サークル(地面・world座標。滞在で外周が満ちる)
   private static enemyDrawErrLogged = false; // drawEnemy 例外ログは初回だけ(1体の描画失敗で全体が固まらないよう保護)
   /**
@@ -4711,6 +4722,7 @@ export class PixiScene {
       this.groundReflectionGfx,
       this.groundReflGroup,
       this.arenaGfx, // 囲い系イベントの柵リング(地面・アクターの下・world座標)
+      this.questTriggerGfx, // レスキュー地点の待機トリガー円(地面・world座標。arenaGfxの隣・§2-3)
       this.returnGfx, // 帰還サークル(地面・world座標)
       this.baseSitesGfx, // 拠点候補地サークル(地面・world座標)
       this.castleFightRingGfx, // v0.25.3055: 城ボス戦の移動制限ライン(地面・world座標・線のみ)
@@ -4739,6 +4751,7 @@ export class PixiScene {
     this.diveSprite.anchor.set(0.5, 1); // 足元アンカー=拡大しても足が地面に残る
     this.L.actorLayer.addChild(this.diveSprite); // 急降下の飛び去り/落下(アクター層・y-sort)
     this.arenaGfx.blendMode = 'add'; // 半透明の光る柵(加算で発光感)
+    this.questTriggerGfx.blendMode = 'add'; // 待機トリガー円もarenaGfxと同じ加算(§2-3)
     this.returnGfx.blendMode = 'add'; // 帰還サークルも加算で発光
     this.baseSitesGfx.blendMode = 'add'; // 拠点候補地サークルも加算で発光
     this.hospitalGfx.blendMode = 'add'; // 病院サークルも加算で発光
@@ -7958,7 +7971,7 @@ export class PixiScene {
       this.eventNpcView.visible = false; this.npcShadow = null;
     } else {
       this.syncCastle(s.castleEvent, now);
-      this.syncEventQuestNpc(s.eventQuestNpc, s.player, now);
+      this.syncEventQuestNpc(s.eventQuestNpc, now);
     }
     this.syncMerchant(s.weaponMerchant, s.player, now, s.merchantDwellMs); // 商人は屋内でも(最初の部屋に)出す
     // v0.25.3054: 施設フェードの適用(コンテナ/影リクエストに外から乗算=各syncの内部alphaと独立)。
@@ -8011,6 +8024,7 @@ export class PixiScene {
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
     this.syncArena(s.activeEvent, now);
+    this.syncQuestTrigger(s.eventQuestNpc, s.gameTime, now); // レスキュー地点の待機トリガー円(§2-3)
     this.syncReturnCircle(s.returnCircle, now);
     this.syncHospital(now); // 廃病院(通常ステージのみ。無いステージでは即 return=no-op)
     this.syncArmory(now); // §6.24 M48: 武器庫(同上)
@@ -8924,7 +8938,7 @@ export class PixiScene {
     }
   }
 
-  private syncEventQuestNpc(npc: EventQuestNpc, player: Player, now: number) {
+  private syncEventQuestNpc(npc: EventQuestNpc, now: number) {
     // 過去のプレイで納品済みのステージ: 二人は出現しない(社長指示v0.25.1684)。
     if (npc.status === 'gone') {
       this.eventNpcView.visible = false;
@@ -8968,22 +8982,21 @@ export class PixiScene {
     const breathX = 1 + (breath - 0.5) * 0.012;
     const breathY = 1 + (breath - 0.5) * 0.022;
     const pulse = 0.5 + 0.5 * Math.sin(now / 360);
-    const pcx = player.x + player.width / 2;
-    const pcy = player.y + player.height / 2;
-    const dx = npc.x - pcx;
-    const dy = npc.y - pcy;
-    // 受領済み(accepted)も納品の対話対象なのでサークルを見せる(社長指示v0.25.1684の「同じ動作」)。
-    // v2(§2-2B): 旧'available'は退役(B1でEventQuestStatusから除去)。'accepted'の描画の要否
-    // (v2は§2-2B受け入れ条件1bで「触れそうな印を出さない」)はB2の描画対応で扱う=このコミットでは
-    // 型変更に伴う機械的な置き換えのみ('available'の分岐を削っただけ・挙動は変えない)。
-    const near = npc.status === 'accepted'
-      && dx * dx + dy * dy <= (npc.radius + 72) * (npc.radius + 72);
+    // v2(EVENT_QUEST_DESIGN.md §2-2B・B2): 旧'available'は退役(B1でEventQuestStatusから除去)。
+    // 受け入れ条件1b(★v3 4巡目 監査A6): `accepted`(囲いクリア〜城ボス撃破)の間は、青い会話サークル・
+    // 白い滞在アーク・頭上の緑リングを一切描かない(触れても何も起きない状態に「触れそうな印」を
+    // 残さない)。v2で残る状態のうちこの`near`条件を満たせるものは無い(常にfalse。プレイヤー距離の
+    // 判定自体が不要になったのでdx/dy/pcx/pcyの算出も削った)。
+    const near = false;
     const statusAlpha = npc.status === 'completed'
       ? Math.max(0, 1 - fadeElapsed / EVENT_NPC_FADE_MS)
       : 1;
 
+    // §2-14「EventQuestNpcに足すフィールド」: npc.yは常に地面の足元Y。飛来/退場中の高さは
+    // hopPxとして別に持ち、本体だけ-hopPxだけ上へずらして描く(depthScale/zIndex/horizonActorAlphaは
+    // すべて地面のnpc.yから作る=飛んでいる間に絵が縮む/Y-sortが入れ替わる事故を防ぐ)。
     this.eventNpcView.visible = true;
-    this.eventNpcView.position.set(Math.round(npc.x), Math.round(npc.y));
+    this.eventNpcView.position.set(Math.round(npc.x), Math.round(npc.y - npc.hopPx));
     this.eventNpcView.alpha = horizonAlpha * statusAlpha;
     this.eventNpcView.zIndex = npc.y;
 
@@ -8999,36 +9012,20 @@ export class PixiScene {
     // 接地影は syncShadows のソフト方向影に統一(可視時のみリクエスト。フェード中は statusAlpha 反映)。
     // §3-9-B v9裁定Q: statusAlpha は納品完了後の退場フェード(存在の法則)なので shadowFade へ
     // (alpha=位置由来のみ。地平線フェードとの二重掛けを避けるため分けて渡す)。
+    // §2-14「★二人組の接地影に高度を渡す」: heightPx=npc.hopPx(飛んでいる間、影が足元から離れて
+    // 小さくなる。護衛/救援アライのshadowHeightと同じ作法)。
     this.npcShadow = {
       x: npc.x, y: npc.y,
       legacyW: 84 * d,
       rawW: tex.width * sc * breathX, rawH: tex.height * sc * breathY, texture: tex,
-      alpha: horizonAlpha, shadowFade: statusAlpha,
+      alpha: horizonAlpha, shadowFade: statusAlpha, heightPx: npc.hopPx,
     };
 
     const g = this.eventNpcGfx;
     g.clear();
-    if (near) {
-      g.circle(0, -8 * d, npc.radius * d)
-        .stroke({ width: 2 * d, color: 0x60a5fa, alpha: 0.34 + pulse * 0.2 });
-      g.circle(0, -targetH * 0.96, 4 * d)
-        .fill({ color: 0xbfdbfe, alpha: 0.72 + pulse * 0.18 });
-    }
-    // 滞在受領の進捗メーター(社長指示v0.25.1681): 拠点解放の制圧アークと同じ意匠(白いアーク・12時起点)。
-    // 3秒(=EVENT_QUEST_DWELL_MS。useGameLoopが dwellMs を加算)で満了=自動受領。
-    // 受領済み(accepted)は納品の再滞在メーターとして同じアークを使う(社長指示v0.25.1684)。
-    // v2: 旧'available'は退役(B1でEventQuestStatusから除去)。
-    if (npc.status === 'accepted' && npc.dwellMs > 0) {
-      const frac = Math.max(0, Math.min(1, npc.dwellMs / EVENT_QUEST_DWELL_VIS_MS));
-      const start = -Math.PI / 2, rr = (npc.radius + 6) * d, cyq = -8 * d;
-      g.moveTo(Math.cos(start) * rr, cyq + Math.sin(start) * rr)
-        .arc(0, cyq, rr, start, start + Math.PI * 2 * frac)
-        .stroke({ width: 4 * d, color: 0xfff7cc, alpha: 0.95 });
-    }
-    if (npc.status === 'accepted') {
-      g.circle(0, -targetH * 0.98, 5 * d)
-        .stroke({ width: 1.5 * d, color: 0x34d399, alpha: 0.46 + pulse * 0.18 });
-    }
+    // v2: 会話サークル・白い滞在アーク・頭上の緑リングはnearの消滅(常にfalse)に伴って描かれなくなる
+    // (§2-2B受け入れ条件1b)。ここに描画は残さない(納品3秒滞在の新しいメーターは帰還サークル側=
+    // §2-8・B4の範囲)。
   }
 
   // ---- trees: Y-sorted with the actors so you stand in front / behind -------
@@ -10413,7 +10410,16 @@ export class PixiScene {
       }
       if (castle.collapsedAt === undefined) push(castle.x, castle.y + CASTLE_FOOT_OFFSET_Y, 90 * this.depthScale(castle.y + CASTLE_FOOT_OFFSET_Y), castle.bossSpawned ? 1.15 : 0.82); // v0.25.3983: 崩落した城は消す
       push(merchant.x, merchant.y, 82 * this.depthScale(merchant.y), 0.9);
-      if (eventNpc.status !== 'completed') {
+      // EVENT_QUEST_DESIGN.md §2-14「★二人組の投影影(除外条件を書き換える)」(B2): 除外は
+      // 「completedか」ではなく「★このフレームに絵を描いていない状態か」で判定する
+      // (syncEventQuestNpcが描画をスキップする状態=gone/hidden/completed(フェード満了後))。
+      // さらにwarpingも走査から外す(§2-2B受け入れ条件4d): この積み口はpush(x,y,w,strength)で
+      // 高さの引数を持たないため、空中の二人組から地面へ影が伸びるのを止める唯一の手段。
+      const eventNpcFadeDone = eventNpc.status === 'completed' && eventNpc.fadeStartedAt > 0
+        && now - eventNpc.fadeStartedAt >= EVENT_NPC_FADE_MS;
+      const eventNpcDrawn = eventNpc.status !== 'gone' && eventNpc.status !== 'hidden'
+        && eventNpc.status !== 'warping' && !eventNpcFadeDone;
+      if (eventNpcDrawn) {
         push(eventNpc.x, eventNpc.y, 76 * this.depthScale(eventNpc.y), 0.9);
       }
       return out;
@@ -11516,7 +11522,7 @@ export class PixiScene {
     }
     if (this.npcShadow) {
       const n = this.npcShadow;
-      place({ id: 'npc', x: n.x, y: n.y, rawW: n.rawW, rawH: n.rawH, texture: n.texture, alpha: n.alpha, shadowFade: n.shadowFade });
+      place({ id: 'npc', x: n.x, y: n.y, rawW: n.rawW, rawH: n.rawH, texture: n.texture, alpha: n.alpha, shadowFade: n.shadowFade, heightPx: n.heightPx });
     }
     if (this.castleShadow) {
       const c = this.castleShadow;
@@ -22058,6 +22064,31 @@ export class PixiScene {
           .stroke({ width: 4, color: 0xbbf7d0, alpha: 0.95 });
       }
     }
+  }
+
+  // EVENT_QUEST_DESIGN.md §2-3/§2-14「★待機中のトリガー円」(B2): 4:00の出現〜自分の囲いが発火する
+  // までのあいだ、どこに入れば始まるかを画面に出し続ける(syncArenaはactiveEventが立つまで何も
+  // 描かない=待機中に円を描く実体が他に無い)。叩き台の色はhordeと同じ青(§2-15 #10の裁定待ち)。
+  // 半径はstoreのtriggerRadius(=ARENA_EVENT_RADIUSの唯一の出どころ・二重管理にしない)。
+  private syncQuestTrigger(npc: EventQuestNpc, gameTime: number, now: number) {
+    const g = this.questTriggerGfx;
+    g.clear();
+    if (npc.status !== 'rescue') return;
+    // 退場中(crouch→flyout・§2-2B遷移⑥)はトリガー円も同じフレームでフェードアウトさせる
+    // (出現側のspawnRing2枚と対になる消滅演出。crouchの溜め中はまだ全力のまま)。
+    let alpha = 1;
+    if (npc.movePhase === 'flyout') {
+      const t = Math.max(0, Math.min(1, (gameTime - npc.moveStartedAt) / RESCUE_ALLY_FLYOUT_MS));
+      alpha = 1 - t;
+    }
+    if (alpha <= 0) return;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 260);
+    const a = (0.30 + 0.18 * pulse) * alpha;
+    const color = 0x38bdf8; // hordeと同じ青(叩き台)
+    const r = npc.triggerRadius;
+    g.circle(npc.x, npc.y, r - 4).fill({ color, alpha: (0.05 + 0.04 * pulse) * alpha });
+    g.circle(npc.x, npc.y, r).stroke({ width: 6, color, alpha: a * 0.6 });
+    g.circle(npc.x, npc.y, r - 3).stroke({ width: 2, color, alpha: a });
   }
 
   // 帰還サークル: フィナーレ撃破/終了アイテム後に出る帰還地点。地面の二重リング+滞在進捗の外周円弧。
