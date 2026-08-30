@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4083',
+    items: [
+      'HPオーブ: 縁の紫のリング線も取り除きました(枠素材と液体だけの見た目に)。',
+    ],
+  },
+  {
     version: '0.25.4082',
     items: [
       'HPオーブ: 液体の揺れが大きく長く続くようになり、上部の白い艶の楕円を取り除きました。',
