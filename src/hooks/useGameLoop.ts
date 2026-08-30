@@ -92,6 +92,9 @@ import {
   spawnRescueQuestPoint, EVENT_NPC_MIN_DISTANCE, // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2)
 } from '../store/gameStore';
 import { resolveRescueSpawnDirection } from '../utils/rescueQuestSpawn'; // 二人組クエストv2(§2-3・B2)
+import {
+  shouldFireRescueQuestArena, shouldFoldRescueHold, rescueQuestArenaOutcome, computeQuestGateOk,
+} from '../utils/rescueQuestArena'; // 二人組クエストv2(§2-4/§2-5/§2-6・B3)
 import { pushShieldRect, clampShieldPlacementRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
 import { DOG_EXCLUDED_TYPES, dogEligiblePickups } from '../utils/dogFetch'; // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
@@ -157,7 +160,7 @@ import { isPvpIncapacitated, tickPvpPosture } from '../utils/pvpPosture'; // ★
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
-import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
+import { CASTLE_BOSS_MIN_TIME_MS, RESCUE_TO_CASTLE_DELAY_MS } from '../config/castleBoss';
 import { stageBossHealthFor, STAGE_BOSS_HEALTH_BY_STAGE, guardianPhantomHealth } from '../config/bossHealth';
 // research/STAGE_DIFFICULTY.md(ステージ難度の階段): 小ボスのステージ固定割当と、ボス個別適用の係数。
 import { BOUNTY_TYPE_BY_STAGE } from '../config/stageDifficulty';
@@ -417,8 +420,11 @@ import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChro
 import { exposeKomaLog, logKomaSummary } from '../utils/komaLog';
 // 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
 // v1の受領(accept)会話まわり(EVENT_QUEST_LINES_FORCED/EVENT_QUEST_ENCOUNTER_LINES/
-// eventQuestSubAcceptLines/getEventQuestConfig)はB1で呼び出し元ごと退役(§2-2B)=import不要。
+// getEventQuestConfig)はB1で呼び出し元ごと退役(§2-2B)=import不要。
+// eventQuestSubAcceptLinesはv2(EVENT_QUEST_DESIGN.md §2-5・§2-13・B3)がレスキュー完了(受注)の
+// 瞬間に流す会話として再度必要になったため再importする(会話は流すだけ・完了判定には関与しない)。
 import {
+  eventQuestSubAcceptLines,
   eventQuestSubCompleteLines,
 } from '../utils/eventQuest';
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
@@ -678,6 +684,11 @@ const RED_NIGHT_FIRE_AT_MS = 420000; // 7:00
 // ゲート1中もchaffは通常のディレクター駆動のまま(gate1.ts参照)。
 const ARENA_HORDE_COUNT = 18;          // ゾンビ版の初期湧き数(cap 20 以内)
 const ARENA_HORDE_DURATION_MS = 40000; // ゾンビ版の制限時間保険(段階スポーン約18秒化に合わせ30→40へ)。基本は全滅で終了
+// 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-4・B3): レスキューの囲い。編成=叩き台
+// (★未決 §2-15 #1「レスキュー囲いの中身」・裁定が出るまでの本文確定=削岩型の赤個体1体+
+// そのステージの通常雑魚4体)。上限90秒(★未決 §2-15 #13「囲いの90秒上限」)。
+const RESCUE_QUEST_ADDS = 4;              // 削岩型の赤個体1体とは別のゾンビ系の頭数
+const RESCUE_QUEST_ARENA_DURATION_MS = 90000; // 90秒(既存の帯=horde40秒/boss60秒より長い明示上限)
 
 // --- 寄り道POI(PACING_PUZZLE.md §6.24 M48)の専用スキル3種 ------------------------------
 // 爆撃(B): タレット/朱雀と同じ GRENADE_WEAPON_KEY 経路を発射元プレイヤーで再利用する(§6.24発注メモ2)。
@@ -1348,6 +1359,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 変異者大量発生(horde): 段階スポーン進捗。1秒に1体ずつ計total体(1/3体目=パンプキン/2/3・最終体目=ウルフ)。
   // totalは既定ARENA_HORDE_COUNT(18)だが、バッチ5追補のイベント関所発火時はeventSizeMultで可変。
   const hordeSpawnRef = useRef({ spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT });
+  // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-4・B3): レスキューの囲いで湧かせた個体のidセット。
+  // 完了判定はグローバルfromEvent数ではなく、このセットの生存数で行う(§2-14「完了判定のスコープ」)。
+  // 発火のたびに新しいSetを代入する(clear()で使い回さない=前回の残りが混ざらない)。ラン跨ぎのリセットは
+  // 下の新ランrefリセット群で行う。
+  const rescueQuestEnemyIdsRef = useRef<Set<string>>(new Set());
   // §6.24 M48「爆撃」: 次回発射が可能な gameTime(ms)。射程内に敵が居ない間はCDを進めない(§6.24 B3)。
   const poiBombingRef = useRef(0);
   // バッチ5追補: 関所頭で発火予約されたイベント関所(gate-assault/gate-boss-spike)の発火待ち状態。
@@ -2671,6 +2687,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
           boredomArenaNextEligibleAtRef.current = BOREDOM_ARENA_START_MS; // M20軸1のCDも新ランでリセット
           hordeSpawnRef.current = { spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT };
+          rescueQuestEnemyIdsRef.current = new Set(); // 二人組クエストv2(§2-4)のidセットも新ランで空にする
           gateEventPendingRef.current = null; // バッチ5追補も新ランでリセット
           redNightFiredRef.current = false;
           redNightFireAtRef.current = RED_NIGHT_FIRE_AT_MS; // 新ランでも同じ時刻に固定(v0.25.3317)
@@ -2855,7 +2872,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (社長指示: 接近不要。城マーカーはボス出現後に表示。?castlenow=1 は即時。)
         // 以前は制圧イベント中(ステージ1メイン)は出さない仕様だったが、社長指示で撤回=制圧中でも
         // 時間が来たら出現するように変更(拠点制圧の完了を待たない)。
-        const castleBossReady = FORCE_CASTLE_BOSS || practiceForces('castlenow') || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
+        // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-6・B3): questGateOk=「このランでクエストが対象外
+        // (status==='gone')」または「レスキュー完了(rescueClearedAt>0)から RESCUE_TO_CASTLE_DELAY_MS
+        // (3.0秒)経過」。getEventQuestConfig(...)では判定しない(設定はステージにしか紐づかないため
+        // フリー出撃・練習・ベンチ・ボスメーカーでもtrueになり城ボスがゲートされて詰む・§2-1)。
+        const questGateOk = (() => {
+          const qgs = useGameStore.getState();
+          return computeQuestGateOk({
+            npcStatus: qgs.eventQuestNpc.status, rescueClearedAt: qgs.rescueClearedAt,
+            now: newGameTime, delayMs: RESCUE_TO_CASTLE_DELAY_MS,
+          });
+        })();
+        // ANDは時間条件の項にだけ掛ける(★★3巡目 監査A2)。castleBossReady全体に掛けると開発用の
+        // 強制出現(?castlenow=1/FORCE_CASTLE_BOSS)まで塞がり、実機確認ができなくなる。
+        const castleBossReady = FORCE_CASTLE_BOSS || practiceForces('castlenow') || (newGameTime >= CASTLE_BOSS_MIN_TIME_MS && questGateOk);
         // 洋館通路(corridorMode)は城なし(v0.25.2144・社長指示「城も出現しないで。時間で出るのは死神だけ」)
         // =5分の城ボス(giantbat)+バナーを出さない(城の実体もresetGameで遥か遠方に置いている)。
         // v0.25.3054: 別ボスと交戦中は城ボスの時間出現を先送り(出現アテンション/魔法陣がボス戦へ
@@ -2930,6 +2960,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // (=実装してないボス)は undefined でカットイン無し=従来のattentionのみ。
           useGameStore.getState().triggerAttention(x, y, bossCutinPayload('giantbat', getSelectedStageId()));
           playSfx('boss-appear');
+          // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-7・B3): アテンションが実際に張られた瞬間を打刻
+          // (HUDの黄色い行の表示条件・§2-14「アテンション完了の打刻」)。triggerAttentionを呼んだのと
+          // 同じ行で打刻する。
+          useGameStore.setState({ castleAttnDoneAt: newGameTime });
         }
 
         // --- the ONE ストーリーボス(M7=グレン巨大化) ---
@@ -3369,7 +3403,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 既にゲートがアクティブ(activeGateRef!=null)なら触らない(発火済みのゲートを消さない)。
           {
             const aePre = useGameStore.getState().activeEvent;
-            if (gateFireOk && activeGateRef.current == null && aePre && aePre.kind !== 'boss') {
+            // 二人組クエストv2(§2-4 受け入れ条件15): レスキューの囲いも保護対象に足す(policeArenaと
+            // 同じ形の1フラグ分岐)。足さないと、ゲート発火待ちのフレームでレスキューの囲いが
+            // 音もなく畳まれ、rescueClearedAtが立たないまま城ボスが永久に出ない。
+            if (gateFireOk && activeGateRef.current == null && aePre && aePre.kind !== 'boss' && aePre.rescueQuest !== true) {
               const gate1WouldFire = shouldTriggerGate1({
                 enabled: GATE_ENABLED,
                 wallIdx: gate1PendingRef.current ? 3 : null,
@@ -3388,8 +3425,46 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             }
           }
+          // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-4「★★発火時の手順は…」前置き・B3): レスキュー円の
+          // 中に居て、このフレームで必ずレスキューの囲いが発火すると分かっている時だけ、埋まっている
+          // 救助ホールド(kind:'rescue')を「救助失敗」バナーを出してから畳む(★社長裁定2026-08-30
+          // #24=(b))。ゲートが先に枠を取るフレーム(gate1/gate2発火待ち)では畳まない。上書きはしない
+          // (上書きすると救助ホールドの生存者/イベント敵の後始末が走らず宙に浮く)。
+          {
+            const rqPreGs = useGameStore.getState();
+            const rqPreNpc = rqPreGs.eventQuestNpc;
+            const rqPreCx = player.x + player.width / 2, rqPreCy = player.y + player.height / 2;
+            const rescueQuestWouldFire = shouldFoldRescueHold({
+              npcStatus: rqPreNpc.status, movePhase: rqPreNpc.movePhase,
+              rescueArenaStartedAt: rqPreGs.rescueArenaStartedAt,
+              npcX: rqPreNpc.x, npcY: rqPreNpc.y, triggerRadius: rqPreNpc.triggerRadius,
+              playerX: rqPreCx, playerY: rqPreCy,
+              gate1Pending: gate1PendingRef.current, gate2Pending: gate2PendingRef.current,
+              gate2WouldFire: gateFireOk && shouldTriggerGate2({
+                enabled: GATE_ENABLED,
+                wallIdx: gate2PendingRef.current ? 4 : null,
+                gate2Cleared: gateMetaRef.current.gate2Cleared,
+                activeEventActive: false,
+              }),
+            });
+            if (rescueQuestWouldFire && rqPreGs.activeEvent?.kind === 'rescue') {
+              useGameStore.setState({ eventBannerText: '救助失敗', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              useGameStore.getState().endArenaEvent();
+            }
+          }
           const ae = useGameStore.getState().activeEvent;
           if (!ae) {
+           // 二人組クエストv2(§2-4): レスキューの発火条件(この時点の値で1回だけ評価)。ゲート1/2の
+           // 枝の後・退屈補正の前に置く(構造で同フレーム衝突を排除・§2-14「発火のコードを置く場所」)。
+           const rqFireGs = useGameStore.getState();
+           const rqFireNpc = rqFireGs.eventQuestNpc;
+           const rqFireCx = player.x + player.width / 2, rqFireCy = player.y + player.height / 2;
+           const rescueQuestReady = shouldFireRescueQuestArena({
+             npcStatus: rqFireNpc.status, movePhase: rqFireNpc.movePhase,
+             rescueArenaStartedAt: rqFireGs.rescueArenaStartedAt,
+             npcX: rqFireNpc.x, npcY: rqFireNpc.y, triggerRadius: rqFireNpc.triggerRadius,
+             playerX: rqFireCx, playerY: rqFireCy,
+           });
            const gate1Ready = shouldTriggerGate1({
              enabled: GATE_ENABLED,
              wallIdx: gate1PendingRef.current ? 3 : null,
@@ -3515,6 +3590,57 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnFlash('rgba(127,29,29,0.26)', 360);
             useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
             useGameStore.getState().triggerTimeSlow(0.4, 520);
+           } else if (rescueQuestReady) {
+            // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-4「囲い戦闘」・B3): レスキューの囲い。
+            // 手順は入れ替え禁止(①→②→③→④→⑤・§2-4「★★発火時の手順は…」)。
+            const rqx = rqFireNpc.x, rqy = rqFireNpc.y;
+            const rqRadius = rqFireNpc.triggerRadius;
+            // ①beginArenaEventを先に呼ぶ(敵の配置より前=isArenaSweepProtectedがdrillerだけを
+            // 守り、ゾンビ系を一掃してしまう事故を防ぐ・§2-4「beginArenaEventを名乗るだけで…」)。
+            useGameStore.getState().beginArenaEvent({
+              kind: 'horde', x: rqx, y: rqy, radius: rqRadius,
+              startedAt: newGameTime, endsAt: newGameTime + RESCUE_QUEST_ARENA_DURATION_MS,
+              rescueQuest: true,
+            });
+            // ②編成N体を配置(§2-4「編成」叩き台=削岩型の赤個体1体+そのステージの通常雑魚4体)。
+            // 配置したidをこの場でセットへ控える(完了判定のスコープ=このイベントで湧かせた個体のみ)。
+            const rqIds = new Set<string>();
+            {
+              const dbx = rqx + Math.cos(-Math.PI / 2) * rqRadius * 0.5;
+              const dby = rqy + Math.sin(-Math.PI / 2) * rqRadius * 0.5;
+              const driller = spawnEnemyAtWithTier('driller', dbx - 20, dby - 20, newGameTime, 'red');
+              driller.fromEvent = true;
+              driller.dormant = true; driller.aggroRange = EVENT_SPAWN_AGGRO_RANGE; driller.vx = 0; driller.vy = 0;
+              addEnemy(driller);
+              rqIds.add(driller.id);
+            }
+            const rqBasics: EnemyType[] = ['zombie', 'skeleton', 'bat'];
+            for (let i = 0; i < RESCUE_QUEST_ADDS; i++) {
+              const rang = Math.random() * Math.PI * 2;
+              const rdist = rqRadius * (0.5 + Math.random() * 0.42); // 0.5〜0.92(既存placeInRingと同じ式)
+              const rex = rqx + Math.cos(rang) * rdist, rey = rqy + Math.sin(rang) * rdist;
+              const rtype = rqBasics[Math.floor(Math.random() * rqBasics.length)];
+              const re = spawnEnemyAt(rtype, rex - 16, rey - 16, newGameTime);
+              re.fromEvent = true;
+              re.dormant = true; re.aggroRange = EVENT_SPAWN_AGGRO_RANGE; re.vx = 0; re.vy = 0;
+              addEnemy(re);
+              rqIds.add(re.id);
+            }
+            rescueQuestEnemyIdsRef.current = rqIds;
+            // ③段階スポーンの停止(全数即配置済み。書かないとhorde段階スポーンが18体まで追加流入する)。
+            hordeSpawnRef.current = { spawned: rqIds.size, nextAt: newGameTime, total: rqIds.size };
+            // 発火の打刻(後始末/再発火防止・rescue→hidden 遷移⑥の条件・§2-14)。
+            useGameStore.setState({ rescueArenaStartedAt: newGameTime });
+            // ④発火演出(既存の囲いと同じ=リング2枚+フラッシュ+シェイク+軽いスロー)。
+            const rqRingColor = 'rgba(56,189,248,0.9)';
+            spawnRing(rqx, rqy, rqRadius * 0.2, rqRadius, rqRingColor, 6, 700);
+            spawnRing(rqx, rqy, rqRadius, rqRadius + 30, rqRingColor, 3, 760);
+            spawnFlash('rgba(8,47,73,0.24)', 360);
+            useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
+            useGameStore.getState().triggerTimeSlow(0.4, 520);
+            // ⑤通常囲いの次回発火時刻を押し戻す(足元に連続で開かないように・§2-4)。
+            nextArenaAtRef.current = newGameTime + ARENA_FIRE_INTERVAL_MS;
+            boredomArenaNextEligibleAtRef.current = newGameTime + BOREDOM_ARENA_CD_MS;
            } else if (puzzleActiveNow) {
             // M20 軸1: 退屈補正の囲い(社長設計)。boredomDirector/upswingの退屈シグナルが完全に
             // 立ち上がった時に囲いhordeを1回差し込む(通常プレイ専用の新経路)。
@@ -3712,6 +3838,57 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().endArenaEvent();
               spawnRing(ae.x, ae.y, ae.radius, ae.radius * 0.15, 'rgba(148,163,184,0.7)', 4, 520);
               playSfx('event-clear'); // 小イベント完了音
+            }
+          } else if (ae.rescueQuest === true) {
+            // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-4「終了条件」・B3): レスキューの囲い専用の
+            // 終了判定。kind:'horde'を共用するが、既存のtimedOut側(「ゲート突破失敗」バナー+
+            // 原点方向ノックバック)は全イベント共通の処理なのでこの枝を通さない(§2-4「★時間切れの
+            // 既存else分岐を通さない」)。段階スポーンは発火時に全数即配置済み(hordeSpawnRef=
+            // spawned===total)なので、この枝には湧き足し処理は要らない。
+            // 完了判定は「このイベントで湧かせた個体のidセット」の生存数(死体はisCorpseで除外・
+            // グローバルなfromEvent数は数えない・§2-4)。
+            const rqIds = rescueQuestEnemyIdsRef.current;
+            // 安全策(既存の囲いと同じ・§2-4「終了条件」): 円外へ出たイベント敵を円内へ引き戻す。
+            {
+              const evNow = useGameStore.getState().enemies;
+              const outside = evNow.some(e => {
+                if (!rqIds.has(e.id)) return false;
+                const md = ae.radius - Math.max(e.width, e.height) * 0.4;
+                const dx = (e.x + e.width / 2) - ae.x, dy = (e.y + e.height / 2) - ae.y;
+                return dx * dx + dy * dy > md * md;
+              });
+              if (outside) {
+                useGameStore.setState(st => ({
+                  enemies: st.enemies.map(e => {
+                    if (!rqIds.has(e.id)) return e;
+                    const dx = (e.x + e.width / 2) - ae.x, dy = (e.y + e.height / 2) - ae.y;
+                    const d = Math.hypot(dx, dy);
+                    const md = ae.radius - Math.max(e.width, e.height) * 0.4;
+                    if (d > md && d > 0.001) return { ...e, x: ae.x + (dx / d) * md - e.width / 2, y: ae.y + (dy / d) * md - e.height / 2 };
+                    return e;
+                  }),
+                }));
+              }
+            }
+            const rqAliveCount = useGameStore.getState().enemies.filter(e => rqIds.has(e.id) && !isCorpse(e)).length;
+            const rqOutcome = rescueQuestArenaOutcome({
+              aliveCount: rqAliveCount, startedAt: ae.startedAt, endsAt: ae.endsAt,
+              graceMs: ARENA_END_GRACE_MS, now: newGameTime,
+            });
+            if (rqOutcome.done) {
+              // プレイヤーから見える終わり方は全滅も時間切れも同じ(§2-4受け入れ条件7・§2-5)。
+              useGameStore.setState({ eventBannerText: '駆除成功！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              playSfx('event-clear');
+              useGameStore.getState().endArenaEvent();
+              spawnRing(ae.x, ae.y, ae.radius, ae.radius * 0.15, 'rgba(148,163,184,0.7)', 4, 520);
+              spawnFlash('rgba(255,255,255,0.10)', 200);
+              // §2-5: rescueClearedAtの打刻は1回だけ(既に>0なら上書きしない・受け入れ条件1b)。
+              // statusのrescue→acceptedは、この直後に実行される二人組ブロックの②が
+              // (このsetの後にfreshなgetState()を読むため)同フレームで進める。
+              if (useGameStore.getState().rescueClearedAt === 0) {
+                useGameStore.setState({ rescueClearedAt: newGameTime });
+                useGameStore.getState().enqueueNpcDialogue(eventQuestSubAcceptLines(getSelectedStageId()));
+              }
             }
           } else {
             // 変異者大量発生(horde)の段階スポーン: 1秒に1体ずつ計N体(社長指示で3→1)。N体目中の通し番号で
@@ -10753,6 +10930,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const rqGs = useGameStore.getState();
           const rqNpc = rqGs.eventQuestNpc;
           const rqPcx = player.x + player.width / 2, rqPcy = player.y + player.height / 2;
+
+          // ★★後始末(EVENT_QUEST_DESIGN.md §2-4「立っている自分の囲いを、ゲート囲いが外から畳む」
+          // の本命の防御・§2-5契機③・B3): どんな理由であれactiveEventが消えたのにrescueClearedAtが
+          // 未打刻なら、強制クリア扱いで打刻する(全滅・時間切れは下のarenaブロックで先に打刻済みなので
+          // ここは成立しない=副作用なし)。§2-5「同じsetでstatusをrescue→acceptedへ進める」のとおり
+          // 1回のsetでまとめて書く。
+          if (rqGs.rescueArenaStartedAt > 0 && rqGs.rescueClearedAt === 0 && rqGs.activeEvent?.rescueQuest !== true) {
+            useGameStore.setState(s2 => ({
+              rescueClearedAt: newGameTime,
+              eventQuestNpc: s2.eventQuestNpc.status === 'rescue'
+                ? { ...s2.eventQuestNpc, status: 'accepted' } : s2.eventQuestNpc,
+            }));
+            useGameStore.getState().enqueueNpcDialogue(eventQuestSubAcceptLines(getSelectedStageId()));
+          }
 
           // ①⑦ hidden→rescue(状態で書く・§2-2B確定)。
           if (rqNpc.status === 'hidden' && !rqGs.bossChasing && newGameTime >= RESCUE_QUEST_SPAWN_AT_MS) {

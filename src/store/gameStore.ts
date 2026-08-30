@@ -4939,7 +4939,7 @@ interface GameState {
   rescueSpawnedAt: number;      // レスキュー地点の出現抽選を1度だけにする打刻(0=未抽選)
   basesEverCaptured: number;    // S5だけの先行条件のラッチ(単調・下げない。0=未)
   // ── サブクエスト(research/SUBQUESTS.md)。受注せず出撃時に2枠まで自動補充される小目標。
-  // 二人組クエスト(上のeventQuest*)とは完全に別系統。HUDは右上のEventQuestPillと同じ縦積み。
+  // 二人組クエスト(上のeventQuest*)とは完全に別系統。HUDは右上のRescueQuestGoalPillと同じ縦積み。
   // subquests は**進捗が動いた時にだけ**書き換わる(毎フレームではない=React再描画規律を満たす)。
   subquests: SubquestRunEntry[];
   /** そのランでサブクエスト達成により付与済みのゴールド合計(倍率適用後・リザルト表示用)。 */

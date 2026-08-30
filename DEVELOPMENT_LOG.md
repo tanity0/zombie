@@ -1,5 +1,80 @@
 # Development Log
 
+## v0.25.4096 — 二人組クエストv2 B3「囲いと完了とゲート」着地 【2026-08-31 01:21 JST】
+
+EVENT_QUEST_DESIGN.md §2-17 の発注区切りに従い、B3(囲いと完了とゲート)を実装。B1(型と器)・B2
+(出現と遷移)の上に、§2-4(囲い戦闘)・§2-5(完了と受注会話)・§2-6(城ボスのゲート)・§2-7(HUDの行)
+を配線した。納品・縁矢印・永続の鎖・S5先行条件(§2-8〜§2-11)はB4で未着手(範囲外)。
+
+- **§2-4 囲い戦闘**: 発火判定は「円の中に居る**状態**」を毎フレーム見る(入った瞬間のエッジではない)。
+  - 純関数 `src/utils/rescueQuestArena.ts`(新規・テスト21件)に判定を切り出した:
+    `shouldFireRescueQuestArena`(発火条件=status==='rescue' && movePhase===null &&
+    rescueArenaStartedAt===0 && 円の中)/ `shouldFoldRescueHold`(前置き=発火条件+ゲート1/2が
+    先に枠を取らないこと)/ `rescueQuestArenaOutcome`(終了条件=idセットの生存数0+グレース、または
+    90秒経過)/ `computeQuestGateOk`(§2-6)。判定ロジックをuseGameLoopに直書きしない
+    (CLAUDE.md実装精度の規律4)。
+  - **前置き1本**: `if (!ae) {...}` の連鎖に入る**前**に、`shouldFoldRescueHold` が真かつ
+    `activeEvent?.kind==='rescue'`(既存の救助ホールド)の時だけ、`eventBannerText:'救助失敗'` を
+    出してから `endArenaEvent()` で畳む(★社長裁定2026-08-30「ではレスキュー失敗にして」・報酬なし・
+    SEなし)。ゲート1/2の発火待ち(`gate1PendingRef.current`/`gate2PendingRef.current`/その場で
+    評価した`shouldTriggerGate2`)が立つフレームでは畳まない。
+  - **発火枝**: 既存の `if (!ae) { gate1 → gate2 → [ここ] → 退屈補正(puzzleActiveNow) → 2分タイマー }`
+    連鎖の、ゲート2の直後・`else if (puzzleActiveNow)` の直前に `else if (rescueQuestReady)` を追加
+    (構造で同フレーム二重発火を排除)。手順は入れ替え禁止で実装: ①`beginArenaEvent({kind:'horde',
+    rescueQuest:true, endsAt:+90秒})`を敵配置より先に呼ぶ → ②削岩型の赤個体1体
+    (`spawnEnemyAtWithTier('driller',...,'red')`)+そのステージ想定の通常雑魚4体
+    (zombie/skeleton/bat)を配置し、idを`rescueQuestEnemyIdsRef`(新規useRef<Set<string>>・新ランで
+    空にする)へ控える → ③`hordeSpawnRef`を配置数で即座に潰す(段階スポーンの18体流入を防ぐ) →
+    ④リング2枚+フラッシュ+シェイク+スロー → ⑤`nextArenaAtRef`/`boredomArenaNextEligibleAtRef`を
+    2分先送り(足元に連続で開かないように)。編成の数・種別は★未決#1「レスキュー囲いの中身」の
+    叩き台どおり(裁定が出るまでこのまま)。
+  - **プリエンプション保護**: ゲート発火待ちが立っている時の既存の強制解除条件
+    (`aePre.kind !== 'boss'`)へ `&& aePre.rescueQuest !== true` を追加(`policeArena`と同じ形の
+    1フラグ分岐)。無いとレスキューの囲いが音もなく畳まれ、`rescueClearedAt`が立たないまま城ボスが
+    永久に出ない。
+  - **完了判定は「このイベントで湧かせた個体のidセット」に限定**(グローバルな`fromEvent`数を数えない)。
+    生存数は`isCorpse`で死体を除外した数。`ae.kind==='horde'`だが`ae.rescueQuest===true`の時は
+    新設の`else if`枝で専用処理し、既存の`else`(通常horde/boss共通・timedOut側は「ゲート突破失敗」
+    バナー+原点方向ノックバックの専用処理)を通さない。円外へ出た自分のイベント敵を円内へ引き戻す
+    安全策も自分のidセットに限定して複製。
+- **§2-5 完了と受注会話**: 完了として扱う3契機(全滅/90秒時間切れ/囲いが外から畳まれた)をすべて
+  「`rescueClearedAt`(0→gameTime、1回だけ)を打刻+`eventQuestSubAcceptLines(stageId)`を
+  `enqueueNpcDialogue`へ流す」に集約。①②(全滅/時間切れ)は§2-4のarenaブロックで打刻。
+  ③(外から畳まれた)はuseGameLoopの二人組ブロックへ「★★後始末」として追加:
+  `rescueArenaStartedAt>0 && rescueClearedAt===0 && activeEvent?.rescueQuest!==true` を毎フレーム見て、
+  1回のsetで`rescueClearedAt`と`eventQuestNpc.status`(rescue→accepted)をまとめて書く
+  (B2が実装済みの②rescue→acceptedウォッチャーは、①②の打刻を同フレーム内で拾って進める)。
+- **§2-6 城ボスのゲート**: `RESCUE_TO_CASTLE_DELAY_MS=3000`(`src/config/castleBoss.ts`に新設)。
+  `questGateOk = status==='gone' || (rescueClearedAt>0 && now>=rescueClearedAt+3000)`
+  (`computeQuestGateOk`)。ANDは`castleBossReady`の**時間条件の項にだけ**掛ける
+  (`FORCE_CASTLE_BOSS || practiceForces('castlenow') || (now>=CASTLE_BOSS_MIN_TIME_MS && questGateOk)`)
+  =`?castlenow=1`/強制出現は従来どおり塞がれない。
+- **§2-7 HUDの行**: `GameHUD.tsx`の`EventQuestPill`(v1・`eventQuestActive`等を読む死んだ経路)を
+  `RescueQuestGoalPill`へ置き換え。表示条件=`castleAttnDoneAt>0`(アテンションが実際に張られた。
+  `triggerAttention`呼び出しと同じ行で打刻を新規配線)かつ`rescueClearedAt>0`かつ
+  `eventQuestNpc.status`が`accepted`/`warping`/`delivering`のいずれか。購読はプリミティブ4つを
+  個別に引く(`s.eventQuestNpc`のようなオブジェクト購読はしない=React再描画規律)。
+  `[搬送体(変異)の討伐 0/1]`→`finaleDefeated`で`[サンプルを届ける]`に差し替え(消えるのは
+  §2-8のB4で納品成立時)。
+- **範囲外(未着手)の確認**: 納品・入力ロック(§2-8)・縁矢印(§2-9)・永続の鎖(§2-10)・S5先行条件
+  (§2-11)・`src/data/progress.ts`・`PROJECT_STATUS.md`・`src/pixi/pixiScene.ts`の赤円予告
+  (`drawSweepCircleFill`/`circleSweep`)・`src/utils/playerDeathWatch.ts`/死亡監視ブロックは
+  1バイトも触っていない。
+- **★未決の追加**: なし。設計書に無い値・未定義の挙動には当たらなかった(編成の数・種別は
+  ★未決#1の叩き台どおり実装、driller個体色は★未決#2の予告帯の白縁化は未実装=据え置き)。
+- **状態変化: 二人組クエストv2 → 実装中(B3着地・残り B4)。**
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(触れたのは発火/完了判定/
+  HUD表示条件の配線のみ。数値・カーブ・閾値は既存の叩き台をそのまま採用し変更していない)。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(warning9件は既存・無関係)。
+  `npx vitest run src/utils/rescueQuestArena.test.ts`(新規21件・緑)+関連既存テスト
+  (`eventQuest.test.ts`/`rescueQuestSpawn.test.ts`/`gate2.test.ts`/`constitution.test.ts`/
+  `enemyUtils.test.ts`/`storyCanon.test.ts`/`boredomArena.test.ts`/`drillerAi.test.ts`/
+  `practiceGuard.test.ts`)191件緑。テスト・ビルドのフル実行は社長指示が無いため未実行
+  (CLAUDE.mdのテスト運用どおり)。
+- 実機確認(社長・任意): 二人組の円に入ると赤い削岩型+仲間4体との戦闘が始まるか/全滅(または90秒)で
+  終わり受注会話が流れるか/その3秒後に城の変異体(危険変異体)が出るか/右上に黄色い
+  「搬送体(変異)の討伐 0/1」の行が出るか。
+
 ## v0.25.4095 — 幻影/賞金首で死んでも終わらないバグを修正(社長報告2026-08-31)【2026-08-31 00:56 JST】
 
 **社長報告**: 「**幻影と戦ってて死んだのに、消えて動けないけど終わらない時があった。

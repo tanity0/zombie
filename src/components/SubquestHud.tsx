@@ -2,8 +2,8 @@ import React from 'react';
 import { useGameStore } from '../store/gameStore';
 
 // サブクエストの進捗表示(research/SUBQUESTS.md v3裁定Q2「右上」)。
-// スクラップ表示の下・二人組クエスト(EventQuestPill)と**同じ縦積みの列**に置く
-// (受注中の二人組があればその下に続く)。位置は GameHUD 側の縦積みコンテナが持つ。
+// スクラップ表示の下・二人組クエストv2の黄色い討伐行(RescueQuestGoalPill)と**同じ縦積みの列**に置く
+// (進行中ならその下に続く)。位置は GameHUD 側の縦積みコンテナが持つ。
 //
 // ★React再描画規律(CLAUDE.md): `subquests` は store 側で**進捗が動いた時にだけ**書き換わる
 //   (毎フレームの set は無い)。よってこの配列を購読しても毎フレーム再描画にはならない。

@@ -2034,6 +2034,10 @@ export interface ActiveEvent {
   // 専用スキルを1つランダム付与する(useGameLoop の cleared 分岐が見る)。通常の退屈アリーナと
   // 挙動は同じ(kind:'horde'を共用)なので、この1フラグだけで報酬経路を分岐する。
   policeArena?: boolean;
+  // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-4): レスキューの囲い(kind:'horde'を共用)由来か。
+  // 通常の退屈アリーナと挙動は同じなので、この1フラグだけで完了判定/失敗処理の分岐を切り替える
+  // (前例=同じ形の policeArena)。
+  rescueQuest?: boolean;
 }
 
 // 紅き夜: 全敵ステータス2倍・経験値2倍・画面赤染め。警告10秒→本番20秒。拠点/商人で逃げられる。

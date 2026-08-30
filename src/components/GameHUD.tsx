@@ -13,22 +13,25 @@ import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 import DirectorLine from './DirectorLine';
 
-// 二人組クエストの進捗(右上スクラップ下・社長裁定v0.25.1686 #8「サブクエスト系は右上の
-// スクラップ下に短く表示 n/Nも」)。受領中のみ表示、目標達成で緑+「納品」。
-// 購読はプリミティブ3つだけ(受領/キル/納品の時にしか変わらない=React再描画規律)。
-const EventQuestPill: React.FC = () => {
-  const active = useGameStore(s => s.eventQuestActive);
-  const kills = useGameStore(s => s.eventQuestKills);
-  const goal = useGameStore(s => s.eventQuestGoalCount);
-  if (!active || goal <= 0) return null;
-  const done = kills >= goal;
-  const label = active === 'forced' ? '変異種討伐' : 'サンプル集め';
+// 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-7・B3): 城ボスの出現アテンション後に出す黄色い討伐行。
+// v1の受領制ピル(EventQuestPill・eventQuestActive等)はv2でこの表示に置き換わるため撤去(§2-14)。
+// 表示条件は「このランでクエストが進行中(rescueClearedAt>0・納品未成立)」かつ
+// 「アテンションが実際に張られた(castleAttnDoneAt>0)」のAND(§2-7確定)。
+// 購読はプリミティブ4つだけを個別に引く(オブジェクト購読にすると warping 中の毎フレーム座標更新で
+// 60fps再描画になる=React再描画規律違反・§2-7「★購読の形を確定する」)。
+const RescueQuestGoalPill: React.FC = () => {
+  const attnDone = useGameStore(s => s.castleAttnDoneAt > 0);
+  const rescued = useGameStore(s => s.rescueClearedAt > 0);
+  const qStatus = useGameStore(s => s.eventQuestNpc.status);
+  const bossKilled = useGameStore(s => s.finaleDefeated);
+  const inProgress = qStatus === 'accepted' || qStatus === 'warping' || qStatus === 'delivering';
+  if (!attnDone || !rescued || !inProgress) return null;
   return (
     <div
       className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums"
-      style={{ color: done ? '#4ade80' : '#e2e8f0' }}
+      style={{ color: '#facc15' }}
     >
-      🧪 {label} {Math.min(kills, goal)}/{goal}{done ? ' 納品' : ''}
+      {bossKilled ? '[サンプルを届ける]' : '[搬送体(変異)の討伐 0/1]'}
     </div>
   );
 };
@@ -245,8 +248,8 @@ const GameHUD: React.FC = () => {
         </span>
       </div>
       {/* 右上・スクラップの下の「クエスト列」(research/SUBQUESTS.md v3裁定Q2)。
-          受注制の二人組(EventQuestPill)と自動補充のサブクエスト(SubquestHud)を同じ縦積みに
-          並べる。どちらも非表示の時は行ごと消えるので隙間は出ない(絶対配置は列側が1つ持つ)。 */}
+          二人組クエストv2の黄色い討伐行(RescueQuestGoalPill)と自動補充のサブクエスト(SubquestHud)を
+          同じ縦積みに並べる。どちらも非表示の時は行ごと消えるので隙間は出ない(絶対配置は列側が1つ持つ)。 */}
       {/* ★v0.25.3649(成果物監査・中4): whitespace-nowrap=長い条件文(ハンター30秒等)が狭い画角で
           折り返して列が縦に伸び、下のStatsHud(撃破/DMG表示・オプション)へ届くのを防ぐ。 */}
       <div
@@ -256,7 +259,7 @@ const GameHUD: React.FC = () => {
           right: 'max(env(safe-area-inset-right), 12px)',
         }}
       >
-        <EventQuestPill />
+        <RescueQuestGoalPill />
         <SubquestHud />
       </div>
 
