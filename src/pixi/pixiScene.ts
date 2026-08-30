@@ -17793,7 +17793,10 @@ export class PixiScene {
       else if (e.type === 'rafi' && (bs === 'jump-windup' || bs === 'jump-attack')) {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-        const R = HB_TH.jump.radius; // = RAFI_JUMP_RADIUS(同値・§6.28-8「=HB_TH.jump.radius(同値)」)
+        // v0.25.4085(赤円全数監査#6): 判定(angelBossTick)は RF_T.jump.radius を読むので描画も同じ行を
+        // 読む。旧=HB_TH.jump.radius(トールの行)の流用——今は同値(70)だがBOSS_MAKERで別々に編集できる
+        // 2行なので、どちらかを動かした瞬間に絵と判定がズレる(M65/AC_T.spearと同型の潜伏ズレ)。
+        const R = RF_T.jump.radius;
         o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, 0.45 + 0.3 * pulse);

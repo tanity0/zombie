@@ -262,6 +262,11 @@ export const contactDodge = (pcx: number, pcy: number, e: Enemy, maxHealth: numb
 // 代表値を1つ置く。
 export const DODGE_BAND_HALF_WIDTH = 64;   // 帯技の危険幅(安全側の代表値)
 export const DODGE_CIRCLE_DEFAULT_R = 100; // 半径がEnemyに載っていない円技の代表値
+// v0.25.4085(赤円全数監査#8): グレンの三連跳びの実半径は110(gameStoreのGLEN_TRIJUMP_RADIUS)。
+// 代表値100で避けると**実円の10px内側に立つ**=安全側ではない逆転が起きていた。gameStoreは
+// 循環import(gameStore→thorNihil→botSkill)で参照できないため同値をここに置き、
+// botSkill.test.ts が両者の一致を機械固定する(ズレたらテストが落ちる)。
+export const DODGE_GLEN_TRIJUMP_R = 110;
 export const DODGE_AOE_MARGIN = 40;        // 円/帯の縁からこれだけ余分に外へ出たい
 
 // v0.25.2529(BOT_AND_GHOST.md §2.12 要件7): 守護霊側の予告台帳(ghostTelegraph.ts)が
@@ -319,10 +324,14 @@ export const telegraphDodge = (pcx: number, pcy: number, e: Enemy): DodgeThreat[
     // 着地済みの点は危険ではない(描画と同じ「残りだけ」の考え方)。
     const pts = e.gTriJumpPts ?? [];
     const from = ph === 'g-trijump-air' ? (e.gTriJumpIdx ?? 0) : 0;
-    for (let i = from; i * 2 + 1 < pts.length; i++) push(circleThreat(pcx, pcy, pts[i * 2], pts[i * 2 + 1], DODGE_CIRCLE_DEFAULT_R));
+    for (let i = from; i * 2 + 1 < pts.length; i++) push(circleThreat(pcx, pcy, pts[i * 2], pts[i * 2 + 1], DODGE_GLEN_TRIJUMP_R));
   }
   if (bs === 'jump-windup' || bs === 'jump-attack') {
-    push(circleThreat(pcx, pcy, (e.aiTargetX ?? e.x) + e.width / 2, (e.aiTargetY ?? e.y) + e.height / 2, DODGE_CIRCLE_DEFAULT_R));
+    // v0.25.4085(赤円全数監査#8): トール/ラフィの跳びの aiTargetX/Y は**既に中心座標**
+    // (着地爆発がその値をそのまま爆心に使う=useGameLoop.ts thor-jump / angelBossTick rafi jump)。
+    // 旧実装の +width/2 は半身ぶん回避円がズレ、実円の一部が回避円の外に出ていた。
+    // 半径は代表値100のまま(実半径70より広い=安全側で正しい向き)。
+    push(circleThreat(pcx, pcy, e.aiTargetX ?? ecx, e.aiTargetY ?? ecy, DODGE_CIRCLE_DEFAULT_R));
   }
   for (const h of e.giantDelayedHits ?? []) {
     if (h.capsule) push(bandThreat(pcx, pcy, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, h.capsule.halfWidth));

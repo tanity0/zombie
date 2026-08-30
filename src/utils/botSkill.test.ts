@@ -8,7 +8,7 @@ import {
   telegraphDodge,
   pickTarget, targetScore, shouldRetreatForHp,
   DODGE_PROJECTILE_DIST, DODGE_AOE_DIST, DODGE_CONTACT_DIST, CONTACT_DANGER_HP_FRAC,
-  WARP_DETECT_PX, createWarpTrackState, warpDodge, dodgeOverridesAttack,
+  WARP_DETECT_PX, createWarpTrackState, warpDodge, dodgeOverridesAttack, DODGE_GLEN_TRIJUMP_R,
 } from './botSkill';
 import { COUNTER_REACTION_PROFILES } from './playtestBot';
 import { getEnemyBaseSpeed, AREA_SPEED_MULT } from './enemyUtils';
@@ -511,5 +511,13 @@ describe('telegraphDodge — ボスの予告(赤い円/帯)を避ける', () => 
   it("赤い予告は 'none' 以外の全段階が扱う(既定 casual は避けないまま=既存ランを動かさない)", () => {
     expect(dodgeHandles('none', 'aoe')).toBe(false);
     for (const lv of ['projectile', 'aoe', 'all'] as const) expect(dodgeHandles(lv, 'aoe')).toBe(true);
+  });
+
+  // v0.25.4085(赤円全数監査#8): 回避側の三連跳び半径は実判定(GLEN_TRIJUMP_RADIUS)と同値であること。
+  // botSkillは循環import(gameStore→thorNihil→botSkill)でgameStoreを読めないため、同値をリテラルで
+  // 持ち、この突き合わせで機械固定する(どちらかを動かしたらここが落ちる)。
+  it('DODGE_GLEN_TRIJUMP_R は gameStore の GLEN_TRIJUMP_RADIUS と同値', async () => {
+    const { GLEN_TRIJUMP_RADIUS } = await import('../store/gameStore');
+    expect(DODGE_GLEN_TRIJUMP_R).toBe(GLEN_TRIJUMP_RADIUS);
   });
 });
