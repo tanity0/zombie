@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4084',
+    items: [
+      '装備メニューのサブウェポンは、開発施設で解放した物だけが並ぶようになりました(未解放のロック行は非表示)。',
+    ],
+  },
+  {
     version: '0.25.4083',
     items: [
       'HPオーブ: 縁の紫のリング線も取り除きました(枠素材と液体だけの見た目に)。',

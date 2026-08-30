@@ -1221,6 +1221,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // 装備できる(未購入はロック表示)。出撃時にも resetGame が同じ条件で落とす=二重の守り。
     const purchasedSubLevels = useGameStore.getState().purchasedSubLevels;
     const subOwned = (k: SubWeaponKey) => (purchasedSubLevels[k] ?? 0) >= 1;
+    // v0.25.4084(社長指示2026-08-30「買ったやつだけ表示にしといて」): 未購入はロック行(v0.25.3187)
+    // ではなく**載せない**。解放の入口は開発施設に一本化(この画面は「持ち物から選ぶ」だけ)。
+    const visibleSubs = SUB_WEAPON_KEYS.filter(
+      k => !CHARACTER_SUBWEAPON_KEYS.includes(k) && !RETIRED_SUB_WEAPONS.includes(k) && subOwned(k));
     const toggleSub = (k: SubWeaponKey) => {
       if (!subOwned(k)) return;
       playSfx('ui-select');
@@ -1235,30 +1239,31 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {/* サブウェポン */}
           <div>
             <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-emerald-200/70">サブウェポン（1つ）</div>
-            <div className="menu-stagger grid grid-cols-2 gap-2">
-              {/* キャラ固有スキル(職スキル枠)はトップの装備メニューには載せない(自動付与・選択不可)。
-                  退役サブ(ダンスフロア)も載せない(社長裁定2026-08-20)。 */}
-              {SUB_WEAPON_KEYS.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k) && !RETIRED_SUB_WEAPONS.includes(k)).map(k => {
-                const on = equippedSubs.includes(k);
-                const owned = subOwned(k);
-                return (
-                  <button
-                    key={k}
-                    disabled={!owned}
-                    onClick={() => toggleSub(k)}
-                    className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2.5 text-left transition-[filter] ${
-                      on ? 'is-on text-white' : owned ? 'text-white/85 active:brightness-110' : 'text-white/35'
-                    }`}
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(k)}</span>
-                      {!owned && <span className="block text-[10px] text-white/40">未解放（開発施設で解放）</span>}
-                    </span>
-                    {owned ? (on && <Check size={15} className="shrink-0" />) : <Lock size={13} className="shrink-0 text-white/35" />}
-                  </button>
-                );
-              })}
-            </div>
+            {/* キャラ固有スキル(職スキル枠)はトップの装備メニューには載せない(自動付与・選択不可)。
+                退役サブ(ダンスフロア)も載せない(社長裁定2026-08-20)。未購入も載せない(上のvisibleSubs)。 */}
+            {visibleSubs.length === 0 ? (
+              <p className="px-1 text-[11px] text-white/40">まだありません（開発施設で解放）</p>
+            ) : (
+              <div className="menu-stagger grid grid-cols-2 gap-2">
+                {visibleSubs.map(k => {
+                  const on = equippedSubs.includes(k);
+                  return (
+                    <button
+                      key={k}
+                      onClick={() => toggleSub(k)}
+                      className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2.5 text-left transition-[filter] ${
+                        on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
+                      }`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(k)}</span>
+                      </span>
+                      {on && <Check size={15} className="shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           {/* アバター(試験・第1弾)。トグル選択式(なし/猫耳セット)。見た目は既存の装備欄に合わせる=磨き込み不要(試験機能)。 */}
           <div>
