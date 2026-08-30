@@ -39,7 +39,10 @@ const WINE_ORB_DISABLED = typeof window !== 'undefined'
 // 同じ半径帯に重なるので、EXPの白い進捗が枠の上に描かれて読める。`?hpframe=0` で非表示(比較用)。
 const HP_FRAME_DISABLED = typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).get('hpframe') === '0';
-const FRAME_SCALE = 1.0; // 枠画像の一辺=SIZE×この値(叩き台。素材はリング外周≒画像端に正規化済み512px)
+const FRAME_SCALE = 1.0; // 枠画像の一辺=SIZE×この値(叩き台。素材512px・リング帯=半径194〜212/512)
+// ★素材は再センタリング済み(v0.25.4077・社長報告「ガラスが少しずれてる」): 支給PNGはリング円の
+// 中心が画像中心より14px上(512px基準・表示で約2px)に描かれていたため、画素を+14px下へ平行移動して
+// 画像中心=リング中心に正規化した。コード側は中心一致(CX/CY)のまま=オフセット補正を持たない。
 
 // 液体シミュレーションの叩き台定数(UI_OVERHAUL.md §2の数値どおり。実機調整はここだけ触ればよい)。
 const FOLLOW_RATE = 3.2;     // shownHpの実HPへの指数追従(1/s・注ぎ/流出の速度感)

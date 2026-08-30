@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4077',
+    items: [
+      'HPオーブの外枠(ガラスリング)が少し上にずれていたのを修正しました。',
+    ],
+  },
+  {
     version: '0.25.4076',
     items: [
       'HPオーブに新しい外枠(紫のガラスリング)が付きました。',
