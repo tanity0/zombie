@@ -65,8 +65,24 @@ describe('ボス接触受け流し: トールの突進の走行中(thor-dash-mov
     // 受け流しの痕跡(拘束900ms/体幹削りの打刻)が1つも無いこと=カウンターの解決はトール側の1本に残る。
     expect(boss.rootUntil).toBeUndefined();
     expect(boss.bossPostureLastDamageAt).toBeUndefined();
-    // ★裁定(B): 接触ダメージは**入る**(トール除外から `thor-dash-move` が外れている)。
-    // この行が `toBe(hp0)` に戻ると、走行中が無害=ミゲルと文法が割れた状態に静かに戻る。
+    // ★★v0.25.4100 訂正: **カウンター窓が開いている間は接触ダメージを入れない**
+    // (社長裁定2026-08-30「9-6bは推薦で」= `skipThorDashRunContactDamage`)。
+    // この setup は `counterWindowEnd = now + 5000`(=窓が開いている)なので、ここは**入らない**が正。
+    // §9-6 の裁定(B)「走行中の体当たりは当てる」は**窓が閉じている時**の話で、下のテストが守る。
+    expect(useGameStore.getState().player.health).toBe(hp0);
+  });
+
+  it('★走行中でも「カウンター窓が閉じていれば」接触ダメージは入る(§9-6 裁定(B)・v0.25.3818)', () => {
+    setup('thor-dash-move');
+    // 窓を閉じる(setup は開いた状態で作るので、ここだけ過去へ倒す)。
+    useGameStore.setState(s => ({ player: { ...s.player, counterWindowEnd: Date.now() - 1 } }));
+    const hp0 = useGameStore.getState().player.health;
+    applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
+    // 受け流しの横取りが起きないのは窓の開閉に関係ない不変条件(上と同じ)。
+    const boss = useGameStore.getState().enemies[0];
+    expect(boss.rootUntil).toBeUndefined();
+    expect(boss.bossPostureLastDamageAt).toBeUndefined();
+    // ★裁定(B): 走行中が無害=ミゲルと文法が割れた状態に静かに戻らないこと。
     expect(useGameStore.getState().player.health).toBeLessThan(hp0);
   });
 
