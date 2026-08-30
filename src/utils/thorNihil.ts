@@ -39,9 +39,17 @@ export const isInsideNihilCircle = (
 export const meleeSwingCommitted = (prevCommitAt: number, curCommitAt: number): boolean =>
   curCommitAt > 0 && curCommitAt > prevCommitAt;
 
-/** 「本人の近接が当たった」引き金の受付幅(ms・gameTime系)。打刻フレームと判定フレームの
- * ズレ(0〜1フレーム)を吸収するだけの短い窓=後出しの延命窓ではない。 */
-export const NIHIL_MELEE_HIT_ACCEPT_MS = 100;
+/** 「本人の近接が当たった」引き金の受付幅(ms・gameTime系)。
+ *
+ * ★v0.25.4089(社長報告2026-08-30「無の境地、まだ発動しない確率が高い」): 100 → **400**。
+ * 旧の100msは「打刻フレームと判定フレームのズレ(0〜1フレーム)を吸収するだけ」の想定だったが、
+ * **近接が当たると必ずボスに `knockbackUntil` が立つ**(初撃280ms / 免疫CD中は押し量ゼロでも100ms)。
+ * その間ボスの状態機械は `frozen` 分岐で丸ごとスキップされ、`issen-nihil` ハンドラは**1フレームも
+ * 走らない**——つまり**引き金Bの窓が凍結中にまるごと過ぎ去っていた**(v0.25.3991でBを足しても
+ * 「当てても発動しない」が残っていた正体)。よって窓は**ノックバック凍結(最大280ms)を跨げる幅**が要る。
+ * 400 = 280(KNOCKBACK_DURATION)+ 解除フレームまでの余裕。**後出しの延命ではなく、
+ * 「見られなかった時間」を埋めるための幅**(引き金Aは前値の消化をハンドラ側へ移して同じ穴を塞いだ)。 */
+export const NIHIL_MELEE_HIT_ACCEPT_MS = 400;
 /** ヒット(meleeHitAt)を「本人の振り」に紐づける上限(ms・Date.now系どうしの比較)。
  * 刀の一閃はスイング確定(triggerKatanaDash)から着弾まで最大~360ms(移動180+判定遅延)なので余裕を
  * 持って700ms。守護霊の刀ヒット(meleeHitAtが守護霊経由でも打たれる既存実装)だけでは発動させない

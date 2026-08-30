@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import {
   THOR_NIHIL_STATE, thorNihilRadius, stampMeleeSwingCommit, isInsideNihilCircle,
   meleeSwingCommitted, shouldTriggerGuaranteedIssen, isGuaranteedIssenNow, botHoldsMeleeForNihil,
+  NIHIL_MELEE_HIT_ACCEPT_MS,
 } from './thorNihil';
 // ★v0.25.3806: 弾き返しの行き先は純関数へ切り出した(値をここで固定する)。
 // ★v0.25.3808: **束縛(Enemy/Player から引数を組む所)まで**純関数へ入れた(重大2)。
@@ -135,8 +136,12 @@ describe('必中一閃の引き金(§1-3 受け入れ条件1/2/7)', () => {
     it('本人の近接が当たった直後(受付100ms内)は円の外でも立つ', () => {
       expect(shouldTriggerGuaranteedIssen(hitBase)).toBe(true);
     });
-    it('ヒット打刻が古い(100ms超)なら立たない', () => {
-      expect(shouldTriggerGuaranteedIssen({ ...hitBase, nowGameTime: 5200 })).toBe(false);
+    it('ヒット打刻が古い(受付幅を超えた)なら立たない', () => {
+      // ★v0.25.4089: 受付幅は 100→400ms(ノックバック凍結でハンドラが1フレームも走らない時間を跨ぐため)。
+      // 「窓の外なら立たない」という不変条件は変えず、境界だけ台帳の定数から引く。
+      expect(shouldTriggerGuaranteedIssen({ ...hitBase, nowGameTime: 5000 + NIHIL_MELEE_HIT_ACCEPT_MS + 1 })).toBe(false);
+      // 窓の内側(境界ちょうど)は立つ=窓そのものが飾りになっていないことの対照。
+      expect(shouldTriggerGuaranteedIssen({ ...hitBase, nowGameTime: 5000 + NIHIL_MELEE_HIT_ACCEPT_MS })).toBe(true);
     });
     it('本人が直近で振っていない(守護霊/分身のヒット打刻だけ)なら立たない', () => {
       expect(shouldTriggerGuaranteedIssen({ ...hitBase, nowMs: 1016 + 701 })).toBe(false);
@@ -1232,5 +1237,50 @@ describe('★§9-9 線ごと平行移動(thorDashLineShift)= 社長裁定2026-08
     // 範囲外の t を渡しても内側で 0..1 に丸める(呼び出し側の clamp が消えても暴れない)。
     expect(thorDashLineShift(LINE, 400, 0, 1.8, 140, 140, AREA)).toEqual(LINE);
     expect(thorDashLineShift(LINE, 0, 0, -0.4, 140, 140, AREA)).toEqual(LINE);
+  });
+});
+
+// =================================================================================================
+// ★v0.25.4089(社長報告2026-08-30「無の境地、まだ発動しない確率が高い」)の回帰止め。
+// 真因は判定式ではなく**引き金が読まれる前に消化されていたこと**だった:
+//  ・近接がトールに当たると必ず `knockbackUntil` が立つ(初撃280ms / 免疫CD中は押し量ゼロでも100ms)
+//  ・その間ボスの状態機械は `frozen` 分岐で丸ごとスキップ = `issen-nihil` ハンドラは1フレームも走らない
+//  ・なのに前値(`bs.thorPrevSwingCommitAt`)は**凍結中も毎フレーム進んでいた** ⇒ 引き金Aのエッジが消滅
+//  ・引き金Bの窓(100ms)も凍結(最大280ms)の中で過ぎ去る ⇒ v0.25.3991 でBを足しても直らなかった
+// =================================================================================================
+describe('★無の境地の引き金が「凍結」で消えない(v0.25.4089)', () => {
+  it('★引き金Bの受付幅はノックバック凍結(最大280ms)を跨げる', () => {
+    // ハンドラは凍結中1フレームも走らないので、窓が凍結より短いと「当てても発動しない」が必ず起きる。
+    expect(NIHIL_MELEE_HIT_ACCEPT_MS).toBeGreaterThanOrEqual(280);
+  });
+
+  it('★当てた280ms後(=初撃の凍結が明けた直後)でも引き金Bが立つ', () => {
+    const base = {
+      bossState: THOR_NIHIL_STATE, bcx: 0, bcy: 0,
+      pcx: 9999, pcy: 0, // 円の外(=Aは立たない。長リーチ武器で当てた形)
+      prevCommitAt: 1000, curCommitAt: 1000, // 振りのエッジも既に消化済み
+      alreadyFired: false,
+      meleeHitAt: 5000, nowGameTime: 5000 + 280, nowMs: 20000, // 打刻から280ms後
+    };
+    // 「本人が直近で振っている」リンク(700ms)は満たしている状態。
+    expect(shouldTriggerGuaranteedIssen({ ...base, curCommitAt: 19500, prevCommitAt: 19500 })).toBe(true);
+    // 旧実装(窓100ms)ならここで false だった=この差がそのまま社長の報告だった。
+    expect(280).toBeGreaterThan(100);
+  });
+
+  it('★引き金Aのエッジは「issen-nihil ハンドラが走ったフレーム」でだけ消化する(配線)', () => {
+    const lines = codeLines(Object.values(LOOP_SOURCES)[0] ?? '')
+      .map(l => l.trim().replace(/;\s*$/, ''));
+    // ① 退避の直後に前値を進める行が**無い**(=凍結中も毎フレーム消化していた旧実装の形)。
+    const retireIdx = lines.findIndex(l => /^thorPrevSwingCommit = bs\.thorPrevSwingCommitAt$/.test(l));
+    expect(retireIdx, '前値の退避行が見つからない(走査そのものが壊れた)').toBeGreaterThanOrEqual(0);
+    expect(
+      lines[retireIdx + 1] ?? '',
+      '退避の直後で前値を進めている=凍結中にエッジが消える(v0.25.4089の再発)',
+    ).not.toMatch(/^bs\.thorPrevSwingCommitAt = /);
+    // ② 前値への代入は**2本だけ**(州へ入る時のリセット / ハンドラでの消化)。
+    const writes = lines.filter(l => /^bs\.thorPrevSwingCommitAt = /.test(l));
+    expect(writes.length, `前値への代入が2本ではない:\n${writes.join('\n')}`).toBe(2);
+    expect(writes.some(l => /nihilCommitNow/.test(l)), 'ハンドラでの消化が無い').toBe(true);
   });
 });

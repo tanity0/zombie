@@ -5603,7 +5603,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               bs.thorRangedHits = bs.thorRangedHits.filter(t => newGameTime - t <= HB_TH.jump.triggerWindowMs);
               bs.thorPrevHealth = boss.health;
               thorPrevSwingCommit = bs.thorPrevSwingCommitAt;
-              bs.thorPrevSwingCommitAt = useGameStore.getState().player.meleeSwingCommitAt;
+              // ★v0.25.4089(社長報告2026-08-30「無の境地、まだ発動しない確率が高い」の真因):
+              // **ここで毎フレーム前値を進めてはいけない。** 近接がトールに当たると必ず `knockbackUntil`
+              // が立ち(初撃280ms / 免疫CD中は100ms・押し量ゼロでも書かれる)、下の `frozen` 分岐で
+              // **状態機械が丸ごとスキップ**される。この行が凍結中も前値を進めていたため、
+              // 「振った」というエッジが**誰にも読まれないまま消化**され、解除後には prev===cur になって
+              // 必中一閃の引き金Aが二度と立たなかった(=「当てた時ほど発動しない」)。
+              // 消化は **`issen-nihil` ハンドラが実際に走ったフレームだけ**で行う(下の handler 参照)。
+              // 州へ入る時のリセットは beginThorMove('issen') が行う=州より前の振りは持ち込まない。
             }
 
             if (disengage.ready && !inDeep) {
@@ -6131,6 +6138,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossState = 'issen-nihil';
                   patch.bossStateUntil = newGameTime + HB_TH.issen.nihilMs;
                   patch.issenGuaranteedUntil = 0; // 前の一閃の必中フラグが残っていたら必ず落とす
+                  // ★v0.25.4089: 引き金Aのエッジ基準を**この州の開始時点**へ揃える(州より前の振りを
+                  // 持ち込まない)。以後の消化は issen-nihil ハンドラが走ったフレームだけで行う。
+                  bs.thorPrevSwingCommitAt = useGameStore.getState().player.meleeSwingCommitAt;
                   const ddx0 = aim.x - bcx, ddy0 = aim.y - bcy;
                   const ddl0 = Math.hypot(ddx0, ddy0) || 1;
                   patch.aiFromX = bcx; patch.aiFromY = bcy;
@@ -6753,8 +6763,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // ——**本人の近接がトールに当たった**(Enemy.meleeHitAt=既存スタンプ)なら距離を問わず発動。
                 // 従来のA(円内での振り)だけだと、リーチの長い近接(刀の一閃154px+/鞭/オート斬撃)は
                 // 当てた瞬間の自機中心が円200pxの外で、当てても発動しなかった。
+                // ★v0.25.4089: 打刻は1回だけ読み、**このハンドラが走ったフレームでだけ**エッジを消化する
+                // (凍結中に消えないようにするための対。上の退避側のコメント参照)。
+                const nihilCommitNow = useGameStore.getState().player.meleeSwingCommitAt;
                 if (GHOST_DMG_LOG_ENABLED) {
-                  const curC = useGameStore.getState().player.meleeSwingCommitAt;
+                  const curC = nihilCommitNow;
                   if (curC > thorPrevSwingCommit && curC > 0) {
                     ghostLogPush(`${Math.round(newGameTime / 100) / 10}s 無境地振り dist=${Math.round(Math.hypot(pcx - bcx, pcy - bcy))}/r${thorNihilRadius()}`);
                   }
@@ -6762,15 +6775,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     ghostLogPush(`${Math.round(newGameTime / 100) / 10}s 無境地ヒット打刻`);
                   }
                 }
-                if (shouldTriggerGuaranteedIssen({
+                const nihilFire = shouldTriggerGuaranteedIssen({
                   bossState: st, bcx, bcy, pcx, pcy,
                   prevCommitAt: thorPrevSwingCommit,
-                  curCommitAt: useGameStore.getState().player.meleeSwingCommitAt,
+                  curCommitAt: nihilCommitNow,
                   alreadyFired: bs.thorNihilFiredFor === (boss.bossStateUntil ?? 0),
                   meleeHitAt: boss.meleeHitAt,
                   nowGameTime: newGameTime,
                   nowMs: Date.now(),
-                })) {
+                });
+                bs.thorPrevSwingCommitAt = nihilCommitNow; // ★消化はここ(走ったフレームだけ)
+                if (nihilFire) {
                   bs.thorNihilFiredFor = boss.bossStateUntil ?? 0; // 1つの無の境地から発動できるのは1回
                   const gdx = pcx - bcx, gdy = pcy - bcy;
                   const gdl = Math.hypot(gdx, gdy) || 1;
