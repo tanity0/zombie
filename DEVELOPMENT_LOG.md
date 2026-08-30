@@ -1,5 +1,41 @@
 # Development Log
 
+## v0.25.4097 — 【緊急】起動全損(真っ暗)ホットフィックス = 循環importのTDZ(再発)【2026-08-31 02:41 JST】
+
+**社長報告: 「ゲームまっくらだまた」。** ENGINEERING_NOTES.md §「循環importはbuild/typecheck/testを
+素通りして『起動直後に真っ暗』を起こす(v0.25.3390)」の**完全な再発**。
+
+**再現(本番バンドルで実測)**
+| 版 | 起動 | コンソール |
+|---|---|---|
+| **v0.25.4096(push済み)** | **body が空=真っ暗** | **`PAGEERROR: Cannot access 'Yf' before initialization`** |
+| v0.25.4097(この修正) | タイトルが出る | エラー0 |
+
+**原因**: **B2(v0.25.4094)が `gameStore.ts` に
+`import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyTick';` を足した**ため、
+`gameStore → bountyTick → gameStore` の循環importが成立した。
+`bountyTick.ts` は**モジュール初期化時**に `export const BOUNTY_DEPART_BANNER_MS = EVENT_BANNER_MS;`
+(`directorTick` 由来)を評価するので、本番バンドルの評価順で**TDZ(ReferenceError)→起動全損**。
+
+**★同じ行の3行下に「bountyTick.tsを直接importすると循環」と書いてあったのに踏んだ。**
+`madge --circular` の環は **1本 → 6本**に増えていた(全部 `gameStore > bountyTick` 経由)。
+
+**修正**: `BOUNTY_AGGRO_RANGE_DEFAULT` の実体を**依存ゼロの葉 `src/utils/bountyDims.ts`** へ移し
+(v0.25.3390 で同じ理由で作った葉。手本がそのまま在った)、`bountyTick.ts` は葉から取って
+**従来どおり named re-export**(既存の import 元=`useGameLoop`/テストは1行も変えない)、
+`gameStore.ts` は**葉から取る**。⇒ 環は **6本 → 2本**(残る2本は既知の既存分:
+`gameStore > ghostBuild > weaponUtils` と `fixedGuardians > … > config/bossHealth`=v0.25.3895 以来)。
+
+**検証**: `npm run typecheck` 0件 / `npx madge --circular` 6→2 /
+**本番ビルドを headless で起動して、前版が真っ暗+TDZ・本版が正常起動であることを実測**。
+
+**★教訓(再発防止を機械化する)**: build/typecheck/test は循環importを**全部素通りする**。
+**起動確認だけが検知手段**なので、**`madge --circular` の環の本数**を回帰の網に載せる
+(次バッチで CI へ足す。今回は環が 1→6 に増えていたのに誰も見ていなかった)。
+
+**同梱なし**: この修正は上の3ファイルだけ。**B4の実装中の差分は1行も混ぜていない**
+(`git diff --cached` を読み、`gameStore.ts` は import 1行のハンクだけを部分ステージした)。
+
 ## v0.25.4096 — 二人組クエストv2 B3「囲いと完了とゲート」着地 【2026-08-31 01:21 JST】
 
 EVENT_QUEST_DESIGN.md §2-17 の発注区切りに従い、B3(囲いと完了とゲート)を実装。B1(型と器)・B2

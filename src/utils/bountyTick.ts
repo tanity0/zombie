@@ -26,7 +26,7 @@ import {
 // ★予告寸法は依存ゼロの葉(bountyDims.ts)が正=ここでは使うだけ+従来の消費者(pixiScene/テスト)の
 // ために named re-export する。gameStoreから直接importしない理由はbountyDims.ts冒頭を読むこと
 // (循環import起動全損 v0.25.3390 の再発防止)。
-import { BOUNTY_BASE_HP } from './bountyDims';
+import { BOUNTY_AGGRO_RANGE_DEFAULT, BOUNTY_BASE_HP } from './bountyDims';
 export { BOUNTY_BASE_HP };
 // ★v0.25.3558(ボスメーカー横展開・第1弾): 賞金首4種の**数値はbountyScript.tsの可変テーブルが正**
 // (BOSS_MAKER.md §2-2「台本はコード / 数字はテーブル」)。ロジックはここ、数字は向こう。
@@ -130,7 +130,7 @@ export const BOUNTY_DEPART_BANNER_MS = EVENT_BANNER_MS;
 export const BOUNTY_DEPART_FADE_MS = HUNTER_LEAVE_FADE_MS;
 /** dormant起床の索敵範囲の既定値(叩き台)。= useGameLoop.ts の GIANT_AGGRO_RANGE(380)を流用(§2)。
  * スポーン側が `aggroRange` を明示設定する前提で、ここは未設定時のみのフォールバック。 */
-export const BOUNTY_AGGRO_RANGE_DEFAULT = 380;
+export { BOUNTY_AGGRO_RANGE_DEFAULT } from './bountyDims'; // ★実体は葉(bountyDims.ts)。循環import対策=v0.25.4097
 /** 帰巣「到達した」とみなす残距離(px)。giantbatの帰巣スナップ閾値(gameStore.ts)と同値。 */
 const ARRIVE_EPS_PX = 2;
 

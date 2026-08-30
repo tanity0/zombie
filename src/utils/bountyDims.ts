@@ -34,3 +34,14 @@ export const BOUNTY_BASE_HP = 4000;
 //     BOUNTY_MAIKO_TUNING.naginata.halfWidth / .spin.radius / .suiu.radius / .suiu.finalRadiusMult
 // **値は不変**(置き場所だけの移動)。判定(bountyTick/levelUpGate)も描画(pixiScene)も、引き続き
 // 同じ1箇所を読む=「赤いのに当たらない」は起きない。
+
+/**
+ * ★賞金首の起床/交戦復帰の距離(px)。**ここ(葉)に置く**。
+ *
+ * v0.25.4097(緊急): B2で `gameStore.ts` が **`bountyTick.ts` から直接この定数をimport**したため
+ * `gameStore → bountyTick → gameStore` の循環importが成立し、**起動直後に真っ暗**になった
+ * (ENGINEERING_NOTES.md「循環importはbuild/typecheck/testを素通りして…」と**同じ型の事故**。
+ * gameStore.ts の同じ場所のコメントに「bountyTick.tsを直接importすると循環」と**書いてあった**のに踏んだ)。
+ * 判定と描画が同じ値を読む「単一の出どころ」は保ったまま、値だけを依存ゼロの葉へ移して環を断つ。
+ */
+export const BOUNTY_AGGRO_RANGE_DEFAULT = 380;
