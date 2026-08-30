@@ -11,12 +11,13 @@
 import { stepLaserAim, type MimirLaserAim, type OvershootConfig } from './mimirLaserTrack';
 
 /** 追尾相の長さ(ms・atkUntil経由=ENEMY_ATTACK_SPEED_MULTで割られる点はwindupと同じ)。
- *  `?ttrack=<ms>` で実機調整・**0=track相に入らない**(完全ロールバック=§15-7条件4)。 */
+ *  `?ttrack=<ms>` で実機調整・**0=track相に入らない**(完全ロールバック=§15-7条件4)。
+ *  履歴: 500(v0.25.4075叩き台) → 1000(v0.25.4079・社長指示2026-08-30「もう0.5足して」)。 */
 export const TELEGRAPH_TRACK_MS = (() => {
-  if (typeof window === 'undefined') return 500;
+  if (typeof window === 'undefined') return 1000;
   const raw = new URLSearchParams(window.location.search).get('ttrack');
   const v = raw === null ? NaN : Number(raw);
-  return Number.isFinite(v) && v >= 0 ? v : 500;
+  return Number.isFinite(v) && v >= 0 ? v : 1000;
 })();
 
 /** sweep追尾のキャップ(叩き台)。基準歩速104.4の1.5倍/加速3倍=ミーミル基準系と同じ比率の固定値。

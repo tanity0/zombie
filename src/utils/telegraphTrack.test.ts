@@ -12,8 +12,8 @@ const run = (aim: MimirLaserAim, tx: number, ty: number, ms: number): MimirLaser
 };
 
 describe('§15 追尾相の照準(stepTrackAim)', () => {
-  it('既定の追尾相は500ms(window無し環境の既定)', () => {
-    expect(TELEGRAPH_TRACK_MS).toBe(500);
+  it('既定の追尾相は1000ms(window無し環境の既定・社長指示2026-08-30「もう0.5足して」)', () => {
+    expect(TELEGRAPH_TRACK_MS).toBe(1000);
   });
 
   it('静止した対象へ収束する(1秒で5px以内)', () => {
