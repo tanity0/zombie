@@ -333,6 +333,7 @@ import {
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
+import { shouldFireDeathFallback } from '../utils/playerDeathWatch';
 import { isExStageRun, phillBossSpawnReady, surielGateSpawnReady, surielGateClearReady } from '../utils/exStage';
 import {
   EX_SURIEL_TRIGGER_Y, EX_SURIEL_NORTH_LOCK_Y, EX_SURIEL_SOUTH_LOCK_Y,
@@ -14464,6 +14465,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           prevHealthRef.current = currentPlayer.health;
         } else {
           prevHealthRef.current = currentPlayer.health;
+        }
+
+        // ★★死亡の取りこぼしを1箇所で拾う(社長報告2026-08-31「幻影と戦ってて死んだのに終わらない」)。
+        // `damagePlayer` は「死んだか」を**返り値**でしか返さないので、返り値を捨てている経路
+        // (幻影の本体/分身/ドッグ/タレット/地雷・賞金首の技5つ=実在10本)で死ぬと
+        // **死亡演出も出ず、リザルトへも行かない**まま `isInputLocked` だけが効いて操作不能になる。
+        // 10箇所へ書き足すのではなく**毎フレームここ1箇所で見る**(CLAUDE.md「同じ判定を2箇所に書かない」)。
+        // 多重発火は triggerPlayerDeath 側の gameOverTriggeredRef が閉じる。理由と経路は utils/playerDeathWatch.ts。
+        if (shouldFireDeathFallback({
+          health: currentPlayer.health,
+          alreadyTriggered: gameOverTriggeredRef.current,
+          gameWon: useGameStore.getState().gameWon,
+          gameReturned: useGameStore.getState().gameReturned,
+        })) {
+          triggerPlayerDeath(currentPlayer.x + currentPlayer.width / 2, currentPlayer.y + currentPlayer.height / 2);
         }
 
         // (実装: src/utils/directorTick.ts の runDirectorSignalStep へ移設。挙動は不変)。

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import Game from './components/Game';
 import MissionSelect from './components/MissionSelect';
 import TitleScreen from './components/TitleScreen';
@@ -372,6 +372,10 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   const restartBareRoom = (): void => {
     void startGame(useGameStore.getState().characterClass, false, true);
   };
+  // handleGameOver を useCallback で固定するため、毎レンダー作り直される関数は ref 経由で呼ぶ
+  // (依存に入れると固定した意味が無くなる=Game.tsx の死亡タイマーがまた張り直され続ける)。
+  const restartBareRoomRef = useRef(restartBareRoom);
+  restartBareRoomRef.current = restartBareRoom;
 
   /**
    * ★練習出撃(ボスラッシュ)。**通常の出撃と同じ `startGame` を通す**ので、ページ再読込は起きない
@@ -440,13 +444,17 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     setGameState('menu');
   };
 
-  const handleGameOver = () => {
+  // ★useCallback で固定する(社長報告2026-08-31 の保険側の穴・v0.25.4095)。
+  // `Game.tsx` は「HPが0になったら 700ms 後に onGameOver」を useEffect で張っており、
+  // 依存配列に onGameOver が入っている。**毎レンダー新しい関数を渡すとタイマーが張り直され続け、
+  // App が 700ms 以内に再レンダーし続ける限り永久に発火しない**(=死亡の保険が効かない)。
+  const handleGameOver = useCallback(() => {
     // ★ガントレット中は画面遷移を挟まない(駆動が次枠へ差し替える)。ここで gameState を動かすと
     // Game が一瞬アンマウントし、遅れて来た遷移が次の戦いの最中に届く事故になる。
     if (GAUNTLET_MODE) return;
-    if (bare) { restartBareRoom(); return; }
+    if (bare) { restartBareRoomRef.current(); return; }
     setGameState('gameOver');
-  };
+  }, [bare]);
 
   const handleReturn = () => {
     if (GAUNTLET_MODE) return; // 同上(ガントレットは駆動側が進める)
