@@ -20027,14 +20027,58 @@ export class PixiScene {
           gvfx - gux * ghw - gnx * ghw, gvfy - guy * ghw - gny * ghw,
         ];
         bandsThisFrame.push([gfx, gfy, gtx, gty, ghw]); // 衝撃波の対象は**判定どおりの全長**(絵の縮みに引きずられない)
-        if (gVisible) o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase });
+        // ★★v0.25.4102(社長「帯わからん」): **薙ぎ払いの帯だけが今回の窓マスクから漏れていた。**
+        //   この技は `drawGiantCapsuleZone` を通らず**自前の poly** で描いているため、v0.25.4101 の
+        //   変更(=あのローカル関数を直した)が1バイトも効いていなかった。城ボスでいちばん目に付く帯が
+        //   これなので、社長の「わからん」はこれが素通りしていたのが原因。**同じ窓マスクをここにも通す。**
+        //   対象は溜め(`g-sweep-windup`)だけ=追尾相(track)と発生中(active)は従来どおり全形のまま。
+        const gSweepMasked = BAND_SWEEP_ON && gph === 'g-sweep-windup';
+        if (gSweepMasked) {
+          const gHalfWin = Math.max(0.02, BAND_SWEEP_W);
+          const gCenter = bandSweepCenter(gprog, gHalfWin, CIRCLE_SWEEP_EASE);
+          const gWin = bandSweepWindow(gCenter, gHalfWin);
+          if (gWin.hi > gWin.lo) {
+            const gPeak = Math.min(1, gZoneFill * TELEGRAPH_FILL_MULT * BAND_SWEEP_A) * gTrackEase;
+            const gStep = (gWin.hi - gWin.lo) / BAND_SWEEP_STEPS;
+            for (let i = 0; i < BAND_SWEEP_STEPS; i++) {
+              const s0 = gWin.lo + gStep * i, s1 = s0 + gStep;
+              const a = gPeak * bandSweepAlphaAt((s0 + s1) / 2, gCenter, gHalfWin);
+              if (a <= 0.003) continue;
+              const bc = s0 <= 0.0001 ? ghw : 0;   // 端のキャップは窓が端に掛かっている時だけ
+              const fc = s1 >= 0.9999 ? ghw : 0;   // =元の帯の形から1pxもはみ出さない
+              const ax = gfx + (gtx - gfx) * s0, ay = gfy + (gty - gfy) * s0;
+              const bx = gfx + (gtx - gfx) * s1, by = gfy + (gty - gfy) * s1;
+              o.poly([
+                ax - gux * bc + gnx * ghw, ay - guy * bc + gny * ghw,
+                bx + gux * fc + gnx * ghw, by + guy * fc + gny * ghw,
+                bx + gux * fc - gnx * ghw, by + guy * fc - gny * ghw,
+                ax - gux * bc - gnx * ghw, ay - guy * bc - gny * ghw,
+              ]).fill({ color: 0xff2a2a, alpha: a });
+            }
+          }
+        } else if (gVisible) o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase });
         // v0.25.3477: 帯の流星描き→消しはwindup限定(activeは全形のまま=従来どおり。gprogはactive中は
         // 窓の異なる時計を流用しているだけの値なので、そのままmeteorPhaseへ渡さない)。
+        if (gSweepMasked) {
+          // 縁(焼き素材)と白芯も**同じ窓で覗く**=マスク(面だけ窓・縁は全長、だと窓が読めない)。
+          const gHalfWin2 = Math.max(0.02, BAND_SWEEP_W);
+          const gCenter2 = bandSweepCenter(gprog, gHalfWin2, CIRCLE_SWEEP_EASE);
+          const gWin2 = bandSweepWindow(gCenter2, gHalfWin2);
+          if (gWin2.hi > gWin2.lo) {
+            const gEdgeA = telStrokeA(gprog, gPulse) * gTrackEase
+              * bandSweepAlphaAt(Math.max(gWin2.lo, Math.min(gWin2.hi, gCenter2)), gCenter2, gHalfWin2);
+            if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, gEdgeA, 0, gWin2.hi, gWin2.lo);
+            o.moveTo(gfx + (gtx - gfx) * gWin2.lo, gfy + (gty - gfy) * gWin2.lo)
+              .lineTo(gfx + (gtx - gfx) * gWin2.hi, gfy + (gty - gfy) * gWin2.hi)
+              .stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: (0.35 + 0.35 * gprog) * gTrackEase * 0.9 });
+          }
+        } else {
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, telStrokeA(gprog, gPulse) * gTrackEase, 0,
           gph === 'g-sweep-windup' ? gprog : undefined);
         else if (gVisible) o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(gprog, gPulse) * gTrackEase });
         // 白芯も可視区間だけ(面と同じ理由=流星の頭と消しを隠さない)。
         if (gVisible) o.moveTo(gvfx, gvfy).lineTo(gvtx, gvty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: (0.35 + 0.35 * gprog) * gTrackEase, cap: 'round' });
+        }
         // §15ロックの合図+薄→濃の慣性: 追尾相→windupの瞬間に全形の白い縁を1フラッシュ(60ms)し、
         // 照準表示(trackの薄い全形)は150msの残像として消えながら流星の描き始めへ引き継ぐ(濃度の段差を
         // 消す=「はい」2026-08-30)。gTrackAimXが在る=track経由の印(?ttrack=0の従来経路では両方出ない
