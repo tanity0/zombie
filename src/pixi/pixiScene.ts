@@ -276,6 +276,7 @@ import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/r
 import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
 import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
 import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt } from '../utils/circleSweep';
+import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_STEPS, bandSweepCenter, bandSweepAlphaAt, bandSweepWindow } from '../utils/bandSweep';
 
 // --- 深層域グレーディング(退色した暖色セピア) -----------------------------
 // 深層域に入っている間だけ、ゲーム画面全体を退色セピアにする描画のみの演出(当たり判定等には不干渉)。
@@ -2735,6 +2736,12 @@ const CIRCLE_SWEEP_A = tsNum('csweepa', CIRCLE_SWEEP_ALPHA_MULT);
 // ★v0.25.4093: 縁(焼きリング)も帯でマスクするか。既定 true(社長指示「そこだけサークル絵が表示される」)。
 // `?csweepring=1` にすると縁だけ常時表示=判定半径がいつでも読める(§11-7 受け入れ条件2 の形)。
 const CIRCLE_SWEEP_RING_ALWAYS = tsBool('csweepring', false);
+// ★帯(カプセル)の予告も円と同じ「窓マスク」で流す(社長指示2026-08-31・**試しに城ボスだけ**)。
+// 対象は城ボス(搬送体/グレン)の帯予告=`drawGiantCapsuleZone` を通るものだけ。他のボスは従来の流星のまま。
+// ツマミ: ?bsweep=0(旧=meteorPhase の流星へ戻す)/ ?bsweepw=(窓の半幅)/ ?bsweepa=(濃さ倍率)。
+const BAND_SWEEP_ON = tsBool('bsweep', true);
+const BAND_SWEEP_W = tsNum('bsweepw', BAND_SWEEP_HALF_W);
+const BAND_SWEEP_A = tsNum('bsweepa', BAND_SWEEP_ALPHA_MULT);
 
 // v0.25.3093(社長指示「ゲーム内の予告系の赤をさらに薄くしたい」): 予告の**面の塗り**全部に掛ける減光。
 // v0.25.3068では帯だけ0.75で、円/扇は対象外だった。今回は**円・扇・帯を1つの値に統一**して0.5へ。
@@ -18872,6 +18879,46 @@ export class PixiScene {
         // ★v0.25.3496(社長指示「その上で、流星にして」): 溜め中は面も流星の可視区間[er,p]へ縮める。
         // 従来は縁取り(drawTelegraphBand)だけが流星で、面は全長のまま=消しが面の下に隠れて
         // 「消え切った瞬間が当たり」の文法が読めなかった。位相の導出は meteorPhase 1本のまま。
+        // ★★v0.25.4101(社長指示2026-08-31「帯の流星も同じ仕様にしたいので、試しに城ボスからやって」):
+        //   帯も**円と同じ窓マスク**で流す。**帯の絵は変えず**、両縁がフェードする窓が
+        //   **始点→終点**へ1回流れ、**終点を抜け切った瞬間=判定発生**。長さ・幅は1pxも動かさない。
+        //   旧(meteorPhase の流星=絵そのものを伸ばして消す)は `?bsweep=0` で戻せる。
+        if (BAND_SWEEP_ON && prog !== undefined) {
+          const halfWin = Math.max(0.02, BAND_SWEEP_W);
+          const center = bandSweepCenter(prog, halfWin, CIRCLE_SWEEP_EASE);
+          const win = bandSweepWindow(center, halfWin);
+          if (win.hi > win.lo) {
+            const peak = Math.min(1, fillA * TELEGRAPH_FILL_MULT * BAND_SWEEP_A);
+            const step = (win.hi - win.lo) / BAND_SWEEP_STEPS;
+            for (let i = 0; i < BAND_SWEEP_STEPS; i++) {
+              const s0 = win.lo + step * i, s1 = s0 + step;
+              const a = peak * bandSweepAlphaAt((s0 + s1) / 2, center, halfWin);
+              if (a <= 0.003) continue;
+              // 端のキャップ(halfWidth ぶんの張り出し)は、窓が帯の端に掛かっている時だけ付ける
+              // =**元の帯の形(カプセルの外接矩形)から1pxもはみ出さない**。
+              const backCap = s0 <= 0.0001 ? halfWidth : 0;
+              const frontCap = s1 >= 0.9999 ? halfWidth : 0;
+              const ax = fx + ddx * s0, ay = fy + ddy * s0;
+              const bx = fx + ddx * s1, by = fy + ddy * s1;
+              o.poly([
+                ax - ux * backCap + nx * halfWidth, ay - uy * backCap + ny * halfWidth,
+                bx + ux * frontCap + nx * halfWidth, by + uy * frontCap + ny * halfWidth,
+                bx + ux * frontCap - nx * halfWidth, by + uy * frontCap - ny * halfWidth,
+                ax - ux * backCap - nx * halfWidth, ay - uy * backCap - ny * halfWidth,
+              ]).fill({ color: 0xff2a2a, alpha: a });
+            }
+            // 縁(焼き素材)も同じ窓で覗く=マスク。窓が端から出ていく間は濃さも落ちる。
+            const edgeA = strokeA * bandSweepAlphaAt(Math.max(win.lo, Math.min(win.hi, center)), center, halfWin);
+            if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, edgeA, 0, win.hi, win.lo);
+            else o.poly([
+              fx + ddx * win.lo - ux * halfWidth + nx * halfWidth, fy + ddy * win.lo - uy * halfWidth + ny * halfWidth,
+              fx + ddx * win.hi + ux * halfWidth + nx * halfWidth, fy + ddy * win.hi + uy * halfWidth + ny * halfWidth,
+              fx + ddx * win.hi + ux * halfWidth - nx * halfWidth, fy + ddy * win.hi + uy * halfWidth - ny * halfWidth,
+              fx + ddx * win.lo - ux * halfWidth - nx * halfWidth, fy + ddy * win.lo - uy * halfWidth - ny * halfWidth,
+            ]).stroke({ width: 2, color: 0xff3b3b, alpha: edgeA });
+          }
+          return;
+        }
         const met = prog === undefined ? null : PixiScene.meteorPhase(prog);
         const vfx = met ? fx + ddx * met.er : fx, vfy = met ? fy + ddy * met.er : fy;
         const vtx = met ? fx + ddx * met.p : tx, vty = met ? fy + ddy * met.p : ty;
