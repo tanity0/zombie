@@ -1,16 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { bandSweepCenter, bandSweepAlphaAt, bandSweepWindow, BAND_SWEEP_HALF_W } from './bandSweep';
+import { bandSweepCenter, bandSweepAlphaAt, BAND_SWEEP_HALF_W } from './bandSweep';
 
 const HW = BAND_SWEEP_HALF_W;
 
 describe('bandSweep(帯の窓マスク・始点→終点)', () => {
-  it('溜めの1フレーム目から始点に窓が乗っている(円と同じ・v0.25.4093の穴を踏まない)', () => {
+  it('★溜めの頭では窓が帯の外に居る=フェードインする(v0.25.4103・社長「ちゃんとフェードインアウト」)', () => {
     const c = bandSweepCenter(0, HW);
-    expect(c).toBe(0);
-    expect(bandSweepAlphaAt(0, c, HW)).toBeCloseTo(1, 6); // 始点がいちばん濃い
-    const w = bandSweepWindow(c, HW);
-    expect(w.lo).toBe(0);
-    expect(w.hi).toBeCloseTo(HW, 6); // 窓の半分だけが帯の上に乗っている
+    expect(c).toBeCloseTo(-HW, 6);
+    // 帯の上(s>=0)はどこも濃さ0=いきなり全開にならない
+    expect(bandSweepAlphaAt(0, c, HW)).toBeCloseTo(0, 6);
+    expect(bandSweepAlphaAt(0.5, c, HW)).toBe(0);
+    // 少し進むと始点から滲み出す
+    const c2 = bandSweepCenter(0.15, HW);
+    expect(bandSweepAlphaAt(0, c2, HW)).toBeGreaterThan(0);
   });
 
   it('溜めの終わりでは窓が終点を抜け切っている=消え切り(この瞬間が判定)', () => {
@@ -19,8 +21,6 @@ describe('bandSweep(帯の窓マスク・始点→終点)', () => {
     // 帯の上のどこを見ても濃さが**事実上0**(浮動小数の丸めで 1e-31 のような値は残りうるが、
     // 画面には1bitも出ない。「消え切っている」の判定はこの閾値で十分)。
     for (let s = 0; s <= 1.0001; s += 0.05) expect(bandSweepAlphaAt(s, c, HW)).toBeLessThan(1e-9);
-    const w = bandSweepWindow(c, HW);
-    expect(w.hi - w.lo).toBeLessThanOrEqual(0); // 可視区間が空
   });
 
   it('窓は始点→終点へ単調に進む(戻らない)', () => {
@@ -50,11 +50,17 @@ describe('bandSweep(帯の窓マスク・始点→終点)', () => {
     expect(bandSweepAlphaAt(0.5 - HW / 2, c, HW)).toBeLessThan(1);
   });
 
-  it('窓は帯の外へはみ出さない(可視区間は必ず0〜1に収まる)', () => {
+  it('★どの時点でも「帯の全長」を切らない=スライスのアルファが連続している(切り口が出ない)', () => {
+    // 隣り合うスライスの濃さの差が小さい=段差(ぱつっと)にならない、を数値で固定する。
+    const SL = 30;
     for (let p = 0; p <= 1.0001; p += 0.05) {
-      const w = bandSweepWindow(bandSweepCenter(p, HW), HW);
-      expect(w.lo).toBeGreaterThanOrEqual(0);
-      expect(w.hi).toBeLessThanOrEqual(1);
+      const c = bandSweepCenter(p, HW);
+      let prevA = bandSweepAlphaAt(0.5 / SL, c, HW);
+      for (let i = 1; i < SL; i++) {
+        const a = bandSweepAlphaAt((i + 0.5) / SL, c, HW);
+        expect(Math.abs(a - prevA)).toBeLessThan(0.25);
+        prevA = a;
+      }
     }
   });
 

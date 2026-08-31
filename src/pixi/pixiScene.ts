@@ -276,7 +276,7 @@ import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/r
 import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
 import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
 import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt } from '../utils/circleSweep';
-import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_STEPS, bandSweepCenter, bandSweepAlphaAt, bandSweepWindow } from '../utils/bandSweep';
+import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt } from '../utils/bandSweep';
 
 // --- 深層域グレーディング(退色した暖色セピア) -----------------------------
 // 深層域に入っている間だけ、ゲーム画面全体を退色セピアにする描画のみの演出(当たり判定等には不干渉)。
@@ -3000,6 +3000,7 @@ interface ActorView {
   // v0.25.2436: アクラシエルの放射棘(8方向・同時に複数本出る)向けに rings と同じ配列化。
   // 既存の技(1体につき同時1本のみ)は idx=0 だけを使うので見た目は変わらない。
   bands?: Sprite[];
+  bandSlices?: Sprite[];   // 帯の窓マスク用(v0.25.4103): 縁の焼き素材を軸方向に等分して描く
   // 「振った瞬間」の斬撃の弧(社長支給素材 D-1・v0.25.2400)。予告(ring/band)とは役割が別で、
   // **実行の一瞬だけ**出る。同時に2つ振るボス(翼撃)が出てきたら2枚目を足す。
   slash?: Sprite;
@@ -18884,39 +18885,10 @@ export class PixiScene {
         //   **始点→終点**へ1回流れ、**終点を抜け切った瞬間=判定発生**。長さ・幅は1pxも動かさない。
         //   旧(meteorPhase の流星=絵そのものを伸ばして消す)は `?bsweep=0` で戻せる。
         if (BAND_SWEEP_ON && prog !== undefined) {
-          const halfWin = Math.max(0.02, BAND_SWEEP_W);
-          const center = bandSweepCenter(prog, halfWin, CIRCLE_SWEEP_EASE);
-          const win = bandSweepWindow(center, halfWin);
-          if (win.hi > win.lo) {
-            const peak = Math.min(1, fillA * TELEGRAPH_FILL_MULT * BAND_SWEEP_A);
-            const step = (win.hi - win.lo) / BAND_SWEEP_STEPS;
-            for (let i = 0; i < BAND_SWEEP_STEPS; i++) {
-              const s0 = win.lo + step * i, s1 = s0 + step;
-              const a = peak * bandSweepAlphaAt((s0 + s1) / 2, center, halfWin);
-              if (a <= 0.003) continue;
-              // 端のキャップ(halfWidth ぶんの張り出し)は、窓が帯の端に掛かっている時だけ付ける
-              // =**元の帯の形(カプセルの外接矩形)から1pxもはみ出さない**。
-              const backCap = s0 <= 0.0001 ? halfWidth : 0;
-              const frontCap = s1 >= 0.9999 ? halfWidth : 0;
-              const ax = fx + ddx * s0, ay = fy + ddy * s0;
-              const bx = fx + ddx * s1, by = fy + ddy * s1;
-              o.poly([
-                ax - ux * backCap + nx * halfWidth, ay - uy * backCap + ny * halfWidth,
-                bx + ux * frontCap + nx * halfWidth, by + uy * frontCap + ny * halfWidth,
-                bx + ux * frontCap - nx * halfWidth, by + uy * frontCap - ny * halfWidth,
-                ax - ux * backCap - nx * halfWidth, ay - uy * backCap - ny * halfWidth,
-              ]).fill({ color: 0xff2a2a, alpha: a });
-            }
-            // 縁(焼き素材)も同じ窓で覗く=マスク。窓が端から出ていく間は濃さも落ちる。
-            const edgeA = strokeA * bandSweepAlphaAt(Math.max(win.lo, Math.min(win.hi, center)), center, halfWin);
-            if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, edgeA, 0, win.hi, win.lo);
-            else o.poly([
-              fx + ddx * win.lo - ux * halfWidth + nx * halfWidth, fy + ddy * win.lo - uy * halfWidth + ny * halfWidth,
-              fx + ddx * win.hi + ux * halfWidth + nx * halfWidth, fy + ddy * win.hi + uy * halfWidth + ny * halfWidth,
-              fx + ddx * win.hi + ux * halfWidth - nx * halfWidth, fy + ddy * win.hi + uy * halfWidth - ny * halfWidth,
-              fx + ddx * win.lo - ux * halfWidth - nx * halfWidth, fy + ddy * win.lo - uy * halfWidth - ny * halfWidth,
-            ]).stroke({ width: 2, color: 0xff3b3b, alpha: edgeA });
-          }
+          // ★v0.25.4103(社長「もっとフェードマスクをシームレスに」): 切り出しをやめ、
+          //   全長スライスのアルファだけを窓のグラデで変える(切り口が原理的に出ない)。
+          //   縁の焼き素材も同じスライスで描く。**抜け切り=判定発生**。
+          this.drawSweepBand(view, o, fx, fy, tx, ty, halfWidth, prog, fillA * TELEGRAPH_FILL_MULT, strokeA);
           return;
         }
         const met = prog === undefined ? null : PixiScene.meteorPhase(prog);
@@ -20034,43 +20006,24 @@ export class PixiScene {
         //   対象は溜め(`g-sweep-windup`)だけ=追尾相(track)と発生中(active)は従来どおり全形のまま。
         const gSweepMasked = BAND_SWEEP_ON && gph === 'g-sweep-windup';
         if (gSweepMasked) {
-          const gHalfWin = Math.max(0.02, BAND_SWEEP_W);
-          const gCenter = bandSweepCenter(gprog, gHalfWin, CIRCLE_SWEEP_EASE);
-          const gWin = bandSweepWindow(gCenter, gHalfWin);
-          if (gWin.hi > gWin.lo) {
-            const gPeak = Math.min(1, gZoneFill * TELEGRAPH_FILL_MULT * BAND_SWEEP_A) * gTrackEase;
-            const gStep = (gWin.hi - gWin.lo) / BAND_SWEEP_STEPS;
-            for (let i = 0; i < BAND_SWEEP_STEPS; i++) {
-              const s0 = gWin.lo + gStep * i, s1 = s0 + gStep;
-              const a = gPeak * bandSweepAlphaAt((s0 + s1) / 2, gCenter, gHalfWin);
-              if (a <= 0.003) continue;
-              const bc = s0 <= 0.0001 ? ghw : 0;   // 端のキャップは窓が端に掛かっている時だけ
-              const fc = s1 >= 0.9999 ? ghw : 0;   // =元の帯の形から1pxもはみ出さない
-              const ax = gfx + (gtx - gfx) * s0, ay = gfy + (gty - gfy) * s0;
-              const bx = gfx + (gtx - gfx) * s1, by = gfy + (gty - gfy) * s1;
-              o.poly([
-                ax - gux * bc + gnx * ghw, ay - guy * bc + gny * ghw,
-                bx + gux * fc + gnx * ghw, by + guy * fc + gny * ghw,
-                bx + gux * fc - gnx * ghw, by + guy * fc - gny * ghw,
-                ax - gux * bc - gnx * ghw, ay - guy * bc - gny * ghw,
-              ]).fill({ color: 0xff2a2a, alpha: a });
-            }
-          }
+          // ★v0.25.4103: 薙ぎ払いも同じスライス方式(切り出さない)。面+縁+白芯が同じ窓で流れる。
+          this.drawSweepBand(view, o, gfx, gfy, gtx, gty, ghw, gprog,
+            gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase, telStrokeA(gprog, gPulse) * gTrackEase);
         } else if (gVisible) o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase });
         // v0.25.3477: 帯の流星描き→消しはwindup限定(activeは全形のまま=従来どおり。gprogはactive中は
         // 窓の異なる時計を流用しているだけの値なので、そのままmeteorPhaseへ渡さない)。
         if (gSweepMasked) {
-          // 縁(焼き素材)と白芯も**同じ窓で覗く**=マスク(面だけ窓・縁は全長、だと窓が読めない)。
-          const gHalfWin2 = Math.max(0.02, BAND_SWEEP_W);
-          const gCenter2 = bandSweepCenter(gprog, gHalfWin2, CIRCLE_SWEEP_EASE);
-          const gWin2 = bandSweepWindow(gCenter2, gHalfWin2);
-          if (gWin2.hi > gWin2.lo) {
-            const gEdgeA = telStrokeA(gprog, gPulse) * gTrackEase
-              * bandSweepAlphaAt(Math.max(gWin2.lo, Math.min(gWin2.hi, gCenter2)), gCenter2, gHalfWin2);
-            if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, gEdgeA, 0, gWin2.hi, gWin2.lo);
-            o.moveTo(gfx + (gtx - gfx) * gWin2.lo, gfy + (gty - gfy) * gWin2.lo)
-              .lineTo(gfx + (gtx - gfx) * gWin2.hi, gfy + (gty - gfy) * gWin2.hi)
-              .stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: (0.35 + 0.35 * gprog) * gTrackEase * 0.9 });
+          // 白芯も同じ窓のグラデで(縁は drawSweepBand が既に描いている)。
+          const gHW2 = Math.max(0.02, BAND_SWEEP_W);
+          const gCen2 = bandSweepCenter(gprog, gHW2, CIRCLE_SWEEP_EASE);
+          const gSt2 = 1 / BAND_SWEEP_SLICES;
+          for (let i = 0; i < BAND_SWEEP_SLICES; i++) {
+            const a = (0.35 + 0.35 * gprog) * gTrackEase * bandSweepAlphaAt((i + 0.5) * gSt2, gCen2, gHW2);
+            if (a <= 0.002) continue;
+            const s0 = i * gSt2, s1 = s0 + gSt2;
+            o.moveTo(gfx + (gtx - gfx) * s0, gfy + (gty - gfy) * s0)
+              .lineTo(gfx + (gtx - gfx) * s1 + 0.5, gfy + (gty - gfy) * s1)
+              .stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: a });
           }
         } else {
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, telStrokeA(gprog, gPulse) * gTrackEase, 0,
@@ -23163,6 +23116,80 @@ export class PixiScene {
     const period = Math.max(1, activeMs);
     const elapsed = Math.max(0, period - Math.max(0, remainMs));
     return (elapsed % period) / period;
+  }
+
+  /**
+   * ★帯の窓マスク(社長指示2026-08-31)。**塗りと縁を「全長ぶんのスライス」で描き、
+   * スライスごとにアルファだけを窓のグラデで変える。**
+   *
+   * **切り出さない**のが肝(社長「もっとフェードマスクをシームレスに。ぱつっと感がまだある」)——
+   * 窓の範囲だけを描くと、切った所に必ず切り口が出る。図形は常に全長ぶん在って濃さだけが流れれば、
+   * **切り口は原理的に存在しない**。
+   *
+   * **帯の長さ・幅(=判定範囲)は1pxも動かさない。** 端のキャップも元の帯の形のまま
+   * (濃さが窓に従うので「全開の角」にはならない)。
+   * **窓が抜け切った瞬間 = 判定発生**(`prog=1` で全スライスのアルファが0)。
+   */
+  private drawSweepBand(
+    view: ActorView, o: Graphics, fx: number, fy: number, tx: number, ty: number,
+    halfWidth: number, prog: number, fillA: number, strokeA: number, fillColor = 0xff2a2a, strokeColor = 0xff3b3b,
+  ): void {
+    const ddx = tx - fx, ddy = ty - fy;
+    const ddl = Math.hypot(ddx, ddy) || 1;
+    const ux = ddx / ddl, uy = ddy / ddl;
+    const nx = -uy, ny = ux;
+    const halfWin = Math.max(0.02, BAND_SWEEP_W);
+    const center = bandSweepCenter(prog, halfWin, CIRCLE_SWEEP_EASE);
+    const peak = Math.min(1, fillA * BAND_SWEEP_A);
+    const st = 1 / BAND_SWEEP_SLICES;
+    // ---- 面: 全長を等分し、スライスごとに窓の濃さを掛ける ----
+    for (let i = 0; i < BAND_SWEEP_SLICES; i++) {
+      const s0 = i * st, s1 = s0 + st;
+      const a = peak * bandSweepAlphaAt((s0 + s1) / 2, center, halfWin);
+      if (a <= 0.002) continue;
+      const bc = i === 0 ? halfWidth : 0;                      // 端のキャップ=元の帯の形
+      const fc = i === BAND_SWEEP_SLICES - 1 ? halfWidth : 0;
+      const ax = fx + ddx * s0, ay = fy + ddy * s0;
+      const bx = fx + ddx * s1, by = fy + ddy * s1;
+      o.poly([
+        ax - ux * bc + nx * halfWidth, ay - uy * bc + ny * halfWidth,
+        bx + ux * fc + nx * halfWidth, by + uy * fc + ny * halfWidth,
+        bx + ux * fc - nx * halfWidth, by + uy * fc - ny * halfWidth,
+        ax - ux * bc - nx * halfWidth, ay - uy * bc - ny * halfWidth,
+      ]).fill({ color: fillColor, alpha: a });
+    }
+    // ---- 縁(焼き素材): 同じスライスで、テクスチャの対応する縦帯を貼る ----
+    if (!FX_RING_ENABLED) return;
+    const tex = getTexture('fx/telegraph-band');
+    if (!tex) return;
+    if (!view.bandSlices) view.bandSlices = [];
+    const totalW = ddl + halfWidth * 2;                        // 素材が貼られている矩形の全長(既存と同じ式)
+    const midX = (fx + tx) / 2, midY = (fy + ty) / 2;
+    const rot = Math.atan2(ddy, ddx);
+    for (let i = 0; i < BAND_SWEEP_SLICES; i++) {
+      let sp = view.bandSlices[i];
+      if (!sp) {
+        // テクスチャの縦帯(frame)は固定なので**1度だけ**作って使い回す(毎フレーム生成しない)。
+        const fw = tex.frame.width / BAND_SWEEP_SLICES;
+        sp = new Sprite(new Texture({
+          source: tex.source,
+          frame: new Rectangle(tex.frame.x + fw * i, tex.frame.y, fw, tex.frame.height),
+        }));
+        sp.anchor.set(0, 0.5);
+        view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
+        view.bandSlices[i] = sp;
+      }
+      const a = strokeA * bandSweepAlphaAt((i + 0.5) * st, center, halfWin);
+      if (a <= 0.002) { sp.visible = false; continue; }
+      const dw = totalW / BAND_SWEEP_SLICES;
+      sp.position.set(midX + Math.cos(rot) * (-totalW / 2 + dw * i), midY + Math.sin(rot) * (-totalW / 2 + dw * i));
+      sp.rotation = rot;
+      sp.width = dw + 0.6;                                     // +0.6=継ぎ目対策(スライス間に線が出ない)
+      sp.height = halfWidth * 2;
+      sp.tint = strokeColor;
+      sp.alpha = a;
+      sp.visible = true;
+    }
   }
 
   private drawTelegraphRing(view: ActorView, cx: number, cy: number, radius: number, tint: number, alpha: number, idx = 0): void {

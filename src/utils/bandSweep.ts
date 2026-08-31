@@ -26,15 +26,25 @@ export const BAND_SWEEP_HALF_W = 0.34;
  */
 export const BAND_SWEEP_ALPHA_MULT = 2.5;
 
-/** 窓を刻む段数(濃度のグラデをこの本数のスライスで作る)。 */
-export const BAND_SWEEP_STEPS = 16;
+/**
+ * 帯を刻むスライス数(濃度のグラデをこの本数で作る)。
+ *
+ * **★v0.25.4103(社長「もっとフェードマスクをシームレスに。ぱつっと感がまだある」)**:
+ * 旧版は**窓の範囲だけを切り出して**描いていたので、切り出す以上どこかに必ず**切り口**が出た。
+ * **切るのをやめ、帯を全長ぶんこの本数のスライスに分け、スライスごとにアルファだけを窓のグラデで
+ * 変える**。図形は常に全長ぶん在り、濃さだけが流れる=**切り口が原理的に存在しない**。
+ * 縁の焼き素材も**同じスライスで**描く(素材の端が硬いのは「帯の端」だけで、途中に切り口は出ない)。
+ */
+export const BAND_SWEEP_SLICES = 30;
 
 /**
- * 窓の中心位置(軸上 0=始点 / 1=終点)。`prog` 0→1 で **0 → 1+halfW** へ動く
- * (= 始点に乗った状態で始まり、終点を通り抜けて消え切る)。
+ * 窓の中心位置(軸上 0=始点 / 1=終点)。`prog` 0→1 で **−halfW → 1+halfW** へ動く
+ * (= 帯の**外から入ってきて、外へ抜けていく**)。
  *
- * **1フレーム目から始点に乗せる**のは円と同じ理由——外から入ってくる形にすると
- * 溜めの序盤に**予告が1pxも出ない**時間ができる(v0.25.4093 で円が踏んだ穴)。
+ * **★v0.25.4103 の訂正(社長「サークルの方みたいにちゃんとフェードインアウト」)**:
+ * 旧版は `0 → 1+halfW` で、**1フレーム目に始点でいきなり全開**になり、**終点では切り落とし**で
+ * 終わっていた(=「ぱつっと」の一因)。外から入って外へ抜ける形にすると、
+ * **両端でちゃんとフェードする**。円では帯の外側に**縁の輪**が在るので同じ問題が出なかった。
  *
  * **等速にしない**(CLAUDE.md「動きの絶対ルール: 慣性」)。ease-in で、
  * 序盤は始点付近に留まり終盤で終点へ加速する=**消え切る瞬間が立つ**。
@@ -42,7 +52,7 @@ export const BAND_SWEEP_STEPS = 16;
 export const bandSweepCenter = (prog: number, halfW: number, ease = true): number => {
   const t = Math.max(0, Math.min(1, prog));
   const e = ease ? t * t : t;
-  return e * (1 + halfW);
+  return -halfW + e * (1 + halfW * 2);
 };
 
 /**
@@ -57,7 +67,11 @@ export const bandSweepAlphaAt = (s: number, center: number, halfW: number): numb
   return t * t * (3 - 2 * t); // smoothstep=縁が硬く切れない
 };
 
-/** 窓の可視区間 [lo, hi](軸上・0〜1へクランプ済み)。空なら hi <= lo。 */
+/**
+ * 窓の可視区間 [lo, hi](軸上・0〜1へクランプ済み)。空なら hi <= lo。
+ * **★v0.25.4103以降、描画では使わない**(切り出しをやめてスライスのアルファへ移したため)。
+ * 「窓がまだ帯に掛かっているか」を安く判定したい時のために残してある。
+ */
 export const bandSweepWindow = (center: number, halfW: number): { lo: number; hi: number } => ({
   lo: Math.max(0, center - halfW),
   hi: Math.min(1, center + halfW),
