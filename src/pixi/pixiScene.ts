@@ -276,7 +276,7 @@ import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/r
 import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
 import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
 import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt } from '../utils/circleSweep';
-import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, sweepTelegraphProg } from '../utils/bandSweep';
+import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, sweepTelegraphProg, twoPhaseTelegraphProg } from '../utils/bandSweep';
 import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
 
 // --- 深層域グレーディング(退色した暖色セピア) -----------------------------
@@ -20132,13 +20132,24 @@ export class PixiScene {
         // そのまま静止して見せ続ける(学習点=保持350ms固定)。
         const bfx = e.aiFromX ?? cx, bfy = e.aiFromY ?? cy;
         const btx = e.aiTargetX ?? cx, bty = e.aiTargetY ?? cy;
-        const bprog = gph === 'g-bite-windup'
-          ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_BITE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
+        // ★★v0.25.4108(社長「はい」2026-09-01): **窓を「溜め+間」の通しで進める。**
+        //   噛みつきは 溜め(windup)→ **間(hold 350ms)** → 噛む の3拍で、**ダメージが出るのは
+        //   「間」の終わり**(gameStore の `case 'g-bite-hold'` で `pumpkinBlasts` を積む)。
+        //   ところが窓は溜めの終わりで抜け切っていたので、**赤が消えてから実効350ms 遅れて噛む**
+        //   =この技だけ「**消え切り=判定発生**」が守れていなかった(牙は正しく間の終わりに閉じ切る)。
+        //   溜めと間を1本の進行として通せば、**抜け切る瞬間 = 噛む瞬間**になる。
+        //   実行(`g-bite-active`)は prog=1(窓が抜け切った状態)=**予告の後は赤なし**(v0.25.4104)。
+        const bWind = gph === 'g-bite-windup', bHold = gph === 'g-bite-hold';
+        const bprog = (bWind || bHold)
+          ? twoPhaseTelegraphProg({
+              firstMs: GIANT_BITE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT,
+              secondMs: GIANT_BITE_HOLD_MS / ENEMY_ATTACK_SPEED_MULT,
+              inFirst: bWind,
+              remainMs: (e.aiPhaseUntil ?? gameTime) - gameTime,
+            })
           : 1;
         const bFill = gph === 'g-bite-active' ? 0.3 : (0.12 + 0.22 * bprog) + 0.08 * gPulse;
-        // v0.25.3477: 帯の流星描き→消しはwindup限定(hold/activeは静止した全形のまま=従来どおり)。
-        drawGiantCapsuleZone(bfx, bfy, btx, bty, GIANT_BITE_HALF_WIDTH, bFill, (0.32 + 0.4 * bprog) + 0.15 * gPulse,
-          gph === 'g-bite-windup' ? bprog : 1);   // ★予告の後は赤を消す
+        drawGiantCapsuleZone(bfx, bfy, btx, bty, GIANT_BITE_HALF_WIDTH, bFill, (0.32 + 0.4 * bprog) + 0.15 * gPulse, bprog);
       } else if (gph === 'g-slam-windup' || gph === 'g-slam-active') {
         // M66 stage-1「のしかかり」(大技): 大きな帯がbiteと同じ意匠で前方へ伸びる(寸法違いのみ)。
         const sfx = e.aiFromX ?? cx, sfy = e.aiFromY ?? cy;

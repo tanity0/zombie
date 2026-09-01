@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bandSweepCenter, bandSweepAlphaAt, sweepTelegraphProg, BAND_SWEEP_HALF_W } from './bandSweep';
+import { bandSweepCenter, bandSweepAlphaAt, sweepTelegraphProg, twoPhaseTelegraphProg, BAND_SWEEP_HALF_W } from './bandSweep';
 
 const HW = BAND_SWEEP_HALF_W;
 
@@ -103,5 +103,37 @@ describe('sweepTelegraphProg(追尾相→溜めを1本の窓として通す・v0
     expect(track(99999)).toBe(0);
     expect(wind(-500)).toBe(1);
     expect(sweepTelegraphProg({ trackMs: 0, windupMs: 0, inTrack: true, remainMs: 0 })).toBe(0);
+  });
+});
+
+describe('twoPhaseTelegraphProg(2拍で1つの予告=噛みつきの「溜め+間」・v0.25.4108)', () => {
+  // 噛みつきの実効値(GIANT_BITE_WINDUP_MS=840 / GIANT_BITE_HOLD_MS=420 を
+  // ENEMY_ATTACK_SPEED_MULT=1.2 で割る = 実効 700ms / 350ms)。
+  const F = 840 / 1.2, S = 420 / 1.2;
+  const first = (remain: number) => twoPhaseTelegraphProg({ firstMs: F, secondMs: S, inFirst: true, remainMs: remain });
+  const second = (remain: number) => twoPhaseTelegraphProg({ firstMs: F, secondMs: S, inFirst: false, remainMs: remain });
+
+  it('★「間」の終わり=噛む瞬間でちょうど1(消え切り=判定発生)', () => {
+    expect(second(0)).toBe(1);
+  });
+
+  it('★溜めの終わりでは**まだ抜け切っていない**(ここで消えると実効350ms早い=直した不具合そのもの)', () => {
+    expect(first(0)).toBeCloseTo(F / (F + S), 9);
+    expect(first(0)).toBeLessThan(1);
+  });
+
+  it('拍の境目で連続する(窓が巻き戻らない)', () => {
+    expect(second(S)).toBeCloseTo(first(0), 9);
+  });
+
+  it('溜めの頭は0・通しで単調増加', () => {
+    expect(first(F)).toBe(0);
+    let prev = -1;
+    for (const v of [...[...Array(11)].map((_, i) => first(F - (F * i) / 10)),
+                     ...[...Array(11)].map((_, i) => second(S - (S * i) / 10))]) {
+      expect(v).toBeGreaterThanOrEqual(prev);
+      prev = v;
+    }
+    expect(prev).toBe(1);
   });
 });

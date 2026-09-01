@@ -100,11 +100,36 @@ export interface SweepTelegraphTiming {
   remainMs: number;
 }
 
-export const sweepTelegraphProg = (t: SweepTelegraphTiming): number => {
-  const track = Math.max(0, t.trackMs);
-  const wind = Math.max(1e-6, t.windupMs);
-  const cur = t.inTrack ? track : wind;
+export const sweepTelegraphProg = (t: SweepTelegraphTiming): number =>
+  twoPhaseTelegraphProg({ firstMs: t.trackMs, secondMs: t.windupMs, inFirst: t.inTrack, remainMs: t.remainMs });
+
+/**
+ * 上の一般形。**2拍で1つの予告になっている技**の窓を、拍をまたいで通しで進める。
+ *
+ * ★v0.25.4108(社長「はい」2026-09-01)で噛みつきにも使う: 噛みつきは
+ * **溜め(windup)→ 間(hold 350ms)→ 噛む**の3拍で、**ダメージが出るのは「間」の終わり**
+ * (`gameStore` の `case 'g-bite-hold'` で `pumpkinBlasts` を積む)。窓を溜めだけで進めると
+ * **赤が消えてから実効350ms 遅れて噛む**=「消え切り=判定発生」がこの技だけ守れていなかった。
+ * `firstMs=溜め / secondMs=間` で通せば、**抜け切る瞬間 = 噛む瞬間**になる。
+ *
+ * 3拍目(実行=`g-bite-active`)は呼び出し側で `prog=1`(=赤なし)を渡すこと。
+ */
+export interface TwoPhaseTelegraphTiming {
+  /** 1拍目の実効長 ms(0 なら2拍目だけで 0→1)。 */
+  firstMs: number;
+  /** 2拍目の実効長 ms。 */
+  secondMs: number;
+  /** 今が1拍目か。 */
+  inFirst: boolean;
+  /** 今の拍の残り ms。 */
+  remainMs: number;
+}
+
+export const twoPhaseTelegraphProg = (t: TwoPhaseTelegraphTiming): number => {
+  const first = Math.max(0, t.firstMs);
+  const second = Math.max(1e-6, t.secondMs);
+  const cur = t.inFirst ? first : second;
   const done = Math.max(0, Math.min(cur, cur - t.remainMs));
-  const elapsed = t.inTrack ? done : track + done;
-  return Math.max(0, Math.min(1, elapsed / (track + wind)));
+  const elapsed = t.inFirst ? done : first + done;
+  return Math.max(0, Math.min(1, elapsed / (first + second)));
 };
