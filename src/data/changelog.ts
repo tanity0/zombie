@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4107',
+    items: [
+      '噛みつきの赤い帯の予告を元に戻しました(v0.25.4106 で消したのは行き過ぎでした)。予告そのものは今までどおり出ます。',
+    ],
+  },
+  {
     version: '0.25.4106',
     items: [
       '城の変異体の噛みつきから、赤い帯の予告をなくしました。噛みつく牙の絵だけで見せます(牙は当たる範囲そのままの大きさで開き、閉じ切る瞬間が攻撃です)。',
