@@ -20027,7 +20027,7 @@ export class PixiScene {
           }
         } else {
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, telStrokeA(gprog, gPulse) * gTrackEase, 0,
-          gph === 'g-sweep-windup' ? gprog : undefined);
+          gph === 'g-sweep-windup' ? gprog : 1);   // ★予告の後は赤を消す(prog=1=窓が抜け切った状態)
         else if (gVisible) o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(gprog, gPulse) * gTrackEase });
         // 白芯も可視区間だけ(面と同じ理由=流星の頭と消しを隠さない)。
         if (gVisible) o.moveTo(gvfx, gvfy).lineTo(gvtx, gvty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: (0.35 + 0.35 * gprog) * gTrackEase, cap: 'round' });
@@ -20113,7 +20113,7 @@ export class PixiScene {
         const bFill = gph === 'g-bite-active' ? 0.3 : (0.12 + 0.22 * bprog) + 0.08 * gPulse;
         // v0.25.3477: 帯の流星描き→消しはwindup限定(hold/activeは静止した全形のまま=従来どおり)。
         drawGiantCapsuleZone(bfx, bfy, btx, bty, GIANT_BITE_HALF_WIDTH, bFill, (0.32 + 0.4 * bprog) + 0.15 * gPulse,
-          gph === 'g-bite-windup' ? bprog : undefined);
+          gph === 'g-bite-windup' ? bprog : 1);   // ★予告の後は赤を消す
       } else if (gph === 'g-slam-windup' || gph === 'g-slam-active') {
         // M66 stage-1「のしかかり」(大技): 大きな帯がbiteと同じ意匠で前方へ伸びる(寸法違いのみ)。
         const sfx = e.aiFromX ?? cx, sfy = e.aiFromY ?? cy;
@@ -20123,7 +20123,7 @@ export class PixiScene {
           : 1;
         const sFill = gph === 'g-slam-active' ? 0.3 : (0.12 + 0.22 * sprog) + 0.08 * gPulse;
         drawGiantCapsuleZone(sfx, sfy, stx, sty, GIANT_SLAM_HALF_WIDTH, sFill, (0.32 + 0.4 * sprog) + 0.15 * gPulse,
-          gph === 'g-slam-windup' ? sprog : undefined);
+          gph === 'g-slam-windup' ? sprog : 1);   // ★予告の後は赤を消す
       } else if (gph === 'g-glide-windup' || gph === 'g-glide-active') {
         // M66 stage-3「滑空薙ぎ」: 長い帯(本体が通過して薙ぐ)。aiFromX/Yは左上座標系(jump-airと
         // 同じ流儀)なので中心へ変換してから描く。
@@ -20134,7 +20134,7 @@ export class PixiScene {
           : 1;
         const gFill2 = gph === 'g-glide-active' ? 0.3 : (0.12 + 0.22 * gprog2) + 0.08 * gPulse;
         drawGiantCapsuleZone(gfx2, gfy2, gtx2, gty2, GIANT_GLIDE_HALF_WIDTH, gFill2, (0.32 + 0.4 * gprog2) + 0.15 * gPulse,
-          gph === 'g-glide-windup' ? gprog2 : undefined);
+          gph === 'g-glide-windup' ? gprog2 : 1);   // ★予告の後は赤を消す(滑空の判定はwindup終わりで確定済み)
       } else if (gph === 'g-dive-windup') {
         // M66 stage-3「急降下」(大技): T5フェードイン円。本体は既にstore側で場外へ退避済み=世界座標
         // (aiTargetX/Y)で地面の予告だけを描く(スカジ氷/ジブリル火と同じT5の意匠)。
@@ -20194,7 +20194,7 @@ export class PixiScene {
           : 1;
         const tFill = gph === 'g-trishot-active' ? 0.3 : (0.12 + 0.22 * tprog) + 0.08 * gPulse;
         const tStroke = (0.32 + 0.4 * tprog) + 0.15 * gPulse;
-        const tMeteorProg = gph === 'g-trishot-windup' ? tprog : undefined;
+        const tMeteorProg = gph === 'g-trishot-windup' ? tprog : 1;   // ★予告の後は赤を消す
         drawGiantCapsuleZone(tfx, tfy, tfx + leftX * GIANT_TRISHOT_LENGTH, tfy + leftY * GIANT_TRISHOT_LENGTH, GIANT_TRISHOT_HALF_WIDTH, tFill, tStroke, tMeteorProg);
         drawGiantCapsuleZone(tfx, tfy, tfx + rightX * GIANT_TRISHOT_LENGTH, tfy + rightY * GIANT_TRISHOT_LENGTH, GIANT_TRISHOT_HALF_WIDTH, tFill, tStroke, tMeteorProg);
       } else if (gph === 'g-wing-windup' || gph === 'g-wing-active') {
@@ -20212,9 +20212,11 @@ export class PixiScene {
         //   既に発生した後の残光(単発の残光=SR_T.ringspin等の持続判定とは別枠)なので、マスクは
         //   掛けず全形のまま(既存どおり)。
         const wFillA = wFill * TELEGRAPH_FILL_MULT;
-        const wMask = CIRCLE_SWEEP_ON && wWind
-          ? this.drawSweepCircleFill(o, wcx, wcy, GIANT_WING_RADIUS, wprog, 0xff2a2a, wFillA)
-          : (o.ellipse(wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS).fill({ color: 0xff2a2a, alpha: wFillA }), 1);
+        // ★社長指示2026-08-31「予告の後は赤い範囲は消す」: active(=爆発が既に発生した後の残光)では
+        //   赤を1pxも描かない。判定は windup→active の遷移で単発成立済み(pumpkinBlasts型)。
+        const wMask = CIRCLE_SWEEP_ON
+          ? (wWind ? this.drawSweepCircleFill(o, wcx, wcy, GIANT_WING_RADIUS, wprog, 0xff2a2a, wFillA) : 0)
+          : (wWind ? (o.ellipse(wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS).fill({ color: 0xff2a2a, alpha: wFillA }), 1) : 0);
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, wcx, wcy, GIANT_WING_RADIUS, 0xff3b3b, ((0.42 + 0.38 * wprog) + 0.15 * gPulse) * wMask);
         else o.ellipse(wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(wprog, gPulse) * wMask });
       } else if (gph === 'g-sweepbeam-windup' || gph === 'g-sweepbeam-active') {
@@ -20234,7 +20236,11 @@ export class PixiScene {
           const sbNearX = sbfx + Math.cos(sbCurAngle) * GIANT_SWEEPBEAM_INNER_RADIUS, sbNearY = sbfy + Math.sin(sbCurAngle) * GIANT_SWEEPBEAM_INNER_RADIUS;
           const sbFarX = sbfx + Math.cos(sbCurAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH),
             sbFarY = sbfy + Math.sin(sbCurAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH);
-          drawGiantCapsuleZone(sbNearX, sbNearY, sbFarX, sbFarY, GIANT_SWEEPBEAM_HALF_WIDTH, 0.34, 0.6);
+          // ★掃射ビームだけは**判定が生きている持続技**(120°を900msかけて回転)なので、
+          //   予告の後も赤を消さない。§11-4「持続判定=流れ続ける」に従い、窓を周期でループさせる
+          //   (消すと『赤くないのに当たる』=CLAUDE.md の色の文法に反する)。
+          drawGiantCapsuleZone(sbNearX, sbNearY, sbFarX, sbFarY, GIANT_SWEEPBEAM_HALF_WIDTH, 0.34, 0.6,
+            PixiScene.loopSweepProg(GIANT_SWEEPBEAM_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT, (e.aiPhaseUntil ?? gameTime) - gameTime));
         }
       } else if (gph === 'g-reach-windup') {
         // M67 stage-7「伸びる触手」(reach): bite/slamと同じ意匠の細長い帯(長さ900/半幅28)。
@@ -20289,7 +20295,7 @@ export class PixiScene {
           : 1;
         const tFill = gph === 'g-tailslam-active' ? 0.32 : (0.12 + 0.22 * tprog) + 0.08 * gPulse;
         drawGiantCapsuleZone(tfx, tfy, ttx, tty, GLEN_TAILSLAM_HALF_WIDTH, tFill, (0.32 + 0.4 * tprog) + 0.15 * gPulse,
-          gph === 'g-tailslam-windup' ? tprog : undefined);
+          gph === 'g-tailslam-windup' ? tprog : 1);   // ★予告の後は赤を消す
       }
       // ★予兆一括バッチ(v0.25.3344): 専用モーションが無かった城ボスg-*大技のwindupに震え/しゃがみ/
       // 震え+後ずさりを追加(★要確認だった行の解消。g-glide/g-diveは専用モーション実装済みのため対象外・
