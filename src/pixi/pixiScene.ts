@@ -38,7 +38,7 @@ import {
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS, GIANT_JUMP_AIR_MS, PUMPKIN_JUMP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
-  GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
+  GIANT_BITE_HALF_WIDTH,   // v0.25.4106: 噛みつきは赤い帯を出さないので WINDUP_MS(濃さの進行)はもう読まない
   GIANT_SLAM_WINDUP_MS, GIANT_SLAM_HALF_WIDTH, GLEN_BOON_WINDUP_MS,
   GIANT_GLIDE_WINDUP_MS, GIANT_GLIDE_ACTIVE_MS, GIANT_GLIDE_HALF_WIDTH,
   GIANT_DIVE_WINDUP_MS, GIANT_DIVE_RADIUS,
@@ -20132,13 +20132,15 @@ export class PixiScene {
         // そのまま静止して見せ続ける(学習点=保持350ms固定)。
         const bfx = e.aiFromX ?? cx, bfy = e.aiFromY ?? cy;
         const btx = e.aiTargetX ?? cx, bty = e.aiTargetY ?? cy;
-        const bprog = gph === 'g-bite-windup'
-          ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_BITE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
-          : 1;
-        const bFill = gph === 'g-bite-active' ? 0.3 : (0.12 + 0.22 * bprog) + 0.08 * gPulse;
-        // v0.25.3477: 帯の流星描き→消しはwindup限定(hold/activeは静止した全形のまま=従来どおり)。
-        drawGiantCapsuleZone(bfx, bfy, btx, bty, GIANT_BITE_HALF_WIDTH, bFill, (0.32 + 0.4 * bprog) + 0.15 * gPulse,
-          gph === 'g-bite-windup' ? bprog : 1);   // ★予告の後は赤を消す
+        // ★★v0.25.4106(社長指示2026-08-31「**噛みつきの時の赤ウェーブいらない。今の噛みつくヴィジュアル
+        //   だけでいい**」): **噛みつきだけ赤い帯の予告を出さない。** 予告の役目は牙(`drawBiteJaws`・
+        //   上の FX-V3V4 ブロック)が担う——牙は**赤い帯とまったく同じ値**(溜め開始で store がロックした
+        //   `aiFrom/aiTarget`)から、帯の全長 `blen + 半幅*2` と太さ `半幅*2` いっぱいに開き、
+        //   **閉じ切る瞬間 = 判定が出る瞬間**に合わせてある(分類①=判定に揃える絵)。
+        //   よって「赤くないのに当たる」にはならない(危険を伝える絵は牙として残っている)。
+        //   衝撃波(白・着弾の絵)は従来どおり出すので、帯の実寸だけは `bandsThisFrame` へ積む
+        //   (これを積むのは `drawGiantCapsuleZone` の役目だったが、その呼び出しごと外したため)。
+        bandsThisFrame.push([bfx, bfy, btx, bty, GIANT_BITE_HALF_WIDTH]);
       } else if (gph === 'g-slam-windup' || gph === 'g-slam-active') {
         // M66 stage-1「のしかかり」(大技): 大きな帯がbiteと同じ意匠で前方へ伸びる(寸法違いのみ)。
         const sfx = e.aiFromX ?? cx, sfy = e.aiFromY ?? cy;
