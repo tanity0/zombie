@@ -276,7 +276,8 @@ import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/r
 import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
 import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
 import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt } from '../utils/circleSweep';
-import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt } from '../utils/bandSweep';
+import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, sweepTelegraphProg } from '../utils/bandSweep';
+import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
 
 // --- 深層域グレーディング(退色した暖色セピア) -----------------------------
 // 深層域に入っている間だけ、ゲーム画面全体を退色セピアにする描画のみの演出(当たり判定等には不干渉)。
@@ -19981,6 +19982,19 @@ export class PixiScene {
         const gTrackEase = gTrack
           ? 1 - (1 - Math.max(0, Math.min(1, (gameTime - (e.aiStartedAt ?? gameTime)) / SWEEP_TRACK_FADE_IN_MS))) ** 3
           : 1;
+        // ★v0.25.4105(社長指示2026-08-31「**帯の追尾してくるところと、止まってからをくっつけられない?
+        //   つまり追尾から発動まで一貫した流星にしたいってこと**」):
+        //   窓(流星)の進行を**追尾相+溜めの通し**で出す。追尾相の頭で0から流れ始め、ロックでは
+        //   **進行を引き継いだまま**溜めへ入り、溜めの終わり=判定発生でちょうど抜け切る
+        //   (=ロックの瞬間に窓が巻き戻らない)。導出は純関数1本(bandSweep.sweepTelegraphProg)。
+        //   `?ttrack=0`(追尾相に入らない)なら trackMs=0 で**従来と完全一致**。
+        const gViaTrack = e.gTrackAimX !== undefined && TELEGRAPH_TRACK_MS > 0;
+        const gSweepProg = sweepTelegraphProg({
+          trackMs: gViaTrack ? TELEGRAPH_TRACK_MS / ENEMY_ATTACK_SPEED_MULT : 0,
+          windupMs: GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT,
+          inTrack: gTrack,
+          remainMs: (e.aiPhaseUntil ?? gameTime) - gameTime,
+        });
         const gZoneFill = telFillA(gph === 'g-sweep-active' ? 1 : gprog, gPulse);
         // ★v0.25.3496(社長指示「その上で、流星にして」): 溜め中は**面と白芯も流星の可視区間へ縮める**。
         // 従来は縁取り(drawTelegraphBand)だけが流星で、面と白芯は全長のまま描かれていたため、
@@ -20003,31 +20017,42 @@ export class PixiScene {
         //   この技は `drawGiantCapsuleZone` を通らず**自前の poly** で描いているため、v0.25.4101 の
         //   変更(=あのローカル関数を直した)が1バイトも効いていなかった。城ボスでいちばん目に付く帯が
         //   これなので、社長の「わからん」はこれが素通りしていたのが原因。**同じ窓マスクをここにも通す。**
-        //   対象は溜め(`g-sweep-windup`)だけ=追尾相(track)と発生中(active)は従来どおり全形のまま。
-        const gSweepMasked = BAND_SWEEP_ON && gph === 'g-sweep-windup';
+        //   ★v0.25.4105 で対象を **追尾相(track)+溜め(windup)** に広げた(窓は追尾相から流れ始め、
+        //   ロックで巻き戻らずに繋がる)。発生中(active)は対象外=v0.25.4104 のまま赤を出さない。
+        const gSweepMasked = BAND_SWEEP_ON && (gph === 'g-sweep-windup' || gTrack);
+        // 追尾相の「照準表示」(全形の薄い下地)は**そのまま残す**——どこを狙われているかが読めなく
+        // なるのは仕様変更(社長指示が無い)。窓はその上を流れる。ロック後は従来どおり
+        // SWEEP_LOCK_FADE_MS の残像として消える(下の§15ロックの合図)。
+        if (gSweepMasked && gTrack && gVisible) {
+          o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase });
+        }
         if (gSweepMasked) {
           // ★v0.25.4103: 薙ぎ払いも同じスライス方式(切り出さない)。面+縁+白芯が同じ窓で流れる。
-          this.drawSweepBand(view, o, gfx, gfy, gtx, gty, ghw, gprog,
-            gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase, telStrokeA(gprog, gPulse) * gTrackEase);
+          this.drawSweepBand(view, o, gfx, gfy, gtx, gty, ghw, gSweepProg,
+            telFillA(gSweepProg, gPulse) * TELEGRAPH_FILL_MULT * gTrackEase,
+            telStrokeA(gSweepProg, gPulse) * gTrackEase);
         } else if (gVisible) o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase });
         // v0.25.3477: 帯の流星描き→消しはwindup限定(activeは全形のまま=従来どおり。gprogはactive中は
         // 窓の異なる時計を流用しているだけの値なので、そのままmeteorPhaseへ渡さない)。
         if (gSweepMasked) {
           // 白芯も同じ窓のグラデで(縁は drawSweepBand が既に描いている)。
           const gHW2 = Math.max(0.02, BAND_SWEEP_W);
-          const gCen2 = bandSweepCenter(gprog, gHW2, CIRCLE_SWEEP_EASE);
+          const gCen2 = bandSweepCenter(gSweepProg, gHW2, CIRCLE_SWEEP_EASE);
           const gSt2 = 1 / BAND_SWEEP_SLICES;
           for (let i = 0; i < BAND_SWEEP_SLICES; i++) {
-            const a = (0.35 + 0.35 * gprog) * gTrackEase * bandSweepAlphaAt((i + 0.5) * gSt2, gCen2, gHW2);
+            const a = (0.35 + 0.35 * gSweepProg) * gTrackEase * bandSweepAlphaAt((i + 0.5) * gSt2, gCen2, gHW2);
             if (a <= 0.002) continue;
             const s0 = i * gSt2, s1 = s0 + gSt2;
             o.moveTo(gfx + (gtx - gfx) * s0, gfy + (gty - gfy) * s0)
               .lineTo(gfx + (gtx - gfx) * s1 + 0.5, gfy + (gty - gfy) * s1)
-              .stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: a });
+              .stroke({ width: 1 + 2 * gSweepProg, color: 0xffe0e0, alpha: a });
           }
         } else {
+        // ★予告の後は赤を消す(prog=1=窓が抜け切った状態)。ただし**追尾相は消さない**(照準表示)。
+        //   v0.25.4104 で active と一緒に 1 を渡していたため、`?bsweep=0` のロールバック経路でだけ
+        //   追尾相の縁が丸ごと消えていた(v0.25.4105 で修正)。追尾相は undefined=全形が正。
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, telStrokeA(gprog, gPulse) * gTrackEase, 0,
-          gph === 'g-sweep-windup' ? gprog : 1);   // ★予告の後は赤を消す(prog=1=窓が抜け切った状態)
+          gph === 'g-sweep-windup' ? gprog : (gTrack ? undefined : 1));
         else if (gVisible) o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(gprog, gPulse) * gTrackEase });
         // 白芯も可視区間だけ(面と同じ理由=流星の頭と消しを隠さない)。
         if (gVisible) o.moveTo(gvfx, gvfy).lineTo(gvtx, gvty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: (0.35 + 0.35 * gprog) * gTrackEase, cap: 'round' });

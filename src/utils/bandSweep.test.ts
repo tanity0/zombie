@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bandSweepCenter, bandSweepAlphaAt, BAND_SWEEP_HALF_W } from './bandSweep';
+import { bandSweepCenter, bandSweepAlphaAt, sweepTelegraphProg, BAND_SWEEP_HALF_W } from './bandSweep';
 
 const HW = BAND_SWEEP_HALF_W;
 
@@ -67,5 +67,41 @@ describe('bandSweep(帯の窓マスク・始点→終点)', () => {
   it('halfW が 0 以下でも落ちない', () => {
     expect(bandSweepAlphaAt(0.5, 0.5, 0)).toBe(0);
     expect(bandSweepAlphaAt(0.5, 0.5, -1)).toBe(0);
+  });
+});
+
+describe('sweepTelegraphProg(追尾相→溜めを1本の窓として通す・v0.25.4105)', () => {
+  const T = 1000, W = 700;
+  const track = (remain: number) => sweepTelegraphProg({ trackMs: T, windupMs: W, inTrack: true, remainMs: remain });
+  const wind = (remain: number) => sweepTelegraphProg({ trackMs: T, windupMs: W, inTrack: false, remainMs: remain });
+
+  it('★追尾の頭で0・発動の瞬間(溜めの終わり)でちょうど1', () => {
+    expect(track(T)).toBe(0);
+    expect(wind(0)).toBe(1);
+  });
+
+  it('★ロックの境目で値が連続する(窓が巻き戻らない=「一貫した流星」の肝)', () => {
+    expect(wind(W)).toBeCloseTo(track(0), 9);
+    expect(track(0)).toBeCloseTo(T / (T + W), 9);
+  });
+
+  it('通しで単調増加(戻らない)', () => {
+    const seq: number[] = [];
+    for (let r = T; r >= 0; r -= 50) seq.push(track(r));
+    for (let r = W; r >= 0; r -= 50) seq.push(wind(r));
+    for (let i = 1; i < seq.length; i++) expect(seq[i]).toBeGreaterThanOrEqual(seq[i - 1]);
+    expect(seq[seq.length - 1]).toBe(1);
+  });
+
+  it('★追尾相を通らない(?ttrack=0)なら溜めだけで0→1=従来と完全一致', () => {
+    expect(sweepTelegraphProg({ trackMs: 0, windupMs: W, inTrack: false, remainMs: W })).toBe(0);
+    expect(sweepTelegraphProg({ trackMs: 0, windupMs: W, inTrack: false, remainMs: W / 2 })).toBeCloseTo(0.5, 9);
+    expect(sweepTelegraphProg({ trackMs: 0, windupMs: W, inTrack: false, remainMs: 0 })).toBe(1);
+  });
+
+  it('残りが相の長さを超える/負でも 0〜1 を外れない', () => {
+    expect(track(99999)).toBe(0);
+    expect(wind(-500)).toBe(1);
+    expect(sweepTelegraphProg({ trackMs: 0, windupMs: 0, inTrack: true, remainMs: 0 })).toBe(0);
   });
 });

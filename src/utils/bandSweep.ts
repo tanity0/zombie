@@ -76,3 +76,35 @@ export const bandSweepWindow = (center: number, halfW: number): { lo: number; hi
   lo: Math.max(0, center - halfW),
   hi: Math.min(1, center + halfW),
 });
+
+/**
+ * ★v0.25.4105(社長指示2026-08-31「**帯の追尾してくるところと、止まってからをくっつけられない?
+ * つまり追尾から発動まで一貫した流星にしたいってこと**」)
+ *
+ * 薙ぎ払いの予告は2相ある(§15): **追尾相 `g-sweep-track`(帯が本体+照準について動く)→
+ * ロック → 溜め `g-sweep-windup`(帯が止まって発動)**。
+ * 窓(流星)の進行をこの**2相の通し**で出す=ロックの瞬間に窓が巻き戻らない。
+ *
+ * - 追尾相の頭で 0、**溜めの終わり(=判定発生)でちょうど 1**。
+ * - 相の境目で値が連続する(段差なし)。
+ * - `trackMs = 0`(=`?ttrack=0` で追尾相に入らない)なら、溜めだけで 0→1 =**従来と完全一致**。
+ */
+export interface SweepTelegraphTiming {
+  /** 追尾相の実効長 ms(この技が追尾相を通っていないなら 0)。 */
+  trackMs: number;
+  /** 溜めの実効長 ms。 */
+  windupMs: number;
+  /** 今が追尾相か(false = 溜め)。 */
+  inTrack: boolean;
+  /** 今の相の残り ms。 */
+  remainMs: number;
+}
+
+export const sweepTelegraphProg = (t: SweepTelegraphTiming): number => {
+  const track = Math.max(0, t.trackMs);
+  const wind = Math.max(1e-6, t.windupMs);
+  const cur = t.inTrack ? track : wind;
+  const done = Math.max(0, Math.min(cur, cur - t.remainMs));
+  const elapsed = t.inTrack ? done : track + done;
+  return Math.max(0, Math.min(1, elapsed / (track + wind)));
+};
