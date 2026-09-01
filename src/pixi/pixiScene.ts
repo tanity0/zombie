@@ -3001,7 +3001,9 @@ interface ActorView {
   // v0.25.2436: アクラシエルの放射棘(8方向・同時に複数本出る)向けに rings と同じ配列化。
   // 既存の技(1体につき同時1本のみ)は idx=0 だけを使うので見た目は変わらない。
   bands?: Sprite[];
-  bandSlices?: Sprite[];   // 帯の窓マスク用(v0.25.4103): 縁の焼き素材を軸方向に等分して描く
+  bandSlices?: Sprite[][];  // 帯の窓マスク用(v0.25.4103): 縁の焼き素材を軸方向に等分して描く。
+  // ★v0.25.4110: **帯ごと(idx)に別のプール**。同じフレームに複数の帯を描く技(三連射2本・爪痕3本・
+  //   トールの扇のセクター別)が同じ30枚を取り合って**1本しか出ない**のを防ぐ。
   // 「振った瞬間」の斬撃の弧(社長支給素材 D-1・v0.25.2400)。予告(ring/band)とは役割が別で、
   // **実行の一瞬だけ**出る。同時に2つ振るボス(翼撃)が出てきたら2枚目を足す。
   slash?: Sprite;
@@ -13010,8 +13012,12 @@ export class PixiScene {
       const R = SKADI_ICE_RADIUS;
       // 赤いテレグラフ円(2秒でフェードイン)。社長指示v0.25.1612「赤の外=安全」: 当たり判定は世界座標の
       // 真円(半径R+自機半径)なので縦潰しをやめ真円(ry=R)で覆う(判定は不変)。
-      g.ellipse(m.x, m.y, R, R).fill({ color: 0xff2a2a, alpha: telFillA(t, pulse) * TELEGRAPH_FILL_MULT });
-      g.ellipse(m.x, m.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(t, pulse) });
+      // ★v0.25.4110(社長指示「赤サークルも全て」): 絵はそのまま・窓マスクを外枠→内側へ流す(?csweep=0で従来へ)。
+      const sFillA = telFillA(t, pulse) * TELEGRAPH_FILL_MULT;
+      const sMask = CIRCLE_SWEEP_ON
+        ? this.drawSweepCircleFill(g, m.x, m.y, R, t, 0xff2a2a, sFillA)
+        : (g.ellipse(m.x, m.y, R, R).fill({ color: 0xff2a2a, alpha: sFillA }), 1);
+      g.ellipse(m.x, m.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(t, pulse) * sMask });
       // 氷塊スプライト(下からせり上がり)。
       const tex = getTexture('skadi-ice-block');
       if (tex) {
@@ -13196,8 +13202,12 @@ export class PixiScene {
       const total = Math.max(1, sp.fireAt - sp.bornAt);
       const t = Math.max(0, Math.min(1, (gameTime - sp.bornAt) / total));
       const R = AC_T.spear.radius;
-      g.ellipse(sp.x, sp.y, R, R).fill({ color: 0xff2a2a, alpha: telFillA(t, pulse) * TELEGRAPH_FILL_MULT });
-      g.ellipse(sp.x, sp.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(t, pulse) });
+      // ★v0.25.4110(社長指示「赤サークルも全て」): 絵はそのまま・窓マスクを外枠→内側へ流す(?csweep=0で従来へ)。
+      const acFillA = telFillA(t, pulse) * TELEGRAPH_FILL_MULT;
+      const acMask = CIRCLE_SWEEP_ON
+        ? this.drawSweepCircleFill(g, sp.x, sp.y, R, t, 0xff2a2a, acFillA)
+        : (g.ellipse(sp.x, sp.y, R, R).fill({ color: 0xff2a2a, alpha: acFillA }), 1);
+      g.ellipse(sp.x, sp.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(t, pulse) * acMask });
       if (tex) {
         seen.add(sp.id);
         let vsp = this.acrasielSpearPool.get(sp.id);
@@ -15403,6 +15413,10 @@ export class PixiScene {
     // 絵が凍結(以降の姿勢・攻撃演出が全て実行されなかった)。
     if (view.rings) for (const s of view.rings) if (s) s.visible = false;
     if (view.bands) for (const s of view.bands) if (s) s.visible = false;
+    // ★v0.25.4110: 帯の窓マスクのスライスも毎フレーム既定OFF。v0.25.4103の導入時に**この行が無く**、
+    //   「溜めが中断されて描画が止まる」「実行中の全形を描き終える」ケースで**最後の絵が画面に残る**
+    //   (窓が抜け切って alpha≈0 で終わる通常経路では露見しなかった)。歯抜け配列につき要素ガード必須。
+    if (view.bandSlices) for (const arr of view.bandSlices) if (arr) for (const s of arr) if (s) s.visible = false;
     if (view.slash) view.slash.visible = false;
     if (view.clawMarks) for (const s of view.clawMarks) if (s) s.visible = false;
     // ★glenParts(ラスボス第二形態の連結パーツ)はここで消さない(v0.25.2955・社長報告「パーツが
@@ -16222,9 +16236,15 @@ export class PixiScene {
           dvtx + dux * dhw - dnx * dhw, dvty + duy * dhw - dny * dhw,
           dvfx - dux * dhw - dnx * dhw, dvfy - duy * dhw - dny * dhw,
         ];
+        // ★v0.25.4110(社長指示「帯全てに実装して」): 窓マスクへ統一(旧流星は ?bsweep=0 で戻せる)。
+        if (BAND_SWEEP_ON) {
+          this.drawSweepBand(view, o, dfx, dfy, dtx, dty, dhw, dprog,
+            telFillA(dprog, dpulse) * TELEGRAPH_FILL_MULT, telStrokeA(dprog, dpulse));
+        } else {
         if (dVisible) o.poly(dpts).fill({ color: 0xff2a2a, alpha: telFillA(dprog, dpulse) * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, dfx, dfy, dtx, dty, dhw, 0xff3b3b, telStrokeA(dprog, dpulse), 0, dprog);
         else if (dVisible) o.poly(dpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(dprog, dpulse) });
+        }
         // ★溜め中は赤帯の予告だけ(社長指示2026-08-26で手描きの槍を撤去)。
         // 突きの絵は実行(active)の白い風圧が担う。
       }
@@ -16301,9 +16321,15 @@ export class PixiScene {
           svtx + sux * shw - snx * shw, svty + suy * shw - sny * shw,
           svfx - sux * shw - snx * shw, svfy - suy * shw - sny * shw,
         ];
+        // ★v0.25.4110(社長指示「帯全てに実装して」): 窓マスクへ統一(旧流星は ?bsweep=0 で戻せる)。
+        if (BAND_SWEEP_ON) {
+          this.drawSweepBand(view, o, sfx, sfy, stx, sty, shw, sprog,
+            telFillA(sprog, spulse) * TELEGRAPH_FILL_MULT, telStrokeA(sprog, spulse));
+        } else {
         if (sVisible) o.poly(spts).fill({ color: 0xff2a2a, alpha: telFillA(sprog, spulse) * TELEGRAPH_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, sfx, sfy, stx, sty, shw, 0xff3b3b, telStrokeA(sprog, spulse), 0, sprog);
         else if (sVisible) o.poly(spts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(sprog, spulse) });
+        }
         // ★項目5/6: 角度=手元→帯の始点(sfx側=これから薙ぐ方向への構え)。
         // §7-15(weaponSpawnEase)でwindup開始からの経過msぶん、下から慣性つきズレ+フェードインする
         // (旧実装はaiPhaseがwindupに入った瞬間に alpha=0.9 で即出現=パッと出る違反だった)。
@@ -16678,8 +16704,12 @@ export class PixiScene {
         // 判定=自分中心の円(BM_T.whip360.radius)。赤円と判定は同じ値=厳密一致。
         const prog = telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil);
         const pulse = 0.5 + 0.5 * Math.sin(now / 90);
-        o.circle(cx, cy, BM_T.whip360.radius).fill({ color: 0xff2a2a, alpha: telFillA(prog, pulse) * TELEGRAPH_FILL_MULT });
-        o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) });
+        // ★v0.25.4110(社長指示「赤サークルも全て」): 絵はそのまま・窓マスクを外枠→内側へ流す(?csweep=0で従来へ)。
+        const w3FillA = telFillA(prog, pulse) * TELEGRAPH_FILL_MULT;
+        const w3Mask = CIRCLE_SWEEP_ON
+          ? this.drawSweepCircleFill(o, cx, cy, BM_T.whip360.radius, prog, 0xff2a2a, w3FillA)
+          : (o.circle(cx, cy, BM_T.whip360.radius).fill({ color: 0xff2a2a, alpha: w3FillA }), 1);
+        o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * w3Mask });
         // 振りかぶり: 角速度をprog^2で上げる(0からいきなり回さない=慣性)。
         const windAng = prog * prog * 1.6 * Math.PI * 2;
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy - e.height * 0.2, windAng, 170 * (0.7 + 0.3 * prog), 0.9,
@@ -16778,8 +16808,18 @@ export class PixiScene {
           : 1;
         // 跳びかかりの着地円(T5式=水鳥/ジャイアント跳躍と同じ収縮リング文法。しゃがみ→着地円)。
         const lx = e.aiTargetX ?? cx, ly = e.aiTargetY ?? cy;
-        o.circle(lx, ly, BB_T.leap.radius).fill({ color: 0xff2a2a, alpha: telFillA(prog, 1) * TELEGRAPH_FILL_MULT });
-        o.circle(lx, ly, BB_T.leap.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) });
+        // ★v0.25.4110(社長指示「赤サークルも全て」): 窓マスクを外枠→内側へ流す。**消え切り=着地**なので、
+        //   進行は**溜め+滞空の通し**で出す(城ボスの飛び掛かり・噛みつきと同じ `twoPhaseTelegraphProg`)。
+        //   溜めだけで抜け切らせると、滞空のぶん早く赤が消えてしまう。
+        const lpProg = twoPhaseTelegraphProg({
+          firstMs: BB_T.leap.windup, secondMs: BB_T.leap.airMs,
+          inFirst: bs2 === 'leap-windup', remainMs: untilW - gameTime,
+        });
+        const lpFillA = telFillA(prog, 1) * TELEGRAPH_FILL_MULT;
+        const lpMask = CIRCLE_SWEEP_ON
+          ? this.drawSweepCircleFill(o, lx, ly, BB_T.leap.radius, lpProg, 0xff2a2a, lpFillA)
+          : (o.circle(lx, ly, BB_T.leap.radius).fill({ color: 0xff2a2a, alpha: lpFillA }), 1);
+        o.circle(lx, ly, BB_T.leap.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * lpMask });
         if (bs2 === 'leap-air') {
           const airProg = Math.max(0, Math.min(1, 1 - (untilW - gameTime) / BB_T.leap.airMs));
           o.circle(lx, ly, BB_T.leap.radius * (1.6 - 0.6 * airProg)).stroke({ width: 2, color: 0xffe0e0, alpha: 0.5 * (1 - airProg) });
@@ -16960,11 +17000,17 @@ export class PixiScene {
           ivtx + ux * hw - nx * hw, ivty + uy * hw - ny * hw,
           ivfx - ux * hw - nx * hw, ivfy - uy * hw - ny * hw,
         ];
+        // ★v0.25.4110(社長指示「帯全てに実装して」): 窓マスクへ統一(旧流星は ?bsweep=0 で戻せる)。
+        if (BAND_SWEEP_ON) {
+          this.drawSweepBand(view, o, fx, fy, tx, ty, hw, prog,
+            zoneFill * TELEGRAPH_FILL_MULT, telStrokeA(prog, pulse));
+        } else {
         if (iVisible) o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436)。
         // v0.25.3477: 帯も赤ラインと同じ流星の描き→消し(このブロックはissen-windup限定=常にwindup中)。
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hw, 0xff3b3b, telStrokeA(prog, pulse), 0, prog);
         else if (iVisible) o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) });
+        }
         // 社長指示: 一閃の溜めは刀を腰に構えて(居合腰)ゆっくり溜める。方向はロック済み(fx,fy→tx,ty)。
         this.drawThorIaiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.32, tx - fx, ty - fy, prog, now);
       } else if (e.bossState === 'issen-dash') {
@@ -17012,9 +17058,15 @@ export class PixiScene {
             tvtx + tux * thw - tnx * thw, tvty + tuy * thw - tny * thw,
             tvfx - tux * thw - tnx * thw, tvfy - tuy * thw - tny * thw,
           ];
+          // ★v0.25.4110(社長指示「帯全てに実装して」): 窓マスクへ統一(旧流星は ?bsweep=0 で戻せる)。
+          if (BAND_SWEEP_ON) {
+            this.drawSweepBand(view, o, cx, cy, ttx, tty, thw, prog,
+              telFillA(prog, tpulse) * TELEGRAPH_FILL_MULT, telStrokeA(prog, tpulse));
+          } else {
           if (tVisible) o.poly(tpts).fill({ color: 0xff2a2a, alpha: telFillA(prog, tpulse) * TELEGRAPH_FILL_MULT });
           if (FX_RING_ENABLED) this.drawTelegraphBand(view, cx, cy, ttx, tty, thw, 0xff3b3b, telStrokeA(prog, tpulse), 0, prog);
           else if (tVisible) o.poly(tpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, tpulse) });
+          }
         }
       } else if (e.bossState === 'tsuki') {
         // 突き(実行): 溜め中(tsuki-windup)は方向が未確定(社長指示=予告ラインなし)なので、
@@ -17050,12 +17102,19 @@ export class PixiScene {
             hvtx + hux * hhw - hnx * hhw, hvty + huy * hhw - hny * hhw,
             hvfx - hux * hhw - hnx * hhw, hvfy - huy * hhw - hny * hhw,
           ];
+          // ★v0.25.4110(社長指示「帯全てに実装して」): 窓マスクへ統一(旧流星は ?bsweep=0 で戻せる)。(白芯も同じ窓で流す)
+          if (BAND_SWEEP_ON) {
+            this.drawSweepBand(view, o, fx, fy, tx, ty, hhw, prog,
+              hFill * TELEGRAPH_FILL_MULT, telStrokeA(prog, pulse), 0xff2a2a, 0xff3b3b, 0, false,
+              0.35 + 0.35 * prog, 1 + 2 * prog);
+          } else {
           if (hVisible) o.poly(hpts).fill({ color: 0xff2a2a, alpha: hFill * TELEGRAPH_FILL_MULT });
           // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436)。
           // v0.25.3477: 帯も赤ラインと同じ流星の描き→消し(このifはharai-windup限定=常にwindup中)。
           if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hhw, 0xff3b3b, telStrokeA(prog, pulse), 0, prog);
           else if (hVisible) o.poly(hpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) });
           if (hVisible) o.moveTo(hvfx, hvfy).lineTo(hvtx, hvty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' }); // 薙ぎの軸(白芯)
+          }
           // 柄を手元に置き、攻撃方向から140度引いた大薙ぎの開始姿勢へ構える。実行は同じ姿勢から
           // 200度振り切るため、構え→振り→残心が連続する。
           const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * HB_TH.harai.windup);
@@ -20177,8 +20236,12 @@ export class PixiScene {
         const dtx = (e.aiTargetX ?? e.x) + e.width / 2, dty = (e.aiTargetY ?? e.y) + e.height / 2;
         const dtotal = GIANT_DIVE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
         const dt = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / dtotal));
-        o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).fill({ color: 0xff2a2a, alpha: telFillA(dt, gPulse) * TELEGRAPH_FILL_MULT });
-        o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(dt, gPulse) });
+        // ★v0.25.4110(社長指示「赤サークルも全て」): 絵はそのまま・窓マスクを外枠→内側へ流す(?csweep=0で従来へ)。
+        const dvFillA2 = telFillA(dt, gPulse) * TELEGRAPH_FILL_MULT;
+        const dvMask2 = CIRCLE_SWEEP_ON
+          ? this.drawSweepCircleFill(o, dtx, dty, GIANT_DIVE_RADIUS, dt, 0xff2a2a, dvFillA2)
+          : (o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).fill({ color: 0xff2a2a, alpha: dvFillA2 }), 1);
+        o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(dt, gPulse) * dvMask2 });
       } else if (gph === 'g-quad-windup') {
         // M66 stage-4「三連突進」の各回: T1ライン+終点リング(既存dashと同じ意匠)。
         // v0.25.3049(社長裁定「カウンター不能技に。紫線に変更で」): 突進の体当たりはパリィ表外=
@@ -20436,8 +20499,20 @@ export class PixiScene {
           const nx = -ddy / ddl, ny = ddx / ddl;
           const ux = ddx / ddl, uy = ddy / ddl;
           const hw = h.capsule.halfWidth;
-          // 流星の描き→消し(meteorPhase): 前半45%で頭が描き切り、後半55%で後ろから消しが追いかけ、
-          // t=1(起爆)にちょうど消え切る。zp=描けている先端/er=消された始点(いずれも[0,1]の区間)。
+          // ★★v0.25.4110(社長指示2026-09-01「1だけ直して。流星の帯は全てこれで統一」):
+          //   **遅延起爆の帯(グレンの引っ掻き3連=血の爪痕/滑空の二撃目/三連射の氷ほか)だけが
+          //   旧「流星」のまま取り残されていた**(前半45%で伸ばし、後半55%で後ろから消す形)。
+          //   円/城ボス/他ボスと同じ**窓マスク**へ統一する。**タイミングは元から合っている**
+          //   (t は bornAt→fireAt の進行で、`t=1` = 起爆の瞬間 = 判定発生)ので、
+          //   窓も `t` をそのまま使えば**抜け切る瞬間 = 爆ぜる瞬間**になる。
+          //   起爆済みで残る床(血の弧の血溜まり)は countdown ではないので窓を掛けない。
+          if (BAND_SWEEP_ON && h.burst !== true) {
+            this.drawSweepBand(
+              view, o, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, t,
+              (0.05 + 0.22 * t + 0.06 * gPulse) * TELEGRAPH_FILL_MULT,
+              telStrokeA(t, gPulse), col, strokeCol, delayBandIdx++,
+            );
+          } else {
           const dph = PixiScene.meteorPhase(t);
           const zp = dph.p, er = dph.er;
           if (zp - er > 0.001) {
@@ -20471,6 +20546,7 @@ export class PixiScene {
               ]).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.5 * zp + 0.12 * gPulse });
             }
           }
+          }
           // 爪痕(D-2)を判定の矩形へ重ねる。氷(スカジ/城ボスstage-4)は爪ではないので付けない。
           // 濃さは既存のフェードイン(t)に合わせる=「n秒後に爆ぜる」という既存の語彙(§6.28-3)のまま。
           //
@@ -20489,8 +20565,13 @@ export class PixiScene {
           // 今の絵は「3挺の銃」なので爪は場違い=左右の帯と同じ素の帯に揃える(爪はグレンtalon等のまま)。
           if (!h.ice && h.moveKey !== 'g-trishot' && carve > 0) this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.75 * t, carve);
         } else {
-          o.ellipse(h.x, h.y, h.radius, h.radius).fill({ color: col, alpha: 0.05 + 0.18 * t + 0.06 * gPulse });
-          o.ellipse(h.x, h.y, h.radius, h.radius).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.45 * t + 0.12 * gPulse });
+          // ★v0.25.4110(社長指示「赤サークルも全て」): 遅延起爆の**円**も窓マスク(外枠→内側)へ。
+          //   起爆済みで残る床(血の弧の血溜まり=判定を持ち続ける)は countdown ではないので掛けない。
+          const dFillA = 0.05 + 0.18 * t + 0.06 * gPulse;
+          const dMask = (CIRCLE_SWEEP_ON && h.burst !== true)
+            ? this.drawSweepCircleFill(o, h.x, h.y, h.radius, t, col, dFillA)
+            : (o.ellipse(h.x, h.y, h.radius, h.radius).fill({ color: col, alpha: dFillA }), 1);
+          o.ellipse(h.x, h.y, h.radius, h.radius).stroke({ width: 2, color: strokeCol, alpha: (0.2 + 0.45 * t + 0.12 * gPulse) * dMask });
           // 血溜まり(E-5)。`floorUntil` が付いているのはグレンの「血の弧」だけなので、これで一意に選べる
           // (氷=スカジ/城ボスstage-4 や 虚無の三唱の大円には付けない)。コマは技の寿命に合わせる。
           if (h.floorUntil !== undefined) {
@@ -20572,6 +20653,7 @@ export class PixiScene {
       // ここの s.visible が実機ビーコン 'T.visible' 例外の発生行(詳細は14448付近のコメント)。
       if (view.rings) for (const s of view.rings) if (s?.visible) s.alpha *= teleFade;
       if (view.bands) for (const s of view.bands) if (s?.visible) s.alpha *= teleFade;
+      if (view.bandSlices) for (const arr of view.bandSlices) if (arr) for (const s of arr) if (s?.visible) s.alpha *= teleFade;
       if (view.slash?.visible) view.slash.alpha *= teleFade;
       if (view.clawMarks) for (const s of view.clawMarks) if (s?.visible) s.alpha *= teleFade;
       if (view.shockwaves) for (const s of view.shockwaves) if (s?.visible) s.alpha *= teleFade;
@@ -21257,6 +21339,27 @@ export class PixiScene {
     //   (トールの払い/突き、ミゲルの払い、ジブリルのランス、idolの狙撃/拳、扇の各セクター等)が
     //   旧挙動のままだった)。呼び出し側は**溜めの進行(0→1)をそのまま渡すだけ**でよい。
     //   eraseOverride は「中断されて途中から消し切る」時だけ渡す(zoneCapsuleTickの中断経路)。
+    // ★★v0.25.4110(社長指示2026-09-01「**流星の帯は全てこれで統一。帯全てに実装して**」):
+    //   **ここが城ボス以外の帯を描く唯一の場所**(トール払い/突き、ミゲル払い、ジブリルのランス、
+    //   偶像の狙撃/拳、フィルの翼撃/輪投げ、ヨルムンガルドのうねり、扇のセクター等=21経路+
+    //   zoneCapsuleTick 経由8経路)。旧「流星」(絵そのものを伸ばして後ろから消す)をやめ、
+    //   **円/城ボスと同じ窓マスク**(全長は常に在り、両縁がフェードする窓の濃さだけが流れる)へ。
+    //   **抜け切った瞬間 = 判定発生**。帯の長さ・幅・タイミングは1pxも1msも動かさない。
+    //   `?bsweep=0` で旧流星へ丸ごと戻せる。
+    //   - `eraseOverride === 0`(=呼び出し側が「実行中は全形」と明示している経路)は**窓を使わない**
+    //     (一様に全長を描く)。従来の意図をそのまま保つ。
+    //   - `eraseOverride > 0`(中断されて消し切る経路)は zoneCapsuleTick が**窓の続き**を prog で渡す。
+    if (BAND_SWEEP_ON) {
+      const uniform = eraseOverride === 0;
+      const winProg = Math.max(0, Math.min(1, prog));
+      this.drawSweepBand(
+        view, o, fx, fy, tx, ty, halfWidth, winProg,
+        telFillA(uniform ? 1 : winProg, pulse) * TELEGRAPH_FILL_MULT,
+        telStrokeA(uniform ? 1 : winProg, pulse),
+        fillColor, strokeColor, idx, uniform,
+      );
+      return;
+    }
     const ph = eraseOverride === undefined
       ? PixiScene.meteorPhase(prog)
       : { p: Math.max(0, Math.min(1, prog)), er: Math.max(0, Math.min(1, eraseOverride)) };
@@ -21370,7 +21473,9 @@ export class PixiScene {
     if (windupOn) {
       const ph = PixiScene.meteorPhase(prog);
       // arm[7]=最後の描き / arm[8]=最後の消し(中断された時、そこから続きを消すため)。
-      this.zoneCapsuleArm.set(key, [fx, fy, tx, ty, halfWidth, idx, remainMs, ph.p, ph.er]);
+      // ★v0.25.4110: arm[9]=**最後の溜め進行(生のprog)**。窓マスクでは「消しの続き」ではなく
+      //   **窓の続き**(prog→1)を流すので、位相ではなく進行そのものを覚えておく。
+      this.zoneCapsuleArm.set(key, [fx, fy, tx, ty, halfWidth, idx, remainMs, ph.p, ph.er, Math.max(0, Math.min(1, prog))]);
       this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, halfWidth, prog, now, idx, undefined, fillColor, strokeColor);
       return;
     }
@@ -21382,10 +21487,20 @@ export class PixiScene {
     if (armed) this.zoneCapsuleArm.delete(key);
     if (el) {
       const er0 = el.d[8] ?? 0;
-      this.drawAngelZoneCapsule(
-        view, o, el.d[0], el.d[1], el.d[2], el.d[3], el.d[4], el.d[7] ?? 1, now, el.d[5],
-        er0 + (1 - er0) * el.t, fillColor, strokeColor,
-      );
+      // ★v0.25.4110: 窓マスクでは「中断された所から窓を最後まで流し切る」= prog を 1 へ送る
+      //   (旧流星の「消しの続き」と同じ意味。どちらも最後は帯が消え切って終わる)。
+      const p0 = el.d[9] ?? 1;
+      if (BAND_SWEEP_ON) {
+        this.drawAngelZoneCapsule(
+          view, o, el.d[0], el.d[1], el.d[2], el.d[3], el.d[4], p0 + (1 - p0) * el.t, now, el.d[5],
+          undefined, fillColor, strokeColor,
+        );
+      } else {
+        this.drawAngelZoneCapsule(
+          view, o, el.d[0], el.d[1], el.d[2], el.d[3], el.d[4], el.d[7] ?? 1, now, el.d[5],
+          er0 + (1 - er0) * el.t, fillColor, strokeColor,
+        );
+      }
     }
   }
 
@@ -23175,6 +23290,11 @@ export class PixiScene {
   private drawSweepBand(
     view: ActorView, o: Graphics, fx: number, fy: number, tx: number, ty: number,
     halfWidth: number, prog: number, fillA: number, strokeA: number, fillColor = 0xff2a2a, strokeColor = 0xff3b3b,
+    // ★v0.25.4110: idx=帯ごとのスプライトプール番号(同フレームに複数本描く技用)。
+    //   uniform=true は**窓を使わず全長を一様に描く**(=「実行中は全形」の従来意図。濃さの補正も掛けない)。
+    //   coreA/coreW=帯の中心を走る「白芯」(0なら描かない)。**同じ窓のグラデ**で流れる
+    //   (窓の外に白芯だけ残ると「赤くないのに当たる」の逆=線だけ浮いて見えるため)。
+    idx = 0, uniform = false, coreA = 0, coreW = 0,
   ): void {
     const ddx = tx - fx, ddy = ty - fy;
     const ddl = Math.hypot(ddx, ddy) || 1;
@@ -23182,12 +23302,13 @@ export class PixiScene {
     const nx = -uy, ny = ux;
     const halfWin = Math.max(0.02, BAND_SWEEP_W);
     const center = bandSweepCenter(prog, halfWin, CIRCLE_SWEEP_EASE);
-    const peak = Math.min(1, fillA * BAND_SWEEP_A);
+    const peak = uniform ? Math.min(1, fillA) : Math.min(1, fillA * BAND_SWEEP_A);
+    const winAt = (s: number) => (uniform ? 1 : bandSweepAlphaAt(s, center, halfWin));
     const st = 1 / BAND_SWEEP_SLICES;
     // ---- 面: 全長を等分し、スライスごとに窓の濃さを掛ける ----
     for (let i = 0; i < BAND_SWEEP_SLICES; i++) {
       const s0 = i * st, s1 = s0 + st;
-      const a = peak * bandSweepAlphaAt((s0 + s1) / 2, center, halfWin);
+      const a = peak * winAt((s0 + s1) / 2);
       if (a <= 0.002) continue;
       const bc = i === 0 ? halfWidth : 0;                      // 端のキャップ=元の帯の形
       const fc = i === BAND_SWEEP_SLICES - 1 ? halfWidth : 0;
@@ -23200,16 +23321,29 @@ export class PixiScene {
         ax - ux * bc - nx * halfWidth, ay - uy * bc - ny * halfWidth,
       ]).fill({ color: fillColor, alpha: a });
     }
+    // ---- 白芯(任意): 面と同じスライス・同じ窓で ----
+    if (coreA > 0 && coreW > 0) {
+      for (let i = 0; i < BAND_SWEEP_SLICES; i++) {
+        const s0 = i * st, s1 = s0 + st;
+        const ca = coreA * winAt((s0 + s1) / 2);
+        if (ca <= 0.002) continue;
+        o.moveTo(fx + ddx * s0, fy + ddy * s0)
+          .lineTo(fx + ddx * s1 + 0.5, fy + ddy * s1)
+          .stroke({ width: coreW, color: 0xffe0e0, alpha: ca });
+      }
+    }
     // ---- 縁(焼き素材): 同じスライスで、テクスチャの対応する縦帯を貼る ----
     if (!FX_RING_ENABLED) return;
     const tex = getTexture('fx/telegraph-band');
     if (!tex) return;
     if (!view.bandSlices) view.bandSlices = [];
+    if (!view.bandSlices[idx]) view.bandSlices[idx] = [];
+    const pool = view.bandSlices[idx];
     const totalW = ddl + halfWidth * 2;                        // 素材が貼られている矩形の全長(既存と同じ式)
     const midX = (fx + tx) / 2, midY = (fy + ty) / 2;
     const rot = Math.atan2(ddy, ddx);
     for (let i = 0; i < BAND_SWEEP_SLICES; i++) {
-      let sp = view.bandSlices[i];
+      let sp = pool[i];
       if (!sp) {
         // テクスチャの縦帯(frame)は固定なので**1度だけ**作って使い回す(毎フレーム生成しない)。
         const fw = tex.frame.width / BAND_SWEEP_SLICES;
@@ -23219,9 +23353,9 @@ export class PixiScene {
         }));
         sp.anchor.set(0, 0.5);
         view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
-        view.bandSlices[i] = sp;
+        pool[i] = sp;
       }
-      const a = strokeA * bandSweepAlphaAt((i + 0.5) * st, center, halfWin);
+      const a = strokeA * winAt((i + 0.5) * st);
       if (a <= 0.002) { sp.visible = false; continue; }
       const dw = totalW / BAND_SWEEP_SLICES;
       sp.position.set(midX + Math.cos(rot) * (-totalW / 2 + dw * i), midY + Math.sin(rot) * (-totalW / 2 + dw * i));
@@ -27204,8 +27338,13 @@ export class PixiScene {
     if (bs === 'mk-spin-windup' || bs === 'mk-spin') {
       const prog = bs === 'mk-spin-windup' ? telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil) : 1;
       const pulse = 0.5 + 0.5 * Math.sin(now / 90);
-      o.circle(cx, cy, MK_T.spin.radius).fill({ color: 0xff2a2a, alpha: telFillA(prog, pulse) * TELEGRAPH_FILL_MULT });
-      o.circle(cx, cy, MK_T.spin.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) });
+      // ★v0.25.4110(社長指示「赤サークルも全て」): 溜めだけ窓マスク。**実行中(mk-spin)は判定が
+      //   出続けている**ので全形のまま=「赤くないのに当たる」を作らない(§11-4 持続判定の扱い)。
+      const mkSpinFillA = telFillA(prog, pulse) * TELEGRAPH_FILL_MULT;
+      const mkSpinMask = (CIRCLE_SWEEP_ON && bs === 'mk-spin-windup')
+        ? this.drawSweepCircleFill(o, cx, cy, MK_T.spin.radius, prog, 0xff2a2a, mkSpinFillA)
+        : (o.circle(cx, cy, MK_T.spin.radius).fill({ color: 0xff2a2a, alpha: mkSpinFillA }), 1);
+      o.circle(cx, cy, MK_T.spin.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * mkSpinMask });
       // 毬が周囲を高速で回る(判定=円そのもの。速い周回で「回している」感=派手側)。
       const spinAng = now / (bs === 'mk-spin' ? 40 : 90);
       // 技表GO: 技前=一瞬止まってふくらむ(スカッシュ・windup側のみ)。
@@ -27234,8 +27373,6 @@ export class PixiScene {
       // 変則ディレイ(区間=予告+移動の合算)の内訳を描画側は知らないため、着地円は静的な強い表示で
       // 出す(位置/半径=判定と厳密一致。ズレるのはフィルの立ち上がり演出だけ=安全上は無関係)。
       const pulse = 0.55 + 0.45 * Math.sin(now / 70);
-      o.circle(lx, ly, radius).fill({ color: 0xff2a2a, alpha: telFillA(1, 1) * pulse * TELEGRAPH_FILL_MULT });
-      o.circle(lx, ly, radius).stroke({ width: isFinal ? 4 : 2.5, color: 0xff3b3b, alpha: telStrokeA(1, 1) });
       // 技表GO: 乱舞=バウンドごとに回転加速+花びら増量(hop1<hop2<hop3)。
       const hopIdx = bs === 'mk-suiu-hop1' ? 1 : bs === 'mk-suiu-hop2' ? 2 : 3;
       const spinDiv = [0, 90, 72, 54][hopIdx]; // 小さいほど速い(hop1=90→hop3=54)
@@ -27254,6 +27391,16 @@ export class PixiScene {
       }
       const untilH = e.bossStateUntil ?? gameTime;
       const tH = Math.max(0, Math.min(1, (gameTime - hs.t0) / Math.max(1, untilH - hs.t0)));
+      // ★v0.25.4110(社長指示「赤サークルも全て」): 着地円も窓マスク(外枠→内側)。
+      //   **この技のダメージはホップの区間末**(bountyTick の `mk-suiu-hop*` は
+      //   `newGameTime >= bossStateUntil` で `hitCapsule`)なので、**跳躍の進行 tH がそのまま
+      //   「着地までの残り」**=窓が消え切る瞬間 = 着地の瞬間になる(区間の内訳を知る必要はない)。
+      //   旧コメント「内訳を知らないので静的表示」はここで解消。位置・半径は1pxも動かさない。
+      const suiuFillA = telFillA(1, 1) * pulse * TELEGRAPH_FILL_MULT;
+      const suiuMask = CIRCLE_SWEEP_ON
+        ? this.drawSweepCircleFill(o, lx, ly, radius, tH, 0xff2a2a, suiuFillA)
+        : (o.circle(lx, ly, radius).fill({ color: 0xff2a2a, alpha: suiuFillA }), 1);
+      o.circle(lx, ly, radius).stroke({ width: isFinal ? 4 : 2.5, color: 0xff3b3b, alpha: telStrokeA(1, 1) * suiuMask });
       const arc = 4 * tH * (1 - tH); // 0→1→0(頂点=中間)
       const hopH = (isFinal ? 170 : 130) * arc;
       const bxH = hs.x0 + (lx - hs.x0) * tH;
