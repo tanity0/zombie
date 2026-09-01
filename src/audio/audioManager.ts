@@ -1121,6 +1121,46 @@ export const crossToBossBgm = (variant: string, fadeOutMs = 800): void => {
   requestAnimationFrame(step);
 };
 
+/**
+ * ★v0.25.4109(社長指示2026-09-01「**フィル戦、フィルの紹介の時にBGMをフェードアウト。
+ * 紹介終わったらBGMすぐ開始**」): `crossToBossBgm` を**前半と後半に割った**もの。
+ *
+ * こちらは前半=**今の曲を `fadeMs` かけて無音まで落とすだけ**(曲は替えない・落とし切っても無音のまま待つ)。
+ * 紹介(出現アテンション)の頭で呼び、紹介が終わった瞬間に後半 `startBossBgmNow` を呼ぶ。
+ * `crossToBossBgm` と**同じトークン**を共有するので、途中でどちらかが走れば後から来た方が勝つ
+ * (フェードが二重に走らない)。
+ */
+export const fadeOutBgmToSilence = (fadeMs = 800): void => {
+  ensureBgm();
+  if (!bgm || !bgmActive || muted) return;
+  const token = ++bossBgmFadeToken;
+  const startVol = effectiveBgmVolume() * (danceBeatDuckActive ? DANCE_BGM_BEAT_DUCK : 1);
+  const t0 = performance.now();
+  const step = () => {
+    if (token !== bossBgmFadeToken || !bgm) return;
+    const k = Math.min(1, (performance.now() - t0) / Math.max(1, fadeMs));
+    const v = startVol * (1 - k);
+    if (bgmGain) bgmGain.gain.value = v; else bgm.volume = v;
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+};
+
+/**
+ * 後半=**次の曲を実効音量で即始める**(フェードイン無し=社長の掟「フェードせずにはっきり流し始めて」)。
+ * 走っているフェードはトークンで打ち切る(無音のまま置き去りにしない)。
+ * 同じ曲を指していても `setBgmTrack` → `playBgmRobust` が音量を実効値へ戻すので、
+ * 「フェードで0にしたまま鳴らない」にはならない。
+ */
+export const startBossBgmNow = (variant: string): void => {
+  ensureBgm();
+  const nextSrc = GAME_BGM[variant] ?? GAME_BGM.default;
+  bgmBaseTrack = nextSrc;
+  currentGameVariant = variant;
+  ++bossBgmFadeToken; // 走っているフェードを止める
+  setBgmTrack(nextSrc);
+};
+
 // 画面に応じてBGMを切替: menu=タイトル曲(public/audio/title.mp3) / game=ステージ曲 / off=停止。
 // menu→game でステージ曲へ、game→menu でタイトル曲へ自動で差し替わる(applyDanceAudio が bgmBaseTrack を流す)。
 // ブラウザの自動再生制限で menu の初回はユーザー操作まで鳴らないことがあるため、初回タップで再度呼ぶ。

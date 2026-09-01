@@ -452,7 +452,7 @@ import {
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
 import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, zoomedGunRange, isDirectGunWeaponKey, isGrenadeGunKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, crossToBossBgm } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
@@ -1599,6 +1599,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const kbLogPrevRef = useRef<Map<string, { x: number; y: number; type: string; kbU?: number }>>(new Map()); // ?kblog=1専用
   // ★EXステージのボスBGM切替(社長指示2026-08-26)。遭遇エッジの検知フラグ(条件が消えたら自動で再武装)。
   const phillBgmRef = useRef(false);
+  // ★v0.25.4109(社長指示2026-09-01「フィルの紹介の時にBGMをフェードアウト。紹介終わったらBGMすぐ開始」):
+  // 紹介(出現アテンション)の頭でフェードアウトを始め、**紹介が明けた最初のフレーム**で新曲を即開始する。
+  // その予約フラグ(true=フェード中で、明けたら鳴らす)。
+  const phillIntroBgmPendingRef = useRef(false);
   // v0.25.3700(社長指示「ボスの技にも対応するSEを」): 被弾SEの合流点用・前フレームのHP。
   // damagePlayer直呼びの技(トール一閃・ミゲル払いの命中・舞妓の毬回し・馬乗りのムチ360等)は
   // combatTickの被弾SE経路(爆風/弾/接触)に乗らず**当たっても無音**だった。HP減少のエッジ検知
@@ -3342,6 +3346,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             //  止まっていた=「ほぼ何も登場できてないシーンで止まる」の真因。)
             useGameStore.getState().triggerAttention(pAc.x, pAc.y, bossCutinPayload('phillboss'), 800);
             playSfx('boss-appear');
+            // ★v0.25.4109(社長指示2026-09-01「フィル戦、フィルの紹介の時にBGMをフェードアウト。
+            //   紹介終わったらBGMすぐ開始」): 紹介(この出現アテンション)の**頭から**元曲(ステージ6)を
+            //   フェードアウトし、**紹介が明けた最初のフレーム**でフィル戦BGMを実効音量で即開始する
+            //   (下のBGMブロック)。フェード尺は**実際に積まれたアテンションの尺から導く**
+            //   (パン + ホールド)ので、名前のカットインが出る頃には無音になっている。
+            //   旧: 紹介の間はステージ6曲が鳴りっぱなしで、交戦してから800msかけて切り替えていた。
+            {
+              const pAtt = useGameStore.getState().attention;
+              fadeOutBgmToSilence(ATTENTION_IN_MS + (pAtt?.holdMs ?? ATTENTION_HOLD_MS));
+              phillIntroBgmPendingRef.current = true;
+            }
           }
         }
         // ★バッチ2(§10-2「angelBossTickの7人目」): 移動・技はisGate2AngelBoss編入により
@@ -10047,10 +10062,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 元曲のフェードアウト→新曲はフェード無し、は crossToBossBgm(audioManager)側の掟。
         // リトライ等でフィル(未遭遇個体)に戻ると条件がfalseになり自動で再武装する。
         {
+          // ★v0.25.4109: 紹介(出現アテンション)が明けた**最初のフレーム**で即開始する。
+          //   このブロックはアテンション中は走らない(演出中はシミュレーションごと凍結=上の早期return)ので、
+          //   「!attention の最初の1回」がそのまま「紹介が終わった瞬間」になる。
+          //   元曲は紹介の頭から落としてあるので、ここはフェードせず実効音量で鳴らし始める。
+          if (phillIntroBgmPendingRef.current && !useGameStore.getState().attention) {
+            phillIntroBgmPendingRef.current = false;
+            phillBgmRef.current = true;
+            startBossBgmNow('ex');
+          }
+          // 保険(従来経路): 紹介を経ずに交戦へ入った場合は、遭遇のエッジで従来どおり切り替える。
           const phillEngagedNow = useGameStore.getState().enemies.some(
             e => e.type === 'phillboss' && e.bossOpeningHoldAt !== undefined);
           if (phillEngagedNow && !phillBgmRef.current) { phillBgmRef.current = true; crossToBossBgm('ex'); }
-          else if (!phillEngagedNow) phillBgmRef.current = false;
+          else if (!phillEngagedNow && !phillIntroBgmPendingRef.current) phillBgmRef.current = false;
         }
 
         // v0.25.3700: 被弾SEの合流点(上のprevPlayerHpRef参照)。HPが実際に減ったフレームだけ1回。
