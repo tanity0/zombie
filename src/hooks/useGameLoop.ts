@@ -1307,6 +1307,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const benchmarkModeRef = useRef(Boolean(options.benchmarkMode));
   const frameRef = useRef(0);
   const lastFrameTimeRef = useRef(0);
+  // ★v0.25.4111(社長報告2026-09-01「音楽だけ流れて固まった。背景の雲は動いていて、キャラの足踏み・
+  //   呼吸もしている」): **ループが最後に回った実時刻**。下のウォッチドッグが「rAFの鎖が切れた」ことを
+  //   検知するための唯一の材料(描画側=PixiのtickerはrAFを別に持っているので、鎖が切れても絵は動き続ける)。
+  const loopTickAtRef = useRef(0);
   const lastEnemySpawnRef = useRef(0);
   const boomReadyRef = useRef(true); // ドローンブーメランのCD明け検出(false→true でカチッSE+頭上マーク)
   const flareReadyRef = useRef(true); // フレアガンのCD明け検出(同上・ブーメラン型の一瞬通知)
@@ -2107,6 +2111,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     };
 
     const gameLoop = (timestamp: number) => {
+     loopTickAtRef.current = Date.now(); // ★v0.25.4111: 生存打刻(ウォッチドッグが読む)。例外の有無に関わらず必ず打つ。
      try { // 診断+耐障害: ループ本体の例外でrAFが途切れて全停止(=移動/敵/弾が止まる)のを防ぎ、例外内容を記録。
       // The game can sit idle (tab in background, game-over screen, paused
       // mid-render, etc.) for arbitrary amounts of time. We must NOT pass
@@ -14781,10 +14786,45 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     };
 
     // Start game loop
+    loopTickAtRef.current = Date.now();
     frameRef.current = requestAnimationFrame(gameLoop);
-    
+
+    // ★★v0.25.4111 ループのウォッチドッグ(社長報告2026-09-01「急に音楽だけ流れて固まった。
+    //   背景の雲は動いていて、キャラの足踏みも呼吸もしている」)。
+    //
+    // **観測から言えたこと**: ①雲・呼吸・足踏みが動いている=**描画は生きている**(Pixiのtickerは
+    // このループとは別のrAF) ②その2つはヒットストップ中は止まる(`hitstopFreezeNow`がアニメ時計を
+    // 凍結する)ので、**ヒットストップは効いていない** ③エラービーコン(常時表示)が出ていない=
+    // **例外は1件も記録されていない**(ループ本体のcatchは必ず次フレームを予約し直すので、例外なら
+    // 止まらない) ④なのに**予告のボケ帯がアテンション位置に張り付いたまま**=`attention` が
+    // store に残っている。**`attention` を消せるのはこのループだけ**。
+    // ⇒ **例外ではなく「rAFの鎖そのものが切れた」**(callbackが一度も呼ばれなくなった)。
+    //   自己再帰型のrAFは、1回でもcallbackが落とされると**永久に復帰しない**(端末の省電力・
+    //   メモリ圧・タブ制御など、こちら側に通知の来ない事情で起こりうる)。
+    //
+    // **直し方は「原因を潰す」ではなく「鎖を張り直す」**: 500ms毎に生存打刻を見て、
+    // LOOP_WATCHDOG_STALL_MS 進んでいなければ rAF を張り直す。復帰した次のフレームで
+    // アテンションの期限判定が走るので、**取り残された演出も自動的に解ける**(ここでは消さない
+    // =消す条件を2箇所に書かない)。**正常時は1bitも挙動が変わらない**(打刻を読むだけ)。
+    const LOOP_WATCHDOG_STALL_MS = 1500;
+    const loopWatchdog = window.setInterval(() => {
+      // 背面タブ・スリープでは rAF が止まるのが正常(復帰時に自然に再開する)。ここで張り直すと
+      // 「見えていない間に走らせる」ことになるので触らない。
+      if (typeof document !== 'undefined' && document.hidden) { loopTickAtRef.current = Date.now(); return; }
+      const since = Date.now() - loopTickAtRef.current;
+      if (since < LOOP_WATCHDOG_STALL_MS) return;
+      // 次フレームは**時間原点を取り直すだけ**にする(既存の作法=巨大デルタでの物理テレポート防止)。
+      lastFrameTimeRef.current = 0;
+      loopTickAtRef.current = Date.now();
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = requestAnimationFrame(gameLoop);
+      // 常時表示のエラービーコンへ残す=**次に起きた時に「復帰した」と分かる**(握り潰さない)。
+      reportSuppressedError('loop-stall', new Error(`rAF chain stalled ${Math.round(since)}ms — revived`));
+    }, 500);
+
     // Cleanup
     return () => {
+      window.clearInterval(loopWatchdog);
       cancelAnimationFrame(frameRef.current);
       setHurricaneRumble(false); // アンマウント時に鳴動を確実に停止
       setHeartbeatLoop(false); // 心音ループも確実に停止
