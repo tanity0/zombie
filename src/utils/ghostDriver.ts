@@ -42,7 +42,7 @@ import {
 // (CLAUDE.md の前例)ため、定数そのものを import する。GHOST_MELEE_RANGE(store非依存の複製値)とは
 // 事情が違う: あちらは「意思決定側の間合いの目安」で多少ズレても実害が小さいが、こちらは社長が
 // 明示的に「プレイヤーの値と揃えろ」と指示した数値なので複製ではなくimportを選ぶ。
-import { COUNTER_WINDOW, COUNTER_COOLDOWN, MELEE_WINDUP_MS } from '../store/gameStore';
+import { COUNTER_WINDOW, COUNTER_COOLDOWN } from '../store/gameStore';
 // research/AI_HUMANIZE.md B3(§4「写す」): マイクロリズム(①〜⑧)の保存形+専用乱数流+バケット→値。
 import { type MicroRhythmProfile } from './microRhythm';
 import {
@@ -885,12 +885,13 @@ export const habitPositionTarget = (
 };
 
 /**
- * §2-8確定事項#1(A1・最重要): 記録の`pressOfs`は「実際の押下+MELEE_WINDUP_MS(200ms)」の打刻。
- * 再生は`T + pressOfs − MELEE_WINDUP_MS`に置く(減算を省略しない)。`pressOfs===null`はnull
- * (§2-8確定事項#2=A2: 振らない)。
+ * §8裁定済み#16(社長裁定2026-09-02=(a)・打刻を押下基準へ正規化。旧§2-8確定事項#1=A1を置き換え):
+ * 記録の`pressOfs`は**記録側(habitEpisode.ts/gameStore.ts)で経路ごとの前隙を引いた「実際の押下」**の
+ * 打刻(HABIT_EPISODE_FORMAT_VERSIONで意味を保証=旧版のコマは読み込み時に捨てる)。よって再生は
+ * `T + pressOfs`にそのまま置く(**再生側で減算しない**)。`pressOfs===null`はnull(§2-8確定事項#2=A2: 振らない)。
  */
 export const habitSwingAtFromPressOfs = (T: number, pressOfs: number | null): number | null =>
-  pressOfs === null ? null : T + pressOfs - MELEE_WINDUP_MS;
+  pressOfs === null ? null : T + pressOfs;
 
 /** 毎tick1回呼ぶ純関数。次tickへ持ち越す自己状態(lastShotAt等)も戻り値に含めて返す。 */
 export const decideGhost = (input: GhostDriverInput): GhostDecision => {
@@ -1458,7 +1459,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
           const stat = profile.habitFamily?.[habitFamilyKey];
           if (stat) pressOfs = mrand() < stat.pressRatePct / 100 ? stat.avgPressOfs : null;
         }
-        // §2-8確定事項#1(A1・最重要): T + pressOfs − MELEE_WINDUP_MS(減算を省略しない)。
+        // §8裁定済み#16: T + pressOfs(記録が押下基準なので再生は減算しない)。
         microHabitSwingAt = habitSwingAtFromPressOfs(TFrozen, pressOfs) ?? undefined;
         microHabitResolved = true;
         counterWillAttempt = microHabitSwingAt !== undefined; // §2-8確定事項#2(A2): pressOfs=null→振らない

@@ -802,6 +802,9 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
       // ★§8(SAME_ARENA・間合いの癖): 「本人が近接を振った」の打刻。カウンター演出からは打たれない
       // 専用の打刻(meleeSwingAt ではなくこちら)なので、エッジ=本人の意思の振り。
       meleeSwingCommitAt: player.meleeSwingCommitAt,
+      // research/AI_HUMANIZE.md §8 裁定済み#16(社長裁定2026-09-02=(a)): 「実際に押した時刻」
+      // (meleeSwingCommitAtと同じ5経路が同時に打つ・打刻の意味は経路によらず「押下」に揃っている)。
+      meleeSwingPressedAt: player.meleeSwingPressedAt,
       // ★AI_HUMANIZE.md B3(§4⑧⑫の入力源是正): キー/タッチ両方が更新する唯一の実在源。
       lastDirection: player.lastDirection,
     },

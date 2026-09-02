@@ -58,7 +58,7 @@ export { bossStyleSlotKey } from './ghostSlot';
 // ラン単位のフォールドは決算(settlePendingTraits)時に読み出す。
 import {
   notePressEdge, tickHabitEpisodeMaintenance, markHabitGhostRun, takeRunHabitFold, resetRunHabitState,
-  HABIT_FAMILY_KEYS, HABIT_RING_SIZE, familyRawToStat,
+  HABIT_FAMILY_KEYS, HABIT_RING_SIZE, HABIT_EPISODE_FORMAT_VERSION, familyRawToStat,
   type HabitEpisode, type HabitFamilyKey, type HabitFamilyStat, type HabitFamilyRaw,
 } from './habitEpisode';
 // research/AI_HUMANIZE.md B3(§4①②④⑥⑧・マイクロリズム=操作の指紋の録り+保存形+ブレンド)。
@@ -227,6 +227,14 @@ export interface PlayerProfile {
    */
   habitFamilyRaw?: Partial<Record<HabitFamilyKey, HabitFamilyRaw>>;
   /**
+   * research/AI_HUMANIZE.md §8 裁定済み#16(社長裁定2026-09-02=(a)): `moveHabits`/`habitFamilyRaw`が
+   * 記録された時点の`HABIT_EPISODE_FORMAT_VERSION`。読み込み時(`loadPlayerProfile`)にこの値が
+   * 現行版と一致しなければ、`moveHabits`/`habitFamily`/`habitFamilyRaw`だけを空にして読む
+   * (プロファイル自体は壊さない=段2/段3にビット同一で落ちるだけの安全弁)。旧プロファイル
+   * (このタグの導入前)には無い=undefinedは「不一致」として扱う。
+   */
+  moveHabitsFormatVersion?: number;
+  /**
    * research/AI_HUMANIZE.md B3(§4マイクロリズム=操作の指紋): ①止まりの長さ/②攻撃間隔の揺らぎ/
    * ③平時の間合い(16ビン分布のまま)/④回り方の利き/⑤ピンチの間合い/⑥被弾直後の反応/
    * ⑦硬直パニッシュの速さ/⑧判断の間隔。**軸1のみ**(moveReactions/meleeSpacingと同じ扱い)。
@@ -311,6 +319,8 @@ const isValidProfile = (v: unknown): v is PlayerProfile => {
     && (o.habitFamily === undefined || (typeof o.habitFamily === 'object' && o.habitFamily !== null))
     // ★検収是正(中5): habitFamilyRaw(累計の生値)も同じく任意オブジェクトとして許容(欠損可=旧プロファイル)。
     && (o.habitFamilyRaw === undefined || (typeof o.habitFamilyRaw === 'object' && o.habitFamilyRaw !== null))
+    // §8裁定済み#16: moveHabitsFormatVersion(コマの意味の版)。欠損可(旧プロファイル=タグ導入前)。
+    && (o.moveHabitsFormatVersion === undefined || typeof o.moveHabitsFormatVersion === 'number')
     // AI_HUMANIZE.md B3: microRhythm(①〜⑧)も同じく任意オブジェクトとして許容(欠損可=旧プロファイル)。
     && (o.microRhythm === undefined || (typeof o.microRhythm === 'object' && o.microRhythm !== null));
 };
@@ -337,6 +347,10 @@ export const loadPlayerProfile = (): PlayerProfile | null => {
     const parsed: unknown = JSON.parse(raw);
     if (!isValidProfile(parsed)) return null;
     const { styles: migratedBossStyles, changed: bossStylesMigrated } = migrateLegacyPhillbossStyle(parsed.bossStyles);
+    // §8裁定済み#16(社長裁定2026-09-02=(a)): moveHabits/habitFamilyRaw/habitFamilyは「pressOfsの意味」の
+    // 版が一致する時だけ引き継ぐ。旧版(タグ無し=導入前を含む)は**プロファイル自体は壊さず**コマだけ
+    // 空にする(段2/段3=従来の挙動に落ちるだけで安全。直近10件のリングなので数ランで貯まり直す)。
+    const habitFormatOk = parsed.moveHabitsFormatVersion === HABIT_EPISODE_FORMAT_VERSION;
     // 後方互換: 旧フォーマット(欠損ノブ)は控えめな既定値(SEED)/空表で埋めて返す。
     const profile: PlayerProfile = {
       ...parsed,
@@ -346,6 +360,10 @@ export const loadPlayerProfile = (): PlayerProfile | null => {
       moveReactions: parsed.moveReactions ?? {},
       subStyles: normalizeSubStyles(parsed.subStyles),
       bossStyles: migratedBossStyles,
+      moveHabits: habitFormatOk ? parsed.moveHabits : undefined,
+      habitFamily: habitFormatOk ? parsed.habitFamily : undefined,
+      habitFamilyRaw: habitFormatOk ? parsed.habitFamilyRaw : undefined,
+      moveHabitsFormatVersion: HABIT_EPISODE_FORMAT_VERSION,
     };
     if (bossStylesMigrated) saveProfile(profile);
     return profile;
@@ -815,6 +833,10 @@ export const applyPendingSession = (prev: PlayerProfile | null, r: PendingSessio
     moveHabits: base.moveHabits,
     habitFamily: base.habitFamily,
     habitFamilyRaw: base.habitFamilyRaw,
+    // §8裁定済み#16: 上の3項目と同じ理由で必ず引き継ぐ(引き継がないと、このレコードの保存直後に
+    // habitsレコードがloadPlayerProfileで読み直した時、版タグがundefinedに化けて「版不一致」と
+    // 誤判定され、直前に自分で書いたばかりの累計まで毎回捨てられる)。
+    moveHabitsFormatVersion: base.moveHabitsFormatVersion,
   };
 };
 
@@ -839,6 +861,12 @@ export interface PlayerTraitsTickInput {
      * 打たれない専用の打刻なので、これのエッジ=本人が振った瞬間。省略(旧呼び出し/テスト)=振らない扱い。
      */
     meleeSwingCommitAt?: number;
+    /**
+     * research/AI_HUMANIZE.md §8 裁定済み#16(社長裁定2026-09-02=(a)): meleeSwingCommitAtと同じ
+     * 5経路が同時に打つ「実際に押した時刻」(`Date.now`)。省略(旧呼び出し/テスト)=meleeSwingCommitAt
+     * と同値扱い(notePressEdge側の既定=前隙シフト無し)。
+     */
+    meleeSwingPressedAt?: number;
     /**
      * ★AI_HUMANIZE.md B3(§4⑧⑫の入力源是正): キー入力・タッチ(VirtualJoystick)の**両方**が更新する
      * 唯一の実在源。旧`movementInput`(inputStateのbooleanのみ・タッチで常時false)の代わりに、
@@ -867,7 +895,12 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
   // AI_HUMANIZE.md B1: 押下リングのエッジ検知+帰属確定は交戦の有無に関わらず毎tick走らせる
   // (境界での取りこぼしを避ける=全てイベント駆動・新規の走査ではない)。呼ぶ順は
   // notePressEdge→tickHabitEpisodeMaintenanceの順(同tickの押下を帰属候補に含めるため)。
-  notePressEdge(input.gameTime, input.player.meleeSwingCommitAt ?? 0);
+  // research/AI_HUMANIZE.md §8 裁定済み#16: pressedAtは「実際に押した時刻」。省略(旧呼び出し/テスト)は
+  // commitAtと同値=前隙シフト無しの既定へ落ちる(notePressEdge側のデフォルト引数と同じ意味)。
+  notePressEdge(
+    input.gameTime, input.player.meleeSwingCommitAt ?? 0,
+    input.player.meleeSwingPressedAt ?? input.player.meleeSwingCommitAt ?? 0,
+  );
   tickHabitEpisodeMaintenance(input.gameTime);
   if (input.ghostActive || input.ghostRunActive) {
     // §2.7 制約1: ゴースト同伴中/ゴーストが出うるラン(守護霊装備・?ghost=1)は計測しない。
@@ -1272,7 +1305,12 @@ export const applyPendingHabits = (prev: PlayerProfile, r: PendingHabitsRecord):
     const stat = raw ? familyRawToStat(raw) : null; // 累計<HABIT_FAMILY_MIN_Nならnull=このランはキー無し
     if (stat) mergedFamily[fk] = stat;
   }
-  return { ...prev, moveHabits: mergedEpisodes, habitFamilyRaw: mergedRaw, habitFamily: mergedFamily };
+  // §8裁定済み#16: 新しく畳んだコマは常に現行版(pressOfs=押下基準)。旧版のまま残っていた
+  // (loadPlayerProfileが版不一致で既に空にしている)prevの上に積むので、混在は起きない。
+  return {
+    ...prev, moveHabits: mergedEpisodes, habitFamilyRaw: mergedRaw, habitFamily: mergedFamily,
+    moveHabitsFormatVersion: HABIT_EPISODE_FORMAT_VERSION,
+  };
 };
 
 /**

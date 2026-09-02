@@ -324,6 +324,17 @@ export interface HabitEpisode {
 /** リング保存件数(§1・ラン跨ぎ)。 */
 export const HABIT_RING_SIZE = 10;
 
+/**
+ * research/AI_HUMANIZE.md §8 裁定済み#16(社長裁定2026-09-02=(a)・打刻を押下基準へ正規化):
+ * `pressOfs`(コマ台帳HabitEpisode・族別集計HabitFamilyRaw双方)の**意味の版**。旧版(この定数の
+ * 導入前=タグ無し)は経路によって「押下+MELEE_WINDUP_MS」と「押下そのもの」が混在した打刻で、
+ * 意味が1本化されていない=**壊れているのではなく解釈が変わった**。よって古い版のコマは
+ * (プロファイル自体は壊さずに)読み込み時に捨てる(`playerTraits.loadPlayerProfile`)。
+ * この版を上げる基準=「pressOfsの意味(打刻の起点)が変わった時だけ」。posA/posB/sub/ctxHp/ctxHit/seq
+ * の意味が変わる時は別の対応(このタグでは救えない=EPISODE_SHAPE_DECL側の話)。
+ */
+export const HABIT_EPISODE_FORMAT_VERSION = 2;
+
 const quantizePosA = (v: number): number => Math.round(clamp(v, 0, 2) * 100);
 const quantizePosB = (v: number): number => Math.round(clamp(v, -1, 1) * 100);
 
@@ -382,10 +393,20 @@ let lastSeenCommitAt: number | null = null;
  * `meleeSwingCommitAt`(Date.now基準の打刻)のエッジを検知し、そのgameTimeを押下リングへ積む。
  * 毎tick呼ぶ(交戦の有無に関わらず=境界での取りこぼしを避ける)。エッジ検知はplayerTraits.tsの
  * `lastSeenSwingCommitAt` と同じ作法(絶対時刻の引き算をしない・初回tickは誤検知させない)。
+ *
+ * research/AI_HUMANIZE.md §8 裁定済み#16(社長裁定2026-09-02=(a)・打刻を押下基準へ正規化):
+ * `pressedAt`(=呼び出し側が渡す「実際に押した時刻」・meleeSwingPressedAt)を第3引数で受け取り、
+ * `commitAt − pressedAt`(前隙のある経路だけ正の値=実測の前隙。前隙が無ければ0)を**同じms単位のまま
+ * gameTimeから引く**——これで積むのは常に「押した瞬間のgameTime」になる。**どの経路で打刻されたかは
+ * 打刻の時点でしか分からない**ので、シフト量は呼び出し側(gameStore.ts)が渡した実測値から出す
+ * (経路名で判定しない=固定のMELEE_WINDUP_MSを一律に引かない。詳細はgameStore.tsの
+ * `noteMeleeSwingPressedAt` 呼び出し側コメント)。第3引数省略(旧呼び出し/テスト)=`commitAt`と
+ * 同値扱い=シフト0(後方互換)。
  */
-export const notePressEdge = (gameTime: number, commitAt: number): void => {
+export const notePressEdge = (gameTime: number, commitAt: number, pressedAt: number = commitAt): void => {
   if (lastSeenCommitAt !== null && commitAt !== lastSeenCommitAt) {
-    pressRing.push(gameTime);
+    const windupShiftMs = commitAt - pressedAt;
+    pressRing.push(gameTime - windupShiftMs);
     if (pressRing.length > PRESS_RING_SIZE) pressRing.shift();
   }
   lastSeenCommitAt = commitAt;

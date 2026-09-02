@@ -20,7 +20,7 @@ import { resetBotTelemetry, recordDamageDealt, recordSubUse } from './botTelemet
 import { savePlayerName } from './playerName'; // v0.25.2477: srcName(計測時のプレイヤー名)の固定用
 import type { Enemy } from '../types/game';
 // research/AI_HUMANIZE.md B1(コマ台帳・検収是正): 記録ゲート(重大1)・族しきい値の累計化(中5)の検証用。
-import { settleEpisode, tickHabitEpisodeMaintenance } from './habitEpisode';
+import { settleEpisode, tickHabitEpisodeMaintenance, HABIT_EPISODE_FORMAT_VERSION } from './habitEpisode';
 
 // jsdom を使わずに済む最小 localStorage スタブ(tutorialArchive.test.tsと同じ作法)。
 const installStorage = () => {
@@ -1482,6 +1482,87 @@ describe('AI_HUMANIZE B1(検収是正・中5): 族別しきい値は累計コマ
     expect(p.habitFamily?.band).toBeDefined(); // 累計6件>=5=発動
     expect(p.habitFamily!.band!.n).toBe(6);
     expect(p.habitFamilyRaw?.band?.count).toBe(6);
+  });
+});
+
+// research/AI_HUMANIZE.md §8 裁定済み#16(社長裁定2026-09-02=(a)・打刻を押下基準へ正規化):
+// 意味の変わった旧版のコマ(moveHabits/habitFamily/habitFamilyRaw)は読み込み時に捨てる。
+// プロファイル自体は壊れずに読める=コマだけが空になる(段2/段3=従来の挙動に落ちるだけで安全)。
+describe('AI_HUMANIZE §8裁定済み#16: moveHabitsFormatVersion不一致は読み込み時にコマだけ空にする', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  it('タグ無し(導入前の旧保存)はコマ3種を空にし、他のフィールドは無傷で読める', () => {
+    const map = installStorage();
+    map.set('zombie-ghost-profile-v1', JSON.stringify({
+      v: 1, runs: 5, reactionMs: 300, counterChance: 0.6, preferredDist: 200,
+      meleeBias: 0.5, mobility: 0.7, hitsPerMin: 4,
+      moveHabits: { 'thor:issen-windup': [{ posA: 100, posB: 0, sub: 0, pressOfs: 999, ctxHp: 0, ctxHit: 0, seq: 1 }] },
+      habitFamily: { band: { n: 5, avgPosA: 100, avgPosB: 0, avgPressOfs: 999, pressRatePct: 100 } },
+      habitFamilyRaw: { band: { count: 5, sumPosA: 500, sumPosB: 0, pressCount: 5, sumPressOfs: 4995 } },
+    }));
+    const p = loadPlayerProfile();
+    expect(p).not.toBeNull();
+    expect(p!.runs).toBe(5); // プロファイル自体は壊れていない
+    expect(p!.reactionMs).toBe(300);
+    expect(p!.moveHabits).toBeUndefined(); // 旧版のコマは捨てる
+    expect(p!.habitFamily).toBeUndefined();
+    expect(p!.habitFamilyRaw).toBeUndefined();
+  });
+
+  it('版が古い(数値不一致)場合も同様にコマだけ空にする', () => {
+    const map = installStorage();
+    map.set('zombie-ghost-profile-v1', JSON.stringify({
+      v: 1, runs: 1, reactionMs: 300, counterChance: 0.6, preferredDist: 200,
+      meleeBias: 0.5, mobility: 0.7, hitsPerMin: 4,
+      moveHabitsFormatVersion: 1, // 現行版(HABIT_EPISODE_FORMAT_VERSION)より古い
+      moveHabits: { 'thor:issen-windup': [{ posA: 100, posB: 0, sub: 0, pressOfs: 999, ctxHp: 0, ctxHit: 0, seq: 1 }] },
+    }));
+    const p = loadPlayerProfile();
+    expect(p!.moveHabits).toBeUndefined();
+  });
+
+  it('版が一致していれば従来どおり読み込む(=無闇に捨てない)', () => {
+    const map = installStorage();
+    map.set('zombie-ghost-profile-v1', JSON.stringify({
+      v: 1, runs: 1, reactionMs: 300, counterChance: 0.6, preferredDist: 200,
+      meleeBias: 0.5, mobility: 0.7, hitsPerMin: 4,
+      moveHabitsFormatVersion: HABIT_EPISODE_FORMAT_VERSION,
+      moveHabits: { 'thor:issen-windup': [{ posA: 100, posB: 0, sub: 0, pressOfs: 50, ctxHp: 0, ctxHit: 0, seq: 1 }] },
+    }));
+    const p = loadPlayerProfile();
+    expect(p!.moveHabits?.['thor:issen-windup']?.[0]?.pressOfs).toBe(50); // 捨てられていない
+  });
+
+  it('コマが無い旧保存(moveHabits自体が無い)は従来どおり壊れずに読める(欠損=undefinedのまま)', () => {
+    const map = installStorage();
+    map.set('zombie-ghost-profile-v1', JSON.stringify({
+      v: 1, runs: 1, reactionMs: 300, counterChance: 0.6, preferredDist: 200,
+      meleeBias: 0.5, mobility: 0.7, hitsPerMin: 4,
+    }));
+    const p = loadPlayerProfile();
+    expect(p).not.toBeNull();
+    expect(p!.moveHabits).toBeUndefined();
+    expect(p!.runs).toBe(1);
+  });
+
+  it('新しく畳んだコマ(applyPendingHabits経由の保存)は現行版のタグ付きで保存され、次回ロードでも読める', () => {
+    const map = installStorage(); // このitの直接の保存を読み返すため、専用のmap参照を取る
+    tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
+    settleEpisode({
+      gameTime: 1_000, enemyType: 'thor', state: 'issen-windup',
+      bcx: 0, bcy: 0, pcx: 100, pcy: 0,
+      bossRect: { x: -22, y: -22, width: 44, height: 44 },
+      playerHealth: 100, playerMaxHealth: 100, lastDamagedAtGame: undefined,
+    });
+    tickHabitEpisodeMaintenance(1_300);
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    settlePendingTraits(false);
+    const saved = JSON.parse(map.get('zombie-ghost-profile-v1')!);
+    expect(saved.moveHabitsFormatVersion).toBe(HABIT_EPISODE_FORMAT_VERSION);
+    const p = loadPlayerProfile();
+    expect(p!.moveHabits?.['thor:issen-windup']).toBeDefined(); // 直後の再読み込みでも捨てられない
   });
 });
 

@@ -227,6 +227,18 @@ export interface Player extends DashLocomotionState {
    */
   meleeSwingCommitAt: number;
   /**
+   * research/AI_HUMANIZE.md §8 裁定済み#16(社長裁定2026-09-02=(a)・打刻を押下基準へ正規化):
+   * **「実際に押した瞬間」の打刻(単位 = `Date.now()` のエポックms)**。`meleeSwingCommitAt` と
+   * 同じ5経路すべてで**同時に**書く(`noteMeleeSwingPressedAt()`・commitMeleeSwingの直後)。
+   * 前隙のある経路(タッチ=`beginMeleeSwing`→`MELEE_WINDUP_MS`後に`triggerCounter`が解決)は
+   * **実測の押下時刻**(`swingAt`=`beginMeleeSwing`が打った時刻)を渡す=`meleeSwingCommitAt`より
+   * 前隙ぶん早い。前隙の無い経路(PC/マウス直呼びのtriggerCounter・刀一閃・スラッシャー追撃)は
+   * 打刻の呼び出し時刻そのもの=`meleeSwingCommitAt`と同じ(差が無い)。
+   * **`meleeSwingCommitAt` 自体の意味は変えない**(トールの必中一閃はそちらを見続ける)。
+   * この打刻は**コマ記録(habitEpisode.ts)専用の入力**——判定・請求には一切使わない。0=未打刻。
+   */
+  meleeSwingPressedAt: number;
+  /**
    * research/AI_HUMANIZE.md B1(§1-1 ctxHit・記録専用): プレイヤーが最後にダメージを受けた瞬間の
    * gameTime。0=未被弾(そのラン内)。**gameTime系**(meleeSwingCommitAtとは違いDate.now系ではない)
    * =コマ記録側(habitEpisode.ts)がT(州満了時刻・gameTime)との差で「直近2秒被弾」を判定するための

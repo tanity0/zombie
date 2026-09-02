@@ -4532,6 +4532,8 @@ const applySlasherChainStrike = (
   }
   get().markMeleeSwingFx(); // 追撃も近接スイングの二次モーション(踏み込み)を出す(描画のみ)
   get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=スラッシャー追撃・§1-3)
+  // §8裁定済み#16: 前隙が無い経路=打刻の呼び出し時刻がそのまま「押した瞬間」。
+  get().noteMeleeSwingPressedAt(Date.now());
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
   // 追撃の射程は初撃時に記録した slasherReach を使う(ストライカーの溜めで伸びた射程が初撃で消費されても、
@@ -5387,6 +5389,10 @@ interface GameState {
   // ★近接スイング確定の専用打刻(player.meleeSwingCommitAt)。**近接を振った箇所だけ**が呼ぶ
   // (カウンター成立の演出/ショップ経路からは呼ばない)。トールの必中一閃の引き金がこれを読む。
   commitMeleeSwing: () => void;
+  // ★research/AI_HUMANIZE.md §8 裁定済み#16(社長裁定2026-09-02=(a)): 「実際に押した時刻」の
+  // 専用打刻(player.meleeSwingPressedAt)。commitMeleeSwing()の**直後**、同じ5経路すべてで呼ぶ。
+  // 判定・請求には使わない=コマ記録(habitEpisode.ts)専用の入力。meleeSwingCommitAt自体は変えない。
+  noteMeleeSwingPressedAt: (pressedAtMs: number) => void;
   markFirstAidPoseFx: () => void; // 救急鞄スキル発動演出の起点を更新(描画のみ)。払い出しの瞬間に呼ぶ。
   markCastleBossSpawned: () => void;
   // 囲い系イベント: 開始(activeEvent をセット＋囲い周辺の通常敵を一掃)/ 終了(activeEvent=null＋残存イベント敵を撤去)。
@@ -5979,6 +5985,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     reloadingWeaponId: '',
     meleeSwingAt: 0,
     meleeSwingCommitAt: 0,
+    meleeSwingPressedAt: 0,
     lastDamagedAtGame: 0,
     firstAidPoseAt: 0,
     magBonus: 0,
@@ -7100,6 +7107,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       }));
       get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=刀・§1-3)
+      // §8裁定済み#16: swingAt=「指を離した瞬間」(前隙が有れば実測でそれだけ早い・無ければnowと同じ)。
+      get().noteMeleeSwingPressedAt(swingAt);
       // 刀でも松明・卵を破壊できる(刀の間合いの円)。
       get().breakPropsAlong(pcx, pcy, 1, 0, 0, katanaRange(player), meleeDamage * 2.5);
       return { swung: false, hit: false, finish: false, killed: 0 };
@@ -7129,6 +7138,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       }));
       get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=鞭・§1-3)
+      get().noteMeleeSwingPressedAt(swingAt); // §8裁定済み#16(katana分岐と同じ理由)
       set({ whipSwingFxAt: now }); // 鞭を振る音SEのトリガ(命中の有無に関わらず鳴る)
       // 鞭の軌跡 + 当たり範囲の可視化(全長を即表示→フェード。太い帯=当たり範囲)。
       get().spawnEffect({
@@ -7700,6 +7710,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
 
     get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=ナイフ・§1-3)
+    get().noteMeleeSwingPressedAt(swingAt); // §8裁定済み#16(katana分岐と同じ理由)
 
     for (const id of grenadesToDetonate) {
       const grenade = projectiles.find(p => p.id === id);
@@ -9545,6 +9556,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 紫円(無の境地)の中で安全に振れてしまっていた。§1-3の規則は「プレイヤーの近接スイングが
       // 確定する箇所**すべて**に打つ」。守護霊(ghostId あり)は対象外=プレイヤーの操作ではない。
       get().commitMeleeSwing();
+      // §8裁定済み#16: 一閃は前隙が無い経路=打刻の呼び出し時刻(now)がそのまま「押した瞬間」。
+      get().noteMeleeSwingPressedAt(now);
     } else {
       // 守護霊: 防御規格を同一にする。プレイヤーの「invulnerableTime を過去へずらす」逆算打刻は
       // 実効的に「now + KATANA_DASH_MS まで無敵」と同値なので、ゴースト専用の無敵窓
@@ -14931,6 +14944,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({ player: stampMeleeSwingCommit(state.player, Date.now()) }));
   },
 
+  // research/AI_HUMANIZE.md §8 裁定済み#16(社長裁定2026-09-02=(a)): 「実際に押した時刻」の打刻。
+  // 呼び出し側が経路ごとの実測値を渡す(打刻された時刻から後で推測しない=打刻する側が渡す)。
+  noteMeleeSwingPressedAt: (pressedAtMs) => {
+    set(state => ({ player: { ...state.player, meleeSwingPressedAt: pressedAtMs } }));
+  },
+
   markFirstAidPoseFx: () => {
     set(state => ({ player: { ...state.player, firstAidPoseAt: Date.now() } }));
   },
@@ -18506,6 +18525,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadingWeaponId: '',
           meleeSwingAt: 0,
           meleeSwingCommitAt: 0,
+          meleeSwingPressedAt: 0,
           lastDamagedAtGame: 0,
           firstAidPoseAt: 0,
           magBonus: 0,

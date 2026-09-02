@@ -264,6 +264,39 @@ describe('帰属(§1-3・§1-0): T+300ms後追い・[T-1500,T+300]・Tに最も�
   });
 });
 
+describe('notePressEdge: 打刻を押下基準へ正規化(§8裁定済み#16・社長裁定2026-09-02=(a))', () => {
+  it('pressedAt省略(2引数呼び出し)はシフト無し=旧来どおりgameTimeをそのまま積む(後方互換)', () => {
+    const T = 10_000;
+    notePressEdge(0, 0); // 準備
+    notePressEdge(T, 1); // pressedAt省略
+    settleEpisode(baseInput({ gameTime: T }));
+    tickHabitEpisodeMaintenance(T + 300);
+    const ep = takeRunHabitFold()!.episodes['thor:issen-windup'][0];
+    expect(ep.pressOfs).toBe(0); // シフト無し=T丁度
+  });
+
+  it('前隙のある経路(pressedAt < commitAt)は commitAt-pressedAt ぶんgameTimeを早めて積む', () => {
+    const T = 10_000;
+    notePressEdge(0, 0, 0); // 準備
+    // 打刻(commitAt=1200)は実際の押下(pressedAt=1000)より200ms後=前隙200msぶんの打刻。
+    notePressEdge(T, 1200, 1000);
+    settleEpisode(baseInput({ gameTime: T }));
+    tickHabitEpisodeMaintenance(T + 300);
+    const ep = takeRunHabitFold()!.episodes['thor:issen-windup'][0];
+    expect(ep.pressOfs).toBe(-200); // T(gameTime)から200ms早い=押した瞬間まで戻っている
+  });
+
+  it('前隙の無い経路(pressedAt === commitAt)はシフト無し(打刻の呼び出し時刻そのまま)', () => {
+    const T = 10_000;
+    notePressEdge(0, 0, 0); // 準備
+    notePressEdge(T, 999, 999); // commitAt===pressedAt
+    settleEpisode(baseInput({ gameTime: T }));
+    tickHabitEpisodeMaintenance(T + 300);
+    const ep = takeRunHabitFold()!.episodes['thor:issen-windup'][0];
+    expect(ep.pressOfs).toBe(0); // シフト無し=T丁度
+  });
+});
+
 describe('リング10件(§1・ラン跨ぎ)', () => {
   it('同じ州キーで11回settleすると最新10件だけが残る', () => {
     const T0 = 100_000;

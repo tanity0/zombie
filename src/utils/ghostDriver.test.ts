@@ -28,7 +28,7 @@ import { jumpDodge, botSkillProfile } from './botSkill';
 import { resetGhostCommandBags } from './commandBag';
 import { resetModeBags } from './modeBag'; // GHOST-CMD-2A: 隙コマンドの2モード袋(ラン単位)
 import { PUNISH_AFTER_COUNTER_MS } from './punishWindow';
-import { COUNTER_WINDOW, COUNTER_COOLDOWN, MELEE_WINDUP_MS } from '../store/gameStore'; // GHOST-COUNTER-PARITY: 定数を写さずimportして検証する
+import { COUNTER_WINDOW, COUNTER_COOLDOWN } from '../store/gameStore'; // GHOST-COUNTER-PARITY: 定数を写さずimportして検証する
 import type { Enemy, Projectile } from '../types/game';
 import { mulberry32 } from './botUpgradePolicy'; // ★B3検収(重大1): 占有率保存の受け入れテスト用の決定的乱数流
 import { meanStillMs, stillStartChance, sampleStillMs } from './microRhythmReplay';
@@ -1799,14 +1799,13 @@ const mkEp = (over: Partial<HabitEpisode> = {}): HabitEpisode => ({
   posA: 100, posB: 0, sub: 0, pressOfs: null, ctxHp: 0, ctxHit: 0, seq: 1, ...over,
 });
 
-describe('AI_HUMANIZE B2: habitSwingAtFromPressOfs(§2-8確定事項#1=A1・押下の200ms減算)', () => {
+describe('AI_HUMANIZE B2: habitSwingAtFromPressOfs(§8裁定済み#16・記録が押下基準なので再生は減算しない)', () => {
   it('pressOfs=nullはnull(§2-8確定事項#2=A2「振らない」)', () => {
     expect(habitSwingAtFromPressOfs(10_000, null)).toBeNull();
   });
-  it('T + pressOfs − MELEE_WINDUP_MS(減算を省略しない)', () => {
-    expect(MELEE_WINDUP_MS).toBe(200); // 前提の固定(値が変わったら要再確認)
-    expect(habitSwingAtFromPressOfs(10_000, 100)).toBe(10_000 + 100 - 200);
-    expect(habitSwingAtFromPressOfs(10_000, -300)).toBe(10_000 - 300 - 200);
+  it('T + pressOfs(再生側で減算しない)', () => {
+    expect(habitSwingAtFromPressOfs(10_000, 100)).toBe(10_000 + 100);
+    expect(habitSwingAtFromPressOfs(10_000, -300)).toBe(10_000 - 300);
   });
 });
 
@@ -1884,7 +1883,7 @@ describe('AI_HUMANIZE B2: 段1(コマ再生)の駆動(decideGhost統合)', () =>
   const episodesWithPressOfs = (pressOfs: number | null): HabitEpisode[] =>
     [mkEp({ pressOfs }), mkEp({ pressOfs }), mkEp({ pressOfs })];
 
-  it('pressOfs=100・T=10000 → 振り始め9900(=T+pressOfs-MELEE_WINDUP_MS)ちょうどで振る', () => {
+  it('pressOfs=100・T=10000 → 振り始め10100(=T+pressOfs・§8裁定済み#16=再生側は減算しない)ちょうどで振る', () => {
     const profile: GhostProfile = {
       ...PROFILE, counterChance: 0, // 段3なら絶対に振らない設定(段1が上書きすることの証明)
       moveHabits: { 'thor:issen-windup': episodesWithPressOfs(100) },
@@ -1896,8 +1895,8 @@ describe('AI_HUMANIZE B2: 段1(コマ再生)の駆動(decideGhost統合)', () =>
       enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
     }));
     expect(d1.microHabitResolved).toBe(true);
-    expect(d1.microHabitSwingAt).toBe(T + 100 - MELEE_WINDUP_MS); // 9900
-    expect(d1.action).not.toBe('melee'); // まだ9900に達していない
+    expect(d1.microHabitSwingAt).toBe(T + 100); // 10100
+    expect(d1.action).not.toBe('melee'); // まだ10100に達していない
     expect(d1.moveRoll).toBeDefined(); // 袋抽選(rollGhostMoveReaction)は段1でも引かれている
     const carry = (d: ReturnType<typeof decideGhost>): GhostSelf => mkGhost({
       x: 300, y: -300, lastMeleeAt: -1_000_000,
@@ -1908,14 +1907,14 @@ describe('AI_HUMANIZE B2: 段1(コマ再生)の駆動(decideGhost統合)', () =>
       microHabitTargetY: d.microHabitTargetY, microHabitArmKey: d.microHabitArmKey,
       microHabitSeqCounts: d.microHabitSeqCounts,
     });
-    // 1ms手前(9899)はまだ振らない。
+    // 1ms手前(10099)はまだ振らない。
     const before = decideGhost(baseDriverInput({
-      ghost: carry(d1), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 101, nowMs: T - 101,
+      ghost: carry(d1), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T + 99, nowMs: T + 99,
     }));
     expect(before.action).not.toBe('melee');
-    // 9900ちょうどで振る(意図フラグ付き)。
+    // 10100ちょうどで振る(意図フラグ付き)。
     const swing = decideGhost(baseDriverInput({
-      ghost: carry(before), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
+      ghost: carry(before), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T + 100, nowMs: T + 100,
     }));
     expect(swing.action).toBe('melee');
     expect(swing.meleeIsCounterAttempt).toBe(true);
@@ -2141,8 +2140,9 @@ describe('AI_HUMANIZE B2 検収是正#5: TFrozenは州(counterArmKey)が続く�
       enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
     }));
     expect(d1.microHabitTFrozen).toBe(T); // habitNewArmの瞬間に凍結
+    // §8裁定済み#16: 振り始めはT+100(=T+pressOfs・再生側は減算しない)。
     const swing = decideGhost(baseDriverInput({
-      ghost: carry(d1), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
+      ghost: carry(d1), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T + 100, nowMs: T + 100,
     }));
     expect(swing.action).toBe('melee'); // 振りが成立した
     // ★検収是正#5: 旧実装はここでmicroHabitTFrozenをundefinedへ戻していた(=次の解決がnowMsへ
@@ -2157,7 +2157,7 @@ describe('AI_HUMANIZE B2 検収是正#5: TFrozenは州(counterArmKey)が続く�
       enemies: [boss1], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
     }));
     const swing = decideGhost(baseDriverInput({
-      ghost: carry(d1), enemies: [boss1], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
+      ghost: carry(d1), enemies: [boss1], boundBossId: 'thor-1', profile, gameTime: T + 100, nowMs: T + 100,
     }));
     expect(swing.action).toBe('melee');
     expect(swing.counterPendingAt).toBeUndefined(); // 振り成立で錨は一旦外れる(次の機会に備える)
@@ -2165,11 +2165,11 @@ describe('AI_HUMANIZE B2 検収是正#5: TFrozenは州(counterArmKey)が続く�
     // (賞金首KB中の後退の代用)。armKeyが変わっていないのでhabitNewArmは立たない=凍結は張り直らない。
     const boss2 = bossAt(T - 5000);
     const resolveAgain = decideGhost(baseDriverInput({
-      ghost: carry(swing), enemies: [boss2], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
+      ghost: carry(swing), enemies: [boss2], boundBossId: 'thor-1', profile, gameTime: T + 100, nowMs: T + 100,
     }));
     // 生のwindupImpactAt(T-5000)ではなく、凍結済みのT(10000)を基準に解決している
-    // (=microHabitSwingAt = T + pressOfs(100) - MELEE_WINDUP_MS(200) = 9900のまま)。
-    expect(resolveAgain.microHabitSwingAt).toBe(T + 100 - MELEE_WINDUP_MS);
+    // (§8裁定済み#16=microHabitSwingAt = T + pressOfs(100) = 10100のまま)。
+    expect(resolveAgain.microHabitSwingAt).toBe(T + 100);
     expect(resolveAgain.microHabitTFrozen).toBe(T); // 凍結値そのものも据え置き
   });
 });
