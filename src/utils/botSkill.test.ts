@@ -171,8 +171,8 @@ describe('回避の段階(dodgeHandles / dodgeVector)', () => {
 
   // research/AI_HUMANIZE.md B2 §2-1「回避外しの実仕組み」: 位置取り中は対象敵×対象州の予告回避だけを
   // 抑止する省略可能引数(excludeTelegraphFor)。省略時は従来と1bit同じ(このファイルの他の全テストが
-  // 省略呼び出しのまま緑=既に立証済み)。
-  describe('excludeTelegraphFor(§2-1「回避外しの実仕組み」・省略可能引数)', () => {
+  // 省略呼び出しのまま緑=既に立証済み)。★検収是正#4: 敵まるごとではなく州(moveKey)単位。
+  describe('excludeTelegraphFor(§2-1「回避外しの実仕組み」・省略可能引数・検収是正#4=州単位)', () => {
     const stomper = enemy({
       id: 'e1', aiPhase: 'g-stomp-windup', x: 0, y: 0, width: 40, height: 40, gStompRadius: 100,
     } as never);
@@ -181,8 +181,8 @@ describe('回避の段階(dodgeHandles / dodgeVector)', () => {
       expect(dodgeVector(BOT_SKILL_PROFILES.master, 20, 20, [stomper], [])).toBeTruthy();
     });
 
-    it('指定した敵がtrueを返す時、その敵の予告回避だけを抑止する', () => {
-      const v = dodgeVector(BOT_SKILL_PROFILES.master, 20, 20, [stomper], [], 0, e => e.id === 'e1');
+    it('指定した敵が一致する技キーを返す時、その敵のその技の予告回避だけを抑止する', () => {
+      const v = dodgeVector(BOT_SKILL_PROFILES.master, 20, 20, [stomper], [], 0, e => (e.id === 'e1' ? 'g-stomp-windup' : undefined));
       expect(v).toBeNull();
     });
 
@@ -190,8 +190,42 @@ describe('回避の段階(dodgeHandles / dodgeVector)', () => {
       const other = enemy({
         id: 'e2', aiPhase: 'g-stomp-windup', x: 0, y: 0, width: 40, height: 40, gStompRadius: 100,
       } as never);
-      const v = dodgeVector(BOT_SKILL_PROFILES.master, 20, 20, [other], [], 0, e => e.id === 'e1' /* e2は対象外 */);
+      const v = dodgeVector(BOT_SKILL_PROFILES.master, 20, 20, [other], [], 0, e => (e.id === 'e1' ? 'g-stomp-windup' : undefined) /* e2は対象外 */);
       expect(v).toBeTruthy();
+    });
+
+    it('検収是正#4: 返した技キーが今の技と食い違う(=別州)なら抑止しない', () => {
+      const v = dodgeVector(BOT_SKILL_PROFILES.master, 20, 20, [stomper], [], 0, e => (e.id === 'e1' ? 'g-sweep-windup' : undefined));
+      expect(v).toBeTruthy(); // 'g-stomp-windup'は抑止対象の'g-sweep-windup'と一致しないので避け続ける
+    });
+
+    it('検収是正#4: 同時進行のgiantDelayedHits(遅延ダメージ=別技の残り)は今の技を抑止しても避け続ける', () => {
+      const withDelayed = enemy({
+        id: 'e1', aiPhase: 'g-stomp-windup', x: 0, y: 0, width: 40, height: 40, gStompRadius: 100,
+        giantDelayedHits: [{ x: 20, y: 20, radius: 50, fireAt: 0 } as never],
+      } as never);
+      const v = dodgeVector(BOT_SKILL_PROFILES.master, 20, 20, [withDelayed], [], 0, e => (e.id === 'e1' ? 'g-stomp-windup' : undefined));
+      expect(v).toBeTruthy(); // g-stomp-windup(今の技)は抑止されるが、giantDelayedHitsは州に関係なく残る
+    });
+  });
+
+  describe('telegraphDodge の excludeMoveKey(検収是正#4・州単位)', () => {
+    it('excludeMoveKeyが今の技と一致すると円/帯は落ちるがgiantDelayedHitsは残る', () => {
+      const e = enemy({
+        aiPhase: 'g-stomp-windup', x: 0, y: 0, width: 40, height: 40, gStompRadius: 100,
+        giantDelayedHits: [{ x: 20, y: 20, radius: 50, fireAt: 0 } as never],
+      } as never);
+      const full = telegraphDodge(20, 20, e);
+      const excluded = telegraphDodge(20, 20, e, 'g-stomp-windup');
+      expect(full.length).toBeGreaterThan(excluded.length);
+      expect(excluded.length).toBeGreaterThan(0); // giantDelayedHitsは残る
+    });
+
+    it('excludeMoveKeyが今の技と食い違う時は何も落ちない', () => {
+      const e = enemy({ aiPhase: 'g-stomp-windup', x: 0, y: 0, width: 40, height: 40, gStompRadius: 100 } as never);
+      const full = telegraphDodge(20, 20, e);
+      const notExcluded = telegraphDodge(20, 20, e, 'g-sweep-windup');
+      expect(notExcluded.length).toBe(full.length);
     });
   });
 

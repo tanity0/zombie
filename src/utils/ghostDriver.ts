@@ -543,9 +543,11 @@ const GHOST_DODGE_PROFILE: BotSkillProfile = {
  * 対象外**=幾何のまま(botSkill.tsはテストボット共用のため不触)。回転は決定的(randを使わない)。
  * dodgeDir欠損(旧プロファイル・n=0)= θ=0 = 従来とベクトルもビット一致。
  *
- * `excludeTelegraphFor`(省略可能・research/AI_HUMANIZE.md B2 §2-1「回避外しの実仕組み」): 段1/段2の
- * 位置取り中、対象敵×対象州の予告回避(base側のtelegraphDodge**と**全ボス予告台帳の差分の両方)を
- * 抑止する。**省略時は従来と1bit同じ**。
+ * `excludeTelegraphFor`(省略可能・research/AI_HUMANIZE.md B2 §2-1「回避外しの実仕組み」・
+ * 検収是正#4で州単位へ拡張): 段1/段2の位置取り中、対象敵×**対象州だけ**の予告回避
+ * (base側のtelegraphDodge**と**全ボス予告台帳の差分の両方)を抑止する(敵が同時に出している
+ * 別州のハザードは従来どおり避ける)。呼ぶと抑止したい技キー(`e.aiPhase`/`e.bossState`の値)を
+ * 返す関数(抑止しないなら`undefined`)。**省略時は従来と1bit同じ**。
  */
 export const ghostDodgeVector = (
   gcx: number, gcy: number,
@@ -556,7 +558,7 @@ export const ghostDodgeVector = (
   tankedBulletKey?: string,
   dodgeDir?: DodgeDirStat,
   orbitSign?: 1 | -1,
-  excludeTelegraphFor?: (e: Enemy) => boolean,
+  excludeTelegraphFor?: (e: Enemy) => string | undefined,
 ): { x: number; y: number } | null => {
   const seen = tankedBulletKey === undefined
     ? projectiles
@@ -571,7 +573,7 @@ export const ghostDodgeVector = (
   // GHOST-CMD-1B: 接線回転の角度(決定的・randなし)。0なら従来の合成式に1bitも触れない。
   const theta = Math.min(GHOST_DODGE_DIR_MAX_RAD, GHOST_DODGE_DIR_MAX_RAD * ghostDodgeLateralFrac(dodgeDir));
   for (const e of enemies) {
-    const extras: GhostDodgeThreat[] = excludeTelegraphFor?.(e) ? [] : ghostExtraTelegraphDodge(gcx, gcy, e);
+    const extras: GhostDodgeThreat[] = ghostExtraTelegraphDodge(gcx, gcy, e, excludeTelegraphFor?.(e));
     for (const t of extras) {
       if (theta > 0 && t.shape === 'circle') {
         // 放射(ux,uy)を接線側へθ回転。接線の向きの規約は decideGhost の orbitVec と同一:
@@ -899,7 +901,12 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   const micro = profile.microRhythm;
   const microSeed = input.microSeed ?? 0;
   // ★検収是正(軽2): microが無いプロファイル(大多数)ではカーソル(mulberry32の閉包)自体を作らない。
-  // 戻り値のmicroDrawIndexはindexを素通りさせるだけの軽量オブジェクトで足りる(mrandはどのみち呼ばれない)。
+  // 戻り値のmicroDrawIndexはindexを素通りさせるだけの軽量オブジェクトで足りる。
+  // ★記述の訂正(検収是正・記述と実態の食い違い): 「mrandはどのみち呼ばれない」は誤り——
+  // micro(profile.microRhythm)の有無とは無関係に、**段1のタイ崩し**(pickHabitPositionEpisode)と
+  // **段2の押下率抽選**(pressRatePct)がmrandを呼ぶ(profile.moveHabits/habitFamilyがあれば発火する)。
+  // microが無い間はダミーカーソル(常に0を返す)なので、呼ばれても決定的な0を返すだけで安全
+  // (microRhythm由来の抽選消費順を汚さない、という当初の意図は保たれている)。
   const microCursor = micro
     ? createMicroRandCursor(microSeed, ghost.microDrawIndex ?? 0)
     : { rand: () => 0, nextIndex: () => ghost.microDrawIndex ?? 0 };
@@ -1047,50 +1054,6 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // 'rush' = 「詰めて叩く」。'shoot'/窓なしは従来どおり(間合い管理のまま撃つ)。⑦の遅延中はまだ詰めない。
   const punishRush = punishMode === 'rush' && nowMs >= microPunishDelayUntil;
 
-  // research/AI_HUMANIZE.md B2 §2-1「回避外しの実仕組み」: 段1/段2の位置取りが対象にする敵×州だけ、
-  // その予告回避を抑止する(下の本判定=habitStage算出の軽量な先取り。target/gameTime/profileだけの
-  // 純粋な導出=副作用なし・二重計算のコストは無視できる)。katana装備の霊・軸を毎フレーム追う州
-  // (TRACKED_SHAPE_KEYS)は位置取り自体を行わないので抑止もしない。
-  // ★v5是正「移動分岐の入り方」: 位置取りはdodge/tankロールでも同じ動きをする(reactionでは
-  // 分岐しない=「この技を避ける人」の再現はコマの遠い位置+pressOfs=nullが担う)ので、抑止もreactionに
-  // 依存しない。
-  let habitDodgeExcludeTargetId: string | null = null;
-  {
-    const armKeyEarly = target.bossState ?? target.aiPhase;
-    const keyEarly = armKeyEarly !== undefined ? `${target.type}:${armKeyEarly}` : null;
-    if (keyEarly !== null && isEpisodeKey(keyEarly) && !input.isKatanaEquipped
-      && !TRACKED_SHAPE_KEYS.includes(keyEarly)) {
-      const shapeEarly = shapeForEpisodeReplay(target.type, armKeyEarly as string, target);
-      if (shapeEarly && shapeEarly.kind !== 'none') {
-        const stageEarly = resolveHabitStage(profile, keyEarly, habitFamilyOfShape(shapeEarly));
-        if (stageEarly === 1 || stageEarly === 2) habitDodgeExcludeTargetId = target.id;
-      }
-    }
-  }
-  // 回避(§2.12「実行は常に本気」=強さは常に1)。既存 dodgeVector + 全ボス予告台帳の差分。
-  // v0.25.2547: maxHealth を渡す=接触(体当たり)回避が有効(危険な接触のみ・botSkill既存規格)。
-  // GHOST-CMD-1B: 避け方向の癖(円形タグ付き脅威だけ接線へ≤45°回転・決定的)。欠損=従来とビット一致。
-  const dodge = ghostDodgeVector(
-    gcx, gcy, enemies, projectiles, ghost.maxHealth, input.meleeDist, tankedBulletKey,
-    profile.dodgeDir, orbitSign,
-    habitDodgeExcludeTargetId !== null ? (e: Enemy) => e.id === habitDodgeExcludeTargetId : undefined,
-  );
-
-  // §2.12(1) 反応遅延 + GHOST-BULLET-TECH A(認知の持続): 「危険」(標的ボスの予告 or 回避対象の脅威)を
-  // **エピソード**として持ち回り、計測 reactionMs(100-800clamp)経過して初めて回避を始める。
-  // 遅延を払うのは**エピソードにつき1回**で、危険が途切れても GHOST_DANGER_MEMORY_MS は認知を保つ
-  // =弾幕の波ごとに盲目窓が再発生しない(初弾は食らうが以降は本気で避ける)。
-  const reactionMs = ghostReactionMs(profile.reactionMs);
-  const windupNow = isTelegraphActive(target);
-  const dangerNow = windupNow || dodge !== null;
-  const danger = stepGhostDanger(
-    ghost.dangerSeenAt !== undefined ? { seenAt: ghost.dangerSeenAt, lastDangerAt: ghost.dangerLastAt } : undefined,
-    dangerNow, nowMs, reactionMs,
-  );
-  const dangerSeenAt = danger.memory?.seenAt;
-  const dangerLastAt = danger.memory?.lastDangerAt;
-  const activeDodge = danger.reacted ? dodge : null;
-
   // カウンター窓の見切り(§2.12・要件6)。**移動より先に**判定する: 見切った後は「詰める/張り付く」を
   // やめて通常の間合い管理へ戻す(旧: 窓が閉じるまで無時限に張り付いて被弾していた)。
   const inMeleeRange = edgeDist <= GHOST_MELEE_RANGE;
@@ -1182,6 +1145,48 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     const prevSeq = microHabitSeqCounts?.[habitArmKeyNext] ?? 0;
     microHabitSeqCounts = { ...(microHabitSeqCounts ?? {}), [habitArmKeyNext]: Math.min(20, prevSeq + 1) };
   }
+
+  // research/AI_HUMANIZE.md B2 §2-1「回避外しの実仕組み」: 段1/段2の位置取りが対象にする敵×州だけ、
+  // その予告回避を抑止する。★検収是正#3: 独自の「早取り」判定は持たない——上で確定済みの
+  // habitPositionApplies/habitEarlyPositionOk/counterGaveUp(=下の位置取り分岐と**全く同じ式**)を
+  // そのまま使う。旧実装は段1・段2のどちらも予告の立ち上がりから抑止していたが、実際に位置取りが
+  // 動くのは段1だけ早く(habitEarlyPositionOk)・段2はcounterWatchingが立ってから(!counterGaveUp)
+  // なので、段2は「見切っていない」間だけ抑止する(旧実装は段2の空白=避けもせず寄りもしない時間を
+  // 作っていた)。katana装備の霊・軸を毎フレーム追う州(TRACKED_SHAPE_KEYS)はhabitPositionAppliesが
+  // falseになる=位置取り自体を行わないので抑止もしない(従来どおり)。
+  // ★検収是正#4: 敵まるごとではなく**その州(moveKey=bossState/aiPhase)だけ**を落とす
+  // (三連射の三拍目・滑空の二撃目・床など、同時進行の別ハザードは従来どおり避け続ける)。
+  const habitDodgeExcludeMoveKey = (habitPositionApplies && (habitEarlyPositionOk || !counterGaveUp)
+    && counterArmKeyNow !== undefined)
+    ? { targetId: target.id, moveKey: counterArmKeyNow }
+    : null;
+  const habitDodgeExcludeFor = habitDodgeExcludeMoveKey !== null
+    ? (e: Enemy): string | undefined =>
+      (e.id === habitDodgeExcludeMoveKey.targetId ? habitDodgeExcludeMoveKey.moveKey : undefined)
+    : undefined;
+  // 回避(§2.12「実行は常に本気」=強さは常に1)。既存 dodgeVector + 全ボス予告台帳の差分。
+  // v0.25.2547: maxHealth を渡す=接触(体当たり)回避が有効(危険な接触のみ・botSkill既存規格)。
+  // GHOST-CMD-1B: 避け方向の癖(円形タグ付き脅威だけ接線へ≤45°回転・決定的)。欠損=従来とビット一致。
+  const dodge = ghostDodgeVector(
+    gcx, gcy, enemies, projectiles, ghost.maxHealth, input.meleeDist, tankedBulletKey,
+    profile.dodgeDir, orbitSign,
+    habitDodgeExcludeFor,
+  );
+
+  // §2.12(1) 反応遅延 + GHOST-BULLET-TECH A(認知の持続): 「危険」(標的ボスの予告 or 回避対象の脅威)を
+  // **エピソード**として持ち回り、計測 reactionMs(100-800clamp)経過して初めて回避を始める。
+  // 遅延を払うのは**エピソードにつき1回**で、危険が途切れても GHOST_DANGER_MEMORY_MS は認知を保つ
+  // =弾幕の波ごとに盲目窓が再発生しない(初弾は食らうが以降は本気で避ける)。
+  const reactionMs = ghostReactionMs(profile.reactionMs);
+  const windupNow = isTelegraphActive(target);
+  const dangerNow = windupNow || dodge !== null;
+  const danger = stepGhostDanger(
+    ghost.dangerSeenAt !== undefined ? { seenAt: ghost.dangerSeenAt, lastDangerAt: ghost.dangerLastAt } : undefined,
+    dangerNow, nowMs, reactionMs,
+  );
+  const dangerSeenAt = danger.memory?.seenAt;
+  const dangerLastAt = danger.memory?.lastDangerAt;
+  const activeDodge = danger.reacted ? dodge : null;
 
   // 間合い管理: preferredDist(平時)/+安全マージン(予告中)へ寄せる。
   // §2.12追補(社長裁定v0.25.2534): 静止は「カウンター待ち」以外に存在させない。旧実装で立ち尽くして
@@ -1422,9 +1427,15 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       // ---- research/AI_HUMANIZE.md B2 §2-3+§2-8(A1/A2/A4/A5/A6/A7・#12): コマ/族から振りを決める ----
       const habitKeyNow = habitKey as string;
       // §2-8確定事項#4(A6): T(着弾時刻)は構え開始で凍結した値を使う(habitNewArmの瞬間に確定済み)。
-      const TFrozen = microHabitTFrozen ?? windupImpactAt ?? nowMs; // 最後のnowMsは理論上到達しない安全弁
+      // ★検収是正#5(A7「時計を混ぜない」違反の是正): 旧実装は `?? nowMs`(Date.now系)で埋めていたが、
+      // 直後に `gameTime >= TFrozen - ...` と**gameTime系と直接比較**しており時計が混ざっていた。
+      // windupImpactAtはgameTime系の同じ錨(episodeKey州は必ず定義済み=habitNewArmの瞬間に
+      // microHabitTFrozenへ複製される値そのもの)なのでフォールバック先として安全。それも無い
+      // (理論上到達しない)場合は**nowMsを発明せず、このtickは解決を見送る**(段3への降格はしない
+      // =habitStageは既にこのtickの位置取り等で使用済みのため、ここだけ差し替えると分裂する)。
+      const TFrozen = microHabitTFrozen ?? windupImpactAt;
       // §2-3「振り判断時点(T−500ms)」に達したら1回だけコマ/族から決める(gameTimeのみ=A7)。
-      if (!microHabitResolved && gameTime >= TFrozen - GHOST_HABIT_SWING_DECIDE_LEAD_MS) {
+      if (TFrozen !== undefined && !microHabitResolved && gameTime >= TFrozen - GHOST_HABIT_SWING_DECIDE_LEAD_MS) {
         const bossRectNow: Rect = { x: target.x, y: target.y, width: target.width, height: target.height };
         const ctxHpNow: 0 | 1 = ghost.hpFrac01 !== undefined && ghost.hpFrac01 <= 0.3 ? 1 : 0;
         const ctxHitNow: 0 | 1 = ghost.lastHit !== undefined && ghost.lastHit > 0
@@ -1462,7 +1473,12 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       if (counterWillAttempt && microHabitResolved && habitAimReady && habitMeleeReady && counterMeleeReady) {
         action = 'melee'; lastMeleeAt = nowMs; lastCounterAttemptAt = nowMs;
         counterPendingAt = undefined; counterWillAttempt = false;
-        microHabitResolved = false; microHabitSwingAt = undefined; microHabitTFrozen = undefined;
+        // ★検収是正#5: microHabitTFrozenはここで消さない——「その州(counterArmKey)が続く間は保持する」
+        // (§2-8確定事項#4)。振り解決だけをリセットして次の機会に備える(counterPendingAt=undefinedで
+        // 同じ州のまま次tickに再度「新しい機会」として構え直ることがある=A6の凍結が効かないと、
+        // その再構えが生のwindupImpactAt(賞金首KB等で後退しうる)を拾ってしまう)。
+        // 凍結は habitNewArm(=counterArmKeyNowが実際に変わった時)だけが張り直す。
+        microHabitResolved = false; microHabitSwingAt = undefined;
         meleeIsCounterAttempt = true;
       }
     } else {

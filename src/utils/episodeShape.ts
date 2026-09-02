@@ -57,6 +57,23 @@ export const LIVE_EPISODE_KEYS: readonly string[] = [
   'giantbat:g-trishot-windup', 'giantbat:g-reach-windup', 'giantbat:g-tailslam-windup',
 ];
 
+/**
+ * 検収是正#1(§2-8確定事項#7=A10の未実装分): declared系(COUNTER_REACH_DECL経由=`counterReachShapeFor`)
+ * のうち、判定側が cx/cy を**自分自身(bcx/bcy)**で返す自分中心円(軸退化)の州の台帳。
+ * **記録側(bountyTick.ts)と再生側(habitEpisode.axisForEpisodeReplay)が同じこの関数から軸を取る**
+ * (旧実装は記録側だけが呼び出し元でaxisOverrideを渡して退化させ、再生側は生の
+ * `enemy.aiFromX/aiTargetX`(=前の技の残骸)を読んでいたため、記録は退化・再生は絶対角という
+ * ズレが生じていた)。判定側の根拠: counterReach.ts の 'bounty:bm-whip360-windup'/'bounty:mk-spin-windup'
+ * はどちらも `{ kind: 'circle', cx: ctx.bcx, cy: ctx.bcy, ... }`(=常に自分中心)を返す。
+ */
+export const DECLARED_SELF_CENTERED_AXIS_KEYS: readonly string[] = [
+  'bounty-melee:bm-whip360-windup',
+  'bounty-maiko:mk-spin-windup',
+];
+
+export const isDeclaredSelfCenteredAxisKey = (enemyType: string, state: string): boolean =>
+  DECLARED_SELF_CENTERED_AXIS_KEYS.includes(`${enemyType}:${state}`);
+
 const band1 = (fx: number, fy: number, tx: number, ty: number, halfWidth: number): CounterReachShape =>
   ({ kind: 'band', bands: [{ fx, fy, tx, ty, halfWidth }] });
 

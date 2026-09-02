@@ -5,13 +5,17 @@
 // ## 依存の軽い葉(counterReach.tsと同じ理由・v0.25.3390のTDZ事故の再発防止)
 // gameStore.ts はこのファイルを import する側(giantbat/bountyTick/angelBossTick/useGameLoopの記録
 // フックから settleEpisode を呼ぶ)なので、**このファイルは gameStore.ts を import しない**。
-// giant系の実寸法(GIANT_STOMP_RADIUS等)は gameStore.ts側が既に知っているので、呼び出し側がその場で
-// 組んだ図形(liveShape)を渡す形にして、ここでの数値複製を避ける(§0-3実測主義=判定側の定数を直接参照)。
+// ★記述の訂正(検収是正・記述と実態の食い違い): 天使7州+城ボス9州(giant9州)の実寸法は、
+// ★未決#14(社長裁定2026-09-02=(a))実装後は**葉モジュール episodeShape.ts が単一の出どころ**
+// (`episodeShapeFor`)。gameStore.ts/angelBossTick.ts はそこから寸法定数を再exportして使うだけで、
+// もう「呼び出し側がその場でliveShapeを組む」ことはしていない(呼び出し側は episodeShapeFor の
+// 戻り値をそのまま liveShape として渡す=数値の複製ゼロ)。
 //
 // ## 図形の引き先(§1-0)は3段
 // ① COUNTER_REACH_DECL に宣言がある州(bounty/thor 17州)= counterReachShapeFor をそのまま呼ぶ
 //    (数値複製ゼロ・判定と同じ関数)。
-// ② 判定側に実図形はあるが宣言表には無い州(天使7州+giant9州)= 呼び出し側が liveShape を組んで渡す。
+// ② 判定側に実図形はあるが宣言表には無い州(天使7州+giant9州)= 呼び出し側が episodeShapeFor
+//    (episodeShape.ts)の戻り値を liveShape として渡す。
 // ③ どちらも無い州(giantbat:g-bolt-windup のみ)= body(縁基準)。
 import type { Rect } from '../world/obstacles';
 import type { Enemy } from '../types/game';
@@ -24,7 +28,7 @@ import { IMPACT_AT_WINDUP_END_BOSS_STATES, GIANT_IMPACT_AT_WINDUP_END } from './
 // research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): live 16州(天使7+城ボス9)の
 // 実図形は葉モジュール episodeShape.ts が持つ(数値の複製禁止=gameStore.ts/angelBossTick.tsの
 // 寸法定数はこのファイル経由ではなくepisodeShape.tsが単一の出どころ)。
-import { episodeShapeFor, episodeAxisFor } from './episodeShape';
+import { episodeShapeFor, episodeAxisFor, isDeclaredSelfCenteredAxisKey } from './episodeShape';
 
 // =================================================================================================
 // EPISODE_KEYS(§1-0・機械検査対象)
@@ -124,8 +128,14 @@ export const axisForEpisodeReplay = (
 ): { fromX: number; fromY: number; toX: number; toY: number } => {
   const episodeKey = `${enemyType}:${state}`;
   const category = EPISODE_SHAPE_DECL[episodeKey];
-  if (category === 'live') return episodeAxisFor(enemyType, state, enemy);
   const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+  if (category === 'live') return episodeAxisFor(enemyType, state, enemy);
+  // 検収是正#1(§2-8確定事項#7=A10): declared自分中心州(記録側=bountyTick.ts settleBountyHabitと
+  // 同じ台帳)は軸を退化させる(今の自分=from=to)。前の技の残骸(enemy.aiFromX/aiTargetX)を
+  // 絶対角として復元しない——退化州は「角度は今の霊の角度を保つ」(unhabitPosのcurrentAngleRad任せ)。
+  if (isDeclaredSelfCenteredAxisKey(enemyType, state)) {
+    return { fromX: ecx, fromY: ecy, toX: ecx, toY: ecy };
+  }
   return {
     fromX: enemy.aiFromX ?? ecx, fromY: enemy.aiFromY ?? ecy,
     toX: enemy.aiTargetX ?? ecx, toY: enemy.aiTargetY ?? ecy,
@@ -274,8 +284,18 @@ export const unhabitPos = (
   // §2-8確定事項#7(A10): 軸退化(自分中心の技)は絶対角を発明せず今の角度を保つ。
   const angle = degenerate ? currentAngleRad : axisAngle + clamp(posB, -1, 1) * Math.PI;
   if (shape.kind === 'body') {
-    const dist = clamp(posA, 0, 2) * HABIT_BODY_UNIT_PX;
-    return { x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist };
+    // 検収是正#2(単位取り違え): habitPosのbody分岐は**縁距離**(edgeDistToRect=AABB最近点)/74を
+    // posAとして保存している。旧実装はここでposA*74を**中心から**測っており、300×300のボスなら
+    // 縁から74px(posA=1.00)を逆写像すると中心から74px=**体内**に戻っていた(v0.25.2567の再演)。
+    // 正しい逆写像=「中心から角度angleへ伸ばした光線がAABBの境界(縁)に当たる距離」+ posA*74。
+    // 軸整列(顔面)方向は往復で厳密一致・角の方向は近似(AABBは円ではないため厳密逆写像は存在しない)。
+    const cosA = Math.cos(angle), sinA = Math.sin(angle);
+    const hw = bossRect.width / 2, hh = bossRect.height / 2;
+    const tx = Math.abs(cosA) > 1e-6 ? hw / Math.abs(cosA) : Infinity;
+    const ty = Math.abs(sinA) > 1e-6 ? hh / Math.abs(sinA) : Infinity;
+    const edgeDist = Math.min(tx, ty); // 中心→AABB境界(縁)までの距離(この角度方向)
+    const dist = edgeDist + clamp(posA, 0, 2) * HABIT_BODY_UNIT_PX;
+    return { x: cx + cosA * dist, y: cy + sinA * dist };
   }
   const dist = clamp(posA, 0, 2) * shape.radius;
   return { x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist };

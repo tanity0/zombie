@@ -38,6 +38,7 @@ import {
 // research/AI_HUMANIZE.md B1(コマ台帳・記録専用): 賞金首17州(①declared=COUNTER_REACH_DECL経由)の
 // 州満了エッジに1行差す。
 import { settleEpisode } from './habitEpisode';
+import { isDeclaredSelfCenteredAxisKey } from './episodeShape'; // 検収是正#1(§2-8確定事項#7=A10): 記録側・再生側が同じ台帳から軸を取る
 // §6.38 v12「バス停の新技『三段突き』」(社長裁定2026-08-15): 3本の角度・タイミングは判定/描画が
 // 同じ純関数から導く(bountyTriple.ts=依存ゼロの葉。bountyDims.tsと同じ循環import防止の流儀)。
 import {
@@ -686,17 +687,19 @@ const beginBrLaser = ({ s, newGameTime, pcx, pcy, bcx, bcy, sfx, patch }: Bounty
  */
 const settleBountyHabit = (
   bounty: Enemy, state: string, gameTime: number, bcx: number, bcy: number,
-  // 自分中心(軸退化)技(bm-whip360/mk-spin)は aiFromX/aiTargetX が前の技の残骸のままなので、
-  // ここで明示的に bcx/bcy を渡して軸を強制退化させる(§1-2「自分中心で軸が退化する州は0固定」)。
-  axisOverride?: { aiFromX: number; aiFromY: number; aiTargetX: number; aiTargetY: number },
 ): void => {
   const player = useGameStore.getState().player;
   const truePcx = player.x + player.width / 2, truePcy = player.y + player.height / 2;
+  // 検収是正#1(§2-8確定事項#7=A10): 自分中心(軸退化)技(bm-whip360/mk-spin)は aiFromX/aiTargetX が
+  // 前の技の残骸のままなので、葉モジュールの台帳(episodeShape.ts)で判定して bcx/bcy を強制する
+  // (§1-2「自分中心で軸が退化する州は0固定」)。**再生側(habitEpisode.axisForEpisodeReplay)も
+  // 同じ台帳を引く**=記録と再生が同じ軸を見る(片方だけの独自判定にしない)。
+  const selfCentered = isDeclaredSelfCenteredAxisKey(bounty.type, state);
   settleEpisode({
     gameTime, enemyType: bounty.type, state,
     bcx, bcy, pcx: truePcx, pcy: truePcy,
-    aiFromX: axisOverride?.aiFromX ?? bounty.aiFromX, aiFromY: axisOverride?.aiFromY ?? bounty.aiFromY,
-    aiTargetX: axisOverride?.aiTargetX ?? bounty.aiTargetX, aiTargetY: axisOverride?.aiTargetY ?? bounty.aiTargetY,
+    aiFromX: selfCentered ? bcx : bounty.aiFromX, aiFromY: selfCentered ? bcy : bounty.aiFromY,
+    aiTargetX: selfCentered ? bcx : bounty.aiTargetX, aiTargetY: selfCentered ? bcy : bounty.aiTargetY,
     tripleAng: bounty.bountyTripleAng,
     bossRect: { x: bounty.x, y: bounty.y, width: bounty.width, height: bounty.height },
     playerHealth: player.health, playerMaxHealth: player.maxHealth,
@@ -1215,7 +1218,7 @@ const tickMelee = (
   // ---- ダッシュ後の360度ムチ振り(社長指示v0.25.3473) -------------------------------------------
   if (st === 'bm-whip360-windup') {
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
-      settleBountyHabit(bounty, 'bm-whip360-windup', newGameTime, bcx, bcy, { aiFromX: bcx, aiFromY: bcy, aiTargetX: bcx, aiTargetY: bcy });
+      settleBountyHabit(bounty, 'bm-whip360-windup', newGameTime, bcx, bcy);
       patch.bossState = 'bm-whip360';
       patch.bossStateUntil = newGameTime + BM_T.whip360.active;
       s.whip360Hit = false;
@@ -1744,7 +1747,7 @@ const tickMaiko = (
   // ---- 毬回し(自分中心円) -----------------------------------------------------------------------
   if (st === 'mk-spin-windup') {
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
-      settleBountyHabit(bounty, 'mk-spin-windup', newGameTime, bcx, bcy, { aiFromX: bcx, aiFromY: bcy, aiTargetX: bcx, aiTargetY: bcy });
+      settleBountyHabit(bounty, 'mk-spin-windup', newGameTime, bcx, bcy);
       patch.bossState = 'mk-spin';
       patch.bossStateUntil = newGameTime + MK_T.spin.active;
       sfx.spin?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)

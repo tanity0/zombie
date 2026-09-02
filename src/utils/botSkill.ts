@@ -307,47 +307,60 @@ export const bandThreat = (
  * 帯: 溜め中/実行中に `aiFrom→aiTarget` を持つ技すべて(薙ぎ払い/突進/噛みつき/のしかかり/
  *     滑空/翼撃/掃射ビーム/届く手…) と 遅延ダメージのカプセル。
  */
-export const telegraphDodge = (pcx: number, pcy: number, e: Enemy): DodgeThreat[] => {
+/**
+ * `excludeMoveKey`(省略可能・research/AI_HUMANIZE.md B2 §2-1「回避外しの実仕組み」・検収是正#4):
+ * この敵の**今出している単一の技**(`e.aiPhase ?? e.bossState`)がこのキーと一致する時だけ、
+ * その技ぶんの円/帯を落とす。**`giantDelayedHits`(遅延ダメージ=三連射の三拍目・滑空の二撃目・床等、
+ * 同時進行の別技の残り)はここでは判定しない=常に生かす**(敵まるごとではなく州単位で落とす)。
+ * 省略時(undefined)は従来と1bit同じ。
+ */
+export const telegraphDodge = (pcx: number, pcy: number, e: Enemy, excludeMoveKey?: string): DodgeThreat[] => {
   const out: DodgeThreat[] = [];
   const push = (t: DodgeThreat | null) => { if (t) out.push(t); };
   const ph = e.aiPhase ?? '';
   const bs = e.bossState ?? '';
   const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+  const currentMoveKey = e.aiPhase ?? e.bossState;
+  const excludeCurrentMove = excludeMoveKey !== undefined && excludeMoveKey === currentMoveKey;
 
-  // --- 円 ---
-  if (ph === 'g-stomp-windup') push(circleThreat(pcx, pcy, ecx, ecy, e.gStompRadius ?? DODGE_CIRCLE_DEFAULT_R));
-  if (ph === 'g-jump-windup' || ph === 'g-jump-air') {
-    push(circleThreat(pcx, pcy, (e.aiTargetX ?? e.x) + e.width / 2, (e.aiTargetY ?? e.y) + e.height / 2,
-      e.gJumpRadius ?? DODGE_CIRCLE_DEFAULT_R));
-  }
-  if (ph === 'g-trijump-windup' || ph === 'g-trijump-air') {
-    // 着地済みの点は危険ではない(描画と同じ「残りだけ」の考え方)。
-    const pts = e.gTriJumpPts ?? [];
-    const from = ph === 'g-trijump-air' ? (e.gTriJumpIdx ?? 0) : 0;
-    for (let i = from; i * 2 + 1 < pts.length; i++) push(circleThreat(pcx, pcy, pts[i * 2], pts[i * 2 + 1], DODGE_GLEN_TRIJUMP_R));
-  }
-  if (bs === 'jump-windup' || bs === 'jump-attack') {
-    // v0.25.4085(赤円全数監査#8): トール/ラフィの跳びの aiTargetX/Y は**既に中心座標**
-    // (着地爆発がその値をそのまま爆心に使う=useGameLoop.ts thor-jump / angelBossTick rafi jump)。
-    // 旧実装の +width/2 は半身ぶん回避円がズレ、実円の一部が回避円の外に出ていた。
-    // 半径は代表値100のまま(実半径70より広い=安全側で正しい向き)。
-    push(circleThreat(pcx, pcy, e.aiTargetX ?? ecx, e.aiTargetY ?? ecy, DODGE_CIRCLE_DEFAULT_R));
+  if (!excludeCurrentMove) {
+    // --- 円 ---
+    if (ph === 'g-stomp-windup') push(circleThreat(pcx, pcy, ecx, ecy, e.gStompRadius ?? DODGE_CIRCLE_DEFAULT_R));
+    if (ph === 'g-jump-windup' || ph === 'g-jump-air') {
+      push(circleThreat(pcx, pcy, (e.aiTargetX ?? e.x) + e.width / 2, (e.aiTargetY ?? e.y) + e.height / 2,
+        e.gJumpRadius ?? DODGE_CIRCLE_DEFAULT_R));
+    }
+    if (ph === 'g-trijump-windup' || ph === 'g-trijump-air') {
+      // 着地済みの点は危険ではない(描画と同じ「残りだけ」の考え方)。
+      const pts = e.gTriJumpPts ?? [];
+      const from = ph === 'g-trijump-air' ? (e.gTriJumpIdx ?? 0) : 0;
+      for (let i = from; i * 2 + 1 < pts.length; i++) push(circleThreat(pcx, pcy, pts[i * 2], pts[i * 2 + 1], DODGE_GLEN_TRIJUMP_R));
+    }
+    if (bs === 'jump-windup' || bs === 'jump-attack') {
+      // v0.25.4085(赤円全数監査#8): トール/ラフィの跳びの aiTargetX/Y は**既に中心座標**
+      // (着地爆発がその値をそのまま爆心に使う=useGameLoop.ts thor-jump / angelBossTick rafi jump)。
+      // 旧実装の +width/2 は半身ぶん回避円がズレ、実円の一部が回避円の外に出ていた。
+      // 半径は代表値100のまま(実半径70より広い=安全側で正しい向き)。
+      push(circleThreat(pcx, pcy, e.aiTargetX ?? ecx, e.aiTargetY ?? ecy, DODGE_CIRCLE_DEFAULT_R));
+    }
   }
   for (const h of e.giantDelayedHits ?? []) {
     if (h.capsule) push(bandThreat(pcx, pcy, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, h.capsule.halfWidth));
     else push(circleThreat(pcx, pcy, h.x, h.y, h.radius));
   }
 
-  // --- 帯(溜め中/実行中で始点・終点を持つ技すべて) ---
-  // ★v0.25.3818(社長裁定 §9-6「突進の走行中の体当たり」= (B)「当てる」の条件②): トールの突進の**走り**(`thor-dash-move`)を
-  // 帯脅威へ足す。走行中は巨体の AABB が接触ダメージを持つ(`combatTick.applyContactDamage` の
-  // トール除外から外れている)のに、旧リストは `-windup` と明示3州しか拾っていなかったため
-  // **ボットには走りが見えていなかった**=避けられなかった。描画側の赤い帯(条件①)と対で入れる。
-  const banded = (ph.startsWith('g-') && (ph.endsWith('-windup') || ph.endsWith('-active') || ph.endsWith('-charge')))
-    || bs.endsWith('-windup') || bs === 'harai' || bs === 'issen-dash' || bs === 'tsuki'
-    || bs === 'thor-dash-move';
-  if (banded && e.aiFromX !== undefined && e.aiTargetX !== undefined) {
-    push(bandThreat(pcx, pcy, e.aiFromX, e.aiFromY ?? e.y, e.aiTargetX, e.aiTargetY ?? e.y, DODGE_BAND_HALF_WIDTH));
+  if (!excludeCurrentMove) {
+    // --- 帯(溜め中/実行中で始点・終点を持つ技すべて) ---
+    // ★v0.25.3818(社長裁定 §9-6「突進の走行中の体当たり」= (B)「当てる」の条件②): トールの突進の**走り**(`thor-dash-move`)を
+    // 帯脅威へ足す。走行中は巨体の AABB が接触ダメージを持つ(`combatTick.applyContactDamage` の
+    // トール除外から外れている)のに、旧リストは `-windup` と明示3州しか拾っていなかったため
+    // **ボットには走りが見えていなかった**=避けられなかった。描画側の赤い帯(条件①)と対で入れる。
+    const banded = (ph.startsWith('g-') && (ph.endsWith('-windup') || ph.endsWith('-active') || ph.endsWith('-charge')))
+      || bs.endsWith('-windup') || bs === 'harai' || bs === 'issen-dash' || bs === 'tsuki'
+      || bs === 'thor-dash-move';
+    if (banded && e.aiFromX !== undefined && e.aiTargetX !== undefined) {
+      push(bandThreat(pcx, pcy, e.aiFromX, e.aiFromY ?? e.y, e.aiTargetX, e.aiTargetY ?? e.y, DODGE_BAND_HALF_WIDTH));
+    }
   }
   return out;
 };
@@ -358,10 +371,12 @@ export const telegraphDodge = (pcx: number, pcy: number, e: Enemy): DodgeThreat[
  * `maxHealth`(既定0)は M49-1 の接触脅威判定にのみ使う。**省略時(0)は契約ダメージ閾値が
  * 常に不成立になる**ため、既存の呼び出し元(引数を渡していないテスト等)は完全に不変。
  *
- * `excludeTelegraphFor`(省略可能・research/AI_HUMANIZE.md B2 §2-1「回避外しの実仕組み」):
- * この関数が `true` を返す敵は、その敵の**予告(telegraphDodgeぶんだけ)**を回避対象から除く
- * (jump/charge/contactの脅威・他の敵の予告は従来どおり避ける=総当たりの一部だけを抑止する
- * フィルタ)。**省略時(undefined)は従来と1bit同じ**(既存の全呼び出し元は無変更)。
+ * `excludeTelegraphFor`(省略可能・research/AI_HUMANIZE.md B2 §2-1「回避外しの実仕組み」・
+ * 検収是正#4で州単位へ拡張): この敵に対して呼ぶと、**抑止したい技のキー**(`e.aiPhase`/`e.bossState`の
+ * 値。例: `'g-stomp-windup'`)を返す(抑止しないなら`undefined`)。返ってきたキーが今その敵が
+ * 出している技と一致する分だけ`telegraphDodge`から落ちる(jump/charge/contact/`giantDelayedHits`=
+ * 同時進行の別技の残りは対象外=総当たりの一部だけを抑止するフィルタ)。
+ * **省略時(undefined)は従来と1bit同じ**(既存の全呼び出し元は無変更)。
  */
 export const dodgeVector = (
   profile: BotSkillProfile,
@@ -369,7 +384,7 @@ export const dodgeVector = (
   enemies: readonly Enemy[],
   projectiles: readonly Projectile[],
   maxHealth = 0,
-  excludeTelegraphFor?: (e: Enemy) => boolean,
+  excludeTelegraphFor?: (e: Enemy) => string | undefined,
 ): { x: number; y: number } | null => {
   if (profile.dodge === 'none' || profile.dodgeStrength <= 0) return null;
   let sx = 0, sy = 0, total = 0;
@@ -382,9 +397,10 @@ export const dodgeVector = (
     for (const t of [jumpDodge(pcx, pcy, e), chargeDodge(pcx, pcy, e), contactDodge(pcx, pcy, e, maxHealth)]) {
       if (t && dodgeHandles(profile.dodge, t.kind)) { sx += t.ux * t.weight; sy += t.uy * t.weight; total += t.weight; }
     }
-    if (excludeTelegraphFor?.(e)) continue; // AI_HUMANIZE.md B2 §2-1: 位置取り中の対象敵×対象州だけ抑止
+    // AI_HUMANIZE.md B2 §2-1(検収是正#4): 敵まるごとではなく、返ってきた技キーの分だけ抑止する。
+    const excludeMoveKey = excludeTelegraphFor?.(e);
     // ボスの予告(赤い円/帯)。1体が同時に複数の危険域を出しうる(連続ジャンプの3円/遅延ダメージ)。
-    for (const t of telegraphDodge(pcx, pcy, e)) {
+    for (const t of telegraphDodge(pcx, pcy, e, excludeMoveKey)) {
       if (dodgeHandles(profile.dodge, t.kind)) { sx += t.ux * t.weight; sy += t.uy * t.weight; total += t.weight; }
     }
   }

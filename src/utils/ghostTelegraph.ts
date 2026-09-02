@@ -409,11 +409,14 @@ const threatFor = (
  * **既存 telegraphDodge が拾えない予告**から逃げる向き(0〜2個)。ゴーストの回避ベクトルへ足す差分。
  * 既存表と二重に数えないよう、coverage が 'ghost'/'both' の状態だけを扱う。
  * GHOST-CMD-1B: 円形の脅威には `shape: 'circle'` タグが付く(避け方向の癖の回転対象の目印)。
+ * `excludeMoveKey`(省略可能・AI_HUMANIZE.md B2 §2-1・検収是正#4): このキーと一致する州だけを
+ * 抑止する(州単位=botSkill.telegraphDodgeのexcludeMoveKeyと同じ考え方)。
  */
-export const ghostExtraTelegraphDodge = (pcx: number, pcy: number, e: Enemy): GhostDodgeThreat[] => {
+export const ghostExtraTelegraphDodge = (pcx: number, pcy: number, e: Enemy, excludeMoveKey?: string): GhostDodgeThreat[] => {
   const out: GhostDodgeThreat[] = [];
   for (const state of [e.aiPhase, e.bossState]) {
     if (state === undefined) continue;
+    if (excludeMoveKey !== undefined && state === excludeMoveKey) continue;
     const entry = GHOST_TELEGRAPH_LEDGER[state];
     if (!entry || (entry.coverage !== 'ghost' && entry.coverage !== 'both')) continue;
     const t = threatFor(pcx, pcy, e, entry);

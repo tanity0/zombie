@@ -2018,6 +2018,162 @@ describe('AI_HUMANIZE B2: 段1(コマ再生)の駆動(decideGhost統合)', () =>
   });
 });
 
+// =================================================================================================
+// 検収是正#3/#4(2026-09-02): 段2の回避外しが位置取り分岐と同じ条件で立つこと・州単位で落ちること。
+// =================================================================================================
+describe('AI_HUMANIZE B2 検収是正#3: 段2の回避外し・位置取りの条件を一致させる', () => {
+  const T = 10_000;
+  // 帯(y=0・x:0〜600)の技。telegraphDodgeの汎用判定(bs.endsWith('-windup'))が拾う=既存の
+  // 「全ボス予告台帳」ではなくbase側(botSkill.telegraphDodge)の脅威で確かめる(検収#4の対象と同じ経路)。
+  const bossWithBandThreat = (extra: Partial<Enemy> = {}): Enemy => mkBoss({
+    id: 'thor-1', type: 'thor', x: 300, y: -20, width: 40, height: 40,
+    bossState: 'issen-windup', bossStateUntil: T,
+    aiFromX: 0, aiFromY: 0, aiTargetX: 600, aiTargetY: 0,
+    ...extra,
+  });
+  const stage2Profile: GhostProfile = {
+    ...PROFILE,
+    habitFamily: { band: { n: 5, avgPosA: 100, avgPosB: 0, avgPressOfs: null, pressRatePct: 0 } },
+  };
+  const stage3Profile: GhostProfile = { ...PROFILE }; // moveHabits/habitFamily無し=常に段3(コマ台帳の対象外と同じ挙動)
+  // ゴースト中心(300,90): 帯(y=0)の下90px=帯の危険域(halfWidth64+margin40=104未満)には入るが、
+  // ボス本体の縁(y=20)からは70px=**GHOST_BOSS_BODY_AVOID_PX(48)の外**にしてある(実測で確認: 48未満だと
+  // 「ボスの体は常時回避対象」という別機構の反発ベクトルが常時混ざり、抑止の有無を判別できなくなるため)。
+  // dangerSeenAt/dangerLastAtを300ms前に設定=反応遅延(reactionMs=200)を初手から満たす
+  // (優先度: このテストは「抑止/位置取りの条件」だけを見たいので反応遅延の立ち上がりは排除する)。
+  const ghostNearBand = (gameTime: number): GhostSelf => mkGhost({
+    x: 290, y: 80, lastMeleeAt: -1_000_000,
+    dangerSeenAt: gameTime - 300, dangerLastAt: gameTime - 300,
+  });
+
+  it('counterWatchingより前(見切り済み=残り1000ms超)は、段2は段3と同じ動きになる(抑止も位置取りも起きない)', () => {
+    const gameTime = T - 1500; // windupImpactAt-gameTime=1500 > GHOST_COUNTER_WAIT_MS(1000)=counterGaveUp=true
+    const d2 = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: stage2Profile, gameTime, nowMs: gameTime,
+    }));
+    const d3 = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: stage3Profile, gameTime, nowMs: gameTime,
+    }));
+    expect(d2.microHabitTargetX).toBeUndefined(); // 位置取りは起きていない
+    expect(d2.moveX).toBeCloseTo(d3.moveX, 6); // 段2/段3で同じ(=抑止されておらず、同じ回避ベクトルを使っている)
+    expect(d2.moveY).toBeCloseTo(d3.moveY, 6);
+    expect(d3.moveY).toBeGreaterThan(0); // 前提: 段3は帯から離れる方向(+y)へ実際に回避している
+  });
+
+  it('counterWatchingが立った後(残り1000ms以内)は、段2は位置取りへ切り替わり、段3の回避と一致しなくなる', () => {
+    const gameTime = T - 900; // windupImpactAt-gameTime=900 <= 1000 = counterGaveUp=false(counterWatching=true)
+    // rand=0.5: 段3側の技ロール(袋式)が'counter'を引かないようにする(counter/tank/dodgeの均等でない
+    // 配分のうちcounter/tankを外す値。'counter'だと「詰めて窓を待つ」分岐が回避より先に選ばれてしまい、
+    // このテストが見たい「段3=回避し続ける」という前提が別の分岐で壊れる=このテストの主題ではない)。
+    const rand = () => 0.5;
+    const d2 = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: stage2Profile, gameTime, nowMs: gameTime, rand,
+    }));
+    const d3 = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: stage3Profile, gameTime, nowMs: gameTime, rand,
+    }));
+    expect(d3.moveY).toBeGreaterThan(0); // 段3(現行モデル)は引き続き帯から離れる方向へ回避する(ビット同一)
+    // 段2はこの技の予告回避が抑止され、位置取り分岐(族の平均位置)へ切り替わっている=段3と同じ回避の動きにならない。
+    expect(d2.microHabitTargetX).toBeDefined();
+    expect(d2.moveY === d3.moveY && d2.moveX === d3.moveX).toBe(false);
+  });
+
+  it('検収是正#4: 州単位の抑止(同時進行の別ハザード=giantDelayedHitsは抑止されず避け続ける)', () => {
+    const gameTime = T - 900; // counterWatching中(#3のテストと同じ時刻=抑止/位置取りが本来なら効く局面)
+    // 帯の技(この技の予告)とは無関係な遅延ダメージの円をゴーストの近くへ追加する
+    // (三連射の三拍目・滑空の二撃目・床などの「同時進行の別ハザード」の代用)。
+    const boss = bossWithBandThreat({
+      giantDelayedHits: [{ x: 300, y: 70, radius: 30, bornAt: 0, fireAt: 0 }],
+    });
+    const withDelayed = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [boss], boundBossId: 'thor-1',
+      profile: stage2Profile, gameTime, nowMs: gameTime,
+    }));
+    // 帯(この技)の予告は抑止されているのに、giantDelayedHits(別ハザード)がまだ避けるものとして
+    // 残っているので、activeDodge分岐が選ばれ続け、位置取り(microHabitTargetX)は**この tick では**
+    // 発火しない(§2-1「activeDodge非nullなら回避を優先」)。
+    expect(withDelayed.microHabitTargetX).toBeUndefined();
+    expect(Math.hypot(withDelayed.moveX, withDelayed.moveY)).toBeGreaterThan(0); // 実際に回避で動いている
+    // 対照: giantDelayedHitsが無ければ、この技の予告だけが唯一の脅威=抑止されて回避するものが無くなり、
+    // 位置取りへ落ちる(microHabitTargetXが定まる)。
+    const withoutDelayed = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: stage2Profile, gameTime, nowMs: gameTime,
+    }));
+    expect(withoutDelayed.microHabitTargetX).toBeDefined();
+  });
+});
+
+// =================================================================================================
+// 検収是正#5(2026-09-02): TFrozenのフォールバックは時計を混ぜない・州が続く間は凍結を保持する。
+// =================================================================================================
+describe('AI_HUMANIZE B2 検収是正#5: TFrozenは州(counterArmKey)が続く間ずっと保持される', () => {
+  const T = 10_000;
+  const bossAt = (bossStateUntil: number): Enemy => mkBoss({
+    id: 'thor-1', type: 'thor', x: 300, y: -20, width: 40, height: 40,
+    bossState: 'issen-windup', bossStateUntil,
+    aiFromX: 0, aiFromY: 0, aiTargetX: 600, aiTargetY: 0,
+  });
+  const episodesWithPressOfs = (pressOfs: number | null): HabitEpisode[] =>
+    [mkEp({ pressOfs }), mkEp({ pressOfs }), mkEp({ pressOfs })];
+  const profile: GhostProfile = {
+    ...PROFILE, counterChance: 0,
+    moveHabits: { 'thor:issen-windup': episodesWithPressOfs(100) },
+  };
+  const carry = (d: ReturnType<typeof decideGhost>): GhostSelf => mkGhost({
+    x: 300, y: -300, lastMeleeAt: -1_000_000,
+    counterPendingAt: d.counterPendingAt, counterWillAttempt: d.counterWillAttempt, counterArmKey: d.counterArmKey,
+    lastCounterAttemptAt: d.lastCounterAttemptAt, moveRoll: d.moveRoll,
+    microHabitTFrozen: d.microHabitTFrozen, microHabitSwingAt: d.microHabitSwingAt,
+    microHabitResolved: d.microHabitResolved, microHabitTargetX: d.microHabitTargetX,
+    microHabitTargetY: d.microHabitTargetY, microHabitArmKey: d.microHabitArmKey,
+    microHabitSeqCounts: d.microHabitSeqCounts,
+  });
+
+  it('振り成立後もmicroHabitTFrozenは消えない(州が続く限り保持=旧実装はここでundefinedへ落としていた)', () => {
+    const boss = bossAt(T);
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    expect(d1.microHabitTFrozen).toBe(T); // habitNewArmの瞬間に凍結
+    const swing = decideGhost(baseDriverInput({
+      ghost: carry(d1), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
+    }));
+    expect(swing.action).toBe('melee'); // 振りが成立した
+    // ★検収是正#5: 旧実装はここでmicroHabitTFrozenをundefinedへ戻していた(=次の解決がnowMsへ
+    // フォールバックし、時計が混ざるバグの温床になっていた)。新実装は凍結を保持する。
+    expect(swing.microHabitTFrozen).toBe(T);
+  });
+
+  it('振り成立後、同じ州のまま着弾時刻(bossStateUntil)が後退しても(賞金首KB等)、2回目の解決は元の凍結Tを使う', () => {
+    const boss1 = bossAt(T);
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss1], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    const swing = decideGhost(baseDriverInput({
+      ghost: carry(d1), enemies: [boss1], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
+    }));
+    expect(swing.action).toBe('melee');
+    expect(swing.counterPendingAt).toBeUndefined(); // 振り成立で錨は一旦外れる(次の機会に備える)
+    // 同じ州(bossState文字列は不変='issen-windup')のまま、着弾時刻(bossStateUntil)だけ大きく後退させる
+    // (賞金首KB中の後退の代用)。armKeyが変わっていないのでhabitNewArmは立たない=凍結は張り直らない。
+    const boss2 = bossAt(T - 5000);
+    const resolveAgain = decideGhost(baseDriverInput({
+      ghost: carry(swing), enemies: [boss2], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
+    }));
+    // 生のwindupImpactAt(T-5000)ではなく、凍結済みのT(10000)を基準に解決している
+    // (=microHabitSwingAt = T + pressOfs(100) - MELEE_WINDUP_MS(200) = 9900のまま)。
+    expect(resolveAgain.microHabitSwingAt).toBe(T + 100 - MELEE_WINDUP_MS);
+    expect(resolveAgain.microHabitTFrozen).toBe(T); // 凍結値そのものも据え置き
+  });
+});
+
 describe('AI_HUMANIZE B2: habitPositionTarget(§2-1逆写像+48px床クランプ)', () => {
   const bossRect = { x: 0, y: 0, width: 40, height: 40 };
   it('帯: posA/posB/subから世界座標を復元する', () => {

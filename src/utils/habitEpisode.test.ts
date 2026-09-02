@@ -12,6 +12,7 @@ import {
   type HabitEpisode, type HabitFamilyRaw,
 } from './habitEpisode';
 import type { Enemy } from '../types/game';
+import type { Rect } from '../world/obstacles';
 import { IMPACT_AT_WINDUP_END_BOSS_STATES, GIANT_IMPACT_AT_WINDUP_END } from './ghostCounterAim';
 import { COUNTER_REACH_DECL, type CounterReachShape } from './counterReach';
 // ★検収是正(中3・74の数値複製に機械検査): habitEpisode.ts本体はstore非依存を保つためMELEE_RADIUSを
@@ -503,6 +504,41 @@ describe('unhabitPos: habitPosの逆写像(band/circle/body)', () => {
     expect(unhabitPos({ kind: 'band', bands: [] }, 0, 0, 0, 0, 0, 0, 0, BOSS_RECT2, 0)).toBeNull();
     expect(unhabitPos({ kind: 'none' }, 0, 0, 0, 0, 0, 0, 0, BOSS_RECT2, 0)).toBeNull();
   });
+
+  // ★検収是正#2(単位取り違え・v0.25.2567の再演): habitPosのbody分岐は**縁距離**(edgeDistToRect=
+  // AABB最近点)/74をposAとして保存する。旧unhabitPosはposA*74を**中心から**測っており、
+  // 大きいボスでは「縁から74px」を逆写像すると体内に戻っていた。
+  describe('body: 検収是正#2(縁距離の単位取り違え)。往復テスト', () => {
+    // 300×300のボス(center=0,0・v0.25.2567の実例と同じ規模=半幅150)。
+    const BIG_BOSS: Rect = { x: -150, y: -150, width: 300, height: 300 };
+
+    it('縁から74px(posA=1.00)を逆写像すると、habitPosで測り直しても縁から74px(posA≈1.00)に戻る(体内=posA≈0に潰れない)', () => {
+      const shape: CounterReachShape = { kind: 'body' };
+      // 軸退化(from===to)にして currentAngleRad=0(=+x方向、右の面の法線)を指定。
+      const pt = unhabitPos(shape, 1.0, 0, 0, 0, 0, 0, 0, BIG_BOSS, 0)!;
+      expect(pt).not.toBeNull();
+      // 中心(0,0)からの距離は半幅150を大きく超える(=縁の外に出ている。旧バグは74pxで体内に収まっていた)。
+      expect(Math.hypot(pt.x, pt.y)).toBeGreaterThan(150);
+      const back = habitPos(shape, pt.x, pt.y, 0, 0, 0, 0, BIG_BOSS)!;
+      expect(back.posA).toBeCloseTo(1.0, 4); // 往復一致(旧実装は0.0前後に潰れていた)
+    });
+
+    it('posA=0(境界そのもの)は箱の縁の上に戻る(旧実装と同じ意味=中心からposAだけ、ではない)', () => {
+      const shape: CounterReachShape = { kind: 'body' };
+      const pt = unhabitPos(shape, 0, 0, 0, 0, 0, 0, 0, BIG_BOSS, 0)!;
+      expect(pt.x).toBeCloseTo(150, 5); // 右の縁ちょうど(center.x+hw)
+      expect(pt.y).toBeCloseTo(0, 5);
+      const back = habitPos(shape, pt.x, pt.y, 0, 0, 0, 0, BIG_BOSS)!;
+      expect(back.posA).toBeCloseTo(0, 4);
+    });
+
+    it('小さいボス(旧実装でも壊れが目立たない規模)でも往復一致する', () => {
+      const shape: CounterReachShape = { kind: 'body' };
+      const pt = unhabitPos(shape, 0.6, 0, 0, 0, 0, 0, 0, BOSS_RECT2, Math.PI /* 左向き */)!;
+      const back = habitPos(shape, pt.x, pt.y, 0, 0, 0, 0, BOSS_RECT2)!;
+      expect(back.posA).toBeCloseTo(0.6, 4);
+    });
+  });
 });
 
 describe('isAxisDegenerate: §1-2「自分中心で軸が退化する州は0固定」の判定そのもの', () => {
@@ -569,5 +605,43 @@ describe('axisForEpisodeReplay + habitFamilyOfShape', () => {
     expect(habitFamilyOfShape({ kind: 'circle', cx: 0, cy: 0, radius: 1 })).toBe('circle');
     expect(habitFamilyOfShape({ kind: 'circle-or-body', cx: 0, cy: 0, radius: 1 })).toBe('circle');
     expect(habitFamilyOfShape({ kind: 'body' })).toBe('body');
+  });
+
+  // ★検収是正#1(§2-8確定事項#7=A10の未実装分): declared系の自分中心円(bm-whip360-windup/
+  // mk-spin-windup)は、前の技の残骸(enemy.aiFromX/aiTargetX)が残っていても軸を退化させる
+  // (=絶対角を発明しない)。記録側(bountyTick.settleBountyHabit)と同じ台帳を引く。
+  describe('検収是正#1: declared自分中心州は残骸のaiFromX/aiTargetXを無視して退化させる', () => {
+    it('bounty-melee:bm-whip360-windup: 残骸の軸(前の技の方位)があっても from===to(今の自分)になる', () => {
+      const e = mkEnemyFor({
+        type: 'bounty-melee', x: 100, y: 100, width: 40, height: 40,
+        // 前の技の残骸(全く関係ない方位)。これが軸として復元されてはいけない。
+        aiFromX: -500, aiFromY: -500, aiTargetX: 900, aiTargetY: 900,
+      });
+      const axis = axisForEpisodeReplay('bounty-melee', 'bm-whip360-windup', e);
+      expect(axis.fromX).toBeCloseTo(axis.toX, 6);
+      expect(axis.fromY).toBeCloseTo(axis.toY, 6);
+      // 今の自分の中心(120,120)であって、残骸の(-500,-500)や(900,900)ではない。
+      expect(axis.fromX).toBeCloseTo(120, 6);
+      expect(axis.fromY).toBeCloseTo(120, 6);
+    });
+
+    it('bounty-maiko:mk-spin-windup: 同様に残骸を無視して退化させる', () => {
+      const e = mkEnemyFor({
+        type: 'bounty-maiko', x: 0, y: 0, width: 40, height: 40,
+        aiFromX: 1000, aiFromY: 0, aiTargetX: -1000, aiTargetY: 0,
+      });
+      const axis = axisForEpisodeReplay('bounty-maiko', 'mk-spin-windup', e);
+      expect(isAxisDegenerate(axis.fromX, axis.fromY, axis.toX, axis.toY)).toBe(true);
+    });
+
+    it('残骸が無い(aiFromX等がundefined)場合と結果が同じ(残骸の有無で挙動が変わらない)', () => {
+      const withResidual = mkEnemyFor({
+        type: 'bounty-melee', x: 100, y: 100, width: 40, height: 40,
+        aiFromX: -500, aiFromY: -500, aiTargetX: 900, aiTargetY: 900,
+      });
+      const withoutResidual = mkEnemyFor({ type: 'bounty-melee', x: 100, y: 100, width: 40, height: 40 });
+      expect(axisForEpisodeReplay('bounty-melee', 'bm-whip360-windup', withResidual))
+        .toEqual(axisForEpisodeReplay('bounty-melee', 'bm-whip360-windup', withoutResidual));
+    });
   });
 });
