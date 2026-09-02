@@ -4,12 +4,14 @@
 // 機械化する。counterReach.test.ts の宣言表検査の隣に置く(EPISODE_KEYS包含検査)。
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  EPISODE_KEYS, EPISODE_SHAPE_DECL, TRACKED_SHAPE_KEYS, reachKeyFor, habitPos,
+  EPISODE_KEYS, EPISODE_SHAPE_DECL, TRACKED_SHAPE_KEYS, reachKeyFor, habitPos, unhabitPos, isAxisDegenerate,
+  shapeForEpisodeReplay, axisForEpisodeReplay, habitFamilyOfShape,
   HABIT_RING_SIZE, HABIT_FAMILY_MIN_N, HABIT_FAMILY_KEYS, familyRawToStat, HABIT_BODY_UNIT_PX,
   settleEpisode, notePressEdge, tickHabitEpisodeMaintenance, markHabitGhostRun,
   takeRunHabitFold, resetRunHabitState,
   type HabitEpisode, type HabitFamilyRaw,
 } from './habitEpisode';
+import type { Enemy } from '../types/game';
 import { IMPACT_AT_WINDUP_END_BOSS_STATES, GIANT_IMPACT_AT_WINDUP_END } from './ghostCounterAim';
 import { COUNTER_REACH_DECL, type CounterReachShape } from './counterReach';
 // ★検収是正(中3・74の数値複製に機械検査): habitEpisode.ts本体はstore非依存を保つためMELEE_RADIUSを
@@ -461,5 +463,111 @@ describe('JSON往復でnullが保存される(NaNに化けない)', () => {
     expect(ep.pressOfs).toBeNull();
     const round = JSON.parse(JSON.stringify(ep)) as HabitEpisode;
     expect(round.pressOfs).toBeNull();
+  });
+});
+
+// =================================================================================================
+// research/AI_HUMANIZE.md B2(再生側)。unhabitPos(逆写像)+isAxisDegenerate+shapeForEpisodeReplay。
+// =================================================================================================
+const BOSS_RECT2 = { x: 0, y: 0, width: 40, height: 40 };
+
+describe('unhabitPos: habitPosの逆写像(band/circle/body)', () => {
+  it('band: posA/posB/subから復元した点をhabitPosへ通すと同じposA/posB/subに戻る(往復一致)', () => {
+    const shape: import('./counterReach').CounterReachShape = {
+      kind: 'band', bands: [{ fx: 0, fy: 0, tx: 300, ty: 0, halfWidth: 40 }],
+    };
+    const pt = unhabitPos(shape, 0.6, 0.5, 0, 0, 0, 0, 0, BOSS_RECT2, 0)!;
+    const back = habitPos(shape, pt.x, pt.y, 0, 0, 0, 0, BOSS_RECT2)!;
+    expect(back.posA).toBeCloseTo(0.6, 6);
+    expect(back.posB).toBeCloseTo(0.5, 6);
+    expect(back.sub).toBe(0);
+  });
+
+  it('circle: 軸が非退化なら axisAngle+posB*π の絶対角で復元する', () => {
+    const shape: import('./counterReach').CounterReachShape = { kind: 'circle', cx: 0, cy: 0, radius: 100 };
+    // 軸(0,0)→(1,0)=角度0。posB=0.5→角度=0.5π(=90°)。posA=1→半径100。
+    const pt = unhabitPos(shape, 1, 0.5, 0, 0, 0, 1, 0, BOSS_RECT2, 999 /* 非退化なので使われない */)!;
+    expect(pt.x).toBeCloseTo(0, 5);
+    expect(pt.y).toBeCloseTo(100, 5);
+  });
+
+  it('circle: 軸が退化(自分中心州)している時は現在角(currentAngleRad)をそのまま使う(絶対角を発明しない)', () => {
+    const shape: import('./counterReach').CounterReachShape = { kind: 'circle', cx: 0, cy: 0, radius: 50 };
+    const angle = Math.PI / 3; // 60°
+    const pt = unhabitPos(shape, 1, 0.5 /* 軸退化では無視される */, 0, 0, 0, 0, 0, BOSS_RECT2, angle)!;
+    expect(pt.x).toBeCloseTo(Math.cos(angle) * 50, 5);
+    expect(pt.y).toBeCloseTo(Math.sin(angle) * 50, 5);
+  });
+
+  it('bandでbandsが空/shape=noneはnull', () => {
+    expect(unhabitPos({ kind: 'band', bands: [] }, 0, 0, 0, 0, 0, 0, 0, BOSS_RECT2, 0)).toBeNull();
+    expect(unhabitPos({ kind: 'none' }, 0, 0, 0, 0, 0, 0, 0, BOSS_RECT2, 0)).toBeNull();
+  });
+});
+
+describe('isAxisDegenerate: §1-2「自分中心で軸が退化する州は0固定」の判定そのもの', () => {
+  it('from===toは退化', () => {
+    expect(isAxisDegenerate(10, 20, 10, 20)).toBe(true);
+  });
+  it('from!==toは非退化', () => {
+    expect(isAxisDegenerate(0, 0, 100, 0)).toBe(false);
+  });
+});
+
+const mkEnemyFor = (overrides: Partial<Enemy> = {}): Enemy => ({
+  id: 'e1', x: 0, y: 0, width: 40, height: 40, speed: 0,
+  health: 100, maxHealth: 100, damage: 10, type: 'thor', experienceValue: 0,
+  lastHit: 0, lastShot: 0,
+  ...overrides,
+} as Enemy);
+
+describe('shapeForEpisodeReplay: 34州(declared17/live16/body-only1)を1本の関数で解決する(§14=(a))', () => {
+  it('declared州(例: thor:issen-windup)はcounterReachShapeForと同じ図形(数値の複製なし)', () => {
+    const e = mkEnemyFor({ type: 'thor', x: 0, y: 0, width: 40, height: 40, aiFromX: 0, aiFromY: 0, aiTargetX: 200, aiTargetY: 0 });
+    const s = shapeForEpisodeReplay('thor', 'issen-windup', e);
+    expect(s?.kind).toBe('band');
+  });
+  it('live州(例: giantbat:g-stomp-windup)はepisodeShapeForと同じ図形', () => {
+    const e = mkEnemyFor({ type: 'giantbat', x: 0, y: 0, width: 40, height: 40, gStompRadius: 77 });
+    const s = shapeForEpisodeReplay('giantbat', 'g-stomp-windup', e);
+    expect(s).toEqual({ kind: 'circle', cx: 20, cy: 20, radius: 77 });
+  });
+  it('body-only州(giantbat:g-bolt-windup)はbody', () => {
+    const e = mkEnemyFor({ type: 'giantbat' });
+    expect(shapeForEpisodeReplay('giantbat', 'g-bolt-windup', e)).toEqual({ kind: 'body' });
+  });
+  it('EPISODE_KEYS外はnull', () => {
+    expect(shapeForEpisodeReplay('giantbat', 'chase', mkEnemyFor())).toBeNull();
+  });
+  it('EPISODE_KEYSの34州すべてで例外なく解決できる(null/body/band/circleのいずれか)', () => {
+    for (const key of EPISODE_KEYS) {
+      const [enemyType, ...rest] = key.split(':');
+      const state = rest.join(':');
+      const e = mkEnemyFor({
+        type: enemyType as Enemy['type'], x: 0, y: 0, width: 40, height: 40,
+        aiFromX: 10, aiFromY: 10, aiTargetX: 210, aiTargetY: 10, gStompRadius: 100,
+      });
+      expect(() => shapeForEpisodeReplay(enemyType, state, e)).not.toThrow();
+      const shape = shapeForEpisodeReplay(enemyType, state, e);
+      expect(shape, key).not.toBeNull(); // 34州は全てEPISODE_SHAPE_DECLに分類済み=必ず何か返る
+      if (shape) expect(['band', 'circle', 'circle-or-body', 'body']).toContain(shape.kind);
+    }
+  });
+});
+
+describe('axisForEpisodeReplay + habitFamilyOfShape', () => {
+  it('全34州で例外なく軸が返る', () => {
+    for (const key of EPISODE_KEYS) {
+      const [enemyType, ...rest] = key.split(':');
+      const state = rest.join(':');
+      const e = mkEnemyFor({ type: enemyType as Enemy['type'], x: 0, y: 0, width: 40, height: 40 });
+      expect(() => axisForEpisodeReplay(enemyType, state, e)).not.toThrow();
+    }
+  });
+  it('habitFamilyOfShapeはband/circle/circle-or-body/bodyをband/circle/bodyへ畳む', () => {
+    expect(habitFamilyOfShape({ kind: 'band', bands: [] })).toBe('band');
+    expect(habitFamilyOfShape({ kind: 'circle', cx: 0, cy: 0, radius: 1 })).toBe('circle');
+    expect(habitFamilyOfShape({ kind: 'circle-or-body', cx: 0, cy: 0, radius: 1 })).toBe('circle');
+    expect(habitFamilyOfShape({ kind: 'body' })).toBe('body');
   });
 });

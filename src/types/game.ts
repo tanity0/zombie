@@ -1360,6 +1360,15 @@ export interface Summon {
   ghostMicroPunishDelayUntil?: number;
   ghostMicroDecisionMode?: 'approach' | 'retreat' | 'orbit-base' | 'orbit-tank' | 'orbit-idle';
   ghostMicroDecisionUntil?: number;
+  // research/AI_HUMANIZE.md B2(§2守護霊再生)。位置取り目標キャッシュ+振り解決の凍結状態
+  // (ghostDriver.GhostSelfの同名フィールドと同じ意味。次tickへ持ち越す)。
+  ghostMicroHabitTargetX?: number;
+  ghostMicroHabitTargetY?: number;
+  ghostMicroHabitTFrozen?: number;
+  ghostMicroHabitSwingAt?: number;
+  ghostMicroHabitResolved?: boolean;
+  ghostMicroHabitSeqCounts?: Record<string, number>;
+  ghostMicroHabitArmKey?: string;
 }
 
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';

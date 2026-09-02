@@ -357,6 +357,11 @@ export const telegraphDodge = (pcx: number, pcy: number, e: Enemy): DodgeThreat[
  * 戻り値 null = 避けるものが無い(呼び出し側は通常の行動へ進む)。
  * `maxHealth`(既定0)は M49-1 の接触脅威判定にのみ使う。**省略時(0)は契約ダメージ閾値が
  * 常に不成立になる**ため、既存の呼び出し元(引数を渡していないテスト等)は完全に不変。
+ *
+ * `excludeTelegraphFor`(省略可能・research/AI_HUMANIZE.md B2 §2-1「回避外しの実仕組み」):
+ * この関数が `true` を返す敵は、その敵の**予告(telegraphDodgeぶんだけ)**を回避対象から除く
+ * (jump/charge/contactの脅威・他の敵の予告は従来どおり避ける=総当たりの一部だけを抑止する
+ * フィルタ)。**省略時(undefined)は従来と1bit同じ**(既存の全呼び出し元は無変更)。
  */
 export const dodgeVector = (
   profile: BotSkillProfile,
@@ -364,6 +369,7 @@ export const dodgeVector = (
   enemies: readonly Enemy[],
   projectiles: readonly Projectile[],
   maxHealth = 0,
+  excludeTelegraphFor?: (e: Enemy) => boolean,
 ): { x: number; y: number } | null => {
   if (profile.dodge === 'none' || profile.dodgeStrength <= 0) return null;
   let sx = 0, sy = 0, total = 0;
@@ -376,6 +382,7 @@ export const dodgeVector = (
     for (const t of [jumpDodge(pcx, pcy, e), chargeDodge(pcx, pcy, e), contactDodge(pcx, pcy, e, maxHealth)]) {
       if (t && dodgeHandles(profile.dodge, t.kind)) { sx += t.ux * t.weight; sy += t.uy * t.weight; total += t.weight; }
     }
+    if (excludeTelegraphFor?.(e)) continue; // AI_HUMANIZE.md B2 §2-1: 位置取り中の対象敵×対象州だけ抑止
     // ボスの予告(赤い円/帯)。1体が同時に複数の危険域を出しうる(連続ジャンプの3円/遅延ダメージ)。
     for (const t of telegraphDodge(pcx, pcy, e)) {
       if (dodgeHandles(profile.dodge, t.kind)) { sx += t.ux * t.weight; sy += t.uy * t.weight; total += t.weight; }

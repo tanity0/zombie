@@ -42,7 +42,7 @@ import {
 // (CLAUDE.md の前例)ため、定数そのものを import する。GHOST_MELEE_RANGE(store非依存の複製値)とは
 // 事情が違う: あちらは「意思決定側の間合いの目安」で多少ズレても実害が小さいが、こちらは社長が
 // 明示的に「プレイヤーの値と揃えろ」と指示した数値なので複製ではなくimportを選ぶ。
-import { COUNTER_WINDOW, COUNTER_COOLDOWN } from '../store/gameStore';
+import { COUNTER_WINDOW, COUNTER_COOLDOWN, MELEE_WINDUP_MS } from '../store/gameStore';
 // research/AI_HUMANIZE.md B3(§4「写す」): マイクロリズム(①〜⑧)の保存形+専用乱数流+バケット→値。
 import { type MicroRhythmProfile } from './microRhythm';
 import {
@@ -52,6 +52,14 @@ import {
   // ★B3検収(重大1): 止まりエピソード化の占有率保存(§4①逆算式)。
   meanStillMs, stillStartChance, MICRO_STILL_TICK_MS,
 } from './microRhythmReplay';
+// research/AI_HUMANIZE.md B2(守護霊再生・§2/§2-7/§2-8): コマ台帳(段1)・族別集計(段2)の消費側。
+import {
+  isEpisodeKey, TRACKED_SHAPE_KEYS,
+  habitPos, unhabitPos, shapeForEpisodeReplay, axisForEpisodeReplay, habitFamilyOfShape,
+  edgeDistToRect, HABIT_FAMILY_MIN_N,
+  type HabitEpisode, type HabitFamilyKey, type HabitFamilyStat, type CounterReachShape,
+} from './habitEpisode';
+import type { Rect } from '../world/obstacles';
 
 // ---- プロファイル(playerTraits.PlayerProfileと同じノブ形。循環import回避のため型は独立定義) ----
 export interface GhostProfile {
@@ -106,6 +114,17 @@ export interface GhostProfile {
    * scalarからの自動合成をしない=分布なしプロファイルのビット同一を壊さないため)。
    */
   microRhythm?: MicroRhythmProfile;
+  /**
+   * research/AI_HUMANIZE.md B2(§2守護霊再生・段1の材料): B1が録ったコマ台帳
+   * (episodeKey→直近10件)。**欠損時は段1を使わない**(§7受け入れ条件3=現行とビット同一)。
+   * `PlayerProfile.moveHabits` がそのまま載る(directorTick.ts の effectiveGhostProfile 経路)。
+   */
+  moveHabits?: Record<string, readonly HabitEpisode[]>;
+  /**
+   * research/AI_HUMANIZE.md B2(§2-7段2の材料): B1が録った族別集計(band/circle/body)。
+   * **欠損時は段2を使わない**。`PlayerProfile.habitFamily` がそのまま載る。
+   */
+  habitFamily?: Partial<Record<HabitFamilyKey, HabitFamilyStat>>;
 }
 
 /**
@@ -354,6 +373,16 @@ export const GHOST_DANGER_MEMORY_MS = 2000;
  */
 export const GHOST_BULLET_TANK_MS = ENEMY_PROJECTILE_DURATION;
 
+// ---- research/AI_HUMANIZE.md B2(守護霊再生・§2/§2-7/§2-8。**全て叩き台=実機調整前提**) -------------
+/** §2「フォールバック3段」段1のしきい値: その episodeKey のコマが3件以上あれば段1(新設・旧n<3ゲートとは別物)。 */
+export const GHOST_HABIT_STAGE1_MIN_N = 3;
+/** §2-1「届かなくても発火はする」: 逆写像した目標の縁距離の床(体内目標を作らない)。 */
+export const GHOST_HABIT_TARGET_FLOOR_PX = 48;
+/** §2-3「振り判断時点(T−500ms)」。 */
+export const GHOST_HABIT_SWING_DECIDE_LEAD_MS = 500;
+/** §2-1到達後の静止判定に使うデッドバンド(§4オーバーシュートのデッドバンド±6pxと同型の考え方)。 */
+export const GHOST_HABIT_ARRIVE_PX = 10;
+
 const clamp01 = (x: number): number => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 
 const norm = (x: number, y: number): [number, number] => {
@@ -513,6 +542,10 @@ const GHOST_DODGE_PROFILE: BotSkillProfile = {
  * base(dodgeVector=botSkill)内の着地円(jumpDodge/telegraphDodgeの円)は**本バッチのバイアス
  * 対象外**=幾何のまま(botSkill.tsはテストボット共用のため不触)。回転は決定的(randを使わない)。
  * dodgeDir欠損(旧プロファイル・n=0)= θ=0 = 従来とベクトルもビット一致。
+ *
+ * `excludeTelegraphFor`(省略可能・research/AI_HUMANIZE.md B2 §2-1「回避外しの実仕組み」): 段1/段2の
+ * 位置取り中、対象敵×対象州の予告回避(base側のtelegraphDodge**と**全ボス予告台帳の差分の両方)を
+ * 抑止する。**省略時は従来と1bit同じ**。
  */
 export const ghostDodgeVector = (
   gcx: number, gcy: number,
@@ -523,6 +556,7 @@ export const ghostDodgeVector = (
   tankedBulletKey?: string,
   dodgeDir?: DodgeDirStat,
   orbitSign?: 1 | -1,
+  excludeTelegraphFor?: (e: Enemy) => boolean,
 ): { x: number; y: number } | null => {
   const seen = tankedBulletKey === undefined
     ? projectiles
@@ -531,13 +565,13 @@ export const ghostDodgeVector = (
   // botSkill の既存規格(接触ダメージ >= 最大HPの CONTACT_DANGER_HP_FRAC(20%) の敵が
   // DODGE_CONTACT_DIST(260px) 以内 → 離れる)がそのまま効く=**雑魚向けの規格として維持**。
   // 0を渡すと従来どおり無効(テストの明示用)。
-  const base = dodgeVector(GHOST_DODGE_PROFILE, gcx, gcy, enemies, seen, maxHealth);
+  const base = dodgeVector(GHOST_DODGE_PROFILE, gcx, gcy, enemies, seen, maxHealth, excludeTelegraphFor);
   // base は合成済みの単位ベクトル(強さ1)。差分の脅威は自分の weight(0..1)で足す。
   let sx = base ? base.x : 0, sy = base ? base.y : 0;
   // GHOST-CMD-1B: 接線回転の角度(決定的・randなし)。0なら従来の合成式に1bitも触れない。
   const theta = Math.min(GHOST_DODGE_DIR_MAX_RAD, GHOST_DODGE_DIR_MAX_RAD * ghostDodgeLateralFrac(dodgeDir));
   for (const e of enemies) {
-    const extras: GhostDodgeThreat[] = ghostExtraTelegraphDodge(gcx, gcy, e);
+    const extras: GhostDodgeThreat[] = excludeTelegraphFor?.(e) ? [] : ghostExtraTelegraphDodge(gcx, gcy, e);
     for (const t of extras) {
       if (theta > 0 && t.shape === 'circle') {
         // 放射(ux,uy)を接線側へθ回転。接線の向きの規約は decideGhost の orbitVec と同一:
@@ -636,6 +670,20 @@ export interface GhostSelf {
   /** ⑧判断の間隔: 凍結中の移動モード+その有効期限(nowMs)。 */
   microDecisionMode?: 'approach' | 'retreat' | 'orbit-base' | 'orbit-tank' | 'orbit-idle';
   microDecisionUntil?: number;
+  // ---- research/AI_HUMANIZE.md B2(§2守護霊再生。段1/段2適用時のみ使う。次tickへ持ち越す) ----
+  /** §2-1位置取りの目標(世界座標)。§4⑧の判断間隔(microDecisionUntilを共有)で再評価する。 */
+  microHabitTargetX?: number;
+  microHabitTargetY?: number;
+  /** §2-8確定事項#4(A6): T(着弾時刻)を構え開始で凍結した値(gameTime)。 */
+  microHabitTFrozen?: number;
+  /** §2-3: T-500ms時点で確定した「振り始め」(gameTime)。振らないと決まった機会はundefinedのまま。 */
+  microHabitSwingAt?: number;
+  /** §2-3の振り判断(T-500ms到達→コマ選択)が済んだか。済むまでcounterWillAttemptは暫定true(§2-8確定事項#3=沈黙させない)。 */
+  microHabitResolved?: boolean;
+  /** §2-3「その召喚中にこの州を見た回数」(episodeKey→カウンタ・20でカンスト=記録側と同じ床)。 */
+  microHabitSeqCounts?: Readonly<Record<string, number>>;
+  /** どのepisodeKeyについて位置取り目標/凍結Tをキャッシュしているか(§2-1新しい機会の検知に使う。counterArmKeyとは別枠=counterWatching開始前の早期位置取り#13にも対応)。 */
+  microHabitArmKey?: string;
 }
 
 export interface GhostDriverInput {
@@ -673,6 +721,12 @@ export interface GhostDriverInput {
    * 一切変えない(§7-4)。省略時は0(=`profile.microRhythm`が無ければどのみち使われない)。
    */
   microSeed?: number;
+  /**
+   * research/AI_HUMANIZE.md B2 §2-8確定事項#8(A11): 刀装備の霊(katana/murasame)は段1の**位置取りだけ**
+   * 適用しない(成立時に154pxダッシュして構えた位置を捨てるため。タイミング§2-3は適用する)。
+   * store依存の判定(isKatanaMode)なので呼び出し側が注入する(meleeDistと同じ作法)。省略時=false。
+   */
+  isKatanaEquipped?: boolean;
 }
 
 export interface GhostDecision {
@@ -716,10 +770,125 @@ export interface GhostDecision {
   microPunishDelayUntil?: number;
   microDecisionMode?: 'approach' | 'retreat' | 'orbit-base' | 'orbit-tank' | 'orbit-idle';
   microDecisionUntil?: number;
+  // ---- research/AI_HUMANIZE.md B2(§2守護霊再生。GhostSelfと同じ意味・次tickへ持ち越す) ----
+  microHabitTargetX?: number;
+  microHabitTargetY?: number;
+  microHabitTFrozen?: number;
+  microHabitSwingAt?: number;
+  microHabitResolved?: boolean;
+  microHabitSeqCounts?: Readonly<Record<string, number>>;
+  microHabitArmKey?: string;
 }
 
 /** ④回り方の利きの再抽選タイマー(叩き台=旧`GHOST_ORBIT_FLIP_CHANCE`の平均反転間隔@60fpsに寄せる)。 */
 export const MICRO_ORBIT_REDRAW_MS = 1 / GHOST_ORBIT_FLIP_CHANCE * (1000 / 60); // ≈4170ms
+
+// =================================================================================================
+// research/AI_HUMANIZE.md B2(守護霊再生) — 純関数ヘルパ
+// =================================================================================================
+/** コマの保存型(0..200/-100..100の整数)を habitPos と同じ実数(0..2/-1..1)へ戻す。 */
+const dequantizeHabit = (v: number): number => v / 100;
+
+/** その episodeKey が段1(コマ≥3)か・段2(族の累計≥5)か・段3(現行モデル)かを決める(§2フォールバック3段)。
+ * `familyKey` は現在の図形から導いた族(band/circle/body)。図形が無い(=EPISODE_KEYS外)場合は常に段3。 */
+export type HabitStage = 1 | 2 | 3;
+export const resolveHabitStage = (
+  profile: GhostProfile, episodeKey: string, familyKey: HabitFamilyKey | null,
+): HabitStage => {
+  const episodes = profile.moveHabits?.[episodeKey];
+  if (episodes && episodes.length >= GHOST_HABIT_STAGE1_MIN_N) return 1;
+  if (familyKey) {
+    const stat = profile.habitFamily?.[familyKey];
+    if (stat && stat.n >= HABIT_FAMILY_MIN_N) return 2;
+  }
+  return 3;
+};
+
+/** §2-1位置選択の距離(社長裁定「位置は選択に使わない」=posA/posBを見ない・seq/ctxのみ)。 */
+const habitPositionDist = (
+  ep: Pick<HabitEpisode, 'seq' | 'ctxHp' | 'ctxHit'>, seq: number, ctxHp: 0 | 1, ctxHit: 0 | 1,
+): number =>
+  0.25 * Math.min(Math.abs(ep.seq - seq), 2) / 2 + 0.5 * Math.abs(ep.ctxHp - ctxHp) + 0.5 * Math.abs(ep.ctxHit - ctxHit);
+
+/**
+ * §2-1: 位置取り=seq/ctxの最近傍1件を引く。**裁定済み#7=(a)**: 同距離のコマが複数あれば
+ * 専用乱数流(`mrand`)で1件を選ぶ(実在コマのみ=座標・時刻を発明しない)。
+ */
+export const pickHabitPositionEpisode = (
+  episodes: readonly HabitEpisode[], seq: number, ctxHp: 0 | 1, ctxHit: 0 | 1, mrand: () => number,
+): HabitEpisode | null => {
+  if (episodes.length === 0) return null;
+  let best = Infinity;
+  let tied: HabitEpisode[] = [];
+  for (const ep of episodes) {
+    const d = habitPositionDist(ep, seq, ctxHp, ctxHit);
+    if (d < best - 1e-9) { best = d; tied = [ep]; }
+    else if (d <= best + 1e-9) tied.push(ep);
+  }
+  if (tied.length <= 1) return tied[0] ?? null;
+  const idx = Math.min(tied.length - 1, Math.max(0, Math.floor(mrand() * tied.length)));
+  return tied[idx];
+};
+
+/**
+ * §2-3: 振り=実位置の最近傍コマの押下時刻。距離は図形ローカル位置(posA/posB/sub)+seq/ctx
+ * (設計書の式どおり)。タイ崩しの規定は無い=配列の先頭(決定的・追加のrandを消費しない)。
+ */
+export const pickHabitSwingEpisode = (
+  episodes: readonly HabitEpisode[], posA: number, posB: number, sub: number,
+  seq: number, ctxHp: 0 | 1, ctxHit: 0 | 1,
+): HabitEpisode | null => {
+  if (episodes.length === 0) return null;
+  let best = Infinity, bestEp: HabitEpisode | null = null;
+  for (const ep of episodes) {
+    const d = Math.abs(dequantizeHabit(ep.posA) - posA) + Math.abs(dequantizeHabit(ep.posB) - posB)
+      + (ep.sub !== sub ? 1 : 0)
+      + 0.5 * Math.abs(ep.ctxHp - ctxHp) + 0.5 * Math.abs(ep.ctxHit - ctxHit)
+      + 0.25 * Math.min(Math.abs(ep.seq - seq), 2) / 2;
+    if (d < best) { best = d; bestEp = ep; }
+  }
+  return bestEp;
+};
+
+/**
+ * §2-1: コマ(段1)/族平均(段2)の(posA,posB,sub)を、いま実際にその技が張っている図形へ逆写像し、
+ * 世界座標の移動目標を返す。**48pxを床にクランプ**(体内目標を作らない)。
+ * `ghostX/Y` は軸退化州(§2-8確定事項#7=A10)で「今の角度を保つ」ための基準点。
+ * `shape.kind==='none'`(紫)は対象外=null。
+ */
+export const habitPositionTarget = (
+  shape: CounterReachShape,
+  axis: { fromX: number; fromY: number; toX: number; toY: number },
+  bossRect: Rect,
+  posA: number, posB: number, sub: number,
+  ghostX: number, ghostY: number,
+): { x: number; y: number } | null => {
+  if (shape.kind === 'none') return null;
+  let cx: number, cy: number;
+  if (shape.kind === 'band') { cx = ghostX; cy = ghostY; } // band分岐では軸・中心は未使用(habitPos/unhabitPosと同型)
+  else if (shape.kind === 'body') { cx = bossRect.x + bossRect.width / 2; cy = bossRect.y + bossRect.height / 2; }
+  else { cx = shape.cx; cy = shape.cy; }
+  const currentAngle = Math.atan2(ghostY - cy, ghostX - cx);
+  const raw = unhabitPos(shape, posA, posB, sub, axis.fromX, axis.fromY, axis.toX, axis.toY, bossRect, currentAngle);
+  if (raw === null) return null;
+  const edge = edgeDistToRect(raw.x, raw.y, bossRect);
+  if (edge >= GHOST_HABIT_TARGET_FLOOR_PX) return raw;
+  const bcx = bossRect.x + bossRect.width / 2, bcy = bossRect.y + bossRect.height / 2;
+  let [dx, dy] = norm(raw.x - bcx, raw.y - bcy);
+  // ボス中心と一致(押し出す向きが無い・posA=0の稀な退化)=霊の現在位置基準の方向へ逃がす(より頑健な予備)。
+  if (dx === 0 && dy === 0) [dx, dy] = norm(ghostX - bcx, ghostY - bcy);
+  if (dx === 0 && dy === 0) return raw; // それでも定まらない(霊もボス中心)=安全側でそのまま返す
+  const push = GHOST_HABIT_TARGET_FLOOR_PX - edge;
+  return { x: raw.x + dx * push, y: raw.y + dy * push };
+};
+
+/**
+ * §2-8確定事項#1(A1・最重要): 記録の`pressOfs`は「実際の押下+MELEE_WINDUP_MS(200ms)」の打刻。
+ * 再生は`T + pressOfs − MELEE_WINDUP_MS`に置く(減算を省略しない)。`pressOfs===null`はnull
+ * (§2-8確定事項#2=A2: 振らない)。
+ */
+export const habitSwingAtFromPressOfs = (T: number, pressOfs: number | null): number | null =>
+  pressOfs === null ? null : T + pressOfs - MELEE_WINDUP_MS;
 
 /** 毎tick1回呼ぶ純関数。次tickへ持ち越す自己状態(lastShotAt等)も戻り値に含めて返す。 */
 export const decideGhost = (input: GhostDriverInput): GhostDecision => {
@@ -772,6 +941,11 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       microHitReactUntil: ghost.microHitReactUntil,
       microHitReactAnchor: ghost.microHitReactAnchor, microPunishDelayUntil: ghost.microPunishDelayUntil,
       microDecisionMode: ghost.microDecisionMode, microDecisionUntil: ghost.microDecisionUntil,
+      // AI_HUMANIZE.md B2: 標的なし=監視も無い(位置取り目標/凍結T/振り解決は消す)。
+      // 累計seqカウンタ(microHabitSeqCounts)は召喚中を通じた記録なので持ち越す。
+      microHabitTargetX: undefined, microHabitTargetY: undefined,
+      microHabitTFrozen: undefined, microHabitSwingAt: undefined, microHabitResolved: undefined,
+      microHabitSeqCounts: ghost.microHabitSeqCounts, microHabitArmKey: undefined,
     };
   }
 
@@ -838,6 +1012,16 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   let microDecisionMode = ghost.microDecisionMode;
   let microDecisionUntil = ghost.microDecisionUntil ?? 0;
   let microMeleeCooldownMs = ghost.microMeleeCooldownMs;
+  // AI_HUMANIZE.md B2(§2守護霊再生): 位置取りの目標キャッシュ+振り解決の凍結状態。
+  // 「新しい機会が始まった」(pendingAtCarried===undefined)の判定は下のcounterWatchingブロックの
+  // 前に確定するので、そこでまとめてリセットする(移動ブロックより前=移動が古い目標を読まない)。
+  let microHabitTargetX = ghost.microHabitTargetX;
+  let microHabitTargetY = ghost.microHabitTargetY;
+  let microHabitTFrozen = ghost.microHabitTFrozen;
+  let microHabitSwingAt = ghost.microHabitSwingAt;
+  let microHabitResolved = ghost.microHabitResolved;
+  let microHabitSeqCounts = ghost.microHabitSeqCounts;
+  let microHabitArmKey = ghost.microHabitArmKey;
 
   // GHOST-CMD-2A(§2.18追補 隙コマンド): 標的の隙(気絶/技後硬直/自分のカウンター成立直後)の窓。
   // 判定は計測側(playerTraits)と**共有の純関数**(punishWindow.ts)=気絶/硬直の判定を発明しない。
@@ -863,12 +1047,33 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // 'rush' = 「詰めて叩く」。'shoot'/窓なしは従来どおり(間合い管理のまま撃つ)。⑦の遅延中はまだ詰めない。
   const punishRush = punishMode === 'rush' && nowMs >= microPunishDelayUntil;
 
+  // research/AI_HUMANIZE.md B2 §2-1「回避外しの実仕組み」: 段1/段2の位置取りが対象にする敵×州だけ、
+  // その予告回避を抑止する(下の本判定=habitStage算出の軽量な先取り。target/gameTime/profileだけの
+  // 純粋な導出=副作用なし・二重計算のコストは無視できる)。katana装備の霊・軸を毎フレーム追う州
+  // (TRACKED_SHAPE_KEYS)は位置取り自体を行わないので抑止もしない。
+  // ★v5是正「移動分岐の入り方」: 位置取りはdodge/tankロールでも同じ動きをする(reactionでは
+  // 分岐しない=「この技を避ける人」の再現はコマの遠い位置+pressOfs=nullが担う)ので、抑止もreactionに
+  // 依存しない。
+  let habitDodgeExcludeTargetId: string | null = null;
+  {
+    const armKeyEarly = target.bossState ?? target.aiPhase;
+    const keyEarly = armKeyEarly !== undefined ? `${target.type}:${armKeyEarly}` : null;
+    if (keyEarly !== null && isEpisodeKey(keyEarly) && !input.isKatanaEquipped
+      && !TRACKED_SHAPE_KEYS.includes(keyEarly)) {
+      const shapeEarly = shapeForEpisodeReplay(target.type, armKeyEarly as string, target);
+      if (shapeEarly && shapeEarly.kind !== 'none') {
+        const stageEarly = resolveHabitStage(profile, keyEarly, habitFamilyOfShape(shapeEarly));
+        if (stageEarly === 1 || stageEarly === 2) habitDodgeExcludeTargetId = target.id;
+      }
+    }
+  }
   // 回避(§2.12「実行は常に本気」=強さは常に1)。既存 dodgeVector + 全ボス予告台帳の差分。
   // v0.25.2547: maxHealth を渡す=接触(体当たり)回避が有効(危険な接触のみ・botSkill既存規格)。
   // GHOST-CMD-1B: 避け方向の癖(円形タグ付き脅威だけ接線へ≤45°回転・決定的)。欠損=従来とビット一致。
   const dodge = ghostDodgeVector(
     gcx, gcy, enemies, projectiles, ghost.maxHealth, input.meleeDist, tankedBulletKey,
     profile.dodgeDir, orbitSign,
+    habitDodgeExcludeTargetId !== null ? (e: Enemy) => e.id === habitDodgeExcludeTargetId : undefined,
   );
 
   // §2.12(1) 反応遅延 + GHOST-BULLET-TECH A(認知の持続): 「危険」(標的ボスの予告 or 回避対象の脅威)を
@@ -944,6 +1149,40 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   );
   const counterWatching = counterable && !counterGaveUp;
 
+  // ---- research/AI_HUMANIZE.md B2(§2/§2-7/§2-8): この機会のhabitKey/図形/軸/族/段 ----
+  // 対象はEPISODE_KEYS(コマ台帳34州)のみ。それ以外(idol等)は常に段3=現行モデル(ビット同一・§7受け入れ条件3)。
+  const habitKey = counterArmKeyNow !== undefined ? `${target.type}:${counterArmKeyNow}` : null;
+  const habitShape: CounterReachShape | null = habitKey !== null && counterArmKeyNow !== undefined && isEpisodeKey(habitKey)
+    ? shapeForEpisodeReplay(target.type, counterArmKeyNow, target) : null;
+  const habitAxis = habitShape !== null && counterArmKeyNow !== undefined
+    ? axisForEpisodeReplay(target.type, counterArmKeyNow, target) : null;
+  const habitFamilyKey: HabitFamilyKey | null = habitShape !== null ? habitFamilyOfShape(habitShape) : null;
+  const habitStage: HabitStage = (habitKey !== null && habitShape !== null && habitShape.kind !== 'none')
+    ? resolveHabitStage(profile, habitKey, habitFamilyKey)
+    : 3;
+  // §2-8確定事項#8(A11): 刀装備の霊は位置取りだけ適用しない(タイミング§2-3は適用する)。
+  // §1-2: 毎フレーム狙い直す図形の州(TRACKED_SHAPE_KEYS=thor:tsuki-windup)は位置取りの対象外。
+  const habitPositionApplies = habitStage !== 3 && habitShape !== null && habitShape.kind !== 'none'
+    && !input.isKatanaEquipped && !(habitKey !== null && TRACKED_SHAPE_KEYS.includes(habitKey));
+  // §2-8確定事項#13(社長裁定2026-09-02=(a)): 段1の位置取りだけ、counterWatching(残り1000ms)を
+  // 待たず予告の立ち上がりから始める(振りの判断・窓・請求・判定には触れない)。
+  const habitEarlyPositionOk = habitStage === 1 && habitPositionApplies;
+  // 「新しい機会が始まった」の検知(counterArmKey/counterPendingAtとは別枠=habitEarlyPositionOkで
+  // counterWatchingより前から位置取りが動くため、専用のアーム鍵で管理する)。
+  const habitArmKeyNext = (habitKey !== null && habitShape !== null && habitShape.kind !== 'none') ? habitKey : undefined;
+  const habitNewArm = habitArmKeyNext !== undefined && habitArmKeyNext !== ghost.microHabitArmKey;
+  microHabitArmKey = habitArmKeyNext;
+  if (habitNewArm) {
+    microHabitTargetX = undefined; microHabitTargetY = undefined;
+    // §2-8確定事項#4(A6): T(着弾時刻)は構え開始で凍結する(bossStateUntil/aiPhaseUntilの生値は
+    // 後退しうる=賞金首KB中)。episodeKey州はwindupImpactAtが必ず定義済み(EPISODE_KEYSは
+    // IMPACT_AT_WINDUP_END_BOSS_STATES/GIANT_IMPACT_AT_WINDUP_ENDの部分集合そのもの)。
+    microHabitTFrozen = windupImpactAt;
+    microHabitSwingAt = undefined; microHabitResolved = false;
+    const prevSeq = microHabitSeqCounts?.[habitArmKeyNext] ?? 0;
+    microHabitSeqCounts = { ...(microHabitSeqCounts ?? {}), [habitArmKeyNext]: Math.min(20, prevSeq + 1) };
+  }
+
   // 間合い管理: preferredDist(平時)/+安全マージン(予告中)へ寄せる。
   // §2.12追補(社長裁定v0.25.2534): 静止は「カウンター待ち」以外に存在させない。旧実装で立ち尽くして
   // いた場面(帯内静止・止まり癖tick・tank予告中の棒立ち)は全てボス正対の横流れ(オービット)に置換。
@@ -954,7 +1193,56 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     return [-ry * orbitSign * frac, rx * orbitSign * frac];
   };
   let moveX = 0, moveY = 0;
-  if (reaction === 'counter' && !counterGaveUp && (isCounterOpportunityNow(target) || windupImpactAt !== undefined || activeDodge === null)) {
+  // ★研究書§2-1「移動分岐の入り方」v5是正(増分監査#4/#5): 段1/段2適用州では**袋ロール(reaction)の
+  // 移動分岐を使わず**、専用の「習慣位置分岐」に置き換える(現行の reaction==='counter' 分岐とは別)。
+  // 分岐の中でactiveDodge(敵弾等)が非nullなら回避を優先し、それ以外は習慣位置へ寄る——dodge/tankロールでも
+  // 同じ(「この技を避ける人」の再現は、遠い位置+pressOfs=nullのコマ自体が担う=ロールで二重にしない)。
+  // §2-8確定事項#13(社長裁定2026-09-02=(a)): 段1の位置取りだけ counterWatching(残り1000ms)を待たず
+  // 予告の立ち上がりから始める(habitEarlyPositionOk)。段2は従来どおり counterGaveUp が明けてから。
+  if (habitPositionApplies && (habitEarlyPositionOk || !counterGaveUp) && habitShape && habitAxis) {
+    if (activeDodge) {
+      moveX = activeDodge.x; moveY = activeDodge.y;
+    } else {
+      // research/AI_HUMANIZE.md B2 §2-1: 段1(コマ)/段2(族平均)の位置取り。目標は§4⑧の判断間隔
+      // (micro.decisionInterval・microDecisionUntil)で再評価する(毎tickではない)。
+      const bossRectNow: Rect = { x: target.x, y: target.y, width: target.width, height: target.height };
+      const habitKeyNow = habitKey as string;
+      const needsHabitPick = microHabitTargetX === undefined
+        || (micro?.decisionInterval ? nowMs >= microDecisionUntil : true);
+      if (needsHabitPick) {
+        const ctxHpNow: 0 | 1 = ghost.hpFrac01 !== undefined && ghost.hpFrac01 <= 0.3 ? 1 : 0;
+        // ★記述の訂正(監査C): Summon.lastHitはDate.now基準(設計書が正)。ctxHitの2秒はnowMs側で
+        // 測る(記録側=gameTime基準2秒とは別物。§2-3「時計を跨がない」)。
+        const ctxHitNow: 0 | 1 = ghost.lastHit !== undefined && ghost.lastHit > 0
+          && nowMs - ghost.lastHit <= 2000 ? 1 : 0;
+        const seqNow = Math.min(20, microHabitSeqCounts?.[habitKeyNow] ?? 0);
+        let picked: { posA: number; posB: number; sub: number } | null = null;
+        if (habitStage === 1) {
+          const episodes = profile.moveHabits?.[habitKeyNow] ?? [];
+          const ep = pickHabitPositionEpisode(episodes, seqNow, ctxHpNow, ctxHitNow, mrand);
+          if (ep) picked = { posA: ep.posA / 100, posB: ep.posB / 100, sub: ep.sub };
+        } else if (habitStage === 2 && habitFamilyKey) {
+          const stat = profile.habitFamily?.[habitFamilyKey];
+          if (stat) picked = { posA: stat.avgPosA / 100, posB: stat.avgPosB / 100, sub: 0 };
+        }
+        if (picked) {
+          const pt = habitPositionTarget(habitShape, habitAxis, bossRectNow, picked.posA, picked.posB, picked.sub, gcx, gcy);
+          if (pt) { microHabitTargetX = pt.x; microHabitTargetY = pt.y; }
+        }
+        if (micro?.decisionInterval) {
+          microDecisionUntil = nowMs + sampleDecisionIntervalMs(micro.decisionInterval, mrand) + reactionMs;
+        }
+      }
+      if (microHabitTargetX !== undefined && microHabitTargetY !== undefined) {
+        const hdx = microHabitTargetX - gcx, hdy = microHabitTargetY - gcy;
+        // §2-1「到達後は静止してよい」: デッドバンド内なら静止(=完全停止=カウンター待ちの例外側)。
+        if (Math.hypot(hdx, hdy) > GHOST_HABIT_ARRIVE_PX) [moveX, moveY] = norm(hdx, hdy);
+      } else if (edgeDist > GHOST_MELEE_RANGE) {
+        [moveX, moveY] = norm(tcx - gcx, tcy - gcy); // 逆写像に失敗した異常系の安全側フォールバック
+      }
+    }
+  } else if (reaction === 'counter' && !counterGaveUp && (isCounterOpportunityNow(target) || windupImpactAt !== undefined || activeDodge === null)) {
+    // 段3(現行モデル。§7受け入れ条件3=ビット同一)。
     // ★憲法(v0.25.3948): 機会の無い州(溜め等)で回避すべき脅威があるなら、待たずに回避へ落ちる
     // (旧: 溜め中も静止して存在しない窓を待った)。機会が来たら(実行中)従来どおり詰めて待つ。
     // ★判定時置換ミラー(2026-08-27): 着弾時刻の分かる予告中(windupImpactAt)は機会が**着弾時に存在する**
@@ -1119,33 +1407,88 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     // 'dodge'・'tank'=この技では構えない(離脱/被弾の再現を汚さない) / 'fallback'=従来の抽選。
     if (counterPendingAt === undefined) {
       counterPendingAt = nowMs;
-      counterWillAttempt = reaction === 'counter'
-        ? true
-        : reaction === 'dodge' || reaction === 'tank'
-          ? false
-          : rand() < profile.counterChance;
+      // research/AI_HUMANIZE.md B2 §2-8確定事項#2/#3(A2/A3): 段1/段2は「振るか」をコマ/族の
+      // pressOfsで決める(袋ロール・counterChance抽選は使わない)。決着(§2-3のT-500ms判定)までは
+      // **沈黙させない**=暫定true(下のgunHeldByWatchが銃を挟まない=「待っている」を保つ)。
+      counterWillAttempt = habitStage === 3
+        ? (reaction === 'counter'
+          ? true
+          : reaction === 'dodge' || reaction === 'tank'
+            ? false
+            : rand() < profile.counterChance)
+        : true;
     }
-    // A-2(§2.18⑩「実行=ベスト・ゴール逆算」): 着弾予告(その終わりにダメージが出る予告)の間は、
-    // 反応遅延で振らずに**着弾の瞬間から逆算**して振る=請求(TTL150ms)が着弾時に生きている状態を作る。
-    // 実効先行時間は反応の遅さで決まる決定的な値(乱数を使わない=意思決定の乱数消費順は不変)。
-    // 遅い霊ほど早く振ってしまい請求がTTL切れして食らう=個性がそのまま結果に出る。
-    // 着弾予告以外(実行中/硬直)は従来どおり反応遅延で振る(隙を叩く挙動は維持)。
-    // ★判定時置換ミラー(2026-08-27): 着弾逆算をgiantbat限定(aimWindup)から**着弾時刻の分かる
-    // 予告全般**(windupImpactAt)へ一般化。giantbatは従来と同じ式に落ちる(aiPhaseUntil経由)。
-    // 逆算はgameTime系で完結・窓の生死はDate.now系で完結(2つの時計を直接比較しない=監査R4)。
-    const aimImpactAt = aimWindup && target.aiPhaseUntil !== undefined
-      ? target.aiPhaseUntil
-      : windupImpactAt;
-    const aimReady = aimImpactAt !== undefined
-      ? ghostAimSwingNow(
-          aimImpactAt - gameTime,
-          ghostAimLeadMs(ghostAimSlowness01(reactionMs, GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS)),
-        )
-      : nowMs - counterPendingAt >= reactionMs;
-    if (counterWillAttempt && meleeReady && aimReady && counterMeleeReady) {
-      action = 'melee'; lastMeleeAt = nowMs; lastCounterAttemptAt = nowMs;
-      counterPendingAt = undefined; counterWillAttempt = false;
-      meleeIsCounterAttempt = true;
+    if (habitStage === 1 || habitStage === 2) {
+      // ---- research/AI_HUMANIZE.md B2 §2-3+§2-8(A1/A2/A4/A5/A6/A7・#12): コマ/族から振りを決める ----
+      const habitKeyNow = habitKey as string;
+      // §2-8確定事項#4(A6): T(着弾時刻)は構え開始で凍結した値を使う(habitNewArmの瞬間に確定済み)。
+      const TFrozen = microHabitTFrozen ?? windupImpactAt ?? nowMs; // 最後のnowMsは理論上到達しない安全弁
+      // §2-3「振り判断時点(T−500ms)」に達したら1回だけコマ/族から決める(gameTimeのみ=A7)。
+      if (!microHabitResolved && gameTime >= TFrozen - GHOST_HABIT_SWING_DECIDE_LEAD_MS) {
+        const bossRectNow: Rect = { x: target.x, y: target.y, width: target.width, height: target.height };
+        const ctxHpNow: 0 | 1 = ghost.hpFrac01 !== undefined && ghost.hpFrac01 <= 0.3 ? 1 : 0;
+        const ctxHitNow: 0 | 1 = ghost.lastHit !== undefined && ghost.lastHit > 0
+          && nowMs - ghost.lastHit <= 2000 ? 1 : 0;
+        const seqNow = Math.min(20, microHabitSeqCounts?.[habitKeyNow] ?? 0);
+        let pressOfs: number | null = null;
+        if (habitStage === 1 && habitShape && habitAxis) {
+          // §2-3: 振り判断時点の実位置を図形座標へ写し、最近傍1コマの押下時刻を引く。
+          const local = habitPos(
+            habitShape, gcx, gcy, habitAxis.fromX, habitAxis.fromY, habitAxis.toX, habitAxis.toY, bossRectNow,
+          );
+          if (local) {
+            const episodes = profile.moveHabits?.[habitKeyNow] ?? [];
+            const ep = pickHabitSwingEpisode(episodes, local.posA, local.posB, local.sub, seqNow, ctxHpNow, ctxHitNow);
+            pressOfs = ep ? ep.pressOfs : null;
+          }
+        } else if (habitStage === 2 && habitFamilyKey) {
+          // §2-8確定事項#6(A8): 段2は族別avgPressOfsのみ(counterAimLagMs/counterAimRateは使わない)。
+          // 振るか=押下率(pressRatePct)を専用乱数流で1回引く(既存randは消費しない=§7-4)。
+          const stat = profile.habitFamily?.[habitFamilyKey];
+          if (stat) pressOfs = mrand() < stat.pressRatePct / 100 ? stat.avgPressOfs : null;
+        }
+        // §2-8確定事項#1(A1・最重要): T + pressOfs − MELEE_WINDUP_MS(減算を省略しない)。
+        microHabitSwingAt = habitSwingAtFromPressOfs(TFrozen, pressOfs) ?? undefined;
+        microHabitResolved = true;
+        counterWillAttempt = microHabitSwingAt !== undefined; // §2-8確定事項#2(A2): pressOfs=null→振らない
+      }
+      // §2-8確定事項#5(A7): 振り判断はgameTimeのみで完結。CD(meleeReady相当)は残りmsとして別にAND。
+      // ★裁定済み#12(社長裁定2026-09-02=(a)): 段1の振りはmicroMeleeCooldownMsを見ない
+      // (固定CD+counterMeleeReadyのみ)。§4②「揺らぎはカウンターの振りに掛けない」を実態として成立させる。
+      const habitMeleeReady = habitStage === 1
+        ? nowMs - ghost.lastMeleeAt >= GHOST_MELEE_COOLDOWN_MS
+        : meleeReady;
+      const habitAimReady = microHabitResolved && microHabitSwingAt !== undefined && gameTime >= microHabitSwingAt;
+      if (counterWillAttempt && microHabitResolved && habitAimReady && habitMeleeReady && counterMeleeReady) {
+        action = 'melee'; lastMeleeAt = nowMs; lastCounterAttemptAt = nowMs;
+        counterPendingAt = undefined; counterWillAttempt = false;
+        microHabitResolved = false; microHabitSwingAt = undefined; microHabitTFrozen = undefined;
+        meleeIsCounterAttempt = true;
+      }
+    } else {
+      // 段3=現行モデル(コマ<3・族<5・EPISODE_KEYS外は全てここ。§7受け入れ条件3=ビット同一)。
+      // A-2(§2.18⑩「実行=ベスト・ゴール逆算」): 着弾予告(その終わりにダメージが出る予告)の間は、
+      // 反応遅延で振らずに**着弾の瞬間から逆算**して振る=請求(TTL150ms)が着弾時に生きている状態を作る。
+      // 実効先行時間は反応の遅さで決まる決定的な値(乱数を使わない=意思決定の乱数消費順は不変)。
+      // 遅い霊ほど早く振ってしまい請求がTTL切れして食らう=個性がそのまま結果に出る。
+      // 着弾予告以外(実行中/硬直)は従来どおり反応遅延で振る(隙を叩く挙動は維持)。
+      // ★判定時置換ミラー(2026-08-27): 着弾逆算をgiantbat限定(aimWindup)から**着弾時刻の分かる
+      // 予告全般**(windupImpactAt)へ一般化。giantbatは従来と同じ式に落ちる(aiPhaseUntil経由)。
+      // 逆算はgameTime系で完結・窓の生死はDate.now系で完結(2つの時計を直接比較しない=監査R4)。
+      const aimImpactAt = aimWindup && target.aiPhaseUntil !== undefined
+        ? target.aiPhaseUntil
+        : windupImpactAt;
+      const aimReady = aimImpactAt !== undefined
+        ? ghostAimSwingNow(
+            aimImpactAt - gameTime,
+            ghostAimLeadMs(ghostAimSlowness01(reactionMs, GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS)),
+          )
+        : nowMs - counterPendingAt >= reactionMs;
+      if (counterWillAttempt && meleeReady && aimReady && counterMeleeReady) {
+        action = 'melee'; lastMeleeAt = nowMs; lastCounterAttemptAt = nowMs;
+        counterPendingAt = undefined; counterWillAttempt = false;
+        meleeIsCounterAttempt = true;
+      }
     }
   } else {
     // 窓が無い、または**見切った**(§2.12: 約1秒待って成立しなければ離脱)。見切りの時は
@@ -1192,6 +1535,9 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     microIdleUntil, microMeleeCooldownMs, microDrawnDist, microDrawnDistSig,
     microOrbitRedrawAt, microHitReactMode, microHitReactUntil, microHitReactAnchor,
     microPunishDelayUntil, microDecisionMode, microDecisionUntil,
+    // research/AI_HUMANIZE.md B2(§2守護霊再生): 位置取り目標キャッシュ+振り解決の凍結状態。
+    microHabitTargetX, microHabitTargetY, microHabitTFrozen, microHabitSwingAt, microHabitResolved,
+    microHabitSeqCounts, microHabitArmKey,
   };
 };
 

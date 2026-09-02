@@ -33,6 +33,9 @@ import { distToBandRect } from './geometry';
 import { counterReachShapeFor, inCounterReach, isCounterOpportunityNow } from './counterReach';
 // research/AI_HUMANIZE.md B1(コマ台帳・記録専用): 天使7州(miguel/uri/suriel)の州満了エッジに1行差す。
 import { settleEpisode, type CounterReachShape } from './habitEpisode';
+// research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 天使7州の実図形は葉モジュール
+// episodeShape.ts へ1本化(記録側=ここ・再生側=ghostDriver が同じ関数を呼ぶ。数値の複製なし)。
+import { episodeShapeFor } from './episodeShape';
 import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY } from './bossScript';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
@@ -687,15 +690,10 @@ export const runMiguelTick = (
       patch.x = lc.x - miguel.width / 2; patch.y = lc.y - miguel.height / 2;
     }
     const { overlap, counterActive } = bodyOverlapNow(miguel);
-    // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=帯(実行で使うのと同じ
-    // aiFrom/aiTarget×MG_T.harai.halfWidth)。tate-windupも同じtuning(向きが縦か横かの違いだけ)。
-    const habitBand: CounterReachShape = {
-      kind: 'band',
-      bands: [{
-        fx: miguel.aiFromX ?? mcx, fy: miguel.aiFromY ?? mcy,
-        tx: miguel.aiTargetX ?? mcx, ty: miguel.aiTargetY ?? mcy, halfWidth: MG_T.harai.halfWidth,
-      }],
-    };
+    // research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 州満了=帯(実行で使うのと同じ
+    // aiFrom/aiTarget×MG_T.harai.halfWidth。tate-windupも同じtuning=向きが縦か横かの違いだけ)。
+    // 図形は episodeShape.ts へ1本化(記録側・再生側が同じ関数=数値の複製なし)。
+    const habitBand: CounterReachShape | null = episodeShapeFor('miguel', st, miguel);
     if (overlap && counterActive) {
       // ★検収是正(§1-0例外・中6): 溜め中カウンター成立による州中断もコマを確定する
       // (T=州の満了予定時刻のまま。天使系はここが無いと成立コマが構造的に1件も録れない)。
@@ -704,7 +702,7 @@ export const runMiguelTick = (
         bcx: mcx, bcy: mcy, pcx, pcy,
         aiFromX: miguel.aiFromX, aiFromY: miguel.aiFromY, aiTargetX: miguel.aiTargetX, aiTargetY: miguel.aiTargetY,
         bossRect: { x: miguel.x, y: miguel.y, width: miguel.width, height: miguel.height },
-        liveShape: habitBand,
+        liveShape: habitBand ?? undefined,
         playerHealth: player.health, playerMaxHealth: player.maxHealth,
         lastDamagedAtGame: player.lastDamagedAtGame,
       });
@@ -715,7 +713,7 @@ export const runMiguelTick = (
         bcx: mcx, bcy: mcy, pcx, pcy,
         aiFromX: miguel.aiFromX, aiFromY: miguel.aiFromY, aiTargetX: miguel.aiTargetX, aiTargetY: miguel.aiTargetY,
         bossRect: { x: miguel.x, y: miguel.y, width: miguel.width, height: miguel.height },
-        liveShape: habitBand,
+        liveShape: habitBand ?? undefined,
         playerHealth: player.health, playerMaxHealth: player.maxHealth,
         lastDamagedAtGame: player.lastDamagedAtGame,
       });
@@ -2186,13 +2184,9 @@ export const runUriTick = (
       patch.x = lc.x - uri.width / 2; patch.y = lc.y - uri.height / 2;
     }
     const { overlap, counterActive } = bodyOverlapNow(uri);
-    const uriSweepBand: CounterReachShape = {
-      kind: 'band',
-      bands: [{
-        fx: uri.aiFromX ?? ucx, fy: uri.aiFromY ?? ucy,
-        tx: uri.aiTargetX ?? ucx, ty: uri.aiTargetY ?? ucy, halfWidth: UR_T.sweep.halfWidth,
-      }],
-    };
+    // AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 図形は episodeShape.ts へ1本化
+    // (記録側・再生側が同じ関数=数値の複製なし)。'uri:sweep-windup' はlive 16州の1つ=null化しない。
+    const uriSweepBand: CounterReachShape = episodeShapeFor('uri', 'sweep-windup', uri) ?? { kind: 'body' };
     if (overlap && counterActive) {
       // ★検収是正(§1-0例外・中6): 溜め中カウンター成立による州中断もコマを確定する(T=満了予定時刻)。
       settleUriHabit('sweep-windup', uriSweepBand, uri.bossStateUntil ?? newGameTime);
@@ -2243,13 +2237,8 @@ export const runUriTick = (
     }
   } else if (st === 'downslash-windup') {
     const { overlap, counterActive } = bodyOverlapNow(uri);
-    const uriDownslashBand: CounterReachShape = {
-      kind: 'band',
-      bands: [{
-        fx: uri.aiFromX ?? ucx, fy: uri.aiFromY ?? ucy,
-        tx: uri.aiTargetX ?? ucx, ty: uri.aiTargetY ?? ucy, halfWidth: UR_T.downslash.halfWidth,
-      }],
-    };
+    // AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 図形は episodeShape.ts へ1本化。
+    const uriDownslashBand: CounterReachShape = episodeShapeFor('uri', 'downslash-windup', uri) ?? { kind: 'body' };
     if (overlap && counterActive) {
       // ★検収是正(§1-0例外・中6): 溜め中カウンター成立による州中断もコマを確定する(T=満了予定時刻)。
       settleUriHabit('downslash-windup', uriDownslashBand, uri.bossStateUntil ?? newGameTime);
@@ -2461,23 +2450,10 @@ export const runSurielTick = (
       lastDamagedAtGame: player.lastDamagedAtGame,
     });
   };
-  // ★検収是正(中1): ring-beam-windupの帯を組む。Phase2は2本目(ring2起点・同じ狙い先・同寸法)が
-  // 実在すればbandsへ2本渡す(判定側'ring-active'の2本目と同じ式=座標源を共有)。
-  const surielRingBeamBands = (): { fx: number; fy: number; tx: number; ty: number; halfWidth: number }[] => {
-    const rbfx = suriel.aiFromX ?? scx, rbfy = suriel.aiFromY ?? scy;
-    const rbtx0 = suriel.aiTargetX ?? scx, rbty0 = suriel.aiTargetY ?? scy;
-    let rbdx = rbtx0 - rbfx, rbdy = rbty0 - rbfy;
-    const rbdl = Math.hypot(rbdx, rbdy) || 1; rbdx /= rbdl; rbdy /= rbdl;
-    const rbex = rbfx + rbdx * SR_T.beam.range, rbey = rbfy + rbdy * SR_T.beam.range;
-    const bands = [{ fx: rbfx, fy: rbfy, tx: rbex, ty: rbey, halfWidth: SR_T.beam.halfWidth }];
-    if (suriel.ring2X !== undefined && suriel.ring2Y !== undefined) {
-      let d2x = rbtx0 - suriel.ring2X, d2y = rbty0 - suriel.ring2Y;
-      const dl2 = Math.hypot(d2x, d2y) || 1; d2x /= dl2; d2y /= dl2;
-      const e2x = suriel.ring2X + d2x * SR_T.beam.range, e2y = suriel.ring2Y + d2y * SR_T.beam.range;
-      bands.push({ fx: suriel.ring2X, fy: suriel.ring2Y, tx: e2x, ty: e2y, halfWidth: SR_T.beam.halfWidth });
-    }
-    return bands;
-  };
+  // AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): ring-beam-windupの帯(Phase2の2本目=ring2込み)
+  // は episodeShape.ts の episodeShapeFor へ1本化した(旧 surielRingBeamBands と同一式・数値の複製なし)。
+  const surielRingBeamShape = (): CounterReachShape =>
+    episodeShapeFor('suriel', 'ring-beam-windup', suriel) ?? { kind: 'body' };
 
   // --- 技の開始(begin*)。実戦の抽選(下のchase分岐)と ボスメーカーの▸個別再生が**同じ1本**を通る ---
   // 環の射出だけは「いまの環の位置」を起点に取るので、chase側で計算済みの待機点を渡す
@@ -2589,7 +2565,7 @@ export const runSurielTick = (
       // ★検収是正(§1-0例外・中6): 溜め中カウンター成立による州中断もコマを確定する
       // (T=州の満了予定時刻のまま。天使系はここが無いと成立コマが構造的に1件も録れない)。
       settleSurielHabit(
-        'ring-beam-windup', { kind: 'band', bands: surielRingBeamBands() }, suriel.bossStateUntil ?? newGameTime,
+        'ring-beam-windup', surielRingBeamShape(), suriel.bossStateUntil ?? newGameTime,
         suriel.aiFromX ?? scx, suriel.aiFromY ?? scy, suriel.aiTargetX ?? scx, suriel.aiTargetY ?? scy,
       );
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
@@ -2598,7 +2574,7 @@ export const runSurielTick = (
       // 実際に判定する式と同一——起点=環の到達点[aiFrom]、向き=aiFrom→aiTarget、長さ=SR_T.beam.range)。
       // ★検収是正(中1): Phase2は2本目(ring2)もbandsへ列挙する(surielRingBeamBands参照)。
       settleSurielHabit(
-        'ring-beam-windup', { kind: 'band', bands: surielRingBeamBands() }, newGameTime,
+        'ring-beam-windup', surielRingBeamShape(), newGameTime,
         suriel.aiFromX ?? scx, suriel.aiFromY ?? scy, suriel.aiTargetX ?? scx, suriel.aiTargetY ?? scy,
       );
       patch.bossState = 'ring-active'; patch.bossStateUntil = newGameTime + SR_T.ringshot.active;
@@ -2668,7 +2644,7 @@ export const runSurielTick = (
     if (overlap && counterActive) {
       // ★検収是正(§1-0例外・中6): 溜め中カウンター成立による州中断もコマを確定する(T=満了予定時刻)。
       settleSurielHabit(
-        'ring-spin-windup', { kind: 'circle', cx: scx, cy: scy, radius: SR_T.ringspin.radius },
+        'ring-spin-windup', episodeShapeFor('suriel', 'ring-spin-windup', suriel) ?? { kind: 'body' },
         suriel.bossStateUntil ?? newGameTime, scx, scy, scx, scy,
       );
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
@@ -2676,7 +2652,7 @@ export const runSurielTick = (
       // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 州満了=自分中心円(実行'ring-spin'と
       // 同じSR_T.ringspin.radius)。自分中心=軸退化(posB固定0・§1-2のbm-whip360/mk-spin/bite と同型)。
       settleSurielHabit(
-        'ring-spin-windup', { kind: 'circle', cx: scx, cy: scy, radius: SR_T.ringspin.radius },
+        'ring-spin-windup', episodeShapeFor('suriel', 'ring-spin-windup', suriel) ?? { kind: 'body' },
         newGameTime, scx, scy, scx, scy,
       );
       patch.bossState = 'ring-spin'; patch.bossStateUntil = newGameTime + SR_T.ringspin.active; patch.aiStartedAt = newGameTime;
@@ -2718,13 +2694,8 @@ export const runSurielTick = (
     }
   } else if (st === 'sweep-windup') {
     const { overlap, counterActive } = bodyOverlapNow(suriel);
-    const sweepBand: CounterReachShape = {
-      kind: 'band',
-      bands: [{
-        fx: suriel.aiFromX ?? scx, fy: suriel.aiFromY ?? scy,
-        tx: suriel.aiTargetX ?? scx, ty: suriel.aiTargetY ?? scy, halfWidth: SR_T.sweep.halfWidth,
-      }],
-    };
+    // AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 図形は episodeShape.ts へ1本化。
+    const sweepBand: CounterReachShape = episodeShapeFor('suriel', 'sweep-windup', suriel) ?? { kind: 'body' };
     if (overlap && counterActive) {
       // ★検収是正(§1-0例外・中6): 溜め中カウンター成立による州中断もコマを確定する(T=満了予定時刻)。
       settleSurielHabit(

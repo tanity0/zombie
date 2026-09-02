@@ -14,12 +14,17 @@
 // ② 判定側に実図形はあるが宣言表には無い州(天使7州+giant9州)= 呼び出し側が liveShape を組んで渡す。
 // ③ どちらも無い州(giantbat:g-bolt-windup のみ)= body(縁基準)。
 import type { Rect } from '../world/obstacles';
+import type { Enemy } from '../types/game';
 import { distToBandRect } from './geometry';
 import {
   counterReachShapeFor, counterReachKindFor, type CounterReachShape, type CounterReachCtx,
 } from './counterReach';
 export type { CounterReachShape } from './counterReach'; // 呼び出し側(gameStore.ts等)がliveShapeを組む型
 import { IMPACT_AT_WINDUP_END_BOSS_STATES, GIANT_IMPACT_AT_WINDUP_END } from './ghostCounterAim';
+// research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): live 16州(天使7+城ボス9)の
+// 実図形は葉モジュール episodeShape.ts が持つ(数値の複製禁止=gameStore.ts/angelBossTick.tsの
+// 寸法定数はこのファイル経由ではなくepisodeShape.tsが単一の出どころ)。
+import { episodeShapeFor, episodeAxisFor } from './episodeShape';
 
 // =================================================================================================
 // EPISODE_KEYS(§1-0・機械検査対象)
@@ -84,13 +89,64 @@ export const EPISODE_SHAPE_DECL: Readonly<Record<string, EpisodeShapeCategory>> 
   ...Object.fromEntries(BODY_ONLY_KEYS.map(k => [k, 'body-only' as const])),
 });
 
+/**
+ * B2(再生側)★未決#14(社長裁定2026-09-02=(a)): 「州→今この瞬間の実図形」を**1本の関数**で返す。
+ * settleEpisode の3段分岐(declared/live/body-only)と同じ根拠を再生側でも共有する
+ * (①declaredはcounterReachShapeForをそのまま呼ぶ=判定と同じ関数 ②liveはepisodeShapeFor
+ * ③body-onlyは{kind:'body'})。**寸法をghostDriver側へ複製しない**(§1-0)。
+ * `enemy` はこの技を出している本人(Enemy)そのもの(記録側と同じ材料)。
+ * 対象外の州(EPISODE_KEYS外)は null。
+ */
+export const shapeForEpisodeReplay = (enemyType: string, state: string, enemy: Enemy): CounterReachShape | null => {
+  const episodeKey = `${enemyType}:${state}`;
+  const category = EPISODE_SHAPE_DECL[episodeKey];
+  if (category === undefined) return null;
+  if (category === 'body-only') return { kind: 'body' };
+  if (category === 'live') return episodeShapeFor(enemyType, state, enemy);
+  // declared: 判定側と同じ counterReachShapeFor をそのまま呼ぶ(数値の複製なし)。
+  const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+  const reachKey = reachKeyFor(enemyType, state);
+  const ctx: CounterReachCtx = {
+    bcx: ecx, bcy: ecy, pcx: ecx, pcy: ecy, // 対象17州はどれもプレイヤー座標を使わない(実装時に確認済み)
+    aiFromX: enemy.aiFromX, aiFromY: enemy.aiFromY, aiTargetX: enemy.aiTargetX, aiTargetY: enemy.aiTargetY,
+    tripleAng: enemy.bountyTripleAng,
+  };
+  return counterReachShapeFor(reachKey, ctx);
+};
+
+/**
+ * B2(再生側): その州の「軸」(circle/bodyの差角の基準・§2-8確定事項#7の退化判定に使う)。
+ * band系の位置取りには使われない(habitPosのband分岐は帯自身のfx/fy/tx/tyだけで測る)ので、
+ * declared側は counterReachShapeFor と同じ既定(aiFromX??ecx等)を返せば十分。
+ */
+export const axisForEpisodeReplay = (
+  enemyType: string, state: string, enemy: Enemy,
+): { fromX: number; fromY: number; toX: number; toY: number } => {
+  const episodeKey = `${enemyType}:${state}`;
+  const category = EPISODE_SHAPE_DECL[episodeKey];
+  if (category === 'live') return episodeAxisFor(enemyType, state, enemy);
+  const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+  return {
+    fromX: enemy.aiFromX ?? ecx, fromY: enemy.aiFromY ?? ecy,
+    toX: enemy.aiTargetX ?? ecx, toY: enemy.aiTargetY ?? ecy,
+  };
+};
+
+/** 図形kindから族(§1-4)を導く。記録側(finalizeSettle内のfamilyOf)と同じ分類をB2(再生側)でも使う。 */
+export const habitFamilyOfShape = (shape: CounterReachShape): HabitFamilyKey => {
+  if (shape.kind === 'band') return 'band';
+  if (shape.kind === 'circle' || shape.kind === 'circle-or-body') return 'circle';
+  return 'body';
+};
+
 // =================================================================================================
 // §1-2: 図形ローカル座標への正規化(habitPos)。counterReach.tsの隣に置き、式を判定側と共有する。
 // =================================================================================================
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
-/** 判定と同じAABB最近点(縁距離)。phantomTick.edgeDistToと同じ式(textbook AABB最近点・数値複製ではない)。 */
-const edgeDistToRect = (px: number, py: number, r: Rect): number => {
+/** 判定と同じAABB最近点(縁距離)。phantomTick.edgeDistToと同じ式(textbook AABB最近点・数値複製ではない)。
+ * B2(再生側)の逆写像・床クランプでも使うためexportする。 */
+export const edgeDistToRect = (px: number, py: number, r: Rect): number => {
   const nx = clamp(px, r.x, r.x + r.width);
   const ny = clamp(py, r.y, r.y + r.height);
   return Math.hypot(px - nx, py - ny);
@@ -173,6 +229,56 @@ export const habitPos = (
     posB: angleDiffOverPi(px, py, (bossRect.x + bossRect.width / 2), (bossRect.y + bossRect.height / 2), axisFromX, axisFromY, axisToX, axisToY),
     sub: 0,
   };
+};
+
+/** §1-2「自分中心で軸が退化する州(bm-whip360/mk-spin/bite等)は0固定」の判定そのもの
+ * (habitPosのangleDiffOverPiと同じ基準)。B2(再生側)が同じ判定で「今の角度を保つ」か
+ * 「軸+posBから絶対角を作る」かを分ける(§2-8確定事項#7=A10)。 */
+export const isAxisDegenerate = (axisFromX: number, axisFromY: number, axisToX: number, axisToY: number): boolean =>
+  Math.hypot(axisToX - axisFromX, axisToY - axisFromY) < 1e-6;
+
+/**
+ * habitPos の逆写像(B2・研究書§2-1)。ローカル座標(posA/posB/sub)から図形上の世界座標へ戻す。
+ * `currentAngleRad`(円kindのみ使用): 軸が退化している州(§2-8確定事項#7)は絶対角を発明せず
+ * **今の霊の角度を保つ**——呼び出し側が「霊の現在位置→円中心」の角度(rad)を渡す。
+ * 戻り値 null = 逆写像できない(band で bands が空、または shape.kind==='none')。
+ */
+export const unhabitPos = (
+  shape: CounterReachShape,
+  posA: number, posB: number, sub: number,
+  axisFromX: number, axisFromY: number, axisToX: number, axisToY: number,
+  bossRect: Rect,
+  currentAngleRad: number,
+): { x: number; y: number } | null => {
+  if (shape.kind === 'none') return null;
+  if (shape.kind === 'band') {
+    if (shape.bands.length === 0) return null;
+    const b = shape.bands[clamp(sub, 0, shape.bands.length - 1)] ?? shape.bands[0];
+    const dx = b.tx - b.fx, dy = b.ty - b.fy;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) return { x: b.fx, y: b.fy };
+    const ux = dx / len, uy = dy / len;
+    const tLen = clamp(posA, 0, 2) * len;
+    const perpPx = clamp(posB, -1, 1) * b.halfWidth;
+    // perp = -rx*uy+ry*ux(habitPos側)の逆: 単位法線は(-uy,ux)。
+    return {
+      x: b.fx + ux * tLen + (-uy) * perpPx,
+      y: b.fy + uy * tLen + ux * perpPx,
+    };
+  }
+  // circle / circle-or-body / body: 半径(または縁距離)×角度で復元する。
+  const cx = shape.kind === 'body' ? bossRect.x + bossRect.width / 2 : shape.cx;
+  const cy = shape.kind === 'body' ? bossRect.y + bossRect.height / 2 : shape.cy;
+  const degenerate = isAxisDegenerate(axisFromX, axisFromY, axisToX, axisToY);
+  const axisAngle = Math.atan2(axisToY - axisFromY, axisToX - axisFromX);
+  // §2-8確定事項#7(A10): 軸退化(自分中心の技)は絶対角を発明せず今の角度を保つ。
+  const angle = degenerate ? currentAngleRad : axisAngle + clamp(posB, -1, 1) * Math.PI;
+  if (shape.kind === 'body') {
+    const dist = clamp(posA, 0, 2) * HABIT_BODY_UNIT_PX;
+    return { x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist };
+  }
+  const dist = clamp(posA, 0, 2) * shape.radius;
+  return { x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist };
 };
 
 // =================================================================================================
@@ -308,11 +414,6 @@ const familyRaw: Record<HabitFamilyKey, HabitFamilyRaw> = {
 };
 let runIsGhost = false;
 
-const familyOf = (shape: CounterReachShape): HabitFamilyKey => {
-  if (shape.kind === 'band') return 'band';
-  if (shape.kind === 'circle' || shape.kind === 'circle-or-body') return 'circle';
-  return 'body';
-};
 
 const finalizeSettle = (p: PendingHabitSettle, pressOfs: number | null): void => {
   const ep: HabitEpisode = {
@@ -391,7 +492,7 @@ export const settleEpisode = (input: SettleEpisodeInput): void => {
   pendingSettles.push({
     episodeKey, T: input.gameTime, attributeAt: input.gameTime + ATTRIBUTION_LEAD_MS,
     posA: pos.posA, posB: pos.posB, sub: pos.sub, ctxHp, ctxHit,
-    seq: nextSeq(episodeKey), family: familyOf(shape),
+    seq: nextSeq(episodeKey), family: habitFamilyOfShape(shape),
   });
 };
 

@@ -169,6 +169,32 @@ describe('回避の段階(dodgeHandles / dodgeVector)', () => {
     expect(Math.hypot(v.x, v.y)).toBeLessThanOrEqual(BOT_SKILL_PROFILES.skilled.dodgeStrength + 1e-9);
   });
 
+  // research/AI_HUMANIZE.md B2 §2-1「回避外しの実仕組み」: 位置取り中は対象敵×対象州の予告回避だけを
+  // 抑止する省略可能引数(excludeTelegraphFor)。省略時は従来と1bit同じ(このファイルの他の全テストが
+  // 省略呼び出しのまま緑=既に立証済み)。
+  describe('excludeTelegraphFor(§2-1「回避外しの実仕組み」・省略可能引数)', () => {
+    const stomper = enemy({
+      id: 'e1', aiPhase: 'g-stomp-windup', x: 0, y: 0, width: 40, height: 40, gStompRadius: 100,
+    } as never);
+
+    it('省略時(undefined)は従来どおり予告を避ける', () => {
+      expect(dodgeVector(BOT_SKILL_PROFILES.master, 20, 20, [stomper], [])).toBeTruthy();
+    });
+
+    it('指定した敵がtrueを返す時、その敵の予告回避だけを抑止する', () => {
+      const v = dodgeVector(BOT_SKILL_PROFILES.master, 20, 20, [stomper], [], 0, e => e.id === 'e1');
+      expect(v).toBeNull();
+    });
+
+    it('抑止対象ではない他の敵の予告は従来どおり避け続ける', () => {
+      const other = enemy({
+        id: 'e2', aiPhase: 'g-stomp-windup', x: 0, y: 0, width: 40, height: 40, gStompRadius: 100,
+      } as never);
+      const v = dodgeVector(BOT_SKILL_PROFILES.master, 20, 20, [other], [], 0, e => e.id === 'e1' /* e2は対象外 */);
+      expect(v).toBeTruthy();
+    });
+  });
+
   it('dodgeToInput は死角(deadzone)未満を倒さない / 相反する方向を同時に押さない', () => {
     expect(dodgeToInput({ x: 0, y: -1 })).toEqual({ up: true, down: false, left: false, right: false });
     expect(dodgeToInput({ x: 0.1, y: 0.1 })).toEqual({ up: false, down: false, left: false, right: false });

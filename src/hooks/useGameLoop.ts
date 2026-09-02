@@ -10334,6 +10334,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   microPunishDelayUntil: ghostNow.ghostMicroPunishDelayUntil,
                   microDecisionMode: ghostNow.ghostMicroDecisionMode,
                   microDecisionUntil: ghostNow.ghostMicroDecisionUntil,
+                  // research/AI_HUMANIZE.md B2(§2守護霊再生): 位置取り目標キャッシュ+振り解決の凍結状態。
+                  microHabitTargetX: ghostNow.ghostMicroHabitTargetX,
+                  microHabitTargetY: ghostNow.ghostMicroHabitTargetY,
+                  microHabitTFrozen: ghostNow.ghostMicroHabitTFrozen,
+                  microHabitSwingAt: ghostNow.ghostMicroHabitSwingAt,
+                  microHabitResolved: ghostNow.ghostMicroHabitResolved,
+                  microHabitSeqCounts: ghostNow.ghostMicroHabitSeqCounts,
+                  microHabitArmKey: ghostNow.ghostMicroHabitArmKey,
                 },
                 // ★AI_HUMANIZE.md B3(§4「専用乱数流」・シード=召喚id): 既存randとは別系統。
                 microSeed: hashSeed(ghostNow.id),
@@ -10364,6 +10372,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   meleeDamage: meleeWeapon?.damage ?? 6,
                 },
                 gameTime, nowMs,
+                // research/AI_HUMANIZE.md B2 §2-8確定事項#8(A11): 刀装備の霊は段1の位置取りだけ
+                // 適用しない(成立時のダッシュで構えた位置を捨てるため)。既に計算済みのghostKatanaを
+                // そのまま注入する(isKatanaMode呼び出しの二重化を避ける)。
+                isKatanaEquipped: ghostKatana,
               });
               // v0.25.3981(実測用・?ghostlog=1): カウンター監視の開始エッジ(錨が新しく張られた瞬間)を
               // 画面ログへ。試行=抽選結果(しない=ロールがdodge/tank/抽選落ち)。記録専用・挙動不変。
@@ -10543,6 +10555,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ghostMicroPunishDelayUntil: decision.microPunishDelayUntil,
                   ghostMicroDecisionMode: decision.microDecisionMode,
                   ghostMicroDecisionUntil: decision.microDecisionUntil,
+                  // research/AI_HUMANIZE.md B2(§2守護霊再生): 位置取り目標キャッシュ+振り解決の凍結状態。
+                  ghostMicroHabitTargetX: decision.microHabitTargetX,
+                  ghostMicroHabitTargetY: decision.microHabitTargetY,
+                  ghostMicroHabitTFrozen: decision.microHabitTFrozen,
+                  ghostMicroHabitSwingAt: decision.microHabitSwingAt,
+                  ghostMicroHabitResolved: decision.microHabitResolved,
+                  ghostMicroHabitSeqCounts: decision.microHabitSeqCounts,
+                  ghostMicroHabitArmKey: decision.microHabitArmKey,
                 } : s),
               }));
 

@@ -129,6 +129,20 @@ import { slasherLungePx } from '../utils/slasherLunge';
 import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyDims'; // ★葉から取る(bountyTick から直接取ると循環import=起動全損・v0.25.4097)
+// research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 城ボス9州の予告寸法は葉モジュール
+// episodeShape.ts(依存ゼロ)へ移した(手本=bountyDims.ts)。ghostDriver(再生側)がこの葉から直接
+// importして「州→実図形」を組めるようにするため=数値の複製を防ぐ。値は不変・置き場所だけの移動。
+import {
+  GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH, GIANT_SLAM_HALF_WIDTH, GIANT_GLIDE_HALF_WIDTH,
+  GIANT_DIVE_RADIUS, GIANT_WING_RADIUS, GIANT_TRISHOT_HALF_WIDTH, GIANT_TRISHOT_LENGTH,
+  GIANT_TRISHOT_SPREAD_RAD, GLEN_REACH_HALF_WIDTH, GLEN_TAILSLAM_HALF_WIDTH,
+  episodeShapeFor,
+} from '../utils/episodeShape';
+export {
+  GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH, GIANT_SLAM_HALF_WIDTH, GIANT_GLIDE_HALF_WIDTH,
+  GIANT_DIVE_RADIUS, GIANT_WING_RADIUS, GIANT_TRISHOT_HALF_WIDTH, GIANT_TRISHOT_LENGTH,
+  GIANT_TRISHOT_SPREAD_RAD, GLEN_REACH_HALF_WIDTH, GLEN_TAILSLAM_HALF_WIDTH,
+};
 import { rescueSpawnCandidates } from '../utils/rescueQuestSpawn';
 // research/STAGE_DIFFICULTY.md: ステージ難度の階段。係数の判断(計測路なら1.0)はこのヘルパ1本。
 import { stageBossDiffMults } from '../utils/stageDiffMults';
@@ -2335,7 +2349,7 @@ export const GIANT_STOMP_CD_MS = 6000;       // 実効5.0s
 export const GIANT_STOMP_REACH_PX = 92;
 // フォールバック(gStompRadius未確定の描画/レベルアップ保留の近似用): giantbat標準体格での実効値
 // (帯半幅≈38+届き92≈130)。実判定は常にgStompRadius側。
-export const GIANT_STOMP_RADIUS = 130;
+// GIANT_STOMP_RADIUS は episodeShape.ts(葉)へ移設(AI_HUMANIZE.md B2 ★未決#14=(a)。値は不変)。
 // v0.25.3069(社長指示「震えながらしゃがみ込んで溜めて、発動の時に素早く小ジャンプして踏みつける」):
 // 踏み鳴らしの**絵だけ**の3値(描画のみ・PUMPKIN_JUMP_HEIGHTと同じ扱い)。判定・半径・秒数・CDは不変。
 // 溜め(GIANT_STOMP_WINDUP_MS)の**最後のGIANT_STOMP_HOP_MSだけ**を踏み切り〜着地に使い、
@@ -2349,7 +2363,7 @@ export const GIANT_SWEEP_ACTIVE_MS = 264;    // 実効220ms(THOR_HARAI_ACTIVE_MS
 export const GIANT_SWEEP_RECOVER_MS = 840;   // 実効700ms・硬直=反撃窓
 export const GIANT_SWEEP_CD_MS = 7200;       // 実効6.0s
 export const GIANT_SWEEP_RANGE = 310;        // = THOR_HARAI_RANGE(社長裁定6.26-9 #3をそのまま流用)
-export const GIANT_SWEEP_HALF_WIDTH = 40;    // = THOR_HARAI_HALF_WIDTH
+// GIANT_SWEEP_HALF_WIDTH は episodeShape.ts(葉)へ移設(AI_HUMANIZE.md B2 ★未決#14=(a)。値は不変)。
 // 突進(dash・中〜遠320〜1000・既存を改訂)。最大突進時間/速度/CD/狙い点式は WEREWOLF_CHARGE_MAX_MS /
 // GIANTBAT_DASH_CD_MS / werewolfExtraCd をそのまま流用=変更しない(6.26-6「現行不変」)。
 export const GIANT_DASH_WINDUP_MS = 840;     // 実効700ms(旧500msから延長。WEREWOLF_WINDUP_MSとは別=giant専用・他型は無改変)
@@ -2445,7 +2459,7 @@ export const GIANT_SLAM_ACTIVE_MS = 312;   // 実効260ms
 export const GIANT_SLAM_RECOVER_MS = 1560; // 実効1300ms・全技中で最大の反撃窓=大技の報酬
 export const GIANT_SLAM_CD_MS = 13200;     // 実効11.0s
 export const GIANT_SLAM_LENGTH = 380;      // 大きな帯が前方へ伸びる
-export const GIANT_SLAM_HALF_WIDTH = 90;
+// GIANT_SLAM_HALF_WIDTH は episodeShape.ts(葉)へ移設(AI_HUMANIZE.md B2 ★未決#14=(a)。値は不変)。
 
 // --- stage-3: 滑空薙ぎ(glide・独自技・トレース元=カラミートの飛び上がり→地面を放射状のブレス) ---
 export const GIANT_GLIDE_WINDUP_MS = 1200;        // 実効1000ms・後ろへ跳び退がって溜める(T8backstep相当)
@@ -2464,14 +2478,15 @@ export const GIANT_GLIDE_INERTIA_TAU = 0.28;      // 溜めの後退りの慣性
 export const GIANT_GLIDE_SETTLE_FRAC = 0.3;       // 溜めの最後のこの割合で後退りを0へ収める(反転の角を消す)
 export const GIANT_GLIDE_CD_MS = 10800;           // 実効9.0s
 export const GIANT_GLIDE_LENGTH = 600;            // 長い帯(本体が通過する距離)
-export const GIANT_GLIDE_HALF_WIDTH = 40;
+// GIANT_GLIDE_HALF_WIDTH は episodeShape.ts(葉)へ移設(AI_HUMANIZE.md B2 ★未決#14=(a)。値は不変)。
 export const GIANT_GLIDE_SECOND_HIT_RADIUS = 150; // 滑空の終点に開くT2即時円
 
 // --- stage-3: 急降下(dive・大技・トレース元=カラミートの飛翔→急降下) ---
 export const GIANT_DIVE_WINDUP_MS = 1680;  // 実効1400ms・本体は画面外へ(無敵ではなく居ない)
 export const GIANT_DIVE_RECOVER_MS = 1440; // 実効1200ms
 export const GIANT_DIVE_CD_MS = 12000;     // 実効10.0s(社長指示2026-08-20「樹木管理員、大技のCDを10秒に」。旧14400=実効12.0s)
-export const GIANT_DIVE_RADIUS = 220;      // 地面のT5フェードイン円(実行=着弾は瞬時)
+// GIANT_DIVE_RADIUS(地面のT5フェードイン円)は episodeShape.ts(葉)へ移設
+// (AI_HUMANIZE.md B2 ★未決#14=(a)。値は不変)。
 export const GIANT_DIVE_AWAY_OFFSET = 20000; // 画面外へ退避させる距離(描画/リサイクル判定の外)
 
 // --- stage-4: 三連突進→氷の横薙ぎ(quaddash・独自技・トレース元=ヴォルドの3連突進→静止→氷の横薙ぎ) ---
@@ -2547,7 +2562,7 @@ export const GIANT_WING_WINDUP_MS = 1440;       // 実効1200ms・羽を頭上�
 export const GIANT_WING_ACTIVE_MS = 312;        // 実効260ms・素早くぶん回す
 export const GIANT_WING_RECOVER_MS = 1560;      // 実効1300ms・全技中で最大の反撃窓=大技の報酬
 export const GIANT_WING_CD_MS = 12000;          // 実効10.0s(社長指示2026-08-20「大技系は10秒CDを標準に」。旧13200=実効11.0s)
-export const GIANT_WING_RADIUS = 380;
+// GIANT_WING_RADIUS は episodeShape.ts(葉)へ移設(AI_HUMANIZE.md B2 ★未決#14=(a)。値は不変)。
 
 // ★三連射(trishot)= stage-5 の固有技(v0.25.2939・社長支給素材)。
 // **判定と秒数は旧・翼撃(v0.25.2862以前)と同一**(社長「内容は変わらず」)。
@@ -2559,9 +2574,8 @@ export const GIANT_TRISHOT_ACTIVE_MS = 264;        // 実効220ms
 export const GIANT_TRISHOT_THIRD_DELAY_MS = 480;   // 実効400ms(固定)・実行から三拍目まで=回避狩り
 export const GIANT_TRISHOT_RECOVER_MS = 960;       // 実効800ms
 export const GIANT_TRISHOT_CD_MS = 10800;          // 実効9.0s
-export const GIANT_TRISHOT_LENGTH = 320;
-export const GIANT_TRISHOT_HALF_WIDTH = 50;
-export const GIANT_TRISHOT_SPREAD_RAD = Math.PI / 5; // 左右の帯の開き角(36°)           // 360度の当たる範囲(社長裁定=旧・叩きつけと同じ長さ)
+// GIANT_TRISHOT_LENGTH/GIANT_TRISHOT_HALF_WIDTH/GIANT_TRISHOT_SPREAD_RAD は
+// episodeShape.ts(葉)へ移設(AI_HUMANIZE.md B2 ★未決#14=(a)。値は不変・上のimport/export参照)。
 
 // --- stage-5: 掃射(sweepbeam・大技・トレース元=ダークイーター・ミディールのビーム薙ぎ) ---
 export const GIANT_SWEEPBEAM_WINDUP_MS = 1560;  // 実効1300ms・頭を上げて溜める
@@ -2659,7 +2673,7 @@ export const GLEN_REACH_SHOTS = 3;                  // 何発撃つか(固定3=�
 export const GLEN_REACH_INTERVAL_MS = 2760;         // 実効2300ms(次の触手が生えるまで)
 export const GLEN_REACH_GAP_MS = 288;               // 実効240ms(次の溜めまでの「間」。赤い帯は出ない)
 export const GLEN_REACH_LENGTH = 900;               // 設計書どおり(長さ900)
-export const GLEN_REACH_HALF_WIDTH = 28;            // 設計書どおり(半幅28)
+// GLEN_REACH_HALF_WIDTH は episodeShape.ts(葉)へ移設(AI_HUMANIZE.md B2 ★未決#14=(a)。値は不変)。
 
 // --- 虚無の三唱(nihil・大技・Phase2=HP60%〜・トレース元=Mohgの「ニヒル」の儀式) ---
 // v0.25.3143(社長指示「お経技も溜めの間隔を少し長く」): 実効800ms → 950ms/唱。
@@ -2751,7 +2765,7 @@ export const GLEN_TAILSLAM_ACTIVE_MS = 264;    // 実効220ms・叩きつけの�
 // 「重い物が地面を叩いた」と体で分かる強さ。踏み鳴らし系と同じ短さ(尾を引かせない)。
 export const GLEN_TAILSLAM_SHAKE_MS = 260;
 export const GLEN_TAILSLAM_SHAKE_MAG = 11;
-export const GLEN_TAILSLAM_HALF_WIDTH = 46;    // 帯の半幅(尻尾の太さぶん。sweepの40より少し太い)
+// GLEN_TAILSLAM_HALF_WIDTH は episodeShape.ts(葉)へ移設(AI_HUMANIZE.md B2 ★未決#14=(a)。値は不変)。
 // 叩きつけの直後に、**既にある胴体弾(glenVolleyShots)をそのまま連射**する。弾の性能・見た目・
 // カウンター可否は1つも変えない=「すでに出てる弾の機能を意図的に連射」(社長の言葉どおり)。
 export const GLEN_TAILSLAM_VOLLEYS = 3;        // 斉射の回数
@@ -12599,9 +12613,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                 // (=旧セーブ/フォールバック経路)なら無倍率の生半径。描画側(pixiScene.ts)も同じ値を読む。
                 pumpkinBlasts.push({ x: ecx, y: ecy, radius: enemy.gStompRadius ?? GIANT_STOMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-stomp' });
                 // 自分中心(軸退化=posB固定0・§1-2の bm-whip360/mk-spin/bite と同型)。
+                // AI_HUMANIZE.md B2 ★未決#14=(a): 図形は葉モジュール episodeShape.ts の
+                // episodeShapeFor へ1本化(記録側・再生側とも同じ関数=数値の複製なし)。
                 settleGiantHabit('g-stomp-windup', {
                   aiFromX: ecx, aiFromY: ecy, aiTargetX: ecx, aiTargetY: ecy,
-                  liveShape: { kind: 'circle', cx: ecx, cy: ecy, radius: enemy.gStompRadius ?? GIANT_STOMP_RADIUS },
+                  liveShape: episodeShapeFor('giantbat', 'g-stomp-windup', enemy) ?? undefined,
                 });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-stomp-recover', aiPhaseUntil: atkUntil(stompRecoverMs) };
               }
@@ -12659,7 +12675,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 });
                 settleGiantHabit('g-sweep-windup', {
                   aiFromX: sfx, aiFromY: sfy, aiTargetX: stx, aiTargetY: sty,
-                  liveShape: { kind: 'band', bands: [{ fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SWEEP_HALF_WIDTH }] },
+                  liveShape: episodeShapeFor('giantbat', 'g-sweep-windup', enemy) ?? undefined,
                 });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-sweep-active', aiPhaseUntil: atkUntil(GIANT_SWEEP_ACTIVE_MS) };
               }
@@ -12921,7 +12937,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 });
                 settleGiantHabit('g-slam-windup', {
                   aiFromX: sfx, aiFromY: sfy, aiTargetX: stx, aiTargetY: sty,
-                  liveShape: { kind: 'band', bands: [{ fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SLAM_HALF_WIDTH }] },
+                  liveShape: episodeShapeFor('giantbat', 'g-slam-windup', enemy) ?? undefined,
                 });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-slam-active', aiPhaseUntil: atkUntil(GIANT_SLAM_ACTIVE_MS) };
               }
@@ -12957,13 +12973,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 settleGiantHabit('g-glide-windup', {
                   aiFromX: gfx + enemy.width / 2, aiFromY: gfy + enemy.height / 2,
                   aiTargetX: gtx + enemy.width / 2, aiTargetY: gty + enemy.height / 2,
-                  liveShape: {
-                    kind: 'band',
-                    bands: [{
-                      fx: gfx + enemy.width / 2, fy: gfy + enemy.height / 2,
-                      tx: gtx + enemy.width / 2, ty: gty + enemy.height / 2, halfWidth: GIANT_GLIDE_HALF_WIDTH,
-                    }],
-                  },
+                  liveShape: episodeShapeFor('giantbat', 'g-glide-windup', enemy) ?? undefined,
                 });
                 // v0.25.3075: **実際に飛び出す位置**を焼く(予告線の始点aiFromではなく現在地)。
                 // これが無いと、後退りぶん下がった位置から予告線の始点へ前ワープする=カクつきの主因。
@@ -13033,7 +13043,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const dtx = enemy.aiTargetX ?? enemy.x, dty = enemy.aiTargetY ?? enemy.y;
                 pumpkinBlasts.push({ x: dtx + enemy.width / 2, y: dty + enemy.height / 2, radius: GIANT_DIVE_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-dive' });
                 settleGiantHabit('g-dive-windup', {
-                  liveShape: { kind: 'circle', cx: dtx + enemy.width / 2, cy: dty + enemy.height / 2, radius: GIANT_DIVE_RADIUS },
+                  liveShape: episodeShapeFor('giantbat', 'g-dive-windup', enemy) ?? undefined,
                 });
                 return { ...enemy, ...phaseFields, x: dtx, y: dty, vx: 0, vy: 0, aiPhase: 'g-dive-recover', aiPhaseUntil: atkUntil(scriptRestMs(GIANT_DIVE_RECOVER_MS)) };
               }
@@ -13303,13 +13313,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 });
                 settleGiantHabit('g-trishot-windup', {
                   aiFromX: tfx, aiFromY: tfy, aiTargetX: ttx, aiTargetY: tty,
-                  liveShape: {
-                    kind: 'band',
-                    bands: [
-                      { fx: tfx, fy: tfy, tx: leftTx, ty: leftTy, halfWidth: GIANT_TRISHOT_HALF_WIDTH },
-                      { fx: tfx, fy: tfy, tx: rightTx, ty: rightTy, halfWidth: GIANT_TRISHOT_HALF_WIDTH },
-                    ],
-                  },
+                  liveShape: episodeShapeFor('giantbat', 'g-trishot-windup', enemy) ?? undefined,
                 });
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
@@ -13350,7 +13354,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 settleGiantHabit('g-wing-windup', {
                   aiFromX: enemy.aiFromX ?? ecx, aiFromY: enemy.aiFromY ?? ecy,
                   aiTargetX: enemy.aiFromX ?? ecx, aiTargetY: enemy.aiFromY ?? ecy,
-                  liveShape: { kind: 'circle', cx: enemy.aiFromX ?? ecx, cy: enemy.aiFromY ?? ecy, radius: GIANT_WING_RADIUS },
+                  liveShape: episodeShapeFor('giantbat', 'g-wing-windup', enemy) ?? undefined,
                 });
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
@@ -13511,17 +13515,15 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const rft = rLastFiredTx ?? enemy.aiTargetX ?? ecx, rfy = rLastFiredTy ?? enemy.aiTargetY ?? ecy;
                 // ★検収是正(中2): このサイクルで実際に張った全本(3本)をbandsへ列挙する(最寄りの1本で
                 // 正規化・sub=帯index=habitPos側の既存仕様どおり)。1本も判定を積めていない異常系だけ
-                // 従来のフォールバック帯(表示用の最新本)へ落とす。
-                const rBands = shots
-                  .filter((sh): sh is typeof sh & { fx: number; fy: number; tx: number; ty: number } =>
-                    sh.fired === true && sh.fx !== undefined && sh.fy !== undefined && sh.tx !== undefined && sh.ty !== undefined)
-                  .map(sh => ({ fx: sh.fx, fy: sh.fy, tx: sh.tx, ty: sh.ty, halfWidth: GLEN_REACH_HALF_WIDTH }));
+                // 従来のフォールバック帯(表示用の最新本)へ落とす(=episodeShapeForのg-reach-windup分岐と
+                // 同じ規則。旧実装はここでbandsを自前で組んでいたが、AI_HUMANIZE.md B2 ★未決#14=(a)で
+                // episodeShapeForへ1本化=数値の複製なし)。
+                // episodeShapeFor の g-reach-windup 分岐は enemy.gReachShots を直接読むが、
+                // この tick で発射した本(shots)はまだ enemy へ書き戻していない(下の return で
+                // 初めて確定する)。スナップショットを合成して渡す(episodeShape.ts冒頭の注記どおり)。
                 settleGiantHabit('g-reach-windup', {
                   aiFromX: ecx, aiFromY: ecy, aiTargetX: rft, aiTargetY: rfy,
-                  liveShape: {
-                    kind: 'band',
-                    bands: rBands.length > 0 ? rBands : [{ fx: ecx, fy: ecy, tx: rft, ty: rfy, halfWidth: GLEN_REACH_HALF_WIDTH }],
-                  },
+                  liveShape: episodeShapeFor('giantbat', 'g-reach-windup', { ...enemy, gReachShots: shots }) ?? undefined,
                 });
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0, gReachShots: undefined,
@@ -13586,7 +13588,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 });
                 settleGiantHabit('g-tailslam-windup', {
                   aiFromX: tfx, aiFromY: tfy, aiTargetX: ttx, aiTargetY: tty,
-                  liveShape: { kind: 'band', bands: [{ fx: tfx, fy: tfy, tx: ttx, ty: tty, halfWidth: GLEN_TAILSLAM_HALF_WIDTH }] },
+                  liveShape: episodeShapeFor('giantbat', 'g-tailslam-windup', enemy) ?? undefined,
                 });
                 glenTailSlammed = true; // 叩きつけた瞬間(set後に画面を揺らす)
                 return {
