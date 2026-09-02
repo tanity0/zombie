@@ -21,14 +21,14 @@ import {
   withSynthesizedMicroRhythm, // research/AI_HUMANIZE.md B3(§3合成既定分布)
   // research/AI_HUMANIZE.md B2(§2守護霊再生)。
   resolveHabitStage, pickHabitPositionEpisode, pickHabitSwingEpisode, habitPositionTarget,
-  habitSwingAtFromPressOfs, GHOST_HABIT_STAGE1_MIN_N,
+  habitSwingAtFromPressOfs, habitSwingWindowCoversT, GHOST_HABIT_STAGE1_MIN_N,
   type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput, type GhostMoveRoll,
 } from './ghostDriver';
 import { jumpDodge, botSkillProfile } from './botSkill';
 import { resetGhostCommandBags } from './commandBag';
 import { resetModeBags } from './modeBag'; // GHOST-CMD-2A: 隙コマンドの2モード袋(ラン単位)
 import { PUNISH_AFTER_COUNTER_MS } from './punishWindow';
-import { COUNTER_WINDOW, COUNTER_COOLDOWN } from '../store/gameStore'; // GHOST-COUNTER-PARITY: 定数を写さずimportして検証する
+import { COUNTER_WINDOW, COUNTER_COOLDOWN, COUNTER_ACCEPT_MS } from '../store/gameStore'; // GHOST-COUNTER-PARITY: 定数を写さずimportして検証する
 import type { Enemy, Projectile } from '../types/game';
 import { mulberry32 } from './botUpgradePolicy'; // ★B3検収(重大1): 占有率保存の受け入れテスト用の決定的乱数流
 import { meanStillMs, stillStartChance, sampleStillMs } from './microRhythmReplay';
@@ -1809,6 +1809,19 @@ describe('AI_HUMANIZE B2: habitSwingAtFromPressOfs(§8裁定済み#16・記録�
   });
 });
 
+describe('AI_HUMANIZE B2: habitSwingWindowCoversT(§8裁定済み#17・社長裁定2026-09-02=(b))', () => {
+  const T = 10_000;
+  it('窓[swingAt, swingAt+COUNTER_ACCEPT_MS]がTを覆えば true', () => {
+    expect(habitSwingWindowCoversT(T - 150, T)).toBe(true); // 150ms前に振る→窓内
+    expect(habitSwingWindowCoversT(T, T)).toBe(true); // ちょうど振った瞬間に着弾(両端含む)
+    expect(habitSwingWindowCoversT(T - COUNTER_ACCEPT_MS, T)).toBe(true); // 窓の下端(両端含む)
+  });
+  it('Tより後に振る、または窓がCOUNTER_ACCEPT_MSより先に閉じるなら false', () => {
+    expect(habitSwingWindowCoversT(T + 1, T)).toBe(false); // 着弾の後に振る
+    expect(habitSwingWindowCoversT(T - COUNTER_ACCEPT_MS - 1, T)).toBe(false); // 早すぎて着弾前に窓が閉じる
+  });
+});
+
 describe('AI_HUMANIZE B2: resolveHabitStage(§2フォールバック3段)', () => {
   it('コマ≥3(GHOST_HABIT_STAGE1_MIN_N)なら段1', () => {
     expect(GHOST_HABIT_STAGE1_MIN_N).toBe(3);
@@ -1883,10 +1896,13 @@ describe('AI_HUMANIZE B2: 段1(コマ再生)の駆動(decideGhost統合)', () =>
   const episodesWithPressOfs = (pressOfs: number | null): HabitEpisode[] =>
     [mkEp({ pressOfs }), mkEp({ pressOfs }), mkEp({ pressOfs })];
 
-  it('pressOfs=100・T=10000 → 振り始め10100(=T+pressOfs・§8裁定済み#16=再生側は減算しない)ちょうどで振る', () => {
+  // ★裁定済み#17(社長裁定2026-09-02=(b)「窓が着弾Tを覆えない記録では振らない」)是正: pressOfsは
+  // 窓(COUNTER_ACCEPT_MS=300)を覆う値でなければ振らなくなったため、この統合テストのpressOfsは
+  // 従来の+100(=窓の外・振らない側)から-100(=窓の内側)へ差し替える。T+pressOfsの式そのものは不変。
+  it('pressOfs=-100・T=10000 → 振り始め9900(=T+pressOfs・§8裁定済み#16=再生側は減算しない)ちょうどで振る', () => {
     const profile: GhostProfile = {
       ...PROFILE, counterChance: 0, // 段3なら絶対に振らない設定(段1が上書きすることの証明)
-      moveHabits: { 'thor:issen-windup': episodesWithPressOfs(100) },
+      moveHabits: { 'thor:issen-windup': episodesWithPressOfs(-100) },
     };
     const boss = bossAt();
     // T-500(振り判断時点)ちょうどで解決する。
@@ -1895,8 +1911,8 @@ describe('AI_HUMANIZE B2: 段1(コマ再生)の駆動(decideGhost統合)', () =>
       enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
     }));
     expect(d1.microHabitResolved).toBe(true);
-    expect(d1.microHabitSwingAt).toBe(T + 100); // 10100
-    expect(d1.action).not.toBe('melee'); // まだ10100に達していない
+    expect(d1.microHabitSwingAt).toBe(T - 100); // 9900
+    expect(d1.action).not.toBe('melee'); // まだ9900に達していない
     expect(d1.moveRoll).toBeDefined(); // 袋抽選(rollGhostMoveReaction)は段1でも引かれている
     const carry = (d: ReturnType<typeof decideGhost>): GhostSelf => mkGhost({
       x: 300, y: -300, lastMeleeAt: -1_000_000,
@@ -1907,17 +1923,88 @@ describe('AI_HUMANIZE B2: 段1(コマ再生)の駆動(decideGhost統合)', () =>
       microHabitTargetY: d.microHabitTargetY, microHabitArmKey: d.microHabitArmKey,
       microHabitSeqCounts: d.microHabitSeqCounts,
     });
-    // 1ms手前(10099)はまだ振らない。
+    // 1ms手前(9899)はまだ振らない。
     const before = decideGhost(baseDriverInput({
-      ghost: carry(d1), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T + 99, nowMs: T + 99,
+      ghost: carry(d1), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 101, nowMs: T - 101,
     }));
     expect(before.action).not.toBe('melee');
-    // 10100ちょうどで振る(意図フラグ付き)。
+    // 9900ちょうどで振る(意図フラグ付き。窓[9900,10200]はT=10000を覆う)。
     const swing = decideGhost(baseDriverInput({
-      ghost: carry(before), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T + 100, nowMs: T + 100,
+      ghost: carry(before), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
     }));
     expect(swing.action).toBe('melee');
     expect(swing.meleeIsCounterAttempt).toBe(true);
+  });
+
+  it('§8裁定済み#17(社長裁定2026-09-02=(b)): 窓(300ms)がTを覆えないpressOfs(例: 着弾の1.2秒前)は振らない。CDも消費せず銃が撃てる', () => {
+    const profile: GhostProfile = {
+      ...PROFILE, counterChance: 0, // 段3なら絶対に振らない設定(段1が上書きすることの証明)
+      moveHabits: { 'thor:issen-windup': episodesWithPressOfs(-1200) }, // 窓[-300,0]の外(1.2秒前)
+    };
+    const boss = bossAt();
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    // 計算上の振り始め(T-1200)は窓(300ms)がTを覆えない=決定した瞬間に「振らない」へ確定する
+    // (pressOfsの値だけで事前に切るのではなく、実際に振る時刻=microHabitSwingAtそのもので判定)。
+    expect(d1.microHabitResolved).toBe(true);
+    expect(d1.microHabitSwingAt).toBeUndefined();
+    expect(d1.action).not.toBe('melee'); // 窓がTを覆えない=振らない
+    expect(d1.counterWillAttempt).toBe(false); // 沈黙させない(gunHeldByWatchが解ける)
+    expect(d1.lastCounterAttemptAt).toBeUndefined(); // CD(820ms周期)を消費していない
+    // 銃が届く設定でも棒立ちにならず撃てる。
+    const near = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile,
+      weapon: { ...WEAPON, gunRangePx: 10_000 },
+      gameTime: T - 500, nowMs: T - 500,
+    }));
+    expect(near.action).toBe('shoot');
+    // T到達まで待っても振らない・CDは消費されないまま(microHabitSwingAt=undefinedで確定済みなので
+    // gameTimeが窓[T-300,T]へ入っても振り直さない=遅れて偶然合うのを狙い撃ちにしない)。
+    const atT = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 300, y: -300, lastMeleeAt: -1_000_000,
+        counterPendingAt: d1.counterPendingAt, counterWillAttempt: d1.counterWillAttempt, counterArmKey: d1.counterArmKey,
+        lastCounterAttemptAt: d1.lastCounterAttemptAt,
+        microHabitTFrozen: d1.microHabitTFrozen, microHabitSwingAt: d1.microHabitSwingAt,
+        microHabitResolved: d1.microHabitResolved,
+      }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T, nowMs: T,
+    }));
+    expect(atT.action).not.toBe('melee');
+    expect(atT.lastCounterAttemptAt).toBeUndefined();
+  });
+
+  it('§8裁定済み#17: 着弾の後のpressOfs(例: +200ms)も窓がTを覆えないので決定した瞬間に振らないへ確定する', () => {
+    const profile: GhostProfile = {
+      ...PROFILE, counterChance: 0,
+      moveHabits: { 'thor:issen-windup': episodesWithPressOfs(200) }, // 窓[-300,0]の外(着弾の後)
+    };
+    const boss = bossAt();
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    expect(d1.microHabitResolved).toBe(true);
+    expect(d1.microHabitSwingAt).toBeUndefined(); // 計算上の振り始め(T+200)は着弾より後=窓が覆えない
+    expect(d1.action).not.toBe('melee');
+    expect(d1.counterWillAttempt).toBe(false);
+    // 着弾を過ぎても振らないまま(次の機会に備えてCDは温存)。
+    const atT = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 300, y: -300, lastMeleeAt: -1_000_000,
+        counterPendingAt: d1.counterPendingAt, counterWillAttempt: d1.counterWillAttempt, counterArmKey: d1.counterArmKey,
+        lastCounterAttemptAt: d1.lastCounterAttemptAt,
+        microHabitTFrozen: d1.microHabitTFrozen, microHabitSwingAt: d1.microHabitSwingAt,
+        microHabitResolved: d1.microHabitResolved,
+      }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T + 200, nowMs: T + 200,
+    }));
+    expect(atT.action).not.toBe('melee');
+    expect(atT.counterWillAttempt).toBe(false);
+    expect(atT.lastCounterAttemptAt).toBeUndefined();
   });
 
   it('pressOfs=null(押していないコマ)は振らない=着弾時刻を過ぎても action は melee にならない(§2-8確定事項#2)', () => {
@@ -2119,9 +2206,11 @@ describe('AI_HUMANIZE B2 検収是正#5: TFrozenは州(counterArmKey)が続く�
   });
   const episodesWithPressOfs = (pressOfs: number | null): HabitEpisode[] =>
     [mkEp({ pressOfs }), mkEp({ pressOfs }), mkEp({ pressOfs })];
+  // ★裁定済み#17是正: pressOfsは窓(COUNTER_ACCEPT_MS=300)を覆う値でなければ振らなくなったため、
+  // このdescribe(TFrozen保持の検証)ではpressOfs=-100(窓の内側)を使う。
   const profile: GhostProfile = {
     ...PROFILE, counterChance: 0,
-    moveHabits: { 'thor:issen-windup': episodesWithPressOfs(100) },
+    moveHabits: { 'thor:issen-windup': episodesWithPressOfs(-100) },
   };
   const carry = (d: ReturnType<typeof decideGhost>): GhostSelf => mkGhost({
     x: 300, y: -300, lastMeleeAt: -1_000_000,
@@ -2140,9 +2229,9 @@ describe('AI_HUMANIZE B2 検収是正#5: TFrozenは州(counterArmKey)が続く�
       enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
     }));
     expect(d1.microHabitTFrozen).toBe(T); // habitNewArmの瞬間に凍結
-    // §8裁定済み#16: 振り始めはT+100(=T+pressOfs・再生側は減算しない)。
+    // §8裁定済み#16: 振り始めはT-100(=T+pressOfs・再生側は減算しない)。
     const swing = decideGhost(baseDriverInput({
-      ghost: carry(d1), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T + 100, nowMs: T + 100,
+      ghost: carry(d1), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
     }));
     expect(swing.action).toBe('melee'); // 振りが成立した
     // ★検収是正#5: 旧実装はここでmicroHabitTFrozenをundefinedへ戻していた(=次の解決がnowMsへ
@@ -2157,7 +2246,7 @@ describe('AI_HUMANIZE B2 検収是正#5: TFrozenは州(counterArmKey)が続く�
       enemies: [boss1], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
     }));
     const swing = decideGhost(baseDriverInput({
-      ghost: carry(d1), enemies: [boss1], boundBossId: 'thor-1', profile, gameTime: T + 100, nowMs: T + 100,
+      ghost: carry(d1), enemies: [boss1], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
     }));
     expect(swing.action).toBe('melee');
     expect(swing.counterPendingAt).toBeUndefined(); // 振り成立で錨は一旦外れる(次の機会に備える)
@@ -2165,11 +2254,11 @@ describe('AI_HUMANIZE B2 検収是正#5: TFrozenは州(counterArmKey)が続く�
     // (賞金首KB中の後退の代用)。armKeyが変わっていないのでhabitNewArmは立たない=凍結は張り直らない。
     const boss2 = bossAt(T - 5000);
     const resolveAgain = decideGhost(baseDriverInput({
-      ghost: carry(swing), enemies: [boss2], boundBossId: 'thor-1', profile, gameTime: T + 100, nowMs: T + 100,
+      ghost: carry(swing), enemies: [boss2], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
     }));
     // 生のwindupImpactAt(T-5000)ではなく、凍結済みのT(10000)を基準に解決している
-    // (§8裁定済み#16=microHabitSwingAt = T + pressOfs(100) = 10100のまま)。
-    expect(resolveAgain.microHabitSwingAt).toBe(T + 100);
+    // (§8裁定済み#16=microHabitSwingAt = T + pressOfs(-100) = 9900のまま)。
+    expect(resolveAgain.microHabitSwingAt).toBe(T - 100);
     expect(resolveAgain.microHabitTFrozen).toBe(T); // 凍結値そのものも据え置き
   });
 });

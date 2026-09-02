@@ -42,7 +42,7 @@ import {
 // (CLAUDE.md の前例)ため、定数そのものを import する。GHOST_MELEE_RANGE(store非依存の複製値)とは
 // 事情が違う: あちらは「意思決定側の間合いの目安」で多少ズレても実害が小さいが、こちらは社長が
 // 明示的に「プレイヤーの値と揃えろ」と指示した数値なので複製ではなくimportを選ぶ。
-import { COUNTER_WINDOW, COUNTER_COOLDOWN } from '../store/gameStore';
+import { COUNTER_WINDOW, COUNTER_COOLDOWN, COUNTER_ACCEPT_MS } from '../store/gameStore';
 // research/AI_HUMANIZE.md B3(§4「写す」): マイクロリズム(①〜⑧)の保存形+専用乱数流+バケット→値。
 import { type MicroRhythmProfile } from './microRhythm';
 import {
@@ -893,6 +893,18 @@ export const habitPositionTarget = (
 export const habitSwingAtFromPressOfs = (T: number, pressOfs: number | null): number | null =>
   pressOfs === null ? null : T + pressOfs;
 
+/**
+ * §8裁定済み#17(社長裁定2026-09-02=(b)「窓が着弾Tを覆えない記録では振らない」):
+ * 実際に振る時刻(`swingAt`)から開くカウンター窓(`[swingAt, swingAt+COUNTER_ACCEPT_MS]`)が
+ * 着弾 T を覆うか。段1/段2の振りは**この式で毎回判定**する——記録の`pressOfs`が
+ * `[-COUNTER_ACCEPT_MS, 0]`の外(=通常の振りが紛れ込んだコマ)だけでなく、CD待ちで遅れて振る
+ * 場合(§2-3「計算した振り始めが過ぎていたら即振る」)に**遅れすぎて窓がTを通り過ぎた**ケースも
+ * 同じ式1本で弾く(=手写しの重複判定を作らない)。窓300ms=COUNTER_ACCEPT_MSは台帳からimport
+ * (数値を書かない)。時計はgameTime側で完結(呼び出し側もswingAt/TともgameTime系のみを渡すこと)。
+ */
+export const habitSwingWindowCoversT = (swingAt: number, T: number): boolean =>
+  swingAt <= T && T <= swingAt + COUNTER_ACCEPT_MS;
+
 /** 毎tick1回呼ぶ純関数。次tickへ持ち越す自己状態(lastShotAt等)も戻り値に含めて返す。 */
 export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   const { ghost, player, enemies, projectiles, profile, weapon, gameTime, nowMs } = input;
@@ -1461,6 +1473,15 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
         }
         // §8裁定済み#16: T + pressOfs(記録が押下基準なので再生は減算しない)。
         microHabitSwingAt = habitSwingAtFromPressOfs(TFrozen, pressOfs) ?? undefined;
+        // §8裁定済み#17(社長裁定2026-09-02=(b)「窓がTを覆えない記録では振らない」): このコマ通りに
+        // 振ったら(=ちょうどmicroHabitSwingAtで振ったら)窓(300ms)が着弾TFrozenを覆うかを、
+        // 決定した瞬間に確定させる(pressOfsの値だけで事前に切るのではなく、実際に振る時刻=
+        // microHabitSwingAtそのもので判定する)。覆えない記録は pressOfs===null と同じ
+        // 「振らない」へ確定させる(=毎tick窓の再判定で偶然coverしても振り直さない。この機会は
+        // このコマで確定済み=別のコマを発明しない)。
+        if (microHabitSwingAt !== undefined && !habitSwingWindowCoversT(microHabitSwingAt, TFrozen)) {
+          microHabitSwingAt = undefined;
+        }
         microHabitResolved = true;
         counterWillAttempt = microHabitSwingAt !== undefined; // §2-8確定事項#2(A2): pressOfs=null→振らない
       }
@@ -1471,7 +1492,15 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
         ? nowMs - ghost.lastMeleeAt >= GHOST_MELEE_COOLDOWN_MS
         : meleeReady;
       const habitAimReady = microHabitResolved && microHabitSwingAt !== undefined && gameTime >= microHabitSwingAt;
-      if (counterWillAttempt && microHabitResolved && habitAimReady && habitMeleeReady && counterMeleeReady) {
+      // §8裁定済み#17: CD待ちで実際に振る瞬間(このtickのgameTime)が予定(microHabitSwingAt)より
+      // 遅れ、その遅れで窓がTを通り過ぎた場合も同じ式で振らない(§2-3「即振り」の遅延ケース)。
+      // 決定時のチェック(上)は理想時刻=microHabitSwingAt自身で判定済みなので、ここで初めて
+      // 割れるのはCD待ちの遅延だけ——見つけたらこの機会も確定して終える(microHabitSwingAtを消し、
+      // 以後gameTimeが窓へ再び入っても振り直さない=遅れて偶然合うのを狙い撃ちにしない)。
+      if (habitAimReady && TFrozen !== undefined && !habitSwingWindowCoversT(gameTime, TFrozen)) {
+        counterWillAttempt = false;
+        microHabitSwingAt = undefined;
+      } else if (counterWillAttempt && microHabitResolved && habitAimReady && habitMeleeReady && counterMeleeReady) {
         action = 'melee'; lastMeleeAt = nowMs; lastCounterAttemptAt = nowMs;
         counterPendingAt = undefined; counterWillAttempt = false;
         // ★検収是正#5: microHabitTFrozenはここで消さない——「その州(counterArmKey)が続く間は保持する」
