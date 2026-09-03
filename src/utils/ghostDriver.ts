@@ -56,7 +56,7 @@ import {
 import {
   isEpisodeKey, TRACKED_SHAPE_KEYS,
   habitPos, unhabitPos, shapeForEpisodeReplay, axisForEpisodeReplay, habitFamilyOfShape,
-  edgeDistToRect, HABIT_FAMILY_MIN_N,
+  edgeDistToRect, HABIT_FAMILY_MIN_N, isHabitPosBSaturated,
   type HabitEpisode, type HabitFamilyKey, type HabitFamilyStat, type CounterReachShape,
 } from './habitEpisode';
 import type { Rect } from '../world/obstacles';
@@ -916,8 +916,11 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // ★検収是正(軽2): microが無いプロファイル(大多数)ではカーソル(mulberry32の閉包)自体を作らない。
   // 戻り値のmicroDrawIndexはindexを素通りさせるだけの軽量オブジェクトで足りる。
   // ★記述の訂正(検収是正・記述と実態の食い違い): 「mrandはどのみち呼ばれない」は誤り——
-  // micro(profile.microRhythm)の有無とは無関係に、**段1のタイ崩し**(pickHabitPositionEpisode)と
-  // **段2の押下率抽選**(pressRatePct)がmrandを呼ぶ(profile.moveHabits/habitFamilyがあれば発火する)。
+  // micro(profile.microRhythm)の有無とは無関係に、**段1/段2共通の位置取りタイ崩し**
+  // (pickHabitPositionEpisode=段1のみ呼ぶが、段2も同じmrand流を消費インデックス経由で共有する)が
+  // mrandを呼ぶ(profile.moveHabits/habitFamilyがあれば発火する)。§8裁定済み#18(A-1是正)により
+  // 段2の「振るか」判断はmrandではなく段3と同じ既存rand(袋ロール/counterChance)へ一本化された
+  // (段2はもうpressRatePctをmrandで抽選しない=位置取りだけがmrandを使う)。
   // microが無い間はダミーカーソル(常に0を返す)なので、呼ばれても決定的な0を返すだけで安全
   // (microRhythm由来の抽選消費順を汚さない、という当初の意図は保たれている)。
   const microCursor = micro
@@ -1136,10 +1139,28 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   const habitStage: HabitStage = (habitKey !== null && habitShape !== null && habitShape.kind !== 'none')
     ? resolveHabitStage(profile, habitKey, habitFamilyKey)
     : 3;
+  // §8裁定済み#19(社長裁定2026-09-03=(a)「飽和した位置記録は使わない」・A-2是正): 段1・帯(band)族で、
+  // その州のコマが**全て**posB飽和(クランプ上限に張り付いている=避けた記録と縁の記録が区別できない)
+  // なら、位置取りそのものを諦める(habitPositionAppliesをfalseへ落とす=通常の間合い管理へ・
+  // 下のhabitDodgeExcludeMoveKeyも同じ式を使うので回避抑止も自動的に外れる=普通に避ける)。
+  // 一部だけ飽和している場合は下のpicked選択側で個別に除外する(残りのコマから選ぶ)。
+  // 円/体(posA=距離側の飽和は外側=安全側)は対象外=現行のまま(isHabitPosBSaturatedを呼ばない)。
+  const habitEpisodesForKey = habitKey !== null ? (profile.moveHabits?.[habitKey] ?? []) : [];
+  // 段2(族の平均)も同じ規則で見る。**版タグでコマを捨てた直後はほぼ全州が段2**なので、ここを
+  // 素通しにすると #19 の穴(避けた記録が「帯の縁=当たる場所」に化ける)がそのまま残る。
+  // 平均は1個のスカラーで個別除外ができないため、飽和していたら位置取りごと諦める(=段1の全飽和と同じ扱い)。
+  const habitFamilyAvgPosB = habitStage === 2 && habitFamilyKey
+    ? profile.habitFamily?.[habitFamilyKey]?.avgPosB
+    : undefined;
+  const habitBandAllSaturated = habitFamilyKey === 'band' && (
+    (habitStage === 1 && habitEpisodesForKey.length > 0 && habitEpisodesForKey.every(ep => isHabitPosBSaturated(ep.posB)))
+    || (habitStage === 2 && habitFamilyAvgPosB !== undefined && isHabitPosBSaturated(habitFamilyAvgPosB))
+  );
   // §2-8確定事項#8(A11): 刀装備の霊は位置取りだけ適用しない(タイミング§2-3は適用する)。
   // §1-2: 毎フレーム狙い直す図形の州(TRACKED_SHAPE_KEYS=thor:tsuki-windup)は位置取りの対象外。
   const habitPositionApplies = habitStage !== 3 && habitShape !== null && habitShape.kind !== 'none'
-    && !input.isKatanaEquipped && !(habitKey !== null && TRACKED_SHAPE_KEYS.includes(habitKey));
+    && !input.isKatanaEquipped && !(habitKey !== null && TRACKED_SHAPE_KEYS.includes(habitKey))
+    && !habitBandAllSaturated;
   // §2-8確定事項#13(社長裁定2026-09-02=(a)): 段1の位置取りだけ、counterWatching(残り1000ms)を
   // 待たず予告の立ち上がりから始める(振りの判断・窓・請求・判定には触れない)。
   const habitEarlyPositionOk = habitStage === 1 && habitPositionApplies;
@@ -1236,7 +1257,11 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
         const seqNow = Math.min(20, microHabitSeqCounts?.[habitKeyNow] ?? 0);
         let picked: { posA: number; posB: number; sub: number } | null = null;
         if (habitStage === 1) {
-          const episodes = profile.moveHabits?.[habitKeyNow] ?? [];
+          // §8裁定済み#19(A-2是正): band族はposB飽和コマを候補から外す(残りのコマから選ぶ)。
+          // 円/体はisHabitPosBSaturatedを呼ばない=対象外(現行のまま)。
+          const episodes = habitFamilyKey === 'band'
+            ? habitEpisodesForKey.filter(ep => !isHabitPosBSaturated(ep.posB))
+            : habitEpisodesForKey;
           const ep = pickHabitPositionEpisode(episodes, seqNow, ctxHpNow, ctxHitNow, mrand);
           if (ep) picked = { posA: ep.posA / 100, posB: ep.posB / 100, sub: ep.sub };
         } else if (habitStage === 2 && habitFamilyKey) {
@@ -1425,19 +1450,23 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     // 'dodge'・'tank'=この技では構えない(離脱/被弾の再現を汚さない) / 'fallback'=従来の抽選。
     if (counterPendingAt === undefined) {
       counterPendingAt = nowMs;
-      // research/AI_HUMANIZE.md B2 §2-8確定事項#2/#3(A2/A3): 段1/段2は「振るか」をコマ/族の
-      // pressOfsで決める(袋ロール・counterChance抽選は使わない)。決着(§2-3のT-500ms判定)までは
-      // **沈黙させない**=暫定true(下のgunHeldByWatchが銃を挟まない=「待っている」を保つ)。
-      counterWillAttempt = habitStage === 3
-        ? (reaction === 'counter'
+      // §8裁定済み#18(社長裁定2026-09-03=(a)「段2は立ち位置だけ・振りは段3」・A-1是正): 「振るか」を
+      // コマから決めるのは**段1だけ**(pressOfsで決める=沈黙させない=下のgunHeldByWatchが銃を挟まない
+      // 「待っている」を保つための暫定true)。**段2は段3(現行モデル)と同じ抽選**(袋ロール・
+      // counterChance)で決める——族平均pressOfsの1スカラーで「振るか」を決めると、その平均が
+      // 窓の外に落ちた瞬間その族の段2州が毎回全部「振らない」になる(社長裁定2026-09-03=(a))。
+      counterWillAttempt = habitStage === 1
+        ? true
+        : (reaction === 'counter'
           ? true
           : reaction === 'dodge' || reaction === 'tank'
             ? false
-            : rand() < profile.counterChance)
-        : true;
+            : rand() < profile.counterChance);
     }
-    if (habitStage === 1 || habitStage === 2) {
-      // ---- research/AI_HUMANIZE.md B2 §2-3+§2-8(A1/A2/A4/A5/A6/A7・#12): コマ/族から振りを決める ----
+    if (habitStage === 1) {
+      // ---- research/AI_HUMANIZE.md B2 §2-3+§2-8(A1/A2/A4/A5/A6/A7・#12): コマから振りを決める ----
+      // §8裁定済み#18(A-1是正): 段2はここに入らない(=microHabitSwingAtを作らない)。下のelse
+      // (段3=現行モデル)が段2にもそのまま適用され、振りの判断は段3と同じ式になる。
       const habitKeyNow = habitKey as string;
       // §2-8確定事項#4(A6): T(着弾時刻)は構え開始で凍結した値を使う(habitNewArmの瞬間に確定済み)。
       // ★検収是正#5(A7「時計を混ぜない」違反の是正): 旧実装は `?? nowMs`(Date.now系)で埋めていたが、
@@ -1454,22 +1483,18 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
         const ctxHitNow: 0 | 1 = ghost.lastHit !== undefined && ghost.lastHit > 0
           && nowMs - ghost.lastHit <= 2000 ? 1 : 0;
         const seqNow = Math.min(20, microHabitSeqCounts?.[habitKeyNow] ?? 0);
+        // §8裁定済み#18(A-1是正): このブロックはhabitStage===1限定(段2はここへ来ない)なので、
+        // 族別avgPressOfsの分岐は持たない(段2の振りは下のelse=段3の抽選に一本化)。
         let pressOfs: number | null = null;
-        if (habitStage === 1 && habitShape && habitAxis) {
+        if (habitShape && habitAxis) {
           // §2-3: 振り判断時点の実位置を図形座標へ写し、最近傍1コマの押下時刻を引く。
           const local = habitPos(
             habitShape, gcx, gcy, habitAxis.fromX, habitAxis.fromY, habitAxis.toX, habitAxis.toY, bossRectNow,
           );
           if (local) {
-            const episodes = profile.moveHabits?.[habitKeyNow] ?? [];
-            const ep = pickHabitSwingEpisode(episodes, local.posA, local.posB, local.sub, seqNow, ctxHpNow, ctxHitNow);
+            const ep = pickHabitSwingEpisode(habitEpisodesForKey, local.posA, local.posB, local.sub, seqNow, ctxHpNow, ctxHitNow);
             pressOfs = ep ? ep.pressOfs : null;
           }
-        } else if (habitStage === 2 && habitFamilyKey) {
-          // §2-8確定事項#6(A8): 段2は族別avgPressOfsのみ(counterAimLagMs/counterAimRateは使わない)。
-          // 振るか=押下率(pressRatePct)を専用乱数流で1回引く(既存randは消費しない=§7-4)。
-          const stat = profile.habitFamily?.[habitFamilyKey];
-          if (stat) pressOfs = mrand() < stat.pressRatePct / 100 ? stat.avgPressOfs : null;
         }
         // §8裁定済み#16: T + pressOfs(記録が押下基準なので再生は減算しない)。
         microHabitSwingAt = habitSwingAtFromPressOfs(TFrozen, pressOfs) ?? undefined;
@@ -1488,9 +1513,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       // §2-8確定事項#5(A7): 振り判断はgameTimeのみで完結。CD(meleeReady相当)は残りmsとして別にAND。
       // ★裁定済み#12(社長裁定2026-09-02=(a)): 段1の振りはmicroMeleeCooldownMsを見ない
       // (固定CD+counterMeleeReadyのみ)。§4②「揺らぎはカウンターの振りに掛けない」を実態として成立させる。
-      const habitMeleeReady = habitStage === 1
-        ? nowMs - ghost.lastMeleeAt >= GHOST_MELEE_COOLDOWN_MS
-        : meleeReady;
+      const habitMeleeReady = nowMs - ghost.lastMeleeAt >= GHOST_MELEE_COOLDOWN_MS;
       const habitAimReady = microHabitResolved && microHabitSwingAt !== undefined && gameTime >= microHabitSwingAt;
       // §8裁定済み#17: CD待ちで実際に振る瞬間(このtickのgameTime)が予定(microHabitSwingAt)より
       // 遅れ、その遅れで窓がTを通り過ぎた場合も同じ式で振らない(§2-3「即振り」の遅延ケース)。
@@ -1512,7 +1535,12 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
         meleeIsCounterAttempt = true;
       }
     } else {
-      // 段3=現行モデル(コマ<3・族<5・EPISODE_KEYS外は全てここ。§7受け入れ条件3=ビット同一)。
+      // 段3=現行モデル。§8裁定済み#18(A-1是正)により**段2もここに合流する**(コマ<3・族<5・
+      // EPISODE_KEYS外に加えて、コマ<3だが族≥5の段2も振りの決め方は段3と同じ式=このelseを共有する)。
+      // ビット同一が保証されるのは**moveHabits/habitFamilyが両方とも欠損=真の段3**の時だけ
+      // (§7受け入れ条件3)。段2(族データあり)はcounterWillAttemptの抽選そのものは段3と同一式だが、
+      // 位置取り(habitPositionApplies)は段2でも動くため移動は段3と異なりうる=「振りの決め方」だけが
+      // 段3と揃う(位置取りは§2-7のとおり族平均を使い続ける)。
       // A-2(§2.18⑩「実行=ベスト・ゴール逆算」): 着弾予告(その終わりにダメージが出る予告)の間は、
       // 反応遅延で振らずに**着弾の瞬間から逆算**して振る=請求(TTL150ms)が着弾時に生きている状態を作る。
       // 実効先行時間は反応の遅さで決まる決定的な値(乱数を使わない=意思決定の乱数消費順は不変)。

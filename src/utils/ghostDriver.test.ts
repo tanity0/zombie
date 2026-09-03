@@ -2168,6 +2168,29 @@ describe('AI_HUMANIZE B2 検収是正#3: 段2の回避外し・位置取りの�
     expect(d2.moveY === d3.moveY && d2.moveX === d3.moveX).toBe(false);
   });
 
+  it('★#19を段2にも: 族の平均posBが飽和していたら、位置取りをせず回避も抑止しない(段3と同じ動きへ落ちる)', () => {
+    // 版タグでコマを捨てた直後は**ほぼ全州が段2**なので、ここを素通しにすると
+    // 「避けた記録が帯の縁(=当たる場所)に化ける」穴がそのまま残る。平均は1個のスカラーで
+    // 個別除外ができないため、飽和していたら位置取りごと諦める(段1の全飽和と同じ扱い)。
+    const gameTime = T - 900; // counterWatching中=本来なら位置取りと抑止が効く局面
+    const rand = () => 0.5;
+    const saturated: GhostProfile = {
+      ...PROFILE,
+      habitFamily: { band: { n: 5, avgPosA: 100, avgPosB: 100, avgPressOfs: null, pressRatePct: 0 } }, // avgPosB=1.00=飽和
+    };
+    const dSat = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: saturated, gameTime, nowMs: gameTime, rand,
+    }));
+    const d3 = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: stage3Profile, gameTime, nowMs: gameTime, rand,
+    }));
+    expect(dSat.microHabitTargetX).toBeUndefined();   // 位置取りをしない
+    expect(dSat.moveX).toBeCloseTo(d3.moveX, 6);      // 抑止も外れる=段3と同じ回避ベクトル
+    expect(dSat.moveY).toBeCloseTo(d3.moveY, 6);
+  });
+
   it('検収是正#4: 州単位の抑止(同時進行の別ハザード=giantDelayedHitsは抑止されず避け続ける)', () => {
     const gameTime = T - 900; // counterWatching中(#3のテストと同じ時刻=抑止/位置取りが本来なら効く局面)
     // 帯の技(この技の予告)とは無関係な遅延ダメージの円をゴーストの近くへ追加する
@@ -2191,6 +2214,143 @@ describe('AI_HUMANIZE B2 検収是正#3: 段2の回避外し・位置取りの�
       profile: stage2Profile, gameTime, nowMs: gameTime,
     }));
     expect(withoutDelayed.microHabitTargetX).toBeDefined();
+  });
+});
+
+// =================================================================================================
+// AI_HUMANIZE B2 検収2巡目(A)是正(2026-09-03・社長裁定「①a ②a」)。
+// A-1(§8裁定済み#18=(a)「段2は立ち位置だけ・振りは段3」): 段2は振りをコマ/族pressOfsで決めない
+// (段3=現行モデルの抽選[袋ロール+counterChance]と同じ式へ一本化)。位置取りだけ段2に残る。
+// =================================================================================================
+describe('AI_HUMANIZE B2 検収2巡目 A-1(§8裁定済み#18): 段2は立ち位置だけ・振りは段3', () => {
+  const T = 10_000;
+  const bossAt = (): Enemy => mkBoss({
+    id: 'thor-1', type: 'thor', x: 300, y: -20, width: 40, height: 40,
+    bossState: 'issen-windup', bossStateUntil: T,
+    aiFromX: 0, aiFromY: 0, aiTargetX: 600, aiTargetY: 0,
+  });
+  const stage2Profile: GhostProfile = {
+    ...PROFILE,
+    habitFamily: { band: { n: 5, avgPosA: 100, avgPosB: 0, avgPressOfs: -1200, pressRatePct: 100 } },
+  };
+
+  it('段2はmicroHabitSwingAt/microHabitResolvedを作らない(コマ台帳の振り経路=段1専用に一本化)', () => {
+    expect(resolveHabitStage(stage2Profile, 'thor:issen-windup', 'band')).toBe(2); // 前提
+    const boss = bossAt();
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile: stage2Profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    expect(d.microHabitSwingAt).toBeUndefined();
+    // microHabitResolvedは「新しい機会(habitNewArm)」の張り直しで段に関わらずfalseへ初期化される
+    // (§2-8確定事項#4の錨と同じ器)ので、ここでの証拠はmicroHabitSwingAtが一切作られないことの方
+    // (=microHabitResolved=trueへ進む§2-3の決定ブロック自体に段2は入らない)。
+    expect(d.microHabitResolved).toBe(false);
+    // pressRatePct=100/avgPressOfs=-1200(旧実装なら「窓を覆えない=毎回振らない」に固定されていたはずの
+    // 値)を渡しているのに、族データが振りに一切使われないことの直接証拠でもある。
+  });
+
+  it('段2の振り判断(action/counterWillAttempt/lastCounterAttemptAt/meleeIsCounterAttempt)は段3(現行モデル)とビット一致する', () => {
+    const boss = bossAt();
+    const stage3Profile: GhostProfile = { ...PROFILE };
+    expect(resolveHabitStage(stage3Profile, 'thor:issen-windup', 'band')).toBe(3); // 前提(データ無し)
+    const scenario = (profile: GhostProfile) => decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 310, y: -50, lastMeleeAt: -1_000_000 }), // 近接射程内(縁距離20<74)
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100, rand: () => 0.01,
+    }));
+    const d3 = scenario(stage3Profile);
+    const d2 = scenario(stage2Profile);
+    expect(d2.action).toBe(d3.action);
+    expect(d2.counterWillAttempt).toBe(d3.counterWillAttempt);
+    expect(d2.lastCounterAttemptAt).toBe(d3.lastCounterAttemptAt);
+    expect(d2.meleeIsCounterAttempt).toBe(d3.meleeIsCounterAttempt);
+    expect(d2.microHabitSwingAt).toBeUndefined(); // 段2はmicroHabitSwingAtを経由しない
+  });
+
+  it('段2でも位置取りは効く(族平均posA/posBからの逆写像が移動目標になる=A-1は振りだけを段3化した)', () => {
+    const boss = bossAt();
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 500, y: 300, lastMeleeAt: -1_000_000 }), // 帯・ボス双方から離れた位置
+      enemies: [boss], boundBossId: 'thor-1', profile: stage2Profile, gameTime: T - 900, nowMs: T - 900,
+    }));
+    expect(d.microHabitTargetX).toBeDefined();
+    expect(d.microHabitTargetY).toBeDefined();
+  });
+});
+
+// =================================================================================================
+// AI_HUMANIZE B2 検収2巡目 A-2(§8裁定済み#19=(a)「飽和した位置記録は使わない」):
+// band族のposBがクランプ上限(±100)に張り付いているコマは位置取りの候補から外す。
+// 円/体(posA側)の飽和は対象外=現行のまま。
+// =================================================================================================
+describe('AI_HUMANIZE B2 検収2巡目 A-2(§8裁定済み#19): 飽和した位置記録は使わない', () => {
+  const T = 10_000;
+  const bossAt = (): Enemy => mkBoss({
+    id: 'thor-1', type: 'thor', x: 300, y: -20, width: 40, height: 40,
+    bossState: 'issen-windup', bossStateUntil: T,
+    aiFromX: 0, aiFromY: 0, aiTargetX: 600, aiTargetY: 0, // 帯: fx=0,fy=0→tx=600,ty=0・halfWidth=80
+  });
+  const mkEpAt = (posA: number, posB: number, seq = 1): HabitEpisode =>
+    ({ posA, posB, sub: 0, pressOfs: null, ctxHp: 0, ctxHit: 0, seq });
+
+  it('band族: posBが飽和(±100)しているコマは位置選択の候補から外れ、残りのコマから選ばれる', () => {
+    // 3件とも seq/ctx が同一=habitPositionDist(位置は選択に使わない=seq/ctxのみ)がタイになる。
+    // microRhythm無し=タイ崩しのmrandは常に0(先頭)を返す固定カーソル(★検収是正・軽2)なので、
+    // フィルタが無ければ「先頭(飽和・posB=100)」が決定的に選ばれるはずの配置にしてある。
+    const episodes = [
+      mkEpAt(100, 100, 1), // 飽和(縁ぎりぎり or 大きく避けた区別が付かない値)=候補から外れるはず
+      mkEpAt(100, -100, 1), // 反対側の飽和=同じく除外
+      mkEpAt(100, 50, 1), // 非飽和=これだけが残る
+    ];
+    const profile: GhostProfile = { ...PROFILE, moveHabits: { 'thor:issen-windup': episodes } };
+    const boss = bossAt();
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 500, y: 300, lastMeleeAt: -1_000_000 }), // 帯・脅威から離れた位置=位置取りだけが動く
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 900, nowMs: T - 900,
+    }));
+    expect(resolveHabitStage(profile, 'thor:issen-windup', 'band')).toBe(1); // 前提: 段1(コマ3件)
+    // posA=1.0(t=1→x=600)・posB=0.5(→perpPx=0.5*80=40)=非飽和コマの逆写像。飽和コマ(posB=±1→±80)ではない。
+    expect(d.microHabitTargetX).toBeCloseTo(600, 5);
+    expect(d.microHabitTargetY).toBeCloseTo(40, 5);
+  });
+
+  it('band族: その州で使えるコマが全て飽和していたら位置取りをしない(通常の間合い管理へ)し、回避抑止も掛けない', () => {
+    const allSaturated: GhostProfile = {
+      ...PROFILE,
+      moveHabits: { 'thor:issen-windup': [mkEpAt(100, 100, 1), mkEpAt(100, 100, 2), mkEpAt(100, -100, 3)] },
+    };
+    const stage3Profile: GhostProfile = { ...PROFILE }; // moveHabits無し=常に段3(対照)
+    expect(resolveHabitStage(allSaturated, 'thor:issen-windup', 'band')).toBe(1); // 前提: 段1(コマ3件)
+    const boss = bossAt();
+    const gameTime = T - 900; // counterWatching中(=位置取り/抑止が本来なら効く局面)
+    const rand = () => 0.5; // 段3側の技ロールが'counter'を引かない値(検収是正#3のテストと同じ理由)
+    // ゴースト中心(300,90)=帯(y=0)下90px(帯の危険域=halfWidth80+margin40=120未満)・ボス体縁からは
+    // 70px(GHOST_BOSS_BODY_AVOID_PX=48の外)=検収是正#3のghostNearBandと同じ配置(体反発と混ざらない)。
+    const ghostNearBand = (): GhostSelf => mkGhost({
+      x: 290, y: 80, lastMeleeAt: -1_000_000,
+      dangerSeenAt: gameTime - 300, dangerLastAt: gameTime - 300,
+    });
+    const d = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(), enemies: [boss], boundBossId: 'thor-1', profile: allSaturated, gameTime, nowMs: gameTime, rand,
+    }));
+    const d3 = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(), enemies: [boss], boundBossId: 'thor-1', profile: stage3Profile, gameTime, nowMs: gameTime, rand,
+    }));
+    expect(d.microHabitTargetX).toBeUndefined(); // 位置取りをしていない
+    expect(d3.moveY).toBeGreaterThan(0); // 前提: 段3(対照)は帯から離れる方向(+y)へ実際に回避している
+    expect(d.moveX).toBeCloseTo(d3.moveX, 6); // 段3と同じ動き=回避抑止も掛かっていない(普通に避けている)
+    expect(d.moveY).toBeCloseTo(d3.moveY, 6);
+  });
+
+  it('円/体(posA=距離側)の飽和は対象外=現行のまま(isHabitPosBSaturatedはband族でしか呼ばない)', () => {
+    // habitPositionTarget/unhabitPosはA-2で一切変更していない=circleのposA=2(飽和)は
+    // 従来どおり外側(半径×2)へ戻る(v0.25.2567の「中心距離は使わない」教訓の再確認)。
+    const shape = { kind: 'circle' as const, cx: 0, cy: 0, radius: 100 };
+    const pt = habitPositionTarget(
+      shape, { fromX: 0, fromY: 0, toX: 1, toY: 0 }, { x: -10, y: -10, width: 20, height: 20 },
+      2, 0, 0, 999, 999,
+    )!;
+    expect(Math.hypot(pt.x, pt.y)).toBeCloseTo(200, 5); // 半径100×posA=2=外側(安全側)のまま
   });
 });
 

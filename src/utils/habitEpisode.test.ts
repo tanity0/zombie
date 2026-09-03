@@ -9,6 +9,7 @@ import {
   HABIT_RING_SIZE, HABIT_FAMILY_MIN_N, HABIT_FAMILY_KEYS, familyRawToStat, HABIT_BODY_UNIT_PX,
   settleEpisode, notePressEdge, tickHabitEpisodeMaintenance, markHabitGhostRun,
   takeRunHabitFold, resetRunHabitState,
+  HABIT_POSB_LIMIT, isHabitPosBSaturated, // §8裁定済み#19(A-2是正)
   type HabitEpisode, type HabitFamilyRaw,
 } from './habitEpisode';
 import type { Enemy } from '../types/game';
@@ -337,6 +338,30 @@ describe('量子化の往復', () => {
     expect(ep.posA).toBeLessThanOrEqual(200);
     expect(ep.posB).toBeGreaterThanOrEqual(-100);
     expect(ep.posB).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('isHabitPosBSaturated(§8裁定済み#19・社長裁定2026-09-03=(a)「飽和した位置記録は使わない」)', () => {
+  it('量子化後posBがクランプ上限(±HABIT_POSB_LIMIT*100)に張り付いていれば飽和', () => {
+    expect(HABIT_POSB_LIMIT).toBe(1); // 前提: 帯posBのクランプ上限は±1
+    expect(isHabitPosBSaturated(100)).toBe(true);
+    expect(isHabitPosBSaturated(-100)).toBe(true);
+  });
+  it('上限未満は飽和ではない', () => {
+    expect(isHabitPosBSaturated(99)).toBe(false);
+    expect(isHabitPosBSaturated(-99)).toBe(false);
+    expect(isHabitPosBSaturated(0)).toBe(false);
+  });
+  it('帯の縁ぎりぎり(飽和寸前)の記録と大きく避けた記録(飽和)は量子化前のhabitPosの時点で既に同じ±1へ潰れる', () => {
+    // halfWidth=10の帯: 縁ちょうど(perp=10)と、はるかに外(perp=1000)の両方が posB=±1 に潰れる
+    // (habitEpisode.ts:223のクランプそのもの=このテストはそのクランプの実在を確認する)。
+    const band: CounterReachShape = { kind: 'band', bands: [{ fx: 0, fy: 0, tx: 100, ty: 0, halfWidth: 10 }] };
+    const edge = habitPos(band, 50, 10, 0, 0, 100, 0, BOSS_RECT)!;
+    const farAway = habitPos(band, 50, 1000, 0, 0, 100, 0, BOSS_RECT)!;
+    expect(edge.posB).toBe(1);
+    expect(farAway.posB).toBe(1);
+    expect(isHabitPosBSaturated(Math.round(edge.posB * 100))).toBe(true);
+    expect(isHabitPosBSaturated(Math.round(farAway.posB * 100))).toBe(true);
   });
 });
 

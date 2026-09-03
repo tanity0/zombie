@@ -154,6 +154,11 @@ export const habitFamilyOfShape = (shape: CounterReachShape): HabitFamilyKey => 
 // =================================================================================================
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
+/** §1-2 band posB(帯の横軸)のクランプ上限。habitPos(記録)・unhabitPos(逆写像)・quantizePosB(保存)の
+ * 3箇所が全てこの1値を共有する(§8裁定済み#19=社長裁定2026-09-03(a)「飽和した位置記録は使わない」の
+ * 飽和判定もここから導く=マジックナンバーを増やさない)。 */
+export const HABIT_POSB_LIMIT = 1;
+
 /** 判定と同じAABB最近点(縁距離)。phantomTick.edgeDistToと同じ式(textbook AABB最近点・数値複製ではない)。
  * B2(再生側)の逆写像・床クランプでも使うためexportする。 */
 export const edgeDistToRect = (px: number, py: number, r: Rect): number => {
@@ -220,7 +225,7 @@ export const habitPos = (
     const perp = -rx * uy + ry * ux;
     return {
       posA: clamp(t, 0, 2),
-      posB: clamp(perp / Math.max(1e-6, b.halfWidth), -1, 1),
+      posB: clamp(perp / Math.max(1e-6, b.halfWidth), -HABIT_POSB_LIMIT, HABIT_POSB_LIMIT),
       sub: clamp(idx, 0, 3),
     };
   }
@@ -269,7 +274,7 @@ export const unhabitPos = (
     if (len < 1e-6) return { x: b.fx, y: b.fy };
     const ux = dx / len, uy = dy / len;
     const tLen = clamp(posA, 0, 2) * len;
-    const perpPx = clamp(posB, -1, 1) * b.halfWidth;
+    const perpPx = clamp(posB, -HABIT_POSB_LIMIT, HABIT_POSB_LIMIT) * b.halfWidth;
     // perp = -rx*uy+ry*ux(habitPos側)の逆: 単位法線は(-uy,ux)。
     return {
       x: b.fx + ux * tLen + (-uy) * perpPx,
@@ -336,7 +341,21 @@ export const HABIT_RING_SIZE = 10;
 export const HABIT_EPISODE_FORMAT_VERSION = 2;
 
 const quantizePosA = (v: number): number => Math.round(clamp(v, 0, 2) * 100);
-const quantizePosB = (v: number): number => Math.round(clamp(v, -1, 1) * 100);
+const quantizePosB = (v: number): number => Math.round(clamp(v, -HABIT_POSB_LIMIT, HABIT_POSB_LIMIT) * 100);
+
+/** 量子化後posBの飽和しきい値(=クランプ上限HABIT_POSB_LIMITをquantizePosB自身へ通しただけ。100を
+ * 別途書かない=上のHABIT_POSB_LIMITと同じ出どころ)。 */
+const HABIT_POSB_SATURATED_ABS = quantizePosB(HABIT_POSB_LIMIT);
+
+/**
+ * §8裁定済み#19(社長裁定2026-09-03=(a)「飽和した位置記録は使わない」・A-2是正):
+ * 帯(band)のposBは±1にクランプされるため、帯の縁ぎりぎりに立っていた記録と大きく避けた記録が
+ * 同じ量子化値へ潰れる(逆写像すると常に帯の縁=判定の中へ戻ってしまう=「避けた記録」が
+ * 「当たる場所に立つ」に化ける)。量子化後posBがクランプ上限に張り付いているコマは、立ち位置の
+ * 目標として信頼できないので候補から外す。**円/体(posA=距離側の飽和は外側=安全側)には使わない**
+ * (呼び出し側がband族の時だけ呼ぶこと)。
+ */
+export const isHabitPosBSaturated = (posB: number): boolean => Math.abs(posB) >= HABIT_POSB_SATURATED_ABS;
 
 // =================================================================================================
 // §1-4: 族別集計(band/circle/body・軸1・量子化保存)
