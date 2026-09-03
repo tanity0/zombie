@@ -72,7 +72,15 @@ interface GuardianSpec {
 
 const REACTION_COUNTS: Record<FixedGuardianReaction, { counters: number; hits: number }> = {
   slash: { counters: 15, hits: 0 }, // 斬: counter 75% / hit 0%
-  dance: { counters: 3, hits: 0 },  // 舞: counter 15% / hit 0%
+  // 舞: counter 30% / hit 0%(社長裁定2026-09-03「はい」= 15%→30%)。
+  // ★上げた理由(数字で): 守護霊は**1つの技につき1回**しかカウンターを狙わない。ボス1戦の予告技は
+  // 15〜25回なので、15%だと**狙うのが2〜4回**しかなく、しかも全部決まるわけではない=「何もしない霊」に
+  // 見える。20人中**9人が舞**なので約半分の確率でそれが来ていた。30%なら5〜8回=「避ける人だけど、
+  // たまに返す」と読める回数になる。**順位(斬75 > 岩35 > 舞30)は保つ**ので型の個性は消えない。
+  dance: { counters: 6, hits: 0 },
+  // ※ counters を上げたぶん、舞9人の `score`(=3/-2式と戦績から出る評点)も式どおり +27 した
+  //   (score = 60×(3×counters/20 − 2×hits/20) − clearSeconds)。**順位関係は 斬 > 舞 > 岩 のまま不変**。
+  //   数字だけ据え置くと「カウンターするのに戦績は低い」という嘘が残るため、揃えてある。
   rock: { counters: 7, hits: 7 },   // 岩: counter 35% / hit 35%
 };
 
@@ -221,7 +229,7 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
   fixedGuardian({
     id: 'yuki', name: 'ユキ', classId: 'rogue', role: 'evade', reaction: 'dance',
     gunKey: 'handgun-t2', meleeKey: 'machete-t3', selectedSubWeapon: 'decoy',
-    clearSeconds: 42, score: -15, reactionMs: 105, counterChance: 0.4,
+    clearSeconds: 42, score: 12, reactionMs: 105, counterChance: 0.4,
     preferredDist: 220, meleeBias: 0.2, mobility: 1, stationaryFrac: 0.02,
     approachPerMin: 6, subUsesPerMin: 10,
     equipment: gear('special-body', 'arms-firepower-5', 'accessory-crit-5'),
@@ -230,7 +238,7 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
   fixedGuardian({
     id: 'mikazuki', name: '三日月', classId: 'mage', role: 'evade', reaction: 'dance',
     gunKey: 'rifle-t3', meleeKey: 'machete-t3', selectedSubWeapon: 'molotov',
-    clearSeconds: 38, score: -11, reactionMs: 100, counterChance: 0.45,
+    clearSeconds: 38, score: 16, reactionMs: 100, counterChance: 0.45,
     preferredDist: 210, meleeBias: 0.15, mobility: 0.98, stationaryFrac: 0.03,
     approachPerMin: 5, subUsesPerMin: 12,
     equipment: gear('special-body', 'arms-firepower-5', 'accessory-crit-5'),
@@ -239,7 +247,7 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
   fixedGuardian({
     id: 'nanashi', name: 'ナナシ', classId: 'rogue', role: 'evade', reaction: 'dance',
     gunKey: 'shotgun-t3', meleeKey: 'tactical-knife-t4', selectedSubWeapon: 'drone-boomerang',
-    clearSeconds: 45, score: -18, reactionMs: 120, counterChance: 0.4,
+    clearSeconds: 45, score: 9, reactionMs: 120, counterChance: 0.4,
     preferredDist: 150, meleeBias: 0.38, mobility: 0.96, stationaryFrac: 0.04,
     approachPerMin: 7, subUsesPerMin: 11,
     equipment: gear('special-body', 'arms-firepower-5', 'accessory-crit-5'),
@@ -276,7 +284,7 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
   fixedGuardian({
     id: 'tohmi', name: '遠見', classId: 'mage', role: 'sniper', reaction: 'dance',
     gunKey: 'rifle-t2', meleeKey: 'machete-t3', selectedSubWeapon: 'support-sniper',
-    clearSeconds: 34, score: -7, reactionMs: 150, counterChance: 0.35,
+    clearSeconds: 34, score: 20, reactionMs: 150, counterChance: 0.35,
     preferredDist: 420, meleeBias: 0.05, mobility: 0.62, stationaryFrac: 0.45,
     approachPerMin: 2, subUsesPerMin: 9,
     equipment: gear('special-body', 'arms-firepower-5', 'accessory-crit-5'),
@@ -286,7 +294,7 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
     id: 'shizu', name: '静', classId: 'mage', role: 'sniper', reaction: 'dance',
     // 停止率40%の狙撃役。タレットと射撃陣地を作る。
     gunKey: 'rifle-t2', meleeKey: 'machete-t3', selectedSubWeapon: 'turret',
-    clearSeconds: 32, score: -5, reactionMs: 135, counterChance: 0.38,
+    clearSeconds: 32, score: 22, reactionMs: 135, counterChance: 0.38,
     preferredDist: 380, meleeBias: 0.05, mobility: 0.66, stationaryFrac: 0.4,
     approachPerMin: 2, subUsesPerMin: 10,
     equipment: gear('special-body', 'arms-firepower-5', 'accessory-crit-5'),
@@ -306,7 +314,7 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
     id: 'hayase', name: '早瀬', classId: 'rogue', role: 'rapid', reaction: 'dance',
     // 機動力最大の速射前衛。分身で接近圧力と手数を伸ばす。
     gunKey: 'handgun-t3', meleeKey: 'tactical-knife-t4', selectedSubWeapon: 'shadow-clone',
-    clearSeconds: 30, score: -3, reactionMs: 100, counterChance: 0.45,
+    clearSeconds: 30, score: 24, reactionMs: 100, counterChance: 0.45,
     preferredDist: 135, meleeBias: 0.45, mobility: 1, stationaryFrac: 0.02,
     approachPerMin: 10, subUsesPerMin: 12,
     equipment: gear('special-body', 'arms-firepower-5', 'accessory-crit-5'),
@@ -324,7 +332,7 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
   fixedGuardian({
     id: 'chloe', name: 'クロエ', classId: 'mage', role: 'rapid', reaction: 'dance',
     gunKey: 'handgun-t2', meleeKey: 'machete-t3', selectedSubWeapon: 'homing',
-    clearSeconds: 33, score: -6, reactionMs: 115, counterChance: 0.42,
+    clearSeconds: 33, score: 21, reactionMs: 115, counterChance: 0.42,
     preferredDist: 190, meleeBias: 0.2, mobility: 0.92, stationaryFrac: 0.05,
     approachPerMin: 6, subUsesPerMin: 14,
     equipment: gear('special-body', 'arms-firepower-5', 'accessory-crit-5'),
@@ -344,7 +352,7 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
     id: 'akane', name: 'あかね', classId: 'necromancer', role: 'subweapon', reaction: 'dance',
     // 高機動ショットガン役。前中衛での被弾を盾で補う。
     gunKey: 'shotgun-t3', meleeKey: 'tactical-knife-t4', selectedSubWeapon: 'shield',
-    clearSeconds: 40, score: -13, reactionMs: 120, counterChance: 0.4,
+    clearSeconds: 40, score: 14, reactionMs: 120, counterChance: 0.4,
     preferredDist: 165, meleeBias: 0.4, mobility: 0.9, stationaryFrac: 0.07,
     approachPerMin: 7, subUsesPerMin: 14,
     equipment: gear('special-body', 'arms-firepower-5', 'accessory-crit-5'),
@@ -362,7 +370,7 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
   fixedGuardian({
     id: 'phill', name: 'フィル', classId: 'rogue', role: 'variant', reaction: 'dance',
     gunKey: 'handgun-t3', meleeKey: 'machete-t3', selectedSubWeapon: 'fire-knife',
-    clearSeconds: 28, score: -1, reactionMs: 100, counterChance: 0.45,
+    clearSeconds: 28, score: 26, reactionMs: 100, counterChance: 0.45,
     preferredDist: 185, meleeBias: 0.25, mobility: 0.96, stationaryFrac: 0.03,
     approachPerMin: 6, subUsesPerMin: 12,
     equipment: gear('special-body', 'arms-firepower-5', 'accessory-crit-5'),
