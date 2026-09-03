@@ -102,7 +102,7 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, weaponDisplayName, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
@@ -16989,34 +16989,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ①円に入った瞬間 ②溜め切った瞬間 の2回、不足していることと必要量/所持量を出す。
       const shortOnScrap = state.player.straps < ARMORY_SCRAP_COST;
       const justEntered = dwellMs > 0 && state.armoryDwellMs <= 0;
-      // ★v0.25.4118(社長指示2026-09-03「武器庫、サークル入った時に**何の武器が買えるか**も表示。
-      //   今は100スクラップとだけ表示されてるはず」): 円に入った瞬間、**候補の銃名**を出す。
-      //   報酬は「Tier3未満のカテゴリからランダムに1つ選び、そのカテゴリのTier3」なので、
-      //   入った時点で確定するのは**候補**まで(抽選は3秒到達時=挙動は変えない)。
-      //   名前は `weaponDisplayName`(カタログが唯一の出どころ)から引く=名前表を作らない。
-      //   候補ゼロ(全部最高位)は「入っても返金されるだけ」と先に伝える(3秒待たせてから
-      //   返金と言われるより親切=既存の返金挙動そのものは不変)。
-      const armoryPicks = armoryGrantKeys(state.player.weapons);
-      const armoryPickNames = armoryPicks.map(weaponDisplayName).join(' / ');
-      const armoryOfferText = armoryPicks.length === 0
-        ? '武器庫: 全ての銃が最高位——入っても返金されるだけだ'
-        : shortOnScrap
-          ? `武器庫: スクラップ${ARMORY_SCRAP_COST}が必要 (所持 ${Math.floor(state.player.straps)}) → ${armoryPickNames} のどれか`
-          : `武器庫: スクラップ${ARMORY_SCRAP_COST} → ${armoryPickNames} のどれか`;
       // §6.24-UX 確定要件1(裁定a): サークルに入った瞬間、取引内容(スクラップいくらで何と交換か)を
       // 含む通信を1回。**不足時の警告バナーは従来どおり毎回出す**(別枠なので両立する)。
       const intel = justEntered ? poiIntelPatch(state, 'armory', pos) : {};
-      // 入った瞬間は**足りる/足りない/候補ゼロのどれでも**取引内容を出す(v0.25.4118)。
-      // 溜め切った時の不足警告(done)は従来どおり=「待ったのに何も起きない」を無言にしない。
-      if (justEntered) {
-        return {
-          ...intel,
-          armoryDwellMs: dwellMs,
-          eventBannerText: armoryOfferText,
-          eventBannerUntil: state.gameTime + 2600,
-        };
-      }
-      if (shortOnScrap && done) {
+      if (shortOnScrap && (justEntered || done)) {
         return {
           ...intel,
           armoryDwellMs: dwellMs,
