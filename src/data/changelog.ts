@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4120',
+    items: ['ゲーム内容の変更はありません(開発体制の記録のみ)。'],
+  },
+  {
     version: '0.25.4119',
     items: [
       '武器庫のサークルの表示を、v0.25.4118の前(スクラップの必要額だけ)に戻しました。',
