@@ -382,6 +382,11 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/shotgun-t2', scaleMode: 'nearest' },
       { name: 'weapons/shotgun-t3', scaleMode: 'nearest' },
       { name: 'weapons/phill-revolver', scaleMode: 'nearest' },
+      // v0.25.4122: グレネードガンの銃スプライトはマニフェスト未登録だったため、地面ドロップの絵だけ
+      // 汎用描画に落ちていた(public/sprites/weapons/glauncher-t*.png は存在し、WEAPON_ICON_KEYS にも在る)。
+      { name: 'weapons/glauncher-t1', scaleMode: 'nearest' },
+      { name: 'weapons/glauncher-t2', scaleMode: 'nearest' },
+      { name: 'weapons/glauncher-t3', scaleMode: 'nearest' },
       // 近接(ナイフ系)アイコン。銃と同じピックアップ/HUDアイコン(攻撃モーション用ではない)。
       { name: 'weapons/knife-t1', scaleMode: 'nearest' },
       { name: 'weapons/hatchet-t2', scaleMode: 'nearest' },

@@ -29,7 +29,10 @@
 | ランの中の入手(ドロップ/武器箱/宝箱/武器庫)は**全部 `grantWeapon(key)` に集約**されている | `gameStore.ts:15748 / 15814 / 15836 / 15867 / 17045` |
 | 銃は**カテゴリごと1挺・高Tier優先**(同Tier以下は弾薬に化ける) | `grantWeapon`(`gameStore.ts:16218-`) |
 | 恒久解放の前例あり(localStorage 1キー) | `isKogarasuUnlocked` / `markKogarasuUnlocked`(`src/data/progress.ts:456-467`) |
-| 銃の絵は**キーごとのスプライト**。未登録キーは絵文字フォールバック | `WEAPON_ICON_KEYS`(`weaponUtils.ts:332`) |
+| 銃の絵は**キーごとのスプライト**。**登録点が2つある**(片方だけだと無言で汎用描画に落ちる) | ①`WEAPON_ICON_KEYS`(`weaponUtils.ts:332`)=HUD/ピックアップの判定 ②`pixiTextures.ts:375-`のマニフェスト=地面の絵 |
+| `AmmoType` は **`'phill'` を含む5種**。横の対象は4カテゴリ | `game.ts:1493` / `ARMORY_GUN_CATEGORIES`(`weaponUtils.ts:204`) |
+| 「直接銃」の集合はキー列挙。ここに漏れると**着弾クリロール等の戦闘ルールが変わる** | `DIRECT_GUN_WEAPON_KEYS`(`weaponUtils.ts:135`) |
+| 装備設定画面の実体 | `renderLoadout`(`src/components/MissionSelect.tsx:1218`・screen `'loadout'`) |
 | 近接は **T1〜T5**(銃と別軸)。ドロップは「現装備tier+1」固定 | `nextKnifeKey` / `rollWeaponKey`(`weaponDrop.ts:49-57`) |
 
 **この構造の意味**: 入手経路は既に1点(`grantWeapon`)に集約されているので、**「どのキーを渡すか」を
@@ -60,7 +63,9 @@
 `src/data/weaponSlots.ts`(新規):
 ```ts
 // カテゴリ×Tier の「スロット」に並ぶ候補キー。先頭が既定(未設定時に選ばれる)。
-export const SLOT_CANDIDATES: Record<AmmoType, Record<1|2|3, string[]>> = {
+// キーは4カテゴリのみ(AmmoType は 'phill' を含む5種なので、そのまま使わない=監査C3)。
+export type SlotCategory = 'handgun' | 'shotgun' | 'rifle' | 'glauncher';
+export const SLOT_CANDIDATES: Record<SlotCategory, Record<1|2|3, string[]>> = {
   handgun: { 1: ['handgun-t1', ...], 2: [...], 3: [...] },
   shotgun: { ... }, rifle: { ... }, glauncher: { ... }
 };
@@ -69,7 +74,7 @@ export const SLOT_CANDIDATES: Record<AmmoType, Record<1|2|3, string[]>> = {
 ### 3-3. 装備設定(恒久・localStorage 1キー)
 ```ts
 // zombie.loadout.slots
-type SlotLoadout = Partial<Record<AmmoType, Partial<Record<1|2|3, string>>>>;
+type SlotLoadout = Partial<Record<SlotCategory, Partial<Record<1|2|3, string>>>>;
 ```
 - **キャラ別にしない**(社長指定)。武器種単位の共通設定。
 - 未設定 / 未解放 / 存在しないキー → **既定(候補の先頭)へフォールバック**。壊れたセーブで詰まない。
@@ -84,24 +89,45 @@ export const markWeaponUnlocked = (key: string): boolean => ...; // 新規解放
 - **既定候補は常に解放済み扱い**(配列に入っていなくても使える)。
 - どのボスが何を解放するかは `BOSS_UNLOCK: Record<BossId, string>` の**純データ1表**で持つ。
 
-## §4 差し替え点(実装の中心・ここだけ)
+## §4 解決点(実装の中心)
 
-**純関数を1本足し、2箇所から呼ぶ。それ以外のコードは触らない。**
+**純関数を1本足す。**
 
 ```ts
 // src/utils/weaponSlot.ts(新規・葉モジュール)
 export const resolveSlotKey = (key: string, loadout: SlotLoadout, unlocked: ReadonlySet<string>): string
 ```
 - 入力キーの `category` と `tier` を `CATALOG` から引き、そのスロットの設定キーを返す。
-- 設定が無い / 未解放 / スロット外 → **入力キーをそのまま返す**(恒等)。
-- **近接キーは常に恒等**(③により対象外)。
+- 設定が無い / 未解放 / スロット外 / 近接 → **入力キーをそのまま返す**(恒等)。
+- **冪等**(`resolveSlotKey(resolveSlotKey(k)) === resolveSlotKey(k)`)。二重に通っても壊れない。
 
-呼び出しは2箇所だけ:
-1. `grantWeapon(key)` の**先頭**(`gameStore.ts:16218`)— ラン中の全入手経路がここを通る(§1)。
-2. `getStartingWeapons(characterClass)`(`weaponUtils.ts:325`)— 出撃時のT1。
+### 4-1. ★解決は「キーを作る側」で行う(監査A1の是正)
+**v1 は「`grantWeapon` の先頭で差し替える」としていたが、これは出荷バグになる。**
+敵ドロップは `useGameLoop.ts:12966` が `rollWeaponKey(...)` の結果を pickup の `weaponKey` に焼き、
+`pixiScene.ts:25334` が**そのキーのスプライトを地面に描く**。受け取り時にだけ差し替えると
+**「地面にハンドガンの絵 → 拾うとリボルバー」**になる。よって解決はキーの**生成点**で行う。
 
-**この2箇所以外を変えない**ことが受け入れ条件。ドロップ抽選(`weaponDrop.ts`)・武器庫
-(`updateArmory`)・宝箱は**キーを作るだけ**なので無改変で横に乗る。
+| 生成点 | ファイル |
+|---|---|
+| 敵ドロップ / 武器箱 | `rollWeaponKey` / `openCrate`(`weaponDrop.ts`) |
+| ステージ7開幕宝箱 | `rollTier23Gun`(`weaponDrop.ts`) |
+| 武器庫のTier3付与 | `updateArmory` の `grantGunKey`(`gameStore.ts:17045` 手前) |
+| 出撃時のT1 | `getStartingWeapons`(`weaponUtils.ts:325`) |
+
+加えて **`grantWeapon` の先頭にも通す**(冪等なので二重適用は無害)。これは
+「新しい入手経路を後から足した人が解決を忘れる」ことへの**安全網**であって、主たる解決点ではない。
+
+### 4-2. ★候補キーを登録しなければならない集合(監査A2の是正)
+- **`DIRECT_GUN_WEAPON_KEYS`(`weaponUtils.ts:135`)に新候補を必ず含める。**
+  現状は `GUN_KEYS_BY_CATEGORY` の平坦化なので、候補キーは漏れる。漏れると
+  `useGameLoop.ts:12224`(トラップ/弱点の着弾クリロール)・`12308`(体勢崩れ時のクリ抑制)・
+  `critDecay.ts`・`playtestDriver.ts` で**新候補だけ「味方系の弾」扱い**になり、
+  「DPS概ね同等」の裏で隠れた性能差が出る。**`SLOT_CANDIDATES` の平坦化から作り直す。**
+- **`GUN_KEYS_BY_CATEGORY` には候補を足さない。** `weaponDrop.ts:60/71/86` が `[tier-1]` で
+  **添字参照**しているため、配列に足すと Tier とキーの対応が壊れる。ここは**既定候補のみ**のまま。
+- **絵の登録は2箇所**(§1): `WEAPON_ICON_KEYS` と `pixiTextures.ts` のマニフェスト。
+  **片方だけだと地面の絵が無言で汎用描画に落ちる**(現に `glauncher-t1〜t3` が
+  マニフェスト未登録のまま=v0.25.4122で是正)。
 
 ## §5 上位互換を作らない(機械化)
 
@@ -116,12 +142,27 @@ export const resolveSlotKey = (key: string, loadout: SlotLoadout, unlocked: Read
 - **不変条件5(フォールバック)**: 未解放キーを設定した `loadout` を渡しても `resolveSlotKey` は
   必ず**解放済みのキー**を返す。
 
+- **不変条件6(支配の禁止・監査A5の是正)**: 候補が既定に対し**全軸で≧**(damage/count/critChance/
+  magSize、かつ cooldown/reloadMs が≦、かつ passthrough・pierce が既定以上)になってはいけない。
+  **基準DPSだけでは上位互換を止められない**(既定と同じ数値+`passthrough:true` は ±10% を満たしつつ
+  厳密上位互換)。この支配テストで落とす。
+
 **±10% は「叩き台の数字」であり社長の裁定対象**(§9 ★未決 #U1)。
+**貫通・爆発は基準DPSの式に現れない**ため、同スロットに貫通あり/なしを混ぜると DPS が比較不能になる
+(§9 ★未決 #U6)。
 
 ## §6 解放とUI
 
-- **解放の瞬間**: ボス撃破の確定処理で `markWeaponUnlocked(BOSS_UNLOCK[bossId])`。
+- **ボスの識別は `type@stageId`**(監査A3の是正)。`BossId` という型はコードに無く、ボスは `enemy.type`
+  (EnemyType)で識別される。**城ボスは全ステージ `'giantbat'` 1種**(`enemyUtils.ts:356`)なので、
+  type をキーにすると城ボス7〜9体で解放が1つしか起きない。既存の識別形式
+  (`fixedGuardians.ts` の `'giantbat@stage-3'`、`bossEncounter.ts` の slotKey)に揃える。
+- **解放の瞬間**: ボス撃破の確定処理で `markWeaponUnlocked(BOSS_UNLOCK[bossKey])`。
   新規解放なら**既存の取得トースト(`lastWeaponGet`)を流用**して知らせる(新規UIを作らない)。
+- **★練習ランでは解放判定を呼ばない**(監査A4の是正)。`practiceGuard.ts` は localStorage の
+  **書き込みだけ**を飲み、読みは素通しする。小烏丸の作法(`progress.ts:465`)は
+  read→false→write(飲まれる)→**true を返す**ので、**練習でそのボスを倒すたびに偽の解放トーストが出る**。
+  ボスモード/ガントレットでは判定自体を通さないこと。
 - **設定画面**: 既存の装備設定画面に「銃スロット」欄を足す。**カテゴリ×Tierの12マス**で、
   各マスが解放済み候補のセレクタ。未解放は灰表示。
 - **出撃時は今まで通りTier1から**(社長指定)= 設定はキーの差し替えのみで、Tierの初期値は変えない。
@@ -137,6 +178,11 @@ export const resolveSlotKey = (key: string, loadout: SlotLoadout, unlocked: Read
 | `projectileSpeed` / `projectileSize`(当てやすさ) | 弾の見た目の文法(赤い二重丸=共通・CLAUDE.md) |
 | `passthrough` / `pierce`(貫通の有無) | Tier間の強さの段差 |
 | `critChance`(`BASE_CRIT_BY_CATEGORY` からの逸脱) | |
+
+**現状の実装では変えられない軸**(変えたいなら別途 `WeaponDef` の拡張が要る):
+- **ショットガンの拡散**は `SHOTGUN_SPREAD_CONE_RAD_BY_TIER[tier]`(`weaponUtils.ts:17`)で**Tier固定**。
+- **発射音**は `SMG_WEAPON_KEY='handgun-t3'` などの**キー固定**(`useGameLoop.ts:511`)。
+  T3ハンドガンの新候補が連射型でも単発音のまま。
 
 **役割重複の回避(社長の注意点)**: 新候補を足す前に、**既存の銃・サブウェポンと同じ役割になっていないか**を
 1行で書く(例:「これはグレネードガンと同じ"面制圧"ではないか?」)。書けない候補は採用しない。
@@ -156,9 +202,32 @@ export const resolveSlotKey = (key: string, loadout: SlotLoadout, unlocked: Read
 - **#U1「DPS帯の幅」**: 同スロット候補の基準DPS許容幅。叩き台 **±10%**。
   広げる(±20%)と個性は出しやすいが上位互換に近づく。狭める(±5%)と差が付けにくい。
 - **#U2「段階導入の刻み」**: §8 の第1弾を「1カテゴリ3挺」でよいか。全カテゴリ一斉にするか。
-- **#U3「どのボスが何を解放するか」**: `BOSS_UNLOCK` の中身。ボスの性格と武器の挙動を結び付けるか
-  (例: 貫通ボス→貫通ライフル)、無関係に配るか。
-- **#U4「glauncher に横を入れるか」**: glauncher は t1/t2 が転がって爆発する特殊挙動
-  (`GLAUNCHER_ROLL_DETONATE_PX`)を持ち、既にカテゴリ内で挙動が分かれている。
-  ここに更に横を足すと役割重複(社長の注意点)を起こしやすい。
+- **#U3「どのボスが何を解放するか」**: `BOSS_UNLOCK` の中身。**先に「ボス」の定義が要る**——
+  `isBossType`(`enemyUtils.ts:295`)は pumpkin(毎ラン何度も倒す)・賞金首・hunter・幻影・
+  lab-zombie-3・死神族まで含むので、そのまま使うと**1ランで何度も解放が起きる**。
+  解放トリガにする集合を列挙して固める必要がある。
+- **#U4「glauncher に横を入れるか」**: 入れる場合、**キー固定の分岐が3系統**あり、そのままだと
+  新候補は**爆発しない直進弾**になる —— `isGrenadeGunKey`(`weaponUtils.ts:224`・キー3つ固定 →
+  `useGameLoop.ts:12485/12647/12686/12854` の着弾爆発・貫通除外・消滅)/
+  `GLAUNCHER_ROLL_DETONATE_PX`(`weaponUtils.ts:364`・キー別)/ `pixiScene.ts:24661`(弾の絵)。
+  入れるならこの3系統を**category 判定へ直す**のが前提工事。
 - **#U5「解放の見せ方」**: §6 は既存トーストの流用。専用の解放演出を作るか。
+- **#U6「貫通・爆発を横の軸に使ってよいか」**: §7 は `passthrough`/`pierce` を「変えてよい軸」に
+  置いているが、これらは基準DPSの式に現れないため**同スロット内で混ぜると強さが比較不能**になる。
+  (a)同スロット内は貫通クラスを揃える(比較可能・推薦)/(b)混ぜてよい(個性は出るが上位互換の検出が
+  人手頼りになる)。
+- **#U7「未解放候補を設定画面に出すか」**: §6 は「未解放は灰表示」だが、装備設定画面の現行作法
+  (`MissionSelect.tsx` renderLoadout・v0.25.4084)は**「未購入は載せない」**。割れている。
+  (a)灰表示にして「何が増えるか」を見せる/(b)現行作法に揃えて載せない。
+
+## §10 監査の記録(着手前・Fable 5.1・2026-09-04)
+
+- **(A) 6件**: A1(解決点=キー生成側へ・§4-1)/ A2(`DIRECT_GUN_WEAPON_KEYS` の漏れ・§4-2)/
+  A3(ボス識別は `type@stageId`・§6)/ A4(練習ランの偽解放・§6)/ A5(支配テスト・§5 不変条件6)/
+  A6(glauncher のキー固定3系統・#U4)。**全て本文へ反映済み。**
+- **(C) 5件**: C1(§4 の「無改変で乗る」は誤り→§4-1へ書き直し)/ C2(絵の登録点は2つ→§1)/
+  C3(`AmmoType` は phill を含む→§1・§3-2)/ C4(設定画面の実体名と作法の割れ→§1・#U7)/
+  C5(小烏丸の作法は欠点も継ぐ→§6)。**全て反映済み。**
+- **(B) 6件は別案件へ積む**(この案件では直さない): 発射音のキー固定 / ショットガン拡散のTier固定 /
+  オンライン守護霊の版ズレ(旧端末で新キーが `handgun-t1` に化ける)/ 解放数とボス数の収支表 /
+  解放トーストがボス撃破演出(2.6s)に埋もれないかの実機確認 / 素材受領後の憲法テスト追加。

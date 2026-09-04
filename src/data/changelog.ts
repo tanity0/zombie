@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4122',
+    items: ['グレネードガンが地面に落ちている時、専用の銃の絵が出るようになりました。'],
+  },
+  {
     version: '0.25.4121',
     items: ['ゲーム内容の変更はありません(新機能の設計書のみ)。'],
   },
