@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4133',
+    items: ['ユニーク武器システムを追加しました(第1弾)。装備設定に「銃スロット」が増え、解放した銃をTierごとに選べます。ハンドガンに3種(デリンジャー/ハンドキャノン/パイルドライバー)を追加。'],
+  },
+  {
     version: '0.25.4132',
     items: ['ゲーム内容の変更はありません(設計書のみ)。'],
   },

@@ -102,9 +102,10 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, weaponDisplayName } from '../utils/weaponUtils';
 import { resetHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPONS.md §13-1
 import { resolveSlotKeyNow } from '../utils/weaponSlot'; // UNIQUE_WEAPONS.md §4-1(生成点=grantWeapon入口の安全網/武器庫)
+import { BOSS_UNLOCK } from '../data/weaponSlots'; // UNIQUE_WEAPONS.md §6(ボス撃破→ユニーク武器の恒久解放)
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
@@ -187,7 +188,7 @@ import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
   getEventQuestMeta, setEventQuestMeta, markCastleBossCleared, syncQuestStageClear,
   updateStoryFlags, markMissionCleared,
-  isKogarasuUnlocked, markKogarasuUnlocked,
+  isKogarasuUnlocked, markKogarasuUnlocked, markWeaponUnlocked,
   getSelectedFreeMode,
   type WallMeta,
 } from '../data/progress';
@@ -3511,6 +3512,27 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
       const qStageId = getSelectedStageId();
       markCastleBossCleared(qStageId);
       syncQuestStageClear(qStageId);
+    }
+  }
+  // UNIQUE_WEAPONS.md §6(ユニーク武器の恒久解放): ボス撃破の確定処理でこのランのボスに紐づく
+  // ユニーク武器を解放する。**どのボスが何を解放するかの表(BOSS_UNLOCK)は★未決 #U3 のため空**なので、
+  // 現状はどのキーも undefined になり何も起きない。裁定が下りたら weaponSlots.ts の表に行を足すだけで動く。
+  // キー形式は `type@stageId`(城ボスは全ステージ 'giantbat' 1種なのでステージで割る必要がある)。
+  // ★練習ラン(ボスモード/ガントレット)では呼ばない: practiceGuard は localStorage の書き込みだけを
+  // 飲んで読みは素通しするため、そのまま呼ぶと markWeaponUnlocked が毎回 true を返し
+  // 「偽の解放」が練習のたびに起きる(小烏丸が持っているのと同じ穴を持ち込まない)。
+  if (!isPracticeRun()) {
+    const unlockKey = BOSS_UNLOCK[`${enemy.type}@${getSelectedStageId() ?? ''}`] ?? BOSS_UNLOCK[enemy.type];
+    if (unlockKey && markWeaponUnlocked(unlockKey)) {
+      useGameStore.setState({
+        lastWeaponGet: {
+          name: `${weaponDisplayName(unlockKey)} 解放`,
+          at: Date.now(),
+          color: '#facc15',
+          kind: 'weapon',
+          weaponKey: unlockKey
+        }
+      });
     }
   }
   // 小烏丸解禁(社長指示): 裏ボス「トール」討伐の永続報酬。初回討伐なら永続フラグを立て、

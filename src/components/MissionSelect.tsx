@@ -136,11 +136,10 @@ import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import {
   getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, getStageHighScore,
   getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, getWallMeta, type SelectedMission,
-  isWeaponUnlocked,
 } from '../data/progress';
 // ユニーク武器システム(UNIQUE_WEAPONS.md §6): 装備設定画面の「銃スロット」欄。
 import { SLOT_CATEGORIES, SLOT_CANDIDATES, type SlotCategory, type SlotTier } from '../data/weaponSlots';
-import { getSlotLoadout, setSlotCandidate } from '../utils/weaponSlot';
+import { getSlotLoadout, setSlotCandidate, unlockedWeaponKeys } from '../utils/weaponSlot';
 import { weaponDisplayName } from '../utils/weaponUtils';
 const GUN_CATEGORY_LABEL: Record<SlotCategory, string> = {
   handgun: 'ハンドガン', shotgun: 'ショットガン', rifle: 'ライフル', glauncher: 'グレネードガン',
@@ -1310,6 +1309,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-orange-200/70">銃スロット</div>
               <div className="menu-stagger space-y-2">
                 {SLOT_CATEGORIES.map(cat => {
+                  const unlockedNow = unlockedWeaponKeys();
                   const tiersWithChoice = ([1, 2, 3] as const).filter(t => SLOT_CANDIDATES[cat][t].length > 1);
                   if (tiersWithChoice.length === 0) return null;
                   return (
@@ -1317,12 +1317,15 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       <div className="px-1 text-[10px] text-white/40">{GUN_CATEGORY_LABEL[cat]}</div>
                       {tiersWithChoice.map(tier => {
                         const candidates = SLOT_CANDIDATES[cat][tier];
+                        // 検収A-1: 解放判定は weaponSlot 側の1本(既定候補 + 永続台帳 + ?unlockall=1)を使う。
+                        // progress の isWeaponUnlocked を直接見ると **?unlockall=1 が効かず**、BOSS_UNLOCK が
+                        // 空の現状では全ボタンが disabled になって確認手段そのものが死ぬ。
                         const selected = slotLoadout[cat]?.[tier] ?? candidates[0];
                         return (
                           <div key={tier} className="grid grid-cols-2 gap-2">
                             {candidates.map(key => {
                               const isDefault = key === candidates[0];
-                              const unlocked = isDefault || isWeaponUnlocked(key);
+                              const unlocked = isDefault || unlockedNow.has(key);
                               const on = selected === key;
                               return (
                                 <button
