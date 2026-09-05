@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4139',
+    items: ['ゲーム内容の変更はありません(設計書のみ)。'],
+  },
+  {
     version: '0.25.4138',
     items: ['永続育成の値段を下げました(50/100/200/400/800G)。最終段が1200G→800Gになり、全段そろえるのが楽になりました。'],
   },
