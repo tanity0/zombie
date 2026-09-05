@@ -681,6 +681,7 @@ export const resetProgress = (): void => {
   saveEventQuestMetaMap({}); // 二人組クエストの進捗メタも進行リセットで消す(開発用)
   writeCastleBossSet(new Set()); // 城ボスクリアフラグも進行リセットで消す(開発用)
   try { localStorage.removeItem(KOGARASU_KEY); } catch { /* ignore */ } // 小烏丸解禁も進行リセットで消す(開発用)
+  try { localStorage.removeItem(WEAPON_UNLOCKS_KEY); } catch { /* ignore */ } // ユニーク武器の恒久解放も進行リセットで消す(開発用・小烏丸と同じ扱い)
   try { localStorage.removeItem(LEGACY_EVENT_QUEST_DONE_KEY); } catch { /* ignore */ } // 旧v1684キーの掃除
   saveChronicle([]); // 歴史年表も進行リセットで消す(開発用)
   writeRunCores({}); // 掘削記録(リザルト断面の過去ラン)も進行リセットで消す(開発用)
@@ -788,6 +789,12 @@ export const isWeaponUnlocked = (key: string): boolean => readWeaponUnlockSet().
  * 戻り値はtrue」になり、倒すたびに偽の解放トーストが出る**。呼び出し側は必ず
  * `!isPracticeRun()` を確認してから呼ぶこと(UNIQUE_WEAPONS.md §6・監査A4)。
  */
+/** ユニーク武器の恒久解放を全消去(テスト用・進行リセット)。 */
+export const clearWeaponUnlocks = (): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.removeItem(WEAPON_UNLOCKS_KEY); } catch { /* ignore */ }
+};
+
 export const markWeaponUnlocked = (key: string): boolean => {
   if (typeof localStorage === 'undefined') return false;
   if (isWeaponUnlocked(key)) return false;

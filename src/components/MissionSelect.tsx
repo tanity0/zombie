@@ -134,7 +134,7 @@ import {
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import {
-  getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, getStageHighScore,
+  getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, clearWeaponUnlocks, getStageHighScore,
   getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, getWallMeta, type SelectedMission,
 } from '../data/progress';
 // ユニーク武器システム(UNIQUE_WEAPONS.md §6): 装備設定画面の「銃スロット」欄。
@@ -1999,6 +1999,17 @@ const DevTools: React.FC<{
       >
         <span><span className="block text-[13px] font-semibold">武器解放</span><span className="block text-[11px] text-white/50">{weaponUnlockAll ? 'ユニーク武器を全解放(装備設定→銃スロットで選べる)' : '解放したものだけ'}</span></span>
         <span className="text-[11px] font-semibold shrink-0">{weaponUnlockAll ? 'ON' : 'OFF'}</span>
+      </button>
+
+      {/* 武器解放リセット(社長指示2026-09-05「あ、リセットもね」): 恒久解放の台帳(設計図/購入の記録)を
+          消してトグルもOFFへ戻す。**進行リセットでも一緒に消える**(小烏丸と同じ扱い)が、
+          ステージ等を巻き込まずに武器だけ初期状態へ戻したい時はこちら。 */}
+      <button
+        type="button"
+        onClick={() => { clearWeaponUnlocks(); setTestWeaponUnlockAll(false); setWeaponUnlockAllState(false); }}
+        className="w-full py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10"
+      >
+        武器解放リセット（解放記録を消す・トグルもOFF）
       </button>
 
       {/* ダンスモード(練習)パネルは撤去(社長裁定2026-08-20: ダンスフロア退役)。 */}

@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4137',
+    items: ['オプションのテスト開発用に「武器解放リセット」を追加しました。進行リセットでも武器の解放記録が消えるようになりました。'],
+  },
+  {
     version: '0.25.4136',
     items: ['オプションの「テスト開発用」に「武器解放」を追加しました。ONにするとユニーク武器が全て選べるようになります。'],
   },
