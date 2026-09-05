@@ -3516,12 +3516,15 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   }
   // UNIQUE_WEAPONS.md §6(ユニーク武器の恒久解放): ボス撃破の確定処理でこのランのボスに紐づく
   // ユニーク武器を解放する。**どのボスが何を解放するかの表(BOSS_UNLOCK)は★未決 #U3 のため空**なので、
-  // 現状はどのキーも undefined になり何も起きない。裁定が下りたら weaponSlots.ts の表に行を足すだけで動く。
-  // キー形式は `type@stageId`(城ボスは全ステージ 'giantbat' 1種なのでステージで割る必要がある)。
+  // 現状はどのキーも undefined になり何も起きない。キー形式は `type@stageId`
+  // (城ボスは全ステージ 'giantbat' 1種なのでステージで割る必要がある)。
   // ★練習ラン(ボスモード/ガントレット)では呼ばない: practiceGuard は localStorage の書き込みだけを
   // 飲んで読みは素通しするため、そのまま呼ぶと markWeaponUnlocked が毎回 true を返し
   // 「偽の解放」が練習のたびに起きる(小烏丸が持っているのと同じ穴を持ち込まない)。
-  if (!isPracticeRun()) {
+  // ★城ボス(giantbat)は `isFinalBossKill` を必ず通す(検収2巡目B-1): グレンは**形態1をHP半分で**
+  // triggerDramaticDeath に通す(=移行であって討伐ではない)ため、これを見ないと
+  // **形態2に負けても恒久解放される**。既存の城ボスクリア処理が同じガードを使っているのと揃える。
+  if (!isPracticeRun() && (enemy.type !== 'giantbat' || isFinalBossKill(enemy))) {
     const unlockKey = BOSS_UNLOCK[`${enemy.type}@${getSelectedStageId() ?? ''}`] ?? BOSS_UNLOCK[enemy.type];
     if (unlockKey && markWeaponUnlocked(unlockKey)) {
       useGameStore.setState({
@@ -4782,8 +4785,10 @@ export const overclockAwakenReloadPatch = (p: Player): Partial<Player> => {
   const filled = refillWeaponMagazine(gun, p, p[field]);
   if (filled.moved <= 0) return {};
   // UNIQUE_WEAPONS.md §13-1(社長裁定2026-09-05「即時装填でもリセットする」): ハンドキャノンの
-  // 連続命中減衰は「弾倉が満タンになったらリセット」で統一する。tickReload を通らない即時装填
-  // (この覚醒 / クイックマガジン拾得)だけ減衰が残ると、プレイヤーには気づけない例外になる。
+  // 連続命中減衰は**「装填が発生したらリセット」**で統一する(部分装填=リザーブが足りず満タンに
+  // ならない場合も含む。tickReload の従来挙動と同じ条件=3経路で揃えてある)。
+  // tickReload を通らない即時装填(この覚醒 / クイックマガジン拾得)だけ減衰が残ると、
+  // プレイヤーには気づけない例外になる。
   if (gun.key === HANDCANNON_WEAPON_KEY) resetHandcannonDecay();
   return {
     weapons: p.weapons.map(w => (w.id === gun.id ? filled.weapon : w)),
