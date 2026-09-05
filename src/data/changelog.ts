@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4134',
+    items: ['ハンドキャノンの威力低下は、クイックマガジンやオーバークロックの即時装填でもリセットされるようになりました。'],
+  },
+  {
     version: '0.25.4133',
     items: ['ユニーク武器システムを追加しました(第1弾)。装備設定に「銃スロット」が増え、解放した銃をTierごとに選べます。ハンドガンに3種(デリンジャー/ハンドキャノン/パイルドライバー)を追加。'],
   },

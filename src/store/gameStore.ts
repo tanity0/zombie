@@ -4781,6 +4781,10 @@ export const overclockAwakenReloadPatch = (p: Player): Partial<Player> => {
   const field = AMMO_FIELD[gun.ammoType];
   const filled = refillWeaponMagazine(gun, p, p[field]);
   if (filled.moved <= 0) return {};
+  // UNIQUE_WEAPONS.md §13-1(社長裁定2026-09-05「即時装填でもリセットする」): ハンドキャノンの
+  // 連続命中減衰は「弾倉が満タンになったらリセット」で統一する。tickReload を通らない即時装填
+  // (この覚醒 / クイックマガジン拾得)だけ減衰が残ると、プレイヤーには気づけない例外になる。
+  if (gun.key === HANDCANNON_WEAPON_KEY) resetHandcannonDecay();
   return {
     weapons: p.weapons.map(w => (w.id === gun.id ? filled.weapon : w)),
     [field]: filled.reserve,
@@ -15930,6 +15934,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           const field = AMMO_FIELD[active.ammoType];
           const filled = refillWeaponMagazine(active, p, p[field]);
           movedAmount = filled.moved;
+          // UNIQUE_WEAPONS.md §13-1(社長裁定2026-09-05): 即時装填でもハンドキャノンの減衰をリセット。
+          if (filled.moved > 0 && active.key === HANDCANNON_WEAPON_KEY) resetHandcannonDecay();
           if (filled.moved <= 0) {
             return {
               player: {
