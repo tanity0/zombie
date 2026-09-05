@@ -139,7 +139,7 @@ import {
 } from '../data/progress';
 // ユニーク武器システム(UNIQUE_WEAPONS.md §6): 装備設定画面の「銃スロット」欄。
 import { SLOT_CATEGORIES, SLOT_CANDIDATES, type SlotCategory, type SlotTier } from '../data/weaponSlots';
-import { getSlotLoadout, setSlotCandidate, unlockedWeaponKeys } from '../utils/weaponSlot';
+import { getSlotLoadout, setSlotCandidate, unlockedWeaponKeys, isTestWeaponUnlockAll, setTestWeaponUnlockAll } from '../utils/weaponSlot';
 import { weaponDisplayName } from '../utils/weaponUtils';
 const GUN_CATEGORY_LABEL: Record<SlotCategory, string> = {
   handgun: 'ハンドガン', shotgun: 'ショットガン', rifle: 'ライフル', glauncher: 'グレネードガン',
@@ -1962,6 +1962,9 @@ const DevTools: React.FC<{
   // ダンスモード(練習)パネルは撤去(社長裁定2026-08-20: ダンスフロア=shijin退役。曲も削除)。
   const ammoPickupAmounts = useGameStore(s => s.ammoPickupAmounts);
   const setAmmoPickupAmount = useGameStore(s => s.setAmmoPickupAmount);
+  // 武器解放(テスト用・社長指示2026-09-05): ユニーク武器の候補を全部解放済み扱いにする。
+  // 端末に残る(localStorage)ので `?unlockall=1` を毎回付けなくてよい。BOSS_UNLOCK が空の間の確認手段。
+  const [weaponUnlockAll, setWeaponUnlockAllState] = useState(() => isTestWeaponUnlockAll());
 
   // 自動回収量を調整できるのは handgun/shotgun/rifle のみ(phill は手動射撃で対象外)。
   const [ammoInputs, setAmmoInputs] = useState<Record<'handgun' | 'shotgun' | 'rifle', string>>({
@@ -1985,6 +1988,17 @@ const DevTools: React.FC<{
       >
         <span><span className="block text-[13px] font-semibold">撃破数/FPS表示</span><span className="block text-[11px] text-white/50">{showStatsOverlay ? '表示ありで開始' : '通常は無し'}</span></span>
         <span className="text-[11px] font-semibold shrink-0">{showStatsOverlay ? 'ON' : 'OFF'}</span>
+      </button>
+
+      {/* 武器解放(テスト用・UNIQUE_WEAPONS.md §13-3-7)。装備設定→銃スロットで全候補を選べるようになる。 */}
+      <button
+        type="button"
+        onClick={() => { const next = !weaponUnlockAll; setTestWeaponUnlockAll(next); setWeaponUnlockAllState(next); }}
+        className={`w-full flex items-center justify-between gap-3 rounded-none border px-3 py-2.5 text-left ${weaponUnlockAll ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/80 active:bg-purple-400/10'}`}
+        aria-pressed={weaponUnlockAll}
+      >
+        <span><span className="block text-[13px] font-semibold">武器解放</span><span className="block text-[11px] text-white/50">{weaponUnlockAll ? 'ユニーク武器を全解放(装備設定→銃スロットで選べる)' : '解放したものだけ'}</span></span>
+        <span className="text-[11px] font-semibold shrink-0">{weaponUnlockAll ? 'ON' : 'OFF'}</span>
       </button>
 
       {/* ダンスモード(練習)パネルは撤去(社長裁定2026-08-20: ダンスフロア退役)。 */}

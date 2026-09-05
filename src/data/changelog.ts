@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4136',
+    items: ['オプションの「テスト開発用」に「武器解放」を追加しました。ONにするとユニーク武器が全て選べるようになります。'],
+  },
+  {
     version: '0.25.4135',
     items: ['ゲーム内容の変更はありません(内部の安全策と記述の是正)。'],
   },

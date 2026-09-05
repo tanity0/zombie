@@ -476,7 +476,9 @@ export const resolveSlotKey = (key: string, loadout: SlotLoadout, unlocked: Read
 4. 練習ラン(ボスモード/ガントレット)で**解放が起きない**(§6)。
 5. 不変条件2〜6のテストが通る(1・7は §5 の適用範囲に従う)。
 6. **実効DPSが §5 の帯に入っている**ことをテストで確認する(§13-2。ボットラン実測は作らない)。
-7. **`BOSS_UNLOCK` の中身は空のまま**(★未決 #U3 が裁定待ち)。確認は **`?unlockall=1`** のツマミで行う
+7. **`BOSS_UNLOCK` の中身は空のまま**(★未決 #U3 が裁定待ち)。確認は
+   **オプション画面「テスト開発用」の「武器解放」トグル**(社長指示2026-09-05・端末に残る)か、
+   **`?unlockall=1`** のツマミで行う
    (読み取りは `weaponSlot.ts` 側で `typeof window === 'undefined'` ガード付きの独自パース=監査B-2)。
 8. `npm run typecheck` / `npm run lint` がエラー0。
 

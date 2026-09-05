@@ -53,6 +53,28 @@ const parseUnlockAllFlag = (): boolean => {
 };
 const UNLOCK_ALL = parseUnlockAllFlag();
 
+// テスト用の全解放トグル(社長指示2026-09-05「オプションに武器解放を入れといて(テスト用)」)。
+// オプション画面の「テスト開発用」枠から切り替える。URLツマミ `?unlockall=1` と同じ効き方だが、
+// **端末に残る**ので毎回URLを付け直さなくてよい。BOSS_UNLOCK が空の間の確認手段。
+const TEST_UNLOCK_KEY = 'zombie.dev.weaponUnlockAll';
+export const isTestWeaponUnlockAll = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(TEST_UNLOCK_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+export const setTestWeaponUnlockAll = (on: boolean): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (on) window.localStorage.setItem(TEST_UNLOCK_KEY, '1');
+    else window.localStorage.removeItem(TEST_UNLOCK_KEY);
+  } catch {
+    /* プライベートモード等で書けなくても落とさない */
+  }
+};
+
 const forEachSlot = (fn: (category: SlotCategory, tier: SlotTier) => void): void => {
   for (const category of SLOT_CATEGORIES) {
     for (const tier of SLOT_TIERS) fn(category, tier);
@@ -73,9 +95,9 @@ export const allSlotCandidateKeys = (): Set<string> => {
   return set;
 };
 
-/** 「今、実際に使ってよい」候補キーの集合(既定 ∪ 恒久解放 ∪ ?unlockall=1)。 */
+/** 「今、実際に使ってよい」候補キーの集合(既定 ∪ 恒久解放 ∪ ?unlockall=1 ∪ テスト用トグル)。 */
 export const unlockedWeaponKeys = (): Set<string> => {
-  if (UNLOCK_ALL) return allSlotCandidateKeys();
+  if (UNLOCK_ALL || isTestWeaponUnlockAll()) return allSlotCandidateKeys();
   const set = defaultSlotKeys();
   for (const k of getWeaponUnlocks()) set.add(k);
   return set;
