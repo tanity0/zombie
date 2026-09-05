@@ -1,5 +1,41 @@
 # Development Log
 
+## v0.25.4133 — ユニーク武器 第1弾: 仕組み一式 + ハンドガン3種(実装)【2026-09-05 11:38 JST】
+
+UNIQUE_WEAPONS.md §3〜§6(仕組み)+ §13(ハンドガン3種: デリンジャー/ハンドキャノン/パイルドライバー)を実装。
+
+- **仕組み**: `src/data/weaponSlots.ts`(SLOT_CANDIDATES純データ+BOSS_UNLOCK=空)、
+  `src/utils/weaponSlot.ts`(`resolveSlotKey`純関数+localStorage `zombie.loadout.slots`の読み書き+
+  `?unlockall=1`の独自パース)、`src/data/progress.ts`(`isWeaponUnlocked`/`markWeaponUnlocked`を
+  小烏丸と同じ作法で追記)。
+- **解決点は生成点4箇所**(§4-1): `weaponDrop.ts`の`rollWeaponKey`/`openCrate`/`rollTier23Gun`、
+  `weaponUtils.getStartingWeapons`、`gameStore.updateArmory`の`grantGunKey`。加えて`grantWeapon`
+  入口にも冪等な安全網として通した。
+- **`DIRECT_GUN_WEAPON_KEYS`はSLOT_CANDIDATESの平坦化から作り直した**(§4-2の是正=新候補の漏れ防止)。
+  `GUN_KEYS_BY_CATEGORY`には候補を足していない(`weaponDrop.ts`の添字参照を壊さないため)。
+- **ハンドガン3種**をCATALOGへ追加。`WeaponDef`/`Weapon`/`Projectile`に`rangeOverride`/
+  `knockbackMult`/`postureMult`を新設し`createWeapon`で明示コピー。パイルドライバーの射程は
+  `MELEE_RADIUS + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[3]`から導出(直書きしない・v0.25.4131の値を継承)。
+  `rangeOverride`はズーム非補正で、射程を読む全箇所(自動射撃ゲート/ボット2箇所/守護霊/幻影)を
+  `gunEffectiveRangePx`の1本へ通した。
+- **ハンドキャノンの連続命中減衰**を`src/utils/handcannonDecay.ts`に純関数+モジュール台帳で実装
+  (敵ごとに独立・−20%/命中・下限40%・リロード完了で全リセット・5秒おきに生存IDで掃除)。
+  ★未決 #U12(解釈a/b)は`interpretation`引数で両方テスト可能にし、既定はa。
+- **パイルドライバー**: 非クリ弾でも体勢を削る(明示的に`'heavy'`をdamageEnemyへ渡す。新しい打撃
+  種別は作らない)+ 弾命中で`knockbackEnemy`を呼ぶ(全銃には入れず、この弾だけ)。
+  `knockbackMult`/`postureMult`の具体値(2/2)は数字が設計書に無いため**★未決候補**(下記参照)。
+- **装備設定画面(MissionSelect.tsx)に「銃スロット」欄を追加**(候補が2つ以上あるスロットのみ表示。
+  未解放は灰+鍵アイコン)。
+- テスト: `src/utils/weaponSlot.test.ts`(不変条件1〜6・resolveSlotKeyの恒等/解決/冪等/フォールバック)、
+  `src/utils/handcannonDecay.test.ts`。既存の関連テスト(weaponUtils/armoryGun/trapPvp/
+  projectileOrigin/ghostBuild/fixedGuardians/phantomTick/ghostGunShots/combatCritParity/
+  playtestBot/botTelemetry/murasameUnlock)計222件は全通過(回帰なし)。
+- **BOSS_UNLOCKは空のまま**(★未決 #U3=社長裁定待ち)。ボス撃破→解放の呼び出し配線は未実装
+  (どのボスをキーにするか決まっていないため。配線先が無い状態で仮実装すると変な形に固定化する
+  リスクがあるため見送った=★未決候補として最終報告へ明記)。
+- 状態変化: ユニーク武器システム 第1弾(仕組み+ハンドガン3種) → 実装完了・レビュー待ち
+  (残り: ★未決候補の裁定、実機確認、パイルドライバーのknockbackMult/postureMult数値の調整)。
+
 ## v0.25.4132 — 設計書に残っていた矛盾を掃除(実装者が読んで割れる箇所)【2026-09-05 JST】
 
 帯を「上側(+)」へ変えた v0.25.4130 の際、**古い記述を消し残していた**ので掃除した。
