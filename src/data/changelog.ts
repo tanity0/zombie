@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4135',
+    items: ['ゲーム内容の変更はありません(内部の安全策と記述の是正)。'],
+  },
+  {
     version: '0.25.4134',
     items: ['ハンドキャノンの威力低下は、クイックマガジンやオーバークロックの即時装填でもリセットされるようになりました。'],
   },
