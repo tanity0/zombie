@@ -1,10 +1,16 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult } from '../store/gameStore';
+import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { aimEnemyDist2, isCorpse } from './enemyUtils';
 import { zoomCompensatedWorldDistance } from './cameraZoom';
 import { bigBulletSizeMult } from './skillEffectsB7';
 import { isTrapDebuffed, TRAP_PVP_RELOAD_MULT } from './trapDebuff';
+import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
+import { SLOT_CATEGORIES, SLOT_CANDIDATES } from '../data/weaponSlots';
+// UNIQUE_WEAPONS.md §4-1: getStartingWeapons(出撃時のT1)は生成点の1つ。resolveSlotKeyNowは
+// weaponUtils.tsのcatalogCategoryTierを読むので相互import(2ファイル循環)になるが、どちらの
+// モジュールもトップレベル評価時に相手の値を参照しない(参照は全て関数呼び出し内)ため安全。
+import { resolveSlotKeyNow } from './weaponSlot';
 
 // プレイヤー中心→敵 の二乗距離。**全ての敵で「当たり判定の矩形の最近点」**まで測る(v0.25.3170・
 // 社長指示「当たり判定の四隅でみて」)。中心基準だと巨体の縁に立っていても射程外扱いになる。
@@ -53,7 +59,21 @@ interface WeaponDef {
   reloadMs?: number;     // reload duration; heavier guns reload slower
   critChance?: number;   // fixed crit chance (melee weapons)
   pierce?: number;       // enemies the round passes through (piercing guns)
+  // UNIQUE_WEAPONS.md §13-1(監査C-2): ユニーク武器用の新規フィールド3つ。
+  // rangeOverride: そのカテゴリの RANGE_BY_CATEGORY を無視して使う自動射撃射程(px)。
+  // 関数で渡すと createWeapon 呼び出し時(=全モジュール読み込み後)に評価される
+  // (他モジュールの定数からの導出=循環import時のTDZを避けるための遅延評価。値を直書きしたい場合は数値のままでよい)。
+  rangeOverride?: number | (() => number);
+  knockbackMult?: number; // 弾命中時のノックバック倍率(knockbackEnemyのmultiplier引数へ)。既定=ノックバックしない(undefined)。
+  postureMult?: number;   // 弾命中時の体勢削り倍率(applyBossPostureDamageのimpactMult引数へ)。Projectile.postureMultは既存(弾幕の王が使用)。
 }
+
+// UNIQUE_WEAPONS.md §13-1: パイルドライバー(handgun-t3-piledriver)の射程。
+// MELEE_RADIUS(74) + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[3](=Lv3最大伸長34) から**導出**する
+// (108を直書きしない=ハンティング側の値を調整したらここも一緒に動く)。関数化してあるのは
+// CATALOG(このファイルの module top-level)からの参照が MELEE_RADIUS(gameStore.ts)の循環import越しの
+// TDZに触れないようにするため——createWeapon呼び出し時(=全モジュール読み込み完了後)に初めて評価される。
+export const piledriverRangePx = (): number => MELEE_RADIUS + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[3];
 
 const CATALOG: Record<string, WeaponDef> = {
   // A — Handgun family (9mm). Fast, low damage, cheap to feed.
@@ -61,6 +81,15 @@ const CATALOG: Record<string, WeaponDef> = {
   'handgun-t2':       { key: 'handgun-t2', name: '二丁ハンドガン', type: 'handgun', category: 'handgun', tier: 2, damage: 9,  cooldown: 420, projectileSpeed: 520, projectileSize: 8, count: 2, magSize: 10, reloadMs: 1100 },
   // マシンピストルT3: 連射×大容量でクリ上振れ(16%)がバランスブレイカーだったため、純粋クリ率を5%に固定(加算分は別)。
   'handgun-t3':       { key: 'handgun-t3', name: 'マシンピストル', type: 'handgun', category: 'handgun', tier: 3, damage: 7,  cooldown: 100, projectileSpeed: 560, projectileSize: 7, count: 1, magSize: 30, reloadMs: 1300, critChance: 0.05 },
+
+  // ユニーク武器(UNIQUE_WEAPONS.md §13-1・第1弾=ハンドガン3種)。数値は叩き台(社長明言・実機調整前提)。
+  // デリンジャー(T1): 瞬間火力+頻繁なリロード。装弾数2発・1発威力アップ。
+  'handgun-t1-derringer':  { key: 'handgun-t1-derringer',  name: 'デリンジャー',       type: 'handgun', category: 'handgun', tier: 1, damage: 17, cooldown: 300, projectileSpeed: 540, projectileSize:  9, count: 1, magSize: 2, reloadMs:  700 },
+  // ハンドキャノン(T2): 単発威力高め・同一敵への連続命中で威力が段階的に低下(handcannonDecay.ts。リロードで全リセット)。
+  'handgun-t2-handcannon': { key: 'handgun-t2-handcannon', name: 'ハンドキャノン',     type: 'handgun', category: 'handgun', tier: 2, damage: 31, cooldown: 600, projectileSpeed: 560, projectileSize: 11, count: 1, magSize: 6, reloadMs: 1200 },
+  // パイルドライバー(T3): 極端な短射程(rangeOverride=導出108px・ズーム非補正)+強ノックバック+高体勢削り。
+  // knockbackMult/postureMultの数値は★未決候補(社長仕様は「強い/非常に高い」という定性表現のみ・#U9/#U10)。
+  'handgun-t3-piledriver': { key: 'handgun-t3-piledriver', name: 'パイルドライバー',   type: 'handgun', category: 'handgun', tier: 3, damage: 36, cooldown: 450, projectileSpeed: 620, projectileSize: 12, count: 1, magSize: 6, reloadMs: 1300, critChance: 0.05, rangeOverride: piledriverRangePx, knockbackMult: 2, postureMult: 2 },
 
   // B — Shotgun family (12g). One trigger pull = one shell (the spread is free),
   // so the magazine is sized in SHOTS, not pellets (3 shots per mag).
@@ -99,6 +128,18 @@ const CATALOG: Record<string, WeaponDef> = {
   'glauncher-t3': { key: 'glauncher-t3', name: 'グレネードガンⅢ', type: 'rifle', category: 'glauncher', tier: 3, damage: 140, cooldown: 1200, projectileSpeed: 460, projectileSize: 16, count: 1, magSize: 5, reloadMs: 2000, passthrough: true }
 };
 
+// UNIQUE_WEAPONS.md §13-1: 個別の挙動配線(ハンドキャノンの連続命中減衰・パイルドライバーの
+// ノックバック/体勢削り)がweaponKeyで判定するための定数。マジックストリングを1箇所にまとめる。
+export const HANDCANNON_WEAPON_KEY = 'handgun-t2-handcannon';
+export const PILEDRIVER_WEAPON_KEY = 'handgun-t3-piledriver';
+
+// UNIQUE_WEAPONS.md §4: resolveSlotKey(weaponSlot.ts)がCATALOGの中身を見に行くための細い窓。
+// CATALOG自体は非公開のまま(意味不明なキーの直接生成を増やさない)。
+export const catalogCategoryTier = (key: string): { category?: AmmoType; tier?: number } => {
+  const def = CATALOG[key];
+  return def ? { category: def.category, tier: def.tier } : {};
+};
+
 const weaponBaseCritChance = (def: WeaponDef): number | undefined => {
   if (def.critChance !== undefined) return def.critChance; // 個別指定(近接, およびマシンピストルT3)を優先
   if (!def.category) return undefined;
@@ -132,7 +173,15 @@ export const GHOST_GUN_WEAPON_KEY = 'ghost-gun';
 // ③倍率評価の主語=疑似Player(useGameLoopの弾ヒット処理)。**この集合(直接銃)には入れない**
 // =着弾時ロール(トラップ+10%/弱点+10%)はプレイヤーの反射弾と同じく対象外。
 export const GHOST_REFLECT_WEAPON_KEY = 'ghost-reflect';
-const DIRECT_GUN_WEAPON_KEYS = new Set<string>([...Object.values(GUN_KEYS_BY_CATEGORY).flat(), GHOST_GUN_WEAPON_KEY]);
+// UNIQUE_WEAPONS.md §4-2(監査A2の是正): 候補キーの漏れを防ぐため、SLOT_CANDIDATES(4カテゴリの
+// 既定+ユニーク候補すべて)の平坦化から作る。GUN_KEYS_BY_CATEGORYは既定候補のみ(§4-2「足さない」)
+// なので、そちらから作ると新しいユニーク候補が漏れる。phillはSLOT_CANDIDATES対象外(近接同様スロット外)
+// なのでGUN_KEYS_BY_CATEGORY.phillから別途合流する。
+const DIRECT_GUN_WEAPON_KEYS = new Set<string>([
+  ...SLOT_CATEGORIES.flatMap(cat => ([1, 2, 3] as const).flatMap(tier => SLOT_CANDIDATES[cat][tier])),
+  ...GUN_KEYS_BY_CATEGORY.phill,
+  GHOST_GUN_WEAPON_KEY,
+]);
 export const isDirectGunWeaponKey = (weaponKey: string | undefined): boolean =>
   weaponKey !== undefined && DIRECT_GUN_WEAPON_KEYS.has(weaponKey);
 // Tier 昇順。MELEE_KEYS[tier] が「1段階上」のキー(tier は 1 始まり=0-indexed の次要素)。
@@ -176,7 +225,12 @@ export const createWeapon = (key: string): Weapon => {
     tier: def.tier,
     isMelee: def.isMelee,
     ammoType: def.category,
-    key: def.key
+    key: def.key,
+    // UNIQUE_WEAPONS.md §13-1(監査C-2): createWeaponはフィールドを明示コピーするので、
+    // 新フィールドを足すたびここに書き足す必要がある(書き忘れると育った武器が土台なしに落ちる)。
+    rangeOverride: typeof def.rangeOverride === 'function' ? def.rangeOverride() : def.rangeOverride,
+    knockbackMult: def.knockbackMult,
+    postureMult: def.postureMult,
   };
 };
 
@@ -324,7 +378,9 @@ export const weaponAfterGunShot = (
 // Starting loadout: one gun + one melee weapon from the class profile.
 export const getStartingWeapons = (characterClass: CharacterClass): Weapon[] => {
   const profile = PLAYER_PROFILES[characterClass] ?? PLAYER_PROFILES.warrior;
-  return [createWeapon(profile.gunKey), createWeapon(profile.meleeKey)];
+  // UNIQUE_WEAPONS.md §4-1(生成点): 出撃銃は装備設定のスロット選択に従う(§2④「拾った銃」と同じ
+  // 「設定に従う」規則)。Tierの初期値そのものは変えない(社長指定「出撃時は今まで通りTier1から」)。
+  return [createWeapon(resolveSlotKeyNow(profile.gunKey)), createWeapon(profile.meleeKey)];
 };
 
 // 専用スプライト(public/sprites/weapons/<key>.png)を持つ銃の武器key。素材受領のたびに追加。
@@ -381,6 +437,18 @@ export const GLAUNCHER_ROLL_DETONATE_PX: Record<string, number> = {
  */
 export const zoomedGunRange = (basePx: number): number =>
   zoomCompensatedWorldDistance(basePx, useGameStore.getState().viewZoom);
+
+/**
+ * ★UNIQUE_WEAPONS.md §13-1(監査C-7): `rangeOverride` を持つ武器(現状はパイルドライバーのみ)は
+ * **ズーム補正を通さない**——近接範囲(`MELEE_RADIUS`)から導出した射程なので、近接同様ズームで
+ * 伸びない扱いにする(伸びると「揃えたはずの近接範囲」と食い違う)。`rangeOverride` が無い武器は
+ * 従来どおり `zoomedGunRange` を通す。射程を読む全箇所(自動射撃ゲート/ボット/守護霊/幻影)はこの
+ * 1本を通すこと(直接 `RANGE_BY_CATEGORY` を読まない)。
+ */
+export const gunEffectiveRangePx = (weapon: Pick<Weapon, 'category' | 'rangeOverride'>): number =>
+  weapon.rangeOverride !== undefined
+    ? weapon.rangeOverride
+    : zoomedGunRange(RANGE_BY_CATEGORY[weapon.category ?? 'handgun']);
 
 // A stunned enemy is a low-priority target — the player should be putting
 // rounds into the threats that are still moving, not the one already frozen
@@ -525,7 +593,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   // (マークスマンは射程UP→移動速度UPに変更したため、射程倍率は廃止)
   // グレネードガンt1/t2(転がり爆発)は爆発する道のり=実効射程(v0.25.3438)。
   const rollDetonatePx = GLAUNCHER_ROLL_DETONATE_PX[weapon.key ?? ''];
-  const gunRange = zoomedGunRange(rollDetonatePx ?? RANGE_BY_CATEGORY[weapon.ammoType]);
+  // ★rangeOverride(現状はパイルドライバーのみ)はrollDetonatePxと排他(グレネード限定の仕組み)なので
+  // 優先順位は「転がり爆発 > rangeOverride > カテゴリ既定」で問題ない。
+  const gunRange = rollDetonatePx !== undefined ? zoomedGunRange(rollDetonatePx) : gunEffectiveRangePx(weapon);
   if (nearestEnemyDistance(player, enemies) > gunRange) {
     return [];
   }
@@ -597,6 +667,10 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       // CRIT-UNIFY §9.1: 生成時に抽選しない。critChanceを運び、命中時に対象別(ボスは半減+下限5%)で
       // ロールする(useGameLoop.tsのprojectileHitCritChance)。
       critChance,
+      // UNIQUE_WEAPONS.md §13-1: 武器のknockbackMult/postureMultを弾へそのまま運ぶ(命中側=
+      // useGameLoop.tsが読む)。未設定(既定undefined)の武器は従来どおり何も付かない=回帰ゼロ。
+      knockbackMult: weapon.knockbackMult,
+      postureMult: weapon.postureMult,
       // スキル: ファイアシューターの爆発弾。直撃ダメージ ×0.3、命中で半径66の小爆発。
       ...(fireShooterShot
         ? {

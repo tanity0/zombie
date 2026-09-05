@@ -1,6 +1,10 @@
 import { AmmoType } from '../types/game';
 import { GUN_KEYS_BY_CATEGORY, nextKnifeKey } from './weaponUtils';
 import { effectiveDifficultyArea } from './timeDifficulty';
+// UNIQUE_WEAPONS.md §4-1: ここが「キーを作る側」の生成点。地面のドロップ絵(pickup.weaponKey)が
+// このrollWeaponKey/openCrate/rollTier23Gunの戻り値をそのまま使うため、受け取り側(grantWeapon)
+// ではなくここで解決する(受け取り側だけの解決だと「地面はハンドガン→拾うとデリンジャー」になる)。
+import { resolveSlotKeyNow } from './weaponSlot';
 
 // WWZ-style loot: enemies rarely drop a weapon outright, and mid-bosses always
 // drop a weapon crate that rolls one. Tier率はエリア(距離)で決まる(社長指定): 奥ほど高Tier。
@@ -59,7 +63,7 @@ export const rollWeaponKey = (area: number, currentMeleeTier = 1, gameTimeMs = 0
   const category = DROP_CATEGORIES[Math.floor(Math.random() * DROP_CATEGORIES.length)];
   const keys = GUN_KEYS_BY_CATEGORY[category];
   const idx = Math.min(keys.length - 1, tier - 1);
-  return keys[idx];
+  return resolveSlotKeyNow(keys[idx]);
 };
 
 // ステージ7の初期宝箱(社長指示v0.25.3137「内容はtier2-3の武器ランダム」)。
@@ -70,7 +74,7 @@ export const rollTier23Gun = (rand: () => number = Math.random): string => {
   const category = CATEGORIES[Math.floor(rand() * CATEGORIES.length)];
   const keys = GUN_KEYS_BY_CATEGORY[category];
   const idx = Math.min(keys.length - 1, 1 + Math.floor(rand() * 2)); // 1=t2 / 2=t3
-  return keys[idx];
+  return resolveSlotKeyNow(keys[idx]);
 };
 
 // v0.25.3212(社長指示「取り急ぎ、ナイフは武器箱に移す」): レベルアップ3枠目に居たナイフ強化
@@ -85,5 +89,5 @@ export const openCrate = (area: number, currentMeleeTier = 5, gameTimeMs = 0): s
   const category = DROP_CATEGORIES[Math.floor(Math.random() * DROP_CATEGORIES.length)];
   const keys = GUN_KEYS_BY_CATEGORY[category];
   const idx = Math.min(keys.length - 1, tier - 1);
-  return keys[idx];
+  return resolveSlotKeyNow(keys[idx]);
 };

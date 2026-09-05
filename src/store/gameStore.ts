@@ -102,7 +102,9 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY } from '../utils/weaponUtils';
+import { resetHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPONS.md §13-1
+import { resolveSlotKeyNow } from '../utils/weaponSlot'; // UNIQUE_WEAPONS.md §4-1(生成点=grantWeapon入口の安全網/武器庫)
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
@@ -16216,7 +16218,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   // replaces the current gun/melee if it is a higher tier (so a
   // stray T1 drop never downgrades a T3). Existing guns convert to ammo.
   grantWeapon: (key) => {
-    const weapon = createWeapon(key);
+    // UNIQUE_WEAPONS.md §4-1: 主たる解決点は生成点(weaponDrop.ts / getStartingWeapons / 武器庫)側。
+    // ここは冪等な安全網(resolveSlotKeyは冪等なので二重適用しても無害)——新しい入手経路を後から
+    // 足した人が解決を忘れることへの保険。
+    const weapon = createWeapon(resolveSlotKeyNow(key));
     let duplicateAmmo: { amount: number } | null = null;
     set(state => {
       const player = state.player;
@@ -16377,6 +16382,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Complete a finished reload: move min(need, reserve) rounds from the reserve
   // pool into the gun's magazine. Called once per frame from the game loop.
   tickReload: () => {
+    // UNIQUE_WEAPONS.md §13-1: ハンドキャノンの連続命中減衰は「リロード完了で全リセット」。
+    // set()の外側で副作用(resetHandcannonDecay)を呼ぶため、候補だけここで拾う(他の同種フラグと同じ流儀)。
+    let handcannonReloaded = false;
     set(state => {
       const p = state.player;
       if (!p.reloadingWeaponId || Date.now() < p.reloadEndsAt) return {};
@@ -16387,6 +16395,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const field = AMMO_FIELD[w.ammoType];
       const reload = finishWeaponReload(w, p, p[field]);
       if (!reload) return {};
+      if (w.key === HANDCANNON_WEAPON_KEY) handcannonReloaded = true;
       return {
         player: {
           ...p,
@@ -16399,6 +16408,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
+    if (handcannonReloaded) resetHandcannonDecay();
   },
 
   // Keep the active gun shootable. Called each frame before firing:
@@ -17024,7 +17034,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             wallBandColor: 'white' as const,
           };
         }
-        grantGunKey = upgradable[Math.floor(Math.random() * upgradable.length)];
+        // UNIQUE_WEAPONS.md §4-1(生成点): 武器庫はここが「絵」を出さずgrantWeaponへ直結する経路
+        // (地面ピックアップの絵が別に無い)ため解決はgrantWeapon入口の安全網でも足りるが、
+        // §4-1の表どおりここでも解決しておく(冪等・二重適用は無害)。
+        grantGunKey = resolveSlotKeyNow(upgradable[Math.floor(Math.random() * upgradable.length)]);
         return {
           ...intel,
           armoryDwellMs: dwellMs,
@@ -18112,6 +18125,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
     state.enemies.forEach(e => tagRemove(e.id, 'reset')); // 消失ログ用: リスタートで全敵クリア
     resetCritDecay(); // ★§13-3e クリ減衰の台帳を新ランでクリア(前ランの敵IDの記憶を持ち越さない)
+    resetHandcannonDecay(); // UNIQUE_WEAPONS.md §13-1: ハンドキャノン減衰の台帳も新ランでクリア
     clearDestroyedObstacles(); // 裏ボスに壊された木/プロップの欠番を新ランで復活させる。
     const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)
       ? characterClass as CharacterClass

@@ -480,8 +480,10 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   const { player, enemies } = useGameStore.getState();
   // kiterの射程バンド用に現在の銃の実射程を渡す(M26 Step1)。銃なし/phillは既定値にフォールバック。
   const botGun = getActiveGun(player);
+  // UNIQUE_WEAPONS.md §12: rangeOverride(現状パイルドライバーのみ)を持つ銃はカテゴリ既定を無視する
+  // (このkiter用バンドはズーム非補正の生値のまま=既存のRANGE_BY_CATEGORY直読みと同じ扱い)。
   const botGunRange = botGun && botGun.category !== 'phill'
-    ? RANGE_BY_CATEGORY[botGun.category as keyof typeof RANGE_BY_CATEGORY]
+    ? (botGun.rangeOverride ?? RANGE_BY_CATEGORY[botGun.category as keyof typeof RANGE_BY_CATEGORY])
     : undefined;
   // v0.25.2171: scavengerペルソナ用の「枯渇」判定=全所持銃のmagazine+reserve合計が0(社長指定)。
   // 他ペルソナはdecideBotInput側で未使用なので計算しても挙動には影響しない。

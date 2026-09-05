@@ -158,6 +158,7 @@ import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty, projectileHitCritChance } from '../utils/critPenalty';
 import { softCapCritChance, orCombineChance } from '../utils/critSoftCap';
 import { critDecayOnHit } from '../utils/critDecay'; // ★§13-3e クリ減衰(社長裁定2026-08-26)
+import { handcannonDamageMultOnHit, pruneHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPONS.md §13-1
 import { isPvpIncapacitated, tickPvpPosture } from '../utils/pvpPosture'; // ★SAME_ARENA §9(対人体勢)
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
@@ -451,7 +452,7 @@ import {
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
-import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, zoomedGunRange, isDirectGunWeaponKey, isGrenadeGunKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
+import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
@@ -1316,6 +1317,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const flareReadyRef = useRef(true); // フレアガンのCD明け検出(同上・ブーメラン型の一瞬通知)
   const playerKillTimesRef = useRef<number[]>([]); // プレイヤーの撃破時刻(無双判定の直近ウィンドウ)
   const fireJetEnemyAtRef = useRef<Map<string, number>>(new Map()); // 敵ID→直近の背中火spawn時刻(ショットガン等の多弾を1本に間引く)
+  const handcannonPruneAtRef = useRef(0); // UNIQUE_WEAPONS.md §13-1: ハンドキャノン減衰台帳の掃除の直近実施時刻(gameTime ms)
   // SKILL_BUILD_REDESIGN.md §28(B7)★未決: 延焼弾(incendiary-round)Lv2/3の炎床は「命中のたび」に
   // 無条件で置くと連射武器で無制限に湧く(CLAUDE.mdの負荷ルール=bounded/event-onlyに反する)。
   // 仕様に数値指定が無いため、fireJetEnemyAtRef等と同じ「直近spawn時刻を覚えて間引く」流儀の
@@ -2392,7 +2394,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           ? decideBotInput(BOT_PERSONA, player, enemies, gameTime, botTickRef.current++, 0,
               BOT_PERSONA === 'rusher' ? botRusherRef.current : undefined,
               botGunForRange && botGunForRange.category !== 'phill'
-                ? RANGE_BY_CATEGORY[botGunForRange.category as keyof typeof RANGE_BY_CATEGORY]
+                // UNIQUE_WEAPONS.md §12/§13-1: rangeOverride(現状パイルドライバーのみ)を持つ銃は
+                // カテゴリ既定を無視する(ズーム非補正=既存のこのkiter用バンドと同じ生の値のまま)。
+                ? (botGunForRange.rangeOverride ?? RANGE_BY_CATEGORY[botGunForRange.category as keyof typeof RANGE_BY_CATEGORY])
                 : undefined,
               undefined, BOT_SKILL, botGoalPlan?.pressAttack)
           : null;
@@ -10367,8 +10371,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 刀モードは銃を撃たない(プレイヤーと同じ封印)ので射程0=意思決定側でも銃を選ばせない。
                   // v0.25.3170: 射程のズーム補正もプレイヤーと同じ1本(zoomedGunRange)を通す
                   // =引いている間だけ守護霊の射程だけが取り残される、を作らない(パリティ)。
+                  // UNIQUE_WEAPONS.md §12: rangeOverride持ちの銃(パイルドライバー)はgunEffectiveRangePxが
+                  // ズーム補正を外して扱う(§13-1監査C-7)。
                   gunRangePx: gun && !ghostKatana && !ghostReloadingWeaponId && (gun.magazine ?? 0) > 0
-                    ? zoomedGunRange(RANGE_BY_CATEGORY[gun.category ?? 'handgun']) : 0,
+                    ? gunEffectiveRangePx(gun) : 0,
                   meleeDamage: meleeWeapon?.damage ?? 6,
                 },
                 gameTime, nowMs,
@@ -12185,6 +12191,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const collisionState = useGameStore.getState();
         const collisionProjectiles = collisionState.projectiles;
         const collisionEnemies = collisionState.enemies;
+        // UNIQUE_WEAPONS.md §13-1: ハンドキャノン減衰台帳の掃除(メモリ掃除のみ・挙動に無関係)。
+        // 敵の消滅経路が複数あるため、5秒おきに「生きている敵のIDに無いものを捨てる」形で間引く。
+        if (gameTime - handcannonPruneAtRef.current > 5000) {
+          handcannonPruneAtRef.current = gameTime;
+          pruneHandcannonDecay(new Set(collisionEnemies.map(e => e.id)));
+        }
         const projectileEnemyCollisions = checkProjectileEnemyCollisions(collisionProjectiles, collisionEnemies);
         const projectileHitCountsByEnemy = new Map<string, number>();
         for (const { enemyId } of projectileEnemyCollisions) {
@@ -12327,11 +12339,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const pierceDecayMult = pierceIndex > 0 && skillLevel(shotOwner, 'sharpshooter') < 3
             ? Math.pow(0.8, pierceIndex)
             : 1;
+          // UNIQUE_WEAPONS.md §13-1: ハンドキャノンの連続命中減衰(1命中ごと-20%・下限40%・敵ごとに
+          // 独立・リロード完了で全リセット=handcannonDecay.ts)。ハンドキャノンは常にプレイヤー自身の
+          // 直接武器(escort/守護霊が借りることはない)なのでisAllyOwnedShot分岐には適用しない。
+          const handcannonMult = projectile?.weaponKey === HANDCANNON_WEAPON_KEY
+            ? handcannonDamageMultOnHit(enemyId)
+            : 1;
           const dmg = plantCounterKill
             ? (enemyForFx?.maxHealth ?? 1) + 1
             : isAllyOwnedShot
               ? damage * critMult * pierceDecayMult
-              : damage * critMult * pierceDecayMult * skillOutgoingDamageMult(shotOwner) * sniperGunMult(shotOwner, enemyForFx) * comboMasterMult;
+              : damage * critMult * pierceDecayMult * skillOutgoingDamageMult(shotOwner) * sniperGunMult(shotOwner, enemyForFx) * comboMasterMult * handcannonMult;
           // §6.21 M46: gun/otherチャネル分類(護衛NPC弾はnull=計測除外)。純関数=classifyProjectileDamageChannel。
           const dmgChannel = classifyProjectileDamageChannel(projectile?.weaponType, projectile?.weaponKey);
           // BOT_AND_GHOST.md §2.8 G2.5: ゴースト銃弾(weaponKey='ghost-gun')と守護霊の反射弾
@@ -12357,15 +12375,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             : undefined;
           // v0.25.3219(社長指示): カウンターで打ち返した弾(reflected)の命中は体勢ゲージを少し削る。
           // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王が載せたpostureMult(既定1)をそのまま運ぶ。
+          // UNIQUE_WEAPONS.md §13-1/§9(#U10是正): パイルドライバーは「非クリ弾でも体勢を削る」ため、
+          // クリ判定に関係なく明示的に'heavy'(既存の打撃種別=比率0.10・銃クリ0.05の2倍)を渡す。
+          // 新しい打撃種別は作らない(比率はweapon.postureMultの数字だけで調整)。viaMeleeFinish=false
+          // のままなので、'heavy'の近接フィニッシュ専用分岐(applyBrokenMeleeFatal)には触れない。
+          const isPiledriverHit = projectile?.weaponKey === PILEDRIVER_WEAPON_KEY;
           const enemyKilled = damageEnemy(
             enemyId, dmg, false, hitCrit, false, dmgChannel, hateShotSource,
-            projectile?.reflected ? 'reflect' : directPlayerGun && hitCrit ? 'gun-crit' : null,
+            projectile?.reflected ? 'reflect' : isPiledriverHit ? 'heavy' : directPlayerGun && hitCrit ? 'gun-crit' : null,
             projectile?.postureMult ?? 1,
             // ★v0.25.3665(社長指摘「鴉、銃の弾反撃しないよ?」): プレイヤーの直接銃弾は弾として
             // 幻影ゲートへ(=飛翔時間が反応速度以上なら counterChance 抽選で打ち返し対象)。
             // サブ・爆発・護衛/守護霊弾は従来どおり。
             gpBulletSource,
           );
+          // UNIQUE_WEAPONS.md §13-1/§9(#U9是正): パイルドライバーの弾だけにノックバックを付ける
+          // (全銃には入れない=別案件・社長裁定)。knockbackEnemyは既存の共通API(反射神経/爆発/
+          // シールド等と同じ)。ボスへの効きはknockbackEnemy内部のcanShoveEnemy相当ガードに従う
+          // (=ボス級は押し道具無しでは押されない・既存規則のまま新しい免除は作らない)。
+          if (projectile?.knockbackMult && enemyForFx) {
+            const kbLen = Math.hypot(projectile.direction.x, projectile.direction.y) || 1;
+            useGameStore.getState().knockbackEnemy(
+              enemyId, projectile.direction.x / kbLen, projectile.direction.y / kbLen, projectile.knockbackMult,
+            );
+          }
           // ★v0.25.3640(成果物監査Q1-1): 幻影の被弾無敵が弾いた1発は、**数字もヒットSEも出さない**
           // (ゲートはHPを止めるが、数字/SEは呼び出し側=ここが出しているため、素通しだと
           // 「満額の数字が出るのにHPが減らない」偽演出がSMG連射で毎秒積み上がる)。

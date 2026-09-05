@@ -58,7 +58,7 @@ import { createEnemyProjectile } from './enemyUtils';
 import { distToBandRect } from './geometry';
 import {
   createWeapon, effectiveFireCooldown, beginWeaponReload, finishWeaponReload,
-  projectileFlightStats, zoomedGunRange, RANGE_BY_CATEGORY,
+  projectileFlightStats, gunEffectiveRangePx,
   gunShotCritChance,
 } from './weaponUtils';
 import { GRAVITY_SHOT_BOSS_SLOW_MULT } from './skillEffectsB7';
@@ -424,7 +424,7 @@ const stepPhantomGun = (s: PhantomTickState, nowMs: number, phantomId?: string):
 /** いま撃てるか(=頭脳へ渡す銃射程。撃てないなら0で「銃を選ばせない」)。 */
 const phantomGunRangePx = (s: PhantomTickState): number =>
   s.gun && !s.reloadingWeaponId && (s.gun.magazine ?? 0) > 0
-    ? zoomedGunRange(RANGE_BY_CATEGORY[s.gun.ammoType ?? 'handgun'])
+    ? gunEffectiveRangePx({ category: s.gun.ammoType, rangeOverride: s.gun.rangeOverride })
     : 0;
 
 // =================================================================================================

@@ -1484,6 +1484,11 @@ export interface Weapon {
   pierce?: number;
   // Catalog key (e.g. 'handgun-t1') so drops/crates can re-create the weapon.
   key?: string;
+  // UNIQUE_WEAPONS.md §13-1(監査C-2): ユニーク武器の新規フィールド3つ。既定(undefined)は
+  // 全て「無改変」(rangeOverride無し=カテゴリ既定射程/ knockbackMult・postureMult無し=無効果)。
+  rangeOverride?: number; // そのカテゴリの既定射程(RANGE_BY_CATEGORY)を無視する自動射撃射程(px)。
+  knockbackMult?: number; // 弾命中時のノックバック倍率(knockbackEnemyのmultiplier引数へ)。
+  postureMult?: number;   // 弾命中時の体勢削り倍率(既存のpostureMult経路=弾幕の王と同じ運び方)。
 }
 
 // Gun families. Each shares an ammo pool with the matching AmmoType.
@@ -1942,7 +1947,12 @@ export interface Projectile {
   echoed?: boolean;
   // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王(barrage-king)が反射弾に載せる体勢削り倍率
   // (×1.5/1.75/2.0)。damageEnemyのpostureImpactMultへそのまま渡す(既定1=無改変)。
+  // UNIQUE_WEAPONS.md §13-1(パイルドライバー)も同じ経路を流用する(新しい打撃種別は作らない)。
   postureMult?: number;
+  // UNIQUE_WEAPONS.md §13-1(監査A-1「弾ノックバックの経路が無い」の是正): 弾命中時にknockbackEnemyへ
+  // 渡すノックバック倍率。既定undefined=従来どおり弾はノックバックしない(全銃には入れない・
+  // パイルドライバーの弾だけに付ける=社長裁定#U9)。
+  knockbackMult?: number;
   // explodeOnHit: 命中時に小爆発を起こす弾(ファイアシューター/ボムカウンター)。
   // explodeRadius/explodeDamageMult で爆発半径・周囲ダメージ倍率を指定。
   explodeOnHit?: boolean;

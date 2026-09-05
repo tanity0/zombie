@@ -135,8 +135,16 @@ import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skill
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import {
   getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, getStageHighScore,
-  getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, getWallMeta, type SelectedMission
+  getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, getWallMeta, type SelectedMission,
+  isWeaponUnlocked,
 } from '../data/progress';
+// ユニーク武器システム(UNIQUE_WEAPONS.md §6): 装備設定画面の「銃スロット」欄。
+import { SLOT_CATEGORIES, SLOT_CANDIDATES, type SlotCategory, type SlotTier } from '../data/weaponSlots';
+import { getSlotLoadout, setSlotCandidate } from '../utils/weaponSlot';
+import { weaponDisplayName } from '../utils/weaponUtils';
+const GUN_CATEGORY_LABEL: Record<SlotCategory, string> = {
+  handgun: 'ハンドガン', shotgun: 'ショットガン', rifle: 'ライフル', glauncher: 'グレネードガン',
+};
 // ステージ別の自己最高ランク表示(社長指示v0.25.3182)。rankLabel=「ランクn 罪名」の唯一の出どころ。
 import { rankLabel } from '../utils/wallProgress';
 import { clampRank } from '../utils/rankAssessor';
@@ -466,6 +474,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 操作記録(社長指示v0.25.2252「一度見たやつ資料室にまとめよう」): 一度見たチュートリアルを読み返す。
   // archiveState と同じ方針で、資料室に入った時だけ読み直す(store購読なし=毎フレーム再描画しない)。
   const [seenTutorials, setSeenTutorials] = useState<Set<TutorialId>>(() => loadSeenTutorials());
+  // ユニーク武器システム(UNIQUE_WEAPONS.md §3-3/§6): 銃スロットの装備設定(恒久・localStorage 1キー)。
+  const [slotLoadout, setSlotLoadoutState] = useState(() => getSlotLoadout());
+  const pickSlotCandidate = (category: SlotCategory, tier: SlotTier, key: string) => {
+    playSfx('ui-select');
+    setSlotCandidate(category, tier, key);
+    setSlotLoadoutState(getSlotLoadout());
+  };
   const [openTutorialId, setOpenTutorialId] = useState<TutorialId | null>(null);
   const openTutorial = TUTORIALS.find(t => t.id === openTutorialId) ?? null;
   const handleOpenTutorial = (id: TutorialId) => { playSfx('ui-select'); setOpenTutorialId(id); };
@@ -1287,6 +1302,55 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               })}
             </div>
           </div>
+          {/* 銃スロット(UNIQUE_WEAPONS.md §6): カテゴリ×Tierの12マス。各マスは解放済み候補のセレクタ。
+              未解放は灰表示(§6本文の指定=候補があること自体を見せる。#U7は社長裁定待ちの★未決候補)。
+              横(=候補が2つ以上)が無いスロットは選ぶ意味が無いので表示自体を省く(第1弾はハンドガンのみ横あり)。 */}
+          {SLOT_CATEGORIES.some(cat => ([1, 2, 3] as const).some(t => SLOT_CANDIDATES[cat][t].length > 1)) && (
+            <div>
+              <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-orange-200/70">銃スロット</div>
+              <div className="menu-stagger space-y-2">
+                {SLOT_CATEGORIES.map(cat => {
+                  const tiersWithChoice = ([1, 2, 3] as const).filter(t => SLOT_CANDIDATES[cat][t].length > 1);
+                  if (tiersWithChoice.length === 0) return null;
+                  return (
+                    <div key={cat} className="space-y-1">
+                      <div className="px-1 text-[10px] text-white/40">{GUN_CATEGORY_LABEL[cat]}</div>
+                      {tiersWithChoice.map(tier => {
+                        const candidates = SLOT_CANDIDATES[cat][tier];
+                        const selected = slotLoadout[cat]?.[tier] ?? candidates[0];
+                        return (
+                          <div key={tier} className="grid grid-cols-2 gap-2">
+                            {candidates.map(key => {
+                              const isDefault = key === candidates[0];
+                              const unlocked = isDefault || isWeaponUnlocked(key);
+                              const on = selected === key;
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  disabled={!unlocked}
+                                  onClick={() => pickSlotCandidate(cat, tier, key)}
+                                  className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left transition-[filter] ${
+                                    !unlocked ? 'text-white/30' : on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
+                                  }`}
+                                >
+                                  <span className="min-w-0 flex items-center gap-1.5">
+                                    {!unlocked && <Lock size={11} className="shrink-0" />}
+                                    <span className="block truncate text-[12px] font-semibold">{weaponDisplayName(key)}</span>
+                                  </span>
+                                  {on && unlocked && <Check size={14} className="shrink-0" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {/* ★取得済みスキル一覧(社長指示2026-08-25「装備の一番下に取得済みスキル一覧を表示」)。
               **読むだけの一覧**(ここでは選べない)——スキルの持ち込みは廃止済みで、ラン中は
               レベルアップの抽選で組む(SKILL_BUILD_REDESIGN.md §16-10 ★A)。

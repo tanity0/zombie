@@ -746,3 +746,53 @@ export const pushRunCore = (stageId: string, core: RunCore): RunCore[] => {
   writeRunCores(map);
   return next;
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+// ユニーク武器の恒久解放(UNIQUE_WEAPONS.md §3-4)。小烏丸(KOGARASU_KEY)と同じ作法だが、
+// 解放は複数キーぶん記憶する必要があるので配列(CLEARED_KEYと同じreadSet/writeSet型)で持つ。
+// **どのボスが何を解放するか(BOSS_UNLOCK)は★未決 #U3**。この永続層は解放先が決まる前から
+// 独立して成立する(空のBOSS_UNLOCKでも呼び出されない=何も溜まらない)。
+const WEAPON_UNLOCKS_KEY = 'zombie.progress.weaponUnlocks';
+
+const readWeaponUnlockSet = (): Set<string> => {
+  if (typeof localStorage === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(WEAPON_UNLOCKS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr.filter((x): x is string => typeof x === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+};
+
+const writeWeaponUnlockSet = (set: Set<string>): void => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(WEAPON_UNLOCKS_KEY, JSON.stringify([...set]));
+  } catch {
+    /* ignore (quota / private mode) */
+  }
+};
+
+/** 恒久解放済みのユニーク武器キー一覧。 */
+export const getWeaponUnlocks = (): Set<string> => readWeaponUnlockSet();
+
+export const isWeaponUnlocked = (key: string): boolean => readWeaponUnlockSet().has(key);
+
+/**
+ * 立てた瞬間だけ true を返す(既に立っていれば false・小烏丸と同じ作法)。
+ * ★呼び出し側の義務(CLAUDE.md §6「品質監査」§6の教訓・小烏丸で実際に踏んだ穴):
+ * practiceGuard.ts は localStorage の**書き込みだけ**を飲み、読みは素通しする。この関数は
+ * 書き込み前に isWeaponUnlocked() を読んで判定するため、**練習ラン中に呼ぶと「書き込みは飲まれるが
+ * 戻り値はtrue」になり、倒すたびに偽の解放トーストが出る**。呼び出し側は必ず
+ * `!isPracticeRun()` を確認してから呼ぶこと(UNIQUE_WEAPONS.md §6・監査A4)。
+ */
+export const markWeaponUnlocked = (key: string): boolean => {
+  if (typeof localStorage === 'undefined') return false;
+  if (isWeaponUnlocked(key)) return false;
+  const set = readWeaponUnlockSet();
+  set.add(key);
+  writeWeaponUnlockSet(set);
+  return true;
+};
