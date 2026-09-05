@@ -10,14 +10,241 @@
 // the Canvas2D path's `imageSmoothingEnabled = false`.
 
 import { Assets, Rectangle, Texture } from 'pixi.js';
+import { ALL_VARIANT_TEXTURES, ENEMY_VARIANT_SETS } from '../utils/enemyVariant';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
+import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
 import { STAGE_PROPS } from '../world/cityProps';
 import { setEnemyArtAspect } from './renderSpec';
 
 const textures = new Map<string, Texture>();
 let ready = false;
 let loading: Promise<void> | null = null;
+
+// ---- 炎と松明の台座(社長支給v0.25.2641) ---------------------------------------------------------
+// 社長が**炎と台座を別々に**描き分けて支給(「炎と分けた、火炎瓶とキャンプでもこの炎つかって」)。
+// **支給ファイルは一切加工しない**。コマはここの枠指定だけで読む(アトラスと同じ作法=同じ source を
+// 共有するサブテクスチャなので、追加のメモリもデコードも発生しない)。
+//
+// `props/flame` = 1472×264 の1枚。**1コマ 184×264 が8つ**横に並ぶ。炎の根元は全コマ**下端(y=263)**、
+// 中心は**キャンバス中央**で揃っている(実測)= どのコマへ切り替えても炎が跳ねない。
+// 名前 `props/flame-0..7` で `getTexture` から引ける。
+export const FLAME_SHEET = 'props/flame';
+export const FLAME_FRAMES = 8;
+export const FLAME_FRAME_W = 184;
+export const FLAME_FRAME_H = 264;
+/** 炎の**明るさの重心**が下端から何割の高さに来るか(8コマ平均の実測)。光を置く高さに使う。 */
+export const FLAME_LIGHT_FRAC = 0.3197;
+
+// `props/torch-stand` = 112×172 の松明の台座(炎なし)。
+/**
+ * 炎の**根元**を置く高さ(足元から・art px)。
+ * v0.25.2644(社長報告「もう少し下。穴から浮いて見える」): 鉢の**縁**(上から y=44)に置くと
+ * 炎が鉢の口の上に乗って浮いて見えた。鉢の**中**(y=64・手前のリムの少し上)へ下げる
+ * ——炎が手前に居るので、ここまで下げると根元が鉢の内側から出ているように見える。
+ * (鉢は上から y=44〜87。y=68 あたりが手前のリム=実測)
+ */
+export const TORCH_STAND_RIM_ABOVE_FOOT = 172 - 64;
+
+// M8改→§5.9-追補2(社長の事実訂正v0.25.1462「軍人も同じドット風素材・同じ処理でいい」)で置き換え:
+// プレイヤー4クラス(マークスマン=magnum/ヘビーガンナー=shotgun/スカベンジャー=striker/
+// ストライカー=scavenger)は軍人NPCと同じ「ドット絵風」生成素材。違いは軍人が**表示実寸(×1)まで
+// 縮め切って保存**していたこと=にじみが縮小の平均化で1pxに潰れて消える(等倍+nearestでくっきり)。
+// なのでM8改のlinear+mipmap路線(×2縮小止め)は撤回し、素材そのものを表示実寸へ焼き直した上で
+// 軍人・敵・その他すべてと同じ既定nearestに統一。`?spritesmooth=1`で当時のlinear+mipmapを
+// 一時的に試せるA/B用フラグとして残す(既定はoff=nearest)。
+const SPRITE_SMOOTH: boolean = (() => {
+  if (typeof window === 'undefined') return false;
+  const p = new URLSearchParams(window.location.search).get('spritesmooth');
+  return p === '1' || p === 'on' || p === 'true';
+})();
+const SOFT_CLASS_PREFIXES = ['player-magnum-', 'player-shotgun-', 'player-striker-', 'player-scavenger-'];
+const isClassSpriteName = (name: string): boolean =>
+  SOFT_CLASS_PREFIXES.some((pre) => name.startsWith(pre));
+const isSoftClassSprite = (name: string): boolean => SPRITE_SMOOTH && isClassSpriteName(name);
+
+// プレイヤー立ち絵の「表示基準幅」(px)=素材キャンバスの実寸。取込み規約(v0.25.1769確定)は
+// 「÷Nドット保持焼きで幅78へ焼き切り+nearest等倍+ピクセルスナップ(pixiScene.snapTexelScale)」。
+// ※「高解像度素材のままlinear/mipmapで縮小表示」案(v0.25.1763-1765)は res不問で滲むため撤回済み
+//   (トリリニア補間が常に隣画素/mip間をブレンドする)。詳細は ENGINEERING_NOTES.md。
+export const PLAYER_ART_BASE_W = 78;
+
+// ---- アバターの頭頂キャッシュ(社長指示「猫耳の頭追従」・v0.25.3271) ------------------------------
+// 猫耳(avatars.ts の 'above' パーツ)は表示ボックス基準の固定オフセットで置かれているため、歩き/
+// しゃがみ/攻撃などでスプライトの頭が上下に動くとズレる。ここで**プレイヤー関連の全シート・全コマの
+// 「頭頂(最上端の不透明ピクセル行・alpha>16)」をロード時に1回だけ計測してキャッシュ**し、
+// pixiScene側(syncAvatarPartLayer)が「いま表示中のコマ」と「基準コマ(待機絵)」の頭頂差分を
+// 耳のYオフセットへ加算する。計測は読み込み済み画像を新規Imageで再取得(ブラウザキャッシュ即応)
+// して canvas 2d(drawImage→getImageData)で行う。**PixiJSのTexture内部/extractには依存しない**
+// (loadKeyed/loadEdgeSoftened と同じ安全な作法)。実行時(pixiScene)は参照のみ=per-frameコストゼロ。
+const HEAD_TOP_ALPHA_THRESHOLD = 16;
+// 名前 → 最上端の不透明ピクセル行(art px・top-origin)。計測失敗/全行透明/未計測は null
+// (呼び出し側 avatarHeadDeltaPx は null を「差分0」にフォールバックする=現状と同じ表示)。
+const headTopCache = new Map<string, number | null>();
+// v0.25.3278→3282(社長報告「走ってる時はズレる」→「悪化した」の実測やり直し): 走り絵は体が前傾して
+// 頭がフレーム内を前方へ寄る。v0.25.3278は**全体bboxの横中心**で追ったが、マークスマンのライフルが
+// フレーム全幅を占めるため中心がほぼ動かず(idle 37.0→run 38.5px)、前傾を全く拾えていなかった。
+// 実測で前傾を正しく表すのは**頭部帯(コンテンツ上部18%)の横中心**(idle 39.0→run 47.5〜48.5px)。
+// 値は**フレーム中心基準(cx − w/2)**で持つ=キャンバス幅が違う素材どうしでも差分が座標系として成立。
+const headCxCache = new Map<string, number | null>();
+const HEAD_BAND_FRAC = 0.18; // 頭部帯=コンテンツ高さの上から18%(実測でマークスマンの頭部を覆う)
+
+// ★計測の永続キャッシュ+リトライ(v0.25.3690・社長報告「またアバターずれてる。定期的にもどっちゃうのなぜ」):
+// 旧実装は起動のたびに体の絵を**もう1回fetchして**計測し、1回でも失敗するとそのセッションは
+// 黙って追従0(null)に落ちていた(リトライ無し・保存無し・console.warnのみ)。
+// **「日によってズレたり直ったりする」の正体**=読み込みが失敗したセッションだけズレる。
+//  ①成功した計測を localStorage に保存する。キーは ?v=内容ハッシュ込みのURL=素材を差し替えれば
+//    自動で失効して再計測(手動バンプ不要・assetUrlの規約に相乗り)。
+//  ②保存済みの値があれば fetch せず即採用(起動も軽くなる)。
+//  ③無ければ計測し、失敗時は2回までリトライ(1s/3s)。それでも駄目な時だけ従来どおり null(追従0)。
+const AVATAR_HEAD_LS_KEY = 'zombie:avatarHeadCache:v1';
+type HeadLsEntry = { top: number | null; cx: number | null };
+const headLsStore: Record<string, HeadLsEntry> = (() => {
+  try {
+    const raw = localStorage.getItem(AVATAR_HEAD_LS_KEY);
+    const o = raw ? JSON.parse(raw) : {};
+    return (o && typeof o === 'object') ? o : {};
+  } catch { return {}; }
+})();
+const saveHeadLs = (): void => {
+  try { localStorage.setItem(AVATAR_HEAD_LS_KEY, JSON.stringify(headLsStore)); } catch { /* ignore */ }
+};
+const loadImageWithRetry = async (src: string, retries: number): Promise<HTMLImageElement> => {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const img = new Image();
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = src; });
+      return img;
+    } catch (e) {
+      if (attempt >= retries) throw e;
+      await new Promise(res => setTimeout(res, attempt === 0 ? 1000 : 3000));
+    }
+  }
+};
+
+const measureHeadTop = async (name: string): Promise<void> => {
+  const url = spritePath(name);
+  const cached = headLsStore[url];
+  if (cached && typeof cached === 'object') {
+    headTopCache.set(name, typeof cached.top === 'number' ? cached.top : null);
+    headCxCache.set(name, typeof cached.cx === 'number' ? cached.cx : null);
+    return;
+  }
+  try {
+    const img = await loadImageWithRetry(url, 2);
+    const w = img.naturalWidth, h = img.naturalHeight;
+    // 空画像=素材そのものの性質(決定的)なので null を**保存して**再fetchも避ける。
+    if (!w || !h) {
+      headTopCache.set(name, null); headCxCache.set(name, null);
+      headLsStore[url] = { top: null, cx: null }; saveHeadLs();
+      return;
+    }
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d');
+    // ctx取得失敗=環境の一時事情かもしれないので保存しない(次回また試す)。
+    if (!ctx) { headTopCache.set(name, null); headCxCache.set(name, null); return; }
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, w, h).data;
+    // 走査1: 頭頂(最上端の不透明行)とコンテンツ最下行。
+    let top: number | null = null, bottom = -1;
+    for (let y = 0; y < h; y++) {
+      const rowBase = y * w * 4;
+      for (let x = 0; x < w; x++) {
+        if (d[rowBase + x * 4 + 3] > HEAD_TOP_ALPHA_THRESHOLD) { if (top === null) top = y; bottom = y; break; }
+      }
+    }
+    headTopCache.set(name, top);
+    if (top === null) {
+      headCxCache.set(name, null);
+      headLsStore[url] = { top: null, cx: null }; saveHeadLs(); // 全行透明も決定的=保存
+      return;
+    }
+    // 走査2: 頭部帯(top〜コンテンツ高さ18%)だけの横bbox中心。ライフル等の低い位置の突起に
+    // 引っ張られない=前傾(頭の横移動)を正しく拾う。フレーム中心基準で保存。
+    const band = Math.max(2, Math.round((bottom - top + 1) * HEAD_BAND_FRAC));
+    let minX = w, maxX = -1;
+    for (let y = top; y < Math.min(h, top + band); y++) {
+      const rowBase = y * w * 4;
+      for (let x = 0; x < w; x++) {
+        if (d[rowBase + x * 4 + 3] > HEAD_TOP_ALPHA_THRESHOLD) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+        }
+      }
+    }
+    const cx = maxX >= minX ? (minX + maxX) / 2 - w / 2 : null;
+    headCxCache.set(name, cx);
+    headLsStore[url] = { top, cx }; saveHeadLs(); // 成功値を保存=次回以降は失敗知らず・fetch不要
+  } catch (e) {
+    // リトライ2回でも失敗(回線等の一時事情)。保存はしない=次回起動で再挑戦。
+    // このセッションは従来どおり追従0(null)へ落ちる(絵は出る・位置だけ素のオフセット)。
+    console.warn(`[pixiTextures] failed to measure head-top "${name}":`, e);
+    headTopCache.set(name, null);
+    headCxCache.set(name, null);
+  }
+};
+
+// クラス→立ち絵接頭辞(playerTextureName/PLAYER_IDLE_SPRITEと同じ対応・入れ替えない)。
+const AVATAR_HEAD_TRACK_CLASS_PREFIXES = ['magnum', 'shotgun', 'striker', 'scavenger'];
+// 走りコマ数はクラスにより4種5コマ/ヘビーガンナー(shotgun)だけ6コマ(RUN_SEQ_6・playerWalkSheets参照)。
+const AVATAR_HEAD_TRACK_NAMES: string[] = [
+  ...AVATAR_HEAD_TRACK_CLASS_PREFIXES.flatMap((prefix) => [
+    `player-${prefix}-idle`,
+    `player-${prefix}-walk-0`, `player-${prefix}-walk-1`, `player-${prefix}-walk-2`, `player-${prefix}-walk-3`, `player-${prefix}-walk-4`,
+    // しゃがみ(死亡固定絵)/攻撃ポーズ(近接構え→振り抜き。死亡固定絵は`-ready`を共有)。
+    `player-${prefix}-melee-ready`, `player-${prefix}-melee-swing`,
+    ...(prefix === 'shotgun'
+      ? ['player-shotgun-run-0', 'player-shotgun-run-1', 'player-shotgun-run-2', 'player-shotgun-run-3', 'player-shotgun-run-4', 'player-shotgun-run-5']
+      : [`player-${prefix}-run-0`, `player-${prefix}-run-1`, `player-${prefix}-run-2`, `player-${prefix}-run-3`, `player-${prefix}-run-4`]),
+  ]),
+  // 武将セット(特殊3点フル装備)立ち絵。frame0=待機相当(playerWalkFrameは!walkingでframe0を返す)。
+  'player-warlord-gun-walk-0', 'player-warlord-gun-walk-1', 'player-warlord-gun-walk-2',
+  'player-warlord-katana-walk-0', 'player-warlord-katana-walk-1', 'player-warlord-katana-walk-2',
+];
+
+/** 頭頂キャッシュを1回だけ埋める(ensureTextures内部から並列で叩かれる)。 */
+// 差し替えで版が変わった古いURLのゴミをlocalStorageから掃除してから計測(肥大防止・1起動1回)。
+const pruneHeadLs = (): void => {
+  const current = new Set(AVATAR_HEAD_TRACK_NAMES.map(n => spritePath(n)));
+  let dirty = false;
+  for (const k of Object.keys(headLsStore)) {
+    if (!current.has(k)) { delete headLsStore[k]; dirty = true; }
+  }
+  if (dirty) saveHeadLs();
+};
+const measureAllAvatarHeadTops = (): Promise<void> => {
+  pruneHeadLs();
+  return Promise.all(AVATAR_HEAD_TRACK_NAMES.map(measureHeadTop)).then(() => {});
+};
+
+/** 計測済みの頭頂行(art px)。未計測/計測失敗は null。 */
+export const getHeadTopRow = (name: string): number | null => headTopCache.get(name) ?? null;
+
+/**
+ * 「いま表示中のテクスチャ」と「基準(待機絵)テクスチャ」の頭頂差分(art px・下=正)。
+ * どちらか一方でも未計測/計測失敗なら 0(=現状と同じ表示・フォールバック)。
+ * 呼び出し側(pixiScene)がこれに実際の表示スケール(depthScale込み)を掛けて画面pxへ変換する。
+ */
+export const avatarHeadDeltaPx = (currentTexName: string, baselineTexName: string): number => {
+  const cur = headTopCache.get(currentTexName);
+  const base = headTopCache.get(baselineTexName);
+  if (cur == null || base == null) return 0;
+  return cur - base;
+};
+
+/**
+ * v0.25.3282: 「いま表示中のテクスチャ」と「基準(待機絵)」の**頭部帯の横中心差分**(art px・
+ * フレーム中心基準・未ミラー素材で右=正)。走り絵の前傾で頭がフレーム内を前方へ寄るぶんを
+ * 全アバターパーツのXへ追従させる。呼び出し側は本体スプライトの**符号付き** scale.x を掛けて
+ * 画面px化する(ミラー時は符号が反転して向きが自動的に合う)。未計測/計測失敗は 0(=現状表示)。
+ */
+export const avatarHeadCxDeltaPx = (currentTexName: string, baselineTexName: string): number => {
+  const cur = headCxCache.get(currentTexName);
+  const base = headCxCache.get(baselineTexName);
+  if (cur == null || base == null) return 0;
+  return cur - base;
+};
 
 // Load the atlas + player image and slice every named frame. Idempotent: the
 // first caller kicks off the load, later callers await the same promise.
@@ -29,27 +256,74 @@ export const ensureTextures = (): Promise<void> => {
       'player-magnum-walk-0',
       'player-magnum-walk-1',
       'player-magnum-walk-2',
+      'player-magnum-walk-3',
+      'player-magnum-walk-4',
+      'player-magnum-idle',
       'player-magnum-game-0',
       'player-magnum-game-1',
       'player-magnum-game-2',
+      // マークスマン(=magnum絵/mage)近接の専用ポーズ(社長提供v0.25.1622)。構え(frame0)→振り抜き(frame1)の2コマ。
+      'player-magnum-melee-ready',
+      'player-magnum-melee-swing',
+      // 走りモーション(社長提供・移動レバー全開時のみ)。マークスマン+ストライカー(=scavenger接頭辞)。
+      'player-magnum-run-0',
+      'player-magnum-run-1',
+      'player-magnum-run-2',
+      'player-magnum-run-3',
+      'player-magnum-run-4',
+      'player-scavenger-run-0',
+      'player-scavenger-run-1',
+      'player-scavenger-run-2',
+      'player-scavenger-run-3',
+      'player-scavenger-run-4',
+      'player-shotgun-run-0',
+      'player-shotgun-run-1',
+      'player-shotgun-run-2',
+      'player-shotgun-run-3',
+      'player-shotgun-run-4',
+      'player-shotgun-run-5',
+      // スカベンジャー(=striker接頭辞)の走り5コマ(v0.25.1591で追加=これで全4クラスに走り)。
+      'player-striker-run-0',
+      'player-striker-run-1',
+      'player-striker-run-2',
+      'player-striker-run-3',
+      'player-striker-run-4',
       'player-striker-walk-0',
       'player-striker-walk-1',
       'player-striker-walk-2',
+      'player-striker-walk-3',
+      'player-striker-walk-4',
+      'player-striker-idle',
       'player-striker-game-0',
       'player-striker-game-1',
       'player-striker-game-2',
+      // スカベンジャー(=striker絵/necromancer)近接の専用ポーズ(社長提供v0.25.1620)。構え=しゃがみ→振り抜き=立ち絵。
+      'player-striker-melee-ready',
+      'player-striker-melee-swing',
       'player-shotgun-walk-0',
       'player-shotgun-walk-1',
       'player-shotgun-walk-2',
+      'player-shotgun-walk-3',
+      'player-shotgun-walk-4',
+      'player-shotgun-idle',
       'player-shotgun-game-0',
       'player-shotgun-game-1',
       'player-shotgun-game-2',
+      // ヘビーガンナー(=shotgun絵/warrior)近接の専用ポーズ(社長提供v0.25.1624)。構え(frame0)→振り抜き(frame1)。
+      'player-shotgun-melee-ready',
+      'player-shotgun-melee-swing',
       'player-scavenger-walk-0',
       'player-scavenger-walk-1',
       'player-scavenger-walk-2',
+      'player-scavenger-walk-3',
+      'player-scavenger-walk-4',
+      'player-scavenger-idle',
       'player-scavenger-game-0',
       'player-scavenger-game-1',
       'player-scavenger-game-2',
+      // ストライカー(=scavenger絵/rogue)近接の専用ポーズ(社長提供v0.25.1625)。構え(frame0)→振り抜き(frame1)。
+      'player-scavenger-melee-ready',
+      'player-scavenger-melee-swing',
       // 武将セット(特殊3点)フル装備時の立ち絵。小烏丸も装備していれば刀バージョン。
       'player-warlord-gun-walk-0',
       'player-warlord-gun-walk-1',
@@ -80,6 +354,23 @@ export const ensureTextures = (): Promise<void> => {
     const standalone: { name: string; scaleMode?: 'nearest' | 'linear' }[] = [
       { name: 'player', scaleMode: 'nearest' },
       { name: 'katana-item', scaleMode: 'nearest' }, // 背負い刀(刀/小烏丸 装備中にプレイヤー背面へ表示)
+      // ★knife-item はここから外した(バッチ4・v0.25.2898・(旧)近接ナイフ実画像。参照ゼロ確認済み・素材は削除済み)。
+      { name: 'knife-swing-1', scaleMode: 'nearest' }, // 近接スイング1枚目(青ダガー)
+      { name: 'knife-swing-2', scaleMode: 'nearest' }, // 近接スイング2枚目(青ダガー+青スラッシュ)
+      { name: 'knife-swing-3', scaleMode: 'nearest' }, // 近接スイング3枚目(弧の残光・社長提供3コマ化)
+      // ステージ1(森)の装飾: 光る花クラスター12種(壁判定なしの飾り)。
+      { name: 'props/flower-0', scaleMode: 'nearest' },
+      { name: 'props/flower-1', scaleMode: 'nearest' },
+      { name: 'props/flower-2', scaleMode: 'nearest' },
+      { name: 'props/flower-3', scaleMode: 'nearest' },
+      { name: 'props/flower-4', scaleMode: 'nearest' },
+      { name: 'props/flower-5', scaleMode: 'nearest' },
+      { name: 'props/flower-6', scaleMode: 'nearest' },
+      { name: 'props/flower-7', scaleMode: 'nearest' },
+      { name: 'props/flower-8', scaleMode: 'nearest' },
+      { name: 'props/flower-9', scaleMode: 'nearest' },
+      { name: 'props/flower-10', scaleMode: 'nearest' },
+      { name: 'props/flower-11', scaleMode: 'nearest' },
       // 銃スプライト(ワールドのドロップ/ピックアップ表示 + HUDの武器アイコン)。武器keyで引く。
       { name: 'weapons/handgun-t1', scaleMode: 'nearest' },
       { name: 'weapons/handgun-t2', scaleMode: 'nearest' },
@@ -91,29 +382,81 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/shotgun-t2', scaleMode: 'nearest' },
       { name: 'weapons/shotgun-t3', scaleMode: 'nearest' },
       { name: 'weapons/phill-revolver', scaleMode: 'nearest' },
+      // v0.25.4122: グレネードガンの銃スプライトはマニフェスト未登録だったため、地面ドロップの絵だけ
+      // 汎用描画に落ちていた(public/sprites/weapons/glauncher-t*.png は存在し、WEAPON_ICON_KEYS にも在る)。
+      { name: 'weapons/glauncher-t1', scaleMode: 'nearest' },
+      { name: 'weapons/glauncher-t2', scaleMode: 'nearest' },
+      { name: 'weapons/glauncher-t3', scaleMode: 'nearest' },
+      // 近接(ナイフ系)アイコン。銃と同じピックアップ/HUDアイコン(攻撃モーション用ではない)。
+      { name: 'weapons/knife-t1', scaleMode: 'nearest' },
+      { name: 'weapons/hatchet-t2', scaleMode: 'nearest' },
+      { name: 'weapons/machete-t3', scaleMode: 'nearest' },
+      { name: 'weapons/tactical-knife-t4', scaleMode: 'nearest' },
+      { name: 'weapons/anti-mutant-knife-t5', scaleMode: 'nearest' },
+      // 発火ナイフ(サブウェポン投擲物)の飛翔/刺さった見た目。ドット絵調なので nearest。
+      { name: 'weapons/fire-knife-projectile', scaleMode: 'nearest' },
+      // サブウェポンの表示スプライト(社長提供・色キー済みPNG=通常ロードでOK)。ドット絵調なので nearest。
+      { name: 'drone-boomerang', scaleMode: 'nearest' }, // ドローンブーメラン(回転する投擲刃)
+      { name: 'first-aid-kit', scaleMode: 'nearest' },   // 救急鞄(空鞄投擲の見た目)
+      // アバターシステム(試験・第1弾「猫耳セット」・社長支給v0.25.3217)。名前は src/data/avatars.ts の
+      // AvatarPart.tex と一致させる(視覚専用・判定なし)。ドット絵タッチ=nearest。
+      { name: 'avatar-cat-ears', scaleMode: 'nearest' }, // 100×48
+      { name: 'avatar-cat-tail', scaleMode: 'nearest' }, // 76×128
+      // 裏ボス スカジの氷ハザード(氷塊テレグラフ / 飛ぶ氷の刃)。ピクセルアート=nearest。
+      { name: 'skadi-ice-block', scaleMode: 'nearest' },
+      { name: 'skadi-ice-blade', scaleMode: 'nearest' },
       { name: 'zan' }, // 刀フィニッシュの習字「斬」(拡大表示なので既定linearで滑らかに)
       { name: 'torch', scaleMode: 'nearest' },
+      // 銃弾ヒット時に被弾敵の背中側へ生やす火の破裂(2コマ。0=大きい爆発→1=細い噴射)。ピクセルアート=nearest。
+      { name: 'fx/hitfire-0', scaleMode: 'nearest' },
+      { name: 'fx/hitfire-1', scaleMode: 'nearest' },
+      // 血飛沫(OP射撃シーンと同素材・3コマ。尖端=傷口が左・飛ぶほど右へ広がる絵)。ピクセルアート=nearest。
+      { name: 'fx/blood-0', scaleMode: 'nearest' },
+      { name: 'fx/blood-1', scaleMode: 'nearest' },
+      { name: 'fx/blood-2', scaleMode: 'nearest' },
+      // 近接用の血飛沫(社長支給v0.25.2026・3コマ。銃用と逆向き=尖端(傷口)が右・左へ飛んで広がる絵)。
+      { name: 'fx/blood-melee-0', scaleMode: 'nearest' },
+      { name: 'fx/blood-melee-1', scaleMode: 'nearest' },
+      { name: 'fx/blood-melee-2', scaleMode: 'nearest' },
+      // 斬撃エフェクト(ピクセル・5コマ)。burst=当たり判定の中央バースト / streak=斬撃の線(段々大きく)。
+      { name: 'fx/slash-burst-0', scaleMode: 'nearest' },
+      { name: 'fx/slash-burst-1', scaleMode: 'nearest' },
+      { name: 'fx/slash-burst-2', scaleMode: 'nearest' },
+      { name: 'fx/slash-burst-3', scaleMode: 'nearest' },
+      { name: 'fx/slash-burst-4', scaleMode: 'nearest' },
+      { name: 'fx/slash-streak-0', scaleMode: 'nearest' },
+      { name: 'fx/slash-streak-1', scaleMode: 'nearest' },
+      { name: 'fx/slash-streak-2', scaleMode: 'nearest' },
+      { name: 'fx/slash-streak-3', scaleMode: 'nearest' },
+      { name: 'fx/slash-streak-4', scaleMode: 'nearest' },
       { name: 'props/stage4-campfire' }, // ステージ4の焚き火(松明置き換え。詳細絵=linear既定)
+      // 炎(8コマ)と松明の台座(社長支給v0.25.2641)。ドット絵=**nearest**。
+      // 炎は松明だけでなく**火炎瓶・焚き火・フレアガン**でも同じものを使う(社長指示)。
+      { name: 'props/flame', scaleMode: 'nearest' },
+      { name: 'props/torch-stand', scaleMode: 'nearest' },
       { name: 'castle', scaleMode: 'nearest' },
+      // ステージ別の城(社長支給2026-08-15・4枚完備「ステージ1から順に(5まで)。2.6.7は無し」)。
+      // s1=ゴシック館 / s3=石造りの廃教会 / s4=雪の大聖堂 / s5=ステンドグラスの大聖堂(いずれも1000px級)。
+      { name: 'castle-s1', scaleMode: 'nearest' },
+      { name: 'castle-s3', scaleMode: 'nearest' },
+      { name: 'castle-s4', scaleMode: 'nearest' },
+      { name: 'castle-s5', scaleMode: 'nearest' },
+      { name: 'hospital', scaleMode: 'nearest' }, // 通常ステージの廃病院(ワクチン入手・社長指示v0.25.2331)
+      // §6.24 M48: 寄り道POIの一般化(社長支給素材v0.25.2352・アルファ透過あり)。
+      { name: 'police', scaleMode: 'nearest' }, // 警察署(専用スキル入手・アリーナ方式)
+      { name: 'armory', scaleMode: 'nearest' }, // 武器庫(100スクラップでTier3装備確定入手)
       { name: 'magic-circle' },        // 既定(linear)のまま
       { name: 'whip-hurricane' },      // 既定のまま
       { name: 'whip' },                // 既定のまま
       { name: 'mirror-ball', scaleMode: 'linear' },
       { name: 'helicopter', scaleMode: 'nearest' }, // ぼかさない(平滑化なし=くっきり)
       { name: 'fog-alpha', scaleMode: 'linear' },     // 森下の霧素材(アルファ透過版=通常合成で重ねる)
+      { name: 'zoom-cloud', scaleMode: 'nearest' },   // 引き雲(社長支給v0.25.3011・ドット絵透過版。深い引きの時だけ最前面に流す)
       // 研究施設(屋内)アセット。サブディレクトリ込みの名前で登録(spritePath が sprites/<name>.png)。
-      { name: 'lab/lab-wall-open-top', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-open-mid', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-open-bottom', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-closed-top', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-closed-mid', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-closed-bottom', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-side-long', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-side-block1', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-side-block2', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-side-block3', scaleMode: 'nearest' },
+      // ★lab-wall-open-*/lab-wall-closed-*/lab-wall-side-long/lab-wall-side-block{1,2,3} はバッチ4
+      // (v0.25.2898)で外した。ロードされていたが一度も描画されていなかった(参照ゼロ確認済み・素材は削除済み)。
       { name: 'lab-floor/lab-floor-r1-c1', scaleMode: 'nearest' },
-      { name: 'lab-floor/lab-floor-r5-c1', scaleMode: 'nearest' },
+      // ★lab-floor-r5-c1 はここから外した(バッチ4・v0.25.2898・ロードされるが描画されない。素材は削除済み)。
       { name: 'lab-floor/lab-floor-ground', scaleMode: 'nearest' }, // シームレス床(ステージ1風)
       { name: 'lab-floor/lab-floor-stage2', scaleMode: 'nearest' }, // stage-2 屋外ラボ床(社長提供の最新タイル。専用名でキャッシュ確実更新)
       // 新ドット絵タイル(64²・シームレス・16色)。床ベース＝clean、変種＝blood/grime/crack/scorch、隅AO。
@@ -123,24 +466,29 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab-floor/lab-floor-crack', scaleMode: 'nearest' },
       { name: 'lab-floor/lab-floor-scorch', scaleMode: 'nearest' },
       { name: 'lab-floor/lab-floor-ao', scaleMode: 'nearest' },
-      { name: 'lab-floor/lab-floor-persp', scaleMode: 'nearest' }, // 遠近床用 強グリッド(?labpersp)
+      // ★lab-floor-persp はここから外した(バッチ4・v0.25.2898・ロードされるが描画されない。素材は削除済み。
+      // persp-plate は使用中なので残す)。
       { name: 'lab-floor/lab-floor-persp-plate', scaleMode: 'nearest' }, // 焼き込み遠近プレート(?labpersp 一枚絵床)
       // 無地壁スライス(前面=左右シームレス / 上端キャップ)＋装飾壁(ガラス窓パネル/横ビーム)。
       { name: 'lab/lab-wall-front', scaleMode: 'nearest' },
       { name: 'lab/lab-wall-top', scaleMode: 'nearest' },
       { name: 'lab/lab-wall2-panel', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall2-beam', scaleMode: 'nearest' },
+      // ★lab-wall2-beam はここから外した(バッチ4・v0.25.2898・ロードされるが描画されない。素材は削除済み)。
       // 手置き壁オブジェクト(横/縦の一枚絵ビルボード。足元アンカーで配置・遮蔽物)。
       { name: 'lab/lab-wall-obj-h', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-obj-v', scaleMode: 'nearest' },
+      // ★lab-wall-obj-v はここから外した(バッチ4・v0.25.2898・同上)。
       // 研究所スキンの背景3層(屋外テーマ時に森レイヤーを差し替える。レイヤー構造は不変)。
       { name: 'lab/lab-far-backdrop' },  // 遠景パノラマ(不透明)
       { name: 'lab/lab-horizon-band' },  // 地平の機械帯(紫=透過)
       { name: 'lab/lab-front-band' },    // 手前のボヤけ機械帯(紫=透過。ブラーは既存フィルタで継続)
-      { name: 'lab/lab-ceiling-band' },  // 最前面の天井ケーブル帯(紫=透過・上寄せ・半透明オーバーレイ)
+      // ★lab-ceiling-band はここから外した(バッチ4・v0.25.2898・ロードされるが描画されない。素材は削除済み)。
+      { name: 'tutorial-ceiling-band' }, // チュートリアル(洞窟)の鍾乳石帯(lab-ceiling-bandと同仕様・上寄せループ)
       // 背景の天井/void プレート(外周マージンに低速パララックスで敷く・縦横シームレス)。
       { name: 'lab/lab-bg-void', scaleMode: 'nearest' },
       { name: 'lab-uv-bar', scaleMode: 'nearest' }, // 研究所のUVライトバー(松明の代わり)
+      // ステージ6(洋館・corridorMode)の世界配置素材。高解像度の詳細イラスト調を縮小表示するので
+      // cityProps 等と同じ linear(nearestだと約1/4縮小でエイリアスが出る)。床はTilingSpriteで
+      // 縦に無限リピート(NPOTのためwrap=repeatは描画側で明示)。
       { name: 'lab-clear-item', scaleMode: 'nearest' }, // 研究所クリア条件アイテム(拾うとクリア)
       { name: 'wire-anchor-tip', scaleMode: 'nearest' }, // ワイヤーアンカー先端(爪=左下基準。穴=右上にワイヤー接続)
       // 研究所オブジェ(木の代わりの障害物。紫透過済み)。
@@ -166,18 +514,291 @@ export const ensureTextures = (): Promise<void> => {
       // 研究所ゾンビ(Lv1/2 は男女、Lv3 は巨体1種)。
       { name: 'lab-zombie/lab-zombie-lv1-male', scaleMode: 'nearest' },
       { name: 'lab-zombie/lab-zombie-lv1-female', scaleMode: 'nearest' },
-      { name: 'lab-zombie/lab-zombie-lv2-male', scaleMode: 'nearest' },
-      { name: 'lab-zombie/lab-zombie-lv2-female', scaleMode: 'nearest' },
+      { name: 'lab-zombie/lab-zombie-lv2', scaleMode: 'nearest' }, // v0.25.2914: 男女廃止・1種へ(社長指示)
       { name: 'lab-zombie/lab-zombie-lv3', scaleMode: 'nearest' },
+      // 進軍用NPC(護衛軍人)のユニーク立ち絵(2コマ歩行・透過済み)。soldierIndex で出し分け。
+      { name: 'npc/edgar-0', scaleMode: 'nearest' },
+      { name: 'npc/edgar-1', scaleMode: 'nearest' },
+      { name: 'npc/edgar-2', scaleMode: 'nearest' },     // 3コマ歩行(社長提供)
+      { name: 'npc/medic-walk-0', scaleMode: 'nearest' }, // 衛生兵(チュートリアル随行・4コマピンポン)
+      { name: 'npc/medic-walk-1', scaleMode: 'nearest' },
+      { name: 'npc/medic-walk-2', scaleMode: 'nearest' },
+      { name: 'npc/medic-walk-3', scaleMode: 'nearest' },
+      // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2)。フィル歩行3コマ+救護6コマ+倒れ兵士1枚
+      // (受領2026-08-28。ドット等倍・下端=接地でトリム済み)。
+      { name: 'npc/phill-walk-0', scaleMode: 'nearest' },
+      { name: 'npc/phill-walk-1', scaleMode: 'nearest' },
+      { name: 'npc/phill-walk-2', scaleMode: 'nearest' },
+      { name: 'npc/phill-heal-0', scaleMode: 'nearest' },
+      { name: 'npc/phill-heal-1', scaleMode: 'nearest' },
+      { name: 'npc/phill-heal-2', scaleMode: 'nearest' },
+      { name: 'npc/phill-heal-3', scaleMode: 'nearest' },
+      { name: 'npc/phill-heal-4', scaleMode: 'nearest' },
+      { name: 'npc/phill-heal-5', scaleMode: 'nearest' },
+      { name: 'npc/soldier-fallen-0', scaleMode: 'nearest' },
+      // エンディング爆撃の弾(受領2026-08-29・ENDING_SCENE.md 演出仕様v3)。64×256・弾頭が下・
+      // 上部に速度線焼き込み・下端=着弾点(anchor 0.5,1)。
+      { name: 'fx/ending-bomb', scaleMode: 'nearest' },
+      // しゃがみ兵士(受領2026-08-29・片膝・**素材は右向き**=使用側で左向きへ反転)。224×256・内容bboxトリム済み。
+      { name: 'npc/soldier-watch-0', scaleMode: 'nearest' },
+      { name: 'npc/joseph-0', scaleMode: 'nearest' },
+      { name: 'npc/joseph-1', scaleMode: 'nearest' },
+      { name: 'npc/joseph-2', scaleMode: 'nearest' },    // 3コマ歩行(社長提供)
+      { name: 'npc/elizabeth-0', scaleMode: 'nearest' },
+      { name: 'npc/elizabeth-1', scaleMode: 'nearest' },
+      { name: 'npc/elizabeth-2', scaleMode: 'nearest' }, // 3コマ歩行(社長提供)
+      { name: 'npc/musashi-0', scaleMode: 'nearest' },
+      { name: 'npc/musashi-1', scaleMode: 'nearest' },
+      { name: 'npc/musashi-2', scaleMode: 'nearest' }, // 3コマ歩行(社長提供)
+      { name: 'npc/chen-0', scaleMode: 'nearest' },
+      { name: 'npc/chen-1', scaleMode: 'nearest' },
+      { name: 'npc/chen-2', scaleMode: 'nearest' }, // 3コマ歩行(社長提供)
+      { name: 'npc/lauren-0', scaleMode: 'nearest' },
+      { name: 'npc/lauren-1', scaleMode: 'nearest' },
+      { name: 'npc/lauren-2', scaleMode: 'nearest' },    // 3コマ歩行(社長提供)
+      { name: 'npc/phaser-0', scaleMode: 'nearest' },
+      { name: 'npc/phaser-1', scaleMode: 'nearest' },
+      { name: 'npc/phaser-2', scaleMode: 'nearest' }, // 3コマ歩行(社長提供)
+      { name: 'npc/muhammad-0', scaleMode: 'nearest' },
+      { name: 'npc/muhammad-1', scaleMode: 'nearest' },
+      { name: 'npc/muhammad-2', scaleMode: 'nearest' },  // 3コマ歩行(社長提供)
 
       // ステージ別(廃都/雪原)の散布オブジェクト。詳細イラスト調なので linear で滑らかに縮小。
       ...Object.values(STAGE_PROPS).flat().map((p) => ({ name: p.tex, scaleMode: 'linear' as const })),
       // ステージ3(廃都)専用の敵絵(アトラス敵を見た目で差し替え)。アトラス敵と同じピクセル調=nearest。
-      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']
+      // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898)。
+      // ENEMY_VARIANT_SETS(utils/enemyVariant.ts)が enemyTexKey で stage3/4/5 より先に引かれるため、
+      // この5種のステージ別絵は表示不能だった(検証済み・旧素材は削除済み)。
+      // ★werewolf/reaper も外した(v0.25.2901・全ステージ共通 `werewolf-common`/`reaper-common` へ移行)。
+      ...['giantbat']
         .map((t) => ({ name: `stage3-enemies/${t}`, scaleMode: 'nearest' as const })),
+      // ステージ4(雪原)専用の敵絵(既存9種の差し替え)。詳細イラスト調なので linear で滑らかに縮小。
+      // ★lich はここから外した(v0.25.2897・全ステージ共通の新絵 `lich-common` へ移行。旧素材は削除済み)。
+      // ★zombie/bat/skeleton/plant/ghost も外した(バッチ4・v0.25.2898・理由は上のstage3コメント参照)。
+      ...['giantbat']
+        .map((t) => ({ name: `stage4-enemies/${t}`, scaleMode: 'linear' as const })),
+      // ステージ5(対変異体防衛本部)専用の敵絵(社長提供シート2026-07-16・ステージ1と同配置の9種)。
+      // ピクセルアート調なのでアトラス敵/stage3と同じ nearest。lich は同上で共通絵へ移行。
+      // ★zombie/bat/skeleton/plant/ghost も外した(バッチ4・v0.25.2898・理由は上のstage3コメント参照)。
+      ...['giantbat']
+        .map((t) => ({ name: `stage5-enemies/${t}`, scaleMode: 'nearest' as const })),
 
-      ...playerWalkNames.map((name) => ({ name, scaleMode: 'nearest' as const })),
+      // M8改(§5.9): ソフト系3クラスは linear(+下のローダでmipmapON)。それ以外は従来nearest。
+      ...playerWalkNames.map((name) => ({ name, scaleMode: (isSoftClassSprite(name) ? 'linear' : 'nearest') as 'linear' | 'nearest' })),
+
+      // 裏ボス(深層域の隠しボス)。詳細イラスト調なので linear で滑らかに縮小。
+      // 名前=EnemyType と一致させ、drawEnemy の getTexture(e.type) で解決する。
+      { name: 'mimir', scaleMode: 'nearest' as const }, // v0.25.2934 ドット版(回転しない本体はnearestが正・天使6体と同じ扱い)
+      { name: 'jormungand', scaleMode: 'nearest' as const }, // v0.25.2944 ドット版(mimir/thorと同じ扱い)
+      { name: 'skadi', scaleMode: 'nearest' as const }, // v0.25.2948 ドット版(mimir/jormungand/thorと同じ扱い)
+      // トール(ステージ5)はドット絵タッチの素材なので、他の裏ボス(linear)と違い nearest で
+      // ピクセルの輪郭を保つ(hunterと同じ扱い)。
+      { name: 'thor', scaleMode: 'nearest' as const },
+      // ゲート2ボス(§5.21-追補8): ミゲル(大天使)。詳細イラスト調なので他の裏ボス(mimir等)と同じ
+      // linear で滑らかに縮小。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
+      { name: 'miguel', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
+      // ミゲルの剣(横払い用ビジュアル)。miguel-sword.png は既に透過済み(色キー不要・
+      // thor-katanaと違いloadKeyedを使わない・通常のstandalone読み込みでOK)。詳細イラスト調なのでlinear。
+      { name: 'miguel-sword', scaleMode: 'linear' as const },
+      // ゲート2ボス(ステージ3): ジブリル(天使)。ミゲルと同じ扱い(詳細イラスト調=linear・名前=EnemyType一致)。
+      { name: 'jibril', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
+      // ジブリルの武器=ランタン(ミゲルのmiguel-swordに相当する別武器スプライト・透過済み・linear)。
+      { name: 'jibril-lantern', scaleMode: 'linear' as const },
+      // ゲート2ボス(ステージ4): ラフィ(天使)。ミゲル/ジブリルと同じ扱い(linear・名前=EnemyType一致)。
+      { name: 'rafi', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
+      // ラフィの武器=骨刃(別武器スプライト・透過済み・linear)。振り演出は武器の使い方受領後に追加。
+      { name: 'rafi-blade', scaleMode: 'linear' as const },
+      // PACING_PUZZLE.md §6.28-0★/§6.28-16/§6.28-17〜19(バッチM52・ロットL1): 天使ボス4〜6体目
+      // (ウリ/スリィエル/アクラシエル)+専用武器絵。ミゲル/ジブリル/ラフィと同じ扱い(詳細イラスト調=
+      // linear・名前=EnemyType一致=drawEnemyのgetTexture(e.type)で解決)。振り演出はL2の担当。
+      { name: 'uri', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
+      { name: 'uri-sword', scaleMode: 'linear' as const },
+      { name: 'suriel', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
+      { name: 'suriel-ring', scaleMode: 'linear' as const },
+      { name: 'acrasiel', scaleMode: 'nearest' as const } /* v0.25.2926 ドット化 */,
+      { name: 'acrasiel-spear', scaleMode: 'linear' as const },
+      // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」バッチ1): 本体絵phill.png(768×1024・
+      // 詳細イラスト調)を取り込み。テクスチャキー='phill'(EnemyType='phillboss'とは名前が違う=
+      // PHILL銃と衝突回避のため。enemyTexKeyでphillboss→'phill'へマップする)。
+      { name: 'phill', scaleMode: 'nearest' as const },
+      // バッチ3(§10-4/§10-12#12): 羽(左右×3対=804×1024の2列×3行シート・pixiSceneでスライス)。
+      { name: 'phill-wings', scaleMode: 'linear' as const },
+      // バッチ3(§10-10): 羽の物理攻撃(技3/4/5)の武器スプライト(436×512)。
+      { name: 'phill-wing-attack', scaleMode: 'linear' as const },
+      // バッチ3(§10-11/§10-13/§10-14#11): 羽根散弾(技14=判定あり)+撒き羽根(判定ゼロ・花びら型)の
+      // 共通素材(264×256)。
+      { name: 'fx/phill-feather', scaleMode: 'linear' as const },
+      // 予告円の「輪」(社長支給素材 A-1・v0.25.2395)。グレースケール+透過で、ゲーム側が tint で
+      // 赤(危険)/青白(硬直)に染める。全ボスの円テレグラフで使い回す共通部品なので `fx/` 配下に置く。
+      // 縮小して使う(512→直径108〜260)ので linear。
+      { name: 'fx/telegraph-ring', scaleMode: 'linear' as const },
+      // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」・324×264×6・透過済み)。
+      // 全ての爆発(手榴弾/タレット/ドローン/地雷/処刑の爆発/ボムカウンター等)がこれを使う。
+      { name: 'fx/explosion-0', scaleMode: 'nearest' as const },
+      { name: 'fx/explosion-1', scaleMode: 'nearest' as const },
+      { name: 'fx/explosion-2', scaleMode: 'nearest' as const },
+      { name: 'fx/explosion-3', scaleMode: 'nearest' as const },
+      { name: 'fx/explosion-4', scaleMode: 'nearest' as const },
+      { name: 'fx/explosion-5', scaleMode: 'nearest' as const },
+      // グレネード弾(社長支給ドット素材v0.25.3290・56×56)。手榴弾+グレネードガン(武器庫限定)の弾。
+      { name: 'fx/grenade-ball', scaleMode: 'nearest' as const },
+      // 魔法陣ホログラム(社長支給v0.25.3338・紫マゼンタ・304×264/コマ)。3アニメ:
+      // holo-circle 0-7=出現魔法陣(warp着地/volleyの構え/異常動作・用途は§7裁定待ち。
+      // §6.38 v9で賞金首の起床演出からは撤去=現在は他用途のため予約のみ・未使用でも登録は残す)
+      // holo-scan   0-6=分析画面(ボスに半透明で被せるスキャン演出)
+      // holo-mini   0-5=簡易出現(召喚・設置・瞬間移動ワープ等の頻用軽量枠・社長指示)
+      ...Array.from({ length: 8 }, (_, i) => ({ name: `fx/holo-circle-${i}`, scaleMode: 'nearest' as const })),
+      ...Array.from({ length: 7 }, (_, i) => ({ name: `fx/holo-scan-${i}`, scaleMode: 'nearest' as const })),
+      ...Array.from({ length: 6 }, (_, i) => ({ name: `fx/holo-mini-${i}`, scaleMode: 'nearest' as const })),
+      // スキルアイコンの1枚シート(社長支給・React側メニューと同じ素材)。v0.25.3623:
+      // 弁慶のCD明け頭上マーク(旧「閃き」テキスト)がここから該当マスを切り出して使う。
+      { name: 'skill/skills-sheet', scaleMode: 'nearest' as const },
+      // 単眼(社長支給v0.25.3340・紫・352×328)。各天使のgaze系「構え=目の発光」予兆に流用する
+      // (スリィエル/アクラシエルのgaze等・配線は予兆バッチで)。
+      { name: 'fx/angel-eye', scaleMode: 'nearest' as const },
+      // 賞金首・遠距離型(砲手)本体(社長支給v0.25.3347・592×800)。バス停と同化した個体。
+      // §7-9の賞金首3種の1体目。実装(スポーン/AI/体勢)は賞金首バッチで。
+      { name: 'bounty-ranged', scaleMode: 'nearest' as const },
+      // 賞金首・近接型(決闘者)本体(社長支給v0.25.3351・520×512)。触手の下半身を引きずる個体。
+      { name: 'bounty-melee', scaleMode: 'nearest' as const },
+      // 賞金首・バランス型(教官)本体(社長支給v0.25.3352・膝立ちで巨大な錨を持つ個体)。これで3種完備。
+      { name: 'bounty-balance', scaleMode: 'nearest' as const },
+      // 賞金首・イレギュラー種「舞妓(変異)」本体(社長支給v0.25.3356・4本腕の舞妓)。4種完備。
+      { name: 'bounty-maiko', scaleMode: 'nearest' as const },
+      // 舞妓の武器=手毬(社長支給v0.25.3359・248×256・花柄の毬)。舞妓の周りを飛び回り技を再現する
+      // オービット武器スプライト(遠距離技も乱舞も毬が飛ぶ・§6.38 v5)。
+      { name: 'bounty-maiko-temari', scaleMode: 'nearest' as const },
+      // バス停(変異)の武器=もぎ取った停留所標識(社長支給v0.25.3361・160×256・血染めの丸標識+柱)。
+      // 用途の割当は§6.38武器素材台帳(裁定待ち分は追記)。
+      { name: 'bounty-ranged-sign', scaleMode: 'nearest' as const },
+      // 馬乗り(変異)の武器=ワイヤー鞭(社長支給v0.25.3363・248×384・ケーブルを編んだ長鞭)。
+      // 用途の割当は§6.38武器素材台帳。
+      { name: 'bounty-melee-whip', scaleMode: 'nearest' as const },
+      // 鋏(変異)の武器=巨大な血染めの裁ち鋏(社長支給v0.25.3365・392×256)。これで武器素材4本完備。
+      // 用途の割当は§6.38武器素材台帳。
+      // ★v0.25.3577: 鋏は1枚絵→刃2枚(社長支給・右の丸=ピボットで連結し実開閉する)
+      { name: 'bounty-balance-blade-0', scaleMode: 'nearest' as const },
+      { name: 'bounty-balance-blade-1', scaleMode: 'nearest' as const },
+      // 桜の花びら(社長支給v0.25.3368・148×128・花弁1枚)。舞妓の全技を貫く装飾粒子=
+      // 水鳥乱舞の花吹雪/手毬打ちヒット/型切替の舞い直し。回転・散らし・量産はエンジン側(§6.38)。
+      { name: 'fx/petal-0', scaleMode: 'nearest' as const },
+      // 金箱(社長支給v0.25.3369・424×256・金+黒の重厚チェスト・閉)。賞金首討伐の報酬pickup(§6.38 B3)。
+      // 開き絵が届いたら gold-chest-open として追加登録する。
+      { name: 'gold-chest', scaleMode: 'nearest' as const },
+      // 鞭のしなりスミア3コマ(社長支給v0.25.3372・各456×264・赤)。馬乗り(変異)の3段コンボ/突進の
+      // 振り軌跡: 0=小さいC字 → 1=S字のしなり → 2=直線の振り抜き(§6.38発注リスト④)。
+      { name: 'fx/whip-smear-0', scaleMode: 'nearest' as const },
+      { name: 'fx/whip-smear-1', scaleMode: 'nearest' as const },
+      { name: 'fx/whip-smear-2', scaleMode: 'nearest' as const },
+      // 鋏の交差閃3コマ(社長支給・v0.25.3422で取り込み漏れを回収・各304×264・X字の二重閃)。
+      // 鋏(変異)の薙ぎ・跳びかかり命中用(§6.38発注リスト⑤)。0=小→2=大の順。
+      { name: 'fx/scissor-x-0', scaleMode: 'nearest' as const },
+      { name: 'fx/scissor-x-1', scaleMode: 'nearest' as const },
+      { name: 'fx/scissor-x-2', scaleMode: 'nearest' as const },
+      // 鋏の交差閃3コマ(社長支給v0.25.3375・各304×264・赤)。鋏(変異)の薙ぎ・跳びかかり命中:
+      // 0=二筋の走り → 1=X交差 → 2=Xバースト(§6.38発注リスト⑤=これで発注素材オール受領)。
+      { name: 'fx/scissor-x-0', scaleMode: 'nearest' as const },
+      { name: 'fx/scissor-x-1', scaleMode: 'nearest' as const },
+      { name: 'fx/scissor-x-2', scaleMode: 'nearest' as const },
+      // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。同じくグレースケール+透過で tint 着色。
+      // 帯は技ごとに縦横比が違う(薙ぎ払い3.9:1 / 噛みつき1.2:1 / のしかかり2.1:1)ので伸縮前提=linear。
+      { name: 'fx/telegraph-band', scaleMode: 'linear' as const },
+      // 斬撃の弧(社長支給素材 D-1・v0.25.2400)。「振った瞬間」の絵。tintで着色・伸縮して使う=linear。
+      { name: 'fx/slash-arc', scaleMode: 'linear' as const },
+      // 銃口フラッシュ(社長支給素材 C-1・v0.25.2401)。発砲の一瞬だけ出す。tint着色・縮小=linear。
+      { name: 'fx/muzzle-flash', scaleMode: 'nearest' as const }, // v0.25.2931 ドット版_70(白い閃光・旧素材と同構図なので無加工)
+      // 爪痕(社長支給素材 D-2・v0.25.2402)。claw-mark=中央の1本を切り出したもの(判定1つに1枚貼る用)。
+      // claw-marks=3本まとめ(1振りぶんの爪跡。今は未使用だが将来の「爪の弧」用に登録だけしておく)。
+      { name: 'fx/claw-mark', scaleMode: 'linear' as const },
+      // 血溜まり(社長支給素材 E-5・v0.25.2403)。512角×4コマの横並び(2048×512)を1枚で登録し、
+      // コマの切り出しは pixiScene 側で行う(着弾→最大→波打つ→乾いて縮む)。
+      { name: 'fx/blood-pool', scaleMode: 'linear' as const },
+      // 砂埃(社長支給素材 B-0・v0.25.2404)。512角×4コマの横並び。血溜まりと同じくコマ切りはpixiScene側。
+      // 色を焼き込んでいないので、ステージごとにtintで土/雪/灰へ振れる(1枚で全ステージ)。
+      { name: 'fx/dust', scaleMode: 'linear' as const },
+      // 衝撃波(社長支給素材・v0.25.2414/絵はv0.25.2929でドット版へ)。**判定が直線の帯なのに絵が
+      // 「振っただけ」で終わる技**に、帯の上を走らせて「どこまで届くか」を絵で伝える(社長指示)。
+      // 416×256・進行方向=右(尖った先端が右)。帯の長さに合わせて横だけ伸縮+任意角回転するので
+      // ドット絵でも linear のまま(nearestだと伸縮のたびに拾う画素が変わってチラつく)。
+      { name: 'fx/shockwave', scaleMode: 'linear' as const },
+      // ── バッチ FX-V3V4(research/FX_GAP_LEDGER.md): 「物理の絵」+砂埃バリエーション+地割れ ──
+      // 全て社長支給。**表示は素材の数分の1に縮む**(例: 地割れ 512→直径~380 / 拳 512→~100)ので、
+      // 他の支給FX(telegraph-ring/band・slash-arc・blood-pool・dust・shockwave)と同じく linear
+      // (この倍率で nearest にすると縮小のたびに拾う画素が変わってチラつく)。
+      // 1MB級だった素材は取り込み時に長辺512(触手のみ1024)へ縮小済み=デコード後のメモリを抑える
+      // (v0.25.2166の教訓: 先読み総量がiOSのメモリ天井を押し上げる)。
+      { name: 'fx/bite-jaw-upper', scaleMode: 'linear' as const }, // 噛みつき: 上顎(歯先が下端)
+      { name: 'fx/bite-jaw-lower', scaleMode: 'linear' as const }, // 噛みつき: 下顎(歯先が上端)
+      { name: 'fx/claw-swipe', scaleMode: 'linear' as const },     // 爪の一振り(残像付き・爪先が右端)
+      { name: 'fx/wing-swipe', scaleMode: 'linear' as const },     // 翼の薙ぎ(付け根が左寄り)
+      // 三連射(stage-5固有技・v0.25.2939社長支給)。3方向それぞれに対応した銃。銃口が右端。
+      // 撃つ向きへ**回転する**ので、偶像の拳(ドット版)と同じく linear を使う
+      // (nearest だと回転のたびに拾う画素が変わってチラつく)。
+      { name: 'fx/boss-gun-1', scaleMode: 'linear' as const },     // 左(短い銃)
+      { name: 'fx/boss-gun-2', scaleMode: 'linear' as const },     // 右(中くらい)
+      { name: 'fx/boss-gun-3', scaleMode: 'linear' as const },     // 中央=三拍目(長い銃)
+      { name: 'fx/breath-sparkle', scaleMode: 'nearest' as const },// v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給・回転しないのでnearest)
+      // v0.25.3114(社長支給): 軍隊(変異・stage-5)の薙ぎ払い=牽引式の大砲。**素材は左向き**(砲口が左端)。
+      // 撃つ向きへ回転するので銃と同じく linear(nearest だと回転のたびに拾う画素が変わってチラつく)。
+      { name: 'fx/boss-cannon', scaleMode: 'linear' as const },
+      // v0.25.3119(社長支給): グレン(stage-7)の薙ぎ払い=地面から生える赤い結晶。氷塊(skadi-ice-block)と
+      // **同じ使い方**(帯に沿って小→大に並べる)なので、scaleMode も氷塊に揃える(ほぼ回さない絵)。
+      { name: 'fx/glen-crystal', scaleMode: 'nearest' as const },
+      // v0.25.3122(社長指示・**素材は後で支給**): 虚無の三唱の3コマ。赤い判定円(直径520px)いっぱいに
+      // 貼るので、縮小のチラつきを避けて linear。**口だけ先に開けておく**=ファイルを
+      // `public/sprites/fx/nihil-1.png`(〜3)へ置いた瞬間に出る。未配置の間はロードに失敗して
+      // getTexture=null → 描画を丸ごとスキップする(ローダは1枚ずつ失敗を握りつぶす設計)。
+      { name: 'fx/nihil-1', scaleMode: 'linear' as const },
+      { name: 'fx/nihil-2', scaleMode: 'linear' as const },
+      { name: 'fx/nihil-3', scaleMode: 'linear' as const },
+      { name: 'fx/vine-whip-0', scaleMode: 'nearest' as const },       // v0.25.3088: 樹木管理員の蔓ムチ(溜め5コマ)
+      { name: 'fx/vine-whip-1', scaleMode: 'nearest' as const },
+      { name: 'fx/vine-whip-2', scaleMode: 'nearest' as const },
+      { name: 'fx/vine-whip-3', scaleMode: 'nearest' as const },
+      { name: 'fx/vine-whip-4', scaleMode: 'nearest' as const },
+      { name: 'fx/vine-whip-full', scaleMode: 'nearest' as const },   // v0.25.3088: 同・伸び切り1枚
+      { name: 'fx/glide-branch', scaleMode: 'nearest' as const },     // v0.25.3099: 滑空の溜め(枝+舞う葉・社長支給)
+      { name: 'fx/tentacle-reach', scaleMode: 'linear' as const }, // 伸びる触手(根元が左端・先端が右端)
+      { name: 'fx/idol-fist', scaleMode: 'linear' as const },      // 偶像の拳(ナックルが下端=突く向き)。v0.25.2935ドット版・回転するのでlinear維持
+      { name: 'fx/plant-spit', scaleMode: 'linear' as const },     // 食人植物の種吐き(口が右向き)
+      { name: 'fx/plant-seed', scaleMode: 'linear' as const },     // 種そのもの(植物の敵弾スプライト)
+      { name: 'fx/dust-puff', scaleMode: 'linear' as const },      // 砂埃バリエーションA(もこもこの塊)
+      { name: 'fx/dust-ring', scaleMode: 'linear' as const },      // 砂埃バリエーションB(放射状のリング)
+      { name: 'fx/ground-crack', scaleMode: 'linear' as const },   // 地割れ(着地衝撃の床。分類②)
+      // FX-V2c(裏ボス便2・v0.25.2985): 突進の風圧。ドット絵だが向きに合わせて連続回転+伸縮するため、
+      // idol-fist/boss-gun-*と同じ理由でlinear(nearestだと回転・伸縮のたびに拾う画素が変わりチラつく)。
+      { name: 'fx/dash-wind', scaleMode: 'linear' as const },
+      // FX-V2d(裏ボス便3・v0.25.2989): coilの胴体(横一直線にうねる大蛇の胴)。dash-windと同じ理由
+      // (帯に合わせて回転+非一様伸縮するため)でlinear。
+      { name: 'fx/jorm-coil-body', scaleMode: 'linear' as const },
+      // PACING_PUZZLE.md §14-2①(伐採人・logger): チェーンソー武器(構え〜薙ぎで回転する)。
+      // ★検収監査の補修(v0.25.4009・群3項目8): ドット絵の敵素材(hunter/idol等)はnearestが
+      // 標準作法(社長指示)。回転時のチラつきよりドット絵の統一が優先=nearestへ変更
+      // (旧linearの「回転のたびに拾う画素が変わるnearestのチラつきを避ける」判断は撤回)。
+      { name: 'reaper-chainsaw', scaleMode: 'nearest' as const },
+      // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
+      // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
+      { name: 'hunter', scaleMode: 'nearest' as const },
+      // stage-2隠しボス「idol」(§6.28-20)。ドット絵タッチの素材なのでhunter/thorと同じnearest
+      // (武器=ハンドガンは本体絵に描き込み済みなので別武器スプライトは無い)。
+      { name: 'idol', scaleMode: 'nearest' as const },
+      // 見た目2種以上を持つ敵の新アート(bat/skeleton…社長支給)。**全ステージ共通**なので
+      // stage3/4/5 のステージ別 <type>.png より優先される(解決は pixiScene.enemyTexKey)。
+      // 表は `utils/enemyVariant.ts` の1箇所。ここは取りこぼさないよう表から生成する。
+      ...ALL_VARIANT_TEXTURES.map((name) => ({ name, scaleMode: 'nearest' as const })),
     ];
+
+    // ステージ1セット(アトラスの敵/ピックアップ/木)のドット絵上書き名。後段で使うが、
+    // ローディング%の総数登録(下の loadProgressBegin)に個数が要るためここで定義。
+    // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・stage3/4/5と同じ理由=
+    // ENEMY_VARIANT_SETSがenemyTexKeyで先に引かれるため表示不能。旧atlas-px2素材は削除済み)。
+    const atlasPxNames = ['giantbat', 'tree',
+      'pickup-xp-blue', 'pickup-xp-green', 'pickup-xp-red', 'pickup-health', 'pickup-magnet', 'pickup-bomb', 'pickup-chest'];
+
+    // ローディング%(社長指示v0.25.1776): このローダが読むファイル総数を先に一括登録する
+    // (atlas 1 + standalone + 色キー5 + atlas-px上書き + 単発3=tree-new2/tree-snow/castle-church)。
+    // 完了カウントは loadOne / loadKeyed の finally が1ずつ進める。
+    loadProgressBegin(1 + standalone.length + 5 + atlasPxNames.length + 6); // +6=tree-new2/tree-snow/castle-church/glen-boss/glen-boss2/glen-boss2-parts
 
     // 1アセットのロード失敗が全体を巻き込まないよう個別に握りつぶす。失敗した絵は
     // 未登録(getTexture=null)になり、その描画だけスキップ/手続き描画にフォールバック。
@@ -188,6 +809,58 @@ export const ensureTextures = (): Promise<void> => {
       } catch (e) {
         console.warn(`[pixiTextures] failed to load sprite "${name}":`, e);
         return null;
+      } finally {
+        loadProgressDone();
+      }
+    };
+
+    // ステージ5の敵絵の「白い縁」対策(社長指示v0.25.2664「縁を透過半分とかで誤魔化しといて」)。
+    //
+    // ★実測(2026-08-01・全10枚): この素材のαは**2段しか無い**(α65-128 と α129-192。
+    // 完全不透明が縁に接する画素は0=硬い境界が無い)。そして**外側の段(α65-128)だけ色が明るい**
+    // (平均RGB≈(120,116,116) / 内側の段は≈(42,37,36))。**この明るい半透明リングが白縁の正体。**
+    // 暗いステージ5の背景に薄いグレーの輪が乗るので「白く縁取られて見える」。
+    //
+    // 直し: **外側の段のαだけ弱める**(内側は触らない=シルエットを痩せさせない)。
+    // **支給されたPNGそのものは加工しない**(このプロジェクトの作法)。読み込み時にcanvasで焼き直すだけ。
+    // 生調整 `?s5edge=` (0〜1の倍率):
+    //   **`1` = 無効**(元の見た目へ即復帰) / **`0` = 外側の段を完全に消す** / 既定 = **0.25**。
+    //   ※v0.25.2664時点のコメントは「`0` で無効」と書いていたが**誤り**。0は「全部消す」。
+    const S5_EDGE_ALPHA_MAX = 128; // ここ以下のαを「外側の段」とみなす(実測の2段の境目)
+    const S5_EDGE_MULT_DEFAULT = 0.25; // 社長「もうちょい削れる？」v0.25.2665(初出0.5からさらに半分)
+    const s5EdgeMult = (() => {
+      const raw = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('s5edge');
+      if (raw == null) return S5_EDGE_MULT_DEFAULT;
+      const n = Number(raw);
+      return Number.isFinite(n) && n >= 0 && n <= 1 ? n : S5_EDGE_MULT_DEFAULT;
+    })();
+
+    /** 半透明の外周だけαを弱めて登録する(白縁対策)。失敗したら素の読み込みへ落とす。 */
+    const loadEdgeSoftened = async (name: string, scaleMode: 'nearest' | 'linear'): Promise<void> => {
+      try {
+        const img = new Image();
+        await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = spritePath(name); });
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) return;
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const ctx = cv.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        const im = ctx.getImageData(0, 0, w, h);
+        const d = im.data;
+        for (let i = 3; i < d.length; i += 4) {
+          const a = d[i];
+          if (a > 0 && a <= S5_EDGE_ALPHA_MAX) d[i] = Math.round(a * s5EdgeMult);
+        }
+        ctx.putImageData(im, 0, 0);
+        const tex = Texture.from(cv);
+        tex.source.scaleMode = scaleMode;
+        textures.set(name, tex);
+      } catch (e) {
+        console.warn(`[pixiTextures] failed to soften edge "${name}":`, e);
+      } finally {
+        loadProgressDone();
       }
     };
 
@@ -217,10 +890,15 @@ export const ensureTextures = (): Promise<void> => {
         textures.set(name, tex);
       } catch (e) {
         console.warn(`[pixiTextures] failed to color-key "${name}":`, e);
+      } finally {
+        loadProgressDone();
       }
     };
 
     await Promise.all([
+      // アバターの頭頂キャッシュ(上記参照)。standaloneの読み込みとは独立(loadProgressの総数計算に
+      // 影響させないため loadProgressDone は呼ばない=読み込み%バーの分母はここまでの計算のまま)。
+      measureAllAvatarHeadTops(),
       // アトラス(敵/木/一部拾い物)。読めたらフレームを切り出す。失敗時はその絵だけ欠落。
       (async () => {
         const atlas = await loadOne('atlas');
@@ -234,20 +912,95 @@ export const ensureTextures = (): Promise<void> => {
         }
       })(),
       ...standalone.map(async ({ name, scaleMode }) => {
+        // ステージ5の敵絵だけは、明るい半透明の外周を弱めてから登録する(白縁対策・上の loadEdgeSoftened)。
+        // `?s5edge=1` を指定した時は素の読み込みに戻る(元の見た目へ即復帰できる安全弁)。
+        if (s5EdgeMult < 1 && name.startsWith('stage5-enemies/')) {
+          await loadEdgeSoftened(name, scaleMode === 'linear' ? 'linear' : 'nearest');
+          return;
+        }
         const tex = await loadOne(name);
         if (!tex) return;
         if (scaleMode) tex.source.scaleMode = scaleMode;
+        // M8改(§5.9): ソフト系3クラスはミップマップONで縮小を均一に(linearと併用)。
+        if (isSoftClassSprite(name)) tex.source.autoGenerateMipmaps = true;
+        // 基準幅超のクラス立ち絵=取込み規約(÷Nドット保持焼き)を通っていない規格外素材の疑い。
+        // 旧v0.25.1763-1765の「自動でlinear+mipmap縮小」は滲みの原因だったため撤去(v0.25.1769)。
+        // 警告だけ出して従来どおり描く(壊さない)。正しくは import-player-sprites.mjs --dot N で焼き直す。
+        if (isClassSpriteName(name) && tex.width > PLAYER_ART_BASE_W) {
+          console.warn(`[sprites] ${name}: 幅${tex.width}px>基準${PLAYER_ART_BASE_W}px。ドット保持焼き(--dot)を通していない素材の疑い`);
+        }
         textures.set(name, tex);
+        // 松明(社長支給・炎つき3コマの横並び1枚)。**画像は加工せず、枠だけ切って登録**する
+        // (社長指示v0.25.2640「切り出さないで」)。アトラスと同じ作法=同じ source を共有する
+        // サブテクスチャなので、追加のメモリもデコードも発生しない。
+        if (name === FLAME_SHEET) {
+          for (let i = 0; i < FLAME_FRAMES; i++) {
+            textures.set(`${FLAME_SHEET}-${i}`, new Texture({
+              source: tex.source,
+              frame: new Rectangle(i * FLAME_FRAME_W, 0, FLAME_FRAME_W, tex.height),
+            }));
+          }
+        }
       }),
     ]);
 
     // 自動タレット(紫背景未透過)を色キーで透過して登録。
-    await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni')]);
+    // スケボー(投擲用)も白背景未透過なので同じ色キー透過(左上=白を抜く。黒デッキ/黄ホイールは残る)。
+    // トールの刀(横払い/突き用・社長提供)も紫背景なので同様に色キー透過。詳細イラスト調なのでlinear。
+    // ※叫喚型(screamer)はここに居たが、新素材が透過済みになったので変異体テーブル経由の
+    //   通常ロードへ移した(v0.25.2882)。旧 screamer.png(2.1MB/1254角)は v0.25.2883 で削除済み。
+    // 引き雲(遠景層)用の上下端フェード版(社長報告v0.25.3020「遠景近くに変な線」対策)。
+    // 素材は最上段(row0)まで雲ドットがある(実測: 全168行中、透明なのは下端4行だけ)。遠景層は
+    // 帯の上端が空の途中に見えるため、そこで雲がスパッと切れ、ぼかし(v0.25.3018)が乗ると
+    // 横一直線のスジになる。**支給PNGは加工しない**(この節の作法)——読み込み時に上から35%を
+    // 線形αフェードした別名テクスチャを焼いて登録する。
+    // ★v0.25.3049(社長特定「これ全ステージだ。遠景の雲が犯人です」): 下端も同じ機構で線が出ていた。
+    // 下端の透明は4行しかなく(下端付近でも半不透明の雲ドットが残る)、遠景層の帯の下端は地平線
+    // (farH)ちょうどに来るため、雲が下端でスパッと切れる+ぼかしの矩形クリップで**地平線に横一線**が
+    // 全ステージで出る。下から18%も線形αフェードして両端とも空に溶かす(テクスチャ名は従来のまま)。
+    const loadTopFadedCloud = async () => {
+      try {
+        const img = new Image();
+        await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = spritePath('zoom-cloud'); });
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) return;
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const ctx = cv.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        const im = ctx.getImageData(0, 0, w, h);
+        const d = im.data;
+        const fadeRows = Math.max(1, Math.round(h * 0.35));
+        for (let y = 0; y < fadeRows; y++) {
+          const k = y / fadeRows;
+          for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4 + 3;
+            d[i] = Math.round(d[i] * k);
+          }
+        }
+        // ★v0.25.3049: 下端も18%を線形フェード(地平線に乗る帯の下端の横一線対策・上と同じ機構)。
+        const fadeRowsB = Math.max(1, Math.round(h * 0.18));
+        for (let y = h - fadeRowsB; y < h; y++) {
+          const k = (h - 1 - y) / fadeRowsB;
+          for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4 + 3;
+            d[i] = Math.round(d[i] * k);
+          }
+        }
+        ctx.putImageData(im, 0, 0);
+        const tex = Texture.from(cv);
+        tex.source.scaleMode = 'nearest';
+        textures.set('zoom-cloud-topfade', tex);
+      } catch (e) {
+        console.warn('[pixiTextures] failed to top-fade "zoom-cloud":', e);
+      }
+    };
+
+    await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni'), loadKeyed('skateboard'), loadKeyed('thor-katana', 'linear'), loadTopFadedCloud()]);
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)をドット絵で上書き(社長指示)。
     // atlas 切り出しの後に textures.set で確実に置換。ドット絵なので nearest。
-    const atlasPxNames = ['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'tree',
-      'pickup-xp-blue', 'pickup-xp-green', 'pickup-xp-red', 'pickup-health', 'pickup-magnet', 'pickup-bomb', 'pickup-chest'];
     await Promise.all(atlasPxNames.map(async (n) => {
       const t = await loadOne(`atlas-px2/${n}`);
       if (t) { t.source.scaleMode = 'nearest'; textures.set(n, t); }
@@ -255,21 +1008,73 @@ export const ensureTextures = (): Promise<void> => {
     // ステージ3(廃都)用の木=ドット絵の葉付き木(syncTrees が farBackdrop で出し分け)。既定 'tree' は枯れ木(stage1)。
     const cityTree = await loadOne('tree-new2');
     if (cityTree) { cityTree.source.scaleMode = 'nearest'; textures.set('tree-city', cityTree); }
-    // 城(ステージ3のフィナーレ拠点)を廃教会の絵に差し替え(社長提供)。足元アンカー・高さ基準スケールは不変。
+    // ステージ4(雪原)用の木=雪化粧の針葉樹(社長提供・透過済み)。syncTrees が farBackdrop==='snow' で出し分け。
+    const snowTree = await loadOne('tree-snow');
+    if (snowTree) { snowTree.source.scaleMode = 'nearest'; textures.set('tree-snow', snowTree); }
+    // 廃教会(社長提供)。ステージ3(廃都)のフィナーレ拠点でのみ使用するため 'castle-church' の別キーで登録。
+    // 以前は 'castle' を上書きしていたため全ステージ(ステージ1の城も)が教会になっていた→ syncCastle 側で
+    // farBackdrop により出し分ける(city=教会 / その他=castle.png)。
     const church = await loadOne('castle-church');
-    if (church) { church.source.scaleMode = 'nearest'; textures.set('castle', church); }
+    if (church) { church.source.scaleMode = 'nearest'; textures.set('castle-church', church); }
+    // M7ボス=グレンの1枚絵(社長支給v0.25.1999・背景透過済み)。stage-7のgiantbatだけこの絵に差し替え(挙動はgiantbat流用)。
+    // 詳細イラスト調なので linear(トールの刀と同方針)。
+    const glenBoss = await loadOne('glen-boss');
+    if (glenBoss) { glenBoss.source.scaleMode = 'linear'; textures.set('glen-boss', glenBoss); }
+    // ラスボス第二形態(社長支給v0.25.2918)。本体1枚+連結パーツ3つ(1シート)。
+    // 支給ファイルは加工せず、枠指定のサブテクスチャで切る(炎シートと同じ作法=追加デコード無し)。
+    // 枠は透過アルファの実測(列の連結成分)。3つとも下端揃え=足元アンカーで置ける。
+    const glenBoss2 = await loadOne('glen-boss2');
+    if (glenBoss2) { glenBoss2.source.scaleMode = 'linear'; textures.set('glen-boss2', glenBoss2); }
+    const glenParts = await loadOne('glen-boss2-parts');
+    if (glenParts) {
+      glenParts.source.scaleMode = 'linear';
+      const frames: [number, number, number, number][] = [
+        [8, 8, 244, 256],     // part0: 砲身(いちばん大きい)
+        [292, 44, 208, 220],  // part1: 中間の箱(=「真ん中」・最初に欠ける)
+        [568, 116, 184, 148], // part2: 尾の鉤爪(末端)
+      ];
+      frames.forEach(([x, y, w2, h2], i) => {
+        textures.set(`glen-boss2-part-${i}`, new Texture({ source: glenParts.source, frame: new Rectangle(x, y, w2, h2) }));
+      });
+    }
+
+    // v0.25.3043: 冷気ブレス本体(社長支給2枚目・指示「透明の余計な要素が多いのでトリミングして使って」)。
+    // 支給PNGは加工せず、αの実測境界(x0〜664, y316〜388・左=根元)に2pxの余裕を足した枠で切って登録
+    // (アトラス/グレンパーツと同じ作法=追加デコード無し)。
+    const breathStream = await loadOne('fx/breath-stream');
+    if (breathStream) {
+      breathStream.source.scaleMode = 'nearest';
+      textures.set('fx/breath-stream-trim', new Texture({ source: breathStream.source, frame: new Rectangle(0, 314, 666, 76) }));
+    }
 
     // 敵スプライトのアスペクト(texH/texW)を登録(PHILLサークルの頭スナップを実描画に合わせる)。
     const regAspect = (key: string, texName: string) => {
       const t = textures.get(texName);
       if (t && t.width > 0) setEnemyArtAspect(key, t.height / t.width);
     };
-    for (const ty of ['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']) {
+    // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898)。この5種は
+    // ENEMY_VARIANT_SETS に載っており、下の一括登録ループが default/stage3/stage4/stage5 の
+    // 4キー全てを variant 絵で上書きするため、ここでの登録は不要(旧ステージ別素材も削除済み)。
+    for (const ty of ['giantbat']) {
       regAspect(`default:${ty}`, ty);                 // アトラス(森系)の敵絵
       regAspect(`stage3:${ty}`, `stage3-enemies/${ty}`); // 廃都(ステージ3)の敵絵
+      regAspect(`stage4:${ty}`, `stage4-enemies/${ty}`); // 雪原(ステージ4)の敵絵
+      regAspect(`stage5:${ty}`, `stage5-enemies/${ty}`); // 戦場(ステージ5)の敵絵
     }
+    // ★全ステージ共通へ差し替えた敵は、アスペクトも全ステージ分のキーを上書きする
+    // (旧ステージ別 <type>.png の縦横比が残っていると、頭スナップが実際の描画とズレる)。
+    for (const [ty, set] of Object.entries(ENEMY_VARIANT_SETS)) {
+      for (const pre of ['default', 'stage3', 'stage4', 'stage5']) regAspect(`${pre}:${ty}`, set[0]);
+    }
+    // ★lich の専用フォールバック/アスペクト再登録は削除(v0.25.2897)。変異体テーブル
+    // (ENEMY_VARIANT_SETS)が全ステージ分のテクスチャ名とアスペクトを供給する。ここに旧
+    // regAspect を残すと**変異体テーブルの一括登録より後に旧絵の縦横比で上書きし返す**
+    // (screamer v0.25.2882 で踏んだ順序事故と同型)ため、行ごと消すのが正。
+    regAspect('default:hunter', 'hunter'); // ハンター変異体(全ステージ共通の1枚絵)
+    // ★screamer のアスペクトは ENEMY_VARIANT_SETS の一括登録(上)が入れる。ここで旧 `screamer`
+    // (紫背景・1254角=アスペクト1.0)を再登録すると新素材(縦長)の頭スナップがズレるので置かない。
     regAspect('default:lab-zombie-1', 'lab-zombie/lab-zombie-lv1-male');
-    regAspect('default:lab-zombie-2', 'lab-zombie/lab-zombie-lv2-male');
+    regAspect('default:lab-zombie-2', 'lab-zombie/lab-zombie-lv2');
     regAspect('default:lab-zombie-3', 'lab-zombie/lab-zombie-lv3');
 
     ready = true; // 一部失敗しても描画は継続(真っ暗を防ぐ)。
@@ -277,36 +1082,26 @@ export const ensureTextures = (): Promise<void> => {
   return loading;
 };
 
-export const texturesReady = (): boolean => ready;
-
 // 背景パノラマ/床/地平帯はマニフェスト外で URL 直読みする(PixiStage が Assets.load)。
-// これらを起動時のローディング画面で先読みしておくと、出撃時に Assets キャッシュから即取得でき、
-// 「出撃直後に一瞬ステージ1(森)が映る」フラッシュを防げる(注入を初回ペイント前に間に合わせる)。
+// v0.25.2166(社長指示「ステージ特有のリソースはそのステージのローディング中に」): 起動時の先読みは
+// 【全ステージ共通のコア4枚だけ】に削減。旧: ステージ固有21枚も全部先読み=タイトル画面の時点で
+// デコード後~100MBが常駐し、iOSのメモリ天井(勝手リロード)を押し上げていた。ステージ固有分は
+// PixiStage(出撃ローディング)が出撃ステージの分だけ読む(STAGE_TEXTURE_GROUPS)。
+// 「出撃直後に一瞬森が映る」フラッシュは v0.25.2122以降、注入完了までローディングを外さない方式で
+// 防いでいる(先読みが無くても黒画面にはならない)。
 const BACKGROUND_PATHS = [
   'backgrounds/distant-night-panorama.jpg',
   'backgrounds/ground-moss-dirt.jpg',
   'backgrounds/horizon-forest-band.png',
   'backgrounds/front-forest-foreground.png',
-  'backgrounds/stage3-distant-city-day.jpg',
-  'backgrounds/stage3-ground-cobble2.jpg',
-  'backgrounds/stage3-horizon-city.png',
-  'backgrounds/stage3-near-horizon-city.png',
-  'backgrounds/stage1-near-forest.png',
-  'backgrounds/stage2-lab-far.jpg',
-  'backgrounds/stage2-near-horizon2.png',
-  'backgrounds/stage4-far.jpg',
-  'backgrounds/stage4-front2.png',
-  'backgrounds/stage4-ground.jpg',
-  'backgrounds/stage4-horizon.png',
-  'backgrounds/stage3-front-rooftops.png',
-  'sprites/lab-floor/lab-floor-stage2.png',
 ];
 let bgLoading: Promise<void> | null = null;
 export const preloadBackgrounds = (): Promise<void> => {
   if (!bgLoading) {
     const BASE = import.meta.env.BASE_URL;
+    loadProgressBegin(BACKGROUND_PATHS.length); // ローディング%(v0.25.1776): 背景ぶんを登録
     bgLoading = Promise.all(
-      BACKGROUND_PATHS.map((p) => Assets.load(`${BASE}${p}`).catch(() => null))
+      BACKGROUND_PATHS.map((p) => Assets.load(`${BASE}${p}`).catch(() => null).finally(() => loadProgressDone()))
     ).then(() => {});
   }
   return bgLoading;

@@ -1,5 +1,12 @@
 import { Player, Enemy, Projectile, Pickup, Summon } from '../types/game';
-import { enemyFootBox } from '../pixi/renderSpec';
+import { enemyFootBox, enemyHitStrip } from '../pixi/renderSpec';
+import { isCorpse } from './enemyUtils';
+
+// 当たり判定=「帯」方式(社長指示)。通常敵は足元の帯(幅=影と同規格=実描画幅×0.55 / 高さ=e.height)で判定。
+// 裏ボスは従来どおり生の帯(AABB=ENEMY_STATS の w×h、BOSS_SPRITE_FIT で絵を追従)。絵は別経路で帯より大きく描く。
+const isHiddenBossType = (t: Enemy['type']): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor';
+export const enemyContactBox = (e: Enemy): { x: number; y: number; width: number; height: number } =>
+  isHiddenBossType(e.type) ? { x: e.x, y: e.y, width: e.width, height: e.height } : enemyHitStrip(e);
 
 // PHILL銃の頭部リージョン(見た目の上部)= 描画ボックス上端から boxH×この割合。
 const HEAD_FRACTION = 0.33;
@@ -21,7 +28,10 @@ export const checkCollision = (
 // clip — only used for taking damage (enemy contact, hostile bolts), not for
 // picking things up. 2/3 of the full body, centered.
 const PLAYER_HIT_SCALE = 2 / 3;
-const playerHitbox = (player: { x: number; y: number; width: number; height: number }) => {
+// GHOST-COUNTER-PARITY(社長指示2「位置条件をプレイヤーと同じ『矩形が重なっている』へ」):
+// ghostCounter.ts のカウンター成立位置判定が checkPlayerEnemyCollisions と同じ矩形を再利用できるよう
+// export する(スケール値2/3を守護霊側に手写ししない=二重管理の温床を作らない)。
+export const playerHitbox = (player: { x: number; y: number; width: number; height: number }) => {
   const w = player.width * PLAYER_HIT_SCALE;
   const h = player.height * PLAYER_HIT_SCALE;
   return {
@@ -59,6 +69,22 @@ export const pickupDisplayPosition = (pickup: Pickup, now = Date.now()) => {
   };
 };
 
+/**
+ * 命中済みの敵を記録する弾か。記録は2つの役割を同時に担う:
+ *   ① 同一敵への再ヒット防止(下の `hitEnemies.includes` ガード)
+ *   ② 弾を消すかの判定基準(`useGameLoop` の `hitEnemies.length > pierce`)
+ *
+ * **`pierce` も記録対象**(社長裁定v0.25.2355・実バグ修正)。旧実装は `passthrough` だけを記録して
+ * いたため、シャープシューター(貫通+1/+2/+3)を**非passthrough銃**(ハンドガン/ショットガン/
+ * ライフルt2・t3)へ付けると `hitEnemies` が空のままになり:
+ *   ① 再ヒット防止が効かず**同じ敵に毎フレーム当たり続ける**(弾速500px/s・敵幅40pxで実効4〜5倍)
+ *   ② 除去条件が永久に false = **命中しても弾が消えない**(duration 1400ms まで飛び続け、
+ *      道中の敵を全部同じ調子で削る)
+ * となり、「貫通+1」が実質「単体ダメージ数倍+無限貫通」として動いていた。
+ * マグナム(rifle-t1)は `passthrough:true` なので元から正常(=壊れていたのは非passthrough銃だけ)。
+ */
+const tracksHits = (p: Projectile): boolean => p.passthrough || p.pierce !== undefined;
+
 // Check collisions between projectiles and enemies
 export const checkProjectileEnemyCollisions = (
   projectiles: Projectile[],
@@ -89,11 +115,14 @@ export const checkProjectileEnemyCollisions = (
       projectile.weaponType === 'fire-knife-projectile' ||
       projectile.weaponType === 'drone-boomerang-projectile'
     ) return;
+    // 転がり弾(グレネードガンt1/t2)は敵に接触=その場で直撃爆発(社長指示v0.25.3441「直撃を復活」。
+    // v3438の「素通し」は撤回)。通常の弾衝突に乗せる=着弾爆発ハンドラ(isGrenadeGunKey)が直撃+
+    // スプラッシュを出し、弾は消える。転がり続けた場合の道のり/時間爆発はuseGameLoopの専用パスのまま。
     // Scheduled-but-not-yet-active projectiles (e.g. the second slash of a
     // whip chain) shouldn't deal damage until their start time arrives.
     if (projectile.createdAt > now) return;
     enemies.forEach(enemy => {
-      // Skip if already hit by this projectile (for passthrough weapons)
+      // Skip if already hit by this projectile (passthrough / pierce weapons)
       if (projectile.hitEnemies.includes(enemy.id)) {
         return;
       }
@@ -102,29 +131,36 @@ export const checkProjectileEnemyCollisions = (
       // (盾は別経路=敵AIの shield 判定で処理されるので影響しない)。
       if (enemy.aiPhase === 'jump') return;
 
+      // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 死体は弾をすり抜けさせる(貫通弾のpierce/
+      // passthroughを消費させない・死体に攻撃が吸われる事故を防ぐ)。
+      if (isCorpse(enemy)) return;
+
+      // (v0.25.2469のゴースト弾すり抜けは v0.25.2471 で撤回=社長指示「だったら弾はすりぬけなくていい」。
+      //  雑魚回避(v0.25.2470)で射線が通るようになったため、弾は通常どおり最初に触れた敵に当たる。)
+
       // PHILL弾は「胴体ボックス または 頭部リージョン」で当たり判定し、頭部命中を headshot として返す。
       if (projectile.weaponType === 'phill-bullet') {
         const fb = enemyFootBox(enemy);
         const top = fb.footY - fb.boxH;
         const headRect = { x: fb.footX - fb.boxW / 2, y: top, width: fb.boxW, height: fb.boxH * HEAD_FRACTION };
         const hitHead = checkCollision(projectile, headRect);
-        const hitBody = checkCollision(projectile, enemy);
+        const hitBody = checkCollision(projectile, enemyContactBox(enemy));
         if (hitHead || hitBody) {
           collisions.push({ projectileId: projectile.id, enemyId: enemy.id, damage: projectile.damage, headshot: hitHead });
-          if (projectile.passthrough) projectile.hitEnemies.push(enemy.id);
+          if (tracksHits(projectile)) projectile.hitEnemies.push(enemy.id);
         }
         return;
       }
 
-      if (checkCollision(projectile, enemy)) {
+      if (checkCollision(projectile, enemyContactBox(enemy))) {
         collisions.push({
           projectileId: projectile.id,
           enemyId: enemy.id,
           damage: projectile.damage
         });
 
-        // Add to hit enemies list for passthrough weapons
-        if (projectile.passthrough) {
+        // Add to hit enemies list for passthrough / pierce weapons
+        if (tracksHits(projectile)) {
           projectile.hitEnemies.push(enemy.id);
         }
       }
@@ -142,7 +178,9 @@ export const checkProjectilePlayerCollisions = (
   player: Player
 ): Projectile[] => {
   const hit = playerHitbox(player);
-  return projectiles.filter(p => p.hostile && checkCollision(p, hit));
+  // 敵の手榴弾(idolの手榴弾技・v0.25.3442)は接触ダメージ無し=信管(useGameLoopのhostile爆発分岐)でのみ
+  // 爆発する(プレイヤーの手榴弾が敵に接触ダメージを与えないのと同じ仕様)。カウンター反射の対象からも外れる。
+  return projectiles.filter(p => p.hostile && p.weaponType !== 'grenade' && checkCollision(p, hit));
 };
 
 // Check collisions between player and enemies (uses the reduced damage hitbox)
@@ -151,11 +189,15 @@ export const checkPlayerEnemyCollisions = (
   enemies: Enemy[]
 ): Enemy[] => {
   const hit = playerHitbox(player);
-  return enemies.filter(enemy => checkCollision(hit, enemy));
+  // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 死体は接触ダメージを与えない(唯一の合流点)。
+  return enemies.filter(enemy => !isCorpse(enemy) && checkCollision(hit, enemyContactBox(enemy)));
 };
 
-// 敵 ↔ 召喚ユニット(通常個体のみ)の接触。各重なりにつき敵の damage を返す。
+// 敵 ↔ 召喚ユニット(通常個体+ghost-ally)の接触。各重なりにつき敵の damage を返す。
 // レア個体はHP制ではない(10秒で消滅)ので接触ダメージの対象外。
+// ghost-ally(BOT_AND_GHOST.md G2)もHP制なので対象に含める(この汎用接触ダメージが、ボス本体に
+// 触れた時の被弾経路になる。ボス固有の特殊技(windup/active毎の専用当たり判定)は対象外=
+// ★未決として最終報告に記載)。
 export const checkEnemySummonCollisions = (
   enemies: Enemy[],
   summons: Summon[]
@@ -163,18 +205,26 @@ export const checkEnemySummonCollisions = (
   if (summons.length === 0) return [];
   const out: { enemyId: string; summonId: string; damage: number }[] = [];
   for (const enemy of enemies) {
+    if (isCorpse(enemy)) continue; // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 召喚への接触ダメージから除外
     for (const s of summons) {
-      if (s.kind !== 'normal') continue;
-      if (checkCollision(enemy, s)) out.push({ enemyId: enemy.id, summonId: s.id, damage: enemy.damage });
+      if (s.kind !== 'normal' && s.kind !== 'ghost-ally') continue;
+      if (checkCollision(enemyContactBox(enemy), s)) out.push({ enemyId: enemy.id, summonId: s.id, damage: enemy.damage });
     }
   }
   return out;
 };
 
 // Check collisions between player and pickups
+// ammoRangeMult: スキル マグネット= 拾得矩形を中心基準で ×1.1/1.2/1.3 に拡大(呼び出し側が
+// skillMagnetAmmoRangeMult で算出)。既定1=従来どおり。
+// 社長指示v0.25.3300 マグネット仕様変更: 拡大対象は弾薬+コイン(スクラップ/トレジャー)。
+// magnetAwaken(覚醒Lv3)=アイテム(回復/磁石/爆弾/クイックマガジン)と経験値も拡大対象に加える。
+// 武器箱/宝箱/カードキー等の設置物・クエスト品は常に従来の矩形(遠くから誤って開かない)。
 export const checkPlayerPickupCollisions = (
   player: Player,
-  pickups: Pickup[]
+  pickups: Pickup[],
+  ammoRangeMult = 1,
+  magnetAwaken = false
 ): string[] => {
   // Slight magnet around the player so collection feels snappy without
   // hoovering pickups from across the screen.
@@ -185,6 +235,24 @@ export const checkPlayerPickupCollisions = (
     width: player.width + PAD * 2,
     height: player.height + PAD * 2
   };
+  // マグネット: 弾薬用の拾得矩形(中心基準スケール)。mult=1なら同一矩形。
+  const ammoExpandedPlayer = ammoRangeMult !== 1
+    ? {
+        x: expandedPlayer.x - expandedPlayer.width * (ammoRangeMult - 1) / 2,
+        y: expandedPlayer.y - expandedPlayer.height * (ammoRangeMult - 1) / 2,
+        width: expandedPlayer.width * ammoRangeMult,
+        height: expandedPlayer.height * ammoRangeMult
+      }
+    : expandedPlayer;
+  const isMagnetPickup = (t: Pickup['type']): boolean =>
+    t === 'ammo-handgun' || t === 'ammo-shotgun' || t === 'ammo-rifle' || t === 'ammo-phill' ||
+    t === 'strap' || t === 'treasure' ||
+    // ★社長裁定2026-08-25「金箱は箱扱いで」: 金箱をコイン系から**外した**。
+    // これで金箱は weapon-crate / chest と同じ「設置物」枠=**常に従来の矩形**になる
+    // (遠くから誤って開かない)。同日の「犬は箱を触らない」裁定と扱いが揃った。
+    // なお v0.25.36xx(§6.38 B3・v2 F)では逆に「マグネット挙動=既存treasureと同じ規約」と
+    // 裁定されており treasure と同枠に置いていた——事実として併記しておく(今の正は上の裁定)。
+    (magnetAwaken && (t === 'experience' || t === 'health' || t === 'magnet' || t === 'bomb' || t === 'quick-magazine'));
 
   // Pickups don't carry width/height in the type, so treat them as the
   // 16×16 sprite the renderer draws.
@@ -201,7 +269,7 @@ export const checkPlayerPickupCollisions = (
         return false;
       }
       const pos = pickupDisplayPosition(pickup, now);
-      return checkCollision(expandedPlayer, {
+      return checkCollision(isMagnetPickup(pickup.type) ? ammoExpandedPlayer : expandedPlayer, {
         x: pos.x,
         y: pos.y,
         width: PICKUP_SIZE,

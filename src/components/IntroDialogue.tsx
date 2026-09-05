@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   useGameStore,
   INTRO_DIALOGUE_CHAR_MS,
-  INTRO_DIALOGUE_LINE_HOLD_MS,
+  introLineMs,
   CHARACTER_CLASS_NAMES,
 } from '../store/gameStore';
 import { playRadioStatic } from '../audio/audioManager';
@@ -44,7 +44,7 @@ const IntroDialogue: React.FC = () => {
   let shown = 0;
   for (let i = 0; i < lines.length; i++) {
     const len = lines[i].text.length;
-    const lineTotal = lines[i].holdMs ?? (len * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS);
+    const lineTotal = introLineMs(lines[i]);
     if (remaining < lineTotal) {
       curIdx = i;
       shown = Math.max(0, Math.min(len, Math.floor(remaining / INTRO_DIALOGUE_CHAR_MS)));
@@ -58,6 +58,30 @@ const IntroDialogue: React.FC = () => {
     shown = lines[curIdx].text.length;
   }
   const line = lines[curIdx];
+
+  // タップ: タイプ中なら一気に全文表示、表示済みなら次のセリフへ(最後なら会話終了)。自動送りは維持。
+  // 時間ベース表示なので、introDialogueStartedAt をずらして「仮想時刻」を早送りする(終了判定とも整合)。
+  const onAdvance = () => {
+    const el = Date.now() - startedAt;
+    let acc = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const total = introLineMs(lines[i]);
+      if (el < acc + total) {
+        const isText = lines[i].holdMs === undefined;
+        const typeDur = isText ? lines[i].text.length * INTRO_DIALOGUE_CHAR_MS : 0;
+        if (isText && el - acc < typeDur) {
+          useGameStore.setState({ introDialogueStartedAt: Date.now() - (acc + typeDur) }); // 一気に全文
+        } else if (i >= lines.length - 1) {
+          endIntroDialogue(); // 最終行を表示済み→終了
+        } else {
+          useGameStore.setState({ introDialogueStartedAt: Date.now() - (acc + total) }); // 次のセリフへ
+        }
+        return;
+      }
+      acc += total;
+    }
+    endIntroDialogue();
+  };
 
   // 会話シーン中だけ右下に出すスキップ(ミッション最初の会話=この登場セリフのみ)。
   // タップで会話を即終了→ゲーム再開。タップが下層の攻撃入力に伝播しないよう stopPropagation。
@@ -78,7 +102,7 @@ const IntroDialogue: React.FC = () => {
       playRadioStatic();
     }
     return (
-      <div className="pointer-events-none absolute inset-0 z-40">
+      <div className="pointer-events-auto absolute inset-0 z-40" onClick={onAdvance}>
         {skipButton}
       </div>
     );
@@ -87,7 +111,7 @@ const IntroDialogue: React.FC = () => {
   const rendered = [{ speaker: line.speaker, text: line.text.slice(0, shown), typing: shown < line.text.length }];
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center px-4">
+    <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center px-4" onClick={onAdvance}>
       {skipButton}
       <div
         className="flex min-h-[5rem] w-full max-w-xl items-center rounded-2xl border-2 border-cyan-300/40 bg-slate-950/90 px-6 py-6 shadow-2xl ring-1 ring-black/40 backdrop-blur-md"
@@ -109,8 +133,8 @@ const IntroDialogue: React.FC = () => {
             const speaker = l.speaker === '__class__'
               ? (CHARACTER_CLASS_NAMES[characterClass] ?? 'プレイヤー')
               : l.speaker;
-            // 偵察兵=切迫した別声(かすれた赤)。それ以外(通信兵など)=琥珀。
-            const isField = speaker === '偵察兵';
+            // エドガー(偵察兵)=切迫した別声(かすれた赤)。それ以外(通信兵など)=琥珀。
+            const isField = speaker === 'エドガー';
             const bodyCls = isField ? 'text-lg leading-relaxed text-rose-100' : 'text-lg leading-relaxed text-amber-100';
             const nameCls = isField ? 'mr-1.5 font-bold text-rose-300' : 'mr-1.5 font-bold text-amber-300';
             return (

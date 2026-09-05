@@ -1,0 +1,3846 @@
+{
+ "stage": "stage-1",
+ "url": "http://localhost:5173/zombie/?smoke=1&stage=stage-1&bot=standard&botskill=master&botgoal=campaign&sologhost=1&autotut=1&class=rogue",
+ "build": {
+  "lv": 20,
+  "hp": 120,
+  "speed": 87,
+  "guns": [
+   "shotgun-t3"
+  ],
+  "melee": [
+   "hatchet-t2"
+  ],
+  "subs": [
+   "striker-hunting",
+   "flare-gun"
+  ],
+  "equip": {
+   "body": "body-mobility-4",
+   "arms": "arms-firepower-5",
+   "accessory": "accessory-crit-4"
+  },
+  "straps": 0,
+  "dmgMult": 2,
+  "spdMult": 1.35,
+  "skills": [
+   "attack-shooter",
+   "ghost-shooter"
+  ]
+ },
+ "rows": [
+  {
+   "t": 10,
+   "lv": 20,
+   "hp": 86,
+   "straps": 19,
+   "kills": 1,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 2,
+   "px": 297,
+   "py": 264,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2902,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 301,
+     "dToBase": 2773
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 323,
+     "dToBase": 2836
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 622,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 622,
+     "dToBase": 2940
+    }
+   ],
+   "report": null,
+   "real": 0
+  },
+  {
+   "t": 12,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 1,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 2,
+   "px": 303,
+   "py": 269,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2897,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 354,
+     "dToBase": 2670
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 327,
+     "dToBase": 2836
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 629,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 629,
+     "dToBase": 2940
+    }
+   ],
+   "report": null,
+   "real": 4
+  },
+  {
+   "t": 14,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 1,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 2,
+   "px": 303,
+   "py": 269,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2897,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 408,
+     "dToBase": 2589
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 327,
+     "dToBase": 2836
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 629,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 629,
+     "dToBase": 2940
+    }
+   ],
+   "report": null,
+   "real": 6
+  },
+  {
+   "t": 16,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 1,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 2,
+   "px": 192,
+   "py": 84,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2996,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 426,
+     "dToBase": 2580
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 367,
+     "dToBase": 2798
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 461,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 427,
+     "dToBase": 2923
+    }
+   ],
+   "report": null,
+   "real": 8
+  },
+  {
+   "t": 18,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 3,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 1,
+   "px": 232,
+   "py": -32,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2954,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 375,
+     "dToBase": 2580
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 532,
+     "dToBase": 2746
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 491,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 414,
+     "dToBase": 2848
+    }
+   ],
+   "report": null,
+   "real": 10
+  },
+  {
+   "t": 20,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 3,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 2,
+   "px": 277,
+   "py": -95,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2910,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 339,
+     "dToBase": 2580
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 608,
+     "dToBase": 2746
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 542,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 443,
+     "dToBase": 2786
+    }
+   ],
+   "report": null,
+   "real": 12
+  },
+  {
+   "t": 22,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 4,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 2,
+   "px": 202,
+   "py": -174,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2988,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 435,
+     "dToBase": 2580
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 650,
+     "dToBase": 2746
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 488,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 398,
+     "dToBase": 2706
+    }
+   ],
+   "report": null,
+   "real": 14
+  },
+  {
+   "t": 24,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 5,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 2,
+   "px": 198,
+   "py": -200,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2994,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 449,
+     "dToBase": 2580
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 674,
+     "dToBase": 2746
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 493,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 417,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 16
+  },
+  {
+   "t": 27,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 5,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 3,
+   "px": 370,
+   "py": -16,
+   "mines": {
+    "near200": 2,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2816,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 263,
+     "dToBase": 2553
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 596,
+     "dToBase": 2746
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 629,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 666,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 18
+  },
+  {
+   "t": 29,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 7,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 2,
+   "px": 217,
+   "py": 147,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2973,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 466,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 397,
+     "dToBase": 2716
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 503,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 743,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 20
+  },
+  {
+   "t": 31,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 8,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 2,
+   "px": 217,
+   "py": 427,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 2769,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 621,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 254,
+     "dToBase": 2654
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 649,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1013,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 22
+  },
+  {
+   "t": 33,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 9,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 2,
+   "px": 259,
+   "py": 684,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 2516,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 803,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 286,
+     "dToBase": 2588
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 869,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1273,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 24
+  },
+  {
+   "t": 35,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 10,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 2,
+   "px": 422,
+   "py": 904,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 2324,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 947,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 527,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1143,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1526,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 26
+  },
+  {
+   "t": 37,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 11,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 2,
+   "px": 462,
+   "py": 1153,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 2087,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1183,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 725,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1372,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1777,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 28
+  },
+  {
+   "t": 39,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 11,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 3,
+   "px": 462,
+   "py": 1197,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 2046,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1226,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 758,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1409,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1819,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 30
+  },
+  {
+   "t": 41,
+   "lv": 20,
+   "hp": 86,
+   "straps": 20,
+   "kills": 12,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 4,
+   "px": 571,
+   "py": 1434,
+   "mines": {
+    "near200": 6,
+    "armed": 1,
+    "armedIn80": 1
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 1847,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1451,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1013,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1669,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2077,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 33
+  },
+  {
+   "t": 43,
+   "lv": 20,
+   "hp": 86,
+   "straps": 23,
+   "kills": 14,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 5,
+   "px": 554,
+   "py": 1511,
+   "mines": {
+    "near200": 2,
+    "armed": 1,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 1769,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1528,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1067,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1728,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2146,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 35
+  },
+  {
+   "t": 45,
+   "lv": 20,
+   "hp": 86,
+   "straps": 23,
+   "kills": 15,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 6,
+   "px": 597,
+   "py": 1596,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 1703,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1611,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1162,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1823,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2240,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 37
+  },
+  {
+   "t": 47,
+   "lv": 20,
+   "hp": 86,
+   "straps": 23,
+   "kills": 16,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 426,
+   "py": 1410,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 1830,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1442,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 915,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1580,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2017,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 39
+  },
+  {
+   "t": 49,
+   "lv": 20,
+   "hp": 86,
+   "straps": 23,
+   "kills": 18,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 8,
+   "px": 515,
+   "py": 1247,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 2010,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1268,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 830,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1479,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1882,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 41
+  },
+  {
+   "t": 51,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 21,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 8,
+   "px": 540,
+   "py": 1057,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 2200,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1077,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 714,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1336,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1709,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 43
+  },
+  {
+   "t": 53,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 23,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 513,
+   "py": 804,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 2440,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 830,
+     "dToBase": 2531
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 563,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1125,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1462,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 45
+  },
+  {
+   "t": 55,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 25,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 532,
+   "py": 595,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 2648,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 622,
+     "dToBase": 2529
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 546,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 998,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1277,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 47
+  },
+  {
+   "t": 57,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 27,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 475,
+   "py": 476,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 2754,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 538,
+     "dToBase": 2489
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 506,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 883,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1145,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 49
+  },
+  {
+   "t": 59,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 29,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 441,
+   "py": 535,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-1",
+    "d": 2690,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 627,
+     "dToBase": 2441
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 460,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 889,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1184,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 51
+  },
+  {
+   "t": 61,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 30,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 542,
+   "py": 361,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2671,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 462,
+     "dToBase": 2375
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 608,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 884,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1075,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 54
+  },
+  {
+   "t": 63,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 30,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 746,
+   "py": 157,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2446,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 225,
+     "dToBase": 2293
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 884,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1020,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1044,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 56
+  },
+  {
+   "t": 65,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 30,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 904,
+   "py": 8,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2282,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 74,
+     "dToBase": 2212
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1096,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1163,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1079,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 58
+  },
+  {
+   "t": 67,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 30,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 990,
+   "py": 7,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2196,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 70,
+     "dToBase": 2130
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1170,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1249,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1152,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 60
+  },
+  {
+   "t": 69,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 30,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 1073,
+   "py": 7,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2113,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 69,
+     "dToBase": 2048
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1242,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1332,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1225,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 62
+  },
+  {
+   "t": 71,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 30,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 1165,
+   "py": 7,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2021,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 74,
+     "dToBase": 1950
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1323,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1424,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1307,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 65
+  },
+  {
+   "t": 73,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 30,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 1228,
+   "py": 7,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1958,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 68,
+     "dToBase": 1893
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1380,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1487,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1365,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 67
+  },
+  {
+   "t": 75,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 34,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 9,
+   "px": 1118,
+   "py": 39,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 2068,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 240,
+     "dToBase": 1834
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1267,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1378,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1280,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 69
+  },
+  {
+   "t": 77,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 34,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 1276,
+   "py": 11,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1910,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 83,
+     "dToBase": 1831
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1421,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1535,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1411,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 71
+  },
+  {
+   "t": 79,
+   "lv": 21,
+   "hp": 86,
+   "straps": 23,
+   "kills": 34,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 1291,
+   "py": 6,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1896,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 67,
+     "dToBase": 1831
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1436,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1549,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1422,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 73
+  },
+  {
+   "t": 81,
+   "lv": 22,
+   "hp": 86,
+   "straps": 23,
+   "kills": 36,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 10,
+   "px": 1307,
+   "py": 0,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1879,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 60,
+     "dToBase": 1820
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1454,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1566,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1435,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 75
+  },
+  {
+   "t": 83,
+   "lv": 22,
+   "hp": 86,
+   "straps": 23,
+   "kills": 37,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 9,
+   "px": 1402,
+   "py": -84,
+   "mines": {
+    "near200": 5,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1785,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 70,
+     "dToBase": 1780
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1575,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1662,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1494,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 77
+  },
+  {
+   "t": 85,
+   "lv": 22,
+   "hp": 86,
+   "straps": 23,
+   "kills": 38,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 8,
+   "px": 1392,
+   "py": -80,
+   "mines": {
+    "near200": 5,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1795,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 86,
+     "dToBase": 1739
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1565,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1652,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1486,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 79
+  },
+  {
+   "t": 87,
+   "lv": 22,
+   "hp": 86,
+   "straps": 23,
+   "kills": 41,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 6,
+   "px": 1414,
+   "py": -98,
+   "mines": {
+    "near200": 4,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1774,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 113,
+     "dToBase": 1697
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1593,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1675,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1500,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 81
+  },
+  {
+   "t": 90,
+   "lv": 22,
+   "hp": 86,
+   "straps": 23,
+   "kills": 46,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 4,
+   "px": 1308,
+   "py": -71,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1879,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 258,
+     "dToBase": 1626
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1486,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1568,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1409,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 83
+  },
+  {
+   "t": 92,
+   "lv": 22,
+   "hp": 86,
+   "straps": 23,
+   "kills": 46,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 1433,
+   "py": -111,
+   "mines": {
+    "near200": 4,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1756,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 229,
+     "dToBase": 1545
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1615,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1695,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1515,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 85
+  },
+  {
+   "t": 94,
+   "lv": 22,
+   "hp": 86,
+   "straps": 23,
+   "kills": 46,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 1641,
+   "py": -40,
+   "mines": {
+    "near200": 1,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1545,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 86,
+     "dToBase": 1463
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1777,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1900,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1734,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 87
+  },
+  {
+   "t": 96,
+   "lv": 22,
+   "hp": 86,
+   "straps": 23,
+   "kills": 46,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 1735,
+   "py": -34,
+   "mines": {
+    "near200": 1,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1451,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 72,
+     "dToBase": 1382
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1863,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 1994,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1827,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 89
+  },
+  {
+   "t": 98,
+   "lv": 22,
+   "hp": 86,
+   "straps": 23,
+   "kills": 46,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 1813,
+   "py": -34,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1373,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 74,
+     "dToBase": 1302
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1936,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 2072,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1901,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 91
+  },
+  {
+   "t": 100,
+   "lv": 22,
+   "hp": 86,
+   "straps": 23,
+   "kills": 46,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 1879,
+   "py": -28,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1307,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 72,
+     "dToBase": 1236
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1997,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 2138,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1966,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 93
+  },
+  {
+   "t": 102,
+   "lv": 22,
+   "hp": 86,
+   "straps": 23,
+   "kills": 46,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 1948,
+   "py": -28,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1238,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 70,
+     "dToBase": 1170
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 2062,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 2207,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2033,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 96
+  },
+  {
+   "t": 104,
+   "lv": 23,
+   "hp": 86,
+   "straps": 23,
+   "kills": 50,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 6,
+   "px": 1870,
+   "py": 0,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1316,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 200,
+     "dToBase": 1117
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 1979,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 2129,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 1965,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 98
+  },
+  {
+   "t": 106,
+   "lv": 23,
+   "hp": 86,
+   "straps": 23,
+   "kills": 50,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 2091,
+   "py": 55,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1097,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 70,
+     "dToBase": 1084
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 2176,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 2351,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2193,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 100
+  },
+  {
+   "t": 108,
+   "lv": 23,
+   "hp": 67,
+   "straps": 23,
+   "kills": 51,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 2073,
+   "py": 50,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1115,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 70,
+     "dToBase": 1084
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 2160,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 2333,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2174,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 102
+  },
+  {
+   "t": 110,
+   "lv": 23,
+   "hp": 48,
+   "straps": 23,
+   "kills": 51,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 2047,
+   "py": 27,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1140,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 69,
+     "dToBase": 1084
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 2141,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 2306,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2143,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 104
+  },
+  {
+   "t": 112,
+   "lv": 23,
+   "hp": 10,
+   "straps": 23,
+   "kills": 52,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 6,
+   "px": 2161,
+   "py": 146,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 1038,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 170,
+     "dToBase": 1084
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 2223,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 2425,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2286,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 107
+  },
+  {
+   "t": 114,
+   "lv": 23,
+   "hp": 10,
+   "straps": 23,
+   "kills": 53,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 6,
+   "px": 2332,
+   "py": 260,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 897,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 336,
+     "dToBase": 1049
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 2371,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 2605,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2485,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 109
+  },
+  {
+   "t": 116,
+   "lv": 23,
+   "hp": 10,
+   "straps": 23,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 6,
+   "px": 2506,
+   "py": 141,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 698,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 364,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 2563,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 2769,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2615,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 111
+  },
+  {
+   "t": 118,
+   "lv": 23,
+   "hp": 10,
+   "straps": 23,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 6,
+   "px": 2571,
+   "py": 196,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 649,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 447,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 2618,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 2838,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2693,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 113
+  },
+  {
+   "t": 120,
+   "lv": 23,
+   "hp": 10,
+   "straps": 23,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 6,
+   "px": 2732,
+   "py": 35,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 456,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 558,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 2805,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 2992,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2810,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 115
+  },
+  {
+   "t": 122,
+   "lv": 23,
+   "hp": 10,
+   "straps": 23,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 6,
+   "px": 2817,
+   "py": -50,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 371,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 641,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 2906,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 3076,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2877,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 117
+  },
+  {
+   "t": 124,
+   "lv": 23,
+   "hp": 10,
+   "straps": 23,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 6,
+   "px": 2932,
+   "py": -103,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 269,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 761,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 3031,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 3192,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 2981,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 119
+  },
+  {
+   "t": 126,
+   "lv": 23,
+   "hp": 10,
+   "straps": 23,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 6,
+   "px": 3061,
+   "py": -246,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 263,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 914,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 3191,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 3327,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 3090,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 121
+  },
+  {
+   "t": 128,
+   "lv": 23,
+   "hp": 10,
+   "straps": 24,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 3142,
+   "py": -292,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 281,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1005,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 3282,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 3413,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 3168,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 123
+  },
+  {
+   "t": 128,
+   "lv": 23,
+   "hp": 10,
+   "straps": 24,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 3142,
+   "py": -292,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 281,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1005,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 3282,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 3413,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 3168,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 125
+  },
+  {
+   "t": 130,
+   "lv": 23,
+   "hp": 10,
+   "straps": 24,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 3234,
+   "py": -308,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 298,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1098,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 3375,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 3505,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 3258,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 128
+  },
+  {
+   "t": 132,
+   "lv": 23,
+   "hp": 10,
+   "straps": 24,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 3381,
+   "py": -246,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 303,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1227,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 3501,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 3647,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 3410,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 130
+  },
+  {
+   "t": 134,
+   "lv": 23,
+   "hp": 10,
+   "straps": 24,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 3505,
+   "py": -246,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 394,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1348,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 3621,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 3771,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 3533,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 132
+  },
+  {
+   "t": 136,
+   "lv": 23,
+   "hp": 10,
+   "straps": 24,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 3653,
+   "py": -159,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 489,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1484,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 3747,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 3915,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 3689,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 134
+  },
+  {
+   "t": 138,
+   "lv": 23,
+   "hp": 10,
+   "straps": 24,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 3836,
+   "py": 24,
+   "mines": {
+    "near200": 3,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 651,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1659,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 3894,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 4095,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 3894,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 136
+  },
+  {
+   "t": 140,
+   "lv": 23,
+   "hp": 10,
+   "straps": 24,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 3867,
+   "py": 81,
+   "mines": {
+    "near200": 4,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 688,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1693,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 3917,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 4127,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 3934,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 138
+  },
+  {
+   "t": 142,
+   "lv": 23,
+   "hp": 10,
+   "straps": 24,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 3867,
+   "py": 299,
+   "mines": {
+    "near200": 1,
+    "armed": 1,
+    "armedIn80": 1
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 750,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1719,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 3894,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 4138,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 3975,
+     "dToBase": 2655
+    }
+   ],
+   "report": null,
+   "real": 140
+  },
+  {
+   "t": 144,
+   "lv": 23,
+   "hp": 0,
+   "straps": 24,
+   "kills": 54,
+   "basesCaptured": 0,
+   "basesTotal": 4,
+   "armory": false,
+   "hospital": false,
+   "police": false,
+   "castleBossAlive": false,
+   "returnCircle": false,
+   "gameWon": false,
+   "gameOver": false,
+   "ghost": null,
+   "menu": false,
+   "enemies": 7,
+   "px": 3888,
+   "py": 470,
+   "mines": {
+    "near200": 0,
+    "armed": 0,
+    "armedIn80": 0
+   },
+   "nearestBase": {
+    "id": "base-0",
+    "d": 853,
+    "dwell": 0,
+    "status": "open"
+   },
+   "escorts": [
+    {
+     "baseId": "base-0",
+     "dFromMe": 1778,
+     "dToBase": 1009
+    },
+    {
+     "baseId": "base-1",
+     "dFromMe": 3905,
+     "dToBase": 2579
+    },
+    {
+     "baseId": "base-2",
+     "dFromMe": 4175,
+     "dToBase": 2955
+    },
+    {
+     "baseId": "base-3",
+     "dFromMe": 4035,
+     "dToBase": 2655
+    }
+   ],
+   "report": {
+    "outcome": "death",
+    "cause": "変異体(狩猟型)の落下攻撃"
+   },
+   "real": 142
+  }
+ ],
+ "errors": [],
+ "navigated": 0
+}

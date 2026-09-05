@@ -1,43 +1,65 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { shallow } from 'zustand/shallow';
 import { formatTime } from '../utils/renderUtils';
-import { getWeaponShortName, hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
+import { hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
 import { spritePath } from '../utils/spriteLoader';
-import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
 import VitalsOrb from './VitalsOrb';
+import { NpcDialogue } from './NpcDialogue';
+import SubquestHud from './SubquestHud';
+import { LowHpVignette } from './LowHpVignette';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
-import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
+import DirectorLine from './DirectorLine';
+import { getSelectedStageId } from '../data/progress';
+import { getEventQuestConfig } from '../utils/eventQuest';
 
-// 背負い刀と同じ形状データをそのまま縮小して描くHUDアイコン。背面の刀と
-// 同じ角度で斜めに回転させる(KATANA_BACK_ROT_DEG と一致)。村雨はシルバー。
-const katanaHex = (c: number) => '#' + c.toString(16).padStart(6, '0');
-const KATANA_ICON_ROT_DEG = 32;
-const KatanaIcon: React.FC<{ size?: number; variant?: KatanaVariant }> = ({ size = 26, variant = 'katana' }) => {
-  const w = size * 0.62;
-  const rects = useMemo(() => buildKatanaShape(1, variant), [variant]);
+// 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-11・B4): S5だけの先行条件(拠点2か所確保)の掲示。
+// サブクエスト欄の最上段に[拠点確保 n/2]。§2-7と同じ「メイン扱い」の色・同じ別コンポーネント
+// (state.subquestsには触れない)。レスキュー出現(rescueSpawnedAt>0またはstatusがhiddenを離れた)と
+// ともに消え、以後はRescueQuestGoalPill(§2-7)に置き換わる。basesRequired未設定のステージ(S1/S3/S4)
+// では出さない(getEventQuestConfigはステージ設定の静的値=ラン中に変わらないため直接読む。
+// GameOverScreen/DebugOverlayのgetSelectedStageId直呼びと同じ作法)。
+const RescueBasesGatePill: React.FC = () => {
+  const status = useGameStore(s => s.eventQuestNpc.status);
+  const spawnedOnce = useGameStore(s => s.rescueSpawnedAt > 0);
+  const captured = useGameStore(s => s.basesEverCaptured);
+  const basesRequired = getEventQuestConfig(getSelectedStageId())?.basesRequired;
+  if (basesRequired === undefined || status !== 'hidden' || spawnedOnce) return null;
+  const n = Math.min(captured, basesRequired);
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
-      <g transform={`rotate(${KATANA_ICON_ROT_DEG} ${size / 2} ${size / 2}) translate(${(size - w) / 2} 0)`}>
-        {rects.map((r, i) => (
-          <rect
-            key={i}
-            x={r.x * w}
-            y={r.y * size}
-            width={r.w * w}
-            height={r.h * size}
-            fill={katanaHex(r.color)}
-            fillOpacity={r.alpha}
-          />
-        ))}
-      </g>
-    </svg>
+    <div
+      className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums"
+      style={{ color: '#facc15' }}
+    >
+      {`[拠点確保 ${n}/${basesRequired}]`}
+    </div>
   );
 };
 
-const BOSS_WARN_LEAD = 12 * 1000;
+// 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-7・B3): 城ボスの出現アテンション後に出す黄色い討伐行。
+// v1の受領制ピル(EventQuestPill・eventQuestActive等)はv2でこの表示に置き換わるため撤去(§2-14)。
+// 表示条件は「このランでクエストが進行中(rescueClearedAt>0・納品未成立)」かつ
+// 「アテンションが実際に張られた(castleAttnDoneAt>0)」のAND(§2-7確定)。
+// 購読はプリミティブ4つだけを個別に引く(オブジェクト購読にすると warping 中の毎フレーム座標更新で
+// 60fps再描画になる=React再描画規律違反・§2-7「★購読の形を確定する」)。
+const RescueQuestGoalPill: React.FC = () => {
+  const attnDone = useGameStore(s => s.castleAttnDoneAt > 0);
+  const rescued = useGameStore(s => s.rescueClearedAt > 0);
+  const qStatus = useGameStore(s => s.eventQuestNpc.status);
+  const bossKilled = useGameStore(s => s.finaleDefeated);
+  const inProgress = qStatus === 'accepted' || qStatus === 'warping' || qStatus === 'delivering';
+  if (!attnDone || !rescued || !inProgress) return null;
+  return (
+    <div
+      className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums"
+      style={{ color: '#facc15' }}
+    >
+      {bossKilled ? '[サンプルを届ける]' : '[搬送体(変異)の討伐 0/1]'}
+    </div>
+  );
+};
 
 const GameHUD: React.FC = () => {
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
@@ -49,6 +71,8 @@ const GameHUD: React.FC = () => {
     ammoShotgun: s.player.ammoShotgun,
     ammoRifle: s.player.ammoRifle,
     ammoPhill: s.player.ammoPhill,
+    ammoGlauncher: s.player.ammoGlauncher, // v0.25.4000: 独立プール化
+
     subWeapons: s.player.subWeapons,
     subWeaponLevels: s.player.subWeaponLevels,
     straps: s.player.straps,
@@ -59,6 +83,7 @@ const GameHUD: React.FC = () => {
   );
   const setActiveWeapon = useGameStore(state => state.setActiveWeapon);
   const lastWeaponGet = useGameStore(state => state.lastWeaponGet);
+  const endingStage = useGameStore(state => state.farBackdrop === 'ending'); // UI系非表示(社長指示2026-08-28)
   // 時計/ボス警告は1秒粒度で十分。秒で購読し、毎フレーム再描画を避ける。
   const gameTime = useGameStore(state => Math.floor(state.gameTime / 1000)) * 1000;
   // 個別フィールドを購読(rhythm全体を購読すると resync の firstBeatAt 更新で毎フレーム再描画になり重い)。
@@ -70,20 +95,27 @@ const GameHUD: React.FC = () => {
   // イベント発生告知バナー(コンボ表示付近。コンボがあればその下にずらす)。
   const eventBannerText = useGameStore(state => state.eventBannerText);
   const eventBannerUntil = useGameStore(state => state.eventBannerUntil);
+  // ★v0.25.3743: EX(フィル戦)勝利の黒フェード(boolean購読=1回だけ変化・毎フレーム再描画なし)。
+  const exOutroFading = useGameStore(state => state.exOutroFading);
   // 配列ではなく派生値だけ購読(敵の移動で配列参照が毎フレーム変わっても、件数/ボス有無が
   // 変わらなければ再描画しない)。FPS/負荷表示は PerfOverlay へ分離済み。
-  const bossActive = useGameStore(state => state.enemies.some(e => e.type === 'giantbat'));
-
   const formattedTime = formatTime(gameTime / 1000);
-
-  const bossImminent =
-    !bossActive &&
-    gameTime >= FINALE_BOSS_TIME_MS - BOSS_WARN_LEAD &&
-    gameTime < FINALE_BOSS_TIME_MS;
 
   const itemGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < 5000;
   const isTreasureGet = lastWeaponGet?.kind === 'treasure';
   const isDataGet = lastWeaponGet?.kind === 'data'; // 研究所の重要データ確保(武器/トレジャーと同じバナーUI)
+  // 寄り道POIの入手(PACING_PUZZLE.md §6.24-UX 確定要件2): 警察署スキル/武器庫装備/病院ワクチンを
+  // **この同じトースト枠**で出す(「何を貰ったか」と「それが何をするか」を同じ場所で読ませる)。
+  // 説明文(desc)/但し書き(note)は store が既存定義(SKILLS・equipmentDescription)から詰めてくる。
+  const poiGetKind =
+    lastWeaponGet?.kind === 'poi-skill' || lastWeaponGet?.kind === 'poi-equip' || lastWeaponGet?.kind === 'poi-vaccine'
+      ? lastWeaponGet.kind
+      : null;
+  const poiGetIcon = poiGetKind === 'poi-skill' ? '✨' : poiGetKind === 'poi-equip' ? '🎖️' : '💉';
+  const poiGetLabel =
+    poiGetKind === 'poi-skill' ? 'スキルを入手！' : poiGetKind === 'poi-equip' ? '装備を入手！' : 'ワクチンを入手！';
+  const poiGetLabelClass =
+    poiGetKind === 'poi-skill' ? 'text-sky-200/85' : poiGetKind === 'poi-equip' ? 'text-amber-100/85' : 'text-emerald-100/85';
 
   const toggleBgm = (e?: React.PointerEvent<HTMLButtonElement>) => {
     e?.preventDefault();
@@ -93,29 +125,43 @@ const GameHUD: React.FC = () => {
     setAudioMuted(next);
   };
 
+  // エンディングステージはUI系を全部出さない(社長指示2026-08-28「エンディングはUI系非表示」。
+  // boolean派生の購読=再レンダー規律どおり。フック群の後の早期returnなのでReactの規則にも適合)。
+  if (endingStage) return null;
+
   return (
     <div className="absolute inset-0 z-40 pointer-events-none text-white">
+      <LowHpVignette />
+      {/* ★v0.25.3743(社長指示): フィル撃破イベント後、帰還サークル無しでそのままフェードアウト
+          →EXエンディングへ。CSSアニメ1.1秒(状態は1回の切替のみ=毎フレーム再描画なし)。 */}
+      {exOutroFading && (
+        <div
+          className="absolute inset-0 z-[90] bg-black"
+          style={{ animation: 'exOutroFadeIn 1.1s ease-in forwards' }}
+        >
+          <style>{'@keyframes exOutroFadeIn{from{opacity:0}to{opacity:1}}'}</style>
+        </div>
+      )}
       {/* Acquisition popup — shows for 5s after picking up notable items. */}
       {itemGetVisible && (
         <div
           className="absolute left-1/2 -translate-x-1/2"
-          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 118px)' }}
+          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 118px)', maxWidth: 'min(88vw, 360px)' }}
         >
-          <div
-            className={`glass-panel rounded-2xl px-4 py-2 flex items-center gap-2 ring-2 shadow-lg animate-pulse ${
-              isTreasureGet ? 'ring-amber-300/70' : isDataGet ? 'ring-emerald-300/70' : 'ring-sky-400/70'
-            }`}
-          >
-            {!isTreasureGet && !isDataGet && hasWeaponIcon(lastWeaponGet!.weaponKey)
+          <div className="glass-pill px-4 py-2 flex items-center gap-2 animate-pulse">
+            {isTreasureGet && lastWeaponGet!.treasureVariant
+              // トレジャーは拾った実物の画像(treasure-N)を表示(社長指示)。variant が無ければ💎にフォールバック。
+              ? <img src={spritePath(`treasure-${lastWeaponGet!.treasureVariant}`)} alt="" className="w-7 h-7 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+              : !isTreasureGet && !isDataGet && !poiGetKind && hasWeaponIcon(lastWeaponGet!.weaponKey)
               ? <img src={spritePath(weaponIconName(lastWeaponGet!.weaponKey!))} alt="" className="w-7 h-7 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
-              : <span className="text-xl">{isTreasureGet ? '💎' : isDataGet ? '💾' : '🔫'}</span>}
+              : <span className="text-xl">{poiGetKind ? poiGetIcon : isTreasureGet ? '💎' : isDataGet ? '💾' : '🔫'}</span>}
             <div className="leading-tight">
               <div
                 className={`text-[10px] font-bold tracking-wide ${
-                  isTreasureGet ? 'text-amber-100/85' : isDataGet ? 'text-emerald-100/85' : 'text-sky-200/80'
+                  poiGetKind ? poiGetLabelClass : isTreasureGet ? 'text-amber-100/85' : isDataGet ? 'text-emerald-100/85' : 'text-purple-200/80'
                 }`}
               >
-                {isTreasureGet ? 'トレジャーを入手！' : isDataGet ? 'データを確保！' : '新しい銃器を入手！'}
+                {poiGetKind ? poiGetLabel : isTreasureGet ? 'TREASURE!' : isDataGet ? 'データを確保！' : '新しい銃器を入手！'}
               </div>
               <div
                 className="text-sm font-bold"
@@ -123,6 +169,14 @@ const GameHUD: React.FC = () => {
               >
                 {lastWeaponGet!.name}
               </div>
+              {/* 効果説明1行(寄り道POIの入手のみ)。「何を貰ったか」だけでは何が起きたか分からない
+                  =§6.24-UXの穴5への対応。但し書き(note)は警察署スキルの「この出撃のみ」。 */}
+              {lastWeaponGet!.desc && (
+                <div className="mt-0.5 text-[11px] font-medium text-white/75" style={{ whiteSpace: 'normal' }}>
+                  {lastWeaponGet!.desc}
+                  {lastWeaponGet!.note && <span className="ml-1 text-amber-200/85">({lastWeaponGet!.note})</span>}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -141,13 +195,23 @@ const GameHUD: React.FC = () => {
               : 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
             left: 'max(env(safe-area-inset-left), 18px)',
             transition: 'top 0.25s ease',
+            // 長い文言(護衛が居ない出撃でPOIの通信がここへフォールバックする時)でも画面外へはみ出さない。
+            // 既存のバナーはどれも短いので見た目は変わらない。
+            maxWidth: 'min(70vw, 320px)',
           }}
         >
           <div
-            className="glass-pill px-3 py-1 text-[13px] font-bold tracking-wide"
+            // §6.38 B4「退場通知」: 賞金首の退場だけ、出現バナーより控えめな小さい見た目にする
+            // (社長指示「小さく『賞金首は去った』通知」)。他のバナーは既存の見た目のまま
+            // (色分けの既存規約=text内容キーで判定する流儀に1本追加しただけ・新機構は作らない)。
+            className={eventBannerText === '賞金首は去った'
+              ? 'glass-pill px-2 py-0.5 text-[11px] font-semibold tracking-wide'
+              : 'glass-pill px-3 py-1 text-[13px] font-bold tracking-wide'}
             style={{
-              color: /成功|達成|救難/.test(eventBannerText) ? '#bbf7d0' : /危険|デンジャー|汚染|深層/.test(eventBannerText) ? '#fecaca' : '#bae6fd',
-              border: `1px solid ${/成功|達成|救難/.test(eventBannerText) ? 'rgba(74,222,128,0.6)' : /危険|デンジャー|汚染|深層/.test(eventBannerText) ? 'rgba(239,68,68,0.6)' : 'rgba(56,189,248,0.6)'}`,
+              color: eventBannerText === '賞金首は去った' ? 'rgba(186,230,253,0.75)'
+                : /成功|達成|救難|凌いだ/.test(eventBannerText) ? '#bbf7d0' : /危険|デンジャー|汚染|深層|検知/.test(eventBannerText) ? '#fecaca' : '#bae6fd',
+              border: `1px solid ${eventBannerText === '賞金首は去った' ? 'rgba(56,189,248,0.35)'
+                : /成功|達成|救難|凌いだ/.test(eventBannerText) ? 'rgba(74,222,128,0.6)' : /危険|デンジャー|汚染|深層|検知/.test(eventBannerText) ? 'rgba(239,68,68,0.6)' : 'rgba(56,189,248,0.6)'}`,
               textShadow: '0 1px 0 rgba(0,0,0,0.9)',
             }}
           >
@@ -182,37 +246,50 @@ const GameHUD: React.FC = () => {
         </div>
       )}
 
-      {/* Timer(中央) */}
+      {/* NPCリアルタイムセリフ(コンボ/アテンションの下・優先度はその次)。 */}
+      <NpcDialogue />
+
+      {/* Timer(中央)=両サイドフェードの黒背景(枠なし) */}
       <div
-        className="absolute left-1/2 -translate-x-1/2 hud-translucent rounded-full px-3 py-1 text-[13px] font-semibold tabular-nums"
+        className="absolute left-1/2 -translate-x-1/2 glass-pill-both px-5 py-1 text-[13px] font-semibold tabular-nums"
         style={{ top: 'max(env(safe-area-inset-top), 8px)' }}
       >
         {formattedTime}
       </div>
-      {/* スクラップ(右) */}
+      {/* v0.25.3728: 戦況ライン(時計の直下)。色+脈動=コマ/満ち幅=ランク/紫=紅き夜/金縁=ボス戦。 */}
+      <DirectorLine />
+      {/* スクラップ(右)=右フェード(枠なし) */}
       <div
-        className="absolute hud-translucent rounded-full px-3 py-1 text-[13px] font-semibold tabular-nums"
+        className="absolute glass-pill px-3 py-1 text-[13px] font-semibold tabular-nums"
         style={{
           top: 'max(env(safe-area-inset-top), 8px)',
           right: 'max(env(safe-area-inset-right), 12px)'
         }}
       >
-        🔩 {player.straps}
+        {/* v0.25.3509(社長支給): スクラップは絵文字ではなく専用アイコン。数字とベースラインを揃える。 */}
+        <span className="inline-flex items-center gap-1">
+          <img src={spritePath('scrap-icon')} alt="" className="w-[15px] h-[15px] object-contain shrink-0" style={{ imageRendering: 'pixelated' }} draggable={false} />
+          {player.straps}
+        </span>
+      </div>
+      {/* 右上・スクラップの下の「クエスト列」(research/SUBQUESTS.md v3裁定Q2)。
+          二人組クエストv2の黄色い討伐行(RescueQuestGoalPill)と自動補充のサブクエスト(SubquestHud)を
+          同じ縦積みに並べる。どちらも非表示の時は行ごと消えるので隙間は出ない(絶対配置は列側が1つ持つ)。 */}
+      {/* ★v0.25.3649(成果物監査・中4): whitespace-nowrap=長い条件文(ハンター30秒等)が狭い画角で
+          折り返して列が縦に伸び、下のStatsHud(撃破/DMG表示・オプション)へ届くのを防ぐ。 */}
+      <div
+        className="absolute flex flex-col items-end gap-1 whitespace-nowrap"
+        style={{
+          top: 'calc(max(env(safe-area-inset-top), 8px) + 34px)',
+          right: 'max(env(safe-area-inset-right), 12px)',
+        }}
+      >
+        <RescueBasesGatePill />
+        <RescueQuestGoalPill />
+        <SubquestHud />
       </div>
 
-      {/* Finale boss warning / arrival banner */}
-      {(bossImminent || bossActive) && (
-        <div
-          className={`absolute left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-[13px] font-bold ${
-            bossActive
-              ? 'bg-red-700/80 text-red-100 animate-pulse'
-              : 'bg-red-900/70 text-red-200 animate-pulse'
-          }`}
-          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 56px)' }}
-        >
-          {bossActive ? '最終ボス出現！' : 'まもなく最終ボスが現れる…'}
-        </div>
-      )}
+      {/* フィナーレボスの予告/常時バナーは廃止。出現時の告知は city/castle 側の eventBanner「危険変異体出現」に一本化。 */}
 
       {/* バイタル: HP球体 + 外周EXPリング(被弾点滅)。左上に配置(タイマーが中央へ移った分、上へ)。 */}
       <div
@@ -225,45 +302,68 @@ const GameHUD: React.FC = () => {
         <VitalsOrb />
       </div>
 
-      {/* 装備中スキル(サブウェポン)のチップ。武器パネルの上に並べる。 */}
-      {equippedSkills.length > 0 && (
-        <div
-          className="absolute flex flex-wrap gap-1 max-w-[62vw]"
-          style={{
-            left: 'max(env(safe-area-inset-left), 12px)',
-            bottom: 'calc(max(env(safe-area-inset-bottom), 12px) + 66px)'
-          }}
-        >
-          {equippedSkills.map(key => (
-            <div
-              key={key}
-              className="hud-translucent rounded-full px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1"
-            >
-              <span className="text-sky-200/90">{subWeaponDisplayName(key)}</span>
-              <span className="text-white/45 tabular-nums">Lv{player.subWeaponLevels[key] ?? 1}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Equipped weapons + ammo. Guns are tappable to switch the active one. */}
+      {/* 右側にまとめた装備UI: 装備スキル(詳細) + 武器(アイコンのみ・銃はタップで切替)。下端から上へ縦並び。 */}
       {(() => {
         const guns = player.weapons.filter(w => !w.isMelee);
         const melee = player.weapons.find(w => w.isMelee);
         const activeGun = guns.find(w => w.id === player.activeWeaponId) ?? guns[0];
         const ammoFieldFor = (t: AmmoType) =>
-          t === 'handgun' ? player.ammoHandgun : t === 'shotgun' ? player.ammoShotgun : t === 'phill' ? player.ammoPhill : player.ammoRifle;
+          t === 'handgun' ? player.ammoHandgun : t === 'shotgun' ? player.ammoShotgun : t === 'phill' ? player.ammoPhill : t === 'glauncher' ? player.ammoGlauncher : player.ammoRifle; // v0.25.4000: グレラン独立プール
+        const murasameEquipped = player.subWeapons.includes('murasame');
+        const katanaEquipped = murasameEquipped || player.subWeapons.includes('katana');
+        const whipEquipped = !katanaEquipped && player.subWeapons.includes('whip');
         return (
           <div
-            className="absolute"
+            className="absolute flex flex-col items-end gap-1.5 pointer-events-none"
             style={{
-              left: 'max(env(safe-area-inset-left), 12px)',
-              bottom: 'calc(max(env(safe-area-inset-bottom), 12px) + 8px)'
+              right: 'max(env(safe-area-inset-right), 12px)',
+              top: '58%',
+              transform: 'translateY(-50%)'
             }}
           >
-            <div className="hud-translucent rounded-2xl px-2.5 py-2 flex items-center gap-2">
-              {/* Gun slots — one per owned category; tap to switch. Shows
-                  装填弾 / 母数(リザーブ) and a reload indicator. */}
+            {/* 装備スキル(サブウェポン)= 装備の詳細。コンパクトに縦並び。 */}
+            {equippedSkills.length > 0 && (
+              <div className="flex flex-col items-end gap-1">
+                {equippedSkills.map(key => (
+                  <div
+                    key={key}
+                    className="glass-pill px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1"
+                  >
+                    <span className="text-purple-200/90">{subWeaponDisplayName(key)}</span>
+                    <span className="text-white/45 tabular-nums">Lv{player.subWeaponLevels[key] ?? 1}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 武器: アイコンのみ。銃=タップで切替(押せるボタン)/弾数のみ表示・名前なし。メレー=表示のみ。 */}
+            <div className="hud-translucent rounded-none p-1.5 flex flex-col items-end gap-1.5">
+              {/* メレー枠(切替なし=アイコン表示のみ)。刀/鞭装備時はそれを表示。 */}
+              {melee && (
+                <div
+                  className="w-11 h-11 rounded-none bg-purple-400/12 flex items-center justify-center text-lg"
+                  title={katanaEquipped ? (murasameEquipped ? '小烏丸' : '刀') : whipEquipped ? '鞭' : melee.name}
+                >
+                  {katanaEquipped
+                    // 刀/小烏丸(村雨)とも、背中に背負う鞘入り刀の絵(katana-item)をそのままアイコンへ流用(社長指示)。
+                    ? <img src={spritePath('katana-item')} alt="" className="w-9 h-9 object-contain" draggable={false} />
+                    // ★社長指示2026-08-24「武器アイコンも鞭にして」: 絵文字(➰)をやめ、実物の鞭の絵
+                    // (sprites/whip.png=在世界の鞭と同じ素材)を使う。素材は横長7:1なので、
+                    // 44pxの枠にそのまま入れると細い線になる ⇒ **斜めにして枠の対角へ通す**
+                    // (柄→しなりが読める向き。刀が katana-item を流用しているのと同じ発想)。
+                    : whipEquipped
+                      ? <img
+                          src={spritePath('whip')} alt=""
+                          className="w-10 max-w-none object-contain"
+                          style={{ imageRendering: 'pixelated', transform: 'rotate(-38deg) scale(1.45)' }}
+                          draggable={false}
+                        />
+                    : hasWeaponIcon(melee.key)
+                      ? <img src={spritePath(weaponIconName(melee.key!))} alt="" className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+                      : '🔪'}
+                </div>
+              )}
+              {/* 銃スロット(所持カテゴリごと1つ)。タップで切替。弾数=装填/リザーブのみ(名前なし)。 */}
               {guns.map(gun => {
                 const ammoType = gun.ammoType;
                 const reserve = ammoType ? ammoFieldFor(ammoType) : 0;
@@ -273,59 +373,31 @@ const GameHUD: React.FC = () => {
                 return (
                   <button
                     key={gun.id}
-                    onClick={() => setActiveWeapon(gun.id)}
-                    className={`pointer-events-auto flex items-center gap-2 rounded-xl px-1.5 py-1 transition-colors ${
-                      active ? 'bg-amber-500/25 ring-2 ring-amber-400/70' : 'bg-white/5 opacity-70'
+                    // タッチでの反応を良くする: onClick(touchend待ち＋クリック遅延＋微ドラッグで無効化)ではなく
+                    // onPointerDown で押した瞬間に切替。touchAction:manipulation でタップ遅延も除去(社長指示)。
+                    onPointerDown={(e) => { e.preventDefault(); setActiveWeapon(gun.id); }}
+                    style={{ touchAction: 'manipulation' }}
+                    className={`pointer-events-auto relative w-11 h-11 rounded-none flex items-center justify-center overflow-hidden transition-colors ${
+                      active ? 'bg-purple-500/25 ring-1 ring-purple-400/80' : dry ? 'bg-purple-400/5 opacity-50' : 'bg-purple-500/12 opacity-80'
                     }`}
                     title={gun.name}
+                    aria-label={gun.name}
                   >
-                    <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-base overflow-hidden ${
-                        dry ? 'bg-white/5 opacity-50' : 'bg-amber-500/20'
+                    {hasWeaponIcon(gun.key)
+                      ? <img src={spritePath(weaponIconName(gun.key!))} alt="" className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+                      : <span className="text-lg">🔫</span>}
+                    {/* 弾数バッジ(右下・小さく)。装填/リザーブ。 */}
+                    <span
+                      className={`absolute bottom-0 right-0.5 text-[9px] font-bold tabular-nums leading-none ${
+                        dry ? 'text-red-400 animate-pulse' : 'text-white'
                       }`}
+                      style={{ textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}
                     >
-                      {hasWeaponIcon(gun.key)
-                        ? <img src={spritePath(weaponIconName(gun.key!))} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
-                        : '🔫'}
-                    </div>
-                    <div className="leading-tight text-left">
-                      <div className="text-[10px] text-white/60 truncate max-w-[84px]">{gun.name}</div>
-                      <div
-                        className={`text-[13px] font-bold tabular-nums ${
-                          dry ? 'text-red-400 animate-pulse' : 'text-white'
-                        }`}
-                      >
-                        {mag}
-                        <span className="text-[10px] text-white/40">/{reserve}</span>
-                      </div>
-                    </div>
+                      {mag}<span className="text-[7px] text-white/45">/{reserve}</span>
+                    </span>
                   </button>
                 );
               })}
-              {/* Melee slot (always available; not switchable). 刀装備中は
-                  ナイフの代わりに刀を表示する。 */}
-              {melee && (() => {
-                const murasameEquipped = player.subWeapons.includes('murasame');
-                const katanaEquipped = murasameEquipped || player.subWeapons.includes('katana');
-                const katanaName = murasameEquipped ? '小烏丸' : '刀';
-                // 鞭を取得するとナイフ枠を鞭が占有(刀装備が優先)。ナイフ表示は消える。
-                const whipEquipped = !katanaEquipped && player.subWeapons.includes('whip');
-                return (
-                  <div className="flex items-center gap-1.5 pl-2 border-l border-white/10">
-                    <div
-                      className="w-9 h-9 rounded-xl bg-slate-400/15 flex items-center justify-center text-base"
-                      title={katanaEquipped ? katanaName : whipEquipped ? '鞭' : melee.name}
-                    >
-                      {katanaEquipped
-                        ? <KatanaIcon size={26} variant={murasameEquipped ? 'murasame' : 'katana'} />
-                        : whipEquipped ? '➰' : '🔪'}
-                    </div>
-                    <div className="text-[10px] text-white/60">
-                      {katanaEquipped ? katanaName : whipEquipped ? '鞭' : getWeaponShortName(melee.type)}
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
           </div>
         );
@@ -333,14 +405,14 @@ const GameHUD: React.FC = () => {
 
       {/* Stats(撃破/DMG/SCRAP)は StatsHud に分離(頻繁な再描画をHUD本体から切り離す)。 */}
 
-      {/* BGM toggle */}
+      {/* BGM toggle: 右下・一時停止(MobileControls の "II")のすぐ上に配置。 */}
       <button
         type="button"
         onPointerDown={toggleBgm}
         className="pointer-events-auto absolute w-9 h-9 rounded-full hud-translucent flex items-center justify-center text-white/70 active:text-white"
         style={{
-          right: 'max(env(safe-area-inset-right), 12px)',
-          top: 'calc(max(env(safe-area-inset-top), 8px) + 168px)'
+          right: 'max(env(safe-area-inset-right), 16px)',
+          bottom: 'calc(max(env(safe-area-inset-bottom), 24px) + 48px)'
         }}
         title={audioMuted ? 'Audio on' : 'Audio off'}
         aria-label={audioMuted ? 'Audio on' : 'Audio off'}

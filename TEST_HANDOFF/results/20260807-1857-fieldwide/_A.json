@@ -1,0 +1,98 @@
+[
+ {
+  "tag": "A-stage-1-z0.4",
+  "url": "http://localhost:5173/zombie/?smoke=1&stage=stage-1&zoomlock=0.4",
+  "zoom": 0.42,
+  "px": -17,
+  "py": -2100,
+  "enemies": 2,
+  "t": 21,
+  "errors": [
+   "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+  ]
+ },
+ {
+  "tag": "A-stage-2-z0.4",
+  "url": "http://localhost:5173/zombie/?smoke=1&stage=stage-2&zoomlock=0.4",
+  "zoom": 0.42,
+  "px": 0,
+  "py": -214,
+  "enemies": 4,
+  "t": 22,
+  "errors": [
+   "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+  ]
+ },
+ {
+  "tag": "A-stage-3-z0.4",
+  "url": "http://localhost:5173/zombie/?smoke=1&stage=stage-3&zoomlock=0.4",
+  "zoom": 0.419,
+  "px": 29,
+  "py": -2343,
+  "enemies": 2,
+  "t": 23,
+  "errors": [
+   "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+  ]
+ },
+ {
+  "tag": "A-stage-4-z0.4",
+  "url": "http://localhost:5173/zombie/?smoke=1&stage=stage-4&zoomlock=0.4",
+  "zoom": 0.419,
+  "px": -14,
+  "py": -2196,
+  "enemies": 1,
+  "t": 23,
+  "errors": [
+   "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+  ]
+ },
+ {
+  "tag": "A-stage-5-z0.4",
+  "url": "http://localhost:5173/zombie/?smoke=1&stage=stage-5&zoomlock=0.4",
+  "zoom": 0.419,
+  "px": -50,
+  "py": -1939,
+  "enemies": 1,
+  "t": 24,
+  "errors": [
+   "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+  ]
+ },
+ {
+  "tag": "A-stage-7-z0.4",
+  "url": "http://localhost:5173/zombie/?smoke=1&stage=stage-7&zoomlock=0.4",
+  "zoom": 0.4,
+  "px": -21,
+  "py": -1987,
+  "enemies": 1,
+  "t": 19,
+  "errors": [
+   "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+  ]
+ },
+ {
+  "tag": "A6-stage-2-z1.0",
+  "url": "http://localhost:5173/zombie/?smoke=1&stage=stage-2&zoomlock=1",
+  "zoom": 0.839,
+  "px": 0,
+  "py": -214,
+  "enemies": 4,
+  "t": 23,
+  "errors": [
+   "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+  ]
+ },
+ {
+  "tag": "A7-M0-z0.4",
+  "url": "http://localhost:5173/zombie/?smoke=1&zoomlock=0.4",
+  "zoom": 0.42,
+  "px": -18,
+  "py": -1493,
+  "enemies": 1,
+  "t": 16,
+  "errors": [
+   "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+  ]
+ }
+]

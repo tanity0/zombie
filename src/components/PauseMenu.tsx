@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { playSfx } from '../audio/audioManager';
+import { Ff7rButton } from './ff7r';
 
 interface PauseMenuProps {
   onResume: () => void;
@@ -26,33 +27,23 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
 
   return (
     <div
-      className="fixed inset-0 z-30 flex items-center justify-center px-6"
+      className="fixed inset-0 z-50 flex items-center justify-center px-6"
       style={{ background: 'rgba(11, 11, 18, 0.6)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
       onTouchStart={preventTouchEvent}
       onTouchMove={preventTouchEvent}
       onTouchEnd={preventTouchEvent}
     >
-      <div className="glass-panel rounded-3xl w-full max-w-sm overflow-hidden">
+      <div className="glass-panel rounded-none w-full max-w-sm overflow-hidden">
         <div className="px-5 pt-5 pb-3 text-center">
           <h2 className="text-xl font-semibold tracking-tight text-white">一時停止</h2>
         </div>
         <div className="px-5 pb-5 flex flex-col gap-2">
-          <button
-            onClick={() => { playSfx('ui-select'); onResume(); }}
-            className="w-full py-3 rounded-2xl text-base font-semibold text-white"
-            style={{
-              background: 'linear-gradient(180deg, rgba(96, 165, 250, 0.95), rgba(59, 130, 246, 0.95))',
-              boxShadow: '0 8px 24px rgba(59, 130, 246, 0.35)'
-            }}
-          >
+          <Ff7rButton onClick={() => { playSfx('ui-select'); onResume(); }} className="w-full" emphasis fade="both" paddingY="0.8rem">
             続ける
-          </button>
-          <button
-            onClick={() => { playSfx('ui-select'); onQuit(); }}
-            className="w-full py-3 rounded-2xl text-base font-semibold text-white/90 bg-white/10 border border-white/10"
-          >
+          </Ff7rButton>
+          <Ff7rButton onClick={() => { playSfx('ui-select'); onQuit(); }} className="w-full" fade="both" paddingY="0.8rem">
             メニューに戻る
-          </button>
+          </Ff7rButton>
           <p className="mt-1 text-[11px] text-white/50 text-center">
             ESC / P キーでも再開できます
           </p>

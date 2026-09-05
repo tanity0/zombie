@@ -1,0 +1,1346 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { OPENING_REVIVAL_LINES, OPENING_REVIVAL_TIMING } from '../data/openingRevivalSequence';
+import { rewindBgm } from '../audio/audioManager';
+import { trackLoad } from '../utils/loadProgress';
+// パン!SEはWebAudio(playSfx)ではなくHTMLAudioで鳴らす(v0.25.2050):
+// 実機でアリーナ音源(HTMLAudio)は鳴るのにplaySfx経路のパン!だけ無音だったため、
+// 確実に鳴る同じ仕組みに統一(コンテキスト解錠・バッファ非同期の罠を回避)。
+
+// オープニングシーン(社長支給): 引きのアリーナ→中央ステージの3人にカメラが寄りつつ
+// 正面→斜め→真横とアングルを切替(回り込み)→暗転→【射撃シーン(backstage)】→暗転で終了。
+// 素材は public/opening/(アングル3枚+キャラ3枚)と public/opening/shoot/(射撃シーンのコマ)。
+// アングル間は【シームレスなクロスフェード】(社長指示v0.25.2007: フェードイン/アウトが重なる切替。
+// 前アングルはズームを続けたまま表示し続け、次アングルがその上にフェードイン→完了で前を外す=ディゾルブ)。
+// アリーナ中はBGM2音源(op-arena-a/b)を同時ループ再生し、射撃シーンへの場面転換で止める(終端は短フェード)。
+// 3人(色あり=センター/両サイド=シルエット)は各アングルのステージ位置に合わせて配置(前向きビルボード)。
+// 縦画面では横長素材をレターボックス(横幅フィット)で全体を見せる。
+//
+// 射撃シーン(社長指示v0.25.2006): 暗転し切った後、場面転換=backstage(関係者出口)。
+// 撃つ子(ツインテのシルエット・左右反転済=銃は左向き)が右、主人公が左。
+// コマ順は社長指定: 撃つ子=1-3-4-5-2-6 / 主人公(被弾)=1-2-3-4-5。発砲(4)と被弾(2)を同期。
+// コマ画像は足元中心アンカーで共通キャンバスに焼いてあるので、src差し替えだけで芝居になる。
+//
+// 蘇生処置パート(OP最終ピース・OPENING_REVIVAL_SPEC.md): 射撃シーンが暗転し切った後、黒画面のまま
+// 心拍ループ(低音量HTMLAudio)+字幕会話(OPENING_REVIVAL_LINESを1行ずつ・話者名は絶対に出さない)を流し、
+// 最終行の後に一度だけの心拍→短フェードで finish()。台本尺は少数のsetTimeoutで刻む(毎フレーム更新なし)。
+// 音はWebAudio(playSfx)を使わず既存のHTMLAudio流儀(audioRef/panRef/stopAudio)に合わせる=実機でWebAudioだけ
+// 無音になる罠を回避(冒頭のパン!SEと同じ理由)。スキップ/破棄時は stopAudio+ids一括clearで残存させない。
+//
+// 【重要】ズームは CSS keyframe(コンポジタ駆動)。rAF毎フレームsetStateは残像不具合+React再描画禁止で不可。
+// フェーズ/コマ進行は少数のsetTimeoutのみ(毎フレーム更新なし)。
+
+const BASE = import.meta.env.BASE_URL;
+const A = (f: string) => `${BASE}opening/${f}`;
+// hero-blue: v0.25.2100で色ありドット絵素材に同名差し替え→旧素材のキャッシュ対策で一回きりのバスター付き
+// (再差し替え時はこの値を上げる。全openingアセットに毎版バスターを付けると版ごとに全再取得になるため個別対応)。
+const HERO = A('hero-blue.png?v=2101'), TWIN = A('sil-twin.png'), BOB = A('sil-bob.png');
+const SHOOTER = (n: number) => A(`shoot/shooter-${n}.png`);
+// victim: v0.25.2102でドット絵5コマ(社長支給シート232×264等分)に同名差し替え→一回きりのバスター付き。
+const VICTIM = (n: number) => A(`shoot/victim-${n}.png?v=2102`);
+const BLOOD = (n: number) => A(`shoot/blood-${n}.png`);
+// ── 楽屋通路の歩きシーン(アリーナ前・社長指示v0.25.2114) ──
+// 左端からキャラがフェードインし、右へ歩く(プレイヤー操作=画面を押している間だけ歩く)。横スクロールのみ。
+// 右端に到達するとアリーナ(既存のOPタイムライン)が始まる=以降のタイマーは全て「歩き完了」起点。
+const WALK_BG = A('walk-stage-bg.png');
+const WALK_FRAMES = Array.from({ length: 4 }, (_, n) => A(`walk/hero-walk-${n}.png`)); // 4コマ歩きサイクル(社長支給・抜き済みシートを帯分割・v0.25.2115で正素材へ差し替え)
+const WALK_BG_AR = 1891 / 831;  // 舞台素材のアスペクト(幅/高さ)
+const WALK_SPEED = 100;         // 歩行速度(bg表示px/s)。200→120(v0.25.2116)→100(v0.25.2137「もう少し遅く」)
+const WALK_ANIM_MS = 150;       // 歩きコマ間隔(4コマ=1周0.6s・叩き台)
+const WALK_FOOT_YR = 0.745;     // 足元ライン(bg高さ比)。v0.25.2134実測: 絵の内容は0.753で終端(以下真っ黒)=
+                                // 旧0.775は黒領域に立っていた(社長報告「まだ絵の上に乗れてない」)。舗装床の帯(~0.71-0.753)に乗せる。
+const WALK_HERO_HR = 0.16;      // キャラ表示高(bg高さ比。スタッフ~0.13より少し大きめ=主役・叩き台)
+const WALK_CAM_ANCHOR = 0.40;   // スクロール開始後、キャラを画面幅のこの位置に保つ
+const WALK_EDGE_PAD = 50;       // 左右端の余白(bg表示px)
+const WALK_FADEIN_MS = 900;     // シーン全体のフェードイン(v0.25.2121: キャラ個別フェード→シーンフェードへ変更)
+// 廊下の出口=右端に着いたら、**廊下側で2秒フェードアウト**してからアリーナへ切り替える
+// (社長指示v0.25.2413。旧: 即ハードカット→アリーナ側で3秒フェードイン)。
+const WALK_FADEOUT_MS = 2000;
+// ── 歩き会話(v0.25.2129・社長指示「歩いてたら左上に会話が流れてほしい」) ──
+// at=歩行可能域の進行率(0=左端〜1=右端)。機種で通路の表示長(px)が変わるため%指定(社長合意)。
+// ms=表示時間(省略時WALK_LINE_MS)。\nで改行。stop=表示中プレイヤー移動ロック+待ち構えNPCの会話(先頭10%)。
+// 台詞=社長支給v0.25.2131。立ち絵=通常行はHERO・stop行(さ、いこっか)のみシルエット(社長指示v0.25.2133)。
+// v0.25.2156(社長指示): 会話を1つずつ後ろへずらし、「さ、いこっか」(stop行+シルエットNPC)を先頭10%へ。
+interface WalkLine { at: number; text: string; ms?: number; stop?: boolean }
+const WALK_LINES: WalkLine[] = [
+  { at: 0.10, text: 'さ、いこっか！', stop: true },
+  { at: 0.30, text: 'お！主役のお出ましだな！' },
+  { at: 0.50, text: '最高のステージ期待してる！' },
+  { at: 0.70, text: 'きょ、今日もかわいいですね！' },
+  { at: 0.90, text: 'みんながアナタを待ってるよ！' },
+];
+const WALK_LINE_MS = 3600;
+// ── 待ち構えるスタッフ(シルエット・v0.25.2131 社長支給シート94ebf8fc): 90%会話(stop行)の主 ──
+// 素材=【左向き】8コマ歩きサイクル(透過済み・社長指摘v0.25.2133で向き訂正)を統一クロップ
+// (112×202・下端=足元)で分割。wait=stop行トリガー地点の少し先に素のまま(左向き)で立つ →
+// talk=会話中(プレイヤーは移動ロック) → leave=会話が終わると右へ(scaleX(-1)で反転)歩き出し
+// フェードアウトして消える(社長指示)。
+const NPC_FRAMES = Array.from({ length: 8 }, (_, n) => A(`walk/npc-walk-${n}.png`));
+const NPC_IDLE = NPC_FRAMES[2];  // 待機ポーズ=脚が閉じた通過コマ(専用idle素材は無いので流用)
+const WALK_NPC_HR = 0.15;        // 表示高(bg高さ比。主役0.16よりわずかに小さめ)
+const NPC_AHEAD = 70;            // stop行トリガー地点→NPC立ち位置の距離(bg表示px・右端にはクランプ)
+const NPC_LEAVE_FADE_MS = 1400;  // 退場=歩きながらこの時間でフェードアウト
+const NPC_ANIM_MS = 130;         // 退場歩きのコマ間隔(8コマ順送りループ)
+const WALK_ENTRY_START_X = -80; // 入場開始位置(bg px・画面外左)。フェードイン中に歩いて入ってくる(社長指示)
+const WALK_ENTRY_STOP_X = 150;  // 入場完了位置(ここで操作をプレイヤーに渡す)
+const WALK_STAGE_Y_OFFSET = -40; // ステージ全体の縦オフセット(px)。v0.25.2116/-50→2117/-100→2118/-70→v0.25.2120「30px下へ」で-40
+// 被写界深度(v0.25.2116「プレイヤーの直ぐ裏からぼかし」): 事前ブラー版bg(walk-stage-bg-blur.png・
+// blur9px焼き込み)を縦グラデマスクで重ねる=壁(奥)はボケ、彼女と歩いている床だけシャープ。
+// アリーナDOFと同じ「ランタイムぼかしゼロ」方式(モバイルのfilter/backdrop-filterの罠を回避)。
+const WALK_BG_BLUR = A('walk-stage-bg-blur.png');
+// ── 夢の演出(v0.25.2144・社長指示「夢の世界なのでパーティクルふわふわ+ライトは全てグロー」) ──
+// 浮遊パーティクル: 画面全体を漂う光の粒(CSSアニメのみ・毎フレームJSなし=負荷1/10)。
+const WALK_MOTES = Array.from({ length: 26 }, (_, i) => ({
+  key: i,
+  x: Math.random() * 100, y: Math.random() * 100,   // 画面%
+  size: 2 + Math.random() * 5,
+  mx: (Math.random() * 2 - 1) * 22,                  // 揺れの横振幅(px)
+  my: -(10 + Math.random() * 34),                    // 揺れの縦振幅(上へ・px)
+  o0: 0.10 + Math.random() * 0.25, o1: 0.5 + Math.random() * 0.45, // 明滅の下限/上限
+  dur: 6 + Math.random() * 8, delay: -Math.random() * 14,          // 負のdelay=最初から空中に満ちる
+}));
+// 夢の浮遊粒(共通コンポーネント・v0.25.2163): 廊下だけでなくアリーナ/射撃シーンにも同じ粒を敷く
+// (社長指示「夢エフェクトセットをアリーナと銃撃シーンにも」)。画面座標・CSSアニメのみ=負荷1/10。
+const DreamMotes: React.FC<{ zIndex?: number }> = ({ zIndex }) => (
+  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex }}>
+    {WALK_MOTES.map(m => (
+      <div
+        key={m.key}
+        style={{
+          position: 'absolute', left: `${m.x}%`, top: `${m.y}%`, width: m.size, height: m.size,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(255,244,214,0.95) 0%, rgba(255,230,170,0.35) 60%, transparent 100%)',
+          boxShadow: '0 0 6px 2px rgba(255,235,180,0.35)',
+          '--mx': `${m.mx}px`, '--my': `${m.my}px`, '--o0': String(m.o0), '--o1': String(m.o1),
+          animation: `opmote ${m.dur}s ease-in-out ${m.delay}s infinite`,
+        } as React.CSSProperties}
+      />
+    ))}
+  </div>
+);
+
+// 背景のライト位置(bg%座標)。高輝度クラスタ検出(v0.25.2144)の実測=壁ランプ6灯(各サイン上)+
+// 関係者出口の緑サイン。walkWorld内に置く=背景のスクロールに連動して光る。
+const WALK_GLOWS = [
+  { x: 10.26, y: 29.5, s: 1.0, green: false },  // 楽屋A 上のランプ
+  { x: 23.69, y: 29.5, s: 1.0, green: false },  // 男女トイレ 上
+  { x: 39.87, y: 29.7, s: 1.0, green: false },  // 楽屋B 上
+  { x: 67.16, y: 29.7, s: 1.0, green: false },  // 楽屋C 上
+  { x: 81.54, y: 29.7, s: 1.0, green: false },  // 上手 上
+  { x: 95.93, y: 29.5, s: 1.0, green: false },  // 関係者出口 上
+  { x: 96.88, y: 33.5, s: 0.8, green: true },   // 関係者出口の緑サイン
+];
+// 光のカーテン(v0.25.2158・社長選定E案): ランプから下へ落ちる淡い光帯(bg%座標・screen合成・
+// CSSゆらぎのみ)。全6灯だと騒がしいので4本に間引き。skewX=わずかに斜めへ流れる夢の光。
+const WALK_RAYS = [
+  { x: 10.26, w: 7.5, dur: 7.5, delay: -1.2 },  // 楽屋A
+  { x: 39.87, w: 8.5, dur: 8.5, delay: -4.0 },  // 楽屋B
+  { x: 67.16, w: 8.0, dur: 9.5, delay: -2.6 },  // 楽屋C
+  { x: 95.93, w: 7.0, dur: 8.0, delay: -5.5 },  // 関係者出口
+];
+// 夢のソフトブルーム(v0.25.2158・社長選定A案)の重ね不透明度: ブラー焼き込み版をscreen合成で
+// 全面に薄く重ねる=明部(ランプ・サイン)だけがにじむソフトフォーカス。ランタイムぼかしゼロ。
+// v0.25.2162: 0.14→0.30(社長「違いがよくわからない」→3点とも視認できる強さへ)。
+const WALK_BLOOM_ALPHA = 0.30;
+// v0.25.2134(社長指示「ぼかし少し弱めて、黄色ラインくらいまで入れて」): フルぼかしを黄色ライン
+// (実測0.639-0.647)まで届かせ、縁石帯で抜いて舗装床(0.71〜)からシャープ。強度はWALK_DOF_ALPHAで少し弱める。
+const WALK_DOF_MASK = 'linear-gradient(to bottom, black 0%, black 64%, transparent 71%)';
+const WALK_DOF_ALPHA = 0.95;    // ぼかし版の重ね不透明度(1=全ぼかし)。0.8→0.9(v0.25.2136)→1(v0.25.2163)→0.95(v0.25.2164「0.9と1の間にして」)
+const ARENA_AR = 1.5; // 素材の縦横比(3:2・backstageも同じ)
+
+// 前面ライトの光だまり(v0.25.2163・社長指示「見えてないけど前面にもライトがある前提で、プレイヤーたちにも
+// かかる光を設置」): キャラ絵の【上に】screen合成の暖色radialを重ね、キャラ自身が照らされて見えるようにする。
+const FRONT_LIGHT_BG = 'radial-gradient(ellipse at center, rgba(255,240,200,0.38) 0%, rgba(255,225,170,0.14) 45%, rgba(255,220,160,0) 72%)';
+
+interface CharPos { src: string; x: number; y: number; h: number } // x=中心/y=足元(画像%)、h=高さ(%)
+// flipScene: シーン全体を180度(左右)反転して見せる(社長指示v0.25.2009)。実装は背景imgを左右反転し、
+// キャラは素の座標/向きで置く(=画面全体としてミラーに見える。二重反転になる個別キャラflipは廃止)。
+interface Shot { bg: string; bgBlur: string; ox: number; oy: number; zf: number; zt: number; flipScene?: boolean; chars: CharPos[] }
+
+// ── アリーナ3アングルのタイムライン(ms) ──
+// 斜め・横への切替は早め(社長指示v0.25.2008)。各ショットのズームは切替までに完了させ、
+// 「寄り切ったサイズ≒次アングルの見え方」の繋がり(v0.25.2003)は維持したままテンポを上げる。
+// v0.25.2035(社長指示): 冒頭は引きのまま紙吹雪の噴き上げを見せ(1.2s)、それからズーム開始。
+// v0.25.2049(社長指示「パン!1秒置いて」): 冒頭1秒は静かな引き→パン!(1.0s)→歓声(1.4s)→ズーム(2.2s)。
+const FRONT_ZOOM_DELAY = 2200;
+// 斜めは2秒表示(社長指示v0.25.2188。v0.25.2047の1秒・旧1.4秒から変更)。後続の暗転/射撃開始も+1秒シフト。
+const CUTS = [0, 2200 + 2000, 2200 + 4000];
+const SHOT_DUR = [2000, 2000, 2400];
+// アングル切替は【即表示のハードカット】(社長指示v0.25.2072・旧クロスフェードv0.25.2007は廃止)。
+// 廊下→アリーナの入りだけは暗転からのフェードイン(社長指示v0.25.2407「フェードイン3秒」)。
+// アングル切替のハードカットとは別物: これは「会場が現れる」1回きりの入り。最初のアングル切替は
+// CUTS[1]=4200ms なのでフェード(3000ms)は完全に明けてから起きる=ハードカットは濁らない。
+const ARENA_FADEIN_MS = 1000; // 廊下側で2秒暗転し切った後の明け(社長指示v0.25.2413で3000→1000)
+const BLACK_START = 8600;
+const BLACK_MS = 1600;
+const SCENE_START = 10400; // 暗転し切ったら射撃シーンへハードカット
+const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3`]; // 2音源を同時ループ(社長指示)
+// ARENA_AUDIOは従来 new Audio() のデフォルト音量(1)のまま明示指定していなかった。iOS保険の
+// unlockAndPlay(下記)で本再生時に明示restoreするための名前付き定数として1を明文化(挙動は不変)。
+const ARENA_AUDIO_VOLUME = 1;
+// 廊下(歩きシーン)のBGM(社長支給v0.25.2386「オープニングの廊下で流して」)。遠くのラジオが
+// 壁越しに漏れてくる音。歩きシーンはプレイヤー操作で長さが不定なのでループにし、廊下→アリーナの
+// 切替でアリーナ2音源へ譲る(重ならないよう、切替時にこちらを止める)。
+const WALK_AUDIO = `${BASE}audio/op-corridor.mp3`;
+const WALK_AUDIO_VOLUME = 1;
+const PAN_SE_SRC = `${BASE}audio/sfx/handgun-fire.wav`; // パン!(紙吹雪と発砲で同音・社長指示)
+const PAN_SE_VOLUME = 0.64; // ゲーム内SE設定(audioManagerのhandgun-fire volume)に合わせる
+// 蘇生パートの心拍(処置機器音の素材は無いので心拍のみ・spec)。会話中はループ・最終行後に一発だけ。
+const HEARTBEAT_SRC = `${BASE}audio/sfx/heartbeat.mp3`;
+const HEARTBEAT_LOOP_VOLUME = 0.5;    // 会話中の心拍ループ=低音量(spec「0.5前後」)
+const HEARTBEAT_ONESHOT_VOLUME = 0.6; // 最終行後の一発は句読点として少しだけ前に
+// 蘇生が黒に沈み切った後のタイトルフェードイン長(社長指示v0.25.2061)。背景を透過し黒幕を
+// フェードアウトして、下に居るタイトル画面を透かして見せる。明け切ったら finish でOPを外す。
+const TITLE_REVEAL_MS = 1500;
+
+// 紙吹雪(社長指示v0.25.2031→2033→2034修正)。2系統:
+// ①パーン=ステージ【両サイド】の砲から真上へ噴射し【画面場外まで突き抜けて消える】(落下はしない)。
+// ②雨=その後(1.0s〜)、画面全体に均等な紙吹雪が降り続けるループ層(斜め・横でもきらめきながら継続。
+//   負のanimation-delayで表示された瞬間から空中に満ちている)。CSSアニメのみ=負荷1/10。
+// 赤一色(社長指示v0.25.2037)。単色ベタだと沈むので赤の明暗4トーン=「全部赤」の見え方できらめきは残す。
+const CONFETTI_COLORS = ['#f87171', '#ef4444', '#dc2626', '#b91c1c'];
+// v0.25.2036「もっと勢いよく」→2039再調整: 粒の大型化で塊のまま一瞬で消えて見えたため、
+// 粒ごとの速度差を大きく(0.7〜1.4秒)して柱を縦に伸ばし(ジェットの尾)、横散らばりも広げて塊をほどく。
+const CONFETTI_BURST = Array.from({ length: 150 }, (_, i) => {
+  const leftSide = i % 2 === 0;                  // 半分ずつ左右の砲から
+  const inward = (3 + Math.random() * 7) * (leftSide ? 1 : -1); // わずか内向き(ステージ中央へ)
+  return {
+    key: i,
+    x: leftSide ? 14 + Math.random() * 16 : 70 + Math.random() * 16, // 両サイドの砲口(画面幅%)
+    y: 99 + Math.random() * 5,                   // 【画面(スクリーン)の下端】から発射(v0.25.2040→2042全画面化)
+    cx1: inward * 0.8 + (Math.random() * 2 - 1) * 8, // 中間点(横散らばり広め=塊をほどく)
+    cy1: -(50 + Math.random() * 25),             // 縦はvh(画面高)基準
+    cx2: inward * 1.6 + (Math.random() * 2 - 1) * 12, // 終点=そのまま上へ
+    cy2: -(110 + Math.random() * 30),            // 画面上端の外まで突き抜ける(vh)
+    dur: 0.7 + Math.random() * 0.7,              // 速度差大(0.7〜1.4秒)=柱が縦に伸びるジェット
+    delay: 1.0 + Math.random() * 0.25,          // パン!は開始1秒後(社長指示v0.25.2049)
+    sd: 0.35 + Math.random() * 0.35,             // 飛翔中の回転(高速)
+    sw: (Math.random() * 2 - 1) * 8,
+    r1: `${Math.round((Math.random() * 2 - 1) * 200)}deg`,
+    w: 7 + Math.random() * 6, h: 4 + Math.random() * 5, // 大きめは維持しつつ最大をやや絞る
+    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+  };
+});
+const CONFETTI_RAIN_START_MS = 2000; // 噴き上げ(1.0s発)が場外へ抜けた頃から雨を開始
+// 雨はスクリーン全体(上端→下端・レターボックス帯の外も)に降らせる(社長指示v0.25.2042)。
+// 縦はvh基準(全画面)。密度維持のため180枚。
+const CONFETTI_GLITTER = Array.from({ length: 180 }, (_, i) => {
+  const dur = 6 + Math.random() * 4;             // 画面上端外→下端外を通過する時間(全画面ぶん)
+  return {
+    key: i,
+    x: Math.random() * 100,                       // 画面全体に均等分布
+    dur,
+    delay: -Math.random() * dur,                  // 負のdelay=表示された瞬間すでに空中に満ちている
+    td: 0.4 + Math.random() * 0.5,                // きらめき周期(秒)
+    r1: `${Math.round((Math.random() * 2 - 1) * 240)}deg`,
+    w: 5 + Math.random() * 5, h: 4 + Math.random() * 4, // 粒大きめ(社長指示v0.25.2038)
+    color: CONFETTI_COLORS[(i * 3 + 1) % CONFETTI_COLORS.length],
+  };
+});
+
+// ── コンサート演出(社長採用=案A+B・v0.25.2054): 客席のペンライト光点+会場グローパルス ──
+// ペンライトは各アングルの【客席領域(枠%)】に配置し、アングルのaspect枠内に描く=ズーム/切替に追従して
+// 世界に馴染む(紙吹雪のような画面固定ではない)。1本=縦長の光バー(box-shadowグロー付き)を
+// 足元起点でゆらゆら回転(観客が振っている)。下(手前)ほど大きく=遠近。CSSアニメのみ・OP中だけ。
+const PENLIGHT_COLORS = ['#c084fc', '#f472b6', '#60a5fa', '#e9d5ff', '#f9a8d4', '#93c5fd'];
+// 客席領域(枠%・複数矩形可): 正面=ステージ下の全面 / 斜め=下端の帯 / 真横=客席フロアのみ
+// (社長指摘v0.25.2060: 全幅だとステージにも生えていた。表示は左右反転でステージ=画面左〜中央、
+//  花道=右上に伸びるため、右下の客席フロア+ステージ手前の細帯に限定)。
+const PENLIGHT_REGIONS: { top: number; bottom: number; left?: number; right?: number; count: number }[][] = [
+  [{ top: 56, bottom: 98, count: 110 }],
+  [{ top: 80, bottom: 99, count: 50 }],
+  [
+    { top: 88, bottom: 99, left: 60, right: 100, count: 40 },  // 花道より右下の客席フロア
+    { top: 96, bottom: 99.5, left: 0, right: 58, count: 20 },  // ステージ手前の最前列帯
+  ],
+];
+const PENLIGHTS = PENLIGHT_REGIONS.map(regions =>
+  regions.flatMap((r, ri) =>
+  Array.from({ length: r.count }, (_, i) => {
+    const yr = Math.random();                       // 0=奥(上)〜1=手前(下)
+    return {
+      key: ri * 1000 + i,
+      x: (r.left ?? 0) + Math.random() * ((r.right ?? 100) - (r.left ?? 0)),
+      y: r.top + yr * (r.bottom - r.top),
+      h: (5 + Math.random() * 3) * (0.6 + yr * 0.8), // 手前ほど大きく(遠近)
+      w: 2 + yr * 1.2,
+      pa: `${(14 + Math.random() * 16).toFixed(1)}deg`, // 振り角(v0.25.2057で約2倍→社長指示v0.25.2103「もっと激しく」でさらに1.5倍=14〜30°)
+      sd: 0.32 + Math.random() * 0.38,                 // 振り周期(秒)。v0.25.2103(0.7〜1.5→0.45〜1.0)→v0.25.2185さらに高速化(社長指示「動き早くして」)
+      delay: -Math.random() * 1.5,                    // 負のdelay=最初からバラバラに揺れている
+      color: PENLIGHT_COLORS[(i * 5 + 1) % PENLIGHT_COLORS.length],
+      op: 0.7 + Math.random() * 0.3,                  // 発光強化に合わせ下限も持ち上げ(v0.25.2057)
+    };
+  })
+  )
+);
+// 会場グローパルス(案B): 客席一帯に大きな柔らかい光を2枚重ね、ゆっくり明滅(mix-blend-mode:screenで持ち上げる)。
+const VENUE_GLOWS = [
+  { x: 30, y: 78, rx: 55, ry: 30, color: 'rgba(168,85,247,0.16)', dur: 3.2, delay: 0 },
+  { x: 72, y: 80, rx: 55, ry: 28, color: 'rgba(244,114,182,0.13)', dur: 3.8, delay: -1.6 },
+];
+
+// ── スポットライト(社長指示v0.25.2057): 各アングルの3人それぞれへ頭上から光錐を落とす ──
+// 幾何は SHOTS[si].chars(足元座標とキャラ高さ)から導出=ズーム/アングル切替に自動追従。
+// 台形の光錐(mix-blend:screen)+足元の光溜まり。ゆっくり明滅(opspot)。CSSのみ・OP中だけ。
+// ※SHOTSより後で定義できないため、導出は下のSHOTS定義の直後で行う(SPOTLIGHTS)。
+
+// ── 被写界深度(社長指示v0.25.2057→方式変更v0.25.2060): ステージ焦点のチルトシフト風 ──
+// 旧方式=backdrop-filter(3.5px)は実機で「切替時に前アングルが一瞬残る」残像が解消しきれず
+// (モバイルのbackdrop-filterは変形アニメ中の下層を古いスナップショットで返す既知の癖)、
+// 毎フレーム全画面再合成の負荷で紙吹雪パーンが飛ぶコマ落ちも疑われたため、【事前ブラー画像】へ変更:
+// ブラー済みbg(art-src/opening/blur-arena.mjsでChromium生成・素材基準10px)を鮮明bgの直上に
+// radial-gradientマスク(焦点=透明穴・周辺=表示)で重ねる。ランタイムぼかしゼロ=残像は構造的に不可能・
+// クロスフェードにもそのまま乗る。ズームするとぼけも拡大(寄るほど浅い被写界深度)=映画的挙動。
+// ペンライト等のエフェクトはブラーの上に描くため周辺でもシャープ(ボケ玉化は将来必要なら複製レイヤーで)。
+const DOF_FOCUS = [
+  { x: 50, y: 47, rx: 46, ry: 34 },   // 正面: 中央ステージ
+  { x: 50, y: 63, rx: 48, ry: 34 },   // 斜め: 壇上の3人
+  { x: 50, y: 85, rx: 50, ry: 36 },   // 真横: 手前ステージ面
+];
+const dofMask = (si: number) =>
+  `radial-gradient(ellipse ${DOF_FOCUS[si].rx}% ${DOF_FOCUS[si].ry}% at ${DOF_FOCUS[si].x}% ${DOF_FOCUS[si].y}%, rgba(0,0,0,0) 52%, #000 100%)`;
+
+// ── 射撃シーンのタイムライン(シーン内ms)と配置 ──
+// 2人は独立テンポで進むため【トラックを別々に定義し、変化点のマージは自動生成】する。
+// (v0.25.2016の教訓: 手動マージは片方の時刻を動かすと順序が壊れ、もう片方のコマが巻き戻る実バグになった)
+// 順序(社長指示v0.25.2019): 発砲一閃(f4・通常背景のまま0.1s)→跳ね上げ(f5)の瞬間に【赤反転+被弾(v2)】→
+// そこから2秒静止(社長指示v0.25.2017)→各自のテンポで再開。
+// 撃つ側(v0.25.2010→2018→2067→2075): 立ち5秒(会話ビート1→2・各2.5秒)→構え2.5秒(ビート3)→一閃0.1→
+// 跳ね上げで静止→次0.2→最後(硝煙)は保持。各ビート2.5秒(11文字≒字幕標準4〜5文字/秒)=発砲7.5s。
+// 撃たれ側(v0.25.2011→2012→2014→2016): 被弾=赤反転と同期→(静止)→次0.2→次0.2→最後(倒れ伏す)は保持。
+// 静止明け: f2(0.2s)→f6硝煙→1秒後にf2へ戻して以降停止(社長指示v0.25.2028)。
+const SHOOTER_TRACK = [{ t: 0, f: 1 }, { t: 5000, f: 3 }, { t: 7500, f: 4 }, { t: 7600, f: 5 }, { t: 9600, f: 2 }, { t: 9800, f: 6 }, { t: 10800, f: 2 }];
+// 倒れ込み(v3/v4)は各200ms(社長指示v0.25.2071・旧400ms)。
+const VICTIM_TRACK = [{ t: 0, f: 1 }, { t: 7600, f: 2 }, { t: 9600, f: 3 }, { t: 9800, f: 4 }, { t: 10000, f: 5 }];
+// 血飛沫(社長支給): 赤背景の瞬間(7.6s)に1コマ目を出し、キャラと同じく【2秒静止】(社長指示v0.25.2027)。
+// 静止明け(9.6s)から残り2コマを100msずつ→消える(f:0=非表示)。
+const BLOOD_TRACK = [{ t: 0, f: 0 }, { t: 7600, f: 1 }, { t: 9600, f: 2 }, { t: 9700, f: 3 }, { t: 9800, f: 0 }];
+const RED_FROM = 7600; // 跳ね上げの瞬間から背景を赤一色に(v0.25.2019で一閃の後ろへ移動。以降ずっと赤のまま暗転へ)
+const frameAt = (track: { t: number; f: number }[], t: number) => track.reduce((f, e) => (e.t <= t ? e.f : f), track[0].f);
+const SHOOT_STEPS = [...new Set([...SHOOTER_TRACK, ...VICTIM_TRACK, ...BLOOD_TRACK].map(e => e.t))]
+  .sort((a, b) => a - b)
+  .map(t => ({ t, s: frameAt(SHOOTER_TRACK, t), v: frameAt(VICTIM_TRACK, t), b: frameAt(BLOOD_TRACK, t), red: t >= RED_FROM }));
+// 血飛沫の位置: 右端センター=傷口(後頭部)。被弾ポーズ(v2)の頭の左脇に置き、血は左へ飛ぶ。h=枠高%。
+const BLOOD_POS = { x: 36.5, y: 57, h: 18 };
+// 射撃シーンの会話(社長指示v0.25.2065): 立ち姿=1行目→構え(1.0s)=2行目→撃つ(2.0s)で消す。
+// 表示は本編の会話UI(NpcDialogue=左上のモデル付き吹き出し)と同じ見た目をOP内で再現(UI統一・新規UIは作らない)。
+// 話者は撃つ子(ツインテのシルエット)。名前は明かさない=「？？？」・立ち絵はシーンと同じ白シルエット(叩き台)。
+// 文言は社長指定どおり(v0.25.2068→2075「どいつもこいつも・・・で一旦区切って」=3ビートに分割)。
+// 立ち姿=ビート1→2(各2.5秒)、構え=ビート3(2.5秒)、発砲=7.5s。\n は white-space: pre-line で改行になる。
+const SHOOT_LINES = ['どいつもこいつも・・・', 'アンタばっかり！', 'アンタさえいなければ・・・'];
+const SHOOT_FADE_START = 11700; // 最終コマを約1.3秒見せてから暗転(会話3ビート化で+2.5秒シフト・v0.25.2075)
+const SHOOT_FADE_MS = 3000; // 蘇生シーンの入り=この暗転フェード。1200→3000(社長指示v0.25.2193「フェードイン3秒」)
+const SHOOT_TOTAL = 14900;  // SHOOT_FADE_START + SHOOT_FADE_MS + 200(余白)。蘇生(phase4)開始もここに連動
+// 旧素材はv5だけ体重心が右に出ていたため-4%補正していた(v0.25.2014)。新ドット絵素材(v0.25.2102)は
+// 5コマ全部でポーズ中心が揃っている(実測0.489〜0.498)ため補正の前提が消えた=撤去(機構は残す)。
+const VICTIM_DX: Record<number, number> = {};
+// 配置(backstage画像基準%・足元アンカー)。主人公=左、撃つ子=右(反転済=銃が左向き)。h=コマキャンバス高さ。
+const VICTIM_POS = { x: 38, y: 80, h: 26 };
+const SHOOTER_POS = { x: 66, y: 86, h: 30 };
+
+// 各アングルのステージ上の3人配置(実機調整済)。x=中心,y=足元(アリーナ画像基準%)、h=高さ(%)。
+const SHOTS: Shot[] = [
+  // 正面(引き): アリーナ全体。3人は中央ステージ上=遠く小さい点→大きくズームイン。センター配置。
+  // 【共通アンカー(社長指示v0.25.2022)】ズームの着地点=ヒーロー足元が(枠x50%, y86%)に来るよう原点を設定。
+  // 以降の斜め/横も同じ(50%,86%)にヒーローを固定=「彼女だけ動かず周りが回る」。
+  { bg: A('arena.jpg'), bgBlur: A('arena-blur.jpg'), ox: 50, oy: 35.2, zf: 1.0, zt: 3.6, chars: [
+    { src: TWIN, x: 48.7, y: 49.2, h: 1.8 }, { src: HERO, x: 50, y: 49.3, h: 2.0 }, { src: BOB, x: 51.3, y: 49.2, h: 1.8 },
+  ] },
+  // 斜め: ステージを斜めから。ズーム廃止=1.4で静止(社長指示v0.25.2015)。
+  // 【立ち位置合わせv0.25.2024】3人は元のステージ壇上(y66=絵と接地が合う位置)に戻し、
+  // カメラ原点(48.3,17.8)側を動かしてヒーロー足元を共通アンカー(218,569)に一致させる(=絵とのズレ解消)。
+  // v0.25.2025: ステージに対してキャラが大きすぎ→縮小(h22/24→15/16)。間隔もサイズに合わせて詰める。
+  { bg: A('arena-diag.jpg'), bgBlur: A('arena-diag-blur.jpg'), ox: 48.3, oy: 17.8, zf: 1.4, zt: 1.4, chars: [
+    { src: TWIN, x: 45.5, y: 66, h: 15 }, { src: HERO, x: 50, y: 66.5, h: 16 }, { src: BOB, x: 54.5, y: 66, h: 15 },
+  ] },
+  // 真横: ステージを横から。奥行きスタッガー。シーン全体を180度反転(flipScene・社長指示v0.25.2009)。
+  // 【共通アンカー(社長指示v0.25.2019→2022)】ヒーロー=(50%,86%)・ズーム原点もヒーロー自身=ズーム中ドリフト0。
+  // 正面の着地点・斜めと画面座標が完全一致(彼女は動かず世界が回る)。シルエットは同Δで隊形維持・接地不変。
+  // v0.25.2025: キャラ縮小(h25/28/35→17/19/24)+シルエットの足元をステージ面(花道の傾斜)に沿わせる。
+  // v0.25.2044(社長指示・図の文字通り): 斜め隊形=奥ショートカット(右上・小)/真中 色あり/手前ツインテール(左下・大)。
+  { bg: A('arena-side.jpg'), bgBlur: A('arena-side-blur.jpg'), ox: 50.7, oy: 86, zf: 1.7, zt: 2.1, flipScene: true, chars: [
+    { src: BOB, x: 57.5, y: 80.5, h: 17 }, { src: HERO, x: 50.7, y: 86, h: 19 }, { src: TWIN, x: 44, y: 92.5, h: 24 },
+  ] },
+];
+
+// スポットライトの幾何(上のコメント参照)。charsの足元(x,y)とキャラ高さhから光錐と光溜まりを導出。
+const SPOTLIGHTS = SHOTS.map(s => s.chars.map((c, ci) => {
+  const bw = c.h * 0.85;               // 光錐の下端幅(枠w%・キャラ高さ比例)
+  const bh = c.h * 2.6;                // 光錐の高さ(枠h%)=頭上のさらに上から落ちる
+  const poolW = bw * 1.7;              // 足元の光溜まり(横長楕円)
+  return {
+    left: c.x - bw / 2, top: c.y - bh, w: bw, h: bh,
+    poolL: c.x - poolW / 2, poolT: c.y - poolW * 0.2, poolW, poolH: poolW * 0.4,
+    dur: 2.2 + ci * 0.5, delay: -ci * 0.7,   // 3本を微妙にずらして明滅
+  };
+}));
+
+const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; startAtRevival?: boolean }> = ({ onDone, startAtShoot, startAtRevival }) => {
+  const [ready, setReady] = useState(false); // 歩きシーンの素材が揃うまで開始しない(v0.25.2118で歩き用/本編用に分割)
+  const [mainReady, setMainReady] = useState(false); // 本編(アリーナ/射撃)素材のdecode完了。アリーナ開始の条件
+  const [walkLoaded, setWalkLoaded] = useState(0);   // 歩きシーン素材の読み終えた枚数(ローディング%表示用)
+  const [walkTotal, setWalkTotal] = useState(0);
+  const [phase, setPhase] = useState(startAtRevival ? 4 : startAtShoot ? 3 : 0); // 0-2=アリーナ各アングル / 3=射撃シーン / 4=蘇生処置(字幕)
+  const [step, setStep] = useState(0); // 射撃シーンのコマ番号(SHOOT_STEPS index)
+  const [shootLine, setShootLine] = useState(-1); // 射撃シーンの会話行(SHOOT_LINES index / -1=非表示)
+  const [subIdx, setSubIdx] = useState(-1); // 蘇生パートの表示中字幕(OPENING_REVIVAL_LINES index / -1=非表示)
+  const [revFading, setRevFading] = useState(false); // 蘇生パート終端の3秒フェードアウト中(社長指示v0.25.2055)
+  const [titleReveal, setTitleReveal] = useState(false); // 蘇生後のタイトルフェードイン中(社長指示v0.25.2061)
+  // 歩きシーン(アリーナ前・v0.25.2114)。?opening=2/3のプレビューはスキップ(=完了扱い)。
+  const [walkDone, setWalkDone] = useState<boolean>(!!(startAtShoot || startAtRevival));
+  // 廊下の出口に着いた=暗転(フェードアウト)開始。WALK_FADEOUT_MS 後に walkDone へ移る。
+  const [walkOutro, setWalkOutro] = useState(false);
+  const walkDirRef = useRef<0 | -1 | 1>(0);                   // 歩行方向(0=停止/-1=左/1=右)
+  const walkTouchXRef = useRef<number | null>(null);          // ドラッグ起点X(null=非タッチ)。v0.25.2124: ジョイスティック式
+  const [walkLine, setWalkLine] = useState(-1);               // 歩き会話の表示中index(-1=非表示)
+  const walkShownRef = useRef<Set<number>>(new Set());        // 発火済みトリガー
+  const walkLineTimerRef = useRef(0);
+  // 廊下の出口に着いてからアリーナへ切り替わるまでの暗転(社長指示v0.25.2413)。歩行の rAF は
+  // 到達した時点で止めるので、主人公は右端に立ったまま静かに暗転する。
+  const walkOutroTimerRef = useRef(0);
+  const walkTalkSkipRef = useRef(false); // stop行(さ、いこっか)の会話をタップで飛ばす要求(v0.25.2186・社長指示)
+  const walkSceneRef = useRef<HTMLDivElement | null>(null);
+  const walkWorldRef = useRef<HTMLDivElement | null>(null);
+  const walkCharRef = useRef<HTMLImageElement | null>(null);
+  const walkNpcRef = useRef<HTMLImageElement | null>(null);    // 待ち構えるスタッフ(90%会話・v0.25.2131)
+  const walkCharLightRef = useRef<HTMLDivElement | null>(null); // 前面ライトの光だまり(主役・v0.25.2163)
+  const walkNpcLightRef = useRef<HTMLDivElement | null>(null);  // 前面ライトの光だまり(NPC・v0.25.2163)
+  const doneRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement[]>([]);   // アリーナ2音源(場面転換で止める)
+  const walkAudioRef = useRef<HTMLAudioElement | null>(null); // 廊下BGM(遠くのラジオ・歩き中だけループ)
+  const panRef = useRef<HTMLAudioElement[]>([]);     // パン!SE×2(発砲は場面転換後に鳴るため別管理)
+  const heartRef = useRef<HTMLAudioElement[]>([]);   // 蘇生パート: [0]=会話中の心拍ループ / [1]=最終行後の一発(ループとは別要素)
+  const stopArena = () => { audioRef.current.forEach(a => { a.pause(); a.src = ''; }); audioRef.current = []; };
+  // 廊下BGMを止める(OPスキップ / アンマウント)。アリーナ2音源と重ねない。
+  const stopWalkBgm = () => { const a = walkAudioRef.current; if (a) { a.pause(); a.src = ''; } walkAudioRef.current = null; };
+  // 廊下→アリーナの切替はハードカット(社長指示v0.25.2072)だが、音まで即切るとブツ切りのポップが出る
+  // (アリーナ2音源が場面転換前に volume を段階的に落としているのと同じ理由)。ごく短いフェードで消す。
+  const walkFadingRef = useRef(false);
+  const fadeOutWalkBgm = (ms = 320) => {
+    const a = walkAudioRef.current;
+    if (!a || walkFadingRef.current) return;
+    walkFadingRef.current = true;
+    const v0 = a.volume, t0 = performance.now();
+    const step = () => {
+      const k = Math.min(1, (performance.now() - t0) / ms);
+      try { a.volume = Math.max(0, v0 * (1 - k)); } catch { /* ignore */ }
+      if (k < 1) window.setTimeout(step, 40);
+      else stopWalkBgm();
+    };
+    step();
+  };
+  const stopHearts = () => { heartRef.current.forEach(a => { if (a) { a.pause(); a.src = ''; } }); heartRef.current = []; };
+  const stopAudio = () => { stopArena(); stopWalkBgm(); panRef.current.forEach(a => { a.pause(); a.src = ''; }); panRef.current = []; stopHearts(); };
+  // rewindBgm: OP明けのタイトルBGMは必ず曲頭から(v0.25.2104)。過去にタイトル曲を再生済みだと
+  // onDone側のsetBgmScene('menu')が同srcのため停止位置から途中再開してしまうのを防ぐ。
+  const finish = () => { if (!doneRef.current) { doneRef.current = true; stopAudio(); rewindBgm(); onDone(); } };
+  // 【iOS保険・v0.25.2177系フォロー】WebKit実機で「muted指定を無視して一瞬鳴る」前科があるため、
+  // 事前解錠(プライミング、下のpanRef/heartRef/audioRef生成部)は【muted+volume=0の二重ガード】にし、
+  // 解錠後もその無音状態のまま止め置く(unmuteしない)。実際に聞かせる本再生は必ずこの関数を通し、
+  // muted解除+volume復元(意図した音量への戻し)の両方を同一箇所で確実に行う。
+  // 【プライミングとの競合ガード・v0.25.2406】プライミングは `play().then(pause)` という**非同期**の
+  // 止め置きなので、その then が「本再生を始めた後」に着地すると、鳴らし始めた音をそのまま止めてしまう。
+  // 廊下BGMだけがこの罠に落ちる: 他の音(パン/心拍/アリーナ)は本再生がずっと後のタイマー発火なのに対し、
+  // 廊下BGMの本再生は素材ロード完了(ready)=OP中で最も早い瞬間だから。ここで印を付け、プライミング側は
+  // 印のある要素を pause しない。
+  const realPlayStarted = useRef<WeakSet<HTMLAudioElement>>(new WeakSet());
+  const unlockAndPlay = (a: HTMLAudioElement | undefined, volume: number) => {
+    if (!a) return;
+    realPlayStarted.current.add(a);
+    a.muted = false;
+    a.volume = volume;
+    try { a.play().catch(() => {}); } catch { /* ignore */ }
+  };
+
+  // ── 蘇生処置パート(phase4)の台本タイムラインを rBase 起点で仕込む(idsにタイマー登録) ──
+    // rBase = 射撃シーンが暗転し切った時刻(通常フロー)/ 0(?opening=3の単独プレビュー)。
+    // 音はHTMLAudio(既存流儀)。会話中の心拍ループと最終行後の一発は【別要素】(spec)。
+    const scheduleRevival = (rBase: number, ids: number[]) => {
+      // 暗転後 blackHoldBeforeDialogueMs は「無音間」=心拍も鳴らさない。会話開始と同時にループを立ち上げる。
+      const dialogueStart = rBase + OPENING_REVIVAL_TIMING.blackHoldBeforeDialogueMs;
+      ids.push(window.setTimeout(() => {
+        const a = heartRef.current[0];
+        if (a) { try { a.currentTime = 0; } catch { /* ignore */ } unlockAndPlay(a, HEARTBEAT_LOOP_VOLUME); } // 未解禁プレビューでは無音で進む
+      }, dialogueStart));
+      // 各行: minDurationMs 表示 → gapAfterMs は非表示(-1)で間を空けて次行。話者名(speaker)は絶対に出さない。
+      let t = dialogueStart;
+      OPENING_REVIVAL_LINES.forEach((line, i) => {
+        const showAt = t;
+        ids.push(window.setTimeout(() => setSubIdx(i), showAt));
+        ids.push(window.setTimeout(() => setSubIdx(-1), showAt + line.minDurationMs));
+        t = showAt + line.minDurationMs + line.gapAfterMs;
+      });
+      // t = 全行(最終行のgapAfterMs含む)終了時刻。ここで心拍を一度だけ(ループは止め、別要素で鳴らす)。
+      ids.push(window.setTimeout(() => {
+        heartRef.current[0]?.pause();
+        const one = heartRef.current[1];
+        if (one) { try { one.currentTime = 0; } catch { /* ignore */ } unlockAndPlay(one, HEARTBEAT_ONESHOT_VOLUME); }
+      }, t));
+      // 終端フェードアウト3秒(社長指示v0.25.2055・旧: fadeToTutorialMs=350msで即終了)。
+      // 画面=黒オーバーレイをCSSで3秒かけて被せ(赤ビネットごと沈む)、音=心拍の音量を0.5秒刻みで0へ。
+      const REVIVAL_FADE_MS = 3000;
+      ids.push(window.setTimeout(() => setRevFading(true), t));
+      for (let k = 1; k <= 6; k++) {
+        ids.push(window.setTimeout(() => {
+          heartRef.current.forEach(a => { if (a) a.volume = Math.max(0, a.volume * (1 - k / 6)); });
+        }, t + (REVIVAL_FADE_MS / 6) * k));
+      }
+      // 沈み切ったら【タイトルフェードイン】(社長指示v0.25.2061)。メニューBGMはここでは鳴らさず、
+      // フェードイン明け=finish(App側onDoneのsetBgmScene('menu'))で開始(社長指示v0.25.2067
+      // 「BGM流れるのは蘇生シーン終わってから」=フェードイン中は無音のまま)。
+      ids.push(window.setTimeout(() => setTitleReveal(true), t + REVIVAL_FADE_MS));
+      ids.push(window.setTimeout(finish, t + REVIVAL_FADE_MS + TITLE_REVEAL_MS));
+    };
+
+
+  useEffect(() => {
+    // 【重要】タイムライン(タイマー+CSSアニメ)は「素材が描ける状態」になってから開始する。
+    // mount起点だと初回ロード(コールド)では画面が出るまでに数秒かかり、その間に芝居が進んで
+    // 頭のコマが飛ぶ(ヘッドレス実測: コールドではstep0が写らずstep3から見えた)。
+    // 全imgをdecodeし切ってからreadyを立て、描画ツリーもreadyまでマウントしない
+    // (CSSアニメのdelayはマウント時起点のため、ツリーごと遅らせて同期を取る)。
+    // 壊れ画像等で永久に待たないようフォールバック上限3秒。
+    let cancelled = false;
+    const ids: number[] = [];
+    if (import.meta.env.DEV) { (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug = [{ t: performance.now(), type: 'mount' }]; }
+
+    // ── 心拍SE(蘇生パート用)を【マウント時に生成してプライミング】する(v0.25.2054修正) ──
+    // 旧実装は鳴らす瞬間に new Audio していたが、OKタップから約27秒後=ユーザー操作の有効期限切れ後の
+    // 新規要素はモバイルで再生ブロックされ無音になる(アリーナ音源が鳴るのはタップ数秒以内に再生開始するから)。
+    // → 要素はここ(タップ直後のマウント)で作り、ミュートで一瞬再生→停止して「操作済み」扱いにしておく。
+    {
+      const loop = new Audio(HEARTBEAT_SRC); loop.loop = true; loop.preload = 'auto'; loop.volume = HEARTBEAT_LOOP_VOLUME;
+      const one = new Audio(HEARTBEAT_SRC); one.preload = 'auto'; one.volume = HEARTBEAT_ONESHOT_VOLUME;
+      heartRef.current = [loop, one];
+    }
+
+    // ?opening=3: 蘇生パート単独プレビュー。射撃/アリーナ素材のdecodeを待たず即開始(黒画面+字幕のみ)。
+    if (startAtRevival) {
+      setReady(true);
+      setMainReady(true);
+      scheduleRevival(0, ids);
+      return () => { cancelled = true; ids.forEach(id => window.clearTimeout(id)); stopAudio(); };
+    }
+
+    // パン!SE(HTMLAudio・2発ぶん事前生成=紙吹雪用と発砲用。currentTime巻き戻しの競合を避ける)。
+    panRef.current = [0, 1].map(() => { const a = new Audio(PAN_SE_SRC); a.preload = 'auto'; a.volume = PAN_SE_VOLUME; return a; });
+    // アリーナ2音源もここ(タップ直後)で生成+プライミング(v0.25.2114): 歩きシーンがプレイヤー操作で
+    // 長さ不定のため、アリーナ開始はジェスチャ有効期限切れ後になる。要素を今作って解錠しておく。
+    if (!startAtShoot) audioRef.current = ARENA_AUDIO.map(src => { const a = new Audio(src); a.loop = true; a.preload = 'auto'; return a; });
+    // 廊下BGMも同じ場所で生成する(v0.25.2386)。歩きシーンの開始はフェードイン後=タップから少し間が
+    // 空くので、アリーナ2音源と同様に「今作って下のプライミングで解錠しておく」必要がある。
+    // ?opening=2/3(アリーナ/射撃から直行)では廊下を通らないので作らない。
+    if (!startAtShoot && !startAtRevival) {
+      const wa = new Audio(WALK_AUDIO); wa.loop = true; wa.preload = 'auto'; walkAudioRef.current = wa;
+    }
+    // 【プライミング】タップ(更新情報OK)直後のマウント時に、後から鳴らす要素をミュートで一瞬再生→停止して
+    // 「ユーザー操作済み」扱いにしておく(v0.25.2054)。発砲パン・心拍・アリーナ音源は操作の有効期限
+    // 切れ後の再生になるため、これが無いとモバイルでブロックされ無音になる。未解禁プレビューではcatchで無視。
+    // 【iOS保険・v0.25.2177系フォロー】社長実機で「OK直後にパン!+歓声が一瞬同時に鳴り、アリーナで
+    // 改めて正規に鳴る(二重再生)」ことを確認=WebKitがこのmuted指定を無視して一瞬可聴になっていたと
+    // 断定。muted単独ではなく【muted+volume=0の二重ガード】にし、解錠後もunmuteせずその無音状態のまま
+    // 即pause+巻き戻しで止め置く(対象は上のpanRef/heartRef/audioRef=OPが事前解錠する音源全て)。
+    // 実際に聞かせる本再生は必ず unlockAndPlay を通し、muted解除+volume復元の両方をそこで行う。
+    [...panRef.current, ...heartRef.current, ...audioRef.current, ...(walkAudioRef.current ? [walkAudioRef.current] : [])].forEach(a => {
+      a.muted = true;
+      a.volume = 0;
+      a.play().then(() => {
+        // 既に本再生が始まっている要素は止めない(v0.25.2406)。この then は非同期に遅れて着地するため、
+        // 無条件に pause すると鳴らし始めた廊下BGMを自分で殺してしまう(社長報告「op廊下の音楽鳴らなくなった」)。
+        if (realPlayStarted.current.has(a)) return;
+        a.pause();
+        try { a.currentTime = 0; } catch { /* ignore */ }
+      })
+        .catch(() => { /* 解錠失敗でも本再生側(unlockAndPlay)がmuted解除+volume復元を行うため無視してよい */ });
+    });
+    // 素材を2群に分割(v0.25.2118・社長報告「ローディング中に始まる/始まっても読み込み終わってない」):
+    // 旧実装は全素材一括+フォールバック3秒=モバイルの初回ロードで大物(廊下bg計2.7MB)が間に合わず
+    // 見切り発車していた。歩きシーンは自分の素材が揃うまで開始しない(壊れ画像保険の上限12秒)。
+    // 本編(アリーナ/射撃)素材は並行ロードし、アリーナ開始条件(mainReady)に組み込む=歩いている間に済む。
+    // trackLoad で「実行中の通信」に数える(v0.25.2232)=出撃側と同じ在庫管理。読み終えた枚数は
+    // setWalkLoaded で%表示に出す(待ちが可視化されていないと固まったように見えるため)。
+    const dec = (srcs: string[], onOne?: () => void) => srcs.map(src => {
+      const im = new Image();
+      im.src = src;
+      return trackLoad(im.decode().catch(() => {}).then(() => { onOne?.(); }));
+    });
+    const walkAssets = startAtShoot ? [] : [WALK_BG, WALK_BG_BLUR, ...WALK_FRAMES, ...NPC_FRAMES, HERO]; // HERO=停止中の立ち絵(v0.25.2121)/NPC=待ち構えるスタッフ(v0.25.2131)
+    const mainAssets = [
+      ...SHOTS.map(s => s.bg), ...SHOTS.map(s => s.bgBlur), HERO, TWIN, BOB, A('shoot-stage.png'),
+      ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),
+    ];
+    // 見切り発車のしきい値(v0.25.2232・社長報告「アップロード後のリロード直後だと読み込めてない」):
+    // 旧12秒/20秒の**絶対**タイムアウトは、デプロイ直後(キャッシュが全部冷える)のモバイル回線だと
+    // 歩きシーン素材2.7MBが間に合わず、壊れたまま開始していた。ダウンロードが**進んでいる限り待つ**
+    // 方式へ統一し、上限は「通信そのものが死んだ時の保険」として長めに置く。
+    let walkSeen = 0;
+    setWalkTotal(walkAssets.length);
+    const walkP = dec(walkAssets, () => { if (!cancelled) setWalkLoaded(++walkSeen); });
+    Promise.race([
+      Promise.all(walkP).then(() => {}),
+      new Promise<void>(res => { ids.push(window.setTimeout(res, 45000)); }),
+    ]).then(() => { if (!cancelled) setReady(true); });
+    Promise.race([
+      Promise.all(dec(mainAssets)).then(() => {}),
+      new Promise<void>(res => { ids.push(window.setTimeout(res, 60000)); }),
+    ]).then(() => { if (!cancelled) setMainReady(true); });
+    return () => { cancelled = true; ids.forEach(id => window.clearTimeout(id)); stopAudio(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── アリーナ以降のタイムライン(歩きシーン完了起点・v0.25.2114) ──
+  // 歩きシーンはプレイヤー操作で長さ不定のため、従来のmount起点タイマーを「ready かつ 歩き完了」起点に変更。
+  // ?opening=2はwalkDone初期値true=従来どおり即開始。?opening=3(蘇生単独)はmount側で処理済み=ここは走らない。
+  // CSSアニメ(アリーナのズーム等)もwalkDoneでツリーがマウントされる=タイマーと起点が揃う(readyゲートと同じ理屈)。
+  useEffect(() => {
+    if (!mainReady || !walkDone || startAtRevival) return;
+    if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'timelineEffectStart' });
+    const ids: number[] = [];
+    const firePan = (n: number) => { const a = panRef.current[n]; if (!a) return; try { a.currentTime = 0; } catch { /* ignore */ } unlockAndPlay(a, PAN_SE_VOLUME); };
+    {
+      const base = startAtShoot ? 0 : SCENE_START;
+      // 「パン!」のSE(社長指示v0.25.2040): 紙吹雪の発射と、射撃シーンの発砲に【同じ音=handgun-fire】。
+      // 音声未解禁のURLプレビューでは鳴らない(本番=更新情報OKのジェスチャ後は鳴る)。
+      if (!startAtShoot) ids.push(window.setTimeout(() => firePan(0), 1050)); // 紙吹雪パーン(1秒置いて)
+      ids.push(window.setTimeout(() => firePan(1), base + 7500));           // 発砲(一閃の瞬間・v0.25.2075で7.5s)
+      if (!startAtShoot) {
+        // アングル切替=即表示のハードカット(社長指示v0.25.2072・旧クロスフェードは廃止)。
+        [1, 2].forEach(i => {
+          ids.push(window.setTimeout(() => setPhase(i), CUTS[i]));
+        });
+        ids.push(window.setTimeout(() => setPhase(3), SCENE_START));
+        // アリーナ2音源(歓声+曲)は【パン!の後】に立ち上げる(社長指示v0.25.2048: パン!→歓声の順)。
+        // 場面転換の直前に短フェードで止める(ブツ切りポップ防止)。
+        // 自動再生がブロックされる環境(ジェスチャ無しのプレビュー等)では黙って無音のまま進める。
+        // アリーナ2音源はmount時に生成+解錠済み(v0.25.2114)。ここでは再生開始だけ。
+        ids.push(window.setTimeout(() => {
+          if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'arenaAudioPlay' });
+          audioRef.current.forEach(a => unlockAndPlay(a, ARENA_AUDIO_VOLUME));
+        }, 1400));
+        [0.66, 0.33, 0.12].forEach((v, k) => {
+          ids.push(window.setTimeout(() => audioRef.current.forEach(a => { a.volume = v; }), SCENE_START - 450 + k * 150));
+        });
+        ids.push(window.setTimeout(stopArena, SCENE_START)); // 発砲パン(場面転換後)を殺さないようアリーナだけ止める
+      }
+      SHOOT_STEPS.forEach((st, i) => { if (i > 0) ids.push(window.setTimeout(() => setStep(i), base + st.t)); });
+      // 会話(v0.25.2065→2067→2075「どいつもこいつも・・・で一旦区切る」): 立ち姿=ビート1(0s)→
+      // ビート2(2.5s) → 構え(5.0s)=ビート3 → 撃つ(7.5s)で消す(発砲が句読点)。各2.5秒。
+      ids.push(window.setTimeout(() => setShootLine(0), base));
+      ids.push(window.setTimeout(() => setShootLine(1), base + 2500));
+      ids.push(window.setTimeout(() => setShootLine(2), base + 5000));
+      ids.push(window.setTimeout(() => setShootLine(-1), base + 7500));
+      // 射撃シーンが暗転し切ったら【蘇生処置パート(phase4)】へ切替→そのまま字幕会話を再生し、
+      // 最後に finish()(旧: ここで直接 finish していたのを差し替え)。?opening=2 もこの経路で蘇生まで流れる。
+      ids.push(window.setTimeout(() => setPhase(4), base + SHOOT_TOTAL));
+      scheduleRevival(base + SHOOT_TOTAL, ids);
+    }
+    return () => { ids.forEach(id => window.clearTimeout(id)); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainReady, walkDone]);
+
+  // ── 廊下BGM(社長支給v0.25.2386「オープニングの廊下で流して」) ──
+  // 歩きシーンが見えている間だけ鳴らし、アリーナへ移る瞬間に短フェードで譲る。
+  // 歩きは長さが不定(プレイヤー操作)なのでループ。素材は mount 時に生成+解錠済み(iOS対策)。
+  useEffect(() => {
+    if (!ready) return;
+    if (walkDone) { fadeOutWalkBgm(); return; }
+    unlockAndPlay(walkAudioRef.current ?? undefined, WALK_AUDIO_VOLUME);
+    // 【自己修復・v0.25.2406】止まっていたら鳴らし直す(1秒ごと)。廊下は「押している間だけ歩く」=
+    // 常にタップ/ホールドが入るシーンなので、初回の再生がモバイルの自動再生ポリシーで弾かれても
+    // 次の操作の直後の再試行で必ず鳴り出す。フェードアウト中(=アリーナへ譲る瞬間)は触らない。
+    const heal = window.setInterval(() => {
+      const a = walkAudioRef.current;
+      if (a && a.paused && !walkFadingRef.current) unlockAndPlay(a, WALK_AUDIO_VOLUME);
+    }, 1000);
+    return () => window.clearInterval(heal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, walkDone]);
+
+  // ── 歩きシーンの駆動(v0.25.2114): 押している間だけ右へ。rAFでrefのDOMを直接更新(60fpsのsetStateを避ける) ──
+  useEffect(() => {
+    if (!ready || walkDone) return;
+    let raf = 0;
+    let worldX = WALK_ENTRY_START_X; // キャラ足元中心のbg座標。画面外左から入場(v0.25.2121)
+    let entering = true;             // 入場中=自動で右へ歩く(操作は無視)。STOP_Xで解放
+    let animT = 0;              // 歩きアニメ専用時計(歩行中のみ進む・停止でリセット)。v0.25.2118:
+                                // グローバル時刻基準だと歩き始めが周期の途中コマから始まり反応が変に見えた。
+    // 待ち構えるスタッフ(v0.25.2131): stop行が無ければ最初からgone。位置はサイズ確定後の初tickで算出。
+    let npcState: 'wait' | 'talk' | 'leave' | 'gone' = WALK_LINES.some(l => l.stop) ? 'wait' : 'gone';
+    let npcX = -1;              // NPC足元中心のbg座標(-1=未算出)
+    let npcTalkUntil = 0;       // talk終了時刻(performance.now基準)=会話表示タイマーと同じ長さ
+    let npcLeaveT = 0;          // leave経過(歩きコマ+フェード用)
+    let last = performance.now();
+    const key = (e: KeyboardEvent, down: boolean) => {
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') walkDirRef.current = down ? 1 : (walkDirRef.current === 1 ? 0 : walkDirRef.current);
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') walkDirRef.current = down ? -1 : (walkDirRef.current === -1 ? 0 : walkDirRef.current);
+    };
+    const kd = (e: KeyboardEvent) => key(e, true);
+    const ku = (e: KeyboardEvent) => key(e, false);
+    window.addEventListener('keydown', kd);
+    window.addEventListener('keyup', ku);
+    const tick = (now: number) => {
+      const dt = Math.min(50, now - last);
+      last = now;
+      const scene = walkSceneRef.current, world = walkWorldRef.current, char = walkCharRef.current;
+      if (scene && world && char) {
+        // stop行(さ、いこっか)のタップスキップ(v0.25.2186・社長指示「タップで飛ばせる様に」):
+        // talk中のタップで会話表示を消し、移動ロックを即解除(talkUntil=now→次のチェックでleaveへ)。
+        if (walkTalkSkipRef.current) {
+          walkTalkSkipRef.current = false;
+          if (npcState === 'talk') {
+            npcTalkUntil = now;
+            window.clearTimeout(walkLineTimerRef.current);
+            setWalkLine(-1);
+          }
+        }
+        const sw = scene.clientWidth, sh = scene.clientHeight;
+        const bgH = sh, bgW = sh * WALK_BG_AR; // 舞台は画面の高さいっぱい(横は素材アスペクト)
+        const maxX = bgW - WALK_EDGE_PAD;
+        // 入場中(v0.25.2121): フェードイン中に画面外左から自動で歩き入ってくる。STOP_Xで操作をプレイヤーへ。
+        // talk中(v0.25.2131): stop行の会話が終わるまでプレイヤー移動ロック(社長指示)。
+        const dir: 0 | -1 | 1 = entering ? 1 : npcState === 'talk' ? 0 : walkDirRef.current;
+        if (entering && worldX >= WALK_ENTRY_STOP_X) entering = false;
+        if (dir !== 0) {
+          worldX = Math.max(entering ? WALK_ENTRY_START_X : WALK_EDGE_PAD, Math.min(maxX, worldX + dir * WALK_SPEED * dt / 1000));
+          animT += dt;
+        } else animT = 0; // 停止で即リセット=次の歩き出しは必ず0コマ目から
+        const cam = Math.max(0, Math.min(bgW - sw, worldX - sw * WALK_CAM_ANCHOR));
+        world.style.width = `${bgW}px`;
+        world.style.transform = `translate(${-cam}px, ${WALK_STAGE_Y_OFFSET}px)`;
+        char.style.height = `${bgH * WALK_HERO_HR}px`;
+        char.style.left = `${worldX}px`;
+        // 歩行ボブ(v0.25.2187・社長指示「1pxの浮き沈みつけて歩いてるぽく」): 歩きコマと同じ時計で
+        // 1コマおきに1px浮かせる。停止中は0。
+        const bob = dir !== 0 ? (Math.floor(animT / WALK_ANIM_MS) % 2) : 0;
+        char.style.top = `${bgH * WALK_FOOT_YR - bob}px`;
+        // 前面ライトの光だまり(v0.25.2163): 主役に追従(足元アンカー・キャラ絵の上に重なる)。
+        const charLight = walkCharLightRef.current;
+        if (charLight) {
+          charLight.style.width = `${bgH * 0.30}px`;
+          charLight.style.height = `${bgH * 0.26}px`;
+          charLight.style.left = `${worldX}px`;
+          charLight.style.top = `${bgH * WALK_FOOT_YR}px`;
+        }
+        // 左向きは反転(素材は右向き)。停止中は直前の向きを保持。translateZ(0)=iOSマスクz順対策(v2063)。
+        if (dir !== 0 && char.dataset.face !== String(dir)) {
+          char.dataset.face = String(dir);
+          char.style.transform = `translate(-50%, -100%) scaleX(${dir}) translateZ(0)`;
+        }
+        // 歩きコマ: ピンポン(0→1→2→3→2→1→…・社長指示v0.25.2117)。
+        // 停止中は立ち絵(HERO=アリーナと同じ立ちスプライト・社長指示v0.25.2121)。
+        // 時計はanimT(歩行中のみ進む)=押した瞬間に0コマ目から歩き出す(v0.25.2118反応改善)。
+        if (dir !== 0) {
+          const seq = Math.floor(animT / WALK_ANIM_MS) % (WALK_FRAMES.length * 2 - 2);
+          const fi = seq < WALK_FRAMES.length ? seq : WALK_FRAMES.length * 2 - 2 - seq;
+          if (char.dataset.f !== String(fi)) { char.dataset.f = String(fi); char.src = WALK_FRAMES[fi]; }
+        } else if (char.dataset.f !== 'idle') {
+          char.dataset.f = 'idle';
+          char.src = HERO;
+        }
+        // 歩き会話トリガー(進行率%・v0.25.2129)。発火は1回ずつ・表示は一定時間で消える。
+        if (WALK_LINES.length) {
+          const progress = (worldX - WALK_EDGE_PAD) / Math.max(1, maxX - WALK_EDGE_PAD);
+          for (let li = 0; li < WALK_LINES.length; li++) {
+            if (!walkShownRef.current.has(li) && progress >= WALK_LINES[li].at) {
+              walkShownRef.current.add(li);
+              setWalkLine(li);
+              window.clearTimeout(walkLineTimerRef.current);
+              walkLineTimerRef.current = window.setTimeout(() => setWalkLine(-1), WALK_LINES[li].ms ?? WALK_LINE_MS);
+              // stop行(v0.25.2131): 表示と同じ長さだけプレイヤーを止める(rAF側の時計で同期)。
+              if (WALK_LINES[li].stop && npcState === 'wait') {
+                npcState = 'talk';
+                npcTalkUntil = now + (WALK_LINES[li].ms ?? WALK_LINE_MS);
+              }
+            }
+          }
+        }
+        // 待ち構えるスタッフの駆動(v0.25.2131): wait=左向きで直立 → talk=会話(上のロック) →
+        // leave=右へ歩き出しフェードアウト(社長指示「この会話の後、右に歩き出しフェードアウトして消える」)。
+        const npc = walkNpcRef.current;
+        if (npc && npcState !== 'gone') {
+          if (npcX < 0) {
+            // 立ち位置=stop行トリガー地点のNPC_AHEAD先(小さい画面で右端を越えないようクランプ)。
+            const stopAt = WALK_LINES.find(l => l.stop)?.at ?? 0.9;
+            npcX = Math.min(WALK_EDGE_PAD + (maxX - WALK_EDGE_PAD) * stopAt + NPC_AHEAD, maxX - 30);
+          }
+          if (npcState === 'talk' && now >= npcTalkUntil) { npcState = 'leave'; npcLeaveT = 0; }
+          const npcLight = walkNpcLightRef.current;
+          if (npcState === 'leave') {
+            npcLeaveT += dt;
+            npcX += WALK_SPEED * dt / 1000;
+            const nfi = Math.floor(npcLeaveT / NPC_ANIM_MS) % NPC_FRAMES.length;
+            if (npc.dataset.f !== String(nfi)) { npc.dataset.f = String(nfi); npc.src = NPC_FRAMES[nfi]; }
+            npc.style.transform = 'translate(-50%, -100%) scaleX(-1) translateZ(0)'; // 素材は左向き=反転して右へ
+            npc.style.opacity = String(Math.max(0, 1 - npcLeaveT / NPC_LEAVE_FADE_MS));
+            if (npcLight) npcLight.style.opacity = npc.style.opacity; // 光だまりも一緒にフェード(v0.25.2163)
+            if (npcLeaveT >= NPC_LEAVE_FADE_MS) {
+              npcState = 'gone';
+              npc.style.display = 'none';
+              if (npcLight) npcLight.style.display = 'none';
+            }
+          }
+          npc.style.height = `${bgH * WALK_NPC_HR}px`;
+          npc.style.left = `${npcX}px`;
+          npc.style.top = `${bgH * WALK_FOOT_YR}px`;
+          if (npcLight && npcState !== 'gone') {
+            npcLight.style.width = `${bgH * 0.27}px`;
+            npcLight.style.height = `${bgH * 0.24}px`;
+            npcLight.style.left = `${npcX}px`;
+            npcLight.style.top = `${bgH * WALK_FOOT_YR}px`;
+          }
+        }
+        if (worldX >= maxX - 0.5) {
+          if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'walkDone' });
+          // ★v0.25.3918: 全画面タップのスキップを廃止したので、切替直後の「誤爆ガード」も不要になった
+          // (指を離した先にスキップの当たり判定が無い=そもそも飛ばない)。
+          // 社長指示v0.25.2413: 即切り替えず、**廊下側で2秒フェードアウト**してからアリーナへ。
+          // rAF は return して止める=主人公は右端に立ったまま静かに暗転する(歩行入力も効かない)。
+          // BGMも同じ2秒で引く(絵と音の暗転を揃える。以後は walkFadingRef が二重フェードを防ぐ)。
+          setWalkOutro(true);
+          fadeOutWalkBgm(WALK_FADEOUT_MS);
+          walkOutroTimerRef.current = window.setTimeout(() => setWalkDone(true), WALK_FADEOUT_MS);
+          return;
+        } // 右端到達=暗転してからアリーナへ
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); window.clearTimeout(walkLineTimerRef.current); window.clearTimeout(walkOutroTimerRef.current); };
+  }, [ready, walkDone]);
+
+
+  const css =
+    SHOTS.map((s, i) => `@keyframes opzoom${i}{from{transform:scale(${s.zf})}to{transform:scale(${s.zt})}}`).join('\n') +
+    `\n@keyframes opblack{from{opacity:0}to{opacity:1}}` +
+    `\n@keyframes opfade{from{opacity:0}to{opacity:1}}` +
+    `\n@keyframes opfadeout{from{opacity:1}to{opacity:0}}` +
+    `\n@keyframes opshzoom{from{transform:scale(1)}to{transform:scale(1.12)}}` +
+    // 蘇生パート字幕: 行の切替を軽くフェードイン(任意・spec)。key=行indexで再マウントして毎行再生。
+    `\n@keyframes opsub{from{opacity:0}to{opacity:1}}` +
+    // 紙吹雪: 軌道(パーン=急減速の噴き上げ→等速のヒラヒラ落下)と、紙の羽ばたき(3D回転+横揺れ)を分離。
+    // 0%でopacity:0(fill:bothにより発射待ちの間=delay中も0%が適用される)→発射直後に出現。
+    // 待機中の粒が画面下端に「溜まって」見える件の対策(社長報告v0.25.2066)。軌道/タイミングは不変。
+    `\n@keyframes opconfT{0%{transform:translate(0,0);opacity:0;animation-timing-function:cubic-bezier(0.16,1,0.3,1)}2%{opacity:1}16%{transform:translate(var(--cx1),var(--cy1));animation-timing-function:linear}100%{transform:translate(var(--cx2),var(--cy2))}}` +
+    `\n@keyframes opconfS{0%{transform:rotateZ(0) rotateX(0) translateX(0)}25%{transform:rotateZ(var(--r1)) rotateX(72deg) translateX(var(--sw))}50%{transform:rotateZ(calc(var(--r1)*1.6)) rotateX(160deg) translateX(0)}75%{transform:rotateZ(var(--r1)) rotateX(250deg) translateX(calc(var(--sw)*-1))}100%{transform:rotateZ(0) rotateX(344deg) translateX(0)}}` +
+    // キラキラ層: 画面(スクリーン)上端の外から下端の外まで通過するループ落下+きらめき(不透明度パルス+回転)。
+    `\n@keyframes opconfK{from{transform:translateY(-4vh)}to{transform:translateY(106vh)}}` +
+    `\n@keyframes opconfW{0%{opacity:0.25;transform:rotateZ(0) rotateX(0)}50%{opacity:1;transform:rotateZ(var(--r1)) rotateX(170deg)}100%{opacity:0.25;transform:rotateZ(0) rotateX(340deg)}}` +
+    // ペンライトの振り(足元起点で左右へ)と会場グローの明滅。
+    `\n@keyframes oppl{from{transform:rotate(calc(var(--pa)*-1))}to{transform:rotate(var(--pa))}}` +
+    `\n@keyframes opvglow{0%{opacity:0.45}50%{opacity:1}100%{opacity:0.45}}` +
+    // スポットライトのゆっくり明滅(強すぎない0.8↔1.0)。
+    `\n@keyframes opspot{0%{opacity:0.8}50%{opacity:1}100%{opacity:0.8}}` +
+    // 夢の浮遊パーティクル(OP廊下): その場でふわっと往復+明滅(振幅/透明度はCSS変数で粒ごとに変える)。
+    `\n@keyframes opmote{0%,100%{transform:translate(0,0);opacity:var(--o0)}50%{transform:translate(var(--mx),var(--my));opacity:var(--o1)}}` +
+    // 廊下の夢演出(v0.25.2158・社長選定B/E案): 舞台の呼吸ズーム / 光のカーテンの明滅。
+    // v0.25.2162: 呼吸1.4%→3%・光帯の明滅を深く(0.5→0.35)=「違いがわかる」強さへ(社長指示)。
+    // v0.25.2487: 呼吸3%→6%(社長指示「ゆるいズームを繰り返してるやつ、2倍の動きにして」。周期7sは不変。
+    // このkeyframeは夢セット共通=廊下/アリーナ/射撃の3箇所が同時に2倍になる)。
+    `\n@keyframes opbreathe{from{transform:scale(1)}to{transform:scale(1.06)}}` +
+    `\n@keyframes oplray{0%,100%{opacity:0.35}50%{opacity:1}}`;
+
+  const cur = SHOOT_STEPS[step];
+
+  return (
+    <div
+      // ★v0.25.3918(社長報告2026-08-25「OPでスキップボタンじゃないところ押してもスキップされちゃった
+      // (撃つシーンだけかも?)」): **全画面タップ=OPスキップの配線を廃止**した。
+      // 社長の見立てどおりで、歩きシーンだけが `stopPropagation` で守られており、
+      // **それ以外の場面(射撃シーン含む)はどこを押してもここへ届いてOPが飛んでいた**。
+      // スキップは**右下のボタンだけ**にする(ボタンは titleReveal 以外は常時出ている)。
+      // z-index はタイトルのモーダル(更新情報等)より上・OrientationGuard(9999)より下。
+      // タイトルフェードイン中(titleReveal)は背景を透過し、下のタイトル画面を透かして見せる。
+      style={{ position: 'fixed', inset: 0, background: titleReveal ? 'transparent' : '#000', overflow: 'hidden', zIndex: 9990 }}
+    >
+      <style>{css}</style>
+
+      {!walkDone ? (!ready ? (
+        // 歩きシーン素材のロード待ち(v0.25.2118): 見切り発車しない代わりに待ちを可視化。
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.55)', fontSize: 13, letterSpacing: '0.2em' }}>
+          Loading... {walkTotal > 0 ? `${Math.round((walkLoaded / walkTotal) * 100)}%` : ''}
+        </div>
+      ) : (
+        // ── 楽屋通路の歩きシーン(アリーナ前・v0.25.2114): 左端からフェードイン→押している間だけ右へ歩く。
+        //    タップは歩行操作なのでOPスキップ(root onClick)へは伝播させない。 ──
+        <div
+          ref={walkSceneRef}
+          onClick={e => e.stopPropagation()}
+          // ジョイスティック式(v0.25.2124・社長報告「左にやたら歩きたがる」対策): 押した点を起点に、
+          // 12px以上ドラッグした方向へ歩く(本編の仮想スティックと同じ感覚)。タップ位置(画面半分)では決めない。
+          onPointerDown={e => { e.stopPropagation(); walkTouchXRef.current = e.clientX; walkDirRef.current = 0; walkTalkSkipRef.current = true; /* talk中ならタップで会話スキップ(rAF側が消費) */ }}
+          onPointerMove={e => {
+            if (walkTouchXRef.current === null) return;
+            const dx = e.clientX - walkTouchXRef.current;
+            walkDirRef.current = dx > 12 ? 1 : dx < -12 ? -1 : 0;
+          }}
+          onPointerUp={() => { walkTouchXRef.current = null; walkDirRef.current = 0; }}
+          onPointerCancel={() => { walkTouchXRef.current = null; walkDirRef.current = 0; }}
+          onPointerLeave={() => { walkTouchXRef.current = null; walkDirRef.current = 0; }}
+          style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#000', touchAction: 'none', cursor: 'default',
+            // 入りは従来のフェードイン。出口に着いたら2秒かけて暗転(社長指示v0.25.2413)。
+            animation: walkOutro ? `opfadeout ${WALK_FADEOUT_MS}ms linear both` : `opfade ${WALK_FADEIN_MS}ms ease-out both` }}
+        >
+          {/* 呼吸ズーム(v0.25.2158・社長選定B案): 舞台全体がゆっくり1.4%だけ伸縮する「夢の呼吸」。
+              worldのtransformはrAFがカメラ用に毎フレーム書くため、CSSアニメは別ラッパーに載せる。
+              会話UI・motesはこの外=呼吸しない。 */}
+          <div style={{ position: 'absolute', inset: 0, transformOrigin: '50% 60%', animation: 'opbreathe 7s ease-in-out infinite alternate', willChange: 'transform' }}>
+          <div ref={walkWorldRef} style={{ position: 'absolute', top: 0, left: 0, height: '100%', willChange: 'transform' }}>
+            <img src={WALK_BG} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }} />
+            {/* 被写界深度: 事前ブラー版を縦グラデマスクで重ねる(壁=ボケ/黄色ラインで抜けて床はシャープ)。 */}
+            <img src={WALK_BG_BLUR} alt="" draggable={false} style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill',
+              opacity: WALK_DOF_ALPHA,
+              maskImage: WALK_DOF_MASK, WebkitMaskImage: WALK_DOF_MASK,
+            } as React.CSSProperties} />
+            {/* 夢のソフトブルーム(v0.25.2158・社長選定A案): 同じブラー焼き込み版をマスク無し・screen合成・
+                極薄で全面に重ねる=明部だけがふわっと滲むソフトフォーカス(ランタイムぼかしゼロ)。 */}
+            <img src={WALK_BG_BLUR} alt="" draggable={false} style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill',
+              opacity: WALK_BLOOM_ALPHA, mixBlendMode: 'screen', pointerEvents: 'none',
+            }} />
+            {/* 光のカーテン(v0.25.2158・社長選定E案): ランプ下に落ちる淡い光帯。bg%座標=スクロール連動。
+                マスクで両縁を溶かし、skewXでわずかに斜めへ。キャラより先に描く=キャラは光帯の手前。 */}
+            {WALK_RAYS.map((r, ri) => (
+              <div
+                key={`wr${ri}`}
+                style={{
+                  position: 'absolute', left: `${r.x}%`, top: '29%', width: `${r.w}%`, height: '38%',
+                  transform: 'translateX(-50%) skewX(-12deg)', transformOrigin: 'top center',
+                  // v0.25.2162: 0.26/0.10→0.45/0.18(社長「違いがよくわからない」→はっきり見える濃さへ)。
+                  background: 'linear-gradient(to bottom, rgba(255,226,170,0.45) 0%, rgba(255,214,150,0.18) 55%, rgba(255,205,140,0) 88%)',
+                  maskImage: 'linear-gradient(to right, transparent 0%, black 30%, black 70%, transparent 100%)',
+                  WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 30%, black 70%, transparent 100%)',
+                  mixBlendMode: 'screen', pointerEvents: 'none',
+                  animation: `oplray ${r.dur}s ease-in-out ${r.delay}s infinite`,
+                } as React.CSSProperties}
+              />
+            ))}
+            {/* ライトのグロー(v0.25.2144・社長指示「背景のライト部分は全てグローで」): 実測した
+                ランプ/サイン位置(bg%)にscreen合成の放射光を重ねてゆっくり明滅。bgスクロールに連動。 */}
+            {WALK_GLOWS.map((gl, gi) => (
+              <div
+                key={`wg${gi}`}
+                style={{
+                  position: 'absolute', left: `${gl.x}%`, top: `${gl.y}%`,
+                  height: `${16 * gl.s}%`, aspectRatio: '1.8',
+                  transform: 'translate(-50%, -50%)', borderRadius: '50%',
+                  background: gl.green
+                    ? 'radial-gradient(ellipse at center, rgba(140,255,170,0.55) 0%, rgba(80,220,130,0.22) 45%, rgba(60,200,120,0) 72%)'
+                    : 'radial-gradient(ellipse at center, rgba(255,214,150,0.60) 0%, rgba(255,168,80,0.25) 45%, rgba(255,140,60,0) 72%)',
+                  mixBlendMode: 'screen', pointerEvents: 'none',
+                  animation: `opvglow ${2.2 + gi * 0.4}s ease-in-out infinite`, animationDelay: `${-gi * 0.7}s`,
+                }}
+              />
+            ))}
+            {/* 待ち構えるスタッフ(シルエット・90%会話・v0.25.2131)。素材は左向き=待機は素のまま
+                (向き訂正v0.25.2133)。白シルエット(invert・社長指示v0.25.2134=暗い通路で黒は見えない)。
+                位置/コマ/退場フェードはrAF側が駆動(主役と同じref直更新)。translateZ(0)=iOSマスクz順対策。 */}
+            <img
+              ref={walkNpcRef} src={NPC_IDLE} alt="" draggable={false}
+              style={{ position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated', filter: 'invert(1)' }}
+            />
+            <img
+              ref={walkCharRef} src={WALK_FRAMES[0]} alt="" draggable={false}
+              style={{
+                // translateZ(0)=iOSのmaskedレイヤーz順バグ対策(v0.25.2063の教訓): DOFマスクの下に潜らせない。
+                // キャラ個別フェードは廃止(v0.25.2121: シーン全体フェード+画面外左から歩き入場へ)。
+                position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated',
+              }}
+            />
+            {/* 前面ライトの光だまり(v0.25.2163): キャラ絵より後=上に描く。位置/寸法はrAFが毎tick追従。
+                「見えない前面ライトに照らされている」体でキャラごと明るく持ち上げる(screen合成)。 */}
+            <div
+              ref={walkNpcLightRef}
+              style={{
+                position: 'absolute', transform: 'translate(-50%, -100%)', borderRadius: '50%',
+                background: FRONT_LIGHT_BG, mixBlendMode: 'screen', pointerEvents: 'none',
+                animation: 'opvglow 3.4s ease-in-out infinite',
+              }}
+            />
+            <div
+              ref={walkCharLightRef}
+              style={{
+                position: 'absolute', transform: 'translate(-50%, -100%)', borderRadius: '50%',
+                background: FRONT_LIGHT_BG, mixBlendMode: 'screen', pointerEvents: 'none',
+                animation: 'opvglow 2.8s ease-in-out infinite',
+              }}
+            />
+          </div>
+          </div>{/* 呼吸ズームラッパー閉じ(v0.25.2158) */}
+          {/* 夢の浮遊パーティクル(v0.25.2144→v0.25.2163共通化): 画面全体をふわふわ漂う光の粒。 */}
+          <DreamMotes />
+          {/* 歩き会話(v0.25.2129): 射撃シーンと同じ左上会話UI。立ち絵=通常行は【顔なし】(名前+台詞のみ)、
+              stop行(さ、いこっか)のみシルエット(白反転で暗いピルに浮かせる)・社長指示v0.25.2135。 */}
+          {walkLine >= 0 && WALK_LINES[walkLine] && (
+            <div
+              className="absolute text-left"
+              style={{
+                top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
+                left: 'max(env(safe-area-inset-left), 18px)',
+                maxWidth: 'min(66vw, 300px)', zIndex: 40,
+              }}
+            >
+              <div
+                className="glass-pill flex items-stretch gap-1.5 py-1.5 pl-1.5 text-[13px] leading-snug"
+                style={{ paddingRight: 44, overflow: 'visible', textShadow: '0 1px 0 rgba(0,0,0,0.9)' }}
+              >
+                {WALK_LINES[walkLine].stop && (
+                  <div className="relative self-stretch shrink-0" style={{ width: 40 }}>
+                    <img
+                      src={NPC_IDLE} alt="" draggable={false}
+                      style={{
+                        position: 'absolute', left: '50%', top: 42, transform: 'translate(-50%, -100%)',
+                        height: 64, width: 'auto', maxWidth: 'none', imageRendering: 'pixelated',
+                        filter: 'invert(1) opacity(0.92)', // 黒シルエット→白(暗いピル背景に沈むため)
+                      }}
+                    />
+                  </div>
+                )}
+                <div className="self-center" style={{ whiteSpace: 'pre-line', wordBreak: 'break-word' }}>
+                  <span className="block font-bold text-amber-300/95">？？？</span>
+                  <span className="text-white/90">{WALK_LINES[walkLine].text}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )) : !mainReady ? null : phase < 3 ? (
+        // ── アリーナ3アングル(即表示ハードカット・社長指示v0.25.2072)。key=アングル番号で
+        //    切替時に再マウント=各アングルのズームは表示の瞬間から開始。 ──
+        <>
+          {[phase].map(si => (
+            <div
+              key={si}
+              style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                // 夢の呼吸(v0.25.2163・廊下と同じセット): 各アングルのズームとは別レイヤーでゆっくり伸縮。
+                transformOrigin: '50% 50%', animation: 'opbreathe 7s ease-in-out infinite alternate',
+              }}
+            >
+              <div
+                style={{
+                  position: 'relative', width: '100%',
+                  transformOrigin: `${SHOTS[si].ox}% ${SHOTS[si].oy}%`,
+                  // 正面のみ: 紙吹雪の噴き上げを見せてからズーム開始(FRONT_ZOOM_DELAY)。
+                  // 斜め(si=1)はズームせず静止(社長指示v0.25.2141「フェードインで1秒ストップ」):
+                  // 開始フレーミング(zf=正面の寄り切りと繋がるサイズ)で固定し、フェードインで現れて1秒ホールド。
+                  ...(si === 1
+                    ? { transform: `scale(${SHOTS[1].zf})`, animation: `opfade 300ms ease-out both` }
+                    : { animation: `opzoom${si} ${SHOT_DUR[si]}ms linear ${si === 0 ? FRONT_ZOOM_DELAY : 0}ms both` }),
+                }}
+              >
+                <div style={{ position: 'relative', width: '100%', aspectRatio: `${ARENA_AR}` }}>
+                  {/* flipScene=背景を左右反転(キャラは素の座標=画面全体がミラーに見える) */}
+                  <img src={SHOTS[si].bg} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined }} />
+                  {/* 被写界深度(v0.25.2060方式): 事前ブラー版bgを焦点マスク(中心=透明穴)で重ねる。
+                      焦点(ステージ)は下の鮮明bgが素通しで見え、周辺ほどブラー版が出る。ランタイムぼかし無し。 */}
+                  <img src={SHOTS[si].bgBlur} alt="" draggable={false} style={{
+                    position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                    transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined,
+                    maskImage: dofMask(si), WebkitMaskImage: dofMask(si),
+                  } as React.CSSProperties} />
+                  {/* 夢のソフトブルーム(v0.25.2163・廊下A案と同じ): ブラー版をマスク無し・screen合成で
+                      薄く全面に重ね、会場の明部(照明・ペンライト)をふわっと滲ませる。 */}
+                  <img src={SHOTS[si].bgBlur} alt="" draggable={false} style={{
+                    position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                    transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined,
+                    opacity: WALK_BLOOM_ALPHA, mixBlendMode: 'screen', pointerEvents: 'none',
+                  }} />
+                  {/* 会場グローパルス(案B): 客席一帯をゆっくり明滅する柔らかい光で持ち上げる */}
+                  {VENUE_GLOWS.map((g, gi) => (
+                    <div
+                      key={`vg${gi}`}
+                      style={{
+                        position: 'absolute', left: `${g.x - g.rx}%`, top: `${g.y - g.ry}%`, width: `${g.rx * 2}%`, height: `${g.ry * 2}%`,
+                        background: `radial-gradient(ellipse at center, ${g.color} 0%, rgba(0,0,0,0) 70%)`,
+                        mixBlendMode: 'screen', pointerEvents: 'none',
+                        animation: `opvglow ${g.dur}s ease-in-out infinite`, animationDelay: `${g.delay}s`,
+                      }}
+                    />
+                  ))}
+                  {/* ペンライトの海(案A): 客席領域で光のバーがそれぞれ揺れる(ズームに追従) */}
+                  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                    {PENLIGHTS[si].map(p => (
+                      <div
+                        key={p.key}
+                        style={{
+                          position: 'absolute', left: `${p.x.toFixed(1)}%`, top: `${p.y.toFixed(1)}%`,
+                          width: p.w, height: p.h, borderRadius: 2,
+                          background: p.color, opacity: p.op,
+                          // 発光強化(社長指示v0.25.2057): 芯+大きめの淡いハロの2層グロー。
+                          boxShadow: `0 0 9px 2px ${p.color}, 0 0 22px 8px ${p.color}66`,
+                          transformOrigin: '50% 100%',
+                          '--pa': p.pa,
+                          animation: `oppl ${p.sd.toFixed(2)}s ease-in-out infinite alternate`,
+                          animationDelay: `${p.delay.toFixed(2)}s`,
+                        } as React.CSSProperties}
+                      />
+                    ))}
+                  </div>
+                  {/* スポットライト(社長指示v0.25.2057): 3人へ頭上から光錐+足元の光溜まり。
+                      キャラ描画の下に敷く=3人が光の中に立って見える。 */}
+                  {SPOTLIGHTS[si].map((sp, spi) => (
+                    <React.Fragment key={`sp${spi}`}>
+                      <div style={{
+                        position: 'absolute', left: `${sp.left}%`, top: `${sp.top}%`, width: `${sp.w}%`, height: `${sp.h}%`,
+                        clipPath: 'polygon(36% 0, 64% 0, 100% 100%, 0% 100%)',
+                        // 上端は透明から立ち上げ=光錐の「生え際」の四角い切れ目を消す(v0.25.2060実写確認)。
+                        background: 'linear-gradient(to bottom, rgba(255,250,215,0) 0%, rgba(255,250,215,0.4) 22%, rgba(255,250,215,0.05) 100%)',
+                        mixBlendMode: 'screen', pointerEvents: 'none',
+                        animation: `opspot ${sp.dur}s ease-in-out infinite`, animationDelay: `${sp.delay}s`,
+                      }} />
+                      <div style={{
+                        position: 'absolute', left: `${sp.poolL}%`, top: `${sp.poolT}%`, width: `${sp.poolW}%`, height: `${sp.poolH}%`,
+                        background: 'radial-gradient(ellipse at center, rgba(255,250,215,0.34), rgba(0,0,0,0) 70%)',
+                        mixBlendMode: 'screen', pointerEvents: 'none',
+                        animation: `opspot ${sp.dur}s ease-in-out infinite`, animationDelay: `${sp.delay}s`,
+                      }} />
+                    </React.Fragment>
+                  ))}
+                  <div style={{ position: 'absolute', inset: 0 }}>
+                    {SHOTS[si].chars.map((c, ci) => (
+                      <img
+                        key={ci} src={c.src} alt="" draggable={false}
+                        style={{
+                          position: 'absolute', left: `${c.x}%`, top: `${c.y}%`, height: `${c.h}%`,
+                          transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
+                          // アリーナではシルエット2人を白に(社長指示v0.25.2044)。舞台裏(赤背景)は素の黒のまま。
+                          filter: c.src !== HERO ? 'brightness(0) invert(1)' : undefined,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  {/* (v0.25.2060: 旧backdrop-filterの被写界深度オーバーレイはブラー画像方式へ移行=上のbgBlur) */}
+                </div>
+              </div>
+            </div>
+          ))}
+          {/* 夢の浮遊粒(v0.25.2163・廊下と同じセット): アングル切替を跨いで画面全体に漂う。紙吹雪(z5)の下。 */}
+          <DreamMotes zIndex={4} />
+          {/* 紙吹雪レイヤー(カメラ非追従・アングル切替を跨いで存続。zIndex=アングルより上・暗転(50)より下。
+              【画面全体】に描く(レターボックス帯の外も含む上端→下端・社長指示v0.25.2042)。横=vw/縦=vh。
+              translateZ(0)=iOS Safari合成バグ対策(社長報告v0.25.2063): マスク付きのブラーbg(被写界深度)が
+              GPUレイヤーに昇格し、z-indexを無視して紙吹雪の上に描かれる=マスクの穴(ステージ中央)以外で
+              噴射が隠れていた。紙吹雪側も明示的にレイヤー化してz順を合成側に尊重させる(定石の回避策)。 */}
+          <div style={{ position: 'absolute', inset: 0, zIndex: 5, overflow: 'hidden', pointerEvents: 'none', transform: 'translateZ(0)', willChange: 'transform' }}>
+            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+              {/* ①パーン: 画面下端の両サイドから真上へ噴射→上端の外へ */}
+              {CONFETTI_BURST.map(p => (
+                <div
+                  key={p.key}
+                  style={{
+                    position: 'absolute', left: `${p.x}%`, top: `${p.y}%`,
+                    '--cx1': `${p.cx1.toFixed(1)}vw`, '--cy1': `${p.cy1.toFixed(1)}vh`,
+                    '--cx2': `${p.cx2.toFixed(1)}vw`, '--cy2': `${p.cy2.toFixed(1)}vh`,
+                    animation: `opconfT ${p.dur.toFixed(2)}s both`, animationDelay: `${p.delay.toFixed(2)}s`,
+                  } as React.CSSProperties}
+                >
+                  <div
+                    style={{
+                      width: p.w, height: p.h, background: p.color,
+                      '--r1': p.r1, '--sw': `${p.sw.toFixed(1)}px`,
+                      animation: `opconfS ${p.sd.toFixed(2)}s linear infinite`,
+                    } as React.CSSProperties}
+                  />
+                </div>
+              ))}
+              {/* ②雨: 噴き上げ後(1.0s〜)、画面全体に均等な紙吹雪がきらめきながら降り続けるループ層。
+                  各粒は負のdelayで最初から空中に満ちている。斜め・横カットでも継続。 */}
+              <div style={{ position: 'absolute', inset: 0, opacity: 0, animation: `opfade 500ms linear ${CONFETTI_RAIN_START_MS}ms both` }}>
+                {CONFETTI_GLITTER.map(p => (
+                  <div
+                    key={p.key}
+                    style={{
+                      position: 'absolute', left: `${p.x.toFixed(1)}%`, top: 0,
+                      animation: `opconfK ${p.dur.toFixed(2)}s linear infinite`, animationDelay: `${p.delay.toFixed(2)}s`,
+                    } as React.CSSProperties}
+                  >
+                    <div
+                      style={{
+                        width: p.w, height: p.h, background: p.color,
+                        '--r1': p.r1,
+                        animation: `opconfW ${p.td.toFixed(2)}s linear infinite`,
+                      } as React.CSSProperties}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          {/* 廊下→アリーナのフェードイン(社長指示v0.25.2407「フェードイン3秒」)。黒幕を3秒かけて
+              抜く=暗転から会場が現れる。アングル切替(phase 0→1→2)の即表示ハードカット
+              (社長指示v0.25.2072)は不変: この黒幕は [phase].map の**外**に置いてあるので、
+              アングルが変わっても再マウントされずアニメも再生し直さない(1回きり)。
+              ?opening=2(射撃直行)には出さない=廊下から来た時だけの演出。 */}
+          {!startAtShoot && (
+            <div style={{ position: 'absolute', inset: 0, background: '#000', pointerEvents: 'none', zIndex: 60, animation: `opfadeout ${ARENA_FADEIN_MS}ms linear both` }} />
+          )}
+        </>
+      ) : phase === 3 ? (
+        // ── 射撃シーン(backstage)。コマ画像は足元アンカー共通キャンバス=src差し替えで芝居。 ──
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          // 夢の呼吸(v0.25.2163・廊下と同じセット)。ズーム(opshzoom)は内側の別レイヤー=合成される。
+          transformOrigin: '50% 50%', animation: 'opbreathe 7s ease-in-out infinite alternate',
+        }}>
+          <div
+            style={{
+              position: 'relative', width: '100%',
+              transformOrigin: '52% 78%',
+              animation: `opshzoom ${SHOOT_TOTAL}ms linear both`,
+            }}
+          >
+            <div style={{ position: 'relative', width: '100%', aspectRatio: `${ARENA_AR}` }}>
+              {/* 撃った瞬間から背景=赤一色(舞台絵と差し替え)。キャラはその上に残る。 */}
+              {cur.red
+                ? <div style={{ position: 'absolute', inset: 0, background: '#d40000' }} />
+                : <>
+                    <img src={A('shoot-stage.png')} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                    {/* 夢のソフトブルーム(v0.25.2163): 舞台裏はブラー焼き込み素材が無いため、同じ絵を
+                        screen合成で薄く重ねて明部を持ち上げる(ハレーション風)。赤転換中は出さない。 */}
+                    <img src={A('shoot-stage.png')} alt="" draggable={false} style={{
+                      position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                      opacity: WALK_BLOOM_ALPHA, mixBlendMode: 'screen', pointerEvents: 'none',
+                    }} />
+                  </>}
+              <img
+                src={VICTIM(cur.v)} alt="" draggable={false}
+                style={{
+                  position: 'absolute', left: `${VICTIM_POS.x + (VICTIM_DX[cur.v] ?? 0)}%`, top: `${VICTIM_POS.y}%`, height: `${VICTIM_POS.h}%`,
+                  transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
+                  // 撃たれた瞬間のコマ(v2)だけ黒シルエット化(社長指示v0.25.2023)=赤バックに黒抜きのショックカット。
+                  filter: cur.v === 2 ? 'brightness(0)' : undefined,
+                }}
+              />
+              <img
+                src={SHOOTER(cur.s)} alt="" draggable={false}
+                style={{
+                  position: 'absolute', left: `${SHOOTER_POS.x}%`, top: `${SHOOTER_POS.y}%`, height: `${SHOOTER_POS.h}%`,
+                  transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
+                  // 舞台裏も最初は白シルエット→【背景が赤になるのと同じ瞬間】から黒(社長指示v0.25.2070)。
+                  // 旧: 発砲コマのハードコード時刻(2.0s)基準で、v0.25.2067の+3秒シフトを取りこぼし
+                  // 会話中に黒くなっていた。赤反転フラグ(cur.red)基準なら今後シフトしてもズレない。
+                  filter: cur.red ? undefined : 'brightness(0) invert(1)',
+                }}
+              />
+              {/* 血飛沫(被弾の瞬間・3コマ40msずつ)。右端センター=傷口を後頭部に合わせ、左へ飛ぶ。 */}
+              {cur.b > 0 && (
+                <img
+                  src={BLOOD(cur.b)} alt="" draggable={false}
+                  style={{
+                    position: 'absolute', left: `${BLOOD_POS.x}%`, top: `${BLOOD_POS.y}%`, height: `${BLOOD_POS.h}%`,
+                    // scaleX(-1)=左右反転(v0.25.2024): 素材は「尖端(傷口)が左・飛ぶほど右へ広がる」絵。
+                    // 反転して尖端=右端(後頭部)に合わせ、左へ行くほど広がる=飛散方向へ正しく拡散。
+                    transform: 'translate(-100%, -50%) scaleX(-1)', imageRendering: 'pixelated',
+                    // OPの血飛沫は黒シルエット(社長指示v0.25.2023・ゲーム内は赤のまま)。
+                    filter: 'brightness(0)',
+                  }}
+                />
+              )}
+            </div>
+          </div>
+          {/* 夢の浮遊粒(v0.25.2163・廊下と同じセット)。会話UI(z40)より下。 */}
+          <DreamMotes zIndex={4} />
+          {/* 会話(社長指示v0.25.2065): 本編の左上・会話UI(NpcDialogue)と同一の見た目をOP内で再現。
+              位置/枠(glass-pill)/話者名の色/文字サイズはNpcDialogue.tsxに合わせる(UI統一)。 */}
+          {shootLine >= 0 && (
+            <div
+              className="absolute text-left"
+              style={{
+                top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
+                left: 'max(env(safe-area-inset-left), 18px)',
+                maxWidth: 'min(66vw, 300px)', zIndex: 40,
+              }}
+            >
+              <div
+                className="glass-pill flex items-stretch gap-1.5 py-1.5 pl-1.5 text-[13px] leading-snug"
+                style={{ paddingRight: 44, overflow: 'visible', textShadow: '0 1px 0 rgba(0,0,0,0.9)' }}
+              >
+                <div className="relative self-stretch shrink-0" style={{ width: 40 }}>
+                  {/* 立ち絵=撃つ子の立ち姿。撃つ前のシーンと同じ白シルエットで正体は見せない。
+                      足元は「上から2行分」の位置に固定(社長指示v0.25.2072・会話UI共通=NpcDialogueと同じ)。 */}
+                  <img
+                    src={SHOOTER(1)} alt="" draggable={false}
+                    style={{
+                      position: 'absolute', left: '50%', top: 42, transform: 'translate(-50%, -100%)',
+                      height: 64, width: 'auto', maxWidth: 'none', imageRendering: 'pixelated',
+                      filter: 'brightness(0) invert(1)',
+                    }}
+                  />
+                </div>
+                <div className="self-center" style={{ whiteSpace: 'pre-line', wordBreak: 'break-word' }}>
+                  {/* 会話は名前の後に一度改行(社長指示v0.25.2069・会話UI共通=本編NpcDialogueと同じ)。 */}
+                  <span className="block font-bold text-amber-300/95">？？？</span>
+                  <span className="text-white/90">{SHOOT_LINES[shootLine]}</span>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* シーン終わりの暗転 */}
+          <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, pointerEvents: 'none', animation: `opblack ${SHOOT_FADE_MS}ms linear ${SHOOT_FADE_START}ms both` }} />
+        </div>
+      ) : titleReveal ? (
+        // ── タイトルフェードイン(社長指示v0.25.2061): 蘇生が黒に沈み切った後、黒幕をフェードアウトして
+        //    下に居るタイトル画面を透かして見せる(ルート背景は透過済み)。明け切ったら finish でOPを外す。 ──
+        <div style={{ position: 'absolute', inset: 0, background: '#000', pointerEvents: 'none', animation: `opfadeout ${TITLE_REVEAL_MS}ms linear both` }} />
+      ) : (
+        // ── 蘇生処置パート(phase4): 黒背景の中央に字幕を1行ずつ。話者名・年代・PHILL等は絶対に出さない(spec §5/§6)。
+        //    320px幅でも2〜3行に収まるよう max-width と自然折返しで担保。key=行indexで軽くフェードイン。 ──
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5%' }}>
+          {/* HPピンチと同じ赤ビネットのドクドク点滅(社長指示v0.25.2053)。keyframeは本編と共用(index.cssのlowhp-heartbeat)。
+              周期1100ms=心拍SEと同じ鼓動感。エッジのみ赤で中央の字幕は読める。 */}
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute', inset: 0, pointerEvents: 'none',
+              background: 'radial-gradient(ellipse at center, rgba(120,0,0,0) 30%, rgba(150,0,0,0.40) 60%, rgba(190,0,0,0.92) 100%)',
+              animation: 'lowhp-heartbeat 1100ms ease-in-out infinite',
+              willChange: 'opacity',
+            }}
+          />
+          {subIdx >= 0 && (
+            <div
+              key={subIdx}
+              style={{
+                maxWidth: '90%', textAlign: 'center',
+                color: 'rgba(255,255,255,0.92)',
+                fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif',
+                fontSize: 14, letterSpacing: '0.06em', lineHeight: 1.75,
+                textShadow: '0 1px 6px rgba(0,0,0,0.9)',
+                animation: 'opsub 260ms ease both',
+              }}
+            >
+              {OPENING_REVIVAL_LINES[subIdx].text}
+            </div>
+          )}
+          {/* 終端の3秒フェードアウト(社長指示v0.25.2055): 黒を3秒かけて被せ、赤ビネットごと沈める。 */}
+          {revFading && (
+            <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, animation: 'opfade 3000ms linear both', pointerEvents: 'none' }} />
+          )}
+        </div>
+      )}
+
+      {/* アリーナ→射撃シーン間の暗転(phase<3の間だけ重ねる。phase3は上の分岐ごと消えるのでカットで明ける)
+          walkDone必須(v0.25.2114): 歩きシーン中にマウントするとCSSの遅延が歩き中に消化されて
+          アリーナ開幕が真っ黒になる(実測でハマった罠。CSS起点はアリーナツリーと同時マウントが原則)。 */}
+      {mainReady && walkDone && phase < 3 && !startAtShoot && (
+        <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 50, pointerEvents: 'none', animation: `opblack ${BLACK_MS}ms linear ${BLACK_START}ms both` }} />
+      )}
+
+      {/* スキップ(タイトルフェードイン中=実質OP終了後は出さない) */}
+      {!titleReveal && <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); finish(); }}
+        style={{
+          position: 'absolute', bottom: 18, right: 18, zIndex: 60,
+          padding: '6px 14px', fontSize: 12, color: 'rgba(255,255,255,0.75)',
+          background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 999,
+        }}
+      >
+        スキップ ▶
+      </button>}
+    </div>
+  );
+};
+
+export default OpeningScene;

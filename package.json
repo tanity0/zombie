@@ -1,12 +1,17 @@
 {
   "name": "zombie",
   "private": true,
-  "version": "0.25.827",
+  "version": "0.25.4142",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:fuzz": "SIM_FUZZ=1 vitest run src/store/sim.test.ts",
+    "playtest": "SIM_FUZZ=1 vitest run src/store/playtest.test.ts",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -27,10 +32,12 @@
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.11",
     "globals": "^15.9.0",
+    "playwright": "^1.61.1",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "vitest": "^2.1.9"
   }
 }

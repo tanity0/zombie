@@ -6,6 +6,7 @@
 // 読んで Sprite を並べるだけ。当たり判定は store が cityPropRect / resolveCityPropCollision を使う。
 // 当たり判定は「大きい物だけ」(社長指示)。decal(血痕/草/小石)は素通り。
 import { Rect, footRect, resolveAabb } from './obstacles';
+import { isObstacleDestroyed } from './destructibles';
 
 export interface CityPropDef {
   tex: string;       // テクスチャ名(sprites/<tex>.png)
@@ -15,13 +16,17 @@ export interface CityPropDef {
   colW: number;      // 足元当たり矩形の幅(world px・collide時のみ)
   colH: number;      // 同 高さ(=奥行きの薄い帯。底辺が足元)
   weight: number;    // 散布の出やすさ
+  // 個体ごとのランダム回転範囲(度)。散らばりの銃など「拾えるアイテム(横向き表示)と見分ける」用途
+  // (社長指示2026-07-17)。指定時は cityPropsInRegion が決定的に回転角を振る。当たり判定なし前提
+  // (decal/素通り)の見た目専用。未指定=回転なし(0)。
+  rotateDeg?: [number, number];
 }
 
 // シートから抽出した素材(木 r0-c0/r0-c2 は tree システム側なので除外)。
 export const CITY_PROPS: CityPropDef[] = [
   { tex: 'props/prop2-r0-c1', displayH: 50,  collide: false, decal: false, colW: 0,   colH: 0,  weight: 5 },  // 低木
-  { tex: 'props/prop2-r0-c3', displayH: 132, collide: true,  decal: false, colW: 96,  colH: 26, weight: 2 },  // 廃墟(角)
-  { tex: 'props/prop2-r0-c4', displayH: 122, collide: true,  decal: false, colW: 120, colH: 26, weight: 2 },  // 廃墟(壁)
+  { tex: 'props/prop2-r0-c3', displayH: 198, collide: true,  decal: false, colW: 144, colH: 31, weight: 2 },  // 廃墟(角) 132*1.5 / 足元 横96*1.5 縦26*1.2
+  { tex: 'props/prop2-r0-c4', displayH: 183, collide: true,  decal: false, colW: 180, colH: 31, weight: 2 },  // 廃墟(壁) 122*1.5 / 足元 横120*1.5 縦26*1.2
   { tex: 'props/prop2-r1-c0', displayH: 80,  collide: true,  decal: false, colW: 108, colH: 22, weight: 5 },  // 瓦礫(横長)
   { tex: 'props/prop2-r1-c1', displayH: 82,  collide: true,  decal: false, colW: 94,  colH: 22, weight: 5 },  // 瓦礫2
   { tex: 'props/prop2-r1-c2', displayH: 96,  collide: true,  decal: false, colW: 40,  colH: 20, weight: 4 },  // 石柱
@@ -60,14 +65,113 @@ export const SNOW_PROPS: CityPropDef[] = [
 ];
 
 // farBackdropキー別の散布カタログ。'' / forest は散布なし(木システムが担当)。
+// ステージ5(対変異体防衛本部)の散布オブジェクト(社長提供シート2026-07-16の2行目・3行目=
+// 「木の代わりのオブジェクト(当たり判定有り)」)。ステージ5は木を出さない(trees.setTreesDisabled)ため、
+// これらが唯一の散布障害物。displayH/当たり寸は叩き台(実機調整前提)。全て当たり判定あり(社長指示)。
+export const STAGE5_PROPS: CityPropDef[] = [
+  { tex: 'stage5-props/prop-r2-c1',  displayH: 64,  collide: true, decal: false, colW: 100, colH: 22, weight: 4 }, // 瓦礫の山(横長)
+  { tex: 'stage5-props/prop-r2-c2',  displayH: 88,  collide: true, decal: false, colW: 88,  colH: 24, weight: 4 }, // 大岩塊
+  { tex: 'stage5-props/prop-r2-c3',  displayH: 96,  collide: true, decal: false, colW: 40,  colH: 18, weight: 3 }, // 石柱
+  { tex: 'stage5-props/prop-r2-c4',  displayH: 66,  collide: true, decal: false, colW: 44,  colH: 18, weight: 4 }, // 崩れた石柱
+  { tex: 'stage5-props/prop-r2-c5',  displayH: 96,  collide: true, decal: false, colW: 48,  colH: 18, weight: 3 }, // 石アーチ(窓)
+  { tex: 'stage5-props/prop-r2-c6',  displayH: 98,  collide: true, decal: false, colW: 78,  colH: 24, weight: 3 }, // 石壁ブロック
+  { tex: 'stage5-props/prop-r2-c7',  displayH: 82,  collide: true, decal: false, colW: 66,  colH: 22, weight: 3 }, // 崩れ城壁
+  { tex: 'stage5-props/prop-r2-c8',  displayH: 92,  collide: true, decal: false, colW: 26,  colH: 14, weight: 3 }, // 砲身柱(縦長)
+  { tex: 'stage5-props/prop-r2-c9',  displayH: 84,  collide: true, decal: false, colW: 52,  colH: 20, weight: 3 }, // パイプ塔
+  { tex: 'stage5-props/prop-r2-c10', displayH: 62,  collide: true, decal: false, colW: 70,  colH: 20, weight: 4 }, // 対戦車杭
+  { tex: 'stage5-props/prop-r3-c1',  displayH: 84,  collide: true, decal: false, colW: 130, colH: 26, weight: 3 }, // 大砲
+  { tex: 'stage5-props/prop-r3-c2',  displayH: 84,  collide: true, decal: false, colW: 100, colH: 24, weight: 3 }, // 壊れた臼砲
+  { tex: 'stage5-props/prop-r3-c3',  displayH: 84,  collide: true, decal: false, colW: 140, colH: 26, weight: 2 }, // 荷車の残骸
+  { tex: 'stage5-props/prop-r3-c4',  displayH: 56,  collide: true, decal: false, colW: 100, colH: 22, weight: 4 }, // 残骸の山
+  { tex: 'stage5-props/prop-r3-c5',  displayH: 78,  collide: true, decal: false, colW: 100, colH: 22, weight: 3 }, // 血染めの防壁
+  { tex: 'stage5-props/prop-r3-c6',  displayH: 82,  collide: true, decal: false, colW: 92,  colH: 24, weight: 3 }, // 機材ボックス
+  { tex: 'stage5-props/prop-r3-c7',  displayH: 100, collide: true, decal: false, colW: 140, colH: 30, weight: 2 }, // 破れテント
+  // ── 以下、戦場の散らばり物(社長指示2026-07-17「その他のオブジェクトも適切な大きさでばら撒く。
+  //    当たり判定は無くていい(大きなものでなければ)。旗はいらない」)。
+  //    寝かせ物(武器/防具/衣類/小物)=デカール(地面レイヤー・当たりなし)、
+  //    立ち物(木箱/鉄条網/杭柵)=Y-sortビルボード・当たりなし。旗(r7-c1/c2)は除外。
+  // 武器(r1)
+  { tex: 'stage5-props/prop-r1-c1',  displayH: 32, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // ライフル
+  { tex: 'stage5-props/prop-r1-c2',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // ライフル2
+  { tex: 'stage5-props/prop-r1-c3',  displayH: 28, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // 短機関銃
+  { tex: 'stage5-props/prop-r1-c4',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // 拳銃
+  { tex: 'stage5-props/prop-r1-c5',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // 散弾銃
+  { tex: 'stage5-props/prop-r1-c6',  displayH: 20, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // リボルバー
+  { tex: 'stage5-props/prop-r1-c7',  displayH: 24, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 , rotateDeg: [10, 150] }, // 大型拳銃
+  { tex: 'stage5-props/prop-r1-c8',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 4, rotateDeg: [10, 150] }, // 血染めナイフ(社長指示2026-07-17「ナイフもお願い」)
+  // 防具(r4)
+  { tex: 'stage5-props/prop-r4-c1',  displayH: 26, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // ヘルメット
+  { tex: 'stage5-props/prop-r4-c2',  displayH: 28, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // トゲ付き兜
+  { tex: 'stage5-props/prop-r4-c3',  displayH: 24, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // ヘルメット2
+  { tex: 'stage5-props/prop-r4-c4',  displayH: 24, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // ガスマスク
+  { tex: 'stage5-props/prop-r4-c5',  displayH: 24, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // ガスマスク2
+  { tex: 'stage5-props/prop-r4-c6',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 肩当て鎧
+  { tex: 'stage5-props/prop-r4-c7',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 胸甲
+  { tex: 'stage5-props/prop-r4-c8',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 翼章の甲板
+  { tex: 'stage5-props/prop-r4-c9',  displayH: 26, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 装甲板
+  { tex: 'stage5-props/prop-r4-c10', displayH: 28, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 装甲板2
+  // 衣類・鞄(r5)
+  { tex: 'stage5-props/prop-r5-c1',  displayH: 36, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [0, 90] }, // コート
+  { tex: 'stage5-props/prop-r5-c2',  displayH: 34, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [0, 90] }, // 軍服
+  { tex: 'stage5-props/prop-r5-c3',  displayH: 32, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [0, 90] }, // ズボン
+  { tex: 'stage5-props/prop-r5-c4',  displayH: 26, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // ブーツ
+  { tex: 'stage5-props/prop-r5-c5',  displayH: 34, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 背嚢
+  { tex: 'stage5-props/prop-r5-c6',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 鞄
+  { tex: 'stage5-props/prop-r5-c7',  displayH: 28, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 雑嚢
+  { tex: 'stage5-props/prop-r5-c8',  displayH: 32, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // トランク
+  // 木箱・弾薬(r6)。木箱は立ち物(Y-sort・当たりなし)、弾薬類は地面デカール。
+  { tex: 'stage5-props/prop-r6-c1',  displayH: 36, collide: false, decal: false, colW: 0, colH: 0, weight: 4 }, // 木箱
+  { tex: 'stage5-props/prop-r6-c2',  displayH: 36, collide: false, decal: false, colW: 0, colH: 0, weight: 4 }, // 木箱2
+  { tex: 'stage5-props/prop-r6-c3',  displayH: 36, collide: false, decal: false, colW: 0, colH: 0, weight: 4 }, // 木箱3
+  { tex: 'stage5-props/prop-r6-c4',  displayH: 30, collide: false, decal: false, colW: 0, colH: 0, weight: 4 }, // 小箱
+  { tex: 'stage5-props/prop-r6-c5',  displayH: 36, collide: false, decal: false, colW: 0, colH: 0, weight: 2 }, // 赤木箱
+  { tex: 'stage5-props/prop-r6-c6',  displayH: 36, collide: false, decal: false, colW: 0, colH: 0, weight: 4 }, // 弾薬箱(開)
+  { tex: 'stage5-props/prop-r6-c7',  displayH: 14, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 弾倉
+  { tex: 'stage5-props/prop-r6-c8',  displayH: 14, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 弾倉2
+  { tex: 'stage5-props/prop-r6-c9',  displayH: 14, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 弾倉3
+  { tex: 'stage5-props/prop-r6-c10', displayH: 10, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 弾丸
+  { tex: 'stage5-props/prop-r6-c11', displayH: 10, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 弾丸2
+  { tex: 'stage5-props/prop-r6-c12', displayH: 12, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 大口径弾
+  { tex: 'stage5-props/prop-r6-c13', displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 弾帯
+  // 鉄条網・杭柵(r7・旗のr7-c1/c2は除外)。立ち物・当たりなし(社長指示: 大きくなければ判定不要)。
+  { tex: 'stage5-props/prop-r7-c3',  displayH: 40, collide: false, decal: false, colW: 0, colH: 0, weight: 4 }, // 鉄条網コイル
+  { tex: 'stage5-props/prop-r7-c4',  displayH: 48, collide: false, decal: false, colW: 0, colH: 0, weight: 4 }, // 木枠バリケード
+  { tex: 'stage5-props/prop-r7-c5',  displayH: 46, collide: false, decal: false, colW: 0, colH: 0, weight: 4 }, // X字杭
+  { tex: 'stage5-props/prop-r7-c6',  displayH: 40, collide: false, decal: false, colW: 0, colH: 0, weight: 4 }, // 尖杭
+  { tex: 'stage5-props/prop-r7-c7',  displayH: 34, collide: false, decal: false, colW: 0, colH: 0, weight: 4 }, // 杭と骨の山
+  // 小物(r8)
+  { tex: 'stage5-props/prop-r8-c1',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 黒い本
+  { tex: 'stage5-props/prop-r8-c2',  displayH: 18, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // ロザリオ
+  { tex: 'stage5-props/prop-r8-c3',  displayH: 14, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 血の刃
+  { tex: 'stage5-props/prop-r8-c4',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 短剣
+  { tex: 'stage5-props/prop-r8-c5',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 軍刀
+  // 地面の細かい遺留品(r9)
+  { tex: 'stage5-props/prop-r9-c1',  displayH: 12, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 薬莢
+  { tex: 'stage5-props/prop-r9-c2',  displayH: 12, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 認識票プレート
+  { tex: 'stage5-props/prop-r9-c3',  displayH: 14, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 歯車
+  { tex: 'stage5-props/prop-r9-c4',  displayH: 12, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 鍵と部品
+  { tex: 'stage5-props/prop-r9-c5',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 頭蓋骨
+  { tex: 'stage5-props/prop-r9-c6',  displayH: 14, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 骨片
+  { tex: 'stage5-props/prop-r9-c7',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 書類
+  { tex: 'stage5-props/prop-r9-c8',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 書類2
+  { tex: 'stage5-props/prop-r9-c9',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 血染めの布
+  { tex: 'stage5-props/prop-r9-c10', displayH: 12, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // マグカップ
+  { tex: 'stage5-props/prop-r9-c11', displayH: 20, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 小弾薬箱
+  { tex: 'stage5-props/prop-r9-c12', displayH: 12, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 認識票
+];
+
 export const STAGE_PROPS: Record<string, CityPropDef[]> = {
   city: CITY_PROPS,
   snow: SNOW_PROPS,
+  stage5: STAGE5_PROPS,
 };
 // 区画あたりの散布数 [min, 追加レンジ]。大きい物が多いステージは控えめに。
 const STAGE_PROP_COUNT: Record<string, [number, number]> = {
   city: [3, 4], // 3〜6
   snow: [1, 2], // 1〜2(塔/バス/テントは大きいのでまばら)
+  stage5: [12, 6], // 12〜18(社長指示2026-07-17「もっと散らばってる方が雰囲気出る」。散らばり物の
+                   // weightも2倍化済み=障害物(判定あり)は約3個/区画でv1788の3〜7個より減、
+                   // 判定なしの遺留品が約10〜15個/区画。デカール中心なので描画負荷は軽い)
 };
 
 const totalWeightFor = (defs: CityPropDef[]) => defs.reduce((s, d) => s + d.weight, 0);
@@ -88,6 +192,7 @@ export interface CityProp {
   footY: number;
   scale: number;
   variant: number; // 該当カタログ(STAGE_PROPS[farKey])のインデックス
+  rotation: number; // 描画回転(rad)。def.rotateDeg 指定時のみ非0(見た目専用・判定に不使用)
 }
 
 const hash2 = (x: number, y: number): number => {
@@ -112,9 +217,17 @@ export const cityPropsInRegion = (
         const footX = cx * CITY_ZONE + CITY_ZONE * (0.08 + 0.84 * hash2(cx * 1.3 + k * 7.1 + 2.2, cy * 1.9 - k * 3.3 + 4.4));
         const footY = cy * CITY_ZONE + CITY_ZONE * (0.08 + 0.84 * hash2(cx * 2.7 - k * 5.5 + 9.9, cy * 1.1 + k * 2.2 - 6.6));
         if (Math.hypot(footX, footY) < CITY_SAFE_RADIUS) continue;
+        const id = `cp-${cx}-${cy}-${k}`;
+        // 裏ボスに破壊されたプロップは欠番(描画・当たり判定とも同時に消える)。
+        if (isObstacleDestroyed(id)) continue;
         const variant = pickVariant(defs, hash2(cx * 5.5 + k * 1.7, cy * 4.4 - k * 2.6));
         const scale = 0.85 + hash2(cx * 0.9 + k * 4.2, cy * 1.6 - k * 0.8) * 0.3; // 0.85〜1.15
-        out.push({ id: `cp-${cx}-${cy}-${k}`, footX, footY, scale, variant });
+        // 回転(rotateDeg指定の型のみ): 決定的に範囲内で振る(度→rad)。見た目専用。
+        const rd = defs[variant]?.rotateDeg;
+        const rotation = rd
+          ? (rd[0] + hash2(cx * 6.3 - k * 2.9 + 1.1, cy * 3.8 + k * 5.7 - 7.7) * (rd[1] - rd[0])) * (Math.PI / 180)
+          : 0;
+        out.push({ id, footX, footY, scale, variant, rotation });
       }
     }
   }

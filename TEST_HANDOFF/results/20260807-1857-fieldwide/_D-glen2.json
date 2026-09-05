@@ -1,0 +1,41 @@
+{
+ "seen": {
+  "g-boon-windup": 44,
+  "g-boon-recover": 5,
+  "g-sweep-windup": 13,
+  "g-sweep-active": 7,
+  "g-sweep-recover": 15,
+  "g-dash-windup": 7,
+  "g-dash-charge": 9,
+  "g-dash-recover": 7,
+  "g-reach-windup": 17,
+  "g-reach-active": 16,
+  "g-reach-recover": 86,
+  "g-bolt-windup": 23,
+  "g-bolt-recover": 14,
+  "g-jump-windup": 50,
+  "g-jump-air": 14,
+  "g-jump-recover": 11,
+  "g-talon-windup": 39,
+  "g-talon-recover": 100,
+  "g-stomp-windup": 23,
+  "g-stomp-recover": 18,
+  "g-trijump-windup": 35,
+  "g-trijump-air": 30,
+  "g-trijump-recover": 36,
+  "g-bolt-burst": 8,
+  "g-nihil-chant1": 6,
+  "g-nihil-chant2": 5,
+  "g-nihil-chant3": 5,
+  "g-nihil-recover": 2
+ },
+ "nihil": [
+  "g-nihil-chant1",
+  "g-nihil-chant2",
+  "g-nihil-chant3",
+  "g-nihil-recover"
+ ],
+ "errors": [
+  "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+ ]
+}

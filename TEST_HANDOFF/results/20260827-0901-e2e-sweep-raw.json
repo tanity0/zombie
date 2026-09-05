@@ -1,0 +1,2294 @@
+{
+  "generatedAt": "2026-08-27T09:59:37.910Z",
+  "scenarios": [
+    {
+      "name": "A1-ghost-castle",
+      "durMs": 600000,
+      "shot": "end",
+      "query": "smoke=1&stage=stage-1&castlenow=1&ghost=1&ghostlog=1&autotut=1&bot=standard&botskill=master"
+    },
+    {
+      "name": "A2-ghost-thor-nihil",
+      "durMs": 600000,
+      "shot": "end",
+      "query": "smoke=1&stage=stage-5&bossnow=1&ghost=1&ghostlog=1&autotut=1&bot=standard&botskill=casual"
+    },
+    {
+      "name": "A3-ghost-bounty",
+      "durMs": 480000,
+      "shot": null,
+      "query": "smoke=1&stage=stage-1&bountynow=1&bountytype=melee&ghost=1&ghostlog=1&autotut=1&bot=standard&botskill=master"
+    },
+    {
+      "name": "A4-ghost-angel",
+      "durMs": 600000,
+      "shot": null,
+      "query": "smoke=1&stage=stage-1&gateboss=1&ghost=1&ghostlog=1&autotut=1&bot=standard&botskill=master"
+    },
+    {
+      "name": "A5-ghost-idol",
+      "durMs": 480000,
+      "shot": "mid",
+      "query": "smoke=1&stage=stage-1&idolnow=1&ghost=1&ghostlog=1&autotut=1&bot=standard&botskill=master"
+    },
+    {
+      "name": "B1-phantom",
+      "durMs": 720000,
+      "shot": "end",
+      "query": "smoke=1&stage=stage-1&phantomnow=1&autotut=1&bot=standard&botskill=master"
+    }
+  ],
+  "results": [
+    {
+      "scenario": "A1-ghost-castle",
+      "url": "http://localhost:4173/zombie/?smoke=1&stage=stage-1&castlenow=1&ghost=1&ghostlog=1&autotut=1&bot=standard&botskill=master",
+      "realSec": 602,
+      "smokeFallback": false,
+      "summary": {
+        "ghostlogLines": 28,
+        "監視": 13,
+        "構え": 5,
+        "成立": 7,
+        "棄却": 8,
+        "一閃不発": 0,
+        "無境地振り": 0,
+        "無境地ヒット打刻": 0,
+        "被弾行GHOSTDMG": 5,
+        "arrivalSeenAtSec": 130,
+        "departureSeenAtSec": null,
+        "consoleErrors": 0
+      },
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 384585,
+        "deathCause": "地雷",
+        "kills": 155,
+        "playerLevel": 6,
+        "maxDepthPx": 1933,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 77
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 133,
+        "scrapSpent": 0,
+        "damageTaken": 239,
+        "goldEarned": 33,
+        "damageDealt": {
+          "gun": 2238,
+          "melee": 4382,
+          "other": 11513,
+          "total": 18133
+        },
+        "finisherKills": 37,
+        "meleeSwings": 284,
+        "meleeHits": 324,
+        "critStats": {
+          "total": {
+            "rngCrits": 101,
+            "guaranteedCrits": 1,
+            "hits": 673
+          },
+          "vsBoss": {
+            "rngCrits": 2,
+            "guaranteedCrits": 0,
+            "hits": 54
+          },
+          "vsTrash": {
+            "rngCrits": 99,
+            "guaranteedCrits": 1,
+            "hits": 619
+          },
+          "elapsedSec": 385
+        },
+        "runTelemetry": {
+          "bossEntries": [
+            {
+              "bossType": "giantbat",
+              "gameTimeMs": 105730.86423678526,
+              "playerLevel": 3,
+              "skills": [
+                "barrage-king",
+                "slasher"
+              ],
+              "skillLevels": {
+                "barrage-king": 1,
+                "slasher": 1
+              },
+              "equip": {
+                "body": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                },
+                "arms": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                },
+                "accessory": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                }
+              },
+              "straps": 45
+            }
+          ],
+          "upgrades": {
+            "offered": 5,
+            "selectedByType": {
+              "skill": 5
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 96,
+              "poi": 0,
+              "levelup": 0,
+              "other": 37
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 6,
+            "maxAreaReached": 1,
+            "runTimeMs": 384585
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 27462.256059822776,
+                "level": 2
+              },
+              {
+                "gameTimeMs": 50293.59074349812,
+                "level": 3
+              },
+              {
+                "gameTimeMs": 129917.9741675787,
+                "level": 4
+              },
+              {
+                "gameTimeMs": 204237.84441181365,
+                "level": 5
+              },
+              {
+                "gameTimeMs": 260058.54709769352,
+                "level": 6
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "tagged": [
+        {
+          "atSec": 138,
+          "text": "[GHOSTLOG] 112.8s 監視 g-sweep-windup 試行=しない"
+        },
+        {
+          "atSec": 139,
+          "text": "[GHOSTDMG] 113.5s blast:g-sweep dmg=19 hp→111"
+        },
+        {
+          "atSec": 143,
+          "text": "[GHOSTLOG] 117.7s 監視 g-bolt-windup 試行=する"
+        },
+        {
+          "atSec": 144,
+          "text": "[GHOSTLOG] 118s 構え g-bolt-windup 残100ms"
+        },
+        {
+          "atSec": 144,
+          "text": "[GHOSTLOG] 118.1s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 144,
+          "text": "[GHOSTLOG] 118.1s 監視 g-bolt-windup 試行=する"
+        },
+        {
+          "atSec": 144,
+          "text": "[GHOSTLOG] 118.4s 棄却[期限] age=315ms"
+        },
+        {
+          "atSec": 148,
+          "text": "[GHOSTLOG] 122.3s 監視 g-dash-charge 試行=しない"
+        },
+        {
+          "atSec": 148,
+          "text": "[GHOSTDMG] 122.6s contact:giantbat dmg=19 hp→92"
+        },
+        {
+          "atSec": 155,
+          "text": "[GHOSTDMG] 129.3s blast:g-jump dmg=19 hp→73"
+        },
+        {
+          "atSec": 158,
+          "text": "[GHOSTLOG] 132s 監視 g-sweep-windup 試行=する"
+        },
+        {
+          "atSec": 159,
+          "text": "[GHOSTLOG] 132.7s 構え g-sweep-windup 残68ms"
+        },
+        {
+          "atSec": 159,
+          "text": "[GHOSTLOG] 132.7s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 159,
+          "text": "[GHOSTLOG] 133s 棄却[期限] age=350ms"
+        },
+        {
+          "atSec": 167,
+          "text": "[GHOSTLOG] 141.1s 監視 g-sweep-windup 試行=しない"
+        },
+        {
+          "atSec": 172,
+          "text": "[GHOSTLOG] 146.1s 監視 g-stomp-windup 試行=する"
+        },
+        {
+          "atSec": 173,
+          "text": "[GHOSTLOG] 146.7s 構え g-stomp-windup 残67ms"
+        },
+        {
+          "atSec": 173,
+          "text": "[GHOSTLOG] 146.8s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 173,
+          "text": "[GHOSTLOG] 146.8s 成立 giantbat"
+        },
+        {
+          "atSec": 180,
+          "text": "[GHOSTLOG] 153.7s 監視 g-sweep-windup 試行=する"
+        },
+        {
+          "atSec": 181,
+          "text": "[GHOSTLOG] 154.4s 構え g-sweep-windup 残100ms"
+        },
+        {
+          "atSec": 181,
+          "text": "[GHOSTLOG] 154.4s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 181,
+          "text": "[GHOSTLOG] 154.4s 監視 g-sweep-windup 試行=する"
+        },
+        {
+          "atSec": 181,
+          "text": "[GHOSTLOG] 154.5s 成立 giantbat"
+        },
+        {
+          "atSec": 187,
+          "text": "[GHOSTDMG] 160s contact:giantbat dmg=15 hp→58"
+        },
+        {
+          "atSec": 190,
+          "text": "[GHOSTLOG] 162.9s 監視 g-sweep-windup 試行=しない"
+        },
+        {
+          "atSec": 195,
+          "text": "[GHOSTLOG] 166.7s 監視 g-stomp-windup 試行=しない"
+        },
+        {
+          "atSec": 200,
+          "text": "[GHOSTLOG] 171.4s 監視 g-bolt-windup 試行=する"
+        },
+        {
+          "atSec": 204,
+          "text": "[GHOSTLOG] 175.4s 監視 g-dash-charge 試行=する"
+        },
+        {
+          "atSec": 204,
+          "text": "[GHOSTDMG] 175.6s contact:giantbat dmg=15 hp→43"
+        },
+        {
+          "atSec": 204,
+          "text": "[GHOSTLOG] 175.6s 構え g-dash-charge 残2117ms"
+        },
+        {
+          "atSec": 204,
+          "text": "[GHOSTLOG] 175.7s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 205,
+          "text": "[GHOSTLOG] 175.9s 棄却[期限] age=309ms"
+        },
+        {
+          "atSec": 428,
+          "text": "[BOT_REPORT] {\"persona\":\"standard\",\"outcome\":\"death\",\"survivedMs\":384585,\"deathCause\":\"地雷\",\"kills\":155,\"playerLevel\":6,\"maxDepthPx\":1933,\"maxAreaReached\":1,\"subUses\":{\"heavy-grenade\":77},\"overclockProcs\":0,\"scrapEarned\":133,\"scrapSpent\":0,\"damageTaken\":239,\"goldEarned\":33,\"damageDealt\":{\"gun\":2238,\"melee\":4382,\"other\":11513,\"total\":18133},\"finisherKills\":37,\"meleeSwings\":284,\"meleeHits\":324,\"critS"
+        }
+      ],
+      "errors": [],
+      "otherLogHead": [
+        {
+          "atSec": 3,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 5,
+          "text": "[sprites] player-scavenger-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "[sprites] player-scavenger-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "[sprites] player-scavenger-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "[sprites] player-shotgun-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "[sprites] player-shotgun-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "[sprites] player-shotgun-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "[sprites] player-striker-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "[sprites] player-striker-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "[sprites] player-striker-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "[sprites] player-magnum-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "[sprites] player-magnum-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "[sprites] player-magnum-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 8,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 8,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 10,
+          "text": "[shadow-v12] bakeSilhouette: 456.60ms/枚 (半影=ON(3パス)・予算=4枚/フレーム。4枚合計が16.67msを割るなら枚数を下げる)"
+        },
+        {
+          "atSec": 10,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 10,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 10,
+          "text": "[shadow-v9] silhouette cache: 6 tex / 1.94MB (budget 32MB)"
+        },
+        {
+          "atSec": 13,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 13,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        }
+      ],
+      "textTimeline": [
+        {
+          "atSec": 30,
+          "text": "COMBO\n3\n00:10\n0\n通常変異体 5/25\n青変異体 0/5\n130\nLv 1\n手榴弾\nLv1\n0/24\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 60,
+          "text": "00:38\n0\n通常変異体 21/25\n青変異体 0/5\n130\nLv 2\n手榴弾\nLv1\n1/15\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 90,
+          "text": "01:06\n22\n通常変異体 25/25\n青変異体 0/5\n130\nLv 3\n手榴弾\nLv1\n2/4\n3/24\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 120,
+          "text": "01:35\n45\n通常変異体 25/25\n青変異体 0/5\n117\nLv 3\n手榴弾\nLv1\n0/10\n0/24\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 150,
+          "text": "02:04\n53\n通常変異体 25/25\n青変異体 0/5\n117\nLv 3\n手榴弾\nLv1\n0/20\n1/12\n[GHOSTDMG] 9件\n112.8s 監視 g-sweep-windup 試行=しない\n113.5s blast:g-sweep dmg=19 hp→111\n117.7s 監視 g-bolt-windup 試行=する\n118s 構え g-bolt-windup 残100ms\n118"
+        },
+        {
+          "atSec": 181,
+          "text": "02:33\n53\n通常変異体 25/25\n青変異体 0/5\n90\nLv 4\n手榴弾\nLv1\n0/15\n0/9\n[GHOSTDMG] 14件\n118.1s 監視 g-bolt-windup 試行=する\n118.4s 棄却[期限] age=315ms\n122.3s 監視 g-dash-charge 試行=しない\n122.6s contact:giantbat dmg=19 hp→92\n129.3s b"
+        },
+        {
+          "atSec": 211,
+          "text": "搬送体(変異)を討伐\n02:56\n53\n通常変異体 25/25\n青変異体 0/5\n90\nLv 4\n手榴弾\nLv1\n1/0\n0/9\n[GHOSTDMG] 14件\n153.7s 監視 g-sweep-windup 試行=する\n154.4s 構え g-sweep-windup 残100ms\n154.4s 棄却[位置] 接触ゲート(体の重なり)不成立\n154.4s 監視 g-sweep-windup 試行"
+        },
+        {
+          "atSec": 241,
+          "text": "COMBO\n2\n03:25\n84\n通常変異体 25/25\n青変異体 0/5\n57\nLv 5\n手榴弾\nLv1\n2/17\n0/0\n0/0\n[GHOSTDMG] 14件\n153.7s 監視 g-sweep-windup 試行=する\n154.4s 構え g-sweep-windup 残100ms\n154.4s 棄却[位置] 接触ゲート(体の重なり)不成立\n154.4s 監視 g-sweep-windup "
+        },
+        {
+          "atSec": 271,
+          "text": "03:53\n84\n通常変異体 25/25\n青変異体 0/5\n73\nLv 5\n手榴弾\nLv1\n0/0\n0/0\n0/0\n[GHOSTDMG] 14件\n153.7s 監視 g-sweep-windup 試行=する\n154.4s 構え g-sweep-windup 残100ms\n154.4s 棄却[位置] 接触ゲート(体の重なり)不成立\n154.4s 監視 g-sweep-windup 試行=する\n154"
+        },
+        {
+          "atSec": 301,
+          "text": "04:22\n100\n通常変異体 25/25\n青変異体 0/5\n87\nLv 6\n手榴弾\nLv1\n0/0\n0/0\n0/0\nランク4 強欲 —— 到達\nGREED\n[GHOSTDMG] 14件\n153.7s 監視 g-sweep-windup 試行=する\n154.4s 構え g-sweep-windup 残100ms\n154.4s 棄却[位置] 接触ゲート(体の重なり)不成立\n154.4s 監視 g-s"
+        },
+        {
+          "atSec": 331,
+          "text": "04:51\n116\n通常変異体 25/25\n青変異体 0/5\n67\nLv 6\n手榴弾\nLv1\n0/0\n3/12\n0/12\n[GHOSTDMG] 14件\n153.7s 監視 g-sweep-windup 試行=する\n154.4s 構え g-sweep-windup 残100ms\n154.4s 棄却[位置] 接触ゲート(体の重なり)不成立\n154.4s 監視 g-sweep-windup 試行=する\n"
+        },
+        {
+          "atSec": 362,
+          "text": "05:21\n125\n通常変異体 25/25\n青変異体 0/5\n62\nLv 6\n手榴弾\nLv1\n0/0\n0/0\n0/0\n[GHOSTDMG] 14件\n153.7s 監視 g-sweep-windup 試行=する\n154.4s 構え g-sweep-windup 残100ms\n154.4s 棄却[位置] 接触ゲート(体の重なり)不成立\n154.4s 監視 g-sweep-windup 試行=する\n15"
+        },
+        {
+          "atSec": 392,
+          "text": "05:50\n133\n通常変異体 25/25\n青変異体 0/5\n73\nLv 6\n手榴弾\nLv1\n0/0\n0/0\n0/0\n[GHOSTDMG] 14件\n153.7s 監視 g-sweep-windup 試行=する\n154.4s 構え g-sweep-windup 残100ms\n154.4s 棄却[位置] 接触ゲート(体の重なり)不成立\n154.4s 監視 g-sweep-windup 試行=する\n15"
+        },
+        {
+          "atSec": 422,
+          "text": "06:18\n133\n通常変異体 25/25\n青変異体 0/5\n5\nLv 6\n手榴弾\nLv1\n0/0\n0/0\n0/0\nこの先 —— 研究対象区域\n[GHOSTDMG] 14件\n153.7s 監視 g-sweep-windup 試行=する\n154.4s 構え g-sweep-windup 残100ms\n154.4s 棄却[位置] 接触ゲート(体の重なり)不成立\n154.4s 監視 g-sweep-wi"
+        },
+        {
+          "atSec": 452,
+          "text": "任務失敗\n\n研究対象区域のランク6 憤怒 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1936m\n怠\nR1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\n⚑R6\n傲\nR7\nR6 憤怒\n\n次の深さ デンジャーゾーン まで あと 1064m\n\n死因：地雷\n\nRESULT\n生存時間\n06:25\n撃破\n155\nLv\n6\n最大コ"
+        },
+        {
+          "atSec": 482,
+          "text": "任務失敗\n\n研究対象区域のランク6 憤怒 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1936m\n怠\nR1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\n⚑R6\n傲\nR7\nR6 憤怒\n\n次の深さ デンジャーゾーン まで あと 1064m\n\n死因：地雷\n\nRESULT\n生存時間\n06:25\n撃破\n155\nLv\n6\n最大コ"
+        },
+        {
+          "atSec": 512,
+          "text": "任務失敗\n\n研究対象区域のランク6 憤怒 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1936m\n怠\nR1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\n⚑R6\n傲\nR7\nR6 憤怒\n\n次の深さ デンジャーゾーン まで あと 1064m\n\n死因：地雷\n\nRESULT\n生存時間\n06:25\n撃破\n155\nLv\n6\n最大コ"
+        },
+        {
+          "atSec": 542,
+          "text": "任務失敗\n\n研究対象区域のランク6 憤怒 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1936m\n怠\nR1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\n⚑R6\n傲\nR7\nR6 憤怒\n\n次の深さ デンジャーゾーン まで あと 1064m\n\n死因：地雷\n\nRESULT\n生存時間\n06:25\n撃破\n155\nLv\n6\n最大コ"
+        },
+        {
+          "atSec": 572,
+          "text": "任務失敗\n\n研究対象区域のランク6 憤怒 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1936m\n怠\nR1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\n⚑R6\n傲\nR7\nR6 憤怒\n\n次の深さ デンジャーゾーン まで あと 1064m\n\n死因：地雷\n\nRESULT\n生存時間\n06:25\n撃破\n155\nLv\n6\n最大コ"
+        },
+        {
+          "atSec": 602,
+          "text": "任務失敗\n\n研究対象区域のランク6 憤怒 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1936m\n怠\nR1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\n⚑R6\n傲\nR7\nR6 憤怒\n\n次の深さ デンジャーゾーン まで あと 1064m\n\n死因：地雷\n\nRESULT\n生存時間\n06:25\n撃破\n155\nLv\n6\n最大コ"
+        }
+      ]
+    },
+    {
+      "scenario": "A2-ghost-thor-nihil",
+      "url": "http://localhost:4173/zombie/?smoke=1&stage=stage-5&bossnow=1&ghost=1&ghostlog=1&autotut=1&bot=standard&botskill=casual",
+      "realSec": 605,
+      "smokeFallback": false,
+      "summary": {
+        "ghostlogLines": 12,
+        "監視": 8,
+        "構え": 1,
+        "成立": 2,
+        "棄却": 1,
+        "一閃不発": 0,
+        "無境地振り": 1,
+        "無境地ヒット打刻": 0,
+        "被弾行GHOSTDMG": 3,
+        "arrivalSeenAtSec": null,
+        "departureSeenAtSec": null,
+        "consoleErrors": 0
+      },
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 28100,
+        "deathCause": "トール",
+        "kills": 0,
+        "playerLevel": 1,
+        "maxDepthPx": 608,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 6
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 16,
+        "scrapSpent": 0,
+        "damageTaken": 132,
+        "goldEarned": 3,
+        "damageDealt": {
+          "gun": 294,
+          "melee": 56,
+          "other": 40,
+          "total": 390
+        },
+        "finisherKills": 0,
+        "meleeSwings": 10,
+        "meleeHits": 4,
+        "critStats": {
+          "total": {
+            "rngCrits": 2,
+            "guaranteedCrits": 0,
+            "hits": 47
+          },
+          "vsBoss": {
+            "rngCrits": 2,
+            "guaranteedCrits": 0,
+            "hits": 47
+          },
+          "vsTrash": {
+            "rngCrits": 0,
+            "guaranteedCrits": 0,
+            "hits": 0
+          },
+          "elapsedSec": 28
+        },
+        "runTelemetry": {
+          "bossEntries": [
+            {
+              "bossType": "thor",
+              "gameTimeMs": 33.30000000000109,
+              "playerLevel": 1,
+              "skills": [],
+              "skillLevels": {},
+              "equip": {
+                "body": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                },
+                "arms": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                },
+                "accessory": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                }
+              },
+              "straps": 0
+            }
+          ],
+          "upgrades": {
+            "offered": 0,
+            "selectedByType": {}
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 0,
+              "poi": 0,
+              "levelup": 0,
+              "other": 16
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 1,
+            "maxAreaReached": 0,
+            "runTimeMs": 28100
+          },
+          "slotFillTiming": {
+            "filledAt": [],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "tagged": [
+        {
+          "atSec": 18,
+          "text": "[GHOSTLOG] 3s 監視 harai-windup 試行=しない"
+        },
+        {
+          "atSec": 19,
+          "text": "[GHOSTLOG] 4.6s 監視 tsuki-windup 試行=しない"
+        },
+        {
+          "atSec": 26,
+          "text": "[GHOSTLOG] 11s 監視 tsuki-windup 試行=しない"
+        },
+        {
+          "atSec": 27,
+          "text": "[GHOSTDMG] 12.2s capsule:thor-tsuki dmg=49 hp→81"
+        },
+        {
+          "atSec": 28,
+          "text": "[GHOSTLOG] 13.1s 無境地振り dist=140/r200"
+        },
+        {
+          "atSec": 28,
+          "text": "[GHOSTDMG] 13.2s capsule:thor-issen dmg=49 hp→32"
+        },
+        {
+          "atSec": 28,
+          "text": "[GHOSTLOG] 13.2s 監視 issen-dash 試行=する"
+        },
+        {
+          "atSec": 32,
+          "text": "[GHOSTLOG] 16.7s 監視 tsuki-windup 試行=する"
+        },
+        {
+          "atSec": 33,
+          "text": "[GHOSTLOG] 17.6s 構え tsuki-windup 残100ms"
+        },
+        {
+          "atSec": 33,
+          "text": "[GHOSTLOG] 17.6s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 33,
+          "text": "[GHOSTLOG] 17.6s 監視 tsuki 試行=する"
+        },
+        {
+          "atSec": 33,
+          "text": "[GHOSTLOG] 17.7s 成立 thor"
+        },
+        {
+          "atSec": 35,
+          "text": "[GHOSTLOG] 19.7s 監視 tsuki-windup 試行=しない"
+        },
+        {
+          "atSec": 39,
+          "text": "[GHOSTLOG] 23.1s 監視 issen-windup 試行=しない"
+        },
+        {
+          "atSec": 39,
+          "text": "[GHOSTDMG] 23.7s capsule:thor-issen dmg=49 hp→-17"
+        },
+        {
+          "atSec": 45,
+          "text": "[BOT_REPORT] {\"persona\":\"standard\",\"outcome\":\"death\",\"survivedMs\":28100,\"deathCause\":\"トール\",\"kills\":0,\"playerLevel\":1,\"maxDepthPx\":608,\"maxAreaReached\":0,\"subUses\":{\"heavy-grenade\":6},\"overclockProcs\":0,\"scrapEarned\":16,\"scrapSpent\":0,\"damageTaken\":132,\"goldEarned\":3,\"damageDealt\":{\"gun\":294,\"melee\":56,\"other\":40,\"total\":390},\"finisherKills\":0,\"meleeSwings\":10,\"meleeHits\":4,\"critStats\":{\"total\":{\"r"
+        }
+      ],
+      "errors": [],
+      "otherLogHead": [
+        {
+          "atSec": 3,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 7,
+          "text": "[shadow-v12] bakeSilhouette: 18.90ms/枚 (半影=ON(3パス)・予算=4枚/フレーム。4枚合計が16.67msを割るなら枚数を下げる)"
+        },
+        {
+          "atSec": 7,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 7,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 7,
+          "text": "[shadow-v9] silhouette cache: 6 tex / 1.77MB (budget 32MB)"
+        },
+        {
+          "atSec": 9,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 9,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 11,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 11,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 12,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 12,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        }
+      ],
+      "textTimeline": [
+        {
+          "atSec": 34,
+          "text": "00:18\n16\n通常変異体 0/60\n色付き変異体 0/15\n47\nLv 1\n手榴弾\nLv1\n2/18\n[GHOSTDMG] 12件\n3s 監視 harai-windup 試行=しない\n4.6s 監視 tsuki-windup 試行=しない\n11s 監視 tsuki-windup 試行=しない\n12.2s capsule:thor-tsuki dmg=49 hp→81\n13.1s 無境地振り d"
+        },
+        {
+          "atSec": 64,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 94,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 124,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 154,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 184,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 214,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 244,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 274,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 304,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 334,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 364,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 394,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 424,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 454,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 484,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 510,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 540,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 570,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        },
+        {
+          "atSec": 600,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n622m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 878m\n\n死因：トール\n\nRESULT\n生存時間\n00:29\n撃破\n0\nLv\n1\n最大コンボ\n1\n"
+        }
+      ]
+    },
+    {
+      "scenario": "A3-ghost-bounty",
+      "url": "http://localhost:4173/zombie/?smoke=1&stage=stage-1&bountynow=1&bountytype=melee&ghost=1&ghostlog=1&autotut=1&bot=standard&botskill=master",
+      "realSec": 485,
+      "smokeFallback": false,
+      "summary": {
+        "ghostlogLines": 15,
+        "監視": 6,
+        "構え": 3,
+        "成立": 5,
+        "棄却": 4,
+        "一閃不発": 0,
+        "無境地振り": 0,
+        "無境地ヒット打刻": 0,
+        "被弾行GHOSTDMG": 5,
+        "arrivalSeenAtSec": 445,
+        "departureSeenAtSec": null,
+        "consoleErrors": 0
+      },
+      "botReport": null,
+      "tagged": [
+        {
+          "atSec": 445,
+          "text": "[GHOSTLOG] 405.6s 監視 br-triple-windup 試行=しない"
+        },
+        {
+          "atSec": 450,
+          "text": "[GHOSTDMG] 406.4s contact:zombie dmg=19 hp→111"
+        },
+        {
+          "atSec": 451,
+          "text": "[GHOSTDMG] 407.2s contact:bounty-ranged dmg=18 hp→93"
+        },
+        {
+          "atSec": 452,
+          "text": "[GHOSTLOG] 408.2s 監視 br-push-windup 試行=する"
+        },
+        {
+          "atSec": 453,
+          "text": "[GHOSTLOG] 408.6s 構え br-push-windup 残83ms"
+        },
+        {
+          "atSec": 453,
+          "text": "[GHOSTLOG] 408.7s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 453,
+          "text": "[GHOSTLOG] 408.7s 監視 br-push-windup 試行=する"
+        },
+        {
+          "atSec": 453,
+          "text": "[GHOSTLOG] 408.7s 成立 bounty-ranged"
+        },
+        {
+          "atSec": 456,
+          "text": "[GHOSTLOG] 411.3s 監視 br-triple-windup 試行=する"
+        },
+        {
+          "atSec": 457,
+          "text": "[GHOSTDMG] 412.2s contact:skeleton dmg=22 hp→71"
+        },
+        {
+          "atSec": 457,
+          "text": "[GHOSTLOG] 412.2s 構え br-triple-windup 残100ms"
+        },
+        {
+          "atSec": 457,
+          "text": "[GHOSTLOG] 412.2s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 457,
+          "text": "[GHOSTLOG] 412.4s 成立 bounty-ranged"
+        },
+        {
+          "atSec": 470,
+          "text": "[GHOSTLOG] 424s 監視 br-triple-windup 試行=しない"
+        },
+        {
+          "atSec": 471,
+          "text": "[GHOSTDMG] 425.3s blast:capsule dmg=9 hp→62"
+        },
+        {
+          "atSec": 476,
+          "text": "[GHOSTLOG] 430s 監視 br-triple-windup 試行=する"
+        },
+        {
+          "atSec": 477,
+          "text": "[GHOSTLOG] 430.9s 構え br-triple-windup 残66ms"
+        },
+        {
+          "atSec": 477,
+          "text": "[GHOSTLOG] 430.9s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 477,
+          "text": "[GHOSTLOG] 431.2s 棄却[期限] age=301ms"
+        },
+        {
+          "atSec": 479,
+          "text": "[GHOSTDMG] 433.7s contact:skeleton dmg=22 hp→40"
+        }
+      ],
+      "errors": [],
+      "otherLogHead": [
+        {
+          "atSec": 2,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "[shadow-v12] bakeSilhouette: 61.10ms/枚 (半影=ON(3パス)・予算=4枚/フレーム。4枚合計が16.67msを割るなら枚数を下げる)"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "[shadow-v9] silhouette cache: 6 tex / 1.94MB (budget 32MB)"
+        },
+        {
+          "atSec": 9,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 9,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 11,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 11,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 12,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 12,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        }
+      ],
+      "textTimeline": [
+        {
+          "atSec": 33,
+          "text": "00:18\n0\n通常変異体 6/25\n青変異体 0/5\n130\nLv 1\n手榴弾\nLv1\n0/9\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 63,
+          "text": "00:47\n0\n通常変異体 25/25\n青変異体 0/5\n130\nLv 2\n手榴弾\nLv1\n0/0\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 93,
+          "text": "01:14\n0\n通常変異体 25/25\n青変異体 0/5\n113\nLv 3\n手榴弾\nLv1\n1/8\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 123,
+          "text": "新しい銃器を入手！\nT2 グレネードガンⅡ\n多数の変異体を検知\n01:43\n42\n通常変異体 25/25\n青変異体 0/5\n130\nLv 3\n手榴弾\nLv1\n0/0\n2/24\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 154,
+          "text": "02:12\n67\n通常変異体 25/25\n青変異体 0/5\n130\nLv 4\n手榴弾\nLv1\n0/10\n0/12\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 184,
+          "text": "02:42\n67\n通常変異体 25/25\n青変異体 0/5\n130\nLv 4\n手榴弾\nLv1\n0/7\n0/0\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 214,
+          "text": "新しい銃器を入手！\nT1 マグナム\n03:11\n72\n通常変異体 25/25\n青変異体 0/5\n130\nLv 5\n手榴弾\nLv1\n0/0\n0/20\n1/20\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 244,
+          "text": "03:39\n87\n通常変異体 25/25\n青変異体 0/5\n130\nLv 5\n手榴弾\nLv1\n0/0\n0/8\n0/8\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 274,
+          "text": "COMBO\n3\n04:07\n87\n通常変異体 25/25\n青変異体 0/5\n82\nLv 6\n手榴弾\nLv1\n0/7\n0/0\n0/0\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 304,
+          "text": "04:34\n99\n通常変異体 25/25\n青変異体 0/5\n82\nLv 6\n手榴弾\nLv1\n0/0\n0/0\n0/0\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 334,
+          "text": "危険変異体出現\n05:00\n104\n通常変異体 25/25\n青変異体 0/5\n130\nLv 6\n手榴弾\nLv1\n0/0\n0/0\n0/0\n搬送体(変異)\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 364,
+          "text": "エドガー\n囲まれたか。焦るな、俺が前をこじ開ける！\n05:27\n143\n通常変異体 25/25\n青変異体 0/5\n130\nLv 7\n手榴弾\nLv1\n3/7\n0/0\n0/0\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 390,
+          "text": "05:51\n143\n通常変異体 25/25\n青変異体 0/5\n96\nLv 7\n手榴弾\nLv1\n0/0\n0/0\n0/0\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 420,
+          "text": "06:21\n148\n通常変異体 25/25\n青変異体 0/5\n69\nLv 7\n手榴弾\nLv1\n0/4\n0/0\n0/0\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 450,
+          "text": "デンジャーゾーン\nplayer31195\n援護します！\n06:46\n165\n通常変異体 25/25\n青変異体 0/5\n69\nLv 7\n手榴弾\nLv1\n0/0\n0/0\n0/0\n[GHOSTDMG] 1件\n405.6s 監視 br-triple-windup 試行=しない\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.00000001"
+        },
+        {
+          "atSec": 480,
+          "text": "07:13\n184\n通常変異体 25/25\n青変異体 1/5\n33\nLv 7\n手榴弾\nLv1\n2/7\n0/0\n0/0\n[GHOSTDMG] 14件\n408.7s 監視 br-push-windup 試行=する\n408.7s 成立 bounty-ranged\n411.3s 監視 br-triple-windup 試行=する\n412.2s contact:skeleton dmg=22 hp→71\n4"
+        }
+      ]
+    },
+    {
+      "scenario": "A4-ghost-angel",
+      "url": "http://localhost:4173/zombie/?smoke=1&stage=stage-1&gateboss=1&ghost=1&ghostlog=1&autotut=1&bot=standard&botskill=master",
+      "realSec": 604,
+      "smokeFallback": false,
+      "summary": {
+        "ghostlogLines": 28,
+        "監視": 15,
+        "構え": 4,
+        "成立": 4,
+        "棄却": 9,
+        "一閃不発": 0,
+        "無境地振り": 0,
+        "無境地ヒット打刻": 0,
+        "被弾行GHOSTDMG": 4,
+        "arrivalSeenAtSec": null,
+        "departureSeenAtSec": null,
+        "consoleErrors": 0
+      },
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 55850,
+        "deathCause": "ミゲルの払い",
+        "kills": 0,
+        "playerLevel": 1,
+        "maxDepthPx": 306,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 12
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 0,
+        "scrapSpent": 0,
+        "damageTaken": 152,
+        "goldEarned": 4,
+        "damageDealt": {
+          "gun": 474,
+          "melee": 112,
+          "other": 1179,
+          "total": 1765
+        },
+        "finisherKills": 0,
+        "meleeSwings": 12,
+        "meleeHits": 8,
+        "critStats": {
+          "total": {
+            "rngCrits": 2,
+            "guaranteedCrits": 0,
+            "hits": 84
+          },
+          "vsBoss": {
+            "rngCrits": 2,
+            "guaranteedCrits": 0,
+            "hits": 84
+          },
+          "vsTrash": {
+            "rngCrits": 0,
+            "guaranteedCrits": 0,
+            "hits": 0
+          },
+          "elapsedSec": 56
+        },
+        "runTelemetry": {
+          "bossEntries": [
+            {
+              "bossType": "miguel",
+              "gameTimeMs": 50,
+              "playerLevel": 1,
+              "skills": [],
+              "skillLevels": {},
+              "equip": {
+                "body": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                },
+                "arms": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                },
+                "accessory": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                }
+              },
+              "straps": 0
+            }
+          ],
+          "upgrades": {
+            "offered": 0,
+            "selectedByType": {}
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 0,
+              "poi": 0,
+              "levelup": 0,
+              "other": 0
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 1,
+            "maxAreaReached": 0,
+            "runTimeMs": 55850
+          },
+          "slotFillTiming": {
+            "filledAt": [],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "tagged": [
+        {
+          "atSec": 21,
+          "text": "[GHOSTLOG] 6.3s 監視 mdash-move 試行=しない"
+        },
+        {
+          "atSec": 21,
+          "text": "[GHOSTLOG] 6.9s 監視 harai-windup 試行=する"
+        },
+        {
+          "atSec": 22,
+          "text": "[GHOSTLOG] 7.8s 構え harai-windup 残83ms"
+        },
+        {
+          "atSec": 22,
+          "text": "[GHOSTLOG] 7.8s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 22,
+          "text": "[GHOSTLOG] 7.8s 監視 harai-windup 試行=する"
+        },
+        {
+          "atSec": 22,
+          "text": "[GHOSTLOG] 8.1s 棄却[期限] age=313ms"
+        },
+        {
+          "atSec": 32,
+          "text": "[GHOSTLOG] 16.1s 監視 harai-windup 試行=しない"
+        },
+        {
+          "atSec": 33,
+          "text": "[GHOSTLOG] 17.3s 監視 tate-windup 試行=しない"
+        },
+        {
+          "atSec": 44,
+          "text": "[GHOSTLOG] 26.9s 監視 harai-windup 試行=する"
+        },
+        {
+          "atSec": 45,
+          "text": "[GHOSTLOG] 27.8s 構え harai-windup 残83ms"
+        },
+        {
+          "atSec": 45,
+          "text": "[GHOSTLOG] 27.9s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 45,
+          "text": "[GHOSTLOG] 27.9s 監視 harai-windup 試行=する"
+        },
+        {
+          "atSec": 45,
+          "text": "[GHOSTLOG] 28.2s 棄却[期限] age=313ms"
+        },
+        {
+          "atSec": 53,
+          "text": "[GHOSTLOG] 36.2s 監視 harai-windup 試行=する"
+        },
+        {
+          "atSec": 54,
+          "text": "[GHOSTLOG] 37.1s 構え harai-windup 残83ms"
+        },
+        {
+          "atSec": 54,
+          "text": "[GHOSTLOG] 37.2s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 54,
+          "text": "[GHOSTLOG] 37.2s 監視 harai-windup 試行=する"
+        },
+        {
+          "atSec": 54,
+          "text": "[GHOSTLOG] 37.4s 監視 tate-windup 試行=する"
+        },
+        {
+          "atSec": 54,
+          "text": "[GHOSTLOG] 37.5s 棄却[期限] age=322ms"
+        },
+        {
+          "atSec": 55,
+          "text": "[GHOSTLOG] 38.3s 構え tate-windup 残83ms"
+        },
+        {
+          "atSec": 55,
+          "text": "[GHOSTLOG] 38.3s 棄却[位置] 接触ゲート(体の重なり)不成立"
+        },
+        {
+          "atSec": 55,
+          "text": "[GHOSTLOG] 38.3s 監視 tate-windup 試行=する"
+        },
+        {
+          "atSec": 55,
+          "text": "[GHOSTDMG] 38.4s contact:miguel dmg=38 hp→92"
+        },
+        {
+          "atSec": 55,
+          "text": "[GHOSTLOG] 38.4s 棄却[窓] end=0 now=1787823018352"
+        },
+        {
+          "atSec": 56,
+          "text": "[GHOSTLOG] 38.6s 棄却[期限] age=302ms"
+        },
+        {
+          "atSec": 62,
+          "text": "[GHOSTLOG] 44.9s 監視 mdash-move 試行=しない"
+        },
+        {
+          "atSec": 62,
+          "text": "[GHOSTDMG] 45.1s contact:miguel dmg=38 hp→54"
+        },
+        {
+          "atSec": 63,
+          "text": "[GHOSTLOG] 45.5s 監視 harai-windup 試行=しない"
+        },
+        {
+          "atSec": 64,
+          "text": "[GHOSTLOG] 46.7s 監視 tate-windup 試行=しない"
+        },
+        {
+          "atSec": 66,
+          "text": "[GHOSTDMG] 49.1s contact:miguel dmg=38 hp→16"
+        },
+        {
+          "atSec": 71,
+          "text": "[GHOSTLOG] 54.2s 監視 mdash-move 試行=しない"
+        },
+        {
+          "atSec": 71,
+          "text": "[GHOSTDMG] 54.4s contact:miguel dmg=38 hp→-22"
+        },
+        {
+          "atSec": 74,
+          "text": "[BOT_REPORT] {\"persona\":\"standard\",\"outcome\":\"death\",\"survivedMs\":55850,\"deathCause\":\"ミゲルの払い\",\"kills\":0,\"playerLevel\":1,\"maxDepthPx\":306,\"maxAreaReached\":0,\"subUses\":{\"heavy-grenade\":12},\"overclockProcs\":0,\"scrapEarned\":0,\"scrapSpent\":0,\"damageTaken\":152,\"goldEarned\":4,\"damageDealt\":{\"gun\":474,\"melee\":112,\"other\":1179,\"total\":1765},\"finisherKills\":0,\"meleeSwings\":12,\"meleeHits\":8,\"critStats\":{\"tot"
+        }
+      ],
+      "errors": [],
+      "otherLogHead": [
+        {
+          "atSec": 2,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 5,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "[shadow-v12] bakeSilhouette: 49.00ms/枚 (半影=ON(3パス)・予算=4枚/フレーム。4枚合計が16.67msを割るなら枚数を下げる)"
+        },
+        {
+          "atSec": 6,
+          "text": "[shadow-v9] silhouette cache: 6 tex / 2.85MB (budget 32MB)"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 9,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 9,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 11,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 11,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        }
+      ],
+      "textTimeline": [
+        {
+          "atSec": 33,
+          "text": "COMBO\n2\n00:17\n0\n通常変異体 0/25\n青変異体 0/5\n54\nLv 1\n手榴弾\nLv1\n1/12\n[GHOSTDMG] 7件\n6.3s 監視 mdash-move 試行=しない\n6.9s 監視 harai-windup 試行=する\n7.8s 構え harai-windup 残83ms\n7.8s 棄却[位置] 接触ゲート(体の重なり)不成立\n7.8s 監視 harai-windup "
+        },
+        {
+          "atSec": 63,
+          "text": "00:46\n0\n通常変異体 0/25\n青変異体 0/5\n54\nLv 1\n手榴弾\nLv1\n0/0\n[GHOSTDMG] 14件\n36.2s 監視 harai-windup 試行=する\n37.1s 構え harai-windup 残83ms\n37.2s 棄却[位置] 接触ゲート(体の重なり)不成立\n37.2s 監視 harai-windup 試行=する\n37.4s 監視 tate-windup 試行="
+        },
+        {
+          "atSec": 93,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 123,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 153,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 183,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 214,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 244,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 274,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 304,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 334,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 364,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 394,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 424,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 454,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 484,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 514,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 544,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 574,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        },
+        {
+          "atSec": 604,
+          "text": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n306m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1194m\n\n死因：ミゲルの払い\n\nRESULT\n生存時間\n00:56\n撃破\n0\nLv\n1\n最大コン"
+        }
+      ]
+    },
+    {
+      "scenario": "A5-ghost-idol",
+      "url": "http://localhost:4173/zombie/?smoke=1&stage=stage-1&idolnow=1&ghost=1&ghostlog=1&autotut=1&bot=standard&botskill=master",
+      "realSec": 484,
+      "smokeFallback": false,
+      "summary": {
+        "ghostlogLines": 0,
+        "監視": 0,
+        "構え": 0,
+        "成立": 0,
+        "棄却": 0,
+        "一閃不発": 0,
+        "無境地振り": 0,
+        "無境地ヒット打刻": 0,
+        "被弾行GHOSTDMG": 9,
+        "arrivalSeenAtSec": null,
+        "departureSeenAtSec": null,
+        "consoleErrors": 0
+      },
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 157657,
+        "deathCause": "地雷",
+        "kills": 4,
+        "playerLevel": 1,
+        "maxDepthPx": 1452,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 32
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 66,
+        "scrapSpent": 0,
+        "damageTaken": 174,
+        "goldEarned": 6,
+        "damageDealt": {
+          "gun": 168,
+          "melee": 105,
+          "other": 2680,
+          "total": 2953
+        },
+        "finisherKills": 3,
+        "meleeSwings": 50,
+        "meleeHits": 10,
+        "critStats": {
+          "total": {
+            "rngCrits": 5,
+            "guaranteedCrits": 0,
+            "hits": 46
+          },
+          "vsBoss": {
+            "rngCrits": 0,
+            "guaranteedCrits": 0,
+            "hits": 17
+          },
+          "vsTrash": {
+            "rngCrits": 5,
+            "guaranteedCrits": 0,
+            "hits": 29
+          },
+          "elapsedSec": 158
+        },
+        "runTelemetry": {
+          "bossEntries": [
+            {
+              "bossType": "idol",
+              "gameTimeMs": 33.29999999999927,
+              "playerLevel": 1,
+              "skills": [],
+              "skillLevels": {},
+              "equip": {
+                "body": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                },
+                "arms": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                },
+                "accessory": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                }
+              },
+              "straps": 0
+            }
+          ],
+          "upgrades": {
+            "offered": 0,
+            "selectedByType": {}
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 20,
+              "poi": 0,
+              "levelup": 0,
+              "other": 46
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 1,
+            "maxAreaReached": 0,
+            "runTimeMs": 157657
+          },
+          "slotFillTiming": {
+            "filledAt": [],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "tagged": [
+        {
+          "atSec": 41,
+          "text": "[GHOSTDMG] 25.2s proj:idol-orb dmg=20 hp→110"
+        },
+        {
+          "atSec": 47,
+          "text": "[GHOSTDMG] 31.3s proj:idol-fan dmg=20 hp→90"
+        },
+        {
+          "atSec": 54,
+          "text": "[GHOSTDMG] 38.1s proj:idol-fan dmg=20 hp→70"
+        },
+        {
+          "atSec": 61,
+          "text": "[GHOSTDMG] 45.1s proj:idol-orb dmg=20 hp→50"
+        },
+        {
+          "atSec": 68,
+          "text": "[GHOSTDMG] 51.3s proj:idol-fan dmg=20 hp→30"
+        },
+        {
+          "atSec": 103,
+          "text": "[GHOSTDMG] 83.9s proj:idol-fan dmg=20 hp→49"
+        },
+        {
+          "atSec": 109,
+          "text": "[GHOSTDMG] 90.3s proj:idol-fan dmg=20 hp→29"
+        },
+        {
+          "atSec": 116,
+          "text": "[GHOSTDMG] 96.7s proj:idol-orb dmg=20 hp→9"
+        },
+        {
+          "atSec": 128,
+          "text": "[GHOSTDMG] 108s proj:idol-orb dmg=20 hp→-11"
+        },
+        {
+          "atSec": 182,
+          "text": "[BOT_REPORT] {\"persona\":\"standard\",\"outcome\":\"death\",\"survivedMs\":157657,\"deathCause\":\"地雷\",\"kills\":4,\"playerLevel\":1,\"maxDepthPx\":1452,\"maxAreaReached\":0,\"subUses\":{\"heavy-grenade\":32},\"overclockProcs\":0,\"scrapEarned\":66,\"scrapSpent\":0,\"damageTaken\":174,\"goldEarned\":6,\"damageDealt\":{\"gun\":168,\"melee\":105,\"other\":2680,\"total\":2953},\"finisherKills\":3,\"meleeSwings\":50,\"meleeHits\":10,\"critStats\":{\"tot"
+        }
+      ],
+      "errors": [],
+      "otherLogHead": [
+        {
+          "atSec": 2,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 3,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 5,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "[shadow-v12] bakeSilhouette: 86.60ms/枚 (半影=ON(3パス)・予算=4枚/フレーム。4枚合計が16.67msを割るなら枚数を下げる)"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "[shadow-v9] silhouette cache: 6 tex / 1.94MB (budget 32MB)"
+        },
+        {
+          "atSec": 9,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 9,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 11,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 11,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        }
+      ],
+      "textTimeline": [
+        {
+          "atSec": 32,
+          "text": "00:17\n0\n通常変異体 0/25\n青変異体 0/5\n110\nLv 1\n手榴弾\nLv1\n1/18\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 63,
+          "text": "00:46\n0\n通常変異体 1/25\n青変異体 0/5\n110\nLv 1\n手榴弾\nLv1\n1/24\n[GHOSTDMG] 4件\n25.2s proj:idol-orb dmg=20 hp→110\n31.3s proj:idol-fan dmg=20 hp→90\n38.1s proj:idol-fan dmg=20 hp→70\n45.1s proj:idol-orb dmg=20 hp→50\npix"
+        },
+        {
+          "atSec": 93,
+          "text": "01:14\n16\n通常変異体 1/25\n青変異体 0/5\n110\nLv 1\n手榴弾\nLv1\n3/21\n[GHOSTDMG] 5件\n25.2s proj:idol-orb dmg=20 hp→110\n31.3s proj:idol-fan dmg=20 hp→90\n38.1s proj:idol-fan dmg=20 hp→70\n45.1s proj:idol-orb dmg=20 hp→50\n51"
+        },
+        {
+          "atSec": 123,
+          "text": "01:43\n50\n通常変異体 1/25\n青変異体 0/5\n110\nLv 1\n手榴弾\nLv1\n0/18\n10/60\n[GHOSTDMG] 8件\n25.2s proj:idol-orb dmg=20 hp→110\n31.3s proj:idol-fan dmg=20 hp→90\n38.1s proj:idol-fan dmg=20 hp→70\n45.1s proj:idol-orb dmg=20 hp"
+        },
+        {
+          "atSec": 153,
+          "text": "COMBO\n6\n02:09\n50\n通常変異体 3/25\n青変異体 0/5\n50\nLv 1\n手榴弾\nLv1\n1/12\n10/60\n[GHOSTDMG] 9件\n25.2s proj:idol-orb dmg=20 hp→110\n31.3s proj:idol-fan dmg=20 hp→90\n38.1s proj:idol-fan dmg=20 hp→70\n45.1s proj:idol-orb dm"
+        },
+        {
+          "atSec": 183,
+          "text": "02:37\n66\n通常変異体 4/25\n青変異体 0/5\n0\nLv 1\n手榴弾\nLv1\n1/9\n10/60\n[GHOSTDMG] 9件\n25.2s proj:idol-orb dmg=20 hp→110\n31.3s proj:idol-fan dmg=20 hp→90\n38.1s proj:idol-fan dmg=20 hp→70\n45.1s proj:idol-orb dmg=20 hp→50"
+        },
+        {
+          "atSec": 213,
+          "text": "任務失敗\n\n軍備配置区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1485m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR2 暴食\n\n次の深さ 研究対象区域 まで あと 15m\n\n死因：地雷\n\nRESULT\n生存時間\n02:38\n撃破\n4\nLv\n1\n最大コンボ\n6\nS"
+        },
+        {
+          "atSec": 243,
+          "text": "任務失敗\n\n軍備配置区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1485m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR2 暴食\n\n次の深さ 研究対象区域 まで あと 15m\n\n死因：地雷\n\nRESULT\n生存時間\n02:38\n撃破\n4\nLv\n1\n最大コンボ\n6\nS"
+        },
+        {
+          "atSec": 273,
+          "text": "任務失敗\n\n軍備配置区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1485m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR2 暴食\n\n次の深さ 研究対象区域 まで あと 15m\n\n死因：地雷\n\nRESULT\n生存時間\n02:38\n撃破\n4\nLv\n1\n最大コンボ\n6\nS"
+        },
+        {
+          "atSec": 304,
+          "text": "任務失敗\n\n軍備配置区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1485m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR2 暴食\n\n次の深さ 研究対象区域 まで あと 15m\n\n死因：地雷\n\nRESULT\n生存時間\n02:38\n撃破\n4\nLv\n1\n最大コンボ\n6\nS"
+        },
+        {
+          "atSec": 334,
+          "text": "任務失敗\n\n軍備配置区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1485m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR2 暴食\n\n次の深さ 研究対象区域 まで あと 15m\n\n死因：地雷\n\nRESULT\n生存時間\n02:38\n撃破\n4\nLv\n1\n最大コンボ\n6\nS"
+        },
+        {
+          "atSec": 364,
+          "text": "任務失敗\n\n軍備配置区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1485m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR2 暴食\n\n次の深さ 研究対象区域 まで あと 15m\n\n死因：地雷\n\nRESULT\n生存時間\n02:38\n撃破\n4\nLv\n1\n最大コンボ\n6\nS"
+        },
+        {
+          "atSec": 394,
+          "text": "任務失敗\n\n軍備配置区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1485m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR2 暴食\n\n次の深さ 研究対象区域 まで あと 15m\n\n死因：地雷\n\nRESULT\n生存時間\n02:38\n撃破\n4\nLv\n1\n最大コンボ\n6\nS"
+        },
+        {
+          "atSec": 424,
+          "text": "任務失敗\n\n軍備配置区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1485m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR2 暴食\n\n次の深さ 研究対象区域 まで あと 15m\n\n死因：地雷\n\nRESULT\n生存時間\n02:38\n撃破\n4\nLv\n1\n最大コンボ\n6\nS"
+        },
+        {
+          "atSec": 454,
+          "text": "任務失敗\n\n軍備配置区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1485m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR2 暴食\n\n次の深さ 研究対象区域 まで あと 15m\n\n死因：地雷\n\nRESULT\n生存時間\n02:38\n撃破\n4\nLv\n1\n最大コンボ\n6\nS"
+        },
+        {
+          "atSec": 484,
+          "text": "任務失敗\n\n軍備配置区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1485m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR2 暴食\n\n次の深さ 研究対象区域 まで あと 15m\n\n死因：地雷\n\nRESULT\n生存時間\n02:38\n撃破\n4\nLv\n1\n最大コンボ\n6\nS"
+        }
+      ]
+    },
+    {
+      "scenario": "B1-phantom",
+      "url": "http://localhost:4173/zombie/?smoke=1&stage=stage-1&phantomnow=1&autotut=1&bot=standard&botskill=master",
+      "realSec": 725,
+      "smokeFallback": false,
+      "summary": {
+        "ghostlogLines": 0,
+        "監視": 0,
+        "構え": 0,
+        "成立": 0,
+        "棄却": 0,
+        "一閃不発": 0,
+        "無境地振り": 0,
+        "無境地ヒット打刻": 0,
+        "被弾行GHOSTDMG": 0,
+        "arrivalSeenAtSec": null,
+        "departureSeenAtSec": null,
+        "consoleErrors": 0
+      },
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 129638,
+        "deathCause": "変異体(狩猟型)の落下攻撃",
+        "kills": 1,
+        "playerLevel": 1,
+        "maxDepthPx": 4364,
+        "maxAreaReached": 2,
+        "subUses": {
+          "heavy-grenade": 27
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 29,
+        "scrapSpent": 0,
+        "damageTaken": 186,
+        "goldEarned": 5,
+        "damageDealt": {
+          "gun": 57,
+          "melee": 41,
+          "other": 135,
+          "total": 233
+        },
+        "finisherKills": 1,
+        "meleeSwings": 61,
+        "meleeHits": 7,
+        "critStats": {
+          "total": {
+            "rngCrits": 6,
+            "guaranteedCrits": 1,
+            "hits": 97
+          },
+          "vsBoss": {
+            "rngCrits": 5,
+            "guaranteedCrits": 1,
+            "hits": 94
+          },
+          "vsTrash": {
+            "rngCrits": 1,
+            "guaranteedCrits": 0,
+            "hits": 3
+          },
+          "elapsedSec": 130
+        },
+        "runTelemetry": {
+          "bossEntries": [
+            {
+              "bossType": "guardian-phantom",
+              "gameTimeMs": 33.29999999999927,
+              "playerLevel": 1,
+              "skills": [],
+              "skillLevels": {},
+              "equip": {
+                "body": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                },
+                "arms": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                },
+                "accessory": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                }
+              },
+              "straps": 0
+            }
+          ],
+          "upgrades": {
+            "offered": 0,
+            "selectedByType": {}
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 0,
+              "poi": 0,
+              "levelup": 0,
+              "other": 29
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 1,
+            "maxAreaReached": 2,
+            "runTimeMs": 129638
+          },
+          "slotFillTiming": {
+            "filledAt": [],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "tagged": [
+        {
+          "atSec": 159,
+          "text": "[BOT_REPORT] {\"persona\":\"standard\",\"outcome\":\"death\",\"survivedMs\":129638,\"deathCause\":\"変異体(狩猟型)の落下攻撃\",\"kills\":1,\"playerLevel\":1,\"maxDepthPx\":4364,\"maxAreaReached\":2,\"subUses\":{\"heavy-grenade\":26},\"overclockProcs\":0,\"scrapEarned\":29,\"scrapSpent\":0,\"damageTaken\":186,\"goldEarned\":5,\"damageDealt\":{\"gun\":57,\"melee\":41,\"other\":135,\"total\":233},\"finisherKills\":1,\"meleeSwings\":61,\"meleeHits\":7,\"critStats\""
+        }
+      ],
+      "errors": [],
+      "otherLogHead": [
+        {
+          "atSec": 2,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-scavenger-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-shotgun-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-striker-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-0: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-2: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 4,
+          "text": "[sprites] player-magnum-game-1: 幅96px>基準78px。ドット保持焼き(--dot)を通していない素材の疑い"
+        },
+        {
+          "atSec": 5,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 5,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "[shadow-v12] bakeSilhouette: 46.50ms/枚 (半影=ON(3パス)・予算=4枚/フレーム。4枚合計が16.67msを割るなら枚数を下げる)"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 6,
+          "text": "[shadow-v9] silhouette cache: 6 tex / 1.94MB (budget 32MB)"
+        },
+        {
+          "atSec": 9,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 9,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 11,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "atSec": 11,
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        }
+      ],
+      "textTimeline": [
+        {
+          "atSec": 33,
+          "text": "COMBO\n5\n00:16\n0\n通常変異体 1/25\n青変異体 0/5\n111\nLv 1\n手榴弾\nLv1\n1/12\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 63,
+          "text": "COMBO\n2\n00:41\n15\n通常変異体 1/25\n青変異体 0/5\n45\nLv 1\n手榴弾\nLv1\n2/4\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 93,
+          "text": "01:09\n15\n通常変異体 1/25\n青変異体 0/5\n26\nLv 1\n手榴弾\nLv1\n1/1\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 123,
+          "text": "01:39\n15\n通常変異体 1/25\n青変異体 0/5\n22\nLv 1\n手榴弾\nLv1\n1/1\nこの先 —— デンジャーゾーン\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 154,
+          "text": "COMBO\n4\nフェイザー\nチッ……押されてる。だが、潰されるほど鈍くねえ。\n02:04\n29\n通常変異体 1/25\n青変異体 0/5\n8\nLv 1\n手榴弾\nLv1\n0/0\npixi · v0.25.3991 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+        },
+        {
+          "atSec": 184,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 214,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 244,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 274,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 304,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 334,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 364,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 394,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 424,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 454,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 484,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 514,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 544,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 574,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 604,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 634,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 664,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 690,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        },
+        {
+          "atSec": 720,
+          "text": "任務失敗\n\nデンジャーゾーンのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4364m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 未確認汚染エリア まで あと 636m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:10\n撃破\n"
+        }
+      ]
+    }
+  ]
+}

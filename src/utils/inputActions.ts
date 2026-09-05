@@ -6,6 +6,8 @@ import { useGameStore } from '../store/gameStore';
 // タップ/離す相当: カウンター窓を開き、近接スイング。PHILL銃なら狙い方向へ1発(立ち止まり/スナップ条件は store 側)。
 export const performTapAction = () => {
   const gs = useGameStore.getState();
+  // PCのクリック/キー操作も、タッチの「指を離す」と同じ帰還確認へつなぐ。
+  if (gs.requestStoryReturnPrompt()) return;
   const gun = gs.player.weapons.find(w => w.id === gs.player.activeWeaponId);
   if (gun?.key === 'phill-revolver') {
     const before = gun.magazine ?? 0;

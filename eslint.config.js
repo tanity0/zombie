@@ -23,6 +23,12 @@ export default tseslint.config(
         'warn',
         { allowConstantExport: true },
       ],
+      // `_`接頭辞=「意図的に未使用」の標準規約(例: 互換のため残した引数 _nonLethalBoss)。
+      // v1571でこの規約を前提に命名したがルール設定が無くCIが毎push赤→失敗メール連発していた。
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
     },
   }
 );

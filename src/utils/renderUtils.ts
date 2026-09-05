@@ -1,19 +1,19 @@
 import { Player, Enemy, Projectile, Pickup, VisualEffect } from '../types/game';
-import { getEnemyColor } from './enemyUtils';
+import { getEnemyColor, isPumpkinTier, isReaperFamily } from './enemyUtils';
 import { drawSprite, preloadSprites } from './spriteLoader';
 import { effectiveReloadMs } from './weaponUtils';
-import { MELEE_RADIUS, SHAKE_MS } from '../store/gameStore';
+import {
+  isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
+  MELEE_RADIUS, SHAKE_MS,
+} from '../store/gameStore';
+import { FONT_STACK } from '../config/font';
 
 // Kick off image loads as soon as the renderer module is imported. The
 // names map 1:1 to PNG filenames under `public/sprites/`.
-preloadSprites([
-  'player',
-  'bat', 'skeleton', 'zombie', 'plant', 'ghost', 'werewolf',
-  'pumpkin', 'giantbat', 'reaper',
-  'pickup-xp-blue', 'pickup-xp-green', 'pickup-xp-red',
-  'pickup-health', 'pickup-magnet', 'pickup-bomb', 'pickup-chest',
-  'tree'
-]);
+// ★v0.25.2893: 旧リストの17件(bat/skeleton/…/pickup-*/tree)は**単体PNGが存在しない**
+// (atlas.png の中にしか無い)ため、**毎起動17回の404**を出すだけだった。しかもこのモジュールは
+// GameHUD が formatTime を import するので **Pixi描画でも必ず評価される**。実在する player だけ残す。
+preloadSprites(['player']);
 
 // Counter ring visualization. Visible only while the counter window is open
 // after a finger release; a successful reflect adds a brief gold flash.
@@ -30,7 +30,7 @@ const drawCounterShield = (
   const baseRadius = MELEE_RADIUS;
   const now = Date.now();
 
-  if (now <= player.counterWindowEnd) {
+  if (isCounterActive(player, now)) {
     ctx.save();
     ctx.fillStyle = 'rgba(251, 191, 36, 0.10)';
     ctx.beginPath();
@@ -107,7 +107,8 @@ export const renderGame = (
   );
   for (const enemy of enemies) {
     if (enemy.type === 'ghost') continue; // ghosts hover; no shadow
-    const heavy = enemy.type === 'reaper' || enemy.type === 'giantbat' || enemy.type === 'pumpkin';
+    // PACING_PUZZLE.md §9-7#1(legacy Canvas2Dレンダラの影): driller はpumpkinと同格。
+    const heavy = isReaperFamily(enemy.type) || enemy.type === 'giantbat' || isPumpkinTier(enemy.type);
     drawGroundShadow(
       ctx,
       enemy.x + enemy.width / 2 - camera.x,
@@ -128,7 +129,7 @@ export const renderGame = (
     0.6
   );
   for (const enemy of enemies) {
-    if (enemy.type === 'reaper') {
+    if (isReaperFamily(enemy.type)) {
       drawLightHalo(
         ctx,
         enemy.x + enemy.width / 2 - camera.x,
@@ -137,7 +138,7 @@ export const renderGame = (
         'rgba(220, 38, 38, 0.6)',
         0.7
       );
-    } else if (enemy.type === 'giantbat' || enemy.type === 'pumpkin') {
+    } else if (enemy.type === 'giantbat' || isPumpkinTier(enemy.type)) {
       drawLightHalo(
         ctx,
         enemy.x + enemy.width / 2 - camera.x,
@@ -395,7 +396,7 @@ const drawDamageNumberEffect = (
   const bold = e.crit || scale > 1.2;
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.font = `${bold ? 'bold ' : ''}${Math.round(12 * scale)}px "Special Elite", ui-rounded, system-ui, sans-serif`;
+  ctx.font = `${bold ? 'bold ' : ''}${Math.round(12 * scale)}px ${FONT_STACK}`;
   ctx.textAlign = 'center';
   const label = e.text ?? String(e.value);
   ctx.fillStyle = '#000';
@@ -914,8 +915,9 @@ const drawEnemy = (
   if (drewSprite) {
     ctx.restore();
     drawHealthBar(ctx, enemy, camera);
-    if (enemy.type === 'pumpkin' || enemy.type === 'giantbat' || enemy.type === 'reaper') {
-      drawBossMarker(ctx, cx, enemy.y - camera.y - 6, enemy.type === 'reaper' ? '#ef4444' : '#fde68a');
+    // PACING_PUZZLE.md §9-7#1(legacy Canvas2Dレンダラのボスマーカー): driller はpumpkinと同格。
+    if (isPumpkinTier(enemy.type) || enemy.type === 'giantbat' || isReaperFamily(enemy.type)) {
+      drawBossMarker(ctx, cx, enemy.y - camera.y - 6, isReaperFamily(enemy.type) ? '#ef4444' : '#fde68a');
     }
     if (Date.now() - enemy.lastHit < 90) {
       ctx.save();
@@ -1136,8 +1138,8 @@ const drawEnemy = (
 
   // Boss marker: a small bat silhouette hovers above pumpkins, giant bats,
   // and the reaper. Bobs gently so the eye finds them in the crowd.
-  if (enemy.type === 'pumpkin' || enemy.type === 'giantbat' || enemy.type === 'reaper') {
-    drawBossMarker(ctx, cx, enemy.y - camera.y - 6, enemy.type === 'reaper' ? '#ef4444' : '#fde68a');
+  if (enemy.type === 'pumpkin' || enemy.type === 'giantbat' || isReaperFamily(enemy.type)) {
+    drawBossMarker(ctx, cx, enemy.y - camera.y - 6, isReaperFamily(enemy.type) ? '#ef4444' : '#fde68a');
   }
 
   if (Date.now() - enemy.lastHit < 90) {
