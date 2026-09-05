@@ -16,7 +16,11 @@ export const PLAYER_UPGRADE_MAX_LEVEL = 5;
  * 段ごとの購入価格(全系統共通)。index = **これから買う段の1つ前**(0段目→1段目が index 0)。
  * 単調増加であることは不変条件テストで固定する。
  */
-export const PLAYER_UPGRADE_COSTS: readonly number[] = [60, 140, 300, 620, 1200];
+// 社長指示2026-09-05「永続育成が明らかに高いな、これも直そう。50 100 200 400 800」:
+// 旧 [60, 140, 300, 620, 1200] から引き下げ。1ランの獲得ゴールドは概ね 13〜83G
+// (`resultScoring.ts`: ゴールド = floor(換金スコア / 2000)。クリアボーナス30000点だけで15G)なので、
+// 旧の最終段1200Gは**普通のクリア約22ラン**ぶんだった。新カーブは倍々で読みやすく、最終段800G=約15ラン。
+export const PLAYER_UPGRADE_COSTS: readonly number[] = [50, 100, 200, 400, 800];
 
 export interface PlayerUpgradeDef {
   id: PlayerUpgradeId;

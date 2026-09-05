@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4138',
+    items: ['永続育成の値段を下げました(50/100/200/400/800G)。最終段が1200G→800Gになり、全段そろえるのが楽になりました。'],
+  },
+  {
     version: '0.25.4137',
     items: ['オプションのテスト開発用に「武器解放リセット」を追加しました。進行リセットでも武器の解放記録が消えるようになりました。'],
   },
