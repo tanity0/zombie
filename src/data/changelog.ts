@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4157',
+    items: ['ゲーム内容の変更はありません(残り15挺の設計書のみ)。'],
+  },
+  {
     version: '0.25.4156',
     items: ['ゲーム内容の変更はありません(ショットガンのユニーク3種の絵を先に入れました。武器自体はこれから)。'],
   },
