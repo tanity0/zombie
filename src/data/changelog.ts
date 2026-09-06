@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4150',
+    items: ['装備の銃スロットの説明文を、実際の挙動どおりに書き直しました(二丁ハンドガンの2発はほぼ同じ方向へ飛ぶ、ショットガンはTierが上がるほど散りが狭くなる、など)。'],
+  },
+  {
     version: '0.25.4149',
     items: ['装備の銃スロットに、武器の説明が1行つくようになりました。'],
   },
