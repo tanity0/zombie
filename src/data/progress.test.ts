@@ -17,6 +17,8 @@ const backing: Record<string, string> = {};
 import {
   recordChronicle, recordChronicleGlobalFirst, loadChronicle, stageChronicleLabel,
   markStageCleared, getClearedStages, getClearedMissions, markMissionCleared, missionIdForMain, resetProgress,
+  isWeaponUnlocked, markWeaponUnlocked, getWeaponUnlocks, clearWeaponUnlocks,
+  hasWeaponBlueprint, markWeaponBlueprint, getWeaponBlueprints, clearWeaponBlueprints,
 } from './progress';
 
 beforeEach(() => { for (const k of Object.keys(backing)) delete backing[k]; });
@@ -63,6 +65,52 @@ describe('ミッション単位クリア集合(missionId・M42)', () => {
     resetProgress();
     expect(getClearedMissions().size).toBe(0);
     expect(getClearedStages().size).toBe(0);
+  });
+});
+
+// ユニーク武器の恒久台帳(UNIQUE_WEAPONS.md §11-6-1)。**設計図(まだ使えない)**と
+// **購入済み(使える)**は完全に別のキー・別の集合として独立して読み書きできる必要がある
+// (「ここを外すと4段が3段に潰れる」)。
+describe('ユニーク武器: 設計図と購入済みは別台帳(UNIQUE_WEAPONS.md §11-6-1)', () => {
+  it('別々のキーに書かれる(片方に書いてももう片方は変化しない)', () => {
+    expect(markWeaponBlueprint('handgun-t1-derringer')).toBe(true);
+    expect(hasWeaponBlueprint('handgun-t1-derringer')).toBe(true);
+    // 設計図だけ立てても「購入済み」側は変化しない=まだ使えない扱い。
+    expect(isWeaponUnlocked('handgun-t1-derringer')).toBe(false);
+    expect(getWeaponUnlocks().has('handgun-t1-derringer')).toBe(false);
+  });
+
+  it('購入は別APIで、設計図の有無と独立に成立する', () => {
+    // 設計図が無くても(店売り想定)購入できる=2つの台帳は独立。
+    expect(hasWeaponBlueprint('handgun-t3-piledriver')).toBe(false);
+    expect(markWeaponUnlocked('handgun-t3-piledriver')).toBe(true);
+    expect(isWeaponUnlocked('handgun-t3-piledriver')).toBe(true);
+    expect(hasWeaponBlueprint('handgun-t3-piledriver')).toBe(false);
+  });
+
+  it('markWeaponBlueprint/markWeaponUnlocked は立てた瞬間だけtrue(小烏丸と同じ作法)', () => {
+    expect(markWeaponBlueprint('handgun-t2-handcannon')).toBe(true);
+    expect(markWeaponBlueprint('handgun-t2-handcannon')).toBe(false);
+    expect(markWeaponUnlocked('handgun-t2-handcannon')).toBe(true);
+    expect(markWeaponUnlocked('handgun-t2-handcannon')).toBe(false);
+  });
+
+  it('clearWeaponBlueprints/clearWeaponUnlocks はそれぞれ自分の台帳だけを消す', () => {
+    markWeaponBlueprint('handgun-t1-derringer');
+    markWeaponUnlocked('handgun-t2-handcannon');
+    clearWeaponBlueprints();
+    expect(getWeaponBlueprints().size).toBe(0);
+    expect(getWeaponUnlocks().has('handgun-t2-handcannon')).toBe(true); // 購入済みは残る
+    clearWeaponUnlocks();
+    expect(getWeaponUnlocks().size).toBe(0);
+  });
+
+  it('resetProgress: 設計図・購入済みの両方が消える', () => {
+    markWeaponBlueprint('handgun-t1-derringer');
+    markWeaponUnlocked('handgun-t2-handcannon');
+    resetProgress();
+    expect(getWeaponBlueprints().size).toBe(0);
+    expect(getWeaponUnlocks().size).toBe(0);
   });
 });
 

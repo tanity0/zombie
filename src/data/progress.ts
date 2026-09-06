@@ -681,7 +681,8 @@ export const resetProgress = (): void => {
   saveEventQuestMetaMap({}); // 二人組クエストの進捗メタも進行リセットで消す(開発用)
   writeCastleBossSet(new Set()); // 城ボスクリアフラグも進行リセットで消す(開発用)
   try { localStorage.removeItem(KOGARASU_KEY); } catch { /* ignore */ } // 小烏丸解禁も進行リセットで消す(開発用)
-  try { localStorage.removeItem(WEAPON_UNLOCKS_KEY); } catch { /* ignore */ } // ユニーク武器の恒久解放も進行リセットで消す(開発用・小烏丸と同じ扱い)
+  try { localStorage.removeItem(WEAPON_UNLOCKS_KEY); } catch { /* ignore */ } // ユニーク武器の恒久解放(購入済み)も進行リセットで消す(開発用・小烏丸と同じ扱い)
+  try { localStorage.removeItem(WEAPON_BLUEPRINTS_KEY); } catch { /* ignore */ } // ユニーク武器の設計図も進行リセットで消す(開発用・UNIQUE_WEAPONS.md §11-6-1)
   try { localStorage.removeItem(LEGACY_EVENT_QUEST_DONE_KEY); } catch { /* ignore */ } // 旧v1684キーの掃除
   saveChronicle([]); // 歴史年表も進行リセットで消す(開発用)
   writeRunCores({}); // 掘削記録(リザルト断面の過去ラン)も進行リセットで消す(開発用)
@@ -749,10 +750,11 @@ export const pushRunCore = (stageId: string, core: RunCore): RunCore[] => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// ユニーク武器の恒久解放(UNIQUE_WEAPONS.md §3-4)。小烏丸(KOGARASU_KEY)と同じ作法だが、
+// ユニーク武器の恒久「購入済み」(UNIQUE_WEAPONS.md §11-6-1)。小烏丸(KOGARASU_KEY)と同じ作法だが、
 // 解放は複数キーぶん記憶する必要があるので配列(CLEARED_KEYと同じreadSet/writeSet型)で持つ。
-// **どのボスが何を解放するか(BOSS_UNLOCK)は★未決 #U3**。この永続層は解放先が決まる前から
-// 独立して成立する(空のBOSS_UNLOCKでも呼び出されない=何も溜まらない)。
+// **設計図(=棚に並ぶだけ)は別の台帳(WEAPON_BLUEPRINTS_KEY)。ここに書くと即使える扱いになってしまう
+// ので混ぜない**(§11-6-1「ここを外すと4段が3段に潰れる」)。どのボスが何の設計図を解放するかは
+// `BOSS_UNLOCK`(weaponSlots.ts)。
 const WEAPON_UNLOCKS_KEY = 'zombie.progress.weaponUnlocks';
 
 const readWeaponUnlockSet = (): Set<string> => {
@@ -801,5 +803,57 @@ export const markWeaponUnlocked = (key: string): boolean => {
   const set = readWeaponUnlockSet();
   set.add(key);
   writeWeaponUnlockSet(set);
+  return true;
+};
+
+// ───────────────────────────────────────────────────────────────────────────
+// ユニーク武器の「設計図」(UNIQUE_WEAPONS.md §11-6-1)。**購入済み(weaponUnlocks)とは別の台帳**。
+// 設計図は「開発施設の棚に並ぶ」だけで、まだ使えない(=装備/生成点は読まない)。
+// 台帳の作法(read/write/mark/clear)は weaponUnlocks と完全に同じ形にする(意味だけが違う)。
+const WEAPON_BLUEPRINTS_KEY = 'zombie.progress.weaponBlueprints';
+
+const readWeaponBlueprintSet = (): Set<string> => {
+  if (typeof localStorage === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(WEAPON_BLUEPRINTS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr.filter((x): x is string => typeof x === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+};
+
+const writeWeaponBlueprintSet = (set: Set<string>): void => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(WEAPON_BLUEPRINTS_KEY, JSON.stringify([...set]));
+  } catch {
+    /* ignore (quota / private mode) */
+  }
+};
+
+/** 設計図を入手済みのユニーク武器キー一覧。 */
+export const getWeaponBlueprints = (): Set<string> => readWeaponBlueprintSet();
+
+export const hasWeaponBlueprint = (key: string): boolean => readWeaponBlueprintSet().has(key);
+
+/** ユニーク武器の設計図を全消去(テスト用・進行リセット)。 */
+export const clearWeaponBlueprints = (): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.removeItem(WEAPON_BLUEPRINTS_KEY); } catch { /* ignore */ }
+};
+
+/**
+ * 立てた瞬間だけ true を返す(既に立っていれば false・weaponUnlocks/小烏丸と同じ作法)。
+ * ★呼び出し側の義務は markWeaponUnlocked と同じ(UNIQUE_WEAPONS.md §6・監査A4): 練習ラン
+ * (`!isPracticeRun()`)を確認してから呼ぶこと。
+ */
+export const markWeaponBlueprint = (key: string): boolean => {
+  if (typeof localStorage === 'undefined') return false;
+  if (hasWeaponBlueprint(key)) return false;
+  const set = readWeaponBlueprintSet();
+  set.add(key);
+  writeWeaponBlueprintSet(set);
   return true;
 };
