@@ -76,6 +76,18 @@ let practiceRestore: PracticeRestore | null = null;
 /** いま練習ラン中か(実行時の指定 or URL直リンク)。 */
 export const isPracticeRun = (): boolean => activeSlot !== null || PRACTICE_RUN_URL;
 
+// ★社長指示2026-09-05「ストーリーモード以外は全て練習なので何も手に入ってはいけない。年表にも載らない」。
+// フリー(周回)出撃やボス戦テストも「練習」として扱い、**進行の書き込みを丸ごと止める**
+// (実際に止めるのは practiceGuard.ts の関所)。
+// ★なぜ「ラン中だけ」の旗にするのか: フリー出撃の旗(`getSelectedFreeMode`)は**メニューで選んだまま
+// 端末に残る**ので、それを直接見て封じると**タイトルに戻った後の購入・装備設定・設定変更まで飲まれる**。
+// よって「今このランがストーリーではない」を**出撃中だけ**立てる。立てる/降ろすのは App の1箇所。
+let noProgressRun = false;
+/** 出撃が「ストーリーではない」かを設定する(App: gameState の遷移で1箇所から呼ぶ)。 */
+export const setNoProgressRun = (on: boolean): void => { noProgressRun = on; };
+/** 進行を1つも残してはいけない出撃か(練習ラン ∪ ストーリー以外の出撃)。 */
+export const isNoProgressRun = (): boolean => isPracticeRun() || noProgressRun;
+
 /**
  * 練習で狙っているボスの型(`?practiceboss=`)。**「ラッシュは1体」(社長)の実現に使う。**
  * 練習ランは `?nospawn=1` を必ず付けて雑魚も他のボスも止めるが、**城ボス/ストーリーボスを

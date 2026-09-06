@@ -1,4 +1,7 @@
-// 練習ラン(ボスラッシュ)で「本編の進行を1つも動かさない」ための関所。BOSS_MAKER.md §20-6。
+// 「本編の進行を1つも動かさない」ための関所。BOSS_MAKER.md §20-6。
+// ★対象は v0.25.4147 で広がった(社長指示「ストーリーモード以外は全て練習なので何も手に入っては
+// いけない。年表にも載らない」): 練習ラン(ボスラッシュ)に加えて、**フリー(周回)出撃**と
+// **タイトルのボス戦テスト**も封じる。判定は `isNoProgressRun()`(bossPractice.ts)。
 //
 // ★なぜ書き込み側に散らさず、ここで1回止めるのか(品質監査 v0.25.2856 の致命1)
 // 「勝利処理を塞げばよい」は**全く足りなかった**。実コードを読むと、練習で汚れる書き込みは
@@ -19,7 +22,7 @@
 //
 // 例外(許可リスト)は**プレイヤーの設定だけ**。練習中に音量やグラフィック設定をいじった時に、
 // それだけ巻き添えで消えるのは筋が違うため。進行(`zombie.progress.*`)や記録類は**全て止める**。
-import { isPracticeRun } from './bossPractice';
+import { isNoProgressRun } from './bossPractice';
 
 /** 練習中でも保存してよいキー = プレイヤーの設定。進行・記録は1つも入れない。 */
 export const PRACTICE_WRITE_ALLOWLIST: readonly string[] = [
@@ -59,16 +62,16 @@ export const installPracticeGuard = (): void => {
       setItem: {
         configurable: true,
         value: (key: string, value: string) => {
-          if (!isPracticeRun() || isPracticeWritable(key)) setItem(key, value);
+          if (!isNoProgressRun() || isPracticeWritable(key)) setItem(key, value);
         },
       },
       removeItem: {
         configurable: true,
         value: (key: string) => {
-          if (!isPracticeRun() || isPracticeWritable(key)) removeItem(key);
+          if (!isNoProgressRun() || isPracticeWritable(key)) removeItem(key);
         },
       },
-      clear: { configurable: true, value: () => { if (!isPracticeRun()) clear(); } },
+      clear: { configurable: true, value: () => { if (!isNoProgressRun()) clear(); } },
     });
   } catch {
     // 差し替えられない環境でも起動は止めない(その場合は書き込みが通る=従来どおり)。

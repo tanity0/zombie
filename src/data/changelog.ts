@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4147',
+    items: ['ストーリーモード以外の出撃(フリー出撃・ボス戦テスト・練習)は、進行が一切残らなくなりました。ゴールド・ハイスコア・年表・解放も入りません。'],
+  },
+  {
     version: '0.25.4146',
     items: ['武器の設計図が手に入るのは、ストーリーモードの出撃だけになりました(フリー出撃・ボス戦テスト・練習では入りません)。'],
   },

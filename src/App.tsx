@@ -12,7 +12,7 @@ import MansionCorridorPreview from './components/MansionCorridorPreview';
 import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow, getLoadProgress, getLoadInFlight } from './utils/loadProgress';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
-import { useGameStore } from './store/gameStore';
+import { useGameStore, BOSS_TEST_RUN } from './store/gameStore';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio, primeMenuBgm, preloadStageBgm, setAudioSuspended, clearSfxThrottle, attachAudioGestureRecovery } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
 import { preloadClassPortraits, preloadClassWalkSprites } from './data/portraits';
@@ -27,7 +27,7 @@ import { subsAllCompletedFromMeta, endingFollowup } from './utils/storyProgress'
 import { getEventQuestConfig } from './utils/eventQuest';
 import { getStage } from './data/campaign';
 import { isPixiRenderer } from './config/renderer';
-import { isPracticeRun, beginPracticeRun, endPracticeRun, type PracticeRestore, type PracticeSlot } from './utils/bossPractice';
+import { isPracticeRun, beginPracticeRun, endPracticeRun, setNoProgressRun, type PracticeRestore, type PracticeSlot } from './utils/bossPractice';
 import PracticeResult from './components/PracticeResult';
 import GauntletRunner from './components/GauntletRunner';
 import { isGauntletRun } from './utils/gauntletMode';
@@ -112,6 +112,14 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   const [loadOverlayTimedOut, setLoadOverlayTimedOut] = useState(false);
   // 音声のジェスチャ復帰保険(v0.25.2160): どのタップ/キーでも「context resume+止まったBGMの拾い直し」。
   useEffect(() => { attachAudioGestureRecovery(); }, []);
+  // ★社長指示2026-09-05「ストーリーモード以外は全て練習なので何も手に入ってはいけない。年表にも載らない」。
+  // 「進行を1つも残さない出撃」の旗を **gameState の遷移1箇所で** 立て降ろしする。
+  // ここで降ろすのが要点——フリー出撃の旗(`getSelectedFreeMode`)は端末に残るので、それを直接見て
+  // 封じると**タイトルへ戻った後の購入・装備設定・設定変更まで飲まれる**。出撃中だけに限る。
+  // (立てるのは startGame でも先回りしている=出撃直後の1フレームも漏らさないため。)
+  useEffect(() => {
+    setNoProgressRun(gameState === 'playing' && (benchmarkMode || getSelectedFreeMode() || BOSS_TEST_RUN));
+  }, [gameState, benchmarkMode]);
   // ★iOSビューポートずれ復元(社長報告2026-08-29「横にずれたり、下が切れてたりする」):
   // body は position:fixed だが、iOSはテキスト入力(守護霊部屋のプレイヤー名/コメント等)に
   // フォーカスするとキーボードを避けてレイアウトビューポート自体をパンする。キーボードを閉じても
@@ -233,6 +241,10 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   // retry=ゲームオーバー画面「もう一度プレイ」からの再出撃(社長指示v0.25.2462:
   // リトライは開始時の会話を飛ばす。M7はヘリ演出も無し=咆哮→即ボス)。
   const startGame = async (characterClass: string, benchmark = false, retry = false) => {
+    // ★社長指示2026-09-05「ストーリーモード以外は全て練習なので何も手に入ってはいけない」:
+    // この出撃がストーリーでなければ、進行の書き込みを丸ごと止める(practiceGuard の関所)。
+    // ベンチマークもストーリーではないので同じ扱い。降ろすのは下の useEffect(gameState 遷移)。
+    setNoProgressRun(benchmark || getSelectedFreeMode() || BOSS_TEST_RUN);
     // Web/iOS Safari BGM unlock workaround. Remove for native-app audio.
     unlockDanceAudio();
     // v0.25.1568: 選択ステージのBGMを開始前に先読み(非デフォルトステージのステージ開始BGM遅延対策)。
