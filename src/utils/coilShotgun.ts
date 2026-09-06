@@ -1,44 +1,45 @@
-// UNIQUE_WEAPONS.md §16-2(バッチC-2「コイルショットガン」shotgun-t2-coil)。
-// 「散弾が一度外へ広がってから狙点へ再収束する」を、弾1発ごとの角度オフセット(rad)として表す
+// UNIQUE_WEAPONS.md §16-2(バッチC-2「コイルショットガン」shotgun-t2-coil・2026-09-07 C-2検収A-1で確定)。
+// 「散弾が一度外へ広がってから狙点へ再収束する」を、弾1発ごとの**中心線からの横ズレ(px)**として表す
 // 純関数。gameStore.ts の弾移動tickが毎フレーム呼ぶ(判定・見た目どちらにも影響する=移動そのもの)。
 //
-// 仕様の数字(0〜180ms=外へ+0.5rad / 180〜420ms=狙点へ収束)をそのまま、CLAUDE.md「動きの絶対
-// ルール: 慣性」に従って**加減速つき(smoothstep)**で結ぶ。等速で角度が動いたり、180ms/420msの
-// 境界で速度が飛ぶ(角速度が不連続に見える)動きは作らない。
+// ★検収A-1の経緯: 旧実装は「角度」を振って420msで元の拡散角へ戻していた。だが角度を戻しても
+// 外へ振れていた間の**横ズレが位置に積み上がる**ため、最終軌道は既定と平行に外へずれた直線=
+// 「常に広いだけのSG」になってしまった(狭角SGとの違いが消える)。
+// ⇒ 角度ではなく「中心線からの横ズレ」を直接与える。lateral(t) は t=0 と t=T で必ず0になる
+// (=元の直進位置へ戻る)ので、位置の積み上がりが起きない。
 //
-// ★実装者の裁量(仕様に無いので決めた点・UNIQUE_WEAPONS.md §16-2は角度の数字だけを与えている):
-// 「外へ広がる」は各ペレット固有の拡散角(computeShotDirectionsが計算する、狙点=baseDirからの
-// オフセット。中心弾は0)を**増幅**する形で表す(外側のペレットほど大きく振れる符号=sign(baseAngle)
-// 方向にさらに0.5rad足す)。「狙点へ収束」はその増幅ぶんが0へ戻ること(=元のペレット拡散角へ戻る。
-// 狙点=中心線そのものへ全弾を集約するわけではない——中心弾以外は最初から狙点をわずかに外して
-// 展開しているので、「戻る」は「その本来の拡散角へ戻る」という意味)。中心弾(baseAngleRad===0)は
-// sign=0なので常にオフセット0=元から直進のまま(広がりようがない)。
-export const COIL_OUT_PHASE_MS = 180;
-export const COIL_CONVERGE_PHASE_MS = 240; // 180〜420ms
-export const COIL_TOTAL_PHASE_MS = COIL_OUT_PHASE_MS + COIL_CONVERGE_PHASE_MS; // 420ms
-export const COIL_OUT_RAD = 0.5;
+// 慣性(CLAUDE.md「動きの絶対ルール」)は sin カーブそのものが担う: t=0で速度0→中央で最大→Tで
+// 速度0。等速で折れ曲がる動きにはならない。
+export const COIL_CONVERGE_PX = 140; // ショットガンの射程=「当たる距離で収束が完了する」
+export const COIL_AMPLITUDE_PX = 44; // 最外側ペレットの横ズレ最大値(±px)
 
-/** 0..1のsmoothstep(慣性=加速→減速。他の純関数群と同じ式・CLAUDE.md「動きの絶対ルール」)。 */
-const smoothstep01 = (t: number): number => {
-  const c = Math.max(0, Math.min(1, t));
-  return c * c * (3 - 2 * c);
+/**
+ * 収束時間T(ms)。弾速(px/s)から導く(弾速を変えても収束"点"=COIL_CONVERGE_PXが動かない)。
+ * 弾速が0以下なら収束しようがない(0を返す=常に横ズレ0=直進)。
+ */
+export const coilConvergeMs = (speedPxPerSec: number): number =>
+  speedPxPerSec > 0 ? (COIL_CONVERGE_PX / speedPxPerSec) * 1000 : 0;
+
+/**
+ * ペレットiごとの振幅(px)。count発を ±COIL_AMPLITUDE_PX の範囲へ等間隔に割り振る
+ * (9発なら -44,-33,-22,-11,0,11,22,33,44)。count<=1なら振幅0(広がりようがない)。
+ */
+export const coilPelletAmplitudePx = (index: number, count: number): number => {
+  if (count <= 1) return 0;
+  return -COIL_AMPLITUDE_PX + (2 * COIL_AMPLITUDE_PX * index) / (count - 1);
 };
 
 /**
- * 経過時間(elapsedMs・弾のcreatedAtからの経過=Date.now基準。呼び出し側=gameStore.tsの
- * updateProjectilesが同じ基準(currentTime - p.createdAt)で渡す)ぶんの軌道オフセット(rad)。
- * baseAngleRad=このペレット固有の拡散角(computeShotDirectionsが返した値。中心=0)。
- * 戻り値をbaseAngleRadへ足した角度で飛ばす(gameStore.ts側の役目)。
+ * 経過時間(elapsedMs)ぶんの中心線からの横ズレ(px)。
+ * lateral(t) = amplitudePx × sin(π × min(t/convergeMs, 1))
+ * t=0 と t=convergeMs(=T)で必ず0(要件)。convergeMs<=0なら常に0(収束時間が求まらない=直進)。
  */
-export const coilTrajectoryOffsetRad = (baseAngleRad: number, elapsedMs: number): number => {
-  const sign = Math.sign(baseAngleRad);
-  if (sign === 0 || elapsedMs <= 0) return 0;
-  if (elapsedMs < COIL_OUT_PHASE_MS) {
-    return sign * COIL_OUT_RAD * smoothstep01(elapsedMs / COIL_OUT_PHASE_MS);
-  }
-  if (elapsedMs < COIL_TOTAL_PHASE_MS) {
-    const t = (elapsedMs - COIL_OUT_PHASE_MS) / COIL_CONVERGE_PHASE_MS;
-    return sign * COIL_OUT_RAD * (1 - smoothstep01(t));
-  }
-  return 0;
+export const coilLateralOffsetPx = (
+  amplitudePx: number,
+  elapsedMs: number,
+  convergeMs: number,
+): number => {
+  if (convergeMs <= 0 || elapsedMs <= 0) return 0;
+  const t = Math.min(elapsedMs / convergeMs, 1);
+  return amplitudePx * Math.sin(Math.PI * t);
 };

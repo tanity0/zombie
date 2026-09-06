@@ -56,7 +56,8 @@ import {
 // UNIQUE_WEAPONS.md §16-2(バッチC-1): 氷槍ライフルの床が使う共通の持続線分型(§19-1)。
 import type { IceLanceFloor } from '../utils/iceLanceFloor';
 // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルショットガン shotgun-t2-coil): 弾の軌道位相(純関数)。
-import { coilTrajectoryOffsetRad } from '../utils/coilShotgun';
+import { coilConvergeMs, coilLateralOffsetPx } from '../utils/coilShotgun';
+import { homingPelletTurnRateRadPerSec } from '../utils/homingShotgun';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/bomberScatter';
 import {
@@ -15680,25 +15681,65 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             return p; // 'done'
           }
-          // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルショットガン shotgun-t2-coil): 散弾が一度外へ
-          // 広がってから狙点へ再収束する軌道位相(coilShotgun.ts)。狙点方向(coilAimDirX/Y、発射時に
-          // 固定)+このペレット固有の拡散角(coilBaseAngleRad)+経過時間ぶんのオフセットから、
-          // 毎フレーム角度を作り直す(前フレームのdirectionを種にしない=誤差を積み重ねない。
-          // heavySniperの蓄積が毎回CATALOGの静的値から導出するのと同じ考え方)。
-          if (p.coilAimDirX !== undefined && p.coilAimDirY !== undefined && p.coilBaseAngleRad !== undefined) {
-            const elapsed = currentTime - p.createdAt;
-            const offset = coilTrajectoryOffsetRad(p.coilBaseAngleRad, elapsed);
-            const angle = Math.atan2(p.coilAimDirY, p.coilAimDirX) + p.coilBaseAngleRad + offset;
-            const dir = { x: Math.cos(angle), y: Math.sin(angle) };
-            return { ...p, direction: dir, x: p.x + dir.x * p.speed * deltaTime, y: p.y + dir.y * p.speed * deltaTime };
+          // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルショットガン shotgun-t2-coil・2026-09-07
+          // C-2検収A-1で確定): 「中心線からの横ズレ」方式(coilShotgun.ts)。狙点方向(coilAimDirX/Y、
+          // 発射時に固定)への前進距離+その垂線方向への横ズレ(t=0とt=T=収束時間で必ず0)で、毎フレーム
+          // 位置を発射点(origin)から作り直す(前フレームの位置を種にしない=誤差を積み重ねない)。
+          // 時計はgameTime(壁時計Date.now()だとスローモーション中に軌道の形が潰れる=A-1の要件)。
+          if (p.coilAimDirX !== undefined && p.coilAimDirY !== undefined && p.coilAmplitudePx !== undefined) {
+            const elapsed = state.gameTime - (p.coilLaunchGameTime ?? state.gameTime);
+            const convergeMs = coilConvergeMs(p.speed);
+            const lateral = coilLateralOffsetPx(p.coilAmplitudePx, elapsed, convergeMs);
+            const forwardPx = p.speed * (elapsed / 1000);
+            const originCx = (p.originX ?? p.x) + p.width / 2;
+            const originCy = (p.originY ?? p.y) + p.height / 2;
+            // 進行方向に直交する単位ベクトル(左手系・符号はcoilPelletAmplitudePxの±と対応するだけで
+            // 見た目には影響しない=対称な扇なので左右どちらを+に取っても結果は同じ広がり方になる)。
+            const perpX = -p.coilAimDirY;
+            const perpY = p.coilAimDirX;
+            const cx = originCx + p.coilAimDirX * forwardPx + perpX * lateral;
+            const cy = originCy + p.coilAimDirY * forwardPx + perpY * lateral;
+            return { ...p, direction: { x: p.coilAimDirX, y: p.coilAimDirY }, x: cx - p.width / 2, y: cy - p.height / 2 };
           }
-          // ホーミング弾: 毎フレームターゲットへ向けて旋回しながら飛ぶ。ターゲットが消えたら直進。
-          // UNIQUE_WEAPONS.md §16-2(バッチC-2・誘導散弾SG shotgun-t3-homing「旋回そのものは
-          // ホーミング弾に在るが分岐に閉じているので開く必要」): weaponType==='homing-missile'
-          // 限定だった条件を、homingPelletフラグを持つ弾(誘導散弾のペレット)にも開く。
-          // 旋回の式・旋回速度(HOMING_MISSILE_TURN_RATE)は完全に同じものを再利用する
-          // (誘導散弾専用の別レートは発明しない=「旋回そのものは在る」を素直に開く)。
-          if (p.weaponType === 'homing-missile' || p.homingPellet) {
+          // UNIQUE_WEAPONS.md §16-2(バッチC-2・誘導散弾SG shotgun-t3-homing・2026-09-07 C-2検収A-3で確定):
+          // ペレット専用の旋回速度(半径40px相当=弾速÷40。既定のHOMING_MISSILE_TURN_RATEをそのまま
+          // 使うと弾速705px/sでは半径141pxになり射程140pxより大きく曲がり切れない)。
+          // 対象が死体(isCorpse)になったら次の生存対象へ移す(9発集中の武器では死体を旋回するのが目立つ。
+          // 通常のホーミング弾(homing-missile)はこの再ターゲットをしない=挙動不変・回帰ゼロ)。
+          if (p.homingPellet) {
+            const lockedTarget = p.targetEnemyId ? enemies.find(e => e.id === p.targetEnemyId) : undefined;
+            const needsRetarget = !lockedTarget || isCorpse(lockedTarget);
+            const pcx2 = p.x + p.width / 2, pcy2 = p.y + p.height / 2;
+            const target = needsRetarget
+              ? enemies
+                .filter(e => !isCorpse(e) && e.aiPhase !== 'jump')
+                .reduce<Enemy | undefined>((best, e) => {
+                  const d = (e.x + e.width / 2 - pcx2) ** 2 + (e.y + e.height / 2 - pcy2) ** 2;
+                  const bd = best ? (best.x + best.width / 2 - pcx2) ** 2 + (best.y + best.height / 2 - pcy2) ** 2 : Infinity;
+                  return d < bd ? e : best;
+                }, undefined)
+              : lockedTarget;
+            let dir = p.direction;
+            if (target) {
+              const tx = target.x + target.width / 2;
+              const ty = target.y + target.height / 2;
+              const dx = tx - pcx2;
+              const dy = ty - pcy2;
+              const tAngle = Math.atan2(dy, dx);
+              const cAngle = Math.atan2(p.direction.y, p.direction.x);
+              const diff = ((tAngle - cAngle) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+              const maxTurn = homingPelletTurnRateRadPerSec(p.speed) * deltaTime;
+              const newAngle = cAngle + Math.sign(diff) * Math.min(Math.abs(diff), maxTurn);
+              dir = { x: Math.cos(newAngle), y: Math.sin(newAngle) };
+            }
+            return {
+              ...p, direction: dir, x: p.x + dir.x * p.speed * deltaTime, y: p.y + dir.y * p.speed * deltaTime,
+              targetEnemyId: target?.id,
+            };
+          }
+          // ホーミング弾(誘導ロケット): 毎フレームターゲットへ向けて旋回しながら飛ぶ。ターゲットが
+          // 消えたら直進(既存のHOMING_MISSILE_TURN_RATEのまま=挙動不変・回帰ゼロ)。
+          if (p.weaponType === 'homing-missile') {
             const target = p.targetEnemyId ? enemies.find(e => e.id === p.targetEnemyId) : undefined;
             let dir = p.direction;
             if (target) {

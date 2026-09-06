@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useGameStore } from '../store/gameStore';
 import {
   createWeapon, nextKnifeKey, MELEE_KEYS, MAX_KNIFE_TIER, getWeaponShortName,
   beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot,
   effectiveFireCooldown, effectiveMagSize, weaponReloadReserve,
-  resolveShotgunSpreadRad, computeShotDirections, computeShotAngleOffsets, fireWeapon, DUALRANGE_WEAPON_KEY,
+  resolveShotgunSpreadRad, computeShotDirections, fireWeapon, DUALRANGE_WEAPON_KEY,
 } from './weaponUtils';
 import { spawnEnemyAt } from './enemyUtils';
 import { DUAL_RANGE_STATS } from './dualRangeGun';
@@ -283,8 +283,8 @@ describe('バッチC-2: 近接切替・弾の軌道の3挺の配線(fireWeapon)'
     useGameStore.getState().resetGame('warrior');
   });
 
-  describe('ガンブレード(§16-2/§17-5)', () => {
-    it('通常銃モード(90pxより遠い)は素の8ダメージ・knockbackMult無し・gunbladeMeleeMode=falseで持ち越す', () => {
+  describe('ガンブレード(§16-2/§17-5/§16-5b・2026-09-07 C-2検収A-2で確定)', () => {
+    it('通常銃モード(90pxより遠い)は従来どおり弾を作る・knockbackMult無し・gunbladeMeleeMode=falseで持ち越す', () => {
       const player = useGameStore.getState().player;
       const gun = { ...createWeapon('handgun-t3-gunblade'), lastFired: 0 };
       // 150px(=90pxの近接域より遠く、170pxの銃射程より近い)先に的を置く。
@@ -299,50 +299,93 @@ describe('バッチC-2: 近接切替・弾の軌道の3挺の配線(fireWeapon)'
       expect(shots[0].gunbladeMeleeHit).toBeUndefined();
       const stored = useGameStore.getState().player.weapons.find(w => w.id === gun.id);
       expect(stored?.gunbladeMeleeMode).toBe(false);
+      expect(stored?.magazine).toBe((gun.magazine ?? 0) - 1); // 通常どおり弾薬を消費する
     });
 
-    it('至近(≤90px)は近接モードへ切り替わる(ダメージ×1.6・knockbackMult1.5・gunbladeMeleeHit・体勢はheavy側=useGameLoop.tsが読む)', () => {
-      const player = useGameStore.getState().player;
-      const rangedGun = { ...createWeapon('handgun-t3-gunblade'), lastFired: 0 };
-      const farTarget = spawnEnemyAt('zombie', player.x, player.y - 150, useGameStore.getState().gameTime);
-      useGameStore.setState(s => ({
-        enemies: [farTarget],
-        player: { ...s.player, weapons: [rangedGun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: rangedGun.id },
-      }));
-      const rangedShots = fireWeapon(rangedGun, useGameStore.getState().player, [farTarget]);
-      const rangedDamage = rangedShots[0].damage;
+    it('至近(≤90px)は弾を作らず即時に近接判定を解決する(ダメージ×1.6・弾薬/リロード不消費・gunbladeMeleeMode=trueで持ち越す)', () => {
+      const randSpy = vi.spyOn(Math, 'random').mockReturnValue(0.999); // クリを外して決定的にする
+      try {
+        const player = useGameStore.getState().player;
+        const gun = { ...createWeapon('handgun-t3-gunblade'), lastFired: 0 };
+        const magazineBefore = gun.magazine ?? 0;
+        const nearTarget = spawnEnemyAt('zombie', player.x, player.y - 30, useGameStore.getState().gameTime);
+        const healthBefore = nearTarget.health;
+        useGameStore.setState(s => ({
+          enemies: [nearTarget],
+          player: { ...s.player, weapons: [gun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: gun.id },
+        }));
+        const meleeShots = fireWeapon(gun, useGameStore.getState().player, [nearTarget]);
+        // ★A-2: 弾を1つも作らない。
+        expect(meleeShots).toEqual([]);
+        // ダメージは即時に適用される(素ダメージ12.8=ranged8×1.6、非クリなので等倍)。
+        const hitTarget = useGameStore.getState().enemies.find(e => e.id === nearTarget.id)!;
+        expect(healthBefore - hitTarget.health).toBeCloseTo(12.8, 5);
+        // 弾薬・リロードは一切消費しない。
+        const stored = useGameStore.getState().player.weapons.find(w => w.id === gun.id);
+        expect(stored?.magazine).toBe(magazineBefore);
+        expect(stored?.gunbladeMeleeMode).toBe(true);
+        expect(stored?.lastFired).toBeGreaterThan(0);
+      } finally {
+        randSpy.mockRestore();
+      }
+    });
 
-      // 至近(30px)に的を置き直し、cooldownを解いて撃ち直す。
+    it('至近でもリロード中/弾切れなら近接は普通に発動する(弾を使わないため=旧実装の不具合の是正)', () => {
+      const player = useGameStore.getState().player;
+      const gun = { ...createWeapon('handgun-t3-gunblade'), lastFired: 0, magazine: 0 };
       const nearTarget = spawnEnemyAt('zombie', player.x, player.y - 30, useGameStore.getState().gameTime);
-      const gunAfterFar = { ...(useGameStore.getState().player.weapons.find(w => w.id === rangedGun.id)!), lastFired: 0 };
+      const healthBefore = nearTarget.health;
       useGameStore.setState(s => ({
         enemies: [nearTarget],
-        player: { ...s.player, weapons: [gunAfterFar, ...s.player.weapons.filter(w => w.isMelee)] },
+        player: {
+          ...s.player, weapons: [gun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: gun.id,
+          reloadingWeaponId: gun.id, reloadEndsAt: Date.now() + 2600, // リロード中(2600ms)
+        },
       }));
-      const meleeShots = fireWeapon(gunAfterFar, useGameStore.getState().player, [nearTarget]);
-      expect(meleeShots.length).toBe(1);
-      expect(meleeShots[0].knockbackMult).toBe(1.5);
-      expect(meleeShots[0].gunbladeMeleeHit).toBe(true);
-      expect(meleeShots[0].damage).toBeCloseTo(rangedDamage * 1.6, 5);
-      const storedMelee = useGameStore.getState().player.weapons.find(w => w.id === rangedGun.id);
-      expect(storedMelee?.gunbladeMeleeMode).toBe(true);
+      const meleeShots = fireWeapon(gun, useGameStore.getState().player, [nearTarget]);
+      expect(meleeShots).toEqual([]);
+      const hitTarget = useGameStore.getState().enemies.find(e => e.id === nearTarget.id)!;
+      expect(hitTarget.health).toBeLessThan(healthBefore);
     });
 
-    it('allowMelee:false(守護霊/幻影/ボット)なら至近でも空撃ちする', () => {
+    it('allowMelee:false(守護霊/幻影/ボット)なら至近でも空撃ちする(弾も作らずダメージも与えない)', () => {
       const player = useGameStore.getState().player;
       const gun = { ...createWeapon('handgun-t3-gunblade'), lastFired: 0 };
       const nearTarget = spawnEnemyAt('zombie', player.x, player.y - 30, useGameStore.getState().gameTime);
+      const healthBefore = nearTarget.health;
       useGameStore.setState(s => ({
         enemies: [nearTarget],
         player: { ...s.player, weapons: [gun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: gun.id },
       }));
       const shots = fireWeapon(gun, useGameStore.getState().player, [nearTarget], { allowMelee: false });
       expect(shots).toEqual([]);
+      const hitTarget = useGameStore.getState().enemies.find(e => e.id === nearTarget.id)!;
+      expect(hitTarget.health).toBe(healthBefore);
     });
   });
 
-  describe('コイルショットガン(§16-2)', () => {
-    it('各ペレットがcomputeShotAngleOffsetsと同じ拡散角+狙点方向(coilAimDirX/Y)を持つ', () => {
+  describe('コイルショットガン(§16-2・2026-09-07 C-2検収A-1で確定)', () => {
+    it('基礎の拡散角を持たない(spreadRadOverride:0)ので全ペレットが同じ狙点方向のまま発射される', () => {
+      const player = useGameStore.getState().player;
+      const gun = { ...createWeapon('shotgun-t2-coil'), lastFired: 0 };
+      expect(gun.spreadRadOverride).toBe(0);
+      const target = spawnEnemyAt('zombie', player.x, player.y - 100, useGameStore.getState().gameTime);
+      useGameStore.setState(s => ({
+        enemies: [target],
+        player: { ...s.player, weapons: [gun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: gun.id },
+      }));
+      const shots = fireWeapon(gun, useGameStore.getState().player, [target]);
+      expect(shots.length).toBe(9);
+      shots.forEach(shot => {
+        expect(shot.direction.x).toBeCloseTo(shots[0].direction.x, 10);
+        expect(shot.direction.y).toBeCloseTo(shots[0].direction.y, 10);
+        expect(typeof shot.coilAimDirX).toBe('number');
+        expect(typeof shot.coilAimDirY).toBe('number');
+        expect(typeof shot.coilLaunchGameTime).toBe('number');
+      });
+    });
+
+    it('各ペレットが±44pxの範囲へ等間隔の振幅(coilAmplitudePx)を持つ(中心弾=0)', () => {
       const player = useGameStore.getState().player;
       const gun = { ...createWeapon('shotgun-t2-coil'), lastFired: 0 };
       const target = spawnEnemyAt('zombie', player.x, player.y - 100, useGameStore.getState().gameTime);
@@ -352,14 +395,9 @@ describe('バッチC-2: 近接切替・弾の軌道の3挺の配線(fireWeapon)'
       }));
       const shots = fireWeapon(gun, useGameStore.getState().player, [target]);
       expect(shots.length).toBe(9);
-      const expectedAngles = computeShotAngleOffsets(gun);
-      shots.forEach((shot, i) => {
-        expect(shot.coilBaseAngleRad).toBeCloseTo(expectedAngles[i], 6);
-        expect(typeof shot.coilAimDirX).toBe('number');
-        expect(typeof shot.coilAimDirY).toBe('number');
-      });
-      // 9発(奇数)の中心弾(index4)は拡散角0=常に直進(コイルの広がりようがない)。
-      expect(expectedAngles[4]).toBeCloseTo(0, 10);
+      expect(shots[0].coilAmplitudePx).toBeCloseTo(-44, 6);
+      expect(shots[8].coilAmplitudePx).toBeCloseTo(44, 6);
+      expect(shots[4].coilAmplitudePx).toBeCloseTo(0, 10); // 9発(奇数)の中心弾
     });
   });
 

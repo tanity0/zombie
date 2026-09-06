@@ -1991,14 +1991,18 @@ export interface Projectile {
   // ままにしたいため(既存のshotgun着弾処理・SE・描画分岐を変えない)、旋回の可否だけをこのフラグで
   // 別途開く。targetEnemyIdが対応する敵と一緒に使う(対象が消えたら直進=homing-missileと同じ規則)。
   homingPellet?: true;
-  // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルSG shotgun-t2-coil): 発射時に確定した「狙点(baseDir)
-  // に対するこのペレット固有の拡散角」(rad・中心=0・computeShotDirectionsが計算した値と同じ)。
-  // 弾の軌道位相(coilTrajectoryOffsetRad・src/utils/coilShotgun.ts)がこの値を起点に0〜420msかけて
-  // 外へ広がってから戻る。coilAimDirX/Yは狙点方向そのもの(発射時に固定・以後は再追尾しない=
-  // 通常のショットガン弾と同じく直進系)。
-  coilBaseAngleRad?: number;
+  // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルSG shotgun-t2-coil・2026-09-07 C-2検収A-1で確定)。
+  // 「中心線からの横ズレ」方式(coilShotgun.ts): coilAimDirX/Yは狙点方向(発射時に固定・以後は
+  // 再追尾しない)、coilAmplitudePxはこのペレット固有の最大横ズレ(px・±COIL_AMPLITUDE_PX)、
+  // coilLaunchGameTimeは発射時の`gameTime`(壁時計Date.now()だとスローモーション中に軌道の形が
+  // 潰れるため=時計はgameTime、というA-1の要件)。毎フレーム
+  // coilLateralOffsetPx(coilAmplitudePx, gameTime-coilLaunchGameTime, coilConvergeMs(speed))で
+  // 横ズレを求め直し、狙点方向×前進距離+その垂線方向×横ズレ、で位置を再構成する(前フレームの
+  // directionを種にしない=誤差を積み重ねない)。
+  coilAmplitudePx?: number;
   coilAimDirX?: number;
   coilAimDirY?: number;
+  coilLaunchGameTime?: number;
   // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード handgun-t3-gunblade限定): この弾が
   // 至近モード(近接系の強攻撃)で撃たれたことを示す印。useGameLoopの着弾処理がpiledriverと同じ
   // 枠組み(「新しい打撃種別は作らない」)で体勢削り分類を'heavy'に固定するために読む

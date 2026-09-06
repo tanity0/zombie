@@ -1,56 +1,84 @@
 import { describe, it, expect } from 'vitest';
-import { coilTrajectoryOffsetRad, COIL_OUT_PHASE_MS, COIL_TOTAL_PHASE_MS, COIL_OUT_RAD } from './coilShotgun';
+import {
+  coilConvergeMs, coilPelletAmplitudePx, coilLateralOffsetPx,
+  COIL_CONVERGE_PX, COIL_AMPLITUDE_PX,
+} from './coilShotgun';
 
-describe('coilTrajectoryOffsetRad', () => {
-  it('中心弾(baseAngleRad=0)は常にオフセット0(広がりようがない)', () => {
-    expect(coilTrajectoryOffsetRad(0, 0)).toBe(0);
-    expect(coilTrajectoryOffsetRad(0, 90)).toBe(0);
-    expect(coilTrajectoryOffsetRad(0, 300)).toBe(0);
-    expect(coilTrajectoryOffsetRad(0, 1000)).toBe(0);
+describe('coilConvergeMs(収束時間Tを弾速から導く)', () => {
+  it('弾速705px/s(=470×1.5)なら T≈198.6ms(140÷705×1000)', () => {
+    expect(coilConvergeMs(705)).toBeCloseTo((COIL_CONVERGE_PX / 705) * 1000, 6);
+    expect(coilConvergeMs(705)).toBeCloseTo(198.58, 1);
   });
 
-  it('elapsed=0はオフセット0(発射直後は元の拡散角のまま)', () => {
-    expect(coilTrajectoryOffsetRad(0.2, 0)).toBe(0);
-    expect(coilTrajectoryOffsetRad(-0.2, 0)).toBe(0);
+  it('弾速を上げるとTは短くなる(収束"点"=140pxは動かない・弾速だけが変わる)', () => {
+    expect(coilConvergeMs(1400)).toBeLessThan(coilConvergeMs(700));
   });
 
-  it('0〜180ms: 外側(+側ペレット)は正の方向へ増える', () => {
-    const early = coilTrajectoryOffsetRad(0.2, 30);
-    const mid = coilTrajectoryOffsetRad(0.2, 90);
-    const late = coilTrajectoryOffsetRad(0.2, 179);
-    expect(early).toBeGreaterThan(0);
-    expect(mid).toBeGreaterThan(early);
-    expect(late).toBeGreaterThan(mid);
+  it('弾速0以下はT=0(直進のみ)', () => {
+    expect(coilConvergeMs(0)).toBe(0);
+    expect(coilConvergeMs(-10)).toBe(0);
+  });
+});
+
+describe('coilPelletAmplitudePx(振幅の等間隔割り振り)', () => {
+  it('9発なら-44〜+44を等間隔(-44,-33,...,44)に割り振る', () => {
+    const amps = Array.from({ length: 9 }, (_, i) => coilPelletAmplitudePx(i, 9));
+    expect(amps[0]).toBeCloseTo(-44, 6);
+    expect(amps[8]).toBeCloseTo(44, 6);
+    expect(amps[4]).toBeCloseTo(0, 6); // 中心弾=振幅0
+    expect(amps[1]).toBeCloseTo(-33, 6);
+    expect(amps[7]).toBeCloseTo(33, 6);
   });
 
-  it('180msちょうどで最大(+0.5rad)に達する', () => {
-    expect(coilTrajectoryOffsetRad(0.2, COIL_OUT_PHASE_MS)).toBeCloseTo(COIL_OUT_RAD, 6);
+  it('count<=1は振幅0(広がりようがない)', () => {
+    expect(coilPelletAmplitudePx(0, 1)).toBe(0);
+    expect(coilPelletAmplitudePx(0, 0)).toBe(0);
   });
 
-  it('180〜420ms: 最大から0へ戻っていく(収束)', () => {
-    const justAfter = coilTrajectoryOffsetRad(0.2, 181);
-    const mid = coilTrajectoryOffsetRad(0.2, 300);
-    const justBefore = coilTrajectoryOffsetRad(0.2, 419);
-    expect(justAfter).toBeLessThanOrEqual(COIL_OUT_RAD);
-    expect(mid).toBeLessThan(justAfter);
-    expect(justBefore).toBeLessThan(mid);
-    expect(justBefore).toBeGreaterThan(0);
+  it('COIL_AMPLITUDE_PX=44が最大振幅', () => {
+    expect(COIL_AMPLITUDE_PX).toBe(44);
+    const amps = Array.from({ length: 5 }, (_, i) => coilPelletAmplitudePx(i, 5));
+    for (const a of amps) expect(Math.abs(a)).toBeLessThanOrEqual(44 + 1e-9);
+  });
+});
+
+describe('coilLateralOffsetPx(横ズレ=lateral(t)=A×sin(π×min(t/T,1)))', () => {
+  const A = 44;
+  const T = 200;
+
+  it('★受け入れ条件: t=0 で横ズレ0', () => {
+    expect(coilLateralOffsetPx(A, 0, T)).toBe(0);
   });
 
-  it('420ms以降はオフセット0(以後まっすぐ)', () => {
-    expect(coilTrajectoryOffsetRad(0.2, COIL_TOTAL_PHASE_MS)).toBeCloseTo(0, 6);
-    expect(coilTrajectoryOffsetRad(0.2, 5000)).toBe(0);
+  it('★受け入れ条件: t=T で全ペレットの横ズレが0になる', () => {
+    expect(coilLateralOffsetPx(A, T, T)).toBeCloseTo(0, 6);
+    expect(coilLateralOffsetPx(-A, T, T)).toBeCloseTo(0, 6);
+    expect(coilLateralOffsetPx(0, T, T)).toBe(0);
   });
 
-  it('負側ペレット(baseAngleRad<0)は逆符号で対称に動く', () => {
-    const pos = coilTrajectoryOffsetRad(0.2, 90);
-    const neg = coilTrajectoryOffsetRad(-0.2, 90);
+  it('t=T/2(中間)で最大振幅に達する(sinの山)', () => {
+    expect(coilLateralOffsetPx(A, T / 2, T)).toBeCloseTo(A, 6);
+  });
+
+  it('t>T(収束後)は横ズレ0のまま(直進)', () => {
+    expect(coilLateralOffsetPx(A, T + 50, T)).toBeCloseTo(0, 6);
+    expect(coilLateralOffsetPx(A, T * 5, T)).toBeCloseTo(0, 6);
+  });
+
+  it('負の振幅(内側ペレット)は符号だけ反転して対称', () => {
+    const pos = coilLateralOffsetPx(A, T / 4, T);
+    const neg = coilLateralOffsetPx(-A, T / 4, T);
     expect(neg).toBeCloseTo(-pos, 10);
   });
 
-  it('慣性(smoothstep): 増分が一定ではない(等速でない=CLAUDE.md「動きの絶対ルール」)', () => {
-    const a = coilTrajectoryOffsetRad(0.2, 10) - coilTrajectoryOffsetRad(0.2, 0);
-    const b = coilTrajectoryOffsetRad(0.2, 100) - coilTrajectoryOffsetRad(0.2, 90);
+  it('慣性(sin): 増分が一定ではない(等速でない=CLAUDE.md「動きの絶対ルール」)', () => {
+    const a = coilLateralOffsetPx(A, 10, T) - coilLateralOffsetPx(A, 0, T);
+    const b = coilLateralOffsetPx(A, T / 2 + 10, T) - coilLateralOffsetPx(A, T / 2, T);
     expect(a).not.toBeCloseTo(b, 3);
+  });
+
+  it('convergeMs<=0は常に0(収束時間が求まらない=直進)', () => {
+    expect(coilLateralOffsetPx(A, 50, 0)).toBe(0);
+    expect(coilLateralOffsetPx(A, 50, -10)).toBe(0);
   });
 });
