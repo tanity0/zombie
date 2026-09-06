@@ -5,8 +5,8 @@ import {
   beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot,
   effectiveFireCooldown, effectiveMagSize, weaponReloadReserve,
   resolveShotgunSpreadRad, computeShotDirections, fireWeapon, DUALRANGE_WEAPON_KEY,
-  isGrenadeGunKey, isManualOnlyGunKey, manualOnlyFallbackWeapon,
-  ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY,
+  isGrenadeGunKey, isManualOnlyGunKey, hasManualAimGunKey, manualOnlyFallbackWeapon,
+  ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY,
 } from './weaponUtils';
 import { spawnEnemyAt } from './enemyUtils';
 import { DUAL_RANGE_STATS } from './dualRangeGun';
@@ -464,6 +464,13 @@ describe('isManualOnlyGunKey / manualOnlyFallbackWeapon(§16-3b)', () => {
     expect(isManualOnlyGunKey(undefined)).toBe(false);
   });
 
+  // UNIQUE_WEAPONS.md §17-10(#U16裁定): レールガンは「オート+手動」の併存なので、ここへ入れると
+  // オート射撃が止まる(useGameLoop.ts/playtestDriver.tsがこの述語でオートを除外している)。
+  // 発注文の明示禁止事項=回帰させてはいけない1行なので固定する。
+  it('レールガンはオートも持つのでisManualOnlyGunKeyの対象ではない', () => {
+    expect(isManualOnlyGunKey(RAILGUN_WEAPON_KEY)).toBe(false);
+  });
+
   it('シグナルは既定の同カテゴリ銃(glauncher-t3)の数値へ差し替わるが、id/lastFired/magazineは実体のまま持ち越す', () => {
     const signal = { ...createWeapon(SIGNAL_WEAPON_KEY), lastFired: 12345, magazine: 1 };
     const fallback = manualOnlyFallbackWeapon(signal);
@@ -477,6 +484,23 @@ describe('isManualOnlyGunKey / manualOnlyFallbackWeapon(§16-3b)', () => {
   it('PHILLはフォールバック先が無いので入力をそのまま返す(既存の挙動を変えない)', () => {
     const phill = createWeapon('phill-revolver');
     expect(manualOnlyFallbackWeapon(phill)).toBe(phill); // 同一参照(素通し)
+  });
+});
+
+// UNIQUE_WEAPONS.md §17-10(#U16裁定): レールガンの手動照準の口(狙いサークルのレティクル計算・
+// 描画)を広げる述語。isManualOnlyGunKeyのスーパーセット=PHILL/シグナルはそのままtrue、
+// レールガンだけ追加でtrueになる(オート専用武器はfalseのまま)。
+describe('hasManualAimGunKey(§17-10・isManualOnlyGunKeyのスーパーセット)', () => {
+  it('phill-revolver/シグナル/レールガンの3つでtrue', () => {
+    expect(hasManualAimGunKey('phill-revolver')).toBe(true);
+    expect(hasManualAimGunKey(SIGNAL_WEAPON_KEY)).toBe(true);
+    expect(hasManualAimGunKey(RAILGUN_WEAPON_KEY)).toBe(true);
+  });
+  it('それ以外(既定rifle-t3・ロケラン・未知キー・undefined)はfalse', () => {
+    expect(hasManualAimGunKey('rifle-t3')).toBe(false);
+    expect(hasManualAimGunKey(ROCKET_WEAPON_KEY)).toBe(false);
+    expect(hasManualAimGunKey('not-a-real-key')).toBe(false);
+    expect(hasManualAimGunKey(undefined)).toBe(false);
   });
 });
 
@@ -508,5 +532,42 @@ describe('バッチD: ランチャー3挺のCATALOG', () => {
     expect(shots[0].speed).toBe(0); // 溜め中は静止(小さい判定として自機前方に置かれる)
     expect(shots[0].rocketChargeUntil).toBeDefined();
     expect(shots[0].rocketLaunchSpeed).toBeGreaterThan(0); // 溜め終わりに戻す本来の飛翔速度
+  });
+});
+
+// UNIQUE_WEAPONS.md §16-1/§17-2/§17-10(#U16裁定・バッチC漏れの是正): レールガンのCATALOG+
+// オート射撃(fireWeapon)。手動射撃(gameStore.fireRailgunShot)はstoreのテスト対象で、ここは
+// 「オート射撃は何も足さない」(§17-10)ことだけを固定する——railgun-t3-eyelaser等と同じ形の
+// 普通のrifle弾になっていること(headshotEligibleが立たないこと含む)。
+describe('レールガン(rifle-t3-railgun)のCATALOG+オート射撃(§17-10)', () => {
+  it('rifle T3・damage101/cooldown1300/magSize4/reloadMs2200・passthroughのみ(pierceなし)', () => {
+    const w = createWeapon(RAILGUN_WEAPON_KEY);
+    expect(w.category).toBe('rifle');
+    expect(w.tier).toBe(3);
+    expect(w.damage).toBe(101);
+    expect(w.cooldown).toBe(1300);
+    expect(w.magSize).toBe(4);
+    expect(w.reloadMs).toBe(2200);
+    expect(w.projectileSpeed).toBe(1400);
+    expect(w.projectileSize).toBe(8);
+    expect(w.passthrough).toBe(true);
+    expect(w.pierce).toBeUndefined();
+  });
+
+  it('オート射撃(fireWeapon)は普通のrifle弾を作るだけ(weaponType=rifle・headshotEligibleは立たない)', () => {
+    useGameStore.getState().resetGame('warrior');
+    const player = useGameStore.getState().player;
+    const gun = { ...createWeapon(RAILGUN_WEAPON_KEY), lastFired: 0 };
+    const target = spawnEnemyAt('zombie', player.x, player.y - 100, useGameStore.getState().gameTime);
+    const shots = fireWeapon(gun, player, [target]);
+    expect(shots.length).toBe(1);
+    expect(shots[0].weaponType).toBe('rifle');
+    expect(shots[0].weaponKey).toBe(RAILGUN_WEAPON_KEY);
+    expect(shots[0].headshotEligible).toBeUndefined();
+    expect(shots[0].passthrough).toBe(true);
+  });
+
+  it('isManualOnlyGunKeyの対象ではない(=fireWeaponのオート射撃から除外されない)', () => {
+    expect(isManualOnlyGunKey(RAILGUN_WEAPON_KEY)).toBe(false);
   });
 });

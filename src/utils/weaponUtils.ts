@@ -217,6 +217,16 @@ const CATALOG: Record<string, WeaponDef> = {
   // サイクル実効DPS=48.28(既定rifle-t3比+5.3%・§5-2)。critChanceは導出のまま(§17-2)。
   'rifle-t3-eyelaser': { key: 'rifle-t3-eyelaser', name: 'アイレーザー', type: 'rifle', category: 'rifle', tier: 3, damage: EYE_LASER_PULSE_DAMAGE, cooldown: 100, count: 1, passthrough: true, magSize: EYE_LASER_MAG_SIZE, reloadMs: EYE_LASER_RELOAD_MS_RAW, nonProjectile: true },
 
+  // UNIQUE_WEAPONS.md §16-1/§16-2/§17-10(#U16裁定・バッチC漏れの是正)。レールガン(T3): 通常の
+  // オート射撃(下の数値)に加え、PHILL銃と同じ手動ターゲットサークル射撃を持つ(gameStore.
+  // fireRailgunShot・「刀と一閃の関係」= 指離しの処理に1つ増える形。残弾はオート/手動で共存=
+  // このCATALOGの1つのweapon実体をどちらも読み書きする)。手動で頭部命中は確定クリティカル
+  // (collisionUtils側でheadshotEligible判定を共有。weaponTypeはphill-bullet化しない=§17-10)。
+  // ★社長仕様「オート時のダメージは低め」により実効DPSは既定より低い(=帯±10%の−側。
+  // 101×4÷(5200+4400)=42.08・既定45.83比−8.2%・§16-1/§5-2)。貫通クラスは既定T2/T3と同じ
+  // (passthroughのみ・§17-2)。projectileSpeed/Size=1400/8(§17-2)。critChanceは導出のまま。
+  'rifle-t3-railgun': { key: 'rifle-t3-railgun', name: 'レールガン', type: 'rifle', category: 'rifle', tier: 3, damage: 101, cooldown: 1300, projectileSpeed: 1400, projectileSize: 8, count: 1, passthrough: true, magSize: 4, reloadMs: 2200 },
+
   // Melee (no ammo). Lower DPS than guns by design so bullets stay valuable.
   // Each carries a fixed crit chance that rises with tier. Tier はレベルアップ
   // 3枠目から段階的に強化される(knife-t1 → … → anti-mutant-knife-t5)。
@@ -281,6 +291,9 @@ export { DESERTTECH_WEAPON_KEY };
 export const EYE_LASER_WEAPON_KEY = 'rifle-t3-eyelaser';
 export const ICE_LANCE_WEAPON_KEY = 'rifle-t2-icelance';
 export const FLAMER_WEAPON_KEY = 'shotgun-t3-flamer';
+// UNIQUE_WEAPONS.md §16-1/§17-10(#U16裁定・バッチC漏れの是正): レールガンのキー定数。
+// gameStore.fireRailgunShot(手動照準)・pixiScene(狙いサークル描画)から参照する。
+export const RAILGUN_WEAPON_KEY = 'rifle-t3-railgun';
 // UNIQUE_WEAPONS.md §16-2(バッチC-2): 近接切替/弾の軌道の3挺のキー定数。
 export const GUNBLADE_WEAPON_KEY = 'handgun-t3-gunblade';
 export const COIL_SHOTGUN_WEAPON_KEY = 'shotgun-t2-coil';
@@ -463,6 +476,9 @@ const WEAPON_DESC: Record<string, string> = {
   // アイレーザー(§16-2/バッチC-1): eyeLaserGun.ts。溜め→照射3秒(貫通・追尾)→リロード。
   // 照射中に対象を見失うとその場で終了し、残りの照射時間は失われる(再ターゲットしない)。
   'rifle-t3-eyelaser': '一瞬溜めてから光線を撃ち続ける。狙った相手を追い続けるが、見失うとそこで終わる',
+  // レールガン(§16-1/§16-2/§17-10): 通常のオート射撃に加え、狙いサークルを構えて指を離すと
+  // 手動で1発を撃てる(fireRailgunShot)。頭部に当てると確定でクリティカルになる。
+  'rifle-t3-railgun': '自動でも撃てるが、狙いサークルを構えて放つ一発は頭に当てれば必ずクリティカルになる',
   // ガンブレード(§16-2/§17-5/バッチC-2): gunbladeMelee.ts。至近(≤90px)に敵が入ると銃から
   // 近接系の強攻撃へ切り替わる(ダメージ×1.6・間隔400ms・ノックバック×1.5)。遠距離の実効DPSより
   // 近接モードの方が低い(代償あり)ことを"強い"ではなく"押し返す"側の言葉で書く。
@@ -540,6 +556,14 @@ export const isGrenadeGunKey = (key: string | undefined | null): boolean =>
 // シグナルランチャーがglauncherカテゴリの通常装備枠に入るため述語として独立させる。
 export const isManualOnlyGunKey = (key: string | undefined | null): boolean =>
   key === 'phill-revolver' || key === SIGNAL_WEAPON_KEY;
+
+// UNIQUE_WEAPONS.md §17-10(#U16裁定): レールガンは「オート+手動」の併存(社長「PHILL銃の仕様に、
+// オートの攻撃も単純に追加するだけ」)。isManualOnlyGunKey(=自動を持たない)へ足すとオート射撃が
+// 止まる(useGameLoop.ts/playtestDriver.tsがこの述語でオートを除外している)ので**絶対に入れない**。
+// 手動照準の口(狙いサークルのレティクル計算・描画)だけを持つかどうかは、この
+// isManualOnlyGunKeyのスーパーセットで判定する(movePlayer/pixiSceneの2箇所が使う)。
+export const hasManualAimGunKey = (key: string | undefined | null): boolean =>
+  isManualOnlyGunKey(key) || key === RAILGUN_WEAPON_KEY;
 
 // 手動専用銃(§16-3b)のフォールバック先(守護霊/ボット用)。無ければ undefined
 // (PHILLは横=既定同カテゴリ銃が存在しないスロット外武器なので、従来どおり素通し=「撃たない」のまま

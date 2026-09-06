@@ -138,8 +138,11 @@ export const checkProjectileEnemyCollisions = (
       // (v0.25.2469のゴースト弾すり抜けは v0.25.2471 で撤回=社長指示「だったら弾はすりぬけなくていい」。
       //  雑魚回避(v0.25.2470)で射線が通るようになったため、弾は通常どおり最初に触れた敵に当たる。)
 
-      // PHILL弾は「胴体ボックス または 頭部リージョン」で当たり判定し、頭部命中を headshot として返す。
-      if (projectile.weaponType === 'phill-bullet') {
+      // PHILL弾(と、UNIQUE_WEAPONS.md §17-10のレールガン手動射撃=headshotEligible)は
+      // 「胴体ボックス または 頭部リージョン」で当たり判定し、頭部命中を headshot として返す。
+      // ★レールガンはweaponTypeを'phill-bullet'化しない(PHILL弾の他の性質=下のphillBody
+      // 2倍ノックバック等まで引き継いでしまうため・§17-10)。headshotEligibleフラグだけを見る。
+      if (projectile.weaponType === 'phill-bullet' || projectile.headshotEligible === true) {
         const fb = enemyFootBox(enemy);
         const top = fb.footY - fb.boxH;
         const headRect = { x: fb.footX - fb.boxW / 2, y: top, width: fb.boxW, height: fb.boxH * HEAD_FRACTION };

@@ -12823,9 +12823,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 「頭部命中」と同じ扱い=着弾ロールを通さずクリ確定にする。
           const headshotHit = headshot === true || projectile?.headshot === true;
           // 裁定4(PHILL・記録専用): プレイヤーのPHILL弾が頭部に当たった回数を計測(率は撃破セッション
-          // 確定時にビルド写しへ焼かれ、守護霊がその確率でヘッドショットを再現する)。headshotは
-          // weaponType==='phill-bullet'(=プレイヤーのPHILL)でしか立たない=守護霊の弾は数えない。
-          if (headshot === true) recordPhillHeadshot();
+          // 確定時にビルド写しへ焼かれ、守護霊がその確率でヘッドショットを再現する)。
+          // ★UNIQUE_WEAPONS.md §17-10(レールガン)以降、headshot===trueはPHILL以外(レールガンの
+          // headshotEligible経由)でも立つようになったため、weaponType==='phill-bullet'で絞る
+          // (絞らないとレールガンの頭部命中がPHILL専用の統計=守護霊のPHILL再現率に混ざる)。
+          if (headshot === true && projectile?.weaponType === 'phill-bullet') recordPhillHeadshot();
           const hitCrit = (m0CritLocked || damage <= 0)
             ? false
             : (baseCrit || bossTrapCrit || headshotHit);

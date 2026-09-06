@@ -386,6 +386,24 @@ describe('不変条件1: 実効DPS帯(バッチC-1・UNIQUE_WEAPONS.md §16-1)',
   });
 });
 
+// UNIQUE_WEAPONS.md §16-1/§17-8 C-2/§17-10(#U16裁定・バッチC漏れの是正)。レールガンのオート側は
+// 汎用式にそのまま乗る(§17-8 C-2「オート側は式に乗る」)。★社長仕様「オート時のダメージは低め」
+// により唯一「−」側(既定比−8.2%)を狙う設計——帯を±10%にしてあるのはこの1挺のためで、
+// この比率が+側に直ってしまったら仕様(旧95=−13.6%は枠外/その後+側に振るのも誤り)を壊している。
+// 手動射撃(頭部確定クリ)は式外の上振れ(§5-2)なのでここでは測らない(gameStore.fireRailgunShot)。
+describe('不変条件1: 実効DPS帯(レールガン・UNIQUE_WEAPONS.md §16-1/§17-10)', () => {
+  it('101/1300/1発/4発/R2200 = 既定比−8.2%(唯一の−側。狙って−に置いている)', () => {
+    const base = effectiveDps(createWeapon('rifle-t3'));
+    const unique = effectiveDps(createWeapon('rifle-t3-railgun'));
+    const ratio = unique / base;
+    expect(base).toBeCloseTo(45.83, 1);
+    expect(unique).toBeCloseTo(42.08, 1);
+    expect(ratio).toBeGreaterThanOrEqual(0.90);
+    expect(ratio).toBeLessThanOrEqual(1.10);
+    expect(ratio).toBeLessThan(1); // ★−側であることを固定する(+側に直す修正が入ったら落ちる)
+  });
+});
+
 // UNIQUE_WEAPONS.md §16-5(受け入れ条件5)。バッチC-2の3挺(近接切替・弾の軌道系)。
 // コイル/誘導散弾は「弾がどう飛ぶか」(位相・旋回)が式に現れない副次要素(§5-2の思想と同型)なので、
 // 通常のカウント式ショットガンと同じ汎用式でそのまま帯を測れる。ガンブレードは通常銃モード

@@ -153,6 +153,10 @@ const VirtualJoystick: React.FC = () => {
         // UNIQUE_WEAPONS.md §16-2/§16-3b(バッチD): シグナルランチャーも同じ「指を離した瞬間」の形
         // (PHILLと同じ手動専用・store側で未装備/CD中は無害に抜ける)。SEはstore側(fireSignalLauncher)で鳴らす。
         gs.fireSignalLauncher();
+        // UNIQUE_WEAPONS.md §17-10(#U16裁定): レールガンは「オート+手動」の併存なのでPHILLのような
+        // 単体ifゲートに入れず、シグナルと同じ形(常に呼ぶ・未装備/CD中はstore側で無害に抜ける)にする。
+        // SEはstore側(fireRailgunShot)で鳴らす。
+        gs.fireRailgunShot();
         // UNIQUE_WEAPONS.md §16-2(バッチD・錬金砲): 石を付けた敵を全部まとめて起爆(未装備/石0は無害)。
         gs.detonateAlchemyStones();
         // ホーミング弾: 指を離した時にロック済み敵へ一斉発射(装備/CDチェックはstore側=未装備は無害)。

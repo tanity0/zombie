@@ -113,7 +113,7 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, isManualOnlyGunKey, gunShotBaseDamage } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の純関数/定数。
 import { alchemyStoneDetonateDamage, ALCHEMY_DETONATE_RADIUS_PX } from '../utils/alchemyStone';
 import { type SignalStrike, SIGNAL_STRIKE_DELAY_MS, SIGNAL_STRIKE_RADIUS_PX } from '../utils/signalLauncher';
@@ -5521,6 +5521,9 @@ interface GameState {
   fireSignalLauncher: () => void;
   // UNIQUE_WEAPONS.md §16-2(バッチD・錬金砲): 指離しで石を付けた敵を全員まとめて起爆する。
   detonateAlchemyStones: () => void;
+  // UNIQUE_WEAPONS.md §17-10(#U16裁定・レールガン): 指離しで狙いサークル方向へ手動の1発
+  // (PHILLと同じ形。オート射撃はfireWeaponが別途・同じ武器実体の残弾/CDを共有する)。
+  fireRailgunShot: () => void;
   selectUpgrade: (upgrade: UpgradeOption) => void;
   setSubWeaponCooldown: (key: SubWeaponKey, readyAt: number) => void;
   updateHuntingCharge: (startedAt: number, charged: boolean) => void;
@@ -6826,10 +6829,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       let phillReticleDX = player.phillReticleDX;
       let phillReticleDY = player.phillReticleDY;
       let phillSnapEnemyId: string | null = null;
-      // UNIQUE_WEAPONS.md §16-2(バッチD・シグナルランチャー): 「PHILL銃のターゲットサイトを流用」
-      // なので、レティクル(phillReticleDX/DY・吸い付き含む)はPHILLと同じ計算をシグナルにも適用する
-      // (isManualOnlyGunKey=PHILL/シグナルの2つ。射撃自体はfireSignalLauncherが別途行う)。
-      if (isManualOnlyGunKey(getActiveGun(player)?.key)) {
+      // UNIQUE_WEAPONS.md §16-2(バッチD・シグナルランチャー)/§17-10(#U16裁定・レールガン):
+      // 「PHILL銃のターゲットサイトを流用」なので、レティクル(phillReticleDX/DY・吸い付き含む)は
+      // PHILLと同じ計算をシグナル/レールガンにも適用する(hasManualAimGunKey=PHILL/シグナル/
+      // レールガンの3つ。射撃自体はfireSignalLauncher/fireRailgunShotが別途行う)。
+      // ★isManualOnlyGunKeyのままだとレールガンが抜ける(あれは「自動を持たない」の意味で、
+      // レールガンは自動も持つので入れられない・weaponUtils.hasManualAimGunKeyのコメント参照)。
+      if (hasManualAimGunKey(getActiveGun(player)?.key)) {
         const rcx = newX + player.width / 2;
         const rcy = newY + player.height / 2;
         // マウス照準時はカーソル位置(ワールド)そのものをレティクル基準に=照準がマウス連動。
@@ -10585,6 +10591,83 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 裁定4(§2.11・記録専用): PHILLの発射数を1つ数える(ヘッドショット数は着弾側=useGameLoopでフック)。
     // 率は撃破セッション確定時にビルド写しへ焼かれ、守護霊がその確率でヘッドショットを再現する。
     recordPhillShot();
+    const nextMag = Math.max(0, (weapon.magazine ?? 0) - 1);
+    set(state => ({ player: { ...state.player, weapons: state.player.weapons.map(w => w.id === weapon.id ? { ...w, lastFired: now, magazine: nextMag } : w) } }));
+    if (nextMag <= 0) get().autoSwitchIfDry(); // 空なら既存経路でリロード
+  },
+
+  // UNIQUE_WEAPONS.md §17-10(#U16裁定): レールガンの手動射撃。社長裁定「PHILL銃の仕様に、オートの
+  // 攻撃も単純に追加するだけ。(ただし残弾は共存)」どおり、firePhillShotをほぼそのまま流用する。
+  // ★違いは2つだけ: ①キー判定がRAILGUN_WEAPON_KEY ②弾のweaponTypeを'phill-bullet'にしない
+  // ('rifle'のまま。headshotEligible:trueだけを立てて、collisionUtilsの頭部リージョン判定を
+  // 共有する=PHILL弾の他の性質(ボディ命中2倍ノックバック・専用の橙い弾描画)は引き継がない・§17-10)。
+  // ★オートと同じ武器実体(weapon.magazine/lastFired)を読み書きするので、残弾/CDはオートと共存する
+  // (=「刀と一閃」と同じで、この銃の自動射撃(fireWeapon)はそのまま独立して動き続ける。ここでは
+  // 何も除外しない)。recordPhillShot/recordPhillHeadshotはPHILL専用の統計(守護霊のPHILL再現率)
+  // なのでここでは呼ばない(呼ぶとレールガンの命中がPHILLの統計に混ざる)。
+  fireRailgunShot: () => {
+    const { player } = get();
+    const weapon = getActiveGun(player);
+    if (!weapon || weapon.key !== RAILGUN_WEAPON_KEY) return;
+    if (isPvpIncapacitated(player.pvpPosture, get().gameTime)) return; // ★SAME_ARENA §9: 紫/daze中は撃てない
+    if (isSeekerActive(player, get().gameTime) && skillLevel(player, 'seeker') < 3) return;
+    // 吸い付き中の敵(movePlayer が算出した phillSnapEnemyId。hasManualAimGunKeyでレールガンも対象)。
+    const snapEnemy = player.phillSnapEnemyId != null
+      ? get().enemies.find(e => e.id === player.phillSnapEnemyId)
+      : undefined;
+    // 立ち止まりガード: スナップ中は移動中でも撃てる(離した瞬間=停止)。非スナップは立ち止まり必須。
+    if (player.isMoving && !snapEnemy) return;
+    const now = Date.now();
+    if (isReloading(player, weapon.id)) return;
+    if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
+    if (now - weapon.lastFired < (weapon.cooldown ?? 1300) / ((player.equipBonus?.fireRateMult ?? 1) * berserkerAwakenFireRateMult(player))) return;
+    // firePhillShotと同じ合流点(スカベンジャー/アタックシューター/消費カード/装備/ラストマガジン)。
+    const railgunDamage = weapon.damage * scavengerGunMult(player, get().gameTime) * skillAttackShooterGunMult(player) * consumableAttackMult(player, get().gameTime) * (player.equipBonus?.damageMult ?? 1) * skillLastMagazineMult(player, weapon.magazine ?? 0);
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    if (snapEnemy) {
+      // サークルが頭に乗った状態 → 即射撃・即被弾(ヘッドショット)。通常弾は出さない。
+      const fb = enemyFootBox(snapEnemy);
+      const hx = fb.footX;
+      const hy = fb.footY - fb.boxH * 0.83;
+      const size = 16;
+      get().addProjectile({
+        id: `proj-railgun-${now}`,
+        x: hx - size / 2,
+        y: hy - size / 2,
+        width: size, height: size, speed: 0,
+        damage: railgunDamage,
+        direction: { x: 0, y: -1 },
+        weaponType: 'rifle',
+        weaponKey: weapon.key,
+        duration: 60, createdAt: now,
+        passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
+        headshotEligible: true,
+      });
+      get().spawnRing(hx, hy, 4, 18, 'rgba(52,211,153,0.95)', 2, 220); // 緑=ヘッドショット
+    } else {
+      // それ以外は通常通り射撃(レティクル方向へ弾を飛ばす)。
+      const hasAim = Math.hypot(player.aimX, player.aimY) > 0.001;
+      const dirx = hasAim ? player.aimX : (player.lastDirection?.x ?? 1);
+      const diry = hasAim ? player.aimY : (player.lastDirection?.y ?? 0);
+      const dl = Math.max(0.001, Math.hypot(dirx, diry));
+      const size = weapon.projectileSize || 8;
+      const speed = (weapon.projectileSpeed || 1400) * 1.5;
+      get().addProjectile({
+        id: `proj-railgun-${now}`,
+        x: pcx - size / 2,
+        y: pcy - size / 2,
+        width: size, height: size, speed,
+        damage: railgunDamage,
+        direction: { x: dirx / dl, y: diry / dl },
+        weaponType: 'rifle',
+        weaponKey: weapon.key,
+        duration: 1400, createdAt: now,
+        passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
+        headshotEligible: true,
+      });
+    }
+    void import('../audio/audioManager').then(m => m.playSfx('rifle-fire'));
     const nextMag = Math.max(0, (weapon.magazine ?? 0) - 1);
     set(state => ({ player: { ...state.player, weapons: state.player.weapons.map(w => w.id === weapon.id ? { ...w, lastFired: now, magazine: nextMag } : w) } }));
     if (nextMag <= 0) get().autoSwitchIfDry(); // 空なら既存経路でリロード
@@ -15642,6 +15725,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           // UNIQUE_WEAPONS.md §16-2(バッチD・ロケットランチャー): 溜め状態も同じ理由で落とす
           // (反射弾=直進、が既存規則。上でreflectBaseSpeedとして既に取り込み済み)。
           rocketChargeUntil: undefined, rocketLaunchSpeed: undefined,
+          // UNIQUE_WEAPONS.md §17-10(#U16裁定・レールガン): 手動射撃の頭部判定フラグも同じ理由で落とす
+          // (打ち返された弾は敵対弾としてプレイヤーへ向かう=「頭部確定クリ」の判定対象がプレイヤー側
+          // ではないため無意味な上、敵弾にPHILL/レールガン専用の頭部判定を紛れ込ませない)。
+          headshotEligible: undefined,
           // v0.25.2525: 守護霊の反射だけ帰属キーを差し替える(未指定=従来どおり元の弾のキーのまま)。
           ...(weaponKey !== undefined ? { weaponKey } : {}),
         };

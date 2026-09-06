@@ -1929,6 +1929,12 @@ export interface Projectile {
   // 着弾時ロールを通さずクリ確定にする(プレイヤーのPHILLは着弾位置=頭部リージョンで判定するので
   // このフラグは使わない=常にundefined)。
   headshot?: boolean;
+  // UNIQUE_WEAPONS.md §17-10(#U16裁定): レールガンの手動射撃(gameStore.fireRailgunShot)が立てる印。
+  // collisionUtils.checkProjectileEnemyCollisions の「頭部リージョンで判定する」経路(PHILLの
+  // weaponType==='phill-bullet'と同じテスト)だけを共有するためのフラグで、weaponTypeは'rifle'の
+  // まま(=phill-bullet化しない。PHILL弾の他の性質=ボディ命中2倍ノックバック・専用の弾描画等は
+  // 引き継がない・§17-10の注意書きどおり)。reflectProjectile(幻影の打ち返し)で必ず落とす。
+  headshotEligible?: boolean;
   area?: number;
   count?: number;
   // Optional motion modifiers. Axes set `gravity` so they arc upward then

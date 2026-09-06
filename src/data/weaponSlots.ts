@@ -25,10 +25,11 @@ export const SLOT_CANDIDATES: Record<SlotCategory, Record<SlotTier, string[]>> =
     2: ['shotgun-t2', 'shotgun-t2-suppress', 'shotgun-t2-coil'],
     3: ['shotgun-t3', 'shotgun-t3-flamer', 'shotgun-t3-homing'],
   },
+  // UNIQUE_WEAPONS.md §17-10(#U16裁定・バッチC漏れの是正): rifle T3(2つめ)にレールガンが入った。
   rifle: {
     1: ['rifle-t1', 'rifle-t1-bolt', 'rifle-t1-deserttech'],
     2: ['rifle-t2', 'rifle-t2-heavysniper', 'rifle-t2-icelance'],
-    3: ['rifle-t3', 'rifle-t3-eyelaser'],
+    3: ['rifle-t3', 'rifle-t3-eyelaser', 'rifle-t3-railgun'],
   },
   // UNIQUE_WEAPONS.md §16-2/§18-3(バッチD): ランチャー3挺(第2弾は無し=各Tier1挺で確定)。
   glauncher: {
@@ -72,6 +73,8 @@ export const BOSS_UNLOCK: Record<string, string> = {
   'giantbat@stage-5': 'glauncher-t1-rocket', // 軍隊(変異)= 城ボス stage-5
   'bounty-maiko': 'glauncher-t2-alchemy',    // 舞妓(変異)
   'giantbat@stage-7': 'glauncher-t3-signal', // グレン = 城ボス stage-7
+  // UNIQUE_WEAPONS.md §17-10(#U16裁定・バッチC漏れの是正)。社長の割当表(§18-1)より。
+  'miguel': 'rifle-t3-railgun', // ミゲル
 };
 
 // ボス撃破→サブウェポンの「設計図」入手(UNIQUE_WEAPONS.md §19-6・監査A1の是正)。

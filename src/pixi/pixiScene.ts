@@ -152,7 +152,7 @@ import { type GoldRing, goldRingCurrentPos } from '../utils/goldRing';
 // UNIQUE_WEAPONS.md §16-2(バッチC-1): 持続線分/扇の3挺。数値/型は純関数モジュールから読むだけ
 // (状態そのものはuseGameLoopが書く。CLAUDE.md「PixiJSは描くだけ」)。
 import type { PersistentBeam } from '../utils/persistentBeam';
-import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
+import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS } from '../utils/flamerCone';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import {
@@ -28278,9 +28278,11 @@ export class PixiScene {
     {
       const phill = player.weapons.find(w => w.id === player.activeWeaponId);
       const isSignalGun = phill?.key === 'glauncher-t3-signal';
-      if (phill?.key === 'phill-revolver' || isSignalGun) {
+      // UNIQUE_WEAPONS.md §17-10(#U16裁定・レールガン): PHILLと同じ狙いサークル(頭スナップ含む)を
+      // 使うので、PHILLと同じ色分け(緑=ヘッドショット可/橙=通常)に乗せる(シグナルだけ別の琥珀色)。
+      if (phill?.key === 'phill-revolver' || isSignalGun || phill?.key === RAILGUN_WEAPON_KEY) {
         // 照準サークルは movePlayer が算出した「吸い付き済み」オフセットに揃える(発砲と完全一致)。
-        // PHILLは頭にスナップ中は緑＝即ヘッドショット可、未スナップは橙＝通常射撃。
+        // PHILL/レールガンは頭にスナップ中は緑＝即ヘッドショット可、未スナップは橙＝通常射撃。
         // シグナルにヘッドショット概念は無いので、スナップ状態に関わらず常に琥珀の1色。
         const ax = cx + player.phillReticleDX + rox;
         const ay = cy + player.phillReticleDY + roy;
