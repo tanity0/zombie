@@ -150,6 +150,11 @@ const VirtualJoystick: React.FC = () => {
           const after = useGameStore.getState().player.weapons.find(w => w.id === gs.player.activeWeaponId)?.magazine ?? 0;
           if (after < before) playSfx('handgun-fire');
         }
+        // UNIQUE_WEAPONS.md §16-2/§16-3b(バッチD): シグナルランチャーも同じ「指を離した瞬間」の形
+        // (PHILLと同じ手動専用・store側で未装備/CD中は無害に抜ける)。SEはstore側(fireSignalLauncher)で鳴らす。
+        gs.fireSignalLauncher();
+        // UNIQUE_WEAPONS.md §16-2(バッチD・錬金砲): 石を付けた敵を全部まとめて起爆(未装備/石0は無害)。
+        gs.detonateAlchemyStones();
         // ホーミング弾: 指を離した時にロック済み敵へ一斉発射(装備/CDチェックはstore側=未装備は無害)。
         const hadHomingLocks = useGameStore.getState().homingLocks.length > 0;
         gs.fireHoming();

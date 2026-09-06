@@ -30,10 +30,11 @@ export const SLOT_CANDIDATES: Record<SlotCategory, Record<SlotTier, string[]>> =
     2: ['rifle-t2', 'rifle-t2-heavysniper', 'rifle-t2-icelance'],
     3: ['rifle-t3', 'rifle-t3-eyelaser'],
   },
+  // UNIQUE_WEAPONS.md §16-2/§18-3(バッチD): ランチャー3挺(第2弾は無し=各Tier1挺で確定)。
   glauncher: {
-    1: ['glauncher-t1'],
-    2: ['glauncher-t2'],
-    3: ['glauncher-t3'],
+    1: ['glauncher-t1', 'glauncher-t1-rocket'],
+    2: ['glauncher-t2', 'glauncher-t2-alchemy'],
+    3: ['glauncher-t3', 'glauncher-t3-signal'],
   },
 };
 
@@ -67,6 +68,10 @@ export const BOSS_UNLOCK: Record<string, string> = {
   'uri': 'handgun-t3-gunblade',       // ウリ
   'jormungand': 'shotgun-t2-coil',    // ヨルムンガルド
   'phillboss': 'shotgun-t3-homing',   // フィル(変異体)
+  // UNIQUE_WEAPONS.md §16-2/§18-3(バッチD・ランチャー3挺)。社長の割当表(§18-1)より。
+  'giantbat@stage-5': 'glauncher-t1-rocket', // 軍隊(変異)= 城ボス stage-5
+  'bounty-maiko': 'glauncher-t2-alchemy',    // 舞妓(変異)
+  'giantbat@stage-7': 'glauncher-t3-signal', // グレン = 城ボス stage-7
 };
 
 // ボス撃破→サブウェポンの「設計図」入手(UNIQUE_WEAPONS.md §19-6・監査A1の是正)。

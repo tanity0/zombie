@@ -469,7 +469,11 @@ import {
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
-import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
+import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
+// UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
+import { ROCKET_BLAST_RADIUS_MULT } from '../utils/rocketLauncher';
+import { ALCHEMY_BURST_RADIUS_PX, nextAlchemyStoneStage } from '../utils/alchemyStone';
+import { SIGNAL_STRIKE_RADIUS_PX } from '../utils/signalLauncher';
 // UNIQUE_WEAPONS.md §16-2(バッチC-2・ガンブレード): 守護霊の射程ゲート(至近モードは
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
@@ -8321,7 +8325,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // UNIQUE_WEAPONS.md §16-2(バッチC-1): アイレーザー/火炎放射器は弾を作らない非投射武器
         // (§17-6)。fireWeaponの通常オート射撃からは除外し、専用の状態機械(下のブロック)で撃つ。
         const isNonProjectileGun = activeGun?.nonProjectile === true;
-        if (activeGun && !katanaActive && !skaterLocked && !attackLocked && !seekerLocked && !pvpLocked && activeGun.category !== 'phill' && !isNonProjectileGun) {
+        // UNIQUE_WEAPONS.md §16-3b(手動専用銃の掟): シグナルランチャーはPHILLと同じ「自動で撃たない銃」
+        // (category='glauncher'なのでcategory!=='phill'だけでは除外できない=isManualOnlyGunKeyで除外)。
+        const isManualOnlyGun = isManualOnlyGunKey(activeGun?.key);
+        if (activeGun && !katanaActive && !skaterLocked && !attackLocked && !seekerLocked && !pvpLocked && activeGun.category !== 'phill' && !isNonProjectileGun && !isManualOnlyGun) {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
             // handgun系のうちマシンピストル(=サブマシンガン, handgun-t3)だけ専用音、それ以外(ハンドガン/二丁)はhandgun-fire。
@@ -12127,6 +12134,116 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // ロケットランチャー(glauncher-t1-rocket・UNIQUE_WEAPONS.md §16-2/バッチD): 敵ヒットの爆発は
+        // 上の isGrenadeGunKey 分岐(通常の弾-敵衝突判定)が処理する——「溜め中でも弾頭に敵が接触
+        // すればその場で爆発」は、fireWeaponのフックで弾を速度0のままその場に置くことで、専用コード
+        // 無しに同じ衝突判定へ乗る(rocketLauncher.ts参照)。ここは2つだけ:
+        //  ①壁ヒット(敵ヒットには無い専用パス。既存の弾は壁を素通りするため=weaponType='glauncher'は
+        //    BULLET_TYPESに含まれずgameStore側の自動除去も効かない)
+        //  ②溜め終わり(rocketChargeUntil経過)に実際の飛翔速度へ復帰させる
+        // 何にも当たらなければ(壁にもぶつからず duration 切れ)通常の弾と同じく黙って消える=不発。
+        {
+          const rkState = useGameStore.getState();
+          for (const rp of rkState.projectiles) {
+            if (rp.weaponKey !== ROCKET_WEAPON_KEY) continue;
+            const rCharging = rp.rocketChargeUntil !== undefined && gameTime < rp.rocketChargeUntil;
+            if (rCharging) continue; // 溜め中は動かない=壁に当たりようがない(敵接触は通常衝突判定側)
+            const rRect = { x: rp.x, y: rp.y, width: rp.width, height: rp.height };
+            const rcx = rp.x + rp.width / 2, rcy = rp.y + rp.height / 2;
+            const rWalls = aoeWalls(rcx, rcy);
+            if (rWalls.some(w => rectsOverlap(rRect, w))) {
+              const rkPlayer = rkState.player;
+              playSfx('bomb');
+              const exMult = skillExplosionMult(rkPlayer);
+              const exRadius = GRENADE_BLAST_RADIUS * ROCKET_BLAST_RADIUS_MULT * exMult * heavyGunnerExplosionMult(rkPlayer, gameTime);
+              spawnRing(rcx, rcy, 10, exRadius, 'rgba(251,146,60,0.82)', 5, GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
+              spawnBurst(rcx, rcy, '#f97316', 24);
+              spawnBurst(rcx, rcy, '#7f1d1d', 10);
+              useGameStore.getState().spawnExplosionFx(rcx, rcy, exRadius);
+              useGameStore.getState().spawnGlow(rcx, rcy, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
+              const splashBase = rp.damage * GRENADE_BLAST_DAMAGE_MULT * exMult;
+              for (const rEnemy of useGameStore.getState().enemies) {
+                if (isReaperFamily(rEnemy.type) && !isTerminalReaper(rEnemy)) continue;
+                const rex = rEnemy.x + rEnemy.width / 2, rey = rEnemy.y + rEnemy.height / 2;
+                const rDist = Math.hypot(rex - rcx, rey - rcy);
+                if (rDist > exRadius) continue;
+                if (rWalls.length > 0 && segmentBlocked(rcx, rcy, rex, rey, rWalls)) continue;
+                const rFalloff = 1 - rDist / exRadius;
+                const rDmg = Math.max(1, Math.round(splashBase * (0.55 + rFalloff * 0.45)));
+                const rKilled = damageEnemy(rEnemy.id, rDmg, true);
+                spawnDamageNumber(rex, rEnemy.y, rDmg, false);
+                spawnBurst(rex, rey, '#b91c1c', 4);
+                if (rKilled) {
+                  playEnemyDeath();
+                  spawnBurst(rex, rey, '#dc2626', 12);
+                  useGameStore.getState().dropEnemyCurrency(rEnemy, rex, rey);
+                  dropEnemyXp(rEnemy, rex, rey, 'pickup-xp-rocket');
+                }
+              }
+              useGameStore.getState().removeProjectile(rp.id);
+              continue;
+            }
+          }
+          // 溜め終わり: 速度0で置いていた弾を本来の飛翔速度へ戻す(1回だけ)。
+          // ★上の壁ヒット判定でこのフレーム中にremoveProjectileが走っている可能性があるため、
+          // ここで改めて最新のprojectilesを読み直す(古いrkState.projectilesを使うと、消したはずの
+          // 弾がこのmapで復活する)。
+          let rkLaunched = false;
+          const rkNext = useGameStore.getState().projectiles.map(rp => {
+            if (rp.weaponKey === ROCKET_WEAPON_KEY && rp.rocketChargeUntil !== undefined && gameTime >= rp.rocketChargeUntil) {
+              rkLaunched = true;
+              return { ...rp, speed: rp.rocketLaunchSpeed ?? rp.speed, rocketChargeUntil: undefined, rocketLaunchSpeed: undefined };
+            }
+            return rp;
+          });
+          if (rkLaunched) useGameStore.setState({ projectiles: rkNext });
+        }
+
+        // シグナルランチャー(glauncher-t3-signal・UNIQUE_WEAPONS.md §16-2/§16-3b/バッチD): 発射
+        // (指を離した瞬間の記録)はgameStore.fireSignalLauncherが行う(PHILLの手動発砲と同じ形=
+        // VirtualJoystickのreleaseから毎回呼ぶ・未装備/CD中は内部で無害に抜ける)。ここは900ms後の
+        // 空爆だけを処理する(追尾しない・置き撃ち)。
+        {
+          const sgState = useGameStore.getState();
+          if (sgState.signalStrikes.length > 0) {
+            if (sgState.player.health <= 0 || sgState.gameWon) {
+              sgState.setSignalStrikes([]); // §19-3bと同じ思想: 決着がついたら残さない
+            } else {
+              const due = sgState.signalStrikes.filter(s => gameTime >= s.dueAt);
+              if (due.length > 0) {
+                sgState.setSignalStrikes(sgState.signalStrikes.filter(s => gameTime < s.dueAt));
+                const sgAimable = sgState.enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)));
+                for (const strike of due) {
+                  playSfx('bomb');
+                  spawnRing(strike.x, strike.y, 12, SIGNAL_STRIKE_RADIUS_PX, 'rgba(251,146,60,0.85)', 5, GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
+                  spawnBurst(strike.x, strike.y, '#f97316', 24);
+                  spawnBurst(strike.x, strike.y, '#7f1d1d', 10);
+                  useGameStore.getState().spawnExplosionFx(strike.x, strike.y, SIGNAL_STRIKE_RADIUS_PX);
+                  useGameStore.getState().spawnGlow(strike.x, strike.y, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
+                  const sgWalls = aoeWalls(strike.x, strike.y);
+                  for (const sgEnemy of sgAimable) {
+                    const sex = sgEnemy.x + sgEnemy.width / 2, sey = sgEnemy.y + sgEnemy.height / 2;
+                    const sDist = Math.hypot(sex - strike.x, sey - strike.y);
+                    if (sDist > SIGNAL_STRIKE_RADIUS_PX) continue;
+                    if (sgWalls.length > 0 && segmentBlocked(strike.x, strike.y, sex, sey, sgWalls)) continue;
+                    const sFalloff = 1 - sDist / SIGNAL_STRIKE_RADIUS_PX;
+                    const sDmg = Math.max(1, Math.round(strike.damage * (0.55 + sFalloff * 0.45)));
+                    const sKilled = damageEnemy(sgEnemy.id, sDmg, true);
+                    spawnDamageNumber(sex, sgEnemy.y, sDmg, false);
+                    spawnBurst(sex, sey, '#b91c1c', 4);
+                    if (sKilled) {
+                      playEnemyDeath();
+                      spawnBurst(sex, sey, '#dc2626', 12);
+                      useGameStore.getState().dropEnemyCurrency(sgEnemy, sex, sey);
+                      dropEnemyXp(sgEnemy, sex, sey, `pickup-xp-signal-${strike.id}`);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
         // 氷槍ライフル(rifle-t2-icelance・UNIQUE_WEAPONS.md §16-2)の床: 生成はfireWeapon直後の
         // フックで行う(上のICE_LANCE_WEAPON_KEY分岐)。ここは伸長(弾を追跡)/凍結/寿命tick/
         // パルス適用(検収監査A-1是正=tickIceLanceFloors・iceLanceFloor.ts)。
@@ -12958,7 +13075,54 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
 
           if (
-            isGrenadeGunKey(projectile?.weaponKey) && // v0.25.3290: rifle-t3+武器庫限定glauncher 3種
+            projectile?.weaponKey === ALCHEMY_WEAPON_KEY &&
+            enemyForFx &&
+            !grenadeExplodedThisFrame.has(projectileId)
+          ) {
+            // UNIQUE_WEAPONS.md §16-2/§16-5(バッチD・錬金砲): 既定の大爆発(下のisGrenadeGunKey分岐)
+            // ではなく、破裂(弱い範囲・ALCHEMY_BURST_RADIUS_PX)+石の付着。「射撃(範囲攻撃)が
+            // 当たるごとに1段階」——このブロックは1トリガー1回しか通らない(grenadeExplodedThisFrame
+            // で保証)ので、粒度はそのまま1burst=1段階になる。直撃した敵(enemyId)は上の共通経路で
+            // 既にdamageEnemy済み(=キル演出/ドロップも共通経路が担う)なので、ここでは石の付与のみ行い
+            // ダメージを重ねて与えない。範囲内の他の敵にはdmgと同じ額を配り、石も付ける。
+            grenadeExplodedThisFrame.add(projectileId);
+            playSfx('bomb');
+            const acBlastX = enemyForFx.x + enemyForFx.width / 2;
+            const acBlastY = enemyForFx.y + enemyForFx.height / 2;
+            spawnRing(acBlastX, acBlastY, 6, ALCHEMY_BURST_RADIUS_PX, 'rgba(250,204,21,0.75)', 3, 320);
+            spawnBurst(acBlastX, acBlastY, '#facc15', 12);
+            useGameStore.getState().spawnGlow(acBlastX, acBlastY, 30, 'rgba(250,204,21,', 320);
+            const acWalls = aoeWalls(acBlastX, acBlastY);
+            const acStonedIds: string[] = [];
+            for (const acEnemy of useGameStore.getState().enemies) {
+              if (isReaperFamily(acEnemy.type) && !isTerminalReaper(acEnemy)) continue;
+              const ax = acEnemy.x + acEnemy.width / 2;
+              const ay = acEnemy.y + acEnemy.height / 2;
+              const acDist = Math.hypot(ax - acBlastX, ay - acBlastY);
+              if (acDist > ALCHEMY_BURST_RADIUS_PX) continue;
+              if (acWalls.length > 0 && segmentBlocked(acBlastX, acBlastY, ax, ay, acWalls)) continue;
+              acStonedIds.push(acEnemy.id);
+              if (acEnemy.id === enemyId) continue; // 直撃対象は既にダメージ済み
+              const acDmg = Math.max(1, Math.round(dmg));
+              const acKilled = damageEnemy(acEnemy.id, acDmg, true);
+              spawnDamageNumber(ax, acEnemy.y, acDmg, false);
+              spawnBurst(ax, ay, '#b91c1c', 4);
+              if (acKilled) {
+                playEnemyDeath();
+                spawnBurst(ax, ay, '#dc2626', 12);
+                useGameStore.getState().dropEnemyCurrency(acEnemy, ax, ay);
+                dropEnemyXp(acEnemy, ax, ay, 'pickup-xp-alchemy');
+              }
+            }
+            if (acStonedIds.length > 0) {
+              useGameStore.setState(state => ({
+                enemies: state.enemies.map(e => (acStonedIds.includes(e.id)
+                  ? { ...e, alchemyStoneStage: nextAlchemyStoneStage(e.alchemyStoneStage) }
+                  : e)),
+              }));
+            }
+          } else if (
+            isGrenadeGunKey(projectile?.weaponKey) && // v0.25.3290: rifle-t3+武器庫限定glauncher 3種(§16-3でcategory判定に拡張)
             enemyForFx &&
             !grenadeExplodedThisFrame.has(projectileId)
           ) {
@@ -12966,8 +13130,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             playSfx('bomb'); // グレネードランチャー着弾爆発音(手榴弾と統一)。
             // スキル: エクスプローダー = 爆発の半径/ダメージ ×1.2。
             // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲 ×1.1。
+            // UNIQUE_WEAPONS.md §16-1(バッチD・ロケットランチャー): 爆発範囲は既定t1の×1.2。
             const exMult = skillExplosionMult(skillPlayer);
-            const exRadius = GRENADE_BLAST_RADIUS * exMult * heavyGunnerExplosionMult(skillPlayer, gameTime);
+            const rocketMult = projectile?.weaponKey === ROCKET_WEAPON_KEY ? ROCKET_BLAST_RADIUS_MULT : 1;
+            const exRadius = GRENADE_BLAST_RADIUS * exMult * heavyGunnerExplosionMult(skillPlayer, gameTime) * rocketMult;
             let glHitCount = 1; // 直撃した敵を含む
             const blastX = enemyForFx.x + enemyForFx.width / 2;
             const blastY = enemyForFx.y + enemyForFx.height / 2;

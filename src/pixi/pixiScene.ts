@@ -152,7 +152,7 @@ import { type GoldRing, goldRingCurrentPos } from '../utils/goldRing';
 // UNIQUE_WEAPONS.md §16-2(バッチC-1): 持続線分/扇の3挺。数値/型は純関数モジュールから読むだけ
 // (状態そのものはuseGameLoopが書く。CLAUDE.md「PixiJSは描くだけ」)。
 import type { PersistentBeam } from '../utils/persistentBeam';
-import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY } from '../utils/weaponUtils';
+import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS } from '../utils/flamerCone';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import {
@@ -24971,8 +24971,10 @@ export class PixiScene {
     // v0.25.3450(社長指示「グレネードの弾も飛び跳ねて」): 転がり弾(t1/t2)はここでは止めず、
     // 下のswitch(case 'glauncher'→'grenade')で手榴弾と同一の表現(影+飛び跳ね+回転ランプ)へ流す。
     // t3(直進・着弾爆発)だけ素材の静止スタンプ。
-    if (p.rollDetonatePx === undefined
-      && (p.weaponKey === 'glauncher-t1' || p.weaponKey === 'glauncher-t2' || p.weaponKey === 'glauncher-t3')) {
+    // UNIQUE_WEAPONS.md §16-3(前提工事): 3キー直書きをcategory判定(isGrenadeGunKey)へ広げた。
+    // ランチャー3挺(ロケラン/錬金砲/シグナル)もこのブランチで同じ弾の絵になる
+    // (シグナルは自弾を作らないので実質ロケラン/錬金砲のみが通る)。
+    if (p.rollDetonatePx === undefined && isGrenadeGunKey(p.weaponKey)) {
       const ballTex = getTexture('fx/grenade-ball');
       if (ballTex) {
         const r = Math.max(5, p.width * 0.85);
@@ -28268,21 +28270,26 @@ export class PixiScene {
         g.moveTo(hx, hy).lineTo(cx, cy).stroke({ width: 2.5, color: 0x93c5fd, alpha: lineAlpha });
       }
     }
-    // PHILL銃: アクティブ銃が phill-revolver のとき、狙いサークル(赤橙レティクル)を前方に表示。
-    // 射撃クールダウン中は薄く(=今は撃てないことを示す)。アンカー(青)と差別化。
+    // PHILL銃/シグナルランチャー: 手動専用銃(isManualOnlyGunKey)がアクティブのとき、狙いサークルを
+    // 前方に表示。射撃クールダウン中は薄く(=今は撃てないことを示す)。アンカー(青)と差別化。
+    // UNIQUE_WEAPONS.md §16-2(バッチD): シグナルは「PHILL銃のターゲットサイトを流用」だが、
+    // 自分の攻撃の着弾予告であって敵の危険予告ではないため、PHILLの橙/緑(ヘッドショット文法)とは
+    // 別の色(琥珀)にして紛らわしくならないようにする(社長発注文の色注意)。
     {
       const phill = player.weapons.find(w => w.id === player.activeWeaponId);
-      if (phill?.key === 'phill-revolver') {
+      const isSignalGun = phill?.key === 'glauncher-t3-signal';
+      if (phill?.key === 'phill-revolver' || isSignalGun) {
         // 照準サークルは movePlayer が算出した「吸い付き済み」オフセットに揃える(発砲と完全一致)。
-        // 頭にスナップ中は緑＝即ヘッドショット可、未スナップは橙＝通常射撃。
+        // PHILLは頭にスナップ中は緑＝即ヘッドショット可、未スナップは橙＝通常射撃。
+        // シグナルにヘッドショット概念は無いので、スナップ状態に関わらず常に琥珀の1色。
         const ax = cx + player.phillReticleDX + rox;
         const ay = cy + player.phillReticleDY + roy;
         const onCd = now - (phill.lastFired ?? 0) < (phill.cooldown ?? 1000);
         const reloading = phill.id === player.reloadingWeaponId && now < player.reloadEndsAt;
         const a = (onCd || reloading) ? 0.2 : 0.9;
-        const snapped = player.phillSnapEnemyId != null;
-        const ringColor = snapped ? 0x34d399 : 0xf97316; // 緑=ヘッドショット狙撃可 / 橙=通常
-        const dotColor = snapped ? 0xa7f3d0 : 0xfca5a5;
+        const snapped = !isSignalGun && player.phillSnapEnemyId != null;
+        const ringColor = isSignalGun ? 0xfbbf24 : (snapped ? 0x34d399 : 0xf97316); // 琥珀=シグナル / 緑=ヘッドショット狙撃可 / 橙=通常
+        const dotColor = isSignalGun ? 0xfde68a : (snapped ? 0xa7f3d0 : 0xfca5a5);
         rg.circle(ax, ay, snapped ? 11 : 9).stroke({ width: snapped ? 2.5 : 2, color: ringColor, alpha: a });
         rg.circle(ax, ay, 3).fill({ color: dotColor, alpha: a });
         // 照準の十字(小)。

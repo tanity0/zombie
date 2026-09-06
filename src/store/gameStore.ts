@@ -113,7 +113,10 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, isManualOnlyGunKey, gunShotBaseDamage } from '../utils/weaponUtils';
+// UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の純関数/定数。
+import { alchemyStoneDetonateDamage, ALCHEMY_DETONATE_RADIUS_PX } from '../utils/alchemyStone';
+import { type SignalStrike, SIGNAL_STRIKE_DELAY_MS, SIGNAL_STRIKE_RADIUS_PX } from '../utils/signalLauncher';
 import { resetHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPONS.md §13-1
 import { nextCycleMode } from '../utils/cycleShotgun'; // UNIQUE_WEAPONS.md §16-2/§17-7(バッチB・切替式SG)
 import { stepHeavySniperStillMs } from '../utils/heavySniperCharge'; // UNIQUE_WEAPONS.md §16-2(バッチB・大型狙撃銃)
@@ -5410,6 +5413,12 @@ interface GameState {
   // 同上(検収監査A-3是正): 火炎放射器の現在の照射方向(毎パルスで更新)。
   flamerCone: { dirX: number; dirY: number } | null;
   setFlamerCone: (cone: { dirX: number; dirY: number } | null) => void;
+  // シグナルランチャー(glauncher-t3-signal・UNIQUE_WEAPONS.md §16-2/バッチD)の予約済み空爆。
+  // 発射(fireSignalLauncher)が積み、900ms後の着弾/削除はuseGameLoopが行う(goldRings/
+  // iceLanceFloorsと同じ役割分担)。描画は spawnRing/spawnGlow の既存演出だけで賄い、
+  // 専用の描画状態は持たない(=pixiSceneに新しい読み口を足さない)。
+  signalStrikes: SignalStrike[];
+  setSignalStrikes: (strikes: readonly SignalStrike[]) => void;
   spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number) => void; // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
   // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)の燃焼DoT。命中した敵個体が持つ
@@ -5507,6 +5516,11 @@ interface GameState {
   // Weapon actions
   fireWeapons: (currentTime: number) => void;
   firePhillShot: () => void; // PHILL銃: 指離しで狙いサークル方向へ1発(手動)。
+  // UNIQUE_WEAPONS.md §16-2/§16-3b(バッチD・シグナルランチャー): 指離しでレティクル位置を記録
+  // (=signalStrikesへ積む)。PHILLと同じ手動専用の形(firePhillShotの隣に置く)。
+  fireSignalLauncher: () => void;
+  // UNIQUE_WEAPONS.md §16-2(バッチD・錬金砲): 指離しで石を付けた敵を全員まとめて起爆する。
+  detonateAlchemyStones: () => void;
   selectUpgrade: (upgrade: UpgradeOption) => void;
   setSubWeaponCooldown: (key: SubWeaponKey, readyAt: number) => void;
   updateHuntingCharge: (startedAt: number, charged: boolean) => void;
@@ -6240,6 +6254,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   iceLanceFloors: [],
   eyeLaserBeam: null,
   flamerCone: null,
+  signalStrikes: [],
   firstAidKitState: createFirstAidKitState(),
   projectiles: [],
   pickups: [],
@@ -6811,7 +6826,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       let phillReticleDX = player.phillReticleDX;
       let phillReticleDY = player.phillReticleDY;
       let phillSnapEnemyId: string | null = null;
-      if (getActiveGun(player)?.key === 'phill-revolver') {
+      // UNIQUE_WEAPONS.md §16-2(バッチD・シグナルランチャー): 「PHILL銃のターゲットサイトを流用」
+      // なので、レティクル(phillReticleDX/DY・吸い付き含む)はPHILLと同じ計算をシグナルにも適用する
+      // (isManualOnlyGunKey=PHILL/シグナルの2つ。射撃自体はfireSignalLauncherが別途行う)。
+      if (isManualOnlyGunKey(getActiveGun(player)?.key)) {
         const rcx = newX + player.width / 2;
         const rcy = newY + player.height / 2;
         // マウス照準時はカーソル位置(ワールド)そのものをレティクル基準に=照準がマウス連動。
@@ -8362,6 +8380,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // この2フィールドだけ(player.weapons側は書き込まない)。pixiSceneが読むだけの薄い経路。
   setEyeLaserBeam: (beam) => set({ eyeLaserBeam: beam }),
   setFlamerCone: (cone) => set({ flamerCone: cone }),
+  setSignalStrikes: (strikes) => set({ signalStrikes: [...strikes] }),
 
   // 救急鞄(first-aid-kit): 判定(何を払い出すか/空になったか)は useGameLoop が
   // computeFirstAidKitTick / isFirstAidKitEmpty(純関数)で決め、ここは結果を state へ書き込むだけ。
@@ -10569,6 +10588,80 @@ export const useGameStore = create<GameState>((set, get) => ({
     const nextMag = Math.max(0, (weapon.magazine ?? 0) - 1);
     set(state => ({ player: { ...state.player, weapons: state.player.weapons.map(w => w.id === weapon.id ? { ...w, lastFired: now, magazine: nextMag } : w) } }));
     if (nextMag <= 0) get().autoSwitchIfDry(); // 空なら既存経路でリロード
+  },
+
+  // UNIQUE_WEAPONS.md §16-2/§16-3b(バッチD・シグナルランチャー): 手動専用(PHILLと同じ形)。
+  // 指を離した瞬間、PHILLと同じレティクル(movePlayerが算出したphillReticleDX/DY・流用)の位置を
+  // 記録するだけ(追尾しない・置き撃ち)。実際の着弾/ダメージはuseGameLoopがsignalStrikesを
+  // 900ms後にtickして処理する。
+  fireSignalLauncher: () => {
+    const { player, gameTime } = get();
+    const weapon = getActiveGun(player);
+    if (!weapon || weapon.key !== SIGNAL_WEAPON_KEY) return;
+    if (isPvpIncapacitated(player.pvpPosture, gameTime)) return; // ★SAME_ARENA §9: 紫/daze中は撃てない
+    if (isSeekerActive(player, gameTime) && skillLevel(player, 'seeker') < 3) return;
+    const now = Date.now();
+    if (isReloading(player, weapon.id)) return;
+    if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
+    if (now - weapon.lastFired < (weapon.cooldown ?? 1400) / ((player.equipBonus?.fireRateMult ?? 1) * berserkerAwakenFireRateMult(player))) return;
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const strikeX = pcx + player.phillReticleDX;
+    const strikeY = pcy + player.phillReticleDY;
+    // 発射時点でダメージを確定させる(既存武器と同じ倍率合流点=firePhillShotと同型)。
+    const strikeDamage = weapon.damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player)
+      * consumableAttackMult(player, gameTime) * (player.equipBonus?.damageMult ?? 1)
+      * skillLastMagazineMult(player, weapon.magazine ?? 0);
+    get().spawnRing(strikeX, strikeY, 10, SIGNAL_STRIKE_RADIUS_PX, 'rgba(251,191,36,0.55)', 3, SIGNAL_STRIKE_DELAY_MS);
+    get().spawnGlow(strikeX, strikeY, 30, 'rgba(251,191,36,', SIGNAL_STRIKE_DELAY_MS);
+    void import('../audio/audioManager').then(m => m.playSfx('grenade-launcher-fire'));
+    set(state => ({
+      signalStrikes: [
+        ...state.signalStrikes,
+        { id: `signal-strike-${now}-${Math.random().toString(36).slice(2, 6)}`, x: strikeX, y: strikeY, dueAt: gameTime + SIGNAL_STRIKE_DELAY_MS, damage: strikeDamage },
+      ],
+    }));
+    const nextMag = Math.max(0, (weapon.magazine ?? 0) - 1);
+    set(state => ({ player: { ...state.player, weapons: state.player.weapons.map(w => w.id === weapon.id ? { ...w, lastFired: now, magazine: nextMag } : w) } }));
+    if (nextMag <= 0) get().autoSwitchIfDry();
+  },
+
+  // UNIQUE_WEAPONS.md §16-2(バッチD・錬金砲): 指を離した瞬間、石(Enemy.alchemyStoneStage)を
+  // 持つ敵を全員まとめて起爆する。装備がglauncher-t2-alchemyでない/石を持つ敵がいなければ無害。
+  detonateAlchemyStones: () => {
+    const { player, gameTime } = get();
+    const weapon = getActiveGun(player);
+    if (!weapon || weapon.key !== ALCHEMY_WEAPON_KEY) return;
+    const stoned = get().enemies.filter(e => (e.alchemyStoneStage ?? 0) > 0);
+    if (stoned.length === 0) return;
+    for (const e of stoned) {
+      const stage = e.alchemyStoneStage ?? 0;
+      const baseDamage = alchemyStoneDetonateDamage(stage);
+      const dmg = Math.max(1, Math.round(gunShotBaseDamage({ damage: baseDamage, magazine: weapon.magazine }, player, gameTime)));
+      const ex = e.x + e.width / 2;
+      const ey = e.y + e.height / 2;
+      const killed = get().damageEnemy(e.id, dmg, true);
+      get().spawnRing(ex, ey, 8, ALCHEMY_DETONATE_RADIUS_PX, 'rgba(250,204,21,0.85)', 4, 420);
+      get().spawnBurst(ex, ey, '#facc15', 16);
+      get().spawnBurst(ex, ey, '#f97316', 8);
+      get().spawnExplosionFx(ex, ey, ALCHEMY_DETONATE_RADIUS_PX, 0xfacc15);
+      get().spawnGlow(ex, ey, 30, 'rgba(250,204,21,', 420);
+      get().spawnDamageNumber(ex, e.y, dmg, false);
+      if (killed) {
+        void import('../audio/audioManager').then(m => m.playEnemyDeath());
+        get().spawnBurst(ex, ey, '#dc2626', 12);
+        get().dropEnemyCurrency(e, ex, ey);
+        get().dropEnemyXp(e, ex, ey, `pickup-xp-alchemy-detonate-${e.id}`);
+        if (isPumpkinTier(e.type) || e.type === 'giantbat') {
+          get().addPickup({ id: `pickup-crate-${e.id}`, x: ex - 8, y: ey - 8 - 18, type: 'weapon-crate', value: 0, worldDrop: true });
+          get().spawnRing(ex, ey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
+        }
+      }
+    }
+    void import('../audio/audioManager').then(m => m.playSfx('bomb'));
+    set(state => ({
+      enemies: state.enemies.map(e => ((e.alchemyStoneStage ?? 0) > 0 ? { ...e, alchemyStoneStage: undefined } : e)),
+    }));
   },
 
   selectUpgrade: (upgrade) => {
@@ -15510,10 +15603,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({
       projectiles: state.projectiles.map(p => {
         if (p.id !== id) return p;
+        // UNIQUE_WEAPONS.md §16-2(バッチD・ロケットランチャー): 溜め中(rocketChargeUntil付き)は
+        // p.speedが0で置いてある(fireWeaponのフック)。ここをp.speedのまま反射すると
+        // 「反射されたのに速度0=永久にその場で止まる弾」になる。溜め中は本来の飛翔速度
+        // (rocketLaunchSpeed)を基準に反射する(反射弾=直進・溜め状態も持ち越さない)。
+        const reflectBaseSpeed = p.rocketChargeUntil !== undefined ? (p.rocketLaunchSpeed ?? p.speed) : p.speed;
         return {
           ...p,
           direction: { x: -p.direction.x, y: -p.direction.y },
-          speed: p.speed * REFLECT_SPEED_MULTIPLIER,
+          speed: reflectBaseSpeed * REFLECT_SPEED_MULTIPLIER,
           // 発射点を**反射点(今の位置)へ打ち直す**(GHOST_BOSS.md v9): 飛翔時間の判定が常に
           // 「直近の飛翔」になる=近距離のラリーは打ち返されない、が保たれる。
           originX: p.x,
@@ -15541,6 +15639,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           coilAimDirX: undefined, coilAimDirY: undefined,
           coilAmplitudePx: undefined, coilLaunchGameTime: undefined,
           homingPellet: undefined, targetEnemyId: undefined,
+          // UNIQUE_WEAPONS.md §16-2(バッチD・ロケットランチャー): 溜め状態も同じ理由で落とす
+          // (反射弾=直進、が既存規則。上でreflectBaseSpeedとして既に取り込み済み)。
+          rocketChargeUntil: undefined, rocketLaunchSpeed: undefined,
           // v0.25.2525: 守護霊の反射だけ帰属キーを差し替える(未指定=従来どおり元の弾のキーのまま)。
           ...(weaponKey !== undefined ? { weaponKey } : {}),
         };
@@ -16613,6 +16714,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       const benkeiWeapons = benkeiProc && (target.magazine ?? 0) <= 0
         ? state.player.weapons.map(w => (w.id === id ? { ...w, magazine: benkeiRounds } : w))
         : null;
+      // UNIQUE_WEAPONS.md §16-5(受け入れ条件5「武器の持ち替えで残らない・錬金砲の石も」): 錬金砲から
+      // 他の武器へ切り替えたら、育てた石(Enemy.alchemyStoneStage)を消す(ダメージは与えない=単なる
+      // 後始末。装備を戻して当て直せば新しく石は付けられる)。
+      const prevGun = state.player.weapons.find(w => w.id === state.player.activeWeaponId);
+      const leavingAlchemy = changed && prevGun?.key === ALCHEMY_WEAPON_KEY && target.key !== ALCHEMY_WEAPON_KEY;
       return {
         player: {
           ...state.player,
@@ -16621,7 +16727,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadEndsAt: 0,
           ...(benkeiWeapons ? { weapons: benkeiWeapons } : {}),
           ...benkei
-        }
+        },
+        ...(leavingAlchemy
+          ? { enemies: state.enemies.map(e => ((e.alchemyStoneStage ?? 0) > 0 ? { ...e, alchemyStoneStage: undefined } : e)) }
+          : {}),
       };
     });
   },
@@ -18908,6 +19017,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         iceLanceFloors: [], // ★同上(氷槍ライフルの床。UNIQUE_WEAPONS.md §16-2/§19-3bと同じ理由)
         eyeLaserBeam: null, // ★同上(検収監査A-3是正の新フィールド)
         flamerCone: null, // ★同上
+        signalStrikes: [], // ★同上(シグナルランチャーの予約済み空爆。UNIQUE_WEAPONS.md §16-5受け入れ条件5)
         firstAidKitState: createFirstAidKitState(),
         breakableProps: runBreakables,
         destroyedBreakableProps: {},

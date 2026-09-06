@@ -1214,6 +1214,12 @@ export interface Enemy {
   lastBurnTickAt?: number;
   // B7: 血の履帯(blood-treads)の棘(tickBloodSpikes)のDoTスロットル打刻(250ms・molotovのlastFireHitAtと同じ流儀)。
   lastSpikeHitAt?: number;
+  // UNIQUE_WEAPONS.md §16-2(バッチD・錬金砲 glauncher-t2-alchemy限定): 金の石の段階(1-3・
+  // src/utils/alchemyStone.ts)。破裂の範囲攻撃が当たるごとに1段階進み(nextAlchemyStoneStage)、
+  // 指を離した瞬間に全段起爆して消える(gameStore.detonateAlchemyStones)。寿命は無い(敵の生存中は
+  // ずっと持ち越す)——resetGame/死亡/勝利は敵配列ごと消えるので自然に片付き、武器の持ち替えは
+  // setActiveWeapon側で明示的にクリアする(§16-5受け入れ条件5「持ち替えで残らない」)。
+  alchemyStoneStage?: number;
 }
 
 // 'ghost-ally' = BOT_AND_GHOST.md G2(ゴースト助っ人・デバッグ召喚 `?ghost=1`)。**'ghost-ally'という
@@ -2052,6 +2058,13 @@ export interface Projectile {
   // ゴースト(守護霊)がオーナーとして発動したサブウェポンの生成物マーカー。**視覚専用**
   // (レンダラが青白tint/霊体αに使うだけ。判定・ダメージ・CD・挙動には一切使わない)。
   ownerGhost?: boolean;
+  // UNIQUE_WEAPONS.md §16-2(バッチD・ロケットランチャー glauncher-t1-rocket限定): 「溜め(500ms)」を
+  // 「弾を速度0のままその場に置く」ことで表現する(fireWeaponが発射直後の1回だけ設定する)。
+  // rocketChargeUntil(gameTime)まではspeedが0=通常の敵衝突判定がそのまま拾うので
+  // 「溜め中でも弾頭に敵が接触すればその場で爆発」は専用コード無しで成立する。
+  // rocketLaunchSpeedは溜め終わりに書き戻す本来の飛翔速度(useGameLoopの専用tickが1回だけ使う)。
+  rocketChargeUntil?: number;
+  rocketLaunchSpeed?: number;
 }
 
 // Pickup types

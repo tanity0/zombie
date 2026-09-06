@@ -27,7 +27,7 @@ import {
 } from '../store/gameStore';
 // SKILL_BUILD_REDESIGN.md §13-2(B0発注文): ボットの商人購買ポリシー(乱数なし・決定的な純関数)。
 import { decideBotShopPurchase } from './botShopPolicy';
-import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY, isDirectGunWeaponKey } from './weaponUtils';
+import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY, isDirectGunWeaponKey, isManualOnlyGunKey, manualOnlyFallbackWeapon } from './weaponUtils';
 import { pickAmmoDropType } from './ammoDrop';
 import { ammoDirectorRate } from './ammoDirector';
 import { shouldSpawnAirdrop } from './ammoAirdrop';
@@ -380,10 +380,15 @@ const autoFireGun = (): void => {
   // 呼ぶ経路なので、ここで撃たせないと「14ダメージの連射弾」等の等価実装ズレが起きる。
   // 判定は`nonProjectile`フラグ1本(キー直書きにしない)。
   if (!activeGun || katanaActive || activeGun.category === 'phill' || activeGun.nonProjectile) return;
+  // UNIQUE_WEAPONS.md §16-3b(手動専用銃の掟): シグナルランチャーは「撃たない」ではなく既定の
+  // 同カテゴリ銃(glauncher-t3)の数値へ差し替えて撃つ(id/lastFired/magazineは実体のまま=
+  // リロード/CD状態は壊さない)。フォールバック先が無い(PHILL)は上の category==='phill' 除外で
+  // 既に弾かれている。
+  const fireGun = isManualOnlyGunKey(activeGun.key) ? manualOnlyFallbackWeapon(activeGun) : activeGun;
   // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): ボットは至近モード域では「撃たないだけ」
   // (実装者の裁量・最終報告に記載。守護霊/幻影と揃える)。fireWeapon自身がallowMelee:falseの時だけ
   // 至近域を空撃ちにする(=通常射程内なら従来どおり撃つ。ボットのDPS計測が近接ボーナスを拾わない)。
-  const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies, { allowMelee: false });
+  const newProjectiles = fireWeapon(fireGun, postReloadPlayer, enemies, { allowMelee: false });
   newProjectiles.forEach(p => useGameStore.getState().addProjectile(p));
 };
 

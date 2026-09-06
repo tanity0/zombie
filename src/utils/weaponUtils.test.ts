@@ -5,6 +5,8 @@ import {
   beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot,
   effectiveFireCooldown, effectiveMagSize, weaponReloadReserve,
   resolveShotgunSpreadRad, computeShotDirections, fireWeapon, DUALRANGE_WEAPON_KEY,
+  isGrenadeGunKey, isManualOnlyGunKey, manualOnlyFallbackWeapon,
+  ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY,
 } from './weaponUtils';
 import { spawnEnemyAt } from './enemyUtils';
 import { DUAL_RANGE_STATS } from './dualRangeGun';
@@ -430,5 +432,81 @@ describe('バッチC-2: 近接切替・弾の軌道の3挺の配線(fireWeapon)'
       expect(ids.size).toBeGreaterThan(1);
       expect(shots.every(s => s.homingPellet === true)).toBe(true);
     });
+  });
+});
+
+// UNIQUE_WEAPONS.md §16-3(前提工事): isGrenadeGunKeyのcategory判定への拡張。
+describe('isGrenadeGunKey(§16-3・category判定)', () => {
+  it('glauncherカテゴリの全キー(既定+ユニーク)でtrue', () => {
+    expect(isGrenadeGunKey('glauncher-t1')).toBe(true);
+    expect(isGrenadeGunKey('glauncher-t2')).toBe(true);
+    expect(isGrenadeGunKey('glauncher-t3')).toBe(true);
+    expect(isGrenadeGunKey(ROCKET_WEAPON_KEY)).toBe(true);
+    expect(isGrenadeGunKey(ALCHEMY_WEAPON_KEY)).toBe(true);
+    expect(isGrenadeGunKey(SIGNAL_WEAPON_KEY)).toBe(true);
+  });
+  it('glauncher以外・未知キー・undefinedはfalse', () => {
+    expect(isGrenadeGunKey('handgun-t1')).toBe(false);
+    expect(isGrenadeGunKey('rifle-t3')).toBe(false);
+    expect(isGrenadeGunKey('not-a-real-key')).toBe(false);
+    expect(isGrenadeGunKey(undefined)).toBe(false);
+    expect(isGrenadeGunKey(null)).toBe(false);
+  });
+});
+
+// UNIQUE_WEAPONS.md §16-3b(手動専用銃の掟)。
+describe('isManualOnlyGunKey / manualOnlyFallbackWeapon(§16-3b)', () => {
+  it('対象はphill-revolverとシグナルランチャーの2つだけ', () => {
+    expect(isManualOnlyGunKey('phill-revolver')).toBe(true);
+    expect(isManualOnlyGunKey(SIGNAL_WEAPON_KEY)).toBe(true);
+    expect(isManualOnlyGunKey('glauncher-t3')).toBe(false);
+    expect(isManualOnlyGunKey(ROCKET_WEAPON_KEY)).toBe(false);
+    expect(isManualOnlyGunKey(undefined)).toBe(false);
+  });
+
+  it('シグナルは既定の同カテゴリ銃(glauncher-t3)の数値へ差し替わるが、id/lastFired/magazineは実体のまま持ち越す', () => {
+    const signal = { ...createWeapon(SIGNAL_WEAPON_KEY), lastFired: 12345, magazine: 1 };
+    const fallback = manualOnlyFallbackWeapon(signal);
+    expect(fallback.key).toBe('glauncher-t3');
+    expect(fallback.damage).toBe(createWeapon('glauncher-t3').damage);
+    expect(fallback.id).toBe(signal.id);
+    expect(fallback.lastFired).toBe(12345);
+    expect(fallback.magazine).toBe(1);
+  });
+
+  it('PHILLはフォールバック先が無いので入力をそのまま返す(既存の挙動を変えない)', () => {
+    const phill = createWeapon('phill-revolver');
+    expect(manualOnlyFallbackWeapon(phill)).toBe(phill); // 同一参照(素通し)
+  });
+});
+
+// UNIQUE_WEAPONS.md §16-2/§16-5(バッチD): ランチャー3挺のCATALOG配線。
+describe('バッチD: ランチャー3挺のCATALOG', () => {
+  it('3挺ともglauncherカテゴリでSLOT_TIERどおりのtierを持つ', () => {
+    const rocket = createWeapon(ROCKET_WEAPON_KEY);
+    const alchemy = createWeapon(ALCHEMY_WEAPON_KEY);
+    const signal = createWeapon(SIGNAL_WEAPON_KEY);
+    expect(rocket.category).toBe('glauncher');
+    expect(rocket.tier).toBe(1);
+    expect(alchemy.category).toBe('glauncher');
+    expect(alchemy.tier).toBe(2);
+    expect(signal.category).toBe('glauncher');
+    expect(signal.tier).toBe(3);
+  });
+
+  it('ロケットランチャーは撃った瞬間、速度0で溜め状態(rocketChargeUntil)を持って生成される(受け入れ条件8)', () => {
+    useGameStore.getState().resetGame('warrior');
+    const player = useGameStore.getState().player;
+    const gun = { ...createWeapon(ROCKET_WEAPON_KEY), lastFired: 0 };
+    const target = spawnEnemyAt('zombie', player.x, player.y - 100, useGameStore.getState().gameTime);
+    useGameStore.setState(s => ({
+      enemies: [target],
+      player: { ...s.player, weapons: [gun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: gun.id },
+    }));
+    const shots = fireWeapon(gun, useGameStore.getState().player, [target]);
+    expect(shots.length).toBe(1);
+    expect(shots[0].speed).toBe(0); // 溜め中は静止(小さい判定として自機前方に置かれる)
+    expect(shots[0].rocketChargeUntil).toBeDefined();
+    expect(shots[0].rocketLaunchSpeed).toBeGreaterThan(0); // 溜め終わりに戻す本来の飛翔速度
   });
 });

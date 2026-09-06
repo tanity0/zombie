@@ -29,6 +29,8 @@ import { FLAMER_PULSE_DAMAGE, FLAMER_MAG_SIZE, FLAMER_RELOAD_MS_RAW, FLAMER_RANG
 import { GUNBLADE_RANGED_DAMAGE, GUNBLADE_RANGED_COOLDOWN_MS, GUNBLADE_MODE_STATS, GUNBLADE_MELEE_RANGE_PX, GUNBLADE_MELEE_KNOCKBACK_MULT, resolveGunbladeMode } from './gunbladeMelee';
 import { assignHomingShotgunTargetsByAzimuth } from './homingShotgun';
 import { coilPelletAmplitudePx } from './coilShotgun';
+// UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ(値の二重管理を避ける)。
+import { ROCKET_CHARGE_MS } from './rocketLauncher';
 
 // プレイヤー中心→敵 の二乗距離。**全ての敵で「当たり判定の矩形の最近点」**まで測る(v0.25.3170・
 // 社長指示「当たり判定の四隅でみて」)。中心基準だと巨体の縁に立っていても射程外扱いになる。
@@ -234,7 +236,30 @@ const CATALOG: Record<string, WeaponDef> = {
   // 数値は叩き台: 旧グレネードランチャー(95/1400)を起点にtierで伸ばす。
   'glauncher-t1': { key: 'glauncher-t1', name: 'グレネードガン',   type: 'rifle', category: 'glauncher', tier: 1, damage: 85,  cooldown: 1500, projectileSpeed: 420, projectileSize: 14, count: 1, magSize: 3, reloadMs: 2200, passthrough: true },
   'glauncher-t2': { key: 'glauncher-t2', name: 'グレネードガンⅡ', type: 'rifle', category: 'glauncher', tier: 2, damage: 110, cooldown: 1350, projectileSpeed: 440, projectileSize: 15, count: 1, magSize: 4, reloadMs: 2100, passthrough: true },
-  'glauncher-t3': { key: 'glauncher-t3', name: 'グレネードガンⅢ', type: 'rifle', category: 'glauncher', tier: 3, damage: 140, cooldown: 1200, projectileSpeed: 460, projectileSize: 16, count: 1, magSize: 5, reloadMs: 2000, passthrough: true }
+  'glauncher-t3': { key: 'glauncher-t3', name: 'グレネードガンⅢ', type: 'rifle', category: 'glauncher', tier: 3, damage: 140, cooldown: 1200, projectileSpeed: 460, projectileSize: 16, count: 1, magSize: 5, reloadMs: 2000, passthrough: true },
+
+  // UNIQUE_WEAPONS.md §16-2/§16-5(バッチD)。ロケットランチャー(T1): 溜め(500ms)→直進弾(追尾なし)
+  // →敵か壁に当たった時だけ爆発。何にも当たらなければ不発。★溜めはcooldownそのもの(=別時間として
+  // 足さない・受け入れ条件8)。状態機械はfireWeapon側の1フック(rocketChargeMsフック・下記)+
+  // useGameLoop.tsの壁ヒット/速度復帰tick。爆発範囲は既定glauncher-t1の×1.2(ROCKET_BLAST_RADIUS_MULT・
+  // useGameLoop.ts側で適用)。サイクル実効DPS=31.11(既定glauncher-t1=28.65比+8.6%・§5-2)。
+  'glauncher-t1-rocket': { key: 'glauncher-t1-rocket', name: 'ロケットランチャー', type: 'rifle', category: 'glauncher', tier: 1, damage: 140, cooldown: ROCKET_CHARGE_MS, projectileSpeed: 460, projectileSize: 16, count: 1, magSize: 1, reloadMs: 2000, passthrough: true },
+
+  // UNIQUE_WEAPONS.md §16-2/§16-5(バッチD)。錬金砲(T2): 破裂(弱い範囲・ALCHEMY_BURST_RADIUS_PX)→
+  // 範囲内の敵へ金の石を付着(alchemyStone.ts・Enemy.alchemyStoneStage)→再命中で最大3段階まで成長→
+  // 指を離した瞬間に全部起爆(gameStore.detonateAlchemyStones)。石の起爆自体はここのdamageとは別枠
+  // (段階ごとに固定値60/120/200・ALCHEMY_STONE_DAMAGE_BY_STAGE)。サイクル実効DPS=48.48
+  // (既定glauncher-t2=45.83比+5.8%・§5-2)。
+  'glauncher-t2-alchemy': { key: 'glauncher-t2-alchemy', name: '錬金砲', type: 'rifle', category: 'glauncher', tier: 2, damage: 30, cooldown: 700, projectileSpeed: 440, projectileSize: 15, count: 1, magSize: 4, reloadMs: 1900, passthrough: true },
+
+  // UNIQUE_WEAPONS.md §16-2/§16-3b/§16-5(バッチD)。シグナルランチャー(T3): 手動専用
+  // (isManualOnlyGunKey・オート射撃なし)。PHILL銃のターゲットサイトを流用し、指を離した瞬間の
+  // 地点を記録→900ms後にその地点へ空爆(追尾しない)。damageは空爆1発の値
+  // (gameStore.fireSignalLauncher・signalLauncher.ts)。★弾を撃たない銃ではない(自弾を作らず
+  // 「予約」を積むだけ)なのでnonProjectileは付けない(付けると守護霊/ボットが「撃たない」に
+  // 倒れてしまう=§16-3bのフォールバック規則と衝突する)。サイクル実効DPS=75.69
+  // (既定glauncher-t3=70.00比+8.1%・§5-2。着弾遅延900msをcooldownへ畳んで測る)。
+  'glauncher-t3-signal': { key: 'glauncher-t3-signal', name: 'シグナルランチャー', type: 'rifle', category: 'glauncher', tier: 3, damage: 275, cooldown: 1400, count: 1, magSize: 3, reloadMs: 2000 }
 };
 
 // UNIQUE_WEAPONS.md §13-1: 個別の挙動配線(ハンドキャノンの連続命中減衰・パイルドライバーの
@@ -260,6 +285,10 @@ export const FLAMER_WEAPON_KEY = 'shotgun-t3-flamer';
 export const GUNBLADE_WEAPON_KEY = 'handgun-t3-gunblade';
 export const COIL_SHOTGUN_WEAPON_KEY = 'shotgun-t2-coil';
 export const HOMING_SHOTGUN_WEAPON_KEY = 'shotgun-t3-homing';
+// UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺のキー。
+export const ROCKET_WEAPON_KEY = 'glauncher-t1-rocket';
+export const ALCHEMY_WEAPON_KEY = 'glauncher-t2-alchemy';
+export const SIGNAL_WEAPON_KEY = 'glauncher-t3-signal';
 
 // UNIQUE_WEAPONS.md §4: resolveSlotKey(weaponSlot.ts)がCATALOGの中身を見に行くための細い窓。
 // CATALOG自体は非公開のまま(意味不明なキーの直接生成を増やさない)。
@@ -449,6 +478,15 @@ const WEAPON_DESC: Record<string, string> = {
   'glauncher-t1': '転がって爆発する擲弾。近くの群れをまとめて吹き飛ばす',
   'glauncher-t2': '転がって爆発する擲弾。より遠くまで転がり、威力も高い',
   'glauncher-t3': '転がらず、当たった所で爆発する。遠くの群れを崩す',
+  // ロケットランチャー(§16-2/バッチD): 撃つと一瞬溜めてから直進弾(追尾なし)が飛ぶ。敵か壁に
+  // 当たった時だけ爆発し、何にも当たらなければそのまま不発で消える(rocketLauncher.ts)。
+  'glauncher-t1-rocket': '一瞬溜めてから直進する一発。敵か壁に当たった時だけ爆発する。何も無ければそのまま消える',
+  // 錬金砲(§16-2/バッチD): 命中で弱い範囲爆発+金の石を付着(alchemyStone.ts)。同じ相手に当て続ける
+  // ほど石が育ち(最大3段)、指を離した瞬間に石を付けた相手を全員まとめて起爆する。
+  'glauncher-t2-alchemy': '命中させた相手に金の石を付ける。当て続けるほど石は育ち、指を離すと石ごと一斉に爆発する',
+  // シグナルランチャー(§16-2/§16-3b/バッチD): 手動専用(自動射撃なし)。指を離した瞬間の狙い先を
+  // 記録し、少し遅れてそこへ空爆が落ちる(signalLauncher.ts。追尾しない=置き撃ち)。
+  'glauncher-t3-signal': '自動では撃たない。狙いを定めて指を離すと、少し遅れてその地点へ空爆が落ちる',
 };
 
 /** 装備欄に出す1行説明(未登録は空文字)。 */
@@ -486,11 +524,43 @@ export const armoryGrantKeys = (
   weapons: Pick<Weapon, 'isMelee' | 'category' | 'tier'>[],
 ): string[] => armoryUpgradableGunCategories(weapons).map(cat => `${cat}-t3`);
 
-// グレネード系の着弾爆発を起こす銃キーか(武器庫限定glauncher 3種のみ。旧rifle-t3は
-// v0.25.3291で対物ライフル=非爆発へ入れ替え済み)。タレット/朱雀/爆撃の流用弾は
-// weaponKey='glauncher-t1'(useGameLoopのGRENADE_WEAPON_KEY)を名乗ってこの経路に乗る。
+// グレネード系の着弾爆発を起こす銃キーか。UNIQUE_WEAPONS.md §16-3(前提工事): 旧実装は
+// 'glauncher-t1'|t2|t3 の3キー直書きだったため、ランチャー3挺(バッチD)が「爆発しない直進弾」に
+// なっていた。★category判定へ広げる(= glauncher カテゴリ全体)。タレット/朱雀/爆撃の流用弾は
+// weaponKey='glauncher-t1'(useGameLoopのGRENADE_WEAPON_KEY)を名乗ってこの経路に乗るので、
+// category判定に広げても挙動は不変(§16-3受け入れ条件1「回帰ゼロ」)。
+// ★錬金砲(glauncher-t2-alchemy)もこの述語ではtrueになる(category='glauncher'のため)——
+// ただし着弾時の「大爆発(GRENADE_BLAST_RADIUS)」分岐はuseGameLoop.ts側で錬金砲を先に
+// 個別分岐させて回避している(破裂は別の小さい範囲=alchemyStone.ts)。この述語自体は
+// 「弾は命中で消える(removeIt)」「跳弾/エコーショットの対象外」等の共通挙動だけを担う。
 export const isGrenadeGunKey = (key: string | undefined | null): boolean =>
-  key === 'glauncher-t1' || key === 'glauncher-t2' || key === 'glauncher-t3';
+  !!key && catalogCategoryTier(key).category === 'glauncher';
+
+// UNIQUE_WEAPONS.md §16-3b(手動専用銃の掟): 「自動で撃たない銃」。既存はPHILL銃1挺だけだったが、
+// シグナルランチャーがglauncherカテゴリの通常装備枠に入るため述語として独立させる。
+export const isManualOnlyGunKey = (key: string | undefined | null): boolean =>
+  key === 'phill-revolver' || key === SIGNAL_WEAPON_KEY;
+
+// 手動専用銃(§16-3b)のフォールバック先(守護霊/ボット用)。無ければ undefined
+// (PHILLは横=既定同カテゴリ銃が存在しないスロット外武器なので、従来どおり素通し=「撃たない」のまま
+// ——これはPHILLが研究所固定銃であることに由来する既存の雑な形で、今回のバッチはそこへ手を入れない)。
+const MANUAL_ONLY_FALLBACK_KEY: Partial<Record<string, string>> = {
+  [SIGNAL_WEAPON_KEY]: 'glauncher-t3',
+};
+/**
+ * 手動専用銃を持つ守護霊/ボットが「撃たない」で済まないよう、既定の同カテゴリ銃の数値へ
+ * 差し替えた武器を返す(§16-3b「守護霊が火力ゼロになる/計測が壊れる」の是正)。
+ * フォールバック先が無い(PHILL)場合は入力をそのまま返す(=既存の挙動を変えない)。
+ */
+export const manualOnlyFallbackWeapon = (weapon: Weapon): Weapon => {
+  const fallbackKey = weapon.key ? MANUAL_ONLY_FALLBACK_KEY[weapon.key] : undefined;
+  if (!fallbackKey) return weapon;
+  // ★id/lastFired/magazineは実体(呼び出し元がstoreへ書き戻す対象)のまま持ち越す。
+  // ここを新規createWeapon()の値(lastFired:0・magazine:満タン)のままにすると、
+  // fireWeaponの内部クールダウンゲートが毎tick「準備完了」と誤判定し、ボットが無限連射する
+  // (createWeaponはid採番のたびDate.now()を焼くだけの使い捨てインスタンスのため)。
+  return { ...createWeapon(fallbackKey), id: weapon.id, lastFired: weapon.lastFired, magazine: weapon.magazine };
+};
 
 // Player-state RESERVE pool value for an ammo type.
 export const ammoPoolFor = (player: Player, type: AmmoType): number =>
@@ -1160,6 +1230,15 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
     };
   });
 
+  // UNIQUE_WEAPONS.md §16-2/§16-5(バッチD・ロケットランチャー): 「溜め(500ms)」の実装フック。
+  // 発射直後の弾を速度0のままROCKET_CHARGE_MSだけその場に置く(=通常の敵衝突判定がそのまま
+  // 「溜め中の弾頭接触」を拾う)。ROCKET_CHARGE_MSはCATALOGのcooldownと同値(=別時間として
+  // 足していない・受け入れ条件8)。時計はgameTime(CLAUDE.md「動きの時計はgameTime」)。
+  if (weapon.key === ROCKET_WEAPON_KEY) {
+    const chargeUntil = useGameStore.getState().gameTime + ROCKET_CHARGE_MS;
+    return projectiles.map(p => ({ ...p, rocketLaunchSpeed: p.speed, speed: 0, rocketChargeUntil: chargeUntil }));
+  }
+
   return projectiles;
 };
 
@@ -1271,14 +1350,18 @@ export const buildGhostGunShots = (
   idPrefix: string,                          // 弾idの一意化(呼び出し元がゴーストid等を渡す)
   build?: { player: Player; gameTime: number; headshot?: boolean },
 ): Projectile[] => {
+  // UNIQUE_WEAPONS.md §16-3b(手動専用銃の掟): 手動専用銃(シグナルランチャー)を持っていたら
+  // 「撃たない」ではなく既定の同カテゴリ銃(glauncher-t3)へ差し替えて撃つ(=守護霊の火力ゼロを防ぐ)。
+  // フォールバック先が無い(PHILL)は従来どおり素通し。
+  const effGun = isManualOnlyGunKey(gun.key) ? manualOnlyFallbackWeapon(gun) : gun;
   // UNIQUE_WEAPONS.md §17-6(監査A-8/検収監査A-2の是正): アイレーザー/火炎放射器は弾を作らない
   // 非投射武器。等価実装はしない=守護霊もこの2挺を持っていたら撃たない(規則: 非投射武器は
   // 3経路とも「撃たない」)。判定は`nonProjectile`フラグ1本(キー直書きにしない)。
-  if (gun.nonProjectile) return [];
-  const { size, speed } = projectileFlightStats(gun);
-  const dirs = computeShotDirections(gun, baseDir);
-  const damage = build ? gunShotBaseDamage(gun, build.player, build.gameTime) : gun.damage;
-  const critChance = build ? gunShotCritChance(gun, build.player, build.gameTime) : 0;
+  if (effGun.nonProjectile) return [];
+  const { size, speed } = projectileFlightStats(effGun);
+  const dirs = computeShotDirections(effGun, baseDir);
+  const damage = build ? gunShotBaseDamage(effGun, build.player, build.gameTime) : effGun.damage;
+  const critChance = build ? gunShotCritChance(effGun, build.player, build.gameTime) : 0;
   return dirs.map((direction, i) => ({
     id: `${idPrefix}-${now}-${i}`,
     x: originX - size / 2,
@@ -1288,13 +1371,13 @@ export const buildGhostGunShots = (
     speed,
     damage,
     direction,
-    weaponType: gun.category as WeaponType,
+    weaponType: effGun.category as WeaponType,
     weaponKey: 'ghost-gun',
     duration: 1400,
     createdAt: now,
-    passthrough: gun.passthrough || false,
+    passthrough: effGun.passthrough || false,
     hitEnemies: [],
-    pierce: gun.pierce,
+    pierce: effGun.pierce,
     hostile: false,
     reflected: false,
     critChance,
