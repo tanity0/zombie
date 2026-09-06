@@ -7499,9 +7499,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ※v0.25.3703 は「heavy を無条件に載せる」、v0.25.4151 は「heavy を全部外す」で、どちらも
         //   極端だった。本裁定は**紫かどうか**で分ける(ボスと同じ物差し)。
         // ※3×のダメージ・黄色のクリ表示・浮きは常にそのまま(変えるのは演出の有無だけ)。
-        if (fatal || (stunnedHit.kind === 'heavy' && isBossPostureBroken(enemy, gameTime))) {
-          bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
-        }
+        if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
         recordCritHit('guaranteed', stunnedHit.kind === 'boss'); // §7-11c(4): meleeExecuteの紫中フィニッシュ
         // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
@@ -8001,7 +7999,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         // §6.22 M47仕様①: 分身にもナイフと同じ強個体しきい値を適用(分身だけエリート消し可、を残さない)。
-        if (stunnedMeleeOutcome(enemy) === 'heavy') {
+        if (stunnedMeleeOutcome(enemy, gameTime) === 'heavy') {
           bossFinishHit = true;
           const dmg = meleeExecBase * ELITE_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
@@ -8702,13 +8700,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         // §6.22 M47仕様①: 強個体はHP50%以上だと即死せず近接ダメージ×3+気絶解除。
-        if (stunnedMeleeOutcome(enemy) === 'heavy') {
+        if (stunnedMeleeOutcome(enemy, gameTime) === 'heavy') {
           bossFinishHit = true;
           const dmg = katanaExecBase * gpDmgScale * ELITE_MELEE_STUN_MULT;
-          // ★v0.25.4153: 強個体も**完全気絶(紫)中の一撃だけ**演出に載せる(ボスと同じ物差し)。
-          if (!isGhost && isBossPostureBroken(enemy, gameTime)) {
-            katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
-          }
+          // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -9024,13 +9019,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         // §6.22 M47仕様①: 強個体はHP50%以上だと即死せず近接ダメージ×3+気絶解除。
-        if (stunnedMeleeOutcome(enemy) === 'heavy') {
+        if (stunnedMeleeOutcome(enemy, gameTime) === 'heavy') {
           bossFinishHit = true;
           const dmg = whipExecBase * ELITE_MELEE_STUN_MULT;
-          // ★v0.25.4153: 強個体も**完全気絶(紫)中の一撃だけ**演出に載せる(ナイフ/刀と同じ物差し)。
-          if (isBossPostureBroken(enemy, gameTime)) {
-            whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
-          }
+          // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);

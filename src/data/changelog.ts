@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4154',
+    items: ['強個体(パンプキン等)は、体勢を崩した(紫の)状態への近接で即死するようになりました。通常の気絶からの一撃は今までどおり3倍ダメージで倒しきれません。'],
+  },
+  {
     version: '0.25.4153',
     items: ['強個体へのKILL演出をボスと同じ線に揃えました。体勢を崩した(紫の)状態への一撃だけ演出が入り、通常の気絶からの黄色クリティカルでは入りません。'],
   },

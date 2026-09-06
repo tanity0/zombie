@@ -65,7 +65,25 @@ export const isEliteEnemy = (enemy: Pick<StunnedMeleeEnemy, 'type' | 'isNamed' |
 
 export type StunnedMeleeOutcome = 'execute' | 'heavy';
 
-export const stunnedMeleeOutcome = (enemy: StunnedMeleeEnemy): StunnedMeleeOutcome => {
+/**
+ * ★社長裁定2026-09-05「強個体は致命の一撃で即死 に変更」。
+ * **強個体の「致命の一撃」= 完全気絶(紫・`bossFullStunUntil`)中の近接**。ボスの致命
+ * (`applyBrokenMeleeFatal`)と同じ物差しで、そこだけ **即死(execute)** にする。
+ * 紫でない通常の気絶からの一撃は従来どおり `heavy`(3×・即死しない)。
+ * `gameTime` を渡さない呼び出しは従来どおり(紫を見ない)=既存テストと互換。
+ */
+export const isEliteFatalStun = (
+  enemy: Pick<StunnedMeleeEnemy, 'type' | 'isNamed' | 'questTarget' | 'colorTier'> & { bossFullStunUntil?: number },
+  gameTime: number,
+): boolean =>
+  isEliteEnemy(enemy) && enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
+
+export const stunnedMeleeOutcome = (
+  enemy: StunnedMeleeEnemy & { bossFullStunUntil?: number },
+  gameTime?: number,
+): StunnedMeleeOutcome => {
+  // ★社長裁定2026-09-05: 強個体でも**紫中の一撃は即死**(致命の一撃)。
+  if (gameTime !== undefined && isEliteFatalStun(enemy, gameTime)) return 'execute';
   // §6.38 v7: 旧v6 B1.5-1の「賞金首は全HP帯でexecuteを返さない」早期returnは撤去。
   // v7で賞金首はisBossType(=usesBossStunnedMelee)側へ入るため、この関数(強個体/雑魚の裁定)
   // には到達しなくなった(呼び出し側は必ずusesBossStunnedMeleeを先に見る=下のコメントどおり)。
@@ -117,7 +135,7 @@ export const resolveStunnedMeleeHit = (
     const bossFull = enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
     return { kind: 'boss', dmg: baseDamage * bossStunMult, keepStun: bossFull };
   }
-  if (stunnedMeleeOutcome(enemy) === 'heavy') {
+  if (stunnedMeleeOutcome(enemy, gameTime) === 'heavy') {
     return { kind: 'heavy', dmg: baseDamage * ELITE_MELEE_STUN_MULT };
   }
   return { kind: 'execute' };

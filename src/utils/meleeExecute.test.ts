@@ -8,6 +8,30 @@ const enemy = (over: Partial<{
   type: EnemyType; isNamed?: boolean; questTarget?: boolean; health: number; maxHealth: number;
 }>) => ({ type: 'zombie' as EnemyType, health: 100, maxHealth: 100, ...over });
 
+describe('★強個体の致命の一撃=即死(社長裁定2026-09-05)', () => {
+  const elite = { type: 'pumpkin' as const, health: 100, maxHealth: 100 };
+  it('紫(完全気絶)中の強個体は execute(即死)', () => {
+    expect(stunnedMeleeOutcome({ ...elite, bossFullStunUntil: 5000 }, 4000)).toBe('execute');
+  });
+  it('紫が切れていれば従来どおり heavy(3×・即死しない)', () => {
+    expect(stunnedMeleeOutcome({ ...elite, bossFullStunUntil: 5000 }, 6000)).toBe('heavy');
+  });
+  it('紫が無ければ heavy', () => {
+    expect(stunnedMeleeOutcome(elite, 4000)).toBe('heavy');
+  });
+  it('gameTimeを渡さない呼び出しは従来どおり heavy(既存互換)', () => {
+    expect(stunnedMeleeOutcome({ ...elite, bossFullStunUntil: 5000 })).toBe('heavy');
+  });
+  it('雑魚は紫でなくても execute のまま', () => {
+    expect(stunnedMeleeOutcome({ type: 'zombie', health: 100, maxHealth: 100 }, 4000)).toBe('execute');
+  });
+  it('resolveStunnedMeleeHit も紫中の強個体を execute で返す', () => {
+    const hit = resolveStunnedMeleeHit(
+      { ...elite, stunUntil: 9000, bossFullStunUntil: 5000 }, 10, 4000, 5);
+    expect(hit?.kind).toBe('execute');
+  });
+});
+
 describe('stunnedMeleeOutcome', () => {
   it('雑魚は無条件即死(HPに関わらずexecute)', () => {
     expect(stunnedMeleeOutcome(enemy({ type: 'zombie', health: 100, maxHealth: 100 }))).toBe('execute');
@@ -149,12 +173,21 @@ describe('resolveStunnedMeleeHit(気絶敵フィニッシュの裁定・プレ�
     }
   });
 
-  // pumpkin/lab-zombie-3もbossFullStunUntil(紫)を持ちうるが(POSTURE_ELITE_TYPES)、この2体は
-  // isEliteType側(v7でも撤去していない)なのでkeepStunという概念自体を持たない=挙動不変。
-  it('pumpkin/lab-zombie-3は紫中でも1発で気絶解除(keepStun概念なし・賞金首と違う扱い・波及なし)', () => {
+  // ★社長裁定2026-09-05「強個体は致命の一撃で即死 に変更」: pumpkin/lab-zombie-3 も
+  // bossFullStunUntil(紫)を持つ(POSTURE_ELITE_TYPES)。**紫中の一撃=致命の一撃**なので即死。
+  // 旧(〜v0.25.4153)はここが 'heavy' だった(紫でも3×で即死しない)。
+  it('★pumpkin/lab-zombie-3は紫(完全気絶)中なら即死(致命の一撃)', () => {
     for (const type of ['pumpkin', 'lab-zombie-3'] as EnemyType[]) {
       const r = resolveStunnedMeleeHit(
         stunned({ type, health: 60, maxHealth: 100, bossFullStunUntil: 900 }), 10, 500, BOSS_MULT);
+      expect(r, type).toEqual({ kind: 'execute' });
+    }
+  });
+
+  it('★紫が切れていれば従来どおり heavy(3×・即死しない)', () => {
+    for (const type of ['pumpkin', 'lab-zombie-3'] as EnemyType[]) {
+      const r = resolveStunnedMeleeHit(
+        stunned({ type, health: 60, maxHealth: 100, bossFullStunUntil: 400 }), 10, 500, BOSS_MULT);
       expect(r, type).toEqual({ kind: 'heavy', dmg: 30 });
     }
   });
