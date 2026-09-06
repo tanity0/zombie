@@ -1342,6 +1342,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 裏CD(INCENDIARY_FLOOR_CD_MS)で安全側に倒す。
   const incendiaryFloorNextAtRef = useRef(0);
   const benkeiReadyRef = useRef(true); // 弁慶: 再発動CD明け検出(false→true で「閃き」フラッシュ)
+  // ★検収2巡目A-4是正: アイレーザーのパルス周期は**ループ内のrefで持つ**(Weaponに持たない)。
+  // Weaponに持つと毎パルス player.weapons を新配列で差し替えることになり、
+  // GameHUD が `s.player.weapons` を shallow 購読しているため**照射中ずっと10回/秒 HUDが再描画**される。
+  // この値を読むのはこのループだけなので、storeに置く必要が無い(発射開始で必ず初期化される)。
+  const eyeLaserNextPulseRef = useRef(0);
   const goldRingReadyRef = useRef(true); // 金環: CD明け検出(同上・ブーメラン型の一瞬通知・UNIQUE_WEAPONS.md §19-3)
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
   const rescueShootFxRef = useRef(0); // 救助NPC射撃SEの既再生タイムスタンプ
@@ -10776,7 +10781,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
               }
-              if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana) {
+              // ★検収2巡目A-3是正: **発砲の入口でも nonProjectile を閉じる**。頭脳側は
+              // gunRangePx=0 で止めているが、判定が `gunDist <= gunRangePx`(矩形最近点)なので
+              // **守護霊がボスに重なった tick は 0 <= 0 で shoot が通る**(守護霊は敵と当たり判定を
+              // 持たず近接で踏み込むので重なりは起きる)。buildGhostGunShots が [] を返しても
+              // weaponAfterGunShot(弾-1)と playSfx が走る=10発/秒の空撃ちが復活していた。
+              // 幻影(phantomTick.ts:715)が「発射の入口でも閉じる」としているのと同型。
+              if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana && !gun.nonProjectile) {
                 // 銃 = **計測時ビルドのアクティブ銃**。マガジン/発射間隔/リロードはプレイヤーと同じ、
                 // リザーブ弾だけはプレイヤーと完全分離して非消費(除外4)。
                 // GHOST-GUN-PARITY: 飛翔特性(count発/拡散/PROJECTILE_SPEED_MULT/projectileSize/
@@ -12213,11 +12224,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                             ...w,
                             magazine: Math.max(0, (w.magazine ?? 0) - 1),
                             eyeLaserPhase: 'firing', eyeLaserPhaseAt: gameTime, eyeLaserTargetId: target.id,
-                            eyeLaserNextPulseAt: gameTime, eyeLaserPulseDamage: pulseDamage,
+                            eyeLaserPulseDamage: pulseDamage,
                             eyeLaserEndedAt: undefined,
                           } : w)),
                         },
                       });
+                      eyeLaserNextPulseRef.current = gameTime; // ★A-4: パルス周期はrefで持つ(HUDを起こさない)
                       useGameStore.getState().setEyeLaserBeam({ ax: elPcx, ay: elPcy, bx: end.x, by: end.y });
                       playSfx('rifle-fire');
                     }
@@ -12251,25 +12263,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const rawEndX2 = elPcx + dirX2 * elRange2, rawEndY2 = elPcy + dirY2 * elRange2;
                     const elPad2 = elRange2 + 40;
                     const end2 = shortenSegmentAtWalls(elPcx, elPcy, rawEndX2, rawEndY2, beamWalls(elPcx, elPcy, elPad2));
-                    let didPulse = false;
-                    if (gameTime >= (elGun.eyeLaserNextPulseAt ?? gameTime)) {
-                      didPulse = true;
+                    if (gameTime >= eyeLaserNextPulseRef.current) {
                       const hits = pickBeamHits(elPcx, elPcy, end2.x, end2.y, EYE_LASER_HALFWIDTH, elAimable);
                       applyBeamPulse(hits, elGun.eyeLaserPulseDamage ?? 0, undefined, '#ff8a3d', 'pickup-xp-eyelaser');
+                      eyeLaserNextPulseRef.current += EYE_LASER_PULSE_MS;
                     }
-                    // ★A-3是正: 射線(毎tick)はstoreの専用フィールドへ。player.weaponsはパルス
-                    // (didPulse=弾消費に相当するイベント)の時だけ書く。
+                    // ★A-3/A-4是正: 射線(毎tick)はstoreの専用フィールドへ。
+                    // **照射中に player.weapons へは一切書かない**(アイレーザーはパルスごとの弾消費が
+                    // 無いので書く理由が無い。書くとHUDが10回/秒再描画される)。
                     useGameStore.getState().setEyeLaserBeam({ ax: elPcx, ay: elPcy, bx: end2.x, by: end2.y });
-                    if (didPulse) {
-                      useGameStore.setState(st => ({
-                        player: {
-                          ...st.player,
-                          weapons: st.player.weapons.map(w => (w.id === elGun.id
-                            ? { ...w, eyeLaserNextPulseAt: (w.eyeLaserNextPulseAt ?? gameTime) + EYE_LASER_PULSE_MS }
-                            : w)),
-                        },
-                      }));
-                    }
                   }
                 }
               }
@@ -12323,7 +12325,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // ★検収監査A-5是正: パルスが途切れていた(=新しい噴射の立ち上がり)時だけ
                 // flamerSprayStartAtを更新する。継続中の噴射では最初の開始時刻を保持したまま
                 // (pixiSceneがそこからの経過でα/長さを一度だけ立ち上げ、以後は定常表示にする)。
-                const flWasSpraying = gameTime - ((flGun.flamerNextPulseAt ?? -Infinity) - FLAMER_PULSE_MS) < FLAMER_PULSE_MS + 20;
+                // ★検収2巡目A-5是正: 猶予が +20ms しかなく、baseDeltaTime は50msまで許すので
+                // **30fps/熱ダレでパルス間隔が133〜150msになると猶予を超え**、flamerSprayStartAt が
+                // 毎パルス今に戻って**扇が幅0から生え直す(脈動)**。猶予をパルス1周期ぶんに広げる
+                // (pixiScene 側の減衰開始しきい値も同じ FLAMER_PULSE_MS * 2 に揃えてある)。
+                const flWasSpraying = gameTime - ((flGun.flamerNextPulseAt ?? -Infinity) - FLAMER_PULSE_MS) < FLAMER_PULSE_MS * 2;
                 useGameStore.setState(st => ({
                   player: {
                     ...st.player,

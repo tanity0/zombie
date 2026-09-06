@@ -52,7 +52,12 @@ describe('tickIceLanceFloors(検収監査A-1是正: 弾の後ろに伸びる床)
     floors = r.floors;
     expect(floors).toHaveLength(1);
     expect(floors[0]).toMatchObject({ frozen: true, ax: 0, ay: 0, bx: 100, by: 0 }); // 100pxのまま=1890pxまで伸びない
-    expect(floors[0].createdAt).toBe(60); // 凍結時刻を起点に寿命を数え直す
+    // ★検収2巡目A-1是正: **createdAt は据え置く**(生成時刻のまま)。描画のフェードが
+    // `gameTime - createdAt` で入りの曲線を作っているので、凍結時に今へ動かすと
+    // **伸びきった線が一度まるごと消えて220msかけて生え直す**(点滅)。
+    // 「凍結から1.2秒」は durationMs を伸ばして表す(= 経過60ms + 1200ms)。
+    expect(floors[0].createdAt).toBe(0);
+    expect(floors[0].durationMs).toBe(60 + 1200);
     // 凍結と同時に1発目が出て(金環と同じ思想)、tickPersistentBeamsがnextPulseAtをpulseMs(200)ぶん進める
     expect(floors[0].nextPulseAt).toBe(260);
     expect(r.pulses).toHaveLength(1); // 凍結した瞬間、その場で1発目が出る(伸びた範囲=100pxの床にだけ)

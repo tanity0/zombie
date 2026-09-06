@@ -1523,7 +1523,6 @@ export interface Weapon {
   eyeLaserPhase?: 'charging' | 'firing';
   eyeLaserPhaseAt?: number;      // gameTime。現在フェーズの開始時刻
   eyeLaserTargetId?: string;     // 'firing'中のみ有効。対象が死んだら再ターゲットせずその場で終了(社長裁定2026-09-06)
-  eyeLaserNextPulseAt?: number;  // 次パルス(100msごと)のgameTime
   eyeLaserPulseDamage?: number;  // 'firing'開始時に確定した1パルスダメージ(gunShotBaseDamage基準)
   // ★検収監査A-3是正: 'firing'中の現在の射線(毎tick追尾で更新)は player.weapons から
   // gameStore.eyeLaserBeam(専用フィールド)へ移した——ここに書くとGameHUD等の

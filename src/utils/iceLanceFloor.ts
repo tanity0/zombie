@@ -85,8 +85,15 @@ export const tickIceLanceFloors = (
       growing.push({ ...f, bx: nbx, by: nby });
     } else {
       changed = true;
+      // ★検収2巡目A-1是正: **createdAt を上書きしない**。描画のフェードは
+      // `weaponSpawnEase(gameTime - createdAt)` で入りの曲線を作っているので、凍結の瞬間に
+      // createdAt を今にすると **伸びきった線が一度まるごと消えて220msかけて生え直す**(点滅)。
+      // 寿命「凍結から1.2秒」は createdAt を据え置いたまま durationMs を伸ばして表す。
       alreadyFrozen.push({
-        ...f, frozen: true, createdAt: gameTime, durationMs: ICE_LANCE_FLOOR_DURATION_MS, nextPulseAt: gameTime,
+        ...f,
+        frozen: true,
+        durationMs: (gameTime - f.createdAt) + ICE_LANCE_FLOOR_DURATION_MS,
+        nextPulseAt: gameTime,
       });
     }
   }

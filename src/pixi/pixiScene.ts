@@ -13469,7 +13469,9 @@ export class PixiScene {
     // 噴射が途切れてからの経過で減衰(ease-in=加速しながら沈んで消える。weaponSpawnEaseのoutEasedと同じ式)。
     // 1パルス+わずかな余裕(旧spraying判定と同じ猶予)は減衰を始めない=パルス間で明滅しない。
     const sinceLastPulse = gameTime - lastPulseAt;
-    const decayT = Math.max(0, Math.min(1, (sinceLastPulse - (FLAMER_PULSE_MS + 20)) / WEAPON_SPAWN_EASE_MS));
+    // ★検収2巡目A-5是正: 減衰の開始しきい値は useGameLoop の噴射継続の猶予と**同じ値**にする
+    // (揃っていないと、フレーム落ちで猶予を超えた側だけが先に反応して脈動する)。
+    const decayT = Math.max(0, Math.min(1, (sinceLastPulse - FLAMER_PULSE_MS * 2) / WEAPON_SPAWN_EASE_MS));
     const decayEased = decayT * decayT * decayT;
     const decayMul = 1 - decayEased;
     if (decayMul <= 0.001) {
