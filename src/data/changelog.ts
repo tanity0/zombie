@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4173',
+    items: ['内部準備のみ(ランチャー系ユニーク武器3挺の絵を受領・保存)。ゲーム内の変化はまだありません。'],
+  },
+  {
     version: '0.25.4172',
     items: ['内部準備のみ(ライフル系ユニーク武器3挺の絵を受領・保存)。ゲーム内の変化はまだありません。'],
   },
