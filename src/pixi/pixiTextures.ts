@@ -397,6 +397,18 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/shotgun-t1-focus', scaleMode: 'nearest' },
       { name: 'weapons/shotgun-t2-suppress', scaleMode: 'nearest' },
       { name: 'weapons/shotgun-t3-flamer', scaleMode: 'nearest' },
+      // ライフルのユニーク3種(社長支給素材2026-09-07)。
+      { name: 'weapons/rifle-t1-deserttech', scaleMode: 'nearest' },
+      { name: 'weapons/rifle-t2-heavysniper', scaleMode: 'nearest' },
+      { name: 'weapons/rifle-t3-railgun', scaleMode: 'nearest' },
+      // ランチャーのユニーク3種(社長支給素材2026-09-07。第2弾が無いのでこれで揃い)。
+      { name: 'weapons/glauncher-t1-rocket', scaleMode: 'nearest' },
+      { name: 'weapons/glauncher-t2-alchemy', scaleMode: 'nearest' },
+      { name: 'weapons/glauncher-t3-signal', scaleMode: 'nearest' },
+      // ハンドガンのユニーク第2弾3種(社長支給素材2026-09-07。ハンドガンは6挺すべて揃い)。
+      { name: 'weapons/handgun-t1-crossbow', scaleMode: 'nearest' },
+      { name: 'weapons/handgun-t2-dualrange', scaleMode: 'nearest' },
+      { name: 'weapons/handgun-t3-gunblade', scaleMode: 'nearest' },
       // 近接(ナイフ系)アイコン。銃と同じピックアップ/HUDアイコン(攻撃モーション用ではない)。
       { name: 'weapons/knife-t1', scaleMode: 'nearest' },
       { name: 'weapons/hatchet-t2', scaleMode: 'nearest' },

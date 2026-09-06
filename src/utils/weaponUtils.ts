@@ -587,8 +587,14 @@ export const WEAPON_ICON_KEYS: ReadonlySet<string> = new Set<string>([
   'glauncher-t1', 'glauncher-t2', 'glauncher-t3', // 武器庫限定グレネード系銃器(v0.25.3290)
   // UNIQUE_WEAPONS.md 第1弾のユニーク3種(社長支給素材2026-09-06)。
   'handgun-t1-derringer', 'handgun-t2-handcannon', 'handgun-t3-piledriver',
-  // ショットガンのユニーク3種(素材のみ先行受領2026-09-06。武器の実装はこれから)。
+  // ショットガンのユニーク3種(素材のみ先行受領2026-09-06)。
   'shotgun-t1-focus', 'shotgun-t2-suppress', 'shotgun-t3-flamer',
+  // ライフルのユニーク3種(社長支給素材2026-09-07)。
+  'rifle-t1-deserttech', 'rifle-t2-heavysniper', 'rifle-t3-railgun',
+  // ランチャーのユニーク3種(社長支給素材2026-09-07。ランチャーはこれで絵が揃った=第2弾なし)。
+  'glauncher-t1-rocket', 'glauncher-t2-alchemy', 'glauncher-t3-signal',
+  // ハンドガンのユニーク第2弾3種(社長支給素材2026-09-07。ハンドガンはこれで6挺すべて揃った)。
+  'handgun-t1-crossbow', 'handgun-t2-dualrange', 'handgun-t3-gunblade',
 ]);
 export const hasWeaponIcon = (key: string | undefined | null): boolean => !!key && WEAPON_ICON_KEYS.has(key);
 export const weaponIconName = (key: string): string => `weapons/${key}`;
