@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4149',
+    items: ['装備の銃スロットに、武器の説明が1行つくようになりました。'],
+  },
+  {
     version: '0.25.4148',
     items: ['フリー(周回)出撃でも今までどおり進行が残ります(ゴールド・ハイスコア・年表・設計図)。前の版で誤って止めていたのを戻しました。進行が残らないのは練習・ボス戦テスト・ベンチマークだけです。'],
   },

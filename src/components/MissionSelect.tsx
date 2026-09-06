@@ -141,7 +141,7 @@ import {
 // ユニーク武器システム(UNIQUE_WEAPONS.md §11-6): 装備設定画面の「銃スロット」欄+開発施設の棚。
 import { SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, type SlotCategory, type SlotTier } from '../data/weaponSlots';
 import { getSlotLoadout, setSlotCandidate, unlockedWeaponKeys, shelfWeaponKeys, isTestWeaponUnlockAll, setTestWeaponUnlockAll } from '../utils/weaponSlot';
-import { weaponDisplayName } from '../utils/weaponUtils';
+import { weaponDisplayName, weaponDescription } from '../utils/weaponUtils';
 const GUN_CATEGORY_LABEL: Record<SlotCategory, string> = {
   handgun: 'ハンドガン', shotgun: 'ショットガン', rifle: 'ライフル', glauncher: 'グレネードガン',
 };
@@ -1339,6 +1339,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                                   >
                                     <span className="min-w-0">
                                       <span className="block truncate text-[12px] font-semibold">{weaponDisplayName(key)}</span>
+                                      {/* 社長指示2026-09-05「装備欄の武器にも説明入れて。スキルとかと同じく」:
+                                          開発施設のサブ解放リストと同じ見せ方(名前の下に小さい1行)。 */}
+                                      {weaponDescription(key) && (
+                                        <span className="block text-[10px] leading-snug text-white/50">{weaponDescription(key)}</span>
+                                      )}
                                     </span>
                                     {on && <Check size={14} className="shrink-0" />}
                                   </button>

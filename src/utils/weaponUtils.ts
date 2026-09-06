@@ -241,6 +241,34 @@ export const getGuns = (player: Player): Weapon[] =>
 // 武器keyの表示名(カタログが唯一の出どころ)。ビルドの写し(PlayerBuildSnapshot)には
 // keyしか入っていないので、守護霊カード等の表示側はここから名前を引く(名前表を別に作らない)。
 // 未知/欠損キーは '—'(記録が古くて武器が判らないケース)。
+// 装備欄(銃スロット)に出す1行説明。社長指示2026-09-05「装備欄の武器にも説明入れて。スキルとかと同じく」。
+// ★数値は書かない: バランス調整で文面が嘘になるため(チュートリアル本文と同じ規約)。
+// **挙動と得意/不得意**だけを書く。未登録キーは空文字(=説明行を出さない)。
+const WEAPON_DESC: Record<string, string> = {
+  // ハンドガン(9mm)
+  'handgun-t1': '素直な連射。扱いやすい標準装備',
+  'handgun-t2': '2本を同時に撃つ。横に広く、群れを取りこぼしにくい',
+  'handgun-t3': '高速連射で溶かす。そのぶん弾の減りが速い',
+  'handgun-t1-derringer': '2発だけ装填。瞬間の火力は高いが、すぐ装填に入る',
+  'handgun-t2-handcannon': '単発が重い。同じ敵に当て続けると威力が落ち、装填で戻る',
+  'handgun-t3-piledriver': '至近距離専用。強く押し返し、体勢を大きく崩す',
+  // ショットガン(12g)
+  'shotgun-t1': '広がる散弾。近い群れに強い',
+  'shotgun-t2': '一発が重いポンプ式。撃つたびに間が空く',
+  'shotgun-t3': '連射できる散弾。近距離を薙ぎ払う',
+  // ライフル
+  'rifle-t1': '重い一撃。貫通して奥の敵にも届く',
+  'rifle-t2': '遠くから狙う一撃。弾が速い',
+  'rifle-t3': '対物の一撃。硬い相手を正面から抜く',
+  // グレネードガン
+  'glauncher-t1': '転がって爆発する擲弾。近い群れをまとめて吹き飛ばす',
+  'glauncher-t2': '転がる擲弾。射程と威力が上がる',
+  'glauncher-t3': '着弾で爆発する擲弾。遠くの群れを崩す',
+};
+/** 装備欄に出す1行説明(未登録は空文字)。 */
+export const weaponDescription = (key: string | undefined | null): string =>
+  (key ? WEAPON_DESC[key] : undefined) ?? '';
+
 export const weaponDisplayName = (key: string | undefined | null): string =>
   (key ? CATALOG[key]?.name : undefined) ?? '—';
 
