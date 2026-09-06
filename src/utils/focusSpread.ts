@@ -29,3 +29,38 @@ export const resolveFocusSpreadRad = (
 /** 命中1回ぶんの狭まり(下限クランプ)。 */
 export const narrowFocusSpreadRad = (currentRad: number): number =>
   Math.max(FOCUS_SPREAD_FLOOR_RAD, currentRad - FOCUS_SPREAD_STEP_RAD);
+
+/**
+ * ★狭まる単位は「1トリガー」であって「1ペレット」ではない(社長仕様
+ * 「敵に**命中した射撃ごとに**1段階ずつ集弾率が上昇」)。
+ *
+ * このショットガンは1トリガーで5ペレット出るので、ペレット単位で狭めると
+ * **1トリガーで 1.30 → 0.40、2トリガー目で下限0.36** に達し、
+ * 「連続命中するほど収束していく」という武器の芯が消える(実測: 段数は5.22しかない)。
+ * ⇒ **同じトリガーの2発目以降は狭めない**。トリガーの同一性は弾の `createdAt`
+ * (1トリガーで生成した全ペレットが同じ値を持つ)で見る。
+ *
+ * 変化が無い時は `null` を返す=**呼び出し側は store を書かない**
+ * (ペレットごとの `setState` は購読者を毎命中で起こすため。CLAUDE.md「per-frame set() churn」)。
+ */
+export interface FocusSpreadState {
+  focusSpreadRad?: number;
+  focusSpreadLastHitAt?: number;
+  focusSpreadLastTriggerAt?: number;
+}
+
+export const focusSpreadAfterHit = (
+  w: FocusSpreadState,
+  triggerAt: number,
+  now: number,
+): Required<FocusSpreadState> | null => {
+  // 同じトリガーの2発目以降=何もしない(狭まりも打刻も1トリガー1回)。
+  if (w.focusSpreadLastTriggerAt === triggerAt) return null;
+  // この発射で実際に使った散り角(2.5秒切れていれば初期値)から1段階狭める。
+  const used = resolveFocusSpreadRad(w.focusSpreadRad, w.focusSpreadLastHitAt, now);
+  return {
+    focusSpreadRad: narrowFocusSpreadRad(used),
+    focusSpreadLastHitAt: now,
+    focusSpreadLastTriggerAt: triggerAt,
+  };
+};

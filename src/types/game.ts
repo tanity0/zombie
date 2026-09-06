@@ -1511,6 +1511,8 @@ export interface Weapon {
   // 「初期値(1.30rad)扱い」と同義(resolveFocusSpreadRadが解決する)。
   focusSpreadRad?: number;
   focusSpreadLastHitAt?: number;
+  // ★狭まりは1トリガー1回(focusSpread.ts)。同じトリガーの弾の createdAt を覚えておく。
+  focusSpreadLastTriggerAt?: number;
   // UNIQUE_WEAPONS.md §16-2/§17-7(バッチB・切替式ショットガン): リロード(装填)を境に
   // 散弾⇔スラッグが反転する現在モード(src/utils/cycleShotgun.ts)。未指定は'shot'扱い。
   cycleMode?: 'shot' | 'slug';
