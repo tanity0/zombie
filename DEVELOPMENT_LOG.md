@@ -1,5 +1,61 @@
 # Development Log
 
+## v0.25.4144 — ユニーク武器の解放・購入を4段へ実装(設計図→棚→200G購入→装備)【2026-09-06 13:20 JST】
+
+**UNIQUE_WEAPONS.md §11-6/§11-6-1/§11-6-2/§11-6-3の実装バッチ。** 「ボス撃破=即解放」を
+「①設計図入手 → ②開発施設に並ぶ → ③一律200Gで購入 → ④装備設定で選べる」の4段へ組み替えた。
+
+**①台帳を2本に分離(§11-6-1)**: `src/data/progress.ts` に新キー
+`zombie.progress.weaponBlueprints`(設計図あり=棚に並ぶだけ)を、既存の
+`weaponUnlocks`(購入済み=使える)とは独立に追加。`getWeaponBlueprints` /
+`hasWeaponBlueprint` / `markWeaponBlueprint`(立てた瞬間だけtrue)/
+`clearWeaponBlueprints` を既存の武器解放と同じ作法で用意。`resetProgress()` にも
+削除を1行追加。
+
+**②`BOSS_UNLOCK`/`STORE_SOLD_KEYS`を確定(§11-6-2/§11-6-3)**: `src/data/weaponSlots.ts`
+に miguel→derringer / jibril→handcannon / rafi→piledriver を**型単独キー**
+(ステージ付きにしない=`GATE2_BOSS_TYPE_BY_STAGE`のフォールバック地雷を回避)で登録。
+「BOSS_UNLOCKに無い=店売り」にせず、明示リスト`STORE_SOLD_KEYS`(現状は空。第2弾以降の
+キーはまだCATALOGに無いため書かない)を追加。両表が全ユニーク候補を排反かつ網羅する
+不変条件をテストで機械化(`weaponSlot.test.ts`)。
+
+**③撃破→設計図の配線差し替え(§11-6)**: `src/store/gameStore.ts` の撃破確定処理で
+`markWeaponUnlocked`(購入済み)を呼んでいた箇所を`markWeaponBlueprint`(設計図)へ
+差し替え。既存の2つのガード(`!isPracticeRun()` / `enemy.type !== 'giantbat' ||
+isFinalBossKill(enemy)`)はそのまま維持。トースト文言を「解放」→「設計図入手」へ。
+
+**④開発施設の棚(§11-6④)**: `src/utils/weaponSlot.ts` に `shelfWeaponKeys()` を追加
+(通常=(設計図∪店売り)−購入済み、テスト全開時=既定を除く全候補−購入済み)。
+`MissionSelect.tsx` の `WeaponDev` に、サブウェポン解放リストと同じ作法で棚を追加。
+価格は一律200G・支払いは既存の`spendGold`。購入で`markWeaponUnlocked`を呼び購入済み台帳へ。
+
+**⑤装備設定は未購入を載せない(§11-6⑤)**: `renderLoadout` の銃スロットを、灰表示ロック
+方式から**未購入は載せない**方式(サブウェポンの`visibleSubs`と同じ作法)へ変更。
+古いコメント(灰表示前提)も書き直した。
+
+**⑥テスト用トグル/`?unlockall=1`**: 棚(`shelfWeaponKeys`)・装備(`unlockedWeaponKeys`)の
+両方を全開にする。「武器解放リセット」ボタンは`clearWeaponUnlocks`に加え
+`clearWeaponBlueprints`も呼ぶよう変更(両方の台帳を消す)。
+
+**★未決候補(設計書に無く、実装で決めた箇所)**:
+- 設計図入手トーストの文言「◯◯ 設計図入手」(設計書は「まだ使えないので状態と食い違う」と
+  指摘するのみで、具体的な文言は指定していない)。
+- 開発施設の棚の並び順(カテゴリ→Tier→候補配列順の固定順)。
+- 装備設定・開発施設の棚どちらも、テスト全開トグルの表示文言を「棚にも全部並び、装備設定
+  でも選べる」へ更新した(元の文言は購入前提だったため)。
+
+**ファイル**: `src/data/progress.ts` / `src/data/progress.test.ts` / `src/data/weaponSlots.ts` /
+`src/utils/weaponSlot.ts` / `src/utils/weaponSlot.test.ts` / `src/store/gameStore.ts` /
+`src/components/MissionSelect.tsx`(コミットは4分割: data/progress → data/weaponSlots+utils →
+store → ui)。
+
+**検証**: `npm run typecheck` エラー0 / `npm run lint` エラー0(既存warning 9件のみ、
+新規warningなし)。触れたテスト(`weaponSlot.test.ts` 26件・`progress.test.ts` 25件・
+`handcannonDecay.test.ts` 8件・計59件)は全て通過。`npm test`・ビルド・ボットラン実測は
+指示に従い実行していない。
+
+**状態変化**: ユニーク武器システムの「解放・購入を4段へ」バッチ → **実装完了**(実機確認待ち)。
+
 ## v0.25.4143 — #U14(金環)と第1弾3種の解放元を裁定・発注へ【2026-09-05 JST】
 
 **社長裁定**: ①**#U14 金環 = (a) 設計図ゲート付きで価格は従来の 20/50/100G のまま**
