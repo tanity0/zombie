@@ -105,7 +105,7 @@ import {
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, weaponDisplayName } from '../utils/weaponUtils';
 import { resetHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPONS.md §13-1
 import { resolveSlotKeyNow } from '../utils/weaponSlot'; // UNIQUE_WEAPONS.md §4-1(生成点=grantWeapon入口の安全網/武器庫)
-import { BOSS_UNLOCK } from '../data/weaponSlots'; // UNIQUE_WEAPONS.md §6(ボス撃破→ユニーク武器の恒久解放)
+import { BOSS_UNLOCK } from '../data/weaponSlots'; // UNIQUE_WEAPONS.md §11-6(ボス撃破→ユニーク武器の設計図入手)
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
@@ -188,7 +188,7 @@ import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
   getEventQuestMeta, setEventQuestMeta, markCastleBossCleared, syncQuestStageClear,
   updateStoryFlags, markMissionCleared,
-  isKogarasuUnlocked, markKogarasuUnlocked, markWeaponUnlocked,
+  isKogarasuUnlocked, markKogarasuUnlocked, markWeaponBlueprint,
   getSelectedFreeMode,
   type WallMeta,
 } from '../data/progress';
@@ -3514,22 +3514,21 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
       syncQuestStageClear(qStageId);
     }
   }
-  // UNIQUE_WEAPONS.md §6(ユニーク武器の恒久解放): ボス撃破の確定処理でこのランのボスに紐づく
-  // ユニーク武器を解放する。**どのボスが何を解放するかの表(BOSS_UNLOCK)は★未決 #U3 のため空**なので、
-  // 現状はどのキーも undefined になり何も起きない。キー形式は `type@stageId`
-  // (城ボスは全ステージ 'giantbat' 1種なのでステージで割る必要がある)。
+  // UNIQUE_WEAPONS.md §11-6(4段の1段目): ボス撃破の確定処理でこのランのボスに紐づく
+  // ユニーク武器の「設計図」を入手する(撃破=即解放ではない。使えるのは開発施設で200G購入した後)。
+  // キー形式は `type@stageId`(城ボス=giantbatだけがステージで割る必要がある。§11-6-3)。
   // ★練習ラン(ボスモード/ガントレット)では呼ばない: practiceGuard は localStorage の書き込みだけを
-  // 飲んで読みは素通しするため、そのまま呼ぶと markWeaponUnlocked が毎回 true を返し
-  // 「偽の解放」が練習のたびに起きる(小烏丸が持っているのと同じ穴を持ち込まない)。
+  // 飲んで読みは素通しするため、そのまま呼ぶと markWeaponBlueprint が毎回 true を返し
+  // 「偽の設計図入手」が練習のたびに起きる(小烏丸が持っているのと同じ穴を持ち込まない)。
   // ★城ボス(giantbat)は `isFinalBossKill` を必ず通す(検収2巡目B-1): グレンは**形態1をHP半分で**
   // triggerDramaticDeath に通す(=移行であって討伐ではない)ため、これを見ないと
   // **形態2に負けても恒久解放される**。既存の城ボスクリア処理が同じガードを使っているのと揃える。
   if (!isPracticeRun() && (enemy.type !== 'giantbat' || isFinalBossKill(enemy))) {
     const unlockKey = BOSS_UNLOCK[`${enemy.type}@${getSelectedStageId() ?? ''}`] ?? BOSS_UNLOCK[enemy.type];
-    if (unlockKey && markWeaponUnlocked(unlockKey)) {
+    if (unlockKey && markWeaponBlueprint(unlockKey)) {
       useGameStore.setState({
         lastWeaponGet: {
-          name: `${weaponDisplayName(unlockKey)} 解放`,
+          name: `${weaponDisplayName(unlockKey)} 設計図入手`,
           at: Date.now(),
           color: '#facc15',
           kind: 'weapon',
