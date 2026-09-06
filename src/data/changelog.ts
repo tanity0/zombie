@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4168',
+    items: ['ゲーム内容の変更はありません(設計書の更新のみ: 金環の残っていた未決を確定)。'],
+  },
+  {
     version: '0.25.4167',
     items: ['ゲーム内容の変更はありません(設計書の更新のみ: 連続照射・溜め・時間差の武器も同じ強さの枠で数値を決められるようにしました)。'],
   },
