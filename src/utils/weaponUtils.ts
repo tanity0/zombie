@@ -11,6 +11,7 @@ import { SLOT_CATEGORIES, SLOT_CANDIDATES } from '../data/weaponSlots';
 // weaponUtils.tsのcatalogCategoryTierを読むので相互import(2ファイル循環)になるが、どちらの
 // モジュールもトップレベル評価時に相手の値を参照しない(参照は全て関数呼び出し内)ため安全。
 import { resolveSlotKeyNow } from './weaponSlot';
+import { DUAL_RANGE_STATS, resolveDualRangeMode } from './dualRangeGun';
 
 // プレイヤー中心→敵 の二乗距離。**全ての敵で「当たり判定の矩形の最近点」**まで測る(v0.25.3170・
 // 社長指示「当たり判定の四隅でみて」)。中心基準だと巨体の縁に立っていても射程外扱いになる。
@@ -66,6 +67,11 @@ interface WeaponDef {
   rangeOverride?: number | (() => number);
   knockbackMult?: number; // 弾命中時のノックバック倍率(knockbackEnemyのmultiplier引数へ)。既定=ノックバックしない(undefined)。
   postureMult?: number;   // 弾命中時の体勢削り倍率(applyBossPostureDamageのimpactMult引数へ)。Projectile.postureMultは既存(弾幕の王が使用)。
+  // UNIQUE_WEAPONS.md §16-3前提工事(監査C-4): 散り角(rad)の武器別指定。無指定は従来どおり
+  // SHOTGUN_SPREAD_CONE_RAD_BY_TIER(Tier別既定)。
+  spreadRadOverride?: number;
+  // UNIQUE_WEAPONS.md §17-3(監査A-3): 無限弾(クロスボウ)。
+  infiniteAmmo?: true;
 }
 
 // UNIQUE_WEAPONS.md §13-1: パイルドライバー(handgun-t3-piledriver)の射程。
@@ -90,12 +96,25 @@ const CATALOG: Record<string, WeaponDef> = {
   // パイルドライバー(T3): 極端な短射程(rangeOverride=導出108px・ズーム非補正)+強ノックバック+高体勢削り。
   // knockbackMult/postureMultの数値は★未決候補(社長仕様は「強い/非常に高い」という定性表現のみ・#U9/#U10)。
   'handgun-t3-piledriver': { key: 'handgun-t3-piledriver', name: 'パイルドライバー',   type: 'handgun', category: 'handgun', tier: 3, damage: 36, cooldown: 450, projectileSpeed: 620, projectileSize: 12, count: 1, magSize: 6, reloadMs: 1300, critChance: 0.05, rangeOverride: piledriverRangePx, knockbackMult: 2, postureMult: 2 },
+  // UNIQUE_WEAPONS.md §16(バッチA)。クロスボウ(T1): 1発ごとに装填(magSize:1)する代わりに
+  // リザーブが尽きない(infiniteAmmo。実効DPS=16.00・既定比+1.3%・§16-1)。
+  'handgun-t1-crossbow':   { key: 'handgun-t1-crossbow',   name: 'クロスボウ',         type: 'handgun', category: 'handgun', tier: 1, damage: 24, cooldown: 300, projectileSpeed: 560, projectileSize: 8, count: 1, magSize: 1, reloadMs: 600, infiniteAmmo: true },
+  // デュアルレンジピストル(T2): 対象までの距離で近(14/cd260)/遠(28/cd700)の数値セットが入れ替わる
+  // (dualRangeGun.ts。ヒステリシス=近へ入る120px以下/遠へ戻る180px以上)。CATALOGの既定値は
+  // 「遠」セット(=交戦開始時の初期モード。weapon.dualRangeMode未設定は'far'扱い)。
+  // rangeOverride=220(§16-1)。実効DPSは近29.17(+3.7%)/遠30.43(+8.2%)・§16-1。
+  'handgun-t2-dualrange':  { key: 'handgun-t2-dualrange',  name: 'デュアルレンジピストル', type: 'handgun', category: 'handgun', tier: 2, damage: 28, cooldown: 700, projectileSpeed: 700, projectileSize: 8, count: 1, magSize: 10, reloadMs: 1100, rangeOverride: 220 },
 
   // B — Shotgun family (12g). One trigger pull = one shell (the spread is free),
   // so the magazine is sized in SHOTS, not pellets (3 shots per mag).
   'shotgun-t1':       { key: 'shotgun-t1', name: 'ショットガン',   type: 'shotgun', category: 'shotgun', tier: 1, damage: 6,  cooldown: 950, projectileSpeed: 440, projectileSize: 7, count: 5, magSize: 3, reloadMs: 1100 },
   'shotgun-t2':       { key: 'shotgun-t2', name: 'ポンプ式',       type: 'shotgun', category: 'shotgun', tier: 2, damage: 7,  cooldown: 780, projectileSpeed: 470, projectileSize: 7, count: 6, magSize: 3, reloadMs: 1800 },
   'shotgun-t3':       { key: 'shotgun-t3', name: 'オートショット', type: 'shotgun', category: 'shotgun', tier: 3, damage: 6,  cooldown: 430, projectileSpeed: 480, projectileSize: 7, count: 7, magSize: 3, reloadMs: 1700 },
+
+  // UNIQUE_WEAPONS.md §16(バッチA)。制圧型ショットガン(T2): ライフル並みの長射程(rangeOverride=250)
+  // + 大きく広げた散り角(spreadRadOverride=1.30rad。既定T2は0.70rad)。弾付与スキル(延焼/凍傷)は
+  // 武器側で何もしない=既存スキルが命中ごとに乗るだけ(社長ルール)。実効DPS=23.08(既定比+8.8%・§16-1)。
+  'shotgun-t2-suppress': { key: 'shotgun-t2-suppress', name: '制圧型ショットガン', type: 'shotgun', category: 'shotgun', tier: 2, damage: 4, cooldown: 880, projectileSpeed: 470, projectileSize: 7, count: 12, magSize: 3, reloadMs: 1800, rangeOverride: 250, spreadRadOverride: 1.30 },
 
   // C — Rifle/Magnum family (.44). Heavy single rounds. The revolver pierces
   // one enemy; higher tiers pierce freely.
@@ -105,6 +124,10 @@ const CATALOG: Record<string, WeaponDef> = {
   // 旧rifle-t3=グレネードランチャーは武器庫限定glauncher系と役割被りのため廃止し、スナイパー上位の
   // **対物ライフル**へ差し替え(爆発しない・貫通スナイパー)。数値は叩き台: t2スナイパー(55/1100)の上位。
   'rifle-t3':         { key: 'rifle-t3',   name: '対物ライフル',   type: 'rifle',   category: 'rifle',   tier: 3, damage: 110, cooldown: 1300, projectileSpeed: 1100, projectileSize: 9, count: 1, passthrough: true, magSize: 4, reloadMs: 2200 },
+
+  // UNIQUE_WEAPONS.md §16(バッチA)。ボルトアクション(T1): rangeOverride=320(既定T1の250より遠い)。
+  // 貫通クラスは既定T1と同じ(passthrough+pierce1・§17-2)。実効DPS=24.30(既定比+5.3%・§16-1)。
+  'rifle-t1-bolt': { key: 'rifle-t1-bolt', name: 'ボルトアクション', type: 'rifle', category: 'rifle', tier: 1, damage: 52, cooldown: 1500, projectileSpeed: 1100, projectileSize: 9, count: 1, magSize: 5, reloadMs: 1600, passthrough: true, pierce: 1, rangeOverride: 320 },
 
   // Melee (no ammo). Lower DPS than guns by design so bullets stay valuable.
   // Each carries a fixed crit chance that rises with tier. Tier はレベルアップ
@@ -132,6 +155,9 @@ const CATALOG: Record<string, WeaponDef> = {
 // ノックバック/体勢削り)がweaponKeyで判定するための定数。マジックストリングを1箇所にまとめる。
 export const HANDCANNON_WEAPON_KEY = 'handgun-t2-handcannon';
 export const PILEDRIVER_WEAPON_KEY = 'handgun-t3-piledriver';
+// UNIQUE_WEAPONS.md §16(バッチA): デュアルレンジピストルの距離ヒステリシス(dualRangeGun.ts)を
+// fireWeaponから配線するためのキー定数。
+export const DUALRANGE_WEAPON_KEY = 'handgun-t2-dualrange';
 
 // UNIQUE_WEAPONS.md §4: resolveSlotKey(weaponSlot.ts)がCATALOGの中身を見に行くための細い窓。
 // CATALOG自体は非公開のまま(意味不明なキーの直接生成を増やさない)。
@@ -231,6 +257,10 @@ export const createWeapon = (key: string): Weapon => {
     rangeOverride: typeof def.rangeOverride === 'function' ? def.rangeOverride() : def.rangeOverride,
     knockbackMult: def.knockbackMult,
     postureMult: def.postureMult,
+    // UNIQUE_WEAPONS.md §16(バッチA): 同じくcreateWeaponで明示コピーが要る新フィールド2つ。
+    spreadRadOverride: def.spreadRadOverride,
+    infiniteAmmo: def.infiniteAmmo,
+    // dualRangeMode はCATALOGに持たない(ランタイム状態。未設定='far'扱いはdualRangeGun.ts側の規約)。
   };
 };
 
@@ -258,11 +288,19 @@ const WEAPON_DESC: Record<string, string> = {
   'handgun-t1-derringer': '装填は2発だけ。速く撃てるが、2発ごとに装填へ入る',
   'handgun-t2-handcannon': '単発が重い。同じ敵に当て続けると威力が落ち、装填で戻る',
   'handgun-t3-piledriver': '近づかないと撃たない。強く押し返し、体勢を大きく崩す',
+  // クロスボウ(§16-2): infiniteAmmo=リザーブを消費しない。magSize:1=1発ごとにリロード。
+  'handgun-t1-crossbow': '弾切れしない。ただし1発ごとに装填し直すので連射はできない',
+  // デュアルレンジピストル(§16-2): 近14/cd260(速い・軽い)⇔遠28/cd700(遅い・重い)を距離で
+  // 自動切替(dualRangeGun.ts)。方向を書き違えない=近いほど速射・軽い、遠いほど低速・重い。
+  'handgun-t2-dualrange': '相手との距離で撃ち方が変わる。近ければ軽い連射、離れれば重い一撃',
   // ショットガン(射程が短い)。**散り角はTierが上がるほど狭くなる**
   // (SHOTGUN_SPREAD_CONE_RAD_BY_TIER = 1.00 / 0.70 / 0.36 rad)。
   'shotgun-t1': '大きく散る散弾。近くの群れに当てる',
   'shotgun-t2': '散りが狭まり、一発が重い。撃つ間隔は長い',
   'shotgun-t3': '散りが最も狭く弾数も多い。速射できる',
+  // 制圧型ショットガン(§16-2): rangeOverride=250(既定ショットガン140よりライフル並みに遠い)+
+  // spreadRadOverride=1.30(既定T2の0.70より広い)。
+  'shotgun-t2-suppress': '散弾でありながらライフル並みに遠くへ届く。散りは大きく、面を抑える',
   // ライフル(射程が長い)。貫通の規則は2種類(useGameLoop の removeIt):
   //  ・pierce:N → 倒したかに関わらず **N+1体**に当たるまで進む(マグナムは N=1=2体)
   //  ・passthrough のみ → **倒した敵は貫いて進み、倒せなければそこで止まる**
@@ -270,6 +308,8 @@ const WEAPON_DESC: Record<string, string> = {
   'rifle-t1': '遠くまで届く一撃。2体まで貫く',
   'rifle-t2': '弾が速い高威力の一撃。倒した敵は貫いて進む',
   'rifle-t3': '最も重い一撃。倒した敵は貫いて進む',
+  // ボルトアクション(§16-2): rangeOverride=320(既定ライフル250より遠い)。cooldown1500=既定T1の800より遅い。
+  'rifle-t1-bolt': 'ライフルの中でも特に遠くを狙える一撃。1発が重く、次弾までの間隔も長い',
   // グレネードガン。t1/t2 は **転がって一定距離で爆発**(GLAUNCHER_ROLL_DETONATE_PX。
   // t1=ショットガン距離 / t2=ハンドガン距離)、t3 は転がらず着弾で爆発。
   'glauncher-t1': '転がって爆発する擲弾。近くの群れをまとめて吹き飛ばす',
@@ -322,9 +362,17 @@ export const isGrenadeGunKey = (key: string | undefined | null): boolean =>
 export const ammoPoolFor = (player: Player, type: AmmoType): number =>
   player[AMMO_FIELD[type]];
 
+// UNIQUE_WEAPONS.md §17-3(監査A-3): 無限弾(infiniteAmmo)の武器は、リロード関連の純関数群へ
+// 渡すreserveをInfinityとして扱う。★フィールドへは絶対に書き戻さない(呼び出し側の規則。
+// このヘルパは「読み」だけを担う)。
+export const weaponReloadReserve = (w: Pick<Weapon, 'ammoType' | 'infiniteAmmo'>, p: Player): number =>
+  w.infiniteAmmo ? Infinity : (w.ammoType ? ammoPoolFor(p, w.ammoType) : 0);
+
 // Magazine capacity including the player's global 装填数アップ bonus.
+// UNIQUE_WEAPONS.md §17-4(監査A-4): magSize<=2の武器は装填数アップを受けない
+// (クロスボウ=1発ごとに装填という芯が崩れるため。デリンジャー=2も同じ規則で一緒に塞がる=既知・意図的)。
 export const effectiveMagSize = (w: Weapon, p: Player): number =>
-  (w.magSize ?? 0) + (w.magSize != null ? p.magBonus : 0);
+  (w.magSize ?? 0) + (w.magSize != null && w.magSize > 2 ? p.magBonus : 0);
 
 // Global reload-time multiplier — reloads take this much longer at baseline so
 // being caught empty is a real commitment.
@@ -483,9 +531,11 @@ export const zoomedGunRange = (basePx: number): number =>
   zoomCompensatedWorldDistance(basePx, useGameStore.getState().viewZoom);
 
 /**
- * ★UNIQUE_WEAPONS.md §13-1(監査C-7): `rangeOverride` を持つ武器(現状はパイルドライバーのみ)は
- * **ズーム補正を通さない**——近接範囲(`MELEE_RADIUS`)から導出した射程なので、近接同様ズームで
- * 伸びない扱いにする(伸びると「揃えたはずの近接範囲」と食い違う)。`rangeOverride` が無い武器は
+ * ★UNIQUE_WEAPONS.md §13-1(監査C-7)/§16-5(受け入れ条件3): `rangeOverride` を持つ武器
+ * (パイルドライバー/制圧型SG/ボルトアクション/デュアルレンジ)は**ズーム補正を通さない**
+ * ——パイルドライバーは近接範囲(`MELEE_RADIUS`)から導出した射程なので近接同様ズームで伸びない
+ * 扱いにする(伸びると「揃えたはずの近接範囲」と食い違う)。他の3挺も同じ関数を通る以上、
+ * 一律で不補正になる(社長差し戻しが無い限り仕様どおり)。`rangeOverride` が無い武器は
  * 従来どおり `zoomedGunRange` を通す。射程を読む全箇所(自動射撃ゲート/ボット/守護霊/幻影)はこの
  * 1本を通すこと(直接 `RANGE_BY_CATEGORY` を読まない)。
  */
@@ -559,12 +609,21 @@ const rotate = (v: { x: number; y: number }, angle: number) => {
 // なら0.12刻み)。プレイヤーの発射(fireWeapon)と守護霊の借用銃(buildGhostGunShots)が同じ規則を
 // 共有するための切り出し。count<=1やspreadStep<=0ならbaseDirをそのまま(コピー)で返す=元の
 // `let pd = {...baseDir}; if (...) pd = rotate(...)` と同じ分岐。
+// UNIQUE_WEAPONS.md §16-3前提工事(監査C-4): 散り角(rad)を「武器(+状態)→rad」で受ける形にする。
+// `spreadRadOverride` を持つ武器はそれを使う(状態で散り角が動く武器=バッチB以降は、発射直前に
+// この値を書き換えてから渡すことで対応する=呼び出し側の責務)。無指定は従来どおりTier別既定
+// (SHOTGUN_SPREAD_CONE_RAD_BY_TIER)。★既定3挺(shotgun-t1/t2/t3)はspreadRadOverride無し=不変。
+export const resolveShotgunSpreadRad = (weapon: Pick<Weapon, 'tier' | 'spreadRadOverride'>): number =>
+  weapon.spreadRadOverride
+    ?? SHOTGUN_SPREAD_CONE_RAD_BY_TIER[weapon.tier ?? 1]
+    ?? SHOTGUN_SPREAD_CONE_RAD_BY_TIER[1];
+
 export const computeShotDirections = (
-  weapon: Pick<Weapon, 'count' | 'category' | 'tier'>,
+  weapon: Pick<Weapon, 'count' | 'category' | 'tier' | 'spreadRadOverride'>,
   baseDir: { x: number; y: number },
 ): { x: number; y: number }[] => {
   const count = weapon.count ?? 1;
-  const shotgunSpread = SHOTGUN_SPREAD_CONE_RAD_BY_TIER[weapon.tier ?? 1] ?? SHOTGUN_SPREAD_CONE_RAD_BY_TIER[1];
+  const shotgunSpread = resolveShotgunSpreadRad(weapon);
   const spreadStep = weapon.category === 'shotgun'
     ? (count > 1 ? shotgunSpread / (count - 1) : 0)
     : count > 1 ? 0.12 : 0;
@@ -623,8 +682,16 @@ export const gunShotCritChance = (
 export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Projectile[] => {
   const now = Date.now();
   if (weapon.isMelee || !weapon.ammoType) return [];
+  // UNIQUE_WEAPONS.md §16-2/§17-8 C-1: デュアルレンジピストルは対象までの距離で近/遠の数値セット
+  // (dualRangeGun.ts)が入れ替わる。距離はこの関数の中でも「射程ゲートを通った後」にしか分からない
+  // ため、cooldownゲートに使う数値は前回この場所で確定したモード(weapon.dualRangeModeに持ち越し。
+  // 未設定は'far'=CATALOGの既定と一致)を使う(1発ぶん遅れるが機能上は問題ない=監査で確認済み)。
+  const isDualRangeGun = weapon.key === DUALRANGE_WEAPON_KEY;
+  const gateWeapon: Weapon = isDualRangeGun
+    ? { ...weapon, ...DUAL_RANGE_STATS[weapon.dualRangeMode ?? 'far'] }
+    : weapon;
   // 装備(腕)の連射倍率で実効cooldownを短縮(中立=1)。fireRateMult>1 ほど間隔が縮む。
-  const effCooldown = effectiveFireCooldown(weapon, player);
+  const effCooldown = effectiveFireCooldown(gateWeapon, player);
   if (now - weapon.lastFired < effCooldown) return [];
 
   // Can't fire while reloading, or with an empty magazine. Reloads are kicked
@@ -637,18 +704,28 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   // (マークスマンは射程UP→移動速度UPに変更したため、射程倍率は廃止)
   // グレネードガンt1/t2(転がり爆発)は爆発する道のり=実効射程(v0.25.3438)。
   const rollDetonatePx = GLAUNCHER_ROLL_DETONATE_PX[weapon.key ?? ''];
-  // ★rangeOverride(現状はパイルドライバーのみ)はrollDetonatePxと排他(グレネード限定の仕組み)なので
-  // 優先順位は「転がり爆発 > rangeOverride > カテゴリ既定」で問題ない。
+  // ★rangeOverride(パイルドライバー/制圧型SG/ボルトアクション/デュアルレンジ)はrollDetonatePxと
+  // 排他(グレネード限定の仕組み)なので優先順位は「転がり爆発 > rangeOverride > カテゴリ既定」で問題ない。
   const gunRange = rollDetonatePx !== undefined ? zoomedGunRange(rollDetonatePx) : gunEffectiveRangePx(weapon);
-  if (nearestEnemyDistance(player, enemies) > gunRange) {
+  const distToTarget = nearestEnemyDistance(player, enemies);
+  if (distToTarget > gunRange) {
     return [];
   }
 
+  // §17-8 C-1: ヒステリシス判定は射程ゲートを通った「撃つ瞬間」に置く。この弾自体は今回
+  // 確定したモードの数値で撃ち、次回以降のcooldownゲート(上のgateWeapon)にも持ち越す。
+  const nextDualRangeMode = isDualRangeGun
+    ? resolveDualRangeMode(weapon.dualRangeMode ?? 'far', distToTarget)
+    : undefined;
+  const shotWeapon: Weapon = nextDualRangeMode
+    ? { ...weapon, ...DUAL_RANGE_STATS[nextDualRangeMode] }
+    : weapon;
+
   const baseDir = aimDirection(player, enemies);
-  const count = weapon.count ?? 1;
+  const count = shotWeapon.count ?? 1;
   // GHOST-GUN-PARITY: 拡散角/サイズ・速度の計算式は共通ヘルパへ抽出しただけ(値は不変)。
-  const shotDirections = computeShotDirections(weapon, baseDir);
-  const { size, speed } = projectileFlightStats(weapon);
+  const shotDirections = computeShotDirections(shotWeapon, baseDir);
+  const { size, speed } = projectileFlightStats(shotWeapon);
 
   // スキル: ファイアシューター = 20%の射撃が爆発弾化(×0.3 ダメージ・半径66)。
   // 連続爆発を防ぐため player.fireShooterCdUntil(gameTime ms)で 3秒の裏クールダウン。
@@ -669,7 +746,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   //   装備(腕・火力系)のダメージ倍率。中立=1。
   //   スキル ラストマガジン: 弾倉最後の1発(この発射で空になるトリガー1回分=発射前の残弾1)×2.0/2.5/3.0。
   //   ショットガンは最終シェルの全ペレットに乗る(shotDamage共通)。命中時の他倍率とは乗算(§6.8 M31)。
-  const shotDamage = gunShotBaseDamage(weapon, player, gtFire);
+  const shotDamage = gunShotBaseDamage(shotWeapon, player, gtFire);
   // スキル: ビッグバレット = 弾サイズ×1.3/1.5/1.7(見た目と当たり判定を同時拡大。速度・貫通数・
   // 跳弾回数・壁衝突は不変=§28-2)。プレイヤー自身の銃弾のみ(ghost-gun/support-sniperは対象外)。
   // 社長指示v0.25.3297「ビッグバレットが地味なのでアタックシューターと統合」: 弾サイズ拡大は
@@ -745,7 +822,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   const gsRefillProc = gsAwaken && Math.random() < 0.30;
   useGameStore.setState(state => {
     const gsField = weapon.ammoType ? AMMO_FIELD[weapon.ammoType] : null;
-    const gsReserve = gsField ? state.player[gsField] : 0;
+    // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器はここでもリザーブをInfinity扱い
+    // する(ゲート判定のみ)。★実フィールドへの書き戻しは下で必ずスキップする。
+    const gsReserve = weapon.infiniteAmmo ? Infinity : (gsField ? state.player[gsField] : 0);
     const doRefill = gsRefillProc && gsField !== null && gsReserve > 0;
     return {
       player: {
@@ -754,9 +833,12 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
           if (w.id !== weapon.id) return w;
           // 覚醒時はrand=1固定で内部の非消費抽選を潰す(=必ず消費)→ 補填でmagazineを戻す。
           const shot = gsAwaken ? weaponAfterGunShot(w, player, now, () => 1) : weaponAfterGunShot(w, player, now);
-          return doRefill ? { ...shot, magazine: (shot.magazine ?? 0) + 1 } : shot;
+          const refilled = doRefill ? { ...shot, magazine: (shot.magazine ?? 0) + 1 } : shot;
+          // UNIQUE_WEAPONS.md §16-2: デュアルレンジのモードはここで確定・持ち越す。
+          return nextDualRangeMode !== undefined ? { ...refilled, dualRangeMode: nextDualRangeMode } : refilled;
         }),
-        ...(doRefill && gsField ? ({ [gsField]: gsReserve - 1 } as Partial<Player>) : {}),
+        // ★無限弾武器はreserveを実フィールドへ書き戻さない(infiniteAmmoの規則・§17-3)。
+        ...(doRefill && gsField && !weapon.infiniteAmmo ? ({ [gsField]: gsReserve - 1 } as Partial<Player>) : {}),
       },
     };
   });

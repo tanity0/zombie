@@ -480,8 +480,9 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   const { player, enemies } = useGameStore.getState();
   // kiterの射程バンド用に現在の銃の実射程を渡す(M26 Step1)。銃なし/phillは既定値にフォールバック。
   const botGun = getActiveGun(player);
-  // UNIQUE_WEAPONS.md §12: rangeOverride(現状パイルドライバーのみ)を持つ銃はカテゴリ既定を無視する
-  // (このkiter用バンドはズーム非補正の生値のまま=既存のRANGE_BY_CATEGORY直読みと同じ扱い)。
+  // UNIQUE_WEAPONS.md §12/§16-5(受け入れ条件3): rangeOverrideを持つ銃(パイルドライバー/制圧型SG/
+  // ボルトアクション/デュアルレンジ)はカテゴリ既定を無視する(このkiter用バンドはズーム非補正の
+  // 生値のまま=既存のRANGE_BY_CATEGORY直読みと同じ扱い)。
   const botGunRange = botGun && botGun.category !== 'phill'
     ? (botGun.rangeOverride ?? RANGE_BY_CATEGORY[botGun.category as keyof typeof RANGE_BY_CATEGORY])
     : undefined;

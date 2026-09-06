@@ -366,9 +366,10 @@ const GameHUD: React.FC = () => {
               {/* 銃スロット(所持カテゴリごと1つ)。タップで切替。弾数=装填/リザーブのみ(名前なし)。 */}
               {guns.map(gun => {
                 const ammoType = gun.ammoType;
+                // UNIQUE_WEAPONS.md §16-2/§17-3(監査A-3): 無限弾武器はHUDに実弾数ではなく「∞」を出す。
                 const reserve = ammoType ? ammoFieldFor(ammoType) : 0;
                 const mag = gun.magazine ?? 0;
-                const dry = mag <= 0 && reserve <= 0;
+                const dry = !gun.infiniteAmmo && mag <= 0 && reserve <= 0;
                 const active = gun.id === activeGun?.id;
                 return (
                   <button
@@ -393,7 +394,7 @@ const GameHUD: React.FC = () => {
                       }`}
                       style={{ textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}
                     >
-                      {mag}<span className="text-[7px] text-white/45">/{reserve}</span>
+                      {mag}<span className="text-[7px] text-white/45">/{gun.infiniteAmmo ? '∞' : reserve}</span>
                     </span>
                   </button>
                 );

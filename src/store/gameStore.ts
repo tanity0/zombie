@@ -102,7 +102,7 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, weaponDisplayName } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, weaponDisplayName } from '../utils/weaponUtils';
 import { resetHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPONS.md §13-1
 import { resolveSlotKeyNow } from '../utils/weaponSlot'; // UNIQUE_WEAPONS.md §4-1(生成点=grantWeapon入口の安全網/武器庫)
 import { BOSS_UNLOCK } from '../data/weaponSlots'; // UNIQUE_WEAPONS.md §11-6(ボス撃破→ユニーク武器の設計図入手)
@@ -4788,7 +4788,8 @@ export const overclockAwakenReloadPatch = (p: Player): Partial<Player> => {
   const gun = getActiveGun(p);
   if (!gun?.ammoType) return {};
   const field = AMMO_FIELD[gun.ammoType];
-  const filled = refillWeaponMagazine(gun, p, p[field]);
+  // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器はリザーブをInfinity扱いで渡す。
+  const filled = refillWeaponMagazine(gun, p, weaponReloadReserve(gun, p));
   if (filled.moved <= 0) return {};
   // UNIQUE_WEAPONS.md §13-1(社長裁定2026-09-05「即時装填でもリセットする」): ハンドキャノンの
   // 連続命中減衰は**「装填が発生したらリセット」**で統一する(部分装填=リザーブが足りず満タンに
@@ -4798,7 +4799,8 @@ export const overclockAwakenReloadPatch = (p: Player): Partial<Player> => {
   if (gun.key === HANDCANNON_WEAPON_KEY) resetHandcannonDecay();
   return {
     weapons: p.weapons.map(w => (w.id === gun.id ? filled.weapon : w)),
-    [field]: filled.reserve,
+    // ★無限弾武器はreserveを実フィールドへ書き戻さない(§17-3)。
+    ...(gun.infiniteAmmo ? {} : { [field]: filled.reserve }),
     ...(p.reloadingWeaponId === gun.id ? { reloadingWeaponId: '', reloadEndsAt: 0 } : {}),
   } as Partial<Player>;
 };
@@ -15945,7 +15947,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           const active = getActiveGun(p);
           if (!active?.ammoType) return {};
           const field = AMMO_FIELD[active.ammoType];
-          const filled = refillWeaponMagazine(active, p, p[field]);
+          // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器はリザーブをInfinity扱いで渡す。
+          const filled = refillWeaponMagazine(active, p, weaponReloadReserve(active, p));
           movedAmount = filled.moved;
           // UNIQUE_WEAPONS.md §13-1(社長裁定2026-09-05): 即時装填でもハンドキャノンの減衰をリセット。
           if (filled.moved > 0 && active.key === HANDCANNON_WEAPON_KEY) resetHandcannonDecay();
@@ -15961,7 +15964,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           return {
             player: {
               ...p,
-              [field]: filled.reserve,
+              // ★無限弾武器はreserveを実フィールドへ書き戻さない(§17-3)。
+              ...(active.infiniteAmmo ? {} : { [field]: filled.reserve }),
               weapons: p.weapons.map(w =>
                 w.id === active.id ? filled.weapon : w
               ),
@@ -16409,7 +16413,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (isPvpIncapacitated(p.pvpPosture, state.gameTime)) return {}; // ★SAME_ARENA §9(検収監査 重大①): 紫/daze中はリロード開始不可(白リスト)
       const w = p.weapons.find(g => g.id === weaponId);
       if (!w || !w.ammoType) return {};
-      const reload = beginWeaponReload(w, p, ammoPoolFor(p, w.ammoType));
+      // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器はリザーブをInfinity扱いで渡す。
+      const reload = beginWeaponReload(w, p, weaponReloadReserve(w, p));
       if (!reload) return {};
       return {
         player: {
@@ -16434,13 +16439,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         return { player: { ...p, reloadingWeaponId: '', reloadEndsAt: 0 } };
       }
       const field = AMMO_FIELD[w.ammoType];
-      const reload = finishWeaponReload(w, p, p[field]);
+      // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器はリザーブをInfinity扱いで渡す。
+      const reload = finishWeaponReload(w, p, weaponReloadReserve(w, p));
       if (!reload) return {};
       if (w.key === HANDCANNON_WEAPON_KEY) handcannonReloaded = true;
       return {
         player: {
           ...p,
-          [field]: reload.reserve,
+          // ★無限弾武器はreserveを実フィールドへ書き戻さない(§17-3)。
+          ...(w.infiniteAmmo ? {} : { [field]: reload.reserve }),
           weapons: p.weapons.map(g =>
             g.id === w.id ? reload.weapon : g
           ),
@@ -16462,13 +16469,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const active = getActiveGun(player);
     if (!active?.ammoType) return;
     if ((active.magazine ?? 0) > 0) return;
-    if (ammoPoolFor(player, active.ammoType) > 0) {
+    // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器は実フィールドが0でも「リロード可能」
+    // 扱いにする(でないと永久にリロードへ入れず1発も撃てなくなる)。
+    if (weaponReloadReserve(active, player) > 0) {
       get().startReload(active.id);
       return;
     }
     const guns = getGuns(player);
     const ready = guns.find(w => (w.magazine ?? 0) > 0);
-    const reloadable = guns.find(w => w.ammoType && ammoPoolFor(player, w.ammoType) > 0);
+    const reloadable = guns.find(w => w.ammoType && weaponReloadReserve(w, player) > 0);
     const target = ready ?? reloadable;
     if (target && target.id !== player.activeWeaponId) {
       set(state => ({ player: { ...state.player, activeWeaponId: target.id } }));

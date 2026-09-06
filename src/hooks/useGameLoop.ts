@@ -2394,8 +2394,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           ? decideBotInput(BOT_PERSONA, player, enemies, gameTime, botTickRef.current++, 0,
               BOT_PERSONA === 'rusher' ? botRusherRef.current : undefined,
               botGunForRange && botGunForRange.category !== 'phill'
-                // UNIQUE_WEAPONS.md §12/§13-1: rangeOverride(現状パイルドライバーのみ)を持つ銃は
-                // カテゴリ既定を無視する(ズーム非補正=既存のこのkiter用バンドと同じ生の値のまま)。
+                // UNIQUE_WEAPONS.md §12/§13-1/§16-5(受け入れ条件3): rangeOverrideを持つ銃
+                // (パイルドライバー/制圧型SG/ボルトアクション/デュアルレンジ)はカテゴリ既定を無視する
+                // (ズーム非補正=既存のこのkiter用バンドと同じ生の値のまま)。
                 ? (botGunForRange.rangeOverride ?? RANGE_BY_CATEGORY[botGunForRange.category as keyof typeof RANGE_BY_CATEGORY])
                 : undefined,
               undefined, BOT_SKILL, botGoalPlan?.pressAttack)
@@ -10371,8 +10372,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 刀モードは銃を撃たない(プレイヤーと同じ封印)ので射程0=意思決定側でも銃を選ばせない。
                   // v0.25.3170: 射程のズーム補正もプレイヤーと同じ1本(zoomedGunRange)を通す
                   // =引いている間だけ守護霊の射程だけが取り残される、を作らない(パリティ)。
-                  // UNIQUE_WEAPONS.md §12: rangeOverride持ちの銃(パイルドライバー)はgunEffectiveRangePxが
-                  // ズーム補正を外して扱う(§13-1監査C-7)。
+                  // UNIQUE_WEAPONS.md §12: rangeOverride持ちの銃(パイルドライバー/制圧型SG/
+                  // ボルトアクション/デュアルレンジ)はgunEffectiveRangePxがズーム補正を外して扱う
+                  // (§13-1監査C-7)。★守護霊は自分の武器状態(dualRangeMode等)を同期していないので、
+                  // デュアルレンジを持つ守護霊は常にCATALOGの既定(遠セット)で射程・威力を計算する
+                  // (§17-11「守護霊との武器状態の同期」=B積み・パリティの穴。射程自体は不変)。
                   gunRangePx: gun && !ghostKatana && !ghostReloadingWeaponId && (gun.magazine ?? 0) > 0
                     ? gunEffectiveRangePx(gun) : 0,
                   meleeDamage: meleeWeapon?.damage ?? 6,

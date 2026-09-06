@@ -19,6 +19,7 @@ import { CASTLE_BOSS_NAME_BY_STAGE, bossCutinName } from '../data/bossCutin';
 import type { EnemyType } from '../types/game';
 import { catalogCategoryTier, createWeapon } from './weaponUtils';
 import { markWeaponBlueprint, markWeaponUnlocked } from '../data/progress';
+import { DUAL_RANGE_STATS } from './dualRangeGun';
 
 beforeEach(() => { for (const k of Object.keys(backing)) delete backing[k]; });
 
@@ -252,6 +253,60 @@ describe('不変条件1: 実効DPS帯(ハンドガン=damage/cooldown/magSize/re
     expect(unique).toBeCloseTo(40.75, 1);
     expect(ratio).toBeGreaterThanOrEqual(0.90);
     expect(ratio).toBeLessThanOrEqual(1.10);
+  });
+});
+
+// UNIQUE_WEAPONS.md §16-5(受け入れ条件4): バッチA4挺の実効DPS帯(±10%の+寄り・§16-1)。
+describe('不変条件1: 実効DPS帯(バッチA・UNIQUE_WEAPONS.md §16-1)', () => {
+  const band = (defaultKey: string, uniqueKey: string) => {
+    const base = effectiveDps(createWeapon(defaultKey));
+    const unique = effectiveDps(createWeapon(uniqueKey));
+    return { base, unique, ratio: unique / base };
+  };
+  const expectInBand = (ratio: number) => {
+    expect(ratio).toBeGreaterThanOrEqual(0.90);
+    expect(ratio).toBeLessThanOrEqual(1.10);
+  };
+
+  it('制圧型ショットガン: 既定比+8.8%', () => {
+    const { base, unique, ratio } = band('shotgun-t2', 'shotgun-t2-suppress');
+    expect(base).toBeCloseTo(21.21, 1);
+    expect(unique).toBeCloseTo(23.08, 1);
+    expectInBand(ratio);
+  });
+
+  it('ボルトアクション: 既定比+5.3%', () => {
+    const { base, unique, ratio } = band('rifle-t1', 'rifle-t1-bolt');
+    expect(base).toBeCloseTo(23.08, 1);
+    expect(unique).toBeCloseTo(24.30, 1);
+    expectInBand(ratio);
+  });
+
+  it('クロスボウ: 既定比+1.3%', () => {
+    const { base, unique, ratio } = band('handgun-t1', 'handgun-t1-crossbow');
+    expect(base).toBeCloseTo(15.79, 1);
+    expect(unique).toBeCloseTo(16.00, 1);
+    expectInBand(ratio);
+  });
+
+  it('デュアルレンジピストル(遠=CATALOGの既定値): 既定比+8.2%', () => {
+    const { base, unique, ratio } = band('handgun-t2', 'handgun-t2-dualrange');
+    expect(base).toBeCloseTo(28.13, 1);
+    expect(unique).toBeCloseTo(30.43, 1);
+    expectInBand(ratio);
+  });
+
+  it('デュアルレンジピストル(近=距離ヒステリシスで切り替わる方のセット): 既定比+3.7%', () => {
+    // CATALOGは「遠」セットを既定値に持つ(§16-1コメント参照)。「近」はdualRangeGun.tsの
+    // DUAL_RANGE_STATSをfireWeaponが撃つ瞬間に差し込む値なので、ここではその値を直接合成して測る。
+    const nearWeapon = { ...createWeapon('handgun-t2-dualrange'), ...DUAL_RANGE_STATS.near };
+    const base = effectiveDps(createWeapon('handgun-t2'));
+    const unique = effectiveDps(nearWeapon);
+    expect(unique).toBeCloseTo(29.17, 1);
+    expectInBand(unique / base);
+    // 支配テスト(不変条件6)は「近」セットも見ていない(CATALOGの静的値=遠のみ自動評価)ため、
+    // ここで明示的に非支配を確認しておく(damage14>=9でもcount1<2・cooldown260<420で非支配)。
+    expect(dominatesDefault(nearWeapon, createWeapon('handgun-t2'))).toBe(false);
   });
 });
 

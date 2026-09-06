@@ -1489,6 +1489,18 @@ export interface Weapon {
   rangeOverride?: number; // そのカテゴリの既定射程(RANGE_BY_CATEGORY)を無視する自動射撃射程(px)。
   knockbackMult?: number; // 弾命中時のノックバック倍率(knockbackEnemyのmultiplier引数へ)。
   postureMult?: number;   // 弾命中時の体勢削り倍率(既存のpostureMult経路=弾幕の王と同じ運び方)。
+  // UNIQUE_WEAPONS.md §16-3前提工事(監査C-4): 散り角(rad)を「武器(+状態)→rad」で受ける口。
+  // 未指定は従来どおりSHOTGUN_SPREAD_CONE_RAD_BY_TIER(Tier別既定)。状態で散り角が動く武器
+  // (バッチB以降)は、発射直前にこの値を書き換えてからcomputeShotDirectionsへ渡す。
+  spreadRadOverride?: number;
+  // UNIQUE_WEAPONS.md §17-3(監査A-3): 無限弾(クロスボウ)。trueの間、リロード関連の純関数群は
+  // リザーブを`Infinity`として扱う。ただし実フィールド(player.ammoHandgun等)へは絶対に書き戻さない
+  // (書き戻すとHUD/商人/弾拾いが壊れる)。
+  infiniteAmmo?: true;
+  // UNIQUE_WEAPONS.md §16-2(デュアルレンジピストル): 対象までの距離で近/遠の数値セットを
+  // 入れ替える武器が持ち越す現在モード(ヒステリシス判定=src/utils/dualRangeGun.ts)。
+  // 未指定(undefined)は'far'扱い(§16-2実装)。
+  dualRangeMode?: 'near' | 'far';
 }
 
 // Gun families. Each shares an ammo pool with the matching AmmoType.

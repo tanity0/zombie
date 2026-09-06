@@ -11,19 +11,19 @@ export const SLOT_TIERS: SlotTier[] = [1, 2, 3];
 
 export const SLOT_CANDIDATES: Record<SlotCategory, Record<SlotTier, string[]>> = {
   handgun: {
-    1: ['handgun-t1', 'handgun-t1-derringer'],
-    2: ['handgun-t2', 'handgun-t2-handcannon'],
+    1: ['handgun-t1', 'handgun-t1-derringer', 'handgun-t1-crossbow'],
+    2: ['handgun-t2', 'handgun-t2-handcannon', 'handgun-t2-dualrange'],
     3: ['handgun-t3', 'handgun-t3-piledriver'],
   },
-  // 第1弾(UNIQUE_WEAPONS.md §13)の対象はハンドガンのみ。他3カテゴリは既定候補だけの
-  // 1挺スロット(=候補配列が長さ1)なので resolveSlotKey は常に恒等を返す(仕組みは共通で通す)。
+  // UNIQUE_WEAPONS.md §16(バッチA): shotgun T2 / rifle T1 に横が1挺入った。残りは第1弾当時のまま
+  // 既定候補だけの1挺スロット(=候補配列が長さ1)なので resolveSlotKey は常に恒等を返す。
   shotgun: {
     1: ['shotgun-t1'],
-    2: ['shotgun-t2'],
+    2: ['shotgun-t2', 'shotgun-t2-suppress'],
     3: ['shotgun-t3'],
   },
   rifle: {
-    1: ['rifle-t1'],
+    1: ['rifle-t1', 'rifle-t1-bolt'],
     2: ['rifle-t2'],
     3: ['rifle-t3'],
   },
@@ -49,11 +49,14 @@ export const BOSS_UNLOCK: Record<string, string> = {
   'bounty-balance': 'handgun-t1-derringer',    // 鋏(変異)
   'giantbat@stage-1': 'handgun-t2-handcannon', // 搬送体(変異)= 城ボス stage-1(bossCutin.CASTLE_BOSS_NAME_BY_STAGE)
   'bounty-melee': 'handgun-t3-piledriver',     // 馬乗り(変異)
+  // UNIQUE_WEAPONS.md §16(バッチA)。社長の割当表(§18-1)より。
+  'giantbat@stage-3': 'shotgun-t2-suppress',   // 樹木管理員(変異)= 城ボス stage-3
+  'idol': 'handgun-t2-dualrange',              // 偶像
 };
 
 // 「店売り」の明示リスト(UNIQUE_WEAPONS.md §11-6-2・監査A-2の是正)。**「BOSS_UNLOCKに無い=店売り」
-// と実装してはいけない**——現状は第2弾以降の店売り3種(クロスボウ等)がまだ CATALOG に無いため、
-// このリストは空のまま(★未決を片側へ倒さない)。
+// と実装してはいけない**——CATALOGに対応キーが無い間は空のまま書かない(★未決を片側へ倒さない)。
 // 不変条件(weaponSlot.test.ts): 全ユニーク候補は BOSS_UNLOCK の値 か STORE_SOLD_KEYS の
 // どちらか一方に属する(排反かつ網羅)。入れ忘れた武器は永久に入手不能になる。
-export const STORE_SOLD_KEYS: string[] = [];
+// UNIQUE_WEAPONS.md §16(バッチA)/§18-3: クロスボウ・ボルトアクションは店売り(切替式SGはバッチB)。
+export const STORE_SOLD_KEYS: string[] = ['handgun-t1-crossbow', 'rifle-t1-bolt'];
