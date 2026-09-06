@@ -3524,11 +3524,12 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   // triggerDramaticDeath に通す(=移行であって討伐ではない)ため、これを見ないと
   // **形態2に負けても恒久解放される**。既存の城ボスクリア処理が同じガードを使っているのと揃える。
   // ★社長指示2026-09-05「ストーリーのみだよ」: 設計図が手に入るのは**ストーリーモードの出撃だけ**。
-  // 練習ラン(ボスモード/ガントレット)に加えて、**フリー(周回)出撃**と**タイトルのボス戦テスト**でも
-  // 入らない。`getSelectedFreeMode` は「会話なし & クリア進行に影響させない出撃」の旗なので、
-  // 「ストーリーではない出撃」の判定にそのまま使える。`BOSS_TEST_RUN` は ?gateboss=1 等の開発導線
-  // (検収2巡目(B)-2 で「本番の台帳に書かれる」と記録された穴を、この指示でまとめて塞ぐ)。
-  const storyRunForBlueprint = !isPracticeRun() && !getSelectedFreeMode() && !BOSS_TEST_RUN;
+  // ★**フリー(周回)出撃はストーリーモードに含まれる**(社長訂正2026-09-05「ストーリーモードは
+  // フリー周回とイコールだよ」)ので**入る**。入らないのは **練習ラン(ボスモード/ガントレット)** と
+  // **タイトルのボス戦テスト**(`?gateboss=1` 等の開発導線。検収2巡目(B)-2 で「本番の台帳に書かれる」と
+  // 記録された穴をこの指示で塞ぐ)。**進行の書き込み全体は practiceGuard の関所が同じ範囲で止める**ので、
+  // ここは二重の安全網。
+  const storyRunForBlueprint = !isPracticeRun() && !BOSS_TEST_RUN;
   if (storyRunForBlueprint && (enemy.type !== 'giantbat' || isFinalBossKill(enemy))) {
     const unlockKey = BOSS_UNLOCK[`${enemy.type}@${getSelectedStageId() ?? ''}`] ?? BOSS_UNLOCK[enemy.type];
     if (unlockKey && markWeaponBlueprint(unlockKey)) {

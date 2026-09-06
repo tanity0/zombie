@@ -114,11 +114,13 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   useEffect(() => { attachAudioGestureRecovery(); }, []);
   // ★社長指示2026-09-05「ストーリーモード以外は全て練習なので何も手に入ってはいけない。年表にも載らない」。
   // 「進行を1つも残さない出撃」の旗を **gameState の遷移1箇所で** 立て降ろしする。
-  // ここで降ろすのが要点——フリー出撃の旗(`getSelectedFreeMode`)は端末に残るので、それを直接見て
-  // 封じると**タイトルへ戻った後の購入・装備設定・設定変更まで飲まれる**。出撃中だけに限る。
+  // ★**フリー(周回)出撃はストーリーモードに含まれる**(社長訂正2026-09-05「ストーリーモードは
+  // フリー周回とイコールだよ」)ので**対象外**——ゴールドもハイスコアも年表も従来どおり入る。
+  // 止めるのは **練習ラン(ボスモード/ガントレット)/ タイトルのボス戦テスト / ベンチマーク** だけ。
+  // 出撃中だけに限るのは、URL以外の旗を直接見た場合にタイトルの購入まで飲まれるのを避けるため。
   // (立てるのは startGame でも先回りしている=出撃直後の1フレームも漏らさないため。)
   useEffect(() => {
-    setNoProgressRun(gameState === 'playing' && (benchmarkMode || getSelectedFreeMode() || BOSS_TEST_RUN));
+    setNoProgressRun(gameState === 'playing' && (benchmarkMode || BOSS_TEST_RUN));
   }, [gameState, benchmarkMode]);
   // ★iOSビューポートずれ復元(社長報告2026-08-29「横にずれたり、下が切れてたりする」):
   // body は position:fixed だが、iOSはテキスト入力(守護霊部屋のプレイヤー名/コメント等)に
@@ -244,7 +246,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     // ★社長指示2026-09-05「ストーリーモード以外は全て練習なので何も手に入ってはいけない」:
     // この出撃がストーリーでなければ、進行の書き込みを丸ごと止める(practiceGuard の関所)。
     // ベンチマークもストーリーではないので同じ扱い。降ろすのは下の useEffect(gameState 遷移)。
-    setNoProgressRun(benchmark || getSelectedFreeMode() || BOSS_TEST_RUN);
+    setNoProgressRun(benchmark || BOSS_TEST_RUN);
     // Web/iOS Safari BGM unlock workaround. Remove for native-app audio.
     unlockDanceAudio();
     // v0.25.1568: 選択ステージのBGMを開始前に先読み(非デフォルトステージのステージ開始BGM遅延対策)。
