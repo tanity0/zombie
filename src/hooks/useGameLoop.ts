@@ -243,12 +243,18 @@ import {
   resistsChipKnockback,
   isGuardianPhantom, // v0.25.3640: 幻影が弾いた弾の数字/SE抑止(成果物監査Q1-1)
   isPumpkinTier, // PACING_PUZZLE.md §9-7#1(削岩型): pumpkinの特別扱いをdrillerと共有する述語
-  isReaperFamily, isTerminalReaper, isHangedman // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
+  isReaperFamily, isTerminalReaper, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
+  pickNearestTarget, // UNIQUE_WEAPONS.md §19-3: 金環の対象取得(各金環が独立に最寄りの敵を取る)
 } from '../utils/enemyUtils';
 import { resolvePumpkinTier, allowDrillerForRun, allowLoggerForRun } from '../utils/drillerAi'; // PACING_PUZZLE.md §9-3/§14-3
 import { isBossMakerRun } from '../utils/bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdriller/loggerを出さない
 import { isGauntletRun } from '../utils/gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdriller/loggerを出さない
-import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
+import { distToBandRect, shortenSegmentAtWalls } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角 / §19-2b: 持続線分の壁短縮
+import { tickPersistentBeams, pickBeamHits, type PersistentBeam } from '../utils/persistentBeam'; // UNIQUE_WEAPONS.md §19-1: 持続線分の共通土台
+import {
+  GoldRing, GOLD_RING_LASER_LEN, GOLD_RING_LASER_HALFWIDTH, GOLD_RING_LASER_MS, GOLD_RING_PULSE_MS,
+  GOLD_RING_FADE_MS, GOLD_RING_MAX_AIM_DIST, resolveGoldRingLaserDir,
+} from '../utils/goldRing'; // UNIQUE_WEAPONS.md §19: 金環の状態機械/パルス適用
 import { projectileFlightMsTo } from '../utils/projectileOrigin'; // GHOST_BOSS.md v9: 弾の飛翔時間(距離÷速度)
 import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs, turretNextReadyAt } from '../utils/turretTuning';
 import {
@@ -1325,6 +1331,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 裏CD(INCENDIARY_FLOOR_CD_MS)で安全側に倒す。
   const incendiaryFloorNextAtRef = useRef(0);
   const benkeiReadyRef = useRef(true); // 弁慶: 再発動CD明け検出(false→true で「閃き」フラッシュ)
+  const goldRingReadyRef = useRef(true); // 金環: CD明け検出(同上・ブーメラン型の一瞬通知・UNIQUE_WEAPONS.md §19-3)
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
   const rescueShootFxRef = useRef(0); // 救助NPC射撃SEの既再生タイムスタンプ
   const rescueRespawnRef = useRef(0); // 救助イベント: 次の攻撃者復活の予定 gameTime(0=空き無し/未予約)
@@ -11947,6 +11954,91 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // 金環(gold-ring・UNIQUE_WEAPONS.md §19): 展開(300ms・慣性は描画側)→照射(3秒・射線固定で
+        // 200msパルス)→フェード(統一型)の一方通行。金環本体には接触ダメージが無い(§19-2)ので、
+        // ここは「フェーズ遷移(展開完了/照射終了/消滅)」と「パルスのダメージ適用」だけを扱う。
+        // 判定式・0ベクトル対策・壁短縮は §19-1/§19-2b の共通土台(persistentBeam.ts/goldRing.ts)。
+        {
+          const grState = useGameStore.getState();
+          if (grState.goldRings.length > 0) {
+            // プレイヤー死亡・勝利時は消す(§19-3b「照射中に決着がついた時、動かない線が残らないように」)。
+            if (grState.player.health <= 0 || grState.gameWon) {
+              grState.setGoldRings([]);
+            } else {
+              const aimableEnemies = grState.enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e));
+              // レーザーが通れる壁を探す範囲(展開点±(レーザー長+マージン))。aoeWallsの200px paddingでは
+              // 420pxのレーザーに足りないため、専用のpadで持つ(indoor/outdoorの分け方はaoeWallsと同じ)。
+              const beamWalls = (cx: number, cy: number): Rect[] => {
+                if (indoor) return [...labBlockingWalls(loopState.labDoors.filter(d => d.open).map(d => d.id)), ...loopState.labProps.map(p => p.rect)];
+                const pad = GOLD_RING_LASER_LEN + 40;
+                return treesInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(trunkRect);
+              };
+              let changed = false;
+              const nextRings: GoldRing[] = [];
+              for (const ring of grState.goldRings) {
+                if (ring.phase === 'deploying') {
+                  if (gameTime < ring.deployEndAt) { nextRings.push(ring); continue; }
+                  changed = true;
+                  // 到達: 各金環が独立に最寄りの敵を取る(§19-2「同じ敵/別々の敵のどちらにもなる」が
+                  // これで自然に出る=場合分けを書かない)。
+                  const target = pickNearestTarget(ring.targetX, ring.targetY, aimableEnemies, gameTime, GOLD_RING_MAX_AIM_DIST * GOLD_RING_MAX_AIM_DIST);
+                  const targetPoint = target ? { x: target.x + target.width / 2, y: target.y + target.height / 2 } : null;
+                  const dir = resolveGoldRingLaserDir(ring.targetX, ring.targetY, targetPoint, ring.deployDirX, ring.deployDirY);
+                  const rawEndX = ring.targetX + dir.x * GOLD_RING_LASER_LEN;
+                  const rawEndY = ring.targetY + dir.y * GOLD_RING_LASER_LEN;
+                  const end = shortenSegmentAtWalls(ring.targetX, ring.targetY, rawEndX, rawEndY, beamWalls(ring.targetX, ring.targetY));
+                  const beam: PersistentBeam = {
+                    id: `${ring.id}-beam`,
+                    ax: ring.targetX, ay: ring.targetY, bx: end.x, by: end.y,
+                    halfWidth: GOLD_RING_LASER_HALFWIDTH,
+                    createdAt: gameTime, durationMs: GOLD_RING_LASER_MS, pulseMs: GOLD_RING_PULSE_MS,
+                    damage: ring.damagePerPulse, nextPulseAt: gameTime, // 展開完了と同時に1発目
+                  };
+                  nextRings.push({
+                    ...ring, phase: 'firing', beam,
+                    firingEndAt: gameTime + GOLD_RING_LASER_MS,
+                    fadeEndAt: gameTime + GOLD_RING_LASER_MS + GOLD_RING_FADE_MS,
+                  });
+                } else if (ring.phase === 'firing') {
+                  if (!ring.beam || gameTime >= ring.firingEndAt) {
+                    nextRings.push({ ...ring, phase: 'fading' });
+                    changed = true;
+                    continue;
+                  }
+                  const { beams: survBeams, pulses } = tickPersistentBeams([ring.beam], gameTime);
+                  if (pulses.length > 0) {
+                    changed = true;
+                    const pulseBeam = pulses[0];
+                    // G2.6: 倍率評価の主語=オーナー(守護霊は計測時ビルドの疑似Player・sensor-mineと同じ形)。
+                    const hitActor = ring.ownerGhostId !== undefined ? (combatActorPlayer(ring.ownerGhostId) ?? grState.player) : grState.player;
+                    const outMult = skillOutgoingDamageMult(hitActor); // 内部でgrowthAtkMultも掛かる(二重掛け禁止)
+                    const hateSource: 'player' | 'ghost' = ring.ownerGhostId !== undefined ? 'ghost' : 'player';
+                    const hits = pickBeamHits(pulseBeam.ax, pulseBeam.ay, pulseBeam.bx, pulseBeam.by, pulseBeam.halfWidth, aimableEnemies);
+                    for (const e of hits) {
+                      const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+                      const dmg = Math.max(1, Math.round(pulseBeam.damage * outMult));
+                      // nonLethalBoss は v0.25.1571 で廃止済み(引数は互換のため残置・実際は爆発以外も
+                      // ボスを倒せる)なので値は無関係。damageChannel='other'・クリなし(§19-2b)。
+                      const killed = damageEnemy(e.id, dmg, true, false, false, 'other', hateSource);
+                      spawnDamageNumber(ex, e.y, dmg, false);
+                      spawnBurst(ex, ey, '#fde68a', 3);
+                      if (killed) {
+                        playEnemyDeath();
+                        dropEnemyXp(e, ex, ey, `pickup-xp-gold-ring-${Math.floor(Date.now())}`);
+                      }
+                    }
+                  }
+                  nextRings.push({ ...ring, beam: survBeams[0] ?? ring.beam });
+                } else { // 'fading'
+                  if (gameTime >= ring.fadeEndAt) { changed = true; continue; } // 消滅(配列から落とす)
+                  nextRings.push(ring);
+                }
+              }
+              if (changed) grState.setGoldRings(nextRings);
+            }
+          }
+        }
+
         // ★敵対(幻影)のトラップは**別の走査**で解決する(社長裁定2026-08-25・SAME_ARENA §3-g)。
         // 下の味方側の走査は `enemies` を捕まえる形なので、敵対の物をここへ通すと
         // **幻影が自分のトラップにハマる**(v0.25.3879 で塞いだ自爆)がそのまま復活する。
@@ -13721,6 +13813,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState({ flareReadyFxAt: Date.now() });
           }
           flareReadyRef.current = ready;
+        }
+        // 金環のCD明け: ブーメランと同型(サブウェポン共通の「明けた瞬間だけ一瞬通知」・社長指示v0.25.2155
+        // ・UNIQUE_WEAPONS.md §19-3「武器ごとの個別配線なので書かないと出荷時に抜ける」)。
+        {
+          const hasGoldRing = player.subWeapons.includes('gold-ring') && !subWeaponBlockedByKatana(player, 'gold-ring');
+          const ready = hasGoldRing && gameTime >= (player.subWeaponCooldowns['gold-ring'] ?? 0);
+          if (ready && !goldRingReadyRef.current) {
+            playSfx('reload', 1, 300);
+            useGameStore.setState({ goldRingReadyFxAt: Date.now() });
+          }
+          goldRingReadyRef.current = ready;
         }
         // スキル: 弁慶のCD明け(再発動可)を not-ready→ready の瞬間に検出して
         // プレイヤー頭上に短いフラッシュ(描画のみ・スロー無し・~0.6s)。

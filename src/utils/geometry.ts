@@ -136,3 +136,36 @@ export const dashLineEraseRescale = (
   const total = distToTarget + strikeRange;
   return total < 1e-6 ? erase : erase * (distToTarget / total);
 };
+
+interface WallLikeRect { x: number; y: number; width: number; height: number }
+
+/**
+ * ★持続線分(金環/アイレーザー/氷槍の土台・UNIQUE_WEAPONS.md §19-1/§19-2b)が壁を貫通しないための
+ * 「最初の壁で線分そのものを短縮する」処理。敵ごとに `segmentBlocked` で弾く形にすると**絵(線)は
+ * 壁を貫通したまま**になり、CLAUDE.md「赤いのに当たらない/赤くないのに当たる」の禁に触れる。
+ * ここで終点そのものを詰めれば、以後の命中判定(`pickBeamHits`)も自動的に壁の内側だけを見る。
+ *
+ * Liang-Barsky で各壁との交差区間 [t0,t1] を求め、**線分が壁の外から入る入口(t0)の最小値**を
+ * 採用する(壁の中から発射される場合は呼び出し側が展開点そのものを `resolveAabb` で押し戻す
+ * 前提=ここでは「壁の外から壁に当たって止まる」ケースだけを扱う)。壁が無ければ (bx,by) のまま。
+ */
+export const shortenSegmentAtWalls = (
+  ax: number, ay: number, bx: number, by: number, walls: readonly WallLikeRect[],
+): Point => {
+  const dx = bx - ax, dy = by - ay;
+  let bestT = 1;
+  for (const w of walls) {
+    let t0 = 0, t1 = 1;
+    const clip = (p: number, q: number): boolean => {
+      if (p === 0) return q >= 0;
+      const t = q / p;
+      if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; }
+      else { if (t < t0) return false; if (t < t1) t1 = t; }
+      return true;
+    };
+    const hit = clip(-dx, ax - w.x) && clip(dx, (w.x + w.width) - ax)
+      && clip(-dy, ay - w.y) && clip(dy, (w.y + w.height) - ay);
+    if (hit && t0 > 1e-6 && t0 < bestT) bestT = t0;
+  }
+  return { x: ax + dx * bestT, y: ay + dy * bestT };
+};

@@ -1,7 +1,7 @@
 // ユニーク武器システム: カテゴリ×Tierの「スロット」候補キー(UNIQUE_WEAPONS.md §3-2)。
 // 純データのみ(解決ロジックは src/utils/weaponSlot.ts)。各配列の**先頭が既定候補**
 // (未設定/未解放時のフォールバック=UNIQUE_WEAPONS.md §3-1「既存キーの意味を変えない」)。
-import type { AmmoType } from '../types/game';
+import type { AmmoType, EnemyType, SubWeaponKey } from '../types/game';
 
 // AmmoTypeはphillを含む5種だが、横の対象は4カテゴリ(UNIQUE_WEAPONS.md §1・§3-2の注記)。
 export type SlotCategory = Exclude<AmmoType, 'phill'>;
@@ -56,6 +56,16 @@ export const BOSS_UNLOCK: Record<string, string> = {
   'rafi': 'shotgun-t1-focus',                  // ラフィ
   'bounty-ranged': 'rifle-t2-heavysniper',     // バス停(変異)
   'giantbat@stage-4': 'rifle-t1-deserttech',   // 衛生兵(変異)= 城ボス stage-4
+};
+
+// ボス撃破→サブウェポンの「設計図」入手(UNIQUE_WEAPONS.md §19-6・監査A1の是正)。
+// ★これは BOSS_UNLOCK(銃スロット専用)とは**別の台帳**——値は SlotCandidates ではなく
+// SubWeaponKey なので、絶対に BOSS_UNLOCK へ混ぜない(不変条件4「BOSS_UNLOCKの値はSLOT_CANDIDATES
+// のいずれか」が壊れる=weaponSlot.test.tsが落ちる)。ルックアップは BOSS_UNLOCK と同じ形
+// (`SUB_BOSS_UNLOCK[type@stage] ?? SUB_BOSS_UNLOCK[type]`)だが、呼び出し側(gameStore.ts)は
+// BOSS_UNLOCK の判定と**同じガード・同じ1箇所**で分岐させる(経路を2本にしない・§19-6項目3)。
+export const SUB_BOSS_UNLOCK: Partial<Record<EnemyType, SubWeaponKey>> = {
+  suriel: 'gold-ring', // スリィエル(ゲート2ボス)撃破→金環の設計図(UNIQUE_WEAPONS.md §19)
 };
 
 // 「店売り」の明示リスト(UNIQUE_WEAPONS.md §11-6-2・監査A-2の是正)。**「BOSS_UNLOCKに無い=店売り」

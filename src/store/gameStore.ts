@@ -47,6 +47,12 @@ import { FirstAidKitState, createFirstAidKitState } from '../utils/firstAidKit';
 import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL, SENSOR_MINE_CHARGE_COOLDOWN_MS, sensorMineChargesReady, consumeSensorMineCharge } from '../utils/sensorMine';
 import { SupportSniperNpcState, SUPPORT_SNIPER_CD_MS_BY_LEVEL } from '../utils/supportSniper';
 import { FlareGunFlare, activeFlareTargets, FLARE_GUN_CD_MS_BY_LEVEL, FLARE_GUN_FLIGHT_MS, FLARE_GUN_DURATION_MS } from '../utils/flareGun';
+// UNIQUE_WEAPONS.md §19: 金環(スリィエル報酬)。持続線分の座標/寿命/フェードの純状態は goldRing.ts、
+// 発動入口(このファイル)/パルス適用(useGameLoop)から共通に使う。
+import {
+  GoldRing, GOLD_RING_COOLDOWN_MS, GOLD_RING_DEPLOY_MS, GOLD_RING_OFFSET_PX, GOLD_RING_MAX_AIM_DIST,
+  GOLD_RING_DAMAGE_BY_LEVEL, computeGoldRingDeployPoints,
+} from '../utils/goldRing';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/bomberScatter';
 import {
@@ -107,7 +113,7 @@ import { resetHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPO
 import { nextCycleMode } from '../utils/cycleShotgun'; // UNIQUE_WEAPONS.md §16-2/§17-7(バッチB・切替式SG)
 import { stepHeavySniperStillMs } from '../utils/heavySniperCharge'; // UNIQUE_WEAPONS.md §16-2(バッチB・大型狙撃銃)
 import { resolveSlotKeyNow } from '../utils/weaponSlot'; // UNIQUE_WEAPONS.md §4-1(生成点=grantWeapon入口の安全網/武器庫)
-import { BOSS_UNLOCK } from '../data/weaponSlots'; // UNIQUE_WEAPONS.md §11-6(ボス撃破→ユニーク武器の設計図入手)
+import { BOSS_UNLOCK, SUB_BOSS_UNLOCK } from '../data/weaponSlots'; // UNIQUE_WEAPONS.md §11-6(ボス撃破→ユニーク武器の設計図入手)/§19-6(サブウェポン版・別台帳)
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
@@ -131,7 +137,7 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS, pickNearestTarget } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyDims'; // ★葉から取る(bountyTick から直接取ると循環import=起動全損・v0.25.4097)
 // research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 城ボス9州の予告寸法は葉モジュール
@@ -190,7 +196,7 @@ import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
   getEventQuestMeta, setEventQuestMeta, markCastleBossCleared, syncQuestStageClear,
   updateStoryFlags, markMissionCleared,
-  isKogarasuUnlocked, markKogarasuUnlocked, markWeaponBlueprint,
+  isKogarasuUnlocked, markKogarasuUnlocked, markWeaponBlueprint, markSubBlueprint,
   getSelectedFreeMode,
   type WallMeta,
 } from '../data/progress';
@@ -2807,6 +2813,7 @@ let flareGunSeq = 0;    // フレアガン(flare-gun)のフレアの一意id採�
 let bossFireSeq = 0;    // ジブリルのランタン火の一意id採番(プール/差分の安定キー)
 let acrasielSpearSeq = 0; // §6.28-19: アクラシエルの結晶の槍の一意id採番(プール/差分の安定キー)
 let bloodSpikeSeq = 0;  // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘の一意id採番
+let goldRingSeq = 0;    // UNIQUE_WEAPONS.md §19: 金環(gold-ring)の一意id採番(プール/差分の安定キー)
 let gravityWellSeq = 0; // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショット(gravity-shot)爆縮の一意id採番
 // v0.25.3703(社長指示「グラビティショットはキル時じゃなくて、射撃ヒット時に確率にして」):
 // ヒットはキルの数倍の頻度なので、渦のバラマキ防止に発動後は再抽選CD(実時間・叩き台=実機で調整)。
@@ -3367,6 +3374,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'support-sniper': return '援護射撃';
     case 'flare-gun': return 'フレアガン';
     case 'junk-weapon': return 'ジャンクウェポン';
+    case 'gold-ring': return '金環';
     default: return 'サブウェポン';
   }
 };
@@ -3542,6 +3550,23 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
           color: '#facc15',
           kind: 'weapon',
           weaponKey: unlockKey
+        }
+      });
+    }
+    // UNIQUE_WEAPONS.md §19-6項目3: サブウェポンの設計図も**同じガード・同じ1箇所**で分岐させる
+    // (経路を2本にしない)。台帳は SUB_BOSS_UNLOCK(銃の BOSS_UNLOCK とは別・§19-6項目2)。
+    // ルックアップの形は銃と揃えるため `${type}@${stage}` のキーで引くが、SUB_BOSS_UNLOCK は
+    // EnemyType キーの Partial<Record> なので、複合キーの参照だけ EnemyType へキャストする。
+    const subUnlockKey = SUB_BOSS_UNLOCK[`${enemy.type}@${getSelectedStageId() ?? ''}` as EnemyType] ?? SUB_BOSS_UNLOCK[enemy.type];
+    if (subUnlockKey && markSubBlueprint(subUnlockKey)) {
+      useGameStore.setState({
+        lastWeaponGet: {
+          // ★トーストの名前はサブ名の表(subWeaponDisplayName)から引く(銃のweaponDisplayNameではない・§19-6項目5)。
+          name: `${subWeaponDisplayName(subUnlockKey)} 設計図入手`,
+          at: Date.now(),
+          color: '#facc15',
+          kind: 'weapon',
+          weaponKey: subUnlockKey
         }
       });
     }
@@ -4318,6 +4343,67 @@ const fireDroneBoomerangOnSwing = (
   return true;
 };
 
+/**
+ * 金環(gold-ring・近接スイング入口・CD9秒・全Lv共通・UNIQUE_WEAPONS.md §19)。発動したら true。
+ * 「最初のターゲット」はオーナー中心からの最寄り(§19-3・enemyUtils.pickNearestTarget)。
+ * ★対象が居ない(距離420px以内に敵が居ない)時は発動しない・CDも消費しない(§19-2b)。
+ * 2本の展開先はターゲット中心から直交へ±70px(computeGoldRingDeployPoints)。壁の中に落ちたら
+ * その場で resolveAabb して押し戻す(§19-2b「展開点が壁の中」)。パルス適用・キル処理・
+ * レーザーの生成(壁短縮込み)は useGameLoop 側(展開完了=deployEndAt到達を検出してから)。
+ */
+const fireGoldRingOnSwing = (
+  get: () => GameState, actor: Player, owner: SubWeaponOwner, gameTime: number,
+): boolean => {
+  if (
+    !actor.subWeapons.includes('gold-ring') ||
+    subWeaponBlockedByKatana(actor, 'gold-ring') ||
+    gameTime < (actor.subWeaponCooldowns['gold-ring'] ?? 0)
+  ) return false;
+  const ocx = ownerCenterX(owner);
+  const ocy = ownerCenterY(owner);
+  // 死神系(横切り演出の無敵ゴースト)を狙っても絶対に当てられない(§19-2b「除外」と同じ述語)ので、
+  // 「最初のターゲット」の取得段階から除く(倒せない相手へ2本とも空撃ちするのを避ける)。
+  const aimable = get().enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)));
+  const firstTarget = pickNearestTarget(ocx, ocy, aimable, gameTime, GOLD_RING_MAX_AIM_DIST * GOLD_RING_MAX_AIM_DIST);
+  if (!firstTarget) return false; // §19-2b「対象が居ない時: 発動しない・CDも消費しない」
+  const tcx = firstTarget.x + firstTarget.width / 2;
+  const tcy = firstTarget.y + firstTarget.height / 2;
+  let ddx = tcx - ocx, ddy = tcy - ocy;
+  const dmag = Math.max(0.001, Math.hypot(ddx, ddy)); // §19-2b「0ベクトル」対策と同じ0.001フロア
+  ddx /= dmag; ddy /= dmag;
+  const lvl = Math.max(1, Math.min(3, actor.subWeaponLevels['gold-ring'] ?? 1));
+  const dmgPerPulse = GOLD_RING_DAMAGE_BY_LEVEL[lvl];
+  const [p1, p2] = computeGoldRingDeployPoints(tcx, tcy, ddx, ddy);
+  const deployWalls = meleeWallsAround(get, tcx, tcy, GOLD_RING_OFFSET_PX);
+  const ghostOwned = owner.kind === 'ghost-ally';
+  const ghostId = ownerGhostId(owner);
+  const mkRing = (id: string, pt: { x: number; y: number }): GoldRing => {
+    // §19-2b「展開点が壁の中: resolveAabbで押し戻す」。極小矩形(2x2)は flareGun の疑似着弾点と
+    // 同じ流儀(中心が展開先に一致する最小のAABBで押し戻す)。
+    const pushed = resolveAabb({ x: pt.x - 1, y: pt.y - 1, width: 2, height: 2 }, deployWalls);
+    return {
+      id,
+      ...(ghostId !== undefined ? { ownerGhostId: ghostId } : {}),
+      ...(ghostOwned ? { ownerGhost: true } : {}), // 既存のゴースト発動サブと同じ視覚専用マーカー(青白tint)
+      phase: 'deploying',
+      startX: ocx, startY: ocy,
+      targetX: pushed.x + 1, targetY: pushed.y + 1,
+      deployStartAt: gameTime,
+      deployEndAt: gameTime + GOLD_RING_DEPLOY_MS,
+      deployDirX: ddx, deployDirY: ddy,
+      beam: null,
+      firingEndAt: 0,
+      fadeEndAt: 0,
+      damagePerPulse: dmgPerPulse,
+    };
+  };
+  useGameStore.setState(state => ({
+    goldRings: [...state.goldRings, mkRing(`gold-ring-${goldRingSeq++}`, p1), mkRing(`gold-ring-${goldRingSeq++}`, p2)],
+  }));
+  setActorSubWeaponCooldown(ghostId, 'gold-ring', gameTime + GOLD_RING_COOLDOWN_MS);
+  return true;
+};
+
 /** フレアガン(近接スイング入口・CD=Lv別)。発動したら true。 */
 const fireFlareGunOnSwing = (
   actor: Player, owner: SubWeaponOwner, gameTime: number,
@@ -4944,6 +5030,7 @@ interface GameState {
   // サブウェポンのチャージ通知は全共通で「明けた瞬間だけ一瞬出る」ブーメラン型(社長指示v0.25.2155)。
   flareReadyFxAt: number;
   benkeiReadyFxAt: number; // 弁慶CD明けの頭上アイコン(v0.25.3623・旧「閃き」テキストの置換)
+  goldRingReadyFxAt: number; // 金環のCD明け演出(頭上マーク・ブーメラン型)の発火時刻(Date.now・UNIQUE_WEAPONS.md §19-3)
   // マークスマン(mage)の射程上昇が発動した瞬間の頭上マーク演出。fxAt=発火時刻(Date.now)、
   // fxShownFor=その演出を出した連続移動streak(=marksmanMovingSince)。streakごとに一度だけ出す。
   marksmanRangeFxAt: number;
@@ -5294,6 +5381,13 @@ interface GameState {
   // 寿命の回収は useGameLoop(pruneFlares)、描画は pixiScene が直読み。ダメージ無し。
   flareGunFlares: FlareGunFlare[];
   setFlareGunFlares: (flares: readonly FlareGunFlare[]) => void; // useGameLoop が pruneFlares の結果を反映するだけ
+
+  // 金環(gold-ring)サブウェポン(スリィエル報酬・UNIQUE_WEAPONS.md §19)。発動は triggerCounter/
+  // fireGhostMeleeSwingSubs(近接スイング相乗り)、状態機械(展開→照射→フェード)とパルス適用は
+  // useGameLoop、持続線分の純状態は src/utils/goldRing.ts(§19-1の土台は persistentBeam.ts)、
+  // 描画は pixiScene が直読み(CLAUDE.md「PixiJSは描くだけ」)。
+  goldRings: GoldRing[];
+  setGoldRings: (rings: readonly GoldRing[]) => void; // useGameLoop が状態機械/パルスtickの結果を反映するだけ
   spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number) => void; // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
   // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)の燃焼DoT。命中した敵個体が持つ
@@ -5369,7 +5463,7 @@ interface GameState {
   // プレイヤーの triggerCounter が通るのと**同じ3本の共通ヘルパ**(ドローンブーメラン/フレアガン/
   // ジャンクウェポン)を、主語(疑似Player+ghostAsOwner)だけ差し替えて同じ順序で呼ぶ。
   // 戻り値=実際に発動したか(呼び出し側が距離減衰SEを鳴らすため)。
-  fireGhostMeleeSwingSubs: (ghostId: string) => { boomerang: boolean; flare: boolean; junk: boolean; clone: boolean; mine: boolean };
+  fireGhostMeleeSwingSubs: (ghostId: string) => { boomerang: boolean; flare: boolean; junk: boolean; clone: boolean; mine: boolean; goldRing: boolean };
   // Whip (鞭) actions. performWhipStrike sweeps the given enemies with whip rules
   // (low damage, big knockback, crit, finisher, 20% ammo) and returns the hit
   // count for charge. performHurricane spawns the suction vortex at the tip;
@@ -6091,6 +6185,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   boomerangReadyFxAt: 0,
   flareReadyFxAt: 0,
   benkeiReadyFxAt: 0,
+  goldRingReadyFxAt: 0,
   marksmanRangeFxAt: 0,
   marksmanRangeFxShownFor: 0,
   rescueShooterFxAt: 0,
@@ -6119,6 +6214,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   supportSniperCdMs: SUPPORT_SNIPER_CD_MS_BY_LEVEL[1],
   supportSniperNpc: null,
   flareGunFlares: [],
+  goldRings: [],
   firstAidKitState: createFirstAidKitState(),
   projectiles: [],
   pickups: [],
@@ -7056,6 +7152,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ドローンブーメラン: 近接攻撃(このスイング)と同じ入力で発動(自動ではない)。5秒クールダウン中は不可。
     // ※発火経路を近接攻撃と統一(以前の「立ち止まり中」専用ゲートは廃止=近接と同ロジック)。
     fireDroneBoomerangOnSwing(get, player, swingOwner, gameTime, meleeDamage);
+
+    // 金環(gold-ring・UNIQUE_WEAPONS.md §19): ブーメランと同じ「近接スイング相乗り」入口(§19-3)。
+    fireGoldRingOnSwing(get, player, swingOwner, gameTime);
 
     // センサー地雷(sensor-mine): 近接攻撃(このスイング)と同じ入力で足元に1個設置
     // (§6.13 M36: グローバルCDではなくチャージ制。チャージ数=同時設置上限Lv1=3/Lv2=4/Lv3=5と同じ。
@@ -8226,6 +8325,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // フレアガン(flare-gun): 寿命の回収は useGameLoop が pruneFlares(純関数)で決め、ここは反映のみ。
   setFlareGunFlares: (flares) => set({ flareGunFlares: [...flares] }),
+
+  // 金環(gold-ring): 状態機械/パルスtickは useGameLoop が決め、ここは反映のみ。
+  setGoldRings: (rings) => set({ goldRings: [...rings] }),
 
   // 救急鞄(first-aid-kit): 判定(何を払い出すか/空になったか)は useGameLoop が
   // computeFirstAidKitTick / isFirstAidKitEmpty(純関数)で決め、ここは結果を state へ書き込むだけ。
@@ -9941,7 +10043,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 相乗り型サブに **分身(shadow-clone)** と **センサー地雷(sensor-mine)** を追加=プレイヤーの
   // 近接スイング入口(triggerCounter)と同じ顔ぶれ・同じ順序になった(★未決2/★未決5の裁定を実装)。
   fireGhostMeleeSwingSubs: (ghostId) => {
-    const none = { boomerang: false, flare: false, junk: false, clone: false, mine: false };
+    const none = { boomerang: false, flare: false, junk: false, clone: false, mine: false, goldRing: false };
     const st = get();
     const ghost = st.summons.find(s => s.id === ghostId && s.kind === 'ghost-ally');
     const actor = combatActorPlayer(ghostId); // 疑似Player(ビルド+実体の座標/HP)。ビルド無し=null
@@ -9950,13 +10052,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     const gameTime = st.gameTime;
     const melee = actor.weapons.find(w => w.isMelee);
     const meleeDamage = meleeSwingBaseDamage(melee, actor); // ブーメランの接触ダメージ=通常近接同等
-    // 呼び出し順は triggerCounter と同じ(ブーメラン→地雷→フレア→ジャンク→分身)。
+    // 呼び出し順は triggerCounter と同じ(ブーメラン→金環→地雷→フレア→ジャンク→分身)。
     const boomerang = fireDroneBoomerangOnSwing(get, actor, owner, gameTime, meleeDamage);
+    const goldRing = fireGoldRingOnSwing(get, actor, owner, gameTime);
     const mine = placeSensorMineOnSwing(get, actor, owner, gameTime);
     const flare = fireFlareGunOnSwing(actor, owner, gameTime);
     const junk = fireJunkWeaponOnSwing(get, actor, owner);
     const clone = spawnShadowCloneOnSwing(get, actor, owner, gameTime);
-    return { boomerang, flare, junk, clone, mine };
+    return { boomerang, flare, junk, clone, mine, goldRing };
   },
 
   damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove) => {
@@ -18702,6 +18805,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         supportSniperCdMs: SUPPORT_SNIPER_CD_MS_BY_LEVEL[1],
         supportSniperNpc: null,
         flareGunFlares: [],
+        goldRings: [], // ★足さないと前ランの金環が次ランへ残る(UNIQUE_WEAPONS.md §19-3b)
         firstAidKitState: createFirstAidKitState(),
         breakableProps: runBreakables,
         destroyedBreakableProps: {},

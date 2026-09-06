@@ -264,6 +264,34 @@ describe('C: 近接スイング相乗り型サブ(台帳§7)', () => {
     expect(useGameStore.getState().fireGhostMeleeSwingSubs(GID).flare).toBe(false);
   });
 
+  // UNIQUE_WEAPONS.md §19: 金環(gold-ring)。ドローンブーメラン/フレアガンと同じ相乗り入口だが、
+  // 「対象が居ないと発動しない」という金環固有のゲートがあるため専用の敵配置が要る(§19-2b)。
+  it('金環: ゴースト位置から2本展開し、CDはゴースト自前の帳簿に入る(青白tintマーカー付き)', () => {
+    place(snap(['gold-ring'], { 'gold-ring': 1 }));
+    const gs = useGameStore.getState();
+    gs.addEnemy(spawnEnemyAt('zombie', GX + 50, GY, gs.gameTime));
+    const r = useGameStore.getState().fireGhostMeleeSwingSubs(GID);
+    expect(r.goldRing).toBe(true);
+    const rings = useGameStore.getState().goldRings;
+    expect(rings.length).toBe(2);
+    expect(rings.every(x => x.ownerGhost === true)).toBe(true);
+    expect(rings.every(x => x.ownerGhostId === GID)).toBe(true);
+    expect(rings.every(x => x.phase === 'deploying')).toBe(true);
+    expect(ghost()!.ghostSubWeaponCooldowns?.['gold-ring'])
+      .toBeGreaterThan(useGameStore.getState().gameTime);
+    expect(useGameStore.getState().player.subWeaponCooldowns['gold-ring']).toBeUndefined();
+    // CD中の次のスイングでは出ない(プレイヤーと同条件)
+    expect(useGameStore.getState().fireGhostMeleeSwingSubs(GID).goldRing).toBe(false);
+  });
+
+  it('金環: 対象(420px以内の敵)が居ないと発動せず、CDも消費しない(§19-2b)', () => {
+    place(snap(['gold-ring'], { 'gold-ring': 1 })); // 敵ゼロ
+    const r = useGameStore.getState().fireGhostMeleeSwingSubs(GID);
+    expect(r.goldRing).toBe(false);
+    expect(useGameStore.getState().goldRings.length).toBe(0);
+    expect(ghost()!.ghostSubWeaponCooldowns?.['gold-ring']).toBeUndefined();
+  });
+
   it('ジャンクウェポン: 5発出るがスクラップは消費しない(除外4=弾薬非消費)', () => {
     place(snap(['junk-weapon']));
     useGameStore.setState(s => ({ player: { ...s.player, straps: 0 } })); // 在庫0でも撃てる(弾薬の概念が無い)
@@ -277,17 +305,18 @@ describe('C: 近接スイング相乗り型サブ(台帳§7)', () => {
   });
 
   it('刀ビルドでは相乗り型サブは出ない(プレイヤーと同じ排他=subWeaponBlockedByKatana)', () => {
-    place(snap(['katana', 'drone-boomerang', 'flare-gun', 'junk-weapon', 'shadow-clone', 'sensor-mine']));
+    place(snap(['katana', 'drone-boomerang', 'flare-gun', 'junk-weapon', 'shadow-clone', 'sensor-mine', 'gold-ring']));
     const r = useGameStore.getState().fireGhostMeleeSwingSubs(GID);
-    expect(r).toEqual({ boomerang: false, flare: false, junk: false, clone: false, mine: false });
+    expect(r).toEqual({ boomerang: false, flare: false, junk: false, clone: false, mine: false, goldRing: false });
     expect(useGameStore.getState().projectiles.length).toBe(0);
     expect(useGameStore.getState().sensorMines.length).toBe(0);
+    expect(useGameStore.getState().goldRings.length).toBe(0);
     expect(ghost()!.ghostShadowClone).toBeUndefined();
   });
 
   it('持っていないサブは出ない / ゴースト不在なら何も起きない', () => {
     place(snap([]));
-    const none = { boomerang: false, flare: false, junk: false, clone: false, mine: false };
+    const none = { boomerang: false, flare: false, junk: false, clone: false, mine: false, goldRing: false };
     expect(useGameStore.getState().fireGhostMeleeSwingSubs(GID)).toEqual(none);
     expect(useGameStore.getState().fireGhostMeleeSwingSubs('nope')).toEqual(none);
   });

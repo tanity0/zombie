@@ -723,6 +723,7 @@ export const SUB_WEAPON_KEYS: SubWeaponKey[] = [
   'support-sniper',
   'flare-gun',
   'junk-weapon',
+  'gold-ring',
 ];
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備は所持から2枠選択。

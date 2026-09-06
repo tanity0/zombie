@@ -380,6 +380,34 @@ export const getsDramaticDeath = (enemy: Enemy): boolean =>
 // これが唯一の判定=AI/攻撃/照準/被弾/対象選定の全経路がこの1関数で除外する(§26-2)。
 export const isCorpse = (e: Pick<Enemy, 'corpseUntil'>): boolean => e.corpseUntil !== undefined;
 
+// UNIQUE_WEAPONS.md §19-3(監査A2・A9の是正): 銃の自動照準(weaponUtils.ts の module-local
+// `pickTarget`)と**同じ選び方**を、Player型に縛られない座標引数の形へ切り出したもの。
+// 「最寄り(=中心距離ではなく aimEnemyDist2=当たり判定の矩形の最近点)・スタン中は最終手段」の
+// 2段構えは元の pickTarget と1bit同値(weaponUtils.pickTarget はこの関数へ委譲する)。
+// オーナーがプレイヤーとは限らないサブウェポン(金環・守護霊発動)がプレイヤー中心を素通しせず
+// 呼べるように、ここへ置く(enemyUtils.ts は gameStore を import しないので循環参照が起きない)。
+// maxDist2 を渡すとその外の敵を除外(既定=無制限。銃の自動照準は射程ゲートを別に持つため無制限のまま)。
+export const pickNearestTarget = (
+  pcx: number, pcy: number, enemies: readonly Enemy[], gameTime: number, maxDist2 = Infinity,
+): Enemy | null => {
+  let best: Enemy | null = null;
+  let bestD2 = Infinity;
+  let bestStunned: Enemy | null = null;
+  let bestStunnedD2 = Infinity;
+  for (const e of enemies) {
+    if (isCorpse(e)) continue;
+    const d2 = aimEnemyDist2(pcx, pcy, e);
+    if (d2 > maxDist2) continue;
+    const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;
+    if (stunned) {
+      if (d2 < bestStunnedD2) { bestStunnedD2 = d2; bestStunned = e; }
+    } else if (d2 < bestD2) {
+      bestD2 = d2; best = e;
+    }
+  }
+  return best ?? bestStunned;
+};
+
 // KILLされた通常敵が「死体化」の対象になり得るか(ボス系/ネームド/クエスト対象=getsDramaticDeath系は
 // 従来どおり対象外・§26-1)。判定は「型」ではなく getsDramaticDeath と同じ安全側の合わせ技:
 // isBossType は pumpkin(getsDramaticDeathは false)も含むため、ボス系は型だけで丸ごと除外する。

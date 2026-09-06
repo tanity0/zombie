@@ -19,6 +19,7 @@ import {
   markStageCleared, getClearedStages, getClearedMissions, markMissionCleared, missionIdForMain, resetProgress,
   isWeaponUnlocked, markWeaponUnlocked, getWeaponUnlocks, clearWeaponUnlocks,
   hasWeaponBlueprint, markWeaponBlueprint, getWeaponBlueprints, clearWeaponBlueprints,
+  hasSubBlueprint, markSubBlueprint, getSubBlueprints, clearSubBlueprints,
 } from './progress';
 
 beforeEach(() => { for (const k of Object.keys(backing)) delete backing[k]; });
@@ -111,6 +112,39 @@ describe('ユニーク武器: 設計図と購入済みは別台帳(UNIQUE_WEAPON
     resetProgress();
     expect(getWeaponBlueprints().size).toBe(0);
     expect(getWeaponUnlocks().size).toBe(0);
+  });
+});
+
+// サブウェポンの設計図台帳(UNIQUE_WEAPONS.md §19-6・監査A1の是正)。
+// 銃用(weaponBlueprints)と完全に同じ形の別台帳——「サブウェポンの解放は別の台帳を使う」と
+// 書かれていたが存在しなかった、その実体。銃側と混ざらないこと・resetProgressで消えることを確認する。
+describe('サブウェポンの設計図台帳(UNIQUE_WEAPONS.md §19-6)', () => {
+  it('立てた瞬間だけtrue(銃用と同じ作法)', () => {
+    expect(markSubBlueprint('gold-ring')).toBe(true);
+    expect(hasSubBlueprint('gold-ring')).toBe(true);
+    expect(markSubBlueprint('gold-ring')).toBe(false);
+  });
+
+  it('★銃用の台帳(weaponBlueprints)とは独立(混ざらない)', () => {
+    markSubBlueprint('gold-ring');
+    expect(hasWeaponBlueprint('gold-ring')).toBe(false);
+    expect(getWeaponBlueprints().has('gold-ring')).toBe(false);
+    markWeaponBlueprint('handgun-t1-derringer');
+    expect(hasSubBlueprint('handgun-t1-derringer')).toBe(false);
+  });
+
+  it('clearSubBlueprints は自分の台帳だけを消す(銃用は残る)', () => {
+    markSubBlueprint('gold-ring');
+    markWeaponBlueprint('handgun-t1-derringer');
+    clearSubBlueprints();
+    expect(getSubBlueprints().size).toBe(0);
+    expect(getWeaponBlueprints().has('handgun-t1-derringer')).toBe(true);
+  });
+
+  it('resetProgress: サブの設計図も消える', () => {
+    markSubBlueprint('gold-ring');
+    resetProgress();
+    expect(getSubBlueprints().size).toBe(0);
   });
 });
 

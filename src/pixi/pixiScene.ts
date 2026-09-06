@@ -146,6 +146,9 @@ import {
   type SupportSniperNpcState,
 } from '../utils/supportSniper';
 import type { FlareGunFlare } from '../utils/flareGun';
+// UNIQUE_WEAPONS.md §19: 金環(gold-ring)。位置/ease/レーザー方向は純関数(goldRing.ts)を読むだけ
+// (状態そのものはuseGameLoopが書く。CLAUDE.md「PixiJSは描くだけ」)。
+import { type GoldRing, goldRingCurrentPos } from '../utils/goldRing';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import {
   SWORD_VISIBILITY_FADE_MS, swordAttackAngle, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha,
@@ -3556,6 +3559,14 @@ export class PixiScene {
   // 斬撃ストリーク1枚(既存fx/slash-streak-*流用)。単純な1枚Sprite=thorSlashFx等のContainer3枚
   // 構成(streak+burst+katana)は要らない(武器絵は環そのものが担うため)。
   private surielSweepStreakFx = new Map<string, Sprite>();
+  // UNIQUE_WEAPONS.md §19: 金環(gold-ring・スリィエル報酬のサブウェポン)。suriel-ring と同じ素材を
+  // 使う(スリィエルの武器そのものをプレイヤーが振るう=文脈に合う)。線は pooled sprite(per-frame
+  // Graphicsの描き直しをしない・§19-4)——1本につき core(白芯)+halo(金の広がり)の2枚。
+  // 強glowは付けない(§19-4=CLAUDE.md実測。投影影を落とす光源にしない)。
+  private goldRingViews = new Map<string, {
+    ring: Sprite; beamCore: Sprite; beamHalo: Sprite;
+    spinAng: number; spinVel: number; lastSpinAt: number;
+  }>();
   // §6.28-19(バッチM63): アクラシエルの結晶の槍(acrasielSpears)。設置中の槍スプライト+T5円テレグラフ
   // (ジブリル火=syncBossFiresと同型の「共有Graphics1枚+スプライトプール」方式)。
   private acrasielSpearGfx = new Graphics();
@@ -3763,6 +3774,7 @@ export class PixiScene {
   private skadiBlockPool = new Map<string, Sprite>(); // 氷塊スプライト(マーカーid→sprite)
   private skadiBladePool = new Map<string, Sprite>(); // 氷刃スプライト(ブレードid→sprite)
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
+  private goldRingReadyGfx = new Graphics(); // 金環CD明けの頭上マーク(同型・UNIQUE_WEAPONS.md §19-3)
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
   private homingLockGfx = new Graphics();   // ホーミング弾ロックインジケーター(ロック済み敵の頭上マーカー)
   private flareReadyGfx = new Graphics();   // フレアガンのチャージ完了マーク(プレイヤー頭上の小さな炎・v0.25.2154)
@@ -4780,6 +4792,8 @@ export class PixiScene {
     this.L.actorLayer.addChild(this.policeSprite);
     this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
+    this.goldRingReadyGfx.blendMode = 'add';
+    this.L.effectLayer.addChild(this.goldRingReadyGfx);
     this.L.effectLayer.addChild(this.marksmanMarkGfx);
     this.L.effectLayer.addChild(this.skadiHazardGfx);      // 氷塊の赤テレグラフ円(地面寄り)
     this.L.effectLayer.addChild(this.skadiHazardContainer); // 氷塊/氷刃スプライト
@@ -8000,6 +8014,7 @@ export class PixiScene {
     this.syncPickups(s.pickups, now);
     this.syncPumpkinTelegraph(s.enemies, now, s.gameTime); // ジャンプ攻撃の着地予告(赤い影)
     this.updateBoomerangReadyMark(s.player, now); // ブーメランCD明けの頭上マーク
+    this.updateGoldRingReadyMark(s.player, now); // 金環CD明けの頭上マーク(UNIQUE_WEAPONS.md §19-3)
     this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
     this.updateFlareReadyMark(s.player, now);     // フレアガンCD明けの頭上炎マーク(一瞬・ブーメラン型)
     this.updateBenkeiReadyMark(s.player, now);    // 弁慶CD明けの頭上スキルアイコン(v0.25.3623・旧「閃き」)
@@ -8028,6 +8043,7 @@ export class PixiScene {
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
     this.syncSensorMines(s.sensorMines, s.gameTime, now); // センサー地雷(待機ディスク/感知後2秒の赤点滅テレグラフ)
     this.syncFlareGun(s.flareGunFlares, s.gameTime, now); // フレアガン(飛翔→着弾中3秒の火・molotovの火を流用)
+    this.syncGoldRings(s.goldRings, s.gameTime, now); // 金環(UNIQUE_WEAPONS.md §19・展開→照射→フェード)
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now, s.effects, s.breakableProps, s.endingSoldiers);
@@ -10063,6 +10079,43 @@ export class PixiScene {
     const sp = this.boomReadySp;
     if (sp.texture !== tex) sp.texture = tex;
     const pop = t < 0.2 ? 1.25 - 0.25 * (t / 0.2) : 1; // 出現オーバーシュート→整定(慣性・弁慶と同じ)
+    const BOX = 26;
+    sp.scale.set((BOX / Math.max(1, Math.max(tex.width, tex.height))) * pop);
+    sp.position.set(cx, cy);
+    sp.alpha = Math.max(0, alpha);
+    sp.visible = sp.alpha > 0.01;
+  }
+
+  // 金環CD明け: ブーメランと同型(社長指示v0.25.2155・全サブ共通のブーメラン型・UNIQUE_WEAPONS.md §19-3)。
+  // マークは金環のテクスチャ(suriel-ring)を使う。
+  private goldRingReadySp: Sprite | null = null;
+  private updateGoldRingReadyMark(player: Player, now: number) {
+    const g = this.goldRingReadyGfx;
+    g.clear();
+    const at = useGameStore.getState().goldRingReadyFxAt;
+    const life = 650;
+    const dt = now - at;
+    if (at <= 0 || dt < 0 || dt > life) { if (this.goldRingReadySp) this.goldRingReadySp.visible = false; return; }
+    const t = dt / life;
+    const alpha = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82;
+    const rise = -18 * t;
+    const cx = player.x + player.width / 2;
+    const cy = player.y - 46 + rise;
+    const flash = Math.max(0, 1 - dt / 170);
+    if (flash > 0) {
+      g.circle(cx, cy, 11 + 18 * (1 - flash)).fill({ color: 0xfde68a, alpha: 0.5 * flash });
+      g.circle(cx, cy, 5).fill({ color: 0xffffff, alpha: 0.95 * flash });
+    }
+    const tex = getTexture('suriel-ring');
+    if (!tex || tex.width === 0) return;
+    if (!this.goldRingReadySp) {
+      this.goldRingReadySp = new Sprite(tex);
+      this.goldRingReadySp.anchor.set(0.5);
+      this.L.effectLayer.addChild(this.goldRingReadySp);
+    }
+    const sp = this.goldRingReadySp;
+    if (sp.texture !== tex) sp.texture = tex;
+    const pop = t < 0.2 ? 1.25 - 0.25 * (t / 0.2) : 1;
     const BOX = 26;
     sp.scale.set((BOX / Math.max(1, Math.max(tex.width, tex.height))) * pop);
     sp.position.set(cx, cy);
@@ -13185,6 +13238,94 @@ export class PixiScene {
       const fade = 1 - vt;
       views.ring1.rotation = views.spinAng; views.ring1.alpha = fade;
       views.ring2.rotation = -views.spinAng; views.ring2.alpha = fade;
+    }
+  }
+
+  // UNIQUE_WEAPONS.md §19: 金環(gold-ring・スリィエル報酬のサブウェポン)。suriel-ring と同じ素材
+  // (スリィエルの武器そのものをプレイヤーが振るう=文脈が合う)。状態機械(展開/照射/フェード)は
+  // useGameLoopが書く(ここは読むだけ)。強glowは付けない(§19-4=CLAUDE.md実測: 強glow1個≈2ms/フレームで
+  // 高いのは投影影。加算合成のスプライトは光源登録しないので対象外)。
+  private syncGoldRings(rings: GoldRing[], gameTime: number, now: number) {
+    const seen = new Set<string>();
+    const tex = getTexture('suriel-ring');
+    const RING_VIS_D = 44; // 画面上の直径(px・叩き台=スリィエル本体の環SURIEL_RING_VIS_D=54よりやや小さく)
+    const SPIN_TARGET = 1 / 220;
+    const SPIN_TAU_MS = 200;
+    const BEAM_APPEAR_MS = 100; // §19-4「レーザーの出現にも慣性(80〜120msで幅とαを立ち上げる)」の中央値
+    for (const ring of rings) {
+      seen.add(ring.id);
+      let v = this.goldRingViews.get(ring.id);
+      if (!v) {
+        const ringSp = new Sprite(); ringSp.anchor.set(0.5);
+        const beamCore = new Sprite(Texture.WHITE); beamCore.anchor.set(0, 0.5);
+        const beamHalo = new Sprite(Texture.WHITE); beamHalo.anchor.set(0, 0.5);
+        beamHalo.blendMode = 'add'; // 派手さの絵(判定より大きく見せてよい層)。光源登録はしない=強glowではない
+        this.L.effectLayer.addChild(beamHalo, beamCore, ringSp); // 地面のエフェクト層(アクター系の減光を掛けない・§19-4)
+        v = { ring: ringSp, beamCore, beamHalo, spinAng: 0, spinVel: 0, lastSpinAt: now };
+        this.goldRingViews.set(ring.id, v);
+      }
+      // スピン(慣性つき・スリィエル本体の環=syncSurielRingと同型)。
+      const sdt = Math.max(0, Math.min(100, now - v.lastSpinAt));
+      v.lastSpinAt = now;
+      v.spinVel += (SPIN_TARGET - v.spinVel) * (1 - Math.exp(-sdt / SPIN_TAU_MS));
+      v.spinAng = (v.spinAng + v.spinVel * sdt) % (Math.PI * 2);
+
+      // 位置: 展開中(慣性つき移動)はgoldRingCurrentPos、以後(射線固定)は展開完了位置に固定。
+      const pos = ring.phase === 'deploying'
+        ? goldRingCurrentPos(ring.startX, ring.startY, ring.targetX, ring.targetY, ring.deployStartAt, ring.deployEndAt, gameTime)
+        : { x: ring.targetX, y: ring.targetY };
+
+      // アルファ: 出現/消滅は統一型(PACING_PUZZLE §7-15・weaponSpawnEase)。位置は自前のease(deploy tween)
+      // なので、ここは alphaMul だけを借りる(dyは使わない=二重に動かさない)。GOLD_RING_DEPLOY_MSは
+      // WEAPON_SPAWN_EASE_MS(220ms)よりわずかに長いだけなので、着地の少し前に不透明になる自然な出現になる。
+      const vanishRemain = ring.phase === 'fading' ? Math.max(0, ring.fadeEndAt - gameTime) : Infinity;
+      const ringEase = weaponSpawnEase(gameTime - ring.deployStartAt, vanishRemain);
+
+      if (tex) {
+        v.ring.texture = tex;
+        v.ring.scale.set(RING_VIS_D / Math.max(1, tex.width));
+      }
+      v.ring.position.set(pos.x, pos.y);
+      v.ring.rotation = v.spinAng;
+      v.ring.tint = ring.ownerGhost ? GHOST_ALLY_TINT : 0xffffff; // 既存のゴースト発動サブと同じ視覚マーカー
+      v.ring.alpha = ringEase.alphaMul;
+      v.ring.visible = !!tex && ringEase.alphaMul > 0.01;
+
+      // レーザー: 'firing'中は出現ランプ(0→1・BEAM_APPEAR_MS)込みで全開表示、'fading'中は
+      // 最後の射線(固定)のまま統一型フェードで消える。それ以外(deploying/beam無し)は非表示。
+      const beam = ring.beam;
+      if (beam && (ring.phase === 'firing' || ring.phase === 'fading')) {
+        const dx = beam.bx - beam.ax, dy = beam.by - beam.ay;
+        const len = Math.hypot(dx, dy);
+        const ang = Math.atan2(dy, dx);
+        const appearT = ring.phase === 'firing'
+          ? Math.max(0, Math.min(1, (gameTime - beam.createdAt) / BEAM_APPEAR_MS))
+          : 1; // フェード側では出現ランプは既に済んでいる(ringEaseだけで減衰させる)
+        const alphaMul = appearT * (ring.phase === 'fading' ? ringEase.alphaMul : 1);
+        v.beamCore.position.set(beam.ax, beam.ay);
+        v.beamHalo.position.set(beam.ax, beam.ay);
+        v.beamCore.rotation = ang;
+        v.beamHalo.rotation = ang;
+        v.beamCore.width = len;
+        v.beamHalo.width = len;
+        v.beamCore.height = Math.max(0.5, beam.halfWidth * 0.7 * appearT); // 幅も0→1で立ち上げる(§19-4)
+        v.beamHalo.height = Math.max(0.5, beam.halfWidth * 2.6 * appearT); // 派手さの絵=判定より大きくはみ出してよい
+        v.beamCore.tint = 0xfff7cc;
+        v.beamHalo.tint = 0xfacc15; // 金色(§19-4)
+        v.beamCore.alpha = 0.95 * alphaMul;
+        v.beamHalo.alpha = 0.5 * alphaMul;
+        const visible = len > 0.5 && alphaMul > 0.01;
+        v.beamCore.visible = visible;
+        v.beamHalo.visible = visible;
+      } else {
+        v.beamCore.visible = false;
+        v.beamHalo.visible = false;
+      }
+    }
+    for (const [id, v] of this.goldRingViews) {
+      if (seen.has(id)) continue;
+      v.ring.destroy(); v.beamCore.destroy(); v.beamHalo.destroy();
+      this.goldRingViews.delete(id);
     }
   }
 

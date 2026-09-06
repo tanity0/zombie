@@ -137,9 +137,10 @@ import {
   getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress,
   clearWeaponUnlocks, clearWeaponBlueprints, markWeaponUnlocked, getStageHighScore,
   getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, getWallMeta, type SelectedMission,
+  hasSubBlueprint, // UNIQUE_WEAPONS.md §19-6: ボス撃破解放のサブウェポン(現状=金環)の陳列ゲート
 } from '../data/progress';
 // ユニーク武器システム(UNIQUE_WEAPONS.md §11-6): 装備設定画面の「銃スロット」欄+開発施設の棚。
-import { SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, type SlotCategory, type SlotTier } from '../data/weaponSlots';
+import { SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, SUB_BOSS_UNLOCK, type SlotCategory, type SlotTier } from '../data/weaponSlots';
 import { getSlotLoadout, setSlotCandidate, unlockedWeaponKeys, shelfWeaponKeys, isTestWeaponUnlockAll, setTestWeaponUnlockAll } from '../utils/weaponSlot';
 import { weaponDisplayName, weaponDescription } from '../utils/weaponUtils';
 const GUN_CATEGORY_LABEL: Record<SlotCategory, string> = {
@@ -2507,6 +2508,10 @@ const SHELF_UNLOCK_COST_BY_LEVEL = [20, 50, 100] as const;
 // ユニーク武器(銃スロット)の購入価格(社長裁定2026-09-05「全部同じ価格でいい。200gにしよう」・
 // UNIQUE_WEAPONS.md §11-6-2)。設計図(ボス撃破)/店売りのどちらでも一律。
 const GUN_SLOT_PURCHASE_COST = 200;
+// UNIQUE_WEAPONS.md §19-6項目4: ボス撃破で設計図を得るサブウェポン(現状=金環のみ)は、
+// 設計図を持っていなければ棚に並べない。★「設計図が無いサブは載せない」と書いてはいけない
+// (既存サブは台帳を持たないので全部消える)——ゲート対象は SUB_BOSS_UNLOCK の値だけ(互換のため)。
+const SUB_BOSS_UNLOCK_KEYS = new Set<SubWeaponKey>(Object.values(SUB_BOSS_UNLOCK));
 
 const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   // v0.25.3187: 陳列解放の正本を purchasedSubLevels(永続)へ。旧 unlockedShopSkillCards は
@@ -2536,8 +2541,13 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           <span className="text-[10px] text-white/45">{startWithTestStraps ? 'ON' : 'OFF'}</span>
         </button>
         {/* 社長指示v0.25.3323: 固定(クラス固有)サブは自クラス専用+最初から上限解放(v0.25.3322)のため
-            陳列解放リストから除外(買っても意味のないG消費を並べない)。 */}
-        {SUB_WEAPON_KEYS.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k) && !RETIRED_SUB_WEAPONS.includes(k)).map(skillKey => {
+            陳列解放リストから除外(買っても意味のないG消費を並べない)。
+            UNIQUE_WEAPONS.md §19-6項目4: ボス撃破解放のサブ(SUB_BOSS_UNLOCKの値=現状は金環のみ)は、
+            設計図が無ければ棚に並べない。対象外のキーは従来どおり無条件で並ぶ(互換)。 */}
+        {SUB_WEAPON_KEYS.filter(k =>
+          !CHARACTER_SUBWEAPON_KEYS.includes(k) && !RETIRED_SUB_WEAPONS.includes(k)
+          && (!SUB_BOSS_UNLOCK_KEYS.has(k) || hasSubBlueprint(k))
+        ).map(skillKey => {
           const level = purchasedSubLevels[skillKey] ?? 0;
           const maxed = level >= 3;
           // v0.25.3185(社長指示): 解放は有料(20G/50G/100G)。支払いはガチャと同じ永続ゴールド。

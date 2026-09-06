@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { distToSegment, distToBandRect, sweptRectHull, dashLineStrikeEnd, dashLineEraseRescale } from './geometry';
+import { distToSegment, distToBandRect, sweptRectHull, dashLineStrikeEnd, dashLineEraseRescale, shortenSegmentAtWalls } from './geometry';
 
 
 // ★v0.25.3496(社長指示「sweep は四角の帯に当たりも戻して」「他にもこの事例が無いかを全技洗って」)。
@@ -135,5 +135,40 @@ describe('dashLineEraseRescale(線を伸ばしても「走者が食った先端�
   });
   it('長さゼロ(0除算)でも素通しで返す', () => {
     expect(dashLineEraseRescale(0.5, 0, 0)).toBe(0.5);
+  });
+});
+
+// =================================================================================================
+// UNIQUE_WEAPONS.md §19-2b「レーザーと壁: 最初の壁で線分そのものを短縮する」。
+// =================================================================================================
+describe('shortenSegmentAtWalls(持続線分の壁短縮・金環/アイレーザー/氷槍の共通土台)', () => {
+  it('壁が無ければ終点そのまま', () => {
+    expect(shortenSegmentAtWalls(0, 0, 100, 0, [])).toEqual({ x: 100, y: 0 });
+  });
+  it('壁が無関係(線から外れている)なら終点そのまま', () => {
+    const wall = { x: 200, y: 200, width: 20, height: 20 };
+    expect(shortenSegmentAtWalls(0, 0, 100, 0, [wall])).toEqual({ x: 100, y: 0 });
+  });
+  it('★1枚の壁に当たったら、その手前(入口)で止まる', () => {
+    const wall = { x: 50, y: -10, width: 20, height: 20 }; // x=50..70
+    const end = shortenSegmentAtWalls(0, 0, 100, 0, [wall]);
+    expect(end.x).toBeCloseTo(50, 6);
+    expect(end.y).toBeCloseTo(0, 6);
+  });
+  it('複数の壁がある時は「最初に当たる壁」(手前側)を採用する', () => {
+    const near = { x: 30, y: -10, width: 10, height: 20 };  // x=30..40
+    const far = { x: 70, y: -10, width: 10, height: 20 };   // x=70..80
+    const end = shortenSegmentAtWalls(0, 0, 100, 0, [far, near]); // 配列順は逆でも近い方が勝つ
+    expect(end.x).toBeCloseTo(30, 6);
+  });
+  it('斜めの線でも交点で正しく短縮する', () => {
+    const wall = { x: 45, y: 45, width: 10, height: 10 }; // 対角線 (0,0)-(100,100) が x=45..55,y=45..55 を通る
+    const end = shortenSegmentAtWalls(0, 0, 100, 100, [wall]);
+    expect(end.x).toBeCloseTo(45, 6);
+    expect(end.y).toBeCloseTo(45, 6);
+  });
+  it('始点が既に壁の中(展開点が壁の中)のケースはこの関数の対象外——t0<=0は無視して終点まで通す', () => {
+    const wall = { x: -10, y: -10, width: 30, height: 30 }; // 始点(0,0)が壁の内側
+    expect(shortenSegmentAtWalls(0, 0, 100, 0, [wall])).toEqual({ x: 100, y: 0 });
   });
 });

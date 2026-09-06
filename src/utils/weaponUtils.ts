@@ -1,7 +1,7 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
 import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { aimEnemyDist2, isCorpse } from './enemyUtils';
+import { aimEnemyDist2, pickNearestTarget } from './enemyUtils';
 import { zoomCompensatedWorldDistance } from './cameraZoom';
 import { bigBulletSizeMult } from './skillEffectsB7';
 import { isTrapDebuffed, TRAP_PVP_RELOAD_MULT } from './trapDebuff';
@@ -610,34 +610,14 @@ export const gunEffectiveRangePx = (weapon: Pick<Weapon, 'category' | 'rangeOver
     ? weapon.rangeOverride
     : zoomedGunRange(RANGE_BY_CATEGORY[weapon.category ?? 'handgun']);
 
-// A stunned enemy is a low-priority target — the player should be putting
-// rounds into the threats that are still moving, not the one already frozen
-// for a melee finish.
-const isStunned = (e: Enemy, gameTime: number): boolean =>
-  e.stunUntil !== undefined && gameTime < e.stunUntil;
-
 // Choose the gun's target: the nearest NON-stunned enemy, only falling back to
 // a stunned one when every enemy on the field is stunned. Returns null if the
 // field is empty.
-const pickTarget = (player: Player, enemies: Enemy[]): Enemy | null => {
-  const gameTime = useGameStore.getState().gameTime;
-  const pcx = player.x + player.width / 2;
-  const pcy = player.y + player.height / 2;
-  let best: Enemy | null = null;
-  let bestD2 = Infinity;
-  let bestStunned: Enemy | null = null;
-  let bestStunnedD2 = Infinity;
-  for (const e of enemies) {
-    if (isCorpse(e)) continue; // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 銃の自動照準対象から除外
-    const d2 = aimDist2(pcx, pcy, e);
-    if (isStunned(e, gameTime)) {
-      if (d2 < bestStunnedD2) { bestStunnedD2 = d2; bestStunned = e; }
-    } else if (d2 < bestD2) {
-      bestD2 = d2; best = e;
-    }
-  }
-  return best ?? bestStunned;
-};
+// UNIQUE_WEAPONS.md §19-3(監査A2・A9): 本体は enemyUtils.pickNearestTarget へ切り出した
+// (プレイヤー以外のオーナー=金環/守護霊発動サブが座標だけで呼べる形にするため)。
+// ここは「プレイヤー中心・現在のgameTime・射程無制限」を渡すだけの薄いラッパで、1bit同値。
+const pickTarget = (player: Player, enemies: Enemy[]): Enemy | null =>
+  pickNearestTarget(player.x + player.width / 2, player.y + player.height / 2, enemies, useGameStore.getState().gameTime);
 
 // Distance from the player center to the gun's chosen target, or Infinity when
 // the field is empty (used by the range gate).

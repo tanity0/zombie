@@ -191,6 +191,12 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
     lv2: '一発の威力が上がる(消費も増)',
     lv3: '一発の威力が上がる(消費も増)',
   },
+  // 金環: レベルで1パルスのダメージだけが上がる(持続3秒・本数2本・CDは全Lv共通=社長仕様の骨格)。
+  // 根拠: src/utils/goldRing.ts GOLD_RING_DAMAGE_BY_LEVEL=[0,6,8,10]・UNIQUE_WEAPONS.md §19-2
+  'gold-ring': {
+    lv2: 'レーザーの威力が上がる',
+    lv3: 'レーザーの威力が上がる',
+  },
 };
 
 /**

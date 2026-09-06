@@ -683,6 +683,7 @@ export const resetProgress = (): void => {
   try { localStorage.removeItem(KOGARASU_KEY); } catch { /* ignore */ } // 小烏丸解禁も進行リセットで消す(開発用)
   try { localStorage.removeItem(WEAPON_UNLOCKS_KEY); } catch { /* ignore */ } // ユニーク武器の恒久解放(購入済み)も進行リセットで消す(開発用・小烏丸と同じ扱い)
   try { localStorage.removeItem(WEAPON_BLUEPRINTS_KEY); } catch { /* ignore */ } // ユニーク武器の設計図も進行リセットで消す(開発用・UNIQUE_WEAPONS.md §11-6-1)
+  clearSubBlueprints(); // サブウェポンの設計図も進行リセットで消す(開発用・UNIQUE_WEAPONS.md §19-6)
   try { localStorage.removeItem(LEGACY_EVENT_QUEST_DONE_KEY); } catch { /* ignore */ } // 旧v1684キーの掃除
   saveChronicle([]); // 歴史年表も進行リセットで消す(開発用)
   writeRunCores({}); // 掘削記録(リザルト断面の過去ラン)も進行リセットで消す(開発用)
@@ -855,5 +856,60 @@ export const markWeaponBlueprint = (key: string): boolean => {
   const set = readWeaponBlueprintSet();
   set.add(key);
   writeWeaponBlueprintSet(set);
+  return true;
+};
+
+// ───────────────────────────────────────────────────────────────────────────
+// サブウェポンの「設計図」(UNIQUE_WEAPONS.md §19-6・監査A1の是正)。
+// ★「サブウェポンの解放は別の台帳を使う」と書かれていたが、その台帳は存在しなかった
+// (着手前監査A1で発覚)。ここが**その台帳の実体**——weaponBlueprints(銃用)と完全に同じ形
+// (read/write/mark/clear)で、意味だけが違う(銃=スロットキー/サブ=SubWeaponKey)。
+// 設計図を持っているサブだけが開発施設の陳列フィルタでゲートされる(SUB_BOSS_UNLOCKの値のみ対象。
+// 既存サブは台帳を持たない=フィルタ対象外のまま=従来どおり陳列される)。
+const SUB_BLUEPRINTS_KEY = 'zombie.progress.subBlueprints';
+
+const readSubBlueprintSet = (): Set<string> => {
+  if (typeof localStorage === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(SUB_BLUEPRINTS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr.filter((x): x is string => typeof x === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+};
+
+const writeSubBlueprintSet = (set: Set<string>): void => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(SUB_BLUEPRINTS_KEY, JSON.stringify([...set]));
+  } catch {
+    /* ignore (quota / private mode) */
+  }
+};
+
+/** 設計図を入手済みのサブウェポンキー一覧。 */
+export const getSubBlueprints = (): Set<string> => readSubBlueprintSet();
+
+export const hasSubBlueprint = (key: string): boolean => readSubBlueprintSet().has(key);
+
+/** サブウェポンの設計図を全消去(テスト用・進行リセット)。 */
+export const clearSubBlueprints = (): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.removeItem(SUB_BLUEPRINTS_KEY); } catch { /* ignore */ }
+};
+
+/**
+ * 立てた瞬間だけ true を返す(既に立っていれば false・markWeaponBlueprintと同じ作法)。
+ * ★呼び出し側の義務も同じ(UNIQUE_WEAPONS.md §19-6項目3): 練習ラン(`!isPracticeRun()`)を
+ * 確認してから呼ぶこと。
+ */
+export const markSubBlueprint = (key: string): boolean => {
+  if (typeof localStorage === 'undefined') return false;
+  if (hasSubBlueprint(key)) return false;
+  const set = readSubBlueprintSet();
+  set.add(key);
+  writeSubBlueprintSet(set);
   return true;
 };
