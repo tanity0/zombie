@@ -86,7 +86,7 @@ const CATALOG: Record<string, WeaponDef> = {
   // デリンジャー(T1): 瞬間火力+頻繁なリロード。装弾数2発・1発威力アップ。
   'handgun-t1-derringer':  { key: 'handgun-t1-derringer',  name: 'デリンジャー',       type: 'handgun', category: 'handgun', tier: 1, damage: 17, cooldown: 300, projectileSpeed: 540, projectileSize:  9, count: 1, magSize: 2, reloadMs:  700 },
   // ハンドキャノン(T2): 単発威力高め・同一敵への連続命中で威力が段階的に低下(handcannonDecay.ts。リロードで全リセット)。
-  'handgun-t2-handcannon': { key: 'handgun-t2-handcannon', name: 'ハンドキャノン',     type: 'handgun', category: 'handgun', tier: 2, damage: 31, cooldown: 600, projectileSpeed: 560, projectileSize: 11, count: 1, magSize: 6, reloadMs: 1200 },
+  'handgun-t2-handcannon': { key: 'handgun-t2-handcannon', name: 'ハンドキャノン',     type: 'handgun', category: 'handgun', tier: 2, damage: 31, cooldown: 620, projectileSpeed: 560, projectileSize: 11, count: 1, magSize: 6, reloadMs: 1200 },
   // パイルドライバー(T3): 極端な短射程(rangeOverride=導出108px・ズーム非補正)+強ノックバック+高体勢削り。
   // knockbackMult/postureMultの数値は★未決候補(社長仕様は「強い/非常に高い」という定性表現のみ・#U9/#U10)。
   'handgun-t3-piledriver': { key: 'handgun-t3-piledriver', name: 'パイルドライバー',   type: 'handgun', category: 'handgun', tier: 3, damage: 36, cooldown: 450, projectileSpeed: 620, projectileSize: 12, count: 1, magSize: 6, reloadMs: 1300, critChance: 0.05, rangeOverride: piledriverRangePx, knockbackMult: 2, postureMult: 2 },

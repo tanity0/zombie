@@ -220,6 +220,9 @@ describe('不変条件6: 支配の禁止(全スロット共通)', () => {
   }
 });
 
+// ★帯は「±10% の + 寄り」(社長指示・UNIQUE_WEAPONS.md §5)。**硬い枠は 0.90〜1.10**で、
+// **狙いはその + 側(1.00〜1.10)**。各武器の狙いの値は下の toBeCloseTo が個別に固定している。
+// (v0.25.4166以前は「+0〜+15%」と書いていたが、これは取り決めの枠を広げた誤りだった。)
 describe('不変条件1: 実効DPS帯(ハンドガン=damage/cooldown/magSize/reloadMsで表せる武器のみ・§5の適用範囲)', () => {
   const band = (defaultKey: string, uniqueKey: string) => {
     const base = effectiveDps(createWeapon(defaultKey));
@@ -227,28 +230,28 @@ describe('不変条件1: 実効DPS帯(ハンドガン=damage/cooldown/magSize/re
     return { base, unique, ratio: unique / base };
   };
 
-  it('T1 デリンジャー: 既定比 +0%〜+15%(叩き台+7.7%)', () => {
+  it('T1 デリンジャー: 既定比 ±10%の+寄り(叩き台+7.7%)', () => {
     const { base, unique, ratio } = band('handgun-t1', 'handgun-t1-derringer');
     expect(base).toBeCloseTo(15.79, 1);
     expect(unique).toBeCloseTo(17.00, 1);
-    expect(ratio).toBeGreaterThanOrEqual(1.0);
-    expect(ratio).toBeLessThanOrEqual(1.15);
+    expect(ratio).toBeGreaterThanOrEqual(0.90);
+    expect(ratio).toBeLessThanOrEqual(1.10);
   });
 
-  it('T2 ハンドキャノン: 既定比 +0%〜+15%(叩き台+10.2%・減衰は式に出ない別軸)', () => {
+  it('T2 ハンドキャノン: 既定比 ±10%の+寄り(叩き台+8.1%・減衰は式に出ない別軸)', () => {
     const { base, unique, ratio } = band('handgun-t2', 'handgun-t2-handcannon');
     expect(base).toBeCloseTo(28.13, 1);
-    expect(unique).toBeCloseTo(31.00, 1);
-    expect(ratio).toBeGreaterThanOrEqual(1.0);
-    expect(ratio).toBeLessThanOrEqual(1.15);
+    expect(unique).toBeCloseTo(30.39, 1);
+    expect(ratio).toBeGreaterThanOrEqual(0.90);
+    expect(ratio).toBeLessThanOrEqual(1.10);
   });
 
-  it('T3 パイルドライバー: 既定比 +0%〜+15%(叩き台+8.7%・射程/KB/体勢は式に出ない別軸)', () => {
+  it('T3 パイルドライバー: 既定比 ±10%の+寄り(叩き台+8.7%・射程/KB/体勢は式に出ない別軸)', () => {
     const { base, unique, ratio } = band('handgun-t3', 'handgun-t3-piledriver');
     expect(base).toBeCloseTo(37.50, 1);
     expect(unique).toBeCloseTo(40.75, 1);
-    expect(ratio).toBeGreaterThanOrEqual(1.0);
-    expect(ratio).toBeLessThanOrEqual(1.15);
+    expect(ratio).toBeGreaterThanOrEqual(0.90);
+    expect(ratio).toBeLessThanOrEqual(1.10);
   });
 });
 

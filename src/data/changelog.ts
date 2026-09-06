@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4166',
+    items: ['ハンドキャノンの連射をほんの少しだけ遅くしました(1発の威力は変わりません)。ユニーク武器の強さの枠を取り決めどおり「通常武器の±10%」へ戻したための調整です。'],
+  },
+  {
     version: '0.25.4165',
     items: ['ゲーム内容の変更はありません(設計書の更新のみ: 金環の設計を監査の指摘で直しました)。'],
   },
