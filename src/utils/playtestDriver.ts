@@ -380,7 +380,10 @@ const autoFireGun = (): void => {
   // 呼ぶ経路なので、ここで撃たせないと「14ダメージの連射弾」等の等価実装ズレが起きる。
   // 判定は`nonProjectile`フラグ1本(キー直書きにしない)。
   if (!activeGun || katanaActive || activeGun.category === 'phill' || activeGun.nonProjectile) return;
-  const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
+  // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): ボットは至近モード域では「撃たないだけ」
+  // (実装者の裁量・最終報告に記載。守護霊/幻影と揃える)。fireWeapon自身がallowMelee:falseの時だけ
+  // 至近域を空撃ちにする(=通常射程内なら従来どおり撃つ。ボットのDPS計測が近接ボーナスを拾わない)。
+  const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies, { allowMelee: false });
   newProjectiles.forEach(p => useGameStore.getState().addProjectile(p));
 };
 

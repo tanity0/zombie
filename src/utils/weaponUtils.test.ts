@@ -4,7 +4,7 @@ import {
   createWeapon, nextKnifeKey, MELEE_KEYS, MAX_KNIFE_TIER, getWeaponShortName,
   beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot,
   effectiveFireCooldown, effectiveMagSize, weaponReloadReserve,
-  resolveShotgunSpreadRad, computeShotDirections, fireWeapon, DUALRANGE_WEAPON_KEY,
+  resolveShotgunSpreadRad, computeShotDirections, computeShotAngleOffsets, fireWeapon, DUALRANGE_WEAPON_KEY,
 } from './weaponUtils';
 import { spawnEnemyAt } from './enemyUtils';
 import { DUAL_RANGE_STATS } from './dualRangeGun';
@@ -274,5 +274,124 @@ describe('デュアルレンジピストルの配線(fireWeapon・§16-2)', () =
     expect(shots[0].speed).toBeCloseTo(DUAL_RANGE_STATS.near.projectileSpeed * 1.5, 5);
     const stored = useGameStore.getState().player.weapons.find(w => w.id === gun.id);
     expect(stored?.dualRangeMode).toBe('near');
+  });
+});
+
+// UNIQUE_WEAPONS.md §16-2(バッチC-2): 近接切替(ガンブレード)・弾の軌道(コイル/誘導散弾)の3挺の配線。
+describe('バッチC-2: 近接切替・弾の軌道の3挺の配線(fireWeapon)', () => {
+  beforeEach(() => {
+    useGameStore.getState().resetGame('warrior');
+  });
+
+  describe('ガンブレード(§16-2/§17-5)', () => {
+    it('通常銃モード(90pxより遠い)は素の8ダメージ・knockbackMult無し・gunbladeMeleeMode=falseで持ち越す', () => {
+      const player = useGameStore.getState().player;
+      const gun = { ...createWeapon('handgun-t3-gunblade'), lastFired: 0 };
+      // 150px(=90pxの近接域より遠く、170pxの銃射程より近い)先に的を置く。
+      const target = spawnEnemyAt('zombie', player.x, player.y - 150, useGameStore.getState().gameTime);
+      useGameStore.setState(s => ({
+        enemies: [target],
+        player: { ...s.player, weapons: [gun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: gun.id },
+      }));
+      const shots = fireWeapon(gun, useGameStore.getState().player, [target]);
+      expect(shots.length).toBe(1);
+      expect(shots[0].knockbackMult).toBeUndefined();
+      expect(shots[0].gunbladeMeleeHit).toBeUndefined();
+      const stored = useGameStore.getState().player.weapons.find(w => w.id === gun.id);
+      expect(stored?.gunbladeMeleeMode).toBe(false);
+    });
+
+    it('至近(≤90px)は近接モードへ切り替わる(ダメージ×1.6・knockbackMult1.5・gunbladeMeleeHit・体勢はheavy側=useGameLoop.tsが読む)', () => {
+      const player = useGameStore.getState().player;
+      const rangedGun = { ...createWeapon('handgun-t3-gunblade'), lastFired: 0 };
+      const farTarget = spawnEnemyAt('zombie', player.x, player.y - 150, useGameStore.getState().gameTime);
+      useGameStore.setState(s => ({
+        enemies: [farTarget],
+        player: { ...s.player, weapons: [rangedGun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: rangedGun.id },
+      }));
+      const rangedShots = fireWeapon(rangedGun, useGameStore.getState().player, [farTarget]);
+      const rangedDamage = rangedShots[0].damage;
+
+      // 至近(30px)に的を置き直し、cooldownを解いて撃ち直す。
+      const nearTarget = spawnEnemyAt('zombie', player.x, player.y - 30, useGameStore.getState().gameTime);
+      const gunAfterFar = { ...(useGameStore.getState().player.weapons.find(w => w.id === rangedGun.id)!), lastFired: 0 };
+      useGameStore.setState(s => ({
+        enemies: [nearTarget],
+        player: { ...s.player, weapons: [gunAfterFar, ...s.player.weapons.filter(w => w.isMelee)] },
+      }));
+      const meleeShots = fireWeapon(gunAfterFar, useGameStore.getState().player, [nearTarget]);
+      expect(meleeShots.length).toBe(1);
+      expect(meleeShots[0].knockbackMult).toBe(1.5);
+      expect(meleeShots[0].gunbladeMeleeHit).toBe(true);
+      expect(meleeShots[0].damage).toBeCloseTo(rangedDamage * 1.6, 5);
+      const storedMelee = useGameStore.getState().player.weapons.find(w => w.id === rangedGun.id);
+      expect(storedMelee?.gunbladeMeleeMode).toBe(true);
+    });
+
+    it('allowMelee:false(守護霊/幻影/ボット)なら至近でも空撃ちする', () => {
+      const player = useGameStore.getState().player;
+      const gun = { ...createWeapon('handgun-t3-gunblade'), lastFired: 0 };
+      const nearTarget = spawnEnemyAt('zombie', player.x, player.y - 30, useGameStore.getState().gameTime);
+      useGameStore.setState(s => ({
+        enemies: [nearTarget],
+        player: { ...s.player, weapons: [gun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: gun.id },
+      }));
+      const shots = fireWeapon(gun, useGameStore.getState().player, [nearTarget], { allowMelee: false });
+      expect(shots).toEqual([]);
+    });
+  });
+
+  describe('コイルショットガン(§16-2)', () => {
+    it('各ペレットがcomputeShotAngleOffsetsと同じ拡散角+狙点方向(coilAimDirX/Y)を持つ', () => {
+      const player = useGameStore.getState().player;
+      const gun = { ...createWeapon('shotgun-t2-coil'), lastFired: 0 };
+      const target = spawnEnemyAt('zombie', player.x, player.y - 100, useGameStore.getState().gameTime);
+      useGameStore.setState(s => ({
+        enemies: [target],
+        player: { ...s.player, weapons: [gun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: gun.id },
+      }));
+      const shots = fireWeapon(gun, useGameStore.getState().player, [target]);
+      expect(shots.length).toBe(9);
+      const expectedAngles = computeShotAngleOffsets(gun);
+      shots.forEach((shot, i) => {
+        expect(shot.coilBaseAngleRad).toBeCloseTo(expectedAngles[i], 6);
+        expect(typeof shot.coilAimDirX).toBe('number');
+        expect(typeof shot.coilAimDirY).toBe('number');
+      });
+      // 9発(奇数)の中心弾(index4)は拡散角0=常に直進(コイルの広がりようがない)。
+      expect(expectedAngles[4]).toBeCloseTo(0, 10);
+    });
+  });
+
+  describe('誘導散弾ショットガン(§16-2)', () => {
+    it('敵が1体だけなら全弾が同じ対象へ集中する', () => {
+      const player = useGameStore.getState().player;
+      const gun = { ...createWeapon('shotgun-t3-homing'), lastFired: 0 };
+      const target = spawnEnemyAt('zombie', player.x, player.y - 100, useGameStore.getState().gameTime);
+      useGameStore.setState(s => ({
+        enemies: [target],
+        player: { ...s.player, weapons: [gun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: gun.id },
+      }));
+      const shots = fireWeapon(gun, useGameStore.getState().player, [target]);
+      expect(shots.length).toBe(9);
+      expect(shots.every(s => s.targetEnemyId === target.id && s.homingPellet === true)).toBe(true);
+    });
+
+    it('敵が複数なら分散して割り振る(全弾が同じ1体に集中しない)', () => {
+      const player = useGameStore.getState().player;
+      const gun = { ...createWeapon('shotgun-t3-homing'), lastFired: 0 };
+      const t1 = spawnEnemyAt('zombie', player.x, player.y - 100, useGameStore.getState().gameTime);
+      const t2 = spawnEnemyAt('zombie', player.x + 20, player.y - 100, useGameStore.getState().gameTime);
+      const t3 = spawnEnemyAt('zombie', player.x - 20, player.y - 100, useGameStore.getState().gameTime);
+      useGameStore.setState(s => ({
+        enemies: [t1, t2, t3],
+        player: { ...s.player, weapons: [gun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: gun.id },
+      }));
+      const shots = fireWeapon(gun, useGameStore.getState().player, [t1, t2, t3]);
+      expect(shots.length).toBe(9);
+      const ids = new Set(shots.map(s => s.targetEnemyId));
+      expect(ids.size).toBeGreaterThan(1);
+      expect(shots.every(s => s.homingPellet === true)).toBe(true);
+    });
   });
 });

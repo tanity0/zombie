@@ -55,6 +55,8 @@ import {
 } from '../utils/goldRing';
 // UNIQUE_WEAPONS.md §16-2(バッチC-1): 氷槍ライフルの床が使う共通の持続線分型(§19-1)。
 import type { IceLanceFloor } from '../utils/iceLanceFloor';
+// UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルショットガン shotgun-t2-coil): 弾の軌道位相(純関数)。
+import { coilTrajectoryOffsetRad } from '../utils/coilShotgun';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/bomberScatter';
 import {
@@ -15678,8 +15680,25 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             return p; // 'done'
           }
+          // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルショットガン shotgun-t2-coil): 散弾が一度外へ
+          // 広がってから狙点へ再収束する軌道位相(coilShotgun.ts)。狙点方向(coilAimDirX/Y、発射時に
+          // 固定)+このペレット固有の拡散角(coilBaseAngleRad)+経過時間ぶんのオフセットから、
+          // 毎フレーム角度を作り直す(前フレームのdirectionを種にしない=誤差を積み重ねない。
+          // heavySniperの蓄積が毎回CATALOGの静的値から導出するのと同じ考え方)。
+          if (p.coilAimDirX !== undefined && p.coilAimDirY !== undefined && p.coilBaseAngleRad !== undefined) {
+            const elapsed = currentTime - p.createdAt;
+            const offset = coilTrajectoryOffsetRad(p.coilBaseAngleRad, elapsed);
+            const angle = Math.atan2(p.coilAimDirY, p.coilAimDirX) + p.coilBaseAngleRad + offset;
+            const dir = { x: Math.cos(angle), y: Math.sin(angle) };
+            return { ...p, direction: dir, x: p.x + dir.x * p.speed * deltaTime, y: p.y + dir.y * p.speed * deltaTime };
+          }
           // ホーミング弾: 毎フレームターゲットへ向けて旋回しながら飛ぶ。ターゲットが消えたら直進。
-          if (p.weaponType === 'homing-missile') {
+          // UNIQUE_WEAPONS.md §16-2(バッチC-2・誘導散弾SG shotgun-t3-homing「旋回そのものは
+          // ホーミング弾に在るが分岐に閉じているので開く必要」): weaponType==='homing-missile'
+          // 限定だった条件を、homingPelletフラグを持つ弾(誘導散弾のペレット)にも開く。
+          // 旋回の式・旋回速度(HOMING_MISSILE_TURN_RATE)は完全に同じものを再利用する
+          // (誘導散弾専用の別レートは発明しない=「旋回そのものは在る」を素直に開く)。
+          if (p.weaponType === 'homing-missile' || p.homingPellet) {
             const target = p.targetEnemyId ? enemies.find(e => e.id === p.targetEnemyId) : undefined;
             let dir = p.direction;
             if (target) {

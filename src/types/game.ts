@@ -1546,6 +1546,11 @@ export interface Weapon {
   // プレイヤー自身のオート射撃(useGameLoop.ts)の**全経路がこの1つのフラグだけを見る**
   // (キー直書きの散らばりを1箇所へ集約)。未設定(既定undefined)=従来どおり弾を撃つ武器。
   nonProjectile?: true;
+  // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード handgun-t3-gunblade限定): 至近(≤90px)
+  // かどうかで通常銃/近接系の強攻撃を切り替える現在モード(dualRangeMode/cycleModeと同じ作法=
+  // src/utils/gunbladeMelee.ts)。未指定(undefined)は'ranged'(通常銃)扱い。撃つ瞬間(射程ゲートを
+  // 通った後)に距離で確定し、次の cooldown ゲートにも持ち越す(§17-8 C-1のヒステリシス判定と同じ置き場所)。
+  gunbladeMeleeMode?: boolean;
 }
 
 // Gun families. Each shares an ammo pool with the matching AmmoType.
@@ -1981,6 +1986,24 @@ export interface Projectile {
   isStuck?: boolean;
   // ホーミング弾: 追尾対象の敵ID。対象が消えた場合は直進。
   targetEnemyId?: string;
+  // UNIQUE_WEAPONS.md §16-2(バッチC-2・誘導散弾SG shotgun-t3-homing): この弾(ペレット)が
+  // homing-missileと同じ旋回式(gameStore.ts)を使うことを示す印。weaponType自体は'shotgun'の
+  // ままにしたいため(既存のshotgun着弾処理・SE・描画分岐を変えない)、旋回の可否だけをこのフラグで
+  // 別途開く。targetEnemyIdが対応する敵と一緒に使う(対象が消えたら直進=homing-missileと同じ規則)。
+  homingPellet?: true;
+  // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルSG shotgun-t2-coil): 発射時に確定した「狙点(baseDir)
+  // に対するこのペレット固有の拡散角」(rad・中心=0・computeShotDirectionsが計算した値と同じ)。
+  // 弾の軌道位相(coilTrajectoryOffsetRad・src/utils/coilShotgun.ts)がこの値を起点に0〜420msかけて
+  // 外へ広がってから戻る。coilAimDirX/Yは狙点方向そのもの(発射時に固定・以後は再追尾しない=
+  // 通常のショットガン弾と同じく直進系)。
+  coilBaseAngleRad?: number;
+  coilAimDirX?: number;
+  coilAimDirY?: number;
+  // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード handgun-t3-gunblade限定): この弾が
+  // 至近モード(近接系の強攻撃)で撃たれたことを示す印。useGameLoopの着弾処理がpiledriverと同じ
+  // 枠組み(「新しい打撃種別は作らない」)で体勢削り分類を'heavy'に固定するために読む
+  // (通常のクリ判定によるgun-crit分類とは独立=非クリでも必ずheavy)。
+  gunbladeMeleeHit?: true;
   explodeAt?: number;
   // ドローンブーメラン(weaponType 'drone-boomerang-projectile'): 行き('out')→停止('stop')→
   // 戻り('return')→消滅('done')。停止は回転+周囲パルス。戻りはプレイヤー現在地へ。

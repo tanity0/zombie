@@ -1,7 +1,7 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
 import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { aimEnemyDist2, pickNearestTarget } from './enemyUtils';
+import { aimEnemyDist2, pickNearestTarget, isCorpse } from './enemyUtils';
 import { zoomCompensatedWorldDistance } from './cameraZoom';
 import { bigBulletSizeMult } from './skillEffectsB7';
 import { isTrapDebuffed, TRAP_PVP_RELOAD_MULT } from './trapDebuff';
@@ -21,6 +21,10 @@ import { resolveDesertTechAmmoType, DESERTTECH_WEAPON_KEY, type DesertTechAmmoPo
 // ここはCATALOGへ書く定数の単一の出どころ(値の二重管理を避ける)。
 import { EYE_LASER_PULSE_DAMAGE, EYE_LASER_MAG_SIZE, EYE_LASER_RELOAD_MS_RAW } from './eyeLaserGun';
 import { FLAMER_PULSE_DAMAGE, FLAMER_MAG_SIZE, FLAMER_RELOAD_MS_RAW, FLAMER_RANGE_PX } from './flamerCone';
+// UNIQUE_WEAPONS.md §16-2(バッチC-2): 近接切替/弾の軌道の3挺。状態そのものはfireWeapon内で完結
+// (ガンブレードのモードだけWeapon.gunbladeMeleeModeへ持ち越す)。
+import { GUNBLADE_RANGED_DAMAGE, GUNBLADE_RANGED_COOLDOWN_MS, GUNBLADE_MODE_STATS, GUNBLADE_MELEE_RANGE_PX, resolveGunbladeMode } from './gunbladeMelee';
+import { assignHomingShotgunTargets } from './homingShotgun';
 
 // プレイヤー中心→敵 の二乗距離。**全ての敵で「当たり判定の矩形の最近点」**まで測る(v0.25.3170・
 // 社長指示「当たり判定の四隅でみて」)。中心基準だと巨体の縁に立っていても射程外扱いになる。
@@ -118,6 +122,14 @@ const CATALOG: Record<string, WeaponDef> = {
   // rangeOverride=220(§16-1)。実効DPSは近29.17(+3.7%)/遠30.43(+8.2%)・§16-1。
   'handgun-t2-dualrange':  { key: 'handgun-t2-dualrange',  name: 'デュアルレンジピストル', type: 'handgun', category: 'handgun', tier: 2, damage: 28, cooldown: 700, projectileSpeed: 700, projectileSize: 8, count: 1, magSize: 10, reloadMs: 1100, rangeOverride: 220 },
 
+  // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2)。ガンブレード(T3): 通常は銃(8/cd110)。至近
+  // (≤90px=GUNBLADE_MELEE_RANGE_PX)の敵には近接系の強攻撃へ切り替わる(gunbladeMelee.ts。
+  // ダメージ×1.6・間隔400ms・ノックバック×1.5=fireWeaponが撃つ瞬間の距離で確定し
+  // weapon.gunbladeMeleeModeへ持ち越す。体勢削りheavyはuseGameLoop.tsの着弾処理側)。
+  // critChance=0.05を明示(§17-2「連射×大容量で16%はバランスブレイカー」の再現を避ける。
+  // 導出だと0.16になる=handgun-t3と同じ事故)。実効DPS(通常銃モード)=38.10(既定比+1.6%・§16-1)。
+  'handgun-t3-gunblade':   { key: 'handgun-t3-gunblade',   name: 'ガンブレード',       type: 'handgun', category: 'handgun', tier: 3, damage: GUNBLADE_RANGED_DAMAGE, cooldown: GUNBLADE_RANGED_COOLDOWN_MS, projectileSpeed: 560, projectileSize: 7, count: 1, magSize: 26, reloadMs: 1300, critChance: 0.05 },
+
   // B — Shotgun family (12g). One trigger pull = one shell (the spread is free),
   // so the magazine is sized in SHOTS, not pellets (3 shots per mag).
   'shotgun-t1':       { key: 'shotgun-t1', name: 'ショットガン',   type: 'shotgun', category: 'shotgun', tier: 1, damage: 6,  cooldown: 950, projectileSpeed: 440, projectileSize: 7, count: 5, magSize: 3, reloadMs: 1100 },
@@ -128,6 +140,12 @@ const CATALOG: Record<string, WeaponDef> = {
   // + 大きく広げた散り角(spreadRadOverride=1.30rad。既定T2は0.70rad)。弾付与スキル(延焼/凍傷)は
   // 武器側で何もしない=既存スキルが命中ごとに乗るだけ(社長ルール)。実効DPS=23.08(既定比+8.8%・§16-1)。
   'shotgun-t2-suppress': { key: 'shotgun-t2-suppress', name: '制圧型ショットガン', type: 'shotgun', category: 'shotgun', tier: 2, damage: 4, cooldown: 880, projectileSpeed: 470, projectileSize: 7, count: 12, magSize: 3, reloadMs: 1800, rangeOverride: 250, spreadRadOverride: 1.30 },
+
+  // UNIQUE_WEAPONS.md §16-2(バッチC-2)。コイルショットガン(T2): 散弾が一度外へ広がってから
+  // 狙点へ再収束する軌道位相(coilShotgun.ts+gameStore.tsの移動tick。判定・弾数・弾薬は通常の
+  // カウント式ショットガンと同じ=サイクル式に現れない式外の演出=§5-2の思想と同型)。
+  // 実効DPS=22.73(既定比+7.1%・§16-1)。
+  'shotgun-t2-coil': { key: 'shotgun-t2-coil', name: 'コイルショットガン', type: 'shotgun', category: 'shotgun', tier: 2, damage: 5, cooldown: 780, projectileSpeed: 470, projectileSize: 7, count: 9, magSize: 3, reloadMs: 1800 },
 
   // UNIQUE_WEAPONS.md §16-2/§17-1(バッチB)。収束型ショットガン(T1): 命中した射撃ごとに散り角が
   // 1段階狭まる(focusSpread.ts。初期1.30rad→-0.18/命中→下限0.36。2.5秒当てないと初期へリセット)。
@@ -147,6 +165,11 @@ const CATALOG: Record<string, WeaponDef> = {
   // cooldownは未使用(fireWeaponの自動射撃を通らない状態機械=useGameLoop.ts)。
   // 武器自体に燃焼は持たせない(社長指定)。サイクル実効DPS=28.57(既定shotgun-t3比+6.3%・§5-2)。
   'shotgun-t3-flamer': { key: 'shotgun-t3-flamer', name: '火炎放射器', type: 'shotgun', category: 'shotgun', tier: 3, damage: FLAMER_PULSE_DAMAGE, cooldown: 100, count: 1, magSize: FLAMER_MAG_SIZE, reloadMs: FLAMER_RELOAD_MS_RAW, rangeOverride: FLAMER_RANGE_PX, nonProjectile: true },
+
+  // UNIQUE_WEAPONS.md §16-2(バッチC-2)。誘導散弾ショットガン(T3): 各ペレットが近くの敵へ誘導する
+  // (旋回はgameStore.tsのhoming-missileと同じ式=homingPelletフラグで開く。対象割り振りは新規=
+  // homingShotgun.ts。敵が複数なら分散・1体なら全弾集中)。実効DPS=28.78(既定比+7.1%・§16-1)。
+  'shotgun-t3-homing': { key: 'shotgun-t3-homing', name: '誘導散弾ショットガン', type: 'shotgun', category: 'shotgun', tier: 3, damage: 5, cooldown: 430, projectileSpeed: 470, projectileSize: 7, count: 9, magSize: 3, reloadMs: 1700 },
 
   // C — Rifle/Magnum family (.44). Heavy single rounds. The revolver pierces
   // one enemy; higher tiers pierce freely.
@@ -228,6 +251,10 @@ export { DESERTTECH_WEAPON_KEY };
 export const EYE_LASER_WEAPON_KEY = 'rifle-t3-eyelaser';
 export const ICE_LANCE_WEAPON_KEY = 'rifle-t2-icelance';
 export const FLAMER_WEAPON_KEY = 'shotgun-t3-flamer';
+// UNIQUE_WEAPONS.md §16-2(バッチC-2): 近接切替/弾の軌道の3挺のキー定数。
+export const GUNBLADE_WEAPON_KEY = 'handgun-t3-gunblade';
+export const COIL_SHOTGUN_WEAPON_KEY = 'shotgun-t2-coil';
+export const HOMING_SHOTGUN_WEAPON_KEY = 'shotgun-t3-homing';
 
 // UNIQUE_WEAPONS.md §4: resolveSlotKey(weaponSlot.ts)がCATALOGの中身を見に行くための細い窓。
 // CATALOG自体は非公開のまま(意味不明なキーの直接生成を増やさない)。
@@ -402,6 +429,16 @@ const WEAPON_DESC: Record<string, string> = {
   // アイレーザー(§16-2/バッチC-1): eyeLaserGun.ts。溜め→照射3秒(貫通・追尾)→リロード。
   // 照射中に対象を見失うとその場で終了し、残りの照射時間は失われる(再ターゲットしない)。
   'rifle-t3-eyelaser': '一瞬溜めてから光線を撃ち続ける。狙った相手を追い続けるが、見失うとそこで終わる',
+  // ガンブレード(§16-2/§17-5/バッチC-2): gunbladeMelee.ts。至近(≤90px)に敵が入ると銃から
+  // 近接系の強攻撃へ切り替わる(ダメージ×1.6・間隔400ms・ノックバック×1.5)。遠距離の実効DPSより
+  // 近接モードの方が低い(代償あり)ことを"強い"ではなく"押し返す"側の言葉で書く。
+  'handgun-t3-gunblade': '離れていれば銃、間合いに入られると近接の一撃に切り替わる。近接は相手を強く弾き飛ばす',
+  // コイルショットガン(§16-2/バッチC-2): coilShotgun.ts。9発のペレットが発射直後に外側へ広がり、
+  // その後まとまりながら狙った方向へ戻っていく(軌道の位相=coilTrajectoryOffsetRad)。
+  'shotgun-t2-coil': '弾が一度大きく開き、そこから狙った先へ絞り込むように集まっていく',
+  // 誘導散弾ショットガン(§16-2/バッチC-2): homingShotgun.ts+gameStore.tsのhoming-missileと同じ旋回。
+  // 対象が複数なら分散、1体だけなら全弾がその1体へ集中する(assignHomingShotgunTargets)。
+  'shotgun-t3-homing': '放った弾が敵を追いかけて曲がる。複数いれば分かれて追い、1体だけなら全弾が集中する',
   // グレネードガン。t1/t2 は **転がって一定距離で爆発**(GLAUNCHER_ROLL_DETONATE_PX。
   // t1=ショットガン距離 / t2=ハンドガン距離)、t3 は転がらず着弾で爆発。
   'glauncher-t1': '転がって爆発する擲弾。近くの群れをまとめて吹き飛ばす',
@@ -713,6 +750,25 @@ export const resolveShotgunSpreadRad = (weapon: Pick<Weapon, 'tier' | 'spreadRad
     ?? SHOTGUN_SPREAD_CONE_RAD_BY_TIER[weapon.tier ?? 1]
     ?? SHOTGUN_SPREAD_CONE_RAD_BY_TIER[1];
 
+// UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルSG): computeShotDirectionsが内部で計算している
+// 「回転前の素の拡散角(rad・中心=0)」だけを取り出したもの。既存のcomputeShotDirections
+// (既定武器も通る共有関数)には手を入れず、同じ式をここへも書く(意図的な二重化——
+// 既存関数の出力形は方向ベクトルであって角度ではないため、素の角度は改めて求めるしかない)。
+export const computeShotAngleOffsets = (
+  weapon: Pick<Weapon, 'count' | 'category' | 'tier' | 'spreadRadOverride'>,
+): number[] => {
+  const count = weapon.count ?? 1;
+  const shotgunSpread = resolveShotgunSpreadRad(weapon);
+  const spreadStep = weapon.category === 'shotgun'
+    ? (count > 1 ? shotgunSpread / (count - 1) : 0)
+    : count > 1 ? 0.12 : 0;
+  const angles: number[] = [];
+  for (let i = 0; i < count; i++) {
+    angles.push(count > 1 && spreadStep > 0 ? -spreadStep * (count - 1) / 2 + i * spreadStep : 0);
+  }
+  return angles;
+};
+
 export const computeShotDirections = (
   weapon: Pick<Weapon, 'count' | 'category' | 'tier' | 'spreadRadOverride'>,
   baseDir: { x: number; y: number },
@@ -774,7 +830,15 @@ export const gunShotCritChance = (
 // never fire here — they're handled by the counter. Guns auto-target the
 // nearest enemy, roll crits per pellet, and burn one round of their ammo
 // pool per shot. Returns the projectiles spawned (empty if blocked).
-export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Projectile[] => {
+export interface FireWeaponOptions {
+  // UNIQUE_WEAPONS.md §16-2(バッチC-2・ガンブレード): 至近(≤90px)モードを許可するか。既定true
+  // (プレイヤー本体)。守護霊/幻影/ボットは「撃たないだけ」(社長裁定不要・実装者の裁量として
+  // 報告済み=最終報告参照)を選んだため、それぞれの呼び出し元がfalseを渡して melee 域では
+  // このtriggerそのものを空撃ちにする(nonProjectileと同じ「撃たない」の形)。
+  allowMelee?: boolean;
+}
+
+export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opts?: FireWeaponOptions): Projectile[] => {
   const now = Date.now();
   if (weapon.isMelee || !weapon.ammoType) return [];
   // UNIQUE_WEAPONS.md §16-2/§17-8 C-1: デュアルレンジピストルは対象までの距離で近/遠の数値セット
@@ -788,11 +852,16 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   // 積み重なるのを防ぐ)。
   const isHeavySniperGun = weapon.key === HEAVY_SNIPER_WEAPON_KEY;
   const heavySniperFrac = isHeavySniperGun ? heavySniperChargeFrac(player.heavySniperStillMs) : 0;
+  // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): dualRangeと同じ作法(モードは
+  // weapon.gunbladeMeleeModeへ持ち越す。未設定='ranged'扱い)。
+  const isGunbladeGun = weapon.key === GUNBLADE_WEAPON_KEY;
   const gateWeapon: Weapon = isDualRangeGun
     ? { ...weapon, ...DUAL_RANGE_STATS[weapon.dualRangeMode ?? 'far'] }
     : isHeavySniperGun
       ? { ...weapon, cooldown: heavySniperCooldownMs(heavySniperFrac) }
-      : weapon;
+      : isGunbladeGun
+        ? { ...weapon, ...GUNBLADE_MODE_STATS[weapon.gunbladeMeleeMode ? 'melee' : 'ranged'] }
+        : weapon;
   // 装備(腕)の連射倍率で実効cooldownを短縮(中立=1)。fireRateMult>1 ほど間隔が縮む。
   const effCooldown = effectiveFireCooldown(gateWeapon, player);
   if (now - weapon.lastFired < effCooldown) return [];
@@ -820,12 +889,20 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   if (distToTarget > gunRange) {
     return [];
   }
+  // UNIQUE_WEAPONS.md §16-2(バッチC-2・ガンブレード): 守護霊/幻影/ボットは近接モードに入ったら
+  // 「撃たないだけ」(実装者の裁量・最終報告に記載)。allowMelee=falseの呼び出し元はここで
+  // 空撃ちにする(nonProjectileの「発砲の入口でも閉じる」と同じ形)。
+  if (isGunbladeGun && opts?.allowMelee === false && distToTarget <= GUNBLADE_MELEE_RANGE_PX) {
+    return [];
+  }
 
   // §17-8 C-1: ヒステリシス判定は射程ゲートを通った「撃つ瞬間」に置く。この弾自体は今回
   // 確定したモードの数値で撃ち、次回以降のcooldownゲート(上のgateWeapon)にも持ち越す。
   const nextDualRangeMode = isDualRangeGun
     ? resolveDualRangeMode(weapon.dualRangeMode ?? 'far', distToTarget)
     : undefined;
+  // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): 同じ置き場所で至近/通常を確定する。
+  const nextGunbladeMode = isGunbladeGun ? resolveGunbladeMode(distToTarget) : undefined;
   // UNIQUE_WEAPONS.md §16-2(バッチB・切替式SG): 現在のcycleMode(反転はリロード完了側=
   // gameStore.tsの3経路で行う。距離/命中とは無関係)の数値をこの1発に差し込む。
   const isCycleGun = weapon.key === CYCLE_WEAPON_KEY;
@@ -841,13 +918,35 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       ? { ...weapon, ...CYCLE_MODE_STATS[weapon.cycleMode ?? 'shot'] }
       : isFocusGun
         ? { ...weapon, spreadRadOverride: focusSpreadRad }
-        : weapon;
+        : nextGunbladeMode
+          ? { ...weapon, ...GUNBLADE_MODE_STATS[nextGunbladeMode] }
+          : weapon;
 
   const baseDir = aimDirection(player, enemies);
   const count = shotWeapon.count ?? 1;
   // GHOST-GUN-PARITY: 拡散角/サイズ・速度の計算式は共通ヘルパへ抽出しただけ(値は不変)。
   const shotDirections = computeShotDirections(shotWeapon, baseDir);
   const { size, speed } = projectileFlightStats(shotWeapon);
+  // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルSG): 軌道位相(coilShotgun.ts)の起点になる
+  // ペレットごとの拡散角(rad・回転前)。computeShotDirectionsとは別に素の角度が要るため、
+  // 既存のcomputeShotDirections(=既定武器も使う共有関数)には手を入れず新規に求める。
+  const isCoilGun = weapon.key === COIL_SHOTGUN_WEAPON_KEY;
+  const shotAngleOffsets = isCoilGun ? computeShotAngleOffsets(shotWeapon) : undefined;
+  // UNIQUE_WEAPONS.md §16-2(バッチC-2・誘導散弾SG): 対象の割り振りは1トリガー(count発)単位。
+  // 射程内(=このトリガーが実際に撃てた射程ゲートと同じgunRange)の生存敵を近い順に集め、
+  // round-robinでペレットへ配る(homingShotgun.ts)。0体なら全ペレットundefined=直進のみ。
+  const isHomingGun = weapon.key === HOMING_SHOTGUN_WEAPON_KEY;
+  const homingTargetIds = isHomingGun
+    ? assignHomingShotgunTargets(
+      enemies
+        .filter(e => !isCorpse(e) && aimDist2(player.x + player.width / 2, player.y + player.height / 2, e) <= gunRange * gunRange)
+        .sort((a, b) =>
+          aimDist2(player.x + player.width / 2, player.y + player.height / 2, a)
+          - aimDist2(player.x + player.width / 2, player.y + player.height / 2, b))
+        .map(e => ({ id: e.id })),
+      count,
+    )
+    : undefined;
 
   // スキル: ファイアシューター = 20%の射撃が爆発弾化(×0.3 ダメージ・半径66)。
   // 連続爆発を防ぐため player.fireShooterCdUntil(gameTime ms)で 3秒の裏クールダウン。
@@ -912,8 +1011,20 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       critChance,
       // UNIQUE_WEAPONS.md §13-1: 武器のknockbackMult/postureMultを弾へそのまま運ぶ(命中側=
       // useGameLoop.tsが読む)。未設定(既定undefined)の武器は従来どおり何も付かない=回帰ゼロ。
-      knockbackMult: weapon.knockbackMult,
-      postureMult: weapon.postureMult,
+      // ★UNIQUE_WEAPONS.md §16-2(バッチC-2・ガンブレード)からshotWeapon経由(=モード別スタッツ)を
+      // 読むよう変更。dualRange/cycle/focusの各モードスタッツはknockbackMult/postureMultを
+      // 持たない(=weapon.knockbackMultと常に同値)ため、既存3挺の挙動は不変(回帰ゼロ)。
+      knockbackMult: shotWeapon.knockbackMult,
+      postureMult: shotWeapon.postureMult,
+      // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): この弾が至近モードで撃たれたか。
+      ...(nextGunbladeMode === 'melee' ? { gunbladeMeleeHit: true as const } : {}),
+      // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルSG): 軌道位相の起点(素の拡散角+狙点方向)。
+      ...(isCoilGun ? { coilBaseAngleRad: shotAngleOffsets![i], coilAimDirX: baseDir.x, coilAimDirY: baseDir.y } : {}),
+      // UNIQUE_WEAPONS.md §16-2(バッチC-2・誘導散弾SG): 対象が割り当たったペレットだけ旋回を開く
+      // (対象無し=直進のみ。homing-missileと同じ「対象が消えたら直進」規則をgameStore.tsが担う)。
+      ...(isHomingGun && homingTargetIds?.[i] !== undefined
+        ? { targetEnemyId: homingTargetIds[i], homingPellet: true as const }
+        : {}),
       // スキル: ファイアシューターの爆発弾。直撃ダメージ ×0.3、命中で半径66の小爆発。
       ...(fireShooterShot
         ? {
@@ -963,7 +1074,12 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
           const withDualRange = nextDualRangeMode !== undefined ? { ...refilled, dualRangeMode: nextDualRangeMode } : refilled;
           // UNIQUE_WEAPONS.md §16-2(収束型SG): この発射で使った散り角(2.5秒リセット済みかもしれない
           // 値)を持ち越す。命中による狭まりはuseGameLoop.ts側が別途書き込む。
-          return isFocusGun ? { ...withDualRange, focusSpreadRad } : withDualRange;
+          const withFocus = isFocusGun ? { ...withDualRange, focusSpreadRad } : withDualRange;
+          // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): モードはここで確定・持ち越す
+          // (dualRangeと同じ作法)。
+          return nextGunbladeMode !== undefined
+            ? { ...withFocus, gunbladeMeleeMode: nextGunbladeMode === 'melee' }
+            : withFocus;
         }),
         // ★無限弾武器はreserveを実フィールドへ書き戻さない(infiniteAmmoの規則・§17-3)。
         ...(doRefill && gsField && !weapon.infiniteAmmo ? ({ [gsField]: gsReserve - 1 } as Partial<Player>) : {}),

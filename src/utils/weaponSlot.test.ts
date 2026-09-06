@@ -386,6 +386,44 @@ describe('不変条件1: 実効DPS帯(バッチC-1・UNIQUE_WEAPONS.md §16-1)',
   });
 });
 
+// UNIQUE_WEAPONS.md §16-5(受け入れ条件5)。バッチC-2の3挺(近接切替・弾の軌道系)。
+// コイル/誘導散弾は「弾がどう飛ぶか」(位相・旋回)が式に現れない副次要素(§5-2の思想と同型)なので、
+// 通常のカウント式ショットガンと同じ汎用式でそのまま帯を測れる。ガンブレードは通常銃モード
+// (CATALOGの静的値)だけを測る——近接モードは§17-5の代償として設計された別軸で、帯の対象外
+// (32DPS<38.10=遠距離より低い、という設計そのものが代償。gunbladeMelee.test.tsで別途固定)。
+describe('不変条件1: 実効DPS帯(バッチC-2・UNIQUE_WEAPONS.md §16-1)', () => {
+  const band = (defaultKey: string, uniqueKey: string) => {
+    const base = effectiveDps(createWeapon(defaultKey));
+    const unique = effectiveDps(createWeapon(uniqueKey));
+    return { base, unique, ratio: unique / base };
+  };
+  const expectInBand = (ratio: number) => {
+    expect(ratio).toBeGreaterThanOrEqual(0.90);
+    expect(ratio).toBeLessThanOrEqual(1.10);
+  };
+
+  it('ガンブレード(通常銃モード=CATALOGの静的値): 既定比+1.6%', () => {
+    const { base, unique, ratio } = band('handgun-t3', 'handgun-t3-gunblade');
+    expect(base).toBeCloseTo(37.50, 1);
+    expect(unique).toBeCloseTo(38.10, 1);
+    expectInBand(ratio);
+  });
+
+  it('コイルショットガン: 既定比+7.1%', () => {
+    const { base, unique, ratio } = band('shotgun-t2', 'shotgun-t2-coil');
+    expect(base).toBeCloseTo(21.21, 1);
+    expect(unique).toBeCloseTo(22.73, 1);
+    expectInBand(ratio);
+  });
+
+  it('誘導散弾ショットガン: 既定比+7.1%', () => {
+    const { base, unique, ratio } = band('shotgun-t3', 'shotgun-t3-homing');
+    expect(base).toBeCloseTo(26.87, 1);
+    expect(unique).toBeCloseTo(28.78, 1);
+    expectInBand(ratio);
+  });
+});
+
 describe('パイルドライバーの射程(UNIQUE_WEAPONS.md §13-1)', () => {
   it('rangeOverride = MELEE_RADIUS(74) + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[3](34) = 108 を導出する', () => {
     const w = createWeapon('handgun-t3-piledriver');

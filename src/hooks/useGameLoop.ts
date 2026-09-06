@@ -469,7 +469,10 @@ import {
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
-import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
+import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
+// UNIQUE_WEAPONS.md §16-2(バッチC-2・ガンブレード): 守護霊の射程ゲート(至近モードは
+// 「撃たないだけ」)が使う距離しきい値。
+import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
@@ -10787,7 +10790,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 持たず近接で踏み込むので重なりは起きる)。buildGhostGunShots が [] を返しても
               // weaponAfterGunShot(弾-1)と playSfx が走る=10発/秒の空撃ちが復活していた。
               // 幻影(phantomTick.ts:715)が「発射の入口でも閉じる」としているのと同型。
-              if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana && !gun.nonProjectile) {
+              // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): 守護霊は近接モード域では
+              // 「撃たないだけ」(実装者の裁量・最終報告に記載。プレイヤー本体だけが近接系の強攻撃
+              // ダメージ/ノックバック/heavy体勢削りを持つ)。距離はここでしか出ない(頭脳のgunRangePx
+              // ゲートは「射程内かどうか」の上限しか見ない=至近の下限ゲートは無いため)。
+              const gunbladeGuardianMeleeRangeNow = !!(boundBoss && gun?.key === GUNBLADE_WEAPON_KEY
+                && Math.hypot(
+                  (boundBoss.x + boundBoss.width / 2) - (resolved.x + ghostNow.width / 2),
+                  (boundBoss.y + boundBoss.height / 2) - (resolved.y + ghostNow.height / 2),
+                ) <= GUNBLADE_MELEE_RANGE_PX);
+              if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana && !gun.nonProjectile && !gunbladeGuardianMeleeRangeNow) {
                 // 銃 = **計測時ビルドのアクティブ銃**。マガジン/発射間隔/リロードはプレイヤーと同じ、
                 // リザーブ弾だけはプレイヤーと完全分離して非消費(除外4)。
                 // GHOST-GUN-PARITY: 飛翔特性(count発/拡散/PROJECTILE_SPEED_MULT/projectileSize/
@@ -12787,9 +12799,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 新しい打撃種別は作らない(比率はweapon.postureMultの数字だけで調整)。viaMeleeFinish=false
           // のままなので、'heavy'の近接フィニッシュ専用分岐(applyBrokenMeleeFatal)には触れない。
           const isPiledriverHit = projectile?.weaponKey === PILEDRIVER_WEAPON_KEY;
+          // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): 至近モードの弾は非クリでも
+          // 必ず'heavy'(比率0.10)。パイルドライバーと同じ「新しい打撃種別は作らない」枠組み
+          // (weaponUtils.tsのfireWeaponがgunbladeMeleeHitを立てるのはその弾に限る)。
+          const isGunbladeMeleeHit = projectile?.weaponKey === GUNBLADE_WEAPON_KEY && projectile?.gunbladeMeleeHit === true;
           const enemyKilled = damageEnemy(
             enemyId, dmg, false, hitCrit, false, dmgChannel, hateShotSource,
-            projectile?.reflected ? 'reflect' : isPiledriverHit ? 'heavy' : directPlayerGun && hitCrit ? 'gun-crit' : null,
+            projectile?.reflected ? 'reflect' : (isPiledriverHit || isGunbladeMeleeHit) ? 'heavy' : directPlayerGun && hitCrit ? 'gun-crit' : null,
             projectile?.postureMult ?? 1,
             // ★v0.25.3665(社長指摘「鴉、銃の弾反撃しないよ?」): プレイヤーの直接銃弾は弾として
             // 幻影ゲートへ(=飛翔時間が反応速度以上なら counterChance 抽選で打ち返し対象)。

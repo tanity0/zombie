@@ -59,8 +59,11 @@ import { distToBandRect } from './geometry';
 import {
   createWeapon, effectiveFireCooldown, beginWeaponReload, finishWeaponReload,
   projectileFlightStats, gunEffectiveRangePx,
-  gunShotCritChance,
+  gunShotCritChance, GUNBLADE_WEAPON_KEY,
 } from './weaponUtils';
+// UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): 幻影の至近モード距離ゲート
+// (「撃たないだけ」・実装者の裁量=最終報告に記載)。
+import { GUNBLADE_MELEE_RANGE_PX } from './gunbladeMelee';
 import { GRAVITY_SHOT_BOSS_SLOW_MULT } from './skillEffectsB7';
 import {
   decideGhost, GHOST_COUNTER_MELEE_PERIOD_MS, type GhostDecision, type GhostProfile,
@@ -716,6 +719,11 @@ const firePhantomShot = (
   const st = useGameStore.getState();
   const p = st.player;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): 幻影も至近モード域では「撃たないだけ」
+  // (実装者の裁量・最終報告に記載。近接系の強攻撃ダメージ/ノックバック/heavy体勢削りは
+  // プレイヤー本体だけが持つ)。bcx/bcy=幻影自身の中心(呼び出し元から受け取り済み)、
+  // pcx/pcy=対象(プレイヤー)の中心。
+  if (gun.key === GUNBLADE_WEAPON_KEY && Math.hypot(bcx - pcx, bcy - pcy) <= GUNBLADE_MELEE_RANGE_PX) return;
   const flight = projectileFlightStats(gun);
   // ★SAME_ARENA O-2: クリ率も倍率も**プレイヤーと同じ純関数**で出す(主語=幻影の疑似Player)。
   // ビルドが無ければ従来どおり「武器の素のクリ率 × CRIT_DAMAGE_MULT・倍率1」=1bit不変。

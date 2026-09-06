@@ -10,18 +10,20 @@ export type SlotTier = 1 | 2 | 3;
 export const SLOT_TIERS: SlotTier[] = [1, 2, 3];
 
 export const SLOT_CANDIDATES: Record<SlotCategory, Record<SlotTier, string[]>> = {
+  // UNIQUE_WEAPONS.md §16-2(バッチC-2): handgun T3(2つめ)にガンブレードが入った。
   handgun: {
     1: ['handgun-t1', 'handgun-t1-derringer', 'handgun-t1-crossbow'],
     2: ['handgun-t2', 'handgun-t2-handcannon', 'handgun-t2-dualrange'],
-    3: ['handgun-t3', 'handgun-t3-piledriver'],
+    3: ['handgun-t3', 'handgun-t3-piledriver', 'handgun-t3-gunblade'],
   },
   // UNIQUE_WEAPONS.md §16(バッチA)/§16-2(バッチB): shotgun T2 / rifle T1 に続き、
   // shotgun T1 / rifle T1(2つめ) / rifle T2 にも横が入った。
   // UNIQUE_WEAPONS.md §16-2/§19-1(バッチC-1): shotgun T3 / rifle T2(2つめ)・T3 に横が入った。
+  // UNIQUE_WEAPONS.md §16-2(バッチC-2): shotgun T2(2つめ)・T3(2つめ)にコイル/誘導散弾が入った。
   shotgun: {
     1: ['shotgun-t1', 'shotgun-t1-focus', 'shotgun-t1-cycle'],
-    2: ['shotgun-t2', 'shotgun-t2-suppress'],
-    3: ['shotgun-t3', 'shotgun-t3-flamer'],
+    2: ['shotgun-t2', 'shotgun-t2-suppress', 'shotgun-t2-coil'],
+    3: ['shotgun-t3', 'shotgun-t3-flamer', 'shotgun-t3-homing'],
   },
   rifle: {
     1: ['rifle-t1', 'rifle-t1-bolt', 'rifle-t1-deserttech'],
@@ -61,6 +63,10 @@ export const BOSS_UNLOCK: Record<string, string> = {
   'jibril': 'shotgun-t3-flamer',    // ジブリル
   'skadi': 'rifle-t2-icelance',     // スカジ
   'mimir': 'rifle-t3-eyelaser',     // ミーミル
+  // UNIQUE_WEAPONS.md §16-2(バッチC-2)。社長の割当表(§18-1)より。
+  'uri': 'handgun-t3-gunblade',       // ウリ
+  'jormungand': 'shotgun-t2-coil',    // ヨルムンガルド
+  'phillboss': 'shotgun-t3-homing',   // フィル(変異体)
 };
 
 // ボス撃破→サブウェポンの「設計図」入手(UNIQUE_WEAPONS.md §19-6・監査A1の是正)。
