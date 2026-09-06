@@ -306,7 +306,7 @@ import { spawnEscalation, gateLiveCorrection, playerPower, expectedPower, powerM
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust, relaxAppliesToKoma } from '../utils/aiDirector';
-import { TORCH_RELAX_BONUS } from '../world/torches';
+import { TORCH_RELAX_BONUS, torchRect } from '../world/torches';
 import { resetDirectorSamples, setDirectorPower } from '../utils/aiDirectorDebug';
 import { evaluatePhasePerformance, rankFromPerformance, rankAdjustFor } from '../utils/directorRank';
 import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/directorRankState';
@@ -11968,10 +11968,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const aimableEnemies = grState.enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e));
               // レーザーが通れる壁を探す範囲(展開点±(レーザー長+マージン))。aoeWallsの200px paddingでは
               // 420pxのレーザーに足りないため、専用のpadで持つ(indoor/outdoorの分け方はaoeWallsと同じ)。
+              // ★研究所スキン(屋外ラボ)とトーチを落とさない(検収監査A-1/B-6)。同じステージで
+              // **弾は壁で止まる**(gameStoreのgrenadeWallsFor)し、**同じ武器の展開点の押し戻しも
+              // labを見ている**(meleeWallsAround)ので、線だけ貫通すると武器の中で壁の扱いが食い違う。
+              // 分岐の形と対象は弾側(grenadeWallsFor)に揃える。padだけレーザー長に合わせて広く取る。
               const beamWalls = (cx: number, cy: number): Rect[] => {
                 if (indoor) return [...labBlockingWalls(loopState.labDoors.filter(d => d.open).map(d => d.id)), ...loopState.labProps.map(p => p.rect)];
                 const pad = GOLD_RING_LASER_LEN + 40;
-                return treesInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(trunkRect);
+                if (loopState.stageTheme === 'lab') return [
+                  ...labWallsInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(wallRect),
+                  ...labPropsInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(propRect),
+                ];
+                return [
+                  ...treesInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(trunkRect),
+                  ...loopState.breakableProps.filter(pr => pr.type === 'torch' && pr.health > 0).map(torchRect),
+                ];
               };
               let changed = false;
               const nextRings: GoldRing[] = [];
