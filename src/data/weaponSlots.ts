@@ -34,11 +34,23 @@ export const SLOT_CANDIDATES: Record<SlotCategory, Record<SlotTier, string[]>> =
   },
 };
 
-// ボス撃破→ユニーク恒久解放(UNIQUE_WEAPONS.md §3-4/§6)。キーは`type@stageId`形式
-// (fixedGuardians.tsのgunKey/bossEncounter.tsのslotKeyと同じ識別子=城ボス等の重複typeを区別する)。
+// ボス撃破→ユニーク武器の「設計図」入手(UNIQUE_WEAPONS.md §11-6/§11-6-3)。キーは`type@stageId`
+// 形式が要るのは**城ボス(giantbat)だけ**(全ステージ同じ型なのでステージで割る必要がある)。
+// 天使系(miguel/jibril/rafi/uri)・裏ボス・idol・phillboss・suriel は型が一意なので `type` 単独キー。
+// ルックアップは `BOSS_UNLOCK[type@stage] ?? BOSS_UNLOCK[type]`(gameStore.ts)。
 // 値は解放される候補キー(SLOT_CANDIDATESのいずれか。既定候補ではない=不変条件4)。
 //
-// ★未決 #U3「どのボスが何を解放するか」は未裁定(社長裁定待ち)。**この表は空のまま**にする
-// (UNIQUE_WEAPONS.md「★未決を片側へ倒さないこと」)。動作確認は `?unlockall=1` のツマミで行う
-// (src/utils/weaponSlot.ts)。
-export const BOSS_UNLOCK: Record<string, string> = {};
+// 第1弾3種(社長裁定2026-09-05・§11-6-3): 残り(第2弾以降・§11-7)のボスはまだ CATALOG に
+// 対応キーが無いので、ここには書かない(★未決を片側へ倒さない)。
+export const BOSS_UNLOCK: Record<string, string> = {
+  miguel: 'handgun-t1-derringer',
+  jibril: 'handgun-t2-handcannon',
+  rafi: 'handgun-t3-piledriver',
+};
+
+// 「店売り」の明示リスト(UNIQUE_WEAPONS.md §11-6-2・監査A-2の是正)。**「BOSS_UNLOCKに無い=店売り」
+// と実装してはいけない**——現状は第2弾以降の店売り3種(クロスボウ等)がまだ CATALOG に無いため、
+// このリストは空のまま(★未決を片側へ倒さない)。
+// 不変条件(weaponSlot.test.ts): 全ユニーク候補は BOSS_UNLOCK の値 か STORE_SOLD_KEYS の
+// どちらか一方に属する(排反かつ網羅)。入れ忘れた武器は永久に入手不能になる。
+export const STORE_SOLD_KEYS: string[] = [];

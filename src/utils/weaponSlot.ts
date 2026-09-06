@@ -2,9 +2,9 @@
 // 「どの候補キーで武器を作るか」を1本の関数(resolveSlotKey)へ集約し、これを生成点4箇所
 // (weaponDrop.ts / weaponUtils.getStartingWeapons / gameStore.updateArmory / grantWeapon入口)から
 // 呼ぶことで、地面の絵(pickup.weaponKey)と拾った時の実体を一致させる(§4-1)。
-import { SlotCategory, SlotTier, SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES } from '../data/weaponSlots';
+import { SlotCategory, SlotTier, SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, STORE_SOLD_KEYS } from '../data/weaponSlots';
 import { catalogCategoryTier } from './weaponUtils';
-import { getWeaponUnlocks } from '../data/progress';
+import { getWeaponUnlocks, getWeaponBlueprints } from '../data/progress';
 
 // 装備設定(恒久・localStorage 1キー・UNIQUE_WEAPONS.md §3-3)。キャラ別にしない(社長指定)。
 export type SlotLoadout = Partial<Record<SlotCategory, Partial<Record<SlotTier, string>>>>;
@@ -40,7 +40,8 @@ export const setSlotCandidate = (category: SlotCategory, tier: SlotTier, key: st
 
 // ─────────────────────────────────────────────────────────────────────────
 // 解禁(UNIQUE_WEAPONS.md §3-4/§13-3-7): 各スロットの既定候補(配列の先頭)は常に解放済み扱い。
-// `?unlockall=1` は全候補を解放済み扱いにする実機確認用ツマミ(BOSS_UNLOCKが空でも動作確認できる)。
+// `?unlockall=1` は全候補を購入済み扱いにする実機確認用ツマミ(ボス撃破/開発施設での購入を経ずに
+// 装備でも棚でも全開になる=UNIQUE_WEAPONS.md §11-6-1「テスト用トグル/?unlockall=1は両方を全開」)。
 // ★pixiScene.tsのtsBool等ローカルのURLパーサは流用不可(このファイルはpixiSceneに依存できない)ので、
 // ここで独自に(typeof window === 'undefined' ガード付きで)パースする。
 const parseUnlockAllFlag = (): boolean => {
@@ -55,7 +56,7 @@ const UNLOCK_ALL = parseUnlockAllFlag();
 
 // テスト用の全解放トグル(社長指示2026-09-05「オプションに武器解放を入れといて(テスト用)」)。
 // オプション画面の「テスト開発用」枠から切り替える。URLツマミ `?unlockall=1` と同じ効き方だが、
-// **端末に残る**ので毎回URLを付け直さなくてよい。BOSS_UNLOCK が空の間の確認手段。
+// **端末に残る**ので毎回URLを付け直さなくてよい。ボス撃破/開発施設購入を経ずに確認できる。
 const TEST_UNLOCK_KEY = 'zombie.dev.weaponUnlockAll';
 export const isTestWeaponUnlockAll = (): boolean => {
   if (typeof window === 'undefined') return false;
@@ -95,11 +96,32 @@ export const allSlotCandidateKeys = (): Set<string> => {
   return set;
 };
 
-/** 「今、実際に使ってよい」候補キーの集合(既定 ∪ 恒久解放 ∪ ?unlockall=1 ∪ テスト用トグル)。 */
+/** 「今、実際に使ってよい」候補キーの集合(既定 ∪ 購入済み ∪ ?unlockall=1 ∪ テスト用トグル)。
+ *  装備設定/生成点(resolveSlotKeyNow)はこれを読む(UNIQUE_WEAPONS.md §11-6-1)。 */
 export const unlockedWeaponKeys = (): Set<string> => {
   if (UNLOCK_ALL || isTestWeaponUnlockAll()) return allSlotCandidateKeys();
   const set = defaultSlotKeys();
   for (const k of getWeaponUnlocks()) set.add(k);
+  return set;
+};
+
+/**
+ * 開発施設の棚に並ぶ候補キーの集合(UNIQUE_WEAPONS.md §11-6/§11-6-1)。
+ * 通常: **(設計図 ∪ 店売り) − 購入済み**(購入済みは棚から消える)。
+ * `?unlockall=1` / テスト用トグル: **既定を除く全候補 − 購入済み**(=棚にも全部並ぶ)。
+ * 既定候補(先頭)はそもそも「常に使える」ので棚には並べない。
+ */
+export const shelfWeaponKeys = (): Set<string> => {
+  const purchased = getWeaponUnlocks();
+  const set = new Set<string>();
+  if (UNLOCK_ALL || isTestWeaponUnlockAll()) {
+    forEachSlot((category, tier) => {
+      for (const k of SLOT_CANDIDATES[category][tier].slice(1)) if (!purchased.has(k)) set.add(k);
+    });
+    return set;
+  }
+  for (const k of getWeaponBlueprints()) if (!purchased.has(k)) set.add(k);
+  for (const k of STORE_SOLD_KEYS) if (!purchased.has(k)) set.add(k);
   return set;
 };
 

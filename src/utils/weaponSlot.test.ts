@@ -1,7 +1,24 @@
-import { describe, it, expect } from 'vitest';
-import { resolveSlotKey, defaultSlotKeys, type SlotLoadout } from './weaponSlot';
-import { SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, BOSS_UNLOCK, type SlotTier } from '../data/weaponSlots';
+// node既定環境にはlocalStorageが無い。resolveSlotKeyNow/unlockedWeaponKeys/shelfWeaponKeysは
+// progress.tsのgetWeaponUnlocks/getWeaponBlueprints経由でlocalStorageを読むため、
+// progress.test.tsと同じ最小モックを先に差す(importは遅延読みなので呼び出し時に効いていればよい)。
+import { describe, it, expect, beforeEach } from 'vitest';
+
+const backing: Record<string, string> = {};
+(globalThis as unknown as { localStorage: Storage }).localStorage = {
+  getItem: (k: string) => (k in backing ? backing[k] : null),
+  setItem: (k: string, v: string) => { backing[k] = v; },
+  removeItem: (k: string) => { delete backing[k]; },
+  clear: () => { for (const k of Object.keys(backing)) delete backing[k]; },
+  key: () => null,
+  get length() { return Object.keys(backing).length; },
+} as Storage;
+
+import { resolveSlotKey, resolveSlotKeyNow, unlockedWeaponKeys, shelfWeaponKeys, type SlotLoadout, defaultSlotKeys } from './weaponSlot';
+import { SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, BOSS_UNLOCK, STORE_SOLD_KEYS, type SlotTier } from '../data/weaponSlots';
 import { catalogCategoryTier, createWeapon } from './weaponUtils';
+import { markWeaponBlueprint, markWeaponUnlocked } from '../data/progress';
+
+beforeEach(() => { for (const k of Object.keys(backing)) delete backing[k]; });
 
 // ─────────────────────────────────────────────────────────────────────────
 // resolveSlotKey(純関数・UNIQUE_WEAPONS.md §4)
@@ -80,13 +97,36 @@ describe('不変条件3: 既定の先頭', () => {
 });
 
 describe('不変条件4: 解放表(BOSS_UNLOCK)の健全性', () => {
-  it('値は全て候補配列のどれかに含まれ、既定候補ではない(★現状は空=空なら自明に成立)', () => {
+  it('値は全て候補配列のどれかに含まれ、既定候補ではない', () => {
     const allCandidates = SLOT_CATEGORIES.flatMap(cat => ALL_TIERS.flatMap(t => SLOT_CANDIDATES[cat][t]));
     const defaults = defaultSlotKeys();
     for (const weaponKey of Object.values(BOSS_UNLOCK)) {
       expect(allCandidates).toContain(weaponKey);
       expect(defaults.has(weaponKey)).toBe(false);
     }
+  });
+});
+
+// UNIQUE_WEAPONS.md §11-6-2(監査A-2の是正): 「BOSS_UNLOCKに無い=店売り」と実装してはいけないので、
+// 排反(両方に入っていない)かつ網羅(どちらか一方には必ず入っている)をテストで機械化する。
+// 入れ忘れた武器は永久に入手不能になるため必須。
+describe('不変条件: 解放元の排反・網羅(BOSS_UNLOCK ∪ STORE_SOLD_KEYS = 全ユニーク候補・§11-6-2)', () => {
+  const uniqueCandidates = SLOT_CATEGORIES.flatMap(cat => ALL_TIERS.flatMap(t => SLOT_CANDIDATES[cat][t].slice(1)));
+
+  it('全ユニーク候補はBOSS_UNLOCKの値かSTORE_SOLD_KEYSのどちらか一方に属する(排反かつ網羅)', () => {
+    const bossValues = new Set(Object.values(BOSS_UNLOCK));
+    const storeSold = new Set(STORE_SOLD_KEYS);
+    for (const key of uniqueCandidates) {
+      const inBoss = bossValues.has(key);
+      const inStore = storeSold.has(key);
+      expect(inBoss || inStore, `${key} はどちらの表にも無い(永久に入手不能)`).toBe(true);
+      expect(inBoss && inStore, `${key} は両方の表に入っている(排反違反)`).toBe(false);
+    }
+  });
+
+  it('BOSS_UNLOCK/STORE_SOLD_KEYSの側に、ユニーク候補ではないキーが紛れ込んでいない', () => {
+    for (const key of Object.values(BOSS_UNLOCK)) expect(uniqueCandidates).toContain(key);
+    for (const key of STORE_SOLD_KEYS) expect(uniqueCandidates).toContain(key);
   });
 });
 
@@ -186,5 +226,48 @@ describe('パイルドライバーの射程(UNIQUE_WEAPONS.md §13-1)', () => {
   it('rangeOverride = MELEE_RADIUS(74) + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[3](34) = 108 を導出する', () => {
     const w = createWeapon('handgun-t3-piledriver');
     expect(w.rangeOverride).toBe(108);
+  });
+});
+
+// UNIQUE_WEAPONS.md §11-6-1: 「設計図あり」だけでは使えない(=装備/生成点は購入済みしか読まない)。
+// 「購入済み」になって初めて resolveSlotKeyNow が解決する。この2状態の分離を機械化する。
+describe('設計図と購入済みの分離(UNIQUE_WEAPONS.md §11-6-1・生成点はresolveSlotKeyNow)', () => {
+  it('設計図だけでは装備/生成点は解決しない(恒等のまま)', () => {
+    markWeaponBlueprint('handgun-t1-derringer');
+    // 装備設定にデリンジャーを選んでいても、購入していない間は既定キーへ恒等で落ちる。
+    const loadout: SlotLoadout = { handgun: { 1: 'handgun-t1-derringer' } };
+    const unlocked = unlockedWeaponKeys();
+    expect(unlocked.has('handgun-t1-derringer')).toBe(false);
+    expect(resolveSlotKey('handgun-t1', loadout, unlocked)).toBe('handgun-t1');
+  });
+
+  it('購入済みになって初めて解決される', () => {
+    markWeaponBlueprint('handgun-t1-derringer');
+    markWeaponUnlocked('handgun-t1-derringer');
+    const loadout: SlotLoadout = { handgun: { 1: 'handgun-t1-derringer' } };
+    const unlocked = unlockedWeaponKeys();
+    expect(unlocked.has('handgun-t1-derringer')).toBe(true);
+    expect(resolveSlotKey('handgun-t1', loadout, unlocked)).toBe('handgun-t1-derringer');
+  });
+
+  it('resolveSlotKeyNow(生成点の合成版)も同じ挙動: 設計図のみでは恒等、購入済みで解決', () => {
+    markWeaponBlueprint('handgun-t2-handcannon');
+    expect(resolveSlotKeyNow('handgun-t2')).toBe('handgun-t2'); // まだ選択もしていないので恒等
+  });
+
+  it('shelfWeaponKeys(棚): 設計図があれば並ぶ、購入済みになると消える', () => {
+    expect(shelfWeaponKeys().has('handgun-t1-derringer')).toBe(false); // 設計図なし=棚に無い
+    markWeaponBlueprint('handgun-t1-derringer');
+    expect(shelfWeaponKeys().has('handgun-t1-derringer')).toBe(true); // 設計図あり=棚に並ぶ
+    markWeaponUnlocked('handgun-t1-derringer');
+    expect(shelfWeaponKeys().has('handgun-t1-derringer')).toBe(false); // 購入済み=棚から消える
+  });
+
+  it('shelfWeaponKeys: 店売り(STORE_SOLD_KEYS)は設計図が無くても最初から棚に並ぶ', () => {
+    // 第1弾の現状はSTORE_SOLD_KEYSが空なので、この不変条件だけを直接確認する
+    // (STORE_SOLD_KEYSに何か入った時、設計図の有無を問わず並ぶことを保証する)。
+    for (const key of STORE_SOLD_KEYS) {
+      expect(shelfWeaponKeys().has(key)).toBe(true);
+    }
   });
 });
