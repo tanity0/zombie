@@ -54,7 +54,7 @@ import {
   GOLD_RING_DAMAGE_BY_LEVEL, computeGoldRingDeployPoints,
 } from '../utils/goldRing';
 // UNIQUE_WEAPONS.md §16-2(バッチC-1): 氷槍ライフルの床が使う共通の持続線分型(§19-1)。
-import type { PersistentBeam } from '../utils/persistentBeam';
+import type { IceLanceFloor } from '../utils/iceLanceFloor';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/bomberScatter';
 import {
@@ -5391,10 +5391,22 @@ interface GameState {
   goldRings: GoldRing[];
   setGoldRings: (rings: readonly GoldRing[]) => void; // useGameLoop が状態機械/パルスtickの結果を反映するだけ
   // 氷槍ライフル(rifle-t2-icelance)の床(UNIQUE_WEAPONS.md §16-2)。持続線分の純状態は
-  // src/utils/persistentBeam.ts(金環/アイレーザーと共通の土台)。生成/寿命tick/パルス適用は
-  // useGameLoop、描画は pixiScene が直読み。
-  iceLanceFloors: PersistentBeam[];
-  setIceLanceFloors: (floors: readonly PersistentBeam[]) => void; // useGameLoop が寿命/パルスtickの結果を反映するだけ
+  // src/utils/persistentBeam.ts(金環/アイレーザーと共通の土台)を拡張した IceLanceFloor
+  // (src/utils/iceLanceFloor.ts・検収監査A-1是正=「弾の後ろに伸びる床」)。生成/伸長/凍結/
+  // パルス適用は useGameLoop、描画は pixiScene が直読み。
+  iceLanceFloors: IceLanceFloor[];
+  setIceLanceFloors: (floors: readonly IceLanceFloor[]) => void; // useGameLoop が寿命/パルスtickの結果を反映するだけ
+  // UNIQUE_WEAPONS.md §16-2(検収監査A-3是正): アイレーザーの現在の射線(毎tick追尾で更新)を
+  // player.weapons から出した専用フィールド。pixiScene だけが読む(判定はuseGameLoopが
+  // 同じ値を使って計算する。ここはその「結果」を描画へ渡すだけの経路)。null=非表示。
+  // フェーズ(charging/firing)自体・弾消費・パルスタイミングは従来どおり player.weapons 側
+  // (eyeLaserPhase等)に残す=毎tick書き換わるのは射線だけ・受け入れ条件「フェーズ遷移と
+  // 弾消費の時だけplayer.weaponsへ書く」を満たす。
+  eyeLaserBeam: { ax: number; ay: number; bx: number; by: number } | null;
+  setEyeLaserBeam: (beam: { ax: number; ay: number; bx: number; by: number } | null) => void;
+  // 同上(検収監査A-3是正): 火炎放射器の現在の照射方向(毎パルスで更新)。
+  flamerCone: { dirX: number; dirY: number } | null;
+  setFlamerCone: (cone: { dirX: number; dirY: number } | null) => void;
   spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number) => void; // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
   // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)の燃焼DoT。命中した敵個体が持つ
@@ -6223,6 +6235,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   flareGunFlares: [],
   goldRings: [],
   iceLanceFloors: [],
+  eyeLaserBeam: null,
+  flamerCone: null,
   firstAidKitState: createFirstAidKitState(),
   projectiles: [],
   pickups: [],
@@ -8337,9 +8351,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 金環(gold-ring): 状態機械/パルスtickは useGameLoop が決め、ここは反映のみ。
   setGoldRings: (rings) => set({ goldRings: [...rings] }),
 
-  // 氷槍ライフルの床(UNIQUE_WEAPONS.md §16-2): 寿命/パルスtickは useGameLoop が
-  // tickPersistentBeams(persistentBeam.ts)で決め、ここは反映のみ。
+  // 氷槍ライフルの床(UNIQUE_WEAPONS.md §16-2): 伸長/凍結/パルスtickは useGameLoop が
+  // tickIceLanceFloors(iceLanceFloor.ts・検収監査A-1是正)で決め、ここは反映のみ。
   setIceLanceFloors: (floors) => set({ iceLanceFloors: [...floors] }),
+
+  // アイレーザーの射線/火炎放射器の照射方向(検収監査A-3是正): 毎tick更新されるのは
+  // この2フィールドだけ(player.weapons側は書き込まない)。pixiSceneが読むだけの薄い経路。
+  setEyeLaserBeam: (beam) => set({ eyeLaserBeam: beam }),
+  setFlamerCone: (cone) => set({ flamerCone: cone }),
 
   // 救急鞄(first-aid-kit): 判定(何を払い出すか/空になったか)は useGameLoop が
   // computeFirstAidKitTick / isFirstAidKitEmpty(純関数)で決め、ここは結果を state へ書き込むだけ。
@@ -18819,6 +18838,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         flareGunFlares: [],
         goldRings: [], // ★足さないと前ランの金環が次ランへ残る(UNIQUE_WEAPONS.md §19-3b)
         iceLanceFloors: [], // ★同上(氷槍ライフルの床。UNIQUE_WEAPONS.md §16-2/§19-3bと同じ理由)
+        eyeLaserBeam: null, // ★同上(検収監査A-3是正の新フィールド)
+        flamerCone: null, // ★同上
         firstAidKitState: createFirstAidKitState(),
         breakableProps: runBreakables,
         destroyedBreakableProps: {},

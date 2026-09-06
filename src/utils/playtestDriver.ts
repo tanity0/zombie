@@ -27,7 +27,7 @@ import {
 } from '../store/gameStore';
 // SKILL_BUILD_REDESIGN.md §13-2(B0発注文): ボットの商人購買ポリシー(乱数なし・決定的な純関数)。
 import { decideBotShopPurchase } from './botShopPolicy';
-import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY, isDirectGunWeaponKey, EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY } from './weaponUtils';
+import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY, isDirectGunWeaponKey } from './weaponUtils';
 import { pickAmmoDropType } from './ammoDrop';
 import { ammoDirectorRate } from './ammoDirector';
 import { shouldSpawnAirdrop } from './ammoAirdrop';
@@ -375,11 +375,11 @@ const autoFireGun = (): void => {
   const postReloadPlayer = useGameStore.getState().player;
   const katanaActive = isKatanaMode(postReloadPlayer);
   const activeGun = getActiveGun(postReloadPlayer);
-  // UNIQUE_WEAPONS.md §17-6: アイレーザー/火炎放射器は非投射武器=専用の状態機械でしか撃たない
-  // (useGameLoop.ts側のみ)。ボット(playtestDriver)はfireWeaponを直接呼ぶ経路なので、
-  // ここで撃たせないと「14ダメージの連射弾」等の等価実装ズレが起きる。
-  if (!activeGun || katanaActive || activeGun.category === 'phill'
-    || activeGun.key === EYE_LASER_WEAPON_KEY || activeGun.key === FLAMER_WEAPON_KEY) return;
+  // UNIQUE_WEAPONS.md §17-6(検収監査A-2の是正): アイレーザー/火炎放射器は非投射武器=専用の
+  // 状態機械でしか撃たない(useGameLoop.ts側のみ)。ボット(playtestDriver)はfireWeaponを直接
+  // 呼ぶ経路なので、ここで撃たせないと「14ダメージの連射弾」等の等価実装ズレが起きる。
+  // 判定は`nonProjectile`フラグ1本(キー直書きにしない)。
+  if (!activeGun || katanaActive || activeGun.category === 'phill' || activeGun.nonProjectile) return;
   const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
   newProjectiles.forEach(p => useGameStore.getState().addProjectile(p));
 };

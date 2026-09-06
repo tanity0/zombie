@@ -260,7 +260,8 @@ import {
   EYE_LASER_CHARGE_MS, EYE_LASER_FIRE_MS, EYE_LASER_PULSE_MS, EYE_LASER_HALFWIDTH,
 } from '../utils/eyeLaserGun';
 import {
-  ICE_LANCE_FLOOR_HALFWIDTH, ICE_LANCE_FLOOR_DURATION_MS, ICE_LANCE_FLOOR_PULSE_MS, iceLanceFloorPulseDamage,
+  ICE_LANCE_FLOOR_HALFWIDTH, ICE_LANCE_FLOOR_PULSE_MS, iceLanceFloorPulseDamage,
+  createIceLanceFloor, tickIceLanceFloors,
 } from '../utils/iceLanceFloor';
 import {
   FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS, pickFanHits,
@@ -8311,7 +8312,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // PHILL銃は自動射撃しない(指離しの手動発砲のみ=firePhillShot)。
         // UNIQUE_WEAPONS.md §16-2(バッチC-1): アイレーザー/火炎放射器は弾を作らない非投射武器
         // (§17-6)。fireWeaponの通常オート射撃からは除外し、専用の状態機械(下のブロック)で撃つ。
-        const isNonProjectileGun = activeGun?.key === EYE_LASER_WEAPON_KEY || activeGun?.key === FLAMER_WEAPON_KEY;
+        const isNonProjectileGun = activeGun?.nonProjectile === true;
         if (activeGun && !katanaActive && !skaterLocked && !attackLocked && !seekerLocked && !pvpLocked && activeGun.category !== 'phill' && !isNonProjectileGun) {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
@@ -8330,29 +8331,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 mpx, mpy, activeGun.category === 'shotgun' ? 22 : 15, 'rgba(255,238,170,', 90
               );
             }
-            // UNIQUE_WEAPONS.md §16-2(氷槍ライフル): 発射した弾の射線に短時間の床(線)を残す。
-            // 「弾が壁で止まったらそこまで」(落としやすい点4)=その弾の実際の飛翔可能距離
-            // (proj.speed×proj.duration/1000)を上限に、beamWallsで壁まで短縮する。
+            // UNIQUE_WEAPONS.md §16-2(氷槍ライフル)・検収監査A-1是正: 発射した弾の射線に短時間の
+            // 床(線)を残す。旧実装は発射の瞬間に弾の最大飛翔距離ぶんを即座に全長で作っていたため、
+            // 弾がまだ飛んでいない同tickで線上の全敵にダメージが入っていた(=弾より先に当たる)。
+            // 今はここで「まだ何も伸びていない床」を1つ作るだけ。伸長(弾を追跡)/凍結(弾が消えた
+            // 地点で止める)/寿命1.2秒の起点は tickIceLanceFloors(iceLanceFloor.ts・純関数)が
+            // 毎tick進める(下のICE_LANCE_FLOOR_DURATION_MSブロック)。
             if (activeGun.key === ICE_LANCE_WEAPON_KEY) {
               const p0 = newProjectiles[0];
               const icx = postReloadPlayer.x + postReloadPlayer.width / 2;
               const icy = postReloadPlayer.y + postReloadPlayer.height / 2;
-              const maxLen = p0.speed * p0.duration / 1000;
-              const rawEndX = icx + p0.direction.x * maxLen;
-              const rawEndY = icy + p0.direction.y * maxLen;
-              const icPad = maxLen + 40;
-              const icEnd = shortenSegmentAtWalls(icx, icy, rawEndX, rawEndY, beamWalls(icx, icy, icPad));
               const floorDamage = iceLanceFloorPulseDamage(p0.damage);
               const icState = useGameStore.getState();
               icState.setIceLanceFloors([
                 ...icState.iceLanceFloors,
-                {
-                  id: `ice-floor-${p0.id}`,
-                  ax: icx, ay: icy, bx: icEnd.x, by: icEnd.y,
-                  halfWidth: ICE_LANCE_FLOOR_HALFWIDTH,
-                  createdAt: gameTime, durationMs: ICE_LANCE_FLOOR_DURATION_MS, pulseMs: ICE_LANCE_FLOOR_PULSE_MS,
-                  damage: floorDamage, nextPulseAt: gameTime,
-                },
+                createIceLanceFloor(
+                  `ice-floor-${p0.id}`, p0.id, icx, icy,
+                  ICE_LANCE_FLOOR_HALFWIDTH, ICE_LANCE_FLOOR_PULSE_MS, floorDamage, gameTime,
+                ),
               ]);
             }
           }
@@ -10439,7 +10435,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // (§13-1監査C-7)。★守護霊は自分の武器状態(dualRangeMode等)を同期していないので、
                   // デュアルレンジを持つ守護霊は常にCATALOGの既定(遠セット)で射程・威力を計算する
                   // (§17-11「守護霊との武器状態の同期」=B積み・パリティの穴。射程自体は不変)。
-                  gunRangePx: gun && !ghostKatana && !ghostReloadingWeaponId && (gun.magazine ?? 0) > 0
+                  // UNIQUE_WEAPONS.md §17-6(検収監査A-2の是正): 非投射武器(アイレーザー/火炎放射器)は
+                  // 弾を作らない(buildGhostGunShotsが[]を返す)ので、頭脳側でも射程0にして
+                  // 「撃つ」を選ばせない(そうしないと空撃ちで弾消費+SEだけが発生する)。
+                  gunRangePx: gun && !ghostKatana && !ghostReloadingWeaponId && (gun.magazine ?? 0) > 0 && !gun.nonProjectile
                     ? gunEffectiveRangePx(gun) : 0,
                   meleeDamage: meleeWeapon?.damage ?? 6,
                 },
@@ -12106,8 +12105,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // 氷槍ライフル(rifle-t2-icelance・UNIQUE_WEAPONS.md §16-2)の床: 生成はfireWeapon直後の
-        // フックで行う(上のICE_LANCE_WEAPON_KEY分岐)。ここは寿命tick+パルス適用だけ
-        // (§19-1の共通土台=金環と同じpersistentBeam.tsをそのまま使う。追尾しない固定線分)。
+        // フックで行う(上のICE_LANCE_WEAPON_KEY分岐)。ここは伸長(弾を追跡)/凍結/寿命tick/
+        // パルス適用(検収監査A-1是正=tickIceLanceFloors・iceLanceFloor.ts)。
         {
           const ilState = useGameStore.getState();
           if (ilState.iceLanceFloors.length > 0) {
@@ -12115,14 +12114,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               ilState.setIceLanceFloors([]);
             } else {
               const ilEnemies = ilState.enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e));
-              const { beams: survFloors, pulses: floorPulses } = tickPersistentBeams(ilState.iceLanceFloors, gameTime);
+              const { floors: nextFloors, pulses: floorPulses, changed } = tickIceLanceFloors(ilState.iceLanceFloors, ilState.projectiles, gameTime);
               for (const pulseBeam of floorPulses) {
                 const hits = pickBeamHits(pulseBeam.ax, pulseBeam.ay, pulseBeam.bx, pulseBeam.by, pulseBeam.halfWidth, ilEnemies);
                 applyBeamPulse(hits, pulseBeam.damage, undefined, '#a5e6ff', 'pickup-xp-icelance-floor');
               }
-              if (survFloors.length !== ilState.iceLanceFloors.length || floorPulses.length > 0) {
-                ilState.setIceLanceFloors(survFloors);
-              }
+              if (changed) ilState.setIceLanceFloors(nextFloors);
             }
           }
         }
@@ -12132,6 +12129,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 同じ経路。§17-2の装填6・1照射で1消費・照射終了時にリロード開始・raw2500ms=実効5000ms)。
         // fireWeaponの自動射撃からは除外済み(上のisNonProjectileGunガード)ので、ここが唯一の発射経路。
         // 時計はgameTime(溜め/照射/パルス)。標準リロードだけはDate.now基準(既存武器と同じ)。
+        // ★検収監査A-3是正: 毎tick変わる射線(ax/ay/bx/by)は player.weapons ではなく
+        // gameStore.eyeLaserBeam(専用フィールド)へ書く。player.weapons への書き込みは
+        // フェーズ遷移(charging開始/firing開始/firing終了)とパルス消費(didPulse)の時だけに絞る。
         {
           const elState = useGameStore.getState();
           const elPlayer = elState.player;
@@ -12141,12 +12141,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const elDead = elPlayer.health <= 0 || elState.gameWon;
             if (!elActiveNow || elDead) {
               // 装備から外れた/決着がついた: 進行中のフェーズを静かに畳む(残り時間は失われる)。
+              // ★A-5: 照射中に切られた場合は eyeLaserEndedAt を残し、pixiSceneが最後の射線
+              // (eyeLaserBeam・書き換えない=保持したまま)を統一型フェードで畳めるようにする。
               if (elGun.eyeLaserPhase !== undefined) {
+                const wasFiring = elGun.eyeLaserPhase === 'firing';
                 useGameStore.setState({
                   player: {
                     ...elPlayer,
                     weapons: elPlayer.weapons.map(w => (w.id === elGun.id
-                      ? { ...w, eyeLaserPhase: undefined, eyeLaserTargetId: undefined, eyeLaserAx: undefined, eyeLaserAy: undefined, eyeLaserBx: undefined, eyeLaserBy: undefined }
+                      ? { ...w, eyeLaserPhase: undefined, eyeLaserTargetId: undefined, ...(wasFiring ? { eyeLaserEndedAt: gameTime } : {}) }
                       : w)),
                   },
                 });
@@ -12192,9 +12195,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       });
                     } else {
                       const pulseDamage = Math.max(1, Math.round(gunShotBaseDamage(elGun, elPlayer, gameTime)));
+                      // ★検収監査A-4是正: 「対象の中心で止める」のではなく、方向だけ対象から取り、
+                      // 固定長(射程elRange)まで延ばしてから壁短縮する(金環が420px固定で通しているのと
+                      // 同じ形)。これで対象の向こう側の敵にも当たる(貫通)。壁探索のpadも同じ長さに揃える
+                      // (旧: elRange+180pxの固定マージンで、対象が遠いほど無制限に伸びていた)。
                       const tcx = target.x + target.width / 2, tcy = target.y + target.height / 2;
-                      const elPad = elRange + EYE_LASER_HALFWIDTH * 20 + 40;
-                      const end = shortenSegmentAtWalls(elPcx, elPcy, tcx, tcy, beamWalls(elPcx, elPcy, elPad));
+                      const ddx = tcx - elPcx, ddy = tcy - elPcy;
+                      const dlen = Math.max(0.001, Math.hypot(ddx, ddy));
+                      const dirX = ddx / dlen, dirY = ddy / dlen;
+                      const rawEndX = elPcx + dirX * elRange, rawEndY = elPcy + dirY * elRange;
+                      const elPad = elRange + 40;
+                      const end = shortenSegmentAtWalls(elPcx, elPcy, rawEndX, rawEndY, beamWalls(elPcx, elPcy, elPad));
                       useGameStore.setState({
                         player: {
                           ...elPlayer,
@@ -12203,10 +12214,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                             magazine: Math.max(0, (w.magazine ?? 0) - 1),
                             eyeLaserPhase: 'firing', eyeLaserPhaseAt: gameTime, eyeLaserTargetId: target.id,
                             eyeLaserNextPulseAt: gameTime, eyeLaserPulseDamage: pulseDamage,
-                            eyeLaserAx: elPcx, eyeLaserAy: elPcy, eyeLaserBx: end.x, eyeLaserBy: end.y,
+                            eyeLaserEndedAt: undefined,
                           } : w)),
                         },
                       });
+                      useGameStore.getState().setEyeLaserBeam({ ax: elPcx, ay: elPcy, bx: end.x, by: end.y });
                       playSfx('rifle-fire');
                     }
                   }
@@ -12217,37 +12229,47 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (targetGone || fireDone) {
                     // ★対象死亡/照射終了: 再ターゲットしない・その場で終了・残り時間は失われる
                     // (社長裁定2026-09-06)。そのまま標準リロードへ(既存武器と同じ経路)。
+                    // ★A-5: eyeLaserEndedAt を残す(eyeLaserBeamは書き換えない=最後の射線を保持した
+                    // まま、pixiSceneが統一型フェードで畳む)。
                     useGameStore.setState(st => ({
                       player: {
                         ...st.player,
                         weapons: st.player.weapons.map(w => (w.id === elGun.id
-                          ? { ...w, eyeLaserPhase: undefined, eyeLaserTargetId: undefined, eyeLaserAx: undefined, eyeLaserAy: undefined, eyeLaserBx: undefined, eyeLaserBy: undefined }
+                          ? { ...w, eyeLaserPhase: undefined, eyeLaserTargetId: undefined, eyeLaserEndedAt: gameTime }
                           : w)),
                       },
                     }));
                     useGameStore.getState().startReload(elGun.id);
                   } else {
                     // 追尾: 毎パルス終点を更新するだけ(落としやすい点5・stepLaserAimは使わない)。
+                    // ★A-4是正: ここも固定長(elRange2)まで延ばしてから壁短縮する(発射開始と同じ形)。
                     const tcx2 = target.x + target.width / 2, tcy2 = target.y + target.height / 2;
+                    const ddx2 = tcx2 - elPcx, ddy2 = tcy2 - elPcy;
+                    const dlen2 = Math.max(0.001, Math.hypot(ddx2, ddy2));
+                    const dirX2 = ddx2 / dlen2, dirY2 = ddy2 / dlen2;
                     const elRange2 = gunEffectiveRangePx(elGun);
-                    const elPad2 = elRange2 + EYE_LASER_HALFWIDTH * 20 + 40;
-                    const end2 = shortenSegmentAtWalls(elPcx, elPcy, tcx2, tcy2, beamWalls(elPcx, elPcy, elPad2));
+                    const rawEndX2 = elPcx + dirX2 * elRange2, rawEndY2 = elPcy + dirY2 * elRange2;
+                    const elPad2 = elRange2 + 40;
+                    const end2 = shortenSegmentAtWalls(elPcx, elPcy, rawEndX2, rawEndY2, beamWalls(elPcx, elPcy, elPad2));
                     let didPulse = false;
                     if (gameTime >= (elGun.eyeLaserNextPulseAt ?? gameTime)) {
                       didPulse = true;
                       const hits = pickBeamHits(elPcx, elPcy, end2.x, end2.y, EYE_LASER_HALFWIDTH, elAimable);
                       applyBeamPulse(hits, elGun.eyeLaserPulseDamage ?? 0, undefined, '#ff8a3d', 'pickup-xp-eyelaser');
                     }
-                    useGameStore.setState(st => ({
-                      player: {
-                        ...st.player,
-                        weapons: st.player.weapons.map(w => (w.id === elGun.id ? {
-                          ...w,
-                          eyeLaserAx: elPcx, eyeLaserAy: elPcy, eyeLaserBx: end2.x, eyeLaserBy: end2.y,
-                          eyeLaserNextPulseAt: didPulse ? (w.eyeLaserNextPulseAt ?? gameTime) + EYE_LASER_PULSE_MS : w.eyeLaserNextPulseAt,
-                        } : w)),
-                      },
-                    }));
+                    // ★A-3是正: 射線(毎tick)はstoreの専用フィールドへ。player.weaponsはパルス
+                    // (didPulse=弾消費に相当するイベント)の時だけ書く。
+                    useGameStore.getState().setEyeLaserBeam({ ax: elPcx, ay: elPcy, bx: end2.x, by: end2.y });
+                    if (didPulse) {
+                      useGameStore.setState(st => ({
+                        player: {
+                          ...st.player,
+                          weapons: st.player.weapons.map(w => (w.id === elGun.id
+                            ? { ...w, eyeLaserNextPulseAt: (w.eyeLaserNextPulseAt ?? gameTime) + EYE_LASER_PULSE_MS }
+                            : w)),
+                        },
+                      }));
+                    }
                   }
                 }
               }
@@ -12259,6 +12281,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 射程90px)に持続判定。100msごとに5ダメージ+弾1消費(装填40=4秒照射)。弾切れで標準
         // リロードへ(既存武器と同じ経路)。射程内に敵が居る間だけ照射する(他の銃の自動射撃と同じ
         // 「射程ゲート」思想。fireWeaponの自動射撃からは除外済み)。
+        // ★検収監査A-3是正: 毎パルスの照射方向は player.weapons ではなく gameStore.flamerCone
+        // (専用フィールド)へ書く。player.weapons への書き込みは弾消費(=パルス発火)の時だけ。
         {
           const flState = useGameStore.getState();
           const flPlayer = flState.player;
@@ -12276,27 +12300,44 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const flPcy = flPlayer.y + flPlayer.height / 2;
               const flAimable = flState.enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e));
               const flRange = gunEffectiveRangePx(flGun);
-              const flTarget = pickNearestTarget(flPcx, flPcy, flAimable, gameTime, flRange * flRange);
+              const flWalls = beamWalls(flPcx, flPcy, FLAMER_RANGE_PX + 40);
+              // ★検収監査B-2是正: 対象選択(pickNearestTarget)も命中判定(pickFanHits+segmentBlocked)
+              // と同じ「壁で遮られていない」条件を通す。旧実装は矩形最近点の距離だけで選ぶため、
+              // 壁の向こうの敵を狙って弾(装填)を消費し噴射の絵まで出すのにヒット0、という空パルスが
+              // 出ていた。
+              const flReachable = flWalls.length === 0
+                ? flAimable
+                : flAimable.filter(e => !segmentBlocked(flPcx, flPcy, e.x + e.width / 2, e.y + e.height / 2, flWalls));
+              const flTarget = pickNearestTarget(flPcx, flPcy, flReachable, gameTime, flRange * flRange);
               if (flTarget && gameTime >= (flGun.flamerNextPulseAt ?? 0)) {
                 const dx = flTarget.x + flTarget.width / 2 - flPcx;
                 const dy = flTarget.y + flTarget.height / 2 - flPcy;
                 const dist = Math.max(0.001, Math.hypot(dx, dy));
                 const dirX = dx / dist, dirY = dy / dist;
-                const flWalls = beamWalls(flPcx, flPcy, FLAMER_RANGE_PX + 40);
                 const candidates = pickFanHits(flPcx, flPcy, dirX, dirY, FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, flAimable);
                 const hits = flWalls.length === 0
                   ? candidates
                   : candidates.filter(e => !segmentBlocked(flPcx, flPcy, e.x + e.width / 2, e.y + e.height / 2, flWalls));
                 const pulseDamage = Math.max(1, Math.round(gunShotBaseDamage(flGun, flPlayer, gameTime)));
                 applyBeamPulse(hits, pulseDamage, undefined, '#ff9d4d', 'pickup-xp-flamer');
+                // ★検収監査A-5是正: パルスが途切れていた(=新しい噴射の立ち上がり)時だけ
+                // flamerSprayStartAtを更新する。継続中の噴射では最初の開始時刻を保持したまま
+                // (pixiSceneがそこからの経過でα/長さを一度だけ立ち上げ、以後は定常表示にする)。
+                const flWasSpraying = gameTime - ((flGun.flamerNextPulseAt ?? -Infinity) - FLAMER_PULSE_MS) < FLAMER_PULSE_MS + 20;
                 useGameStore.setState(st => ({
                   player: {
                     ...st.player,
                     weapons: st.player.weapons.map(w => (w.id === flGun.id
-                      ? { ...w, magazine: Math.max(0, (w.magazine ?? 0) - 1), flamerNextPulseAt: gameTime + FLAMER_PULSE_MS, flamerAimX: dirX, flamerAimY: dirY }
+                      ? {
+                          ...w,
+                          magazine: Math.max(0, (w.magazine ?? 0) - 1),
+                          flamerNextPulseAt: gameTime + FLAMER_PULSE_MS,
+                          flamerSprayStartAt: flWasSpraying ? w.flamerSprayStartAt : gameTime,
+                        }
                       : w)),
                   },
                 }));
+                useGameStore.getState().setFlamerCone({ dirX, dirY });
               }
             }
           }

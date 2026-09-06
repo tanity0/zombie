@@ -1525,15 +1525,28 @@ export interface Weapon {
   eyeLaserTargetId?: string;     // 'firing'中のみ有効。対象が死んだら再ターゲットせずその場で終了(社長裁定2026-09-06)
   eyeLaserNextPulseAt?: number;  // 次パルス(100msごと)のgameTime
   eyeLaserPulseDamage?: number;  // 'firing'開始時に確定した1パルスダメージ(gunShotBaseDamage基準)
-  // 'firing'中の現在の射線(毎tick追尾で更新・pixiScene描画用)。パルスの当たり判定もこの値を使う。
-  eyeLaserAx?: number; eyeLaserAy?: number; eyeLaserBx?: number; eyeLaserBy?: number;
+  // ★検収監査A-3是正: 'firing'中の現在の射線(毎tick追尾で更新)は player.weapons から
+  // gameStore.eyeLaserBeam(専用フィールド)へ移した——ここに書くとGameHUD等の
+  // `s.player.weapons` 購読者が60回/秒再描画される(CLAUDE.md「React re-render discipline」)。
+  // ★検収監査A-5是正: 照射が終わった(firing→undefinedへ落ちた)gameTime。金環と同じ統一型の
+  // フェード(pixiSceneのweaponSpawnEase・180〜260msレンジ)で畳むための起点。undefined=
+  // まだ一度も照射していない/フェードが完了して不要。
+  eyeLaserEndedAt?: number;
   // UNIQUE_WEAPONS.md §16-2(バッチC-1・火炎放射器 shotgun-t3-flamer限定): 前方の扇に持続判定。
   // 弾を撃たないので「1トリガー」の概念が無く、装備中に射程内で毎100msダメージ+弾1消費し続ける
   // (標準のmagazine/reloadingWeaponIdへそのまま乗る=満タン→0で自動的にstartReloadへ合流)。
   flamerNextPulseAt?: number;
-  // 直近パルスの照射方向(単位ベクトル)。pixiScene描画専用(判定は毎パルス再計算する生の方向を使う。
-  // これは「見た目」だけの持ち越し=Visual vs. hitbox)。
-  flamerAimX?: number; flamerAimY?: number;
+  // ★検収監査A-3是正: 直近パルスの照射方向(単位ベクトル)は player.weapons から
+  // gameStore.flamerCone へ移した(理由は上のeyeLaserBeamと同じ)。
+  // ★検収監査A-5是正: 現在の噴射(連続パルス列)が始まった gameTime。パルスが途切れていた
+  // (=新しい噴射)時だけ更新する。pixiSceneがここからの経過でα/長さを立ち上げる
+  // (flamerNextPulseAtからの経過=最終パルスからの経過で減衰させる)。
+  flamerSprayStartAt?: number;
+  // UNIQUE_WEAPONS.md §17-6(検収監査A-2の是正): 弾を撃たない武器(アイレーザー/火炎放射器)の印。
+  // 守護霊(buildGhostGunShots入口・gunRangePx)・幻影(phantomTick.ts)・ボット(playtestDriver.ts)・
+  // プレイヤー自身のオート射撃(useGameLoop.ts)の**全経路がこの1つのフラグだけを見る**
+  // (キー直書きの散らばりを1箇所へ集約)。未設定(既定undefined)=従来どおり弾を撃つ武器。
+  nonProjectile?: true;
 }
 
 // Gun families. Each shares an ammo pool with the matching AmmoType.

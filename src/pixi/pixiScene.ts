@@ -8058,8 +8058,8 @@ export class PixiScene {
     this.syncFlareGun(s.flareGunFlares, s.gameTime, now); // フレアガン(飛翔→着弾中3秒の火・molotovの火を流用)
     this.syncGoldRings(s.goldRings, s.gameTime, now); // 金環(UNIQUE_WEAPONS.md §19・展開→照射→フェード)
     this.syncIceLanceFloors(s.iceLanceFloors, s.gameTime); // UNIQUE_WEAPONS.md §16-2: 氷槍ライフルの床
-    this.syncEyeLaser(s.player, s.gameTime); // UNIQUE_WEAPONS.md §16-2: アイレーザーの溜め/照射
-    this.syncFlamerCone(s.player, s.gameTime, now); // UNIQUE_WEAPONS.md §16-2: 火炎放射器の扇
+    this.syncEyeLaser(s.player, s.eyeLaserBeam, s.gameTime); // UNIQUE_WEAPONS.md §16-2: アイレーザーの溜め/照射
+    this.syncFlamerCone(s.player, s.flamerCone, s.gameTime, now); // UNIQUE_WEAPONS.md §16-2: 火炎放射器の扇
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now, s.effects, s.breakableProps, s.endingSoldiers);
@@ -13390,14 +13390,26 @@ export class PixiScene {
 
   // UNIQUE_WEAPONS.md §16-2(バッチC-1): アイレーザー。溜め中は絵なし(素材は後日)、照射中だけ
   // 線(core+halo・pooled sprite)を描く。出現は慣性つきランプ(80〜120msで幅とαを立ち上げる・
-  // CLAUDE.md慣性MUST)。判定は追尾で毎パルス終点が動くので、描画もuseGameLoopが書いたax/ay/bx/by
-  // (=毎tick更新される現在の射線)を読むだけ(pixiは判定を持たない)。
-  private syncEyeLaser(player: Player, gameTime: number) {
+  // CLAUDE.md慣性MUST)。判定は追尾で毎パルス終点が動くので、描画もuseGameLoopが書いた
+  // gameStore.eyeLaserBeam(=毎tick更新される現在の射線・検収監査A-3是正でplayer.weaponsから
+  // 分離)を読むだけ(pixiは判定を持たない)。
+  // ★検収監査A-5是正: 旧実装は`firing`が偽になった瞬間にvisible=falseで消えていた(瞬間消滅=
+  // CLAUDE.md慣性MUST違反)。gun.eyeLaserEndedAt(照射終了時刻)を起点に、金環などと同じ統一型
+  // フェード(weaponSpawnEase・180〜260msレンジ)で畳む。
+  private syncEyeLaser(player: Player, beam: { ax: number; ay: number; bx: number; by: number } | null, gameTime: number) {
     const gun = player.weapons.find(w => w.key === EYE_LASER_WEAPON_KEY);
-    const firing = gun && gun.eyeLaserPhase === 'firing'
-      && gun.eyeLaserAx !== undefined && gun.eyeLaserAy !== undefined
-      && gun.eyeLaserBx !== undefined && gun.eyeLaserBy !== undefined;
-    if (!firing) {
+    if (!gun || !beam) {
+      if (this.eyeLaserCore) { this.eyeLaserCore.visible = false; this.eyeLaserHalo!.visible = false; }
+      return;
+    }
+    const firing = gun.eyeLaserPhase === 'firing';
+    const endedAt = gun.eyeLaserEndedAt;
+    // 終了後のease-out(weaponSpawnEaseのoutEasedと同じ「加速しながら沈んで消える」式を単独適用。
+    // 出現側のappearTは既存どおり別に持つので、両方の関数を1本にまとめず素直に別々に掛ける)。
+    const fadeOutT = firing || endedAt === undefined ? 0 : Math.max(0, Math.min(1, (gameTime - endedAt) / WEAPON_SPAWN_EASE_MS));
+    const fadeOutEased = fadeOutT * fadeOutT * fadeOutT;
+    const fadeMul = firing ? 1 : 1 - fadeOutEased;
+    if (!firing && fadeMul <= 0.001) {
       if (this.eyeLaserCore) { this.eyeLaserCore.visible = false; this.eyeLaserHalo!.visible = false; }
       return;
     }
@@ -13407,12 +13419,12 @@ export class PixiScene {
       this.eyeLaserHalo.blendMode = 'add'; // 強glowは付けない(§16の性能規約=CLAUDE.md実測)
       this.L.effectLayer.addChild(this.eyeLaserHalo, this.eyeLaserCore);
     }
-    const ax = gun!.eyeLaserAx!, ay = gun!.eyeLaserAy!, bx = gun!.eyeLaserBx!, by = gun!.eyeLaserBy!;
+    const { ax, ay, bx, by } = beam;
     const dx = bx - ax, dy = by - ay;
     const len = Math.hypot(dx, dy);
     const ang = Math.atan2(dy, dx);
     const BEAM_APPEAR_MS = 100; // §19-4と同じ中央値(80〜120msレンジ)
-    const appearT = Math.max(0, Math.min(1, (gameTime - (gun!.eyeLaserPhaseAt ?? gameTime)) / BEAM_APPEAR_MS));
+    const appearT = Math.max(0, Math.min(1, (gameTime - (gun.eyeLaserPhaseAt ?? gameTime)) / BEAM_APPEAR_MS));
     const core = this.eyeLaserCore, halo = this.eyeLaserHalo!;
     core.position.set(ax, ay); halo.position.set(ax, ay);
     core.rotation = ang; halo.rotation = ang;
@@ -13421,9 +13433,9 @@ export class PixiScene {
     halo.height = Math.max(0.5, 7 * 2.6 * appearT);
     core.tint = 0xfff0e6;
     halo.tint = 0xff5a1f; // 橙〜赤(アイレーザー=眼の光線。金環の金/氷槍の水色と衝突しない)
-    core.alpha = 0.95 * appearT;
-    halo.alpha = 0.5 * appearT;
-    const visible = len > 0.5;
+    core.alpha = 0.95 * appearT * fadeMul;
+    halo.alpha = 0.5 * appearT * fadeMul;
+    const visible = len > 0.5 && fadeMul > 0.001;
     core.visible = visible; halo.visible = visible;
   }
 
@@ -13432,7 +13444,12 @@ export class PixiScene {
   // (派手さの絵=判定より大きく見せてよい層・CLAUDE.md攻撃ヴィジュアルの2分類)。
   // 表示条件はuseGameLoopが書いたflamerNextPulseAt(直近パルス時刻)の近さで判定する
   // (100msごとのパルスの合間も途切れず見えるよう、1パルス分だけ延長して見せる)。
-  private syncFlamerCone(player: Player, gameTime: number, now: number) {
+  // ★検収監査A-3是正: 照射方向はplayer.weapons(flamerAimX/Y)ではなく引数のcone(gameStore.
+  // flamerCone・毎パルス更新の専用フィールド)から読む。
+  // ★検収監査A-5是正: 旧実装は出現も消滅も瞬間だった(全長・全αで出て、パルスが途切れた
+  // 瞬間に消える=CLAUDE.md慣性MUST違反)。噴射開始(flamerSprayStartAt)からの経過でα/長さを
+  // 立ち上げ、最終パルス後はWEAPON_SPAWN_EASE_MSで減衰させる。
+  private syncFlamerCone(player: Player, cone: { dirX: number; dirY: number } | null, gameTime: number, now: number) {
     const FLAMER_STREAKS = 5;
     if (this.flamerStreaks.length === 0) {
       for (let i = 0; i < FLAMER_STREAKS; i++) {
@@ -13444,16 +13461,29 @@ export class PixiScene {
       }
     }
     const gun = player.weapons.find(w => w.key === FLAMER_WEAPON_KEY);
-    const lastPulseAt = gun?.flamerNextPulseAt !== undefined ? gun.flamerNextPulseAt - FLAMER_PULSE_MS : -Infinity;
-    const spraying = gun !== undefined && gun.flamerAimX !== undefined && gun.flamerAimY !== undefined
-      && (gameTime - lastPulseAt) < FLAMER_PULSE_MS + 20; // 1パルス+わずかな余裕=パルス間で途切れて見えない
-    if (!spraying) {
+    if (!gun || !cone) {
       for (const sp of this.flamerStreaks) sp.visible = false;
       return;
     }
+    const lastPulseAt = gun.flamerNextPulseAt !== undefined ? gun.flamerNextPulseAt - FLAMER_PULSE_MS : -Infinity;
+    // 噴射が途切れてからの経過で減衰(ease-in=加速しながら沈んで消える。weaponSpawnEaseのoutEasedと同じ式)。
+    // 1パルス+わずかな余裕(旧spraying判定と同じ猶予)は減衰を始めない=パルス間で明滅しない。
+    const sinceLastPulse = gameTime - lastPulseAt;
+    const decayT = Math.max(0, Math.min(1, (sinceLastPulse - (FLAMER_PULSE_MS + 20)) / WEAPON_SPAWN_EASE_MS));
+    const decayEased = decayT * decayT * decayT;
+    const decayMul = 1 - decayEased;
+    if (decayMul <= 0.001) {
+      for (const sp of this.flamerStreaks) sp.visible = false;
+      return;
+    }
+    // 噴射開始からの経過で立ち上げ(ease-out=減速しながら上がる。weaponSpawnEaseのinEasedと同じ式)。
+    // 継続中の噴射はflamerSprayStartAtが更新されない(useGameLoop側)ので、立ち上がりは一度だけ。
+    const sprayStartAt = gun.flamerSprayStartAt ?? lastPulseAt;
+    const growT = Math.max(0, Math.min(1, (gameTime - sprayStartAt) / WEAPON_SPAWN_EASE_MS));
+    const growEased = 1 - Math.pow(1 - growT, 3);
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
-    const baseAng = Math.atan2(gun!.flamerAimY!, gun!.flamerAimX!);
+    const baseAng = Math.atan2(cone.dirY, cone.dirX);
     for (let i = 0; i < FLAMER_STREAKS; i++) {
       const t = FLAMER_STREAKS > 1 ? i / (FLAMER_STREAKS - 1) : 0.5;
       const ang = baseAng + (t - 0.5) * FLAMER_HALF_ANGLE_RAD * 2;
@@ -13462,10 +13492,10 @@ export class PixiScene {
       const sp = this.flamerStreaks[i];
       sp.position.set(pcx, pcy);
       sp.rotation = ang;
-      sp.width = FLAMER_RANGE_PX;
+      sp.width = Math.max(0.5, FLAMER_RANGE_PX * growEased);
       sp.height = 10 * flick;
       sp.tint = i % 2 === 0 ? 0xffb347 : 0xff5a1f; // 橙〜赤の交互(炎らしい揺らぎ)
-      sp.alpha = 0.55 * flick;
+      sp.alpha = 0.55 * flick * decayMul;
       sp.visible = true;
     }
   }

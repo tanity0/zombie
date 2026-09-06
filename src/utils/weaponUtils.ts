@@ -81,6 +81,10 @@ interface WeaponDef {
   spreadRadOverride?: number;
   // UNIQUE_WEAPONS.md §17-3(監査A-3): 無限弾(クロスボウ)。
   infiniteAmmo?: true;
+  // UNIQUE_WEAPONS.md §17-6(検収監査A-2の是正): 弾を撃たない武器(アイレーザー/火炎放射器)の印。
+  // 守護霊(gunRangePx・buildGhostGunShots入口)・幻影(phantomTick.ts)・ボット(playtestDriver.ts)・
+  // プレイヤー自身(useGameLoop.ts)の全経路がこの1フラグだけを見る(キー直書きをここへ集約)。
+  nonProjectile?: true;
 }
 
 // UNIQUE_WEAPONS.md §13-1: パイルドライバー(handgun-t3-piledriver)の射程。
@@ -142,7 +146,7 @@ const CATALOG: Record<string, WeaponDef> = {
   // damage/magSize/reloadMsはflamerCone.tsが単一の出どころ(サイクル式と二重管理しない)。
   // cooldownは未使用(fireWeaponの自動射撃を通らない状態機械=useGameLoop.ts)。
   // 武器自体に燃焼は持たせない(社長指定)。サイクル実効DPS=28.57(既定shotgun-t3比+6.3%・§5-2)。
-  'shotgun-t3-flamer': { key: 'shotgun-t3-flamer', name: '火炎放射器', type: 'shotgun', category: 'shotgun', tier: 3, damage: FLAMER_PULSE_DAMAGE, cooldown: 100, count: 1, magSize: FLAMER_MAG_SIZE, reloadMs: FLAMER_RELOAD_MS_RAW, rangeOverride: FLAMER_RANGE_PX },
+  'shotgun-t3-flamer': { key: 'shotgun-t3-flamer', name: '火炎放射器', type: 'shotgun', category: 'shotgun', tier: 3, damage: FLAMER_PULSE_DAMAGE, cooldown: 100, count: 1, magSize: FLAMER_MAG_SIZE, reloadMs: FLAMER_RELOAD_MS_RAW, rangeOverride: FLAMER_RANGE_PX, nonProjectile: true },
 
   // C — Rifle/Magnum family (.44). Heavy single rounds. The revolver pierces
   // one enemy; higher tiers pierce freely.
@@ -181,7 +185,7 @@ const CATALOG: Record<string, WeaponDef> = {
   // 定数はeyeLaserGun.ts)。cooldownは未使用(この武器はfireWeaponの自動射撃を通らない=
   // 状態機械が直接gameTimeで回す・100msはパルス間隔と同じ値を仮に置いているだけ)。
   // サイクル実効DPS=48.28(既定rifle-t3比+5.3%・§5-2)。critChanceは導出のまま(§17-2)。
-  'rifle-t3-eyelaser': { key: 'rifle-t3-eyelaser', name: 'アイレーザー', type: 'rifle', category: 'rifle', tier: 3, damage: EYE_LASER_PULSE_DAMAGE, cooldown: 100, count: 1, passthrough: true, magSize: EYE_LASER_MAG_SIZE, reloadMs: EYE_LASER_RELOAD_MS_RAW },
+  'rifle-t3-eyelaser': { key: 'rifle-t3-eyelaser', name: 'アイレーザー', type: 'rifle', category: 'rifle', tier: 3, damage: EYE_LASER_PULSE_DAMAGE, cooldown: 100, count: 1, passthrough: true, magSize: EYE_LASER_MAG_SIZE, reloadMs: EYE_LASER_RELOAD_MS_RAW, nonProjectile: true },
 
   // Melee (no ammo). Lower DPS than guns by design so bullets stay valuable.
   // Each carries a fixed crit chance that rises with tier. Tier はレベルアップ
@@ -326,6 +330,8 @@ export const createWeapon = (key: string): Weapon => {
     // UNIQUE_WEAPONS.md §16(バッチA): 同じくcreateWeaponで明示コピーが要る新フィールド2つ。
     spreadRadOverride: def.spreadRadOverride,
     infiniteAmmo: def.infiniteAmmo,
+    // UNIQUE_WEAPONS.md §17-6(検収監査A-2の是正): 非投射武器の印もコピーが要る。
+    nonProjectile: def.nonProjectile,
     // dualRangeMode はCATALOGに持たない(ランタイム状態。未設定='far'扱いはdualRangeGun.ts側の規約)。
   };
 };
@@ -1076,9 +1082,10 @@ export const buildGhostGunShots = (
   idPrefix: string,                          // 弾idの一意化(呼び出し元がゴーストid等を渡す)
   build?: { player: Player; gameTime: number; headshot?: boolean },
 ): Projectile[] => {
-  // UNIQUE_WEAPONS.md §17-6(監査A-8): アイレーザー/火炎放射器は弾を作らない非投射武器。
-  // 等価実装はしない=守護霊もこの2挺を持っていたら撃たない(規則: 非投射武器は3経路とも「撃たない」)。
-  if (gun.key === EYE_LASER_WEAPON_KEY || gun.key === FLAMER_WEAPON_KEY) return [];
+  // UNIQUE_WEAPONS.md §17-6(監査A-8/検収監査A-2の是正): アイレーザー/火炎放射器は弾を作らない
+  // 非投射武器。等価実装はしない=守護霊もこの2挺を持っていたら撃たない(規則: 非投射武器は
+  // 3経路とも「撃たない」)。判定は`nonProjectile`フラグ1本(キー直書きにしない)。
+  if (gun.nonProjectile) return [];
   const { size, speed } = projectileFlightStats(gun);
   const dirs = computeShotDirections(gun, baseDir);
   const damage = build ? gunShotBaseDamage(gun, build.player, build.gameTime) : gun.damage;

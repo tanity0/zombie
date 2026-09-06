@@ -21,11 +21,11 @@ export interface PersistentBeam {
   nextPulseAt: number;    // 次パルスの gameTime(ms)。生成直後に即1発目を出すなら createdAt と同値にする
 }
 
-export interface PersistentBeamTickResult {
+export interface PersistentBeamTickResult<T extends PersistentBeam = PersistentBeam> {
   /** 寿命内で生存する線分(パルスが出た分は nextPulseAt を進めた新しいオブジェクト)。 */
-  beams: PersistentBeam[];
+  beams: T[];
   /** このtickでパルスが発火した線分(発火時点の a/b/halfWidth/damage のスナップショット)。 */
-  pulses: PersistentBeam[];
+  pulses: T[];
 }
 
 /**
@@ -33,13 +33,16 @@ export interface PersistentBeamTickResult {
  * - 寿命切れ(gameTime >= createdAt + durationMs)は `beams` から落とす(呼び出し側が
  *   フェード開始等の後始末をする。この関数はダメージの発生源だけを扱う)。
  * - gameTime >= nextPulseAt の線分は `pulses` へ積み、nextPulseAt を pulseMs ぶん進めて生存させる。
+ * ジェネリック(T extends PersistentBeam)なのは氷槍ライフルの床(A-1是正・IceLanceFloor=
+ * PersistentBeam+projectileId/frozen)のような拡張フィールド付きの型を素通しするため
+ * (呼び出し側でキャストを書かせない)。
  */
-export const tickPersistentBeams = (
-  beams: readonly PersistentBeam[], gameTime: number,
-): PersistentBeamTickResult => {
+export const tickPersistentBeams = <T extends PersistentBeam>(
+  beams: readonly T[], gameTime: number,
+): PersistentBeamTickResult<T> => {
   if (beams.length === 0) return { beams: [], pulses: [] };
-  const survivors: PersistentBeam[] = [];
-  const pulses: PersistentBeam[] = [];
+  const survivors: T[] = [];
+  const pulses: T[] = [];
   for (const beam of beams) {
     if (gameTime >= beam.createdAt + beam.durationMs) continue; // 寿命切れ
     if (gameTime >= beam.nextPulseAt) {
