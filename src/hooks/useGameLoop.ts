@@ -13175,6 +13175,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const acDist = Math.hypot(ax - acBlastX, ay - acBlastY);
               if (acDist > ALCHEMY_BURST_RADIUS_PX) continue;
               if (acWalls.length > 0 && segmentBlocked(acBlastX, acBlastY, ax, ay, acWalls)) continue;
+              // ★検収2巡目A-新2是正: **死体に石を付けない**。damageEnemyは死体で早期returnするのに
+              // 石だけ付いてしまい、A-3で頭上マーカーを出したことで**吹っ飛び中の死体に金の点が出る**
+              // ようになった(1巡目でも付いてはいたが見えなかった)。起爆側でも中心にしない。
+              if (isCorpse(acEnemy)) continue;
               acStonedIds.push(acEnemy.id);
               if (acEnemy.id === enemyId) continue; // 直撃対象は既にダメージ済み
               const acDmg = Math.max(1, Math.round(dmg));

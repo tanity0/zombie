@@ -16394,7 +16394,9 @@ export class PixiScene {
     // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-3是正・錬金砲): 石の段数を敵の頭上に金の点で示す
     // (1〜3個)。名前ラベルより少し高い位置に置く(宿敵/クエスト対象へ石が付いても重ならない)。
     {
-      const stoneStage = e.alchemyStoneStage ?? 0;
+      // ★検収2巡目A-新2是正: **死体には出さない**(石は付けない側でも塞いだが、
+      // 既に付いている個体が死体化した1フレームで出るのを描画側でも止める=二重の網)。
+      const stoneStage = isCorpse(e) ? 0 : (e.alchemyStoneStage ?? 0);
       if (stoneStage > 0) {
         let dots = this.alchemyStoneMarkers.get(e.id);
         if (!dots) {

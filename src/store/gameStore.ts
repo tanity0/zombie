@@ -10731,6 +10731,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const stone of stoned) {
       const center = get().enemies.find(e => e.id === stone.id);
       if (!center) continue; // 先の起爆(同ループ内)で既に倒れて消えている場合がある
+      // ★検収2巡目A-新2是正: **死体を中心に起爆しない**。damageEnemyは死体で早期returnするのに
+      // 石は付いてしまう(破裂側でisCorpseを弾いていなかった)ので、死体を中心にすると
+      // 爆発FXとダメージ数字だけ出して石を空費する。
+      if (isCorpse(center)) continue;
       const stage = stone.alchemyStoneStage ?? 0;
       const baseDamage = alchemyStoneDetonateDamage(stage);
       const radius = alchemyStoneDetonateRadius(stage);
@@ -10742,12 +10746,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnBurst(ex, ey, '#f97316', 8);
       get().spawnExplosionFx(ex, ey, radius, 0xfacc15);
       get().spawnGlow(ex, ey, 30, 'rgba(250,204,21,', 420);
+      // ★検収2巡目A-新3是正: **壁越しには効かない**。§16-5c は「既定グレネードのsplashと同じ形」で、
+      // 既定splash・錬金の破裂・シグナルの空爆は全て segmentBlocked を通している。
+      // ここだけ壁判定が無く、壁の向こうの敵に満額の範囲ダメージが入っていた。
+      const detWalls = meleeWallsAround(get, ex, ey, radius);
       for (const e of get().enemies) {
         if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
+        if (isCorpse(e)) continue;
         const ecx = e.x + e.width / 2;
         const ecy = e.y + e.height / 2;
         const dist = Math.hypot(ecx - ex, ecy - ey);
         if (dist > radius) continue;
+        if (detWalls.length > 0 && segmentBlocked(ex, ey, ecx, ecy, detWalls)) continue;
         // 中心(石持ち本体)は満額、外は既定グレネードと同じfalloff(0.55+falloff*0.45)。
         const falloff = 1 - dist / radius;
         const eDmg = e.id === center.id ? dmg : Math.max(1, Math.round(dmg * (0.55 + falloff * 0.45)));
@@ -15715,7 +15725,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // p.speedが0で置いてある(fireWeaponのフック)。ここをp.speedのまま反射すると
         // 「反射されたのに速度0=永久にその場で止まる弾」になる。溜め中は本来の飛翔速度
         // (rocketLaunchSpeed)を基準に反射する(反射弾=直進・溜め状態も持ち越さない)。
-        const reflectBaseSpeed = p.rocketChargeUntil !== undefined ? (p.rocketLaunchSpeed ?? p.speed) : p.speed;
+        const reflectBaseSpeed = (p.rocketChargeUntil !== undefined || p.rocketEaseUntil !== undefined) ? (p.rocketLaunchSpeed ?? p.speed) : p.speed;
         return {
           ...p,
           direction: { x: -p.direction.x, y: -p.direction.y },

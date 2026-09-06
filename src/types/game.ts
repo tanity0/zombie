@@ -2068,7 +2068,9 @@ export interface Projectile {
   // 「弾を速度0のままその場に置く」ことで表現する(fireWeaponが発射直後の1回だけ設定する)。
   // rocketChargeUntil(gameTime)まではspeedが0=通常の敵衝突判定がそのまま拾うので
   // 「溜め中でも弾頭に敵が接触すればその場で爆発」は専用コード無しで成立する。
-  // rocketLaunchSpeedは溜め終わりに書き戻す本来の飛翔速度(useGameLoopの専用tickが1回だけ使う)。
+  // rocketLaunchSpeedは「本来の飛翔速度」。★A-9(発射の150ms ease-in)以降は**ease中に毎フレーム読む**
+  // (旧コメントの「1回だけ使う」は誤り=検収2巡目B-1)。反射(reflectProjectile)でも、溜め中と
+  // ease中はこの値を基準速度に使う(部分速度で反射すると二度と加速しない弾になるため=A-新1)。
   rocketChargeUntil?: number;
   rocketLaunchSpeed?: number;
   // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-9是正): 溜め終わり(発射)からROCKET_LAUNCH_EASE_MS(150ms)
