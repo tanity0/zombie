@@ -2366,7 +2366,7 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
 1. **Stage=ノード**: `StoryLocationNode`型は新設せず、既存 `Stage`(campaign.ts)に
    `day: number` / `time: string`('16:20'形式) / `locationTitle: string` を追加(ノード情報はStageに
    1回だけ持つ=追補1「重複記載しない」を充足)。ミッションは従来どおり stage.main(+将来subs)。
-2. **ノード値(社長指定)**: stage-1=DAY26/16:20/東部避難回廊、stage-2=DAY28/01:40/PHILL再生医療研究所、
+2. **ノード値(社長指定)**: stage-1=DAY26/16:20/避難回廊、stage-2=DAY28/01:40/PHILL再生医療研究所、
    stage-3=DAY30/10:30/東部医療科学センター、stage-4=DAY32/17:10/北部封鎖区域、
    stage-5=DAY35/22:15/対変異体防衛本部、stage-6=DAY36/23:10/旧市街地・洋館、
    stage-7=DAY38/04:20/指定座標地点、stage-ex1=DAY42/03:40/旧市街地・洋館跡地。

@@ -69,7 +69,7 @@ export interface Stage {
   // 統合正本5.2 / 指示書2.1: 日時の表示文字列を上書きする(例: M6='某日／未明' / EX='数日後／未明')。
   // 意図的な曖昧表示を数値日時へ無理に変換しないための器。未指定=「DAY {day} / {time}」を表示。
   timeLabel?: string;
-  locationTitle: string;  // 場所名(例: '東部避難回廊')
+  locationTitle: string;  // 場所名(例: '避難回廊')
   indoor?: boolean;      // 屋内(研究施設)ステージ=手書き壁マップ/カメラクランプ/湧き抑制
   theme?: 'lab';         // 見た目テーマ(屋外構造のままテクスチャだけ差し替え)。'lab'=研究所スキン。
   farBackdrop?: string;  // 遠景パノラマの差し替えキー(forestテーマの距離パノラマだけ変える)。'city'=夜の廃都。
@@ -182,7 +182,7 @@ export const STAGES: Stage[] = [
     unlockBy: null,
     day: 26,
     time: '16:20',
-    locationTitle: '東部避難回廊',
+    locationTitle: '避難回廊',
     nearHorizon: 'forest', // 遠景森2(手前の森シルエット帯)
     // 正史M1(STORY_M0_M3.md)=「通常ステージとして進行し、終盤の城ボス(大型変異体)撃破でクリア」。
     // 旧・救助筋の4拠点制圧イベント(mainEvent:'suppression')は正史適用で外した(制圧システム自体は温存)。

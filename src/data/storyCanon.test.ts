@@ -22,7 +22,7 @@ const st = (id: string): Stage => {
 describe('親ノード(日時・場所)の確定値(指示書2.3)', () => {
   it('全8親ノードの日時・場所が正確', () => {
     const expected: [string, string, string][] = [
-      ['stage-1', 'DAY 26 / 16:20', '東部避難回廊'],
+      ['stage-1', 'DAY 26 / 16:20', '避難回廊'],
       ['stage-2', 'DAY 28 / 01:40', 'PHILL再生医療研究所'],
       ['stage-3', 'DAY 30 / 10:30', '東部医療科学センター'],
       ['stage-4', 'DAY 32 / 17:10', '北部封鎖区域'],

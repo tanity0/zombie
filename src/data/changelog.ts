@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4152',
+    items: ['ステージ1の場所名を「東部避難回廊」から「避難回廊」に変えました。'],
+  },
+  {
     version: '0.25.4151',
     items: ['強個体(パンプキン等)への致命の一撃で、KILLの処刑演出が出なくなりました(倒しきっていないのに処刑の絵が出ていました)。ダメージ3倍・黄色のクリティカル表示・浮きはそのままです。'],
   },
