@@ -53,6 +53,8 @@ import {
   GoldRing, GOLD_RING_COOLDOWN_MS, GOLD_RING_DEPLOY_MS, GOLD_RING_OFFSET_PX, GOLD_RING_MAX_AIM_DIST,
   GOLD_RING_DAMAGE_BY_LEVEL, computeGoldRingDeployPoints,
 } from '../utils/goldRing';
+// UNIQUE_WEAPONS.md §16-2(バッチC-1): 氷槍ライフルの床が使う共通の持続線分型(§19-1)。
+import type { PersistentBeam } from '../utils/persistentBeam';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/bomberScatter';
 import {
@@ -5388,6 +5390,11 @@ interface GameState {
   // 描画は pixiScene が直読み(CLAUDE.md「PixiJSは描くだけ」)。
   goldRings: GoldRing[];
   setGoldRings: (rings: readonly GoldRing[]) => void; // useGameLoop が状態機械/パルスtickの結果を反映するだけ
+  // 氷槍ライフル(rifle-t2-icelance)の床(UNIQUE_WEAPONS.md §16-2)。持続線分の純状態は
+  // src/utils/persistentBeam.ts(金環/アイレーザーと共通の土台)。生成/寿命tick/パルス適用は
+  // useGameLoop、描画は pixiScene が直読み。
+  iceLanceFloors: PersistentBeam[];
+  setIceLanceFloors: (floors: readonly PersistentBeam[]) => void; // useGameLoop が寿命/パルスtickの結果を反映するだけ
   spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number) => void; // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
   // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)の燃焼DoT。命中した敵個体が持つ
@@ -6215,6 +6222,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   supportSniperNpc: null,
   flareGunFlares: [],
   goldRings: [],
+  iceLanceFloors: [],
   firstAidKitState: createFirstAidKitState(),
   projectiles: [],
   pickups: [],
@@ -8328,6 +8336,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // 金環(gold-ring): 状態機械/パルスtickは useGameLoop が決め、ここは反映のみ。
   setGoldRings: (rings) => set({ goldRings: [...rings] }),
+
+  // 氷槍ライフルの床(UNIQUE_WEAPONS.md §16-2): 寿命/パルスtickは useGameLoop が
+  // tickPersistentBeams(persistentBeam.ts)で決め、ここは反映のみ。
+  setIceLanceFloors: (floors) => set({ iceLanceFloors: [...floors] }),
 
   // 救急鞄(first-aid-kit): 判定(何を払い出すか/空になったか)は useGameLoop が
   // computeFirstAidKitTick / isFirstAidKitEmpty(純関数)で決め、ここは結果を state へ書き込むだけ。
@@ -18806,6 +18818,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         supportSniperNpc: null,
         flareGunFlares: [],
         goldRings: [], // ★足さないと前ランの金環が次ランへ残る(UNIQUE_WEAPONS.md §19-3b)
+        iceLanceFloors: [], // ★同上(氷槍ライフルの床。UNIQUE_WEAPONS.md §16-2/§19-3bと同じ理由)
         firstAidKitState: createFirstAidKitState(),
         breakableProps: runBreakables,
         destroyedBreakableProps: {},

@@ -149,6 +149,11 @@ import type { FlareGunFlare } from '../utils/flareGun';
 // UNIQUE_WEAPONS.md §19: 金環(gold-ring)。位置/ease/レーザー方向は純関数(goldRing.ts)を読むだけ
 // (状態そのものはuseGameLoopが書く。CLAUDE.md「PixiJSは描くだけ」)。
 import { type GoldRing, goldRingCurrentPos } from '../utils/goldRing';
+// UNIQUE_WEAPONS.md §16-2(バッチC-1): 持続線分/扇の3挺。数値/型は純関数モジュールから読むだけ
+// (状態そのものはuseGameLoopが書く。CLAUDE.md「PixiJSは描くだけ」)。
+import type { PersistentBeam } from '../utils/persistentBeam';
+import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY } from '../utils/weaponUtils';
+import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS } from '../utils/flamerCone';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import {
   SWORD_VISIBILITY_FADE_MS, swordAttackAngle, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha,
@@ -3567,6 +3572,14 @@ export class PixiScene {
     ring: Sprite; beamCore: Sprite; beamHalo: Sprite;
     spinAng: number; spinVel: number; lastSpinAt: number;
   }>();
+  // UNIQUE_WEAPONS.md §16-2(バッチC-1): 氷槍ライフルの床。金環のbeamCore/beamHaloと同型
+  // (pooled sprite・強glowなし)。追尾しない固定線分なので位置は生成時のまま。
+  private iceLanceFloorViews = new Map<string, { core: Sprite; halo: Sprite }>();
+  // アイレーザー(プレイヤー1人ぶんなので単一インスタンス。ghost-gunでは撃たない=§17-6)。
+  private eyeLaserCore: Sprite | null = null;
+  private eyeLaserHalo: Sprite | null = null;
+  // 火炎放射器の扇(固定本数のstreak sprite。pooled・毎フレーム再生成しない)。
+  private flamerStreaks: Sprite[] = [];
   // §6.28-19(バッチM63): アクラシエルの結晶の槍(acrasielSpears)。設置中の槍スプライト+T5円テレグラフ
   // (ジブリル火=syncBossFiresと同型の「共有Graphics1枚+スプライトプール」方式)。
   private acrasielSpearGfx = new Graphics();
@@ -8044,6 +8057,9 @@ export class PixiScene {
     this.syncSensorMines(s.sensorMines, s.gameTime, now); // センサー地雷(待機ディスク/感知後2秒の赤点滅テレグラフ)
     this.syncFlareGun(s.flareGunFlares, s.gameTime, now); // フレアガン(飛翔→着弾中3秒の火・molotovの火を流用)
     this.syncGoldRings(s.goldRings, s.gameTime, now); // 金環(UNIQUE_WEAPONS.md §19・展開→照射→フェード)
+    this.syncIceLanceFloors(s.iceLanceFloors, s.gameTime); // UNIQUE_WEAPONS.md §16-2: 氷槍ライフルの床
+    this.syncEyeLaser(s.player, s.gameTime); // UNIQUE_WEAPONS.md §16-2: アイレーザーの溜め/照射
+    this.syncFlamerCone(s.player, s.gameTime, now); // UNIQUE_WEAPONS.md §16-2: 火炎放射器の扇
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now, s.effects, s.breakableProps, s.endingSoldiers);
@@ -13326,6 +13342,131 @@ export class PixiScene {
       if (seen.has(id)) continue;
       v.ring.destroy(); v.beamCore.destroy(); v.beamHalo.destroy();
       this.goldRingViews.delete(id);
+    }
+  }
+
+  // UNIQUE_WEAPONS.md §16-2(バッチC-1): 氷槍ライフルの床。金環のbeamCore/beamHaloと同じpooled
+  // sprite方式(core=白芯・halo=加算合成の広がり)。追尾しない固定線分なので位置は生成時のまま。
+  // 出現/消滅は統一型(weaponSpawnEase・PACING_PUZZLE §7-15)——寿命1.2秒の中で自然に立ち上がり/消える。
+  private syncIceLanceFloors(floors: PersistentBeam[], gameTime: number) {
+    const seen = new Set<string>();
+    for (const floor of floors) {
+      seen.add(floor.id);
+      let v = this.iceLanceFloorViews.get(floor.id);
+      if (!v) {
+        const core = new Sprite(Texture.WHITE); core.anchor.set(0, 0.5);
+        const halo = new Sprite(Texture.WHITE); halo.anchor.set(0, 0.5);
+        halo.blendMode = 'add'; // 派手さの絵(判定より大きく見せてよい層)。光源登録はしない=強glowではない
+        this.L.effectLayer.addChild(halo, core);
+        v = { core, halo };
+        this.iceLanceFloorViews.set(floor.id, v);
+      }
+      const dx = floor.bx - floor.ax, dy = floor.by - floor.ay;
+      const len = Math.hypot(dx, dy);
+      const ang = Math.atan2(dy, dx);
+      const ease = weaponSpawnEase(gameTime - floor.createdAt, floor.createdAt + floor.durationMs - gameTime);
+      v.core.position.set(floor.ax, floor.ay);
+      v.halo.position.set(floor.ax, floor.ay);
+      v.core.rotation = ang;
+      v.halo.rotation = ang;
+      v.core.width = len;
+      v.halo.width = len;
+      v.core.height = Math.max(0.5, floor.halfWidth * 0.6);
+      v.halo.height = Math.max(0.5, floor.halfWidth * 2.2); // 派手さの絵=判定より大きくはみ出してよい
+      v.core.tint = 0xe6fbff;
+      v.halo.tint = 0x60d9ff; // 氷=水色(金環の金・アイレーザーの橙と衝突しない色)
+      v.core.alpha = 0.9 * ease.alphaMul;
+      v.halo.alpha = 0.45 * ease.alphaMul;
+      const visible = len > 0.5 && ease.alphaMul > 0.01;
+      v.core.visible = visible;
+      v.halo.visible = visible;
+    }
+    for (const [id, v] of this.iceLanceFloorViews) {
+      if (seen.has(id)) continue;
+      v.core.destroy(); v.halo.destroy();
+      this.iceLanceFloorViews.delete(id);
+    }
+  }
+
+  // UNIQUE_WEAPONS.md §16-2(バッチC-1): アイレーザー。溜め中は絵なし(素材は後日)、照射中だけ
+  // 線(core+halo・pooled sprite)を描く。出現は慣性つきランプ(80〜120msで幅とαを立ち上げる・
+  // CLAUDE.md慣性MUST)。判定は追尾で毎パルス終点が動くので、描画もuseGameLoopが書いたax/ay/bx/by
+  // (=毎tick更新される現在の射線)を読むだけ(pixiは判定を持たない)。
+  private syncEyeLaser(player: Player, gameTime: number) {
+    const gun = player.weapons.find(w => w.key === EYE_LASER_WEAPON_KEY);
+    const firing = gun && gun.eyeLaserPhase === 'firing'
+      && gun.eyeLaserAx !== undefined && gun.eyeLaserAy !== undefined
+      && gun.eyeLaserBx !== undefined && gun.eyeLaserBy !== undefined;
+    if (!firing) {
+      if (this.eyeLaserCore) { this.eyeLaserCore.visible = false; this.eyeLaserHalo!.visible = false; }
+      return;
+    }
+    if (!this.eyeLaserCore) {
+      this.eyeLaserCore = new Sprite(Texture.WHITE); this.eyeLaserCore.anchor.set(0, 0.5);
+      this.eyeLaserHalo = new Sprite(Texture.WHITE); this.eyeLaserHalo.anchor.set(0, 0.5);
+      this.eyeLaserHalo.blendMode = 'add'; // 強glowは付けない(§16の性能規約=CLAUDE.md実測)
+      this.L.effectLayer.addChild(this.eyeLaserHalo, this.eyeLaserCore);
+    }
+    const ax = gun!.eyeLaserAx!, ay = gun!.eyeLaserAy!, bx = gun!.eyeLaserBx!, by = gun!.eyeLaserBy!;
+    const dx = bx - ax, dy = by - ay;
+    const len = Math.hypot(dx, dy);
+    const ang = Math.atan2(dy, dx);
+    const BEAM_APPEAR_MS = 100; // §19-4と同じ中央値(80〜120msレンジ)
+    const appearT = Math.max(0, Math.min(1, (gameTime - (gun!.eyeLaserPhaseAt ?? gameTime)) / BEAM_APPEAR_MS));
+    const core = this.eyeLaserCore, halo = this.eyeLaserHalo!;
+    core.position.set(ax, ay); halo.position.set(ax, ay);
+    core.rotation = ang; halo.rotation = ang;
+    core.width = len; halo.width = len;
+    core.height = Math.max(0.5, 7 * 0.7 * appearT);
+    halo.height = Math.max(0.5, 7 * 2.6 * appearT);
+    core.tint = 0xfff0e6;
+    halo.tint = 0xff5a1f; // 橙〜赤(アイレーザー=眼の光線。金環の金/氷槍の水色と衝突しない)
+    core.alpha = 0.95 * appearT;
+    halo.alpha = 0.5 * appearT;
+    const visible = len > 0.5;
+    core.visible = visible; halo.visible = visible;
+  }
+
+  // UNIQUE_WEAPONS.md §16-2(バッチC-1): 火炎放射器。前方の扇を固定本数のstreak sprite(pooled・
+  // 加算合成・強glowなし)で近似する。判定(pickFanHits)とは独立した見た目だけの表現
+  // (派手さの絵=判定より大きく見せてよい層・CLAUDE.md攻撃ヴィジュアルの2分類)。
+  // 表示条件はuseGameLoopが書いたflamerNextPulseAt(直近パルス時刻)の近さで判定する
+  // (100msごとのパルスの合間も途切れず見えるよう、1パルス分だけ延長して見せる)。
+  private syncFlamerCone(player: Player, gameTime: number, now: number) {
+    const FLAMER_STREAKS = 5;
+    if (this.flamerStreaks.length === 0) {
+      for (let i = 0; i < FLAMER_STREAKS; i++) {
+        const sp = new Sprite(Texture.WHITE);
+        sp.anchor.set(0, 0.5);
+        sp.blendMode = 'add';
+        this.L.effectLayer.addChild(sp);
+        this.flamerStreaks.push(sp);
+      }
+    }
+    const gun = player.weapons.find(w => w.key === FLAMER_WEAPON_KEY);
+    const lastPulseAt = gun?.flamerNextPulseAt !== undefined ? gun.flamerNextPulseAt - FLAMER_PULSE_MS : -Infinity;
+    const spraying = gun !== undefined && gun.flamerAimX !== undefined && gun.flamerAimY !== undefined
+      && (gameTime - lastPulseAt) < FLAMER_PULSE_MS + 20; // 1パルス+わずかな余裕=パルス間で途切れて見えない
+    if (!spraying) {
+      for (const sp of this.flamerStreaks) sp.visible = false;
+      return;
+    }
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const baseAng = Math.atan2(gun!.flamerAimY!, gun!.flamerAimX!);
+    for (let i = 0; i < FLAMER_STREAKS; i++) {
+      const t = FLAMER_STREAKS > 1 ? i / (FLAMER_STREAKS - 1) : 0.5;
+      const ang = baseAng + (t - 0.5) * FLAMER_HALF_ANGLE_RAD * 2;
+      // 各streakにわずかな瞬き(火のちらつき)。1本ずつ位相をずらす(単調な明滅にしない)。
+      const flick = 0.75 + 0.25 * Math.sin(now * 0.02 + i * 1.7);
+      const sp = this.flamerStreaks[i];
+      sp.position.set(pcx, pcy);
+      sp.rotation = ang;
+      sp.width = FLAMER_RANGE_PX;
+      sp.height = 10 * flick;
+      sp.tint = i % 2 === 0 ? 0xffb347 : 0xff5a1f; // 橙〜赤の交互(炎らしい揺らぎ)
+      sp.alpha = 0.55 * flick;
+      sp.visible = true;
     }
   }
 

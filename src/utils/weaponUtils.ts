@@ -17,6 +17,10 @@ import { resolveFocusSpreadRad, FOCUS_SPREAD_INITIAL_RAD } from './focusSpread';
 import { CYCLE_MODE_STATS } from './cycleShotgun';
 import { heavySniperChargeFrac, heavySniperRangePx, heavySniperCooldownMs, HEAVY_SNIPER_BASE_COOLDOWN_MS } from './heavySniperCharge';
 import { resolveDesertTechAmmoType, DESERTTECH_WEAPON_KEY, type DesertTechAmmoPools } from './desertTechAmmo';
+// UNIQUE_WEAPONS.md §16-2/§19-1(バッチC-1): 持続線分/扇の3挺。状態機械はuseGameLoop.ts、
+// ここはCATALOGへ書く定数の単一の出どころ(値の二重管理を避ける)。
+import { EYE_LASER_PULSE_DAMAGE, EYE_LASER_MAG_SIZE, EYE_LASER_RELOAD_MS_RAW } from './eyeLaserGun';
+import { FLAMER_PULSE_DAMAGE, FLAMER_MAG_SIZE, FLAMER_RELOAD_MS_RAW, FLAMER_RANGE_PX } from './flamerCone';
 
 // プレイヤー中心→敵 の二乗距離。**全ての敵で「当たり判定の矩形の最近点」**まで測る(v0.25.3170・
 // 社長指示「当たり判定の四隅でみて」)。中心基準だと巨体の縁に立っていても射程外扱いになる。
@@ -133,6 +137,13 @@ const CATALOG: Record<string, WeaponDef> = {
   // で劣る軸を作る(§17-1)。距離では切り替えない(社長指定)。実効DPS=18.00(既定比+1.0%・§16-1・両モード共通)。
   'shotgun-t1-cycle': { key: 'shotgun-t1-cycle', name: '切替式ショットガン', type: 'shotgun', category: 'shotgun', tier: 1, damage: CYCLE_MODE_STATS.shot.damage, cooldown: 1000, projectileSpeed: 470, projectileSize: 7, count: CYCLE_MODE_STATS.shot.count, magSize: 3, reloadMs: 1000, spreadRadOverride: CYCLE_MODE_STATS.shot.spreadRadOverride },
 
+  // UNIQUE_WEAPONS.md §16-2/§17-2(バッチC-1)。火炎放射器(T3): 弾を撃たず前方の扇(0.5rad)へ
+  // 射程90px(rangeOverride)の持続判定。100msごとに5ダメージ・弾1消費(装填40=4秒照射)。
+  // damage/magSize/reloadMsはflamerCone.tsが単一の出どころ(サイクル式と二重管理しない)。
+  // cooldownは未使用(fireWeaponの自動射撃を通らない状態機械=useGameLoop.ts)。
+  // 武器自体に燃焼は持たせない(社長指定)。サイクル実効DPS=28.57(既定shotgun-t3比+6.3%・§5-2)。
+  'shotgun-t3-flamer': { key: 'shotgun-t3-flamer', name: '火炎放射器', type: 'shotgun', category: 'shotgun', tier: 3, damage: FLAMER_PULSE_DAMAGE, cooldown: 100, count: 1, magSize: FLAMER_MAG_SIZE, reloadMs: FLAMER_RELOAD_MS_RAW, rangeOverride: FLAMER_RANGE_PX },
+
   // C — Rifle/Magnum family (.44). Heavy single rounds. The revolver pierces
   // one enemy; higher tiers pierce freely.
   'rifle-t1':         { key: 'rifle-t1',   name: 'マグナム',       type: 'rifle',   category: 'rifle',   tier: 1, damage: 30, cooldown: 800,  projectileSpeed: 700,  projectileSize: 9,  count: 1, magSize: 6, reloadMs: 1500, passthrough: true, pierce: 1 },
@@ -158,6 +169,19 @@ const CATALOG: Record<string, WeaponDef> = {
   // (蓄積0時の250はカテゴリ既定=RANGE_BY_CATEGORY.rifleと同値なので、動的な上書きはfireWeapon側で行う)。
   // 貫通クラスは既定T2/T3と同じ(passthroughのみ・§17-2)。実効DPS=29.52(既定比+2.0%・§16-1)。
   'rifle-t2-heavysniper': { key: 'rifle-t2-heavysniper', name: '大型狙撃銃', type: 'rifle', category: 'rifle', tier: 2, damage: 62, cooldown: HEAVY_SNIPER_BASE_COOLDOWN_MS, projectileSpeed: 1000, projectileSize: 8, count: 1, passthrough: true, magSize: 5, reloadMs: 2000 },
+
+  // UNIQUE_WEAPONS.md §16-2(バッチC-1)。氷槍ライフル(T2): 通常の貫通ライフル弾(数値は汎用式で
+  // 帯を測る=既定比+0.2%・§16-1)に加え、弾の射線へ短時間の床(幅28px/1.2秒/200msごとに直撃の20%)を
+  // 残す(iceLanceFloor.ts+persistentBeam.ts。副次ダメージは基準DPSの式外=貫通と同じ扱い・§5-2)。
+  // 武器自体に凍傷は持たせない(社長指定)。貫通クラスは既定T2/T3と同じ(passthroughのみ・§17-2)。
+  'rifle-t2-icelance': { key: 'rifle-t2-icelance', name: '氷槍ライフル', type: 'rifle', category: 'rifle', tier: 2, damage: 58, cooldown: 1200, projectileSpeed: 900, projectileSize: 9, count: 1, passthrough: true, magSize: 5, reloadMs: 2000 },
+
+  // UNIQUE_WEAPONS.md §16-2/§17-2(バッチC-1)。アイレーザー(T3): 溜め700ms→照射3000ms(100msごとに
+  // 14ダメージ・貫通・対象を追尾)→リロード。damageは1パルスの値(状態機械はuseGameLoop.ts・
+  // 定数はeyeLaserGun.ts)。cooldownは未使用(この武器はfireWeaponの自動射撃を通らない=
+  // 状態機械が直接gameTimeで回す・100msはパルス間隔と同じ値を仮に置いているだけ)。
+  // サイクル実効DPS=48.28(既定rifle-t3比+5.3%・§5-2)。critChanceは導出のまま(§17-2)。
+  'rifle-t3-eyelaser': { key: 'rifle-t3-eyelaser', name: 'アイレーザー', type: 'rifle', category: 'rifle', tier: 3, damage: EYE_LASER_PULSE_DAMAGE, cooldown: 100, count: 1, passthrough: true, magSize: EYE_LASER_MAG_SIZE, reloadMs: EYE_LASER_RELOAD_MS_RAW },
 
   // Melee (no ammo). Lower DPS than guns by design so bullets stay valuable.
   // Each carries a fixed crit chance that rises with tier. Tier はレベルアップ
@@ -194,6 +218,12 @@ export const CYCLE_WEAPON_KEY = 'shotgun-t1-cycle';
 export const HEAVY_SNIPER_WEAPON_KEY = 'rifle-t2-heavysniper';
 // デザートテックのキー自体はdesertTechAmmo.tsが正本(そちらでも使うため)。ここは再輸出のみ。
 export { DESERTTECH_WEAPON_KEY };
+// UNIQUE_WEAPONS.md §16-2/§19-1(バッチC-1): 持続線分/扇の3挺のキー定数。
+// アイレーザー/火炎放射器は非投射武器(弾を作らない・§17-6)なのでfireWeaponの自動射撃から
+// 除外し(useGameLoop.ts)、守護霊/幻影/ボットの3経路でも「撃たない」扱いにする。
+export const EYE_LASER_WEAPON_KEY = 'rifle-t3-eyelaser';
+export const ICE_LANCE_WEAPON_KEY = 'rifle-t2-icelance';
+export const FLAMER_WEAPON_KEY = 'shotgun-t3-flamer';
 
 // UNIQUE_WEAPONS.md §4: resolveSlotKey(weaponSlot.ts)がCATALOGの中身を見に行くための細い窓。
 // CATALOG自体は非公開のまま(意味不明なキーの直接生成を増やさない)。
@@ -343,6 +373,8 @@ const WEAPON_DESC: Record<string, string> = {
   // 切替式ショットガン(§16-2/§17-7/バッチB): cycleShotgun.ts。リロード(装填)が発生するたびに
   // 散弾(6dmg/5発/広い散り)⇔スラッグ(30dmg/1発/直進)が反転する。距離では切り替わらない。
   'shotgun-t1-cycle': 'リロードのたびに散弾と一点狙いの一発が入れ替わる。装填のタイミングで戦い方を選ぶ銃',
+  // 火炎放射器(§16-2/バッチC-1): flamerCone.ts。弾を撃たず前方の扇に持続ダメージ。撃っている間ずっと弾を消費する。
+  'shotgun-t3-flamer': '弾ではなく炎そのものを吹き付ける。撃ち続ける間ずっと弾が減っていく',
   // ライフル(射程が長い)。貫通の規則は2種類(useGameLoop の removeIt):
   //  ・pierce:N → 倒したかに関わらず **N+1体**に当たるまで進む(マグナムは N=1=2体)
   //  ・passthrough のみ → **倒した敵は貫いて進み、倒せなければそこで止まる**
@@ -359,6 +391,11 @@ const WEAPON_DESC: Record<string, string> = {
   // 大型狙撃銃(§16-2/バッチB): heavySniperCharge.ts。静止している時間に応じて射程(250→400px)と
   // 連射間隔(×1.0→×0.6)が3秒かけて伸びる。移動した瞬間に蓄積は0へ戻る。
   'rifle-t2-heavysniper': '止まって構え続けるほど、届く距離も連射も伸びていく。動くと効果はすぐ消える',
+  // 氷槍ライフル(§16-2/バッチC-1): 通常の貫通弾に加え、弾の通り道に短時間の床を残し継続ダメージを与える。
+  'rifle-t2-icelance': '撃った跡が凍りつき、しばらく居座って踏んだ敵を傷つける',
+  // アイレーザー(§16-2/バッチC-1): eyeLaserGun.ts。溜め→照射3秒(貫通・追尾)→リロード。
+  // 照射中に対象を見失うとその場で終了し、残りの照射時間は失われる(再ターゲットしない)。
+  'rifle-t3-eyelaser': '一瞬溜めてから光線を撃ち続ける。狙った相手を追い続けるが、見失うとそこで終わる',
   // グレネードガン。t1/t2 は **転がって一定距離で爆発**(GLAUNCHER_ROLL_DETONATE_PX。
   // t1=ショットガン距離 / t2=ハンドガン距離)、t3 は転がらず着弾で爆発。
   'glauncher-t1': '転がって爆発する擲弾。近くの群れをまとめて吹き飛ばす',
@@ -1033,6 +1070,9 @@ export const buildGhostGunShots = (
   idPrefix: string,                          // 弾idの一意化(呼び出し元がゴーストid等を渡す)
   build?: { player: Player; gameTime: number; headshot?: boolean },
 ): Projectile[] => {
+  // UNIQUE_WEAPONS.md §17-6(監査A-8): アイレーザー/火炎放射器は弾を作らない非投射武器。
+  // 等価実装はしない=守護霊もこの2挺を持っていたら撃たない(規則: 非投射武器は3経路とも「撃たない」)。
+  if (gun.key === EYE_LASER_WEAPON_KEY || gun.key === FLAMER_WEAPON_KEY) return [];
   const { size, speed } = projectileFlightStats(gun);
   const dirs = computeShotDirections(gun, baseDir);
   const damage = build ? gunShotBaseDamage(gun, build.player, build.gameTime) : gun.damage;

@@ -60,6 +60,7 @@ import {
   createWeapon, effectiveFireCooldown, beginWeaponReload, finishWeaponReload,
   projectileFlightStats, gunEffectiveRangePx,
   gunShotCritChance,
+  EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, // UNIQUE_WEAPONS.md §17-6: 非投射武器は幻影も撃たない
 } from './weaponUtils';
 import { GRAVITY_SHOT_BOSS_SLOW_MULT } from './skillEffectsB7';
 import {
@@ -423,7 +424,9 @@ const stepPhantomGun = (s: PhantomTickState, nowMs: number, phantomId?: string):
 
 /** いま撃てるか(=頭脳へ渡す銃射程。撃てないなら0で「銃を選ばせない」)。 */
 const phantomGunRangePx = (s: PhantomTickState): number =>
+  // UNIQUE_WEAPONS.md §17-6: アイレーザー/火炎放射器は非投射武器=幻影も撃たない(等価実装はしない)。
   s.gun && !s.reloadingWeaponId && (s.gun.magazine ?? 0) > 0
+    && s.gun.key !== EYE_LASER_WEAPON_KEY && s.gun.key !== FLAMER_WEAPON_KEY
     ? gunEffectiveRangePx({ category: s.gun.ammoType, rangeOverride: s.gun.rangeOverride })
     : 0;
 
@@ -709,7 +712,9 @@ const firePhantomShot = (
   const gun = s.gun;
   // 「リロード中/マガジン0は撃たない」(守護霊=プレイヤーと同じ息継ぎ)。頭脳側でも射程0で
   // 撃たせない形にしてあるが、**発射の入口でも閉じる**(2箇所のどちらが先に変わっても弾が漏れない)。
-  if (!gun || s.reloadingWeaponId !== '' || (gun.magazine ?? 0) <= 0) return;
+  // UNIQUE_WEAPONS.md §17-6: アイレーザー/火炎放射器は非投射武器=幻影も撃たない。
+  if (!gun || s.reloadingWeaponId !== '' || (gun.magazine ?? 0) <= 0
+    || gun.key === EYE_LASER_WEAPON_KEY || gun.key === FLAMER_WEAPON_KEY) return;
   const st = useGameStore.getState();
   const p = st.player;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;

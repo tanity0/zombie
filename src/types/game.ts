@@ -1516,6 +1516,24 @@ export interface Weapon {
   // UNIQUE_WEAPONS.md §16-2/§17-7(バッチB・切替式ショットガン): リロード(装填)を境に
   // 散弾⇔スラッグが反転する現在モード(src/utils/cycleShotgun.ts)。未指定は'shot'扱い。
   cycleMode?: 'shot' | 'slug';
+  // UNIQUE_WEAPONS.md §16-2/§19-1(バッチC-1・アイレーザー rifle-t3-eyelaser限定): 溜め→照射→
+  // (標準のstartReload/tickReloadへ合流)の状態機械。時計はgameTime(charging/firing中のみ意味を持つ。
+  // 標準リロード自体はDate.now基準=既存武器と同じ経路を再利用)。未指定=アイドル(次に射程内へ入ったら
+  // 溜め開始)。src/utils/eyeLaserGun.ts が定数/サイクル式、useGameLoop.ts が状態機械本体。
+  eyeLaserPhase?: 'charging' | 'firing';
+  eyeLaserPhaseAt?: number;      // gameTime。現在フェーズの開始時刻
+  eyeLaserTargetId?: string;     // 'firing'中のみ有効。対象が死んだら再ターゲットせずその場で終了(社長裁定2026-09-06)
+  eyeLaserNextPulseAt?: number;  // 次パルス(100msごと)のgameTime
+  eyeLaserPulseDamage?: number;  // 'firing'開始時に確定した1パルスダメージ(gunShotBaseDamage基準)
+  // 'firing'中の現在の射線(毎tick追尾で更新・pixiScene描画用)。パルスの当たり判定もこの値を使う。
+  eyeLaserAx?: number; eyeLaserAy?: number; eyeLaserBx?: number; eyeLaserBy?: number;
+  // UNIQUE_WEAPONS.md §16-2(バッチC-1・火炎放射器 shotgun-t3-flamer限定): 前方の扇に持続判定。
+  // 弾を撃たないので「1トリガー」の概念が無く、装備中に射程内で毎100msダメージ+弾1消費し続ける
+  // (標準のmagazine/reloadingWeaponIdへそのまま乗る=満タン→0で自動的にstartReloadへ合流)。
+  flamerNextPulseAt?: number;
+  // 直近パルスの照射方向(単位ベクトル)。pixiScene描画専用(判定は毎パルス再計算する生の方向を使う。
+  // これは「見た目」だけの持ち越し=Visual vs. hitbox)。
+  flamerAimX?: number; flamerAimY?: number;
 }
 
 // Gun families. Each shares an ammo pool with the matching AmmoType.

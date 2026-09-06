@@ -364,6 +364,28 @@ describe('不変条件1: 実効DPS帯(バッチB・UNIQUE_WEAPONS.md §16-1)', (
   });
 });
 
+// UNIQUE_WEAPONS.md §16-5(受け入れ条件5)。バッチC-1の3挺のうち、氷槍ライフルは通常の貫通ライフル弾
+// (床の副次ダメージは基準DPSの式外=貫通と同じ扱い・§5-2)なので汎用式でそのまま帯を測れる。
+// アイレーザー/火炎放射器は§5-2の「1サイクル」式(eyeLaserGun.ts/flamerCone.ts)で別途テスト済み。
+describe('不変条件1: 実効DPS帯(バッチC-1・UNIQUE_WEAPONS.md §16-1)', () => {
+  const band = (defaultKey: string, uniqueKey: string) => {
+    const base = effectiveDps(createWeapon(defaultKey));
+    const unique = effectiveDps(createWeapon(uniqueKey));
+    return { base, unique, ratio: unique / base };
+  };
+  const expectInBand = (ratio: number) => {
+    expect(ratio).toBeGreaterThanOrEqual(0.90);
+    expect(ratio).toBeLessThanOrEqual(1.10);
+  };
+
+  it('氷槍ライフル(直撃のみ・床は式外の副次ダメージ): 既定比+0.2%', () => {
+    const { base, unique, ratio } = band('rifle-t2', 'rifle-t2-icelance');
+    expect(base).toBeCloseTo(28.95, 1);
+    expect(unique).toBeCloseTo(29.00, 1);
+    expectInBand(ratio);
+  });
+});
+
 describe('パイルドライバーの射程(UNIQUE_WEAPONS.md §13-1)', () => {
   it('rangeOverride = MELEE_RADIUS(74) + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[3](34) = 108 を導出する', () => {
     const w = createWeapon('handgun-t3-piledriver');

@@ -17,15 +17,16 @@ export const SLOT_CANDIDATES: Record<SlotCategory, Record<SlotTier, string[]>> =
   },
   // UNIQUE_WEAPONS.md §16(バッチA)/§16-2(バッチB): shotgun T2 / rifle T1 に続き、
   // shotgun T1 / rifle T1(2つめ) / rifle T2 にも横が入った。
+  // UNIQUE_WEAPONS.md §16-2/§19-1(バッチC-1): shotgun T3 / rifle T2(2つめ)・T3 に横が入った。
   shotgun: {
     1: ['shotgun-t1', 'shotgun-t1-focus', 'shotgun-t1-cycle'],
     2: ['shotgun-t2', 'shotgun-t2-suppress'],
-    3: ['shotgun-t3'],
+    3: ['shotgun-t3', 'shotgun-t3-flamer'],
   },
   rifle: {
     1: ['rifle-t1', 'rifle-t1-bolt', 'rifle-t1-deserttech'],
-    2: ['rifle-t2', 'rifle-t2-heavysniper'],
-    3: ['rifle-t3'],
+    2: ['rifle-t2', 'rifle-t2-heavysniper', 'rifle-t2-icelance'],
+    3: ['rifle-t3', 'rifle-t3-eyelaser'],
   },
   glauncher: {
     1: ['glauncher-t1'],
@@ -56,6 +57,10 @@ export const BOSS_UNLOCK: Record<string, string> = {
   'rafi': 'shotgun-t1-focus',                  // ラフィ
   'bounty-ranged': 'rifle-t2-heavysniper',     // バス停(変異)
   'giantbat@stage-4': 'rifle-t1-deserttech',   // 衛生兵(変異)= 城ボス stage-4
+  // UNIQUE_WEAPONS.md §16-2/§19-1(バッチC-1)。社長の割当表(§18-1)より。
+  'jibril': 'shotgun-t3-flamer',    // ジブリル
+  'skadi': 'rifle-t2-icelance',     // スカジ
+  'mimir': 'rifle-t3-eyelaser',     // ミーミル
 };
 
 // ボス撃破→サブウェポンの「設計図」入手(UNIQUE_WEAPONS.md §19-6・監査A1の是正)。
