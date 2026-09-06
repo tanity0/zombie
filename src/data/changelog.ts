@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4165',
+    items: ['ゲーム内容の変更はありません(設計書の更新のみ: 金環の設計を監査の指摘で直しました)。'],
+  },
+  {
     version: '0.25.4164',
     items: ['ゲーム内容の変更はありません(設計書の更新のみ: アイレーザーとシグナルランチャーの仕様を確定)。'],
   },
