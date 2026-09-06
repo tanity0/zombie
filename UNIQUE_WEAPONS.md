@@ -478,6 +478,28 @@ export const resolveSlotKey = (key: string, loadout: SlotLoadout, unlocked: Read
 | **金環** | **スリィエル**(`suriel`) | **金環を2本同時に射出**。ターゲット本体ではなく**少し離れた位置へ2本を展開**。**金環自体に接触ダメージなし**。所定位置に着くと**それぞれが近くの敵を取得**し、対象方向へ**レーザーを3秒間**発射。**発射後は追尾しない=撃った瞬間の方向へ射線固定**(敵が動けば外れる/別の敵が射線に入れば当たる)。1回のダメージは控えめな**多段継続型**。2本が同じ敵を狙うことも別々を狙うこともある。**要約=敵の周囲へ2基展開し、そこから固定方向の3秒レーザーを撃つ一時砲台型**。ドローンブーメランと移動イメージは近いが、**金環自体は攻撃せず、レーザーだけがダメージ源** |
 ※ `suriel` の武器は元から**金の環(単眼)**(`src/types/game.ts` の EnemyType 注記)。本人の得物をそのまま報酬にする形。
 
+### 11-9. ★キー台帳(素材と実装で名前をぶらさないための正)
+
+**キーの形は `<category>-t<tier>-<slug>`**(§3-1)。**素材のファイル名もこのキーと同じ**
+(`public/sprites/weapons/<key>.png`)。**先に素材が来た武器は、実装前でもこの表のキーで保存する**
+——後から名前が変わると絵が出なくなるため。
+
+| スロット | 第1弾 | 第2弾 |
+|---|---|---|
+| handgun T1 | `handgun-t1-derringer`(デリンジャー)**素材○ 実装○** | `handgun-t1-crossbow`(クロスボウ) |
+| handgun T2 | `handgun-t2-handcannon`(ハンドキャノン)**素材○ 実装○** | `handgun-t2-dualrange`(デュアルレンジピストル) |
+| handgun T3 | `handgun-t3-piledriver`(パイルドライバー)**素材○ 実装○** | `handgun-t3-gunblade`(ガンブレード) |
+| shotgun T1 | `shotgun-t1-focus`(収束型)**素材○** | `shotgun-t1-cycle`(切替式) |
+| shotgun T2 | `shotgun-t2-suppress`(制圧型)**素材○** | `shotgun-t2-coil`(コイル) |
+| shotgun T3 | `shotgun-t3-flamer`(火炎放射器)**素材○** | `shotgun-t3-homing`(誘導散弾) |
+| rifle T1 | `rifle-t1-deserttech`(デザートテック) | `rifle-t1-bolt`(ボルトアクション) |
+| rifle T2 | `rifle-t2-heavysniper`(大型狙撃銃) | `rifle-t2-icelance`(氷槍) |
+| rifle T3 | `rifle-t3-railgun`(レールガン) | `rifle-t3-eyelaser`(アイレーザー) |
+
+- **素材○** = 絵を受領し `WEAPON_ICON_KEYS` と `pixiTextures` の**両方**に登録済み。
+- **実装○** = `CATALOG` と `SLOT_CANDIDATES` に入っていて、ゲーム中に出る。
+- サブウェポン「金環」は銃ではないのでこの表に入れない(サブのキー体系に従う)。
+
 ### 11-8. 第2弾の実装見積り(★2026-09-05に数え直した)
 
 **社長指摘「無限弾はむずくないのでは?」は正しい。** 私は「9種のうち8種が新しい挙動」と書いたが、

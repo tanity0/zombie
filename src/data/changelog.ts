@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4156',
+    items: ['ゲーム内容の変更はありません(ショットガンのユニーク3種の絵を先に入れました。武器自体はこれから)。'],
+  },
+  {
     version: '0.25.4155',
     items: ['ユニーク武器3種(デリンジャー/ハンドキャノン/パイルドライバー)の銃の絵が入りました。地面のドロップと装備画面のアイコンに出ます。'],
   },

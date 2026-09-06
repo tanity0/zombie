@@ -393,6 +393,10 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/handgun-t1-derringer', scaleMode: 'nearest' },
       { name: 'weapons/handgun-t2-handcannon', scaleMode: 'nearest' },
       { name: 'weapons/handgun-t3-piledriver', scaleMode: 'nearest' },
+      // ショットガンのユニーク3種(素材のみ先行受領2026-09-06)。
+      { name: 'weapons/shotgun-t1-focus', scaleMode: 'nearest' },
+      { name: 'weapons/shotgun-t2-suppress', scaleMode: 'nearest' },
+      { name: 'weapons/shotgun-t3-flamer', scaleMode: 'nearest' },
       // 近接(ナイフ系)アイコン。銃と同じピックアップ/HUDアイコン(攻撃モーション用ではない)。
       { name: 'weapons/knife-t1', scaleMode: 'nearest' },
       { name: 'weapons/hatchet-t2', scaleMode: 'nearest' },
