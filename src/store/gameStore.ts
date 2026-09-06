@@ -115,7 +115,7 @@ import {
 } from '../config/shijin';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の純関数/定数。
-import { alchemyStoneDetonateDamage, ALCHEMY_DETONATE_RADIUS_PX } from '../utils/alchemyStone';
+import { alchemyStoneDetonateDamage, alchemyStoneDetonateRadius } from '../utils/alchemyStone';
 import { type SignalStrike, SIGNAL_STRIKE_DELAY_MS, SIGNAL_STRIKE_RADIUS_PX } from '../utils/signalLauncher';
 import { resetHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPONS.md §13-1
 import { nextCycleMode } from '../utils/cycleShotgun'; // UNIQUE_WEAPONS.md §16-2/§17-7(バッチB・切替式SG)
@@ -6855,14 +6855,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         let bestD2 = PHILL_SNAP_RADIUS * PHILL_SNAP_RADIUS;
         let snapX = baseX, snapY = baseY;
         const stage3 = state.farBackdrop === 'city';
-        for (const e of state.enemies) {
-          if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
-          if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): PHILL手動照準のスナップ対象から除外
-          const fb = enemyFootBox(e);
-          const hx = fb.footX;
-          const hy = enemyHeadY(e, stage3); // 実描画の縦範囲に基づく頭付近(横長素材でも頭に乗る)
-          const d2 = (hx - baseX) ** 2 + (hy - baseY) ** 2;
-          if (d2 <= bestD2) { bestD2 = d2; snapX = hx; snapY = hy; phillSnapEnemyId = e.id; }
+        // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-4是正): シグナルは「追尾しないため敵の移動先を
+        // 予測して置く」武器なので、頭スナップ(PHILL_SNAP_RADIUS)を適用しない=生の照準のまま。
+        // 吸い付くと進行方向の少し先に置けなくなる(武器の芯が消える)。PHILL/レールガンは従来どおり。
+        const skipSnap = getActiveGun(player)?.key === SIGNAL_WEAPON_KEY;
+        if (!skipSnap) {
+          for (const e of state.enemies) {
+            if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
+            if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): PHILL手動照準のスナップ対象から除外
+            const fb = enemyFootBox(e);
+            const hx = fb.footX;
+            const hy = enemyHeadY(e, stage3); // 実描画の縦範囲に基づく頭付近(横長素材でも頭に乗る)
+            const d2 = (hx - baseX) ** 2 + (hy - baseY) ** 2;
+            if (d2 <= bestD2) { bestD2 = d2; snapX = hx; snapY = hy; phillSnapEnemyId = e.id; }
+          }
         }
         phillReticleDX = snapX - rcx;
         phillReticleDY = snapY - rcy;
@@ -10709,35 +10715,54 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (nextMag <= 0) get().autoSwitchIfDry();
   },
 
-  // UNIQUE_WEAPONS.md §16-2(バッチD・錬金砲): 指を離した瞬間、石(Enemy.alchemyStoneStage)を
-  // 持つ敵を全員まとめて起爆する。装備がglauncher-t2-alchemyでない/石を持つ敵がいなければ無害。
+  // UNIQUE_WEAPONS.md §16-2/§16-5c(バッチD検収A-1是正・錬金砲): 指を離した瞬間、石
+  // (Enemy.alchemyStoneStage)を持つ敵を全員まとめて起爆する。装備がglauncher-t2-alchemyでない/
+  // 石を持つ敵がいなければ無害。★§16-5c: 起爆は「範囲攻撃」——石持ち本体を中心に、段階ごとの半径
+  // (1段70/2段90/3段110px・alchemyStoneDetonateRadius)で周囲の敵にも同じ基準ダメージを配る
+  // (中心=満額、外へ向かって減衰=既定グレネードのsplashと同じ0.55+falloff*0.45の形)。石持ちが
+  // 複数いる場合、範囲が重なった敵は各起爆から個別にダメージを受ける(既定グレネードのAoEが
+  // 複数当たると重ねて食らうのと同じ土俵=式外の上振れ・§16-1)。
   detonateAlchemyStones: () => {
     const { player, gameTime } = get();
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== ALCHEMY_WEAPON_KEY) return;
     const stoned = get().enemies.filter(e => (e.alchemyStoneStage ?? 0) > 0);
     if (stoned.length === 0) return;
-    for (const e of stoned) {
-      const stage = e.alchemyStoneStage ?? 0;
+    for (const stone of stoned) {
+      const center = get().enemies.find(e => e.id === stone.id);
+      if (!center) continue; // 先の起爆(同ループ内)で既に倒れて消えている場合がある
+      const stage = stone.alchemyStoneStage ?? 0;
       const baseDamage = alchemyStoneDetonateDamage(stage);
+      const radius = alchemyStoneDetonateRadius(stage);
       const dmg = Math.max(1, Math.round(gunShotBaseDamage({ damage: baseDamage, magazine: weapon.magazine }, player, gameTime)));
-      const ex = e.x + e.width / 2;
-      const ey = e.y + e.height / 2;
-      const killed = get().damageEnemy(e.id, dmg, true);
-      get().spawnRing(ex, ey, 8, ALCHEMY_DETONATE_RADIUS_PX, 'rgba(250,204,21,0.85)', 4, 420);
+      const ex = center.x + center.width / 2;
+      const ey = center.y + center.height / 2;
+      get().spawnRing(ex, ey, 8, radius, 'rgba(250,204,21,0.85)', 4, 420);
       get().spawnBurst(ex, ey, '#facc15', 16);
       get().spawnBurst(ex, ey, '#f97316', 8);
-      get().spawnExplosionFx(ex, ey, ALCHEMY_DETONATE_RADIUS_PX, 0xfacc15);
+      get().spawnExplosionFx(ex, ey, radius, 0xfacc15);
       get().spawnGlow(ex, ey, 30, 'rgba(250,204,21,', 420);
-      get().spawnDamageNumber(ex, e.y, dmg, false);
-      if (killed) {
-        void import('../audio/audioManager').then(m => m.playEnemyDeath());
-        get().spawnBurst(ex, ey, '#dc2626', 12);
-        get().dropEnemyCurrency(e, ex, ey);
-        get().dropEnemyXp(e, ex, ey, `pickup-xp-alchemy-detonate-${e.id}`);
-        if (isPumpkinTier(e.type) || e.type === 'giantbat') {
-          get().addPickup({ id: `pickup-crate-${e.id}`, x: ex - 8, y: ey - 8 - 18, type: 'weapon-crate', value: 0, worldDrop: true });
-          get().spawnRing(ex, ey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
+      for (const e of get().enemies) {
+        if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
+        const ecx = e.x + e.width / 2;
+        const ecy = e.y + e.height / 2;
+        const dist = Math.hypot(ecx - ex, ecy - ey);
+        if (dist > radius) continue;
+        // 中心(石持ち本体)は満額、外は既定グレネードと同じfalloff(0.55+falloff*0.45)。
+        const falloff = 1 - dist / radius;
+        const eDmg = e.id === center.id ? dmg : Math.max(1, Math.round(dmg * (0.55 + falloff * 0.45)));
+        const killed = get().damageEnemy(e.id, eDmg, true);
+        get().spawnDamageNumber(ecx, e.y, eDmg, false);
+        if (e.id !== center.id) get().spawnBurst(ecx, ecy, '#b91c1c', 4);
+        if (killed) {
+          void import('../audio/audioManager').then(m => m.playEnemyDeath());
+          get().spawnBurst(ecx, ecy, '#dc2626', 12);
+          get().dropEnemyCurrency(e, ecx, ecy);
+          get().dropEnemyXp(e, ecx, ecy, `pickup-xp-alchemy-detonate-${e.id}`);
+          if (isPumpkinTier(e.type) || e.type === 'giantbat') {
+            get().addPickup({ id: `pickup-crate-${e.id}`, x: ecx - 8, y: ecy - 8 - 18, type: 'weapon-crate', value: 0, worldDrop: true });
+            get().spawnRing(ecx, ecy, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
+          }
         }
       }
     }
@@ -15722,9 +15747,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           coilAimDirX: undefined, coilAimDirY: undefined,
           coilAmplitudePx: undefined, coilLaunchGameTime: undefined,
           homingPellet: undefined, targetEnemyId: undefined,
-          // UNIQUE_WEAPONS.md §16-2(バッチD・ロケットランチャー): 溜め状態も同じ理由で落とす
-          // (反射弾=直進、が既存規則。上でreflectBaseSpeedとして既に取り込み済み)。
-          rocketChargeUntil: undefined, rocketLaunchSpeed: undefined,
+          // UNIQUE_WEAPONS.md §16-2/§16-5c(バッチD・ロケットランチャー): 溜め状態も同じ理由で落とす
+          // (反射弾=直進、が既存規則。上でreflectBaseSpeedとして既に取り込み済み)。rocketEaseUntil
+          // (§16-5c A-9・発射直後のease-in)も同時に落とす——残したままだと反射直後の速度
+          // (REFLECT_SPEED_MULTIPLIER適用済み)をease-inの補間tickが毎フレーム上書きしてしまう。
+          rocketChargeUntil: undefined, rocketLaunchSpeed: undefined, rocketEaseUntil: undefined,
           // UNIQUE_WEAPONS.md §17-10(#U16裁定・レールガン): 手動射撃の頭部判定フラグも同じ理由で落とす
           // (打ち返された弾は敵対弾としてプレイヤーへ向かう=「頭部確定クリ」の判定対象がプレイヤー側
           // ではないため無意味な上、敵弾にPHILL/レールガン専用の頭部判定を紛れ込ませない)。
@@ -16906,7 +16933,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     const reloadable = guns.find(w => w.ammoType && weaponReloadReserve(w, player) > 0);
     const target = ready ?? reloadable;
     if (target && target.id !== player.activeWeaponId) {
-      set(state => ({ player: { ...state.player, activeWeaponId: target.id } }));
+      // UNIQUE_WEAPONS.md §16-5c(バッチD検収B-3是正): setActiveWeaponと同じ「錬金砲から離れたら
+      // 育てた石を消す」を、弾切れの自動切替(この経路はsetActiveWeaponを経由せずactiveWeaponIdを
+      // 直接書く)にも通す。
+      const leavingAlchemy = active.key === ALCHEMY_WEAPON_KEY && target.key !== ALCHEMY_WEAPON_KEY;
+      set(state => ({
+        player: { ...state.player, activeWeaponId: target.id },
+        ...(leavingAlchemy
+          ? { enemies: state.enemies.map(e => ((e.alchemyStoneStage ?? 0) > 0 ? { ...e, alchemyStoneStage: undefined } : e)) }
+          : {}),
+      }));
     }
   },
   

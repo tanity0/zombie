@@ -13,6 +13,18 @@ export const ROCKET_CHARGE_MS = 500;
 // 爆発範囲は既定グレネードt1(GRENADE_BLAST_RADIUS)に対する倍率(§16-1「既定比×1.2」)。
 export const ROCKET_BLAST_RADIUS_MULT = 1.2;
 
+// UNIQUE_WEAPONS.md §16-5c(バッチD検収A-9是正): 溜め終わり(発射)の瞬間加速は慣性MUST違反
+// (0→本来速度の瞬間加速)。発射から150msをease-inで0→本来速度にする。時計はgameTime
+// (ROCKET_CHARGE_MSと同じ「動きの時計はgameTime」規則)。
+export const ROCKET_LAUNCH_EASE_MS = 150;
+
+/** 発射後(ease-in中)の速度倍率。0(発射直後)→1(ease完了)。ease-in(2乗・bountyShots.tsと同じ形)。
+ * progress01は「発射後の経過(0=発射直後・1=ease完了)」。 */
+export const rocketLaunchSpeedMult = (progress01: number): number => {
+  const p = Math.max(0, Math.min(1, progress01));
+  return p * p;
+};
+
 /**
  * 1サイクル(溜め→着弾)の実効DPS(UNIQUE_WEAPONS.md §5-2)。
  * 溜めをcooldownへ畳んだ実装なので、汎用式(damage / (cooldown + 実効リロード))と同じ形になる

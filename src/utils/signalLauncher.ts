@@ -7,6 +7,9 @@
 
 export const SIGNAL_STRIKE_DELAY_MS = 900; // 記録→着弾までの遅延(死に時間としてcooldownへ畳んで測る)
 export const SIGNAL_STRIKE_RADIUS_PX = 160; // 空爆の範囲
+// UNIQUE_WEAPONS.md §16-5c(バッチD検収A-2是正): 社長仕様「高い体勢値削り」。パイルドライバーの
+// 'heavy'(比率0.10)を基準に、それより高い意味で1.5倍(=damageEnemyのpostureImpactMult)。
+export const SIGNAL_POSTURE_MULT = 1.5;
 
 /** 空爆1回ぶんの記録(gameStore.signalStrikesの要素)。 */
 export interface SignalStrike {

@@ -2071,6 +2071,10 @@ export interface Projectile {
   // rocketLaunchSpeedは溜め終わりに書き戻す本来の飛翔速度(useGameLoopの専用tickが1回だけ使う)。
   rocketChargeUntil?: number;
   rocketLaunchSpeed?: number;
+  // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-9是正): 溜め終わり(発射)からROCKET_LAUNCH_EASE_MS(150ms)
+  // の間、rocketLaunchSpeedを目標速度としてease-inする(0→本来速度)。rocketEaseUntilが設定されている
+  // 間はp.speedを毎フレーム補間で書き換える(useGameLoopの専用tick)。ease完了で両方undefinedに戻す。
+  rocketEaseUntil?: number;
 }
 
 // Pickup types

@@ -471,9 +471,9 @@ import {
 import { isBossPostureBroken } from '../utils/bossPosture';
 import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
-import { ROCKET_BLAST_RADIUS_MULT } from '../utils/rocketLauncher';
+import { ROCKET_BLAST_RADIUS_MULT, ROCKET_LAUNCH_EASE_MS, rocketLaunchSpeedMult } from '../utils/rocketLauncher';
 import { ALCHEMY_BURST_RADIUS_PX, nextAlchemyStoneStage } from '../utils/alchemyStone';
-import { SIGNAL_STRIKE_RADIUS_PX } from '../utils/signalLauncher';
+import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLauncher';
 // UNIQUE_WEAPONS.md §16-2(バッチC-2・ガンブレード): 守護霊の射程ゲート(至近モードは
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
@@ -12134,15 +12134,32 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // ロケットランチャー(glauncher-t1-rocket・UNIQUE_WEAPONS.md §16-2/バッチD): 敵ヒットの爆発は
-        // 上の isGrenadeGunKey 分岐(通常の弾-敵衝突判定)が処理する——「溜め中でも弾頭に敵が接触
+        // ロケットランチャー(glauncher-t1-rocket・UNIQUE_WEAPONS.md §16-2/バッチD/§16-5c): 敵ヒットの
+        // 爆発は上の isGrenadeGunKey 分岐(通常の弾-敵衝突判定)が処理する——「溜め中でも弾頭に敵が接触
         // すればその場で爆発」は、fireWeaponのフックで弾を速度0のままその場に置くことで、専用コード
-        // 無しに同じ衝突判定へ乗る(rocketLauncher.ts参照)。ここは2つだけ:
-        //  ①壁ヒット(敵ヒットには無い専用パス。既存の弾は壁を素通りするため=weaponType='glauncher'は
+        // 無しに同じ衝突判定へ乗る(rocketLauncher.ts参照)。ここは3つ:
+        //  ①溜め中は弾頭を自機に追従させる(§16-5c A-6是正。旧実装は引き金時点の位置に固定していた)
+        //  ②壁ヒット(敵ヒットには無い専用パス。既存の弾は壁を素通りするため=weaponType='glauncher'は
         //    BULLET_TYPESに含まれずgameStore側の自動除去も効かない)
-        //  ②溜め終わり(rocketChargeUntil経過)に実際の飛翔速度へ復帰させる
+        //  ③溜め終わり(rocketChargeUntil経過)に、その時点の自機中心・最寄り敵方向へ撃ち出す
+        //    (§16-5c A-6/A-7/A-9是正。位置・方向を発射時点で確定/寿命を溜め終わりから数える/
+        //    0→本来速度をease-in)
         // 何にも当たらなければ(壁にもぶつからず duration 切れ)通常の弾と同じく黙って消える=不発。
         {
+          // ①溜め中の追従(§16-5c A-6): 引き金時点の位置に固定しない。毎フレーム自機中心へ合わせる。
+          const rkFollowPlayer = useGameStore.getState().player;
+          const rkFollowPcx = rkFollowPlayer.x + rkFollowPlayer.width / 2;
+          const rkFollowPcy = rkFollowPlayer.y + rkFollowPlayer.height / 2;
+          let rkFollowed = false;
+          const rkFollowedProjectiles = useGameStore.getState().projectiles.map(rp => {
+            if (rp.weaponKey !== ROCKET_WEAPON_KEY) return rp;
+            const rCharging = rp.rocketChargeUntil !== undefined && gameTime < rp.rocketChargeUntil;
+            if (!rCharging) return rp;
+            rkFollowed = true;
+            return { ...rp, x: rkFollowPcx - rp.width / 2, y: rkFollowPcy - rp.height / 2 };
+          });
+          if (rkFollowed) useGameStore.setState({ projectiles: rkFollowedProjectiles });
+
           const rkState = useGameStore.getState();
           for (const rp of rkState.projectiles) {
             if (rp.weaponKey !== ROCKET_WEAPON_KEY) continue;
@@ -12178,25 +12195,72 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   spawnBurst(rex, rey, '#dc2626', 12);
                   useGameStore.getState().dropEnemyCurrency(rEnemy, rex, rey);
                   dropEnemyXp(rEnemy, rex, rey, 'pickup-xp-rocket');
+                  // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-8是正): ロケランの壁ヒットもsplashキルなので、
+                  // 直撃キルと同じ強個体クレート判定を足す。
+                  if (isPumpkinTier(rEnemy.type) || rEnemy.type === 'giantbat') {
+                    useGameStore.getState().addPickup({ id: `pickup-crate-${rEnemy.id}`, x: rex - 8, y: rey - 8 - 18, type: 'weapon-crate', value: 0, worldDrop: true });
+                    spawnRing(rex, rey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
+                  }
                 }
               }
               useGameStore.getState().removeProjectile(rp.id);
               continue;
             }
           }
-          // 溜め終わり: 速度0で置いていた弾を本来の飛翔速度へ戻す(1回だけ)。
+          // ③溜め終わり(§16-5c A-6/A-7/A-9是正): その時点の自機中心・最寄り敵方向で撃ち出す。
+          // 最寄り敵の選び方はfireWeapon(weaponUtils.aimDirection/pickTarget)と同じ
+          // pickNearestTarget(isCorpse除外・スタン中は最終手段)を使う。見つからなければ
+          // lastDirection、それも無ければ上方向へ(aimDirectionと同じフォールバック順)。
           // ★上の壁ヒット判定でこのフレーム中にremoveProjectileが走っている可能性があるため、
-          // ここで改めて最新のprojectilesを読み直す(古いrkState.projectilesを使うと、消したはずの
-          // 弾がこのmapで復活する)。
+          // ここで改めて最新のprojectilesを読み直す(古いrkStateを使うと、消したはずの弾が
+          // このmapで復活する)。
           let rkLaunched = false;
+          const rkLaunchPlayer = useGameStore.getState().player;
+          const rkLaunchPcx = rkLaunchPlayer.x + rkLaunchPlayer.width / 2;
+          const rkLaunchPcy = rkLaunchPlayer.y + rkLaunchPlayer.height / 2;
+          const rkLaunchTarget = pickNearestTarget(rkLaunchPcx, rkLaunchPcy, useGameStore.getState().enemies, gameTime);
+          let rkDirX: number, rkDirY: number;
+          if (rkLaunchTarget) {
+            const rtdx = rkLaunchTarget.x + rkLaunchTarget.width / 2 - rkLaunchPcx;
+            const rtdy = rkLaunchTarget.y + rkLaunchTarget.height / 2 - rkLaunchPcy;
+            const rtdist = Math.max(0.001, Math.hypot(rtdx, rtdy));
+            rkDirX = rtdx / rtdist; rkDirY = rtdy / rtdist;
+          } else if (rkLaunchPlayer.lastDirection) {
+            rkDirX = rkLaunchPlayer.lastDirection.x; rkDirY = rkLaunchPlayer.lastDirection.y;
+          } else {
+            rkDirX = 0; rkDirY = -1;
+          }
           const rkNext = useGameStore.getState().projectiles.map(rp => {
             if (rp.weaponKey === ROCKET_WEAPON_KEY && rp.rocketChargeUntil !== undefined && gameTime >= rp.rocketChargeUntil) {
               rkLaunched = true;
-              return { ...rp, speed: rp.rocketLaunchSpeed ?? rp.speed, rocketChargeUntil: undefined, rocketLaunchSpeed: undefined };
+              return {
+                ...rp,
+                x: rkLaunchPcx - rp.width / 2,
+                y: rkLaunchPcy - rp.height / 2,
+                direction: { x: rkDirX, y: rkDirY },
+                speed: 0, // A-9: ease-inの起点(0→rocketLaunchSpeed)
+                rocketChargeUntil: undefined,
+                rocketEaseUntil: gameTime + ROCKET_LAUNCH_EASE_MS,
+                createdAt: Date.now(), // A-7: 寿命(duration)は溜め終わりから数える(currentTime=Date.now()と揃える)
+              };
             }
             return rp;
           });
           if (rkLaunched) useGameStore.setState({ projectiles: rkNext });
+
+          // ease-in中(rocketEaseUntil付き)は毎フレーム速度を補間する(A-9)。完了したら
+          // rocketLaunchSpeedをそのまま速度に確定し、両フィールドをundefinedへ戻す。
+          let rkEased = false;
+          const rkEasedNext = useGameStore.getState().projectiles.map(rp => {
+            if (rp.weaponKey !== ROCKET_WEAPON_KEY || rp.rocketEaseUntil === undefined) return rp;
+            rkEased = true;
+            if (gameTime >= rp.rocketEaseUntil) {
+              return { ...rp, speed: rp.rocketLaunchSpeed ?? rp.speed, rocketEaseUntil: undefined, rocketLaunchSpeed: undefined };
+            }
+            const rkProgress = 1 - (rp.rocketEaseUntil - gameTime) / ROCKET_LAUNCH_EASE_MS;
+            return { ...rp, speed: (rp.rocketLaunchSpeed ?? 0) * rocketLaunchSpeedMult(rkProgress) };
+          });
+          if (rkEased) useGameStore.setState({ projectiles: rkEasedNext });
         }
 
         // シグナルランチャー(glauncher-t3-signal・UNIQUE_WEAPONS.md §16-2/§16-3b/バッチD): 発射
@@ -12228,7 +12292,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     if (sgWalls.length > 0 && segmentBlocked(strike.x, strike.y, sex, sey, sgWalls)) continue;
                     const sFalloff = 1 - sDist / SIGNAL_STRIKE_RADIUS_PX;
                     const sDmg = Math.max(1, Math.round(strike.damage * (0.55 + sFalloff * 0.45)));
-                    const sKilled = damageEnemy(sgEnemy.id, sDmg, true);
+                    // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-2是正): 社長仕様「高い体勢値削り」。
+                    // 'heavy'(パイルドライバーと同じ打撃種別枠)+ 1.5倍(SIGNAL_POSTURE_MULT)。
+                    const sKilled = damageEnemy(sgEnemy.id, sDmg, true, false, false, 'other', 'player', 'heavy', SIGNAL_POSTURE_MULT);
                     spawnDamageNumber(sex, sgEnemy.y, sDmg, false);
                     spawnBurst(sex, sey, '#b91c1c', 4);
                     if (sKilled) {
@@ -12236,6 +12302,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       spawnBurst(sex, sey, '#dc2626', 12);
                       useGameStore.getState().dropEnemyCurrency(sgEnemy, sex, sey);
                       dropEnemyXp(sgEnemy, sex, sey, `pickup-xp-signal-${strike.id}`);
+                      // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-8是正): シグナルは全キルがsplashなので、
+                      // ここに直撃キルと同じ強個体クレート判定を足さないと絶対に落ちない。
+                      if (isPumpkinTier(sgEnemy.type) || sgEnemy.type === 'giantbat') {
+                        useGameStore.getState().addPickup({ id: `pickup-crate-${sgEnemy.id}`, x: sex - 8, y: sey - 8 - 18, type: 'weapon-crate', value: 0, worldDrop: true });
+                        spawnRing(sex, sey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
+                      }
                     }
                   }
                 }
@@ -13114,6 +13186,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnBurst(ax, ay, '#dc2626', 12);
                 useGameStore.getState().dropEnemyCurrency(acEnemy, ax, ay);
                 dropEnemyXp(acEnemy, ax, ay, 'pickup-xp-alchemy');
+                // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-8是正): 錬金の破裂もsplashキルなので、
+                // 直撃キルと同じ強個体クレート判定を足す。
+                if (isPumpkinTier(acEnemy.type) || acEnemy.type === 'giantbat') {
+                  useGameStore.getState().addPickup({ id: `pickup-crate-${acEnemy.id}`, x: ax - 8, y: ay - 8 - 18, type: 'weapon-crate', value: 0, worldDrop: true });
+                  spawnRing(ax, ay, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
+                }
               }
             }
             if (acStonedIds.length > 0) {

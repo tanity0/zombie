@@ -15,6 +15,11 @@ export const performTapAction = () => {
     const after = useGameStore.getState().player.weapons.find(w => w.id === gs.player.activeWeaponId)?.magazine ?? 0;
     if (after < before) playSfx('handgun-fire');
   }
+  // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-5是正・#U24を(a)で確定): 手動系はPC入力にも配線する。
+  // VirtualJoystickの指離しと同じ形(条件はstore側が持っているので無条件呼び出しでよい・未装備/CD中は無害)。
+  gs.fireSignalLauncher();
+  gs.fireRailgunShot();
+  gs.detonateAlchemyStones();
   const counter = useGameStore.getState().triggerCounter();
   // 鞭装備中はナイフ用の汎用音を出さない(鞭専用SE=whip-swing/whip-hit に任せる)。
   const isWhip = useGameStore.getState().player.subWeapons.includes('whip');

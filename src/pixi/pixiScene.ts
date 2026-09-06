@@ -3587,6 +3587,9 @@ export class PixiScene {
   // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)の頭上名前ラベル。同時1体・生成は湧き時1回だけ
   // なのでPixi Text可(CLAUDE.mdの「まれなcallout枠」)。毎フレーム再生成はしない=位置追従のみ。
   private namedFoeLabels = new Map<string, Text>();
+  // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-3是正・錬金砲): 石(Enemy.alchemyStoneStage)の見え方。
+  // 敵の頭上に金の点を段数ぶん(1〜3個)。pooled Graphics(1個体1枚・専用素材は不要)。
+  private alchemyStoneMarkers = new Map<string, Graphics>();
 
   // ---- PACING_PUZZLE.md §10 バッチ3(フィル専用描画・L.phillLayer内) ----------------------------
   // 影/後光/羽をまとめる下敷きコンテナ(phillLayerのindex 0=最下へ挿す)。本体(view.container)は
@@ -12860,6 +12863,8 @@ export class PixiScene {
         if (sweepStreakSp) { sweepStreakSp.destroy(); this.surielSweepStreakFx.delete(id); }
         const nameLabel = this.namedFoeLabels.get(id);
         if (nameLabel) { nameLabel.destroy(); this.namedFoeLabels.delete(id); }
+        const stoneDots = this.alchemyStoneMarkers.get(id);
+        if (stoneDots) { stoneDots.destroy(); this.alchemyStoneMarkers.delete(id); }
         // §6.38実機FB1追記(社長実測2026-08-15「討伐時に武器スプライトが消えず残った」・v0.25.3408):
         // 賞金首はcorpseEligible外=死亡と同時に`enemies`から即除去される(triggerDramaticDeathは
         // 除去前のスナップショットで動く別系統のFXなので、この個体視点のスプライトは巻き込まれない)。
@@ -16384,6 +16389,35 @@ export class PixiScene {
     } else {
       const label = this.namedFoeLabels.get(e.id);
       if (label) label.visible = false;
+    }
+
+    // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-3是正・錬金砲): 石の段数を敵の頭上に金の点で示す
+    // (1〜3個)。名前ラベルより少し高い位置に置く(宿敵/クエスト対象へ石が付いても重ならない)。
+    {
+      const stoneStage = e.alchemyStoneStage ?? 0;
+      if (stoneStage > 0) {
+        let dots = this.alchemyStoneMarkers.get(e.id);
+        if (!dots) {
+          dots = new Graphics();
+          this.L.effectLayer.addChild(dots);
+          this.alchemyStoneMarkers.set(e.id, dots);
+        }
+        const n = Math.max(1, Math.min(3, Math.round(stoneStage)));
+        const dotR = 4;
+        const gap = 12;
+        const totalW = (n - 1) * gap;
+        dots.clear();
+        for (let i = 0; i < n; i++) {
+          const dx = -totalW / 2 + i * gap;
+          dots.circle(dx, 0, dotR).fill({ color: 0xfacc15 });
+          dots.circle(dx, 0, dotR).stroke({ color: 0x78350f, width: 1.5, alpha: 0.9 });
+        }
+        dots.position.set(Math.round(fb.footX), Math.round(fb.footY - fb.boxH - 22 - liftHop - aiHop - kbHop));
+        dots.visible = true;
+      } else {
+        const dots = this.alchemyStoneMarkers.get(e.id);
+        if (dots) dots.visible = false;
+      }
     }
 
     // 被弾フラッシュ: 本体スプライトと同じ形/変形を白で加算オーバーレイし、絵(ピクセル)を一瞬光らせる。

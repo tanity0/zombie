@@ -60,6 +60,7 @@ import {
   createWeapon, effectiveFireCooldown, beginWeaponReload, finishWeaponReload,
   projectileFlightStats, gunEffectiveRangePx,
   gunShotCritChance, GUNBLADE_WEAPON_KEY,
+  isManualOnlyGunKey, manualOnlyFallbackWeapon, // UNIQUE_WEAPONS.md §16-3b(検収B-2是正): 幻影も守護霊/ボットと同じフォールバックを踏む
 } from './weaponUtils';
 // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): 幻影の至近モード距離ゲート
 // (「撃たないだけ」・実装者の裁量=最終報告に記載)。
@@ -716,6 +717,11 @@ const firePhantomShot = (
   // 撃たせない形にしてあるが、**発射の入口でも閉じる**(2箇所のどちらが先に変わっても弾が漏れない)。
   // UNIQUE_WEAPONS.md §17-6(検収監査A-2の是正): 非投射武器は`nonProjectile`フラグ1本で判定。
   if (!gun || s.reloadingWeaponId !== '' || (gun.magazine ?? 0) <= 0 || gun.nonProjectile) return;
+  // UNIQUE_WEAPONS.md §16-3b(検収B-2是正): 手動専用銃(シグナルランチャー)は守護霊/ボットと同じく
+  // 既定の同カテゴリ銃(glauncher-t3)へ差し替えて撃つ。マガジン/クールダウンの帳簿は`gun`(写した
+  // 実体=手動専用銃自身の数値)のまま進める——effGunはこの1発の「ダメージ・飛翔特性・クリ率」だけに使う
+  // (buildGhostGunShotsと同じ役割分担。フォールバック先が無い=PHILLはeffGun===gunで従来どおり)。
+  const effGun = isManualOnlyGunKey(gun.key) ? manualOnlyFallbackWeapon(gun) : gun;
   const st = useGameStore.getState();
   const p = st.player;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
@@ -724,11 +730,11 @@ const firePhantomShot = (
   // プレイヤー本体だけが持つ)。bcx/bcy=幻影自身の中心(呼び出し元から受け取り済み)、
   // pcx/pcy=対象(プレイヤー)の中心。
   if (gun.key === GUNBLADE_WEAPON_KEY && Math.hypot(bcx - pcx, bcy - pcy) <= GUNBLADE_MELEE_RANGE_PX) return;
-  const flight = projectileFlightStats(gun);
+  const flight = projectileFlightStats(effGun);
   // ★SAME_ARENA O-2: クリ率も倍率も**プレイヤーと同じ純関数**で出す(主語=幻影の疑似Player)。
   // ビルドが無ければ従来どおり「武器の素のクリ率 × CRIT_DAMAGE_MULT・倍率1」=1bit不変。
   // 弾の見た目は変えない(全ボス共通の赤い二重丸=CLAUDE.mdの弾の文法)。
-  const m = phantomAtkMults(phantom.id, gun, newGameTime);
+  const m = phantomAtkMults(phantom.id, effGun, newGameTime);
   // ★§13-3e クリ減衰(社長裁定2026-08-26・SAME_ARENA対称): 幻影の銃もプレイヤーと同じ減衰を受ける
   // (相手=プレイヤー1人・武器を持ち替えれば戻る)。発射時ロールなので時刻は発射時で近似。
   const crit = rand() < critDecayOnHit(`gp:${phantom.id}`, gun.key ?? 'gp-gun', newGameTime, m.critChance);
@@ -738,7 +744,7 @@ const firePhantomShot = (
       // research/GROWTH.md v4: 幻影の銃にも育成の攻撃力を掛ける(スポーン時に焼いた倍率)。
       // 対人1/10(社長裁定2026-08-20)も弾の生成時に掛ける(被弾側=combatTickは共通経路なので触らない)。
       { speed: flight.speed, damage: Math.max(1, Math.round(
-        gun.damage * (crit ? m.critMult : 1) * m.outgoingMult * s.growthAtkMult * PVP_DAMAGE_SCALE,
+        effGun.damage * (crit ? m.critMult : 1) * m.outgoingMult * s.growthAtkMult * PVP_DAMAGE_SCALE,
       )), size: flight.size },
     ),
     // ★SAME_ARENA §9: クリ旗を弾に載せる(被弾側=combatTickが体勢削り(gun-crit)+2/3減速の合図に使う)。
@@ -747,7 +753,7 @@ const firePhantomShot = (
   s.gun = { ...gun, magazine: Math.max(0, (gun.magazine ?? 0) - 1), lastFired: Date.now() };
   patch.gpShotAt = newGameTime;
   patch.gpShotAngle = Math.atan2(pcy - bcy, pcx - bcx);
-  sfx.shot(gun.category ?? 'handgun', gun.key ?? '');
+  sfx.shot(effGun.category ?? 'handgun', effGun.key ?? '');
 };
 
 /**
