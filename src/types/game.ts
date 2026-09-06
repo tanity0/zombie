@@ -2007,7 +2007,6 @@ export interface Projectile {
   // 至近モード(近接系の強攻撃)で撃たれたことを示す印。useGameLoopの着弾処理がpiledriverと同じ
   // 枠組み(「新しい打撃種別は作らない」)で体勢削り分類を'heavy'に固定するために読む
   // (通常のクリ判定によるgun-crit分類とは独立=非クリでも必ずheavy)。
-  gunbladeMeleeHit?: true;
   explodeAt?: number;
   // ドローンブーメラン(weaponType 'drone-boomerang-projectile'): 行き('out')→停止('stop')→
   // 戻り('return')→消滅('done')。停止は回転+周囲パルス。戻りはプレイヤー現在地へ。

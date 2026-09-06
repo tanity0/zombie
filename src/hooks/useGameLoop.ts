@@ -12799,13 +12799,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 新しい打撃種別は作らない(比率はweapon.postureMultの数字だけで調整)。viaMeleeFinish=false
           // のままなので、'heavy'の近接フィニッシュ専用分岐(applyBrokenMeleeFatal)には触れない。
           const isPiledriverHit = projectile?.weaponKey === PILEDRIVER_WEAPON_KEY;
-          // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): 至近モードの弾は非クリでも
-          // 必ず'heavy'(比率0.10)。パイルドライバーと同じ「新しい打撃種別は作らない」枠組み
-          // (weaponUtils.tsのfireWeaponがgunbladeMeleeHitを立てるのはその弾に限る)。
-          const isGunbladeMeleeHit = projectile?.weaponKey === GUNBLADE_WEAPON_KEY && projectile?.gunbladeMeleeHit === true;
+          // ★検収2巡目(B)是正: ガンブレードの至近モードは **§16-5b で「弾を作らない」に変わった**ので、
+          // 「至近モードの弾」は存在しない=ここの分岐は死んでいた。読み手ごと削除した
+          // (体勢削り'heavy'は weaponUtils の近接ブロックが damageEnemy へ直接渡している)。
           const enemyKilled = damageEnemy(
             enemyId, dmg, false, hitCrit, false, dmgChannel, hateShotSource,
-            projectile?.reflected ? 'reflect' : (isPiledriverHit || isGunbladeMeleeHit) ? 'heavy' : directPlayerGun && hitCrit ? 'gun-crit' : null,
+            projectile?.reflected ? 'reflect' : isPiledriverHit ? 'heavy' : directPlayerGun && hitCrit ? 'gun-crit' : null,
             projectile?.postureMult ?? 1,
             // ★v0.25.3665(社長指摘「鴉、銃の弾反撃しないよ?」): プレイヤーの直接銃弾は弾として
             // 幻影ゲートへ(=飛翔時間が反応速度以上なら counterChance 抽選で打ち返し対象)。

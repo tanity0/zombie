@@ -15533,6 +15533,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           passthrough: false,
           hitEnemies: [],
           createdAt: Date.now(),
+          // ★検収2巡目A-γ是正: **特殊軌道の持ち物を反射で全部落とす**(反射弾=直進、が既存規則)。
+          // 落とさないと ①コイルは「新origin + **元の狙点方向** × speed×(発射からの経過)」で
+          // 位置を再構成するので、次tickに**幻影の向こう側へ100px以上跳んでそのまま遠ざかる**
+          // (敵対化した弾がプレイヤーへ戻らない) ②誘導ペレットは反転後も**敵へ旋回し続ける**
+          // =敵対弾が敵を追いかける、が必ず起きる。
+          coilAimDirX: undefined, coilAimDirY: undefined,
+          coilAmplitudePx: undefined, coilLaunchGameTime: undefined,
+          homingPellet: undefined, targetEnemyId: undefined,
           // v0.25.2525: 守護霊の反射だけ帰属キーを差し替える(未指定=従来どおり元の弾のキーのまま)。
           ...(weaponKey !== undefined ? { weaponKey } : {}),
         };

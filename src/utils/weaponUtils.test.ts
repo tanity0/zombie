@@ -296,7 +296,6 @@ describe('バッチC-2: 近接切替・弾の軌道の3挺の配線(fireWeapon)'
       const shots = fireWeapon(gun, useGameStore.getState().player, [target]);
       expect(shots.length).toBe(1);
       expect(shots[0].knockbackMult).toBeUndefined();
-      expect(shots[0].gunbladeMeleeHit).toBeUndefined();
       const stored = useGameStore.getState().player.weapons.find(w => w.id === gun.id);
       expect(stored?.gunbladeMeleeMode).toBe(false);
       expect(stored?.magazine).toBe((gun.magazine ?? 0) - 1); // 通常どおり弾薬を消費する

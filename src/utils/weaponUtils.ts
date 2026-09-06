@@ -837,9 +837,9 @@ export const gunShotCritChance = (
 // pool per shot. Returns the projectiles spawned (empty if blocked).
 export interface FireWeaponOptions {
   // UNIQUE_WEAPONS.md §16-2(バッチC-2・ガンブレード): 至近(≤90px)モードを許可するか。既定true
-  // (プレイヤー本体)。守護霊/幻影/ボットは「撃たないだけ」(社長裁定不要・実装者の裁量として
-  // 報告済み=最終報告参照)を選んだため、それぞれの呼び出し元がfalseを渡して melee 域では
-  // このtriggerそのものを空撃ちにする(nonProjectileと同じ「撃たない」の形)。
+  // (プレイヤー本体)。**ボット(playtestDriver)が false を渡している**=至近域では空撃ちにして
+  // DPS計測が近接ボーナスを拾わないようにする。守護霊(useGameLoop)と幻影(phantomTick)は
+  // この口ではなく**自前の距離判定**で至近域をスキップしている(3経路とも「撃たないだけ」で揃う)。
   allowMelee?: boolean;
 }
 
@@ -1090,8 +1090,6 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
       // 持たない(=weapon.knockbackMultと常に同値)ため、既存3挺の挙動は不変(回帰ゼロ)。
       knockbackMult: shotWeapon.knockbackMult,
       postureMult: shotWeapon.postureMult,
-      // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): この弾が至近モードで撃たれたか。
-      ...(nextGunbladeMode === 'melee' ? { gunbladeMeleeHit: true as const } : {}),
       // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルSG・2026-09-07 C-2検収A-1で確定): 「中心線からの
       // 横ズレ」方式の起点(ペレット固有の振幅+狙点方向+発射時のgameTime=A-1「時計はgameTime」)。
       ...(isCoilGun ? { coilAmplitudePx: coilAmplitudes![i], coilAimDirX: baseDir.x, coilAimDirY: baseDir.y, coilLaunchGameTime: gt } : {}),
