@@ -387,6 +387,12 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/glauncher-t1', scaleMode: 'nearest' },
       { name: 'weapons/glauncher-t2', scaleMode: 'nearest' },
       { name: 'weapons/glauncher-t3', scaleMode: 'nearest' },
+      // UNIQUE_WEAPONS.md 第1弾のユニーク3種(社長支給素材2026-09-06)。
+      // ★登録は2箇所(ここと weaponUtils の WEAPON_ICON_KEYS)。片方だけだと地面の絵が無言で
+      // 汎用描画へ落ちる(v0.25.4122 で glauncher が実際にそうなっていた)。
+      { name: 'weapons/handgun-t1-derringer', scaleMode: 'nearest' },
+      { name: 'weapons/handgun-t2-handcannon', scaleMode: 'nearest' },
+      { name: 'weapons/handgun-t3-piledriver', scaleMode: 'nearest' },
       // 近接(ナイフ系)アイコン。銃と同じピックアップ/HUDアイコン(攻撃モーション用ではない)。
       { name: 'weapons/knife-t1', scaleMode: 'nearest' },
       { name: 'weapons/hatchet-t2', scaleMode: 'nearest' },

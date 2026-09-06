@@ -434,6 +434,8 @@ export const WEAPON_ICON_KEYS: ReadonlySet<string> = new Set<string>([
   // 銃と同じピックアップ/HUDアイコン。
   'knife-t1', 'hatchet-t2', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5',
   'glauncher-t1', 'glauncher-t2', 'glauncher-t3', // 武器庫限定グレネード系銃器(v0.25.3290)
+  // UNIQUE_WEAPONS.md 第1弾のユニーク3種(社長支給素材2026-09-06)。
+  'handgun-t1-derringer', 'handgun-t2-handcannon', 'handgun-t3-piledriver',
 ]);
 export const hasWeaponIcon = (key: string | undefined | null): boolean => !!key && WEAPON_ICON_KEYS.has(key);
 export const weaponIconName = (key: string): string => `weapons/${key}`;
