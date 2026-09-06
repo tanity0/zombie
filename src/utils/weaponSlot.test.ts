@@ -15,6 +15,8 @@ const backing: Record<string, string> = {};
 
 import { resolveSlotKey, resolveSlotKeyNow, unlockedWeaponKeys, shelfWeaponKeys, type SlotLoadout, defaultSlotKeys } from './weaponSlot';
 import { SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, BOSS_UNLOCK, STORE_SOLD_KEYS, type SlotTier } from '../data/weaponSlots';
+import { CASTLE_BOSS_NAME_BY_STAGE, bossCutinName } from '../data/bossCutin';
+import type { EnemyType } from '../types/game';
 import { catalogCategoryTier, createWeapon } from './weaponUtils';
 import { markWeaponBlueprint, markWeaponUnlocked } from '../data/progress';
 
@@ -127,6 +129,34 @@ describe('不変条件: 解放元の排反・網羅(BOSS_UNLOCK ∪ STORE_SOLD_K
   it('BOSS_UNLOCK/STORE_SOLD_KEYSの側に、ユニーク候補ではないキーが紛れ込んでいない', () => {
     for (const key of Object.values(BOSS_UNLOCK)) expect(uniqueCandidates).toContain(key);
     for (const key of STORE_SOLD_KEYS) expect(uniqueCandidates).toContain(key);
+  });
+});
+
+// UNIQUE_WEAPONS.md §18(解放元の表): **キー側**の健全性。値の健全性は不変条件4が見ているが、
+// キーを打ち間違えると「どのボスを倒しても解放されない」形で静かに壊れる(撃破処理は
+// `BOSS_UNLOCK[type@stage] ?? BOSS_UNLOCK[type]` を引くだけで、無い時は黙って何もしない)。
+// 城ボス(giantbat)だけが全ステージ同じ型なので `type@stageId` 形式を使う(§11-6-3)。
+describe('不変条件: 解放表のキーが実在するボスを指している(§18)', () => {
+  it('@付きキーは giantbat@<城ボスが居るステージ> の形をしている', () => {
+    for (const key of Object.keys(BOSS_UNLOCK)) {
+      if (!key.includes('@')) continue;
+      const [type, stageId] = key.split('@');
+      expect(type, `${key}: @付きキーは城ボス(giantbat)専用`).toBe('giantbat');
+      expect(
+        Object.keys(CASTLE_BOSS_NAME_BY_STAGE),
+        `${key}: そのステージに城ボスが居ない`
+      ).toContain(stageId);
+    }
+  });
+
+  it('@なしキーは台帳に名前のあるボスの型である', () => {
+    for (const key of Object.keys(BOSS_UNLOCK)) {
+      if (key.includes('@')) continue;
+      expect(
+        bossCutinName(key as EnemyType, null),
+        `${key}: ボス台帳(bossCutin)に無い型=撃破しても解放されない`
+      ).not.toBeNull();
+    }
   });
 });
 

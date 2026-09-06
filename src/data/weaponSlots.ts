@@ -40,12 +40,15 @@ export const SLOT_CANDIDATES: Record<SlotCategory, Record<SlotTier, string[]>> =
 // ルックアップは `BOSS_UNLOCK[type@stage] ?? BOSS_UNLOCK[type]`(gameStore.ts)。
 // 値は解放される候補キー(SLOT_CANDIDATESのいずれか。既定候補ではない=不変条件4)。
 //
-// 第1弾3種(社長裁定2026-09-05・§11-6-3): 残り(第2弾以降・§11-7)のボスはまだ CATALOG に
-// 対応キーが無いので、ここには書かない(★未決を片側へ倒さない)。
+// 第1弾3種(社長指定2026-09-06の割当表・UNIQUE_WEAPONS.md §18): 残り(第2弾以降・§11-7)のボスは
+// まだ CATALOG に対応キーが無いので、ここには書かない(★未決を片側へ倒さない)。
+// ★v0.25.4161で解放元を差し替えた(旧: miguel/jibril/rafi=第1弾の仮置き)。社長の割当表では
+// ミゲル=レールガンT3・ジブリル=火炎放射器T3・ラフィ=収束型SG T1 なので、仮置きのままだと
+// 「本来はT3レールガンを寄越すボスがデリンジャーを寄越す」形で残ってしまう。
 export const BOSS_UNLOCK: Record<string, string> = {
-  miguel: 'handgun-t1-derringer',
-  jibril: 'handgun-t2-handcannon',
-  rafi: 'handgun-t3-piledriver',
+  'bounty-balance': 'handgun-t1-derringer',    // 鋏(変異)
+  'giantbat@stage-1': 'handgun-t2-handcannon', // 搬送体(変異)= 城ボス stage-1(bossCutin.CASTLE_BOSS_NAME_BY_STAGE)
+  'bounty-melee': 'handgun-t3-piledriver',     // 馬乗り(変異)
 };
 
 // 「店売り」の明示リスト(UNIQUE_WEAPONS.md §11-6-2・監査A-2の是正)。**「BOSS_UNLOCKに無い=店売り」
