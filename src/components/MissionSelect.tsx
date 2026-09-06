@@ -134,12 +134,13 @@ import {
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import {
-  getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, clearWeaponUnlocks, getStageHighScore,
+  getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress,
+  clearWeaponUnlocks, clearWeaponBlueprints, markWeaponUnlocked, getStageHighScore,
   getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, getWallMeta, type SelectedMission,
 } from '../data/progress';
-// ユニーク武器システム(UNIQUE_WEAPONS.md §6): 装備設定画面の「銃スロット」欄。
-import { SLOT_CATEGORIES, SLOT_CANDIDATES, type SlotCategory, type SlotTier } from '../data/weaponSlots';
-import { getSlotLoadout, setSlotCandidate, unlockedWeaponKeys, isTestWeaponUnlockAll, setTestWeaponUnlockAll } from '../utils/weaponSlot';
+// ユニーク武器システム(UNIQUE_WEAPONS.md §11-6): 装備設定画面の「銃スロット」欄+開発施設の棚。
+import { SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, type SlotCategory, type SlotTier } from '../data/weaponSlots';
+import { getSlotLoadout, setSlotCandidate, unlockedWeaponKeys, shelfWeaponKeys, isTestWeaponUnlockAll, setTestWeaponUnlockAll } from '../utils/weaponSlot';
 import { weaponDisplayName } from '../utils/weaponUtils';
 const GUN_CATEGORY_LABEL: Record<SlotCategory, string> = {
   handgun: 'ハンドガン', shotgun: 'ショットガン', rifle: 'ライフル', glauncher: 'グレネードガン',
@@ -1301,59 +1302,58 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               })}
             </div>
           </div>
-          {/* 銃スロット(UNIQUE_WEAPONS.md §6): カテゴリ×Tierの12マス。各マスは解放済み候補のセレクタ。
-              未解放は灰表示(§6本文の指定=候補があること自体を見せる。#U7は社長裁定待ちの★未決候補)。
-              横(=候補が2つ以上)が無いスロットは選ぶ意味が無いので表示自体を省く(第1弾はハンドガンのみ横あり)。 */}
-          {SLOT_CATEGORIES.some(cat => ([1, 2, 3] as const).some(t => SLOT_CANDIDATES[cat][t].length > 1)) && (
-            <div>
-              <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-orange-200/70">銃スロット</div>
-              <div className="menu-stagger space-y-2">
-                {SLOT_CATEGORIES.map(cat => {
-                  const unlockedNow = unlockedWeaponKeys();
-                  const tiersWithChoice = ([1, 2, 3] as const).filter(t => SLOT_CANDIDATES[cat][t].length > 1);
-                  if (tiersWithChoice.length === 0) return null;
-                  return (
-                    <div key={cat} className="space-y-1">
-                      <div className="px-1 text-[10px] text-white/40">{GUN_CATEGORY_LABEL[cat]}</div>
-                      {tiersWithChoice.map(tier => {
-                        const candidates = SLOT_CANDIDATES[cat][tier];
-                        // 検収A-1: 解放判定は weaponSlot 側の1本(既定候補 + 永続台帳 + ?unlockall=1)を使う。
-                        // progress の isWeaponUnlocked を直接見ると **?unlockall=1 が効かず**、BOSS_UNLOCK が
-                        // 空の現状では全ボタンが disabled になって確認手段そのものが死ぬ。
-                        const selected = slotLoadout[cat]?.[tier] ?? candidates[0];
-                        return (
-                          <div key={tier} className="grid grid-cols-2 gap-2">
-                            {candidates.map(key => {
-                              const isDefault = key === candidates[0];
-                              const unlocked = isDefault || unlockedNow.has(key);
-                              const on = selected === key;
-                              return (
-                                <button
-                                  key={key}
-                                  type="button"
-                                  disabled={!unlocked}
-                                  onClick={() => pickSlotCandidate(cat, tier, key)}
-                                  className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left transition-[filter] ${
-                                    !unlocked ? 'text-white/30' : on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
-                                  }`}
-                                >
-                                  <span className="min-w-0 flex items-center gap-1.5">
-                                    {!unlocked && <Lock size={11} className="shrink-0" />}
-                                    <span className="block truncate text-[12px] font-semibold">{weaponDisplayName(key)}</span>
-                                  </span>
-                                  {on && unlocked && <Check size={14} className="shrink-0" />}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+          {/* 銃スロット(UNIQUE_WEAPONS.md §11-6④): カテゴリ×Tierのマス。各マスは購入済み候補のセレクタ。
+              **未購入は載せない**(社長裁定・v0.25.4084の作法と揃える。灰表示ロックはしない)。
+              横(=表示できる候補が2つ以上)が無いスロットは選ぶ意味が無いので表示自体を省く。 */}
+          {(() => {
+            const unlockedNow = unlockedWeaponKeys();
+            const visibleCandidates = (cat: SlotCategory, tier: SlotTier) =>
+              SLOT_CANDIDATES[cat][tier].filter(k => k === SLOT_CANDIDATES[cat][tier][0] || unlockedNow.has(k));
+            const hasAnyChoice = SLOT_CATEGORIES.some(cat => SLOT_TIERS.some(t => visibleCandidates(cat, t).length > 1));
+            if (!hasAnyChoice) return null;
+            return (
+              <div>
+                <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-orange-200/70">銃スロット</div>
+                <div className="menu-stagger space-y-2">
+                  {SLOT_CATEGORIES.map(cat => {
+                    const tiersWithChoice = SLOT_TIERS.filter(t => visibleCandidates(cat, t).length > 1);
+                    if (tiersWithChoice.length === 0) return null;
+                    return (
+                      <div key={cat} className="space-y-1">
+                        <div className="px-1 text-[10px] text-white/40">{GUN_CATEGORY_LABEL[cat]}</div>
+                        {tiersWithChoice.map(tier => {
+                          const candidates = visibleCandidates(cat, tier);
+                          const selected = slotLoadout[cat]?.[tier] ?? candidates[0];
+                          return (
+                            <div key={tier} className="grid grid-cols-2 gap-2">
+                              {candidates.map(key => {
+                                const on = selected === key;
+                                return (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => pickSlotCandidate(cat, tier, key)}
+                                    className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left transition-[filter] ${
+                                      on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
+                                    }`}
+                                  >
+                                    <span className="min-w-0">
+                                      <span className="block truncate text-[12px] font-semibold">{weaponDisplayName(key)}</span>
+                                    </span>
+                                    {on && <Check size={14} className="shrink-0" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
           {/* ★取得済みスキル一覧(社長指示2026-08-25「装備の一番下に取得済みスキル一覧を表示」)。
               **読むだけの一覧**(ここでは選べない)——スキルの持ち込みは廃止済みで、ラン中は
               レベルアップの抽選で組む(SKILL_BUILD_REDESIGN.md §16-10 ★A)。
@@ -1997,7 +1997,7 @@ const DevTools: React.FC<{
         className={`w-full flex items-center justify-between gap-3 rounded-none border px-3 py-2.5 text-left ${weaponUnlockAll ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/80 active:bg-purple-400/10'}`}
         aria-pressed={weaponUnlockAll}
       >
-        <span><span className="block text-[13px] font-semibold">武器解放</span><span className="block text-[11px] text-white/50">{weaponUnlockAll ? 'ユニーク武器を全解放(装備設定→銃スロットで選べる)' : '解放したものだけ'}</span></span>
+        <span><span className="block text-[13px] font-semibold">武器解放</span><span className="block text-[11px] text-white/50">{weaponUnlockAll ? 'ユニーク武器を全解放(開発施設の棚にも全部並び、装備設定でも選べる)' : '設計図/購入したものだけ'}</span></span>
         <span className="text-[11px] font-semibold shrink-0">{weaponUnlockAll ? 'ON' : 'OFF'}</span>
       </button>
 
@@ -2006,7 +2006,7 @@ const DevTools: React.FC<{
           ステージ等を巻き込まずに武器だけ初期状態へ戻したい時はこちら。 */}
       <button
         type="button"
-        onClick={() => { clearWeaponUnlocks(); setTestWeaponUnlockAll(false); setWeaponUnlockAllState(false); }}
+        onClick={() => { clearWeaponUnlocks(); clearWeaponBlueprints(); setTestWeaponUnlockAll(false); setWeaponUnlockAllState(false); }}
         className="w-full py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10"
       >
         武器解放リセット（解放記録を消す・トグルもOFF）
@@ -2499,6 +2499,9 @@ const SkillGacha: React.FC = () => {
 // サブウェポン陳列レベル解放のゴールド価格(社長指示v0.25.3185「20G 50G 100G」)。
 // index = 現在Lv(0→1 / 1→2 / 2→3)。通貨はガチャと同じ永続ゴールド(goldBalance/spendGold)。
 const SHELF_UNLOCK_COST_BY_LEVEL = [20, 50, 100] as const;
+// ユニーク武器(銃スロット)の購入価格(社長裁定2026-09-05「全部同じ価格でいい。200gにしよう」・
+// UNIQUE_WEAPONS.md §11-6-2)。設計図(ボス撃破)/店売りのどちらでも一律。
+const GUN_SLOT_PURCHASE_COST = 200;
 
 const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   // v0.25.3187: 陳列解放の正本を purchasedSubLevels(永続)へ。旧 unlockedShopSkillCards は
@@ -2509,6 +2512,11 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const spendGold = useGameStore(s => s.spendGold);
   const startWithTestStraps = useGameStore(s => s.startWithTestStraps);
   const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
+  // ユニーク武器の棚(UNIQUE_WEAPONS.md §11-6): shelfWeaponKeys() は localStorage 直読みで
+  // zustand を経由しないため、購入のたびに再レンダーを起こして棚を再計算させる(値そのものは使わない)。
+  const [, forceGunShelfRerender] = useState(0);
+  const gunShelf = shelfWeaponKeys();
+  const orderedGunShelfKeys = SLOT_CATEGORIES.flatMap(cat => SLOT_TIERS.flatMap(tier => SLOT_CANDIDATES[cat][tier].filter(k => gunShelf.has(k))));
   return (
     <>
       <Header title="開発施設" subtitle="スキル強化訓練 / サブウェポン陳列レベル解放" onBack={onBack} />
@@ -2541,6 +2549,32 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           );
         })}
       </div>
+      {/* 銃スロット(ユニーク武器)の棚(UNIQUE_WEAPONS.md §11-6): (設計図 ∪ 店売り) − 購入済み。
+          購入すると markWeaponUnlocked で「購入済み」台帳へ移り、棚から消える(装備設定で選べるようになる)。 */}
+      {orderedGunShelfKeys.length > 0 && (
+        <div className="menu-stagger px-3 pb-3 space-y-1.5">
+          <div className="px-1 text-[11px] uppercase tracking-widest text-orange-200/70">銃スロット（設計図/店売り）</div>
+          <div className="grid grid-cols-2 gap-2">
+            {orderedGunShelfKeys.map(key => {
+              const cantPayGun = goldBalance < GUN_SLOT_PURCHASE_COST;
+              return (
+                <button key={key} type="button" disabled={cantPayGun}
+                  onClick={() => {
+                    if (spendGold(GUN_SLOT_PURCHASE_COST)) {
+                      markWeaponUnlocked(key);
+                      playSfx('ui-select');
+                      forceGunShelfRerender(t => t + 1);
+                    }
+                  }}
+                  className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${cantPayGun ? 'opacity-60' : ''}`}>
+                  <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{weaponDisplayName(key)}</span></span>
+                  <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${cantPayGun ? 'text-rose-300' : 'text-amber-200'}`}>{GUN_SLOT_PURCHASE_COST}G</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </>
   );
 };
