@@ -15,16 +15,16 @@ export const SLOT_CANDIDATES: Record<SlotCategory, Record<SlotTier, string[]>> =
     2: ['handgun-t2', 'handgun-t2-handcannon', 'handgun-t2-dualrange'],
     3: ['handgun-t3', 'handgun-t3-piledriver'],
   },
-  // UNIQUE_WEAPONS.md §16(バッチA): shotgun T2 / rifle T1 に横が1挺入った。残りは第1弾当時のまま
-  // 既定候補だけの1挺スロット(=候補配列が長さ1)なので resolveSlotKey は常に恒等を返す。
+  // UNIQUE_WEAPONS.md §16(バッチA)/§16-2(バッチB): shotgun T2 / rifle T1 に続き、
+  // shotgun T1 / rifle T1(2つめ) / rifle T2 にも横が入った。
   shotgun: {
-    1: ['shotgun-t1'],
+    1: ['shotgun-t1', 'shotgun-t1-focus', 'shotgun-t1-cycle'],
     2: ['shotgun-t2', 'shotgun-t2-suppress'],
     3: ['shotgun-t3'],
   },
   rifle: {
-    1: ['rifle-t1', 'rifle-t1-bolt'],
-    2: ['rifle-t2'],
+    1: ['rifle-t1', 'rifle-t1-bolt', 'rifle-t1-deserttech'],
+    2: ['rifle-t2', 'rifle-t2-heavysniper'],
     3: ['rifle-t3'],
   },
   glauncher: {
@@ -52,11 +52,16 @@ export const BOSS_UNLOCK: Record<string, string> = {
   // UNIQUE_WEAPONS.md §16(バッチA)。社長の割当表(§18-1)より。
   'giantbat@stage-3': 'shotgun-t2-suppress',   // 樹木管理員(変異)= 城ボス stage-3
   'idol': 'handgun-t2-dualrange',              // 偶像
+  // UNIQUE_WEAPONS.md §16-2(バッチB)。社長の割当表(§18-1)より。
+  'rafi': 'shotgun-t1-focus',                  // ラフィ
+  'bounty-ranged': 'rifle-t2-heavysniper',     // バス停(変異)
+  'giantbat@stage-4': 'rifle-t1-deserttech',   // 衛生兵(変異)= 城ボス stage-4
 };
 
 // 「店売り」の明示リスト(UNIQUE_WEAPONS.md §11-6-2・監査A-2の是正)。**「BOSS_UNLOCKに無い=店売り」
 // と実装してはいけない**——CATALOGに対応キーが無い間は空のまま書かない(★未決を片側へ倒さない)。
 // 不変条件(weaponSlot.test.ts): 全ユニーク候補は BOSS_UNLOCK の値 か STORE_SOLD_KEYS の
 // どちらか一方に属する(排反かつ網羅)。入れ忘れた武器は永久に入手不能になる。
-// UNIQUE_WEAPONS.md §16(バッチA)/§18-3: クロスボウ・ボルトアクションは店売り(切替式SGはバッチB)。
-export const STORE_SOLD_KEYS: string[] = ['handgun-t1-crossbow', 'rifle-t1-bolt'];
+// UNIQUE_WEAPONS.md §16(バッチA)/§16-2(バッチB)/§18-3: クロスボウ・ボルトアクションは店売り。
+// 切替式SGもバッチBで店売りに加わった(BOSS_UNLOCKに割当が無い=社長の割当表§18-1に対応行なし)。
+export const STORE_SOLD_KEYS: string[] = ['handgun-t1-crossbow', 'rifle-t1-bolt', 'shotgun-t1-cycle'];

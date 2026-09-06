@@ -12,6 +12,11 @@ import { SLOT_CATEGORIES, SLOT_CANDIDATES } from '../data/weaponSlots';
 // モジュールもトップレベル評価時に相手の値を参照しない(参照は全て関数呼び出し内)ため安全。
 import { resolveSlotKeyNow } from './weaponSlot';
 import { DUAL_RANGE_STATS, resolveDualRangeMode } from './dualRangeGun';
+// UNIQUE_WEAPONS.md §16-2(バッチB): 状態を持つ4挺の純関数モジュール(dualRangeGun.tsと同じ作法)。
+import { resolveFocusSpreadRad, FOCUS_SPREAD_INITIAL_RAD } from './focusSpread';
+import { CYCLE_MODE_STATS } from './cycleShotgun';
+import { heavySniperChargeFrac, heavySniperRangePx, heavySniperCooldownMs, HEAVY_SNIPER_BASE_COOLDOWN_MS } from './heavySniperCharge';
+import { resolveDesertTechAmmoType, DESERTTECH_WEAPON_KEY, type DesertTechAmmoPools } from './desertTechAmmo';
 
 // プレイヤー中心→敵 の二乗距離。**全ての敵で「当たり判定の矩形の最近点」**まで測る(v0.25.3170・
 // 社長指示「当たり判定の四隅でみて」)。中心基準だと巨体の縁に立っていても射程外扱いになる。
@@ -116,6 +121,18 @@ const CATALOG: Record<string, WeaponDef> = {
   // 武器側で何もしない=既存スキルが命中ごとに乗るだけ(社長ルール)。実効DPS=23.08(既定比+8.8%・§16-1)。
   'shotgun-t2-suppress': { key: 'shotgun-t2-suppress', name: '制圧型ショットガン', type: 'shotgun', category: 'shotgun', tier: 2, damage: 4, cooldown: 880, projectileSpeed: 470, projectileSize: 7, count: 12, magSize: 3, reloadMs: 1800, rangeOverride: 250, spreadRadOverride: 1.30 },
 
+  // UNIQUE_WEAPONS.md §16-2/§17-1(バッチB)。収束型ショットガン(T1): 命中した射撃ごとに散り角が
+  // 1段階狭まる(focusSpread.ts。初期1.30rad→-0.18/命中→下限0.36。2.5秒当てないと初期へリセット)。
+  // 装弾数2(既定T1の3より少ない=支配テストの劣る軸・§17-1)。実効DPS=18.75(既定比+5.2%・§16-1)。
+  // rangeOverrideは無し(カテゴリ既定=140pxのまま。設計書§16-2に射程の指定は無い)。
+  'shotgun-t1-focus': { key: 'shotgun-t1-focus', name: '収束型ショットガン', type: 'shotgun', category: 'shotgun', tier: 1, damage: 6, cooldown: 700, projectileSpeed: 470, projectileSize: 7, count: 5, magSize: 2, reloadMs: 900, spreadRadOverride: FOCUS_SPREAD_INITIAL_RAD },
+
+  // UNIQUE_WEAPONS.md §16-2/§17-7(バッチB)。切替式ショットガン(T1): リロード(装填)を境に
+  // 散弾⇔スラッグが反転する(cycleShotgun.ts)。CATALOGの静的値は初期モード「散弾」
+  // (damage6/count5/spread1.10rad=CYCLE_MODE_STATS.shotと同値)。連射間隔1000(既定T1の950より遅い)
+  // で劣る軸を作る(§17-1)。距離では切り替えない(社長指定)。実効DPS=18.00(既定比+1.0%・§16-1・両モード共通)。
+  'shotgun-t1-cycle': { key: 'shotgun-t1-cycle', name: '切替式ショットガン', type: 'shotgun', category: 'shotgun', tier: 1, damage: CYCLE_MODE_STATS.shot.damage, cooldown: 1000, projectileSpeed: 470, projectileSize: 7, count: CYCLE_MODE_STATS.shot.count, magSize: 3, reloadMs: 1000, spreadRadOverride: CYCLE_MODE_STATS.shot.spreadRadOverride },
+
   // C — Rifle/Magnum family (.44). Heavy single rounds. The revolver pierces
   // one enemy; higher tiers pierce freely.
   'rifle-t1':         { key: 'rifle-t1',   name: 'マグナム',       type: 'rifle',   category: 'rifle',   tier: 1, damage: 30, cooldown: 800,  projectileSpeed: 700,  projectileSize: 9,  count: 1, magSize: 6, reloadMs: 1500, passthrough: true, pierce: 1 },
@@ -128,6 +145,19 @@ const CATALOG: Record<string, WeaponDef> = {
   // UNIQUE_WEAPONS.md §16(バッチA)。ボルトアクション(T1): rangeOverride=320(既定T1の250より遠い)。
   // 貫通クラスは既定T1と同じ(passthrough+pierce1・§17-2)。実効DPS=24.30(既定比+5.3%・§16-1)。
   'rifle-t1-bolt': { key: 'rifle-t1-bolt', name: 'ボルトアクション', type: 'rifle', category: 'rifle', tier: 1, damage: 52, cooldown: 1500, projectileSpeed: 1100, projectileSize: 9, count: 1, magSize: 5, reloadMs: 1600, passthrough: true, pierce: 1, rangeOverride: 320 },
+
+  // UNIQUE_WEAPONS.md §16-2/§17-8 C-3(バッチB)。デザートテック(T1): 専用弾(rifle)が尽きたら
+  // 他カテゴリの弾を代用する(rifle→handgun→shotgun→glauncherの優先順・desertTechAmmo.ts)。
+  // rangeOverride=200。貫通クラスは既定T1と同じ(passthrough+pierce1・§17-2)。
+  // 実効DPS=23.82(既定比+3.2%・§16-1)。
+  'rifle-t1-deserttech': { key: 'rifle-t1-deserttech', name: 'デザートテック', type: 'rifle', category: 'rifle', tier: 1, damage: 27, cooldown: 800, projectileSpeed: 650, projectileSize: 8, count: 1, magSize: 6, reloadMs: 1000, passthrough: true, pierce: 1, rangeOverride: 200 },
+
+  // UNIQUE_WEAPONS.md §16-2(バッチB)。大型狙撃銃(T2): 静止時間の蓄積(heavySniperCharge.ts)。
+  // 止まっている間0→3秒で最大まで伸び、射程250→400・連射間隔×1.0→×0.6。移動した瞬間に0へリセット。
+  // CATALOGの静的値=蓄積0の素の値(帯はこれで測る・§16-1)。rangeOverrideは無し
+  // (蓄積0時の250はカテゴリ既定=RANGE_BY_CATEGORY.rifleと同値なので、動的な上書きはfireWeapon側で行う)。
+  // 貫通クラスは既定T2/T3と同じ(passthroughのみ・§17-2)。実効DPS=29.52(既定比+2.0%・§16-1)。
+  'rifle-t2-heavysniper': { key: 'rifle-t2-heavysniper', name: '大型狙撃銃', type: 'rifle', category: 'rifle', tier: 2, damage: 62, cooldown: HEAVY_SNIPER_BASE_COOLDOWN_MS, projectileSpeed: 1000, projectileSize: 8, count: 1, passthrough: true, magSize: 5, reloadMs: 2000 },
 
   // Melee (no ammo). Lower DPS than guns by design so bullets stay valuable.
   // Each carries a fixed crit chance that rises with tier. Tier はレベルアップ
@@ -158,6 +188,12 @@ export const PILEDRIVER_WEAPON_KEY = 'handgun-t3-piledriver';
 // UNIQUE_WEAPONS.md §16(バッチA): デュアルレンジピストルの距離ヒステリシス(dualRangeGun.ts)を
 // fireWeaponから配線するためのキー定数。
 export const DUALRANGE_WEAPON_KEY = 'handgun-t2-dualrange';
+// UNIQUE_WEAPONS.md §16-2(バッチB): 状態を持つ4挺のキー定数。
+export const FOCUS_WEAPON_KEY = 'shotgun-t1-focus';
+export const CYCLE_WEAPON_KEY = 'shotgun-t1-cycle';
+export const HEAVY_SNIPER_WEAPON_KEY = 'rifle-t2-heavysniper';
+// デザートテックのキー自体はdesertTechAmmo.tsが正本(そちらでも使うため)。ここは再輸出のみ。
+export { DESERTTECH_WEAPON_KEY };
 
 // UNIQUE_WEAPONS.md §4: resolveSlotKey(weaponSlot.ts)がCATALOGの中身を見に行くための細い窓。
 // CATALOG自体は非公開のまま(意味不明なキーの直接生成を増やさない)。
@@ -301,6 +337,12 @@ const WEAPON_DESC: Record<string, string> = {
   // 制圧型ショットガン(§16-2): rangeOverride=250(既定ショットガン140よりライフル並みに遠い)+
   // spreadRadOverride=1.30(既定T2の0.70より広い)。
   'shotgun-t2-suppress': '散弾でありながらライフル並みに遠くへ届く。散りは大きく、面を抑える',
+  // 収束型ショットガン(§16-2/バッチB): focusSpread.ts。命中した射撃ごとに散り角が1.30rad→0.36radまで
+  // 段階的に狭まり(narrowFocusSpreadRad)、直近の命中から2.5秒経つと初期値へ戻る(resolveFocusSpreadRad)。
+  'shotgun-t1-focus': '当て続けるほど弾がまとまり、狙いが集中していく。しばらく当てないと散りは元に戻る',
+  // 切替式ショットガン(§16-2/§17-7/バッチB): cycleShotgun.ts。リロード(装填)が発生するたびに
+  // 散弾(6dmg/5発/広い散り)⇔スラッグ(30dmg/1発/直進)が反転する。距離では切り替わらない。
+  'shotgun-t1-cycle': 'リロードのたびに散弾と一点狙いの一発が入れ替わる。装填のタイミングで戦い方を選ぶ銃',
   // ライフル(射程が長い)。貫通の規則は2種類(useGameLoop の removeIt):
   //  ・pierce:N → 倒したかに関わらず **N+1体**に当たるまで進む(マグナムは N=1=2体)
   //  ・passthrough のみ → **倒した敵は貫いて進み、倒せなければそこで止まる**
@@ -310,6 +352,13 @@ const WEAPON_DESC: Record<string, string> = {
   'rifle-t3': '最も重い一撃。倒した敵は貫いて進む',
   // ボルトアクション(§16-2): rangeOverride=320(既定ライフル250より遠い)。cooldown1500=既定T1の800より遅い。
   'rifle-t1-bolt': 'ライフルの中でも特に遠くを狙える一撃。1発が重く、次弾までの間隔も長い',
+  // デザートテック(§16-2/§17-8 C-3/バッチB): desertTechAmmo.ts。専用弾(ライフル弾)が尽きると
+  // ハンドガン→ショットガン→グレネードランチャーの順で他カテゴリの弾を自動で代用する
+  // (weaponAmmoTypeFor経由。HUD/リロード/自動切替も同じ弾種を見る)。
+  'rifle-t1-deserttech': '専用弾が切れても、持っている別の弾を代わりに使って撃ち続けられる',
+  // 大型狙撃銃(§16-2/バッチB): heavySniperCharge.ts。静止している時間に応じて射程(250→400px)と
+  // 連射間隔(×1.0→×0.6)が3秒かけて伸びる。移動した瞬間に蓄積は0へ戻る。
+  'rifle-t2-heavysniper': '止まって構え続けるほど、届く距離も連射も伸びていく。動くと効果はすぐ消える',
   // グレネードガン。t1/t2 は **転がって一定距離で爆発**(GLAUNCHER_ROLL_DETONATE_PX。
   // t1=ショットガン距離 / t2=ハンドガン距離)、t3 は転がらず着弾で爆発。
   'glauncher-t1': '転がって爆発する擲弾。近くの群れをまとめて吹き飛ばす',
@@ -362,11 +411,28 @@ export const isGrenadeGunKey = (key: string | undefined | null): boolean =>
 export const ammoPoolFor = (player: Player, type: AmmoType): number =>
   player[AMMO_FIELD[type]];
 
+// UNIQUE_WEAPONS.md §16-2/§17-8 C-3(バッチB・デザートテック): 「今このトリガーで実際に読み書きする
+// べき弾種」を1本に決める窓。デザートテック以外は従来どおり w.ammoType のまま(回帰ゼロ)。
+// リロード3経路(startReload/tickReload・クイックマガジン・オーバークロック覚醒)・HUD残弾表示・
+// autoSwitchIfDry(weaponReloadReserve経由)は全てこれを通す(受け入れ条件6の棚卸し対象)。
+export const weaponAmmoTypeFor = (w: Pick<Weapon, 'key' | 'ammoType'>, p: Player): AmmoType | undefined => {
+  if (w.key === DESERTTECH_WEAPON_KEY) {
+    const pools: DesertTechAmmoPools = {
+      rifle: p.ammoRifle, handgun: p.ammoHandgun, shotgun: p.ammoShotgun, glauncher: p.ammoGlauncher,
+    };
+    return resolveDesertTechAmmoType(pools);
+  }
+  return w.ammoType;
+};
+
 // UNIQUE_WEAPONS.md §17-3(監査A-3): 無限弾(infiniteAmmo)の武器は、リロード関連の純関数群へ
 // 渡すreserveをInfinityとして扱う。★フィールドへは絶対に書き戻さない(呼び出し側の規則。
 // このヘルパは「読み」だけを担う)。
-export const weaponReloadReserve = (w: Pick<Weapon, 'ammoType' | 'infiniteAmmo'>, p: Player): number =>
-  w.infiniteAmmo ? Infinity : (w.ammoType ? ammoPoolFor(p, w.ammoType) : 0);
+export const weaponReloadReserve = (w: Pick<Weapon, 'key' | 'ammoType' | 'infiniteAmmo'>, p: Player): number => {
+  if (w.infiniteAmmo) return Infinity;
+  const ammoType = weaponAmmoTypeFor(w, p);
+  return ammoType ? ammoPoolFor(p, ammoType) : 0;
+};
 
 // Magazine capacity including the player's global 装填数アップ bonus.
 // UNIQUE_WEAPONS.md §17-4(監査A-4): magSize<=2の武器は装填数アップを受けない
@@ -687,9 +753,17 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   // ため、cooldownゲートに使う数値は前回この場所で確定したモード(weapon.dualRangeModeに持ち越し。
   // 未設定は'far'=CATALOGの既定と一致)を使う(1発ぶん遅れるが機能上は問題ない=監査で確認済み)。
   const isDualRangeGun = weapon.key === DUALRANGE_WEAPON_KEY;
+  // UNIQUE_WEAPONS.md §16-2(バッチB・大型狙撃銃): 静止蓄積(player.heavySniperStillMs)から
+  // 現在の連射間隔/射程を導出する(heavySniperCharge.ts)。帯は蓄積0の素の値で測る(§16-1)ので、
+  // CATALOGの静的cooldown(=蓄積0の基準値)から毎回導出する(前フレームの結果を種にしない=誤差が
+  // 積み重なるのを防ぐ)。
+  const isHeavySniperGun = weapon.key === HEAVY_SNIPER_WEAPON_KEY;
+  const heavySniperFrac = isHeavySniperGun ? heavySniperChargeFrac(player.heavySniperStillMs) : 0;
   const gateWeapon: Weapon = isDualRangeGun
     ? { ...weapon, ...DUAL_RANGE_STATS[weapon.dualRangeMode ?? 'far'] }
-    : weapon;
+    : isHeavySniperGun
+      ? { ...weapon, cooldown: heavySniperCooldownMs(heavySniperFrac) }
+      : weapon;
   // 装備(腕)の連射倍率で実効cooldownを短縮(中立=1)。fireRateMult>1 ほど間隔が縮む。
   const effCooldown = effectiveFireCooldown(gateWeapon, player);
   if (now - weapon.lastFired < effCooldown) return [];
@@ -704,9 +778,15 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   // (マークスマンは射程UP→移動速度UPに変更したため、射程倍率は廃止)
   // グレネードガンt1/t2(転がり爆発)は爆発する道のり=実効射程(v0.25.3438)。
   const rollDetonatePx = GLAUNCHER_ROLL_DETONATE_PX[weapon.key ?? ''];
-  // ★rangeOverride(パイルドライバー/制圧型SG/ボルトアクション/デュアルレンジ)はrollDetonatePxと
-  // 排他(グレネード限定の仕組み)なので優先順位は「転がり爆発 > rangeOverride > カテゴリ既定」で問題ない。
-  const gunRange = rollDetonatePx !== undefined ? zoomedGunRange(rollDetonatePx) : gunEffectiveRangePx(weapon);
+  // ★rangeOverride(パイルドライバー/制圧型SG/ボルトアクション/デュアルレンジ/デザートテック)は
+  // rollDetonatePxと排他(グレネード限定の仕組み)なので優先順位は「転がり爆発 > rangeOverride >
+  // カテゴリ既定」で問題ない。大型狙撃銃はCATALOGに静的rangeOverrideを持たないが、蓄積に応じて
+  // ここで動的に組み立てる(他のrangeOverride武器と同じくズーム非補正=gunEffectiveRangePxの規則。
+  // §17-11で「per-frame書き換えを避ける」持たせ方は将来の改善として積んである=このバッチでは未対応)。
+  const rangeGateWeapon: Weapon = isHeavySniperGun
+    ? { ...weapon, rangeOverride: heavySniperRangePx(heavySniperFrac) }
+    : weapon;
+  const gunRange = rollDetonatePx !== undefined ? zoomedGunRange(rollDetonatePx) : gunEffectiveRangePx(rangeGateWeapon);
   const distToTarget = nearestEnemyDistance(player, enemies);
   if (distToTarget > gunRange) {
     return [];
@@ -717,9 +797,22 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   const nextDualRangeMode = isDualRangeGun
     ? resolveDualRangeMode(weapon.dualRangeMode ?? 'far', distToTarget)
     : undefined;
+  // UNIQUE_WEAPONS.md §16-2(バッチB・切替式SG): 現在のcycleMode(反転はリロード完了側=
+  // gameStore.tsの3経路で行う。距離/命中とは無関係)の数値をこの1発に差し込む。
+  const isCycleGun = weapon.key === CYCLE_WEAPON_KEY;
+  // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG): 直近の命中から2.5秒以上経っていれば初期散り角へ
+  // 戻す(命中による狭まりはuseGameLoop.ts側=着弾時にfocusSpreadRad/focusSpreadLastHitAtを更新)。
+  const isFocusGun = weapon.key === FOCUS_WEAPON_KEY;
+  const focusSpreadRad = isFocusGun
+    ? resolveFocusSpreadRad(weapon.focusSpreadRad, weapon.focusSpreadLastHitAt, now)
+    : undefined;
   const shotWeapon: Weapon = nextDualRangeMode
     ? { ...weapon, ...DUAL_RANGE_STATS[nextDualRangeMode] }
-    : weapon;
+    : isCycleGun
+      ? { ...weapon, ...CYCLE_MODE_STATS[weapon.cycleMode ?? 'shot'] }
+      : isFocusGun
+        ? { ...weapon, spreadRadOverride: focusSpreadRad }
+        : weapon;
 
   const baseDir = aimDirection(player, enemies);
   const count = shotWeapon.count ?? 1;
@@ -821,7 +914,10 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   const gsAwaken = skillLevel(player, 'ghost-shooter') >= 3;
   const gsRefillProc = gsAwaken && Math.random() < 0.30;
   useGameStore.setState(state => {
-    const gsField = weapon.ammoType ? AMMO_FIELD[weapon.ammoType] : null;
+    // UNIQUE_WEAPONS.md §16-2/§17-8 C-3(デザートテック・棚卸し対象): ゴーストシューター補填も
+    // weaponAmmoTypeFor(実際に消費している弾種)から引く(weapon.ammoType固定ではない)。
+    const gsAmmoType = weaponAmmoTypeFor(weapon, state.player);
+    const gsField = gsAmmoType ? AMMO_FIELD[gsAmmoType] : null;
     // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器はここでもリザーブをInfinity扱い
     // する(ゲート判定のみ)。★実フィールドへの書き戻しは下で必ずスキップする。
     const gsReserve = weapon.infiniteAmmo ? Infinity : (gsField ? state.player[gsField] : 0);
@@ -835,7 +931,10 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
           const shot = gsAwaken ? weaponAfterGunShot(w, player, now, () => 1) : weaponAfterGunShot(w, player, now);
           const refilled = doRefill ? { ...shot, magazine: (shot.magazine ?? 0) + 1 } : shot;
           // UNIQUE_WEAPONS.md §16-2: デュアルレンジのモードはここで確定・持ち越す。
-          return nextDualRangeMode !== undefined ? { ...refilled, dualRangeMode: nextDualRangeMode } : refilled;
+          const withDualRange = nextDualRangeMode !== undefined ? { ...refilled, dualRangeMode: nextDualRangeMode } : refilled;
+          // UNIQUE_WEAPONS.md §16-2(収束型SG): この発射で使った散り角(2.5秒リセット済みかもしれない
+          // 値)を持ち越す。命中による狭まりはuseGameLoop.ts側が別途書き込む。
+          return isFocusGun ? { ...withDualRange, focusSpreadRad } : withDualRange;
         }),
         // ★無限弾武器はreserveを実フィールドへ書き戻さない(infiniteAmmoの規則・§17-3)。
         ...(doRefill && gsField && !weapon.infiniteAmmo ? ({ [gsField]: gsReserve - 1 } as Partial<Player>) : {}),

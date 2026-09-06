@@ -102,8 +102,10 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, weaponDisplayName } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName } from '../utils/weaponUtils';
 import { resetHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPONS.md §13-1
+import { nextCycleMode } from '../utils/cycleShotgun'; // UNIQUE_WEAPONS.md §16-2/§17-7(バッチB・切替式SG)
+import { stepHeavySniperStillMs } from '../utils/heavySniperCharge'; // UNIQUE_WEAPONS.md §16-2(バッチB・大型狙撃銃)
 import { resolveSlotKeyNow } from '../utils/weaponSlot'; // UNIQUE_WEAPONS.md §4-1(生成点=grantWeapon入口の安全網/武器庫)
 import { BOSS_UNLOCK } from '../data/weaponSlots'; // UNIQUE_WEAPONS.md §11-6(ボス撃破→ユニーク武器の設計図入手)
 import { pickAmmoDropType } from '../utils/ammoDrop';
@@ -4787,7 +4789,10 @@ export const overclockAwakenReloadPatch = (p: Player): Partial<Player> => {
   if (skillLevel(p, 'overclock') < 3) return {};
   const gun = getActiveGun(p);
   if (!gun?.ammoType) return {};
-  const field = AMMO_FIELD[gun.ammoType];
+  // UNIQUE_WEAPONS.md §16-2/§17-8 C-3(デザートテック・棚卸し対象): 書き戻し先は
+  // weaponAmmoTypeFor(実際に消費した弾種)から引く(gun.ammoType固定ではない)。
+  const ammoType = weaponAmmoTypeFor(gun, p);
+  const field = ammoType ? AMMO_FIELD[ammoType] : undefined;
   // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器はリザーブをInfinity扱いで渡す。
   const filled = refillWeaponMagazine(gun, p, weaponReloadReserve(gun, p));
   if (filled.moved <= 0) return {};
@@ -4797,10 +4802,14 @@ export const overclockAwakenReloadPatch = (p: Player): Partial<Player> => {
   // tickReload を通らない即時装填(この覚醒 / クイックマガジン拾得)だけ減衰が残ると、
   // プレイヤーには気づけない例外になる。
   if (gun.key === HANDCANNON_WEAPON_KEY) resetHandcannonDecay();
+  // UNIQUE_WEAPONS.md §17-7(切替式SG): 「装填が発生した時」に反転する3経路の1つ。
+  const weapon = gun.key === CYCLE_WEAPON_KEY
+    ? { ...filled.weapon, cycleMode: nextCycleMode(gun.cycleMode) }
+    : filled.weapon;
   return {
-    weapons: p.weapons.map(w => (w.id === gun.id ? filled.weapon : w)),
+    weapons: p.weapons.map(w => (w.id === gun.id ? weapon : w)),
     // ★無限弾武器はreserveを実フィールドへ書き戻さない(§17-3)。
-    ...(gun.infiniteAmmo ? {} : { [field]: filled.reserve }),
+    ...(gun.infiniteAmmo || !field ? {} : { [field]: filled.reserve }),
     ...(p.reloadingWeaponId === gun.id ? { reloadingWeaponId: '', reloadEndsAt: 0 } : {}),
   } as Partial<Player>;
 };
@@ -6042,7 +6051,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     skillLevels: {},
     fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0, slasherQueuedTap: false,
     bloodTreadNextAt: 0, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の次の棘設置可能gameTime
-    scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
+    scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0, heavySniperStillMs: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
     benkeiBuffUntil: 0, benkeiCdUntil: 0, counterMasterBuffUntil: 0,
@@ -6668,6 +6677,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // キャラ固有 マークスマン: 連続移動の開始時刻を追跡(停止で0=解除)。動き出した瞬間にだけ更新。
       // (スケーターバッシュの発動条件=SKATER_BASH_RUN_MS判定でも使う。速度倍率自体からは分離済み。)
       const marksmanMovingSince = isMoving ? (player.isMoving ? player.marksmanMovingSince : state.gameTime) : 0;
+      // UNIQUE_WEAPONS.md §16-2(バッチB・大型狙撃銃): 連続静止msの蓄積(heavySniperCharge.ts)。
+      // 移動していれば即0へリセット、静止していれば進める(deltaTimeは秒単位=×1000でms化)。
+      const heavySniperStillMs = stepHeavySniperStillMs(player.heavySniperStillMs, deltaTime * 1000, isMoving);
       // 速度上昇が発動した瞬間=共通ランプが満額(rampFrac>=1)に達したフレームで頭上マークを出す。
       // 旧・個別条件(2秒連続移動)は仕様1で共通ランプへ統合したため、フル判定もランプ側に合わせた。
       const marksmanRangeActive = player.characterClass === 'mage' && isMoving && rampFrac >= 1;
@@ -6724,6 +6736,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // PACING_PUZZLE.md §14-4-2(新死神・重大4/5): 毎tickの実効移動速度(死神の技「使者」が読む)。
           effectiveMoveSpeed: moveSpeed,
           marksmanMovingSince,
+          heavySniperStillMs,
           speedRampSustainMs: nextSpeedRamp.sustainMs,
           speedRampDirX: nextSpeedRamp.lastDirX,
           speedRampDirY: nextSpeedRamp.lastDirY,
@@ -15946,7 +15959,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           const p = state.player;
           const active = getActiveGun(p);
           if (!active?.ammoType) return {};
-          const field = AMMO_FIELD[active.ammoType];
+          // UNIQUE_WEAPONS.md §16-2/§17-8 C-3(デザートテック・棚卸し対象): 書き戻し先は
+          // weaponAmmoTypeFor(実際に消費した弾種)から引く(active.ammoType固定ではない)。
+          const ammoType = weaponAmmoTypeFor(active, p);
+          const field = ammoType ? AMMO_FIELD[ammoType] : undefined;
           // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器はリザーブをInfinity扱いで渡す。
           const filled = refillWeaponMagazine(active, p, weaponReloadReserve(active, p));
           movedAmount = filled.moved;
@@ -15961,13 +15977,17 @@ export const useGameStore = create<GameState>((set, get) => ({
               }
             };
           }
+          // UNIQUE_WEAPONS.md §17-7(切替式SG): 「装填が発生した時」に反転する3経路の1つ。
+          const weapon = active.key === CYCLE_WEAPON_KEY
+            ? { ...filled.weapon, cycleMode: nextCycleMode(active.cycleMode) }
+            : filled.weapon;
           return {
             player: {
               ...p,
               // ★無限弾武器はreserveを実フィールドへ書き戻さない(§17-3)。
-              ...(active.infiniteAmmo ? {} : { [field]: filled.reserve }),
+              ...(active.infiniteAmmo || !field ? {} : { [field]: filled.reserve }),
               weapons: p.weapons.map(w =>
-                w.id === active.id ? filled.weapon : w
+                w.id === active.id ? weapon : w
               ),
               quickMagCritUntil: state.gameTime + QUICK_MAG_CRIT_WINDOW_MS,
               reloadingWeaponId: '',
@@ -16438,18 +16458,26 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!w || !w.ammoType) {
         return { player: { ...p, reloadingWeaponId: '', reloadEndsAt: 0 } };
       }
-      const field = AMMO_FIELD[w.ammoType];
+      // UNIQUE_WEAPONS.md §16-2/§17-8 C-3(デザートテック・棚卸し対象): 書き戻し先は
+      // weaponAmmoTypeFor(実際に消費した弾種)から引く(w.ammoType固定ではない)。
+      const ammoType = weaponAmmoTypeFor(w, p);
+      const field = ammoType ? AMMO_FIELD[ammoType] : undefined;
       // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器はリザーブをInfinity扱いで渡す。
       const reload = finishWeaponReload(w, p, weaponReloadReserve(w, p));
       if (!reload) return {};
       if (w.key === HANDCANNON_WEAPON_KEY) handcannonReloaded = true;
+      // UNIQUE_WEAPONS.md §17-7(切替式SG): 「装填が発生した時」に反転する3経路の1つ
+      // (通常のリロード完了=最も一般的な経路)。
+      const weapon = w.key === CYCLE_WEAPON_KEY
+        ? { ...reload.weapon, cycleMode: nextCycleMode(w.cycleMode) }
+        : reload.weapon;
       return {
         player: {
           ...p,
           // ★無限弾武器はreserveを実フィールドへ書き戻さない(§17-3)。
-          ...(w.infiniteAmmo ? {} : { [field]: reload.reserve }),
+          ...(w.infiniteAmmo || !field ? {} : { [field]: reload.reserve }),
           weapons: p.weapons.map(g =>
-            g.id === w.id ? reload.weapon : g
+            g.id === w.id ? weapon : g
           ),
           reloadingWeaponId: reload.reloadingWeaponId,
           reloadEndsAt: reload.reloadEndsAt
@@ -18605,7 +18633,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           skillLevels: runSkillLevels,
           fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0, slasherQueuedTap: false,
     bloodTreadNextAt: 0, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の次の棘設置可能gameTime
-    scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
+    scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0, heavySniperStillMs: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
           benkeiBuffUntil: 0, benkeiCdUntil: 0, counterMasterBuffUntil: 0,

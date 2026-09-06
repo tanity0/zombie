@@ -20,6 +20,7 @@ import type { EnemyType } from '../types/game';
 import { catalogCategoryTier, createWeapon } from './weaponUtils';
 import { markWeaponBlueprint, markWeaponUnlocked } from '../data/progress';
 import { DUAL_RANGE_STATS } from './dualRangeGun';
+import { CYCLE_MODE_STATS } from './cycleShotgun';
 
 beforeEach(() => { for (const k of Object.keys(backing)) delete backing[k]; });
 
@@ -307,6 +308,59 @@ describe('不変条件1: 実効DPS帯(バッチA・UNIQUE_WEAPONS.md §16-1)', (
     // 支配テスト(不変条件6)は「近」セットも見ていない(CATALOGの静的値=遠のみ自動評価)ため、
     // ここで明示的に非支配を確認しておく(damage14>=9でもcount1<2・cooldown260<420で非支配)。
     expect(dominatesDefault(nearWeapon, createWeapon('handgun-t2'))).toBe(false);
+  });
+});
+
+// UNIQUE_WEAPONS.md §16-5(受け入れ条件5): バッチB4挺の実効DPS帯(±10%の+寄り・§16-1)。
+// 大型狙撃銃は蓄積0(CATALOGの静的値そのもの)で測る。切替式SGは散弾/スラッグ両モードを測る。
+describe('不変条件1: 実効DPS帯(バッチB・UNIQUE_WEAPONS.md §16-1)', () => {
+  const band = (defaultKey: string, uniqueKey: string) => {
+    const base = effectiveDps(createWeapon(defaultKey));
+    const unique = effectiveDps(createWeapon(uniqueKey));
+    return { base, unique, ratio: unique / base };
+  };
+  const expectInBand = (ratio: number) => {
+    expect(ratio).toBeGreaterThanOrEqual(0.90);
+    expect(ratio).toBeLessThanOrEqual(1.10);
+  };
+
+  it('収束型ショットガン: 既定比+5.2%', () => {
+    const { base, unique, ratio } = band('shotgun-t1', 'shotgun-t1-focus');
+    expect(base).toBeCloseTo(17.82, 1);
+    expect(unique).toBeCloseTo(18.75, 1);
+    expectInBand(ratio);
+  });
+
+  it('切替式ショットガン(散弾=CATALOGの既定値): 既定比+1.0%', () => {
+    const { base, unique, ratio } = band('shotgun-t1', 'shotgun-t1-cycle');
+    expect(base).toBeCloseTo(17.82, 1);
+    expect(unique).toBeCloseTo(18.00, 1);
+    expectInBand(ratio);
+  });
+
+  it('切替式ショットガン(スラッグ=リロードで入れ替わる方のセット): 既定比+1.0%(散弾と同じ周期)', () => {
+    const slugWeapon = { ...createWeapon('shotgun-t1-cycle'), ...CYCLE_MODE_STATS.slug };
+    const base = effectiveDps(createWeapon('shotgun-t1'));
+    const unique = effectiveDps(slugWeapon);
+    expect(unique).toBeCloseTo(18.00, 1);
+    expectInBand(unique / base);
+    // 支配テスト(不変条件6)は「スラッグ」セットも見ていない(CATALOGの静的値=散弾のみ自動評価)ため、
+    // ここで明示的に非支配を確認しておく(count1<5で非支配)。
+    expect(dominatesDefault(slugWeapon, createWeapon('shotgun-t1'))).toBe(false);
+  });
+
+  it('デザートテック: 既定比+3.2%', () => {
+    const { base, unique, ratio } = band('rifle-t1', 'rifle-t1-deserttech');
+    expect(base).toBeCloseTo(23.08, 1);
+    expect(unique).toBeCloseTo(23.82, 1);
+    expectInBand(ratio);
+  });
+
+  it('大型狙撃銃(蓄積0=CATALOGの静的値そのもの): 既定比+2.0%', () => {
+    const { base, unique, ratio } = band('rifle-t2', 'rifle-t2-heavysniper');
+    expect(base).toBeCloseTo(28.95, 1);
+    expect(unique).toBeCloseTo(29.52, 1);
+    expectInBand(ratio);
   });
 });
 

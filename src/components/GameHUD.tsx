@@ -3,7 +3,8 @@ import { Volume2, VolumeX } from 'lucide-react';
 import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { shallow } from 'zustand/shallow';
 import { formatTime } from '../utils/renderUtils';
-import { hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
+import { hasWeaponIcon, weaponIconName, DESERTTECH_WEAPON_KEY } from '../utils/weaponUtils';
+import { resolveDesertTechAmmoType } from '../utils/desertTechAmmo'; // UNIQUE_WEAPONS.md §16-2(バッチB・デザートテック)
 import { spritePath } from '../utils/spriteLoader';
 import VitalsOrb from './VitalsOrb';
 import { NpcDialogue } from './NpcDialogue';
@@ -365,7 +366,15 @@ const GameHUD: React.FC = () => {
               )}
               {/* 銃スロット(所持カテゴリごと1つ)。タップで切替。弾数=装填/リザーブのみ(名前なし)。 */}
               {guns.map(gun => {
-                const ammoType = gun.ammoType;
+                // UNIQUE_WEAPONS.md §16-2/§17-8 C-3(デザートテック・受け入れ条件6):
+                // 専用弾(rifle)が尽きたら他カテゴリを代用するため、HUDの残弾は「今実際に消費する弾種」
+                // (weaponAmmoTypeForと同じ優先順=desertTechAmmo.ts)を表示する。
+                const ammoType = gun.key === DESERTTECH_WEAPON_KEY
+                  ? resolveDesertTechAmmoType({
+                      rifle: player.ammoRifle, handgun: player.ammoHandgun,
+                      shotgun: player.ammoShotgun, glauncher: player.ammoGlauncher,
+                    })
+                  : gun.ammoType;
                 // UNIQUE_WEAPONS.md §16-2/§17-3(監査A-3): 無限弾武器はHUDに実弾数ではなく「∞」を出す。
                 const reserve = ammoType ? ammoFieldFor(ammoType) : 0;
                 const mag = gun.magazine ?? 0;

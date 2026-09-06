@@ -452,7 +452,8 @@ import {
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
-import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY } from '../utils/weaponUtils';
+import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY } from '../utils/weaponUtils';
+import { narrowFocusSpreadRad, FOCUS_SPREAD_INITIAL_RAD } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
@@ -12402,6 +12403,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().knockbackEnemy(
               enemyId, projectile.direction.x / kbLen, projectile.direction.y / kbLen, projectile.knockbackMult,
             );
+          }
+          // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG): 命中した射撃(=このペレットの着弾)ごとに
+          // 散り角を1段階狭める(focusSpread.ts)。プレイヤー自身の直接銃弾のみ
+          // (escort/守護霊はこの武器を借りない=directPlayerGunで足りる)。fireWeapon側は
+          // 直近命中から2.5秒経てば初期値へ戻す(resolveFocusSpreadRad)。
+          if (projectile?.weaponKey === FOCUS_WEAPON_KEY && directPlayerGun) {
+            useGameStore.setState(state => ({
+              player: {
+                ...state.player,
+                weapons: state.player.weapons.map(w => (w.key === FOCUS_WEAPON_KEY
+                  ? {
+                      ...w,
+                      focusSpreadRad: narrowFocusSpreadRad(w.focusSpreadRad ?? FOCUS_SPREAD_INITIAL_RAD),
+                      focusSpreadLastHitAt: gameTime,
+                    }
+                  : w)),
+              },
+            }));
           }
           // ★v0.25.3640(成果物監査Q1-1): 幻影の被弾無敵が弾いた1発は、**数字もヒットSEも出さない**
           // (ゲートはHPを止めるが、数字/SEは呼び出し側=ここが出しているため、素通しだと

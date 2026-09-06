@@ -304,6 +304,11 @@ export interface Player extends DashLocomotionState {
   speedRampSustainMs: number;
   speedRampDirX: number;
   speedRampDirY: number;
+  // UNIQUE_WEAPONS.md §16-2(バッチB・大型狙撃銃): 連続静止msの蓄積(src/utils/heavySniperCharge.ts)。
+  // marksmanMovingSince/speedRampSustainMsと同じ理由でPlayer側に置く(movePlayerが毎tick更新)。
+  // 移動した瞬間に0へリセット。武器固有だが「静止しているか」自体はプレイヤーの移動状態なので、
+  // 武器の所持有無に関係なく常時追跡する(既存2フィールドと同じ扱い)。
+  heavySniperStillMs: number;
   // PHILL銃の狙いサークル(レティクル)の吸い付き。プレイヤー中心からのオフセット(px)＋スナップ中の敵ID。
   // movePlayer が毎フレーム算出 → 描画(pixiScene)と発砲(firePhillShot)で共有。
   phillReticleDX: number;
@@ -1501,6 +1506,14 @@ export interface Weapon {
   // 入れ替える武器が持ち越す現在モード(ヒステリシス判定=src/utils/dualRangeGun.ts)。
   // 未指定(undefined)は'far'扱い(§16-2実装)。
   dualRangeMode?: 'near' | 'far';
+  // UNIQUE_WEAPONS.md §16-2(バッチB・収束型ショットガン): 命中した射撃ごとに散り角が1段階狭まる
+  // (src/utils/focusSpread.ts)。現在の散り角(rad)と直近の命中gameTime。両方undefinedは
+  // 「初期値(1.30rad)扱い」と同義(resolveFocusSpreadRadが解決する)。
+  focusSpreadRad?: number;
+  focusSpreadLastHitAt?: number;
+  // UNIQUE_WEAPONS.md §16-2/§17-7(バッチB・切替式ショットガン): リロード(装填)を境に
+  // 散弾⇔スラッグが反転する現在モード(src/utils/cycleShotgun.ts)。未指定は'shot'扱い。
+  cycleMode?: 'shot' | 'slug';
 }
 
 // Gun families. Each shares an ammo pool with the matching AmmoType.
