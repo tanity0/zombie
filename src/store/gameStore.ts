@@ -3523,7 +3523,13 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   // ★城ボス(giantbat)は `isFinalBossKill` を必ず通す(検収2巡目B-1): グレンは**形態1をHP半分で**
   // triggerDramaticDeath に通す(=移行であって討伐ではない)ため、これを見ないと
   // **形態2に負けても恒久解放される**。既存の城ボスクリア処理が同じガードを使っているのと揃える。
-  if (!isPracticeRun() && (enemy.type !== 'giantbat' || isFinalBossKill(enemy))) {
+  // ★社長指示2026-09-05「ストーリーのみだよ」: 設計図が手に入るのは**ストーリーモードの出撃だけ**。
+  // 練習ラン(ボスモード/ガントレット)に加えて、**フリー(周回)出撃**と**タイトルのボス戦テスト**でも
+  // 入らない。`getSelectedFreeMode` は「会話なし & クリア進行に影響させない出撃」の旗なので、
+  // 「ストーリーではない出撃」の判定にそのまま使える。`BOSS_TEST_RUN` は ?gateboss=1 等の開発導線
+  // (検収2巡目(B)-2 で「本番の台帳に書かれる」と記録された穴を、この指示でまとめて塞ぐ)。
+  const storyRunForBlueprint = !isPracticeRun() && !getSelectedFreeMode() && !BOSS_TEST_RUN;
+  if (storyRunForBlueprint && (enemy.type !== 'giantbat' || isFinalBossKill(enemy))) {
     const unlockKey = BOSS_UNLOCK[`${enemy.type}@${getSelectedStageId() ?? ''}`] ?? BOSS_UNLOCK[enemy.type];
     if (unlockKey && markWeaponBlueprint(unlockKey)) {
       useGameStore.setState({

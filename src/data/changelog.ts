@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4146',
+    items: ['武器の設計図が手に入るのは、ストーリーモードの出撃だけになりました(フリー出撃・ボス戦テスト・練習では入りません)。'],
+  },
+  {
     version: '0.25.4145',
     items: ['ゲーム内容の変更はありません(更新情報の文言を実態に合わせました)。'],
   },
