@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4144',
+    items: ['ボスを倒すと武器の「設計図」が手に入るようになりました。開発施設に並び、200Gで購入すると装備設定の銃スロットで選べます。'],
+  },
+  {
     version: '0.25.4143',
     items: ['ゲーム内容の変更はありません(設計書のみ)。'],
   },
