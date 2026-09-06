@@ -7491,14 +7491,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         bossFinishHit = true;
         const fatal = stunnedHit.kind === 'boss' ? applyBrokenMeleeFatal(enemy, meleeExecBase * gpDmgScale, gameTime) : null;
         const dmg = fatal?.damage ?? stunnedHit.dmg;
-        // ★v0.25.4151(社長指示2026-09-05「強個体はまずキルできないはずなのに、黄色クリティカルで
-        // キル演出が始まる。(死にはしないが)」): **強個体の気絶中3×(heavy)は演出系へ載せない**。
-        // 載せると「首元へ跳びついて掻っ切る」KILL演出が出るのに**敵は死なない**=絵と結果が食い違う。
-        // 載せるのは**ボス致命(fatal)だけ**。
-        // ※事実として v0.25.3703 では逆の裁定だった(社長報告「パンプキンへの致命の一撃でKILL演出が
-        //   出なかった」を受けて heavy も載せた)。本指示でその裁定を撤回する。
-        // ※3×のダメージ・黄色のクリ表示・浮きは**そのまま**(消すのは「キルの演出」だけ)。
-        if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
+        // ★v0.25.4153(社長裁定2026-09-05「強個体はボスと同じく致命の一撃でキル演出は入る。でも
+        // 黄色クリティカルではならないのが一貫性」): **強個体もボスと同じ線で揃える**——
+        // 演出が入るのは**完全気絶(紫)中の一撃だけ**。通常の気絶からの3×(黄色クリ)では入らない。
+        //   ボス : 紫中の5×(applyBrokenMeleeFatal が fatal を返す)= 致命 → 演出
+        //   強個体: 紫中の3×(isBossPostureBroken)= 致命 → 演出 / 紫でない3× → 演出なし
+        // ※v0.25.3703 は「heavy を無条件に載せる」、v0.25.4151 は「heavy を全部外す」で、どちらも
+        //   極端だった。本裁定は**紫かどうか**で分ける(ボスと同じ物差し)。
+        // ※3×のダメージ・黄色のクリ表示・浮きは常にそのまま(変えるのは演出の有無だけ)。
+        if (fatal || (stunnedHit.kind === 'heavy' && isBossPostureBroken(enemy, gameTime))) {
+          bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
+        }
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
         recordCritHit('guaranteed', stunnedHit.kind === 'boss'); // §7-11c(4): meleeExecuteの紫中フィニッシュ
         // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
@@ -8702,8 +8705,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (stunnedMeleeOutcome(enemy) === 'heavy') {
           bossFinishHit = true;
           const dmg = katanaExecBase * gpDmgScale * ELITE_MELEE_STUN_MULT;
-          // ★v0.25.4151(社長指示2026-09-05): **強個体のheavyは演出系へ載せない**(死なないのに
-          // KILL演出が始まるのを止める)。v0.25.3703 の逆裁定。ダメージ・黄色のクリ表示・浮きは据え置き。
+          // ★v0.25.4153: 強個体も**完全気絶(紫)中の一撃だけ**演出に載せる(ボスと同じ物差し)。
+          if (!isGhost && isBossPostureBroken(enemy, gameTime)) {
+            katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
+          }
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -9022,7 +9027,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (stunnedMeleeOutcome(enemy) === 'heavy') {
           bossFinishHit = true;
           const dmg = whipExecBase * ELITE_MELEE_STUN_MULT;
-          // ★v0.25.4151(社長指示2026-09-05): **強個体のheavyは演出系へ載せない**(ナイフ/刀と同じ是正)。
+          // ★v0.25.4153: 強個体も**完全気絶(紫)中の一撃だけ**演出に載せる(ナイフ/刀と同じ物差し)。
+          if (isBossPostureBroken(enemy, gameTime)) {
+            whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
+          }
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
