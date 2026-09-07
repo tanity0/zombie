@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4186',
+    items: ['ゲーム内容の変更はありません(設計書の追加のみ: 全武器をAIに動かして確かめるテストの設計)。'],
+  },
+  {
     version: '0.25.4185',
     items: [
       'ロケットランチャーの発射直後に幻影へ打ち返されると、ほとんど止まったまま自分の近くに居座る弾になっていたのを直しました。',
