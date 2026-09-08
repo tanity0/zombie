@@ -81,3 +81,22 @@ describe('focusSpreadAfterHit: 狭まりは1トリガー1回', () => {
     expect(next!.focusSpreadRad).toBeCloseTo(FOCUS_SPREAD_INITIAL_RAD - FOCUS_SPREAD_STEP_RAD, 5);
   });
 });
+
+// ★2026-09-07(社長報告「収束型ショットガンが収束してない」)の再発防止。
+// 原因は**時計の混在**——命中側は gameTime を書くのに、発射側は Date.now() で引いていた。
+// 差が常に1.7e12msになり、リセット窓を毎回超えて**毎射初期値へ戻っていた**(=一度も収束していない)。
+// この形は「同じ時計で引けば維持され、違う時計で引くと必ずリセットされる」ことで機械的に固定できる。
+describe('★時計の混在の再発防止', () => {
+  it('同じ時計(gameTime)なら、リセット窓の中で狭まった散り角が維持される', () => {
+    const st = { focusSpreadRad: 0.94, focusSpreadLastHitAt: 1000, focusSpreadLastTriggerAt: 1000 };
+    // 700ms後(発射間隔1回ぶん)=窓の中なので維持される
+    expect(resolveFocusSpreadRad(st.focusSpreadRad, st.focusSpreadLastHitAt, 1700)).toBe(0.94);
+  });
+
+  it('違う時計(Date.now相当)で引くと必ず初期値へ戻る=収束しない挙動になる', () => {
+    const st = { focusSpreadRad: 0.94, focusSpreadLastHitAt: 1000 }; // gameTimeで書かれた値
+    const wallClockNow = 1_700_000_000_000; // Date.now() 相当
+    expect(resolveFocusSpreadRad(st.focusSpreadRad, st.focusSpreadLastHitAt, wallClockNow))
+      .toBe(FOCUS_SPREAD_INITIAL_RAD);
+  });
+});
