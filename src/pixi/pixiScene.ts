@@ -152,7 +152,7 @@ import { type GoldRing, goldRingCurrentPos } from '../utils/goldRing';
 // UNIQUE_WEAPONS.md §16-2(バッチC-1): 持続線分/扇の3挺。数値/型は純関数モジュールから読むだけ
 // (状態そのものはuseGameLoopが書く。CLAUDE.md「PixiJSは描くだけ」)。
 import type { PersistentBeam } from '../utils/persistentBeam';
-import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
+import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS } from '../utils/flamerCone';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import {
@@ -25016,6 +25016,25 @@ export class PixiScene {
         const r = Math.max(5, p.width * 0.85);
         g.fillStyle = { color: 0xffffff, alpha: 1 }; // v0.25.3293: fillスタイルalphaの引き継ぎ対策(手榴弾と同じ)
         g.texture(ballTex, 0xffffff, -r, -r, r * 2, r * 2);
+        return;
+      }
+    }
+
+    // 社長支給素材2026-09-07: クロスボウの矢。火薬の弾ではないので通常の弾の絵(伸びた矩形)にしない。
+    // 素材は**右向き**なので進行方向へ回す。長さは弾の当たり判定より長く見せる(通常弾も
+    // len=width*1.7〜2.6 で伸ばしているのと同じ作法。CLAUDE.md「視覚と当たり判定は別」)。
+    // ★反射された矢(幻影の打ち返し)は下の p.reflected のハローを先に敷いてから描く。
+    if (p.weaponKey === CROSSBOW_WEAPON_KEY) {
+      const arrowTex = getTexture('fx/arrow');
+      if (arrowTex) {
+        if (p.reflected) {
+          g.circle(0, 0, Math.max(p.width, p.height) * 0.7).fill({ color: p.hostile ? 0xa855f7 : 0xfcd34d });
+        }
+        g.rotation = Math.atan2(p.direction.y, p.direction.x);
+        const len = Math.max(p.width, 6) * 3.6;
+        const hh = len * (112 / 712) / 2; // 素材の縦横比(712x112)を保つ
+        g.fillStyle = { color: 0xffffff, alpha: 1 }; // fillスタイルalphaの引き継ぎ対策(grenade-ballと同じ)
+        g.texture(arrowTex, 0xffffff, -len / 2, -hh, len, hh * 2);
         return;
       }
     }

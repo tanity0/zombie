@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4190',
+    items: ['クロスボウの弾が矢の絵になりました。飛んでいく向きに合わせて矢が回ります(これまでは他の銃と同じ光の弾でした)。'],
+  },
+  {
     version: '0.25.4189',
     items: ['クロスボウに専用の射撃音が付きました(これまではハンドガンの発砲音を流用していました)。守護霊や幻影がクロスボウを撃つ時も同じ音になります。'],
   },

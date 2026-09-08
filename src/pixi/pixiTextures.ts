@@ -664,6 +664,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/explosion-5', scaleMode: 'nearest' as const },
       // グレネード弾(社長支給ドット素材v0.25.3290・56×56)。手榴弾+グレネードガン(武器庫限定)の弾。
       { name: 'fx/grenade-ball', scaleMode: 'nearest' as const },
+      // 社長支給2026-09-07: クロスボウ(handgun-t1-crossbow)の矢。**右向きの絵**なので
+      // 描画側で進行方向へ回す(pixiSceneのdrawProjectile)。火薬の弾ではないので通常の弾の絵にしない。
+      { name: 'fx/arrow', scaleMode: 'nearest' as const },
       // 魔法陣ホログラム(社長支給v0.25.3338・紫マゼンタ・304×264/コマ)。3アニメ:
       // holo-circle 0-7=出現魔法陣(warp着地/volleyの構え/異常動作・用途は§7裁定待ち。
       // §6.38 v9で賞金首の起床演出からは撤去=現在は他用途のため予約のみ・未使用でも登録は残す)
