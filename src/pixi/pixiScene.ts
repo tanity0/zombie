@@ -152,7 +152,7 @@ import { type GoldRing, goldRingCurrentPos } from '../utils/goldRing';
 // UNIQUE_WEAPONS.md §16-2(バッチC-1): 持続線分/扇の3挺。数値/型は純関数モジュールから読むだけ
 // (状態そのものはuseGameLoopが書く。CLAUDE.md「PixiJSは描くだけ」)。
 import type { PersistentBeam } from '../utils/persistentBeam';
-import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
+import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, ROCKET_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS } from '../utils/flamerCone';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import {
@@ -25010,6 +25010,24 @@ export class PixiScene {
     // UNIQUE_WEAPONS.md §16-3(前提工事): 3キー直書きをcategory判定(isGrenadeGunKey)へ広げた。
     // ランチャー3挺(ロケラン/錬金砲/シグナル)もこのブランチで同じ弾の絵になる
     // (シグナルは自弾を作らないので実質ロケラン/錬金砲のみが通る)。
+    // ★社長指示2026-09-07「ロケランの弾、スキルの空から爆弾降ってくるやつと同じ絵を使って。
+    // ロケットなのであれ」。⇒ 爆撃演出の落下弾と**同じ素材**(fx/ending-bomb)を使う。
+    // 素材は**先端が下向き**(64x256)なので、進行方向へ回す時に -90度ぶん足す。
+    // ★グレネードの分岐(下)より**前**に置く: ロケランは category が glauncher なので
+    // isGrenadeGunKey が true になり、先に丸い擲弾の絵へ落ちてしまうため。
+    // 溜め中(speed=0で自機に追従)もこの絵になる=「何を溜めているか」が絵で分かる。
+    if (p.weaponKey === ROCKET_WEAPON_KEY) {
+      const rocketTex = getTexture('fx/ending-bomb');
+      if (rocketTex) {
+        g.rotation = Math.atan2(p.direction.y, p.direction.x) - Math.PI / 2;
+        const len = Math.max(p.width, 8) * 2.6;
+        const hw = len * (64 / 256) / 2; // 素材の縦横比(64x256)を保つ
+        g.fillStyle = { color: 0xffffff, alpha: 1 }; // fillスタイルalphaの引き継ぎ対策(grenade-ballと同じ)
+        g.texture(rocketTex, 0xffffff, -hw, -len / 2, hw * 2, len);
+        return;
+      }
+    }
+
     if (p.rollDetonatePx === undefined && isGrenadeGunKey(p.weaponKey)) {
       const ballTex = getTexture('fx/grenade-ball');
       if (ballTex) {

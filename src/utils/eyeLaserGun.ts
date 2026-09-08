@@ -33,3 +33,51 @@ export const eyeLaserCycleDps = (pulseDamage: number, reloadMsRaw = EYE_LASER_RE
   const cycleMs = EYE_LASER_CHARGE_MS + EYE_LASER_FIRE_MS + eyeLaserEffectiveReloadMs(reloadMsRaw);
   return (totalDamage / cycleMs) * 1000;
 };
+
+// ★社長指示2026-09-07「アイレーザー、敵が死んだら時間までは次の標的に少しゆっくり合わせにいくように
+// して」。**#U15の裁定(2026-09-06「再ターゲットは無し」)を差し替える**——照射は打ち切らず、
+// **残り時間いっぱいまで続けて、次の標的へゆっくり振る**。
+//
+// ★等速で振らない(CLAUDE.md「慣性MUST」)。角速度を持ち、**加速→減速**で合わせにいく:
+//   ①目標角との差から「出したい角速度」を作る(差が小さいほど遅い=**終わりで減速**)
+//   ②今の角速度をそこへ**加速度の上限**で寄せる(止まっている所から急に最大速度にならない=**出だしで加速**)
+// これで「振り始めはゆっくり、途中で速く、狙いに近づくとまた減速して収まる」動きになる。
+// ★値の根拠(実測): 照射は3秒しかないので、振りが長いと「合わせている間に終わる」。
+// 90度の振りが **約0.97秒**(=照射の1/3)で収まる組み合わせにした。MAX=2.6 / ACC=12 / GAIN=5。
+export const EYE_LASER_RETARGET_MAX_RATE_RAD_PER_SEC = 2.6; // 振りの最大角速度(≈149°/s)
+export const EYE_LASER_RETARGET_ACCEL_RAD_PER_SEC2 = 12.0;  // 角加速度の上限(出だしの溜め)
+export const EYE_LASER_RETARGET_APPROACH_GAIN = 5.0;        // 目標角へ寄せる強さ(終わりの減速)
+export const EYE_LASER_RETARGET_SETTLE_RAD = 0.05;          // これ以内に入ったら「合った」とみなす
+
+/** -π..π へ畳んだ角度差(最短回り)。 */
+export const shortestAngleDiff = (from: number, to: number): number => {
+  let d = (to - from) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+};
+
+export interface EyeLaserAim { angle: number; vel: number }
+
+/**
+ * 次の標的へ「少しゆっくり」振る1ステップ(純関数)。
+ * `settled` が true になったら振りは終わり(以後は通常の追尾=直接狙う)。
+ */
+export const stepEyeLaserAim = (
+  aim: EyeLaserAim,
+  targetAngle: number,
+  dtSec: number,
+): EyeLaserAim & { settled: boolean } => {
+  const err = shortestAngleDiff(aim.angle, targetAngle);
+  // ①出したい角速度(差に比例・最大値でクランプ=終わりで自然に減速する)
+  const want = Math.max(
+    -EYE_LASER_RETARGET_MAX_RATE_RAD_PER_SEC,
+    Math.min(EYE_LASER_RETARGET_MAX_RATE_RAD_PER_SEC, err * EYE_LASER_RETARGET_APPROACH_GAIN),
+  );
+  // ②今の角速度を、加速度の上限でそこへ寄せる(出だしの加速)
+  const dv = want - aim.vel;
+  const maxDv = EYE_LASER_RETARGET_ACCEL_RAD_PER_SEC2 * dtSec;
+  const vel = aim.vel + Math.max(-maxDv, Math.min(maxDv, dv));
+  const angle = aim.angle + vel * dtSec;
+  return { angle, vel, settled: Math.abs(shortestAngleDiff(angle, targetAngle)) <= EYE_LASER_RETARGET_SETTLE_RAD };
+};
