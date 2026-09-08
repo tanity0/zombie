@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4191',
+    items: ['ショットガンのユニーク武器3挺(切替式・コイル・誘導散弾)に絵が入りました。ショットガンはこれで6挺すべて絵が揃っています。'],
+  },
+  {
     version: '0.25.4190',
     items: ['クロスボウの弾が矢の絵になりました。飛んでいく向きに合わせて矢が回ります(これまでは他の銃と同じ光の弾でした)。'],
   },

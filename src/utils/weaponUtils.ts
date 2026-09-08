@@ -755,6 +755,8 @@ export const WEAPON_ICON_KEYS: ReadonlySet<string> = new Set<string>([
   'glauncher-t1-rocket', 'glauncher-t2-alchemy', 'glauncher-t3-signal',
   // ハンドガンのユニーク第2弾3種(社長支給素材2026-09-07。ハンドガンはこれで6挺すべて揃った)。
   'handgun-t1-crossbow', 'handgun-t2-dualrange', 'handgun-t3-gunblade',
+  // ショットガンのユニーク第2弾3種(社長支給素材2026-09-07)。★これで**ユニーク21挺すべての絵が揃った**。
+  'shotgun-t1-cycle', 'shotgun-t2-coil', 'shotgun-t3-homing',
 ]);
 export const hasWeaponIcon = (key: string | undefined | null): boolean => !!key && WEAPON_ICON_KEYS.has(key);
 export const weaponIconName = (key: string): string => `weapons/${key}`;

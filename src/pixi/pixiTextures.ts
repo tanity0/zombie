@@ -409,6 +409,10 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/handgun-t1-crossbow', scaleMode: 'nearest' },
       { name: 'weapons/handgun-t2-dualrange', scaleMode: 'nearest' },
       { name: 'weapons/handgun-t3-gunblade', scaleMode: 'nearest' },
+      // ショットガンのユニーク第2弾3種(社長支給素材2026-09-07)。★これでユニーク21挺すべての絵が揃った。
+      { name: 'weapons/shotgun-t1-cycle', scaleMode: 'nearest' },
+      { name: 'weapons/shotgun-t2-coil', scaleMode: 'nearest' },
+      { name: 'weapons/shotgun-t3-homing', scaleMode: 'nearest' },
       // 近接(ナイフ系)アイコン。銃と同じピックアップ/HUDアイコン(攻撃モーション用ではない)。
       { name: 'weapons/knife-t1', scaleMode: 'nearest' },
       { name: 'weapons/hatchet-t2', scaleMode: 'nearest' },
