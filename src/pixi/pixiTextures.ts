@@ -413,6 +413,11 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/shotgun-t1-cycle', scaleMode: 'nearest' },
       { name: 'weapons/shotgun-t2-coil', scaleMode: 'nearest' },
       { name: 'weapons/shotgun-t3-homing', scaleMode: 'nearest' },
+      // ライフルのユニーク第2弾3種(社長支給素材2026-09-07)。
+      // ★★これでユニーク武器21挺すべての絵が揃った。
+      { name: 'weapons/rifle-t1-bolt', scaleMode: 'nearest' },
+      { name: 'weapons/rifle-t2-icelance', scaleMode: 'nearest' },
+      { name: 'weapons/rifle-t3-eyelaser', scaleMode: 'nearest' },
       // 近接(ナイフ系)アイコン。銃と同じピックアップ/HUDアイコン(攻撃モーション用ではない)。
       { name: 'weapons/knife-t1', scaleMode: 'nearest' },
       { name: 'weapons/hatchet-t2', scaleMode: 'nearest' },
