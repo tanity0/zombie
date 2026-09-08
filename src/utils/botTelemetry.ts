@@ -64,6 +64,9 @@ export interface BotTelemetry {
   reloads: number;            // リロード成立の合計(通常/クイックマガジン/オーバークロック覚醒の3経路)。
   manualShots: number;        // 手動アクション(レールガン/シグナルランチャー)の発射成立回数。
   meleeFromGun: number;       // ガンブレードの至近モードで近接ダメージが成立した回数。
+  // research/WEAPON_AI_TEST.md S3-b(パイルドライバー「KB>0」の観測用): knockbackUntilはDate.now基準
+  // (280ms)でサンプリング(毎秒未満)だと窓を外しやすいため、カウンタで確実に拾う(挙動不変・計測のみ)。
+  gunKnockbacks: number;      // 弾のノックバック(useGameLoop.tsのprojectile.knockbackMult経路)成立回数。
 }
 
 const createCritBucket = (): BotCritBucket => ({ rngCrits: 0, guaranteedCrits: 0, hits: 0 });
@@ -91,6 +94,7 @@ const createTelemetry = (): BotTelemetry => ({
   reloads: 0,
   manualShots: 0,
   meleeFromGun: 0,
+  gunKnockbacks: 0,
 });
 
 let telemetry: BotTelemetry = createTelemetry();
@@ -145,6 +149,7 @@ export const recordCurrencyDropped = (): void => { telemetry.currencyDropped += 
 export const recordReload = (): void => { telemetry.reloads += 1; };
 export const recordManualShot = (): void => { telemetry.manualShots += 1; };
 export const recordMeleeFromGun = (): void => { telemetry.meleeFromGun += 1; };
+export const recordGunKnockback = (): void => { telemetry.gunKnockbacks += 1; };
 
 // アンカー保存用ディープコピー(実装精度の規律3: 生きた参照を保存すると差分が常に0になる)。
 export const snapshotBotTelemetry = (): BotTelemetry => ({
@@ -166,6 +171,7 @@ export const snapshotBotTelemetry = (): BotTelemetry => ({
   reloads: telemetry.reloads,
   manualShots: telemetry.manualShots,
   meleeFromGun: telemetry.meleeFromGun,
+  gunKnockbacks: telemetry.gunKnockbacks,
 });
 
 export const resetBotTelemetry = (): void => {

@@ -158,7 +158,7 @@ import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty, projectileHitCritChance } from '../utils/critPenalty';
 import { softCapCritChance, orCombineChance } from '../utils/critSoftCap';
 import { critDecayOnHit } from '../utils/critDecay'; // ★§13-3e クリ減衰(社長裁定2026-08-26)
-import { handcannonDamageMultOnHit, pruneHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPONS.md §13-1
+import { handcannonDamageMultOnHit, pruneHandcannonDecay, peekHandcannonHits } from '../utils/handcannonDecay'; // UNIQUE_WEAPONS.md §13-1(peekHandcannonHits: research/WEAPON_AI_TEST.md S3-b 観測用に相乗り・既存のtest/debug覗き窓を流用=新規ロジックなし)
 import { isPvpIncapacitated, tickPvpPosture } from '../utils/pvpPosture'; // ★SAME_ARENA §9(対人体勢)
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
@@ -419,7 +419,7 @@ import {
 } from '../utils/killTelemetryState';
 import {
   recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel, recordCritHit,
-  recordExplosion, recordBeamPulse, recordStonesAttached,
+  recordExplosion, recordBeamPulse, recordStonesAttached, recordGunKnockback,
 } from '../utils/botTelemetry';
 import { DEV_LOADOUT_ACTIVE } from '../utils/devTestKnobs';
 // SKILL_BUILD_REDESIGN.md §15(B0発注文): 計測台帳の最終記録(読むだけ)+ボット購買ポリシー(実機オートパイロット側)。
@@ -1867,6 +1867,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       const s = useGameStore.getState();
       return {
         t: Math.round(s.gameTime),
+        player: {
+          x: Math.round(s.player.x), y: Math.round(s.player.y),
+          // research/WEAPON_AI_TEST.md S3-b(大型狙撃銃「静止3秒後の射程>直後」の同一ラン内比較用)。
+          heavySniperStillMs: Math.round(s.player.heavySniperStillMs),
+          // クロスボウ(リザーブ不変)/デザートテック(rifle切れで他弾を消費)の観測用。
+          ammoHandgun: s.player.ammoHandgun, ammoShotgun: s.player.ammoShotgun,
+          ammoRifle: s.player.ammoRifle, ammoGlauncher: s.player.ammoGlauncher,
+        },
         weapons: s.player.weapons.map(w => ({
           key: w.key, tier: w.tier, isMelee: w.isMelee, magazine: w.magazine,
           cycleMode: w.cycleMode, dualRangeMode: w.dualRangeMode, gunbladeMeleeMode: w.gunbladeMeleeMode,
@@ -1877,14 +1885,43 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           weaponKey: p.weaponKey, weaponType: p.weaponType, hostile: p.hostile,
         })),
         enemies: s.enemies.map(e => ({
-          id: e.id, type: e.type, alchemyStoneStage: e.alchemyStoneStage, bossPosture: e.bossPosture,
+          id: e.id, type: e.type, x: Math.round(e.x), y: Math.round(e.y),
+          width: e.width, height: e.height,
+          alchemyStoneStage: e.alchemyStoneStage, bossPosture: e.bossPosture,
+          // パイルドライバー(KB>0)の観測用。★knockbackUntilの消費側(updateEnemies)はDate.now基準
+          // (gameStore.ts knockbackEnemy)なので、ここでDate.now()と比べて真偽値にしてから渡す
+          // (CLAUDE.md「時計の混在」を渡す側で吸収し、ランナー側にgameTimeとDate.nowを混ぜさせない)。
+          knockbackActive: (e.knockbackUntil ?? 0) > Date.now(),
+          // ハンドキャノン(同一敵2発目<1発目・リロードで戻る)の観測用。既存のtest/debug覗き窓
+          // (peekHandcannonHits)に相乗り=新しい台帳は作らない。
+          handcannonHits: peekHandcannonHits(e.id),
         })),
         goldRings: s.goldRings,
         iceLanceFloors: s.iceLanceFloors,
         signalStrikes: s.signalStrikes,
         eyeLaserBeam: s.eyeLaserBeam,
         flamerCone: s.flamerCone,
+        // research/WEAPON_AI_TEST.md S3-b: 「起きた回数」カウンタ+チャネル別与ダメを毎秒読める形で
+        // 相乗り(__BOT_REPORT__はラン終了1回きりなので、死なせずに60秒だけ回す走査では読めない)。
+        telemetry: getBotTelemetry(),
       };
+    };
+    // research/WEAPON_AI_TEST.md S3-a: 手動アクション(レールガン/シグナルランチャー/錬金の起爆)の
+    // 代役。VirtualJoystick.tsx/inputActions.tsの「指を離す」と全く同じ3行(条件はstore側が持つので
+    // 無条件呼び出しで無害=未装備/CD中は何もしない)。ボット本体(playtestDriver.ts/decideBotInput)は
+    // 一切書き換えない・__BOT_SAMPLE__と同じ作法でDEV_LOADOUT_ACTIVE時だけ生える最小の口。
+    (window as unknown as Record<string, unknown>).__BOT_MANUAL_FIRE__ = () => {
+      const gs = useGameStore.getState();
+      gs.fireSignalLauncher();
+      gs.fireRailgunShot();
+      gs.detonateAlchemyStones();
+    };
+    // research/WEAPON_AI_TEST.md S3-c(C3): 同一ページ内で「次のresetGame直後、武器の一時状態が
+    // 空か」を確かめるためのテスト専用トリガ。resetGame自体は通常プレイの経路(死亡/帰還)と同一
+    // (挙動を変えない・呼ぶタイミングをテストが選べるようにするだけ)。
+    (window as unknown as Record<string, unknown>).__BOT_RESET__ = () => {
+      const gs = useGameStore.getState();
+      gs.resetGame(gs.player.characterClass);
     };
   }, []);
 
@@ -1957,6 +1994,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         reloads: botTele.reloads,
         manualShots: botTele.manualShots,
         meleeFromGun: botTele.meleeFromGun,
+        gunKnockbacks: botTele.gunKnockbacks,
       },
       // SKILL_BUILD_REDESIGN.md §15-1(B0発注文): B0計測器の10出力(§12-2#6+§13-4)を丸ごと同梱。
       runTelemetry: getRunTelemetrySnapshot(),
@@ -13094,6 +13132,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().knockbackEnemy(
               enemyId, projectile.direction.x / kbLen, projectile.direction.y / kbLen, projectile.knockbackMult,
             );
+            recordGunKnockback(); // research/WEAPON_AI_TEST.md S3-b: パイルドライバー「KB>0」の観測用(計測のみ)。
           }
           // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG): **命中した「射撃(トリガー)」ごとに**
           // 散り角を1段階狭める(focusSpread.ts)。★ペレットごとではない——1トリガー5ペレットなので
