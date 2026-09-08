@@ -9,7 +9,10 @@
 export const FOCUS_SPREAD_INITIAL_RAD = 1.30;
 export const FOCUS_SPREAD_STEP_RAD = 0.18;
 export const FOCUS_SPREAD_FLOOR_RAD = 0.36;
-export const FOCUS_SPREAD_RESET_MS = 2500;
+// ★社長指示2026-09-07「全然収束しないので、戻るまでの秒数を5秒に緩和」(旧2500ms)。
+// 収束は**当てた分が全部消えて初期値1.30へ一気に戻る**形(1段ずつ戻らない)なので、
+// 一度切れると6トリガーぶんの積み上げが消える=切れやすさがそのまま体感になる。
+export const FOCUS_SPREAD_RESET_MS = 5000;
 
 /**
  * この発射で使う散り角。直近の命中から FOCUS_SPREAD_RESET_MS 以上経っていれば

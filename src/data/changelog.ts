@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4188',
+    items: ['収束型ショットガンの集弾が戻るまでの時間を、2.5秒から5秒に延ばしました。リロードを挟んでも集弾が維持されやすくなります。'],
+  },
+  {
     version: '0.25.4187',
     items: ['ゲーム内容の変更はありません(設計書の更新のみ: 全武器AIテストの設計を監査の指摘で全面的に書き直し)。'],
   },

@@ -64,7 +64,7 @@ describe('focusSpreadAfterHit: 狭まりは1トリガー1回', () => {
     let now = 1000;
     const seen: number[] = [];
     for (let trigger = 1; trigger <= 6; trigger++) {
-      now += 700; // クールダウン相当(2500msのリセットには掛からない)
+      now += 700; // クールダウン相当(FOCUS_SPREAD_RESET_MSのリセットには掛からない)
       const next = focusSpreadAfterHit(st, now, now);
       expect(next).not.toBeNull();
       st = next!;
