@@ -337,7 +337,11 @@ const WEAPONS = [
       return [
         { label: '照射(弾を作らない持続線)が観測できる', pass: t.projectilesSpawned === 0 && beamSeen && t.beamPulses > 0,
           detail: `projectilesSpawned=${t.projectilesSpawned} beamPulses=${t.beamPulses} beam観測=${beamSeen}` },
-        { label: '再ターゲットしない(対象撃破でその場終了)', pass: null, detail: '観測できない(キル時刻と照射終了時刻の対応づけに追加の窓口が要る=既存の窓口では取れない)' },
+        // ★仕様は v0.25.4193 で「再ターゲット無し」→「敵が死んだら時間までは次の標的へ少しゆっくり
+        // 合わせにいく」へ変わっている(社長指示2026-09-08)。照射の残り時間を使い切るかは
+        // キル時刻との対応づけが要るので観測しない。ここでは貫通だけを見る。
+        { label: '貫通する(1パルスで2体以上に当たった回数>0)', pass: t.beamPulses > 0 ? t.beamMultiHitPulses > 0 : null,
+          detail: t.beamPulses === 0 ? '観測できない(パルスが1度も発生していない)' : `beamMultiHitPulses=${t.beamMultiHitPulses} / beamPulses=${t.beamPulses}` },
       ];
     },
   },

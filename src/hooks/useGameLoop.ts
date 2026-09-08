@@ -12128,7 +12128,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           burstColor: string, xpIdPrefix: string,
         ): void => {
           if (hits.length === 0) return;
-          recordBeamPulse(); // research/WEAPON_AI_TEST.md S2-a: 金環/氷槍床/アイレーザー/火炎放射器の共通パルス口。
+          // research/WEAPON_AI_TEST.md S2-a: 金環/氷槍床/アイレーザー/火炎放射器の共通パルス口。
+          // hits.length を渡すのは「1パルスで2体以上=貫通」の観測用(計測のみ・挙動不変)。
+          recordBeamPulse(hits.length);
           const bpState = useGameStore.getState();
           // G2.6: 倍率評価の主語=オーナー(守護霊は計測時ビルドの疑似Player・sensor-mineと同じ形)。
           const hitActor = ownerGhostId !== undefined ? (combatActorPlayer(ownerGhostId) ?? bpState.player) : bpState.player;

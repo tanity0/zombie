@@ -56,6 +56,7 @@ export interface BotTelemetry {
   projectilesSpawned: number; // addProjectile合流点。敵弾(hostile:true)は除く(=プレイヤー側の発射/投射)。
   explosions: number;         // グレネード/ロケットランチャー系の着弾爆発(壁ヒット含む)。
   beamPulses: number;         // 持続線分/扇の共通適用口(applyBeamPulse)=金環/氷槍床/アイレーザー/火炎放射器。
+  beamMultiHitPulses: number; // うち「1パルスで2体以上に当たった」回数(=貫通の観測信号。§5-2アイレーザー行)。
   postureBroken: number;      // 体勢(紫)を割った回数(applyBossPostureDamageのtriggered=trueの回数)。
   stonesAttached: number;     // 錬金砲: 破裂で石を付着させた敵の数。
   stoneDetonations: number;   // 錬金砲: 起爆(detonateAlchemyStones)を実行した回数。
@@ -86,6 +87,7 @@ const createTelemetry = (): BotTelemetry => ({
   projectilesSpawned: 0,
   explosions: 0,
   beamPulses: 0,
+  beamMultiHitPulses: 0,
   postureBroken: 0,
   stonesAttached: 0,
   stoneDetonations: 0,
@@ -140,7 +142,10 @@ export const getBotTelemetry = (): Readonly<BotTelemetry> => telemetry;
 // research/WEAPON_AI_TEST.md S2-a: 「起きた回数」だけを数えるカウンタ群。挙動は一切変えない。
 export const recordProjectileSpawned = (): void => { telemetry.projectilesSpawned += 1; };
 export const recordExplosion = (): void => { telemetry.explosions += 1; };
-export const recordBeamPulse = (): void => { telemetry.beamPulses += 1; };
+export const recordBeamPulse = (hitCount = 1): void => {
+  telemetry.beamPulses += 1;
+  if (hitCount >= 2) telemetry.beamMultiHitPulses += 1;
+};
 export const recordPostureBroken = (): void => { telemetry.postureBroken += 1; };
 export const recordStonesAttached = (count: number): void => { telemetry.stonesAttached += count; };
 export const recordStoneDetonation = (): void => { telemetry.stoneDetonations += 1; };
@@ -163,6 +168,7 @@ export const snapshotBotTelemetry = (): BotTelemetry => ({
   projectilesSpawned: telemetry.projectilesSpawned,
   explosions: telemetry.explosions,
   beamPulses: telemetry.beamPulses,
+  beamMultiHitPulses: telemetry.beamMultiHitPulses,
   postureBroken: telemetry.postureBroken,
   stonesAttached: telemetry.stonesAttached,
   stoneDetonations: telemetry.stoneDetonations,
