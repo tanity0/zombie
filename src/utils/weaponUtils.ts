@@ -1,7 +1,8 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
 import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
 import { projectileHitCritChance } from './critPenalty';
-import { classifyProjectileDamageChannel } from './botTelemetry';
+import { classifyProjectileDamageChannel, recordMeleeFromGun } from './botTelemetry';
+import { DEV_WEAPON_KEY } from './devTestKnobs';
 import { playEnemyDeath, playSfx } from '../audio/audioManager';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { aimEnemyDist2, pickNearestTarget, isCorpse } from './enemyUtils';
@@ -731,7 +732,12 @@ export const getStartingWeapons = (characterClass: CharacterClass): Weapon[] => 
   const profile = PLAYER_PROFILES[characterClass] ?? PLAYER_PROFILES.warrior;
   // UNIQUE_WEAPONS.md §4-1(生成点): 出撃銃は装備設定のスロット選択に従う(§2④「拾った銃」と同じ
   // 「設定に従う」規則)。Tierの初期値そのものは変えない(社長指定「出撃時は今まで通りTier1から」)。
-  return [createWeapon(resolveSlotKeyNow(profile.gunKey)), createWeapon(profile.meleeKey)];
+  // research/WEAPON_AI_TEST.md S1-b(道具作り専用): `?weapon=<key>` が指定されている時だけ、
+  // 装備設定/入手状況を無視してそのキーの武器そのものを持たせる(grantWeaponは「カテゴリごと1挺・
+  // Tierが同じ以下なら弾薬に化ける」規則を持つため、T1ユニーク6挺はそちらでは付与できない=生成点
+  // であるここで差し替えるのが唯一素直な口)。ツマミが無ければ従来どおり(1バイトも変わらない)。
+  const gunKey = DEV_WEAPON_KEY ?? resolveSlotKeyNow(profile.gunKey);
+  return [createWeapon(gunKey), createWeapon(profile.meleeKey)];
 };
 
 // 専用スプライト(public/sprites/weapons/<key>.png)を持つ銃の武器key。素材受領のたびに追加。
@@ -1037,8 +1043,17 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
   // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG): 直近の命中から2.5秒以上経っていれば初期散り角へ
   // 戻す(命中による狭まりはuseGameLoop.ts側=着弾時にfocusSpreadRad/focusSpreadLastHitAtを更新)。
   const isFocusGun = weapon.key === FOCUS_WEAPON_KEY;
+  // ★★2026-09-07(社長報告「収束型ショットガンが収束してない」)の原因はここ。**時計の混在**だった。
+  // 命中側(useGameLoop)は `focusSpreadLastHitAt` に **gameTime**(0から始まるシムの経過ms)を書くのに、
+  // ここは `now = Date.now()`(≈1.7e12)で引いていた。⇒ 差が常に1.7e12msになり、
+  // **リセット窓(2.5秒→5秒)を毎回超える=散り角が毎射初期値へ戻る**。
+  // **一度も収束していなかった。**リセットを5秒へ緩めても効かなかったのはこのため。
+  // ⇒ **gameTime で揃える**(リセット窓はゲーム内の時間なので、ポーズ/ヒットストップ中に
+  // 進まないgameTimeの方が意味としても正しい。fireWeaponは既にファイアシューターでgameTimeを読んでいる)。
+  // ★ユニットテストは1つの時計で書かれていたので素通りした=**テストが通ることは、2つの時計が
+  // 揃っている証明にならない**(この案件で3件目の「時計の混在」)。
   const focusSpreadRad = isFocusGun
-    ? resolveFocusSpreadRad(weapon.focusSpreadRad, weapon.focusSpreadLastHitAt, now)
+    ? resolveFocusSpreadRad(weapon.focusSpreadRad, weapon.focusSpreadLastHitAt, useGameStore.getState().gameTime)
     : undefined;
   const shotWeapon: Weapon = nextDualRangeMode
     ? { ...weapon, ...DUAL_RANGE_STATS[nextDualRangeMode] }
@@ -1089,6 +1104,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
       useGameStore.getState().spawnMeleeBlood(mtcx, mtcy, meleeTarget.width);
       playSfx('slash-damage');
       useGameStore.getState().knockbackEnemy(meleeTarget.id, meleeDirX, meleeDirY, GUNBLADE_MELEE_KNOCKBACK_MULT);
+      recordMeleeFromGun(); // research/WEAPON_AI_TEST.md S2-a: ガンブレードの至近モード成立回数(計測のみ)。
       if (killed) {
         playEnemyDeath();
         useGameStore.getState().dropEnemyXp(meleeTarget, mtcx, mtcy, `pickup-xp-gunblade-${now}`);

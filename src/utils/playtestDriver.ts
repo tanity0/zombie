@@ -28,6 +28,7 @@ import {
 // SKILL_BUILD_REDESIGN.md §13-2(B0発注文): ボットの商人購買ポリシー(乱数なし・決定的な純関数)。
 import { decideBotShopPurchase } from './botShopPolicy';
 import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY, isDirectGunWeaponKey, isManualOnlyGunKey, manualOnlyFallbackWeapon } from './weaponUtils';
+import { DEV_WEAPON_KEY } from './devTestKnobs';
 import { pickAmmoDropType } from './ammoDrop';
 import { ammoDirectorRate } from './ammoDirector';
 import { shouldSpawnAirdrop } from './ammoAirdrop';
@@ -388,7 +389,9 @@ const autoFireGun = (): void => {
   // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): ボットは至近モード域では「撃たないだけ」
   // (実装者の裁量・最終報告に記載。守護霊/幻影と揃える)。fireWeapon自身がallowMelee:falseの時だけ
   // 至近域を空撃ちにする(=通常射程内なら従来どおり撃つ。ボットのDPS計測が近接ボーナスを拾わない)。
-  const newProjectiles = fireWeapon(fireGun, postReloadPlayer, enemies, { allowMelee: false });
+  // research/WEAPON_AI_TEST.md S1-c: `?weapon=` ツマミが立っている時だけ既定(true)へ戻す
+  // (対象武器の挙動を確かめるための例外。ツマミが無ければ従来どおりfalse=1ビットも変えない)。
+  const newProjectiles = fireWeapon(fireGun, postReloadPlayer, enemies, { allowMelee: DEV_WEAPON_KEY !== null });
   newProjectiles.forEach(p => useGameStore.getState().addProjectile(p));
 };
 

@@ -51,6 +51,19 @@ export interface BotTelemetry {
   meleeSwings: number;
   meleeHits: number;
   critStats: BotCritStats;
+  // research/WEAPON_AI_TEST.md S2-a(全武器AI実機テスト・道具作り専用): 「起きた回数」だけを数える
+  // 武器観測カウンタ。挙動・数値は一切不変(計測のみ)。
+  projectilesSpawned: number; // addProjectile合流点。敵弾(hostile:true)は除く(=プレイヤー側の発射/投射)。
+  explosions: number;         // グレネード/ロケットランチャー系の着弾爆発(壁ヒット含む)。
+  beamPulses: number;         // 持続線分/扇の共通適用口(applyBeamPulse)=金環/氷槍床/アイレーザー/火炎放射器。
+  postureBroken: number;      // 体勢(紫)を割った回数(applyBossPostureDamageのtriggered=trueの回数)。
+  stonesAttached: number;     // 錬金砲: 破裂で石を付着させた敵の数。
+  stoneDetonations: number;   // 錬金砲: 起爆(detonateAlchemyStones)を実行した回数。
+  cratesDropped: number;      // 武器クレート(weapon-crate)がaddPickupされた回数。
+  currencyDropped: number;    // トレジャー(dropEnemyCurrency)が実際に落ちた回数。
+  reloads: number;            // リロード成立の合計(通常/クイックマガジン/オーバークロック覚醒の3経路)。
+  manualShots: number;        // 手動アクション(レールガン/シグナルランチャー)の発射成立回数。
+  meleeFromGun: number;       // ガンブレードの至近モードで近接ダメージが成立した回数。
 }
 
 const createCritBucket = (): BotCritBucket => ({ rngCrits: 0, guaranteedCrits: 0, hits: 0 });
@@ -67,6 +80,17 @@ const createTelemetry = (): BotTelemetry => ({
   meleeSwings: 0,
   meleeHits: 0,
   critStats: createCritStats(),
+  projectilesSpawned: 0,
+  explosions: 0,
+  beamPulses: 0,
+  postureBroken: 0,
+  stonesAttached: 0,
+  stoneDetonations: 0,
+  cratesDropped: 0,
+  currencyDropped: 0,
+  reloads: 0,
+  manualShots: 0,
+  meleeFromGun: 0,
 });
 
 let telemetry: BotTelemetry = createTelemetry();
@@ -109,6 +133,19 @@ export const recordCritHit = (kind: CritKind, isBoss: boolean): void => {
 
 export const getBotTelemetry = (): Readonly<BotTelemetry> => telemetry;
 
+// research/WEAPON_AI_TEST.md S2-a: 「起きた回数」だけを数えるカウンタ群。挙動は一切変えない。
+export const recordProjectileSpawned = (): void => { telemetry.projectilesSpawned += 1; };
+export const recordExplosion = (): void => { telemetry.explosions += 1; };
+export const recordBeamPulse = (): void => { telemetry.beamPulses += 1; };
+export const recordPostureBroken = (): void => { telemetry.postureBroken += 1; };
+export const recordStonesAttached = (count: number): void => { telemetry.stonesAttached += count; };
+export const recordStoneDetonation = (): void => { telemetry.stoneDetonations += 1; };
+export const recordCrateDropped = (): void => { telemetry.cratesDropped += 1; };
+export const recordCurrencyDropped = (): void => { telemetry.currencyDropped += 1; };
+export const recordReload = (): void => { telemetry.reloads += 1; };
+export const recordManualShot = (): void => { telemetry.manualShots += 1; };
+export const recordMeleeFromGun = (): void => { telemetry.meleeFromGun += 1; };
+
 // アンカー保存用ディープコピー(実装精度の規律3: 生きた参照を保存すると差分が常に0になる)。
 export const snapshotBotTelemetry = (): BotTelemetry => ({
   subUses: { ...telemetry.subUses },
@@ -118,6 +155,17 @@ export const snapshotBotTelemetry = (): BotTelemetry => ({
   meleeSwings: telemetry.meleeSwings,
   meleeHits: telemetry.meleeHits,
   critStats: copyCritStats(telemetry.critStats),
+  projectilesSpawned: telemetry.projectilesSpawned,
+  explosions: telemetry.explosions,
+  beamPulses: telemetry.beamPulses,
+  postureBroken: telemetry.postureBroken,
+  stonesAttached: telemetry.stonesAttached,
+  stoneDetonations: telemetry.stoneDetonations,
+  cratesDropped: telemetry.cratesDropped,
+  currencyDropped: telemetry.currencyDropped,
+  reloads: telemetry.reloads,
+  manualShots: telemetry.manualShots,
+  meleeFromGun: telemetry.meleeFromGun,
 });
 
 export const resetBotTelemetry = (): void => {

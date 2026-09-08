@@ -258,6 +258,7 @@ import {
 // UNIQUE_WEAPONS.md §16-2/§19-1(バッチC-1): 持続線分/扇の3挺(アイレーザー/氷槍/火炎放射器)。
 import {
   EYE_LASER_CHARGE_MS, EYE_LASER_FIRE_MS, EYE_LASER_PULSE_MS, EYE_LASER_HALFWIDTH,
+  stepEyeLaserAim,
 } from '../utils/eyeLaserGun';
 import {
   ICE_LANCE_FLOOR_HALFWIDTH, ICE_LANCE_FLOOR_PULSE_MS, iceLanceFloorPulseDamage,
@@ -416,7 +417,11 @@ import {
   getKillTotals, resetKillTelemetry, setPhaseKillDebug, resetPhaseKillDebug, getCurrentStyle, getLastKillAt,
   getPhaseKillDebug, snapshotKillTotals, snapshotSpawns
 } from '../utils/killTelemetryState';
-import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel, recordCritHit } from '../utils/botTelemetry';
+import {
+  recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel, recordCritHit,
+  recordExplosion, recordBeamPulse, recordStonesAttached,
+} from '../utils/botTelemetry';
+import { DEV_LOADOUT_ACTIVE } from '../utils/devTestKnobs';
 // SKILL_BUILD_REDESIGN.md §15(B0発注文): 計測台帳の最終記録(読むだけ)+ボット購買ポリシー(実機オートパイロット側)。
 import { recordRunFinal, getRunTelemetrySnapshot } from '../utils/runTelemetry';
 import { decideBotShopPurchase } from '../utils/botShopPolicy';
@@ -1349,6 +1354,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // GameHUD が `s.player.weapons` を shallow 購読しているため**照射中ずっと10回/秒 HUDが再描画**される。
   // この値を読むのはこのループだけなので、storeに置く必要が無い(発射開始で必ず初期化される)。
   const eyeLaserNextPulseRef = useRef(0);
+  // ★社長指示2026-09-07「敵が死んだら時間までは次の標的に少しゆっくり合わせにいく」。
+  // 振りの角度と角速度はここ(ref)で持つ=**player.weapons を毎tick書かない**
+  // (書くとGameHUDが照射中ずっと再描画される。検収2巡目A-4で潰した穴を作り直さない)。
+  const eyeLaserAimRef = useRef<{ angle: number; vel: number; sweeping: boolean }>({ angle: 0, vel: 0, sweeping: false });
   const goldRingReadyRef = useRef(true); // 金環: CD明け検出(同上・ブーメラン型の一瞬通知・UNIQUE_WEAPONS.md §19-3)
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
   const rescueShootFxRef = useRef(0); // 救助NPC射撃SEの既再生タイムスタンプ
@@ -1848,6 +1857,37 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 既定(パラメータ無し)では exposeKomaLog が即returnするので通常プレイに影響しない。
   useEffect(() => { exposeKomaLog(); }, []);
 
+  // research/WEAPON_AI_TEST.md S2-b: `?weapon=`/`?sub=` の開発ツマミが立っている時だけ、
+  // ランナーが毎秒読める「今のスナップショット」窓を1つ生やす(__BOT_REPORT__=ラン終了1回きりの
+  // 集計とは別に、位置・大小・時刻が要る観測用。新しい窓口を増やさない=これ1つに相乗り)。
+  // ツマミが無ければ何も定義しない=本番ビルドで常時露出しない。
+  useEffect(() => {
+    if (!DEV_LOADOUT_ACTIVE) return;
+    (window as unknown as Record<string, unknown>).__BOT_SAMPLE__ = () => {
+      const s = useGameStore.getState();
+      return {
+        t: Math.round(s.gameTime),
+        weapons: s.player.weapons.map(w => ({
+          key: w.key, tier: w.tier, isMelee: w.isMelee, magazine: w.magazine,
+          cycleMode: w.cycleMode, dualRangeMode: w.dualRangeMode, gunbladeMeleeMode: w.gunbladeMeleeMode,
+          spreadRadOverride: w.spreadRadOverride, focusSpreadRad: w.focusSpreadRad,
+        })),
+        projectiles: s.projectiles.map(p => ({
+          id: p.id, x: Math.round(p.x), y: Math.round(p.y),
+          weaponKey: p.weaponKey, weaponType: p.weaponType, hostile: p.hostile,
+        })),
+        enemies: s.enemies.map(e => ({
+          id: e.id, type: e.type, alchemyStoneStage: e.alchemyStoneStage, bossPosture: e.bossPosture,
+        })),
+        goldRings: s.goldRings,
+        iceLanceFloors: s.iceLanceFloors,
+        signalStrikes: s.signalStrikes,
+        eyeLaserBeam: s.eyeLaserBeam,
+        flamerCone: s.flamerCone,
+      };
+    };
+  }, []);
+
   useEffect(() => {
     benchmarkModeRef.current = Boolean(options.benchmarkMode);
   }, [options.benchmarkMode]);
@@ -1903,6 +1943,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // PACING_PUZZLE.md §7-11c(4): クリ計測口(開発用。RNGクリ/確定クリ/総ヒット数を対ボス・対雑魚
       // 内訳付きで出す。挙動は一切変えない=数えるだけ)。elapsedSecはクリ/秒の算出用。
       critStats: { ...botTele.critStats, elapsedSec: Math.round(s.gameTime / 1000) },
+      // research/WEAPON_AI_TEST.md S2-a(全武器AI実機テスト・道具作り専用): 「起きた回数」だけの
+      // 武器観測カウンタ。既存の__BOT_REPORT__へ相乗り(新規の窓口を増やさない)。
+      weaponCounters: {
+        projectilesSpawned: botTele.projectilesSpawned,
+        explosions: botTele.explosions,
+        beamPulses: botTele.beamPulses,
+        postureBroken: botTele.postureBroken,
+        stonesAttached: botTele.stonesAttached,
+        stoneDetonations: botTele.stoneDetonations,
+        cratesDropped: botTele.cratesDropped,
+        currencyDropped: botTele.currencyDropped,
+        reloads: botTele.reloads,
+        manualShots: botTele.manualShots,
+        meleeFromGun: botTele.meleeFromGun,
+      },
       // SKILL_BUILD_REDESIGN.md §15-1(B0発注文): B0計測器の10出力(§12-2#6+§13-4)を丸ごと同梱。
       runTelemetry: getRunTelemetrySnapshot(),
     };
@@ -12035,6 +12090,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           burstColor: string, xpIdPrefix: string,
         ): void => {
           if (hits.length === 0) return;
+          recordBeamPulse(); // research/WEAPON_AI_TEST.md S2-a: 金環/氷槍床/アイレーザー/火炎放射器の共通パルス口。
           const bpState = useGameStore.getState();
           // G2.6: 倍率評価の主語=オーナー(守護霊は計測時ビルドの疑似Player・sensor-mineと同じ形)。
           const hitActor = ownerGhostId !== undefined ? (combatActorPlayer(ownerGhostId) ?? bpState.player) : bpState.player;
@@ -12156,6 +12212,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const rWalls = aoeWalls(rcx, rcy);
             if (rWalls.some(w => rectsOverlap(rRect, w))) {
               const rkPlayer = rkState.player;
+              recordExplosion(); // research/WEAPON_AI_TEST.md S2-a: ロケットの壁ヒット爆発。
               playSfx('bomb');
               const exMult = skillExplosionMult(rkPlayer);
               const exRadius = GRENADE_BLAST_RADIUS * ROCKET_BLAST_RADIUS_MULT * exMult * heavyGunnerExplosionMult(rkPlayer, gameTime);
@@ -12417,6 +12474,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                         },
                       });
                       eyeLaserNextPulseRef.current = gameTime; // ★A-4: パルス周期はrefで持つ(HUDを起こさない)
+                      // ★2026-09-07: 振りの起点をここで仕込む(次の標的へ振る時はこの角度から始まる)。
+                      eyeLaserAimRef.current = { angle: Math.atan2(dirY, dirX), vel: 0, sweeping: false };
                       useGameStore.getState().setEyeLaserBeam({ ax: elPcx, ay: elPcy, bx: end.x, by: end.y });
                       playSfx('rifle-fire');
                     }
@@ -12425,9 +12484,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const target = elGun.eyeLaserTargetId ? elState.enemies.find(e => e.id === elGun.eyeLaserTargetId) : undefined;
                   const targetGone = !target || isCorpse(target) || (isReaperFamily(target.type) && !isTerminalReaper(target));
                   const fireDone = gameTime >= (elGun.eyeLaserPhaseAt ?? gameTime) + EYE_LASER_FIRE_MS;
-                  if (targetGone || fireDone) {
-                    // ★対象死亡/照射終了: 再ターゲットしない・その場で終了・残り時間は失われる
-                    // (社長裁定2026-09-06)。そのまま標準リロードへ(既存武器と同じ経路)。
+                  // ★社長指示2026-09-07(#U15の裁定を差し替え):「敵が死んだら**時間までは**次の標的に
+                  // **少しゆっくり**合わせにいく」。⇒ 対象が消えても**照射は打ち切らない**。
+                  // 次の標的を取り直し、振りは等速ではなく加速→減速で合わせる(慣性MUST・eyeLaserGun.ts)。
+                  // **次の標的が居なければ、今の向きのまま残り時間を撃ち切る**(空へ撃ち続けるのは
+                  // 「時間までは」という指示のとおり=途中で消さない)。
+                  let elTarget = target;
+                  if (targetGone && !fireDone) {
+                    const elRangeR = gunEffectiveRangePx(elGun);
+                    const next = pickNearestTarget(elPcx, elPcy, elAimable, gameTime, elRangeR * elRangeR);
+                    if (next) {
+                      elTarget = next;
+                      eyeLaserAimRef.current.sweeping = true; // ここから「振り」に入る
+                      useGameStore.setState(st => ({
+                        player: {
+                          ...st.player,
+                          weapons: st.player.weapons.map(w => (w.id === elGun.id ? { ...w, eyeLaserTargetId: next.id } : w)),
+                        },
+                      }));
+                    }
+                  }
+                  if (fireDone) {
+                    // ★照射終了: そのまま標準リロードへ(既存武器と同じ経路)。
                     // ★A-5: eyeLaserEndedAt を残す(eyeLaserBeamは書き換えない=最後の射線を保持した
                     // まま、pixiSceneが統一型フェードで畳む)。
                     useGameStore.setState(st => ({
@@ -12442,11 +12520,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   } else {
                     // 追尾: 毎パルス終点を更新するだけ(落としやすい点5・stepLaserAimは使わない)。
                     // ★A-4是正: ここも固定長(elRange2)まで延ばしてから壁短縮する(発射開始と同じ形)。
-                    const tcx2 = target.x + target.width / 2, tcy2 = target.y + target.height / 2;
-                    const ddx2 = tcx2 - elPcx, ddy2 = tcy2 - elPcy;
-                    const dlen2 = Math.max(0.001, Math.hypot(ddx2, ddy2));
-                    const dirX2 = ddx2 / dlen2, dirY2 = ddy2 / dlen2;
+                    // ★2026-09-07: 標的が居る間は今までどおり**直接**狙う。標的を取り直した直後だけ
+                    // `sweeping` が立ち、**加速→減速で振って**合わせる(合ったら直接追尾へ戻る)。
                     const elRange2 = gunEffectiveRangePx(elGun);
+                    const prevAngle = eyeLaserAimRef.current.angle;
+                    let aimAngle: number;
+                    if (elTarget) {
+                      const tcx2 = elTarget.x + elTarget.width / 2, tcy2 = elTarget.y + elTarget.height / 2;
+                      const wantAngle = Math.atan2(tcy2 - elPcy, tcx2 - elPcx);
+                      if (eyeLaserAimRef.current.sweeping) {
+                        const stepped = stepEyeLaserAim(
+                          { angle: prevAngle, vel: eyeLaserAimRef.current.vel }, wantAngle, deltaTime,
+                        );
+                        eyeLaserAimRef.current = { angle: stepped.angle, vel: stepped.vel, sweeping: !stepped.settled };
+                        aimAngle = stepped.angle;
+                      } else {
+                        eyeLaserAimRef.current = { angle: wantAngle, vel: 0, sweeping: false };
+                        aimAngle = wantAngle;
+                      }
+                    } else {
+                      // 次の標的が居ない: 今の向きのまま残り時間を撃ち切る(角速度は0へ落とす)。
+                      eyeLaserAimRef.current = { angle: prevAngle, vel: 0, sweeping: false };
+                      aimAngle = prevAngle;
+                    }
+                    const dirX2 = Math.cos(aimAngle), dirY2 = Math.sin(aimAngle);
                     const rawEndX2 = elPcx + dirX2 * elRange2, rawEndY2 = elPcy + dirY2 * elRange2;
                     const elPad2 = elRange2 + 40;
                     const end2 = shortenSegmentAtWalls(elPcx, elPcy, rawEndX2, rawEndY2, beamWalls(elPcx, elPcy, elPad2));
@@ -13190,6 +13287,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ? { ...e, alchemyStoneStage: nextAlchemyStoneStage(e.alchemyStoneStage) }
                   : e)),
               }));
+              recordStonesAttached(acStonedIds.length); // research/WEAPON_AI_TEST.md S2-a: 石を付着させた敵の数。
             }
           } else if (
             isGrenadeGunKey(projectile?.weaponKey) && // v0.25.3290: rifle-t3+武器庫限定glauncher 3種(§16-3でcategory判定に拡張)
@@ -13197,6 +13295,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             !grenadeExplodedThisFrame.has(projectileId)
           ) {
             grenadeExplodedThisFrame.add(projectileId);
+            recordExplosion(); // research/WEAPON_AI_TEST.md S2-a: グレネード/ロケットの着弾爆発。
             playSfx('bomb'); // グレネードランチャー着弾爆発音(手榴弾と統一)。
             // スキル: エクスプローダー = 爆発の半径/ダメージ ×1.2。
             // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲 ×1.1。

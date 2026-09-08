@@ -63,7 +63,10 @@ import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/b
 import {
   recordSubUse, recordOverclockProc, resetBotTelemetry,
   recordDamageDealt, recordFinisherKill, recordMeleeSwing, recordCritHit,
+  recordProjectileSpawned, recordPostureBroken, recordStoneDetonation,
+  recordCrateDropped, recordCurrencyDropped, recordReload, recordManualShot,
 } from '../utils/botTelemetry';
+import { DEV_WEAPON_KEY, DEV_SUB_KEY } from '../utils/devTestKnobs';
 import {
   resetPlayerTraits,
   // G4a(BOT_AND_GHOST.md §2.9・記録専用): 技への反応表の被弾タグ+サブ様式カウンタ。挙動は一切変えない。
@@ -4890,6 +4893,7 @@ export const overclockAwakenReloadPatch = (p: Player): Partial<Player> => {
   // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器はリザーブをInfinity扱いで渡す。
   const filled = refillWeaponMagazine(gun, p, weaponReloadReserve(gun, p));
   if (filled.moved <= 0) return {};
+  recordReload(); // research/WEAPON_AI_TEST.md S2-a: リロード成立3経路のうちオーバークロック覚醒分。
   // UNIQUE_WEAPONS.md §13-1(社長裁定2026-09-05「即時装填でもリセットする」): ハンドキャノンの
   // 連続命中減衰は**「装填が発生したらリセット」**で統一する(部分装填=リザーブが足りず満タンに
   // ならない場合も含む。tickReload の従来挙動と同じ条件=3経路で揃えてある)。
@@ -7731,7 +7735,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // GAME_AUDIT #17(社長承認): プレイヤーが直接出したクリはすべて裏ボスの完全気絶カウントに
       // 乗せる(銃と同じbumpBossCrit=挙動統一)。裏ボス以外はnullで素通り。
       const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime);
-      if (bossBump?.triggered) bossFullStunHits.push({ x: ecx, y: ecy });
+      if (bossBump?.triggered) { bossFullStunHits.push({ x: ecx, y: ecy }); recordPostureBroken(); }
       // §6.33(LASER-TRACK): レーザー弱点窓の中断。'melee'体幹パッチを合成してから判定(二重取り防止)。
       const laserBreak = mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime);
       if (laserBreak) mimirLaserBreakHits.push({ x: ecx, y: ecy });
@@ -8941,7 +8945,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (critStun) critStunAt.push({ x: ecx, y: ecy });
       // GAME_AUDIT #17(社長承認): 刀のクリも銃と同じく裏ボスの完全気絶カウントに乗せる。
       const bossBump = !isGhost ? applyBossPostureDamage(enemy, allowFinisher ? 'heavy' : 'melee', gameTime) : null;
-      if (bossBump?.triggered) katanaBossFullStunHits.push({ x: ecx, y: ecy });
+      if (bossBump?.triggered) { katanaBossFullStunHits.push({ x: ecx, y: ecy }); recordPostureBroken(); }
       // §6.33(LASER-TRACK): レーザー弱点窓の中断(プレイヤーの刀のみ=分身/守護霊は対象外)。
       const laserBreak = !isGhost ? mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime) : null;
       if (laserBreak) mimirLaserBreakHits.push({ x: ecx, y: ecy });
@@ -9245,7 +9249,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §9.4(v0.25.2502・CRIT-UNIFY★未決2の解消): 鞭のクリも紫カウントへ(発生枠=近接系共通。
       // ナイフ4737/刀5479/分身5076と同じ作法=GAME_AUDIT #17「プレイヤーが直接出したクリは全部乗せる」)。
       const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime);
-      if (bossBump?.triggered) whipBossFullStunHits.push({ x: ecx, y: ecy });
+      if (bossBump?.triggered) { whipBossFullStunHits.push({ x: ecx, y: ecy }); recordPostureBroken(); }
       // §6.33(LASER-TRACK): レーザー弱点窓の中断(鞭もプレイヤーの近接=対象)。
       const laserBreak = mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime);
       if (laserBreak) mimirLaserBreakHits.push({ x: ecx, y: ecy });
@@ -10673,6 +10677,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         headshotEligible: true,
       });
     }
+    recordManualShot(); // research/WEAPON_AI_TEST.md S2-a: 手動アクションの発射成立(レールガン分)。
     void import('../audio/audioManager').then(m => m.playSfx('rifle-fire'));
     const nextMag = Math.max(0, (weapon.magazine ?? 0) - 1);
     set(state => ({ player: { ...state.player, weapons: state.player.weapons.map(w => w.id === weapon.id ? { ...w, lastFired: now, magazine: nextMag } : w) } }));
@@ -10703,6 +10708,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       * skillLastMagazineMult(player, weapon.magazine ?? 0);
     get().spawnRing(strikeX, strikeY, 10, SIGNAL_STRIKE_RADIUS_PX, 'rgba(251,191,36,0.55)', 3, SIGNAL_STRIKE_DELAY_MS);
     get().spawnGlow(strikeX, strikeY, 30, 'rgba(251,191,36,', SIGNAL_STRIKE_DELAY_MS);
+    recordManualShot(); // research/WEAPON_AI_TEST.md S2-a: 手動アクションの発射成立(シグナルランチャー分)。
     void import('../audio/audioManager').then(m => m.playSfx('grenade-launcher-fire'));
     set(state => ({
       signalStrikes: [
@@ -10728,6 +10734,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!weapon || weapon.key !== ALCHEMY_WEAPON_KEY) return;
     const stoned = get().enemies.filter(e => (e.alchemyStoneStage ?? 0) > 0);
     if (stoned.length === 0) return;
+    recordStoneDetonation(); // research/WEAPON_AI_TEST.md S2-a: 起爆(トリガー1回)の成立回数。
     for (const stone of stoned) {
       const center = get().enemies.find(e => e.id === stone.id);
       if (!center) continue; // 先の起爆(同ループ内)で既に倒れて消えている場合がある
@@ -11668,7 +11675,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? applyBossPostureDamage(enemy, resolvedImpact, state.gameTime,
             postureImpactMult * (critUpAwaken && baseImpact ? CRIT_UP_AWAKEN_POSTURE_MULT : 1))
         : null;
-      if (critBump?.triggered) bossFullStunAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
+      if (critBump?.triggered) {
+        bossFullStunAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
+        recordPostureBroken(); // research/WEAPON_AI_TEST.md S2-a: 体勢崩し(計測のみ)。
+      }
       // CRIT-UNIFY §9.2(中央適用): クリがボスに入った時の移動半減(bossSlowUntil)をここで一括適用する。
       // 呼び出し元(銃弾/per-bossカウンター/ゴーストカウンター等)はcrit=trueを渡すだけでよく、個別に
       // bossCritSlowPatchを呼ばなくてよい(旧: 銃はここが抜けてstunEnemyで5秒完全停止させていた=バグ)。
@@ -15655,6 +15665,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // Projectile actions
   addProjectile: (projectile) => {
+    // research/WEAPON_AI_TEST.md S2-a: 全projectile生成の合流点。敵弾(hostile:true=プレイヤーを
+    // 狙う側)は除いて数える(=プレイヤー/守護霊/護衛/サブウェポン側の発射・投射のみ。計測のみで
+    // 挙動は変えない)。
+    if (!projectile.hostile) recordProjectileSpawned();
     set(state => ({
       // 発射点(originX/originY)は**ここで焼く**(GHOST_BOSS.md v9)。生成箇所は weaponUtils・
       // gameStore など散在していて静的に漏れを検出できないので、storeへの合流点で必ず補完する。
@@ -16048,6 +16062,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   // Pickup actions
   addPickup: (pickup) => {
+    // research/WEAPON_AI_TEST.md S2-a: 武器クレートの合流点。金箱抽選(下)より前の「そもそも武器箱が
+    // 落ちた」回数を数える(計測のみ・抽選の結果には触れない)。
+    if (pickup.type === 'weapon-crate') recordCrateDropped();
     set(state => {
       // ★社長裁定v0.25.3644「いまの金箱の層は削除。この当たり箱を新金箱として統一。5%で箱が金箱として
       // 登場。小ボスは確定ドロップ」: 旧「秘密兵器箱」(見た目は普通の武器箱・開けて初めて判明)を廃し、
@@ -16138,6 +16155,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         variant: treasureVariantForValue(value),
         worldDrop: true
       });
+      recordCurrencyDropped(); // research/WEAPON_AI_TEST.md S2-a: 実際に落ちた回数(抽選ハズレは数えない)。
     }
   },
   
@@ -16425,6 +16443,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (movedAmount > 0) {
           const p = get().player;
           get().spawnAmmoNumber(p.x + p.width / 2, p.y - 6, movedAmount);
+          recordReload(); // research/WEAPON_AI_TEST.md S2-a: リロード成立3経路のうちクイックマガジン分。
         }
         break;
       }
@@ -16714,6 +16733,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ここは冪等な安全網(resolveSlotKeyは冪等なので二重適用しても無害)——新しい入手経路を後から
     // 足した人が解決を忘れることへの保険。
     const weapon = createWeapon(resolveSlotKeyNow(key));
+    // research/WEAPON_AI_TEST.md S1-c: `?weapon=` ツマミが立っている時は銃の拾い上げを無効化する
+    // (所持銃を対象1挺だけに保つ=autoSwitchIfDryが別カテゴリの銃へ逃げないようにするための唯一の
+    // 直し方。近接の拾い上げは対象外=従来どおり)。ツマミが無ければ従来どおり(1バイトも変わらない)。
+    if (DEV_WEAPON_KEY && !weapon.isMelee) return;
     let duplicateAmmo: { amount: number } | null = null;
     set(state => {
       const player = state.player;
@@ -16886,6 +16909,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // UNIQUE_WEAPONS.md §13-1: ハンドキャノンの連続命中減衰は「リロード完了で全リセット」。
     // set()の外側で副作用(resetHandcannonDecay)を呼ぶため、候補だけここで拾う(他の同種フラグと同じ流儀)。
     let handcannonReloaded = false;
+    let reloadMoved = 0; // research/WEAPON_AI_TEST.md S2-a: リロード成立3経路のうち通常分。
     set(state => {
       const p = state.player;
       if (!p.reloadingWeaponId || Date.now() < p.reloadEndsAt) return {};
@@ -16900,6 +16924,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器はリザーブをInfinity扱いで渡す。
       const reload = finishWeaponReload(w, p, weaponReloadReserve(w, p));
       if (!reload) return {};
+      reloadMoved = reload.moved;
       if (w.key === HANDCANNON_WEAPON_KEY) handcannonReloaded = true;
       // UNIQUE_WEAPONS.md §17-7(切替式SG): 「装填が発生した時」に反転する3経路の1つ
       // (通常のリロード完了=最も一般的な経路)。
@@ -16920,6 +16945,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     });
     if (handcannonReloaded) resetHandcannonDecay();
+    if (reloadMoved > 0) recordReload();
   },
 
   // Keep the active gun shootable. Called each frame before firing:
@@ -18655,7 +18681,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     let startingWeapons = getStartingWeapons(validClass);
     // 屋内(研究施設)は初期銃を専用の「ＰＨＩＬＬ-銃」に固定(近接はクラスのプロフィール据え置き)。
-    if (state.pendingIndoor && !state.danceTestMode) {
+    // research/WEAPON_AI_TEST.md S1-b: `?weapon=` ツマミが立っている時はこの上書きをしない
+    // (対象武器を確実に持たせるのが目的の道具なので、屋内ステージでも常に勝つ)。
+    if (state.pendingIndoor && !state.danceTestMode && !DEV_WEAPON_KEY) {
       const melee = startingWeapons.find(w => w.isMelee);
       startingWeapons = [createWeapon('phill-revolver'), ...(melee ? [melee] : [])];
     }
@@ -18729,7 +18757,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // チュートリアル: 銃と近接以外は強制的に無し(社長指示v0.25.1825)=サブウェポン0
         // (クラス固有サブ・装備サブとも)。レベルアップ候補/商人陳列も所持サブ基準なので自動で絞られる。
         : state.pendingFarBackdrop === 'tutorial' ? []
-        : Array.from(new Set<SubWeaponKey>([innateSub, ...loDedup]));
+        // research/WEAPON_AI_TEST.md S1-b: `?sub=<key>` ツマミが立っている時は購入済み判定
+        // (loPurchased/purchasedSubLevels)を経由せずそのまま所持サブへ足す(=grantWeaponのT1ユニーク
+        // 6挺と同じ「購入経路を経ていないと持てない」罠の、サブウェポン版の回避)。ツマミが無ければ
+        // DEV_SUB_KEYはnullなのでArray.from(new Set([...,undefined以外]))は従来と1バイトも変わらない。
+        : Array.from(new Set<SubWeaponKey>([innateSub, ...loDedup, ...(DEV_SUB_KEY ? [DEV_SUB_KEY] : [])]));
       // 装備スキル(出撃時に player.skills へ反映)。
       // SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止・確定=MAX_CARRY_SKILLS=0): 通常出撃は
       // ラン内ドラフトのみでruntime skillsを組む=開始0件。同行者(companionSkill/selectedCompanionSkill)
