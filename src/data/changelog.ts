@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4189',
+    items: ['クロスボウに専用の射撃音が付きました(これまではハンドガンの発砲音を流用していました)。守護霊や幻影がクロスボウを撃つ時も同じ音になります。'],
+  },
+  {
     version: '0.25.4188',
     items: ['収束型ショットガンの集弾が戻るまでの時間を、2.5秒から5秒に延ばしました。リロードを挟んでも集弾が維持されやすくなります。'],
   },

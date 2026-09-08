@@ -86,6 +86,7 @@ export type SfxKey =
   | 'handgun-fire'
   | 'npc-gunfire'
   | 'smg-fire'
+  | 'crossbow-fire'
   | 'shotgun-fire'
   | 'rifle-fire'
   | 'grenade-launcher-fire'
@@ -301,6 +302,13 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/smg-fire.wav`, // 社長提供。サブマシンガン(マシンピストル=handgun-t3)の発射音
     volume: 0.70, // ハンドガン以外をもう少し上げる(0.58→0.70)
     minIntervalMs: 20, // 連射(CD100ms)に追従できるよう短め
+  },
+  // 社長提供2026-09-07: クロスボウ(handgun-t1-crossbow)の発射音。火薬の銃ではないので
+  // handgun-fire を流用せず専用にする(「同じ銃なのに音が違う」の逆で、**違う武器を同じ音にしない**)。
+  'crossbow-fire': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/crossbow-fire.mp3`,
+    volume: 0.70, // ハンドガン以外の基準に合わせる(smg-fireと同値)。実機を聴いて調整する
+    minIntervalMs: 24, // 発射間隔300msなので余裕はあるが、handgun-fireと同じ下限を置く
   },
   // 進軍NPC(護衛)の発砲音=ハンドガン音の流用。基準音量は控えめ(プレイヤーより一段低い)。再生時に
   // 「NPC↔プレイヤー距離」で減衰させ、画面外は鳴らさない(呼び出し側で gainMult を渡す)。

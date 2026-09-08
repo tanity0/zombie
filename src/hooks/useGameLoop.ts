@@ -469,7 +469,7 @@ import {
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
-import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
+import { gunFireSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
 import { ROCKET_BLAST_RADIUS_MULT, ROCKET_LAUNCH_EASE_MS, rocketLaunchSpeedMult } from '../utils/rocketLauncher';
 import { ALCHEMY_BURST_RADIUS_PX, nextAlchemyStoneStage } from '../utils/alchemyStone';
@@ -534,7 +534,7 @@ const FIRE_JET_DEDUP_MS = 180;
 // v0.25.3291: 旧'rifle-t3'(グレネードランチャー)は対物ライフル=非爆発へ入れ替え。タレット10%弾/
 // 朱雀/爆撃が流用する「着弾爆発する弾」の名義はglauncher-t1(武器庫限定グレネードガン)へ移す。
 const GRENADE_WEAPON_KEY = 'glauncher-t1';
-const SMG_WEAPON_KEY = 'handgun-t3'; // マシンピストル(=サブマシンガン)。発射音を通常ハンドガンと分けるのに使用。
+// (発射音の写像は weaponUtils.gunFireSfxKey へ集約した=2026-09-07。ここの定数は不要になった)
 const PHILL_WEAPON_KEY = 'phill-revolver'; // 研究所リボルバー。守護霊のヘッドショット率再現(§2.11 裁定4)で参照。
 const GRENADE_BLAST_RADIUS = 92;
 const GRENADE_BLAST_DAMAGE_MULT = 0.62;
@@ -957,12 +957,7 @@ const PHANTOM_SFX: PhantomSfx = {
   swing: () => playSfx('melee'),
   // 銃種SEはプレイヤーの自動発砲(下の activeGun 分岐)と完全に同じ写像にする:
   // handgun でも SMG(handgun-t3=台帳の銃)は 'smg-fire'(同じ銃なのに音が違う、を禁止)。
-  shot: (category: string, key: string) => playSfx(
-    category === 'shotgun' ? 'shotgun-fire'
-      : category === 'rifle' ? 'rifle-fire'
-        : category === 'glauncher' ? 'grenade-launcher-fire'
-          : key === SMG_WEAPON_KEY ? 'smg-fire' : 'handgun-fire',
-  ),
+  shot: (category: string, key: string) => playSfx(gunFireSfxKey(category, key)),
   parry: () => playSfx('counter'),
   hurt: () => playSfx('player-damage'),
 };
@@ -8331,12 +8326,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (activeGun && !katanaActive && !skaterLocked && !attackLocked && !seekerLocked && !pvpLocked && activeGun.category !== 'phill' && !isNonProjectileGun && !isManualOnlyGun) {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
-            // handgun系のうちマシンピストル(=サブマシンガン, handgun-t3)だけ専用音、それ以外(ハンドガン/二丁)はhandgun-fire。
-            if (activeGun.category === 'handgun') playSfx(activeGun.key === SMG_WEAPON_KEY ? 'smg-fire' : 'handgun-fire');
-            if (activeGun.category === 'shotgun') playSfx('shotgun-fire');
-            // rifle系はrifle-fire(旧rifle-t3特例はv0.25.3291で廃止)。グレネードガン(glauncher)は専用の発射音。
-            if (activeGun.category === 'rifle') playSfx('rifle-fire');
-            if (activeGun.category === 'glauncher') playSfx('grenade-launcher-fire');
+            // 銃種別の発射音。★写像は weaponUtils の gunFireSfxKey が唯一の出どころ
+            // (プレイヤー/守護霊/幻影の3箇所に同じ式を写していたのを2026-09-07に1本化した)。
+            playSfx(gunFireSfxKey(activeGun.category, activeGun.key));
             // Muzzle flash at the gun, pointed along the shot.
             if (MUZZLE_FLASH_ENABLED) {
               const md = newProjectiles[0].direction;
@@ -10839,13 +10831,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // ゴースト位置で距離減衰。種別分岐はプレイヤー自動発砲(SMG/グレネードランチャー特例含む)と同一。
                 const gGain = npcSfxDistGain(gcx, gcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
                 if (gGain > 0) {
-                  playSfx(
-                    gun.category === 'shotgun' ? 'shotgun-fire'
-                      : gun.category === 'rifle' ? 'rifle-fire'
-                        : gun.category === 'glauncher' ? 'grenade-launcher-fire'
-                          : (gun.key === SMG_WEAPON_KEY ? 'smg-fire' : 'handgun-fire'),
-                    gGain,
-                  );
+                  playSfx(gunFireSfxKey(gun.category, gun.key), gGain);
                 }
               } else if (decision.action === 'melee' && boundBoss && ghostKatana) {
                 // 刀モードの近接=**一閃(triggerKatanaDash)**。距離154px/180ms/×3/着地硬直200ms/

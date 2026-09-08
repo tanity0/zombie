@@ -281,6 +281,24 @@ export const PILEDRIVER_WEAPON_KEY = 'handgun-t3-piledriver';
 export const DUALRANGE_WEAPON_KEY = 'handgun-t2-dualrange';
 // UNIQUE_WEAPONS.md §16-2(バッチB): 状態を持つ4挺のキー定数。
 export const FOCUS_WEAPON_KEY = 'shotgun-t1-focus';
+
+// ★銃の発射音の写像は**1本にする**(2026-09-07)。以前はプレイヤー(useGameLoop:8335)・守護霊(:10846)・
+// 幻影(:964)の**3箇所に同じ式が写されていて**、武器ごとの例外を足すたびに取りこぼす形だった
+// (CLAUDE.md「写すな、共通化しろ」/「同じ動作を持つ全員に付ける」)。
+// 例外は2つ: **マシンピストル(handgun-t3)= smg-fire** / **クロスボウ = crossbow-fire**
+// (火薬の銃ではないので handgun-fire を流用しない=社長提供素材2026-09-07)。
+const SMG_WEAPON_KEY_FOR_SFX = 'handgun-t3';
+export const CROSSBOW_WEAPON_KEY = 'handgun-t1-crossbow';
+export const gunFireSfxKey = (
+  category: string | undefined,
+  key: string | undefined,
+): 'shotgun-fire' | 'rifle-fire' | 'grenade-launcher-fire' | 'smg-fire' | 'crossbow-fire' | 'handgun-fire' =>
+  category === 'shotgun' ? 'shotgun-fire'
+    : category === 'rifle' ? 'rifle-fire'
+      : category === 'glauncher' ? 'grenade-launcher-fire'
+        : key === SMG_WEAPON_KEY_FOR_SFX ? 'smg-fire'
+          : key === CROSSBOW_WEAPON_KEY ? 'crossbow-fire'
+            : 'handgun-fire';
 export const CYCLE_WEAPON_KEY = 'shotgun-t1-cycle';
 export const HEAVY_SNIPER_WEAPON_KEY = 'rifle-t2-heavysniper';
 // デザートテックのキー自体はdesertTechAmmo.tsが正本(そちらでも使うため)。ここは再輸出のみ。
