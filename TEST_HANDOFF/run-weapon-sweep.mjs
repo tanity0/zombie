@@ -496,7 +496,11 @@ async function runWeaponInner(wpn) {
 
   const samples = [];
   let manualTick = 0;
-  const resetAtMs = wpn.resetCheck ? RUN_MS - 6000 : -1;
+  // ★C3のresetGameは botTelemetry も全カウンタ0にする(botTelemetry.ts「リセット」)。だから
+  // 「リセットしてから更にサンプルを取り続ける」と、最後のサンプル=空の集計になり、この武器の
+  // 全チェックが0で偽赤になる(実測: 錬金砲/シグナルが gameTime=0ms・全カウンタ0で返っていた)。
+  // ⇒ C3は走行の最後に1回だけ行い、resetSampleを取ったらそこで打ち切る。
+  const resetAtMs = wpn.resetCheck ? RUN_MS - 2000 : -1;
   let resetSample = null;
   while (Date.now() - t0 < RUN_MS) {
     await page.waitForTimeout(SAMPLE_MS);
@@ -512,6 +516,7 @@ async function runWeaponInner(wpn) {
       await page.evaluate(() => window.__BOT_RESET__?.()).catch(() => {});
       await page.waitForTimeout(500);
       resetSample = await page.evaluate(() => window.__BOT_SAMPLE__?.()).catch(() => null);
+      break; // ★リセット後のサンプルを集計に混ぜない(上のコメント)。
     }
   }
   await ctx0.close();
