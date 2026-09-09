@@ -31,7 +31,7 @@ const NoBounceScroller: React.FC<{ className?: string; style?: React.CSSProperti
       const t1 = window.setTimeout(check, 300);
       const t2 = window.setTimeout(check, 1200);
       const mo = new MutationObserver(check);
-      mo.observe(el, { childList: true, subtree: true });
+      mo.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
       return () => {
         el.removeEventListener('scroll', check);
         window.removeEventListener('resize', check);

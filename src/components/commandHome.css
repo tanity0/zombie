@@ -1,0 +1,113 @@
+/* 装備の共通テーマ。司令室は既存のDS配色を使う。 */
+.command-ui .loadout-tabs { margin:16px 0 0; }
+.command-shell .ds-loadout-body > .p-3 > div[hidden] { display:none; }
+.ds-home.command-shell { background: radial-gradient(ellipse at 80% 10%, #173137 0, #0a1418 35%, #060b0e 75%); }
+.command-home { height: 100%; display: flex; flex-direction: column; color: #e5eae5; }
+.command-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0 22px; flex-shrink: 0; border-bottom: 1px solid #344246; }
+.command-wordmark { font-size: 30px; font-weight: 300; letter-spacing: -.05em; }
+.command-wordmark strong { font-weight: 600; }
+.command-wordmark > span { display: inline-block; margin-left: 20px; padding-left: 20px; border-left: 1px solid #465252; font: 12px system-ui; letter-spacing: .14em; color: #a2b1af; }
+.command-header-right { display: flex; align-items: center; gap: 22px; }
+.command-money { font-size: 25px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.command-money small { color: #eabb72; font-size: 13px; }
+.command-header button { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid #35454a; color: #b9c5c4; }
+.command-content { min-height: 0; flex: 1; overflow: auto; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(290px, 1fr); gap: 28px; padding: 25px 0; scrollbar-width: thin; scrollbar-color: #536462 transparent; }
+.command-operation { min-height: 425px; position: relative; overflow: hidden; isolation: isolate; background: #15252d; border: 1px solid #3c5157; display: flex; flex-direction: column; justify-content: space-between; }
+.command-region-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
+.command-hero-shade { position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, #06121866, transparent 28%, #07101280 55%, #071012f5 100%); }
+.command-operation-top { padding: 22px 24px; display: flex; align-items: center; justify-content: space-between; color: #dee8e6; font-size: 11px; letter-spacing: .13em; }
+.command-operation-top > span:first-child { display: flex; align-items: center; gap: 9px; }
+.command-operation-copy { padding: 60px 28px 24px; margin-top: auto; }
+.command-eyebrow { color: #eac084; font: 12px system-ui; letter-spacing: .18em; }
+.command-operation h1 { margin: 12px 0 10px; font: 500 clamp(28px, 3.6vw, 46px)/1.3 system-ui; letter-spacing: .06em; overflow-wrap: anywhere; }
+.command-operation p { font: 12px/1.8 system-ui; color: #afc0bc; }
+.command-sortie { margin-top: 25px; display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 72px; padding: 15px 22px; text-align: left; color: #171b18; background: #e9bd79; border: 1px solid #ffe0a7; transition: background 180ms ease-out; }
+.command-sortie > span { font: 600 19px system-ui; letter-spacing: .12em; }
+.command-sortie small { display: block; margin-top: 4px; font: 11px system-ui; letter-spacing: .04em; opacity: .75; }
+.command-sortie:hover { background: #ffdaa0; }
+.command-hero-foot { padding: 13px 24px; display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #52676366; font-size: 10px; color: #acbdb8; letter-spacing: .07em; }
+.command-section-title > span { font-size: 10px; letter-spacing: .2em; color: #b79869; }
+.command-section-title h2 { font: 500 20px system-ui; margin: 7px 0 20px; letter-spacing: .1em; }
+.command-action-list { display: grid; gap: 10px; }
+.command-action { min-height: 96px; display: flex; align-items: center; gap: 15px; width: 100%; padding: 15px; text-align: left; background: #101b20; border: 1px solid #2d4045; transition: background 180ms ease-out, border-color 180ms ease-out; }
+.command-action:hover { border-color: #bca270; background: #1b2a2d; }
+.command-action-icon { display: grid; place-items: center; width: 42px; height: 48px; flex-shrink: 0; color: #d6b482; border-right: 1px solid #394749; padding-right: 12px; }
+.command-action-copy { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.command-action-copy small { font-size: 10px; letter-spacing: .18em; color: #94a9a7; }
+.command-action-copy strong { font: 500 16px system-ui; }
+.command-action-copy > span { font: 11px/1.5 system-ui; color: #9eadab; }
+.command-action-end { margin-left: auto; color: #acb7b0; display: flex; flex-direction: column; gap: 17px; }
+.command-action-end small { color: #697f7d; font-size: 11px; }
+.command-inventory { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334348; margin-top: 15px; padding: 12px 0; }
+.command-inventory > span { font: 12px system-ui; color: #a5b5b1; }
+.command-inventory strong { font-size: 26px; font-weight: 400; }
+.command-inventory small { font-size: 10px; color: #849c97; letter-spacing: .1em; }
+.command-records { grid-column: 1 / -1; }
+.command-records .command-section-title { display: flex; align-items: baseline; gap: 16px; }
+.command-records .command-section-title h2 { font-size: 16px; }
+.command-record-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.command-record-grid button { min-height: 84px; padding: 17px; display: flex; align-items: center; gap: 15px; border: 1px solid #34444a; text-align: left; color: #acbdb7; background: #0e181c; }
+.command-record-grid button > span { flex: 1; min-width: 0; }
+.command-record-grid strong { display: block; color: #e1e7df; font: 500 14px system-ui; }
+.command-record-grid small { display: block; margin-top: 7px; color: #9aafaa; font: 11px system-ui; }
+.command-record-grid em { font: 9px sans-serif; padding: 2px 5px; background: #e9bd79; color: #14201b; }
+.command-record-grid button:hover { background: #1b2a2d; border-color: #829c93; }
+.command-footer { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid #344246; font-size: 10px; color: #879e97; letter-spacing: .1em; }
+.command-footer a { min-height: 44px; display: inline-flex; align-items: center; color: #e9bd79; font: 12px system-ui; }
+.command-home button:focus-visible, .command-home a:focus-visible { outline: 2px solid #ffe0a7; outline-offset: -4px; }
+.command-home .command-sortie:focus-visible { outline-color: #17231f; }
+.command-shell .ds-loadout-header { padding: 8px 0 14px; gap: 18px; }
+.command-shell .ds-loadout-header h1 { font-size: 24px; }
+.command-shell .ds-loadout-body > .p-3 { padding: 20px 0; }
+.command-shell .ds-loadout-body > .p-3 > div { padding: 0; border: 0; background: transparent; }
+.command-shell .ds-loadout-body .uppercase { font-size: 16px; margin-bottom: 18px; letter-spacing: .1em; }
+.command-shell .ds-loadout-body .grid { gap: 14px; }
+.command-shell .ds-loadout-body .ff7r-fade-right { padding: 20px; min-height: 88px; background: #152328; border-color: #3b5055; }
+.command-shell .ds-loadout-body .ff7r-fade-right[aria-pressed="true"] { background: #302a20; border-color: #e9bd79; box-shadow: inset 4px 0 #e9bd79; }
+.command-shell .ds-loadout-body .truncate { font-size: 16px; }
+.command-shell .ds-loadout-body .leading-snug { font-size: 12px; }
+@media (max-width: 760px) {
+  .command-content { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 16px 0; }
+  .command-operation { min-height: 365px; }
+  .command-operation-copy { padding: 48px 20px 20px; }
+  .command-record-grid { grid-template-columns: minmax(0, 1fr); }
+  .command-wordmark > span { margin-left: 12px; padding-left: 12px; font-size: 10px; }
+  .command-header { padding-bottom: 12px; }
+  .command-records .command-section-title { display: block; }
+  .command-shell .ds-loadout-body > .p-3 > div { padding: 0; }
+}
+@media (max-width: 400px) {
+  .command-wordmark > span { display: none; }
+  .command-header-right { gap: 12px; }
+  .command-footer { letter-spacing: 0; }
+  .command-footer > span:last-child { display: none; }
+}
+@media (max-height: 500px) {
+  .command-header { padding: 0; }
+  .command-footer { padding-top: 0; }
+}
+
+.ds-foot-options { min-height:44px; padding:0 12px; border:1px solid currentColor; color:inherit; font:inherit; }
+.ds-foot-options:focus-visible { outline:2px solid #ffe0a7; outline-offset:3px; }
+.command-shell .weapon-slot-guide { color:#acbeb7; font:13px/1.7 system-ui; margin-bottom:12px; }
+.command-shell .weapon-category + .weapon-category { margin-top:28px; }
+.command-shell .weapon-category-title { font:500 20px/1.5 system-ui; color:#e9bd79; margin-bottom:12px; }
+.command-shell .weapon-tier { border-top:1px solid #34474c; padding:16px 0; }
+.command-shell .weapon-tier-title { display:flex; align-items:center; gap:14px; color:#e5eae5; font:500 15px/1.5 system-ui; margin-bottom:12px; }
+.command-shell .weapon-tier-title span { font-size:11px; color:#acbeb7; }
+.command-shell .ds-loadout-body .weapon-candidates { grid-template-columns:minmax(0,1fr); align-items:stretch; }
+.command-shell .weapon-candidates .ff7r-fade-right { display:grid; grid-template-columns:112px minmax(0,1fr) 64px; align-items:center; gap:18px; padding:14px 18px; min-height:100px; }
+.command-shell .weapon-art { display:flex; align-items:center; justify-content:center; height:72px; }
+.command-shell .weapon-art img { width:100%; height:100%; object-fit:contain; image-rendering:pixelated; }
+.command-shell .weapon-selection { display:flex; gap:4px; align-items:center; color:#e9bd79; font:11px system-ui; }
+.command-shell .weapon-category-tabs { display:flex; flex-wrap:wrap; gap:0; margin-bottom:12px; border-bottom:1px solid #526158; }
+.command-shell .weapon-category-tabs button { flex:1 1 100px; min-height:44px; padding:10px; border:0; border-bottom:2px solid transparent; font:13px system-ui; color:#acbeb7; }
+.command-shell .weapon-category-tabs button[aria-pressed='true'] { color:#ffe0a7; background:#2c291f; box-shadow:none; border-bottom-color:#e9bd79; }
+.command-shell .weapon-category-tabs button:focus-visible { outline:2px solid #ffe0a7; outline-offset:2px; }
+.command-shell .weapon-candidates .truncate { white-space:normal; overflow-wrap:anywhere; }
+.command-shell .weapon-candidates .leading-snug { line-height:1.7; color:#acbeb7; margin-top:8px; }
+@media(max-width:600px) {
+  .command-shell .weapon-candidates .ff7r-fade-right { grid-template-columns:80px minmax(0,1fr); gap:8px 12px; padding:12px; }
+  .command-shell .weapon-art { height:64px; grid-row:1 / 3; }
+  .command-shell .weapon-selection { grid-column:2; min-height:14px; }
+}

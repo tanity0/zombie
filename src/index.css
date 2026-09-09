@@ -772,10 +772,12 @@
   rotate: 45deg;
 }
 .ds-row:hover,
+.ds-row:focus-visible,
 .ds-row:active {
   background: rgba(255, 179, 64, 0.06);
 }
 .ds-row:hover::before,
+.ds-row:focus-visible::before,
 .ds-row:active::before {
   background: var(--ds-amber);
   border-color: var(--ds-amber);
@@ -823,12 +825,84 @@
   color: var(--ds-deco);
 }
 .ds-foot .ds-foot-gear {
-  width: 26px;
-  height: 26px;
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--ds-line);
   color: var(--ds-dim);
   cursor: pointer;
+}
+.ds-foot-gear::before {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border: 1px solid var(--ds-line);
+  pointer-events: none;
+}
+.ds-foot { flex-shrink: 0; }
+.ds-row:focus-visible,
+.ds-foot-gear:focus-visible,
+.ds-loadout button:focus-visible {
+  outline: 2px solid var(--ds-amber);
+  outline-offset: -2px;
+}
+.ds-sortie:focus-visible {
+  outline: 2px solid #12100a;
+  outline-offset: -4px;
+}
+.ds-row-l { min-width: 0; overflow-wrap: anywhere; }
+.ds-row .ds-row-d { overflow-wrap: anywhere; }
+
+/* 任意の装備プレビュー。遷移と保存処理は既存画面と共用する。 */
+.ds-loadout-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+  padding: 8px 0 16px;
+  border-bottom: 1px solid var(--ds-line);
+}
+.ds-loadout-back {
+  min-width: 64px;
+  min-height: 44px;
+  color: var(--ds-amber);
+  font-size: 13.5px;
+}
+.ds-loadout-header h1 { font-size: 18px; font-weight: 500; }
+.ds-loadout-header h1 span { margin-left: 8px; font-size: 11px; letter-spacing: .18em; color: var(--ds-amber); }
+.ds-loadout-header p { margin-top: 4px; color: #a6adaa; font-size: 12px; }
+.ds-loadout-body .grid { grid-template-columns: minmax(0, 1fr); }
+.ds-loadout-body .ff7r-fade-right {
+  min-height: 44px;
+  min-width: 0;
+  background: var(--ds-panel);
+  border: 1px solid var(--ds-line);
+  border-image: none;
+  color: var(--ds-ink);
+  clip-path: none;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+.ds-loadout-body button[aria-pressed]::before,
+.ds-loadout-body button[aria-pressed]::after { content: none; }
+.ds-loadout-body button[aria-pressed="true"] {
+  border-color: var(--ds-amber);
+  background: #211b10;
+  color: var(--ds-amber-hi);
+}
+.ds-loadout-body .truncate {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+}
+.ds-loadout-body button[aria-pressed] .leading-snug { color: #a6adaa; font-size: 12px; }
+.ds-loadout-state { font-size: 11px; white-space: nowrap; }
+.ds-loadout-body .uppercase { color: var(--ds-amber); font-size: 12px; }
+@media (min-width: 420px) {
+  .ds-loadout-body .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ds-loadout-body button[aria-pressed] { flex-wrap: wrap; }
 }

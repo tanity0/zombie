@@ -237,7 +237,7 @@ const ShopMenu: React.FC = () => {
           overflow-hiddenで下がただ切れていた(スクロール手段なし)。パネルを画面内(max-h-[86dvh])に
           収めた縦フレックスにし、中身(商品/装備)だけをスクロール領域にする。ヘッダと「帰還/閉じる」は
           常に見える(スクロールで迷子にしない)。 */}
-      <div className="relative glass-panel rounded-none w-full max-w-lg overflow-hidden max-h-[86dvh] flex flex-col">
+      <div className="relative glass-panel command-panel rounded-none w-full max-w-lg overflow-hidden max-h-[86dvh] flex flex-col">
         <div className="px-4 pt-4 pb-2 flex items-start justify-between gap-3">
           <div>
             <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200/65">WEAPON MERCHANT</div>

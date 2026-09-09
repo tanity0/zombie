@@ -33,7 +33,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
       onTouchMove={preventTouchEvent}
       onTouchEnd={preventTouchEvent}
     >
-      <div className="glass-panel rounded-none w-full max-w-sm overflow-hidden">
+      <div className="glass-panel command-panel rounded-none w-full max-w-sm overflow-hidden">
         <div className="px-5 pt-5 pb-3 text-center">
           <h2 className="text-xl font-semibold tracking-tight text-white">一時停止</h2>
         </div>

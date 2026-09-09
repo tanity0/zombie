@@ -36,7 +36,7 @@ const StoryReturnPrompt: React.FC = () => {
       onPointerDown={event => event.stopPropagation()}
       onPointerUp={event => event.stopPropagation()}
     >
-      <div className="glass-panel w-full max-w-sm overflow-hidden rounded-none">
+      <div className="glass-panel command-panel w-full max-w-sm overflow-hidden rounded-none">
         <div className="px-5 pb-4 pt-6 text-center">
           <h2 className="text-xl font-semibold tracking-tight text-white">帰還しますか？</h2>
         </div>

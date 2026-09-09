@@ -291,6 +291,7 @@ import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相�
 // 深層域に入っている間だけ、ゲーム画面全体を退色セピアにする描画のみの演出(当たり判定等には不干渉)。
 // stage ルートに ColorMatrixFilter 1枚。enter/exit を約1秒でフェード(filter.alpha 補間)。HUDはDOMなので非対象。
 const DZ_PARAMS = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+const FOREST_DESIGN_PREVIEW = DZ_PARAMS?.get('design') === '2' && DZ_PARAMS?.get('forestlook') !== '0';
 const DEEP_ZONE_GRADE_ENABLED = DZ_PARAMS?.get('deepzonegrade') !== '0'; // ?deepzonegrade=0 で無効化
 const FORCE_DEEP_ZONE = DZ_PARAMS?.get('deepzone') === '1'; // 診断: ?deepzone=1 で深層域セピアを距離無視で常時ON(実機で退色グレードの重さ検証・社長v0.25.1561)
 // 診断用トグル(社長v0.25.1558): 実機の重さ/クラッシュ切り分け。既定ON=通常挙動不変。
@@ -6907,7 +6908,7 @@ export class PixiScene {
       for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
       r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
       // tint(ENV_TINT等)が乗る分を近似で織り込む(遠景スプライトのtintと同じ係数を掛ける)。
-      const tint = this.L.farBackdrop.tint as number;
+      const tint = this.isForestPreview() ? 0x9fbfce : this.L.farBackdrop.tint as number;
       const tr = (tint >> 16) & 0xff, tg = (tint >> 8) & 0xff, tb = tint & 0xff;
       const top = ((Math.round(r * tr / 255) << 16) | (Math.round(g * tg / 255) << 8) | Math.round(b * tb / 255));
       const dark = (v: number) => Math.round(v * 0.45);
@@ -6917,7 +6918,7 @@ export class PixiScene {
   }
 
   private layoutWorldGapBand(farH: number) {
-    const colorKey = this.currentFarKey || 'default';
+    const colorKey = `${this.currentFarKey || 'default'}${this.isForestPreview() ? '-design2' : ''}`;
     if (!this.worldGapTex || this.worldGapColorKey !== colorKey) {
       const sampled = this.sampleFarBottomColor();
       const topColor = sampled?.top ?? WORLD_GAP_BAND_TOP_COLOR;
@@ -7128,7 +7129,48 @@ export class PixiScene {
     for (let i = stripCount; i < strips.length; i++) strips[i].visible = false;
   }
 
+  // 背景プレビューが所有する変更だけを次フレームの最初に戻す。
+  // 既存の昼/夜・屋内・素材差し替え処理が元値から進むため、同じ夜テーマへの移動でも漏れない。
+  private forestPreviewOriginals = new Map<Sprite | TilingSprite, { tint: number; alpha: number; active: boolean }>();
+  private restoreForestPreview() {
+    for (const [sprite, value] of this.forestPreviewOriginals) {
+      if (sprite.destroyed) { this.forestPreviewOriginals.delete(sprite); continue; }
+      if (value.active) { sprite.tint = value.tint; sprite.alpha = value.alpha; value.active = false; }
+    }
+  }
+
+  private isForestPreview() {
+    const s = useGameStore.getState();
+    return FOREST_DESIGN_PREVIEW && getSelectedStageId() === 'stage-1' && !s.indoorMode && this.currentFarKey === 'forest';
+  }
+
+  private applyForestPreview() {
+    if (!this.isForestPreview()) return;
+    const paint = (sprite: Sprite | TilingSprite, tint: number, alpha = sprite.alpha) => {
+      const original = this.forestPreviewOriginals.get(sprite);
+      if (original) { original.tint = sprite.tint; original.alpha = sprite.alpha; original.active = true; }
+      else this.forestPreviewOriginals.set(sprite, { tint: sprite.tint, alpha: sprite.alpha, active: true });
+      sprite.tint = tint;
+      sprite.alpha = alpha;
+    };
+    // 位置・サイズ・フィルタ・アクター・予告は触らず、既存の背景の距離ごとに階調を分ける。
+    paint(this.L.farBackdrop, 0x9fbfce);
+    for (const sky of this.stage1Sky) paint(sky, 0xb7d9e6);
+    paint(this.stage1Castle, 0x849ba8);
+    paint(this.L.horizonForest, 0x77979d);
+    for (const ridge of this.horizonRidgeCopies) paint(ridge, 0x77979d);
+    paint(this.L.nearHorizon, 0x536e71);
+    for (const strip of this.L.groundStrips) paint(strip, 0x9ca69b);
+    paint(this.L.frontForest, 0x30474d);
+    if (this.frontRidgeCopy) paint(this.frontRidgeCopy, 0x30474d);
+    for (const fog of this.fogLayers) {
+      const isBack = fog.sp.parent === this.bgCloudLayer;
+      paint(fog.sp, isBack ? 0x9ecad4 : fog.sp.tint, fog.sp.alpha * (isBack ? 0.48 : 0.52));
+    }
+  }
+
   sync() {
+    this.restoreForestPreview();
     const s = useGameStore.getState();
     const realNow = Date.now();
     // オプションのブルームON/OFFをリロード無しで反映(変化時だけフィルタ配列を作り直す)。
@@ -8384,6 +8426,7 @@ export class PixiScene {
     this.syncRhythmScreenFx(s.rhythm, now);
     this.syncRhythmOverlay(s.rhythm, s.player, now);
     this.syncFireflies(s.camera, now);
+    this.applyForestPreview();
   }
 
   // ---- 四神舞(リズム)UI: ミラーボール + 左右サークル + 矢印プロンプト -------

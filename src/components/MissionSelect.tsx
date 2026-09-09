@@ -1,5 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal as createReactPortal } from 'react-dom';
+import './commandHome.css';
+import { COMMAND_UI_ENABLED, REGION_ART } from '../config/uiDesign';
+
+// ポータルも同じテーマを継承。ラッパーは含有ブロックを作るCSSを持たない。
+const createPortal = (children: React.ReactNode, container: Element | DocumentFragment, key?: string | null) =>
+  createReactPortal(COMMAND_UI_ENABLED ? <div className="command-ui">{children}</div> : children, container, key);
 
 // 任務詳細のタイピング表示(社長指示v0.25.1847: クリア前=状況説明/クリア後=任務後の記録のみ)。
 // 行ごとに順に1文字ずつ表示(タイプ中は▌カーソル)。メニュー画面(ゲーム外)専用で、
@@ -142,7 +148,7 @@ import {
 // ユニーク武器システム(UNIQUE_WEAPONS.md §11-6): 装備設定画面の「銃スロット」欄+開発施設の棚。
 import { SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, SUB_BOSS_UNLOCK, type SlotCategory, type SlotTier } from '../data/weaponSlots';
 import { getSlotLoadout, setSlotCandidate, unlockedWeaponKeys, shelfWeaponKeys, isTestWeaponUnlockAll, setTestWeaponUnlockAll } from '../utils/weaponSlot';
-import { weaponDisplayName, weaponDescription } from '../utils/weaponUtils';
+import { weaponDisplayName, weaponDescription, weaponIconName } from '../utils/weaponUtils';
 const GUN_CATEGORY_LABEL: Record<SlotCategory, string> = {
   handgun: 'ハンドガン', shotgun: 'ショットガン', rifle: 'ライフル', glauncher: 'グレネードガン',
 };
@@ -247,10 +253,17 @@ type Screen =
 // 既定=DS版。実装層は config/devtools.ts のモジュール定数の型(LowHpVignette.tsx:5と同型)。
 const DS_HOME_DISABLED = typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).get('dshome') === '0';
+// 任意プレビュー。未指定なら既存の装備画面へ戻る(保存データには書かない)。
+const COMMAND_PREVIEW = COMMAND_UI_ENABLED;
+const DS_LOADOUT_PREVIEW = COMMAND_UI_ENABLED;
+
+const LoadoutBody: React.FC<{ children: React.ReactNode }> = ({ children }) => DS_LOADOUT_PREVIEW ? (
+  <NoBounceScroller className="ds-loadout-body min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain" style={{ touchAction: 'pan-y' }} moreColor="rgba(255, 179, 64, 0.85)">{children}</NoBounceScroller>
+) : <>{children}</>;
 
 // NoBounceScroller(縁バウンス殺し+続き下矢印)は共有部品化した(UI監査2026-08-29で全画面へ展開)。
 
-const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: boolean }> = ({ children, fill, dsHome }) => (
+const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: boolean; loadout?: boolean }> = ({ children, fill, dsHome, loadout }) => (
   dsHome ? (
     // DS版ホームの地(UI_OVERHAUL.md §3-1-3): 背景=DS地(タイトル絵は使わない)+走査線+fill(全高)。
     // safe-areaは外周paddingのまま(帯・罫はパネル幅いっぱいでモックの計器感は成立)。
@@ -259,7 +272,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
     // 内容列は max-width 420px 中央寄せ(監査B-8: モック=340px電話判の構図保持)。
     // 縦に入らない端末(監査B-6)はパネル内スクロールを許容(overflow-y-auto)。
     <div
-      className="screen-in ds-home relative h-full w-full flex flex-col items-center justify-start overflow-hidden"
+      className={`screen-in ds-home relative h-full w-full flex flex-col items-center justify-start overflow-hidden ${COMMAND_PREVIEW && loadout ? 'command-shell' : ''}`}
       style={{
         maxHeight: '100svh',
         paddingTop: 'max(env(safe-area-inset-top), 16px)',
@@ -272,7 +285,15 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
       {/* ★固定化(社長指示2026-08-29「基本固定するところは固定して」): ラッパーはスクロールさせない。
           スクロールするのは renderDsHome 内のリスト領域(ds-rows)だけ=計器(上段/マップ/出撃/フッタ)は
           常に固定で、ブラウザのページスクロール感を出さない。 */}
-      <div className="relative h-full w-full overflow-hidden" style={{ maxWidth: 420 }}>{children}</div>
+      <div className="relative h-full w-full overflow-hidden" style={{ maxWidth: COMMAND_PREVIEW && loadout ? 1180 : 420 }}>{children}</div>
+    </div>
+  ) : COMMAND_UI_ENABLED ? (
+    <div className="command-page-shell h-full w-full flex flex-col items-center overflow-hidden" style={{
+      maxHeight: '100svh', paddingTop: 'max(env(safe-area-inset-top), 12px)',
+      paddingBottom: 'max(env(safe-area-inset-bottom), 16px)',
+      paddingLeft: 'max(env(safe-area-inset-left), 12px)', paddingRight: 'max(env(safe-area-inset-right), 12px)',
+    }}>
+      <NoBounceScroller className={`command-page w-full overflow-y-auto overflow-x-hidden overscroll-contain ${fill ? 'h-full' : 'max-h-full'}`} style={{ touchAction: 'pan-y' }} moreColor="#e9bd79">{children}</NoBounceScroller>
     </div>
   ) : (
   <div
@@ -309,6 +330,12 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
 // 戻る/タイトルは常時表示=スクロール領域の先頭で sticky 固定(社長指示)。背景＋blur で
 // スクロールしてくる内容を隠す。sticky 自身が absolute 子(戻るボタン)の位置基準になるので relative 不要。
 const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }> = ({ title, subtitle, onBack }) => (
+  COMMAND_UI_ENABLED ? (
+    <header className="command-page-header sticky top-0 z-20">
+      {onBack && <button type="button" onClick={onBack} className="command-page-back" aria-label="戻る"><ChevronLeft size={18} /><span>戻る</span></button>}
+      <div><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>
+    </header>
+  ) : (
   <div className="sticky top-0 z-20 px-5 pt-5 pb-3 text-center bg-[rgba(11,9,16,0.94)] backdrop-blur-md" style={{ borderBottom: '1px solid rgba(168,85,247,0.45)' }}>
     {onBack && (
       <button
@@ -322,6 +349,7 @@ const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }
     <h1 className="text-2xl font-semibold tracking-[0.08em] text-white">{title}</h1>
     {subtitle && <p className="text-[12px] text-purple-200/55 mt-1 tracking-wide">{subtitle}</p>}
   </div>
+  )
 );
 
 // スキルのレア度別カラー(装備カード枠/ガチャ結果で共用)。
@@ -477,6 +505,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const [seenTutorials, setSeenTutorials] = useState<Set<TutorialId>>(() => loadSeenTutorials());
   // ユニーク武器システム(UNIQUE_WEAPONS.md §3-3/§6): 銃スロットの装備設定(恒久・localStorage 1キー)。
   const [slotLoadout, setSlotLoadoutState] = useState(() => getSlotLoadout());
+  const [weaponCategory, setWeaponCategory] = useState<SlotCategory>('handgun');
+  const [loadoutSection, setLoadoutSection] = useState<'guns' | 'subs' | 'avatar' | 'skills'>('guns');
   const pickSlotCandidate = (category: SlotCategory, tier: SlotTier, key: string) => {
     playSfx('ui-select');
     setSlotCandidate(category, tier, key);
@@ -623,7 +653,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
           style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
         >
-          <div className="glass-panel w-full max-w-sm rounded-none px-4 py-5 text-center">
+          <div className="glass-panel command-panel w-full max-w-sm rounded-none px-4 py-5 text-center">
             <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">お知らせ</div>
             {/* 統合正本8.1 / 指示書6.1の確定文言。 */}
             <h3 className="mb-2 text-lg font-semibold text-amber-100" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
@@ -649,7 +679,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
           style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
         >
-          <div className="glass-panel w-full max-w-sm rounded-none px-4 py-5 text-center">
+          <div className="glass-panel command-panel w-full max-w-sm rounded-none px-4 py-5 text-center">
             <div className="mb-1 text-[10px] uppercase tracking-widest text-purple-200/70">お知らせ</div>
             <p className="mb-4 text-[13px] leading-relaxed text-white/85">
               グレンとミラとの関係を深めると、新たな資料が見つかるかもしれない。
@@ -704,13 +734,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             {/* 実データが引ける物だけ実値(§3-0): G=goldBalance。RANK等の嘘の数字は出さない。 */}
             <span>G <span className="ds-top-v">{goldBalance.toLocaleString()}</span></span>
           </div>
-          {/* 飾り計器行: LAT/LON/SIGNALは固定文字列の飾り(§3-0)。DAYだけ実値。 */}
-          <div className="ds-deco menu-item-in" style={{ animationDelay: '25ms' }}>
-            <span>LAT 43.06N</span>
-            <span>LON 141.35E</span>
-            {showDay && <span>DAY {nextStage.day}</span>}
-            <span>SIGNAL ▮▮▮▯</span>
-          </div>
+          {showDay && <div className="ds-deco menu-item-in" style={{ animationDelay: '25ms' }}>
+            <span>DAY {nextStage.day}</span>
+          </div>}
           <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
             <DsContourMap stageId={nextStage?.id ?? 'stage-tutorial'} sectorLabel={nextStage?.locationTitle ?? '—'} />
           </div>
@@ -725,7 +751,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               続き矢印は作戦室色=アンバー。 */}
           <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar" style={{ touchAction: 'pan-y' }} moreColor="rgba(255, 179, 64, 0.85)">
             <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
-            {dsRow('装備', 'LOADOUT', 'サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
+            {dsRow('装備', 'LOADOUT', '銃 / サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
             {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
             {dsRow('開発施設', 'R&D', 'スキル / サブ解放', () => { playSfx('ui-select'); setScreen({ name: 'weaponDev' }); }, 175)}
             <div className="ds-glabel menu-item-in" style={{ animationDelay: '200ms' }}>RECORDS ── 記録</div>
@@ -736,11 +762,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <div className="ds-foot menu-item-in" style={{ animationDelay: '300ms' }}>
             <button
               type="button"
-              className="ds-foot-gear"
+              className="ds-foot-options"
               aria-label="オプション"
               onClick={() => { playSfx('ui-select'); setScreen({ name: 'options' }); }}
             >
-              <Settings size={14} />
+              オプション
             </button>
             <span>SYSTEM v{__APP_VERSION__}</span>
           </div>
@@ -819,11 +845,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         type="button"
         disabled={!unlocked}
         onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id }); }}
-        className={`ff7r-fade-right w-full rounded-none px-3 py-3 text-left transition-[filter] ${
+        className={`ff7r-fade-right ${COMMAND_UI_ENABLED ? 'command-stage-card' : ''} w-full rounded-none px-3 py-3 text-left transition-[filter] ${
           unlocked ? 'active:brightness-110 menu-item-in' : 'is-off'
         }`}
         style={unlocked ? { animationDelay: `${index * 50}ms` } : undefined}
       >
+        {COMMAND_UI_ENABLED && REGION_ART[stage.id] && <img className="command-stage-art" src={`${import.meta.env.BASE_URL}backgrounds/${REGION_ART[stage.id]}`} alt="" loading="lazy" />}
         {/* 親見出し(日付+場所)=ボタンの顔。右にシェブロン/ロック。 */}
         <span className="flex items-center gap-3">
           <span className="flex-1 min-w-0">
@@ -1017,7 +1044,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // iOSのURLバー表示中に可視域より縦長になり、下部UI(START/チップ帯)が画面外へ落ちる。
     // Shellと同じく可視ビューポートでクランプ(未対応ブラウザでは無視=安全)。
     return (
-      <div className="screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none" style={{ maxHeight: '100svh' }}>
+      <div className={`screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none ${COMMAND_UI_ENABLED ? 'command-character' : ''}`} style={{ maxHeight: '100svh' }}>
         {/* 全画面=選択中キャラの立ち絵。クラス切替=key 再マウント。ロード完了後に下からスッと表示。 */}
         <CharPortrait key={effectiveClass} src={portraitSrcFor(effectiveClass)} alt={c.name} />
         {/* 視認性スクリム(上=戻る帯 / 下=情報・選択帯)。立ち絵の暗背景に馴染ませる。 */}
@@ -1250,10 +1277,86 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // 「守護霊枠」へ移設した(renderCharacterSelect の ghostPicker)。companionSkill 自体は不変。
     return (
       <>
-        <Header title="装備" subtitle="全作戦共通。サブウェポンを選択（自動保存）" onBack={() => setScreen({ name: 'home' })} />
+        {DS_LOADOUT_PREVIEW ? (
+          <header className="ds-loadout-header">
+            <button type="button" className="ds-loadout-back" onClick={() => setScreen({ name: 'home' })}>← 戻る</button>
+            <div><h1>装備 <span>LOADOUT</span></h1><p>全作戦共通 · 自動保存</p></div>
+          </header>
+        ) : <Header title="装備" subtitle="全作戦共通。サブウェポンを選択（自動保存）" onBack={() => setScreen({ name: 'home' })} />}
+        <LoadoutBody>
+        {COMMAND_UI_ENABLED && <nav className="development-tabs loadout-tabs" aria-label="装備内容">
+          {([['guns', '銃'], ['subs', 'サブウェポン'], ['avatar', 'アバター'], ['skills', '取得済みスキル']] as const).map(([id, label]) =>
+            <button type="button" key={id} aria-pressed={loadoutSection === id}
+              onClick={() => { playSfx('ui-select'); setLoadoutSection(id); }}>{label}</button>)}
+        </nav>}
         <div className="p-3 space-y-4">
+          {/* 銃スロット(UNIQUE_WEAPONS.md §11-6④): カテゴリ×Tierのマス。各マスは購入済み候補のセレクタ。
+              **未購入は載せない**(社長裁定・v0.25.4084の作法と揃える。灰表示ロックはしない)。
+              横(=表示できる候補が2つ以上)が無いスロットは選ぶ意味が無いので表示自体を省く。 */}
+          {(() => {
+            const unlockedNow = unlockedWeaponKeys();
+            const visibleCandidates = (cat: SlotCategory, tier: SlotTier) =>
+              SLOT_CANDIDATES[cat][tier].filter(k => k === SLOT_CANDIDATES[cat][tier][0] || unlockedNow.has(k));
+            const categories = SLOT_CATEGORIES.filter(cat => SLOT_TIERS.some(t => visibleCandidates(cat, t).length > 1));
+            if (categories.length === 0) return COMMAND_UI_ENABLED && loadoutSection === 'guns'
+              ? <p className="weapon-slot-guide">まだ切り替えられる銃がありません。開発施設で銃を開発すると、ここで選べます。</p> : null;
+            const activeCategory = categories.includes(weaponCategory) ? weaponCategory : categories[0];
+            return (
+              <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'guns'}>
+                <p className="weapon-slot-guide">各Tierで1挺を装備。出撃時はTier 1から。</p>
+                {COMMAND_UI_ENABLED && <nav className="weapon-category-tabs" aria-label="武器種">
+                  {categories.map(cat => <button type="button" key={cat} aria-pressed={cat === activeCategory}
+                    onClick={() => { playSfx('ui-select'); setWeaponCategory(cat); }}>{GUN_CATEGORY_LABEL[cat]}</button>)}
+                </nav>}
+                <div className="menu-stagger space-y-2">
+                  {(COMMAND_UI_ENABLED ? [activeCategory] : categories).map(cat => {
+                    const tiersWithChoice = SLOT_TIERS.filter(t => visibleCandidates(cat, t).length > 1);
+                    if (tiersWithChoice.length === 0) return null;
+                    return (
+                      <div key={cat} className="weapon-category space-y-1">
+                        <h2 className="weapon-category-title">{GUN_CATEGORY_LABEL[cat]}</h2>
+                        {tiersWithChoice.map(tier => {
+                          const candidates = visibleCandidates(cat, tier);
+                          const selected = slotLoadout[cat]?.[tier] ?? candidates[0];
+                          return (
+                            <div key={tier} className="weapon-tier"><h3 className="weapon-tier-title">Tier {tier}<span>この枠で1挺</span></h3><div className="weapon-candidates grid grid-cols-2 gap-2">
+                              {candidates.map(key => {
+                                const on = selected === key;
+                                return (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => pickSlotCandidate(cat, tier, key)}
+                                    aria-pressed={DS_LOADOUT_PREVIEW ? on : undefined}
+                                    className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left transition-[filter] ${
+                                      on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
+                                    }`}
+                                  >
+                                    {COMMAND_UI_ENABLED && <span className="weapon-art"><img src={spritePath(weaponIconName(key))} alt="" draggable={false} loading="lazy" /></span>}
+                                    <span className="weapon-copy min-w-0">
+                                      <span className="block truncate text-[12px] font-semibold">{weaponDisplayName(key)}</span>
+                                      {/* 社長指示2026-09-05「装備欄の武器にも説明入れて。スキルとかと同じく」:
+                                          開発施設のサブ解放リストと同じ見せ方(名前の下に小さい1行)。 */}
+                                      {weaponDescription(key) && (
+                                        <span className="block text-[10px] leading-snug text-white/50">{weaponDescription(key)}</span>
+                                      )}
+                                    </span>
+                                    {COMMAND_UI_ENABLED ? <span className="weapon-selection">{on && <><Check size={14} /><span>装備中</span></>}</span> : on && <span className="shrink-0 flex items-center gap-1"><Check size={14} /></span>}
+                                  </button>
+                                );
+                              })}
+                            </div></div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
           {/* サブウェポン */}
-          <div>
+          <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'subs'}>
             <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-emerald-200/70">サブウェポン（1つ）</div>
             {/* キャラ固有スキル(職スキル枠)はトップの装備メニューには載せない(自動付与・選択不可)。
                 退役サブ(ダンスフロア)も載せない(社長裁定2026-08-20)。未購入も載せない(上のvisibleSubs)。 */}
@@ -1267,6 +1370,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                     <button
                       key={k}
                       onClick={() => toggleSub(k)}
+                      aria-pressed={DS_LOADOUT_PREVIEW ? on : undefined}
                       className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2.5 text-left transition-[filter] ${
                         on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
                       }`}
@@ -1274,7 +1378,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       <span className="min-w-0">
                         <span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(k)}</span>
                       </span>
-                      {on && <Check size={15} className="shrink-0" />}
+                      {on && <span className="shrink-0 flex items-center gap-1"><Check size={15} />{DS_LOADOUT_PREVIEW && <span className="ds-loadout-state">装備中</span>}</span>}
                     </button>
                   );
                 })}
@@ -1282,7 +1386,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             )}
           </div>
           {/* アバター(試験・第1弾)。トグル選択式(なし/猫耳セット)。見た目は既存の装備欄に合わせる=磨き込み不要(試験機能)。 */}
-          <div>
+          <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'avatar'}>
             <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-sky-200/70">アバター（試験）</div>
             <div className="menu-stagger grid grid-cols-2 gap-2">
               {([null, ...AVATAR_IDS] as (AvatarId | null)[]).map(id => {
@@ -1292,80 +1396,24 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   <button
                     key={id ?? 'none'}
                     onClick={() => { playSfx('ui-select'); setAvatarId(id); }}
+                    aria-pressed={DS_LOADOUT_PREVIEW ? on : undefined}
                     className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2.5 text-left transition-[filter] ${
                       on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
                     }`}
                   >
                     <span className="block truncate text-[13px] font-semibold">{label}</span>
-                    {on && <Check size={15} className="shrink-0" />}
+                    {on && <span className="shrink-0 flex items-center gap-1"><Check size={15} />{DS_LOADOUT_PREVIEW && <span className="ds-loadout-state">選択中</span>}</span>}
                   </button>
                 );
               })}
             </div>
           </div>
-          {/* 銃スロット(UNIQUE_WEAPONS.md §11-6④): カテゴリ×Tierのマス。各マスは購入済み候補のセレクタ。
-              **未購入は載せない**(社長裁定・v0.25.4084の作法と揃える。灰表示ロックはしない)。
-              横(=表示できる候補が2つ以上)が無いスロットは選ぶ意味が無いので表示自体を省く。 */}
-          {(() => {
-            const unlockedNow = unlockedWeaponKeys();
-            const visibleCandidates = (cat: SlotCategory, tier: SlotTier) =>
-              SLOT_CANDIDATES[cat][tier].filter(k => k === SLOT_CANDIDATES[cat][tier][0] || unlockedNow.has(k));
-            const hasAnyChoice = SLOT_CATEGORIES.some(cat => SLOT_TIERS.some(t => visibleCandidates(cat, t).length > 1));
-            if (!hasAnyChoice) return null;
-            return (
-              <div>
-                <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-orange-200/70">銃スロット</div>
-                <div className="menu-stagger space-y-2">
-                  {SLOT_CATEGORIES.map(cat => {
-                    const tiersWithChoice = SLOT_TIERS.filter(t => visibleCandidates(cat, t).length > 1);
-                    if (tiersWithChoice.length === 0) return null;
-                    return (
-                      <div key={cat} className="space-y-1">
-                        <div className="px-1 text-[10px] text-white/40">{GUN_CATEGORY_LABEL[cat]}</div>
-                        {tiersWithChoice.map(tier => {
-                          const candidates = visibleCandidates(cat, tier);
-                          const selected = slotLoadout[cat]?.[tier] ?? candidates[0];
-                          return (
-                            <div key={tier} className="grid grid-cols-2 gap-2">
-                              {candidates.map(key => {
-                                const on = selected === key;
-                                return (
-                                  <button
-                                    key={key}
-                                    type="button"
-                                    onClick={() => pickSlotCandidate(cat, tier, key)}
-                                    className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left transition-[filter] ${
-                                      on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
-                                    }`}
-                                  >
-                                    <span className="min-w-0">
-                                      <span className="block truncate text-[12px] font-semibold">{weaponDisplayName(key)}</span>
-                                      {/* 社長指示2026-09-05「装備欄の武器にも説明入れて。スキルとかと同じく」:
-                                          開発施設のサブ解放リストと同じ見せ方(名前の下に小さい1行)。 */}
-                                      {weaponDescription(key) && (
-                                        <span className="block text-[10px] leading-snug text-white/50">{weaponDescription(key)}</span>
-                                      )}
-                                    </span>
-                                    {on && <Check size={14} className="shrink-0" />}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
           {/* ★取得済みスキル一覧(社長指示2026-08-25「装備の一番下に取得済みスキル一覧を表示」)。
               **読むだけの一覧**(ここでは選べない)——スキルの持ち込みは廃止済みで、ラン中は
               レベルアップの抽選で組む(SKILL_BUILD_REDESIGN.md §16-10 ★A)。
               「何を解禁したか」を確認する場所が無かったので、装備の下に置く。
               並びは**レア度の高い順→名前順**(超レア→レア→通常)。 */}
-          <div>
+          <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'skills'}>
             <div className="px-1 mb-1.5 flex items-baseline justify-between">
               <span className="text-[11px] uppercase tracking-widest text-purple-200/70">取得済みスキル</span>
               <span className="text-[10px] text-white/40 tabular-nums">{ownedSkills.length}/{OBTAINABLE_SKILL_KEYS.length}</span>
@@ -1414,6 +1462,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             {' ／ '}アバター: {avatarId ? AVATARS[avatarId].name : 'なし'}
           </p>
         </div>
+        </LoadoutBody>
       </>
     );
   };
@@ -1553,7 +1602,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             className="fixed inset-0 z-50 flex items-center justify-center px-3"
             style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
           >
-            <NoBounceScroller className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
+            <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">資料</div>
                 <h3
@@ -1590,7 +1639,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             className="fixed inset-0 z-50 flex items-center justify-center px-3"
             style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
           >
-            <NoBounceScroller className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
+            <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">操作記録・{openTutorial.where}</div>
                 <h3
@@ -1732,7 +1781,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
           style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
         >
-          <NoBounceScroller className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
+          <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
             <div className="px-4 py-5">
               <GhostAllyCard ally={openAlly} />
               <button
@@ -1754,11 +1803,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // キャラ選択は全画面(立ち絵を画面いっぱい)なので Shell(中央パネル)を介さず単独描画。
   if (screen.name === 'characterSelect') return renderCharacterSelect(screen.stageId, screen.mission ?? 'main');
   return (
-    <Shell fill={screen.name === 'missionDetail'} dsHome={!DS_HOME_DISABLED && screen.name === 'home'}>
+    <Shell loadout={screen.name === 'loadout'} fill={screen.name === 'missionDetail'} dsHome={(!DS_HOME_DISABLED && screen.name === 'home') || (DS_LOADOUT_PREVIEW && screen.name === 'loadout')}>
       {screen.name === 'home' && (DS_HOME_DISABLED ? renderHome() : renderDsHome())}
       {screen.name === 'stageSelect' && renderStageSelect()}
       {screen.name === 'missionDetail' && renderMissionDetail(screen.stageId, screen.mission ?? 'main')}
-      {screen.name === 'loadout' && renderLoadout()}
+      {screen.name === 'loadout' && (DS_LOADOUT_PREVIEW ? <div className="ds-loadout h-full flex flex-col">{renderLoadout()}</div> : renderLoadout())}
       {screen.name === 'options' && renderOptions()}
       {screen.name === 'weaponDev' && renderWeaponDev()}
       {screen.name === 'growth' && renderGrowth()}
@@ -1800,7 +1849,7 @@ const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; 
 );
 
 const Section: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div className="p-3" style={{ background: 'linear-gradient(95deg, rgba(11,9,16,0.55), rgba(11,9,16,0.15))' }}>
+  <div className={COMMAND_UI_ENABLED ? 'command-section' : 'p-3'} style={COMMAND_UI_ENABLED ? undefined : { background: 'linear-gradient(95deg, rgba(11,9,16,0.55), rgba(11,9,16,0.15))' }}>
     <div className="mb-2 text-[11px] uppercase tracking-widest text-purple-200/55">{label}</div>
     <div className="space-y-1.5">{children}</div>
   </div>
@@ -2514,6 +2563,8 @@ const GUN_SLOT_PURCHASE_COST = 200;
 const SUB_BOSS_UNLOCK_KEYS = new Set<SubWeaponKey>(Object.values(SUB_BOSS_UNLOCK));
 
 const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+  const [department, setDepartment] = useState<'guns' | 'subs' | 'skills'>('guns');
+  const [shelfCategory, setShelfCategory] = useState<SlotCategory>('handgun');
   // v0.25.3187: 陳列解放の正本を purchasedSubLevels(永続)へ。旧 unlockedShopSkillCards は
   // ラン内値(resetGameが毎出撃上書き)で、ここで買っても次の出撃で消えていた。
   const purchasedSubLevels = useGameStore(s => s.purchasedSubLevels);
@@ -2527,14 +2578,26 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [, forceGunShelfRerender] = useState(0);
   const gunShelf = shelfWeaponKeys();
   const orderedGunShelfKeys = SLOT_CATEGORIES.flatMap(cat => SLOT_TIERS.flatMap(tier => SLOT_CANDIDATES[cat][tier].filter(k => gunShelf.has(k))));
+  const shelfCategories = SLOT_CATEGORIES.filter(cat => SLOT_TIERS.some(tier => SLOT_CANDIDATES[cat][tier].some(k => gunShelf.has(k))));
+  const activeShelfCategory = shelfCategories.includes(shelfCategory) ? shelfCategory : shelfCategories[0];
+  const visibleShelfKeys = COMMAND_UI_ENABLED ? orderedGunShelfKeys.filter(key => SLOT_TIERS.some(tier => SLOT_CANDIDATES[activeShelfCategory][tier].includes(key))) : orderedGunShelfKeys;
   return (
     <>
-      <Header title="開発施設" subtitle="スキル強化訓練 / サブウェポン陳列レベル解放" onBack={onBack} />
-      <div className="p-3">
+      <Header title="開発施設" subtitle="銃の開発 / サブウェポン解放 / スキル強化訓練" onBack={onBack} />
+      {COMMAND_UI_ENABLED && <div className="development-toolbar px-3">
+        <div className="development-balance">開発資金 <strong>{goldBalance.toLocaleString()} G</strong></div>
+        <nav className="development-tabs" aria-label="開発内容">{([
+          ['guns', '銃の開発'], ['subs', 'サブウェポン'], ['skills', 'スキル訓練'],
+        ] as const).map(([id, label]) => <button key={id} type="button" aria-pressed={department === id}
+          onClick={() => { playSfx('ui-select'); setDepartment(id); }}>{label}</button>)}</nav>
+      </div>}
+      <div hidden={COMMAND_UI_ENABLED && department !== 'skills'} className="p-3">
         <SkillGacha />
       </div>
+      <div hidden={COMMAND_UI_ENABLED && department !== 'subs'}>
+      {COMMAND_UI_ENABLED && <p className="development-guide px-3">Lv1で装備可能に。Lv2・3で商人の陳列上限を解放します。</p>}
       {/* 解放(購入)リスト: 2列表示(社長指示v0.25.2147)。テスト用トグルだけ全幅。 */}
-      <div className="menu-stagger px-3 pb-3 grid grid-cols-2 gap-2">
+      <div className="development-subs menu-stagger px-3 pb-3 grid grid-cols-2 gap-2">
         <button type="button" onClick={() => setStartWithTestStraps(!startWithTestStraps)}
           className={`ff7r-fade-right col-span-2 flex items-center justify-between gap-3 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${startWithTestStraps ? 'is-on' : ''}`}>
           <span><span className="block text-[13px] font-semibold">1000スクラップ開始</span><span className="block text-[11px] text-white/50">{startWithTestStraps ? '次の開始時に1000s所持' : 'テスト用。無料'}</span></span>
@@ -2564,13 +2627,22 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           );
         })}
       </div>
+      </div>
+      <div hidden={COMMAND_UI_ENABLED && department !== 'guns'} className="development-guns">
+      {COMMAND_UI_ENABLED && <div className="px-3 development-guide"><p>開発後、「装備」で選択できます。</p>
+        <nav className="development-tabs" aria-label="開発する武器種">{shelfCategories.map(cat => <button type="button" key={cat} aria-pressed={cat === activeShelfCategory}
+          onClick={() => { playSfx('ui-select'); setShelfCategory(cat); }}>{GUN_CATEGORY_LABEL[cat]}</button>)}</nav>
+        {orderedGunShelfKeys.length === 0 && <p>現在、開発できる銃はありません。新しい設計図を入手するとここに並びます。</p>}
+      </div>}
       {/* 銃スロット(ユニーク武器)の棚(UNIQUE_WEAPONS.md §11-6): (設計図 ∪ 店売り) − 購入済み。
           購入すると markWeaponUnlocked で「購入済み」台帳へ移り、棚から消える(装備設定で選べるようになる)。 */}
       {orderedGunShelfKeys.length > 0 && (
         <div className="menu-stagger px-3 pb-3 space-y-1.5">
           <div className="px-1 text-[11px] uppercase tracking-widest text-orange-200/70">銃スロット（設計図/店売り）</div>
-          <div className="grid grid-cols-2 gap-2">
-            {orderedGunShelfKeys.map(key => {
+          <div className="development-weapon-list grid grid-cols-2 gap-2">
+            {visibleShelfKeys.map(key => {
+              const cat = SLOT_CATEGORIES.find(c => SLOT_TIERS.some(t => SLOT_CANDIDATES[c][t].includes(key)))!;
+              const tier = SLOT_TIERS.find(t => SLOT_CANDIDATES[cat][t].includes(key))!;
               const cantPayGun = goldBalance < GUN_SLOT_PURCHASE_COST;
               return (
                 <button key={key} type="button" disabled={cantPayGun}
@@ -2582,14 +2654,16 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     }
                   }}
                   className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${cantPayGun ? 'opacity-60' : ''}`}>
-                  <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{weaponDisplayName(key)}</span></span>
-                  <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${cantPayGun ? 'text-rose-300' : 'text-amber-200'}`}>{GUN_SLOT_PURCHASE_COST}G</span>
+                  {COMMAND_UI_ENABLED && <span className="development-art"><img src={spritePath(weaponIconName(key))} alt="" draggable={false} loading="lazy" /></span>}
+                  <span className="min-w-0"><span className="block text-[11px] text-amber-200/75 mb-2">{GUN_CATEGORY_LABEL[cat]} · Tier {tier}</span><span className="block truncate text-[13px] font-semibold">{weaponDisplayName(key)}</span><span className="block text-[12px] leading-relaxed text-white/60 mt-2">{weaponDescription(key)}</span></span>
+                  <span className={`development-price shrink-0 text-[10px] font-semibold tabular-nums ${cantPayGun ? 'text-rose-300' : 'text-amber-200'}`}>{GUN_SLOT_PURCHASE_COST}G{COMMAND_UI_ENABLED && <small>{cantPayGun ? '資金不足' : '開発する'}</small>}</span>
                 </button>
               );
             })}
           </div>
         </div>
       )}
+      </div>
     </>
   );
 };
@@ -2615,7 +2689,7 @@ const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         ); })()}
         <span className="text-amber-200/80">所持 {goldBalance}G</span>
       </div>
-      <div className="menu-stagger px-3 pb-3 space-y-2">
+      <div className={`menu-stagger px-3 pb-3 space-y-2 ${COMMAND_UI_ENABLED ? 'command-growth-grid' : ''}`}>
         {PLAYER_UPGRADES.map(def => {
           const cur = playerUpgrades[def.id] ?? { bought: 0, active: 0 };
           const maxed = cur.bought >= PLAYER_UPGRADE_MAX_LEVEL;

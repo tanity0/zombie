@@ -1,4 +1,5 @@
 import React from 'react';
+import { COMMAND_UI_ENABLED } from '../config/uiDesign';
 
 // FF7リメイク風UIの共通ボタン(社長指示・カラーは紫)。斜め(skew)は使わない。
 // 背景だけでなく「枠線(上下のライン)もフェードする」よう、border ではなくグラデーションの細線を重ねる。
@@ -19,6 +20,11 @@ interface Ff7rButtonProps {
 export const Ff7rButton: React.FC<Ff7rButtonProps> = ({
   children, onClick, className = '', paddingY = '0.7rem', active = false, ariaLabel, emphasis = false, fade = 'right',
 }) => {
+  if (COMMAND_UI_ENABLED) return (
+    <button type="button" onClick={onClick} aria-label={ariaLabel}
+      className={`command-button ${emphasis ? 'command-button-primary' : ''} ${active ? 'command-button-selected' : ''} ${className}`}
+      style={{ paddingTop: paddingY, paddingBottom: paddingY }}>{children}</button>
+  );
   // シンプルに: フェードした面＋(右のみ)左端1pxの細い紫ライン1本だけ。枠線は足さない。
   // 端は透明(フェードアウト)・中央は軽め。紫の発色(=以前は選択時だけだった明るさ)を「常時=ノーマル基準」に
   // ベイクする(社長指示)。押下時はさらにほんの少しだけ明るくする程度。

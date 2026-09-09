@@ -1,3 +1,5 @@
+import { COMMAND_UI_ENABLED } from './config/uiDesign';
+import './components/commandTheme.css';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import Game from './components/Game';
 import MissionSelect from './components/MissionSelect';
@@ -557,7 +559,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   };
 
   return (
-    <div className="w-full h-full bg-gray-900 text-white">
+    <div className={`w-full h-full bg-gray-900 text-white ${COMMAND_UI_ENABLED ? 'command-ui' : ''}`}>
       {!bare && gameState === 'title' && (
         <TitleScreen
           onStart={() => { unlockDanceAudio(); setBgmScene('menu'); }} // タップ瞬間にBGM解禁

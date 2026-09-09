@@ -577,7 +577,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
     >
       {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開。リザルトは最長画面) */}
-      <NoBounceScroller className="glass-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
+      <NoBounceScroller className="glass-panel command-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
         <div className="px-4 pt-5 pb-2 text-center">
           <h2 className={`text-2xl font-semibold tracking-tight ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
             {isBenchmark ? 'ベンチ結果' : won ? '任務達成' : withdraw ? '帰還' : '任務失敗'}
@@ -1163,7 +1163,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
           style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
         >
-          <NoBounceScroller className="glass-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
+          <NoBounceScroller className="glass-panel command-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
             {openRecord ? (
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">回収資料</div>
@@ -1218,7 +1218,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           既存リザルトと同じトーン(暗幕・glass-panel・金色アクセント=WEAPON MERCHANT見出し)。新規演出は無し(負荷1/10)。 */}
       {kogarasuUnlockedThisRun && kogarasuPopupOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center px-3 bg-black/70">
-          <div className="glass-panel w-full max-w-sm rounded-none px-5 py-6 text-center">
+          <div className="glass-panel command-panel w-full max-w-sm rounded-none px-5 py-6 text-center">
             <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200/65">NEW WEAPON UNLOCKED</div>
             <h3
               className="mt-2 text-2xl font-bold text-amber-300"
