@@ -474,7 +474,7 @@ import {
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
-import { gunFireSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
+import { gunFireSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
 import { ROCKET_BLAST_RADIUS_MULT, ROCKET_LAUNCH_EASE_MS, rocketLaunchSpeedMult } from '../utils/rocketLauncher';
 import { ALCHEMY_BURST_RADIUS_PX, nextAlchemyStoneStage } from '../utils/alchemyStone';
@@ -693,6 +693,10 @@ const EVENT_SPAWN_AGGRO_RANGE = 300;
 const ARENA_EVENT_CAP = 20;            // イベント中の同時敵上限(通常10→20。終了で10へ戻す)
 const ARENA_EVENT_RADIUS = 240;        // 囲い半径(閉じ込め円)。社長指示で少し拡大: 210→240(horde/boss/egg 共通)
 const GATE_ARENA_RADIUS = 300;         // §5.21-追補7: ゲート2専用の広め半径(240→300・ゲート限定)。他イベント(horde/boss/egg)は ARENA_EVENT_RADIUS のまま。
+// ★社長指示2026-09-11「クロスボウの矢は刺さって少ししてから消える様にして」。刺さった矢の残り時間
+// (判定は持たない純粋な演出)。drawImageEffect は t>0.7 からフェードするので、900なら
+// 約630ms はっきり見えて残り270msで消える。
+const CROSSBOW_ARROW_STUCK_MS = 900;
 // ゲート1専用半径(社長指示v0.25.3188「ゲート1の広さを1.5倍に」): 300→450。ゲート2は据え置き
 // (ミゲルの周回半径250=GATE_ARENA_RADIUS基準の式が生きているため、共用のまま広げると巻き添えになる)。
 // 拘束・縁湧き・脱走判定は activeEvent.radius(イベントに保存した値)を読むので、生成箇所だけで揃う。
@@ -13712,6 +13716,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   : true;
             if (removeIt) removeProjectile(projectileId);
             if (removeIt) projectilesRemovedThisFrame.add(projectileId);
+            // ★社長指示2026-09-11「クロスボウの矢は刺さって少ししてから消える様にして」。
+            // 判定は一切持たない純粋な演出(分類②)。既存の画像エフェクト(spawnImageMark)へ相乗りし、
+            // 新しい仕組みは作らない。大きさは飛行中の矢と同じ長さに揃える:
+            //   飛行中 len = max(width,6)*3.6(pixiScene の CROSSBOW 分岐)
+            //   drawImageEffect は targetH = 130*scale を素材高(112)で割る=表示幅 712*(130*scale/112)
+            //   ⇒ 826*scale = len となる scale を渡す(素材712×112の比を保ったまま同寸になる)。
+            if (removeIt && projectile.weaponKey === CROSSBOW_WEAPON_KEY) {
+              const ang = Math.atan2(projectile.direction.y, projectile.direction.x);
+              const arrowLen = Math.max(projectile.width, 6) * 3.6;
+              // 命中点から飛んできた方向へ少し戻す=鏃が埋まり、矢羽根が外に出た見え方になる。
+              const backPx = arrowLen * 0.35;
+              useGameStore.getState().spawnImageMark(
+                projectile.x + projectile.width / 2 - Math.cos(ang) * backPx,
+                projectile.y + projectile.height / 2 - Math.sin(ang) * backPx,
+                'fx/arrow',
+                { rot: ang, scale: arrowLen / 826, duration: CROSSBOW_ARROW_STUCK_MS },
+              );
+            }
           }
 
           // If enemy was killed, spawn pickups. VS-style drop table:
