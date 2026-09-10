@@ -697,6 +697,8 @@ const GATE_ARENA_RADIUS = 300;         // §5.21-追補7: ゲート2専用の広
 // (判定は持たない純粋な演出)。drawImageEffect は t>0.7 からフェードするので、900なら
 // 約630ms はっきり見えて残り270msで消える。
 const CROSSBOW_ARROW_STUCK_MS = 900;
+// ★社長指示2026-09-11: 跳弾(リコシェ)の起点フラッシュの尺。「小さめ」=既定320msより短く一瞬で消す。
+const RICOCHET_FLASH_MS = 180;
 // ゲート1専用半径(社長指示v0.25.3188「ゲート1の広さを1.5倍に」): 300→450。ゲート2は据え置き
 // (ミゲルの周回半径250=GATE_ARENA_RADIUS基準の式が生きているため、共用のまま広げると巻き添えになる)。
 // 拘束・縁湧き・脱走判定は activeEvent.radius(イベントに保存した値)を読むので、生成箇所だけで揃う。
@@ -13530,6 +13532,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 ...(projectile.ricochet ? { ricochet2: true } : {}), // 覚醒の二次跳弾=これ以上跳ねない
               });
               spawnBurst(ox, oy, '#fcd34d', 5);
+              // ★社長指示2026-09-11「跳弾が発動した時、その起点に小さめのフラッシュを発生させて」。
+              // 起点=跳ね返った元の敵の中心(ox,oy)。**判定は持たない**=攻撃ヴィジュアルの分類②。
+              // 半径は既存の最小段 GLOW_R_XS(「新しい数字を発明しない」=glowTiersの6段から取る)。
+              // ★noShadow=true: CLAUDE.md の実測「**重いのは強glowが落とす投影影**(1個≈2ms=予算の
+              // 約12%)。glowの絵そのものは無料」に従い、投影影への参加だけを断つ(見た目は同じ)。負荷1/10。
+              useGameStore.getState().spawnGlow(ox, oy, GLOW_R_XS, 'rgba(253,230,138,', RICOCHET_FLASH_MS, true);
             }
           }
 
