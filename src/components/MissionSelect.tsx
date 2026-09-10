@@ -1304,7 +1304,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             return (
               <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'guns'}>
                 <p className="weapon-slot-guide">各Tierで1挺を装備。出撃時はTier 1から。</p>
-                {COMMAND_UI_ENABLED && <nav className="weapon-category-tabs" aria-label="武器種">
+                {COMMAND_UI_ENABLED && <nav className="command-weapon-tabs" aria-label="武器種">
                   {categories.map(cat => <button type="button" key={cat} aria-pressed={cat === activeCategory}
                     onClick={() => { playSfx('ui-select'); setWeaponCategory(cat); }}>{GUN_CATEGORY_LABEL[cat]}</button>)}
                 </nav>}
@@ -2630,7 +2630,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       </div>
       <div hidden={COMMAND_UI_ENABLED && department !== 'guns'} className="development-guns">
       {COMMAND_UI_ENABLED && <div className="px-3 development-guide"><p>開発後、「装備」で選択できます。</p>
-        <nav className="development-tabs" aria-label="開発する武器種">{shelfCategories.map(cat => <button type="button" key={cat} aria-pressed={cat === activeShelfCategory}
+        <nav className="command-weapon-tabs" aria-label="開発する武器種">{shelfCategories.map(cat => <button type="button" key={cat} aria-pressed={cat === activeShelfCategory}
           onClick={() => { playSfx('ui-select'); setShelfCategory(cat); }}>{GUN_CATEGORY_LABEL[cat]}</button>)}</nav>
         {orderedGunShelfKeys.length === 0 && <p>現在、開発できる銃はありません。新しい設計図を入手するとここに並びます。</p>}
       </div>}

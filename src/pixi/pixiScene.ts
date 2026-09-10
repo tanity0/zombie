@@ -30,6 +30,7 @@ import type {
 // ENDING_SCENE.md 演出仕様v2: 兵士/フィルの状態機械(純関数・シミュレーション)はここでは読むだけ。
 import type { EndingSoldier, EndingPhillState, EndingBomb } from '../utils/endingScene';
 import { endingBombFallY, isEndingSoldierTumbling, ENDING_BLOWN_MS } from '../utils/endingScene';
+import { SIGNAL_STRIKE_DELAY_MS, type SignalStrike } from '../utils/signalLauncher';
 import { fallenSoldiersInRange } from '../utils/endingScene';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
@@ -3779,6 +3780,7 @@ export class PixiScene {
   private endingHealedAt = new Map<number, number>(); // index→治療済み表示へ切り替わった時刻(クロスフェード起点・視覚のみ)
   private endingFallenShadowGfx = new Graphics(); // 倒れ兵士の専用楕円ソフト影(シルエット焼きは使わない・§6)
   private endingBombSprites = new Map<string, Sprite>();     // 爆撃の弾(v3.1・落下中。actorLayer/zIndex=着弾Y)
+  private signalBombSprites = new Map<string, Sprite>();
   private endingBombBoomSprites = new Map<string, Sprite>(); // 爆発flipbook(v3.1・spawnExplosionFxは使わない=監査A-4のYソート)
   private endingTumbleShadowGfx = new Graphics(); // 一時転倒(blown/downed/getup)中の楕円ソフト影(監査B-3。fallen影とはclearタイミングが別)
   private rescueFace = new Map<string, { vx: number; face: number }>(); // 向きの平滑化(EMA)＋ヒステリシス。パタパタ反転防止
@@ -8102,6 +8104,7 @@ export class PixiScene {
     this.syncSensorMines(s.sensorMines, s.gameTime, now); // センサー地雷(待機ディスク/感知後2秒の赤点滅テレグラフ)
     this.syncFlareGun(s.flareGunFlares, s.gameTime, now); // フレアガン(飛翔→着弾中3秒の火・molotovの火を流用)
     this.syncGoldRings(s.goldRings, s.gameTime, now); // 金環(UNIQUE_WEAPONS.md §19・展開→照射→フェード)
+    this.syncSignalBombs(s.signalStrikes, s.gameTime);
     this.syncIceLanceFloors(s.iceLanceFloors, s.gameTime); // UNIQUE_WEAPONS.md §16-2: 氷槍ライフルの床
     this.syncEyeLaser(s.player, s.eyeLaserBeam, s.gameTime); // UNIQUE_WEAPONS.md §16-2: アイレーザーの溜め/照射
     this.syncFlamerCone(s.player, s.flamerCone, s.gameTime, now); // UNIQUE_WEAPONS.md §16-2: 火炎放射器の扇
@@ -23408,6 +23411,35 @@ export class PixiScene {
   // どちらも actorLayer に zIndex=着弾Y で描く(監査A-4: effectLayerだと奥の爆発が手前の兵士の上に
   // 乗ってしまう=「奥や手前に」の深度が壊れる)。alpha/スケールの基準も常に着弾Y(監査B4: 落下中の
   // 現在Yで引くと上空で地平線フェードに食われて透明になる)。判定なし・プールsprite・負荷2/10。
+  private syncSignalBombs(strikes: SignalStrike[], gameTime: number) {
+    const seen = new Set<string>();
+    for (const strike of strikes) {
+      if (gameTime >= strike.dueAt) continue;
+      seen.add(strike.id);
+      let sprite = this.signalBombSprites.get(strike.id);
+      if (!sprite) {
+        sprite = new Sprite();
+        sprite.anchor.set(0.5, 1);
+        this.L.actorLayer.addChild(sprite);
+        this.signalBombSprites.set(strike.id, sprite);
+      }
+      const texture = getTexture('fx/ending-bomb');
+      if (!texture) { sprite.visible = false; continue; }
+      // 既存の900ms予約に同期。壁時計を使わず、一時停止・スロー中も着弾とずれない。
+      const progress = Math.max(0, Math.min(1, 1 - (strike.dueAt - gameTime) / SIGNAL_STRIKE_DELAY_MS));
+      sprite.texture = texture;
+      sprite.scale.set(96 / Math.max(1, texture.height));
+      sprite.position.set(Math.round(strike.x), Math.round(strike.y - 320 * (1 - progress ** 1.5)));
+      sprite.zIndex = strike.y;
+      // 上空の現在Yではなく着弾点の深度を使う(地平フェードによる消失を防ぐ)。
+      sprite.alpha = this.horizonActorAlpha(strike.y);
+      sprite.visible = sprite.alpha > 0;
+    }
+    for (const [id, sprite] of this.signalBombSprites) {
+      if (!seen.has(id)) { sprite.destroy(); this.signalBombSprites.delete(id); }
+    }
+  }
+
   private drawEndingBombs(bombs: EndingBomb[]) {
     const seen = new Set<string>();
     for (const b of bombs) {
@@ -29182,6 +29214,8 @@ export class PixiScene {
   }
 
   destroy() {
+    for (const sprite of this.signalBombSprites.values()) sprite.destroy();
+    this.signalBombSprites.clear();
     try { this.labRT?.destroy(true); } catch { /* ignore */ }
     this.labRT = null;
     try { this.corridorBackdrop?.destroy(); } catch { /* ignore */ }

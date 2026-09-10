@@ -1,15 +1,27 @@
+/* 作戦室と同じ基準色。意味色(レア度・不足・警告)は別管理。 */
+.command-ui {
+  --menu-bg:#060708; --menu-panel:#0b0d0f; --menu-line:#23272a;
+  --menu-accent:#ffb340; --menu-accent-hi:#ffd28a; --menu-ink:#e6e9e9;
+  --menu-muted:#a2aaa7; --menu-selected:#282015; --menu-hover:#1b2022;
+}
+.command-ui .ds-home { --ds-bg:var(--menu-bg); --ds-panel:var(--menu-panel); --ds-line:var(--menu-line); --ds-amber:var(--menu-accent); --ds-amber-hi:var(--menu-accent-hi); --ds-ink:var(--menu-ink); }
 /* 作戦UIの共通文法。戦闘HUD・スプライトの意味色は対象にしない。 */
+/* 装備・開発の武器種は同じ列規則。親の余白によって折り返さない。 */
+.command-ui .command-weapon-tabs { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); gap:0; margin:16px 0 12px; border-bottom:1px solid var(--menu-line); }
+.command-ui .command-weapon-tabs button { min-width:0; min-height:44px; padding:10px 4px; border:0; border-bottom:2px solid transparent; font:clamp(10px,2.5vw,13px)/1.5 system-ui; color:var(--menu-muted); background:transparent; white-space:normal; overflow-wrap:anywhere; }
+.command-ui .command-weapon-tabs button[aria-pressed='true'] { color:var(--menu-accent-hi); background:var(--menu-selected); box-shadow:none; border-bottom-color:var(--menu-accent); }
+.command-ui .command-weapon-tabs button:focus-visible { outline:2px solid var(--menu-accent-hi); outline-offset:-2px; }
 .command-ui .development-toolbar { padding-top:16px; padding-bottom:16px; }
-.command-ui .development-balance { display:flex; justify-content:space-between; align-items:center; color:#acbeb7; font:13px system-ui; margin-bottom:16px; }
-.command-ui .development-balance strong { color:#e9bd79; font-size:22px; }
+.command-ui .development-balance { display:flex; justify-content:space-between; align-items:center; color:var(--menu-muted); font:13px system-ui; margin-bottom:16px; }
+.command-ui .development-balance strong { color:var(--menu-accent); font-size:22px; }
 .command-ui .development-tabs { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
-.command-ui .development-tabs button { flex:1 1 100px; min-height:44px; border:1px solid #465d61; padding:10px; font:13px system-ui; color:#acbeb7; background:#112126; }
-.command-ui .development-tabs button[aria-pressed='true'] { background:#302a20; border-color:#e9bd79; color:#ffe0a7; box-shadow:inset 3px 0 #e9bd79; }
-.command-ui .development-guide { color:#acbeb7; font:13px/1.8 system-ui; margin-bottom:20px; }
+.command-ui .development-tabs button { flex:1 1 100px; min-height:44px; border:1px solid var(--menu-line); padding:10px; font:13px system-ui; color:var(--menu-muted); background:var(--menu-panel); }
+.command-ui .development-tabs button[aria-pressed='true'] { background:var(--menu-selected); border-color:var(--menu-accent); color:var(--menu-accent-hi); box-shadow:inset 3px 0 var(--menu-accent); }
+.command-ui .development-guide { color:var(--menu-muted); font:13px/1.8 system-ui; margin-bottom:20px; }
 .command-ui .command-page .development-weapon-list, .command-ui .command-page .development-subs { grid-template-columns:minmax(0,1fr); }
 .command-ui .development-subs > .col-span-2 { grid-column:1; }
 .command-ui .command-page .development-weapon-list button { display:grid; grid-template-columns:112px minmax(0,1fr) 76px; gap:18px; align-items:center; opacity:1; }
-.command-ui .development-art { height:72px; display:flex; background:#091318; border:1px solid #34474c; }
+.command-ui .development-art { height:72px; display:flex; background:var(--menu-bg); border:1px solid var(--menu-line); }
 .command-ui .command-page .development-weapon-list button:disabled { opacity:1; }
 .command-ui .development-art img { width:100%; height:100%; object-fit:contain; image-rendering:pixelated; }
 .command-ui .development-price { text-align:right; font-size:16px; }
@@ -21,51 +33,51 @@
   .command-ui .development-price small { margin-top:0; }
 }
 .command-ui {
-  --command-bg: #081216;
-  --command-panel: #102026;
-  --command-line: #344c51;
-  --command-ink: #e5eae5;
-  --command-muted: #acbeb7;
-  --command-accent: #e9bd79;
+  --command-bg: var(--menu-bg);
+  --command-panel: var(--menu-panel);
+  --command-line: var(--menu-line);
+  --command-ink: var(--menu-ink);
+  --command-muted: var(--menu-muted);
+  --command-accent: var(--menu-accent);
 }
-.command-ui .command-page-shell { background: radial-gradient(ellipse at 80% 0, #19373c, #0b181d 45%, #070e12); }
-.command-ui .command-page { max-width: 1040px; color: var(--command-ink); font-family: 'Rajdhani', system-ui, sans-serif; scrollbar-width: thin; scrollbar-color: #647d76 transparent; }
-.command-ui .command-page-header { display: flex; align-items: center; gap: 24px; padding: 18px 20px 22px; background: #0b181d; border-bottom: 1px solid var(--command-line); }
+.command-ui .command-page-shell { background: radial-gradient(ellipse at 80% 0, var(--menu-panel), var(--menu-panel) 45%, var(--menu-bg)); }
+.command-ui .command-page { max-width: 1040px; color: var(--command-ink); font-family: 'Rajdhani', system-ui, sans-serif; scrollbar-width: thin; scrollbar-color: var(--menu-muted) transparent; }
+.command-ui .command-page-header { display: flex; align-items: center; gap: 24px; padding: 18px 20px 22px; background: var(--menu-panel); border-bottom: 1px solid var(--command-line); }
 .command-ui .command-page-header > div { min-width: 0; }
-.command-ui .command-page-kicker { color: #b79e78; font-size: 10px; letter-spacing: .22em; }
+.command-ui .command-page-kicker { color: var(--menu-accent); font-size: 10px; letter-spacing: .22em; }
 .command-ui .command-page-header h1 { margin-top: 5px; font: 500 clamp(22px, 3vw, 32px)/1.35 system-ui; letter-spacing: .08em; overflow-wrap: anywhere; }
 .command-ui .command-page-header p { margin-top: 8px; font: 12px/1.7 system-ui; color: var(--command-muted); }
 .command-ui .command-page-back { min-width: 70px; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 5px; color: var(--command-accent); font: 13px system-ui; border-right: 1px solid var(--command-line); padding-right: 12px; flex-shrink: 0; }
-.command-ui .command-section { padding: 20px; background: #112126; border: 1px solid var(--command-line); }
-.command-ui .command-section > div:first-child { color: var(--command-accent); font: 500 14px/1.5 system-ui; letter-spacing: .1em; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid #2c4146; }
+.command-ui .command-section { padding: 20px; background: var(--menu-panel); border: 1px solid var(--command-line); }
+.command-ui .command-section > div:first-child { color: var(--command-accent); font: 500 14px/1.5 system-ui; letter-spacing: .1em; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--menu-line); }
 .command-ui .command-page > .p-3, .command-ui .command-page > .px-3 { padding-left: 20px; padding-right: 20px; }
 .command-ui .command-page > .p-3 { padding-top: 20px; padding-bottom: 20px; }
-.command-ui .command-page .ff7r-fade-right { border: 1px solid var(--command-line); border-image: none; background: #13242a; padding: 16px; min-height: 52px; }
-.command-ui .command-page button.ff7r-fade-right:not(:disabled):hover { background: #1d3035; border-color: #849b8e; }
-.command-ui .command-page .ff7r-fade-right.is-on { background: #302c22; border-color: var(--command-accent); box-shadow: inset 3px 0 var(--command-accent); }
+.command-ui .command-page .ff7r-fade-right { border: 1px solid var(--command-line); border-image: none; background: var(--menu-panel); padding: 16px; min-height: 52px; }
+.command-ui .command-page button.ff7r-fade-right:not(:disabled):hover { background: var(--menu-hover); border-color: var(--menu-muted); }
+.command-ui .command-page .ff7r-fade-right.is-on { background: var(--menu-selected); border-color: var(--command-accent); box-shadow: inset 3px 0 var(--command-accent); }
 .command-ui .command-page .ff7r-fade-right.is-off { opacity: .65; }
 .command-ui .command-page .ff7r-fade-right:disabled { opacity: .5; cursor: not-allowed; }
 .command-ui .command-page .truncate { white-space: normal; overflow-wrap: anywhere; }
 .command-ui .command-page input[type='range'] { accent-color: var(--command-accent); min-height: 32px; }
-.command-ui .command-page input[type='text'] { background: #081318; border: 1px solid #52675e; color: var(--command-ink); min-height: 44px; padding: 10px 12px; }
-.command-ui .command-page button:focus-visible, .command-ui .command-character button:focus-visible, .command-ui .command-panel button:focus-visible, .command-ui .command-panel input:focus-visible { outline: 2px solid #ffe2ac; outline-offset: -3px; }
-.command-ui .command-button { min-height: 48px; padding-left: 18px; padding-right: 18px; display: block; border: 1px solid #52675e; background: #14262c; color: #e5eae5; font: 500 14px/1.5 'Rajdhani', system-ui, sans-serif; letter-spacing: .1em; text-align: center; transition: background 160ms ease-out, border-color 160ms ease-out; }
-.command-ui .command-button:hover { background: #223b3f; border-color: #b0b7a0; }
-.command-ui .command-button-primary { color: #16221c; background: var(--command-accent); border-color: #ffe0a7; font-weight: 600; }
-.command-ui .command-button-primary:hover { background: #ffdda2; }
+.command-ui .command-page input[type='text'] { background: var(--menu-bg); border: 1px solid var(--menu-line); color: var(--command-ink); min-height: 44px; padding: 10px 12px; }
+.command-ui .command-page button:focus-visible, .command-ui .command-character button:focus-visible, .command-ui .command-panel button:focus-visible, .command-ui .command-panel input:focus-visible { outline: 2px solid var(--menu-accent-hi); outline-offset: -3px; }
+.command-ui .command-button { min-height: 48px; padding-left: 18px; padding-right: 18px; display: block; border: 1px solid var(--menu-line); background: var(--menu-panel); color: var(--menu-ink); font: 500 14px/1.5 'Rajdhani', system-ui, sans-serif; letter-spacing: .1em; text-align: center; transition: background 160ms ease-out, border-color 160ms ease-out; }
+.command-ui .command-button:hover { background: var(--menu-hover); border-color: var(--menu-muted); }
+.command-ui .command-button-primary { color: #171208; background: var(--command-accent); border-color: var(--menu-accent-hi); font-weight: 600; }
+.command-ui .command-button-primary:hover { background: var(--menu-accent-hi); }
 .command-ui .command-button-selected { border-color: var(--command-accent); box-shadow: inset 3px 0 var(--command-accent); }
-.command-ui .command-button:focus-visible { outline: 2px solid #ffe2ac; outline-offset: -4px; }
-.command-ui .command-button-primary:focus-visible { outline-color: #13241f; }
-.command-ui .command-page .command-stage-card { position: relative; overflow: hidden; min-height: 172px; padding: 24px; isolation: isolate; background: #13262c; }
+.command-ui .command-button:focus-visible { outline: 2px solid var(--menu-accent-hi); outline-offset: -4px; }
+.command-ui .command-button-primary:focus-visible { outline-color: #171208; }
+.command-ui .command-page .command-stage-card { position: relative; overflow: hidden; min-height: 172px; padding: 24px; isolation: isolate; background: var(--menu-panel); }
 .command-ui .command-stage-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
 .command-ui .command-stage-card::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #071116ed, #07111677 70%, #07111655); }
 .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\] { font: 500 23px/1.4 system-ui; margin-top: 8px; }
-.command-ui .command-page .command-stage-card:hover { background: #13262c; border-color: var(--command-accent); }
-.command-ui .command-panel { background: linear-gradient(150deg, #172c31f7, #0b161bf7); border: 1px solid #52665e; border-radius: 0; box-shadow: 0 24px 80px #0009; color: var(--command-ink); font-family: 'Rajdhani', system-ui, sans-serif; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.command-ui .command-page .command-stage-card:hover { background: var(--menu-panel); border-color: var(--command-accent); }
+.command-ui .command-panel { background: linear-gradient(150deg, #0b0d0ff7, #060708f7); border: 1px solid var(--menu-line); border-radius: 0; box-shadow: 0 24px 80px #0009; color: var(--command-ink); font-family: 'Rajdhani', system-ui, sans-serif; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .command-ui .command-panel h2 { font-size: 26px; letter-spacing: .08em; line-height: 1.4; }
-.command-ui .command-character button[aria-pressed] { background: #11242be8 !important; border: 1px solid #466059 !important; border-image: none !important; }
-.command-ui .command-character button[aria-pressed='true'] { background: #3c3225ed !important; border-color: var(--command-accent) !important; }
-.command-ui .command-character > button[aria-label='戻る'] { min-height: 44px; color: var(--command-accent); border: 1px solid #53695e; }
+.command-ui .command-character button[aria-pressed] { background: #0b0d0fe8 !important; border: 1px solid var(--menu-line) !important; border-image: none !important; }
+.command-ui .command-character button[aria-pressed='true'] { background: #282015ed !important; border-color: var(--command-accent) !important; }
+.command-ui .command-character > button[aria-label='戻る'] { min-height: 44px; color: var(--command-accent); border: 1px solid var(--menu-line); }
 @media (min-width: 900px) {
   .command-ui .command-page .command-growth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
   .command-ui .command-page .command-growth-grid > * { margin-top: 0; }
@@ -83,22 +95,22 @@
 }
 
 /* メニューを一枚の操作盤として扱う。固定モーダルの含有ブロックは作らない。 */
-.command-ui .command-page-shell { background:linear-gradient(110deg,#101b1e,#090f12 65%); }
+.command-ui .command-page-shell { background:radial-gradient(140% 70% at 50% -10%,#101315 0%,var(--menu-bg) 55%); }
 .command-ui .command-page { scrollbar-width:none; }
 .command-ui .command-page::-webkit-scrollbar { display:none; }
-.command-ui .command-page-header { gap:18px; padding:12px 16px; background:#0b1417; border-bottom:1px solid #526158; }
+.command-ui .command-page-header { gap:18px; padding:12px 16px; background:var(--menu-panel); border-bottom:1px solid var(--menu-line); }
 .command-ui .command-page-header h1 { margin:0; font-size:24px; }
 .command-ui .command-page-header p { margin-top:4px; }
 .command-ui .command-section { background:transparent; border:0; padding:16px; }
-.command-ui .command-page .ff7r-fade-right:not(.command-stage-card) { border-width:0 0 1px; background:#142126; }
-.command-ui .command-page .ff7r-fade-right.is-on { box-shadow:inset 3px 0 #e9bd79; background:#2c291f; }
-.command-ui .development-tabs { gap:0; border-bottom:1px solid #526158; }
+.command-ui .command-page .ff7r-fade-right:not(.command-stage-card) { border-width:0 0 1px; background:var(--menu-panel); }
+.command-ui .command-page .ff7r-fade-right.is-on { box-shadow:inset 3px 0 var(--menu-accent); background:var(--menu-selected); }
+.command-ui .development-tabs { gap:0; border-bottom:1px solid var(--menu-line); }
 .command-ui .development-tabs button { border:0; border-bottom:2px solid transparent; background:transparent; }
-.command-ui .development-tabs button[aria-pressed='true'] { box-shadow:none; border-bottom-color:#e9bd79; background:#2c291f; }
+.command-ui .development-tabs button[aria-pressed='true'] { box-shadow:none; border-bottom-color:var(--menu-accent); background:var(--menu-selected); }
 .command-ui .development-art { background:transparent; border:0; }
 .command-ui .development-guide { margin-bottom:12px; }
-.command-ui .command-panel { background:#101d22fa; box-shadow:0 8px 24px #0008; border-color:#647064; }
-.command-ui .command-button { border-width:0 0 1px; background:#1b2a2e; }
-.command-ui .command-button-primary { background:#e9bd79; color:#16221c; }
-.command-ui .command-button:active { background:#35463f; }
-.command-ui .command-button-primary:active { background:#ffdda2; }
+.command-ui .command-panel { background:#0b0d0ffa; box-shadow:0 8px 24px #0008; border-color:var(--menu-line); }
+.command-ui .command-button { border-width:0 0 1px; background:var(--menu-panel); }
+.command-ui .command-button-primary { background:var(--menu-accent); color:#171208; }
+.command-ui .command-button:active { background:var(--menu-hover); }
+.command-ui .command-button-primary:active { background:var(--menu-accent-hi); }
