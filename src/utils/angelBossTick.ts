@@ -49,8 +49,9 @@ import { pickRafiMove, RAFI_PHASE_HP_THRESHOLD } from './rafiScript';
 import { pickUriMove, uriSweepInnerRadius, URI_PHASE_HP_THRESHOLD } from './uriScript';
 import { pickSurielMove, surielRingCount, SURIEL_PHASE_HP_THRESHOLD } from './surielScript';
 import {
-  pickAcrasielMove, acrasielPhaseForHealth, acrasielSpikeGapCount,
-  pickSpikeGapMask, isSpikeGapSector,
+  pickAcrasielMove, acrasielPhaseForHealth, isSpikeGapSector,
+  planAcrasielPattern, acrasielSectorPolygon, acrasielPolygonHitsCircle,
+  ACRASIEL_SPEAR_FLIGHT_MS, ACRASIEL_WARP_ACTIVE_MS, ACRASIEL_GAZE_ACTIVE_MS,
 } from './acrasielScript';
 import {
   pickPhillMove, phillPhaseForHealth, phillRequiredMoveReady, phillRequiredMoveDamage,
@@ -2814,226 +2815,188 @@ export const runSurielTick = (
 // --- アクラシエル(§6.28-19 バッチM63・新規) ---------------------------------------------------
 // ============================================================================================
 export const runAcrasielTick = (
-  acrasiel: Enemy, s: AngelBossState, newGameTime: number, deltaTime: number, moveSpeedMult: number,
+  boss: Enemy, s: AngelBossState, now: number, deltaTime: number, moveSpeedMult: number,
   sfx: AngelSfx, onPlayerDeath: (x: number, y: number) => void,
 ): void => {
-  void s; void deltaTime; void moveSpeedMult; // 動かない(speed:0・脚が無い)。転移だけが唯一の移動手段。
-  const store = useGameStore.getState();
-  const player = store.player;
-  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
-  const acx = acrasiel.x + acrasiel.width / 2, acy = acrasiel.y + acrasiel.height / 2;
-  const aHomeX = acrasiel.homeX ?? acx, aHomeY = acrasiel.homeY ?? acy;
-  const maxR = GATE_ARENA_RADIUS - MIGUEL_ORBIT_MARGIN - acrasiel.height / 2;
-  const st = acrasiel.bossState ?? 'chase';
-  const patch: Partial<Enemy> = {};
-
-  const healthFrac = acrasiel.maxHealth > 0 ? acrasiel.health / acrasiel.maxHealth : 1;
-  const phase = acrasielPhaseForHealth(healthFrac);
-  patch.bossPhase = phase;
-  patch.bossPhaseFlashUntil = phaseJustChanged(acrasiel.bossPhase, phase) ? newGameTime + ANGEL_PHASE_FLASH_MS : acrasiel.bossPhaseFlashUntil;
-
-  const acrasielCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(acrasiel, acx, hx, hy, sfx, ghost);
-
-  // --- 技の開始(begin*)。実戦の抽選(下のchase分岐)と ボスメーカーの▸個別再生が**同じ1本**を通る ---
-  const beginAcrasielSpike = (): void => {
-    patch.bossState = 'spike-windup'; patch.bossStateUntil = newGameTime + AC_T.spike.windup;
-    patch.spikeGapMask = pickSpikeGapMask(acrasielSpikeGapCount(phase));
+  void s; void deltaTime; void moveSpeedMult;
+  const store = useGameStore.getState(), pl = store.player;
+  const px = pl.x + pl.width / 2, py = pl.y + pl.height / 2;
+  const cx = boss.x + boss.width / 2, cy = boss.y + boss.height / 2;
+  const phase = acrasielPhaseForHealth(boss.health / Math.max(1, boss.maxHealth));
+  const st = boss.bossState ?? 'chase';
+  const plan = boss.acrasielPlan;
+  const patch: Partial<Enemy> = { bossPhase: phase, bossScriptQueue: [], vx: 0, vy: 0 };
+  const remaining = (boss.bossStateUntil ?? 0) - now;
+  const area: PlayableAreaCtx = {
+    farBackdrop: store.farBackdrop, labTheme: store.stageTheme === 'lab' && !store.indoorMode,
+    corridorMode: store.corridorMode, m0AdvanceLimitX: store.m0AdvanceLimitX,
+    corridorRunInActive: store.corridorRunInActive, exStage: store.corridorMode && isExStageRun(),
   };
-  const beginAcrasielSpear = (): void => {
-    patch.bossState = 'spear-windup'; patch.bossStateUntil = newGameTime + AC_T.spear.windup;
+  const homeX = boss.homeX ?? cx, homeY = boss.homeY ?? cy;
+  const playerRadius = Math.max(pl.width, pl.height) / 2;
+  const enter = (state: Enemy['bossState'], duration: number): void => {
+    patch.bossState = state; patch.bossStateUntil = now + duration; patch.acrasielStateAt = now;
   };
-  const beginAcrasielWarp = (): void => {
-    patch.bossState = 'warp-out'; patch.bossStateUntil = newGameTime + AC_T.warp.windup;
+  const recover = (move: 'spike' | 'spear' | 'warp' | 'burst' | 'gaze'): void => {
+    // 他ボスの連携300ms規則を持ち込まない。burstが最大の反撃窓。
+    enter(`${move}-recover`, move === 'burst' ? Math.max(1200, AC_T.burst.recover) : Math.max(500, AC_T[move].recover));
   };
-  const beginAcrasielBurst = (): void => {
-    patch.bossState = 'burst-windup'; patch.bossStateUntil = newGameTime + AC_T.burst.windup;
+  const counter = (x: number, y: number, ghost?: GhostCounterFire): void => {
+    // 同じ受付窓の接触で硬直を毎tick延長したり、多重報酬を出したりしない。
+    if (!ghost && boss.acrasielCounterWindowEnd === pl.counterWindowEnd) return;
+    if (!ghost) patch.acrasielCounterWindowEnd = pl.counterWindowEnd;
+    angelCounterHit(boss, cx, x, y, sfx, ghost);
+    const move = st.startsWith('spike') ? 'spike' : st.startsWith('spear') ? 'spear'
+      : st.startsWith('warp') ? 'warp' : st.startsWith('burst') ? 'burst' : 'gaze';
+    recover(move);
+    if (plan) patch.acrasielPlan = { ...plan, combo: false };
   };
-  const beginAcrasielGaze = (): void => {
-    patch.bossState = 'gaze-windup'; patch.bossStateUntil = newGameTime + AC_T.gaze.windup;
-    // ロック(掟W4)。BOT_AND_GHOST.md §2.8 G2.5: pcx/pcyの代わりにヘイト対象の中心。
-    const gazeAim = resolveBossHateAim(acrasiel, { x: pcx, y: pcy }, store.summons, newGameTime);
-    patch.aiTargetX = gazeAim.x; patch.aiTargetY = gazeAim.y; patch.hateTarget = gazeAim.side;
+  const damage = (hit: boolean, label: string, tag: string): void => {
+    if (!hit) return;
+    if (isCounterActive(useGameStore.getState().player, Date.now())) { counter(px, py); return; }
+    if (useGameStore.getState().damagePlayer(boss.damage, label, px, py, undefined, undefined, tag)) onPlayerDeath(px, py);
   };
-  /** 選ばれた技を始める(予告SEは全技共通=旧実装のとおり分岐の手前で1回)。 */
-  const startAcrasielMove = (k: AngelMoveKey): void => {
+  const begin = (key: AngelMoveKey): void => {
+    const p = planAcrasielPattern(cx, cy, px, py, phase, now, AC_T.spear.range, AC_T.spear.count);
+    // 壁・拘束円・身体の幅を満たす退避点から空きの向きを確定する。
+    // 候補は現在地近くから。槍も退避点へ重ならない配置を確定し、予告後は追尾しない。
+    const direction = Math.atan2(py - cy, px - cx);
+    const distance = Math.hypot(px - cx, py - cy);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const candidates = [0.55 * side, -0.55 * side, 0.4 * side, -0.4 * side, 0.22 * side, -0.22 * side, 0];
+    for (const offset of candidates) {
+      const angle = direction + offset;
+      const radius = Math.max(80, distance - 25);
+      const rx = cx + Math.cos(angle) * radius, ry = cy + Math.sin(angle) * radius;
+      const c = clampRectToPlayableArea(rx - pl.width / 2, ry - pl.height / 2, pl.width, pl.height, area);
+      if (Math.hypot(c.x + pl.width / 2 - rx, c.y + pl.height / 2 - ry) > 0.01
+        || Math.hypot(rx - homeX, ry - homeY) > GATE_ARENA_RADIUS - playerRadius - 8
+        || Math.hypot(rx - px, ry - py) > pl.speed * AC_T.spike.windup / 1000 * 0.8
+        || radius * Math.sin(Math.PI / 8) <= playerRadius + 8) continue;
+      p.rotation = angle; p.refuge = { x: rx, y: ry };
+      p.targets = p.targets.map((_, i) => {
+        const a = angle + i * Math.PI * 2 / AC_T.spear.count;
+        let range = AC_T.spear.range;
+        while (Math.hypot(cx + Math.cos(a) * range - rx, cy + Math.sin(a) * range - ry) < AC_T.spear.radius + playerRadius + 12) range += 20;
+        return { x: cx + Math.cos(a) * range, y: cy + Math.sin(a) * range, angle: a };
+      });
+      break;
+    }
+    // 安全な扇を置けない密着/壁際は、予告前に転移へ切替。出したテルは取り消さない。
+    if (key === 'ac-spike' && !p.refuge) key = 'ac-warp';
+    patch.acrasielPlan = p;
+    patch.spikeGapMask = p.gapMask;
     sfx.alert();
-    if (k === 'ac-spike') beginAcrasielSpike();
-    else if (k === 'ac-spear') beginAcrasielSpear();
-    else if (k === 'ac-warp') beginAcrasielWarp();
-    else if (k === 'ac-burst') beginAcrasielBurst();
-    else beginAcrasielGaze();
+    if (key === 'ac-spike' && phase === 3) {
+      // 一つの複合技。槍350ms実行→550ms硬直→棘1100ms=槍の起爆2000ms。
+      p.combo = true;
+      enter('spear-windup', AC_T.spear.windup);
+    } else if (key === 'ac-spike') enter('spike-windup', AC_T.spike.windup);
+    else if (key === 'ac-spear') enter('spear-windup', AC_T.spear.windup);
+    else if (key === 'ac-burst') enter('burst-windup', AC_T.burst.windup);
+    else if (key === 'ac-warp') {
+      // 予告開始で着地点をロック。画面・帯の外へ飛ばさない(同じクランプを実行時にも通す)。
+      const angle = Math.atan2(py - cy, px - cx) + Math.PI / 2 * (Math.random() < 0.5 ? -1 : 1);
+      const target = clampRectToPlayableArea(px + Math.cos(angle) * 85 - boss.width / 2,
+        py + Math.sin(angle) * 85 - boss.height / 2, boss.width, boss.height, area);
+      const dx = target.x + boss.width / 2 - homeX, dy = target.y + boss.height / 2 - homeY;
+      const limit = GATE_ARENA_RADIUS - Math.max(boss.width, boss.height) / 2 - MIGUEL_ORBIT_MARGIN;
+      const ratio = Math.min(1, limit / Math.max(1, Math.hypot(dx, dy)));
+      const fixed = clampRectToPlayableArea(homeX + dx * ratio - boss.width / 2,
+        homeY + dy * ratio - boss.height / 2, boss.width, boss.height, area);
+      patch.aiTargetX = fixed.x + boss.width / 2; patch.aiTargetY = fixed.y + boss.height / 2;
+      enter('warp-out', AC_T.warp.windup);
+    } else {
+      const aim = resolveBossHateAim(boss, { x: px, y: py }, store.summons, now);
+      patch.aiTargetX = aim.x; patch.aiTargetY = aim.y; patch.hateTarget = aim.side;
+      enter('gaze-windup', AC_T.gaze.windup);
+    }
   };
-
-  const acrasielFull = acrasiel.bossFullStunUntil !== undefined && newGameTime < acrasiel.bossFullStunUntil;
-  let aGhostFire: GhostCounterFire | null = null;
-  if (acrasielFull) {
-    patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + AN_C.stunNextActionMs;
-  } else if ((aGhostFire = takeGhostAngelCounter(acrasiel)) !== null) {
-    // v0.25.2480: 守護霊カウンター成立(効果=プレイヤー成立の各州分岐と同一のchase復帰。
-    // 'warp-out'はプレイヤー可だが語尾判定に載らない=請求が積まれず対象外・報告済みの狭い側)。
-    acrasielCounterHit(acx, acy, aGhostFire);
-    patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-  } else if (takeAngelPlay(acrasiel, 'acrasiel', startAcrasielMove)) {
-    // ボスメーカー ▸(通常プレイでは要求箱が常に null なのでここへは来ない)。
+  const isRecover = st.endsWith('-recover');
+  const isWind = st.endsWith('-windup') || st === 'warp-out' || st === 'warp-in';
+  const ghost = takeGhostAngelCounter(boss);
+  if (ghost) counter(cx, cy, ghost);
+  else if ((boss.bossFullStunUntil ?? 0) > now) {
+    // カウンター後もrecoverを経由し、青白い反撃窓を残す。
+    if (!isRecover) {
+      recover('burst');
+      if (plan) patch.acrasielPlan = { ...plan, combo: false };
+    }
+  } else if ((isWind || isRecover) && rectsOverlap(boss, pl) && isCounterActive(pl, Date.now())) {
+    // W7はアクラシエル専用。全ボス共通の体当たりゲートは変更しない。
+    counter(cx, cy);
   } else if (st === 'chase') {
-    // 動かない(speed:0)。技の抽選のみ行う。
-    if (newGameTime >= (acrasiel.bossNextActionAt ?? 0)) {
-      const distance = Math.hypot(pcx - acx, pcy - acy);
-      const scripted = chooseScriptMove(acrasiel, 'acrasiel', phase, () => pickAcrasielMove(distance, phase));
-      const move = scripted.move;
-      patch.bossScriptQueue = scripted.remaining;
-      if (move) {
-        startAcrasielMove(
-          move === 'spike' ? 'ac-spike'
-            : move === 'spear' ? 'ac-spear'
-              : move === 'warp' ? 'ac-warp'
-                : move === 'burst' ? 'ac-burst' : 'ac-gaze',
-        );
-      }
+    if (!takeAngelPlay(boss, 'acrasiel', begin) && now >= (boss.bossNextActionAt ?? 0)) {
+      const move = Math.hypot(px - cx, py - cy) > 180 ? 'warp' : pickAcrasielMove(Math.hypot(px - cx, py - cy), phase);
+      if (move) begin(('ac-' + move) as AngelMoveKey);
     }
-  } else if (st === 'spike-windup') {
-    const { overlap, counterActive } = bodyOverlapNow(acrasiel);
-    if (overlap && counterActive) {
-      acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-    } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'spike'; patch.bossStateUntil = newGameTime + AC_T.spike.active;
-      sfx.iceBurst(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
+  } else if (isRecover && remaining <= 0) {
+    if (st === 'spear-recover' && plan?.combo && plan.impactAt !== undefined) {
+      sfx.alert();
+      // 最初に予約した起爆時刻は予告中に動かさない。両チャネルは同一gameTimeを読む。
+      patch.acrasielPlan = { ...plan, startedAt: plan.impactAt - AC_T.spike.windup };
+      patch.bossState = 'spike-windup'; patch.bossStateUntil = plan.impactAt;
+      patch.acrasielStateAt = plan.impactAt - AC_T.spike.windup;
+    } else {
+      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(now, boss);
+      patch.acrasielPlan = undefined;
     }
+  } else if (st === 'spike-windup' && remaining <= 0) {
+    enter('spike', AC_T.spike.active); sfx.iceBurst();
+    // 初回activeもこのtickで判定する=設置槍の起爆と同期。
+    if (plan) damage(Array.from({ length: 8 }, (_, sector) => sector).some(sector =>
+      !isSpikeGapSector(plan.gapMask, sector) && acrasielPolygonHitsCircle(
+        acrasielSectorPolygon(plan.x, plan.y, plan.rotation, sector, AC_T.spike.range), px, py, Math.max(pl.width, pl.height) / 2)),
+    'アクラシエルの放射棘', 'acrasiel-spike');
   } else if (st === 'spike') {
-    const mask = acrasiel.spikeGapMask ?? 0;
-    const pr = Math.max(player.width, player.height) / 2;
-    let hit = false;
-    for (let sector = 0; sector < 8; sector++) {
-      if (isSpikeGapSector(mask, sector)) continue;
-      const ang = sector * (Math.PI / 4);
-      const ex = acx + Math.cos(ang) * AC_T.spike.range, ey = acy + Math.sin(ang) * AC_T.spike.range;
-      if (distToBandRect({ x: pcx, y: pcy }, { x: acx, y: acy }, { x: ex, y: ey }, AC_T.spike.halfWidth) <= pr) { hit = true; break; }
+    if (remaining <= 0) recover('spike');
+    else if (plan) damage(Array.from({ length: 8 }, (_, sector) => sector).some(sector =>
+      !isSpikeGapSector(plan.gapMask, sector) && acrasielPolygonHitsCircle(
+        acrasielSectorPolygon(plan.x, plan.y, plan.rotation, sector, AC_T.spike.range), px, py, Math.max(pl.width, pl.height) / 2)),
+    'アクラシエルの放射棘', 'acrasiel-spike');
+  } else if (st === 'spear-windup' && remaining <= 0 && plan) {
+    const fireAt = now + AC_T.spear.detonateMs;
+    for (const target of plan.targets) store.spawnAcrasielSpear(target.x, target.y, target.angle, now, fireAt, boss.damage, boss.id);
+    const spears = useGameStore.getState().acrasielSpears;
+    store.setAcrasielSpears(spears.map(sp => sp.enemyId === boss.id && sp.bornAt === now
+      ? { ...sp, originX: plan.x, originY: plan.y } : sp));
+    patch.acrasielPlan = { ...plan, impactAt: fireAt };
+    enter('spear-active', ACRASIEL_SPEAR_FLIGHT_MS); sfx.throw();
+  } else if (st === 'spear-active' && remaining <= 0) {
+    if (plan?.combo && plan.impactAt !== undefined) {
+      patch.bossState = 'spear-recover';
+      patch.bossStateUntil = plan.impactAt - AC_T.spike.windup;
+      patch.acrasielStateAt = plan.impactAt - AC_T.spear.detonateMs + ACRASIEL_SPEAR_FLIGHT_MS;
     }
-    let countered = false;
-    if (hit) {
-      const cp = useGameStore.getState().player;
-      if (isCounterActive(cp, Date.now())) { acrasielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel); }
-      else {
-        const died = useGameStore.getState().damagePlayer(acrasiel.damage, `${enemyDeathLabel(acrasiel.type)}の放射棘`, pcx, pcy, undefined, undefined, 'acrasiel-spike'); // G4a計測タグ(記録専用)
-        if (died) onPlayerDeath(pcx, pcy);
-      }
-    }
-    if (!countered && newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'spike-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(AC_T.spike.recover, (acrasiel.bossScriptQueue?.length ?? 0) > 0);
-    }
-  } else if (st === 'spike-recover') {
-    const { overlap, counterActive } = bodyOverlapNow(acrasiel);
-    if (overlap && counterActive) {
-      acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-    } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, acrasiel);
-    }
-  } else if (st === 'spear-windup') {
-    const { overlap, counterActive } = bodyOverlapNow(acrasiel);
-    if (overlap && counterActive) {
-      acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-    } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      for (let i = 0; i < AC_T.spear.count; i++) {
-        const ang = (Math.PI * 2 / AC_T.spear.count) * i;
-        const lx = acx + Math.cos(ang) * AC_T.spear.range, ly = acy + Math.sin(ang) * AC_T.spear.range;
-        useGameStore.getState().spawnAcrasielSpear(lx, ly, ang, newGameTime, newGameTime + AC_T.spear.detonateMs, acrasiel.damage, acrasiel.id);
-      }
-      patch.bossState = 'spear-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(AC_T.spear.recover, (acrasiel.bossScriptQueue?.length ?? 0) > 0);
-    }
-  } else if (st === 'spear-recover') {
-    const { overlap, counterActive } = bodyOverlapNow(acrasiel);
-    if (overlap && counterActive) {
-      acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-    } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, acrasiel);
-    }
-  } else if (st === 'warp-out') {
-    const { overlap, counterActive } = bodyOverlapNow(acrasiel);
-    if (overlap && counterActive) {
-      acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-    } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      // 転移: 向きが無い(脚が無い)絵に合わせ、ホームを中心にランダムな位置へ再配置(★未決事項に記録)。
-      const ang = Math.random() * Math.PI * 2;
-      const dist = maxR * (0.3 + Math.random() * 0.6);
-      const nx = aHomeX + Math.cos(ang) * dist, ny = aHomeY + Math.sin(ang) * dist;
-      patch.x = nx - acrasiel.width / 2; patch.y = ny - acrasiel.height / 2;
-      patch.aiTargetX = nx; patch.aiTargetY = ny; // T5円の中心(描画用)
-      patch.bossState = 'warp-in'; patch.bossStateUntil = newGameTime + AC_T.warp.telegraphMs;
-    }
-  } else if (st === 'warp-in') {
-    // ★v0.25.3591(監査 A-4「赤い予告が出ているのにカウンター手段が1つも無い」): 転移衝撃は
-    // **赤円(impactRadius)+予告1000ms**を出しているのに、この州にはカウンター分岐が存在せず、
-    // 命中もdamagePlayer直呼び=ブラストパリィすら効かなかった。**赤円の中なら予告の間ずっと返せる**
-    // (着地円文法。城ボスの着地円v0.25.2601・舞妓の水鳥乱舞v0.25.3585と同型)。
-    const { overlap, counterActive } = reachOverlapNow(acrasiel, st);
-    if (overlap && counterActive) {
-      acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-    } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      const tx = acrasiel.aiTargetX ?? acx, ty = acrasiel.aiTargetY ?? acy;
-      const pr = Math.max(player.width, player.height) / 2;
-      if (Math.hypot(pcx - tx, pcy - ty) <= AC_T.warp.impactRadius + pr) {
-        const died = useGameStore.getState().damagePlayer(acrasiel.damage, `${enemyDeathLabel(acrasiel.type)}の転移衝撃`, tx, ty, undefined, undefined, 'acrasiel-warp'); // G4a計測タグ(記録専用・v0.25.3607裁定)
-        if (died) onPlayerDeath(tx, ty);
-      }
-      patch.bossState = 'warp-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(AC_T.warp.recover, (acrasiel.bossScriptQueue?.length ?? 0) > 0);
-    }
-  } else if (st === 'warp-recover') {
-    const { overlap, counterActive } = bodyOverlapNow(acrasiel);
-    if (overlap && counterActive) {
-      acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-    } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, acrasiel);
-    }
-  } else if (st === 'burst-windup') {
-    const { overlap, counterActive } = bodyOverlapNow(acrasiel);
-    if (overlap && counterActive) {
-      acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-    } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'burst'; patch.bossStateUntil = newGameTime + AC_T.burst.active;
-      sfx.shot(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
-    }
-  } else if (st === 'burst') {
-    const pr = Math.max(player.width, player.height) / 2;
-    let countered = false;
-    if (Math.hypot(pcx - acx, pcy - acy) <= AC_T.burst.radius + pr) {
-      const cp = useGameStore.getState().player;
-      if (isCounterActive(cp, Date.now())) { acrasielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel); }
-      else {
-        const died = useGameStore.getState().damagePlayer(acrasiel.damage, `${enemyDeathLabel(acrasiel.type)}の爆発`, pcx, pcy, undefined, undefined, 'acrasiel-burst'); // G4a計測タグ(記録専用)
-        if (died) onPlayerDeath(pcx, pcy);
-      }
-    }
-    if (!countered && newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'burst-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(AC_T.burst.recover, (acrasiel.bossScriptQueue?.length ?? 0) > 0);
-    }
-  } else if (st === 'burst-recover') {
-    const { overlap, counterActive } = bodyOverlapNow(acrasiel);
-    if (overlap && counterActive) {
-      acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-    } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, acrasiel);
-    }
-  } else if (st === 'gaze-windup') {
-    const { overlap, counterActive } = bodyOverlapNow(acrasiel);
-    if (overlap && counterActive) {
-      acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-    } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      useGameStore.getState().addProjectile(createEnemyProjectile(acrasiel, player, acrasiel.aiTargetX, acrasiel.aiTargetY));
-      sfx.beam(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
-      patch.bossState = 'gaze-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(AC_T.gaze.recover, (acrasiel.bossScriptQueue?.length ?? 0) > 0);
-    }
-  } else if (st === 'gaze-recover') {
-    const { overlap, counterActive } = bodyOverlapNow(acrasiel);
-    if (overlap && counterActive) {
-      acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-    } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, acrasiel);
-    }
-  } else {
-    patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + AN_C.stunNextActionMs;
+    else recover('spear');
+  } else if (st === 'warp-out' && remaining <= 0) {
+    patch.x = (boss.aiTargetX ?? cx) - boss.width / 2; patch.y = (boss.aiTargetY ?? cy) - boss.height / 2;
+    if (plan) patch.acrasielPlan = { ...plan, bodyX: boss.aiTargetX ?? cx, bodyY: boss.aiTargetY ?? cy };
+    enter('warp-in', AC_T.warp.telegraphMs);
+  } else if (st === 'warp-in' && remaining <= 0) {
+    enter('warp-active', ACRASIEL_WARP_ACTIVE_MS); sfx.iceBurst();
+    damage(Math.hypot(px - (boss.aiTargetX ?? cx), py - (boss.aiTargetY ?? cy)) <= AC_T.warp.impactRadius + Math.max(pl.width, pl.height) / 2,
+      'アクラシエルの転移衝撃', 'acrasiel-warp');
+  } else if (st === 'warp-active') {
+    if (remaining <= 0) recover('warp');
+    else damage(Math.hypot(px - (boss.aiTargetX ?? cx), py - (boss.aiTargetY ?? cy)) <= AC_T.warp.impactRadius + playerRadius,
+      'アクラシエルの転移衝撃', 'acrasiel-warp');
   }
-
-  applyPatch(acrasiel.id, patch);
+  else if (st === 'burst-windup' && remaining <= 0) { enter('burst', AC_T.burst.active); sfx.shot(); }
+  else if (st === 'burst') {
+    if (remaining <= 0) recover('burst');
+    else damage(Math.hypot(px - (plan?.x ?? cx), py - (plan?.y ?? cy)) <= AC_T.burst.radius + Math.max(pl.width, pl.height) / 2,
+      'アクラシエルの爆発', 'acrasiel-burst');
+  } else if (st === 'gaze-windup' && remaining <= 0) {
+    store.addProjectile(createEnemyProjectile(boss, pl, boss.aiTargetX, boss.aiTargetY));
+    enter('gaze-active', ACRASIEL_GAZE_ACTIVE_MS); sfx.beam();
+  } else if (st === 'gaze-active' && remaining <= 0) recover('gaze');
+  // 本体の滑りで予告原点と判定が離れないよう、技中は確定位置を保つ。
+  if (plan && st !== 'chase' && patch.x === undefined) {
+    patch.x = (plan.bodyX ?? plan.x) - boss.width / 2;
+    patch.y = (plan.bodyY ?? plan.y) - boss.height / 2;
+  }
+  applyPatch(boss.id, patch);
 };
 
 // ============================================================================================

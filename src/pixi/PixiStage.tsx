@@ -52,6 +52,8 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
   const hostRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const sceneRef = useRef<PixiScene | null>(null);
+  const sizeRef = useRef({ width, height });
+  sizeRef.current = { width, height };
   const tickerCallbackRef = useRef<(() => void) | null>(null);
   const pauseUnsubRef = useRef<(() => void) | null>(null);   // isPaused購読の解除(電池対策)
   const visHandlerRef = useRef<(() => void) | null>(null);   // visibilitychangeハンドラ(電池対策)
@@ -117,7 +119,10 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       scene.setRenderer(app.renderer); // 可視可能ゾーンの暗幕(RenderTexture合成)に使用
       // 固定設計ビュー: レンダラは端末px(width×height)のまま、シーンは論理寸法で描き、stage を scale 倍して端末へフィット。
       // これで全端末ほぼ同じ視野(FOV)になり、黒帯も出ない。詳細は utils/viewport.ts。
-      const vp = computeViewport(width, height);
+      // 開閉・回転が素材ロード中に起きても、初回propsではなく最新の表示寸法を使う。
+      const currentSize = sizeRef.current;
+      app.renderer.resize(currentSize.width, currentSize.height);
+      const vp = computeViewport(currentSize.width, currentSize.height);
       app.stage.scale.set(vp.scale);
       scene.resize(vp.logicalW, vp.logicalH);
 

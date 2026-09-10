@@ -131,6 +131,8 @@ const Game: React.FC<GameProps> = ({
       const r = containerRef.current?.getBoundingClientRect();
       const width = r ? r.width : window.innerWidth;
       const height = r ? r.height : window.innerHeight;
+      // 開閉途中などの一時的なゼロ寸法で背景と論理ビューを潰さない。
+      if (width <= 0 || height <= 0) return;
       setWindowSize({ width, height });                 // 端末px(レンダラ/PixiStage 用)
       // 画面外判定(スポーン/カリング/画面端マーカー)は固定ビューの論理寸法で統一=機種で挙動が変わらない。
       const vp = computeViewport(width, height);
@@ -149,11 +151,15 @@ const Game: React.FC<GameProps> = ({
     };
 
     window.addEventListener('resize', updateSize);
+    // 折りたたみ・表示領域の変更も同じコンテナ寸法で描画/判定/入力へ渡す。
+    const sizeObserver = new ResizeObserver(updateSize);
+    if (containerRef.current) sizeObserver.observe(containerRef.current);
     window.addEventListener('orientationchange', updateSizeSoon);
     document.addEventListener('fullscreenchange', updateSize);
 
     return () => {
       timers.forEach(id => clearTimeout(id));
+      sizeObserver.disconnect();
       window.removeEventListener('resize', updateSize);
       window.removeEventListener('orientationchange', updateSizeSoon);
       document.removeEventListener('fullscreenchange', updateSize);

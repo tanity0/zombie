@@ -3,6 +3,7 @@
 // ならない(§2.11追補ドクトリン)。形を書き写すと必ずズレるので、定義元(依存ゼロの純関数モジュール)を
 // そのまま指す。utils/molotov.ts・utils/firstAidKit.ts はどちらも import を1つも持たない=循環しない。
 import type { MolotovCycleState } from '../utils/molotov';
+import type { AcrasielPlan } from '../utils/acrasielScript';
 import type { FirstAidKitState } from '../utils/firstAidKit';
 import type { AvatarId } from '../data/avatars'; // アバターシステム(試験・第1弾)。依存ゼロの純データモジュール(循環しない)。
 import type { SwordLungePlan } from '../utils/swordLunge'; // 剣ボスの踏み込み計画(依存ゼロの純関数モジュール=循環しない)。
@@ -983,8 +984,8 @@ export interface Enemy {
     | 'thrust' | 'thrust-windup' | 'thrust-recover' | 'bolt' | 'bolt-windup' | 'bolt-recover'
     | 'ring-move-windup' | 'ring-beam-windup' | 'ring-active' | 'ring-recover'
     | 'ring-spin-windup' | 'ring-spin' | 'ring-spin-recover' | 'gaze-windup' | 'gaze-recover'
-    | 'spike-windup' | 'spike' | 'spike-recover' | 'spear-windup' | 'spear-recover'
-    | 'warp-out' | 'warp-in' | 'warp-recover' | 'burst-windup' | 'burst' | 'burst-recover'
+    | 'spike-windup' | 'spike' | 'spike-recover' | 'spear-windup' | 'spear-active' | 'spear-recover'
+    | 'warp-out' | 'warp-in' | 'warp-active' | 'warp-recover' | 'burst-windup' | 'burst' | 'burst-recover' | 'gaze-active'
     | 'radial-recover' | 'dash-recover' | 'laser-recover'
     | 'skadi-ice-windup' | 'skadi-blade-windup' | 'skadi-ice-recover' | 'skadi-blade-recover'
     | 'bite-windup' | 'bite' | 'bite-recover'
@@ -1158,6 +1159,9 @@ export interface Enemy {
   // §6.28-19(バッチM63): アクラシエル放射棘の「空きセクター」を溜め開始時にロックするビットマスク
   // (8方向=bit0..7、1=空き)。掟W4(テルを出したら必ず撃つ)のため実行まで固定する。
   spikeGapMask?: number;
+  acrasielPlan?: AcrasielPlan;
+  acrasielStateAt?: number;
+  acrasielCounterWindowEnd?: number;
   // v0.25.3204(社長指示「ランタン、1秒置きに3本発射」): ジブリルのランス=飛行中ランタンの一覧。
   // dir=進行方向(rad)・bornAt=射出時刻・firedUntil=ビーム表示終了時刻(undefined=まだ飛行中)。
   // 更新はangelBossTick(lance-windup)のみ。pixiSceneは読んで赤ライン/ランタン/ビームを描くだけ。
@@ -1683,6 +1687,8 @@ export interface BossFire {
 // 描画は pixiScene が直読み。skadiIceMarkers等の既存配管は流用せず専用配列にする(§6.28-13#12「共有定数を
 // 書き換えない・専用定数を新設」の精神を配列にも適用=スカジの挙動に一切触れないため)。
 export interface AcrasielSpear {
+  originX?: number;
+  originY?: number;
   id: string;
   x: number;
   y: number;

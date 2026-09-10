@@ -261,8 +261,8 @@ export interface AngelAcrasielTuning extends AngelSharedHolder {
 
 export const ANGEL_ACRASIEL_TUNING: AngelAcrasielTuning = {
   common: ANGEL_COMMON_TUNING, // ★6体で同じ実体(複製しない)
-  spike: { windup: 1100, active: 240, recover: withRecoverFloor(500), range: 310, halfWidth: 40 },
-  spear: { windup: 700, recover: withRecoverFloor(500), count: 6, range: 310, detonateMs: 2000, radius: 92 },
+  spike: { windup: 1100, active: 240, recover: withRecoverFloor(500), range: 1100, halfWidth: 40 },
+  spear: { windup: 700, recover: withRecoverFloor(500), count: 6, range: 210, detonateMs: 2000, radius: 60 },
   // ★telegraphMs は「赤円が見えてから実行まで」そのもの。v0.25.2609で800→1000へ是正した
   // (800msで歩ける距離は83.5px < 半径92px=**見てから歩いても構造的に出られない**状態だった)。
   // **impactRadius を広げたら telegraphMs も伸ばす**(半径/104.4px/s が必要下限)。

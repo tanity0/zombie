@@ -1,9 +1,61 @@
-// PACING_PUZZLE.md §6.28-19 バッチM63: アクラシエル(stage-ex1 ゲート2)の技選択=純関数。
+// PACING_PUZZLE.md §6.28-19 バッチM63: アクラシエル(stage-6 ゲート2)の技選択=純関数。
 // レンダラ非依存・store非依存(angelBossTick.ts からのみ import される。giantScript.tsと同じ流儀)。
 // 数値の根拠は PACING_PUZZLE.md §6.28-19 を参照。
 // 再構築では、脚がなくてもプレイヤーとの距離は変わるため距離帯の役割を追加した。
 // 5技は候補から消さず、密着=爆発 / 中距離=放射棘 / 遠距離=槍・転移・凝視の比重を上げる。
 import { bossZoneForDistance, phaseForHealth, pickComboFollowup, pickWeightedMove, type BossMoveWeights } from './bossScript';
+import { distToSegment } from './geometry';
+
+export interface AcrasielPlan {
+  x: number; y: number; rotation: number; gapMask: number;
+  bodyX?: number; bodyY?: number;
+  startedAt: number;
+  combo: boolean;
+  impactAt?: number;
+  targets: { x: number; y: number; angle: number }[];
+  refuge?: { x: number; y: number };
+}
+export const ACRASIEL_SPEAR_FLIGHT_MS = 350;
+export const ACRASIEL_WARP_ACTIVE_MS = 200;
+export const ACRASIEL_GAZE_ACTIVE_MS = 160;
+export const acrasielEase = (t: number): number => {
+  const p = Math.max(0, Math.min(1, t));
+  return p * p * (3 - 2 * p);
+};
+
+// 判定と予告が同じ頂点を読む。円弧を分割した扇形(帯の間に未指定の安全域を残さない)。
+export const acrasielSectorPolygon = (x: number, y: number, rotation: number, sector: number, range: number): number[] => {
+  const points = [x, y];
+  const start = rotation + sector * Math.PI / 4 - Math.PI / 8;
+  for (let i = 0; i <= 12; i++) {
+    const angle = start + i * Math.PI / 48;
+    points.push(x + Math.cos(angle) * range, y + Math.sin(angle) * range);
+  }
+  return points;
+};
+export const acrasielPolygonHitsCircle = (points: number[], x: number, y: number, radius: number): boolean => {
+  let inside = false;
+  for (let i = 0, j = points.length - 2; i < points.length; j = i, i += 2) {
+    const ax = points[i], ay = points[i + 1], bx = points[j], by = points[j + 1];
+    if (distToSegment({ x, y }, { x: ax, y: ay }, { x: bx, y: by }) <= radius) return true;
+    if ((ay > y) !== (by > y) && x < (bx - ax) * (y - ay) / (by - ay) + ax) inside = !inside;
+  }
+  return inside;
+};
+
+export const planAcrasielPattern = (
+  x: number, y: number, playerX: number, playerY: number, phase: 1 | 2 | 3,
+  startedAt: number, spearRange: number, spearCount: number, rand: () => number = Math.random,
+): AcrasielPlan => {
+  // 向きは毎回変わる。プレイヤーに近い空きを残し、細い通路でも反対端への強制移動にしない。
+  const rotation = Math.atan2(playerY - y, playerX - x) + (rand() - 0.5) * Math.PI / 3;
+  const gapMask = phase === 1 ? 1 | (1 << (rand() < 0.5 ? 1 : 7)) : 1;
+  const targets = Array.from({ length: spearCount }, (_, i) => {
+    const angle = rotation + i * Math.PI * 2 / spearCount;
+    return { x: x + Math.cos(angle) * spearRange, y: y + Math.sin(angle) * spearRange, angle };
+  });
+  return { x, y, rotation, gapMask, targets, startedAt, combo: false };
+};
 
 export type AcrasielMove = 'spike' | 'spear' | 'warp' | 'burst' | 'gaze';
 
@@ -12,7 +64,7 @@ export const acrasielPhaseForHealth = (healthFrac: number): 1 | 2 | 3 =>
   phaseForHealth(healthFrac, ACRASIEL_PHASE_THRESHOLDS) as 1 | 2 | 3;
 
 // §6.28-19: 放射棘の「空き」セクター数。Phase1=2・Phase2以降=1(「隙間の隙間」はPhase3の
-// spike→spear強制連携で表現=下記)。
+// 槍の起爆と棘の同時発生で表現)。
 export const acrasielSpikeGapCount = (phase: 1 | 2 | 3): number => phase === 1 ? 2 : 1;
 
 export const ACRASIEL_SECTOR_COUNT = 8;
@@ -46,7 +98,7 @@ export const ACRASIEL_MOVE_WEIGHTS: BossMoveWeights<AcrasielMove> = {
   gaze:  { melee: 10, near: 15, mid: 20, far: 30 },
 };
 
-// 全技は候補から消さず、距離帯とPhase3の主題(棘→槍)で重みだけを変える。
+// 全技は候補から消さず、距離帯とPhase3の主題(棘+槍)で重みだけを変える。
 export const pickAcrasielMove = (
   distance: number,
   phase: 1 | 2 | 3,
@@ -63,8 +115,7 @@ export const pickAcrasielMove = (
   rand,
 );
 
-// §6.28-19 Phase3: 「①放射棘と②結晶の槍が同時に出る」を、放射棘の直後に確率100%で結晶の槍へ
-// 直結する強制連携として実装する(★未決事項に記録=「隙間の隙間」の厳密な同時発生ではない近似)。
+// 旧台本用の互換ヘルパー。現在のrunAcrasielTickは使用せず、固定impactAtの複合技を実行する。
 export const ACRASIEL_COMBO_FOLLOWUP: Partial<Record<AcrasielMove, AcrasielMove>> = { spike: 'spear', spear: 'warp' };
 export const ACRASIEL_PHASE3_COMBO_CHANCE = 1;
 

@@ -15,6 +15,7 @@
 
 import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point } from 'pixi.js';
 import type { ColorMatrix } from 'pixi.js';
+import { acrasielSectorPolygon, acrasielEase, ACRASIEL_SPEAR_FLIGHT_MS } from '../utils/acrasielScript';
 import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import { shadowProbeCount, shadowProbeMode, shadowProbeStretch, noteShadowProbeFrame, noteShadowProbeSigma } from './shadowProbe'; // 影ベンチのプローブ(計測専用)
@@ -5848,7 +5849,8 @@ export class PixiScene {
   }
 
   private updateHorizonForestFadeMask(w: number, horizonH: number) {
-    const canvas = document.createElement('canvas');
+    // AlphaMaskFilterのBindGroupを壊さないよう、リサイズ時も同じsourceを保持する。
+    const canvas = (this.horizonForestFadeMaskTexture?.source.resource as HTMLCanvasElement | undefined) ?? document.createElement('canvas');
     canvas.width = 4;
     canvas.height = Math.max(1, Math.ceil(horizonH));
     const ctx = canvas.getContext('2d');
@@ -5874,13 +5876,14 @@ export class PixiScene {
     ctx.fillStyle = grad;
     ctx.fillRect(0, fadeStart, canvas.width, fadeEnd - fadeStart); // fadeStart→下端で 1→0(下ほど透明)
 
-    const texture = Texture.from(canvas);
+    const texture = this.horizonForestFadeMaskTexture ?? Texture.from(canvas);
+    texture.source.resize(canvas.width, canvas.height);
+    texture.source.update();
     this.horizonForestFadeMask.texture = texture;
     this.horizonForestFadeMask.position.copyFrom(this.L.horizonForest.position);
     // マスクも森1と同じオーバースキャン幅にする(w だと中央寄せした森1の左右端が隠れて黒帯になる・v0.25.1884)。
     this.horizonForestFadeMask.width = w * ZOOM_OVERSCAN;
     this.horizonForestFadeMask.height = horizonH;
-    this.horizonForestFadeMaskTexture?.destroy(true);
     this.horizonForestFadeMaskTexture = texture;
   }
 
@@ -5897,7 +5900,8 @@ export class PixiScene {
     const maskX = -(maskW - w) / 2;
     const maskY = -(maskH - h) / 2;
 
-    const canvas = document.createElement('canvas');
+    // AlphaMaskFilterのBindGroupを壊さないよう、リサイズ時も同じsourceを保持する。
+    const canvas = (this.worldFadeMaskTexture?.source.resource as HTMLCanvasElement | undefined) ?? document.createElement('canvas');
     canvas.width = 4;
     canvas.height = Math.max(1, Math.ceil(maskH));
     const ctx = canvas.getContext('2d');
@@ -5916,12 +5920,13 @@ export class PixiScene {
     ctx.fillStyle = 'rgba(255,255,255,1)';
     ctx.fillRect(0, gf, canvas.width, canvas.height - gf);
 
-    const texture = Texture.from(canvas);
+    const texture = this.worldFadeMaskTexture ?? Texture.from(canvas);
+    texture.source.resize(canvas.width, canvas.height);
+    texture.source.update();
     this.worldFadeMask.texture = texture;
     this.worldFadeMask.position.set(maskX, maskY);
     this.worldFadeMask.width = maskW;
     this.worldFadeMask.height = maskH;
-    this.worldFadeMaskTexture?.destroy(true);
     this.worldFadeMaskTexture = texture;
     // §6.37: このY/高さが「zoom=1相当」の基準値。毎フレーム syncWorldFadeMaskZoom が
     // post-zoom 換算した値へ position.y/height を付け替える(X/width はここで確定・触らない)。
@@ -5945,7 +5950,8 @@ export class PixiScene {
   }
 
   private updateFrontForestFadeMask(w: number, frontH: number) {
-    const canvas = document.createElement('canvas');
+    // AlphaMaskFilterのBindGroupを壊さないよう、リサイズ時も同じsourceを保持する。
+    const canvas = (this.frontForestFadeMaskTexture?.source.resource as HTMLCanvasElement | undefined) ?? document.createElement('canvas');
     canvas.width = 4;
     canvas.height = Math.max(1, Math.ceil(frontH));
     const ctx = canvas.getContext('2d');
@@ -5959,11 +5965,12 @@ export class PixiScene {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const texture = Texture.from(canvas);
+    const texture = this.frontForestFadeMaskTexture ?? Texture.from(canvas);
+    texture.source.resize(canvas.width, canvas.height);
+    texture.source.update();
     this.frontForestFadeMask.texture = texture;
     this.frontForestFadeMask.width = w;
     this.frontForestFadeMask.height = frontH;
-    this.frontForestFadeMaskTexture?.destroy(true);
     this.frontForestFadeMaskTexture = texture;
   }
 
@@ -13556,30 +13563,102 @@ export class PixiScene {
   // PACING_PUZZLE.md §6.28-19(バッチM63): アクラシエルの結晶の槍。設置中はスプライト(向き=射出方向)+
   // T5円テレグラフ(ジブリル火=syncBossFiresと同型の「共有Graphics1枚+スプライトプール」方式)。
   // 半径はACRASIEL_SPEAR_RADIUS(判定と同寸=掟)。判定/起爆はangelBossTick.ts(tickAcrasielSpears)が担う。
+
+  // 予告と実行はstoreの同じ計画を描く。中断後に赤い攻撃だけ残すラッチは持たない。
+  private drawAcrasielPattern(view: ActorView, e: Enemy, time: number): void {
+    const p = e.acrasielPlan;
+    if (!p) return;
+    const state = e.bossState ?? '';
+    const g = view.tele;
+    const remain = Math.max(0, (e.bossStateUntil ?? time) - time);
+    const recover = state.endsWith('-recover');
+    const spike = state.startsWith('spike');
+    const spear = state.startsWith('spear');
+    const burst = state.startsWith('burst');
+    const warp = state.startsWith('warp');
+    const windMs = spike ? AC_T.spike.windup : spear ? AC_T.spear.windup
+      : burst ? AC_T.burst.windup : warp ? AC_T.warp.windup : AC_T.gaze.windup;
+    const wind = state.endsWith('-windup') || state === 'warp-out';
+    const t = wind ? acrasielEase(1 - remain / windMs) : 1;
+    const fill = wind ? 0.12 + 0.12 * t : 0.34;
+    const circle = (x: number, y: number, radius: number, alpha: number): void => {
+      g.circle(x, y, radius).fill({ color: 0xff3030, alpha });
+      g.circle(x, y, radius).stroke({ color: 0xff5555, alpha: 0.85, width: 1.5 });
+    };
+    if (spike && !recover) {
+      for (let i = 0; i < 8; i++) {
+        if (p.gapMask & (1 << i)) continue;
+        g.poly(acrasielSectorPolygon(p.x, p.y, p.rotation, i, AC_T.spike.range))
+          .fill({ color: 0xff3030, alpha: fill })
+          .stroke({ color: 0xff5555, alpha: 0.65, width: 1 });
+      }
+    }
+    if (spear && wind) for (const target of p.targets) circle(target.x, target.y, AC_T.spear.radius, fill);
+    if (burst && !recover) circle(p.x, p.y, AC_T.burst.radius, fill);
+    if (warp && !recover) circle(e.aiTargetX ?? p.x, e.aiTargetY ?? p.y, AC_T.warp.impactRadius, fill);
+    if (state === 'gaze-windup') {
+      const dx = (e.aiTargetX ?? p.x) - p.x, dy = (e.aiTargetY ?? p.y) - p.y;
+      const length = Math.hypot(dx, dy) || 1;
+      // T6は弾の射線。面を塗らず、実行は共通enemy_bolt(赤い二重丸)に渡す。
+      g.moveTo(p.x, p.y).lineTo(p.x + dx / length * 1000, p.y + dy / length * 1000)
+        .stroke({ color: 0xff5555, alpha: 0.65 + 0.25 * t, width: 1.5 });
+    }
+    // 棘を外へ開く→射出→引き戻す。既存槍絵を全ステートで保持(W9)。
+    const activeProgress = state === 'spike' ? acrasielEase(1 - remain / AC_T.spike.active)
+      : state === 'burst' ? acrasielEase(1 - remain / AC_T.burst.active) : 0;
+    if (state === 'burst') for (let i = 0; i < ACRASIEL_BURST_FRAG_COUNT; i++) {
+      this.drawAcrasielBurstFragment(view, i, p.x, p.y, p.rotation + i * Math.PI * 2 / ACRASIEL_BURST_FRAG_COUNT, activeProgress);
+    }
+    const stateDuration = Math.max(1, (e.bossStateUntil ?? time) - (e.acrasielStateAt ?? time));
+    const executionT = acrasielEase(1 - remain / stateDuration);
+    const spread = recover ? 28 : wind ? 28 + 32 * t : 60 + 100 * Math.sin(Math.PI * executionT) - 32 * executionT;
+    const originX = p.bodyX ?? p.x;
+    const originY = p.bodyY ?? p.y;
+    const count = spear ? p.targets.length : 8;
+    for (let i = 0; i < count; i++) {
+      if (spike && (p.gapMask & (1 << i))) continue;
+      const angle = spear ? p.targets[i].angle : p.rotation + i * Math.PI / 4;
+      this.drawAcrasielSpikeThrust(view, i, originX + Math.cos(angle) * spread,
+        originY + Math.sin(angle) * spread, angle, 0.45);
+      const sp = view.spikeThrust?.[i];
+      if (sp) {
+        sp.tint = recover ? 0xbfe8ff : 0xffffff;
+        sp.alpha = state === 'warp-out' ? 1 - t : 0.85;
+      }
+    }
+    if (recover) view.sprite.tint = 0xbfe8ff;
+    else if (wind) {
+      view.sprite.scale.set(view.sprite.scale.x * (1 + t * 0.18), view.sprite.scale.y * (1 - t * 0.3));
+    } else if (!warp) {
+      const release = 1 - executionT;
+      view.sprite.scale.set(view.sprite.scale.x * (1 + release * 0.18), view.sprite.scale.y * (1 - release * 0.3));
+    }
+    if (state === 'warp-out') view.sprite.alpha *= 1 - t;
+    if (state === 'warp-in') view.sprite.alpha *= acrasielEase(1 - remain / AC_T.warp.telegraphMs);
+  }
+
   private syncAcrasielSpears(spears: AcrasielSpear[], gameTime: number, now: number) {
     const g = this.acrasielSpearGfx;
     if (!g.parent) this.L.groundLayer.addChild(g);
     g.clear();
     const seen = new Set<string>();
     const tex = getTexture('acrasiel-spear');
-    const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+    void now;
     for (const sp of spears) {
       const total = Math.max(1, sp.fireAt - sp.bornAt);
       const t = Math.max(0, Math.min(1, (gameTime - sp.bornAt) / total));
       const R = AC_T.spear.radius;
-      // ★v0.25.4110(社長指示「赤サークルも全て」): 絵はそのまま・窓マスクを外枠→内側へ流す(?csweep=0で従来へ)。
-      const acFillA = telFillA(t, pulse) * TELEGRAPH_FILL_MULT;
-      const acMask = CIRCLE_SWEEP_ON
-        ? this.drawSweepCircleFill(g, sp.x, sp.y, R, t, 0xff2a2a, acFillA)
-        : (g.ellipse(sp.x, sp.y, R, R).fill({ color: 0xff2a2a, alpha: acFillA }), 1);
-      g.ellipse(sp.x, sp.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(t, pulse) * acMask });
+      g.circle(sp.x, sp.y, R).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * t });
+      g.circle(sp.x, sp.y, R).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 });
       if (tex) {
         seen.add(sp.id);
         let vsp = this.acrasielSpearPool.get(sp.id);
         if (!vsp) { vsp = new Sprite(tex); vsp.anchor.set(0.5, 0.85); this.L.groundLayer.addChild(vsp); this.acrasielSpearPool.set(sp.id, vsp); }
         vsp.rotation = sp.angle + Math.PI / 2; // 実測未受領のため叩き台(実機調整前提)
         vsp.scale.set(ACRASIEL_SPEAR_VIS_LEN / Math.max(1, tex.height));
-        vsp.position.set(sp.x, sp.y);
+        const flight = acrasielEase((gameTime - sp.bornAt) / ACRASIEL_SPEAR_FLIGHT_MS);
+        vsp.position.set((sp.originX ?? sp.x) + (sp.x - (sp.originX ?? sp.x)) * flight,
+          (sp.originY ?? sp.y) + (sp.y - (sp.originY ?? sp.y)) * flight - Math.sin(Math.PI * flight) * 45);
         vsp.alpha = 0.5 + 0.5 * t;
         vsp.visible = true;
       }
@@ -18143,31 +18222,7 @@ export class PixiScene {
         const pl = useGameStore.getState().player;
         this.drawJibrilLantern(e.id, fb.footX, fb.footY - fb.boxH * 0.55, pl.x + pl.width / 2, pl.y + pl.height / 2, now);
       }
-      // ②アクラシエルの槍の「構え」: 溜め州の直読みだったので中断で構えごと消えていた。
-      //   溜めの頭で焼いて**残りを構え切ってから**消す(実行まで行けば本物の槍=syncAcrasielSpearsへ渡す)。
-      if (scriptActive && e.type === 'acrasiel') {
-        const spearWind = bs === 'spear-windup';
-        const spearRemain = spearWind ? Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime) : 0;
-        const spL = this.latchFx(`${e.id}:acrasiel-spear-ready`, spearWind,
-          Math.max(1, spearRemain), now, () => {
-            const pl0 = useGameStore.getState().player;
-            return [cx, cy - e.height * 0.3, pl0.x + pl0.width / 2, pl0.y + pl0.height / 2];
-          });
-        // 実行(spear/spear-recover)まで進んだら構えは畳む=本物の槍と二重に出さない。
-        // ★v0.25.3986: 溜め(=着弾前)でカウンターされたら構えごと消す(構え切りの絵を残さない)。
-        if (spL && bs !== 'spear-recover'
-          && !this.latchCounterCancelled(`${e.id}:acrasiel-spear-ready`, spL, spL.dur, e.lastCounteredAt, spearWind)) {
-          const prog = spearWind
-            ? Math.max(0, Math.min(1, 1 - spearRemain / AC_T.spear.windup))
-            : spL.t;
-          const pl = useGameStore.getState().player;
-          // 溜め中は狙いを追い、中断後は焼き付けた狙いのまま構え切る。
-          const aimX = spearWind ? pl.x + pl.width / 2 : spL.d[2];
-          const aimY = spearWind ? pl.y + pl.height / 2 : spL.d[3];
-          this.drawAcrasielSpearReady(e.id, spearWind ? cx : spL.d[0], spearWind ? cy - e.height * 0.3 : spL.d[1],
-            aimX, aimY, 0.5 + 0.4 * prog);
-        }
-      }
+      if (scriptActive && e.type === 'acrasiel') this.drawAcrasielPattern(view, e, gameTime);
 
       // ★予兆一括バッチ(v0.25.3344・レシピ4/裁定済みv0.25.3341): ミゲル/ジブリルの弾連射(volley)構え=
       // ホロscanを本体に半透明で被せる(windup尺で1周)。素の棒立ちだった行を解消。
@@ -18498,116 +18553,6 @@ export class PixiScene {
         } else if (bs === 'sweep') {
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, HB_TH.harai.halfWidth, 1, now, 0, 0); // 実行中=全形(消し0を明示)
         }
-      }
-      // ---- アクラシエル(§6.28-19・M63新規): 放射棘=T3帯を8方向(空きセクターは塗らない)。
-      // spikeGapMaskは溜め開始でロック済み(掟W4)なので毎フレーム同じマスクを読むだけ。 ----
-      else if (scriptActive && e.type === 'acrasiel' && (bs === 'spike-windup' || bs === 'spike')) {
-        const mask = e.spikeGapMask ?? 0;
-        const prog = bs === 'spike-windup'
-          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.spike.windup))
-          : 1;
-        // FX-V2b #1: 実行中(spike active)だけ、結晶の槍が地面から突き上がる(判定=帯は不変・添え絵)。
-        const spikeActiveT = bs === 'spike'
-          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.spike.active))
-          : 0;
-        for (let sector = 0; sector < 8; sector++) {
-          if ((mask & (1 << sector)) !== 0) continue; // 空きセクター=描かない(判定と一致)
-          const ang = sector * (Math.PI / 4);
-          const ex = cx + Math.cos(ang) * AC_T.spike.range, ey = cy + Math.sin(ang) * AC_T.spike.range;
-          // idx=sector: 同フレームに最大8本まで同時に生きるので、rings(連続ジャンプ)と同じ
-          // idx方式でview.bandsのスロットを分ける(1本しか持たないと最後のセクターしか素材が出ない)。
-          this.drawAngelZoneCapsule(view, o, cx, cy, ex, ey, HB_TH.harai.halfWidth, prog, now, sector);
-          if (bs === 'spike') {
-            this.drawAcrasielSpikeThrust(view, sector, cx + Math.cos(ang) * AC_T.spike.range * 0.55,
-              cy + Math.sin(ang) * AC_T.spike.range * 0.55, ang, spikeActiveT);
-          }
-        }
-        // ★予兆一括バッチ(v0.25.3344・レシピ2「安い方」): 8方向へ力を溜める=しゃがみ(縦縮み)。
-        if (bs === 'spike-windup') {
-          view.sprite.scale.set(view.sprite.scale.x * (1 + 0.14 * prog), view.sprite.scale.y * (1 - 0.42 * prog));
-        }
-      }
-      // ---- アクラシエル: 結晶の槍(設置・§6.28-19)。溜め中だけ本体前方に1本「構え」表示(掟W9)。
-      // 実行後の槍そのものはsyncAcrasielSpears(常設)が描く。 ----
-      // ★予兆一括バッチ(v0.25.3344・レシピ2+4): アクラシエルの転移(warp-out=消える前の溜め)構え=
-      // 縦縮み(しゃがみ)+足元にホロmini(windup尺で1周)。ジブリルwarpと同じ扱い。
-      else if (scriptActive && e.type === 'acrasiel' && bs === 'warp-out') {
-        const woProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.warp.windup));
-        view.sprite.scale.set(view.sprite.scale.x * (1 + 0.14 * woProg), view.sprite.scale.y * (1 - 0.30 * woProg));
-        this.drawHoloMiniAt(e.id, fb.footX, fb.footY, Math.max(e.width, e.height) * 1.3, woProg, 0.5 + 0.4 * woProg);
-      }
-      // ---- アクラシエル: 転移(出現先)=T5円フェードイン(0.8秒)。転移元(消失)はtintのT4フラッシュのみ。 ----
-      else if (scriptActive && e.type === 'acrasiel' && bs === 'warp-in') {
-        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        const total = AC_T.warp.telegraphMs;
-        const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / total));
-        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-        // ★v0.25.3591(潜伏バグの修正・監査§4-D): ここは**転移衝撃の円**なのに、半径を
-        // `AC_T.spear.radius`(結晶の槍の円)から読んでいた。判定側は `AC_T.warp.impactRadius`。
-        // 今は偶然どちらも92なので絵と判定が一致しているが、ボスメーカーで片方だけ動かした瞬間に
-        // 「赤いのに当たらない/赤くないのに当たる」になる。**判定が読む欄に揃える。**
-        const warpR = AC_T.warp.impactRadius;
-        // ★v0.25.4099(§11-2c横展開): 絵はそのまま・帯マスクを外枠→内側へ流す。消え切り=転移衝撃発生。
-        const warpFillA = telFillA(t, pulse) * TELEGRAPH_FILL_MULT;
-        const warpMask = CIRCLE_SWEEP_ON
-          ? this.drawSweepCircleFill(o, tx, ty, warpR, t, 0xff2a2a, warpFillA)
-          : (o.ellipse(tx, ty, warpR, warpR).fill({ color: 0xff2a2a, alpha: warpFillA }), 1);
-        // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
-        if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, warpR, 0xff3b3b, (0.2 + 0.45 * t + 0.12 * pulse) * warpMask);
-        else o.ellipse(tx, ty, warpR, warpR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(t, pulse) * warpMask });
-      }
-      // ---- アクラシエル: 収縮→爆発=T2大円。「最大の反撃窓」(§6.28-19) ----
-      // ★v0.25.3148(バグ修正): **溜め(burst-windup 1200ms)の間、赤い円が一度も出ていなかった**。
-      // 判定は実行(burst)の1フレーム目から成立するので、**赤い円が出た瞬間=もう当たっている**
-      // =予告0msだった(回避可能性の走査v0.25.3146で発覚)。溜めからも円を出す。
-      // 円は**本体中心**(狙いのロックが要らない)ので、溜め中に出しても位置がズレることはない。
-      // 塗りは他の溜めと同じく進行で濃くする=「今どのくらい溜まったか」が読める。
-      else if (scriptActive && e.type === 'acrasiel' && (bs === 'burst' || bs === 'burst-windup')) {
-        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-        const bwind = bs === 'burst-windup';
-        const bprog = bwind
-          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.burst.windup))
-          : 1;
-        // ★v0.25.4099(§11-2c横展開): windup=外→内の帯マスク(消え切り=burst開始)。
-        //   burst(実行)は判定が毎フレーム生きている持続技(§11-4)なので、同じ帯を周期ループさせ続ける。
-        const bSweepProg = bwind ? bprog : PixiScene.loopSweepProg(AC_T.burst.active, (e.bossStateUntil ?? gameTime) - gameTime);
-        const bFillA = telFillA(bwind ? bprog : 1, pulse) * TELEGRAPH_FILL_MULT;
-        const bMask = CIRCLE_SWEEP_ON
-          ? this.drawSweepCircleFill(o, cx, cy, AC_T.burst.radius, bSweepProg, 0xff2a2a, bFillA)
-          : (o.ellipse(cx, cy, AC_T.burst.radius, AC_T.burst.radius).fill({ color: 0xff2a2a, alpha: bFillA }), 1);
-        // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
-        const bring = telStrokeA(bwind ? bprog : 1, pulse) * bMask;
-        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, AC_T.burst.radius, 0xff3b3b, bring);
-        else o.ellipse(cx, cy, AC_T.burst.radius, AC_T.burst.radius).stroke({ width: 2, color: 0xff3b3b, alpha: bring });
-        // FX-V2b #2: 結晶の槍の断片が4〜6片(ACRASIEL_BURST_FRAG_COUNT)放射する(既存リングに添える・②)。
-        // ※断片は**実行中だけ**(溜め中に破片が飛ぶと「もう爆発した」に見える)。
-        const burstActiveT = bwind ? -1
-          : Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.burst.active));
-        if (burstActiveT >= 0) {
-          // ★v0.25.3520(社長指示「エフェクトを武器やボスの動きと切り離して」): 破片の**放射原点**は
-          // 爆発が始まった位置に焼き付ける。毎フレームcx/cyを渡すと、本体が動いた時に破片の束ごと
-          // 引きずられる(鞭の残像と同じ形の問題)。キーは実行の期限=1回の爆発で1つ。
-          const bKey = e.bossStateUntil ?? 0;
-          let bOrigin = this.acrasielBurstOrigin.get(e.id);
-          if (!bOrigin || bOrigin.key !== bKey) {
-            bOrigin = { key: bKey, x: cx, y: cy };
-            this.acrasielBurstOrigin.set(e.id, bOrigin);
-          }
-          for (let i = 0; i < ACRASIEL_BURST_FRAG_COUNT; i++) {
-            const fragAng = (Math.PI * 2 / ACRASIEL_BURST_FRAG_COUNT) * i;
-            this.drawAcrasielBurstFragment(view, i, bOrigin.x, bOrigin.y, fragAng, burstActiveT);
-          }
-        }
-        // ★予兆一括バッチ(v0.25.3344): 収縮→大爆発の溜め=自壊的な力を溜める震え。
-        if (bwind) view.sprite.position.x += windupTremorPx(bprog, now);
-      }
-      // ---- アクラシエル: 単眼レーザー(小技)=T6線。唯一「図形を出す」小技(§6.28-19「向きが無い」の例外) ----
-      else if (scriptActive && e.type === 'acrasiel' && bs === 'gaze-windup') {
-        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        let dirx = tx - cx, diry = ty - cy; const dl = Math.hypot(dirx, diry) || 1; dirx /= dl; diry /= dl;
-        const ex = cx + dirx * MIMIR_LASER_VIS_RANGE, ey = cy + diry * MIMIR_LASER_VIS_RANGE;
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / AC_T.gaze.windup));
-        this.drawAngelBeamLine(o, cx, cy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, prog, now);
       }
       // =============================================================================================
       // PACING_PUZZLE.md §10(EXボス「フィル」バッチ3): 予告(帯/円)+羽攻撃(技3/4/5)の武器スプライト。
@@ -19033,66 +18978,6 @@ export class PixiScene {
           if (elapsed >= sweepL.d[0] && elapsed < sweepL.d[0] + sweepL.d[1]) {
             const sweepT = Math.max(0, Math.min(1, (elapsed - sweepL.d[0]) / Math.max(1, sweepL.d[1])));
             this.drawSurielSweepStreak(e.id, sweepL.d[2], sweepL.d[3], sweepL.d[4], sweepL.d[5], HB_TH.harai.halfWidth, sweepT);
-          }
-        }
-      } else if (e.type === 'acrasiel') {
-        const spikeWind = bs === 'spike-windup', spikeActive = bs === 'spike';
-        const spikeL = this.latchFx(
-          `${e.id}:acrasiel-spike-complete`, spikeWind || spikeActive,
-          (spikeWind ? swordRemain : 0) + (spikeWind ? AC_T.spike.active : spikeActive ? swordRemain : AC_T.spike.active),
-          now,
-          () => [spikeWind ? swordRemain : 0, spikeWind ? AC_T.spike.active : Math.max(1, swordRemain), cx, cy, e.spikeGapMask ?? 0],
-        );
-        if (spikeL && !(spikeWind || spikeActive || bs === 'spike-recover')) {
-          const elapsed = now - spikeL.t0;
-          if (elapsed + FX_IMPACT_TOLERANCE_MS < spikeL.d[0]) {
-            this.fxLatches.delete(`${e.id}:acrasiel-spike-complete`);
-          } else if (elapsed < spikeL.d[0] + spikeL.d[1]) {
-            // FX-V2b #1: 生きているブロック(bs==='spike')と同じ突き上げをここでも継続描画する
-            // (カウンター等でstateが先へ進んでも、焼き付けた尺(d[1])ぶんは完走させる=既存の掟)。
-            const spikeTailT = Math.max(0, Math.min(1, (elapsed - spikeL.d[0]) / Math.max(1, spikeL.d[1])));
-            for (let sector = 0; sector < 8; sector++) {
-              if ((spikeL.d[4] & (1 << sector)) !== 0) continue;
-              const ang = sector * (Math.PI / 4);
-              const ex = spikeL.d[2] + Math.cos(ang) * AC_T.spike.range;
-              const ey = spikeL.d[3] + Math.sin(ang) * AC_T.spike.range;
-              this.drawAngelZoneCapsule(view, o, spikeL.d[2], spikeL.d[3], ex, ey, HB_TH.harai.halfWidth, 1, now, sector, 0);
-              this.drawAcrasielSpikeThrust(view, sector, spikeL.d[2] + Math.cos(ang) * AC_T.spike.range * 0.55,
-                spikeL.d[3] + Math.sin(ang) * AC_T.spike.range * 0.55, ang, spikeTailT);
-            }
-          }
-        }
-
-        const burstWind = bs === 'burst-windup', burstActive = bs === 'burst';
-        const burstL = this.latchFx(
-          `${e.id}:acrasiel-burst-complete`, burstWind || burstActive,
-          (burstWind ? swordRemain : 0) + (burstWind ? AC_T.burst.active : burstActive ? swordRemain : AC_T.burst.active),
-          now,
-          () => [burstWind ? swordRemain : 0, burstWind ? AC_T.burst.active : Math.max(1, swordRemain), cx, cy],
-        );
-        if (burstL && !(burstWind || burstActive || bs === 'burst-recover')) {
-          const elapsed = now - burstL.t0;
-          if (elapsed + FX_IMPACT_TOLERANCE_MS < burstL.d[0]) {
-            this.fxLatches.delete(`${e.id}:acrasiel-burst-complete`);
-          } else if (elapsed < burstL.d[0] + burstL.d[1]) {
-            const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-            // ★v0.25.4099(§11-2c横展開): 中断後も残り尺ぶんは実行中(持続判定)と同じ扱い=周回ループ
-            // (本体側=AC_T.burst本体と同じ扱いにできると確認済み。単なる残光ではなく「焼いた尺分は
-            // 完走させる」既存の掟=判定の継続を表す描画のため)。
-            const burstTailRemain = burstL.d[1] - (elapsed - burstL.d[0]);
-            const burstTailProg = PixiScene.loopSweepProg(AC_T.burst.active, burstTailRemain);
-            const burstFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
-            const burstMask = CIRCLE_SWEEP_ON
-              ? this.drawSweepCircleFill(o, burstL.d[2], burstL.d[3], AC_T.burst.radius, burstTailProg, 0xff2a2a, burstFillA)
-              : (o.ellipse(burstL.d[2], burstL.d[3], AC_T.burst.radius, AC_T.burst.radius).fill({ color: 0xff2a2a, alpha: burstFillA }), 1);
-            if (FX_RING_ENABLED) this.drawTelegraphRing(view, burstL.d[2], burstL.d[3], AC_T.burst.radius, 0xff3b3b, (0.5 + 0.3 * pulse) * burstMask);
-            else o.ellipse(burstL.d[2], burstL.d[3], AC_T.burst.radius, AC_T.burst.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * burstMask });
-            // FX-V2b #2: 生きているブロックと同じ断片放射をここでも完走させる(既存の掟)。
-            const burstTailT = Math.max(0, Math.min(1, (elapsed - burstL.d[0]) / Math.max(1, burstL.d[1])));
-            for (let i = 0; i < ACRASIEL_BURST_FRAG_COUNT; i++) {
-              const fragAng = (Math.PI * 2 / ACRASIEL_BURST_FRAG_COUNT) * i;
-              this.drawAcrasielBurstFragment(view, i, burstL.d[2], burstL.d[3], fragAng, burstTailT);
-            }
           }
         }
       }
@@ -27095,17 +26980,6 @@ export class PixiScene {
 
   // §6.28-16: アクラシエルの結晶の槍(spear-windup中の構えプレビュー)。設置武器のため振らず、
   // 本体前方に1本だけ「構え」として見せる(掟W9の窓口・最小実装=叩き台)。
-  private drawAcrasielSpearReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
-    const tex = getTexture('acrasiel-spear');
-    if (!tex) return;
-    let sp = this.acrasielSpearReadySprites.get(id);
-    if (!sp) { sp = new Sprite(tex); sp.anchor.set(0.5, 0.9); this.L.effectLayer.addChild(sp); this.acrasielSpearReadySprites.set(id, sp); }
-    sp.scale.set(ACRASIEL_SPEAR_VIS_LEN / Math.max(1, tex.height));
-    sp.rotation = Math.atan2(aimY - pivotY, aimX - pivotX) + Math.PI / 2;
-    sp.position.set(pivotX, pivotY);
-    sp.alpha = alpha;
-    sp.visible = true;
-  }
 
   // 弾発射(volley)構え=出現魔法陣(holo-circle・全8コマ)を本体へ大きく重ねる。windup尺で1周・
   // 加算合成(強glowは使わない=pooled sprite 1枚の軽さ)。
