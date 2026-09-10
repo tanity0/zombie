@@ -13605,11 +13605,23 @@ export class PixiScene {
     if (spike && !recover) {
       // ★実行の瞬間だけ扇が白熱して縁が太る(分類②=派手さの絵。判定は不変)。
       const flash = state === 'spike' ? Math.max(0, 1 - Math.max(0, 1 - remain / Math.max(1, AC_T.spike.active)) * 2.2) : 0;
+      // ★v0.25.4206: 溜め中は**流星文法**(§11-2/§11-3)。外周→中心へ帯が流れ、**消え切った瞬間=当たり**。
+      // 従来は `fill = 0.14 + 0.20*t` で**溜めが進むほど濃くなる**=流星と真逆の読み方をさせていた。
+      // 進行は全サイト共通の規則どおり **prog = 1 −(判定までの残り)÷(予告の総時間)** の生値
+      // (ease は circleSweepBand が持っているので、ここで acrasielEase を掛けない)。
+      const sweepProg = wind ? Math.max(0, Math.min(1, 1 - remain / Math.max(1, windMs))) : 1;
       for (let i = 0; i < 8; i++) {
         if (p.gapMask & (1 << i)) continue;
-        g.poly(acrasielSectorPolygon(p.x, p.y, p.rotation, i, AC_T.spike.range))
-          .fill({ color: flash > 0 ? 0xff6a4a : 0xff3030, alpha: fill + 0.25 * flash })
-          .stroke({ color: flash > 0.25 ? 0xffffff : 0xff6b6b, alpha: 0.9, width: 2.5 + 7 * flash + 0.8 * pulse });
+        const a0 = p.rotation + i * Math.PI / 4 - Math.PI / 8;
+        if (CIRCLE_SWEEP_ON && wind) {
+          // 帯マスクだけを描く(塗りは足さない=§11-2「塗りは無いよ。向きが外から内に流れるだけ」)。
+          this.drawSweepSectorFill(g, p.x, p.y, AC_T.spike.range, a0, a0 + Math.PI / 4, sweepProg, 0xff2a2a, 0.40);
+        } else {
+          // 実行中(=消え切った後の当たっている瞬間)と、csweep を切った時のフォールバック。
+          g.poly(acrasielSectorPolygon(p.x, p.y, p.rotation, i, AC_T.spike.range))
+            .fill({ color: flash > 0 ? 0xff6a4a : 0xff3030, alpha: (wind ? fill : 0.40) + 0.25 * flash })
+            .stroke({ color: flash > 0.25 ? 0xffffff : 0xff6b6b, alpha: 0.9, width: 2.5 + 7 * flash + 0.8 * pulse });
+        }
       }
     }
     if (spear && wind) for (const target of p.targets) circle(target.x, target.y, AC_T.spear.radius, fill);
@@ -13684,8 +13696,12 @@ export class PixiScene {
       const total = Math.max(1, sp.fireAt - sp.bornAt);
       const t = Math.max(0, Math.min(1, (gameTime - sp.bornAt) / total));
       const R = AC_T.spear.radius;
-      g.circle(sp.x, sp.y, R).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * t });
-      g.circle(sp.x, sp.y, R).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 });
+      // ★v0.25.4206(§11-2c 全数へ): 設置済みの槍の起爆円も流星文法へ。従来は「信管が進むほど濃くなる」
+      // だけで、**いつ爆ぜるか**は濃さの微差からしか読めなかった。外周→中心へ帯が流れ、消え切った瞬間=起爆。
+      const spearMask = CIRCLE_SWEEP_ON
+        ? this.drawSweepCircleFill(g, sp.x, sp.y, R, t, 0xff2a2a, 0.24)
+        : (g.circle(sp.x, sp.y, R).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * t }), 1);
+      g.circle(sp.x, sp.y, R).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 * spearMask });
       if (tex) {
         seen.add(sp.id);
         let vsp = this.acrasielSpearPool.get(sp.id);
@@ -13931,8 +13947,12 @@ export class PixiScene {
         const blinkOn = Math.floor((gameTime - m.triggeredAt) / 90) % 2 === 0;
         const p = Math.max(0, Math.min(1, (gameTime - m.triggeredAt) / SENSOR_MINE_FUSE_MS));
         g.circle(m.x, m.y - 2, 2.4).fill({ color: 0xff3b3b, alpha: blinkOn ? 0.95 : 0.25 });
-        g.circle(m.x, m.y, SENSOR_MINE_RADIUS).fill({ color: 0xff2a2a, alpha: telFillA(p, blinkOn ? 1 : 0) * TELEGRAPH_FILL_MULT });
-        g.circle(m.x, m.y, SENSOR_MINE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(p, blinkOn ? 1 : 0) });
+        // ★v0.25.4206(§11-2c 全数へ): 爆発範囲の円も流星文法(外周→中心へ帯・消え切った瞬間=起爆)。
+        // **ランプの矩形波点滅はそのまま**(上のコメントの裁定どおり)=帯の濃さにだけ点滅を掛ける。
+        const mineMask = CIRCLE_SWEEP_ON
+          ? this.drawSweepCircleFill(g, m.x, m.y, SENSOR_MINE_RADIUS, p, 0xff2a2a, telFillA(p, blinkOn ? 1 : 0) * TELEGRAPH_FILL_MULT)
+          : (g.circle(m.x, m.y, SENSOR_MINE_RADIUS).fill({ color: 0xff2a2a, alpha: telFillA(p, blinkOn ? 1 : 0) * TELEGRAPH_FILL_MULT }), 1);
+        g.circle(m.x, m.y, SENSOR_MINE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(p, blinkOn ? 1 : 0) * mineMask });
       }
     }
   }
@@ -19286,7 +19306,7 @@ export class PixiScene {
       };
       // 共通ヘルパ(M66): 扇形(帯が回転する技のwindup予告=最終的に薙ぐ全域を先出しする)。innerR>0で
       // 内径付き(懐が安全=ウリの内径修正と同じ考え方。図形は「くり抜き」ではなく環状の扇そのもの)。
-      const drawGiantFanZone = (originX: number, originY: number, baseAngle: number, sweepRad: number, length: number, fillA: number, strokeA: number, innerR: number = 0) => {
+      const drawGiantFanZone = (originX: number, originY: number, baseAngle: number, sweepRad: number, length: number, fillA: number, strokeA: number, innerR: number = 0, prog?: number) => {
         const segs = 10;
         const pts: number[] = [];
         if (innerR > 0) {
@@ -19304,6 +19324,14 @@ export class PixiScene {
             const a = baseAngle - sweepRad / 2 + sweepRad * (i / segs);
             pts.push(originX + Math.cos(a) * length, originY + Math.sin(a) * length);
           }
+        }
+        // ★v0.25.4206(PACING_PUZZLE.md §11-3「扇にも prog を足す」の実装): prog が渡された時は
+        // **流星文法**(外周→中心へ帯が流れ、消え切った瞬間=当たり)。円・帯・線と同じ純関数を通す。
+        // prog 未指定(=溜めが取れない呼び出し)と `?csweep=0` は従来の全形塗りのまま。
+        if (prog !== undefined && CIRCLE_SWEEP_ON) {
+          this.drawSweepSectorFill(o, originX, originY, innerR + length,
+            baseAngle - sweepRad / 2, baseAngle + sweepRad / 2, prog, 0xff2a2a, fillA * TELEGRAPH_FILL_MULT);
+          return;
         }
         o.poly(pts).fill({ color: 0xff2a2a, alpha: (fillA) * TELEGRAPH_FILL_MULT });
         o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
@@ -20573,7 +20601,7 @@ export class PixiScene {
         const qBaseAngle = Math.atan2(qbty - qbfy, qbtx - qbfx);
         if (gph === 'g-quad-breath-windup') {
           const qprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_QUAD_BREATH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
-          drawGiantFanZone(qbfx, qbfy, qBaseAngle, GIANT_QUAD_BREATH_SWEEP_RAD, GIANT_QUAD_BREATH_LENGTH, (0.10 + 0.16 * qprog) + 0.06 * gPulse, (0.28 + 0.3 * qprog) + 0.12 * gPulse);
+          drawGiantFanZone(qbfx, qbfy, qBaseAngle, GIANT_QUAD_BREATH_SWEEP_RAD, GIANT_QUAD_BREATH_LENGTH, (0.10 + 0.16 * qprog) + 0.06 * gPulse, (0.28 + 0.3 * qprog) + 0.12 * gPulse, 0, qprog);
         } else {
           const qDurEff = GIANT_QUAD_BREATH_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
           const qbt = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / qDurEff));
@@ -20644,7 +20672,7 @@ export class PixiScene {
         const sbBaseAngle = Math.atan2(sbty - sbfy, sbtx - sbfx);
         if (gph === 'g-sweepbeam-windup') {
           const sbprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SWEEPBEAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
-          drawGiantFanZone(sbfx, sbfy, sbBaseAngle, GIANT_SWEEPBEAM_SWEEP_RAD, GIANT_SWEEPBEAM_LENGTH, (0.10 + 0.16 * sbprog) + 0.06 * gPulse, (0.28 + 0.3 * sbprog) + 0.12 * gPulse, GIANT_SWEEPBEAM_INNER_RADIUS);
+          drawGiantFanZone(sbfx, sbfy, sbBaseAngle, GIANT_SWEEPBEAM_SWEEP_RAD, GIANT_SWEEPBEAM_LENGTH, (0.10 + 0.16 * sbprog) + 0.06 * gPulse, (0.28 + 0.3 * sbprog) + 0.12 * gPulse, GIANT_SWEEPBEAM_INNER_RADIUS, sbprog);
         } else {
           const sbDurEff = GIANT_SWEEPBEAM_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
           const sbt = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / sbDurEff));
@@ -23612,6 +23640,37 @@ export class PixiScene {
   }
 
   /**
+   * ★扇(セクター)の流星マスク(PACING_PUZZLE.md §11-3。§11-1 の表で「扇=載っていない」と
+   * 記録されていた枠を埋める・v0.25.4206)。
+   * `drawSweepCircleFill` と**同じ帯**(同じ純関数 `circleSweepBand`/`circleSweepAlphaAt`・同じ段数・
+   * 同じ ease)を、円の代わりに**弧**で描くだけ。文脈を変えない=円・帯・線と同じ「外→内へ流れて
+   * 消え切った瞬間=当たり」になる。**新しい意匠は作らない**(§11-2 社長裁定「向きが外から内に
+   * 流れるだけだよ」)。
+   */
+  private drawSweepSectorFill(
+    o: Graphics, cx: number, cy: number, radius: number,
+    startAngle: number, endAngle: number, prog: number, color: number, peakAlpha: number,
+  ): number {
+    const halfW = Math.max(1, radius * CIRCLE_SWEEP_W);
+    const band = circleSweepBand(prog, radius, halfW, CIRCLE_SWEEP_EASE);
+    const lo = Math.max(0, band - halfW);
+    const hi = Math.min(radius, band + halfW);
+    if (hi > lo) {
+      const step = (hi - lo) / CIRCLE_SWEEP_STEPS;
+      for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
+        const r = lo + step * (i + 0.5);
+        const a = Math.min(1, peakAlpha * CIRCLE_SWEEP_A) * circleSweepAlphaAt(r, band, halfW);
+        if (a <= 0.003) continue;
+        // moveTo で始点を置いてから弧を引く(置かないと前の弧の終点から直線が繋がる)。
+        o.moveTo(cx + Math.cos(startAngle) * r, cy + Math.sin(startAngle) * r)
+          .arc(cx, cy, r, startAngle, endAngle)
+          .stroke({ width: step + 0.6, color, alpha: a });
+      }
+    }
+    return CIRCLE_SWEEP_RING_ALWAYS ? 1 : circleSweepAlphaAt(radius, band, halfW);
+  }
+
+  /**
    * 持続判定技(§11-4「持続ループ」)の周回進行。`drawSweepCircleFill` の `prog` に渡すと、
    * 1周期(`activeMs`)ぶんの帯を描き→消しでループさせ続けられる(「流れている=判定が生きている」)。
    * `remainMs` はその周期内の残り時間(0未満・activeMs超過は clamp)。
@@ -25120,8 +25179,11 @@ export class PixiScene {
         // 敵の手榴弾(idolの手榴弾技・v0.25.3442): 爆発範囲の赤円=判定(HEAVY_GRENADE_RADIUS・
         // 「中心が円の内側なら当たる」)と厳密一致(分類1)。信管が進むほど濃く。
         if (p.hostile) {
-          g.circle(0, 0, HEAVY_GRENADE_RADIUS).fill({ color: 0xef4444, alpha: 0.08 + 0.14 * t });
-          g.circle(0, 0, HEAVY_GRENADE_RADIUS).stroke({ color: 0xef4444, alpha: 0.5 + 0.4 * t, width: 2 });
+          // ★v0.25.4206(§11-2c 全数へ): 敵の手榴弾の爆発円も流星文法へ(信管 fu が進行)。
+          const nadeMask = CIRCLE_SWEEP_ON
+            ? this.drawSweepCircleFill(g, 0, 0, HEAVY_GRENADE_RADIUS, fu, 0xef4444, 0.22)
+            : (g.circle(0, 0, HEAVY_GRENADE_RADIUS).fill({ color: 0xef4444, alpha: 0.08 + 0.14 * t }), 1);
+          g.circle(0, 0, HEAVY_GRENADE_RADIUS).stroke({ color: 0xef4444, alpha: (0.5 + 0.4 * t) * nadeMask, width: 2 });
         }
         // 社長指示v0.25.3450「ちゃんと飛び跳ねて(飛び跳ねだけ戻して)」: v3447で消した影+跳ねを復活。
         const hopEnvelope = Math.max(0, 1 - t * 0.58);
