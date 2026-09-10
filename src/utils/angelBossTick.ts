@@ -2857,30 +2857,42 @@ export const runAcrasielTick = (
     if (useGameStore.getState().damagePlayer(boss.damage, label, px, py, undefined, undefined, tag)) onPlayerDeath(px, py);
   };
   const begin = (key: AngelMoveKey): void => {
-    const p = planAcrasielPattern(cx, cy, px, py, phase, now, AC_T.spear.range, AC_T.spear.count);
-    // 壁・拘束円・身体の幅を満たす退避点から空きの向きを確定する。
-    // 候補は現在地近くから。槍も退避点へ重ならない配置を確定し、予告後は追尾しない。
-    const direction = Math.atan2(py - cy, px - cx);
-    const distance = Math.hypot(px - cx, py - cy);
-    const side = Math.random() < 0.5 ? -1 : 1;
-    const candidates = [0.55 * side, -0.55 * side, 0.4 * side, -0.4 * side, 0.22 * side, -0.22 * side, 0];
-    for (const offset of candidates) {
-      const angle = direction + offset;
-      const radius = Math.max(80, distance - 25);
-      const rx = cx + Math.cos(angle) * radius, ry = cy + Math.sin(angle) * radius;
-      const c = clampRectToPlayableArea(rx - pl.width / 2, ry - pl.height / 2, pl.width, pl.height, area);
-      if (Math.hypot(c.x + pl.width / 2 - rx, c.y + pl.height / 2 - ry) > 0.01
-        || Math.hypot(rx - homeX, ry - homeY) > GATE_ARENA_RADIUS - playerRadius - 8
-        || Math.hypot(rx - px, ry - py) > pl.speed * AC_T.spike.windup / 1000 * 0.8
-        || radius * Math.sin(Math.PI / 8) <= playerRadius + 8) continue;
-      p.rotation = angle; p.refuge = { x: rx, y: ry };
+    const p = planAcrasielPattern(cx, cy, phase, now, AC_T.spear.range, AC_T.spear.count);
+    // ★空きの向きは planAcrasielPattern が決めたランダム値を**動かさない**(§6.28-19の主題)。
+    // ここでやるのは「プレイヤーがリードの間に逃げ込める安全点が実在するか」の検査だけ。
+    // 見つからなければ棘を出さず転移へ切り替える(=理不尽は"向きを寄せる"ではなく"技を変える"で防ぐ)。
+    const reach = pl.speed * AC_T.spike.windup / 1000 * 0.9;
+    // 安全 = 空きセクターの中、または扇の外(range超)。判定側 acrasielPolygonHitsCircle と同じ区分。
+    const isSafeSpot = (x: number, y: number): boolean => {
+      if (Math.hypot(x - cx, y - cy) > AC_T.spike.range + playerRadius) return true;
+      const rel = Math.atan2(y - cy, x - cx) - p.rotation + Math.PI / 8;
+      const norm = ((rel % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      return isSpikeGapSector(p.gapMask, Math.floor(norm / (Math.PI / 4)));
+    };
+    const reachable = (x: number, y: number): boolean => {
+      const c = clampRectToPlayableArea(x - pl.width / 2, y - pl.height / 2, pl.width, pl.height, area);
+      return Math.hypot(c.x + pl.width / 2 - x, c.y + pl.height / 2 - y) <= 0.01
+        && Math.hypot(x - homeX, y - homeY) <= GATE_ARENA_RADIUS - playerRadius - 8;
+    };
+    for (const frac of [1, 0.72, 0.45]) {
+      for (let k = 0; k < 16 && !p.refuge; k++) {
+        const a = k * Math.PI / 8 + Math.random() * 0.2;
+        const rx = px + Math.cos(a) * reach * frac, ry = py + Math.sin(a) * reach * frac;
+        if (isSafeSpot(rx, ry) && reachable(rx, ry)) p.refuge = { x: rx, y: ry };
+      }
+      if (p.refuge) break;
+    }
+    // 立っている場所が偶然もう安全なら、それも退避点として認める(狙ってそう置いてはいない)。
+    if (!p.refuge && isSafeSpot(px, py)) p.refuge = { x: px, y: py };
+    // 槍は退避点を塞がない位置へ寄せる(予告後は追尾しない=掟W4)。
+    if (p.refuge) {
+      const rf = p.refuge;
       p.targets = p.targets.map((_, i) => {
-        const a = angle + i * Math.PI * 2 / AC_T.spear.count;
+        const a = p.rotation + i * Math.PI * 2 / AC_T.spear.count;
         let range = AC_T.spear.range;
-        while (Math.hypot(cx + Math.cos(a) * range - rx, cy + Math.sin(a) * range - ry) < AC_T.spear.radius + playerRadius + 12) range += 20;
+        while (Math.hypot(cx + Math.cos(a) * range - rf.x, cy + Math.sin(a) * range - rf.y) < AC_T.spear.radius + playerRadius + 12) range += 20;
         return { x: cx + Math.cos(a) * range, y: cy + Math.sin(a) * range, angle: a };
       });
-      break;
     }
     // 安全な扇を置けない密着/壁際は、予告前に転移へ切替。出したテルは取り消さない。
     if (key === 'ac-spike' && !p.refuge) key = 'ac-warp';

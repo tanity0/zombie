@@ -261,7 +261,10 @@ export interface AngelAcrasielTuning extends AngelSharedHolder {
 
 export const ANGEL_ACRASIEL_TUNING: AngelAcrasielTuning = {
   common: ANGEL_COMMON_TUNING, // ★6体で同じ実体(複製しない)
-  spike: { windup: 1100, active: 240, recover: withRecoverFloor(500), range: 1100, halfWidth: 40 },
+  // ★range は §6.28-19 の T3帯と同じ 310。v0.25.4196の再構築で 1100 へ広げられていたが、
+  // 論理画面は 800×600(対角1000px)なので、半径1100の扇を7セクター出すと**画面全体が赤で埋まる**
+  // =隙間が読めない・棘の絵(放射する線)と判定(画面大の扇)も一致しない。310へ戻す。
+  spike: { windup: 1100, active: 240, recover: withRecoverFloor(500), range: 310, halfWidth: 40 },
   spear: { windup: 700, recover: withRecoverFloor(500), count: 6, range: 210, detonateMs: 2000, radius: 60 },
   // ★telegraphMs は「赤円が見えてから実行まで」そのもの。v0.25.2609で800→1000へ是正した
   // (800msで歩ける距離は83.5px < 半径92px=**見てから歩いても構造的に出られない**状態だった)。

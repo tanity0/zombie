@@ -44,12 +44,15 @@ export const acrasielPolygonHitsCircle = (points: number[], x: number, y: number
 };
 
 export const planAcrasielPattern = (
-  x: number, y: number, playerX: number, playerY: number, phase: 1 | 2 | 3,
+  x: number, y: number, phase: 1 | 2 | 3,
   startedAt: number, spearRange: number, spearCount: number, rand: () => number = Math.random,
 ): AcrasielPlan => {
-  // 向きは毎回変わる。プレイヤーに近い空きを残し、細い通路でも反対端への強制移動にしない。
-  const rotation = Math.atan2(playerY - y, playerX - x) + (rand() - 0.5) * Math.PI / 3;
-  const gapMask = phase === 1 ? 1 | (1 << (rand() < 0.5 ? 1 : 7)) : 1;
+  // ★§6.28-19の主題「空きセクターは毎回変わる」。向きも空きも**プレイヤーの位置とは無関係**に選ぶ。
+  // (v0.25.4196の再構築は向きをプレイヤー方向±30°に寄せ、空きを常にsector0=正面に固定していた。
+  //  結果「その場に立っていれば当たらない」=読む対象が消えていた。到達可能性は angelBossTick の
+  //  begin() が退避点探索で担保する=向きを寄せることで担保しない。)
+  const rotation = rand() * Math.PI * 2;
+  const gapMask = pickSpikeGapMask(acrasielSpikeGapCount(phase), rand);
   const targets = Array.from({ length: spearCount }, (_, i) => {
     const angle = rotation + i * Math.PI * 2 / spearCount;
     return { x: x + Math.cos(angle) * spearRange, y: y + Math.sin(angle) * spearRange, angle };
