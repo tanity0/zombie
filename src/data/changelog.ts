@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4196',
+    items: ['ゲーム内容の変更はありません(設計書の記述を実物に合わせる修正のみ)。'],
+  },
+  {
     version: '0.25.4195',
     items: [
       '装備と開発施設をタブで切り替えられるようにしました。銃の絵と特徴を見比べて選べます。',
