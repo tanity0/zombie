@@ -1825,6 +1825,10 @@ const ACRASIEL_SPIKE_ROOT_PX = 26;   // 生え際(本体の縁)
 const JIBRIL_LANTERN_VIS_H = 46; // 画面上の高さ(px)
 // v0.25.3199(社長指示): 骨刃/氷刃の進路赤ラインを発射のこの時間前から出す(視覚のみ・判定/発射時刻は不変)。
 const SKADI_BLADE_LINE_PRE_MS = 350;
+// ★§11-4「持続ループ」の周期(v0.25.4207)。判定が生きている間、帯を外→内へこの周期で回し続ける
+// =「流れている=まだ当たる」。1回の収束(=消え切った瞬間が当たり)と読み違えない程度に短くする。
+const MAIKO_BOOM_LOOP_MS = 420;
+const WHIP360_LOOP_MS = 380;   // 賞金首 bm-whip360(振り抜きの間ずっと判定が生きている)
 
 // スリィエルの環(suriel-ring.png=304×512)。待機中も頭上に浮遊し、攻撃時は本体から離れて飛ぶ
 // (§6.28-18「武器絵が読みの主役になる唯一のボス」)。katanaSlash系ではなく単純な回転スプライト。
@@ -13888,8 +13892,14 @@ export class PixiScene {
         // 分岐が無い=**避けるだけの攻撃**。色文法(赤=カウンター可・紫=不可)に従い紫へ。
         // v0.25.3131でカウンター可になったのは**設置中のジブリル本体**であって、火ではない。
         const p = Math.max(0, Math.min(1, (gameTime - f.spawnAt) / Math.max(1, f.activateAt - f.spawnAt)));
-        g.circle(f.x, f.y, HITR).fill({ color: 0x9333ea, alpha: (0.10 + 0.24 * p) * TELEGRAPH_FILL_MULT });
-        g.circle(f.x, f.y, HITR).stroke({ width: 2, color: 0xa855f7, alpha: 0.4 + 0.45 * p });
+        // ★v0.25.4207(社長裁定2026-09-11「1.はい」): 起動までの0.7秒は**予告**なので流星文法へ。
+        // §11-4 が「ジブリルのランタン火は対象外」と書いているが、**その理由文は起動後の"紫の床"**
+        // (持続する危険=予告ではない)の説明であって、この起動前の円のことではなかった。
+        // **色は紫のまま**(カウンター不可の文法=CLAUDE.md)。文法だけ他の円と揃える(§11-2c #16 と同じ扱い)。
+        const fireMask = CIRCLE_SWEEP_ON
+          ? this.drawSweepCircleFill(g, f.x, f.y, HITR, p, 0x9333ea, 0.34 * TELEGRAPH_FILL_MULT)
+          : (g.circle(f.x, f.y, HITR).fill({ color: 0x9333ea, alpha: (0.10 + 0.24 * p) * TELEGRAPH_FILL_MULT }), 1);
+        g.circle(f.x, f.y, HITR).stroke({ width: 2, color: 0xa855f7, alpha: (0.4 + 0.45 * p) * fireMask });
       } else {
         // 有効=紫の火(色は紫・大きさは火炎瓶相当)。終盤フェードアウト。
         const life = Math.max(0, Math.min(1, 1 - (gameTime - f.activateAt) / Math.max(1, f.expireAt - f.activateAt)));
@@ -17250,7 +17260,15 @@ export class PixiScene {
         const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BM_T.whip360.active));
         const eased = t * t * (3 - 2 * t);
         const ang = eased * Math.PI * 2;
-        o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 3, color: 0xff5a5a, alpha: 0.5 * (1 - t) });
+        // ★v0.25.4207(社長裁定「3.はい」/ §11-4「持続ループ」): 判定は**振り抜きの間ずっと生きている**
+        // (`bountyTick.ts`: 半径内なら1回だけ当たる・whip360Hitで多段防止)のに、絵は
+        // `0.5*(1-t)` で**薄くなっていくだけ**だった=「薄い=もう安全」と誤読させる。
+        // 周期的に帯を回して「流れている=まだ当たる」に揃える(フェードアウトはやめる)。
+        const whipMask = CIRCLE_SWEEP_ON
+          ? this.drawSweepCircleFill(o, cx, cy, BM_T.whip360.radius,
+              PixiScene.loopSweepProg(WHIP360_LOOP_MS, WHIP360_LOOP_MS - (now % WHIP360_LOOP_MS)), 0xff2a2a, 0.30)
+          : 1;
+        o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 3, color: 0xff5a5a, alpha: 0.5 * whipMask });
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, ang, BM_T.whip360.radius, 0.98,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
         // ★v0.25.3566(社長指示「360度振りにはスネアエフェクト使わず弧を描く斬撃の方がいい」):
@@ -27876,8 +27894,15 @@ export class PixiScene {
       const t = Math.max(0, Math.min(1, 1 - remain / total));
       const px = bs === 'mk-boom-out' ? bfx + (btx - bfx) * t : btx + (bfx - btx) * t;
       const py = bs === 'mk-boom-out' ? bfy + (bty - bfy) * t : bty + (bfy - bty) * t;
-      o.circle(px, py, MK_T.boom.hitRadius).fill({ color: 0xff2a2a, alpha: telFillA(1, 1) * TELEGRAPH_FILL_MULT });
-      o.circle(px, py, MK_T.boom.hitRadius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.6 });
+      // ★v0.25.4207(社長裁定2026-09-11「3.はい」/ §11-4「持続ループ」): 毬は飛んでいる間ずっと
+      // 判定が生きている**持続判定**で、従来は固定濃度=「今も危険」が絵から伝わらなかった。
+      // 溜めが無いので1回の収束にはできない ⇒ **短い周期で帯を回し続ける**(流れている=判定が生きている)。
+      const boomMask = CIRCLE_SWEEP_ON
+        ? this.drawSweepCircleFill(o, px, py, MK_T.boom.hitRadius,
+            PixiScene.loopSweepProg(MAIKO_BOOM_LOOP_MS, MAIKO_BOOM_LOOP_MS - (now % MAIKO_BOOM_LOOP_MS)),
+            0xff2a2a, telFillA(1, 1) * TELEGRAPH_FILL_MULT)
+        : (o.circle(px, py, MK_T.boom.hitRadius).fill({ color: 0xff2a2a, alpha: telFillA(1, 1) * TELEGRAPH_FILL_MULT }), 1);
+      o.circle(px, py, MK_T.boom.hitRadius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.6 * boomMask });
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', px, py, now / 30, 62, 0.98);
       // ★慣性バッチ: 射出スピンの残像(motion trail)。往路・復路とも毬の軌跡へ約30ms間隔で
       // 「その瞬間の毬」を置き去りにする(判定不変・分類②=派手側)。
