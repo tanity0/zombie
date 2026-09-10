@@ -50,7 +50,9 @@ import { pickUriMove, uriSweepInnerRadius, URI_PHASE_HP_THRESHOLD } from './uriS
 import { pickSurielMove, surielRingCount, SURIEL_PHASE_HP_THRESHOLD } from './surielScript';
 import {
   pickAcrasielMove, acrasielPhaseForHealth, isSpikeGapSector, acrasielCounterAccepted,
-  planAcrasielPattern, acrasielSectorPolygon, acrasielPolygonHitsCircle,
+  planAcrasielPattern, acrasielSectorPolygon, acrasielPolygonHitsCircle, acrasielSpikeGapCount,
+  acrasielGazeAngles, acrasielBurstShardAngles, acrasielSpearShardAngles, acrasielSpikeWaveCount,
+  acrasielNextWaveGapMask,
   ACRASIEL_SPEAR_FLIGHT_MS, ACRASIEL_WARP_ACTIVE_MS, ACRASIEL_GAZE_ACTIVE_MS,
 } from './acrasielScript';
 import {
@@ -146,6 +148,12 @@ const ACRASIEL_DRIFT_STOP_PX = 120;  // これより近ければ寄るのをや�
 // 240〜350msだけ=**9割以上の時間、何もされない**。段11(最上段)の圧としては緩すぎる。
 // アクラシエルだけ短くする(共通値は他10体に効くので動かさない)。★叩き台=実機で社長が詰める前提。
 const ACRASIEL_NEUTRAL_MS = 600;
+// ★v0.25.4203(社長「全部の技を見直して激ムズ派手に」)で足した弾の威力。★叩き台=実機で社長が詰める。
+// 天使11体が共有する既定の弾は damage 20 だが、**破片は本数が多い**(槍は3方向×6本=18発)ので
+// そのまま使うと多重命中で即死する。破片は「かすり」の重み、視線は「元の1発より軽い代わりに本数」。
+const ACRASIEL_GAZE_BEAM_DAMAGE = 14;                                    // 単眼レーザー1本(元は20が1本)
+const ACRASIEL_SHARD_PROFILE = { damage: 10, size: 12 } as const;        // 爆発/転移の破片(8発)
+const ACRASIEL_SPEAR_SHARD_PROFILE = { damage: 8, size: 11 } as const;   // 槍の破片(18発)
 const acrasielNextAction = (t: number, boss: Enemy): number => t + ACRASIEL_NEUTRAL_MS * freshCritCdMult(boss.id, t);
 
 /** ★v0.25.3588(社長報告「ジブリルのランタンレーザー3連、予告線が規定通りの流星になってない」):
@@ -3005,7 +3013,18 @@ export const runAcrasielTick = (
         acrasielSectorPolygon(plan.x, plan.y, plan.rotation, sector, AC_T.spike.range), px, py, Math.max(pl.width, pl.height) / 2)),
     'アクラシエルの放射棘', 'acrasiel-spike');
   } else if (st === 'spike') {
-    if (remaining <= 0) recover('spike');
+    if (remaining <= 0) {
+      // ★2波目(Phase2以降・社長指示「もっと激しく」): 空きを45°隣へずらして、もう一度フルのリードで撃つ。
+      // リードは1波目と同じ1100ms(掟W5=技ごとに固定)。テルは必ず出してから撃つ(W4)。
+      const wave = plan?.wave ?? 1;
+      if (plan && wave < acrasielSpikeWaveCount(phase)) {
+        const nextMask = acrasielNextWaveGapMask(plan.gapMask, acrasielSpikeGapCount(phase));
+        patch.acrasielPlan = { ...plan, wave: wave + 1, gapMask: nextMask, startedAt: now };
+        patch.spikeGapMask = nextMask;
+        sfx.alert();
+        enter('spike-windup', AC_T.spike.windup);
+      } else recover('spike');
+    }
     else if (plan) damage(Array.from({ length: 8 }, (_, sector) => sector).some(sector =>
       !isSpikeGapSector(plan.gapMask, sector) && acrasielPolygonHitsCircle(
         acrasielSectorPolygon(plan.x, plan.y, plan.rotation, sector, AC_T.spike.range), px, py, Math.max(pl.width, pl.height) / 2)),
@@ -3031,6 +3050,17 @@ export const runAcrasielTick = (
     enter('warp-in', AC_T.warp.telegraphMs);
   } else if (st === 'warp-in' && remaining <= 0) {
     enter('warp-active', ACRASIEL_WARP_ACTIVE_MS); sfx.iceBurst();
+    // ★社長指示「全部の技を見直して激ムズ派手に」。転移は今まで「移動して半径92の衝撃」だけで、
+    // 攻撃としては最も薄かった。出現の衝撃と**同時に放射状の破片弾**を撒く(円の外へ逃げても
+    // 弾が追ってくる)。角度は爆発と同じ純関数=技どうしで語彙を揃える。
+    for (const a of acrasielBurstShardAngles(plan?.rotation ?? 0)) {
+      store.addProjectile(createEnemyProjectile(
+        boss, pl,
+        (boss.aiTargetX ?? cx) + Math.cos(a) * 1000, (boss.aiTargetY ?? cy) + Math.sin(a) * 1000,
+        boss.aiTargetX ?? cx, boss.aiTargetY ?? cy,
+        ACRASIEL_SHARD_PROFILE,
+      ));
+    }
     damage(Math.hypot(px - (boss.aiTargetX ?? cx), py - (boss.aiTargetY ?? cy)) <= AC_T.warp.impactRadius + Math.max(pl.width, pl.height) / 2,
       'アクラシエルの転移衝撃', 'acrasiel-warp');
   } else if (st === 'warp-active') {
@@ -3038,13 +3068,28 @@ export const runAcrasielTick = (
     else damage(Math.hypot(px - (boss.aiTargetX ?? cx), py - (boss.aiTargetY ?? cy)) <= AC_T.warp.impactRadius + playerRadius,
       'アクラシエルの転移衝撃', 'acrasiel-warp');
   }
-  else if (st === 'burst-windup' && remaining <= 0) { enter('burst', AC_T.burst.active); sfx.shot(); }
+  else if (st === 'burst-windup' && remaining <= 0) {
+    enter('burst', AC_T.burst.active); sfx.shot();
+    // ★破片は今まで絵だけで判定が無かった。「爆発から逃げ切っても破片が飛んでくる」へ
+    // (絵 drawAcrasielBurstFragment と**同じ本数・同じ向き**を純関数から取る)。
+    for (const a of acrasielBurstShardAngles(plan?.rotation ?? 0)) {
+      store.addProjectile(createEnemyProjectile(boss, pl, cx + Math.cos(a) * 1000, cy + Math.sin(a) * 1000,
+        undefined, undefined, ACRASIEL_SHARD_PROFILE));
+    }
+  }
   else if (st === 'burst') {
     if (remaining <= 0) recover('burst');
     else damage(Math.hypot(px - (plan?.x ?? cx), py - (plan?.y ?? cy)) <= AC_T.burst.radius + Math.max(pl.width, pl.height) / 2,
       'アクラシエルの爆発', 'acrasiel-burst');
   } else if (st === 'gaze-windup' && remaining <= 0) {
-    store.addProjectile(createEnemyProjectile(boss, pl, boss.aiTargetX, boss.aiTargetY));
+    // ★社長指示「紅ライン予告出る割に弾が1発出るだけ」。複数ある眼が同時に光る絵に合わせ、
+    // 扇状の多射線へ(Phase1=5本 / P2=7本 / P3=9本)。**角度は予告(pixiScene)と同じ純関数**を読む。
+    const gazeBase = Math.atan2((boss.aiTargetY ?? py) - cy, (boss.aiTargetX ?? px) - cx);
+    // ★1本あたりの威力は落とす(元は1発20が1本だけ。5〜9本のまま20だと近距離で多重命中=即死)。
+    for (const a of acrasielGazeAngles(gazeBase, phase)) {
+      store.addProjectile(createEnemyProjectile(boss, pl, cx + Math.cos(a) * 1000, cy + Math.sin(a) * 1000,
+        undefined, undefined, { damage: ACRASIEL_GAZE_BEAM_DAMAGE }));
+    }
     enter('gaze-active', ACRASIEL_GAZE_ACTIVE_MS); sfx.beam();
   } else if (st === 'gaze-active' && remaining <= 0) recover('gaze');
   // 本体の滑りで予告原点と判定が離れないよう、技中は確定位置を保つ。
@@ -3738,6 +3783,20 @@ export const tickAcrasielSpears = (
         }
       }
       sfx.iceBurst(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用・起爆1本ごと)
+      // ★社長指示2026-09-11「全部の技を見直して激ムズ派手に」。起爆は半径60の円が6つだけで、
+      // 円と円の間(約100px)に立っていれば無傷だった。**起爆の瞬間に槍1本ごとに3方向へ破片弾**を
+      // 撒いて隙間を埋める(角度は純関数 acrasielSpearShardAngles。槍の向きから外へ開く扇)。
+      {
+        const owner2 = useGameStore.getState().enemies.find(e => e.id === sp.enemyId);
+        if (owner2) {
+          for (const a of acrasielSpearShardAngles(sp.angle)) {
+            useGameStore.getState().addProjectile(
+              createEnemyProjectile(owner2, pl, sp.x + Math.cos(a) * 1000, sp.y + Math.sin(a) * 1000, sp.x, sp.y,
+                ACRASIEL_SPEAR_SHARD_PROFILE),
+            );
+          }
+        }
+      }
       if (!pl.invulnerable && !died && inCircle) {
         const d = useGameStore.getState().damagePlayer(sp.damage, `${enemyDeathLabel('acrasiel')}の結晶の槍`, sp.x, sp.y, undefined, undefined, 'acrasiel-spear'); // G4a計測タグ(記録専用・遅延起爆は残響で槍へ帰属)
         if (d) { died = true; onPlayerDeath(plcx, plcy); }

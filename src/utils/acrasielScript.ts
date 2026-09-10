@@ -11,6 +11,7 @@ export interface AcrasielPlan {
   bodyX?: number; bodyY?: number;
   startedAt: number;
   combo: boolean;
+  wave?: number; // 放射棘の波数(1始まり。Phase2以降は2波=acrasielSpikeWaveCount)
   impactAt?: number;
   targets: { x: number; y: number; angle: number }[];
   refuge?: { x: number; y: number };
@@ -51,6 +52,59 @@ export const acrasielPolygonHitsCircle = (points: number[], x: number, y: number
 export const acrasielCounterAccepted = (
   counterLockUntil: number | undefined, now: number,
 ): boolean => now >= (counterLockUntil ?? 0);
+
+// ★社長指示2026-09-11「紅ライン予告出る割に弾が1発出るだけとかも、他と比べて簡単すぎる。
+// 全部の技を見直して激ムズ派手に」。単眼レーザー(gaze)は450msの射線予告に対して**弾1発**だった。
+// 絵には**眼が複数ある**(§6.28-19「複数ある眼のどれかが光る」)ので、W8「絵にある特徴は必ず
+// 1技以上で使う」に沿って**扇状の多射線**にする。フェーズで本数が増える。
+// ★判定(angelBossTick)と予告(pixiScene)は**この同じ関数**を読む=絶対にズレない。
+export const acrasielGazeBeamCount = (phase: 1 | 2 | 3): number => phase === 1 ? 5 : phase === 2 ? 7 : 9;
+export const ACRASIEL_GAZE_SPREAD_RAD = Math.PI * 0.62; // 扇の総角度(約112度)
+export const acrasielGazeAngles = (baseAngle: number, phase: 1 | 2 | 3): number[] => {
+  const n = acrasielGazeBeamCount(phase);
+  const step = ACRASIEL_GAZE_SPREAD_RAD / Math.max(1, n - 1);
+  return Array.from({ length: n }, (_, i) => baseAngle + (i - (n - 1) / 2) * step);
+};
+
+// ★収縮→爆発(burst): 破片は今まで**絵だけ**で判定が無かった(pixiSceneのdrawAcrasielBurstFragment)。
+// 「爆発から逃げ切っても破片が飛んでくる」=逃げ場を削る技にする。絵と同じ本数・同じ向きを返す
+// (絵は p.rotation + i*2π/N で描いているので同じ式)。
+export const ACRASIEL_BURST_SHARD_COUNT = 8;
+export const acrasielBurstShardAngles = (rotation: number): number[] =>
+  Array.from({ length: ACRASIEL_BURST_SHARD_COUNT }, (_, i) => rotation + i * Math.PI * 2 / ACRASIEL_BURST_SHARD_COUNT);
+
+// ★結晶の槍(spear): 起爆は半径60の円が6つだけで、円と円の間(約100px)を歩けば無傷だった。
+// 起爆の瞬間に**槍1本ごとに3方向へ破片弾**を撒いて隙間を埋める。
+export const ACRASIEL_SPEAR_SHARD_PER_SPEAR = 3;
+export const acrasielSpearShardAngles = (spearAngle: number): number[] =>
+  Array.from({ length: ACRASIEL_SPEAR_SHARD_PER_SPEAR }, (_, i) =>
+    spearAngle + (i - (ACRASIEL_SPEAR_SHARD_PER_SPEAR - 1) / 2) * 0.5);
+
+// ★放射棘(spike): Phase2以降は**2波**。1波目の直後に空きが別のセクターへずれて2波目が来る
+// =「隙間を読む」を連続で2回やらせる(主題の強化)。2波目にもフルのリードを付ける(掟W4/W5)。
+export const acrasielSpikeWaveCount = (phase: 1 | 2 | 3): number => phase === 1 ? 1 : 2;
+// 2波目の空きは**1波目の空きの45°隣**へずらす。距離250だと隣まで191px必要でリード1100ms(115px)
+// では届かないが、**ボスに近づいていれば届く**(距離100なら76px)。
+// ⇒「2波目に備えて詰める」が正解になる=主題(隙間を読む)の発展形。完全ランダムだと詰む。
+export const acrasielNextWaveGapMask = (
+  prevMask: number, gapCount: number, rand: () => number = Math.random,
+): number => {
+  let mask = 0;
+  const picked = new Set<number>();
+  for (let s = 0; s < ACRASIEL_SECTOR_COUNT; s++) {
+    if (!isSpikeGapSector(prevMask, s)) continue;
+    const dir = rand() < 0.5 ? 1 : -1;
+    const next = (s + dir + ACRASIEL_SECTOR_COUNT) % ACRASIEL_SECTOR_COUNT;
+    if (!picked.has(next)) { picked.add(next); mask |= (1 << next); }
+  }
+  // ずらし先が重なって個数が足りなくなったら、空いていないセクターから埋める(gapCountは守る)。
+  let guard = 0;
+  while (picked.size < gapCount && guard++ < 64) {
+    const s = Math.min(ACRASIEL_SECTOR_COUNT - 1, Math.floor(rand() * ACRASIEL_SECTOR_COUNT));
+    if (!picked.has(s)) { picked.add(s); mask |= (1 << s); }
+  }
+  return mask;
+};
 
 export const planAcrasielPattern = (
   x: number, y: number, phase: 1 | 2 | 3,

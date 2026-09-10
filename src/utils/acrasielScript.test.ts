@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   acrasielPhaseForHealth, acrasielSpikeGapCount, pickSpikeGapMask, isSpikeGapSector,
   pickAcrasielMove, pickAcrasielCombo, ACRASIEL_SECTOR_COUNT, planAcrasielPattern,
-  acrasielCounterAccepted,
+  acrasielCounterAccepted, acrasielGazeAngles, acrasielGazeBeamCount, ACRASIEL_GAZE_SPREAD_RAD,
+  acrasielBurstShardAngles, ACRASIEL_BURST_SHARD_COUNT, acrasielSpikeWaveCount, acrasielNextWaveGapMask,
 } from './acrasielScript';
 
 describe('acrasielPhaseForHealth (§6.28-19: 60%/30%の3段)', () => {
@@ -121,5 +122,59 @@ describe('acrasielCounterAccepted — ★カウンターで入った硬直中は
   it('硬直が明けた後は再び受け付ける(技を出し直せばまたカウンターできる)', () => {
     expect(acrasielCounterAccepted(1500, 1500)).toBe(true);
     expect(acrasielCounterAccepted(1500, 1501)).toBe(true);
+  });
+});
+
+// ★v0.25.4203(社長「紅ライン予告出る割に弾が1発出るだけ」「全部の技を見直して激ムズ派手に」)。
+// 予告(pixiScene)と判定(angelBossTick)が**同じ純関数**を読むことが一致の担保なので、
+// その純関数の形をテストで固定する。
+describe('acrasielGazeAngles — 単眼レーザーの多射線', () => {
+  it('フェーズで本数が増える(5 → 7 → 9)', () => {
+    expect(acrasielGazeBeamCount(1)).toBe(5);
+    expect(acrasielGazeBeamCount(2)).toBe(7);
+    expect(acrasielGazeBeamCount(3)).toBe(9);
+    expect(acrasielGazeAngles(0, 1)).toHaveLength(5);
+    expect(acrasielGazeAngles(0, 3)).toHaveLength(9);
+  });
+
+  it('基準角を中心に左右対称で、両端の開きが仕様の総角度と一致する', () => {
+    const a = acrasielGazeAngles(0, 1);
+    expect(a[2]).toBeCloseTo(0, 6);                       // 中央は基準角そのもの
+    expect(a[0]).toBeCloseTo(-a[4], 6);                   // 左右対称
+    expect(a[4] - a[0]).toBeCloseTo(ACRASIEL_GAZE_SPREAD_RAD, 6);
+  });
+});
+
+describe('acrasielBurstShardAngles — 爆発/転移の破片弾', () => {
+  it('絵と同じ本数を、等間隔で全方位に返す', () => {
+    const a = acrasielBurstShardAngles(0);
+    expect(a).toHaveLength(ACRASIEL_BURST_SHARD_COUNT);
+    expect(a[1] - a[0]).toBeCloseTo(Math.PI * 2 / ACRASIEL_BURST_SHARD_COUNT, 6);
+  });
+});
+
+describe('acrasielSpikeWaveCount / acrasielNextWaveGapMask — 放射棘の2波', () => {
+  it('Phase1は1波・Phase2以降は2波', () => {
+    expect(acrasielSpikeWaveCount(1)).toBe(1);
+    expect(acrasielSpikeWaveCount(2)).toBe(2);
+    expect(acrasielSpikeWaveCount(3)).toBe(2);
+  });
+
+  it('2波目の空きは1波目の45°隣へずれる(同じ場所に留まれない=読み直しが要る)', () => {
+    // 1波目の空き = sector 0 のみ。ずらし先は 1 か 7 のどちらか。
+    const next = acrasielNextWaveGapMask(1 << 0, 1, () => 0.1); // dir=-1側
+    expect(isSpikeGapSector(next, 0)).toBe(false);
+    expect(isSpikeGapSector(next, 7) || isSpikeGapSector(next, 1)).toBe(true);
+  });
+
+  it('要求された空きの個数を必ず満たす', () => {
+    let seed = 4242;
+    const rand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    for (let i = 0; i < 200; i++) {
+      const mask = acrasielNextWaveGapMask(1 << (i % ACRASIEL_SECTOR_COUNT), 2, rand);
+      let n = 0;
+      for (let s2 = 0; s2 < ACRASIEL_SECTOR_COUNT; s2++) if (isSpikeGapSector(mask, s2)) n++;
+      expect(n).toBe(2);
+    }
   });
 });

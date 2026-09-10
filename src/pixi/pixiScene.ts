@@ -15,7 +15,7 @@
 
 import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point } from 'pixi.js';
 import type { ColorMatrix } from 'pixi.js';
-import { acrasielSectorPolygon, acrasielEase, ACRASIEL_SPEAR_FLIGHT_MS } from '../utils/acrasielScript';
+import { acrasielSectorPolygon, acrasielEase, ACRASIEL_SPEAR_FLIGHT_MS, acrasielGazeAngles } from '../utils/acrasielScript';
 import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import { shadowProbeCount, shadowProbeMode, shadowProbeStretch, noteShadowProbeFrame, noteShadowProbeSigma } from './shadowProbe'; // 影ベンチのプローブ(計測専用)
@@ -13616,11 +13616,15 @@ export class PixiScene {
     if (burst && !recover) circle(p.x, p.y, AC_T.burst.radius, fill);
     if (warp && !recover) circle(e.aiTargetX ?? p.x, e.aiTargetY ?? p.y, AC_T.warp.impactRadius, fill);
     if (state === 'gaze-windup') {
-      const dx = (e.aiTargetX ?? p.x) - p.x, dy = (e.aiTargetY ?? p.y) - p.y;
-      const length = Math.hypot(dx, dy) || 1;
-      // T6は弾の射線。面を塗らず、実行は共通enemy_bolt(赤い二重丸)に渡す。
-      g.moveTo(p.x, p.y).lineTo(p.x + dx / length * 1000, p.y + dy / length * 1000)
-        .stroke({ color: 0xff5555, alpha: 0.65 + 0.25 * t, width: 1.5 });
+      // ★v0.25.4203: 射線は1本ではなく扇状の多射線(Phase1=5/P2=7/P3=9)。
+      // **本数と角度は判定側(angelBossTick)と同じ純関数**を読む=予告と判定が構造的にズレない。
+      const gazeBase = Math.atan2((e.aiTargetY ?? p.y) - p.y, (e.aiTargetX ?? p.x) - p.x);
+      const gazePhase = (e.bossPhase === 3 ? 3 : e.bossPhase === 2 ? 2 : 1) as 1 | 2 | 3;
+      for (const a of acrasielGazeAngles(gazeBase, gazePhase)) {
+        // T6は弾の射線。面を塗らず、実行は共通enemy_bolt(赤い二重丸)に渡す。
+        g.moveTo(p.x, p.y).lineTo(p.x + Math.cos(a) * 1000, p.y + Math.sin(a) * 1000)
+          .stroke({ color: 0xff5555, alpha: 0.6 + 0.3 * t, width: 1.5 + 1.5 * t });
+      }
     }
     // 棘を外へ開く→射出→引き戻す。既存槍絵を全ステートで保持(W9)。
     const activeProgress = state === 'spike' ? acrasielEase(1 - remain / AC_T.spike.active)
