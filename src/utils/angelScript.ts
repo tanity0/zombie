@@ -261,10 +261,14 @@ export interface AngelAcrasielTuning extends AngelSharedHolder {
 
 export const ANGEL_ACRASIEL_TUNING: AngelAcrasielTuning = {
   common: ANGEL_COMMON_TUNING, // ★6体で同じ実体(複製しない)
-  // ★range は §6.28-19 の T3帯と同じ 310。v0.25.4196の再構築で 1100 へ広げられていたが、
-  // 論理画面は 800×600(対角1000px)なので、半径1100の扇を7セクター出すと**画面全体が赤で埋まる**
-  // =隙間が読めない・棘の絵(放射する線)と判定(画面大の扇)も一致しない。310へ戻す。
-  spike: { windup: 1100, active: 240, recover: withRecoverFloor(500), range: 310, halfWidth: 40 },
+  // ★range の経緯: §6.28-19 の T3帯は 310。v0.25.4196の再構築が 1100 へ広げたが、論理画面は
+  // 800×600(対角1000px)なので半径1100の扇を7セクター出すと**画面全体が赤で埋まる**=隙間が
+  // 読めず、棘の絵とも一致しない(v0.25.4199で310へ戻した)。
+  // ★v0.25.4201(社長「よけやすすぎて簡単すぎる」): 310 → **400**。310だと主戦帯(200〜250px)から
+  // **60pxだけ外へ歩けば扇の外**=「隙間を読む」より「外へ出る」が常に正解になり、主題が発火しない。
+  // リード1100msでプレイヤーが動けるのは 104.4px/s × 1.1 = **115px**なので、400なら距離250から
+  // 外へ出るには150px必要=**間に合わない**⇒隙間へ入るしかなくなる。1100のような画面全体でもない。
+  spike: { windup: 1100, active: 240, recover: withRecoverFloor(500), range: 400, halfWidth: 40 },
   spear: { windup: 700, recover: withRecoverFloor(500), count: 6, range: 210, detonateMs: 2000, radius: 60 },
   // ★telegraphMs は「赤円が見えてから実行まで」そのもの。v0.25.2609で800→1000へ是正した
   // (800msで歩ける距離は83.5px < 半径92px=**見てから歩いても構造的に出られない**状態だった)。

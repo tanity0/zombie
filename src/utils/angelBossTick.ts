@@ -140,6 +140,13 @@ const GATE_ARENA_RADIUS = 300;          // ゲートアリーナ半径(useGameLo
 const ACRASIEL_DRIFT_SPEED = 26;     // px/s(浮遊の最高速)
 const ACRASIEL_DRIFT_ACCEL = 1.6;    // 1/s(慣性MUST=目標速度へ寄る速さ。動き出しと止まりに加減速)
 const ACRASIEL_DRIFT_STOP_PX = 120;  // これより近ければ寄るのをやめる(密着し続けない)
+// ★社長報告2026-09-10「全体的に技がよけやすすぎて簡単すぎる」。数字で見ると主因は**技の間**だった。
+// 共通の技間は BOSS_NEUTRAL_LEDGER_MS = 1500ms(天使6+フィル+裏4+トール共通)で、これに
+// リード+実行+硬直が乗るため **1技のサイクルが3.0〜4.4秒**、そのうち判定が出ているのは
+// 240〜350msだけ=**9割以上の時間、何もされない**。段11(最上段)の圧としては緩すぎる。
+// アクラシエルだけ短くする(共通値は他10体に効くので動かさない)。★叩き台=実機で社長が詰める前提。
+const ACRASIEL_NEUTRAL_MS = 600;
+const acrasielNextAction = (t: number, boss: Enemy): number => t + ACRASIEL_NEUTRAL_MS * freshCritCdMult(boss.id, t);
 
 /** ★v0.25.3588(社長報告「ジブリルのランタンレーザー3連、予告線が規定通りの流星になってない」):
  *  ランスの発射時刻は「縁に到着した時」で事前に確定しないため、描画の流星が消え切るタイミングを
@@ -2987,7 +2994,7 @@ export const runAcrasielTick = (
       patch.bossState = 'spike-windup'; patch.bossStateUntil = plan.impactAt;
       patch.acrasielStateAt = plan.impactAt - AC_T.spike.windup;
     } else {
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(now, boss);
+      patch.bossState = 'chase'; patch.bossNextActionAt = acrasielNextAction(now, boss);
       patch.acrasielPlan = undefined;
     }
   } else if (st === 'spike-windup' && remaining <= 0) {
