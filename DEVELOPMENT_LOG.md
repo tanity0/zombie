@@ -1,5 +1,55 @@
 # Development Log
 
+## v0.25.4198 — ★アクラシエルのカウンター連発(ハメ)を修正【2026-09-10 21:41 JST】
+
+社長報告「突っ立ってるところに近接当てるだけでカウンター連発してたのも直した?」。**直していなかった**ので
+調べたところ、**本当にループしていた**。v0.25.4196の再構築で入った回帰。
+
+### 1. 何が起きていたか(ループの経路)
+`angelBossTick.ts` のアクラシエル経路:
+```
+} else if ((isWind || isRecover) && rectsOverlap(boss, pl) && isCounterActive(pl, ...)) {
+  counter(cx, cy);   // → 中で recover(move) を呼ぶ = また *-recover に入る
+}
+```
+- **`counter()` が `recover()` を呼び、その硬直中(`isRecover`)がまた受付条件を満たす。**
+- 多重防止は `boss.acrasielCounterWindowEnd === pl.counterWindowEnd` の1本だけ=**同じ1回の振りの窓**しか
+  見ていない。プレイヤーが**振り直すたびに新しい窓**になるので、素通りする。
+- アクラシエルは **`speed: 0` で動かない**(脚が無い)=距離を取って逃げない。
+- ⇒ **密着して近接を振り続けるだけで、カウンター(確定クリ)が入り続け、ボスは何もできずに落ちる。**
+
+### 2. なぜ入ったか(旧実装との差)
+| | カウンター成立後 |
+|---|---|
+| **旧(〜v0.25.4195)** | `bossState='chase'` + `bossNextActionAt = nextActionDelay(...)` ⇒ **chase は isWind でも isRecover でもない**ので受付対象外。連発しない |
+| **新(v0.25.4196)** | `recover(move)` ⇒ **受付対象のまま**。ループ |
+
+掟W3(activeの後は必ずrecover)を守ろうとして chase をやめた結果、**掟W7(硬直中もカウンター可)と噛み合って
+ループになった**。W7の「硬直」は**技を出した後の反撃窓**であって、**カウンターで生じた硬直**まで
+再カウンターしてよいという意味ではない。
+
+### 3. 直し方
+**カウンターで入った硬直が明けるまで、再カウンターを受け付けない。**
+- `Enemy.acrasielCounterLockUntil`(gameTime)を新設。`counter()` 成立時に**その硬直の終了時刻**を書く。
+- 判定は純関数 `acrasielCounterAccepted(lockUntil, now)`(`acrasielScript.ts`)へ切り出してテスト。
+- **守護霊(ghost)側はロックを見ない**——`takeGhostAngelCounter` が1回きりで取り出す形なので、
+  従来の挙動を変えない。
+- **硬直明けに技を出し直せば、これまでどおりカウンターできる**(W7は保つ)。
+- カウンター中の被弾無効は不変: `damage()` は `counter()` が内部で弾かれても `return` するので、
+  **ロック中でもダメージは入らない**(報酬が二重に出ないだけ)。
+
+### 4. 網
+`acrasielScript.test.ts` に3件追加(計15件)。「ロック中は受け付けない/明けたら受け付ける」を固定。
+
+### 変更ファイル
+`src/types/game.ts`(`acrasielCounterLockUntil`)/ `src/utils/acrasielScript.ts`(純関数+テスト)/
+`src/utils/angelBossTick.ts`(counter() にロック)/ `src/utils/acrasielScript.test.ts` /
+`package.json` / `src/data/changelog.ts`
+
+### 検証
+`npm run typecheck` エラー0 / `npm run lint` エラー0(warning 9=既存)/
+`npx vitest run src/utils/acrasielScript.test.ts` **15件 pass**。★**実機は未確認**(社長の実機待ち)。
+
 ## v0.25.4197 — ★アクラシエル再構築(Codex納品)の検収と改良: 主題が死んでいた件【2026-09-10 20:20 JST】
 
 社長報告「作らせてみたけど微妙だった。そちらで引き継いで改良して」。実物を読んで、**「微妙」の正体を

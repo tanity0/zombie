@@ -43,6 +43,15 @@ export const acrasielPolygonHitsCircle = (points: number[], x: number, y: number
   return inside;
 };
 
+// ★カウンターの受付判定(純関数・v0.25.4198)。「溜め中と硬直中の本体接触はカウンター可」(掟W7)は
+// 保つが、**カウンターで入った硬直の間だけは受け付けない**。受け付けると
+// 「カウンター→硬直→その硬直中の接触でまたカウンター」が延々と続き、動かないアクラシエルは
+// 近接を振り続けるだけで沈む(社長報告2026-09-10「突っ立ってるところに近接当てるだけで
+// カウンター連発」)。ロックは硬直が明けるまでで、技を出し直せば再びカウンターできる。
+export const acrasielCounterAccepted = (
+  counterLockUntil: number | undefined, now: number,
+): boolean => now >= (counterLockUntil ?? 0);
+
 export const planAcrasielPattern = (
   x: number, y: number, phase: 1 | 2 | 3,
   startedAt: number, spearRange: number, spearCount: number, rand: () => number = Math.random,

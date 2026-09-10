@@ -49,7 +49,7 @@ import { pickRafiMove, RAFI_PHASE_HP_THRESHOLD } from './rafiScript';
 import { pickUriMove, uriSweepInnerRadius, URI_PHASE_HP_THRESHOLD } from './uriScript';
 import { pickSurielMove, surielRingCount, SURIEL_PHASE_HP_THRESHOLD } from './surielScript';
 import {
-  pickAcrasielMove, acrasielPhaseForHealth, isSpikeGapSector,
+  pickAcrasielMove, acrasielPhaseForHealth, isSpikeGapSector, acrasielCounterAccepted,
   planAcrasielPattern, acrasielSectorPolygon, acrasielPolygonHitsCircle,
   ACRASIEL_SPEAR_FLIGHT_MS, ACRASIEL_WARP_ACTIVE_MS, ACRASIEL_GAZE_ACTIVE_MS,
 } from './acrasielScript';
@@ -2844,11 +2844,18 @@ export const runAcrasielTick = (
   const counter = (x: number, y: number, ghost?: GhostCounterFire): void => {
     // 同じ受付窓の接触で硬直を毎tick延長したり、多重報酬を出したりしない。
     if (!ghost && boss.acrasielCounterWindowEnd === pl.counterWindowEnd) return;
+    // ★v0.25.4198: **カウンターで入った硬直の間は再カウンターを受け付けない**(acrasielScript の
+    // 純関数で判定)。無いと「カウンター→硬直→硬直中の接触でまたカウンター」が無限に続き、
+    // speed:0のアクラシエルは近接を振り続けるだけで何もできずに落ちる。守護霊側(ghost)は
+    // takeGhostAngelCounter が1回きりで取り出す形なので、従来どおりロックを見ない。
+    if (!ghost && !acrasielCounterAccepted(boss.acrasielCounterLockUntil, now)) return;
     if (!ghost) patch.acrasielCounterWindowEnd = pl.counterWindowEnd;
     angelCounterHit(boss, cx, x, y, sfx, ghost);
     const move = st.startsWith('spike') ? 'spike' : st.startsWith('spear') ? 'spear'
       : st.startsWith('warp') ? 'warp' : st.startsWith('burst') ? 'burst' : 'gaze';
     recover(move);
+    // 硬直が明けるまでロック(recover→enter が patch.bossStateUntil を確定させた後に読む)。
+    if (!ghost) patch.acrasielCounterLockUntil = patch.bossStateUntil;
     if (plan) patch.acrasielPlan = { ...plan, combo: false };
   };
   const damage = (hit: boolean, label: string, tag: string): void => {

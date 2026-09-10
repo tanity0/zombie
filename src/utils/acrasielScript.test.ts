@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   acrasielPhaseForHealth, acrasielSpikeGapCount, pickSpikeGapMask, isSpikeGapSector,
   pickAcrasielMove, pickAcrasielCombo, ACRASIEL_SECTOR_COUNT, planAcrasielPattern,
+  acrasielCounterAccepted,
 } from './acrasielScript';
 
 describe('acrasielPhaseForHealth (§6.28-19: 60%/30%の3段)', () => {
@@ -99,5 +100,26 @@ describe('planAcrasielPattern — ★空きは毎回変わる(主題)', () => {
     expect(count(planAcrasielPattern(0, 0, 1, 0, 210, 6, nextRand).gapMask)).toBe(acrasielSpikeGapCount(1));
     expect(count(planAcrasielPattern(0, 0, 2, 0, 210, 6, nextRand).gapMask)).toBe(acrasielSpikeGapCount(2));
     expect(count(planAcrasielPattern(0, 0, 3, 0, 210, 6, nextRand).gapMask)).toBe(acrasielSpikeGapCount(3));
+  });
+});
+
+// ★カウンター連発(ハメ)の再発防止(v0.25.4198)。社長報告2026-09-10
+// 「突っ立ってるところに近接当てるだけでカウンター連発してた」。
+// カウンター→硬直→その硬直中の接触でまたカウンター…が無限に続いていた。
+describe('acrasielCounterAccepted — ★カウンターで入った硬直中は再カウンターを受け付けない', () => {
+  it('ロックが無ければ受け付ける(通常の溜め中・硬直中=掟W7)', () => {
+    expect(acrasielCounterAccepted(undefined, 1000)).toBe(true);
+    expect(acrasielCounterAccepted(0, 1000)).toBe(true);
+  });
+
+  it('カウンター由来の硬直が明けるまでは受け付けない', () => {
+    // now=1000でカウンター成立 → 硬直500ms → ロックは1500まで。
+    expect(acrasielCounterAccepted(1500, 1000)).toBe(false);
+    expect(acrasielCounterAccepted(1500, 1499)).toBe(false);
+  });
+
+  it('硬直が明けた後は再び受け付ける(技を出し直せばまたカウンターできる)', () => {
+    expect(acrasielCounterAccepted(1500, 1500)).toBe(true);
+    expect(acrasielCounterAccepted(1500, 1501)).toBe(true);
   });
 });

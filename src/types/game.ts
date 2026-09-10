@@ -1162,6 +1162,10 @@ export interface Enemy {
   acrasielPlan?: AcrasielPlan;
   acrasielStateAt?: number;
   acrasielCounterWindowEnd?: number;
+  // ★v0.25.4198: カウンターで入った硬直が明けるまでの時刻(gameTime)。この間は本体接触で
+  // 再カウンターを成立させない。無いと「カウンター→硬直→硬直中の接触でまたカウンター」が
+  // 無限に続き、speed:0で動かないアクラシエルは近接を振り続けるだけで何もできずに落ちる。
+  acrasielCounterLockUntil?: number;
   // v0.25.3204(社長指示「ランタン、1秒置きに3本発射」): ジブリルのランス=飛行中ランタンの一覧。
   // dir=進行方向(rad)・bornAt=射出時刻・firedUntil=ビーム表示終了時刻(undefined=まだ飛行中)。
   // 更新はangelBossTick(lance-windup)のみ。pixiSceneは読んで赤ライン/ランタン/ビームを描くだけ。
