@@ -151,9 +151,14 @@ const ACRASIEL_NEUTRAL_MS = 600;
 // ★v0.25.4203(社長「全部の技を見直して激ムズ派手に」)で足した弾の威力。★叩き台=実機で社長が詰める。
 // 天使11体が共有する既定の弾は damage 20 だが、**破片は本数が多い**(槍は3方向×6本=18発)ので
 // そのまま使うと多重命中で即死する。破片は「かすり」の重み、視線は「元の1発より軽い代わりに本数」。
+// ★社長指示2026-09-11「アクラシエルの弾全部弾速あげて」。天使11体が共有する既定は speed 320
+// (プレイヤー104.4px/sの約3倍)。**共有値を動かすと他10体に効く**ので、アクラシエルの4経路
+// (単眼レーザー/爆発の破片/転移の破片/槍の破片)にだけ上書きで渡す。★叩き台=実機で社長が詰める。
+const ACRASIEL_BULLET_SPEED = 480;                                       // 既定320の1.5倍
 const ACRASIEL_GAZE_BEAM_DAMAGE = 14;                                    // 単眼レーザー1本(元は20が1本)
-const ACRASIEL_SHARD_PROFILE = { damage: 10, size: 12 } as const;        // 爆発/転移の破片(8発)
-const ACRASIEL_SPEAR_SHARD_PROFILE = { damage: 8, size: 11 } as const;   // 槍の破片(18発)
+const ACRASIEL_GAZE_PROFILE = { damage: ACRASIEL_GAZE_BEAM_DAMAGE, speed: ACRASIEL_BULLET_SPEED } as const;
+const ACRASIEL_SHARD_PROFILE = { damage: 10, size: 12, speed: ACRASIEL_BULLET_SPEED } as const;        // 爆発/転移の破片(8発)
+const ACRASIEL_SPEAR_SHARD_PROFILE = { damage: 8, size: 11, speed: ACRASIEL_BULLET_SPEED } as const;   // 槍の破片(18発)
 const acrasielNextAction = (t: number, boss: Enemy): number => t + ACRASIEL_NEUTRAL_MS * freshCritCdMult(boss.id, t);
 
 /** ★v0.25.3588(社長報告「ジブリルのランタンレーザー3連、予告線が規定通りの流星になってない」):
@@ -3098,7 +3103,7 @@ export const runAcrasielTick = (
     // ★1本あたりの威力は落とす(元は1発20が1本だけ。5〜9本のまま20だと近距離で多重命中=即死)。
     for (const a of acrasielGazeAngles(gazeBase, phase)) {
       store.addProjectile(createEnemyProjectile(boss, pl, cx + Math.cos(a) * 1000, cy + Math.sin(a) * 1000,
-        undefined, undefined, { damage: ACRASIEL_GAZE_BEAM_DAMAGE }));
+        undefined, undefined, ACRASIEL_GAZE_PROFILE));
     }
     enter('gaze-active', ACRASIEL_GAZE_ACTIVE_MS); sfx.beam();
   } else if (st === 'gaze-active' && remaining <= 0) recover('gaze');
