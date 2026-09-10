@@ -26,7 +26,7 @@ describe('boss rebuild contract', () => {
     expect(BOSS_NEUTRAL_LEDGER_MS).toBe(1500);
     expect(BOSS_NEUTRAL_CASTLE_MS).toBe(2500);
     expect(BOUNTY_NEUTRAL_RULED_MS).toBe(2000);
-    expect(IDOL_NEUTRAL_RULED_MS).toBe(1200);
+    expect(IDOL_NEUTRAL_RULED_MS).toBe(700) // ★v0.25.4204: 社長「アイドルも地味だわ」で 1200→700(この値はidolTickだけが読む);
     for (const profile of Object.values(BOSS_COMBAT_PROFILES)) {
       expect(profile.neutralMs.every((b, i, a) => i === 0 || b.max <= a[i - 1].max)).toBe(true);
     }

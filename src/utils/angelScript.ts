@@ -269,7 +269,11 @@ export const ANGEL_ACRASIEL_TUNING: AngelAcrasielTuning = {
   // リード1100msでプレイヤーが動けるのは 104.4px/s × 1.1 = **115px**なので、400なら距離250から
   // 外へ出るには150px必要=**間に合わない**⇒隙間へ入るしかなくなる。1100のような画面全体でもない。
   spike: { windup: 1100, active: 240, recover: withRecoverFloor(500), range: 400, halfWidth: 40 },
-  spear: { windup: 700, recover: withRecoverFloor(500), count: 6, range: 210, detonateMs: 2000, radius: 60 },
+  // ★radius は **92 = 転移衝撃と同じ既定**(「新しい数字を発明しない」流用の掟。
+  // `angelSwordSync.test.ts` が機械で固定している)。v0.25.4196の再構築が理由の記録なく 60 へ
+  // 下げてテストを赤にしたまま push していたので戻す。92なら円6個の隙間は約36pxまで詰まり、
+  // 社長指示「激ムズ」にも沿う(v0.25.4204)。
+  spear: { windup: 700, recover: withRecoverFloor(500), count: 6, range: 210, detonateMs: 2000, radius: 92 },
   // ★telegraphMs は「赤円が見えてから実行まで」そのもの。v0.25.2609で800→1000へ是正した
   // (800msで歩ける距離は83.5px < 半径92px=**見てから歩いても構造的に出られない**状態だった)。
   // **impactRadius を広げたら telegraphMs も伸ばす**(半径/104.4px/s が必要下限)。

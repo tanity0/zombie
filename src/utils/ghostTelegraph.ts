@@ -190,8 +190,9 @@ put(LEDGER, ['idol-punch-windup'], {
   coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: IDOL_PUNCH_RANGE_MIRROR },
   note: 'idolの殴打。溜め中は向きが未確定なので、届く距離の円として外へ出す(安全側)。',
 });
-put(LEDGER, ['warp-in'], {
+put(LEDGER, ['warp-in', 'warp-active'], {
   coverage: 'ghost', ghostShape: { kind: 'circle-target', radius: ACRASIEL_WARP_IMPACT_MIRROR },
+  // v0.25.4204: 'warp-active'(出現衝撃の200ms)も同じ円が生きているので同じ図形で読む。
   note: 'アクラシエルの転移着地の衝撃円(中心=aiTarget=出現先)。',
 });
 put(LEDGER, ['phill-goldring-windup'], {
@@ -253,6 +254,10 @@ put(LEDGER, [
   'issen-recover', 'jump-recover', 'lance-recover', 'lantern-recover', 'laser-recover', 'laser-broken', 'mdash-recover',
   'radial-recover', 'ring-recover', 'ring-spin-recover', 'skadi-blade-recover', 'skadi-ice-recover',
   'spear-recover', 'spike-recover', 'sweep-recover', 'tate-recover', 'thrust-recover',
+  // v0.25.4204(アクラシエルの実行フェーズ2つ): どちらもこの州自体には避ける図形が無い。
+  // 'spear-active'=槍が飛んでいる350ms(危険なのは着地後2秒の起爆円=別の経路)/
+  // 'gaze-active'=弾を撃った後の160ms(危険なのは共通赤弾=projectileDodgeの担当)。
+  'spear-active', 'gaze-active',
   'tsuki-recover', 'volley-recover', 'warp-recover',
   'thor-dash-recover', // v0.25.3780: トールの突進の硬直(§4)
   'quickblades-recover', // ★v0.25.3784: ラフィの刃2連射の硬直(v0.25.3592)。技は終わっている。

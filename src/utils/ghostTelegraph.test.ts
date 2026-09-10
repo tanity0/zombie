@@ -15,6 +15,7 @@ import { telegraphDodge } from './botSkill';
 import {
   IDOL_WINDUP_STATES, IDOL_RECOVER_STATES, IDOL_FIRE_STATES, IDOL_REST_STATE,
 } from './idolTick';
+import { ACRASIEL_STATES } from './acrasielScript';
 import type { Enemy } from '../types/game';
 
 // 走査対象=ボスの状態(aiPhase/bossState)を書いている全ファイル。ソースは vite の ?raw で読む
@@ -52,6 +53,8 @@ const scanStates = (): Map<string, string> => {
     ['IDOL_RECOVER_STATES', IDOL_RECOVER_STATES],
     ['IDOL_FIRE_STATES', IDOL_FIRE_STATES],
     ['IDOL_REST_STATE', [IDOL_REST_STATE]],
+    // v0.25.4204: アクラシエルも一覧を正本にする(理由は acrasielScript.ts の ACRASIEL_STATES を参照)。
+    ['ACRASIEL_STATES', ACRASIEL_STATES],
   ] as const) {
     for (const st of list) if (!found.has(st)) found.set(st, `idolTick.ts(${label})`);
   }

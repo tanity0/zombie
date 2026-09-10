@@ -73,7 +73,9 @@ export const bossRebuildIdForEnemy = (type: EnemyType): BossRebuildId | null => 
 export const BOSS_NEUTRAL_LEDGER_MS = 1500;  // 台帳系(天使6+フィル+裏4+トール+ステージボス)
 export const BOSS_NEUTRAL_CASTLE_MS = 2500;  // 城ボス(aiReadyAtの全体仕切り。技ごとの個別CDとのmaxは従来どおり)
 export const BOUNTY_NEUTRAL_RULED_MS = 2000; // 賞金首(bountyTickが読む)
-export const IDOL_NEUTRAL_RULED_MS = 1200;   // 偶像(休符の長さ。idolTickが読む=静止ではなく移動)
+// ★v0.25.4204(社長「アイドルも地味だわ」): 1200→700。技と技の間が1.2秒あると、
+// ストリングの合間が空いて圧が途切れる。**この値はidolTickだけが読む**ので他ボスに影響しない。★叩き台。
+export const IDOL_NEUTRAL_RULED_MS = 700;    // 偶像(休符の長さ。idolTickが読む=静止ではなく移動)
 
 /** 台帳系の技間(社長裁定2026-08-27=系ごとの固定値)。引数は互換のため残置(帯・乱数は使わない)。 */
 export const bossNeutralDelayMs = (

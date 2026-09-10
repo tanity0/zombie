@@ -2885,7 +2885,10 @@ export const runAcrasielTick = (
     if (isCounterActive(useGameStore.getState().player, Date.now())) { counter(px, py); return; }
     if (useGameStore.getState().damagePlayer(boss.damage, label, px, py, undefined, undefined, tag)) onPlayerDeath(px, py);
   };
-  const begin = (key: AngelMoveKey): void => {
+  // forced=true はボスメーカーの個別再生(▸)。★「安全な扇を置けないので棘→転移へ差し替える」
+  // 保険を**再生では効かせない**(▸は「その技を必ず出す」ための口なので、差し替えると
+  // `angelPlayback.test.ts` が確率で落ちる=実際に3回に1回落ちていた・v0.25.4204)。
+  const begin = (key: AngelMoveKey, forced = false): void => {
     const p = planAcrasielPattern(cx, cy, phase, now, AC_T.spear.range, AC_T.spear.count);
     // ★空きの向きは planAcrasielPattern が決めたランダム値を**動かさない**(§6.28-19の主題)。
     // ここでやるのは「プレイヤーがリードの間に逃げ込める安全点が実在するか」の検査だけ。
@@ -2924,7 +2927,8 @@ export const runAcrasielTick = (
       });
     }
     // 安全な扇を置けない密着/壁際は、予告前に転移へ切替。出したテルは取り消さない。
-    if (key === 'ac-spike' && !p.refuge) key = 'ac-warp';
+    // ★個別再生(▸)では差し替えない(上のコメント)。
+    if (!forced && key === 'ac-spike' && !p.refuge) key = 'ac-warp';
     patch.acrasielPlan = p;
     patch.spikeGapMask = p.gapMask;
     sfx.alert();
@@ -2954,7 +2958,12 @@ export const runAcrasielTick = (
     }
   };
   const isRecover = st.endsWith('-recover');
-  const isWind = st.endsWith('-windup') || st === 'warp-out' || st === 'warp-in';
+  // ★v0.25.4204: **転移の2相(warp-out/warp-in)はカウンター不成立**=転移は完走する。
+  // これは憲法(`angelCounter.test.ts`「予告の間、赤円の中で窓を開けても成立しない」)で、
+  // 掟W7「溜め中の接触はカウンター可」より前から在る裁定。v0.25.4196の再構築が
+  // warp-out/warp-in を「溜め」に含めたまま受付条件へ流したため、**憲法が破れていた**
+  // (テストが赤のまま push されていた)。ここは -windup だけを受け付ける。
+  const isCounterableWind = st.endsWith('-windup');
   const ghost = takeGhostAngelCounter(boss);
   if (ghost) counter(cx, cy, ghost);
   else if ((boss.bossFullStunUntil ?? 0) > now) {
@@ -2963,8 +2972,9 @@ export const runAcrasielTick = (
       recover('burst');
       if (plan) patch.acrasielPlan = { ...plan, combo: false };
     }
-  } else if ((isWind || isRecover) && rectsOverlap(boss, pl) && isCounterActive(pl, Date.now())) {
+  } else if ((isCounterableWind || isRecover) && rectsOverlap(boss, pl) && isCounterActive(pl, Date.now())) {
     // W7はアクラシエル専用。全ボス共通の体当たりゲートは変更しない。
+    // 転移の2相は上のとおり対象外(憲法)。
     counter(cx, cy);
   } else if (st === 'chase') {
     // ★浮遊移動(社長指示・上の定数コメント)。慣性は「目標速度へ指数的に寄せる」形で入れる
@@ -2990,7 +3000,7 @@ export const runAcrasielTick = (
       const c = clampRectToPlayableArea(nx, ny, boss.width, boss.height, area);
       patch.x = c.x; patch.y = c.y;
     }
-    if (!takeAngelPlay(boss, 'acrasiel', begin) && now >= (boss.bossNextActionAt ?? 0)) {
+    if (!takeAngelPlay(boss, 'acrasiel', (k: AngelMoveKey) => begin(k, true)) && now >= (boss.bossNextActionAt ?? 0)) {
       const move = Math.hypot(px - cx, py - cy) > 180 ? 'warp' : pickAcrasielMove(Math.hypot(px - cx, py - cy), phase);
       if (move) begin(('ac-' + move) as AngelMoveKey);
     }

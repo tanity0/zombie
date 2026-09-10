@@ -542,6 +542,14 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
     // 増えたら「そのボスのその状態」をBULLET_STATE_TO_MOVEへ足すこと(足さないと
     // その弾だけ技キーが付かず、記録にも守護霊の再現にも一生乗らない)。
     // ※射撃部品は1箇所(fireShotVolley)で8枠ぶんを撃つので、枠を増やしても発射箇所は増えない。
+    // ★v0.25.4204(社長「全部の技を見直して激ムズ派手に」)で angelBossTick に **+3**:
+    //   ①収縮→爆発の破片弾(state='burst-windup'=分類済み)
+    //   ②転移の出現時の破片弾(state='warp-in'=分類済み)
+    //   ③結晶の槍の起爆時の破片弾(tickAcrasielSpears)
+    //   ★③だけは**技キーが付かない**——起爆は設置から2秒後で、その時のボスの state は
+    //     chase等になっていて技と紐づかないため。BULLET_STATE_TO_MOVE では拾えない
+    //     (拾うには gameStore の 'g-parts' と同じ「生成後に srcMoveKey を後付けする」経路が要る)。
+    //     **捕まえられない形が残っていることを、ここに事実として残す。** 合計21。
     let sites = 0;
     for (const text of Object.values(BULLET_SOURCES)) {
       for (const line of text.split('\n')) {
@@ -550,7 +558,7 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
         sites += (line.match(/createEnemyProjectile\(/g) ?? []).length;
       }
     }
-    expect(sites).toBe(18);
+    expect(sites).toBe(21);
   });
 });
 

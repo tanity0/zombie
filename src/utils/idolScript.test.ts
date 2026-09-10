@@ -23,9 +23,9 @@ describe('idolPhaseForHealth / idolFanCount(§6.28-20の確定値・不変)', ()
     expect(idolPhaseForHealth(0.51)).toBe(1);
     expect(idolPhaseForHealth(0.5)).toBe(2);
   });
-  it('扇は3→5本', () => {
-    expect(idolFanCount(1)).toBe(3);
-    expect(idolFanCount(2)).toBe(5);
+  it('扇は5→8本(★v0.25.4204: 社長「アイドルも地味だわ」で 3→5 / 5→8 へ)', () => {
+    expect(idolFanCount(1)).toBe(5);
+    expect(idolFanCount(2)).toBe(8);
   });
 });
 
@@ -71,16 +71,16 @@ describe('技の本数と帯', () => {
 
 // ==== 社長裁定「MAXモリモリ」: 段数・休符・第二波 ====
 describe('MAX枠の水準', () => {
-  it('ストリングは P1=3段 / P2=4段(ERミドラの最大3段を超える枠)', () => {
-    expect(stringMaxLen(1, IDOL_STRING_LEN)).toBe(3);
+  it('ストリングは P1=4段 / P2=4段(★v0.25.4204: P1を3→4へ。圧が途切れないように)', () => {
+    expect(stringMaxLen(1, IDOL_STRING_LEN)).toBe(4);
     expect(stringMaxLen(2, IDOL_STRING_LEN)).toBe(4);
   });
   it('全ての台本が4段ぶん書かれている(P2で必ず1段伸びる)', () => {
     for (const s of IDOL_STRINGS) expect(s.moves.length, `${s.zone}/${s.moves.join(',')}`).toBe(4);
   });
-  it('実際に P1=3段 / P2=4段 が出る', () => {
+  it('実際に P1=4段 / P2=4段 が出る', () => {
     for (const z of ZONES) {
-      expect(pickStringScript(IDOL_STRINGS, z, 1, IDOL_STRING_LEN, allReady())).toHaveLength(3);
+      expect(pickStringScript(IDOL_STRINGS, z, 1, IDOL_STRING_LEN, allReady())).toHaveLength(4);
       expect(pickStringScript(IDOL_STRINGS, z, 2, IDOL_STRING_LEN, allReady())).toHaveLength(4);
     }
   });
@@ -100,9 +100,9 @@ describe('MAX枠の水準', () => {
       expect(idolWaveActive(m, 2), `${m} に第二波が付いている`).toBe(false);
     }
   });
-  it('追尾弾はPhase2で2→3発', () => {
-    expect(idolOrbCount(1)).toBe(2);
-    expect(idolOrbCount(2)).toBe(3);
+  it('追尾弾は3→5発(★v0.25.4204: 2→3 から引き上げ)', () => {
+    expect(idolOrbCount(1)).toBe(3);
+    expect(idolOrbCount(2)).toBe(5);
   });
 });
 
@@ -160,14 +160,16 @@ describe('懲罰(ER原則⑤)', () => {
 // ==== ★ボスメーカー(BOSS_MAKER.md §2-4): テーブル化は純粋なリファクタであること ====
 // 「**既定値が現行の実装値と1つも変わらないこと**」が絶対条件。ここに**テーブル化する前の実装値を
 // 直接ベタ書き**して突き合わせる(テーブル自身から取ると何も検証できないので、必ず literal を書く)。
-describe('IDOL_TUNING の既定値 = テーブル化前の実装値(挙動不変の担保)', () => {
+// ★v0.25.4204: 社長指示「アイドルも地味だわ。これも見直して激ムズ、派手に」で確定値を更新した。
+// 元は「テーブル化前の実装値=挙動不変の担保」だったが、以後は**現在の確定値の固定**として使う。
+describe('IDOL_TUNING の既定値(現在の確定値・勝手に動かさないための固定)', () => {
   it('帯・主戦帯・移動倍率・フェーズ', () => {
     expect(IDOL_TUNING_DEFAULTS.zoneEdges).toEqual({ meleeMax: 140, nearMax: 340, midMax: 700 });
     expect(IDOL_TUNING_DEFAULTS.neutralBand).toEqual({ min: 200, max: 340 });
     expect(IDOL_TUNING_DEFAULTS.verbSpeedMult).toEqual({ close: 1, retreat: 0.45, strafe: 0.45, hold: 0 });
     expect(IDOL_TUNING_DEFAULTS.phaseHpThreshold).toBe(0.5);
-    expect(IDOL_TUNING_DEFAULTS.fanCount).toEqual({ p1: 3, p2: 5 });
-    expect(IDOL_TUNING_DEFAULTS.orbCount).toEqual({ p1: 2, p2: 3 });
+    expect(IDOL_TUNING_DEFAULTS.fanCount).toEqual({ p1: 5, p2: 8 }); // v0.25.4204(旧 3/5)
+    expect(IDOL_TUNING_DEFAULTS.orbCount).toEqual({ p1: 3, p2: 5 }); // v0.25.4204(旧 2/3)
   });
   it('技の秒数(硬直は全技900=withRecoverFloorの床が既定値になっている)', () => {
     expect(IDOL_TUNING_DEFAULTS.timing).toEqual({
@@ -183,13 +185,13 @@ describe('IDOL_TUNING の既定値 = テーブル化前の実装値(挙動不変
   it('図形(判定と厳密一致させる値)', () => {
     expect(IDOL_TUNING_DEFAULTS.shape).toEqual({
       rollDist: 140, punchRange: 90, punchHalfWidth: 30,
-      snipeRange: 900, snipeHalfWidth: 40, fanSpreadStep: 0.14,
+      snipeRange: 900, snipeHalfWidth: 40, fanSpreadStep: 0.17,
       orbSpeed: 155, orbTurnRate: 1.5,
     });
   });
   it('第二波・ストリング・休符・中立・懲罰', () => {
     expect(IDOL_TUNING_DEFAULTS.waveDelayMs).toBe(650);
-    expect(IDOL_TUNING_DEFAULTS.stringLen).toEqual({ p1: 3, p2: 4 });
+    expect(IDOL_TUNING_DEFAULTS.stringLen).toEqual({ p1: 4, p2: 4 }); // v0.25.4204(旧 3/4)
     expect(IDOL_TUNING_DEFAULTS.rest).toEqual({ p1: 1700, p2: 1700 });
     expect(IDOL_TUNING_DEFAULTS.neutral).toEqual({ minMs: 700, maxMs: 1300 });
     expect(IDOL_TUNING_DEFAULTS.punish).toEqual({

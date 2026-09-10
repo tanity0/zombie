@@ -106,6 +106,19 @@ export const acrasielNextWaveGapMask = (
   return mask;
 };
 
+// ★状態名の正本(v0.25.4204)。`ghostTelegraph.test.ts` の走査は**文字列リテラルの行の形**で拾うため、
+// `bs === 'spike-windup'` のような比較の中の名前は拾えない。v0.25.4196の再構築で pixiScene 側の
+// 比較行が消えた結果、台帳の網羅テストが「ソースに無い台帳キー」と誤検知して赤になっていた。
+// idol が既にやっているのと同じく、**実装が一覧をexportしてテストがそれを読む**形にする
+// (新しい状態を足したらここへ足す=足し忘れれば台帳の網羅が落ちる)。
+export const ACRASIEL_STATES = [
+  'spike-windup', 'spike', 'spike-recover',
+  'spear-windup', 'spear-active', 'spear-recover',
+  'warp-out', 'warp-in', 'warp-active', 'warp-recover',
+  'burst-windup', 'burst', 'burst-recover',
+  'gaze-windup', 'gaze-active', 'gaze-recover',
+] as const;
+
 export const planAcrasielPattern = (
   x: number, y: number, phase: 1 | 2 | 3,
   startedAt: number, spearRange: number, spearCount: number, rand: () => number = Math.random,
