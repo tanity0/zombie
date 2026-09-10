@@ -13,6 +13,19 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'TEST_HANDOFF/results');
 fs.mkdirSync(outDir, { recursive: true });
 
+// ★表示モード(2026-09-10・社長指示「実機テストをCodexでも回したい」): 同じPCでCodexが実行しても
+// 実機になるよう、headless を直書きせず TEST_HANDOFF/request.config.json を見る。
+// **既定は実機(headed)**。"headless": true と明示した時だけヘッドレスで回す
+// (当PC実測: headed=実時間の80.7%/35.3fps、headless=2.3%/1.9fps。既定をheadlessにすると
+//  10分回してもゲーム内14秒しか進まない事故が黙って起きるため、既定を実機側に倒してある)。
+// フォールバック(コンテナのChromium+swiftshader)は表示が無いので常にheadless。
+const reqCfg = (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(root, "TEST_HANDOFF/request.config.json"), "utf8")); }
+  catch { return {}; }
+})();
+const HEADLESS = reqCfg.headless === true;
+console.log(`[setup] 表示モード: ${HEADLESS ? "ヘッドレス" : "実機(headed)"}(request.config.json の headless)`);
+
 // ── シナリオ表(REQUEST.md の A/B 系列と1:1。durMs=そのシナリオの実走時間)─────────────────
 // ボットは死亡すると [BOT_REPORT] を出して止まる。死亡してもシナリオは時間まで観測を続ける
 // (死亡後のログ/画面も証拠)。shot: 'end'|'mid'|null = スクショを撮るか(掟: 合計5枚まで)。
@@ -47,7 +60,7 @@ console.log('[setup] preview起動OK →', baseUrl);
 
 // ローカル(テストチャット)= Chrome。コンテナ実行時のフォールバック = 環境Chromium+swiftshader
 // (TEST_HANDOFF/HEADLESS.md の掟。`npx playwright install` は絶対にしない)。
-const browser = await chromium.launch({ headless: true, channel: 'chrome' })
+const browser = await chromium.launch({ headless: HEADLESS, channel: 'chrome' })
   .catch(() => chromium.launch({
     headless: true,
     executablePath: '/opt/pw-browsers/chromium',
