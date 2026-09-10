@@ -1815,6 +1815,11 @@ const PHILL_INTRO_RISE_PX = 150;        // 下からのズレ幅(視覚のみ=e.
 // アクラシエルの結晶の槍(acrasiel-spear.png=152×512)。設置武器(ラフィ骨刃/スカジ氷刃と同じ語彙)なので
 // 振り演出は持たない。溜め(spear-windup)中だけ本体前方に1本「構え」表示する(掟W9の窓口・叩き台)。
 const ACRASIEL_SPEAR_VIS_LEN = 70; // 実行中(地面に刺さった状態)の表示全長(px)
+// ★v0.25.4199: 放射棘(spike)の絵は「本体の縁から生えて、判定の外縁まで伸びる」。
+// 棘は②派手さの絵ではなく①危険を伝える絵なので、**伸び切った先端が判定(扇の半径)と一致**する。
+// v0.25.4196の再構築は全長70pxの棘を中心から28〜160pxの間で滑らせるだけで、判定310pxとまったく
+// 合っておらず「伸びる」動きも無かった(下の t=0.45 固定を参照)。
+const ACRASIEL_SPIKE_ROOT_PX = 26;   // 生え際(本体の縁)
 
 // ジブリルのランタン(jibril-lantern.png)。振らずに常に手元へ「掲げたまま」表示する(§6.28-16 ①)。
 const JIBRIL_LANTERN_VIS_H = 46; // 画面上の高さ(px)
@@ -1836,12 +1841,11 @@ const SURIEL_RING_VIS_D = 54; // 画面上の直径(px・叩き台)
 // FX-V2b(発注仕様research/FX_GAP_LEDGER.md「FX-V2b」・武器主役)。掟どおり既存素材
 // (acrasiel-spear.png)のみ・タイミングは既存の ACRASIEL_SPIKE_ACTIVE_MS_VIS / ACRASIEL_BURST_ACTIVE_MS_VIS
 // の内側で完結させる(新しい判定タイミングは作らない=②「派手さの絵」の追加でしかない)。
-// spike: 突き上げ(下→上)の伸び方。t∈[0,1]=spike active窓の経過率。前半で伸び切り、後半でわずかに
-// 沈む(=「突き出し+引き戻し」・判定は不変=capsuleのタイミングのまま)。
-const acrasielSpikeThrustRise = (t: number): number => {
-  const c = Math.max(0, Math.min(1, t));
-  return c < 0.4 ? c / 0.4 : 1 - 0.22 * ((c - 0.4) / 0.6);
-};
+// spike: 突き上げ(下→上)の伸び率。★v0.25.4199で「active窓だけの形」から「呼び出し側が
+// 溜め/実行/硬直それぞれの形を作って渡す値」へ変えた。理由: 再構築(v0.25.4196)が
+// **固定値 0.45 を渡していた**ため、この関数は常に 0.98 を返し、**棘は一度も伸びていなかった**
+// (位置だけが本体の周りを滑っていた)。伸び率は 0..1 をそのまま使い、生え始めだけ下限を敷く。
+const acrasielSpikeThrustRise = (t: number): number => Math.max(0.05, Math.min(1, t));
 const ACRASIEL_BURST_FRAG_COUNT = 5; // 4〜6片の中央値(発注仕様どおり)
 // burst: 判定より外へはみ出してよい(分類②)。破片は判定半径の1.3倍まで飛ばす。
 // ★関数にしてあるのは、テーブル(AC_T.burst.radius)を**使う時に読む**ため。
@@ -13580,17 +13584,24 @@ export class PixiScene {
       : burst ? AC_T.burst.windup : warp ? AC_T.warp.windup : AC_T.gaze.windup;
     const wind = state.endsWith('-windup') || state === 'warp-out';
     const t = wind ? acrasielEase(1 - remain / windMs) : 1;
-    const fill = wind ? 0.12 + 0.12 * t : 0.34;
+    // ★v0.25.4199: 溜めの塗りが 0.12→0.24 と薄く、危険域の輪郭(=隙間の境界)も1pxで読めなかった。
+    // 主題は「空いているセクターを読む」なので、**境界がはっきり見えること**が仕様そのもの。
+    const fill = wind ? 0.14 + 0.20 * t : 0.40;
+    // ★v0.25.4199: 円の予告を他ボスと同じ「外枠から内側へ満ちていく」形へ揃える。再構築で
+    // 素のGraphics(塗り+線)だけになっており、**満ちる動きが消えて**赤い円がただ出るだけだった
+    // =溜まっている実感が無く、語彙もアクラシエルだけ他ボスから浮いていた。
     const circle = (x: number, y: number, radius: number, alpha: number): void => {
-      g.circle(x, y, radius).fill({ color: 0xff3030, alpha });
-      g.circle(x, y, radius).stroke({ color: 0xff5555, alpha: 0.85, width: 1.5 });
+      const mask = CIRCLE_SWEEP_ON
+        ? this.drawSweepCircleFill(g, x, y, radius, t, 0xff2a2a, alpha)
+        : (g.circle(x, y, radius).fill({ color: 0xff3030, alpha }), 1);
+      g.circle(x, y, radius).stroke({ color: 0xff6b6b, alpha: 0.9 * mask, width: 2.5 });
     };
     if (spike && !recover) {
       for (let i = 0; i < 8; i++) {
         if (p.gapMask & (1 << i)) continue;
         g.poly(acrasielSectorPolygon(p.x, p.y, p.rotation, i, AC_T.spike.range))
           .fill({ color: 0xff3030, alpha: fill })
-          .stroke({ color: 0xff5555, alpha: 0.65, width: 1 });
+          .stroke({ color: 0xff6b6b, alpha: 0.9, width: 2.5 });
       }
     }
     if (spear && wind) for (const target of p.targets) circle(target.x, target.y, AC_T.spear.radius, fill);
@@ -13611,7 +13622,17 @@ export class PixiScene {
     }
     const stateDuration = Math.max(1, (e.bossStateUntil ?? time) - (e.acrasielStateAt ?? time));
     const executionT = acrasielEase(1 - remain / stateDuration);
-    const spread = recover ? 28 : wind ? 28 + 32 * t : 60 + 100 * Math.sin(Math.PI * executionT) - 32 * executionT;
+    // ★v0.25.4199: 棘は「本体の縁から生えて、判定の外縁まで伸びて、引き戻される」1本の動きにする。
+    // 溜めでせり上がり(0→0.6)→実行で突き切り(0.6→1)→硬直で沈む(1→0.45)。
+    // 再構築(v0.25.4196)はここに**固定値0.45**を渡していたため伸び縮みが一度も起きず、
+    // 全長70pxの棘が本体の周りを滑るだけだった(判定は半径310px=絵と判定がまったく合っていない)。
+    const spikeRise = spike
+      ? (wind ? 0.6 * t : recover ? 1 - 0.55 * executionT : 0.6 + 0.4 * executionT)
+      : 0.45; // 他技の間は本体の飾りとして控えめに出したまま(W9=絵を消さない)
+    // 伸び切った先端が判定の外縁(扇の半径)と一致する長さ。他技では短い飾りのまま。
+    const spikeVisLen = spike ? AC_T.spike.range - ACRASIEL_SPIKE_ROOT_PX : ACRASIEL_SPEAR_VIS_LEN;
+    const spread = spike ? ACRASIEL_SPIKE_ROOT_PX
+      : recover ? 28 : wind ? 28 + 32 * t : 60 + 100 * Math.sin(Math.PI * executionT) - 32 * executionT;
     const originX = p.bodyX ?? p.x;
     const originY = p.bodyY ?? p.y;
     const count = spear ? p.targets.length : 8;
@@ -13619,7 +13640,7 @@ export class PixiScene {
       if (spike && (p.gapMask & (1 << i))) continue;
       const angle = spear ? p.targets[i].angle : p.rotation + i * Math.PI / 4;
       this.drawAcrasielSpikeThrust(view, i, originX + Math.cos(angle) * spread,
-        originY + Math.sin(angle) * spread, angle, 0.45);
+        originY + Math.sin(angle) * spread, angle, spikeRise, spikeVisLen);
       const sp = view.spikeThrust?.[i];
       if (sp) {
         sp.tint = recover ? 0xbfe8ff : 0xffffff;
@@ -13628,7 +13649,9 @@ export class PixiScene {
     }
     if (recover) view.sprite.tint = 0xbfe8ff;
     else if (wind) {
-      view.sprite.scale.set(view.sprite.scale.x * (1 + t * 0.18), view.sprite.scale.y * (1 - t * 0.3));
+      // 8方向へ力を溜める=しゃがみ。spikeの溜めは旧実装と同じ0.42(「動きは大きく」)。
+      const squash = spike ? 0.42 : 0.3;
+      view.sprite.scale.set(view.sprite.scale.x * (1 + t * 0.18), view.sprite.scale.y * (1 - t * squash));
     } else if (!warp) {
       const release = 1 - executionT;
       view.sprite.scale.set(view.sprite.scale.x * (1 + release * 0.18), view.sprite.scale.y * (1 - release * 0.3));
@@ -21941,7 +21964,7 @@ export class PixiScene {
   // (drawAngelZoneCapsuleの帯)と同じ中心・同じ方向・同じ「空きセクターには出さない」ルールで
   // 揃える。sprite自体は判定を持たない添え物なので、伸び(scale.y)だけをtで変化させ、
   // 判定(capsuleのfill/stroke)には一切触らない。
-  private drawAcrasielSpikeThrust(view: ActorView, idx: number, originX: number, originY: number, angle: number, t: number): void {
+  private drawAcrasielSpikeThrust(view: ActorView, idx: number, originX: number, originY: number, angle: number, t: number, visLen: number = ACRASIEL_SPEAR_VIS_LEN): void {
     const tex = getTexture('acrasiel-spear');
     if (!tex || t <= 0) { const sp = view.spikeThrust?.[idx]; if (sp) sp.visible = false; return; }
     if (!view.spikeThrust) view.spikeThrust = [];
@@ -21953,10 +21976,11 @@ export class PixiScene {
       view.spikeThrust[idx] = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;
-    const rise = Math.max(0.05, acrasielSpikeThrustRise(t));
+    const rise = acrasielSpikeThrustRise(t);
+    // 太さ(X)は全長に依らず一定。伸びるのはY=根元(anchor)から生えてくる見え方。
     const baseScale = ACRASIEL_SPEAR_VIS_LEN / Math.max(1, tex.height);
     sp.rotation = angle + Math.PI / 2; // drawAcrasielSpearReady/acrasielSpearPoolと同じ向きの規約
-    sp.scale.set(baseScale, baseScale * rise); // Yだけ伸ばす=根元(anchor)から生えてくる見え方
+    sp.scale.set(baseScale, visLen / Math.max(1, tex.height) * rise);
     sp.position.set(originX, originY);
     sp.alpha = Math.min(1, t / 0.2);
     sp.visible = true;
