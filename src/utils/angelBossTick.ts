@@ -133,6 +133,13 @@ export const RAFI_SCRIPT_ENABLED = scriptFlag('rafiscript');
 //   ので、画面で動かした値がそのまま両方に効く(スカラーの再exportは数値のコピー=効かない)。
 //   ここへ新しい数値定数を足す前に、それがテーブル側に載るべきものでないか確認すること。
 const GATE_ARENA_RADIUS = 300;          // ゲートアリーナ半径(useGameLoop.tsと同値)
+// ★社長指示2026-09-10「ゆっくりでも動いて欲しい」。アクラシエルは脚が無く speed:0(§6.28-19)だが、
+// 棒立ちのまま一歩も動かないと画面の中で死んでいる。**歩かせるのではなく、結晶が浮いてにじり寄る**。
+// プレイヤー(104.4px/s)には遠く及ばない速さ=逃げ切れるが、立ち止まっていると詰められる圧が出る。
+// 動くのは chase の間だけ(技の最中は掟W2「静止しない攻撃を作らない」/W6「硬直中は完全静止」)。
+const ACRASIEL_DRIFT_SPEED = 26;     // px/s(浮遊の最高速)
+const ACRASIEL_DRIFT_ACCEL = 1.6;    // 1/s(慣性MUST=目標速度へ寄る速さ。動き出しと止まりに加減速)
+const ACRASIEL_DRIFT_STOP_PX = 120;  // これより近ければ寄るのをやめる(密着し続けない)
 
 /** ★v0.25.3588(社長報告「ジブリルのランタンレーザー3連、予告線が規定通りの流星になってない」):
  *  ランスの発射時刻は「縁に到着した時」で事前に確定しないため、描画の流星が消え切るタイミングを
@@ -2818,7 +2825,7 @@ export const runAcrasielTick = (
   boss: Enemy, s: AngelBossState, now: number, deltaTime: number, moveSpeedMult: number,
   sfx: AngelSfx, onPlayerDeath: (x: number, y: number) => void,
 ): void => {
-  void s; void deltaTime; void moveSpeedMult;
+  void s;
   const store = useGameStore.getState(), pl = store.player;
   const px = pl.x + pl.width / 2, py = pl.y + pl.height / 2;
   const cx = boss.x + boss.width / 2, cy = boss.y + boss.height / 2;
@@ -2945,6 +2952,29 @@ export const runAcrasielTick = (
     // W7はアクラシエル専用。全ボス共通の体当たりゲートは変更しない。
     counter(cx, cy);
   } else if (st === 'chase') {
+    // ★浮遊移動(社長指示・上の定数コメント)。慣性は「目標速度へ指数的に寄せる」形で入れる
+    // =動き出しと止まりに加減速が付く(等速で始まって瞬間停止しない)。
+    const dist = Math.hypot(px - cx, py - cy);
+    const want = dist > ACRASIEL_DRIFT_STOP_PX ? ACRASIEL_DRIFT_SPEED * moveSpeedMult : 0;
+    const tvx = dist > 1 ? (px - cx) / dist * want : 0;
+    const tvy = dist > 1 ? (py - cy) / dist * want : 0;
+    const k = 1 - Math.exp(-Math.max(0, deltaTime) * ACRASIEL_DRIFT_ACCEL);
+    const nvx = (boss.vx ?? 0) + (tvx - (boss.vx ?? 0)) * k;
+    const nvy = (boss.vy ?? 0) + (tvy - (boss.vy ?? 0)) * k;
+    patch.vx = nvx; patch.vy = nvy;
+    if (Math.hypot(nvx, nvy) > 0.5) {
+      let nx = boss.x + nvx * deltaTime, ny = boss.y + nvy * deltaTime;
+      // ゲート拘束円の内側に留める(プレイヤーが円の外へ出ても追って出ない)。
+      const ncx = nx + boss.width / 2, ncy = ny + boss.height / 2;
+      const hd = Math.hypot(ncx - homeX, ncy - homeY);
+      const lim = GATE_ARENA_RADIUS - boss.width / 2;
+      if (hd > lim && hd > 0.01) {
+        nx = homeX + (ncx - homeX) * (lim / hd) - boss.width / 2;
+        ny = homeY + (ncy - homeY) * (lim / hd) - boss.height / 2;
+      }
+      const c = clampRectToPlayableArea(nx, ny, boss.width, boss.height, area);
+      patch.x = c.x; patch.y = c.y;
+    }
     if (!takeAngelPlay(boss, 'acrasiel', begin) && now >= (boss.bossNextActionAt ?? 0)) {
       const move = Math.hypot(px - cx, py - cy) > 180 ? 'warp' : pickAcrasielMove(Math.hypot(px - cx, py - cy), phase);
       if (move) begin(('ac-' + move) as AngelMoveKey);

@@ -13590,18 +13590,26 @@ export class PixiScene {
     // ★v0.25.4199: 円の予告を他ボスと同じ「外枠から内側へ満ちていく」形へ揃える。再構築で
     // 素のGraphics(塗り+線)だけになっており、**満ちる動きが消えて**赤い円がただ出るだけだった
     // =溜まっている実感が無く、語彙もアクラシエルだけ他ボスから浮いていた。
+    // ★v0.25.4199b(社長「派手さがない」): 焼き済みの輪スプライトを戻す。drawTelegraphRing は
+    // idx を取るので**複数同時に出せる**(槍6本ぶんの円にも並ぶ)。輪は毎フレーム既定で消えるので
+    // 出しっぱなしにはならない。脈動は他ボスの予告と同じ言い回し。
+    const pulse = 0.5 + 0.5 * Math.sin(time / 110);
+    let ringIdx = 0;
     const circle = (x: number, y: number, radius: number, alpha: number): void => {
       const mask = CIRCLE_SWEEP_ON
         ? this.drawSweepCircleFill(g, x, y, radius, t, 0xff2a2a, alpha)
         : (g.circle(x, y, radius).fill({ color: 0xff3030, alpha }), 1);
+      this.drawTelegraphRing(view, x, y, radius, 0xff3b3b, (0.5 + 0.3 * t + 0.15 * pulse) * mask, ringIdx++);
       g.circle(x, y, radius).stroke({ color: 0xff6b6b, alpha: 0.9 * mask, width: 2.5 });
     };
     if (spike && !recover) {
+      // ★実行の瞬間だけ扇が白熱して縁が太る(分類②=派手さの絵。判定は不変)。
+      const flash = state === 'spike' ? Math.max(0, 1 - Math.max(0, 1 - remain / Math.max(1, AC_T.spike.active)) * 2.2) : 0;
       for (let i = 0; i < 8; i++) {
         if (p.gapMask & (1 << i)) continue;
         g.poly(acrasielSectorPolygon(p.x, p.y, p.rotation, i, AC_T.spike.range))
-          .fill({ color: 0xff3030, alpha: fill })
-          .stroke({ color: 0xff6b6b, alpha: 0.9, width: 2.5 });
+          .fill({ color: flash > 0 ? 0xff6a4a : 0xff3030, alpha: fill + 0.25 * flash })
+          .stroke({ color: flash > 0.25 ? 0xffffff : 0xff6b6b, alpha: 0.9, width: 2.5 + 7 * flash + 0.8 * pulse });
       }
     }
     if (spear && wind) for (const target of p.targets) circle(target.x, target.y, AC_T.spear.radius, fill);
@@ -13643,7 +13651,8 @@ export class PixiScene {
         originY + Math.sin(angle) * spread, angle, spikeRise, spikeVisLen);
       const sp = view.spikeThrust?.[i];
       if (sp) {
-        sp.tint = recover ? 0xbfe8ff : 0xffffff;
+        // 突き切る瞬間だけ穂先が白熱する(分類②)。硬直は共通の青白。
+        sp.tint = recover ? 0xbfe8ff : (spike && state === 'spike' && spikeRise > 0.9 ? 0xfff0c8 : 0xffffff);
         sp.alpha = state === 'warp-out' ? 1 - t : 0.85;
       }
     }
