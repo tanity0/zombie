@@ -73,7 +73,9 @@ const DsContourMap: React.FC<{ stageId: string; sectorLabel: string }> = ({ stag
       <span className="ds-map-tag">SECTOR — {sectorLabel}</span>
       {/* ラベル2つ=DOM固定位置・確定文字列(監査A-10)。 */}
       <span className="ds-map-label" style={{ right: 14, top: 34 }}>変異体 目撃地点<i>THREAT REPORT</i></span>
-      <span className="ds-map-label" style={{ right: 26, bottom: 22 }}>次の目標<i>SURVEY POINT</i></span>
+      {/* bottom:50 = ◆(goal・H*0.72=105px)の上に置く。旧 bottom:22 は◆がラベル1文字目に重なっていた
+          (クリエイティブ監査2026-09-11 #1「『の』が壊れて見える」の正体=文字ではなく◆の重なり)。 */}
+      <span className="ds-map-label" style={{ right: 26, bottom: 50 }}>次の目標<i>SURVEY POINT</i></span>
     </div>
   );
 };

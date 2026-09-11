@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4213',
+    items: ['作戦室の地図で、目標地点のマークが「次の目標」の文字に重なって1文字が壊れて見えていたのを直しました。'],
+  },
+  {
     version: '0.25.4212',
     items: ['ゲーム内容の変更はありません(開発ルールの追加のみ)。'],
   },
