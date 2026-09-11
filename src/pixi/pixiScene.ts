@@ -652,7 +652,7 @@ const WHIP_SPRITE_ANCHOR_Y = 0.676; // 手元の縦位置
 const WHIP_SPRITE_TIP_X = 0.99;     // テクスチャ内の鞭先端位置
 
 // Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
-// (top) and near (bottom) edges for the HD-2D "diorama" feel. The sharp band is
+// (top) and near (bottom) edges for the HD-2D miniature feel. The sharp band is
 // centred a touch above middle so the player (slightly below centre) stays
 // crisp. Set ENABLED false if it costs too much on-device.
 // 被写体深度(tilt-shift)の生調整: URLで上書きできる。?ts=0 で無効化(比較用)。
@@ -1410,34 +1410,6 @@ const ICE_FLASH_TINT = 0x7fd4ff; // 氷鈍化中の薄い水色(v0.25.3276・α/
 // 徒歩を自然に見せる二次モーション(3コマの上に重ねる・視覚のみ・判定不変)。
 const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動
 // =============================================================================
-// 擬似3D(社長指示2026-09-11「他のゲームのこの手法で使えるあらゆるテクを入れて実装してみて」)。
-// 設計= research/FAKE_3D.md。世界(床/遠景/タイル)は一切傾けない。**立っている絵(1枚板)だけ**を
-// カメラを傾けて見た時の形に寄せる。全部 描画のみ・判定/座標(store)不変。★既定OFF(`?f3d=1` で全部ON)。
-//  T1 縁の傾き: 立ち物の縦線を「画面の下方にある消失点」へ向ける=中央から離れるほど頭が外へ開く
-//     (skew.x・足元支点)。対象=プレイヤー/敵/木/花/什器(立ち物)。影・床・予告は傾けない。
-//  T2 進行方向への前傾(`?lean`・下)。f3d=1 なら既定 0.10。
-//  T3 振り向きの薄化: 向きが反転した瞬間、横幅を 0 から慣性つきで戻す(板が回って見える)。プレイヤー。
-//  T4 頭上バーの追従: 傾きで動いた頭の位置ぶん、敵のHPバーを横へずらす(頭とバーが離れない)。
-//  T5 遠近の一致: 傾き量は画面座標で計算(消失点までの距離で割る)=手前ほど強く、引きズームでも破綻しない。
-// 既に在る柱(足元アンカー/Y-sort/遠近スケール/地平線フェード/ティルトシフト/台形の床/台形の影)はそのまま。
-const FAKE3D = tsBool('f3d', false);
-const FAKE3D_TILT_K = Math.max(0, Math.min(3, tsNum('f3dk', 1)));          // 傾きの強さ(1=幾何どおり)
-const FAKE3D_VP_FRAC = Math.max(0.3, Math.min(8, tsNum('f3dvp', 1.5)));    // 消失点の位置=画面中央から下へ画面高×この値(小=強い)
-const FAKE3D_MAX_RAD = Math.max(0, Math.min(0.6, tsNum('f3dmax', 0.20)));  // 傾きの上限(約11°)
-const FAKE3D_ZOOM_POW = Math.max(0, Math.min(2, tsNum('f3dzoom', 0)));     // 引いた時に強める指数(0=しない・広角の真似)
-const FAKE3D_TURN_MS = Math.max(0, Math.min(600, tsNum('f3dturn', 140)));  // 振り向きの薄化の尺(0=なし)
-const FAKE3D_TREES = tsBool('f3dtrees', true);                              // 木・花・什器も傾けるか
-// =============================================================================
-// ジオラマ(参考=UKIUKI氏のHD-2D検証「2Dの板を奥行きに並べて透視カメラで見る」・社長指示2026-09-11
-// 「一旦崩れない範囲でやってみて」)。設計= research/FAKE_3D.md「第2弾」。**プレイ面(敵/床/予告)の位置は
-// 一切動かさない**=継ぎ目・隙間・赤と判定のズレが構造上出ない範囲だけ。★既定OFF(`?diorama=1`)。
-//  D1 手前の板: 画面より手前(カメラの目の前)を横切る大きな木のシルエット2枚(screen-space・強いパララックス・
-//     ぼかし・半透明)。参考動画の「手前の紅葉が大きく速く流れる」に当たる。frontForest(0.68)より更に手前。
-//  D2 空気遠近: 奥(画面上方)に立つ物ほど暗く寒色に沈める(敵/木/什器/花のtintを地平線へ向けて混色)。
-//     床の台形・遠近スケールと同じ「奥」の向きに色でも差をつける。プレイヤーは沈めない(主役)。
-//  入れない: 縦パララックス(地平線へ歩いても地平線は動かないのが現実。参考は横スクロール)/ 板の湾曲(mesh設計が要る)/
-//  プレイ面の物の位置の収束(=判定と絵の関係を触る大工事・別案件)。
-// =============================================================================
 // ズーム時だけの遠近(社長2026-09-11「ズームになった時に画面が進行方向に遠近になると面白い」→「ズームはみてみたい」)。
 // 設計= research/FAKE_3D.md「第3弾」。常時の透視は読みを壊す(社長裁定「なし」)が、**寄りズームのイベントの約0.4秒だけ**
 // 世界レイヤー(床・敵・予告・影が全部入った worldGroup)を1枚のテクスチャに描き、台形メッシュで表示する。
@@ -1553,25 +1525,6 @@ const ZWARP_SPRING_Z = Math.max(0.2, Math.min(1.5, tsNum('zwarpz', 0.6)));
 const ZWARP_DECAY_TAU = Math.max(0.05, tsNum('zwarpdec', 0.40));            // 戻りの時定数(s)
 const ZWARP_DIR_TAU = 0.25;                                                 // 進行方向の平滑(反転でパタつかない)
 const ZWARP_MIN_ACTIVE = 0.004;                                             // これ未満は平ら=余分な描画パスを走らせない
-const DIORAMA = tsBool('diorama', false);
-const DIORAMA_FRONT = tsBool('dfront', true);
-const DIORAMA_FRONT_PX = Math.max(0.7, Math.min(3, tsNum('dfrontpx', 1.35)));        // 手前の板の横パララックス(1=世界と同速。>1=手前)
-const DIORAMA_FRONT_H = Math.max(0.3, Math.min(1.6, tsNum('dfronth', 0.95)));        // 板の高さ(画面高比)
-const DIORAMA_FRONT_ALPHA = Math.max(0, Math.min(1, tsNum('dfrontalpha', 0.85)));
-const DIORAMA_FRONT_BLUR = Math.max(0, Math.min(24, tsNum('dfrontblur', 6)));        // 0=ぼかし無し(フィルタ無し=最安)
-const DIORAMA_FRONT_PERIOD = Math.max(1.2, Math.min(6, tsNum('dfrontperiod', 2.6))); // 1枚が再登場する周期(画面幅比)
-const DIORAMA_FRONT_TINT = tsNum('dfronttint', 0x0c1016);                              // シルエット寄りの暗色
-const DIORAMA_FOG = tsBool('dfog', true);
-const DIORAMA_FOG_MAX = Math.max(0, Math.min(1, tsNum('dfogmax', 0.45)));            // 地平線ぎわでの混色量
-const DIORAMA_FOG_COLOR = tsNum('dfogcolor', 0x1a2030);                                // 沈める先の色(暗い寒色)
-const DIORAMA_FOG_POW = Math.max(0.3, Math.min(4, tsNum('dfogpow', 1.4)));           // 奥へのカーブ(大=手前は無傷・奥で急に沈む)
-// 進行方向への前傾(社長相談2026-09-11「移動の時に少し進行方向に斜めに」の試作・視覚のみ・判定不変)。
-// 世界(床/遠景)は一切傾けない=継ぎ目・タイルの隙間が出ない。傾くのはプレイヤー本体スプライトだけ
-// (足元支点)。速度(store の vx)に比例し、時定数 tau で慣性をつける(急発進で徐々に倒れ、止まると戻る)。
-// ★既定0=OFF(見え方は従来どおり)。実機で `?lean=0.10` 等で試す。`?leantau=` で慣性の重さ。
-const PLAYER_MOVE_LEAN_RAD = Math.max(0, Math.min(0.5, tsNum('lean', FAKE3D ? 0.10 : 0)));
-const PLAYER_MOVE_LEAN_TAU = Math.max(0.03, tsNum('leantau', 0.18)); // 秒。倒れる/戻る時定数
-const PLAYER_MOVE_LEAN_SPEED_REF = 140;                                  // この横速度(px/s)で最大傾き
 const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するスカッシュ量
 // 行動の二次モーション(歩きと同じく静止スプライトに重ねる連続変形・視覚のみ・判定不変)。
 // すべて scale倍率/回転加算/足元基準の画面pxオフセット。当たり判定・射程・速度には一切不干渉。
@@ -3179,7 +3132,6 @@ interface ActorView {
   light: Sprite;
   reticle: Graphics; // below the sprite (stun reticle / tint)
   sprite: Sprite;
-  f3dTilt?: number; // 擬似3D T1 の傾き(rad)。影・頭上マークはこれを除いた skew だけを見る(research/FAKE_3D.md)
   hitFlash: Sprite;  // 被弾時、本体スプライトと同形を白で加算オーバーレイして「絵」を一瞬光らせる(丸光は廃止)
   // 攻撃予告(赤い線/帯/円/扇)専用のレイヤー。**overlay とは別の Graphics に分けてある**理由は alpha:
   // 予告は「アクターの位置」ではなく「予告図形自身の位置」で地平線/手前フェードを引く(TELEGRAPH_OWN_FADE)。
@@ -3480,8 +3432,6 @@ export class PixiScene {
   private thrownBagViews = new Map<string, Sprite>();
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
-  private moveLeanNow = 0;       // 進行方向への前傾(rad)。慣性つきで target へ追従
-  private dioramaFront: Container | null = null; // D1 手前の板(screen-space・frontForest の上・uiLayer の下)
   private zwarpFilter: Filter | null = null;         // ズーム時の遠近: worldGroup(画面全体)に掛ける射影フィルタ(有効中だけ)
   private zwarpInList = false;                       // 今 worldGroup.filters に入っているか
   private zwarpFwd = new Float64Array(9);            // 元(単位正方形)→台形 の順射影(行優先)。立ち絵の逆変形に使う
@@ -3501,14 +3451,6 @@ export class PixiScene {
   private zwarpEventSide: -1 | 1 = 1;                // 奥にする側(+1=右 / −1=左)
   private zwarpDisabled = false;                     // フィルタが作れない環境では以後無効(世界はそのまま)
   private zwarpZoomNow = 1;                          // このフレームに worldGroup へ適用した総ズーム(zwarp が読む)
-  private dioramaFrontSprites: Sprite[] = [];
-  private dioramaFrontTex: Texture | null = null;   // 元テクスチャ(ステージ切替の検知用)
-  private dioramaFrontBaked = new Map<Texture, Texture>(); // ぼかしを1回焼いたテクスチャ(監査C#3: 毎フレームのフィルタを持たない)
-  private dioramaHide = false;                       // 木の無い場所(屋内/廊下/研究所)= D1 も D2 も掛けない(監査B#5)
-  private playerFace: -1 | 1 | null = null;      // T3 振り向き: 表示中の向き(+1=右向き絵 / -1=左向き絵)
-  private playerFaceFrom: -1 | 1 = 1;            // T3: 反転前の向き(旧→0→新 の起点)
-  private playerFaceAt = 0;                      // T3: 反転を始めた時刻(now)
-  private moveLeanLastNow = 0;   // 前フレームの now(dt 算出用)
   // 分身(サブウェポン): 持ち主と同じ立ち絵を白黒キャッシュで描く足元アンカーのスプライト+
   // 斬撃モーション(本体と同じナイフ振り3コマ+装備近接の実絵)。actorLayer に置き zIndex で前後ソート。
   // v0.25.2541(§2.11追補「分身は主語ごとに1体」): **同じ一式を主語ごとに1組**持つ
@@ -5865,31 +5807,6 @@ export class PixiScene {
   // 実際の画面Yへ変換するにはこの2値が要る。恒等(zoom=1・position=(0,0))なら screenY=localY。
   private wgZoom(): number { return this.L.worldGroup.scale.y || 1; }
   /**
-   * 擬似3D T1(research/FAKE_3D.md): 足元(world)に立つ1枚板の skew.x(rad)。
-   * 消失点=画面中央の下方 VP_FRAC×screenH に置き、縦線を「足元→消失点」の向きに傾ける。
-   * skew.x 正=頭が左へ(足元アンカー)。画面左の物は頭が左へ開く=正。post-zoom の実画面座標で計算。
-   */
-  /** ジオラマ D2 空気遠近: 足元(world)の画面上の奥行きに応じて tint を霧色へ混ぜる。OFF なら base をそのまま返す。 */
-  private dioramaFog(base: number, footWorldY: number): number {
-    if (!DIORAMA || !DIORAMA_FOG || DIORAMA_FOG_MAX <= 0 || this.dioramaHide) return base;
-    const sy = postZoomScreenY(footWorldY - this.cameraY, this.wgZoom(), this.wgOffsetY());
-    const farY = this.farBackdropHeight();          // 床の上端(地平線)=最奥
-    const nearY = this.screenH * 0.62;               // プレイヤー面のあたり=ここから手前は沈めない
-    const t = Math.max(0, Math.min(1, (nearY - sy) / Math.max(1, nearY - farY)));
-    const k = Math.pow(t, DIORAMA_FOG_POW) * DIORAMA_FOG_MAX;
-    if (k <= 0) return base;
-    const br = (base >> 16) & 255, bg = (base >> 8) & 255, bb = base & 255;
-    const fr = (DIORAMA_FOG_COLOR >> 16) & 255, fg = (DIORAMA_FOG_COLOR >> 8) & 255, fb = DIORAMA_FOG_COLOR & 255;
-    const r = Math.round(br + (fr - br) * k), g = Math.round(bg + (fg - bg) * k), b = Math.round(bb + (fb - bb) * k);
-    return (r << 16) | (g << 8) | b;
-  }
-
-  /**
-   * ジオラマ D1 手前の板: カメラの目の前を横切る大きな木のシルエット2枚。screen-space(ズーム非依存)・
-   * 横パララックス DIORAMA_FRONT_PX(>1=世界より速い=手前)・周期 P で再登場。足元は画面下端より下(幹は見せず
-   * 樹冠だけが端を横切る)。研究所/洋館(木の無いステージ)では出さない。
-   */
-  /**
    * ズーム時だけの遠近(既定ON・`?zwarp=0` で切る)。寄りズームのイベント(KILL/近接フィニッシュ/死亡/救急/救援信号)の包絡線から
    * 傾き k をばね追従で出し、k>0 の間だけ worldGroup に射影フィルタを掛ける(v0.25.4225: RT+メッシュ→フィルタ)。
    * 台形は**奥(左か右)の辺を画面のまま**、近い辺をはみ出させる=隙間が出ない。k≈0 ではフィルタを外す(パス増なし)。
@@ -6000,84 +5917,6 @@ export class PixiScene {
     if (ZWARP_ACTOR_FLAT) this.counterWarpActors(); // プレイヤーと敵の立ち絵だけ曲げない(足元支点の逆変形)
   }
 
-  /** D1 の板のぼかしを1回だけ焼く(毎フレームの BlurFilter を持たない=CLAUDE.md 描画ルール4「焼いたテクスチャ」)。 */
-  private bakeDioramaFront(src: Texture): Texture {
-    const cached = this.dioramaFrontBaked.get(src);
-    if (cached) return cached;
-    if (DIORAMA_FRONT_BLUR <= 0 || !this.renderer) return src; // ぼかし無し/焼けない環境=元絵のまま(フィルタは付けない)
-    const pad = Math.ceil(DIORAMA_FRONT_BLUR * 3); // にじみの余白(切れないように)
-    const w = src.width + pad * 2, h = src.height + pad * 2;
-    const wrap = new Container();
-    const sp = new Sprite(src); sp.position.set(pad, pad); wrap.addChild(sp);
-    wrap.filters = [new BlurFilter({ strength: DIORAMA_FRONT_BLUR, quality: 2 })];
-    const rt = RenderTexture.create({ width: w, height: h });
-    this.renderer.render({ container: wrap, target: rt, clear: true });
-    wrap.destroy({ children: true });
-    this.dioramaFrontBaked.set(src, rt);
-    return rt;
-  }
-
-  private syncDioramaFront(cameraX: number, shakeX: number, shakeY: number, farBackdrop: string, hide: boolean) {
-    if (!DIORAMA || !DIORAMA_FRONT) { if (this.dioramaFront) this.dioramaFront.visible = false; return; }
-    const src = (farBackdrop === 'city' ? getTexture('tree-city') : null)
-      ?? (farBackdrop === 'snow' ? getTexture('tree-snow') : null)
-      ?? getTexture('tree');
-    if (!src || hide) { if (this.dioramaFront) this.dioramaFront.visible = false; return; }
-    const tex = this.bakeDioramaFront(src);
-    if (!this.dioramaFront) {
-      const c = new Container();
-      for (let i = 0; i < 2; i++) {
-        const sp = new Sprite(tex);
-        sp.anchor.set(0.5, 1);
-        sp.tint = DIORAMA_FRONT_TINT;
-        sp.alpha = DIORAMA_FRONT_ALPHA;
-        c.addChild(sp);
-        this.dioramaFrontSprites.push(sp);
-      }
-      // frontForest の直上(=uiLayer の下)。screen-space なので worldGroup のズーム/パンを受けない。
-      // 親は frontForest の実際の親から取る(?labveil 時は uiLayer 内へ再親付けされている=監査B#6)。
-      const parent = this.L.frontForest.parent ?? this.L.stage;
-      parent.addChildAt(c, parent.getChildIndex(this.L.frontForest) + 1);
-      this.dioramaFront = c;
-      this.dioramaFrontTex = src;
-    }
-    if (this.dioramaFrontTex !== src) {
-      for (const sp of this.dioramaFrontSprites) sp.texture = tex;
-      this.dioramaFrontTex = src;
-    }
-    const c = this.dioramaFront;
-    c.visible = true;
-    c.position.set(shakeX * 1.2, shakeY * 1.2); // 揺れは世界より少し大きく(手前ほど揺れる)
-    const W = this.screenW;
-    const h = this.screenH * DIORAMA_FRONT_H;
-    const sc = h / Math.max(1, src.height);        // 大きさは元絵の高さ基準(焼いた余白ぶんは含めない)
-    const half = tex.width * sc / 2;               // 板の半幅(焼いた余白込み=にじみも画面外で消える)
-    const gap = W * 0.15;                          // 板と板の隙間(世界が見える間)
-    // 周期は「ユーザー指定」「画面外で出入りできる幅(W+板幅+隙間)」「2枚が重ならない幅(2×(板幅+隙間))」の最大
-    // (監査A#1: 固定マージンだと縦持ちで板の端が画面内に瞬間出現していた / B#2: 2枚が常時重なっていた)。
-    const P = Math.max(W * DIORAMA_FRONT_PERIOD, W + 2 * half + gap, 2 * (2 * half + gap));
-    for (let i = 0; i < this.dioramaFrontSprites.length; i++) {
-      const sp = this.dioramaFrontSprites[i];
-      // 位置 u∈[0,P): 世界と逆向きに PX 倍で流れる。2枚は半周期ずらす。画面の外側 (P−W)/2 ≥ 板の半幅 で必ず隠れて折り返す。
-      let u = (-cameraX * DIORAMA_FRONT_PX + i * P / 2) % P; if (u < 0) u += P;
-      sp.position.set(u - (P - W) / 2, this.screenH + h * 0.22); // 幹は画面下へ。樹冠が端を横切る
-      sp.scale.set((i === 0 ? 1 : -1) * sc, sc);                  // 2枚目は左右反転(同じ木に見せない)
-    }
-  }
-
-  private fake3dTilt(footWorldX: number, footWorldY: number): number {
-    if (!FAKE3D || FAKE3D_TILT_K <= 0) return 0;
-    const wz = this.L.worldGroup.scale.x || 1;
-    const sx = this.L.world.position.x * wz + this.L.worldGroup.position.x + footWorldX * wz;
-    const sy = this.L.world.position.y * wz + this.L.worldGroup.position.y + footWorldY * wz;
-    const cx = this.screenW / 2;
-    const vpY = this.screenH * (0.5 + FAKE3D_VP_FRAC);
-    const dy = Math.max(this.screenH * 0.25, vpY - sy); // 消失点より下(画面外)の物でも発散させない
-    let k = FAKE3D_TILT_K;
-    if (FAKE3D_ZOOM_POW > 0) k *= Math.pow(1 / Math.max(ZOOM_MIN_ABS, wz), FAKE3D_ZOOM_POW);
-    const a = Math.atan((cx - sx) / dy) * k;
-    return Math.max(-FAKE3D_MAX_RAD, Math.min(FAKE3D_MAX_RAD, a));
-  }
   private wgOffsetY(): number { return this.L.worldGroup.position.y; }
 
   private lightDefocus01(worldY: number): number {
@@ -8440,9 +8279,6 @@ export class PixiScene {
       0
     );
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
-    // ジオラマ D1(既定OFF): 木の無いステージ(研究所スキン/洋館の通路/屋内)では出さない。
-    this.dioramaHide = s.indoorMode || s.corridorMode || s.stageTheme === 'lab'; // D2 も同じ条件で掛けない(地平線の無い場所・監査B#5)
-    this.syncDioramaFront(s.camera.x, sx, sy, s.farBackdrop, this.dioramaHide);
     // 近景コピー(下部レイヤー・社長裁定v0.25.3000で復活): 実近景の少し上に引きの深さでフェードイン。
     // 上ずらしは**遠景リッジと同じ実測px(horizonRidgeStepPx)**——近景高さ比(v2998)は廃都で壁が
     // 浮いたため廃止。実近景と必ず重なる小さな刻みなので、間に地面が見えて浮くことは起きない。
@@ -9748,8 +9584,7 @@ export class PixiScene {
       // ★木は花よりずっと控えめ(TREE_WIND_SKEW)。幹まで大きく傾くとゴムに見えるうえ、
       //   **木は当たり判定を持つ**(`trees.ts` の幹の矩形)。判定は動かないので、
       //   絵だけ大きく動かすと「見た目と当たりがズレている」ことになる=揺れは葉のそよぎ程度に留める。
-      entry.sprite.skew.x = this.windNow * TREE_WIND_SKEW + (FAKE3D_TREES ? this.fake3dTilt(entry.sprite.x, entry.sprite.y) : 0);
-      if (DIORAMA && DIORAMA_FOG) entry.sprite.tint = this.dioramaFog(this.envTintNow(), entry.footY); // D2(OFF時は生成時のenvTintのまま)
+      entry.sprite.skew.x = this.windNow * TREE_WIND_SKEW;
     }
     for (const [key, entry] of this.trees) {
       if (!seen.has(key)) {
@@ -9823,7 +9658,6 @@ export class PixiScene {
         this.propObjs.set(p.id, entry);
       }
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
-      entry.sprite.skew.x = FAKE3D_TREES ? this.fake3dTilt(entry.sprite.x, entry.sprite.y) : 0; // T1(既定OFF=0)
       this.applyObstacleAlpha(entry.sprite, entry.footY);
     }
     for (const [id, entry] of this.propObjs) {
@@ -9874,9 +9708,8 @@ export class PixiScene {
         entry = { sprite, baseScale, footY: p.footY };
         this.cityPropObjs.set(p.id, entry);
       }
-      entry.sprite.tint = def.decal ? tint : this.dioramaFog(tint, entry.footY); // D2: 立ち物だけ沈める(床のデカールは床の色のまま)
+      entry.sprite.tint = tint;
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
-      entry.sprite.skew.x = (!def.decal && FAKE3D_TREES) ? this.fake3dTilt(entry.sprite.x, entry.sprite.y) : 0; // T1: 立ち物だけ(デカールは床)
       // 立ち物は裏回りで透ける。地面デカール(groundLayer)はプレイヤーの下なので通常alphaのまま。
       if (def.decal) entry.sprite.alpha = this.horizonActorAlpha(entry.footY);
       else this.applyObstacleAlpha(entry.sprite, entry.footY);
@@ -9919,13 +9752,13 @@ export class PixiScene {
         entry = { sprite, baseScale, footY: f.footY };
         this.flowerObjs.set(f.id, entry);
       }
-      entry.sprite.tint = this.dioramaFog(tint, entry.footY); // D2(既定OFF=無変化)
+      entry.sprite.tint = tint;
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
       entry.sprite.alpha = this.horizonActorAlpha(entry.footY) * this.foregroundActorAlpha(entry.footY); // 地平線+手前でフェード
       // 風でたなびく(社長要望v0.25.2648「花とかも揺らぎたい」)。**炎と同じ1本の風**を読む。
       // アンカーが足元(0.5,1)なので、skew.x は「根を残して上だけしなる」動きになる。
       // 花は軽いので炎より大きくしなる。判定を持たない純粋な飾りなので、揺れてもゲームに影響はゼロ。
-      entry.sprite.skew.x = this.windNow * FLOWER_WIND_SKEW + (FAKE3D_TREES ? this.fake3dTilt(entry.sprite.x, entry.sprite.y) : 0);
+      entry.sprite.skew.x = this.windNow * FLOWER_WIND_SKEW;
     }
     for (const [id, entry] of this.flowerObjs) {
       if (!seen.has(id)) { entry.sprite.destroy(); this.flowerObjs.delete(id); }
@@ -12157,7 +11990,7 @@ export class PixiScene {
         id: e.id, x: cx, y: cy,
         rawW: disp.w, rawH: disp.h, texture: view?.sprite.texture ?? null,
         alpha: horizonAlpha * foreFade, shadowFade: view?.shadowFade ?? 1,
-        flip: disp.flip, skewX: (view?.sprite.skew.x ?? 0) - (view?.f3dTilt ?? 0), heightPx: liftPx, // 擬似3D T1 は影に写さない(カメラの傾きであって物の傾きではない)
+        flip: disp.flip, skewX: view?.sprite.skew.x ?? 0, heightPx: liftPx,
       });
     }
     // ---- 裏ボス討伐フェード(★致命4修正: 討伐の瞬間に影だけ消え、2.6秒間「影の無い巨体」が
@@ -13320,7 +13153,7 @@ export class PixiScene {
     this.enemyCount = enemies.length;
 
     // Player
-    if (!this.playerView) { this.playerView = this.makeActor(); this.playerFace = null; } // 出撃ごとに振り向き状態を初期化(T3)
+    if (!this.playerView) { this.playerView = this.makeActor(); }
     // 背負い刀スプライトをプレイヤーコンテナの「本体スプライトの背面」へ一度だけ親子付け。
     // makeActor の子順 [reticle, sprite, overlay] の reticle と sprite の間(index 1)へ挿入。
     if (!this.playerKatanaBackAttached) {
@@ -15812,17 +15645,7 @@ export class PixiScene {
     const bob = walking && PLAYER_MOTION_FX ? Math.abs(step) * PLAYER_WALK_BOB_PX * this.depthScale(fb.footY) : 0;
     // 徒歩の自然化(3コマの上に重ねる連続モーション・視覚のみ): 接地(lift=0)で縦に潰れて横に広がり、
     // 遊脚の最高点(lift=1)で縦に伸びて横が締まる(スカッシュ&ストレッチ)＋足元支点の左右リーン(体重移動)。
-    // 進行方向への前傾(?lean=)。横速度だけを見る(縦移動は2Dの正面絵では傾きとして読めない)。
     // rotation 正=時計回り=頭が右へ倒れる。足元支点(anchor 0.5,1)なので右へ走ると右へ前傾する。
-    {
-      const dtLean = this.moveLeanLastNow ? Math.min(0.1, (now - this.moveLeanLastNow) / 1000) : 0;
-      this.moveLeanLastNow = now;
-      const target = PLAYER_MOVE_LEAN_RAD > 0 && PLAYER_MOTION_FX
-        ? Math.max(-1, Math.min(1, (p.vx ?? 0) / PLAYER_MOVE_LEAN_SPEED_REF)) * PLAYER_MOVE_LEAN_RAD
-        : 0;
-      const k = 1 - Math.exp(-dtLean / PLAYER_MOVE_LEAN_TAU); // 慣性(MUST): 指数追従=倒れ始めも戻りも滑らか
-      this.moveLeanNow += (target - this.moveLeanNow) * k;
-    }
     let walkSqX = 1, walkSqY = 1, walkLean = 0;
     if (walking && PLAYER_MOTION_FX) {
       const lift = Math.abs(step); // 0=接地 / 1=遊脚中(最高点)
@@ -16051,29 +15874,10 @@ export class PixiScene {
       const flip = killPose
         ? killPose.faceLeft
         : (p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0));
-      // T3 振り向き(?f3d): 敵の既存の振り向き(motFace・旧→0→新 を FAKE3D_TURN_MS で連続に潰す)と同じカーブ。
-      // 反転は「横速度がしきい値を超えた時」だけ拾う(敵と同じ25px/sのヒステリシス=縦移動中の微振れで
-      // パタつかない)。登場演出中・KILL演出中は掛けない(その向きは演出側が決める)。進行中は再始動しない。
       const wantFace: -1 | 1 = flip ? -1 : 1;
-      let faceMul: number = wantFace;
-      if (FAKE3D && FAKE3D_TURN_MS > 0 && PLAYER_MOTION_FX && !killPose && !this.introActive) {
-        const cur = this.playerFace ?? wantFace;
-        const turning = now - this.playerFaceAt < FAKE3D_TURN_MS;
-        const strong = Math.abs(p.vx ?? 0) > 25;
-        if (this.playerFace === null) { this.playerFace = wantFace; this.playerFaceAt = -1e9; }
-        else if (wantFace !== cur && strong && !turning) { this.playerFaceFrom = cur; this.playerFace = wantFace; this.playerFaceAt = now; }
-        const to = this.playerFace ?? wantFace;
-        const tt = Math.min(1, (now - this.playerFaceAt) / FAKE3D_TURN_MS);
-        const eased = 1 - (1 - tt) * (1 - tt); // 慣性: 捻り始めが速く、向き直りで減速して止まる
-        faceMul = this.playerFaceFrom + (to - this.playerFaceFrom) * (this.playerFaceAt > -1e8 ? eased : 1);
-        if (Math.abs(faceMul) < 0.02) faceMul = faceMul < 0 ? -0.02 : 0.02; // scale.x=0 の完全消失フレームを作らない
-      } else {
-        this.playerFace = wantFace; this.playerFaceAt = -1e9;
-      }
+      const faceMul: number = wantFace;
       view.sprite.scale.set(sc * faceMul * introSqX * walkSqX * actSqX, sc * introSqY * walkSqY * actSqY);
-      view.sprite.rotation = walkLean + actLean + this.moveLeanNow;
-      view.f3dTilt = this.fake3dTilt(fb.footX, fb.footY);
-      view.sprite.skew.x = view.f3dTilt; // T1(既定OFF=0)
+      view.sprite.rotation = walkLean + actLean;
     }
     // ノックバック中の小さな跳ね(社長指示・敵と共通): knockbackUntil から進行度を逆算し sin の1山。
     const pKbHop = (p.knockbackUntil !== undefined && now < p.knockbackUntil)
@@ -16121,7 +15925,7 @@ export class PixiScene {
       kb.texture = katanaTex;
       kb.visible = true;
       kb.scale.set((flip ? -1 : 1) * sc, sc);
-      kb.rotation = KATANA_BACK_IMG_ROT + actLean + this.moveLeanNow; // 行動の二次モーション+前傾に本体と同じく追従
+      kb.rotation = KATANA_BACK_IMG_ROT + actLean; // 行動の二次モーションに本体と同じく追従
       kb.position.set(
         this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
         this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY - h * 0.55,
@@ -16197,7 +16001,7 @@ export class PixiScene {
       const upFrac = PLAYER_FIRSTAID_BAG_UP_FRAC * (0.82 + 0.18 * appear); // 下から持ち上げる感
       fab.visible = true;
       fab.scale.set((flip ? -1 : 1) * sc, sc);
-      fab.rotation = actLean * 0.5 + this.moveLeanNow; // 本体の二次モーションへ軽く追従(前傾は同量)
+      fab.rotation = actLean * 0.5; // 本体の二次モーションへ軽く追従
       fab.position.set(
         this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX + fwd,
         this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY - upFrac * fb.boxH * dsc,
@@ -16902,7 +16706,6 @@ export class PixiScene {
       } else {
         view.sprite.skew.x = 0;
       }
-      view.f3dTilt = 0; // 擬似3D T1 は掛けない: この経路は anchor(0.5,0.5)=支点が絵の中心で、傾けると足が逆へ滑る(監査A#1)
       // V1(3)→v0.25.2478: 接触ダメージを与えた瞬間の「しゃがみ込み→食いつき」2拍(社長指示)。視覚のみ。
       let lungeOffX = 0, lungeOffY = 0, lungeSqX = 1;
       // ★v0.25.3902(PACING_PUZZLE §12): 「しゃがみ込み→食いつき」2拍は、これまで
@@ -17066,12 +16869,10 @@ export class PixiScene {
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
         const wob = 1 - sinceHit / ENEMY_HIT_FLINCH_MS; // 1→0 減衰
         const dir = (e.knockbackVx ?? 0) > 0.01 ? 1 : (e.knockbackVx ?? 0) < -0.01 ? -1 : 1;
-        view.f3dTilt = this.fake3dTilt(fb.footX, fb.footY); // T1(既定OFF=0)。影・頭上マークはこの分を除いて読む
-        view.sprite.skew.x = -dir * ENEMY_HIT_FLINCH_SKEW * wob + view.f3dTilt; // 頭が後ろへ反る(+T1)
+        view.sprite.skew.x = -dir * ENEMY_HIT_FLINCH_SKEW * wob; // 頭が後ろへ反る
         flinchSqY = 1 - 0.1 * wob;
       } else {
-        view.f3dTilt = this.fake3dTilt(fb.footX, fb.footY);
-        view.sprite.skew.x = view.f3dTilt;
+        view.sprite.skew.x = 0;
       }
       // V1(3)→v0.25.2478: 接触ダメージを与えた瞬間の「しゃがみ込み→食いつき」2拍(社長指示)。
       // 対象は「接触ダメージを持つ全員」=この汎用経路(通常敵)と上の裏ボス経路の両方に置く。視覚のみ。
@@ -17158,7 +16959,6 @@ export class PixiScene {
       // ★噛みつきの赤点滅は**最後に上書き**する(宿敵の金・レア色・幻影のダークより優先)。
       // 「今から噛む」は生死に関わる情報なので、見た目の個性より読めることを優先する。
       if (biteTint !== null) view.sprite.tint = biteTint;
-      else view.sprite.tint = this.dioramaFog(view.sprite.tint, fb.footY); // ジオラマ D2(既定OFF=無変化)
     } else {
       view.sprite.skew.x = 0;
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
@@ -21654,11 +21454,8 @@ export class PixiScene {
     // Above-sprite layer(後半): 体力バー/ボスマーカー/イベント敵マーク。これらは「アクターに付属する表示」
     // なので従来どおりアクターの位置フェード(artFade)に従う。
     const ov = view.overlay;
-    // T4(擬似3D): T1 の傾きで動いた頭(=ヒットボックス上端)の横ずれ = -tan(tilt)×高さ(skew.x 正=頭が左へ)。
-    // 被弾しなり・食いつきの skew は含めない(バーが跳ねない)。頭上の全マーク(バー/照準/ボス/イベント)を同量ずらす。
-    const headShiftX = FAKE3D ? -Math.tan(view.f3dTilt ?? 0) * e.height : 0;
-    const hx = cx + headShiftX;
-    this.drawHealthBar(ov, e, now, gameTime, headShiftX);
+    const hx = cx;
+    this.drawHealthBar(ov, e, now, gameTime, 0);
     // 社長指示v0.25.3297「トラップの効果中は敵の頭上に小さいターゲットマークを表示」:
     // 拘束(rootUntil)中、頭上に小さな照準マーク(円+十字4ティック+中心点)。トラップ本体と同じ
     // シアン系=罠の効果だと読める。overlayは毎フレーム描き直しの既存Graphics=数図形の追加のみ。

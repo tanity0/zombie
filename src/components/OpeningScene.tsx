@@ -936,8 +936,16 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                 位置/コマ/退場フェードはrAF側が駆動(主役と同じref直更新)。translateZ(0)=iOSマスクz順対策。 */}
             <img
               ref={walkNpcRef} src={NPC_IDLE} alt="" draggable={false}
-              style={{ position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated', filter: 'invert(1)' }}
+              style={{
+                position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated',
+                // 発光と透過で「存在」に見せる(社長裁定2026-09-12・クリエイティブ監査#7「白無地=仮置きに見える」)。
+                // 白シルエット(invert)は残し、淡い紫白のにじみ+ゆっくりした明滅(慣性: ease-in-out)を足す。
+                filter: 'invert(1) drop-shadow(0 0 5px rgba(216,196,255,0.85)) drop-shadow(0 0 14px rgba(168,120,255,0.45))',
+                opacity: 0.82, mixBlendMode: 'screen',
+                animation: 'op-ghost-breathe 3.4s ease-in-out infinite',
+              }}
             />
+            <style>{`@keyframes op-ghost-breathe { 0%,100% { opacity: 0.72; } 50% { opacity: 0.9; } }`}</style>
             <img
               ref={walkCharRef} src={WALK_FRAMES[0]} alt="" draggable={false}
               style={{

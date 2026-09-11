@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4237',
+    items: ['オープニングで主人公の横に立つ白い影が、淡く光ってゆっくり明滅する。', '試作のまま使わなかった表示の仕組みを取り除いた(ゲームの見え方は変わらない)。'],
+  },
+  {
     version: '0.25.4236',
     items: ['一時停止の右側から護衛の人数を外し、いま持っている銃と近接、スキル、サブウェポンの一覧を出すようにした。'],
   },
