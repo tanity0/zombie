@@ -940,12 +940,18 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                 position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated',
                 // 発光と透過で「存在」に見せる(社長裁定2026-09-12・クリエイティブ監査#7「白無地=仮置きに見える」)。
                 // 白シルエット(invert)は残し、淡い紫白のにじみ+ゆっくりした明滅(慣性: ease-in-out)を足す。
+                // ★opacity は rAF 側が退場フェードに使う(npc.style.opacity)ので、ここでは触らない(社長報告v0.25.4239
+                // 「フェードアウトしなくなってる」=CSS アニメの opacity がインラインの opacity を上書きしていた)。
+                // 明滅は filter(にじみの強さ)だけで作る。透過は screen 合成に任せる。
                 filter: 'invert(1) drop-shadow(0 0 5px rgba(216,196,255,0.85)) drop-shadow(0 0 14px rgba(168,120,255,0.45))',
-                opacity: 0.82, mixBlendMode: 'screen',
+                mixBlendMode: 'screen',
                 animation: 'op-ghost-breathe 3.4s ease-in-out infinite',
               }}
             />
-            <style>{`@keyframes op-ghost-breathe { 0%,100% { opacity: 0.72; } 50% { opacity: 0.9; } }`}</style>
+            <style>{`@keyframes op-ghost-breathe {
+              0%,100% { filter: invert(1) drop-shadow(0 0 4px rgba(216,196,255,0.7)) drop-shadow(0 0 12px rgba(168,120,255,0.35)); }
+              50% { filter: invert(1) drop-shadow(0 0 6px rgba(216,196,255,0.95)) drop-shadow(0 0 16px rgba(168,120,255,0.55)); }
+            }`}</style>
             <img
               ref={walkCharRef} src={WALK_FRAMES[0]} alt="" draggable={false}
               style={{
