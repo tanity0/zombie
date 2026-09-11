@@ -233,3 +233,9 @@ typecheck 通過・lint エラー0 / `grep -rn lucide-react src` が 0 / `grep -
 (重いボスは「遅く・太く・ゆっくり脈打つ」、速い個体は「早く・細く・速く脈打つ」。判定の瞬間はどれも溜め終わり。)
 **作り**: `src/utils/telegraphStyle.ts` に純関数 `telegraphStyleFor(type: EnemyType): TelegraphStyle`(上の表)+ユニットテスト(区分ごとの代表型が正しい行を返す/未知の型は雑魚/**全区分で D<1・帯幅>0・周期>0**)。`pixiScene.ts` の METEOR/流星の描き(`meteorPhase`・`circleSweepBand` 呼び出し・`sin(now/110)` の脈)で、**その予告を出す敵の型**からスタイルを引いて値を差し替える(敵に紐付かない予告=ゲート/イベントの赤は既定のまま)。`meteorPhase` は static なので `(prog, drawFrac)` の引数を足す形。
 **受け入れ**: typecheck・lint 0 / 新テスト通過 / `npm test` の既存(憲法含む)が通る / 「判定に関わる値」の差分が無い(`git diff src/store src/world` が空・pixiScene の差分に halfWidth/radius/windup の式変更が無い)/ 雑魚の見え方が1pxも変わらない(既定値=今の値)。負荷 1/10(型→表の参照だけ)。
+
+### #25(b) 追記(品質監査1巡目・2026-09-12): 帯(カプセル)は v0.25.4110 以降「窓マスク経路」が既定
+監査の指摘: 差し替えは円/扇/線には届いたが、**帯には1pxも届いていない**。帯は `BAND_SWEEP_ON=true` の既定で `drawSweepBand`→`bandSweepCenter(prog, BAND_SWEEP_W, ease)`(`src/utils/bandSweep.ts`・幅 `BAND_SWEEP_HALF_W=0.34`・ease `t*t` 固定)で描かれ、`meteorPhase` の差し替えは `?bsweep=0` の旧経路だけに効いていた。天使/賞金首/フィルの帯(`drawAngelZoneCapsule`/`zoneCapsuleTick`/`drawTelegraphBand`)も style の引数が無い。
+**追記する仕様**: `TelegraphStyle` に **`bandHalfW`(帯の窓の相対幅・既定 0.34=`BAND_SWEEP_HALF_W`)** を足し、帯の ease は `easePow` を流用(`bandSweepCenter` に省略可の `easePow` 引数・既定2=今の `t*t`)。表の値: 雑魚 0.34 / 強個体 0.30 / ボス級 0.40 / 終端 0.48(円の `haloRel` と同じ比)。配線先: `drawSweepBand`・`drawAngelZoneCapsule`・`zoneCapsuleTick`・`drawTelegraphBand`(敵の型から引く。敵に紐付かない帯は既定)。**紫の予告(カウンター不可)も同じ敵の呼吸で描く**(色文法は不変・区分は敵に付く)。
+**同時に直す**: (A-3) ミーミルの弱点発光 `wPulse`(赤予告ではない)は 110 に戻す / (A-4) `syncSkadiHazards` の `blades` はラフィの骨刃(`visual:'bone'`)が相乗りしているので、脈は刃ごとに**その刃の主の型**から引く(骨刃=ラフィ・氷=スカジ・羽=フィル)。
+**網**: `circleSweep.test.ts` に「`easePow` 省略時は `t*t` と同値」1本 / `meteorPhase` を `src/utils/` の純関数へ出し「任意の 0<D<1 で prog=1→er=1」1本 / `bandSweep.test.ts` に「`easePow` 省略時は旧と同値」1本。
