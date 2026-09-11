@@ -13193,8 +13193,32 @@ export class PixiScene {
         if (remainPx > 1 && fadeIn > 0) {
           const ex = b.x + Math.cos(b.angle) * remainPx;
           const ey = b.y + Math.sin(b.angle) * remainPx;
-          g.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: (0.30 + 0.15 * pulse) * TELEGRAPH_FILL_MULT * fadeIn });
-          g.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: 2, color: 0xff6b6b, alpha: 0.5 * fadeIn });
+          const baseA = (0.30 + 0.15 * pulse) * TELEGRAPH_FILL_MULT;
+          if (BAND_SWEEP_ON && !b.launched) {
+            // ★v0.25.4210(§11-2e #7・社長「1は流星化するって話? ならお願い」): 発射までの350msは**予告**。
+            // 従来は `fadeIn` で**だんだん濃くなる**だけ=「あとどれくらいで飛ぶか」が読めなかった。
+            // §11-2d の作法どおり **全長を30スライスに分け、スライスのアルファだけ**を窓のグラデで流す
+            // (図形は常に全長ぶん在る=切り口が原理的に出ない)。**線の絵・太さ・色は1バイトも変えない。**
+            // view を持たない描画なので、`drawSweepBand` ではなく Graphics だけで同じ窓を作る
+            // (前例=城ボスの白芯・同ファイル内)。
+            const skHW = Math.max(0.02, BAND_SWEEP_W);
+            const skCen = bandSweepCenter(fadeIn, skHW, CIRCLE_SWEEP_EASE);
+            const skSt = 1 / BAND_SWEEP_SLICES;
+            for (let i = 0; i < BAND_SWEEP_SLICES; i++) {
+              const w = bandSweepAlphaAt((i + 0.5) * skSt, skCen, skHW);
+              const a = Math.min(1, baseA * BAND_SWEEP_A) * w;
+              if (a <= 0.003) continue;
+              const s0 = i * skSt, s1 = s0 + skSt;
+              const x0 = b.x + (ex - b.x) * s0, y0 = b.y + (ey - b.y) * s0;
+              const x1 = b.x + (ex - b.x) * s1, y1 = b.y + (ey - b.y) * s1;
+              g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: a });
+              g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 2, color: 0xff6b6b, alpha: Math.min(1, 0.5 * BAND_SWEEP_A) * w });
+            }
+          } else {
+            // 発射後(飛行中)は**全形のまま**=「実行中は全形」の従来意図(§11-2d の uniform と同じ扱い)。
+            g.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: baseA * fadeIn });
+            g.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: 2, color: 0xff6b6b, alpha: 0.5 * fadeIn });
+          }
         }
       }
       let sp = this.skadiBladePool.get(b.id);
