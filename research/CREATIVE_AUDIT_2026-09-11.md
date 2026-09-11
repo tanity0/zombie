@@ -122,3 +122,28 @@
 一時停止を「戦況付き全画面メニュー」にするか / 作戦室の空白に部隊の立ち絵を置くか / 更新情報の起動時全面表示を初回バッジ化するか / 音量を段階式にするか。
 
 状態: **提案のみ・未着手**(採否=社長)。
+
+## 第1手 仕様: 文字の焼き込み(社長「はい」2026-09-11・実装=Sonnet・push前にクリエイティブ監査)
+**ゴール(社長の言葉)**: 「UIUXのAI感を排除。ハードゲーム機に近づける」。第1手=文字を「Web」から「絵」にする。
+**ではない**: レイアウト・寸法・色・文言・仕様は変えない。新フォントは足さない。本文(説明文・リスト行)は触らない(見出し/HUD/台詞/主ボタンだけ=明確な2段階)。Pixi側は既に stroke 焼き込み済み=触らない(唯一の serif だけ直す)。開発用オーバーレイ(GhostDamageLog/KbLogOverlay/PerfOverlay/DebugOverlay)は対象外。
+### 作るもの(`src/index.css`・3つだけ)
+```css
+:root { --gt-ink: #04030a; --gt-glow: rgba(255,179,64,0.22); }
+/* 見出し・HUDの数字/ラベル・台詞・主ボタンの文字: 縁1.5px相当(8方向の硬い影)+ぼかさない落ち影 */
+.gt-outline { text-shadow:
+  -1px -1px 0 var(--gt-ink), 1px -1px 0 var(--gt-ink), -1px 1px 0 var(--gt-ink), 1px 1px 0 var(--gt-ink),
+  -1.5px 0 0 var(--gt-ink), 1.5px 0 0 var(--gt-ink), 0 -1.5px 0 var(--gt-ink), 0 1.5px 0 var(--gt-ink),
+  0 2px 0 var(--gt-ink), 1px 2.5px 0 rgba(0,0,0,0.85); }
+/* 大見出し・主ボタンだけ微発光を足す(ぼかしは1層・5px。毎秒変わるHUD数字には付けない=再描画コスト) */
+.gt-outline.gt-glow { text-shadow: (上と同じ10層), 0 0 5px var(--gt-glow); }
+/* 本文寄りだが浮かせたい小ラベル用(縁無し・落ち影1px) */
+.gt-solid { text-shadow: 0 1px 0 var(--gt-ink); }
+```
+Pixi の stroke と同じ「紫黒」のインク(`--gt-ink`)で DOM と質感を揃える。
+### 付ける場所
+- **gt-outline**(発光なし): 戦闘HUDの全文字=タイマー、撃破カウンタ(数字とラベル)、HP球の数字と Lv、サブウェポン枡のラベル、味方の台詞(名前+本文。明るい市街で同化する対策)、ボス名/警告/KILL 等の DOM 文字、サブクエストHUD、リザルトの数値。GameHUD の既存 inline textShadow(216/236/242/404)は**このクラスへ置換**(二重にしない)。
+- **gt-outline gt-glow**: 各画面の大見出し(MissionSelect `Header` の title、作戦室の「OPERATIONS ROOM」と「出 撃」、装備/強化/開発施設/守護霊/対策室/資料室/オプションの見出し)、タイトル画面のメニュー項目、一時停止「一時停止」、TutorialPopup の見出し、リザルト/エンディング/ゲームオーバーの見出し、更新情報ポップアップの「更新情報」、主ボタンの文字(OK / ジョブ選択 / 続ける / 出撃 / メニューに戻る)。
+- **font-mono の全廃**(TitleScreen 319/343/359、ResultReach 116/220/245/265/273。tabular-nums は残す)。**serif の全廃**(pixiScene `rhythmGodText` → FONT_STACK)。
+### 受け入れ
+typecheck 通過・lint エラー0 / `grep -n font-mono src/components/*.tsx` が開発用オーバーレイ2本以外 0 / `grep -n "'serif'" src/pixi/pixiScene.ts` 0 / HUDスクショ(S1夜・S3市街)の全文字に縁が見える / 見出しの位置・寸法が1pxも動いていない(text-shadow はレイアウトに影響しない=動いたら別の変更が混ざっている)。
+負荷: 2/10(DOM の text-shadow・硬い影のみ。ぼかし1層は静的な見出しに限定。毎秒変わる数字は硬い影だけ)。
