@@ -2228,7 +2228,10 @@ const TORCH_PUNCH_REACH_MULT = tsNum('torchpunchreach', 1.5); // パンチ用の
 // 暗く見えていた原因は、松明に**パンチ(階調を締める側)だけ**が掛かり、爆発が持つ**光だまり(明るくなる側)**が
 // 無かったこと。松明にも光だまりを敷いた(下の TORCH_POOL_*)ので、パンチの強さは爆発と同じ系(1.0)へ戻す。
 // (v0.25.2793〜2807 の 0.7→0.05 は「明るい側が無い」まま沈む方だけ削っていた=事実として併記)。
-const TORCH_PUNCH_GAIN_MULT = tsNum('torchpunchgain', 1.0);    // パンチ用の松明の強さ=描画の強さ×これ
+// ★v0.25.4223(社長の実機スクショ「遠景が全面に来ちゃってる」): 1.0 は**世界が真っ黒に潰れる**。パンチの contrast は
+// 強度1で v=2.9(Pixi: v=amount+1, o=-0.5(v-1))=暗い夜の床(0.2)が負へ落ちて黒、明るい物だけ白。爆発は一瞬(200ms減衰)だから
+// 「締まる」に見えていたが、松明の近くで**常時**掛かると画面が消える。常時掛かる光は天井(PUNCH_LIGHT_MAX)で止める。
+const TORCH_PUNCH_GAIN_MULT = tsNum('torchpunchgain', 0.35);   // パンチ用の松明の強さ=描画の強さ×これ
 // 松明・焚き火の光だまり(爆発の強glowと同じ焼いたテクスチャ+プール済み加算スプライト=影を落とさない・実測ゼロ級)。
 // 半径は炎のハロ基準(爆発 r=44 と同じ物差しに乗せる: haloR≈92×0.5)。濃さは炎の脈動に同期。
 const TORCH_POOL_ALPHA_MULT = Math.max(0, tsNum('torchpool', 0.8));   // 0で無効
@@ -2245,6 +2248,10 @@ const LOCAL_EVENT_SHADE_RISE_MS = tsNum('shaderise', 110);
 // ★どちらが安いかは実機ベンチで測る。`?punchfw=1` で新しい置き場所に切り替わる。
 const PUNCH_ON_FILTERED_WORLD = tsBool('punchfw', false);
 const PUNCH_LIGHT_GAIN = tsNum('punchlight', 1.0); // 「世界の光」の明るさ→パンチ強度(0で従来どおりflashのみ)
+// 「世界の光」(松明・ボスの光=**常時**掛かりうる)由来のパンチの天井。フラッシュ(一瞬)は従来どおり1まで。
+// 0.2 → contrast v=1.38, o=-0.19: 夜の床(0.25)は 0.155(沈む)/ 中間(0.5)は不変 / 明るい物(0.7)は 0.78。光だまりの上の床は
+// 加算で 0.5 付近へ上がるので「周りは沈み・火の周りは明るい」になる。実機で `?punchlightmax=` で詰める(0.35 で床≈0=ほぼ黒)。
+const PUNCH_LIGHT_MAX = Math.max(0, Math.min(1, tsNum('punchlightmax', 0.2)));
 const LOCAL_EVENT_SHADOW_ALPHA = 0.96;
 const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
 const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
@@ -4226,7 +4233,7 @@ export class PixiScene {
     // spawnFlash が無い)。⇒ 「世界の光」(松明+強glow)の**プレイヤー足元での明るさ**も強度に混ぜる。
     // 補助光と同じ値を使うので、**「自分の光が消えるほど明るい場所」= 「世界のコントラストが上がる場所」**
     // になり、2つの演出が同じ理屈で動く。
-    target = Math.max(target, Math.min(1, this.punchBrightnessNow * PUNCH_LIGHT_GAIN));
+    target = Math.max(target, Math.min(PUNCH_LIGHT_MAX, this.punchBrightnessNow * PUNCH_LIGHT_GAIN)); // 常時光は天井まで(v0.25.4223)
     // 立ち上がりは即・減衰はなめらかに(前フレームより下がる時だけ緩める)。
     this.punchStrength = target >= this.punchStrength ? target : this.punchStrength + (target - this.punchStrength) * 0.22;
     const active = this.punchStrength > 0.012;
