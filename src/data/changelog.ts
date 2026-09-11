@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4221',
+    items: ['松明と焚き火の周りの床に光だまりが出ます。近づくと周りが締まり、火のそばだけ明るくなる(これまでは近づくと暗くなるだけでした)。'],
+  },
+  {
     version: '0.25.4220',
     items: ['ゲーム内容の変更はありません。'],
   },

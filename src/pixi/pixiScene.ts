@@ -1084,7 +1084,7 @@ const LIGHT_POOL_ENABLED =
 // 乗るだけで地面を照らしていなかったので、沈めると影も地面も一緒に黒へ行っていた。
 const GLOW_GROUND_POOL_ALPHA = Math.max(0, tsNum('glowpool', 0.6));  // ★v0.25.2811 社長決定 // 光だまりの濃さ(0で無効)
 const GLOW_GROUND_POOL_R_MULT = Math.max(0, tsNum('glowpoolr', 6));  // ★v0.25.2811 社長決定(3.2→6=床が広く起きる) // 半径 = glowの radius × これ
-const GLOW_GROUND_POOL_MAX = 8;         // 同時に敷く枚数の上限(強い順)
+const GLOW_GROUND_POOL_MAX = 16;        // 同時に敷く枚数の上限(強い順)。8→16=松明の光だまり(2026-09-11)が同じプールに乗るため
 const GLOW_GROUND_POOL_TINT = 0xffe2b0; // 温かい光(床が起きる色)
 const LIGHT_POOL_ALPHA = Math.max(0, tsNum('pool', 0.4));
 const LIGHT_POOL_RADIUS = Math.max(0, tsNum('poolr', 210));
@@ -2210,7 +2210,16 @@ const TORCH_PUNCH_REACH_MULT = tsNum('torchpunchreach', 1.5); // パンチ用の
 // v0.25.2807(社長「松明と焚き火に近づいた時に暗くなる。少し値を下げて」): 0.1 → 0.05。
 // ★§4手順2でパンチの `brightness` の持ち上げ(旧 +22%)を既定0にしたため、**同じ強度でも以前より暗く出る**
 // (以前はコントラストで沈むぶんを明るさの持ち上げが相殺していた)。その差ぶんを松明側で戻す。
-const TORCH_PUNCH_GAIN_MULT = tsNum('torchpunchgain', 0.05);   // パンチ用の松明の強さ=描画の強さ×これ
+// ★社長指示2026-09-11「松明に近づいた時に暗くなるのは間違い。爆発の『画面が暗めになりつつ明るい部分は明るい』の方に」:
+// 暗く見えていた原因は、松明に**パンチ(階調を締める側)だけ**が掛かり、爆発が持つ**光だまり(明るくなる側)**が
+// 無かったこと。松明にも光だまりを敷いた(下の TORCH_POOL_*)ので、パンチの強さは爆発と同じ系(1.0)へ戻す。
+// (v0.25.2793〜2807 の 0.7→0.05 は「明るい側が無い」まま沈む方だけ削っていた=事実として併記)。
+const TORCH_PUNCH_GAIN_MULT = tsNum('torchpunchgain', 1.0);    // パンチ用の松明の強さ=描画の強さ×これ
+// 松明・焚き火の光だまり(爆発の強glowと同じ焼いたテクスチャ+プール済み加算スプライト=影を落とさない・実測ゼロ級)。
+// 半径は炎のハロ基準(爆発 r=44 と同じ物差しに乗せる: haloR≈92×0.5)。濃さは炎の脈動に同期。
+const TORCH_POOL_ALPHA_MULT = Math.max(0, tsNum('torchpool', 0.8));   // 0で無効
+const TORCH_POOL_R_MULT = Math.max(0.05, tsNum('torchpoolr', 0.5));
+const TORCH_POOL_TINT = tsNum('torchpooltint', 0xffb870);             // 松明の色温度(爆発の 0xffe2b0 より少し赤い)
 // ★爆発の「黒い円」の立ち上がり。旧実装は life 比例のみで**フェードインが無く**、湧いた瞬間に
 // 最大の黒が乗っていた(社長「パッときえてるんだよね」)。消える側は life→0 で元々滑らか。
 const LOCAL_EVENT_SHADE_RISE_MS = tsNum('shaderise', 110);
@@ -3878,6 +3887,7 @@ export class PixiScene {
   private lastAssistLightNow = 0;      // 平滑の dt 計算用(既存の zdt と同じ作法)
   private assistBrightnessNow = 0;     // プレイヤー足元の明るさ(補助光用)
   private punchLights: PointLight[] = []; // パンチ用の光(松明だけ届く距離が短い)
+  private torchPoolReqs: { x: number; y: number; r: number; life: number; tint?: number }[] = []; // 松明の光だまり(このフレーム)
   private punchBrightnessNow = 0;      // プレイヤー足元の明るさ(コントラストパンチ用)
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   // 照準サークル(PHILL/ワイヤーアンカーのプレビュー)専用。uiLayer(=研究所の暗幕 labVeil や
@@ -4222,7 +4232,7 @@ export class PixiScene {
    * ★作り方は `playerGroundPool` と同じ=**焼いたテクスチャ+プール済みスプライトの加算1枚/光**。
    * per-frame Graphics も投影影も増やさない(CLAUDE.md 実測「強glowの絵は無料/高いのは投影影」)。
    */
-  private syncGlowGroundPools(reqs: { x: number; y: number; r: number; life: number }[]) {
+  private syncGlowGroundPools(reqs: { x: number; y: number; r: number; life: number; tint?: number }[]) {
     if (GLOW_GROUND_POOL_ALPHA <= 0) {
       for (const sp of this.glowGroundPool) sp.visible = false;
       return;
@@ -4243,6 +4253,7 @@ export class PixiScene {
       }
       const q = reqs[i];
       sp.position.set(q.x, q.y);
+      sp.tint = q.tint ?? GLOW_GROUND_POOL_TINT; // 松明は色温度が違う(プールは共有なので毎フレーム入れ直す)
       sp.width = sp.height = q.r * GLOW_GROUND_POOL_R_MULT * 2;
       sp.alpha = Math.min(1, GLOW_GROUND_POOL_ALPHA * q.life);
       sp.visible = true;
@@ -8521,7 +8532,7 @@ export class PixiScene {
     this.syncFlash(s.effects, fxNow); // v0.25.3038: フラッシュも停止中に進む
     // ★v0.25.2782: 強glow(爆発など)を「世界の光」へ足し、プレイヤー足元の明るさを先に出す。
     // ここで出すのは、この値を**コントラストパンチと補助光の両方**が使うため(松明は syncBreakableProps で既に積み済み)。
-    const groundPoolReqs: { x: number; y: number; r: number; life: number }[] = [];
+    const groundPoolReqs: { x: number; y: number; r: number; life: number; tint?: number }[] = [...this.torchPoolReqs]; // 松明の光だまり(syncBreakableProps で積み済み)+強glow
     for (const e of s.effects) {
       if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
       const glowLife = 1 - Math.min(1, (fxNow - e.createdAt) / e.duration);
@@ -10468,6 +10479,7 @@ export class PixiScene {
   private syncBreakableProps(props: BreakableProp[], now: number) {
     this.worldLights.length = 0; // ★v0.25.2779: このフレームの光を集め直す(松明はこの下の描画で積まれる)
     this.punchLights.length = 0;
+    this.torchPoolReqs.length = 0;
     const seen = new Set<string>();
     for (const prop of props) {
       seen.add(prop.id);
@@ -11016,6 +11028,8 @@ export class PixiScene {
       // ★パンチ用は届く距離を短くする(近づいて初めてコントラストが上がる)+強さも下げる
       // (社長v0.25.2793「焚き火とか松明のコントラストだけ少し弱めて」)。爆発側の強さは別経路=不変。
       this.punchLights.push({ x: flameX, y: flameY, reach: haloR * TORCH_PUNCH_REACH_MULT, strength: strength * TORCH_PUNCH_GAIN_MULT });
+      // 光だまり(明るくなる側)。描画と同じ haloR/haloA を使う(別の数式を作ると絵と挙動がズレる)。
+      if (TORCH_POOL_ALPHA_MULT > 0) this.torchPoolReqs.push({ x: flameX, y: flameY, r: haloR * TORCH_POOL_R_MULT, life: Math.min(1, (haloA / 0.62) * TORCH_POOL_ALPHA_MULT), tint: TORCH_POOL_TINT });
     }
     const focusT = this.lightDefocus01(flameY);
     // ボケ側は**半径を広げるぶんαを下げる**(総光量を保つ=ボケて明るくならない)。
