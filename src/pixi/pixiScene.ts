@@ -1445,6 +1445,10 @@ const FAKE3D_TREES = tsBool('f3dtrees', true);                              // �
 // ので赤い予告と判定の関係は崩れない。HUD(DOM)・遠景・手前の近景森は外。★既定OFF(`?zwarp=1`)。
 // 負荷: 有効中だけ「世界を1回余分に描く」全画面パス(5/10・数秒)。平常時はゼロ。
 const ZWARP = tsBool('zwarp', false);
+// ★v0.25.4227(社長裁定「移動と連動するのは一旦無し。キル演出とかのズームイベント時だけ、左か右にわかりやすく遠景させる演出」):
+// 入力=ズームの速さ ではなく **寄りズームのイベント(triggerZoom: KILL/近接フィニッシュ/死亡/救急/救援信号)の包絡線 zoomDecay**。
+// 向きは**左右のみ**(奥=左か右)。対象(zoomTarget)がプレイヤーの右なら右が奥、左なら左。対象が無い/真上なら前回と反対側。
+const ZWARP_EVENT_SIDE = (typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('zwarpside')) as 'left' | 'right' | null;
 // ★v0.25.4225: RenderTexture+台形メッシュ(社長の実機iOSで「場面のスクショっぽい1枚絵」=RTが更新されず静止画が乗る)を捨て、
 // **worldGroup のフィルタ**(パンチ/昼コントラストと同じ経路=実機で毎フレーム動く実績あり)で射影する。
 // 頂点は既存フィルタと同じ約束(aPosition 0..1=出力枠)。フラグメントは出力座標→元座標の逆射影(3×3)で1回サンプル。
@@ -1510,8 +1514,9 @@ const invert3 = (m: number[]): number[] => {
           B * inv, (a * i - c * g) * inv, -(a * f - c * d) * inv,
           C * inv, -(a * h - b * g) * inv, (a * e - b * d) * inv];
 };
-const ZWARP_GAIN = Math.max(0, Math.min(2, tsNum('zwarpk', 0.18)));        // ズーム速度(倍率/s)→傾き
-const ZWARP_MAX = Math.max(0, Math.min(0.4, tsNum('zwarpmax', 0.12)));     // 傾きの上限(近い辺のはみ出し=画面幅比)
+const ZWARP_GAIN = Math.max(0, Math.min(2, tsNum('zwarpk', 0.18)));        // (旧: ズーム速度→傾き。4227で未使用=`?zwarpmove=1` の時だけ移動連動へ戻す)
+const ZWARP_MOVE_LINK = tsBool('zwarpmove', false);                         // 旧挙動(ズームの速さ×進行方向)へ切り替える検証用
+const ZWARP_MAX = Math.max(0, Math.min(0.5, tsNum('zwarpmax', 0.22)));     // 傾きの最大(近い辺のはみ出し=画面比)。イベントの包絡線×これ
 const ZWARP_ATTACK_TAU = Math.max(0.02, tsNum('zwarpatk', 0.10));           // 立ち上がりの時定数(s)
 const ZWARP_DECAY_TAU = Math.max(0.05, tsNum('zwarpdec', 0.40));            // 戻りの時定数(s)
 const ZWARP_DIR_TAU = 0.25;                                                 // 進行方向の平滑(反転でパタつかない)
@@ -3451,6 +3456,9 @@ export class PixiScene {
   private zwarpK = 0;                                // 現在の傾き(0=平ら)
   private zwarpDirX = 0; private zwarpDirY = -1;     // 進行方向(平滑済み・既定=上=奥)
   private zwarpPrevZoom = 0; private zwarpLastNow = 0;
+  private zwarpEventDecay = 0;                       // 寄りズームイベントの包絡線(0..1・syncの zoomDecay を写す)
+  private zwarpEventStart = -1;                      // 今のイベントの zoomStart(変わったら新イベント=向きを決める)
+  private zwarpEventSide: -1 | 1 = 1;                // 奥にする側(+1=右 / −1=左)
   private zwarpDisabled = false;                     // フィルタが作れない環境では以後無効(世界はそのまま)
   private zwarpZoomNow = 1;                          // このフレームに worldGroup へ適用した総ズーム(zwarp が読む)
   private dioramaFrontSprites: Sprite[] = [];
@@ -5762,21 +5770,34 @@ export class PixiScene {
     const gapMs = this.zwarpLastNow ? now - this.zwarpLastNow : 0;
     const dt = this.zwarpLastNow ? Math.min(0.1, gapMs / 1000) : 0;
     this.zwarpLastNow = now;
-    const z = this.zwarpZoomNow;
-    // 非表示/ポーズ復帰の最初のフレーム(実経過が長い)は、停止中に動いたズーム差を速度と誤読しない(監査B#6)
-    if (gapMs > 250) this.zwarpPrevZoom = z;
-    const rate = dt > 0 && this.zwarpPrevZoom > 0 ? Math.abs(z - this.zwarpPrevZoom) / dt : 0;
-    this.zwarpPrevZoom = z;
-    const target = Math.min(ZWARP_MAX, rate * ZWARP_GAIN);
-    if (dt > 0) {
-      const tau = target > this.zwarpK ? ZWARP_ATTACK_TAU : ZWARP_DECAY_TAU;
-      this.zwarpK += (target - this.zwarpK) * (1 - Math.exp(-dt / tau));
-      const spd = Math.hypot(vx, vy);
-      if (spd > 20) {
-        const kd = 1 - Math.exp(-dt / ZWARP_DIR_TAU);
-        this.zwarpDirX += (vx / spd - this.zwarpDirX) * kd;
-        this.zwarpDirY += (vy / spd - this.zwarpDirY) * kd;
+    if (ZWARP_MOVE_LINK) {
+      // 旧挙動(検証用): ズームの速さ×進行方向。
+      const z = this.zwarpZoomNow;
+      if (gapMs > 250) this.zwarpPrevZoom = z; // 非表示/ポーズ復帰の最初のフレームは速度と誤読しない(監査B#6)
+      const rate = dt > 0 && this.zwarpPrevZoom > 0 ? Math.abs(z - this.zwarpPrevZoom) / dt : 0;
+      this.zwarpPrevZoom = z;
+      const target = Math.min(ZWARP_MAX, rate * ZWARP_GAIN);
+      if (dt > 0) {
+        const tau = target > this.zwarpK ? ZWARP_ATTACK_TAU : ZWARP_DECAY_TAU;
+        this.zwarpK += (target - this.zwarpK) * (1 - Math.exp(-dt / tau));
+        const spd = Math.hypot(vx, vy);
+        if (spd > 20) {
+          const kd = 1 - Math.exp(-dt / ZWARP_DIR_TAU);
+          this.zwarpDirX += (vx / spd - this.zwarpDirX) * kd;
+          this.zwarpDirY += (vy / spd - this.zwarpDirY) * kd;
+        }
       }
+    } else {
+      // 既定(社長裁定2026-09-11): 寄りズームのイベント中だけ。強さ=包絡線(zoomDecay: 最大を保持→滑らかに戻る)×上限。
+      // 立ち上がりだけ短い時定数で追わせる(イベント開始の1フレームでパッと出ない=慣性)。戻りは包絡線そのものが滑らか。
+      const target = ZWARP_MAX * this.zwarpEventDecay;
+      if (dt > 0) {
+        const kf = target > this.zwarpK ? 1 - Math.exp(-dt / ZWARP_ATTACK_TAU) : 1;
+        this.zwarpK += (target - this.zwarpK) * kf;
+      }
+      // 向き=左右のみ。奥の側の**反対**の辺が広がる(dirX=+1 で右が奥 → 左の辺が広がる)。
+      this.zwarpDirX = this.zwarpEventSide;
+      this.zwarpDirY = 0;
     }
     if (this.zwarpK <= ZWARP_MIN_ACTIVE) {
       if (this.zwarpInList) { this.zwarpInList = false; this.syncWorldGroupFilters(); } // 平ら=フィルタを外す(パス増なし)
@@ -7718,6 +7739,15 @@ export class PixiScene {
       ? 1 - computeTimeSlowScale(now, s.zoomStart, s.zoomUntil, 0, s.zoomHoldMs)
       : 0;
     const punch = 1 + s.zoomMag * zoomDecay;
+    // ズーム時の遠近(?zwarp=1)へ: イベントの包絡線と、イベント開始時に決める奥の側(左右)。
+    this.zwarpEventDecay = zoomDecay;
+    if (zoomDecay > 0 && s.zoomStart !== this.zwarpEventStart) {
+      this.zwarpEventStart = s.zoomStart;
+      const pcx = s.player.x + s.player.width / 2;
+      const dx = s.zoomHasTarget ? s.zoomTargetX - pcx : 0;
+      this.zwarpEventSide = ZWARP_EVENT_SIDE === 'left' ? -1 : ZWARP_EVENT_SIDE === 'right' ? 1
+        : Math.abs(dx) > 8 ? (dx > 0 ? 1 : -1) : (this.zwarpEventSide === 1 ? -1 : 1); // 対象の側。無ければ前回と反対
+    }
     // 文脈ズーム: 通常敵は従来どおり画面内相当の数/大型で判定。正規ボスだけは交戦中の距離で判定。
     // ボスは0.45秒時定数で距離へ追従し、敵視解除後は1.0秒時定数で通常画角へ戻す。
     const zNearR2 = Math.pow(Math.max(this.screenW, this.screenH) * 0.6, 2);

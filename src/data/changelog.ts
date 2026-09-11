@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4227',
+    items: ['ゲームの見え方は変わりません(ズーム中の遠近の試作を、移動連動ではなくキル演出などの寄りズームの間だけ左右へ遠近が付く形に。切り替えを入れた時だけ)。'],
+  },
+  {
     version: '0.25.4226',
     items: ['ゲーム内容の変更はありません。'],
   },
