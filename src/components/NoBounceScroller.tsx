@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { PixelIcon } from './PixelIcon';
 
 // iOSのラバーバンド対策(社長指示2026-08-29「出撃のページ以外がまだヘッダーとか動く」):
 // stickyヘッダーは通常スクロール中は固定だが、iOSは容器の**縁で引っ張る**と内容ごと跳ねる
@@ -95,7 +95,7 @@ const NoBounceScroller: React.FC<{ className?: string; style?: React.CSSProperti
           style={{ opacity: hasMore ? 1 : 0, color: moreColor ?? 'rgba(216, 180, 254, 0.85)' }}
           aria-hidden="true"
         >
-          <ChevronDown size={15} />
+          <PixelIcon name="chevron-down" size={15} />
         </div>
       </div>
     );

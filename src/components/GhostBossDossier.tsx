@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Heart, Users, Clock3, Activity, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
+import { PixelIcon } from './PixelIcon';
 import { CHARACTER_CLASSES, SKILLS } from '../data/campaign';
+import { playSfx } from '../audio/audioManager';
 import { equipmentById } from '../data/equipment';
 import { fixedGuardianLeadersForBoss } from '../data/fixedGuardians';
 import { enemyDeathLabel, subWeaponDisplayName } from '../store/gameStore';
@@ -53,7 +54,7 @@ const InnerPane: React.FC<{ as?: 'nav' | 'div'; className: string; ariaLabel?: s
           style={{ position: 'absolute', bottom: 6, left: 0, right: 0, opacity: hasMore ? 1 : 0, color: 'rgba(216, 180, 254, 0.85)' }}
           aria-hidden="true"
         >
-          <ChevronDown size={15} />
+          <PixelIcon name="chevron-down" size={15} />
         </div>
       </div>
     );
@@ -155,12 +156,12 @@ const FixedLeaderGrid: React.FC<{
           <button
             type="button"
             key={guardian.id}
-            onClick={() => onAllyTap({
+            onClick={() => { playSfx('ui-select'); onAllyTap({
               name: guardian.name,
               className: guardian.classId,
               ...(guardian.profile.snapshot ? { build: guardian.profile.snapshot } : {}),
               isOwn: false,
-            })}
+            }); }}
             className="group relative min-w-0 overflow-hidden border border-purple-200/10 bg-purple-400/[0.06] px-1.5 py-2 text-left transition-colors active:bg-purple-400/15"
           >
             <span className="absolute left-0 top-0 bg-purple-300/20 px-1.5 py-0.5 text-[8px] font-bold text-purple-100">#{index + 1}</span>
@@ -237,7 +238,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
                     <button
                       type="button"
                       key={item.slotKey}
-                      onClick={() => onSelect(item.slotKey)}
+                      onClick={() => { playSfx('ui-move'); onSelect(item.slotKey); }}
                       aria-label={defeated ? bossLabel(item) : '未討伐のボス'}
                       aria-current={active ? 'true' : undefined}
                       className={`relative flex h-11 w-11 items-center justify-center overflow-hidden border transition-colors ${
@@ -302,15 +303,15 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
               </div>
 
               <div className="relative mt-2 grid grid-cols-2 gap-1.5">
-                <Metric icon={<Clock3 size={9} />} label="討伐時間" value={formatClearTime(selectedCard.clearTimeMs)} tone="text-sky-100" />
-                <Metric icon={<Activity size={9} />} label="守護霊評点" value={formatPerfScore(selectedCard.perfScore)} tone="text-amber-100" />
-                <Metric icon={<Heart size={9} />} label="いいね" value={(social?.likes ?? 0).toLocaleString()} tone="text-pink-100" />
-                <Metric icon={<Users size={9} />} label="同行回数" value={(social?.used ?? 0).toLocaleString()} tone="text-purple-100" />
+                <Metric icon={<PixelIcon name="clock" size={9} />} label="討伐時間" value={formatClearTime(selectedCard.clearTimeMs)} tone="text-sky-100" />
+                <Metric icon={<PixelIcon name="activity" size={9} />} label="守護霊評点" value={formatPerfScore(selectedCard.perfScore)} tone="text-amber-100" />
+                <Metric icon={<PixelIcon name="heart" size={9} />} label="いいね" value={(social?.likes ?? 0).toLocaleString()} tone="text-pink-100" />
+                <Metric icon={<PixelIcon name="users" size={9} />} label="同行回数" value={(social?.used ?? 0).toLocaleString()} tone="text-purple-100" />
               </div>
 
               {recentLike && (
                 <div className="relative mt-1.5 flex items-center gap-1.5 bg-pink-300/[0.07] px-2 py-1.5 text-[9px] text-pink-100/70">
-                  <Heart size={9} fill="currentColor" /> 最近のいいね：<span className="font-semibold">{recentLike.name}</span>
+                  <PixelIcon name="heart" size={9} /> 最近のいいね：<span className="font-semibold">{recentLike.name}</span>
                 </div>
               )}
 
@@ -353,9 +354,9 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
                     <span className="font-semibold tabular-nums text-sky-100">{formatClearTime(duoCard.clearTimeMs)}</span>
                   </div>
                   {duoCard.ally && (
-                    <button type="button" onClick={() => onAllyTap(duoCard.ally!)} className="mt-1.5 flex w-full items-center justify-between bg-black/20 px-2 py-1.5 text-left text-[10px] text-white/65 active:bg-black/35">
+                    <button type="button" onClick={() => { playSfx('ui-select'); onAllyTap(duoCard.ally!); }} className="mt-1.5 flex w-full items-center justify-between bg-black/20 px-2 py-1.5 text-left text-[10px] text-white/65 active:bg-black/35">
                       <span className="truncate">同行：<span className="font-semibold text-white/80">{duoCard.ally.name}</span></span>
-                      <span className="flex shrink-0 items-center gap-0.5 text-[8px] text-sky-100/45">ビルド <ChevronRight size={10} /></span>
+                      <span className="flex shrink-0 items-center gap-0.5 text-[8px] text-sky-100/45">ビルド <PixelIcon name="chevron-right" size={10} /></span>
                     </button>
                   )}
                 </div>
@@ -364,7 +365,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
               <FixedLeaderGrid slotKey={selectedItem.slotKey} stats={fixedStats} onAllyTap={onAllyTap} />
 
               <div className="mt-4 flex items-center justify-center gap-1 text-[8px] tracking-[0.16em] text-white/20">
-                <Sparkles size={9} /> SELECT ANOTHER TARGET FROM THE LEFT
+                <PixelIcon name="sparkles" size={9} /> SELECT ANOTHER TARGET FROM THE LEFT
               </div>
             </div>
           )}

@@ -185,3 +185,7 @@ typecheck 通過・lint エラー0 / `grep -n font-mono src/components/*.tsx` �
 ### 受け入れ(両方)
 typecheck 通過・lint エラー0 / `grep -rn lucide-react src` が 0 / `grep -c "ui-select" src/components/MissionSelect.tsx` が 67 から減っていて、`ui-back`/`ui-move`/`ui-deny` がそれぞれ1箇所以上 / 値・判定・進行のコードに差分が無い(`git diff --stat` に store/utils/world が出ない) / 触ってはいけないファイル(package.json / changelog.ts / DEVELOPMENT_LOG.md / PROJECT_STATUS.md / CLAUDE.md / A↔Bの相手の担当ファイル)に差分が無い。
 負荷: 2/10(CSS とアイコンの SVG。作戦室の部隊ドットは静的 img・一時停止の値は1回読み)。
+
+### 第2手+第3手+裁定4点の着地(v0.25.4234)
+- 実装(Sonnet A/B 並列)→クリエイティブ監査1巡(A15/B21/C4)→(A)(C)を反映して push。仕様からの変更: 発光は無し(第1手と同じ理由)/更新情報バッジの語は UPDATE→NEWS/音量の枡は最上段の再タップで0/「音なし」は BLOOM と同じ ON/OFF 2枡/任務詳細の2行clampは撤回(全文)/部隊は44pxで9体1列/開発施設のアイコンは wrench。
+- (B)21件は別案件(DEVLOG v0.25.4234 に列挙)。着手する時は「磨き」としてまとめて1バッチ。

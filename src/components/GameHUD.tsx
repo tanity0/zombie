@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
+import { PixelIcon } from './PixelIcon';
 import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { shallow } from 'zustand/shallow';
 import { formatTime } from '../utils/renderUtils';
@@ -11,7 +11,7 @@ import { NpcDialogue } from './NpcDialogue';
 import SubquestHud from './SubquestHud';
 import { LowHpVignette } from './LowHpVignette';
 import type { AmmoType } from '../types/game';
-import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
+import { isAudioMuted, setAudioMuted, playSfx } from '../audio/audioManager';
 import DirectorLine from './DirectorLine';
 import { getSelectedStageId } from '../data/progress';
 import { getEventQuestConfig } from '../utils/eventQuest';
@@ -122,6 +122,7 @@ const GameHUD: React.FC = () => {
     e?.preventDefault();
     e?.stopPropagation();
     const next = !audioMuted;
+    playSfx('ui-move'); // クリエイティブ監査第2回・第2手A-5: トグルは ui-move
     setAudioMutedState(next);
     setAudioMuted(next);
   };
@@ -425,7 +426,7 @@ const GameHUD: React.FC = () => {
         title={audioMuted ? 'Audio on' : 'Audio off'}
         aria-label={audioMuted ? 'Audio on' : 'Audio off'}
       >
-        {audioMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+        {audioMuted ? <PixelIcon name="volume-off" size={17} /> : <PixelIcon name="volume-on" size={17} />}
       </button>
     </div>
   );

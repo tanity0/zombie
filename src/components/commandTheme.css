@@ -1,8 +1,11 @@
 /* 作戦室と同じ基準色。意味色(レア度・不足・警告)は別管理。 */
 .command-ui {
-  --menu-bg:#060708; --menu-panel:#0b0d0f; --menu-line:#23272a;
+  /* クリエイティブ監査第2回・第2手A-1(research/CREATIVE_AUDIT_2026-09-11.md): 地の色を世界の紫黒へ。
+     ink/muted(dim相当)/accentは据え置き(意味色は変えない)。 */
+  --menu-bg:#07060d; --menu-panel:#0d0b14; --menu-line:#26212f;
   --menu-accent:#ffb340; --menu-accent-hi:#ffd28a; --menu-ink:#e6e9e9;
-  --menu-muted:#a2aaa7; --menu-selected:#282015; --menu-hover:#1b2022;
+  --menu-danger:#ff6b5e;
+  --menu-muted:#a2aaa7; --menu-selected:#2a2016; --menu-hover:#1a1524;
 }
 .command-ui .ds-home { --ds-bg:var(--menu-bg); --ds-panel:var(--menu-panel); --ds-line:var(--menu-line); --ds-amber:var(--menu-accent); --ds-amber-hi:var(--menu-accent-hi); --ds-ink:var(--menu-ink); }
 /* 作戦UIの共通文法。戦闘HUD・スプライトの意味色は対象にしない。 */
@@ -61,10 +64,32 @@
 .command-ui .command-page input[type='range'] { accent-color: var(--command-accent); min-height: 32px; }
 .command-ui .command-page input[type='text'] { background: var(--menu-bg); border: 1px solid var(--menu-line); color: var(--command-ink); min-height: 44px; padding: 10px 12px; }
 .command-ui .command-page button:focus-visible, .command-ui .command-character button:focus-visible, .command-ui .command-panel button:focus-visible, .command-ui .command-panel input:focus-visible { outline: 2px solid var(--menu-accent-hi); outline-offset: -3px; }
-.command-ui .command-button { min-height: 48px; padding-left: 18px; padding-right: 18px; display: block; border: 1px solid var(--menu-line); background: var(--menu-panel); color: var(--menu-ink); font: 500 14px/1.5 'Rajdhani', system-ui, sans-serif; letter-spacing: .1em; text-align: center; transition: background 160ms ease-out, border-color 160ms ease-out; }
+.command-ui .command-button { min-height: 48px; padding-left: 18px; padding-right: 18px; display: block; border: 1px solid var(--menu-line); background: var(--menu-panel); color: var(--menu-ink); font: 500 14px/1.5 'Rajdhani', system-ui, sans-serif; letter-spacing: .1em; text-align: center; transition: background 160ms ease-out, border-color 160ms ease-out, transform 160ms cubic-bezier(.2,.9,.3,1.2); }
 .command-ui .command-button:hover { background: var(--menu-hover); border-color: var(--menu-muted); }
-.command-ui .command-button-primary { color: #171208; background: var(--command-accent); border-color: var(--menu-accent-hi); font-weight: 600; }
-.command-ui .command-button-primary:hover { background: var(--menu-accent-hi); }
+/* クリエイティブ監査第2回・第2手A-2+A-3(research/CREATIVE_AUDIT_2026-09-11.md):
+   琥珀ボタン=松明の光(上明・下焦げの縦グラデ)+斜め切り1型。幅は文字幅(中央/右寄せは呼び出し側)。
+   押下の手応え=僅かな沈み込み+縁の光が左→右へ走る(慣性=離した時に僅かに戻り過ぎるease)。 */
+.command-ui .command-button-primary {
+  position: relative; overflow: hidden;
+  display: inline-block; width: auto; min-width: 9.5rem; padding: 0 1.6rem;
+  color: #171208; font-weight: 600;
+  background: linear-gradient(180deg,#ffc65a 0%,#f2a12b 55%,#c97a1c 100%);
+  border-color: var(--menu-accent-hi);
+  box-shadow: inset 0 1px 0 rgba(255,238,200,.45), inset 0 -2px 0 rgba(80,45,8,.35);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+}
+.command-ui .command-button-primary:active { background: linear-gradient(180deg,#f0b544 0%,#dc9020 55%,#b46a16 100%); }
+@media (hover: hover) { .command-ui .command-button-primary:hover { background: linear-gradient(180deg,#ffd27a 0%,#f5ae3c 55%,#d1862a 100%); } }
+/* 縁の光は押した瞬間に一方向へ1回だけ走る(戻りの逆走なし=監査A-4)。離した時は transition 無しで即リセット */
+.command-ui .command-button-primary::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: -40%; width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255,245,220,.55), transparent);
+  transform: translateX(0); pointer-events: none; opacity: 0;
+}
+.command-ui .command-button-primary:active::after { animation: cmd-sweep 140ms ease-out 1 forwards; }
+@keyframes cmd-sweep { 0% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(260%); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .command-ui .command-button-primary:active::after { animation: none; } }
+.command-ui .command-button:active { transform: translateY(1.5px); }
 .command-ui .command-button-selected { border-color: var(--command-accent); box-shadow: inset 3px 0 var(--command-accent); }
 .command-ui .command-button:focus-visible { outline: 2px solid var(--menu-accent-hi); outline-offset: -4px; }
 .command-ui .command-button-primary:focus-visible { outline-color: #171208; }
@@ -73,10 +98,10 @@
 .command-ui .command-stage-card::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #071116ed, #07111677 70%, #07111655); }
 .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\] { font: 500 23px/1.4 system-ui; margin-top: 8px; }
 .command-ui .command-page .command-stage-card:hover { background: var(--menu-panel); border-color: var(--command-accent); }
-.command-ui .command-panel { background: linear-gradient(150deg, #0b0d0ff7, #060708f7); border: 1px solid var(--menu-line); border-radius: 0; box-shadow: 0 24px 80px #0009; color: var(--command-ink); font-family: 'Rajdhani', system-ui, sans-serif; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.command-ui .command-panel { background: linear-gradient(150deg, color-mix(in srgb, var(--menu-panel) 97%, transparent), color-mix(in srgb, var(--menu-bg) 97%, transparent)); border: 1px solid var(--menu-line); border-radius: 0; box-shadow: 0 24px 80px #0009; color: var(--command-ink); font-family: 'Rajdhani', system-ui, sans-serif; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .command-ui .command-panel h2 { font-size: 26px; letter-spacing: .08em; line-height: 1.4; }
-.command-ui .command-character button[aria-pressed] { background: #0b0d0fe8 !important; border: 1px solid var(--menu-line) !important; border-image: none !important; }
-.command-ui .command-character button[aria-pressed='true'] { background: #282015ed !important; border-color: var(--command-accent) !important; }
+.command-ui .command-character button[aria-pressed] { background: color-mix(in srgb, var(--menu-panel) 91%, transparent) !important; border: 1px solid var(--menu-line) !important; border-image: none !important; }
+.command-ui .command-character button[aria-pressed='true'] { background: color-mix(in srgb, var(--menu-selected) 93%, transparent) !important; border-color: var(--command-accent) !important; }
 .command-ui .command-character > button[aria-label='戻る'] { min-height: 44px; color: var(--command-accent); border: 1px solid var(--menu-line); }
 @media (min-width: 900px) {
   .command-ui .command-page .command-growth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
@@ -92,6 +117,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .command-ui .command-button { transition: none; }
+  .command-ui .command-button:active { transform: none; }
+  .command-ui .command-button-primary::after { transition: none; }
 }
 
 /* メニューを一枚の操作盤として扱う。固定モーダルの含有ブロックは作らない。 */
@@ -109,8 +136,6 @@
 .command-ui .development-tabs button[aria-pressed='true'] { box-shadow:none; border-bottom-color:var(--menu-accent); background:var(--menu-selected); }
 .command-ui .development-art { background:transparent; border:0; }
 .command-ui .development-guide { margin-bottom:12px; }
-.command-ui .command-panel { background:#0b0d0ffa; box-shadow:0 8px 24px #0008; border-color:var(--menu-line); }
-.command-ui .command-button { border-width:0 0 1px; background:var(--menu-panel); }
-.command-ui .command-button-primary { background:var(--menu-accent); color:#171208; }
-.command-ui .command-button:active { background:var(--menu-hover); }
-.command-ui .command-button-primary:active { background:var(--menu-accent-hi); }
+.command-ui .command-panel { background:color-mix(in srgb, var(--menu-panel) 98%, transparent); box-shadow:0 8px 24px #0008; border-color:var(--menu-line); }
+.command-ui .command-button:not(.command-button-primary) { border-width:0 0 1px; background:var(--menu-panel); }
+.command-ui .command-button:not(.command-button-primary):active { background:var(--menu-hover); }

@@ -36,6 +36,12 @@
       -0.07em 0 0 var(--gt-ink), 0.07em 0 0 var(--gt-ink), 0 -0.07em 0 var(--gt-ink), 0 0.07em 0 var(--gt-ink),
       0 0.09em 0 var(--gt-ink);
   }
+  /* UIの意味色(監査第2回・A-2「琥珀が3種類」の統一): 琥珀は --menu-accent の1色、不足/危険は --menu-danger の1色。
+     Tailwind の amber-300/400 等を UI で直に使わない(トークンと違う黄になる)。 */
+  .ui-acc-bg { background: var(--menu-accent, #ffb340); }
+  .ui-acc-text { color: var(--menu-accent, #ffb340); }
+  .ui-acc-tag { background: color-mix(in srgb, var(--menu-accent, #ffb340) 16%, transparent); color: var(--menu-accent-hi, #ffd28a); }
+  .ui-danger-text { color: var(--menu-danger, #ff6b5e); }
   /* 板の上の文字: 落ち影1本 */
   .gt-solid {
     text-shadow: 0 1px 0 var(--gt-ink);
@@ -626,9 +632,11 @@
 
 /* DSトークン(§3-0)+地。Shellのdsホーム面(ラッパー)に付ける。 */
 .ds-home {
-  --ds-bg: #060708;
-  --ds-panel: #0b0d0f;
-  --ds-line: #23272a;
+  /* クリエイティブ監査第2回・第2手A-1(research/CREATIVE_AUDIT_2026-09-11.md): 地の色を世界の紫黒へ
+     (commandTheme.css --menu-* と揃える)。ink/dim/deco/amberは据え置き。 */
+  --ds-bg: #07060d;
+  --ds-panel: #0d0b14;
+  --ds-line: #26212f;
   --ds-amber: #ffb340;
   --ds-amber-hi: #ffd28a;
   --ds-ink: #e6e9e9;
@@ -686,7 +694,7 @@
   margin: 8px 0 0;
   border: 1px solid var(--ds-line);
   overflow: hidden;
-  background: #08090a;
+  background: var(--ds-bg);
 }
 .ds-map canvas {
   position: absolute;
@@ -735,7 +743,10 @@
   margin: 10px 0 4px;
   padding: 10px 14px;
   cursor: pointer;
-  background: linear-gradient(90deg, var(--ds-amber) 0%, #f09a1e 100%);
+  /* クリエイティブ監査第2回・第2手A-2(research/CREATIVE_AUDIT_2026-09-11.md):
+     松明の光=上明・下焦げの縦グラデ+内側ハイライト/シャドウ。.command-button-primary と同じ見え方。 */
+  background: linear-gradient(180deg, #ffc65a 0%, #f2a12b 55%, #c97a1c 100%);
+  box-shadow: inset 0 1px 0 rgba(255,238,200,.45), inset 0 -2px 0 rgba(80,45,8,.35);
   color: #12100a;
   clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
 }

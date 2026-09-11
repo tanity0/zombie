@@ -377,13 +377,18 @@ const rectsFor = (name: PixelIconName): Array<[number, number]> => {
   return r;
 };
 
+// 1マス=整数px で描く(監査A-8: 12の倍数でないサイズを格子ごと拡縮すると同じ1マスが1pxと2pxに割れる)。
+// size に収まる最大の整数倍 k を取り、12k の格子を size の箱の中に整数pxで中央寄せする(余白で合わせる)。
 export const PixelIcon: React.FC<PixelIconProps> = ({ name, size = 16, className = '', color, title }) => {
   const rects = rectsFor(name);
+  const s = Math.max(12, Math.round(size));
+  const k = Math.max(1, Math.floor(s / 12));
+  const off = Math.floor((s - 12 * k) / 2);
   return (
     <svg
-      width={size}
-      height={size}
-      viewBox="0 0 12 12"
+      width={s}
+      height={s}
+      viewBox={`0 0 ${s} ${s}`}
       shapeRendering="crispEdges"
       className={`inline-block shrink-0 align-[-0.15em] ${className}`}
       fill={color ?? 'currentColor'}
@@ -391,7 +396,7 @@ export const PixelIcon: React.FC<PixelIconProps> = ({ name, size = 16, className
       role={title ? 'img' : undefined}
     >
       {title && <title>{title}</title>}
-      {rects.map(([x, y]) => <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} />)}
+      {rects.map(([x, y]) => <rect key={`${x}-${y}`} x={off + x * k} y={off + y * k} width={k} height={k} />)}
     </svg>
   );
 };

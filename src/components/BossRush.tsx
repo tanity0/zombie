@@ -9,9 +9,10 @@
 // ★出撃は通常のstartGameと同じシームレス経路。選択枠はbossPracticeの実行時状態で湧きゲートへ渡す
 //   (社長指摘v0.25.2862・BOSS_MAKER.md §20-8-e)。
 import React, { useMemo, useState } from 'react';
-import { Lock, Swords, Heart, MapPin } from 'lucide-react';
+import { PixelIcon } from './PixelIcon';
 import { CHARACTER_CLASSES, getStage, COMPANION_SKILL_KEYS, SKILLS } from '../data/campaign';
 import { enemyDeathLabel, useGameStore } from '../store/gameStore';
+import { playSfx } from '../audio/audioManager';
 import { bossIconSrc } from '../utils/bossIcon';
 import { bossHintsFor } from '../data/bossHints';
 import { loadEncounteredBosses } from '../utils/bossEncounter';
@@ -83,7 +84,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
       <div className="p-3 space-y-3">
         <button
           type="button"
-          onClick={() => setOpenKey(null)}
+          onClick={() => { playSfx('ui-back'); setOpenKey(null); }}
           className="text-[11px] text-purple-200/70 active:text-white"
         >← ボス一覧</button>
         {/* ↑上の戻るはスクロールで流れるので、下のstickyフッタにも「一覧」を置いた(UI監査2026-08-29 #5-2)。 */}
@@ -107,10 +108,10 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
           </div>
 
           <div className="grid grid-cols-3 gap-1.5 p-2">
-            <Row icon={<MapPin size={9} />} label="出現" value={stage?.locationTitle ?? open.stageId} />
+            <Row icon={<PixelIcon name="map-pin" size={9} />} label="出現" value={stage?.locationTitle ?? open.stageId} />
             {/* storyBoss の城ボスは実HPと表が食い違うので出さない(BOSS_MAKER.md §20-8)。 */}
-            <Row icon={<Heart size={9} />} label="体力" value={hp != null ? hp.toLocaleString() : '—'} />
-            <Row icon={<Swords size={9} />} label="種別" value={
+            <Row icon={<PixelIcon name="heart" size={9} />} label="体力" value={hp != null ? hp.toLocaleString() : '—'} />
+            <Row icon={<PixelIcon name="swords" size={9} />} label="種別" value={
               open.bossType === 'giantbat' ? 'ステージボス'
                 : isBountyType(open.bossType) ? '賞金首'
                 : open.bossType === 'guardian-phantom' ? '守護霊' // research/GHOST_BOSS.md(決闘の実験枠)
@@ -139,7 +140,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
               <button
                 key={c.id}
                 type="button"
-                onClick={() => setCls(c.id as CharacterClass)}
+                onClick={() => { playSfx('ui-move'); setCls(c.id as CharacterClass); }}
                 className={`px-2.5 py-1.5 text-[11px] ${cls === c.id ? 'bg-purple-500/40 text-white' : 'bg-white/5 text-white/55'}`}
               >{c.name}</button>
             ))}
@@ -154,14 +155,14 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
           <div className="flex flex-wrap gap-1">
             <button
               type="button"
-              onClick={() => setCompanionSkill(null)}
+              onClick={() => { playSfx('ui-move'); setCompanionSkill(null); }}
               className={`px-2.5 py-1.5 text-[11px] ${companionSkill === null ? 'bg-fuchsia-500/40 text-white' : 'bg-white/5 text-white/55'}`}
             >なし</button>
             {COMPANION_SKILL_KEYS.map(k => (
               <button
                 key={k}
                 type="button"
-                onClick={() => setCompanionSkill(k)}
+                onClick={() => { playSfx('ui-move'); setCompanionSkill(k); }}
                 className={`px-2.5 py-1.5 text-[11px] ${companionSkill === k ? 'bg-fuchsia-500/40 text-white' : 'bg-white/5 text-white/55'}`}
               >{SKILLS[k].name}</button>
             ))}
@@ -179,12 +180,12 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
         <div className="sticky bottom-0 z-20 -mx-3 flex items-stretch gap-2 px-3 pt-3 pb-1" style={{ background: 'linear-gradient(to top, rgba(11,11,18,0.97) 72%, rgba(11,11,18,0))' }}>
           <button
             type="button"
-            onClick={() => setOpenKey(null)}
+            onClick={() => { playSfx('ui-back'); setOpenKey(null); }}
             className="shrink-0 border border-purple-300/25 bg-purple-400/10 px-3 text-[12px] font-semibold text-purple-100/85 active:bg-purple-400/20"
           >一覧</button>
           <button
             type="button"
-            onClick={() => onStartPractice(open, cls)}
+            onClick={() => { playSfx('ui-select'); onStartPractice(open, cls); }}
             className="flex-1 border border-emerald-400/50 bg-emerald-500/15 px-3 py-3 text-[14px] font-bold tracking-wide text-emerald-100 active:bg-emerald-500/30"
           >演習する</button>
         </div>
@@ -221,7 +222,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
                     key={slot.slotKey}
                     type="button"
                     disabled={!unlocked}
-                    onClick={() => setOpenKey(slot.slotKey)}
+                    onClick={() => { playSfx('ui-select'); setOpenKey(slot.slotKey); }}
                     className={`min-w-0 border px-1.5 py-2 text-center ${unlocked
                       ? 'border-purple-200/15 bg-purple-400/[0.06] active:bg-purple-400/20'
                       : 'border-white/[0.06] bg-white/[0.02]'}`}
@@ -232,7 +233,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
                         : unlocked
                           // v0.25.3041(社長指示): 「?」表示のボス(名前台帳に無い=絵もnull)はアイコンも「?」。
                           ? <span className="flex h-full w-full items-center justify-center text-lg font-bold text-white/40">?</span>
-                          : <span className="flex h-full w-full items-center justify-center text-white/20"><Lock size={14} /></span>}
+                          : <span className="flex h-full w-full items-center justify-center text-white/20"><PixelIcon name="lock" size={14} /></span>}
                     </div>
                     <div className="mt-1 truncate text-[10px] font-semibold text-white/80">
                       {unlocked ? bossName(slot) : '?'}

@@ -49,6 +49,17 @@ const formatHeartbeat = (): string | null => {
   return `前回終了: 敵${h.enemies} 弾${h.projectiles} FX${h.effects} 拾${h.pickups} 設置${h.breakableProps} / ${mm}:${ss}${heap}`;
 };
 
+// 更新情報バッジ(クリエイティブ監査第2回・第2手A-7): 同じ版の既読は localStorage に保存し、
+// 2回目以降は全面ポップアップの代わりにタイトル右下の小さなバッジだけ出す(タップで再度開ける)。
+// 個人端末のブラウザ設定でlocalStorageが読めない環境もあるため、必ずtry/catchで包む。
+const NOTICE_SEEN_KEY = 'zombie.notice.seen';
+const readNoticeSeenVersion = (): string | null => {
+  try { return typeof window !== 'undefined' ? window.localStorage.getItem(NOTICE_SEEN_KEY) : null; } catch { return null; }
+};
+const writeNoticeSeenVersion = (v: string): void => {
+  try { if (typeof window !== 'undefined') window.localStorage.setItem(NOTICE_SEEN_KEY, v); } catch { /* 読めない環境は素通し */ }
+};
+
 interface TitleScreenProps {
   onStart: () => void;                 // 同意時: BGM解禁(再生開始)
   // 更新情報の「OK」直後に呼ぶ(オープニング再生トリガ・社長指示v0.25.2022)。
@@ -247,7 +258,13 @@ const ChronicleTimeline: React.FC = () => {
 // (パラメータ残留事故 v0.25.2576 をその場で見抜くための安全表示なので、機能ごと消さない)。
 
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForAssets, onDone }) => {
-  const [phase, setPhase] = useState<'notice' | 'title' | 'blackout' | 'loading'>('notice');
+  // 更新情報は「notice」フェーズを廃止し、常に'title'を基点に showNotice(表示中か)で重ねる形にする
+  // (バッジから何度でも開き直せるようにするため)。既読版と現在の版が一致する時だけ最初から閉じておく。
+  const alreadySeenThisVersion = useMemo(() => readNoticeSeenVersion() === __APP_VERSION__, []);
+  const [showNotice, setShowNotice] = useState<boolean>(!alreadySeenThisVersion);
+  const [phase, setPhase] = useState<'title' | 'blackout' | 'loading'>('title');
+  // OK(またはSTART経由の代行)が音声解禁+オープニング起動を1回だけ担うためのガード。
+  const noticeHandledRef = useRef(false);
   const doneRef = useRef(false);
   // ローディング%表示(社長指示v0.25.1776)。購読は loading フェーズ中だけ(他フェーズを
   // バックグラウンド先読みの進捗で再描画しない)。更新はファイル完了ごと=毎フレームではない。
@@ -266,18 +283,30 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
     onDone();
   };
 
-  // 同意 → (オープニング or BGM開始) → タイトルへ
+  // 同意 → (初見の版だけ)オープニング or BGM開始 → ポップアップを閉じる
   const agree = () => {
-    if (phase !== 'notice') return;
+    if (!showNotice) return;
     playSfx('ui-select');
-    // OK直後にオープニングを挟む場合は onNoticeOk(音声解禁+オープニング起動。メニューBGMはオープニング後)。
-    if (onNoticeOk) onNoticeOk(); else onStart();
-    setPhase('title');
+    // 初めて見る版の通常経路だけ、OK直後にオープニングを挟む(音声解禁+オープニング起動。
+    // メニューBGMはオープニング後)。バッジから開き直した既読ポップアップは、この処理を
+    // 二重発火させない(未発火ならSTARTタップ側が代行する。下のtapStart参照)。
+    if (!alreadySeenThisVersion && !noticeHandledRef.current) {
+      noticeHandledRef.current = true;
+      if (onNoticeOk) onNoticeOk(); else onStart();
+    }
+    writeNoticeSeenVersion(__APP_VERSION__);
+    setShowNotice(false);
   };
 
   // STARTタップ → 先に本物ローディング(完了待ち) → 完了したら暗転
   const tapStart = () => {
-    if (phase !== 'title') return;
+    if (phase !== 'title' || showNotice) return;
+    // ポップアップを飛ばして起動した場合(既読版)、従来OKが担っていた音声解禁+オープニング起動を
+    // ここで代行する(社長裁定: 経路は壊さない)。
+    if (!noticeHandledRef.current) {
+      noticeHandledRef.current = true;
+      if (onNoticeOk) onNoticeOk(); else onStart();
+    }
     playSfx('title-start');
     setPhase('loading');
     const startedAt = performance.now();
@@ -293,17 +322,18 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
     if ((e.key === 'Enter' || e.key === ' ') && phase === 'title') { e.preventDefault(); tapStart(); }
   };
 
-  const heartbeatLine = SHOW_HEARTBEAT && phase === 'title' ? formatHeartbeat() : null;
+  const heartbeatLine = SHOW_HEARTBEAT && phase === 'title' && !showNotice ? formatHeartbeat() : null;
+  const titleInteractive = phase === 'title' && !showNotice;
 
   return (
     <div
-      onClick={phase === 'title' ? tapStart : undefined}
+      onClick={titleInteractive ? tapStart : undefined}
       onKeyDown={handleKey}
-      role={phase === 'title' ? 'button' : undefined}
-      tabIndex={phase === 'title' ? 0 : -1}
-      aria-label={phase === 'title' ? 'タップして開始' : undefined}
+      role={titleInteractive ? 'button' : undefined}
+      tabIndex={titleInteractive ? 0 : -1}
+      aria-label={titleInteractive ? 'タップして開始' : undefined}
       className="relative h-full w-full overflow-hidden bg-[#06070d] select-none outline-none"
-      style={{ cursor: phase === 'title' ? 'pointer' : 'default' }}
+      style={{ cursor: titleInteractive ? 'pointer' : 'default' }}
     >
       <img
         src={assetUrl('backgrounds/title-the-one.png')}
@@ -315,7 +345,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/60" />
 
       {/* バージョン表示: スタート画面(タイトル)の右上 */}
-      {phase === 'title' && (
+      {phase === 'title' && !showNotice && (
         <span className="absolute top-3 right-3 px-2 py-0.5 text-[10px] tabular-nums text-purple-200/75" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.7)' }}>
           v{__APP_VERSION__}
         </span>
@@ -323,7 +353,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
 
       {/* 現在モード表示(社長指示: パラメータ残留事故をその場で見抜く)。**掛かっている時だけ**出す
           ——通常プレイでは何も出ない。開発用の出撃メニューは bossmaker.html へ移した(v0.25.2862)。 */}
-      {phase === 'title' && LOADED_MODE.active && (
+      {phase === 'title' && !showNotice && LOADED_MODE.active && (
         <div className="absolute bottom-3 left-3">
           <span
             className="px-2 py-1 text-[10px] tracking-wider text-amber-300/90"
@@ -345,8 +375,10 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
         </span>
       )}
 
-      {/* 更新情報(起動画面・最初に表示。社長指示: 毎回のアップデート内容をここに出す) */}
-      {phase === 'notice' && (
+      {/* 更新情報(起動画面・最初に表示。社長指示: 毎回のアップデート内容をここに出す)。
+          クリエイティブ監査第2回・第2手A-7: 同じ版の既読は全面ポップアップを出さず、
+          下のバッジからの再オープンでもこの同じ内容を使う。 */}
+      {showNotice && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-4 py-6">
           <div className="relative flex max-h-full w-full max-w-md flex-col overflow-hidden" style={PANEL_STYLE}>
             {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開。全件リストは必ずあふれる) */}
@@ -369,11 +401,10 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
                 </div>
               ))}
             </NoBounceScroller>
-            <div className="px-4 pb-4 pt-2">
-              {/* FF7R風: 四角いまま両サイドへフェード＋上下の枠線もフェード(共通 Ff7rButton)。 */}
+            <div className="px-4 pb-4 pt-2 flex justify-center">
+              {/* クリエイティブ監査第2回・第2手A-2: 主要ボタンは幅=文字幅(w-fullを外し中央寄せ)。 */}
               <Ff7rButton
                 onClick={(e) => { e.stopPropagation(); agree(); }}
-                className="w-full"
                 ariaLabel="OK"
                 emphasis
                 fade="both"
@@ -387,7 +418,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       )}
 
       {/* タイトル(the ONE): STARTタップ待機 */}
-      {phase === 'title' && (
+      {phase === 'title' && !showNotice && (
         <div
           className="absolute inset-x-0 flex flex-col items-center"
           style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 12%), 13%)' }}
@@ -402,6 +433,26 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
           </span>
           <span className="h-[1px] w-28 sm:w-40" style={{ background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.7), transparent)' }} />
         </div>
+      )}
+
+      {/* 更新情報バッジ(クリエイティブ監査第2回・第2手A-7): 既読の版はここから開き直せる。
+          文字だけ・琥珀の斜め切り小(PixelIconは付けない=仕様指定どおり)。 */}
+      {phase === 'title' && !showNotice && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); playSfx('ui-select'); setShowNotice(true); }}
+          className="absolute z-20 px-3 py-1 text-[10px] font-bold tracking-[0.18em] text-purple-200/80"
+          style={{
+            right: 'max(env(safe-area-inset-right), 12px)',
+            bottom: 'max(calc(env(safe-area-inset-bottom) + 12px), 12px)',
+            background: 'rgba(24,15,38,0.55)',
+            borderLeft: '2px solid rgba(168,85,247,0.7)',
+            clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 100%, 0 100%)',
+          }}
+          aria-label="更新情報を開く"
+        >
+          NEWS
+        </button>
       )}
 
       {/* 本物ローディング(START後・暗転の前に素材完了を待つ) */}
