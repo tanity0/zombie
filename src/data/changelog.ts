@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4226',
+    items: ['ゲーム内容の変更はありません。'],
+  },
+  {
     version: '0.25.4225',
     items: ['ズーム中の遠近の試作(切り替えを入れた時だけ)を作り直しました。端末によって止まった1枚絵が重なっていたのを、爆発の明暗と同じ経路で毎フレーム歪める形に。'],
   },
