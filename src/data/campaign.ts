@@ -645,7 +645,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
     gear: 'ショットガン ＋ ハチェット',
     skillKey: 'heavy-grenade',
     skillDesc: '前方へ手榴弾を転がし、着弾で小範囲を爆破',
-    charSkillDesc: '同一攻撃で2体以上に当てると、3秒間すべての爆発範囲が10%広がる',
+    charSkillDesc: '複数を一度に巻き込むと、少しの間、爆発が広がる',
     portraitNudgeY: 2.7,
     profile: '近距離での制圧を得意とする重火力兵。群れに飛び込み、退路をこじ開ける。',
   },
@@ -660,7 +660,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
     // 社長指摘v0.25.3270: 実装は共通速度ランプ(src/utils/speedRamp.ts・RAMP_FULL_MS=1500msで満額・
     // 75°以上の方向転換でリセット)に統合済みで、「3秒しきい値・止まると解除のみ」は旧文面のまま
     // 残っていた(効果コードは無改変・説明文のみ修正)。
-    charSkillDesc: '移動を続けるとだんだん加速し、最大20%アップ。停止や急な方向転換でリセット',
+    charSkillDesc: '走り続けるほど足が速くなる。止まるか、急に向きを変えると元に戻る',
     portraitNudgeY: 0,
     profile: '一撃の精度を信条とする狙撃手。トラップで戦場を区切り、確実に仕留める。',
   },
@@ -672,7 +672,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
     gear: 'ハンドガン ＋ ファイティングナイフ',
     skillKey: 'striker-hunting',
     skillDesc: '近接の間合いを広げる狩猟術(チャージで強化)',
-    charSkillDesc: '弾が切れた状態だと、近接攻撃力が1.5倍になる',
+    charSkillDesc: '弾切れの間は、近接の一撃が鋭くなる',
     portraitNudgeY: 0,
     profile: '接近戦に長けた前衛。狩猟術で間合いを支配し、変異体を捌き続ける。',
   },
@@ -684,7 +684,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
     gear: 'ハンドガン ＋ ハチェット',
     skillKey: 'striker-quick-mag',
     skillDesc: 'クイックリロードでマガジンを即装填',
-    charSkillDesc: '弾薬を拾うと、3秒間銃のダメージが10%アップする',
+    charSkillDesc: '弾薬を拾った直後は、銃の威力が上がる',
     portraitNudgeY: 0.7,
     profile: '物資の確保と継戦に強い拾い屋。素早い再装填で火力を切らさない。',
   },
