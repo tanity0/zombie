@@ -758,7 +758,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <div className="ds-glabel menu-item-in" style={{ animationDelay: '200ms' }}>RECORDS ── 記録</div>
             {dsRow('資料室', 'ARCHIVE', '記録・変異体資料', goArchive, 225, unreadArchiveCount > 0 ? 'NEW' : undefined)}
             {dsRow('守護霊', 'GUARDIANS', '名前・討伐記録', goGhost, 250)}
-            {dsRow('変異体対策室', 'DRILLS', 'ボス再戦・練習', goBossRush, 275)}
+            {dsRow('変異体対策室', 'DRILLS', 'ボス再戦・演習', goBossRush, 275)}
           </NoBounceScroller>
           <div className="ds-foot menu-item-in" style={{ animationDelay: '300ms' }}>
             <button
@@ -2540,11 +2540,11 @@ const SkillGacha: React.FC = () => {
         <span className={cant10 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost10)}</span>
       </div>
       <div className="mt-2 flex items-center justify-between rounded-none bg-black/20 px-2 py-1 text-[10px]">
-        <span className="text-fuchsia-100/80">{RARITY_LABEL.super}の出る率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
-        <span className="text-white/55">{pityLeft > 0 ? `確定まで あと ${pityLeft}` : `次は${RARITY_LABEL.super}確定`}</span>
+        <span className="text-fuchsia-100/80">{RARITY_LABEL.super}の確率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
+        <span className="text-white/55">{pityLeft > 0 ? `確定まであと${pityLeft}回` : `次は${RARITY_LABEL.super}確定`}</span>
       </div>
       <p className="mt-2 text-[10px] leading-snug text-white/50">
-        外すほど{RARITY_LABEL.super}に近づき、同じ物が出るほど上のLvに寄る。無駄になった分は返金。習得 {ownedCount}/{OBTAINABLE_SKILL_KEYS.length}
+        外すほど{RARITY_LABEL.super}に近づき、同じ物が出るほど上のLvに寄る。被ってLvが上がらなければ返金。習得 {ownedCount}/{OBTAINABLE_SKILL_KEYS.length}
       </p>
     </div>
   );
@@ -2621,7 +2621,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <button key={skillKey} type="button" disabled={maxed || cantPay}
               onClick={() => { if (!maxed && spendGold(cost)) { playSfx('ui-select'); setPurchasedSubLevel(skillKey, Math.min(3, level + 1)); } }}
               className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${maxed ? 'is-on' : ''} ${cantPay ? 'opacity-60' : ''}`}>
-              <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">{level === 0 ? subWeaponBlurb(skillKey) : `商人の陳列上限 Lv${level} → Lv${Math.min(3, level + 1)}`}</span></span>
+              <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">{level === 0 ? subWeaponBlurb(skillKey) : `商人にLv${Math.min(3, level + 1)}が並ぶようになる`}</span></span>
               <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'text-rose-300' : 'text-amber-200'}`}>{maxed ? 'MAX' : `${cost}G`}</span>
             </button>
           );
@@ -2707,7 +2707,7 @@ const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 className={`flex w-full items-center justify-between gap-2 text-left transition-[filter] active:brightness-110 ${cantPay ? 'opacity-60' : ''}`}>
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] font-semibold">{def.label} <span className="text-white/45">{cumLabel}（{def.perLevelLabel}/段）</span></span>
-                  <span className="block text-[11px] text-white/50">{def.desc} — {cur.bought}/{PLAYER_UPGRADE_MAX_LEVEL}段</span>
+                  <span className="block text-[11px] text-white/50">{def.desc}・{cur.bought}/{PLAYER_UPGRADE_MAX_LEVEL}段</span>
                 </span>
                 <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'text-rose-300' : 'text-amber-200'}`}>{maxed ? 'MAX' : `${cost}G`}</span>
               </button>

@@ -212,7 +212,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
     <section className="overflow-hidden border border-purple-200/10 bg-[#090b13]/80 shadow-[0_16px_50px_rgba(0,0,0,0.3)]">
       <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.025] px-3 py-2">
         <div>
-          <div className="text-[9px] font-semibold tracking-[0.24em] text-purple-200/60">RECORDS</div>
+          <div className="text-[9px] font-semibold tracking-[0.24em] text-purple-200/60">KILL RECORDS</div>
           <div className="text-[10px] text-white/40">討伐記録コレクション</div>
         </div>
         <div className="text-right">

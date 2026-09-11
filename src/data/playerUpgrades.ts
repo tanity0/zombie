@@ -42,8 +42,8 @@ export const PLAYER_UPGRADES: readonly PlayerUpgradeDef[] = [
   { id: 'attack', label: '攻撃力',     perLevel: 0.04, perLevelLabel: '+4%',  desc: '同じ弾数で、相手が早く倒れる' },
   { id: 'ammo',   label: '弾数',       perLevel: 0.05, perLevelLabel: '+5%',  desc: '弾切れが遠くなる' },
   // 経験値効率(社長指示v0.25.3679「強化項目に経験値効率も追加。10%ずつ」)。
-  { id: 'xp',     label: '経験値効率',   perLevel: 0.10, perLevelLabel: '+10%', desc: '出撃中の育ちが早い' },
-  { id: 'gold',   label: 'ゴールド獲得', perLevel: 0.10, perLevelLabel: '+10%', desc: '同じ戦果で持ち帰る金が増える' },
+  { id: 'xp',     label: '経験値効率',   perLevel: 0.10, perLevelLabel: '+10%', desc: '出撃中のレベルが速く上がる' },
+  { id: 'gold',   label: 'ゴールド獲得', perLevel: 0.10, perLevelLabel: '+10%', desc: '同じ戦果で持ち帰るGが増える' },
 ];
 
 /** 系統idの一覧(表示順=台帳順)。 */
