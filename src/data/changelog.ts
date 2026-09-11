@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4236',
+    items: ['一時停止の右側から護衛の人数を外し、いま持っている銃と近接、スキル、サブウェポンの一覧を出すようにした。'],
+  },
+  {
     version: '0.25.4235',
     items: ['作戦室の地図の下に並んでいた部隊の姿をなくした。'],
   },

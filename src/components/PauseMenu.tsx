@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
-import { useGameStore } from '../store/gameStore';
-import { CHARACTER_CLASSES } from '../data/campaign';
+import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
+import { CHARACTER_CLASSES, SKILLS, skillDescForLevel } from '../data/campaign';
+import { subWeaponBlurb } from '../data/subWeaponBlurbs';
 import { formatTime } from '../utils/renderUtils';
 
 interface PauseMenuProps {
@@ -30,7 +31,23 @@ const readPauseSnapshot = () => {
     playerName: classInfo?.name ?? 'プレイヤー',
     playerHealth: s.player.health,
     playerMaxHealth: Math.max(1, s.player.maxHealth),
-    escortCount: s.escorts.length,
+    // 装備(社長指示v0.25.4236「護衛はいらない。代わりに装備とスキル一覧とサブウェポン情報」): 値は開いた時の1回読み。
+    guns: s.player.weapons.filter(w => !w.isMelee).map(w => ({ id: w.id, name: w.name, active: w.id === s.player.activeWeaponId })),
+    melee: s.player.weapons.find(w => w.isMelee)?.name ?? null,
+    classSkillName: classInfo?.name ?? '',
+    classSkillDesc: classInfo?.charSkillDesc ?? '',
+    // スキル=この出撃で積んだ受動スキル(runBuild)と現在Lv。説明は現在Lvに即した既存の文(skillDescForLevel)。
+    skills: s.runBuild.map(k => ({ key: k, name: SKILLS[k].name, level: s.player.skillLevels?.[k] ?? 1 })),
+    // サブウェポン=HUDと同じ並び(村雨を持っていれば刀は出さない=同一系統)。
+    subWeapons: s.player.subWeapons
+      .filter(k => !(k === 'katana' && s.player.subWeapons.includes('murasame')))
+      .map(k => {
+        // 一言: 職の固有サブ(例: ヘビーガンナーの手榴弾)は職データの説明、それ以外は棚の台帳。台帳に無い物は説明を出さない
+        // (台帳の既定値「未解放」は棚の空き枡用の語で、装備中の物には当たらない)。
+        const b = subWeaponBlurb(k);
+        const blurb = classInfo?.skillKey === k ? classInfo.skillDesc : (b === '未解放' ? '' : b);
+        return { key: k, name: subWeaponDisplayName(k), level: s.player.subWeaponLevels[k] ?? 1, blurb };
+      }),
   };
 };
 
@@ -86,7 +103,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
           <div className="block bg-white/10" />
 
           {/* 右: 戦況(開いた時点の値・1回読み)。 */}
-          <div className="min-w-0 flex flex-col gap-3 text-[11px]">
+          <div className="min-w-0 flex flex-col gap-3 text-[11px] max-h-[78vh] overflow-y-auto no-scrollbar">
             <div className="flex items-center justify-between">
               <span className="tracking-[0.16em] text-white/35">経過時間</span>
               <span className="text-[20px] font-semibold tabular-nums text-white/90">{formatTime(snap.gameTimeSec)}</span>
@@ -107,7 +124,6 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
             )}
 
             <div>
-              <div className="mb-1.5 tracking-[0.16em] text-white/35">部隊</div>
               <div className="flex items-center justify-between text-white/75">
                 <span>{snap.playerName}</span>
                 <span className="text-[10px] tabular-nums text-white/45">{Math.round(snap.playerHealth)}/{Math.round(snap.playerMaxHealth)}</span>
@@ -115,9 +131,65 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
               <div className="mt-1 h-1 w-full bg-white/10">
                 <div className="h-full bg-[var(--menu-accent,#ffb340)]" style={{ width: `${hpFrac * 100}%` }} />
               </div>
-              {snap.escortCount > 0 && (
-                <div className="mt-1.5 text-[10px] text-white/40">護衛 {snap.escortCount}名</div>
-              )}
+            </div>
+
+            {/* 装備: 銃(●=いま手にしている)と近接。名前だけ・数値は出さない(HUDの弾数と二重にしない)。 */}
+            <div>
+              <div className="mb-1 tracking-[0.16em] text-white/35">装備</div>
+              <div className="flex flex-col gap-0.5">
+                {snap.guns.map(g => (
+                  <div key={g.id} className={`flex items-center gap-1.5 ${g.active ? 'text-white/90' : 'text-white/50'}`}>
+                    <span className={`inline-block h-1.5 w-1.5 ${g.active ? 'bg-[var(--menu-accent,#ffb340)]' : 'bg-white/15'}`} />
+                    <span className="truncate">{g.name}</span>
+                  </div>
+                ))}
+                {snap.melee && (
+                  <div className="flex items-center gap-1.5 text-white/50">
+                    <span className="inline-block h-1.5 w-1.5 bg-white/15" />
+                    <span className="truncate">{snap.melee}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* スキル: キャラ固有(職名そのまま・常時有効)+この出撃で積んだ受動スキルと現在Lv。 */}
+            <div>
+              <div className="mb-1 tracking-[0.16em] text-white/35">スキル</div>
+              <div className="flex flex-col gap-1.5">
+                {snap.classSkillDesc && (
+                  <div>
+                    <div className="text-white/85">{snap.classSkillName}</div>
+                    <div className="text-[10px] leading-snug text-white/45">{snap.classSkillDesc}</div>
+                  </div>
+                )}
+                {snap.skills.map(sk => (
+                  <div key={sk.key}>
+                    <div className="flex items-center justify-between text-white/85">
+                      <span className="truncate">{sk.name}</span>
+                      <span className="text-[10px] tabular-nums text-white/45">Lv{sk.level}</span>
+                    </div>
+                    <div className="text-[10px] leading-snug text-white/45">{skillDescForLevel(sk.key, sk.level)}</div>
+                  </div>
+                ))}
+                {snap.skills.length === 0 && !snap.classSkillDesc && <div className="text-white/40">なし</div>}
+              </div>
+            </div>
+
+            {/* サブウェポン: 名前・Lv・一言(棚と同じ台帳 subWeaponBlurbs)。 */}
+            <div>
+              <div className="mb-1 tracking-[0.16em] text-white/35">サブウェポン</div>
+              <div className="flex flex-col gap-1.5">
+                {snap.subWeapons.map(sw => (
+                  <div key={sw.key}>
+                    <div className="flex items-center justify-between text-white/85">
+                      <span className="truncate text-purple-200/90">{sw.name}</span>
+                      <span className="text-[10px] tabular-nums text-white/45">Lv{sw.level}</span>
+                    </div>
+                    {sw.blurb && <div className="text-[10px] leading-snug text-white/45">{sw.blurb}</div>}
+                  </div>
+                ))}
+                {snap.subWeapons.length === 0 && <div className="text-white/40">なし</div>}
+              </div>
             </div>
           </div>
         </div>
