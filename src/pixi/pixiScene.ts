@@ -1409,6 +1409,13 @@ const BURN_FLASH_PERIOD_MS = 520;
 const ICE_FLASH_TINT = 0x7fd4ff; // 氷鈍化中の薄い水色(v0.25.3276・α/周期は延焼と共通)
 // 徒歩を自然に見せる二次モーション(3コマの上に重ねる・視覚のみ・判定不変)。
 const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動
+// 進行方向への前傾(社長相談2026-09-11「移動の時に少し進行方向に斜めに」の試作・視覚のみ・判定不変)。
+// 世界(床/遠景)は一切傾けない=継ぎ目・タイルの隙間が出ない。傾くのはプレイヤー本体スプライトだけ
+// (足元支点)。速度(store の vx)に比例し、時定数 tau で慣性をつける(急発進で徐々に倒れ、止まると戻る)。
+// ★既定0=OFF(見え方は従来どおり)。実機で `?lean=0.10` 等で試す。`?leantau=` で慣性の重さ。
+const PLAYER_MOVE_LEAN_RAD = Math.max(0, Math.min(0.5, tsNum('lean', 0)));
+const PLAYER_MOVE_LEAN_TAU = Math.max(0.03, tsNum('leantau', 0.18)); // 秒。倒れる/戻る時定数
+const PLAYER_MOVE_LEAN_SPEED_REF = 140;                                  // この横速度(px/s)で最大傾き
 const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するスカッシュ量
 // 行動の二次モーション(歩きと同じく静止スプライトに重ねる連続変形・視覚のみ・判定不変)。
 // すべて scale倍率/回転加算/足元基準の画面pxオフセット。当たり判定・射程・速度には一切不干渉。
@@ -3300,6 +3307,8 @@ export class PixiScene {
   private thrownBagViews = new Map<string, Sprite>();
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
+  private moveLeanNow = 0;       // 進行方向への前傾(rad)。慣性つきで target へ追従
+  private moveLeanLastNow = 0;   // 前フレームの now(dt 算出用)
   // 分身(サブウェポン): 持ち主と同じ立ち絵を白黒キャッシュで描く足元アンカーのスプライト+
   // 斬撃モーション(本体と同じナイフ振り3コマ+装備近接の実絵)。actorLayer に置き zIndex で前後ソート。
   // v0.25.2541(§2.11追補「分身は主語ごとに1体」): **同じ一式を主語ごとに1組**持つ
@@ -15251,6 +15260,17 @@ export class PixiScene {
     const bob = walking && PLAYER_MOTION_FX ? Math.abs(step) * PLAYER_WALK_BOB_PX * this.depthScale(fb.footY) : 0;
     // 徒歩の自然化(3コマの上に重ねる連続モーション・視覚のみ): 接地(lift=0)で縦に潰れて横に広がり、
     // 遊脚の最高点(lift=1)で縦に伸びて横が締まる(スカッシュ&ストレッチ)＋足元支点の左右リーン(体重移動)。
+    // 進行方向への前傾(?lean=)。横速度だけを見る(縦移動は2Dの正面絵では傾きとして読めない)。
+    // rotation 正=時計回り=頭が右へ倒れる。足元支点(anchor 0.5,1)なので右へ走ると右へ前傾する。
+    {
+      const dtLean = this.moveLeanLastNow ? Math.min(0.1, (now - this.moveLeanLastNow) / 1000) : 0;
+      this.moveLeanLastNow = now;
+      const target = PLAYER_MOVE_LEAN_RAD > 0 && PLAYER_MOTION_FX
+        ? Math.max(-1, Math.min(1, (p.vx ?? 0) / PLAYER_MOVE_LEAN_SPEED_REF)) * PLAYER_MOVE_LEAN_RAD
+        : 0;
+      const k = 1 - Math.exp(-dtLean / PLAYER_MOVE_LEAN_TAU); // 慣性(MUST): 指数追従=倒れ始めも戻りも滑らか
+      this.moveLeanNow += (target - this.moveLeanNow) * k;
+    }
     let walkSqX = 1, walkSqY = 1, walkLean = 0;
     if (walking && PLAYER_MOTION_FX) {
       const lift = Math.abs(step); // 0=接地 / 1=遊脚中(最高点)
@@ -15480,7 +15500,7 @@ export class PixiScene {
         ? killPose.faceLeft
         : (p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0));
       view.sprite.scale.set((flip ? -sc : sc) * introSqX * walkSqX * actSqX, sc * introSqY * walkSqY * actSqY);
-      view.sprite.rotation = walkLean + actLean;
+      view.sprite.rotation = walkLean + actLean + this.moveLeanNow;
     }
     // ノックバック中の小さな跳ね(社長指示・敵と共通): knockbackUntil から進行度を逆算し sin の1山。
     const pKbHop = (p.knockbackUntil !== undefined && now < p.knockbackUntil)
@@ -15528,7 +15548,7 @@ export class PixiScene {
       kb.texture = katanaTex;
       kb.visible = true;
       kb.scale.set((flip ? -1 : 1) * sc, sc);
-      kb.rotation = KATANA_BACK_IMG_ROT + actLean; // 行動の二次モーションに本体と同じく追従
+      kb.rotation = KATANA_BACK_IMG_ROT + actLean + this.moveLeanNow; // 行動の二次モーション+前傾に本体と同じく追従
       kb.position.set(
         this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
         this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY - h * 0.55,
@@ -15604,7 +15624,7 @@ export class PixiScene {
       const upFrac = PLAYER_FIRSTAID_BAG_UP_FRAC * (0.82 + 0.18 * appear); // 下から持ち上げる感
       fab.visible = true;
       fab.scale.set((flip ? -1 : 1) * sc, sc);
-      fab.rotation = actLean * 0.5; // 本体の二次モーションへ軽く追従
+      fab.rotation = actLean * 0.5 + this.moveLeanNow; // 本体の二次モーションへ軽く追従(前傾は同量)
       fab.position.set(
         this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX + fwd,
         this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY - upFrac * fb.boxH * dsc,

@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4216',
+    items: ['ゲームの見え方は変わりません(走る向きへ体を傾ける試作を、切り替えを入れた時だけ出る形で追加)。'],
+  },
+  {
     version: '0.25.4215',
     items: [
       'ボス練習のヒントを手直し。アクラシエルの棘の隙間は毎回違う場所に開く、スカジの手数は二度変わる、と実際どおりに。',
