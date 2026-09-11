@@ -34,7 +34,7 @@ const RescueBasesGatePill: React.FC = () => {
       className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums"
       style={{ color: '#facc15' }}
     >
-      {`[拠点確保 ${n}/${basesRequired}]`}
+      {`拠点確保 ${n}/${basesRequired}`}
     </div>
   );
 };

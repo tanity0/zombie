@@ -196,7 +196,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
   return (
     <div className="p-3 space-y-3">
       <div className="flex items-center justify-between px-1">
-        <p className="text-[11px] text-white/40">一度戦ったことのあるボスと、何度でも練習できます。</p>
+        <p className="text-[11px] text-white/40">討伐済みの個体のみ</p>
         <span className="shrink-0 text-[12px] font-semibold tabular-nums text-white/70">
           {unlockedCount}<span className="text-white/30"> / {PRACTICE_SLOTS.length}</span>
         </span>

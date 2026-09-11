@@ -91,7 +91,7 @@ const IntroDialogue: React.FC = () => {
       className="pointer-events-auto absolute z-50 rounded-full border border-white/25 bg-black/55 px-4 py-2 text-[11px] font-bold tracking-[0.22em] text-white/80 shadow-lg backdrop-blur-sm active:bg-black/75"
       style={{ right: 'max(env(safe-area-inset-right), 16px)', bottom: 'max(calc(env(safe-area-inset-bottom) + 16px), 20px)' }}
     >
-      SKIP ▶▶
+      スキップ
     </button>
   );
 
@@ -146,7 +146,7 @@ const IntroDialogue: React.FC = () => {
           }
           return (
             <p key={i} className="text-lg leading-relaxed text-cyan-100">
-              <span className="mr-2 align-middle text-xs font-bold tracking-widest text-cyan-400">▶ 通信</span>
+              <span className="mr-2 align-middle text-xs font-bold tracking-widest text-cyan-400">通信</span>
               {l.text}{cursor && <span className="opacity-70">▌</span>}
             </p>
           );

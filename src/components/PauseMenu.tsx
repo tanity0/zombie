@@ -7,6 +7,11 @@ interface PauseMenuProps {
   onQuit: () => void;
 }
 
+// キーボード案内は、キーボードのある端末だけに出す(縦持ちスマホに「ESC / P」を出さない)。
+const hasFinePointer = (): boolean => {
+  try { return typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches; } catch { return false; }
+};
+
 const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
   // Ensure pause menu handles events correctly
   useEffect(() => {
@@ -44,9 +49,9 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
           <Ff7rButton onClick={() => { playSfx('ui-select'); onQuit(); }} className="w-full" fade="both" paddingY="0.8rem">
             メニューに戻る
           </Ff7rButton>
-          <p className="mt-1 text-[11px] text-white/50 text-center">
-            ESC / P キーでも再開できます
-          </p>
+          {hasFinePointer() && <p className="mt-1 text-[11px] text-white/50 text-center">
+            ESC / P でも再開
+          </p>}
         </div>
       </div>
     </div>

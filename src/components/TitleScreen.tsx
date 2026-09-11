@@ -401,7 +401,6 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
             START
           </span>
           <span className="h-[1px] w-28 sm:w-40" style={{ background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.7), transparent)' }} />
-          <span className="mt-4 text-[11px] tracking-[0.34em] text-white/50">画面をタップして開始</span>
         </div>
       )}
 

@@ -60,7 +60,7 @@ const ammoLabel: Record<AmmoType, string> = {
   handgun: 'ハンドガン弾',
   shotgun: 'ショットガン弾',
   rifle: 'ライフル弾',
-  phill: 'ＰＨＩＬＬ弾',
+  phill: 'PHILL弾',
   glauncher: 'ライフル弾' // グレネードガンはライフル弾共用(v0.25.3290)
 };
 
@@ -159,7 +159,7 @@ const ShopMenu: React.FC = () => {
   const entries: (ShopEntry | SkillShopEntry)[] = [
     ...(labTheme ? [{
       key: 'buy-phill' as const,
-      name: 'ＰＨＩＬＬ-銃',
+      name: 'PHILLガン',
       description: hasPhillGun ? '所持済み' : '無料配布・ヘッドショット対応',
       cost: 0,
       disabled: hasPhillGun,

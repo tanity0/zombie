@@ -166,6 +166,7 @@ import {
 import BossRush from './BossRush'; // BOSS_MAKER.md §20: ボスラッシュ(練習モード)
 // research/GROWTH.md v4(永続育成「強化」): 台帳=data、価格/上限の判定=utils。効果の適用はresetGame。
 import { PLAYER_UPGRADES, PLAYER_UPGRADE_MAX_LEVEL } from '../data/playerUpgrades';
+import { subWeaponBlurb } from '../data/subWeaponBlurbs';
 import { playerUpgradeCost, growthScoreMult } from '../utils/playerUpgrades';
 import type { PracticeSlot } from '../utils/bossPractice';
 
@@ -730,7 +731,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             短い可視域(iPhone SE級・監査B-6)でも動くのはリストだけ。入り=menu-item-inカスケード(監査B-7)。 */}
         <div className="flex h-full w-full flex-col" style={{ padding: '10px 12px' }}>
           <div className="ds-top menu-item-in" style={{ animationDelay: '0ms' }}>
-            <span className="ds-top-big">OPERATION ROOM</span>
+            <span className="ds-top-big">OPERATIONS ROOM</span>
             {/* 実データが引ける物だけ実値(§3-0): G=goldBalance。RANK等の嘘の数字は出さない。 */}
             <span>G <span className="ds-top-v">{goldBalance.toLocaleString()}</span></span>
           </div>
@@ -757,7 +758,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <div className="ds-glabel menu-item-in" style={{ animationDelay: '200ms' }}>RECORDS ── 記録</div>
             {dsRow('資料室', 'ARCHIVE', '記録・変異体資料', goArchive, 225, unreadArchiveCount > 0 ? 'NEW' : undefined)}
             {dsRow('守護霊', 'GUARDIANS', '名前・討伐記録', goGhost, 250)}
-            {dsRow('変異体対策室', 'BESTIARY OPS', 'ボス再戦・練習', goBossRush, 275)}
+            {dsRow('変異体対策室', 'DRILLS', 'ボス再戦・練習', goBossRush, 275)}
           </NoBounceScroller>
           <div className="ds-foot menu-item-in" style={{ animationDelay: '300ms' }}>
             <button
@@ -993,7 +994,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                             fade="both"
                             paddingY="0.55rem"
                           >
-                            ▶ 再訪の詳細へ
+                            再訪の詳細へ
                           </Ff7rButton>
                         )}
                       </div>
@@ -1019,7 +1020,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             fade="both"
             paddingY="0.8rem"
           >
-            ▶ ジョブ選択
+            ジョブ選択
           </Ff7rButton>
         </div>
       </div>
@@ -1102,7 +1103,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               fade="both"
               paddingY="0.8rem"
             >
-              ▶ START
+              START
             </Ff7rButton>
           </div>
 
@@ -1279,10 +1280,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <>
         {DS_LOADOUT_PREVIEW ? (
           <header className="ds-loadout-header">
-            <button type="button" className="ds-loadout-back" onClick={() => setScreen({ name: 'home' })}>← 戻る</button>
+            <button type="button" className="ds-loadout-back" onClick={() => setScreen({ name: 'home' })}>戻る</button>
             <div><h1>装備 <span>LOADOUT</span></h1><p>全作戦共通 · 自動保存</p></div>
           </header>
-        ) : <Header title="装備" subtitle="全作戦共通。サブウェポンを選択（自動保存）" onBack={() => setScreen({ name: 'home' })} />}
+        ) : <Header title="装備" subtitle="全作戦共通" onBack={() => setScreen({ name: 'home' })} />}
         <LoadoutBody>
         {COMMAND_UI_ENABLED && <nav className="development-tabs loadout-tabs" aria-label="装備内容">
           {([['guns', '銃'], ['subs', 'サブウェポン'], ['avatar', 'アバター'], ['skills', '取得済みスキル']] as const).map(([id, label]) =>
@@ -1387,7 +1388,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           </div>
           {/* アバター(試験・第1弾)。トグル選択式(なし/猫耳セット)。見た目は既存の装備欄に合わせる=磨き込み不要(試験機能)。 */}
           <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'avatar'}>
-            <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-sky-200/70">アバター（試験）</div>
+            <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-sky-200/70">アバター</div>
             <div className="menu-stagger grid grid-cols-2 gap-2">
               {([null, ...AVATAR_IDS] as (AvatarId | null)[]).map(id => {
                 const on = avatarId === id;
@@ -1715,7 +1716,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // useGameLoop のモジュールロード時定数なので React 遷移では効かない・BOSS_MAKER.md §20-7)。
   const renderBossRush = () => (
     <>
-      <Header title="変異体対策室" subtitle="練習 / 記録には残りません" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
+      <Header title="変異体対策室" subtitle="演習。記録には残らない" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
       <BossRush
         clearedSlotKeys={new Set(ghostAlbum.map(card => card.slotKey))}
         onStartPractice={onStartPractice}
@@ -1895,8 +1896,7 @@ const GraphicsSettings: React.FC = () => {
         <Sparkles size={17} />ブルーム(発光){bloom ? 'あり' : 'なし'}
       </button>
       <p className="text-[11px] leading-relaxed text-white/45">
-        光・炎・宝石などをにじませて発光させる演出。華やかになる反面、実機では最も重い処理。
-        カクつく時はOFFにすると軽くなります(リロード不要)。
+        光をにじませる演出。重い端末ではOFFに。
       </p>
     </Section>
   );
@@ -2465,7 +2465,7 @@ const SkillGacha: React.FC = () => {
           onClick={(e) => { e.stopPropagation(); setPendingCount(null); setNoGold(false); }}
           className="absolute left-4 top-4 z-10 rounded-none bg-black/40 px-3 py-1.5 text-[13px] font-semibold text-white/85 active:bg-black/60"
         >
-          ‹ 戻る
+          戻る
         </button>
 
         {/* 的＋「撃つ」を画像中央に重ねる。クリックは下の画面全体へ通す(pointer-events-none)。 */}
@@ -2494,7 +2494,7 @@ const SkillGacha: React.FC = () => {
       {/* 画像の上にタイトル */}
       <div className="flex items-center justify-between px-0.5 mb-2">
         <span className="text-[13px] font-bold text-fuchsia-100">スキル強化訓練</span>
-        <span className="text-[12px] text-amber-200 font-semibold">所持ゴールド {goldBalance.toLocaleString()}</span>
+        <span className="text-[12px] text-amber-200 font-semibold">開発資金 {goldBalance.toLocaleString()} G</span>
       </div>
       {/* 射撃練習場の横長バナー */}
       <div className="relative mb-3 overflow-hidden rounded-none" style={{ aspectRatio: '16 / 7' }}>
@@ -2519,7 +2519,7 @@ const SkillGacha: React.FC = () => {
               : ' bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
           }`}
         >
-          1回訓練
+          1回だけ
         </button>
         <button
           type="button"
@@ -2531,7 +2531,7 @@ const SkillGacha: React.FC = () => {
               : ' bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
           }`}
         >
-          10回訓練
+          10回まとめて
         </button>
       </div>
       {/* ボタンの下に金額表示 */}
@@ -2540,11 +2540,11 @@ const SkillGacha: React.FC = () => {
         <span className={cant10 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost10)}</span>
       </div>
       <div className="mt-2 flex items-center justify-between rounded-none bg-black/20 px-2 py-1 text-[10px]">
-        <span className="text-fuchsia-100/80">現在の{RARITY_LABEL.super}確率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
-        <span className="text-white/55">{pityLeft > 0 ? `天井まであと ${pityLeft}` : `天井(${RARITY_LABEL.super}最大)`}</span>
+        <span className="text-fuchsia-100/80">{RARITY_LABEL.super}の出る率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
+        <span className="text-white/55">{pityLeft > 0 ? `確定まで あと ${pityLeft}` : `次は${RARITY_LABEL.super}確定`}</span>
       </div>
       <p className="mt-2 text-[10px] leading-snug text-white/50">
-        引くほど超レアが出やすく、被るほど高Lvが出やすい。既存Lv以下/上限は返金。解禁済み {ownedCount}/{OBTAINABLE_SKILL_KEYS.length}
+        外すほど{RARITY_LABEL.super}に近づき、同じ物が出るほど上のLvに寄る。無駄になった分は返金。習得 {ownedCount}/{OBTAINABLE_SKILL_KEYS.length}
       </p>
     </div>
   );
@@ -2621,7 +2621,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <button key={skillKey} type="button" disabled={maxed || cantPay}
               onClick={() => { if (!maxed && spendGold(cost)) { playSfx('ui-select'); setPurchasedSubLevel(skillKey, Math.min(3, level + 1)); } }}
               className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${maxed ? 'is-on' : ''} ${cantPay ? 'opacity-60' : ''}`}>
-              <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">{level === 0 ? '解放して装備可能に' : `商人の陳列上限 Lv${level} → Lv${Math.min(3, level + 1)}`}</span></span>
+              <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">{level === 0 ? subWeaponBlurb(skillKey) : `商人の陳列上限 Lv${level} → Lv${Math.min(3, level + 1)}`}</span></span>
               <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'text-rose-300' : 'text-amber-200'}`}>{maxed ? 'MAX' : `${cost}G`}</span>
             </button>
           );
@@ -2638,7 +2638,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           購入すると markWeaponUnlocked で「購入済み」台帳へ移り、棚から消える(装備設定で選べるようになる)。 */}
       {orderedGunShelfKeys.length > 0 && (
         <div className="menu-stagger px-3 pb-3 space-y-1.5">
-          <div className="px-1 text-[11px] uppercase tracking-widest text-orange-200/70">銃スロット（設計図/店売り）</div>
+          <div className="px-1 text-[11px] uppercase tracking-widest text-orange-200/70">銃スロット</div>
           <div className="development-weapon-list grid grid-cols-2 gap-2">
             {visibleShelfKeys.map(key => {
               const cat = SLOT_CATEGORIES.find(c => SLOT_TIERS.some(t => SLOT_CANDIDATES[c][t].includes(key)))!;
@@ -2680,7 +2680,7 @@ const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const setPlayerUpgradeActive = useGameStore(s => s.setPlayerUpgradeActive);
   return (
     <>
-      <Header title="強化" subtitle="有効段数の変更は次の出撃から反映されます" onBack={onBack} />
+      <Header title="強化" subtitle="次の出撃から反映" onBack={onBack} />
       {/* スコア補正の現在値(社長指示2026-08-20「マイナスになるスコアも表示」)。リザルトの
           「強化補正 ×0.xx」と同じ値=有効メーターに応じて growthScoreMult をその場で再計算。 */}
       <div className="px-3 pb-1 flex items-center justify-between text-[11px] tabular-nums">
@@ -2707,7 +2707,7 @@ const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 className={`flex w-full items-center justify-between gap-2 text-left transition-[filter] active:brightness-110 ${cantPay ? 'opacity-60' : ''}`}>
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] font-semibold">{def.label} <span className="text-white/45">{cumLabel}（{def.perLevelLabel}/段）</span></span>
-                  <span className="block text-[11px] text-white/50">{def.desc}（購入 {cur.bought}/{PLAYER_UPGRADE_MAX_LEVEL}）</span>
+                  <span className="block text-[11px] text-white/50">{def.desc} — {cur.bought}/{PLAYER_UPGRADE_MAX_LEVEL}段</span>
                 </span>
                 <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'text-rose-300' : 'text-amber-200'}`}>{maxed ? 'MAX' : `${cost}G`}</span>
               </button>

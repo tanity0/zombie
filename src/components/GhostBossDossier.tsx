@@ -122,10 +122,10 @@ const LockedDossier: React.FC<{ cleared: number; total: number }> = ({ cleared, 
   <div className="ghost-dossier-enter relative flex min-h-full flex-col items-center justify-center overflow-hidden px-5 py-12 text-center">
     <div className="pointer-events-none absolute inset-0 opacity-50" style={{ background: 'radial-gradient(circle at 50% 38%, rgba(168,85,247,0.18), transparent 42%)' }} />
     <div className="relative flex h-24 w-24 items-center justify-center border border-purple-200/15 bg-black/30 text-5xl font-black text-purple-100/30 shadow-[0_0_36px_rgba(168,85,247,0.1)]">?</div>
-    <div className="relative mt-5 text-[9px] font-semibold tracking-[0.32em] text-purple-200/40">UNREGISTERED TARGET</div>
+    <div className="relative mt-5 text-[9px] font-semibold tracking-[0.32em] text-purple-200/40">NO RECORD</div>
     <h3 className="relative mt-2 text-[16px] font-semibold text-white/75">未討伐のボス</h3>
     <p className="relative mt-2 max-w-[240px] text-[11px] leading-relaxed text-white/40">
-      討伐すると、その時のキャラクターと戦闘記録がここに刻まれます。
+      討伐した者と、その戦いの記録がここに残る。
     </p>
     <div className="relative mt-6 h-1 w-36 overflow-hidden bg-white/5">
       <div className="h-full bg-purple-300/50" style={{ width: `${Math.round((cleared / total) * 100)}%` }} />
@@ -212,7 +212,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
     <section className="overflow-hidden border border-purple-200/10 bg-[#090b13]/80 shadow-[0_16px_50px_rgba(0,0,0,0.3)]">
       <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.025] px-3 py-2">
         <div>
-          <div className="text-[9px] font-semibold tracking-[0.24em] text-purple-200/60">GUARDIAN ARCHIVE</div>
+          <div className="text-[9px] font-semibold tracking-[0.24em] text-purple-200/60">RECORDS</div>
           <div className="text-[10px] text-white/40">討伐記録コレクション</div>
         </div>
         <div className="text-right">

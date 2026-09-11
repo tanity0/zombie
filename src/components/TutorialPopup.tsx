@@ -57,8 +57,8 @@ const SlideMedia: React.FC<{ slide: TutorialSlide }> = ({ slide }) => {
       <div className="absolute inset-x-[12%] top-1/2 h-px bg-purple-200/10" />
       <div className="absolute inset-y-[18%] left-1/2 w-px bg-purple-200/10" />
       <div className="relative text-center">
-        <div className="text-[9px] font-semibold tracking-[0.28em] text-purple-200/35">VIDEO GUIDE</div>
-        <div className="mt-1 text-[10px] text-white/30">映像素材 準備中</div>
+        <div className="text-[9px] font-semibold tracking-[0.28em] text-purple-200/35">NO FOOTAGE</div>
+        <div className="mt-1 text-[10px] text-white/30">記録映像なし</div>
       </div>
     </div>
   );
