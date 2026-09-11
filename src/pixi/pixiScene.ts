@@ -1514,6 +1514,12 @@ const invert3 = (m: number[]): number[] => {
           B * inv, (a * i - c * g) * inv, -(a * f - c * d) * inv,
           C * inv, -(a * h - b * g) * inv, (a * e - b * d) * inv];
 };
+/** 3×3(行優先)の積 a·b。 */
+const mul3 = (a: number[], b: number[]): number[] => {
+  const r = new Array<number>(9);
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) r[i * 3 + j] = a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j];
+  return r;
+};
 const ZWARP_GAIN = Math.max(0, Math.min(2, tsNum('zwarpk', 0.18)));        // (旧: ズーム速度→傾き。4227で未使用=`?zwarpmove=1` の時だけ移動連動へ戻す)
 const ZWARP_MOVE_LINK = tsBool('zwarpmove', false);                         // 旧挙動(ズームの速さ×進行方向)へ切り替える検証用
 const ZWARP_MAX = Math.max(0, Math.min(0.5, tsNum('zwarpmax', 0.22)));     // 傾きの最大(近い辺のはみ出し=画面比)。イベントの包絡線×これ
@@ -1531,6 +1537,16 @@ const ZWARP_BOT_FRAC = Math.max(0, tsNum('zwarpbot', 1.5));
 const ZWARP_MAG_REF = 1.0;
 // §4 傾きは寄りより先に抜ける(包絡線の冪。1.0=寄りと同じカーブ)。別の量が同じカーブで同時に消えるのは合成機械の癖
 const ZWARP_DECAY_POW = Math.max(0.5, tsNum('zwarppow', 1.6));
+// 社長裁定2026-09-11(クリエイティブ監査の戻し):
+// §6「傾きは先にほどく」: 傾きは寄りのホールドを待たず自分の時計でほどける。イベント開始から HOLD_MS 保持→RELEASE_MS で 0 へ
+//(死亡の1.15秒ホールドでも傾いた床が静止して見えない。KILL(700ms)では従来とほぼ同じ尺)。
+const ZWARP_TILT_HOLD_MS = Math.max(0, tsNum('zwarphold_ms', 150));
+const ZWARP_TILT_RELEASE_MS = Math.max(50, tsNum('zwarprel', 450));
+// §8「奥の辺も縮める」: 総量 k のうち奥側 FAR_FRAC を縮め、近側 (1−FAR_FRAC) を膨らませる=対象へ引き込まれる動き。
+// 奥側が縮むと縁の外の絵が要るので、フィルタの枠(filterArea)を縦に縮みぶんだけ広げる(地面はオーバースキャン分が在る)。
+const ZWARP_FAR_FRAC = Math.max(0, Math.min(0.8, tsNum('zwarpfar', 0.35)));
+// §5「起因する側」: 寄り先がプレイヤー本人(死亡・救急)の時は、最も近い敵の側=その事態を起こした側。敵が居なければ向いている側。
+// §10「横だけ」: 上下成分は混ぜない(dirY=0 のまま)。
 // §3 立ち上がりはばね(衝撃と同じ時間帯・わずかに行き過ぎて揺り返す)。ω=固有角速度(rad/s)・ζ=減衰比(<1 で行き過ぎ)
 const ZWARP_SPRING_W = Math.max(5, tsNum('zwarpw', 40));
 const ZWARP_SPRING_Z = Math.max(0.2, Math.min(1.5, tsNum('zwarpz', 0.6)));
@@ -3480,6 +3496,8 @@ export class PixiScene {
   private zwarpPrevZoom = 0; private zwarpLastNow = 0;
   private zwarpEventDecay = 0;                       // 寄りズームイベントの包絡線(0..1・syncの zoomDecay を写す)
   private zwarpEventStart = -1;                      // 今のイベントの zoomStart(変わったら新イベント=向きを決める)
+  private zwarpPadTop = 0;                           // フィルタ枠の縦の広げ幅(画面高さ比・§8 奥の辺の縮みぶん)
+  private zwarpPadBot = 0;
   private zwarpEventSide: -1 | 1 = 1;                // 奥にする側(+1=右 / −1=左)
   private zwarpDisabled = false;                     // フィルタが作れない環境では以後無効(世界はそのまま)
   private zwarpZoomNow = 1;                          // このフレームに worldGroup へ適用した総ズーム(zwarp が読む)
@@ -5384,7 +5402,9 @@ export class PixiScene {
       // worldGroup自身のworldTransformで写像されるため、式は同一)。
       const fa2 = this.L.worldGroup.filterArea as Rectangle | undefined;
       const rect2 = fa2 ?? new Rectangle();
-      rect2.x = rectX; rect2.y = rectY; rect2.width = rectW; rect2.height = rectH;
+      // ズーム時の遠近が付いている間は縦に広げる(§8: 奥の辺が縮んで縁の外の絵を見せる)。シェーダ側の S 変換と同じ比率(zwarpPad*)。
+      const pT = this.zwarpInList ? this.zwarpPadTop : 0, pB = this.zwarpInList ? this.zwarpPadBot : 0;
+      rect2.x = rectX; rect2.y = rectY - rectH * pT; rect2.width = rectW; rect2.height = rectH * (1 + pT + pB);
       if (!fa2) this.L.worldGroup.filterArea = rect2;
     }
   }
@@ -5900,7 +5920,11 @@ export class PixiScene {
     } else {
       // 既定(社長裁定2026-09-11): 寄りズームのイベント中だけ。強さ=上限×包絡線^冪(傾きは寄りより先に抜ける)×寄り量の比。
       // 追従はばね(1フレームでパッと出ない=慣性。衝撃と同じ時間帯に立ち、わずかに行き過ぎて揺り返す)。半陰的オイラーを最大 1/120s で刻む。
-      const env = ZWARP_HOLD ? 1 : Math.pow(Math.max(0, this.zwarpEventDecay), ZWARP_DECAY_POW);
+      // 傾きの包絡線=min(寄りの包絡線^冪, 自分の時計)。自分の時計: 開始から HOLD_MS は 1、その後 RELEASE_MS で滑らかに 0(§6)。
+      const tSince = this.zwarpEventStart >= 0 ? now - this.zwarpEventStart : 0;
+      const rel = tSince <= ZWARP_TILT_HOLD_MS ? 1 : Math.max(0, 1 - (tSince - ZWARP_TILT_HOLD_MS) / ZWARP_TILT_RELEASE_MS);
+      const relEase = rel * rel * (3 - 2 * rel); // smoothstep(1→0)
+      const env = ZWARP_HOLD ? 1 : Math.min(Math.pow(Math.max(0, this.zwarpEventDecay), ZWARP_DECAY_POW), relEase);
       const magK = ZWARP_HOLD ? 1 : Math.min(1, Math.max(0, this.zwarpEventMag) / ZWARP_MAG_REF);
       const target = ZWARP_MAX * env * magK;
       if (dt > 0) {
@@ -5941,14 +5965,29 @@ export class PixiScene {
     // 4隅は進行方向ベクトルの連続関数(横のはみ出し hx=k·(−dirY)、縦 hy=k·(−dirX)。斜めでは混ざり、旋回で跳ばない)。
     const k = this.zwarpK;
     const hx = k * (-this.zwarpDirY), hy = k * (-this.zwarpDirX);
+    // 横(旧経路 `?zwarpmove=1` の上下方向用): 近い辺だけはみ出す(従来どおり)
     const x0 = Math.min(0, hx), x1 = 1 - Math.min(0, hx), x3 = -Math.max(0, hx), x2 = 1 + Math.max(0, hx);
-    // 縦の膨らみは上下非対称(§1: 上 TOP_FRAC・下 BOT_FRAC。消失点が画面中央ではなく地平線寄りに来る)
-    const y0 = Math.min(0, hy) * ZWARP_TOP_FRAC, y3 = 1 - Math.min(0, hy) * ZWARP_BOT_FRAC;
-    const y1 = -Math.max(0, hy) * ZWARP_TOP_FRAC, y2 = 1 + Math.max(0, hy) * ZWARP_BOT_FRAC;
-    // 元(単位正方形)→台形 の射影を作り、逆行列(出力→元)を GL の列優先で渡す。
+    // 縦(既定の左右方向): 総量 |hy| を 奥側 FAR_FRAC(縮む)/近側 1−FAR_FRAC(膨らむ)に分ける(§8)。
+    // 膨らみ・縮みは上下非対称(§1: 上 TOP_FRAC・下 BOT_FRAC。消失点が画面中央ではなく地平線寄りに来る)。
+    // 角の順 TL(x0,y0) TR(x1,y1) BR(x2,y2) BL(x3,y3)。hy<0 で左が近い(左辺=y0,y3 が膨らみ・右辺=y1,y2 が縮む)。
+    const nearAmt = Math.abs(hy) * (1 - ZWARP_FAR_FRAC), farAmt = Math.abs(hy) * ZWARP_FAR_FRAC;
+    const leftNear = hy < 0;
+    const lT = leftNear ? -nearAmt * ZWARP_TOP_FRAC : farAmt * ZWARP_TOP_FRAC, lB = leftNear ? 1 + nearAmt * ZWARP_BOT_FRAC : 1 - farAmt * ZWARP_BOT_FRAC;
+    const rT = leftNear ? farAmt * ZWARP_TOP_FRAC : -nearAmt * ZWARP_TOP_FRAC, rB = leftNear ? 1 - farAmt * ZWARP_BOT_FRAC : 1 + nearAmt * ZWARP_BOT_FRAC;
+    const y0 = hy === 0 ? 0 : lT, y3 = hy === 0 ? 1 : lB, y1 = hy === 0 ? 0 : rT, y2 = hy === 0 ? 1 : rB;
+    // 元(単位正方形=画面)→台形 の射影(画面正規化座標)。立ち絵の逆変形はこの画面座標の行列で取る。
     const fwd = squareToQuad([x0, y0, x1, y1, x2, y2, x3, y3]);
     for (let i = 0; i < 9; i++) this.zwarpFwd[i] = fwd[i];
-    const m = invert3(fwd);
+    // 奥側が縮んだぶん、出力の縁は画面の外の元絵を要求する→フィルタ枠を縦に pT/pB だけ広げ、行列を枠座標へ写す
+    // (S: 画面正規化 y → 枠正規化 y = (y + pT)/(1+pT+pB)。Hinv_frame = S · Hinv_screen · S⁻¹)。
+    // 奥の辺は元の v∈[0,1] を [farT, 1−farB] に線形に写すので、出力 y=0/1 が要求する元は 縮み/(1−縮みの合計) だけ外へ出る
+    const padK = 1 / Math.max(0.2, 1 - farAmt * (ZWARP_TOP_FRAC + ZWARP_BOT_FRAC));
+    const pT = farAmt * ZWARP_TOP_FRAC * padK, pB = farAmt * ZWARP_BOT_FRAC * padK;
+    this.zwarpPadTop = pT; this.zwarpPadBot = pB;
+    const sy = 1 / (1 + pT + pB);
+    const S = [1, 0, 0, 0, sy, pT * sy, 0, 0, 1];
+    const Sinv = [1, 0, 0, 0, 1 / sy, -pT, 0, 0, 1];
+    const m = mul3(S, mul3(invert3(fwd), Sinv));
     const H = this.zwarpHinv;
     H[0] = m[0]; H[1] = m[3]; H[2] = m[6];
     H[3] = m[1]; H[4] = m[4]; H[5] = m[7];
@@ -5957,6 +5996,7 @@ export class PixiScene {
     ug.uniforms.uHinv = H;
     ug.update();
     this.setZwarpAttached(true);
+    this.syncWorldFilterArea(); // 枠の縦の広げ幅は k で毎フレーム変わる=描く直前に必ず今の値へ(シェーダの S と一致させる)
     if (ZWARP_ACTOR_FLAT) this.counterWarpActors(); // プレイヤーと敵の立ち絵だけ曲げない(足元支点の逆変形)
   }
 
@@ -7870,10 +7910,19 @@ export class PixiScene {
     this.zwarpEventMag = s.zoomMag;
     if (zoomDecay > 0 && s.zoomStart !== this.zwarpEventStart) {
       this.zwarpEventStart = s.zoomStart;
-      const pcx = s.player.x + s.player.width / 2;
-      const dx = s.zoomHasTarget ? s.zoomTargetX - pcx : 0;
-      this.zwarpEventSide = ZWARP_EVENT_SIDE === 'left' ? -1 : ZWARP_EVENT_SIDE === 'right' ? 1
-        : Math.abs(dx) > 8 ? (dx > 0 ? 1 : -1) : (this.zwarpEventSide === 1 ? -1 : 1); // 対象の側。無ければ前回と反対
+      const pcx = s.player.x + s.player.width / 2, pcy = s.player.y + s.player.height / 2;
+      let dx = s.zoomHasTarget ? s.zoomTargetX - pcx : 0;
+      if (Math.abs(dx) <= 8) {
+        // 寄り先がプレイヤー本人(死亡・救急)=「起因する側」(社長裁定2026-09-11): 最も近い敵の側。敵が居なければ向いている側。
+        let best = Infinity;
+        for (const e of s.enemies) {
+          const ex = e.x + e.width / 2 - pcx, ey = e.y + e.height / 2 - pcy;
+          const d2 = ex * ex + ey * ey;
+          if (d2 < best && Math.abs(ex) > 8) { best = d2; dx = ex; }
+        }
+        if (Math.abs(dx) <= 8) dx = s.player.lastDirection && s.player.lastDirection.x !== 0 ? s.player.lastDirection.x : (s.player.direction === 'left' ? -1 : 1);
+      }
+      this.zwarpEventSide = ZWARP_EVENT_SIDE === 'left' ? -1 : ZWARP_EVENT_SIDE === 'right' ? 1 : (dx > 0 ? 1 : -1);
     }
     // 文脈ズーム: 通常敵は従来どおり画面内相当の数/大型で判定。正規ボスだけは交戦中の距離で判定。
     // ボスは0.45秒時定数で距離へ追従し、敵視解除後は1.0秒時定数で通常画角へ戻す。
