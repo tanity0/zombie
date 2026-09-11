@@ -1445,6 +1445,71 @@ const FAKE3D_TREES = tsBool('f3dtrees', true);                              // �
 // ので赤い予告と判定の関係は崩れない。HUD(DOM)・遠景・手前の近景森は外。★既定OFF(`?zwarp=1`)。
 // 負荷: 有効中だけ「世界を1回余分に描く」全画面パス(5/10・数秒)。平常時はゼロ。
 const ZWARP = tsBool('zwarp', false);
+// ★v0.25.4225: RenderTexture+台形メッシュ(社長の実機iOSで「場面のスクショっぽい1枚絵」=RTが更新されず静止画が乗る)を捨て、
+// **worldGroup のフィルタ**(パンチ/昼コントラストと同じ経路=実機で毎フレーム動く実績あり)で射影する。
+// 頂点は既存フィルタと同じ約束(aPosition 0..1=出力枠)。フラグメントは出力座標→元座標の逆射影(3×3)で1回サンプル。
+const ZWARP_VERT = `
+in vec2 aPosition;
+out vec2 vLocal;
+out vec2 vUvScale;
+
+uniform vec4 uInputSize;
+uniform vec4 uOutputFrame;
+uniform vec4 uOutputTexture;
+
+vec4 filterVertexPosition( void )
+{
+    vec2 position = aPosition * uOutputFrame.zw + uOutputFrame.xy;
+    position.x = position.x * (2.0 / uOutputTexture.x) - 1.0;
+    position.y = position.y * (2.0*uOutputTexture.z / uOutputTexture.y) - uOutputTexture.z;
+    return vec4(position, 0.0, 1.0);
+}
+
+void main(void)
+{
+    gl_Position = filterVertexPosition();
+    vLocal = aPosition;
+    vUvScale = uOutputFrame.zw * uInputSize.zw;
+}
+`;
+const ZWARP_FRAG = `
+in vec2 vLocal;
+in vec2 vUvScale;
+out vec4 finalColor;
+
+uniform sampler2D uTexture;
+uniform mat3 uHinv;
+
+void main(void)
+{
+    vec3 p = uHinv * vec3(vLocal, 1.0);
+    vec2 sUv = p.xy / p.z;
+    if (sUv.x < 0.0 || sUv.x > 1.0 || sUv.y < 0.0 || sUv.y > 1.0) { finalColor = vec4(0.0); return; }
+    finalColor = texture(uTexture, sUv * vUvScale);
+}
+`;
+/** 単位正方形(0,0)(1,0)(1,1)(0,1)→四角形 q(TL,TR,BR,BL) の射影行列(Heckbert)。行優先 [[a,b,c],[d,e,f],[g,h,1]]。 */
+const squareToQuad = (q: number[]): number[] => {
+  const [x0, y0, x1, y1, x2, y2, x3, y3] = q;
+  const sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3;
+  if (Math.abs(sx) < 1e-9 && Math.abs(sy) < 1e-9) {
+    return [x1 - x0, x3 - x0, x0, y1 - y0, y3 - y0, y0, 0, 0, 1];
+  }
+  const dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2;
+  const det = dx1 * dy2 - dx2 * dy1;
+  const g = (sx * dy2 - dx2 * sy) / det, h = (dx1 * sy - sx * dy1) / det;
+  return [x1 - x0 + g * x1, x3 - x0 + h * x3, x0, y1 - y0 + g * y1, y3 - y0 + h * y3, y0, g, h, 1];
+};
+/** 3×3(行優先)の逆行列(行優先で返す)。 */
+const invert3 = (m: number[]): number[] => {
+  const [a, b, c, d, e, f, g, h, i] = m;
+  const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
+  const det = a * A + b * B + c * C;
+  const inv = 1 / det;
+  return [A * inv, -(b * i - c * h) * inv, (b * f - c * e) * inv,
+          B * inv, (a * i - c * g) * inv, -(a * f - c * d) * inv,
+          C * inv, -(a * h - b * g) * inv, (a * e - b * d) * inv];
+};
 const ZWARP_GAIN = Math.max(0, Math.min(2, tsNum('zwarpk', 0.18)));        // ズーム速度(倍率/s)→傾き
 const ZWARP_MAX = Math.max(0, Math.min(0.4, tsNum('zwarpmax', 0.12)));     // 傾きの上限(近い辺のはみ出し=画面幅比)
 const ZWARP_ATTACK_TAU = Math.max(0.02, tsNum('zwarpatk', 0.10));           // 立ち上がりの時定数(s)
@@ -3380,12 +3445,13 @@ export class PixiScene {
   private playerView: ActorView | null = null;
   private moveLeanNow = 0;       // 進行方向への前傾(rad)。慣性つきで target へ追従
   private dioramaFront: Container | null = null; // D1 手前の板(screen-space・frontForest の上・uiLayer の下)
-  private zwarpMesh: PerspectiveMesh | null = null;  // ズーム時の遠近: 世界を貼る台形メッシュ(worldGroup の直上)
-  private zwarpRT: RenderTexture | null = null;      // 世界を描く先(画面サイズ)
+  private zwarpFilter: Filter | null = null;         // ズーム時の遠近: worldGroup に掛ける射影フィルタ(有効中だけ)
+  private zwarpInList = false;                       // 今 worldGroup.filters に入っているか
+  private zwarpHinv = new Float32Array(9);           // 出力→元 の逆射影(GL 列優先)
   private zwarpK = 0;                                // 現在の傾き(0=平ら)
   private zwarpDirX = 0; private zwarpDirY = -1;     // 進行方向(平滑済み・既定=上=奥)
   private zwarpPrevZoom = 0; private zwarpLastNow = 0;
-  private zwarpDisabled = false;                     // RT描画が例外を出したら以後この出撃では無効(世界を消さない)
+  private zwarpDisabled = false;                     // フィルタが作れない環境では以後無効(世界はそのまま)
   private zwarpZoomNow = 1;                          // このフレームに worldGroup へ適用した総ズーム(zwarp が読む)
   private dioramaFrontSprites: Sprite[] = [];
   private dioramaFrontTex: Texture | null = null;   // 元テクスチャ(ステージ切替の検知用)
@@ -4212,6 +4278,7 @@ export class PixiScene {
       filters.push(this.dayContrast);
     }
     if (this.punchInList && this.punchGrade) filters.push(this.punchGrade);
+    if (this.zwarpInList && this.zwarpFilter) filters.push(this.zwarpFilter); // ズーム時だけの遠近(最後=階調の後に形を歪める)
     this.L.worldGroup.filters = filters;
   }
 
@@ -5687,12 +5754,11 @@ export class PixiScene {
    */
   /**
    * ズーム時だけの遠近(`?zwarp=1`)。ズームの速さから傾き k を出し(立ち上がり速く・戻り遅く=慣性)、k>0 の間だけ
-   * worldGroup を RenderTexture に描いて台形メッシュで表示する。台形は**奥(進行方向)の辺を画面幅のまま**、
-   * 近い辺を k×W はみ出させる=隙間が出ない(奥を縮めると角に穴が開く)。k≈0 では何もしない(パス増なし)。
+   * worldGroup に射影フィルタを掛ける(v0.25.4225: RT+メッシュ→フィルタ。実機で毎フレーム動く既存経路に乗せる)。
+   * 台形は**奥(進行方向)の辺を画面幅のまま**、近い辺を k×W はみ出させる=隙間が出ない。k≈0 ではフィルタを外す(パス増なし)。
    */
   private syncZoomWarp(vx: number, vy: number, now: number) {
     if (!ZWARP || !this.renderer || this.zwarpDisabled) return;
-    const wg = this.L.worldGroup;
     const gapMs = this.zwarpLastNow ? now - this.zwarpLastNow : 0;
     const dt = this.zwarpLastNow ? Math.min(0.1, gapMs / 1000) : 0;
     this.zwarpLastNow = now;
@@ -5713,46 +5779,39 @@ export class PixiScene {
       }
     }
     if (this.zwarpK <= ZWARP_MIN_ACTIVE) {
-      if (this.zwarpMesh) this.zwarpMesh.visible = false;
+      if (this.zwarpInList) { this.zwarpInList = false; this.syncWorldGroupFilters(); } // 平ら=フィルタを外す(パス増なし)
       return;
     }
-    const W = Math.max(1, Math.round(this.screenW)), H = Math.max(1, Math.round(this.screenH));
-    // 解像度は renderer × stage の拡大(大型端末は論理pxを1.06〜1.3倍に拡大して表示)=RTがボケない(監査B#2)
-    const rtRes = this.renderer.resolution * (wg.parent?.scale.x ?? 1);
-    if (!this.zwarpRT || this.zwarpRT.width !== W || this.zwarpRT.height !== H || Math.abs(this.zwarpRT.source.resolution - rtRes) > 0.001) {
-      this.zwarpRT?.destroy(true);
-      this.zwarpRT = RenderTexture.create({ width: W, height: H, resolution: rtRes, antialias: false });
-      if (this.zwarpMesh) this.zwarpMesh.texture = this.zwarpRT;
+    if (!this.zwarpFilter) {
+      try {
+        this.zwarpFilter = new Filter({
+          glProgram: GlProgram.from({ vertex: ZWARP_VERT, fragment: ZWARP_FRAG, name: 'zoom-warp' }),
+          resources: { zwarpUniforms: new UniformGroup({ uHinv: { value: this.zwarpHinv, type: 'mat3x3<f32>' } }) },
+          padding: 0,
+          antialias: 'off',
+        });
+      } catch (err) {
+        this.zwarpDisabled = true; // シェーダが通らない環境=何もしない(世界はそのまま)
+        reportSuppressedError('zwarp:filter', err);
+        return;
+      }
     }
-    if (!this.zwarpMesh) {
-      const m = new PerspectiveMesh({ texture: this.zwarpRT, verticesX: 12, verticesY: 12 });
-      m.eventMode = 'none';
-      const parent = wg.parent ?? this.L.stage;
-      parent.addChildAt(m, parent.getChildIndex(wg) + 1); // 世界の直上(遠景の上・近景森/HUDの下)
-      this.zwarpMesh = m;
-    }
-    // 世界をこのフレームの姿のまま1枚へ(worldGroup 自身の zoom/pan/フィルタ込み)。
-    // ★v0.25.4224(社長の実機「裏では動いてるけど前面に遠景が出てる」=世界が消えた): 世界は**隠さない**。メッシュは
-    // 画面を覆う位置に置くので、下の世界は見えない。RTが空(端末側で描けない)でもメッシュは透明=世界がそのまま見える
-    // (フェイルセーフ)。代償=有効中は世界を2回描く(RT+主描画)。例外が出たらこの出撃では以後無効。
-    try {
-      this.renderer.render({ container: wg, target: this.zwarpRT, clear: true });
-    } catch (err) {
-      this.zwarpDisabled = true;
-      if (this.zwarpMesh) this.zwarpMesh.visible = false;
-      reportSuppressedError('zwarp:rt', err);
-      return;
-    }
-    // 台形: 奥(進行方向)の辺=画面幅のまま / 近い辺=k×W(または k×H)はみ出し。角の順は TL,TR,BR,BL。
-    // 4隅は進行方向ベクトルの**連続関数**(監査A#1: 軸で4方向に離散化すると旋回で台形が瞬間に跳ぶ=慣性違反)。
-    // 横のはみ出し hx=k·W·(−dirY): 上へ進む(dirY<0)なら下の辺が広がり、下へ進むなら上の辺。縦 vy=k·H·(−dirX) も同型。
-    // 斜め移動では両方が混ざり、向きが回ると滑らかに移り変わる(境界で自然に0)。
+    // 台形(出力枠を 0..1 に正規化・角の順 TL,TR,BR,BL): 奥(進行方向)の辺=枠のまま / 近い辺=k だけはみ出す。
+    // 4隅は進行方向ベクトルの連続関数(横のはみ出し hx=k·(−dirY)、縦 hy=k·(−dirX)。斜めでは混ざり、旋回で跳ばない)。
     const k = this.zwarpK;
-    const hx = k * W * (-this.zwarpDirY), hy = k * H * (-this.zwarpDirX);
-    const x0 = Math.min(0, hx), x1 = W - Math.min(0, hx), x3 = -Math.max(0, hx), x2 = W + Math.max(0, hx);
-    const y0 = Math.min(0, hy), y3 = H - Math.min(0, hy), y1 = -Math.max(0, hy), y2 = H + Math.max(0, hy);
-    this.zwarpMesh.setCorners(x0, y0, x1, y1, x2, y2, x3, y3);
-    this.zwarpMesh.visible = true;
+    const hx = k * (-this.zwarpDirY), hy = k * (-this.zwarpDirX);
+    const x0 = Math.min(0, hx), x1 = 1 - Math.min(0, hx), x3 = -Math.max(0, hx), x2 = 1 + Math.max(0, hx);
+    const y0 = Math.min(0, hy), y3 = 1 - Math.min(0, hy), y1 = -Math.max(0, hy), y2 = 1 + Math.max(0, hy);
+    // 元(単位正方形)→台形 の射影を作り、逆行列(出力→元)を GL の列優先で渡す。
+    const m = invert3(squareToQuad([x0, y0, x1, y1, x2, y2, x3, y3]));
+    const H = this.zwarpHinv;
+    H[0] = m[0]; H[1] = m[3]; H[2] = m[6];
+    H[3] = m[1]; H[4] = m[4]; H[5] = m[7];
+    H[6] = m[2]; H[7] = m[5]; H[8] = m[8];
+    const ug = this.zwarpFilter.resources.zwarpUniforms as UniformGroup;
+    ug.uniforms.uHinv = H;
+    ug.update();
+    if (!this.zwarpInList) { this.zwarpInList = true; this.syncWorldGroupFilters(); }
   }
 
   /** D1 の板のぼかしを1回だけ焼く(毎フレームの BlurFilter を持たない=CLAUDE.md 描画ルール4「焼いたテクスチャ」)。 */
@@ -29601,8 +29660,8 @@ export class PixiScene {
     this.signalBombSprites.clear();
     try { this.labRT?.destroy(true); } catch { /* ignore */ }
     this.labRT = null;
-    try { this.zwarpRT?.destroy(true); this.zwarpMesh?.destroy(); } catch { /* ignore */ }
-    this.zwarpRT = null; this.zwarpMesh = null;
+    try { this.zwarpFilter?.destroy(); } catch { /* ignore */ }
+    this.zwarpFilter = null;
     try { this.corridorBackdrop?.destroy(); } catch { /* ignore */ }
     this.corridorBackdrop = null;
     for (const e of this.trees.values()) e.sprite.destroy();
