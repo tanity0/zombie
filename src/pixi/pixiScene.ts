@@ -1427,6 +1427,28 @@ const FAKE3D_MAX_RAD = Math.max(0, Math.min(0.6, tsNum('f3dmax', 0.20)));  // �
 const FAKE3D_ZOOM_POW = Math.max(0, Math.min(2, tsNum('f3dzoom', 0)));     // 引いた時に強める指数(0=しない・広角の真似)
 const FAKE3D_TURN_MS = Math.max(0, Math.min(600, tsNum('f3dturn', 140)));  // 振り向きの薄化の尺(0=なし)
 const FAKE3D_TREES = tsBool('f3dtrees', true);                              // 木・花・什器も傾けるか
+// =============================================================================
+// ジオラマ(参考=UKIUKI氏のHD-2D検証「2Dの板を奥行きに並べて透視カメラで見る」・社長指示2026-09-11
+// 「一旦崩れない範囲でやってみて」)。設計= research/FAKE_3D.md「第2弾」。**プレイ面(敵/床/予告)の位置は
+// 一切動かさない**=継ぎ目・隙間・赤と判定のズレが構造上出ない範囲だけ。★既定OFF(`?diorama=1`)。
+//  D1 手前の板: 画面より手前(カメラの目の前)を横切る大きな木のシルエット2枚(screen-space・強いパララックス・
+//     ぼかし・半透明)。参考動画の「手前の紅葉が大きく速く流れる」に当たる。frontForest(0.68)より更に手前。
+//  D2 空気遠近: 奥(画面上方)に立つ物ほど暗く寒色に沈める(敵/木/什器/花のtintを地平線へ向けて混色)。
+//     床の台形・遠近スケールと同じ「奥」の向きに色でも差をつける。プレイヤーは沈めない(主役)。
+//  入れない: 縦パララックス(地平線へ歩いても地平線は動かないのが現実。参考は横スクロール)/ 板の湾曲(mesh設計が要る)/
+//  プレイ面の物の位置の収束(=判定と絵の関係を触る大工事・別案件)。
+const DIORAMA = tsBool('diorama', false);
+const DIORAMA_FRONT = tsBool('dfront', true);
+const DIORAMA_FRONT_PX = Math.max(0.7, Math.min(3, tsNum('dfrontpx', 1.35)));        // 手前の板の横パララックス(1=世界と同速。>1=手前)
+const DIORAMA_FRONT_H = Math.max(0.3, Math.min(1.6, tsNum('dfronth', 0.95)));        // 板の高さ(画面高比)
+const DIORAMA_FRONT_ALPHA = Math.max(0, Math.min(1, tsNum('dfrontalpha', 0.85)));
+const DIORAMA_FRONT_BLUR = Math.max(0, Math.min(24, tsNum('dfrontblur', 6)));        // 0=ぼかし無し(フィルタ無し=最安)
+const DIORAMA_FRONT_PERIOD = Math.max(1.2, Math.min(6, tsNum('dfrontperiod', 2.6))); // 1枚が再登場する周期(画面幅比)
+const DIORAMA_FRONT_TINT = tsNum('dfronttint', 0x0c1016);                              // シルエット寄りの暗色
+const DIORAMA_FOG = tsBool('dfog', true);
+const DIORAMA_FOG_MAX = Math.max(0, Math.min(1, tsNum('dfogmax', 0.45)));            // 地平線ぎわでの混色量
+const DIORAMA_FOG_COLOR = tsNum('dfogcolor', 0x1a2030);                                // 沈める先の色(暗い寒色)
+const DIORAMA_FOG_POW = Math.max(0.3, Math.min(4, tsNum('dfogpow', 1.4)));           // 奥へのカーブ(大=手前は無傷・奥で急に沈む)
 // 進行方向への前傾(社長相談2026-09-11「移動の時に少し進行方向に斜めに」の試作・視覚のみ・判定不変)。
 // 世界(床/遠景)は一切傾けない=継ぎ目・タイルの隙間が出ない。傾くのはプレイヤー本体スプライトだけ
 // (足元支点)。速度(store の vx)に比例し、時定数 tau で慣性をつける(急発進で徐々に倒れ、止まると戻る)。
@@ -3327,6 +3349,11 @@ export class PixiScene {
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
   private moveLeanNow = 0;       // 進行方向への前傾(rad)。慣性つきで target へ追従
+  private dioramaFront: Container | null = null; // D1 手前の板(screen-space・frontForest の上・uiLayer の下)
+  private dioramaFrontSprites: Sprite[] = [];
+  private dioramaFrontTex: Texture | null = null;   // 元テクスチャ(ステージ切替の検知用)
+  private dioramaFrontBaked = new Map<Texture, Texture>(); // ぼかしを1回焼いたテクスチャ(監査C#3: 毎フレームのフィルタを持たない)
+  private dioramaHide = false;                       // 木の無い場所(屋内/廊下/研究所)= D1 も D2 も掛けない(監査B#5)
   private playerFace: -1 | 1 | null = null;      // T3 振り向き: 表示中の向き(+1=右向き絵 / -1=左向き絵)
   private playerFaceFrom: -1 | 1 = 1;            // T3: 反転前の向き(旧→0→新 の起点)
   private playerFaceAt = 0;                      // T3: 反転を始めた時刻(now)
@@ -5586,6 +5613,91 @@ export class PixiScene {
    * 消失点=画面中央の下方 VP_FRAC×screenH に置き、縦線を「足元→消失点」の向きに傾ける。
    * skew.x 正=頭が左へ(足元アンカー)。画面左の物は頭が左へ開く=正。post-zoom の実画面座標で計算。
    */
+  /** ジオラマ D2 空気遠近: 足元(world)の画面上の奥行きに応じて tint を霧色へ混ぜる。OFF なら base をそのまま返す。 */
+  private dioramaFog(base: number, footWorldY: number): number {
+    if (!DIORAMA || !DIORAMA_FOG || DIORAMA_FOG_MAX <= 0 || this.dioramaHide) return base;
+    const sy = postZoomScreenY(footWorldY - this.cameraY, this.wgZoom(), this.wgOffsetY());
+    const farY = this.farBackdropHeight();          // 床の上端(地平線)=最奥
+    const nearY = this.screenH * 0.62;               // プレイヤー面のあたり=ここから手前は沈めない
+    const t = Math.max(0, Math.min(1, (nearY - sy) / Math.max(1, nearY - farY)));
+    const k = Math.pow(t, DIORAMA_FOG_POW) * DIORAMA_FOG_MAX;
+    if (k <= 0) return base;
+    const br = (base >> 16) & 255, bg = (base >> 8) & 255, bb = base & 255;
+    const fr = (DIORAMA_FOG_COLOR >> 16) & 255, fg = (DIORAMA_FOG_COLOR >> 8) & 255, fb = DIORAMA_FOG_COLOR & 255;
+    const r = Math.round(br + (fr - br) * k), g = Math.round(bg + (fg - bg) * k), b = Math.round(bb + (fb - bb) * k);
+    return (r << 16) | (g << 8) | b;
+  }
+
+  /**
+   * ジオラマ D1 手前の板: カメラの目の前を横切る大きな木のシルエット2枚。screen-space(ズーム非依存)・
+   * 横パララックス DIORAMA_FRONT_PX(>1=世界より速い=手前)・周期 P で再登場。足元は画面下端より下(幹は見せず
+   * 樹冠だけが端を横切る)。研究所/洋館(木の無いステージ)では出さない。
+   */
+  /** D1 の板のぼかしを1回だけ焼く(毎フレームの BlurFilter を持たない=CLAUDE.md 描画ルール4「焼いたテクスチャ」)。 */
+  private bakeDioramaFront(src: Texture): Texture {
+    const cached = this.dioramaFrontBaked.get(src);
+    if (cached) return cached;
+    if (DIORAMA_FRONT_BLUR <= 0 || !this.renderer) return src; // ぼかし無し/焼けない環境=元絵のまま(フィルタは付けない)
+    const pad = Math.ceil(DIORAMA_FRONT_BLUR * 3); // にじみの余白(切れないように)
+    const w = src.width + pad * 2, h = src.height + pad * 2;
+    const wrap = new Container();
+    const sp = new Sprite(src); sp.position.set(pad, pad); wrap.addChild(sp);
+    wrap.filters = [new BlurFilter({ strength: DIORAMA_FRONT_BLUR, quality: 2 })];
+    const rt = RenderTexture.create({ width: w, height: h });
+    this.renderer.render({ container: wrap, target: rt, clear: true });
+    wrap.destroy({ children: true });
+    this.dioramaFrontBaked.set(src, rt);
+    return rt;
+  }
+
+  private syncDioramaFront(cameraX: number, shakeX: number, shakeY: number, farBackdrop: string, hide: boolean) {
+    if (!DIORAMA || !DIORAMA_FRONT) { if (this.dioramaFront) this.dioramaFront.visible = false; return; }
+    const src = (farBackdrop === 'city' ? getTexture('tree-city') : null)
+      ?? (farBackdrop === 'snow' ? getTexture('tree-snow') : null)
+      ?? getTexture('tree');
+    if (!src || hide) { if (this.dioramaFront) this.dioramaFront.visible = false; return; }
+    const tex = this.bakeDioramaFront(src);
+    if (!this.dioramaFront) {
+      const c = new Container();
+      for (let i = 0; i < 2; i++) {
+        const sp = new Sprite(tex);
+        sp.anchor.set(0.5, 1);
+        sp.tint = DIORAMA_FRONT_TINT;
+        sp.alpha = DIORAMA_FRONT_ALPHA;
+        c.addChild(sp);
+        this.dioramaFrontSprites.push(sp);
+      }
+      // frontForest の直上(=uiLayer の下)。screen-space なので worldGroup のズーム/パンを受けない。
+      // 親は frontForest の実際の親から取る(?labveil 時は uiLayer 内へ再親付けされている=監査B#6)。
+      const parent = this.L.frontForest.parent ?? this.L.stage;
+      parent.addChildAt(c, parent.getChildIndex(this.L.frontForest) + 1);
+      this.dioramaFront = c;
+      this.dioramaFrontTex = src;
+    }
+    if (this.dioramaFrontTex !== src) {
+      for (const sp of this.dioramaFrontSprites) sp.texture = tex;
+      this.dioramaFrontTex = src;
+    }
+    const c = this.dioramaFront;
+    c.visible = true;
+    c.position.set(shakeX * 1.2, shakeY * 1.2); // 揺れは世界より少し大きく(手前ほど揺れる)
+    const W = this.screenW;
+    const h = this.screenH * DIORAMA_FRONT_H;
+    const sc = h / Math.max(1, src.height);        // 大きさは元絵の高さ基準(焼いた余白ぶんは含めない)
+    const half = tex.width * sc / 2;               // 板の半幅(焼いた余白込み=にじみも画面外で消える)
+    const gap = W * 0.15;                          // 板と板の隙間(世界が見える間)
+    // 周期は「ユーザー指定」「画面外で出入りできる幅(W+板幅+隙間)」「2枚が重ならない幅(2×(板幅+隙間))」の最大
+    // (監査A#1: 固定マージンだと縦持ちで板の端が画面内に瞬間出現していた / B#2: 2枚が常時重なっていた)。
+    const P = Math.max(W * DIORAMA_FRONT_PERIOD, W + 2 * half + gap, 2 * (2 * half + gap));
+    for (let i = 0; i < this.dioramaFrontSprites.length; i++) {
+      const sp = this.dioramaFrontSprites[i];
+      // 位置 u∈[0,P): 世界と逆向きに PX 倍で流れる。2枚は半周期ずらす。画面の外側 (P−W)/2 ≥ 板の半幅 で必ず隠れて折り返す。
+      let u = (-cameraX * DIORAMA_FRONT_PX + i * P / 2) % P; if (u < 0) u += P;
+      sp.position.set(u - (P - W) / 2, this.screenH + h * 0.22); // 幹は画面下へ。樹冠が端を横切る
+      sp.scale.set((i === 0 ? 1 : -1) * sc, sc);                  // 2枚目は左右反転(同じ木に見せない)
+    }
+  }
+
   private fake3dTilt(footWorldX: number, footWorldY: number): number {
     if (!FAKE3D || FAKE3D_TILT_K <= 0) return 0;
     const wz = this.L.worldGroup.scale.x || 1;
@@ -7940,6 +8052,9 @@ export class PixiScene {
       0
     );
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
+    // ジオラマ D1(既定OFF): 木の無いステージ(研究所スキン/洋館の通路/屋内)では出さない。
+    this.dioramaHide = s.indoorMode || s.corridorMode || s.stageTheme === 'lab'; // D2 も同じ条件で掛けない(地平線の無い場所・監査B#5)
+    this.syncDioramaFront(s.camera.x, sx, sy, s.farBackdrop, this.dioramaHide);
     // 近景コピー(下部レイヤー・社長裁定v0.25.3000で復活): 実近景の少し上に引きの深さでフェードイン。
     // 上ずらしは**遠景リッジと同じ実測px(horizonRidgeStepPx)**——近景高さ比(v2998)は廃都で壁が
     // 浮いたため廃止。実近景と必ず重なる小さな刻みなので、間に地面が見えて浮くことは起きない。
@@ -9245,6 +9360,7 @@ export class PixiScene {
       //   **木は当たり判定を持つ**(`trees.ts` の幹の矩形)。判定は動かないので、
       //   絵だけ大きく動かすと「見た目と当たりがズレている」ことになる=揺れは葉のそよぎ程度に留める。
       entry.sprite.skew.x = this.windNow * TREE_WIND_SKEW + (FAKE3D_TREES ? this.fake3dTilt(entry.sprite.x, entry.sprite.y) : 0);
+      if (DIORAMA && DIORAMA_FOG) entry.sprite.tint = this.dioramaFog(this.envTintNow(), entry.footY); // D2(OFF時は生成時のenvTintのまま)
     }
     for (const [key, entry] of this.trees) {
       if (!seen.has(key)) {
@@ -9369,7 +9485,7 @@ export class PixiScene {
         entry = { sprite, baseScale, footY: p.footY };
         this.cityPropObjs.set(p.id, entry);
       }
-      entry.sprite.tint = tint;
+      entry.sprite.tint = def.decal ? tint : this.dioramaFog(tint, entry.footY); // D2: 立ち物だけ沈める(床のデカールは床の色のまま)
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
       entry.sprite.skew.x = (!def.decal && FAKE3D_TREES) ? this.fake3dTilt(entry.sprite.x, entry.sprite.y) : 0; // T1: 立ち物だけ(デカールは床)
       // 立ち物は裏回りで透ける。地面デカール(groundLayer)はプレイヤーの下なので通常alphaのまま。
@@ -9414,7 +9530,7 @@ export class PixiScene {
         entry = { sprite, baseScale, footY: f.footY };
         this.flowerObjs.set(f.id, entry);
       }
-      entry.sprite.tint = tint;
+      entry.sprite.tint = this.dioramaFog(tint, entry.footY); // D2(既定OFF=無変化)
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
       entry.sprite.alpha = this.horizonActorAlpha(entry.footY) * this.foregroundActorAlpha(entry.footY); // 地平線+手前でフェード
       // 風でたなびく(社長要望v0.25.2648「花とかも揺らぎたい」)。**炎と同じ1本の風**を読む。
@@ -16648,6 +16764,7 @@ export class PixiScene {
       // ★噛みつきの赤点滅は**最後に上書き**する(宿敵の金・レア色・幻影のダークより優先)。
       // 「今から噛む」は生死に関わる情報なので、見た目の個性より読めることを優先する。
       if (biteTint !== null) view.sprite.tint = biteTint;
+      else view.sprite.tint = this.dioramaFog(view.sprite.tint, fb.footY); // ジオラマ D2(既定OFF=無変化)
     } else {
       view.sprite.skew.x = 0;
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
