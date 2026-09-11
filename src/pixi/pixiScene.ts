@@ -1825,6 +1825,10 @@ const ACRASIEL_SPIKE_ROOT_PX = 26;   // 生え際(本体の縁)
 const JIBRIL_LANTERN_VIS_H = 46; // 画面上の高さ(px)
 // v0.25.3199(社長指示): 骨刃/氷刃の進路赤ラインを発射のこの時間前から出す(視覚のみ・判定/発射時刻は不変)。
 const SKADI_BLADE_LINE_PRE_MS = 350;
+// ★社長指示2026-09-11(フィルの天光柱): 「上に向かってフェードアウト(足元ほどハッキリ)」。
+// スライス数=縦の分割。多いほど滑らかだが poly が増える(1体ぶん・2枚×N なので実測上は無視できる)。
+const PHILL_SKYLIGHT_SLICES = 18;
+const PHILL_SKYLIGHT_FADE_POW = 1.6; // 1.0=線形 / 大きいほど足元へ濃さが寄る。★叩き台=実機で社長が詰める。
 // ★§11-4「持続ループ」の周期(v0.25.4207)。判定が生きている間、帯を外→内へこの周期で回し続ける
 // =「流れている=まだ当たる」。1回の収束(=消え切った瞬間が当たり)と読み違えない程度に短くする。
 const MAIKO_BOOM_LOOP_MS = 420;
@@ -21178,14 +21182,31 @@ export class PixiScene {
   /** 天から降りる光の柱1本(祝福/裁きの光で共用・v0.25.3740)。footW=地面の光だまり幅。 */
   private drawPhillSkylightColumn(g: Graphics, footX: number, footY: number, footW: number, topY: number, a: number): void {
     const topW = footW * 0.45; // 天側は絞る=スポットライトの円錐
-    g.poly([
-      { x: footX - footW / 2, y: footY }, { x: footX + footW / 2, y: footY },
-      { x: footX + topW / 2, y: topY }, { x: footX - topW / 2, y: topY },
-    ]).fill({ color: 0xfff3c8, alpha: 0.20 * a });
-    g.poly([
-      { x: footX - footW * 0.22, y: footY }, { x: footX + footW * 0.22, y: footY },
-      { x: footX + topW * 0.20, y: topY }, { x: footX - topW * 0.20, y: topY },
-    ]).fill({ color: 0xffffff, alpha: 0.17 * a });
+    // ★社長指示2026-09-11「上に向かってフェードアウトしてる見た目にして(足元ほどハッキリ)」。
+    // 従来は台形1枚を**均一のアルファ**で塗っていたので、天井まで同じ濃さの板に見えていた。
+    // Graphics の poly は単色塗りでグラデを持てないため、**縦にスライスして濃さだけを変える**
+    // (流星の帯と同じ作法=図形は隙間なく連続し、切り口が出ない)。
+    // 減衰は `fade^PHILL_SKYLIGHT_FADE_POW`。1.0=線形 / 大きいほど足元に濃さが寄る。★叩き台。
+    const N = PHILL_SKYLIGHT_SLICES;
+    for (let i = 0; i < N; i++) {
+      const s0 = i / N, s1 = (i + 1) / N;               // 0=足元 → 1=天
+      const y0 = footY + (topY - footY) * s0, y1 = footY + (topY - footY) * s1;
+      const w0 = footW + (topW - footW) * s0, w1 = footW + (topW - footW) * s1;
+      const k = Math.pow(1 - (s0 + s1) / 2, PHILL_SKYLIGHT_FADE_POW);
+      if (k <= 0.003) continue;
+      g.poly([
+        { x: footX - w0 / 2, y: y0 }, { x: footX + w0 / 2, y: y0 },
+        { x: footX + w1 / 2, y: y1 }, { x: footX - w1 / 2, y: y1 },
+      ]).fill({ color: 0xfff3c8, alpha: 0.20 * a * k });
+      // 内側の芯(細い白柱)も同じ減衰で。外側と別カーブにすると芯だけ天まで伸びて見える。
+      const c0 = footW * 0.44 + (topW * 0.40 - footW * 0.44) * s0;
+      const c1 = footW * 0.44 + (topW * 0.40 - footW * 0.44) * s1;
+      g.poly([
+        { x: footX - c0 / 2, y: y0 }, { x: footX + c0 / 2, y: y0 },
+        { x: footX + c1 / 2, y: y1 }, { x: footX - c1 / 2, y: y1 },
+      ]).fill({ color: 0xffffff, alpha: 0.17 * a * k });
+    }
+    // 足元の楕円は**減衰を掛けない**=ここが一番ハッキリ(社長「足元ほどハッキリ」の底)。
     g.ellipse(footX, footY, footW * 0.78, footW * 0.24).fill({ color: 0xfff7dc, alpha: 0.32 * a });
     g.ellipse(footX, footY, footW * 0.42, footW * 0.13).fill({ color: 0xffffff, alpha: 0.22 * a });
   }
