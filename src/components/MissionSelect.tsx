@@ -82,14 +82,15 @@ const PreClearBriefing: React.FC<{ synopsis: string[]; summary: string; resetKey
   const [typed, setTyped] = useState(false);
   return (
     <>
-      <Section label="状況説明">
+      {/* クリエイティブ監査第2回・第2手 B-24/B-25: 任務名の直下に流し込む帳票型。見出し+罫線は無くす。 */}
+      <div className="space-y-1.5">
         <TypewriterLines
           lines={synopsis}
           className="text-[13px] leading-relaxed text-white/85"
           resetKey={resetKey}
           onDone={() => setTyped(true)}
         />
-      </Section>
+      </div>
       <div style={{ opacity: typed ? 1 : 0, transition: 'opacity 600ms ease' }}>
         <Section label="任務目標">
           <p className="text-[13px] leading-relaxed text-white/85">{summary}</p>
@@ -645,7 +646,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <HubButton icon={<PixelIcon name="book" size={18} />} label="資料室" desc="記録・変異体資料" onClick={goArchive} delay={150} badge={unreadArchiveCount > 0 ? 'NEW' : undefined} />
         {/* BOT_AND_GHOST.md §2.14(社長裁定「独立メニュー化しよう」): 守護霊=名前の決定+討伐の保持記録。
             資料室(操作記録・物語資料)とは別物なので独立させる。名称/位置は叩き台。 */}
-        <HubButton icon={<PixelIcon name="shield" size={18} />} label="守護霊" desc="名前・討伐記録" onClick={goGhost} delay={175} />
+        <HubButton icon={<PixelIcon name="flame" size={18} />} label="守護霊" desc="名前・討伐記録" onClick={goGhost} delay={175} />
         {/* オプションは最下段(社長指示v0.25.1781)。 */}
         <HubButton icon={<PixelIcon name="gear" size={18} />} label="オプション" desc="音量・各種設定" onClick={() => setScreen({ name: 'options' })} delay={200} />
         <p className="pt-1 text-center text-[11px] text-white/35">v{__APP_VERSION__}</p>
@@ -757,7 +758,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。
               サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
               =マップのSECTORタグが同じ情報を持つため重複)。 */}
-          <button type="button" className="ds-sortie menu-item-in" style={{ animationDelay: '75ms' }} onClick={goStageSelect}>
+          <button type="button" className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goStageSelect}>
             <span className="ds-sortie-t1 block">出 撃</span>
             <PixelIcon name="chevron-right" size={18} />
           </button>
@@ -947,14 +948,15 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           )}
           {/* 下端をpanel色へグラデで溶かす(絵が無いステージでも同じグラデのみ乗る=破綻しない)。 */}
           <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(8,7,14,0) 45%, rgba(8,7,14,0.94) 100%)' }} />
+          {/* B-24/B-25: 黒い箱を捨て、絵の上に直置き(縁=gt-outline/gt-icon-outline)。 */}
           <button
             type="button"
             onClick={() => { playSfx('ui-back'); setScreen({ name: 'stageSelect' }); }}
-            className="absolute z-10 flex h-9 items-center gap-1 rounded-none bg-black/45 px-2.5 text-white/85 active:bg-black/65"
+            className="absolute z-10 flex h-9 items-center gap-1 px-2.5 text-white/85"
             style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)' }}
             aria-label="戻る"
           >
-            <PixelIcon name="chevron-left" size={16} /><span className="text-[12px]">戻る</span>
+            <PixelIcon name="chevron-left" size={16} className="gt-icon-outline" /><span className="gt-outline text-[12px]">戻る</span>
           </button>
           <div className="absolute inset-x-0 bottom-0 px-4 pb-3">
             <p className="gt-outline text-[12px] font-semibold tracking-wide text-white/90">{stageDateLabel(stage)}</p>
@@ -977,11 +979,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               カーソル「▌」は出さない(TypewriterLines側で撤去)。 */}
           {done ? (
             <>
-              <Section label="状況説明">
+              {/* B-24/B-25: こちらも見出し無しの帳票型(サブミッション等の見出しは残す)。 */}
+              <div className="space-y-1.5">
                 {m.synopsis.map((line, i) => (
                   <p key={i} className="text-[13px] leading-relaxed text-white/85">{line}</p>
                 ))}
-              </Section>
+              </div>
               {m.debrief.length > 0 && (
                 <Section label="任務後の記録">
                   <TypewriterLines
@@ -1932,7 +1935,7 @@ const VolumeSteps: React.FC<{ icon: PixelIconName; label: string; value: number;
               type="button"
               aria-label={`${label} ${stepN * 10}%`}
               onClick={() => { playSfx('ui-move'); onStep(stepN === filled ? 0 : stepN / 10); }}
-              className={`h-4 flex-1 rounded-none ${on ? 'ui-acc-bg' : 'border border-white/20 bg-transparent'}`}
+              className={`h-4 flex-1 rounded-none ${on ? 'ui-acc-bg' : 'ui-dim-line'} ${i === 5 ? 'ml-1' : ''}`}
             />
           );
         })}
@@ -1948,7 +1951,7 @@ const AudioSettings: React.FC = () => {
   const [sfxVol, setSfxVol] = useState(getSfxVolume);
   return (
     <Section label="サウンド">
-      <VolumeSteps icon="volume-on" label="BGM" value={bgmVol} onStep={v => { setBgmVol(v); setBgmVolume(v); }} />
+      <VolumeSteps icon="note" label="BGM" value={bgmVol} onStep={v => { setBgmVol(v); setBgmVolume(v); }} />
       <VolumeSteps icon="volume-on" label="SE" value={sfxVol} onStep={v => { setSfxVol(v); setSfxVolume(v); }} />
       {/* 「音なし」は行末のトグルへ格下げ(監査B-7): ON(琥珀の枡)=ミュート/OFF(線の枡)=通常。 */}
       <div className="flex items-center justify-between gap-2 pt-1">
@@ -1961,7 +1964,7 @@ const AudioSettings: React.FC = () => {
           {([true, false] as const).map(v => (
             <button key={String(v)} type="button" aria-pressed={audioMuted === v}
               onClick={() => { if (v === audioMuted) return; playSfx('ui-move'); setAudioMutedState(v); setAudioMuted(v); }}
-              className={`rounded-none px-3 py-1 text-[11px] font-semibold ${audioMuted === v ? 'ui-acc-tag' : 'bg-white/10 text-white/50'}`}>{v ? 'ON' : 'OFF'}</button>
+              className={`rounded-none px-3 py-1 text-[11px] font-semibold ${audioMuted === v ? 'ui-acc-tag' : 'ui-dim-bg text-white/50'}`}>{v ? 'ON' : 'OFF'}</button>
           ))}
         </span>
       </div>
@@ -1984,8 +1987,8 @@ const GraphicsSettings: React.FC = () => {
           <PixelIcon name="sparkles" size={15} className="text-white/55" />BLOOM
         </span>
         <span className="flex gap-1">
-          <button type="button" onClick={() => setVal(true)} className={`rounded-none px-3 py-1 text-[11px] font-semibold ${bloom ? 'ui-acc-tag' : 'bg-white/10 text-white/50'}`}>ON</button>
-          <button type="button" onClick={() => setVal(false)} className={`rounded-none px-3 py-1 text-[11px] font-semibold ${!bloom ? 'ui-acc-tag' : 'bg-white/10 text-white/50'}`}>OFF</button>
+          <button type="button" onClick={() => setVal(true)} className={`rounded-none px-3 py-1 text-[11px] font-semibold ${bloom ? 'ui-acc-tag' : 'ui-dim-bg text-white/50'}`}>ON</button>
+          <button type="button" onClick={() => setVal(false)} className={`rounded-none px-3 py-1 text-[11px] font-semibold ${!bloom ? 'ui-acc-tag' : 'ui-dim-bg text-white/50'}`}>OFF</button>
         </span>
       </div>
     </Section>
@@ -2804,23 +2807,23 @@ const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 <span className="w-[92px] shrink-0 whitespace-nowrap text-[12px] font-semibold">{def.label}</span>
                 <span className="flex shrink-0 gap-1" aria-hidden>
                   {Array.from({ length: PLAYER_UPGRADE_MAX_LEVEL }, (_, i) => (
-                    <span key={i} className={`h-3 w-3 ${i < cur.active ? 'ui-acc-bg' : 'border border-white/25 bg-transparent'}`} />
+                    <span key={i} className={`h-3 w-3 ${i < cur.active ? 'ui-acc-bg' : 'ui-dim-line'}`} />
                   ))}
                 </span>
                 <span className="shrink-0 text-[12px] tabular-nums text-white/70">{cumLabel}</span>
                 <span className={`ml-auto shrink-0 text-[13px] font-bold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'ui-danger-text' : 'ui-acc-text'}`}>{maxed ? 'MAX' : `${cost}G`}</span>
               </button>
               {/* −/+ = 有効段数(0〜購入済み段数)の増減。28pxの角無しボタン(監査B-6)。 */}
-              <span className="flex shrink-0 items-center gap-1">
+              {cur.bought > 0 && <span className="flex shrink-0 items-center gap-1">
                 <button type="button"
                   onClick={() => { if (cur.active <= 0) { playSfx('ui-deny'); return; } setPlayerUpgradeActive(def.id, cur.active - 1); playSfx('ui-move'); }}
                   style={{ width: 28, height: 28 }}
-                  className={`flex items-center justify-center rounded-none text-[14px] font-semibold text-white/80 bg-purple-400/5 active:bg-purple-400/10 ${cur.active <= 0 ? 'opacity-30' : ''}`}>−</button>
+                  className={`flex items-center justify-center rounded-none text-[14px] font-semibold text-white/80 bg-purple-400/5 active:bg-purple-400/10 ${cur.active <= 0 ? 'invisible' : ''}`}>−</button>
                 <button type="button"
                   onClick={() => { if (cur.active >= cur.bought) { playSfx('ui-deny'); return; } setPlayerUpgradeActive(def.id, cur.active + 1); playSfx('ui-move'); }}
                   style={{ width: 28, height: 28 }}
-                  className={`flex items-center justify-center rounded-none text-[14px] font-semibold text-white/80 bg-purple-400/5 active:bg-purple-400/10 ${cur.active >= cur.bought ? 'opacity-30' : ''}`}>＋</button>
-              </span>
+                  className={`flex items-center justify-center rounded-none text-[14px] font-semibold text-white/80 bg-purple-400/5 active:bg-purple-400/10 ${cur.active >= cur.bought ? 'invisible' : ''}`}>＋</button>
+              </span>}
             </div>
           );
         })}

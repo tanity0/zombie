@@ -54,7 +54,7 @@ export default function CommandHome(p: Props) {
           <div className="command-section-title"><span>02 / ARCHIVE & TRAINING</span><h2>記録と訓練</h2></div>
           <div className="command-record-grid">
             <button type="button" onClick={() => go(p.onArchive)}><PixelIcon name="book" size={20} /><span><strong>資料室 {p.unread > 0 && <em>NEW</em>}</strong><small>記録・変異体資料</small></span><PixelIcon name="arrow-up-right" size={16} /></button>
-            <button type="button" onClick={() => go(p.onGuardians)}><PixelIcon name="shield" size={20} /><span><strong>守護霊</strong><small>名前・討伐記録</small></span><PixelIcon name="arrow-up-right" size={16} /></button>
+            <button type="button" onClick={() => go(p.onGuardians)}><PixelIcon name="flame" size={20} /><span><strong>守護霊</strong><small>名前・討伐記録</small></span><PixelIcon name="arrow-up-right" size={16} /></button>
             <button type="button" onClick={() => go(p.onBoss)}><PixelIcon name="crosshair" size={20} /><span><strong>変異体対策室</strong><small>ボス再戦・練習</small></span><PixelIcon name="arrow-up-right" size={16} /></button>
           </div>
         </section>

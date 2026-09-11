@@ -36,12 +36,19 @@
       -0.07em 0 0 var(--gt-ink), 0.07em 0 0 var(--gt-ink), 0 -0.07em 0 var(--gt-ink), 0 0.07em 0 var(--gt-ink),
       0 0.09em 0 var(--gt-ink);
   }
+  /* gt-outline のSVG版(text-shadowはSVGに効かないので drop-shadow を4方向1pxで重ねて同じ縁を作る)。
+     クリエイティブ監査第2回・第2手 B-24/B-25: 絵の上に直置きするアイコン(帳票の「戻る」等)用。 */
+  .gt-icon-outline {
+    filter: drop-shadow(0 0 1px var(--gt-ink)) drop-shadow(0 1px 0 var(--gt-ink)); /* 2本で1px相当。4方向を重ねると前段の影を引きずって斜めが2pxに太る(監査B-6) */
+  }
   /* UIの意味色(監査第2回・A-2「琥珀が3種類」の統一): 琥珀は --menu-accent の1色、不足/危険は --menu-danger の1色。
      Tailwind の amber-300/400 等を UI で直に使わない(トークンと違う黄になる)。 */
   .ui-acc-bg { background: var(--menu-accent, #ffb340); }
   .ui-acc-text { color: var(--menu-accent, #ffb340); }
   .ui-acc-tag { background: color-mix(in srgb, var(--menu-accent, #ffb340) 16%, transparent); color: var(--menu-accent-hi, #ffd28a); }
   .ui-danger-text { color: var(--menu-danger, #ff6b5e); }
+  .ui-dim-bg { background: var(--menu-dim, #3b3050); }
+  .ui-dim-line { border: 1px solid var(--menu-dim, #3b3050); background: transparent; }
   /* 板の上の文字: 落ち影1本 */
   .gt-solid {
     text-shadow: 0 1px 0 var(--gt-ink);

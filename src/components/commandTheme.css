@@ -5,6 +5,7 @@
   --menu-bg:#07060d; --menu-panel:#0d0b14; --menu-line:#26212f;
   --menu-accent:#ffb340; --menu-accent-hi:#ffd28a; --menu-ink:#e6e9e9;
   --menu-danger:#ff6b5e;
+  --menu-dim:#3b3050; /* 消灯色=1色(監査A-5)。消えた枡・OFFの枡・消灯の点は全部これ。線色 --menu-line を紫へ半歩寄せた値 */
   --menu-muted:#a2aaa7; --menu-selected:#2a2016; --menu-hover:#1a1524;
 }
 .command-ui .ds-home { --ds-bg:var(--menu-bg); --ds-panel:var(--menu-panel); --ds-line:var(--menu-line); --ds-amber:var(--menu-accent); --ds-amber-hi:var(--menu-accent-hi); --ds-ink:var(--menu-ink); }
@@ -71,10 +72,10 @@
    押下の手応え=僅かな沈み込み+縁の光が左→右へ走る(慣性=離した時に僅かに戻り過ぎるease)。 */
 .command-ui .command-button-primary {
   position: relative; overflow: hidden;
-  display: inline-block; width: auto; min-width: 9.5rem; padding: 0 1.6rem;
+  display: inline-block; width: auto; padding: 0 calc(1.6rem + 14px) 0 1.6rem; /* 右の斜め切り14pxぶん足し、文字を見える面の中央へ(監査B-7) */
   color: #171208; font-weight: 600;
   background: linear-gradient(180deg,#ffc65a 0%,#f2a12b 55%,#c97a1c 100%);
-  border-color: var(--menu-accent-hi);
+  border: 0;
   box-shadow: inset 0 1px 0 rgba(255,238,200,.45), inset 0 -2px 0 rgba(80,45,8,.35);
   clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
 }

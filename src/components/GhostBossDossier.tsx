@@ -296,7 +296,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
                   <div className="truncate text-[15px] font-semibold text-white/90">{slot?.srcName ?? '無名のハンター'}</div>
                   <div className="text-[10px] text-white/45">{character?.name ?? 'クラス記録なし'} · Lv {snapshot?.level ?? '—'}</div>
                   <div className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-semibold ${social?.published ? 'bg-emerald-300/10 text-emerald-100/75' : 'bg-white/5 text-white/35'}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${social?.published ? 'bg-emerald-300' : 'bg-white/25'}`} />
+                    <span className={`h-1.5 w-1.5 rounded-full ${social?.published ? 'bg-emerald-300' : 'ui-dim-bg'}`} />
                     {social?.published ? 'オンライン公開中' : '未公開'}
                   </div>
                 </div>

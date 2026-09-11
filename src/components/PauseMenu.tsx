@@ -87,12 +87,15 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
           <div className="text-[13px] font-semibold tracking-[0.14em] text-white/70 gt-emboss">一時停止</div>
         </div>
         <div className="px-5 pb-5 grid grid-cols-[auto_1px_minmax(0,1fr)] gap-x-5 gap-y-4">
-          {/* 左: メニュー(幅は文字幅)。 */}
-          <div className="flex flex-col items-start gap-2">
+          {/* 左: メニュー(幅は文字幅・2本を同じ幅に揃える)。
+              クリエイティブ監査第2回・第2手 B-6: grid+self-start/content-start=右列の高さに引かれない
+              (flex-colのままだと親グリッドの行高にstretchされ「続ける」が縦に伸びる)。 */}
+          <div className="grid gap-2 self-start content-start">
             <Ff7rButton onClick={() => { playSfx('ui-select'); onResume(); }} emphasis fade="both" paddingY="0.8rem">
               続ける
             </Ff7rButton>
-            <Ff7rButton onClick={() => { playSfx('ui-back'); onQuit(); }} fade="both" paddingY="0.8rem">
+            {/* 出撃を捨てる不可逆の決定=「戻る」音ではない(B-15)。 */}
+            <Ff7rButton onClick={() => { playSfx('ui-select'); onQuit(); }} fade="both" paddingY="0.8rem">
               メニューに戻る
             </Ff7rButton>
             {hasFinePointer() && <p className="mt-1 text-[11px] text-white/50">
@@ -100,7 +103,8 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
             </p>}
           </div>
 
-          <div className="block bg-white/10" />
+          {/* 紫を光として使う(B-3): 無彩色の区切り線ではなく --menu-line。 */}
+          <div className="block bg-[var(--menu-line)]" />
 
           {/* 右: 戦況(開いた時点の値・1回読み)。 */}
           <div className="min-w-0 flex flex-col gap-3 text-[11px] max-h-[78vh] overflow-y-auto no-scrollbar">
@@ -139,13 +143,13 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
               <div className="flex flex-col gap-0.5">
                 {snap.guns.map(g => (
                   <div key={g.id} className={`flex items-center gap-1.5 ${g.active ? 'text-white/90' : 'text-white/50'}`}>
-                    <span className={`inline-block h-1.5 w-1.5 ${g.active ? 'bg-[var(--menu-accent,#ffb340)]' : 'bg-white/15'}`} />
+                    <span className={`inline-block h-1.5 w-1.5 ${g.active ? 'bg-[var(--menu-accent,#ffb340)]' : 'ui-dim-bg'}`} />
                     <span className="truncate">{g.name}</span>
                   </div>
                 ))}
                 {snap.melee && (
                   <div className="flex items-center gap-1.5 text-white/50">
-                    <span className="inline-block h-1.5 w-1.5 bg-white/15" />
+                    <span className="inline-block h-1.5 w-1.5 ui-dim-bg" />
                     <span className="truncate">{snap.melee}</span>
                   </div>
                 )}
