@@ -68,6 +68,26 @@ describe('bandSweep(帯の窓マスク・始点→終点)', () => {
     expect(bandSweepAlphaAt(0.5, 0.5, 0)).toBe(0);
     expect(bandSweepAlphaAt(0.5, 0.5, -1)).toBe(0);
   });
+
+  // research/CREATIVE_AUDIT_2026-09-11.md #25(b)追記(品質監査1巡目): easePow 省略時は旧(t*t)と
+  // 同値であること。帯(カプセル)にも区分ごとの easePow を配線したが、雑魚の既定の見た目は
+  // 1pxも変わらないことの担保(circleSweepBand と対の網)。
+  it('easePow 省略時は旧(t*t)と同値(#25(b)・既定の見た目を変えない担保)', () => {
+    for (let p = 0; p <= 1.0001; p += 0.05) {
+      expect(bandSweepCenter(p, HW)).toBeCloseTo(bandSweepCenter(p, HW, true, 2), 10);
+    }
+    expect(bandSweepCenter(0.37, HW, true, 2)).toBeCloseTo(bandSweepCenter(0.37, HW), 10);
+  });
+
+  it('easePow が大きいほど終盤への加速が急になる(#25(b)「重い」ボスほど強いease)', () => {
+    const mid2 = bandSweepCenter(0.5, HW, true, 2);
+    const mid3 = bandSweepCenter(0.5, HW, true, 3);
+    // t=0.5 では t^3 < t^2 = e が小さい=まだ始点寄り(中心位置 -halfW + e*(1+2halfW) が小さい)。
+    expect(mid3).toBeLessThan(mid2);
+    // 両端は easePow に関わらず一致する。
+    expect(bandSweepCenter(0, HW, true, 3)).toBeCloseTo(bandSweepCenter(0, HW, true, 2), 10);
+    expect(bandSweepCenter(1, HW, true, 3)).toBeCloseTo(bandSweepCenter(1, HW, true, 2), 10);
+  });
 });
 
 describe('sweepTelegraphProg(追尾相→溜めを1本の窓として通す・v0.25.4105)', () => {

@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.4241 — 赤予告の「呼吸」を敵の区分で3種に(#25b・社長裁定)【2026-09-12 03:59 JST】
+
+社長「赤予告は b で」。仕様=research/CREATIVE_AUDIT_2026-09-11.md「#25(b) 仕様」+追記。実装=Sonnet 2巡(1巡目→品質監査で帯に届いていない(A)→追記→2巡目)→ 品質監査2巡目で(A)1件(城ボス薙ぎの白芯だけ既定値)→ 設計チャットが修正 → push。
+### 入ったもの
+- **純関数 `src/utils/telegraphStyle.ts`**: `telegraphStyleFor(type)` → `{ drawFrac, haloRel, bandHalfW, pulseMs, easePow }`。区分の優先=終端→強個体→ボス級→雑魚。終端=mimir/jormungand/skadi/thor(`Stage.hiddenBoss`)+giantbat(城ボス)+phillboss(EX)。強個体=体勢値を持つ型(pumpkin/driller/logger/lab-zombie-3/reaper)。ボス級=`isBossType` の残り(hunter/miguel/jibril/rafi/uri/suriel/acrasiel/idol/guardian-phantom/賞金首4種)。値: 雑魚 0.45/0.34/0.34/110ms/2(=今の定数) / 強個体 0.40/0.30/0.30/95/2 / ボス級 0.50/0.40/0.40/130/2.5 / 終端 0.58/0.48/0.48/170/3。`meteorPhase` も純関数化(`tgMeteorPhase`。PixiScene 側は委譲ラッパー)。テスト14本(区分の代表・未知=雑魚・既定=旧定数・任意Dで prog=1→er=1)。
+- **配線**(`pixiScene.ts`): 円 `drawSweepCircleFill`/扇 `drawSweepSectorFill`(haloRel・easePow・脈)、線 `drawAngelDashLine`/`dashLineTick`(drawFrac・脈)、**帯** `drawSweepBand`(窓幅 bandHalfW・ease)/`drawAngelZoneCapsule`/`zoneCapsuleTick`/`drawTelegraphBand`。呼び出し約40箇所を敵の型で配線(紫の予告も同じ敵の呼吸・色は不変)。敵に紐付かない予告(センサー地雷・重手榴弾)は既定。`bandSweepCenter`/`circleSweepBand` に省略可の `easePow`(既定2=旧 `t*t`。同値テスト各1本)。
+- **判定に関わる値は不変**: 溜め時間・halfWidth/radius・windup/remainMs・「消え切り=判定の瞬間」の一致(任意Dで er(1)=1)。`git diff src/store src/world src/hooks` 空。雑魚の見え方は旧と同一(style 省略時=旧定数)。
+- 監査で直した点: 1巡目(A) 帯の既定経路(v0.25.4110 の窓マスク)に未配線 → 追記して配線 / ミーミルの弱点発光(赤予告ではない)の周期変更を戻す / スカジの刃にラフィの骨刃・フィルの羽が相乗り→刃ごとに主の型で引く。2巡目(A) 城ボス薙ぎの白芯だけ既定の窓幅と ease → 面と同じ区分スタイルに。
+- (B)積む: 終端集合が型名の直書き(`STAGES` の `hiddenBoss` から導出するか憲法テストで ⊂ を固定)/ 中断解放時の style は「その呼び出しの引数」に依存(contract をコメント固定か arm に保存)。
+### 確認
+typecheck・lint 0 / `vitest run telegraphStyle circleSweep bandSweep constitution` 53件通過。実機確認は社長(トール・城ボス・賞金首・削岩型の予告の呼吸の差/雑魚が変わっていないこと)。負荷 1/10(Set.has×2+定数比較・予告中の敵ごと毎フレーム)。憲法第4条/第5条: 非該当(描画のみ)。
+状態変化: ★クリエイティブ監査 → 第1回 #25 着地(b)。第1回の残り=#15(c 確定)・#28(4239 着地)・#4 保留・#11/#22 着地。
+
 ## v0.25.4240 — UI磨きバッチ(第2回監査(B)の13件)+磨きの監査(A)反映【2026-09-12 03:15 JST】
 
 社長「b. 着手して」。仕様=research/CREATIVE_AUDIT_2026-09-11.md「磨きバッチ 仕様」1〜10。Sonnet P1 の納品(1回目はリセット事故で消失→同じ手引きで再実装)→ Fable 監査(A5/B10)→ (A)全部と(B)の安い4件を反映。

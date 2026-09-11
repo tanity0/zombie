@@ -44,10 +44,14 @@ export const CIRCLE_SWEEP_STEPS = 14;
  * **等速にしない**(CLAUDE.md「動きの絶対ルール: 慣性」)。ease-in(だんだん速くなる)を掛けてあり、
  * 溜めの序盤は外周付近に留まって危険域を見せ、終盤で内側へ加速して消え切る
  * =**消え切る瞬間が立つ**。`ease=false` で等速(ロールバック用)。
+ *
+ * `easePow`(research/CREATIVE_AUDIT_2026-09-11.md #25(b)): ease-in の強さ。既定2=今の挙動
+ * (`t*t`)。大きいほど終盤への加速がより急になる=「重い」流れに見える(判定・半径・windup時間は
+ * 1つも変えない。見え方の質感だけ)。
  */
-export const circleSweepBand = (prog: number, radius: number, halfW: number, ease = true): number => {
+export const circleSweepBand = (prog: number, radius: number, halfW: number, ease = true, easePow = 2): number => {
   const t = Math.max(0, Math.min(1, prog));
-  const e = ease ? t * t : t;
+  const e = ease ? Math.pow(t, easePow) : t;
   return radius - e * (radius + halfW);
 };
 

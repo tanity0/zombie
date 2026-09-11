@@ -55,4 +55,25 @@ describe('circleSweep(赤円の帯マスク・外→内)', () => {
     expect(circleSweepAlphaAt(10, 10, 0)).toBe(0);
     expect(circleSweepAlphaAt(10, 10, -5)).toBe(0);
   });
+
+  // research/CREATIVE_AUDIT_2026-09-11.md #25(b)追記(品質監査1巡目): easePow 省略時は今の挙動
+  // (t*t)と数値的に同値であること。区分ごとの easePow 差し替え(#25(b))が既定(雑魚)の見た目を
+  // 1pxも変えないことの担保。
+  it('easePow 省略時は t*t と同値(#25(b)・既定の見た目を変えない担保)', () => {
+    for (let p = 0; p <= 1.0001; p += 0.05) {
+      expect(circleSweepBand(p, R, HW)).toBeCloseTo(circleSweepBand(p, R, HW, true, 2), 10);
+    }
+    // 明示的に easePow=2 を渡しても同じ(既定値と一致することの確認)。
+    expect(circleSweepBand(0.37, R, HW, true, 2)).toBeCloseTo(circleSweepBand(0.37, R, HW), 10);
+  });
+
+  it('easePow が大きいほど終盤への加速が急になる(#25(b)「重い」ボスほど強いease)', () => {
+    const mid2 = circleSweepBand(0.5, R, HW, true, 2);
+    const mid3 = circleSweepBand(0.5, R, HW, true, 3);
+    // t=0.5 では t^3 < t^2 なので e が小さい=まだ外周寄り(帯の位置=R-e*(R+HW)がRに近い)。
+    expect(mid3).toBeGreaterThan(mid2);
+    // 両端(prog=0/1)は easePow に関わらず一致する。
+    expect(circleSweepBand(0, R, HW, true, 3)).toBeCloseTo(circleSweepBand(0, R, HW, true, 2), 10);
+    expect(circleSweepBand(1, R, HW, true, 3)).toBeCloseTo(circleSweepBand(1, R, HW, true, 2), 10);
+  });
 });

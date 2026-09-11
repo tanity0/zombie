@@ -239,3 +239,6 @@ typecheck 通過・lint エラー0 / `grep -rn lucide-react src` が 0 / `grep -
 **追記する仕様**: `TelegraphStyle` に **`bandHalfW`(帯の窓の相対幅・既定 0.34=`BAND_SWEEP_HALF_W`)** を足し、帯の ease は `easePow` を流用(`bandSweepCenter` に省略可の `easePow` 引数・既定2=今の `t*t`)。表の値: 雑魚 0.34 / 強個体 0.30 / ボス級 0.40 / 終端 0.48(円の `haloRel` と同じ比)。配線先: `drawSweepBand`・`drawAngelZoneCapsule`・`zoneCapsuleTick`・`drawTelegraphBand`(敵の型から引く。敵に紐付かない帯は既定)。**紫の予告(カウンター不可)も同じ敵の呼吸で描く**(色文法は不変・区分は敵に付く)。
 **同時に直す**: (A-3) ミーミルの弱点発光 `wPulse`(赤予告ではない)は 110 に戻す / (A-4) `syncSkadiHazards` の `blades` はラフィの骨刃(`visual:'bone'`)が相乗りしているので、脈は刃ごとに**その刃の主の型**から引く(骨刃=ラフィ・氷=スカジ・羽=フィル)。
 **網**: `circleSweep.test.ts` に「`easePow` 省略時は `t*t` と同値」1本 / `meteorPhase` を `src/utils/` の純関数へ出し「任意の 0<D<1 で prog=1→er=1」1本 / `bandSweep.test.ts` に「`easePow` 省略時は旧と同値」1本。
+
+### #25(b) 着地(v0.25.4241)
+品質監査2巡(1巡目A=帯未配線+2件、2巡目A=城ボス白芯1件)を全部反映して既定ON。(B)=終端集合の導出・中断解放時の style contract は別案件(DEVLOG v0.25.4241)。

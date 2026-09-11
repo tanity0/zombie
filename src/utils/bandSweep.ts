@@ -48,10 +48,14 @@ export const BAND_SWEEP_SLICES = 30;
  *
  * **等速にしない**(CLAUDE.md「動きの絶対ルール: 慣性」)。ease-in で、
  * 序盤は始点付近に留まり終盤で終点へ加速する=**消え切る瞬間が立つ**。
+ *
+ * `easePow`(research/CREATIVE_AUDIT_2026-09-11.md #25(b)追記): ease-in の強さ。既定2=今の挙動
+ * (`t*t`)。大きいほど終盤への加速がより急になる=「重い」流れに見える(判定・長さ・windup時間は
+ * 1つも変えない。見え方の質感だけ・circleSweepBandのeasePowと同じ設計)。
  */
-export const bandSweepCenter = (prog: number, halfW: number, ease = true): number => {
+export const bandSweepCenter = (prog: number, halfW: number, ease = true, easePow = 2): number => {
   const t = Math.max(0, Math.min(1, prog));
-  const e = ease ? t * t : t;
+  const e = ease ? Math.pow(t, easePow) : t;
   return -halfW + e * (1 + halfW * 2);
 };
 
