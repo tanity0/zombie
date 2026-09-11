@@ -40,7 +40,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
     >
       <div className="glass-panel command-panel rounded-none w-full max-w-sm overflow-hidden">
         <div className="px-5 pt-5 pb-3 text-center">
-          <h2 className="text-xl font-semibold tracking-tight text-white">一時停止</h2>
+          <h2 className="text-xl font-semibold tracking-tight text-white gt-emboss">一時停止</h2>
         </div>
         <div className="px-5 pb-5 flex flex-col gap-2">
           <Ff7rButton onClick={() => { playSfx('ui-select'); onResume(); }} className="w-full" emphasis fade="both" paddingY="0.8rem">

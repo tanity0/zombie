@@ -21,6 +21,29 @@
 }
 
 @layer utilities {
+  /* UIUXのAI感排除・第1手(research/CREATIVE_AUDIT_2026-09-11.md「文字の焼き込み」・監査2巡目で形を確定)。
+     インクは Pixi のダメージ数字/コールアウトの stroke と同じ #020617 に揃える(DOMとPixiで1色)。
+     使い分け(市販HUDの作法): 板(glass-pill 等)の無い文字=絵の上に直置き → 縁(gt-outline)。
+     板の上の文字 → 落ち影1本(gt-solid)。平坦な暗い地のメニュー見出し → エンボス(gt-emboss)。
+     暗い文字(琥珀地の主ボタン)には何も付けない。発光は付けない(暗地で見えない上に画面の色文法を横断する)。 */
+  :root {
+    --gt-ink: #020617;
+  }
+  /* 縁=字の大きさに比例(0.06em: 24px→1.4px / 12px→0.7px)+落ち影0.09em。小さい字で潰れず大きい字で弱らない */
+  .gt-outline {
+    text-shadow:
+      -0.06em -0.06em 0 var(--gt-ink), 0.06em -0.06em 0 var(--gt-ink), -0.06em 0.06em 0 var(--gt-ink), 0.06em 0.06em 0 var(--gt-ink),
+      -0.07em 0 0 var(--gt-ink), 0.07em 0 0 var(--gt-ink), 0 -0.07em 0 var(--gt-ink), 0 0.07em 0 var(--gt-ink),
+      0 0.09em 0 var(--gt-ink);
+  }
+  /* 板の上の文字: 落ち影1本 */
+  .gt-solid {
+    text-shadow: 0 1px 0 var(--gt-ink);
+  }
+  /* 平坦な暗い地の見出し: 上に明・下に暗のエンボス(縁は地と同色で見えず字が太るだけになる) */
+  .gt-emboss {
+    text-shadow: 0 -1px 0 rgba(255, 235, 190, 0.16), 0 1px 0 var(--gt-ink);
+  }
   .pt-safe {
     padding-top: max(env(safe-area-inset-top), 0.5rem);
   }

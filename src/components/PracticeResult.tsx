@@ -54,7 +54,7 @@ export const PracticeResult: React.FC<Props> = ({ won, onRetry, onBackToList }) 
           )}
         </div>
 
-        <div className="mt-3 text-[20px] font-semibold tracking-wide text-white">
+        <div className="mt-3 text-[20px] font-semibold tracking-wide text-white gt-emboss">
           {won ? '討伐' : '敗北'}
         </div>
         <div className="mt-0.5 text-[12px] text-white/55">{bossName}</div>

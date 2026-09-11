@@ -19,7 +19,7 @@ const SubquestHud: React.FC = () => {
       {rows.map(r => (
         <div
           key={r.id}
-          className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums"
+          className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums gt-solid"
           style={{ color: r.done ? '#4ade80' : '#e2e8f0', opacity: r.done ? 0.65 : 1 }}
         >
           {/* v0.25.3705(社長指示): アイコン削除+端的な短縮文(達成は色と薄さで伝える)。

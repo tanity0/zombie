@@ -81,6 +81,12 @@
 | 設計書の記述と実装が食い違う | **設計書のステータス行を信じない。コードをgrep + DEVLOG** | 3757 | 本書 冒頭節 |
 | **敵/ボスの名前がコードに見つからない** | **`src/data/bossCutin.ts` の2台帳を見る**——表示名の正本はここで、`CASTLE_BOSS_NAME_BY_STAGE` は**ステージ別**(城ボスは全ステージ同じ `giantbat` 型なので、`EnemyType` の一覧を何度grepしても名前は出てこない)。固有名ボスは `NAMED_BOSS_CUTIN_NAME` | 4161(搬送体/樹木管理員/衛生兵/軍隊の4名を「存在しない」と誤報告。全部 stage-1/3/4/5 の城ボスだった) | UNIQUE_WEAPONS.md §18 |
 
+## SVG の `<text>` に CSS `text-shadow` を当てない(v0.25.4233・クリエイティブ監査の指摘)
+Chromium(ヘッドレス含む)は描くが **WebKit(iOS の Safari/WebView)は SVG text の text-shadow を描かない**。ストア配布=iOS が本番なので、
+ヘッドレスのスクショで「縁が出ている」は証拠にならない。SVG の文字に縁を回す時は `stroke="#020617" strokeWidth paintOrder="stroke fill"`
+(全ブラウザ同じ絵)。実例: `VitalsOrb.tsx` のHP数字。同じ理由で、DOM文字の焼き込みは `.gt-outline/.gt-solid/.gt-emboss`(index.css)の3クラスから選ぶ
+(板の無い文字=縁 / 板の上=落ち影1本 / 平坦な暗地の見出し=エンボス。琥珀地の暗い文字には何も付けない=黒縁が本体と融合して塊になる)。
+
 ## ★設計書の「ステータス行」は腐る——現在地はコード+DEVELOPMENT_LOG先頭で確認(v0.25.3757・社長指摘)
 
 **実バグ化した情報錯綜**: SKILL_BUILD_REDESIGN.mdの冒頭ステータスが「B0実装中・B1発注文」

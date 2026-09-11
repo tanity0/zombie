@@ -62,8 +62,8 @@ export const NpcDialogue = () => {
     >
       {/* 枠なし・上半身絵と文字を同一の右フェード背景に。高さは文字に合わせ、上半身絵は上にはみ出してOK。 */}
       <div
-        className="glass-pill flex items-stretch gap-1.5 py-1.5 pl-1.5 text-[13px] leading-snug"
-        style={{ paddingRight: 44, overflow: 'visible', textShadow: '0 1px 0 rgba(0,0,0,0.9)' }}
+        className="glass-pill flex items-stretch gap-1.5 py-1.5 pl-1.5 text-[13px] leading-snug gt-solid"
+        style={{ paddingRight: 44, overflow: 'visible' }}
       >
         {portraitBase && (
           // バストは背景の高さ(=文字)に対して背が高く、下端を背景下端に合わせて上へはみ出させる。
@@ -89,7 +89,7 @@ export const NpcDialogue = () => {
         )}
         <div className="self-center" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
           {/* 会話は名前の後に一度改行(社長指示v0.25.2069・会話UI共通=OP射撃シーン側も同じ)。 */}
-          <span className="block font-bold text-amber-300/95">{npc.name}</span>
+          <span className="block font-bold text-amber-300/95 gt-outline">{npc.name}</span>
           <span className="text-white/90">{npc.text}</span>
         </div>
       </div>

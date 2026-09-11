@@ -316,7 +316,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
 
       {/* バージョン表示: スタート画面(タイトル)の右上 */}
       {phase === 'title' && (
-        <span className="absolute top-3 right-3 px-2 py-0.5 text-[10px] font-mono tabular-nums text-purple-200/75" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.7)' }}>
+        <span className="absolute top-3 right-3 px-2 py-0.5 text-[10px] tabular-nums text-purple-200/75" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.7)' }}>
           v{__APP_VERSION__}
         </span>
       )}
@@ -340,7 +340,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
 
       {/* クラッシュ診断: 前回セッション末尾の状態(社長報告のスマホ真っ白現象の手がかり用・読むだけ)。 */}
       {heartbeatLine && (
-        <span className="absolute top-16 right-3 max-w-[92vw] px-2 py-0.5 text-[9px] font-mono tabular-nums text-purple-200/45" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.6), rgba(9,8,14,0.1))', borderLeft: '2px solid rgba(168,85,247,0.4)' }}>
+        <span className="absolute top-16 right-3 max-w-[92vw] px-2 py-0.5 text-[9px] tabular-nums text-purple-200/45" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.6), rgba(9,8,14,0.1))', borderLeft: '2px solid rgba(168,85,247,0.4)' }}>
           {heartbeatLine}
         </span>
       )}
@@ -353,14 +353,14 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
             <NoBounceScroller className="overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar px-5 pt-5 pb-3 text-white/85" style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}>
               <div className="flex items-center justify-between">
                 {/* 見出し: 小さめ＋細い紫下線(FF7R風) */}
-                <h2 className="pb-1 text-[13px] font-bold tracking-[0.18em] text-white" style={{ borderBottom: '1px solid rgba(168,85,247,0.6)' }}>
+                <h2 className="pb-1 text-[13px] font-bold tracking-[0.18em] text-white gt-emboss" style={{ borderBottom: '1px solid rgba(168,85,247,0.6)' }}>
                   更新情報
                 </h2>
-                <span className="px-2 py-0.5 text-[10px] font-mono tabular-nums text-purple-200/70">v{__APP_VERSION__}</span>
+                <span className="px-2 py-0.5 text-[10px] tabular-nums text-purple-200/70" style={{ fontFamily: 'var(--game-font), sans-serif' }}>v{__APP_VERSION__}</span>
               </div>
               {CHANGELOG.map(entry => (
                 <div key={entry.version} className="mt-4">
-                  <p className="text-[11px] font-mono tabular-nums text-purple-200/60">v{entry.version}</p>
+                  <p className="text-[11px] tabular-nums text-purple-200/60" style={{ fontFamily: 'var(--game-font), sans-serif' }}>v{entry.version}</p>
                   <ul className="mt-1.5 space-y-2 text-[12.5px] leading-relaxed text-white/75">
                     {entry.items.map((item, i) => (
                       <li key={i}>・{item}</li>

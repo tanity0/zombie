@@ -113,7 +113,7 @@ const ResultReach: React.FC<ResultReachProps> = ({
             <div key={t}>
               <div className="absolute right-0 h-px w-3 bg-white/40" style={{ top: depthFrac(t) * CUT_H }} />
               <div
-                className="absolute right-4 -translate-y-1/2 font-mono text-[8px] tabular-nums text-white/40"
+                className="absolute right-4 -translate-y-1/2 text-[8px] tabular-nums text-white/40"
                 style={{ top: Math.min(CUT_H - 5, depthFrac(t) * CUT_H + (t === 0 ? 6 : 0)) }}
               >
                 {t === 0 ? '0' : `${t / 1000}k`}
@@ -217,7 +217,7 @@ const ResultReach: React.FC<ResultReachProps> = ({
                   )}
                   {/* ラベル: ヘッドの真下に「今回 / −1」と深さ */}
                   <div
-                    className={`absolute z-30 whitespace-nowrap text-center font-mono text-[7.5px] leading-tight tabular-nums ${c.isCurrent ? 'transition-[top] duration-[900ms] ease-out' : ''}`}
+                    className={`absolute z-30 whitespace-nowrap text-center text-[7.5px] leading-tight tabular-nums ${c.isCurrent ? 'transition-[top] duration-[900ms] ease-out' : ''}`}
                     style={{ top: Math.min(CUT_H - 20, h + 3), left: -((CORE_W - HOLE_W) / 2), width: CORE_W }}
                   >
                     <span style={{ color: c.isCurrent ? color : 'rgba(255,255,255,.42)', fontWeight: c.isCurrent ? 700 : 400 }}>
@@ -242,7 +242,7 @@ const ResultReach: React.FC<ResultReachProps> = ({
         </div>
       </div>
       {cores.length > 1 && (
-        <div className="mt-1 flex items-center justify-between font-mono text-[7.5px] tracking-widest text-white/30">
+        <div className="mt-1 flex items-center justify-between text-[7.5px] tracking-widest text-white/30">
           <span>{canScroll ? '◀ 過去へ' : ''}</span>
           <span>掘削記録 {cores.length}本</span>
         </div>
@@ -262,7 +262,7 @@ const ResultReach: React.FC<ResultReachProps> = ({
             }}
           >
             {r.name.charAt(0)}
-            <span className="mt-0.5 block font-mono text-[6.5px] opacity-50">
+            <span className="mt-0.5 block text-[6.5px] opacity-50">
               {r.isBest ? '⚑' : ''}R{r.rank}
             </span>
           </div>
@@ -270,7 +270,7 @@ const ResultReach: React.FC<ResultReachProps> = ({
       </div>
       {/* ★v0.25.3545(社長指示「リザルトの『七つの大罪』って文字タイトル消して」): 見出しの文字を削除。
           右の現在ランク表示(R◯ 罪名)はそのまま残すので、justify-end で元の右端位置を保つ。 */}
-      <div className="mt-1 flex justify-end font-mono text-[7.5px] tracking-widest text-white/30">
+      <div className="mt-1 flex justify-end text-[7.5px] tracking-widest text-white/30">
         <span>R{cur} {ranks[cur - 1]?.name}</span>
       </div>
 

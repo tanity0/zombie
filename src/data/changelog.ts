@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4233',
+    items: ['画面の文字を作り直した。体力の数字と味方の名前には縁が付き、明るい場所でも読める。時間や撃破数などの表示は影が締まり、メニューの見出しは彫り込んだ質感に。'],
+  },
+  {
     version: '0.25.4232',
     items: ['寄りズーム中の世界の傾きを、入りは一瞬で、戻りは少し速く。'],
   },

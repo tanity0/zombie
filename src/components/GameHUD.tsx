@@ -31,7 +31,7 @@ const RescueBasesGatePill: React.FC = () => {
   const n = Math.min(captured, basesRequired);
   return (
     <div
-      className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums"
+      className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums gt-solid"
       style={{ color: '#facc15' }}
     >
       {`拠点確保 ${n}/${basesRequired}`}
@@ -54,7 +54,7 @@ const RescueQuestGoalPill: React.FC = () => {
   if (!attnDone || !rescued || !inProgress) return null;
   return (
     <div
-      className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums"
+      className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums gt-solid"
       style={{ color: '#facc15' }}
     >
       {bossKilled ? '[サンプルを届ける]' : '[搬送体(変異)の討伐 0/1]'}
@@ -156,7 +156,7 @@ const GameHUD: React.FC = () => {
               : !isTreasureGet && !isDataGet && !poiGetKind && hasWeaponIcon(lastWeaponGet!.weaponKey)
               ? <img src={spritePath(weaponIconName(lastWeaponGet!.weaponKey!))} alt="" className="w-7 h-7 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
               : <span className="text-xl">{poiGetKind ? poiGetIcon : isTreasureGet ? '💎' : isDataGet ? '💾' : '🔫'}</span>}
-            <div className="leading-tight">
+            <div className="leading-tight gt-solid">
               <div
                 className={`text-[10px] font-bold tracking-wide ${
                   poiGetKind ? poiGetLabelClass : isTreasureGet ? 'text-amber-100/85' : isDataGet ? 'text-emerald-100/85' : 'text-purple-200/80'
@@ -206,14 +206,13 @@ const GameHUD: React.FC = () => {
             // (社長指示「小さく『賞金首は去った』通知」)。他のバナーは既存の見た目のまま
             // (色分けの既存規約=text内容キーで判定する流儀に1本追加しただけ・新機構は作らない)。
             className={eventBannerText === '賞金首は去った'
-              ? 'glass-pill px-2 py-0.5 text-[11px] font-semibold tracking-wide'
-              : 'glass-pill px-3 py-1 text-[13px] font-bold tracking-wide'}
+              ? 'glass-pill px-2 py-0.5 text-[11px] font-semibold tracking-wide gt-solid'
+              : 'glass-pill px-3 py-1 text-[13px] font-bold tracking-wide gt-solid'}
             style={{
               color: eventBannerText === '賞金首は去った' ? 'rgba(186,230,253,0.75)'
                 : /成功|達成|救難|凌いだ/.test(eventBannerText) ? '#bbf7d0' : /危険|デンジャー|汚染|深層|検知/.test(eventBannerText) ? '#fecaca' : '#bae6fd',
               border: `1px solid ${eventBannerText === '賞金首は去った' ? 'rgba(56,189,248,0.35)'
                 : /成功|達成|救難|凌いだ/.test(eventBannerText) ? 'rgba(74,222,128,0.6)' : /危険|デンジャー|汚染|深層|検知/.test(eventBannerText) ? 'rgba(239,68,68,0.6)' : 'rgba(56,189,248,0.6)'}`,
-              textShadow: '0 1px 0 rgba(0,0,0,0.9)',
             }}
           >
             {eventBannerText}
@@ -252,7 +251,7 @@ const GameHUD: React.FC = () => {
 
       {/* Timer(中央)=両サイドフェードの黒背景(枠なし) */}
       <div
-        className="absolute left-1/2 -translate-x-1/2 glass-pill-both px-5 py-1 text-[13px] font-semibold tabular-nums"
+        className="absolute left-1/2 -translate-x-1/2 glass-pill-both px-5 py-1 text-[13px] font-semibold tabular-nums gt-solid"
         style={{ top: 'max(env(safe-area-inset-top), 8px)' }}
       >
         {formattedTime}
@@ -261,7 +260,7 @@ const GameHUD: React.FC = () => {
       <DirectorLine />
       {/* スクラップ(右)=右フェード(枠なし) */}
       <div
-        className="absolute glass-pill px-3 py-1 text-[13px] font-semibold tabular-nums"
+        className="absolute glass-pill px-3 py-1 text-[13px] font-semibold tabular-nums gt-solid"
         style={{
           top: 'max(env(safe-area-inset-top), 8px)',
           right: 'max(env(safe-area-inset-right), 12px)'
@@ -328,7 +327,7 @@ const GameHUD: React.FC = () => {
                 {equippedSkills.map(key => (
                   <div
                     key={key}
-                    className="glass-pill px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1"
+                    className="glass-pill px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1 gt-solid"
                   >
                     <span className="text-purple-200/90">{subWeaponDisplayName(key)}</span>
                     <span className="text-white/45 tabular-nums">Lv{player.subWeaponLevels[key] ?? 1}</span>
@@ -398,10 +397,9 @@ const GameHUD: React.FC = () => {
                       : <span className="text-lg">🔫</span>}
                     {/* 弾数バッジ(右下・小さく)。装填/リザーブ。 */}
                     <span
-                      className={`absolute bottom-0 right-0.5 text-[9px] font-bold tabular-nums leading-none ${
+                      className={`absolute bottom-0 right-0.5 text-[9px] font-bold tabular-nums leading-none gt-solid ${
                         dry ? 'text-red-400 animate-pulse' : 'text-white'
                       }`}
-                      style={{ textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}
                     >
                       {mag}<span className="text-[7px] text-white/45">/{gun.infiniteAmmo ? '∞' : reserve}</span>
                     </span>

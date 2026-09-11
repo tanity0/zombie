@@ -20,7 +20,7 @@ const StatsHud: React.FC = () => {
         top: `calc(max(env(safe-area-inset-top), 8px) + ${116 + subquestRows * 29}px)`,
       }}
     >
-      <div className="hud-translucent rounded-2xl px-2.5 py-1.5 text-[11px] leading-tight text-white/80">
+      <div className="hud-translucent rounded-2xl px-2.5 py-1.5 text-[11px] leading-tight text-white/80 gt-solid">
         <div>撃破 {kills}</div>
         <div>DMG {dmg}</div>
         <div>SCRAP {scrap}</div>

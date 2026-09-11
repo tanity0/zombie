@@ -334,7 +334,7 @@ const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }
   COMMAND_UI_ENABLED ? (
     <header className="command-page-header sticky top-0 z-20">
       {onBack && <button type="button" onClick={onBack} className="command-page-back" aria-label="戻る"><ChevronLeft size={18} /><span>戻る</span></button>}
-      <div><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>
+      <div><h1 className="gt-emboss">{title}</h1>{subtitle && <p>{subtitle}</p>}</div>
     </header>
   ) : (
   <div className="sticky top-0 z-20 px-5 pt-5 pb-3 text-center bg-[rgba(11,9,16,0.94)] backdrop-blur-md" style={{ borderBottom: '1px solid rgba(168,85,247,0.45)' }}>
@@ -347,7 +347,7 @@ const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }
         <ChevronLeft size={16} /><span className="text-[12px] tracking-wide">戻る</span>
       </button>
     )}
-    <h1 className="text-2xl font-semibold tracking-[0.08em] text-white">{title}</h1>
+    <h1 className="text-2xl font-semibold tracking-[0.08em] text-white gt-emboss">{title}</h1>
     {subtitle && <p className="text-[12px] text-purple-200/55 mt-1 tracking-wide">{subtitle}</p>}
   </div>
   )
@@ -731,7 +731,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             短い可視域(iPhone SE級・監査B-6)でも動くのはリストだけ。入り=menu-item-inカスケード(監査B-7)。 */}
         <div className="flex h-full w-full flex-col" style={{ padding: '10px 12px' }}>
           <div className="ds-top menu-item-in" style={{ animationDelay: '0ms' }}>
-            <span className="ds-top-big">OPERATIONS ROOM</span>
+            <span className="ds-top-big gt-emboss">OPERATIONS ROOM</span>
             {/* 実データが引ける物だけ実値(§3-0): G=goldBalance。RANK等の嘘の数字は出さない。 */}
             <span>G <span className="ds-top-v">{goldBalance.toLocaleString()}</span></span>
           </div>
@@ -1281,7 +1281,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         {DS_LOADOUT_PREVIEW ? (
           <header className="ds-loadout-header">
             <button type="button" className="ds-loadout-back" onClick={() => setScreen({ name: 'home' })}>戻る</button>
-            <div><h1>装備 <span>LOADOUT</span></h1><p>全作戦共通 · 自動保存</p></div>
+            <div><h1 className="gt-emboss">装備 <span>LOADOUT</span></h1><p>全作戦共通 · 自動保存</p></div>
           </header>
         ) : <Header title="装備" subtitle="全作戦共通" onBack={() => setScreen({ name: 'home' })} />}
         <LoadoutBody>

@@ -111,7 +111,7 @@ const TutorialPopup: React.FC = () => {
           >
             {slides.map((slide, index) => (
               <article key={`${slide.title}:${index}`} className="min-w-full px-5 pb-3 pt-3">
-                <h2 className="text-[15px] font-bold tracking-[0.14em] text-white">
+                <h2 className="text-[15px] font-bold tracking-[0.14em] text-white gt-emboss">
                   {slide.title}
                 </h2>
                 <SlideMedia slide={slide} />

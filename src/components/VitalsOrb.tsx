@@ -472,6 +472,10 @@ const VitalsOrb: React.FC = () => {
               fontWeight="800"
               fontSize={ORB_R * 0.78}
               fill="#ffffff"
+              stroke="#020617"
+              strokeWidth={ORB_R * 0.78 * 0.14}
+              strokeLinejoin="round"
+              paintOrder="stroke fill"
               style={{ fontVariantNumeric: 'tabular-nums' }}
             >
               {Math.max(0, Math.ceil(health))}
@@ -498,7 +502,7 @@ const VitalsOrb: React.FC = () => {
 
         {/* レベル(オーブ下の小バッジ): 半透明の背景・1行固定(折り返さない) */}
         <div
-          className="absolute left-1/2 -translate-x-1/2 rounded-full px-2 py-0.5 text-[10px] font-bold leading-none whitespace-nowrap"
+          className="absolute left-1/2 -translate-x-1/2 rounded-full px-2 py-0.5 text-[10px] font-bold leading-none whitespace-nowrap gt-solid"
           style={{ bottom: -8, backgroundColor: 'rgba(13,10,20,0.6)', border: '1px solid rgba(168,85,247,0.4)' }}
         >
           Lv {level}

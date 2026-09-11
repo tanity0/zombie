@@ -147,3 +147,9 @@ Pixi の stroke と同じ「紫黒」のインク(`--gt-ink`)で DOM と質感�
 ### 受け入れ
 typecheck 通過・lint エラー0 / `grep -n font-mono src/components/*.tsx` が開発用オーバーレイ2本以外 0 / `grep -n "'serif'" src/pixi/pixiScene.ts` 0 / HUDスクショ(S1夜・S3市街)の全文字に縁が見える / 見出しの位置・寸法が1pxも動いていない(text-shadow はレイアウトに影響しない=動いたら別の変更が混ざっている)。
 負荷: 2/10(DOM の text-shadow・硬い影のみ。ぼかし1層は静的な見出しに限定。毎秒変わる数字は硬い影だけ)。
+
+### 第1手の着地(v0.25.4233)と監査2巡目で確定した形
+- 実装(Sonnet)→クリエイティブ監査1巡(A2/B7/C3/D/E3/F)→設計チャットが作り直し。**仕様は上の案から次のとおり変わった**:
+  インク=`#020617`(Pixi と同色)/縁は em 比例(0.06em)/**発光クラスは廃止**/`gt-outline`=板の無い文字だけ(HP球の数字=SVG stroke・台詞の名前)/`gt-solid`=板の上の文字(HUDのピル全部・台詞本文)/`gt-emboss`=平坦な暗い地のメニュー見出し/琥珀地の暗い文字と START には何も付けない/COMBO は元の作り込みを維持。
+- 据え置き(社長へ): E-3 四神名(`rhythmGodText`)の serif=和名の格の意図があり得るので触っていない。E-2 ResultReach の 6.5〜8px を Orbitron に=実機で潰れていたら等幅に戻す。
+- 教訓(ENGINEERING_NOTES へ): SVG `<text>` に CSS text-shadow は WebKit で描かれない → `stroke + paint-order`。
