@@ -1517,6 +1517,9 @@ const invert3 = (m: number[]): number[] => {
 const ZWARP_GAIN = Math.max(0, Math.min(2, tsNum('zwarpk', 0.18)));        // (旧: ズーム速度→傾き。4227で未使用=`?zwarpmove=1` の時だけ移動連動へ戻す)
 const ZWARP_MOVE_LINK = tsBool('zwarpmove', false);                         // 旧挙動(ズームの速さ×進行方向)へ切り替える検証用
 const ZWARP_MAX = Math.max(0, Math.min(0.5, tsNum('zwarpmax', 0.22)));     // 傾きの最大(近い辺のはみ出し=画面比)。イベントの包絡線×これ
+// 掛け先(社長裁定2026-09-11「敵とキャラクターは曲げない」): 既定=地面(groundBase)+遠景森(hzFixed)だけ=敵/キャラ/効果/赤い予告(filteredWorld)は平ら。
+// `?zwarpall=1` で旧来の worldGroup(画面全体)へ戻す(比較用)。地面の上の血痕・光だまり・影は filteredWorld 内なので既定では平らのまま。
+const ZWARP_ALL = tsBool('zwarpall', false);
 const ZWARP_ATTACK_TAU = Math.max(0.02, tsNum('zwarpatk', 0.10));           // 立ち上がりの時定数(s)
 const ZWARP_DECAY_TAU = Math.max(0.05, tsNum('zwarpdec', 0.40));            // 戻りの時定数(s)
 const ZWARP_DIR_TAU = 0.25;                                                 // 進行方向の平滑(反転でパタつかない)
@@ -3450,8 +3453,8 @@ export class PixiScene {
   private playerView: ActorView | null = null;
   private moveLeanNow = 0;       // 進行方向への前傾(rad)。慣性つきで target へ追従
   private dioramaFront: Container | null = null; // D1 手前の板(screen-space・frontForest の上・uiLayer の下)
-  private zwarpFilter: Filter | null = null;         // ズーム時の遠近: worldGroup に掛ける射影フィルタ(有効中だけ)
-  private zwarpInList = false;                       // 今 worldGroup.filters に入っているか
+  private zwarpFilter: Filter | null = null;         // ズーム時の遠近: 地面+遠景森(ZWARP_ALL 時は worldGroup)に掛ける射影フィルタ(有効中だけ)
+  private zwarpInList = false;                       // 今フィルタが付いているか(既定: groundBase.filters+hzFixed.filters / ZWARP_ALL: worldGroup.filters)
   private zwarpHinv = new Float32Array(9);           // 出力→元 の逆射影(GL 列優先)
   private zwarpK = 0;                                // 現在の傾き(0=平ら)
   private zwarpDirX = 0; private zwarpDirY = -1;     // 進行方向(平滑済み・既定=上=奥)
@@ -4286,7 +4289,7 @@ export class PixiScene {
       filters.push(this.dayContrast);
     }
     if (this.punchInList && this.punchGrade) filters.push(this.punchGrade);
-    if (this.zwarpInList && this.zwarpFilter) filters.push(this.zwarpFilter); // ズーム時だけの遠近(最後=階調の後に形を歪める)
+    if (ZWARP_ALL && this.zwarpInList && this.zwarpFilter) filters.push(this.zwarpFilter); // ズーム時だけの遠近(比較用の全体掛け。最後=階調の後に形を歪める)
     this.L.worldGroup.filters = filters;
   }
 
@@ -5342,7 +5345,8 @@ export class PixiScene {
     // 求める重い経路に落ちる。filteredWorldと同じ式(worldGroup自身のworldTransformの逆変換)で
     // 明示すれば、その走査を毎フレーム払わずに済む。
     const hasWorldGroupFilters = !!(this.L.worldGroup.filters as Filter[] | null)?.length;
-    if (!hasFilteredWorld && !hasWorldGroupFilters) return;
+    const hasZwarpBase = this.zwarpInList && !ZWARP_ALL;
+    if (!hasFilteredWorld && !hasWorldGroupFilters && !hasZwarpBase) return;
     // 実際に worldGroup へ適用済みの値を読む(zoom≈1で未適用の時は scale=1/pos=0 が入っている)。
     const z = this.L.worldGroup.scale.x || 1;
     const tx = this.L.worldGroup.position.x;
@@ -5364,6 +5368,40 @@ export class PixiScene {
       const rect2 = fa2 ?? new Rectangle();
       rect2.x = rectX; rect2.y = rectY; rect2.width = rectW; rect2.height = rectH;
       if (!fa2) this.L.worldGroup.filterArea = rect2;
+    }
+    if (hasZwarpBase) this.syncZwarpBaseFilterArea(rectX, rectY, rectW, rectH);
+  }
+
+  // ズーム時の遠近(既定=地面+遠景森に掛ける)の filterArea を画面矩形に固定する。groundBase(揺れ/余白ぶん位置あり)と
+  // hzFixed(ボス寄せバイアス打ち消しぶん位置あり)は worldGroup の子なので、worldGroup ローカルの画面矩形から
+  // 各自の position を引く(scale は両方1)。明示しないと Pixi が毎フレーム 180本の床帯/森の実バウンディングを走査する
+  // (指摘10と同型)うえ、台形の基準枠が画面ではなく床帯の外周になって強さが端末幅で変わる。
+  private syncZwarpBaseFilterArea(rectX: number, rectY: number, rectW: number, rectH: number) {
+    const gb = this.L.groundBase, hz = this.hzFixed;
+    const fa = gb.filterArea as Rectangle | undefined;
+    const r = fa ?? new Rectangle();
+    r.x = rectX - gb.position.x; r.y = rectY - gb.position.y; r.width = rectW; r.height = rectH;
+    if (!fa) gb.filterArea = r;
+    const fb = hz.filterArea as Rectangle | undefined;
+    const r2 = fb ?? new Rectangle();
+    r2.x = rectX - hz.position.x; r2.y = rectY - hz.position.y; r2.width = rectW; r2.height = rectH;
+    if (!fb) hz.filterArea = r2;
+  }
+
+  // ズーム時の遠近フィルタの付け外し(1箇所)。既定=地面+遠景森の2コンテナに同じ1インスタンスを付ける(=2パス。面積は
+  // どちらも画面矩形以下)。ZWARP_ALL=worldGroup の filters 配列で管理(syncWorldGroupFilters)。
+  private setZwarpAttached(on: boolean) {
+    if (this.zwarpInList === on) return;
+    this.zwarpInList = on;
+    if (ZWARP_ALL) { this.syncWorldGroupFilters(); return; }
+    const f = on && this.zwarpFilter ? [this.zwarpFilter] : null;
+    this.L.groundBase.filters = f;
+    this.hzFixed.filters = f;
+    if (on) {
+      // 付けた直後のフレームから枠を画面に固定(syncWorldFilterArea は sync() の前半で走り済み=次フレームまで待たない)
+      const z = this.L.worldGroup.scale.x || 1;
+      const tx = this.L.worldGroup.position.x, ty = this.L.worldGroup.position.y;
+      this.syncZwarpBaseFilterArea(-tx / z, -ty / z, this.screenW / z, this.screenH / z);
     }
   }
 
@@ -5800,7 +5838,7 @@ export class PixiScene {
       this.zwarpDirY = 0;
     }
     if (this.zwarpK <= ZWARP_MIN_ACTIVE) {
-      if (this.zwarpInList) { this.zwarpInList = false; this.syncWorldGroupFilters(); } // 平ら=フィルタを外す(パス増なし)
+      this.setZwarpAttached(false); // 平ら=フィルタを外す(パス増なし)
       return;
     }
     if (!this.zwarpFilter) {
@@ -5832,7 +5870,7 @@ export class PixiScene {
     const ug = this.zwarpFilter.resources.zwarpUniforms as UniformGroup;
     ug.uniforms.uHinv = H;
     ug.update();
-    if (!this.zwarpInList) { this.zwarpInList = true; this.syncWorldGroupFilters(); }
+    this.setZwarpAttached(true);
   }
 
   /** D1 の板のぼかしを1回だけ焼く(毎フレームの BlurFilter を持たない=CLAUDE.md 描画ルール4「焼いたテクスチャ」)。 */
@@ -29690,6 +29728,7 @@ export class PixiScene {
     this.signalBombSprites.clear();
     try { this.labRT?.destroy(true); } catch { /* ignore */ }
     this.labRT = null;
+    try { this.L.groundBase.filters = null; this.hzFixed.filters = null; } catch { /* ignore */ }
     try { this.zwarpFilter?.destroy(); } catch { /* ignore */ }
     this.zwarpFilter = null;
     try { this.corridorBackdrop?.destroy(); } catch { /* ignore */ }
