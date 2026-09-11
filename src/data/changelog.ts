@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4232',
+    items: ['寄りズーム中の世界の傾きを、入りは一瞬で、戻りは少し速く。'],
+  },
+  {
     version: '0.25.4231',
     items: ['寄りズーム中の世界の傾きを手直し。やられた時や救急鞄の時は、いちばん近い敵の側へ奥が向く。奥の側の縁も少し縮んで、相手へ引き込まれるように見える。長い寄りでも床の傾きは先にほどけ、傾いたまま止まらない。'],
   },

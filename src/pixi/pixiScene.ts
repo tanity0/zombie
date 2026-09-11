@@ -1540,15 +1540,15 @@ const ZWARP_DECAY_POW = Math.max(0.5, tsNum('zwarppow', 1.6));
 // 社長裁定2026-09-11(クリエイティブ監査の戻し):
 // §6「傾きは先にほどく」: 傾きは寄りのホールドを待たず自分の時計でほどける。イベント開始から HOLD_MS 保持→RELEASE_MS で 0 へ
 //(死亡の1.15秒ホールドでも傾いた床が静止して見えない。KILL(700ms)では従来とほぼ同じ尺)。
-const ZWARP_TILT_HOLD_MS = Math.max(0, tsNum('zwarphold_ms', 150));
-const ZWARP_TILT_RELEASE_MS = Math.max(50, tsNum('zwarprel', 450));
+const ZWARP_TILT_HOLD_MS = Math.max(0, tsNum('zwarphold_ms', 100));   // 150→100(社長指示v0.25.4232「戻りも少しスピードアップ」)
+const ZWARP_TILT_RELEASE_MS = Math.max(50, tsNum('zwarprel', 320)); // 450→320(同上)
 // §8「奥の辺も縮める」: 総量 k のうち奥側 FAR_FRAC を縮め、近側 (1−FAR_FRAC) を膨らませる=対象へ引き込まれる動き。
 // 奥側が縮むと縁の外の絵が要るので、フィルタの枠(filterArea)を縦に縮みぶんだけ広げる(地面はオーバースキャン分が在る)。
 const ZWARP_FAR_FRAC = Math.max(0, Math.min(0.8, tsNum('zwarpfar', 0.35)));
 // §5「起因する側」: 寄り先がプレイヤー本人(死亡・救急)の時は、最も近い敵の側=その事態を起こした側。敵が居なければ向いている側。
 // §10「横だけ」: 上下成分は混ぜない(dirY=0 のまま)。
 // §3 立ち上がりはばね(衝撃と同じ時間帯・わずかに行き過ぎて揺り返す)。ω=固有角速度(rad/s)・ζ=減衰比(<1 で行き過ぎ)
-const ZWARP_SPRING_W = Math.max(5, tsNum('zwarpw', 40));
+const ZWARP_SPRING_W = Math.max(5, tsNum('zwarpw', 90));   // 40→90(社長指示v0.25.4232「イン側はもっと一瞬に」。立ち上がり約20ms=1〜2フレーム。ζ0.6の揺り返しは残す)
 const ZWARP_SPRING_Z = Math.max(0.2, Math.min(1.5, tsNum('zwarpz', 0.6)));
 const ZWARP_DECAY_TAU = Math.max(0.05, tsNum('zwarpdec', 0.40));            // 戻りの時定数(s)
 const ZWARP_DIR_TAU = 0.25;                                                 // 進行方向の平滑(反転でパタつかない)
