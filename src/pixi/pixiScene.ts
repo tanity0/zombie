@@ -1437,6 +1437,20 @@ const FAKE3D_TREES = tsBool('f3dtrees', true);                              // �
 //     床の台形・遠近スケールと同じ「奥」の向きに色でも差をつける。プレイヤーは沈めない(主役)。
 //  入れない: 縦パララックス(地平線へ歩いても地平線は動かないのが現実。参考は横スクロール)/ 板の湾曲(mesh設計が要る)/
 //  プレイ面の物の位置の収束(=判定と絵の関係を触る大工事・別案件)。
+// =============================================================================
+// ズーム時だけの遠近(社長2026-09-11「ズームになった時に画面が進行方向に遠近になると面白い」→「ズームはみてみたい」)。
+// 設計= research/FAKE_3D.md「第3弾」。常時の透視は読みを壊す(社長裁定「なし」)が、**ズームが動いている数秒だけ**
+// 世界レイヤー(床・敵・予告・影が全部入った worldGroup)を1枚のテクスチャに描き、台形メッシュで表示する。
+// 台形の狭い辺=進行方向(奥)。ズームの速さに比例して傾き、止まると平らへ戻る(慣性つき)。同じ1枚の中で歪む
+// ので赤い予告と判定の関係は崩れない。HUD(DOM)・遠景・手前の近景森は外。★既定OFF(`?zwarp=1`)。
+// 負荷: 有効中だけ「世界を1回余分に描く」全画面パス(5/10・数秒)。平常時はゼロ。
+const ZWARP = tsBool('zwarp', false);
+const ZWARP_GAIN = Math.max(0, Math.min(2, tsNum('zwarpk', 0.18)));        // ズーム速度(倍率/s)→傾き
+const ZWARP_MAX = Math.max(0, Math.min(0.4, tsNum('zwarpmax', 0.12)));     // 傾きの上限(近い辺のはみ出し=画面幅比)
+const ZWARP_ATTACK_TAU = Math.max(0.02, tsNum('zwarpatk', 0.10));           // 立ち上がりの時定数(s)
+const ZWARP_DECAY_TAU = Math.max(0.05, tsNum('zwarpdec', 0.40));            // 戻りの時定数(s)
+const ZWARP_DIR_TAU = 0.25;                                                 // 進行方向の平滑(反転でパタつかない)
+const ZWARP_MIN_ACTIVE = 0.004;                                             // これ未満は平ら=余分な描画パスを走らせない
 const DIORAMA = tsBool('diorama', false);
 const DIORAMA_FRONT = tsBool('dfront', true);
 const DIORAMA_FRONT_PX = Math.max(0.7, Math.min(3, tsNum('dfrontpx', 1.35)));        // 手前の板の横パララックス(1=世界と同速。>1=手前)
@@ -3359,6 +3373,12 @@ export class PixiScene {
   private playerView: ActorView | null = null;
   private moveLeanNow = 0;       // 進行方向への前傾(rad)。慣性つきで target へ追従
   private dioramaFront: Container | null = null; // D1 手前の板(screen-space・frontForest の上・uiLayer の下)
+  private zwarpMesh: PerspectiveMesh | null = null;  // ズーム時の遠近: 世界を貼る台形メッシュ(worldGroup の直上)
+  private zwarpRT: RenderTexture | null = null;      // 世界を描く先(画面サイズ)
+  private zwarpK = 0;                                // 現在の傾き(0=平ら)
+  private zwarpDirX = 0; private zwarpDirY = -1;     // 進行方向(平滑済み・既定=上=奥)
+  private zwarpPrevZoom = 0; private zwarpLastNow = 0;
+  private zwarpZoomNow = 1;                          // このフレームに worldGroup へ適用した総ズーム(zwarp が読む)
   private dioramaFrontSprites: Sprite[] = [];
   private dioramaFrontTex: Texture | null = null;   // 元テクスチャ(ステージ切替の検知用)
   private dioramaFrontBaked = new Map<Texture, Texture>(); // ぼかしを1回焼いたテクスチャ(監査C#3: 毎フレームのフィルタを持たない)
@@ -3888,6 +3908,19 @@ export class PixiScene {
   private assistBrightnessNow = 0;     // プレイヤー足元の明るさ(補助光用)
   private punchLights: PointLight[] = []; // パンチ用の光(松明だけ届く距離が短い)
   private torchPoolReqs: { x: number; y: number; r: number; life: number; tint?: number }[] = []; // 松明の光だまり(このフレーム)
+  /**
+   * 「世界の光」への登録口(社長指示2026-09-11「他の光にも」)。ここに積んだ光には ①補助光の譲り ②パンチ ③光だまり
+   * (pool を渡した時)が自動で付く。★描画に使っている数値をそのまま渡す(別の数式を作ると絵と挙動がズレる・v0.25.2779)。
+   * 呼ぶ場所は syncBreakableProps(毎フレームの clear)より後・光の集計(assistBrightnessNow)より前=アクター/金環の描画中。
+   */
+  private registerWorldLight(x: number, y: number, reach: number, strength: number, pool?: { r: number; life: number; tint: number }) {
+    if (!(strength > 0) || !(reach > 0)) return;
+    this.worldLights.push({ x, y, reach, strength });
+    // パンチは松明と同じ物差し(届く距離=補助光の 1.5/3.0・強さ×TORCH_PUNCH_GAIN_MULT)=「近づいて初めて締まる」を揃える(監査B#4)
+    this.punchLights.push({ x, y, reach: reach * (TORCH_PUNCH_REACH_MULT / TORCH_LIGHT_REACH_MULT), strength: strength * TORCH_PUNCH_GAIN_MULT });
+    // 光だまりの濃さは松明のツマミ(?torchpool・既定0.8)に比例して一緒に動く(監査B#9)
+    if (pool && TORCH_POOL_ALPHA_MULT > 0 && pool.life > 0) this.torchPoolReqs.push({ x, y, r: pool.r, life: Math.min(1, pool.life * (TORCH_POOL_ALPHA_MULT / 0.8)), tint: pool.tint });
+  }
   private punchBrightnessNow = 0;      // プレイヤー足元の明るさ(コントラストパンチ用)
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   // 照準サークル(PHILL/ワイヤーアンカーのプレビュー)専用。uiLayer(=研究所の暗幕 labVeil や
@@ -5644,6 +5677,69 @@ export class PixiScene {
    * 横パララックス DIORAMA_FRONT_PX(>1=世界より速い=手前)・周期 P で再登場。足元は画面下端より下(幹は見せず
    * 樹冠だけが端を横切る)。研究所/洋館(木の無いステージ)では出さない。
    */
+  /**
+   * ズーム時だけの遠近(`?zwarp=1`)。ズームの速さから傾き k を出し(立ち上がり速く・戻り遅く=慣性)、k>0 の間だけ
+   * worldGroup を RenderTexture に描いて台形メッシュで表示する。台形は**奥(進行方向)の辺を画面幅のまま**、
+   * 近い辺を k×W はみ出させる=隙間が出ない(奥を縮めると角に穴が開く)。k≈0 では何もしない(パス増なし)。
+   */
+  private syncZoomWarp(vx: number, vy: number, now: number) {
+    if (!ZWARP || !this.renderer) return;
+    const wg = this.L.worldGroup;
+    const gapMs = this.zwarpLastNow ? now - this.zwarpLastNow : 0;
+    const dt = this.zwarpLastNow ? Math.min(0.1, gapMs / 1000) : 0;
+    this.zwarpLastNow = now;
+    const z = this.zwarpZoomNow;
+    // 非表示/ポーズ復帰の最初のフレーム(実経過が長い)は、停止中に動いたズーム差を速度と誤読しない(監査B#6)
+    if (gapMs > 250) this.zwarpPrevZoom = z;
+    const rate = dt > 0 && this.zwarpPrevZoom > 0 ? Math.abs(z - this.zwarpPrevZoom) / dt : 0;
+    this.zwarpPrevZoom = z;
+    const target = Math.min(ZWARP_MAX, rate * ZWARP_GAIN);
+    if (dt > 0) {
+      const tau = target > this.zwarpK ? ZWARP_ATTACK_TAU : ZWARP_DECAY_TAU;
+      this.zwarpK += (target - this.zwarpK) * (1 - Math.exp(-dt / tau));
+      const spd = Math.hypot(vx, vy);
+      if (spd > 20) {
+        const kd = 1 - Math.exp(-dt / ZWARP_DIR_TAU);
+        this.zwarpDirX += (vx / spd - this.zwarpDirX) * kd;
+        this.zwarpDirY += (vy / spd - this.zwarpDirY) * kd;
+      }
+    }
+    if (this.zwarpK <= ZWARP_MIN_ACTIVE) {
+      if (this.zwarpMesh) this.zwarpMesh.visible = false;
+      wg.visible = true;
+      return;
+    }
+    const W = Math.max(1, Math.round(this.screenW)), H = Math.max(1, Math.round(this.screenH));
+    // 解像度は renderer × stage の拡大(大型端末は論理pxを1.06〜1.3倍に拡大して表示)=RTがボケない(監査B#2)
+    const rtRes = this.renderer.resolution * (wg.parent?.scale.x ?? 1);
+    if (!this.zwarpRT || this.zwarpRT.width !== W || this.zwarpRT.height !== H || Math.abs(this.zwarpRT.source.resolution - rtRes) > 0.001) {
+      this.zwarpRT?.destroy(true);
+      this.zwarpRT = RenderTexture.create({ width: W, height: H, resolution: rtRes, antialias: false });
+      if (this.zwarpMesh) this.zwarpMesh.texture = this.zwarpRT;
+    }
+    if (!this.zwarpMesh) {
+      const m = new PerspectiveMesh({ texture: this.zwarpRT, verticesX: 12, verticesY: 12 });
+      m.eventMode = 'none';
+      const parent = wg.parent ?? this.L.stage;
+      parent.addChildAt(m, parent.getChildIndex(wg) + 1); // 世界の直上(遠景の上・近景森/HUDの下)
+      this.zwarpMesh = m;
+    }
+    // 世界をこのフレームの姿のまま1枚へ(worldGroup 自身の zoom/pan/フィルタ込み)。主描画では隠して二重に描かない。
+    wg.visible = true;
+    this.renderer.render({ container: wg, target: this.zwarpRT, clear: true });
+    wg.visible = false;
+    // 台形: 奥(進行方向)の辺=画面幅のまま / 近い辺=k×W(または k×H)はみ出し。角の順は TL,TR,BR,BL。
+    // 4隅は進行方向ベクトルの**連続関数**(監査A#1: 軸で4方向に離散化すると旋回で台形が瞬間に跳ぶ=慣性違反)。
+    // 横のはみ出し hx=k·W·(−dirY): 上へ進む(dirY<0)なら下の辺が広がり、下へ進むなら上の辺。縦 vy=k·H·(−dirX) も同型。
+    // 斜め移動では両方が混ざり、向きが回ると滑らかに移り変わる(境界で自然に0)。
+    const k = this.zwarpK;
+    const hx = k * W * (-this.zwarpDirY), hy = k * H * (-this.zwarpDirX);
+    const x0 = Math.min(0, hx), x1 = W - Math.min(0, hx), x3 = -Math.max(0, hx), x2 = W + Math.max(0, hx);
+    const y0 = Math.min(0, hy), y3 = H - Math.min(0, hy), y1 = -Math.max(0, hy), y2 = H + Math.max(0, hy);
+    this.zwarpMesh.setCorners(x0, y0, x1, y1, x2, y2, x3, y3);
+    this.zwarpMesh.visible = true;
+  }
+
   /** D1 の板のぼかしを1回だけ焼く(毎フレームの BlurFilter を持たない=CLAUDE.md 描画ルール4「焼いたテクスチャ」)。 */
   private bakeDioramaFront(src: Texture): Texture {
     const cached = this.dioramaFrontBaked.get(src);
@@ -7364,6 +7460,7 @@ export class PixiScene {
 
   sync() {
     this.restoreForestPreview();
+    if (ZWARP) this.L.worldGroup.visible = true; // 前フレーム末で隠した世界を、このフレームの処理の間は見える状態へ戻す
     const s = useGameStore.getState();
     const realNow = Date.now();
     // オプションのブルームON/OFFをリロード無しで反映(変化時だけフィルタ配列を作り直す)。
@@ -7585,6 +7682,7 @@ export class PixiScene {
       this.bossCameraReturning = false;
     }
     const zoom = this.idleZoom * this.contextZoom * punch;
+    this.zwarpZoomNow = this.idleZoom * this.contextZoom; // KILL/カウンターの寄りパンチ(punch・瞬間ジャンプ)は歪みの入力から除く(監査B#7)
     // 寄り先(社長指示・v0.25.1498): KILLはキルされた対象(zoomTargetX/Y・世界座標)を画面中央の
     // 代わりに寄りの軸にする(zoomDecay>0=パンチ演出中のみ・カウンター等は指定なしで従来どおり中央)。
     // world.position は本関数の先頭でカメラオフセット込み更新済みなのでここでそのまま使える。
@@ -8624,6 +8722,7 @@ export class PixiScene {
     this.syncRhythmOverlay(s.rhythm, s.player, now);
     this.syncFireflies(s.camera, now);
     this.applyForestPreview();
+    this.syncZoomWarp(s.player.vx ?? 0, s.player.vy ?? 0, realNow); // ★必ず最後(このフレームの世界が全部揃ってから1枚に描く)
   }
 
   // ---- 四神舞(リズム)UI: ミラーボール + 左右サークル + 矢印プロンプト -------
@@ -13581,6 +13680,8 @@ export class PixiScene {
       v.ring.tint = ring.ownerGhost ? GHOST_ALLY_TINT : 0xffffff; // 既存のゴースト発動サブと同じ視覚マーカー
       v.ring.alpha = ringEase.alphaMul;
       v.ring.visible = !!tex && ringEase.alphaMul > 0.01;
+      // 金環=世界の光(照射中は輪が光源)。出現/消滅の alphaMul に同期。
+      this.registerWorldLight(pos.x, pos.y, 240, 1.2 * ringEase.alphaMul, { r: 36, life: 0.6 * ringEase.alphaMul, tint: 0xffe08a });
 
       // レーザー: 'firing'中は出現ランプ(0→1・BEAM_APPEAR_MS)込みで全開表示、'fading'中は
       // 最後の射線(固定)のまま統一型フェードで消える。それ以外(deploying/beam無し)は非表示。
@@ -21704,6 +21805,8 @@ export class PixiScene {
     halo.scale.set((bodyH * PHILL_HALO_DIA_FRAC * (1 + boostT * 0.18)) / Math.max(1, halo.texture.width));
     halo.alpha = Math.max(0, (PHILL_HALO_ALPHA + (PHILL_HALO_BOOST_ALPHA - PHILL_HALO_ALPHA) * boostT) * flicker * bodyAlpha);
     halo.visible = true;
+    // 後光=世界の光(空中の光源なので床の光だまりは敷かない。補助光の譲りとパンチだけ)。
+    this.registerWorldLight(cx, headY, bodyH * 1.4, 1.6 * halo.alpha);
 
     const sparkles = this.phillSparkles.get(id);
     if (sparkles) {
@@ -27355,6 +27458,8 @@ export class PixiScene {
     sp.tint = 0xffffff;
     sp.alpha = ease.alphaMul;
     sp.visible = true;
+    // ランタン=世界の光(松明と同じ扱い: 近づくと床が明るく周りが締まる)。強さ・濃さは掲げの alphaMul に同期。
+    this.registerWorldLight(handX, handY + ease.dy, 260, 1.4 * ease.alphaMul, { r: 40, life: 0.7 * ease.alphaMul, tint: 0xffd9a0 });
     // ★慣性バッチ: 消滅側(B7積み残し)。掲げ続けが途切れた後(退場・状態外れ)に
     // flushWeaponVanishが沈み+フェードアウトを描き足す(即時OFFのスナップ廃止)。
     this.trackWeaponVanish(`jibril-lantern:${id}`, now,
@@ -29482,6 +29587,8 @@ export class PixiScene {
     this.signalBombSprites.clear();
     try { this.labRT?.destroy(true); } catch { /* ignore */ }
     this.labRT = null;
+    try { this.zwarpRT?.destroy(true); this.zwarpMesh?.destroy(); } catch { /* ignore */ }
+    this.zwarpRT = null; this.zwarpMesh = null;
     try { this.corridorBackdrop?.destroy(); } catch { /* ignore */ }
     this.corridorBackdrop = null;
     for (const e of this.trees.values()) e.sprite.destroy();
