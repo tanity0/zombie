@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4217',
+    items: ['ゲームの見え方は変わりません(立っている人や木をカメラ越しに見たように傾ける試作を、切り替えを入れた時だけ出る形で追加)。'],
+  },
+  {
     version: '0.25.4216',
     items: ['ゲームの見え方は変わりません(走る向きへ体を傾ける試作を、切り替えを入れた時だけ出る形で追加)。'],
   },

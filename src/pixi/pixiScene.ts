@@ -1409,11 +1409,29 @@ const BURN_FLASH_PERIOD_MS = 520;
 const ICE_FLASH_TINT = 0x7fd4ff; // 氷鈍化中の薄い水色(v0.25.3276・α/周期は延焼と共通)
 // 徒歩を自然に見せる二次モーション(3コマの上に重ねる・視覚のみ・判定不変)。
 const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動
+// =============================================================================
+// 擬似3D(社長指示2026-09-11「他のゲームのこの手法で使えるあらゆるテクを入れて実装してみて」)。
+// 設計= research/FAKE_3D.md。世界(床/遠景/タイル)は一切傾けない。**立っている絵(1枚板)だけ**を
+// カメラを傾けて見た時の形に寄せる。全部 描画のみ・判定/座標(store)不変。★既定OFF(`?f3d=1` で全部ON)。
+//  T1 縁の傾き: 立ち物の縦線を「画面の下方にある消失点」へ向ける=中央から離れるほど頭が外へ開く
+//     (skew.x・足元支点)。対象=プレイヤー/敵/木/花/什器(立ち物)。影・床・予告は傾けない。
+//  T2 進行方向への前傾(`?lean`・下)。f3d=1 なら既定 0.10。
+//  T3 振り向きの薄化: 向きが反転した瞬間、横幅を 0 から慣性つきで戻す(板が回って見える)。プレイヤー。
+//  T4 頭上バーの追従: 傾きで動いた頭の位置ぶん、敵のHPバーを横へずらす(頭とバーが離れない)。
+//  T5 遠近の一致: 傾き量は画面座標で計算(消失点までの距離で割る)=手前ほど強く、引きズームでも破綻しない。
+// 既に在る柱(足元アンカー/Y-sort/遠近スケール/地平線フェード/ティルトシフト/台形の床/台形の影)はそのまま。
+const FAKE3D = tsBool('f3d', false);
+const FAKE3D_TILT_K = Math.max(0, Math.min(3, tsNum('f3dk', 1)));          // 傾きの強さ(1=幾何どおり)
+const FAKE3D_VP_FRAC = Math.max(0.3, Math.min(8, tsNum('f3dvp', 1.5)));    // 消失点の位置=画面中央から下へ画面高×この値(小=強い)
+const FAKE3D_MAX_RAD = Math.max(0, Math.min(0.6, tsNum('f3dmax', 0.20)));  // 傾きの上限(約11°)
+const FAKE3D_ZOOM_POW = Math.max(0, Math.min(2, tsNum('f3dzoom', 0)));     // 引いた時に強める指数(0=しない・広角の真似)
+const FAKE3D_TURN_MS = Math.max(0, Math.min(600, tsNum('f3dturn', 140)));  // 振り向きの薄化の尺(0=なし)
+const FAKE3D_TREES = tsBool('f3dtrees', true);                              // 木・花・什器も傾けるか
 // 進行方向への前傾(社長相談2026-09-11「移動の時に少し進行方向に斜めに」の試作・視覚のみ・判定不変)。
 // 世界(床/遠景)は一切傾けない=継ぎ目・タイルの隙間が出ない。傾くのはプレイヤー本体スプライトだけ
 // (足元支点)。速度(store の vx)に比例し、時定数 tau で慣性をつける(急発進で徐々に倒れ、止まると戻る)。
 // ★既定0=OFF(見え方は従来どおり)。実機で `?lean=0.10` 等で試す。`?leantau=` で慣性の重さ。
-const PLAYER_MOVE_LEAN_RAD = Math.max(0, Math.min(0.5, tsNum('lean', 0)));
+const PLAYER_MOVE_LEAN_RAD = Math.max(0, Math.min(0.5, tsNum('lean', FAKE3D ? 0.10 : 0)));
 const PLAYER_MOVE_LEAN_TAU = Math.max(0.03, tsNum('leantau', 0.18)); // 秒。倒れる/戻る時定数
 const PLAYER_MOVE_LEAN_SPEED_REF = 140;                                  // この横速度(px/s)で最大傾き
 const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するスカッシュ量
@@ -3007,6 +3025,7 @@ interface ActorView {
   light: Sprite;
   reticle: Graphics; // below the sprite (stun reticle / tint)
   sprite: Sprite;
+  f3dTilt?: number; // 擬似3D T1 の傾き(rad)。影・頭上マークはこれを除いた skew だけを見る(research/FAKE_3D.md)
   hitFlash: Sprite;  // 被弾時、本体スプライトと同形を白で加算オーバーレイして「絵」を一瞬光らせる(丸光は廃止)
   // 攻撃予告(赤い線/帯/円/扇)専用のレイヤー。**overlay とは別の Graphics に分けてある**理由は alpha:
   // 予告は「アクターの位置」ではなく「予告図形自身の位置」で地平線/手前フェードを引く(TELEGRAPH_OWN_FADE)。
@@ -3308,6 +3327,9 @@ export class PixiScene {
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
   private moveLeanNow = 0;       // 進行方向への前傾(rad)。慣性つきで target へ追従
+  private playerFace: -1 | 1 | null = null;      // T3 振り向き: 表示中の向き(+1=右向き絵 / -1=左向き絵)
+  private playerFaceFrom: -1 | 1 = 1;            // T3: 反転前の向き(旧→0→新 の起点)
+  private playerFaceAt = 0;                      // T3: 反転を始めた時刻(now)
   private moveLeanLastNow = 0;   // 前フレームの now(dt 算出用)
   // 分身(サブウェポン): 持ち主と同じ立ち絵を白黒キャッシュで描く足元アンカーのスプライト+
   // 斬撃モーション(本体と同じナイフ振り3コマ+装備近接の実絵)。actorLayer に置き zIndex で前後ソート。
@@ -5559,6 +5581,24 @@ export class PixiScene {
   // filteredWorld/actorLayer 等は worldGroup の子なので、ローカルY(=カメラ相対・zoom=1前提のY)を
   // 実際の画面Yへ変換するにはこの2値が要る。恒等(zoom=1・position=(0,0))なら screenY=localY。
   private wgZoom(): number { return this.L.worldGroup.scale.y || 1; }
+  /**
+   * 擬似3D T1(research/FAKE_3D.md): 足元(world)に立つ1枚板の skew.x(rad)。
+   * 消失点=画面中央の下方 VP_FRAC×screenH に置き、縦線を「足元→消失点」の向きに傾ける。
+   * skew.x 正=頭が左へ(足元アンカー)。画面左の物は頭が左へ開く=正。post-zoom の実画面座標で計算。
+   */
+  private fake3dTilt(footWorldX: number, footWorldY: number): number {
+    if (!FAKE3D || FAKE3D_TILT_K <= 0) return 0;
+    const wz = this.L.worldGroup.scale.x || 1;
+    const sx = this.L.world.position.x * wz + this.L.worldGroup.position.x + footWorldX * wz;
+    const sy = this.L.world.position.y * wz + this.L.worldGroup.position.y + footWorldY * wz;
+    const cx = this.screenW / 2;
+    const vpY = this.screenH * (0.5 + FAKE3D_VP_FRAC);
+    const dy = Math.max(this.screenH * 0.25, vpY - sy); // 消失点より下(画面外)の物でも発散させない
+    let k = FAKE3D_TILT_K;
+    if (FAKE3D_ZOOM_POW > 0) k *= Math.pow(1 / Math.max(ZOOM_MIN_ABS, wz), FAKE3D_ZOOM_POW);
+    const a = Math.atan((cx - sx) / dy) * k;
+    return Math.max(-FAKE3D_MAX_RAD, Math.min(FAKE3D_MAX_RAD, a));
+  }
   private wgOffsetY(): number { return this.L.worldGroup.position.y; }
 
   private lightDefocus01(worldY: number): number {
@@ -9204,7 +9244,7 @@ export class PixiScene {
       // ★木は花よりずっと控えめ(TREE_WIND_SKEW)。幹まで大きく傾くとゴムに見えるうえ、
       //   **木は当たり判定を持つ**(`trees.ts` の幹の矩形)。判定は動かないので、
       //   絵だけ大きく動かすと「見た目と当たりがズレている」ことになる=揺れは葉のそよぎ程度に留める。
-      entry.sprite.skew.x = this.windNow * TREE_WIND_SKEW;
+      entry.sprite.skew.x = this.windNow * TREE_WIND_SKEW + (FAKE3D_TREES ? this.fake3dTilt(entry.sprite.x, entry.sprite.y) : 0);
     }
     for (const [key, entry] of this.trees) {
       if (!seen.has(key)) {
@@ -9278,6 +9318,7 @@ export class PixiScene {
         this.propObjs.set(p.id, entry);
       }
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
+      entry.sprite.skew.x = FAKE3D_TREES ? this.fake3dTilt(entry.sprite.x, entry.sprite.y) : 0; // T1(既定OFF=0)
       this.applyObstacleAlpha(entry.sprite, entry.footY);
     }
     for (const [id, entry] of this.propObjs) {
@@ -9330,6 +9371,7 @@ export class PixiScene {
       }
       entry.sprite.tint = tint;
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
+      entry.sprite.skew.x = (!def.decal && FAKE3D_TREES) ? this.fake3dTilt(entry.sprite.x, entry.sprite.y) : 0; // T1: 立ち物だけ(デカールは床)
       // 立ち物は裏回りで透ける。地面デカール(groundLayer)はプレイヤーの下なので通常alphaのまま。
       if (def.decal) entry.sprite.alpha = this.horizonActorAlpha(entry.footY);
       else this.applyObstacleAlpha(entry.sprite, entry.footY);
@@ -9378,7 +9420,7 @@ export class PixiScene {
       // 風でたなびく(社長要望v0.25.2648「花とかも揺らぎたい」)。**炎と同じ1本の風**を読む。
       // アンカーが足元(0.5,1)なので、skew.x は「根を残して上だけしなる」動きになる。
       // 花は軽いので炎より大きくしなる。判定を持たない純粋な飾りなので、揺れてもゲームに影響はゼロ。
-      entry.sprite.skew.x = this.windNow * FLOWER_WIND_SKEW;
+      entry.sprite.skew.x = this.windNow * FLOWER_WIND_SKEW + (FAKE3D_TREES ? this.fake3dTilt(entry.sprite.x, entry.sprite.y) : 0);
     }
     for (const [id, entry] of this.flowerObjs) {
       if (!seen.has(id)) { entry.sprite.destroy(); this.flowerObjs.delete(id); }
@@ -11607,7 +11649,7 @@ export class PixiScene {
         id: e.id, x: cx, y: cy,
         rawW: disp.w, rawH: disp.h, texture: view?.sprite.texture ?? null,
         alpha: horizonAlpha * foreFade, shadowFade: view?.shadowFade ?? 1,
-        flip: disp.flip, skewX: view?.sprite.skew.x, heightPx: liftPx,
+        flip: disp.flip, skewX: (view?.sprite.skew.x ?? 0) - (view?.f3dTilt ?? 0), heightPx: liftPx, // 擬似3D T1 は影に写さない(カメラの傾きであって物の傾きではない)
       });
     }
     // ---- 裏ボス討伐フェード(★致命4修正: 討伐の瞬間に影だけ消え、2.6秒間「影の無い巨体」が
@@ -12770,7 +12812,7 @@ export class PixiScene {
     this.enemyCount = enemies.length;
 
     // Player
-    if (!this.playerView) this.playerView = this.makeActor();
+    if (!this.playerView) { this.playerView = this.makeActor(); this.playerFace = null; } // 出撃ごとに振り向き状態を初期化(T3)
     // 背負い刀スプライトをプレイヤーコンテナの「本体スプライトの背面」へ一度だけ親子付け。
     // makeActor の子順 [reticle, sprite, overlay] の reticle と sprite の間(index 1)へ挿入。
     if (!this.playerKatanaBackAttached) {
@@ -15499,8 +15541,29 @@ export class PixiScene {
       const flip = killPose
         ? killPose.faceLeft
         : (p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0));
-      view.sprite.scale.set((flip ? -sc : sc) * introSqX * walkSqX * actSqX, sc * introSqY * walkSqY * actSqY);
+      // T3 振り向き(?f3d): 敵の既存の振り向き(motFace・旧→0→新 を FAKE3D_TURN_MS で連続に潰す)と同じカーブ。
+      // 反転は「横速度がしきい値を超えた時」だけ拾う(敵と同じ25px/sのヒステリシス=縦移動中の微振れで
+      // パタつかない)。登場演出中・KILL演出中は掛けない(その向きは演出側が決める)。進行中は再始動しない。
+      const wantFace: -1 | 1 = flip ? -1 : 1;
+      let faceMul: number = wantFace;
+      if (FAKE3D && FAKE3D_TURN_MS > 0 && PLAYER_MOTION_FX && !killPose && !this.introActive) {
+        const cur = this.playerFace ?? wantFace;
+        const turning = now - this.playerFaceAt < FAKE3D_TURN_MS;
+        const strong = Math.abs(p.vx ?? 0) > 25;
+        if (this.playerFace === null) { this.playerFace = wantFace; this.playerFaceAt = -1e9; }
+        else if (wantFace !== cur && strong && !turning) { this.playerFaceFrom = cur; this.playerFace = wantFace; this.playerFaceAt = now; }
+        const to = this.playerFace ?? wantFace;
+        const tt = Math.min(1, (now - this.playerFaceAt) / FAKE3D_TURN_MS);
+        const eased = 1 - (1 - tt) * (1 - tt); // 慣性: 捻り始めが速く、向き直りで減速して止まる
+        faceMul = this.playerFaceFrom + (to - this.playerFaceFrom) * (this.playerFaceAt > -1e8 ? eased : 1);
+        if (Math.abs(faceMul) < 0.02) faceMul = faceMul < 0 ? -0.02 : 0.02; // scale.x=0 の完全消失フレームを作らない
+      } else {
+        this.playerFace = wantFace; this.playerFaceAt = -1e9;
+      }
+      view.sprite.scale.set(sc * faceMul * introSqX * walkSqX * actSqX, sc * introSqY * walkSqY * actSqY);
       view.sprite.rotation = walkLean + actLean + this.moveLeanNow;
+      view.f3dTilt = this.fake3dTilt(fb.footX, fb.footY);
+      view.sprite.skew.x = view.f3dTilt; // T1(既定OFF=0)
     }
     // ノックバック中の小さな跳ね(社長指示・敵と共通): knockbackUntil から進行度を逆算し sin の1山。
     const pKbHop = (p.knockbackUntil !== undefined && now < p.knockbackUntil)
@@ -16329,6 +16392,7 @@ export class PixiScene {
       } else {
         view.sprite.skew.x = 0;
       }
+      view.f3dTilt = 0; // 擬似3D T1 は掛けない: この経路は anchor(0.5,0.5)=支点が絵の中心で、傾けると足が逆へ滑る(監査A#1)
       // V1(3)→v0.25.2478: 接触ダメージを与えた瞬間の「しゃがみ込み→食いつき」2拍(社長指示)。視覚のみ。
       let lungeOffX = 0, lungeOffY = 0, lungeSqX = 1;
       // ★v0.25.3902(PACING_PUZZLE §12): 「しゃがみ込み→食いつき」2拍は、これまで
@@ -16492,10 +16556,12 @@ export class PixiScene {
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
         const wob = 1 - sinceHit / ENEMY_HIT_FLINCH_MS; // 1→0 減衰
         const dir = (e.knockbackVx ?? 0) > 0.01 ? 1 : (e.knockbackVx ?? 0) < -0.01 ? -1 : 1;
-        view.sprite.skew.x = -dir * ENEMY_HIT_FLINCH_SKEW * wob; // 頭が後ろへ反る
+        view.f3dTilt = this.fake3dTilt(fb.footX, fb.footY); // T1(既定OFF=0)。影・頭上マークはこの分を除いて読む
+        view.sprite.skew.x = -dir * ENEMY_HIT_FLINCH_SKEW * wob + view.f3dTilt; // 頭が後ろへ反る(+T1)
         flinchSqY = 1 - 0.1 * wob;
       } else {
-        view.sprite.skew.x = 0;
+        view.f3dTilt = this.fake3dTilt(fb.footX, fb.footY);
+        view.sprite.skew.x = view.f3dTilt;
       }
       // V1(3)→v0.25.2478: 接触ダメージを与えた瞬間の「しゃがみ込み→食いつき」2拍(社長指示)。
       // 対象は「接触ダメージを持つ全員」=この汎用経路(通常敵)と上の裏ボス経路の両方に置く。視覚のみ。
@@ -21077,7 +21143,11 @@ export class PixiScene {
     // Above-sprite layer(後半): 体力バー/ボスマーカー/イベント敵マーク。これらは「アクターに付属する表示」
     // なので従来どおりアクターの位置フェード(artFade)に従う。
     const ov = view.overlay;
-    this.drawHealthBar(ov, e, now, gameTime);
+    // T4(擬似3D): T1 の傾きで動いた頭(=ヒットボックス上端)の横ずれ = -tan(tilt)×高さ(skew.x 正=頭が左へ)。
+    // 被弾しなり・食いつきの skew は含めない(バーが跳ねない)。頭上の全マーク(バー/照準/ボス/イベント)を同量ずらす。
+    const headShiftX = FAKE3D ? -Math.tan(view.f3dTilt ?? 0) * e.height : 0;
+    const hx = cx + headShiftX;
+    this.drawHealthBar(ov, e, now, gameTime, headShiftX);
     // 社長指示v0.25.3297「トラップの効果中は敵の頭上に小さいターゲットマークを表示」:
     // 拘束(rootUntil)中、頭上に小さな照準マーク(円+十字4ティック+中心点)。トラップ本体と同じ
     // シアン系=罠の効果だと読める。overlayは毎フレーム描き直しの既存Graphics=数図形の追加のみ。
@@ -21085,21 +21155,21 @@ export class PixiScene {
       const mr = 6;
       const my = e.y - 10;
       const pulse = 0.7 + 0.3 * Math.sin(now / 160);
-      ov.circle(cx, my, mr).stroke({ color: 0x38bdf8, alpha: 0.9 * pulse, width: 1.5 });
+      ov.circle(hx, my, mr).stroke({ color: 0x38bdf8, alpha: 0.9 * pulse, width: 1.5 });
       for (const [tx, ty] of [[mr + 2, 0], [-mr - 2, 0], [0, mr + 2], [0, -mr - 2]] as const) {
-        ov.moveTo(cx + tx * 0.6, my + ty * 0.6).lineTo(cx + tx, my + ty).stroke({ color: 0x38bdf8, alpha: 0.9 * pulse, width: 1.5 });
+        ov.moveTo(hx + tx * 0.6, my + ty * 0.6).lineTo(hx + tx, my + ty).stroke({ color: 0x38bdf8, alpha: 0.9 * pulse, width: 1.5 });
       }
-      ov.circle(cx, my, 1.4).fill({ color: 0x7dd3fc, alpha: pulse });
+      ov.circle(hx, my, 1.4).fill({ color: 0x7dd3fc, alpha: pulse });
     }
     // PACING_PUZZLE.md §9-7#1(pixiSceneのボスマーカー): driller はpumpkinと同格。
     if (isPumpkinTier(e.type) || e.type === 'giantbat' || isReaperFamily(e.type)) {
-      this.drawBossMarker(ov, cx, e.y - 6, isReaperFamily(e.type) ? 0xef4444 : 0xfde68a, now);
+      this.drawBossMarker(ov, hx, e.y - 6, isReaperFamily(e.type) ? 0xef4444 : 0xfde68a, now);
     }
     // 拠点/レスキューの「専用敵」(fromEvent)は通常湧きと区別(社長指示・軽量マーク): 頭上に橙の下向き三角(脈動)。
     if (e.fromEvent) {
       const my = e.y - 10;
       const pulse = 0.6 + 0.4 * Math.sin(now / 200);
-      ov.poly([cx - 6, my - 8, cx + 6, my - 8, cx, my]).fill({ color: 0xf59e0b, alpha: 0.92 * pulse });
+      ov.poly([hx - 6, my - 8, hx + 6, my - 8, hx, my]).fill({ color: 0xf59e0b, alpha: 0.92 * pulse });
       ov.poly([cx - 6, my - 8, cx + 6, my - 8, cx, my]).stroke({ width: 1.5, color: 0x7c2d12, alpha: 0.9 });
     }
     // 被弾フラッシュは hitFlash スプライト(絵を加算で光らせる)へ移行。丸い白フィルは廃止(裏ボスを隠さない・社長指示)。
@@ -21678,7 +21748,7 @@ export class PixiScene {
     view.light.alpha = (boss ? 0.18 : 0.08) + hitT * 0.22;
   }
 
-  private drawHealthBar(g: Graphics, e: Enemy, now: number, gameTime: number) {
+  private drawHealthBar(g: Graphics, e: Enemy, now: number, gameTime: number, xShift = 0) {
     // v0.25.3295: 体勢ゲージは紫システム保有者全員(交戦ボス+パンプキン等の強敵=usesPostureSystem)。
     const postureBoss = usesPostureSystem(e);
     const postureMax = postureBoss ? bossPostureMax(e) : 0;
@@ -21686,7 +21756,7 @@ export class PixiScene {
     if (e.health >= e.maxHealth && (!postureBoss || posture >= postureMax)) return;
     const w = e.width;
     const h = 3;
-    const x = e.x;
+    const x = e.x + xShift; // T4(擬似3D): 傾きで動いた頭の位置に追従(既定0)
     const y = e.y - h - 2;
     g.rect(x, y, w, h).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
     const pct = e.health / e.maxHealth;
