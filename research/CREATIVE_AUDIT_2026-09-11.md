@@ -153,3 +153,35 @@ typecheck 通過・lint エラー0 / `grep -n font-mono src/components/*.tsx` �
   インク=`#020617`(Pixi と同色)/縁は em 比例(0.06em)/**発光クラスは廃止**/`gt-outline`=板の無い文字だけ(HP球の数字=SVG stroke・台詞の名前)/`gt-solid`=板の上の文字(HUDのピル全部・台詞本文)/`gt-emboss`=平坦な暗い地のメニュー見出し/琥珀地の暗い文字と START には何も付けない/COMBO は元の作り込みを維持。
 - 据え置き(社長へ): E-3 四神名(`rhythmGodText`)の serif=和名の格の意図があり得るので触っていない。E-2 ResultReach の 6.5〜8px を Orbitron に=実機で潰れていたら等幅に戻す。
 - 教訓(ENGINEERING_NOTES へ): SVG `<text>` に CSS text-shadow は WebKit で描かれない → `stroke + paint-order`。
+
+## 第2手+第3手+裁定4点 仕様(社長「とりあえず全部やって」2026-09-12・実装=Sonnet 2並列・push前にクリエイティブ監査)
+**ゴール(社長の言葉)**: 「UIUXのAI感を排除。ハードゲーム機に近づける」。第1手(文字)の次=ボタン・アイコン・音・地の色・空白・文書レイアウト。
+**ではない**: ゲームの仕様・判定・バランス・進行は変えない。素材の作り直しは無し(既存の背景/ドット絵/SEを使う。アイコンは `PixelIcon.tsx` の格子で描く)。開発用オーバーレイ・テスト項目は対象外。React の再レンダ規律(CLAUDE.md)は守る=新しい購読は「派生プリミティブ」だけ。
+
+### 共通の部品(設計チャットが先に置いた・両エージェントはこれを使う)
+- `src/components/PixelIcon.tsx`: `<PixelIcon name="chevron-right" size={16} />`(12×12格子・currentColor)。名前: chevron-right/left/down/up, lock, volume-on/off, heart, swords, wrench, users, trending-up, shield, map-pin, crosshair, clock, book, arrow-up-right, activity, sparkles, gear, check, bag, coin。
+- UI SE 4音(`audioManager.ts` 登録済み): `ui-select`=決定 / `ui-back`=戻る・閉じる / `ui-move`=カーソル移動・タブ切替・トグル・スライダー段 / `ui-deny`=不可(資金不足・ロック・未解放・押せない)。
+
+### A. テーマ・ボタン・アイコン・音・一時停止・タイトル(エージェントA: commandTheme.css / index.css / ff7r.tsx / PauseMenu.tsx / TitleScreen.tsx / CommandHome.tsx / GameHUD.tsx / GhostBossDossier.tsx / BossRush.tsx / NoBounceScroller.tsx / audioManager 以外の音の呼び分け)
+1. **地の色を世界の紫黒へ**(`index.css` `--ds-*` と `commandTheme.css` `--menu-*` の両方): bg `#060708`→`#07060d` / panel `#0b0d0f`→`#0d0b14` / line `#23272a`→`#26212f` / hover `#1b2022`→`#1a1524` / selected `#282015`→`#2a2016`。ink/dim/deco は据え置き。琥珀 `#ffb340` は据え置き。
+2. **琥珀ボタン=松明の光・斜め切り1型**(`.command-button-primary` と `.ds-sortie` を同じ見え方に): 背景 `linear-gradient(180deg,#ffc65a 0%,#f2a12b 55%,#c97a1c 100%)`(上明・下焦げ)+ `box-shadow: inset 0 1px 0 rgba(255,238,200,.45), inset 0 -2px 0 rgba(80,45,8,.35)`。角は `clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%)`(出撃と同じ右上の斜め切り)。**幅は文字幅+余白**(`display:inline-block; min-width: 9.5rem; padding: 0 1.6rem`)。呼び出し側の `className="w-full"` は primary では外す(親で右寄せ or 中央)。文字色 `#171208` のまま(焼き込みは付けない)。
+3. **押下の手応え(全 `.command-button`)**: `:active { transform: translateY(1.5px); }` と `transition: transform 160ms cubic-bezier(.2,.9,.3,1.2)`(離した時に僅かに戻り過ぎる=慣性)。primary は押下時に**縁の光が左→右へ走る**: `::after` に `linear-gradient(90deg, transparent, rgba(255,245,220,.55), transparent)` 幅40%を置き、`:active` で `transform: translateX(260%)` へ 120ms。`prefers-reduced-motion` では transform を切る。
+4. **lucide → PixelIcon**(A担当の6ファイル中 MissionSelect 以外): 同じ意味の名前に置換(Volume2→volume-on, VolumeX→volume-off, ChevronRight→chevron-right, ChevronDown→chevron-down, Lock→lock, Heart→heart, Swords→swords, Wrench→wrench, Users→users, TrendingUp→trending-up, Shield→shield, MapPin→map-pin, Crosshair→crosshair, Clock3→clock, BookOpen→book, ArrowUpRight→arrow-up-right, Activity→activity, Sparkles→sparkles, Settings→gear)。size は元の `size` を引き継ぐ(端数は 12/16/20/24 に丸める)。置換後 `lucide-react` の import が A担当ファイルから消えていること。
+5. **音の呼び分け**(A担当ファイル+`PauseMenu`/`TitleScreen`): 戻る/閉じる/キャンセル系→`ui-back`、タブ・カーソル・トグル・段送り→`ui-move`、押せない/不足/ロック→`ui-deny`、決定・実行はそのまま `ui-select`。
+6. **一時停止を「戦況付きの全画面メニュー」に**(`PauseMenu.tsx`・社長裁定): 画面全体を暗く(今の blur 背景は維持)、**左に縦積みのメニュー**(続ける=primary・メニューに戻る=通常。幅は文字幅)、**右に戦況**: 経過時間 / 残りの敵(GameHUD の撃破カウンタと同じ分母・分子の出し方を再利用) / 部隊(プレイヤーHPと護衛のHPを名前+短いバー)。値は**開いた時に `useGameStore.getState()` を1回読む**(ポーズ中なので購読不要)。見出し「一時停止」は左上に小さく(gt-emboss のまま)。意味の無い罫線は消す。
+7. **更新情報=初回だけ全面、以後はバッジ**(`TitleScreen.tsx`・社長裁定): `localStorage` キー `zombie.notice.seen` に版番号を保存。**未保存か版が違う時だけ**今の全面ポップアップを出し(OKで保存)、同じ版の2回目以降は**タイトル右下に小さな「UPDATE」バッジ(PixelIcon 'sparkles' なし・文字だけ・琥珀の斜め切り小)**を置き、タップで同じポップアップを開く。**OK直後の `onNoticeOk`(音声解禁+オープニング開始)の経路は壊さない**: ポップアップを飛ばした起動でも、従来 OK が担っていた処理が START タップ側で確実に走ること(TitleScreen の phase 遷移を読んで確認し、最終報告に「どう保証したか」を書く)。版はテスト配信で毎回上がるので、実機テストの「毎回出る」体験は実質そのまま。
+8. **オプションの音量を段階式に**(`MissionSelect.tsx` の options は B 担当なので A はやらない=Bへ)。
+
+### B. 作戦室と各メニュー(エージェントB: MissionSelect.tsx のみ+必要なら DsContourMap.tsx)
+1. **タグ色を世界の色へ**: `SUB_BADGE_CLS` の sky → `bg-purple-400/15 text-purple-100`。MAIN/EX バッジは琥珀の枡(`bg-amber-400/15 text-amber-100`)。`bg-sky-400/[0.06]`(1744行付近)→ `bg-purple-400/[0.06]`。角丸は付けない。
+2. **lucide → PixelIcon**(MissionSelect 内の全部。対応表は A-4 と同じ)。置換後 `lucide-react` import が消えること。
+3. **音の呼び分け**(MissionSelect 内 67箇所中の該当分): 戻る(`onBack`/「戻る」ボタン/閉じる)→`ui-back`、タブ・カテゴリ切替・段送り(強化の −/+)・スライダー段→`ui-move`、資金不足・ロック中・未解放のタップ→`ui-deny`(**今は無音や ui-select の箇所を含めて**)。決定・遷移・購入成功はそのまま。
+4. **作戦室(`renderDsHome`)の空白に部隊を置く**(社長裁定): 等高線マップ(DsContourMap)の下・PREP の上に、**細い床線1本+部隊のドット絵**(選択中のアバター/プレイヤー立ち絵と、護衛たち。`NpcDialogue.tsx` の `NPC_PORTRAIT` と同じ `spritePath('npc/xxx-walk-0')` 系の既存フレームを流用。どの護衛が同行するかは既存の同行者データ(`campaign.ts`/装備の「同行者」枠)から読む。無ければ護衛全員)。`image-rendering: pixelated`、高さ 48〜56px、足元を床線に揃える。等高線マップの高さは今の約1.4倍に伸ばす(空白の6割を埋める)。**動きは慣性つきの出現(下から 6px・opacity 0→1・280ms ease-out・1体ずつ 60ms ずらす)**。
+5. **任務詳細=ブリーフィング**(`missionDetail`): 上部 **36vh** に `REGION_ART[stage.id]` の絵(`object-fit: cover`)を敷き、下端を panel 色へグラデで溶かす。絵の左下に「DAY n / hh:mm」と場所名(今の Header 見出しの内容)を重ねる(gt-outline)。その下: **目標をタグ+数値で**(例: `殲滅` `拠点 4` `賞金首 1` 等、`stage.main`/`subs` から取れる語だけ。文章は作らない)、サブミッションは今のカードのまま色を B-1 に合わせる。状況説明のタイピング表示は**2行に収めて**(本文は data のまま・行数だけ)カーソル「▌」を出さない。「ジョブ選択」は primary(右寄せ・文字幅)。
+6. **強化=5段ピップを主役に**: 各項目は「名前 / ■■□□□(現在段=琥珀・未達=線だけ) / 現在値」の1行構成。「+0(+20/段)」「0/5段」の説明文は消す。価格は琥珀で大きく(`text-[15px]`)、足りない時は価格の色を `text-red-300` にして「資金不足」の文字は消す。−/+ は 28px の角無しボタンで残す(音は ui-move、不可は ui-deny)。**値・段数・価格の計算は一切触らない**(表示だけ)。
+7. **オプション**: BGM/SE の `<input type=range>` を **10段の枡**(`button`×10・選択段まで琥珀・段タップで `setBgmVolume(n/10)`・音は ui-move)に。「音なし」は行の右端の**トグル**(ON=琥珀の枡/OFF=線の枡)に格下げ。ブルームは「BLOOM  ON / OFF」の2択トグルにして説明文を消す。PixelIcon 'volume-on/off' を行頭に。
+8. **開発施設/装備の説明文**: 「開発後、「装備」で選択できます。」を消す(開発完了時に既存の遷移導線があるならそれで足りる。無ければ**残す**=導線を失わない)。「✓ 装備中」は `PixelIcon 'check'`+「装備」の枡に。「資金不足」小文字は消して価格を赤く(B-6 と同じ規則)。
+
+### 受け入れ(両方)
+typecheck 通過・lint エラー0 / `grep -rn lucide-react src` が 0 / `grep -c "ui-select" src/components/MissionSelect.tsx` が 67 から減っていて、`ui-back`/`ui-move`/`ui-deny` がそれぞれ1箇所以上 / 値・判定・進行のコードに差分が無い(`git diff --stat` に store/utils/world が出ない) / 触ってはいけないファイル(package.json / changelog.ts / DEVELOPMENT_LOG.md / PROJECT_STATUS.md / CLAUDE.md / A↔Bの相手の担当ファイル)に差分が無い。
+負荷: 2/10(CSS とアイコンの SVG。作戦室の部隊ドットは静的 img・一時停止の値は1回読み)。

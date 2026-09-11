@@ -66,6 +66,9 @@ type WindowWithWebAudio = Window & {
 
 export type SfxKey =
   | 'ui-select'
+  | 'ui-back'        // UI: 戻る/閉じる(ui-select を低く短く加工・v0.25.4234)
+  | 'ui-move'        // UI: カーソル移動/タブ切替/トグル(高く短く小さく)
+  | 'ui-deny'        // UI: 不可(資金不足/ロック/未解放。低い2連)
   | 'mission-start'
   | 'title-start'
   | 'event-clear'
@@ -144,6 +147,11 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     volume: 0.7,
     minIntervalMs: 50,
   },
+  // UIの4音(クリエイティブ監査第2回・第2手: 67箇所すべて ui-select だったのを 決定/戻る/移動/不可 に分ける)。
+  // 3音は ui-select.mp3 を ffmpeg で音程・尺・音量を変えて派生(素材の出自を1つに保つ)。
+  'ui-back': { src: `${import.meta.env.BASE_URL}audio/sfx/ui-back.mp3`, volume: 0.7, minIntervalMs: 50 },
+  'ui-move': { src: `${import.meta.env.BASE_URL}audio/sfx/ui-move.mp3`, volume: 0.6, minIntervalMs: 40 },
+  'ui-deny': { src: `${import.meta.env.BASE_URL}audio/sfx/ui-deny.mp3`, volume: 0.7, minIntervalMs: 120 },
   // キャラ選択を終えてミッション開始するときの音(社長提供SE)。
   'mission-start': {
     src: `${import.meta.env.BASE_URL}audio/sfx/mission-start.mp3`,
