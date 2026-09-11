@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4220',
+    items: ['ゲーム内容の変更はありません。'],
+  },
+  {
     version: '0.25.4219',
     items: ['ゲームの見え方は変わりません(画面の手前を横切る木と、奥の物を霞ませる試作を、切り替えを入れた時だけ出る形で追加)。'],
   },
