@@ -218,3 +218,18 @@ typecheck 通過・lint エラー0 / `grep -rn lucide-react src` が 0 / `grep -
 ## 撤去バッチ 仕様(不採用の試作・実装=Sonnet P3)
 `src/pixi/pixiScene.ts` から **`?f3d`(FAKE3D の傾きの束・`f3dTilt`・T3 の向き替え・頭上マークの補正)、`?diorama`(手前の板・`dioramaFog`・`bakeDioramaFront`)、`?lean`(`PLAYER_MOVE_LEAN_*`・`moveLeanNow`)** を消す。**`?zwarp`(採用済み)は1文字も触らない。** いずれも既定OFFなので、OFF側の経路(=今の見え方)が残るように消す(`skew.x = flinch + f3dTilt` → `skew.x = flinch` のように、加算していた項を取る)。
 受け入れ: `grep -c "FAKE3D\|DIORAMA\|f3dTilt\|diorama\|Diorama\|fake3d\|PLAYER_MOVE_LEAN\|moveLeanNow" src/pixi/pixiScene.ts` が 0 / typecheck・lint 0 / `research/FAKE_3D.md` の冒頭に「第1弾・第2弾のコードは v0.25.4237 で撤去(不採用)。第3弾(zwarp)のみ現行」と1行足す。
+
+## #25(b) 仕様: 赤予告の「呼吸」を敵の区分で3種に(社長裁定2026-09-12「赤予告はb」・実装=Sonnet・push前に品質監査)
+**ゴール(社長の言葉)**: 監査#25「赤予告が全ボス同じ呼吸」→ (b)「文法(赤=判定一致・外から内へ)は保ち、溜めの長さ・帯の太さ・脈の速さだけを敵の区分で3種に分ける」。
+**ではない(絶対)**: **判定に関わる値は1つも変えない**=溜め(windup)の時間、当たり判定の形・幅(`halfWidth`/radius)、発火の瞬間、「消え切り=判定の瞬間」の一致(METEOR の描き→消しの終端が溜め終わりに一致する構造)。変えるのは**見え方の時間配分と質感だけ**: ①描き切る位置 `METEOR_DRAW_FRAC`(0.45) ②流れる帯の相対幅 `CIRCLE_SWEEP_HALF_W`(0.34・判定幅ではなく「流れる光の帯」の太さ) ③脈動の周期(`sin(now/110)` の 110) ④流れのイージング(`circleSweepBand` の ease の強さ)。色の文法(赤/紫)も不変。
+**区分**(CLAUDE.md「敵の仕様は種類(区分)で固める」): 雑魚=既定(今の値) / **強個体**(体勢値を持つ型。`enemyUtils.ts`・store の体勢(posture)判定を grep して同じ集合を使う) / **ボス級**(`isBossType` かつ終端でないもの・賞金首含む) / **終端**(ステージ最奥のボス=`Stage.hiddenBoss` に載る型+城ボス+EXボス。`campaign.ts`/`enemyUtils.ts` から集合を作る)。**判定は既存ヘルパーの合成で作り、新しい型名の列挙を増やさない**(既存に無い区分は「雑魚」に落とす)。
+**値(初期案・全部ツマミで上書き可 `?tgw=` 系は不要。定数テーブル1つ)**:
+| 区分 | 描き切り位置 D | 帯の相対幅 | 脈の周期(ms) | 流れの ease |
+|---|---|---|---|---|
+| 雑魚 | 0.45(今) | 0.34(今) | 110(今) | 今 |
+| 強個体 | 0.40 | 0.30 | 95 | 今 |
+| ボス級 | 0.50 | 0.40 | 130 | やや重く(ease の指数を上げる) |
+| 終端 | 0.58 | 0.48 | 170 | 重く |
+(重いボスは「遅く・太く・ゆっくり脈打つ」、速い個体は「早く・細く・速く脈打つ」。判定の瞬間はどれも溜め終わり。)
+**作り**: `src/utils/telegraphStyle.ts` に純関数 `telegraphStyleFor(type: EnemyType): TelegraphStyle`(上の表)+ユニットテスト(区分ごとの代表型が正しい行を返す/未知の型は雑魚/**全区分で D<1・帯幅>0・周期>0**)。`pixiScene.ts` の METEOR/流星の描き(`meteorPhase`・`circleSweepBand` 呼び出し・`sin(now/110)` の脈)で、**その予告を出す敵の型**からスタイルを引いて値を差し替える(敵に紐付かない予告=ゲート/イベントの赤は既定のまま)。`meteorPhase` は static なので `(prog, drawFrac)` の引数を足す形。
+**受け入れ**: typecheck・lint 0 / 新テスト通過 / `npm test` の既存(憲法含む)が通る / 「判定に関わる値」の差分が無い(`git diff src/store src/world` が空・pixiScene の差分に halfWidth/radius/windup の式変更が無い)/ 雑魚の見え方が1pxも変わらない(既定値=今の値)。負荷 1/10(型→表の参照だけ)。
