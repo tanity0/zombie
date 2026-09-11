@@ -240,48 +240,6 @@ const WalkingClassSprite: React.FC<{ idleSrc: string; alt: string; nudgeY: numbe
   );
 };
 
-// === 作戦室の部隊(クリエイティブ監査第2回・第2手 B-4) ==================================
-// 等高線マップの下に「細い床線+同行者のドット絵」を置く。護衛(NPC_PORTRAIT/NpcDialogue.tsxと同じ
-// npc/xxx-N.png)は出撃時に毎回ランダム抽選(store側)されるため、出撃前のこの画面では
-// 「誰が実際に同行するか」を読める既存データが無い。仕様の指示どおり「無ければ護衛全員」を採用し、
-// NpcDialogue.tsx の8人ぶん(frame=1=足閉じの立ち姿。会話ウィンドウと同じ静止コマを流用)を並べる。
-const SQUAD_ESCORTS: ReadonlyArray<{ key: string; name: string }> = [
-  { key: 'edgar', name: 'エドガー' }, { key: 'joseph', name: 'ジョセフ' }, { key: 'elizabeth', name: 'エリザベス' },
-  { key: 'musashi', name: '武蔵' }, { key: 'muhammad', name: 'ムハンマド' }, { key: 'chen', name: 'チェン' },
-  { key: 'lauren', name: 'ローレン' }, { key: 'phaser', name: 'フェイザー' },
-];
-const SQUAD_FIGURE_H = 44; // 9体(主役+護衛8)が横スクロール無しで1列に入る大きさ(監査A-18)
-// 出現アニメ(★動きの絶対ルール=慣性MUST): 下から6px・opacity 0→1・280ms ease-out・1体ずつ60msずらす。
-// MissionSelect内のinline<style>で完結させる(CSSファイルは編集しない)。
-const SquadRowStyle = () => (
-  <style>{`
-    @keyframes ds-squad-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-    .ds-squad-fig { animation: ds-squad-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-  `}</style>
-);
-const SquadRow: React.FC<{ playerSprite: string; playerAlt: string }> = ({ playerSprite, playerAlt }) => (
-  <div
-    className="menu-item-in"
-    style={{ animationDelay: '62ms', marginTop: 6, paddingTop: 6 }}
-  >
-    <SquadRowStyle />
-    {/* 床線は足元(borderBottom)。主役は半歩前(2px下)・間隔は等間隔にしない=「置いた」感を消す(監査A-17/B-19) */}
-    <div
-      className="flex items-end gap-1.5 overflow-hidden px-1"
-      style={{ height: SQUAD_FIGURE_H + 8, paddingBottom: 2, borderBottom: '1px solid var(--ds-line)' }}
-    >
-      <div className="ds-squad-fig shrink-0 flex items-end" style={{ animationDelay: '0ms', marginBottom: -2, marginRight: 6 }}>
-        <img src={playerSprite} alt={playerAlt} draggable={false} style={{ height: SQUAD_FIGURE_H, width: 'auto', imageRendering: 'pixelated' }} />
-      </div>
-      {SQUAD_ESCORTS.map((m, i) => (
-        <div key={m.key} className="ds-squad-fig shrink-0 flex items-end" style={{ animationDelay: `${(i + 1) * 60}ms` }}>
-          <img src={spritePath(`npc/${m.key}-1`)} alt={m.name} draggable={false} style={{ height: SQUAD_FIGURE_H, width: 'auto', imageRendering: 'pixelated' }} />
-        </div>
-      ))}
-    </div>
-  </div>
-);
-
 // 画面(導線): ホーム → ステージ選択 → ミッション詳細 → キャラ選択 → 装備選択 → スタート。
 // ホームからはオプション / 開発施設 / 資料室 へも分岐する。UIデザインは後追い(ここは導線優先の仮UI)。
 type Screen =
@@ -796,11 +754,6 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
             <DsContourMap stageId={nextStage?.id ?? 'stage-tutorial'} sectorLabel={nextStage?.locationTitle ?? '—'} />
           </div>
-          {/* 部隊(監査B-4): 地図の下・PREPの上の空白を埋める。選択中クラスの立ち絵+護衛8人。 */}
-          <SquadRow
-            playerSprite={CHARACTER_CLASSES.find(c => c.id === selectedClass)?.sprite ?? CHARACTER_CLASSES[0].sprite}
-            playerAlt={CHARACTER_CLASSES.find(c => c.id === selectedClass)?.name ?? ''}
-          />
           {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。
               サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
               =マップのSECTORタグが同じ情報を持つため重複)。 */}
