@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4224',
+    items: ['ズーム中の遠近の試作(切り替えを入れた時だけ)が、端末によって世界を消していた不具合を直しました。世界は常に描き、上に重ねる形に。'],
+  },
+  {
     version: '0.25.4223',
     items: ['松明の近くで画面が真っ黒になっていた不具合を直しました(空とHUDだけが残る状態)。火のそばで周りが締まる効果は残しつつ、強さに上限を入れました。'],
   },

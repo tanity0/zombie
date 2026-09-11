@@ -3385,6 +3385,7 @@ export class PixiScene {
   private zwarpK = 0;                                // 現在の傾き(0=平ら)
   private zwarpDirX = 0; private zwarpDirY = -1;     // 進行方向(平滑済み・既定=上=奥)
   private zwarpPrevZoom = 0; private zwarpLastNow = 0;
+  private zwarpDisabled = false;                     // RT描画が例外を出したら以後この出撃では無効(世界を消さない)
   private zwarpZoomNow = 1;                          // このフレームに worldGroup へ適用した総ズーム(zwarp が読む)
   private dioramaFrontSprites: Sprite[] = [];
   private dioramaFrontTex: Texture | null = null;   // 元テクスチャ(ステージ切替の検知用)
@@ -5690,7 +5691,7 @@ export class PixiScene {
    * 近い辺を k×W はみ出させる=隙間が出ない(奥を縮めると角に穴が開く)。k≈0 では何もしない(パス増なし)。
    */
   private syncZoomWarp(vx: number, vy: number, now: number) {
-    if (!ZWARP || !this.renderer) return;
+    if (!ZWARP || !this.renderer || this.zwarpDisabled) return;
     const wg = this.L.worldGroup;
     const gapMs = this.zwarpLastNow ? now - this.zwarpLastNow : 0;
     const dt = this.zwarpLastNow ? Math.min(0.1, gapMs / 1000) : 0;
@@ -5713,7 +5714,6 @@ export class PixiScene {
     }
     if (this.zwarpK <= ZWARP_MIN_ACTIVE) {
       if (this.zwarpMesh) this.zwarpMesh.visible = false;
-      wg.visible = true;
       return;
     }
     const W = Math.max(1, Math.round(this.screenW)), H = Math.max(1, Math.round(this.screenH));
@@ -5731,10 +5731,18 @@ export class PixiScene {
       parent.addChildAt(m, parent.getChildIndex(wg) + 1); // 世界の直上(遠景の上・近景森/HUDの下)
       this.zwarpMesh = m;
     }
-    // 世界をこのフレームの姿のまま1枚へ(worldGroup 自身の zoom/pan/フィルタ込み)。主描画では隠して二重に描かない。
-    wg.visible = true;
-    this.renderer.render({ container: wg, target: this.zwarpRT, clear: true });
-    wg.visible = false;
+    // 世界をこのフレームの姿のまま1枚へ(worldGroup 自身の zoom/pan/フィルタ込み)。
+    // ★v0.25.4224(社長の実機「裏では動いてるけど前面に遠景が出てる」=世界が消えた): 世界は**隠さない**。メッシュは
+    // 画面を覆う位置に置くので、下の世界は見えない。RTが空(端末側で描けない)でもメッシュは透明=世界がそのまま見える
+    // (フェイルセーフ)。代償=有効中は世界を2回描く(RT+主描画)。例外が出たらこの出撃では以後無効。
+    try {
+      this.renderer.render({ container: wg, target: this.zwarpRT, clear: true });
+    } catch (err) {
+      this.zwarpDisabled = true;
+      if (this.zwarpMesh) this.zwarpMesh.visible = false;
+      reportSuppressedError('zwarp:rt', err);
+      return;
+    }
     // 台形: 奥(進行方向)の辺=画面幅のまま / 近い辺=k×W(または k×H)はみ出し。角の順は TL,TR,BR,BL。
     // 4隅は進行方向ベクトルの**連続関数**(監査A#1: 軸で4方向に離散化すると旋回で台形が瞬間に跳ぶ=慣性違反)。
     // 横のはみ出し hx=k·W·(−dirY): 上へ進む(dirY<0)なら下の辺が広がり、下へ進むなら上の辺。縦 vy=k·H·(−dirX) も同型。
@@ -7467,7 +7475,6 @@ export class PixiScene {
 
   sync() {
     this.restoreForestPreview();
-    if (ZWARP) this.L.worldGroup.visible = true; // 前フレーム末で隠した世界を、このフレームの処理の間は見える状態へ戻す
     const s = useGameStore.getState();
     const realNow = Date.now();
     // オプションのブルームON/OFFをリロード無しで反映(変化時だけフィルタ配列を作り直す)。
