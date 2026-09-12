@@ -436,7 +436,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       )}
 
       {/* 更新情報バッジ(クリエイティブ監査第2回・第2手A-7): 既読の版はここから開き直せる。
-          文字だけ・琥珀の斜め切り小(PixelIconは付けない=仕様指定どおり)。 */}
+          文字だけ・琥珀の小ボタン(PixelIconは付けない=仕様指定どおり)。 */}
       {phase === 'title' && !showNotice && (
         <button
           type="button"

@@ -68,16 +68,16 @@
 .command-ui .command-button { min-height: 48px; padding-left: 18px; padding-right: 18px; display: block; border: 1px solid var(--menu-line); background: var(--menu-panel); color: var(--menu-ink); font: 500 14px/1.5 'Rajdhani', system-ui, sans-serif; letter-spacing: .1em; text-align: center; transition: background 160ms ease-out, border-color 160ms ease-out, transform 160ms cubic-bezier(.2,.9,.3,1.2); }
 .command-ui .command-button:hover { background: var(--menu-hover); border-color: var(--menu-muted); }
 /* クリエイティブ監査第2回・第2手A-2+A-3(research/CREATIVE_AUDIT_2026-09-11.md):
-   琥珀ボタン=松明の光(上明・下焦げの縦グラデ)+斜め切り1型。幅は文字幅(中央/右寄せは呼び出し側)。
+   琥珀ボタン=松明の光(上明・下焦げの縦グラデ)。幅は文字幅(中央/右寄せは呼び出し側)。
+   右端の斜め切り(4234で追加)は社長指示2026-09-12「ダサいので戻して」で撤去=矩形。
    押下の手応え=僅かな沈み込み+縁の光が左→右へ走る(慣性=離した時に僅かに戻り過ぎるease)。 */
 .command-ui .command-button-primary {
   position: relative; overflow: hidden;
-  display: inline-block; width: auto; padding: 0 calc(1.6rem + 14px) 0 1.6rem; /* 右の斜め切り14pxぶん足し、文字を見える面の中央へ(監査B-7) */
+  display: inline-block; width: auto; padding: 0 1.6rem;
   color: #171208; font-weight: 600;
   background: linear-gradient(180deg,#ffc65a 0%,#f2a12b 55%,#c97a1c 100%);
   border: 0;
   box-shadow: inset 0 1px 0 rgba(255,238,200,.45), inset 0 -2px 0 rgba(80,45,8,.35);
-  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
 }
 .command-ui .command-button-primary:active { background: linear-gradient(180deg,#f0b544 0%,#dc9020 55%,#b46a16 100%); }
 @media (hover: hover) { .command-ui .command-button-primary:hover { background: linear-gradient(180deg,#ffd27a 0%,#f5ae3c 55%,#d1862a 100%); } }

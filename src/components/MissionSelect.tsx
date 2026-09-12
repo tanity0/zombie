@@ -1071,7 +1071,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           className="sticky bottom-0 z-20 mt-auto flex justify-end px-3 pb-3 pt-7"
           style={{ background: 'linear-gradient(to top, rgba(11,9,16,0.96) 62%, rgba(11,9,16,0))' }}
         >
-          {/* primaryの幅は文字幅+余白に揃える(監査A-2の斜め切りボタンと同型)。w-fullは付けない。 */}
+          {/* primaryの幅は文字幅+余白に揃える(監査A-2の琥珀ボタンと同型)。w-fullは付けない。 */}
           <Ff7rButton
             onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId, mission: missionKind }); }}
             emphasis
