@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.4251 — 書体の試作・第3案=日本語だけ差し替え(社長指示「英語と数字は元々のやつにして」)【2026-09-12 19:18 JST】
+
+社長「英語と数字は元々のやつにして」。第2案の Titillium Web を外し、**英数字は元のまま**(全体=Orbitron・作戦室ホームとメニューの
+ボタン=Rajdhani・command-ui の細部=system-ui)、**差し替えるのは日本語だけ**=端末ゴシック→Zen Kaku Gothic New(Light 300 / Medium 500・
+OFL・約430KB)。既定OFF・`?uifont=1` は不変。
+- `src/index.css` `html.ui-font-game`: body の和文フォールバックを Zen Kaku に(`--game-font` は触らない)/`.ds-home`・`.command-button` は
+  `"Rajdhani", Zen Kaku`/command-ui で `system-ui` を直書きしている21箇所(タブ・見出し・本文・戻る等)は `Zen Kaku, system-ui`。
+  `palt`・行間1.35・antialiased・`font-synthesis:none`(600/700指定の和文は Medium で止まる。Orbitron は可変で太いまま)。
+  第2案の字間・大文字・太さの上書きは全部撤去(英数字の見え方を元に戻すため)。
+- `src/bootstrap.ts`: `?uifont=1` はクラスを付けるだけ(`--game-font` の差し替えを撤去)。
+- `public/fonts/game/`: Titillium Web 3本と license を削除。残り=Zen Kaku Light/Medium+license。
+- ヘッドレス6画面を撮って社長へ送付(scratchpad)。typecheck・lint 0。実機確認は社長(`https://tanity0.github.io/zombie/?uifont=1`)。
+- 採用時の統合先: `src/config/font.ts` `JP_FALLBACK` の先頭に Zen Kaku を足し、@font-face を常時読み込みにする(Pixi のダメージ数字は
+  英数字なので影響なし。Pixi の和文テキスト=コールアウト等は FONT_STACK 経由で自動的に追従する)。
+
 ## v0.25.4250 — 書体の試作を第2案(デス・ストランディング風)に差し替え(社長指示「文字はデススト風に直して」)【2026-09-12 19:08 JST】
 
 社長「文字はデススト風に直して、画像みせて」。第1案(明朝見出し+ドット書体・v0.25.4247)を捨て、DS2 の UI 文字の作法
