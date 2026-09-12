@@ -268,7 +268,7 @@ export const ANGEL_ACRASIEL_TUNING: AngelAcrasielTuning = {
   // **60pxだけ外へ歩けば扇の外**=「隙間を読む」より「外へ出る」が常に正解になり、主題が発火しない。
   // リード1100msでプレイヤーが動けるのは 104.4px/s × 1.1 = **115px**なので、400なら距離250から
   // 外へ出るには150px必要=**間に合わない**⇒隙間へ入るしかなくなる。1100のような画面全体でもない。
-  spike: { windup: 1100, active: 240, recover: withRecoverFloor(500), range: 400, halfWidth: 40 },
+  spike: { windup: 1250, active: 240, recover: withRecoverFloor(500), range: 400, halfWidth: 40 }, // windup 1100→1250(社長指示2026-09-12「棘の隙間攻撃の予告はもう少しだけ長く」)
   // ★radius は **92 = 転移衝撃と同じ既定**(「新しい数字を発明しない」流用の掟。
   // `angelSwordSync.test.ts` が機械で固定している)。v0.25.4196の再構築が理由の記録なく 60 へ
   // 下げてテストを赤にしたまま push していたので戻す。92なら円6個の隙間は約36pxまで詰まり、
