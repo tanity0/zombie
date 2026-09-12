@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4249',
+    items: ['作戦室の出撃の帯も右端の斜めの切れ込みをやめ、四角に。'],
+  },
+  {
     version: '0.25.4248',
     items: ['作戦室の琥珀色のボタンの右端の斜めの切れ込みをやめ、四角に戻した。'],
   },
