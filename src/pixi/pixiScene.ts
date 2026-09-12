@@ -154,7 +154,7 @@ import { type GoldRing, goldRingCurrentPos } from '../utils/goldRing';
 // UNIQUE_WEAPONS.md §16-2(バッチC-1): 持続線分/扇の3挺。数値/型は純関数モジュールから読むだけ
 // (状態そのものはuseGameLoopが書く。CLAUDE.md「PixiJSは描くだけ」)。
 import type { PersistentBeam } from '../utils/persistentBeam';
-import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, ROCKET_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
+import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, ROCKET_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS } from '../utils/flamerCone';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import {
@@ -2830,6 +2830,18 @@ const SWEEP_ICE_BREAK_FRAC = 0.3;
 // それ使って」)。冷気ブレス(v3042)・氷の三連突進(v3049)・スカジの氷技(v3071)と**同じ絵**で世界を揃える。
 // 自前のGraphics(丸い粒/三角の破片)は描かない。
 const SWEEP_ICE_SPARK_TEX = 'fx/breath-sparkle';
+// 氷槍ライフル(rifle-t2-icelance)の絵(社長指示2026-09-12「攻撃ヴィジュアルしょぼすぎる。地面に残る氷はステージ4城ボスの
+// 氷エフェクトと、弾はスカジの氷の刃を小さく表示して」): 床=城ボスの氷の衝撃波と同じ作法(スカジの氷塊を根元→先端で
+// 小→大に並べ、出た順に生え、最後に砕けてキラキラが弾ける)。武器なので寸法は城ボスの約1/3。判定(halfWidth/寿命)は不変=分類②。
+const ICE_LANCE_BLOCK_STEP = 22;      // 氷塊の間隔(px)
+const ICE_LANCE_BLOCK_MAX = 14;       // 1本の床あたりの氷塊の上限(=スプライト数の上限)
+const ICE_LANCE_BLOCK_MIN_PX = 12;    // 根元の氷塊の高さ
+const ICE_LANCE_BLOCK_MAX_PX = 26;    // 先端の氷塊の高さ
+const ICE_LANCE_GROW_MS = 160;        // 氷塊が生える時間(慣性: ease-out・下から4px持ち上がる)
+const ICE_LANCE_BREAK_MS = 360;       // 寿命の最後にこの時間で砕けて消える(キラキラはこの間だけ)
+const ICE_LANCE_SPARK_MAX = 18;       // 床1本あたりの粒の上限
+const ICE_LANCE_SPARKS_PER_BLOCK = 2;
+const ICE_LANCE_BOLT_PX = 30;         // 弾=スカジの氷の刃(80px)を小さく
 const SWEEP_ICE_SPARK_N = 6;      // 氷1個あたりの粒(素材が大きいので数は控えめ)
 const SWEEP_ICE_END_SPARK_N = 12; // 帯の終端で弾ける粒
 // 粒の表示高さ(px)。氷塊の大きさ(34〜96px)に対する割合で決める+終端用の固定値。
@@ -3743,7 +3755,8 @@ export class PixiScene {
   }>();
   // UNIQUE_WEAPONS.md §16-2(バッチC-1): 氷槍ライフルの床。金環のbeamCore/beamHaloと同型
   // (pooled sprite・強glowなし)。追尾しない固定線分なので位置は生成時のまま。
-  private iceLanceFloorViews = new Map<string, { core: Sprite; halo: Sprite }>();
+  private iceLanceFloorViews = new Map<string, { halo: Sprite; blocks: Sprite[]; sparks: Sprite[]; blockSeen: number[] }>();
+  private iceLanceBoltViews = new Map<string, Sprite>(); // 氷槍ライフルの弾=スカジの氷の刃(小)
   // アイレーザー(プレイヤー1人ぶんなので単一インスタンス。ghost-gunでは撃たない=§17-6)。
   private eyeLaserCore: Sprite | null = null;
   private eyeLaserHalo: Sprite | null = null;
@@ -8524,6 +8537,7 @@ export class PixiScene {
     this.syncShadowProbe(s.camera, now, s.effects); // 計測専用(ベンチ以外では count=0 で即 return)
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
+    this.syncIceLanceBolts(s.projectiles, now); // 氷槍ライフルの弾(氷の刃スプライト。Graphics の弾は出さない)
     this.syncShields(s.projectiles, now);
     this.syncArena(s.activeEvent, now);
     this.syncQuestTrigger(s.eventQuestNpc, s.gameTime, now); // レスキュー地点の待機トリガー円(§2-3)
@@ -13865,43 +13879,135 @@ export class PixiScene {
   // 出現/消滅は統一型(weaponSpawnEase・PACING_PUZZLE §7-15)——寿命1.2秒の中で自然に立ち上がり/消える。
   private syncIceLanceFloors(floors: PersistentBeam[], gameTime: number) {
     const seen = new Set<string>();
+    const blockTex = getTexture('skadi-ice-block');
+    const sparkTex = getTexture(SWEEP_ICE_SPARK_TEX);
+    const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
     for (const floor of floors) {
       seen.add(floor.id);
       let v = this.iceLanceFloorViews.get(floor.id);
       if (!v) {
-        const core = new Sprite(Texture.WHITE); core.anchor.set(0, 0.5);
         const halo = new Sprite(Texture.WHITE); halo.anchor.set(0, 0.5);
-        halo.blendMode = 'add'; // 派手さの絵(判定より大きく見せてよい層)。光源登録はしない=強glowではない
-        this.L.effectLayer.addChild(halo, core);
-        v = { core, halo };
+        halo.blendMode = 'add'; // 判定幅の目安(薄い水色)。光源登録はしない=強glowではない
+        this.L.effectLayer.addChild(halo);
+        v = { halo, blocks: [], sparks: [], blockSeen: [] };
         this.iceLanceFloorViews.set(floor.id, v);
       }
       const dx = floor.bx - floor.ax, dy = floor.by - floor.ay;
       const len = Math.hypot(dx, dy);
       const ang = Math.atan2(dy, dx);
-      const ease = weaponSpawnEase(gameTime - floor.createdAt, floor.createdAt + floor.durationMs - gameTime);
-      v.core.position.set(floor.ax, floor.ay);
+      const ux = len > 0 ? dx / len : 1, uy = len > 0 ? dy / len : 0;
+      const remain = floor.createdAt + floor.durationMs - gameTime;
+      const ease = weaponSpawnEase(gameTime - floor.createdAt, remain);
       v.halo.position.set(floor.ax, floor.ay);
-      v.core.rotation = ang;
       v.halo.rotation = ang;
-      v.core.width = len;
       v.halo.width = len;
-      v.core.height = Math.max(0.5, floor.halfWidth * 0.6);
-      v.halo.height = Math.max(0.5, floor.halfWidth * 2.2); // 派手さの絵=判定より大きくはみ出してよい
-      v.core.tint = 0xe6fbff;
-      v.halo.tint = 0x60d9ff; // 氷=水色(金環の金・アイレーザーの橙と衝突しない色)
-      v.core.alpha = 0.9 * ease.alphaMul;
-      v.halo.alpha = 0.45 * ease.alphaMul;
-      const visible = len > 0.5 && ease.alphaMul > 0.01;
-      v.core.visible = visible;
-      v.halo.visible = visible;
+      v.halo.height = Math.max(0.5, floor.halfWidth * 2.2);
+      v.halo.tint = 0x60d9ff;
+      v.halo.alpha = 0.30 * ease.alphaMul;
+      v.halo.visible = len > 0.5 && ease.alphaMul > 0.01;
+      // 氷塊: 根元から ICE_LANCE_BLOCK_STEP ごと。床が弾を追って伸びるので、先端に新しい氷塊が生えていく。
+      // 大きさは根元→先端で小→大(城ボスの衝撃波と同じ読み)。砕けは寿命の最後 ICE_LANCE_BREAK_MS。
+      const n = Math.min(ICE_LANCE_BLOCK_MAX, Math.floor(len / ICE_LANCE_BLOCK_STEP));
+      const brk = clamp01(1 - remain / ICE_LANCE_BREAK_MS); // 0=無傷 1=砕けきった
+      const sizeOf = (i: number, hb: number) => {
+        const f = Math.min(1, i / (ICE_LANCE_BLOCK_MAX - 1));
+        return (ICE_LANCE_BLOCK_MIN_PX + (ICE_LANCE_BLOCK_MAX_PX - ICE_LANCE_BLOCK_MIN_PX) * f) * (0.85 + 0.3 * hb);
+      };
+      for (let i = 0; i < n; i++) {
+        let sp = v.blocks[i];
+        if (!sp) {
+          sp = new Sprite(blockTex ?? Texture.WHITE);
+          sp.anchor.set(0.5, 0.92); // 下端が接地(スカジ/城ボスと同じ作法)
+          this.L.effectLayer.addChild(sp);
+          v.blocks[i] = sp;
+          v.blockSeen[i] = gameTime;
+        }
+        if (blockTex && sp.texture !== blockTex) sp.texture = blockTex;
+        const d = i * ICE_LANCE_BLOCK_STEP + ICE_LANCE_BLOCK_STEP * 0.5;
+        const hb = ((i * 2654435761) % 1000) / 1000; // 氷ごとの決定的な種(向き・崩れ方の個体差)
+        const grow = 1 - Math.pow(1 - clamp01((gameTime - v.blockSeen[i]) / ICE_LANCE_GROW_MS), 3);
+        const size = sizeOf(i, hb);
+        const sc = (size / Math.max(1, sp.texture.height)) * (0.35 + 0.65 * grow);
+        sp.scale.set(sc * (1 + brk * 0.10) * (hb > 0.5 ? -1 : 1), sc * (1 - brk * 0.22));
+        sp.rotation = brk * (hb - 0.5) * 0.34;
+        sp.position.set(floor.ax + ux * d, floor.ay + uy * d + (1 - grow) * 4);
+        sp.alpha = brk < 1 ? grow * Math.max(0, 1 - brk * brk) : 0;
+        sp.visible = sp.alpha > 0.02 && !!blockTex; // 素材未読込なら白い四角を出さない
+      }
+      for (let i = n; i < v.blocks.length; i++) v.blocks[i].visible = false;
+      // 砕ける間だけのキラキラ(城ボスの余韻と同じ動き: 外へ弾け、跳ね上がって落ちる)。判定ゼロ=分類②。
+      let used = 0;
+      if (brk > 0 && sparkTex) {
+        const spread = 1 - (1 - brk) * (1 - brk);
+        const gate = Math.min(1, brk * 12) * Math.min(1, (1 - brk) * 2.6);
+        for (let i = 0; i < n && used < ICE_LANCE_SPARK_MAX; i++) {
+          const d = i * ICE_LANCE_BLOCK_STEP + ICE_LANCE_BLOCK_STEP * 0.5;
+          const bx = floor.ax + ux * d, by = floor.ay + uy * d;
+          const size = sizeOf(i, ((i * 2654435761) % 1000) / 1000);
+          for (let k = 0; k < ICE_LANCE_SPARKS_PER_BLOCK && used < ICE_LANCE_SPARK_MAX; k++, used++) {
+            let sp = v.sparks[used];
+            if (!sp) {
+              sp = new Sprite(sparkTex); sp.anchor.set(0.5, 0.5);
+              this.L.effectLayer.addChild(sp);
+              v.sparks[used] = sp;
+            }
+            const h = ((i * 7 + k * 13) * 2654435761 % 1000) / 1000;
+            const a2 = h * Math.PI * 2;
+            const dist = size * (0.5 + h * 1.5) * spread;
+            const up = -size * (0.5 + h * 0.55) * brk + size * 1.5 * brk * brk;
+            const a = gate * (0.45 + 0.55 * Math.abs(Math.sin(gameTime / (62 + h * 70) + h * 9)));
+            const hpx = size * SWEEP_ICE_SPARK_H_FRAC * (0.75 + h * 0.5);
+            const ssc = hpx / Math.max(1, sparkTex.height);
+            sp.scale.set(h > 0.5 ? -ssc : ssc, ssc);
+            sp.rotation = 0;
+            sp.position.set(bx + Math.cos(a2) * dist, by - size * 0.4 + Math.sin(a2) * dist * 0.6 + up);
+            sp.alpha = a;
+            sp.visible = a > 0.02;
+          }
+        }
+      }
+      for (let i = used; i < v.sparks.length; i++) v.sparks[i].visible = false;
     }
     for (const [id, v] of this.iceLanceFloorViews) {
       if (seen.has(id)) continue;
-      v.core.destroy(); v.halo.destroy();
+      v.halo.destroy();
+      for (const b of v.blocks) b.destroy();
+      for (const b of v.sparks) b.destroy();
       this.iceLanceFloorViews.delete(id);
     }
   }
+
+  // 氷槍ライフルの弾: 赤い二重丸/線の弾ではなく、スカジの氷の刃(skadi-ice-blade)を小さく。向き=進行方向。
+  // 出現は 90ms で伸びる(慣性MUST・パッと出ない)。判定(p.width/height)は不変。
+  private syncIceLanceBolts(projectiles: Projectile[], now: number) {
+    const seen = new Set<string>();
+    const tex = getTexture('skadi-ice-blade');
+    for (const p of projectiles) {
+      if (p.weaponKey !== ICE_LANCE_WEAPON_KEY || p.hostile || p.createdAt > now) continue;
+      seen.add(p.id);
+      let sp = this.iceLanceBoltViews.get(p.id);
+      if (!sp) {
+        sp = new Sprite(tex ?? Texture.WHITE);
+        sp.anchor.set(0.5, 0.5);
+        this.L.frontObjectLayer.addChild(sp);
+        this.iceLanceBoltViews.set(p.id, sp);
+      }
+      if (tex && sp.texture !== tex) sp.texture = tex;
+      sp.position.set(p.x + p.width / 2, p.y + p.height / 2);
+      sp.rotation = Math.atan2(p.direction.y, p.direction.x) - SKADI_BLADE_NATIVE_ANGLE;
+      const grow = 1 - Math.pow(1 - Math.max(0, Math.min(1, (now - p.createdAt) / 90)), 3);
+      const base = ICE_LANCE_BOLT_PX / Math.max(1, tex ? Math.max(tex.width, tex.height) : 1);
+      sp.scale.set(base * (0.55 + 0.45 * grow));
+      sp.alpha = 0.95;
+      sp.visible = !!tex;
+    }
+    for (const [id, sp] of this.iceLanceBoltViews) {
+      if (seen.has(id)) continue;
+      sp.destroy();
+      this.iceLanceBoltViews.delete(id);
+    }
+  }
+
 
   // UNIQUE_WEAPONS.md §16-2(バッチC-1): アイレーザー。溜め中は絵なし(素材は後日)、照射中だけ
   // 線(core+halo・pooled sprite)を描く。出現は慣性つきランプ(80〜120msで幅とαを立ち上げる・
@@ -22655,6 +22761,7 @@ export class PixiScene {
     for (const p of projectiles) {
       if (p.createdAt > now) continue; // scheduled / inactive
       if (p.weaponType === 'shield') continue; // 盾は syncShields で別管理(actorLayer/y-sort)
+      if (p.weaponKey === ICE_LANCE_WEAPON_KEY && !p.hostile) continue; // 氷槍ライフルの弾は syncIceLanceBolts(氷の刃)
       if (p.weaponType === 'decoy') continue;  // デコイは syncDecoys で別管理(スプライト+射程円)
       if (p.weaponType === 'turret') continue; // タレットは syncTurrets で別管理(actorLayer/y-sort)
       if (p.weaponType === 'skateboard') continue; // 投擲スケボーは syncSkateboards で別管理(スプライト)

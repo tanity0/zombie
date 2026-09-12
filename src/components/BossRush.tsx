@@ -78,7 +78,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
   if (open) {
     const stage = getStage(open.stageId);
     const hp = practiceBossHealth(open);
-    const hints = bossHintsFor(open.bossType);
+    const hints = bossHintsFor(open.bossType, open.stageId);
     const icon = bossIcon(open);
     return (
       <div className="p-3 space-y-3">

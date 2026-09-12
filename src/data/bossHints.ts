@@ -94,4 +94,23 @@ export const BOSS_HINTS: Partial<Record<EnemyType, readonly string[]>> = {
 };
 
 /** ボス型のヒント。無ければ空配列(画面は「準備中」を出す)。 */
-export const bossHintsFor = (bossType: EnemyType): readonly string[] => BOSS_HINTS[bossType] ?? [];
+// 城ボス(giantbat)はステージで技が違う(giantScript.ts GIANT_STAGE_UNIQUE_MOVE/ULT_MOVE)。共通の1本(足元・影・突進と雷)は
+// stage-1/7 の素の城ボス向けで、独自技を持つステージではヒントが嘘になる(社長報告2026-09-12「ステージ4城ボスのヒントが
+// 間違えてるし意味わからん」)。ステージ別に書く。数値は書かない(漢数字の回数は可)。
+export const CASTLE_STAGE_HINTS: Partial<Record<string, readonly string[]>> = {
+  'stage-3': [
+    '滑空は軌道が決まってから来る。線の外へ抜ける。',
+    '影が寄ってきたら、真下を空ける。急降下の着地後が差し込みどころ。',
+  ],
+  'stage-4': [
+    '突進は三回で終わる。数えろ。三回目の直後に氷の横薙ぎが来る。',
+    '横薙ぎは帯の外へ。薙ぎ終わりの硬直が反撃の窓。',
+    '削れてからの氷結波は、輪が外へ広がる。外へ逃げず、輪の内側に寄る。',
+  ],
+  'stage-5': [
+    '三連射は左右が先、中央が一拍遅れて来る。左右を避けた場所に居続けない。',
+    '掃射は帯の向きが決まってから走る。帯の外が安全側。',
+  ],
+};
+export const bossHintsFor = (bossType: EnemyType, stageId?: string): readonly string[] =>
+  (bossType === 'giantbat' && stageId && CASTLE_STAGE_HINTS[stageId]) || BOSS_HINTS[bossType] || [];
