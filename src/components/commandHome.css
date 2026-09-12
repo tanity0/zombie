@@ -96,14 +96,16 @@
 .command-shell .weapon-tier-title { display:flex; align-items:center; gap:14px; color:var(--menu-ink); font:500 15px/1.5 system-ui; margin-bottom:12px; }
 .command-shell .weapon-tier-title span { font-size:11px; color:var(--menu-muted); }
 .command-shell .ds-loadout-body .weapon-candidates { grid-template-columns:minmax(0,1fr); align-items:stretch; }
-.command-shell .weapon-candidates .ff7r-fade-right { display:grid; grid-template-columns:112px minmax(0,1fr) 64px; align-items:center; gap:18px; padding:14px 18px; min-height:100px; }
-.command-shell .weapon-art { display:flex; align-items:center; justify-content:center; height:72px; }
-.command-shell .weapon-art img { width:100%; height:100%; object-fit:contain; image-rendering:pixelated; }
+.command-shell .weapon-candidates .ff7r-fade-right { display:grid; grid-template-columns:84px minmax(0,1fr) 64px; align-items:center; gap:18px; padding:14px 18px; min-height:100px; }
+/* 武器のドット絵は原寸が大きい(96〜250px)ので、縮めて見せる時は pixelated だと画素が不均一に潰れて粗く見える
+   (社長指摘2026-09-12「ドット絵が少し粗いので、あまり大きく見せたくない」)。小さく・なめらかに縮小する。 */
+.command-shell .weapon-art { display:flex; align-items:center; justify-content:center; height:52px; }
+.command-shell .weapon-art img { width:100%; height:100%; object-fit:contain; image-rendering:auto; }
 .command-shell .weapon-selection { display:flex; gap:4px; align-items:center; color:var(--menu-accent); font:11px system-ui; }
 .command-shell .weapon-candidates .truncate { white-space:normal; overflow-wrap:anywhere; }
 .command-shell .weapon-candidates .leading-snug { line-height:1.7; color:var(--menu-muted); margin-top:8px; }
 @media(max-width:600px) {
-  .command-shell .weapon-candidates .ff7r-fade-right { grid-template-columns:80px minmax(0,1fr); gap:8px 12px; padding:12px; }
-  .command-shell .weapon-art { height:64px; grid-row:1 / 3; }
+  .command-shell .weapon-candidates .ff7r-fade-right { grid-template-columns:60px minmax(0,1fr); gap:8px 12px; padding:12px; }
+  .command-shell .weapon-art { height:44px; grid-row:1 / 3; }
   .command-shell .weapon-selection { grid-column:2; min-height:14px; }
 }

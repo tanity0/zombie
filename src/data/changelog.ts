@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4244',
+    items: ['装備と開発施設の銃の絵を小さくし、縮小をなめらかにして粗さを抑えた。'],
+  },
+  {
     version: '0.25.4243',
     items: ['アクラシエルの放射する棘の予告が、少し長く見えるようになった。'],
   },

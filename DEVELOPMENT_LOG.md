@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.4244 — 装備/開発施設の武器ドット絵を小さく・なめらかに(社長指示)【2026-09-12 10:19 JST】
+
+社長「装備、開発メニュー内の武器のドット絵が少し粗いので、あまり大きく見せたくない」。原因: 武器スプライトの原寸は 96〜250px と大きく、それを `image-rendering: pixelated` で 64〜72px へ**非整数倍に縮小**していたため画素が不均一に潰れて粗く見えていた。
+- `commandHome.css`(装備 `.weapon-art`)/`commandTheme.css`(開発施設 `.development-art`): 高さ 72→**52px**(スマホ 64→**44px**)、絵の列幅 112→84px(スマホ 80→60px)、`image-rendering: pixelated`→**auto**(なめらかに縮小)。HUD の武器アイコン(32px・別経路)は触っていない。
+- typecheck・lint 0。実機確認は社長。
+
 ## v0.25.4243 — アクラシエルの放射棘の予告を少し長く(社長指示)【2026-09-12 10:15 JST】
 
 社長「アクラシエルの棘の隙間攻撃の予告はもう少しだけ長く」。`src/utils/angelScript.ts` `ANGEL_ACRASIEL_TUNING.spike.windup` 1100→**1250**(約+14%)。active/recover/range/halfWidth は不変。関連テスト34件通過・typecheck 0。数値のみ=監査なし。実機確認は社長。
