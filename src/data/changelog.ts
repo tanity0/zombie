@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4258',
+    items: ['装備の切り替えと区切りの見出しが英語表記に。作戦室と同じ流儀で、日本語を小さく添える。'],
+  },
+  {
     version: '0.25.4257',
     items: ['装備の取得済みスキルが一列になり、名前が途中で折れなくなった。絵の後ろの四角い塗りも消えた。サブウェポンの一覧に一言の説明が付いた。'],
   },

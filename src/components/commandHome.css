@@ -1,5 +1,13 @@
 /* 装備の共通テーマ。司令室は既存のDS配色を使う。 */
 .command-ui .loadout-tabs { margin:16px 0 0; }
+/* 装備のタブ=英語の見出し(Rajdhani・字間広め)+小さく日本語(社長指示2026-09-12「このメニュー部分は英語がいい」)。
+   区切りの見出し(SUB-WEAPONS ── 1つだけ持てる)も同じ組み=作戦室ホームの PREP ── 準備 と同じ流儀 */
+.command-ui .loadout-tabs button { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:8px 4px; }
+.command-ui .loadout-tabs .tab-en { font-family:"Rajdhani", system-ui, sans-serif; font-weight:600; font-size:12px; letter-spacing:.12em; line-height:1.1; white-space:nowrap; }
+@media(max-width:380px) { .command-ui .loadout-tabs .tab-en { font-size:11px; letter-spacing:.08em; } }
+.command-ui .loadout-tabs .tab-jp { font-size:9.5px; letter-spacing:.06em; opacity:.7; line-height:1.1; }
+.command-ui .loadout-glabel { font-family:"Rajdhani", system-ui, sans-serif; font-weight:600; font-size:12px; letter-spacing:.3em; }
+.command-ui .loadout-glabel span { margin-left:8px; font-family:var(--game-font, "Orbitron"), "BIZ UDPGothic", sans-serif; font-weight:400; font-size:10px; letter-spacing:.06em; text-transform:none; opacity:.8; }
 .command-shell .ds-loadout-body > .p-3 > div[hidden] { display:none; }
 .ds-home.command-shell { background:radial-gradient(140% 70% at 50% -10%,#101315 0%,var(--menu-bg) 55%); }
 .command-home { height: 100%; display: flex; flex-direction: column; color: var(--menu-ink); }

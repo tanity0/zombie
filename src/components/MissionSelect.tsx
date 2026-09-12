@@ -1344,9 +1344,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         ) : <Header title="装備" subtitle="全作戦共通" onBack={() => setScreen({ name: 'home' })} />}
         <LoadoutBody>
         {COMMAND_UI_ENABLED && <nav className="development-tabs loadout-tabs" aria-label="装備内容">
-          {([['guns', '銃'], ['subs', 'サブウェポン'], ['avatar', 'アバター'], ['skills', '取得済みスキル']] as const).map(([id, label]) =>
+          {/* 英語の見出し+小さく日本語(社長指示2026-09-12「このメニュー部分は英語がいい」= 作戦室ホームの LOADOUT/GROWTH と同じ流儀) */}
+          {/* 語はクリエイティブ監査(2026-09-12)で選び直し: 4タブとも「英語=種別の名詞 / 日本語=その訳語」で揃える(状態語・音写を混ぜない)。
+              FIREARMS(GUNS はこの作品の重さに軽い)・SECONDARY(1語=幅が揃う)・OUTFIT(AVATAR は汎用語。添えは見出しと同じ「見た目」)。 */}
+          {([['guns', 'FIREARMS', '銃'], ['subs', 'SECONDARY', '副武装'], ['avatar', 'OUTFIT', '見た目'], ['skills', 'SKILLS', 'スキル']] as const).map(([id, en, jp]) =>
             <button type="button" key={id} aria-pressed={loadoutSection === id}
-              onClick={() => { playSfx('ui-move'); setLoadoutSection(id); }}>{label}</button>)}
+              onClick={() => { playSfx('ui-move'); setLoadoutSection(id); }}><span className="tab-en">{en}</span><span className="tab-jp">{jp}</span></button>)}
         </nav>}
         <div className="p-3 space-y-4">
           {/* 銃スロット(UNIQUE_WEAPONS.md §11-6④): カテゴリ×Tierのマス。各マスは購入済み候補のセレクタ。
@@ -1419,7 +1422,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           })()}
           {/* サブウェポン */}
           <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'subs'}>
-            <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-emerald-200/70">サブウェポン（1つ）</div>
+            <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-emerald-200/70 loadout-glabel">CARRY ONE<span>── 携行は1つ</span></div>
             {/* キャラ固有スキル(職スキル枠)はトップの装備メニューには載せない(自動付与・選択不可)。
                 退役サブ(ダンスフロア)も載せない(社長裁定2026-08-20)。未購入も載せない(上のvisibleSubs)。 */}
             {visibleSubs.length === 0 ? (
@@ -1459,7 +1462,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           </div>
           {/* アバター(試験・第1弾)。トグル選択式(なし/猫耳セット)。見た目は既存の装備欄に合わせる=磨き込み不要(試験機能)。 */}
           <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'avatar'}>
-            <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-sky-200/70">アバター</div>
+            <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-sky-200/70 loadout-glabel">APPEARANCE<span>── 姿</span></div>
             <div className="menu-stagger weapon-candidates grid grid-cols-2 gap-2">
               {([null, ...AVATAR_IDS] as (AvatarId | null)[]).map(id => {
                 const on = avatarId === id;
@@ -1489,7 +1492,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               並びは**レア度の高い順→名前順**(超レア→レア→通常)。 */}
           <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'skills'}>
             <div className="px-1 mb-1.5 flex items-baseline justify-between">
-              <span className="text-[11px] uppercase tracking-widest text-purple-200/70">取得済みスキル</span>
+              <span className="text-[11px] uppercase tracking-widest text-purple-200/70 loadout-glabel">ACQUIRED</span>
               <span className="text-[10px] text-white/40 tabular-nums">{ownedSkills.length}/{OBTAINABLE_SKILL_KEYS.length}</span>
             </div>
             {ownedSkills.length === 0 ? (
