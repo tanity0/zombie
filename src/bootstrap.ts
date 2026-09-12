@@ -7,6 +7,10 @@
 import { FONT_FAMILY, FONT_STACK } from './config/font';
 import { installPracticeGuard } from './utils/practiceGuard';
 
+// 同梱書体の読み込み待ち(上限つき)。main.tsx が最初の render の前に待つ。bootstrapRuntime() を呼ぶ前は未解決。
+let fontsReadyResolve: (p: Promise<void>) => void = () => {};
+export const fontsReady: Promise<void> = new Promise<void>((resolve) => { fontsReadyResolve = (p) => { void p.then(resolve, () => resolve()); }; });
+
 export const bootstrapRuntime = (): void => {
   // 練習ラン(ボスラッシュ)なら、ここから先の localStorage 書き込みを全て封じる
   // (BOSS_MAKER.md §20-6 / utils/practiceGuard.ts)。React を描く前に必ず通る。
@@ -40,19 +44,26 @@ export const bootstrapRuntime = (): void => {
     { passive: false }
   );
   try {
-    void document.fonts.load(`700 30px "${FONT_FAMILY}"`);
-    void document.fonts.load(`500 16px "${FONT_FAMILY}"`);
+    const loads: Promise<unknown>[] = [];
+    const warm = (font: string, text?: string) => { loads.push(document.fonts.load(font, text).catch(() => undefined)); };
+    warm(`700 30px "${FONT_FAMILY}"`);
+    warm(`500 16px "${FONT_FAMILY}"`);
     // 作戦室DS2化(UI_OVERHAUL.md §3-0): DS計器の英字=Rajdhani 3ウェイトも同じ場所で温める
     // (字間.3〜.42emの計器がロード前後で組み直されるチラつき対策)。グローバルフォントは不変。
-    void document.fonts.load('300 13px "Rajdhani"');
-    void document.fonts.load('500 13px "Rajdhani"');
-    void document.fonts.load('600 13px "Rajdhani"');
+    warm('300 13px "Rajdhani"');
+    warm('500 13px "Rajdhani"');
+    warm('600 13px "Rajdhani"');
     // 日本語の同梱書体(社長裁定2026-09-12・v0.25.4253): 本文=BIZ UDPGothic、見出し/カットイン=Shippori Mincho B1。
     // Pixi のコールアウト/名前札も FONT_STACK 経由で同じ書体を使うので、焼く前に和文グリフ込みで温める。
-    void document.fonts.load('400 16px "BIZ UDPGothic"', '通常変異体の目撃地点');
-    void document.fonts.load('700 16px "BIZ UDPGothic"', '通常変異体の目撃地点');
-    void document.fonts.load('600 30px "Shippori Mincho B1"', '作戦地域出撃一時停止');
+    warm('400 16px "BIZ UDPGothic"', '通常変異体の目撃地点');
+    warm('700 16px "BIZ UDPGothic"', '通常変異体の目撃地点');
+    warm('400 30px "Shippori Mincho B1"', '作戦地域出撃一時停止');
+    warm('600 30px "Shippori Mincho B1"', '作戦地域出撃一時停止');
+    // (v0.25.4255・監査B「初回起動で書体が差し替わる瞬間が見える」) 最初の描画は全書体が揃うまで待つ。上限 2.5 秒=遅い回線でも
+    // 起動を人質にしない。待ち切れなかった分は従来どおり swap で後から差し替わる。
+    fontsReadyResolve(Promise.race([Promise.allSettled(loads).then(() => undefined), new Promise<void>((r) => setTimeout(r, 2500))]));
   } catch {
     // document.fonts unsupported (very old browsers) — CSS @font-face still loads on use.
+    fontsReadyResolve(Promise.resolve());
   }
 };

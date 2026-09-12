@@ -5,12 +5,15 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
-import { bootstrapRuntime } from './bootstrap';
+import { bootstrapRuntime, fontsReady } from './bootstrap';
 
 bootstrapRuntime();
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);
+// 同梱書体が揃ってから最初の描画(上限 2.5 秒・bootstrap.ts 参照)。書体が後から差し替わる瞬間を画面に出さないため。
+void fontsReady.then(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  );
+});

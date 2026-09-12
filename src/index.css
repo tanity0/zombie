@@ -22,7 +22,11 @@
    本文側の和文フォールバックは config/font.ts の FONT_STACK(--game-font)に入っている=Pixi のテキストも同じ書体。 */
 @font-face { font-family: "BIZ UDPGothic"; src: url("/zombie/fonts/game/BIZUDPGothic-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 @font-face { font-family: "BIZ UDPGothic"; src: url("/zombie/fonts/game/BIZUDPGothic-Bold.woff2") format("woff2"); font-weight: 700; font-display: swap; }
-@font-face { font-family: "Shippori Mincho B1"; src: url("/zombie/fonts/game/ShipporiMinchoB1-SemiBold.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+@font-face { font-family: "Shippori Mincho B1"; src: url("/zombie/fonts/game/ShipporiMinchoB1-Regular.woff2") format("woff2"); font-weight: 100 400; font-display: swap; }
+@font-face { font-family: "Shippori Mincho B1"; src: url("/zombie/fonts/game/ShipporiMinchoB1-SemiBold.woff2") format("woff2"); font-weight: 500 900; font-display: swap; }
+/* (3) 和文の本文の中に立つ英数字(Tier / PHILL / DAY 26 等)は Orbitron の字面が漢字より小さく見えるので、本文だけ 110% に寄せた別名を使う。
+   HUD・見出し・計器の Orbitron は元の大きさのまま(別名を当てるのは下の「本文」セレクタだけ)。 */
+@font-face { font-family: "Orbitron Prose"; src: url("/zombie/fonts/orbitron.woff2") format("woff2"); font-weight: 400 900; size-adjust: 110%; font-display: swap; }
 html {
   --uf-jp: "BIZ UDPGothic";
   --uf-head: "Shippori Mincho B1";
@@ -56,6 +60,14 @@ html .command-ui .command-panel h2,
 html .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\],
 html .command-operation h1, html .command-section-title h2, html .command-sortie > span,
 html .weapon-tier-title { font-family: "Orbitron", var(--uf-head), serif !important; font-feature-settings: "palt" 1; }
+/* (2) 明朝は大小2ウェイト(監査B): 22px 級以上の大きい題は Regular で細く、20px 以下の項目名・出撃・枡の題は SemiBold で骨太に */
+html .ui-head-serif, html .command-ui .command-page-header h1,
+html .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\],
+html .command-operation h1 { font-weight: 400; }
+html .ui-head-serif-sm { font-weight: 600; }
+/* (3) 本文(2行以上に折れる説明・任務文・台詞・注記)の英数字だけ 110% の Orbitron。leading-relaxed / leading-snug は本文の印 */
+html .leading-relaxed, html .leading-snug, html .command-ui p, html .command-ui .development-guide,
+html .command-ui .command-page-header p { font-family: "Orbitron Prose", var(--uf-jp), sans-serif; }
 html .weapon-tier-title span { font-family: var(--game-font, "Orbitron"), var(--uf-jp), sans-serif !important; font-feature-settings: normal; }
 html .ds-sortie .ds-sortie-t1, html .ds-row .ds-row-l { font-family: "Rajdhani", var(--uf-head), serif !important; font-feature-settings: "palt" 1; }
 /* 作戦室ホームの英字の副題(OPERATIONS ROOM 等)は見出しではない=Rajdhani のまま */

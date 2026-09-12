@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.4255 — 書体の監査(B)4件の着地(社長「はい」)【2026-09-12 21:08 JST】
+
+社長が実機で「いいかんじ」→ 積んでいた(B)4件に着手の「はい」。**3件着地・1件は不成立(理由つき)**。
+- **(B2) 明朝を大小2ウェイト**: `Shippori Mincho B1 Regular`(100〜400)を追加(約439KB・OFL・同じ字だけ抜き出し)。22px 級以上の大きい題
+  (`.ui-head-serif`=画面題/結果題・`.command-page-header h1`・ステージカード題・`.command-operation h1`)は **400 で細く**、20px 以下
+  (作戦室の項目名・出撃・武器の枡の題・`.command-section-title h2`・`.command-panel h2`・演習結果の題 `.ui-head-serif-sm`)は **600 で骨太**。
+  同梱書体は合計約1.6MB。
+- **(B3) 和文の本文の中の英数字**: `@font-face "Orbitron Prose"`(同じ woff2・`size-adjust: 110%`)を新設し、**本文だけ**に当てる
+  (`.leading-relaxed` / `.leading-snug` / `.command-ui p` / `.development-guide` / `.command-page-header p`)。HUD・見出し・計器・ボタンの Orbitron は
+  元の大きさのまま。詳細画面の「PHILL」、装備の「各Tierで1挺」が周囲の漢字と揃ったのをスクショで確認。
+- **(B4) 初回起動の書体差し替わり**: `bootstrap.ts` の `document.fonts.load` を配列に集め、`fontsReady`(全部揃う or **上限 2.5 秒**の早い方)を export。
+  `main.tsx` は `fontsReady` を待ってから最初の `render`。`document.fonts` 非対応の環境は即解決(起動を止めない)。ボスメーカーの入口は従来どおり待たない。
+- **(B1) 和文のウェイト階調 — 不成立**: BIZ UDPGothic は配布が Regular/Bold の2本のみで **Medium が存在しない**(Google Fonts・元のモリサワ版とも)。
+  もう一方の直し方「英数字側の 500/600 指定を 400/700 に揃える」は Orbitron/Rajdhani の見え方を変える=社長指示「英数字は元のまま」に反するので採らない。
+  現状(500→400・600→700 に丸まる)のまま。**別の和文ゴシックに替える判断が出た時に再検討。**
+- typecheck・lint 0。ヘッドレス6画面で確認。実機確認は社長。
+
 ## v0.25.4254 — 書体のクリエイティブ監査(Fable・1巡)を反映: 見出しが明朝になっていなかったバグ他【2026-09-12 20:47 JST】
 
 監査の問い「人の作り手ならこうしなかった箇所」→ **指摘10件(A=1 / B=9)。直した6・積んだ4。**
