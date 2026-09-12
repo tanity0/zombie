@@ -16,14 +16,14 @@ export const bootstrapRuntime = (): void => {
   // off loading the woff2 immediately so it is ready before the first paint and,
   // crucially, before PixiJS bakes its damage-number atlas / draws text.
   document.documentElement.style.setProperty('--game-font', FONT_STACK);
-  // ★試作(社長相談2026-09-12「ブラウザ感がまだある」→「一度試作見せて」): `?uifont=1` で UI の書体を
-  // ゲーム同梱の日本語書体に切り替える(見出し=Shippori Mincho / HUD=DotGothic16 / 本文=Zen Kaku Gothic New・全てOFL・
+  // ★試作(社長相談2026-09-12「ブラウザ感がまだある」→「一度試作見せて」→「文字はデススト風に直して」): `?uifont=1` で
+  // UI の書体をゲーム同梱の書体に切り替える(英数字=Titillium Web / 日本語=Zen Kaku Gothic New・全てOFL・
   // 使う文字だけ抜き出して public/fonts/game/ に同梱)。既定OFF=今までどおり Orbitron+端末ゴシック。CSS は index.css の
   // `html.ui-font-game` 配下。採用が決まったら既定ONにして FONT_STACK 側へ統合する。
   try {
     if (new URLSearchParams(window.location.search).get('uifont') === '1') {
       document.documentElement.classList.add('ui-font-game');
-      document.documentElement.style.setProperty('--game-font', '"DotGothic16", "Zen Kaku Gothic New", sans-serif');
+      document.documentElement.style.setProperty('--game-font', '"Titillium Web", "Zen Kaku Gothic New", sans-serif');
     }
   } catch { /* ignore */ }
 

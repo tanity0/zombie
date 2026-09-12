@@ -11,28 +11,30 @@
   font-display: swap;
 }
 
-/* ===== 試作: ゲーム同梱の日本語書体(?uifont=1・既定OFF) =============================================
+/* ===== 試作: ゲーム同梱の書体(?uifont=1・既定OFF)・第2案=デス・ストランディング風 ======================
    社長相談2026-09-12「据置機のフォントはゲーム感があるのに、こちらはブラウザ感がある。なぜ?」
    → 日本語が端末の標準ゴシック(=全てのサイトと同じ文字)で描かれているのが主因。据置機は日本語ごと専用書体を同梱する。
+   第1案(明朝見出し+ドット)は社長指示「文字はデススト風に直して」で差し替え。手本=DS2 の UI 文字:
+     細い幾何学的なサンセリフ・英字は小さく大文字で字間を広く・太字を使わない・数字は等幅。
    書体(全てOFL・public/fonts/game/ に使う文字だけ抜き出して同梱・license は同ディレクトリ):
-     見出し・ボス名・台詞の名前 = Shippori Mincho(重く静かなトーン・HD-2Dの明朝の格)
-     HUD の数字とラベル・計器   = DotGothic16(ドット書体=ドット絵と同じ出自・英数字も持つ)
-     本文・説明・ボタン         = Zen Kaku Gothic New(端末ゴシックに似せない字面)
-   送り=palt(詰め)・行間は固く・アンチエイリアスを均一に。html.ui-font-game が付いた時だけ効く(付かなければ1バイトも読まない)。 */
-@font-face { font-family: "Shippori Mincho"; src: url("/zombie/fonts/game/ShipporiMincho-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
-@font-face { font-family: "Shippori Mincho"; src: url("/zombie/fonts/game/ShipporiMincho-Bold.woff2") format("woff2"); font-weight: 700; font-display: swap; }
-@font-face { font-family: "DotGothic16"; src: url("/zombie/fonts/game/DotGothic16-Regular.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
-@font-face { font-family: "Zen Kaku Gothic New"; src: url("/zombie/fonts/game/ZenKakuGothicNew-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
-@font-face { font-family: "Zen Kaku Gothic New"; src: url("/zombie/fonts/game/ZenKakuGothicNew-Bold.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+     英数字 = Titillium Web(Light 300 / Regular 400 / SemiBold 600)  日本語 = Zen Kaku Gothic New(Light 300 / Medium 500)
+   太字の合成(faux bold)は禁止=font-synthesis:none(DSの文字は太くならない)。html.ui-font-game が付いた時だけ効く。 */
+@font-face { font-family: "Titillium Web"; src: url("/zombie/fonts/game/TitilliumWeb-Light.woff2") format("woff2"); size-adjust: 106%; font-weight: 300; font-display: swap; }
+@font-face { font-family: "Titillium Web"; src: url("/zombie/fonts/game/TitilliumWeb-Regular.woff2") format("woff2"); size-adjust: 106%; font-weight: 400; font-display: swap; }
+@font-face { font-family: "Titillium Web"; src: url("/zombie/fonts/game/TitilliumWeb-SemiBold.woff2") format("woff2"); size-adjust: 106%; font-weight: 600; font-display: swap; }
+@font-face { font-family: "Zen Kaku Gothic New"; src: url("/zombie/fonts/game/ZenKakuGothicNew-Light.woff2") format("woff2"); font-weight: 300; font-display: swap; }
+@font-face { font-family: "Zen Kaku Gothic New"; src: url("/zombie/fonts/game/ZenKakuGothicNew-Medium.woff2") format("woff2"); font-weight: 500; font-display: swap; }
 html.ui-font-game {
-  --uf-head: "Shippori Mincho", "Hiragino Mincho ProN", serif;
-  --uf-hud: "DotGothic16", "Zen Kaku Gothic New", sans-serif;
-  --uf-body: "Zen Kaku Gothic New", "Hiragino Sans", sans-serif;
+  --uf: "Titillium Web", "Zen Kaku Gothic New", "Hiragino Sans", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  font-synthesis: none;
 }
-html.ui-font-game, html.ui-font-game body { font-family: var(--uf-body); font-feature-settings: "palt" 1; line-height: 1.3; }
-/* 見出し(明朝): 各画面の大見出し・作戦室の見出し・出撃・一時停止・更新情報・チュートリアル・任務名・台詞の名前 */
+html.ui-font-game, html.ui-font-game body { font-family: var(--uf); font-weight: 300; font-feature-settings: "palt" 1; line-height: 1.35; }
+/* 太字は全部「中」へ落とす(DSに太字は無い)。強調は太さではなく字間と明度で付ける */
+html.ui-font-game b, html.ui-font-game strong, html.ui-font-game .font-bold, html.ui-font-game .font-semibold,
+html.ui-font-game .font-black, html.ui-font-game .font-extrabold { font-weight: 500; }
+/* 大見出し・画面名・作戦室の見出し・出撃・一時停止・任務名: 細く・大文字・字間広く */
 html.ui-font-game .gt-emboss,
 html.ui-font-game .command-ui .command-page-header h1,
 html.ui-font-game .command-ui .command-panel h2,
@@ -42,21 +44,23 @@ html.ui-font-game .ds-row .ds-row-l,
 html.ui-font-game .ds-glabel,
 html.ui-font-game .weapon-tier-title,
 html.ui-font-game h1, html.ui-font-game h2, html.ui-font-game h3 {
-  font-family: var(--uf-head) !important; font-feature-settings: "palt" 1; letter-spacing: 0.04em; font-weight: 700;
+  font-family: var(--uf) !important; font-weight: 300 !important; letter-spacing: 0.22em; text-transform: uppercase;
 }
-/* 英字の副題(OPERATIONS ROOM / LOADOUT 等・計器の Rajdhani)は DotGothic16 へ=英数字の出自を1つに */
-html.ui-font-game .ds-top .ds-top-big, html.ui-font-game .ds-row .ds-row-en, html.ui-font-game .ds-glabel,
+html.ui-font-game .ds-sortie .ds-sortie-t1 { font-weight: 500 !important; letter-spacing: 0.5em; }
+/* 英字の小さな副題(OPERATIONS ROOM / LOADOUT / 計器の Rajdhani)は同じ Titillium へ=英数字の出自を1つに */
+html.ui-font-game .ds-top .ds-top-big, html.ui-font-game .ds-row .ds-row-en, html.ui-font-game .ds-glabel, html.ui-font-game .ds-deco,
 html.ui-font-game .command-ui .command-button, html.ui-font-game .command-ui .command-panel,
-html.ui-font-game .ds-home, html.ui-font-game .ds-home * { font-family: var(--uf-hud); }
-html.ui-font-game .ds-row .ds-row-l, html.ui-font-game .ds-sortie .ds-sortie-t1 { font-family: var(--uf-head) !important; }
-/* HUD(ドット書体): 板の上の文字・体力球・台詞本文・サブ武器棚・撃破カウンタ・タイマー */
+html.ui-font-game .ds-home, html.ui-font-game .ds-home * { font-family: var(--uf); }
+html.ui-font-game .ds-row .ds-row-en { letter-spacing: 0.3em; }
+/* HUD(板の上の文字・体力・撃破・タイマー・台詞): 等幅数字・字間ややゆるく・細字は使わない(小さい文字は400で保つ) */
 html.ui-font-game .glass-pill, html.ui-font-game .glass-pill-both, html.ui-font-game .hud-translucent,
 html.ui-font-game .gt-solid, html.ui-font-game .gt-outline, html.ui-font-game svg text {
-  font-family: var(--uf-hud) !important; letter-spacing: 0.02em;
+  font-family: var(--uf) !important; font-weight: 400; letter-spacing: 0.08em; font-variant-numeric: tabular-nums;
 }
-/* 本文・説明・ボタン文字(ゴシック): 上で指定しない全て。ボタンは太字で締める */
-html.ui-font-game button { font-family: var(--uf-body); font-weight: 700; }
-html.ui-font-game .command-ui .command-button-primary { font-family: var(--uf-head) !important; letter-spacing: 0.12em; }
+/* ボタン: 中の太さ。字間は控えめ(カード型のボタンは中に説明文を持つので広げると本文まで開く・タブが折れる)。
+   琥珀の主ボタン(短い命令語だけ)は字間を広く・大文字 */
+html.ui-font-game button, html.ui-font-game .command-ui .command-button { font-family: var(--uf); font-weight: 500; letter-spacing: 0.04em; }
+html.ui-font-game .command-ui .command-button-primary { font-weight: 500 !important; letter-spacing: 0.3em; text-transform: uppercase; }
 
 /* Latin/digits use --game-font (=Orbitron, set at startup); Japanese falls back
    to the gothic stack. Placed after base so it beats preflight. */

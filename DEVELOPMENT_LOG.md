@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.4250 — 書体の試作を第2案(デス・ストランディング風)に差し替え(社長指示「文字はデススト風に直して」)【2026-09-12 19:08 JST】
+
+社長「文字はデススト風に直して、画像みせて」。第1案(明朝見出し+ドット書体・v0.25.4247)を捨て、DS2 の UI 文字の作法
+(細い幾何学的サンセリフ・英字は小さく大文字で字間を広く・太字を使わない・数字は等幅)に合わせた。**既定OFF・`?uifont=1` は不変。**
+- 書体(全て SIL OFL・`public/fonts/game/`・src で使う文字だけ pyftsubset で抜き出し): 英数字 = **Titillium Web**(Light 300 / Regular 400 /
+  SemiBold 600・各約7.5KB)、日本語 = **Zen Kaku Gothic New**(Light 300 / Medium 500・約201/227KB)。合計約450KB(第1案の1.3MBから減)。
+  Shippori Mincho / DotGothic16 / Zen Kaku R・B は削除(license 本文も同時に整理)。
+- `src/index.css` `html.ui-font-game` 配下を書き直し: 本体は 300・行間1.35・`palt`・**`font-synthesis:none`(合成太字を禁止)**・
+  `b/strong/.font-bold` 等は 500 へ落とす。大見出し・画面名・作戦室の項目名・出撃・一時停止 = 300・大文字・字間 0.22em(出撃行だけ 500・0.5em)。
+  HUD(`.glass-pill`/`.gt-solid`/`.gt-outline`/`svg text`)= 400・等幅数字・字間 0.08em。ボタン = 500・字間 0.04em(カード型ボタンは中に
+  説明文を持つので広げない。琥珀の主ボタンだけ 0.3em・大文字)。Titillium は和文より字面が小さいので `size-adjust:106%`。
+- `src/bootstrap.ts`: `?uifont=1` 時の `--game-font` を `"Titillium Web", "Zen Kaku Gothic New"` に。
+- ヘッドレスで6画面(作戦室/装備/作戦地域/詳細/戦闘HUD/一時停止)を撮って社長へ送付(scratchpad・リポジトリには入れない)。
+- 気づき(未対応): 和文の中の英字(例: 本文中の「PHILL」)は 106% でも小さく見える。採用時に和文中だけ英字を和文書体で組むか
+  size-adjust を上げるかを決める。typecheck・lint 0。実機確認は社長(`https://tanity0.github.io/zombie/?uifont=1`)。
+
 ## v0.25.4249 — 出撃行の斜め切りも撤去(社長「はい」)【2026-09-12 18:58 JST】
 
 前版の確認「作戦室ホームの出撃行(`.ds-sortie`・v0.25.4057 DS2化で承認)の斜め切りも四角にするか」→社長「はい」。`src/index.css` `.ds-sortie` の `clip-path` を撤去(松明グラデ・上の細い光の線は据え置き)。これで UI 内の琥珀ボタンに斜め切りは残っていない(`grep clip-path` で残るのは `.ds-loadout-body .ff7r-fade-right` の `clip-path: none` リセットのみ)。typecheck・lint 0。実機確認は社長。

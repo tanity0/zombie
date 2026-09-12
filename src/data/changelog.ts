@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4250',
+    items: ['ゲーム内容の変更はありません(文字の書体の試作を差し替えた。切り替えを入れた時だけ見られる)。'],
+  },
+  {
     version: '0.25.4249',
     items: ['作戦室の出撃の帯も右端の斜めの切れ込みをやめ、四角に。'],
   },
