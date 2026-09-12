@@ -16,15 +16,6 @@ export const bootstrapRuntime = (): void => {
   // off loading the woff2 immediately so it is ready before the first paint and,
   // crucially, before PixiJS bakes its damage-number atlas / draws text.
   document.documentElement.style.setProperty('--game-font', FONT_STACK);
-  // ★試作(社長相談2026-09-12「ブラウザ感がまだある」→「英語と数字は元々のやつにして」→「本文はバイオ系・見出しは明朝」): `?uifont=1` で
-  // **日本語だけ**をゲーム同梱の書体(本文=BIZ UDPGothic / 見出し=Shippori Mincho B1・OFL・使う文字だけ抜き出して public/fonts/game/ に同梱)に切り替える。
-  // 英数字は Orbitron / Rajdhani のまま(--game-font は触らない)。既定OFF=今までどおり端末ゴシック。CSS は index.css の
-  // `html.ui-font-game` 配下。採用が決まったら既定ONにして FONT_STACK の JP_FALLBACK 側へ統合する。
-  try {
-    if (new URLSearchParams(window.location.search).get('uifont') === '1') {
-      document.documentElement.classList.add('ui-font-game');
-    }
-  } catch { /* ignore */ }
 
   // ネイティブ感: 長押し/右クリックのコンテキストメニュー(画像保存・リンク等)を全面抑止する。
   // CSS の -webkit-touch-callout だけでは Android WebView/デスクトップで漏れるため、保険でJSでも止める。
@@ -56,6 +47,11 @@ export const bootstrapRuntime = (): void => {
     void document.fonts.load('300 13px "Rajdhani"');
     void document.fonts.load('500 13px "Rajdhani"');
     void document.fonts.load('600 13px "Rajdhani"');
+    // 日本語の同梱書体(社長裁定2026-09-12・v0.25.4253): 本文=BIZ UDPGothic、見出し/カットイン=Shippori Mincho B1。
+    // Pixi のコールアウト/名前札も FONT_STACK 経由で同じ書体を使うので、焼く前に和文グリフ込みで温める。
+    void document.fonts.load('400 16px "BIZ UDPGothic"', '通常変異体の目撃地点');
+    void document.fonts.load('700 16px "BIZ UDPGothic"', '通常変異体の目撃地点');
+    void document.fonts.load('600 30px "Shippori Mincho B1"', '作戦地域出撃一時停止');
   } catch {
     // document.fonts unsupported (very old browsers) — CSS @font-face still loads on use.
   }

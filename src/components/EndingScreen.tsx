@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { CUTIN_SERIF_STACK } from '../config/font';
 import { ENDING_HEADER, ENDING_SCRIPT, ENDING_FINAL_WORD } from '../data/ending';
 import { setEndingBgm } from '../audio/audioManager';
 import { useGameStore } from '../store/gameStore';
@@ -136,7 +137,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
           <div className="flex w-full max-w-md flex-col" style={{ height: '50svh' }}>
             <p
               className="shrink-0 mb-4 text-center text-[13px] tracking-[0.2em] text-white/55"
-              style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
+              style={{ fontFamily: CUTIN_SERIF_STACK }}
             >
               {ENDING_HEADER}
             </p>
@@ -153,7 +154,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
                   <p
                     key={i}
                     className="text-[15px] leading-relaxed text-white/90 screen-in"
-                    style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
+                    style={{ fontFamily: CUTIN_SERIF_STACK }}
                   >
                     <span className="mr-2 text-white/55">{l.speaker}</span>
                     「{l.text}」
@@ -182,7 +183,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
           <div className="flex w-full max-w-md flex-col" style={{ height: '50svh' }}>
             <p
               className="shrink-0 mb-4 text-center text-[13px] tracking-[0.2em] text-white/55"
-              style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif', animation: 'endSegOut .7s ease forwards' }}
+              style={{ fontFamily: CUTIN_SERIF_STACK, animation: 'endSegOut .7s ease forwards' }}
             >
               {ENDING_HEADER}
             </p>
@@ -203,7 +204,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
                       <p
                         key={i}
                         className="text-[15px] leading-relaxed text-white/90"
-                        style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif', ...fadeNow }}
+                        style={{ fontFamily: CUTIN_SERIF_STACK, ...fadeNow }}
                       >
                         <span className="mr-2 text-white/55">{l.speaker}</span>
                         「{l.text}」
@@ -216,7 +217,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
                     <p
                       key={i}
                       className="text-[15px] leading-relaxed text-white/90"
-                      style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
+                      style={{ fontFamily: CUTIN_SERIF_STACK }}
                     >
                       <span className="mr-2 text-white/55" style={fadeNow}>{l.speaker}</span>
                       <span style={fadeNow}>「{jpPre}</span>

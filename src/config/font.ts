@@ -15,7 +15,14 @@
 export const FONT_FAMILY = 'Orbitron';
 
 // Japanese / system fallbacks appended after Orbitron.
-const JP_FALLBACK = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif';
+// 社長裁定2026-09-12(v0.25.4253): 日本語は端末ゴシックではなく同梱の BIZ UDPGothic(OFL・index.css の @font-face・
+// public/fonts/game/)。「日本語がどのサイトでも見る文字」なのがブラウザ感の主因だったため。端末書体は同梱が読めない時の保険。
+const JP_FALLBACK = '"BIZ UDPGothic", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif';
+
+// 和文の明朝(見出し・ボス名カットイン・斬のコールアウト等)。同梱の Shippori Mincho B1(SemiBold 1本)を先頭に。
+export const JP_SERIF_STACK = '"Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif';
+// カットイン/エンディング用(英字は Georgia のまま・和文だけ同梱明朝)。
+export const CUTIN_SERIF_STACK = `Georgia, ${JP_SERIF_STACK}`;
 
 // Full family stack used everywhere (DOM via CSS var, Pixi Text, canvas2d).
 export const FONT_STACK = `"${FONT_FAMILY}", ${JP_FALLBACK}`;

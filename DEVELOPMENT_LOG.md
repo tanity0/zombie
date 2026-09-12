@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.4253 — 同梱の日本語書体を既定ON(社長「はい」・本文 BIZ UDPGothic+見出し Shippori Mincho B1)【2026-09-12 20:41 JST】
+
+第4案(v0.25.4252)を社長が採用。`?uifont=1` の切り替えを外し、常時この書体で描く。英数字は Orbitron / Rajdhani / system-ui のまま。
+- `src/config/font.ts`: `JP_FALLBACK` の先頭に `"BIZ UDPGothic"`(→ `FONT_STACK`/`--game-font` 経由で DOM と Pixi の和文が同じ書体に)。
+  新規 `JP_SERIF_STACK`(Shippori Mincho B1 → 端末明朝)と `CUTIN_SERIF_STACK`(Georgia + 同)。
+- `src/index.css`: 書体ブロックを `html.ui-font-game` 限定から常時に(セレクタの `html.ui-font-game` → `html`・中身は第4案のまま)。
+- `src/bootstrap.ts`: 切り替えを撤去。起動時の `document.fonts.load` に BIZ UDPGothic 400/700 と Shippori Mincho B1 600 を和文サンプル付きで追加
+  (Pixi がコールアウト/名前札を焼く前に温める)。
+- Pixi と DOM の明朝スタックを同梱明朝へ: `pixiScene.ts` の斬コールアウト(`e.serif`)と `rhythmGodText`、`BossCutin` / `AwakenCutin` / `EndingScreen`
+  の `Georgia, "Hiragino Mincho ProN", serif` → `CUTIN_SERIF_STACK`(英字 Georgia は据え置き)。
+- ヘッドレス6画面(切り替え無し)で描画確認。typecheck・lint 0。
+- クリエイティブ監査(Fable・「見出しの当て先/字間/太さ/混植」1巡)を発注中。指摘の反映は次の版で。実機確認は社長。
+
 ## v0.25.4252 — 書体の試作・第4案=本文 BIZ UDPGothic+見出し Shippori Mincho B1(社長裁定)【2026-09-12 20:25 JST】
 
 社長「他にも参考になりそうなゲーム探してきて」→8系統(現状/デススト/FF14/バイオ/ダークソウル/ディアブロ/ホラー/オクトパス)を、

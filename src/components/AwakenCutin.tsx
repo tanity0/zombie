@@ -5,6 +5,7 @@
 // 確定済み。ここは store の `awakenCutin`(単一オブジェクト・キューではない)が変わるたびに
 // 1回だけ表示するだけ=React再レンダー規律(毎フレーム書き換わらないイベント値の購読)を守る。
 import { useEffect, useState } from 'react';
+import { CUTIN_SERIF_STACK } from '../config/font';
 import { useGameStore } from '../store/gameStore';
 import { AWAKEN_CUTIN_FADEIN_MS, AWAKEN_CUTIN_FADEOUT_MS, AWAKEN_CUTIN_HOLD_MS, AWAKEN_CUTIN_MS } from '../utils/awakenCutin';
 
@@ -50,7 +51,7 @@ const AwakenCutin: React.FC = () => {
         <div
           className="font-bold tracking-[0.32em]"
           style={{
-            fontFamily: 'Georgia, "Hiragino Mincho ProN", serif',
+            fontFamily: CUTIN_SERIF_STACK,
             fontSize: 'clamp(20px, 5.4vw, 34px)',
             color: '#ffe58a',
             textShadow: '0 0 18px rgba(255,215,0,0.85), 0 2px 0 rgba(120,80,0,0.9), 0 0 40px rgba(255,215,0,0.4)',
@@ -61,7 +62,7 @@ const AwakenCutin: React.FC = () => {
         <div
           className="text-center font-semibold whitespace-nowrap"
           style={{
-            fontFamily: 'Georgia, "Hiragino Mincho ProN", serif',
+            fontFamily: CUTIN_SERIF_STACK,
             fontSize: 'clamp(14px, 3.6vw, 20px)',
             color: '#fff7e0',
             letterSpacing: '0.08em',

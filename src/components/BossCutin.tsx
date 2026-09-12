@@ -9,6 +9,7 @@
 // React再レンダー規律: attentionスライスだけ購読。attentionは発火/解除時にしか参照が変わらない
 // (毎フレーム書き換えられない)ので、このコンポーネントが毎フレーム再レンダーすることはない。
 import React, { useEffect, useState } from 'react';
+import { CUTIN_SERIF_STACK } from '../config/font';
 import { useGameStore, ATTENTION_IN_MS, ATTENTION_HOLD_MS } from '../store/gameStore';
 import { BOSS_CUTIN_FADEIN_MS, BOSS_CUTIN_FADEOUT_MS } from '../utils/attentionCutin';
 import { playSfx } from '../audio/audioManager';
@@ -99,7 +100,7 @@ const BossCutin: React.FC = () => {
           className="px-4 text-center font-bold text-white"
           style={{
             // 書体はエリア/地名系と同じ明朝スタック(社長指示「ボス名前の表示はエリアとかと同じ文字で」)。
-            fontFamily: 'Georgia, "Hiragino Mincho ProN", serif',
+            fontFamily: CUTIN_SERIF_STACK,
             fontSize: 'clamp(28px, 7.5vw, 64px)',
             letterSpacing: '0.14em',
             textShadow: '0 0 18px rgba(239,68,68,0.85), 0 2px 0 rgba(127,29,29,0.9), 0 0 46px rgba(239,68,68,0.4)',

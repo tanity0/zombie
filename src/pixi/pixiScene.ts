@@ -264,7 +264,7 @@ import { getBloomEnabled } from '../config/graphics';
 // 判定を書かない)。バーサーカー=HP依存の常時オーラ、オーバークロック=proc起点の800msフラッシュ。
 import { berserkerFrameLight, overclockFrameLit, OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { GLOW_R_M, GLOW_R_L, GLOW_R_XL } from '../utils/glowTiers';
-import { FONT_STACK } from '../config/font';
+import { FONT_STACK, JP_SERIF_STACK } from '../config/font';
 import {
   enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX, bossBehindFadeApplies,
   postZoomScreenY, postZoomLocalY, postZoomFadeAlpha, computeGroundBandLayout, groundStripT, GROUND_STRIP_REF_COUNT,
@@ -3901,7 +3901,7 @@ export class PixiScene {
   // ミラーボール本体(実テクスチャのスプライト)。0.5秒ごとに左右反転して回転に見せる。
   private rhythmBall = new Sprite();
   // 四神名(コマンドの右に出すテキスト)。テキスト変化時のみ更新。
-  private rhythmGodText = new Text({ text: '', style: { fontFamily: 'serif', fontSize: 13, fontWeight: 'bold', fill: 0xfca5a5, stroke: { color: 0x0b1020, width: 3 } } });
+  private rhythmGodText = new Text({ text: '', style: { fontFamily: JP_SERIF_STACK, fontSize: 13, fontWeight: 'bold', fill: 0xfca5a5, stroke: { color: 0x0b1020, width: 3 } } });
   private rhythmGodLast = '';
   // コマンド/入力の矢印は別Graphicsに分離し、内容が変わった時だけ再描画(毎フレームの矩形リビルドを回避)。
   // 位置(プレイヤー追従)は毎フレーム transform だけ更新する。
@@ -28854,9 +28854,7 @@ export class PixiScene {
         resolution: Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2))),
         style: {
           // 明朝(serif)指定の時は和文セリフのスタック。それ以外は Orbitron(FONT_STACK)。
-          fontFamily: e.serif
-            ? '"Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "MS Mincho", "Noto Serif JP", serif'
-            : FONT_STACK,
+          fontFamily: e.serif ? JP_SERIF_STACK : FONT_STACK,
           fontSize: Math.round(15 * scale),
           fontWeight: bold ? 'bold' : 'normal',
           fill: e.color,
