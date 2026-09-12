@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4246',
+    items: ['変異体対策室のボスのヒントを全部書き直した。実際の技と合っていなかった行を直し、城のボスは出るステージごとに別の文に。トールの紫の円で近接を振るなという注意も足した。'],
+  },
+  {
     version: '0.25.4245',
     items: ['装備のサブウェポンとアバターにも、銃と同じ絵の枡が付いた。絵のある物は在世界の姿で並ぶ。'],
   },
