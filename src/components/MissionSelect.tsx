@@ -112,6 +112,7 @@ import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
 import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
 import { AVATARS, AVATAR_IDS, type AvatarId } from '../data/avatars';
+import { subWeaponIconName, avatarIconName } from '../data/subWeaponIcons';
 import { spritePath } from '../utils/spriteLoader';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { Ff7rButton } from './ff7r';
@@ -1424,9 +1425,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             {visibleSubs.length === 0 ? (
               <p className="px-1 text-[11px] text-white/40">まだありません（開発施設で解放）</p>
             ) : (
-              <div className="menu-stagger grid grid-cols-2 gap-2">
+              <div className="menu-stagger weapon-candidates grid grid-cols-2 gap-2">
                 {visibleSubs.map(k => {
                   const on = equippedSubs.includes(k);
+                  const icon = subWeaponIconName(k);
                   return (
                     <button
                       key={k}
@@ -1436,6 +1438,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                         on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
                       }`}
                     >
+                      {/* 銃と同じ絵の枡(社長指示2026-09-12)。在世界スプライトを流用・無い物は空の枡 */}
+                      {COMMAND_UI_ENABLED && <span className="weapon-art">{icon && <img src={spritePath(icon)} alt="" draggable={false} loading="lazy" />}</span>}
                       <span className="min-w-0">
                         <span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(k)}</span>
                       </span>
@@ -1449,10 +1453,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {/* アバター(試験・第1弾)。トグル選択式(なし/猫耳セット)。見た目は既存の装備欄に合わせる=磨き込み不要(試験機能)。 */}
           <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'avatar'}>
             <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-sky-200/70">アバター</div>
-            <div className="menu-stagger grid grid-cols-2 gap-2">
+            <div className="menu-stagger weapon-candidates grid grid-cols-2 gap-2">
               {([null, ...AVATAR_IDS] as (AvatarId | null)[]).map(id => {
                 const on = avatarId === id;
                 const label = id === null ? 'なし' : AVATARS[id].name;
+                const icon = id === null ? null : avatarIconName(id);
                 return (
                   <button
                     key={id ?? 'none'}
@@ -1462,6 +1467,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
                     }`}
                   >
+                    {COMMAND_UI_ENABLED && <span className="weapon-art">{icon && <img src={spritePath(icon)} alt="" draggable={false} loading="lazy" />}</span>}
                     <span className="block truncate text-[13px] font-semibold">{label}</span>
                     {on && <span className="shrink-0 flex items-center gap-1"><PixelIcon name="check" size={15} />{DS_LOADOUT_PREVIEW && <span className="ds-loadout-state">選択中</span>}</span>}
                   </button>

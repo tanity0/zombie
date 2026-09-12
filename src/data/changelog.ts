@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4245',
+    items: ['装備のサブウェポンとアバターにも、銃と同じ絵の枡が付いた。絵のある物は在世界の姿で並ぶ。'],
+  },
+  {
     version: '0.25.4244',
     items: ['装備と開発施設の銃の絵を小さくし、縮小をなめらかにして粗さを抑えた。'],
   },

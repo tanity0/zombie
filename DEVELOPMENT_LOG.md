@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4245 — 装備のサブウェポン/アバターに絵の枡(社長指示)【2026-09-12 10:22 JST】
+
+社長「アバターは装備の様にアイコン表示して。あ、サブウェポンも」。
+- 新規 `src/data/subWeaponIcons.ts`: `subWeaponIconName(key)`(在世界スプライトの流用: 手榴弾=fx/grenade-ball・犬=dog-walk-0・刀/村雨=katana-item・デコイ=decoy・盾=shield-up・鞭=whip・タレット=turret-omni・四神=magic-circle・発火ナイフ=weapons/fire-knife-projectile・ドローンブーメラン=drone-boomerang・ワイヤーアンカー=wire-anchor-tip・救急鞄=first-aid-kit)と `avatarIconName(id)`(猫耳セット=avatar-cat-ears)。
+- `MissionSelect.tsx`: サブウェポンとアバターのカードに銃と同じ `weapon-art` の枡(52px・スマホ44px・なめらか縮小=4244の規則)を付け、一覧に `weapon-candidates` を足して同じ列幅に。**絵の無い物は枡を空で出す**(素材が来たら台帳に1行足す)。
+- **絵が無いサブウェポン(素材待ち)**: 起爆トラップ(marksman-trap)/錬金術(alchemy)/賢者の石(sage-stone)/ホーミング(homing)/分身(shadow-clone)/火炎瓶(molotov)/センサー地雷(sensor-mine)/支援スナイパー(support-sniper)/信号銃(flare-gun)/ジャンク武器(junk-weapon)/金環(gold-ring)。
+- typecheck・lint 0。実機確認は社長。
+
 ## v0.25.4244 — 装備/開発施設の武器ドット絵を小さく・なめらかに(社長指示)【2026-09-12 10:19 JST】
 
 社長「装備、開発メニュー内の武器のドット絵が少し粗いので、あまり大きく見せたくない」。原因: 武器スプライトの原寸は 96〜250px と大きく、それを `image-rendering: pixelated` で 64〜72px へ**非整数倍に縮小**していたため画素が不均一に潰れて粗く見えていた。
