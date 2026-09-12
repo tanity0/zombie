@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.4247 — 書体の試作(`?uifont=1`・既定OFF・社長相談「ブラウザ感がまだある」)【2026-09-12 16:23 JST】
+
+社長「据置機のフォントはなぜかゲーム感あるんだけど、こちらはどうしてもブラウザ感がまだある。これはなぜ?」→「一度試作見せて」。
+**診断**: 英数字は Orbitron/Rajdhani を同梱しているが、**日本語は端末の標準ゴシック(Hiragino/Noto Sans JP=全てのWebサイトと同じ文字)**で描かれている。据置機は日本語ごと専用書体を同梱するので、画面の文字の大半(日本語)が「どのサイトでも見る文字」なのがブラウザ感の主因。副因: サイズ段が多い・英大文字の副題が多い・ブラウザ既定の行間(1.5)。
+### 試作の中身(既定OFF・`?uifont=1` を付けた時だけ効く=付けなければ1バイトも読まない)
+- 書体(全て SIL Open Font License・`public/fonts/game/` に license 本文を同梱・**src で使っている文字だけ pyftsubset で抜き出し**=1714字・合計1.3MB。配信物なので public/ に置く):
+  - 見出し・ボス名・作戦室の項目名・出撃・一時停止 = **Shippori Mincho**(R/B・約333/347KB)
+  - HUD の数字とラベル・計器・英字の副題(OPERATIONS ROOM 等)・台詞の板 = **DotGothic16**(129KB・ドット絵と同じ出自・英数字も持つ)
+  - 本文・説明・ボタン = **Zen Kaku Gothic New**(R/B・約224/229KB)
+- `src/bootstrap.ts`: `?uifont=1` で `html.ui-font-game` を付け `--game-font` を DotGothic16 系へ差し替え。
+- `src/index.css`: `@font-face`×5 + `html.ui-font-game` 配下のスコープ指定(見出し群=明朝 bold・HUD/`.gt-solid`/`.gt-outline`/`svg text`=ドット・それ以外=ゴシック・`palt` 詰め・行間1.3・antialiased)。
+- ヘッドレスで作戦室/装備/ステージ詳細/戦闘HUD/一時停止の6画面を現状と試作で撮り比較(scratchpad・リポジトリには入れない)。試作は正しく描かれる。
+### 未了(採用が決まったら)
+既定ONにして `FONT_STACK` へ統合・サイズ段の整理(3段)・英大文字の副題の見直し・Pixi 側(ダメージ数字のアトラス)の書体追従・クリエイティブ監査。typecheck・lint 0。実機確認は社長(`https://tanity0.github.io/zombie/?uifont=1`)。
+
 ## v0.25.4246 — ボスのヒント全件を台本に突き合わせて書き直し(社長指示・Fable監査)【2026-09-12 10:29 JST】
 
 社長「城ボス全般が意味わからん。ヒントは一度全部監査通して。意味が通じるか、ボスの設定と合っているか」。Fable が `bossHints.ts` の全行(城ボス共通+ステージ別・天使6・裏ボス4・偶像・賞金首4・幻影・フィル)を各ボスの台本(`*Script.ts`)と判定コード(`gameStore.ts` `case 'g-*'`・`angelBossTick.ts`・`useGameLoop.ts`・`bountyTick.ts`・`idolTick.ts`・`phantomTick.ts`)に突き合わせ、**設定と不一致17行・意味が通りにくい14行・事故る抜け1件**を出した。全部反映(`src/data/bossHints.ts`)。

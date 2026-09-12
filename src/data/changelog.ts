@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4247',
+    items: ['ゲーム内容の変更はありません(文字の書体の試作を、切り替えを入れた時だけ見られるようにした)。'],
+  },
+  {
     version: '0.25.4246',
     items: ['変異体対策室のボスのヒントを全部書き直した。実際の技と合っていなかった行を直し、城のボスは出るステージごとに別の文に。トールの紫の円で近接を振るなという注意も足した。'],
   },
