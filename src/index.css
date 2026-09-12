@@ -31,7 +31,8 @@ html {
   font-synthesis: none;
 }
 /* 全体: Orbitron の後ろの和文フォールバックを BIZ UDPGothic に(英数字は Orbitron のまま) */
-html, html body { font-family: var(--game-font, "Orbitron"), var(--uf-jp), sans-serif; font-feature-settings: "palt" 1; line-height: 1.35; }
+html, html body { font-family: var(--game-font, "Orbitron"), var(--uf-jp), sans-serif; }
+/* 本文はベタ組み・行間も元のまま(監査2026-09-12: UD系を選んだ根拠=余白を palt で削らない。行間の一括上書きもしない) */
 /* 作戦室ホーム(Rajdhani)とメニューのボタン(Rajdhani): 英字は Rajdhani のまま・和文だけ BIZ UDPGothic */
 html .ds-home, html .command-ui .command-button { font-family: "Rajdhani", var(--uf-jp), sans-serif; }
 /* command-ui で system-ui を直書きしている箇所(和文中心のラベル・本文): 和文を BIZ UDPGothic へ */
@@ -44,15 +45,19 @@ html .command-wordmark > span, html .command-eyebrow,
 html .command-operation p, html .command-sortie small,
 html .command-action-copy strong,
 html .command-action-copy > span, html .command-inventory > span { font-family: var(--uf-jp), system-ui, sans-serif; }
-/* 見出し = 横太明朝。英字部分は元の書体を先に置く(Orbitron/Rajdhani)ので明朝になるのは和文だけ。字間は少し開ける */
-html .gt-emboss,
+/* 見出し = 横太明朝。英字は "Orbitron" を**名指し**で先に置く(監査2026-09-12(A): var(--game-font) は FONT_STACK 全体に展開されるので
+   和文が --uf-head に届く前に BIZ で確定していた=見出しが6画面中1画面しか明朝になっていなかった)。
+   当て先は1本ずつ選ぶ(h1〜h3 一括・.gt-emboss 一括はしない): 画面題・作戦室の項目名・出撃・ステージ名・武器の枡の題・結果の題。
+   13px 級の小さい題(一時停止・更新情報・チュートリアル)はゴシックのまま=横太明朝はスマホの13pxで潰れる。
+   字間は各所の元の値に任せる(一律 0.08em で平らにしない)。palt は見出しだけ。 */
+html .ui-head-serif,
 html .command-ui .command-page-header h1,
 html .command-ui .command-panel h2,
 html .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\],
 html .command-operation h1, html .command-section-title h2, html .command-sortie > span,
-html .weapon-tier-title,
-html h1, html h2, html h3 { font-family: var(--game-font, "Orbitron"), var(--uf-head), serif !important; letter-spacing: 0.08em; }
-html .ds-sortie .ds-sortie-t1, html .ds-row .ds-row-l { font-family: "Rajdhani", var(--uf-head), serif !important; }
+html .weapon-tier-title { font-family: "Orbitron", var(--uf-head), serif !important; font-feature-settings: "palt" 1; }
+html .weapon-tier-title span { font-family: var(--game-font, "Orbitron"), var(--uf-jp), sans-serif !important; font-feature-settings: normal; }
+html .ds-sortie .ds-sortie-t1, html .ds-row .ds-row-l { font-family: "Rajdhani", var(--uf-head), serif !important; font-feature-settings: "palt" 1; }
 /* 作戦室ホームの英字の副題(OPERATIONS ROOM 等)は見出しではない=Rajdhani のまま */
 html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !important; }
 

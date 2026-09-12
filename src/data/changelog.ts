@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4254',
+    items: ['画面名やステージ名の見出しが、前の版で明朝になっていなかったのが直った。本文の文字詰めと行間は元に戻し、小さな題はゴシックのまま。'],
+  },
+  {
     version: '0.25.4253',
     items: ['画面の文字の書体を全部入れ替えた。本文と HUD は小さくても読めるゴシックに、画面名やボスの名前など見出しは骨のある明朝に。英数字は今までどおり。'],
   },

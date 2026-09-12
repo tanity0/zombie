@@ -360,7 +360,7 @@ const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }
         <PixelIcon name="chevron-left" size={16} /><span className="text-[12px] tracking-wide">戻る</span>
       </button>
     )}
-    <h1 className="text-2xl font-semibold tracking-[0.08em] text-white gt-emboss">{title}</h1>
+    <h1 className="text-2xl font-semibold tracking-[0.08em] text-white gt-emboss ui-head-serif">{title}</h1>
     {subtitle && <p className="text-[12px] text-purple-200/55 mt-1 tracking-wide">{subtitle}</p>}
   </div>
   )

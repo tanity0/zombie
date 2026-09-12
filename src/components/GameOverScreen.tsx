@@ -579,7 +579,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開。リザルトは最長画面) */}
       <NoBounceScroller className="glass-panel command-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
         <div className="px-4 pt-5 pb-2 text-center">
-          <h2 className={`text-2xl font-semibold tracking-tight gt-emboss ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
+          <h2 className={`text-2xl font-semibold tracking-tight gt-emboss ui-head-serif ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
             {isBenchmark ? 'ベンチ結果' : won ? '任務達成' : withdraw ? '帰還' : '任務失敗'}
           </h2>
           {/* PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-6: 「任務クリア」の直下に日時/場所名/

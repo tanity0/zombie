@@ -1,5 +1,29 @@
 # Development Log
 
+## v0.25.4254 — 書体のクリエイティブ監査(Fable・1巡)を反映: 見出しが明朝になっていなかったバグ他【2026-09-12 20:47 JST】
+
+監査の問い「人の作り手ならこうしなかった箇所」→ **指摘10件(A=1 / B=9)。直した6・積んだ4。**
+### 直した(A1+B5)
+- **(A) 見出しが6画面中1画面しか明朝になっていなかった**: 見出しのスタックが `var(--game-font), var(--uf-head)` で、`--game-font` は
+  `FONT_STACK` 全体(`"Orbitron", "BIZ UDPGothic", …`)に展開されるため和文が明朝に届く前に BIZ で確定していた(試作では端末ゴシックが
+  ヘッドレスに無く偶然明朝へ落ちていた=実在確認の掟の反省)。→ `"Orbitron"` を名指しで先頭に。装備/作戦地域/洞窟地帯/避難回廊/殲滅作戦/
+  結果の題が明朝になったのをスクショで確認。
+- (B) `h1〜h3` 一括・`.gt-emboss` 一括の当てをやめ、**当て先を1本ずつ列挙**(画面題 `.command-page-header h1`・`.command-panel h2`・
+  ステージカード題・`.command-operation h1`・`.command-section-title h2`・`.command-sortie > span`・`.weapon-tier-title`・作戦室の項目名・出撃、
+  React 側は新クラス `ui-head-serif` を MissionSelect の画面題 / GameOverScreen の結果題 / PracticeResult の題に付与)。
+- (B) **13px 級の小さい題(一時停止・更新情報の題・チュートリアルの題)はゴシックのまま**=横太明朝の最小サイズの線を引いた。
+- (B) `.weapon-tier-title span`(「この枠で1挺」11px)が明朝を継がないよう本文書体に戻す。
+- (B) 字間 0.08em の一律上書きを撤去(各所の元の tracking を生かす)。
+- (B) `palt` を html 全体から外し見出しだけに。`line-height: 1.35` の一括上書きも撤去(UD系を選んだ根拠=ベタ組みの余白を削らない)。
+### 積んだ(B4・別案件・PROJECT_STATUS ②保留)
+- 和文のウェイト階調: BIZ は 400/700 の2本なので `font: 500`/`font-medium` は 400 に、600 は 700 に落ち、同じ行の Rajdhani/Orbitron(500/600)と段が違う
+  → Medium を1本足すか、和文の指定を 400/700 に揃える。
+- 明朝が全サイズ1ウェイト(SemiBold を 400〜700 に張っている)→ 大きい題は細く・小さい項目名は太く、の2本化。
+- 和文本文の中の Orbitron(「各Tierで」「PHILL」「DAY 26」)が周囲の漢字より小さく細く見える → `font-size-adjust` か 1.05〜1.1em。
+- 1.2MB の同梱書体が `font-display: swap`=初回起動で端末ゴシック→BIZ→明朝の差し替わりが見える。Pixi の斬コールアウト/`rhythmGodText` は
+  未ロード時に代替明朝で焼かれて固定 → `document.fonts.load` を待ってから出す/見出しだけ `block`。
+- typecheck・lint 0。ヘッドレス6画面で確認。実機確認は社長。
+
 ## v0.25.4253 — 同梱の日本語書体を既定ON(社長「はい」・本文 BIZ UDPGothic+見出し Shippori Mincho B1)【2026-09-12 20:41 JST】
 
 第4案(v0.25.4252)を社長が採用。`?uifont=1` の切り替えを外し、常時この書体で描く。英数字は Orbitron / Rajdhani / system-ui のまま。
