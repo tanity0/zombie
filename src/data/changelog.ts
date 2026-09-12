@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4252',
+    items: ['ゲーム内容の変更はありません(文字の書体の試作を差し替えた。切り替えを入れた時だけ見られる)。'],
+  },
+  {
     version: '0.25.4251',
     items: ['ゲーム内容の変更はありません(文字の書体の試作を、日本語だけ差し替える形に。切り替えを入れた時だけ見られる)。'],
   },

@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.4252 — 書体の試作・第4案=本文 BIZ UDPGothic+見出し Shippori Mincho B1(社長裁定)【2026-09-12 20:25 JST】
+
+社長「他にも参考になりそうなゲーム探してきて」→8系統(現状/デススト/FF14/バイオ/ダークソウル/ディアブロ/ホラー/オクトパス)を、
+各ゲームの日本語書体に近い無料書体で**うちの作戦室の画面を組んだ比較図**(scratchpad/spec・他社の実画面は使わない)で並べ、
+社長裁定「**日本語フォントはバイオが読みやすい。見出しは4(ダークソウル/エルデンリング系)がいいかも**」。
+- **本文・HUD・メニュー = BIZ UDPGothic**(Regular 400 / Bold 700・UD系)。**見出し = Shippori Mincho B1**(SemiBold 600 の1本・横太明朝)。
+  英数字は元のまま(Orbitron / Rajdhani / system-ui)。全て OFL・使う文字だけ pyftsubset・`public/fonts/game/` 合計約1.19MB(Zen Kaku は削除)。
+- 見出しの対象(`src/index.css` `html.ui-font-game`): `.gt-emboss`(画面名・一時停止・結果・チュートリアル題・更新情報題)・
+  `.command-page-header h1`・`.command-panel h2`・ステージカードの題・`.command-operation h1`・`.command-section-title h2`・
+  `.weapon-tier-title`・`h1〜h3`・作戦室ホームの項目名 `.ds-row-l` と出撃 `.ds-sortie-t1`。字間 0.08em。英字の副題(OPERATIONS ROOM 等)は
+  見出し扱いにしない=Rajdhani のまま。**Pixi 側(ボス名・ステージ名のバナー等の Canvas 文字)は未対応**=採用時に FONT_STACK 経由で追従させる。
+- 既定OFF・`?uifont=1` は不変。ヘッドレス6画面を撮って社長へ送付。typecheck・lint 0。実機確認は社長(`https://tanity0.github.io/zombie/?uifont=1`)。
+- 参考: 検索で裏が取れた事実=FF14 は AXIS Font(吉田P「ニュートラルで読みやすい」)/DARK SOULS II・MGSV GZ はフォントワークス書体の事例あり/
+  エルデンリング公式サイトは DNP 秀英横太明朝/翻訳者座談会「ダークソウルがダークファンタジー×明朝の相性を示した」/デスストのロゴは Sackers Gothic。
+  記事本文の多くはこの環境からブロックされ開けなかった(書体名の断定は上記のみ)。
+
 ## v0.25.4251 — 書体の試作・第3案=日本語だけ差し替え(社長指示「英語と数字は元々のやつにして」)【2026-09-12 19:18 JST】
 
 社長「英語と数字は元々のやつにして」。第2案の Titillium Web を外し、**英数字は元のまま**(全体=Orbitron・作戦室ホームとメニューの

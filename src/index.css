@@ -11,36 +11,50 @@
   font-display: swap;
 }
 
-/* ===== 試作: ゲーム同梱の日本語書体(?uifont=1・既定OFF)・第3案 ==================================================
+/* ===== 試作: ゲーム同梱の日本語書体(?uifont=1・既定OFF)・第4案 ==================================================
    社長相談2026-09-12「据置機のフォントはゲーム感があるのに、こちらはブラウザ感がある。なぜ?」
    → 日本語が端末の標準ゴシック(=全てのサイトと同じ文字)で描かれているのが主因。据置機は日本語ごと専用書体を同梱する。
-   第1案(明朝+ドット)→第2案(英数字も Titillium に差し替え)→社長指示「英語と数字は元々のやつにして」で第3案:
-   **英数字は元のまま(全体=Orbitron・作戦室ホーム/ボタン=Rajdhani・command-ui の細部=system-ui)。差し替えるのは日本語だけ**
-   = 端末ゴシックの代わりに Zen Kaku Gothic New(Light 300 / Medium 500・OFL・使う文字だけ抜き出して public/fonts/game/ に同梱)。
-   太字は合成しない(font-synthesis:none)= 600/700 指定の和文は Medium で止まる(英字の Orbitron は可変で太いまま)。 */
-@font-face { font-family: "Zen Kaku Gothic New"; src: url("/zombie/fonts/game/ZenKakuGothicNew-Light.woff2") format("woff2"); font-weight: 300; font-display: swap; }
-@font-face { font-family: "Zen Kaku Gothic New"; src: url("/zombie/fonts/game/ZenKakuGothicNew-Medium.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+   第1案(明朝+ドット)→第2案(Titillium)→第3案(Zen Kaku のみ)→8系統の比較を見た社長の裁定「日本語フォントはバイオが読みやすい。
+   見出しは4(ダークソウル/エルデンリング系の横太明朝)がいいかも」で第4案:
+   **英数字は元のまま**(全体=Orbitron・作戦室ホーム/ボタン=Rajdhani・command-ui の細部=system-ui)。
+   **本文・HUD・メニュー = BIZ UDPGothic**(Regular 400 / Bold 700・UD系=小さくても読める・バイオハザード RE 系の作法)
+   **見出し(画面名・作戦室の項目名・出撃・一時停止・結果・チュートリアルの題)= Shippori Mincho B1**(SemiBold 600 の1本・骨のある横太明朝)
+   どちらも OFL・使う文字だけ抜き出して public/fonts/game/ に同梱。太字は合成しない(font-synthesis:none)。 */
+@font-face { font-family: "BIZ UDPGothic"; src: url("/zombie/fonts/game/BIZUDPGothic-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "BIZ UDPGothic"; src: url("/zombie/fonts/game/BIZUDPGothic-Bold.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Shippori Mincho B1"; src: url("/zombie/fonts/game/ShipporiMinchoB1-SemiBold.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
 html.ui-font-game {
-  --uf-jp: "Zen Kaku Gothic New";
+  --uf-jp: "BIZ UDPGothic";
+  --uf-head: "Shippori Mincho B1";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   font-synthesis: none;
 }
-/* 全体: Orbitron の後ろの和文フォールバックを Zen Kaku に(英数字は Orbitron のまま) */
+/* 全体: Orbitron の後ろの和文フォールバックを BIZ UDPGothic に(英数字は Orbitron のまま) */
 html.ui-font-game, html.ui-font-game body { font-family: var(--game-font, "Orbitron"), var(--uf-jp), sans-serif; font-feature-settings: "palt" 1; line-height: 1.35; }
-/* 作戦室ホーム(Rajdhani)とメニューのボタン(Rajdhani): 英字は Rajdhani のまま・和文だけ Zen Kaku */
+/* 作戦室ホーム(Rajdhani)とメニューのボタン(Rajdhani): 英字は Rajdhani のまま・和文だけ BIZ UDPGothic */
 html.ui-font-game .ds-home, html.ui-font-game .command-ui .command-button { font-family: "Rajdhani", var(--uf-jp), sans-serif; }
-/* command-ui で system-ui を直書きしている箇所(和文中心のラベル・本文): 和文を Zen Kaku へ。英数字は Zen Kaku の欧文=中立 */
+/* command-ui で system-ui を直書きしている箇所(和文中心のラベル・本文): 和文を BIZ UDPGothic へ */
 html.ui-font-game .command-ui .command-weapon-tabs button, html.ui-font-game .command-ui .development-balance,
 html.ui-font-game .command-ui .development-tabs button, html.ui-font-game .command-ui .development-guide,
-html.ui-font-game .command-ui .development-price small, html.ui-font-game .command-ui .command-page-header h1,
+html.ui-font-game .command-ui .development-price small,
 html.ui-font-game .command-ui .command-page-header p, html.ui-font-game .command-ui .command-page-back,
 html.ui-font-game .command-ui .command-section > div:first-child,
-html.ui-font-game .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\],
-html.ui-font-game .command-wordmark > span, html.ui-font-game .command-eyebrow, html.ui-font-game .command-operation h1,
-html.ui-font-game .command-operation p, html.ui-font-game .command-sortie > span, html.ui-font-game .command-sortie small,
-html.ui-font-game .command-section-title h2, html.ui-font-game .command-action-copy strong,
+html.ui-font-game .command-wordmark > span, html.ui-font-game .command-eyebrow,
+html.ui-font-game .command-operation p, html.ui-font-game .command-sortie small,
+html.ui-font-game .command-action-copy strong,
 html.ui-font-game .command-action-copy > span, html.ui-font-game .command-inventory > span { font-family: var(--uf-jp), system-ui, sans-serif; }
+/* 見出し = 横太明朝。英字部分は元の書体を先に置く(Orbitron/Rajdhani)ので明朝になるのは和文だけ。字間は少し開ける */
+html.ui-font-game .gt-emboss,
+html.ui-font-game .command-ui .command-page-header h1,
+html.ui-font-game .command-ui .command-panel h2,
+html.ui-font-game .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\],
+html.ui-font-game .command-operation h1, html.ui-font-game .command-section-title h2, html.ui-font-game .command-sortie > span,
+html.ui-font-game .weapon-tier-title,
+html.ui-font-game h1, html.ui-font-game h2, html.ui-font-game h3 { font-family: var(--game-font, "Orbitron"), var(--uf-head), serif !important; letter-spacing: 0.08em; }
+html.ui-font-game .ds-sortie .ds-sortie-t1, html.ui-font-game .ds-row .ds-row-l { font-family: "Rajdhani", var(--uf-head), serif !important; }
+/* 作戦室ホームの英字の副題(OPERATIONS ROOM 等)は見出しではない=Rajdhani のまま */
+html.ui-font-game .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !important; }
 
 /* Latin/digits use --game-font (=Orbitron, set at startup); Japanese falls back
    to the gothic stack. Placed after base so it beats preflight. */

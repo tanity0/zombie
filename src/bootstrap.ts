@@ -16,8 +16,8 @@ export const bootstrapRuntime = (): void => {
   // off loading the woff2 immediately so it is ready before the first paint and,
   // crucially, before PixiJS bakes its damage-number atlas / draws text.
   document.documentElement.style.setProperty('--game-font', FONT_STACK);
-  // ★試作(社長相談2026-09-12「ブラウザ感がまだある」→「一度試作見せて」→「英語と数字は元々のやつにして」): `?uifont=1` で
-  // **日本語だけ**をゲーム同梱の書体(Zen Kaku Gothic New・OFL・使う文字だけ抜き出して public/fonts/game/ に同梱)に切り替える。
+  // ★試作(社長相談2026-09-12「ブラウザ感がまだある」→「英語と数字は元々のやつにして」→「本文はバイオ系・見出しは明朝」): `?uifont=1` で
+  // **日本語だけ**をゲーム同梱の書体(本文=BIZ UDPGothic / 見出し=Shippori Mincho B1・OFL・使う文字だけ抜き出して public/fonts/game/ に同梱)に切り替える。
   // 英数字は Orbitron / Rajdhani のまま(--game-font は触らない)。既定OFF=今までどおり端末ゴシック。CSS は index.css の
   // `html.ui-font-game` 配下。採用が決まったら既定ONにして FONT_STACK の JP_FALLBACK 側へ統合する。
   try {
