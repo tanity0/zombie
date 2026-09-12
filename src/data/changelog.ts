@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4257',
+    items: ['装備の取得済みスキルが一列になり、名前が途中で折れなくなった。絵の後ろの四角い塗りも消えた。サブウェポンの一覧に一言の説明が付いた。'],
+  },
+  {
     version: '0.25.4256',
     items: ['装備のサブウェポン一覧で、タレットの絵の周りに紫の四角が出ていたのが直った。'],
   },

@@ -1442,6 +1442,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       {COMMAND_UI_ENABLED && <span className="weapon-art">{icon && <img src={spritePath(icon)} alt="" draggable={false} loading="lazy" />}</span>}
                       <span className="min-w-0">
                         <span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(k)}</span>
+                        {/* 一言(社長指示2026-09-12): 職の固有サブは職データの説明、それ以外は棚の台帳 subWeaponBlurbs。台帳に無い物は出さない
+                            (一時停止の部隊情報と同じ規則)。 */}
+                        {(() => {
+                          const cls = CHARACTER_CLASSES.find(c => c.skillKey === k);
+                          const b = cls ? cls.skillDesc : subWeaponBlurb(k);
+                          return b && b !== '未解放' ? <span className="block text-[10px] leading-snug text-white/50">{b}</span> : null;
+                        })()}
                       </span>
                       {on && <span className="shrink-0 flex items-center gap-1"><PixelIcon name="check" size={15} />{DS_LOADOUT_PREVIEW && <span className="ds-loadout-state">装備中</span>}</span>}
                     </button>
@@ -1488,7 +1495,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             {ownedSkills.length === 0 ? (
               <p className="px-1 text-[11px] text-white/40">まだありません（強化訓練で解禁）</p>
             ) : (
-              <div className="menu-stagger grid grid-cols-2 gap-2">
+              /* 1列(社長指示2026-09-12「改行ずれないで」): 2列だと名前の幅が7字しか無く「クリティカルダメージ上\n昇」と折れていた。
+                 銃・サブと同じ weapon-candidates の枡(絵の列+本文)に揃える。 */
+              <div className="menu-stagger weapon-candidates grid grid-cols-2 gap-2">
                 {[...ownedSkills]
                   .sort((x, y) => {
                     const rank: Record<SkillRarity, number> = { super: 0, rare: 1, normal: 2 };
@@ -1503,7 +1512,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                         key={k}
                         className="ff7r-fade-right flex items-center gap-2 rounded-none px-3 py-2.5 text-left text-white/85"
                       >
-                        <span className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10 overflow-hidden">
+                        {/* 絵の箱に塗りを置かない(社長指摘2026-09-12「透過されてない素材がある」=この紫10%の塗りが四角に見えていた) */}
+                        <span className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base overflow-hidden">
                           {(() => {
                             const single = skillSingleIconName(k);
                             if (single) return <img src={spritePath(single)} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />;
