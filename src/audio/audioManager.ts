@@ -1428,7 +1428,12 @@ const DANCE_MUTED_SFX = new Set<SfxKey>(['slash-damage', 'melee']);
 // gainMult: 距離減衰など、その1回の再生だけ音量を倍率調整したい時に渡す(既定1)。0以下なら鳴らさない。
 // durationMsOverride: その1回の再生だけ再生長を上書き(例: リロードSEを武器のリロード時間で止める)。
 // 指定時は config.maxDurationMs より優先。fadeOutMs が設定されていれば終端が丸まる(ブツ切り防止)。
-export const playSfx = (key: SfxKey, gainMult = 1, durationMsOverride?: number) => {
+// 戦闘の手触り②(連続撃破の段): 撃破SEのピッチ倍率の出どころ。store→audio は静的importできない(循環)ので、
+// useGameLoop が起動時に「今の段のピッチ」を返す関数を登録する。未登録(テスト等)=等倍。
+let killChainSfxRateSource: (() => number) | null = null;
+export const registerKillChainSfxRate = (fn: () => number) => { killChainSfxRateSource = fn; };
+
+export const playSfx = (key: SfxKey, gainMult = 1, durationMsOverride?: number, rateMult = 1) => {
   if (muted) return;
   if (gainMult <= 0) return;
   if (danceActive && DANCE_MUTED_SFX.has(key)) return;
@@ -1453,7 +1458,7 @@ export const playSfx = (key: SfxKey, gainMult = 1, durationMsOverride?: number) 
   const source = context.createBufferSource();
   const gain = context.createGain();
   source.buffer = buffer;
-  source.playbackRate.value = config.playbackRate ?? 1;
+  source.playbackRate.value = (config.playbackRate ?? 1) * rateMult;
   gain.gain.value = (config.volume ?? 1) * sfxVolume * gainMult;
   source.connect(gain);
   gain.connect(context.destination);
@@ -1708,5 +1713,6 @@ export const playEnemyDeath = () => {
   if (now - lastEnemyDeathAt < ENEMY_DEATH_MIN_INTERVAL_MS) return;
   lastEnemyDeathAt = now;
   const key = ENEMY_DEATH_KEYS[Math.floor(Math.random() * ENEMY_DEATH_KEYS.length)];
-  playSfx(key);
+  // 連続撃破の段が上がるほど半音ずつ高く(combatFeel.killChainSfxRate)。数字を出さずに音で伝える。
+  playSfx(key, 1, undefined, killChainSfxRateSource ? killChainSfxRateSource() : 1);
 };

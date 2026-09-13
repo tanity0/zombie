@@ -247,6 +247,9 @@ import {
   isReaperFamily, isTerminalReaper, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
   pickNearestTarget, // UNIQUE_WEAPONS.md §19-3: 金環の対象取得(各金環が独立に最寄りの敵を取る)
 } from '../utils/enemyUtils';
+import { killChainSfxRate, recoilSpecFor, casingSpecFor } from '../utils/combatFeel';
+// 戦闘の手触り②: 撃破SEのピッチはstoreの段(killChainTier)から。audioManagerはstoreをimportできないので登録式。
+registerKillChainSfxRate(() => killChainSfxRate(useGameStore.getState().killChainTier));
 import { resolvePumpkinTier, allowDrillerForRun, allowLoggerForRun } from '../utils/drillerAi'; // PACING_PUZZLE.md §9-3/§14-3
 import { isBossMakerRun } from '../utils/bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdriller/loggerを出さない
 import { isGauntletRun } from '../utils/gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdriller/loggerを出さない
@@ -484,7 +487,7 @@ import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLau
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
-import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow } from '../audio/audioManager';
+import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
@@ -8484,6 +8487,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().spawnGlow(
                 mpx, mpy, activeGun.category === 'shotgun' ? 22 : 15, 'rgba(255,238,170,', 90
               );
+            }
+            // 戦闘の手触り③(社長指示2026-09-13): 反動。カメラを射線の逆へ蹴る(銃種で強さが違う・描画のみ)+
+            // 薬莢を右手側へ放る(重力つき粒)。判定・弾・反動の散り角には触れない。
+            {
+              const rd = newProjectiles[0].direction;
+              const rcat = activeGun.category ?? 'handgun';
+              const rs = recoilSpecFor(rcat, activeGun.key);
+              const st = useGameStore.getState();
+              st.triggerKick(rs.kickPx, rs.kickMs, -rd.x, -rd.y);
+              const cs = casingSpecFor(rcat, activeGun.key);
+              if (cs) {
+                st.spawnCasing(
+                  postReloadPlayer.x + postReloadPlayer.width / 2 + rd.x * 10,
+                  postReloadPlayer.y + postReloadPlayer.height / 2 - 6,
+                  rd.x, rd.y, cs.color, cs.size, cs.count,
+                );
+              }
             }
             // UNIQUE_WEAPONS.md §16-2(氷槍ライフル)・検収監査A-1是正: 発射した弾の射線に短時間の
             // 床(線)を残す。旧実装は発射の瞬間に弾の最大飛翔距離ぶんを即座に全長で作っていたため、

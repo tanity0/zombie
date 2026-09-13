@@ -1,5 +1,37 @@
 # Development Log
 
+## v0.25.4268 — 戦闘の手触り3本(局所ストップ+重さ / 連続撃破の段 / 銃の反動)【2026-09-13 18:04 JST】
+
+社長「戦闘の快感をもっと強くしたい 案無い?」→「では入れてみて」(1 局所ヒットストップ+重い敵ほど飛ばない / 2 連続撃破の段 / 3 反動)。
+新規純関数 **`src/utils/combatFeel.ts`**(数値表と判定を全部ここへ)+ `combatFeel.test.ts`(9件)+ `store/combatFeel.store.test.ts`(配線8件)。
+### ① 当たった敵だけ数フレーム止まる+重さ(区分テンプレ)
+- `Enemy.hitStunUntil`(Date.now基準)。**書き手=`damageEnemy` の中央**: `hateSource==='player'` かつ実ダメージ>0 かつ `damageChannel!=='dot'` かつ生存。
+  長さ=`hitStunMsFor`: 雑魚 **60ms** / 強個体(パンプキン・削岩型・伐採人)**40ms** / ボス級 **0**(書かない)。
+- 消費=`updateEnemies`: `committed`(空中ジャンプ/突進)でなく止め中なら**位置更新を丸ごとスキップ**。ノックバック中なら `knockbackUntil` を
+  その tick ぶん後ろへずらす=止めが明けた瞬間に満額で飛ぶ(止まっている間に減衰させない)。AIの時計は gameTime なので技の予告は遅れない。
+- 重さ=`knockbackEnemy`: `knockbackWeightFor` を速度に掛ける。強個体 **0.5** / 雑魚・他ボス級 1(不変。ボスは DR が担当)。
+### ② 連続撃破の段(数字は出さない)
+- store: `killChainCount/LastAt/Tier/TierAt`。`damageEnemy` post-set で `hateSource==='player'` のキルを `stepKillChain`(窓 **2.5秒**)で積み、
+  段 **3/5/10** 体(`killChainTier`)。段が上がった瞬間だけ `killChainTierAt` を更新。
+- 音: `audioManager.playSfx` に第4引数 `rateMult`(既定1・他呼び出し不変)。`playEnemyDeath` は登録式 `registerKillChainSfxRate`
+  (useGameLoop がモジュール評価時に登録=store の段を読む)でピッチ **1/1.06/1.12/1.19**。27 呼び出し元は無改修で全部乗る。
+- 絵: `pixiScene.killChainEdge`(新 `lighting.getEdgeGlowTexture`=中心透明・端だけ白の放射グラデ。vignette は黒で tint が効かない)を
+  vignette の直上に1枚。段が上がった瞬間から **260/340/520ms**、血の色(0xb3121a)で立ち上がり12%→二次で引く。実時間基準。`?hidelayer=vig` に従う。
+- スロー: 10体到達の瞬間だけ `triggerTimeSlow(0.55, 240, 60)`。**爆発(`_nonLethalBoss=true`)と DoT のキルでは出さない**(サブウェポン系で
+  スローを出さない掟)。銃・近接のキルで出る。
+### ③ 銃の反動(描画のみ)
+- store: `kickUntil/Dur/Mag/DirX/DirY` + `triggerKick`(毎発上書き)。pixiScene の shake 直後に `recoilKickOffset`(撃った瞬間が最大→二次
+  ease-out で戻る)を射線の逆へ足す。ストップ中は描かない(shake と同じ)。
+- 強さ=`recoilSpecFor`: ハンドガン 2.5px/100ms・ライフル 3.2/110・ショットガン 7/150・ランチャー 5/140・PHILL 4/130、key 上書き レールガン 8/170。
+- 薬莢=`spawnCasing`(gravity 付き particle・stretch): 射線の右手側へ弧を描いて落ちる(`casingVelocity`)、真鍮色/ショットガンは赤い殻、約480ms。
+  レールガン/PHILL/ランチャーは出さない。発火点=`useGameLoop` のオート射撃地点(マズルフラッシュの直後)。手動銃(PHILL/シグナル/レールガン手動)は
+  別経路のため今回は付けていない(★実機で物足りなければ次回)。
+### 憲法の自己点検
+- 第4条(初心者ゾーン)・第5条(緩を荒らさない): 湧き・台本・しきい値に触れていない。移動に触れるのは①の止め(60/40ms)と強個体の KB 半減だけ。
+### 検証
+- typecheck・lint 0。新規テスト 17 件+constitution/railgun 通過。実機確認は社長。
+- 監査: 品質監査(Fable)+クリエイティブ監査(Fable)を並走中(巻き戻り対策で先に push)。指摘と是正は次版のエントリに記録する。
+
 ## v0.25.4267 — 銃以外の打撃で一瞬の画面シェイク(社長指示)+マグネット/ドッグ監査2巡目の反映【2026-09-13 16:41 JST】
 
 ### 社長「銃以外の攻撃で敵にダメージが入った時、SEと同じタイミングで一瞬画面シェイク入れて」

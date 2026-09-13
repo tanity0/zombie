@@ -663,6 +663,27 @@ export const getVignetteTexture = (inner = 0.55): Texture => {
 // ステージ2(lab)用の「明るい部分が狭い=暗い部分が広い」vignette。中心の明部をさらに絞る(社長指示)。
 export const getVignetteTextureNarrow = (): Texture => getVignetteTexture(0.22);
 
+// 戦闘の手触り②(連続撃破の段・社長指示2026-09-13): 画面端だけが染まる白のグラデーション(中心は完全に透明)。
+// vignette は黒なので tint で色が出ない=別テクスチャ。pixiScene が tint(赤)と alpha(段の脈動)を毎フレーム書く。
+let edgeGlowTex: Texture | null = null;
+export const getEdgeGlowTexture = (): Texture => {
+  if (edgeGlowTex) return edgeGlowTex;
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const r = size / 2;
+  const g = ctx.createRadialGradient(r, r, r * 0.5, r, r, r * 1.0);
+  g.addColorStop(0, 'rgba(255,255,255,0)');
+  g.addColorStop(0.7, 'rgba(255,255,255,0.28)');
+  g.addColorStop(1, 'rgba(255,255,255,0.95)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  edgeGlowTex = Texture.from(canvas);
+  return edgeGlowTex;
+};
+
 // Wide billowy fog STRIP, baked once. Many soft white blobs spread across the
 // full width and clustered toward the vertical centre, tapering to transparent at
 // the top/bottom so the strip reads as one continuous "もくもく" cloud bank.

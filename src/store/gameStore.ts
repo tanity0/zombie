@@ -100,6 +100,7 @@ import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
+import { hitStunMsFor, knockbackWeightFor, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS } from '../utils/combatFeel';
 import {
   normalizeDir, biasedBurstAngle,
   shouldShowMultiHitFx, dedupeMultiHitEffects,
@@ -5341,6 +5342,19 @@ interface GameState {
   // ランダム揺れ(pixiScene.ts側でdirLen<しきい値なら等方にフォールバック)。正規化済み単位ベクトル。
   shakeDirX: number;
   shakeDirY: number;
+  // 戦闘の手触り③(社長指示2026-09-13): 銃の反動のカメラキック(描画のみ)。撃った瞬間に射線の逆へ
+  // kickMag px 蹴られ、kickDur ms で二次ease-outで戻る(combatFeel.recoilKickOffset)。kickDirX/Y=単位ベクトル。
+  kickUntil: number;
+  kickDur: number;
+  kickMag: number;
+  kickDirX: number;
+  kickDirY: number;
+  // 戦闘の手触り②: 連続撃破の段。count/lastAt=連鎖の状態(Date.now基準・combatFeel.stepKillChain)、
+  // tier=0〜3、tierAt=段が上がった瞬間(pixiSceneが画面端の赤みを出す起点)。数字はUIに出さない。
+  killChainCount: number;
+  killChainLastAt: number;
+  killChainTier: number;
+  killChainTierAt: number;
   // Punch-zoom (render-only): while Date.now() < zoomUntil, the renderer scales the
   // world by zoomMag around screen center. Triggered on melee finish. No gameplay effect.
   zoomUntil: number;
@@ -5919,6 +5933,8 @@ interface GameState {
   // dirX/dirY(§5.23 M22 C1・任意・未正規化でよい): 指定時はシェイクをその方向へ寄せる。
   // 未指定/{0,0}/`?dirfx=0`は従来どおり等方のランダム揺れ。
   triggerShake: (durationMs: number, mag?: number, dirX?: number, dirY?: number) => void; // 行動別の画面シェイク(描画のみ)
+  triggerKick: (mag: number, durationMs: number, dirX: number, dirY: number) => void; // 反動のカメラキック(描画のみ・戦闘の手触り③)
+  spawnCasing: (x: number, y: number, dirX: number, dirY: number, color: string, size: number, count: number) => void; // 薬莢(重力つき粒・描画のみ)
 
   // Visual effects (renderer-only; no gameplay impact)
   spawnEffect: (effect: VisualEffect) => void;
@@ -6500,6 +6516,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   shakeDur: SHAKE_MS,
   shakeDirX: 0,
   shakeDirY: 0,
+  kickUntil: 0,
+  kickDur: 1,
+  kickMag: 0,
+  kickDirX: 0,
+  kickDirY: 0,
+  killChainCount: 0,
+  killChainLastAt: -1e12,
+  killChainTier: 0,
+  killChainTierAt: -1e12,
   zoomUntil: 0,
   zoomMag: 0,
   zoomStart: 0,
@@ -11753,8 +11778,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // v0.25.3986(描画専用打刻): カウンター成立の瞬間。全カウンター経路(9呼び出し元)がこの中央を
       // postureImpact='counter' で通る。pixiSceneのlatch系が「着弾前に中断された技の絵」の破棄に使う。
       const counteredPatch = postureImpact === 'counter' ? { lastCounteredAt: Date.now() } : {};
+      // 戦闘の手触り①(社長指示2026-09-13): プレイヤーの攻撃が実ダメージで入った敵だけ数フレーム止める
+      // (雑魚60/強個体40/ボス級0=combatFeel.hitStunMsFor)。DoT(燃焼・血棘・味方弾)は対象外。
+      const hitStunMs = (hateSource === 'player' && eff > 0 && damageChannel !== 'dot' && newHealth > 0) ? hitStunMsFor(enemy.type) : 0;
+      const hitStunPatch = hitStunMs > 0 ? { hitStunUntil: Date.now() + hitStunMs } : {};
       const updatedEnemies = enemies.map(e =>
-        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch } : e
+        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch, ...hitStunPatch } : e
       );
       
       // Check if enemy was killed
@@ -11947,6 +11976,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         const pl = get().player;
         const hp = nonGunHitAt as { x: number; y: number }; // set() 内の代入は TS の流れ解析に見えない(gunHitAt と同じ形)
         get().triggerShake(NONGUN_HIT_SHAKE_MS, NONGUN_HIT_SHAKE_MAG, hp.x - (pl.x + pl.width / 2), hp.y - (pl.y + pl.height / 2));
+      }
+    }
+    // 戦闘の手触り②(社長指示2026-09-13): 連続撃破の段(3/5/10・窓2.5秒)。プレイヤー起因のキル全般を数える
+    // (撃破SEのピッチ=audioManager が killChainTier を読む/画面端の赤み=pixiScene が killChainTierAt を読む)。
+    // 10体到達の短いスローは銃・近接のキルだけ(爆発=サブウェポン系はスローを出さない掟・CLAUDE.md)。
+    if (killed && hateSource === 'player') {
+      const kc = get();
+      const nowK = Date.now();
+      const prevTier = (nowK - kc.killChainLastAt <= KILL_CHAIN_WINDOW_MS) ? killChainTier(kc.killChainCount) : 0;
+      const chain = stepKillChain({ count: kc.killChainCount, lastAt: kc.killChainLastAt }, nowK);
+      const tier = killChainTier(chain.count);
+      const tierUp = tier > prevTier;
+      set({ killChainCount: chain.count, killChainLastAt: chain.lastAt, killChainTier: tier, killChainTierAt: tierUp ? nowK : kc.killChainTierAt });
+      if (tierUp && tier === 3 && !_nonLethalBoss && damageChannel !== 'dot') {
+        get().triggerTimeSlow(KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS);
       }
     }
     if (gunHitAt && Date.now() >= gravityShotNextRollAt) {
@@ -12298,6 +12342,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         //   パリィは aiPhase を先に解除してから弾くのでこのガードに掛からない。
         // committed = 中断不可の実行中(空中ジャンプ・ダッシュ突進)。stun/lift もこの間は受け付けない。
         const committed = enemy.aiPhase === 'jump' || enemy.aiPhase === 'charge';
+        // 戦闘の手触り①(社長指示2026-09-13): 被弾直後の局所ストップ。この敵だけ数フレーム位置更新を
+        // 止める(AIの時計はgameTime基準なので技の予告は遅れない)。ノックバック中なら knockbackUntil を
+        // 止めたぶん後ろへずらす=止めが明けた瞬間に満額で飛ぶ(止まっている間に減衰させない)。
+        // committed(空中ジャンプ/突進)は軌道が壊れるので止めない。ボス級は hitStunUntil が書かれない。
+        if (!committed && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) {
+          return (enemy.knockbackUntil !== undefined && now < enemy.knockbackUntil)
+            ? { ...enemy, knockbackUntil: enemy.knockbackUntil + deltaTime * 1000 }
+            : enemy;
+        }
         // CRIT-UNIFY §9.2: 次行動CD専用のatkUntil。クリ窓中のボスは×2(bossCritCdMult)。
         // windup/active/recoverの各durationは従来のatkUntilのまま(予告のリード時間は変えない)。
         const atkCdUntil = (ms: number) => gameTime + (ms / ENEMY_ATTACK_SPEED_MULT) * bossCritCdMult(enemy, gameTime);
@@ -15312,12 +15365,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 死体を除外し、死体自身の吹き飛びを上書きさせない。
       enemies: state.enemies.map(e => {
         if (e.id !== id || isCorpse(e)) return e;
+        // 戦闘の手触り①(社長指示2026-09-13): 重さ。強個体(パンプキン/削岩型/伐採人)は半分しか飛ばない
+        // (combatFeel.knockbackWeightFor)。雑魚と他のボス級は1=不変(ボスはDRが担当)。
+        const weight = knockbackWeightFor(e.type);
         if (!isBossType(e.type)) {
           // 通常敵はDR無し(手応えは意図的に強い仕様・不変)。
           return {
             ...e,
-            knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength,
-            knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength,
+            knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength * weight,
+            knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength * weight,
             knockbackUntil: now + KNOCKBACK_DURATION,
           };
         }
@@ -15329,8 +15385,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         return {
           ...e,
-          knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength,
-          knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength,
+          knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength * weight,
+          knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength * weight,
           knockbackUntil: now + KNOCKBACK_DURATION * dr.durationMult,
           ...dr.patch,
         };
@@ -19414,6 +19470,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         shakeDur: SHAKE_MS,
         shakeDirX: 0,
         shakeDirY: 0,
+        kickUntil: 0,
+        kickDur: 1,
+        kickMag: 0,
+        kickDirX: 0,
+        kickDirY: 0,
+        killChainCount: 0,
+        killChainLastAt: -1e12,
+        killChainTier: 0,
+        killChainTierAt: -1e12,
         zoomUntil: 0,
         zoomMag: 0,
         zoomStart: 0,
@@ -19477,6 +19542,33 @@ export const useGameStore = create<GameState>((set, get) => ({
         shakeUntil: now + Math.max(0, durationMs), shakeMag: Math.max(0, mag), shakeDur: Math.max(1, durationMs),
         shakeDirX: dir.x, shakeDirY: dir.y,
       };
+    });
+  },
+
+  triggerKick: (mag, durationMs, dirX, dirY) => {
+    // 描画のみ。連射中は毎発上書き(戻り切る前に次が来る=連射ほど画面が絶えず後ろへ押される手触り)。
+    const d = normalizeDir(dirX, dirY);
+    if (mag <= 0 || durationMs <= 0 || (d.x === 0 && d.y === 0)) return;
+    set({ kickUntil: Date.now() + durationMs, kickDur: durationMs, kickMag: mag, kickDirX: d.x, kickDirY: d.y });
+  },
+
+  spawnCasing: (x, y, dirX, dirY, color, size, count) => {
+    const now = Date.now();
+    const fresh: VisualEffect[] = [];
+    for (let i = 0; i < count; i++) {
+      const v = casingVelocity(dirX, dirY, Math.random());
+      fresh.push({
+        kind: 'particle',
+        id: `fx-casing-${now}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+        x, y, vx: v.vx, vy: v.vy, color, size,
+        createdAt: now, duration: CASING_DURATION_MS + Math.random() * 120,
+        drag: 1.5, gravity: CASING_GRAVITY, stretch: true,
+      });
+    }
+    set(state => {
+      const next = [...state.effects, ...fresh];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
     });
   },
 

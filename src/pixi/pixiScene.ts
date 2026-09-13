@@ -187,6 +187,7 @@ import {
   getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType, isPumpkinTier,
   isReaperFamily, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
 } from '../utils/enemyUtils';
+import { recoilKickOffset, killChainEdgePulseMs } from '../utils/combatFeel';
 // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 赤予告の「呼吸」を敵の区分で3種に。純関数1本
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } from '../utils/telegraphStyle';
@@ -258,7 +259,7 @@ import {
   pickExplSlot, rankFade, shouldFreezeGeom,
   SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS,
 } from '../utils/shadowSlots';
-import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
+import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 // SKILL_BUILD_REDESIGN.md §21(B5)/§24(社長指示2026-08-13): 枠光の判定は純関数のまま(pixiは読むだけ・
 // 判定を書かない)。バーサーカー=HP依存の常時オーラ、オーバークロック=proc起点の800msフラッシュ。
@@ -4122,6 +4123,8 @@ export class PixiScene {
   private playerFirstAidBagSetup = false;                  // 鞄スプライトのテクスチャ/親子付け済みか
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
+  // 戦闘の手触り②(連続撃破の段): 段が上がった瞬間だけ画面端が血の色に染まる(pooled sprite 1枚・プロパティ更新のみ)。
+  private killChainEdge = new Sprite(getEdgeGlowTexture());
   private vignetteNarrow: boolean | null = null; // 現在のvignetteが狭い版(lab用)か。差分時だけテクスチャ差し替え。
   private worldFadeMask = new Sprite(Texture.WHITE);
   private worldFadeMaskTexture: Texture | null = null;
@@ -5130,7 +5133,7 @@ export class PixiScene {
       this.gradeSprite, // cineSun(M7の太陽)は遠景森1の裏へ移設=下のstageCへ(社長指示v0.25.1970)。光の線(cineCloudLayers)も同様に森の裏。
       this.snowAir, // ステージ4の冷たい空気(寒色グレード・snowのみ)
       this.stage5Afterglow, // ステージ5の残照(暖色グレード・stage5のみ)
-      this.stage1CoolBand, this.cineDust, this.vignette,
+      this.stage1CoolBand, this.cineDust, this.vignette, this.killChainEdge,
       this.flashGfx, this.arrowGfx,
     );
     // 光の線(cineClouds)と雲は worldGroup(森1/2・地面・gameplay)の後ろ・farBackdrop(銀河)の手前へ。画面固定の空。
@@ -5283,6 +5286,9 @@ export class PixiScene {
     this.vignette.position.set(-1, -1);
     this.vignette.width = w + 2;
     this.vignette.height = h + 2;
+    this.killChainEdge.position.set(-1, -1);
+    this.killChainEdge.width = w + 2;
+    this.killChainEdge.height = h + 2;
     this.cineWarm.position.set(-1, -1);
     this.cineWarm.width = w + 2;
     this.cineWarm.height = h + 2;
@@ -7651,6 +7657,30 @@ export class PixiScene {
       } else {
         sx = (Math.random() * 2 - 1) * mag;
         sy = (Math.random() * 2 - 1) * mag;
+      }
+    }
+    // 戦闘の手触り③(社長指示2026-09-13): 銃の反動のカメラキック。撃った瞬間に射線の逆へ蹴られ、二次の
+    // ease-outで戻る(combatFeel.recoilKickOffset)。揺れと同じくストップ中は描かない。描画のみ。
+    const kickLeft = (s.kickUntil && now >= s.hitstopUntil) ? s.kickUntil - now : 0;
+    if (kickLeft > 0) {
+      const koff = recoilKickOffset(s.kickMag, kickLeft, s.kickDur) * SHAKE_GLOBAL_MULT;
+      sx += s.kickDirX * koff;
+      sy += s.kickDirY * koff;
+    }
+    // 戦闘の手触り②: 連続撃破の段が上がった瞬間、画面端が血の色に染まって引く(段ごとに長さが違う)。
+    // 実時間(realNow)基準=10体のスロー中も脈動は止まらない。数字は出さない。
+    {
+      const pulseMs = killChainEdgePulseMs(s.killChainTier);
+      const pel = realNow - s.killChainTierAt;
+      if (pulseMs > 0 && pel >= 0 && pel < pulseMs) {
+        const k = 1 - pel / pulseMs;
+        // 立ち上がりは一瞬(最初の12%で満開)、あとは二次で引く=脈。
+        const rise = Math.min(1, pel / (pulseMs * 0.12));
+        this.killChainEdge.alpha = 0.22 * rise * (s.killChainTier >= 3 ? 1.6 : s.killChainTier >= 2 ? 1.25 : 1) * k * k;
+        this.killChainEdge.tint = 0xb3121a;
+        this.killChainEdge.visible = !HIDE_LAYERS.has('vig');
+      } else if (this.killChainEdge.visible) {
+        this.killChainEdge.visible = false;
       }
     }
     // ★討伐の崩壊中は**消え切るまで揺らし続ける**(社長指示v0.25.3125)。

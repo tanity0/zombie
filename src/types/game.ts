@@ -486,6 +486,10 @@ export interface Enemy {
   knockbackUntil?: number;
   knockbackVx?: number;
   knockbackVy?: number;
+  // 戦闘の手触り①(社長指示2026-09-13・utils/combatFeel): プレイヤーの攻撃が入った敵だけ、この時刻まで
+  // 位置更新を止める(雑魚60ms/強個体40ms/ボス級は書かれない)。Date.now()基準(knockbackUntilと同じ時計)。
+  // 止めている間はknockbackUntilを同じだけ後ろへずらす=止めが明けてから飛ぶ。
+  hitStunUntil?: number;
   /**
    * KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26)。KILLされた通常敵(ボス/ネームド/クエスト
    * 対象=getsDramaticDeath系は対象外)を即消滅させず、この時刻(Date.now()基準)まで「死体」として
