@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.4275 — コンボの節目(10毎に数字が大きく飛び出す・社長承認「はい」)【2026-09-13 22:59 JST】
+
+社長「コンボカウント(どれも)10毎に数字を大きく飛び出させるようにしていくのは?」→ 提案を承認。
+- 対象=画面に数字が出ている2つ: **HUD左の COMBO**(`meleeFinishComboCount`・GameHUD)と**頭上の「N HITS」**(multiHit・pixiScene)。連続撃破の段は数字を出さない設計のまま(対象外)。
+- 純関数 `utils/comboMilestone.ts`(+テスト4): `comboMilestoneTier`(10の倍数だけ・50で頭打ち)/ `comboMilestoneAmp`(段1=0.8…段5=1.4=ピーク約1.8〜2.4倍)/
+  `milestoneSpring`(減衰ばね exp(−5t)cos(7t)=行き過ぎて戻る・慣性MUST)/ `milestoneTintMix`(最初の30%で白→本来の色)。HUD と pixi が**同じ数**を読む。
+- HUD: 節目だけ `.combo-count-pop-big`(CSS 変数 `--combo-pop`=ピーク倍率・620ms・白く光ってから戻る・行き過ぎ→戻り)。それ以外は従来の `.combo-count-pop`。
+  節目で `ui-move`(既存の小さなカチッ)を1回。
+- N HITS: 節目だけ振幅を段で拡大+ばね、tint 白→ライム。それ以外は従来の pop。`registerMultiHit` が節目で同じ SE。
+- 負荷 1/10(CSS アニメ1本+bitmap の scale/tint 更新のみ)。判定・スコアには触れない。
+- 監査: クリエイティブ監査(節目の動き・音)を並走(巻き戻り対策で先に push)。typecheck・lint 0。実機確認は社長。
+
 ## v0.25.4274 — クリティカルの揺れ+光源(社長指示)/ 取得後の強調は「最初の1発だけ白→金」(社長裁定「1だけ はい」)【2026-09-13 22:51 JST】
 
 ### 社長「クリティカルダメージの時は大きく画面を揺らしながら、発生源に光源(爆発と同じ原理だが、爆発ではなく光)」

@@ -100,6 +100,7 @@ import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
+import { comboMilestoneTier } from '../utils/comboMilestone';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 import {
   normalizeDir, biasedBurstAngle,
@@ -15809,6 +15810,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (MULTIFX_ENABLED && shouldShowMultiHitFx(count)) {
       const p = state.player;
       get().spawnMultiHitFx(p.x + p.width / 2, p.y - 26, count);
+      // コンボの節目(社長承認2026-09-13): 10・20・30 HITS の瞬間だけ小さなカチッ(HUD の COMBO と同じ音)。
+      if (comboMilestoneTier(count) > 0) void import('../audio/audioManager').then(m => m.playSfx('ui-move'));
     }
     if (state.player.characterClass !== 'warrior' || count < 2) return;
     set(s => ({ player: { ...s.player, heavyGunnerExpBuffUntil: s.gameTime + 3000 } }));

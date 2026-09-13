@@ -12,6 +12,7 @@ import SubquestHud from './SubquestHud';
 import { LowHpVignette } from './LowHpVignette';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted, playSfx } from '../audio/audioManager';
+import { comboMilestoneTier, comboMilestoneAmp } from '../utils/comboMilestone';
 import DirectorLine from './DirectorLine';
 import { getSelectedStageId } from '../data/progress';
 import { getEventQuestConfig } from '../utils/eventQuest';
@@ -93,6 +94,9 @@ const GameHUD: React.FC = () => {
   // コンボ窓(meleeFinishComboUntil)が有効な間だけ出す(7s窓・gameTimeは秒粒度なので失効後~1sで消える)。
   const rhythmCombo = useGameStore(state => state.meleeFinishComboCount);
   const rhythmComboUntil = useGameStore(state => state.meleeFinishComboUntil);
+  // コンボの節目(社長承認2026-09-13): 10毎に数字が大きく飛び出す(CSS 変数 --combo-pop=ピーク倍率)+小さなカチッ。
+  const comboTier = comboMilestoneTier(rhythmCombo);
+  React.useEffect(() => { if (comboTier > 0) playSfx('ui-move'); }, [rhythmCombo, comboTier]);
   // イベント発生告知バナー(コンボ表示付近。コンボがあればその下にずらす)。
   const eventBannerText = useGameStore(state => state.eventBannerText);
   const eventBannerUntil = useGameStore(state => state.eventBannerUntil);
@@ -241,7 +245,11 @@ const GameHUD: React.FC = () => {
               className="font-black tabular-nums text-amber-100"
               style={{ WebkitTextStroke: '1px rgba(20,12,4,0.86)', textShadow: '0 2px 0 rgba(0,0,0,0.55), 0 0 14px rgba(251,191,36,0.28)' }}
             >
-              <span key={`combo-${rhythmCombo}`} className="combo-count-pop inline-block text-3xl">{rhythmCombo}</span>
+              <span
+                key={`combo-${rhythmCombo}`}
+                className={`${comboTier > 0 ? 'combo-count-pop-big' : 'combo-count-pop'} inline-block text-3xl`}
+                style={comboTier > 0 ? ({ '--combo-pop': String(1 + comboMilestoneAmp(comboTier)) } as React.CSSProperties) : undefined}
+              >{rhythmCombo}</span>
             </div>
           </div>
         </div>

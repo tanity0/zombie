@@ -201,6 +201,13 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
     animation: combo-count-pop 360ms cubic-bezier(0.16, 1.55, 0.3, 1) both;
     will-change: transform, opacity, filter;
   }
+  /* コンボの節目(10・20・30…): 普段の約2倍(--combo-pop)まで飛び出し、行き過ぎて戻る。白く光ってから本来の色へ。 */
+  .combo-count-pop-big {
+    --combo-pop: 1.8;
+    transform-origin: 50% 82%;
+    animation: combo-count-pop-big 620ms cubic-bezier(0.2, 1.2, 0.3, 1) both;
+    will-change: transform, opacity, filter;
+  }
   .loading-sigil {
     animation: loading-sigil-spin 1.15s linear infinite;
     background:
@@ -285,6 +292,14 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
     transform: translateY(0) scale(1);
     filter: brightness(1);
   }
+}
+
+@keyframes combo-count-pop-big {
+  0% { opacity: 0.4; transform: translateY(14px) scale(0.5); filter: brightness(2.4); }
+  30% { opacity: 1; transform: translateY(-16px) scale(var(--combo-pop)); filter: brightness(1.9); }
+  55% { opacity: 1; transform: translateY(4px) scale(0.9); filter: brightness(1.15); }
+  75% { opacity: 1; transform: translateY(-2px) scale(1.05); filter: brightness(1.05); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); }
 }
 
 @keyframes loading-sigil-spin {
