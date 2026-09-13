@@ -1,0 +1,23 @@
+{
+ "run1": {
+  "maxEffects": 262,
+  "effectFrames": 1442,
+  "frames": 2219,
+  "startKills": 0,
+  "kills": 20,
+  "hp": 102,
+  "t": 54,
+  "particles": 0
+ },
+ "run2": {
+  "maxEffects": 245,
+  "effectFrames": 3616,
+  "frames": 4714,
+  "startKills": 0,
+  "kills": 24,
+  "hp": 110,
+  "t": 61,
+  "particles": 94
+ },
+ "errors": []
+}

@@ -2,16 +2,123 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dark-toned distressed font (RE-style typewriter) for Latin text; Japanese
-   falls back to the gothic stack. Placed after base so it beats preflight. */
+/* Self-hosted game font (Orbitron, locked). Subsetted to Latin + digits +
+   punctuation (woff2 ~14KB); Japanese falls back to the gothic stack. */
+@font-face {
+  font-family: "Orbitron";
+  src: url("/zombie/fonts/orbitron.woff2") format("woff2");
+  font-weight: 400 900;
+  font-display: swap;
+}
+
+/* ===== 同梱の日本語書体(社長裁定2026-09-12・v0.25.4253 で既定ON) ==================================================
+   相談「据置機のフォントはゲーム感があるのに、こちらはブラウザ感がある。なぜ?」→ 日本語が端末の標準ゴシック(=全てのサイトと
+   同じ文字)で描かれているのが主因。据置機は日本語ごと専用書体を同梱する。8系統の比較図(v0.25.4251〜4252)を見た社長の裁定:
+   「日本語フォントはバイオが読みやすい。見出しは4(ダークソウル/エルデンリング系の横太明朝)」。
+   **英数字は元のまま**(全体=Orbitron・作戦室ホーム/ボタン=Rajdhani・command-ui の細部=system-ui)。
+   **本文・HUD・メニュー = BIZ UDPGothic**(Regular 400 / Bold 700・UD系=小さくても読める)
+   **見出し(画面名・作戦室の項目名・出撃・一時停止・結果・チュートリアルの題)= Shippori Mincho B1**(SemiBold 600 の1本・横太明朝)
+   どちらも OFL・使う文字だけ抜き出して public/fonts/game/ に同梱(license 同梱)。太字は合成しない(font-synthesis:none)。
+   本文側の和文フォールバックは config/font.ts の FONT_STACK(--game-font)に入っている=Pixi のテキストも同じ書体。 */
+@font-face { font-family: "BIZ UDPGothic"; src: url("/zombie/fonts/game/BIZUDPGothic-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "BIZ UDPGothic"; src: url("/zombie/fonts/game/BIZUDPGothic-Bold.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Shippori Mincho B1"; src: url("/zombie/fonts/game/ShipporiMinchoB1-Regular.woff2") format("woff2"); font-weight: 100 400; font-display: swap; }
+@font-face { font-family: "Shippori Mincho B1"; src: url("/zombie/fonts/game/ShipporiMinchoB1-SemiBold.woff2") format("woff2"); font-weight: 500 900; font-display: swap; }
+/* (3) 和文の本文の中に立つ英数字(Tier / PHILL / DAY 26 等)は Orbitron の字面が漢字より小さく見えるので、本文だけ 110% に寄せた別名を使う。
+   HUD・見出し・計器の Orbitron は元の大きさのまま(別名を当てるのは下の「本文」セレクタだけ)。 */
+@font-face { font-family: "Orbitron Prose"; src: url("/zombie/fonts/orbitron.woff2") format("woff2"); font-weight: 400 900; size-adjust: 110%; font-display: swap; }
+html {
+  --uf-jp: "BIZ UDPGothic";
+  --uf-head: "Shippori Mincho B1";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+}
+/* 全体: Orbitron の後ろの和文フォールバックを BIZ UDPGothic に(英数字は Orbitron のまま) */
+html, html body { font-family: var(--game-font, "Orbitron"), var(--uf-jp), sans-serif; }
+/* 本文はベタ組み・行間も元のまま(監査2026-09-12: UD系を選んだ根拠=余白を palt で削らない。行間の一括上書きもしない) */
+/* 作戦室ホーム(Rajdhani)とメニューのボタン(Rajdhani): 英字は Rajdhani のまま・和文だけ BIZ UDPGothic */
+html .ds-home, html .command-ui .command-button { font-family: "Rajdhani", var(--uf-jp), sans-serif; }
+/* command-ui で system-ui を直書きしている箇所(和文中心のラベル・本文): 和文を BIZ UDPGothic へ */
+html .command-ui .command-weapon-tabs button, html .command-ui .development-balance,
+html .command-ui .development-tabs button, html .command-ui .development-guide,
+html .command-ui .development-price small,
+html .command-ui .command-page-header p, html .command-ui .command-page-back,
+html .command-ui .command-section > div:first-child,
+html .command-wordmark > span, html .command-eyebrow,
+html .command-operation p, html .command-sortie small,
+html .command-action-copy strong,
+html .command-action-copy > span, html .command-inventory > span { font-family: var(--uf-jp), system-ui, sans-serif; }
+/* 見出し = 横太明朝。英字は "Orbitron" を**名指し**で先に置く(監査2026-09-12(A): var(--game-font) は FONT_STACK 全体に展開されるので
+   和文が --uf-head に届く前に BIZ で確定していた=見出しが6画面中1画面しか明朝になっていなかった)。
+   当て先は1本ずつ選ぶ(h1〜h3 一括・.gt-emboss 一括はしない): 画面題・作戦室の項目名・出撃・ステージ名・武器の枡の題・結果の題。
+   13px 級の小さい題(一時停止・更新情報・チュートリアル)はゴシックのまま=横太明朝はスマホの13pxで潰れる。
+   字間は各所の元の値に任せる(一律 0.08em で平らにしない)。palt は見出しだけ。 */
+html .ui-head-serif,
+html .command-ui .command-page-header h1,
+html .command-ui .command-panel h2,
+html .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\],
+html .command-operation h1, html .command-section-title h2, html .command-sortie > span,
+html .weapon-tier-title { font-family: "Orbitron", var(--uf-head), serif !important; font-feature-settings: "palt" 1; }
+/* (2) 明朝は大小2ウェイト(監査B): 22px 級以上の大きい題は Regular で細く、20px 以下の項目名・出撃・枡の題は SemiBold で骨太に */
+html .ui-head-serif, html .command-ui .command-page-header h1,
+html .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\],
+html .command-operation h1 { font-weight: 400; }
+html .ui-head-serif-sm { font-weight: 600; }
+/* (3) 本文(2行以上に折れる説明・任務文・台詞・注記)の英数字だけ 110% の Orbitron。leading-relaxed / leading-snug は本文の印 */
+html .leading-relaxed, html .leading-snug, html .command-ui p, html .command-ui .development-guide,
+html .command-ui .command-page-header p { font-family: "Orbitron Prose", var(--uf-jp), sans-serif; }
+html .weapon-tier-title span { font-family: var(--game-font, "Orbitron"), var(--uf-jp), sans-serif !important; font-feature-settings: normal; }
+html .ds-sortie .ds-sortie-t1, html .ds-row .ds-row-l { font-family: "Rajdhani", var(--uf-head), serif !important; font-feature-settings: "palt" 1; }
+/* 作戦室ホームの英字の副題(OPERATIONS ROOM 等)は見出しではない=Rajdhani のまま */
+html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !important; }
+
+/* Latin/digits use --game-font (=Orbitron, set at startup); Japanese falls back
+   to the gothic stack. Placed after base so it beats preflight. */
 @layer base {
   html, body {
-    font-family: "Special Elite", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
-      "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+    font-family: var(--game-font, "Orbitron"), "Hiragino Sans",
+      "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
   }
 }
 
 @layer utilities {
+  /* UIUXのAI感排除・第1手(research/CREATIVE_AUDIT_2026-09-11.md「文字の焼き込み」・監査2巡目で形を確定)。
+     インクは Pixi のダメージ数字/コールアウトの stroke と同じ #020617 に揃える(DOMとPixiで1色)。
+     使い分け(市販HUDの作法): 板(glass-pill 等)の無い文字=絵の上に直置き → 縁(gt-outline)。
+     板の上の文字 → 落ち影1本(gt-solid)。平坦な暗い地のメニュー見出し → エンボス(gt-emboss)。
+     暗い文字(琥珀地の主ボタン)には何も付けない。発光は付けない(暗地で見えない上に画面の色文法を横断する)。 */
+  :root {
+    --gt-ink: #020617;
+  }
+  /* 縁=字の大きさに比例(0.06em: 24px→1.4px / 12px→0.7px)+落ち影0.09em。小さい字で潰れず大きい字で弱らない */
+  .gt-outline {
+    text-shadow:
+      -0.06em -0.06em 0 var(--gt-ink), 0.06em -0.06em 0 var(--gt-ink), -0.06em 0.06em 0 var(--gt-ink), 0.06em 0.06em 0 var(--gt-ink),
+      -0.07em 0 0 var(--gt-ink), 0.07em 0 0 var(--gt-ink), 0 -0.07em 0 var(--gt-ink), 0 0.07em 0 var(--gt-ink),
+      0 0.09em 0 var(--gt-ink);
+  }
+  /* gt-outline のSVG版(text-shadowはSVGに効かないので drop-shadow を4方向1pxで重ねて同じ縁を作る)。
+     クリエイティブ監査第2回・第2手 B-24/B-25: 絵の上に直置きするアイコン(帳票の「戻る」等)用。 */
+  .gt-icon-outline {
+    filter: drop-shadow(0 0 1px var(--gt-ink)) drop-shadow(0 1px 0 var(--gt-ink)); /* 2本で1px相当。4方向を重ねると前段の影を引きずって斜めが2pxに太る(監査B-6) */
+  }
+  /* UIの意味色(監査第2回・A-2「琥珀が3種類」の統一): 琥珀は --menu-accent の1色、不足/危険は --menu-danger の1色。
+     Tailwind の amber-300/400 等を UI で直に使わない(トークンと違う黄になる)。 */
+  .ui-acc-bg { background: var(--menu-accent, #ffb340); }
+  .ui-acc-text { color: var(--menu-accent, #ffb340); }
+  .ui-acc-tag { background: color-mix(in srgb, var(--menu-accent, #ffb340) 16%, transparent); color: var(--menu-accent-hi, #ffd28a); }
+  .ui-danger-text { color: var(--menu-danger, #ff6b5e); }
+  .ui-dim-bg { background: var(--menu-dim, #3b3050); }
+  .ui-dim-line { border: 1px solid var(--menu-dim, #3b3050); background: transparent; }
+  /* 板の上の文字: 落ち影1本 */
+  .gt-solid {
+    text-shadow: 0 1px 0 var(--gt-ink);
+  }
+  /* 平坦な暗い地の見出し: 上に明・下に暗のエンボス(縁は地と同色で見えず字が太るだけになる) */
+  .gt-emboss {
+    text-shadow: 0 -1px 0 rgba(255, 235, 190, 0.16), 0 1px 0 var(--gt-ink);
+  }
   .pt-safe {
     padding-top: max(env(safe-area-inset-top), 0.5rem);
   }
@@ -36,28 +143,52 @@
   .right-safe {
     right: env(safe-area-inset-right);
   }
+  /* FF7リメイク風メニュー面(社長指示・紫)。社長指示「枠だけ残さない」=実線の枠は廃止。
+     深い黒の面＋blur のみで面を表現(枠なし)。 */
   .glass-panel {
-    background-color: rgba(20, 20, 28, 0.55);
-    backdrop-filter: saturate(160%) blur(18px);
-    -webkit-backdrop-filter: saturate(160%) blur(18px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: rgba(11, 9, 16, 0.52);
+    backdrop-filter: saturate(150%) blur(14px);
+    -webkit-backdrop-filter: saturate(150%) blur(14px);
+    border: none;
   }
+  /* プレイ中HUDの文字背景。社長指示で「枠を廃止し右フェードアウト」に統一。
+     枠(border)/丸み無し。左=やや濃い→右=透明 のグラデのみ。 */
   .glass-pill {
-    background-color: rgba(20, 20, 28, 0.55);
-    backdrop-filter: saturate(160%) blur(18px);
-    -webkit-backdrop-filter: saturate(160%) blur(18px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 9999px;
+    background: linear-gradient(95deg, rgba(13,10,20,0.62) 0%, rgba(13,10,20,0.34) 55%, transparent 100%);
+    border: none;
+    border-radius: 0;
+  }
+  /* 中央寄せのHUD文字(プレイ時間など)用: 両サイドへフェードアウトする黒背景(透明感あり)・枠なし。 */
+  .glass-pill-both {
+    background: linear-gradient(90deg, transparent 0%, rgba(8,6,14,0.55) 36%, rgba(8,6,14,0.55) 64%, transparent 100%);
+    border: none;
+    border-radius: 0;
+  }
+  /* FF7R風: 右へフェードアウトするボタン/カード。背景も枠線(border-image=横グラデ)も右で透明に。
+     上下=横グラデが右で透明 / 左=紫 / 右=透明。rounded-none 前提(border-imageは角丸無効)。 */
+  .ff7r-fade-right {
+    background: linear-gradient(95deg, rgba(24,15,38,0.42) 0%, rgba(24,15,38,0.18) 55%, transparent 100%);
+    border: 1px solid transparent;
+    border-image: linear-gradient(90deg, rgba(168,85,247,0.6) 0%, rgba(168,85,247,0.45) 35%, transparent 100%) 1;
+  }
+  .ff7r-fade-right.is-on {
+    background: linear-gradient(95deg, rgba(168,85,247,0.26) 0%, rgba(168,85,247,0.09) 55%, transparent 100%);
+    border-image: linear-gradient(90deg, rgba(192,132,252,0.95) 0%, rgba(168,85,247,0.55) 40%, transparent 100%) 1;
+  }
+  .ff7r-fade-right.is-off {
+    background: linear-gradient(95deg, rgba(24,15,38,0.28) 0%, rgba(24,15,38,0.1) 55%, transparent 100%);
+    border-image: linear-gradient(90deg, rgba(168,85,247,0.22) 0%, transparent 70%) 1;
+    opacity: 0.55;
   }
   .upgrade-menu-backdrop {
-    animation: upgrade-backdrop-in 220ms ease-out both;
+    animation: upgrade-backdrop-in 220ms ease-out backwards;
   }
   .upgrade-menu-panel {
     transform-origin: 50% 54%;
-    animation: upgrade-panel-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: upgrade-panel-in 360ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
   .upgrade-menu-option {
-    animation: upgrade-option-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: upgrade-option-in 420ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
   .upgrade-menu-option:nth-child(2) {
     animation-delay: 35ms;
@@ -80,31 +211,23 @@
     animation: loading-bar-sweep 880ms ease-in-out infinite;
     transform-origin: left center;
   }
-  /* 対戦中HUDの背景: メニュー用 glass より薄い半透明(黒板感を消す)。 */
+  /* 対戦中HUDの背景: メニュー用 glass より薄い半透明(黒板感を消す)。
+     プレイ中ずっと表示される要素なので backdrop blur は使わない(毎フレ背景再サンプル合成=
+     モバイルWKWebViewで重い)。少し濃いめの半透明塗りだけで視認性を確保する。 */
   .hud-translucent {
-    background-color: rgba(10, 10, 16, 0.42);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background-color: rgba(10, 10, 16, 0.55);
     border: 1px solid rgba(255, 255, 255, 0.10);
-  }
-  /* バイタルオーブ: 被弾時の一発演出(キー変更で再生)。scale パンチ + 白フラッシュのフェード。 */
-  .hud-orb-hit {
-    animation: hud-orb-hit 360ms cubic-bezier(0.16, 1.4, 0.3, 1);
-    transform-origin: 50% 50%;
-  }
-  .hud-orb-flash {
-    animation: hud-orb-flash 420ms ease-out forwards;
   }
 }
 
-@keyframes hud-orb-hit {
-  0% { transform: scale(1.18); }
-  60% { transform: scale(0.97); }
-  100% { transform: scale(1); }
-}
-@keyframes hud-orb-flash {
-  0% { opacity: 0.9; }
-  100% { opacity: 0; }
+/* 瀕死(HP≤20)ビネットの心拍脈動(ドクン…ドクン…)。旧PixiスプライトからDOM/CSSへ移設(v0.25.1560)。 */
+@keyframes lowhp-heartbeat {
+  0%   { opacity: 0.18; }
+  4%   { opacity: 0.46; }
+  12%  { opacity: 0.20; }
+  22%  { opacity: 0.42; }
+  32%  { opacity: 0.18; }
+  100% { opacity: 0.18; }
 }
 
 @keyframes upgrade-backdrop-in {
@@ -182,4 +305,707 @@
     transform: translateX(128%) scaleX(0.34);
     opacity: 0.5;
   }
+}
+
+/* === 強化訓練ガチャ演出 ===========================================
+   レア度ごとにスキル名カードの出方を変える。レベルは名前の後にワンテンポ置いて飛び出す。
+   すべて CSS 駆動(初期render後はReact非介入)。出現タイミングは inline animation-delay。 */
+/* 通常: ピンっ。素早く出てすぐ収まる。 */
+@keyframes gacha-name-normal {
+  0%   { opacity: 0; transform: scale(0.92); }
+  60%  { opacity: 1; transform: scale(1.02); }
+  100% { opacity: 1; transform: scale(1); }
+}
+/* レア: しゅぴんっ。少し青く光ってから収まる。 */
+@keyframes gacha-name-rare {
+  0%   { opacity: 0; transform: translateX(-10px) scale(0.9); filter: brightness(1.6); }
+  45%  { opacity: 1; transform: translateX(3px) scale(1.06); }
+  70%  { transform: translateX(0) scale(0.99); }
+  100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+}
+/* 超レア: しゃきーん。金色にまぶしく光り、ゆっくり目に決まる。 */
+@keyframes gacha-name-super {
+  0%   { opacity: 0; transform: scale(0.7); filter: brightness(2.4); }
+  35%  { opacity: 1; transform: scale(1.14); filter: brightness(1.9); }
+  62%  { transform: scale(0.97); filter: brightness(1.3); }
+  100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+}
+.gacha-card { opacity: 0; }
+.gacha-name-normal { animation: gacha-name-normal 0.22s ease-out forwards; }
+.gacha-name-rare   { animation: gacha-name-rare 0.5s cubic-bezier(0.2,0.9,0.25,1.2) forwards; }
+.gacha-name-super  { animation: gacha-name-super 0.95s cubic-bezier(0.18,0.85,0.2,1.25) forwards; }
+
+/* レベルの飛び出し。Lv3 が一番派手(大きく回り込みながら出る)。 */
+@keyframes gacha-lvl-pop {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.2); }
+  55%  { opacity: 1; transform: translateY(-4px) scale(1.3); }
+  78%  { transform: translateY(1px) scale(0.92); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes gacha-lvl-pop3 {
+  0%   { opacity: 0; transform: translateY(16px) scale(0.1) rotate(-12deg); filter: brightness(2.2); }
+  45%  { opacity: 1; transform: translateY(-10px) scale(1.6) rotate(6deg); filter: brightness(1.7); }
+  68%  { transform: translateY(3px) scale(0.86) rotate(-2deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); filter: brightness(1); }
+}
+.gacha-lvl { opacity: 0; display: inline-block; }
+.gacha-lvl-pop  { animation: gacha-lvl-pop 0.34s cubic-bezier(0.2,0.9,0.25,1.4) forwards; }
+.gacha-lvl-pop3 { animation: gacha-lvl-pop3 0.6s cubic-bezier(0.18,0.85,0.2,1.5) forwards; }
+
+/* 暗転オーバーレイのフェードイン。 */
+@keyframes gacha-dim-in { from { opacity: 0; } to { opacity: 1; } }
+.gacha-dim { animation: gacha-dim-in 0.3s ease-out forwards; }
+
+/* 10連: 的1枚を食い気味に連打。各ショットの素早いフラッシュ(短い=連打が重なって見える)。 */
+@keyframes gacha-shot-flash {
+  0%   { opacity: 0; transform: scale(0.7); }
+  30%  { opacity: 0.85; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.15); }
+}
+.gacha-shot-flash { animation: gacha-shot-flash 0.18s ease-out both; }
+/* 連打中の的の細かい被弾シェイク(マシンガン感)。バースト中だけ回る。 */
+@keyframes gacha-hitshake {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-2px, 1px); }
+  50% { transform: translate(2px, -1px); }
+  75% { transform: translate(-1px, -2px); }
+}
+.gacha-hitshake { animation: gacha-hitshake 0.09s linear infinite; }
+/* v0.25.3184(社長指示「撃たれたターゲットが動かない。ちゃんと反動が欲しい」):
+   的そのものの1発ごとの反動。連射は SHOT_STAGGER(200ms)等間隔なので、**この1周期を200msにして
+   発数ぶん繰り返す**と各ショットと厳密に同期する(duration/delay/回数はインラインstyleで注入)。
+   台座を軸に殴られて仰け反る→戻る、を1発ごとに繰り返す(transform-originは下端寄り)。 */
+@keyframes gacha-target-recoil {
+  0%   { transform: translateY(0) rotate(0deg) scale(1); }
+  10%  { transform: translateY(-7px) rotate(-2.4deg) scale(0.982); } /* 被弾の瞬間: 突き飛ばされる */
+  38%  { transform: translateY(-2px) rotate(1.5deg) scale(0.994); }  /* 揺り戻し */
+  70%  { transform: translateY(-0.5px) rotate(-0.5deg) scale(1); }
+  100% { transform: translateY(0) rotate(0deg) scale(1); }
+}
+.gacha-target-recoil { transform-origin: 50% 88%; animation: gacha-target-recoil 0.2s ease-out both; }
+/* super 特別演出: パーティクルが中心から四方へ散る(--tx/--ty 方向)。加算で光る。 */
+@keyframes gacha-super-particle {
+  0%   { opacity: 0; transform: translate(0, 0) scale(1.2); }
+  15%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.3); }
+}
+.gacha-super-particle { animation: gacha-super-particle 0.85s ease-out both; mix-blend-mode: screen; }
+
+/* 超レアカードの退場フェード(次のカードへ送る前に消える)。 */
+@keyframes gacha-card-out {
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.96); }
+}
+.gacha-card-out { animation: gacha-card-out 0.32s ease-in forwards; }
+
+/* ネイティブ感: トップレベル画面(メニュー/ゲームオーバー等)の出現を軽くフェード＋微スケールで
+   イーズインする。ハードカット(=web/プロトタイプ感)を消す。マウント時の見た目だけで、状態遷移や
+   ゲームのライフサイクル・操作可否には一切触れない(純コスメ)。 */
+/* 注意: transform を使わないこと。transform/filter を持つ要素は子孫の position:fixed の
+   含有ブロックになり、スクロール中のフルスクリーンoverlay(ガチャ等)が viewport ではなく
+   この要素基準に化けて「下に張り付いて操作不能」バグになる(v0.25.912で発生)。フェードは opacity のみ。 */
+@keyframes screen-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.screen-in { animation: screen-in 220ms ease-out backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .screen-in { animation: none; }
+}
+
+/* === キャラ選択: 立ち絵が下からスッと上がる(選択切替で key 再マウント=都度再生) === */
+@keyframes portrait-rise {
+  from { opacity: 0; transform: translateY(8%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.portrait-rise { animation: portrait-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .portrait-rise { animation: none; }
+}
+
+/* キャラ選択 左下の情報テキストも、立ち絵に合わせてフワッとフェードイン(切替で都度再生) */
+@keyframes info-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.info-rise { animation: info-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .info-rise { animation: none; }
+}
+
+/* メニューの各選択肢: 左からスッとフェードイン(index で少しずつ遅延=上から順にカスケード) */
+@keyframes menu-item-in {
+  from { opacity: 0; transform: translateX(-14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+/* fill-mode は backwards(遅延中のみ from=透明を適用)にする。both(=forwards込み)だと
+   「アニメが一度も開始されなかった」時に opacity:0 のまま固定される事故モードを持つ
+   (社長報告v0.25.1795: 更新後の初回起動で拠点メニューが透明のまま)。to状態は素の
+   スタイルと同じ(opacity:1/transform無し)なので、backwards でも走った時の見た目は同一。
+   走らなかった時だけ「アニメなしで普通に表示」へ安全側に倒れる。 */
+.menu-item-in { animation: menu-item-in 260ms ease-out backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .menu-item-in { animation: none; }
+}
+
+/* コンテナに付けると直下の各子要素が左から順にカスケード(他メニューへ一括適用用)。 */
+.menu-stagger > * { animation: menu-item-in 260ms ease-out backwards; animation-delay: 0ms; }
+.menu-stagger > *:nth-child(2)  { animation-delay: 45ms; }
+.menu-stagger > *:nth-child(3)  { animation-delay: 90ms; }
+.menu-stagger > *:nth-child(4)  { animation-delay: 135ms; }
+.menu-stagger > *:nth-child(5)  { animation-delay: 180ms; }
+.menu-stagger > *:nth-child(6)  { animation-delay: 225ms; }
+.menu-stagger > *:nth-child(7)  { animation-delay: 270ms; }
+.menu-stagger > *:nth-child(8)  { animation-delay: 315ms; }
+.menu-stagger > *:nth-child(9)  { animation-delay: 360ms; }
+.menu-stagger > *:nth-child(10) { animation-delay: 405ms; }
+.menu-stagger > *:nth-child(11) { animation-delay: 450ms; }
+.menu-stagger > *:nth-child(12) { animation-delay: 495ms; }
+.menu-stagger > *:nth-child(13) { animation-delay: 540ms; }
+.menu-stagger > *:nth-child(14) { animation-delay: 585ms; }
+.menu-stagger > *:nth-child(n+15) { animation-delay: 620ms; } /* 15個目以降はまとめて(長すぎ防止) */
+@media (prefers-reduced-motion: reduce) {
+  .menu-stagger > * { animation: none; }
+}
+
+/* キャラ選択: 立ち絵の発光と同系の「光の粒」が下から立ち上ってフェード(CSS駆動・GPU合成) */
+@keyframes char-particle-rise {
+  0%   { opacity: 0; transform: translate3d(0, 0, 0) scale(0.5); }
+  12%  { opacity: var(--p-op, 0.7); }
+  80%  { opacity: var(--p-op, 0.7); }
+  100% { opacity: 0; transform: translate3d(var(--p-dx, 0), var(--p-rise, -160px), 0) scale(1); }
+}
+.char-particle {
+  position: absolute;
+  border-radius: 9999px;
+  animation: char-particle-rise var(--p-dur, 7s) ease-in-out var(--p-delay, 0s) infinite;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) {
+  .char-particle { animation: none; opacity: 0; }
+}
+
+/* === 撃つ→的が破裂する演出 ======================================== */
+/* 的(target.png): 着弾の反動→拡大しながら砕け散る。 */
+@keyframes gacha-target-burst {
+  0%   { transform: scale(1) rotate(0); filter: brightness(1); opacity: 1; }
+  10%  { transform: scale(1.1) rotate(-1.5deg); filter: brightness(2.4); }
+  24%  { transform: scale(0.94) rotate(1.5deg); filter: brightness(1.2); }
+  100% { transform: scale(1.6) rotate(4deg); filter: brightness(0.5) blur(3px); opacity: 0; }
+}
+.gacha-target-burst { animation: gacha-target-burst 0.78s ease-in forwards; }
+/* 着弾の白フラッシュ。 */
+@keyframes gacha-flash { 0% { opacity: 0; } 9% { opacity: 0.9; } 100% { opacity: 0; } }
+.gacha-flash { animation: gacha-flash 0.5s ease-out forwards; }
+/* 破片(shard): 中心から外へ飛び散る。--tx/--ty で方向を渡す。 */
+@keyframes gacha-shard {
+  0%   { transform: translate(0,0) scale(1) rotate(0); opacity: 0; }
+  14%  { opacity: 1; }
+  100% { transform: translate(var(--tx), var(--ty)) scale(0.3) rotate(160deg); opacity: 0; }
+}
+.gacha-shard { animation: gacha-shard 0.7s ease-out both; }
+/* レア度エスカレート(rare/super): 広がるリング・金色の光・画面揺れ。すべて一発・自動停止=負荷1/10。 */
+@keyframes gacha-burst-ring {
+  0%   { transform: scale(0.2); opacity: 0; }
+  18%  { opacity: 0.9; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+.gacha-burst-ring { animation: gacha-burst-ring 0.7s ease-out both; }
+@keyframes gacha-burst-glow {
+  0%   { opacity: 0; transform: scale(0.4); }
+  15%  { opacity: 0.9; }
+  100% { opacity: 0; transform: scale(1.8); }
+}
+.gacha-burst-glow { animation: gacha-burst-glow 0.8s ease-out both; }
+@keyframes gacha-burst-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-4px, 2px); }
+  40% { transform: translate(3px, -3px); }
+  60% { transform: translate(-3px, -2px); }
+  80% { transform: translate(2px, 3px); }
+}
+.gacha-burst-shake { animation: gacha-burst-shake 0.5s ease-in-out; }
+
+/* 射撃練習場「撃つ」テキストの呼吸グロー(ボタン見た目にせずタップ可を示す。CSSのみ・常駐1要素=負荷1/10) */
+@keyframes gacha-shoot-text {
+  0%, 100% { opacity: 0.9;  text-shadow: 0 0 10px rgba(232,121,249,0.5), 0 2px 10px rgba(0,0,0,0.95); }
+  50%      { opacity: 1;    text-shadow: 0 0 22px rgba(232,121,249,0.95), 0 2px 10px rgba(0,0,0,0.95); }
+}
+.gacha-shoot-text { animation: gacha-shoot-text 1.4s ease-in-out infinite; }
+
+/* PACING_PUZZLE.md §5.17 M14 演出仕様(社長承認v0.25.1499)。DOMオーバーレイ・イベント駆動・
+   Pixi無関与(強glow/毎フレームText不使用=CLAUDE.mdの負荷方針どおり)。 */
+/* 中格=帯: スライドイン0.3秒→ホールド2秒→フェード0.5秒(計2.8秒)。 */
+@keyframes wall-band-cycle {
+  0%     { opacity: 0; transform: translate(-50%, -10px); }
+  10.7%  { opacity: 1; transform: translate(-50%, 0); }
+  82.1%  { opacity: 1; transform: translate(-50%, 0); }
+  100%   { opacity: 0; transform: translate(-50%, 0); }
+}
+.wall-band { animation: wall-band-cycle 2.8s ease-out forwards; }
+
+/* 大格=銘打ち: 横線0.4秒→本文フェード+字間締まり0.6秒(開始0.35秒)→サブ英字(開始0.8秒)→
+   金額(開始1.5秒)→ホールド→全体フェード0.8秒(計約4秒)。要素ごとにanimation-delayで開始をずらす。 */
+@keyframes wall-insc-line {
+  0% { transform: scaleX(0); opacity: 0; }
+  100% { transform: scaleX(1); opacity: 1; }
+}
+@keyframes wall-insc-title {
+  0% { opacity: 0; letter-spacing: 0.34em; }
+  100% { opacity: 1; letter-spacing: 0.14em; }
+}
+@keyframes wall-insc-sub {
+  0% { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes wall-insc-gold {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes wall-insc-fade-out {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* 惜しさ(死亡リザルトの「あと約◯m」): 数字だけ1回ふわっと明滅(約1.6秒・1回きり・派手にしない)。 */
+@keyframes wall-tantalize-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* 守護霊部屋: ボスを切り替えた時だけ走る、軽量な記録解禁演出。 */
+@keyframes ghost-dossier-enter {
+  0% { opacity: 0; transform: translate3d(8px, 0, 0); filter: brightness(1.35); }
+  45% { opacity: 1; filter: brightness(1.08); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0); filter: brightness(1); }
+}
+.ghost-dossier-enter { animation: ghost-dossier-enter 260ms ease-out both; }
+
+/* 選択中のボス枠は常時アニメーションさせず、静的な多層光で視線を固定する。 */
+.ghost-boss-rail-selected::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  pointer-events: none;
+  border: 1px solid rgba(233, 213, 255, 0.16);
+}
+
+.ghost-boss-rail {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(216, 180, 254, 0.25) transparent;
+}
+
+/* 作戦室のスクロール容器共通(社長指示2026-08-29「スクロール感がブラウザゲームっぽい。基本固定する
+   ところは固定して」): スクロールバーを出さない=アプリの操作感。スクロール自体は生きている。 */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* 続きインジケータ(社長指示2026-08-29「続きがあるやつは、あるのがわかる様に小さい下矢印」):
+   スクロール容器の底に貼り付く小さな下矢印。sticky+高さ0=内容のレイアウトに干渉しない。
+   下に続きがある間だけ表示(opacityはNoBounceScrollerが制御)・ゆっくり上下に揺れる(慣性)。 */
+.ds-scroll-more {
+  position: sticky;
+  bottom: 6px;
+  height: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  z-index: 30;
+}
+.ds-scroll-more > svg {
+  transform: translateY(-100%);
+  animation: dsMoreBob 1.5s ease-in-out infinite alternate;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.85));
+}
+@keyframes dsMoreBob {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(calc(-100% + 3px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-scroll-more > svg { animation: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghost-dossier-enter { animation: none; }
+}
+
+/* ★スクラップブースト(消耗品バフ)のアイコン枠(社長指示v0.25.3510
+   「スクラップブーストは絵の外周を赤いドット枠に光らせる」)。
+   絵はスクラップの資源アイコンをそのまま使い、**外周だけ**を赤いドットの枠で囲って光らせる
+   =消耗品バフだと一目で分かるが、資源アイコンそのものは差し替えない。
+
+   ドット枠はCSSの `dotted` ボーダーではなく **repeating-linear-gradient を4辺に敷く**方式。
+   理由: `dotted` はブラウザによって丸ドット・太さ・間隔がバラバラで、ドット絵の見た目に揃わない。
+   グラデーションなら「2px塗り→2px透明」の**四角いドット**を厳密に置ける(ピクセルの目に合う)。
+
+   光りは box-shadow の脈動。**動きは大きく**(CLAUDE.md)ので、明るさと滲みの両方を動かす。
+   `prefers-reduced-motion` では脈動を止め、枠と控えめな光だけ残す(消える=情報が減るのは避ける)。 */
+.scrap-boost-frame {
+  position: relative;
+  padding: 2px;
+  --sbf-dot: #ff3b3b;
+  background-image:
+    repeating-linear-gradient(90deg,  var(--sbf-dot) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(90deg,  var(--sbf-dot) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(0deg,   var(--sbf-dot) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(0deg,   var(--sbf-dot) 0 2px, transparent 2px 4px);
+  background-size: 100% 2px, 100% 2px, 2px 100%, 2px 100%;
+  background-position: left top, left bottom, left top, right top;
+  background-repeat: no-repeat;
+  animation: scrap-boost-glow 900ms ease-in-out infinite;
+}
+@keyframes scrap-boost-glow {
+  0%, 100% { filter: drop-shadow(0 0 1px rgba(255, 59, 59, 0.55)); }
+  50%      { filter: drop-shadow(0 0 5px rgba(255, 90, 90, 1)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrap-boost-frame {
+    animation: none;
+    filter: drop-shadow(0 0 2px rgba(255, 59, 59, 0.8));
+  }
+}
+
+/* ============================================================
+   作戦室DS2化(UI_OVERHAUL.md §3 バッチ①)。ビジュアルの正=アーティファクトv3。
+   モックの .ds系CSSを ds- プレフィクスで移植(監査B-3: .inner/.tag/.mk 等の汎用名は使わない)。
+   ★禁止プロパティ(監査A-3): DSツリーのどの祖先にも transform / filter / backdrop-filter /
+   contain / will-change を付けない(fixedモーダル2種の含有ブロックを作り全画面を失う)。
+   ============================================================ */
+
+/* Rajdhani(DS計器の英字・latinサブセット3ウェイト・作戦室のDSサブツリー限定。
+   グローバルの --game-font(Orbitron)は不変=監査A-11)。 */
+@font-face {
+  font-family: "Rajdhani";
+  src: url("/zombie/fonts/rajdhani-300.woff2") format("woff2");
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Rajdhani";
+  src: url("/zombie/fonts/rajdhani-500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Rajdhani";
+  src: url("/zombie/fonts/rajdhani-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
+/* DSトークン(§3-0)+地。Shellのdsホーム面(ラッパー)に付ける。 */
+.ds-home {
+  /* クリエイティブ監査第2回・第2手A-1(research/CREATIVE_AUDIT_2026-09-11.md): 地の色を世界の紫黒へ
+     (commandTheme.css --menu-* と揃える)。ink/dim/deco/amberは据え置き。 */
+  --ds-bg: #07060d;
+  --ds-panel: #0d0b14;
+  --ds-line: #26212f;
+  --ds-amber: #ffb340;
+  --ds-amber-hi: #ffd28a;
+  --ds-ink: #e6e9e9;
+  --ds-dim: #79817f;
+  --ds-deco: #4b5254;
+  background: radial-gradient(140% 70% at 50% -10%, #101315 0%, var(--ds-bg) 55%);
+  color: var(--ds-ink);
+  font-family: "Rajdhani", system-ui, sans-serif;
+}
+/* 走査線(CSSのみ・負荷ゼロ)。モックの .ds::after と同値。内容(z-index:1側)の下に敷かれる。 */
+.ds-scanline {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255, 255, 255, 0.012) 3px 4px);
+}
+
+/* 上段: OPERATION ROOM + G(実値)。 */
+.ds-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--ds-dim);
+  border-bottom: 1px solid var(--ds-line);
+  padding-bottom: 6px;
+}
+.ds-top .ds-top-big {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  color: var(--ds-ink);
+}
+.ds-top .ds-top-v {
+  color: var(--ds-amber);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+/* 飾り計器行(読ませる情報ではなく「装置感」の演出。LAT/LON/SIGNALは固定文字列)。 */
+.ds-deco {
+  font-size: 8.5px;
+  letter-spacing: 0.12em;
+  color: var(--ds-deco);
+  display: flex;
+  gap: 10px;
+  padding: 4px 0 0;
+}
+
+/* 等高線マップの箱(DsContourMap.tsx)。 */
+.ds-map {
+  position: relative;
+  height: 150px;
+  margin: 8px 0 0;
+  border: 1px solid var(--ds-line);
+  overflow: hidden;
+  background: var(--ds-bg);
+}
+.ds-map canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.ds-map-tag {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  font-size: 9px;
+  letter-spacing: 0.3em;
+  color: var(--ds-dim);
+}
+.ds-map-label {
+  position: absolute;
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  color: var(--ds-amber-hi);
+}
+.ds-map-label::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  width: 10px;
+  height: 1px;
+  background: var(--ds-amber);
+}
+.ds-map-label i {
+  font-style: normal;
+  color: var(--ds-dim);
+  display: block;
+  font-size: 7.5px;
+}
+
+/* 出撃=アンバーの主役行(選択列だけが帯で発光・文字は黒)。右端の斜め切り(v3で唯一の例外として承認)は
+   社長指示2026-09-12「斜めカットはダサいので戻して」→「はい(出撃行も)」で撤去=矩形。 */
+.ds-sortie {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  margin: 10px 0 4px;
+  padding: 10px 14px;
+  cursor: pointer;
+  /* クリエイティブ監査第2回・第2手A-2(research/CREATIVE_AUDIT_2026-09-11.md):
+     松明の光=上明・下焦げの縦グラデ+内側ハイライト/シャドウ。.command-button-primary と同じ見え方。 */
+  background: linear-gradient(180deg, #ffc65a 0%, #f2a12b 55%, #c97a1c 100%);
+  box-shadow: inset 0 1px 0 rgba(255,238,200,.45), inset 0 -2px 0 rgba(80,45,8,.35);
+  color: #12100a;
+}
+.ds-sortie .ds-sortie-t1 {
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: 0.42em;
+}
+.ds-sortie::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -5px;
+  width: 38%;
+  height: 1px;
+  background: linear-gradient(90deg, var(--ds-amber), transparent);
+}
+
+/* グループ見出し(PREP/RECORDS)+極細リストの行。 */
+.ds-glabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  letter-spacing: 0.34em;
+  color: var(--ds-dim);
+  margin: 11px 0 4px;
+}
+.ds-glabel::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--ds-line);
+}
+/* 行: 実タップ領域は min-height 44px(監査B-1: HIGの下限。見た目の密度はpaddingで寄せる)。 */
+.ds-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  padding: 7px 6px 7px 14px;
+  border-bottom: 1px solid #17191b;
+  cursor: pointer;
+}
+.ds-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--ds-dim);
+  rotate: 45deg;
+}
+.ds-row:hover,
+.ds-row:focus-visible,
+.ds-row:active {
+  background: rgba(255, 179, 64, 0.06);
+}
+.ds-row:hover::before,
+.ds-row:focus-visible::before,
+.ds-row:active::before {
+  background: var(--ds-amber);
+  border-color: var(--ds-amber);
+}
+.ds-row .ds-row-l {
+  font-weight: 500;
+  font-size: 13.5px;
+  letter-spacing: 0.06em;
+  color: var(--ds-ink);
+}
+.ds-row .ds-row-en {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: #565e60;
+  margin-top: -3px;
+  display: block;
+}
+.ds-row .ds-row-d {
+  margin-left: auto;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--ds-dim);
+  font-weight: 300;
+}
+.ds-row .ds-row-new {
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  color: #12100a;
+  background: var(--ds-amber);
+  padding: 1px 5px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+/* フッタ(歯車=オプション+SYSTEMバージョン)。 */
+.ds-foot {
+  margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--ds-line);
+  padding-top: 7px;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--ds-deco);
+}
+.ds-foot .ds-foot-gear {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ds-dim);
+  cursor: pointer;
+}
+.ds-foot-gear::before {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border: 1px solid var(--ds-line);
+  pointer-events: none;
+}
+.ds-foot { flex-shrink: 0; }
+.ds-row:focus-visible,
+.ds-foot-gear:focus-visible,
+.ds-loadout button:focus-visible {
+  outline: 2px solid var(--ds-amber);
+  outline-offset: -2px;
+}
+.ds-sortie:focus-visible {
+  outline: 2px solid #12100a;
+  outline-offset: -4px;
+}
+.ds-row-l { min-width: 0; overflow-wrap: anywhere; }
+.ds-row .ds-row-d { overflow-wrap: anywhere; }
+
+/* 任意の装備プレビュー。遷移と保存処理は既存画面と共用する。 */
+.ds-loadout-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+  padding: 8px 0 16px;
+  border-bottom: 1px solid var(--ds-line);
+}
+.ds-loadout-back {
+  min-width: 64px;
+  min-height: 44px;
+  color: var(--ds-amber);
+  font-size: 13.5px;
+}
+.ds-loadout-header h1 { font-size: 18px; font-weight: 500; }
+.ds-loadout-header h1 span { margin-left: 8px; font-size: 11px; letter-spacing: .18em; color: var(--ds-amber); }
+.ds-loadout-header p { margin-top: 4px; color: #a6adaa; font-size: 12px; }
+.ds-loadout-body .grid { grid-template-columns: minmax(0, 1fr); }
+.ds-loadout-body .ff7r-fade-right {
+  min-height: 44px;
+  min-width: 0;
+  background: var(--ds-panel);
+  border: 1px solid var(--ds-line);
+  border-image: none;
+  color: var(--ds-ink);
+  clip-path: none;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+.ds-loadout-body button[aria-pressed]::before,
+.ds-loadout-body button[aria-pressed]::after { content: none; }
+.ds-loadout-body button[aria-pressed="true"] {
+  border-color: var(--ds-amber);
+  background: #211b10;
+  color: var(--ds-amber-hi);
+}
+.ds-loadout-body .truncate {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+}
+.ds-loadout-body button[aria-pressed] .leading-snug { color: #a6adaa; font-size: 12px; }
+.ds-loadout-state { font-size: 11px; white-space: nowrap; }
+.ds-loadout-body .uppercase { color: var(--ds-amber); font-size: 12px; }
+@media (min-width: 420px) {
+  .ds-loadout-body .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ds-loadout-body button[aria-pressed] { flex-wrap: wrap; }
 }

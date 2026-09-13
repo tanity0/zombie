@@ -1,10 +1,28 @@
-// 死神(深奥リスク)システム v1。仕様の全文は repo ルートの reaper_spec.md。
+// 死神(深奥リスク)システム。仕様の全文は repo ルートの reaper_spec.md + PACING_PUZZLE.md §14-4。
 // マップは無限。スタート/商人(原点付近)から遠いほど死神が画面を横切り、深奥に長居すると完全出現して追跡する。
 // 横切り=無害な演出(pixiScene 単独スプライト)、追跡=本物の reaper 敵(被弾・接触・討伐可)。
+//
+// PACING_PUZZLE.md §14-4(社長指示2026-08-28「新たな死神」): 出現システム(深奥リスク+15分時間抽選+
+// 撃破escalation)はこのファイルの下半分(REAPER_CONFIG・変更なし)のまま維持。本体・技「使者」の
+// 絵・挙動(REAPER2_CONFIG)だけを新死神へ置き換える。
 
 const url = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 // テスト用: ?reapertest=1 で常に「深奥(extreme)」扱い。原点に居てもフェーズが進む(プレビュー確認用)。
 export const REAPER_TEST = url?.get('reapertest') === '1';
+// PACING_PUZZLE.md §14-4-5: ?rp2=1 で出撃直後にリスク最大=完全出現(テスト専用・既定OFF)。
+// ※M0(訓練)は死なない仕様のためテスト場所にしない(社長注記)。
+export const REAPER2_TEST = url?.get('rp2') === '1';
+// §14-4-8/8b(神付き): ?rp2kami=0 で無効化(現行の即時ダメージへ戻す・切り分け専用)。既定=有効。
+// 判定側(combatTick.ts)が読む=生URLSearchParams(tsNum/tsBoolはpixiScene専用の描画値・中12の作法)。
+export const KAMITSUKI_ENABLED = url?.get('rp2kami') !== '0';
+
+// §14-4-5のツマミ読み取りヘルパ。判定側の値は生URLSearchParamsで読む
+// (tsNum/tsBoolはpixiScene専用=描画値。中12「判定側はevNum/生URLSearchParams」の作法)。
+const numParam = (key: string, def: number): number => {
+  const v = url?.get(key);
+  const n = v !== null && v !== undefined && v !== '' ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : def;
+};
 
 export const REAPER_CONFIG = {
   // 原点(スタート/商人付近)からの距離(px)でフェーズ判定。深層域(7500px〜)に入ってしばらく進むと警告開始。
@@ -30,27 +48,42 @@ export const REAPER_CONFIG = {
   // spawnDistFromPlayer は下限(小画面でも最低この距離は離す)。
   spawnDistFromPlayer: 780,   // 進行方向の画面外から出す距離の下限
   spawnMarginPx: 140,         // 画面の最遠角からさらに外へ出す余白(必ず画面外を保証)
-  contactDamage: 77,          // 接触ダメージ(社長指示=77)
-  chaseSpeedMult: 0.9,        // 追跡速度 = プレイヤー現在移動速度 × 0.9(遅いが下記ワープで回り込む)
-  warpIntervalMs: 4000,       // 回り込みワープの間隔
-  warpDistPx: 520,            // ワープ後にプレイヤーから取る距離(上下左右いずれかへ・多少ランダム)
   homeRadiusPx: 900,          // プレイヤーがスタート(原点)から この距離内へ戻ると死神は去る
-  chaserHealth: 6000,         // 高いが有限(極まれば討伐可能)
-  canBeKilled: true,
   // --- 時間による出現(社長指示) ---
-  // 距離(深奥)とは別系統。10分経過後、20秒ごとに抽選。確率=10%+(10分以降の経過分×10%)で最大100%。
+  // 距離(深奥)とは別系統。15分経過後、20秒ごとに抽選。確率=10%+(15分以降の経過分×10%)で最大100%。
   // 抽選ごとに「気配演出」(横切り)を出し、当選で完全出現(深奥と同じ追跡 reaper)。
-  timeStartMs: 10 * 60 * 1000,  // 10分から開始(社長指示で 7→10分)
+  timeStartMs: 15 * 60 * 1000,  // 15分から開始(社長指示: 7→10→15分)
   timeRollIntervalMs: 20000,    // 20秒に1回抽選
-  timeBaseChance: 0.10,         // 10分時点 10%
+  timeBaseChance: 0.10,         // 15分時点 10%
   timeChancePerMin: 0.10,       // 以降1分ごとに +10%
 } as const;
 
-// 追跡速度 = プレイヤー現在移動速度 × 1.2。currentPlayerMoveSpeed は成長/強化を反映した通常速度
-// (ダッシュ・ノックバック・強制移動は含めない=呼び出し側で player.speed を渡す)。
-// 追跡速度 = プレイヤー現在移動速度 × 0.9(成長/強化反映・ダッシュ等は除外=呼び出し側で player.speed)。慣性は updateEnemies 側で別途かかる。
-export const getReaperChaseSpeed = (currentPlayerMoveSpeed: number): number =>
-  currentPlayerMoveSpeed * REAPER_CONFIG.chaseSpeedMult;
+/**
+ * PACING_PUZZLE.md §14-4(新たな死神v1)。本体の移動・被弾・技「使者」のパラメータ。
+ * **数値は全て叩き台**(§14-4-6)=実機で社長が`?rp2*=`で調整する。妥当性への指摘は不要。
+ */
+export const REAPER2_CONFIG = {
+  // --- 本体(§14-4-2) ---
+  orbitDistPx: numParam('rp2dist', 70),        // 縁距離(px)。これを切ったら旋回(オービット)開始。
+  orbitSpeedMult: numParam('rp2orbit', 0.667), // 旋回中の速度倍率(本体・直進速度に対して)。
+  bodySpeedMult: numParam('rp2spd', 1.0),      // 本体の直進速度倍率(素の実効速度に対して)。
+  bodyHealth: numParam('rp2bhp', 66666),       // 本体のHP(社長裁定2026-08-28=倒せる・現行の6000から変更)。
+  bodyPosture: numParam('rp2post', 120),       // 本体の体勢値(既存ボス体勢システムの型・量は叩き台)。
+  bodyContactDamage: numParam('rp2cdmg', 77),  // 本体の接触ダメージ(現行値=即死ではない)。
+  // --- 技「使者」(§14-4-3) ---
+  servantSpeedMult: numParam('rp2mspd', 1.2),  // 使者の速度倍率(プレイヤー「現在の」実効速度に対して・毎フレーム参照)。
+  servantHealth: numParam('rp2hp', 2000),      // 使者の耐久(1体)。
+  // ★補修バッチA-5: 旧`servantKnockback`(?rp2kb=)はどこからも読まれていない死にツマミだった。
+  // 社長裁定「使者のKBは規定通り」(既存の各攻撃の既存KB量をそのまま・専用定数は発明しない)に
+  // 従い、配線はせず削除した(§14-4-5のツマミ表・DEVLOGからも落とす)。
+  servantAddIntervalMs: numParam('rp2int', 10) * 1000, // 使者が増える間隔。
+  servantMax: Math.max(0, Math.round(numParam('rp2max', 5))), // 使者の最大数(全体で共有の枠・叩き台)。
+  // 使者の接触ダメージ=999固定(社長裁定2026-08-28「既存の仕様で、ダメ999で」=専用即死ゲートではなく
+  // 既存damagePlayer経路への999。ツマミ表(§14-4-5)に無い=既存reaperの999と同格の「表に出る」固定値)。
+  servantContactDamage: 999,
+  // --- 神付き(§14-4-8/8b) ---
+  kamitsukiMs: numParam('rp2kamims', 600), // 覆いかぶさりの尺(ms)。叩き台=社長の言葉「ゆっくり覆いかぶさって」。
+} as const;
 
 // 深度(px)→ 横切り間隔(ms)。
 export const reaperPassIntervalMs = (depthPx: number): number => {

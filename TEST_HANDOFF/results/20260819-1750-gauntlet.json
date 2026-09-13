@@ -1,0 +1,566 @@
+{
+  "run": {
+    "version": "0.25.3613",
+    "commit": "c67ac23b",
+    "url": "http://localhost:5173/zombie/?gauntlet=1&bot=standard&botskill=master",
+    "headed": true,
+    "browser": "Chrome (channel:chrome, GPU有効)",
+    "viewport": "1280x800",
+    "os": "Windows 11 Pro 10.0.26200",
+    "server": "vite dev (5173)",
+    "profile": "新規(Lv1初期装備・守護霊なし)",
+    "startedJst": "2026-08-19 17:50",
+    "finishedJst": "2026-08-19 18:51",
+    "realMinutes": 61,
+    "harnessInterventions": {
+      "updateModalOk": 1,
+      "openingSkip": 1,
+      "shopMenuReset": 0
+    },
+    "consoleErrors": []
+  },
+  "copiedText": "# BOSS GAUNTLET\r\nversion: 0.25.3613\r\nstartedAt: 2026-08-19T08:50:27.908Z\r\nconditions: bot=standard / botskill=master / class=warrior / lv=1 / companion=なし / renderer=pixi / timeout=180s\r\nslots: 21/21  skipped: giantbat@stage-2(城ボス不在=出ないためスキップ)\r\nresult: win 0 / death 1 / timeout 20  findings 0\r\n\r\nslot\tresult\tsec\tfind\tcancel\tlock\terr\tanom\tmissing\r\nbounty-ranged@practice\ttimeout\t148\t0\t0\t0\t0\t0\t3\r\nbounty-melee@practice\ttimeout\t171\t0\t0\t0\t0\t0\t6\r\nbounty-balance@practice\ttimeout\t169\t0\t0\t0\t0\t0\t2\r\nbounty-maiko@practice\ttimeout\t170\t0\t0\t0\t0\t0\t6\r\ngiantbat@stage-1\ttimeout\t170\t0\t0\t0\t0\t0\t20\r\ngiantbat@stage-3\ttimeout\t166\t0\t0\t0\t0\t0\t20\r\ngiantbat@stage-4\ttimeout\t169\t0\t0\t0\t0\t0\t20\r\ngiantbat@stage-5\ttimeout\t173\t0\t0\t0\t0\t0\t20\r\ngiantbat@stage-7\ttimeout\t175\t0\t0\t0\t0\t0\t20\r\ngiantbat@stage-ex1\ttimeout\t174\t0\t0\t0\t0\t0\t20\r\nmiguel\ttimeout\t176\t0\t0\t0\t0\t0\t4\r\njibril\ttimeout\t175\t0\t0\t0\t0\t0\t3\r\nrafi\ttimeout\t175\t0\t0\t0\t0\t0\t3\r\nuri\ttimeout\t174\t0\t0\t0\t0\t0\t4\r\nsuriel\ttimeout\t173\t0\t0\t0\t0\t0\t3\r\nacrasiel\ttimeout\t175\t0\t0\t0\t0\t0\t5\r\nmimir\ttimeout\t175\t0\t0\t0\t0\t0\t5\r\njormungand\ttimeout\t175\t0\t0\t0\t0\t0\t4\r\nskadi\ttimeout\t175\t0\t0\t0\t0\t0\t6\r\nthor\ttimeout\t173\t0\t0\t0\t0\t0\t6\r\nidol\tdeath\t43\t0\t0\t0\t0\t0\t2\r\n\r\n## records (1行=1戦のJSON)\r\n{\"slotKey\":\"bounty-ranged@practice\",\"label\":\"バス停(変異)\",\"bossType\":\"bounty-ranged\",\"stageId\":\"stage-1\",\"outcome\":\"timeout\",\"durationMs\":148426,\"realMs\":180019,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"br-laser\",\"br-push\",\"br-triple\"],\"movesSeen\":[],\"hpLost\":10}\r\n{\"slotKey\":\"bounty-melee@practice\",\"label\":\"馬乗り(変異)\",\"bossType\":\"bounty-melee\",\"stageId\":\"stage-1\",\"outcome\":\"timeout\",\"durationMs\":170627,\"realMs\":180002,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"bm-charge\",\"bm-combo1\",\"bm-combo2\",\"bm-combo3\",\"bm-snipe\",\"bm-whip360\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"bounty-balance@practice\",\"label\":\"鋏(変異)\",\"bossType\":\"bounty-balance\",\"stageId\":\"stage-1\",\"outcome\":\"timeout\",\"durationMs\":169160,\"realMs\":180016,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"bb-leap\",\"bb-sweep\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"bounty-maiko@practice\",\"label\":\"舞妓(変異)\",\"bossType\":\"bounty-maiko\",\"stageId\":\"stage-1\",\"outcome\":\"timeout\",\"durationMs\":170477,\"realMs\":180032,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"mk-boom\",\"mk-naginata\",\"mk-naginata1\",\"mk-naginata2\",\"mk-spin\",\"mk-suiu\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"giantbat@stage-1\",\"label\":\"搬送体(変異)\",\"bossType\":\"giantbat\",\"stageId\":\"stage-1\",\"outcome\":\"timeout\",\"durationMs\":170443,\"realMs\":180035,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"g-bite\",\"g-bolt\",\"g-boon\",\"g-dash\",\"g-dive\",\"g-glide\",\"g-jump\",\"g-nihil\",\"g-nova\",\"g-parts\",\"g-quad\",\"g-reach\",\"g-slam\",\"g-stomp\",\"g-sweep\",\"g-sweepbeam\",\"g-tailslam\",\"g-talon\",\"g-trijump\",\"g-wing\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"giantbat@stage-3\",\"label\":\"樹木管理員(変異)\",\"bossType\":\"giantbat\",\"stageId\":\"stage-3\",\"outcome\":\"timeout\",\"durationMs\":165998,\"realMs\":180035,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"g-bite\",\"g-bolt\",\"g-boon\",\"g-dash\",\"g-dive\",\"g-glide\",\"g-jump\",\"g-nihil\",\"g-nova\",\"g-parts\",\"g-quad\",\"g-reach\",\"g-slam\",\"g-stomp\",\"g-sweep\",\"g-sweepbeam\",\"g-tailslam\",\"g-talon\",\"g-trijump\",\"g-wing\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"giantbat@stage-4\",\"label\":\"衛生兵(変異)\",\"bossType\":\"giantbat\",\"stageId\":\"stage-4\",\"outcome\":\"timeout\",\"durationMs\":169194,\"realMs\":180001,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"g-bite\",\"g-bolt\",\"g-boon\",\"g-dash\",\"g-dive\",\"g-glide\",\"g-jump\",\"g-nihil\",\"g-nova\",\"g-parts\",\"g-quad\",\"g-reach\",\"g-slam\",\"g-stomp\",\"g-sweep\",\"g-sweepbeam\",\"g-tailslam\",\"g-talon\",\"g-trijump\",\"g-wing\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"giantbat@stage-5\",\"label\":\"軍隊(変異)\",\"bossType\":\"giantbat\",\"stageId\":\"stage-5\",\"outcome\":\"timeout\",\"durationMs\":172570,\"realMs\":180033,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"g-bite\",\"g-bolt\",\"g-boon\",\"g-dash\",\"g-dive\",\"g-glide\",\"g-jump\",\"g-nihil\",\"g-nova\",\"g-parts\",\"g-quad\",\"g-reach\",\"g-slam\",\"g-stomp\",\"g-sweep\",\"g-sweepbeam\",\"g-tailslam\",\"g-talon\",\"g-trijump\",\"g-wing\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"giantbat@stage-7\",\"label\":\"グレン\",\"bossType\":\"giantbat\",\"stageId\":\"stage-7\",\"outcome\":\"timeout\",\"durationMs\":175468,\"realMs\":180028,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"g-bite\",\"g-bolt\",\"g-boon\",\"g-dash\",\"g-dive\",\"g-glide\",\"g-jump\",\"g-nihil\",\"g-nova\",\"g-parts\",\"g-quad\",\"g-reach\",\"g-slam\",\"g-stomp\",\"g-sweep\",\"g-sweepbeam\",\"g-tailslam\",\"g-talon\",\"g-trijump\",\"g-wing\"],\"movesSeen\":[],\"hpLost\":34}\r\n{\"slotKey\":\"giantbat@stage-ex1\",\"label\":\"?\",\"bossType\":\"giantbat\",\"stageId\":\"stage-ex1\",\"outcome\":\"timeout\",\"durationMs\":173965,\"realMs\":180002,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"g-bite\",\"g-bolt\",\"g-boon\",\"g-dash\",\"g-dive\",\"g-glide\",\"g-jump\",\"g-nihil\",\"g-nova\",\"g-parts\",\"g-quad\",\"g-reach\",\"g-slam\",\"g-stomp\",\"g-sweep\",\"g-sweepbeam\",\"g-tailslam\",\"g-talon\",\"g-trijump\",\"g-wing\"],\"movesSeen\":[],\"hpLost\":27}\r\n{\"slotKey\":\"miguel\",\"label\":\"miguel\",\"bossType\":\"miguel\",\"stageId\":\"stage-1\",\"outcome\":\"timeout\",\"durationMs\":175532,\"realMs\":180032,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"miguel-harai\",\"miguel-mdash\",\"miguel-tate\",\"miguel-volley\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"jibril\",\"label\":\"jibril\",\"bossType\":\"jibril\",\"stageId\":\"stage-3\",\"outcome\":\"timeout\",\"durationMs\":174878,\"realMs\":180020,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"jibril-consecrate\",\"jibril-lantern\",\"jibril-volley\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"rafi\",\"label\":\"rafi\",\"bossType\":\"rafi\",\"stageId\":\"stage-4\",\"outcome\":\"timeout\",\"durationMs\":174699,\"realMs\":180008,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"rafi-bone\",\"rafi-jump\",\"rafi-sweep\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"uri\",\"label\":\"uri\",\"bossType\":\"uri\",\"stageId\":\"stage-5\",\"outcome\":\"timeout\",\"durationMs\":173559,\"realMs\":180015,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"uri-bolt\",\"uri-downslash\",\"uri-sweep\",\"uri-thrust\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"suriel\",\"label\":\"suriel\",\"bossType\":\"suriel\",\"stageId\":\"stage-6\",\"outcome\":\"timeout\",\"durationMs\":173264,\"realMs\":180019,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"suriel-gaze\",\"suriel-ring\",\"suriel-sweep\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"acrasiel\",\"label\":\"acrasiel\",\"bossType\":\"acrasiel\",\"stageId\":\"stage-ex1\",\"outcome\":\"timeout\",\"durationMs\":174834,\"realMs\":180002,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"acrasiel-burst\",\"acrasiel-gaze\",\"acrasiel-spear\",\"acrasiel-spike\",\"acrasiel-warp\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"mimir\",\"label\":\"mimir\",\"bossType\":\"mimir\",\"stageId\":\"stage-1\",\"outcome\":\"timeout\",\"durationMs\":174700,\"realMs\":180026,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"mimir-bite\",\"mimir-burst\",\"mimir-dash\",\"mimir-laser\",\"mimir-radial\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"jormungand\",\"label\":\"jormungand\",\"bossType\":\"jormungand\",\"stageId\":\"stage-3\",\"outcome\":\"timeout\",\"durationMs\":175169,\"realMs\":180003,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"jormungand-burst\",\"jormungand-coil\",\"jormungand-dash\",\"jormungand-radial\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"skadi\",\"label\":\"skadi\",\"bossType\":\"skadi\",\"stageId\":\"stage-4\",\"outcome\":\"timeout\",\"durationMs\":174872,\"realMs\":180017,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"skadi-blade\",\"skadi-burst\",\"skadi-cage\",\"skadi-dash\",\"skadi-ice\",\"skadi-radial\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"thor\",\"label\":\"thor\",\"bossType\":\"thor\",\"stageId\":\"stage-5\",\"outcome\":\"timeout\",\"durationMs\":173164,\"realMs\":180044,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"thor-burst\",\"thor-harai\",\"thor-issen\",\"thor-jump\",\"thor-radial\",\"thor-tsuki\"],\"movesSeen\":[],\"hpLost\":0}\r\n{\"slotKey\":\"idol\",\"label\":\"idol\",\"bossType\":\"idol\",\"stageId\":\"stage-2\",\"outcome\":\"death\",\"durationMs\":42602,\"realMs\":53539,\"findings\":[],\"moveTally\":{\"idol-fan\":{\"exposures\":4,\"counters\":1,\"hits\":0},\"idol-orb\":{\"exposures\":4,\"counters\":0,\"hits\":4},\"idol-punch\":{\"exposures\":4,\"counters\":0,\"hits\":0},\"idol-roll\":{\"exposures\":1,\"counters\":0,\"hits\":0},\"idol-snipe\":{\"exposures\":2,\"counters\":0,\"hits\":0}},\"movesMissing\":[\"idol-aim\",\"idol-nade\"],\"movesSeen\":[\"idol-fan\",\"idol-orb\",\"idol-punch\",\"idol-roll\",\"idol-snipe\"],\"hpLost\":110}",
+  "gauntletStorage": {
+    "v": 1,
+    "header": {
+      "version": "0.25.3613",
+      "startedAt": "2026-08-19T08:50:27.908Z",
+      "conditions": "bot=standard / botskill=master / class=warrior / lv=1 / companion=なし / renderer=pixi / timeout=180s",
+      "skipped": [
+        "giantbat@stage-2(城ボス不在=出ないためスキップ)"
+      ],
+      "slotCount": 21
+    },
+    "records": [
+      {
+        "slotKey": "bounty-ranged@practice",
+        "label": "バス停(変異)",
+        "bossType": "bounty-ranged",
+        "stageId": "stage-1",
+        "outcome": "timeout",
+        "durationMs": 148426,
+        "realMs": 180019,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "br-laser",
+          "br-push",
+          "br-triple"
+        ],
+        "movesSeen": [],
+        "hpLost": 10
+      },
+      {
+        "slotKey": "bounty-melee@practice",
+        "label": "馬乗り(変異)",
+        "bossType": "bounty-melee",
+        "stageId": "stage-1",
+        "outcome": "timeout",
+        "durationMs": 170627,
+        "realMs": 180002,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "bm-charge",
+          "bm-combo1",
+          "bm-combo2",
+          "bm-combo3",
+          "bm-snipe",
+          "bm-whip360"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "bounty-balance@practice",
+        "label": "鋏(変異)",
+        "bossType": "bounty-balance",
+        "stageId": "stage-1",
+        "outcome": "timeout",
+        "durationMs": 169160,
+        "realMs": 180016,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "bb-leap",
+          "bb-sweep"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "bounty-maiko@practice",
+        "label": "舞妓(変異)",
+        "bossType": "bounty-maiko",
+        "stageId": "stage-1",
+        "outcome": "timeout",
+        "durationMs": 170477,
+        "realMs": 180032,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "mk-boom",
+          "mk-naginata",
+          "mk-naginata1",
+          "mk-naginata2",
+          "mk-spin",
+          "mk-suiu"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "giantbat@stage-1",
+        "label": "搬送体(変異)",
+        "bossType": "giantbat",
+        "stageId": "stage-1",
+        "outcome": "timeout",
+        "durationMs": 170443,
+        "realMs": 180035,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "g-bite",
+          "g-bolt",
+          "g-boon",
+          "g-dash",
+          "g-dive",
+          "g-glide",
+          "g-jump",
+          "g-nihil",
+          "g-nova",
+          "g-parts",
+          "g-quad",
+          "g-reach",
+          "g-slam",
+          "g-stomp",
+          "g-sweep",
+          "g-sweepbeam",
+          "g-tailslam",
+          "g-talon",
+          "g-trijump",
+          "g-wing"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "giantbat@stage-3",
+        "label": "樹木管理員(変異)",
+        "bossType": "giantbat",
+        "stageId": "stage-3",
+        "outcome": "timeout",
+        "durationMs": 165998,
+        "realMs": 180035,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "g-bite",
+          "g-bolt",
+          "g-boon",
+          "g-dash",
+          "g-dive",
+          "g-glide",
+          "g-jump",
+          "g-nihil",
+          "g-nova",
+          "g-parts",
+          "g-quad",
+          "g-reach",
+          "g-slam",
+          "g-stomp",
+          "g-sweep",
+          "g-sweepbeam",
+          "g-tailslam",
+          "g-talon",
+          "g-trijump",
+          "g-wing"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "giantbat@stage-4",
+        "label": "衛生兵(変異)",
+        "bossType": "giantbat",
+        "stageId": "stage-4",
+        "outcome": "timeout",
+        "durationMs": 169194,
+        "realMs": 180001,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "g-bite",
+          "g-bolt",
+          "g-boon",
+          "g-dash",
+          "g-dive",
+          "g-glide",
+          "g-jump",
+          "g-nihil",
+          "g-nova",
+          "g-parts",
+          "g-quad",
+          "g-reach",
+          "g-slam",
+          "g-stomp",
+          "g-sweep",
+          "g-sweepbeam",
+          "g-tailslam",
+          "g-talon",
+          "g-trijump",
+          "g-wing"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "giantbat@stage-5",
+        "label": "軍隊(変異)",
+        "bossType": "giantbat",
+        "stageId": "stage-5",
+        "outcome": "timeout",
+        "durationMs": 172570,
+        "realMs": 180033,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "g-bite",
+          "g-bolt",
+          "g-boon",
+          "g-dash",
+          "g-dive",
+          "g-glide",
+          "g-jump",
+          "g-nihil",
+          "g-nova",
+          "g-parts",
+          "g-quad",
+          "g-reach",
+          "g-slam",
+          "g-stomp",
+          "g-sweep",
+          "g-sweepbeam",
+          "g-tailslam",
+          "g-talon",
+          "g-trijump",
+          "g-wing"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "giantbat@stage-7",
+        "label": "グレン",
+        "bossType": "giantbat",
+        "stageId": "stage-7",
+        "outcome": "timeout",
+        "durationMs": 175468,
+        "realMs": 180028,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "g-bite",
+          "g-bolt",
+          "g-boon",
+          "g-dash",
+          "g-dive",
+          "g-glide",
+          "g-jump",
+          "g-nihil",
+          "g-nova",
+          "g-parts",
+          "g-quad",
+          "g-reach",
+          "g-slam",
+          "g-stomp",
+          "g-sweep",
+          "g-sweepbeam",
+          "g-tailslam",
+          "g-talon",
+          "g-trijump",
+          "g-wing"
+        ],
+        "movesSeen": [],
+        "hpLost": 34
+      },
+      {
+        "slotKey": "giantbat@stage-ex1",
+        "label": "?",
+        "bossType": "giantbat",
+        "stageId": "stage-ex1",
+        "outcome": "timeout",
+        "durationMs": 173965,
+        "realMs": 180002,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "g-bite",
+          "g-bolt",
+          "g-boon",
+          "g-dash",
+          "g-dive",
+          "g-glide",
+          "g-jump",
+          "g-nihil",
+          "g-nova",
+          "g-parts",
+          "g-quad",
+          "g-reach",
+          "g-slam",
+          "g-stomp",
+          "g-sweep",
+          "g-sweepbeam",
+          "g-tailslam",
+          "g-talon",
+          "g-trijump",
+          "g-wing"
+        ],
+        "movesSeen": [],
+        "hpLost": 27
+      },
+      {
+        "slotKey": "miguel",
+        "label": "miguel",
+        "bossType": "miguel",
+        "stageId": "stage-1",
+        "outcome": "timeout",
+        "durationMs": 175532,
+        "realMs": 180032,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "miguel-harai",
+          "miguel-mdash",
+          "miguel-tate",
+          "miguel-volley"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "jibril",
+        "label": "jibril",
+        "bossType": "jibril",
+        "stageId": "stage-3",
+        "outcome": "timeout",
+        "durationMs": 174878,
+        "realMs": 180020,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "jibril-consecrate",
+          "jibril-lantern",
+          "jibril-volley"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "rafi",
+        "label": "rafi",
+        "bossType": "rafi",
+        "stageId": "stage-4",
+        "outcome": "timeout",
+        "durationMs": 174699,
+        "realMs": 180008,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "rafi-bone",
+          "rafi-jump",
+          "rafi-sweep"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "uri",
+        "label": "uri",
+        "bossType": "uri",
+        "stageId": "stage-5",
+        "outcome": "timeout",
+        "durationMs": 173559,
+        "realMs": 180015,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "uri-bolt",
+          "uri-downslash",
+          "uri-sweep",
+          "uri-thrust"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "suriel",
+        "label": "suriel",
+        "bossType": "suriel",
+        "stageId": "stage-6",
+        "outcome": "timeout",
+        "durationMs": 173264,
+        "realMs": 180019,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "suriel-gaze",
+          "suriel-ring",
+          "suriel-sweep"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "acrasiel",
+        "label": "acrasiel",
+        "bossType": "acrasiel",
+        "stageId": "stage-ex1",
+        "outcome": "timeout",
+        "durationMs": 174834,
+        "realMs": 180002,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "acrasiel-burst",
+          "acrasiel-gaze",
+          "acrasiel-spear",
+          "acrasiel-spike",
+          "acrasiel-warp"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "mimir",
+        "label": "mimir",
+        "bossType": "mimir",
+        "stageId": "stage-1",
+        "outcome": "timeout",
+        "durationMs": 174700,
+        "realMs": 180026,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "mimir-bite",
+          "mimir-burst",
+          "mimir-dash",
+          "mimir-laser",
+          "mimir-radial"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "jormungand",
+        "label": "jormungand",
+        "bossType": "jormungand",
+        "stageId": "stage-3",
+        "outcome": "timeout",
+        "durationMs": 175169,
+        "realMs": 180003,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "jormungand-burst",
+          "jormungand-coil",
+          "jormungand-dash",
+          "jormungand-radial"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "skadi",
+        "label": "skadi",
+        "bossType": "skadi",
+        "stageId": "stage-4",
+        "outcome": "timeout",
+        "durationMs": 174872,
+        "realMs": 180017,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "skadi-blade",
+          "skadi-burst",
+          "skadi-cage",
+          "skadi-dash",
+          "skadi-ice",
+          "skadi-radial"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "thor",
+        "label": "thor",
+        "bossType": "thor",
+        "stageId": "stage-5",
+        "outcome": "timeout",
+        "durationMs": 173164,
+        "realMs": 180044,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "thor-burst",
+          "thor-harai",
+          "thor-issen",
+          "thor-jump",
+          "thor-radial",
+          "thor-tsuki"
+        ],
+        "movesSeen": [],
+        "hpLost": 0
+      },
+      {
+        "slotKey": "idol",
+        "label": "idol",
+        "bossType": "idol",
+        "stageId": "stage-2",
+        "outcome": "death",
+        "durationMs": 42602,
+        "realMs": 53539,
+        "findings": [],
+        "moveTally": {
+          "idol-fan": {
+            "exposures": 4,
+            "counters": 1,
+            "hits": 0
+          },
+          "idol-orb": {
+            "exposures": 4,
+            "counters": 0,
+            "hits": 4
+          },
+          "idol-punch": {
+            "exposures": 4,
+            "counters": 0,
+            "hits": 0
+          },
+          "idol-roll": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 0
+          },
+          "idol-snipe": {
+            "exposures": 2,
+            "counters": 0,
+            "hits": 0
+          }
+        },
+        "movesMissing": [
+          "idol-aim",
+          "idol-nade"
+        ],
+        "movesSeen": [
+          "idol-fan",
+          "idol-orb",
+          "idol-punch",
+          "idol-roll",
+          "idol-snipe"
+        ],
+        "hpLost": 110
+      }
+    ]
+  }
+}

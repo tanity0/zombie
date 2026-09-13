@@ -1,7 +1,7 @@
 name: Deploy to GitHub Pages
 on:
   push:
-    branches: [main, claude/chat-context-continuity-saxlH]
+    branches: [main, claude/chat-context-continuity-saxlH, claude/direction-shift]
 
 permissions:
   contents: read
@@ -14,17 +14,40 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# A/Bレース(v0.25.1369): Pagesサイトは1つしかないので、どちらの線がpushしても
+# 「旧線=/zombie/ 新線=/zombie/v2/」の両方を最新でビルドして合成デプロイする。
+# どちらのURLも常に生きる(奪い合いをなくす)。レース終了時に単一ビルドへ戻すこと。
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # 公開URLのみ。Cloudflareの認証情報はGitHubへ渡さない。旧線/新線の両ビルドで同じ値を使う。
+      GHOST_API_BASE: https://zombie-coop-signaling.tanity0-zombie.workers.dev
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: claude/chat-context-continuity-saxlH
+          path: line-old
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/direction-shift
+          path: line-new
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
       - run: npm ci
+        working-directory: line-old
       - run: npm run build
+        working-directory: line-old
+      - run: npm ci
+        working-directory: line-new
+      - run: npm run build -- --base=/zombie/v2/
+        working-directory: line-new
+      - name: Merge new line under /v2/
+        run: |
+          mkdir -p line-old/dist/v2
+          cp -r line-new/dist/. line-old/dist/v2/
       - uses: actions/upload-pages-artifact@v3
-        with: { path: ./dist }
+        with: { path: ./line-old/dist }
 
   deploy:
     needs: build

@@ -1,0 +1,40 @@
+name: CI
+
+# 静的検査(lint / 型 / build)とユニットテスト(vitest)を push と PR で回す。
+# デプロイ(pages.yml)とは独立。ここが緑であることをマージ前ゲートにする想定。
+# pull_request トリガーは撤去(v0.25.1583): 開発ブランチにPRが開いていると push と pull_request で
+# 同じコミットのCIが2本走り、赤の時は失敗メールも2倍飛ぶため。push だけで全ブランチをカバーする。
+on:
+  push:
+
+# 同一ブランチの古い実行は新しい push が来たらキャンセル(無駄な並走を防ぐ)。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      # ★循環importの回帰ガード(社長承認2026-08-31)。lint/typecheck/test/build は循環importを
+      # 全部素通りし、壊れるのは本番バンドルの評価順=「起動直後に真っ暗」だけ(v0.25.3390 / v0.25.4096)。
+      # 既知の環は scripts/check-circular-imports.mjs の ALLOWED に固定してあり、増えたらここで落ちる。
+      - name: Circular imports
+        run: node scripts/check-circular-imports.mjs
+      - name: Unit tests
+        run: npm test
+      - name: Worker tests
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm test
+        working-directory: server
+      - name: Build
+        run: npm run build

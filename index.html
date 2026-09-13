@@ -2,7 +2,9 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- favicon / iOSホーム画面アイコン。/zombie/ 配下でも壊れないよう相対パス指定。 -->
+    <link rel="icon" type="image/jpeg" href="app-icon.jpg" />
+    <link rel="apple-touch-icon" href="app-icon.jpg" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
@@ -10,14 +12,8 @@
     <meta name="theme-color" content="#0b0b12" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="ゾンビサバイバル" />
-    <title>Zombie - サバイバルホラーアクション</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Special+Elite&display=swap"
-      rel="stylesheet"
-    />
+    <meta name="apple-mobile-web-app-title" content="the ONE" />
+    <title>the ONE</title>
     <style>
       :root {
         --safe-top: env(safe-area-inset-top, 0px);
@@ -27,7 +23,11 @@
       }
       html, body {
         overscroll-behavior: none;
-        touch-action: none;
+        /* none だと子のスクロール領域(メニュー等)が指で全くスクロールできない
+           (touch-action は祖先チェーンで交差判定されるため)。pan-x/pan-y にすると
+           子に付けた touch-action: pan-y が効く一方、pinch/ダブルタップ拡大は引き続き抑止。
+           ゲーム面(canvas/ジョイスティック/操作層)は各要素が個別に touch-action:none を指定済み。 */
+        touch-action: pan-x pan-y;
         position: fixed;
         overflow: hidden;
         width: 100%;
@@ -36,7 +36,7 @@
         padding: 0;
         background-color: #0b0b12;
         color: #f5f5f7;
-        font-family: "Special Elite", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+        font-family: var(--game-font, "Orbitron"), "Hiragino Sans", "Hiragino Kaku Gothic ProN",
           "Yu Gothic", "Noto Sans JP", -apple-system, BlinkMacSystemFont,
           system-ui, sans-serif;
         -webkit-font-smoothing: antialiased;
@@ -51,6 +51,30 @@
       }
       button {
         font-family: inherit;
+      }
+      /* ネイティブ感: ブラウザ由来の挙動を全要素で抑止する。
+         - touch-callout: 長押しで出る「画像を保存/コピー」シート(imgで顕著)を消す=web感の最大のバレ。
+         - user-select: テキスト選択のハイライトを消す(ゲームに不要)。
+         - user-drag: 画像のゴーストドラッグを消す。 */
+      *, *::before, *::after {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      img {
+        -webkit-user-drag: none;
+        -webkit-touch-callout: none;
+      }
+      /* ネイティブ感: ブラウザのスクロールバーを隠す(スクロール自体は touch/drag で維持)。
+         可視のスクロールバーは"webっぽさ"の元なので全要素で非表示にする。 */
+      * {
+        scrollbar-width: none;          /* Firefox */
+        -ms-overflow-style: none;       /* 旧Edge/IE */
+      }
+      *::-webkit-scrollbar {            /* WebKit(iOS Safari/Chrome) */
+        width: 0;
+        height: 0;
+        display: none;
       }
     </style>
   </head>

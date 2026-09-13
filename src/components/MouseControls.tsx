@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
-import { useGameStore, isGameTimeStopped } from '../store/gameStore';
+import { useGameStore, isInputLocked } from '../store/gameStore';
 import { performTapAction, performFlickAction } from '../utils/inputActions';
+import { computeViewport } from '../utils/viewport';
 
 // PC(マウス)操作レイヤー。スマホの4操作に対応:
 //   移動(指移動): WASD / 矢印(キーボード)
@@ -13,14 +14,17 @@ const MouseControls: React.FC = () => {
 
   // カーソル位置(レイヤー左上=キャンバス左上 基準のスクリーン座標)を保存。ワールド変換は movePlayer 側で camera を足す。
   const updateAim = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (isInputLocked()) return; // 操作不可中は照準(=向き)も更新しない
     const rect = e.currentTarget.getBoundingClientRect();
-    setMouseAim({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    // 固定設計ビュー: 端末pxの入力を scale で割って論理座標(=storeがcameraを足す座標系)へ戻す。
+    const s = computeViewport(rect.width, rect.height).scale;
+    setMouseAim({ x: (e.clientX - rect.left) / s, y: (e.clientY - rect.top) / s });
   }, [setMouseAim]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (isInputLocked()) return;
     updateAim(e);
     const gs = useGameStore.getState();
-    if (gs.isPaused || isGameTimeStopped()) return;
     if (e.button === 0) {
       // 左クリック = タップ/離す。
       performTapAction();
@@ -28,8 +32,9 @@ const MouseControls: React.FC = () => {
       // 右クリック = フリック。カーソル方向(プレイヤー中心→ワールドカーソル)へ発動。
       e.preventDefault();
       const rect = e.currentTarget.getBoundingClientRect();
-      const worldX = gs.camera.x + (e.clientX - rect.left);
-      const worldY = gs.camera.y + (e.clientY - rect.top);
+      const s = computeViewport(rect.width, rect.height).scale;
+      const worldX = gs.camera.x + (e.clientX - rect.left) / s;
+      const worldY = gs.camera.y + (e.clientY - rect.top) / s;
       const p = gs.player;
       let dx = worldX - (p.x + p.width / 2);
       let dy = worldY - (p.y + p.height / 2);

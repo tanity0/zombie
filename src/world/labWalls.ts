@@ -22,12 +22,21 @@ export const LAB_START_SAFE_RADIUS = 700;
 // 通常帯の縦の広がり。|セル中心Y| がこれを超えると「奥(deep)」=壁だらけ・UV/アイテム無し。
 // 縦移動は控えめ(約1画面ぶんずつ)=横移動重視。
 export const LAB_DEEP_Y = 1 * LAB_ZONE; // 900
-// 連なり壁の間隔(=壁の当たり幅。縁を接して横バリアになる)。
+// 連なり壁の間隔(壁バーの中心間隔)。
 const WALL_RUN_SPACING = 150;
-const H_LEN = 150, H_DEPTH = 22;
+// 壁バー幅(社長承認 M2_LAB_CORRIDOR_SPEC.md v0.25.2175: 150→90に小型化。奥行22は不変)。
+// 役割は通行障害ではなく視線切り遮蔽(横長廊下・上下固定クランプ導入とセット)。
+// 壁の見た目と当たり判定(社長指示v0.25.2234「見た目通りの幅にして」/ v0.25.2236「高さを2/3に」)。
+// **判定幅は見た目から導出する**=表示サイズをここで変えても二度とズレない(v2234の再発防止)。
+// 描画側(pixiScene)は containScale(WALL_DISPLAY_H, テクスチャ実寸) で枠に内接させるので、
+// 実描画サイズ = テクスチャ寸法 × min(枠w/texw, 枠h/texh)。その幅をそのまま H_LEN に使う。
+const WALL_TEX = { w: 256, h: 153 };             // sprites/lab/lab-wall-obj-h.png の実寸(固定素材)
+export const WALL_DISPLAY_H = { w: 176, h: 72 }; // 高さ 108→72(=2/3・社長指示v0.25.2236)
+const WALL_DRAW_SCALE = Math.min(WALL_DISPLAY_H.w / WALL_TEX.w, WALL_DISPLAY_H.h / WALL_TEX.h);
+export const WALL_HIT_W = Math.round(WALL_TEX.w * WALL_DRAW_SCALE); // = 実描画幅(判定幅と同じ値)
+const H_LEN = WALL_HIT_W, H_DEPTH = 22;          // 奥行22は不変(足元の設置面)
 
 export const wallRect = (w: PlacedWall): Rect => footRect(w.footX, w.footY, H_LEN, H_DEPTH);
-export const WALL_DISPLAY_H = { w: 176, h: 108 };
 
 // 決定的ハッシュ(0..1)。
 const hash2 = (x: number, y: number): number => {
@@ -38,23 +47,63 @@ const hash2 = (x: number, y: number): number => {
 const cellCenterY = (cy: number) => cy * LAB_ZONE + LAB_ZONE / 2;
 const isDeepCell = (cy: number) => Math.abs(cellCenterY(cy)) > LAB_DEEP_Y;
 
-// 区画(セル)ごとに横連なりの壁ランを1本生成。通常帯=1〜5個、奥(deep)=6〜13個(極端に連なる)。
+// 区画(セル)ごとに横連なりの壁ランを1本生成。密度均一化(社長承認 M2_LAB_CORRIDOR_SPEC.md
+// v0.25.2175): 旧・通常帯1〜5/奥(deep)6〜13の勾配を廃止し、全域(生成対象セル)で1〜3本に統一。
+// 生成対象は「廊下帯の視線に関わる範囲」= isDeepCell が false のセルのみ(セル中心|Y|≤LAB_DEEP_Y)。
+// それを超える奥のセルは壁を生成しない(プロップ/UVバーと同じ扱いに統一)。
 // ランは footX から右へ WALL_RUN_SPACING 間隔。長いランが左隣セルから領域へ伸びてくるので左に余分に走査。
+// 廊下(プレイヤー中心|Y|≤LAB_CORRIDOR_Y_LIMIT_PX=100)を横に完全封鎖しない配置になっているか確認:
+// footY は cy*LAB_ZONE を基準に該当セル内の 0.3〜0.7 の範囲(=セル端寄せ)にしか出ないため、
+// 壁矩形(footY-H_DEPTH 〜 footY)は cy=0/-1(Y=0に隣接する2セル)でも常に |Y|>=248 に収まり、
+// ±100 の廊下帯には物理的に重ならない(役割どおり通行障害ではなく視線切りのみ)。よってこの形状変更で
+// 追加のガードは不要と確認済み(この不変条件が崩れる変更をする場合は要再確認)。
+// 壁は「歩けるところ」だけに出す(社長指示v0.25.2228)。**方針転換**: v0.25.2175〜2222は廊下帯(±100)の
+// **外**に置いて「絶対に通行を塞がない」設計だったが、帯の外は歩けない=そこの壁には隠れられないため、
+// 遮蔽として機能していなかった。今後は帯の**中**に置き、代わりに「必ず通り抜けられる隙間」を構造で保証する。
+//
+// 配置: 帯の中を上下2段に分け、その間に**常に空きレーンを残す**。
+//   上段(A): footY ∈ [-70,-35] → 壁矩形 [-92,-35]
+//   下段(B): footY ∈ [ 55, 95] → 壁矩形 [ 33, 95]
+//   → 中央 [-35, 33] = 68px は常に空く(プレイヤー当たり判定 PLAYER_HITBOX=28 より広い)=詰みが起きない。
+// セルの縦(cy)方向のループは廃止(帯は1本しかないため)。id は `lw-cx-0-番号` でセル単位の集計は従来どおり。
+// 歩ける帯の半幅(プレイヤー中心Yのクランプ値)。**この1箇所が唯一の出どころ**——移動クランプ(gameStore)・
+// 帯の外の減光(pixiScene)・壁の配置(下記)がすべてここから導かれる。世界の形なので world 層に置く
+// (gameStore が labWalls を import する向きなので循環しない)。
+// 100 → 200(社長指示v0.25.2229「上下に100px広げて」= 上下それぞれ100pxずつ拡張)。
+export const LAB_CORRIDOR_Y_LIMIT_PX = 200;
+export const LAB_WALL_Y_LIMIT = LAB_CORRIDOR_Y_LIMIT_PX; // 壁矩形が収まるべき範囲(=歩ける帯)
+// 壁は**できるだけ中央寄せ**(社長指示v0.25.2234)。帯の縁ではなく中央付近に2段で置き、
+// 通り道は**上下の縁**に残す(旧v0.25.2228は逆=縁に壁・中央が空きレーンだった)。
+// 中央にあるほうが「歩いていて実際に遮蔽として使う」ので、隠れる目的に合う。位置は帯の比率で保持。
+const L = LAB_CORRIDOR_Y_LIMIT_PX;
+const WALL_CENTER_INNER = 0.12; // 中央からの最小距離(帯比)= この内側には置かない
+const WALL_CENTER_OUTER = 0.28; // 中央からの最大距離(帯比)= これより外へは出さない
+const WALL_BAND_A_MIN = -WALL_CENTER_OUTER * L, WALL_BAND_A_MAX = -WALL_CENTER_INNER * L;
+const WALL_BAND_B_MIN = WALL_CENTER_INNER * L, WALL_BAND_B_MAX = WALL_CENTER_OUTER * L;
+// 上下の縁に必ず残る通り道(ここには壁が出ない)。どちらもプレイヤー(28px)より広いこと=詰み防止の不変条件。
+export const LAB_WALL_CLEAR_TOP: [number, number] = [-L, WALL_BAND_A_MIN - H_DEPTH];
+export const LAB_WALL_CLEAR_BOTTOM: [number, number] = [WALL_BAND_B_MAX, L];
+
 export const labWallsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedWall[] => {
   const out: PlacedWall[] = [];
+  // 帯(±LAB_WALL_Y_LIMIT)が問い合わせ範囲と交わらなければ壁は無い(カリングを効かせる)。
+  if (maxY < -LAB_WALL_Y_LIMIT || minY > LAB_WALL_Y_LIMIT) return out;
   const cx0 = Math.floor(minX / LAB_ZONE) - 3; // 長いランの左方伸長を取りこぼさない
   const cx1 = Math.floor(maxX / LAB_ZONE) + 1;
-  const cy0 = Math.floor(minY / LAB_ZONE) - 1;
-  const cy1 = Math.floor(maxY / LAB_ZONE) + 1;
-  for (let cy = cy0; cy <= cy1; cy++) {
-    const deep = isDeepCell(cy);
-    for (let cx = cx0; cx <= cx1; cx++) {
-      const hLen = hash2(cx * 2.1 + 1.3, cy * 1.9 - 0.7);
-      const runLen = deep ? 6 + Math.floor(hLen * 8) : 1 + Math.floor(hLen * 5); // deep:6〜13 / 通常:1〜5
-      const baseX = cx * LAB_ZONE + LAB_ZONE * (0.12 + 0.35 * hash2(cx, cy));
-      const footY = cy * LAB_ZONE + LAB_ZONE * (0.3 + 0.4 * hash2(cx * 1.7 + 5.2, cy * 2.3 - 1.1));
+  const bands: [number, number][] = [[WALL_BAND_A_MIN, WALL_BAND_A_MAX], [WALL_BAND_B_MIN, WALL_BAND_B_MAX]];
+  for (let cx = cx0; cx <= cx1; cx++) {
+    let idx = 0;
+    for (let r = 0; r < bands.length; r++) {
+      const hLen = hash2(cx * 2.1 + 1.3 + r * 13.7, -0.7 - r * 5.3);
+      const runLen = 2 + Math.floor(hLen * 3); // ランあたり2〜4本(区画あたり4〜8本=v0.25.2222の密度を維持)
+      const baseX = cx * LAB_ZONE + LAB_ZONE * (0.12 + 0.35 * hash2(cx + r * 3.3, -r * 1.7));
+      const [lo, hi] = bands[r];
+      const footY = lo + (hi - lo) * hash2(cx * 1.7 + 5.2 + r * 2.9, -1.1 + r * 4.1);
       for (let k = 0; k < runLen; k++) {
-        out.push({ id: `lw-${cx}-${cy}-${k}`, orient: 'h', footX: baseX + k * WALL_RUN_SPACING, footY });
+        const footX = baseX + k * WALL_RUN_SPACING;
+        // 帯の中=プレイヤーの通り道なので、スタート地点付近には出さない(開幕で埋もれない)。
+        if (Math.hypot(footX, footY) < LAB_START_SAFE_RADIUS) continue;
+        out.push({ id: `lw-${cx}-0-${idx++}`, orient: 'h', footX, footY });
       }
     }
   }
@@ -79,7 +128,8 @@ const PROP_HIT_W = 46, PROP_HIT_H = 30;
 
 export const propRect = (p: PlacedProp): Rect => footRect(p.footX, p.footY, PROP_HIT_W, PROP_HIT_H);
 
-// 区画(セル)ごとに 2〜4 個のプロップを散布。決定的ハッシュなので描画と当たり判定が必ず一致する。
+// 区画(セル)ごとに 3〜6 個のプロップを散布(社長指示v0.25.2222で 2〜4 から増量=「壁とか」の“とか”側)。
+// 決定的ハッシュなので描画と当たり判定が必ず一致する。
 export const labPropsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedProp[] => {
   const out: PlacedProp[] = [];
   const cx0 = Math.floor(minX / LAB_ZONE) - 1, cx1 = Math.floor(maxX / LAB_ZONE) + 1;
@@ -87,7 +137,7 @@ export const labPropsInRegion = (minX: number, minY: number, maxX: number, maxY:
   for (let cy = cy0; cy <= cy1; cy++) {
     if (isDeepCell(cy)) continue; // 奥は敵以外を置かない(壁/UVバーと同じ方針)
     for (let cx = cx0; cx <= cx1; cx++) {
-      const n = 2 + Math.floor(hash2(cx * 3.1 + 0.7, cy * 2.7 - 1.9) * 3); // 2〜4個/区画
+      const n = 3 + Math.floor(hash2(cx * 3.1 + 0.7, cy * 2.7 - 1.9) * 4); // 3〜6個/区画
       for (let k = 0; k < n; k++) {
         const footX = cx * LAB_ZONE + LAB_ZONE * (0.1 + 0.8 * hash2(cx * 1.3 + k * 7.1 + 2.2, cy * 1.9 - k * 3.3 + 4.4));
         const footY = cy * LAB_ZONE + LAB_ZONE * (0.1 + 0.8 * hash2(cx * 2.7 - k * 5.5 + 9.9, cy * 1.1 + k * 2.2 - 6.6));
@@ -96,6 +146,32 @@ export const labPropsInRegion = (minX: number, minY: number, maxX: number, maxY:
         out.push({ id: `lp-${cx}-${cy}-${k}`, footX, footY, variant });
       }
     }
+  }
+  // 「敵の近くに必ず1つ」を保証する遮蔽物を合流させる(v0.25.2243)。返り値を1本にしておくことで、
+  // 描画(pixiScene)・移動の当たり判定・視線判定(segmentBlocked)すべてに自動で反映される。
+  out.push(...coverPropsInRegion(minX, maxX, LAB_CORRIDOR_Y_LIMIT_PX));
+  return out;
+};
+
+// 「敵の近くには必ず1つ視線を切れる遮蔽物がある」ことを構造で保証する(社長指示v0.25.2243・**壁とは別**)。
+// 敵は歩ける帯の中にしか湧かない(placeLabSpawn)ので、**帯の中に一定間隔で"保証プロップ"を置けば**、
+// どの敵から見ても COVER_SPACING/2 以内に必ず遮蔽がある=プレイヤーは必ず隠れる場所を持てる。
+// 散布プロップ(labPropsInRegion 本体)は帯の外にも出るため、この保証には数えない。
+const COVER_SPACING = LAB_ZONE / 2; // 450pxごとに1個(=どの位置からも225px以内に1つ)
+export const LAB_COVER_SPACING = COVER_SPACING;
+
+const coverPropsInRegion = (minX: number, maxX: number, bandLimit: number): PlacedProp[] => {
+  const out: PlacedProp[] = [];
+  const k0 = Math.floor(minX / COVER_SPACING) - 1, k1 = Math.floor(maxX / COVER_SPACING) + 1;
+  for (let k = k0; k <= k1; k++) {
+    // 等間隔だと機械的に見えるので、区間内で少しだけ散らす(決定論)。
+    const footX = k * COVER_SPACING + COVER_SPACING * (0.25 + 0.5 * hash2(k * 3.7 + 1.1, 7.3));
+    // 足元(矩形の下端)が帯に収まるYを選ぶ。
+    const lo = -bandLimit + PROP_HIT_H, hi = bandLimit;
+    const footY = lo + (hi - lo) * hash2(k * 5.1 - 2.3, 11.9);
+    if (Math.hypot(footX, footY) < LAB_START_SAFE_RADIUS) continue; // スタート地点付近は空ける
+    const variant = Math.floor(hash2(k * 2.9 + 4.4, 3.1) * LAB_PROP_VARIANT_COUNT) % LAB_PROP_VARIANT_COUNT;
+    out.push({ id: `lpc-${k}`, footX, footY, variant });
   }
   return out;
 };
@@ -132,6 +208,3 @@ export const labUvBarsInRegion = (minX: number, minY: number, maxX: number, maxY
 export const labZoneKey = (x: number, y: number): string =>
   `${Math.floor(x / LAB_ZONE)}_${Math.floor(y / LAB_ZONE)}`;
 
-// クリア条件の「書類(重要データ)」。通常帯の探索域に手置き(原点から少し離れた位置)。拾うと勝利。
-// type は既存の 'lab-clear-item'(拾うとクリア・取得表示=「重要データ」)を流用。
-export const STAGE2_DOCUMENT: { x: number; y: number } = { x: 720, y: -470 };

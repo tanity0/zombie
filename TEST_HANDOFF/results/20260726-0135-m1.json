@@ -1,0 +1,510 @@
+{
+  "stage": "stage-1",
+  "renderer": "canvas",
+  "targetMs": 480000,
+  "smokeFallback": false,
+  "wallSec": 146,
+  "gameTimeMs": 141360,
+  "peakEnemies": 10,
+  "seenByType": {
+    "bat": 27,
+    "skeleton": 14,
+    "zombie": 2,
+    "werewolf": 1,
+    "plant": 1
+  },
+  "banners": [
+    "変異体が興奮し始めた",
+    "研究対象区域",
+    "軍備配置区域",
+    "研究対象区域",
+    "多数の変異体を検知"
+  ],
+  "ammoSnapshot": null,
+  "botReport": {
+    "persona": "standard",
+    "outcome": "death",
+    "survivedMs": 140379,
+    "deathCause": "変異体(痩躯型)",
+    "kills": 39,
+    "playerLevel": 2,
+    "maxDepthPx": 2048,
+    "maxAreaReached": 1,
+    "subUses": {
+      "heavy-grenade": 29
+    },
+    "overclockProcs": 0,
+    "scrapEarned": 0,
+    "scrapSpent": 0,
+    "damageTaken": 161,
+    "goldEarned": 11,
+    "damageDealt": {
+      "gun": 291,
+      "melee": 868,
+      "other": 816,
+      "total": 1975
+    },
+    "finisherKills": 15,
+    "meleeSwings": 55,
+    "meleeHits": 71
+  },
+  "errors": [],
+  "samples": [
+    {
+      "wallSec": 0,
+      "gtSec": 2,
+      "x": 12,
+      "y": 4,
+      "hp": 110,
+      "lv": 1,
+      "kills": 0,
+      "en": 1,
+      "dorm": 0,
+      "counts": {
+        "bat": 1
+      }
+    },
+    {
+      "wallSec": 5,
+      "gtSec": 7,
+      "x": 442,
+      "y": 172,
+      "hp": 76,
+      "lv": 1,
+      "kills": 1,
+      "en": 2,
+      "dorm": 0,
+      "counts": {
+        "bat": 2
+      }
+    },
+    {
+      "wallSec": 10,
+      "gtSec": 12,
+      "x": -6,
+      "y": 153,
+      "hp": 76,
+      "lv": 1,
+      "kills": 3,
+      "en": 1,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 1
+      }
+    },
+    {
+      "wallSec": 15,
+      "gtSec": 16,
+      "x": -405,
+      "y": 41,
+      "hp": 76,
+      "lv": 1,
+      "kills": 5,
+      "en": 1,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 1
+      }
+    },
+    {
+      "wallSec": 20,
+      "gtSec": 21,
+      "x": -116,
+      "y": 47,
+      "hp": 76,
+      "lv": 1,
+      "kills": 6,
+      "en": 2,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 1,
+        "bat": 1
+      }
+    },
+    {
+      "wallSec": 25,
+      "gtSec": 26,
+      "x": 91,
+      "y": 9,
+      "hp": 76,
+      "lv": 1,
+      "kills": 8,
+      "en": 2,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 2
+      }
+    },
+    {
+      "wallSec": 30,
+      "gtSec": 30,
+      "x": 85,
+      "y": 185,
+      "hp": 76,
+      "lv": 1,
+      "kills": 10,
+      "en": 3,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 1,
+        "bat": 2
+      }
+    },
+    {
+      "wallSec": 35,
+      "gtSec": 35,
+      "x": -103,
+      "y": -37,
+      "hp": 76,
+      "lv": 1,
+      "kills": 13,
+      "en": 2,
+      "dorm": 0,
+      "counts": {
+        "bat": 1,
+        "skeleton": 1
+      }
+    },
+    {
+      "wallSec": 40,
+      "gtSec": 40,
+      "x": 68,
+      "y": -48,
+      "hp": 76,
+      "lv": 1,
+      "kills": 14,
+      "en": 3,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 2,
+        "bat": 1
+      }
+    },
+    {
+      "wallSec": 45,
+      "gtSec": 45,
+      "x": 14,
+      "y": -309,
+      "hp": 76,
+      "lv": 1,
+      "kills": 18,
+      "en": 6,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 2,
+        "bat": 4
+      }
+    },
+    {
+      "wallSec": 50,
+      "gtSec": 49,
+      "x": -119,
+      "y": -456,
+      "hp": 126,
+      "lv": 2,
+      "kills": 21,
+      "en": 8,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 4,
+        "bat": 4
+      }
+    },
+    {
+      "wallSec": 55,
+      "gtSec": 54,
+      "x": -263,
+      "y": -534,
+      "hp": 120,
+      "lv": 2,
+      "kills": 22,
+      "en": 10,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 3,
+        "bat": 7
+      }
+    },
+    {
+      "wallSec": 60,
+      "gtSec": 59,
+      "x": -500,
+      "y": -805,
+      "hp": 120,
+      "lv": 2,
+      "kills": 23,
+      "en": 10,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 3,
+        "bat": 7
+      }
+    },
+    {
+      "wallSec": 65,
+      "gtSec": 64,
+      "x": -799,
+      "y": -732,
+      "hp": 120,
+      "lv": 2,
+      "kills": 23,
+      "en": 10,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 3,
+        "bat": 7
+      }
+    },
+    {
+      "wallSec": 70,
+      "gtSec": 69,
+      "x": -1011,
+      "y": -519,
+      "hp": 120,
+      "lv": 2,
+      "kills": 24,
+      "en": 9,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 3,
+        "bat": 6
+      }
+    },
+    {
+      "wallSec": 75,
+      "gtSec": 74,
+      "x": -1227,
+      "y": -304,
+      "hp": 120,
+      "lv": 2,
+      "kills": 26,
+      "en": 10,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 3,
+        "bat": 7
+      }
+    },
+    {
+      "wallSec": 80,
+      "gtSec": 79,
+      "x": -1432,
+      "y": -96,
+      "hp": 120,
+      "lv": 2,
+      "kills": 27,
+      "en": 10,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 4,
+        "bat": 6
+      }
+    },
+    {
+      "wallSec": 85,
+      "gtSec": 84,
+      "x": -1270,
+      "y": 161,
+      "hp": 120,
+      "lv": 2,
+      "kills": 27,
+      "en": 10,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 4,
+        "bat": 6
+      }
+    },
+    {
+      "wallSec": 90,
+      "gtSec": 89,
+      "x": -1057,
+      "y": 380,
+      "hp": 120,
+      "lv": 2,
+      "kills": 28,
+      "en": 9,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 4,
+        "bat": 5
+      }
+    },
+    {
+      "wallSec": 95,
+      "gtSec": 94,
+      "x": -844,
+      "y": 593,
+      "hp": 120,
+      "lv": 2,
+      "kills": 28,
+      "en": 9,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 4,
+        "bat": 5
+      }
+    },
+    {
+      "wallSec": 100,
+      "gtSec": 99,
+      "x": -631,
+      "y": 806,
+      "hp": 120,
+      "lv": 2,
+      "kills": 28,
+      "en": 9,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 4,
+        "bat": 5
+      }
+    },
+    {
+      "wallSec": 105,
+      "gtSec": 104,
+      "x": -418,
+      "y": 1017,
+      "hp": 120,
+      "lv": 2,
+      "kills": 28,
+      "en": 9,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 4,
+        "bat": 5
+      }
+    },
+    {
+      "wallSec": 110,
+      "gtSec": 109,
+      "x": -205,
+      "y": 1230,
+      "hp": 120,
+      "lv": 2,
+      "kills": 28,
+      "en": 9,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 4,
+        "bat": 5
+      }
+    },
+    {
+      "wallSec": 115,
+      "gtSec": 114,
+      "x": 4,
+      "y": 1439,
+      "hp": 120,
+      "lv": 2,
+      "kills": 28,
+      "en": 9,
+      "dorm": 0,
+      "counts": {
+        "skeleton": 3,
+        "zombie": 1,
+        "bat": 5
+      }
+    },
+    {
+      "wallSec": 120,
+      "gtSec": 119,
+      "x": -28,
+      "y": 1504,
+      "hp": 120,
+      "lv": 2,
+      "kills": 35,
+      "en": 5,
+      "dorm": 0,
+      "counts": {
+        "zombie": 1,
+        "skeleton": 2,
+        "werewolf": 1,
+        "bat": 1
+      }
+    },
+    {
+      "wallSec": 125,
+      "gtSec": 123,
+      "x": -20,
+      "y": 1594,
+      "hp": 97,
+      "lv": 2,
+      "kills": 35,
+      "en": 6,
+      "dorm": 0,
+      "counts": {
+        "zombie": 1,
+        "skeleton": 2,
+        "werewolf": 1,
+        "bat": 2
+      }
+    },
+    {
+      "wallSec": 130,
+      "gtSec": 128,
+      "x": 70,
+      "y": 1920,
+      "hp": 66,
+      "lv": 2,
+      "kills": 35,
+      "en": 6,
+      "dorm": 0,
+      "counts": {
+        "zombie": 1,
+        "skeleton": 2,
+        "werewolf": 1,
+        "bat": 2
+      }
+    },
+    {
+      "wallSec": 135,
+      "gtSec": 133,
+      "x": 40,
+      "y": 1982,
+      "hp": 37,
+      "lv": 2,
+      "kills": 36,
+      "en": 5,
+      "dorm": 0,
+      "counts": {
+        "zombie": 1,
+        "skeleton": 2,
+        "bat": 2
+      }
+    },
+    {
+      "wallSec": 141,
+      "gtSec": 138,
+      "x": -253,
+      "y": 1963,
+      "hp": 37,
+      "lv": 2,
+      "kills": 38,
+      "en": 4,
+      "dorm": 0,
+      "counts": {
+        "zombie": 1,
+        "bat": 1,
+        "skeleton": 1,
+        "plant": 1
+      }
+    },
+    {
+      "wallSec": 146,
+      "gtSec": 141,
+      "x": -243,
+      "y": 1869,
+      "hp": 0,
+      "lv": 2,
+      "kills": 39,
+      "en": 5,
+      "dorm": 0,
+      "counts": {
+        "zombie": 2,
+        "skeleton": 2,
+        "plant": 1
+      }
+    }
+  ]
+}
