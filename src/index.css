@@ -208,6 +208,10 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
     animation: combo-count-pop-big 700ms ease-out both; /* 行き過ぎは keyframe 側だけで書く(bezier と二重にしない) */
     will-change: transform, filter;
   }
+  /* 段5(50)だけ一拍長く止める=到達点の段差(社長裁定2026-09-13)。 */
+  .combo-count-pop-max {
+    animation-duration: 980ms;
+  }
   .combo-caption-pop {
     animation: combo-caption-pop 700ms ease-out both;
   }

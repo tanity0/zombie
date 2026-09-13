@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.4277 — 見せる数字の入れ替え: 左上 COMBO=近接ヒット / 頭上=倒した数(社長裁定)+戻し2件【2026-09-14 00:47 JST】
+
+社長裁定 2026-09-13: 「コンボを近接(ヒット)にして、キル数は頭上に」「見せる数字をどうするかってだけ」=**中身は据え置き・見せる数字だけ変える**。
+- **左上 COMBO**: 新フィールド `meleeHitComboCount/Until`(表示専用・3秒窓=`MELEE_HIT_COMBO_WINDOW_MS`)。`registerMeleeHits(n)` を近接3経路
+  (カウンター/刀(本人のみ)/鞭)の末尾で「1振りで当てた敵の数」ぶん呼ぶ。HUD・NpcDialogue の位置計算・節目の音(useGameLoop の購読)はこれを読む。
+  **`meleeFinishComboCount`(フィニッシュ回数)はコンボマスター/ナイフマスター/刀鞭倍率/ダンス段階/スコア(maxCombo)の中身として不変。**
+- **頭上=倒した数**: `registerPlayerKills` が連続撃破の数を `N KILLS` の帯(`spawnMultiHitFx` に `label/milestoneTier/duration` を追加)で置き直す。
+  尺=窓の2.5秒(`KILL_BANNER_MS`)・70%まで満・末尾で消える=途切れが読める。上へ流さない。環と小glowは節目だけ(毎キル光らせない)。
+  節目は「跨いだか」(`comboMilestoneCrossed`)を書き手が渡す(描画側で数から再計算しない)。段の音=硬い打音を段ごとに高く。
+- **N HITS の表示は外す**(`MULTI_HIT_BANNER_ENABLED=false`・仕組みとヘビーガンナーのバフは据え置き。戻す時はフラグ1つ)。
+- **戻し2件(「はい」)**: ①段5(50)だけ尺 ×1.4(`MAX_TIER_HOLD_MULT`)+音を更に一段高く(HUD は `.combo-count-pop-max` 980ms)
+  ②性格を分ける: `milestoneSpring(t, 'soft'|'hard')`——左上 COMBO は soft(峰が遅く減衰が緩い)、頭上は hard(峰が早く減衰が速い)。
+- テスト: `store/meleeHitCombo.store.test.ts`(4)+comboMilestone(+2)。関連 33 件通過。typecheck・lint 0。実機確認は社長。
+- 監査: 見せ方は直前(v0.25.4276)のクリエイティブ監査の是正をそのまま引き継いだ(帯の語・置き直し・段差)。頭上の「KILLS」の語と色は実機で見てから次の監査に載せる。
+
 ## v0.25.4276 — コンボの節目のクリエイティブ監査(指摘12・直した10・社長へ戻す2)【2026-09-13 23:05 JST】
 
 - (A)バグ: 判定が `count % 10 === 0` で、一振りで 9→11 になると節目が出なかった → **「跨いだか」**(`comboMilestoneCrossed(prev, next)`)へ。HUD は前値を ref で持つ。

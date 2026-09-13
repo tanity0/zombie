@@ -254,8 +254,8 @@ registerKillChainSfxRate(() => killChainSfxRate(useGameStore.getState().killChai
 // コンボの節目(社長承認2026-09-13): HUD左の COMBO が 10 を跨いだ瞬間の音を**事象(store の変化)で1経路**鳴らす(HUD は絵だけ)。
 // 「跨いだか」判定=一振りで 9→11 でも鳴る(クリエイティブ監査A)。段ごとに少し高く。
 useGameStore.subscribe((s, prev) => {
-  if (s.meleeFinishComboCount === prev.meleeFinishComboCount) return;
-  const tier = comboMilestoneCrossed(prev.meleeFinishComboCount, s.meleeFinishComboCount);
+  if (s.meleeHitComboCount === prev.meleeHitComboCount) return; // 左上 COMBO は近接ヒットの連続数(表示専用・社長裁定2026-09-13)
+  const tier = comboMilestoneCrossed(prev.meleeHitComboCount, s.meleeHitComboCount);
   if (tier > 0) playSfx('dance-kick-just', 0.8, undefined, milestoneSfxRate(tier));
 });
 import { resolvePumpkinTier, allowDrillerForRun, allowLoggerForRun } from '../utils/drillerAi'; // PACING_PUZZLE.md §9-3/§14-3

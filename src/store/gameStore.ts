@@ -100,7 +100,7 @@ import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
-import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate } from '../utils/comboMilestone';
+import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate, comboMilestoneCrossed, killBannerDurationMs } from '../utils/comboMilestone';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 import {
   normalizeDir, biasedBurstAngle,
@@ -2097,6 +2097,8 @@ export const LEVELUP_EMPHASIS_MS = 8000;
 // 社長指示2026-09-13「クリティカルダメージの時は大きく画面を揺らしながら、発生源に光源(爆発と同じ原理だが、爆発ではなく光)」。
 // 揺れ=近接フィニッシュ級(14px・200ms・ヒット方向へ寄せる)。光=強glow(GLOW_R_L=90≥STRONG_GLOW_RADIUS → 投影影を落とす本物の光源)を短く。
 // 負荷 4/10: 強glow1個≈2ms/フレーム(CLAUDE.md 実測)。連射クリで積み上がらないよう CRIT_LIGHT_GAP_MS 以内は1回に畳む(同時最大≈2個)。
+export const MELEE_HIT_COMBO_WINDOW_MS = 3000; // 左上 COMBO(近接ヒットの連続数・表示専用)が途切れるまで
+export const MULTI_HIT_BANNER_ENABLED = false;  // 頭上「N HITS」の表示(社長裁定2026-09-13で倒した数に譲った)
 export const CRIT_SHAKE_MS = 200;
 export const CRIT_SHAKE_MAG = 14;
 export const CRIT_LIGHT_MS = 240;
@@ -5281,6 +5283,11 @@ interface GameState {
   danceForceJust: boolean;    // テスト: タップを常にJUST判定にする(計測時の紛らわしさ回避)
   meleeFinishComboCount: number;
   meleeFinishComboUntil: number;
+  // 社長裁定2026-09-13「見せる数字をどうするかってだけ」: 左上の COMBO に**見せる**近接ヒットの連続数(表示専用)。
+  // ナイフ/刀/鞭の1振りで当てた敵の数を足す。3秒途切れると消える。スキル(コンボマスター/ナイフマスター)・スコア・ダンス段階が読む
+  // meleeFinishComboCount(フィニッシュの回数)は**据え置き**=中身は変えず、見せる数字だけ変える。
+  meleeHitComboCount: number;
+  meleeHitComboUntil: number;
   rhythm: RhythmState;
   upgradeOptions: UpgradeOption[];
   inputState: InputState;
@@ -5996,7 +6003,8 @@ interface GameState {
   spawnSlash: (x: number, y: number, color?: string, lengthScale?: number) => void;
   spawnFlash: (color: string, duration?: number) => void;
   // §5.23 M22 C3: 「N HITS」バナー(頭上・bitmap-text)+小フラッシュ。registerMultiHitから相乗りで呼ぶ。
-  spawnMultiHitFx: (x: number, y: number, count: number) => void;
+  spawnMultiHitFx: (x: number, y: number, count: number, opts?: { label?: string; milestoneTier?: number; duration?: number }) => void;
+  registerMeleeHits: (count: number) => void; // 左上 COMBO(表示専用・近接ヒットの連続数)へ加算
   updateEffects: (deltaTime: number) => void;
   // PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁の演出トリガー。
   triggerWallBand: (text: string, color: 'white' | 'gold', durationMs: number) => void;
@@ -6502,6 +6510,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   danceForceJust: false,
   meleeFinishComboCount: 0,
   meleeFinishComboUntil: 0,
+  meleeHitComboCount: 0,
+  meleeHitComboUntil: 0,
   rhythm: initialRhythm(),
   upgradeOptions: [],
   inputState: { up: false, down: false, left: false, right: false },
@@ -8171,6 +8181,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (m0CritLocked && slashAt.length > 0) set(st => ({ m0MeleeHits: st.m0MeleeHits + 1 }));
 
     if (killed.length > 0) get().registerPlayerKills(killed.length, true); // 戦闘の手触り②(v0.25.4269): 近接のキルも段へ(スロー許可)
+    if (slashAt.length > 0) get().registerMeleeHits(slashAt.length); // 左上 COMBO(表示専用・近接ヒットの連続数・社長裁定2026-09-13)
 
     return {
       swung: true,
@@ -9204,6 +9215,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     if (!isGhost && killed.length > 0) get().registerPlayerKills(killed.length, true); // 戦闘の手触り②(v0.25.4269): 本人の刀のキルも段へ
+    if (!isGhost && slashAt.length > 0) get().registerMeleeHits(slashAt.length); // 左上 COMBO(表示専用)
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
   },
@@ -9456,6 +9468,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, WHIP_LENGTH_BY_LEVEL[1], meleeBase, meleeFinisherAt(killed));
 
     if (killed.length > 0) get().registerPlayerKills(killed.length, true); // 戦闘の手触り②(v0.25.4269): 鞭のキルも段へ
+    if (slashAt.length > 0) get().registerMeleeHits(slashAt.length); // 左上 COMBO(表示専用)
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits };
   },
@@ -15807,7 +15820,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 見た目の「N HITS」バナーは全キャラ共通(呼び出し元を増やさず、この1箇所で分岐する)。
   registerMultiHit: (count) => {
     const state = get();
-    if (MULTIFX_ENABLED && shouldShowMultiHitFx(count)) {
+    // 社長裁定2026-09-13「キル数は頭上に」: 頭上の帯は**倒した数**に譲り、N HITS の表示は出さない(MULTI_HIT_BANNER_ENABLED=false)。
+    // ヘビーガンナーの多段バフ(下)は据え置き。戻す時はフラグ1つ。
+    if (MULTI_HIT_BANNER_ENABLED && MULTIFX_ENABLED && shouldShowMultiHitFx(count)) {
       const p = state.player;
       get().spawnMultiHitFx(p.x + p.width / 2, p.y - 26, count);
       // コンボの節目(社長承認2026-09-13): 10 HITS 以上の瞬間だけ戦闘系の打音(キック)。段ごとに少し高く(10 と 50 を同じ音にしない)。
@@ -15822,18 +15837,31 @@ export const useGameStore = create<GameState>((set, get) => ({
   // §5.23 M22 C3: プレイヤー頭上に「N HITS」bitmap-text(pixiScene.tsのdrawMultiHitBanner・
   // 既存dmg-numフォント方式)+一瞬の小フラッシュ(既存spawnRing/spawnGlow=新規描画方式なし)。
   // 同時キャップ=1(dedupeMultiHitEffects=既存のmultiHitエフェクトを追加前に間引く=常に最新のみ)。
-  spawnMultiHitFx: (x, y, count) => {
+  spawnMultiHitFx: (x, y, count, opts) => {
     const now = Date.now();
     const effect: VisualEffect = {
       kind: 'multiHit',
       id: `fx-multihit-${now}-${Math.random().toString(36).slice(2, 6)}`,
       x, y, count,
       createdAt: now,
-      duration: multiHitDurationMs(count), // 節目(10以上)は 900ms(峰の後に一拍)・普段 620ms
+      duration: opts?.duration ?? multiHitDurationMs(count), // 節目(10以上)は 900ms(峰の後に一拍)・普段 620ms
+      ...(opts?.label ? { label: opts.label } : {}),
+      ...(opts?.milestoneTier ? { milestoneTier: opts.milestoneTier } : {}),
     };
     set(state => ({ effects: [...dedupeMultiHitEffects(state.effects), effect] }));
-    get().spawnRing(x, y, 6, 40, 'rgba(190,242,100,0.85)', 3, 320);
-    get().spawnGlow(x, y, 30, 'rgba(190,242,100,', 320); // radius<STRONG_GLOW_RADIUS(44)=小glow(安い)
+    // 環と小glowは「一撃の衝撃」(HITS)と節目だけ。倒した数の毎回の置き直しには出さない(毎キル光ると目が慣れる)。
+    if (!opts?.label || (opts.milestoneTier ?? 0) > 0) {
+      get().spawnRing(x, y, 6, 40, 'rgba(190,242,100,0.85)', 3, 320);
+      get().spawnGlow(x, y, 30, 'rgba(190,242,100,', 320); // radius<STRONG_GLOW_RADIUS(44)=小glow(安い)
+    }
+  },
+
+  registerMeleeHits: (count) => {
+    if (count <= 0) return;
+    set(state => ({
+      meleeHitComboCount: state.meleeHitComboUntil >= state.gameTime ? state.meleeHitComboCount + count : count,
+      meleeHitComboUntil: state.gameTime + MELEE_HIT_COMBO_WINDOW_MS,
+    }));
   },
 
   // Ammo
@@ -18609,6 +18637,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(s => ({
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
+        meleeHitComboCount: 0,
+        meleeHitComboUntil: 0,
         rhythm: { ...s.rhythm, inputIndex: 0, inputArrows: [], prompt: randomRhythmPrompt(), godSuccess: 0, comboStage: 0, lastInputAt: gt, lastJudge: 'miss', lastJudgeAt: gt },
       }));
       return { judged: 'miss' };
@@ -18730,6 +18760,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         set(s => ({
           meleeFinishComboCount: 0,
           meleeFinishComboUntil: 0,
+          meleeHitComboCount: 0,
+          meleeHitComboUntil: 0,
           rhythm: { ...s.rhythm, expectBeat: expect, inputIndex: 0, inputArrows: [], godSuccess: 0, comboStage: 0, lastJudge: 'miss', lastJudgeAt: gt },
         }));
       } else {
@@ -19518,6 +19550,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         exOutroFading: false, // ★v0.25.3743: EX勝利フェードの残留防止(次ランで黒画面のままになる事故)
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
+        meleeHitComboCount: 0,
+        meleeHitComboUntil: 0,
         // 四神舞(ダンスフロア)状態を初期化。これを忘れると再プレイ時に lastTapAt 等が前ゲームのまま残り、
         // gameTime が 0 に戻るためミラーボールの発光倍率(pulse)が巨大化して画面を埋め尽くすバグになる。
         rhythm: initialRhythm(),
@@ -19690,11 +19724,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (count <= 0) return;
     const kc = get();
     const nowK = Date.now();
-    const prevTier = (nowK - kc.killChainLastAt <= KILL_CHAIN_WINDOW_MS) ? killChainTier(kc.killChainCount) : 0;
+    const chainAlive = nowK - kc.killChainLastAt <= KILL_CHAIN_WINDOW_MS;
+    const prevTier = chainAlive ? killChainTier(kc.killChainCount) : 0;
     const chain = stepKillChain({ count: kc.killChainCount, lastAt: kc.killChainLastAt }, nowK, count);
     const tier = killChainTier(chain.count);
     const tierUp = tier > prevTier;
     set({ killChainCount: chain.count, killChainLastAt: chain.lastAt, killChainTier: tier, killChainTierAt: tierUp ? nowK : kc.killChainTierAt });
+    // 社長裁定2026-09-13「キル数は頭上に」: 倒した数を頭上の帯(`N KILLS`)で見せる。倒すたびに置き直し=窓の間は居続ける。
+    // 十の節目は「跨いだか」(一振りで9→11でも出る)。段の音は硬い打音を段ごとに少し高く。
+    {
+      const p = kc.player;
+      const mTier = comboMilestoneCrossed(chainAlive ? kc.killChainCount : 0, chain.count);
+      get().spawnMultiHitFx(p.x + p.width / 2, p.y - 26, chain.count, { label: 'KILLS', milestoneTier: mTier, duration: killBannerDurationMs(mTier) });
+      if (mTier > 0) void import('../audio/audioManager').then(m => m.playSfx('dance-kick-just', 0.8, undefined, milestoneSfxRate(mTier)));
+    }
     if (tierUp && tier === 3 && allowSlow) get().triggerTimeSlow(KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS);
   },
 

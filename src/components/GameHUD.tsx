@@ -92,8 +92,10 @@ const GameHUD: React.FC = () => {
   // コマンド/入力矢印は Pixi オーバーレイ側で描画。HUDはコンボ数のみ(左上)。
   // 近接フィニッシュのコンボ。ダンス(rhythm)中だけでなく通常の連続フィニッシュでも表示する。
   // コンボ窓(meleeFinishComboUntil)が有効な間だけ出す(7s窓・gameTimeは秒粒度なので失効後~1sで消える)。
-  const rhythmCombo = useGameStore(state => state.meleeFinishComboCount);
-  const rhythmComboUntil = useGameStore(state => state.meleeFinishComboUntil);
+  // 社長裁定2026-09-13「見せる数字をどうするかってだけ」: 左上の COMBO に見せるのは**近接ヒットの連続数**(表示専用・3秒窓)。
+  // スキル/スコア/ダンス段階が読むフィニッシュ回数(meleeFinishComboCount)は中身のまま=ここでは読まない。
+  const rhythmCombo = useGameStore(state => state.meleeHitComboCount);
+  const rhythmComboUntil = useGameStore(state => state.meleeHitComboUntil);
   // コンボの節目(社長承認2026-09-13): 10を跨いだ瞬間だけ数字が大きく飛び出す(CSS 変数 --combo-pop=ピーク倍率)。
   // 音は store 側の1経路(useGameLoop の購読)=HUD は絵だけ。前値を持って「跨いだか」で判定(9→11 でも出る・監査A)。
   const prevComboRef = React.useRef(rhythmCombo);
@@ -250,7 +252,7 @@ const GameHUD: React.FC = () => {
             >
               <span
                 key={`combo-${rhythmCombo}`}
-                className={`${comboTier > 0 ? 'combo-count-pop-big' : 'combo-count-pop'} inline-block text-3xl`}
+                className={`${comboTier >= 5 ? 'combo-count-pop-big combo-count-pop-max' : comboTier > 0 ? 'combo-count-pop-big' : 'combo-count-pop'} inline-block text-3xl`}
                 style={comboTier > 0 ? ({ '--combo-pop': String(1 + comboMilestoneAmp(comboTier)) } as React.CSSProperties) : undefined}
               >{rhythmCombo}</span>
             </div>

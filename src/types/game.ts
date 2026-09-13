@@ -2523,4 +2523,8 @@ export type VisualEffect =
       count: number;
       createdAt: number;
       duration: number;
+      // v0.25.4277(社長裁定「キル数は頭上に」): 帯の語(既定 'HITS')。'KILLS'=連続撃破の数(倒すたびに置き直し・窓の間は居続ける)。
+      label?: string;
+      // 節目の段(0=節目でない)。積み上がる数は「跨いだか」で書き手が決めて渡す(描画側で count から再計算しない)。
+      milestoneTier?: number;
     };

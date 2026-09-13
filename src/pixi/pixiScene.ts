@@ -29019,7 +29019,7 @@ export class PixiScene {
     if (!(bt instanceof BitmapText)) {
       if (bt) bt.destroy();
       bt = new BitmapText({
-        text: `${e.count} HITS`,
+        text: `${e.count} ${e.label ?? 'HITS'}`,
         style: { fontFamily: PixiScene.DAMAGE_FONT, fontSize: PixiScene.DAMAGE_FONT_SIZE },
       });
       (bt as BitmapText).anchor.set(0.5, 0.5);
@@ -29028,15 +29028,19 @@ export class PixiScene {
     }
     bt.visible = true;
     // コンボの節目(社長承認2026-09-13): 10・20・30…HITS は普段の約2倍まで飛び出し、減衰ばねで行き過ぎて戻る。白→ライムへ。
-    // 節目(10以上)は: 立ち上がり→減衰ばね(行き過ぎて戻る)・尺は長く(900ms)・峰の後に一拍止めて末尾で消える・上昇は減速つき。
-    const tier = multiHitMilestoneTier(e.count);
+    // 節目は: 立ち上がり→減衰ばね(行き過ぎて戻る)・尺は長く・峰の後に一拍止めて末尾で消える・上昇は減速つき。
+    // 倒した数(label='KILLS')は書き手が「跨いだか」で段を渡す(積み上がる数)。HITS は一発の数から段。性格は 'hard'(頭上=一撃の衝撃)。
+    const isKills = e.label !== undefined;
+    const tier = e.milestoneTier ?? (isKills ? 0 : multiHitMilestoneTier(e.count));
     const pop = tier > 0
-      ? 1 + comboMilestoneAmp(tier) * milestoneSpring(t)
+      ? 1 + comboMilestoneAmp(tier) * milestoneSpring(t, 'hard')
       : 1 + Math.max(0, 1 - t * 4) * 0.3; // 節目以外は従来: Kill!コールアウトより少し派手なpop-in
     bt.scale.set((20 / PixiScene.DAMAGE_FONT_SIZE) * pop);
-    bt.position.set(e.x, e.y - (tier > 0 ? 22 * (1 - (1 - t) * (1 - t)) : t * 16));
+    // 倒した数は窓の間その場に居る(上へ流さない・置き直しで数字が跳ねるだけ)。HITS の節目は減速つきで上へ。
+    bt.position.set(e.x, e.y - (isKills ? 0 : tier > 0 ? 22 * (1 - (1 - t) * (1 - t)) : t * 16));
     bt.tint = tier > 0 ? lerpColor(0xffffff, 0xbef264, milestoneTintMix(t)) : 0xbef264; // ライム(スラッシャー追撃・薙ぎ倒し系と同系色)
-    bt.alpha = tier > 0 ? milestoneAlpha(t) : Math.max(0, 1 - t);
+    // 倒した数は窓の70%まで満・末尾30%で消える(途切れたことが読める)。HITS は従来。
+    bt.alpha = isKills ? (t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3)) : tier > 0 ? milestoneAlpha(t) : Math.max(0, 1 - t);
   }
 
   // 一枚絵マーク(刀フィニッシュの習字「斬」など)。pop-in→保持→末尾フェード。world座標(effectLayer)。

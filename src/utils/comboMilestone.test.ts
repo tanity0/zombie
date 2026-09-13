@@ -45,3 +45,20 @@ describe('コンボの節目(utils/comboMilestone・社長承認2026-09-13・監
     expect(milestoneSfxRate(5)).toBeGreaterThan(milestoneSfxRate(1));
   });
 });
+
+import { milestoneSpring as spring2, milestoneSfxRate as rate2, multiHitDurationMs as dur2, killBannerDurationMs, MAX_TIER_HOLD_MULT, MULTI_HIT_MILESTONE_MS as MH_MS, KILL_BANNER_MS } from './comboMilestone';
+describe('性格の分け(社長裁定2026-09-13)と段5の段差', () => {
+  it("'hard'(頭上)は 'soft'(左上)より峰が早く減衰が速い", () => {
+    expect(spring2(0.07, 'hard')).toBeCloseTo(1, 6);
+    expect(spring2(0.07, 'soft')).toBeLessThan(1);
+    expect(Math.abs(spring2(0.6, 'hard'))).toBeLessThan(Math.abs(spring2(0.6, 'soft')) + 1e-9);
+    expect(spring2(0.5, 'hard')).toBeLessThan(0.05);
+  });
+  it('段5(50)だけ尺 ×1.4・音が一段高い', () => {
+    expect(dur2(50)).toBe(Math.round(MH_MS * MAX_TIER_HOLD_MULT));
+    expect(dur2(40)).toBe(MH_MS);
+    expect(killBannerDurationMs(5)).toBe(Math.round(KILL_BANNER_MS * MAX_TIER_HOLD_MULT));
+    expect(killBannerDurationMs(0)).toBe(KILL_BANNER_MS);
+    expect(rate2(5) - rate2(4)).toBeGreaterThan(rate2(4) - rate2(3));
+  });
+});

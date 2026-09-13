@@ -42,7 +42,7 @@ const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number; 
 // 毎フレーム再描画しないよう、狭いセレクタ(派生プリミティブ)で購読する。
 export const NpcDialogue = () => {
   const npc = useGameStore(s => s.npcDialogue);
-  const comboActive = useGameStore(s => s.meleeFinishComboCount >= 2 && s.meleeFinishComboUntil >= s.gameTime);
+  const comboActive = useGameStore(s => s.meleeHitComboCount >= 2 && s.meleeHitComboUntil >= s.gameTime); // HUD の COMBO(近接ヒット表示)と同じ条件
   const bannerActive = useGameStore(s => !!s.eventBannerText && s.eventBannerUntil >= s.gameTime);
   if (!npc) return null;
   const topPx = 132 + (comboActive ? 58 : 0) + (bannerActive ? 58 : 0);
