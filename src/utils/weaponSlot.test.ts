@@ -391,17 +391,18 @@ describe('不変条件1: 実効DPS帯(バッチC-1・UNIQUE_WEAPONS.md §16-1)',
 // により唯一「−」側(既定比−8.2%)を狙う設計——帯を±10%にしてあるのはこの1挺のためで、
 // この比率が+側に直ってしまったら仕様(旧95=−13.6%は枠外/その後+側に振るのも誤り)を壊している。
 // 手動射撃(頭部確定クリ)は式外の上振れ(§5-2)なのでここでは測らない(gameStore.fireRailgunShot)。
-// ★2026-09-13 社長指示「装填数を10発に」で 4→10 発。オート実効DPSは 42.08(−8.2%)→ 58.05(+26.7%)=**±10%の帯の外**。
-// 帯の外に出たのは社長指示による事実(UNIQUE_WEAPONS.md §16-1 の表も同じ)。旧仕様「オート時は低め(−側)」には反する
-// ので、低めに戻すなら damage の別裁定が要る。このテストは**新しい値を固定する**(黙って 4 発に戻す/damage を動かす修正が入ったら落ちる)。
+// ★2026-09-13 社長指示: 「装填数を10発に」(4→10。101のままだと +26.7% で帯外)→ 続けて「自動の攻撃力を+10%に収めて」で
+// damage 101→87 = 実効DPS 50.00(+9.1%)。旧仕様「オート時は低め(−側)」は 10発化の指示で上書きされた(事実)。
+// このテストは帯(±10%)の中に居ることと、今の値を固定する(黙って damage/発数を動かす修正が入ったら落ちる)。
 describe('不変条件1: 実効DPS帯(レールガン・UNIQUE_WEAPONS.md §16-1/§17-10)', () => {
-  it('101/1300/1発/10発/R2200 = 既定比+26.7%(2026-09-13 社長指示・帯外は事実として固定)', () => {
+  it('87/1300/1発/10発/R2200 = 既定比+9.1%(2026-09-13 社長指示: 10発化+「+10%に収める」)', () => {
     const base = effectiveDps(createWeapon('rifle-t3'));
     const unique = effectiveDps(createWeapon('rifle-t3-railgun'));
     const ratio = unique / base;
     expect(base).toBeCloseTo(45.83, 1);
-    expect(unique).toBeCloseTo(58.05, 1);
-    expect(ratio).toBeCloseTo(1.267, 2);
+    expect(unique).toBeCloseTo(50.00, 1);
+    expect(ratio).toBeGreaterThanOrEqual(0.90);
+    expect(ratio).toBeLessThanOrEqual(1.10);
   });
 });
 

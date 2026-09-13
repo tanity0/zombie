@@ -226,7 +226,7 @@ const CATALOG: Record<string, WeaponDef> = {
   // ★社長仕様「オート時のダメージは低め」により実効DPSは既定より低い(=帯±10%の−側。
   // 101×4÷(5200+4400)=42.08・既定45.83比−8.2%・§16-1/§5-2)。貫通クラスは既定T2/T3と同じ
   // (passthroughのみ・§17-2)。projectileSpeed/Size=1400/8(§17-2)。critChanceは導出のまま。
-  'rifle-t3-railgun': { key: 'rifle-t3-railgun', name: 'レールガン', type: 'rifle', category: 'rifle', tier: 3, damage: 101, cooldown: 1300, projectileSpeed: 1400, projectileSize: 8, count: 1, passthrough: true, magSize: 10 /* 社長指示2026-09-13「装填数を10発に」(旧4) */, reloadMs: 2200 },
+  'rifle-t3-railgun': { key: 'rifle-t3-railgun', name: 'レールガン', type: 'rifle', category: 'rifle', tier: 3, damage: 87 /* 社長指示2026-09-13「自動の攻撃力を+10%に収めて」(旧101・10発化で+26.7%になっていた) */, cooldown: 1300, projectileSpeed: 1400, projectileSize: 8, count: 1, passthrough: true, magSize: 10 /* 社長指示2026-09-13「装填数を10発に」(旧4) */, reloadMs: 2200 },
 
   // Melee (no ammo). Lower DPS than guns by design so bullets stay valuable.
   // Each carries a fixed crit chance that rises with tier. Tier はレベルアップ

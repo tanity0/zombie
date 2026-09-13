@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4261',
+    items: ['レールガンの一発の威力を少し下げ、装填数が増えたぶんと釣り合わせた。'],
+  },
+  {
     version: '0.25.4260',
     items: ['レールガンの装填数が増えた。狙いサークルで放つ一発の間隔が、自動射撃の間隔と別々に数えられるようになった(残弾は共通)。'],
   },
