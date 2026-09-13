@@ -9,17 +9,17 @@ const at = (id: string, type: Pickup['type'], dist: number, extra: Partial<Picku
 
 describe('マグネットの吸い寄せ(utils/magnetPull・社長裁定2026-09-13 案A)', () => {
   it('半径内の弾薬は自機へ近づき、行き過ぎない', () => {
-    const r = stepMagnetPull([at('a', 'ammo-rifle', 100)], 0, 0, 130, false, 0.1, 0);
+    const r = stepMagnetPull([at('a', 'ammo-rifle', 100)], 0, 0, 130, 2, 0.1, 0);
     expect(r.moved).toBe(true);
     const cx = r.pickups[0].x + 8;
     expect(cx).toBeLessThan(100);
     expect(cx).toBeGreaterThan(0);
-    const r2 = stepMagnetPull([at('a', 'ammo-rifle', 100)], 0, 0, 130, false, 10, 0);
+    const r2 = stepMagnetPull([at('a', 'ammo-rifle', 100)], 0, 0, 130, 2, 10, 0);
     expect(r2.pickups[0].x + 8).toBeCloseTo(0, 5);
   });
   it('半径の外は動かない(参照もそのまま)', () => {
     const list = [at('a', 'ammo-rifle', 200)];
-    const r = stepMagnetPull(list, 0, 0, 130, false, 0.1, 0);
+    const r = stepMagnetPull(list, 0, 0, 130, 2, 0.1, 0);
     expect(r.moved).toBe(false);
     expect(r.pickups).toBe(list);
   });
@@ -29,18 +29,15 @@ describe('マグネットの吸い寄せ(utils/magnetPull・社長裁定2026-09-
       at('ghost', 'ammo-rifle', 50, { ownerGhostId: 'g1' } as Partial<Pickup>),
       at('fly', 'strap', 50, { throwStartAt: 0, throwDuration: 500 }),
     ];
-    const r = stepMagnetPull(list, 0, 0, 130, true, 0.1, 100);
+    const r = stepMagnetPull(list, 0, 0, 130, 3, 0.1, 100);
     expect(r.moved).toBe(false);
   });
-  it('経験値・回復は覚醒(Lv3)の時だけ動く。コインは常に動く', () => {
-    const list = [at('xp', 'experience', 60), at('hp', 'health', 60), at('coin', 'strap', 60)];
-    const noAwaken = stepMagnetPull(list, 0, 0, 130, false, 0.1, 0);
-    expect(noAwaken.pickups.find(p => p.id === 'xp')!.x).toBe(list[0].x);
-    expect(noAwaken.pickups.find(p => p.id === 'hp')!.x).toBe(list[1].x);
-    expect(noAwaken.pickups.find(p => p.id === 'coin')!.x).not.toBe(list[2].x);
-    const awaken = stepMagnetPull(list, 0, 0, 130, true, 0.1, 0);
-    expect(awaken.pickups.find(p => p.id === 'xp')!.x).not.toBe(list[0].x);
-    expect(awaken.pickups.find(p => p.id === 'hp')!.x).not.toBe(list[1].x);
+  it('対象はレベルで増える: Lv1 経験値だけ / Lv2 +コイン・弾 / Lv3 +アイテム(社長裁定2026-09-13)', () => {
+    const list = [at('xp', 'experience', 60), at('coin', 'strap', 60), at('ammo', 'ammo-rifle', 60), at('hp', 'health', 60)];
+    const moved = (lv: number, id: string) => stepMagnetPull(list, 0, 0, 130, lv, 0.1, 0).pickups.find(p => p.id === id)!.x !== list.find(p => p.id === id)!.x;
+    expect([moved(1, 'xp'), moved(1, 'coin'), moved(1, 'ammo'), moved(1, 'hp')]).toEqual([true, false, false, false]);
+    expect([moved(2, 'xp'), moved(2, 'coin'), moved(2, 'ammo'), moved(2, 'hp')]).toEqual([true, true, true, false]);
+    expect([moved(3, 'xp'), moved(3, 'coin'), moved(3, 'ammo'), moved(3, 'hp')]).toEqual([true, true, true, true]);
   });
   it('慣性: 縁では遅く、近づくほど速い(単調増加・端の値は定数どおり)', () => {
     expect(magnetPullSpeedAt(130, 130)).toBeCloseTo(MAGNET_PULL_EDGE_SPEED);
@@ -50,6 +47,6 @@ describe('マグネットの吸い寄せ(utils/magnetPull・社長裁定2026-09-
   });
   it('半径0(未取得)は何もしない', () => {
     const list = [at('a', 'ammo-rifle', 10)];
-    expect(stepMagnetPull(list, 0, 0, 0, false, 0.1, 0).moved).toBe(false);
+    expect(stepMagnetPull(list, 0, 0, 0, 2, 0.1, 0).moved).toBe(false);
   });
 });

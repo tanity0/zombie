@@ -223,10 +223,24 @@ export const checkEnemySummonCollisions = (
  * (遠くから誤って開かない)。同日の「犬は箱を触らない」裁定と扱いが揃った。なお v0.25.36xx(§6.38 B3・v2 F)では逆に
  * 「マグネット挙動=既存treasureと同じ規約」と裁定されており treasure と同枠に置いていた——事実として併記(今の正は上の裁定)。
  */
+// (旧・拾得枠の拡大用。ループは v0.25.4262 から mult=1 を渡すので実質未使用。互換とテストのため据え置き=挙動不変)
 export const isMagnetPickupType = (t: Pickup['type'], magnetAwaken: boolean): boolean =>
   t === 'ammo-handgun' || t === 'ammo-shotgun' || t === 'ammo-rifle' || t === 'ammo-phill' ||
   t === 'strap' || t === 'treasure' ||
   (magnetAwaken && (t === 'experience' || t === 'health' || t === 'magnet' || t === 'bomb' || t === 'quick-magazine'));
+
+/**
+ * ★社長裁定2026-09-13(マグネット仕様変更・3段階に畳む): 対象はレベルで増える。
+ *   Lv1 = 経験値だけ / Lv2 = +コイン(strap/treasure)+弾薬 / Lv3(覚醒) = +回復・磁石・爆弾・クイックマガジン。
+ * 箱3種・任務品・落ちた銃・武器箱は列挙外=どのレベルでも動かない(許可リスト方式)。
+ */
+export const isMagnetPickupTypeForLevel = (t: Pickup['type'], level: number): boolean => {
+  if (level <= 0) return false;
+  if (t === 'experience') return true;
+  if (level >= 2 && (t === 'ammo-handgun' || t === 'ammo-shotgun' || t === 'ammo-rifle' || t === 'ammo-phill' || t === 'strap' || t === 'treasure')) return true;
+  if (level >= 3 && (t === 'health' || t === 'magnet' || t === 'bomb' || t === 'quick-magazine')) return true;
+  return false;
+};
 
 // Check collisions between player and pickups
 // ammoRangeMult: 拾得矩形を中心基準で拡大する係数。★v0.25.4262 からスキル マグネットは**吸い寄せ(utils/magnetPull)**に

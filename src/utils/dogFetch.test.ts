@@ -51,3 +51,19 @@ describe('ドッグが触る物の台帳(utils/dogFetch)', () => {
     expect(dogEligiblePickups({ ...base, pickups: picks, skipHealth: false })).toHaveLength(2);
   });
 });
+
+// 社長裁定2026-09-13「ドッグが拾い物そのものを追う」(マグネットとの取り合い対策)。
+import { dogTrackTarget } from './dogFetch';
+describe('dogTrackTarget(狙いの追跡)', () => {
+  const pk = (id: string, x: number, y: number, extra: Partial<Pickup> = {}): Pickup => ({ id, type: 'strap', x, y, value: 1, ...extra } as Pickup);
+  it('狙いが在れば現在の中心へ向く(マグネットに引かれて動いた後の位置)', () => {
+    expect(dogTrackTarget([pk('a', 100, 50)], 'a', 0)).toEqual({ kind: 'follow', x: 108, y: 58 });
+  });
+  it('狙いが消えていれば lost(=CD を消費せず中止)', () => {
+    expect(dogTrackTarget([pk('b', 0, 0)], 'a', 0)).toEqual({ kind: 'lost' });
+  });
+  it('狙い無し/投擲中は keep(座標据え置き)', () => {
+    expect(dogTrackTarget([pk('a', 0, 0)], null, 0)).toEqual({ kind: 'keep' });
+    expect(dogTrackTarget([pk('a', 0, 0, { throwStartAt: 0, throwDuration: 500 })], 'a', 100)).toEqual({ kind: 'keep' });
+  });
+});

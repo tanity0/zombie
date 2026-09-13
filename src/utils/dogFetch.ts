@@ -31,6 +31,21 @@ export const DOG_EXCLUDED_TYPES: readonly PickupType[] = [
 const isInFlight = (p: Pickup, nowMs: number): boolean =>
   p.throwStartAt !== undefined && p.throwDuration !== undefined && nowMs - p.throwStartAt < p.throwDuration;
 
+/**
+ * 出発後の狙いの追跡(社長裁定2026-09-13「ドッグが拾い物そのものを追う」・マグネットとの取り合い対策)。
+ * - 'follow': 狙った拾い物がまだ在る → その**現在の中心**へ向かう(マグネットに引かれて動いても追い付く)。
+ * - 'lost'  : 狙った拾い物が消えた(プレイヤーが先に拾った等) → 往復を**中止**。呼び出し側は CD を消費しない。
+ * - 'keep'  : 狙いが無い(旧形式)/投擲中 → 座標を据え置く。
+ */
+export type DogTrackResult = { kind: 'keep' } | { kind: 'follow'; x: number; y: number } | { kind: 'lost' };
+export const dogTrackTarget = (pickups: readonly Pickup[], targetId: string | null, nowMs: number): DogTrackResult => {
+  if (!targetId) return { kind: 'keep' };
+  const p = pickups.find(q => q.id === targetId);
+  if (!p) return { kind: 'lost' };
+  if (isInFlight(p, nowMs)) return { kind: 'keep' };
+  return { kind: 'follow', x: p.x + 8, y: p.y + 8 };
+};
+
 export interface DogEligibleInput {
   pickups: readonly Pickup[];
   /** 中心座標(狙いを選ぶ時=主語の中心 / 消す・拾う時=目標地点)。 */

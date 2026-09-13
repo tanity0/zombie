@@ -99,7 +99,7 @@ import {
 import { computeWarpLandingPoint, computeWarpFlyinStart } from '../utils/rescueQuestWarp'; // 二人組クエストv2(§2-8・B4)
 import { pushShieldRect, clampShieldPlacementRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
-import { DOG_EXCLUDED_TYPES, dogEligiblePickups } from '../utils/dogFetch';
+import { DOG_EXCLUDED_TYPES, dogEligiblePickups, dogTrackTarget } from '../utils/dogFetch';
 import { stepMagnetPull } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ(社長裁定2026-09-13) // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // ★対人トラップの効果時間(SAME_ARENA §3-g)
 import { glenScriptApplies } from '../utils/giantScript';
@@ -1333,6 +1333,31 @@ type DogFetchJob = {
   radius: number;
   collected: boolean;
   bitten: Set<string>; // この往復で既に噛んだ敵(重複噛み防止)
+  // 社長裁定2026-09-13「ドッグが拾い物そのものを追う」: 狙った拾い物の id と、その往復の dogFetch 効果の id。
+  // 毎フレーム utils/dogFetch.dogTrackTarget で現在位置へ向け直し、先に拾われていたら CD を消費せず中止する。
+  targetId: string | null;
+  effectId: string | null;
+};
+
+// ドッグ効果(dogFetch)の狙い座標を追従させる/中止時に今いる所から引き返させる。効果は描画専用の state で、
+// updateEffects は particle/damageNumber 以外を同じオブジェクトのまま持ち回るので、その場で書き換える(set は起こさない)。
+const dogFetchFx = (effectId: string | null) => {
+  if (!effectId) return null;
+  const e = useGameStore.getState().effects.find(x => x.id === effectId);
+  return e && e.kind === 'dogFetch' ? e : null;
+};
+const syncDogFetchFxTarget = (effectId: string | null, x: number, y: number): void => {
+  const e = dogFetchFx(effectId); if (e) { e.targetX = x; e.targetY = y; }
+};
+// 中止: 犬が今いる所(往路の補間位置)を折り返し点にして、残りの復路の尺だけで戻る(瞬間移動させない=慣性MUST)。
+const abortDogFetchFx = (job: DogFetchJob, effectId: string | null, nowMs: number): void => {
+  const e = dogFetchFx(effectId); if (!e) return;
+  const outT = Math.max(0, Math.min(1, (nowMs - job.startedAt) / Math.max(1, DOG_FETCH_PICKUP_MS)));
+  const curX = job.fromX + (job.targetX - job.fromX) * outT;
+  const curY = job.fromY + (job.targetY - job.fromY) * outT;
+  e.targetX = curX; e.targetY = curY;
+  e.pickupAt = nowMs;
+  e.duration = (nowMs - e.createdAt) + (DOG_FETCH_DURATION_MS - DOG_FETCH_PICKUP_MS);
 };
 
 export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: boolean } = {}) => {
@@ -8801,9 +8826,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (isHostileOwner(pdOwner) && pdActor.subWeapons.includes('dog')) {
             const pdLevel = Math.max(1, Math.min(3, pdActor.subWeaponLevels.dog ?? 1));
             const pdNow = Date.now();
-            const job = phantomDogRef.current;
             const pdHomeX = ownerCenterX(pdOwner);
             const pdHomeY = ownerCenterY(pdOwner);
+            // 社長裁定2026-09-13: 幻影のドッグも狙いを追い、消えていたら CD を消費せず中止(プレイヤー側と同じ形)。
+            {
+              const pj = phantomDogRef.current;
+              if (pj && !pj.collected) {
+                const tr = dogTrackTarget(useGameStore.getState().pickups, pj.targetId, pdNow);
+                if (tr.kind === 'follow') { pj.targetX = tr.x; pj.targetY = tr.y; syncDogFetchFxTarget(pj.effectId, tr.x, tr.y); }
+                else if (tr.kind === 'lost') { abortDogFetchFx(pj, pj.effectId, pdNow); phantomDogRef.current = null; }
+              }
+            }
+            const job = phantomDogRef.current;
             if (job) {
               // 噛み: 往復の補間位置がプレイヤーに近づいたら1回だけ。ダメージは対人補正込み。
               const t = Math.max(0, Math.min(1, (pdNow - job.startedAt) / DOG_FETCH_DURATION_MS));
@@ -8862,6 +8896,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               })[0];
               if (cand) {
                 const tX = cand.x + 8, tY = cand.y + 8;
+                const pdFxId = `fx-phantom-dog-${Math.floor(pdNow)}-${cand.id}`;
                 phantomDogRef.current = {
                   collectAt: pdNow + DOG_FETCH_PICKUP_MS,
                   finishAt: pdNow + DOG_FETCH_DURATION_MS,
@@ -8871,10 +8906,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   radius: DOG_COLLECT_RADIUS_BY_LEVEL[pdLevel],
                   collected: false,
                   bitten: new Set<string>(),
+                  targetId: cand.id,
+                  effectId: pdFxId,
                 };
                 spawnEffect({
                   kind: 'dogFetch',
-                  id: `fx-phantom-dog-${Math.floor(pdNow)}-${cand.id}`,
+                  id: pdFxId,
                   fromX: pdHomeX, fromY: pdHomeY,
                   targetX: tX, targetY: tY,
                   toX: pdHomeX, toY: pdHomeY,
@@ -8896,6 +8933,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels.dog ?? 1));
           const dogReadyAt = subWeaponPlayer.subWeaponCooldowns.dog ?? gameTime;
           const nowMs = Date.now();
+          // 社長裁定2026-09-13: 狙った拾い物を追う。消えていたら(マグネットで先に拾った等)CD を消費せず中止=次フレームで狙い直し。
+          {
+            const job = dogFetchRef.current;
+            if (job && !job.collected) {
+              const tr = dogTrackTarget(useGameStore.getState().pickups, job.targetId, nowMs);
+              if (tr.kind === 'follow') { job.targetX = tr.x; job.targetY = tr.y; syncDogFetchFxTarget(job.effectId, tr.x, tr.y); }
+              else if (tr.kind === 'lost') { abortDogFetchFx(job, job.effectId, nowMs); dogFetchRef.current = null; }
+            }
+          }
           const activeFetch = dogFetchRef.current;
 
           if (activeFetch) {
@@ -9029,6 +9075,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (target) {
               const targetX = target.x + 8;
               const targetY = target.y + 8;
+              const dogFxId = `fx-dog-fetch-${Math.floor(nowMs)}-${target.id}`;
               dogFetchRef.current = {
                 collectAt: nowMs + DOG_FETCH_PICKUP_MS,
                 finishAt: nowMs + DOG_FETCH_DURATION_MS,
@@ -9040,10 +9087,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 radius: collectRadius,
                 collected: false,
                 bitten: new Set<string>(),
+                targetId: target.id,
+                effectId: dogFxId,
               };
               spawnEffect({
                 kind: 'dogFetch',
-                id: `fx-dog-fetch-${Math.floor(nowMs)}-${target.id}`,
+                id: dogFxId,
                 fromX: playerX,
                 fromY: playerY,
                 targetX,
@@ -14322,14 +14371,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // マガジン)はプレイヤーの拾得対象から外す。世界のドロップではなく本人の設置物で、拾うのも本人
         // (守護霊は世界の物に触れない/プレイヤーは守護霊の物を取らない=2人分が独立)。
         // 守護霊が居ないランでは1件も該当しない=従来と1bit同じ。
-        // スキル マグネット=吸い寄せ(社長裁定2026-09-13・案A・utils/magnetPull): 半径内の弾薬・コイン(覚醒=アイテム・経験値も)を
-        // 自機へ滑らせる。動いたフレームだけ set(何も無ければ参照そのまま=再レンダー規律)。拾得枠の拡大(旧仕様)は 1=無し。
+        // スキル マグネット=吸い寄せ(社長裁定2026-09-13・utils/magnetPull): Lv1 経験値 / Lv2 +コイン・弾薬 / Lv3 +アイテム を
+        // 半径 100/150/250 で自機へ滑らせる。動いたフレームだけ set(何も無ければ参照そのまま=再レンダー規律)。拾得枠の拡大(旧仕様)は 1=無し。
         {
           const magnetR = skillMagnetPullRadius(collPlayer);
           if (magnetR > 0) {
             const pulled = stepMagnetPull(
               useGameStore.getState().pickups, collPlayer.x + collPlayer.width / 2, collPlayer.y + collPlayer.height / 2,
-              magnetR, skillLevel(collPlayer, 'magnet') >= 3, deltaTime, nowMs,
+              magnetR, skillLevel(collPlayer, 'magnet'), deltaTime, nowMs,
             );
             if (pulled.moved) useGameStore.setState({ pickups: pulled.pickups });
           }

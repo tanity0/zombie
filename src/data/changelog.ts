@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4266',
+    items: ['マグネットは段階で引き寄せる物が増える。最初は経験値だけ、次にコインと弾、覚醒で回復や爆弾などのアイテムも。範囲も段階で広がる。ドッグは狙った落ち物を追いかけるようになり、先にこちらが拾ってしまった時は再使用の待ちが発生しない。'],
+  },
+  {
     version: '0.25.4265',
     items: ['ゲーム内容の変更はありません。'],
   },
