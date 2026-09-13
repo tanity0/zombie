@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4265',
+    items: ['ゲーム内容の変更はありません。'],
+  },
+  {
     version: '0.25.4264',
     items: ['ドッグが取りに行ける距離が、レベル2と3で少し伸びた。'],
   },
