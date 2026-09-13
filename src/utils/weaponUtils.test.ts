@@ -540,13 +540,13 @@ describe('バッチD: ランチャー3挺のCATALOG', () => {
 // 「オート射撃は何も足さない」(§17-10)ことだけを固定する——railgun-t3-eyelaser等と同じ形の
 // 普通のrifle弾になっていること(headshotEligibleが立たないこと含む)。
 describe('レールガン(rifle-t3-railgun)のCATALOG+オート射撃(§17-10)', () => {
-  it('rifle T3・damage101/cooldown1300/magSize4/reloadMs2200・passthroughのみ(pierceなし)', () => {
+  it('rifle T3・damage101/cooldown1300/magSize10(社長指示2026-09-13・旧4)/reloadMs2200・passthroughのみ(pierceなし)', () => {
     const w = createWeapon(RAILGUN_WEAPON_KEY);
     expect(w.category).toBe('rifle');
     expect(w.tier).toBe(3);
     expect(w.damage).toBe(101);
     expect(w.cooldown).toBe(1300);
-    expect(w.magSize).toBe(4);
+    expect(w.magSize).toBe(10);
     expect(w.reloadMs).toBe(2200);
     expect(w.projectileSpeed).toBe(1400);
     expect(w.projectileSize).toBe(8);

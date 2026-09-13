@@ -1475,6 +1475,9 @@ export interface Weapon {
   damage: number;
   cooldown: number;
   lastFired: number;
+  // 手動射撃(レールガンの狙いサークル一発)の最終発射時刻。オートの lastFired とは**別の時計**
+  // (社長指示2026-09-13「オートと手動のCDは分けて」)。残弾(magazine)は共有のまま。未使用の銃では undefined。
+  manualLastFired?: number;
   level: number;
   projectileSpeed?: number;
   projectileSize?: number;

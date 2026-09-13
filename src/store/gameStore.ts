@@ -10622,9 +10622,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   // ★違いは2つだけ: ①キー判定がRAILGUN_WEAPON_KEY ②弾のweaponTypeを'phill-bullet'にしない
   // ('rifle'のまま。headshotEligible:trueだけを立てて、collisionUtilsの頭部リージョン判定を
   // 共有する=PHILL弾の他の性質(ボディ命中2倍ノックバック・専用の橙い弾描画)は引き継がない・§17-10)。
-  // ★オートと同じ武器実体(weapon.magazine/lastFired)を読み書きするので、残弾/CDはオートと共存する
-  // (=「刀と一閃」と同じで、この銃の自動射撃(fireWeapon)はそのまま独立して動き続ける。ここでは
-  // 何も除外しない)。recordPhillShot/recordPhillHeadshotはPHILL専用の統計(守護霊のPHILL再現率)
+  // ★残弾(weapon.magazine)はオートと共有。**CD は別の時計**(社長指示2026-09-13「オートと手動のCDは分けて」):
+  // 手動は weapon.manualLastFired だけを読み書きし、オートの lastFired には触らない(=オートが直前に撃っていても
+  // 手動は撃てるし、手動を撃ってもオートの間隔は詰まらない。旧: 同じ lastFired を共有していた)。
+  // この銃の自動射撃(fireWeapon)はそのまま独立して動き続ける。recordPhillShot/recordPhillHeadshotはPHILL専用の統計(守護霊のPHILL再現率)
   // なのでここでは呼ばない(呼ぶとレールガンの命中がPHILLの統計に混ざる)。
   fireRailgunShot: () => {
     const { player } = get();
@@ -10641,7 +10642,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     if (isReloading(player, weapon.id)) return;
     if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
-    if (now - weapon.lastFired < (weapon.cooldown ?? 1300) / ((player.equipBonus?.fireRateMult ?? 1) * berserkerAwakenFireRateMult(player))) return;
+    if (now - (weapon.manualLastFired ?? 0) < (weapon.cooldown ?? 1300) / ((player.equipBonus?.fireRateMult ?? 1) * berserkerAwakenFireRateMult(player))) return;
     // firePhillShotと同じ合流点(スカベンジャー/アタックシューター/消費カード/装備/ラストマガジン)。
     const railgunDamage = weapon.damage * scavengerGunMult(player, get().gameTime) * skillAttackShooterGunMult(player) * consumableAttackMult(player, get().gameTime) * (player.equipBonus?.damageMult ?? 1) * skillLastMagazineMult(player, weapon.magazine ?? 0);
     const pcx = player.x + player.width / 2;
@@ -10691,7 +10692,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     recordManualShot(); // research/WEAPON_AI_TEST.md S2-a: 手動アクションの発射成立(レールガン分)。
     void import('../audio/audioManager').then(m => m.playSfx('rifle-fire'));
     const nextMag = Math.max(0, (weapon.magazine ?? 0) - 1);
-    set(state => ({ player: { ...state.player, weapons: state.player.weapons.map(w => w.id === weapon.id ? { ...w, lastFired: now, magazine: nextMag } : w) } }));
+    set(state => ({ player: { ...state.player, weapons: state.player.weapons.map(w => w.id === weapon.id ? { ...w, manualLastFired: now, magazine: nextMag } : w) } }));
     if (nextMag <= 0) get().autoSwitchIfDry(); // 空なら既存経路でリロード
   },
 
