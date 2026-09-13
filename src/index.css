@@ -204,9 +204,12 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   /* コンボの節目(10・20・30…): 普段の約2倍(--combo-pop)まで飛び出し、行き過ぎて戻る。白く光ってから本来の色へ。 */
   .combo-count-pop-big {
     --combo-pop: 1.8;
-    transform-origin: 50% 82%;
-    animation: combo-count-pop-big 620ms cubic-bezier(0.2, 1.2, 0.3, 1) both;
-    will-change: transform, opacity, filter;
+    transform-origin: 0% 100%; /* 左寄せの数字=左下から右上へ膨らむ(画面端へ食い込まない・見出しに登らない) */
+    animation: combo-count-pop-big 700ms ease-out both; /* 行き過ぎは keyframe 側だけで書く(bezier と二重にしない) */
+    will-change: transform, filter;
+  }
+  .combo-caption-pop {
+    animation: combo-caption-pop 700ms ease-out both;
   }
   .loading-sigil {
     animation: loading-sigil-spin 1.15s linear infinite;
@@ -294,12 +297,18 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   }
 }
 
+/* 節目: 既にある数字が「はじける」(縮んで出直さない)。峰→戻り過ぎ→小さな戻り→静止。白は最初に急に抜ける。 */
 @keyframes combo-count-pop-big {
-  0% { opacity: 0.4; transform: translateY(14px) scale(0.5); filter: brightness(2.4); }
-  30% { opacity: 1; transform: translateY(-16px) scale(var(--combo-pop)); filter: brightness(1.9); }
-  55% { opacity: 1; transform: translateY(4px) scale(0.9); filter: brightness(1.15); }
-  75% { opacity: 1; transform: translateY(-2px) scale(1.05); filter: brightness(1.05); }
-  100% { opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); }
+  0% { transform: scale(1); filter: brightness(2.6); }
+  26% { transform: scale(var(--combo-pop)); filter: brightness(1.6); }
+  50% { transform: scale(0.92); filter: brightness(1.12); }
+  72% { transform: scale(1.04); filter: brightness(1.04); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+@keyframes combo-caption-pop {
+  0% { letter-spacing: 0.18em; text-shadow: 0 1px 0 rgba(0,0,0,0.9), 0 0 6px rgba(251,191,36,0.35); }
+  30% { letter-spacing: 0.34em; text-shadow: 0 1px 0 rgba(0,0,0,0.9), 0 0 16px rgba(251,191,36,0.85); }
+  100% { letter-spacing: 0.18em; text-shadow: 0 1px 0 rgba(0,0,0,0.9), 0 0 6px rgba(251,191,36,0.35); }
 }
 
 @keyframes loading-sigil-spin {

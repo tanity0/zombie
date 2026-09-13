@@ -188,7 +188,7 @@ import {
   isReaperFamily, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
 } from '../utils/enemyUtils';
 import { recoilKickOffset, killChainEdgeEnvelope } from '../utils/combatFeel';
-import { comboMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTintMix } from '../utils/comboMilestone';
+import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTintMix, milestoneAlpha } from '../utils/comboMilestone';
 // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 赤予告の「呼吸」を敵の区分で3種に。純関数1本
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } from '../utils/telegraphStyle';
@@ -29028,14 +29028,15 @@ export class PixiScene {
     }
     bt.visible = true;
     // コンボの節目(社長承認2026-09-13): 10・20・30…HITS は普段の約2倍まで飛び出し、減衰ばねで行き過ぎて戻る。白→ライムへ。
-    const tier = comboMilestoneTier(e.count);
+    // 節目(10以上)は: 立ち上がり→減衰ばね(行き過ぎて戻る)・尺は長く(900ms)・峰の後に一拍止めて末尾で消える・上昇は減速つき。
+    const tier = multiHitMilestoneTier(e.count);
     const pop = tier > 0
       ? 1 + comboMilestoneAmp(tier) * milestoneSpring(t)
       : 1 + Math.max(0, 1 - t * 4) * 0.3; // 節目以外は従来: Kill!コールアウトより少し派手なpop-in
     bt.scale.set((20 / PixiScene.DAMAGE_FONT_SIZE) * pop);
-    bt.position.set(e.x, e.y - t * 16);
+    bt.position.set(e.x, e.y - (tier > 0 ? 22 * (1 - (1 - t) * (1 - t)) : t * 16));
     bt.tint = tier > 0 ? lerpColor(0xffffff, 0xbef264, milestoneTintMix(t)) : 0xbef264; // ライム(スラッシャー追撃・薙ぎ倒し系と同系色)
-    bt.alpha = Math.max(0, 1 - t);
+    bt.alpha = tier > 0 ? milestoneAlpha(t) : Math.max(0, 1 - t);
   }
 
   // 一枚絵マーク(刀フィニッシュの習字「斬」など)。pop-in→保持→末尾フェード。world座標(effectLayer)。

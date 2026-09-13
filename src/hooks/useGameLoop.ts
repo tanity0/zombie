@@ -248,8 +248,16 @@ import {
   pickNearestTarget, // UNIQUE_WEAPONS.md §19-3: 金環の対象取得(各金環が独立に最寄りの敵を取る)
 } from '../utils/enemyUtils';
 import { killChainSfxRate, recoilSpecForWeapon, casingSpecFor } from '../utils/combatFeel';
+import { comboMilestoneCrossed, milestoneSfxRate } from '../utils/comboMilestone';
 // 戦闘の手触り②: 撃破SEのピッチはstoreの段(killChainTier)から。audioManagerはstoreをimportできないので登録式。
 registerKillChainSfxRate(() => killChainSfxRate(useGameStore.getState().killChainTier, Math.random()));
+// コンボの節目(社長承認2026-09-13): HUD左の COMBO が 10 を跨いだ瞬間の音を**事象(store の変化)で1経路**鳴らす(HUD は絵だけ)。
+// 「跨いだか」判定=一振りで 9→11 でも鳴る(クリエイティブ監査A)。段ごとに少し高く。
+useGameStore.subscribe((s, prev) => {
+  if (s.meleeFinishComboCount === prev.meleeFinishComboCount) return;
+  const tier = comboMilestoneCrossed(prev.meleeFinishComboCount, s.meleeFinishComboCount);
+  if (tier > 0) playSfx('dance-kick-just', 0.8, undefined, milestoneSfxRate(tier));
+});
 import { resolvePumpkinTier, allowDrillerForRun, allowLoggerForRun } from '../utils/drillerAi'; // PACING_PUZZLE.md §9-3/§14-3
 import { isBossMakerRun } from '../utils/bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdriller/loggerを出さない
 import { isGauntletRun } from '../utils/gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdriller/loggerを出さない

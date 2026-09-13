@@ -100,7 +100,7 @@ import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
-import { comboMilestoneTier } from '../utils/comboMilestone';
+import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate } from '../utils/comboMilestone';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 import {
   normalizeDir, biasedBurstAngle,
@@ -15810,8 +15810,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (MULTIFX_ENABLED && shouldShowMultiHitFx(count)) {
       const p = state.player;
       get().spawnMultiHitFx(p.x + p.width / 2, p.y - 26, count);
-      // コンボの節目(社長承認2026-09-13): 10・20・30 HITS の瞬間だけ小さなカチッ(HUD の COMBO と同じ音)。
-      if (comboMilestoneTier(count) > 0) void import('../audio/audioManager').then(m => m.playSfx('ui-move'));
+      // コンボの節目(社長承認2026-09-13): 10 HITS 以上の瞬間だけ戦闘系の打音(キック)。段ごとに少し高く(10 と 50 を同じ音にしない)。
+      // UI のカーソル音ではなく世界の音を使う(クリエイティブ監査2026-09-13)。HUD の COMBO 側は useGameLoop の購読が同じ音を鳴らす。
+      const mhTier = multiHitMilestoneTier(count);
+      if (mhTier > 0) void import('../audio/audioManager').then(m => m.playSfx('dance-kick-just', 0.8, undefined, milestoneSfxRate(mhTier)));
     }
     if (state.player.characterClass !== 'warrior' || count < 2) return;
     set(s => ({ player: { ...s.player, heavyGunnerExpBuffUntil: s.gameTime + 3000 } }));
@@ -15827,7 +15829,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       id: `fx-multihit-${now}-${Math.random().toString(36).slice(2, 6)}`,
       x, y, count,
       createdAt: now,
-      duration: 620,
+      duration: multiHitDurationMs(count), // 節目(10以上)は 900ms(峰の後に一拍)・普段 620ms
     };
     set(state => ({ effects: [...dedupeMultiHitEffects(state.effects), effect] }));
     get().spawnRing(x, y, 6, 40, 'rgba(190,242,100,0.85)', 3, 320);
