@@ -1713,6 +1713,6 @@ export const playEnemyDeath = () => {
   if (now - lastEnemyDeathAt < ENEMY_DEATH_MIN_INTERVAL_MS) return;
   lastEnemyDeathAt = now;
   const key = ENEMY_DEATH_KEYS[Math.floor(Math.random() * ENEMY_DEATH_KEYS.length)];
-  // 連続撃破の段が上がるほど半音ずつ高く(combatFeel.killChainSfxRate)。数字を出さずに音で伝える。
+  // 連続撃破の段が上がるほど半音ずつ高く(combatFeel.killChainSfxRate・1発ごとに±3%揺れる)。数字を出さずに音で伝える。
   playSfx(key, 1, undefined, killChainSfxRateSource ? killChainSfxRateSource() : 1);
 };

@@ -187,7 +187,7 @@ import {
   getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType, isPumpkinTier,
   isReaperFamily, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
 } from '../utils/enemyUtils';
-import { recoilKickOffset, killChainEdgePulseMs } from '../utils/combatFeel';
+import { recoilKickOffset, killChainEdgeEnvelope } from '../utils/combatFeel';
 // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 赤予告の「呼吸」を敵の区分で3種に。純関数1本
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } from '../utils/telegraphStyle';
@@ -7663,21 +7663,19 @@ export class PixiScene {
     // ease-outで戻る(combatFeel.recoilKickOffset)。揺れと同じくストップ中は描かない。描画のみ。
     const kickLeft = (s.kickUntil && now >= s.hitstopUntil) ? s.kickUntil - now : 0;
     if (kickLeft > 0) {
-      const koff = recoilKickOffset(s.kickMag, kickLeft, s.kickDur) * SHAKE_GLOBAL_MULT;
+      const koff = recoilKickOffset(s.kickMag, kickLeft, s.kickDur, s.kickOver) * SHAKE_GLOBAL_MULT;
       sx += s.kickDirX * koff;
       sy += s.kickDirY * koff;
     }
-    // 戦闘の手触り②: 連続撃破の段が上がった瞬間、画面端が血の色に染まって引く(段ごとに長さが違う)。
-    // 実時間(realNow)基準=10体のスロー中も脈動は止まらない。数字は出さない。
+    // 戦闘の手触り②: 連続撃破の段が上がった瞬間、画面端(下と左右が重い)がライムに染まって引く。
+    // 色は多段ヒット帯(drawMultiHitBanner 0xbef264)と同じ=この作品の「連続」の語彙。赤は危険/カウンター、
+    // 紫はカウンター不可の色なので報酬には使わない(色の文法・CLAUDE.md)。段1・2は一拍、段3(10体)は二拍。
+    // 実時間(realNow)基準=10体のスロー中も脈は止まらない。数字は出さない。
     {
-      const pulseMs = killChainEdgePulseMs(s.killChainTier);
-      const pel = realNow - s.killChainTierAt;
-      if (pulseMs > 0 && pel >= 0 && pel < pulseMs) {
-        const k = 1 - pel / pulseMs;
-        // 立ち上がりは一瞬(最初の12%で満開)、あとは二次で引く=脈。
-        const rise = Math.min(1, pel / (pulseMs * 0.12));
-        this.killChainEdge.alpha = 0.22 * rise * (s.killChainTier >= 3 ? 1.6 : s.killChainTier >= 2 ? 1.25 : 1) * k * k;
-        this.killChainEdge.tint = 0xb3121a;
+      const env = killChainEdgeEnvelope(s.killChainTier, realNow - s.killChainTierAt);
+      if (env > 0) {
+        this.killChainEdge.alpha = 0.2 * env;
+        this.killChainEdge.tint = 0xbef264;
         this.killChainEdge.visible = !HIDE_LAYERS.has('vig');
       } else if (this.killChainEdge.visible) {
         this.killChainEdge.visible = false;
@@ -26762,7 +26760,17 @@ export class PixiScene {
       const body = new Sprite(tex); body.anchor.set(0.5);
       const core = new Sprite(tex); core.anchor.set(0.5);
       const r = e.size;
-      if (e.liquid) {
+      if (e.solid) {
+        // 固体(薬莢・戦闘の手触り③): 通常合成・発光なし。暗い縁の下敷き+本体の細長い殻+光を拾う小さな縁。
+        // 加算の火花に乗せると真鍮が「光る火の粉」になるので別枝(監査2026-09-13)。
+        halo.blendMode = 'normal'; halo.tint = 0x1a1208; halo.alpha = 0.55;
+        halo.width = r * 1.9 * 2; halo.height = r * 0.95 * 2;
+        body.blendMode = 'normal'; body.tint = this.glowTint(e.color); body.alpha = 1;
+        body.width = r * 1.7 * 2; body.height = r * 0.78 * 2;
+        core.blendMode = 'normal'; core.tint = 0xfff1c2; core.alpha = 0.5;
+        core.width = r * 0.55 * 2; core.height = r * 0.3 * 2;
+        core.position.set(r * 0.55, -r * 0.18);
+      } else if (e.liquid) {
         // 液体: 通常合成。下敷きの暗い楕円+本体+左上ハイライト(旧と同配色・同形状)。
         halo.blendMode = 'normal'; halo.tint = 0x052e16; halo.alpha = 0.46;
         halo.width = r * 1.45 * 2; halo.height = r * 0.95 * 2;
@@ -26788,6 +26796,13 @@ export class PixiScene {
     }
     view.visible = true;
     view.position.set(e.x, e.y);
+    if (e.solid) {
+      // 殻は消える直前まで実体: 終端の22%だけで消す。空中は spin で回り、床で止まったら向きを固定。
+      view.alpha = t < 0.78 ? 1 : Math.max(0, 1 - (t - 0.78) / 0.22);
+      const spinUntil = e.restedAt ?? now;
+      (view as Container).rotation = ((e.spin ?? 0) * (spinUntil - e.createdAt)) / 1000;
+      return;
+    }
     view.alpha = e.liquid ? Math.max(0, 1 - t * 0.88) : Math.max(0, 1 - t);
     // 血飛沫(stretch): 速度方向に伸ばして線状の飛沫に(速いほど長く・少し薄く)。ZELTER風の
     // 走る血しぶきをグロー無し(通常合成のscale/rotationのみ)で出す(v0.25.2041・負荷0)。

@@ -100,7 +100,7 @@ import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
-import { hitStunMsFor, knockbackWeightFor, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS } from '../utils/combatFeel';
+import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 import {
   normalizeDir, biasedBurstAngle,
   shouldShowMultiHitFx, dedupeMultiHitEffects,
@@ -2083,6 +2083,15 @@ export const SHAKE_GLOBAL_MULT = 2;
 export const NONGUN_HIT_SHAKE_MS = 90;
 export const NONGUN_HIT_SHAKE_MAG = 4;
 export const NONGUN_HIT_SHAKE_GAP_MS = 60;
+// 戦闘の手触り①(v0.25.4269・監査A是正): 近接3経路(カウンター/刀/鞭)は damageEnemy を通らず survivors.push で
+// HPを直接書くので、同じ局所ストップをここから配る。止めている間はノックバックの期限も同じだけ後ろへ
+// (止めが明けた瞬間に満額で飛ぶ)。ボス級は nextHitStunUntil が undefined を返す=何も足さない。
+const meleeHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil'>, now: number, shoveToo = false): Partial<Enemy> => {
+  const u = nextHitStunUntil(enemy.type, enemy.hitStunUntil, now);
+  if (u === undefined) return {};
+  const kbUntil = now + KNOCKBACK_DURATION + (u - now);
+  return shoveToo ? { hitStunUntil: u, knockbackUntil: kbUntil, knockbackShoveUntil: kbUntil } : { hitStunUntil: u, knockbackUntil: kbUntil };
+};
 let nonGunHitShakeAt = 0;
 export const MELEE_SWING_SHAKE_MS = 110;     // 近接スイング(控えめ)
 export const MELEE_SWING_SHAKE_MAG = 7;      // 社長指示で倍化(3.5→7)
@@ -5349,6 +5358,7 @@ interface GameState {
   kickMag: number;
   kickDirX: number;
   kickDirY: number;
+  kickOver: number; // オーバーシュート係数(重い銃だけ>0・combatFeel.recoilKickOffset)
   // 戦闘の手触り②: 連続撃破の段。count/lastAt=連鎖の状態(Date.now基準・combatFeel.stepKillChain)、
   // tier=0〜3、tierAt=段が上がった瞬間(pixiSceneが画面端の赤みを出す起点)。数字はUIに出さない。
   killChainCount: number;
@@ -5933,8 +5943,9 @@ interface GameState {
   // dirX/dirY(§5.23 M22 C1・任意・未正規化でよい): 指定時はシェイクをその方向へ寄せる。
   // 未指定/{0,0}/`?dirfx=0`は従来どおり等方のランダム揺れ。
   triggerShake: (durationMs: number, mag?: number, dirX?: number, dirY?: number) => void; // 行動別の画面シェイク(描画のみ)
-  triggerKick: (mag: number, durationMs: number, dirX: number, dirY: number) => void; // 反動のカメラキック(描画のみ・戦闘の手触り③)
-  spawnCasing: (x: number, y: number, dirX: number, dirY: number, color: string, size: number, count: number) => void; // 薬莢(重力つき粒・描画のみ)
+  triggerKick: (mag: number, durationMs: number, dirX: number, dirY: number, overshoot?: number) => void; // 反動のカメラキック(描画のみ・戦闘の手触り③)
+  spawnCasing: (x: number, y: number, dirX: number, dirY: number, colors: readonly string[], size: number, sides: readonly number[]) => void; // 薬莢(床つき粒・描画のみ)
+  registerPlayerKills: (count: number, allowSlow: boolean) => void; // 連続撃破の段(戦闘の手触り②)。damageEnemy と近接3経路の両方から呼ぶ
 
   // Visual effects (renderer-only; no gameplay impact)
   spawnEffect: (effect: VisualEffect) => void;
@@ -6521,6 +6532,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   kickMag: 0,
   kickDirX: 0,
   kickDirY: 0,
+  kickOver: 0,
   killChainCount: 0,
   killChainLastAt: -1e12,
   killChainTier: 0,
@@ -7829,6 +7841,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackUntil: now + KNOCKBACK_DURATION,
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
+          ...meleeHitStunPatch(enemy, now), // 戦闘の手触り①(v0.25.4269): 近接も局所ストップ(knockbackUntil を上書き=止めの残りぶん後ろ)
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断(laser-broken遷移+中断CD+体幹'counter')
           ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(melee削り/2/3減速/致命後daze)
@@ -8131,6 +8144,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 強制クリティカルが出たスイングでクリティカルを解禁する=以後は通常どおり確率で出る。
     // 演習が続くよう、当たった回数だけ数える(クリを解禁して確率クリへ戻す、はしない)。
     if (m0CritLocked && slashAt.length > 0) set(st => ({ m0MeleeHits: st.m0MeleeHits + 1 }));
+
+    if (killed.length > 0) get().registerPlayerKills(killed.length, true); // 戦闘の手触り②(v0.25.4269): 近接のキルも段へ(スロー許可)
 
     return {
       swung: true,
@@ -9017,6 +9032,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackUntil: now + KNOCKBACK_DURATION,
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
+          ...(isGhost ? {} : meleeHitStunPatch(enemy, now)), // 戦闘の手触り①(v0.25.4269): 本人の刀だけ局所ストップ
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
           ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(刀のmelee削り/致命後daze)
@@ -9160,6 +9176,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 吸血覚醒(Lv3・v0.25.3300): 刀のヒットでも1%回復。
       applyVampireMeleeHeal(get, player, katanaHitEnemyIds, pcx, pcy);
     }
+
+    if (!isGhost && killed.length > 0) get().registerPlayerKills(killed.length, true); // 戦闘の手触り②(v0.25.4269): 本人の刀のキルも段へ
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
   },
@@ -9317,6 +9335,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         knockbackUntil: now + KNOCKBACK_DURATION,
         knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
         knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+        ...meleeHitStunPatch(enemy, now, true), // 戦闘の手触り①(v0.25.4269): 鞭も局所ストップ(shove の期限も同じだけ後ろ)
         ...(bossBump?.patch ?? {}), // 紫カウント/発動を反映(最後に展開して優先=刀5490と同じ作法)
         ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
         ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(鞭のmelee削り/致命後daze)
@@ -9409,6 +9428,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // スキル: リーパー。鞭フィニッシュ範囲(WHIP_LENGTH)内の敵を全員フィニッシュ。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, WHIP_LENGTH_BY_LEVEL[1], meleeBase, meleeFinisherAt(killed));
+
+    if (killed.length > 0) get().registerPlayerKills(killed.length, true); // 戦闘の手触り②(v0.25.4269): 鞭のキルも段へ
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits };
   },
@@ -10644,6 +10665,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
       });
     }
+    // 戦闘の手触り③(v0.25.4269・監査A是正): 手動銃にも反動キック(薬莢なし=PHILL)。向き=撃った方向の逆。
+    {
+      const kd = get().projectiles[get().projectiles.length - 1]?.direction;
+      const rs = recoilSpecForWeapon(weapon);
+      if (kd) get().triggerKick(rs.kickPx, rs.kickMs, -kd.x, -kd.y, rs.overshoot);
+    }
     // 裁定4(§2.11・記録専用): PHILLの発射数を1つ数える(ヘッドショット数は着弾側=useGameLoopでフック)。
     // 率は撃破セッション確定時にビルド写しへ焼かれ、守護霊がその確率でヘッドショットを再現する。
     recordPhillShot();
@@ -10724,6 +10751,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         headshotEligible: true,
       });
     }
+    // 戦闘の手触り③(v0.25.4269): 手動チャージ弾はオート弾より重い一発=反動 ×1.25(薬莢なし=レールガン)。
+    {
+      const kd = get().projectiles[get().projectiles.length - 1]?.direction;
+      const rs = recoilSpecForWeapon(weapon, 1.25);
+      if (kd) get().triggerKick(rs.kickPx, rs.kickMs, -kd.x, -kd.y, rs.overshoot);
+    }
     recordManualShot(); // research/WEAPON_AI_TEST.md S2-a: 手動アクションの発射成立(レールガン分)。
     void import('../audio/audioManager').then(m => m.playSfx('rifle-fire'));
     const nextMag = Math.max(0, (weapon.magazine ?? 0) - 1);
@@ -10755,6 +10788,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       * skillLastMagazineMult(player, weapon.magazine ?? 0);
     get().spawnRing(strikeX, strikeY, 10, SIGNAL_STRIKE_RADIUS_PX, 'rgba(251,191,36,0.55)', 3, SIGNAL_STRIKE_DELAY_MS);
     get().spawnGlow(strikeX, strikeY, 30, 'rgba(251,191,36,', SIGNAL_STRIKE_DELAY_MS);
+    // 戦闘の手触り③(v0.25.4269): 砲身式=反動キックだけ(薬莢なし)。向き=レティクルの逆。
+    {
+      const rs = recoilSpecForWeapon(weapon);
+      get().triggerKick(rs.kickPx, rs.kickMs, -player.phillReticleDX, -player.phillReticleDY, rs.overshoot);
+    }
     recordManualShot(); // research/WEAPON_AI_TEST.md S2-a: 手動アクションの発射成立(シグナルランチャー分)。
     void import('../audio/audioManager').then(m => m.playSfx('grenade-launcher-fire'));
     set(state => ({
@@ -11780,8 +11818,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const counteredPatch = postureImpact === 'counter' ? { lastCounteredAt: Date.now() } : {};
       // 戦闘の手触り①(社長指示2026-09-13): プレイヤーの攻撃が実ダメージで入った敵だけ数フレーム止める
       // (雑魚60/強個体40/ボス級0=combatFeel.hitStunMsFor)。DoT(燃焼・血棘・味方弾)は対象外。
-      const hitStunMs = (hateSource === 'player' && eff > 0 && damageChannel !== 'dot' && newHealth > 0) ? hitStunMsFor(enemy.type) : 0;
-      const hitStunPatch = hitStunMs > 0 ? { hitStunUntil: Date.now() + hitStunMs } : {};
+      // 再発火ガード(HIT_STUN_REARM_MS)込み。ノックバックの期限ずらしは knockbackEnemy 側(呼び手が直後に呼ぶ)。
+      const hitStunNext = (hateSource === 'player' && eff > 0 && damageChannel !== 'dot' && newHealth > 0) ? nextHitStunUntil(enemy.type, enemy.hitStunUntil, Date.now()) : undefined;
+      const hitStunPatch = hitStunNext !== undefined ? { hitStunUntil: hitStunNext } : {};
       const updatedEnemies = enemies.map(e =>
         e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch, ...hitStunPatch } : e
       );
@@ -11978,21 +12017,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().triggerShake(NONGUN_HIT_SHAKE_MS, NONGUN_HIT_SHAKE_MAG, hp.x - (pl.x + pl.width / 2), hp.y - (pl.y + pl.height / 2));
       }
     }
-    // 戦闘の手触り②(社長指示2026-09-13): 連続撃破の段(3/5/10・窓2.5秒)。プレイヤー起因のキル全般を数える
-    // (撃破SEのピッチ=audioManager が killChainTier を読む/画面端の赤み=pixiScene が killChainTierAt を読む)。
-    // 10体到達の短いスローは銃・近接のキルだけ(爆発=サブウェポン系はスローを出さない掟・CLAUDE.md)。
-    if (killed && hateSource === 'player') {
-      const kc = get();
-      const nowK = Date.now();
-      const prevTier = (nowK - kc.killChainLastAt <= KILL_CHAIN_WINDOW_MS) ? killChainTier(kc.killChainCount) : 0;
-      const chain = stepKillChain({ count: kc.killChainCount, lastAt: kc.killChainLastAt }, nowK);
-      const tier = killChainTier(chain.count);
-      const tierUp = tier > prevTier;
-      set({ killChainCount: chain.count, killChainLastAt: chain.lastAt, killChainTier: tier, killChainTierAt: tierUp ? nowK : kc.killChainTierAt });
-      if (tierUp && tier === 3 && !_nonLethalBoss && damageChannel !== 'dot') {
-        get().triggerTimeSlow(KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS);
-      }
-    }
+    // 戦闘の手触り②(社長指示2026-09-13): 連続撃破の段。プレイヤー起因のキル全般を数える(撃破SEのピッチ=
+    // audioManager が killChainTier を読む/画面端の色=pixiScene が killChainTierAt を読む)。この経路で10体スローを
+    // 許すのは**銃チャネルのみ**(投げナイフ・犬・召喚・爆発・DoT は 'other'/'dot' で来る=サブウェポン起因でスローを
+    // 出さない掟)。近接は damageEnemy を通らず、各経路が registerPlayerKills(n, true) を呼ぶ。
+    if (killed && hateSource === 'player') get().registerPlayerKills(1, damageChannel === 'gun');
     if (gunHitAt && Date.now() >= gravityShotNextRollAt) {
       const gravLv = skillLevel(get().player, 'gravity-shot');
       const well = rollGravityShotWell(gravLv);
@@ -12343,14 +12372,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // committed = 中断不可の実行中(空中ジャンプ・ダッシュ突進)。stun/lift もこの間は受け付けない。
         const committed = enemy.aiPhase === 'jump' || enemy.aiPhase === 'charge';
         // 戦闘の手触り①(社長指示2026-09-13): 被弾直後の局所ストップ。この敵だけ数フレーム位置更新を
-        // 止める(AIの時計はgameTime基準なので技の予告は遅れない)。ノックバック中なら knockbackUntil を
-        // 止めたぶん後ろへずらす=止めが明けた瞬間に満額で飛ぶ(止まっている間に減衰させない)。
+        // 止める(AIの時計はgameTime基準なので技の予告は遅れない)。
         // committed(空中ジャンプ/突進)は軌道が壊れるので止めない。ボス級は hitStunUntil が書かれない。
-        if (!committed && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) {
-          return (enemy.knockbackUntil !== undefined && now < enemy.knockbackUntil)
-            ? { ...enemy, knockbackUntil: enemy.knockbackUntil + deltaTime * 1000 }
-            : enemy;
-        }
+        // (期限のずらしは書き手側=knockbackEnemy/近接3経路が「止めの残り」を足して書く。ここは止めるだけ。)
+        if (!committed && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) return enemy;
         // CRIT-UNIFY §9.2: 次行動CD専用のatkUntil。クリ窓中のボスは×2(bossCritCdMult)。
         // windup/active/recoverの各durationは従来のatkUntilのまま(予告のリード時間は変えない)。
         const atkCdUntil = (ms: number) => gameTime + (ms / ENEMY_ATTACK_SPEED_MULT) * bossCritCdMult(enemy, gameTime);
@@ -15365,16 +15390,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 死体を除外し、死体自身の吹き飛びを上書きさせない。
       enemies: state.enemies.map(e => {
         if (e.id !== id || isCorpse(e)) return e;
-        // 戦闘の手触り①(社長指示2026-09-13): 重さ。強個体(パンプキン/削岩型/伐採人)は半分しか飛ばない
-        // (combatFeel.knockbackWeightFor)。雑魚と他のボス級は1=不変(ボスはDRが担当)。
-        const weight = knockbackWeightFor(e.type);
+        // 戦闘の手触り①(v0.25.4269): 局所ストップ中なら期限をその残りぶん後ろへ(止めが明けてから満額で飛ぶ)。
+        // 呼び手は damageEnemy の直後にこれを呼ぶので、書かれたばかりの hitStunUntil がここで見える。
+        const stunShift = (e.hitStunUntil !== undefined && e.hitStunUntil > now) ? e.hitStunUntil - now : 0;
         if (!isBossType(e.type)) {
           // 通常敵はDR無し(手応えは意図的に強い仕様・不変)。
           return {
             ...e,
-            knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength * weight,
-            knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength * weight,
-            knockbackUntil: now + KNOCKBACK_DURATION,
+            knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength,
+            knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength,
+            knockbackUntil: now + KNOCKBACK_DURATION + stunShift,
           };
         }
         const dr = evaluateBossStopDr(e, now);
@@ -15385,9 +15410,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         return {
           ...e,
-          knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength * weight,
-          knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength * weight,
-          knockbackUntil: now + KNOCKBACK_DURATION * dr.durationMult,
+          knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength,
+          knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength,
+          knockbackUntil: now + KNOCKBACK_DURATION * dr.durationMult + stunShift,
           ...dr.patch,
         };
       })
@@ -19475,6 +19500,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         kickMag: 0,
         kickDirX: 0,
         kickDirY: 0,
+        kickOver: 0,
         killChainCount: 0,
         killChainLastAt: -1e12,
         killChainTier: 0,
@@ -19545,31 +19571,50 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  triggerKick: (mag, durationMs, dirX, dirY) => {
-    // 描画のみ。連射中は毎発上書き(戻り切る前に次が来る=連射ほど画面が絶えず後ろへ押される手触り)。
-    const d = normalizeDir(dirX, dirY);
+  triggerKick: (mag, durationMs, dirX, dirY, overshoot = 0) => {
+    // 描画のみ。毎発上書き(長さは発射間隔の75%=次弾の前に戻り切る)。向きは1発ごとに垂直方向へ少しぶれる。
+    const d = recoilKickDir(dirX, dirY, Math.random());
     if (mag <= 0 || durationMs <= 0 || (d.x === 0 && d.y === 0)) return;
-    set({ kickUntil: Date.now() + durationMs, kickDur: durationMs, kickMag: mag, kickDirX: d.x, kickDirY: d.y });
+    set({ kickUntil: Date.now() + durationMs, kickDur: durationMs, kickMag: mag, kickDirX: d.x, kickDirY: d.y, kickOver: overshoot });
   },
 
-  spawnCasing: (x, y, dirX, dirY, color, size, count) => {
+  spawnCasing: (x, y, dirX, dirY, colors, size, sides) => {
     const now = Date.now();
     const fresh: VisualEffect[] = [];
-    for (let i = 0; i < count; i++) {
-      const v = casingVelocity(dirX, dirY, Math.random());
+    sides.forEach((side, i) => {
+      const v = casingVelocity(dirX, dirY, side, Math.random());
       fresh.push({
         kind: 'particle',
         id: `fx-casing-${now}-${i}-${Math.random().toString(36).slice(2, 6)}`,
-        x, y, vx: v.vx, vy: v.vy, color, size,
-        createdAt: now, duration: CASING_DURATION_MS + Math.random() * 120,
-        drag: 1.5, gravity: CASING_GRAVITY, stretch: true,
+        x, y, vx: v.vx, vy: v.vy,
+        color: colors[Math.floor(Math.random() * colors.length)] ?? colors[0],
+        size: size * (0.9 + Math.random() * 0.25),
+        createdAt: now, duration: CASING_DURATION_MS + Math.random() * 160,
+        drag: 0.6, gravity: CASING_GRAVITY, solid: true,
+        floorY: y + CASING_FLOOR_DROP_PX + Math.random() * 6,
+        spin: CASING_SPIN_RAD_S * (0.7 + Math.random() * 0.6) * (Math.random() < 0.5 ? -1 : 1),
       });
-    }
+    });
     set(state => {
       const next = [...state.effects, ...fresh];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };
     });
+  },
+
+  registerPlayerKills: (count, allowSlow) => {
+    // 戦闘の手触り②: 連続撃破の段(3/5/10・窓2.5秒)。呼び手=damageEnemy(1体ずつ・スローは銃チャネルのみ許可)と
+    // 近接3経路(カウンター/刀/鞭=同時に複数体・スロー許可)。サブウェポン/召喚/DoT/爆発のキルは数には入るが
+    // スローは出さない(CLAUDE.md: サブウェポン起因でスローを出さない)。段が上がった瞬間だけ tierAt を更新。
+    if (count <= 0) return;
+    const kc = get();
+    const nowK = Date.now();
+    const prevTier = (nowK - kc.killChainLastAt <= KILL_CHAIN_WINDOW_MS) ? killChainTier(kc.killChainCount) : 0;
+    const chain = stepKillChain({ count: kc.killChainCount, lastAt: kc.killChainLastAt }, nowK, count);
+    const tier = killChainTier(chain.count);
+    const tierUp = tier > prevTier;
+    set({ killChainCount: chain.count, killChainLastAt: chain.lastAt, killChainTier: tier, killChainTierAt: tierUp ? nowK : kc.killChainTierAt });
+    if (tierUp && tier === 3 && allowSlow) get().triggerTimeSlow(KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS);
   },
 
   triggerHitstop: (durationMs) => {
@@ -20008,12 +20053,21 @@ export const useGameStore = create<GameState>((set, get) => ({
           const drag = e.drag ?? 0;
           const decay = drag > 0 ? Math.exp(-drag * deltaTime) : 1;
           const g = e.gravity ?? 0; // 血飛沫だけ重力で常に下へ落ちる(未指定=0で従来挙動不変)
+          if (e.restedAt !== undefined) { live.push(e); continue; } // 床で止まった薬莢は動かさない
+          const ny = e.y + e.vy * deltaTime;
+          const nvx = e.vx * decay, nvy = e.vy * decay + g * deltaTime;
+          if (e.floorY !== undefined) {
+            // 薬莢(戦闘の手触り③): 床に達したら1回跳ね、遅ければ止まる(combatFeel.stepFloorParticle)。
+            const f = stepFloorParticle(ny, nvx, nvy, e.floorY);
+            live.push({ ...e, x: e.x + e.vx * deltaTime, y: f.y, vx: f.vx, vy: f.vy, ...(f.rested ? { restedAt: now } : {}) });
+            continue;
+          }
           live.push({
             ...e,
             x: e.x + e.vx * deltaTime,
-            y: e.y + e.vy * deltaTime,
-            vx: e.vx * decay,
-            vy: e.vy * decay + g * deltaTime
+            y: ny,
+            vx: nvx,
+            vy: nvy
           });
         } else if (e.kind === 'damageNumber') {
           // Damage numbers drift upward and slow over time

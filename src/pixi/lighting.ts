@@ -674,9 +674,11 @@ export const getEdgeGlowTexture = (): Texture => {
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
   const r = size / 2;
-  const g = ctx.createRadialGradient(r, r, r * 0.5, r, r, r * 1.0);
+  // 中心を少し上に置く=下辺と左右が重く、上辺は軽い(完全対称の楕円にしない・監査2026-09-13)。
+  const cy = r * 0.86;
+  const g = ctx.createRadialGradient(r, cy, r * 0.5, r, cy, r * 1.08);
   g.addColorStop(0, 'rgba(255,255,255,0)');
-  g.addColorStop(0.7, 'rgba(255,255,255,0.28)');
+  g.addColorStop(0.66, 'rgba(255,255,255,0.22)');
   g.addColorStop(1, 'rgba(255,255,255,0.95)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);

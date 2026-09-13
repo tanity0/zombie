@@ -247,9 +247,9 @@ import {
   isReaperFamily, isTerminalReaper, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
   pickNearestTarget, // UNIQUE_WEAPONS.md §19-3: 金環の対象取得(各金環が独立に最寄りの敵を取る)
 } from '../utils/enemyUtils';
-import { killChainSfxRate, recoilSpecFor, casingSpecFor } from '../utils/combatFeel';
+import { killChainSfxRate, recoilSpecForWeapon, casingSpecFor } from '../utils/combatFeel';
 // 戦闘の手触り②: 撃破SEのピッチはstoreの段(killChainTier)から。audioManagerはstoreをimportできないので登録式。
-registerKillChainSfxRate(() => killChainSfxRate(useGameStore.getState().killChainTier));
+registerKillChainSfxRate(() => killChainSfxRate(useGameStore.getState().killChainTier, Math.random()));
 import { resolvePumpkinTier, allowDrillerForRun, allowLoggerForRun } from '../utils/drillerAi'; // PACING_PUZZLE.md §9-3/§14-3
 import { isBossMakerRun } from '../utils/bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdriller/loggerを出さない
 import { isGauntletRun } from '../utils/gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdriller/loggerを出さない
@@ -8492,16 +8492,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 薬莢を右手側へ放る(重力つき粒)。判定・弾・反動の散り角には触れない。
             {
               const rd = newProjectiles[0].direction;
-              const rcat = activeGun.category ?? 'handgun';
-              const rs = recoilSpecFor(rcat, activeGun.key);
+              const rs = recoilSpecForWeapon(activeGun);
               const st = useGameStore.getState();
-              st.triggerKick(rs.kickPx, rs.kickMs, -rd.x, -rd.y);
-              const cs = casingSpecFor(rcat, activeGun.key);
+              st.triggerKick(rs.kickPx, rs.kickMs, -rd.x, -rd.y, rs.overshoot);
+              const cs = casingSpecFor(activeGun);
               if (cs) {
                 st.spawnCasing(
                   postReloadPlayer.x + postReloadPlayer.width / 2 + rd.x * 10,
                   postReloadPlayer.y + postReloadPlayer.height / 2 - 6,
-                  rd.x, rd.y, cs.color, cs.size, cs.count,
+                  rd.x, rd.y, cs.colors, cs.size, cs.sides,
                 );
               }
             }
