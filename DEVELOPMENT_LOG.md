@@ -1,5 +1,28 @@
 # Development Log
 
+## v0.25.4272 — レベル成長は見送り。代替 a(枯れた時のステータスカード)+ b(取った瞬間の可視化)+ 経験値を少し渋く(社長裁定)【2026-09-13 22:33 JST】
+
+社長裁定 2026-09-13: 「はい(見送り)」「a と、少しだけレベル上げを渋く(割とすぐカンストしちゃう)」「b も」(research/LEVEL_GROWTH.md §11)。
+### a. 候補が枯れた時だけステータスカード(`upgradeUtils.generateSkillUpgradeChoices` / `UpgradeOption type='stat'`)
+- ドラフトが count(3)枚に満たない時だけ、空き枠を **「体力 +10」「攻撃力 +6%」**(交互)で埋める。常設スクラップ+50 は従来どおり4枚目。
+  候補が足りている時は1枚も出ない=従来と1bit同じ。
+- 取得(`selectUpgrade`): 体力=最大HP+10 と**同量をその場で回復** / 攻撃=`Player.levelAtkMult`(新・既定1・ラン限り)に +0.06 を累積。
+  読むのは合流点 `skillOutgoingDamageMult` だけ(`growthAtkMult` と同じ位置で掛ける)。処刑系の直読み(`meleeExecBase` 等)には**乗せていない**
+  (処刑は即死が主で、乗せると幻影/ボスの処刑基準だけが動く=別案件(B))。
+- 中立化: `buildPseudoPlayer`(守護霊)と `phantomTick` の疑似主語・分身の二重掛け防止に `levelAtkMult: 1`(本人のラン内バフを他人に乗せない)。
+  記録スナップショットには写さない。resetGame で 1 へ。
+- 数字が増えるぶん DDA の HP項(`maxHealth/ddaBaseHp`)に体力カード1枚=+0.4PP が乗る(枯れた後にしか出ないので許容・記録)。
+### 渋く(`XP_GAIN_MULT` 1/3 → **1/3.5**・M0 は 1/3 のまま)
+- 実効倍率は **`xpGainMultFor(isTutorial)` の1関数**を `gainExperience`(掛ける側)とボス開始チェストの3レベルアップ(打ち消す側)の両方が読む
+  (LEVEL_GROWTH.md 監査2巡目A3の教訓=片側だけ触ると3レベルぶんが欠ける)。M0 のレベルアップ・ビートは据え置き。
+### b. 取った瞬間の可視化(`selectUpgrade` post-set / `spawnDamageNumber`)
+- スキル/消費/ステータスのカードを取った瞬間、頭上に **取ったものの名前**(Lv+1 は「名前 LvN」)を callout で一瞬(hold 500・1.3秒)。覚醒(Lv3)は既存の帯+バーストがあるので重ねない。
+- 取得後 **2.5秒**(`LEVELUP_EMPHASIS_MS`・`levelUpEmphasisUntil`)は非クリの与ダメ数字を**金色(#fde68a)・×1.15**にする=「変わった」が数字で読める。クリ(#fbbf24・×1.35)とは別段。
+- ★クリエイティブ監査(見た目・文言)を次版で当てる(巻き戻り対策で先に push)。
+### 検証
+- typecheck・lint 0。新規 `store/levelGrowthAlt.test.ts`(4)+`upgradeUtils.test.ts`(+3)。関連 137 件通過(runSkillDraft/m0Tutorial/phantomBuild/playerUpgrades/constitution/levelUpChain)。実機確認は社長。
+- 憲法第4条/第5条: 湧き・台本に触れていない。経験値倍率は本編一律(M0除外)。
+
 ## v0.25.4271 — 護衛NPC/守護霊の銃で画面が揺れない(社長指示)【2026-09-13 18:49 JST】
 
 社長「プレイヤー以外の守護者とかNPCの銃で揺れないで」。

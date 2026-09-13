@@ -158,6 +158,7 @@ export const buildPseudoPlayer = (snap: PlayerBuildSnapshot | undefined, live: P
     subWeaponLevels: snap.subWeaponLevels ?? live.subWeaponLevels,
     // research/GROWTH.md v4(社長裁定Q4): 育成(攻撃力)は計測時の値を復元する。欠損=旧データは 1.0(0段)。
     growthAtkMult: snap.growthAtkMult ?? 1,
+    levelAtkMult: 1, // ラン内の攻撃力カード(stat)は本人のもの=写さない(一時バフと同じ中立化)
     // 一時バフ窓の中立化(上のコメント参照)。
     quickMagCritUntil: 0,
     benkeiBuffUntil: 0,

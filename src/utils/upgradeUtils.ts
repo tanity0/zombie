@@ -104,6 +104,12 @@ const consumableCardToUpgradeOption = (key: ConsumableKey): UpgradeOption => ({
   consumableKey: key,
 });
 
+export const STAT_CARD_HP = 10;      // 体力カード: 最大HP +10(取った瞬間に同量回復)
+export const STAT_CARD_ATK = 0.06;   // 攻撃力カード: 与ダメージ +6%(levelAtkMult に累積)
+export const statOption = (kind: 'hp' | 'atk'): UpgradeOption => (kind === 'hp'
+  ? { id: 'stat-hp', name: `体力 +${STAT_CARD_HP}`, description: '最大体力が上がり、同じだけ回復する。', type: 'stat', level: 0, statKind: 'hp' }
+  : { id: 'stat-atk', name: `攻撃力 +${Math.round(STAT_CARD_ATK * 100)}%`, description: 'すべての攻撃の威力が上がる。', type: 'stat', level: 0, statKind: 'atk' });
+
 const cardToUpgradeOption = (card: DraftedCard): UpgradeOption => {
   if (card.cardKind === 'consumable') return consumableCardToUpgradeOption(card.key);
   return {
@@ -129,6 +135,9 @@ export const generateSkillUpgradeChoices = (
 ): UpgradeOption[] => {
   const cards = draftRunSkillCards(input, count, rng, rail, railMult);
   const options = cards.map(cardToUpgradeOption);
+  // research/LEVEL_GROWTH.md §11 代替a(社長裁定2026-09-13「a」): スキル候補が枯れて count 枚に足りない時だけ、
+  // 空き枠を「体力 +10」「攻撃力 +6%」のカードで埋める(底報酬)。候補が足りている時は1枚も出ない=従来どおり。
+  for (let i = 0; options.length < count; i++) options.push(statOption(i % 2 === 0 ? 'hp' : 'atk'));
   options.push(scrapOption());
   return options;
 };

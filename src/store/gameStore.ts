@@ -4,7 +4,7 @@ import type { TutorialSlide } from '../data/tutorials';
 import { isAvatarId, type AvatarId } from '../data/avatars';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { AWAKEN_CUTIN_MS } from '../utils/awakenCutin'; // SKILL_BUILD_REDESIGN.md §24
-import { generateEquipmentChoices, generateSkillUpgradeChoices, generateReplacementSkillOption, SCRAP_REWARD as LEVELUP_SCRAP_REWARD } from '../utils/upgradeUtils';
+import { generateEquipmentChoices, generateSkillUpgradeChoices, generateReplacementSkillOption, SCRAP_REWARD as LEVELUP_SCRAP_REWARD, STAT_CARD_HP, STAT_CARD_ATK } from '../utils/upgradeUtils';
 import { canAcquireRunSkill, rerollPrice, MAX_BANISH_PER_RUN, MAX_CARRY_SKILLS, type RunSkillDraftInput } from '../utils/runSkillDraft';
 import { shouldEmitThrottled } from '../utils/emitThrottle';
 import { airHopEase01, airHopEaseD01 } from '../utils/airHop';
@@ -455,7 +455,13 @@ const buildBloodBurst = (x: number, y: number, angle: number, count: number, now
   return fresh;
 };
 // 全体調整: 経験値の溜まるスピードを1/3に(獲得量に一律倍率)。
-export const XP_GAIN_MULT = 1 / 3;
+// 社長裁定2026-09-13(LEVEL_GROWTH.md §11「a と、少しだけレベル上げを渋く(割とすぐカンストしちゃう)」): 本編は 1/3 → 1/3.5(≒0.86倍)。
+// M0(訓練)は据え置き 1/3(「レベルアップ」ビートが成長で発火するチュートリアル=渋くしない)。
+// ★実効倍率は xpGainMultFor の1関数から読む(gainExperience=掛ける側 / ボス開始チェストの3レベルアップ=打ち消す側。片側だけ触ると
+// チェストの3レベルぶんが欠ける=LEVEL_GROWTH.md 監査2巡目A3の教訓)。
+export const XP_GAIN_MULT = 1 / 3.5;
+export const XP_GAIN_MULT_TUTORIAL = 1 / 3;
+export const xpGainMultFor = (isTutorial: boolean): number => (isTutorial ? XP_GAIN_MULT_TUTORIAL : XP_GAIN_MULT);
 // ステージ7の開幕宝箱で与えるレベルアップ回数(社長指示v0.25.3137「3レベルアップ」)。
 export const BOSS_START_CHEST_LEVELS = 3;
 // 同・宝箱を置く位置(社長指示v0.25.3161「下のギリギリ画面外に設置(マークが出るくらいのとこ)」)。
@@ -1793,7 +1799,8 @@ export const ALCHEMY_SUMMON_ATK_BONUS = 0.2;
 export const skillOutgoingDamageMult = (player: Player): number => {
   const summonN = useGameStore.getState().summons.reduce((n, s) => n + (s.kind !== 'ghost-ally' ? 1 : 0), 0);
   const alcMult = 1 + ALCHEMY_SUMMON_ATK_BONUS * summonN;
-  const growthMult = player.growthAtkMult ?? 1;
+  // LEVEL_GROWTH.md §11 代替a: ラン内「攻撃力 +6%」カードの累積(既定1)。育成倍率と同じ合流点で掛ける。
+  const growthMult = (player.growthAtkMult ?? 1) * (player.levelAtkMult ?? 1);
   const cmMult = (player.counterMasterBuffUntil ?? 0) > useGameStore.getState().gameTime
     && skillLevel(player, 'counter-master') >= 3
     ? COUNTER_MASTER_AWAKEN_DMG_MULT
@@ -2083,6 +2090,8 @@ export const SHAKE_GLOBAL_MULT = 2;
 export const NONGUN_HIT_SHAKE_MS = 90;
 export const NONGUN_HIT_SHAKE_MAG = 4;
 export const NONGUN_HIT_SHAKE_GAP_MS = 60;
+// LEVEL_GROWTH.md §11 代替b: スキル/カード取得直後に与ダメ数字を強調する長さ(ms)。
+export const LEVELUP_EMPHASIS_MS = 2500;
 // 戦闘の手触り①(v0.25.4269・監査A是正): 近接3経路(カウンター/刀/鞭)は damageEnemy を通らず survivors.push で
 // HPを直接書くので、同じ局所ストップをここから配る。止めている間はノックバックの期限も同じだけ後ろへ
 // (止めが明けた瞬間に満額で飛ぶ)。ボス級は nextHitStunUntil が undefined を返す=何も足さない。
@@ -5165,6 +5174,7 @@ interface GameState {
   isPaused: boolean;
   showUpgradeMenu: boolean;
   levelUpIntroUntil: number; // >0 の間は「LEVEL UP 演出(スロー)」中。この実時刻を過ぎたら選択肢メニューを出す。
+  levelUpEmphasisUntil: number; // LEVEL_GROWTH.md §11 代替b: スキル/カード取得直後の与ダメ数字の強調(Date.now基準・描画のみ)
   showShopMenu: boolean;
   showEventQuestMenu: boolean;
   shopReopenAt: number;
@@ -6343,6 +6353,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   isPaused: false,
   showUpgradeMenu: false,
   levelUpIntroUntil: 0,
+  levelUpEmphasisUntil: 0,
   showShopMenu: false,
   showEventQuestMenu: false,
   shopReopenAt: 0,
@@ -8380,7 +8391,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // O-2(写すな、共通化しろ): phantomAtkMults と同じ二重掛け防止——combatActorPlayer が返す
     // actor.growthAtkMult は記録スナップショットの値なので1へ潰し、**現在の育成**
     // (GROWTH.md v4「幻影も反映」)を呼び出し側の掛け算として別途乗せる。
-    const outgoing = skillOutgoingDamageMult({ ...actor, growthAtkMult: 1 })
+    const outgoing = skillOutgoingDamageMult({ ...actor, growthAtkMult: 1, levelAtkMult: 1 })
       * (actor.equipBonus?.damageMult ?? 1) * (player.growthAtkMult ?? 1);
     const dmg = Math.max(1, Math.round(base * outgoing * PVP_DAMAGE_SCALE));
     const hpBefore = player.health;
@@ -10432,7 +10443,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   gainExperience: (amount) => {
     // 消費カード「経験値ブースト」(×1.5・60秒・§23)をここへ合流(経験値付与の唯一の出どころ)。
     // 育成「経験値効率」(社長指示v0.25.3679・+10%×5段)もここで掛ける(焼き値=次の出撃から)。
-    const gained = amount * XP_GAIN_MULT * consumableXpMult(get().player, get().gameTime) * (get().player.growthXpMult ?? 1); // 全体調整: 経験値1/3
+    const gained = amount * xpGainMultFor(get().farBackdrop === 'tutorial') * consumableXpMult(get().player, get().gameTime) * (get().player.growthXpMult ?? 1); // 全体調整: 本編1/3.5・M0は1/3
     set(state => {
       const { player, gameStats } = state;
       const newExperience = player.experience + gained;
@@ -10957,6 +10968,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         const gain = upgrade.level > 0 ? upgrade.level : 50;
         return { player: { ...player, straps: player.straps + gain }, showUpgradeMenu: false, isPaused: false };
       }
+      // LEVEL_GROWTH.md §11 代替a(社長裁定2026-09-13): 候補が枯れた時の底報酬カード。体力=最大HP+10と同量回復 / 攻撃=+6%(累積)。
+      if (upgrade.type === 'stat') {
+        if (upgrade.statKind === 'hp') {
+          return { player: { ...player, maxHealth: player.maxHealth + STAT_CARD_HP, health: Math.min(player.maxHealth + STAT_CARD_HP, player.health + STAT_CARD_HP) }, showUpgradeMenu: false, isPaused: false };
+        }
+        return { player: { ...player, levelAtkMult: (player.levelAtkMult ?? 1) + STAT_CARD_ATK }, showUpgradeMenu: false, isPaused: false };
+      }
       // ナイフ強化: 現在のメレー武器を次Tierのナイフへ置換(攻撃力/クリ率は新Tierの定義どおり)。
       if (upgrade.type === 'knife' && upgrade.knifeKey) {
         const newMelee = createWeapon(upgrade.knifeKey);
@@ -11059,6 +11077,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     // (triggerTimeSlow/spawnRing/spawnGlow直呼び)と同じ型。視覚のみ・判定/速度/スロー無し
     // (§24-2条件2)。SEはaudioManager非依存を保つ既存方針のため鳴らさない(useGameLoopが
     // awakenCutinの変化を検知して鳴らす)。
+    // LEVEL_GROWTH.md §11 代替b(社長裁定2026-09-13「bも」): 取った瞬間に何が変わったかを見せる。
+    // ①頭上に取ったものの名前(スキル名+Lv / カード名)を一瞬出す ②直後 2.5秒の与ダメージ数字を金色・少し大きく
+    // (spawnDamageNumber が levelUpEmphasisUntil を読む)。覚醒(Lv3)は既存の帯+バーストが出るので①は重ねない。
+    if ((upgrade.type === 'skill' || upgrade.type === 'consumable' || upgrade.type === 'stat') && !awakenedFx) {
+      const cp = get().player;
+      const label = upgrade.type === 'skill' && upgrade.skillCardKind === 'levelup' ? `${upgrade.name} Lv${upgrade.skillLv ?? ''}` : upgrade.name;
+      get().spawnCallout(cp.x + cp.width / 2, cp.y - 30, label, upgrade.type === 'stat' ? '#fde68a' : '#e9d5ff', { scale: 1.05, holdMs: 500, duration: 1300 });
+    }
+    if (upgrade.type === 'skill' || upgrade.type === 'consumable' || upgrade.type === 'stat') {
+      set({ levelUpEmphasisUntil: Date.now() + LEVELUP_EMPHASIS_MS });
+    }
     if (awakenedFx) {
       const prevCutin = get().awakenCutin;
       // 多重発火は1回に纏める(社長指示・理論上のリロール連打等): 直前のカットインがまだ
@@ -16379,7 +16408,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           get().grantWeapon(rollTier23Gun());
           const bp = get().player;
           const add = expNeededForLevels(bp.experience, bp.experienceToNextLevel, bp.level, BOSS_START_CHEST_LEVELS);
-          if (add > 0) get().gainExperience(add / XP_GAIN_MULT); // gainExperience 側の倍率を打ち消して実量で渡す
+          if (add > 0) get().gainExperience(add / xpGainMultFor(get().farBackdrop === 'tutorial')); // gainExperience 側の倍率を打ち消して実量で渡す(同じ1関数)
           break;
         }
         // Boss-drop treasure chest. Behaves like a level-up's upgrade menu
@@ -19211,6 +19240,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ammoGlauncher: AMMO_INITIAL.glauncher, // ★v0.25.4000: 独立プール(社長指示「グレランは弾を分けて」)
           // 育成の焼き値(上の「★焼き込みの原則」)。ラン中の参照先はここ。
           growthAtkMult: bakedGrowthAtkMult,
+          levelAtkMult: 1, // ラン内の攻撃力カード(stat)の累積は出撃ごとに1へ
           growthScoreMult: bakedGrowthScoreMult,
           stageScoreMult: bakedStageScoreMult,
           growthAmmoMax: bakedGrowthAmmoMax,
@@ -19911,7 +19941,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       x: x + (Math.random() - 0.5) * 18,
       y: y + (Math.random() - 0.5) * 8,
       value: Math.max(1, Math.ceil(value)), // 表示ダメージは切り上げ(社長指示・最低1)。内部の実ダメージは丸めない
-      color: crit ? '#fbbf24' : '#fef9c3',
+      // LEVEL_GROWTH.md §11 代替b: スキル/カードを取った直後(levelUpEmphasisUntil)は非クリの数字も金色・少し大きく=「変わった」が読める。
+      color: crit ? '#fbbf24' : (now < get().levelUpEmphasisUntil ? '#fde68a' : '#fef9c3'),
+      ...(!crit && now < get().levelUpEmphasisUntil ? { scale: 1.15 } : {}),
       createdAt: now,
       duration: 720,
       crit

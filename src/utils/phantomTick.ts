@@ -271,7 +271,7 @@ export const phantomAtkMults = (
       critMult: CRIT_DAMAGE_MULT, outgoingMult: 1,
     };
   }
-  const actor: Player = { ...raw, growthAtkMult: 1 }; // 上のコメント=二重掛け防止
+  const actor: Player = { ...raw, growthAtkMult: 1, levelAtkMult: 1 }; // 上のコメント=二重掛け防止(ラン内の攻撃力カードも幻影には乗せない)
   return {
     critChance: gun ? Math.min(1, gunShotCritChance(gun, actor, gameTime) + trapBonus) : 0,
     critMult: skillCritMult(actor, CRIT_DAMAGE_MULT),

@@ -54,3 +54,35 @@ describe('generateEquipmentChoices(§16-2/§18-1: 特殊装備混入の撤去・
     expect(options.some(o => o.type === 'equipment')).toBe(false);
   });
 });
+
+// research/LEVEL_GROWTH.md §11 代替a(社長裁定2026-09-13「a」): スキル候補が枯れて3枚に足りない時だけ
+// 「体力 +10 / 攻撃力 +6%」のカードで空き枠を埋める。候補が足りている時は1枚も出ない。
+import { generateSkillUpgradeChoices, statOption } from './upgradeUtils';
+import { CONSUMABLE_KEYS } from '../data/consumables';
+import { SKILLS } from '../data/campaign';
+import type { RunSkillDraftInput } from './runSkillDraft';
+import type { SkillKey } from '../types/game';
+
+describe('generateSkillUpgradeChoices: 候補が枯れた時のステータスカード(LEVEL_GROWTH.md §11 代替a)', () => {
+  const exhausted = (): RunSkillDraftInput => ({
+    owned: [], ownedLevels: {}, runSkills: [], runSkillLevels: {}, playerLevel: 5, excluded: [], dogEquipped: false,
+    activeConsumables: CONSUMABLE_KEYS, // 消費カードも全部アクティブ=候補ゼロ
+  });
+  it('スキル/消費が両方枯れていると 体力・攻撃・体力 の3枚+常設スクラップ', () => {
+    const opts = generateSkillUpgradeChoices(exhausted(), 3, () => 0.5);
+    expect(opts.map(o => o.type)).toEqual(['stat', 'stat', 'stat', 'scrap']);
+    expect(opts.map(o => o.statKind)).toEqual(['hp', 'atk', 'hp', undefined]);
+  });
+  it('候補が足りている時はステータスカードを出さない(従来どおり)', () => {
+    const keys = Object.keys(SKILLS) as SkillKey[];
+    const lv3 = Object.fromEntries(keys.map(k => [k, 3])) as Partial<Record<SkillKey, number>>;
+    const opts = generateSkillUpgradeChoices({ owned: keys, ownedLevels: lv3, runSkills: [], runSkillLevels: {}, playerLevel: 5, excluded: [], dogEquipped: false }, 3, () => 0.5);
+    expect(opts.length).toBe(4);
+    expect(opts.some(o => o.type === 'stat')).toBe(false);
+  });
+  it('カードの中身: 体力は名前に +10、攻撃は +6%', () => {
+    expect(statOption('hp').name).toContain('10');
+    expect(statOption('atk').name).toContain('6%');
+    expect(statOption('hp').statKind).toBe('hp');
+  });
+});

@@ -175,6 +175,7 @@ const UpgradeMenu: React.FC = () => {
             const isSpecial = upgrade.type === 'equipment' && upgrade.level === 0;
             const icon = upgrade.type === 'scrap' ? '🔩' // 画像は下の iconImg 側で差し替える(絵文字はフォールバック)
               : upgrade.type === 'heal' ? '❤️'
+              : upgrade.type === 'stat' ? (upgrade.statKind === 'hp' ? '❤️' : '⚔️')
               : upgrade.type === 'knife' ? '🔪'
               : upgrade.type === 'equipment' ? (isSpecial ? '🏯' : '🛡️')
               : upgrade.type === 'weapon' ? '⚔️' : '🔮';

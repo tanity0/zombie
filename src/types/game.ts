@@ -183,6 +183,12 @@ export interface Player extends DashLocomotionState {
   // 焼き値を読む(store の有効段数の直読みは禁止=「メーター変更は次の出撃から」を機械的に保証する)。
   /** 攻撃力の育成倍率(既定1.0)。skillOutgoingDamageMult と処刑の前掛けが読む。 */
   growthAtkMult: number;
+  /**
+   * ラン内の「攻撃力 +6%」カード(UpgradeOption type='stat'・LEVEL_GROWTH.md §11 代替a)の累積倍率(既定1.0)。
+   * 読むのは skillOutgoingDamageMult(合流点)だけ。記録スナップショットには写さない(ラン限り)。
+   * 守護霊/幻影の疑似主語では 1 に潰す(本人のラン内バフを他人に乗せない=buildPseudoPlayer と同じ原則)。
+   */
+  levelAtkMult?: number;
   /** 所持弾薬の実効上限(AmmoTypeの5キー全部・素値=AMMO_MAX。glauncherはrifleと同値)。 */
   growthAmmoMax: Record<AmmoType, number>;
   /** ゴールド獲得の育成倍率(既定1.0)。各付与点が金額の算出行で掛ける。 */
@@ -2234,7 +2240,10 @@ export interface UpgradeOption {
   // 'skill'=SKILL_BUILD_REDESIGN.md §12-1のスキル専業レベルアップ(新規取得 or Lv+1)、
   // 'consumable'=§23の消費カード(取得で即発動・60秒・ノーマル枠を1つ占有)。
   // 'weapon'/'passive'/'subWeapon' は旧仕様の残置。
-  type: 'weapon' | 'passive' | 'subWeapon' | 'equipment' | 'scrap' | 'heal' | 'knife' | 'skill' | 'consumable';
+  // 'stat'=research/LEVEL_GROWTH.md §11 代替a(社長裁定2026-09-13): スキル候補が枯れて3枚に足りない時だけ
+  // 空き枠を埋める「体力 +10 / 攻撃力 +6%」のカード(底報酬。開始値・上がる速度は触らない)。
+  type: 'weapon' | 'passive' | 'subWeapon' | 'equipment' | 'scrap' | 'heal' | 'knife' | 'skill' | 'consumable' | 'stat';
+  statKind?: 'hp' | 'atk'; // type==='stat' 専用
   weaponType?: WeaponType;
   passiveType?: PassiveType;
   subWeaponKey?: SubWeaponKey;
