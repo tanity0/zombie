@@ -1,7 +1,8 @@
-# レベル成長(開始を絞り・1レベルを太らせ・上がる速度を落とす)設計 v2(2026-09-13・監査1巡目反映)
+# レベル成長(開始を絞り・1レベルを太らせ・上がる速度を落とす)設計 v3(2026-09-13・監査2巡反映)
 
 > **この文書は未実装の設計です。**実装済みの現行仕様の正はコード+DEVELOPMENT_LOG。案件の状態は PROJECT_STATUS.md。
-> 設計書に状態は書かない。v1→v2: Fable 品質監査(A)8件・(C)4件を反映(§2-5〜§2-7 を新設・§4/§5 を書き直し)。
+> 設計書に状態は書かない。v1→v2: Fable 品質監査1巡目(A)8件・(C)4件を反映。v2→v3: 2巡目(A)4件・(C)3件を反映(幻影の主語・実効HPの読み手・
+> チェスト3レベルアップの打ち消し・注入時の ddaBaseHp)。**掟どおり監査は2巡で終わり**=以後は社長の裁定→実測→実装。
 
 ## 0. ゴール(社長の言葉のまま・2026-09-13)
 「レベルアップでもステータスを体感あるくらいアップさせて、その代わりレベルが上がるスピードと、
@@ -28,8 +29,10 @@
 | DDA の物差し(PP) | `level + 武器tier + max(0, maxHealth/ddaBaseHp − 1)×4 + 装備×1.5 + スキル枠×0.5`。期待カーブ 4+4.2/分 | `utils/difficultyScaler.ts` |
 | DDA の参照HP | `ddaBaseHp` = 開始HP+永久HP(装備は含めない)。**ラン中は不変** | resetGame |
 | ランク評価 | `levelScore = (上がったLv/秒)/LEVEL_RATE_GOOD(1/60)` が評価の **15%**。ランク1/2 で湧き上限+1/+2・escBoost・報酬倍率 | `utils/directorRank.ts` |
-| 幻影(守護霊の敵)/守護霊のHP | **記録の maxHealth が優先**(`guardianPhantomHealth(ddaBaseHp, phantomBuild?.maxHealth)`)。`buildPseudoPlayer` は**クラスが分かれば「クラスの素HP+装備」を今の表から再導出**する(記録の数値は旧データのフォールバック)。固定守護霊は `level:20` で `maxHp+装備` を焼いている | `useGameLoop` / `utils/playerBuild.ts` / `data/fixedGuardians.ts` |
-| 幻影/守護霊の攻撃力 | 記録の `growthAtkMult`(欠損=1.0)を写す。**今の意味=記録主の永久強化だけ**(レベルは含まれない) | `PlayerBuildSnapshot.growthAtkMult` |
+| 幻影(敵)/守護霊(味方)の**実効HP** | **記録の `maxHealth` を実体にそのまま入れる**(幻影 `useGameLoop 7792` / 守護霊 `directorTick 1004` / 練習部屋表示 `bossPractice 331`)。`buildPseudoPlayer` の「クラスの素HP+装備」再導出は**疑似Player(倍率式の主語)にしか効かない**=実効HPは焼き値が正本。固定守護霊は `level:20` で `maxHp+装備` を焼いている(=開始HPを下げると**黙って下がる**) | `useGameLoop` / `utils/directorTick.ts` / `utils/playerBuild.ts` / `data/fixedGuardians.ts` |
+| 幻影(敵)の攻撃力 | **主語=今のランのプレイヤー**(`phantomTick 842` `player.growthAtkMult`・分身 `gameStore 8384`)。記録ではない。意味=**自分の永久強化が幻影にも乗る**(レベルは含まれない) | `utils/phantomTick.ts` |
+| 守護霊(味方)の攻撃力 | **主語=記録**(`combatActorPlayer` → `buildPseudoPlayer` の `snap.growthAtkMult ?? 1`)。意味=記録主の永久強化だけ | `utils/playerBuild.ts` |
+| 二重掛け防止の潰し | 幻影の疑似主語で `growthAtkMult: 1`(`phantomTick 274` / `gameStore 8383`)=倍率を中立化してから別に掛ける | 同上 |
 | ボスメーカー(練習部屋)の Lv注入 | `runPlayerLevel` を注入して `experienceToNextLevel` だけ再計算。HP/攻撃は Lv1 のまま | resetGame 18869〜 |
 | M0(訓練) | 「レベルアップ」ビートは **atLevel:2・expireAfterX:3000**(成長で発火)。固定湧きの素XPは 7(=獲得2.33) | `utils/m0Tutorial.ts` |
 | 各ステージで到達するレベル | **未計測**(手元の最新値は 2026-08-14 の死亡ラン=Lv3。今のバランスでは使えない)。`playtest.test.ts` は **ステージを選べず**(常に既定)、15分打ち切りで「クリア」概念が無い | TEST_HANDOFF/results / `store/playtest.test.ts` |
@@ -40,8 +43,9 @@
 |---|---|---|---|---|---|---|
 | **最大HP** | 130 → **100** | **+10** | 130(=今の開始) | 190 | 240 | 290 |
 | **攻撃力**(100=今の等倍) | 100 → **85** | **+6** | 103(≒今) | 139 | 169 | 199 |
-- **物差し**: 攻撃力は「100=今の倍率1.0」の整数 `Player.attackPower`。与ダメージは `attackPower/100` を **`growthAtkMult` があった全10箇所**
-  (合流点1+処刑系の直読み9)に**置き換えて**掛ける。`growthAtkMult` という変数は Player から消す(旧記録の読み替えだけに残す・§2-7)。
+- **物差し**: 攻撃力は「100=今の倍率1.0」の整数 `Player.attackPower`。与ダメージは `attackPower/100` を **`growthAtkMult` を読む全11箇所**
+  (合流点1+処刑系の直読み gameStore 6+phantomTick 4)に**置き換えて**掛ける(主語はそれぞれ §2-5 のとおり)。二重掛け防止の潰し(`growthAtkMult: 1` の2箇所)は
+  `attackPower: 100` に読み替える。`growthAtkMult` という変数は Player から消す(旧記録の読み替えだけに残す・§2-5)。
 - **体感の根拠(武器1本・敵1種で固定して数える)**: ハンドガン(damage 9)対ゾンビ(HP 40)の必要弾数
   | Lv1 | Lv2〜5 | Lv6〜10 | Lv12〜20 |
   |---|---|---|---|
@@ -53,6 +57,9 @@
 ### 2-2. 上がる速度(絞る)
 - ツマミは1本: `XP_GAIN_MULT`(今 1/3)。カーブの形(`levelCurve.ts`)は触らない=宝箱の「3レベルアップ」・ボスメーカーの Lv注入が
   同じ式のまま生きる。
+- **実効倍率は1関数**(`xpGainMultFor(state)`: 本編=k/3・M0=1/3)にし、**`gainExperience`(掛ける側)とボス開始チェストの「3レベルアップ」
+  (`gainExperience(add / XP_GAIN_MULT)` で打ち消す側・gameStore 16382)の両方がそれを読む**。定数を片側だけ触ると、チェストが 1/3 を打ち消して
+  本編が k/3 を掛け、**3レベルぶんが k 倍(2レベル強)しか入らない**(監査2巡目A3)。
 - **値は §4 の実測後に決める。** 目安=「各ステージの15分時点(または死亡時)の到達レベルが今の 0.7〜0.8 倍」。1/3 → **1/4**(0.75倍)が第一候補。
 - **M0(訓練)は据え置き(1/3 のまま)**: M0 の「レベルアップ」ビートは成長で発火し x=3000 で失効する。素XPは固定湧き7+拾い物で、
   減速するとビートが出ない出撃が増える。M0 はチュートリアルステージ(毎出撃)なので**倍率の対象から外す**(`farBackdrop==='tutorial'` で分岐)。
@@ -77,21 +84,30 @@
 | リザルト(`GameOverScreen`) | 既に Lv を出している。**到達時のHP/攻撃力**を Lv の横に(★未決B) |
 - HUD(VitalsOrb)には足さない(常時表示物を増やさない)。
 
-### 2-5. 幻影・守護霊・固定守護霊・ボスメーカー(既存導線との整合・監査A1/A2/A7)
-- **HP**: `buildPseudoPlayer` の再導出式を「クラスの素HP+装備」→ **`hpAt(snap.level)`+装備** にする(持ち物=クラス・レベル・装備から今の表で引く、
-  という同関数の既存原則そのまま)。永久HPは今どおり含めない(社長裁定2026-08-23で保留中のまま)。
-  固定守護霊(Lv20)は自動で **hpAt(20)=290+装備** になる(焼き値は旧データのフォールバックにしか使われないが、混乱を避けるため焼き値も更新)。
-- **攻撃力**: `PlayerBuildSnapshot` に **新フィールド `attackPower`**(記録時の 開始+永久+レベル)。旧記録の `growthAtkMult` は
-  **読み替え**: `attackPower = round(100 × growthAtkMult)`(旧記録が録られた時の基準は100=等倍・レベル成長なし、なので意味が保たれる)。
-  **同名フィールドの流用はしない**(倍率1.0〜1.2と実数85〜200が同居して区別できない=監査A7)。
-  固定守護霊は `attackAt(20)=199`(★未決F: 幻影の攻撃力にレベルを含めるか。含めると**幻影の意味が「記録主の永久だけ」→「記録主の到達レベル相応」に変わる**)。
+### 2-5. 幻影・守護霊・固定守護霊・ボスメーカー(既存導線との整合・監査1巡目A1/A2/A7・2巡目A1/A2/A4)
+- **HP(実効値の読み手3箇所を直す)**: 幻影 `guardianPhantomHealth(…, phantomBuild?.maxHealth)` / 守護霊 `directorTick` の `snap?.maxHealth` /
+  練習部屋表示 `bossPractice` は、**記録の `maxHealth` を直読みせず、記録の `level` から `hpAt(snap.level) + equipMaxHealthOf(snap.equipment)`
+  を導出する共通1関数**(`snapshotMaxHealth(snap)`・`playerBuild.ts`)を読む。記録の `maxHealth` は **level が欠けた旧データのフォールバック**にだけ落ちる。
+  `buildPseudoPlayer`(疑似Player)も同じ関数。永久HPは今どおり含めない(社長裁定2026-08-23で保留中のまま)。
+  **固定守護霊(Lv20)の焼き値も `hpAt(20)+装備`(=290+装備)に更新する**——ここが実効HPの本命(開始HPを 100 に下げた時、焼き値の式を変えないと
+  **130+装備 → 100+装備 に黙って下がる**・監査2巡目A2)。
+- **攻撃力の主語(2つを分けて書く・監査2巡目A1)**:
+  - **幻影(敵)= 今のランのプレイヤー**(現行どおり)。成分は **開始+永久だけ**(`player.attackPower − レベル分`=`attackBaseOf(player)`)。
+    **レベルを含めない**=今の意味(「自分の永久強化が幻影にも乗る」)をそのまま保つ。機械的に `player.attackPower/100` にすると幻影が
+    ランの進行で 85→199(×2.34)まで自分と一緒に伸びる=現行とも意図とも違う。二重掛け防止の潰し(`phantomTick 274` / `gameStore 8383`)は `attackPower: 100`。
+  - **守護霊(味方)= 記録**。`PlayerBuildSnapshot` に**新フィールド `attackPower`**(記録時の 開始+永久+レベル=★未決F)。旧記録の `growthAtkMult` は
+    **読み替え** `attackPower = round(100 × growthAtkMult)`(旧記録の基準は100=等倍・レベル成長なし)。**同名フィールドの流用はしない**
+    (倍率1.0〜1.2と実数85〜200が同居して区別できない)。固定守護霊(Lv20)は `attackAt(20)=199`。
 - **ボスメーカーの Lv注入**: resetGame で `runPlayerLevel` を注入する時、`experienceToNextLevel` だけでなく **`maxHealth=hpAt(Lv)+装備+永久` /
-  `attackPower=attackAt(Lv)+永久`** も焼く(Lv10注入の練習部屋で Lv1 の体で戦わせない=TTK計測の基準が嘘になる・監査A2)。
+  `attackPower=attackAt(Lv)+永久` / `ddaBaseHp=hpAt(Lv)+永久`** の3つを焼く(Lv10注入の練習部屋で Lv1 の体で戦わせない・DDA のHP項に
+  レベルHPを二重計上しない=注入は levelUp を通らないので §2-6 の更新が効かない・監査2巡目A4)。
 - **記録時**(`playerBuild.ts` のスナップショット作成)は `level` と `attackPower` を写す。`growthAtkMult` は書かない。
 
 ### 2-6. ランク評価・DDA(「敵側を触らない」を守るための補正・監査A3/A4)
 - **DDA の HP項**: `ddaBaseHp` を**レベルアップごとに更新**する(= 開始+永久+レベルHP)。こうすると `max(0, maxHealth/ddaBaseHp − 1)×4` は
   今どおり**装備・スキルで増えたHPだけ**を数える。`level` 項が別にあるので、レベルHPを含めると**二重計上**になる(=据え置きは逆・監査A4)。
+- **`ddaBaseHp` の他の読み手**(幻影HPの記録無しフォールバック `useGameLoop 7792`・練習部屋 `bossPractice 324`)は、毎レベル更新で
+  「スポーン時刻のレベル依存」になる。**フォールバックは `hpAt(1)+永久`(開始値)を別名で持って読む**=DDA の物差しと切り離す(§10 の積みではなく本体で直す)。
 - **ランク評価の levelScore**: `LEVEL_RATE_GOOD`(1/60)は「1分に1レベル」が満点。速度を k 倍(第一候補 0.75)にすると levelScore が下がり、
   ランク1/2(湧き上限+1/+2・escBoost・報酬倍率)に届きにくくなる=**湧きが動く**。★未決E: **同じ k を掛けて補正する**(推薦)か、変化を受け入れるか。
 - **DDA の期待カーブ**(4+4.2PP/分)も `level` を背骨にしている。§4 の実測で**前後の PP 分布**を出し、期待カーブの `DDA_EXPECTED_PER_MIN` を
@@ -130,6 +146,11 @@
 10. `ddaBaseHp` がレベルアップごとに更新され、装備だけ替えた時の PP の HP項が今と同じ値になる(不変条件テスト)。
 11. 不変条件テスト: 成長の純関数(`hpAt(level, 永久段)` / `attackAt(level, 永久段)`)/ levelUp の +10回復 / 永久表示の実数化 /
     開始値の定数が1箇所(`data/levelGrowth.ts`。`playerProfiles.ts` の `STANDARD_MAX_HP` はそこを参照)。
+12. **ボス開始チェストの「3レベルアップ」が本編でも M0 でもちょうど3回**出る(実効倍率1関数を両側が読む・監査2巡目A3)。
+13. **幻影(敵)の与ダメージはランの進行(自分のレベル)で変わらない**(主語=今のプレイヤーの開始+永久・監査2巡目A1)。守護霊(味方)は記録の `attackPower`。
+14. `levelUp` の **2つの return(M0 分岐/本編分岐)双方**に +HP/回復/+ATK/`ddaBaseHp` 更新が入っている(片側漏れの回帰テスト)。
+15. `skillOutgoingDamageMult` も `growthAtkMult` も通っていない与ダメージ経路(例: グレネードの素値ベース `useGameLoop 11809`)を実装時に1回洗い、
+    通っていないものは**列挙して社長へ**(85 に絞った時にそこだけ 100% のまま残るため。勝手に通さない=仕様変更)。
 
 ## 6. 影響を受ける既存テスト(実装時に更新)
 - `data/fixedGuardians.test.ts`(maxHealth = profile.maxHp + 装備 → `hpAt(20)` + 装備)
@@ -156,4 +177,8 @@
 | C | 回復の有無 | レベルアップ時に増分(+10)を回復するか | **する** |
 | D | 開始値と伸びの数字 | 100/+10・85/+6 | 叩き台として採用し、§4 の実測と実機で絞る |
 | E | 裁定器の補正 | 速度 k 倍に合わせて `LEVEL_RATE_GOOD`(ランク)と `DDA_EXPECTED_PER_MIN`(DDA)を同じ k で補正するか | **補正する**(しないと湧き上限・escBoost・DDAが動き「敵側を触らない」が破れる) |
-| F | 幻影の攻撃力 | 幻影/固定守護霊の攻撃力に**到達レベル**を含めるか(今は永久だけ) | **含める**(「記録主のレベル相応」=幻影が本人の写しである意味に揃う。固定守護霊Lv20=199) |
+| F | 守護霊の攻撃力 | **守護霊(味方)・固定守護霊**の攻撃力(記録)に**到達レベル**を含めるか(今は永久だけ)。※幻影(敵)は主語が「今の自分」なので別=§2-5 でレベルを含めない | **含める**(「記録主のレベル相応」=守護霊が本人の写しである意味に揃う。固定守護霊Lv20=199) |
+
+## 10. 積み(監査(B)・別案件)
+- `?sologhost=1`(開発用)は記録の level/attackPower/maxHealth を被せるが `ddaBaseHp`・`experienceToNextLevel` は Lv1 のまま(注入経路と同型)。
+- `bossPractice` の記録無しフォールバック式(profile.maxHp+育成)と幻影のフォールバックの整合(§2-6 の別名化で解消する見込み・実装時に確認)。
