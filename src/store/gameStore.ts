@@ -1,3 +1,4 @@
+import { MAGNET_PULL_RADIUS_BY_LEVEL } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ半径(社長裁定2026-09-13)
 import { create } from 'zustand';
 import type { TutorialSlide } from '../data/tutorials';
 import { isAvatarId, type AvatarId } from '../data/avatars';
@@ -1930,10 +1931,11 @@ export const skillGoldRushMult = (player: Player): number => {
   const lv = skillLevel(player, 'gold-rush');
   return lv ? [1, 1.2, 1.35, 1.5][lv] : 1;
 };
-// マグネット: 弾薬ピックアップのみ拾得矩形を中心基準で ×1.1/1.2/1.3(Lv)。弾薬以外は従来どおり(§6.8 M31)。
-export const skillMagnetAmmoRangeMult = (player: Player): number => {
+// マグネット(社長裁定2026-09-13・案A): 半径内の弾薬・コインが自機へ滑ってくる(utils/magnetPull)。Lv=半径 70/100/130px。
+// 旧(v0.25.4261まで): 拾得矩形を ×1.1/1.2/1.3 に広げるだけ=片側3〜5px で体感ゼロだった。
+export const skillMagnetPullRadius = (player: Player): number => {
   const lv = skillLevel(player, 'magnet');
-  return lv ? [1, 1.1, 1.2, 1.3][lv] : 1;
+  return lv ? MAGNET_PULL_RADIUS_BY_LEVEL[lv] : 0;
 };
 // オーバークロック: サブウェポン発動(CD開始)時、CD即リセットの発動率(Lv1:20%/Lv2:25%/Lv3:30%)。
 // setSubWeaponCooldown の合流点+援護射撃の発射時に抽選(§6.8 M31)。CD無しサブは対象外(リセットするCDが無い)。

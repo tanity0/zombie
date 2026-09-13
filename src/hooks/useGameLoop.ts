@@ -56,7 +56,7 @@ import {
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   // v0.25.2514(GHOST-BUILD-1): 近接/カウンター反撃の唯一の式(プレイヤーと守護霊で共有)。
   meleeSwingBaseDamage, meleeHitCritChance, counterReplyDamage,
-  skillMagnetAmmoRangeMult, skillOverclockChance, skillCooldownMult, skillGoldRushMult, strikerMeleeMult,
+  skillMagnetPullRadius, skillOverclockChance, skillCooldownMult, skillGoldRushMult, strikerMeleeMult,
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isGameTimeStopped, enemyMeleeDist,
   isAttackLocked, // v0.25.2589: 死亡モーション中/アテンション演出中は自動攻撃を止める共通ゲート
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_FOCUS_Y_FRAC,
@@ -99,7 +99,8 @@ import {
 import { computeWarpLandingPoint, computeWarpFlyinStart } from '../utils/rescueQuestWarp'; // 二人組クエストv2(§2-8・B4)
 import { pushShieldRect, clampShieldPlacementRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
-import { DOG_EXCLUDED_TYPES, dogEligiblePickups } from '../utils/dogFetch'; // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
+import { DOG_EXCLUDED_TYPES, dogEligiblePickups } from '../utils/dogFetch';
+import { stepMagnetPull } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ(社長裁定2026-09-13) // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // ★対人トラップの効果時間(SAME_ARENA §3-g)
 import { glenScriptApplies } from '../utils/giantScript';
 import { glenPartCountFull, glenRemovedPartAnchors, GLEN_FORM1_HP_MULT } from '../utils/glenChain';
@@ -564,8 +565,8 @@ const DOG_EMPTY_RETRY_MS = 260;
 const DOG_FETCH_TARGET_RADIUS_BY_LEVEL = [0, 240, 310, 380];
 const DOG_COLLECT_RADIUS_BY_LEVEL = [0, 48, 64, 80];
 const DOG_COLLECT_BURST_LIMIT = 8;
-const DOG_FETCH_PICKUP_MS = 330;
-const DOG_FETCH_DURATION_MS = 620;
+const DOG_FETCH_PICKUP_MS = 660;   // 社長裁定2026-09-13「ドッグの移動スピードを今の半分に」(旧330)
+const DOG_FETCH_DURATION_MS = 1240; // 同上(旧620)。往路/復路の比は据え置き。幻影のドッグと描画(dogFetch効果)も同じ定数を読む
 // ドッグは移動軌道上の敵を噛む(小ダメージ+小ノックバック)。1往復につき同じ敵は1回だけ。
 const DOG_BITE_RADIUS = 28;
 const DOG_BITE_DAMAGE = 6;            // TODO(ドッグ): 小ダメージ。仮値
@@ -14321,9 +14322,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // マガジン)はプレイヤーの拾得対象から外す。世界のドロップではなく本人の設置物で、拾うのも本人
         // (守護霊は世界の物に触れない/プレイヤーは守護霊の物を取らない=2人分が独立)。
         // 守護霊が居ないランでは1件も該当しない=従来と1bit同じ。
+        // スキル マグネット=吸い寄せ(社長裁定2026-09-13・案A・utils/magnetPull): 半径内の弾薬・コイン(覚醒=アイテム・経験値も)を
+        // 自機へ滑らせる。動いたフレームだけ set(何も無ければ参照そのまま=再レンダー規律)。拾得枠の拡大(旧仕様)は 1=無し。
+        {
+          const magnetR = skillMagnetPullRadius(collPlayer);
+          if (magnetR > 0) {
+            const pulled = stepMagnetPull(
+              useGameStore.getState().pickups, collPlayer.x + collPlayer.width / 2, collPlayer.y + collPlayer.height / 2,
+              magnetR, skillLevel(collPlayer, 'magnet') >= 3, deltaTime, nowMs,
+            );
+            if (pulled.moved) useGameStore.setState({ pickups: pulled.pickups });
+          }
+        }
         const collPickups = useGameStore.getState().pickups.filter(p => p.ownerGhostId === undefined);
-        // マグネット仕様変更(v0.25.3300): 拡大対象=弾薬+コイン。覚醒(Lv3)=アイテム・経験値も。
-        const pickupCollisions = checkPlayerPickupCollisions(collPlayer, collPickups, skillMagnetAmmoRangeMult(collPlayer), skillLevel(collPlayer, 'magnet') >= 3);
+        const pickupCollisions = checkPlayerPickupCollisions(collPlayer, collPickups, 1, skillLevel(collPlayer, 'magnet') >= 3);
 
         if (pickupCollisions.length > 0) {
           const collidedPickups = pickupCollisions

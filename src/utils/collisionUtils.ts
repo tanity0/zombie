@@ -217,9 +217,20 @@ export const checkEnemySummonCollisions = (
   return out;
 };
 
+/**
+ * マグネットの対象種(弾薬+コイン。覚醒=アイテム・経験値も)。**吸い寄せ(utils/magnetPull)と拾得枠の拡大(下)が同じ1本を読む。**
+ * ★社長裁定2026-08-25「金箱は箱扱いで」: 金箱(bounty-chest)はコイン系から**外した**=weapon-crate / chest と同じ「設置物」枠
+ * (遠くから誤って開かない)。同日の「犬は箱を触らない」裁定と扱いが揃った。なお v0.25.36xx(§6.38 B3・v2 F)では逆に
+ * 「マグネット挙動=既存treasureと同じ規約」と裁定されており treasure と同枠に置いていた——事実として併記(今の正は上の裁定)。
+ */
+export const isMagnetPickupType = (t: Pickup['type'], magnetAwaken: boolean): boolean =>
+  t === 'ammo-handgun' || t === 'ammo-shotgun' || t === 'ammo-rifle' || t === 'ammo-phill' ||
+  t === 'strap' || t === 'treasure' ||
+  (magnetAwaken && (t === 'experience' || t === 'health' || t === 'magnet' || t === 'bomb' || t === 'quick-magazine'));
+
 // Check collisions between player and pickups
-// ammoRangeMult: スキル マグネット= 拾得矩形を中心基準で ×1.1/1.2/1.3 に拡大(呼び出し側が
-// skillMagnetAmmoRangeMult で算出)。既定1=従来どおり。
+// ammoRangeMult: 拾得矩形を中心基準で拡大する係数。★v0.25.4262 からスキル マグネットは**吸い寄せ(utils/magnetPull)**に
+// 変わり、ループは 1 を渡す(=拡大しない)。引数は他の呼び出し/テストの互換のため残す。
 // 社長指示v0.25.3300 マグネット仕様変更: 拡大対象は弾薬+コイン(スクラップ/トレジャー)。
 // magnetAwaken(覚醒Lv3)=アイテム(回復/磁石/爆弾/クイックマガジン)と経験値も拡大対象に加える。
 // 武器箱/宝箱/カードキー等の設置物・クエスト品は常に従来の矩形(遠くから誤って開かない)。
@@ -247,15 +258,7 @@ export const checkPlayerPickupCollisions = (
         height: expandedPlayer.height * ammoRangeMult
       }
     : expandedPlayer;
-  const isMagnetPickup = (t: Pickup['type']): boolean =>
-    t === 'ammo-handgun' || t === 'ammo-shotgun' || t === 'ammo-rifle' || t === 'ammo-phill' ||
-    t === 'strap' || t === 'treasure' ||
-    // ★社長裁定2026-08-25「金箱は箱扱いで」: 金箱をコイン系から**外した**。
-    // これで金箱は weapon-crate / chest と同じ「設置物」枠=**常に従来の矩形**になる
-    // (遠くから誤って開かない)。同日の「犬は箱を触らない」裁定と扱いが揃った。
-    // なお v0.25.36xx(§6.38 B3・v2 F)では逆に「マグネット挙動=既存treasureと同じ規約」と
-    // 裁定されており treasure と同枠に置いていた——事実として併記しておく(今の正は上の裁定)。
-    (magnetAwaken && (t === 'experience' || t === 'health' || t === 'magnet' || t === 'bomb' || t === 'quick-magazine'));
+  const isMagnetPickup = (t: Pickup['type']): boolean => isMagnetPickupType(t, magnetAwaken);
 
   // Pickups don't carry width/height in the type, so treat them as the
   // 16×16 sprite the renderer draws.

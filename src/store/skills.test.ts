@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
   skillAttackShooterGunMult, skillRunnerSpeedMult, skillSeekerProcChance, isSeekerActive,
-  skillMagnetAmmoRangeMult, skillOverclockChance, skillLastMagazineMult,
+  skillMagnetPullRadius, skillOverclockChance, skillLastMagazineMult,
   // v0.25.3300 覚醒(Lv3)効果の純関数
   skillComboMasterMult, huntingMeleeRadius, runnerAwakenDamageMult, RUNNER_AWAKEN_RAMP_FRAC_MIN, skillExplosionKbMult,
   sniperGunMult, MELEE_RADIUS,
@@ -263,10 +263,11 @@ describe('runner move speed bonus (+10/15/20%)', () => {
 
 describe('magnet: ammo pickup range mult (+10/20/30%) (§6.8 M31)', () => {
   it('scales by level and is ×1.0 without the skill', () => {
-    expect(skillMagnetAmmoRangeMult({ skills: [], skillLevels: {} } as unknown as Player)).toBeCloseTo(1.0);
-    expect(skillMagnetAmmoRangeMult(withSkill('magnet', 1))).toBeCloseTo(1.1);
-    expect(skillMagnetAmmoRangeMult(withSkill('magnet', 2))).toBeCloseTo(1.2);
-    expect(skillMagnetAmmoRangeMult(withSkill('magnet', 3))).toBeCloseTo(1.3);
+    // 社長裁定2026-09-13(案A): マグネットは拾得枠の拡大ではなく吸い寄せ半径(px)。
+    expect(skillMagnetPullRadius({ skills: [], skillLevels: {} } as unknown as Player)).toBe(0);
+    expect(skillMagnetPullRadius(withSkill('magnet', 1))).toBe(70);
+    expect(skillMagnetPullRadius(withSkill('magnet', 2))).toBe(100);
+    expect(skillMagnetPullRadius(withSkill('magnet', 3))).toBe(130);
   });
   it('checkPlayerPickupCollisions: 弾薬+コインを拡大矩形で拾い、経験値は覚醒時のみ(v0.25.3300仕様変更)', () => {
     // プレイヤー32×32 @ (0,0) → 基準拾得矩形 = (-16,-16)〜(48,48)。
