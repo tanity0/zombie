@@ -143,11 +143,13 @@ describe('戦闘の手触り② 連続撃破の段(registerPlayerKills / damageE
     expect(s.killChainTier).toBe(0);
   });
 
-  it('護衛NPCの弾(damageChannel=null)は止めもせず数えもしない(監査2巡目A-3)', () => {
+  it('護衛NPCの弾(damageChannel=null)は止めもせず数えもせず、画面も揺らさない(監査2巡目A-3・社長指示2026-09-13)', () => {
     const { px, py, gt } = setup();
     const id = put({ ...spawnEnemyAt('zombie', px + 200, py, gt), health: 1000, maxHealth: 1000 });
+    useGameStore.setState({ shakeUntil: 0 });
     useGameStore.getState().damageEnemy(id, 5, false, false, false, null, 'player');
     expect(enemy(id).hitStunUntil).toBeUndefined();
+    expect(useGameStore.getState().shakeUntil).toBe(0); // 非銃シェイク(v0.25.4267)も出ない
     const id2 = put({ ...spawnEnemyAt('zombie', px + 240, py, gt), health: 1, maxHealth: 1 });
     useGameStore.getState().damageEnemy(id2, 5, false, false, false, null, 'player');
     expect(useGameStore.getState().killChainCount).toBe(0);

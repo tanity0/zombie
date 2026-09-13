@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.4271 — 護衛NPC/守護霊の銃で画面が揺れない(社長指示)【2026-09-13 18:49 JST】
+
+社長「プレイヤー以外の守護者とかNPCの銃で揺れないで」。
+- 原因: v0.25.4267 の非銃ヒットシェイク(`damageEnemy` 中央)の条件が `channel!=='gun' && !=='dot' && hateSource==='player'`。護衛NPCの弾は
+  `classifyProjectileDamageChannel` が **null**(プレイヤー起因ではない)を返し、hateSource は 'player' なので**素通りして揺れていた**
+  (v0.25.4270 で止め/段からは null を除外したが、シェイクの条件を直し忘れていた)。守護霊の弾は hateSource='ghost' で元から外。
+- 直し: 条件に `damageChannel !== null` を追加(1行)。守護霊の近接スイング揺れ(`GHOST_FX_SHAKE_ENABLED`・カウンター成立の揺れ)は
+  銃ではないので今回は触っていない(社長の言葉は「銃」)。★不要なら次で消す。
+- テスト: store 配線の護衛null テストに shakeUntil 不変を追加。typecheck・lint 0。
+
 ## v0.25.4270 — 手触り3本・品質監査2巡目の(A)4件を是正【2026-09-13 18:39 JST】
 
 2巡目(Fable・(A)だけを探す)= **(A)4 / (B)4 / (C)1**。全部直した。掟どおり**2巡で監査は終わり=以後は実機**(社長)。

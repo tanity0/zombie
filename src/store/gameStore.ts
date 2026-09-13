@@ -11757,7 +11757,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (damageChannel === 'gun' && hateSource === 'player' && eff > 0) {
         gunHitAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
       }
-      if (damageChannel !== 'gun' && damageChannel !== 'dot' && hateSource === 'player' && eff > 0) {
+      // v0.25.4271(社長指示「プレイヤー以外の守護者とかNPCの銃で揺れないで」): damageChannel===null は護衛NPC/守護霊の弾
+      // (=プレイヤー起因ではない)。'gun'でも'dot'でもないのでここを素通りして揺れていた → 除外。守護霊は hateSource='ghost' で元から外。
+      if (damageChannel !== 'gun' && damageChannel !== 'dot' && damageChannel !== null && hateSource === 'player' && eff > 0) {
         nonGunHitAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
       }
       // nonLethalBoss: 廃止(v0.25.1571) 爆発もボスを倒せる。互換のため引数は残置
