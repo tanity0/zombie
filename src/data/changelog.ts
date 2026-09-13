@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4263',
+    items: ['ゲーム内容の変更はありません。'],
+  },
+  {
     version: '0.25.4262',
     items: ['スキル「マグネット」が作り直された。近くの弾薬とコインが足元へ滑ってくる。レベルで範囲が広がり、覚醒するとアイテムと経験値も引き寄せる。ドッグの走る速さは半分になり、近くはマグネット、遠くはドッグの役割に。'],
   },

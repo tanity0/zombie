@@ -1932,7 +1932,7 @@ export const skillGoldRushMult = (player: Player): number => {
   return lv ? [1, 1.2, 1.35, 1.5][lv] : 1;
 };
 // マグネット(社長裁定2026-09-13・案A): 半径内の弾薬・コインが自機へ滑ってくる(utils/magnetPull)。Lv=半径 70/100/130px。
-// 旧(v0.25.4261まで): 拾得矩形を ×1.1/1.2/1.3 に広げるだけ=片側3〜5px で体感ゼロだった。
+// 旧(v0.25.4261まで): 拾得矩形(自機幅+32px)を中心基準で ×1.1/1.2/1.3 に広げるだけ=片側 約3/6/10px(自機幅32基準)で体感ゼロだった。
 export const skillMagnetPullRadius = (player: Player): number => {
   const lv = skillLevel(player, 'magnet');
   return lv ? MAGNET_PULL_RADIUS_BY_LEVEL[lv] : 0;
