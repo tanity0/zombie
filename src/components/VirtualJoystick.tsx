@@ -3,6 +3,7 @@ import { playSfx } from '../audio/audioManager';
 import {
   useGameStore,
   isInputLocked,
+  isWorldFrozen,
   isAttackLocked, // v0.25.2589: 死亡モーション/アテンション/帰還サークル内の攻撃禁止(共通ゲート)
   KATANA_FLICK_WINDOW_MS,
   KATANA_FLICK_MIN_DIST,
@@ -266,7 +267,8 @@ const VirtualJoystick: React.FC = () => {
       const strength = Math.max(0, Math.min(1, (norm - DEAD_ZONE) / (1 - DEAD_ZONE)));
       const dir = { x: nx, y: ny };
       setSwipeDirection(dir, strength);
-      setLastDirection(dir);
+      // 世界が止まっている間(ボス撃破のアテンション等)は向きを書き換えない(社長報告2026-09-13・gameStore.isWorldFrozen)。
+      if (!isWorldFrozen()) setLastDirection(dir);
     },
     [setSwipeDirection, setLastDirection, tryFireRhythmFlick]
   );

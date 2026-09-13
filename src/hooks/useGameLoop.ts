@@ -2351,6 +2351,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       }
       hitstopFxLastRef.current = 0;
 
+      // ★納品ロック(二人組クエストv2 §2-8)中は**世界を止める**(社長報告2026-09-13「ゴールイベントの会話中、動けないまま
+      // 敵に攻撃され続ける。ゴールなので時間を止めるべき」)。旧: 入力と被弾だけ塞いで敵は動き続けていた(被弾は棄却されるが
+      // 殴られ続ける絵になり、死んだように見えた)。ここでは敵・弾・床・湧きの一切を進めず、**会話の時計(gameTime)だけ実時間で
+      // 進める**=時間駆動の会話が止まらない(§2-8 が isPaused を禁じた理由はこれ。isPaused は使わない)。視覚エフェクトも実時間。
+      // 会話が流れ切った判定式(npcDialogue===null && queue.length===0)は本流の二人組ブロックと同じ=ここで gameWon。
+      // 納品ロックは gameWon で必ず終わるので、ロック中に gameTime が進んでも以降の進行に影響しない。
+      if (useGameStore.getState().deliveryLocked) {
+        const dlSt = useGameStore.getState();
+        const dlgGt = dlSt.gameTime + baseDeltaTime * 1000;
+        setGameTime(dlgGt, dlSt.realGameTime + baseDeltaTime * 1000);
+        useGameStore.getState().updateNpcDialogue(dlgGt);
+        updateEffects(baseDeltaTime);
+        const gw = useGameStore.getState();
+        if (gw.deliveryLocked && gw.npcDialogue === null && gw.npcDialogueQueue.length === 0) {
+          useGameStore.setState({ gameWon: true, deliveryLocked: false });
+        }
+        frameRef.current = requestAnimationFrame(gameLoop);
+        return;
+      }
+
       // ハリケーン鳴動「ゴゴゴゴ」: 鞭ハリケーン発動中、または錬金術レア(死神)の吸引中だけループ。
       // どちらも「中心へ敵を吸い寄せる渦」なので同じ鳴動を流用。毎フレーム現状態で駆動し、
       // idempotent なので遷移時のみ start/stop する(非ポーズ時のみ)。

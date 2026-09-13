@@ -3117,6 +3117,16 @@ export const isAttackLocked = (): boolean => {
   return isInputLocked() || s.attention !== null;
 };
 
+// 世界(シミュレーション)が止まっている間か: ボス出現/撃破のアテンション・ヒットストップ・納品ロック。
+// useGameLoop はこの間シミュを進めないが、**ジョイスティックの向き書き(setLastDirection)はループの外**で走るため、
+// 社長報告2026-09-13「ボス撃破時、プレイヤーの動きは止まるが向きだけ変えれちゃう」が起きていた。向き書きはこれを見て止める。
+// (isInputLocked に attention を足さない理由: 短いカウンターのヒットストップで指を止めたまま swipe が null に落ち、
+//  明けた後に歩き出さなくなる。ここは「向きの書き込み」だけを塞ぐ狭い門にしておく。)
+export const isWorldFrozen = (): boolean => {
+  const s = useGameStore.getState();
+  return s.attention !== null || Date.now() < s.hitstopUntil || s.deliveryLocked;
+};
+
 export const isInputLocked = (): boolean => {
   const s = useGameStore.getState();
   // エンディング(仮組み)は「実際はプレイヤーもいない見せるだけのシーン」(裁定2026-08-28)。

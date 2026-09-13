@@ -80,6 +80,8 @@
 | 「前は直っていたのに再発」 | **diffを取る。空なら巻き戻りではなく潜伏バグの露見** | 1324 / 1325 | §1-1 |
 | 設計書の記述と実装が食い違う | **設計書のステータス行を信じない。コードをgrep + DEVLOG** | 3757 | 本書 冒頭節 |
 | **敵/ボスの名前がコードに見つからない** | **`src/data/bossCutin.ts` の2台帳を見る**——表示名の正本はここで、`CASTLE_BOSS_NAME_BY_STAGE` は**ステージ別**(城ボスは全ステージ同じ `giantbat` 型なので、`EnemyType` の一覧を何度grepしても名前は出てこない)。固有名ボスは `NAMED_BOSS_CUTIN_NAME` | 4161(搬送体/樹木管理員/衛生兵/軍隊の4名を「存在しない」と誤報告。全部 stage-1/3/4/5 の城ボスだった) | UNIQUE_WEAPONS.md §18 |
+| ゴールの二人組の会話中、動けないまま敵に殴られ続ける(死んだように見える) | **納品ロック(deliveryLocked)中に世界が動いているか**を見る。v0.25.4259 からロック中は useGameLoop がシミュを止め会話の時計だけ進める(isPaused は使わない=§2-8) | 4259 | EVENT_QUEST_DESIGN §2-8 |
+| 世界が止まっている演出中(ボス撃破のアテンション等)に、向きだけ変わる | **ループの外で store を書く入力ハンドラ**を疑う(`VirtualJoystick.setLastDirection`)。凍結判定は `gameStore.isWorldFrozen()` の1本 | 4259 | (この行) |
 
 ## ★サブエージェントの未コミット納品がある間は `git reset --hard` を打たない(v0.25.4239の事故)
 毎ターンの3点セット(`git fetch && git reset --hard origin/<branch>`)は**作業ツリーが空の時だけ**。Sonnet の納品(13件・約900行の差分)が

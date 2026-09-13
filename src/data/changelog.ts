@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4259',
+    items: ['ゴールで二人組と話している間、敵も弾も止まるようになった。今までは動けないまま殴られ続けていた。ボスを倒した直後の止まっている間に、向きだけ変わってしまうのも直った。'],
+  },
+  {
     version: '0.25.4258',
     items: ['装備の切り替えと区切りの見出しが英語表記に。作戦室と同じ流儀で、日本語を小さく添える。'],
   },
