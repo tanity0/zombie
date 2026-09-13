@@ -2075,6 +2075,14 @@ export const SHAKE_MAG = 16;                 // 既定/通常時の揺れ幅(px)
 export const SHAKE_GLOBAL_MULT = 2;
 // 行動別の画面シェイク(視覚のみ・ゲーム性に影響なし)。mag=振幅px / ms=長さ。短く強い「パンチ」も出せる。
 // ウザくならない範囲で、近接スイング<シールドバッシュ<ハリケーン<死神召喚 の順で強める。
+// 社長指示2026-09-13「銃以外の攻撃で敵にダメージが入った時、SEと同じタイミングで一瞬画面シェイク」。
+// damageEnemy の中央で発火(=各経路の SE と同じフレーム)。銃(damageChannel='gun')と持続ダメージ('dot')は対象外。
+// 近接スイング(110/7)より短く弱く=「一瞬」。敵の方向へ寄せた揺れ(§5.23 M22 C1 の dirfx)。同フレームの多段ヒット
+// (爆風で複数体)は triggerShake 側で「強い方優先・延長」に畳まれ、NONGUN_HIT_SHAKE_GAP_MS 以内の連打は1回にする。
+export const NONGUN_HIT_SHAKE_MS = 90;
+export const NONGUN_HIT_SHAKE_MAG = 4;
+export const NONGUN_HIT_SHAKE_GAP_MS = 60;
+let nonGunHitShakeAt = 0;
 export const MELEE_SWING_SHAKE_MS = 110;     // 近接スイング(控えめ)
 export const MELEE_SWING_SHAKE_MAG = 7;      // 社長指示で倍化(3.5→7)
 export const SHIELD_BASH_SHAKE_MS = 160;
@@ -5558,7 +5566,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null) => boolean; // postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾=飛翔時間つきの形。null=従来の導出・v0.25.3640監査A)
+  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null) => boolean; // postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾=飛翔時間つきの形。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -8547,7 +8555,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       enemies: state.enemies.map(e => hits.some(h => h.id === e.id) ? { ...e, lastBurnTickAt: gameTime } : e),
     }));
     for (const h of hits) {
-      get().damageEnemy(h.id, h.dmg);
+      get().damageEnemy(h.id, h.dmg, false, false, false, 'dot'); // 持続ダメージ=シェイク対象外(社長指示2026-09-13)
       get().spawnDamageNumber(h.x, h.y, h.dmg);
     }
   },
@@ -8595,7 +8603,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }));
     }
     for (const h of hits) {
-      get().damageEnemy(h.id, h.dmg);
+      get().damageEnemy(h.id, h.dmg, false, false, false, 'dot'); // 持続ダメージ(棘)=シェイク対象外(社長指示2026-09-13)
       get().spawnDamageNumber(h.x, h.y, h.dmg);
     }
   },
@@ -9444,7 +9452,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §6.10 M33②: 賢者の石ハリケーンにも skillOutgoingDamageMult(バーサーカー等)を乗算。
       const hurDmg = Math.round(HURRICANE_DAMAGE * sageStoneHurricaneMult(state.player) * skillOutgoingDamageMult(state.player));
       for (const o of inRange) {
-        get().damageEnemy(o.id, hurDmg);
+        get().damageEnemy(o.id, hurDmg, false, false, false, 'dot'); // 竜巻の巻き込み=持続(シェイクは発生時の HURRICANE_SHAKE だけ)
         get().spawnDamageNumber(o.x, o.y, hurDmg); // 巻き込みダメージを可視化
       }
     }
@@ -11604,6 +11612,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // v0.25.3703: グラビティショットはキル時→**射撃ヒット時**へ移設(社長指示)。ヒット位置をset内で拾い、
     // 抽選はset外(吸血と同じ流儀)。銃チャネル+プレイヤー起因+実ダメージ>0のみ。
     let gunHitAt: { x: number; y: number } | null = null;
+    // 社長指示2026-09-13: 銃以外の打撃(サブ/近接/爆発/召喚。持続ダメージ 'dot' は除く)の着弾位置=set後に一瞬の画面シェイク。
+    let nonGunHitAt: { x: number; y: number } | null = null;
     // サブクエスト(research/SUBQUESTS.md): ★キル確定点2本のうちの1本(銃/接触/爆発/DoT)。
     // 付与(ゴールド/ポップ/保存)は副作用なので set() の外側で行う=候補だけここで拾う。
     let subquestKilled: Enemy | null = null;
@@ -11676,6 +11686,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // v0.25.3703: グラビティショットのヒット位置(銃チャネル+プレイヤー起因+実ダメージのみ)。
       if (damageChannel === 'gun' && hateSource === 'player' && eff > 0) {
         gunHitAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
+      }
+      if (damageChannel !== 'gun' && damageChannel !== 'dot' && hateSource === 'player' && eff > 0) {
+        nonGunHitAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
       }
       // nonLethalBoss: 廃止(v0.25.1571) 爆発もボスを倒せる。互換のため引数は残置
       // ★finishKillOnly(フィニッシュ以外では死なない)は v0.25.3329 で削除(未使用の死んだ旗・社長指示)。
@@ -11827,7 +11840,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // §6.21 M46: プレイヤー起因ダメージの計測(channel別)。damageChannel=null(護衛NPC弾等・
     // プレイヤー起因ではない)は加算しない。appliedDamage=0(対象なし/ジャンプ無敵で何も起きなかった)は
     // 加算してもスカラー0で無害。
-    if (damageChannel !== null) recordDamageDealt(damageChannel, appliedDamage);
+    if (damageChannel !== null) recordDamageDealt(damageChannel === 'dot' ? 'other' : damageChannel, appliedDamage); // 'dot'(持続)は統計上 'other'
 
     // BOT_AND_GHOST.md §2.10 G5: ボス撃破の通知(記録専用・挙動不変)。gun/接触/爆発/DoT/カウンター等
     // damageEnemyを経由する全キル経路の合流点。notifyBossClear内でセッション無し/対象外typeはno-op。
@@ -11926,6 +11939,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 爆縮(社長指示v0.25.3703。旧: キル時)。確率表・渦の性能(引き寄せ120px/s×0.4s・半径100/120/140・
     // 覚醒Lv3=2倍長)は不変。ヒットはキルの数倍の頻度なので、発動後 GRAVITY_SHOT_PROC_CD_MS は
     // 再抽選しない(叩き台)。判定なし=絵は分類②(派手に・既存プールで)。
+    // 社長指示2026-09-13: 銃以外の攻撃が敵に入った瞬間の一瞬の画面シェイク(各経路の SE と同じフレーム=damageEnemy の中央)。
+    if (nonGunHitAt) {
+      const nowHit = Date.now();
+      if (nowHit - nonGunHitShakeAt >= NONGUN_HIT_SHAKE_GAP_MS) {
+        nonGunHitShakeAt = nowHit;
+        const pl = get().player;
+        const hp = nonGunHitAt as { x: number; y: number }; // set() 内の代入は TS の流れ解析に見えない(gunHitAt と同じ形)
+        get().triggerShake(NONGUN_HIT_SHAKE_MS, NONGUN_HIT_SHAKE_MAG, hp.x - (pl.x + pl.width / 2), hp.y - (pl.y + pl.height / 2));
+      }
+    }
     if (gunHitAt && Date.now() >= gravityShotNextRollAt) {
       const gravLv = skillLevel(get().player, 'gravity-shot');
       const well = rollGravityShotWell(gravLv);
@@ -15572,7 +15595,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ rescueSurvivors: moved, ...(shooterShots.length > 0 ? { rescueShooterFxAt: now } : {}) });
     for (const c of contactDamage) {
       if (c.id.startsWith('rescue-')) get().damageRescueSurvivor(c.id, c.amount);
-      else get().damageEnemy(c.id, c.amount);
+      else get().damageEnemy(c.id, c.amount, false, false, false, 'dot'); // 生存者の接触=本人の攻撃ではない(シェイク対象外)
     }
     for (const sh of shooterShots) get().spawnDamageNumber(sh.x, sh.y, RESCUE_SHOOTER_DAMAGE);
 
@@ -18129,7 +18152,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       e.id = a.id; e.baseId = a.baseId; e.fromEvent = true; // fromEvent=距離カリング対象外(拠点付近に留める)
       get().addEnemy(e);
     }
-    for (const d of damageShots) get().damageEnemy(d.id, d.dmg);
+    for (const d of damageShots) get().damageEnemy(d.id, d.dmg, false, false, false, 'dot'); // 味方の射撃=本人の攻撃ではない(シェイク対象外)
     // 護衛NPCの発砲: プレイヤーと同じ見た目の実弾(handgun projectile・friendly)。命中は通常の弾-敵判定で処理。
     for (const sh of escortShots) {
       get().addProjectile({

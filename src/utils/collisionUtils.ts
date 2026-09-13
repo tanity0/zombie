@@ -237,7 +237,7 @@ export const isMagnetPickupType = (t: Pickup['type'], magnetAwaken: boolean): bo
 export const isMagnetPickupTypeForLevel = (t: Pickup['type'], level: number): boolean => {
   if (level <= 0) return false;
   if (t === 'experience') return true;
-  if (level >= 2 && (t === 'ammo-handgun' || t === 'ammo-shotgun' || t === 'ammo-rifle' || t === 'ammo-phill' || t === 'strap' || t === 'treasure')) return true;
+  if (level >= 2 && (t === 'ammo-handgun' || t === 'ammo-shotgun' || t === 'ammo-rifle' || t === 'ammo-glauncher' || t === 'ammo-phill' || t === 'strap' || t === 'treasure')) return true; // ammo-glauncher=監査2巡目(A)の抜け
   if (level >= 3 && (t === 'health' || t === 'magnet' || t === 'bomb' || t === 'quick-magazine')) return true;
   return false;
 };

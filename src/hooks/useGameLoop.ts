@@ -1353,8 +1353,10 @@ const syncDogFetchFxTarget = (effectId: string | null, x: number, y: number): vo
 const abortDogFetchFx = (job: DogFetchJob, effectId: string | null, nowMs: number): void => {
   const e = dogFetchFx(effectId); if (!e) return;
   const outT = Math.max(0, Math.min(1, (nowMs - job.startedAt) / Math.max(1, DOG_FETCH_PICKUP_MS)));
-  const curX = job.fromX + (job.targetX - job.fromX) * outT;
-  const curY = job.fromY + (job.targetY - job.fromY) * outT;
+  // 描画(pixiScene.dogFetchPose)と同じ ease-in-out(2次)で「今いる所」を出す(線形だと最大12.5%跳ぶ=監査2巡目)。
+  const ease = outT < 0.5 ? 2 * outT * outT : 1 - Math.pow(-2 * outT + 2, 2) / 2;
+  const curX = job.fromX + (job.targetX - job.fromX) * ease;
+  const curY = job.fromY + (job.targetY - job.fromY) * ease;
   e.targetX = curX; e.targetY = curY;
   e.pickupAt = nowMs;
   e.duration = (nowMs - e.createdAt) + (DOG_FETCH_DURATION_MS - DOG_FETCH_PICKUP_MS);
