@@ -106,9 +106,11 @@ const consumableCardToUpgradeOption = (key: ConsumableKey): UpgradeOption => ({
 
 export const STAT_CARD_HP = 10;      // 体力カード: 最大HP +10(取った瞬間に同量回復)
 export const STAT_CARD_ATK = 0.06;   // 攻撃力カード: 与ダメージ +6%(levelAtkMult に累積)
+// 名前は言葉・数字はバッジ(強化画面 data/playerUpgrades.ts の label/perLevelLabel と同じ文法)。説明も同じ声で書く(句点なし)。
+export const statBadge = (kind: 'hp' | 'atk'): string => (kind === 'hp' ? `+${STAT_CARD_HP}` : `+${Math.round(STAT_CARD_ATK * 100)}%`);
 export const statOption = (kind: 'hp' | 'atk'): UpgradeOption => (kind === 'hp'
-  ? { id: 'stat-hp', name: `体力 +${STAT_CARD_HP}`, description: '最大体力が上がり、同じだけ回復する。', type: 'stat', level: 0, statKind: 'hp' }
-  : { id: 'stat-atk', name: `攻撃力 +${Math.round(STAT_CARD_ATK * 100)}%`, description: 'すべての攻撃の威力が上がる。', type: 'stat', level: 0, statKind: 'atk' });
+  ? { id: 'stat-hp', name: '体力', description: '一撃を余分にもらっても立っていられる。いまの体力も同じだけ戻る', type: 'stat', level: 0, statKind: 'hp' }
+  : { id: 'stat-atk', name: '攻撃力', description: '同じ弾数で、相手が早く倒れる', type: 'stat', level: 0, statKind: 'atk' });
 
 const cardToUpgradeOption = (card: DraftedCard): UpgradeOption => {
   if (card.cardKind === 'consumable') return consumableCardToUpgradeOption(card.key);
@@ -137,7 +139,10 @@ export const generateSkillUpgradeChoices = (
   const options = cards.map(cardToUpgradeOption);
   // research/LEVEL_GROWTH.md §11 代替a(社長裁定2026-09-13「a」): スキル候補が枯れて count 枚に足りない時だけ、
   // 空き枠を「体力 +10」「攻撃力 +6%」のカードで埋める(底報酬)。候補が足りている時は1枚も出ない=従来どおり。
-  for (let i = 0; options.length < count; i++) options.push(statOption(i % 2 === 0 ? 'hp' : 'atk'));
+  // 同じカードを2枚並べない(最大2枚=体力・攻撃力)。先頭はレベルの偶奇で交互(奇数Lv=体力から)=1枠しか空かない回でも両方が順に出る。
+  // 埋め切れない3枚目は空表示(§16-9点6の既存許容)。クリエイティブ監査2026-09-13の是正。
+  const statOrder: ('hp' | 'atk')[] = input.playerLevel % 2 === 1 ? ['hp', 'atk'] : ['atk', 'hp'];
+  for (const k of statOrder) { if (options.length >= count) break; options.push(statOption(k)); }
   options.push(scrapOption());
   return options;
 };

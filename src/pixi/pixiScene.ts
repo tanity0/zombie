@@ -28948,7 +28948,8 @@ export class PixiScene {
       const txt = new Text({
         text: e.text ?? '',
         resolution: Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2))),
-        style: { fontFamily: FONT_STACK, fontSize: Math.round(15 * scale), fontWeight: 'bold', fill: e.color },
+        // 和文の名札(serif)は明朝スタックへ(v0.25.4273・取ったスキル名の帯)。それ以外は従来どおり Orbitron。
+        style: { fontFamily: e.serif ? JP_SERIF_STACK : FONT_STACK, fontSize: Math.round(15 * scale), fontWeight: 'bold', fill: e.color },
       });
       txt.anchor.set(0.5, 0.5);
       c.addChild(bg, txt);

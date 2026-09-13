@@ -40,15 +40,17 @@ describe('少しだけ渋く: 経験値の実効倍率(本編 1/3.5・M0 は 1/3
 });
 
 describe('代替b: 取った瞬間の可視化', () => {
-  it('スキル系のカードを取ると levelUpEmphasisUntil が立ち、その間の非クリ数字は金色・少し大きい', () => {
+  it('攻撃が変わるカードを取ると levelUpEmphasisUntil(gameTime基準)が立ち、その間の非クリ数字は金色・少し大きい。名札は帯つき明朝', () => {
     useGameStore.getState().resetGame('warrior');
     useGameStore.setState({ showUpgradeMenu: true, isPaused: true, levelUpEmphasisUntil: 0 });
-    const t0 = Date.now();
+    const gt0 = useGameStore.getState().gameTime;
     useGameStore.getState().selectUpgrade(statOption('atk'));
     const s = useGameStore.getState();
-    expect(s.levelUpEmphasisUntil).toBeGreaterThanOrEqual(t0 + LEVELUP_EMPHASIS_MS - 5);
-    // 頭上の名札(callout)が出ている
-    expect(s.effects.some(e => e.kind === 'damageNumber' && e.text === statOption('atk').name)).toBe(true);
+    expect(s.levelUpEmphasisUntil).toBe(gt0 + LEVELUP_EMPHASIS_MS);
+    // 頭上の名札(callout)が帯つき・明朝で出ている
+    const label = s.effects.find(e => e.kind === 'damageNumber' && e.text === '攻撃力');
+    expect(label).toBeDefined();
+    if (label && label.kind === 'damageNumber') { expect(label.bg).toBeDefined(); expect(label.serif).toBe(true); expect(label.holdMs ?? 0).toBeGreaterThan(0); }
     useGameStore.getState().spawnDamageNumber(0, 0, 12, false);
     const fx = useGameStore.getState().effects;
     const n = fx[fx.length - 1];
@@ -60,5 +62,13 @@ describe('代替b: 取った瞬間の可視化', () => {
     const fx2 = useGameStore.getState().effects;
     const n2 = fx2[fx2.length - 1];
     if (n2.kind === 'damageNumber') { expect(n2.color).toBe('#fef9c3'); expect(n2.scale).toBeUndefined(); }
+  });
+  it('攻撃が変わらないカード(体力)では数字を光らせない(名札だけ)', () => {
+    useGameStore.getState().resetGame('warrior');
+    useGameStore.setState({ showUpgradeMenu: true, isPaused: true, levelUpEmphasisUntil: 0 });
+    useGameStore.getState().selectUpgrade(statOption('hp'));
+    const s = useGameStore.getState();
+    expect(s.levelUpEmphasisUntil).toBe(0);
+    expect(s.effects.some(e => e.kind === 'damageNumber' && e.text === '体力')).toBe(true);
   });
 });

@@ -57,7 +57,7 @@ describe('generateEquipmentChoices(§16-2/§18-1: 特殊装備混入の撤去・
 
 // research/LEVEL_GROWTH.md §11 代替a(社長裁定2026-09-13「a」): スキル候補が枯れて3枚に足りない時だけ
 // 「体力 +10 / 攻撃力 +6%」のカードで空き枠を埋める。候補が足りている時は1枚も出ない。
-import { generateSkillUpgradeChoices, statOption } from './upgradeUtils';
+import { generateSkillUpgradeChoices, statOption, statBadge } from './upgradeUtils';
 import { CONSUMABLE_KEYS } from '../data/consumables';
 import { SKILLS } from '../data/campaign';
 import type { RunSkillDraftInput } from './runSkillDraft';
@@ -68,10 +68,13 @@ describe('generateSkillUpgradeChoices: 候補が枯れた時のステータス�
     owned: [], ownedLevels: {}, runSkills: [], runSkillLevels: {}, playerLevel: 5, excluded: [], dogEquipped: false,
     activeConsumables: CONSUMABLE_KEYS, // 消費カードも全部アクティブ=候補ゼロ
   });
-  it('スキル/消費が両方枯れていると 体力・攻撃・体力 の3枚+常設スクラップ', () => {
+  it('スキル/消費が両方枯れていると 体力・攻撃力 の2枚(重複なし・3枚目は空)+常設スクラップ。先頭はLvの偶奇で交互', () => {
     const opts = generateSkillUpgradeChoices(exhausted(), 3, () => 0.5);
-    expect(opts.map(o => o.type)).toEqual(['stat', 'stat', 'stat', 'scrap']);
-    expect(opts.map(o => o.statKind)).toEqual(['hp', 'atk', 'hp', undefined]);
+    expect(opts.map(o => o.type)).toEqual(['stat', 'stat', 'scrap']);
+    expect(opts.map(o => o.statKind)).toEqual(['hp', 'atk', undefined]);
+    expect(new Set(opts.map(o => o.id)).size).toBe(opts.length);
+    const even = generateSkillUpgradeChoices({ ...exhausted(), playerLevel: 6 }, 3, () => 0.5);
+    expect(even.map(o => o.statKind)).toEqual(['atk', 'hp', undefined]);
   });
   it('候補が足りている時はステータスカードを出さない(従来どおり)', () => {
     const keys = Object.keys(SKILLS) as SkillKey[];
@@ -80,9 +83,11 @@ describe('generateSkillUpgradeChoices: 候補が枯れた時のステータス�
     expect(opts.length).toBe(4);
     expect(opts.some(o => o.type === 'stat')).toBe(false);
   });
-  it('カードの中身: 体力は名前に +10、攻撃は +6%', () => {
-    expect(statOption('hp').name).toContain('10');
-    expect(statOption('atk').name).toContain('6%');
+  it('カードの中身: 名前は言葉(体力/攻撃力)・数字はバッジ(+10 / +6%)', () => {
+    expect(statOption('hp').name).toBe('体力');
+    expect(statOption('atk').name).toBe('攻撃力');
+    expect(statBadge('hp')).toBe('+10');
+    expect(statBadge('atk')).toBe('+6%');
     expect(statOption('hp').statKind).toBe('hp');
   });
 });

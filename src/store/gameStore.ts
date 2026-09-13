@@ -5174,7 +5174,7 @@ interface GameState {
   isPaused: boolean;
   showUpgradeMenu: boolean;
   levelUpIntroUntil: number; // >0 の間は「LEVEL UP 演出(スロー)」中。この実時刻を過ぎたら選択肢メニューを出す。
-  levelUpEmphasisUntil: number; // LEVEL_GROWTH.md §11 代替b: スキル/カード取得直後の与ダメ数字の強調(Date.now基準・描画のみ)
+  levelUpEmphasisUntil: number; // LEVEL_GROWTH.md §11 代替b: 攻撃が変わるカード取得直後の与ダメ数字の強調(gameTime基準=ポーズ中に消費しない・描画のみ)
   showShopMenu: boolean;
   showEventQuestMenu: boolean;
   shopReopenAt: number;
@@ -11078,15 +11078,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     // (§24-2条件2)。SEはaudioManager非依存を保つ既存方針のため鳴らさない(useGameLoopが
     // awakenCutinの変化を検知して鳴らす)。
     // LEVEL_GROWTH.md §11 代替b(社長裁定2026-09-13「bも」): 取った瞬間に何が変わったかを見せる。
-    // ①頭上に取ったものの名前(スキル名+Lv / カード名)を一瞬出す ②直後 2.5秒の与ダメージ数字を金色・少し大きく
-    // (spawnDamageNumber が levelUpEmphasisUntil を読む)。覚醒(Lv3)は既存の帯+バーストが出るので①は重ねない。
-    if ((upgrade.type === 'skill' || upgrade.type === 'consumable' || upgrade.type === 'stat') && !awakenedFx) {
-      const cp = get().player;
-      const label = upgrade.type === 'skill' && upgrade.skillCardKind === 'levelup' ? `${upgrade.name} Lv${upgrade.skillLv ?? ''}` : upgrade.name;
-      get().spawnCallout(cp.x + cp.width / 2, cp.y - 30, label, upgrade.type === 'stat' ? '#fde68a' : '#e9d5ff', { scale: 1.05, holdMs: 500, duration: 1300 });
-    }
+    // ①頭上に取ったものの名前(スキル名+Lv / カード名)を LEVEL UP! と同じ帯(0xf59e0b・#fffbe6)で判子のように出す(hold→フェード・和文は明朝)
+    // ②与ダメージが変わるカード(攻撃力/アタックドーピング)を取った直後 2.5秒(gameTime)だけ、非クリの与ダメ数字を金色・少し大きく
+    //   (spawnDamageNumber が読む)。体力・速度・経験値など攻撃が変わらないカードでは数字を光らせない(嘘をつかない)。
+    // 覚醒(Lv3)は既存の帯+バーストが出るので①は重ねない。連鎖(次のレベルアップがすぐ続く)時は最後の1枚だけ出す(メニューの裏で消えるため)。
+    // クリエイティブ監査2026-09-13の是正: 帯なし小ラベル(holdMs が効かない経路)・薄紫/店の黄色・×1.05 を撤回。
     if (upgrade.type === 'skill' || upgrade.type === 'consumable' || upgrade.type === 'stat') {
-      set({ levelUpEmphasisUntil: Date.now() + LEVELUP_EMPHASIS_MS });
+      const cp = get().player;
+      const willChain = cp.experience >= cp.experienceToNextLevel;
+      if (!awakenedFx && !willChain) {
+        const label = upgrade.type === 'skill' && upgrade.skillCardKind === 'levelup' && upgrade.skillLv !== undefined ? `${upgrade.name} Lv${upgrade.skillLv}` : upgrade.name;
+        get().spawnCallout(cp.x + cp.width / 2, cp.y - 14, label, '#fffbe6', { bg: 0xf59e0b, scale: 1.2, serif: true, holdMs: 600, duration: 1500 });
+      }
+      const changesDamage = (upgrade.type === 'stat' && upgrade.statKind === 'atk') || (upgrade.type === 'consumable' && upgrade.consumableKey === 'attack-doping');
+      if (changesDamage && !willChain) set({ levelUpEmphasisUntil: get().gameTime + LEVELUP_EMPHASIS_MS });
     }
     if (awakenedFx) {
       const prevCutin = get().awakenCutin;
@@ -19942,8 +19947,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       y: y + (Math.random() - 0.5) * 8,
       value: Math.max(1, Math.ceil(value)), // 表示ダメージは切り上げ(社長指示・最低1)。内部の実ダメージは丸めない
       // LEVEL_GROWTH.md §11 代替b: スキル/カードを取った直後(levelUpEmphasisUntil)は非クリの数字も金色・少し大きく=「変わった」が読める。
-      color: crit ? '#fbbf24' : (now < get().levelUpEmphasisUntil ? '#fde68a' : '#fef9c3'),
-      ...(!crit && now < get().levelUpEmphasisUntil ? { scale: 1.15 } : {}),
+      color: crit ? '#fbbf24' : (get().gameTime < get().levelUpEmphasisUntil ? '#fde68a' : '#fef9c3'),
+      ...(!crit && get().gameTime < get().levelUpEmphasisUntil ? { scale: 1.15 } : {}),
       createdAt: now,
       duration: 720,
       crit

@@ -10,6 +10,8 @@ import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skill
 import { SKILLS, RARITY_LABEL, skillIcon } from '../data/campaign';
 import { runBuildCapacity, rerollPrice, MAX_BANISH_PER_RUN } from '../utils/runSkillDraft';
 import type { UpgradeOption } from '../types/game';
+import { PixelIcon } from './PixelIcon';
+import { statBadge } from '../utils/upgradeUtils';
 
 // SKILL_BUILD_REDESIGN.md §17-1点3/§16-10 ★C: スキルカードのレア度バッジ色。
 const SKILL_RARITY_BADGE: Record<'normal' | 'rare' | 'super', string> = {
@@ -175,7 +177,7 @@ const UpgradeMenu: React.FC = () => {
             const isSpecial = upgrade.type === 'equipment' && upgrade.level === 0;
             const icon = upgrade.type === 'scrap' ? '🔩' // 画像は下の iconImg 側で差し替える(絵文字はフォールバック)
               : upgrade.type === 'heal' ? '❤️'
-              : upgrade.type === 'stat' ? (upgrade.statKind === 'hp' ? '❤️' : '⚔️')
+              : upgrade.type === 'stat' ? <PixelIcon name={upgrade.statKind === 'hp' ? 'heart' : 'swords'} size={18} />
               : upgrade.type === 'knife' ? '🔪'
               : upgrade.type === 'equipment' ? (isSpecial ? '🏯' : '🛡️')
               : upgrade.type === 'weapon' ? '⚔️' : '🔮';
@@ -191,9 +193,9 @@ const UpgradeMenu: React.FC = () => {
                 key={upgrade.id}
                 type="button"
                 onClick={() => handleSelect(upgrade)}
-                className={`text-left p-3 rounded-none active:bg-purple-400/10 transition-colors flex items-start gap-3 upgrade-menu-option ${isSpecial ? 'bg-amber-400/10' : 'bg-purple-400/5'}`}
+                className={`text-left p-3 rounded-none active:bg-purple-400/10 transition-colors flex items-start gap-3 upgrade-menu-option ${upgrade.type === 'stat' ? 'bg-white/[0.04]' : isSpecial ? 'bg-amber-400/10' : 'bg-purple-400/5'}`}
               >
-                <div className={`w-9 h-9 rounded-none flex items-center justify-center text-base overflow-hidden ${isSpecial ? 'bg-amber-400/20' : 'bg-purple-400/10'}`}>
+                <div className={`w-9 h-9 rounded-none flex items-center justify-center text-base overflow-hidden ${upgrade.type === 'stat' ? 'bg-white/10' : isSpecial ? 'bg-amber-400/20' : 'bg-purple-400/10'}`}>
                   {iconImg
                     ? <img src={iconImg} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
                     : icon}
@@ -201,7 +203,11 @@ const UpgradeMenu: React.FC = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-[15px] font-semibold text-white truncate">{upgrade.name}</h3>
-                    {isSpecial ? (
+                    {upgrade.type === 'stat' && upgrade.statKind ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-white/80 shrink-0">
+                        {statBadge(upgrade.statKind)}
+                      </span>
+                    ) : isSpecial ? (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/30 text-amber-100 shrink-0">
                         特殊
                       </span>
