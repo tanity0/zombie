@@ -2347,6 +2347,9 @@ export type VisualEffect =
       scale?: number;
       // Optional serif/mincho font (e.g. the katana "斬" callout).
       serif?: boolean;
+      // LEVEL_GROWTH.md §11 代替b(社長裁定2026-09-13「1だけ はい」): 攻撃が変わるカードを取った後の**最初の1発だけ**、
+      // 白→金へ光りながら出る(描画のみ・bitmap経路で tint を補間)。
+      flash?: boolean;
       // Optional callout background tint (両サイドフェードの色背景。Counter=青/KILL=赤等)。指定時は縁取りを外す。
       bg?: number;
       // Optional: このms分は満alphaを保持してからフェード開始(未指定/0=従来どおり生成直後からフェード)。

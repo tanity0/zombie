@@ -2090,8 +2090,16 @@ export const SHAKE_GLOBAL_MULT = 2;
 export const NONGUN_HIT_SHAKE_MS = 90;
 export const NONGUN_HIT_SHAKE_MAG = 4;
 export const NONGUN_HIT_SHAKE_GAP_MS = 60;
-// LEVEL_GROWTH.md §11 代替b: スキル/カード取得直後に与ダメ数字を強調する長さ(ms)。
-export const LEVELUP_EMPHASIS_MS = 2500;
+// LEVEL_GROWTH.md §11 代替b(社長裁定2026-09-13「1だけ はい」): 攻撃が変わるカードを取った後、**最初の1発だけ**白→金に光る。
+// LEVELUP_EMPHASIS_MS はその「最初の1発」を待つ窓(gameTime)。窓内に1発も当てなければ何も起きない。
+export const LEVELUP_EMPHASIS_MS = 8000;
+// 社長指示2026-09-13「クリティカルダメージの時は大きく画面を揺らしながら、発生源に光源(爆発と同じ原理だが、爆発ではなく光)」。
+// 揺れ=近接フィニッシュ級(14px・200ms・ヒット方向へ寄せる)。光=強glow(GLOW_R_L=90≥STRONG_GLOW_RADIUS → 投影影を落とす本物の光源)を短く。
+// 負荷 4/10: 強glow1個≈2ms/フレーム(CLAUDE.md 実測)。連射クリで積み上がらないよう CRIT_LIGHT_GAP_MS 以内は1回に畳む(同時最大≈2個)。
+export const CRIT_SHAKE_MS = 200;
+export const CRIT_SHAKE_MAG = 14;
+export const CRIT_LIGHT_MS = 240;
+export const CRIT_LIGHT_GAP_MS = 120;
 // 戦闘の手触り①(v0.25.4269・監査A是正): 近接3経路(カウンター/刀/鞭)は damageEnemy を通らず survivors.push で
 // HPを直接書くので、同じ局所ストップをここから配る。止めている間はノックバックの期限も同じだけ後ろへ
 // (止めが明けた瞬間に満額で飛ぶ)。ボス級は nextHitStunUntil が undefined を返す=何も足さない。
@@ -2102,6 +2110,7 @@ const meleeHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil'>, now: num
   return shoveToo ? { hitStunUntil: u, knockbackUntil: kbUntil, knockbackShoveUntil: kbUntil } : { hitStunUntil: u, knockbackUntil: kbUntil };
 };
 let nonGunHitShakeAt = 0;
+let critImpactAt = 0; // spawnCritImpact の畳み込み用(Date.now)
 export const MELEE_SWING_SHAKE_MS = 110;     // 近接スイング(控えめ)
 export const MELEE_SWING_SHAKE_MAG = 7;      // 社長指示で倍化(3.5→7)
 export const SHIELD_BASH_SHAKE_MS = 160;
@@ -5174,7 +5183,8 @@ interface GameState {
   isPaused: boolean;
   showUpgradeMenu: boolean;
   levelUpIntroUntil: number; // >0 の間は「LEVEL UP 演出(スロー)」中。この実時刻を過ぎたら選択肢メニューを出す。
-  levelUpEmphasisUntil: number; // LEVEL_GROWTH.md §11 代替b: 攻撃が変わるカード取得直後の与ダメ数字の強調(gameTime基準=ポーズ中に消費しない・描画のみ)
+  levelUpEmphasisUntil: number; // LEVEL_GROWTH.md §11 代替b: 攻撃が変わるカード取得後「最初の1発」を待つ窓(gameTime基準・描画のみ)
+  levelUpFlashArmed: boolean;   // 窓内の最初の非クリ与ダメ数字が消費する(白→金フラッシュ)
   showShopMenu: boolean;
   showEventQuestMenu: boolean;
   shopReopenAt: number;
@@ -5954,6 +5964,7 @@ interface GameState {
   // 未指定/{0,0}/`?dirfx=0`は従来どおり等方のランダム揺れ。
   triggerShake: (durationMs: number, mag?: number, dirX?: number, dirY?: number) => void; // 行動別の画面シェイク(描画のみ)
   triggerKick: (mag: number, durationMs: number, dirX: number, dirY: number, overshoot?: number) => void; // 反動のカメラキック(描画のみ・戦闘の手触り③)
+  spawnCritImpact: (x: number, y: number) => void; // クリティカルの瞬間: 大きな揺れ+発生源の光源(描画のみ・社長指示2026-09-13)
   spawnCasing: (x: number, y: number, dirX: number, dirY: number, colors: readonly string[], size: number, sides: readonly number[]) => void; // 薬莢(床つき粒・描画のみ)
   registerPlayerKills: (count: number, allowSlow: boolean) => void; // 連続撃破の段(戦闘の手触り②)。damageEnemy と近接3経路の両方から呼ぶ
 
@@ -6354,6 +6365,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   showUpgradeMenu: false,
   levelUpIntroUntil: 0,
   levelUpEmphasisUntil: 0,
+  levelUpFlashArmed: false,
   showShopMenu: false,
   showEventQuestMenu: false,
   shopReopenAt: 0,
@@ -8037,6 +8049,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // クリでスタンさせた敵に黄色いリング(銃クリと同じフィードバック。社長指示で近接にも追加)。
     for (const c of critStunAt) {
       get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
+      get().spawnCritImpact(c.x, c.y); // 社長指示2026-09-13: 近接クリも揺れ+光源
     }
     // GAME_AUDIT #17: 近接クリで完全気絶が発動したら銃経路と同じ紫FX+STUN!コールアウト。
     for (const p of bossFullStunHits) {
@@ -9139,6 +9152,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // クリでスタンさせた敵に黄色いリング(銃クリと同じフィードバック)。
     for (const c of critStunAt) {
       get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
+      get().spawnCritImpact(c.x, c.y); // 社長指示2026-09-13: 刀クリも揺れ+光源
     }
     // GAME_AUDIT #17: 刀クリで完全気絶が発動したら銃経路と同じ紫FX+STUN!コールアウト。
     for (const p of katanaBossFullStunHits) {
@@ -9399,7 +9413,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 血飛沫は出す(社長指摘v0.25.2060: メイン近接3経路に未配線だった)。
     for (const s of slashAt) get().spawnMeleeBlood(s.x, s.y);
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
-    for (const c of critStunAt) get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
+    for (const c of critStunAt) { get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260); get().spawnCritImpact(c.x, c.y); } // 鞭クリも揺れ+光源(社長指示2026-09-13)
     // §9.4(v0.25.2502): 鞭クリの紫完全気絶FX(ナイフ4923/刀5573の紫リング+STUN!と同じ作法)。
     for (const p of whipBossFullStunHits) {
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
@@ -11091,7 +11105,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnCallout(cp.x + cp.width / 2, cp.y - 14, label, '#fffbe6', { bg: 0xf59e0b, scale: 1.2, serif: true, holdMs: 600, duration: 1500 });
       }
       const changesDamage = (upgrade.type === 'stat' && upgrade.statKind === 'atk') || (upgrade.type === 'consumable' && upgrade.consumableKey === 'attack-doping');
-      if (changesDamage && !willChain) set({ levelUpEmphasisUntil: get().gameTime + LEVELUP_EMPHASIS_MS });
+      if (changesDamage && !willChain) set({ levelUpEmphasisUntil: get().gameTime + LEVELUP_EMPHASIS_MS, levelUpFlashArmed: true });
     }
     if (awakenedFx) {
       const prevCutin = get().awakenCutin;
@@ -11718,6 +11732,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let gunHitAt: { x: number; y: number } | null = null;
     // 社長指示2026-09-13: 銃以外の打撃(サブ/近接/爆発/召喚。持続ダメージ 'dot' は除く)の着弾位置=set後に一瞬の画面シェイク。
     let nonGunHitAt: { x: number; y: number } | null = null;
+    let critHitAt: { x: number; y: number } | null = null; // 社長指示2026-09-13: クリの瞬間の画面揺れ+光源(spawnCritImpact)
     // サブクエスト(research/SUBQUESTS.md): ★キル確定点2本のうちの1本(銃/接触/爆発/DoT)。
     // 付与(ゴールド/ポップ/保存)は副作用なので set() の外側で行う=候補だけここで拾う。
     let subquestKilled: Enemy | null = null;
@@ -11795,6 +11810,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (=プレイヤー起因ではない)。'gun'でも'dot'でもないのでここを素通りして揺れていた → 除外。守護霊は hateSource='ghost' で元から外。
       if (damageChannel !== 'gun' && damageChannel !== 'dot' && damageChannel !== null && hateSource === 'player' && eff > 0) {
         nonGunHitAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
+      }
+      if (crit && hateSource === 'player' && damageChannel !== null && damageChannel !== 'dot' && eff > 0) {
+        critHitAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
       }
       // nonLethalBoss: 廃止(v0.25.1571) 爆発もボスを倒せる。互換のため引数は残置
       // ★finishKillOnly(フィニッシュ以外では死なない)は v0.25.3329 で削除(未使用の死んだ旗・社長指示)。
@@ -12068,6 +12086,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // v0.25.4270(監査A-3/A-4): channel null(護衛NPCの弾)は数えない。スロー許可は呼び手が weaponKey で判定した
     // killChainSlowOk(プレイヤーの直接銃だけ=isDirectGunWeaponKey)を優先。未指定の経路は従来の「銃チャネル」。
     if (killed && hateSource === 'player' && damageChannel !== null) get().registerPlayerKills(1, killChainSlowOk ?? (damageChannel === 'gun'));
+    if (critHitAt) { const ch = critHitAt as { x: number; y: number }; get().spawnCritImpact(ch.x, ch.y); }
     if (gunHitAt && Date.now() >= gravityShotNextRollAt) {
       const gravLv = skillLevel(get().player, 'gravity-shot');
       const well = rollGravityShotWell(gravLv);
@@ -19618,6 +19637,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  spawnCritImpact: (x, y) => {
+    // 描画のみ。揺れは triggerShake の「強い方優先・延長」で畳まれる。光は CRIT_LIGHT_GAP_MS 以内の連続クリでは1つに畳む(強glowの負荷)。
+    const now = Date.now();
+    const pl = get().player;
+    get().triggerShake(CRIT_SHAKE_MS, CRIT_SHAKE_MAG, x - (pl.x + pl.width / 2), y - (pl.y + pl.height / 2));
+    if (now - critImpactAt < CRIT_LIGHT_GAP_MS) return;
+    critImpactAt = now;
+    get().spawnGlow(x, y, GLOW_R_L, 'rgba(255,226,150,', CRIT_LIGHT_MS); // 強glow(投影影あり)=爆発と同じ原理の光源。爆発の絵は出さない
+  },
+
   triggerKick: (mag, durationMs, dirX, dirY, overshoot = 0) => {
     // 描画のみ。毎発上書き(長さは発射間隔の75%=次弾の前に戻り切る)。向きは1発ごとに垂直方向へ少しぶれる。
     const d = recoilKickDir(dirX, dirY, Math.random());
@@ -19940,15 +19969,17 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   spawnDamageNumber: (x, y, value, crit = false) => {
     const now = Date.now();
+    // LEVEL_GROWTH.md §11 代替b: 攻撃が変わるカードの後の**最初の1発**(非クリ)だけ白→金に光る。消費したら窓を閉じる。
+    const flash = !crit && get().levelUpFlashArmed && get().gameTime < get().levelUpEmphasisUntil;
+    if (flash) set({ levelUpFlashArmed: false });
     const effect: VisualEffect = {
       kind: 'damageNumber',
       id: `fx-dmg-${now}-${Math.random().toString(36).slice(2, 6)}`,
       x: x + (Math.random() - 0.5) * 18,
       y: y + (Math.random() - 0.5) * 8,
       value: Math.max(1, Math.ceil(value)), // 表示ダメージは切り上げ(社長指示・最低1)。内部の実ダメージは丸めない
-      // LEVEL_GROWTH.md §11 代替b: スキル/カードを取った直後(levelUpEmphasisUntil)は非クリの数字も金色・少し大きく=「変わった」が読める。
-      color: crit ? '#fbbf24' : (get().gameTime < get().levelUpEmphasisUntil ? '#fde68a' : '#fef9c3'),
-      ...(!crit && get().gameTime < get().levelUpEmphasisUntil ? { scale: 1.15 } : {}),
+      color: crit ? '#fbbf24' : (flash ? '#fde68a' : '#fef9c3'),
+      ...(flash ? { scale: 1.4, flash: true } : {}),
       createdAt: now,
       duration: 720,
       crit

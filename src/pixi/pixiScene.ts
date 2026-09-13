@@ -2182,6 +2182,13 @@ const TORCH_REFLECTION_H = 24;
 // ★紫=カウンターできない攻撃(CLAUDE.md「色と形の文法」)。幻影のサブウェポン用の視覚専用tint。
 const PHANTOM_SUB_TINT = 0xc084fc;
 const STRONG_GLOW_RADIUS = 44;
+// 2色の線形補間(tint用・'#rrggbb' か数値)。ダメージ数字の白→金フラッシュが使う。
+const lerpColor = (a: number, b: number | string, t: number): number => {
+  const bv = typeof b === 'string' ? parseInt(b.slice(1), 16) : b;
+  const k = Math.max(0, Math.min(1, t));
+  const ch = (sh: number) => Math.round(((a >> sh) & 0xff) * (1 - k) + ((bv >> sh) & 0xff) * k);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+};
 // 強glowの大きさ倍率。**既定 1.3(社長裁定v0.25.2686。旧 1.7)。**
 //
 // ★経緯(実機ベンチ5本・research/LIGHT_REWORK.md §3-1h):
@@ -28994,7 +29001,8 @@ export class PixiScene {
     const pop = 1 + Math.max(0, 1 - t * 5) * (bold ? 0.22 : 0.14);
     bt.scale.set(((15 * scale) / PixiScene.DAMAGE_FONT_SIZE) * pop);
     bt.position.set(e.x, e.y - t * 12);
-    bt.tint = e.color; // crit=金 / 通常=白 などを tint で
+    // flash(LEVEL_GROWTH.md §11 代替b): 最初の1発は白から金へ(最初の35%で補間・その後は金のまま)。
+    bt.tint = e.flash ? lerpColor(0xffffff, e.color, Math.min(1, t / 0.35)) : e.color; // crit=金 / 通常=白 などを tint で
     bt.alpha = Math.max(0, 1 - t);
   }
 

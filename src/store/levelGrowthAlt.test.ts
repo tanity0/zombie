@@ -40,13 +40,14 @@ describe('少しだけ渋く: 経験値の実効倍率(本編 1/3.5・M0 は 1/3
 });
 
 describe('代替b: 取った瞬間の可視化', () => {
-  it('攻撃が変わるカードを取ると levelUpEmphasisUntil(gameTime基準)が立ち、その間の非クリ数字は金色・少し大きい。名札は帯つき明朝', () => {
+  it('攻撃が変わるカードを取ると「最初の1発」の窓が開き、最初の非クリ数字だけ白→金フラッシュ(2発目は従来色)。名札は帯つき明朝', () => {
     useGameStore.getState().resetGame('warrior');
-    useGameStore.setState({ showUpgradeMenu: true, isPaused: true, levelUpEmphasisUntil: 0 });
+    useGameStore.setState({ showUpgradeMenu: true, isPaused: true, levelUpEmphasisUntil: 0, levelUpFlashArmed: false });
     const gt0 = useGameStore.getState().gameTime;
     useGameStore.getState().selectUpgrade(statOption('atk'));
     const s = useGameStore.getState();
     expect(s.levelUpEmphasisUntil).toBe(gt0 + LEVELUP_EMPHASIS_MS);
+    expect(s.levelUpFlashArmed).toBe(true);
     // 頭上の名札(callout)が帯つき・明朝で出ている
     const label = s.effects.find(e => e.kind === 'damageNumber' && e.text === '攻撃力');
     expect(label).toBeDefined();
@@ -55,13 +56,13 @@ describe('代替b: 取った瞬間の可視化', () => {
     const fx = useGameStore.getState().effects;
     const n = fx[fx.length - 1];
     expect(n.kind).toBe('damageNumber');
-    if (n.kind === 'damageNumber') { expect(n.color).toBe('#fde68a'); expect(n.scale).toBe(1.15); }
-    // 期限切れ後は従来色
-    useGameStore.setState({ levelUpEmphasisUntil: 0 });
+    if (n.kind === 'damageNumber') { expect(n.flash).toBe(true); expect(n.color).toBe('#fde68a'); expect(n.scale).toBe(1.4); }
+    expect(useGameStore.getState().levelUpFlashArmed).toBe(false); // 1発で消費
+    // 2発目は従来色
     useGameStore.getState().spawnDamageNumber(0, 0, 12, false);
     const fx2 = useGameStore.getState().effects;
     const n2 = fx2[fx2.length - 1];
-    if (n2.kind === 'damageNumber') { expect(n2.color).toBe('#fef9c3'); expect(n2.scale).toBeUndefined(); }
+    if (n2.kind === 'damageNumber') { expect(n2.flash).toBeUndefined(); expect(n2.color).toBe('#fef9c3'); expect(n2.scale).toBeUndefined(); }
   });
   it('攻撃が変わらないカード(体力)では数字を光らせない(名札だけ)', () => {
     useGameStore.getState().resetGame('warrior');
@@ -69,6 +70,7 @@ describe('代替b: 取った瞬間の可視化', () => {
     useGameStore.getState().selectUpgrade(statOption('hp'));
     const s = useGameStore.getState();
     expect(s.levelUpEmphasisUntil).toBe(0);
+    expect(s.levelUpFlashArmed).toBe(false);
     expect(s.effects.some(e => e.kind === 'damageNumber' && e.text === '体力')).toBe(true);
   });
 });
