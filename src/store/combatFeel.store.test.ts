@@ -143,6 +143,25 @@ describe('戦闘の手触り② 連続撃破の段(registerPlayerKills / damageE
     expect(s.killChainTier).toBe(0);
   });
 
+  it('護衛NPCの弾(damageChannel=null)は止めもせず数えもしない(監査2巡目A-3)', () => {
+    const { px, py, gt } = setup();
+    const id = put({ ...spawnEnemyAt('zombie', px + 200, py, gt), health: 1000, maxHealth: 1000 });
+    useGameStore.getState().damageEnemy(id, 5, false, false, false, null, 'player');
+    expect(enemy(id).hitStunUntil).toBeUndefined();
+    const id2 = put({ ...spawnEnemyAt('zombie', px + 240, py, gt), health: 1, maxHealth: 1 });
+    useGameStore.getState().damageEnemy(id2, 5, false, false, false, null, 'player');
+    expect(useGameStore.getState().killChainCount).toBe(0);
+  });
+
+  it('killChainSlowOk=false なら銃チャネルでも10体スローは出ない(タレット榴弾・監査2巡目A-4)', () => {
+    const { px, py, gt } = setup();
+    useGameStore.setState({ killChainCount: 9, killChainLastAt: Date.now(), killChainTier: 2, timeSlowUntil: 0 });
+    const id = put({ ...spawnEnemyAt('zombie', px + 200, py, gt), health: 1, maxHealth: 1 });
+    useGameStore.getState().damageEnemy(id, 5, false, false, false, 'gun', 'player', null, 1, null, false);
+    expect(useGameStore.getState().killChainTier).toBe(3);
+    expect(useGameStore.getState().timeSlowUntil).toBe(0);
+  });
+
   it('守護霊側(hateSource=ghost)のキルは数えない', () => {
     const { px, py, gt } = setup();
     const id = put({ ...spawnEnemyAt('zombie', px + 200, py, gt), health: 1, maxHealth: 1 });

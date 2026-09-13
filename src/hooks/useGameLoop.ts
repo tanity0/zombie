@@ -13221,6 +13221,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 幻影ゲートへ(=飛翔時間が反応速度以上なら counterChance 抽選で打ち返し対象)。
             // サブ・爆発・護衛/守護霊弾は従来どおり。
             gpBulletSource,
+            // v0.25.4270(監査A-4): 連続撃破10体スローはプレイヤーの直接銃の弾だけ(タレットの榴弾/爆撃/スキル弾は
+            // weaponType が銃でも 'gun' 扱いになるので、ここで weaponKey から判定して渡す)。
+            directPlayerGun,
           );
           // UNIQUE_WEAPONS.md §13-1/§9(#U9是正): パイルドライバーの弾だけにノックバックを付ける
           // (全銃には入れない=別案件・社長裁定)。knockbackEnemyは既存の共通API(反射神経/爆発/

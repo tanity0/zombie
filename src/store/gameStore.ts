@@ -5590,7 +5590,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null) => boolean; // postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾=飛翔時間つきの形。null=従来の導出・v0.25.3640監査A)
+  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean) => boolean; // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾=飛翔時間つきの形。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -10666,10 +10666,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
     }
     // 戦闘の手触り③(v0.25.4269・監査A是正): 手動銃にも反動キック(薬莢なし=PHILL)。向き=撃った方向の逆。
+    // v0.25.4270(監査A-2): ヘッドショット分岐のダミー弾は direction={0,-1} なので弾から向きを取らない。
+    // 吸い付き中=敵の頭へ、通常=レティクル(無ければ向いている方向)。
     {
-      const kd = get().projectiles[get().projectiles.length - 1]?.direction;
+      const kaim = Math.hypot(player.aimX, player.aimY) > 0.001;
+      const kdx = snapEnemy ? (snapEnemy.x + snapEnemy.width / 2 - pcx) : (kaim ? player.aimX : (player.lastDirection?.x ?? 1));
+      const kdy = snapEnemy ? (snapEnemy.y + snapEnemy.height / 2 - pcy) : (kaim ? player.aimY : (player.lastDirection?.y ?? 0));
       const rs = recoilSpecForWeapon(weapon);
-      if (kd) get().triggerKick(rs.kickPx, rs.kickMs, -kd.x, -kd.y, rs.overshoot);
+      get().triggerKick(rs.kickPx, rs.kickMs, -kdx, -kdy, rs.overshoot);
     }
     // 裁定4(§2.11・記録専用): PHILLの発射数を1つ数える(ヘッドショット数は着弾側=useGameLoopでフック)。
     // 率は撃破セッション確定時にビルド写しへ焼かれ、守護霊がその確率でヘッドショットを再現する。
@@ -10752,10 +10756,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
     }
     // 戦闘の手触り③(v0.25.4269): 手動チャージ弾はオート弾より重い一発=反動 ×1.25(薬莢なし=レールガン)。
+    // v0.25.4270(監査A-2): 向きは弾ではなく狙い(吸い付き中=敵の頭/通常=レティクル)から。PHILLと同じ。
     {
-      const kd = get().projectiles[get().projectiles.length - 1]?.direction;
+      const kaim = Math.hypot(player.aimX, player.aimY) > 0.001;
+      const kdx = snapEnemy ? (snapEnemy.x + snapEnemy.width / 2 - pcx) : (kaim ? player.aimX : (player.lastDirection?.x ?? 1));
+      const kdy = snapEnemy ? (snapEnemy.y + snapEnemy.height / 2 - pcy) : (kaim ? player.aimY : (player.lastDirection?.y ?? 0));
       const rs = recoilSpecForWeapon(weapon, 1.25);
-      if (kd) get().triggerKick(rs.kickPx, rs.kickMs, -kd.x, -kd.y, rs.overshoot);
+      get().triggerKick(rs.kickPx, rs.kickMs, -kdx, -kdy, rs.overshoot);
     }
     recordManualShot(); // research/WEAPON_AI_TEST.md S2-a: 手動アクションの発射成立(レールガン分)。
     void import('../audio/audioManager').then(m => m.playSfx('rifle-fire'));
@@ -11657,7 +11664,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null) => {
+  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk) => {
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
@@ -11819,7 +11826,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 戦闘の手触り①(社長指示2026-09-13): プレイヤーの攻撃が実ダメージで入った敵だけ数フレーム止める
       // (雑魚60/強個体40/ボス級0=combatFeel.hitStunMsFor)。DoT(燃焼・血棘・味方弾)は対象外。
       // 再発火ガード(HIT_STUN_REARM_MS)込み。ノックバックの期限ずらしは knockbackEnemy 側(呼び手が直後に呼ぶ)。
-      const hitStunNext = (hateSource === 'player' && eff > 0 && damageChannel !== 'dot' && newHealth > 0) ? nextHitStunUntil(enemy.type, enemy.hitStunUntil, Date.now()) : undefined;
+      // damageChannel===null は「プレイヤー起因ではない」(護衛NPCの弾)=止めない(v0.25.4270・監査A-3)。
+      const hitStunNext = (hateSource === 'player' && eff > 0 && damageChannel !== 'dot' && damageChannel !== null && newHealth > 0) ? nextHitStunUntil(enemy.type, enemy.hitStunUntil, Date.now()) : undefined;
       const hitStunPatch = hitStunNext !== undefined ? { hitStunUntil: hitStunNext } : {};
       const updatedEnemies = enemies.map(e =>
         e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch, ...hitStunPatch } : e
@@ -12021,7 +12029,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // audioManager が killChainTier を読む/画面端の色=pixiScene が killChainTierAt を読む)。この経路で10体スローを
     // 許すのは**銃チャネルのみ**(投げナイフ・犬・召喚・爆発・DoT は 'other'/'dot' で来る=サブウェポン起因でスローを
     // 出さない掟)。近接は damageEnemy を通らず、各経路が registerPlayerKills(n, true) を呼ぶ。
-    if (killed && hateSource === 'player') get().registerPlayerKills(1, damageChannel === 'gun');
+    // v0.25.4270(監査A-3/A-4): channel null(護衛NPCの弾)は数えない。スロー許可は呼び手が weaponKey で判定した
+    // killChainSlowOk(プレイヤーの直接銃だけ=isDirectGunWeaponKey)を優先。未指定の経路は従来の「銃チャネル」。
+    if (killed && hateSource === 'player' && damageChannel !== null) get().registerPlayerKills(1, killChainSlowOk ?? (damageChannel === 'gun'));
     if (gunHitAt && Date.now() >= gravityShotNextRollAt) {
       const gravLv = skillLevel(get().player, 'gravity-shot');
       const well = rollGravityShotWell(gravLv);

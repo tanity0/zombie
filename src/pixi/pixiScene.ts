@@ -27036,6 +27036,11 @@ export class PixiScene {
   }
 
   private glowTint(color: string) {
+    // v0.25.4270(監査A-1): '#rrggbb' も受ける(薬莢の真鍮/赤が全部白で出ていた)。rgba( 以外・hex以外は従来どおり白。
+    if (color.length === 7 && color[0] === '#') {
+      const v = parseInt(color.slice(1), 16);
+      return Number.isFinite(v) ? v : 0xffffff;
+    }
     const match = color.match(/rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
     if (!match) return 0xffffff;
     const r = Math.max(0, Math.min(255, Number(match[1])));
