@@ -137,7 +137,7 @@ import {
 // PACING_PUZZLE.md §10-12#17(フィル・羽根の檻/裁きの光/急降下の可視域クランプ=可視短辺の0.45倍上限)。
 import { phillCageInitialRadiusPx } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
-import { cineCameraAt, cineModeFor, thirdsAim, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, CINE_PLATE_NEAR_MARGIN_FRAC, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
+import { cineCameraAt, cineModeFor, thirdsAim, cinePlateKinds, cineBarsOn, cineBarFrac, CINE_BAR_ALPHA, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, CINE_PLATE_NEAR_MARGIN_FRAC, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -3483,6 +3483,8 @@ export class PixiScene {
   private cinePlateEventStart = -1;
   private cinePlateDirIn: 1 | -1 = 1;   // 板の縁(自機側)から画面中央へ向く向き(+1=左縁から右へ)
   private cinePlateFar: 1 | -1 = 1;     // 奥側(相手側)=板の傾き先
+  // レターボックス(§7・v0.25.4303): 画面空間(L.cineBars)・pooled sprite 2枚(Texture.WHITE を黒く tint して伸ばすだけ)。
+  private cineBarSprites: Sprite[] = [];
   private zwarpDisabled = false;                     // フィルタが作れない環境では以後無効(世界はそのまま)
   private zwarpZoomNow = 1;                          // このフレームに worldGroup へ適用した総ズーム(zwarp が読む)
   // 分身(サブウェポン): 持ち主と同じ立ち絵を白黒キャッシュで描く足元アンカーのスプライト+
@@ -7993,6 +7995,8 @@ export class PixiScene {
     }
     // 近景の板(§6・v0.25.4296): 演目・モード・包絡線をそのまま渡す(描画のみ)。
     this.syncCinePlates(cineEv, cam, cineMode, zoomDecayCine, now, cineSideX);
+    // レターボックス(§7・v0.25.4303): 画角だけ。板と違い pan に依存しないので pushOnly 以外なら出す。
+    this.syncCineBars(cineEv, cineMode, zoomDecayCine);
     // §6.37 v6: hzFixed(遠景森1/森2+地平付帯層)は**ボス寄せバイアス(bossPan)だけ**打ち消す。
     // v2993の「引き中は完全画面固定」は撤回——社長裁定(2026-08-07)は「森は世界と一緒に縮んでよい。
     // 縮みで出る切れ目はコピー森(リッジ3本・下のsyncで管理)で誤魔化す」。バイアス打ち消しは
@@ -29461,6 +29465,37 @@ export class PixiScene {
       fogSp.rotation = this.cinePlateFar * CINE_PLATE_FOG_TILT_RAD;
       fogSp.alpha = (vocab === 'city' ? 0.55 : 0.45) * outFog;
     }
+    layer.visible = true;
+  }
+
+  /**
+   * レターボックス(research/CINEMATIC_CAMERA.md §7・v0.25.4303): 寄り演目(処刑2種・死亡)の間だけ上下に黒帯を出し、
+   * 画角を 2.39:1 にする。板が「縁に何を写し込むか」を足す装置なのに対し、帯は「どこまで写すか」を削る装置。
+   * **カットの瞬間に帯は既に居る**(滑り込ませない=§6 監査8と同じ文法)。抜けだけ √decay で開く=幹の板と同じ形。
+   * 板と違って pan に依存しないので **cutPush(遠距離ボス・群衆戦)でも出す**(v0.25.4300「モードの門で出ていなかった」の再発防止)。
+   * 判定・座標・HUD・zwarp は不変。描画のみ。
+   */
+  private syncCineBars(ev: CineEvent | null, mode: CineMode, decay: number): void {
+    const layer = this.L.cineBars;
+    if (!cineBarsOn(ev ? ev.kind : null, mode, decay)) {
+      if (layer.visible) layer.visible = false;
+      return;
+    }
+    if (this.cineBarSprites.length === 0) {
+      for (let i = 0; i < 2; i++) {
+        const sp = new Sprite(Texture.WHITE);
+        sp.tint = 0x000000;
+        sp.alpha = CINE_BAR_ALPHA;
+        layer.addChild(sp);
+        this.cineBarSprites.push(sp);
+      }
+    }
+    const W = this.screenW, H = this.screenH;
+    const h = H * cineBarFrac(decay);
+    if (h < 0.5) { if (layer.visible) layer.visible = false; return; } // 1px未満は出さない(残りカスの線を残さない)
+    const [top, bottom] = this.cineBarSprites;
+    top.position.set(0, 0); top.width = W; top.height = h;
+    bottom.position.set(0, H - h); bottom.width = W; bottom.height = h;
     layer.visible = true;
   }
 

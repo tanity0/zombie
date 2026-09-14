@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4303',
+    items: [
+      'とどめを刺した瞬間と力尽きた瞬間、カメラが寄っている間だけ画面の上下に黒い帯が入る。その一瞬だけ、映画の一場面のような横長の画角になる。',
+    ],
+  },
+  {
     version: '0.25.4302',
     items: [
       'ハンターや死神のように一度の出撃で何度も現れる相手の紹介は、最初の一回だけ。二回目からはカメラが相手へ寄って戻るだけになった。',

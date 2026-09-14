@@ -75,6 +75,10 @@ export const CINE_PLATE_ALPHA = 0.95;      // v0.25.4301: 0.85→0.95
 export const CINE_PLATE_IN_MS = 220;
 export const CINE_PLATE_DRIFT_FRAC = 0.03; // 保持中に奥側へ流れる量(横滑りの逆=視差)
 export const CINE_PLATE_BLUR_PX = 7;
+// ---- レターボックス(§7・v0.25.4303) ----
+// 帯は「画面の外」を意味する=画角そのもの。板(縁に何を写し込むか)とは別の仕事なので定数も別に持つ。
+export const CINE_BAR_H_FRAC = 0.12;  // 片側の帯の高さ(画面高比)。16:9→2.39:1 は 0.128・少し控えた値
+export const CINE_BAR_ALPHA = 1;      // 半透明にすると「覆い」になって画角にならない(§7-3)
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const easeOutCubic = (u: number) => 1 - (1 - u) ** 3;
@@ -188,6 +192,26 @@ export const thirdsAim = (input: {
 export const cinePlateIn = (tMs: number): number => (tMs <= 0 ? 0 : tMs >= CINE_PLATE_IN_MS ? 1 : easeOutBack(tMs / CINE_PLATE_IN_MS));
 /** 板を出す演目か(処刑2種と死亡。カウンターは短いので出さない・§6-1)。 */
 export const cinePlateKinds: ReadonlySet<CineKind> = new Set<CineKind>(['kill', 'execute', 'death']);
+
+/**
+ * レターボックス(§7・v0.25.4303): 帯の高さ(画面高比・片側)。**カットの瞬間に既に居る**(滑り込ませない=板と同じ文法・
+ * §6 監査8「カットの後にUIが入ってくる」にしない)。抜けだけ共有包絡線の √ で開く=幹の板(outTree)と同じ形なので
+ * 画角と近景が同時に戻る。decay は zoomDecay(1=演目の最中 … 0=戻り切り)。
+ */
+export const cineBarFrac = (decay: number): number => CINE_BAR_H_FRAC * Math.sqrt(clamp01(decay));
+/**
+ * 帯を出す演目か。今は板と同じ顔ぶれ(処刑2種と死亡。カウンター320msは短すぎる=§6-1と同じ理由)だが、
+ * **板とは別の集合として持つ**(TILT と FOG_TILT を派生値にしなかったのと同じ。片方を動かした時にもう片方が
+ * 黙って付いてこないように)。
+ */
+export const cineBarKinds: ReadonlySet<CineKind> = new Set<CineKind>(['kill', 'execute', 'death']);
+/**
+ * 帯を出すか(モードの門)。**`pushOnly` 以外なら出す**=板(`full` のみ)と違って cutPush(遠距離ボス・群衆戦)でも出る。
+ * v0.25.4300 の「モードの門で演出が一度も出ていなかった」を名指しで防ぐ所なので、**描画側に埋めずに純関数で持って
+ * テストで縛る**(検収監査5)。decay は包絡線の残り(0=戻り切り)。
+ */
+export const cineBarsOn = (kind: CineKind | null, mode: CineMode, decay: number): boolean =>
+  kind !== null && mode !== 'pushOnly' && decay > 0 && cineBarKinds.has(kind);
 
 /** 構図の側を開始時に決める(相手が自機と同じ位置なら 0=決まらない)。 */
 export const cineSideOf = (px: number, py: number, tx: number, ty: number): { sideX: 1 | -1 | 0; sideY: 1 | -1 | 0 } => ({
