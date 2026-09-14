@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4316',
+    items: [
+      '処刑とカウンターの斜めが、一番傾いた所で一拍止まってから素早く戻るようになった。',
+    ],
+  },
+  {
     version: '0.25.4315',
     items: [
       '処刑の光と空気をいったん外した。作り直す。カメラの寄りと近景はそのまま。',

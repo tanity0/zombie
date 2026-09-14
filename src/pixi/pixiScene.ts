@@ -1522,8 +1522,9 @@ const ZWARP_DECAY_POW = Math.max(0.5, tsNum('zwarppow', 1.6));
 // 社長裁定2026-09-11(クリエイティブ監査の戻し):
 // §6「傾きは先にほどく」: 傾きは寄りのホールドを待たず自分の時計でほどける。イベント開始から HOLD_MS 保持→RELEASE_MS で 0 へ
 //(死亡の1.15秒ホールドでも傾いた床が静止して見えない。KILL(700ms)では従来とほぼ同じ尺)。
-const ZWARP_TILT_HOLD_MS = Math.max(0, tsNum('zwarphold_ms', 140));   // 150→100(社長指示v0.25.4232「戻りも少しスピードアップ」)→140(v0.25.4295: 横滑りの到達 t≈460 でほどけ切るよう+40。「奥へ滑る」最中に奥が平らにならない)
-const ZWARP_TILT_RELEASE_MS = Math.max(50, tsNum('zwarprel', 320)); // 450→320(同上)
+const ZWARP_TILT_HOLD_MS = Math.max(0, tsNum('zwarphold_ms', 70));    // 150→100→140→**70**(社長指示v0.25.4316「maxで一瞬止めてから早く戻す感じに」)。
+                                                                      // ヒットストップ(100ms)の間は時計も止まるので、体感の「止め」は**停止+この値**になる。
+const ZWARP_TILT_RELEASE_MS = Math.max(50, tsNum('zwarprel', 170)); // 450→320→**170**(社長指示v0.25.4316「早く戻す」)
 // §8「奥の辺も縮める」: 総量 k のうち奥側 FAR_FRAC を縮め、近側 (1−FAR_FRAC) を膨らませる=対象へ引き込まれる動き。
 // 奥側が縮むと縁の外の絵が要るので、フィルタの枠(filterArea)を縦に縮みぶんだけ広げる(地面はオーバースキャン分が在る)。
 const ZWARP_FAR_FRAC = Math.max(0, Math.min(0.8, tsNum('zwarpfar', 0.35)));
@@ -5903,7 +5904,10 @@ export class PixiScene {
       // 傾きの包絡線=min(寄りの包絡線^冪, 自分の時計)。自分の時計: 開始から HOLD_MS は 1、その後 RELEASE_MS で滑らかに 0(§6)。
       const tSince = this.zwarpEventStart >= 0 ? now - this.zwarpEventStart : 0;
       const rel = tSince <= ZWARP_TILT_HOLD_MS ? 1 : Math.max(0, 1 - (tSince - ZWARP_TILT_HOLD_MS) / ZWARP_TILT_RELEASE_MS);
-      const relEase = rel * rel * (3 - 2 * rel); // smoothstep(1→0)
+      // ★戻りの形(社長指示v0.25.4316「maxで一瞬止めてから**早く戻す**」): smoothstep は**出だしが遅い**ので
+      // 「止めたあとダラっと帰る」に見えていた。**離した瞬間が一番速く、最後だけ静かに着く**形(1-u)^2 へ。
+      // 出だしの速度の不連続は**この target を食うばね**(ZWARP_SPRING)が吸う=慣性MUSTは保たれる。
+      const relEase = rel * rel; // (1-u)^2 相当(rel は 1→0 の線形)。u=0.25 で 0.56、u=0.5 で 0.25 まで落ちる
       const env = ZWARP_HOLD ? 1 : Math.min(Math.pow(Math.max(0, this.zwarpEventDecay), ZWARP_DECAY_POW), relEase);
       const magK = ZWARP_HOLD ? 1 : Math.min(1, Math.max(0, this.zwarpEventMag) / ZWARP_MAG_REF);
       const target = ZWARP_MAX * env * magK;
