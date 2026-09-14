@@ -87,10 +87,18 @@ export interface RecoilWeaponLike { category?: WeaponCategory; damage: number; c
 export const RECOIL_KICK_MIN_PX = 1.6;
 export const RECOIL_KICK_MAX_PX = 9.5;
 export const RECOIL_HEAVY_PX = 5;
+// 連射系(社長指示2026-09-14「連射系の銃はもう少し画面ブレ抑えたい」): 発射間隔が RAPID_FIRE_CD_MS より短い銃は、
+// 蹴りを √(間隔/250) 倍に絞る(マシンピストル100ms=×0.63・ガンブレード110ms=×0.66)。床も連射だけ低く(RECOIL_KICK_MIN_RAPID_PX)。
+// 1発の蹴りは小さくても10発/秒で画面が絶えず動く=「ブレ」の正体。単発・大口径は変えない。
+export const RAPID_FIRE_CD_MS = 250;
+export const RECOIL_KICK_MIN_RAPID_PX = 0.8;
+export const rapidFireKickMult = (cooldownMs: number): number => (cooldownMs >= RAPID_FIRE_CD_MS ? 1 : Math.sqrt(Math.max(1, cooldownMs) / RAPID_FIRE_CD_MS));
 export const recoilSpecForWeapon = (w: RecoilWeaponLike, damageMult = 1): RecoilSpec => {
   const shot = Math.max(0, w.damage) * Math.max(1, w.count ?? 1) * damageMult
     * (w.category === 'shotgun' ? 1.8 : 1) * Math.sqrt(Math.max(1, w.knockbackMult ?? 1));
-  const kickPx = Math.max(RECOIL_KICK_MIN_PX, Math.min(RECOIL_KICK_MAX_PX, 1.6 + shot * 0.055));
+  const rapid = rapidFireKickMult(w.cooldown);
+  const floor = rapid < 1 ? RECOIL_KICK_MIN_RAPID_PX : RECOIL_KICK_MIN_PX;
+  const kickPx = Math.max(floor, Math.min(RECOIL_KICK_MAX_PX, (1.6 + shot * 0.055) * rapid));
   const kickMs = Math.max(60, Math.min(190, Math.round(w.cooldown * 0.75)));
   return { kickPx, kickMs, overshoot: kickPx >= RECOIL_HEAVY_PX ? 0.15 : 0 };
 };

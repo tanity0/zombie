@@ -83,6 +83,13 @@ describe('戦闘の手触り(utils/combatFeel・社長指示2026-09-13)', () => 
       // 押し武器(パイルドライバー knockbackMult 2)は同威力より重い
       expect(recoilSpecForWeapon(w(36, 450, { knockbackMult: 2 })).kickPx).toBeGreaterThan(recoilSpecForWeapon(w(36, 450)).kickPx);
     });
+    it('連射系(間隔<250ms)は蹴りを√(間隔/250)倍に絞る(マシンピストルはハンドガンより明らかに小さい)。単発は不変', () => {
+      const mp = recoilSpecForWeapon(w(7, 100));
+      const hg = recoilSpecForWeapon(w(9, 420));
+      expect(mp.kickPx).toBeLessThan(hg.kickPx * 0.8);
+      expect(mp.kickPx).toBeGreaterThanOrEqual(0.8);
+      expect(recoilSpecForWeapon(w(110, 1300, { category: 'rifle' })).kickPx).toBeGreaterThan(7);
+    });
     it('長さは発射間隔の75%(連射銃は次弾の前に戻り切る)・重い銃だけオーバーシュート', () => {
       expect(recoilSpecForWeapon(w(7, 100)).kickMs).toBe(75);
       expect(recoilSpecForWeapon(w(110, 1300)).kickMs).toBe(190);

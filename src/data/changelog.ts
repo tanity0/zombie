@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4280',
+    items: ['連射の速い銃(マシンピストルなど)の反動で画面が動く量を抑えた。クリティカルが続けて出た時の揺れも間を空けるようにした。単発や大口径の反動は変わらない。'],
+  },
+  {
     version: '0.25.4279',
     items: ['リザルトの「持ち帰る装備を選ぶ」枠をいったん外した。装備は次の出撃に持ち越さない。'],
   },

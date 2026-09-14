@@ -2103,6 +2103,8 @@ export const CRIT_SHAKE_MS = 200;
 export const CRIT_SHAKE_MAG = 14;
 export const CRIT_LIGHT_MS = 240;
 export const CRIT_LIGHT_GAP_MS = 120;
+// 連射系のクリ連発で画面が揺れ続けないよう、クリの揺れも間を空ける(社長指示2026-09-14「連射系はブレを抑えたい」)。光の畳み込みとは別の間隔。
+export const CRIT_SHAKE_GAP_MS = 320;
 // 戦闘の手触り①(v0.25.4269・監査A是正): 近接3経路(カウンター/刀/鞭)は damageEnemy を通らず survivors.push で
 // HPを直接書くので、同じ局所ストップをここから配る。止めている間はノックバックの期限も同じだけ後ろへ
 // (止めが明けた瞬間に満額で飛ぶ)。ボス級は nextHitStunUntil が undefined を返す=何も足さない。
@@ -2113,7 +2115,8 @@ const meleeHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil'>, now: num
   return shoveToo ? { hitStunUntil: u, knockbackUntil: kbUntil, knockbackShoveUntil: kbUntil } : { hitStunUntil: u, knockbackUntil: kbUntil };
 };
 let nonGunHitShakeAt = 0;
-let critImpactAt = 0; // spawnCritImpact の畳み込み用(Date.now)
+let critImpactAt = 0; // spawnCritImpact の光の畳み込み用(Date.now)
+let critShakeAt = 0;  // spawnCritImpact の揺れの畳み込み用(Date.now)
 export const MELEE_SWING_SHAKE_MS = 110;     // 近接スイング(控えめ)
 export const MELEE_SWING_SHAKE_MAG = 7;      // 社長指示で倍化(3.5→7)
 export const SHIELD_BASH_SHAKE_MS = 160;
@@ -19686,7 +19689,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 描画のみ。揺れは triggerShake の「強い方優先・延長」で畳まれる。光は CRIT_LIGHT_GAP_MS 以内の連続クリでは1つに畳む(強glowの負荷)。
     const now = Date.now();
     const pl = get().player;
-    get().triggerShake(CRIT_SHAKE_MS, CRIT_SHAKE_MAG, x - (pl.x + pl.width / 2), y - (pl.y + pl.height / 2));
+    if (now - critShakeAt >= CRIT_SHAKE_GAP_MS) {
+      critShakeAt = now;
+      get().triggerShake(CRIT_SHAKE_MS, CRIT_SHAKE_MAG, x - (pl.x + pl.width / 2), y - (pl.y + pl.height / 2));
+    }
     if (now - critImpactAt < CRIT_LIGHT_GAP_MS) return;
     critImpactAt = now;
     get().spawnGlow(x, y, GLOW_R_L, 'rgba(255,226,150,', CRIT_LIGHT_MS); // 強glow(投影影あり)=爆発と同じ原理の光源。爆発の絵は出さない
