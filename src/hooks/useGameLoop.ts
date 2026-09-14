@@ -37,7 +37,6 @@ import {
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, SHIJIN_TECH_SHAKE_MS, SHIJIN_TECH_SHAKE_MAG,
   COUNTER_ACCEPT_MS, // v0.25.2525→v0.25.3943: 守護霊の弾反射の窓(プレイヤーの受付と同じ定数)
-  MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG,
   SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG,
   DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV, DRONE_BOOM_SPEED,
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
@@ -142,7 +141,7 @@ import {
 // v0.25.2480(★未決1解消): 守護霊カウンターの請求(スイング側が積み、per-bossハンドラが消費)。
 // GHOST_FX_SHAKE_ENABLED(ゴースト演出のシェイク一括ゲート+ズーム/停止/スロー禁止の掟)もここへ移設。
 import {
-  GHOST_FX_SHAKE_ENABLED, setGhostCounterClaim, consumeGhostCounterClaim, ghostCounterDamage,
+  setGhostCounterClaim, consumeGhostCounterClaim, ghostCounterDamage,
   applyGhostCounterEffect, type GhostCounterFire,
 } from '../utils/ghostCounter';
 // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 守護霊は「計測時ビルド」で戦う。ビルドの復元+倍率評価用の
@@ -2389,6 +2388,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         return;
       }
       hitstopFxLastRef.current = 0;
+      // 揺れの整理(research/SHAKE_UNIFY.md §2-5・v0.25.4284): 前tickに登録された命中(registerImpact)をここで1回に解決。
+      // ヒットストップ中は上の早期returnで来ない=停止が明けてから揺れる(ストップ→揺れの順)。
+      useGameStore.getState().flushImpacts();
 
       // ★納品ロック(二人組クエストv2 §2-8)中は**世界を止める**(社長報告2026-09-13「ゴールイベントの会話中、動けないまま
       // 敵に攻撃され続ける。ゴールなので時間を止めるべき」)。旧: 入力と被弾だけ塞いで敵は動き続けていた(被弾は棄却されるが
@@ -9025,7 +9027,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)を犬の噛みつきにも乗算(四捨五入)。
                 activeFetch.bitten.add(enemy.id);
                 const dogDmg = Math.max(1, Math.round(DOG_BITE_DAMAGE * skillOutgoingDamageMult(useGameStore.getState().player)));
-                const killed = damageEnemy(enemy.id, dogDmg);
+                const killed = damageEnemy(enemy.id, dogDmg, false, false, false, 'dot'); // 召喚(犬)=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
                 spawnDamageNumber(ex, enemy.y, dogDmg, false);
                 spawnBurst(ex, ey, '#cbd5e1', 4);
                 // PACING_PUZZLE.md §9-7#1(ノックバック免除): driller はpumpkinと同格。
@@ -11117,9 +11119,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       const impactAt = boundBoss.bossStateUntil ?? boundBoss.aiPhaseUntil; const remain = impactAt !== undefined ? Math.round(impactAt - gameTime) : -1;
                       ghostLogPush(`${Math.round(gameTime / 100) / 10}s 構え(一閃) ${boundBoss.bossState ?? boundBoss.aiPhase ?? '?'} 残${remain}ms`);
                     }
-                  } else if (GHOST_FX_SHAKE_ENABLED) {
-                    useGameStore.getState().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG, btcx - gmcx, bccy - gmcy);
                   }
+                  // (守護霊の一閃の揺れは v0.25.4284 で撤去=揺れの整理の境界「本人の直接命中だけ」。v0.25.4271 と同じ線)
                 }
                 // v0.25.3981(実測用・?ghostlog=1): 刀ビルドのカウンター試行が一閃を出せなかった
                 // (安全な着地方向なし/一閃CD中)=請求ゼロで終わる経路。記録専用・挙動不変。
@@ -11202,10 +11203,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 成立演出(青Counter!+金クリ層+counter/headshot SE)はハンドラ側=成立が確定した時だけ
                   // 出す(不成立の空振りに嘘のCounter!を出さない)。通常近接ぶんのダメージ/斬撃/血/SEは
                   // 上の共通部で既に出ている。消費側の台帳=GHOST_PARITY_LEDGER.md ★仕様v2の州→担当表。
-                } else if (GHOST_FX_SHAKE_ENABLED) {
-                  // 通常ヒットのスイング揺れ(プレイヤーのtriggerCounter末尾と同型・方向=ゴースト→ボス)。
-                  useGameStore.getState().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG, btcx - gmcx, bccy - gmcy);
                 }
+                // (守護霊の通常ヒットの揺れは v0.25.4284 で撤去=揺れの整理の境界「本人の直接命中だけ」)
                 // キラー側のキル音(プレイヤーの近接/弾キルと同じ流儀=inputActions/弾ヒット共通ブロックと同型)。
                 // 敵側の死亡演出(血バースト/ボス死亡シーケンス/ドロップ)は既存経路が出す=ここでは重ねない。
                 if (ghostMeleeKilled) playEnemyDeath();
@@ -11586,7 +11585,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (tWalls.length > 0 && segmentBlocked(tcx, tcy, ex, ey, tWalls)) continue; // 壁越し不可
                 const falloff = 1 - dist / tBlastR;
                 const dmg = Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * tExMult * (0.55 + falloff * 0.45)));
-                const killed = damageEnemy(enemy.id, dmg, true); // 爆発=ボス系には非致死
+                const killed = damageEnemy(enemy.id, dmg, true, false, false, 'dot'); // 召喚(タレット)の爆風=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
                 spawnDamageNumber(ex, enemy.y, dmg, false);
                 if (killed) {
                   playEnemyDeath();
@@ -12188,7 +12187,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
                 // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)をドローン往復の接触ダメージにも乗算。
                 const boomDmg = Math.max(1, Math.round(boom.damage * skillOutgoingDamageMult(useGameStore.getState().player)));
-                const killed = damageEnemy(e.id, boomDmg, true); // 爆発=ボス系には非致死
+                const killed = damageEnemy(e.id, boomDmg, false); // 接触(爆風ではない・v0.25.4284: blast旗は揺れの爆発倍率になった)
                 spawnDamageNumber(ex, e.y, boomDmg, false);
                 spawnBurst(ex, ey, '#a5f3fc', 4);
                 if (killed) {
@@ -12270,7 +12269,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const dmg = Math.max(1, Math.round(pulseDamage * outMult));
             // nonLethalBoss は v0.25.1571 で廃止済み(引数は互換のため残置・実際は爆発以外も
             // ボスを倒せる)なので値は無関係。damageChannel='other'・クリなし(§19-2b)。
-            const killed = damageEnemy(e.id, dmg, true, false, false, 'other', hateSource);
+            const killed = damageEnemy(e.id, dmg, false, false, false, 'dot', hateSource); // 連続源(光線の脈)=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
             spawnDamageNumber(ex, e.y, dmg, false);
             spawnBurst(ex, ey, burstColor, 3);
             if (killed) {
@@ -14241,7 +14240,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // (nonLethalBoss=trueで即死自体は元々しない)。
                   const postureFatal = wireHate === 'player' && isBossPostureBroken(tgt, gameTime);
                   const wireHitDamage = postureFatal ? meleeDmg : bdmg;
-                  useGameStore.getState().damageEnemy(tgt.id, wireHitDamage, true, false, true, wireChannel, wireHate, wireHate === 'player' ? 'heavy' : null); // ボス非致死
+                  useGameStore.getState().damageEnemy(tgt.id, wireHitDamage, false, false, true, wireChannel, wireHate, wireHate === 'player' ? 'heavy' : null); // 打撃(爆風ではない・v0.25.4284)
                   spawnDamageNumber(tcx, tgt.y, wireHitDamage, true);
                 } else {
                   useGameStore.getState().damageEnemy(tgt.id, tgt.health + 1, false, false, true, wireChannel, wireHate); // 即死フィニッシュ

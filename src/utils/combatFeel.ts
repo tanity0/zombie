@@ -7,6 +7,7 @@
 // v0.25.4269(監査反映): 強個体の「重さ」は撤去(強個体は v0.25.2607 裁定で元から弾・殴りでは押されない=
 // canShoveEnemy。掛けても表示されない死にコードだった)。反動は武器データ(1発の威力・間隔)から出す。
 import type { EnemyType, WeaponCategory } from '../types/game';
+import { impactBase, impactRateMult, IMPACT_BASE_MAX } from './impactShake';
 import { isBossType, isPumpkinTier } from './enemyUtils';
 
 // ---- ① 当たった敵の局所ストップ(区分テンプレ: 雑魚/強個体/ボス級) ----
@@ -84,21 +85,15 @@ export const KILL_CHAIN_SLOW_HOLD_MS = 60;
 // オーバーシュート=「体が立て直す」形で重さを分ける。
 export interface RecoilSpec { kickPx: number; kickMs: number; overshoot: number }
 export interface RecoilWeaponLike { category?: WeaponCategory; damage: number; count?: number; cooldown: number; knockbackMult?: number }
-export const RECOIL_KICK_MIN_PX = 1.6;
-export const RECOIL_KICK_MAX_PX = 9.5;
+export const RECOIL_KICK_MAX_PX = IMPACT_BASE_MAX;
 export const RECOIL_HEAVY_PX = 5;
-// 連射系(社長指示2026-09-14「連射系の銃はもう少し画面ブレ抑えたい」): 発射間隔が RAPID_FIRE_CD_MS より短い銃は、
-// 蹴りを √(間隔/250) 倍に絞る(マシンピストル100ms=×0.63・ガンブレード110ms=×0.66)。床も連射だけ低く(RECOIL_KICK_MIN_RAPID_PX)。
-// 1発の蹴りは小さくても10発/秒で画面が絶えず動く=「ブレ」の正体。単発・大口径は変えない。
-export const RAPID_FIRE_CD_MS = 250;
-export const RECOIL_KICK_MIN_RAPID_PX = 0.8;
-export const rapidFireKickMult = (cooldownMs: number): number => (cooldownMs >= RAPID_FIRE_CD_MS ? 1 : Math.sqrt(Math.max(1, cooldownMs) / RAPID_FIRE_CD_MS));
+// 揺れの整理(research/SHAKE_UNIFY.md §2-4・社長承認2026-09-14): 銃の1層目(純粋なダメージ)は発砲時のキックで出す。
+// 振幅は impactBase(1発の総威力)×レート正規化(連射は 間隔/300 倍=1秒あたりの揺れ量の天井)。旧「基礎1.6+威力×0.055」
+// と √減衰の別枠(rapidFireKickMult)は撤去=命中揺れと同じ曲線・同じ土台から出る。床は無し(弱い銃は小さいまま)。
 export const recoilSpecForWeapon = (w: RecoilWeaponLike, damageMult = 1): RecoilSpec => {
   const shot = Math.max(0, w.damage) * Math.max(1, w.count ?? 1) * damageMult
     * (w.category === 'shotgun' ? 1.8 : 1) * Math.sqrt(Math.max(1, w.knockbackMult ?? 1));
-  const rapid = rapidFireKickMult(w.cooldown);
-  const floor = rapid < 1 ? RECOIL_KICK_MIN_RAPID_PX : RECOIL_KICK_MIN_PX;
-  const kickPx = Math.max(floor, Math.min(RECOIL_KICK_MAX_PX, (1.6 + shot * 0.055) * rapid));
+  const kickPx = impactBase(shot) * impactRateMult(w.cooldown);
   const kickMs = Math.max(60, Math.min(190, Math.round(w.cooldown * 0.75)));
   return { kickPx, kickMs, overshoot: kickPx >= RECOIL_HEAVY_PX ? 0.15 : 0 };
 };

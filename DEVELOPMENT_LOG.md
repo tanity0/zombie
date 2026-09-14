@@ -1,5 +1,30 @@
 # Development Log
 
+## v0.25.4284 — 揺れの整理(research/SHAKE_UNIFY.md・社長「はい」=推薦どおり)【2026-09-14 13:14 JST】
+
+- **社長承認**: 曲線=√ / 銃=キックで1層目・命中時は倍率ぶん / 境界=本人の武器・サブ・スキルの直接命中だけ / 守護霊=揺らさない /
+  倍率表=叩き台のまま / 被弾を超えない。設計書 v2(監査1巡反映)を実装。**数値は叩き台=実機で絞る前提。**
+- **新規** `src/utils/impactShake.ts`(+test 8本): `impactBase`(0.65×√D・天井8)/`impactRateMult`(間隔/300)/`impactDamageOf`(実効・残HPで過剰切り・クリ倍率前)/
+  `impactShakeFor`(倍率 crit1.6×0.8ms・kill1.3・explosion1.3×1.6ms・counter1.5・finish2.0×1.2ms・bash1.5×1.1ms、天井11)/`mergeImpactEntries`(同 source 合算・フラグ和・位置平均)/`strongestImpact`(強い方優先)。
+- **store**: `registerImpact`(キュー)+`flushImpacts`(tick末に1回 triggerShake。向き=銃は射線の逆・他は命中点へ)。`damageEnemy` は
+  hateSource='player' かつ channel∉{null,'dot'} の命中を自動登録(銃はクリ/キル/爆風/カウンター/致命の時だけ)。**旧 `nonLethalBoss`(死んだ旗)を `blast` に再利用**=爆風の束の印
+  (爆発サイトは全て true を渡していた。非爆発で true だった2箇所=ドローン往復の接触・ワイヤーの打撃を false へ。爆発なのに未指定だった2箇所=投げ鞄・反撃爆発を true へ)。
+  近接3経路(counter/katana/whip)は damageNumbers(**hp を追加**=過剰切り用)から `meleeImpactDamage` で合算して 'melee' で登録(bash/finish(フル演出の回だけ)/counter フラグ)。
+  スケボー着弾は 'skate'(bash+覚醒なら explosion)。`spawnCritImpact` は**光源だけ**に。`triggerHitImpact` は shakeMag≤0 で揺れを出さない(停止/ズーム/スローだけ)。
+  `triggerFinishImpact` の2つの setTimeout 揺れを撤去。パニッシャー専用揺れ撤去(damageEnemy 経由で乗る)。
+- **境界の実装**: 召喚(犬・タレット・錬金召喚)・味方の援護(救難信号)・連続源(光線の脈)は **channel 'dot'** に(=既存の「本人の攻撃ではない/持続」の意味・
+  生存者の接触/味方射撃と同じ前例)。統計は 'dot'→'other' 写像で従来どおり・キル計上も従来どおり(揺れとスローだけ外れる)。守護霊: `GHOST_FX_SHAKE_ENABLED=false`+
+  useGameLoop の一閃/通常ヒットの揺れ分岐を削除(v0.25.4271 と同じ線)。
+- **撤去した定数**: NONGUN_HIT_SHAKE_* / CRIT_SHAKE_* / MELEE_SWING_SHAKE_* / SHIELD_BASH_SHAKE_* / MELEE_FINISH_SHAKE_* / PUNISHER_SHAKE_* / rapidFireKickMult / RECOIL_KICK_MIN_*。
+  **残した**: COUNTER_SHAKE_*(ダメージ0のカウンター=弾の打ち返し・ミーミルのレーザー中断=ダメージ揺れではない)、被弾 SHAKE_MAG、敵/ボス/召喚/登場/竜巻/四神技の発動揺れ。
+- **反動キック**: `recoilSpecForWeapon` を同じ曲線へ(impactBase(1発の総威力)×レート正規化。基礎1.6と√減衰の別枠は撤去)。マシンピストル 0.8→0.57、ハンドガン 2.1→1.9、
+  散弾 ≈4.8、対物 ≈6.8(overshoot は5以上のまま)。**社長の「ダメージと比例させたら?」はここに吸収**。
+- **触っていない**: 判定・ダメージ・ノックバック・ヒットストップ/スロー/ズームの長さと順序・光/血/砂埃。描画側の SHAKE_GLOBAL_MULT(×2)も据え置き。
+- 検証: typecheck・lint 0、`vitest run src/store src/utils/combatTick.test.ts src/utils/collisionUtils.test.ts`=350 passed(critImpact.store.test を新経路へ書き直し)。
+  実装の天秤: 設計チャットが調査コンテキスト(60箇所の damageEnemy 分類)を持っていたので直接実装(Sonnet へ渡すと再調査が二度手間)。
+- 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない): 描画のみ・ゲーム性不変=抵触なし。
+- 次: 品質監査2巡目+クリエイティブ監査(Fable)→(A)を直して push → 社長実機(数値は実機で絞る)。
+
 ## v0.25.4283 — レールガンの吸い付きが「実装されていない」と見えた正体=狙いサークルの薄さがオートの時計を読んでいた【2026-09-14 12:36 JST】
 
 - **社長報告**「レールガンとかの修正でフィルガンみたいにヘッドショットに吸い付く機能が実装されてない気がする」→ 調査。

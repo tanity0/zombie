@@ -35,7 +35,7 @@ import { checkCollision, playerHitbox, enemyContactBox } from './collisionUtils'
 // 【除外の機械化】ゴースト起因の演出呼び出しは カメラズーム/アテンション(triggerZoom/triggerAttention)・
 // 時間停止(triggerHitstop/triggerHitImpact ※HitImpactは停止+ズーム+スロー同梱のため丸ごと使用禁止)・
 // スローモーション(triggerTimeSlow)を絶対に呼ばない。シェイクは triggerShake 単体のみ使う。
-export const GHOST_FX_SHAKE_ENABLED = true;
+export const GHOST_FX_SHAKE_ENABLED = false; // v0.25.4284 揺れの整理: 守護霊は揺らさない(境界「本人の直接命中だけ」・社長承認2026-09-14)
 
 /** ゴーストの counter スイング1回が積む「カウンター成立の請求」。 */
 export interface GhostCounterClaim {

@@ -71,7 +71,7 @@ describe('戦闘の手触り(utils/combatFeel・社長指示2026-09-13)', () => 
   describe('③ 反動', () => {
     const w = (damage: number, cooldown: number, extra: Partial<Parameters<typeof recoilSpecForWeapon>[0]> = {}) =>
       ({ damage, cooldown, category: 'handgun' as const, ...extra });
-    it('武器ごとに差がつく(1発の威力で決まる): マシンピストル<ハンドキャノン<対物ライフル、散弾は全弾ぶん重い', () => {
+    it('武器ごとに差がつく(1発の威力の√・SHAKE_UNIFY): マシンピストル<ハンドキャノン<散弾(全弾ぶん)<対物ライフル', () => {
       const mp = recoilSpecForWeapon(w(7, 100));
       const hc = recoilSpecForWeapon(w(31, 620));
       const am = recoilSpecForWeapon(w(110, 1300, { category: 'rifle' }));
@@ -83,12 +83,12 @@ describe('戦闘の手触り(utils/combatFeel・社長指示2026-09-13)', () => 
       // 押し武器(パイルドライバー knockbackMult 2)は同威力より重い
       expect(recoilSpecForWeapon(w(36, 450, { knockbackMult: 2 })).kickPx).toBeGreaterThan(recoilSpecForWeapon(w(36, 450)).kickPx);
     });
-    it('連射系(間隔<250ms)は蹴りを√(間隔/250)倍に絞る(マシンピストルはハンドガンより明らかに小さい)。単発は不変', () => {
+    it('連射系(間隔<300ms)はレート正規化で絞る(マシンピストルはハンドガンの半分未満)。床は無い(弱い銃は小さいまま)', () => {
       const mp = recoilSpecForWeapon(w(7, 100));
       const hg = recoilSpecForWeapon(w(9, 420));
-      expect(mp.kickPx).toBeLessThan(hg.kickPx * 0.8);
-      expect(mp.kickPx).toBeGreaterThanOrEqual(0.8);
-      expect(recoilSpecForWeapon(w(110, 1300, { category: 'rifle' })).kickPx).toBeGreaterThan(7);
+      expect(mp.kickPx).toBeLessThan(hg.kickPx * 0.5);
+      expect(mp.kickPx).toBeGreaterThan(0);
+      expect(recoilSpecForWeapon(w(110, 1300, { category: 'rifle' })).kickPx).toBeGreaterThan(6);
     });
     it('長さは発射間隔の75%(連射銃は次弾の前に戻り切る)・重い銃だけオーバーシュート', () => {
       expect(recoilSpecForWeapon(w(7, 100)).kickMs).toBe(75);

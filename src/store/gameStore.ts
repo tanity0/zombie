@@ -102,6 +102,7 @@ import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate, comboMilestoneCrossed, killBannerDurationMs } from '../utils/comboMilestone';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
+import { impactDamageOf, mergeImpactEntries, strongestImpact, type ImpactEntry, type ImpactFlags } from '../utils/impactShake'; // 揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)
 import {
   normalizeDir, biasedBurstAngle,
   shouldShowMultiHitFx, dedupeMultiHitEffects,
@@ -1457,8 +1458,7 @@ export const skillExplosionKbMult = (player: Player): number =>
 export const PUNISHER_HIT_PAD_PX = 16;
 // パニッシャー巻き込み成立時の画面シェイク(社長指示v0.25.3265・描画のみ・叩き台)。
 export const PUNISHER_TWO_BEAT_MS = 150; // 社長指示v0.25.3299「ダン!ダン!と二段当たってるのがわかる遅延」: 接触→パニッシャー発火までの一拍
-export const PUNISHER_SHAKE_MS = 200;
-export const PUNISHER_SHAKE_MAG = 4;
+// (PUNISHER_SHAKE_* は v0.25.4284 で撤去=巻き込みダメージが damageEnemy 経由で impactShakeFor に乗る)
 export const SLASHER_LUNGE_MS = 160;
 // ジャンプ/ダッシュ攻撃をカウンターした時の「弾き飛ばし」。速度ノックバックは updateEnemies が
 // 翌フレーム以降に適用するため、着地で付与される stun/lift に上書きされ「その場で痺れる」だけに
@@ -2088,9 +2088,9 @@ export const SHAKE_GLOBAL_MULT = 2;
 // damageEnemy の中央で発火(=各経路の SE と同じフレーム)。銃(damageChannel='gun')と持続ダメージ('dot')は対象外。
 // 近接スイング(110/7)より短く弱く=「一瞬」。敵の方向へ寄せた揺れ(§5.23 M22 C1 の dirfx)。同フレームの多段ヒット
 // (爆風で複数体)は triggerShake 側で「強い方優先・延長」に畳まれ、NONGUN_HIT_SHAKE_GAP_MS 以内の連打は1回にする。
-export const NONGUN_HIT_SHAKE_MS = 90;
-export const NONGUN_HIT_SHAKE_MAG = 4;
-export const NONGUN_HIT_SHAKE_GAP_MS = 60;
+// ★v0.25.4284 揺れの整理(research/SHAKE_UNIFY.md): 上の「銃以外の一瞬シェイク」定数(NONGUN_HIT_SHAKE_*)は撤去。
+// プレイヤー起因のダメージ揺れは全て registerImpact → flushImpacts(tick末・ヒットストップ明け)→ impactShakeFor
+// (utils/impactShake: √ダメージ×特殊パターンの倍率)の1本で出す。
 // LEVEL_GROWTH.md §11 代替b(社長裁定2026-09-13「1だけ はい」): 攻撃が変わるカードを取った後、**最初の1発だけ**白→金に光る。
 // LEVELUP_EMPHASIS_MS はその「最初の1発」を待つ窓(gameTime)。窓内に1発も当てなければ何も起きない。
 export const LEVELUP_EMPHASIS_MS = 8000;
@@ -2099,12 +2099,9 @@ export const LEVELUP_EMPHASIS_MS = 8000;
 // 負荷 4/10: 強glow1個≈2ms/フレーム(CLAUDE.md 実測)。連射クリで積み上がらないよう CRIT_LIGHT_GAP_MS 以内は1回に畳む(同時最大≈2個)。
 export const MELEE_HIT_COMBO_WINDOW_MS = 3000; // 左上 COMBO(近接ヒットの連続数・表示専用)が途切れるまで
 export const MULTI_HIT_BANNER_ENABLED = false;  // 頭上「N HITS」の表示(社長裁定2026-09-13で倒した数に譲った)
-export const CRIT_SHAKE_MS = 200;
-export const CRIT_SHAKE_MAG = 14;
 export const CRIT_LIGHT_MS = 240;
 export const CRIT_LIGHT_GAP_MS = 120;
-// 連射系のクリ連発で画面が揺れ続けないよう、クリの揺れも間を空ける(社長指示2026-09-14「連射系はブレを抑えたい」)。光の畳み込みとは別の間隔。
-export const CRIT_SHAKE_GAP_MS = 320;
+// (CRIT_SHAKE_* は v0.25.4284 で撤去。クリの揺れは impactShakeFor の倍率 crit ×1.6・短く鋭く。光源はここのまま)
 // 戦闘の手触り①(v0.25.4269・監査A是正): 近接3経路(カウンター/刀/鞭)は damageEnemy を通らず survivors.push で
 // HPを直接書くので、同じ局所ストップをここから配る。止めている間はノックバックの期限も同じだけ後ろへ
 // (止めが明けた瞬間に満額で飛ぶ)。ボス級は nextHitStunUntil が undefined を返す=何も足さない。
@@ -2114,13 +2111,16 @@ const meleeHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil'>, now: num
   const kbUntil = now + KNOCKBACK_DURATION + (u - now);
   return shoveToo ? { hitStunUntil: u, knockbackUntil: kbUntil, knockbackShoveUntil: kbUntil } : { hitStunUntil: u, knockbackUntil: kbUntil };
 };
-let nonGunHitShakeAt = 0;
 let critImpactAt = 0; // spawnCritImpact の光の畳み込み用(Date.now)
-let critShakeAt = 0;  // spawnCritImpact の揺れの畳み込み用(Date.now)
-export const MELEE_SWING_SHAKE_MS = 110;     // 近接スイング(控えめ)
-export const MELEE_SWING_SHAKE_MAG = 7;      // 社長指示で倍化(3.5→7)
-export const SHIELD_BASH_SHAKE_MS = 160;
-export const SHIELD_BASH_SHAKE_MAG = 10;     // 社長指示で倍化(5→10)
+// (MELEE_SWING_SHAKE_* / SHIELD_BASH_SHAKE_* は v0.25.4284 で撤去=近接の揺れも impactShakeFor(ダメージの√・bash ×1.5)へ)
+// ---- 揺れの整理(research/SHAKE_UNIFY.md §2-5): 命中の登録キュー。tick末(useGameLoop→flushImpacts)に同じ source の束を
+// 1事象へ合算し、複数事象なら強い方だけを triggerShake する。ヒットストップ中は tick が回らない=明けてから出る(保留)。
+let impactQueue: ImpactEntry[] = [];
+const meleeImpactDamage = (nums: readonly { value: number; crit: boolean; hp?: number }[]): number => {
+  let d = 0;
+  for (const n of nums) d += impactDamageOf(n.value, n.hp ?? n.value, n.crit ? CRIT_DAMAGE_MULT : 1);
+  return d;
+};
 export const HURRICANE_SHAKE_MS = 220;
 export const HURRICANE_SHAKE_MAG = 11;       // 社長指示で倍化(5.5→11)
 export const REAPER_SUMMON_SHAKE_MS = 340;
@@ -2134,9 +2134,7 @@ export const COUNTER_SHAKE_MAG = 8;            // 社長指示で倍化(4→8)
 // 四神技(ダンス)発動の揺れ。リズムを乱さぬよう描画のみ(stop/slow は入れない)。
 export const SHIJIN_TECH_SHAKE_MS = 160;
 export const SHIJIN_TECH_SHAKE_MAG = 10;     // 社長指示で倍化(5→10)
-// 近接フィニッシュ: ストップ後に出す揺れ(揺れ+スローを HITSTOP_MS 後にまとめて出す)。
-export const MELEE_FINISH_SHAKE_MS = 180;
-export const MELEE_FINISH_SHAKE_MAG = 14;
+// (MELEE_FINISH_SHAKE_* は v0.25.4284 で撤去=処刑の揺れは impactShakeFor の finish ×2.0。フル演出の回だけ)
 // --- 追尾カメラ(描画のみ) -------------------------------------------------
 // 描画用カメラだけをプレイヤーへ追従させる(判定/スポーン/プロップ生成は実プレイヤー座標のまま=ゲーム性に影響なし)。
 // 「一旦最大値で実装」。各値は ?キー=数値 で実機調整可。
@@ -5627,7 +5625,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean) => boolean; // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾=飛翔時間つきの形。null=従来の導出・v0.25.3640監査A)
+  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean) => boolean; // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾=飛翔時間つきの形。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -5981,7 +5979,10 @@ interface GameState {
   // 未指定/{0,0}/`?dirfx=0`は従来どおり等方のランダム揺れ。
   triggerShake: (durationMs: number, mag?: number, dirX?: number, dirY?: number) => void; // 行動別の画面シェイク(描画のみ)
   triggerKick: (mag: number, durationMs: number, dirX: number, dirY: number, overshoot?: number) => void; // 反動のカメラキック(描画のみ・戦闘の手触り③)
-  spawnCritImpact: (x: number, y: number) => void; // クリティカルの瞬間: 大きな揺れ+発生源の光源(描画のみ・社長指示2026-09-13)
+  spawnCritImpact: (x: number, y: number) => void; // クリティカルの瞬間: 発生源の光源(描画のみ・社長指示2026-09-13。揺れは registerImpact 側)
+  // 揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14): プレイヤー起因のダメージ揺れの登録と tick末の解決。
+  registerImpact: (entry: ImpactEntry) => void;
+  flushImpacts: () => void;
   spawnCasing: (x: number, y: number, dirX: number, dirY: number, colors: readonly string[], size: number, sides: readonly number[]) => void; // 薬莢(床つき粒・描画のみ)
   registerPlayerKills: (count: number, allowSlow: boolean) => void; // 連続撃破の段(戦闘の手触り②)。damageEnemy と近接3経路の両方から呼ぶ
 
@@ -7116,7 +7117,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const h of hitAt) { get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)'); get().spawnMeleeBlood(h.x, h.y); } // 近接の血飛沫込み(v0.25.2026)
     // SE(v0.25.3304): bashHitFxAt(heavy-impact)は立てない——スケボーのSEは呼び出し側(useGameLoop)が
     // 覚醒=bomb/非覚醒=heavy-impactを着弾の瞬間に直接鳴らす(命中0でも板が当たった音は出す・二重再生防止)。
-    if (hitAt.length > 0) { get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0); }
+    if (hitAt.length > 0) {
+      get().triggerHitImpact(HITSTOP_MS, 0, 0, 0); // ストップのみ。揺れは下(bash ×1.5・覚醒の大爆発なら explosion も)
+      get().registerImpact({ source: 'skate', damage: dealtSum, flags: { bash: true, explosion: skAwaken, kill: killedList.length > 0 }, x, y });
+    }
   },
 
   setSwipeDirection: (direction, strength) => {
@@ -7545,7 +7549,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     let bossFinishHit = false; // finisher-grade damage landed on a stunned boss
     const survivors: Enemy[] = [];
-    const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
+    const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number }[] = [];
     const bossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 近接クリで完全気絶が発動した位置(紫FX用)
     const mimirLaserBreakHits: { x: number; y: number }[] = []; // §6.33: レーザー弱点窓を近接で中断した位置(カウンター成立FX用)
     const bossFatalHits: { x: number; y: number; labelY: number; w: number; h: number }[] = []; // w/h=killFx流用(v0.25.3622)
@@ -7732,7 +7736,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
         }
         recordShieldBashDamage(dmg); // G4a(§2.9(3)・記録専用): バッシュ与ダメの様式カウンタ
-        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
         const newHealth = Math.max(0, enemy.health - dmg);
         if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
         survivors.push({
@@ -7774,7 +7778,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         //   極端だった。本裁定は**紫かどうか**で分ける(ボスと同じ物差し)。
         // ※3×のダメージ・黄色のクリ表示・浮きは常にそのまま(変えるのは演出の有無だけ)。
         if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
-        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
         recordCritHit('guaranteed', stunnedHit.kind === 'boss'); // §7-11c(4): meleeExecuteの紫中フィニッシュ
         // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
         // そのもの(finisher:trueの即時処刑に相当)。
@@ -7826,7 +7830,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             : { pvpPosture: ps };
         }
       }
-      meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
+      meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health });
       recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
@@ -8044,7 +8048,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // シールドバッシュのエフェクト(ストップ→揺れ+寄り)は「敵に当たった時のみ」(社長指示)。
     // 壁押し出しだけ(敵に当たっていない)では何も出さない。
     if (bashHitEnemy) {
-      get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0); // 寄りズーム無し(社長指示)。ストップ+揺れのみ
+      get().triggerHitImpact(HITSTOP_MS, 0, 0, 0); // 寄りズーム無し(社長指示)。ストップのみ(揺れは下の registerImpact・bash ×1.5)
       set({ bashHitFxAt: Date.now() }); // 命中SE(heavy-impact)のトリガ。useGameLoop が検出して再生。
     }
     // シールドバッシュの押し出し演出(押し出し先で衝撃スラッシュ+リング)。
@@ -8095,6 +8099,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // also DROPS an ammo box for the active gun's family — melee is the run's
     // main way to scavenge rounds, but you have to walk over the drop.
     grantMeleeKillRewards(get, killed, player, gun);
+    let finishFull = false; // 揺れの整理: 処刑の finish 倍率はフル演出(CD明け)の回だけ
     if (finisherHit || bossFinishHit) {
       const [ztx, zty] = bossFatalHits[0]
         ? [bossFatalHits[0].x, bossFatalHits[0].y]
@@ -8102,6 +8107,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // M21(§5.22): フル演出(CD明け)の時だけ武器固有の黄フラッシュを重ねる。CD内は
       // triggerFinishImpact自身が出す最低保証フラッシュ(軽い白)だけになる=二重フラッシュを避ける。
       const fullCinematic = get().triggerFinishImpact(ztx, zty, bossFatalHits.length > 0);
+      finishFull = fullCinematic;
       if (fullCinematic && killed.some(k => k.finisher)) {
         get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
       }
@@ -8131,13 +8137,17 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 斬撃SE(heavy-impact+slash-damage)はstartKillFxCinematic内(v0.25.3605 FB1+FB5)。
         }
       }
-    } else if (slashAt.length > 0) {
-      // 通常ヒット(空振りでもフィニッシュでもない)のときだけスイングの揺れを出す。
-      // §5.23 M22 C1: 方向=プレイヤー→命中した敵たちの重心(複数ヒット時は平均)。
-      let hitCx = 0, hitCy = 0;
-      for (const s of slashAt) { hitCx += s.x; hitCy += s.y; }
-      hitCx /= slashAt.length; hitCy /= slashAt.length;
-      get().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG, hitCx - pcx, hitCy - pcy);
+    }
+    // 揺れの整理(research/SHAKE_UNIFY.md・v0.25.4284): 近接の一振り(通常ヒット/バッシュ/処刑)を1事象として登録。
+    // ダメージ=各命中の実効(残HPで過剰切り・クリ倍率前)の合計。方向は命中点の平均へ(flushImpacts)。
+    if (meleeDamageNumbers.length > 0) {
+      let hx = 0, hy = 0;
+      for (const n of meleeDamageNumbers) { hx += n.x; hy += n.y; }
+      get().registerImpact({
+        source: 'melee', damage: meleeImpactDamage(meleeDamageNumbers),
+        flags: { crit: meleeDamageNumbers.some(n => n.crit), kill: killed.length > 0, bash: bashHitEnemy, finish: finishFull, counter: mimirLaserBreakHits.length > 0 },
+        x: hx / meleeDamageNumbers.length, y: hy / meleeDamageNumbers.length,
+      });
     }
 
     // スキル: リーパー(フィニッシュ波及=スイング範囲内の敵を全員フィニッシュ)/ カウンターマスター(成立時ノックバック)。
@@ -8230,7 +8240,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     const survivors: Enemy[] = [];
-    const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
+    const damageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number }[] = [];
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const cloneHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): このストライクでヒットした敵ID
@@ -8268,7 +8278,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (usesBossStunnedMelee(enemy.type)) {
           bossFinishHit = true;
           const dmg = meleeExecBase * BOSS_MELEE_STUN_MULT;
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
           if (!isGhost) recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ(プレイヤー起因のみ)
           cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
           // §5.21-追補4: スタン中ボスへの5×近接=ボスのフィニッシュ経路そのものなのでclampしない。
@@ -8281,7 +8291,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (stunnedMeleeOutcome(enemy, gameTime) === 'heavy') {
           bossFinishHit = true;
           const dmg = meleeExecBase * ELITE_MELEE_STUN_MULT;
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
           if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
           const nh = Math.max(0, enemy.health - dmg);
@@ -8294,7 +8304,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
-      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
+      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
       const nh = Math.max(0, enemy.health - dmg);
@@ -8782,7 +8792,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!target) continue; // 着弾前に対象が消えていた=何もしない(演出はそのまま最後まで流れる)
       const tcx = target.x + target.width / 2;
       const tcy = target.y + target.height / 2;
-      const killed = get().damageEnemy(a.targetEnemyId, a.damage);
+      const killed = get().damageEnemy(a.targetEnemyId, a.damage, false, false, false, 'dot'); // 味方の援護=本人の攻撃ではない(揺らさない・v0.25.4284)
       get().spawnDamageNumber(tcx, target.y, a.damage, false);
       get().spawnSlash(tcx, tcy, 'rgba(226,232,240,0.95)');
       get().spawnRing(tcx, tcy, 6, 34, 'rgba(56,189,248,0.75)', 2, 260);
@@ -8876,7 +8886,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (dist > radius) continue;
         const falloff = 1 - dist / radius;
         const dmg = Math.max(1, Math.round(baseDmg * (0.55 + falloff * 0.45)));
-        const killed = get().damageEnemy(e.id, dmg);
+        const killed = get().damageEnemy(e.id, dmg, true); // 爆風の束(v0.25.4284: blast=揺れの爆発倍率)
         get().spawnDamageNumber(ecx, e.y, dmg, false);
         // 重い敵/ボス/すり抜け勢はノックバック無効(既存のシールド等と同じ慣例)。
         // PACING_PUZZLE.md §9-7#1(ノックバック免除): driller はpumpkinと同格=isPumpkinTier経由で共有。
@@ -8925,7 +8935,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     let bossFinishHit = false;
     const survivors: Enemy[] = [];
-    const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
+    const damageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number }[] = [];
     const slashAt: { x: number; y: number }[] = [];
     const critStunAt: { x: number; y: number }[] = [];
     const katanaBossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 刀クリで完全気絶が発動した位置
@@ -8973,7 +8983,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           const dmg = fatal?.damage ?? katanaExecBase * gpDmgScale * BOSS_MELEE_STUN_MULT;
           if (fatal) katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
           if (!isGhost) recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ(プレイヤー起因のみ)
           // §5.21-追補4: スタン中ボスへの5×一閃=ボスのフィニッシュ経路そのものなのでclampしない。
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -8996,7 +9006,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           const dmg = katanaExecBase * gpDmgScale * ELITE_MELEE_STUN_MULT;
           // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
           if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
@@ -9037,7 +9047,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             : { pvpPosture: ps };
         }
       }
-      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
+      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
@@ -9196,12 +9206,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
     grantMeleeKillRewards(get, killed, player, gun, true);
+    let katanaFinishFull = false; // 揺れの整理: 処刑の finish 倍率はフル演出の回だけ
     // 除外1(演出)→v0.25.2582試験改定: 守護霊起因でも出す(?ghostzoom=0で従来=除外1へ)。
     if ((finisherHit || bossFinishHit) && (!isGhost || GHOST_ZOOM_TRIAL_ENABLED)) {
       const [ztx, zty] = katanaBossFatalHits[0]
         ? [katanaBossFatalHits[0].x, katanaBossFatalHits[0].y]
         : finishZoomTargetOf(killed);
       const fullCinematic = get().triggerFinishImpact(ztx, zty, katanaBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
+      katanaFinishFull = fullCinematic;
       // v0.25.3703: 刀の致命にもKILL跳びつき(v3622の取りこぼし)。刀の**処刑(finisher)**は従来どおり
       // 「斬」演出が主役なので跳びつきは付けない=致命(katanaBossFatalHits)がある時だけ。プレイヤー起因のみ。
       const kFatal = katanaBossFatalHits[0];
@@ -9225,6 +9237,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     if (!isGhost && killed.length > 0) get().registerPlayerKills(killed.length, true); // 戦闘の手触り②(v0.25.4269): 本人の刀のキルも段へ
     if (!isGhost && slashAt.length > 0) get().registerMeleeHits(slashAt.length); // 左上 COMBO(表示専用)
+    // 揺れの整理(v0.25.4284): 本人の刀の一振りを1事象で登録(守護霊の刀は揺らさない=境界)。
+    if (!isGhost && damageNumbers.length > 0) {
+      let hx = 0, hy = 0;
+      for (const n of damageNumbers) { hx += n.x; hy += n.y; }
+      get().registerImpact({
+        source: 'melee', damage: meleeImpactDamage(damageNumbers),
+        flags: { crit: damageNumbers.some(n => n.crit), kill: killed.length > 0, finish: katanaFinishFull, counter: mimirLaserBreakHits.length > 0 },
+        x: hx / damageNumbers.length, y: hy / damageNumbers.length,
+      });
+    }
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
   },
@@ -9254,7 +9276,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     let bossFinishHit = false;
     const survivors: Enemy[] = [];
-    const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
+    const damageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number }[] = [];
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const whipBossFullStunHits: { x: number; y: number }[] = []; // §9.4(v0.25.2502): 鞭クリで完全気絶が発動した位置(紫FX用)
@@ -9307,7 +9329,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const fatal = applyBrokenMeleeFatal(enemy, whipExecBase, gameTime);
           const dmg = fatal?.damage ?? whipExecBase * BOSS_MELEE_STUN_MULT;
           if (fatal) whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
           recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ
           // §5.21-追補4: スタン中ボスへの5×鞭打ち=ボスのフィニッシュ経路そのものなのでclampしない。
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -9320,7 +9342,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           const dmg = whipExecBase * ELITE_MELEE_STUN_MULT;
           // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
           recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
@@ -9352,7 +9374,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             : { pvpPosture: ps };
         }
       }
-      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
+      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health });
       recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
@@ -9461,11 +9483,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     applyRescueSignalProc(get, player, meleeBase * WHIP_DAMAGE_MULT, whipHitEnemyIds, pcx, pcy);
     // 吸血覚醒(Lv3・v0.25.3300): 鞭のヒットでも1%回復。
     applyVampireMeleeHeal(get, player, whipHitEnemyIds, pcx, pcy);
+    let whipFinishFull = false; // 揺れの整理: 処刑の finish 倍率はフル演出の回だけ
     if (finisherHit || bossFinishHit) {
       const [ztx, zty] = whipBossFatalHits[0]
         ? [whipBossFatalHits[0].x, whipBossFatalHits[0].y]
         : finishZoomTargetOf(killed);
       const fullCinematic = get().triggerFinishImpact(ztx, zty, whipBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
+      whipFinishFull = fullCinematic;
       // v0.25.3703: 鞭の致命にもKILL跳びつき(v3622の取りこぼし)。処刑(finisher)は従来どおり=致命のみ。
       const wFatal = whipBossFatalHits[0];
       if (fullCinematic && wFatal) {
@@ -9478,6 +9502,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     if (killed.length > 0) get().registerPlayerKills(killed.length, true); // 戦闘の手触り②(v0.25.4269): 鞭のキルも段へ
     if (slashAt.length > 0) get().registerMeleeHits(slashAt.length); // 左上 COMBO(表示専用)
+    // 揺れの整理(v0.25.4284): 鞭の一振りを1事象で登録。
+    if (damageNumbers.length > 0) {
+      let hx = 0, hy = 0;
+      for (const n of damageNumbers) { hx += n.x; hy += n.y; }
+      get().registerImpact({
+        source: 'melee', damage: meleeImpactDamage(damageNumbers),
+        flags: { crit: damageNumbers.some(n => n.crit), kill: killed.length > 0, finish: whipFinishFull, counter: mimirLaserBreakHits.length > 0 },
+        x: hx / damageNumbers.length, y: hy / damageNumbers.length,
+      });
+    }
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits };
   },
@@ -9744,7 +9778,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const summonOutMult = skillOutgoingDamageMult(get().player);
     for (const h of attackHits) {
       const sDmg = Math.max(1, Math.round(h.amount * summonOutMult));
-      get().damageEnemy(h.id, sDmg);
+      get().damageEnemy(h.id, sDmg, false, false, false, 'dot'); // 召喚の与ダメ=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
       get().spawnDamageNumber(h.x, h.y, sDmg); // 召喚(死神AoE/通常接触)の攻撃を可視化
     }
   },
@@ -10433,7 +10467,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (dist > radius) continue;
           const falloff = 1 - dist / radius;
           const dmg = Math.max(1, Math.round(baseDmg * (0.55 + falloff * 0.45)));
-          const killed = get().damageEnemy(e.id, dmg);
+          const killed = get().damageEnemy(e.id, dmg, true); // 爆風の束(v0.25.4284: blast=揺れの爆発倍率)
           get().spawnDamageNumber(ecx, e.y, dmg, false);
           if (!killed) {
             const nrm = Math.max(0.001, dist);
@@ -11735,7 +11769,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk) => {
+  damageEnemy: (id, amount, blast = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk) => {
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
@@ -11753,9 +11787,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     // v0.25.3703: グラビティショットはキル時→**射撃ヒット時**へ移設(社長指示)。ヒット位置をset内で拾い、
     // 抽選はset外(吸血と同じ流儀)。銃チャネル+プレイヤー起因+実ダメージ>0のみ。
     let gunHitAt: { x: number; y: number } | null = null;
-    // 社長指示2026-09-13: 銃以外の打撃(サブ/近接/爆発/召喚。持続ダメージ 'dot' は除く)の着弾位置=set後に一瞬の画面シェイク。
-    let nonGunHitAt: { x: number; y: number } | null = null;
-    let critHitAt: { x: number; y: number } | null = null; // 社長指示2026-09-13: クリの瞬間の画面揺れ+光源(spawnCritImpact)
+    // 揺れの整理(research/SHAKE_UNIFY.md・v0.25.4284): プレイヤー起因(hateSource='player'・channel≠null/'dot')の命中位置と
+    // 揺れ用ダメージ(実効・クリ倍率前・残HPで過剰切り)。set後に registerImpact へ。blast(旧nonLethalBoss・死んだ旗を再利用)=爆風の束。
+    let impactAt: { x: number; y: number } | null = null;
+    let impactDamage = 0;
+    let critHitAt: { x: number; y: number } | null = null; // 社長指示2026-09-13: クリの瞬間の光源(spawnCritImpact)
     // サブクエスト(research/SUBQUESTS.md): ★キル確定点2本のうちの1本(銃/接触/爆発/DoT)。
     // 付与(ゴールド/ポップ/保存)は副作用なので set() の外側で行う=候補だけここで拾う。
     let subquestKilled: Enemy | null = null;
@@ -11830,9 +11866,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         gunHitAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
       }
       // v0.25.4271(社長指示「プレイヤー以外の守護者とかNPCの銃で揺れないで」): damageChannel===null は護衛NPC/守護霊の弾
-      // (=プレイヤー起因ではない)。'gun'でも'dot'でもないのでここを素通りして揺れていた → 除外。守護霊は hateSource='ghost' で元から外。
-      if (damageChannel !== 'gun' && damageChannel !== 'dot' && damageChannel !== null && hateSource === 'player' && eff > 0) {
-        nonGunHitAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
+      // (=プレイヤー起因ではない)。'dot' は持続/本人以外(召喚・味方・連続源)=揺らさない。守護霊は hateSource='ghost' で元から外。
+      if (damageChannel !== 'dot' && damageChannel !== null && hateSource === 'player' && eff > 0) {
+        impactAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
+        impactDamage = impactDamageOf(eff, enemy.health, crit ? (usesBossCrit(enemy.type) ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT) : 1);
       }
       if (crit && hateSource === 'player' && damageChannel !== null && damageChannel !== 'dot' && eff > 0) {
         critHitAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
@@ -12092,14 +12129,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 爆縮(社長指示v0.25.3703。旧: キル時)。確率表・渦の性能(引き寄せ120px/s×0.4s・半径100/120/140・
     // 覚醒Lv3=2倍長)は不変。ヒットはキルの数倍の頻度なので、発動後 GRAVITY_SHOT_PROC_CD_MS は
     // 再抽選しない(叩き台)。判定なし=絵は分類②(派手に・既存プールで)。
-    // 社長指示2026-09-13: 銃以外の攻撃が敵に入った瞬間の一瞬の画面シェイク(各経路の SE と同じフレーム=damageEnemy の中央)。
-    if (nonGunHitAt) {
-      const nowHit = Date.now();
-      if (nowHit - nonGunHitShakeAt >= NONGUN_HIT_SHAKE_GAP_MS) {
-        nonGunHitShakeAt = nowHit;
-        const pl = get().player;
-        const hp = nonGunHitAt as { x: number; y: number }; // set() 内の代入は TS の流れ解析に見えない(gunHitAt と同じ形)
-        get().triggerShake(NONGUN_HIT_SHAKE_MS, NONGUN_HIT_SHAKE_MAG, hp.x - (pl.x + pl.width / 2), hp.y - (pl.y + pl.height / 2));
+    // 揺れの整理(research/SHAKE_UNIFY.md §2-2/§2-4・v0.25.4284): 命中を登録(tick末に合算→1回の揺れ)。
+    // 銃は1層目を発砲時のキックで出しているので、命中時はフラグ(クリ/キル/爆風/カウンター)がある時だけ・向きは射線の逆(away)。
+    // 銃以外は毎命中・向きは命中点へ。source=同じフレームに束ねる鍵(爆風は 'blast'、近接3経路は各自 'melee' で登録)。
+    if (impactAt) {
+      const ia = impactAt as { x: number; y: number }; // set() 内の代入は TS の流れ解析に見えない(gunHitAt と同じ形)
+      const isGun = damageChannel === 'gun';
+      const flags: ImpactFlags = { crit, kill: killed, explosion: blast, counter: postureImpact === 'counter', finish: bossFatalAt !== null };
+      if (!isGun || crit || killed || blast || flags.counter || flags.finish) {
+        get().registerImpact({ source: blast ? 'blast' : (isGun ? 'gun' : `other:${damageChannel}`), damage: impactDamage, flags, x: ia.x, y: ia.y, away: isGun });
       }
     }
     // 戦闘の手触り②(社長指示2026-09-13): 連続撃破の段。プレイヤー起因のキル全般を数える(撃破SEのピッチ=
@@ -15413,9 +15451,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // v0.25.3299 一拍目(接触)の小FX: ぶつかった衝撃の読み。二拍目(下)の大シェイク/数字と区別する。
     for (const c of punisherContacts) get().spawnBurst(c.x, c.y, '#fca5a5', 6);
     if (punisherHits.length > 0 && punisherDmg > 0) {
-      // v0.25.3265 社長指示「パニッシュが起きたら画面揺れ」: 巻き込み成立の瞬間に短いシェイク
-      // (描画のみ。同フレーム複数ヒットでも1回=triggerShakeは上書き式なので自然に纏まる)。
-      get().triggerShake(PUNISHER_SHAKE_MS, PUNISHER_SHAKE_MAG);
+      // v0.25.3265 社長指示「パニッシュが起きたら画面揺れ」→ v0.25.4284: 揺れは下の damageEnemy(巻き込みダメージ)が
+      // registerImpact に乗せる(同フレームの複数体は1事象に合算)。専用定数は撤去。
       for (const id of punisherHits) {
         const e = get().enemies.find(en => en.id === id);
         if (!e) continue;
@@ -19686,16 +19723,33 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   spawnCritImpact: (x, y) => {
-    // 描画のみ。揺れは triggerShake の「強い方優先・延長」で畳まれる。光は CRIT_LIGHT_GAP_MS 以内の連続クリでは1つに畳む(強glowの負荷)。
+    // 描画のみ・光源だけ(揺れは v0.25.4284 から registerImpact の crit 倍率)。光は CRIT_LIGHT_GAP_MS 以内の連続クリでは1つに畳む(強glowの負荷)。
     const now = Date.now();
-    const pl = get().player;
-    if (now - critShakeAt >= CRIT_SHAKE_GAP_MS) {
-      critShakeAt = now;
-      get().triggerShake(CRIT_SHAKE_MS, CRIT_SHAKE_MAG, x - (pl.x + pl.width / 2), y - (pl.y + pl.height / 2));
-    }
     if (now - critImpactAt < CRIT_LIGHT_GAP_MS) return;
     critImpactAt = now;
     get().spawnGlow(x, y, GLOW_R_L, 'rgba(255,226,150,', CRIT_LIGHT_MS); // 強glow(投影影あり)=爆発と同じ原理の光源。爆発の絵は出さない
+  },
+
+  registerImpact: (entry) => {
+    // 描画のみ。ダメージ0/負は登録しない(base=0 で揺れない)。
+    if (!(entry.damage > 0)) return;
+    impactQueue.push(entry);
+  },
+
+  flushImpacts: () => {
+    // tick末(useGameLoop)に1回。同じ source の束を合算→複数事象は強い方優先→1回の triggerShake。
+    // ヒットストップ中は tick が早期returnで回らないので、ここに来た時点で停止は明けている(=ストップ→揺れの順)。
+    if (impactQueue.length === 0) return;
+    const entries = impactQueue;
+    impactQueue = [];
+    const best = strongestImpact(mergeImpactEntries(entries));
+    if (!best || best.mag <= 0.05) return;
+    const pl = get().player;
+    const pcx = pl.x + pl.width / 2, pcy = pl.y + pl.height / 2;
+    // 向き: 銃(away)=射線の逆(命中点→自機)。それ以外=命中点へ。
+    const dx = best.away ? pcx - best.x : best.x - pcx;
+    const dy = best.away ? pcy - best.y : best.y - pcy;
+    get().triggerShake(best.ms, best.mag, dx, dy);
   },
 
   triggerKick: (mag, durationMs, dirX, dirY, overshoot = 0) => {
@@ -19765,15 +19819,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ダンス中(四神舞)は gameTime を止めるとリズムが乱れるためストップ抜き=全て即時。
     // v0.25.2585: targetX/Y 指定時はその点へ寄る(守護霊のカウンター=成立位置)。未指定は従来どおり中央。
     get().triggerZoom(zoomMag, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, targetX, targetY); // 即・寄り(スローと同期)
+    // v0.25.4284: shakeMag<=0 は「揺れは registerImpact 側(ダメージ由来)が出す」=ここでは停止/ズーム/スローだけ。
     if (get().rhythm.active) {
-      get().triggerShake(shakeMs, shakeMag);
+      if (shakeMag > 0) get().triggerShake(shakeMs, shakeMag);
       return;
     }
     // ストップ開始時、進行中の(スイング等の)揺れを消す=ストップ後に出すこのインパクトの揺れだけ残す。
     set({ shakeUntil: 0 });
     get().triggerHitstop(stopMs);
     get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS); // ストップから必ずスローで等速へ戻す(社長指示)
-    setTimeout(() => get().triggerShake(shakeMs, shakeMag), Math.max(0, stopMs));
+    if (shakeMag > 0) setTimeout(() => get().triggerShake(shakeMs, shakeMag), Math.max(0, stopMs));
   },
 
   triggerFinishImpact: (targetX, targetY, forceMaximumZoom = false) => {
@@ -19797,7 +19852,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         set({ lastKillZoomAt: now });
       }
       get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
-      setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
+      // (揺れは v0.25.4284 から呼び手の registerImpact(finish ×2.0)。ストップ明けに出る)
       return true; // 旧仕様は常時「フル」扱い(呼び出し元の武器固有フラッシュ分岐に影響させない)
     }
     // PACING_PUZZLE.md §5.22 M21(社長決定v0.25.1524): 命中の瞬間にフリーズ+ズーム+スローが全部
@@ -19811,7 +19866,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ズームをスローと同じ長さ/holdへ統一(旧仕様の専用MELEE_FINISH_ZOOM_MS/HOLD_MSは使わない)。
       triggerMaximumZoom(MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
       get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
-      setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
+      // (揺れは v0.25.4284 から呼び手の registerImpact(finish ×2.0=フル演出の回だけ)。ストップ明けに出る)
     } else if (JUICE_MIN_FLASH_ENABLED) {
       get().spawnFlash('rgba(255,255,255,0.22)', JUICE_MIN_FLASH_MS);
     }
