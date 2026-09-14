@@ -8130,7 +8130,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // also DROPS an ammo box for the active gun's family — melee is the run's
     // main way to scavenge rounds, but you have to walk over the drop.
     grantMeleeKillRewards(get, killed, player, gun);
-    let finishFull = false; // 揺れの整理: 処刑の finish 倍率はフル演出(CD明け)の回だけ
+    let finishFull = false; // 処刑が起きたか。揺れの finish 倍率はCD内でも掛ける(v0.25.4301 社長「CD中は画面揺れだけ入れて」。〜4300 はフル演出の回だけ)
     if (finisherHit || bossFinishHit) {
       const [ztx, zty] = bossFatalHits[0]
         ? [bossFatalHits[0].x, bossFatalHits[0].y]
@@ -8138,7 +8138,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // M21(§5.22): フル演出(CD明け)の時だけ武器固有の黄フラッシュを重ねる。CD内は
       // triggerFinishImpact自身が出す最低保証フラッシュ(軽い白)だけになる=二重フラッシュを避ける。
       const fullCinematic = get().triggerFinishImpact(ztx, zty, bossFatalHits.length > 0);
-      finishFull = fullCinematic;
+      finishFull = true; // CD内(fullCinematic=false)でも処刑の揺れは出す。停止/スロー/ズーム/カメラはCD明けだけ(従来)
       if (fullCinematic && killed.some(k => k.finisher)) {
         get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
       }
@@ -9237,14 +9237,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
     grantMeleeKillRewards(get, killed, player, gun, true);
-    let katanaFinishFull = false; // 揺れの整理: 処刑の finish 倍率はフル演出の回だけ
+    let katanaFinishFull = false; // 処刑が起きたか。揺れの finish 倍率はCD内でも掛ける(v0.25.4301)
     // 除外1(演出)→v0.25.2582試験改定: 守護霊起因でも出す(?ghostzoom=0で従来=除外1へ)。
     if ((finisherHit || bossFinishHit) && (!isGhost || GHOST_ZOOM_TRIAL_ENABLED)) {
       const [ztx, zty] = katanaBossFatalHits[0]
         ? [katanaBossFatalHits[0].x, katanaBossFatalHits[0].y]
         : finishZoomTargetOf(killed);
       const fullCinematic = get().triggerFinishImpact(ztx, zty, katanaBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
-      katanaFinishFull = fullCinematic;
+      katanaFinishFull = true; // CD内でも処刑の揺れは出す(v0.25.4301)
       // v0.25.3703: 刀の致命にもKILL跳びつき(v3622の取りこぼし)。刀の**処刑(finisher)**は従来どおり
       // 「斬」演出が主役なので跳びつきは付けない=致命(katanaBossFatalHits)がある時だけ。プレイヤー起因のみ。
       const kFatal = katanaBossFatalHits[0];
@@ -9514,13 +9514,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     applyRescueSignalProc(get, player, meleeBase * WHIP_DAMAGE_MULT, whipHitEnemyIds, pcx, pcy);
     // 吸血覚醒(Lv3・v0.25.3300): 鞭のヒットでも1%回復。
     applyVampireMeleeHeal(get, player, whipHitEnemyIds, pcx, pcy);
-    let whipFinishFull = false; // 揺れの整理: 処刑の finish 倍率はフル演出の回だけ
+    let whipFinishFull = false; // 処刑が起きたか。揺れの finish 倍率はCD内でも掛ける(v0.25.4301)
     if (finisherHit || bossFinishHit) {
       const [ztx, zty] = whipBossFatalHits[0]
         ? [whipBossFatalHits[0].x, whipBossFatalHits[0].y]
         : finishZoomTargetOf(killed);
       const fullCinematic = get().triggerFinishImpact(ztx, zty, whipBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
-      whipFinishFull = fullCinematic;
+      whipFinishFull = true; // CD内でも処刑の揺れは出す(v0.25.4301)
       // v0.25.3703: 鞭の致命にもKILL跳びつき(v3622の取りこぼし)。処刑(finisher)は従来どおり=致命のみ。
       const wFatal = whipBossFatalHits[0];
       if (fullCinematic && wFatal) {
@@ -19918,8 +19918,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ズームをスローと同じ長さ/holdへ統一(旧仕様の専用MELEE_FINISH_ZOOM_MS/HOLD_MSは使わない)。
       triggerMaximumZoom(MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
       get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
-      // (揺れは v0.25.4284 から呼び手の registerImpact(finish ×2.0=フル演出の回だけ)。ストップ明けに出る)
+      // (揺れは v0.25.4284 から呼び手の registerImpact(finish ×2.0)。ストップ明けに出る)
     } else if (JUICE_MIN_FLASH_ENABLED) {
+      // CD内: 薄い白フラッシュ+呼び手の処刑の揺れ(finish ×2.0・v0.25.4301 社長「CD中は画面揺れだけ入れて」)。停止/スロー/ズーム/カメラは出さない。
       get().spawnFlash('rgba(255,255,255,0.22)', JUICE_MIN_FLASH_MS);
     }
     return fullCinematic;

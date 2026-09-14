@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import {
   cineCameraAt, cineAccepts, cineSideOf, CINE_KILL_CUT_FRAC, CINE_KILL_PUSH_START_MS, CINE_KILL_PUSH_MS,
   CINE_KILL_ORBIT_START_MS, CINE_KILL_ORBIT_MS, CINE_KILL_ORBIT_FRAC, CINE_COUNTER_OVERSHOOT, CINE_COUNTER_IN_MS,
-  CINE_COUNTER_ORBIT_OUT_MS, CINE_COUNTER_ORBIT_BACK_MS, CINE_DEATH_FROM_FRAC, CINE_DEATH_IN_MS, type CineEvent,
+  CINE_COUNTER_ORBIT_OUT_MS, CINE_COUNTER_ORBIT_BACK_MS, CINE_COUNTER_ORBIT_FRAC, CINE_DEATH_FROM_FRAC, CINE_DEATH_IN_MS, type CineEvent,
   thirdsAim, cinePlateIn, cinePlateKinds, CINE_EXEC_CUT_FRAC, CINE_EXEC_PUSH1_TO, CINE_EXEC_PUSH2_START_MS, CINE_EXEC_PUSH2_MS,
-  CINE_THIRDS_X_FRAC, CINE_FRAME_MARGIN_FRAC, CINE_PLATE_IN_MS, cineModeFor, cineCutFrac,
+  CINE_THIRDS_X_FRAC, CINE_FRAME_MARGIN_FRAC, CINE_PLATE_IN_MS, cineModeFor, CINE_PLATE_W_FRAC, CINE_PLATE_NEAR_MARGIN_FRAC,
 } from './cineCamera';
 
 describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v2・社長承認2026-09-14)', () => {
-  it('KILL: カット(CINE_KILL_CUT_FRAC=70%)で始まり、ストップ明けから押し込んで保持の前半で100%(最大寄り=スローの最遅区間の裁定を保つ)', () => {
+  it('KILL: カット(CINE_KILL_CUT_FRAC=50%・v0.25.4301)で始まり、ストップ明けから押し込んで保持の前半で100%(最大寄り=スローの最遅区間の裁定を保つ)', () => {
     expect(cineCameraAt('kill', 0, 'full').zoomFrac).toBe(CINE_KILL_CUT_FRAC);
     expect(cineCameraAt('kill', CINE_KILL_PUSH_START_MS - 1, 'full').zoomFrac).toBe(CINE_KILL_CUT_FRAC);
     const mid = cineCameraAt('kill', CINE_KILL_PUSH_START_MS + CINE_KILL_PUSH_MS / 2, 'full').zoomFrac;
@@ -28,14 +28,14 @@ describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v
       expect(c.zoomFrac).toBeCloseTo(1, 9); // 押し込みは残る
     }
   });
-  it('カウンター: 112%→100%のばねで入り、逆側へ速く出て(60ms)ゆっくり戻る(180ms)=往復は対称ではない。戻りは硬く切る(outPow>1)', () => {
+  it('カウンター: (1+CINE_COUNTER_OVERSHOOT)→100%のばねで入り、逆側へ速く出て(60ms)ゆっくり戻る(180ms)=往復は対称ではない。戻りは硬く切る(outPow>1)', () => {
     expect(cineCameraAt('counter', 0, 'full').zoomFrac).toBeCloseTo(1 + CINE_COUNTER_OVERSHOOT, 9);
     expect(cineCameraAt('counter', CINE_COUNTER_IN_MS, 'full').zoomFrac).toBeCloseTo(1, 9);
     const peak = cineCameraAt('counter', CINE_COUNTER_IN_MS + CINE_COUNTER_ORBIT_OUT_MS, 'full').orbitFrac;
-    expect(peak).toBeCloseTo(-0.05, 9); // 逆側・最大
+    expect(peak).toBeCloseTo(-CINE_COUNTER_ORBIT_FRAC, 9); // 逆側・最大
     const half = cineCameraAt('counter', CINE_COUNTER_IN_MS + CINE_COUNTER_ORBIT_OUT_MS / 2, 'full').orbitFrac;
     const backHalf = cineCameraAt('counter', CINE_COUNTER_IN_MS + CINE_COUNTER_ORBIT_OUT_MS + CINE_COUNTER_ORBIT_BACK_MS / 2, 'full').orbitFrac;
-    expect(Math.abs(half)).toBeGreaterThan(0.05 * 0.8); // 往きは速い(半分の時間で8割超)
+    expect(Math.abs(half)).toBeGreaterThan(CINE_COUNTER_ORBIT_FRAC * 0.8); // 往きは速い(半分の時間で8割超)
     expect(Math.abs(backHalf)).toBeGreaterThan(0);      // 戻りはまだ残っている
     expect(cineCameraAt('counter', CINE_COUNTER_IN_MS + CINE_COUNTER_ORBIT_OUT_MS + CINE_COUNTER_ORBIT_BACK_MS, 'full').orbitFrac).toBeCloseTo(0, 9);
     expect(cineCameraAt('counter', 0, 'full').outPow).toBeGreaterThan(1);
@@ -70,24 +70,18 @@ describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v
   });
 });
 
-describe('モード(§2-6・v0.25.4300): pan が効くかは「カット時点の実効倍率」で決める', () => {
-  it('群衆戦の引き(0.8)でも KILL のカット(×1.7)で 1 を超える=full。ボス距離の最大引き(0.40)は処刑のカット(×1.6)でも 0.64=cutPush', () => {
+describe('モード(§2-6・v0.25.4300〜4301): pan が効くかは「演目の最大寄り base×(1+mag)」で決める', () => {
+  it('群衆戦の引き(0.8)・通常ボスの引き(0.7)は最大寄り(×2.0)で 1 を超える=full。巨大ボス遠距離(0.40)は 0.8=cutPush', () => {
     expect(cineModeFor(false, 0.8, 1.0, 'kill')).toBe('full');
     expect(cineModeFor(false, 0.8, 1.0, 'execute')).toBe('full');
     expect(cineModeFor(false, 0.8, 1.0, 'counter')).toBe('full');
-    expect(cineModeFor(false, 0.7, 1.0, 'execute')).toBe('full');   // 通常ボスの引き(0.7)×1.6=1.12
-    expect(cineModeFor(false, 0.4, 1.0, 'execute')).toBe('cutPush'); // 巨大ボス遠距離(0.40)×1.6=0.64
-    expect(cineModeFor(false, 0.55, 1.0, 'kill')).toBe('cutPush');   // 0.55×1.7=0.935
+    expect(cineModeFor(false, 0.7, 1.0, 'execute')).toBe('full');   // 0.7×2.0=1.4(カット時点 0.7×1.4=0.98 でも縮めない)
+    expect(cineModeFor(false, 0.4, 1.0, 'execute')).toBe('cutPush'); // 0.40×2.0=0.8
+    expect(cineModeFor(false, 0.45, 1.0, 'kill')).toBe('cutPush');   // 0.45×2.0=0.9
   });
-  it('押し込みだけの場面(訓練/エンディング/通路/EX/研究所)は倍率に関係なく pushOnly。カットの比は演目の最小 zoomFrac と一致する', () => {
+  it('押し込みだけの場面(訓練/エンディング/通路/EX/研究所)は倍率に関係なく pushOnly。板の余白は板の内縁より広い', () => {
     expect(cineModeFor(true, 1.0, 1.0, 'kill')).toBe('pushOnly');
-    expect(cineCutFrac('kill')).toBe(CINE_KILL_CUT_FRAC);
-    expect(cineCutFrac('execute')).toBe(CINE_EXEC_CUT_FRAC);
-    expect(cineCutFrac('death')).toBe(CINE_DEATH_FROM_FRAC);
-    expect(cineCutFrac('counter')).toBe(1);
-    // 判定に使う比は台本の t=0 の値そのもの(ずれると門と絵が食い違う)
-    expect(cineCameraAt('kill', 0, 'full').zoomFrac).toBe(cineCutFrac('kill'));
-    expect(cineCameraAt('execute', 0, 'full').zoomFrac).toBe(cineCutFrac('execute'));
+    expect(CINE_PLATE_NEAR_MARGIN_FRAC).toBeGreaterThan(CINE_PLATE_W_FRAC);
   });
 });
 

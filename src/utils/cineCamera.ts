@@ -32,28 +32,28 @@ export interface CineCamera {
 // 横滑りは長く怠く・押し込みは短く鋭く(尺で性格を分ける)/カウンターの行き過ぎを見える量に/振りは速く出てゆっくり戻る/
 // 死亡は着いて止めてから来た時より遅く帰る。
 // ---- KILL/処刑 ----
-export const CINE_KILL_CUT_FRAC = 0.7;       // カット(命中の瞬間に飛ぶ寄り)。1.7→2.0 へ押し込む距離を持たせる
+export const CINE_KILL_CUT_FRAC = 0.5;       // カット(命中の瞬間に飛ぶ寄り)。1.5→2.0 へ押し込む(v0.25.4301 社長「やってみよう」: 0.7→0.5=押し込みを見える量に)
 export const CINE_KILL_PUSH_START_MS = 100;  // ストップ明けから押し込み(HITSTOP_MS と同じ)
 export const CINE_KILL_PUSH_MS = 224;        // 保持560msの前半40%で100%へ(「一番寄る瞬間=スローの一番遅い区間」の裁定を保つ)
-export const CINE_KILL_ORBIT_FRAC = 0.08;    // 横滑り(画面幅比)
+export const CINE_KILL_ORBIT_FRAC = 0.14;    // 横滑り(画面幅比・v0.25.4301: 0.08→0.14)
 export const CINE_KILL_ORBIT_START_MS = 200; // 押し込みの後半から重ねて滑り出す(終点と始点を同じ瞬間にしない=速度0の角を作らない)
 export const CINE_KILL_ORBIT_MS = 260;       // 長く怠く(押し込みより長い)。t=460 で到達=斜め(zwarp)がほどけ切る頃に合わせる
 export const CINE_KILL_OUT_POW = 1;
 // ---- 処刑(致命=ボス級・forceMaximumZoom)・v0.25.4296: 長い保持と二拍目 ----
-export const CINE_EXEC_CUT_FRAC = 0.6;        // カットは KILL より広く
+export const CINE_EXEC_CUT_FRAC = 0.4;        // カットは KILL より広く(v0.25.4301: 0.6→0.4=一拍目の寄りに重さを持たせる)
 export const CINE_EXEC_PUSH1_START_MS = 100;
 export const CINE_EXEC_PUSH1_MS = 260;        // 一拍目: 60→92%
 export const CINE_EXEC_PUSH1_TO = 0.92;
 export const CINE_EXEC_PUSH2_START_MS = 560;  // 止め(200ms)の後、二拍目: 92→100%
 export const CINE_EXEC_PUSH2_MS = 200;
-export const CINE_EXEC_ORBIT_FRAC = 0.10;
+export const CINE_EXEC_ORBIT_FRAC = 0.18;     // v0.25.4301: 0.10→0.18
 export const CINE_EXEC_ORBIT_START_MS = 250;
 export const CINE_EXEC_ORBIT_MS = 420;        // 長く怠く
 export const CINE_EXEC_OUT_POW = 0.8;         // 来た時より少し遅く帰る
 // ---- カウンター成立 ----
-export const CINE_COUNTER_OVERSHOOT = 0.12;  // 112%→100%(2倍ズームで+6%=見える量)
+export const CINE_COUNTER_OVERSHOOT = 0.22;  // 122%→100%(v0.25.4301: 0.12→0.22。2倍ズームで+11%)
 export const CINE_COUNTER_IN_MS = 70;
-export const CINE_COUNTER_ORBIT_FRAC = 0.05; // 逆側へ1拍
+export const CINE_COUNTER_ORBIT_FRAC = 0.09; // 逆側へ1拍(v0.25.4301: 0.05→0.09)
 export const CINE_COUNTER_ORBIT_OUT_MS = 60; // 速く出て
 export const CINE_COUNTER_ORBIT_BACK_MS = 180; // ゆっくり戻る
 export const CINE_COUNTER_OUT_POW = 3;       // 硬く切る(保ってから速く落ちる)
@@ -66,12 +66,12 @@ export const CINE_THIRDS_X_FRAC = 1 / 6;   // 相手を縦の三分割線(中央
 export const CINE_THIRDS_Y_FRAC = 1 / 8;   // 縦は控えめ(上下の副作用を避ける)
 export const CINE_FRAME_MARGIN_FRAC = 0.14; // 自機が枠内に残る余白(画面比)
 // ---- 近景の板(§6・v0.25.4296) ----
-export const CINE_PLATE_W_FRAC = 0.32;     // 縁の何割を覆うか(小さいと「無い」と同じ)
+export const CINE_PLATE_W_FRAC = 0.40;     // 縁の何割を覆うか(小さいと「無い」と同じ。v0.25.4301: 0.32→0.40)
 export const CINE_PLATE_TILT_RAD = 0.21;   // 幹≈12°(台形の奥側へ寝かせる。v0.25.4297: 霧とは別の値=派生値にしない)
 export const CINE_PLATE_FOG_TILT_RAD = 0.035; // 霧≈2°(ほぼ水平)
 export const CINE_PLATE_PUSH_SCALE = 0.07;  // 寄り切りで板が何割大きくなるか(前景は寄ると速く動く)
-export const CINE_PLATE_NEAR_MARGIN_FRAC = 0.38; // 自機側の余白=板の内縁(0.32)+0.06。斬っている自機が板の裏に隠れない
-export const CINE_PLATE_ALPHA = 0.85;
+export const CINE_PLATE_NEAR_MARGIN_FRAC = CINE_PLATE_W_FRAC + 0.06; // 自機側の余白=板の内縁+0.06(=0.46)。斬っている自機が板の裏に隠れない
+export const CINE_PLATE_ALPHA = 0.95;      // v0.25.4301: 0.85→0.95
 export const CINE_PLATE_IN_MS = 220;
 export const CINE_PLATE_DRIFT_FRAC = 0.03; // 保持中に奥側へ流れる量(横滑りの逆=視差)
 export const CINE_PLATE_BLUR_PX = 7;
@@ -84,21 +84,19 @@ const easeInOutCubic = (u: number) => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2
 // 行き過ぎて止まる(back)。板の滑り込みに使う=慣性MUST。
 const easeOutBack = (u: number) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * (u - 1) ** 3 + c1 * (u - 1) ** 2; };
 
-/** 演目がカットで飛ぶ先の寄り比(=その演目の最小 zoomFrac)。モード判定(cineModeFor)の入力。 */
-export const cineCutFrac = (kind: CineKind): number =>
-  kind === 'kill' ? CINE_KILL_CUT_FRAC : kind === 'execute' ? CINE_EXEC_CUT_FRAC : kind === 'death' ? CINE_DEATH_FROM_FRAC : 1;
-
 /**
- * モード(§2-6)。**pan が効くかは「カット時点の実効倍率」で決める**: `baseZoom × (1 + zoomMag × cut)`。
- * panLimit = (1 − 1/zoom) × 画面半分 の zoom は寄り込み(punch)込みの値なので、文脈ズームで引いていても
- * (群衆=0.8 / ボス距離=0.40〜0.7)カットで 1 を超えれば横滑り・三分割・板は出せる。
- * v0.25.4298 までは **寄り込み前の base だけ**で判定していたため、近傍8体以上の群衆戦とボス戦(=処刑の大半)が
- * 縮小モード(cutPush)に落ち、実機で「何も変わっていない」と見えた(v0.25.4300 で是正)。
+ * モード(§2-6)。**pan が効くかは「演目の最大寄り(base × (1 + zoomMag))」で決める**。
+ * panLimit = (1 − 1/zoom) × 画面半分 の zoom は寄り込み(punch)込みの毎フレーム値なので、カットの瞬間に 1 未満でも
+ * 押し込みで 1 を超えた所から横滑り・三分割は自然に効き始める(限界が 0 から育つ=それ自体が慣性)。板は画面空間で無関係。
+ * よって縮小(cutPush)にするのは**最大まで寄っても 1 に届かない時だけ**(巨大ボス遠距離 0.40×2.0=0.8 など)。
+ * 経緯: v0.25.4298 までは寄り込み前の base で判定=群衆戦・ボス戦の処刑が全部縮小モード(実機「何も変わっていない」の真因)。
+ * v0.25.4300 でカット時点の値に、v0.25.4301 でカットを 0.5/0.4 へ広げたのに合わせて最大寄りの値に(通常ボス 0.7×1.4=0.98 が
+ * 縮小へ戻るのを避ける)。`kind` は将来の演目別の例外用に残す(今は全演目同じ)。
  */
-export const cineModeFor = (pushOnly: boolean, baseZoom: number, zoomMag: number, kind: CineKind): CineMode => {
+export const cineModeFor = (pushOnly: boolean, baseZoom: number, zoomMag: number, _kind: CineKind): CineMode => {
   if (pushOnly) return 'pushOnly';
-  const atCut = baseZoom * (1 + Math.max(0, zoomMag) * cineCutFrac(kind));
-  return atCut < 1 ? 'cutPush' : 'full';
+  const atPeak = baseZoom * (1 + Math.max(0, zoomMag));
+  return atPeak < 1 ? 'cutPush' : 'full';
 };
 
 export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode, startFrac?: number): CineCamera => {
