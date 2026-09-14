@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4282',
+    items: ['ゲーム内容の変更はありません。'],
+  },
+  {
     version: '0.25.4281',
     items: ['氷槍ライフルは青い帯が消え、撃った瞬間に氷結の吹雪が舞う。弾は敵を倒しても止まらず射程まで飛び切り、氷の道もそこまで伸びる。'],
   },
