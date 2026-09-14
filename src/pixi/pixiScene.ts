@@ -1522,12 +1522,9 @@ const ZWARP_DECAY_POW = Math.max(0.5, tsNum('zwarppow', 1.6));
 // 社長裁定2026-09-11(クリエイティブ監査の戻し):
 // §6「傾きは先にほどく」: 傾きは寄りのホールドを待たず自分の時計でほどける。イベント開始から HOLD_MS 保持→RELEASE_MS で 0 へ
 //(死亡の1.15秒ホールドでも傾いた床が静止して見えない。KILL(700ms)では従来とほぼ同じ尺)。
-const ZWARP_TILT_HOLD_MS = Math.max(0, tsNum('zwarphold_ms', 170));   // 150→100→140→70→**170**(社長「斜めで止まってないな」v0.25.4317)。
-// ★ここを間違えた(v0.25.4316): 斜めの時計は `syncZoomWarp(..., realNow)` = **実時計**で、ヒットストップ(100ms)の
-// 間も進む(凍結時計 `hitstopFreezeNow` は渡していない)。だから「止め70ms+戻り170ms」だと**画面が止まっている間に
-// 斜めが溶けきってしまい**、動きが戻った時にはもう平ら=「止まっていない」に見えていた。
-// **止めは停止(100ms)を跨いで残る長さが要る**: 170 = 停止100 + 動き出してからの一拍70。戻りは速いまま(170ms)。
-const ZWARP_TILT_RELEASE_MS = Math.max(50, tsNum('zwarprel', 170)); // 450→320→**170**(社長指示v0.25.4316「早く戻す」)
+// ★v0.25.4320: 斜めの自前の時計(`zwarphold_ms` / `zwarprel`)は**撤去**した。傾きは寄りの包絡線に直結する
+// (社長指示「ズームと連動して」)。止めの長さは**寄りの保持時間がそのまま効く**ので、別の定数を持たない。
+// 経緯: 自前の時計は実時計で動いていたためヒットストップ(100ms)中に溶け、「止まって見えない」事故を起こしていた(v0.25.4317)。
 // §8「奥の辺も縮める」: 総量 k のうち奥側 FAR_FRAC を縮め、近側 (1−FAR_FRAC) を膨らませる=対象へ引き込まれる動き。
 // 奥側が縮むと縁の外の絵が要るので、フィルタの枠(filterArea)を縦に縮みぶんだけ広げる(地面はオーバースキャン分が在る)。
 const ZWARP_FAR_FRAC = Math.max(0, Math.min(0.8, tsNum('zwarpfar', 0.35)));
@@ -5905,13 +5902,12 @@ export class PixiScene {
       // 既定(社長裁定2026-09-11): 寄りズームのイベント中だけ。強さ=上限×包絡線^冪(傾きは寄りより先に抜ける)×寄り量の比。
       // 追従はばね(1フレームでパッと出ない=慣性。衝撃と同じ時間帯に立ち、わずかに行き過ぎて揺り返す)。半陰的オイラーを最大 1/120s で刻む。
       // 傾きの包絡線=min(寄りの包絡線^冪, 自分の時計)。自分の時計: 開始から HOLD_MS は 1、その後 RELEASE_MS で滑らかに 0(§6)。
-      const tSince = this.zwarpEventStart >= 0 ? now - this.zwarpEventStart : 0;
-      const rel = tSince <= ZWARP_TILT_HOLD_MS ? 1 : Math.max(0, 1 - (tSince - ZWARP_TILT_HOLD_MS) / ZWARP_TILT_RELEASE_MS);
-      // ★戻りの形(社長指示v0.25.4316「maxで一瞬止めてから**早く戻す**」): smoothstep は**出だしが遅い**ので
-      // 「止めたあとダラっと帰る」に見えていた。**離した瞬間が一番速く、最後だけ静かに着く**形(1-u)^2 へ。
-      // 出だしの速度の不連続は**この target を食うばね**(ZWARP_SPRING)が吸う=慣性MUSTは保たれる。
-      const relEase = rel * rel; // (1-u)^2 相当(rel は 1→0 の線形)。u=0.25 で 0.56、u=0.5 で 0.25 まで落ちる
-      const env = ZWARP_HOLD ? 1 : Math.min(Math.pow(Math.max(0, this.zwarpEventDecay), ZWARP_DECAY_POW), relEase);
+      // ★社長指示v0.25.4320「斜めのストップもう少し長く。というか**ズームと連動して**」:
+      // 斜めが**自前の時計**(止め170ms→戻り170ms)を持っていたのをやめ、**寄りの包絡線そのもの**に乗せた。
+      // 寄りは「最大を保持してから戻る」形(処刑=1100msのうち900ms保持 / カウンター=320msのうち240ms保持)なので、
+      // **斜めも同じだけ最大で止まり、寄りと一緒に戻る**。止めの長さを別の定数で持たないので、寄りを変えれば斜めも付いてくる。
+      // `ZWARP_DECAY_POW`(?zwarppow=)は**寄りよりどれだけ早くほどけるか**: 1.0=寄りと完全に同じ / >1=先に抜ける。
+      const env = ZWARP_HOLD ? 1 : Math.pow(Math.max(0, this.zwarpEventDecay), ZWARP_DECAY_POW);
       const magK = ZWARP_HOLD ? 1 : Math.min(1, Math.max(0, this.zwarpEventMag) / ZWARP_MAG_REF);
       const target = ZWARP_MAX * env * magK;
       // ★社長指示2026-09-14「カウンターやKILL時の斜めエフェクト、スタートからMAX斜めにして」: 新しいイベントの最初のフレームは

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4320',
+    items: [
+      '斜めが寄りと連動するようになった。寄っている間ずっと傾いたまま保ち、寄りが戻るのに合わせて解ける。',
+    ],
+  },
+  {
     version: '0.25.4319',
     items: [
       '処刑の当たった瞬間の絵を元に戻した。これまでの赤と金の演出で出る。',
