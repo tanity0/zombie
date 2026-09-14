@@ -8565,20 +8565,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               {
                 const bd = p0.direction;
                 const st0 = useGameStore.getState();
-                st0.spawnFlash('rgba(140,200,255,0.12)', 160);
+                // ★社長指摘v0.25.4325「氷大きすぎる？多すぎる？とりあえず画面見づらい」の是正。
+                // 犯人は主に**粒の大きさ**だった: image エフェクトは表示高さ=130×scale(world px)なので、
+                // 旧 scale 0.5〜1.0 = **高さ65〜130px・幅161〜322px**(素材 breath-sparkle は 426×172 の横長)。
+                // プレイヤーの幅が約48pxなので、**1粒がプレイヤー3〜7人分**の板。それが14枚、射線=画面の
+                // 見たい方向へ流れていた。借り元(城ボスの氷薙ぎ SWEEP_ICE_SPARK_H_FRAC)は同じ素材を
+                // **高さ19〜53px**で使っており、そちらへ揃える。数と寿命も少し絞る(発射間隔1.2秒より短く抜ける)。
+                const BLIZ_N = 10;                  // 粒の数(旧14)
+                const BLIZ_SCALE_MIN = 0.20;        // 表示高さ 26px(=130×0.20)
+                const BLIZ_SCALE_RANGE = 0.14;      // 〜44px。借り元の19〜53pxの帯に収まる
+                const BLIZ_LIFE_MS = 260, BLIZ_LIFE_RANGE_MS = 180; // 260〜440ms(旧380〜680)
+                // ★画面全体のフラッシュは**やめた**。借り元の氷結(quad-ice)にも
+                // 「画面全体のフラッシュは使わない(大技の閃光と紛れるため)」と明記してあり、
+                // 1.2秒ごとに撃つ通常武器で全画面を青く染めるのが「見づらい」の最大の要因だった。
                 st0.spawnRing(icx + bd.x * 14, icy + bd.y * 14, 6, 54, 'rgba(150,210,255,0.9)', 3, 300);
-                st0.spawnBurst(icx + bd.x * 14, icy + bd.y * 14, '#bfe6ff', 14, bd.x, bd.y);
-                st0.spawnGlow(icx + bd.x * 14, icy + bd.y * 14, 56, 'rgba(150,210,255,', 260);
+                st0.spawnBurst(icx + bd.x * 14, icy + bd.y * 14, '#bfe6ff', 10, bd.x, bd.y);
+                // 光は段を1つ下げる(GLOW_R_S=56 → GLOW_R_XS=44)。投影影を落とす強glowは1個で
+                // 1フレーム予算の約12%なので、点きっぱなしの時間も 260→200ms へ。
+                st0.spawnGlow(icx + bd.x * 14, icy + bd.y * 14, GLOW_R_XS, 'rgba(150,210,255,', 200);
                 const bNow = Date.now();
-                for (let i = 0; i < 14; i++) {
+                for (let i = 0; i < BLIZ_N; i++) {
                   const spread = (Math.random() - 0.5) * 0.9;
                   const px = -bd.y, py = bd.x;
                   const sp = 150 + Math.random() * 160;
                   st0.spawnEffect({
                     kind: 'image', id: `ice-lance-bliz-${bNow}-${i}`,
                     x: icx + bd.x * (10 + Math.random() * 30) + px * spread * 18, y: icy + bd.y * (10 + Math.random() * 30) + py * spread * 18,
-                    createdAt: bNow, duration: 380 + Math.random() * 300,
-                    texture: 'fx/breath-sparkle', scale: 0.5 + Math.random() * 0.5, rot: Math.random() * Math.PI * 2,
+                    createdAt: bNow, duration: BLIZ_LIFE_MS + Math.random() * BLIZ_LIFE_RANGE_MS,
+                    texture: 'fx/breath-sparkle', scale: BLIZ_SCALE_MIN + Math.random() * BLIZ_SCALE_RANGE, rot: Math.random() * Math.PI * 2,
                     driftX: (bd.x + px * spread * 0.5) * sp, driftY: (bd.y + py * spread * 0.5) * sp,
                   });
                 }

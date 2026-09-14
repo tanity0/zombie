@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4325',
+    items: [
+      '氷槍ライフルを撃った時の吹雪が画面をふさいでいたのを直した。舞う氷は小さく、数も控えめになり、撃つたびに画面全体が青く光るのもやめた。',
+    ],
+  },
+  {
     version: '0.25.4324',
     items: [
       '近接で切った時の炸裂が画面に出ていなかったのを直した。敵より一回り大きく出る。',
