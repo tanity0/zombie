@@ -268,7 +268,7 @@ import { isTrapDebuffed, trapGatedOverclockChance, trapGatedCooldownMult, TRAP_R
 import { strongestGuardian } from '../data/fixedGuardians';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
-import { BOSS_CUTIN_MS, shouldIgnoreAttention, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
+import { BOSS_CUTIN_MS, shouldIgnoreAttention, isCutinRepeat, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
@@ -2129,6 +2129,8 @@ let critImpactAt = 0; // spawnCritImpact の光の畳み込み用(Date.now)
 // ---- 揺れの整理(research/SHAKE_UNIFY.md §2-5): 命中の登録キュー。tick末(useGameLoop→flushImpacts)に同じ source の束を
 // 1事象へ合算し、複数事象なら強い方だけを triggerShake する。ヒットストップ中は tick が回らない=明けてから出る(保留)。
 let impactQueue: ImpactEntry[] = [];
+// §6.36 紹介カットインの既出(名前)。1ゲーム中1回まで(社長裁定2026-09-14)。resetGame で空にする。
+const cutinShownThisRun = new Set<string>();
 // 命中側のレート正規化(SHAKE_UNIFY §2-1・v0.25.4286): 同じ種類の前回の発火からの間隔で impactRateMult を掛ける
 // (武器の cooldown を知らない damageEnemy 経由でも、連射のキル/クリ連発・パルス系・巻き込みが積み上がらない)。
 const impactLastFiredAt = new Map<string, number>();
@@ -18894,6 +18896,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   resetGame: (characterClass) => {
     impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
+    cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)
     const state = get();
     // v0.25.2476: 前ランのサブ様式集計(fold)+プロファイル保存の決算は、リザルト画面を閉じる操作
     // (GameOverScreenのsettlePendingTraits)へ移動した(社長裁定「今回のプレイを守護霊に反映しない」を
@@ -19725,9 +19728,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   // §6.36: cutin付きは hold の後に cutinMs(1100)だけカメラ静止のまま延長し、DOM(BossCutin.tsx)が
   // 名前+絵を出す。first-wins: attention生存中に新旧どちらかがcutin持ちなら後着を無視(純関数で判定)。
   // 素のattention同士は従来どおり上書き=挙動不変。
-  triggerAttention: (x, y, cutin, extraHoldMs = 0) => {
+  triggerAttention: (x, y, cutinIn, extraHoldMs = 0) => {
     const prev = get().attention;
+    // 紹介は1ゲーム中1回まで(社長裁定2026-09-14・v0.25.4302): 同じ名前の2回目以降はカットインを外し、
+    // 素のattention(カメラが寄って戻るだけ)にする。first-wins の判定もカットインを外した後の値で行う。
+    const cutin = isCutinRepeat(cutinShownThisRun, cutinIn) ? undefined : cutinIn;
     if (shouldIgnoreAttention(prev !== null, !!prev?.cutin, !!cutin)) return;
+    if (cutin) cutinShownThisRun.add(cutin.name);
     const cam = get().camera;
     // v0.25.2958(社長指示「やはり前のバージョンに戻して」): カットインは hold の後に cutinMs(1100)を
     // 挟む=in→hold→cutin→out。hitstop も延長する(v0.25.2956の「開始と同時」は撤回)。

@@ -1,7 +1,20 @@
 // §6.36 ボス出現カットインの純関数テスト(受け入れ条件5: first-winsの機械検査+位相の不変条件)。
 import { describe, expect, it } from 'vitest';
-import { BOSS_CUTIN_MS, isCutinWindow, shouldIgnoreAttention } from './attentionCutin';
+import { BOSS_CUTIN_MS, isCutinWindow, shouldIgnoreAttention, isCutinRepeat } from './attentionCutin';
 import { bossCutinName, CASTLE_BOSS_NAME_BY_STAGE } from '../data/bossCutin';
+
+describe('isCutinRepeat (紹介は1ゲーム中1回まで・社長裁定2026-09-14)', () => {
+  const hunter = { name: '監視者', art: null };
+  it('初回は繰り返しではない=カットインを出す。素のattention(cutin無し)は常に false', () => {
+    expect(isCutinRepeat(new Set(), hunter)).toBe(false);
+    expect(isCutinRepeat(new Set(['監視者']), undefined)).toBe(false);
+  });
+  it('同じ名前が既出なら true=呼び出し側はカットインを外して素のattentionにする。別の名前には効かない', () => {
+    const shown = new Set(['監視者']);
+    expect(isCutinRepeat(shown, hunter)).toBe(true);
+    expect(isCutinRepeat(shown, { name: '礼賛', art: null })).toBe(false);
+  });
+});
 
 describe('shouldIgnoreAttention (first-wins)', () => {
   it('attentionが居ない時は常に通す(従来どおり)', () => {

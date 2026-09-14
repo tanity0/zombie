@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4302',
+    items: [
+      'ハンターや死神のように一度の出撃で何度も現れる相手の紹介は、最初の一回だけ。二回目からはカメラが相手へ寄って戻るだけになった。',
+    ],
+  },
+  {
     version: '0.25.4301',
     items: [
       '処刑のカメラを大きく。当たった瞬間の飛び込みが手前から始まって深く押し込み、横滑りは約二倍、縁に割り込む木の幹や霧は太く濃くなった。',

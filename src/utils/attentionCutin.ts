@@ -37,6 +37,15 @@ export const glenForm2CutinPayload = (): AttentionCutin => ({
 });
 
 /**
+ * 紹介は1ゲーム中1回まで(社長裁定2026-09-14・v0.25.4302)。同じ名前のカットインが**このランで既に出た**なら true
+ * =呼び出し側はカットインを外して素のattention(カメラが寄って戻るだけ)にする。
+ * 名前で判定するので、何度も出うる敵(ハンターの発見・死神・裏ボスの再出現)に自然に効き、
+ * 1ランに1回しか出ない城ボスは変わらない。既出の集合は resetGame で空にする(端末には残さない=毎ランの初回は紹介あり)。
+ */
+export const isCutinRepeat = (shownThisRun: ReadonlySet<string>, cutin: AttentionCutin | undefined): boolean =>
+  !!cutin && shownThisRun.has(cutin.name);
+
+/**
  * 後着の triggerAttention を無視すべきか(§6.36 first-wins)。
  * attention が生きている間、新旧どちらかが cutin 持ちなら後着を無視する。
  * 素のattention同士は従来どおり上書き(=false)で挙動不変。
