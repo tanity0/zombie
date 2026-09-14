@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4322',
+    items: [
+      '近接で敵を切ると、当たった所で青白い炸裂が起きるようになった。氷の棘と破片が散って、粒と煙になって消える。',
+    ],
+  },
+  {
     version: '0.25.4321',
     items: ['ゲーム内容の変更はありません。'],
   },

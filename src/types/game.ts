@@ -2397,6 +2397,16 @@ export type VisualEffect =
       tint?: number; // 守護霊発は青白等(未指定=素のまま)
     }
   | {
+      // 通常斬撃ヒットの炸裂(社長支給35コマ・v0.25.4322)。爆発と同じ「連番テクスチャを尺で送る」型。
+      kind: 'slashHit';
+      id: string;
+      x: number; y: number;
+      /** 表示高さ(world px)。相手の幅を渡す。 */
+      size: number;
+      createdAt: number;
+      duration: number;
+    }
+  | {
       kind: 'flash';
       id: string;
       color: string;          // e.g. 'rgba(255,255,255,0.8)' — overlays whole screen

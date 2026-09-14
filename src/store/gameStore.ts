@@ -103,6 +103,7 @@ import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate, comboMilestoneCrossed, killBannerDurationMs } from '../utils/comboMilestone';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 import { impactDamageOf, mergeImpactEntries, strongestImpact, IMPACT_MELEE_MIN, type ImpactEntry, type ImpactFlags } from '../utils/impactShake'; // 揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)
+import { SLASH_HIT_MS } from '../utils/slashHitFrames'; // 通常斬撃ヒット炸裂(社長支給35コマ)
 import {
   normalizeDir, biasedBurstAngle,
   shouldShowMultiHitFx, dedupeMultiHitEffects,
@@ -6042,6 +6043,8 @@ interface GameState {
   // noShadow(§24追加・既定false=挙動不変): trueで支配光(syncShadowsV9)への参加を断つ=見た目はそのまま。
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number, noShadow?: boolean) => void;
   spawnSlash: (x: number, y: number, color?: string, lengthScale?: number) => void;
+  /** 通常斬撃ヒットの炸裂(社長支給35コマ・v0.25.4322)。size=表示高さ(相手の幅を渡す)。 */
+  spawnSlashHit: (x: number, y: number, size?: number) => void;
   spawnFlash: (color: string, duration?: number) => void;
   // §5.23 M22 C3: 「N HITS」バナー(頭上・bitmap-text)+小フラッシュ。registerMultiHitから相乗りで呼ぶ。
   spawnMultiHitFx: (x: number, y: number, count: number, opts?: { label?: string; milestoneTier?: number; duration?: number }) => void;
@@ -8099,6 +8102,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const s of slashAt) {
       get().spawnSlash(s.x, s.y);
       get().spawnMeleeBlood(s.x, s.y); // 近接の血飛沫(社長指摘v0.25.2060: メイン近接3経路に未配線だった)
+      // v0.25.4322(社長指示「通常の近接に一旦入れてみて」): 社長支給の35コマ炸裂を、切った相手ごとに1回。
+      // ★まず**通常の近接(ナイフ)だけ**。刀・鞭・銃には入れていない(指示があってから配る)。
+      get().spawnSlashHit(s.x, s.y);
     }
 
     // Damage numbers for every non-execute melee hit; crits/boss-stun hits pop gold.
@@ -20279,6 +20285,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       }];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };
+    });
+  },
+
+  spawnSlashHit: (x, y, size = 120) => {
+    const now = Date.now();
+    get().spawnEffect({
+      kind: 'slashHit', id: `slashhit-${now}-${(Math.random() * 1e6) | 0}`,
+      x, y, size, createdAt: now, duration: SLASH_HIT_MS,
     });
   },
 
