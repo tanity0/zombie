@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4309',
+    items: ['ゲーム内容の変更はありません。'],
+  },
+  {
     version: '0.25.4308',
     items: [
       '処刑の光と空気が動くようになった。沈み込みと光の条は止まっている間も進み、縁の光の輪と埃が流れる。',
