@@ -355,7 +355,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     fx.addMeleeFinishCombo(1);
     fx.playSfx('counter');
     fx.spawnGlow(bpcx, bpcy, GLOW_R_L, 'rgba(56,189,248,', 360);
-    fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+    fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
     fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
     fx.spawnRing(bpcx, bpcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
     fx.spawnBurst(bpcx, bpcy, '#38bdf8', 14);
@@ -1667,7 +1667,7 @@ export const applyContactDamage = (
     fx.addMeleeFinishCombo(1);
     fx.playSfx('counter');
     fx.spawnGlow(ppx, ppy, GLOW_R_L, 'rgba(56,189,248,', 360);
-    fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+    fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
     fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
     fx.spawnRing(ppx, ppy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
     fx.spawnBurst(ppx, ppy, '#38bdf8', 14);

@@ -218,7 +218,7 @@ export const ghostCounterBlueLayer = (
   // v0.25.2585(社長報告「カメラが当人に向いてない。プレイヤーのみになってる」): 寄り先=**成立位置**
   // (守護霊とボスの間)を明示的に渡す。旧: 寄り先なし=画面中央=カメラが追うプレイヤーへ寄っていた。
   if (GHOST_ZOOM_TRIAL_ENABLED) {
-    st.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, hitX, hitY);
+    st.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 守護霊は揺らさない(SHAKE_UNIFY 境界・v0.25.4286) */, COUNTER_ZOOM_MAG, hitX, hitY);
   } else if (GHOST_FX_SHAKE_ENABLED) st.triggerShake(COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG);
   if (playSfxGain && sfxGain > 0) playSfxGain('counter', sfxGain);
 };

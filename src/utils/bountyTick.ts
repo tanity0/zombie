@@ -20,7 +20,7 @@ import {
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore, HUNTER_LEAVE_FADE_MS, resolveBountyMove,
   counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT, counterMasterAwakenBuffPatch,
-  COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
+  COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, knockbackSpeedFor, enemyDeathLabel,
   bossSlowMult, ENEMY_REMOVE_CAUSE } from '../store/gameStore';
 // ★予告寸法は依存ゼロの葉(bountyDims.ts)が正=ここでは使うだけ+従来の消費者(pixiScene/テスト)の
@@ -521,7 +521,7 @@ const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx)
   g.addMeleeFinishCombo(1);
   sfx.counter();
   g.spawnGlow(hx, hy, GLOW_R_L, 'rgba(56,189,248,', 360);
-  g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+  g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
   g.markMeleeSwingFx();
   g.spawnRing(hx, hy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
   g.spawnBurst(hx, hy, '#38bdf8', 14);

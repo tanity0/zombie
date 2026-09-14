@@ -88,3 +88,60 @@ function put(x: number, y: number, gt: number): string {
   useGameStore.setState(s => ({ enemies: [...s.enemies, e] }));
   return e.id;
 }
+
+describe('揺れの整理・検収監査2巡目の是正(v0.25.4286)', () => {
+  it('同じ種類の連発は前回の発火からの間隔で絞られる(命中側のレート正規化)', () => {
+    const { px, py, gt } = setup();
+    const id = put(px + 200, py, gt);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 20_000);
+    try {
+      useGameStore.setState({ shakeUntil: 0, shakeMag: 0 });
+      useGameStore.getState().damageEnemy(id, 30, false, false, false, 'other', 'player');
+      useGameStore.getState().flushImpacts();
+      const first = useGameStore.getState().shakeMag;
+      vi.setSystemTime(Date.now() + 100); // 100ms 後に同じ種類
+      useGameStore.setState({ shakeUntil: 0, shakeMag: 0 });
+      useGameStore.getState().damageEnemy(id, 30, false, false, false, 'other', 'player');
+      useGameStore.getState().flushImpacts();
+      const second = useGameStore.getState().shakeMag;
+      expect(first).toBeCloseTo(impactShakeFor(30).mag, 6);
+      expect(second).toBeCloseTo(impactShakeFor(30, {}, 100).mag, 6);
+      expect(second).toBeLessThan(first * 0.5);
+    } finally { vi.useRealTimers(); }
+  });
+  it('ガンブレードの至近モード(channel gun・gpSource melee)は近接扱い=非クリでも登録され、向きは命中点へ', () => {
+    const { px, py, gt } = setup();
+    const id = put(px + 200, py, gt);
+    useGameStore.setState({ shakeUntil: 0, shakeMag: 0 });
+    useGameStore.getState().damageEnemy(id, 40, false, false, false, 'gun', 'player', 'heavy', 1, 'melee');
+    useGameStore.getState().flushImpacts();
+    expect(useGameStore.getState().shakeMag).toBeGreaterThan(0);
+    expect(useGameStore.getState().shakeDirX).toBeGreaterThan(0);
+  });
+  it('resetGame で未解決の命中は捨てられる(次ランの最初のtickで鳴らない)', () => {
+    const { px, py, gt } = setup();
+    const id = put(px + 200, py, gt);
+    useGameStore.getState().damageEnemy(id, 40, true, false, false, 'other', 'player');
+    useGameStore.getState().resetGame('warrior');
+    useGameStore.setState({ shakeUntil: 0, shakeMag: 0 });
+    useGameStore.getState().flushImpacts();
+    expect(useGameStore.getState().shakeMag).toBe(0);
+  });
+  it('ヒットストップ中は保留され、明けてから出る', () => {
+    const { px, py, gt } = setup();
+    const id = put(px + 200, py, gt);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 40_000);
+    try {
+      useGameStore.setState({ shakeUntil: 0, shakeMag: 0 });
+      useGameStore.getState().damageEnemy(id, 40, true, false, false, 'other', 'player');
+      useGameStore.getState().triggerHitstop(100);
+      useGameStore.getState().flushImpacts();
+      expect(useGameStore.getState().shakeMag).toBe(0); // 保留
+      vi.setSystemTime(Date.now() + 120);
+      useGameStore.getState().flushImpacts();
+      expect(useGameStore.getState().shakeMag).toBeGreaterThan(0);
+    } finally { vi.useRealTimers(); }
+  });
+});

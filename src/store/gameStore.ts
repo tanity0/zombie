@@ -2116,6 +2116,9 @@ let critImpactAt = 0; // spawnCritImpact の光の畳み込み用(Date.now)
 // ---- 揺れの整理(research/SHAKE_UNIFY.md §2-5): 命中の登録キュー。tick末(useGameLoop→flushImpacts)に同じ source の束を
 // 1事象へ合算し、複数事象なら強い方だけを triggerShake する。ヒットストップ中は tick が回らない=明けてから出る(保留)。
 let impactQueue: ImpactEntry[] = [];
+// 命中側のレート正規化(SHAKE_UNIFY §2-1・v0.25.4286): 同じ種類の前回の発火からの間隔で impactRateMult を掛ける
+// (武器の cooldown を知らない damageEnemy 経由でも、連射のキル/クリ連発・パルス系・巻き込みが積み上がらない)。
+const impactLastFiredAt = new Map<string, number>();
 const meleeImpactDamage = (nums: readonly { value: number; crit: boolean; hp?: number }[]): number => {
   let d = 0;
   for (const n of nums) d += impactDamageOf(n.value, n.hp ?? n.value, n.crit ? CRIT_DAMAGE_MULT : 1);
@@ -12134,7 +12137,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 銃以外は毎命中・向きは命中点へ。source=同じフレームに束ねる鍵(爆風は 'blast'、近接3経路は各自 'melee' で登録)。
     if (impactAt) {
       const ia = impactAt as { x: number; y: number }; // set() 内の代入は TS の流れ解析に見えない(gunHitAt と同じ形)
-      const isGun = damageChannel === 'gun';
+      const isGun = damageChannel === 'gun' && gpSource !== 'melee'; // ガンブレード至近モード(gpSource='melee')は近接の一振り=毎命中・命中点へ(v0.25.4286)
       const flags: ImpactFlags = { crit, kill: killed, explosion: blast, counter: postureImpact === 'counter', finish: bossFatalAt !== null };
       if (!isGun || crit || killed || blast || flags.counter || flags.finish) {
         get().registerImpact({ source: blast ? 'blast' : (isGun ? 'gun' : `other:${damageChannel}`), damage: impactDamage, flags, x: ia.x, y: ia.y, away: isGun });
@@ -18861,7 +18864,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   
   resetGame: (characterClass) => {
-    impactQueue = []; // 揺れの整理: 前ランの未解決の命中を持ち越さない
+    impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
     const state = get();
     // v0.25.2476: 前ランのサブ様式集計(fold)+プロファイル保存の決算は、リザルト画面を閉じる操作
     // (GameOverScreenのsettlePendingTraits)へ移動した(社長裁定「今回のプレイを守護霊に反映しない」を
@@ -19747,7 +19750,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (Date.now() < get().hitstopUntil) return;
     const entries = impactQueue;
     impactQueue = [];
-    const best = strongestImpact(mergeImpactEntries(entries));
+    const nowF = Date.now();
+    const events = mergeImpactEntries(entries).map(ev => {
+      const last = impactLastFiredAt.get(ev.source);
+      impactLastFiredAt.set(ev.source, nowF);
+      return ev.intervalMs === undefined && last !== undefined ? { ...ev, intervalMs: nowF - last } : ev;
+    });
+    const best = strongestImpact(events);
     if (!best || best.mag <= 0.05) return;
     const pl = get().player;
     const pcx = pl.x + pl.width / 2, pcy = pl.y + pl.height / 2;

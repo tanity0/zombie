@@ -6299,7 +6299,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 addMeleeFinishCombo(1);
                 playSfx('counter');
                 useGameStore.getState().spawnGlow(hitX, hitY, GLOW_R_L, 'rgba(56,189,248,', 360);
-                useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+                useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
                 useGameStore.getState().markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
                 spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
                 spawnBurst(hitX, hitY, '#38bdf8', 14);
@@ -6397,7 +6397,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 addMeleeFinishCombo(1);
                 playSfx('counter');
                 useGameStore.getState().spawnGlow(hitX, hitY, GLOW_R_L, 'rgba(56,189,248,', 360);
-                useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+                useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
                 useGameStore.getState().markMeleeSwingFx();
                 spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
                 spawnBurst(hitX, hitY, '#38bdf8', 14);
@@ -12120,7 +12120,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (fkWalls.length > 0 && segmentBlocked(bx, by, ex, ey, fkWalls)) continue; // 壁越し不可
                 const falloff = 1 - dist / blastR;
                 const splashDamage = Math.max(1, Math.round(FIRE_KNIFE_EXPLOSION_DAMAGE * fkExMult * fkOutMult * (0.55 + falloff * 0.45)));
-                const killed = damageEnemy(enemy.id, splashDamage, true); // 爆発=ボス系には非致死
+                const killed = damageEnemy(enemy.id, splashDamage, true, false, false, knife.ownerGhost ? 'dot' : 'other'); // 爆風。守護霊の火ナイフは揺らさない(v0.25.4286)
                 fkHitCount += 1;
                 spawnDamageNumber(ex, enemy.y, splashDamage, false);
                 spawnBurst(ex, ey, '#b91c1c', 4);
@@ -12149,7 +12149,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (hit) {
               const hx = hit.x + hit.width / 2;
               const hy = hit.y + hit.height / 2;
-              const killed = damageEnemy(hit.id, knife.damage);
+              const killed = damageEnemy(hit.id, knife.damage, false, false, false, knife.ownerGhost ? 'dot' : 'other'); // 守護霊の投げナイフは揺らさない(v0.25.4286)
               spawnDamageNumber(hx, hit.y, knife.damage, false);
               spawnBurst(hx, hy, knife.ownerGhost ? '#9fd8ff' : '#fb923c', 5); // 刺さった火花(軽量。ゴースト発は青白)
               playSfx('shot-damage');

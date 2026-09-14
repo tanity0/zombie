@@ -20,7 +20,7 @@ import { GLOW_R_L } from './glowTiers';
 import {
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore, counterReplyDamage, skillLevel, enemyDeathLabel, counterMasterAwakenBuffPatch,
-  BOSS_CRIT_DAMAGE_MULT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
+  BOSS_CRIT_DAMAGE_MULT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossSlowMult, bossCritCdMult } from '../store/gameStore';
 import { getActiveGun } from './weaponUtils';
 import { createEnemyProjectile, isGate2AngelBoss, spawnEnemyAt } from './enemyUtils';
@@ -261,7 +261,7 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   st.addMeleeFinishCombo(1);
   sfx.counter();
   st.spawnGlow(hitX, hitY, GLOW_R_L, 'rgba(56,189,248,', 360);
-  st.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+  st.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
   st.markMeleeSwingFx();
   st.spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
   st.spawnBurst(hitX, hitY, '#38bdf8', 14);
