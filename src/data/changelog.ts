@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4317',
+    items: [
+      '斜めが一番傾いた所で止まって見えるようになった。画面が止まっている間ずっと傾いたまま保ち、動き出してから素早く戻る。',
+    ],
+  },
+  {
     version: '0.25.4316',
     items: [
       '処刑とカウンターの斜めが、一番傾いた所で一拍止まってから素早く戻るようになった。',
