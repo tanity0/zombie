@@ -4,6 +4,7 @@ import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
 import NoBounceScroller from './NoBounceScroller';
 import { getLastHeartbeat } from '../utils/crashDiagnostics';
+import { CINE_TOGGLES, cineToggleOn, cineToggleLockedByUrl, setCineToggle, resetCineToggles } from '../utils/cineToggles';
 import { CHANGELOG } from '../data/changelog';
 import { loadChronicle, getChronicleStartAt, type ChronicleEntry } from '../data/progress';
 import { bossIconSrc } from '../utils/bossIcon';
@@ -262,6 +263,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   // (バッジから何度でも開き直せるようにするため)。既読版と現在の版が一致する時だけ最初から閉じておく。
   const alreadySeenThisVersion = useMemo(() => readNoticeSeenVersion() === __APP_VERSION__, []);
   const [showNotice, setShowNotice] = useState<boolean>(!alreadySeenThisVersion);
+  const [showCine, setShowCine] = useState(false); // 寄り演目の部品スイッチ(開発用)
+  const [cineRev, setCineRev] = useState(0);       // 押したら描き直すためだけの版数
   const [phase, setPhase] = useState<'title' | 'blackout' | 'loading'>('title');
   // OK(またはSTART経由の代行)が音声解禁+オープニング起動を1回だけ担うためのガード。
   const noticeHandledRef = useRef(false);
@@ -432,6 +435,60 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
             START
           </span>
           <span className="h-[1px] w-28 sm:w-40" style={{ background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.7), transparent)' }} />
+        </div>
+      )}
+
+      {/* 寄り演目(処刑カメラ+VFX)の部品スイッチ(社長要望2026-09-14「スタート画面にこれらのオンオフ入れてくれない?」)。
+          ★開発用の切り分け道具であってプレイヤー向けの設定ではない=見た目に労力をかけない。
+          台帳は src/utils/cineToggles.ts(文言を2箇所で持たない)。URLで指定した項目は触れない(URLが正)。 */}
+      {phase === 'title' && !showNotice && (
+        <div
+          className="absolute z-20"
+          style={{ left: 'max(env(safe-area-inset-left), 12px)', bottom: 'max(calc(env(safe-area-inset-bottom) + 12px), 12px)' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {!showCine ? (
+            <button
+              type="button"
+              onClick={() => { playSfx('ui-select'); setShowCine(true); }}
+              className="px-3 py-1 text-[10px] font-bold tracking-[0.18em] text-purple-200/80"
+              style={{ background: 'rgba(24,15,38,0.55)', borderRight: '2px solid rgba(168,85,247,0.7)', clipPath: 'polygon(8px 0, 100% 0, 100% 100%, 0 100%)' }}
+              aria-label="処刑カメラの切り分けを開く"
+            >
+              CAMERA
+            </button>
+          ) : (
+            <div className="w-[248px] border border-purple-400/30 bg-[rgba(16,10,26,0.94)] p-2 text-[11px] text-purple-100/90">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="tracking-[0.16em] text-purple-200/70">処刑カメラ</span>
+                <button type="button" onClick={() => { playSfx('ui-select'); setShowCine(false); }} className="px-2 text-purple-200/70" aria-label="閉じる">×</button>
+              </div>
+              {CINE_TOGGLES.map(t => {
+                const locked = cineToggleLockedByUrl(t.key);
+                void cineRev; // 押すたびに再描画するためだけの依存
+                const on = cineToggleOn(t.key);
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    disabled={locked}
+                    onClick={() => { playSfx('ui-select'); setCineToggle(t.key, on ? 0 : 1); setCineRev(r => r + 1); }}
+                    className="flex w-full items-center justify-between py-[3px] text-left disabled:opacity-40"
+                  >
+                    <span className="flex-1 truncate pr-2">{t.label}<span className="ml-1 text-[9px] text-purple-200/40">{t.hint}</span></span>
+                    <span className={on ? 'text-emerald-300' : 'text-purple-200/35'}>{locked ? 'URL' : on ? '入' : '切'}</span>
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => { playSfx('ui-select'); resetCineToggles(); setCineRev(r => r + 1); }}
+                className="mt-1 w-full border-t border-purple-400/20 pt-1 text-[10px] tracking-[0.14em] text-purple-200/60"
+              >
+                既定へ戻す
+              </button>
+            </div>
+          )}
         </div>
       )}
 

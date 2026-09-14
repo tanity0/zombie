@@ -269,6 +269,7 @@ import { strongestGuardian } from '../data/fixedGuardians';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, isCutinRepeat, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
+import { cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(URL+タイトル画面・v0.25.4311)
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
@@ -2284,9 +2285,9 @@ export const JUICE_CD_MS = camNum('juicecd', MELEE_FINISH_ZOOM_CD_MS);
 // CD内キル(フル演出が出ない間)の最低保証フラッシュ(任意・OFF可)。
 export const JUICE_MIN_FLASH_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('juiceflash') !== '0';
 export const JUICE_MIN_FLASH_MS = 80;
-// ?cinedemo=1(開発用・既定OFF・v0.25.4310): **近接の一振りごとに**処刑のフル演出を出す。
+// 「一振りで再生」(開発用・既定OFF・v0.25.4310): **近接の一振りごとに**処刑のフル演出を出す。
 // 社長「勝手に発動する機能切って」= 自動発火は撤去し、**社長が振った時だけ**出る形にした。
-export const CINE_DEMO_ON_SWING = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('cinedemo') === '1';
+// スイッチは URL(`?cinedemo=1`)とタイトル画面のパネルで共有(v0.25.4311)。
 // Inertia time constants (s). Velocity eases toward its target over this
 // window. The player is now instant (0 = no inertia, snappy control); enemies
 // keep 0.3s so they curve into turns instead of snapping.
@@ -7577,7 +7578,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           get().spawnBurst(pcx, pcy, '#bae6fd', 12);                           // 弾ける光の粒
         }
       }
-      if (CINE_DEMO_ON_SWING) {
+      if (cineToggleOn('cinedemo')) {
         // ?cinedemo=1: 振るたびに処刑の演出(execute の台本+VFX)を1回出す。当たっていなくても出す=確認用。
         const dp = get().player, dcx = dp.x + dp.width / 2, dcy = dp.y + dp.height / 2;
         get().triggerFinishImpact(dcx + (dp.direction === 'left' ? -120 : 120), dcy, true);

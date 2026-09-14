@@ -137,6 +137,7 @@ import {
 // PACING_PUZZLE.md §10-12#17(フィル・羽根の檻/裁きの光/急降下の可視域クランプ=可視短辺の0.45倍上限)。
 import { phillCageInitialRadiusPx } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
+import { cineToggle, cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(URL+タイトル画面)
 import { cineFxVocab, cineFxBacklightTint, cineFxHasStreak, cineFxSetFor, cineFxTargetsSelf, cineFxPushFollow, cineFxShutterAt, cineFxWipeAt, cineFxDeathLight, cineFxRepeatMult, cineFxNearDust, cineFxMotes, cineFxDustStep, CINE_FX_SHUTTER_ALPHA, CINE_FX_SHUTTER_TINT, CINE_FX_WIPE_MS, CINE_FX_WIPE_COUNTER_MS, CINE_FX_WIPE_W_FRAC, CINE_FX_VIGNETTE_TO, CINE_FX_BACKLIGHT_W_MULT, CINE_FX_BACKLIGHT_ALPHA, CINE_FX_BACKLIGHT_STRETCH_TO, CINE_FX_RIM_ALPHA, CINE_FX_BOKEH, CINE_FX_BOKEH_BLOOD, CINE_FX_BLOOD_TINT, CINE_FX_BLOOD_DRIP_FRAC, CINE_FX_DUST_NEAR_SPEED, CINE_FX_DUST_FAR_SPEED, CINE_FX_DUST_DRIFT, CINE_FX_STAGGER_MS, type CineFxKind, type CineFxParticle } from '../utils/cineFx'; // 寄り演目のVFX(§8・v0.25.4306)
 import { cineCameraAt, cineModeFor, thirdsAim, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, CINE_PLATE_NEAR_MARGIN_FRAC, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
 import { reportSuppressedError } from '../utils/errorBeacon';
@@ -941,19 +942,8 @@ const SHAFT_WIDTH_FACTOR = Math.max(0.05, tsNum('shaftwidth', 0.5));
 //   ?fogbg=0.45  森上霧(最下部・手前の森に被る低い霧。0=なし)
 //   ?fogspd=1    揺れの速さ
 // ★お試し中(2026-06-16): 奥は「めっちゃ濃く」0.85 のまま検証中。基準(戻り)値 → 森下=0.52 / 奥=0.45
-// 寄り演目のVFX(§8・v0.25.4306)の切り分けツマミ。`?cinefx=0` で全部落とす(`?hidelayer=cinefx` も同じ)。
-// 自作スイッチで消去法をやらないための「既存の道具」側に最初から足しておく(CLAUDE.md §7-3)。
-const CINE_FX_ENABLED = tsNum('cinefx', 1) !== 0;
-// ★`?cinecam=0`(v0.25.4308): カメラの台本(カット/押し込み/横滑り/三分割)を丸ごと切って**今日より前の素の寄り**
-// (命中の瞬間に最大まで寄って戻るだけ)へ戻す。社長「寄りの雰囲気がかわってて、あまり好きじゃない。カメラワークが変」の
-// 切り分け用=実機で1本の中に並べて比べられるようにする(板とVFXも台本に紐づくので一緒に消える)。
-const CINE_CAM_ENABLED = tsNum('cinecam', 1) !== 0;
-// ★部品ごとの切り分け(v0.25.4309・社長「どれが原因か分かんないので切り分けて見てみたい」)。
-// 既定は全部1=今の見え方のまま。0で切る/0.5で半分にできるので、実機で1つずつ足し引きして原因を特定する。
-const CINE_PUSH_MULT = tsNum('cinepush', 1);     // 押し込み(じわっと寄る量)。0=命中の瞬間に最大まで寄る(今日より前の形)
-const CINE_ORBIT_MULT = tsNum('cineorbit', 1);   // 横滑り(カメラが横へ流れる量)。0=流れない
-const CINE_THIRDS_ON = tsNum('cinethirds', 1) !== 0; // 三分割の構図。0=相手を画面の真ん中に置く(今日より前の形)
-const CINE_PLATES_ON = tsNum('cineplates', 1) !== 0; // 近景の板(木の幹・霧)
+// 寄り演目(処刑カメラ+VFX)の部品スイッチ。**URL も タイトル画面のパネルも同じ1本**を読む
+// (`src/utils/cineToggles.ts`・v0.25.4311)。毎フレーム読むので素の変数=React を起こさない。
 const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.9));      // 森下霧(fog-alpha素材・最大α~67%なので濃いめに)
 const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.65));  // 奥(遠景+地面・キャラの後ろ)
 const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.32));     // 森上霧(手前の森に被る最下部・薄め)
@@ -7862,6 +7852,10 @@ export class PixiScene {
     // 群衆戦(近傍8体以上=文脈ズーム<1)とボス戦(ボス距離ズーム)の処刑が全部 cutPush に落ち、三分割・横滑り・板が実機で出ていなかった。
     const cinePushOnly = s.farBackdrop === 'tutorial' || s.farBackdrop === 'ending' || s.corridorMode || isExStageRun() || s.stageTheme === 'lab';
     const cineMode: CineMode = cineEv ? cineModeFor(cinePushOnly, this.idleZoom * this.contextZoom, s.zoomMag, cineEv.kind) : (cinePushOnly ? 'pushOnly' : 'full');
+    const CINE_CAM_ENABLED = cineToggleOn('cinecam');
+    const CINE_PUSH_MULT = cineToggle('cinepush');
+    const CINE_ORBIT_MULT = cineToggle('cineorbit');
+    const CINE_THIRDS_ON = cineToggleOn('cinethirds');
     const camRaw = cineEv && CINE_CAM_ENABLED ? cineCameraAt(cineEv.kind, now - cineEv.startAt, cineMode, cineEv.startFrac) : null;
     // 部品ごとのツマミを台本の出力に掛ける(台本そのものは触らない=1本の関数の外で足し引きする)。
     const cam: CineCamera | null = camRaw && (CINE_PUSH_MULT !== 1 || CINE_ORBIT_MULT !== 1 || !CINE_THIRDS_ON)
@@ -8036,7 +8030,7 @@ export class PixiScene {
       this.zoomApplied = false;
     }
     // 近景の板(§6・v0.25.4296): 演目・モード・包絡線をそのまま渡す(描画のみ)。
-    this.syncCinePlates(CINE_PLATES_ON ? cineEv : null, cam, cineMode, zoomDecayCine, now, cineSideX);
+    this.syncCinePlates(cineToggleOn('cineplates') ? cineEv : null, cam, cineMode, zoomDecayCine, now, cineSideX);
     // 寄り演目のVFX(§8 v2・v0.25.4306): 板と同じ入力で回す。逆光だけは actorLayer(世界)へ置く。
     // ★v0.25.4308: VFXは**実時計(fxNow)**で回す。`now` はヒットストップ中に凍結する時計で、
     // シャッター(~110ms)とワイプ(120ms)は**ヒットストップ(100ms)の中に丸ごと入る**ため、
@@ -29466,7 +29460,7 @@ export class PixiScene {
     const kind: CineFxKind = ev ? (ev.onPlayer ? 'fatal-on-player' : ev.kind) : 'rescue';
     const set = cineFxSetFor(kind);
     const vocab = cineFxVocab(st.farBackdrop, st.stageTheme);
-    const live = !!ev && !!cam && CINE_FX_ENABLED && decay > 0 && mode !== 'pushOnly' && vocab !== 'none'
+    const live = !!ev && !!cam && cineToggleOn('cinefx') && decay > 0 && mode !== 'pushOnly' && vocab !== 'none'
       && (set.shutter || set.wipe || set.backlight || set.bokeh || set.dust || set.vignette);
     if (!live) {
       if (layer.visible) layer.visible = false;

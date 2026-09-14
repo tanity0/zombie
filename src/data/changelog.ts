@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4311',
+    items: [
+      'タイトル画面の左下から、処刑のカメラと演出を部品ごとに入切できるようになった。押し込み、横滑り、構図、近景、光の効果をその場で試せる。',
+    ],
+  },
+  {
     version: '0.25.4310',
     items: ['ゲーム内容の変更はありません。'],
   },
