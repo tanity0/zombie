@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4288',
+    items: ['カウンターや処刑で画面が寄る時の斜めの遠近が、最初の一コマから最大の傾きで出る(徐々に傾いていたのをやめた)。戻りは今までどおり滑らか。'],
+  },
+  {
     version: '0.25.4287',
     items: [
       '処刑の揺れは他のどの一撃よりも大きく出る(自分が殴られた時よりは小さい)。',

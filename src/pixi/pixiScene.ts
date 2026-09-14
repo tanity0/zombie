@@ -3470,6 +3470,7 @@ export class PixiScene {
   private zwarpPrevZoom = 0; private zwarpLastNow = 0;
   private zwarpEventDecay = 0;                       // 寄りズームイベントの包絡線(0..1・syncの zoomDecay を写す)
   private zwarpEventStart = -1;                      // 今のイベントの zoomStart(変わったら新イベント=向きを決める)
+  private zwarpSnappedFor = -1;                      // 最初のフレームで最大へ飛ばした(スナップ済み)イベントの zoomStart(v0.25.4288)
   private zwarpPadTop = 0;                           // フィルタ枠の縦の広げ幅(画面高さ比・§8 奥の辺の縮みぶん)
   private zwarpPadBot = 0;
   private zwarpEventSide: -1 | 1 = 1;                // 奥にする側(+1=右 / −1=左)
@@ -5874,6 +5875,13 @@ export class PixiScene {
       const env = ZWARP_HOLD ? 1 : Math.min(Math.pow(Math.max(0, this.zwarpEventDecay), ZWARP_DECAY_POW), relEase);
       const magK = ZWARP_HOLD ? 1 : Math.min(1, Math.max(0, this.zwarpEventMag) / ZWARP_MAG_REF);
       const target = ZWARP_MAX * env * magK;
+      // ★社長指示2026-09-14「カウンターやKILL時の斜めエフェクト、スタートからMAX斜めにして」: 新しいイベントの最初のフレームは
+      // ばねの立ち上がり(約20〜40ms・揺り返し)を待たず、その時点の目標(=最大)へ**飛ばす**。以後の戻り(ほどけ)は従来どおり
+      // ばね+自分の時計で滑らかに(慣性MUSTのイン側だけを社長指示で例外にした)。
+      if (this.zwarpEventStart >= 0 && this.zwarpEventStart !== this.zwarpSnappedFor) {
+        this.zwarpSnappedFor = this.zwarpEventStart;
+        if (target > this.zwarpK) { this.zwarpK = target; this.zwarpV = 0; }
+      }
       if (dt > 0) {
         const w = ZWARP_SPRING_W, zt = ZWARP_SPRING_Z;
         let rem = dt;
