@@ -15,13 +15,15 @@ export const CINE_TOGGLES: { key: CineToggleKey; label: string; hint: string }[]
   { key: 'cineorbit',  label: '横滑り',     hint: 'カメラが横へ流れる' },
   { key: 'cinethirds', label: '三分割の構図', hint: '切ると相手が画面の真ん中に来る' },
   { key: 'cineplates', label: '近景の板',   hint: '縁に割り込む木の幹と霧' },
-  { key: 'cinefx',     label: 'VFX',        hint: '逆光・光の輪・埃・沈み込み' },
+  { key: 'cinefx',     label: 'VFX(作り直し中)', hint: '逆光・光の輪・埃・沈み込み。既定は切' },
   { key: 'cinecam',    label: 'カメラ台本', hint: '切ると全部止まって素の寄りだけになる' },
   { key: 'cinedemo',   label: '一振りで再生', hint: '近接を振るたびに処刑の演出を出す(確認用)' },
 ];
 
+// ★cinefx の既定を 0(切)にした(v0.25.4315・社長「VFX全然ちがう。レゾナンスみたいじゃない。意味不明な感じになってる」)。
+// 作り直すまで**出荷の見え方から外す**。パネルで入にすれば従来どおり出る(素材も実装も消していない)。
 const DEFAULTS: Record<CineToggleKey, number> = {
-  cinecam: 1, cinepush: 1, cineorbit: 1, cinethirds: 1, cineplates: 1, cinefx: 1, cinedemo: 0,
+  cinecam: 1, cinepush: 1, cineorbit: 1, cinethirds: 1, cineplates: 1, cinefx: 0, cinedemo: 0,
 };
 
 const STORAGE_PREFIX = 'zombie:cine:';
