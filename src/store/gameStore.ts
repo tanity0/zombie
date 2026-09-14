@@ -2266,7 +2266,10 @@ export const KILLFX_RELEASE_SLOW_MS = 300; // 停止明け: 0.2→等速へ戻�
 export const COUNTER_ZOOM_MAG = 1.0;
 // ダイナミック・カメラワーク(v0.25.4294・CINEMATIC_CAMERA v2 台本): カウンター成立の寄りは短く硬く(スロー700とは別の時間構造)。
 export const COUNTER_ZOOM_MS = 320;
-export const COUNTER_ZOOM_HOLD_MS = 240;       // カウンター成立の寄り(社長指示で2倍=+100%・旧1.5倍から改訂)
+export const COUNTER_ZOOM_HOLD_MS = 240;
+// 致命(ボス級)の処刑の寄り(v0.25.4296・CINEMATIC_CAMERA §6-6 #8): 長い保持+二拍目。スロー(700)より長く残る。
+export const EXECUTE_ZOOM_MS = 1100;
+export const EXECUTE_ZOOM_HOLD_MS = 900;       // カウンター成立の寄り(社長指示で2倍=+100%・旧1.5倍から改訂)
 // PACING_PUZZLE.md §5.22 M21(社長委任v0.25.1516・CD制確定v0.25.1524): KILL/カウンター演出を
 // 「命中の瞬間に全部ピーク→同じ長さ/カーブで一緒に戻る」1拍エンベロープへ統一する。
 // ?juice=0で旧演出(このバッチ以前の個別エンベロープ・スローは毎回/ズームだけCD)へ完全復帰(A/B用)。
@@ -19888,7 +19891,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           zoomHasTarget: false, zoomTargetX: 0, zoomTargetY: 0,
         });
       }
-      get().triggerZoom(MELEE_FINISH_ZOOM_MAG, durationMs, holdMs, targetX, targetY, 'kill');
+      // v0.25.4296: 致命(forceMaximumZoom=ボス級の処刑)は別台本 'execute'=長い保持(EXECUTE_ZOOM_MS/HOLD)と二拍目。通常の処刑は 'kill'。
+      if (forceMaximumZoom) get().triggerZoom(MELEE_FINISH_ZOOM_MAG, EXECUTE_ZOOM_MS, EXECUTE_ZOOM_HOLD_MS, targetX, targetY, 'execute');
+      else get().triggerZoom(MELEE_FINISH_ZOOM_MAG, durationMs, holdMs, targetX, targetY, 'kill');
     };
     if (!JUICE_ENABLED) {
       // ?juice=0: このバッチ以前の演出へ完全復帰(A/B比較用)。ズームだけCD、スロー/揺れは毎回。
@@ -19939,15 +19944,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? { kind, startAt: now, endAt: now + Math.max(0, durationMs), hasTarget,
             targetX: hasTarget ? (targetX as number) : pl.x + pl.width / 2, targetY: hasTarget ? (targetY as number) : pl.y + pl.height / 2 }
         : state.cineEvent;
+      // v0.25.4296(クリエイティブ監査14): 演目が**割り込んだ**(進行中に高い順位が入った)時は寄り先と包絡線も新演目で始め直す
+      // (旧: 継続扱いで前の被害者を見たまま死亡の台本が掛かっていた)。割り込みでなければ従来の「継続中は保持・max合成」。
+      const interrupted = active && cineEvent !== state.cineEvent && cineEvent !== null;
+      const cont = active && !interrupted;
       return {
         cineEvent,
-        zoomUntil: Math.max(active ? state.zoomUntil : 0, now + Math.max(0, durationMs)),
-        zoomMag: Math.max(state.zoomMag, Math.max(0, mag)),
-        zoomStart: active ? state.zoomStart : now,
-        zoomHoldMs: active ? Math.max(state.zoomHoldMs, Math.max(0, holdMs)) : Math.max(0, holdMs),
-        zoomHasTarget: active ? state.zoomHasTarget : hasTarget,
-        zoomTargetX: active ? state.zoomTargetX : (hasTarget ? targetX : 0),
-        zoomTargetY: active ? state.zoomTargetY : (hasTarget ? targetY : 0),
+        zoomUntil: Math.max(cont ? state.zoomUntil : 0, now + Math.max(0, durationMs)),
+        zoomMag: cont ? Math.max(state.zoomMag, Math.max(0, mag)) : Math.max(0, mag),
+        zoomStart: cont ? state.zoomStart : now,
+        zoomHoldMs: cont ? Math.max(state.zoomHoldMs, Math.max(0, holdMs)) : Math.max(0, holdMs),
+        zoomHasTarget: cont ? state.zoomHasTarget : hasTarget,
+        zoomTargetX: cont ? state.zoomTargetX : (hasTarget ? targetX : 0),
+        zoomTargetY: cont ? state.zoomTargetY : (hasTarget ? targetY : 0),
       };
     });
   },

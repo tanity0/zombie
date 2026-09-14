@@ -3,6 +3,8 @@ import {
   cineCameraAt, cineAccepts, thirdsPoint, CINE_KILL_CUT_FRAC, CINE_KILL_PUSH_START_MS, CINE_KILL_PUSH_MS,
   CINE_KILL_ORBIT_START_MS, CINE_KILL_ORBIT_MS, CINE_KILL_ORBIT_FRAC, CINE_COUNTER_OVERSHOOT, CINE_COUNTER_IN_MS,
   CINE_COUNTER_ORBIT_OUT_MS, CINE_COUNTER_ORBIT_BACK_MS, CINE_DEATH_FROM_FRAC, CINE_DEATH_IN_MS, CINE_THIRDS_T, type CineEvent,
+  thirdsAim, cinePlateIn, cinePlateKinds, CINE_EXEC_CUT_FRAC, CINE_EXEC_PUSH1_TO, CINE_EXEC_PUSH2_START_MS, CINE_EXEC_PUSH2_MS,
+  CINE_THIRDS_X_FRAC, CINE_FRAME_MARGIN_FRAC, CINE_PLATE_IN_MS,
 } from './cineCamera';
 
 describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v2・社長承認2026-09-14)', () => {
@@ -61,5 +63,44 @@ describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v
     const p = thirdsPoint(0, 0, 100, 0);
     expect(p.x).toBeCloseTo(100 * CINE_THIRDS_T, 9); expect(p.y).toBe(0);
     expect(CINE_THIRDS_T).toBeGreaterThan(0.5); expect(CINE_THIRDS_T).toBeLessThan(1);
+  });
+});
+
+describe('第2弾(v0.25.4296): 処刑の別台本・画面上の三分割・近景の板', () => {
+  it('処刑(execute): カットは KILL より広く、一拍目→止め→二拍目で100%。優先順は kill より上・death より下', () => {
+    expect(cineCameraAt('execute', 0, 'full').zoomFrac).toBe(CINE_EXEC_CUT_FRAC);
+    expect(CINE_EXEC_CUT_FRAC).toBeLessThan(CINE_KILL_CUT_FRAC);
+    const hold = cineCameraAt('execute', CINE_EXEC_PUSH2_START_MS - 1, 'full').zoomFrac;
+    expect(hold).toBeCloseTo(CINE_EXEC_PUSH1_TO, 2); // 止めの間は92%
+    expect(cineCameraAt('execute', CINE_EXEC_PUSH2_START_MS + CINE_EXEC_PUSH2_MS, 'full').zoomFrac).toBeCloseTo(1, 9);
+    const kill: CineEvent = { kind: 'kill', startAt: 0, endAt: 700, hasTarget: true, targetX: 0, targetY: 0 };
+    expect(cineAccepts(kill, 'execute', 100)).toBe(true);
+    const exec: CineEvent = { kind: 'execute', startAt: 0, endAt: 1100, hasTarget: true, targetX: 0, targetY: 0 };
+    expect(cineAccepts(exec, 'kill', 100)).toBe(false);
+    expect(cineAccepts(exec, 'death', 100)).toBe(true);
+  });
+  it('三分割(画面上の置き場所): 相手は縦の三分割線(自機の反対側)に乗り、自機は枠内に残る', () => {
+    const W = 800, H = 600, zoom = 2;
+    // 近接キル(相手が右60px): 距離比なら中央寄せと同じだが、置き場所なら相手は右の三分割線
+    const near = thirdsAim({ px: 0, py: 0, tx: 60, ty: 0, zoom, screenW: W, screenH: H });
+    const targetScreenX = W / 2 + (60 - near.x) * zoom;
+    expect(targetScreenX).toBeCloseTo(W / 2 + W * CINE_THIRDS_X_FRAC, 6);
+    expect(near.sideX).toBe(1);
+    // 遠距離(相手が右900px): 自機が枠外へ出ないよう寄り先がクランプされる
+    const far = thirdsAim({ px: 0, py: 0, tx: 900, ty: 0, zoom, screenW: W, screenH: H });
+    const playerScreenX = W / 2 + (0 - far.x) * zoom;
+    expect(playerScreenX).toBeGreaterThanOrEqual(W * CINE_FRAME_MARGIN_FRAC - 1e-6);
+    expect(playerScreenX).toBeLessThanOrEqual(W - W * CINE_FRAME_MARGIN_FRAC + 1e-6);
+    // 相手が左なら左の三分割線
+    expect(thirdsAim({ px: 0, py: 0, tx: -60, ty: 0, zoom, screenW: W, screenH: H }).sideX).toBe(-1);
+  });
+  it('近景の板: 滑り込みは行き過ぎて止まる(途中で1を超える)。出す演目は処刑2種と死亡だけ', () => {
+    expect(cinePlateIn(0)).toBe(0);
+    let over = false;
+    for (let t = 0; t <= CINE_PLATE_IN_MS; t += 10) if (cinePlateIn(t) > 1) over = true;
+    expect(over).toBe(true);
+    expect(cinePlateIn(CINE_PLATE_IN_MS)).toBeCloseTo(1, 9);
+    expect(cinePlateKinds.has('kill')).toBe(true); expect(cinePlateKinds.has('execute')).toBe(true);
+    expect(cinePlateKinds.has('death')).toBe(true); expect(cinePlateKinds.has('counter')).toBe(false);
   });
 });

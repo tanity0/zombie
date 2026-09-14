@@ -137,7 +137,7 @@ import {
 // PACING_PUZZLE.md §10-12#17(フィル・羽根の檻/裁きの光/急降下の可視域クランプ=可視短辺の0.45倍上限)。
 import { phillCageInitialRadiusPx } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
-import { cineCameraAt, thirdsPoint, type CineMode } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294)
+import { cineCameraAt, thirdsAim, cinePlateIn, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -3476,6 +3476,13 @@ export class PixiScene {
   private zwarpPadBot = 0;
   private zwarpEventSide: -1 | 1 = 1;                // 奥にする側(+1=右 / −1=左)
   private cineAimY: number | null = null;             // ダイナミック・カメラワーク: このフレームの寄り先Y(ピント帯が読む)
+  // 近景の板(research/CINEMATIC_CAMERA.md §6・v0.25.4296): 寄り演出の間だけ画面の縁に大きくボケた近景を斜めに割り込ませる。
+  // 画面空間(L.cinePlates)・pooled sprite 2枚・ぼかしは読み込み時に1回焼く(毎フレームのフィルタ無し)。
+  private cinePlateSprites: Sprite[] = [];
+  private cinePlateTexCache = new Map<string, Texture>();
+  private cinePlateEventStart = -1;
+  private cinePlateDirIn: 1 | -1 = 1;   // 板の縁(自機側)から画面中央へ向く向き(+1=左縁から右へ)
+  private cinePlateFar: 1 | -1 = 1;     // 奥側(相手側)=板の傾き先
   private zwarpDisabled = false;                     // フィルタが作れない環境では以後無効(世界はそのまま)
   private zwarpZoomNow = 1;                          // このフレームに worldGroup へ適用した総ズーム(zwarp が読む)
   // 分身(サブウェポン): 持ち主と同じ立ち絵を白黒キャッシュで描く足元アンカーのスプライト+
@@ -7899,9 +7906,14 @@ export class PixiScene {
     const kvp = this.killFxVisPos;
     // 三分割(v0.25.4294): 相手を中央に置かず、自機(処刑中は見た目位置 kvp)と相手(cineEvent の座標)の内分点を寄り先にする。
     // 台本が無い/構図を触らないモードでは従来どおり(kvp または zoomTarget を中央へ)。
-    const aimW = (cam && cam.thirds && cineEv && cineEv.hasTarget)
-      ? thirdsPoint(kvp ? kvp.x : zpx, kvp ? kvp.y : zpy, cineEv.targetX, cineEv.targetY)
-      : { x: kvp ? kvp.x : s.zoomTargetX, y: kvp ? kvp.y : s.zoomTargetY };
+    // v0.25.4296(監査6): 内分点(距離比)ではなく**画面上の置き場所**=相手を自機の反対側の縦三分割線へ、自機は枠内に残す。
+    const cinePx = kvp ? kvp.x : zpx, cinePy = kvp ? kvp.y : zpy;
+    const thirds = (cam && cam.thirds && cineEv && cineEv.hasTarget)
+      ? thirdsAim({ px: cinePx, py: cinePy, tx: cineEv.targetX, ty: cineEv.targetY, zoom, screenW: this.screenW, screenH: this.screenH })
+      : null;
+    const aimW = thirds ?? { x: kvp ? kvp.x : s.zoomTargetX, y: kvp ? kvp.y : s.zoomTargetY };
+    // 相手の側(+1=右)。横滑り・板の向きの基準。相手座標が無い時は zwarp の奥側で代用。
+    const cineSideX: 1 | -1 = thirds ? thirds.sideX : (cineEv && cineEv.hasTarget ? (cineEv.targetX >= cinePx ? 1 : -1) : this.zwarpEventSide);
     const targetScreenX = this.L.world.position.x + aimW.x;
     const targetScreenY = this.L.world.position.y + aimW.y;
     // v0.25.2593(社長報告「起点が守護霊によったことで、映ってはいけない画面外がでちゃってる感じ。
@@ -7913,7 +7925,8 @@ export class PixiScene {
     const panLimitY = Math.max(0, (1 - 1 / Math.max(0.001, zoom)) * centerY);
     // 横滑り(v0.25.4294): 奥側(zwarp と同じ側)へ画面幅比で滑らせ、包絡線(zoomDecay)で戻る。中央寄せと**合成してから**クランプ(一本化)。
     // 横滑りの戻りは寄せより遅く(√包絡線)=ズームが先に抜け、パンは後から静かに合流(同じ道を同じ速さで逆走しない)。
-    const orbitPx = cam ? cam.orbitFrac * this.screenW * this.zwarpEventSide * Math.sqrt(zoomDecayCine) : 0;
+    // v0.25.4296(監査7): 向きは**自機側**へ(相手を三分割に留めたまま、自機側の縁=近景の板の側を見せる)。旧: 相手側(=斜めの奥)。
+    const orbitPx = cam ? cam.orbitFrac * this.screenW * (-cineSideX) * Math.sqrt(zoomDecayCine) : 0;
     const panRawX = (zoomAimsTarget ? (targetScreenX - centerX) * zoom * zoomDecayCine * ZOOM_TARGET_CENTER_FRAC : 0) + orbitPx;
     const panRawY = zoomAimsTarget ? (targetScreenY - centerY) * zoom * zoomDecayCine * ZOOM_TARGET_CENTER_FRAC : 0;
     this.cineAimY = zoomAimsTarget ? aimW.y : null; // ピント帯(tilt-shift)が同じ寄り先を見る
@@ -7973,6 +7986,8 @@ export class PixiScene {
       this.L.worldGroup.position.set(0, 0);
       this.zoomApplied = false;
     }
+    // 近景の板(§6・v0.25.4296): 演目・モード・包絡線をそのまま渡す(描画のみ)。
+    this.syncCinePlates(cineEv, cam, cineMode, zoomDecayCine, now, cineSideX);
     // §6.37 v6: hzFixed(遠景森1/森2+地平付帯層)は**ボス寄せバイアス(bossPan)だけ**打ち消す。
     // v2993の「引き中は完全画面固定」は撤回——社長裁定(2026-08-07)は「森は世界と一緒に縮んでよい。
     // 縮みで出る切れ目はコピー森(リッジ3本・下のsyncで管理)で誤魔化す」。バイアス打ち消しは
@@ -29349,6 +29364,86 @@ export class PixiScene {
       sp.alpha = alpha * jitter;
       sp.visible = true;
     }
+  }
+
+  // ---- 近景の板(research/CINEMATIC_CAMERA.md §6・v0.25.4296) ---------------------------------
+  /** 板のテクスチャ=元絵を読み込み時に1回だけぼかして焼く(毎フレームのフィルタ無し)。renderer が無ければ元絵のまま。 */
+  private cinePlateTexture(key: string): Texture | null {
+    const cached = this.cinePlateTexCache.get(key);
+    if (cached) return cached;
+    const src = getTexture(key);
+    if (!src) return null;
+    if (!this.renderer) return src;
+    const pad = CINE_PLATE_BLUR_PX * 3;
+    const scale = Math.min(1, 512 / Math.max(1, src.height)); // 焼きの解像度は高さ512まで(ボケるので十分・メモリ節約)
+    const w = Math.ceil(src.width * scale) + pad * 2, h = Math.ceil(src.height * scale) + pad * 2;
+    const rt = RenderTexture.create({ width: w, height: h, resolution: 1 });
+    const sp = new Sprite(src); sp.position.set(pad, pad); sp.scale.set(scale);
+    const wrap = new Container(); wrap.addChild(sp);
+    wrap.filters = [new BlurFilter({ strength: CINE_PLATE_BLUR_PX, quality: 3 })];
+    this.renderer.render({ container: wrap, target: rt, clear: true });
+    wrap.destroy({ children: true });
+    this.cinePlateTexCache.set(key, rt);
+    return rt;
+  }
+
+  /**
+   * 寄り演出(処刑2種・死亡)の間だけ、自機側の縁に近景の板を2枚(下の角=木の幹・上下反対の角=霧の房)を割り込ませる。
+   * 命中(カット)の瞬間に縁の外から滑り込み(行き過ぎて止まる)、保持中は奥側へゆっくり流れ(横滑りの逆=手前ほど速い視差)、
+   * 包絡線(√)で縁の外へ抜ける。板は台形の奥側へ傾ける(世界を回さずに「斜め」を板で増幅)。中央(寄り先)は触らない。
+   */
+  private syncCinePlates(ev: CineEvent | null, cam: CineCamera | null, mode: CineMode, decay: number, now: number, sideX: 1 | -1): void {
+    const layer = this.L.cinePlates;
+    if (!ev || !cam || mode !== 'full' || decay <= 0 || !cinePlateKinds.has(ev.kind)) {
+      if (layer.visible) layer.visible = false;
+      return;
+    }
+    const st = useGameStore.getState();
+    if (this.cinePlateSprites.length === 0) {
+      for (let i = 0; i < 2; i++) { const sp = new Sprite(Texture.WHITE); sp.visible = false; layer.addChild(sp); this.cinePlateSprites.push(sp); }
+    }
+    const [treeSp, fogSp] = this.cinePlateSprites;
+    if (ev.startAt !== this.cinePlateEventStart) {
+      // 新しい演目: 板の絵と向きを決める(以後このイベント中は固定=途中で飛ばない)。
+      this.cinePlateEventStart = ev.startAt;
+      this.cinePlateFar = sideX;
+      this.cinePlateDirIn = sideX; // 板は自機側(相手の反対)の縁=そこから画面中央へ向く向きは相手側
+      const treeKey = st.farBackdrop === 'city' ? 'tree-city' : st.farBackdrop === 'snow' ? 'tree-snow' : 'tree';
+      const treeTex = this.cinePlateTexture(treeKey);
+      const fogTex = this.cinePlateTexture('fog-alpha');
+      treeSp.visible = !!treeTex; if (treeTex) treeSp.texture = treeTex;
+      fogSp.visible = !!fogTex; if (fogTex) fogSp.texture = fogTex;
+      treeSp.anchor.set(0.5, 1); fogSp.anchor.set(0.5, 0.5);
+      treeSp.tint = 0x0a0d12; fogSp.tint = 0x0b0f14;
+    }
+    const W = this.screenW, H = this.screenH;
+    const t = now - ev.startAt;
+    const inFrac = cinePlateIn(t) * Math.sqrt(decay); // 滑り込み(行き過ぎ)×抜け(√包絡線=ズームより遅く)
+    const drift = CINE_PLATE_DRIFT_FRAC * W * Math.max(0, Math.min(1, (t - 300) / 500)); // 保持中に奥側へ
+    const dirIn = this.cinePlateDirIn;
+    const edgeX = dirIn > 0 ? 0 : W;
+    // 木の幹: 自機側の下の角。高さ=画面の1.35倍(大きく)。内側の縁が画面幅の CINE_PLATE_W_FRAC まで来る。
+    if (treeSp.visible) {
+      const tex = treeSp.texture;
+      const h = H * 1.35, sc = h / Math.max(1, tex.height), w = tex.width * sc;
+      treeSp.scale.set(sc);
+      const fullX = edgeX + dirIn * (W * CINE_PLATE_W_FRAC - w / 2);
+      treeSp.position.set(fullX - dirIn * w * (1 - inFrac) + dirIn * drift, H * 1.08);
+      treeSp.rotation = this.cinePlateFar * CINE_PLATE_TILT_RAD;
+      treeSp.alpha = CINE_PLATE_ALPHA * Math.min(1, inFrac);
+    }
+    // 霧の房: 上か下の角(寄り先の反対側)。横長・薄め・傾きは半分。
+    if (fogSp.visible) {
+      const tex = fogSp.texture;
+      const w = W * 0.7, h = H * 0.45;
+      fogSp.scale.set(w / Math.max(1, tex.width), h / Math.max(1, tex.height));
+      const sideY: 1 | -1 = ev.targetY >= st.player.y + st.player.height / 2 ? 1 : -1;
+      const fullX = edgeX + dirIn * (W * 0.25);
+      fogSp.position.set(fullX - dirIn * (W * 0.5) * (1 - inFrac) + dirIn * drift * 1.6, sideY > 0 ? H * 0.08 : H * 0.92);
+      fogSp.rotation = this.cinePlateFar * CINE_PLATE_TILT_RAD * 0.5;
+      fogSp.alpha = 0.6 * Math.min(1, inFrac);
+    }
+    layer.visible = true;
   }
 
   // ---- screen-space: off-screen supply arrows ------------------------------

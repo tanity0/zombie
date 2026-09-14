@@ -50,6 +50,7 @@ export interface SceneLayers {
   // 対象から外すのが意図(§10-14#6)。danceUiLayerより後(=上)に置く=通常のゲームプレイ演出より前面。
   phillLayer: Container;
   uiLayer: Container;
+  cinePlates: Container;   // 寄り演出の近景の板(画面空間・frontForest と uiLayer の間。research/CINEMATIC_CAMERA.md §6・v0.25.4296)
 }
 
 export const buildLayers = (
@@ -114,8 +115,10 @@ export const buildLayers = (
   worldGroup.addChild(groundBase, horizonForest, nearHorizon, filteredWorld, danceUiLayer, phillLayer);
 
   const uiLayer = new Container();
+  const cinePlates = new Container();
+  cinePlates.visible = false;
 
-  stage.addChild(farBackdrop, worldGroup, frontForest, uiLayer);
+  stage.addChild(farBackdrop, worldGroup, frontForest, cinePlates, uiLayer);
 
   return {
     stage,
@@ -137,5 +140,6 @@ export const buildLayers = (
     danceUiLayer,
     phillLayer,
     uiLayer,
+    cinePlates,
   };
 };
