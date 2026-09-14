@@ -126,7 +126,7 @@ import { type SignalStrike, SIGNAL_STRIKE_DELAY_MS, SIGNAL_STRIKE_RADIUS_PX } fr
 import { resetHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPONS.md §13-1
 import { nextCycleMode } from '../utils/cycleShotgun'; // UNIQUE_WEAPONS.md §16-2/§17-7(バッチB・切替式SG)
 import { stepHeavySniperStillMs } from '../utils/heavySniperCharge'; // UNIQUE_WEAPONS.md §16-2(バッチB・大型狙撃銃)
-import { resolveSlotKeyNow } from '../utils/weaponSlot'; // UNIQUE_WEAPONS.md §4-1(生成点=grantWeapon入口の安全網/武器庫)
+import { resolveSlotKeyNow, isTestWeaponUnlockAll } from '../utils/weaponSlot'; // UNIQUE_WEAPONS.md §4-1(生成点=grantWeapon入口の安全網/武器庫)/ 武器解放ALL(開発用)
 import { BOSS_UNLOCK, SUB_BOSS_UNLOCK } from '../data/weaponSlots'; // UNIQUE_WEAPONS.md §11-6(ボス撃破→ユニーク武器の設計図入手)/§19-6(サブウェポン版・別台帳)
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
@@ -210,7 +210,7 @@ import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
   getEventQuestMeta, setEventQuestMeta, markCastleBossCleared, syncQuestStageClear,
   updateStoryFlags, markMissionCleared,
-  isKogarasuUnlocked, markKogarasuUnlocked, markWeaponBlueprint, markSubBlueprint,
+  isKogarasuUnlocked, markKogarasuUnlocked, markWeaponBlueprint, markSubBlueprint, isWeaponUnlocked,
   getSelectedFreeMode,
   type WallMeta,
 } from '../data/progress';
@@ -3604,7 +3604,12 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   const storyRunForBlueprint = !isPracticeRun() && !BOSS_TEST_RUN;
   if (storyRunForBlueprint && (enemy.type !== 'giantbat' || isFinalBossKill(enemy))) {
     const unlockKey = BOSS_UNLOCK[`${enemy.type}@${getSelectedStageId() ?? ''}`] ?? BOSS_UNLOCK[enemy.type];
-    if (unlockKey && markWeaponBlueprint(unlockKey)) {
+    // ★社長指示2026-09-14「一度設計図を手に入れていたら、ボス倒しても『入手』は出ないようにして」:
+    // 台帳(markWeaponBlueprint)は**既に持っていれば false**=元から二度目は出ない。出ていたのは
+    // ①既に開発済み(購入済み=isWeaponUnlocked。店売り経由で設計図を通らず持っている)②開発用「武器解放ALL」ON
+    // の2経路=設計図の台帳が空のまま「持っている」状態。どちらも**台帳には書くがトーストは出さない**。
+    const blueprintNew = unlockKey ? markWeaponBlueprint(unlockKey) : false;
+    if (unlockKey && blueprintNew && !isWeaponUnlocked(unlockKey) && !isTestWeaponUnlockAll()) {
       useGameStore.setState({
         lastWeaponGet: {
           name: `${weaponDisplayName(unlockKey)} 設計図入手`,
@@ -3620,7 +3625,8 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     // ルックアップの形は銃と揃えるため `${type}@${stage}` のキーで引くが、SUB_BOSS_UNLOCK は
     // EnemyType キーの Partial<Record> なので、複合キーの参照だけ EnemyType へキャストする。
     const subUnlockKey = SUB_BOSS_UNLOCK[`${enemy.type}@${getSelectedStageId() ?? ''}` as EnemyType] ?? SUB_BOSS_UNLOCK[enemy.type];
-    if (subUnlockKey && markSubBlueprint(subUnlockKey)) {
+    const subBlueprintNew = subUnlockKey ? markSubBlueprint(subUnlockKey) : false;
+    if (subUnlockKey && subBlueprintNew && !isTestWeaponUnlockAll()) { // 同上(サブは購入台帳が無いので解放ALLだけ見る)
       useGameStore.setState({
         lastWeaponGet: {
           // ★トーストの名前はサブ名の表(subWeaponDisplayName)から引く(銃のweaponDisplayNameではない・§19-6項目5)。
