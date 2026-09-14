@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4313',
+    items: [
+      '処刑の寄りが、遠くから一気に押し込む形になった。当たった瞬間は控えめな寄りで、そこから最大まで詰める。',
+    ],
+  },
+  {
     version: '0.25.4312',
     items: [
       '更新情報を閉じてもゲームは始まらない。タイトルに戻るので、START を押すまで始まらなくなった。',

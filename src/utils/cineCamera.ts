@@ -35,15 +35,16 @@ export interface CineCamera {
 // 横滑りは長く怠く・押し込みは短く鋭く(尺で性格を分ける)/カウンターの行き過ぎを見える量に/振りは速く出てゆっくり戻る/
 // 死亡は着いて止めてから来た時より遅く帰る。
 // ---- KILL/処刑 ----
-export const CINE_KILL_CUT_FRAC = 0.5;       // カット(命中の瞬間に飛ぶ寄り)。1.5→2.0 へ押し込む(v0.25.4301 社長「やってみよう」: 0.7→0.5=押し込みを見える量に)
+export const CINE_KILL_CUT_FRAC = 0.2;       // カット(命中の瞬間に飛ぶ寄り)。**1.2→2.0 へ押し込む**
+                                             // (0.7→0.5→**0.2**。v0.25.4313 社長「押し込みが切っても違いがわからない。もう少し数値広げて」)
 export const CINE_KILL_PUSH_START_MS = 100;  // ストップ明けから押し込み(HITSTOP_MS と同じ)
-export const CINE_KILL_PUSH_MS = 224;        // 保持560msの前半40%で100%へ(「一番寄る瞬間=スローの一番遅い区間」の裁定を保つ)
+export const CINE_KILL_PUSH_MS = 270;        // 保持560msの前半で100%へ(「一番寄る瞬間=スローの一番遅い区間」の裁定を保つ)。v0.25.4313: 224→270
 export const CINE_KILL_ORBIT_FRAC = 0.14;    // 横滑り(画面幅比・v0.25.4301: 0.08→0.14)
 export const CINE_KILL_ORBIT_START_MS = 200; // 押し込みの後半から重ねて滑り出す(終点と始点を同じ瞬間にしない=速度0の角を作らない)
 export const CINE_KILL_ORBIT_MS = 260;       // 長く怠く(押し込みより長い)。t=460 で到達=斜め(zwarp)がほどけ切る頃に合わせる
 export const CINE_KILL_OUT_POW = 1;
 // ---- 処刑(致命=ボス級・forceMaximumZoom)・v0.25.4296: 長い保持と二拍目 ----
-export const CINE_EXEC_CUT_FRAC = 0.4;        // カットは KILL より広く(v0.25.4301: 0.6→0.4=一拍目の寄りに重さを持たせる)
+export const CINE_EXEC_CUT_FRAC = 0.12;       // カットは KILL より広く(0.6→0.4→**0.12**・v0.25.4313)。1.12→1.92→2.0 の二拍
 export const CINE_EXEC_PUSH1_START_MS = 100;
 export const CINE_EXEC_PUSH1_MS = 260;        // 一拍目: 60→92%
 export const CINE_EXEC_PUSH1_TO = 0.92;
@@ -100,6 +101,25 @@ export const cineModeFor = (pushOnly: boolean, baseZoom: number, zoomMag: number
   if (pushOnly) return 'pushOnly';
   const atPeak = baseZoom * (1 + Math.max(0, zoomMag));
   return atPeak < 1 ? 'cutPush' : 'full';
+};
+
+/**
+ * 部品スイッチ(タイトル画面/URL)を台本の出力へ掛ける。**台本そのものは触らない**=切り分けで挙動が二重に変わらない。
+ * - `push` 0 = 押し込み無し(カットの瞬間に100%寄る)。0.5 = 半分。1 = 台本どおり。
+ * - `orbit` は横滑りの倍率。`thirds` false で構図を切る。
+ */
+export const applyCineKnobs = (
+  cam: CineCamera,
+  knobs: { push: number; orbit: number; thirds: boolean },
+): CineCamera => {
+  if (knobs.push === 1 && knobs.orbit === 1 && knobs.thirds) return cam;
+  return {
+    ...cam,
+    zoomFrac: 1 - (1 - cam.zoomFrac) * knobs.push,
+    orbitFrac: cam.orbitFrac * knobs.orbit,
+    pushNorm: knobs.push === 0 ? 1 : cam.pushNorm,
+    thirds: cam.thirds && knobs.thirds,
+  };
 };
 
 export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode, startFrac?: number): CineCamera => {
