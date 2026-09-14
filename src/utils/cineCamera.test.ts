@@ -49,7 +49,7 @@ describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v
     expect(CINE_DEATH_IN_MS).toBeLessThan(1150);
     expect(cineCameraAt('death', 500, 'full').thirds).toBe(false);
     expect(cineCameraAt('death', 0, 'full').outPow).toBeLessThan(1);
-    expect(cineCameraAt('rescue', 100, 'full')).toEqual({ zoomFrac: 1, orbitFrac: 0, thirds: false, outPow: 1 });
+    expect(cineCameraAt('rescue', 100, 'full')).toEqual({ zoomFrac: 1, orbitFrac: 0, thirds: false, outPow: 1, pushNorm: 1 });
   });
   it('重なり: 進行中より高い順位だけ割り込む(KILL保持中のカウンターは捨てる・死亡は割り込む)。終わっていれば何でも受ける', () => {
     const kill: CineEvent = { kind: 'kill', startAt: 1000, endAt: 1700, hasTarget: true, targetX: 0, targetY: 0 };
@@ -93,6 +93,10 @@ describe('第2弾(v0.25.4296): 処刑の別台本・画面上の三分割・近�
     expect(playerScreenX).toBeLessThanOrEqual(W - W * CINE_FRAME_MARGIN_FRAC + 1e-6);
     // 相手が左なら左の三分割線
     expect(thirdsAim({ px: 0, py: 0, tx: -60, ty: 0, zoom, screenW: W, screenH: H }).sideX).toBe(-1);
+    // 板を出す演目: 自機側の余白を板の内縁より広く取る=自機は板(0〜0.32W)の裏に入らない
+    const plated = thirdsAim({ px: 0, py: 0, tx: 900, ty: 0, zoom, screenW: W, screenH: H, nearMarginFrac: 0.38 });
+    const platedPlayerX = W / 2 + (0 - plated.x) * zoom;
+    expect(platedPlayerX).toBeGreaterThanOrEqual(W * 0.38 - 1e-6);
   });
   it('近景の板: 滑り込みは行き過ぎて止まる(途中で1を超える)。出す演目は処刑2種と死亡だけ', () => {
     expect(cinePlateIn(0)).toBe(0);

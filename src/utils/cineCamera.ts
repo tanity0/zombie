@@ -20,6 +20,7 @@ export interface CineCamera {
   orbitFrac: number;  // 横滑り(画面幅比・符号は呼び手が奥側で決める)。full 以外は0
   thirds: boolean;    // 相手を三分割線へ(自機と相手の内分点を寄り先にする)。full 以外は false
   outPow: number;     // 戻りの形: 共有包絡線(easeOut)に掛ける冪。1=そのまま / >1=保ってから速く落ちる(硬く切る) / <1=来た時より遅く帰る
+  pushNorm: number;   // 押し込みの進み(0=カット直後 … 1=寄り切り)。近景の板が「寄ると前景は速く大きくなる」を読む(v0.25.4297)
 }
 // クリエイティブ監査(v0.25.4295・1巡)の反映: 押し込みに距離を持たせる(85→70%)/押し込みと横滑りを重ねて経路を1本に/
 // 横滑りは長く怠く・押し込みは短く鋭く(尺で性格を分ける)/カウンターの行き過ぎを見える量に/振りは速く出てゆっくり戻る/
@@ -62,7 +63,10 @@ export const CINE_THIRDS_Y_FRAC = 1 / 8;   // 縦は控えめ(上下の副作用
 export const CINE_FRAME_MARGIN_FRAC = 0.14; // 自機が枠内に残る余白(画面比)
 // ---- 近景の板(§6・v0.25.4296) ----
 export const CINE_PLATE_W_FRAC = 0.32;     // 縁の何割を覆うか(小さいと「無い」と同じ)
-export const CINE_PLATE_TILT_RAD = 0.16;   // ≈9°(台形の奥側へ傾ける)
+export const CINE_PLATE_TILT_RAD = 0.21;   // 幹≈12°(台形の奥側へ寝かせる。v0.25.4297: 霧とは別の値=派生値にしない)
+export const CINE_PLATE_FOG_TILT_RAD = 0.035; // 霧≈2°(ほぼ水平)
+export const CINE_PLATE_PUSH_SCALE = 0.07;  // 寄り切りで板が何割大きくなるか(前景は寄ると速く動く)
+export const CINE_PLATE_NEAR_MARGIN_FRAC = 0.38; // 自機側の余白=板の内縁(0.32)+0.06。斬っている自機が板の裏に隠れない
 export const CINE_PLATE_ALPHA = 0.85;
 export const CINE_PLATE_IN_MS = 220;
 export const CINE_PLATE_DRIFT_FRAC = 0.03; // 保持中に奥側へ流れる量(横滑りの逆=視差)
@@ -85,7 +89,8 @@ export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode): CineC
         ? CINE_KILL_CUT_FRAC
         : CINE_KILL_CUT_FRAC + (1 - CINE_KILL_CUT_FRAC) * easeOutCubic(clamp01((t - CINE_KILL_PUSH_START_MS) / CINE_KILL_PUSH_MS));
       const ou = clamp01((t - CINE_KILL_ORBIT_START_MS) / CINE_KILL_ORBIT_MS);
-      return { zoomFrac, orbitFrac: full ? CINE_KILL_ORBIT_FRAC * smoothstep(ou) : 0, thirds: full, outPow: CINE_KILL_OUT_POW };
+      return { zoomFrac, orbitFrac: full ? CINE_KILL_ORBIT_FRAC * smoothstep(ou) : 0, thirds: full, outPow: CINE_KILL_OUT_POW,
+        pushNorm: clamp01((zoomFrac - CINE_KILL_CUT_FRAC) / (1 - CINE_KILL_CUT_FRAC)) };
     }
     case 'execute': {
       // 一拍目(60→92%)→止め→二拍目(92→100%)。横滑りは長く。
@@ -94,7 +99,8 @@ export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode): CineC
       else if (t < CINE_EXEC_PUSH2_START_MS) zoomFrac = CINE_EXEC_CUT_FRAC + (CINE_EXEC_PUSH1_TO - CINE_EXEC_CUT_FRAC) * easeOutCubic(clamp01((t - CINE_EXEC_PUSH1_START_MS) / CINE_EXEC_PUSH1_MS));
       else zoomFrac = CINE_EXEC_PUSH1_TO + (1 - CINE_EXEC_PUSH1_TO) * easeInOutCubic(clamp01((t - CINE_EXEC_PUSH2_START_MS) / CINE_EXEC_PUSH2_MS));
       const ou = clamp01((t - CINE_EXEC_ORBIT_START_MS) / CINE_EXEC_ORBIT_MS);
-      return { zoomFrac, orbitFrac: full ? CINE_EXEC_ORBIT_FRAC * smoothstep(ou) : 0, thirds: full, outPow: CINE_EXEC_OUT_POW };
+      return { zoomFrac, orbitFrac: full ? CINE_EXEC_ORBIT_FRAC * smoothstep(ou) : 0, thirds: full, outPow: CINE_EXEC_OUT_POW,
+        pushNorm: clamp01((zoomFrac - CINE_EXEC_CUT_FRAC) / (1 - CINE_EXEC_CUT_FRAC)) };
     }
     case 'counter': {
       const u = clamp01(t / CINE_COUNTER_IN_MS);
@@ -107,16 +113,16 @@ export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode): CineC
           ? -CINE_COUNTER_ORBIT_FRAC * easeOutCubic(t1 / CINE_COUNTER_ORBIT_OUT_MS)
           : -CINE_COUNTER_ORBIT_FRAC * (1 - easeOutCubic(clamp01((t1 - CINE_COUNTER_ORBIT_OUT_MS) / CINE_COUNTER_ORBIT_BACK_MS)));
       }
-      return { zoomFrac, orbitFrac: full ? orbit : 0, thirds: full, outPow: CINE_COUNTER_OUT_POW };
+      return { zoomFrac, orbitFrac: full ? orbit : 0, thirds: full, outPow: CINE_COUNTER_OUT_POW, pushNorm: 1 };
     }
     case 'death': {
       // 止まらずにじり寄る(ease-in)→保持(DEATH_ZOOM_HOLD_MS までの残り)で止める→来た時より遅く帰る(outPow<1)
       const u = clamp01(t / CINE_DEATH_IN_MS);
-      return { zoomFrac: CINE_DEATH_FROM_FRAC + (1 - CINE_DEATH_FROM_FRAC) * easeInQuad(u), orbitFrac: 0, thirds: false, outPow: CINE_DEATH_OUT_POW };
+      return { zoomFrac: CINE_DEATH_FROM_FRAC + (1 - CINE_DEATH_FROM_FRAC) * easeInQuad(u), orbitFrac: 0, thirds: false, outPow: CINE_DEATH_OUT_POW, pushNorm: easeInQuad(u) };
     }
     case 'rescue':
     default:
-      return { zoomFrac: 1, orbitFrac: 0, thirds: false, outPow: 1 };
+      return { zoomFrac: 1, orbitFrac: 0, thirds: false, outPow: 1, pushNorm: 1 };
   }
 };
 
@@ -135,6 +141,7 @@ export const thirdsPoint = (px: number, py: number, tx: number, ty: number): { x
  */
 export const thirdsAim = (input: {
   px: number; py: number; tx: number; ty: number; zoom: number; screenW: number; screenH: number;
+  nearMarginFrac?: number; // 自機側(板のある縁)の余白。板を出す演目では CINE_PLATE_NEAR_MARGIN_FRAC を渡す(v0.25.4297・監査12)
 }): { x: number; y: number; sideX: 1 | -1 } => {
   const { px, py, tx, ty, screenW, screenH } = input;
   const zoom = Math.max(0.001, input.zoom);
@@ -142,10 +149,14 @@ export const thirdsAim = (input: {
   const sideY: 1 | -1 = ty >= py ? 1 : -1;
   let ax = tx - (sideX * screenW * CINE_THIRDS_X_FRAC) / zoom;
   let ay = ty - (sideY * screenH * CINE_THIRDS_Y_FRAC) / zoom;
-  // 自機の画面位置=中央+(自機−寄り先)×zoom。枠内(余白)に収まるよう寄り先を戻す。
-  const limX = screenW / 2 - screenW * CINE_FRAME_MARGIN_FRAC;
+  // 自機の画面位置=中央+(自機−寄り先)×zoom。枠内(余白)に収まるよう寄り先を戻す。自機側の余白だけ広く取れる(板の裏に隠さない)。
+  const nearMargin = input.nearMarginFrac ?? CINE_FRAME_MARGIN_FRAC;
   const limY = screenH / 2 - screenH * CINE_FRAME_MARGIN_FRAC;
   const psx = (px - ax) * zoom, psy = (py - ay) * zoom;
+  // 自機は相手の反対側(−sideX)へ出る。その側の限界=中央から (0.5 − nearMargin)×W。相手側へ出る稀な場合は通常の余白。
+  const limNear = screenW / 2 - screenW * nearMargin;
+  const limFar = screenW / 2 - screenW * CINE_FRAME_MARGIN_FRAC;
+  const limX = Math.sign(psx) === -sideX ? limNear : limFar;
   if (Math.abs(psx) > limX) ax = px - (Math.sign(psx) * limX) / zoom;
   if (Math.abs(psy) > limY) ay = py - (Math.sign(psy) * limY) / zoom;
   return { x: ax, y: ay, sideX };

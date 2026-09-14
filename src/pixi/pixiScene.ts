@@ -137,7 +137,7 @@ import {
 // PACING_PUZZLE.md §10-12#17(フィル・羽根の檻/裁きの光/急降下の可視域クランプ=可視短辺の0.45倍上限)。
 import { phillCageInitialRadiusPx } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
-import { cineCameraAt, thirdsAim, cinePlateIn, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
+import { cineCameraAt, thirdsAim, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, CINE_PLATE_NEAR_MARGIN_FRAC, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -7909,7 +7909,8 @@ export class PixiScene {
     // v0.25.4296(監査6): 内分点(距離比)ではなく**画面上の置き場所**=相手を自機の反対側の縦三分割線へ、自機は枠内に残す。
     const cinePx = kvp ? kvp.x : zpx, cinePy = kvp ? kvp.y : zpy;
     const thirds = (cam && cam.thirds && cineEv && cineEv.hasTarget)
-      ? thirdsAim({ px: cinePx, py: cinePy, tx: cineEv.targetX, ty: cineEv.targetY, zoom, screenW: this.screenW, screenH: this.screenH })
+      ? thirdsAim({ px: cinePx, py: cinePy, tx: cineEv.targetX, ty: cineEv.targetY, zoom, screenW: this.screenW, screenH: this.screenH,
+          nearMarginFrac: cinePlateKinds.has(cineEv.kind) ? CINE_PLATE_NEAR_MARGIN_FRAC : undefined }) // 板を出す演目は自機を板の裏に隠さない
       : null;
     const aimW = thirds ?? { x: kvp ? kvp.x : s.zoomTargetX, y: kvp ? kvp.y : s.zoomTargetY };
     // 相手の側(+1=右)。横滑り・板の向きの基準。相手座標が無い時は zwarp の奥側で代用。
@@ -29367,6 +29368,8 @@ export class PixiScene {
   }
 
   // ---- 近景の板(research/CINEMATIC_CAMERA.md §6・v0.25.4296) ---------------------------------
+  /** 0..1 の smoothstep(ドリフトの ease-in-out・慣性MUST)。 */
+  private static smoothstep01(u: number): number { return u * u * (3 - 2 * u); }
   /** 板のテクスチャ=元絵を読み込み時に1回だけぼかして焼く(毎フレームのフィルタ無し)。renderer が無ければ元絵のまま。 */
   private cinePlateTexture(key: string): Texture | null {
     const cached = this.cinePlateTexCache.get(key);
@@ -29394,11 +29397,14 @@ export class PixiScene {
    */
   private syncCinePlates(ev: CineEvent | null, cam: CineCamera | null, mode: CineMode, decay: number, now: number, sideX: 1 | -1): void {
     const layer = this.L.cinePlates;
-    if (!ev || !cam || mode !== 'full' || decay <= 0 || !cinePlateKinds.has(ev.kind)) {
+    const st = useGameStore.getState();
+    // ステージの近景語彙(§6-2・クリエイティブ監査v0.25.4297 1/13): 森(既定)・雪=幹+霧 / 廃都=煙(霧の板)だけ / 研究所・星雲・その他=出さない。
+    const vocab: 'forest' | 'city' | 'none' = st.stageTheme === 'lab' ? 'none'
+      : (st.farBackdrop === '' || st.farBackdrop === 'snow') ? 'forest' : st.farBackdrop === 'city' ? 'city' : 'none';
+    if (!ev || !cam || mode !== 'full' || decay <= 0 || !cinePlateKinds.has(ev.kind) || vocab === 'none') {
       if (layer.visible) layer.visible = false;
       return;
     }
-    const st = useGameStore.getState();
     if (this.cinePlateSprites.length === 0) {
       for (let i = 0; i < 2; i++) { const sp = new Sprite(Texture.WHITE); sp.visible = false; layer.addChild(sp); this.cinePlateSprites.push(sp); }
     }
@@ -29408,40 +29414,48 @@ export class PixiScene {
       this.cinePlateEventStart = ev.startAt;
       this.cinePlateFar = sideX;
       this.cinePlateDirIn = sideX; // 板は自機側(相手の反対)の縁=そこから画面中央へ向く向きは相手側
-      const treeKey = st.farBackdrop === 'city' ? 'tree-city' : st.farBackdrop === 'snow' ? 'tree-snow' : 'tree';
-      const treeTex = this.cinePlateTexture(treeKey);
+      const treeTex = vocab === 'forest' ? this.cinePlateTexture(st.farBackdrop === 'snow' ? 'tree-snow' : 'tree') : null;
       const fogTex = this.cinePlateTexture('fog-alpha');
       treeSp.visible = !!treeTex; if (treeTex) treeSp.texture = treeTex;
       fogSp.visible = !!fogTex; if (fogTex) fogSp.texture = fogTex;
       treeSp.anchor.set(0.5, 1); fogSp.anchor.set(0.5, 0.5);
-      treeSp.tint = 0x0a0d12; fogSp.tint = 0x0b0f14;
+      // 色: 真っ黒の切り絵にしない(監査3/6)。幹=元絵の明度を少し残す暗い青灰。霧=森は淡い青灰、廃都は煙(暗い)。
+      treeSp.tint = 0x1a1f2a;
+      fogSp.tint = vocab === 'city' ? 0x1b1d22 : 0x8a97a8;
     }
     const W = this.screenW, H = this.screenH;
     const t = now - ev.startAt;
-    const inFrac = cinePlateIn(t) * Math.sqrt(decay); // 滑り込み(行き過ぎ)×抜け(√包絡線=ズームより遅く)
-    const drift = CINE_PLATE_DRIFT_FRAC * W * Math.max(0, Math.min(1, (t - 300) / 500)); // 保持中に奥側へ
+    const total = Math.max(1, ev.endAt - ev.startAt);
     const dirIn = this.cinePlateDirIn;
     const edgeX = dirIn > 0 ? 0 : W;
-    // 木の幹: 自機側の下の角。高さ=画面の1.35倍(大きく)。内側の縁が画面幅の CINE_PLATE_W_FRAC まで来る。
+    // カットの瞬間に板は**既に居る**(スライドインしない=「カットの後にUIが入ってくる」文法にしない・監査8)。動きは視差(ドリフト)と
+    // 寄りに連れて大きくなる(前景は寄ると速く動く)だけ。抜けは包絡線(幹=√・霧はさらに遅れて残る)。
+    const outTree = Math.sqrt(decay), outFog = Math.pow(decay, 0.3);
+    const grow = 1 + CINE_PLATE_PUSH_SCALE * cam.pushNorm;
+    // ドリフト(奥側へ): 2枚で開始と尺をずらし、ease-in-out(等速で始めて瞬間停止しない・監査7/9)。尺は演目の長さに合わせる。
+    const driftMs = Math.max(300, total - 350);
+    const dTree = PixiScene.smoothstep01(Math.max(0, Math.min(1, (t - 250) / driftMs)));
+    const dFog = PixiScene.smoothstep01(Math.max(0, Math.min(1, (t - 120) / (driftMs + 200))));
     if (treeSp.visible) {
       const tex = treeSp.texture;
-      const h = H * 1.35, sc = h / Math.max(1, tex.height), w = tex.width * sc;
+      const h = H * 1.35 * grow, sc = h / Math.max(1, tex.height), w = tex.width * sc;
       treeSp.scale.set(sc);
       const fullX = edgeX + dirIn * (W * CINE_PLATE_W_FRAC - w / 2);
-      treeSp.position.set(fullX - dirIn * w * (1 - inFrac) + dirIn * drift, H * 1.08);
+      // 抜け: 包絡線が落ちるほど縁の外へ(幹の幅ぶん)。
+      treeSp.position.set(fullX - dirIn * w * (1 - outTree) + dirIn * CINE_PLATE_DRIFT_FRAC * W * dTree, H * 1.08);
       treeSp.rotation = this.cinePlateFar * CINE_PLATE_TILT_RAD;
-      treeSp.alpha = CINE_PLATE_ALPHA * Math.min(1, inFrac);
+      treeSp.alpha = CINE_PLATE_ALPHA * outTree;
     }
-    // 霧の房: 上か下の角(寄り先の反対側)。横長・薄め・傾きは半分。
     if (fogSp.visible) {
       const tex = fogSp.texture;
-      const w = W * 0.7, h = H * 0.45;
-      fogSp.scale.set(w / Math.max(1, tex.width), h / Math.max(1, tex.height));
+      // アスペクトを保って覆う(引き伸ばさない・監査5)。
+      const sc = Math.max((W * 0.7) / Math.max(1, tex.width), (H * 0.45) / Math.max(1, tex.height)) * (1 + (grow - 1) * 0.5);
+      fogSp.scale.set(sc);
       const sideY: 1 | -1 = ev.targetY >= st.player.y + st.player.height / 2 ? 1 : -1;
       const fullX = edgeX + dirIn * (W * 0.25);
-      fogSp.position.set(fullX - dirIn * (W * 0.5) * (1 - inFrac) + dirIn * drift * 1.6, sideY > 0 ? H * 0.08 : H * 0.92);
-      fogSp.rotation = this.cinePlateFar * CINE_PLATE_TILT_RAD * 0.5;
-      fogSp.alpha = 0.6 * Math.min(1, inFrac);
+      fogSp.position.set(fullX - dirIn * (W * 0.5) * (1 - outFog) + dirIn * CINE_PLATE_DRIFT_FRAC * W * 1.6 * dFog, sideY > 0 ? H * 0.08 : H * 0.92);
+      fogSp.rotation = this.cinePlateFar * CINE_PLATE_FOG_TILT_RAD;
+      fogSp.alpha = (vocab === 'city' ? 0.55 : 0.45) * outFog;
     }
     layer.visible = true;
   }
