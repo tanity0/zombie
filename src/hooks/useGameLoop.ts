@@ -2078,7 +2078,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // 死亡スローは従来からあったが**寄りズームが無かった**ので追加。守護霊の死(gameStore.damageSummon)と
     // 同じ定数・同じ長さ=どちらの死も同じ絵になる。holdを付けてスローと同じhold-then-rampで戻る。
     // v0.25.2587: 尺を延長(DEATH_ZOOM_MS=1700/hold=1150)し、立ち絵の保持・リザルト遷移もそれに揃えた。
-    useGameStore.getState().triggerZoom(DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, x, y);
+    useGameStore.getState().triggerZoom(DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, x, y, 'death');
     useGameStore.getState().triggerTimeSlow(DEATH_SLOW_SCALE, PLAYER_DEATH_SLOW_MS, DEATH_ZOOM_HOLD_MS);
     spawnBurst(x, y, '#ef4444', 36);
     spawnBurst(x, y, '#7f1d1d', 22);
@@ -9638,7 +9638,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().markFirstAidPoseFx();
             // 飛び出しの一拍を強調(社長指示v0.25.1657): プレイヤー(掲げた鞄)へ寄り+スロー。
             // 救急鞄は社長が明示的にスロー対象へ指名=CLAUDE.mdのサブウェポン・スロー禁止の例外。
-            useGameStore.getState().triggerZoom(FIRST_AID_POP_ZOOM_MAG, FIRST_AID_POP_ZOOM_MS, FIRST_AID_POP_ZOOM_HOLD_MS, pcx, pcy);
+            useGameStore.getState().triggerZoom(FIRST_AID_POP_ZOOM_MAG, FIRST_AID_POP_ZOOM_MS, FIRST_AID_POP_ZOOM_HOLD_MS, pcx, pcy, 'rescue');
             useGameStore.getState().triggerTimeSlow(FIRST_AID_POP_SLOW_SCALE, FIRST_AID_POP_SLOW_MS);
             const dir = safeThrowDirection(
               pcx, pcy,

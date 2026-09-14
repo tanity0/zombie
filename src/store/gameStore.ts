@@ -341,6 +341,7 @@ import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB
 import { labIdolSpotForDoc, type LabIdolSpot } from '../world/labIdolSpot';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
+import { cineAccepts, type CineEvent, type CineKind } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294)
 import { GAME_SPEED } from '../config/gameSpeed';
 import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS } from '../utils/meleeExecute';
 
@@ -2262,7 +2263,10 @@ export const KILLFX_BLOOD_LAG_MS = 90;
 export const KILLFX_TOTAL_MS =
   KILLFX_BURST_AT_MS + KILLFX_SLASH_MS + KILLFX_RETURN_MS + KILLFX_LAND_MS; // =785
 export const KILLFX_RELEASE_SLOW_MS = 300; // 停止明け: 0.2→等速へ戻す尾(時間にも慣性を付ける)
-export const COUNTER_ZOOM_MAG = 1.0;       // カウンター成立の寄り(社長指示で2倍=+100%・旧1.5倍から改訂)
+export const COUNTER_ZOOM_MAG = 1.0;
+// ダイナミック・カメラワーク(v0.25.4294・CINEMATIC_CAMERA v2 台本): カウンター成立の寄りは短く硬く(スロー700とは別の時間構造)。
+export const COUNTER_ZOOM_MS = 320;
+export const COUNTER_ZOOM_HOLD_MS = 240;       // カウンター成立の寄り(社長指示で2倍=+100%・旧1.5倍から改訂)
 // PACING_PUZZLE.md §5.22 M21(社長委任v0.25.1516・CD制確定v0.25.1524): KILL/カウンター演出を
 // 「命中の瞬間に全部ピーク→同じ長さ/カーブで一緒に戻る」1拍エンベロープへ統一する。
 // ?juice=0で旧演出(このバッチ以前の個別エンベロープ・スローは毎回/ズームだけCD)へ完全復帰(A/B用)。
@@ -5428,6 +5432,8 @@ interface GameState {
   zoomHasTarget: boolean;
   zoomTargetX: number;
   zoomTargetY: number;
+  // ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v2・v0.25.4294): 進行中の演目(種類/開始/相手)。pixiScene が台本を読む。
+  cineEvent: CineEvent | null;
   // KILLズームだけの連発防止CD(社長指示)。スロー/揺れには適用しない=ズームだけ間引く。
   lastKillZoomAt: number;
   // ★いまの画角(ボス交戦の引きズーム。1=等倍、小さいほど引き)。**描画からは書かない**——
@@ -5991,7 +5997,7 @@ interface GameState {
   // forceMaximumZoom=true は致命の一撃専用。CDと進行中ズームを無視し、対象へ最大ズームを掛け直す。
   // 戻り値=そのキルでフル演出(CD明け)が出たか(呼び出し元が武器固有フラッシュを出すかの判断に使う)。
   triggerFinishImpact: (targetX?: number, targetY?: number, forceMaximumZoom?: boolean) => boolean;
-  triggerZoom: (mag: number, durationMs: number, holdMs?: number, targetX?: number, targetY?: number) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)
+  triggerZoom: (mag: number, durationMs: number, holdMs?: number, targetX?: number, targetY?: number, kind?: CineKind) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)。kind=カメラ台本の演目(v0.25.4294)
   // dirX/dirY(§5.23 M22 C1・任意・未正規化でよい): 指定時はシェイクをその方向へ寄せる。
   // 未指定/{0,0}/`?dirfx=0`は従来どおり等方のランダム揺れ。
   triggerShake: (durationMs: number, mag?: number, dirX?: number, dirY?: number) => void; // 行動別の画面シェイク(描画のみ)
@@ -6602,6 +6608,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   killChainTier: 0,
   killChainTierAt: -1e12,
   zoomUntil: 0,
+  cineEvent: null,
   zoomMag: 0,
   zoomStart: 0,
   zoomHoldMs: 0,
@@ -8818,7 +8825,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(tcx, tcy, 6, 34, 'rgba(56,189,248,0.75)', 2, 260);
       // ズーム演出のみ(CLAUDE.md: サブウェポン/スキルのprocはスロー禁止=triggerHitImpactは
       // timeSlowを内包するため使わず、triggerZoomを直接叩く)。
-      get().triggerZoom(RESCUE_SIGNAL_ZOOM_MAG, RESCUE_SIGNAL_ZOOM_MS, RESCUE_SIGNAL_ZOOM_HOLD_MS, tcx, tcy);
+      get().triggerZoom(RESCUE_SIGNAL_ZOOM_MAG, RESCUE_SIGNAL_ZOOM_MS, RESCUE_SIGNAL_ZOOM_HOLD_MS, tcx, tcy, 'rescue');
       if (killed) {
         get().dropEnemyCurrency(target, tcx, tcy);
         get().dropEnemyXp(target, tcx, tcy, 'pickup-xp-rescue');
@@ -9876,7 +9883,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 寄る+スロー。プレイヤーの死亡演出(useGameLoop)と同じ定数・同じ長さで揃える(停止は入れない)。
     if (ghostDeathAt) {
       const at: { x: number; y: number } = ghostDeathAt;
-      get().triggerZoom(DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, at.x, at.y);
+      get().triggerZoom(DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, at.x, at.y, 'death');
       get().triggerTimeSlow(DEATH_SLOW_SCALE, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS);
       // v0.25.2587(社長報告「ズームされても一瞬でしかももう何もいなかった」の守護霊側): 守護霊の実体は
       // この瞬間に summons から消える(上のfilter)ので、**寄った先に何も無い**状態だった。
@@ -19684,6 +19691,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         killChainTier: 0,
         killChainTierAt: -1e12,
         zoomUntil: 0,
+        cineEvent: null,
         zoomMag: 0,
         zoomStart: 0,
         zoomHoldMs: 0,
@@ -19855,7 +19863,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ストップを入れ、揺れはストップ後に(止まりが揺れに埋もれないよう)。
     // ダンス中(四神舞)は gameTime を止めるとリズムが乱れるためストップ抜き=全て即時。
     // v0.25.2585: targetX/Y 指定時はその点へ寄る(守護霊のカウンター=成立位置)。未指定は従来どおり中央。
-    get().triggerZoom(zoomMag, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, targetX, targetY); // 即・寄り(スローと同期)
+    // v0.25.4294(CINEMATIC_CAMERA v2): カウンターの寄りは**短く・硬く切る**(320ms/保持240)。スロー(700)とは同期しない=演目の時間構造を変える。
+    get().triggerZoom(zoomMag, COUNTER_ZOOM_MS, COUNTER_ZOOM_HOLD_MS, targetX, targetY, 'counter');
     // v0.25.4284: shakeMag<=0 は「揺れは registerImpact 側(ダメージ由来)が出す」=ここでは停止/ズーム/スローだけ。
     if (get().rhythm.active) {
       if (shakeMag > 0) get().triggerShake(shakeMs, shakeMag);
@@ -19879,7 +19888,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           zoomHasTarget: false, zoomTargetX: 0, zoomTargetY: 0,
         });
       }
-      get().triggerZoom(MELEE_FINISH_ZOOM_MAG, durationMs, holdMs, targetX, targetY);
+      get().triggerZoom(MELEE_FINISH_ZOOM_MAG, durationMs, holdMs, targetX, targetY, 'kill');
     };
     if (!JUICE_ENABLED) {
       // ?juice=0: このバッチ以前の演出へ完全復帰(A/B比較用)。ズームだけCD、スロー/揺れは毎回。
@@ -19910,7 +19919,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     return fullCinematic;
   },
 
-  triggerZoom: (mag, durationMs, holdMs = 0, targetX, targetY) => {
+  triggerZoom: (mag, durationMs, holdMs = 0, targetX, targetY, kind) => {
     // 描画のみのパンチズーム。重なった場合は強い方/長い方を採用。ゲーム性(カメラ座標/判定)は不変。
     // holdMs: 最大ズームを保持する長さ(社長指示: ピークスロー=最大ズーム+テキスト最大の瞬間を
     // 保持してからフェードアウト。スロー(triggerTimeSlow)と同じhold-then-rampカーブ・同じ
@@ -19923,7 +19932,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const hasTarget = targetX !== undefined && targetY !== undefined;
     set(state => {
       const active = now < state.zoomUntil;
+      // ダイナミック・カメラワーク(v0.25.4294): 演目は優先順(death>kill>counter>rescue)で受け付ける。進行中より低い/同じ順位は捨てる
+      // (KILL保持中のカウンターは再キックしない)。相手座標=この呼び出しの寄り先(なければ自機中央)。
+      const pl = state.player;
+      const cineEvent: CineEvent | null = kind !== undefined && cineAccepts(state.cineEvent, kind, now)
+        ? { kind, startAt: now, endAt: now + Math.max(0, durationMs), hasTarget,
+            targetX: hasTarget ? (targetX as number) : pl.x + pl.width / 2, targetY: hasTarget ? (targetY as number) : pl.y + pl.height / 2 }
+        : state.cineEvent;
       return {
+        cineEvent,
         zoomUntil: Math.max(active ? state.zoomUntil : 0, now + Math.max(0, durationMs)),
         zoomMag: Math.max(state.zoomMag, Math.max(0, mag)),
         zoomStart: active ? state.zoomStart : now,

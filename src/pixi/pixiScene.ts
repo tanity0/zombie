@@ -137,6 +137,7 @@ import {
 // PACING_PUZZLE.md §10-12#17(フィル・羽根の檻/裁きの光/急降下の可視域クランプ=可視短辺の0.45倍上限)。
 import { phillCageInitialRadiusPx } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
+import { cineCameraAt, thirdsPoint, type CineMode } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -3474,6 +3475,7 @@ export class PixiScene {
   private zwarpPadTop = 0;                           // フィルタ枠の縦の広げ幅(画面高さ比・§8 奥の辺の縮みぶん)
   private zwarpPadBot = 0;
   private zwarpEventSide: -1 | 1 = 1;                // 奥にする側(+1=右 / −1=左)
+  private cineAimY: number | null = null;             // ダイナミック・カメラワーク: このフレームの寄り先Y(ピント帯が読む)
   private zwarpDisabled = false;                     // フィルタが作れない環境では以後無効(世界はそのまま)
   private zwarpZoomNow = 1;                          // このフレームに worldGroup へ適用した総ズーム(zwarp が読む)
   // 分身(サブウェポン): 持ち主と同じ立ち絵を白黒キャッシュで描く足元アンカーのスプライト+
@@ -7810,7 +7812,14 @@ export class PixiScene {
     const zoomDecay = (s.zoomUntil > now && s.zoomMag > 0)
       ? 1 - computeTimeSlowScale(now, s.zoomStart, s.zoomUntil, 0, s.zoomHoldMs)
       : 0;
-    const punch = 1 + s.zoomMag * zoomDecay;
+    // ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v2・v0.25.4294): 演目の台本(カット/押し込み/横滑り/三分割)を
+    // 既存の包絡線(zoomDecay)に掛ける。zwarp(斜め)の入力は従来どおり zoomDecay(押し込みのランプを渡さない=最初の1コマで最大を保つ)。
+    // モード: 訓練/エンディング/通路/EX=押し込みだけ。ズーム引き中(pan が効かない)=カット+押し込みだけ。
+    const cineEv = s.cineEvent && now < s.cineEvent.endAt && zoomDecay > 0 ? s.cineEvent : null;
+    const cineMode: CineMode = (this.currentFarKey === 'tutorial' || s.farBackdrop === 'ending' || s.corridorMode || isExStageRun())
+      ? 'pushOnly' : (this.idleZoom * this.contextZoom < 1 ? 'cutPush' : 'full');
+    const cam = cineEv ? cineCameraAt(cineEv.kind, now - cineEv.startAt, cineMode) : null;
+    const punch = 1 + s.zoomMag * zoomDecay * (cam ? cam.zoomFrac : 1);
     // ズーム時の遠近(既定ON・?zwarp=0 で切る)へ: イベントの包絡線・寄り量と、イベント開始時に決める奥の側(左右)。
     this.zwarpEventDecay = zoomDecay;
     this.zwarpEventMag = s.zoomMag;
@@ -7885,8 +7894,13 @@ export class PixiScene {
     // 見た目位置(振り付けオフセット込み・毎フレーム更新)**にする。killFxVisPosはdrawPlayerが
     // 毎フレーム書く(前フレーム値=1フレーム遅れは体感不能。演出が終わるとnull=従来の固定寄り先)。
     const kvp = this.killFxVisPos;
-    const targetScreenX = this.L.world.position.x + (kvp ? kvp.x : s.zoomTargetX);
-    const targetScreenY = this.L.world.position.y + (kvp ? kvp.y : s.zoomTargetY);
+    // 三分割(v0.25.4294): 相手を中央に置かず、自機(処刑中は見た目位置 kvp)と相手(cineEvent の座標)の内分点を寄り先にする。
+    // 台本が無い/構図を触らないモードでは従来どおり(kvp または zoomTarget を中央へ)。
+    const aimW = (cam && cam.thirds && cineEv && cineEv.hasTarget)
+      ? thirdsPoint(kvp ? kvp.x : zpx, kvp ? kvp.y : zpy, cineEv.targetX, cineEv.targetY)
+      : { x: kvp ? kvp.x : s.zoomTargetX, y: kvp ? kvp.y : s.zoomTargetY };
+    const targetScreenX = this.L.world.position.x + aimW.x;
+    const targetScreenY = this.L.world.position.y + aimW.y;
     // v0.25.2593(社長報告「起点が守護霊によったことで、映ってはいけない画面外がでちゃってる感じ。
     // レイヤーが切れてる」): 寄せ量に**安全上限**を掛ける。ズーム倍率 z で拡大している間は可視範囲が
     // 1/z に縮むので、**(1 - 1/z) × 画面半分**までなら平行移動しても「等倍時に見えていた範囲」の内側に
@@ -7894,8 +7908,11 @@ export class PixiScene {
     // 上限0=寄せない。中央捕捉はこの範囲内で最大限行う(ほとんどの場合そのまま中央に来る)。
     const panLimitX = Math.max(0, (1 - 1 / Math.max(0.001, zoom)) * centerX);
     const panLimitY = Math.max(0, (1 - 1 / Math.max(0.001, zoom)) * centerY);
-    const panRawX = zoomAimsTarget ? (targetScreenX - centerX) * zoom * zoomDecay * ZOOM_TARGET_CENTER_FRAC : 0;
+    // 横滑り(v0.25.4294): 奥側(zwarp と同じ側)へ画面幅比で滑らせ、包絡線(zoomDecay)で戻る。中央寄せと**合成してから**クランプ(一本化)。
+    const orbitPx = cam ? cam.orbitFrac * this.screenW * this.zwarpEventSide * zoomDecay : 0;
+    const panRawX = (zoomAimsTarget ? (targetScreenX - centerX) * zoom * zoomDecay * ZOOM_TARGET_CENTER_FRAC : 0) + orbitPx;
     const panRawY = zoomAimsTarget ? (targetScreenY - centerY) * zoom * zoomDecay * ZOOM_TARGET_CENTER_FRAC : 0;
+    this.cineAimY = zoomAimsTarget ? aimW.y : null; // ピント帯(tilt-shift)が同じ寄り先を見る
     const panX = Math.max(-panLimitX, Math.min(panLimitX, panRawX));
     const panY = Math.max(-panLimitY, Math.min(panLimitY, panRawY));
     // v0.25.2965: ボス方向へのカメラ寄せ(社長報告「上下がボス見えない」)。
@@ -8011,7 +8028,7 @@ export class PixiScene {
       // 通常はプレイヤー(zpy)。アテンション中はカメラがフォーカス対象(attention.y)を中央に寄せるので、
       // 帯もそこへ追従させる(=フォーカスした対象がボケない)。KILL寄り(zoomTarget)も同様に軸へ合わせる。
       const bandFocalY = s.attention ? s.attention.y
-        : (s.zoomHasTarget && zoomDecay > 0) ? s.zoomTargetY
+        : (s.zoomHasTarget && zoomDecay > 0) ? (this.cineAimY ?? s.zoomTargetY) // v0.25.4294: 三分割/処刑の見た目位置と同じ寄り先
         : zpy;
       const bandY = ((this.L.world.position.y + bandFocalY) * tz + this.L.worldGroup.position.y) * vpScale;
       // B-1(社長裁定2026-08-08): **アテンション中だけ**ボケの勾配幅を広げる。出現アテンションは
