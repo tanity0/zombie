@@ -102,7 +102,7 @@ import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate, comboMilestoneCrossed, killBannerDurationMs } from '../utils/comboMilestone';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
-import { impactDamageOf, mergeImpactEntries, strongestImpact, type ImpactEntry, type ImpactFlags } from '../utils/impactShake'; // 揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)
+import { impactDamageOf, mergeImpactEntries, strongestImpact, IMPACT_MELEE_MIN, type ImpactEntry, type ImpactFlags } from '../utils/impactShake'; // 揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)
 import {
   normalizeDir, biasedBurstAngle,
   shouldShowMultiHitFx, dedupeMultiHitEffects,
@@ -7122,7 +7122,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 覚醒=bomb/非覚醒=heavy-impactを着弾の瞬間に直接鳴らす(命中0でも板が当たった音は出す・二重再生防止)。
     if (hitAt.length > 0) {
       get().triggerHitImpact(HITSTOP_MS, 0, 0, 0); // ストップのみ。揺れは下(bash ×1.5・覚醒の大爆発なら explosion も)
-      get().registerImpact({ source: 'skate', damage: dealtSum, flags: { bash: true, explosion: skAwaken, kill: killedList.length > 0 }, x, y });
+      get().registerImpact({ source: 'skate', damage: dealtSum, minMag: IMPACT_MELEE_MIN, flags: { bash: true, explosion: skAwaken, kill: killedList.length > 0 }, x, y });
     }
   },
 
@@ -8147,7 +8147,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       let hx = 0, hy = 0;
       for (const n of meleeDamageNumbers) { hx += n.x; hy += n.y; }
       get().registerImpact({
-        source: 'melee', damage: meleeImpactDamage(meleeDamageNumbers),
+        source: 'melee', damage: meleeImpactDamage(meleeDamageNumbers), minMag: IMPACT_MELEE_MIN,
         flags: { crit: meleeDamageNumbers.some(n => n.crit), kill: killed.length > 0, bash: bashHitEnemy, finish: finishFull, counter: mimirLaserBreakHits.length > 0 },
         x: hx / meleeDamageNumbers.length, y: hy / meleeDamageNumbers.length,
       });
@@ -9245,7 +9245,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       let hx = 0, hy = 0;
       for (const n of damageNumbers) { hx += n.x; hy += n.y; }
       get().registerImpact({
-        source: 'melee', damage: meleeImpactDamage(damageNumbers),
+        source: 'melee', damage: meleeImpactDamage(damageNumbers), minMag: IMPACT_MELEE_MIN,
         flags: { crit: damageNumbers.some(n => n.crit), kill: killed.length > 0, finish: katanaFinishFull, counter: mimirLaserBreakHits.length > 0 },
         x: hx / damageNumbers.length, y: hy / damageNumbers.length,
       });
@@ -9510,7 +9510,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       let hx = 0, hy = 0;
       for (const n of damageNumbers) { hx += n.x; hy += n.y; }
       get().registerImpact({
-        source: 'melee', damage: meleeImpactDamage(damageNumbers),
+        source: 'melee', damage: meleeImpactDamage(damageNumbers), minMag: IMPACT_MELEE_MIN,
         flags: { crit: damageNumbers.some(n => n.crit), kill: killed.length > 0, finish: whipFinishFull, counter: mimirLaserBreakHits.length > 0 },
         x: hx / damageNumbers.length, y: hy / damageNumbers.length,
       });
@@ -12140,7 +12140,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const isGun = damageChannel === 'gun' && gpSource !== 'melee'; // ガンブレード至近モード(gpSource='melee')は近接の一振り=毎命中・命中点へ(v0.25.4286)
       const flags: ImpactFlags = { crit, kill: killed, explosion: blast, counter: postureImpact === 'counter', finish: bossFatalAt !== null };
       if (!isGun || crit || killed || blast || flags.counter || flags.finish) {
-        get().registerImpact({ source: blast ? 'blast' : (isGun ? 'gun' : `other:${damageChannel}`), damage: impactDamage, flags, x: ia.x, y: ia.y, away: isGun });
+        get().registerImpact({ source: blast ? 'blast' : (isGun ? 'gun' : `other:${damageChannel}`), damage: impactDamage, flags, x: ia.x, y: ia.y, away: isGun,
+          ...(gpSource === 'melee' && !blast ? { minMag: IMPACT_MELEE_MIN } : {}) }); // 近接の床(ガンブレード至近・スラッシャー追撃など中央経路の近接)
       }
     }
     // 戦闘の手触り②(社長指示2026-09-13): 連続撃破の段。プレイヤー起因のキル全般を数える(撃破SEのピッチ=

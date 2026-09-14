@@ -6,6 +6,10 @@
 export const IMPACT_K = 0.65;
 export const IMPACT_BASE_MAX = 8;    // 倍率前の天井(150ダメ以上だけ着く)
 export const IMPACT_HARD_MAX = 11;   // 倍率込みの天井=被弾(SHAKE_MAG 16)の約0.7倍。殴られた方が必ず大きく、見分けもつく
+// 社長裁定2026-09-14(クリエイティブ監査15/16「すべて推薦で」): 処刑だけ天井を上げて「最大の一撃」を他と並べない。近接だけ最低振幅の床
+// (序盤の刀12ダメ=2.3px が旧7の1/3に痩せるため)。どちらも被弾16の下。
+export const IMPACT_FINISH_MAX = 14;
+export const IMPACT_MELEE_MIN = 3;
 export const IMPACT_RATE_REF_MS = 300;
 export const IMPACT_MS_BASE = 60;
 export const IMPACT_MS_PER_PX = 8;
@@ -54,7 +58,7 @@ export const impactShakeFor = (damage: number, flags: ImpactFlags = {}, interval
   for (const k of IMPACT_FLAG_KEYS) {
     if (flags[k]) { m *= IMPACT_MULT[k].mag; t *= IMPACT_MULT[k].ms; }
   }
-  const mag = Math.min(IMPACT_HARD_MAX, base * m);
+  const mag = Math.min(flags.finish ? IMPACT_FINISH_MAX : IMPACT_HARD_MAX, base * m);
   const ms = Math.max(IMPACT_MS_MIN, Math.round((IMPACT_MS_BASE + IMPACT_MS_PER_PX * base) * t));
   return { mag, ms };
 };
@@ -68,6 +72,8 @@ export interface ImpactEntry {
   y: number;
   intervalMs?: number;
   away?: boolean;
+  /** 最低振幅(近接の床=IMPACT_MELEE_MIN)。レート正規化の後に効く。 */
+  minMag?: number;
 }
 export interface ImpactEvent extends ImpactEntry { count: number }
 
@@ -87,6 +93,7 @@ export const mergeImpactEntries = (entries: readonly ImpactEntry[]): ImpactEvent
     cur.count += 1;
     if (cur.intervalMs === undefined) cur.intervalMs = e.intervalMs;
     cur.away = cur.away || e.away;
+    if (e.minMag !== undefined) cur.minMag = Math.max(cur.minMag ?? 0, e.minMag);
   }
   return [...byKey.values()];
 };
@@ -96,7 +103,8 @@ export interface ResolvedImpact extends ImpactShake { x: number; y: number; away
 export const strongestImpact = (events: readonly ImpactEvent[]): ResolvedImpact | null => {
   let best: ResolvedImpact | null = null;
   for (const ev of events) {
-    const s = impactShakeFor(ev.damage, ev.flags, ev.intervalMs);
+    const raw = impactShakeFor(ev.damage, ev.flags, ev.intervalMs);
+    const s = ev.minMag !== undefined && ev.damage > 0 ? { ...raw, mag: Math.max(raw.mag, ev.minMag) } : raw;
     if (s.mag <= 0) continue;
     if (!best || s.mag > best.mag) best = { ...s, x: ev.x, y: ev.y, away: ev.away === true };
   }

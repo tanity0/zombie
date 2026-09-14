@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   impactBase, impactRateMult, impactDamageOf, impactShakeFor, mergeImpactEntries, strongestImpact,
-  IMPACT_BASE_MAX, IMPACT_HARD_MAX, IMPACT_RATE_REF_MS, IMPACT_MULT,
+  IMPACT_BASE_MAX, IMPACT_HARD_MAX, IMPACT_RATE_REF_MS, IMPACT_MULT, IMPACT_FINISH_MAX, IMPACT_MELEE_MIN,
 } from './impactShake';
 
 describe('揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)', () => {
@@ -33,7 +33,17 @@ describe('揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)', ()
     expect(railCrit.mag).toBeCloseTo(rail.mag * IMPACT_MULT.crit.mag, 9);
     expect(railCritKill.mag).toBe(IMPACT_HARD_MAX); // 6.1×1.6×1.3=12.7→11
     expect(IMPACT_HARD_MAX).toBeLessThan(16);
-    expect(impactShakeFor(1000, { crit: true, kill: true, explosion: true, finish: true }).mag).toBe(IMPACT_HARD_MAX);
+    expect(impactShakeFor(1000, { crit: true, kill: true, explosion: true }).mag).toBe(IMPACT_HARD_MAX);
+  });
+  it('社長裁定2026-09-14: 処刑(finish)だけ天井が高い(14)が被弾16は超えない。近接の床(minMag)は弱い一振りを持ち上げ、強い一振りには効かない', () => {
+    expect(impactShakeFor(200, { finish: true }).mag).toBe(IMPACT_FINISH_MAX);
+    expect(IMPACT_FINISH_MAX).toBeGreaterThan(IMPACT_HARD_MAX);
+    expect(IMPACT_FINISH_MAX).toBeLessThan(16);
+    const weak = strongestImpact(mergeImpactEntries([{ source: 'melee', damage: 12, flags: {}, x: 0, y: 0, minMag: IMPACT_MELEE_MIN }]));
+    expect(weak?.mag).toBe(IMPACT_MELEE_MIN);
+    const strong = strongestImpact(mergeImpactEntries([{ source: 'melee', damage: 60, flags: {}, x: 0, y: 0, minMag: IMPACT_MELEE_MIN }]));
+    expect(strong?.mag).toBeCloseTo(impactShakeFor(60).mag, 9);
+    expect(strongestImpact(mergeImpactEntries([{ source: 'melee', damage: 0, flags: {}, x: 0, y: 0, minMag: IMPACT_MELEE_MIN }]))).toBeNull();
   });
   it('長さは振幅に従い、性格はフラグの長さ倍率で残る(クリ=短く・爆発=長く)', () => {
     const plain = impactShakeFor(52);
