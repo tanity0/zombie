@@ -3500,6 +3500,8 @@ export class PixiScene {
   private cineFxOffsets: number[] = [];            // 個体ごとの流れた量(画面比)
   private cineFxVels: number[] = [];               // 同・速度(W/秒)
   private cineFxVigBase = -1;                      // 既存 vignette の素のα(演目が終わったら戻す)
+  private cineFxLastNow = 0;                       // VFX専用の実時計(ヒットストップで凍らせない)
+  private cineFxLiveAt = 0;                        // 最後に演目が生きていた実時刻(割り込みと「新しい演目」の区別)
   private cinePlateTexCache = new Map<string, Texture>();
   private cinePlateEventStart = -1;
   private cinePlateDirIn: 1 | -1 = 1;   // 板の縁(自機側)から画面中央へ向く向き(+1=左縁から右へ)
@@ -8016,7 +8018,13 @@ export class PixiScene {
     // 近景の板(§6・v0.25.4296): 演目・モード・包絡線をそのまま渡す(描画のみ)。
     this.syncCinePlates(cineEv, cam, cineMode, zoomDecayCine, now, cineSideX);
     // 寄り演目のVFX(§8 v2・v0.25.4306): 板と同じ入力で回す。逆光だけは actorLayer(世界)へ置く。
-    this.syncCineFx(cineEv, cam, cineMode, zoomDecayCine, now, cineSideX, zdt * 1000);
+    // ★v0.25.4308: VFXは**実時計(fxNow)**で回す。`now` はヒットストップ中に凍結する時計で、
+    // シャッター(~110ms)とワイプ(120ms)は**ヒットストップ(100ms)の中に丸ごと入る**ため、
+    // 凍結時計で駆動すると**一度も再生されないまま終わる**(社長報告「再生がされてない。表示はされてるかもだけど」)。
+    // 「光系のエフェクトは止めないで」(社長指示v0.25.3038)の対象=既存の fxNow と同じ扱いにする。
+    const cineFxDt = this.cineFxLastNow ? Math.min(100, realNow - this.cineFxLastNow) : 0;
+    this.cineFxLastNow = realNow;
+    this.syncCineFx(cineEv, cam, cineMode, zoomDecayCine, fxNow, cineSideX, cineFxDt);
     // §6.37 v6: hzFixed(遠景森1/森2+地平付帯層)は**ボス寄せバイアス(bossPan)だけ**打ち消す。
     // v2993の「引き中は完全画面固定」は撤回——社長裁定(2026-08-07)は「森は世界と一緒に縮んでよい。
     // 縮みで出る切れ目はコピー森(リッジ3本・下のsyncで管理)で誤魔化す」。バイアス打ち消しは
@@ -29461,7 +29469,12 @@ export class PixiScene {
 
     // 新しい演目: 配り直す。**ただし粒子の速度と位置は持ち越す**(割り込みで飛行中の粒が原点へワープしない=慣性MUST)。
     const fresh = e.startAt !== this.cineFxEventStart;
+    // 割り込み(前の演目が生きている間に次が来た)だけ位置を持ち越す。間が空いた=新しい演目は**原点から**。
+    // これが無いと offsets が累積し続け、埃が画面外へ出たまま二度と戻らない(v0.25.4307 で埃が1枚も見えなかった正体)。
+    const interrupted = now - this.cineFxLiveAt < 200;
+    this.cineFxLiveAt = now;
     if (fresh) {
+      if (!interrupted) { this.cineFxOffsets.fill(0); this.cineFxVels.fill(0); }
       this.cineFxEventStart = e.startAt;
       const seed = (e.startAt & 0xffff) | 1;
       this.cineFxNearSpec = cineFxNearDust(seed);
@@ -29487,6 +29500,7 @@ export class PixiScene {
     const dyingLight = set.dying ? cineFxDeathLight(push, this.cineFxDeathFadeAt ? now - this.cineFxDeathFadeAt : 0) : 1;
 
     layer.visible = true;
+    this.cineFxLiveAt = now;
     const out = Math.sqrt(Math.max(0, decay));
 
     // ── A. 逆光の芯+縁取り(actorLayer・相手より奥) ───────────────────────────
@@ -29555,7 +29569,7 @@ export class PixiScene {
         const size = W * (blood ? 0.10 + 0.04 * (i % 2) : r);
         sp.width = size; sp.height = size;
         // 血は**貼り付いて動かない**(レンズに付いた物=視差を持たない)。押し込みの間だけゆっくり垂れる。
-        const dx = blood ? 0 : side * W * 0.04 * (1 - out);
+        const dx = blood ? 0 : side * W * 0.22 * (1 - out) + side * W * 0.05 * push; // v0.25.4308: 0.04W=21px では動いて見えない
         const dy = blood ? H * CINE_FX_BLOOD_DRIP_FRAC * push : 0;
         sp.position.set(W * (0.5 + side * (0.30 + 0.06 * (i % 2))) + dx, H * (0.22 + 0.2 * i) + dy);
         sp.alpha = (blood ? 0.80 : 0.85) * out * (blood ? 1 : 1 - 0.25 * push); // v0.25.4307: 0.55/0.40 → 0.80/0.85
@@ -29563,7 +29577,7 @@ export class PixiScene {
     } else for (const sp of this.cineFxBokeh) sp.visible = false;
 
     // 手前の大きい埃(§8-5: 1枚だけ突出して大きい)。
-    this.cineFxSyncParticles(set, out, dtMs, W, H, push);
+    this.cineFxSyncParticles(set, out, dtMs, W, H, push, t);
 
     // ── C. ワイプ・シャッター(画面空間) ────────────────────────────────────
     if (set.wipe) {
@@ -29618,7 +29632,7 @@ export class PixiScene {
   }
 
   /** 手前の埃と火の粉。速度は演目をまたいで持ち越す(割り込みで原点にワープさせない)。 */
-  private cineFxSyncParticles(set: ReturnType<typeof cineFxSetFor>, out: number, dtMs: number, W: number, H: number, push: number): void {
+  private cineFxSyncParticles(set: ReturnType<typeof cineFxSetFor>, out: number, dtMs: number, W: number, H: number, push: number, tMs: number): void {
     const specs = [...this.cineFxNearSpec, ...this.cineFxMoteSpec];
     if (!set.dust) {
       for (const sp of this.cineFxNear) sp.visible = false;
@@ -29649,7 +29663,7 @@ export class PixiScene {
       const size = near ? H * spec.scale * 0.62 : 8 + spec.scale * 14; // v0.25.4307: 火の粉 4〜10px は見えない
       sp.width = size; sp.height = size;
       sp.position.set(W * spec.fx + W * this.cineFxOffsets[i], H * spec.fy + gravity);
-      const delay = Math.max(0, 1 - spec.delayMs / 200);
+      const delay = Math.min(1, Math.max(0, (tMs - spec.delayMs) / 120)); // v0.25.4308: 定数倍ではなく時間のランプ(1枚ずつ遅れて現れる)
       sp.alpha = (near ? 0.42 : 0.9) * out * delay; // v0.25.4307 実測: 手前の埃 0.10 は存在しないのと同じ
     }
   }
