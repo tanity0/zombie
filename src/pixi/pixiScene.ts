@@ -944,6 +944,10 @@ const SHAFT_WIDTH_FACTOR = Math.max(0.05, tsNum('shaftwidth', 0.5));
 // 寄り演目のVFX(§8・v0.25.4306)の切り分けツマミ。`?cinefx=0` で全部落とす(`?hidelayer=cinefx` も同じ)。
 // 自作スイッチで消去法をやらないための「既存の道具」側に最初から足しておく(CLAUDE.md §7-3)。
 const CINE_FX_ENABLED = tsNum('cinefx', 1) !== 0;
+// ★`?cinecam=0`(v0.25.4308): カメラの台本(カット/押し込み/横滑り/三分割)を丸ごと切って**今日より前の素の寄り**
+// (命中の瞬間に最大まで寄って戻るだけ)へ戻す。社長「寄りの雰囲気がかわってて、あまり好きじゃない。カメラワークが変」の
+// 切り分け用=実機で1本の中に並べて比べられるようにする(板とVFXも台本に紐づくので一緒に消える)。
+const CINE_CAM_ENABLED = tsNum('cinecam', 1) !== 0;
 const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.9));      // 森下霧(fog-alpha素材・最大α~67%なので濃いめに)
 const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.65));  // 奥(遠景+地面・キャラの後ろ)
 const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.32));     // 森上霧(手前の森に被る最下部・薄め)
@@ -7852,7 +7856,7 @@ export class PixiScene {
     // 群衆戦(近傍8体以上=文脈ズーム<1)とボス戦(ボス距離ズーム)の処刑が全部 cutPush に落ち、三分割・横滑り・板が実機で出ていなかった。
     const cinePushOnly = s.farBackdrop === 'tutorial' || s.farBackdrop === 'ending' || s.corridorMode || isExStageRun() || s.stageTheme === 'lab';
     const cineMode: CineMode = cineEv ? cineModeFor(cinePushOnly, this.idleZoom * this.contextZoom, s.zoomMag, cineEv.kind) : (cinePushOnly ? 'pushOnly' : 'full');
-    const cam = cineEv ? cineCameraAt(cineEv.kind, now - cineEv.startAt, cineMode, cineEv.startFrac) : null;
+    const cam = cineEv && CINE_CAM_ENABLED ? cineCameraAt(cineEv.kind, now - cineEv.startAt, cineMode, cineEv.startFrac) : null;
     // 戻りの形(v0.25.4295 クリエイティブ監査): 共有包絡線に演目の冪を掛ける(カウンター=保ってから速く落ちる/死亡=来た時より遅く帰る)。
     // zwarp(斜め)は素の zoomDecay を読む(下)。
     const zoomDecayCine = cam ? Math.pow(zoomDecay, cam.outPow) : zoomDecay;
