@@ -145,9 +145,9 @@ describe('★束の不変条件(3段すべてで成立する・§18-9-7)', () =>
     }
   });
 
-  it('手数: 必ず P2 = P1 + 1(フェーズ2で1段伸びる)', () => {
+  it('手数: 必ず P2 = P1(v0.25.4204 の既定 {4,4} と同じ形。フェーズ2の+1段は無い)', () => {
     for (const o of ['few', 'normal', 'many']) {
-      expect(val('hands', o, 'stringLen.p2'), o).toBe(val('hands', o, 'stringLen.p1') + 1);
+      expect(val('hands', o, 'stringLen.p2'), o).toBe(val('hands', o, 'stringLen.p1'));
     }
   });
 

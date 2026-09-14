@@ -78,6 +78,7 @@
 | **手動の狙いサークルがずっと薄い/吸い付いていないように見える**(オート+手動を持つ銃) | **CD表示がどの時計を読んでいるか**(オートの `lastFired` か手動の `manualLastFired` か)。オートが撃ち続ける銃は `lastFired` が常にCD内=表示が永久に薄い | 4283(レールガン: 吸い付き・確定ヘッドショットの配線は生きていたが、描画がオートの時計を読み alpha 0.2 に張り付いていた=「実装されていない」と見えた) | pixiScene 狙いサークル |
 | ベンチの数字が暴れる/結論が出ない | **観測数 `n` を見る(100未満は結論にしない)+ `shift`** | 2690(n=2〜3の壊れた計測器) | 「計測器を疑う」節 |
 | CIが赤い(自分の変更と関係が見えない) | **既存flakyテスト台帳を先に見る** | 3793 | 「flakyテスト一覧」節 |
+| **CIが赤いのに lint/typecheck は緑・失敗が見当たらない** | **verify ジョブの落ちた段を読む。`check-circular-imports` で止まると test/build は走らない**(=以降の壊れたテストが全部隠れる。2026-09-05〜14 の9日間・約95push がこれ) | 4299 | 「循環import」節 |
 | 自分の変更が消えている/巻き戻っている | **まず `git rev-parse --short HEAD` を見る。`0621fc40` なら巻き戻り確定**(戻り先は定数)→ `git fetch` + `git reset --hard origin/<branch>`。hookは効かない=hook自身が巻き戻って消える | 2026-08-22〜26(**1日で5回**の日あり・戻り先は毎回同じ `0621fc40`=v0.25.3774) | CLAUDE.md ★毎ターンの3点セット/★★原因確定(2026-08-26) |
 | ヘッドレスが起動画面で止まる | **`TEST_HANDOFF/HEADLESS.md`(ポップアップは click では消えない)** | 2026-08-22(5回失敗) | TEST_HANDOFF/HEADLESS.md |
 | 「前は直っていたのに再発」 | **diffを取る。空なら巻き戻りではなく潜伏バグの露見** | 1324 / 1325 | §1-1 |
@@ -832,6 +833,12 @@ CLAUDE.md の「Empirical render budget」節と `research/LIGHT_REWORK.md` の�
 ---
 
 ## 循環importはbuild/typecheck/testを素通りして「起動直後に真っ暗」を起こす(v0.25.3390)
+
+- **v0.25.4299 追記(ガード側の落とし穴)**: ガード(`scripts/check-circular-imports.mjs`)は ci.yml で **test/build の前**に走る。
+  新規の環が出ると verify はそこで exit 1 になり、**test と build は一度も走らない**。v0.25.4204 で `weaponUtils ↔ weaponSlot` の環が
+  増えてから9日間、CI は毎push赤だったが誰も段を読まず、その間に壊れた5テストが隠れた。**「CIが赤い」を見たら最初に落ちた段を読む**
+  (§0 の索引行)。環の解き方の実例: `resolveSlotKey` が CATALOG(weaponUtils)を読む代わりに **葉データ `SLOT_CANDIDATES` から
+  category/tier を引く**(`slotOfKey`)。「両方とも関数内でしか相手を参照しないから安全」という理屈は評価順の事故は防ぐが**ガードは通らない**。
 
 **事故**: B2b(v0.25.3384)で levelUpGate.ts が bountyTick.ts から予告寸法をimportした結果、
 `gameStore → levelUpGate → bountyTick → gameStore` の循環が成立。bountyTick の**モジュール初期化時**の

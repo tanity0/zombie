@@ -11,9 +11,8 @@ import { bigBulletSizeMult } from './skillEffectsB7';
 import { isTrapDebuffed, TRAP_PVP_RELOAD_MULT } from './trapDebuff';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { SLOT_CATEGORIES, SLOT_CANDIDATES } from '../data/weaponSlots';
-// UNIQUE_WEAPONS.md §4-1: getStartingWeapons(出撃時のT1)は生成点の1つ。resolveSlotKeyNowは
-// weaponUtils.tsのcatalogCategoryTierを読むので相互import(2ファイル循環)になるが、どちらの
-// モジュールもトップレベル評価時に相手の値を参照しない(参照は全て関数呼び出し内)ため安全。
+// UNIQUE_WEAPONS.md §4-1: getStartingWeapons(出撃時のT1)は生成点の1つ。
+// weaponSlot.ts は weaponUtils を読まない(v0.25.4299: 循環importを解消。スロットは SLOT_CANDIDATES から引く)。
 import { resolveSlotKeyNow } from './weaponSlot';
 import { DUAL_RANGE_STATS, resolveDualRangeMode } from './dualRangeGun';
 // UNIQUE_WEAPONS.md §16-2(バッチB): 状態を持つ4挺の純関数モジュール(dualRangeGun.tsと同じ作法)。
@@ -325,8 +324,9 @@ export const ROCKET_WEAPON_KEY = 'glauncher-t1-rocket';
 export const ALCHEMY_WEAPON_KEY = 'glauncher-t2-alchemy';
 export const SIGNAL_WEAPON_KEY = 'glauncher-t3-signal';
 
-// UNIQUE_WEAPONS.md §4: resolveSlotKey(weaponSlot.ts)がCATALOGの中身を見に行くための細い窓。
-// CATALOG自体は非公開のまま(意味不明なキーの直接生成を増やさない)。
+// UNIQUE_WEAPONS.md §4: CATALOGの category/tier を外から引く細い窓(weaponSlot.test.ts の不変条件2=
+// 「候補表とCATALOGの一致」の照合、ランチャー判定 isGlauncherKey 等)。CATALOG自体は非公開のまま。
+// ※ resolveSlotKey(weaponSlot.ts)は v0.25.4299 からこれを読まない(循環import解消)。
 export const catalogCategoryTier = (key: string): { category?: AmmoType; tier?: number } => {
   const def = CATALOG[key];
   return def ? { category: def.category, tier: def.tier } : {};

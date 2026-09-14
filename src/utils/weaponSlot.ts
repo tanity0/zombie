@@ -3,7 +3,6 @@
 // (weaponDrop.ts / weaponUtils.getStartingWeapons / gameStore.updateArmory / grantWeapon入口)から
 // 呼ぶことで、地面の絵(pickup.weaponKey)と拾った時の実体を一致させる(§4-1)。
 import { SlotCategory, SlotTier, SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, STORE_SOLD_KEYS } from '../data/weaponSlots';
-import { catalogCategoryTier } from './weaponUtils';
 import { getWeaponUnlocks, getWeaponBlueprints } from '../data/progress';
 
 // 装備設定(恒久・localStorage 1キー・UNIQUE_WEAPONS.md §3-3)。キャラ別にしない(社長指定)。
@@ -11,8 +10,6 @@ export type SlotLoadout = Partial<Record<SlotCategory, Partial<Record<SlotTier, 
 
 const LOADOUT_KEY = 'zombie.loadout.slots';
 
-const isSlotCategory = (v: string): v is SlotCategory => (SLOT_CATEGORIES as string[]).includes(v);
-const isSlotTier = (v: number): v is SlotTier => (SLOT_TIERS as number[]).includes(v);
 
 /** 現在の装備設定(壊れた/欠けたセーブはフィールドごとに素通り=下のresolveSlotKeyが恒等でフォールバックする)。 */
 export const getSlotLoadout = (): SlotLoadout => {
@@ -133,13 +130,31 @@ export const shelfWeaponKeys = (): Set<string> => {
  * **冪等**: resolveSlotKey(resolveSlotKey(k, ...), ...) === resolveSlotKey(k, ...)。
  * (設定が「解放済みの候補」を指す限り、どの入力キーを渡しても同じ設定キーへ収束するため。)
  */
+/**
+ * キーが属するスロット(category/tier)を **SLOT_CANDIDATES(葉データ)だけ**から引く。
+ * v0.25.4299: 以前は weaponUtils.ts の catalogCategoryTier(CATALOG)を読んでいたが、weaponUtils が
+ * resolveSlotKeyNow を読む相互import(2ファイル循環)になり、CIの循環importガード
+ * (scripts/check-circular-imports.mjs・2026-08-31)が 09-05 から落ち続けていた。
+ * スロット候補に載っている銃は全て CATALOG と category/tier が一致する(weaponSlot.test.ts 不変条件2で
+ * 機械化済み)ので、候補表から引いても結果は同じ。候補に無いキー(近接/固定銃/未知)は undefined=恒等。
+ */
+export const slotOfKey = (key: string): { category: SlotCategory; tier: SlotTier } | undefined => {
+  for (const category of SLOT_CATEGORIES) {
+    for (const tier of SLOT_TIERS) {
+      if (SLOT_CANDIDATES[category][tier].includes(key)) return { category, tier };
+    }
+  }
+  return undefined;
+};
+
 export const resolveSlotKey = (
   key: string,
   loadout: SlotLoadout,
   unlocked: ReadonlySet<string>,
 ): string => {
-  const { category, tier } = catalogCategoryTier(key);
-  if (!category || tier === undefined || !isSlotCategory(category) || !isSlotTier(tier)) return key; // 近接/未知キー
+  const slot = slotOfKey(key);
+  if (!slot) return key; // 近接/固定銃/未知キー
+  const { category, tier } = slot;
   const candidates = SLOT_CANDIDATES[category][tier];
   if (!candidates || candidates.length <= 1) return key; // 横が無いスロット(第1弾はハンドガンのみ)
   const configured = loadout[category]?.[tier];

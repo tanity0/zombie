@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4299',
+    items: ['ゲーム内容の変更はありません。'],
+  },
+  {
     version: '0.25.4298',
     items: [
       '処刑の跳びつき中にカメラの構図が反転して飛ぶことがあったのを直した。構図の向きは当たった瞬間に決めて保つ。',

@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { TIME_DIFFICULTY_PEAK_MS, timeVirtualArea, effectiveDifficultyArea, lerpAreaTable } from './timeDifficulty';
 import { spawnEnemyAt, createEnemyProjectile } from './enemyUtils';
+import { worldDist } from '../config/worldScale';
 import type { Player } from '../types/game';
 
 const player = { x: 100, y: 0, width: 24, height: 24 } as Player;
@@ -34,7 +35,7 @@ describe('lerpAreaTable', () => {
 describe('敵ステータスへの時間軸(spawn時に焼き込み)', () => {
   it('t=0 は従来と完全一致(初期地=基礎値)', () => {
     const e = spawnEnemyAt('zombie', 0, 0, 0);
-    const deep = spawnEnemyAt('zombie', 8000, 0, 0);
+    const deep = spawnEnemyAt('zombie', worldDist(8000), 0, 0); // 最深部(v0.25.4293: 世界の距離×1.5で基準座標も伸ばす)
     expect(deep.speed).toBeCloseTo(e.speed * 2.0, 5);
   });
   it('8:00の初期地個体は最深部個体と同じ強さ(速度×2.0・倍率2.1)・ランクもdanger', () => {

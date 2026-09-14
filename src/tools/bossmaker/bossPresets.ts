@@ -65,7 +65,9 @@ const TEMPO_CHOICE: TuningChoiceField = {
 };
 
 /**
- * 手数(ストリングの段数)。★**必ず `P2 = P1 + 1`**(「フェーズ2で1段伸びる」現行仕様)。
+ * 手数(ストリングの段数)。★**必ず `P2 = P1`**。v0.25.4204(アイドル激ムズ改訂)で既定が
+ * `stringLen: { p1: 4, p2: 4 }` になり、旧「フェーズ2で1段伸びる(P2=P1+1)」は無くなった。
+ * (v0.25.4299: 束をその実装値に合わせた。旧束 {2,3}/{3,4}/{4,5} は「まん中=既定」の不変条件を破っていた。)
  *
  * ★**「多」は台本を伸ばさないと効かない。** `bossSkeleton.pickStringScript` は
  * `len = min(段数の上限, 台本の段数)` で、既定の台本は全て4段。よって P2=5 は 4 に切り詰められる。
@@ -78,9 +80,9 @@ const HANDS_CHOICE: TuningChoiceField = {
   section: 'ストリングと休符',
   hint: '1回のストリングで続けて出す技の数。多いほど攻めが途切れない。台本の段が足りないと段数までしか出ない。',
   options: [
-    { key: 'few', label: '少', values: { 'stringLen.p1': 2, 'stringLen.p2': 3 } },
-    { key: 'normal', label: '並', values: { 'stringLen.p1': 3, 'stringLen.p2': 4 } },
-    { key: 'many', label: '多', values: { 'stringLen.p1': 4, 'stringLen.p2': 5 } },
+    { key: 'few', label: '少', values: { 'stringLen.p1': 3, 'stringLen.p2': 3 } },
+    { key: 'normal', label: '並', values: { 'stringLen.p1': 4, 'stringLen.p2': 4 } },
+    { key: 'many', label: '多', values: { 'stringLen.p1': 5, 'stringLen.p2': 5 } },
   ],
 };
 
