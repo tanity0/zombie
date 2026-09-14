@@ -4,6 +4,7 @@ import {
   strata, depthFrac, zoneIdxOf, buildCores, rankRungs, nextGoal, digProgress, CUTAWAY_MAX, ABYSS_SPAN,
 } from './resultReach';
 import { AREA_THRESHOLDS, AREA_ZONE_NAMES } from './enemyUtils';
+import { worldDist } from '../config/worldScale';
 import { RANK_COUNT, WALL_RANK_NAMES } from './wallProgress';
 import type { RunCore } from '../data/progress';
 
@@ -23,10 +24,11 @@ describe('strata(地層は実距離スケール)', () => {
   });
 
   it('厚みの比 = 実距離の比(等分割ではない)', () => {
-    // 軍備配置区域=1500m / 未確認汚染エリア=2500m → 厚みも 1500:2500
+    // 軍備配置区域=T0 / 未確認汚染エリア=T3−T2 → 厚みも同じ比(素 1500:2500=世界スケール後も比は不変)
     const gunbi = S[0], mikakunin = S[3];
-    expect(gunbi.heightFrac * CUTAWAY_MAX).toBeCloseTo(1500, 6);
-    expect(mikakunin.heightFrac * CUTAWAY_MAX).toBeCloseTo(2500, 6);
+    const t0 = AREA_THRESHOLDS[0], t32 = AREA_THRESHOLDS[3] - AREA_THRESHOLDS[2];
+    expect(gunbi.heightFrac * CUTAWAY_MAX).toBeCloseTo(t0, 6);
+    expect(mikakunin.heightFrac * CUTAWAY_MAX).toBeCloseTo(t32, 6);
     expect(mikakunin.heightFrac / gunbi.heightFrac).toBeCloseTo(2500 / 1500, 6);
   });
 
@@ -39,8 +41,8 @@ describe('strata(地層は実距離スケール)', () => {
 
   it('最深段は底なしで ABYSS_SPAN ぶん伸びる=裏ボスの巣(9000m)が断面に収まる', () => {
     expect(CUTAWAY_MAX).toBe(AREA_THRESHOLDS[AREA_THRESHOLDS.length - 1] + ABYSS_SPAN);
-    expect(depthFrac(9000)).toBeLessThan(1);
-    expect(depthFrac(9000)).toBeGreaterThan(S[S.length - 1].topFrac);
+    expect(depthFrac(worldDist(9000))).toBeLessThan(1); // 裏ボスの巣=素9000×世界スケール(pois.ts BOSS_LAIR と同じ)
+    expect(depthFrac(worldDist(9000))).toBeGreaterThan(S[S.length - 1].topFrac);
   });
 });
 

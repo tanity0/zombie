@@ -7,6 +7,7 @@ import {
   hospitalCircleCenter,
 } from './hospital';
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
+import { worldDist } from '../config/worldScale';
 import { detourPosForSector, DETOUR_ANGLE_SCATTER_RAD } from './detourPoi';
 import { getRunPois, poiSectorIndex } from './pois';
 import { rectsOverlap } from './obstacles';
@@ -18,7 +19,7 @@ const player = (cx: number, cy: number) => ({ x: cx - 14, y: cy - 14, width: 28,
 describe('hospitalPos(デンジャーゾーンの一番奥・v0.25.3173で6250から移動)', () => {
   it('距離はデンジャーゾーンの75%地点(4500)', () => {
     expect(HOSPITAL_DIST).toBe(AREA_THRESHOLDS[1] + (AREA_THRESHOLDS[2] - AREA_THRESHOLDS[1]) * 0.75);
-    expect(HOSPITAL_DIST).toBe(4500);
+    expect(HOSPITAL_DIST).toBe(worldDist(4500)); // 素4500×世界スケール(v0.25.4293)=6750
     for (const sector of [0, 1, 2, 3]) {
       const p = hospitalPos(sector);
       expect(Math.hypot(p.x, p.y)).toBeCloseTo(HOSPITAL_DIST, 6);

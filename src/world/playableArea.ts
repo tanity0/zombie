@@ -13,6 +13,7 @@
 // それらの「中」に湧く問題は別種の課題として対象外(社長へ別途確認予定)。
 
 import { LAB_CORRIDOR_Y_LIMIT_PX } from './labWalls';
+import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
 import { CORRIDOR_LATERAL_CLAMP } from '../utils/corridorProjection';
 import { EX_NORTH_LIMIT_Y, exHallLateralClamp } from './exHall';
 
@@ -148,7 +149,7 @@ export const isRectInPlayableArea = (
 // 城ボス:研究対象まで(デンジャーには入れない)。裏ボス:全域ok。ゲートボス:そもそもゲート内」)
 // ---------------------------------------------------------------------------------------------
 // 上限=研究対象区域の外縁(AREA_THRESHOLDS[1]=3000px・原点からの距離)。デンジャーゾーンに入れない。
-export const CASTLE_FIGHT_MAX_DIST = 3000; // enemyUtils.AREA_THRESHOLDS[1]と同値(constitution的な二重定義を避けるためテストで一致を固定)
+export const CASTLE_FIGHT_MAX_DIST = worldDist(3000); // enemyUtils.AREA_THRESHOLDS[1]と同値(素3000×世界スケール=4500。テストで一致を固定)
 /**
  * 城ボス交戦中の「外へ出る移動」だけを制限ラインで止める(中心座標基準の円クランプ)。
  * ★スナップ防止: 既に制限の外に居る場合(交戦開始時点で外だった等)は動きを止めない=

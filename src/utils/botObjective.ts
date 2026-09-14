@@ -12,6 +12,7 @@
 // - **既定(`none`)は目的なし=v0.25.2338 までと完全に同じ挙動**。既存のボットランを動かさない。
 // - 目的は**移動先と狙う敵を返すだけ**。実際の入力合成(回避との優先順位等)は呼び出し側の責務。
 import type { Enemy, Pickup, EnemyType, CastleEvent, BaseSite, InputState } from '../types/game';
+import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
 
 /** ボットの目的。 */
 export type BotObjective =
@@ -269,7 +270,7 @@ export const outwardPoint = (w: ObjectiveWorld, targetDist: number): { x: number
 /** レベル上げ用の狩り場: 原点から中距離(=危険すぎず敵が湧く)を周回する点。 */
 /** hunt: この距離までは目的地ステアで歩いて詰める(以内は交戦AIに任せる)。v0.25.3625・叩き台。 */
 export const HUNT_APPROACH_DIST = 300;
-export const FARM_RADIUS = 2200;
+export const FARM_RADIUS = worldDist(2200); // 素2200×世界スケール(v0.25.4293)=3300
 
 /** 裏ボスに挑む前に欲しい最低レベル(叩き台。?botgoal=hiddenBoss:LV で上書きできる)。 */
 export const HIDDEN_BOSS_MIN_LEVEL = 12;
@@ -290,7 +291,7 @@ export const CAMPAIGN_BOSS_ENGAGE_PX = 900;
  * ★デンジャーゾーンの内側境界(px・原点からの距離)。`enemyUtils.AREA_THRESHOLDS[1]` と同値。
  * ここを跨ぐと `viciousHunter.shouldTriggerViciousHunter` の「デンジャー」条件が立つ。
  */
-export const DANGER_ZONE_R = 3000;
+export const DANGER_ZONE_R = worldDist(3000); // 素3000×世界スケール(v0.25.4293)=4500
 /** デンジャー境界のどれだけ手前で引き返すか(px)。跨いでから戻るのでは遅いので余裕を取る。 */
 export const DANGER_GATE_MARGIN_PX = 500;
 

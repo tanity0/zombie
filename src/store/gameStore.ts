@@ -152,7 +152,7 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS, pickNearestTarget } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS, pickNearestTarget } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyDims'; // ★葉から取る(bountyTick から直接取ると循環import=起動全損・v0.25.4097)
 // research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 城ボス9州の予告寸法は葉モジュール
@@ -340,6 +340,7 @@ import {
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { labIdolSpotForDoc, type LabIdolSpot } from '../world/labIdolSpot';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
+import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
 import { GAME_SPEED } from '../config/gameSpeed';
 import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS } from '../utils/meleeExecute';
 
@@ -555,7 +556,7 @@ export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boole
 // 事実: 7000 は未確認汚染エリア(5000〜7500)の中=旧デンジャーゾーン(3000〜5000)より一段深い。区域の境界は変えていない。実機で絞る叩き台。
 // ★v0.25.4292(社長「拠点がデンジャーゾーンより向こうにある」): 7000 は誤読(区域ではなく拠点だけ伸ばした)。デンジャーゾーン内の 3200 へ戻す。
 // 区域そのものの延長(社長の本来の意図)は別途=下の返信で範囲を確認してから。
-const BASE_SITE_RADIUS = 3200;          // 拠点を置く円の半径(デンジャーゾーン内)
+const BASE_SITE_RADIUS = worldDist(3200); // 拠点を置く円の半径(デンジャーゾーン内・素3200→4800。世界の距離スケール v0.25.4293)
 const BASE_SITE_COUNT = 4;              // 拠点の数(東西南北=90度刻み・社長指示で8→4)
 export const BASE_CAPTURE_RADIUS = 130; // 制圧サークルの半径(滞在/在内判定)
 export const ARMORY_RADIUS = 50;        // 制圧拠点中央の「武器庫」サークル半径(小さめ。指を離すと遠隔で武器商人)
@@ -19113,6 +19114,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       setFlowersDisabled(bossMakerRoom);
       // 洋館通路の湧き方向ゲート(上=奥 主体・左右は湧かせない)。generateEnemy が参照(新規/リサイクル両方)。
       setCorridorSpawn(corridorMode);
+      // 世界の距離スケール(v0.25.4293): 訓練ステージ(M0)だけ区域の境界を素の値(1500/3000/…)に据え置く(台本が境界に載っている)。
+      setAreaDistanceScale(farBackdrop !== 'tutorial');
       // research/STAGE_DIFFICULTY.md(ステージ難度の階段): 雑魚のHP/攻撃に掛かるステージ係数を
       // **出撃のたびに1回**セットする(木/通路ゲートと同じ作法)。全出撃(通常/練習/ガントレット/
       // ボスメーカー)がここを通るのでセット点はこの1箇所で足りる。計測路(ボスメーカー/ガントレット)は

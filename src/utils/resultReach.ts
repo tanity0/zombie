@@ -11,12 +11,13 @@
 // この層は**表示計算の純関数だけ**(React/PixiJS非依存)。閾値・ランク名は enemyUtils /
 // wallProgress / rankAssessor の正本をそのまま引く。ここで新しい仕様値は作らない。
 import { AREA_THRESHOLDS, AREA_ZONE_NAMES } from './enemyUtils';
+import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
 import { WALL_RANK_NAMES, WALL_RANK_NAMES_EN, RANK_COUNT, metersToNextWall } from './wallProgress';
 import { clampRank, type PuzzleRank } from './rankAssessor';
 import type { RunCore } from '../data/progress';
 
 /** 最深段(底なし)の見た目の伸び代。「まだ底が見えない」ぶんとして扱う表示専用の値。 */
-export const ABYSS_SPAN = 2500;
+export const ABYSS_SPAN = worldDist(2500); // 素2500×世界スケール(v0.25.4293)=3750
 /** 断面図が描く深さの全体(0m 〜 ここまで)。裏ボスの巣(9000m)が収まる高さでもある。 */
 export const CUTAWAY_MAX = AREA_THRESHOLDS[AREA_THRESHOLDS.length - 1] + ABYSS_SPAN; // = 10000
 

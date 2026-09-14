@@ -172,7 +172,7 @@ describe('clampCastleFightCrossing(城ボス戦の移動制限)', () => {
     expect(clampCastleFightCrossing(0, 0, 100, 200)).toEqual({ x: 100, y: 200 });
   });
   it('内→外へ跨ぐ移動は制限ラインの厳密内側(limit-1)へクランプ(方向は保存)', () => {
-    const c = clampCastleFightCrossing(2990, 0, 3100, 0);
+    const c = clampCastleFightCrossing(CASTLE_FIGHT_MAX_DIST - 10, 0, CASTLE_FIGHT_MAX_DIST + 100, 0);
     expect(Math.hypot(c.x, c.y)).toBeCloseTo(CASTLE_FIGHT_MAX_DIST - 1, 6);
     expect(c.y).toBeCloseTo(0, 6);
   });
@@ -181,7 +181,7 @@ describe('clampCastleFightCrossing(城ボス戦の移動制限)', () => {
     expect(Math.hypot(c.x, c.y)).toBeCloseTo(CASTLE_FIGHT_MAX_DIST - 1, 6);
   });
   it('既に大きく外に居る場合はスナップさせない(交戦開始時点で外だった時の瞬間移動を作らない)', () => {
-    expect(clampCastleFightCrossing(3500, 0, 3400, 0)).toEqual({ x: 3400, y: 0 });
+    expect(clampCastleFightCrossing(CASTLE_FIGHT_MAX_DIST + 500, 0, CASTLE_FIGHT_MAX_DIST + 400, 0)).toEqual({ x: CASTLE_FIGHT_MAX_DIST + 400, y: 0 });
   });
 });
 

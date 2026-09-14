@@ -9,6 +9,7 @@
 // 描画(画面端の方向矢印)は pixiScene が、出現/帰巣は useGameLoop が、ここの値を読んで行う。
 
 import type { EnemyType, BaseSite } from '../types/game';
+import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
 
 // PACING_PUZZLE.md §6.24 M48: 寄り道POIの種類を armory(武器庫)/police(警察署)へ拡張。
 export type DetourPoiKind = 'armory' | 'police' | 'hospital';
@@ -38,10 +39,11 @@ export const poiSectorIndex = (poi: { x: number; y: number }): number =>
 // 距離は深層域(>=7500)の内側に置く(到達=深層域)。角度=その方角の拠点で解放される。
 // 調整はこの2値だけでよい(矢印・出現・帰巣すべてここを参照)。
 const BOSS_LAIR: Partial<Record<EnemyType, { angle: number; dist: number }>> = {
-  mimir: { angle: Math.PI, dist: 9000 },        // ステージ1=西(base-2 の方角)
-  jormungand: { angle: 0, dist: 9000 },         // ステージ3=東(base-0 の方角)
-  skadi: { angle: -Math.PI / 2, dist: 9000 },   // ステージ4=北(base-3 の方角)
-  thor: { angle: Math.PI / 2, dist: 9000 },     // ステージ5=南(base-1 の方角。残る最後の方角)
+  // ★v0.25.4293 世界の距離スケール: 素9000→13500(深層域の境界 11250 の内側=位置関係は不変)。
+  mimir: { angle: Math.PI, dist: worldDist(9000) },        // ステージ1=西(base-2 の方角)
+  jormungand: { angle: 0, dist: worldDist(9000) },         // ステージ3=東(base-0 の方角)
+  skadi: { angle: -Math.PI / 2, dist: worldDist(9000) },   // ステージ4=北(base-3 の方角)
+  thor: { angle: Math.PI / 2, dist: worldDist(9000) },     // ステージ5=南(base-1 の方角。残る最後の方角)
 };
 
 // 裏ボスの巣のワールド座標(未定義タイプは null)。

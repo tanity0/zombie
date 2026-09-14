@@ -6,6 +6,7 @@ import {
   policePos, policeRect, resolvePoliceCollision, isNearPolice, isPoliceRearmed, policeArenaCenter,
 } from './police';
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
+import { worldDist } from '../config/worldScale';
 import { detourPosForSector, DETOUR_ANGLE_SCATTER_RAD } from './detourPoi';
 import { poiSectorIndex } from './pois';
 import { rectsOverlap } from './obstacles';
@@ -15,8 +16,8 @@ describe('policePos(研究対象区域の中間・§6.24)', () => {
   // 「矢印が出た瞬間に来た道を戻らされる」ため、デンジャーゾーンの手前寄りへ移した。
   it('距離はデンジャーゾーンの手前寄り(3500)=拠点(3200)より外', () => {
     expect(POLICE_DIST).toBe(AREA_THRESHOLDS[1] + (AREA_THRESHOLDS[2] - AREA_THRESHOLDS[1]) * 0.25);
-    expect(POLICE_DIST).toBe(3500);
-    expect(POLICE_DIST).toBeGreaterThan(3200); // BASE_SITE_RADIUS
+    expect(POLICE_DIST).toBe(worldDist(3500)); // 素3500×世界スケール(v0.25.4293)=5250
+    expect(POLICE_DIST).toBeGreaterThan(worldDist(3200)); // BASE_SITE_RADIUS(素3200→4800)
     for (const sector of [0, 1, 2, 3]) {
       expect(Math.hypot(policePos(sector).x, policePos(sector).y)).toBeCloseTo(POLICE_DIST, 6);
     }

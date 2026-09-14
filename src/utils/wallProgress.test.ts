@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { AREA_THRESHOLDS as T } from './enemyUtils'; // 世界の距離スケール後の境界(2250/4500/7500/11250)。素の値を書かない
 import {
   createDefaultWallMeta, distanceToNextWall, isApproachingWall, detectWallBreach,
   isFirstWallBreach, isFirstRankReach, markWallBreached, markRankReached,
@@ -9,20 +10,20 @@ import {
 
 describe('distanceToNextWall / isApproachingWall (境界判定)', () => {
   it('区域0(0-1500)にいれば次の壁まで1500-distance', () => {
-    expect(distanceToNextWall(0)).toBe(1500);
-    expect(distanceToNextWall(1400)).toBe(100);
+    expect(distanceToNextWall(0)).toBe(T[0]);
+    expect(distanceToNextWall(T[0] - 100)).toBe(100);
   });
   it('深層域(7500以上)はnull(その先に壁はない)', () => {
-    expect(distanceToNextWall(7500)).toBe(null);
+    expect(distanceToNextWall(T[3])).toBe(null);
     expect(distanceToNextWall(50000)).toBe(null);
   });
   it('境界ちょうどは次の壁扱い(4本目=7500ちょうどはnull側)', () => {
-    expect(distanceToNextWall(3000)).toBe(2000); // 3000ちょうどは次(5000)まで2000
+    expect(distanceToNextWall(T[1])).toBe(T[2] - T[1]); // 境界ちょうどは次の壁まで
   });
   it('isApproachingWall: warnPx以内はtrue、それより遠いor深層域はfalse', () => {
-    expect(isApproachingWall(1400, 150)).toBe(true);  // 残り100<=150
-    expect(isApproachingWall(1300, 150)).toBe(false); // 残り200>150
-    expect(isApproachingWall(9000, 150)).toBe(false); // 深層域=null
+    expect(isApproachingWall(T[0] - 100, 150)).toBe(true);  // 残り100<=150
+    expect(isApproachingWall(T[0] - 200, 150)).toBe(false); // 残り200>150
+    expect(isApproachingWall(T[3] + 1500, 150)).toBe(false); // 深層域=null
   });
 });
 
@@ -83,8 +84,8 @@ describe('メタの初到達判定・不変更新', () => {
 
 describe('惜しさ計算(死亡リザルト)', () => {
   it('metersToNextWallは次の壁までの距離を丸めて返す', () => {
-    expect(metersToNextWall(1450)).toBe(50);
-    expect(metersToNextWall(9000)).toBe(null); // 深層域
+    expect(metersToNextWall(T[0] - 50)).toBe(50);
+    expect(metersToNextWall(T[3] + 1500)).toBe(null); // 深層域
   });
   it('isOneRankAwayFromNext/nextRankNameはR7未満で該当', () => {
     expect(isOneRankAwayFromNext(6)).toBe(true);
@@ -106,9 +107,9 @@ describe('掛け合わせ表示', () => {
   });
   it('zoneIdxForDist/deepestReachedBadgeは距離から区域を逆引きする', () => {
     expect(zoneIdxForDist(0)).toBe(0);
-    expect(zoneIdxForDist(1500)).toBe(1);
-    expect(zoneIdxForDist(8000)).toBe(4);
-    expect(deepestReachedBadge(8000, 7)).toBe('最深到達: 深層域のランク7 傲慢');
+    expect(zoneIdxForDist(T[0])).toBe(1);
+    expect(zoneIdxForDist(T[3] + 500)).toBe(4);
+    expect(deepestReachedBadge(T[3] + 500, 7)).toBe('最深到達: 深層域のランク7 傲慢');
   });
 });
 

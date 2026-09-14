@@ -2,7 +2,7 @@
 // 台帳(src/data/tutorials.ts)の体裁を固定する。
 import { describe, it, expect } from 'vitest';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_BEATS, M0_PRACTICE_COUNT, type M0Beat } from './m0Tutorial';
-import { AREA_THRESHOLDS } from './enemyUtils';
+import { AREA_THRESHOLDS_BASE } from './enemyUtils'; // 訓練ステージは世界の距離スケール(v0.25.4293)の対象外=素の境界に載る
 import { TUTORIAL_MOVE_X_MIN_PX, COUNTER_WINDOW, COUNTER_COOLDOWN } from '../store/gameStore';
 import { TUTORIALS, getTutorial } from '../data/tutorials';
 
@@ -223,8 +223,8 @@ describe('M0_BEATS の不変条件', () => {
 
   // ここがズレると「区域が変わる」と言った瞬間に区域が変わらない(=説明が嘘になる)。
   it('区域の説明は「研究」入場、ハンターは「デンジャー」入場と一致する', () => {
-    expect(M0_BEATS.find(b => b.id === 'area')!.atX).toBe(AREA_THRESHOLDS[0]);
-    expect(M0_BEATS.find(b => b.id === 'hunter')!.atX).toBe(AREA_THRESHOLDS[1]);
+    expect(M0_BEATS.find(b => b.id === 'area')!.atX).toBe(AREA_THRESHOLDS_BASE[0]);
+    expect(M0_BEATS.find(b => b.id === 'hunter')!.atX).toBe(AREA_THRESHOLDS_BASE[1]);
   });
 
   // レベルは「敵を倒さなければ永久に上がらない」=条件が満たされないまま残りうる唯一の型。
@@ -306,7 +306,7 @@ describe('m0AdvanceLimit(関門=ここより先へ進めない前線)', () => {
   // 区域の説明より先に戦闘教習を終わらせる(順序が逆になると「奥は危険」の回収が壊れる)。
   it('関門は全て区域境界(1500)より手前にある', () => {
     for (const b of M0_BEATS) {
-      if (b.gateX !== undefined) expect(b.gateX, b.id).toBeLessThan(AREA_THRESHOLDS[0]);
+      if (b.gateX !== undefined) expect(b.gateX, b.id).toBeLessThan(AREA_THRESHOLDS_BASE[0]);
     }
   });
 

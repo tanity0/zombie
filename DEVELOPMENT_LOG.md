@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.4293 — 世界の距離を丸ごと1.5倍(社長裁定「はい」=区域の延長・訓練は据え置き)【2026-09-14 15:06 JST】
+
+- 社長「エリア区間距離をその分延長」→ 範囲を1問確認 → 「はい」(推薦=世界の距離を丸ごと×1.5・訓練ステージ据え置き)。
+- **1箇所の定数** `src/config/worldScale.ts`: `WORLD_DIST_SCALE=1.5` / `worldDist(px)`。掛けた先(位置関係は不変):
+  区域の境界 `AREA_THRESHOLDS` 1500/3000/5000/7500→**2250/4500/7500/11250**(`AREA_THRESHOLDS_BASE` に素の値・`areaIndexForPos` は if連鎖を配列走査に)/
+  拠点 `BASE_SITE_RADIUS` 3200→4800 / 警察署・武器庫・病院(`DETOUR_DIST`=区域から導出→5250/6000/6750)/ 裏ボスの巣 `BOSS_LAIR` 9000→13500 /
+  城ボス戦の移動制限 `CASTLE_FIGHT_MAX_DIST` 3000→4500 / 裏ボス出現 `BOSS_SPAWN_NEAR` 1500→2250・`BOSS_SPAWN_DEPTH` 7800→11700 /
+  死神の深度4本(8600/11600/14600/18200→12900/17400/21900/27300)/ 護衛の担当エリア進入セリフ 1200→1800 / ボット `DANGER_ZONE_R`・`FARM_RADIUS` /
+  結果画面の断面図 `ABYSS_SPAN` 2500→3750。
+- **据え置き**: 訓練ステージ(M0)=`setAreaDistanceScale(farBackdrop !== 'tutorial')` を resetGame でセット→`areaIndexForPos` が素の境界を使う
+  (台本 1500/3000 と一致)。EX(`EX_PHILL_TRIGGER_Y` は別世界)・洋館通路(区域構造なし)・城の配置(プレイヤー基準1300)・ガントレット(固定アリーナ)・
+  プレイヤー/敵の速度・湧き距離(画面基準)。
+- テスト: 距離の素の値をピン留めしていた16本を境界配列/`worldDist` 参照へ(enemyUtils/wallProgress/resultReach/m0Tutorial(素の値)/playableArea/
+  police/hospital/armory/playtest M19)。**M19(rusher が6分で深層域へ)は 11250 でも到達**(34秒・緑)。typecheck・lint 0。
+- 事実: 歩き(104px/s)で深層域まで 72→108秒。拠点まで 31→46秒。進軍NPC(73px/s)は拠点まで 66秒。
+- 監査: 新しい仕組みではなく既存の距離モデルの倍率化(定数1つ)=品質監査は付けない。影響範囲は grep で全数を洗い、DEVLOG に列挙。実機確認は社長。
+
 ## v0.25.4292 — 進軍NPC 0.7倍・拠点を 3200 へ戻す(社長指示)【2026-09-14 14:39 JST】
 
 - 社長「NPCの速度いまの0.7倍で」→ `ESCORT_WALK_MULT=0.7`(104.4→73px/s。旧48の1.52倍)。

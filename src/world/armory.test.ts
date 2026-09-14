@@ -6,6 +6,7 @@ import {
   armoryPos, armoryRect, resolveArmoryCollision, isInArmoryCircle, tickArmoryDwell, armoryCircleCenter,
 } from './armory';
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
+import { worldDist } from '../config/worldScale';
 import { detourPosForSector, DETOUR_ANGLE_SCATTER_RAD } from './detourPoi';
 import { poiSectorIndex } from './pois';
 import { rectsOverlap } from './obstacles';
@@ -15,7 +16,7 @@ const player = (cx: number, cy: number) => ({ x: cx - 14, y: cy - 14, width: 28,
 describe('armoryPos(デンジャーゾーンの中間・§6.24)', () => {
   it('距離はデンジャーゾーンの中間(4000)', () => {
     expect(ARMORY_DIST).toBe((AREA_THRESHOLDS[1] + AREA_THRESHOLDS[2]) / 2);
-    expect(ARMORY_DIST).toBe(4000);
+    expect(ARMORY_DIST).toBe(worldDist(4000)); // 素4000×世界スケール(v0.25.4293)=6000
     for (const sector of [0, 1, 2, 3]) {
       expect(Math.hypot(armoryPos(sector).x, armoryPos(sector).y)).toBeCloseTo(ARMORY_DIST, 6);
     }

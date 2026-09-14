@@ -73,6 +73,7 @@
 | 起動直後に真っ暗(build/typecheck/testは緑) | **循環importを疑う** | 3390 | 「循環import」節 |
 | 練習ラン/ガントレットでボスが出ない・枠が同じ | **`practiceGuard` が localStorage 書き込みを黙って飲む** | 3630 | §2 練習ラン |
 | 時計がズレる/技が止まらない | **`gameTime` と実時計の混在** | 3621 | 「時計の混在」節 |
+| **区域の境界・拠点・施設・巣の距離が合わない/ズレて見える** | **`src/config/worldScale.ts` の `WORLD_DIST_SCALE`(1.5)を掛けた先か素の値かを見る**。`AREA_THRESHOLDS` は掛け済み(2250/4500/7500/11250)・`AREA_THRESHOLDS_BASE` が素。訓練(M0)だけ `setAreaDistanceScale(false)` で素。新しい「原点からの距離」を足す時は `worldDist()` を通す(素の値を直書きすると位置関係がズレる) | 4293(世界の距離1.5倍) | worldScale.ts / DEVLOG v0.25.4293 |
 | **自分の攻撃で画面が揺れない/小さい/揺れてほしくない所で揺れる** | **揺れは1本: `registerImpact`→`flushImpacts`(tick末)→`impactShakeFor`**。①その命中は damageEnemy に hateSource='player' かつ channel∉{null,'dot'} で来ているか(召喚/味方/連続源は 'dot'=揺らさない仕様) ②銃は命中では揺れない(フラグ crit/kill/blast の時だけ。1層目は発砲のキック) ③爆風なら `blast`(第3引数)が true か ④近接3経路は damageEnemy を通らない=各自の registerImpact を見る | 4284(揺れの整理・research/SHAKE_UNIFY.md) | impactShake.ts / SHAKE_UNIFY.md |
 | **手動の狙いサークルがずっと薄い/吸い付いていないように見える**(オート+手動を持つ銃) | **CD表示がどの時計を読んでいるか**(オートの `lastFired` か手動の `manualLastFired` か)。オートが撃ち続ける銃は `lastFired` が常にCD内=表示が永久に薄い | 4283(レールガン: 吸い付き・確定ヘッドショットの配線は生きていたが、描画がオートの時計を読み alpha 0.2 に張り付いていた=「実装されていない」と見えた) | pixiScene 狙いサークル |
 | ベンチの数字が暴れる/結論が出ない | **観測数 `n` を見る(100未満は結論にしない)+ `shift`** | 2690(n=2〜3の壊れた計測器) | 「計測器を疑う」節 |

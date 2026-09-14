@@ -1,3 +1,4 @@
+import { worldDist } from './worldScale';
 // 死神(深奥リスク)システム。仕様の全文は repo ルートの reaper_spec.md + PACING_PUZZLE.md §14-4。
 // マップは無限。スタート/商人(原点付近)から遠いほど死神が画面を横切り、深奥に長居すると完全出現して追跡する。
 // 横切り=無害な演出(pixiScene 単独スプライト)、追跡=本物の reaper 敵(被弾・接触・討伐可)。
@@ -28,10 +29,11 @@ export const REAPER_CONFIG = {
   // 原点(スタート/商人付近)からの距離(px)でフェーズ判定。深層域(7500px〜)に入ってしばらく進むと警告開始。
   // ※仕様は「商人から何秒ぶん離れたか」基準だが、v1は実装しやすいピクセル距離で近似(調整可)。
   // 死神が出現する領域を 8600px 開始へ(社長指示)。深層域より奥でのみ死神リスクが立ち上がる。
-  warningDepthPx: 8600,    // ここから横切り警告(深層域の奥)
-  frequentDepthPx: 11600,  // 横切り頻発(+3000)
-  spawnRiskDepthPx: 14600, // リスク蓄積=完全出現へ(+3000)
-  extremeDepthPx: 18200,   // リスク急増(+3600)
+  // ★v0.25.4293 世界の距離スケール(×1.5): 素 8600/11600/14600/18200 → 12900/17400/21900/27300(深層域の境界 7500→11250 と同じ倍率)。
+  warningDepthPx: worldDist(8600),    // ここから横切り警告(深層域の奥)
+  frequentDepthPx: worldDist(11600),  // 横切り頻発(+3000×1.5)
+  spawnRiskDepthPx: worldDist(14600), // リスク蓄積=完全出現へ
+  extremeDepthPx: worldDist(18200),   // リスク急増
   // 横切り間隔(ms)。深いほど頻発。
   passIntervalWarningMs: 9000,
   passIntervalFrequentMs: 5000,

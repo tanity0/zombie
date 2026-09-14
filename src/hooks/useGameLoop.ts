@@ -164,6 +164,7 @@ import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { CASTLE_BOSS_MIN_TIME_MS, DUO_COMM_TO_CASTLE_DELAY_MS } from '../config/castleBoss';
+import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
 import { stageBossHealthFor, STAGE_BOSS_HEALTH_BY_STAGE, guardianPhantomHealth } from '../config/bossHealth';
 // research/STAGE_DIFFICULTY.md(ステージ難度の階段): 小ボスのステージ固定割当と、ボス個別適用の係数。
 import { BOUNTY_TYPE_BY_STAGE } from '../config/stageDifficulty';
@@ -720,7 +721,7 @@ const GATE_FAIL_KNOCKBACK_MARGIN = 400; // §5.21-追補6: ゲート失敗時に
 // 「湧きと重なって理不尽に被弾する」ことがあった(社長報告)。現在のプレイヤー位置からの最低距離を確保する。
 const HORDE_SPAWN_PLAYER_CLEARANCE = 140; // この距離未満には湧かせない
 const HORDE_SPAWN_CLEAR_ATTEMPTS = 8;     // 角度を振り直して確保を試みる回数(それでもダメなら押し出す)
-const AREA_SECTOR_ENTER_DIST = 1200;   // 担当エリア進入セリフ(neglectFar)を出す最小距離(原点ハブ付近は除外)
+const AREA_SECTOR_ENTER_DIST = worldDist(1200);   // 担当エリア進入セリフ(neglectFar)を出す最小距離(原点ハブ付近は除外。素1200→1800)
 const ARENA_FIRE_AFTER_MS = 120000;    // 初回発火時刻(=ゲーム開始2分)
 const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。社長指示)
 // 紅き夜の発火判定時刻は「5分以上でランダム」(社長指示)。出撃ごとに 5〜9分の範囲で1回だけ抽選時刻を決める。
@@ -1152,9 +1153,9 @@ const DANCE_BEAT_SCHEDULE_WINDOW_MS = 150; // 次の1拍をこの時間内に入
 
 // --- 裏ボス(深層域の隠しボス: mimir/jormungand)コントローラ定数 ---
 // 深層域(原点から 7500 以上=area 4)の「指定エリア」に近づくと1回だけ出現する。
-const BOSS_SPAWN_DEPTH = evNum('bossdepth', 7800);   // この深度に到達で出現(area 4 の少し内側。巣が無いタイプ用の保険)
-const BOSS_SPAWN_NEAR = 1500;                        // 巣(固定)へこの距離まで近づくと出現(=指定エリアに近づくと出現)
-const BOSS_EXIT_DEPTH = AREA_THRESHOLDS[3] - BOSS_SPAWN_NEAR; // 深層境界7500から1500px戻るまで戦闘継続(旧7300=余白200px)
+const BOSS_SPAWN_DEPTH = evNum('bossdepth', worldDist(7800));   // この深度に到達で出現(area 4 の少し内側。巣が無いタイプ用の保険。素7800→11700)
+const BOSS_SPAWN_NEAR = worldDist(1500);             // 巣(固定)へこの距離まで近づくと出現(=指定エリアに近づくと出現。素1500→2250)
+const BOSS_EXIT_DEPTH = AREA_THRESHOLDS[3] - BOSS_SPAWN_NEAR; // 深層境界からBOSS_SPAWN_NEARぶん戻るまで戦闘継続
 const BOSS_REGEN_PER_SEC = 10;                       // 画面外/帰巣中は毎秒この耐久値が回復(社長指示: 40→10)
 const BOSS_SCREEN_MARGIN = 120;                      // 画面上の余白px。world側ではズーム倍率で逆換算する
 // ★v0.25.3573(ボスメーカー第4弾・BOSS_MAKER.md §6 フェーズ4): 裏ボス4体の**技と動きの数値**は

@@ -6,6 +6,7 @@ import { effectiveDifficultyArea, lerpAreaTable } from './timeDifficulty';
 // 当たり判定の「帯」(視覚と分離した gameplay の矩形)。射程を測る相手の矩形として使う。
 // renderSpec は utils を逆輸入しない(types と cameraZoom だけ)ので循環しない。
 import { enemyHitStrip } from '../pixi/renderSpec';
+import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
 
 // 固定ビュー矩形からの「画面外」バンド(px・社長指示Bで具体値決め直し)。全辺一律で「画面端から○px外」を意味する。
 // 固定ビューにしたので画面サイズ比ではなく固定px。SPAWN<RECYCLE のヒステリシスで湧いた敵が即リサイクルされない。実機で微調整可。
@@ -549,18 +550,22 @@ export const selectLabEnemyType = (gameTime: number): EnemyType => {
 export const AREA_COUNT = 5;
 // エリア名(進入バナー・PACING_REDESIGN.mdバッチ2の最深到達telemetry表示で共有)。
 export const AREA_ZONE_NAMES = ['軍備配置区域', '研究対象区域', 'デンジャーゾーン', '未確認汚染エリア', '深層域'];
-// 区域境界(px・原点からの距離)。PACING_PUZZLE.md §5.17 M14の「深さの壁」4本と同じ値
-// (areaIndexForPosのif連鎖と同じ値を共有・挙動は不変)。
-export const AREA_THRESHOLDS = [1500, 3000, 5000, 7500];
+// 区域境界(px・原点からの距離)。PACING_PUZZLE.md §5.17 M14の「深さの壁」4本と同じ値。
+// ★v0.25.4293(社長裁定2026-09-14): 素の値 1500/3000/5000/7500 を WORLD_DIST_SCALE(1.5)で伸ばす
+// → 2250/4500/7500/11250。訓練ステージ(M0)は素の値のまま(台本が境界に載っている)=setAreaDistanceScale(false)。
+export const AREA_THRESHOLDS_BASE = [1500, 3000, 5000, 7500];
+export const AREA_THRESHOLDS = AREA_THRESHOLDS_BASE.map(worldDist);
+let areaScaleEnabled = true;
+/** 訓練ステージ(M0)では false=区域判定を素の境界(1500/3000/5000/7500)で行う。resetGame が出撃ごとに1回セット。 */
+export const setAreaDistanceScale = (enabled: boolean): void => { areaScaleEnabled = enabled; };
+export const activeAreaThresholds = (): readonly number[] => (areaScaleEnabled ? AREA_THRESHOLDS : AREA_THRESHOLDS_BASE);
 export const areaIndexForPos = (x: number, y: number): number => {
   // 洋館通路(corridorMode・v0.25.2128・社長指示): 拠点/エリア構造なし。裏側のステータスは
   // 全域「未確認汚染エリア」(index3)扱い=難易度1.75倍・未確認の湧き構成・最大敵数10。
   if (corridorSpawnEnabled) return 3;
   const d = Math.hypot(x, y);
-  if (d >= 7500) return 4;
-  if (d >= 5000) return 3;
-  if (d >= 3000) return 2;
-  if (d >= 1500) return 1;
+  const t = activeAreaThresholds();
+  for (let i = t.length - 1; i >= 0; i--) if (d >= t[i]) return i + 1;
   return 0;
 };
 

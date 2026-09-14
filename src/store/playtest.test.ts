@@ -376,7 +376,7 @@ describe('M19: rusherペルソナ+深層ラッシュ・シナリオ(試験の穴
       console.log(`  死亡=${died}${died ? ` @${((diedAtMs ?? 0) / 1000).toFixed(0)}s 死因=${deathCause ?? '?'}` : ''}`);
 
       // 芯(受け入れ条件②): rusherが深層域(r>=7500)へ到達できること。
-      expect(maxRadius).toBeGreaterThanOrEqual(7500);
+      expect(maxRadius).toBeGreaterThanOrEqual(AREA_THRESHOLDS[3]); // 深層域の境界(世界スケール後=11250)
     } finally {
       vi.useRealTimers();
     }

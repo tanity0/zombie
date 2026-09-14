@@ -3,6 +3,9 @@ import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, 
 import { isEngageableBoss } from './bossEngagement';
 import type { Enemy, Player, Summon, GameBounds, EnemyType } from '../types/game';
 import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
+import { AREA_THRESHOLDS } from './enemyUtils'; // 世界の距離スケール(v0.25.4293)後の境界=2250/4500/7500/11250。素の値を書かない
+const T = AREA_THRESHOLDS;
+const DEEP_X = T[3] + 500; // 深層域の中
 
 const mkEnemy = (x: number, y: number): Enemy =>
   ({ x, y, width: 32, height: 32 } as unknown as Enemy);
@@ -15,11 +18,12 @@ const BOUNDS: GameBounds = { width: 800, height: 600 };
 describe('areaIndexForPos', () => {
   it('returns area by radial distance from the origin', () => {
     expect(areaIndexForPos(0, 0)).toBe(0);
-    expect(areaIndexForPos(1499, 0)).toBe(0);
-    expect(areaIndexForPos(1500, 0)).toBe(1);
-    expect(areaIndexForPos(0, 3000)).toBe(2);
-    expect(areaIndexForPos(5000, 0)).toBe(3);
-    expect(areaIndexForPos(7500, 0)).toBe(4);
+    expect(areaIndexForPos(T[0] - 1, 0)).toBe(0);
+    expect(areaIndexForPos(T[0], 0)).toBe(1);
+    expect(areaIndexForPos(0, T[1])).toBe(2);
+    expect(areaIndexForPos(T[2], 0)).toBe(3);
+    expect(areaIndexForPos(T[3], 0)).toBe(4);
+    expect(T).toEqual([2250, 4500, 7500, 11250]); // 素 1500/3000/5000/7500 × WORLD_DIST_SCALE 1.5
   });
   it('clamps to the deepest area far out', () => {
     expect(areaIndexForPos(99999, 99999)).toBe(AREA_COUNT - 1);
@@ -46,18 +50,18 @@ describe('AREA_SPEED_MULT (エリア別の速さ・社長指定v0.25.2317)', () 
   it('移動速度に乗る: 深層域(area4)の個体は軍備配置(area0)の同型より速い', () => {
     // 原点=area0 / r>=7500=area4。同じ型(zombie)で比較する。
     const shallow = spawnEnemyAt('zombie', 0, 0, 0);
-    const deep = spawnEnemyAt('zombie', 8000, 0, 0);
+    const deep = spawnEnemyAt('zombie', DEEP_X, 0, 0);
     expect(deep.speed).toBeCloseTo(shallow.speed * 2.0, 5);
   });
   it('弾速に乗る: 深層域のプラント弾は軍備配置のプラント弾より速い', () => {
     const player = mkPlayer(400, 300);
     const shallow = createEnemyProjectile(spawnEnemyAt('plant', 0, 0, 0), player);
-    const deep = createEnemyProjectile(spawnEnemyAt('plant', 8000, 0, 0), player);
+    const deep = createEnemyProjectile(spawnEnemyAt('plant', DEEP_X, 0, 0), player);
     expect(deep.speed).toBeCloseTo(shallow.speed * 2.0, 5);
   });
   it('固定強度タイプ(ジャイアントバット)はエリアで速くならない', () => {
     const shallow = spawnEnemyAt('giantbat', 0, 0, 0);
-    const deep = spawnEnemyAt('giantbat', 8000, 0, 0);
+    const deep = spawnEnemyAt('giantbat', DEEP_X, 0, 0);
     expect(deep.speed).toBeCloseTo(shallow.speed, 5);
     const player = mkPlayer(400, 300);
     expect(createEnemyProjectile(deep, player).speed)
