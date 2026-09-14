@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4321',
+    items: ['ゲーム内容の変更はありません。'],
+  },
+  {
     version: '0.25.4320',
     items: [
       '斜めが寄りと連動するようになった。寄っている間ずっと傾いたまま保ち、寄りが戻るのに合わせて解ける。',

@@ -807,6 +807,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/idol-fist', scaleMode: 'linear' as const },      // 偶像の拳(ナックルが下端=突く向き)。v0.25.2935ドット版・回転するのでlinear維持
       { name: 'fx/plant-spit', scaleMode: 'linear' as const },     // 食人植物の種吐き(口が右向き)
       { name: 'fx/plant-seed', scaleMode: 'linear' as const },     // 種そのもの(植物の敵弾スプライト)
+      // 通常斬撃ヒットの炸裂(社長支給2026-09-14・35コマ・175×164・アルファ付き)。
+      // 白い芯→青い棘→氷の破片→粒と煙→消える、の一連。走る斬撃は含まない=**当たった瞬間だけ**の絵。
+      ...Array.from({ length: 35 }, (_, i) => ({ name: `fx/slash-hit-${String(i).padStart(2, '0')}`, scaleMode: 'linear' as const })),
       { name: 'fx/dust-puff', scaleMode: 'linear' as const },      // 砂埃バリエーションA(もこもこの塊)
       { name: 'fx/dust-ring', scaleMode: 'linear' as const },      // 砂埃バリエーションB(放射状のリング)
       { name: 'fx/ground-crack', scaleMode: 'linear' as const },   // 地割れ(着地衝撃の床。分類②)
