@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4283',
+    items: ['レールガンの狙いサークルが戦闘中ずっと薄いままで、敵の頭に吸い付いた緑の表示が見えなかった不具合が直った。手動の一発が撃てる時だけ濃く出る。'],
+  },
+  {
     version: '0.25.4282',
     items: ['ゲーム内容の変更はありません。'],
   },

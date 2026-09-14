@@ -29130,7 +29130,13 @@ export class PixiScene {
         // シグナルにヘッドショット概念は無いので、スナップ状態に関わらず常に琥珀の1色。
         const ax = cx + player.phillReticleDX + rox;
         const ay = cy + player.phillReticleDY + roy;
-        const onCd = now - (phill.lastFired ?? 0) < (phill.cooldown ?? 1000);
+        // ★v0.25.4283(社長報告「レールガンの吸い付きが実装されていない気がする」の正体): レールガンは
+        // オートと手動でCDの時計が別(2026-09-13・manualLastFired)。ここが**オートの lastFired** を読んでいたため、
+        // 戦闘中はオートが1.3秒ごとに撃ち続けて常に「CD中」判定=サークルが alpha 0.2 に張り付き、緑の
+        // 吸い付きが**見えなかった**(吸い付き・発砲・確定ヘッドショットの配線自体は生きていた)。
+        // 手動サークルの薄さは手動の時計で判断する(PHILLは自動を持たないので lastFired が手動の時計)。
+        const manualLast = phill.key === RAILGUN_WEAPON_KEY ? (phill.manualLastFired ?? 0) : (phill.lastFired ?? 0);
+        const onCd = now - manualLast < (phill.cooldown ?? 1000);
         const reloading = phill.id === player.reloadingWeaponId && now < player.reloadEndsAt;
         const a = (onCd || reloading) ? 0.2 : 0.9;
         const snapped = !isSignalGun && player.phillSnapEnemyId != null;

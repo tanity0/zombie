@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.4283 — レールガンの吸い付きが「実装されていない」と見えた正体=狙いサークルの薄さがオートの時計を読んでいた【2026-09-14 12:36 JST】
+
+- **社長報告**「レールガンとかの修正でフィルガンみたいにヘッドショットに吸い付く機能が実装されてない気がする」→ 調査。
+- **実在確認の結果(配線は全て生きていた)**: 吸い付き=`movePlayer`(`hasManualAimGunKey`=PHILL/シグナル/レールガン・`PHILL_SNAP_RADIUS`)/
+  発砲=`fireRailgunShot`(指離し: inputActions・VirtualJoystick・ボット口の3箇所から呼ばれる。吸い付き中は頭に静止弾+`headshotEligible`)/
+  判定=`collisionUtils`(頭部リージョン→`headshot:true`)/着弾=useGameLoop(`headshotHit`→確定クリ)。テストも既存(`collisionUtils.test.ts` §17-10)。
+- **不具合(1つ)**: `pixiScene` の狙いサークルの「CD中は薄く(alpha 0.2)」が **オートの `lastFired`** を読んでいた。レールガンはオートが
+  1.3秒ごとに撃ち続けるので戦闘中は常にCD内=**サークルが永久に薄い**→ 吸い付いた緑も alpha 0.2 で見えない=「吸い付いていない」に見える。
+  2026-09-13 にオートと手動のCDを別時計(`manualLastFired`)へ分けた時、描画側の時計を追従させ忘れていた。
+- **修正**: レールガンだけ `manualLastFired` で薄さを判定(PHILL/シグナルは従来どおり=自動を持たないので `lastFired` が手動の時計)。
+  判定・吸い付き半径・発砲条件・ダメージは不変(表示の時計だけ)。
+- **事実として併記**: レティクル基準距離は PHILL と同じ 130px(`PHILL_AIM_RANGE`・§17-10「PHILLの仕様にオートを足すだけ」)。
+  長射程の銃としては手前寄りだが、これは仕様の流用であって不具合ではない(変える場合は社長判断)。
+- ENGINEERING_NOTES §0 に症状1行追記。typecheck・lint 0(素の実行)。実機確認は社長。
+
 ## v0.25.4282 — 型エラー修正(v0.25.4281 の未使用変数)【2026-09-14 11:46 JST】
 
 - `pixiScene.syncIceLanceFloors` で帯を消した際に残った `ang`/`ease` の計算を削除(TS6133 / eslint no-unused-vars)。ゲーム内容の変更なし。
