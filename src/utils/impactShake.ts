@@ -9,6 +9,7 @@ export const IMPACT_HARD_MAX = 11;   // 倍率込みの天井=被弾(SHAKE_MAG 1
 export const IMPACT_RATE_REF_MS = 300;
 export const IMPACT_MS_BASE = 60;
 export const IMPACT_MS_PER_PX = 8;
+export const IMPACT_MS_MIN = 90;   // 最短(v0.25.4285 クリエイティブ監査4: 3コマの白色ノイズは「チラつき」=存在しない揺れ)
 
 export interface ImpactFlags {
   crit?: boolean;      // クリティカル/ヘッドショット
@@ -54,7 +55,7 @@ export const impactShakeFor = (damage: number, flags: ImpactFlags = {}, interval
     if (flags[k]) { m *= IMPACT_MULT[k].mag; t *= IMPACT_MULT[k].ms; }
   }
   const mag = Math.min(IMPACT_HARD_MAX, base * m);
-  const ms = Math.round((IMPACT_MS_BASE + IMPACT_MS_PER_PX * base) * t);
+  const ms = Math.max(IMPACT_MS_MIN, Math.round((IMPACT_MS_BASE + IMPACT_MS_PER_PX * base) * t));
   return { mag, ms };
 };
 

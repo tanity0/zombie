@@ -40,7 +40,8 @@ describe('揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)', ()
     expect(impactShakeFor(52, { crit: true }).ms).toBeLessThan(plain.ms);
     expect(impactShakeFor(52, { explosion: true }).ms).toBeGreaterThan(plain.ms);
     expect(impactShakeFor(140).ms).toBeGreaterThan(impactShakeFor(7).ms);
-    expect(plain.ms).toBeGreaterThanOrEqual(60);
+    expect(plain.ms).toBeGreaterThanOrEqual(90);
+    expect(impactShakeFor(7, { crit: true }, 100).ms).toBeGreaterThanOrEqual(90); // 最短の床(3コマのチラつきを出さない)
   });
   it('連射: マシンピストル1発(7・100ms)の揺れはハンドガン1発(9・420ms)よりはっきり小さい', () => {
     expect(impactShakeFor(7, {}, 100).mag).toBeLessThan(impactShakeFor(9, {}, 420).mag * 0.5);

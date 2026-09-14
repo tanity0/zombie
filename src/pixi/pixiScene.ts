@@ -7660,8 +7660,15 @@ export class PixiScene {
       // その方向へ寄せる。無指定(dirLenほぼ0)は従来どおり完全な等方ランダム。
       const dirLen = Math.hypot(s.shakeDirX, s.shakeDirY);
       if (dirLen > 0.01) {
-        const off = biasedShakeOffset(mag, s.shakeDirX / dirLen, s.shakeDirY / dirLen, Math.random() * 2 - 1, Math.random() * 2 - 1);
-        sx = off.x; sy = off.y;
+        // v0.25.4285(クリエイティブ監査1): 沿う成分が対称乱数だと向きが見えない。**最初の1コマは方向へ満額の変位(パンチ)**、
+        // 以後は方向に寄せた乱数の減衰(従来)。これで「銃=射線の逆・近接/爆発=命中点へ」が実機で読める。
+        const age = (s.shakeDur || SHAKE_MS) - shakeLeft;
+        if (age < 34) {
+          sx = (s.shakeDirX / dirLen) * mag; sy = (s.shakeDirY / dirLen) * mag;
+        } else {
+          const off = biasedShakeOffset(mag, s.shakeDirX / dirLen, s.shakeDirY / dirLen, Math.random() * 2 - 1, Math.random() * 2 - 1);
+          sx = off.x; sy = off.y;
+        }
       } else {
         sx = (Math.random() * 2 - 1) * mag;
         sy = (Math.random() * 2 - 1) * mag;

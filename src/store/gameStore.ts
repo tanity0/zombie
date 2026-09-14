@@ -18861,6 +18861,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   
   resetGame: (characterClass) => {
+    impactQueue = []; // 揺れの整理: 前ランの未解決の命中を持ち越さない
     const state = get();
     // v0.25.2476: 前ランのサブ様式集計(fold)+プロファイル保存の決算は、リザルト画面を閉じる操作
     // (GameOverScreenのsettlePendingTraits)へ移動した(社長裁定「今回のプレイを守護霊に反映しない」を
@@ -19712,7 +19713,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const dir = DIRFX_ENABLED ? normalizeDir(dirX ?? 0, dirY ?? 0) : { x: 0, y: 0 };
     set(state => {
       const active = now < state.shakeUntil;
-      if (active && state.shakeMag >= mag) {
+      // v0.25.4285(クリエイティブ監査5): 進行中より**弱い**揺れは無視(延長すると fade=残り/長さ が跳ね戻って鋸歯になる)。
+      // 同じ強さは延長(連続して鳴らす源=レーザー照射中など)。
+      if (active && state.shakeMag > mag) return {};
+      if (active && state.shakeMag === mag) {
         return { shakeUntil: Math.max(state.shakeUntil, now + Math.max(0, durationMs)) };
       }
       return {
@@ -19738,8 +19742,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   flushImpacts: () => {
     // tick末(useGameLoop)に1回。同じ source の束を合算→複数事象は強い方優先→1回の triggerShake。
-    // ヒットストップ中は tick が早期returnで回らないので、ここに来た時点で停止は明けている(=ストップ→揺れの順)。
+    // ヒットストップ中(このtickで始まった停止も含む)は保留=停止が明けた次の解決点で出る(ストップ→揺れの順)。
     if (impactQueue.length === 0) return;
+    if (Date.now() < get().hitstopUntil) return;
     const entries = impactQueue;
     impactQueue = [];
     const best = strongestImpact(mergeImpactEntries(entries));

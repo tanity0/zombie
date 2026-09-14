@@ -87,6 +87,8 @@ export interface RecoilSpec { kickPx: number; kickMs: number; overshoot: number 
 export interface RecoilWeaponLike { category?: WeaponCategory; damage: number; count?: number; cooldown: number; knockbackMult?: number }
 export const RECOIL_KICK_MAX_PX = IMPACT_BASE_MAX;
 export const RECOIL_HEAVY_PX = 5;
+// 重い銃の立て直し(反対側へ行き過ぎて戻る)の深さ。0.15 は −0.3px で目に見えなかった(v0.25.4285 クリエイティブ監査8)。
+export const RECOIL_OVERSHOOT = 0.5;
 // 揺れの整理(research/SHAKE_UNIFY.md §2-4・社長承認2026-09-14): 銃の1層目(純粋なダメージ)は発砲時のキックで出す。
 // 振幅は impactBase(1発の総威力)×レート正規化(連射は 間隔/300 倍=1秒あたりの揺れ量の天井)。旧「基礎1.6+威力×0.055」
 // と √減衰の別枠(rapidFireKickMult)は撤去=命中揺れと同じ曲線・同じ土台から出る。床は無し(弱い銃は小さいまま)。
@@ -95,7 +97,7 @@ export const recoilSpecForWeapon = (w: RecoilWeaponLike, damageMult = 1): Recoil
     * (w.category === 'shotgun' ? 1.8 : 1) * Math.sqrt(Math.max(1, w.knockbackMult ?? 1));
   const kickPx = impactBase(shot) * impactRateMult(w.cooldown);
   const kickMs = Math.max(60, Math.min(190, Math.round(w.cooldown * 0.75)));
-  return { kickPx, kickMs, overshoot: kickPx >= RECOIL_HEAVY_PX ? 0.15 : 0 };
+  return { kickPx, kickMs, overshoot: kickPx >= RECOIL_HEAVY_PX ? RECOIL_OVERSHOOT : 0 };
 };
 // キックのオフセット(px・射線の逆向きに掛ける大きさ)。t=残り/長さ(1→0)。
 // 撃った瞬間が最大で二次のease-out(最初速く戻り、終わりでゆっくり止まる)=慣性MUST。
@@ -107,11 +109,14 @@ export const recoilKickOffset = (kickPx: number, remainingMs: number, kickMs: nu
 };
 // キックの向き: 射線の逆(bx,by)に、垂直方向のぶれ(最大±25%)を1発ごとに混ぜる。rand=0..1。
 export const RECOIL_LATERAL_JITTER = 0.25;
+// v0.25.4285(クリエイティブ監査7): 横ぶれは左右対称の乱数ではなく**利き手側へ片寄る**(実銃は同じ側へ「上がって流れる」)。
+// 大きさは 35〜100% の間で1発ごとに揺れる=散らばりではなく傾向。
+export const RECOIL_LATERAL_BIAS_MIN = 0.35;
 export const recoilKickDir = (bx: number, by: number, rand: number): { x: number; y: number } => {
   const l = Math.hypot(bx, by);
   if (l < 1e-6) return { x: 0, y: 0 };
   const ux = bx / l, uy = by / l;
-  const j = (rand * 2 - 1) * RECOIL_LATERAL_JITTER;
+  const j = (RECOIL_LATERAL_BIAS_MIN + (1 - RECOIL_LATERAL_BIAS_MIN) * rand) * RECOIL_LATERAL_JITTER;
   const x = ux + -uy * j, y = uy + ux * j;
   const n = Math.hypot(x, y);
   return { x: x / n, y: y / n };

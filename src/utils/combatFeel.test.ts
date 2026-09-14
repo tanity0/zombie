@@ -107,13 +107,15 @@ describe('戦闘の手触り(utils/combatFeel・社長指示2026-09-13)', () => 
       expect(recoilKickOffset(8, 34, 170, 0.15)).toBeLessThan(0); // t=0.2 で負
       expect(recoilKickOffset(8, 34, 170, 0)).toBeGreaterThan(0);
     });
-    it('向きは射線の逆に垂直のぶれを混ぜた単位ベクトル(rand=0.5 で純粋な逆)', () => {
-      const d = recoilKickDir(-1, 0, 0.5);
-      expect(d.x).toBeCloseTo(-1, 9); expect(d.y).toBeCloseTo(0, 9);
-      const j = recoilKickDir(-1, 0, 1);
-      expect(Math.hypot(j.x, j.y)).toBeCloseTo(1, 9);
-      expect(Math.abs(j.y)).toBeGreaterThan(0);
-      expect(j.x).toBeLessThan(0);
+    it('向きは射線の逆に垂直のぶれを混ぜた単位ベクトル。ぶれは毎発同じ側へ片寄る(散らばりではなく傾向)', () => {
+      const a = recoilKickDir(-1, 0, 0);
+      const b = recoilKickDir(-1, 0, 1);
+      expect(Math.hypot(a.x, a.y)).toBeCloseTo(1, 9);
+      expect(Math.hypot(b.x, b.y)).toBeCloseTo(1, 9);
+      expect(a.x).toBeLessThan(0); expect(b.x).toBeLessThan(0);
+      expect(Math.sign(a.y)).toBe(Math.sign(b.y)); // 同じ側
+      expect(Math.abs(b.y)).toBeGreaterThan(Math.abs(a.y)); // rand で大きさだけ変わる
+      expect(Math.abs(a.y)).toBeGreaterThan(0);
     });
     it('薬莢はレールガン/PHILL/ランチャー/非投射で出ない・散弾は赤い殻・二丁は左右2つ', () => {
       expect(casingSpecFor({ category: 'rifle', key: 'rifle-t3-railgun' })).toBeNull();

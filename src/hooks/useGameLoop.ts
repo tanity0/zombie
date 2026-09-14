@@ -2388,8 +2388,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         return;
       }
       hitstopFxLastRef.current = 0;
-      // 揺れの整理(research/SHAKE_UNIFY.md §2-5・v0.25.4284): 前tickに登録された命中(registerImpact)をここで1回に解決。
-      // ヒットストップ中は上の早期returnで来ない=停止が明けてから揺れる(ストップ→揺れの順)。
+      // 揺れの整理(research/SHAKE_UNIFY.md §2-5): ヒットストップ中に登録され保留された命中を、停止が明けたこのtickで解決
+      // (ストップ→揺れの順)。通常は tick末(下)で同じフレームに解決する(v0.25.4285 クリエイティブ監査6: SEと同じフレームに)。
       useGameStore.getState().flushImpacts();
 
       // ★納品ロック(二人組クエストv2 §2-8)中は**世界を止める**(社長報告2026-09-13「ゴールイベントの会話中、動けないまま
@@ -15822,6 +15822,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         );
       }
 
+      // 揺れの整理: このtickに登録された命中(registerImpact)を同じフレームで1回の揺れに解決(SE/血/数字と同時)。
+      // このtickでヒットストップが始まった場合は flushImpacts が保留し、停止明けの先頭(上)で出る。
+      useGameStore.getState().flushImpacts();
       // Request next frame
       frameRef.current = requestAnimationFrame(gameLoop);
      } catch (err) {
