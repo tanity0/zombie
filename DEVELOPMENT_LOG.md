@@ -1,5 +1,29 @@
 # Development Log
 
+## v0.25.4326 — 追加した斬撃ヒット炸裂VFXを削除(社長指示「追加したVFX削除」)【2026-09-15 06:44 JST】
+
+- **v0.25.4322〜4324 で入れた「近接ヒットの炸裂」を全部剥がした。** 近接(カウンター斬り/刀/鞭)の
+  見た目は **v0.25.4321 と同一**に戻っている(`spawnSlash` + `spawnMeleeBlood` のみ)。
+- **消したもの(数えた)**:
+  - `src/utils/slashHitFrames.ts` と `slashHitFrames.test.ts`(4テスト)= **ファイルごと削除**
+  - `VisualEffect` の `kind: 'slashHit'` 型
+  - `gameStore`: `spawnSlashHit` の宣言・実装・import、**呼び出し3箇所**
+    (`triggerCounter` / `performKatanaStrike` / `performWhipStrike`)
+  - `pixiScene`: `drawSlashHitSprite`・dispatch分岐・カリングの `case`・import
+  - `pixiTextures`: 35テクスチャの登録
+  - `public/sprites/fx/slash-hit-00..34.png`(35枚・**1.6MB**)。fxフォルダは **6.8MB → 5.2MB**。
+    元の一覧画像は社長支給なので、必要になれば git 履歴(v0.25.4322)から戻せる。
+- **★残したもの(VFXとは別件なので消していない)**:
+  - `effectNearViewport` の **`default: return true;`**(v0.25.4324)。これは「新しい kind を足すと
+    黙って絵が出なくなる」罠を塞いだ**安全弁**で、炸裂とは無関係。消すと罠が復活する。
+  - ENGINEERING_NOTES §0 の症状表の1行(同じ理由=教訓)。
+  - `useGameLoop` / `angelBossTick` の **`slashHit` という名前のSE コールバック**(v0.25.3700・別物)。
+- 変更ファイル: `src/types/game.ts` / `src/store/gameStore.ts` / `src/pixi/pixiScene.ts` /
+  `src/pixi/pixiTextures.ts` / `src/data/changelog.ts` / `package.json` / `DEVELOPMENT_LOG.md`
+  (+ 削除: `src/utils/slashHitFrames.ts` / `.test.ts` / PNG35枚)
+- 検証: `npm run typecheck` 緑 / `npm run lint` エラー0(warning 9・既存) /
+  `grep -rn "slashHit\|SLASH_HIT\|slash-hit"` の残りは上記のSEコールバック4行のみ
+
 ## v0.25.4325 — 氷槍ライフルの発射吹雪が画面をふさぐ(社長指摘)【2026-09-15 06:26 JST】
 
 - **社長「氷大きすぎる？多すぎる？とりあえず画面見づらい」への回答: 主犯は大きさ。次点は全画面フラッシュ。**

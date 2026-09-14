@@ -103,7 +103,6 @@ import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate, comboMilestoneCrossed, killBannerDurationMs } from '../utils/comboMilestone';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 import { impactDamageOf, mergeImpactEntries, strongestImpact, IMPACT_MELEE_MIN, type ImpactEntry, type ImpactFlags } from '../utils/impactShake'; // 揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)
-import { SLASH_HIT_MS } from '../utils/slashHitFrames'; // 通常斬撃ヒット炸裂(社長支給35コマ)
 import {
   normalizeDir, biasedBurstAngle,
   shouldShowMultiHitFx, dedupeMultiHitEffects,
@@ -6043,8 +6042,6 @@ interface GameState {
   // noShadow(§24追加・既定false=挙動不変): trueで支配光(syncShadowsV9)への参加を断つ=見た目はそのまま。
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number, noShadow?: boolean) => void;
   spawnSlash: (x: number, y: number, color?: string, lengthScale?: number) => void;
-  /** 通常斬撃ヒットの炸裂(社長支給35コマ・v0.25.4322)。size=表示高さ(相手の幅を渡す)。 */
-  spawnSlashHit: (x: number, y: number, size?: number) => void;
   spawnFlash: (color: string, duration?: number) => void;
   // §5.23 M22 C3: 「N HITS」バナー(頭上・bitmap-text)+小フラッシュ。registerMultiHitから相乗りで呼ぶ。
   spawnMultiHitFx: (x: number, y: number, count: number, opts?: { label?: string; milestoneTier?: number; duration?: number }) => void;
@@ -8102,9 +8099,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const s of slashAt) {
       get().spawnSlash(s.x, s.y);
       get().spawnMeleeBlood(s.x, s.y); // 近接の血飛沫(社長指摘v0.25.2060: メイン近接3経路に未配線だった)
-      // v0.25.4322(社長指示「通常の近接に一旦入れてみて」): 社長支給の35コマ炸裂を、切った相手ごとに1回。
-      // ★まず**通常の近接(ナイフ)だけ**。刀・鞭・銃には入れていない(指示があってから配る)。
-      get().spawnSlashHit(s.x, s.y);
     }
 
     // Damage numbers for every non-execute melee hit; crits/boss-stun hits pop gold.
@@ -9217,7 +9211,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const s of slashAt) {
       get().spawnSlash(s.x, s.y, 'rgba(221,238,255,0.95)', slashScale);
       get().spawnMeleeBlood(s.x, s.y); // 近接の血飛沫(社長指摘v0.25.2060: メイン近接3経路に未配線だった)
-      get().spawnSlashHit(s.x, s.y);   // v0.25.4323: 刀の通常ヒットにも炸裂(同じ「斬って当たった」動作)
     }
     for (const c of damageNumbers) {
       get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
@@ -9497,7 +9490,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // 鞭の時は近接攻撃のクレスト(slashストリーク)表現は出さない。鞭自身のlashスプライトのみ。
     // 血飛沫は出す(社長指摘v0.25.2060: メイン近接3経路に未配線だった)。
-    for (const s of slashAt) { get().spawnMeleeBlood(s.x, s.y); get().spawnSlashHit(s.x, s.y); } // v0.25.4323: 鞭の通常ヒットにも炸裂
+    for (const s of slashAt) { get().spawnMeleeBlood(s.x, s.y); }
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
     for (const c of critStunAt) { get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260); get().spawnCritImpact(c.x, c.y); } // 鞭クリも揺れ+光源(社長指示2026-09-13)
     // §9.4(v0.25.2502): 鞭クリの紫完全気絶FX(ナイフ4923/刀5573の紫リング+STUN!と同じ作法)。
@@ -20286,16 +20279,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       }];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };
-    });
-  },
-
-  // 既定の大きさは「敵より一回り大きい」。炸裂は判定を持たない=派手さの絵なので、
-  // 判定と同寸にすると敵の体に隠れて見えない(CLAUDE.md 攻撃ヴィジュアルの2分類)。
-  spawnSlashHit: (x, y, size = 200) => {
-    const now = Date.now();
-    get().spawnEffect({
-      kind: 'slashHit', id: `slashhit-${now}-${(Math.random() * 1e6) | 0}`,
-      x, y, size, createdAt: now, duration: SLASH_HIT_MS,
     });
   },
 

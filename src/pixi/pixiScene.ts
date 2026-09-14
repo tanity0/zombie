@@ -138,7 +138,6 @@ import {
 import { phillCageInitialRadiusPx } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { cineToggle, cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(URL+タイトル画面)
-import { slashHitFrame, slashHitTexture } from '../utils/slashHitFrames'; // 通常斬撃ヒット炸裂(35コマ)
 import { cineFxVocab, cineFxBacklightTint, cineFxHasStreak, cineFxSetFor, cineFxTargetsSelf, cineFxPushFollow, cineFxShutterAt, cineFxWipeAt, cineFxDeathLight, cineFxRepeatMult, cineFxNearDust, cineFxMotes, cineFxDustStep, CINE_FX_SHUTTER_ALPHA, CINE_FX_SHUTTER_TINT, CINE_FX_WIPE_MS, CINE_FX_WIPE_COUNTER_MS, CINE_FX_WIPE_W_FRAC, CINE_FX_VIGNETTE_TO, CINE_FX_BACKLIGHT_W_MULT, CINE_FX_BACKLIGHT_ALPHA, CINE_FX_BACKLIGHT_STRETCH_TO, CINE_FX_RIM_ALPHA, CINE_FX_BOKEH, CINE_FX_BOKEH_BLOOD, CINE_FX_BLOOD_TINT, CINE_FX_BLOOD_DRIP_FRAC, CINE_FX_DUST_NEAR_SPEED, CINE_FX_DUST_FAR_SPEED, CINE_FX_DUST_DRIFT, CINE_FX_STAGGER_MS, type CineFxKind, type CineFxParticle } from '../utils/cineFx'; // 寄り演目のVFX(§8・v0.25.4306)
 import { applyCineKnobs, cineCameraAt, cineModeFor, thirdsAim, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, CINE_PLATE_NEAR_MARGIN_FRAC, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
 import { reportSuppressedError } from '../utils/errorBeacon';
@@ -6697,10 +6696,8 @@ export class PixiScene {
           this.isPointNearViewport(e.toX, e.toY, camera);
       case 'multiHit':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN);
-      case 'slashHit':
-        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.size);
       // ★v0.25.4324: default が無いと、新しい kind を足した時に undefined が返って
-      // 「毎フレーム hideEffectView される=絵が一生出ない」黙った事故になる(slashHit で実際に踏んだ)。
+      // 「毎フレーム hideEffectView される=絵が一生出ない」黙った事故になる(v0.25.4322の炸裂で実際に踏んだ)。
       // 未知の kind は「出す」に倒す(カリングは最適化であって表示の条件ではない)。
       default:
         return true;
@@ -26793,8 +26790,6 @@ export class PixiScene {
       }
       if (e.kind === 'damageNumber') {
         this.drawDamageNumber(e, now);
-      } else if (e.kind === 'slashHit') {
-        this.drawSlashHitSprite(e, now);
       } else if (e.kind === 'image') {
         this.drawImageEffect(e, now);
       } else if (e.kind === 'dogFetch') {
@@ -29144,33 +29139,6 @@ export class PixiScene {
   }
 
   // 一枚絵マーク(刀フィニッシュの習字「斬」など)。pop-in→保持→末尾フェード。world座標(effectLayer)。
-  /**
-   * 通常斬撃ヒットの炸裂(社長支給35コマ・v0.25.4322)。爆発(6コマ)と同じ「連番テクスチャを尺で送る」型。
-   * 素材は既に「芯→棘→破片→粒と煙→消える」を持っているので、**こちら側で α を弄らない**
-   * (絵の薄れ方は素材が持っている。重ねて2回フェードさせると濁る)。
-   */
-  private drawSlashHitSprite(e: Extract<VisualEffect, { kind: 'slashHit' }>, now: number) {
-    const t = Math.min(1, (now - e.createdAt) / Math.max(1, e.duration));
-    let sprite = this.effects.get(e.id);
-    if (!(sprite instanceof Sprite) || !(sprite as { __slashHitFx?: boolean }).__slashHitFx) {
-      if (sprite) sprite.destroy();
-      const sp = new Sprite();
-      (sp as unknown as { __slashHitFx?: boolean }).__slashHitFx = true;
-      sp.anchor.set(0.5, 0.5); // 当たった点が絵の中心
-      this.L.effectLayer.addChild(sp);
-      this.effects.set(e.id, sp);
-      sprite = sp;
-    }
-    const sp = sprite as Sprite;
-    const tex = getTexture(slashHitTexture(slashHitFrame(t)));
-    if (!tex) { sp.visible = false; return; }
-    sp.visible = true;
-    sp.texture = tex;
-    sp.scale.set(e.size / Math.max(1, tex.height));
-    sp.position.set(e.x, e.y);
-    sp.alpha = 1;
-  }
-
   private drawImageEffect(e: Extract<VisualEffect, { kind: 'image' }>, now: number) {
     const tex = getTexture(e.texture);
     let sp = this.effects.get(e.id);

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4326',
+    items: [
+      '近接で敵を切った時の炸裂を取り下げた。カウンター斬り・刀・鞭の見た目は、これが入る前に戻っている。',
+    ],
+  },
+  {
     version: '0.25.4325',
     items: [
       '氷槍ライフルを撃った時の吹雪が画面をふさいでいたのを直した。舞う氷は小さく、数も控えめになり、撃つたびに画面全体が青く光るのもやめた。',
