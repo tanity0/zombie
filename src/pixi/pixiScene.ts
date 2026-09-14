@@ -6697,6 +6697,13 @@ export class PixiScene {
           this.isPointNearViewport(e.toX, e.toY, camera);
       case 'multiHit':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN);
+      case 'slashHit':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.size);
+      // ★v0.25.4324: default が無いと、新しい kind を足した時に undefined が返って
+      // 「毎フレーム hideEffectView される=絵が一生出ない」黙った事故になる(slashHit で実際に踏んだ)。
+      // 未知の kind は「出す」に倒す(カリングは最適化であって表示の条件ではない)。
+      default:
+        return true;
     }
   }
 

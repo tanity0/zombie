@@ -1,5 +1,26 @@
 # Development Log
 
+## v0.25.4324 — 斬撃炸裂が「みえない」の原因=カリングの穴【2026-09-15 06:06 JST】
+
+- **社長報告「みえない」の原因を確定した。犯人は `pixiScene.effectNearViewport`。**
+  計測: 実走で `spawn=5 / draw=0`——**effect は生まれているのに描画関数が一度も呼ばれていなかった**。
+  `syncEffects` はこの関数が偽なら `hideEffectView` して `continue` するが、この関数は
+  **`switch (e.kind)` だけで `default` を持っていなかった**。未登録の `slashHit` は `undefined` を返し、
+  毎フレーム隠され続けていた。テクスチャ登録・spawn・dispatch・描画は**全部正しかった**。
+- **直した内容(2つ)**:
+  - `case 'slashHit'` を追加(余白 = `EFFECT_VIEWPORT_MARGIN + e.size`)。
+  - **`default: return true;` を入れた**。カリングは最適化であって表示の条件ではないので、
+    未知の kind は「出す」に倒す。**同型の事故(新しい kind を足すと黙って消える)はこれで起きない。**
+- **大きさを 120 → 200(world px)に広げた。** 炸裂は判定を持たない=**派手さの絵**なので、
+  判定と同寸だと敵の体に隠れる(CLAUDE.md「攻撃ヴィジュアルの2分類」)。実機を見て社長が絞れる側に倒した。
+- **仮設の `console.log` 3本と探り用スクリプト `vh.mjs` を削除**(検証に使ったもの。残さない)。
+- **教訓を機械化**: ENGINEERING_NOTES §0 の症状表に「新しい effect の kind を足したら絵が一度も出ない」を追加。
+  切り分けは **spawn 側と draw 側の両方にログを置く**(spawn>0 かつ draw=0 なら犯人はカリング)。
+- 変更ファイル: `src/pixi/pixiScene.ts` / `src/store/gameStore.ts` / `ENGINEERING_NOTES.md` /
+  `src/data/changelog.ts` / `package.json` / `DEVELOPMENT_LOG.md`(+ `vh.mjs` 削除)
+- 検証: `npm run typecheck` 緑 / `npm run lint` エラー0(warning 9・既存) /
+  実走で修正前 `spawn=2 draw=0` → 修正後 **`spawn=2 draw=2`**(テクスチャ・レイヤー可視も確認済み)
+
 ## v0.25.4323 — 炸裂を60fps想定へ+刀と鞭にも配線(社長指示)【2026-09-15 02:56 JST】
 
 - **①40コマ(走る斬撃)は破棄**(社長「40コマのは捨てて」)。**そもそも取り込んでいない**ので削除するものは無い

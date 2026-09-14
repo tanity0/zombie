@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4324',
+    items: [
+      '近接で切った時の炸裂が画面に出ていなかったのを直した。敵より一回り大きく出る。',
+    ],
+  },
+  {
     version: '0.25.4323',
     items: [
       '斬撃の炸裂を素材どおりの速さで流すようにした。刀と鞭で切った時にも出る。',

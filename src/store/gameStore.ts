@@ -20289,7 +20289,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  spawnSlashHit: (x, y, size = 120) => {
+  // 既定の大きさは「敵より一回り大きい」。炸裂は判定を持たない=派手さの絵なので、
+  // 判定と同寸にすると敵の体に隠れて見えない(CLAUDE.md 攻撃ヴィジュアルの2分類)。
+  spawnSlashHit: (x, y, size = 200) => {
     const now = Date.now();
     get().spawnEffect({
       kind: 'slashHit', id: `slashhit-${now}-${(Math.random() * 1e6) | 0}`,
