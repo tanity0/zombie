@@ -465,7 +465,7 @@ import {
   eventQuestSubCompleteLines,
   getEventQuestConfig,
 } from '../utils/eventQuest';
-import { rescueQuestSpawnReady, duoCommActive, duoCommEnded } from '../utils/rescueQuestGate'; // 二人組クエストv2(§2-11・B4)/v4(§2-18)
+import { rescueQuestSpawnReady, duoCommActive, duoCommEnded, duoQuietWindow } from '../utils/rescueQuestGate'; // 二人組クエストv2(§2-11・B4)/v4(§2-18)
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { airHopEase01 } from '../utils/airHop';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
@@ -1106,6 +1106,9 @@ const RESCUE_QUEST_SPAWN_AT_MS = 4 * 60 * 1000;
 const DUO_RESCUE_PHASE_ENABLED = false;
 // 通信の開始時刻=城ボスの最短時刻と同じ5:00(S5は「5:00 と 拠点2か所ラッチ の遅い方」=§2-11の規則を流用)。
 const DUO_COMM_AT_MS = CASTLE_BOSS_MIN_TIME_MS;
+// 社長指示2026-09-14「5分で通信だから読める。その10秒前くらいに入っちゃえば盤面は静まってる」: 通信の10秒前から終了まで**新規湧き停止**
+// (居る敵はそのまま)。noSpawn(?nospawn=1 と同じ止め方)に合流させる=通常湧き・パズル盤面・ゲート囲い等が全部止まる。
+const DUO_COMM_QUIET_LEAD_MS = 10_000;
 // 二人組クエストv2(§2-8・B4): 帰還サークルへの着地点=「縁寄り」(中心からradius*この比率)。
 // 見た目の置き場所のみで判定・バランスには影響しない(叩き台。実機調整前提)。
 const WARP_LANDING_EDGE_FRAC = 0.75;
@@ -2735,7 +2738,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const runningIn = loopState.corridorRunInActive;
         // 以降の湧きゲートは NOSPAWN ではなく noSpawn を見る(?nospawn=1 と同じ止め方に相乗り)。
         // 練習ラン(ボスラッシュ)も湧きを全部止める=狙った1体だけ(社長「ラッシュは1体」)。
-        const noSpawn = NOSPAWN || runningIn || isPracticeRun();
+        const noSpawnDebug = NOSPAWN || runningIn || isPracticeRun();
+        // ★v4追補: 二人組の通信の静けさ(10秒前〜終了)も同じ止め方に合流(店側の duoCommQuiet=前tickの二人組ブロックが変化時に書く)。
+        const noSpawn = noSpawnDebug || useGameStore.getState().duoCommQuiet;
 
         // PACING_PUZZLE.md §5.18 M17: 被ダメ5経路(src/utils/combatTick.ts)へ渡す演出コールバック+
         // チューニング値。値そのものは以下のローカル定数のまま(二重管理を避けるため引数化しただけ)。
@@ -4258,7 +4263,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (WALL_ENABLED && isFirstWallBreach(wm2, 3)) {
                     useGameStore.setState({ wallMeta: markWallBreached(wm2, 3) });
                     // §5.17-追補2(社長決定v0.25.1536): 到達の+50Gを撤去(演出/記録は残す)。
-                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[3]} —— 踏破`, 'TRESPASS', '#bfe3ff');
+                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[3]} — 踏破`, 'TRESPASS', '#bfe3ff');
                   }
                   // §5.21-追補9(社長指示v0.25.1655): 年表「未確認汚染エリアに到達」はゲート1クリア時に刻む
                   // (クロス時は gateBlocksThisWall で保留=倒すまで到達扱いにしない)。dedup=区域index。
@@ -4273,7 +4278,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (WALL_ENABLED && isFirstWallBreach(wm3, 4)) {
                     useGameStore.setState({ wallMeta: markWallBreached(wm3, 4) });
                     // §5.17-追補2(社長決定v0.25.1536): 到達の+50Gを撤去(演出/記録は残す)。
-                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[4]} —— 踏破`, 'TRESPASS', '#bfe3ff');
+                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[4]} — 踏破`, 'TRESPASS', '#bfe3ff');
                   }
                   // §5.21-追補9(社長指示v0.25.1655): 年表「深層域に到達」はゲート2ボス(ミゲル)討伐時に刻む
                   // (クロス時は gateBlocksThisWall で保留=倒すまで到達扱いにしない)。dedup=区域index。
@@ -4293,7 +4298,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const nx = ae.x + toOriginX * pushDist, ny = ae.y + toOriginY * pushDist;
                 useGameStore.setState(s => ({ player: { ...s.player, x: nx - s.player.width / 2, y: ny - s.player.height / 2 } }));
                 areaZoneRef.current = areaZoneIndexFor(Math.hypot(nx, ny)); // prevZoneを内側へ=再クロスで踏破を再検知
-                useGameStore.setState({ eventBannerText: 'ゲート突破失敗 —— 押し戻された', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+                useGameStore.setState({ eventBannerText: 'ゲート突破失敗 — 押し戻された', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
                 useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
               }
               activeGateRef.current = null;
@@ -5095,7 +5100,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (hold.at === 0) hold.at = newGameTime + M0_AREA_CEREMONY_DELAY_MS; // 説明を閉じた=一拍の起点
               else if (newGameTime >= hold.at) {
                 const name = AREA_ZONE_NAMES[hold.zone] ?? AREA_ZONE_NAMES[AREA_ZONE_NAMES.length - 1];
-                useGameStore.getState().enqueueWallEvent('depth', `${name} —— 踏破`, 'TRESPASS', '#bfe3ff');
+                useGameStore.getState().enqueueWallEvent('depth', `${name} — 踏破`, 'TRESPASS', '#bfe3ff');
                 m0WallHoldRef.current = null;
               }
             }
@@ -5431,7 +5436,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       // (commitRunEndProgress)。ここではメモリ上のstoreだけ更新。
                       useGameStore.setState({ wallMeta: markWallBreached(wm, wallIdx) });
                       // §5.17-追補2(社長決定v0.25.1536): 到達の+50Gを撤去(演出/記録は残す)。
-                      useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[zoneIdx]} —— 踏破`, 'TRESPASS', '#bfe3ff');
+                      useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[zoneIdx]} — 踏破`, 'TRESPASS', '#bfe3ff');
                       playSfx('event-clear'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
                     }
                   }
@@ -5447,7 +5452,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 isApproachingWall(Math.hypot(pcx, pcy), 150)
               ) {
                 wallWarnedRef.current[nextWallIdx - 1] = true;
-                useGameStore.getState().triggerWallBand(`この先 —— ${AREA_ZONE_NAMES[nextWallIdx]}`, 'white', 2800);
+                useGameStore.getState().triggerWallBand(`この先 — ${AREA_ZONE_NAMES[nextWallIdx]}`, 'white', 2800);
               }
             }
             // 担当エリア(セクター)進入で、その担当NPCが「遠い時用(neglectFar)」コメント(社長指示・#1連動)。
@@ -11337,12 +11342,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 城ボスが出ないモード(ダンス試験/物語ボス/EX/訓練/エンディング/?nospawn/再訪)では通信も出さない
           // (v0.25.4290 監査B-1: 通信だけ流れてボスが来ない導線を作らない。城ボス側の除外と同じ集合)。
           const duoCommAllowed = !danceTest && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage
-            && (!noSpawn || practiceWantsCastleBoss()) && !revisitRun;
+            && (!noSpawnDebug || practiceWantsCastleBoss()) && !revisitRun; // ★静けさ自身(noSpawn)で通信を塞がないよう noSpawnDebug を見る
           if (duoCommAllowed && rqNpc.status === 'hidden' && rqGs.duoCommStartedAt === 0 && !rqGs.bossChasing
             && rescueQuestSpawnReady(newGameTime, DUO_COMM_AT_MS, basesEverCapturedNow, rqBasesRequired)) {
             useGameStore.setState({ duoCommStartedAt: newGameTime });
             const commLines = eventQuestSubAcceptLines(getSelectedStageId());
-            if (commLines.length > 0) useGameStore.getState().enqueueNpcDialogue(commLines);
+            if (commLines.length > 0) {
+              useGameStore.getState().enqueueNpcDialogue(commLines);
+              // 社長指示2026-09-14「重要な通信の時は、エリア移動した時みたいなタイトルコール(通信)」: 大格=銘打ちと同じ帯(色は区域踏破と同じ)。
+              useGameStore.getState().enqueueWallEvent('comm', '通信', 'INCOMING TRANSMISSION', '#bfe3ff');
+            }
+          }
+          // ★静けさの窓(通信の10秒前〜終了・新規湧き停止)。変化した時だけ store に書く(毎フレーム set しない)。
+          {
+            const qGs = useGameStore.getState();
+            const quietNow = duoQuietWindow({
+              allowed: duoCommAllowed, status: qGs.eventQuestNpc.status, startedAtMs: qGs.duoCommStartedAt, endedAtMs: qGs.duoCommEndedAt,
+              readyWithinLead: rescueQuestSpawnReady(newGameTime + DUO_COMM_QUIET_LEAD_MS, DUO_COMM_AT_MS, basesEverCapturedNow, rqBasesRequired),
+              bossChasing: qGs.bossChasing,
+            });
+            if (quietNow !== qGs.duoCommQuiet) useGameStore.setState({ duoCommQuiet: quietNow });
           }
           // 通信の終了=表示中の行が無くキューが空(§2-18)。終了で ①城ボスのゲートを開く(rescueClearedAt=終了打刻・ディレイ0)
           // ②hidden→briefed(受注済み・まだ場に居ない) ③強制リラックスが自然に明ける(duoCommActive=false=戦闘モードへ戻る)。1回だけ。

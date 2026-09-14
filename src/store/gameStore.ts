@@ -550,7 +550,10 @@ export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boole
 // 原点中心・半径3200の円周に4か所(90度刻み=東西南北)固定。サークル内10秒で制圧→武器商人がそこへ移動(=安全地帯)。
 // captured拠点はHPを持ち、画面内では攻撃者(敵)が削り/軍人が反撃、画面外は時間で減る。HP0で陥落(open化)。
 // 4拠点が同時にcapturedで「全拠点制圧」→既存クリア経路(帰還サークル)へ。
-const BASE_SITE_RADIUS = 3200;          // 拠点を置く円の半径(デンジャーゾーン内)
+// ★v0.25.4291(社長指示2026-09-14「NPCの移動速度をプレイヤーの歩きmaxに→エリア区間距離をその分延長」・推薦(b)):
+// 進軍NPCの速度が 48→104.4px/s(×2.175)になったぶん、軍人の目的地=拠点の距離を同じ倍率で伸ばす(3200×2.175≈7000)。
+// 事実: 7000 は未確認汚染エリア(5000〜7500)の中=旧デンジャーゾーン(3000〜5000)より一段深い。区域の境界は変えていない。実機で絞る叩き台。
+const BASE_SITE_RADIUS = 7000;          // 拠点を置く円の半径(旧3200=デンジャーゾーン内)
 const BASE_SITE_COUNT = 4;              // 拠点の数(東西南北=90度刻み・社長指示で8→4)
 export const BASE_CAPTURE_RADIUS = 130; // 制圧サークルの半径(滞在/在内判定)
 export const ARMORY_RADIUS = 50;        // 制圧拠点中央の「武器庫」サークル半径(小さめ。指を離すと遠隔で武器商人)
@@ -3503,7 +3506,7 @@ const resolveNamedFoeDefeat = (get: () => GameState, killedEnemies: Enemy[], x: 
   // PACING_PUZZLE.md §5.17 M14追補(演出仕様v0.25.1499): spawnCallout('REVENGE!')は廃止し、
   // 大格銘打ち(金)に置き換え。頭上ネームプレート/リング/グローは不変。
   if (WALL_ENABLED) {
-    get().enqueueWallEvent('revenge', `REVENGE —— ${normalizeNamedName(st.namedFoe.name)}`, 'NEMESIS FELLED', '#ffd700', namedGold);
+    get().enqueueWallEvent('revenge', `REVENGE — ${normalizeNamedName(st.namedFoe.name)}`, 'NEMESIS FELLED', '#ffd700', namedGold); // ダッシュは1本(v0.25.4291・社長「2本は素人っぽい」)
   }
   get().spawnRing(x, y, 14, 220, 'rgba(255,215,0,0.85)', 5, 560);
   get().spawnGlow(x, y, GLOW_R_XXL, 'rgba(255,215,0,', 620);
@@ -5170,6 +5173,7 @@ interface GameState {
   rescueSpawnedAt: number;      // レスキュー地点の出現抽選を1度だけにする打刻(0=未抽選)
   duoCommStartedAt: number;     // ★v4(§2-18): 5:00の通信の開始打刻(0=未)。通信中=強制リラックス
   duoCommEndedAt: number;       // ★v4(§2-18): 通信の終了打刻(0=未)。城ボスの出現ゲート
+  duoCommQuiet: boolean;        // ★v4追補: 通信の10秒前〜終了まで新規湧き停止(useGameLoop の noSpawn に合流)。変化時だけ書く
   basesEverCaptured: number;    // S5だけの先行条件のラッチ(単調・下げない。0=未)
   // ── サブクエスト(research/SUBQUESTS.md)。受注せず出撃時に2枠まで自動補充される小目標。
   // 二人組クエスト(上のeventQuest*)とは完全に別系統。HUDは右上のRescueQuestGoalPillと同じ縦積み。
@@ -6379,6 +6383,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   rescueArenaStartedAt: 0,
   duoCommStartedAt: 0,
   duoCommEndedAt: 0,
+  duoCommQuiet: false,
   deliveryLocked: false,
   castleAttnDoneAt: 0,
   rescueSpawnedAt: 0,
@@ -17848,7 +17853,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             armoryDwellMs: dwellMs,
             armoryTaken: true,
             armoryTakenAt: state.gameTime,
-            eventBannerText: '武器庫: 既に全ての銃が最高位——スクラップは返金された',
+            eventBannerText: '武器庫: 既に全ての銃が最高位 — スクラップは返金された',
             eventBannerUntil: state.gameTime + 2600,
             wallBandText: poiUnlockBandText('armory'),
             wallBandUntil: Date.now() + POI_BAND_MS,
@@ -19530,6 +19535,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         rescueArenaStartedAt: 0,
         duoCommStartedAt: 0,
         duoCommEndedAt: 0,
+        duoCommQuiet: false,
         deliveryLocked: false,
         castleAttnDoneAt: 0,
         rescueSpawnedAt: 0,

@@ -103,8 +103,8 @@ export const deepestReachedBadge = (selfDeepestDist: number, selfHighestRank: Pu
   `最深到達: ${AREA_ZONE_NAMES[zoneIdxForDist(selfDeepestDist)]}の${rankLabel(selfHighestRank)}`;
 
 // ---- 演出キューの優先順(演出仕様v0.25.1499: 「両軸が同時に起きたら深さ優先」) --------------------
-export type WallEventKind = 'depth' | 'rank' | 'revenge';
-const WALL_EVENT_PRIORITY: Record<WallEventKind, number> = { depth: 0, rank: 1, revenge: 2 };
+export type WallEventKind = 'depth' | 'rank' | 'revenge' | 'comm'; // comm=二人組の通信(v0.25.4291・社長指示「エリア移動みたいなタイトルコール」)
+const WALL_EVENT_PRIORITY: Record<WallEventKind, number> = { depth: 0, rank: 1, revenge: 2, comm: 3 }; // 通信は他の銘打ちより後
 // 安定ソート(Array.prototype.sortはECMA2019以降安定)。同時発火した候補を優先順に並べ替える。
 export const sortWallEventsByPriority = <T extends { kind: WallEventKind }>(events: T[]): T[] =>
   [...events].sort((a, b) => WALL_EVENT_PRIORITY[a.kind] - WALL_EVENT_PRIORITY[b.kind]);

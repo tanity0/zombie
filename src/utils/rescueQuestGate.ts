@@ -23,3 +23,16 @@ export const duoCommActive = (startedAtMs: number, endedAtMs: number): boolean =
  * 守護霊の台詞など別の行が同じキューに載っていれば、それも捌けるまで「終わっていない」(通信は1本のキュー)。
  */
 export const duoCommEnded = (dialogueShowing: boolean, queueLength: number): boolean => !dialogueShowing && queueLength === 0;
+
+/**
+ * ★v4追補(社長指示2026-09-14「5分で通信だから読める。その10秒前くらいに入っちゃえば盤面は静まってる」):
+ * 通信の静けさ(新規湧き停止)の窓。通信中は常に真。通信前は「通信開始の lead ms 前に入った」(readyWithinLead=
+ * 呼び手が rescueQuestSpawnReady(now+lead, …) で判定)かつ裏ボス戦闘中でない時に真。終了打刻で偽。対象外(gone)/許可外は常に偽。
+ */
+export const duoQuietWindow = (input: {
+  allowed: boolean; status: string; startedAtMs: number; endedAtMs: number; readyWithinLead: boolean; bossChasing: boolean;
+}): boolean => {
+  if (!input.allowed || input.status === 'gone' || input.endedAtMs > 0) return false;
+  if (input.startedAtMs > 0) return true;
+  return input.status === 'hidden' && input.readyWithinLead && !input.bossChasing;
+};
