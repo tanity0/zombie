@@ -2284,6 +2284,9 @@ export const JUICE_CD_MS = camNum('juicecd', MELEE_FINISH_ZOOM_CD_MS);
 // CD内キル(フル演出が出ない間)の最低保証フラッシュ(任意・OFF可)。
 export const JUICE_MIN_FLASH_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('juiceflash') !== '0';
 export const JUICE_MIN_FLASH_MS = 80;
+// ?cinedemo=1(開発用・既定OFF・v0.25.4310): **近接の一振りごとに**処刑のフル演出を出す。
+// 社長「勝手に発動する機能切って」= 自動発火は撤去し、**社長が振った時だけ**出る形にした。
+export const CINE_DEMO_ON_SWING = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('cinedemo') === '1';
 // Inertia time constants (s). Velocity eases toward its target over this
 // window. The player is now instant (0 = no inertia, snappy control); enemies
 // keep 0.3s so they curve into turns instead of snapping.
@@ -7573,6 +7576,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           get().spawnRing(pcx, pcy, 6, 50, 'rgba(125,211,252,0.9)', 3, 360);   // シアンの輪
           get().spawnBurst(pcx, pcy, '#bae6fd', 12);                           // 弾ける光の粒
         }
+      }
+      if (CINE_DEMO_ON_SWING) {
+        // ?cinedemo=1: 振るたびに処刑の演出(execute の台本+VFX)を1回出す。当たっていなくても出す=確認用。
+        const dp = get().player, dcx = dp.x + dp.width / 2, dcy = dp.y + dp.height / 2;
+        get().triggerFinishImpact(dcx + (dp.direction === 'left' ? -120 : 120), dcy, true);
       }
       return { swung: true, hit: res.hit, finish: res.finish, killed: res.killed };
     }
