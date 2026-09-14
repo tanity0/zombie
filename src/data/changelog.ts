@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4312',
+    items: [
+      '更新情報を閉じてもゲームは始まらない。タイトルに戻るので、START を押すまで始まらなくなった。',
+    ],
+  },
+  {
     version: '0.25.4311',
     items: [
       'タイトル画面の左下から、処刑のカメラと演出を部品ごとに入切できるようになった。押し込み、横滑り、構図、近景、光の効果をその場で試せる。',

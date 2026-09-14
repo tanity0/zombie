@@ -286,17 +286,14 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
     onDone();
   };
 
-  // 同意 → (初見の版だけ)オープニング or BGM開始 → ポップアップを閉じる
+  // 同意 → ポップアップを閉じるだけ(タイトルへ戻る)。
+  // ★v0.25.4312(社長指示「勝手に始まるのやめて」): 以前は**初見の版だけ OK の直後にオープニングが始まっていた**。
+  // 版を上げるたびに更新情報が出るので、OKを押しただけでゲームが始まってしまい、タイトル画面に用がある時
+  // (タイトルのパネルを触る等)に必ず持っていかれた。**オープニングの起動は START タップ側へ一本化**する
+  // (既読の版は元から tapStart が代行していた経路=そこに揃えただけ。音声解禁もSTARTというユーザー操作で行われる)。
   const agree = () => {
     if (!showNotice) return;
     playSfx('ui-select');
-    // 初めて見る版の通常経路だけ、OK直後にオープニングを挟む(音声解禁+オープニング起動。
-    // メニューBGMはオープニング後)。バッジから開き直した既読ポップアップは、この処理を
-    // 二重発火させない(未発火ならSTARTタップ側が代行する。下のtapStart参照)。
-    if (!alreadySeenThisVersion && !noticeHandledRef.current) {
-      noticeHandledRef.current = true;
-      if (onNoticeOk) onNoticeOk(); else onStart();
-    }
     writeNoticeSeenVersion(__APP_VERSION__);
     setShowNotice(false);
   };
@@ -326,7 +323,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   };
 
   const heartbeatLine = SHOW_HEARTBEAT && phase === 'title' && !showNotice ? formatHeartbeat() : null;
-  const titleInteractive = phase === 'title' && !showNotice;
+  // パネルを開いている間は「どこをタップしても開始」を止める(スイッチを押し損ねてゲームが始まらないように)。
+  const titleInteractive = phase === 'title' && !showNotice && !showCine;
 
   return (
     <div
@@ -473,7 +471,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
                     type="button"
                     disabled={locked}
                     onClick={() => { playSfx('ui-select'); setCineToggle(t.key, on ? 0 : 1); setCineRev(r => r + 1); }}
-                    className="flex w-full items-center justify-between py-[3px] text-left disabled:opacity-40"
+                    className="flex w-full items-center justify-between py-2 text-left disabled:opacity-40"
                   >
                     <span className="flex-1 truncate pr-2">{t.label}<span className="ml-1 text-[9px] text-purple-200/40">{t.hint}</span></span>
                     <span className={on ? 'text-emerald-300' : 'text-purple-200/35'}>{locked ? 'URL' : on ? '入' : '切'}</span>
@@ -483,7 +481,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
               <button
                 type="button"
                 onClick={() => { playSfx('ui-select'); resetCineToggles(); setCineRev(r => r + 1); }}
-                className="mt-1 w-full border-t border-purple-400/20 pt-1 text-[10px] tracking-[0.14em] text-purple-200/60"
+                className="mt-1 w-full border-t border-purple-400/20 pt-2 text-[10px] tracking-[0.14em] text-purple-200/60"
               >
                 既定へ戻す
               </button>
