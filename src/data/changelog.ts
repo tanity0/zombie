@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4292',
+    items: [
+      '進軍する軍人の歩きを少し落とした(プレイヤーの歩きの七割)。',
+      '解放する拠点の位置をデンジャーゾーンの中に戻した。',
+    ],
+  },
+  {
     version: '0.25.4291',
     items: [
       '二人組の通信が入る少し前から通信が終わるまで、新しい敵が現れなくなる。通信の始まりには区域に入った時と同じ形の題字「通信」が出る。',

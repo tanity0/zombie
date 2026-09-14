@@ -553,7 +553,9 @@ export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boole
 // ★v0.25.4291(社長指示2026-09-14「NPCの移動速度をプレイヤーの歩きmaxに→エリア区間距離をその分延長」・推薦(b)):
 // 進軍NPCの速度が 48→104.4px/s(×2.175)になったぶん、軍人の目的地=拠点の距離を同じ倍率で伸ばす(3200×2.175≈7000)。
 // 事実: 7000 は未確認汚染エリア(5000〜7500)の中=旧デンジャーゾーン(3000〜5000)より一段深い。区域の境界は変えていない。実機で絞る叩き台。
-const BASE_SITE_RADIUS = 7000;          // 拠点を置く円の半径(旧3200=デンジャーゾーン内)
+// ★v0.25.4292(社長「拠点がデンジャーゾーンより向こうにある」): 7000 は誤読(区域ではなく拠点だけ伸ばした)。デンジャーゾーン内の 3200 へ戻す。
+// 区域そのものの延長(社長の本来の意図)は別途=下の返信で範囲を確認してから。
+const BASE_SITE_RADIUS = 3200;          // 拠点を置く円の半径(デンジャーゾーン内)
 const BASE_SITE_COUNT = 4;              // 拠点の数(東西南北=90度刻み・社長指示で8→4)
 export const BASE_CAPTURE_RADIUS = 130; // 制圧サークルの半径(滞在/在内判定)
 export const ARMORY_RADIUS = 50;        // 制圧拠点中央の「武器庫」サークル半径(小さめ。指を離すと遠隔で武器商人)
@@ -577,7 +579,9 @@ const SUPP_BASE_ATTACKS_ENABLED: boolean = false;
 // ★v0.25.4290(社長指示「NPCの移動速度をプレイヤーの歩きmax(走りの手前)に変更」): プレイヤーの歩き=PLAYER_BASE_SPEED×GAME_SPEED
 // (ランプの+10%=走りは含めない)。escort の tick(updateSuppression)は deltaTime に MOVE_SPEED_MULT を掛けていないので、
 // ここで GAME_SPEED を掛けて同じ px/s にする(旧48→104.4=約2.2倍)。PLAYER_BASE_SPEED は後方で宣言されるため関数で遅延評価。
-const escortSpeed = (): number => PLAYER_BASE_SPEED * GAME_SPEED; // 前進速度。画面内のときだけ前進。
+// ★v0.25.4292(社長指示「NPCの速度いまの0.7倍で」): 歩きmaxの0.7倍=約73px/s(旧48の約1.5倍)。
+const ESCORT_WALK_MULT = 0.7;
+const escortSpeed = (): number => PLAYER_BASE_SPEED * GAME_SPEED * ESCORT_WALK_MULT; // 前進速度。画面内のときだけ前進。
 const ESCORT_FIRE_INTERVAL_MS = 600;    // 射撃間隔
 const ESCORT_DMG = 8;                   // 1射のダメージ
 // フェイザー(名簿index7)は特別: 2丁拳銃で1射につき2発撃つ=合計ダメージ2倍(1発は通常と同じ)。
