@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rescueQuestSpawnReady } from './rescueQuestGate';
+import { rescueQuestSpawnReady, duoCommActive, duoCommEnded } from './rescueQuestGate';
 
 describe('rescueQuestSpawnReady(EVENT_QUEST_DESIGN.md §2-11)', () => {
   it('basesRequired未設定(S1/S3/S4)は4:00超過だけで真', () => {
@@ -19,5 +19,18 @@ describe('rescueQuestSpawnReady(EVENT_QUEST_DESIGN.md §2-11)', () => {
   it('4:00前に2か所確保済みでも、4:00に達するまでは偽(遅い方=両方満たすまで待つ)', () => {
     expect(rescueQuestSpawnReady(3 * 60 * 1000, 4 * 60 * 1000, 2, 2)).toBe(false);
     expect(rescueQuestSpawnReady(4 * 60 * 1000, 4 * 60 * 1000, 2, 2)).toBe(true);
+  });
+});
+
+describe('v4 5:00の通信(EVENT_QUEST_DESIGN.md §2-18・社長指示2026-09-14)', () => {
+  it('通信中=開始打刻あり・終了打刻なし(強制リラックスの条件)', () => {
+    expect(duoCommActive(0, 0)).toBe(false);
+    expect(duoCommActive(300000, 0)).toBe(true);
+    expect(duoCommActive(300000, 312000)).toBe(false);
+  });
+  it('終了=表示中の行が無くキューも空。原稿0行(S5)は開始の同じフレームで終わる', () => {
+    expect(duoCommEnded(true, 0)).toBe(false);
+    expect(duoCommEnded(false, 2)).toBe(false);
+    expect(duoCommEnded(false, 0)).toBe(true);
   });
 });

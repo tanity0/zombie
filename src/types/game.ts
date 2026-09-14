@@ -1852,7 +1852,9 @@ export interface WeaponMerchant {
 // → warping(撃破〜帰還サークルへの飛来) → delivering(帰還サークル到着〜納品成立) → completed(納品後)。
 // gone は resetGame の qGone の1箇所だけが書く(§2-1)。状態遷移の書き手は useGameLoop の二人組ブロックのみ
 // (§2-2B)——このコミットでは型と初期値だけを直し、遷移そのものは書かない(B1「型と器」)。
-export type EventQuestStatus = 'hidden' | 'rescue' | 'accepted' | 'warping' | 'delivering' | 'completed' | 'gone';
+// ★v4(社長指示2026-09-14・EVENT_QUEST_DESIGN.md §2-18): 'briefed'=5:00の通信が終わった(受注済み・まだ場に居ない)。
+// 'rescue'/'accepted'(レスキュー地点の段)は v4 で到達不能(DUO_RESCUE_PHASE_ENABLED=false)。型は残す。
+export type EventQuestStatus = 'hidden' | 'briefed' | 'rescue' | 'accepted' | 'warping' | 'delivering' | 'completed' | 'gone';
 
 export interface EventQuestNpc {
   x: number;

@@ -163,7 +163,7 @@ import { isPvpIncapacitated, tickPvpPosture } from '../utils/pvpPosture'; // ★
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
-import { CASTLE_BOSS_MIN_TIME_MS, RESCUE_TO_CASTLE_DELAY_MS } from '../config/castleBoss';
+import { CASTLE_BOSS_MIN_TIME_MS, DUO_COMM_TO_CASTLE_DELAY_MS } from '../config/castleBoss';
 import { stageBossHealthFor, STAGE_BOSS_HEALTH_BY_STAGE, guardianPhantomHealth } from '../config/bossHealth';
 // research/STAGE_DIFFICULTY.md(ステージ難度の階段): 小ボスのステージ固定割当と、ボス個別適用の係数。
 import { BOUNTY_TYPE_BY_STAGE } from '../config/stageDifficulty';
@@ -465,7 +465,7 @@ import {
   eventQuestSubCompleteLines,
   getEventQuestConfig,
 } from '../utils/eventQuest';
-import { rescueQuestSpawnReady } from '../utils/rescueQuestGate'; // 二人組クエストv2(§2-11・B4)
+import { rescueQuestSpawnReady, duoCommActive, duoCommEnded } from '../utils/rescueQuestGate'; // 二人組クエストv2(§2-11・B4)/v4(§2-18)
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { airHopEase01 } from '../utils/airHop';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
@@ -1101,6 +1101,11 @@ const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 // S5だけの追加条件(拠点2か所ラッチとの遅い方・§2-11)はB4で下の判定式に合流させる
 // (getEventQuestConfig(stageId)?.basesRequired・S5のみ設定=stage-5のconfigの1項)。
 const RESCUE_QUEST_SPAWN_AT_MS = 4 * 60 * 1000;
+// ★v4(EVENT_QUEST_DESIGN.md §2-18・社長指示2026-09-14「5分経過で二人組から通信が入る(サークル無しで開始)」):
+// レスキュー地点(4:00)・囲い・受注の段は**出さない**。コードは可逆性のため残し、このフラグで塞ぐ。
+const DUO_RESCUE_PHASE_ENABLED = false;
+// 通信の開始時刻=城ボスの最短時刻と同じ5:00(S5は「5:00 と 拠点2か所ラッチ の遅い方」=§2-11の規則を流用)。
+const DUO_COMM_AT_MS = CASTLE_BOSS_MIN_TIME_MS;
 // 二人組クエストv2(§2-8・B4): 帰還サークルへの着地点=「縁寄り」(中心からradius*この比率)。
 // 見た目の置き場所のみで判定・バランスには影響しない(叩き台。実機調整前提)。
 const WARP_LANDING_EDGE_FRAC = 0.75;
@@ -3097,15 +3102,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (社長指示: 接近不要。城マーカーはボス出現後に表示。?castlenow=1 は即時。)
         // 以前は制圧イベント中(ステージ1メイン)は出さない仕様だったが、社長指示で撤回=制圧中でも
         // 時間が来たら出現するように変更(拠点制圧の完了を待たない)。
-        // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-6・B3): questGateOk=「このランでクエストが対象外
-        // (status==='gone')」または「レスキュー完了(rescueClearedAt>0)から RESCUE_TO_CASTLE_DELAY_MS
-        // (3.0秒)経過」。getEventQuestConfig(...)では判定しない(設定はステージにしか紐づかないため
+        // 二人組クエストv4(EVENT_QUEST_DESIGN.md §2-18・社長指示2026-09-14): questGateOk=「このランでクエストが対象外
+        // (status==='gone')」または「5:00の通信が終わった(rescueClearedAt=通信終了の打刻>0)」。ディレイ0=会話終了で出る。
+        // (v2の「レスキュー完了+3.0秒」は廃止。)getEventQuestConfig(...)では判定しない(設定はステージにしか紐づかないため
         // フリー出撃・練習・ベンチ・ボスメーカーでもtrueになり城ボスがゲートされて詰む・§2-1)。
         const questGateOk = (() => {
           const qgs = useGameStore.getState();
           return computeQuestGateOk({
             npcStatus: qgs.eventQuestNpc.status, rescueClearedAt: qgs.rescueClearedAt,
-            now: newGameTime, delayMs: RESCUE_TO_CASTLE_DELAY_MS,
+            now: newGameTime, delayMs: DUO_COMM_TO_CASTLE_DELAY_MS,
           });
         })();
         // ANDは時間条件の項にだけ掛ける(★★3巡目 監査A2)。castleBossReady全体に掛けると開発用の
@@ -11326,7 +11331,50 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ①⑦ hidden→rescue(状態で書く・§2-2B確定)。§2-11: S5だけ「4:00 と 拠点2か所確保 の
           // 遅い方」(getEventQuestConfig().basesRequiredが未設定の他ステージは時刻のみ)。
           const rqBasesRequired = getEventQuestConfig(getSelectedStageId())?.basesRequired;
-          if (rqNpc.status === 'hidden' && !rqGs.bossChasing
+
+          // ★v4(EVENT_QUEST_DESIGN.md §2-18・社長指示2026-09-14): 5:00(S5は拠点2か所ラッチとの遅い方)で二人組から**通信**が入る。
+          // 場には出ない(サークル無し)。原稿=§2-13の「受注時」(S5は0行=同じフレームで終わる)。裏ボス戦闘中は待つ(v2の非表示規則と同じ線)。
+          if (rqNpc.status === 'hidden' && rqGs.duoCommStartedAt === 0 && !rqGs.bossChasing
+            && rescueQuestSpawnReady(newGameTime, DUO_COMM_AT_MS, basesEverCapturedNow, rqBasesRequired)) {
+            useGameStore.setState({ duoCommStartedAt: newGameTime });
+            const commLines = eventQuestSubAcceptLines(getSelectedStageId());
+            if (commLines.length > 0) useGameStore.getState().enqueueNpcDialogue(commLines);
+          }
+          // 通信の終了=表示中の行が無くキューが空(§2-18)。終了で ①城ボスのゲートを開く(rescueClearedAt=終了打刻・ディレイ0)
+          // ②hidden→briefed(受注済み・まだ場に居ない) ③強制リラックスが自然に明ける(duoCommActive=false=戦闘モードへ戻る)。1回だけ。
+          {
+            const cGs = useGameStore.getState();
+            if (duoCommActive(cGs.duoCommStartedAt, cGs.duoCommEndedAt)
+              && duoCommEnded(cGs.npcDialogue !== null, cGs.npcDialogueQueue.length)) {
+              useGameStore.setState(s2 => ({
+                duoCommEndedAt: newGameTime,
+                rescueClearedAt: s2.rescueClearedAt > 0 ? s2.rescueClearedAt : newGameTime,
+                eventQuestNpc: s2.eventQuestNpc.status === 'hidden' ? { ...s2.eventQuestNpc, status: 'briefed' } : s2.eventQuestNpc,
+              }));
+            }
+          }
+          // ③' briefed→warping(v4): 城ボス撃破で帰還サークルが出たら、場に居ない二人は**飛来だけ**で帰還サークルへ
+          // (レスキュー地点からの飛び去りは無い)。飛来の始点/着地点は v2 §2-8 と同じ純関数。
+          if (rqNpc.status === 'briefed' && rqGs.returnCircle != null && rqNpc.movePhase === null) {
+            const rc = rqGs.returnCircle;
+            const land = computeWarpLandingPoint({
+              circleX: rc.x, circleY: rc.y, radius: rc.radius,
+              playerX: rqPcx, playerY: rqPcy, edgeFrac: WARP_LANDING_EDGE_FRAC,
+            });
+            const from = computeWarpFlyinStart({
+              landX: land.x, landY: land.y, playerX: rqPcx, playerY: rqPcy,
+              minDistance: EVENT_NPC_MIN_DISTANCE,
+            });
+            useGameStore.setState(s2 => (s2.eventQuestNpc.status === 'briefed'
+              ? { eventQuestNpc: {
+                  ...s2.eventQuestNpc, status: 'warping', x: from.x, y: from.y,
+                  moveStartedAt: newGameTime, moveFromX: from.x, moveFromY: from.y,
+                  moveToX: land.x, moveToY: land.y, movePhase: 'flyin', hopPx: 0,
+                } }
+              : {}));
+          }
+
+          if (DUO_RESCUE_PHASE_ENABLED && rqNpc.status === 'hidden' && !rqGs.bossChasing
             && rescueQuestSpawnReady(newGameTime, RESCUE_QUEST_SPAWN_AT_MS, basesEverCapturedNow, rqBasesRequired)) {
             const firstSpawn = rqGs.rescueSpawnedAt === 0;
             let landX: number, landY: number;
@@ -15056,9 +15104,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const directorApplyRelaxActive = DIRECTOR_APPLY_RELAX && !labTheme && !indoor;
         // ★v0.25.3548(社長裁定「収穫でリラックス効かせない」): 現在のコマ種別を渡す。
         // 収穫コマでは relaxSpawnAdjust が中立(全て1)を返す=台本の「稼ぐ40秒」をディレクターが緩めない。
-        const relaxAdj = directorApplyRelaxActive
-          ? relaxSpawnAdjust(directorRef.current.state.macro, puzzleKomaRef.current.kind)
-          : { escMult: 1, intervalMult: 1, capMult: 1 };
+        // ★v4(EVENT_QUEST_DESIGN.md §2-18・社長指示2026-09-14「会話中は強制リラックス状態に」「会話終了で戦闘モードはもとに戻す」):
+        // 5:00の通信中は台本のコマに関わらず RELAX の湧きレバー(escalation停止・間隔×1.35・上限×0.85)を掛ける。終了打刻で自然に外れる。
+        const duoCommRelax = !labTheme && !indoor && duoCommActive(useGameStore.getState().duoCommStartedAt, useGameStore.getState().duoCommEndedAt);
+        const relaxAdj = duoCommRelax
+          ? relaxSpawnAdjust('relax')
+          : directorApplyRelaxActive
+            ? relaxSpawnAdjust(directorRef.current.state.macro, puzzleKomaRef.current.kind)
+            : { escMult: 1, intervalMult: 1, capMult: 1 };
         // AIディレクター ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが
         // 高いほど escalation を少し上乗せする。レバーはescalationのみ(湧き間隔/上限には触れない・Bより
         // 慎重)。Performanceは「BuildUpを強める」だけに使う=Intensity/被弾側とは絶対に混ぜない。

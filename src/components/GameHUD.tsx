@@ -51,7 +51,7 @@ const RescueQuestGoalPill: React.FC = () => {
   const rescued = useGameStore(s => s.rescueClearedAt > 0);
   const qStatus = useGameStore(s => s.eventQuestNpc.status);
   const bossKilled = useGameStore(s => s.finaleDefeated);
-  const inProgress = qStatus === 'accepted' || qStatus === 'warping' || qStatus === 'delivering';
+  const inProgress = qStatus === 'briefed' || qStatus === 'accepted' || qStatus === 'warping' || qStatus === 'delivering'; // briefed=v4の通信済み
   if (!attnDone || !rescued || !inProgress) return null;
   return (
     <div

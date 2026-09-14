@@ -92,6 +92,10 @@ describe('rescueQuestArenaOutcome(§2-4 終了条件・§2-5 完了の3契機の
 });
 
 describe('computeQuestGateOk(§2-6 確定・城ボスのゲート)', () => {
+  it('v4(§2-18): ディレイ0なら通信終了の打刻と同じフレームでゲートが開く(会話終了で城ボス出現)', () => {
+    expect(computeQuestGateOk({ npcStatus: 'briefed', rescueClearedAt: 300000, now: 300000, delayMs: 0 })).toBe(true);
+    expect(computeQuestGateOk({ npcStatus: 'hidden', rescueClearedAt: 0, now: 400000, delayMs: 0 })).toBe(false);
+  });
   it('status===gone(対象外ステージ/クリア済み)なら常にtrue', () => {
     expect(computeQuestGateOk({ npcStatus: 'gone', rescueClearedAt: 0, now: 0, delayMs: 3000 })).toBe(true);
   });

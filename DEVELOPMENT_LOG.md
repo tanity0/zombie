@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.4289 — 二人組クエスト v4: 5:00に通信→強制リラックス→通信終了で城ボス→撃破でゴール(社長指示)【2026-09-14 13:55 JST】
+
+- 社長指示(2026-09-14)「①5分経過で二人組から通信が入る(サークル無しで開始)+会話中は強制リラックス ②会話終了で城ボス出現 ③撃破でゴール二人組(現行)」
+  「会話終了で戦闘モードはもとに戻す」。設計=EVENT_QUEST_DESIGN.md **§2-18**(v2 の §2-3〜§2-6 は廃止・頭に v4 の告知)。
+- 実装: `EventQuestStatus` に `briefed`(通信済み・まだ場に居ない)。`duoCommStartedAt`/`duoCommEndedAt`(store・resetGame で0)。
+  useGameLoop の二人組ブロック: 5:00(`DUO_COMM_AT_MS`=CASTLE_BOSS_MIN_TIME_MS・S5は拠点ラッチと遅い方・`bossChasing` 中は待つ)で受注原稿を通信へ→
+  終了(`duoCommEnded`=表示なし+キュー空)で `rescueClearedAt`(受注打刻として流用)+`briefed`→城ボスのゲート(`DUO_COMM_TO_CASTLE_DELAY_MS=0`)→
+  帰還サークル出現で `briefed`→`warping`(飛来のみ・§2-8 の純関数)。強制リラックス=通信中 `relaxSpawnAdjust('relax')` を台本のコマに関わらず掛ける
+  (終了打刻で自然に外れる=戦闘モードへ)。v2 のレスキュー段は `DUO_RESCUE_PHASE_ENABLED=false` で塞いで残置(可逆)。
+  pixiScene: `briefed` は描かず影も落とさない。GameHUD: 討伐行(§2-7)に `briefed`。
+- 社長指示に無かった埋め方(§2-18「決めたこと」): 終了の定義=キュー空+表示なし / ディレイ0 / リラックス=ディレクターの RELAX(HUD のコマ表示は不変)/
+  裏ボス中は通信開始を待つ。
+- テスト: rescueQuestGate(duoCommActive/duoCommEnded)・rescueQuestArena(ディレイ0)追加。quest 系51本緑。typecheck・lint 0。
+- 次: 品質監査(Fable・新しい仕組み)→(A)を直して push → 社長実機(S1/S3/S4/S5 通し)。
+
 ## v0.25.4288 — ズーム時の遠近(zwarp): カウンター/KILLでスタートから最大の傾き(社長指示)【2026-09-14 13:46 JST】
 
 - 社長「カウンターやKILL時の斜めエフェクト、スタートからMAX斜めにして」。正体=寄りズームのイベント中だけ世界を台形に射影する

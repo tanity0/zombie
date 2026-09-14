@@ -14,3 +14,12 @@ export const rescueQuestSpawnReady = (
   basesEverCaptured: number,
   basesRequired: number | undefined,
 ): boolean => nowMs >= spawnAtMs && (basesRequired === undefined || basesEverCaptured >= basesRequired);
+
+// ★v4(EVENT_QUEST_DESIGN.md §2-18・社長指示2026-09-14): 5:00 の通信(受注会話)の開始/終了の純関数。
+/** 通信中(=強制リラックス中)か。開始打刻あり・終了打刻なし。 */
+export const duoCommActive = (startedAtMs: number, endedAtMs: number): boolean => startedAtMs > 0 && endedAtMs === 0;
+/**
+ * 通信が終わったか: 表示中の行が無く、キューも空。原稿0行(S5)は開始した同じフレームで終わる。
+ * 守護霊の台詞など別の行が同じキューに載っていれば、それも捌けるまで「終わっていない」(通信は1本のキュー)。
+ */
+export const duoCommEnded = (dialogueShowing: boolean, queueLength: number): boolean => !dialogueShowing && queueLength === 0;

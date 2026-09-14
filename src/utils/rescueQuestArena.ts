@@ -70,7 +70,7 @@ export interface QuestGateOkInput {
   npcStatus: EventQuestStatus;
   rescueClearedAt: number; // 0=未
   now: number;             // newGameTime
-  delayMs: number;         // RESCUE_TO_CASTLE_DELAY_MS
+  delayMs: number;         // v4: DUO_COMM_TO_CASTLE_DELAY_MS(=0。v2は RESCUE_TO_CASTLE_DELAY_MS=3000)
 }
 
 /** §2-6 確定: questGateOk =「このランでクエストが対象外(status==='gone')」または

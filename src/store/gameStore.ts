@@ -5165,6 +5165,8 @@ interface GameState {
   deliveryLocked: boolean;      // 納品ロック(既定false)
   castleAttnDoneAt: number;     // アテンション成立の打刻(0=未)
   rescueSpawnedAt: number;      // レスキュー地点の出現抽選を1度だけにする打刻(0=未抽選)
+  duoCommStartedAt: number;     // ★v4(§2-18): 5:00の通信の開始打刻(0=未)。通信中=強制リラックス
+  duoCommEndedAt: number;       // ★v4(§2-18): 通信の終了打刻(0=未)。城ボスの出現ゲート
   basesEverCaptured: number;    // S5だけの先行条件のラッチ(単調・下げない。0=未)
   // ── サブクエスト(research/SUBQUESTS.md)。受注せず出撃時に2枠まで自動補充される小目標。
   // 二人組クエスト(上のeventQuest*)とは完全に別系統。HUDは右上のRescueQuestGoalPillと同じ縦積み。
@@ -6372,6 +6374,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   eventQuestGoalTier: null,
   rescueClearedAt: 0,
   rescueArenaStartedAt: 0,
+  duoCommStartedAt: 0,
+  duoCommEndedAt: 0,
   deliveryLocked: false,
   castleAttnDoneAt: 0,
   rescueSpawnedAt: 0,
@@ -19521,6 +19525,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 二人組クエストv2のこのラン状態フィールド(§2-14)。ラン跨ぎで残さない。
         rescueClearedAt: 0,
         rescueArenaStartedAt: 0,
+        duoCommStartedAt: 0,
+        duoCommEndedAt: 0,
         deliveryLocked: false,
         castleAttnDoneAt: 0,
         rescueSpawnedAt: 0,

@@ -9519,7 +9519,7 @@ export class PixiScene {
     }
     // v2(EVENT_QUEST_DESIGN.md §2-2B / §2-14 C-3): 0:00〜レスキュー出現前 / 裏ボス戦闘中は
     // 場に居ない(円も出ない)。gone の直後・!tex の早期returnより前に置く(実在確認済みの位置)。
-    if (npc.status === 'hidden') {
+    if (npc.status === 'hidden' || npc.status === 'briefed') { // briefed(v4: 通信済み・まだ場に居ない)も描かない
       this.eventNpcView.visible = false;
       this.npcShadow = null;
       return;
@@ -11034,8 +11034,8 @@ export class PixiScene {
       // 高さの引数を持たないため、空中の二人組から地面へ影が伸びるのを止める唯一の手段。
       const eventNpcFadeDone = eventNpc.status === 'completed' && eventNpc.fadeStartedAt > 0
         && now - eventNpc.fadeStartedAt >= EVENT_NPC_FADE_MS;
-      const eventNpcDrawn = eventNpc.status !== 'gone' && eventNpc.status !== 'hidden'
-        && eventNpc.status !== 'warping' && !eventNpcFadeDone;
+      const eventNpcDrawn = eventNpc.status !== 'gone' && eventNpc.status !== 'hidden' && eventNpc.status !== 'briefed'
+        && eventNpc.status !== 'warping' && !eventNpcFadeDone; // briefed(v4)も描かない状態=影も落とさない
       if (eventNpcDrawn) {
         push(eventNpc.x, eventNpc.y, 76 * this.depthScale(eventNpc.y), 0.9);
       }
