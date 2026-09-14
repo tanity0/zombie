@@ -46,10 +46,10 @@ export const CINE_FX_VIGNETTE_TO = 0.90;      // 既存 this.vignette の alpha 
 export const CINE_FX_VIGNETTE_INNER_TO = 0.34; // 同 inner(0.55→)。新規に焼かない
 export const CINE_FX_VIGNETTE_LAG_MS = 180;   // カメラが止まった後も沈み続ける(光の落ち方は運動より遅れる)
 
-export const CINE_FX_BACKLIGHT_W_MULT = 2.2;  // 相手の幅の何倍(画面基準ではなく相手基準)
-export const CINE_FX_BACKLIGHT_ALPHA = 0.70;
+export const CINE_FX_BACKLIGHT_W_MULT = 3.4;  // 相手の幅の何倍(画面基準ではなく相手基準。v0.25.4307 実測で 2.2→3.4)
+export const CINE_FX_BACKLIGHT_ALPHA = 0.95;  // v0.25.4307: 0.70→0.95
 export const CINE_FX_BACKLIGHT_STRETCH_TO = 1.35; // 押し込みで横だけ伸びる(回転は入れない=3°は実機で見えない)
-export const CINE_FX_RIM_ALPHA = 0.55;        // 相手の縁取り(三日月・slash_02)。★未決#3=社長が「3も足して」
+export const CINE_FX_RIM_ALPHA = 0.80;        // 相手の縁取り(三日月・slash_02)。★未決#3=社長が「3も足して」(v0.25.4307: 0.55→0.80)
 
 export const CINE_FX_BOKEH = 4;               // 前景のボケ輪(手前2=9pxボケ / 奥2=2pxボケ)
 export const CINE_FX_BOKEH_BLOOD = 2;         // うち血の玉(★未決#1・レンズに付いた血)

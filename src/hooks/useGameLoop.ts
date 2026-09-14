@@ -888,6 +888,13 @@ const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ラ�
 // デバッグ(社長試作v0.25.1861): ?nospawn=1 で敵の湧きを全て止める(パズル盤面/旧スポナー/叫喚/
 // 囲い・関所/紅き夜/ハンター/死神/城ボス)。映像美の確認用に自由に歩き回るため。ゲーム/描画の他要素は不変。
 const NOSPAWN = evParam('nospawn') === '1';
+// ★寄り演目のデモ(v0.25.4307・社長「何が変わったのかわからない」への回答): `?cinedemo=1` で
+// **処刑のフル演出(カメラ台本+VFX)を4秒ごとに強制発火**する。既定OFF=通常プレイは1msも変わらない。
+// なぜ要るか: この演出は「**気絶した敵を近接で処刑**」か「ボスの致命」でしか出ず、さらに全演出が
+// 共有CD10秒で律速される(JUICE_CD_MS・社長裁定v0.25.1524)。つまり**普通に遊んで偶然見るのは難しい**。
+// `?cinedemo=2` 等で秒数を変えられる。`?cinefx=0` と併用すればVFXの有無をA/Bで見比べられる。
+const CINE_DEMO_S = (() => { const v = evParam('cinedemo'); if (!v) return 0; const n = Number(v); return Number.isFinite(n) && n > 0 ? (v === '1' ? 4 : n) : 0; })();
+let cineDemoAt = 0; // 最後にデモを撃った実時計(?cinedemo 専用)
 const CINE_TESTBED = evParam('cine') === '1'; // cine映像の実験台。stage-7で storyBoss(グレン)を出さない(社長v0.25.1879)。
 // M26-L(PACING_PUZZLE.md §6.3): 実機オートパイロット。?bot=<persona> でヘッドレスボットの判断
 // (decideBotInput)を実プレイの入力へ注入する。null(無指定)=完全無効・通常プレイは1バイトも挙動を変えない。
@@ -2909,6 +2916,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const newGameTime = gameTime + deltaTime * 1000;
         const newRealGameTime = loopState.realGameTime + baseDeltaTime * 1000;
         setGameTime(newGameTime, newRealGameTime);
+        // ?cinedemo: 寄り演目を一定間隔で強制発火(開発用・既定OFF)。近くの敵が居ればそこへ、居なければ自機の前方へ。
+        if (CINE_DEMO_S > 0 && newRealGameTime - cineDemoAt >= CINE_DEMO_S * 1000) {
+          cineDemoAt = newRealGameTime;
+          const s0 = useGameStore.getState();
+          const p0 = s0.player;
+          const pcx = p0.x + p0.width / 2, pcy = p0.y + p0.height / 2;
+          let tx = pcx + (p0.direction === 'left' ? -160 : 160), ty = pcy;
+          let bd = Infinity;
+          for (const en of s0.enemies) {
+            const ex = en.x + en.width / 2, ey = en.y + en.height / 2;
+            const d = (ex - pcx) ** 2 + (ey - pcy) ** 2;
+            if (d < bd) { bd = d; tx = ex; ty = ey; }
+          }
+          s0.triggerFinishImpact(tx, ty, true); // force=CDを無視して必ずフル演出(execute の台本)
+          const z = useGameStore.getState();
+          console.log('[cinedemo] fire', JSON.stringify({ tx: Math.round(tx), ty: Math.round(ty), mag: z.zoomMag, ms: z.zoomUntil - Date.now(), kind: z.cineEvent?.kind, enemies: s0.enemies.length }));
+        }
         useGameStore.getState().updateNpcDialogue(newGameTime); // NPCセリフの表示進行(時間停止なし)
         useGameStore.getState().updateMerchantDwell(deltaTime * 1000); // 商人サークル3秒滞在→話しかけ(社長指示v0.25.1842)
         updateGameStats({ timeAlive: gameTime / 1000 });

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4307',
+    items: [
+      '処刑の光と空気を一段強くした。縁に浮かぶ光の輪が大きくはっきりし、背後の光と手前の埃、飛ぶ火の粉が見えるようになった。',
+    ],
+  },
+  {
     version: '0.25.4306',
     items: [
       '処刑の瞬間に光と空気が乗るようになった。相手の背後から光が差して輪郭が残り、縁には三日月の光が入る。',

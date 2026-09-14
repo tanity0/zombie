@@ -29548,17 +29548,17 @@ export class PixiScene {
         }
         const blood = i >= CINE_FX_BOKEH - CINE_FX_BOKEH_BLOOD; // ★未決#1: レンズに付いた血(2枚)
         const side = i % 2 === 0 ? -sideX : sideX;
-        const r = 0.11 + (i % 3) * 0.05;
+        const r = 0.22 + (i % 3) * 0.09; // v0.25.4307 実測: 0.11+0.05*i では縁の薄い輪にしかならなかった
         sp.visible = true;
         sp.tint = blood ? CINE_FX_BLOOD_TINT : 0xdfe9ff;
         sp.blendMode = blood ? 'normal' : 'add'; // 血は加算にしない(光ってしまう)
-        const size = W * (blood ? 0.05 + 0.02 * (i % 2) : r);
+        const size = W * (blood ? 0.10 + 0.04 * (i % 2) : r);
         sp.width = size; sp.height = size;
         // 血は**貼り付いて動かない**(レンズに付いた物=視差を持たない)。押し込みの間だけゆっくり垂れる。
         const dx = blood ? 0 : side * W * 0.04 * (1 - out);
         const dy = blood ? H * CINE_FX_BLOOD_DRIP_FRAC * push : 0;
         sp.position.set(W * (0.5 + side * (0.30 + 0.06 * (i % 2))) + dx, H * (0.22 + 0.2 * i) + dy);
-        sp.alpha = (blood ? 0.55 : 0.4) * out * (blood ? 1 : 1 - 0.3 * push);
+        sp.alpha = (blood ? 0.80 : 0.85) * out * (blood ? 1 : 1 - 0.25 * push); // v0.25.4307: 0.55/0.40 → 0.80/0.85
       }
     } else for (const sp of this.cineFxBokeh) sp.visible = false;
 
@@ -29579,7 +29579,7 @@ export class PixiScene {
         this.cineFxWipe.visible = w.alpha > 0.001;
         this.cineFxWipe.tint = cineFxHasStreak(vocab) ? cineFxBacklightTint(vocab) : 0xffffff;
         this.cineFxWipe.width = W * CINE_FX_WIPE_W_FRAC;
-        this.cineFxWipe.height = H * 0.30;
+        this.cineFxWipe.height = H * 0.45; // v0.25.4307: 0.30→0.45
         this.cineFxWipe.position.set(originX + sideX * W * 1.1 * w.frac, H * 0.5);
         this.cineFxWipe.alpha = w.alpha * repeat;
       }
@@ -29646,11 +29646,11 @@ export class PixiScene {
       const gravity = set.dying ? H * 0.10 * push : 0; // 死亡だけ重力(押し込みが進むほど遅くなる=自分の時間が止まる)
       sp.visible = true;
       sp.tint = near ? 0x8a8f98 : 0xffc880;
-      const size = near ? H * spec.scale * 0.5 : 4 + spec.scale * 10;
+      const size = near ? H * spec.scale * 0.62 : 8 + spec.scale * 14; // v0.25.4307: 火の粉 4〜10px は見えない
       sp.width = size; sp.height = size;
       sp.position.set(W * spec.fx + W * this.cineFxOffsets[i], H * spec.fy + gravity);
       const delay = Math.max(0, 1 - spec.delayMs / 200);
-      sp.alpha = (near ? 0.10 : 0.55) * out * delay;
+      sp.alpha = (near ? 0.42 : 0.9) * out * delay; // v0.25.4307 実測: 手前の埃 0.10 は存在しないのと同じ
     }
   }
 
