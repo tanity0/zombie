@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
-  cineCameraAt, cineAccepts, thirdsPoint, CINE_KILL_CUT_FRAC, CINE_KILL_PUSH_START_MS, CINE_KILL_PUSH_MS,
+  cineCameraAt, cineAccepts, cineSideOf, CINE_KILL_CUT_FRAC, CINE_KILL_PUSH_START_MS, CINE_KILL_PUSH_MS,
   CINE_KILL_ORBIT_START_MS, CINE_KILL_ORBIT_MS, CINE_KILL_ORBIT_FRAC, CINE_COUNTER_OVERSHOOT, CINE_COUNTER_IN_MS,
-  CINE_COUNTER_ORBIT_OUT_MS, CINE_COUNTER_ORBIT_BACK_MS, CINE_DEATH_FROM_FRAC, CINE_DEATH_IN_MS, CINE_THIRDS_T, type CineEvent,
+  CINE_COUNTER_ORBIT_OUT_MS, CINE_COUNTER_ORBIT_BACK_MS, CINE_DEATH_FROM_FRAC, CINE_DEATH_IN_MS, type CineEvent,
   thirdsAim, cinePlateIn, cinePlateKinds, CINE_EXEC_CUT_FRAC, CINE_EXEC_PUSH1_TO, CINE_EXEC_PUSH2_START_MS, CINE_EXEC_PUSH2_MS,
   CINE_THIRDS_X_FRAC, CINE_FRAME_MARGIN_FRAC, CINE_PLATE_IN_MS,
 } from './cineCamera';
 
 describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v2・社長承認2026-09-14)', () => {
-  it('KILL: カット(85%)で始まり、ストップ明けから押し込んで保持の前半で100%(最大寄り=スローの最遅区間の裁定を保つ)', () => {
+  it('KILL: カット(CINE_KILL_CUT_FRAC=70%)で始まり、ストップ明けから押し込んで保持の前半で100%(最大寄り=スローの最遅区間の裁定を保つ)', () => {
     expect(cineCameraAt('kill', 0, 'full').zoomFrac).toBe(CINE_KILL_CUT_FRAC);
     expect(cineCameraAt('kill', CINE_KILL_PUSH_START_MS - 1, 'full').zoomFrac).toBe(CINE_KILL_CUT_FRAC);
     const mid = cineCameraAt('kill', CINE_KILL_PUSH_START_MS + CINE_KILL_PUSH_MS / 2, 'full').zoomFrac;
@@ -52,17 +52,21 @@ describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v
     expect(cineCameraAt('rescue', 100, 'full')).toEqual({ zoomFrac: 1, orbitFrac: 0, thirds: false, outPow: 1, pushNorm: 1 });
   });
   it('重なり: 進行中より高い順位だけ割り込む(KILL保持中のカウンターは捨てる・死亡は割り込む)。終わっていれば何でも受ける', () => {
-    const kill: CineEvent = { kind: 'kill', startAt: 1000, endAt: 1700, hasTarget: true, targetX: 0, targetY: 0 };
+    const kill: CineEvent = { kind: 'kill', startAt: 1000, endAt: 1700, hasTarget: true, targetX: 0, targetY: 0, sideX: 1, sideY: 1 };
     expect(cineAccepts(kill, 'counter', 1200)).toBe(false);
     expect(cineAccepts(kill, 'kill', 1200)).toBe(false);
     expect(cineAccepts(kill, 'death', 1200)).toBe(true);
     expect(cineAccepts(kill, 'counter', 1700)).toBe(true);
     expect(cineAccepts(null, 'rescue', 0)).toBe(true);
   });
-  it('三分割の寄り先は自機→相手の内分(相手寄り)', () => {
-    const p = thirdsPoint(0, 0, 100, 0);
-    expect(p.x).toBeCloseTo(100 * CINE_THIRDS_T, 9); expect(p.y).toBe(0);
-    expect(CINE_THIRDS_T).toBeGreaterThan(0.5); expect(CINE_THIRDS_T).toBeLessThan(1);
+  it('構図の側は開始時に確定(相手が同じ位置なら0=決まらない)。割り込みの持ち越し startFrac は新台本の出だしになる', () => {
+    expect(cineSideOf(0, 0, 100, -50)).toEqual({ sideX: 1, sideY: -1 });
+    expect(cineSideOf(0, 0, 0, 0)).toEqual({ sideX: 0, sideY: 0 });
+    // 処刑(1.0まで寄り切っている)に死亡が割り込む: 60%から始めず 1.0 から(1フレームで引かない)
+    expect(cineCameraAt('death', 0, 'full', 1.0).zoomFrac).toBeCloseTo(1, 9);
+    expect(cineCameraAt('death', 0, 'full').zoomFrac).toBe(CINE_DEATH_FROM_FRAC);
+    // KILL に execute が割り込む: カットは今の倍率(0.95)から=60%へ落とさない(ただし一拍目の到達92%は超えない)
+    expect(cineCameraAt('execute', 0, 'full', 0.95).zoomFrac).toBeCloseTo(0.92, 9);
   });
 });
 
@@ -73,9 +77,9 @@ describe('第2弾(v0.25.4296): 処刑の別台本・画面上の三分割・近�
     const hold = cineCameraAt('execute', CINE_EXEC_PUSH2_START_MS - 1, 'full').zoomFrac;
     expect(hold).toBeCloseTo(CINE_EXEC_PUSH1_TO, 2); // 止めの間は92%
     expect(cineCameraAt('execute', CINE_EXEC_PUSH2_START_MS + CINE_EXEC_PUSH2_MS, 'full').zoomFrac).toBeCloseTo(1, 9);
-    const kill: CineEvent = { kind: 'kill', startAt: 0, endAt: 700, hasTarget: true, targetX: 0, targetY: 0 };
+    const kill: CineEvent = { kind: 'kill', startAt: 0, endAt: 700, hasTarget: true, targetX: 0, targetY: 0, sideX: 1, sideY: 1 };
     expect(cineAccepts(kill, 'execute', 100)).toBe(true);
-    const exec: CineEvent = { kind: 'execute', startAt: 0, endAt: 1100, hasTarget: true, targetX: 0, targetY: 0 };
+    const exec: CineEvent = { kind: 'execute', startAt: 0, endAt: 1100, hasTarget: true, targetX: 0, targetY: 0, sideX: 1, sideY: 1 };
     expect(cineAccepts(exec, 'kill', 100)).toBe(false);
     expect(cineAccepts(exec, 'death', 100)).toBe(true);
   });

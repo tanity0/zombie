@@ -341,7 +341,8 @@ import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB
 import { labIdolSpotForDoc, type LabIdolSpot } from '../world/labIdolSpot';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
-import { cineAccepts, type CineEvent, type CineKind } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294)
+import { cineAccepts, cineCameraAt, cineSideOf, type CineEvent, type CineKind } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜)
+import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS } from '../utils/meleeExecute';
 
@@ -19940,10 +19941,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ダイナミック・カメラワーク(v0.25.4294): 演目は優先順(death>kill>counter>rescue)で受け付ける。進行中より低い/同じ順位は捨てる
       // (KILL保持中のカウンターは再キックしない)。相手座標=この呼び出しの寄り先(なければ自機中央)。
       const pl = state.player;
-      const cineEvent: CineEvent | null = kind !== undefined && cineAccepts(state.cineEvent, kind, now)
-        ? { kind, startAt: now, endAt: now + Math.max(0, durationMs), hasTarget,
-            targetX: hasTarget ? (targetX as number) : pl.x + pl.width / 2, targetY: hasTarget ? (targetY as number) : pl.y + pl.height / 2 }
-        : state.cineEvent;
+      const pcx = pl.x + pl.width / 2, pcy = pl.y + pl.height / 2;
+      const tX = hasTarget ? (targetX as number) : pcx, tY = hasTarget ? (targetY as number) : pcy;
+      let cineEvent: CineEvent | null = state.cineEvent;
+      if (kind !== undefined && cineAccepts(state.cineEvent, kind, now)) {
+        // 割り込み(前の演目が進行中)なら、その瞬間の実効倍率(zoomMag 比)を持ち越して新台本の出だしにする(監査2・慣性MUST)。
+        const prev = state.cineEvent;
+        let startFrac: number | undefined;
+        if (prev && now < prev.endAt && active && state.zoomMag > 0) {
+          const prevDecay = 1 - computeTimeSlowScale(now, state.zoomStart, state.zoomUntil, 0, state.zoomHoldMs);
+          const prevFrac = cineCameraAt(prev.kind, now - prev.startAt, 'full', prev.startFrac).zoomFrac;
+          startFrac = (prevFrac * prevDecay * state.zoomMag) / Math.max(0.001, Math.max(0, mag));
+        }
+        cineEvent = { kind, startAt: now, endAt: now + Math.max(0, durationMs), hasTarget, targetX: tX, targetY: tY, ...cineSideOf(pcx, pcy, tX, tY), startFrac };
+      }
       // v0.25.4296(クリエイティブ監査14): 演目が**割り込んだ**(進行中に高い順位が入った)時は寄り先と包絡線も新演目で始め直す
       // (旧: 継続扱いで前の被害者を見たまま死亡の台本が掛かっていた)。割り込みでなければ従来の「継続中は保持・max合成」。
       const interrupted = active && cineEvent !== state.cineEvent && cineEvent !== null;

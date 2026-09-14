@@ -7823,9 +7823,10 @@ export class PixiScene {
     // 既存の包絡線(zoomDecay)に掛ける。zwarp(斜め)の入力は従来どおり zoomDecay(押し込みのランプを渡さない=最初の1コマで最大を保つ)。
     // モード: 訓練/エンディング/通路/EX=押し込みだけ。ズーム引き中(pan が効かない)=カット+押し込みだけ。
     const cineEv = s.cineEvent && now < s.cineEvent.endAt && zoomDecay > 0 ? s.cineEvent : null;
-    const cineMode: CineMode = (this.currentFarKey === 'tutorial' || s.farBackdrop === 'ending' || s.corridorMode || isExStageRun())
+    // 研究所(lab)も押し込みだけ(§6-2「研究所=無し」・監査3)。訓練は s.farBackdrop で見る(currentFarKey は遠景の張り替え前に '' へ落ちる・監査7)。
+    const cineMode: CineMode = (s.farBackdrop === 'tutorial' || s.farBackdrop === 'ending' || s.corridorMode || isExStageRun() || s.stageTheme === 'lab')
       ? 'pushOnly' : (this.idleZoom * this.contextZoom < 1 ? 'cutPush' : 'full');
-    const cam = cineEv ? cineCameraAt(cineEv.kind, now - cineEv.startAt, cineMode) : null;
+    const cam = cineEv ? cineCameraAt(cineEv.kind, now - cineEv.startAt, cineMode, cineEv.startFrac) : null;
     // 戻りの形(v0.25.4295 クリエイティブ監査): 共有包絡線に演目の冪を掛ける(カウンター=保ってから速く落ちる/死亡=来た時より遅く帰る)。
     // zwarp(斜め)は素の zoomDecay を読む(下)。
     const zoomDecayCine = cam ? Math.pow(zoomDecay, cam.outPow) : zoomDecay;
@@ -7910,11 +7911,12 @@ export class PixiScene {
     const cinePx = kvp ? kvp.x : zpx, cinePy = kvp ? kvp.y : zpy;
     const thirds = (cam && cam.thirds && cineEv && cineEv.hasTarget)
       ? thirdsAim({ px: cinePx, py: cinePy, tx: cineEv.targetX, ty: cineEv.targetY, zoom, screenW: this.screenW, screenH: this.screenH,
-          nearMarginFrac: cinePlateKinds.has(cineEv.kind) ? CINE_PLATE_NEAR_MARGIN_FRAC : undefined }) // 板を出す演目は自機を板の裏に隠さない
+          nearMarginFrac: cinePlateKinds.has(cineEv.kind) ? CINE_PLATE_NEAR_MARGIN_FRAC : undefined, // 板を出す演目は自機を板の裏に隠さない
+          sideX: cineEv.sideX === 0 ? undefined : cineEv.sideX, sideY: cineEv.sideY === 0 ? undefined : cineEv.sideY }) // 側は開始時の値で固定(監査1)
       : null;
     const aimW = thirds ?? { x: kvp ? kvp.x : s.zoomTargetX, y: kvp ? kvp.y : s.zoomTargetY };
-    // 相手の側(+1=右)。横滑り・板の向きの基準。相手座標が無い時は zwarp の奥側で代用。
-    const cineSideX: 1 | -1 = thirds ? thirds.sideX : (cineEv && cineEv.hasTarget ? (cineEv.targetX >= cinePx ? 1 : -1) : this.zwarpEventSide);
+    // 相手の側(+1=右)。横滑り・板の向きの基準。開始時に確定した側を使い、決まらない時(死亡=相手が自機)は zwarp の奥側(最も近い敵の側)で代用(監査4)。
+    const cineSideX: 1 | -1 = cineEv && cineEv.sideX !== 0 ? cineEv.sideX : this.zwarpEventSide;
     const targetScreenX = this.L.world.position.x + aimW.x;
     const targetScreenY = this.L.world.position.y + aimW.y;
     // v0.25.2593(社長報告「起点が守護霊によったことで、映ってはいけない画面外がでちゃってる感じ。

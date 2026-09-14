@@ -12,6 +12,12 @@ export interface CineEvent {
   hasTarget: boolean;
   targetX: number;   // 相手(世界座標)。KILL=倒した敵 / カウンター=成立位置 / 死亡=自機
   targetY: number;
+  // 構図の側(v0.25.4298 監査1/4): **開始時に確定して保持**(処刑の跳びつきで自機が相手座標へ動いても毎フレーム反転しない)。
+  // 0=相手が自機と同じ位置(死亡・自傷)=側が決まらない→描画側は zwarp の奥側で代用する。
+  sideX: 1 | -1 | 0;
+  sideY: 1 | -1 | 0;
+  // 割り込み(進行中に高い順位が入った)時の持ち越し: 前の演目のその瞬間の実効倍率(zoomMag 比)。新台本はここから始める(慣性MUST・監査2)。
+  startFrac?: number;
 }
 /** 台本を適用できる範囲。full=全部 / cutPush=ズーム引き中(pan が効かない)=カット+押し込みだけ / pushOnly=訓練・通路・EX=押し込みだけ */
 export type CineMode = 'full' | 'cutPush' | 'pushOnly';
@@ -55,8 +61,6 @@ export const CINE_COUNTER_OUT_POW = 3;       // 硬く切る(保ってから速�
 export const CINE_DEATH_FROM_FRAC = 0.6;
 export const CINE_DEATH_IN_MS = 900;         // 保持1150の前に着いて 250ms 止める
 export const CINE_DEATH_OUT_POW = 0.6;       // 来た時より遅く帰る
-/** 三分割: 自機→相手の内分(相手寄り)。v0.25.4296 からは `thirdsAim`(画面上の置き場所)が正=これは互換用。 */
-export const CINE_THIRDS_T = 0.65;
 // ---- 三分割(画面上の置き場所・v0.25.4296 クリエイティブ監査6) ----
 export const CINE_THIRDS_X_FRAC = 1 / 6;   // 相手を縦の三分割線(中央から画面幅の1/6)へ
 export const CINE_THIRDS_Y_FRAC = 1 / 8;   // 縦は控えめ(上下の副作用を避ける)
@@ -80,14 +84,17 @@ const easeInOutCubic = (u: number) => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2
 // 行き過ぎて止まる(back)。板の滑り込みに使う=慣性MUST。
 const easeOutBack = (u: number) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * (u - 1) ** 3 + c1 * (u - 1) ** 2; };
 
-export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode): CineCamera => {
+export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode, startFrac?: number): CineCamera => {
   const t = Math.max(0, tMs);
   const full = mode === 'full';
+  // 割り込み時の持ち越し: カット/開始の倍率を前の演目の実効値から始める(1フレームで20%引くような pop を作らない)。
+  const from = (def: number) => (startFrac !== undefined && Number.isFinite(startFrac) ? Math.max(def, Math.min(1.2, startFrac)) : def);
   switch (kind) {
     case 'kill': {
+      const cut = from(CINE_KILL_CUT_FRAC);
       const zoomFrac = t < CINE_KILL_PUSH_START_MS
-        ? CINE_KILL_CUT_FRAC
-        : CINE_KILL_CUT_FRAC + (1 - CINE_KILL_CUT_FRAC) * easeOutCubic(clamp01((t - CINE_KILL_PUSH_START_MS) / CINE_KILL_PUSH_MS));
+        ? cut
+        : cut + (1 - cut) * easeOutCubic(clamp01((t - CINE_KILL_PUSH_START_MS) / CINE_KILL_PUSH_MS));
       const ou = clamp01((t - CINE_KILL_ORBIT_START_MS) / CINE_KILL_ORBIT_MS);
       return { zoomFrac, orbitFrac: full ? CINE_KILL_ORBIT_FRAC * smoothstep(ou) : 0, thirds: full, outPow: CINE_KILL_OUT_POW,
         pushNorm: clamp01((zoomFrac - CINE_KILL_CUT_FRAC) / (1 - CINE_KILL_CUT_FRAC)) };
@@ -95,8 +102,9 @@ export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode): CineC
     case 'execute': {
       // 一拍目(60→92%)→止め→二拍目(92→100%)。横滑りは長く。
       let zoomFrac: number;
-      if (t < CINE_EXEC_PUSH1_START_MS) zoomFrac = CINE_EXEC_CUT_FRAC;
-      else if (t < CINE_EXEC_PUSH2_START_MS) zoomFrac = CINE_EXEC_CUT_FRAC + (CINE_EXEC_PUSH1_TO - CINE_EXEC_CUT_FRAC) * easeOutCubic(clamp01((t - CINE_EXEC_PUSH1_START_MS) / CINE_EXEC_PUSH1_MS));
+      const cut = Math.min(CINE_EXEC_PUSH1_TO, from(CINE_EXEC_CUT_FRAC));
+      if (t < CINE_EXEC_PUSH1_START_MS) zoomFrac = cut;
+      else if (t < CINE_EXEC_PUSH2_START_MS) zoomFrac = cut + (CINE_EXEC_PUSH1_TO - cut) * easeOutCubic(clamp01((t - CINE_EXEC_PUSH1_START_MS) / CINE_EXEC_PUSH1_MS));
       else zoomFrac = CINE_EXEC_PUSH1_TO + (1 - CINE_EXEC_PUSH1_TO) * easeInOutCubic(clamp01((t - CINE_EXEC_PUSH2_START_MS) / CINE_EXEC_PUSH2_MS));
       const ou = clamp01((t - CINE_EXEC_ORBIT_START_MS) / CINE_EXEC_ORBIT_MS);
       return { zoomFrac, orbitFrac: full ? CINE_EXEC_ORBIT_FRAC * smoothstep(ou) : 0, thirds: full, outPow: CINE_EXEC_OUT_POW,
@@ -118,7 +126,8 @@ export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode): CineC
     case 'death': {
       // 止まらずにじり寄る(ease-in)→保持(DEATH_ZOOM_HOLD_MS までの残り)で止める→来た時より遅く帰る(outPow<1)
       const u = clamp01(t / CINE_DEATH_IN_MS);
-      return { zoomFrac: CINE_DEATH_FROM_FRAC + (1 - CINE_DEATH_FROM_FRAC) * easeInQuad(u), orbitFrac: 0, thirds: false, outPow: CINE_DEATH_OUT_POW, pushNorm: easeInQuad(u) };
+      const f0 = Math.min(1, from(CINE_DEATH_FROM_FRAC));
+      return { zoomFrac: f0 + (1 - f0) * easeInQuad(u), orbitFrac: 0, thirds: false, outPow: CINE_DEATH_OUT_POW, pushNorm: easeInQuad(u) };
     }
     case 'rescue':
     default:
@@ -130,9 +139,6 @@ export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode): CineC
 export const cineAccepts = (current: CineEvent | null, kind: CineKind, now: number): boolean =>
   !current || now >= current.endAt || CINE_PRIORITY[kind] > CINE_PRIORITY[current.kind];
 
-/** 三分割の寄り先=自機と相手の内分点(相手寄り CINE_THIRDS_T)。 */
-export const thirdsPoint = (px: number, py: number, tx: number, ty: number): { x: number; y: number } =>
-  ({ x: px + (tx - px) * CINE_THIRDS_T, y: py + (ty - py) * CINE_THIRDS_T });
 
 /**
  * 三分割=**画面上の置き場所**で決める(v0.25.4296・クリエイティブ監査6): 相手を縦の三分割線(自機の反対側)へ置き、
@@ -142,11 +148,12 @@ export const thirdsPoint = (px: number, py: number, tx: number, ty: number): { x
 export const thirdsAim = (input: {
   px: number; py: number; tx: number; ty: number; zoom: number; screenW: number; screenH: number;
   nearMarginFrac?: number; // 自機側(板のある縁)の余白。板を出す演目では CINE_PLATE_NEAR_MARGIN_FRAC を渡す(v0.25.4297・監査12)
+  sideX?: 1 | -1; sideY?: 1 | -1; // 開始時に確定した側(cineEvent)。未指定なら今の位置関係で決める
 }): { x: number; y: number; sideX: 1 | -1 } => {
   const { px, py, tx, ty, screenW, screenH } = input;
   const zoom = Math.max(0.001, input.zoom);
-  const sideX: 1 | -1 = tx >= px ? 1 : -1;
-  const sideY: 1 | -1 = ty >= py ? 1 : -1;
+  const sideX: 1 | -1 = input.sideX ?? (tx >= px ? 1 : -1);
+  const sideY: 1 | -1 = input.sideY ?? (ty >= py ? 1 : -1);
   let ax = tx - (sideX * screenW * CINE_THIRDS_X_FRAC) / zoom;
   let ay = ty - (sideY * screenH * CINE_THIRDS_Y_FRAC) / zoom;
   // 自機の画面位置=中央+(自機−寄り先)×zoom。枠内(余白)に収まるよう寄り先を戻す。自機側の余白だけ広く取れる(板の裏に隠さない)。
@@ -166,3 +173,9 @@ export const thirdsAim = (input: {
 export const cinePlateIn = (tMs: number): number => (tMs <= 0 ? 0 : tMs >= CINE_PLATE_IN_MS ? 1 : easeOutBack(tMs / CINE_PLATE_IN_MS));
 /** 板を出す演目か(処刑2種と死亡。カウンターは短いので出さない・§6-1)。 */
 export const cinePlateKinds: ReadonlySet<CineKind> = new Set<CineKind>(['kill', 'execute', 'death']);
+
+/** 構図の側を開始時に決める(相手が自機と同じ位置なら 0=決まらない)。 */
+export const cineSideOf = (px: number, py: number, tx: number, ty: number): { sideX: 1 | -1 | 0; sideY: 1 | -1 | 0 } => ({
+  sideX: Math.abs(tx - px) < 1 ? 0 : tx > px ? 1 : -1,
+  sideY: Math.abs(ty - py) < 1 ? 0 : ty > py ? 1 : -1,
+});
