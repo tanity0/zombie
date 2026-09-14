@@ -4,7 +4,7 @@ import {
   CINE_KILL_ORBIT_START_MS, CINE_KILL_ORBIT_MS, CINE_KILL_ORBIT_FRAC, CINE_COUNTER_OVERSHOOT, CINE_COUNTER_IN_MS,
   CINE_COUNTER_ORBIT_OUT_MS, CINE_COUNTER_ORBIT_BACK_MS, CINE_DEATH_FROM_FRAC, CINE_DEATH_IN_MS, type CineEvent,
   thirdsAim, cinePlateIn, cinePlateKinds, CINE_EXEC_CUT_FRAC, CINE_EXEC_PUSH1_TO, CINE_EXEC_PUSH2_START_MS, CINE_EXEC_PUSH2_MS,
-  CINE_THIRDS_X_FRAC, CINE_FRAME_MARGIN_FRAC, CINE_PLATE_IN_MS,
+  CINE_THIRDS_X_FRAC, CINE_FRAME_MARGIN_FRAC, CINE_PLATE_IN_MS, cineModeFor, cineCutFrac,
 } from './cineCamera';
 
 describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v2・社長承認2026-09-14)', () => {
@@ -67,6 +67,27 @@ describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v
     expect(cineCameraAt('death', 0, 'full').zoomFrac).toBe(CINE_DEATH_FROM_FRAC);
     // KILL に execute が割り込む: カットは今の倍率(0.95)から=60%へ落とさない(ただし一拍目の到達92%は超えない)
     expect(cineCameraAt('execute', 0, 'full', 0.95).zoomFrac).toBeCloseTo(0.92, 9);
+  });
+});
+
+describe('モード(§2-6・v0.25.4300): pan が効くかは「カット時点の実効倍率」で決める', () => {
+  it('群衆戦の引き(0.8)でも KILL のカット(×1.7)で 1 を超える=full。ボス距離の最大引き(0.40)は処刑のカット(×1.6)でも 0.64=cutPush', () => {
+    expect(cineModeFor(false, 0.8, 1.0, 'kill')).toBe('full');
+    expect(cineModeFor(false, 0.8, 1.0, 'execute')).toBe('full');
+    expect(cineModeFor(false, 0.8, 1.0, 'counter')).toBe('full');
+    expect(cineModeFor(false, 0.7, 1.0, 'execute')).toBe('full');   // 通常ボスの引き(0.7)×1.6=1.12
+    expect(cineModeFor(false, 0.4, 1.0, 'execute')).toBe('cutPush'); // 巨大ボス遠距離(0.40)×1.6=0.64
+    expect(cineModeFor(false, 0.55, 1.0, 'kill')).toBe('cutPush');   // 0.55×1.7=0.935
+  });
+  it('押し込みだけの場面(訓練/エンディング/通路/EX/研究所)は倍率に関係なく pushOnly。カットの比は演目の最小 zoomFrac と一致する', () => {
+    expect(cineModeFor(true, 1.0, 1.0, 'kill')).toBe('pushOnly');
+    expect(cineCutFrac('kill')).toBe(CINE_KILL_CUT_FRAC);
+    expect(cineCutFrac('execute')).toBe(CINE_EXEC_CUT_FRAC);
+    expect(cineCutFrac('death')).toBe(CINE_DEATH_FROM_FRAC);
+    expect(cineCutFrac('counter')).toBe(1);
+    // 判定に使う比は台本の t=0 の値そのもの(ずれると門と絵が食い違う)
+    expect(cineCameraAt('kill', 0, 'full').zoomFrac).toBe(cineCutFrac('kill'));
+    expect(cineCameraAt('execute', 0, 'full').zoomFrac).toBe(cineCutFrac('execute'));
   });
 });
 

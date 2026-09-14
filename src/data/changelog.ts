@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4300',
+    items: [
+      '大勢に囲まれている時やボスと戦っている時にも、処刑やカウンターのカメラが構図を組み、横に滑り、縁に近景が割り込む。これまでは周りに敵が少ない時しか出ていなかった。',
+    ],
+  },
+  {
     version: '0.25.4299',
     items: ['ゲーム内容の変更はありません。'],
   },

@@ -137,7 +137,7 @@ import {
 // PACING_PUZZLE.md §10-12#17(フィル・羽根の檻/裁きの光/急降下の可視域クランプ=可視短辺の0.45倍上限)。
 import { phillCageInitialRadiusPx } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
-import { cineCameraAt, thirdsAim, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, CINE_PLATE_NEAR_MARGIN_FRAC, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
+import { cineCameraAt, cineModeFor, thirdsAim, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, CINE_PLATE_NEAR_MARGIN_FRAC, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -7824,8 +7824,10 @@ export class PixiScene {
     // モード: 訓練/エンディング/通路/EX=押し込みだけ。ズーム引き中(pan が効かない)=カット+押し込みだけ。
     const cineEv = s.cineEvent && now < s.cineEvent.endAt && zoomDecay > 0 ? s.cineEvent : null;
     // 研究所(lab)も押し込みだけ(§6-2「研究所=無し」・監査3)。訓練は s.farBackdrop で見る(currentFarKey は遠景の張り替え前に '' へ落ちる・監査7)。
-    const cineMode: CineMode = (s.farBackdrop === 'tutorial' || s.farBackdrop === 'ending' || s.corridorMode || isExStageRun() || s.stageTheme === 'lab')
-      ? 'pushOnly' : (this.idleZoom * this.contextZoom < 1 ? 'cutPush' : 'full');
+    // v0.25.4300: 引き中の判定は**カット時点の実効倍率**(base×(1+mag×cut))で行う(cineModeFor)。base だけで見ていた v0.25.4298 までは
+    // 群衆戦(近傍8体以上=文脈ズーム<1)とボス戦(ボス距離ズーム)の処刑が全部 cutPush に落ち、三分割・横滑り・板が実機で出ていなかった。
+    const cinePushOnly = s.farBackdrop === 'tutorial' || s.farBackdrop === 'ending' || s.corridorMode || isExStageRun() || s.stageTheme === 'lab';
+    const cineMode: CineMode = cineEv ? cineModeFor(cinePushOnly, this.idleZoom * this.contextZoom, s.zoomMag, cineEv.kind) : (cinePushOnly ? 'pushOnly' : 'full');
     const cam = cineEv ? cineCameraAt(cineEv.kind, now - cineEv.startAt, cineMode, cineEv.startFrac) : null;
     // 戻りの形(v0.25.4295 クリエイティブ監査): 共有包絡線に演目の冪を掛ける(カウンター=保ってから速く落ちる/死亡=来た時より遅く帰る)。
     // zwarp(斜め)は素の zoomDecay を読む(下)。

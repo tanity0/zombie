@@ -84,6 +84,23 @@ const easeInOutCubic = (u: number) => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2
 // 行き過ぎて止まる(back)。板の滑り込みに使う=慣性MUST。
 const easeOutBack = (u: number) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * (u - 1) ** 3 + c1 * (u - 1) ** 2; };
 
+/** 演目がカットで飛ぶ先の寄り比(=その演目の最小 zoomFrac)。モード判定(cineModeFor)の入力。 */
+export const cineCutFrac = (kind: CineKind): number =>
+  kind === 'kill' ? CINE_KILL_CUT_FRAC : kind === 'execute' ? CINE_EXEC_CUT_FRAC : kind === 'death' ? CINE_DEATH_FROM_FRAC : 1;
+
+/**
+ * モード(§2-6)。**pan が効くかは「カット時点の実効倍率」で決める**: `baseZoom × (1 + zoomMag × cut)`。
+ * panLimit = (1 − 1/zoom) × 画面半分 の zoom は寄り込み(punch)込みの値なので、文脈ズームで引いていても
+ * (群衆=0.8 / ボス距離=0.40〜0.7)カットで 1 を超えれば横滑り・三分割・板は出せる。
+ * v0.25.4298 までは **寄り込み前の base だけ**で判定していたため、近傍8体以上の群衆戦とボス戦(=処刑の大半)が
+ * 縮小モード(cutPush)に落ち、実機で「何も変わっていない」と見えた(v0.25.4300 で是正)。
+ */
+export const cineModeFor = (pushOnly: boolean, baseZoom: number, zoomMag: number, kind: CineKind): CineMode => {
+  if (pushOnly) return 'pushOnly';
+  const atCut = baseZoom * (1 + Math.max(0, zoomMag) * cineCutFrac(kind));
+  return atCut < 1 ? 'cutPush' : 'full';
+};
+
 export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode, startFrac?: number): CineCamera => {
   const t = Math.max(0, tMs);
   const full = mode === 'full';
