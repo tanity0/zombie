@@ -137,6 +137,7 @@ import {
 // PACING_PUZZLE.md §10-12#17(フィル・羽根の檻/裁きの光/急降下の可視域クランプ=可視短辺の0.45倍上限)。
 import { phillCageInitialRadiusPx } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
+import { cineFxVocab, cineFxBacklightTint, cineFxHasStreak, cineFxSetFor, cineFxTargetsSelf, cineFxPushFollow, cineFxShutterAt, cineFxWipeAt, cineFxDeathLight, cineFxRepeatMult, cineFxNearDust, cineFxMotes, cineFxDustStep, CINE_FX_SHUTTER_ALPHA, CINE_FX_SHUTTER_TINT, CINE_FX_WIPE_MS, CINE_FX_WIPE_COUNTER_MS, CINE_FX_WIPE_W_FRAC, CINE_FX_VIGNETTE_TO, CINE_FX_BACKLIGHT_W_MULT, CINE_FX_BACKLIGHT_ALPHA, CINE_FX_BACKLIGHT_STRETCH_TO, CINE_FX_RIM_ALPHA, CINE_FX_BOKEH, CINE_FX_BOKEH_BLOOD, CINE_FX_BLOOD_TINT, CINE_FX_BLOOD_DRIP_FRAC, CINE_FX_DUST_NEAR_SPEED, CINE_FX_DUST_FAR_SPEED, CINE_FX_DUST_DRIFT, CINE_FX_STAGGER_MS, type CineFxKind, type CineFxParticle } from '../utils/cineFx'; // 寄り演目のVFX(§8・v0.25.4306)
 import { cineCameraAt, cineModeFor, thirdsAim, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, CINE_PLATE_NEAR_MARGIN_FRAC, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
@@ -940,6 +941,9 @@ const SHAFT_WIDTH_FACTOR = Math.max(0.05, tsNum('shaftwidth', 0.5));
 //   ?fogbg=0.45  森上霧(最下部・手前の森に被る低い霧。0=なし)
 //   ?fogspd=1    揺れの速さ
 // ★お試し中(2026-06-16): 奥は「めっちゃ濃く」0.85 のまま検証中。基準(戻り)値 → 森下=0.52 / 奥=0.45
+// 寄り演目のVFX(§8・v0.25.4306)の切り分けツマミ。`?cinefx=0` で全部落とす(`?hidelayer=cinefx` も同じ)。
+// 自作スイッチで消去法をやらないための「既存の道具」側に最初から足しておく(CLAUDE.md §7-3)。
+const CINE_FX_ENABLED = tsNum('cinefx', 1) !== 0;
 const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.9));      // 森下霧(fog-alpha素材・最大α~67%なので濃いめに)
 const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.65));  // 奥(遠景+地面・キャラの後ろ)
 const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.32));     // 森上霧(手前の森に被る最下部・薄め)
@@ -3479,6 +3483,23 @@ export class PixiScene {
   // 近景の板(research/CINEMATIC_CAMERA.md §6・v0.25.4296): 寄り演出の間だけ画面の縁に大きくボケた近景を斜めに割り込ませる。
   // 画面空間(L.cinePlates)・pooled sprite 2枚・ぼかしは読み込み時に1回焼く(毎フレームのフィルタ無し)。
   private cinePlateSprites: Sprite[] = [];
+  // ── 寄り演目のVFX(research/CINEMATIC_CAMERA.md §8 v2・v0.25.4306)。描画のみ・storeは書かない。
+  private cineFxBacklight: Sprite | null = null;   // 逆光の芯: **actorLayer の中・相手より奥**(相手が光を隠す=逆光の定義)
+  private cineFxRim: Sprite | null = null;         // 相手の縁取り(三日月・社長裁定「3も足して」)
+  private cineFxWipe: Sprite | null = null;        // 指向性ワイプ(画面空間)
+  private cineFxShutter: Sprite | null = null;     // カットの一拍(画面空間)
+  private cineFxBokeh: Sprite[] = [];              // 前景のボケ輪(cinePlates の子=板と同じボケの層)
+  private cineFxNear: Sprite[] = [];               // 手前の大きい埃(同上)
+  private cineFxMoteSprites: Sprite[] = [];        // 火の粉(cineFx 層)
+  private cineFxNearSpec: CineFxParticle[] = [];
+  private cineFxMoteSpec: CineFxParticle[] = [];
+  private cineFxEventStart = -1;
+  private cineFxPush = 0;                          // cam.pushNorm の追従値(直接読むと割り込みで跳ぶ・救援で定数1)
+  private cineFxLastAt = 0;                        // 反復への減衰(直近の演目)
+  private cineFxDeathFadeAt = 0;                   // 死亡: 光が落ち始めた時刻
+  private cineFxOffsets: number[] = [];            // 個体ごとの流れた量(画面比)
+  private cineFxVels: number[] = [];               // 同・速度(W/秒)
+  private cineFxVigBase = -1;                      // 既存 vignette の素のα(演目が終わったら戻す)
   private cinePlateTexCache = new Map<string, Texture>();
   private cinePlateEventStart = -1;
   private cinePlateDirIn: 1 | -1 = 1;   // 板の縁(自機側)から画面中央へ向く向き(+1=左縁から右へ)
@@ -7210,6 +7231,7 @@ export class PixiScene {
     // ★v0.25.2786: 遠景の層を全部消しても線が残ったので、**上に被せている幕**も落とせるようにした。
     if (HIDE_LAYERS.has('grade')) this.gradeSprite.visible = false;
     if (HIDE_LAYERS.has('vig')) this.vignette.visible = false;
+    if (HIDE_LAYERS.has('cinefx')) this.L.cineFx.visible = false;
     if (HIDE_LAYERS.has('air')) this.snowAir.visible = false;
     if (HIDE_LAYERS.has('cloud')) this.cloudShadow.visible = false;
     if (HIDE_LAYERS.has('strips')) for (const st of this.L.groundStrips) st.visible = false;
@@ -7993,6 +8015,8 @@ export class PixiScene {
     }
     // 近景の板(§6・v0.25.4296): 演目・モード・包絡線をそのまま渡す(描画のみ)。
     this.syncCinePlates(cineEv, cam, cineMode, zoomDecayCine, now, cineSideX);
+    // 寄り演目のVFX(§8 v2・v0.25.4306): 板と同じ入力で回す。逆光だけは actorLayer(世界)へ置く。
+    this.syncCineFx(cineEv, cam, cineMode, zoomDecayCine, now, cineSideX, zdt * 1000);
     // §6.37 v6: hzFixed(遠景森1/森2+地平付帯層)は**ボス寄せバイアス(bossPan)だけ**打ち消す。
     // v2993の「引き中は完全画面固定」は撤回——社長裁定(2026-08-07)は「森は世界と一緒に縮んでよい。
     // 縮みで出る切れ目はコピー森(リッジ3本・下のsyncで管理)で誤魔化す」。バイアス打ち消しは
@@ -29399,6 +29423,237 @@ export class PixiScene {
    * 命中(カット)の瞬間に縁の外から滑り込み(行き過ぎて止まる)、保持中は奥側へゆっくり流れ(横滑りの逆=手前ほど速い視差)、
    * 包絡線(√)で縁の外へ抜ける。板は台形の奥側へ傾ける(世界を回さずに「斜め」を板で増幅)。中央(寄り先)は触らない。
    */
+
+  /**
+   * 寄り演目のVFX(research/CINEMATIC_CAMERA.md §8 v2・社長承認2026-09-14)。**描画のみ**。
+   * 層は3つに割る(監査で判明した v1 最大の誤り=全部を最前面に置くと逆光が相手の「前」に出る):
+   *   A. `actorLayer`(世界)  … 逆光の芯・縁取り。相手より奥に Y-sort=相手が必ず光を隠す
+   *   B. `cinePlates`(近景)  … ボケ輪・手前の埃。板と同じボケの層に居る(隣り合う層でボケ量が矛盾しない)
+   *   C. `cineFx`(画面全体)  … ワイプ・火の粉・シャッター
+   *   既存 `this.vignette` は**新規に焼かず α/inner を動かすだけ**。
+   */
+  private syncCineFx(ev: CineEvent | null, cam: CineCamera | null, mode: CineMode, decay: number, now: number, sideX: 1 | -1, dtMs: number): void {
+    const layer = this.L.cineFx;
+    const st = useGameStore.getState();
+    const kind: CineFxKind = ev ? (ev.onPlayer ? 'fatal-on-player' : ev.kind) : 'rescue';
+    const set = cineFxSetFor(kind);
+    const vocab = cineFxVocab(st.farBackdrop, st.stageTheme);
+    const live = !!ev && !!cam && CINE_FX_ENABLED && decay > 0 && mode !== 'pushOnly' && vocab !== 'none'
+      && (set.shutter || set.wipe || set.backlight || set.bokeh || set.dust || set.vignette);
+    if (!live) {
+      if (layer.visible) layer.visible = false;
+      for (const sp of this.cineFxBokeh) sp.visible = false;
+      for (const sp of this.cineFxNear) sp.visible = false;
+      if (this.cineFxBacklight) this.cineFxBacklight.visible = false;
+      if (this.cineFxRim) this.cineFxRim.visible = false;
+      if (this.cineFxVigBase >= 0) { this.vignette.alpha = this.cineFxVigBase; this.cineFxVigBase = -1; } // 素へ戻す
+      this.cineFxPush = 0;
+      this.cineFxEventStart = -1;
+      return;
+    }
+    const e = ev as CineEvent, c = cam as CineCamera;
+    const W = this.screenW, H = this.screenH;
+    const t = now - e.startAt;
+
+    // 押し込みの追従値: cam.pushNorm を直接読まない(counter/rescue は定数1・割り込みで 0↔1 に跳ぶ)。
+    this.cineFxPush = cineFxPushFollow(this.cineFxPush, c.pushNorm, dtMs);
+    const push = this.cineFxPush;
+
+    // 新しい演目: 配り直す。**ただし粒子の速度と位置は持ち越す**(割り込みで飛行中の粒が原点へワープしない=慣性MUST)。
+    const fresh = e.startAt !== this.cineFxEventStart;
+    if (fresh) {
+      this.cineFxEventStart = e.startAt;
+      const seed = (e.startAt & 0xffff) | 1;
+      this.cineFxNearSpec = cineFxNearDust(seed);
+      this.cineFxMoteSpec = cineFxMotes(seed);
+      this.cineFxDeathFadeAt = 0;
+      if (this.cineFxOffsets.length === 0) {
+        const n = this.cineFxNearSpec.length + this.cineFxMoteSpec.length;
+        this.cineFxOffsets = new Array(n).fill(0);
+        this.cineFxVels = new Array(n).fill(0);
+      }
+      // 速度だけ入れ直す(位置=offsets は残す)。手前は**カメラの横滑りと逆符号**、奥は同符号=視差。
+      for (let i = 0; i < this.cineFxVels.length; i++) {
+        const spec = i < this.cineFxNearSpec.length ? this.cineFxNearSpec[i] : this.cineFxMoteSpec[i - this.cineFxNearSpec.length];
+        const dir = set.dying ? 0 : (spec.near ? sideX : -sideX); // 死亡は横滑りが無い=重力へ(下)
+        this.cineFxVels[i] = dir * (spec.near ? CINE_FX_DUST_NEAR_SPEED : CINE_FX_DUST_FAR_SPEED) * spec.speedMult;
+      }
+    }
+    const repeat = cineFxRepeatMult(this.cineFxLastAt, now);
+    if (fresh) this.cineFxLastAt = now;
+
+    // 死亡: 光が失われる(押し込みが閾値を越えてから落ち始める)。
+    if (set.dying && this.cineFxDeathFadeAt === 0 && push >= 0.5) this.cineFxDeathFadeAt = now;
+    const dyingLight = set.dying ? cineFxDeathLight(push, this.cineFxDeathFadeAt ? now - this.cineFxDeathFadeAt : 0) : 1;
+
+    layer.visible = true;
+    const out = Math.sqrt(Math.max(0, decay));
+
+    // ── A. 逆光の芯+縁取り(actorLayer・相手より奥) ───────────────────────────
+    if (set.backlight && !cineFxTargetsSelf(kind) && e.hasTarget) {
+      if (!this.cineFxBacklight) {
+        const sp = new Sprite(getSoftGlowTexture());
+        sp.anchor.set(0.5); sp.blendMode = 'add';
+        this.L.actorLayer.addChild(sp);
+        this.cineFxBacklight = sp;
+      }
+      const bl = this.cineFxBacklight;
+      const tint = cineFxBacklightTint(vocab);
+      const base = Math.max(90, this.cineFxTargetW(e)) * CINE_FX_BACKLIGHT_W_MULT;
+      const lead = Math.max(0, t - CINE_FX_STAGGER_MS[2]); // 逆光は+3コマ遅れて立ち上がる(完全同フレームにしない)
+      const rise = Math.min(1, lead / 60);
+      bl.visible = true;
+      bl.tint = tint;
+      bl.position.set(e.targetX, e.targetY);
+      bl.zIndex = e.targetY - 1;          // 相手(zIndex=足元Y)より奥=相手が光を隠す
+      bl.width = base * (1 + (CINE_FX_BACKLIGHT_STRETCH_TO - 1) * push); // 横だけ伸びる(回転は入れない)
+      bl.height = base * 0.92;
+      bl.alpha = CINE_FX_BACKLIGHT_ALPHA * out * rise * dyingLight;
+      // 縁取り(三日月・社長裁定「3も足して」): 相手の輪郭側に薄く。条を作らない場面(研究所)でも出す。
+      if (set.rim) {
+        const rimTex = getTexture('vfx/slash_02');
+        if (rimTex) {
+          if (!this.cineFxRim) {
+            const sp = new Sprite(rimTex);
+            sp.anchor.set(0.5); sp.blendMode = 'add';
+            this.L.actorLayer.addChild(sp);
+            this.cineFxRim = sp;
+          }
+          const rim = this.cineFxRim;
+          rim.visible = true;
+          rim.texture = rimTex;
+          rim.tint = tint;
+          rim.position.set(e.targetX + this.cineFxTargetW(e) * 0.22 * e.sideX, e.targetY - this.cineFxTargetW(e) * 0.35);
+          rim.zIndex = e.targetY - 1;
+          rim.width = this.cineFxTargetW(e) * 1.5 * (e.sideX === 0 ? 1 : e.sideX);
+          rim.height = this.cineFxTargetW(e) * 1.5;
+          rim.alpha = CINE_FX_RIM_ALPHA * out * rise;
+        }
+      } else if (this.cineFxRim) this.cineFxRim.visible = false;
+    } else {
+      if (this.cineFxBacklight) this.cineFxBacklight.visible = false;
+      if (this.cineFxRim) this.cineFxRim.visible = false;
+    }
+
+    // ── B. 前景のボケ輪+手前の埃(cinePlates の子=板と同じボケの層) ─────────────
+    const bokehKeys = ['vfx/light_01', 'vfx/light_02', 'vfx/light_03', 'vfx/light_01'];
+    if (set.bokeh) {
+      for (let i = 0; i < CINE_FX_BOKEH; i++) {
+        let sp = this.cineFxBokeh[i];
+        if (!sp) {
+          const tex = getTexture(bokehKeys[i % bokehKeys.length]);
+          if (!tex) break;
+          sp = new Sprite(tex); sp.anchor.set(0.5); sp.blendMode = 'add';
+          this.L.cinePlates.addChild(sp); this.cineFxBokeh[i] = sp;
+        }
+        const blood = i >= CINE_FX_BOKEH - CINE_FX_BOKEH_BLOOD; // ★未決#1: レンズに付いた血(2枚)
+        const side = i % 2 === 0 ? -sideX : sideX;
+        const r = 0.11 + (i % 3) * 0.05;
+        sp.visible = true;
+        sp.tint = blood ? CINE_FX_BLOOD_TINT : 0xdfe9ff;
+        sp.blendMode = blood ? 'normal' : 'add'; // 血は加算にしない(光ってしまう)
+        const size = W * (blood ? 0.05 + 0.02 * (i % 2) : r);
+        sp.width = size; sp.height = size;
+        // 血は**貼り付いて動かない**(レンズに付いた物=視差を持たない)。押し込みの間だけゆっくり垂れる。
+        const dx = blood ? 0 : side * W * 0.04 * (1 - out);
+        const dy = blood ? H * CINE_FX_BLOOD_DRIP_FRAC * push : 0;
+        sp.position.set(W * (0.5 + side * (0.30 + 0.06 * (i % 2))) + dx, H * (0.22 + 0.2 * i) + dy);
+        sp.alpha = (blood ? 0.55 : 0.4) * out * (blood ? 1 : 1 - 0.3 * push);
+      }
+    } else for (const sp of this.cineFxBokeh) sp.visible = false;
+
+    // 手前の大きい埃(§8-5: 1枚だけ突出して大きい)。
+    this.cineFxSyncParticles(set, out, dtMs, W, H, push);
+
+    // ── C. ワイプ・シャッター(画面空間) ────────────────────────────────────
+    if (set.wipe) {
+      const tex = getTexture('vfx/flare_01');
+      if (tex && !this.cineFxWipe) {
+        const sp = new Sprite(tex); sp.anchor.set(0.5); sp.blendMode = 'add';
+        layer.addChild(sp); this.cineFxWipe = sp;
+      }
+      if (this.cineFxWipe) {
+        const dur = kind === 'counter' ? CINE_FX_WIPE_COUNTER_MS : CINE_FX_WIPE_MS;
+        const w = cineFxWipeAt(t - CINE_FX_STAGGER_MS[1], dur); // +2コマ遅れ
+        const originX = W * 0.5 + (c.thirds ? sideX * W * (1 / 6) : 0);
+        this.cineFxWipe.visible = w.alpha > 0.001;
+        this.cineFxWipe.tint = cineFxHasStreak(vocab) ? cineFxBacklightTint(vocab) : 0xffffff;
+        this.cineFxWipe.width = W * CINE_FX_WIPE_W_FRAC;
+        this.cineFxWipe.height = H * 0.30;
+        this.cineFxWipe.position.set(originX + sideX * W * 1.1 * w.frac, H * 0.5);
+        this.cineFxWipe.alpha = w.alpha * repeat;
+      }
+    } else if (this.cineFxWipe) this.cineFxWipe.visible = false;
+
+    if (set.shutter) {
+      if (!this.cineFxShutter) {
+        const sp = new Sprite(Texture.WHITE); sp.anchor.set(0);
+        layer.addChild(sp); this.cineFxShutter = sp;
+      }
+      const a = cineFxShutterAt(t);
+      this.cineFxShutter.visible = a > 0.001;
+      this.cineFxShutter.tint = CINE_FX_SHUTTER_TINT; // 黒ではなく暗い血錆色(黒はどの作品にも属さない色)
+      this.cineFxShutter.width = W; this.cineFxShutter.height = H;
+      this.cineFxShutter.alpha = a * CINE_FX_SHUTTER_ALPHA * repeat;
+    } else if (this.cineFxShutter) this.cineFxShutter.visible = false;
+
+    // ── 周辺減光: 既存 this.vignette を動かすだけ(新規に焼かない=二重の falloff を作らない) ──
+    if (set.vignette) {
+      if (this.cineFxVigBase < 0) this.cineFxVigBase = this.vignette.alpha;
+      const to = Math.max(this.cineFxVigBase, CINE_FX_VIGNETTE_TO);
+      this.vignette.alpha = this.cineFxVigBase + (to - this.cineFxVigBase) * push * out;
+    } else if (this.cineFxVigBase >= 0) { this.vignette.alpha = this.cineFxVigBase; this.cineFxVigBase = -1; }
+  }
+
+  /** 相手の見かけの幅(逆光・縁取りの基準)。敵が見つからない時は既定値。 */
+  private cineFxTargetW(e: CineEvent): number {
+    const st = useGameStore.getState();
+    let best = 0, bd = Infinity;
+    for (const en of st.enemies) {
+      const dx = en.x + en.width / 2 - e.targetX, dy = en.y + en.height / 2 - e.targetY;
+      const d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = en.width; }
+    }
+    return bd < 160 * 160 && best > 0 ? best : 120;
+  }
+
+  /** 手前の埃と火の粉。速度は演目をまたいで持ち越す(割り込みで原点にワープさせない)。 */
+  private cineFxSyncParticles(set: ReturnType<typeof cineFxSetFor>, out: number, dtMs: number, W: number, H: number, push: number): void {
+    const specs = [...this.cineFxNearSpec, ...this.cineFxMoteSpec];
+    if (!set.dust) {
+      for (const sp of this.cineFxNear) sp.visible = false;
+      for (const sp of this.cineFxMoteSprites) sp.visible = false;
+      return;
+    }
+    const dustKeys = ['vfx/smoke_04', 'vfx/smoke_08', 'vfx/trace_04'];
+    for (let i = 0; i < specs.length; i++) {
+      const spec = specs[i];
+      const near = i < this.cineFxNearSpec.length;
+      const arr = near ? this.cineFxNear : this.cineFxMoteSprites;
+      const idx = near ? i : i - this.cineFxNearSpec.length;
+      let sp = arr[idx];
+      if (!sp) {
+        const tex = getTexture(near ? dustKeys[idx % dustKeys.length] : 'vfx/flare_01');
+        if (!tex) continue;
+        sp = new Sprite(tex); sp.anchor.set(0.5);
+        sp.blendMode = near ? 'normal' : 'add';
+        (near ? this.L.cinePlates : this.L.cineFx).addChild(sp);
+        arr[idx] = sp;
+      }
+      // 速度は終端速度へ落ち着く(0 に貼り付かせない)。死亡は重力=下へ。
+      this.cineFxVels[i] = cineFxDustStep(this.cineFxVels[i] ?? 0, Math.sign(this.cineFxVels[i] ?? 0) * CINE_FX_DUST_DRIFT, dtMs);
+      this.cineFxOffsets[i] = (this.cineFxOffsets[i] ?? 0) + this.cineFxVels[i] * (dtMs / 1000);
+      const gravity = set.dying ? H * 0.10 * push : 0; // 死亡だけ重力(押し込みが進むほど遅くなる=自分の時間が止まる)
+      sp.visible = true;
+      sp.tint = near ? 0x8a8f98 : 0xffc880;
+      const size = near ? H * spec.scale * 0.5 : 4 + spec.scale * 10;
+      sp.width = size; sp.height = size;
+      sp.position.set(W * spec.fx + W * this.cineFxOffsets[i], H * spec.fy + gravity);
+      const delay = Math.max(0, 1 - spec.delayMs / 200);
+      sp.alpha = (near ? 0.10 : 0.55) * out * delay;
+    }
+  }
+
   private syncCinePlates(ev: CineEvent | null, cam: CineCamera | null, mode: CineMode, decay: number, now: number, sideX: 1 | -1): void {
     const layer = this.L.cinePlates;
     const st = useGameStore.getState();
@@ -30065,6 +30320,12 @@ export class PixiScene {
   }
 
   destroy() {
+    // 寄り演目のVFX(§8・v0.25.4306): プールを破棄し、既存 vignette の α を素へ戻す(演目中に破棄されても残さない)。
+    for (const sp of [...this.cineFxBokeh, ...this.cineFxNear, ...this.cineFxMoteSprites]) { try { sp.destroy(); } catch { /* ignore */ } }
+    this.cineFxBokeh.length = 0; this.cineFxNear.length = 0; this.cineFxMoteSprites.length = 0;
+    for (const sp of [this.cineFxBacklight, this.cineFxRim, this.cineFxWipe, this.cineFxShutter]) { try { sp?.destroy(); } catch { /* ignore */ } }
+    this.cineFxBacklight = null; this.cineFxRim = null; this.cineFxWipe = null; this.cineFxShutter = null;
+    if (this.cineFxVigBase >= 0) { this.vignette.alpha = this.cineFxVigBase; this.cineFxVigBase = -1; }
     for (const sprite of this.signalBombSprites.values()) sprite.destroy();
     this.signalBombSprites.clear();
     try { this.labRT?.destroy(true); } catch { /* ignore */ }

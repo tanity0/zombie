@@ -18,6 +18,9 @@ export interface CineEvent {
   sideY: 1 | -1 | 0;
   // 割り込み(進行中に高い順位が入った)時の持ち越し: 前の演目のその瞬間の実効倍率(zoomMag 比)。新台本はここから始める(慣性MUST・監査2)。
   startFrac?: number;
+  /** 幻影→**自分**の致命(v0.25.4306 §8-8)。カメラの台本は execute のままだが、VFXは死亡と同じ扱いにする
+   *  (自分が殺された瞬間に逆光+ワイプ+シャッターの祝祭を出さない)。 */
+  onPlayer?: boolean;
 }
 /** 台本を適用できる範囲。full=全部 / cutPush=ズーム引き中(pan が効かない)=カット+押し込みだけ / pushOnly=訓練・通路・EX=押し込みだけ */
 export type CineMode = 'full' | 'cutPush' | 'pushOnly';

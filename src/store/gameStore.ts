@@ -4311,7 +4311,9 @@ const showBossFatalPresentation = (get: () => GameState, x: number, y: number, l
 export const showPvpFatalOnPlayerPresentation = (x: number, y: number, labelY: number): void => {
   const get = useGameStore.getState;
   showBossFatalPresentation(get, x, y, labelY);
-  get().triggerFinishImpact(x, y, true);
+  // v0.25.4306 §8-8: **自分が殺される**致命。カメラの台本は従来どおり(execute)だが、VFXは死亡扱いにする
+  // (逆光+ワイプ+シャッターの祝祭を自分の死に出さない)。
+  get().triggerFinishImpact(x, y, true, true);
 };
 
 // ★v0.25.3703(社長報告「パンプキンへの致命の一撃でKILL演出が出なかった。致命の一撃はCDないはず」):
@@ -6002,8 +6004,8 @@ interface GameState {
   // 近接フィニッシュ: ストップ+ズーム+スローを1拍エンベロープで発火(CD明けのみ・CD内は最低保証フラッシュのみ)。
   // forceMaximumZoom=true は致命の一撃専用。CDと進行中ズームを無視し、対象へ最大ズームを掛け直す。
   // 戻り値=そのキルでフル演出(CD明け)が出たか(呼び出し元が武器固有フラッシュを出すかの判断に使う)。
-  triggerFinishImpact: (targetX?: number, targetY?: number, forceMaximumZoom?: boolean) => boolean;
-  triggerZoom: (mag: number, durationMs: number, holdMs?: number, targetX?: number, targetY?: number, kind?: CineKind) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)。kind=カメラ台本の演目(v0.25.4294)
+  triggerFinishImpact: (targetX?: number, targetY?: number, forceMaximumZoom?: boolean, onPlayer?: boolean) => boolean;
+  triggerZoom: (mag: number, durationMs: number, holdMs?: number, targetX?: number, targetY?: number, kind?: CineKind, onPlayer?: boolean) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)。kind=カメラ台本の演目(v0.25.4294)。onPlayer=幻影→自分の致命(VFXは死亡扱い・v0.25.4306)
   // dirX/dirY(§5.23 M22 C1・任意・未正規化でよい): 指定時はシェイクをその方向へ寄せる。
   // 未指定/{0,0}/`?dirfx=0`は従来どおり等方のランダム揺れ。
   triggerShake: (durationMs: number, mag?: number, dirX?: number, dirY?: number) => void; // 行動別の画面シェイク(描画のみ)
@@ -19888,7 +19890,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (shakeMag > 0) setTimeout(() => get().triggerShake(shakeMs, shakeMag), Math.max(0, stopMs));
   },
 
-  triggerFinishImpact: (targetX, targetY, forceMaximumZoom = false) => {
+  triggerFinishImpact: (targetX, targetY, forceMaximumZoom = false, onPlayer = false) => {
     const now = Date.now();
     // 致命の一撃は通常KILLの10秒CDや、直前のズームの残り具合に左右されない。
     // 一度ズーム包絡を切ってから最大倍率を対象中心へ掛け直し、必ず「最大まで寄る1イベント」にする。
@@ -19900,8 +19902,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
       }
       // v0.25.4296: 致命(forceMaximumZoom=ボス級の処刑)は別台本 'execute'=長い保持(EXECUTE_ZOOM_MS/HOLD)と二拍目。通常の処刑は 'kill'。
-      if (forceMaximumZoom) get().triggerZoom(MELEE_FINISH_ZOOM_MAG, EXECUTE_ZOOM_MS, EXECUTE_ZOOM_HOLD_MS, targetX, targetY, 'execute');
-      else get().triggerZoom(MELEE_FINISH_ZOOM_MAG, durationMs, holdMs, targetX, targetY, 'kill');
+      if (forceMaximumZoom) get().triggerZoom(MELEE_FINISH_ZOOM_MAG, EXECUTE_ZOOM_MS, EXECUTE_ZOOM_HOLD_MS, targetX, targetY, 'execute', onPlayer);
+      else get().triggerZoom(MELEE_FINISH_ZOOM_MAG, durationMs, holdMs, targetX, targetY, 'kill', onPlayer);
     };
     if (!JUICE_ENABLED) {
       // ?juice=0: このバッチ以前の演出へ完全復帰(A/B比較用)。ズームだけCD、スロー/揺れは毎回。
@@ -19933,7 +19935,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     return fullCinematic;
   },
 
-  triggerZoom: (mag, durationMs, holdMs = 0, targetX, targetY, kind) => {
+  triggerZoom: (mag, durationMs, holdMs = 0, targetX, targetY, kind, onPlayer) => {
     // 描画のみのパンチズーム。重なった場合は強い方/長い方を採用。ゲーム性(カメラ座標/判定)は不変。
     // holdMs: 最大ズームを保持する長さ(社長指示: ピークスロー=最大ズーム+テキスト最大の瞬間を
     // 保持してからフェードアウト。スロー(triggerTimeSlow)と同じhold-then-rampカーブ・同じ
@@ -19961,7 +19963,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const prevFrac = cineCameraAt(prev.kind, now - prev.startAt, 'full', prev.startFrac).zoomFrac;
           startFrac = (prevFrac * prevDecay * state.zoomMag) / Math.max(0.001, Math.max(0, mag));
         }
-        cineEvent = { kind, startAt: now, endAt: now + Math.max(0, durationMs), hasTarget, targetX: tX, targetY: tY, ...cineSideOf(pcx, pcy, tX, tY), startFrac };
+        cineEvent = { kind, startAt: now, endAt: now + Math.max(0, durationMs), hasTarget, targetX: tX, targetY: tY, ...cineSideOf(pcx, pcy, tX, tY), startFrac, ...(onPlayer ? { onPlayer: true } : {}) };
       }
       // v0.25.4296(クリエイティブ監査14): 演目が**割り込んだ**(進行中に高い順位が入った)時は寄り先と包絡線も新演目で始め直す
       // (旧: 継続扱いで前の被害者を見たまま死亡の台本が掛かっていた)。割り込みでなければ従来の「継続中は保持・max合成」。

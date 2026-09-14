@@ -482,6 +482,17 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'mirror-ball', scaleMode: 'linear' },
       { name: 'helicopter', scaleMode: 'nearest' }, // ぼかさない(平滑化なし=くっきり)
       { name: 'fog-alpha', scaleMode: 'linear' },     // 森下の霧素材(アルファ透過版=通常合成で重ねる)
+      // 寄り演目のVFX(research/CINEMATIC_CAMERA.md §8・Kenney Particle Pack/CC0・v0.25.4306)。
+      // ★`spritePath` は `sprites/<name>.png` しか見ないので **public/sprites/vfx/** に置く(public/vfx/ では引けない)。
+      // `spark_04`(枝分かれした電撃)は語彙が無いので**登録しない**(ロードだけされて描かれない状態を作らない)。
+      { name: 'vfx/flare_01', scaleMode: 'linear' },  // 硬い芯+水平の条=指向性ワイプ / 極小の火の粉
+      { name: 'vfx/light_01', scaleMode: 'linear' },  // ピントの外れたボケ輪(前景)
+      { name: 'vfx/light_02', scaleMode: 'linear' },
+      { name: 'vfx/light_03', scaleMode: 'linear' },
+      { name: 'vfx/smoke_04', scaleMode: 'linear' },  // 手前の大きい埃
+      { name: 'vfx/smoke_08', scaleMode: 'linear' },
+      { name: 'vfx/trace_04', scaleMode: 'linear' },  // うねった煙の筋=空気の流れ
+      { name: 'vfx/slash_02', scaleMode: 'linear' },  // 三日月=相手の縁取り(リムライト)
       { name: 'zoom-cloud', scaleMode: 'nearest' },   // 引き雲(社長支給v0.25.3011・ドット絵透過版。深い引きの時だけ最前面に流す)
       // 研究施設(屋内)アセット。サブディレクトリ込みの名前で登録(spritePath が sprites/<name>.png)。
       // ★lab-wall-open-*/lab-wall-closed-*/lab-wall-side-long/lab-wall-side-block{1,2,3} はバッチ4
