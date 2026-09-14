@@ -3,8 +3,10 @@
 
 /** 素材のコマ数。`public/sprites/fx/slash-hit-00.png` 〜 `-34.png`。 */
 export const SLASH_HIT_FRAMES = 35;
-/** 既定の尺(ms)。35コマを 0.5秒=70コマ/秒相当で送る(速い方が打撃に見える)。 */
-export const SLASH_HIT_MS = 500;
+/** ★素材は **60fps 想定**(社長指示2026-09-14)。尺は「コマ数 ÷ 60」で決まる=別の数字を持たない。 */
+export const SLASH_HIT_FPS = 60;
+/** 既定の尺(ms)= 35コマ ÷ 60fps ≒ 583ms。コマ数を変えれば尺も付いてくる。 */
+export const SLASH_HIT_MS = Math.round((SLASH_HIT_FRAMES / SLASH_HIT_FPS) * 1000);
 
 /** 経過(0..1)→ コマ番号。最後のコマで止めて、尺を過ぎても溢れない。 */
 export const slashHitFrame = (t: number): number =>

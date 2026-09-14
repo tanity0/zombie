@@ -9217,6 +9217,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const s of slashAt) {
       get().spawnSlash(s.x, s.y, 'rgba(221,238,255,0.95)', slashScale);
       get().spawnMeleeBlood(s.x, s.y); // 近接の血飛沫(社長指摘v0.25.2060: メイン近接3経路に未配線だった)
+      get().spawnSlashHit(s.x, s.y);   // v0.25.4323: 刀の通常ヒットにも炸裂(同じ「斬って当たった」動作)
     }
     for (const c of damageNumbers) {
       get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
@@ -9496,7 +9497,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // 鞭の時は近接攻撃のクレスト(slashストリーク)表現は出さない。鞭自身のlashスプライトのみ。
     // 血飛沫は出す(社長指摘v0.25.2060: メイン近接3経路に未配線だった)。
-    for (const s of slashAt) get().spawnMeleeBlood(s.x, s.y);
+    for (const s of slashAt) { get().spawnMeleeBlood(s.x, s.y); get().spawnSlashHit(s.x, s.y); } // v0.25.4323: 鞭の通常ヒットにも炸裂
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
     for (const c of critStunAt) { get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260); get().spawnCritImpact(c.x, c.y); } // 鞭クリも揺れ+光源(社長指示2026-09-13)
     // §9.4(v0.25.2502): 鞭クリの紫完全気絶FX(ナイフ4923/刀5573の紫リング+STUN!と同じ作法)。

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4323',
+    items: [
+      '斬撃の炸裂を素材どおりの速さで流すようにした。刀と鞭で切った時にも出る。',
+    ],
+  },
+  {
     version: '0.25.4322',
     items: [
       '近接で敵を切ると、当たった所で青白い炸裂が起きるようになった。氷の棘と破片が散って、粒と煙になって消える。',
