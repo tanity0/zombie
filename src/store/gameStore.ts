@@ -2382,7 +2382,6 @@ export const SHIELD_BLOCK_SHAKE_MAG = 5;
 // パンプキン(/lab-zombie-3)のジャンプ攻撃は着地時に爆発攻撃。範囲は狭め(半径px)。ダメージは各敵の damage。
 // ★定義はbountyDims.ts(依存ゼロの葉)へ移動(v0.25.3390・循環import起動全損の修正)。値54は不変。
 import { PUMPKIN_EXPLOSION_RADIUS } from '../utils/bountyDims';
-import { impactBurstPlan, impactBurstRepeatFilter, IMPACT_FLASH_COLOR } from '../utils/impactBurst'; // §9 v2 当たった瞬間の台本
 export { PUMPKIN_EXPLOSION_RADIUS };
 
 // PACING_PUZZLE.md §9-4(削岩型・driller): 突き(ヤリ攻撃)の溜め/判定/硬直/CD。間合い(接近/後退/構え)
@@ -4085,10 +4084,9 @@ const grantMeleeKillRewards = (
     const bdx = ex - (player.x + player.width / 2);
     const bdy = ey - (player.y + player.height / 2);
     if (finisher) {
-      // ★v0.25.4318(§9 v2・社長裁定「はい」): **赤30粒+暗赤14粒+白/金/暗赤の輪3本+金glow を撤去**し、
-      // 接触の瞬間(KILLFX_BURST_AT_MS=370ms)に走る台本(playImpactBurst)へ置き換えた。
-      // 残したまま足すと点数が増えて「何が起きたか読めない」に戻る(§8-11 の却下理由)。
-      // 血(spawnBlood)と "Kill!" の文字は従来どおり=**赤の禁則は形で書く**(輪と予告形状には赤を使わない・血と肉は赤でよい)。
+      // Finisher juice: white shockwave + gold ring + sparks + glow + callout.
+      get().spawnBurst(ex, ey, '#dc2626', 30, bdx, bdy);
+      get().spawnBurst(ex, ey, '#7f1d1d', 14, bdx, bdy);
       // KILL!は血飛沫も大量に(社長指示v0.25.2032→2041「真上にぶしゃーーっと」→2045「ズーム停止の
       // タイミングで噴射」): KILLズームは寄り切りまで MELEE_FINISH_ZOOM_MS - HOLD_MS(=100ms)なので、
       // その瞬間に真上2連バースト(各43粒=キャップほぼ満杯の間欠泉)を発火=止まった画の中で噴き上がる。
@@ -4102,13 +4100,10 @@ const grantMeleeKillRewards = (
         get().spawnBlood(ex, ey, -Math.PI / 2 - 0.16, 260);
         get().spawnBlood(ex, ey, -Math.PI / 2 + 0.16, 260);
       }, MELEE_FINISH_ZOOM_MS - MELEE_FINISH_ZOOM_HOLD_MS);
-      // 接触の瞬間に台本を再生(§9-5)。跳びつきの振り付けぶん遅らせる=**刃が首に入る瞬間**に出す。
-      // v0.25.4317 までの台本は t=0 に撒いていたので、跳びつき中に燃え尽きて刃の瞬間には何も無かった。
-      const burstDir = Math.atan2(bdy, bdx);
-      setTimeout(() => playImpactBurst(get, {
-        x: ex, y: ey, footY: enemy.y + enemy.height, targetW: enemy.width,
-        bladeRad: burstDir, mode: 'execute',
-      }), KILLFX_BURST_AT_MS);
+      get().spawnRing(ex, ey, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
+      get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
+      get().spawnRing(ex, ey, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
+      get().spawnGlow(ex, ey, GLOW_R_S, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS); // KILLの光サークルを少し大きく(社長指示。46→58)
       // "Kill!" callout over the executed enemy's head. 刀の一閃は代わりに
       // 軌道中央へ「斬」を出すので、ここでは出さない。
       if (!suppressKillCallout) {
@@ -4307,75 +4302,6 @@ const showBossFatalPresentation = (get: () => GameState, x: number, y: number, l
   get().spawnCallout(x, labelY, 'Kill!', '#ffe4e6', {
     bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS,
   });
-};
-
-
-// ─────────────────────────────────────────────────────────────────────────
-// 処刑・カウンターの「当たった瞬間の絵」(research/CINEMATIC_CAMERA.md §9 v2・社長承認2026-09-14)
-// ─────────────────────────────────────────────────────────────────────────
-/** 開発用の切り分け: `?burst=0` で台本だけ落とす(カメラ/VFXのツマミとは別系統・§9-7)。 */
-const IMPACT_BURST_ENABLED = typeof window === 'undefined'
-  || new URLSearchParams(window.location.search).get('burst') !== '0';
-let impactBurstLastAt = 0;
-
-/**
- * 台本を**接触の瞬間から**再生する。遅れは `setTimeout`(既存の血と同じ作法。純関数は遅延を持てず、
- * `updateEffects` は createdAt を無視して毎フレーム積分するため未来打ちもできない=§9-0 #6)。
- * ★呼び出し側は「接触の瞬間」に呼ぶこと。処刑は跳びつきが入るので `KILLFX_BURST_AT_MS`(=370ms)後。
- * 判定は持たない=②派手さの絵。座標・HUD・ゲーム挙動は触らない。
- */
-export const playImpactBurst = (
-  getState: () => GameState,
-  opts: { x: number; y: number; footY: number; bladeRad: number; targetW: number; mode: 'execute' | 'counter' },
-): void => {
-  if (!IMPACT_BURST_ENABLED) return;
-  const now = Date.now();
-  const beats = impactBurstRepeatFilter(
-    impactBurstPlan({ mode: opts.mode, bladeRad: opts.bladeRad, targetW: opts.targetW, seed: now & 0xffff }),
-    impactBurstLastAt, now,
-  );
-  impactBurstLastAt = now;
-  for (const b of beats) {
-    const fire = () => {
-      const st = getState();
-      const y = b.atFoot ? opts.footY : opts.y;
-      switch (b.kind) {
-        case 'flash': // 接触点の白熱。★半径は固定(44以上=投影影を落とす重い光源に切り替わる)
-          st.spawnGlow(opts.x, opts.y, b.size, b.color ?? IMPACT_FLASH_COLOR, b.durationMs);
-          break;
-        case 'slashBurst': // 斬りの帯。刃の走った向きへ(素材ごとの刃先補正は spawnFanBurst が引く)
-          st.spawnFanBurst(opts.x, opts.y, `fx/slash-burst-${Math.floor(Math.random() * 5)}`, b.count, {
-            speed: b.speed, scale: b.size, durationMs: b.durationMs, spreadRad: b.spreadRad, baseAngle: b.angleRad,
-          });
-          break;
-        case 'shock': // 衝撃の輪(支給素材。地面に沿って広がる絵)
-          st.spawnFanBurst(opts.x, y, 'fx/shockwave', 1, {
-            speed: 0, scale: b.size, durationMs: b.durationMs, spreadRad: 0, baseAngle: 0,
-          });
-          break;
-        case 'spark': // 火花=既定枝の粒(加算)。★向きは**刃の走った向き**(押し込み方向ではない)
-          st.spawnBurst(opts.x, opts.y, b.color ?? '#ffd9a0', b.count,
-            Math.cos(b.angleRad), Math.sin(b.angleRad));
-          break;
-        case 'debris': // 破片は足元へ落として着地させる(接触点=首なので落ちる距離がある)
-          st.spawnFanBurst(opts.x, y, 'fx/dust', b.count, {
-            speed: b.speed, scale: b.size, durationMs: b.durationMs, spreadRad: b.spreadRad, baseAngle: b.angleRad,
-          });
-          break;
-        case 'smoke': // 土煙は**足元Yから上へ**。大きく(小さいと存在が伝わらない)
-          st.spawnFanBurst(opts.x, y, 'fx/dust-puff', b.count, {
-            speed: b.speed, scale: b.size, durationMs: b.durationMs, spreadRad: b.spreadRad, baseAngle: b.angleRad,
-          });
-          break;
-        case 'stain': // 消える光より残る跡(湿って重い世界)
-          st.spawnFanBurst(opts.x, y, 'fx/ground-crack', 1, {
-            speed: 0, scale: b.size, durationMs: b.durationMs, spreadRad: 0, baseAngle: 0,
-          });
-          break;
-      }
-    };
-    if (b.atMs <= 0) fire(); else setTimeout(fire, b.atMs);
-  }
 };
 
 // ★社長指示2026-08-27「幻影戦での致命はちゃんと双方、KILL演出して。(ズームする方)」:
@@ -12243,17 +12169,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 銃以外は毎命中・向きは命中点へ。source=同じフレームに束ねる鍵(爆風は 'blast'、近接3経路は各自 'melee' で登録)。
     if (impactAt) {
       const ia = impactAt as { x: number; y: number }; // set() 内の代入は TS の流れ解析に見えない(gunHitAt と同じ形)
-      // §9 v2: カウンター成立の「当たった瞬間の絵」。処刑と違って振り付けが無いので**即時**。
-      // ここ(damageEnemy の中央)に置くのは、近接3経路のカウンターが全部 postureImpact='counter' でここを通るため
-      // (呼び出し側3箇所に配ると v0.25.4314 と同じ取りこぼしをやる)。処刑とは**別の絵**(火花は広く・輪は短く・土煙と跡は無し)。
-      if (postureImpact === 'counter') {
-        const pc = get().player;
-        playImpactBurst(get, {
-          x: ia.x, y: ia.y, footY: ia.y + 24, targetW: 120,
-          bladeRad: Math.atan2(ia.y - (pc.y + pc.height / 2), ia.x - (pc.x + pc.width / 2)),
-          mode: 'counter',
-        });
-      }
       const isGun = damageChannel === 'gun' && gpSource !== 'melee'; // ガンブレード至近モード(gpSource='melee')は近接の一振り=毎命中・命中点へ(v0.25.4286)
       const flags: ImpactFlags = { crit, kill: killed, explosion: blast, counter: postureImpact === 'counter', finish: bossFatalAt !== null };
       if (!isGun || crit || killed || blast || flags.counter || flags.finish) {

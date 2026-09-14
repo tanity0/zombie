@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4319',
+    items: [
+      '処刑の当たった瞬間の絵を元に戻した。これまでの赤と金の演出で出る。',
+    ],
+  },
+  {
     version: '0.25.4318',
     items: [
       '処刑の当たった瞬間を作り直した。刃が首に入るその瞬間に、白い閃光と衝撃波と斬撃の光が出て、火花が刃の走った向きへ伸びて飛ぶ。',
