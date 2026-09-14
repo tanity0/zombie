@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4279',
+    items: ['リザルトの「持ち帰る装備を選ぶ」枠をいったん外した。装備は次の出撃に持ち越さない。'],
+  },
+  {
     version: '0.25.4278',
     items: ['すでに開発済みの武器や、武器解放を全部オンにしている時は、ボスを倒しても「設計図入手」が出なくなった。'],
   },

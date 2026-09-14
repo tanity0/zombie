@@ -39,6 +39,10 @@ const directorEnabled = typeof window === 'undefined' || new URLSearchParams(win
 // PACING_PUZZLE.md §5.19 バッチM18: リザルト画面の整理(3層化)。復帰フラグ=?resultclassic=1で
 // 旧レイアウト(整理前)を全体表示。安全弁のため旧JSXは削除せずこのフラグの下に残す。
 const resultClassicMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('resultclassic') === '1';
+// 社長指示2026-09-14「リザルトで装備の持ち越しシステム、一旦非表示にしておいて。複雑になってきたから削る」:
+// クリア/撤退時の「持ち帰る装備を1つ選択」の枠を出さない(=未選択と同じ扱い・持ち帰りなし)。仕組み(takeHomeEquipment /
+// carriedEquip の台帳・キャラ選択画面の表示)は残してあるので、戻す時はこのフラグ1つ。
+const TAKE_HOME_EQUIP_ENABLED = false;
 
 interface GameOverScreenProps {
   stats: GameStats;
@@ -1060,7 +1064,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               </div>
             </div>
           )}
-          {(won || withdraw) && hadEquipment && (
+          {TAKE_HOME_EQUIP_ENABLED && (won || withdraw) && hadEquipment && (
             <div className="mb-3 rounded-none bg-amber-400/5 px-3 py-2.5">
               <div className="text-[11px] font-semibold text-amber-200 mb-2">持ち帰る装備を1つ選択（他は破棄）</div>
               <div className="flex flex-col gap-1.5">

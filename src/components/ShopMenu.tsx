@@ -356,7 +356,7 @@ const ShopMenu: React.FC = () => {
             className="w-full rounded-none bg-amber-400/15 py-2.5 text-sm font-bold text-amber-100"
           >
             帰還する
-            <span className="block text-[10px] font-normal text-amber-100/70">装備を1つ持ち帰り撤収（スコア計上・進行/クリアボーナスなし）</span>
+            <span className="block text-[10px] font-normal text-amber-100/70">撤収（スコア計上・進行/クリアボーナスなし）</span>
           </button>
           <button
             onClick={closeShop}
