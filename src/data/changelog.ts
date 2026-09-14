@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4305',
+    items: [
+      'ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.4304',
     items: [
       'とどめの寄りで画面の上下に入れていた黒い帯をやめた。画角は元の広さに戻っている。',
