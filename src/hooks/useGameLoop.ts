@@ -435,6 +435,7 @@ import {
 } from '../utils/botTelemetry';
 import { DEV_LOADOUT_ACTIVE } from '../utils/devTestKnobs';
 import { cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(タイトル画面のパネル+URL)
+import { playImpactBurst } from '../store/gameStore'; // §9 v2 当たった瞬間の台本(確認用デモから鳴らす)
 // SKILL_BUILD_REDESIGN.md §15(B0発注文): 計測台帳の最終記録(読むだけ)+ボット購買ポリシー(実機オートパイロット側)。
 import { recordRunFinal, getRunTelemetrySnapshot } from '../utils/runTelemetry';
 import { decideBotShopPurchase } from '../utils/botShopPolicy';
@@ -906,7 +907,15 @@ const playCineDemoOnSwing = (): void => {
   const p = st.player;
   const cx = p.x + p.width / 2, cy = p.y + p.height / 2;
   // 振った先(向いている方向の少し前)へ。当たっていなくても出す=確認用。
-  st.triggerFinishImpact(cx + (p.direction === 'left' ? -120 : 120), cy, true);
+  const face = p.direction === 'left' ? -1 : 1;
+  const tx = cx + face * 120;
+  st.triggerFinishImpact(tx, cy, true);
+  // §9 v2(v0.25.4318): カメラだけでなく**当たった瞬間の絵**も鳴らす。これが無いと社長が実機で台本を確認できない
+  // (通常の処刑は damageEnemy の finisher 経路から出るが、このデモは敵を倒していないのでそこを通らない)。
+  // 振り付けが無いので遅れ0。刃の向き=向いている方向。
+  playImpactBurst(useGameStore.getState, {
+    x: tx, y: cy, footY: p.y + p.height, targetW: 120, bladeRad: face > 0 ? 0 : Math.PI, mode: 'execute',
+  });
 };
 const CINE_TESTBED = evParam('cine') === '1'; // cine映像の実験台。stage-7で storyBoss(グレン)を出さない(社長v0.25.1879)。
 // M26-L(PACING_PUZZLE.md §6.3): 実機オートパイロット。?bot=<persona> でヘッドレスボットの判断
