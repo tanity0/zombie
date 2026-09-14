@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4304',
+    items: [
+      'とどめの寄りで画面の上下に入れていた黒い帯をやめた。画角は元の広さに戻っている。',
+    ],
+  },
+  {
     version: '0.25.4303',
     items: [
       'とどめを刺した瞬間と力尽きた瞬間、カメラが寄っている間だけ画面の上下に黒い帯が入る。その一瞬だけ、映画の一場面のような横長の画角になる。',

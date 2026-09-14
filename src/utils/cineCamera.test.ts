@@ -5,7 +5,6 @@ import {
   CINE_COUNTER_ORBIT_OUT_MS, CINE_COUNTER_ORBIT_BACK_MS, CINE_COUNTER_ORBIT_FRAC, CINE_DEATH_FROM_FRAC, CINE_DEATH_IN_MS, type CineEvent,
   thirdsAim, cinePlateIn, cinePlateKinds, CINE_EXEC_CUT_FRAC, CINE_EXEC_PUSH1_TO, CINE_EXEC_PUSH2_START_MS, CINE_EXEC_PUSH2_MS,
   CINE_THIRDS_X_FRAC, CINE_FRAME_MARGIN_FRAC, CINE_PLATE_IN_MS, cineModeFor, CINE_PLATE_W_FRAC, CINE_PLATE_NEAR_MARGIN_FRAC,
-  cineBarFrac, cineBarKinds, cineBarsOn, CINE_BAR_H_FRAC, CINE_THIRDS_Y_FRAC,
 } from './cineCamera';
 
 describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v2・社長承認2026-09-14)', () => {
@@ -126,56 +125,5 @@ describe('第2弾(v0.25.4296): 処刑の別台本・画面上の三分割・近�
     expect(cinePlateIn(CINE_PLATE_IN_MS)).toBeCloseTo(1, 9);
     expect(cinePlateKinds.has('kill')).toBe(true); expect(cinePlateKinds.has('execute')).toBe(true);
     expect(cinePlateKinds.has('death')).toBe(true); expect(cinePlateKinds.has('counter')).toBe(false);
-  });
-});
-
-describe('第3弾(v0.25.4303): レターボックス(§7)', () => {
-  it('カットの瞬間に帯は既に居る(滑り込ませない=板と同じ文法)。抜けは √decay で開き、戻り切りで0', () => {
-    expect(cineBarFrac(1)).toBeCloseTo(CINE_BAR_H_FRAC, 9); // 演目の最中=満載。t=0 でも同じ(立ち上がりの時計を持たない)
-    expect(cineBarFrac(0)).toBe(0);
-    // √ は線形より「遅く閉じる」=幹の板(outTree)と同じ形で画角と近景が同時に戻る
-    expect(cineBarFrac(0.25)).toBeCloseTo(CINE_BAR_H_FRAC * 0.5, 9);
-    expect(cineBarFrac(0.5)).toBeGreaterThan(CINE_BAR_H_FRAC * 0.5);
-    // 単調(途中で戻らない)
-    let prev = -1;
-    for (let d = 0; d <= 1.0001; d += 0.05) { const v = cineBarFrac(d); expect(v).toBeGreaterThanOrEqual(prev); prev = v; }
-    // 包絡線の外(負・1超)を渡されても帯は画面を食い尽くさない
-    expect(cineBarFrac(-1)).toBe(0);
-    expect(cineBarFrac(5)).toBeCloseTo(CINE_BAR_H_FRAC, 9);
-  });
-  it('出す演目は処刑2種と死亡だけ(カウンターは短すぎる)', () => {
-    expect(cineBarKinds.has('kill')).toBe(true); expect(cineBarKinds.has('execute')).toBe(true);
-    expect(cineBarKinds.has('death')).toBe(true);
-    expect(cineBarKinds.has('counter')).toBe(false); expect(cineBarKinds.has('rescue')).toBe(false);
-  });
-  it('★モードの門(検収監査5・v0.25.4300の再発防止): pushOnly だけ出さない=cutPush では板が出なくても帯は出る', () => {
-    for (const k of ['kill', 'execute', 'death'] as const) {
-      expect(cineBarsOn(k, 'full', 1)).toBe(true);
-      expect(cineBarsOn(k, 'cutPush', 1)).toBe(true);   // ★ここ。板(full限定)と違って縮小モードでも帯は出る
-      expect(cineBarsOn(k, 'pushOnly', 1)).toBe(false); // 訓練/通路/EX/研究所は演出そのものを抑える
-    }
-    expect(cineBarsOn('counter', 'full', 1)).toBe(false); // 320msは短すぎる
-    expect(cineBarsOn('rescue', 'full', 1)).toBe(false);
-    expect(cineBarsOn(null, 'full', 1)).toBe(false);      // 演目なし
-    expect(cineBarsOn('kill', 'full', 0)).toBe(false);    // 戻り切り
-  });
-  it('★帯が構図を食わない(§7-4): 相手の三分割線も、自機の枠内余白も帯の内側に残る', () => {
-    // 相手は中央から H×1/8。帯の内縁は中央から H×(0.5−0.12)=0.38H。食わない。
-    expect(CINE_THIRDS_Y_FRAC).toBeLessThan(0.5 - CINE_BAR_H_FRAC);
-    // 自機が枠内に残る余白(0.14)は帯(0.12)より広い=斬っている自機が帯の裏に入らない。
-    // ここが逆転したら「絵を作ったのに主役が隠れる」事故になるので、帯を太くする時は必ず一緒に動かす。
-    expect(CINE_BAR_H_FRAC).toBeLessThan(CINE_FRAME_MARGIN_FRAC);
-  });
-  it('★但し書き(検収監査3): 縦クランプが効くほど高低差が大きいと、相手は帯の裏へ入りうる=「食わない」は無条件ではない', () => {
-    const W = 800, H = 600, zoom = 2;
-    // 高低差が小さい通常の場面: 相手は H/8 の三分割線=帯の内縁(中央から 0.38H)の内側。§7-4 の主張はここで成立する。
-    const near = thirdsAim({ px: 0, py: 0, tx: 0, ty: 140, zoom, screenW: W, screenH: H });
-    expect(Math.abs(H / 2 + (140 - near.y) * zoom - H / 2)).toBeLessThan(H * (0.5 - CINE_BAR_H_FRAC));
-    // 高低差が大きいと縦クランプ(自機を枠内に残す)が効き、相手のオフセットは H/8 固定から外れる。
-    // その結果 **相手は画面内に居るのに帯の裏** という並びがありうる。仕様として固定しておく(直すなら三分割側)。
-    const far = thirdsAim({ px: 0, py: 0, tx: 0, ty: 240, zoom, screenW: W, screenH: H });
-    const y = H / 2 + (240 - far.y) * zoom;
-    expect(y).toBeLessThan(H);                                   // 画面内
-    expect(Math.abs(y - H / 2)).toBeGreaterThan(H * (0.5 - CINE_BAR_H_FRAC)); // でも帯の内縁より外=帯の裏
   });
 });

@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.4304 — レターボックスを取り下げ(社長「とりあえず戻して」)【2026-09-14 19:58 JST】
+
+- 社長: 「とりあえず戻して VFXを検討 / 見せ方もあるが、今回のはちょっと違った。」
+- **v0.25.4303 のコードを revert**(`src/utils/cineCamera.ts` の帯の定数/`cineBarFrac`/`cineBarKinds`/`cineBarsOn`・
+  `src/pixi/layers.ts` の `cineBars` レイヤ・`src/pixi/pixiScene.ts` の `syncCineBars` とテスト)。**画角は元に戻った**。
+- **記録は消さない**: DEVELOPMENT_LOG の v0.25.4303 エントリ・`research/CINEMATIC_CAMERA.md` §7(設計+検収監査9件の結果)・
+  changelog の 4303 行は**そのまま残す**。§7 の冒頭にだけ取り下げの注記を足した。同じ判断を後でやり直す時の土台になるため。
+- **方向の切り替え**: 「画角を削る」のではなく、**処刑のカメラに合わせるエフェクト**(逆光の光条・放射・埃)で見せる。
+  素材の受け入れは次版。
+- 状態変化: research/CINEMATIC_CAMERA.md §7 レターボックス → 取り下げ(社長裁定・実装なし)
+- 検証: typecheck / lint / test / build 通過。
+- 変更: src/utils/cineCamera.ts(+test), src/pixi/layers.ts, src/pixi/pixiScene.ts,
+  research/CINEMATIC_CAMERA.md(注記のみ), src/data/changelog.ts, package.json
+
 ## v0.25.4303 — レターボックス: 寄り演目の間だけ上下に黒帯(§7)【2026-09-14 19:39 JST】
 
 - 出どころ: research/CINEMATIC_CAMERA.md の(B)積み。設計は同文書 **§7** に新規執筆。

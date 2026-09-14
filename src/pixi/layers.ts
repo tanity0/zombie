@@ -51,7 +51,6 @@ export interface SceneLayers {
   phillLayer: Container;
   uiLayer: Container;
   cinePlates: Container;   // 寄り演出の近景の板(画面空間・frontForest と uiLayer の間。research/CINEMATIC_CAMERA.md §6・v0.25.4296)
-  cineBars: Container;     // 寄り演出のレターボックス(画面空間・Pixiの最上。research/CINEMATIC_CAMERA.md §7・v0.25.4303)
 }
 
 export const buildLayers = (
@@ -118,12 +117,8 @@ export const buildLayers = (
   const uiLayer = new Container();
   const cinePlates = new Container();
   cinePlates.visible = false;
-  // レターボックスは画角=Pixi側の一番上(uiLayer の上)。帯は「画面の外」なので、画面端に貼り付く
-  // 補給矢印やフラッシュも演目中は帯に切られるのが正しい。HUD は DOM なので帯より上に残る(§7-6 ★未決2)。
-  const cineBars = new Container();
-  cineBars.visible = false;
 
-  stage.addChild(farBackdrop, worldGroup, frontForest, cinePlates, uiLayer, cineBars);
+  stage.addChild(farBackdrop, worldGroup, frontForest, cinePlates, uiLayer);
 
   return {
     stage,
@@ -146,6 +141,5 @@ export const buildLayers = (
     phillLayer,
     uiLayer,
     cinePlates,
-    cineBars,
   };
 };
