@@ -434,6 +434,7 @@ import {
   recordExplosion, recordBeamPulse, recordStonesAttached, recordGunKnockback,
 } from '../utils/botTelemetry';
 import { DEV_LOADOUT_ACTIVE } from '../utils/devTestKnobs';
+import { cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(タイトル画面のパネル+URL)
 // SKILL_BUILD_REDESIGN.md §15(B0発注文): 計測台帳の最終記録(読むだけ)+ボット購買ポリシー(実機オートパイロット側)。
 import { recordRunFinal, getRunTelemetrySnapshot } from '../utils/runTelemetry';
 import { decideBotShopPurchase } from '../utils/botShopPolicy';
@@ -894,8 +895,19 @@ const NOSPAWN = evParam('nospawn') === '1';
 // なぜ要るか: この演出は本来「気絶した敵を近接で処刑」か「ボスの致命」でしか出ず、さらに全演出が
 // 共有CD10秒で律速される(JUICE_CD_MS・社長裁定v0.25.1524)ため、**普通に遊んで偶然見るのは難しい**。
 // 既定OFF=通常プレイは1msも変わらない。`?cinefx=0` `?cinepush=0` 等と併用してA/Bする。
-// **実装は gameStore の triggerCounter(近接の一振りの出口)側**にある(`CINE_DEMO_ON_SWING`)。
-// ここに書くと「毎フレーム見る」形になり、自動発火に逆戻りするため置かない。
+// **実装は `playCineDemoOnSwing()`(下)を近接の呼び出し側から呼ぶ形**(v0.25.4314)。
+// ★近接の一振りには**呼び出し経路が2本**ある——プレイヤー(指を離す→前隙→`triggerCounter(pendAt)`)とボット
+// (`triggerCounter()` を直接)。v0.25.4310〜4313 は `triggerCounter` の**出口4つのうち使われない1つ**に
+// 書いていたため一度も出なかった(社長報告「一振り再生機能してない」)。**両方の呼び出し側から同じ1関数を呼ぶ**。
+// 毎フレーム見る形では書かない(自動発火に逆戻りするため)。
+const playCineDemoOnSwing = (): void => {
+  if (!cineToggleOn('cinedemo')) return;
+  const st = useGameStore.getState();
+  const p = st.player;
+  const cx = p.x + p.width / 2, cy = p.y + p.height / 2;
+  // 振った先(向いている方向の少し前)へ。当たっていなくても出す=確認用。
+  st.triggerFinishImpact(cx + (p.direction === 'left' ? -120 : 120), cy, true);
+};
 const CINE_TESTBED = evParam('cine') === '1'; // cine映像の実験台。stage-7で storyBoss(グレン)を出さない(社長v0.25.1879)。
 // M26-L(PACING_PUZZLE.md §6.3): 実機オートパイロット。?bot=<persona> でヘッドレスボットの判断
 // (decideBotInput)を実プレイの入力へ注入する。null(無指定)=完全無効・通常プレイは1バイトも挙動を変えない。
@@ -7702,6 +7714,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const isWhip = useGameStore.getState().player.subWeapons.includes('whip');
             const kfxNow = useGameStore.getState().killFx;
             const killFxJustFired = !!kfxNow && Date.now() - kfxNow.startAt < KILLFX_TOTAL_MS;
+            // 「一振りで再生」(開発用・既定OFF・タイトル画面のパネル / `?cinedemo=1`)。
+            // ★v0.25.4314: **呼び出し側のここ1箇所**に置く。v0.25.4310〜4313 は `triggerCounter` の
+            // 出口4つのうち**使われない1つ**に書いていたため、実機で一度も出なかった(社長報告「一振り再生機能してない」)。
+            // `counter.swung` は全経路の集約(ナイフ/鞭/刀/ガンブレード)なので、ここなら取りこぼさない。
+            if (counter.swung) playCineDemoOnSwing();
             if (counter.swung && !isWhip && !killFxJustFired) playSfx('melee');
             if (counter.finish && !killFxJustFired) playSfx('melee-finish');
             else if (counter.hit && !isWhip && !killFxJustFired) playSfx('slash-damage');
@@ -8080,7 +8097,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           botSkillProfile(BOT_SKILL),
           player.x + player.width / 2, player.y + player.height / 2, enemies);
         if (!botNihilHold
-          && ((botMineAdj?.wantsMelee || botObjSteerAdj?.wantsMelee) && !botAttackSuppressedByDodge || botWantsCounterReaction)) useGameStore.getState().triggerCounter(); // M34: 卵叩き / M37: 人間反応カウンター
+          && ((botMineAdj?.wantsMelee || botObjSteerAdj?.wantsMelee) && !botAttackSuppressedByDodge || botWantsCounterReaction)) { if (useGameStore.getState().triggerCounter().swung) playCineDemoOnSwing(); } // M34: 卵叩き / M37: 人間反応カウンター
         if (botDecision?.wantsWeaponSwitch) {
           const botPlayer = useGameStore.getState().player;
           const botGuns = getGuns(botPlayer);
