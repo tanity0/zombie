@@ -90,6 +90,7 @@ export type SfxKey =
   | 'npc-gunfire'
   | 'smg-fire'
   | 'crossbow-fire'
+  | 'crossbow-reload'
   | 'shotgun-fire'
   | 'rifle-fire'
   | 'grenade-launcher-fire'
@@ -313,6 +314,12 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   },
   // 社長提供2026-09-07: クロスボウ(handgun-t1-crossbow)の発射音。火薬の銃ではないので
   // handgun-fire を流用せず専用にする(「同じ銃なのに音が違う」の逆で、**違う武器を同じ音にしない**)。
+  // クロスボウ専用のリロード音(社長支給2026-09-14)。通常の reload と同じく、リロード時間ぶんだけ鳴らして完了で止める。
+  'crossbow-reload': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/crossbow-reload.mp3`,
+    volume: 1.0,
+    fadeOutMs: 120,
+  },
   'crossbow-fire': {
     src: `${import.meta.env.BASE_URL}audio/sfx/crossbow-fire.mp3`,
     volume: 0.70, // ハンドガン以外の基準に合わせる(smg-fireと同値)。実機を聴いて調整する

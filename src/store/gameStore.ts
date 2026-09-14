@@ -570,8 +570,11 @@ const SUPP_SOLDIER_ENGAGE_DIST = 26;    // 攻撃者へ寄る最終距離(かな
 // 戻したくなったら true に戻すだけ(コードは残置)。
 const SUPP_BASE_ATTACKS_ENABLED: boolean = false;
 // 護衛軍人NPC(EscortSoldier): スタート時4人配置→担当拠点へ前進→近くの敵に射撃→10秒占拠で解放。
-// ★v0.25.3608(社長指示「進軍NPCの歩行速度を20%アップ」): 旧=レスキューと同じ通常速(等倍)。
-const ESCORT_SPEED = RESCUE_SURVIVOR_SPEED * 1.2; // 前進速度。画面内のときだけ前進。
+// ★v0.25.3608(社長指示「進軍NPCの歩行速度を20%アップ」): 旧=レスキューと同じ通常速(等倍・48px/s)。
+// ★v0.25.4290(社長指示「NPCの移動速度をプレイヤーの歩きmax(走りの手前)に変更」): プレイヤーの歩き=PLAYER_BASE_SPEED×GAME_SPEED
+// (ランプの+10%=走りは含めない)。escort の tick(updateSuppression)は deltaTime に MOVE_SPEED_MULT を掛けていないので、
+// ここで GAME_SPEED を掛けて同じ px/s にする(旧48→104.4=約2.2倍)。PLAYER_BASE_SPEED は後方で宣言されるため関数で遅延評価。
+const escortSpeed = (): number => PLAYER_BASE_SPEED * GAME_SPEED; // 前進速度。画面内のときだけ前進。
 const ESCORT_FIRE_INTERVAL_MS = 600;    // 射撃間隔
 const ESCORT_DMG = 8;                   // 1射のダメージ
 // フェイザー(名簿index7)は特別: 2丁拳銃で1射につき2発撃つ=合計ダメージ2倍(1発は通常と同じ)。
@@ -17933,7 +17936,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const dist = Math.hypot(dx, dy);
         let { x, y, fireAt, face } = esc;
         if (dist > 4) {
-          const k = Math.min(1, (ESCORT_SPEED * deltaTime) / dist);
+          const k = Math.min(1, (escortSpeed() * deltaTime) / dist);
           x = esc.x + dx * k; y = esc.y + dy * k; changed = true;
         }
         if (now >= fireAt) {
@@ -17993,7 +17996,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         let x = esc.x, y = esc.y, face = esc.face, fireAt = esc.fireAt;
         const moving = dist >= 3 && advance.speedMult > 0;
         if (moving) {
-          const k = Math.min(1, (ESCORT_SPEED * advance.speedMult * deltaTime) / dist);
+          const k = Math.min(1, (escortSpeed() * advance.speedMult * deltaTime) / dist);
           x += dx * k;
           y += dy * k;
           if (Math.abs(dx) > 6) face = dx < 0 ? -1 : 1;
@@ -18143,16 +18146,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (!Number.isFinite(ang)) ang = 0;
         const patrolR = BASE_CAPTURE_RADIUS * ESCORT_PATROL_R;
         const curR = Math.hypot(cx0, cy0);
-        const step = ESCORT_SPEED * advance.speedMult * deltaTime;
+        const step = escortSpeed() * advance.speedMult * deltaTime;
         const newR = curR + Math.sign(patrolR - curR) * Math.min(Math.abs(patrolR - curR), step);
-        ang += (ESCORT_SPEED * advance.speedMult / Math.max(1, patrolR)) * deltaTime; // 時計回りに周回
+        ang += (escortSpeed() * advance.speedMult / Math.max(1, patrolR)) * deltaTime; // 時計回りに周回
         const nx = base.x + Math.cos(ang) * newR, ny = base.y + Math.sin(ang) * newR;
         if (advance.speedMult > 0) face = (nx - x) < 0 ? -1 : 1;
         x = nx; y = ny;
       } else {
         // 前方=停止、左右=50%、後方=70%。減速は即時、加速は1秒ランプ。
         const dx = base.x - x, dy = base.y - y; const d = Math.hypot(dx, dy);
-        if (d > 2 && advance.speedMult > 0) { const mv = Math.min(ESCORT_SPEED * advance.speedMult * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
+        if (d > 2 && advance.speedMult > 0) { const mv = Math.min(escortSpeed() * advance.speedMult * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
       }
       // 射撃対象は全方位から最寄り。ジャンプ中だけ除外し、移動中も撃ち続ける。
       if (advance.target && now >= fireAt) {

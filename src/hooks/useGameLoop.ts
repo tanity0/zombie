@@ -485,7 +485,7 @@ import {
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
-import { gunFireSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
+import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
 import { ROCKET_BLAST_RADIUS_MULT, ROCKET_LAUNCH_EASE_MS, rocketLaunchSpeedMult } from '../utils/rocketLauncher';
 import { ALCHEMY_BURST_RADIUS_PX, nextAlchemyStoneStage } from '../utils/alchemyStone';
@@ -8467,7 +8467,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (!reloadBeforeAutoSwitch && postReloadPlayer.reloadingWeaponId) {
           // リロードSEは武器のリロード時間ぶんだけ鳴らし、完了と同時に止める(社長指示。音源は長尺約7.6s)。
           const reloadingGun = getGuns(postReloadPlayer).find(w => w.id === postReloadPlayer.reloadingWeaponId);
-          playSfx('reload', 1, reloadingGun ? effectiveReloadMs(reloadingGun, postReloadPlayer) : 1500);
+          playSfx(gunReloadSfxKey(reloadingGun?.key), 1, reloadingGun ? effectiveReloadMs(reloadingGun, postReloadPlayer) : 1500);
         }
         // 刀装備中は銃の自動射撃を完全に止める(弾薬/リロード処理は通常どおり
         // 進むので、刀を外す実装が将来入っても副作用が残らない)。
@@ -10928,7 +10928,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   resolved.x + ghostNow.width / 2, resolved.y + ghostNow.height / 2,
                   gfxPcx, gfxPcy, gfxCam, gfxGb,
                 );
-                if (reloadGain > 0) playSfx('reload', reloadGain, effectiveReloadMs(gun, ghostOwner));
+                if (reloadGain > 0) playSfx(gunReloadSfxKey(gun.key), reloadGain, effectiveReloadMs(gun, ghostOwner));
               }
               // v0.25.2525(GHOST-REFLECT-MELEE-SUBS・発注A/C): ゴーストの近接スイング1回の共通後処理。
               //  ① 弾反射のカウンター窓を開く: プレイヤーのスイングが counterWindowEnd を開くのと
@@ -11334,7 +11334,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           // ★v4(EVENT_QUEST_DESIGN.md §2-18・社長指示2026-09-14): 5:00(S5は拠点2か所ラッチとの遅い方)で二人組から**通信**が入る。
           // 場には出ない(サークル無し)。原稿=§2-13の「受注時」(S5は0行=同じフレームで終わる)。裏ボス戦闘中は待つ(v2の非表示規則と同じ線)。
-          if (rqNpc.status === 'hidden' && rqGs.duoCommStartedAt === 0 && !rqGs.bossChasing
+          // 城ボスが出ないモード(ダンス試験/物語ボス/EX/訓練/エンディング/?nospawn/再訪)では通信も出さない
+          // (v0.25.4290 監査B-1: 通信だけ流れてボスが来ない導線を作らない。城ボス側の除外と同じ集合)。
+          const duoCommAllowed = !danceTest && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage
+            && (!noSpawn || practiceWantsCastleBoss()) && !revisitRun;
+          if (duoCommAllowed && rqNpc.status === 'hidden' && rqGs.duoCommStartedAt === 0 && !rqGs.bossChasing
             && rescueQuestSpawnReady(newGameTime, DUO_COMM_AT_MS, basesEverCapturedNow, rqBasesRequired)) {
             useGameStore.setState({ duoCommStartedAt: newGameTime });
             const commLines = eventQuestSubAcceptLines(getSelectedStageId());

@@ -290,6 +290,9 @@ export const FOCUS_WEAPON_KEY = 'shotgun-t1-focus';
 // (火薬の銃ではないので handgun-fire を流用しない=社長提供素材2026-09-07)。
 const SMG_WEAPON_KEY_FOR_SFX = 'handgun-t3';
 export const CROSSBOW_WEAPON_KEY = 'handgun-t1-crossbow';
+// リロード音の写像(v0.25.4290・社長支給): クロスボウだけ専用音。他は共通の reload。発射音と同じく写像はここ1本。
+export const gunReloadSfxKey = (key: string | undefined): 'crossbow-reload' | 'reload' =>
+  key === CROSSBOW_WEAPON_KEY ? 'crossbow-reload' : 'reload';
 export const gunFireSfxKey = (
   category: string | undefined,
   key: string | undefined,

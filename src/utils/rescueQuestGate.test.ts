@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { rescueQuestSpawnReady, duoCommActive, duoCommEnded } from './rescueQuestGate';
+// ※下の「4:00」はv2のレスキュー出現の基準時刻。v4(§2-18)では同じ関数を通信の開始(5:00=CASTLE_BOSS_MIN_TIME_MS)に流用する
+//   (関数は基準時刻を引数で受ける汎用なので結果は同じ。監査C-2: 文言の古さだけ、ここに1行)。
 
 describe('rescueQuestSpawnReady(EVENT_QUEST_DESIGN.md §2-11)', () => {
   it('basesRequired未設定(S1/S3/S4)は4:00超過だけで真', () => {
