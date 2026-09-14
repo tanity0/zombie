@@ -1518,7 +1518,7 @@ const ZWARP_DECAY_POW = Math.max(0.5, tsNum('zwarppow', 1.6));
 // 社長裁定2026-09-11(クリエイティブ監査の戻し):
 // §6「傾きは先にほどく」: 傾きは寄りのホールドを待たず自分の時計でほどける。イベント開始から HOLD_MS 保持→RELEASE_MS で 0 へ
 //(死亡の1.15秒ホールドでも傾いた床が静止して見えない。KILL(700ms)では従来とほぼ同じ尺)。
-const ZWARP_TILT_HOLD_MS = Math.max(0, tsNum('zwarphold_ms', 100));   // 150→100(社長指示v0.25.4232「戻りも少しスピードアップ」)
+const ZWARP_TILT_HOLD_MS = Math.max(0, tsNum('zwarphold_ms', 140));   // 150→100(社長指示v0.25.4232「戻りも少しスピードアップ」)→140(v0.25.4295: 横滑りの到達 t≈460 でほどけ切るよう+40。「奥へ滑る」最中に奥が平らにならない)
 const ZWARP_TILT_RELEASE_MS = Math.max(50, tsNum('zwarprel', 320)); // 450→320(同上)
 // §8「奥の辺も縮める」: 総量 k のうち奥側 FAR_FRAC を縮め、近側 (1−FAR_FRAC) を膨らませる=対象へ引き込まれる動き。
 // 奥側が縮むと縁の外の絵が要るので、フィルタの枠(filterArea)を縦に縮みぶんだけ広げる(地面はオーバースキャン分が在る)。
@@ -7819,7 +7819,10 @@ export class PixiScene {
     const cineMode: CineMode = (this.currentFarKey === 'tutorial' || s.farBackdrop === 'ending' || s.corridorMode || isExStageRun())
       ? 'pushOnly' : (this.idleZoom * this.contextZoom < 1 ? 'cutPush' : 'full');
     const cam = cineEv ? cineCameraAt(cineEv.kind, now - cineEv.startAt, cineMode) : null;
-    const punch = 1 + s.zoomMag * zoomDecay * (cam ? cam.zoomFrac : 1);
+    // 戻りの形(v0.25.4295 クリエイティブ監査): 共有包絡線に演目の冪を掛ける(カウンター=保ってから速く落ちる/死亡=来た時より遅く帰る)。
+    // zwarp(斜め)は素の zoomDecay を読む(下)。
+    const zoomDecayCine = cam ? Math.pow(zoomDecay, cam.outPow) : zoomDecay;
+    const punch = 1 + s.zoomMag * zoomDecayCine * (cam ? cam.zoomFrac : 1);
     // ズーム時の遠近(既定ON・?zwarp=0 で切る)へ: イベントの包絡線・寄り量と、イベント開始時に決める奥の側(左右)。
     this.zwarpEventDecay = zoomDecay;
     this.zwarpEventMag = s.zoomMag;
@@ -7909,9 +7912,10 @@ export class PixiScene {
     const panLimitX = Math.max(0, (1 - 1 / Math.max(0.001, zoom)) * centerX);
     const panLimitY = Math.max(0, (1 - 1 / Math.max(0.001, zoom)) * centerY);
     // 横滑り(v0.25.4294): 奥側(zwarp と同じ側)へ画面幅比で滑らせ、包絡線(zoomDecay)で戻る。中央寄せと**合成してから**クランプ(一本化)。
-    const orbitPx = cam ? cam.orbitFrac * this.screenW * this.zwarpEventSide * zoomDecay : 0;
-    const panRawX = (zoomAimsTarget ? (targetScreenX - centerX) * zoom * zoomDecay * ZOOM_TARGET_CENTER_FRAC : 0) + orbitPx;
-    const panRawY = zoomAimsTarget ? (targetScreenY - centerY) * zoom * zoomDecay * ZOOM_TARGET_CENTER_FRAC : 0;
+    // 横滑りの戻りは寄せより遅く(√包絡線)=ズームが先に抜け、パンは後から静かに合流(同じ道を同じ速さで逆走しない)。
+    const orbitPx = cam ? cam.orbitFrac * this.screenW * this.zwarpEventSide * Math.sqrt(zoomDecayCine) : 0;
+    const panRawX = (zoomAimsTarget ? (targetScreenX - centerX) * zoom * zoomDecayCine * ZOOM_TARGET_CENTER_FRAC : 0) + orbitPx;
+    const panRawY = zoomAimsTarget ? (targetScreenY - centerY) * zoom * zoomDecayCine * ZOOM_TARGET_CENTER_FRAC : 0;
     this.cineAimY = zoomAimsTarget ? aimW.y : null; // ピント帯(tilt-shift)が同じ寄り先を見る
     const panX = Math.max(-panLimitX, Math.min(panLimitX, panRawX));
     const panY = Math.max(-panLimitY, Math.min(panLimitY, panRawY));

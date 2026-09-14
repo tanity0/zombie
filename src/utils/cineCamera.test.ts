@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   cineCameraAt, cineAccepts, thirdsPoint, CINE_KILL_CUT_FRAC, CINE_KILL_PUSH_START_MS, CINE_KILL_PUSH_MS,
   CINE_KILL_ORBIT_START_MS, CINE_KILL_ORBIT_MS, CINE_KILL_ORBIT_FRAC, CINE_COUNTER_OVERSHOOT, CINE_COUNTER_IN_MS,
-  CINE_COUNTER_ORBIT_MS, CINE_DEATH_FROM_FRAC, CINE_DEATH_IN_MS, CINE_THIRDS_T, type CineEvent,
+  CINE_COUNTER_ORBIT_OUT_MS, CINE_COUNTER_ORBIT_BACK_MS, CINE_DEATH_FROM_FRAC, CINE_DEATH_IN_MS, CINE_THIRDS_T, type CineEvent,
 } from './cineCamera';
 
 describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v2・社長承認2026-09-14)', () => {
@@ -14,7 +14,9 @@ describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v
     expect(cineCameraAt('kill', CINE_KILL_PUSH_START_MS + CINE_KILL_PUSH_MS, 'full').zoomFrac).toBeCloseTo(1, 9);
     expect(CINE_KILL_PUSH_START_MS + CINE_KILL_PUSH_MS).toBeLessThanOrEqual(100 + 560 * 0.5);
   });
-  it('KILL: 横滑りは押し込みが着いてから立ち上がり、三分割は full のみ。cutPush/pushOnly では構図を触らない', () => {
+  it('KILL: 横滑りは押し込みの後半から重ねて立ち上がる(終点と始点を同じ瞬間にしない)。三分割は full のみ。cutPush/pushOnly では構図を触らない', () => {
+    expect(CINE_KILL_ORBIT_START_MS).toBeLessThan(CINE_KILL_PUSH_START_MS + CINE_KILL_PUSH_MS);
+    expect(CINE_KILL_ORBIT_START_MS).toBeGreaterThan(CINE_KILL_PUSH_START_MS);
     expect(cineCameraAt('kill', CINE_KILL_ORBIT_START_MS, 'full').orbitFrac).toBe(0);
     expect(cineCameraAt('kill', CINE_KILL_ORBIT_START_MS + CINE_KILL_ORBIT_MS, 'full').orbitFrac).toBeCloseTo(CINE_KILL_ORBIT_FRAC, 9);
     expect(cineCameraAt('kill', 500, 'full').thirds).toBe(true);
@@ -24,19 +26,28 @@ describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v
       expect(c.zoomFrac).toBeCloseTo(1, 9); // 押し込みは残る
     }
   });
-  it('カウンター: 104%→100%のばねで入り、逆側へ1拍(往復)して戻る', () => {
+  it('カウンター: 112%→100%のばねで入り、逆側へ速く出て(60ms)ゆっくり戻る(180ms)=往復は対称ではない。戻りは硬く切る(outPow>1)', () => {
     expect(cineCameraAt('counter', 0, 'full').zoomFrac).toBeCloseTo(1 + CINE_COUNTER_OVERSHOOT, 9);
     expect(cineCameraAt('counter', CINE_COUNTER_IN_MS, 'full').zoomFrac).toBeCloseTo(1, 9);
-    const peak = cineCameraAt('counter', CINE_COUNTER_IN_MS + CINE_COUNTER_ORBIT_MS / 2, 'full').orbitFrac;
-    expect(peak).toBeLessThan(0); // 逆側
-    expect(cineCameraAt('counter', CINE_COUNTER_IN_MS + CINE_COUNTER_ORBIT_MS, 'full').orbitFrac).toBeCloseTo(0, 9);
+    const peak = cineCameraAt('counter', CINE_COUNTER_IN_MS + CINE_COUNTER_ORBIT_OUT_MS, 'full').orbitFrac;
+    expect(peak).toBeCloseTo(-0.05, 9); // 逆側・最大
+    const half = cineCameraAt('counter', CINE_COUNTER_IN_MS + CINE_COUNTER_ORBIT_OUT_MS / 2, 'full').orbitFrac;
+    const backHalf = cineCameraAt('counter', CINE_COUNTER_IN_MS + CINE_COUNTER_ORBIT_OUT_MS + CINE_COUNTER_ORBIT_BACK_MS / 2, 'full').orbitFrac;
+    expect(Math.abs(half)).toBeGreaterThan(0.05 * 0.8); // 往きは速い(半分の時間で8割超)
+    expect(Math.abs(backHalf)).toBeGreaterThan(0);      // 戻りはまだ残っている
+    expect(cineCameraAt('counter', CINE_COUNTER_IN_MS + CINE_COUNTER_ORBIT_OUT_MS + CINE_COUNTER_ORBIT_BACK_MS, 'full').orbitFrac).toBeCloseTo(0, 9);
+    expect(cineCameraAt('counter', 0, 'full').outPow).toBeGreaterThan(1);
   });
-  it('死亡: 60%からゆっくり100%へ。構図は触らない。救援は台本なし(恒等)', () => {
+  it('死亡: 60%からじり寄り(ease-in)、保持(1150)の前に着いて止める。戻りは来た時より遅い(outPow<1)。救援は台本なし(恒等)', () => {
     expect(cineCameraAt('death', 0, 'full').zoomFrac).toBe(CINE_DEATH_FROM_FRAC);
-    expect(cineCameraAt('death', CINE_DEATH_IN_MS / 2, 'full').zoomFrac).toBeGreaterThan(CINE_DEATH_FROM_FRAC);
+    const early = cineCameraAt('death', CINE_DEATH_IN_MS / 2, 'full').zoomFrac;
+    expect(early).toBeGreaterThan(CINE_DEATH_FROM_FRAC);
+    expect(early).toBeLessThan(CINE_DEATH_FROM_FRAC + (1 - CINE_DEATH_FROM_FRAC) / 2); // 前半は遅い=ease-in
     expect(cineCameraAt('death', CINE_DEATH_IN_MS, 'full').zoomFrac).toBeCloseTo(1, 9);
+    expect(CINE_DEATH_IN_MS).toBeLessThan(1150);
     expect(cineCameraAt('death', 500, 'full').thirds).toBe(false);
-    expect(cineCameraAt('rescue', 100, 'full')).toEqual({ zoomFrac: 1, orbitFrac: 0, thirds: false });
+    expect(cineCameraAt('death', 0, 'full').outPow).toBeLessThan(1);
+    expect(cineCameraAt('rescue', 100, 'full')).toEqual({ zoomFrac: 1, orbitFrac: 0, thirds: false, outPow: 1 });
   });
   it('重なり: 進行中より高い順位だけ割り込む(KILL保持中のカウンターは捨てる・死亡は割り込む)。終わっていれば何でも受ける', () => {
     const kill: CineEvent = { kind: 'kill', startAt: 1000, endAt: 1700, hasTarget: true, targetX: 0, targetY: 0 };
