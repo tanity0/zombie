@@ -13934,13 +13934,9 @@ export class PixiScene {
       const ux = len > 0 ? dx / len : 1, uy = len > 0 ? dy / len : 0;
       const remain = floor.createdAt + floor.durationMs - gameTime;
       const ease = weaponSpawnEase(gameTime - floor.createdAt, remain);
-      v.halo.position.set(floor.ax, floor.ay);
-      v.halo.rotation = ang;
-      v.halo.width = len;
-      v.halo.height = Math.max(0.5, floor.halfWidth * 2.2);
-      v.halo.tint = 0x60d9ff;
-      v.halo.alpha = 0.30 * ease.alphaMul;
-      v.halo.visible = len > 0.5 && ease.alphaMul > 0.01;
+      // 社長指示2026-09-14「氷ライフルのエフェクト、青いラインは消して」: 判定幅の目安の帯は出さない(氷塊と砕けだけ残す)。
+      v.halo.visible = false;
+      void ang;
       // 氷塊: 根元から ICE_LANCE_BLOCK_STEP ごと。床が弾を追って伸びるので、先端に新しい氷塊が生えていく。
       // 大きさは根元→先端で小→大(城ボスの衝撃波と同じ読み)。砕けは寿命の最後 ICE_LANCE_BREAK_MS。
       const n = Math.min(ICE_LANCE_BLOCK_MAX, Math.floor(len / ICE_LANCE_BLOCK_STEP));

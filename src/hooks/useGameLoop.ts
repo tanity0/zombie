@@ -8522,6 +8522,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const p0 = newProjectiles[0];
               const icx = postReloadPlayer.x + postReloadPlayer.width / 2;
               const icy = postReloadPlayer.y + postReloadPlayer.height / 2;
+              // 社長指示2026-09-14「発射時はステージ4の城ボスの技と同じく吹雪くエフェクト」: 氷結(quad-ice/スカジ氷)の語彙をそのまま借りる
+              // =青の閃光+氷の環+白青の粒+氷の光源+氷結SE(小さめ)。粒は射線へ流れる(慣性MUST)。判定なし=派手枠②。
+              {
+                const bd = p0.direction;
+                const st0 = useGameStore.getState();
+                st0.spawnFlash('rgba(140,200,255,0.12)', 160);
+                st0.spawnRing(icx + bd.x * 14, icy + bd.y * 14, 6, 54, 'rgba(150,210,255,0.9)', 3, 300);
+                st0.spawnBurst(icx + bd.x * 14, icy + bd.y * 14, '#bfe6ff', 14, bd.x, bd.y);
+                st0.spawnGlow(icx + bd.x * 14, icy + bd.y * 14, 56, 'rgba(150,210,255,', 260);
+                const bNow = Date.now();
+                for (let i = 0; i < 14; i++) {
+                  const spread = (Math.random() - 0.5) * 0.9;
+                  const px = -bd.y, py = bd.x;
+                  const sp = 150 + Math.random() * 160;
+                  st0.spawnEffect({
+                    kind: 'image', id: `ice-lance-bliz-${bNow}-${i}`,
+                    x: icx + bd.x * (10 + Math.random() * 30) + px * spread * 18, y: icy + bd.y * (10 + Math.random() * 30) + py * spread * 18,
+                    createdAt: bNow, duration: 380 + Math.random() * 300,
+                    texture: 'fx/breath-sparkle', scale: 0.5 + Math.random() * 0.5, rot: Math.random() * Math.PI * 2,
+                    driftX: (bd.x + px * spread * 0.5) * sp, driftY: (bd.y + py * spread * 0.5) * sp,
+                  });
+                }
+                playSfx('skadi-ice', 0.55);
+              }
               const floorDamage = iceLanceFloorPulseDamage(p0.damage);
               const icState = useGameStore.getState();
               icState.setIceLanceFloors([
@@ -13819,6 +13843,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               ? false // ★v0.25.3665: 幻影が打ち返した弾は消さない(反転・敵対化してそのまま飛んでいく)
               : isGrenadeGunKey(projectile.weaponKey) // v0.25.3290: グレネード系銃の弾は着弾で必ず消える(爆発済み)
                 ? true
+                : projectile.weaponKey === ICE_LANCE_WEAPON_KEY // 社長指示2026-09-14「射程距離まで必ず出切るようにして」: 氷槍は倒しても止まらず寿命まで飛ぶ(=床も射程まで伸びる)
+                ? false
                 : projectile.pierce !== undefined
                 ? projectile.hitEnemies.length > projectile.pierce
                 : projectile.passthrough
