@@ -5806,6 +5806,12 @@ interface GameState {
   // ない)なので、表示中に新しい覚醒が起きても「1回に纏める」(古い表示が新しいatで上書きされるだけ・
   // 演出/SEは選択直後にset外で1回だけ発火。§24実装側のデバウンスと対で使う)。resetGameでnullへ。
   awakenCutin: { skillKey: SkillKey; skillName: string; at: number } | null;
+  /**
+   * スキル取得の頭上マーク(v0.25.4333)。描画は pixiScene の updateSkillPickMark が持つ
+   * =**既存の頭上マーク(ブーメランのCD明け)と同じ型**を流用する(新しい語彙を作らない)。
+   * ここは「いつ・どの絵・何レベルか」だけを置く窓口。
+   */
+  skillPickFx: { icon: string; lv: number; at: number } | null;
   rerollUpgradeOptions: () => void;             // スクラップを払い、表示中の3枚を全引き直し(スクラップ択は残置)
   banishSkillFromRun: (key: SkillKey) => void;  // 無料・ラン中2回まで。そのスキルを以後の抽選から除外
   gachaDupeCounts: Partial<Record<SkillKey, number>>;   // ガチャのスキル別「被り回数」(Lv抽選表の参照・永続)
@@ -6423,6 +6429,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   realGameTime: 0,
   isPaused: false,
   showUpgradeMenu: false,
+  skillPickFx: null,
   levelUpIntroUntil: 0,
   levelUpEmphasisUntil: 0,
   levelUpFlashArmed: false,
@@ -11208,17 +11215,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? (skillSingleIconName(upgrade.skillKey) ?? (hasSkillIcon(upgrade.skillKey) ? `skillicon/${upgrade.skillKey}` : null))
           : null;
         if (icon) {
-          const ix = cp.x + cp.width / 2, iy = cp.y - 34;
-          // 絵そのもの。`image` は出だしに pop(1.18倍)・終わりにフェードを持つので、
-          // 出現と消滅の両端に加減速がある(慣性MUST)。動かさない=等速で流れて瞬間停止しない。
-          get().spawnImageMark(ix, iy, icon, { scale: 0.62, duration: 1400 });
-          // 取った瞬間の押し出し(判定ゼロ=派手さの絵)。金の輪1枚と粒だけ、控えめに。
-          get().spawnRing(ix, iy, 8, 62, 'rgba(253,224,71,0.85)', 3, 420);
-          get().spawnBurst(ix, iy, '#fde047', 12);
-          // Lv+1 は「何レベルになったか」が要るので、絵の下に小さく数字だけ添える(名前は絵が言う)。
-          if (upgrade.skillCardKind === 'levelup' && upgrade.skillLv !== undefined) {
-            get().spawnCallout(ix, iy + 34, `Lv${upgrade.skillLv}`, '#fffbe6', { scale: 0.95, serif: true, holdMs: 520, duration: 1300 });
-          }
+          // ★描画は pixiScene(updateSkillPickMark)へ渡す。**プレイヤーに追従させる**ため
+          // (ワールドに置き去りにすると、走り出した瞬間に絵だけ背後へ取り残される)。
+          // レベルは**数字ではなく粒(ピップ)**で出す=社長指示「文字ではなく」を数字にも通す。
+          set({ skillPickFx: { icon, lv: Math.max(1, Math.min(3, upgrade.skillLv ?? 1)), at: Date.now() } });
         } else {
           const label = upgrade.type === 'skill' && upgrade.skillCardKind === 'levelup' && upgrade.skillLv !== undefined ? `${upgrade.name} Lv${upgrade.skillLv}` : upgrade.name;
           get().spawnCallout(cp.x + cp.width / 2, cp.y - 14, label, '#fffbe6', { bg: 0xf59e0b, scale: 1.2, serif: true, holdMs: 600, duration: 1500 });

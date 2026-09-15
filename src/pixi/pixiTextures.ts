@@ -699,19 +699,22 @@ export const ensureTextures = (): Promise<void> => {
       ...Array.from({ length: 6 }, (_, i) => ({ name: `fx/holo-mini-${i}`, scaleMode: 'nearest' as const })),
       // スキルアイコンの1枚シート(社長支給・React側メニューと同じ素材)。v0.25.3623:
       // 弁慶のCD明け頭上マーク(旧「閃き」テキスト)がここから該当マスを切り出して使う。
-      { name: 'skill/skills-sheet', scaleMode: 'nearest' as const },
+      // ★linear(v0.25.4333): 144×136 の描き込まれた絵を 34px へ縮小して出すので、nearest の
+      // 非整数縮小だと画素行が不均等に間引かれ、pop で倍率が動く間は毎フレーム間引き位置が
+      // 入れ替わって絵が沸騰する。同ファイル冒頭の指針「linear=高解像度を縮小描画するもの」。
+      { name: 'skill/skills-sheet', scaleMode: 'linear' as const },
       // ★単体のスキルアイコン9個(v0.25.4332)。シートに載っていない=**これが唯一の出どころ**なので、
       // 登録し忘れると該当スキルだけ「絵も文字も出ない」無音の抜けになる(このプロジェクトの
       // 「素材はあるのに絵が出ない」事故の同型)。台帳は data/skillIcons.ts の SKILL_SINGLE_ICON。
-      { name: 'skill/poi-bombing', scaleMode: 'nearest' as const },
-      { name: 'skill/poi-guard', scaleMode: 'nearest' as const },
-      { name: 'skill/poi-thrall', scaleMode: 'nearest' as const },
-      { name: 'skill/guardian-spirit', scaleMode: 'nearest' as const },
-      { name: 'skill/ghost-helper', scaleMode: 'nearest' as const },
-      { name: 'skill/ghost-slayer', scaleMode: 'nearest' as const },
-      { name: 'skill/scrap-builder', scaleMode: 'nearest' as const },
-      { name: 'skill/warm-up', scaleMode: 'nearest' as const },
-      { name: 'skill/big-bullet', scaleMode: 'nearest' as const },
+      { name: 'skill/poi-bombing', scaleMode: 'linear' as const },
+      { name: 'skill/poi-guard', scaleMode: 'linear' as const },
+      { name: 'skill/poi-thrall', scaleMode: 'linear' as const },
+      { name: 'skill/guardian-spirit', scaleMode: 'linear' as const },
+      { name: 'skill/ghost-helper', scaleMode: 'linear' as const },
+      { name: 'skill/ghost-slayer', scaleMode: 'linear' as const },
+      { name: 'skill/scrap-builder', scaleMode: 'linear' as const },
+      { name: 'skill/warm-up', scaleMode: 'linear' as const },
+      { name: 'skill/big-bullet', scaleMode: 'linear' as const },
       // 単眼(社長支給v0.25.3340・紫・352×328)。各天使のgaze系「構え=目の発光」予兆に流用する
       // (スリィエル/アクラシエルのgaze等・配線は予兆バッチで)。
       { name: 'fx/angel-eye', scaleMode: 'nearest' as const },
