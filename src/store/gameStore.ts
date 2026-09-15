@@ -288,6 +288,7 @@ import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal } from '../data/campaign';
 import { skillSingleIconName, hasSkillIcon } from '../data/skillIcons'; // スキルアイコン(v0.25.4332)
+import { MELEE_HIT_MS } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
 import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX(stage-ex1)専用分岐の判定
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
@@ -400,6 +401,18 @@ const SPAWNFX_ENABLED = typeof window === 'undefined' || new URLSearchParams(win
 // (spawnBurst)を、被弾/近接ヒット/キルの方向へ寄せる(新規エフェクト種は追加しない・引数を足すだけ)。
 // `?dirfx=0`で無効化。useGameLoop側の銃ヒット経路も同名パラメータを各自読む(既存weakcrit等と同じ流儀)。
 const DIRFX_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('dirfx') !== '0';
+// 近接ヒットの炸裂(社長支給の実写VFX・v0.25.4334「VFXの試し1つ。近接当てた時用」)。
+// **試しなので即切れるようにする**: `?mhit=0` で完全に消え、v0.25.4333 と1ピクセルも変わらない。
+const MELEE_HIT_ON = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('mhit') !== '0';
+const MELEE_HIT_SIZE = (() => {
+  const v = typeof window === 'undefined' ? NaN : Number(new URLSearchParams(window.location.search).get('mhitsize'));
+  return Number.isFinite(v) && v > 0 ? v : 100; // 表示高さ(world px)。敵(約60px)より一回り大きい=派手さの絵
+})();
+// 素材はシアン。そのままだと**氷の技に見える**(色の文法を汚す)ので白へ寄せる。
+const MELEE_HIT_TINT = (() => {
+  const v = typeof window === 'undefined' ? NaN : Number(new URLSearchParams(window.location.search).get('mhittint'));
+  return Number.isFinite(v) ? v : 0xffeade;
+})();
 // PACING_PUZZLE.md §5.23 M22 Group C(C3・既定ON): 1スイング/1発で複数の敵に当たった時、
 // プレイヤー頭上に「N HITS」bitmap-text+小フラッシュ(既存spawnRing/spawnGlow流用)。
 // `?multifx=0`で無効化。既存registerMultiHit(全6箇所の多段ヒット経路)に相乗り=呼び出し側の追加配線なし。
@@ -6039,6 +6052,8 @@ interface GameState {
   spawnBurst: (x: number, y: number, color: string, count?: number, dirX?: number, dirY?: number) => void;
   /** 落ちて転がる瓦礫(重力つきの固体粒)。城の崩落など「ガラガラ」を作る絵。判定ゼロ=派手さの絵。 */
   spawnRubble: (x: number, y: number, count?: number, spread?: number) => void;
+  /** 近接ヒットの炸裂(社長支給の実写VFX・v0.25.4334)。判定ゼロ=派手さの絵。 */
+  spawnMeleeHit: (x: number, y: number, size?: number) => void;
   // 指定方向(dirX,dirY)へ円錐状に粒子を噴く(被弾の出口=背中側の破裂演出など)。色はランダムに使い分け。
   spawnSpray: (x: number, y: number, dirX: number, dirY: number, count: number, colors: string[]) => void;
   spawnFireJet: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ火の破裂(2コマ立ち絵)
@@ -8113,6 +8128,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const s of slashAt) {
       get().spawnSlash(s.x, s.y);
       get().spawnMeleeBlood(s.x, s.y); // 近接の血飛沫(社長指摘v0.25.2060: メイン近接3経路に未配線だった)
+      get().spawnMeleeHit(s.x, s.y);   // v0.25.4334: 近接ヒットの炸裂(社長支給VFXの試し)
     }
 
     // Damage numbers for every non-execute melee hit; crits/boss-stun hits pop gold.
@@ -9225,6 +9241,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const s of slashAt) {
       get().spawnSlash(s.x, s.y, 'rgba(221,238,255,0.95)', slashScale);
       get().spawnMeleeBlood(s.x, s.y); // 近接の血飛沫(社長指摘v0.25.2060: メイン近接3経路に未配線だった)
+      get().spawnMeleeHit(s.x, s.y);   // v0.25.4334: 刀の通常ヒットにも(同じ「当たった」動作)
     }
     for (const c of damageNumbers) {
       get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
@@ -9504,7 +9521,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // 鞭の時は近接攻撃のクレスト(slashストリーク)表現は出さない。鞭自身のlashスプライトのみ。
     // 血飛沫は出す(社長指摘v0.25.2060: メイン近接3経路に未配線だった)。
-    for (const s of slashAt) { get().spawnMeleeBlood(s.x, s.y); }
+    for (const s of slashAt) { get().spawnMeleeBlood(s.x, s.y); get().spawnMeleeHit(s.x, s.y); } // v0.25.4334: 鞭も同じ
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
     for (const c of critStunAt) { get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260); get().spawnCritImpact(c.x, c.y); } // 鞭クリも揺れ+光源(社長指示2026-09-13)
     // §9.4(v0.25.2502): 鞭クリの紫完全気絶FX(ナイフ4923/刀5573の紫リング+STUN!と同じ作法)。
@@ -20144,6 +20161,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { effects: next };
     });
   },
+  // ★v0.25.4334(社長「VFXの試し1つ。近接当てた時用」): 近接が当たった所で1回。
+  // 素材はシアンなので**白へ寄せて**出す(シアンのままだと氷の技に見える=色の文法を汚す)。
+  spawnMeleeHit: (x, y, size = MELEE_HIT_SIZE) => {
+    if (!MELEE_HIT_ON) return;
+    const now = Date.now();
+    get().spawnEffect({
+      kind: 'meleeHit', id: `mhit-${now}-${(Math.random() * 1e6) | 0}`,
+      x, y, size, tint: MELEE_HIT_TINT, createdAt: now, duration: MELEE_HIT_MS,
+    });
+  },
+
   // ★v0.25.4331: 瓦礫。既存の「固体粒」(薬莢と同じ枝=通常合成・発光なし・重力・回転・着地で停止)を
   // 石色で使う。砂埃(spawnBurst)は軽くて舞うだけなので、**落ちて積もる固体**が無いと「ガラガラ」にならない。
   spawnRubble: (x, y, count = 12, spread = 140) => {

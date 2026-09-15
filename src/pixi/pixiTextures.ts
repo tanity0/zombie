@@ -824,6 +824,8 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/idol-fist', scaleMode: 'linear' as const },      // 偶像の拳(ナックルが下端=突く向き)。v0.25.2935ドット版・回転するのでlinear維持
       { name: 'fx/plant-spit', scaleMode: 'linear' as const },     // 食人植物の種吐き(口が右向き)
       { name: 'fx/plant-seed', scaleMode: 'linear' as const },     // 種そのもの(植物の敵弾スプライト)
+      // 近接ヒットの炸裂(社長支給の実写VFX・15コマ・176×176)。実写の縮小なので linear。
+      ...Array.from({ length: 15 }, (_, i) => ({ name: `fx/melee-hit-${String(i).padStart(2, '0')}`, scaleMode: 'linear' as const })),
       { name: 'fx/dust-puff', scaleMode: 'linear' as const },      // 砂埃バリエーションA(もこもこの塊)
       { name: 'fx/dust-ring', scaleMode: 'linear' as const },      // 砂埃バリエーションB(放射状のリング)
       { name: 'fx/ground-crack', scaleMode: 'linear' as const },   // 地割れ(着地衝撃の床。分類②)
