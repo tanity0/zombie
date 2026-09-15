@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4346',
+    items: [
+      'ゾンビが立ち止まったら、そこから必ず噛みつきの突進が来る。止まりが合図になった。気絶や拘束で止めている間は今までどおり噛んでこない。',
+    ],
+  },
+  {
     version: '0.25.4345',
     items: [
       '武器の枠が強さの段で色分けされる。銀、青、金、橙、白の順に強い。',

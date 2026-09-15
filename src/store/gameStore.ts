@@ -299,7 +299,7 @@ import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '
 import { pushShieldRect } from '../world/shieldPush'; // B6(盾押し・§6): 純関数(src/world/shieldPush.test.ts)
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
-import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove } from '../utils/enemyBite';
+import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite } from '../utils/enemyBite';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
@@ -14779,13 +14779,17 @@ export const useGameStore = create<GameState>((set, get) => ({
           const inMelee = pdist <= MELEE_RADIUS;
           let phase = enemy.aiPhase;
           let phaseUntil = enemy.aiPhaseUntil ?? 0;
+          // ★立ち止まりが明けて突進へ移る瞬間か(社長指示2026-09-16
+          // 「ゾンビ、立ち止まったらかならずダッシュ噛みつき発動で」)。ここで**距離を見ずに**構える。
+          let rushJustStarted = false;
+          let biteKickoff: { biteAt: number; biteDirX: number; biteDirY: number } | null = null;
           const inCycle = phase === 'zpause' || phase === 'zrush';
           if (inCycle && gameTime < phaseUntil) {
             // 進行中の停止/突進はそのまま継続(突進2秒は範囲外へ出ても完遂する)。
           } else if (inCycle) {
             // フェーズ完了: まだ範囲内なら次フェーズへ、範囲外なら通常接近へ戻す。
             if (inMelee) {
-              if (phase === 'zpause') { phase = 'zrush'; phaseUntil = gameTime + ZOMBIE_RUSH_MS; }
+              if (phase === 'zpause') { phase = 'zrush'; phaseUntil = gameTime + ZOMBIE_RUSH_MS; rushJustStarted = true; }
               else { phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS; }
             } else { phase = undefined; phaseUntil = 0; }
           } else if (inMelee) {
@@ -14793,6 +14797,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           if (phase === 'zpause') {
             return { ...enemy, vx: 0, vy: 0, aiPhase: phase, aiPhaseUntil: phaseUntil }; // 停止
+          }
+          // ★停止明けの突進は**必ず噛みつきを連れて出る**(社長指示2026-09-16)。
+          // 距離は見ない=「立ち止まったら来る」が読みの手がかりになる(止まりが予告)。
+          // 止める効果(気絶/拘束/持ち上げ/眠り)と硬直と二重構えだけは `canZombieRushBite` が弾く。
+          // 踏み込みの向きは**この瞬間に焼く**(追尾しない=横へ避けられる。§12の裁定どおり)。
+          if (rushJustStarted && canZombieRushBite(enemy, gameTime)) {
+            const bl = Math.max(0.001, Math.hypot(pcx - ecx, pcy - ecy));
+            biteKickoff = { biteAt: gameTime, biteDirX: (pcx - ecx) / bl, biteDirY: (pcy - ecy) / bl };
           }
           // v0.25.3176(案4+案3): 個体差(±12%)と役割(直進/回り込み/遅れて来る)をゾンビにも掛ける。
           // フラフラ(既存)は**この上に**乗るので、蛇行の意図は変わらない。
@@ -14809,7 +14821,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const hl = Math.max(0.001, Math.hypot(hx, hy));
           const zvx = (hx / hl) * zSpeed, zvy = (hy / hl) * zSpeed;
           const zmoved = resolveMove(enemy.x + zvx * deltaTime, enemy.y + zvy * deltaTime);
-          return { ...enemy, vx: zvx, vy: zvy, x: zmoved.x, y: zmoved.y, aiPhase: phase, aiPhaseUntil: phaseUntil };
+          return { ...enemy, vx: zvx, vy: zvy, x: zmoved.x, y: zmoved.y, aiPhase: phase, aiPhaseUntil: phaseUntil, ...(biteKickoff ?? {}) };
         }
 
         // ボスのクリ半減(v0.25.2422)。ボス以外・非半減中は1なので通常敵の速度は完全に不変。

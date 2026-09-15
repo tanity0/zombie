@@ -6,6 +6,7 @@ import {
   biteWallRect, BITE_WALL_W, BITE_WALL_H, isBiteWallOpen, biteBodyOverlapsPlayer, canStartBite,
   isBiteInterruptedByMove, isBodySlamNow, isBiteFrozen, biteBlinkOn,
   BITE_BOSS_RECOVER_MS,
+  canZombieRushBite,
 } from './enemyBite';
 import type { Enemy } from '../types/game';
 
@@ -415,3 +416,33 @@ describe('★点滅は溜めの中で2回(v0.25.3932)', () => {
   });
 });
 
+describe('★立ち止まり明けのダッシュ噛みつき(社長指示2026-09-16)', () => {
+  const z = (over: Record<string, unknown> = {}) =>
+    ({ type: 'zombie', biteAt: 0, biteReadyAt: 0, ...over }) as never;
+
+  it('ゾンビは距離もaiPhaseも見ずに構えられる(停止そのものが引き金)', () => {
+    expect(canZombieRushBite(z(), 10_000)).toBe(true);
+    expect(canZombieRushBite(z({ aiPhase: 'zpause' }), 10_000)).toBe(true);
+  });
+  it('ゾンビ以外は対象外', () => {
+    expect(canZombieRushBite(z({ type: 'hunter' }), 10_000)).toBe(false);
+  });
+  it('★止める効果は必ず効く(気絶/拘束/持ち上げ/眠り)——ここを緩めると棒立ちの敵が噛んでくる', () => {
+    expect(canZombieRushBite(z({ stunUntil: 11_000 }), 10_000)).toBe(false);
+    expect(canZombieRushBite(z({ rootUntil: 11_000 }), 10_000)).toBe(false);
+    expect(canZombieRushBite(z({ liftUntil: 11_000 }), 10_000)).toBe(false);
+    expect(canZombieRushBite(z({ dormant: true }), 10_000)).toBe(false);
+  });
+  it('硬直中と二重構えは弾く', () => {
+    expect(canZombieRushBite(z({ biteReadyAt: 10_500 }), 10_000)).toBe(false);
+    expect(canZombieRushBite(z({ biteAt: 9_900 }), 10_000)).toBe(false);
+  });
+  it('★硬直(600ms)は停止(1000ms)より短い=「かならず」が成り立つ', () => {
+    // 前の噛みが突進の頭で解決し、硬直が明けた後に次の停止明けが来ること
+    const resolveAt = 10_000;                       // 前の噛みが終わった
+    const readyAt = resolveAt + 600;                // 硬直明け
+    const nextRushAt = resolveAt + 2000 + 1000;     // 突進の残り + 停止1秒
+    expect(nextRushAt).toBeGreaterThan(readyAt);
+    expect(canZombieRushBite(z({ biteReadyAt: readyAt }), nextRushAt)).toBe(true);
+  });
+});

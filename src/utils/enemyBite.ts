@@ -346,6 +346,10 @@ export const canStartBite = (
   enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
   gameTime: number,
 ): boolean => {
+  // ★ゾンビの噛みつきは**立ち止まりが引き金**(社長指示2026-09-16「ゾンビ、立ち止まったら
+  // かならずダッシュ噛みつき発動で」)。停止(zpause)が明けて突進(zrush)へ移る**その瞬間に、
+  // 距離を見ずに必ず**構える=`canZombieRushBite` を store 側の状態機械が呼ぶ。
+  // ここ(距離で見る汎用の発火)は**突進中の2回目以降**を拾う経路として残す。
   // ★ゾンビは「ダッシュ中が噛みつき」(社長指示2026-08-29「ゾンビはダッシュ中が噛みつきで」)。
   // 構え**始められる**のは zrush(2秒間2倍速の突進)中だけ——突進で飛び込んだ勢いのまま噛む。
   // 歩き接近・停止(zpause)中は構えない。台本そのもの(紫点滅→溜め→前かがみ)は全敵共通のまま。
@@ -359,6 +363,28 @@ export const canStartBite = (
   if (isBiteInterruptedByMove(enemy)) return false;
   if (enemy.biteAt !== undefined && enemy.biteAt > 0) return false;      // もう構えている
   if (gameTime < (enemy.biteReadyAt ?? 0)) return false;                 // 硬直中
+  if (isBiteFrozen(enemy, gameTime)) return false;
+  return true;
+};
+
+/**
+ * ★ゾンビが「立ち止まり明け」に必ず噛めるか(社長指示2026-09-16
+ * 「ゾンビ、立ち止まったらかならずダッシュ噛みつき発動で」)。
+ *
+ * `canStartBite` との違いは2つだけ:
+ *   ①**距離を見ない**(呼び側が距離を見ない=停止そのものが引き金だから)。
+ *   ②**aiPhase を見ない**(これから zrush へ移る瞬間に呼ばれるため)。
+ * 止める効果(気絶/拘束/持ち上げ/眠り)と硬直と二重構えは**同じ述語を通す**——
+ * ここを緩めると「黄色く気絶して棒立ちの敵が噛んでくる」が戻る(v0.25.3600台の事故)。
+ */
+export const canZombieRushBite = (
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
+  gameTime: number,
+): boolean => {
+  if (enemy.type !== 'zombie') return false;
+  if (isBiteInterruptedByMove(enemy)) return false;
+  if (enemy.biteAt !== undefined && enemy.biteAt > 0) return false;   // もう構えている
+  if (gameTime < (enemy.biteReadyAt ?? 0)) return false;              // 硬直中
   if (isBiteFrozen(enemy, gameTime)) return false;
   return true;
 };
