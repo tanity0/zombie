@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4364',
+    items: ['ゲーム内容の変更はありません(設計の点検で残っていた懸念が、実機の表示を確かめた結果いずれも解消した回です)'],
+  },
+  {
     version: '0.25.4363',
     items: ['ゲーム内容の変更はありません(設計の点検で挙がっていた懸念が1件、成立しないと分かった回です)'],
   },
