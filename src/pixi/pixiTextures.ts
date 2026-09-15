@@ -17,6 +17,8 @@ import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
 import { STAGE_PROPS } from '../world/cityProps';
 import { setEnemyArtAspect } from './renderSpec';
 
+import { skillSheetGrid, SKILL_ICON_INDEX, SKILL_ICON_COUNT } from '../data/skillIcons'; // スキルアイコンのシート台帳(v0.25.4332)
+
 const textures = new Map<string, Texture>();
 let ready = false;
 let loading: Promise<void> | null = null;
@@ -698,6 +700,18 @@ export const ensureTextures = (): Promise<void> => {
       // スキルアイコンの1枚シート(社長支給・React側メニューと同じ素材)。v0.25.3623:
       // 弁慶のCD明け頭上マーク(旧「閃き」テキスト)がここから該当マスを切り出して使う。
       { name: 'skill/skills-sheet', scaleMode: 'nearest' as const },
+      // ★単体のスキルアイコン9個(v0.25.4332)。シートに載っていない=**これが唯一の出どころ**なので、
+      // 登録し忘れると該当スキルだけ「絵も文字も出ない」無音の抜けになる(このプロジェクトの
+      // 「素材はあるのに絵が出ない」事故の同型)。台帳は data/skillIcons.ts の SKILL_SINGLE_ICON。
+      { name: 'skill/poi-bombing', scaleMode: 'nearest' as const },
+      { name: 'skill/poi-guard', scaleMode: 'nearest' as const },
+      { name: 'skill/poi-thrall', scaleMode: 'nearest' as const },
+      { name: 'skill/guardian-spirit', scaleMode: 'nearest' as const },
+      { name: 'skill/ghost-helper', scaleMode: 'nearest' as const },
+      { name: 'skill/ghost-slayer', scaleMode: 'nearest' as const },
+      { name: 'skill/scrap-builder', scaleMode: 'nearest' as const },
+      { name: 'skill/warm-up', scaleMode: 'nearest' as const },
+      { name: 'skill/big-bullet', scaleMode: 'nearest' as const },
       // 単眼(社長支給v0.25.3340・紫・352×328)。各天使のgaze系「構え=目の発光」予兆に流用する
       // (スリィエル/アクラシエルのgaze等・配線は予兆バッチで)。
       { name: 'fx/angel-eye', scaleMode: 'nearest' as const },
@@ -983,6 +997,23 @@ export const ensureTextures = (): Promise<void> => {
             textures.set(`${FLAME_SHEET}-${i}`, new Texture({
               source: tex.source,
               frame: new Rectangle(i * FLAME_FRAME_W, 0, FLAME_FRAME_W, tex.height),
+            }));
+          }
+        }
+        // ★スキルアイコン(v0.25.4332・社長指示「文字ではなくスキルアイコンにして」)。
+        // 同じ作法でシートを1マスずつ切り出し、`skillicon/<キー>` で引けるようにする。
+        // 段組みは画像の実寸から自動判定する(`skillSheetGrid`)=README の掟どおりコードに列数を書かない。
+        // サブテクスチャなので追加のメモリもデコードも発生しない。シートが無ければ何も登録されない
+        // (呼び側は getTexture の null で従来の文字へ落ちる)。
+        if (name === 'skill/skills-sheet') {
+          const g = skillSheetGrid(tex.width, tex.height);
+          const cw = tex.width / Math.max(1, g.cols), ch = tex.height / Math.max(1, g.rows);
+          for (const [key, idx] of Object.entries(SKILL_ICON_INDEX)) {
+            if (idx === undefined || idx < 0 || idx >= SKILL_ICON_COUNT) continue;
+            const col = idx % g.cols, row = Math.floor(idx / g.cols);
+            textures.set(`skillicon/${key}`, new Texture({
+              source: tex.source,
+              frame: new Rectangle(Math.round(col * cw), Math.round(row * ch), Math.round(cw), Math.round(ch)),
             }));
           }
         }

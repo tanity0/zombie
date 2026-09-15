@@ -287,6 +287,7 @@ import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, set
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal } from '../data/campaign';
+import { skillSingleIconName, hasSkillIcon } from '../data/skillIcons'; // スキルアイコン(v0.25.4332)
 import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX(stage-ex1)専用分岐の判定
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
@@ -11199,8 +11200,29 @@ export const useGameStore = create<GameState>((set, get) => ({
       const cp = get().player;
       const willChain = cp.experience >= cp.experienceToNextLevel;
       if (!awakenedFx && !willChain) {
-        const label = upgrade.type === 'skill' && upgrade.skillCardKind === 'levelup' && upgrade.skillLv !== undefined ? `${upgrade.name} Lv${upgrade.skillLv}` : upgrade.name;
-        get().spawnCallout(cp.x + cp.width / 2, cp.y - 14, label, '#fffbe6', { bg: 0xf59e0b, scale: 1.2, serif: true, holdMs: 600, duration: 1500 });
+        // ★v0.25.4332(社長指示2026-09-16「文字ではなくスキルアイコンにして」):
+        // 取った物が**スキルなら、その絵**を頭上に出す。文字の帯は出さない。
+        // 絵が無いカード(体力+/攻撃+ の底報酬・消費カード)と、シートに載っていないスキルは
+        // **従来の文字へ落ちる**(名前が出ないより、文字の方がまし)。
+        const icon = upgrade.type === 'skill' && upgrade.skillKey
+          ? (skillSingleIconName(upgrade.skillKey) ?? (hasSkillIcon(upgrade.skillKey) ? `skillicon/${upgrade.skillKey}` : null))
+          : null;
+        if (icon) {
+          const ix = cp.x + cp.width / 2, iy = cp.y - 34;
+          // 絵そのもの。`image` は出だしに pop(1.18倍)・終わりにフェードを持つので、
+          // 出現と消滅の両端に加減速がある(慣性MUST)。動かさない=等速で流れて瞬間停止しない。
+          get().spawnImageMark(ix, iy, icon, { scale: 0.62, duration: 1400 });
+          // 取った瞬間の押し出し(判定ゼロ=派手さの絵)。金の輪1枚と粒だけ、控えめに。
+          get().spawnRing(ix, iy, 8, 62, 'rgba(253,224,71,0.85)', 3, 420);
+          get().spawnBurst(ix, iy, '#fde047', 12);
+          // Lv+1 は「何レベルになったか」が要るので、絵の下に小さく数字だけ添える(名前は絵が言う)。
+          if (upgrade.skillCardKind === 'levelup' && upgrade.skillLv !== undefined) {
+            get().spawnCallout(ix, iy + 34, `Lv${upgrade.skillLv}`, '#fffbe6', { scale: 0.95, serif: true, holdMs: 520, duration: 1300 });
+          }
+        } else {
+          const label = upgrade.type === 'skill' && upgrade.skillCardKind === 'levelup' && upgrade.skillLv !== undefined ? `${upgrade.name} Lv${upgrade.skillLv}` : upgrade.name;
+          get().spawnCallout(cp.x + cp.width / 2, cp.y - 14, label, '#fffbe6', { bg: 0xf59e0b, scale: 1.2, serif: true, holdMs: 600, duration: 1500 });
+        }
       }
       const changesDamage = (upgrade.type === 'stat' && upgrade.statKind === 'atk') || (upgrade.type === 'consumable' && upgrade.consumableKey === 'attack-doping');
       if (changesDamage && !willChain) set({ levelUpEmphasisUntil: get().gameTime + LEVELUP_EMPHASIS_MS, levelUpFlashArmed: true });
