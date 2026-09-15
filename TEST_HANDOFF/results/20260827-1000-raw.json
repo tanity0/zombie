@@ -1,0 +1,228 @@
+{
+  "generatedAt": "2026-08-27T10:08:36.184Z",
+  "config": {
+    "baseUrl": "local",
+    "headless": false,
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "minVersion": "0.25.3991",
+    "note": "2026-08-27 通しE2E(REQUEST.md参照)。この config はパートC(回帰ボットラン)用。パートA+B(ボス直行スイープ)は node TEST_HANDOFF/run-e2e-sweep.mjs を使う。",
+    "configs": [
+      {
+        "name": "e2e-regression-stage1",
+        "persona": "standard",
+        "stage": "stage-1",
+        "extraQuery": "autotut=1"
+      },
+      {
+        "name": "e2e-regression-stage5",
+        "persona": "standard",
+        "stage": "stage-5",
+        "extraQuery": "autotut=1"
+      }
+    ]
+  },
+  "results": [
+    {
+      "config": "e2e-regression-stage1",
+      "realSec": 225,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 197294,
+        "deathCause": "変異体(狩猟型)の落下攻撃",
+        "kills": 34,
+        "playerLevel": 2,
+        "maxDepthPx": 3803,
+        "maxAreaReached": 2,
+        "subUses": {
+          "heavy-grenade": 40
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 78,
+        "scrapSpent": 0,
+        "damageTaken": 160,
+        "goldEarned": 7,
+        "damageDealt": {
+          "gun": 2217,
+          "melee": 826,
+          "other": 1803,
+          "total": 4846
+        },
+        "finisherKills": 2,
+        "meleeSwings": 73,
+        "meleeHits": 58,
+        "critStats": {
+          "total": {
+            "rngCrits": 43,
+            "guaranteedCrits": 5,
+            "hits": 282
+          },
+          "vsBoss": {
+            "rngCrits": 3,
+            "guaranteedCrits": 5,
+            "hits": 70
+          },
+          "vsTrash": {
+            "rngCrits": 40,
+            "guaranteedCrits": 0,
+            "hits": 212
+          },
+          "elapsedSec": 197
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 1,
+            "selectedByType": {
+              "skill": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 33,
+              "poi": 0,
+              "levelup": 0,
+              "other": 45
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 2,
+            "maxAreaReached": 2,
+            "runTimeMs": 197294
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 52139.928777104564,
+                "level": 2
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\nデンジャーゾーンのランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n3864m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR2 暴食\n\n次の深さ 未確認汚染エリア まで あと 1136m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n03:18\n撃破\n34\nLv\n2\n最大コンボ\n4\nSCORE\nHIGH SCORE\n15870\n被ダメージスコア 7200\n詳細\n▾\nAIディレクター\n開く▾\n獲得 +7g\n所持 27g\nサブクエスト達成 1件\n+20g(獲得済み)\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "e2e-regression-stage5",
+      "realSec": 248,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 214901,
+        "deathCause": "変異体(狩猟型)",
+        "kills": 56,
+        "playerLevel": 3,
+        "maxDepthPx": 4036,
+        "maxAreaReached": 2,
+        "subUses": {
+          "heavy-grenade": 44
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 99,
+        "scrapSpent": 0,
+        "damageTaken": 189,
+        "goldEarned": 19,
+        "damageDealt": {
+          "gun": 2052,
+          "melee": 1155,
+          "other": 1564,
+          "total": 4771
+        },
+        "finisherKills": 18,
+        "meleeSwings": 106,
+        "meleeHits": 91,
+        "critStats": {
+          "total": {
+            "rngCrits": 71,
+            "guaranteedCrits": 5,
+            "hits": 360
+          },
+          "vsBoss": {
+            "rngCrits": 2,
+            "guaranteedCrits": 4,
+            "hits": 27
+          },
+          "vsTrash": {
+            "rngCrits": 69,
+            "guaranteedCrits": 1,
+            "hits": 333
+          },
+          "elapsedSec": 215
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 2,
+            "selectedByType": {
+              "skill": 1,
+              "consumable": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 32,
+              "poi": 0,
+              "levelup": 0,
+              "other": 67
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 3,
+            "maxAreaReached": 2,
+            "runTimeMs": 214901
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 64081.9641445575,
+                "level": 2
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\nデンジャーゾーンのランク3 色欲 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4062m\n怠\nR1\n暴\nR2\n色\n⚑R3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR3 色欲\n\n次の深さ 未確認汚染エリア まで あと 938m\n\n死因：変異体(狩猟型)\n\nRESULT\n生存時間\n03:35\n撃破\n56\nLv\n3\n最大コンボ\n7\nSCORE\nHIGH SCORE\n39491\nステージ補正 ×1.6\nKILLスコア 14400\n詳細\n▾\nAIディレクター\n開く▾\n獲得 +19g\n所持 19g\nもう一度プレイ\nメニューに戻る"
+    }
+  ]
+}

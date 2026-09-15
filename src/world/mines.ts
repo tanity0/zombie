@@ -2,6 +2,21 @@ import { Rect, footRect } from './obstacles';
 
 export const MINE_CELL = 720;
 
+// ─── 起爆仕様(社長仕様v0.25.1846「踏むと赤くプクプク→爆発。範囲内の卵は連鎖起爆」/
+//     導火時間の変遷: 2秒 → 1秒(社長指示v0.25.1985) → **1.5秒(社長指示v0.25.2392)**) ───
+export const EGG_FUSE_MS = 1500;      // アーム(踏む/連鎖)から爆発までの導火時間
+export const EGG_BLAST_RADIUS = 80;   // 爆発半径(px)。クラスタの広がり44〜64pxを丸ごと連鎖させる値(社長「任せる」)
+
+// 爆発期限が来たアーム済み卵(純関数・毎フレームのフィルタのみ=距離計算は爆発時だけ)。
+export interface ArmedEggLike { id: string; type: string; footX: number; footY: number; armedAt?: number }
+export const dueArmedEggs = <T extends ArmedEggLike>(props: T[], gameTime: number): T[] =>
+  props.filter(p => p.type === 'mine' && p.armedAt !== undefined && gameTime >= p.armedAt + EGG_FUSE_MS);
+
+// 爆心(cx,cy)の範囲内にある未アームの卵=連鎖アーム対象(純関数)。
+export const eggsToChainArm = <T extends ArmedEggLike>(props: T[], cx: number, cy: number, radius: number = EGG_BLAST_RADIUS): T[] =>
+  props.filter(p => p.type === 'mine' && p.armedAt === undefined
+    && (p.footX - cx) ** 2 + (p.footY - cy) ** 2 <= radius * radius);
+
 export interface MineInstance {
   id: string;
   footX: number;
@@ -48,9 +63,17 @@ const minesInCell = (cx: number, cy: number): MineInstance[] => {
   return out;
 };
 
+// チュートリアル等「緑卵(地雷)を一切出さない」ステージ用の一括ゲート(setTreesDisabled/
+// setTorchesDisabled と同じ流儀・社長指示v0.25.1820「緑卵も非表示」)。ワールド生成の3関数
+// (region/pressure/ambush)を全て塞ぐ=描画・接触判定・影キャスタが同時に消える。
+// (敵の産卵・卵リングイベントは敵/イベント停止側で別途止まっている。)
+let minesDisabled = false;
+export const setMinesDisabled = (disabled: boolean): void => { minesDisabled = disabled; };
+
 export const minesInRegion = (
   minX: number, minY: number, maxX: number, maxY: number
 ): MineInstance[] => {
+  if (minesDisabled) return [];
   const startX = Math.floor(minX / MINE_CELL) * MINE_CELL;
   const startY = Math.floor(minY / MINE_CELL) * MINE_CELL;
   const out: MineInstance[] = [];
@@ -68,6 +91,7 @@ export const pressureMinesNearPlayer = (
   direction: { x: number; y: number } | null,
   gameTime: number
 ): MineInstance[] => {
+  if (minesDisabled) return [];
   const mag = direction ? Math.hypot(direction.x, direction.y) : 0;
   if (mag < 0.25) return [];
 
@@ -115,6 +139,7 @@ export const pressureMinesNearPlayer = (
 };
 
 export const mineAmbushAround = (anchor: MineAmbushAnchor): MineInstance[] => {
+  if (minesDisabled) return [];
   const count = 52;
   const rx = anchor.width * 0.62;
   const ry = anchor.height * 0.58;
