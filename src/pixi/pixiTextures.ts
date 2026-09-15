@@ -68,6 +68,31 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     { name: 'castle-s4', scaleMode: 'nearest' }, // 1060x1024 = 4.1MB
     { name: 'castle-s5', scaleMode: 'nearest' }, // 960x1024 = 3.8MB
   ],
+  /**
+   * 固有名ボスの立ち絵(第2弾・v0.25.4354)。**所属は付けない=網だけで拾う**(城ボスと同じ理由)。
+   *
+   * ★間に合う根拠: 固有名ボスは**出現アテンション(カメラが寄って止まる)+カットイン**を挟んで登場し、
+   * その間ずっと本体は画面に居る=`getTexture` の網が**その瞬間から取りに行く**。
+   * 尺は寄り360ms+ホールド950ms+カットイン1100ms=**2.4秒以上**あるので、読み終わる。
+   * ★ここに入れてよいのは**カットインを持つ固有名ボスだけ**。ハンター・パンプキン・ゾンビのような
+   * 「前触れなくその辺に居る」敵は**入れない**(予告が無い=網の猶予も無い)。
+   * `scaleMode` は起動マニフェストの記述と1文字も違えないこと(phill-wings だけ linear)。
+   */
+  bosses: [
+    { name: 'thor', scaleMode: 'nearest' },            // 1024x960 = 3.8MB
+    { name: 'mimir', scaleMode: 'nearest' },           // 804x1024 = 3.1MB
+    { name: 'jormungand', scaleMode: 'nearest' },      // 1024x508 = 2.0MB
+    { name: 'skadi', scaleMode: 'nearest' },           // 824x888 = 2.8MB
+    { name: 'skadi-ice-block', scaleMode: 'nearest' }, // 836x1139 = 3.6MB
+    { name: 'skadi-ice-blade', scaleMode: 'nearest' }, // 623x1206 = 2.9MB
+    { name: 'phill', scaleMode: 'nearest' },           // 768x1024 = 3.0MB
+    { name: 'phill-wings', scaleMode: 'linear' },      // 804x1024 = 3.1MB ★linear
+    { name: 'idol', scaleMode: 'nearest' },            // 760x1024 = 3.0MB
+    { name: 'rafi', scaleMode: 'nearest' },            // 664x800 = 2.0MB
+    { name: 'miguel', scaleMode: 'nearest' },          // 536x800 = 1.6MB
+    { name: 'bounty-maiko', scaleMode: 'nearest' },    // 660x800 = 2.0MB
+    { name: 'bounty-ranged', scaleMode: 'nearest' },   // 592x800 = 1.8MB
+  ],
 };
 
 /** 遅延組の索引(名前→scaleMode)。`getTexture` の網と `loadSpriteGroups` が引く。 */
@@ -522,8 +547,6 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'avatar-cat-ears', scaleMode: 'nearest' }, // 100×48
       { name: 'avatar-cat-tail', scaleMode: 'nearest' }, // 76×128
       // 裏ボス スカジの氷ハザード(氷塊テレグラフ / 飛ぶ氷の刃)。ピクセルアート=nearest。
-      { name: 'skadi-ice-block', scaleMode: 'nearest' },
-      { name: 'skadi-ice-blade', scaleMode: 'nearest' },
       { name: 'zan' }, // 刀フィニッシュの習字「斬」(拡大表示なので既定linearで滑らかに)
       { name: 'torch', scaleMode: 'nearest' },
       // 銃弾ヒット時に被弾敵の背中側へ生やす火の破裂(2コマ。0=大きい爆発→1=細い噴射)。ピクセルアート=nearest。
@@ -710,15 +733,10 @@ export const ensureTextures = (): Promise<void> => {
 
       // 裏ボス(深層域の隠しボス)。詳細イラスト調なので linear で滑らかに縮小。
       // 名前=EnemyType と一致させ、drawEnemy の getTexture(e.type) で解決する。
-      { name: 'mimir', scaleMode: 'nearest' as const }, // v0.25.2934 ドット版(回転しない本体はnearestが正・天使6体と同じ扱い)
-      { name: 'jormungand', scaleMode: 'nearest' as const }, // v0.25.2944 ドット版(mimir/thorと同じ扱い)
-      { name: 'skadi', scaleMode: 'nearest' as const }, // v0.25.2948 ドット版(mimir/jormungand/thorと同じ扱い)
       // トール(ステージ5)はドット絵タッチの素材なので、他の裏ボス(linear)と違い nearest で
       // ピクセルの輪郭を保つ(hunterと同じ扱い)。
-      { name: 'thor', scaleMode: 'nearest' as const },
       // ゲート2ボス(§5.21-追補8): ミゲル(大天使)。詳細イラスト調なので他の裏ボス(mimir等)と同じ
       // linear で滑らかに縮小。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
-      { name: 'miguel', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
       // ミゲルの剣(横払い用ビジュアル)。miguel-sword.png は既に透過済み(色キー不要・
       // thor-katanaと違いloadKeyedを使わない・通常のstandalone読み込みでOK)。詳細イラスト調なのでlinear。
       { name: 'miguel-sword', scaleMode: 'linear' as const },
@@ -727,7 +745,6 @@ export const ensureTextures = (): Promise<void> => {
       // ジブリルの武器=ランタン(ミゲルのmiguel-swordに相当する別武器スプライト・透過済み・linear)。
       { name: 'jibril-lantern', scaleMode: 'linear' as const },
       // ゲート2ボス(ステージ4): ラフィ(天使)。ミゲル/ジブリルと同じ扱い(linear・名前=EnemyType一致)。
-      { name: 'rafi', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
       // ラフィの武器=骨刃(別武器スプライト・透過済み・linear)。振り演出は武器の使い方受領後に追加。
       { name: 'rafi-blade', scaleMode: 'linear' as const },
       // PACING_PUZZLE.md §6.28-0★/§6.28-16/§6.28-17〜19(バッチM52・ロットL1): 天使ボス4〜6体目
@@ -742,9 +759,7 @@ export const ensureTextures = (): Promise<void> => {
       // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」バッチ1): 本体絵phill.png(768×1024・
       // 詳細イラスト調)を取り込み。テクスチャキー='phill'(EnemyType='phillboss'とは名前が違う=
       // PHILL銃と衝突回避のため。enemyTexKeyでphillboss→'phill'へマップする)。
-      { name: 'phill', scaleMode: 'nearest' as const },
       // バッチ3(§10-4/§10-12#12): 羽(左右×3対=804×1024の2列×3行シート・pixiSceneでスライス)。
-      { name: 'phill-wings', scaleMode: 'linear' as const },
       // バッチ3(§10-10): 羽の物理攻撃(技3/4/5)の武器スプライト(436×512)。
       { name: 'phill-wing-attack', scaleMode: 'linear' as const },
       // バッチ3(§10-11/§10-13/§10-14#11): 羽根散弾(技14=判定あり)+撒き羽根(判定ゼロ・花びら型)の
@@ -783,13 +798,11 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/angel-eye', scaleMode: 'nearest' as const },
       // 賞金首・遠距離型(砲手)本体(社長支給v0.25.3347・592×800)。バス停と同化した個体。
       // §7-9の賞金首3種の1体目。実装(スポーン/AI/体勢)は賞金首バッチで。
-      { name: 'bounty-ranged', scaleMode: 'nearest' as const },
       // 賞金首・近接型(決闘者)本体(社長支給v0.25.3351・520×512)。触手の下半身を引きずる個体。
       { name: 'bounty-melee', scaleMode: 'nearest' as const },
       // 賞金首・バランス型(教官)本体(社長支給v0.25.3352・膝立ちで巨大な錨を持つ個体)。これで3種完備。
       { name: 'bounty-balance', scaleMode: 'nearest' as const },
       // 賞金首・イレギュラー種「舞妓(変異)」本体(社長支給v0.25.3356・4本腕の舞妓)。4種完備。
-      { name: 'bounty-maiko', scaleMode: 'nearest' as const },
       // 舞妓の武器=手毬(社長支給v0.25.3359・248×256・花柄の毬)。舞妓の周りを飛び回り技を再現する
       // オービット武器スプライト(遠距離技も乱舞も毬が飛ぶ・§6.38 v5)。
       { name: 'bounty-maiko-temari', scaleMode: 'nearest' as const },
@@ -910,7 +923,6 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'hunter', scaleMode: 'nearest' as const },
       // stage-2隠しボス「idol」(§6.28-20)。ドット絵タッチの素材なのでhunter/thorと同じnearest
       // (武器=ハンドガンは本体絵に描き込み済みなので別武器スプライトは無い)。
-      { name: 'idol', scaleMode: 'nearest' as const },
       // 見た目2種以上を持つ敵の新アート(bat/skeleton…社長支給)。**全ステージ共通**なので
       // stage3/4/5 のステージ別 <type>.png より優先される(解決は pixiScene.enemyTexKey)。
       // 表は `utils/enemyVariant.ts` の1箇所。ここは取りこぼさないよう表から生成する。

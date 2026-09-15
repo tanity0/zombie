@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4354',
+    items: [
+      '起動時に抱える絵をさらに減らした。名前のある変異体の絵は、出現の演出が始まってから読む。見た目は変わらない。',
+    ],
+  },
+  {
     version: '0.25.4353',
     items: [
       '起動時に抱える絵を減らした。研究所と訓練の背景、城の変異体の立ち絵は、必要になってから読む。落ちやすさが少し下がるはず。見た目は変わらない。',
