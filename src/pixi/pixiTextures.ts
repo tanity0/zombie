@@ -1144,6 +1144,8 @@ export const ensureTextures = (): Promise<void> => {
 const SKILL_SINGLE_ICON_NAMES = [
   'skill/poi-bombing', 'skill/poi-guard', 'skill/poi-thrall', 'skill/guardian-spirit',
   'skill/ghost-helper', 'skill/ghost-slayer', 'skill/scrap-builder', 'skill/warm-up', 'skill/big-bullet',
+  // スキル取得の炸裂18コマ(v0.25.4343)。**同じ理由でここ**=起動の成否に新しい素材をぶら下げない。
+  ...Array.from({ length: 18 }, (_, i) => `fx/skill-burst-${String(i).padStart(2, '0')}`),
 ];
 const warmSkillIcons = async (): Promise<void> => {
   for (const name of SKILL_SINGLE_ICON_NAMES) {

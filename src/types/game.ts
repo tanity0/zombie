@@ -2397,6 +2397,19 @@ export type VisualEffect =
       tint?: number; // 守護霊発は青白等(未指定=素のまま)
     }
   | {
+      // スキル取得の炸裂(社長支給の実写VFX・v0.25.4343)。**プレイヤーの裏(groundLayer)に敷く**。
+      // 大きさ=スキルのレベル / 色=レア度(白・青・金)。社長指示2026-09-16。
+      kind: 'skillBurst';
+      id: string;
+      x: number; y: number;
+      /** 表示高さ(world px)。最小でもプレイヤー(約64×52)より大きい。 */
+      size: number;
+      /** レア度の色(0xRRGGBB)。素材は白で焼いてあるのでここが見た目の色になる。 */
+      tint: number;
+      createdAt: number;
+      duration: number;
+    }
+  | {
       // 近接ヒットの炸裂(社長支給の実写VFX・v0.25.4334)。爆発と同じ「連番テクスチャを尺で送る」型。
       kind: 'meleeHit';
       id: string;

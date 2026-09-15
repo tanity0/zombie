@@ -143,6 +143,7 @@ import { cineToggle, cineToggleOn } from '../utils/cineToggles'; // 寄り演目
 import { applyCineKnobs, cineCameraAt, cineModeFor, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
 import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, type RimLight } from '../utils/rimLight'; // 向きの縁ライティング(§6)
 import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
+import { skillBurstFrame, skillBurstTexture } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -6705,6 +6706,7 @@ export class PixiScene {
       case 'multiHit':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN);
       case 'meleeHit':
+      case 'skillBurst':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.size);
       // ★v0.25.4324: default が無いと、新しい kind を足した時に undefined が返って
       // 「毎フレーム hideEffectView される=絵が一生出ない」黙った事故になる(v0.25.4322の炸裂で実際に踏んだ)。
@@ -27129,6 +27131,8 @@ export class PixiScene {
         this.drawDamageNumber(e, now);
       } else if (e.kind === 'meleeHit') {
         this.drawMeleeHitSprite(e, now);
+      } else if (e.kind === 'skillBurst') {
+        this.drawSkillBurstSprite(e, now);
       } else if (e.kind === 'image') {
         this.drawImageEffect(e, now);
       } else if (e.kind === 'dogFetch') {
@@ -29484,6 +29488,36 @@ export class PixiScene {
    * (絵の薄れ方は素材が持っている。重ねて2回フェードさせると濁る)。
    * 加算で出す=黒背景の実写をそのまま世界へ置ける(元素材にアルファは無い)。
    */
+  /**
+   * スキル取得の炸裂(社長支給の実写VFX・v0.25.4343)。近接ヒットと同じ「連番を尺で送る」型。
+   * ★**`groundLayer` に置く=プレイヤーの裏**(社長指示「プレイヤーの裏に轢いてつかって」)。
+   * effectLayer はアクターより前なので、ここだけ親を変える。素材は白で焼いてあり、
+   * 色(白/青/金=レア度)は tint が決める。加算=夜の地面に光として乗る。判定ゼロ。
+   */
+  private drawSkillBurstSprite(e: Extract<VisualEffect, { kind: 'skillBurst' }>, now: number) {
+    const t = Math.min(1, (now - e.createdAt) / Math.max(1, e.duration));
+    let sprite = this.effects.get(e.id);
+    if (!(sprite instanceof Sprite) || !(sprite as { __skillBurstFx?: boolean }).__skillBurstFx) {
+      if (sprite) sprite.destroy();
+      const sp0 = new Sprite();
+      (sp0 as unknown as { __skillBurstFx?: boolean }).__skillBurstFx = true;
+      sp0.anchor.set(0.5, 0.5);
+      sp0.blendMode = 'add';
+      this.L.groundLayer.addChild(sp0); // ★裏に敷く
+      this.effects.set(e.id, sp0);
+      sprite = sp0;
+    }
+    const sp = sprite as Sprite;
+    const tex = getTexture(skillBurstTexture(skillBurstFrame(t)));
+    if (!tex) { sp.visible = false; return; }
+    sp.visible = true;
+    sp.texture = tex;
+    sp.scale.set(e.size / Math.max(1, tex.height));
+    sp.position.set(e.x, e.y);
+    sp.tint = e.tint;
+    sp.alpha = 1; // 絵の薄れ方は素材が持っている(二重にフェードさせない)
+  }
+
   private drawMeleeHitSprite(e: Extract<VisualEffect, { kind: 'meleeHit' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / Math.max(1, e.duration));
     let sprite = this.effects.get(e.id);

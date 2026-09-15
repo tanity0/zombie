@@ -288,6 +288,7 @@ import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal } from '../data/campaign';
 import { MELEE_HIT_MS } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
+import { SKILL_BURST_MS, skillBurstSize, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { urlNum } from '../utils/urlNum'; // URLの数値ツマミ(既定値へ確実に落とす・v0.25.4341)
 import { hasSkillIcon, skillSingleIconName } from '../data/skillIcons'; // スキル取得マークの絵の有無(v0.25.4342・純データ=実行時importなし)
 import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX(stage-ex1)専用分岐の判定
@@ -414,6 +415,8 @@ const MELEE_HIT_SIZE = urlNum(MHIT_SEARCH, 'mhitsize', 150);
 // 黒でtintすると加算合成が何も足さない=「VFXが出ない/影に見える」として4回社長の端末に出た。
 // 以後この種のツマミは `urlNum` を通す(同名のテストで固定してある)。
 const MELEE_HIT_TINT = urlNum(MHIT_SEARCH, 'mhittint', 0xffeade);
+// スキル取得の炸裂(v0.25.4343)。`?skfx=0` で完全に消える(試しの素材なので即切れるようにする)。
+const SKILL_BURST_ON = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('skfx') !== '0';
 // 尺(ms)。既定は素材側の MELEE_HIT_MS。`?mhitms=20000` で止めて1コマを見られる(確認用)。
 const MELEE_HIT_DUR = urlNum(MHIT_SEARCH, 'mhitms', MELEE_HIT_MS);
 // PACING_PUZZLE.md §5.23 M22 Group C(C3・既定ON): 1スイング/1発で複数の敵に当たった時、
@@ -6058,6 +6061,8 @@ interface GameState {
   spawnRubble: (x: number, y: number, count?: number, spread?: number) => void;
   /** 近接ヒットの炸裂(社長支給の実写VFX・v0.25.4334)。判定ゼロ=派手さの絵。 */
   spawnMeleeHit: (x: number, y: number, size?: number) => void;
+  /** スキル取得の炸裂(v0.25.4343)。**プレイヤーの裏**に敷く。大きさ=Lv / 色=レア度。判定ゼロ。 */
+  spawnSkillBurst: (x: number, y: number, lv: number, rarity: 'normal' | 'rare' | 'super') => void;
   // 指定方向(dirX,dirY)へ円錐状に粒子を噴く(被弾の出口=背中側の破裂演出など)。色はランダムに使い分け。
   spawnSpray: (x: number, y: number, dirX: number, dirY: number, count: number, colors: string[]) => void;
   spawnFireJet: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ火の破裂(2コマ立ち絵)
@@ -11237,7 +11242,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (hasArt && upgrade.skillKey) {
           // レベルは**数字ではなく粒(ピップ)**で出す=社長指示「文字ではなく」を数字にも通す。
           set({ skillPickFx: { key: upgrade.skillKey, lv: Math.max(1, Math.min(3, upgrade.skillLv ?? 1)), at: Date.now() } });
-        } else {
+        }
+        // ★裏の炸裂は**スキルなら絵の有無に関わらず出す**(v0.25.4343)。アイコンが無いスキルでも
+        // 「取った」手応えは同じであるべきなので、絵の有無で演出を割らない。
+        if (upgrade.type === 'skill' && upgrade.skillKey) {
+          const lv = Math.max(1, Math.min(3, upgrade.skillLv ?? 1));
+          const rarity = upgrade.skillRarity ?? SKILLS[upgrade.skillKey].rarity;
+          // 胴の高さへ置く(足元だと絵の上半分しか見えない)。裏に敷くので中心はプレイヤーと同じ。
+          get().spawnSkillBurst(cp.x + cp.width / 2, cp.y - 18, lv, rarity);
+        }
+        if (!(hasArt && upgrade.skillKey)) {
           const label = upgrade.type === 'skill' && upgrade.skillCardKind === 'levelup' && upgrade.skillLv !== undefined ? `${upgrade.name} Lv${upgrade.skillLv}` : upgrade.name;
           get().spawnCallout(cp.x + cp.width / 2, cp.y - 14, label, '#fffbe6', { bg: 0xf59e0b, scale: 1.2, serif: true, holdMs: 600, duration: 1500 });
         }
@@ -20171,6 +20185,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().spawnEffect({
       kind: 'meleeHit', id: `mhit-${now}-${(Math.random() * 1e6) | 0}`,
       x, y, size, tint: MELEE_HIT_TINT, createdAt: now, duration: MELEE_HIT_DUR,
+    });
+  },
+
+  // ★v0.25.4343(社長指示「スキル取得時のエフェクト用VFX素材これで。大きさと色でレア度とレベルを
+  // 表現。プレイヤーの裏に轢いてつかって」): 取った瞬間に**プレイヤーの裏**で一度だけ弾ける。
+  // 大きさ=レベル(最小でもプレイヤーより大きい) / 色=レア度(白・青・金)。判定ゼロ=派手さの絵。
+  spawnSkillBurst: (x, y, lv, rarity) => {
+    if (!SKILL_BURST_ON) return;
+    const now = Date.now();
+    get().spawnEffect({
+      kind: 'skillBurst', id: `skburst-${now}-${(Math.random() * 1e6) | 0}`,
+      x, y, size: skillBurstSize(lv), tint: skillBurstTint(rarity),
+      createdAt: now, duration: SKILL_BURST_MS,
     });
   },
 

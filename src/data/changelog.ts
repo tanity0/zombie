@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4343',
+    items: [
+      'スキルを取った瞬間、プレイヤーの背後で光が弾けるようになった。大きさはそのスキルのレベル、色はレア度で変わる。',
+    ],
+  },
+  {
     version: '0.25.4342',
     items: [
       'レベルアップでスキルを取った時、名前の文字ではなくそのスキルの絵が頭上に出る。レベルは絵の下に並ぶ粒の数で分かる。絵を持たないカードは今までどおり文字。',
