@@ -6,6 +6,7 @@ import { isPixiRenderer, getAppliedResolution } from '../config/renderer';
 import { getAssistLightDebug } from '../pixi/pixiScene';
 import { getTexture } from '../pixi/pixiTextures';
 import { lastSuppressedError } from '../utils/errorBeacon';
+import { renderStatsText } from '../utils/renderStats';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
 import DebugOverlay from './DebugOverlay';
@@ -371,7 +372,9 @@ const ErrBeacon: React.FC = () => {
   useEffect(() => {
     const iv = setInterval(() => {
       const msg = lastSuppressedError();
-      if (ref.current && msg && ref.current.textContent !== `ERR ${msg}`) ref.current.textContent = `ERR ${msg}`;
+      // ★増え続けていないかを常に出す(v0.25.4347)。例外が出たら赤字でその後ろへ。
+      const line = `${renderStatsText()}${msg ? ` · ERR ${msg}` : ''}`;
+      if (ref.current && ref.current.textContent !== line) ref.current.textContent = line;
     }, 1000);
     return () => clearInterval(iv);
   }, []);

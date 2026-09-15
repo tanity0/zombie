@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4347',
+    items: [
+      '不具合を調べるための手がかりを画面左下に出すようにした。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.4346',
     items: [
       'ゾンビが立ち止まったら、そこから必ず噛みつきの突進が来る。止まりが合図になった。気絶や拘束で止めている間は今までどおり噛んでこない。',

@@ -145,6 +145,7 @@ import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, type RimL
 import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
 import { skillBurstFrame, skillBurstTexture, skillBurstScale, skillBurstAlpha, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { reportSuppressedError } from '../utils/errorBeacon';
+import { setRenderStats } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347)
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import { MOLOTOV_FIRE_RADIUS } from '../utils/molotov';
@@ -27212,6 +27213,9 @@ export class PixiScene {
         this.effects.delete(id);
       }
     }
+    // ★店じまいの後の実数を画面へ(v0.25.4347)。store のエフェクト数と、実際に生きている表示物の数。
+    // **この2つが揃って増え続けていたら解放漏れ**、storeだけ増えていたら発生側の問題、と切り分けられる。
+    setRenderStats(this.effects.size, effects.length);
   }
 
   // ---- 施策1: particle/ring/trail のプールsprite描画(旧 drawEffectGfx=per-frame Graphics を全廃) ----

@@ -6,7 +6,9 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { bootstrapRuntime, fontsReady } from './bootstrap';
+import { installGlobalErrorBeacon } from './utils/errorBeacon';
 
+installGlobalErrorBeacon(); // 捕まえていない例外も左下へ赤字で出す(v0.25.4347)
 bootstrapRuntime();
 
 // 同梱書体が揃ってから最初の描画(上限 2.5 秒・bootstrap.ts 参照)。書体が後から差し替わる瞬間を画面に出さないため。
