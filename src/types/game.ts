@@ -2406,6 +2406,9 @@ export type VisualEffect =
       size: number;
       /** レア度の色(0xRRGGBB)。素材は白で焼いてあるのでここが見た目の色になる。 */
       tint: number;
+      /** 個体ごとの回転(rad)と左右反転。**毎回同じ角度で出さない**ための判子崩し(v0.25.4344)。 */
+      rot: number;
+      flipX: 1 | -1;
       createdAt: number;
       duration: number;
     }

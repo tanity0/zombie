@@ -143,7 +143,7 @@ import { cineToggle, cineToggleOn } from '../utils/cineToggles'; // 寄り演目
 import { applyCineKnobs, cineCameraAt, cineModeFor, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
 import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, type RimLight } from '../utils/rimLight'; // 向きの縁ライティング(§6)
 import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
-import { skillBurstFrame, skillBurstTexture } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
+import { skillBurstFrame, skillBurstTexture, skillBurstScale, skillBurstAlpha, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -4022,6 +4022,7 @@ export class PixiScene {
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private skillPickGfx = new Graphics();     // スキル取得の頭上マーク(下敷き・閃光・レベルの粒)
   private skillPickSp: Sprite | null = null; // 同・アイコン本体
+  private skillPickGlowSp: Sprite | null = null; // 同・アイコンを起こす加算の重ね(暗い絵が読めるように)
   private goldRingReadyGfx = new Graphics(); // 金環CD明けの頭上マーク(同型・UNIQUE_WEAPONS.md §19-3)
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
   private homingLockGfx = new Graphics();   // ホーミング弾ロックインジケーター(ロック済み敵の頭上マーカー)
@@ -10754,7 +10755,7 @@ export class PixiScene {
     const fx = useGameStore.getState().skillPickFx;
     const life = 1100;
     const dt = fx ? now - fx.at : -1;
-    if (!fx || dt < 0 || dt > life) { if (this.skillPickSp) this.skillPickSp.visible = false; return; }
+    if (!fx || dt < 0 || dt > life) { if (this.skillPickSp) this.skillPickSp.visible = false; if (this.skillPickGlowSp) this.skillPickGlowSp.visible = false; return; }
     const t = dt / life;
     // 立ち上がりは速く、引きは長く(=同じ形で往復しない)。
     const alpha = t < 0.12 ? t / 0.12 : Math.max(0, 1 - Math.pow(Math.max(0, (t - 0.12) / 0.88), 1.8));
@@ -10780,26 +10781,58 @@ export class PixiScene {
     // ★下敷き。夜の地面に暗い絵(シートの平均輝度は 72/255)を素で置くと背景に溶ける。
     // カード画面もHUDも板か縁の上に置いているので、世界に出す時だけ裸、という不整合も消える。
     const r = BOX * 0.78 * pop;
+    // ★輪と粒は**レア度の色**にする(v0.25.4344)。足元の炸裂と同じ色にして初めて「ひとつの出来事」
+    // に見える。今までは常に金固定で、レア度という情報が足元の一瞬の光にしか載っていなかった。
+    const accent = skillBurstTint(fx.rarity);
     g.circle(cx, cy, r * 1.18).fill({ color: 0x0b0a14, alpha: 0.55 * alpha });
-    g.circle(cx, cy, r * 1.18).stroke({ width: 1.5, color: 0xffd98a, alpha: 0.5 * alpha });
+    g.circle(cx, cy, r * 1.18).stroke({ width: 1.8, color: accent, alpha: 0.62 * alpha });
     // 出現の閃光(既存マークと同じ作法)。取った瞬間の「ピカ」。
     const flash = Math.max(0, 1 - dt / 190);
     if (flash > 0) {
       g.circle(cx, cy, r * 0.9 + 26 * (1 - flash)).fill({ color: 0xffe9b8, alpha: 0.45 * flash });
       g.circle(cx, cy, 6).fill({ color: 0xffffff, alpha: 0.95 * flash });
     }
-    sp.scale.set((BOX / Math.max(1, Math.max(tex.width, tex.height))) * pop);
+    const iconScale = (BOX / Math.max(1, Math.max(tex.width, tex.height))) * pop;
+    sp.scale.set(iconScale);
     sp.position.set(cx, cy);
     sp.alpha = Math.max(0, alpha);
     sp.visible = sp.alpha > 0.01;
+    // ★アイコンを**起こす**(v0.25.4344)。シートの平均輝度は 72/255 で、暗い下敷きの上に
+    // 暗い絵を置いても読めるようにはならない。同じ絵を加算で1枚重ねて暗部を持ち上げる
+    // (敷くのではなく光らせる)。
+    if (!this.skillPickGlowSp) {
+      const gsp = new Sprite(tex);
+      gsp.anchor.set(0.5);
+      gsp.blendMode = 'add';
+      this.L.effectLayer.addChild(gsp);
+      this.skillPickGlowSp = gsp;
+    }
+    const gsp = this.skillPickGlowSp;
+    if (gsp.texture !== tex) gsp.texture = tex;
+    gsp.scale.set(iconScale);
+    gsp.position.set(cx, cy);
+    gsp.alpha = Math.max(0, alpha) * 0.55;
+    gsp.visible = sp.visible;
     // ★レベルは**数字ではなく粒**で出す(社長指示「文字ではなく」を数字にも通す)。
-    // 取得直後は1粒。Lv2/Lv3 はその段数ぶん。粒は絵の真下へ横並び。
-    if (fx.lv > 1) {
+    // ★空きソケットを**常に3つ**置き、埋まった数だけ灯す(v0.25.4344)。旧実装は `lv > 1` の時だけ
+    // lv 個描いていたので、粒の数が 0/2/3 という読めない対応になっていた(コメントは「取得直後は1粒」
+    // と書いてあるのに Lv1 は0個)。**今上がった1粒だけ**を遅れて・大きく・白から色へ落として灯す
+    // =演出が伝えるべきは状態(Lv3だ)ではなく変化(いま2から3に上がった)。
+    {
       const py = cy + r * 1.34;
-      const gap = 9;
-      const x0 = cx - (gap * (fx.lv - 1)) / 2;
-      for (let i = 0; i < fx.lv; i++) {
-        g.circle(x0 + gap * i, py, 2.6).fill({ color: 0xffd98a, alpha: 0.95 * alpha });
+      const gap = 9.5;
+      const x0 = cx - gap;
+      for (let i = 0; i < 3; i++) {
+        const lit = i < fx.lv;
+        const isNewest = i === fx.lv - 1;
+        if (!lit) { g.circle(x0 + gap * i, py, 2.2).stroke({ width: 1, color: accent, alpha: 0.28 * alpha }); continue; }
+        // 灯る順に遅れを付ける(等間隔・同時発火をやめる)。最後の1粒はさらに遅れて大きく入る。
+        const delay = 0.10 + i * 0.055 + (isNewest ? 0.10 : 0);
+        const u = Math.max(0, Math.min(1, (t - delay) / 0.16));
+        if (u <= 0) continue;
+        const over = isNewest ? 1 + 0.55 * (1 - Math.pow(1 - u, 2)) * (1 - u) : 1; // 行き過ぎて整定
+        const col = isNewest && u < 0.6 ? 0xffffff : accent;                        // 白く灯って色へ落ちる
+        g.circle(x0 + gap * i, py, (isNewest ? 3.1 : 2.4) * over).fill({ color: col, alpha: 0.95 * alpha * u });
       }
     }
   }
@@ -29512,10 +29545,20 @@ export class PixiScene {
     if (!tex) { sp.visible = false; return; }
     sp.visible = true;
     sp.texture = tex;
-    sp.scale.set(e.size / Math.max(1, tex.height));
-    sp.position.set(e.x, e.y);
+    // ★押し出し(慣性MUST・v0.25.4344): 小さく出て行き過ぎて整定する。初版は倍率固定で
+    // 「パッと出て止まる」形そのものだった(同じ地面FXの drawGroundCrack は既に正しく書けている)。
+    const base = (e.size / Math.max(1, tex.height)) * skillBurstScale(t);
+    sp.scale.set(base * e.flipX, base);            // ★左右反転で判子感を消す
+    sp.rotation = e.rot;                           // ★個体ごとの角度
+    // ★プレイヤーに**遅れて追従**する(v0.25.4344)。自己バフの絵なのに生成位置へ焼き付けると、
+    // 0.46秒で約50px歩くプレイヤーが自分の演出を草むらへ置き去りにする。剛体で溶接すると
+    // 嘘くさいので、毎フレーム一定割合だけ寄せる=そのまま慣性になる。
+    const pl = useGameStore.getState().player;
+    const tx = pl.x + pl.width / 2, ty = pl.y - 18;
+    if (sp.position.x === 0 && sp.position.y === 0) sp.position.set(e.x, e.y);
+    sp.position.set(sp.position.x + (tx - sp.position.x) * 0.18, sp.position.y + (ty - sp.position.y) * 0.18);
     sp.tint = e.tint;
-    sp.alpha = 1; // 絵の薄れ方は素材が持っている(二重にフェードさせない)
+    sp.alpha = skillBurstAlpha(t); // 末尾は**こちら側で**抜く(素材任せにすると粒が1つずつ消えてチラつく)
   }
 
   private drawMeleeHitSprite(e: Extract<VisualEffect, { kind: 'meleeHit' }>, now: number) {
@@ -30557,7 +30600,9 @@ export class PixiScene {
     for (const o of this.holoVolleySprites.values()) o.destroy();
     this.killFxText?.destroy(); this.killFxText = null;
     this.benkeiReadySp?.destroy(); this.benkeiReadySp = null; this.benkeiIconTex = null;
-    this.skillPickSp?.destroy(); this.skillPickSp = null; this.skillIconTexCache.clear();
+    this.skillPickSp?.destroy(); this.skillPickSp = null;
+    this.skillPickGlowSp?.destroy(); this.skillPickGlowSp = null;
+    this.skillIconTexCache.clear();
     this.boomReadySp?.destroy(); this.boomReadySp = null;
     this.killFxSlashSp?.destroy(); this.killFxSlashSp = null;
     for (const o of this.killFxBloodPool) o.destroy();

@@ -5831,7 +5831,7 @@ interface GameState {
    * ★ここには**スキルキーだけ**を置く(テクスチャ名を持たせない)。絵の解決は描画側の仕事で、
    * シミュ層がレンダラの都合(シートのどのマスか)を知らないようにするため。resetGameでnullへ。
    */
-  skillPickFx: { key: SkillKey; lv: number; at: number } | null;
+  skillPickFx: { key: SkillKey; lv: number; rarity: 'normal' | 'rare' | 'super'; at: number } | null;
   rerollUpgradeOptions: () => void;             // スクラップを払い、表示中の3枚を全引き直し(スクラップ択は残置)
   banishSkillFromRun: (key: SkillKey) => void;  // 無料・ラン中2回まで。そのスキルを以後の抽選から除外
   gachaDupeCounts: Partial<Record<SkillKey, number>>;   // ガチャのスキル別「被り回数」(Lv抽選表の参照・永続)
@@ -11232,6 +11232,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (upgrade.type === 'skill' || upgrade.type === 'consumable' || upgrade.type === 'stat') {
       const cp = get().player;
       const willChain = cp.experience >= cp.experienceToNextLevel;
+      // ★裏の炸裂は**この門の外**で出す(v0.25.4344・クリエイティブ監査の指摘)。
+      // 初版はこの下の `!awakenedFx && !willChain` の内側に置いていたが、Lv3へ**上がって**到達する
+      // 通常ルートは必ず awakenedFx が立つため、**一番大きいLv3の絵が実プレイで一度も出なかった**
+      // (社長指示「大きさがレベル」が 150/200 の2段しか無い梯子になっていた)。
+      // 絵の有無でも割らない=スキルを取ったなら必ず出す。
+      if (upgrade.type === 'skill' && upgrade.skillKey) {
+        const blv = Math.max(1, Math.min(3, upgrade.skillLv ?? 1));
+        const brarity = upgrade.skillRarity ?? SKILLS[upgrade.skillKey].rarity;
+        // 胴の高さへ置く(足元だと絵の上半分しか見えない)。裏に敷くので中心はプレイヤーと同じ。
+        get().spawnSkillBurst(cp.x + cp.width / 2, cp.y - 18, blv, brarity);
+      }
       if (!awakenedFx && !willChain) {
         // ★v0.25.4342(社長指示2026-09-16「文字ではなくスキルアイコンにして」の再実装):
         // 取った物が**スキルで、絵を持っているなら、その絵**を頭上に出す。文字の帯は出さない。
@@ -11241,15 +11252,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           && (skillSingleIconName(upgrade.skillKey) !== null || hasSkillIcon(upgrade.skillKey));
         if (hasArt && upgrade.skillKey) {
           // レベルは**数字ではなく粒(ピップ)**で出す=社長指示「文字ではなく」を数字にも通す。
-          set({ skillPickFx: { key: upgrade.skillKey, lv: Math.max(1, Math.min(3, upgrade.skillLv ?? 1)), at: Date.now() } });
-        }
-        // ★裏の炸裂は**スキルなら絵の有無に関わらず出す**(v0.25.4343)。アイコンが無いスキルでも
-        // 「取った」手応えは同じであるべきなので、絵の有無で演出を割らない。
-        if (upgrade.type === 'skill' && upgrade.skillKey) {
-          const lv = Math.max(1, Math.min(3, upgrade.skillLv ?? 1));
-          const rarity = upgrade.skillRarity ?? SKILLS[upgrade.skillKey].rarity;
-          // 胴の高さへ置く(足元だと絵の上半分しか見えない)。裏に敷くので中心はプレイヤーと同じ。
-          get().spawnSkillBurst(cp.x + cp.width / 2, cp.y - 18, lv, rarity);
+          // ★130ms 遅らせる(v0.25.4344): 足元の炸裂と頭上マークの白い閃光が**同時に同じ場所**で
+          // 出ると片方は無かったのと同じになる。先に足元が弾け、そこから立ち上がるように出す=因果の順。
+          const rr = upgrade.skillRarity ?? SKILLS[upgrade.skillKey].rarity;
+          set({ skillPickFx: { key: upgrade.skillKey, lv: Math.max(1, Math.min(3, upgrade.skillLv ?? 1)), rarity: rr, at: Date.now() + 130 } });
         }
         if (!(hasArt && upgrade.skillKey)) {
           const label = upgrade.type === 'skill' && upgrade.skillCardKind === 'levelup' && upgrade.skillLv !== undefined ? `${upgrade.name} Lv${upgrade.skillLv}` : upgrade.name;
@@ -20194,11 +20200,25 @@ export const useGameStore = create<GameState>((set, get) => ({
   spawnSkillBurst: (x, y, lv, rarity) => {
     if (!SKILL_BURST_ON) return;
     const now = Date.now();
+    const size = skillBurstSize(lv);
+    const tint = skillBurstTint(rarity);
     get().spawnEffect({
       kind: 'skillBurst', id: `skburst-${now}-${(Math.random() * 1e6) | 0}`,
-      x, y, size: skillBurstSize(lv), tint: skillBurstTint(rarity),
-      createdAt: now, duration: SKILL_BURST_MS,
+      x, y, size, tint,
+      // ★毎回同じ角度・同じ形で出すと、1ランで10回以上見る絵が判子になる(v0.25.4344)。
+      // 生成時に向きを振る(コストゼロ)。尺も少しだけばらす。
+      rot: Math.random() * Math.PI * 2,
+      flipX: Math.random() < 0.5 ? 1 : -1,
+      createdAt: now, duration: Math.round(SKILL_BURST_MS * (0.94 + Math.random() * 0.12)),
     });
+    // ★世界を**一瞬だけ**照らす(v0.25.4344)。加算スプライトは自分の面積しか塗らないので、
+    // これが無いと夜の森で目の前に光が出ているのに草もキャラも明るくならない=ステッカーに見える。
+    // ★半径は**既存の段(glowTiers)に載せる**。`size*0.7` で出したら最大段(150)を超える 182 になり、
+    // 平たい黄色の塊が画面を覆ってVFXが見えなくなった(実画面で確認・v0.25.4344)。
+    // 色は既存の作法どおり **rgba(...,` の前置き文字列**(α は描画側が付ける)。
+    // CLAUDE.mdの実測「強glowの絵は無料・高いのは投影影だけ」に従い noShadow で出す。
+    const rgb = `rgba(${(tint >> 16) & 0xff},${(tint >> 8) & 0xff},${tint & 0xff},`;
+    get().spawnGlow(x, y, GLOW_R_S, rgb, 140, true);
   },
 
   // ★v0.25.4331: 瓦礫。既存の「固体粒」(薬莢と同じ枝=通常合成・発光なし・重力・回転・着地で停止)を
