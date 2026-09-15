@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4339',
+    items: [
+      'とどめの寄り演出についていた飾り(逆光や埃)を完全に取り除いた。すでに切ってあったものなので、見え方は変わらない。',
+    ],
+  },
+  {
     version: '0.25.4338',
     items: [
       '近接で当てた時の炸裂を戻した。ナイフ、刀、鞭で当てた時に出る。レベルアップでスキルを取った時のアイコン表示は、まだ外したまま。',

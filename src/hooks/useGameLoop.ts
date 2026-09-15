@@ -897,7 +897,7 @@ const NOSPAWN = evParam('nospawn') === '1';
 // 割り込んで何を見ているか分からなくなる。**自分の近接の一振りで1回出る**形へ変えた(=発動するのは社長の操作の時だけ)。
 // なぜ要るか: この演出は本来「気絶した敵を近接で処刑」か「ボスの致命」でしか出ず、さらに全演出が
 // 共有CD10秒で律速される(JUICE_CD_MS・社長裁定v0.25.1524)ため、**普通に遊んで偶然見るのは難しい**。
-// 既定OFF=通常プレイは1msも変わらない。`?cinefx=0` `?cinepush=0` 等と併用してA/Bする。
+// 既定OFF=通常プレイは1msも変わらない。`?cineplates=0` 等と併用してA/Bする。
 // **実装は `playCineDemoOnSwing()`(下)を近接の呼び出し側から呼ぶ形**(v0.25.4314)。
 // ★近接の一振りには**呼び出し経路が2本**ある——プレイヤー(指を離す→前隙→`triggerCounter(pendAt)`)とボット
 // (`triggerCounter()` を直接)。v0.25.4310〜4313 は `triggerCounter` の**出口4つのうち使われない1つ**に
@@ -916,6 +916,8 @@ const CINE_TESTBED = evParam('cine') === '1'; // cine映像の実験台。stage-
 // (decideBotInput)を実プレイの入力へ注入する。null(無指定)=完全無効・通常プレイは1バイトも挙動を変えない。
 // 不正値は 'standard' へフォールバック。'rusher'(M19深層ラッシュ専用ペルソナ)も指定可。
 const BOT_PARAM = evParam('bot');
+// ★近接ヒットVFXの切り分け(v0.25.4339・開発専用): `?mhit=demo` で近接と無関係に一定間隔で出す。
+const MHIT_DEMO = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mhit') === 'demo';
 const BOT_PERSONA: BotPersona | null = BOT_PARAM === null ? null
   : ((BOT_PERSONAS as string[]).includes(BOT_PARAM) || BOT_PARAM === 'rusher') ? BOT_PARAM as BotPersona : 'standard';
 // v0.25.2338: 腕前の段階 ?botskill=novice|casual|skilled|master(既定 casual=従来の挙動と同値)。
@@ -1659,6 +1661,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const redNightFiredRef = useRef(false); // 紅き夜は1ラン1回のみ。発火済みフラグ。
   const redNightFireAtRef = useRef(RED_NIGHT_FIRE_AT_MS); // 発火時刻(RED_NIGHT_FIRE_AT_MS固定=毎ラン確定・v0.25.3317)。
   const lastSeenGameTimeRef = useRef(0);
+  const mhitDemoAtRef = useRef(0); // `?mhit=demo` の前回発火時刻(切り分け用・v0.25.4339)
   // Air-dropped supply timer. Tracks the gameTime of the last map ammo drop
   // and the (randomized) wait until the next one, so resupply crates appear at
   // an irregular but bounded cadence.
@@ -2935,6 +2938,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         useGameStore.getState().updateNpcDialogue(newGameTime); // NPCセリフの表示進行(時間停止なし)
         useGameStore.getState().updateMerchantDwell(deltaTime * 1000); // 商人サークル3秒滞在→話しかけ(社長指示v0.25.1842)
         updateGameStats({ timeAlive: gameTime / 1000 });
+
+        // ★近接ヒットVFXの切り分け用(v0.25.4339・開発専用)。`?mhit=demo` の時だけ、近接と無関係に
+        // プレイヤーの横で一定間隔に出す。「出ない」の原因が**発火条件**なのか**描画/素材**なのかを
+        // 社長の端末で1回で分けるためのもの(既定では1行も走らない)。
+        if (MHIT_DEMO && newGameTime - mhitDemoAtRef.current >= 700) {
+          mhitDemoAtRef.current = newGameTime;
+          const dp = useGameStore.getState().player;
+          useGameStore.getState().spawnMeleeHit(dp.x + dp.width / 2 + 40, dp.y - 10);
+        }
 
         // Detect a fresh run (gameTime rewound to ~0) and reset scripted
         // wave consumption so the same player can re-fight the schedule.
