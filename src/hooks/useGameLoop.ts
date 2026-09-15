@@ -574,6 +574,9 @@ const STRIKER_QUICK_MAG_THROW_DISTANCE = 82;
 const STRIKER_QUICK_MAG_THROW_MS = 360;
 const DOG_PICKUP_COOLDOWN_BY_LEVEL = [0, 900, 760, 620];
 const DOG_EMPTY_RETRY_MS = 260;
+// ★ドッグラン Lv2-3 の再使用の下限(社長裁定2026-09-16「犬はCD設けよう」)。犬の往復1240msに対し、
+// これだけ間が空けば「帰った→一拍→また出る」が見える。0 だと行列になる(v0.25.4335 の是正)。
+const DOG_RUN_MIN_COOLDOWN_MS = 500;
 const DOG_FETCH_TARGET_RADIUS_BY_LEVEL = [0, 240, 330, 420]; // 社長指示2026-09-13(旧 240/310/380)
 const DOG_COLLECT_RADIUS_BY_LEVEL = [0, 48, 64, 80];
 const DOG_COLLECT_BURST_LIMIT = 8;
@@ -9151,10 +9154,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
             if (nowMs >= activeFetch.finishAt) {
               dogFetchRef.current = null;
-              // スキル: ドッグラン = Lv1 CD半減 / Lv2-3 CD0。
+              // スキル: ドッグラン = Lv1 CD半減 / Lv2-3 は**下限つき**(社長裁定2026-09-16)。
+              // ★旧仕様は Lv2-3 で CD=0 だった。犬の往復は 1240ms なので、0 だと**帰った次のフレームに
+              // 次の犬が出発する**=拾い物が地面にある限り永久に途切れず、社長報告
+              // 「犬がたくさん出てくる時がある。コイン出た時とか」になっていた。
+              // 下限 500ms を敷くと「帰る→一拍おく→また出る」の切れ目が見える(1.24+0.5=1.74秒に1匹)。
+              // **ドッグラン無し(約2.1秒)より依然として速い**のでスキルの価値は保たれる。
+              // Lv1(半減)は社長裁定どおり**据え置き**なので、下限は CD0 の段にだけ掛ける。
               const dogRunLv = skillLevel(useGameStore.getState().player, 'dog-run');
               const dogCdMult = dogRunLv ? [1, 0.5, 0, 0][dogRunLv] : 1;
-              setSubWeaponCooldown('dog', gameTime + DOG_PICKUP_COOLDOWN_BY_LEVEL[level] * dogCdMult);
+              const dogCd = dogCdMult === 0
+                ? DOG_RUN_MIN_COOLDOWN_MS
+                : DOG_PICKUP_COOLDOWN_BY_LEVEL[level] * dogCdMult;
+              setSubWeaponCooldown('dog', gameTime + dogCd);
             }
           } else if (gameTime >= dogReadyAt) {
             const state = useGameStore.getState();
