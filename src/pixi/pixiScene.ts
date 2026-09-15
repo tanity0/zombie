@@ -140,7 +140,7 @@ import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { cineToggle, cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(URL+タイトル画面)
 import { cineFxVocab, cineFxBacklightTint, cineFxHasStreak, cineFxSetFor, cineFxTargetsSelf, cineFxPushFollow, cineFxShutterAt, cineFxWipeAt, cineFxDeathLight, cineFxRepeatMult, cineFxNearDust, cineFxMotes, cineFxDustStep, CINE_FX_SHUTTER_ALPHA, CINE_FX_SHUTTER_TINT, CINE_FX_WIPE_MS, CINE_FX_WIPE_COUNTER_MS, CINE_FX_WIPE_W_FRAC, CINE_FX_VIGNETTE_TO, CINE_FX_BACKLIGHT_W_MULT, CINE_FX_BACKLIGHT_ALPHA, CINE_FX_BACKLIGHT_STRETCH_TO, CINE_FX_RIM_ALPHA, CINE_FX_BOKEH, CINE_FX_BOKEH_BLOOD, CINE_FX_BLOOD_TINT, CINE_FX_BLOOD_DRIP_FRAC, CINE_FX_DUST_NEAR_SPEED, CINE_FX_DUST_FAR_SPEED, CINE_FX_DUST_DRIFT, CINE_FX_STAGGER_MS, type CineFxKind, type CineFxParticle } from '../utils/cineFx'; // 寄り演目のVFX(§8・v0.25.4306)
 import { applyCineKnobs, cineCameraAt, cineModeFor, thirdsAim, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, CINE_PLATE_NEAR_MARGIN_FRAC, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
-import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, RIM_BUCKETS, type RimLight } from '../utils/rimLight'; // 向きの縁ライティング(§6)
+import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, type RimLight } from '../utils/rimLight'; // 向きの縁ライティング(§6)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -2323,6 +2323,7 @@ const RIM_TAU_MS = tsNum('rimtau', 110);               // 濃さの追従(慣性
 const RIM_DIR_TAU_MS = tsNum('rimdirtau', 90);         // 向きの追従(支配光が入れ替わっても飛ばない)
 const RIM_DEFAULT_COLOR = tsNum('rimwarm', 0xffc07a);  // 光が色を持たない時の既定(琥珀)
 const RIM_GLOW_COLOR = tsNum('rimglowcol', 0xffe2b0);  // 強glow(爆発など)の色
+const RIM_PLAYER_LIGHT = tsNum('rimplayer', 0) !== 0; // プレイヤー自身の補助光も縁の光源にするか(既定OFF)
 // ★爆発の「黒い円」の立ち上がり。旧実装は life 比例のみで**フェードインが無く**、湧いた瞬間に
 // 最大の黒が乗っていた(社長「パッときえてるんだよね」)。消える側は life→0 で元々滑らか。
 const LOCAL_EVENT_SHADE_RISE_MS = tsNum('shaderise', 110);
@@ -3573,7 +3574,7 @@ export class PixiScene {
   // 暗い敵でも全面が白く光る(加算は元の色しか足せないので、白ベイクしないと暗部が光らない)。実行時はフィルタ不要=安い。
   private whiteTexCache = new Map<Texture, Texture>();
   // 向きの縁(§6)。焼いた縁テクスチャ: 元テクスチャ → 8方向ぶん。
-  private rimTexCache = new Map<Texture, (Texture | null)[]>();
+  private rimTexCache = new Map<Texture, Map<number, Texture | null>>();
   // アクターごとの縁スプライト2枚(隣り合う向きを混ぜて45°のカクつきを消す)+追従中の値。
   private rimViews = new Map<string, { a: Sprite; b: Sprite; dx: number; dy: number; k: number }>();
   private rimLights: RimLight[] = [];   // このフレームの縁用の光(色つき)
@@ -16438,36 +16439,50 @@ export class PixiScene {
   // ★焼き方: 「白シルエット」から「光と反対へずらした白シルエット」を erase で抜く。
   // 残るのは**元の絵の内側にある、光を向いた側の帯**=縁。1テクスチャ×8方向を1度だけ焼く。
   // (ずらした1枚を後ろに置く方式は縁が**シルエットの外**に出て、光ではなく発光体に見える=不採用)
-  private rimTexture(src: Texture | null, bucket: number): Texture | null {
+  //
+  // ★v0.25.4328 社長報告「2pxやってる？」の答え=**やれていなかった**。
+  // `RIM_PX` は**元テクスチャのpx**だが、敵の素材は表示よりずっと大きい
+  // (zombie-common は 464x640 を約60px幅で出す=scale 0.13、thor は 1024x960)。
+  // 2ソースpx = **0.26画面px** しか無く、帯が常にサブピクセル=滲んでチラつく。
+  // ⇒ **欲しい画面pxから、そのテクスチャでのソースpxを逆算して焼く**。
+  private rimTexture(src: Texture | null, bucket: number, srcPx: number): Texture | null {
     if (!src || src.width <= 1 || !this.renderer) return null;
-    let arr = this.rimTexCache.get(src);
-    if (!arr) { arr = new Array(RIM_BUCKETS).fill(null); this.rimTexCache.set(src, arr); }
-    const hit = arr[bucket];
-    if (hit) return hit;
+    // 太さは段に丸めてキャッシュを共有する(表示倍率が少し動くたびに焼き直さない)
+    const q = Math.max(1, Math.round(srcPx));
+    const key = bucket * 4096 + Math.min(4095, q);
+    let m = this.rimTexCache.get(src);
+    if (!m) { m = new Map<number, Texture | null>(); this.rimTexCache.set(src, m); }
+    if (m.has(key)) return m.get(key) ?? null;
     try {
       const wrap = new Container();
-      const lit = new Sprite(src);
       const white = new ColorMatrixFilter();
       white.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0]; // RGB→白・α保持
+      // ★柔らかいαの縁を「硬く」する。素材の輪郭は半透明の画素で終わっているので、
+      // 1枚だけだと**シルエットの全周に薄い霞**が残り、光と関係なく縁取りされて見える
+      // (社長報告「切り抜きが上手くいってないようにしか見えない」)。
+      // 同じ絵を重ねるとαは 1-(1-a)^n で 1 へ寄る=輪郭が締まる。
+      const lit = new Container();
+      for (let i = 0; i < 3; i++) lit.addChild(new Sprite(src));
       lit.filters = [white];
       const d = rimBucketDir(bucket);
       // ★抜かずに「黒で潰す」。縁は**加算**で重ねるので、黒い画素は何も足さない=抜いたのと同じ絵になる。
       // (`erase` は環境によって効き方が変わり、効かなかった時に**全身が白く光る**という
       //  静かで最悪の壊れ方をする。通常合成だけで組めばその壊れ方が存在しない。)
-      const cut = new Sprite(src);
+      const cut = new Container();
+      for (let i = 0; i < 3; i++) cut.addChild(new Sprite(src));
       const black = new ColorMatrixFilter();
       black.matrix = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]; // RGB→0・α保持
       cut.filters = [black];
-      cut.position.set(-d.dx * RIM_PX, -d.dy * RIM_PX); // 光と**反対**へずらす=光側の帯だけが白く残る
+      cut.position.set(-d.dx * q, -d.dy * q); // 光と**反対**へずらす=光側の帯だけが白く残る
       wrap.addChild(lit, cut);
       const rt = RenderTexture.create({ width: Math.max(1, src.width), height: Math.max(1, src.height) });
       this.renderer.render({ container: wrap, target: rt, clear: true });
       wrap.destroy({ children: true });
-      arr[bucket] = rt;
+      m.set(key, rt);
       return rt;
     } catch (err) {
       // 焼けない環境では**縁を出さないだけ**にする(立ち物が消えるより、向きが無い方がまし)。
-      arr[bucket] = null;
+      m.set(key, null);
       reportSuppressedError('rim-bake', err);
       return null;
     }
@@ -16505,8 +16520,11 @@ export class PixiScene {
     }
     // ★プレイヤー自身の光(§6-10 B群で唯一やる価値があるもの)。補助光の半径をそのまま reach に使う。
     // 補助光の計算より**後**に足す(補助光は worldLights を読む側=循環を避ける)。
+    // ★既定OFF(社長報告「光源なくてもチカチカしてるかも？」)。プレイヤーの補助光は**画面に光源が
+    // 見えない**ので、これを入れると「光も無いのに常に縁が出て、しかもプレイヤーの方を向く」に見える。
+    // 光源として正しくはあるが、読みを壊すので `?rimplayer=1` で入れた時だけにする。
     const pl = ACTIVE_STAGE_LIGHTING;
-    if (pl.playerAssistRadius > 0) {
+    if (RIM_PLAYER_LIGHT && pl.playerAssistRadius > 0) {
       this.rimLights.push({
         x: player.x + player.width / 2, y: player.y + player.height / 2,
         reach: pl.playerAssistRadius * 2, strength: 0.9, color: RIM_DEFAULT_COLOR,
@@ -16570,16 +16588,26 @@ export class PixiScene {
     }
     if (r.k <= 0.004 || !(r.dx || r.dy)) { r.a.visible = false; r.b.visible = false; return; }
 
-    const { a: ba, b: bb, t } = rimBuckets(r.dx, r.dy);
-    const ta = this.rimTexture(sp.texture, ba);
-    const tb = this.rimTexture(sp.texture, bb);
-    if (!ta && !tb) { r.a.visible = false; r.b.visible = false; return; }
+    // ★左右反転(社長報告「振り向いた時に光源も反対になってる？」= そのとおりだった)。
+    // 立ち絵は **scale.x を負にして**反転している(プレイヤー `faceMul`・敵 `motFace`)。
+    // 焼いた縁もそのまま鏡に映るので、右から照らしているのに**左が光る**。
+    // ⇒ 反転している時は、焼くバケツを**先に鏡に映してから**選ぶ(鏡に映して元へ戻る)。
+    const mirrored = sp.scale.x < 0;
+    const { a: ba, b: bb, t } = rimBuckets(mirrored ? -r.dx : r.dx, r.dy);
 
-    // ★引き(zoom 0.40)で縁が画面から消えないよう、見かけの太さに下限を敷く(監査#7)。
-    // 焼いた太さは元テクスチャの RIM_PX なので、実効の画面px = RIM_PX * |scale| * zoom。
+    // ★帯の太さは「画面で何px見せたいか」から、そのテクスチャでのソースpxを逆算する。
+    // これをやらないと敵は 0.26px の帯になり、常にチラつく(社長報告「2pxやってる？」)。
     const zoom = this.L.worldGroup.scale.x || 1;
-    const seen = RIM_PX * Math.abs(sp.scale.x) * zoom;
-    const boost = seen > 0 ? Math.max(1, RIM_MIN_SCREEN_PX / seen) : 1;
+    const shown = Math.abs(sp.scale.x) * zoom;                    // ソース1px が画面で何pxになるか
+    // ★振り向きの途中は scale.x が 0 付近を通る(`faceMul` は 0.02 で下げ止め)。
+    // ここで逆算すると太さが発散し、**振り向くたびに光る**。痩せている間は出さない。
+    if (!(shown > 0.02)) { r.a.visible = false; r.b.visible = false; return; }
+    const wantScreenPx = Math.max(RIM_PX, RIM_MIN_SCREEN_PX);
+    const srcPx = Math.min(Math.max(1, wantScreenPx / shown), Math.max(2, sp.texture.width * 0.12));
+    const ta = this.rimTexture(sp.texture, ba, srcPx);
+    const tb = this.rimTexture(sp.texture, bb, srcPx);
+    if (!ta && !tb) { r.a.visible = false; r.b.visible = false; return; }
+    const boost = 1;
     const tint = hit ? hit.color : RIM_DEFAULT_COLOR;
     // ★本体の見え方を丸ごと写す(hitFlash と同じ作法)。α は本体のものを継承する——
     // これをやらないと、地平線フェードや裏回り透けで**本体が消えても光る縁だけが残る**(監査#4/A-3)。
