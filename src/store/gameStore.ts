@@ -406,7 +406,7 @@ const DIRFX_ENABLED = typeof window === 'undefined' || new URLSearchParams(windo
 const MELEE_HIT_ON = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('mhit') !== '0';
 const MELEE_HIT_SIZE = (() => {
   const v = typeof window === 'undefined' ? NaN : Number(new URLSearchParams(window.location.search).get('mhitsize'));
-  return Number.isFinite(v) && v > 0 ? v : 100; // 表示高さ(world px)。敵(約60px)より一回り大きい=派手さの絵
+  return Number.isFinite(v) && v > 0 ? v : 150; // 表示高さ(world px)。敵(約60px)の2.5倍=判定より大きく出す(派手さの絵)
 })();
 // 素材はシアン。そのままだと**氷の技に見える**(色の文法を汚す)ので白へ寄せる。
 const MELEE_HIT_TINT = (() => {

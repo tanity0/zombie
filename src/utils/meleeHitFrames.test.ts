@@ -28,8 +28,9 @@ describe('meleeHitFrames', () => {
     expect(meleeHitTexture(-5)).toBe('fx/melee-hit-00');
   });
 
-  it('★近接は手数が多いので短い(0.4秒未満)', () => {
-    expect(MELEE_HIT_MS).toBeLessThan(400);
-    expect(MELEE_HIT_MS / MELEE_HIT_FRAMES).toBeLessThan(1000 / 40); // 40fpsより速く送る
+  it('★近接は手数が多いので短い。ただし気づけない短さにはしない(社長報告「VFX出てない」)', () => {
+    expect(MELEE_HIT_MS).toBeGreaterThanOrEqual(400); // 340msは実機で気づけなかった
+    expect(MELEE_HIT_MS).toBeLessThanOrEqual(600);    // 近接は手数が多いので残しすぎない
+    expect(MELEE_HIT_MS / MELEE_HIT_FRAMES).toBeLessThan(1000 / 30); // 30fpsより速く送る
   });
 });

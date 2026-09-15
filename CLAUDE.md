@@ -250,6 +250,24 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
   per-frame writer (e.g. resync) is unavoidable, keep its result a stable
   reference for fields others read, and gate the write when nothing changed.
 
+## ★見た目の実装は「毎回、画を見て」確認する(社長指示2026-09-16・MUST)
+社長の言葉: **「ヴィジュアル系の実装は毎回画をみて確認して」**。
+
+- **絵が出る変更(エフェクト/UI/演出/描画)は、push 前に必ず自分で画面を撮って目で見る。**
+  typecheck・lint・ユニットテストが緑でも、**絵が出ているかは1ミリも保証しない**
+  (実際 v0.25.4334 は全部緑で push し、実機で「VFX出てない」になった)。
+- **これは下の「検証は社長指示制」の例外**。ボットラン・バランス走査・計測は従来どおり指示制のまま。
+  **見た目だけは毎回**。
+- **短い演出(1秒未満)はヘッドレスの素撮りでは捉えられない**(GPU無しの環境は1枚1秒以上かかり、
+  rAF も 1Hz 前後まで落ちる)。**捉え方の型**:
+  1. `npm run dev` を上げ、Playwright で起動 → タイトルの「はじめる」を押す
+  2. `window.__gameStore`(store)と `window.__pixiScene`(DEV限定)が窓口
+  3. **`spawnEffect` を直接叩き、`createdAt` を過去にずらし `duration` を長くして固定表示**にしてから撮る
+     (例: `createdAt: Date.now()-2000, duration: 20000` で「2秒目のコマ」を止めて見られる)
+  4. 出ない時は **spawn 側と draw 側の両方に数えるだけの計測器**を置く
+     (spawn>0 かつ draw=0 ならカリングか dispatch、両方0なら発火条件)
+- **「コードは正しいから出ているはず」を根拠にしない**(★実在確認の掟と同じ)。**撮った画を見てから報告する。**
+
 ## Testing policy (test/debug cadence)
 - **検証も社長指示制(社長指示v0.25.2184・全エージェント共通)**: ヘッドレス実走(Playwright)・ボットラン・
   スクショ確認などの「検証」は、**社長が明示的に求めない限り回さない**。数字いじり・実装とも、

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4336',
+    items: [
+      '近接で当てた時の炸裂が小さすぎて気づけなかったので、大きく、少し長くした。ナイフ、刀、鞭で当てた時に出る。',
+    ],
+  },
+  {
     version: '0.25.4335',
     items: [
       'ドッグランを深く取っていると犬が途切れず走り続けていたのを直した。帰ってきて一拍おいてから、また出る。ドッグランを取っていない時より速いのは変わらない。',
