@@ -141,6 +141,7 @@ import { cineToggle, cineToggleOn } from '../utils/cineToggles'; // 寄り演目
 import { cineFxVocab, cineFxBacklightTint, cineFxHasStreak, cineFxSetFor, cineFxTargetsSelf, cineFxPushFollow, cineFxShutterAt, cineFxWipeAt, cineFxDeathLight, cineFxRepeatMult, cineFxNearDust, cineFxMotes, cineFxDustStep, CINE_FX_SHUTTER_ALPHA, CINE_FX_SHUTTER_TINT, CINE_FX_WIPE_MS, CINE_FX_WIPE_COUNTER_MS, CINE_FX_WIPE_W_FRAC, CINE_FX_VIGNETTE_TO, CINE_FX_BACKLIGHT_W_MULT, CINE_FX_BACKLIGHT_ALPHA, CINE_FX_BACKLIGHT_STRETCH_TO, CINE_FX_RIM_ALPHA, CINE_FX_BOKEH, CINE_FX_BOKEH_BLOOD, CINE_FX_BLOOD_TINT, CINE_FX_BLOOD_DRIP_FRAC, CINE_FX_DUST_NEAR_SPEED, CINE_FX_DUST_FAR_SPEED, CINE_FX_DUST_DRIFT, CINE_FX_STAGGER_MS, type CineFxKind, type CineFxParticle } from '../utils/cineFx'; // 寄り演目のVFX(§8・v0.25.4306)
 import { applyCineKnobs, cineCameraAt, cineModeFor, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
 import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, type RimLight } from '../utils/rimLight'; // 向きの縁ライティング(§6)
+import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -6716,6 +6717,8 @@ export class PixiScene {
           this.isPointNearViewport(e.toX, e.toY, camera);
       case 'multiHit':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN);
+      case 'meleeHit':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.size);
       // ★v0.25.4324: default が無いと、新しい kind を足した時に undefined が返って
       // 「毎フレーム hideEffectView される=絵が一生出ない」黙った事故になる(v0.25.4322の炸裂で実際に踏んだ)。
       // 未知の kind は「出す」に倒す(カリングは最適化であって表示の条件ではない)。
@@ -27042,6 +27045,8 @@ export class PixiScene {
       }
       if (e.kind === 'damageNumber') {
         this.drawDamageNumber(e, now);
+      } else if (e.kind === 'meleeHit') {
+        this.drawMeleeHitSprite(e, now);
       } else if (e.kind === 'image') {
         this.drawImageEffect(e, now);
       } else if (e.kind === 'dogFetch') {
@@ -29391,6 +29396,36 @@ export class PixiScene {
   }
 
   // 一枚絵マーク(刀フィニッシュの習字「斬」など)。pop-in→保持→末尾フェード。world座標(effectLayer)。
+  /**
+   * 近接ヒットの炸裂(社長支給の実写VFX・v0.25.4334)。連番テクスチャを尺で送るだけ。
+   * ★素材が「芯→砕け→粒→消える」を既に持っているので、**こちら側で α を弄らない**
+   * (絵の薄れ方は素材が持っている。重ねて2回フェードさせると濁る)。
+   * 加算で出す=黒背景の実写をそのまま世界へ置ける(元素材にアルファは無い)。
+   */
+  private drawMeleeHitSprite(e: Extract<VisualEffect, { kind: 'meleeHit' }>, now: number) {
+    const t = Math.min(1, (now - e.createdAt) / Math.max(1, e.duration));
+    let sprite = this.effects.get(e.id);
+    if (!(sprite instanceof Sprite) || !(sprite as { __meleeHitFx?: boolean }).__meleeHitFx) {
+      if (sprite) sprite.destroy();
+      const sp0 = new Sprite();
+      (sp0 as unknown as { __meleeHitFx?: boolean }).__meleeHitFx = true;
+      sp0.anchor.set(0.5, 0.5);
+      sp0.blendMode = 'add';
+      this.L.effectLayer.addChild(sp0);
+      this.effects.set(e.id, sp0);
+      sprite = sp0;
+    }
+    const sp = sprite as Sprite;
+    const tex = getTexture(meleeHitTexture(meleeHitFrame(t)));
+    if (!tex) { sp.visible = false; return; }
+    sp.visible = true;
+    sp.texture = tex;
+    sp.scale.set(e.size / Math.max(1, tex.height));
+    sp.position.set(e.x, e.y);
+    sp.tint = e.tint;
+    sp.alpha = 1;
+  }
+
   private drawImageEffect(e: Extract<VisualEffect, { kind: 'image' }>, now: number) {
     const tex = getTexture(e.texture);
     let sp = this.effects.get(e.id);

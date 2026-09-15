@@ -2397,6 +2397,18 @@ export type VisualEffect =
       tint?: number; // 守護霊発は青白等(未指定=素のまま)
     }
   | {
+      // 近接ヒットの炸裂(社長支給の実写VFX・v0.25.4334)。爆発と同じ「連番テクスチャを尺で送る」型。
+      kind: 'meleeHit';
+      id: string;
+      x: number; y: number;
+      /** 表示高さ(world px)。 */
+      size: number;
+      /** 色寄せ(0xRRGGBB)。素材はシアンなので、既定は白へ寄せる。 */
+      tint: number;
+      createdAt: number;
+      duration: number;
+    }
+  | {
       kind: 'flash';
       id: string;
       color: string;          // e.g. 'rgba(255,255,255,0.8)' — overlays whole screen
