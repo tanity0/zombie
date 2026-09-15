@@ -288,6 +288,7 @@ import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal } from '../data/campaign';
 import { MELEE_HIT_MS } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
+import { urlNum } from '../utils/urlNum'; // URLの数値ツマミ(既定値へ確実に落とす・v0.25.4341)
 import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX(stage-ex1)専用分岐の判定
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
@@ -403,15 +404,17 @@ const DIRFX_ENABLED = typeof window === 'undefined' || new URLSearchParams(windo
 // 近接ヒットの炸裂(社長支給の実写VFX・v0.25.4334「VFXの試し1つ。近接当てた時用」)。
 // **試しなので即切れるようにする**: `?mhit=0` で完全に消え、v0.25.4333 と1ピクセルも変わらない。
 const MELEE_HIT_ON = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('mhit') !== '0';
-const MELEE_HIT_SIZE = (() => {
-  const v = typeof window === 'undefined' ? NaN : Number(new URLSearchParams(window.location.search).get('mhitsize'));
-  return Number.isFinite(v) && v > 0 ? v : 150; // 表示高さ(world px)。敵(約60px)の2.5倍=判定より大きく出す(派手さの絵)
-})();
+const MHIT_SEARCH = typeof window === 'undefined' ? '' : window.location.search;
+// 表示高さ(world px)。敵(約60px)の2.5倍=判定より大きく出す(派手さの絵)。
+const MELEE_HIT_SIZE = urlNum(MHIT_SEARCH, 'mhitsize', 150);
 // 素材はシアン。そのままだと**氷の技に見える**(色の文法を汚す)ので白へ寄せる。
-const MELEE_HIT_TINT = (() => {
-  const v = typeof window === 'undefined' ? NaN : Number(new URLSearchParams(window.location.search).get('mhittint'));
-  return Number.isFinite(v) ? v : 0xffeade;
-})();
+// ★v0.25.4341: ここは `Number(params.get(...))` を直に書いていて、**キーが無い時 0(=黒)に固定**
+// されていた(`Number(null)` は 0 で、`Number.isFinite(0)` が true のため既定値へ落ちない)。
+// 黒でtintすると加算合成が何も足さない=「VFXが出ない/影に見える」として4回社長の端末に出た。
+// 以後この種のツマミは `urlNum` を通す(同名のテストで固定してある)。
+const MELEE_HIT_TINT = urlNum(MHIT_SEARCH, 'mhittint', 0xffeade);
+// 尺(ms)。既定は素材側の MELEE_HIT_MS。`?mhitms=20000` で止めて1コマを見られる(確認用)。
+const MELEE_HIT_DUR = urlNum(MHIT_SEARCH, 'mhitms', MELEE_HIT_MS);
 // PACING_PUZZLE.md §5.23 M22 Group C(C3・既定ON): 1スイング/1発で複数の敵に当たった時、
 // プレイヤー頭上に「N HITS」bitmap-text+小フラッシュ(既存spawnRing/spawnGlow流用)。
 // `?multifx=0`で無効化。既存registerMultiHit(全6箇所の多段ヒット経路)に相乗り=呼び出し側の追加配線なし。
@@ -20146,7 +20149,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     get().spawnEffect({
       kind: 'meleeHit', id: `mhit-${now}-${(Math.random() * 1e6) | 0}`,
-      x, y, size, tint: MELEE_HIT_TINT, createdAt: now, duration: MELEE_HIT_MS,
+      x, y, size, tint: MELEE_HIT_TINT, createdAt: now, duration: MELEE_HIT_DUR,
     });
   },
 

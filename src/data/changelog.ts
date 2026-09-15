@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4341',
+    items: [
+      '近接で当てた時の炸裂が黒く塗られていた不具合を直した。影のような染みではなく、白い閃光として出る。',
+    ],
+  },
+  {
     version: '0.25.4340',
     items: [
       '近接で当てた時の炸裂を焼き直した。暗くて影のようにしか見えなかったのが、白い閃光として読める。',
