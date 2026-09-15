@@ -139,7 +139,7 @@ import { phillCageInitialRadiusPx } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { cineToggle, cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(URL+タイトル画面)
 import { cineFxVocab, cineFxBacklightTint, cineFxHasStreak, cineFxSetFor, cineFxTargetsSelf, cineFxPushFollow, cineFxShutterAt, cineFxWipeAt, cineFxDeathLight, cineFxRepeatMult, cineFxNearDust, cineFxMotes, cineFxDustStep, CINE_FX_SHUTTER_ALPHA, CINE_FX_SHUTTER_TINT, CINE_FX_WIPE_MS, CINE_FX_WIPE_COUNTER_MS, CINE_FX_WIPE_W_FRAC, CINE_FX_VIGNETTE_TO, CINE_FX_BACKLIGHT_W_MULT, CINE_FX_BACKLIGHT_ALPHA, CINE_FX_BACKLIGHT_STRETCH_TO, CINE_FX_RIM_ALPHA, CINE_FX_BOKEH, CINE_FX_BOKEH_BLOOD, CINE_FX_BLOOD_TINT, CINE_FX_BLOOD_DRIP_FRAC, CINE_FX_DUST_NEAR_SPEED, CINE_FX_DUST_FAR_SPEED, CINE_FX_DUST_DRIFT, CINE_FX_STAGGER_MS, type CineFxKind, type CineFxParticle } from '../utils/cineFx'; // 寄り演目のVFX(§8・v0.25.4306)
-import { applyCineKnobs, cineCameraAt, cineModeFor, thirdsAim, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, CINE_PLATE_NEAR_MARGIN_FRAC, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
+import { applyCineKnobs, cineCameraAt, cineModeFor, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
 import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, type RimLight } from '../utils/rimLight'; // 向きの縁ライティング(§6)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
@@ -7881,12 +7881,11 @@ export class PixiScene {
     const cinePushOnly = s.farBackdrop === 'tutorial' || s.farBackdrop === 'ending' || s.corridorMode || isExStageRun() || s.stageTheme === 'lab';
     const cineMode: CineMode = cineEv ? cineModeFor(cinePushOnly, this.idleZoom * this.contextZoom, s.zoomMag, cineEv.kind) : (cinePushOnly ? 'pushOnly' : 'full');
     const CINE_CAM_ENABLED = cineToggleOn('cinecam');
-    const CINE_PUSH_MULT = cineToggle('cinepush');
     const CINE_ORBIT_MULT = cineToggle('cineorbit');
-    const CINE_THIRDS_ON = cineToggleOn('cinethirds');
     const camRaw = cineEv && CINE_CAM_ENABLED ? cineCameraAt(cineEv.kind, now - cineEv.startAt, cineMode, cineEv.startFrac) : null;
     // 部品ごとのツマミを台本の出力に掛ける(純関数 applyCineKnobs・テスト済み)。
-    const cam: CineCamera | null = camRaw ? applyCineKnobs(camRaw, { push: CINE_PUSH_MULT, orbit: CINE_ORBIT_MULT, thirds: CINE_THIRDS_ON }) : null;
+    // ★押し込み・三分割は v0.25.4330 で削除したのでツマミも無い(社長指示「一番悪さしてたのは押し込み」)。
+    const cam: CineCamera | null = camRaw ? applyCineKnobs(camRaw, { orbit: CINE_ORBIT_MULT }) : null;
     // 戻りの形(v0.25.4295 クリエイティブ監査): 共有包絡線に演目の冪を掛ける(カウンター=保ってから速く落ちる/死亡=来た時より遅く帰る)。
     // zwarp(斜め)は素の zoomDecay を読む(下)。
     const zoomDecayCine = cam ? Math.pow(zoomDecay, cam.outPow) : zoomDecay;
@@ -7968,13 +7967,8 @@ export class PixiScene {
     // 三分割(v0.25.4294): 相手を中央に置かず、自機(処刑中は見た目位置 kvp)と相手(cineEvent の座標)の内分点を寄り先にする。
     // 台本が無い/構図を触らないモードでは従来どおり(kvp または zoomTarget を中央へ)。
     // v0.25.4296(監査6): 内分点(距離比)ではなく**画面上の置き場所**=相手を自機の反対側の縦三分割線へ、自機は枠内に残す。
-    const cinePx = kvp ? kvp.x : zpx, cinePy = kvp ? kvp.y : zpy;
-    const thirds = (cam && cam.thirds && cineEv && cineEv.hasTarget)
-      ? thirdsAim({ px: cinePx, py: cinePy, tx: cineEv.targetX, ty: cineEv.targetY, zoom, screenW: this.screenW, screenH: this.screenH,
-          nearMarginFrac: cinePlateKinds.has(cineEv.kind) ? CINE_PLATE_NEAR_MARGIN_FRAC : undefined, // 板を出す演目は自機を板の裏に隠さない
-          sideX: cineEv.sideX === 0 ? undefined : cineEv.sideX, sideY: cineEv.sideY === 0 ? undefined : cineEv.sideY }) // 側は開始時の値で固定(監査1)
-      : null;
-    const aimW = thirds ?? { x: kvp ? kvp.x : s.zoomTargetX, y: kvp ? kvp.y : s.zoomTargetY };
+    // ★三分割の構図は削除(社長指示2026-09-16「三分割も削除」)=相手は常に画面の中央に来る。
+    const aimW = { x: kvp ? kvp.x : s.zoomTargetX, y: kvp ? kvp.y : s.zoomTargetY };
     // 相手の側(+1=右)。横滑り・板の向きの基準。開始時に確定した側を使い、決まらない時(死亡=相手が自機)は zwarp の奥側(最も近い敵の側)で代用(監査4)。
     const cineSideX: 1 | -1 = cineEv && cineEv.sideX !== 0 ? cineEv.sideX : this.zwarpEventSide;
     const targetScreenX = this.L.world.position.x + aimW.x;
@@ -7990,7 +7984,15 @@ export class PixiScene {
     // 横滑りの戻りは寄せより遅く(√包絡線)=ズームが先に抜け、パンは後から静かに合流(同じ道を同じ速さで逆走しない)。
     // v0.25.4296(監査7): 向きは**自機側**へ(相手を三分割に留めたまま、自機側の縁=近景の板の側を見せる)。旧: 相手側(=斜めの奥)。
     const orbitPx = cam ? cam.orbitFrac * this.screenW * (-cineSideX) * Math.sqrt(zoomDecayCine) : 0;
-    const panRawX = (zoomAimsTarget ? (targetScreenX - centerX) * zoom * zoomDecayCine * ZOOM_TARGET_CENTER_FRAC : 0) + orbitPx;
+    // ★v0.25.4330 社長報告「横滑りが見てもわからない」の原因=**寄せと同じ枠を取り合って、
+    // クランプで丸ごと消えていた**。旧実装は「中央寄せ + 横滑り」を足してから ±panLimitX で切っており、
+    // 中央寄せだけで枠を使い切る場面(=相手が画面端に居る=キルの大半)では横滑りが1pxも残らない。
+    // ⇒ **横滑りのぶんを先に取り置き、中央寄せをその残りへ**クランプする。安全上限(画面外を露出しない)は
+    // 合計で守ったまま、横滑りは必ず出し切る。
+    const orbitClamped = Math.max(-panLimitX, Math.min(panLimitX, orbitPx));
+    const centerRoom = Math.max(0, panLimitX - Math.abs(orbitClamped));
+    const centerRawX = zoomAimsTarget ? (targetScreenX - centerX) * zoom * zoomDecayCine * ZOOM_TARGET_CENTER_FRAC : 0;
+    const panRawX = Math.max(-centerRoom, Math.min(centerRoom, centerRawX)) + orbitClamped;
     const panRawY = zoomAimsTarget ? (targetScreenY - centerY) * zoom * zoomDecayCine * ZOOM_TARGET_CENTER_FRAC : 0;
     this.cineAimY = zoomAimsTarget ? aimW.y : null; // ピント帯(tilt-shift)が同じ寄り先を見る
     const panX = Math.max(-panLimitX, Math.min(panLimitX, panRawX));
@@ -29841,7 +29843,7 @@ export class PixiScene {
       if (this.cineFxWipe) {
         const dur = kind === 'counter' ? CINE_FX_WIPE_COUNTER_MS : CINE_FX_WIPE_MS;
         const w = cineFxWipeAt(t - CINE_FX_STAGGER_MS[1], dur); // +2コマ遅れ
-        const originX = W * 0.5 + (c.thirds ? sideX * W * (1 / 6) : 0);
+        const originX = W * 0.5; // 三分割は削除したので常に中央(v0.25.4330)
         this.cineFxWipe.visible = w.alpha > 0.001;
         this.cineFxWipe.tint = cineFxHasStreak(vocab) ? cineFxBacklightTint(vocab) : 0xffffff;
         this.cineFxWipe.width = W * CINE_FX_WIPE_W_FRAC;

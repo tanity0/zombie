@@ -35,21 +35,12 @@ export interface CineCamera {
 // 横滑りは長く怠く・押し込みは短く鋭く(尺で性格を分ける)/カウンターの行き過ぎを見える量に/振りは速く出てゆっくり戻る/
 // 死亡は着いて止めてから来た時より遅く帰る。
 // ---- KILL/処刑 ----
-export const CINE_KILL_CUT_FRAC = 0.2;       // カット(命中の瞬間に飛ぶ寄り)。**1.2→2.0 へ押し込む**
                                              // (0.7→0.5→**0.2**。v0.25.4313 社長「押し込みが切っても違いがわからない。もう少し数値広げて」)
-export const CINE_KILL_PUSH_START_MS = 100;  // ストップ明けから押し込み(HITSTOP_MS と同じ)
-export const CINE_KILL_PUSH_MS = 270;        // 保持560msの前半で100%へ(「一番寄る瞬間=スローの一番遅い区間」の裁定を保つ)。v0.25.4313: 224→270
 export const CINE_KILL_ORBIT_FRAC = 0.14;    // 横滑り(画面幅比・v0.25.4301: 0.08→0.14)
 export const CINE_KILL_ORBIT_START_MS = 200; // 押し込みの後半から重ねて滑り出す(終点と始点を同じ瞬間にしない=速度0の角を作らない)
 export const CINE_KILL_ORBIT_MS = 260;       // 長く怠く(押し込みより長い)。t=460 で到達=斜め(zwarp)がほどけ切る頃に合わせる
 export const CINE_KILL_OUT_POW = 1;
 // ---- 処刑(致命=ボス級・forceMaximumZoom)・v0.25.4296: 長い保持と二拍目 ----
-export const CINE_EXEC_CUT_FRAC = 0.12;       // カットは KILL より広く(0.6→0.4→**0.12**・v0.25.4313)。1.12→1.92→2.0 の二拍
-export const CINE_EXEC_PUSH1_START_MS = 100;
-export const CINE_EXEC_PUSH1_MS = 260;        // 一拍目: 60→92%
-export const CINE_EXEC_PUSH1_TO = 0.92;
-export const CINE_EXEC_PUSH2_START_MS = 560;  // 止め(200ms)の後、二拍目: 92→100%
-export const CINE_EXEC_PUSH2_MS = 200;
 export const CINE_EXEC_ORBIT_FRAC = 0.18;     // v0.25.4301: 0.10→0.18
 export const CINE_EXEC_ORBIT_START_MS = 250;
 export const CINE_EXEC_ORBIT_MS = 420;        // 長く怠く
@@ -84,7 +75,7 @@ const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const easeOutCubic = (u: number) => 1 - (1 - u) ** 3;
 const easeInQuad = (u: number) => u * u;
 const smoothstep = (u: number) => u * u * (3 - 2 * u);
-const easeInOutCubic = (u: number) => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2);
+// (押し込み削除で未使用になったため撤去) const easeInOutCubic = (u: number) => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2);
 // 行き過ぎて止まる(back)。板の滑り込みに使う=慣性MUST。
 const easeOutBack = (u: number) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * (u - 1) ** 3 + c1 * (u - 1) ** 2; };
 
@@ -108,18 +99,10 @@ export const cineModeFor = (pushOnly: boolean, baseZoom: number, zoomMag: number
  * - `push` 0 = 押し込み無し(カットの瞬間に100%寄る)。0.5 = 半分。1 = 台本どおり。
  * - `orbit` は横滑りの倍率。`thirds` false で構図を切る。
  */
-export const applyCineKnobs = (
-  cam: CineCamera,
-  knobs: { push: number; orbit: number; thirds: boolean },
-): CineCamera => {
-  if (knobs.push === 1 && knobs.orbit === 1 && knobs.thirds) return cam;
-  return {
-    ...cam,
-    zoomFrac: 1 - (1 - cam.zoomFrac) * knobs.push,
-    orbitFrac: cam.orbitFrac * knobs.orbit,
-    pushNorm: knobs.push === 0 ? 1 : cam.pushNorm,
-    thirds: cam.thirds && knobs.thirds,
-  };
+// ★押し込み・三分割は削除したのでツマミも無い(社長指示2026-09-16)。残るのは横滑りだけ。
+export const applyCineKnobs = (cam: CineCamera, knobs: { orbit: number }): CineCamera => {
+  if (knobs.orbit === 1) return cam;
+  return { ...cam, orbitFrac: cam.orbitFrac * knobs.orbit };
 };
 
 export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode, startFrac?: number): CineCamera => {
@@ -128,25 +111,19 @@ export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode, startF
   // 割り込み時の持ち越し: カット/開始の倍率を前の演目の実効値から始める(1フレームで20%引くような pop を作らない)。
   const from = (def: number) => (startFrac !== undefined && Number.isFinite(startFrac) ? Math.max(def, Math.min(1.2, startFrac)) : def);
   switch (kind) {
+    // ★押し込み(カット倍率から最大まで寄っていく動き)は**削除**(社長指示2026-09-16
+    // 「押し込みは削除」「**一番悪さしてたのは押し込みだった**」)。命中した瞬間に最大まで寄り切る。
+    // 三分割の構図も**削除**(同指示)=相手は常に画面の中央に来る。
     case 'kill': {
-      const cut = from(CINE_KILL_CUT_FRAC);
-      const zoomFrac = t < CINE_KILL_PUSH_START_MS
-        ? cut
-        : cut + (1 - cut) * easeOutCubic(clamp01((t - CINE_KILL_PUSH_START_MS) / CINE_KILL_PUSH_MS));
       const ou = clamp01((t - CINE_KILL_ORBIT_START_MS) / CINE_KILL_ORBIT_MS);
-      return { zoomFrac, orbitFrac: full ? CINE_KILL_ORBIT_FRAC * smoothstep(ou) : 0, thirds: full, outPow: CINE_KILL_OUT_POW,
-        pushNorm: clamp01((zoomFrac - CINE_KILL_CUT_FRAC) / (1 - CINE_KILL_CUT_FRAC)) };
+      return { zoomFrac: 1, orbitFrac: full ? CINE_KILL_ORBIT_FRAC * smoothstep(ou) : 0, thirds: false,
+        outPow: CINE_KILL_OUT_POW, pushNorm: 1 };
     }
     case 'execute': {
-      // 一拍目(60→92%)→止め→二拍目(92→100%)。横滑りは長く。
-      let zoomFrac: number;
-      const cut = Math.min(CINE_EXEC_PUSH1_TO, from(CINE_EXEC_CUT_FRAC));
-      if (t < CINE_EXEC_PUSH1_START_MS) zoomFrac = cut;
-      else if (t < CINE_EXEC_PUSH2_START_MS) zoomFrac = cut + (CINE_EXEC_PUSH1_TO - cut) * easeOutCubic(clamp01((t - CINE_EXEC_PUSH1_START_MS) / CINE_EXEC_PUSH1_MS));
-      else zoomFrac = CINE_EXEC_PUSH1_TO + (1 - CINE_EXEC_PUSH1_TO) * easeInOutCubic(clamp01((t - CINE_EXEC_PUSH2_START_MS) / CINE_EXEC_PUSH2_MS));
+      // 旧: 一拍目(60→92%)→止め→二拍目(92→100%)。これも押し込みなので削除。横滑りだけ残す。
       const ou = clamp01((t - CINE_EXEC_ORBIT_START_MS) / CINE_EXEC_ORBIT_MS);
-      return { zoomFrac, orbitFrac: full ? CINE_EXEC_ORBIT_FRAC * smoothstep(ou) : 0, thirds: full, outPow: CINE_EXEC_OUT_POW,
-        pushNorm: clamp01((zoomFrac - CINE_EXEC_CUT_FRAC) / (1 - CINE_EXEC_CUT_FRAC)) };
+      return { zoomFrac: 1, orbitFrac: full ? CINE_EXEC_ORBIT_FRAC * smoothstep(ou) : 0, thirds: false,
+        outPow: CINE_EXEC_OUT_POW, pushNorm: 1 };
     }
     case 'counter': {
       const u = clamp01(t / CINE_COUNTER_IN_MS);
@@ -159,7 +136,7 @@ export const cineCameraAt = (kind: CineKind, tMs: number, mode: CineMode, startF
           ? -CINE_COUNTER_ORBIT_FRAC * easeOutCubic(t1 / CINE_COUNTER_ORBIT_OUT_MS)
           : -CINE_COUNTER_ORBIT_FRAC * (1 - easeOutCubic(clamp01((t1 - CINE_COUNTER_ORBIT_OUT_MS) / CINE_COUNTER_ORBIT_BACK_MS)));
       }
-      return { zoomFrac, orbitFrac: full ? orbit : 0, thirds: full, outPow: CINE_COUNTER_OUT_POW, pushNorm: 1 };
+      return { zoomFrac, orbitFrac: full ? orbit : 0, thirds: false, outPow: CINE_COUNTER_OUT_POW, pushNorm: 1 };
     }
     case 'death': {
       // 止まらずにじり寄る(ease-in)→保持(DEATH_ZOOM_HOLD_MS までの残り)で止める→来た時より遅く帰る(outPow<1)

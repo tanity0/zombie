@@ -1,32 +1,39 @@
 import { describe, it, expect } from 'vitest';
 import {
-  cineCameraAt, cineAccepts, cineSideOf, CINE_KILL_CUT_FRAC, CINE_KILL_PUSH_START_MS, CINE_KILL_PUSH_MS,
+  cineCameraAt, cineAccepts, cineSideOf,
   CINE_KILL_ORBIT_START_MS, CINE_KILL_ORBIT_MS, CINE_KILL_ORBIT_FRAC, CINE_COUNTER_OVERSHOOT, CINE_COUNTER_IN_MS,
   CINE_COUNTER_ORBIT_OUT_MS, CINE_COUNTER_ORBIT_BACK_MS, CINE_COUNTER_ORBIT_FRAC, CINE_DEATH_FROM_FRAC, CINE_DEATH_IN_MS, type CineEvent,
-  thirdsAim, cinePlateIn, cinePlateKinds, CINE_EXEC_CUT_FRAC, CINE_EXEC_PUSH1_TO, CINE_EXEC_PUSH2_START_MS, CINE_EXEC_PUSH2_MS,
+  thirdsAim, cinePlateIn, cinePlateKinds,
   CINE_THIRDS_X_FRAC, CINE_FRAME_MARGIN_FRAC, CINE_PLATE_IN_MS, cineModeFor, CINE_PLATE_W_FRAC, CINE_PLATE_NEAR_MARGIN_FRAC,
-  applyCineKnobs, CINE_EXEC_CUT_FRAC as EXEC_CUT,
+  applyCineKnobs,
 } from './cineCamera';
 
 describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v2・社長承認2026-09-14)', () => {
-  it('KILL: カット(CINE_KILL_CUT_FRAC・v0.25.4313で20%)で始まり、ストップ明けから押し込んで保持の前半で100%(最大寄り=スローの最遅区間の裁定を保つ)', () => {
-    expect(cineCameraAt('kill', 0, 'full').zoomFrac).toBe(CINE_KILL_CUT_FRAC);
-    expect(cineCameraAt('kill', CINE_KILL_PUSH_START_MS - 1, 'full').zoomFrac).toBe(CINE_KILL_CUT_FRAC);
-    const mid = cineCameraAt('kill', CINE_KILL_PUSH_START_MS + CINE_KILL_PUSH_MS / 2, 'full').zoomFrac;
-    expect(mid).toBeGreaterThan(CINE_KILL_CUT_FRAC); expect(mid).toBeLessThan(1);
-    expect(cineCameraAt('kill', CINE_KILL_PUSH_START_MS + CINE_KILL_PUSH_MS, 'full').zoomFrac).toBeCloseTo(1, 9);
-    expect(CINE_KILL_PUSH_START_MS + CINE_KILL_PUSH_MS).toBeLessThanOrEqual(100 + 560 * 0.5);
+  it('★押し込みは削除(社長指示2026-09-16「一番悪さしてたのは押し込みだった」): どの瞬間でも最大寄り', () => {
+    for (const t of [0, 1, 50, 99, 100, 200, 300, 560, 1000]) {
+      expect(cineCameraAt('kill', t, 'full').zoomFrac, `kill t=${t}`).toBe(1);
+      expect(cineCameraAt('execute', t, 'full').zoomFrac, `execute t=${t}`).toBe(1);
+    }
+    // 割り込みの持ち越し(startFrac)でも寄りは下がらない=途中から始まっても弱くならない
+    for (const f of [0.1, 0.5, 0.95]) {
+      expect(cineCameraAt('kill', 0, 'full', f).zoomFrac).toBe(1);
+      expect(cineCameraAt('execute', 0, 'full', f).zoomFrac).toBe(1);
+    }
   });
-  it('KILL: 横滑りは押し込みの後半から重ねて立ち上がる(終点と始点を同じ瞬間にしない)。三分割は full のみ。cutPush/pushOnly では構図を触らない', () => {
-    expect(CINE_KILL_ORBIT_START_MS).toBeLessThan(CINE_KILL_PUSH_START_MS + CINE_KILL_PUSH_MS);
-    expect(CINE_KILL_ORBIT_START_MS).toBeGreaterThan(CINE_KILL_PUSH_START_MS);
+  it('★三分割の構図も削除(同指示): どの演目・どのモードでも thirds は立たない', () => {
+    for (const k of ['kill', 'execute', 'counter', 'death', 'rescue'] as const) {
+      for (const m of ['full', 'cutPush', 'pushOnly'] as const) {
+        expect(cineCameraAt(k, 500, m).thirds, `${k}/${m}`).toBe(false);
+      }
+    }
+  });
+  it('KILL: 横滑りは残る(遅れて立ち上がる)。cutPush/pushOnly では構図を触らない', () => {
     expect(cineCameraAt('kill', CINE_KILL_ORBIT_START_MS, 'full').orbitFrac).toBe(0);
     expect(cineCameraAt('kill', CINE_KILL_ORBIT_START_MS + CINE_KILL_ORBIT_MS, 'full').orbitFrac).toBeCloseTo(CINE_KILL_ORBIT_FRAC, 9);
-    expect(cineCameraAt('kill', 500, 'full').thirds).toBe(true);
     for (const m of ['cutPush', 'pushOnly'] as const) {
       const c = cineCameraAt('kill', 500, m);
-      expect(c.orbitFrac).toBe(0); expect(c.thirds).toBe(false);
-      expect(c.zoomFrac).toBeCloseTo(1, 9); // 押し込みは残る
+      expect(c.orbitFrac).toBe(0);
+      expect(c.zoomFrac).toBeCloseTo(1, 9);
     }
   });
   it('カウンター: (1+CINE_COUNTER_OVERSHOOT)→100%のばねで入り、逆側へ速く出て(60ms)ゆっくり戻る(180ms)=往復は対称ではない。戻りは硬く切る(outPow>1)', () => {
@@ -66,43 +73,22 @@ describe('ダイナミック・カメラワーク(research/CINEMATIC_CAMERA.md v
     // 処刑(1.0まで寄り切っている)に死亡が割り込む: 60%から始めず 1.0 から(1フレームで引かない)
     expect(cineCameraAt('death', 0, 'full', 1.0).zoomFrac).toBeCloseTo(1, 9);
     expect(cineCameraAt('death', 0, 'full').zoomFrac).toBe(CINE_DEATH_FROM_FRAC);
-    // KILL に execute が割り込む: カットは今の倍率(0.95)から=60%へ落とさない(ただし一拍目の到達92%は超えない)
-    expect(cineCameraAt('execute', 0, 'full', 0.95).zoomFrac).toBeCloseTo(0.92, 9);
+    // ★押し込み削除後(v0.25.4330): 処刑は持ち越しに関係なく最初から最大寄り=割り込みで弱くならない
+    expect(cineCameraAt('execute', 0, 'full', 0.95).zoomFrac).toBe(1);
   });
 });
 
-describe('部品スイッチ(タイトル画面/URL・v0.25.4313): 台本の出力に掛ける純関数', () => {
-  const at = (t: number) => cineCameraAt('kill', t, 'full');
-  it('押し込み=切 は「カットの瞬間から100%」。台本の途中経過に関係なく常に 1', () => {
-    for (const t of [0, 50, 100, 200, 400]) {
-      expect(applyCineKnobs(at(t), { push: 0, orbit: 1, thirds: true }).zoomFrac, `t=${t}`).toBe(1);
-    }
-    expect(applyCineKnobs(at(0), { push: 0, orbit: 1, thirds: true }).pushNorm).toBe(1); // 板・減光も寄り切り扱い
-  });
-  it('押し込み=入 とは**カットの瞬間に明確な差**が出る(でないと切り分けにならない)', () => {
-    const on = at(0).zoomFrac, off = applyCineKnobs(at(0), { push: 0, orbit: 1, thirds: true }).zoomFrac;
-    expect(off - on).toBeGreaterThan(0.5); // 寄り幅の半分以上=2倍ズームで画面が目に見えて違う
-  });
-  it('0.5 で半分、1 で素通し(同じ参照を返す)', () => {
-    const half = applyCineKnobs(at(0), { push: 0.5, orbit: 1, thirds: true }).zoomFrac;
-    expect(half).toBeCloseTo(1 - (1 - at(0).zoomFrac) * 0.5, 9);
-    const raw = at(300);
-    expect(applyCineKnobs(raw, { push: 1, orbit: 1, thirds: true })).toBe(raw);
-  });
-  it('横滑りと三分割も個別に切れる(他の項目は巻き添えにしない)', () => {
+describe('部品スイッチ: 残るのは横滑りだけ(押し込み・三分割は v0.25.4330 で削除)', () => {
+  it('横滑りを切っても、寄りは巻き添えにしない', () => {
     const c = cineCameraAt('kill', 460, 'full');
-    const noOrbit = applyCineKnobs(c, { push: 1, orbit: 0, thirds: true });
+    const noOrbit = applyCineKnobs(c, { orbit: 0 });
     expect(noOrbit.orbitFrac).toBe(0);
     expect(noOrbit.zoomFrac).toBe(c.zoomFrac);
-    expect(noOrbit.thirds).toBe(true);
-    const noThirds = applyCineKnobs(c, { push: 1, orbit: 1, thirds: false });
-    expect(noThirds.thirds).toBe(false);
-    expect(noThirds.orbitFrac).toBe(c.orbitFrac);
   });
-  it('処刑(execute)も同じだけ差が出る(一振りで再生の既定経路はこちら)', () => {
-    const e0 = cineCameraAt('execute', 0, 'full').zoomFrac;
-    expect(e0).toBe(EXEC_CUT);
-    expect(1 - e0).toBeGreaterThan(0.5);
+  it('0.5 で半分、1 で素通し(同じ参照を返す)', () => {
+    const c = cineCameraAt('kill', 460, 'full');
+    expect(applyCineKnobs(c, { orbit: 0.5 }).orbitFrac).toBeCloseTo(c.orbitFrac * 0.5, 9);
+    expect(applyCineKnobs(c, { orbit: 1 })).toBe(c);
   });
 });
 
@@ -122,12 +108,10 @@ describe('モード(§2-6・v0.25.4300〜4301): pan が効くかは「演目の�
 });
 
 describe('第2弾(v0.25.4296): 処刑の別台本・画面上の三分割・近景の板', () => {
-  it('処刑(execute): カットは KILL より広く、一拍目→止め→二拍目で100%。優先順は kill より上・death より下', () => {
-    expect(cineCameraAt('execute', 0, 'full').zoomFrac).toBe(CINE_EXEC_CUT_FRAC);
-    expect(CINE_EXEC_CUT_FRAC).toBeLessThan(CINE_KILL_CUT_FRAC);
-    const hold = cineCameraAt('execute', CINE_EXEC_PUSH2_START_MS - 1, 'full').zoomFrac;
-    expect(hold).toBeCloseTo(CINE_EXEC_PUSH1_TO, 2); // 止めの間は92%
-    expect(cineCameraAt('execute', CINE_EXEC_PUSH2_START_MS + CINE_EXEC_PUSH2_MS, 'full').zoomFrac).toBeCloseTo(1, 9);
+  it('処刑(execute): 押し込み削除で常に最大寄り(v0.25.4330)。優先順は kill より上・death より下', () => {
+    for (const t of [0, 100, 300, 560, 760, 1100]) {
+      expect(cineCameraAt('execute', t, 'full').zoomFrac, `t=${t}`).toBe(1);
+    }
     const kill: CineEvent = { kind: 'kill', startAt: 0, endAt: 700, hasTarget: true, targetX: 0, targetY: 0, sideX: 1, sideY: 1 };
     expect(cineAccepts(kill, 'execute', 100)).toBe(true);
     const exec: CineEvent = { kind: 'execute', startAt: 0, endAt: 1100, hasTarget: true, targetX: 0, targetY: 0, sideX: 1, sideY: 1 };

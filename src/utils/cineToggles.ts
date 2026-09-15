@@ -7,13 +7,11 @@
 // ★URLのツマミ(`?cinepush=0` 等)は従来どおり効く。**URLで明示された項目は画面から変えられない**
 // (URLが正=切り分け中に画面側の保存で上書きされない)。
 
-export type CineToggleKey = 'cinecam' | 'cinepush' | 'cineorbit' | 'cinethirds' | 'cineplates' | 'cinefx' | 'cinedemo';
+export type CineToggleKey = 'cinecam' | 'cineorbit' | 'cineplates' | 'cinefx' | 'cinedemo';
 
 /** 画面に出す並び順と説明(タイトル画面のパネルが引く台帳=文言を2箇所で持たない)。 */
 export const CINE_TOGGLES: { key: CineToggleKey; label: string; hint: string }[] = [
-  { key: 'cinepush',   label: '押し込み',   hint: '切ると当たった瞬間に最大まで寄る' },
   { key: 'cineorbit',  label: '横滑り',     hint: 'カメラが横へ流れる' },
-  { key: 'cinethirds', label: '三分割の構図', hint: '切ると相手が画面の真ん中に来る' },
   { key: 'cineplates', label: '近景の板',   hint: '縁に割り込む木の幹と霧' },
   { key: 'cinefx',     label: 'VFX(作り直し中)', hint: '逆光・光の輪・埃・沈み込み。既定は切' },
   { key: 'cinecam',    label: 'カメラ台本', hint: '切ると全部止まって素の寄りだけになる' },
@@ -23,7 +21,7 @@ export const CINE_TOGGLES: { key: CineToggleKey; label: string; hint: string }[]
 // ★cinefx の既定を 0(切)にした(v0.25.4315・社長「VFX全然ちがう。レゾナンスみたいじゃない。意味不明な感じになってる」)。
 // 作り直すまで**出荷の見え方から外す**。パネルで入にすれば従来どおり出る(素材も実装も消していない)。
 const DEFAULTS: Record<CineToggleKey, number> = {
-  cinecam: 1, cinepush: 1, cineorbit: 1, cinethirds: 1, cineplates: 1, cinefx: 0, cinedemo: 0,
+  cinecam: 1, cineorbit: 1, cineplates: 1, cinefx: 0, cinedemo: 0,
 };
 
 const STORAGE_PREFIX = 'zombie:cine:';
