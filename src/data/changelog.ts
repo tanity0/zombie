@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4331',
+    items: [
+      '城のボスを倒した後の崩落を作り直した。城は激しく揺れ、支えを失って傾き、瓦礫を落としながら倒れる。土煙は七度に分けて噴き上がり、最後に地面へ落ちた衝撃で足元が割れる。',
+    ],
+  },
+  {
     version: '0.25.4330',
     items: [
       'とどめの寄りが、じわじわ寄るのをやめて当たった瞬間に寄り切るようになった。相手は画面の真ん中に来る。',

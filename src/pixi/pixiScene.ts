@@ -9465,7 +9465,9 @@ export class PixiScene {
     // ★崩落(v0.25.3983・社長指示「城ボス倒したら、城も崩れて消えて」): 震え(前23%)→加速沈下+
     // フェード(残り)。慣性の掟=等速・瞬間消滅を作らない(震えが「崩れ始め」の予告、沈下は重力=t²で加速)。
     // 終わったら以後この関数の頭で消したまま(壁判定・方角マーカーはstore/syncArrows側で同じ打刻を見る)。
-    const CASTLE_COLLAPSE_MS = 2200;
+    // ★v0.25.4331(社長指示2026-09-16「もっと派手にガラガラさせて」): 尺を伸ばし、
+    // 震えを大きくし、**傾いてから落ちる**動きを足した(真っすぐ沈むだけだと「エレベーター」に見える)。
+    const CASTLE_COLLAPSE_MS = 3400;
     const colP = castle.collapsedAt !== undefined
       ? Math.min(1, (now - castle.collapsedAt) / CASTLE_COLLAPSE_MS)
       : null;
@@ -9481,14 +9483,22 @@ export class PixiScene {
     const pulse = (castle.bossSpawned && colP === null) ? 0.75 + 0.25 * Math.sin(now / 260) : 0;
     const targetH = CASTLE_TARGET_HEIGHT * d;
     const sc = targetH / tex.height;
-    const COLLAPSE_TREMOR_FRAC = 0.23;
+    const COLLAPSE_TREMOR_FRAC = 0.30;                        // 落ちる前に「持ちこたえる」時間を長く
     const sinkP = colP === null ? 0 : Math.max(0, (colP - COLLAPSE_TREMOR_FRAC) / (1 - COLLAPSE_TREMOR_FRAC));
-    const sinkPx = sinkP * sinkP * targetH * 1.05; // 加速沈下(t²=重力)。1.05=丈の少し先まで沈めて確実に地面下へ
+    const sinkPx = sinkP * sinkP * targetH * 1.12; // 加速沈下(t²=重力)。丈の少し先まで沈めて確実に地面下へ
+    // 震えは**大きく**(3.5→14px)。周期も2本重ねて単調な正弦にしない(機械的な揺れに見せない)。
     const tremorPx = colP === null ? 0
-      : Math.sin(now / 26) * (colP < COLLAPSE_TREMOR_FRAC
-        ? 3.5 * (0.4 + 0.6 * (colP / COLLAPSE_TREMOR_FRAC)) // 震えは徐々に強く(立ち上がりの慣性)
-        : 2.5 * (1 - sinkP));                               // 沈下中は減衰しながら揺れ続ける
-    const colFade = colP === null ? 1 : Math.max(0, 1 - sinkP * 1.15); // 沈み切る少し前に消え切る
+      : (Math.sin(now / 19) * 0.75 + Math.sin(now / 7.5) * 0.25) * (colP < COLLAPSE_TREMOR_FRAC
+        ? 14 * (0.25 + 0.75 * (colP / COLLAPSE_TREMOR_FRAC))  // 震えは徐々に強く(立ち上がりの慣性)
+        : 11 * (1 - sinkP * 0.7));                            // 沈下中も強く揺れ続ける
+    // ★傾いてから落ちる。倒れる側は城のx座標で決め打ちせず、毎回同じにならないよう打刻で決める
+    // (同じ城を2回見ることは無いが、ステージごとに逆へ倒れる=「型」に見えない)。
+    const leanSide = castle.collapsedAt !== undefined && (castle.collapsedAt & 1) === 0 ? 1 : -1;
+    const leanRad = colP === null ? 0
+      : leanSide * 0.16 * (colP < COLLAPSE_TREMOR_FRAC
+        ? 0.18 * (colP / COLLAPSE_TREMOR_FRAC) * (colP / COLLAPSE_TREMOR_FRAC) // 予兆としてわずかに傾く
+        : 0.18 + 0.82 * (sinkP * sinkP));                                      // 落ちながら本格的に倒れる
+    const colFade = colP === null ? 1 : Math.max(0, 1 - sinkP * sinkP * 1.25); // 終盤で一気に消える(遅く消える=土煙に呑まれる)
 
     // 接地影は syncShadows のソフト方向影に統一(他のオブジェクトと同じプール経路)。
     // 幅は城スプライトの見た目幅基準だが、巨大ブロブを避けるため控えめに抑える。
@@ -9505,6 +9515,8 @@ export class PixiScene {
 
     this.castleView.visible = true;
     this.castleView.position.set(Math.round(castle.x + tremorPx), Math.round(castle.y + CASTLE_FOOT_OFFSET_Y * d + sinkPx));
+    // ★傾き(v0.25.4331)。城スプライトのアンカーは足元なので、回すと足を軸に倒れる=支えを失った形になる。
+    this.castleView.rotation = leanRad;
     // プレイヤーが城の裏に回り込んだら透かす(木/壁/プロップと同じ規格)。将来のダンジョン系オブジェも同様に。
     const stMult = this.seeThroughMult(castle.x, footY, tex.width * sc, targetH);
     const targetAlpha = Math.min(0.96, horizonAlpha * 0.9) * stMult;

@@ -3197,13 +3197,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (cdr.at !== cco.collapsedAt) { cdr.at = cco.collapsedAt; cdr.wave = 0; }
             const colElapsed = Date.now() - cco.collapsedAt;
             const CASTLE_FOOT_OFFSET_Y_MIRROR = 38; // gameStore/pixiSceneのCASTLE_FOOT_OFFSET_Yと同値(既存2箇所と同じ写し)
-            const DUST_WAVES_MS = [700, 1300];
+            // ★v0.25.4331(社長指示「もっと派手にガラガラさせて」): 2波→**7波**。尺も 2200→3400ms へ伸びた。
+            // 波ごとに強さ・幅・瓦礫の量を変える(全部同じ強さで等間隔だと機械的な点滅に見える)。
+            // 最後の波(3000ms)は**着地**=いちばん大きい揺れと土煙を出して締める。
+            const DUST_WAVES_MS = [420, 760, 1120, 1520, 2000, 2500, 3000];
+            const st0 = useGameStore.getState();
             while (cdr.wave < DUST_WAVES_MS.length && colElapsed >= DUST_WAVES_MS[cdr.wave]) {
+              const w = cdr.wave;
+              const last = w === DUST_WAVES_MS.length - 1;
               const dfy = cco.y + CASTLE_FOOT_OFFSET_Y_MIRROR;
-              spawnBurst(cco.x - 45 + 90 * Math.random(), dfy - 6, cdr.wave === 0 ? '#9ca3af' : '#6b7280', 16);
-              spawnBurst(cco.x - 80, dfy - 2, '#6b7280', 10);
-              spawnBurst(cco.x + 80, dfy - 2, '#6b7280', 10);
-              spawnRing(cco.x, dfy, 16, 170 + 50 * cdr.wave, 'rgba(148,163,184,0.6)', 4, 700);
+              const grow = 0.6 + w * 0.22;            // 進むほど大きく(崩れは加速する)
+              const wide = 70 + w * 28;               // 進むほど広く
+              spawnBurst(cco.x - wide / 2 + wide * Math.random(), dfy - 6, w % 2 === 0 ? '#9ca3af' : '#6b7280', Math.round(18 * grow));
+              spawnBurst(cco.x - wide, dfy - 2, '#6b7280', Math.round(12 * grow));
+              spawnBurst(cco.x + wide, dfy - 2, '#6b7280', Math.round(12 * grow));
+              spawnRing(cco.x, dfy, 16, (150 + 60 * w) * (last ? 1.9 : 1), 'rgba(148,163,184,0.6)', 4, last ? 1100 : 700);
+              // 瓦礫は**崩れている途中ほど多く**落ちる。着地の波で一番派手に散らす。
+              st0.spawnRubble(cco.x, dfy - 30 - w * 6, last ? 26 : 8 + w * 2, wide * 1.6);
+              // 揺れは波ごとに一度。着地だけ大きく長く(社長「ガラガラ」=地面に来る衝撃)。
+              st0.triggerShake(last ? 900 : 260, last ? 11 : 3 + w * 0.6);
+              if (last) {
+                st0.spawnImageMark(cco.x, dfy, 'fx/ground-crack', { scale: 3.2, duration: 3000 });
+                spawnRing(cco.x, dfy, 24, 420, 'rgba(203,213,225,0.5)', 6, 1300);
+              }
               cdr.wave += 1;
             }
           }

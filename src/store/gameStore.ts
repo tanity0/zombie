@@ -848,13 +848,17 @@ const collapseCastleOnBossDeath = (enemy: Enemy): void => {
   if (enemy.type !== 'giantbat' || enemy.isStoryBoss) return;
   if (enemy.homeX !== castle.x || enemy.homeY !== castle.y) return;
   useGameStore.setState(s => ({ castleEvent: { ...s.castleEvent, collapsedAt: Date.now() } }));
-  // 崩落開始の砂埃+地響き(②派手さの絵=判定なし。以後の砂埃の波はuseGameLoopが時刻で積む)。
+  // 崩落開始の砂埃+瓦礫+地響き(②派手さの絵=判定なし。以後の波はuseGameLoopが時刻で積む)。
+  // ★v0.25.4331(社長指示2026-09-16「もっと派手にガラガラさせて」): 量・幅・揺れを増やし、
+  // **落ちて転がる瓦礫**を足した(「ガラガラ」は砂埃だけでは出ない=固体が落ちる音と絵が要る)。
   const fy = castleFootY(castle);
-  st.spawnBurst(castle.x, fy, '#9ca3af', 24);
-  st.spawnBurst(castle.x - 55, fy - 8, '#6b7280', 14);
-  st.spawnBurst(castle.x + 55, fy - 8, '#6b7280', 14);
-  st.spawnRing(castle.x, fy, 20, 230, 'rgba(148,163,184,0.75)', 6, 900);
-  st.triggerShake(650, 5);
+  st.spawnBurst(castle.x, fy, '#9ca3af', 44);
+  for (const dx of [-120, -70, -30, 30, 70, 120]) st.spawnBurst(castle.x + dx, fy - 8, '#6b7280', 16);
+  st.spawnRing(castle.x, fy, 20, 300, 'rgba(148,163,184,0.8)', 7, 1000);
+  st.spawnRing(castle.x, fy, 10, 190, 'rgba(203,213,225,0.55)', 4, 700);
+  st.spawnImageMark(castle.x, fy, 'fx/ground-crack', { scale: 2.4, duration: 2600 }); // 足元が割れる
+  st.spawnRubble(castle.x, fy - 20, 18, 190);
+  st.triggerShake(950, 9);
 };
 // 武器商人はスタート地点(原点)に常駐(社長指示)。各拠点中央の「武器庫」から遠隔利用もできる。
 // 開始直後に誤発動しないよう、スポーン(原点)から少し上にずらして設置。
@@ -6026,6 +6030,8 @@ interface GameState {
   // dirX/dirY(§5.23 M22 C1・任意): 指定時(かつ非ゼロ)は全方位ではなく、その方向を中心にした
   // 円錐(spawnSprayと同じ角度)へ絞って噴く。未指定/{0,0}/`?dirfx=0`は従来どおり全方位。
   spawnBurst: (x: number, y: number, color: string, count?: number, dirX?: number, dirY?: number) => void;
+  /** 落ちて転がる瓦礫(重力つきの固体粒)。城の崩落など「ガラガラ」を作る絵。判定ゼロ=派手さの絵。 */
+  spawnRubble: (x: number, y: number, count?: number, spread?: number) => void;
   // 指定方向(dirX,dirY)へ円錐状に粒子を噴く(被弾の出口=背中側の破裂演出など)。色はランダムに使い分け。
   spawnSpray: (x: number, y: number, dirX: number, dirY: number, count: number, colors: string[]) => void;
   spawnFireJet: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ火の破裂(2コマ立ち絵)
@@ -20116,6 +20122,39 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { effects: next };
     });
   },
+  // ★v0.25.4331: 瓦礫。既存の「固体粒」(薬莢と同じ枝=通常合成・発光なし・重力・回転・着地で停止)を
+  // 石色で使う。砂埃(spawnBurst)は軽くて舞うだけなので、**落ちて積もる固体**が無いと「ガラガラ」にならない。
+  spawnRubble: (x, y, count = 12, spread = 140) => {
+    const now = Date.now();
+    const fresh: VisualEffect[] = [];
+    for (let i = 0; i < count; i++) {
+      const ang = -Math.PI * (0.15 + Math.random() * 0.7);        // 上方向へ跳ね上げてから落とす
+      const sp = 90 + Math.random() * 210;
+      fresh.push({
+        kind: 'particle',
+        id: `fx-rubble-${now}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+        x: x + (Math.random() - 0.5) * spread,
+        y: y + (Math.random() - 0.5) * 30,
+        vx: Math.cos(ang) * sp * (Math.random() < 0.5 ? -1 : 1),
+        vy: Math.sin(ang) * sp,
+        color: Math.random() < 0.5 ? '#94a3b8' : '#64748b',        // 石の色(明暗2種で均質さを避ける)
+        size: 2.5 + Math.random() * 4.5,
+        createdAt: now,
+        duration: 1100 + Math.random() * 900,
+        drag: 0.5,
+        gravity: 900,
+        spin: (Math.random() - 0.5) * 12,
+        floorY: y + 26 + Math.random() * 34,                        // 床で止まって転がりを終える
+        solid: true,
+      });
+    }
+    set(state => {
+      const next = [...state.effects, ...fresh];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
+  },
+
   spawnBurst: (x, y, color, count = 6, dirX, dirY) => {
     const now = Date.now();
     // §5.23 M22 C1: 方向指定(かつ有効長)なら円錐(spawnSprayと同じ角度)へ絞る。無指定/{0,0}は
