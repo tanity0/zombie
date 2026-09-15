@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4353',
+    items: [
+      '起動時に抱える絵を減らした。研究所と訓練の背景、城の変異体の立ち絵は、必要になってから読む。落ちやすさが少し下がるはず。見た目は変わらない。',
+    ],
+  },
+  {
     version: '0.25.4352',
     items: [
       '落ちる原因を調べるため、画面に出す手がかりを少し詳しくした。ゲーム内容の変更はありません。',

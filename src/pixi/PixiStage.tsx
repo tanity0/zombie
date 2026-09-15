@@ -1,14 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { Application, Assets } from 'pixi.js';
 import { buildLayers } from './layers';
-import { ensureTextures } from './pixiTextures';
+import { ensureTextures, loadSpriteGroups } from './pixiTextures';
 import { PixiScene } from './pixiScene';
 import { useGameStore } from '../store/gameStore';
 import { setAudioSuspended } from '../audio/audioManager';
 import { computeViewport } from '../utils/viewport';
 import { loadProgressBegin, loadProgressDone, loadProgressResetWindow, getLoadProgress, getLoadInFlight, trackLoad } from '../utils/loadProgress';
 import { preloadCorridorTextures, CORRIDOR_TEXTURE_NAMES } from './corridorLayer';
-import { SORTIE_STAGE_TEXTURE_PATHS, sortieTexturesNeeded } from './stageTextures';
+import { SORTIE_STAGE_TEXTURE_PATHS, sortieTexturesNeeded, sortieSpriteGroups } from './stageTextures';
 
 import { setAppliedResolution } from '../config/renderer';
 import { renderErrorFlags } from './renderErrorFlags';
@@ -83,6 +83,10 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       loadProgressResetWindow();
       // 出撃ステージに必要なステージ別テクスチャだけをロード対象にする(v0.25.2166)。
       const neededStageTextures = sortieTexturesNeeded();
+      // ★このステージで使う遅延スプライト(研究所の背景3層・訓練の天井帯など)を先に取り始める。
+      // **待たない**(await しない): ここで待つと出撃が遅くなるし、届かなくても
+      // `getTexture` の網が描く瞬間に拾うので黙って消えることはない。v0.25.4353。
+      void loadSpriteGroups(sortieSpriteGroups());
       loadProgressBegin(1 + 4 + neededStageTextures.size);
       await app.init({
         width,

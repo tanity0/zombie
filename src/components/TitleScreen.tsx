@@ -358,7 +358,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
           読む機会が無かった。落ちた直後に**最初に見る画面**がここなので、ここへ出す。
           記録が無い初回は何も出ない。 */}
       {phase === 'title' && !showNotice && prevBeatText() && (
-        <div className="absolute bottom-3 left-3 max-w-[92vw]">
+        <div className="absolute bottom-12 left-3 max-w-[92vw] pointer-events-none">
           <span className="px-2 py-1 text-[9px] leading-tight tabular-nums text-purple-200/55" style={{ fontFamily: 'var(--game-font), sans-serif' }}>
             前回最後 {prevBeatText()}
           </span>

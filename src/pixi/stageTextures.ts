@@ -126,3 +126,16 @@ export const prefetchStageTextures = (stage: { theme?: string; farBackdrop?: str
     void Assets.load(`${BASE}${p}`).catch(() => null);
   }
 };
+
+/**
+ * ★出撃ステージで使う**遅延スプライト**のグループ名(v0.25.4353)。
+ * 背景の STAGE_TEXTURE_GROUPS と同じ考え方を、`sprites/` 側にも通す。
+ * 未知のテーマでは空=何も先読みしない(`getTexture` の網が描く瞬間に拾う)。
+ */
+export const sortieSpriteGroups = (): string[] => {
+  const s = useGameStore.getState();
+  if (s.corridorMode) return [];
+  if (s.stageTheme === 'lab') return ['lab'];
+  if (s.farBackdrop === 'tutorial') return ['tutorial'];
+  return [];
+};

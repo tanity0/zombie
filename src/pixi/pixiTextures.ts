@@ -25,6 +25,87 @@ const FX_SKIP_MELEE_HIT = typeof window !== 'undefined' && new URLSearchParams(w
 const FX_SKIP_SKILL_BURST = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('skfx') === '0';
 
 const textures = new Map<string, Texture>();
+
+/**
+ * ★起動時に読まない素材(v0.25.4353・社長承認2026-09-16「やってみよ」)。
+ *
+ * 実測: タイトル画面の時点で **308MB / 576枚**を抱えていた(2Dゲームの相場は常駐50〜150MB、
+ * iOS Safari がタブを落とすのは概ね200〜400MB)。**中身は特定ステージ/特定ボスの絵が大半**で、
+ * どのステージで遊んでも全部常駐していた。ここに挙げた分は**起動では読まない**。
+ *
+ * 読まれる契機は2つ:
+ *   ①**出撃時にステージぶんだけ先読み**(`loadSpriteGroups`。背景で既に実績のある形=
+ *     `stageTextures.ts` の STAGE_TEXTURE_GROUPS と同じ考え方)。
+ *   ②**描こうとした瞬間**に背景で読む(`getTexture` の網)。①の割り当てを間違えても
+ *     「一拍遅れて出る」で止まり、**永久に出ない**にはならない。
+ *
+ * ★ここへ足してよいのは「**常に画面に居るわけではない**素材」だけ。プレイヤー・雑魚ゾンビ・
+ * 汎用エフェクトのように**いつでも出うるもの**は入れない(毎回の遅延読みが増えるだけで損)。
+ */
+const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear' | 'nearest' }[]> = {
+  // 研究所ステージ(theme='lab')の背景3層と床。実測 約22MB。
+  // ★`scaleMode` は起動マニフェストの記述と**1文字も違えない**(違えると見た目が変わる。
+  //   未指定だったものは未指定のまま=Pixiの既定に委ねる)。
+  lab: [
+    { name: 'lab/lab-far-backdrop' },                              // 1672x941 = 6.0MB
+    { name: 'lab/lab-horizon-band' },                              // 1536x1024 = 6.0MB
+    { name: 'lab/lab-front-band' },                                // 2172x724 = 6.0MB
+    { name: 'lab-floor/lab-floor-ground', scaleMode: 'nearest' },  // 1254x1254 = 6.0MB
+    { name: 'lab-floor/lab-floor-stage2', scaleMode: 'nearest' },  // 1000x1000 = 3.8MB(出撃側でも読む=二重には積まれない)
+  ],
+  // 訓練(洞窟)ステージの鍾乳石帯。2508x627 = 6.0MB。
+  tutorial: [
+    { name: 'tutorial-ceiling-band' },
+  ],
+  /**
+   * 城ボスの立ち絵(ステージごとに1体・約16MB)。**先読みの所属は付けていない**=網だけで拾う。
+   * 理由: 城ボスは**カットインを挟んで登場する**ので、一拍で届けば絵として間に合う。
+   * 所属表を増やすほど間違いの余地が増えるので、**間に合うものは網に任せる**方を採った。
+   */
+  castle: [
+    { name: 'castle-s1', scaleMode: 'nearest' }, // 1020x1024 = 4.0MB
+    { name: 'castle-s3', scaleMode: 'nearest' }, // 1020x1024 = 4.0MB
+    { name: 'castle-s4', scaleMode: 'nearest' }, // 1060x1024 = 4.1MB
+    { name: 'castle-s5', scaleMode: 'nearest' }, // 960x1024 = 3.8MB
+  ],
+};
+
+/** 遅延組の索引(名前→scaleMode)。`getTexture` の網と `loadSpriteGroups` が引く。 */
+const DEFERRED_SPRITE_INDEX = new Map<string, 'linear' | 'nearest' | undefined>(
+  Object.values(DEFERRED_SPRITE_GROUPS).flat().map(e => [e.name, e.scaleMode] as const),
+);
+const DEFERRED_SPRITE_SET = new Set<string>(DEFERRED_SPRITE_INDEX.keys());
+/** 同じ素材を二重に取りに行かないための門(網は毎フレーム叩かれる)。 */
+const deferredInFlight = new Map<string, Promise<void>>();
+
+const requestDeferredSprite = (name: string): Promise<void> => {
+  const hit = deferredInFlight.get(name);
+  if (hit) return hit;
+  const scaleMode = DEFERRED_SPRITE_INDEX.get(name);
+  const pr = (async () => {
+    try {
+      const tex = await Assets.load(spritePath(name));
+      if (tex) {
+        if (scaleMode) tex.source.scaleMode = scaleMode;
+        textures.set(name, tex);
+      }
+    } catch (e) {
+      console.warn(`[pixiTextures] deferred sprite "${name}" failed:`, e);
+    }
+  })();
+  deferredInFlight.set(name, pr);
+  return pr;
+};
+
+/**
+ * 出撃時に、そのステージで使う遅延組だけを先読みする(背景の STAGE_TEXTURE_GROUPS と同じ考え方)。
+ * 未知のキーは**何も読まない**=網(`getTexture`)が拾う。**ここで全ロードへ倒さない**のが肝で、
+ * 倒すと「起動で全部読む」に戻ってしまう。
+ */
+export const loadSpriteGroups = async (keys: readonly string[]): Promise<void> => {
+  const names = keys.flatMap(k => DEFERRED_SPRITE_GROUPS[k] ?? []).map(e => e.name);
+  await Promise.all(names.map(n => (textures.has(n) ? Promise.resolve() : requestDeferredSprite(n))));
+};
 let ready = false;
 let loading: Promise<void> | null = null;
 
@@ -475,10 +556,6 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'castle', scaleMode: 'nearest' },
       // ステージ別の城(社長支給2026-08-15・4枚完備「ステージ1から順に(5まで)。2.6.7は無し」)。
       // s1=ゴシック館 / s3=石造りの廃教会 / s4=雪の大聖堂 / s5=ステンドグラスの大聖堂(いずれも1000px級)。
-      { name: 'castle-s1', scaleMode: 'nearest' },
-      { name: 'castle-s3', scaleMode: 'nearest' },
-      { name: 'castle-s4', scaleMode: 'nearest' },
-      { name: 'castle-s5', scaleMode: 'nearest' },
       { name: 'hospital', scaleMode: 'nearest' }, // 通常ステージの廃病院(ワクチン入手・社長指示v0.25.2331)
       // §6.24 M48: 寄り道POIの一般化(社長支給素材v0.25.2352・アルファ透過あり)。
       { name: 'police', scaleMode: 'nearest' }, // 警察署(専用スキル入手・アリーナ方式)
@@ -505,9 +582,9 @@ export const ensureTextures = (): Promise<void> => {
       // ★lab-wall-open-*/lab-wall-closed-*/lab-wall-side-long/lab-wall-side-block{1,2,3} はバッチ4
       // (v0.25.2898)で外した。ロードされていたが一度も描画されていなかった(参照ゼロ確認済み・素材は削除済み)。
       { name: 'lab-floor/lab-floor-r1-c1', scaleMode: 'nearest' },
+      // ★研究所の背景3層と大きい床タイル、訓練の天井帯、城ボスの立ち絵4枚は**起動から外した**(v0.25.4353)。
+      // 出撃時にそのステージぶんだけ読む(DEFERRED_SPRITE_GROUPS)。描く瞬間の網もある。
       // ★lab-floor-r5-c1 はここから外した(バッチ4・v0.25.2898・ロードされるが描画されない。素材は削除済み)。
-      { name: 'lab-floor/lab-floor-ground', scaleMode: 'nearest' }, // シームレス床(ステージ1風)
-      { name: 'lab-floor/lab-floor-stage2', scaleMode: 'nearest' }, // stage-2 屋外ラボ床(社長提供の最新タイル。専用名でキャッシュ確実更新)
       // 新ドット絵タイル(64²・シームレス・16色)。床ベース＝clean、変種＝blood/grime/crack/scorch、隅AO。
       { name: 'lab-floor/lab-floor-clean', scaleMode: 'nearest' },
       { name: 'lab-floor/lab-floor-blood', scaleMode: 'nearest' },
@@ -527,11 +604,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab/lab-wall-obj-h', scaleMode: 'nearest' },
       // ★lab-wall-obj-v はここから外した(バッチ4・v0.25.2898・同上)。
       // 研究所スキンの背景3層(屋外テーマ時に森レイヤーを差し替える。レイヤー構造は不変)。
-      { name: 'lab/lab-far-backdrop' },  // 遠景パノラマ(不透明)
-      { name: 'lab/lab-horizon-band' },  // 地平の機械帯(紫=透過)
-      { name: 'lab/lab-front-band' },    // 手前のボヤけ機械帯(紫=透過。ブラーは既存フィルタで継続)
       // ★lab-ceiling-band はここから外した(バッチ4・v0.25.2898・ロードされるが描画されない。素材は削除済み)。
-      { name: 'tutorial-ceiling-band' }, // チュートリアル(洞窟)の鍾乳石帯(lab-ceiling-bandと同仕様・上寄せループ)
       // 背景の天井/void プレート(外周マージンに低速パララックスで敷く・縦横シームレス)。
       { name: 'lab/lab-bg-void', scaleMode: 'nearest' },
       { name: 'lab-uv-bar', scaleMode: 'nearest' }, // 研究所のUVライトバー(松明の代わり)
@@ -1195,8 +1268,15 @@ export const preloadBackgrounds = (): Promise<void> => {
 
 // Texture for an actor/pickup name, or null when there's no art for it (the
 // RE-specific pickups and projectiles are drawn procedurally instead).
-export const getTexture = (name: string): Texture | null =>
-  textures.get(name) ?? null;
+export const getTexture = (name: string): Texture | null => {
+  const t = textures.get(name);
+  if (t) return t;
+  // ★遅延組の安全網(v0.25.4353): 起動で読まない素材を**描こうとした瞬間**に背景で読む。
+  // これが無いと、所属の割り当てを1つ間違えただけで**その絵が永久に出ない**という壊れ方になる。
+  // 網があれば最悪でも「一拍遅れて出る」で済む(所属の割り当ては速さのため、網は正しさのため)。
+  if (DEFERRED_SPRITE_SET.has(name)) void requestDeferredSprite(name);
+  return null;
+};
 
 /**
  * ★読み込み済みテクスチャのメモリ見積り(MB・v0.25.4349)。
@@ -1239,6 +1319,19 @@ export const textureBreakdown = (): { group: string; mb: number; n: number }[] =
 
 if (typeof window !== 'undefined' && import.meta.env.DEV) {
   (window as unknown as Record<string, unknown>).__texBreak = textureBreakdown;
+  (window as unknown as Record<string, unknown>).__getTex = (n: string) => !!getTexture(n); // 遅延組の網の検証用
+  // 1枚ずつのMB(重い順)。どれを起動から外すかを決めるための開発用の窓口。
+  (window as unknown as Record<string, unknown>).__texList = () => {
+    const seen = new Set<unknown>();
+    const out: { name: string; mb: number; w: number; h: number }[] = [];
+    for (const [name, t] of textures) {
+      const src = t.source as unknown;
+      if (!src || seen.has(src)) continue;
+      seen.add(src);
+      out.push({ name, mb: +(((t.source.width || 0) * (t.source.height || 0) * 4) / (1024 * 1024)).toFixed(2), w: t.source.width, h: t.source.height });
+    }
+    return out.sort((a, b) => b.mb - a.mb);
+  };
 }
 
 /** 内訳の上位2つを1行に(実機の表示用)。例: `spr165+fx53`。 */
