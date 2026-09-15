@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4327',
+    items: [
+      '松明や爆発の光が当たると、プレイヤーと敵の「光の側の輪郭」が明るく縁取られるようになった。光の反対へ回り込めば、縁も一緒に回る。',
+    ],
+  },
+  {
     version: '0.25.4326',
     items: [
       '近接で敵を切った時の炸裂を取り下げた。カウンター斬り・刀・鞭の見た目は、これが入る前に戻っている。',

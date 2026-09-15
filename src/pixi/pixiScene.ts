@@ -140,6 +140,7 @@ import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { cineToggle, cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(URL+タイトル画面)
 import { cineFxVocab, cineFxBacklightTint, cineFxHasStreak, cineFxSetFor, cineFxTargetsSelf, cineFxPushFollow, cineFxShutterAt, cineFxWipeAt, cineFxDeathLight, cineFxRepeatMult, cineFxNearDust, cineFxMotes, cineFxDustStep, CINE_FX_SHUTTER_ALPHA, CINE_FX_SHUTTER_TINT, CINE_FX_WIPE_MS, CINE_FX_WIPE_COUNTER_MS, CINE_FX_WIPE_W_FRAC, CINE_FX_VIGNETTE_TO, CINE_FX_BACKLIGHT_W_MULT, CINE_FX_BACKLIGHT_ALPHA, CINE_FX_BACKLIGHT_STRETCH_TO, CINE_FX_RIM_ALPHA, CINE_FX_BOKEH, CINE_FX_BOKEH_BLOOD, CINE_FX_BLOOD_TINT, CINE_FX_BLOOD_DRIP_FRAC, CINE_FX_DUST_NEAR_SPEED, CINE_FX_DUST_FAR_SPEED, CINE_FX_DUST_DRIFT, CINE_FX_STAGGER_MS, type CineFxKind, type CineFxParticle } from '../utils/cineFx'; // 寄り演目のVFX(§8・v0.25.4306)
 import { applyCineKnobs, cineCameraAt, cineModeFor, thirdsAim, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, CINE_PLATE_NEAR_MARGIN_FRAC, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
+import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, RIM_BUCKETS, type RimLight } from '../utils/rimLight'; // 向きの縁ライティング(§6)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -2310,6 +2311,18 @@ const TORCH_PUNCH_GAIN_MULT = tsNum('torchpunchgain', 0.35);   // パンチ用�
 const TORCH_POOL_ALPHA_MULT = Math.max(0, tsNum('torchpool', 0.8));   // 0で無効
 const TORCH_POOL_R_MULT = Math.max(0.05, tsNum('torchpoolr', 0.5));
 const TORCH_POOL_TINT = tsNum('torchpooltint', 0xffb870);             // 松明の色温度(爆発の 0xffe2b0 より少し赤い)
+
+// ★向きの縁ライティング(research/LIGHT_REWORK.md §6・社長指示2026-09-15「まず縁だけ入れて様子見よう」)。
+// 光の当たっている側の**内側の縁**だけを光らせる。面の陰影(擬似法線)はやらない(§5は破棄)。
+// 縁は向きごとに**焼いて**キャッシュする=毎フレームのシェーダーは無し(被弾フラッシュの whiteSilhouette と同型)。
+const RIM_ON = tsNum('rim', 1) !== 0;                  // ?rim=0 で完全に切る(受け入れ条件5のA/B)
+const RIM_PX = tsNum('rimpx', 2);                      // 焼く時の縁の太さ(元テクスチャのpx)
+const RIM_GAIN = tsNum('rimgain', 1.15);               // 縁の濃さ
+const RIM_MIN_SCREEN_PX = tsNum('rimminpx', 1.15);     // ★画面上の最低太さ。引き(zoom 0.40)で縁が消えるのを防ぐ(監査#7)
+const RIM_TAU_MS = tsNum('rimtau', 110);               // 濃さの追従(慣性MUST・松明の脈で明滅させない)
+const RIM_DIR_TAU_MS = tsNum('rimdirtau', 90);         // 向きの追従(支配光が入れ替わっても飛ばない)
+const RIM_DEFAULT_COLOR = tsNum('rimwarm', 0xffc07a);  // 光が色を持たない時の既定(琥珀)
+const RIM_GLOW_COLOR = tsNum('rimglowcol', 0xffe2b0);  // 強glow(爆発など)の色
 // ★爆発の「黒い円」の立ち上がり。旧実装は life 比例のみで**フェードインが無く**、湧いた瞬間に
 // 最大の黒が乗っていた(社長「パッときえてるんだよね」)。消える側は life→0 で元々滑らか。
 const LOCAL_EVENT_SHADE_RISE_MS = tsNum('shaderise', 110);
@@ -3559,6 +3572,12 @@ export class PixiScene {
   // 被弾フラッシュ用「真っ白シルエット」テクスチャのキャッシュ(元Texture→白ベイク)。加算で重ねると、
   // 暗い敵でも全面が白く光る(加算は元の色しか足せないので、白ベイクしないと暗部が光らない)。実行時はフィルタ不要=安い。
   private whiteTexCache = new Map<Texture, Texture>();
+  // 向きの縁(§6)。焼いた縁テクスチャ: 元テクスチャ → 8方向ぶん。
+  private rimTexCache = new Map<Texture, (Texture | null)[]>();
+  // アクターごとの縁スプライト2枚(隣り合う向きを混ぜて45°のカクつきを消す)+追従中の値。
+  private rimViews = new Map<string, { a: Sprite; b: Sprite; dx: number; dy: number; k: number }>();
+  private rimLights: RimLight[] = [];   // このフレームの縁用の光(色つき)
+  private rimLastNow = 0;
   private castleView = new Container();
   private castleSprite = new Sprite();
   // v0.25.2666(LIGHT_REWORK §3 #3): 城/商人/イベントNPCのグロー。共有カーブ→ソフトカーブ
@@ -8911,6 +8930,10 @@ export class PixiScene {
       groundPoolReqs.push({ x: e.x, y: e.y, r: e.radius, life: glowLife });
     }
     this.syncGlowGroundPools(groundPoolReqs); // ★§4手順1: 強glowが地面を明るくする(影が乗る床を作る)
+    // ★向きの縁(§6)。**ここでなければならない**——worldLights は syncBreakableProps でクリアされ、
+    // syncActors の時点では松明しか入っていない。強glow(爆発/カウンター/レベルアップ)が積まれるのは
+    // 直前のこのループなので、全光源が揃うのはこの1行の位置だけ(§6品質監査 A-1)。
+    this.syncRimLights(s.player, s.enemies, s.effects, fxNow);
     const pfx = s.player.x + s.player.width / 2, pfy = s.player.y + s.player.height / 2;
     this.assistBrightnessNow = lightAt(pfx, pfy, this.worldLights);
     this.punchBrightnessNow = lightAt(pfx, pfy, this.punchLights);
@@ -16408,6 +16431,172 @@ export class PixiScene {
     wrap.destroy({ children: true });
     this.whiteTexCache.set(src, rt);
     return rt;
+  }
+
+  // ===== 向きの縁ライティング(§6) =========================================================
+  //
+  // ★焼き方: 「白シルエット」から「光と反対へずらした白シルエット」を erase で抜く。
+  // 残るのは**元の絵の内側にある、光を向いた側の帯**=縁。1テクスチャ×8方向を1度だけ焼く。
+  // (ずらした1枚を後ろに置く方式は縁が**シルエットの外**に出て、光ではなく発光体に見える=不採用)
+  private rimTexture(src: Texture | null, bucket: number): Texture | null {
+    if (!src || src.width <= 1 || !this.renderer) return null;
+    let arr = this.rimTexCache.get(src);
+    if (!arr) { arr = new Array(RIM_BUCKETS).fill(null); this.rimTexCache.set(src, arr); }
+    const hit = arr[bucket];
+    if (hit) return hit;
+    try {
+      const wrap = new Container();
+      const lit = new Sprite(src);
+      const white = new ColorMatrixFilter();
+      white.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0]; // RGB→白・α保持
+      lit.filters = [white];
+      const d = rimBucketDir(bucket);
+      // ★抜かずに「黒で潰す」。縁は**加算**で重ねるので、黒い画素は何も足さない=抜いたのと同じ絵になる。
+      // (`erase` は環境によって効き方が変わり、効かなかった時に**全身が白く光る**という
+      //  静かで最悪の壊れ方をする。通常合成だけで組めばその壊れ方が存在しない。)
+      const cut = new Sprite(src);
+      const black = new ColorMatrixFilter();
+      black.matrix = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]; // RGB→0・α保持
+      cut.filters = [black];
+      cut.position.set(-d.dx * RIM_PX, -d.dy * RIM_PX); // 光と**反対**へずらす=光側の帯だけが白く残る
+      wrap.addChild(lit, cut);
+      const rt = RenderTexture.create({ width: Math.max(1, src.width), height: Math.max(1, src.height) });
+      this.renderer.render({ container: wrap, target: rt, clear: true });
+      wrap.destroy({ children: true });
+      arr[bucket] = rt;
+      return rt;
+    } catch (err) {
+      // 焼けない環境では**縁を出さないだけ**にする(立ち物が消えるより、向きが無い方がまし)。
+      arr[bucket] = null;
+      reportSuppressedError('rim-bake', err);
+      return null;
+    }
+  }
+
+  /**
+   * 縁の後段パス。**必ず全光源が揃った後**に呼ぶこと。
+   * ★`drawEnemy` の中で光を引いてはいけない: worldLights は syncBreakableProps でクリアされ、
+   * その時点では**松明しか入っていない**。強glow(爆発/カウンター/レベルアップ)が積まれるのは
+   * syncActors の 267行あと。中で引くと爆発の光が縁に一切効かない(§6品質監査 A-1)。
+   */
+  private syncRimLights(player: Player, enemies: Enemy[], effects: VisualEffect[], now: number) {
+    const views: { id: string; view: ActorView }[] = [];
+    if (this.playerView) views.push({ id: 'player', view: this.playerView });
+    for (const e of enemies) {
+      const v = this.enemies.get(e.id);
+      if (v) views.push({ id: e.id, view: v });
+    }
+    if (!RIM_ON) { for (const { id } of views) this.hideRim(id); this.pruneRims(views); return; }
+
+    // このフレームの光(色つき)。worldLights は色を持たないので、ここで色を足す。
+    this.rimLights.length = 0;
+    for (const L of this.worldLights) {
+      this.rimLights.push({ x: L.x, y: L.y, reach: L.reach, strength: L.strength, color: RIM_DEFAULT_COLOR });
+    }
+    // 強glowは effects 側に色があるので、そちらを優先して引き直す(松明の琥珀と爆発の白閃を分ける)。
+    for (const e of effects) {
+      if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
+      const life = 1 - Math.min(1, (now - e.createdAt) / Math.max(1, e.duration));
+      if (life <= 0) continue;
+      this.rimLights.push({
+        x: e.x, y: e.y, reach: e.radius * GLOW_LIGHT_REACH_MULT,
+        strength: life * GLOW_LIGHT_GAIN, color: RIM_GLOW_COLOR,
+      });
+    }
+    // ★プレイヤー自身の光(§6-10 B群で唯一やる価値があるもの)。補助光の半径をそのまま reach に使う。
+    // 補助光の計算より**後**に足す(補助光は worldLights を読む側=循環を避ける)。
+    const pl = ACTIVE_STAGE_LIGHTING;
+    if (pl.playerAssistRadius > 0) {
+      this.rimLights.push({
+        x: player.x + player.width / 2, y: player.y + player.height / 2,
+        reach: pl.playerAssistRadius * 2, strength: 0.9, color: RIM_DEFAULT_COLOR,
+      });
+    }
+
+    const dt = this.rimLastNow > 0 ? Math.min(100, now - this.rimLastNow) : 16;
+    this.rimLastNow = now;
+    for (const { id, view } of views) this.drawRim(id, view, dt);
+    this.pruneRims(views);
+  }
+
+  private hideRim(id: string) {
+    const r = this.rimViews.get(id);
+    if (r) { r.a.visible = false; r.b.visible = false; }
+  }
+
+  private pruneRims(live: { id: string }[]) {
+    if (this.rimViews.size <= live.length) return;
+    const keep = new Set(live.map(v => v.id));
+    for (const [id, r] of this.rimViews) {
+      if (keep.has(id)) continue;
+      r.a.destroy(); r.b.destroy();
+      this.rimViews.delete(id);
+    }
+  }
+
+  private drawRim(id: string, view: ActorView, dtMs: number) {
+    const sp = view.sprite;
+    // ★本体が出ていない/絵が無い時は縁も出さない。既定OFFは他の判定より先(try の外側の作法)。
+    const texOk = sp.visible && sp.texture && sp.texture.width > 1;
+    let r = this.rimViews.get(id);
+    if (!texOk) { this.hideRim(id); return; }
+
+    // 縁の向きは**足元1点**から引く(頭と足で向きがねじれないように)。
+    const fx = sp.position.x, fy = sp.position.y;
+    const hit = sampleRim(fx, fy, this.rimLights);
+
+    if (!r) {
+      const mk = () => {
+        const s2 = new Sprite();
+        s2.blendMode = 'add';
+        s2.visible = false;
+        return s2;
+      };
+      r = { a: mk(), b: mk(), dx: 0, dy: 0, k: 0 };
+      // 本体の**直後**(=本体の上)に入れる。容器の中なのでy順の並べ替えに巻き込まれない。
+      const parent = sp.parent;
+      if (!parent) return;
+      const at = parent.getChildIndex(sp) + 1;
+      parent.addChildAt(r.a, at);
+      parent.addChildAt(r.b, at + 1);
+      this.rimViews.set(id, r);
+    }
+
+    // 慣性MUST: 濃さも向きも時定数で追う。松明は炎のゆらぎを含むので生値だと明滅する。
+    r.k = rimFollow(r.k, hit ? hit.strength : 0, dtMs, RIM_TAU_MS);
+    if (hit) {
+      const d = rimFollowDir(r.dx, r.dy, hit.dx, hit.dy, dtMs, RIM_DIR_TAU_MS);
+      r.dx = d.dx; r.dy = d.dy;
+    }
+    if (r.k <= 0.004 || !(r.dx || r.dy)) { r.a.visible = false; r.b.visible = false; return; }
+
+    const { a: ba, b: bb, t } = rimBuckets(r.dx, r.dy);
+    const ta = this.rimTexture(sp.texture, ba);
+    const tb = this.rimTexture(sp.texture, bb);
+    if (!ta && !tb) { r.a.visible = false; r.b.visible = false; return; }
+
+    // ★引き(zoom 0.40)で縁が画面から消えないよう、見かけの太さに下限を敷く(監査#7)。
+    // 焼いた太さは元テクスチャの RIM_PX なので、実効の画面px = RIM_PX * |scale| * zoom。
+    const zoom = this.L.worldGroup.scale.x || 1;
+    const seen = RIM_PX * Math.abs(sp.scale.x) * zoom;
+    const boost = seen > 0 ? Math.max(1, RIM_MIN_SCREEN_PX / seen) : 1;
+    const tint = hit ? hit.color : RIM_DEFAULT_COLOR;
+    // ★本体の見え方を丸ごと写す(hitFlash と同じ作法)。α は本体のものを継承する——
+    // これをやらないと、地平線フェードや裏回り透けで**本体が消えても光る縁だけが残る**(監査#4/A-3)。
+    const put = (s2: Sprite, tex: Texture | null, w: number) => {
+      if (!tex || w <= 0.002) { s2.visible = false; return; }
+      s2.visible = true;
+      s2.texture = tex;
+      s2.anchor.set(sp.anchor.x, sp.anchor.y);
+      s2.position.set(sp.position.x, sp.position.y);
+      s2.scale.set(sp.scale.x, sp.scale.y);
+      s2.skew.set(sp.skew.x, sp.skew.y);
+      s2.rotation = sp.rotation;
+      s2.tint = tint;
+      s2.alpha = Math.min(1, sp.alpha * r!.k * w * RIM_GAIN * boost);
+    };
+    put(r.a, ta, 1 - t);
+    put(r.b, tb, t);
   }
 
   // 分身(サブウェポン)を描く。外見は**持ち主**と同一(待機=frame0)を白黒キャッシュで。
