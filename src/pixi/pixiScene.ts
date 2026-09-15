@@ -141,7 +141,6 @@ import { cineToggle, cineToggleOn } from '../utils/cineToggles'; // 寄り演目
 import { cineFxVocab, cineFxBacklightTint, cineFxHasStreak, cineFxSetFor, cineFxTargetsSelf, cineFxPushFollow, cineFxShutterAt, cineFxWipeAt, cineFxDeathLight, cineFxRepeatMult, cineFxNearDust, cineFxMotes, cineFxDustStep, CINE_FX_SHUTTER_ALPHA, CINE_FX_SHUTTER_TINT, CINE_FX_WIPE_MS, CINE_FX_WIPE_COUNTER_MS, CINE_FX_WIPE_W_FRAC, CINE_FX_VIGNETTE_TO, CINE_FX_BACKLIGHT_W_MULT, CINE_FX_BACKLIGHT_ALPHA, CINE_FX_BACKLIGHT_STRETCH_TO, CINE_FX_RIM_ALPHA, CINE_FX_BOKEH, CINE_FX_BOKEH_BLOOD, CINE_FX_BLOOD_TINT, CINE_FX_BLOOD_DRIP_FRAC, CINE_FX_DUST_NEAR_SPEED, CINE_FX_DUST_FAR_SPEED, CINE_FX_DUST_DRIFT, CINE_FX_STAGGER_MS, type CineFxKind, type CineFxParticle } from '../utils/cineFx'; // 寄り演目のVFX(§8・v0.25.4306)
 import { applyCineKnobs, cineCameraAt, cineModeFor, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
 import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, type RimLight } from '../utils/rimLight'; // 向きの縁ライティング(§6)
-import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -4037,8 +4036,6 @@ export class PixiScene {
   private skadiBlockPool = new Map<string, Sprite>(); // 氷塊スプライト(マーカーid→sprite)
   private skadiBladePool = new Map<string, Sprite>(); // 氷刃スプライト(ブレードid→sprite)
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
-  private skillPickGfx = new Graphics();     // スキル取得の頭上マーク(下敷き・閃光・レベルの粒)
-  private skillPickSp: Sprite | null = null; // 同・アイコン本体
   private goldRingReadyGfx = new Graphics(); // 金環CD明けの頭上マーク(同型・UNIQUE_WEAPONS.md §19-3)
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
   private homingLockGfx = new Graphics();   // ホーミング弾ロックインジケーター(ロック済み敵の頭上マーカー)
@@ -5075,9 +5072,6 @@ export class PixiScene {
     this.L.actorLayer.addChild(this.policeSprite);
     this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
-    // スキル取得の頭上マーク(v0.25.4333)。**加算にはしない**——下敷きの暗い円が要るため
-    // (加算だと暗い色が透明になって下敷きの役に立たない)。閃光は通常合成でも十分光る。
-    this.L.effectLayer.addChild(this.skillPickGfx);
     this.goldRingReadyGfx.blendMode = 'add';
     this.L.effectLayer.addChild(this.goldRingReadyGfx);
     this.L.effectLayer.addChild(this.marksmanMarkGfx);
@@ -6722,8 +6716,6 @@ export class PixiScene {
           this.isPointNearViewport(e.toX, e.toY, camera);
       case 'multiHit':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN);
-      case 'meleeHit':
-        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.size);
       // ★v0.25.4324: default が無いと、新しい kind を足した時に undefined が返って
       // 「毎フレーム hideEffectView される=絵が一生出ない」黙った事故になる(v0.25.4322の炸裂で実際に踏んだ)。
       // 未知の kind は「出す」に倒す(カリングは最適化であって表示の条件ではない)。
@@ -8665,7 +8657,6 @@ export class PixiScene {
     this.syncPickups(s.pickups, now);
     this.syncPumpkinTelegraph(s.enemies, now, s.gameTime); // ジャンプ攻撃の着地予告(赤い影)
     this.updateBoomerangReadyMark(s.player, now); // ブーメランCD明けの頭上マーク
-    this.updateSkillPickMark(s.player, now);      // スキル取得の頭上マーク(v0.25.4333)
     this.updateGoldRingReadyMark(s.player, now); // 金環CD明けの頭上マーク(UNIQUE_WEAPONS.md §19-3)
     this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
     this.updateFlareReadyMark(s.player, now);     // フレアガンCD明けの頭上炎マーク(一瞬・ブーメラン型)
@@ -10726,72 +10717,6 @@ export class PixiScene {
   // ★v0.25.3624(社長指示「CD明けのポップ系は全てスキルアイコンに統一」): 手描きの「へ」字マークを
   // 廃止し、実物のブーメラン素材(drone-boomerang)をアイコンとして出す(弁慶マークと同じ型)。
   private boomReadySp: Sprite | null = null;
-  /**
-   * スキル取得の頭上マーク(v0.25.4333・社長指示「文字ではなくスキルアイコンにして」)。
-   *
-   * ★**既存の頭上マーク(updateBoomerangReadyMark・社長指示v0.25.2155で全サブウェポン共通に
-   * 統一された型)と同じ作法**にする=新しい語彙を発明しない。すなわち:
-   *   ①プレイヤーに追従する(ワールドに置き去りにしない) ②出だしにフェードインと閃光
-   *   ③浮き上がる ④オーバーシュートしてから整定(慣性)。
-   * v0.25.4332 の初版は `spawnImageMark` で**ワールドに固定・αは最初から1・1.4秒間ぴくりとも
-   * 動かない**絵を、しかも**プレイヤーより大きく頭に重ねて**出していた(クリエイティブ監査で全部指摘)。
-   */
-  private updateSkillPickMark(player: Player, now: number) {
-    const g = this.skillPickGfx;
-    g.clear();
-    const fx = useGameStore.getState().skillPickFx;
-    const life = 1100;
-    const dt = fx ? now - fx.at : -1;
-    if (!fx || dt < 0 || dt > life) { if (this.skillPickSp) this.skillPickSp.visible = false; return; }
-    const t = dt / life;
-    // 立ち上がりは速く、引きは長く(=同じ形で往復しない)。
-    const alpha = t < 0.12 ? t / 0.12 : Math.max(0, 1 - Math.pow(Math.max(0, (t - 0.12) / 0.88), 1.8));
-    // 浮上は**減速して止まる**(等速で流れて瞬間停止しない=慣性MUST)。
-    const riseEase = 1 - Math.pow(1 - t, 3);
-    const rise = -24 * riseEase;
-    const cx = player.x + player.width / 2;
-    // ★頭より**上**に置く。プレイヤーの絵の頭頂は足元から約24px上なので、そこへ絵の高さぶんの余白を足す。
-    // (初版は絵の下端が胴の真ん中まで下りていて、1.4秒間ずっと顔が隠れていた。)
-    const cy = player.y - 62 + rise;
-    const tex = getTexture(fx.icon);
-    if (!tex || tex.width === 0) return;
-    if (!this.skillPickSp) {
-      const sp0 = new Sprite(tex);
-      sp0.anchor.set(0.5);
-      this.L.effectLayer.addChild(sp0);
-      this.skillPickSp = sp0;
-    }
-    const sp = this.skillPickSp;
-    if (sp.texture !== tex) sp.texture = tex;
-    const BOX = 34;                                  // 人物(描画 約64×52)より小さく=隠さない
-    const pop = t < 0.22 ? 1.34 - 0.34 * (1 - Math.pow(1 - t / 0.22, 2)) : 1; // 行き過ぎて整定(減速)
-    // ★下敷き。夜の地面に暗い絵(シートの平均輝度は 72/255)を素で置くと背景に溶ける。
-    // カード画面もHUDも板か縁の上に置いているので、世界に出す時だけ裸、という不整合も消える。
-    const r = BOX * 0.78 * pop;
-    g.circle(cx, cy, r * 1.18).fill({ color: 0x0b0a14, alpha: 0.55 * alpha });
-    g.circle(cx, cy, r * 1.18).stroke({ width: 1.5, color: 0xffd98a, alpha: 0.5 * alpha });
-    // 出現の閃光(既存マークと同じ作法)。取った瞬間の「ピカ」。
-    const flash = Math.max(0, 1 - dt / 190);
-    if (flash > 0) {
-      g.circle(cx, cy, r * 0.9 + 26 * (1 - flash)).fill({ color: 0xffe9b8, alpha: 0.45 * flash });
-      g.circle(cx, cy, 6).fill({ color: 0xffffff, alpha: 0.95 * flash });
-    }
-    sp.scale.set((BOX / Math.max(1, Math.max(tex.width, tex.height))) * pop);
-    sp.position.set(cx, cy);
-    sp.alpha = Math.max(0, alpha);
-    sp.visible = sp.alpha > 0.01;
-    // ★レベルは**数字ではなく粒**で出す(社長指示「文字ではなく」を数字にも通す)。
-    // 取得直後は1粒。Lv2/Lv3 はその段数ぶん。粒は絵の真下へ横並び。
-    if (fx.lv > 1) {
-      const py = cy + r * 1.34;
-      const gap = 9;
-      const x0 = cx - (gap * (fx.lv - 1)) / 2;
-      for (let i = 0; i < fx.lv; i++) {
-        g.circle(x0 + gap * i, py, 2.6).fill({ color: 0xffd98a, alpha: 0.95 * alpha });
-      }
-    }
-  }
-
   private updateBoomerangReadyMark(player: Player, now: number) {
     const g = this.boomReadyGfx;
     g.clear();
@@ -27117,8 +27042,6 @@ export class PixiScene {
       }
       if (e.kind === 'damageNumber') {
         this.drawDamageNumber(e, now);
-      } else if (e.kind === 'meleeHit') {
-        this.drawMeleeHitSprite(e, now);
       } else if (e.kind === 'image') {
         this.drawImageEffect(e, now);
       } else if (e.kind === 'dogFetch') {
@@ -29468,36 +29391,6 @@ export class PixiScene {
   }
 
   // 一枚絵マーク(刀フィニッシュの習字「斬」など)。pop-in→保持→末尾フェード。world座標(effectLayer)。
-  /**
-   * 近接ヒットの炸裂(社長支給の実写VFX・v0.25.4334)。連番テクスチャを尺で送るだけ。
-   * ★素材が「芯→砕け→粒→消える」を既に持っているので、**こちら側で α を弄らない**
-   * (絵の薄れ方は素材が持っている。重ねて2回フェードさせると濁る)。
-   * 加算で出す=黒背景の実写をそのまま世界へ置ける(元素材にアルファは無い)。
-   */
-  private drawMeleeHitSprite(e: Extract<VisualEffect, { kind: 'meleeHit' }>, now: number) {
-    const t = Math.min(1, (now - e.createdAt) / Math.max(1, e.duration));
-    let sprite = this.effects.get(e.id);
-    if (!(sprite instanceof Sprite) || !(sprite as { __meleeHitFx?: boolean }).__meleeHitFx) {
-      if (sprite) sprite.destroy();
-      const sp0 = new Sprite();
-      (sp0 as unknown as { __meleeHitFx?: boolean }).__meleeHitFx = true;
-      sp0.anchor.set(0.5, 0.5);
-      sp0.blendMode = 'add';
-      this.L.effectLayer.addChild(sp0);
-      this.effects.set(e.id, sp0);
-      sprite = sp0;
-    }
-    const sp = sprite as Sprite;
-    const tex = getTexture(meleeHitTexture(meleeHitFrame(t)));
-    if (!tex) { sp.visible = false; return; }
-    sp.visible = true;
-    sp.texture = tex;
-    sp.scale.set(e.size / Math.max(1, tex.height));
-    sp.position.set(e.x, e.y);
-    sp.tint = e.tint;
-    sp.alpha = 1;
-  }
-
   private drawImageEffect(e: Extract<VisualEffect, { kind: 'image' }>, now: number) {
     const tex = getTexture(e.texture);
     let sp = this.effects.get(e.id);
