@@ -8,7 +8,7 @@ import { getTexture } from '../pixi/pixiTextures';
 import { lastSuppressedError } from '../utils/errorBeacon';
 import { renderStatsText } from '../utils/renderStats';
 import { prevBeatText, startCrashWatch } from '../utils/crashWatch';
-import { textureMemoryMB } from '../pixi/pixiTextures';
+import { textureMemoryMB, textureTopGroups } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
 import DebugOverlay from './DebugOverlay';
@@ -377,7 +377,7 @@ const ErrBeacon: React.FC = () => {
     // ステータスなんて見れないよ」への回答。
     startCrashWatch(() => {
       const st = useGameStore.getState();
-      return `v${__APP_VERSION__} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB en${st.enemies.length}`;
+      return `v${__APP_VERSION__} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) en${st.enemies.length}`;
     });
     const iv = setInterval(() => {
       const msg = lastSuppressedError();

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4352',
+    items: [
+      '落ちる原因を調べるため、画面に出す手がかりを少し詳しくした。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.4351',
     items: [
       '落ちてタイトルに戻ってしまった時、前回の最後の状態がタイトル画面の左下に出る。ゲーム内容の変更はありません。',

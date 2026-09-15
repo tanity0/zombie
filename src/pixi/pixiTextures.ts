@@ -1215,3 +1215,32 @@ export const textureMemoryMB = (): number => {
   }
   return Math.round(bytes / (1024 * 1024));
 };
+
+/**
+ * ★読み込み済みテクスチャの**内訳**(v0.25.4352)。どこを削れば効くかを実機で見るための窓口。
+ * 名前の1階層目(`backgrounds` / `fx` / `mansion` …)でまとめ、MBの大きい順に返す。
+ * `textureMemoryMB` と同じく **source で重複排除**する。
+ */
+export const textureBreakdown = (): { group: string; mb: number; n: number }[] => {
+  const seen = new Set<unknown>();
+  const acc = new Map<string, { mb: number; n: number }>();
+  for (const [name, t] of textures) {
+    const src = t.source as unknown;
+    if (!src || seen.has(src)) continue;
+    seen.add(src);
+    const g = name.includes('/') ? name.slice(0, name.indexOf('/')) : '(直下)';
+    const mb = ((t.source.width || 0) * (t.source.height || 0) * 4) / (1024 * 1024);
+    const cur = acc.get(g) ?? { mb: 0, n: 0 };
+    acc.set(g, { mb: cur.mb + mb, n: cur.n + 1 });
+  }
+  return [...acc.entries()].map(([group, v]) => ({ group, mb: Math.round(v.mb), n: v.n }))
+    .sort((a, b) => b.mb - a.mb);
+};
+
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__texBreak = textureBreakdown;
+}
+
+/** 内訳の上位2つを1行に(実機の表示用)。例: `spr165+fx53`。 */
+export const textureTopGroups = (): string =>
+  textureBreakdown().slice(0, 2).map(g => `${g.group.slice(0, 4)}${g.mb}`).join('+');
