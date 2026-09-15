@@ -29528,6 +29528,13 @@ export class PixiScene {
    * 色(白/青/金=レア度)は tint が決める。加算=夜の地面に光として乗る。判定ゼロ。
    */
   private drawSkillBurstSprite(e: Extract<VisualEffect, { kind: 'skillBurst' }>, now: number) {
+    // ★一拍おく(v0.25.4345): createdAt は未来を指すことがある。その間は**出さない**
+    // (負の進行度をカーブへ渡すと倍率が負になって絵が裏返る)。
+    if (now < e.createdAt) {
+      const pre = this.effects.get(e.id);
+      if (pre) pre.visible = false;
+      return;
+    }
     const t = Math.min(1, (now - e.createdAt) / Math.max(1, e.duration));
     let sprite = this.effects.get(e.id);
     if (!(sprite instanceof Sprite) || !(sprite as { __skillBurstFx?: boolean }).__skillBurstFx) {

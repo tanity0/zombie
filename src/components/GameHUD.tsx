@@ -4,6 +4,7 @@ import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { shallow } from 'zustand/shallow';
 import { formatTime } from '../utils/renderUtils';
 import { hasWeaponIcon, weaponIconName, DESERTTECH_WEAPON_KEY } from '../utils/weaponUtils';
+import { weaponSlotClass } from '../utils/weaponTierColor'; // 武器スロットの段の色(社長指示2026-09-16)
 import { resolveDesertTechAmmoType } from '../utils/desertTechAmmo'; // UNIQUE_WEAPONS.md §16-2(バッチB・デザートテック)
 import { spritePath } from '../utils/spriteLoader';
 import VitalsOrb from './VitalsOrb';
@@ -355,7 +356,7 @@ const GameHUD: React.FC = () => {
               {/* メレー枠(切替なし=アイコン表示のみ)。刀/鞭装備時はそれを表示。 */}
               {melee && (
                 <div
-                  className="w-11 h-11 rounded-none bg-purple-400/12 flex items-center justify-center text-lg"
+                  className={`w-11 h-11 rounded-none flex items-center justify-center text-lg ${weaponSlotClass(melee.tier, false, false)}`}
                   title={katanaEquipped ? (murasameEquipped ? '小烏丸' : '刀') : whipEquipped ? '鞭' : melee.name}
                 >
                   {katanaEquipped
@@ -401,7 +402,7 @@ const GameHUD: React.FC = () => {
                     onPointerDown={(e) => { e.preventDefault(); setActiveWeapon(gun.id); }}
                     style={{ touchAction: 'manipulation' }}
                     className={`pointer-events-auto relative w-11 h-11 rounded-none flex items-center justify-center overflow-hidden transition-colors ${
-                      active ? 'bg-purple-500/25 ring-1 ring-purple-400/80' : dry ? 'bg-purple-400/5 opacity-50' : 'bg-purple-500/12 opacity-80'
+                      weaponSlotClass(gun.tier, active, dry)
                     }`}
                     title={gun.name}
                     aria-label={gun.name}

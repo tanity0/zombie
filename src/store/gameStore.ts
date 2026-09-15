@@ -417,6 +417,10 @@ const MELEE_HIT_SIZE = urlNum(MHIT_SEARCH, 'mhitsize', 150);
 const MELEE_HIT_TINT = urlNum(MHIT_SEARCH, 'mhittint', 0xffeade);
 // スキル取得の炸裂(v0.25.4343)。`?skfx=0` で完全に消える(試しの素材なので即切れるようにする)。
 const SKILL_BURST_ON = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('skfx') !== '0';
+// ★取ってから**一拍おいて**から出す(社長指示2026-09-16「取得後、一泊置いた方がいいのかも？」)。
+// カードを選んだ瞬間はメニューが閉じて画面が動いている最中で、そこへ同時に演出を重ねると読めない。
+// 先に画面を落ち着かせ、それから足元が弾ける。`?skdelay=` で調整できる。
+const SKILL_FX_DELAY_MS = urlNum(MHIT_SEARCH, 'skdelay', 260);
 // 尺(ms)。既定は素材側の MELEE_HIT_MS。`?mhitms=20000` で止めて1コマを見られる(確認用)。
 const MELEE_HIT_DUR = urlNum(MHIT_SEARCH, 'mhitms', MELEE_HIT_MS);
 // PACING_PUZZLE.md §5.23 M22 Group C(C3・既定ON): 1スイング/1発で複数の敵に当たった時、
@@ -11255,7 +11259,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ★130ms 遅らせる(v0.25.4344): 足元の炸裂と頭上マークの白い閃光が**同時に同じ場所**で
           // 出ると片方は無かったのと同じになる。先に足元が弾け、そこから立ち上がるように出す=因果の順。
           const rr = upgrade.skillRarity ?? SKILLS[upgrade.skillKey].rarity;
-          set({ skillPickFx: { key: upgrade.skillKey, lv: Math.max(1, Math.min(3, upgrade.skillLv ?? 1)), rarity: rr, at: Date.now() + 130 } });
+          set({ skillPickFx: { key: upgrade.skillKey, lv: Math.max(1, Math.min(3, upgrade.skillLv ?? 1)), rarity: rr, at: Date.now() + SKILL_FX_DELAY_MS + 130 } });
         }
         if (!(hasArt && upgrade.skillKey)) {
           const label = upgrade.type === 'skill' && upgrade.skillCardKind === 'levelup' && upgrade.skillLv !== undefined ? `${upgrade.name} Lv${upgrade.skillLv}` : upgrade.name;
@@ -20209,7 +20213,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 生成時に向きを振る(コストゼロ)。尺も少しだけばらす。
       rot: Math.random() * Math.PI * 2,
       flipX: Math.random() < 0.5 ? 1 : -1,
-      createdAt: now, duration: Math.round(SKILL_BURST_MS * (0.94 + Math.random() * 0.12)),
+      // ★一拍おく(v0.25.4345)。描画側は createdAt より前のフレームでは出さない。
+      createdAt: now + SKILL_FX_DELAY_MS, duration: Math.round(SKILL_BURST_MS * (0.94 + Math.random() * 0.12)),
     });
     // ★世界を**一瞬だけ**照らす(v0.25.4344)。加算スプライトは自分の面積しか塗らないので、
     // これが無いと夜の森で目の前に光が出ているのに草もキャラも明るくならない=ステッカーに見える。
@@ -20218,7 +20223,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 色は既存の作法どおり **rgba(...,` の前置き文字列**(α は描画側が付ける)。
     // CLAUDE.mdの実測「強glowの絵は無料・高いのは投影影だけ」に従い noShadow で出す。
     const rgb = `rgba(${(tint >> 16) & 0xff},${(tint >> 8) & 0xff},${tint & 0xff},`;
-    get().spawnGlow(x, y, GLOW_R_S, rgb, 140, true);
+    // 光も炸裂と同じ拍で出す(先に光って後から絵が来ると因果が逆になる)。
+    setTimeout(() => get().spawnGlow(x, y, GLOW_R_S, rgb, 140, true), SKILL_FX_DELAY_MS);
   },
 
   // ★v0.25.4331: 瓦礫。既存の「固体粒」(薬莢と同じ枝=通常合成・発光なし・重力・回転・着地で停止)を

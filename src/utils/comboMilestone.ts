@@ -49,7 +49,7 @@ export const multiHitDurationMs = (count: number): number => {
   return tier > 0 ? Math.round(MULTI_HIT_MILESTONE_MS * (tier >= COMBO_MILESTONE_MAX_TIER ? MAX_TIER_HOLD_MULT : 1)) : MULTI_HIT_NORMAL_MS;
 };
 /** 頭上の「倒した数」の帯の尺(ms)=連続撃破の窓(2.5秒)。倒すたびに置き直されるので、途切れるまで数字が居続ける。 */
-export const KILL_BANNER_MS = 2500;
+export const KILL_BANNER_MS = 1500;
 export const killBannerDurationMs = (tier: number): number => Math.round(KILL_BANNER_MS * (tier >= COMBO_MILESTONE_MAX_TIER ? MAX_TIER_HOLD_MULT : 1));
 /** 節目の α: 60% までは満・残り 40% で落とす(節目でない時は従来の 1−t)。 */
 export const milestoneAlpha = (t: number): number => (t < 0.6 ? 1 : Math.max(0, 1 - (t - 0.6) / 0.4));
