@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4355',
+    items: [
+      'ゲーム内容の変更はありません(素材の元データを守る仕組みを開発側に追加)。',
+    ],
+  },
+  {
     version: '0.25.4354',
     items: [
       '起動時に抱える絵をさらに減らした。名前のある変異体の絵は、出現の演出が始まってから読む。見た目は変わらない。',

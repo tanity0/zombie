@@ -31,6 +31,11 @@ jobs:
       # 既知の環は scripts/check-circular-imports.mjs の ALLOWED に固定してあり、増えたらここで落ちる。
       - name: Circular imports
         run: node scripts/check-circular-imports.mjs
+      # ★原盤(マスター素材)の保全ガード(社長指示2026-09-16「原盤確保の仕組み化」)。
+      # メモリ削減で素材の寸法を下げていく時に、配信用の縮小版で public/ の原盤を上書きすると
+      # **二度と戻せない**。寸法が縮んだ/消えた素材があればここで落ちる(差し替えは通す)。
+      - name: Asset masters
+        run: npm run assets:check
       - name: Unit tests
         run: npm test
       - name: Worker tests
