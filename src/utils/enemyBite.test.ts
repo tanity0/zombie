@@ -33,10 +33,15 @@ describe('噛みつきの台帳', () => {
     expect(BITE_DEFAULT.counterable).toBe(false);
   });
 
-  it('今は全敵が既定値(敵ごとの上書きは空)=調整はこの表へ足していく', () => {
-    expect(Object.keys(BITE_BY_TYPE)).toEqual([]);
-    expect(biteSpecFor('zombie')).toEqual(BITE_DEFAULT);
+  it('上書きはゾンビの硬直だけ(他は既定値)=調整はこの表へ足していく', () => {
+    expect(Object.keys(BITE_BY_TYPE)).toEqual(['zombie']);
     expect(biteSpecFor('werewolf')).toEqual(BITE_DEFAULT);
+  });
+
+  it('★ゾンビの噛みつきは10秒に1回(社長指示2026-09-16)', () => {
+    expect(biteSpecFor('zombie').recoverMs).toBe(10_000);
+    // 硬直**だけ**が既定と違う(射程・尺・踏み込み・カウンター可否は全敵共通のまま)。
+    expect(biteSpecFor('zombie')).toEqual({ ...BITE_DEFAULT, recoverMs: 10_000 });
   });
 });
 
@@ -294,10 +299,13 @@ describe('★噛みつきの除外は死神と幻影だけ(v0.25.3921)', () => {
     expect(isBiteExemptType('reaper')).toBe(true);
     expect(isBiteExemptType('guardian-phantom')).toBe(true);
   });
-  it('ボス・賞金首の硬直(CD)は雑魚より長い=技の合間のつなぎ', () => {
+  it('ボス・賞金首の硬直(CD)は既定の雑魚より長い=技の合間のつなぎ', () => {
     expect(biteSpecFor('jormungand').recoverMs).toBe(BITE_BOSS_RECOVER_MS);
     expect(biteSpecFor('bounty-melee').recoverMs).toBe(BITE_BOSS_RECOVER_MS);
-    expect(biteSpecFor('zombie').recoverMs).toBeLessThan(BITE_BOSS_RECOVER_MS);
+    // ★比較相手は**既定値のままの雑魚**にする。ゾンビは社長指示2026-09-16で 10秒 という
+    // 明示の例外になったので、ここで代表に使うと「ボスの方が長い」という元の意図を検査できない。
+    expect(biteSpecFor('werewolf').recoverMs).toBeLessThan(BITE_BOSS_RECOVER_MS);
+    expect(biteSpecFor('zombie').recoverMs).toBeGreaterThan(BITE_BOSS_RECOVER_MS); // 例外(意図的)
     expect(isTrueBossType('jormungand')).toBe(true); // CDの切替はこの述語で決まる
   });
   // ★社長2026-08-25「技というのは**体をぶつけに行く技**ね」
@@ -437,12 +445,15 @@ describe('★立ち止まり明けのダッシュ噛みつき(社長指示2026-0
     expect(canZombieRushBite(z({ biteReadyAt: 10_500 }), 10_000)).toBe(false);
     expect(canZombieRushBite(z({ biteAt: 9_900 }), 10_000)).toBe(false);
   });
-  it('★硬直(600ms)は停止(1000ms)より短い=「かならず」が成り立つ', () => {
-    // 前の噛みが突進の頭で解決し、硬直が明けた後に次の停止明けが来ること
-    const resolveAt = 10_000;                       // 前の噛みが終わった
-    const readyAt = resolveAt + 600;                // 硬直明け
-    const nextRushAt = resolveAt + 2000 + 1000;     // 突進の残り + 停止1秒
-    expect(nextRushAt).toBeGreaterThan(readyAt);
-    expect(canZombieRushBite(z({ biteReadyAt: readyAt }), nextRushAt)).toBe(true);
+  it('★「立ち止まったら必ず」は**硬直が明けている時だけ**(社長指示2026-09-16で10秒になった)', () => {
+    const resolveAt = 10_000;                        // 前の噛みが終わった
+    const readyAt = resolveAt + 10_000;              // 硬直明け(ゾンビは10秒)
+    const cycleMs = 1000 + 2000;                     // 停止1秒 + 突進2秒
+    // 次の停止明け(3秒後)では**まだ硬直中**=空振りになる
+    expect(canZombieRushBite(z({ biteReadyAt: readyAt }), resolveAt + cycleMs)).toBe(false);
+    // 硬直が明けた後の停止明けでは必ず構える
+    expect(canZombieRushBite(z({ biteReadyAt: readyAt }), readyAt + 1)).toBe(true);
+    // 10秒 ÷ 3秒サイクル ⇒ 噛めるのは約3回に1回
+    expect(Math.ceil(10_000 / cycleMs)).toBe(4);
   });
 });

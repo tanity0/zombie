@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4348',
+    items: [
+      'ゾンビの噛みつきは十秒に一度まで。立ち止まるたびに噛んでくるのではなく、噛める状態の時だけ来る。どの止まりが本物かを読む余地が出た。',
+    ],
+  },
+  {
     version: '0.25.4347',
     items: [
       '不具合を調べるための手がかりを画面左下に出すようにした。ゲーム内容の変更はありません。',
