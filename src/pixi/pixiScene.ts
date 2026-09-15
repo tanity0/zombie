@@ -16495,12 +16495,25 @@ export class PixiScene {
    * syncActors の 267行あと。中で引くと爆発の光が縁に一切効かない(§6品質監査 A-1)。
    */
   private syncRimLights(player: Player, enemies: Enemy[], effects: VisualEffect[], now: number) {
-    const views: { id: string; view: ActorView }[] = [];
-    if (this.playerView) views.push({ id: 'player', view: this.playerView });
+    // ★v0.25.4329(社長指示「1だけ」= 木・壁・プロップにも付ける):
+    // 「同じ松明の前で、敵は光るのに木は光らない」を無くす。光が場面を統一するのが狙いなので、
+    // **一つの光の下で応答する物としない物が混ざる**と効果が半分になる(§6監査#11)。
+    const views: { id: string; sprite: Sprite }[] = [];
+    if (this.playerView) views.push({ id: 'player', sprite: this.playerView.sprite });
     for (const e of enemies) {
       const v = this.enemies.get(e.id);
-      if (v) views.push({ id: e.id, view: v });
+      if (v) views.push({ id: e.id, sprite: v.sprite });
     }
+    // ★木/壁/研究所プロップ/廃都の散布物は **container を持たない裸の Sprite** が actorLayer に
+    // 直接並んでいる(zIndex=footY)ので、アクターとは別の付け方になる(§6監査A-4)。
+    for (const [k, e] of this.trees) views.push({ id: 'tree:' + k, sprite: e.sprite });
+    for (const [k, e] of this.wallObjs) views.push({ id: 'wall:' + k, sprite: e.sprite });
+    for (const [k, e] of this.propObjs) views.push({ id: 'prop:' + k, sprite: e.sprite });
+    for (const [k, e] of this.cityPropObjs) views.push({ id: 'cprop:' + k, sprite: e.sprite });
+    // 破壊可能プロップ(樽・松明など)は container を持つのでアクターと同じ付け方。
+    // ※松明は自分が光源なので、距離ゼロの除外(RIM_MIN_DIST)で自分自身では光らない。
+    for (const [k, v] of this.breakableProps) views.push({ id: 'bprop:' + k, sprite: v.sprite });
+
     if (!RIM_ON) { for (const { id } of views) this.hideRim(id); this.pruneRims(views); return; }
 
     // このフレームの光(色つき)。worldLights は色を持たないので、ここで色を足す。
@@ -16533,7 +16546,7 @@ export class PixiScene {
 
     const dt = this.rimLastNow > 0 ? Math.min(100, now - this.rimLastNow) : 16;
     this.rimLastNow = now;
-    for (const { id, view } of views) this.drawRim(id, view, dt);
+    for (const { id, sprite } of views) this.drawRim(id, sprite, dt);
     this.pruneRims(views);
   }
 
@@ -16552,8 +16565,7 @@ export class PixiScene {
     }
   }
 
-  private drawRim(id: string, view: ActorView, dtMs: number) {
-    const sp = view.sprite;
+  private drawRim(id: string, sp: Sprite, dtMs: number) {
     // ★本体が出ていない/絵が無い時は縁も出さない。既定OFFは他の判定より先(try の外側の作法)。
     const texOk = sp.visible && sp.texture && sp.texture.width > 1;
     let r = this.rimViews.get(id);
@@ -16563,6 +16575,11 @@ export class PixiScene {
     const fx = sp.position.x, fy = sp.position.y;
     const hit = sampleRim(fx, fy, this.rimLights);
 
+    // ★光が当たっていない物にはスプライトを作らない(v0.25.4329)。木を足したので対象が一気に増えた:
+    // 生成してから隠すと、光の無い森でも木の本数×2枚ぶん無駄に確保することになる。
+    // 一度作った物は消えかけ(k>0)の間だけ残り、離れれば pruneRims が破棄する。
+    if (!r && !hit) return;
+
     if (!r) {
       const mk = () => {
         const s2 = new Sprite();
@@ -16571,7 +16588,7 @@ export class PixiScene {
         return s2;
       };
       r = { a: mk(), b: mk(), dx: 0, dy: 0, k: 0 };
-      // 本体の**直後**(=本体の上)に入れる。容器の中なのでy順の並べ替えに巻き込まれない。
+      // 本体の**直後**(=本体の上)に入れる。
       const parent = sp.parent;
       if (!parent) return;
       const at = parent.getChildIndex(sp) + 1;
@@ -16621,6 +16638,10 @@ export class PixiScene {
       s2.skew.set(sp.skew.x, sp.skew.y);
       s2.rotation = sp.rotation;
       s2.tint = tint;
+      // ★木/壁/プロップは actorLayer 直下に居て、**毎フレーム zIndex で並べ替えられる**。
+      // 追従させないと縁が本体から離れた深さへ飛ぶ。ほんの少し上に置いて本体の直上に留める
+      // (アクターは容器の中なので zIndex は使われない=無害)。
+      s2.zIndex = sp.zIndex + 0.01;
       s2.alpha = Math.min(1, sp.alpha * r!.k * w * RIM_GAIN * boost);
     };
     put(r.a, ta, 1 - t);

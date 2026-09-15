@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4329',
+    items: [
+      '木・壁・樽・散らばった物にも、光の側の縁が出るようになった。松明のそばでは、人も物も同じ光に応える。',
+    ],
+  },
+  {
     version: '0.25.4328',
     items: [
       '縁の明かりを直した。輪郭が常にちらついていたのと、振り向くと明るい側が反対に入れ替わっていたのが直っている。光源が見えていない時は縁も出ない。',
