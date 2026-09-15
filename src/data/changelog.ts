@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4350',
+    items: [
+      'ゾンビの噛みつきの点滅を紫に戻した。紫はカウンターできない攻撃の印で、この噛みつきは横へ動いて避ける。',
+    ],
+  },
+  {
     version: '0.25.4349',
     items: [
       'ゾンビがダッシュ噛みつきを仕掛ける時、赤く点滅する。横へ動けば避けられる。',

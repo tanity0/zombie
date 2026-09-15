@@ -459,14 +459,16 @@ describe('★立ち止まり明けのダッシュ噛みつき(社長指示2026-0
   });
 });
 
-describe('★溜め中の点滅の色(社長指示2026-09-16「赤点滅させてゾンビ」)', () => {
-  it('ゾンビだけ赤、ほかは紫のまま', () => {
-    expect(biteBlinkTintFor('zombie')).toBe(0xef4444);
+describe('★溜め中の点滅の色(社長裁定2026-09-16「紫」)', () => {
+  it('全敵とも紫(ゾンビも例外ではない)', () => {
+    expect(biteBlinkTintFor('zombie')).toBe(0x9333ea);
     expect(biteBlinkTintFor('werewolf')).toBe(0x9333ea);
     expect(biteBlinkTintFor('jormungand')).toBe(0x9333ea);
   });
-  it('★色を変えただけでカウンター可否は変えていない(判定は不変)', () => {
+  it('★紫=カウンター不可と一対であること(色と判定は必ず揃える)', () => {
     expect(biteSpecFor('zombie').counterable).toBe(false);
     expect(BITE_DEFAULT.counterable).toBe(false);
+    // 色を赤へ動かす時は counterable も一緒に見直す、という約束をここで機械化しておく。
+    expect(biteBlinkTintFor('zombie') === 0x9333ea).toBe(!BITE_DEFAULT.counterable);
   });
 });
