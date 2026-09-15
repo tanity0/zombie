@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { prevBeatText } from '../utils/crashWatch'; // 前回の最後の状態(落ちた直後にここで読む・v0.25.4351)
 import { assetUrl } from '../config/assetUrl';
 import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
@@ -350,6 +351,18 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
         <span className="absolute top-3 right-3 px-2 py-0.5 text-[10px] tabular-nums text-purple-200/75" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.7)' }}>
           v{__APP_VERSION__}
         </span>
+      )}
+
+      {/* ★前回の最後の状態(v0.25.4351・社長質問「落ちた時ってスタート押す画面の左下になにか出るの?」)。
+          **出ていなかった**——この記録はゲーム中の左下にしか無く、落ちるとタイトルへ戻るので
+          読む機会が無かった。落ちた直後に**最初に見る画面**がここなので、ここへ出す。
+          記録が無い初回は何も出ない。 */}
+      {phase === 'title' && !showNotice && prevBeatText() && (
+        <div className="absolute bottom-3 left-3 max-w-[92vw]">
+          <span className="px-2 py-1 text-[9px] leading-tight tabular-nums text-purple-200/55" style={{ fontFamily: 'var(--game-font), sans-serif' }}>
+            前回最後 {prevBeatText()}
+          </span>
+        </div>
       )}
 
       {/* 現在モード表示(社長指示: パラメータ残留事故をその場で見抜く)。**掛かっている時だけ**出す

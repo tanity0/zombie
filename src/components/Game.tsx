@@ -7,7 +7,7 @@ import { getAssistLightDebug } from '../pixi/pixiScene';
 import { getTexture } from '../pixi/pixiTextures';
 import { lastSuppressedError } from '../utils/errorBeacon';
 import { renderStatsText } from '../utils/renderStats';
-import { loadPrevBeat, prevBeatText, startCrashWatch } from '../utils/crashWatch';
+import { prevBeatText, startCrashWatch } from '../utils/crashWatch';
 import { textureMemoryMB } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
@@ -375,7 +375,6 @@ const ErrBeacon: React.FC = () => {
     // ★落ちるとページごと再読み込みされるので、**生きている間の数字を端末へ置いておく**(v0.25.4349)。
     // 次の起動でそれを読んで出す=落ちる直前の状態が必ず残る。社長「落ちた時はトップに戻っちゃうので
     // ステータスなんて見れないよ」への回答。
-    loadPrevBeat();
     startCrashWatch(() => {
       const st = useGameStore.getState();
       return `v${__APP_VERSION__} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB en${st.enemies.length}`;
