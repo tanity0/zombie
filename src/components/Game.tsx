@@ -330,6 +330,7 @@ const Game: React.FC<GameProps> = ({
         {isPixiRenderer() ? 'pixi' : 'canvas'} · v{__APP_VERSION__}
         {' · '}floor:{getTexture('lab-floor/lab-floor-stage2') ? 'S' : '-'}{getTexture('lab-floor/lab-floor-ground') ? 'G' : '-'}{getTexture('lab-floor/lab-floor-clean') ? 'C' : '-'}
         {' · '}mh:{getTexture('fx/melee-hit-01') ? 'T' : '-'}
+        {' · '}sk:{getTexture('skill/skills-sheet') ? 'S' : '-'}{getTexture('skill/warm-up') ? 'I' : '-'}
         {' · '}res:{getAppliedResolution() || '?'}/{typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : '?'}
         {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('lightdbg') === '1' && <LightDebug />}
         <ErrBeacon />

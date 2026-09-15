@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4342',
+    items: [
+      'レベルアップでスキルを取った時、名前の文字ではなくそのスキルの絵が頭上に出る。レベルは絵の下に並ぶ粒の数で分かる。絵を持たないカードは今までどおり文字。',
+    ],
+  },
+  {
     version: '0.25.4341',
     items: [
       '近接で当てた時の炸裂が黒く塗られていた不具合を直した。影のような染みではなく、白い閃光として出る。',

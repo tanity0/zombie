@@ -27,6 +27,7 @@ import type {
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
   BloodSpike, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
   GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショットの渦(v0.25.3276)
+  SkillKey, // スキル取得の頭上マーク(v0.25.4342)がアイコンを引くのに使う
 } from '../types/game';
 // ENDING_SCENE.md 演出仕様v2: 兵士/フィルの状態機械(純関数・シミュレーション)はここでは読むだけ。
 import type { EndingSoldier, EndingPhillState, EndingBomb } from '../utils/endingScene';
@@ -4018,6 +4019,8 @@ export class PixiScene {
   private skadiBlockPool = new Map<string, Sprite>(); // 氷塊スプライト(マーカーid→sprite)
   private skadiBladePool = new Map<string, Sprite>(); // 氷刃スプライト(ブレードid→sprite)
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
+  private skillPickGfx = new Graphics();     // スキル取得の頭上マーク(下敷き・閃光・レベルの粒)
+  private skillPickSp: Sprite | null = null; // 同・アイコン本体
   private goldRingReadyGfx = new Graphics(); // 金環CD明けの頭上マーク(同型・UNIQUE_WEAPONS.md §19-3)
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
   private homingLockGfx = new Graphics();   // ホーミング弾ロックインジケーター(ロック済み敵の頭上マーカー)
@@ -5054,6 +5057,9 @@ export class PixiScene {
     this.L.actorLayer.addChild(this.policeSprite);
     this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
+    // スキル取得の頭上マーク(v0.25.4333)。**加算にはしない**——下敷きの暗い円が要るため
+    // (加算だと暗い色が透明になって下敷きの役に立たない)。閃光は通常合成でも十分光る。
+    this.L.effectLayer.addChild(this.skillPickGfx);
     this.goldRingReadyGfx.blendMode = 'add';
     this.L.effectLayer.addChild(this.goldRingReadyGfx);
     this.L.effectLayer.addChild(this.marksmanMarkGfx);
@@ -8632,6 +8638,11 @@ export class PixiScene {
     this.syncPickups(s.pickups, now);
     this.syncPumpkinTelegraph(s.enemies, now, s.gameTime); // ジャンプ攻撃の着地予告(赤い影)
     this.updateBoomerangReadyMark(s.player, now); // ブーメランCD明けの頭上マーク
+    // ★**fxNow(実時計)で回す**(v0.25.4342)。`now` は `hitstopFreezeNow` で凍る時計で、
+    // store 側の `at` は `Date.now()` なので、ヒットストップ中は dt が負になり
+    // **毎フレーム visible=false に落ちて絵が消える**(実測で点滅した)。
+    // 「光系のエフェクトは止めないで」(社長指示v0.25.3038)と同じ扱い。
+    this.updateSkillPickMark(s.player, fxNow);    // スキル取得の頭上マーク
     this.updateGoldRingReadyMark(s.player, now); // 金環CD明けの頭上マーク(UNIQUE_WEAPONS.md §19-3)
     this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
     this.updateFlareReadyMark(s.player, now);     // フレアガンCD明けの頭上炎マーク(一瞬・ブーメラン型)
@@ -10692,6 +10703,105 @@ export class PixiScene {
   // ★v0.25.3624(社長指示「CD明けのポップ系は全てスキルアイコンに統一」): 手描きの「へ」字マークを
   // 廃止し、実物のブーメラン素材(drone-boomerang)をアイコンとして出す(弁慶マークと同じ型)。
   private boomReadySp: Sprite | null = null;
+  /**
+   * スキルキー → アイコンのテクスチャ(遅延・キャッシュつき)。
+   *
+   * ★**起動時のローダには一切触らない**(v0.25.4342)。v0.25.4332 はここを
+   * `ensureTextures` の中で 47マス分やっていて、**その版から端末が真っ暗で起動しなくなった**。
+   * 起動ローダの `Promise.all` の中で例外が出ると `ready` が永久に立たない(=真っ暗)ことは
+   * 同ファイルに明記された既知の地雷なので、**新しい処理を絶対にあそこへ足さない**方針に変えた。
+   * 作法は既存の弁慶マーク(`updateBenkeiReadyMark`)と同じ=**必要になった時に1マスだけ切る**。
+   */
+  private skillIconTexCache = new Map<string, Texture>();
+  private skillIconTexture(key: string): Texture | null {
+    const hit = this.skillIconTexCache.get(key);
+    if (hit) return hit;
+    try {
+      const single = getTexture(`skill/${key}`); // シートに載っていない9個(起動後に遅延で読む)
+      if (single && single.width > 0) { this.skillIconTexCache.set(key, single); return single; }
+      const sheet = getTexture('skill/skills-sheet');
+      const idx = SKILL_ICON_INDEX[key as SkillKey];
+      if (!sheet || sheet.width === 0 || idx === undefined) return null;
+      const geo = skillSheetGeometry(sheet.width, sheet.height);
+      const col = idx % geo.cols, row = Math.floor(idx / geo.cols);
+      if ((col + 1) * geo.cellW > sheet.width || (row + 1) * geo.cellH > sheet.height) return null;
+      const tex = new Texture({
+        source: sheet.source,
+        frame: new Rectangle(col * geo.cellW, row * geo.cellH, geo.cellW, geo.cellH),
+      });
+      this.skillIconTexCache.set(key, tex);
+      return tex;
+    } catch {
+      return null; // 素材が想定外でも**描かないだけ**にする(絵のために遊びを止めない)
+    }
+  }
+
+  /**
+   * スキル取得の頭上マーク(v0.25.4333・社長指示「文字ではなくスキルアイコンにして」)。
+   *
+   * ★**既存の頭上マーク(updateBoomerangReadyMark・社長指示v0.25.2155で全サブウェポン共通に
+   * 統一された型)と同じ作法**にする=新しい語彙を発明しない。すなわち:
+   *   ①プレイヤーに追従する(ワールドに置き去りにしない) ②出だしにフェードインと閃光
+   *   ③浮き上がる ④オーバーシュートしてから整定(慣性)。
+   * v0.25.4332 の初版は `spawnImageMark` で**ワールドに固定・αは最初から1・1.4秒間ぴくりとも
+   * 動かない**絵を、しかも**プレイヤーより大きく頭に重ねて**出していた(クリエイティブ監査で全部指摘)。
+   */
+  private updateSkillPickMark(player: Player, now: number) {
+    const g = this.skillPickGfx;
+    g.clear();
+    const fx = useGameStore.getState().skillPickFx;
+    const life = 1100;
+    const dt = fx ? now - fx.at : -1;
+    if (!fx || dt < 0 || dt > life) { if (this.skillPickSp) this.skillPickSp.visible = false; return; }
+    const t = dt / life;
+    // 立ち上がりは速く、引きは長く(=同じ形で往復しない)。
+    const alpha = t < 0.12 ? t / 0.12 : Math.max(0, 1 - Math.pow(Math.max(0, (t - 0.12) / 0.88), 1.8));
+    // 浮上は**減速して止まる**(等速で流れて瞬間停止しない=慣性MUST)。
+    const riseEase = 1 - Math.pow(1 - t, 3);
+    const rise = -24 * riseEase;
+    const cx = player.x + player.width / 2;
+    // ★頭より**上**に置く。プレイヤーの絵の頭頂は足元から約24px上なので、そこへ絵の高さぶんの余白を足す。
+    // (初版は絵の下端が胴の真ん中まで下りていて、1.4秒間ずっと顔が隠れていた。)
+    const cy = player.y - 62 + rise;
+    const tex = this.skillIconTexture(fx.key);
+    if (!tex || tex.width === 0) return;
+    if (!this.skillPickSp) {
+      const sp0 = new Sprite(tex);
+      sp0.anchor.set(0.5);
+      this.L.effectLayer.addChild(sp0);
+      this.skillPickSp = sp0;
+    }
+    const sp = this.skillPickSp;
+    if (sp.texture !== tex) sp.texture = tex;
+    const BOX = 34;                                  // 人物(描画 約64×52)より小さく=隠さない
+    const pop = t < 0.22 ? 1.34 - 0.34 * (1 - Math.pow(1 - t / 0.22, 2)) : 1; // 行き過ぎて整定(減速)
+    // ★下敷き。夜の地面に暗い絵(シートの平均輝度は 72/255)を素で置くと背景に溶ける。
+    // カード画面もHUDも板か縁の上に置いているので、世界に出す時だけ裸、という不整合も消える。
+    const r = BOX * 0.78 * pop;
+    g.circle(cx, cy, r * 1.18).fill({ color: 0x0b0a14, alpha: 0.55 * alpha });
+    g.circle(cx, cy, r * 1.18).stroke({ width: 1.5, color: 0xffd98a, alpha: 0.5 * alpha });
+    // 出現の閃光(既存マークと同じ作法)。取った瞬間の「ピカ」。
+    const flash = Math.max(0, 1 - dt / 190);
+    if (flash > 0) {
+      g.circle(cx, cy, r * 0.9 + 26 * (1 - flash)).fill({ color: 0xffe9b8, alpha: 0.45 * flash });
+      g.circle(cx, cy, 6).fill({ color: 0xffffff, alpha: 0.95 * flash });
+    }
+    sp.scale.set((BOX / Math.max(1, Math.max(tex.width, tex.height))) * pop);
+    sp.position.set(cx, cy);
+    sp.alpha = Math.max(0, alpha);
+    sp.visible = sp.alpha > 0.01;
+    // ★レベルは**数字ではなく粒**で出す(社長指示「文字ではなく」を数字にも通す)。
+    // 取得直後は1粒。Lv2/Lv3 はその段数ぶん。粒は絵の真下へ横並び。
+    if (fx.lv > 1) {
+      const py = cy + r * 1.34;
+      const gap = 9;
+      const x0 = cx - (gap * (fx.lv - 1)) / 2;
+      for (let i = 0; i < fx.lv; i++) {
+        g.circle(x0 + gap * i, py, 2.6).fill({ color: 0xffd98a, alpha: 0.95 * alpha });
+      }
+    }
+  }
+
   private updateBoomerangReadyMark(player: Player, now: number) {
     const g = this.boomReadyGfx;
     g.clear();
@@ -30413,6 +30523,7 @@ export class PixiScene {
     for (const o of this.holoVolleySprites.values()) o.destroy();
     this.killFxText?.destroy(); this.killFxText = null;
     this.benkeiReadySp?.destroy(); this.benkeiReadySp = null; this.benkeiIconTex = null;
+    this.skillPickSp?.destroy(); this.skillPickSp = null; this.skillIconTexCache.clear();
     this.boomReadySp?.destroy(); this.boomReadySp = null;
     this.killFxSlashSp?.destroy(); this.killFxSlashSp = null;
     for (const o of this.killFxBloodPool) o.destroy();

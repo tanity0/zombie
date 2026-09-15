@@ -1126,8 +1126,35 @@ export const ensureTextures = (): Promise<void> => {
     regAspect('default:lab-zombie-3', 'lab-zombie/lab-zombie-lv3');
 
     ready = true; // 一部失敗しても描画は継続(真っ暗を防ぐ)。
+    void warmSkillIcons();  // ★ready の**後**に投げる(下のコメント参照)。失敗しても起動には一切触らない。
   })();
   return loading;
+};
+
+/**
+ * シートに載っていないスキルアイコン9枚を、**起動が終わってから**背景で読む(v0.25.4342)。
+ *
+ * ★なぜ起動マニフェストに入れないか: v0.25.4332 でここへ9枚+47マスの切り出しを足した版から、
+ * 社長の端末が**真っ暗で起動しなくなった**(v0.25.4337 で撤回したら直った=切り分け済み)。
+ * このファイルの上の方に「**以前は Promise.all で1つでも失敗すると ready が永久に立たず
+ * 画面が真っ暗になっていた**」と明記されている地雷がそこにある。原因が何であれ、
+ * **起動の成否に新しい素材をぶら下げない**のが正しい形なので、読み込みを起動の外へ出した。
+ * ここが全部失敗しても、起動は済んでいて、頭上マークが出ないだけで済む。
+ */
+const SKILL_SINGLE_ICON_NAMES = [
+  'skill/poi-bombing', 'skill/poi-guard', 'skill/poi-thrall', 'skill/guardian-spirit',
+  'skill/ghost-helper', 'skill/ghost-slayer', 'skill/scrap-builder', 'skill/warm-up', 'skill/big-bullet',
+];
+const warmSkillIcons = async (): Promise<void> => {
+  for (const name of SKILL_SINGLE_ICON_NAMES) {
+    if (textures.has(name)) continue;
+    try {
+      const tex = await Assets.load(spritePath(name));
+      if (tex) { tex.source.scaleMode = 'linear'; textures.set(name, tex); }
+    } catch {
+      // 出ないだけ。**投げない**(呼び元は void なので、投げると未処理のPromise拒否になる)。
+    }
+  }
 };
 
 // 背景パノラマ/床/地平帯はマニフェスト外で URL 直読みする(PixiStage が Assets.load)。

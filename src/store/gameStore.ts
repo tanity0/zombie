@@ -289,6 +289,7 @@ import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal } from '../data/campaign';
 import { MELEE_HIT_MS } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
 import { urlNum } from '../utils/urlNum'; // URLの数値ツマミ(既定値へ確実に落とす・v0.25.4341)
+import { hasSkillIcon, skillSingleIconName } from '../data/skillIcons'; // スキル取得マークの絵の有無(v0.25.4342・純データ=実行時importなし)
 import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX(stage-ex1)専用分岐の判定
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
@@ -5821,6 +5822,13 @@ interface GameState {
   // ない)なので、表示中に新しい覚醒が起きても「1回に纏める」(古い表示が新しいatで上書きされるだけ・
   // 演出/SEは選択直後にset外で1回だけ発火。§24実装側のデバウンスと対で使う)。resetGameでnullへ。
   awakenCutin: { skillKey: SkillKey; skillName: string; at: number } | null;
+  /**
+   * スキル取得の頭上マーク(v0.25.4342)。描画は pixiScene の updateSkillPickMark が持つ
+   * =**既存の頭上マーク(ブーメランのCD明け)と同じ型**を流用する(新しい語彙を作らない)。
+   * ★ここには**スキルキーだけ**を置く(テクスチャ名を持たせない)。絵の解決は描画側の仕事で、
+   * シミュ層がレンダラの都合(シートのどのマスか)を知らないようにするため。resetGameでnullへ。
+   */
+  skillPickFx: { key: SkillKey; lv: number; at: number } | null;
   rerollUpgradeOptions: () => void;             // スクラップを払い、表示中の3枚を全引き直し(スクラップ択は残置)
   banishSkillFromRun: (key: SkillKey) => void;  // 無料・ラン中2回まで。そのスキルを以後の抽選から除外
   gachaDupeCounts: Partial<Record<SkillKey, number>>;   // ガチャのスキル別「被り回数」(Lv抽選表の参照・永続)
@@ -6440,6 +6448,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   realGameTime: 0,
   isPaused: false,
   showUpgradeMenu: false,
+  skillPickFx: null,
   levelUpIntroUntil: 0,
   levelUpEmphasisUntil: 0,
   levelUpFlashArmed: false,
@@ -11219,8 +11228,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       const cp = get().player;
       const willChain = cp.experience >= cp.experienceToNextLevel;
       if (!awakenedFx && !willChain) {
-        const label = upgrade.type === 'skill' && upgrade.skillCardKind === 'levelup' && upgrade.skillLv !== undefined ? `${upgrade.name} Lv${upgrade.skillLv}` : upgrade.name;
-        get().spawnCallout(cp.x + cp.width / 2, cp.y - 14, label, '#fffbe6', { bg: 0xf59e0b, scale: 1.2, serif: true, holdMs: 600, duration: 1500 });
+        // ★v0.25.4342(社長指示2026-09-16「文字ではなくスキルアイコンにして」の再実装):
+        // 取った物が**スキルで、絵を持っているなら、その絵**を頭上に出す。文字の帯は出さない。
+        // 絵が無いカード(体力+/攻撃+ の底報酬・消費カード)と、台帳に絵の無いスキルは
+        // **従来の文字へ落ちる**(名前が出ないより、文字の方がまし)。
+        const hasArt = upgrade.type === 'skill' && !!upgrade.skillKey
+          && (skillSingleIconName(upgrade.skillKey) !== null || hasSkillIcon(upgrade.skillKey));
+        if (hasArt && upgrade.skillKey) {
+          // レベルは**数字ではなく粒(ピップ)**で出す=社長指示「文字ではなく」を数字にも通す。
+          set({ skillPickFx: { key: upgrade.skillKey, lv: Math.max(1, Math.min(3, upgrade.skillLv ?? 1)), at: Date.now() } });
+        } else {
+          const label = upgrade.type === 'skill' && upgrade.skillCardKind === 'levelup' && upgrade.skillLv !== undefined ? `${upgrade.name} Lv${upgrade.skillLv}` : upgrade.name;
+          get().spawnCallout(cp.x + cp.width / 2, cp.y - 14, label, '#fffbe6', { bg: 0xf59e0b, scale: 1.2, serif: true, holdMs: 600, duration: 1500 });
+        }
       }
       const changesDamage = (upgrade.type === 'stat' && upgrade.statKind === 'atk') || (upgrade.type === 'consumable' && upgrade.consumableKey === 'attack-doping');
       if (changesDamage && !willChain) set({ levelUpEmphasisUntil: get().gameTime + LEVELUP_EMPHASIS_MS, levelUpFlashArmed: true });
@@ -19599,6 +19619,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         realGameTime: 0,
         isPaused: false,
         showUpgradeMenu: false,
+        skillPickFx: null, // 新ランに前回の頭上マークを持ち越さない
         showShopMenu: false,
         showEventQuestMenu: false,
         shopReopenAt: 0,
