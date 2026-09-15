@@ -215,7 +215,7 @@ import {
 } from '../utils/bountyScript';
 import { telegraphProgress01 } from '../utils/bossTelegraph';
 import {
-  biteBlinkOn, bitePhaseOf, // ★溜め中の点滅(尺と明滅の出どころはsim側の純関数)
+  biteBlinkOn, bitePhaseOf, biteBlinkTintFor, // ★溜め中の点滅(尺と明滅と色の出どころはsim側の純関数)
   biteSpecFor,
 } from '../utils/enemyBite'; // ★噛みつきの台帳(PACING_PUZZLE §12)
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 表示名・立ち絵クラスの正本(台帳)と、技の寸法テーブル。
@@ -17545,8 +17545,10 @@ export class PixiScene {
       // ——ここだけ赤にすると「赤いのにカウンターできない」で文法違反になる。
       // **明側を白熱にして明暗で立てる**ので、紅き夜(画面全体が血赤)でも沈まない。
       // 明滅のON/OFFは sim 側の純関数(biteLeadBlinkOn)を読むだけ=尺の出どころを1箇所に保つ。
+      // ★ゾンビだけ赤(v0.25.4349・社長指示「ダッシュ噛みつき発動のタイミングで赤点滅させてゾンビ」)。
+      // 色の出どころは `biteBlinkTintFor` の1箇所(理由と、戻す時にどこを揃えるかもそこに書いてある)。
       const biteTint: number | null = bitePhaseOf(e, gameTime) === 'windup'
-        ? (biteBlinkOn(e, gameTime) ? 0xffffff : 0x9333ea)
+        ? (biteBlinkOn(e, gameTime) ? 0xffffff : biteBlinkTintFor(e.type))
         : null;
       if (sinceLunge >= 0 && sinceLunge < CONTACT_LUNGE_MS) {
         const pose = contactLungePose(sinceLunge / CONTACT_LUNGE_MS);

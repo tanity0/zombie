@@ -7,6 +7,7 @@ import {
   isBiteInterruptedByMove, isBodySlamNow, isBiteFrozen, biteBlinkOn,
   BITE_BOSS_RECOVER_MS,
   canZombieRushBite,
+  biteBlinkTintFor,
 } from './enemyBite';
 import type { Enemy } from '../types/game';
 
@@ -455,5 +456,17 @@ describe('★立ち止まり明けのダッシュ噛みつき(社長指示2026-0
     expect(canZombieRushBite(z({ biteReadyAt: readyAt }), readyAt + 1)).toBe(true);
     // 10秒 ÷ 3秒サイクル ⇒ 噛めるのは約3回に1回
     expect(Math.ceil(10_000 / cycleMs)).toBe(4);
+  });
+});
+
+describe('★溜め中の点滅の色(社長指示2026-09-16「赤点滅させてゾンビ」)', () => {
+  it('ゾンビだけ赤、ほかは紫のまま', () => {
+    expect(biteBlinkTintFor('zombie')).toBe(0xef4444);
+    expect(biteBlinkTintFor('werewolf')).toBe(0x9333ea);
+    expect(biteBlinkTintFor('jormungand')).toBe(0x9333ea);
+  });
+  it('★色を変えただけでカウンター可否は変えていない(判定は不変)', () => {
+    expect(biteSpecFor('zombie').counterable).toBe(false);
+    expect(BITE_DEFAULT.counterable).toBe(false);
   });
 });

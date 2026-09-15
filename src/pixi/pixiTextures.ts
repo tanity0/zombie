@@ -18,6 +18,12 @@ import { STAGE_PROPS } from '../world/cityProps';
 import { setEnemyArtAspect } from './renderSpec';
 
 
+// ★素材ごとの読み込み省略(v0.25.4349・社長報告「落ちるとトップに戻る」の切り分け用)。
+// `?mhit=0` / `?skfx=0` は「出さない」だけでなく「**読まない**」にする=メモリが実際に減り、
+// 端末が落ちる原因がこの素材かどうかを社長の端末で試せるようになる。
+const FX_SKIP_MELEE_HIT = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mhit') === '0';
+const FX_SKIP_SKILL_BURST = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('skfx') === '0';
+
 const textures = new Map<string, Texture>();
 let ready = false;
 let loading: Promise<void> | null = null;
@@ -809,7 +815,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/plant-spit', scaleMode: 'linear' as const },     // 食人植物の種吐き(口が右向き)
       { name: 'fx/plant-seed', scaleMode: 'linear' as const },     // 種そのもの(植物の敵弾スプライト)
       // 近接ヒットの炸裂(社長支給の実写VFX・15コマ・176×176)。実写の縮小なので linear。
-      ...Array.from({ length: 15 }, (_, i) => ({ name: `fx/melee-hit-${String(i).padStart(2, '0')}`, scaleMode: 'linear' as const })),
+      // ★`?mhit=0` の時は**読み込みごと省く**(v0.25.4349)。切り分けで「絵を出さない」だけでは
+      // メモリは減らないので、端末が落ちる原因かどうかを試せなかった。
+      ...(FX_SKIP_MELEE_HIT ? [] : Array.from({ length: 15 }, (_, i) => ({ name: `fx/melee-hit-${String(i).padStart(2, '0')}`, scaleMode: 'linear' as const }))),
       { name: 'fx/dust-puff', scaleMode: 'linear' as const },      // 砂埃バリエーションA(もこもこの塊)
       { name: 'fx/dust-ring', scaleMode: 'linear' as const },      // 砂埃バリエーションB(放射状のリング)
       { name: 'fx/ground-crack', scaleMode: 'linear' as const },   // 地割れ(着地衝撃の床。分類②)
@@ -1144,8 +1152,9 @@ export const ensureTextures = (): Promise<void> => {
 const SKILL_SINGLE_ICON_NAMES = [
   'skill/poi-bombing', 'skill/poi-guard', 'skill/poi-thrall', 'skill/guardian-spirit',
   'skill/ghost-helper', 'skill/ghost-slayer', 'skill/scrap-builder', 'skill/warm-up', 'skill/big-bullet',
-  // スキル取得の炸裂18コマ(v0.25.4343)。**同じ理由でここ**=起動の成否に新しい素材をぶら下げない。
-  ...Array.from({ length: 18 }, (_, i) => `fx/skill-burst-${String(i).padStart(2, '0')}`),
+  // スキル取得の炸裂13コマ(v0.25.4343/4344)。**同じ理由でここ**=起動の成否に新しい素材をぶら下げない。
+  // ★`?skfx=0` の時は**読み込みごと省く**(v0.25.4349・上と同じ理由)。
+  ...(FX_SKIP_SKILL_BURST ? [] : Array.from({ length: 13 }, (_, i) => `fx/skill-burst-${String(i).padStart(2, '0')}`)),
 ];
 const warmSkillIcons = async (): Promise<void> => {
   for (const name of SKILL_SINGLE_ICON_NAMES) {
@@ -1188,3 +1197,21 @@ export const preloadBackgrounds = (): Promise<void> => {
 // RE-specific pickups and projectiles are drawn procedurally instead).
 export const getTexture = (name: string): Texture | null =>
   textures.get(name) ?? null;
+
+/**
+ * ★読み込み済みテクスチャのメモリ見積り(MB・v0.25.4349)。
+ * 社長報告「落ちるとトップに戻る」=端末のメモリ天井が濃厚なので、**今どれだけ抱えているか**を
+ * 実機の画面に出せるようにする。**source で重複排除**する(アトラスの切り出しは同じ実体を共有していて、
+ * 1枚ずつ数えると何倍にも膨らんで嘘になる)。RGBA=4バイト/画素で数える。
+ */
+export const textureMemoryMB = (): number => {
+  const seen = new Set<unknown>();
+  let bytes = 0;
+  for (const t of textures.values()) {
+    const src = t.source as unknown;
+    if (!src || seen.has(src)) continue;
+    seen.add(src);
+    bytes += (t.source.width || 0) * (t.source.height || 0) * 4;
+  }
+  return Math.round(bytes / (1024 * 1024));
+};
