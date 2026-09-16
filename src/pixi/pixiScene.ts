@@ -17512,7 +17512,7 @@ export class PixiScene {
       // **噛んでいる最中**に再生する予告へ反転させる(=新しい絵を作らずに予告になる)。
       // 500ms(溜め300+噛み200)を既存の2拍の尺(CONTACT_LUNGE_MS)へ線形に写す。
       // 噛みつきを持たない敵(ボス/技中)は従来どおり lastContactAttackAt を見る。
-      const biteSpecNow = biteSpecFor(e.type);
+      const biteSpecNow = biteSpecFor(e.type, e.chaffMove);
       const biteElapsed = (e.biteAt !== undefined && e.biteAt > 0) ? gameTime - e.biteAt : -1;
       const biteTotalMs = biteSpecNow.windupMs + biteSpecNow.biteMs;
       const sinceLunge = (biteElapsed >= 0 && biteElapsed <= biteTotalMs)
@@ -17684,7 +17684,7 @@ export class PixiScene {
       // **噛んでいる最中**に再生する予告へ反転させる(=新しい絵を作らずに予告になる)。
       // 500ms(溜め300+噛み200)を既存の2拍の尺(CONTACT_LUNGE_MS)へ線形に写す。
       // 噛みつきを持たない敵(ボス/技中)は従来どおり lastContactAttackAt を見る。
-      const biteSpecNow = biteSpecFor(e.type);
+      const biteSpecNow = biteSpecFor(e.type, e.chaffMove);
       const biteElapsed = (e.biteAt !== undefined && e.biteAt > 0) ? gameTime - e.biteAt : -1;
       const biteTotalMs = biteSpecNow.windupMs + biteSpecNow.biteMs;
       const sinceLunge = (biteElapsed >= 0 && biteElapsed <= biteTotalMs)
@@ -17705,7 +17705,7 @@ export class PixiScene {
       // ★ゾンビだけ赤(v0.25.4349・社長指示「ダッシュ噛みつき発動のタイミングで赤点滅させてゾンビ」)。
       // 色の出どころは `biteBlinkTintFor` の1箇所(理由と、戻す時にどこを揃えるかもそこに書いてある)。
       const biteTint: number | null = bitePhaseOf(e, gameTime) === 'windup'
-        ? (biteBlinkOn(e, gameTime) ? 0xffffff : biteBlinkTintFor(e.type))
+        ? (biteBlinkOn(e, gameTime) ? 0xffffff : biteBlinkTintFor(e.type, e.chaffMove))
         : null;
       if (sinceLunge >= 0 && sinceLunge < CONTACT_LUNGE_MS) {
         const pose = contactLungePose(sinceLunge / CONTACT_LUNGE_MS);

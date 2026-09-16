@@ -564,6 +564,21 @@ export interface Enemy {
   /** ★中断の逓減(`BITE_CANCEL_DR_MS`)。この gameTime まではノックバックで噛みつきが止まらない。 */
   biteNoCancelUntil?: number;
   biteReadyAt?: number;
+  // PACING_PUZZLE.md §16-7b(雑魚の「詰めさせない技」): いま出している§16の技。undefined=§16の技を
+  // 出していない(通常の§12噛みつき・無属性の移動)。**biteAt と同時に立ち、biteAt を消す経路すべてで
+  // 同時に消す**(combatTick.ts の biteClears / dashParriedEnemyPatch・gameStore.ts の気絶リセット)。
+  // spec/tint はこのフィールドで「型」ではなく「いま出している技」から引く(enemyBite.ts 参照)。
+  chaffMove?: 'bat-grab' | 'skel-bite' | 'zombie-double';
+  // 技の開始 gameTime。赤い拍(進捗0..1)の出どころ=biteAt より前(溜めの前・構えの終わり)から要る場合がある。
+  chaffMoveAt?: number;
+  // 技後CD(gameTime)。この時刻まで次の技へ入れない。「同時に構えられる2体」の枠の導出もこれを見る。
+  // ★後退の相(s-recover/s-retreat)は「技の続き」として扱うので、後退の終わりから数える(§16-7b)。
+  chaffMoveCdUntil?: number;
+  // bat専用: 円の中心(プレイヤー座標を一次遅れで追った点。生の座標だと「ロックオン軌道」になる)。
+  chaffOrbitCx?: number;
+  chaffOrbitCy?: number;
+  // skeleton専用: どちら側(添字由来)へ回り込むか。具体の意味づけは実装側(§16-2)で定める。
+  chaffArcSide?: boolean;
   // Visual-only lift reaction for boss melee finisher-grade hits.
   liftUntil?: number;
   // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get
@@ -696,7 +711,17 @@ export interface Enemy {
     | 'logger-sweep-windup' | 'logger-sweep-active' | 'logger-sweep-recover'
     // ★社長指示2026-08-26「自転車、着地後1秒硬直」: 犬型(werewolf)の突進が終わった後の硬直。
     // 汎用'recover'はパンプキン型の描画(着地スカッシュ/盾落下)に結び付いているため別名にする。
-    | 'dash-recover';
+    | 'dash-recover'
+    // PACING_PUZZLE.md §16(雑魚の「詰めさせない技」・v4=平坦化版2026-09-16。§16-7b が名前の正本)。
+    // bat: 走り寄る→(技の間合いで)回る→溜め→踏み込み→掴み→(留まる→離す→後ずさる)。
+    | 'b-approach' | 'b-orbit' | 'b-windup' | 'b-lunge' | 'b-grab' | 'b-release'
+    // skeleton: しゃがみ→弧で回り込む→噛み→(噛み後の硬直500ms)→(発火距離まで後退)。
+    | 's-crouch' | 's-arc' | 's-bite' | 's-recover' | 's-retreat'
+    // ゾンビ赤(200〜100px帯の2連撃): 帯で待つ→停止2000ms→1発目→よろけ→2発目。
+    | 'z-wait' | 'z-red-pause' | 'z-bite1' | 'z-stagger' | 'z-bite2'
+    // werewolf(自転車)★名前だけ先に足す(実装は別バッチ=§16-8b 10)。突進の硬直明けに向きを変えて
+    // 発動距離まで走り去る相。§16の技ではない=chaffMove/枠は使わない(§16-7b)。
+    | 'w-retreat';
   aiPhaseUntil?: number; // 現フェーズの終了 gameTime
   aiReadyAt?: number;    // 次に特殊行動を開始できる gameTime(連発防止)
   aiTargetX?: number;    // 突進/着地の狙い座標(行動開始時のプレイヤー位置スナップ)

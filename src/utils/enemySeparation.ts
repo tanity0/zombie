@@ -61,7 +61,7 @@ export const computeEnemySeparation = (
   if (enemies.length < 2 || dtSec <= 0) return out;
 
   // 対象だけ抜き出して事前計算(中心・半径)。ボス等を毎ペア判定しないための下ごしらえ。
-  const parts: { id: string; cx: number; cy: number; half: number }[] = [];
+  const parts: { id: string; cx: number; cy: number; half: number; chaffExec: boolean }[] = [];
   for (const e of enemies) {
     if (isSeparationExempt(e, nowMs)) continue;
     parts.push({
@@ -69,6 +69,13 @@ export const computeEnemySeparation = (
       cx: e.x + e.width / 2,
       cy: e.y + e.height / 2,
       half: e.width / 2,
+      // ★PACING_PUZZLE.md §16-7 穴3(社長裁定2026-09-16「1」=技の実行中だけ免除する。
+      // 構え(停止)中は押される): `isSeparationExempt` には足せない(足すと `parts` から丸ごと
+      // 抜け、押されないだけでなく押しもしなくなる=「何体いるか分からない」がそのまま起きる・
+      // 着手前監査A-5)。新しい述語は作らず、穴2で既に要る `chaffMove`(いま§16の技を実行中か)を
+      // そのまま読む——bat/skeletonの§16の技は `chaffMove` が biteAt(=windup開始)と同時に立つので、
+      // 「構え(b-orbit/s-crouch等)」の間はまだ undefined=押される。
+      chaffExec: e.chaffMove !== undefined,
     });
   }
   if (parts.length < 2) return out;
@@ -98,11 +105,22 @@ export const computeEnemySeparation = (
         dx = sign; dy = 0; dist = 1;
       }
       const overlap = minDist - dist;
-      // 各自が overlap の半分 × 解消率ぶん、互いに逆向きへ動く。
-      const push = (overlap * SEPARATION_RESOLVE_FRAC) / 2;
       const ux = dx / dist, uy = dy / dist;
-      add(a.id, -ux * push, -uy * push);
-      add(b.id, ux * push, uy * push);
+      // ★PACING_PUZZLE.md §16-7 穴3: 技の実行中(chaffExec)の個体は動かさず、相手だけで重なりを
+      // 解消する(非対称=解消量を技中の個体へは0・相手へは満額)。両方が同時に技実行中という稀な
+      // 場合は従来どおり半分ずつ(どちらか一方だけを完全固定にする理由が無い)。
+      if (a.chaffExec && !b.chaffExec) {
+        const push = overlap * SEPARATION_RESOLVE_FRAC;
+        add(b.id, ux * push, uy * push);
+      } else if (b.chaffExec && !a.chaffExec) {
+        const push = overlap * SEPARATION_RESOLVE_FRAC;
+        add(a.id, -ux * push, -uy * push);
+      } else {
+        // 各自が overlap の半分 × 解消率ぶん、互いに逆向きへ動く。
+        const push = (overlap * SEPARATION_RESOLVE_FRAC) / 2;
+        add(a.id, -ux * push, -uy * push);
+        add(b.id, ux * push, uy * push);
+      }
     }
   }
 

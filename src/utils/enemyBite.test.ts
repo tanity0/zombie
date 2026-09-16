@@ -39,10 +39,12 @@ describe('噛みつきの台帳', () => {
     expect(biteSpecFor('werewolf')).toEqual(BITE_DEFAULT);
   });
 
-  it('★ゾンビの噛みつきは10秒に1回(社長指示2026-09-16)', () => {
-    expect(biteSpecFor('zombie').recoverMs).toBe(10_000);
-    // 硬直**だけ**が既定と違う(射程・尺・踏み込み・カウンター可否は全敵共通のまま)。
-    expect(biteSpecFor('zombie')).toEqual({ ...BITE_DEFAULT, recoverMs: 10_000 });
+  // ★過去の裁定は事実として: 社長指示2026-09-16で一時 10_000ms(10秒に1回)にしていたが、
+  // それは§16(雑魚の「詰めさせない技」)を足す前の暫定。今回のバッチで社長裁定「4は戻して様子見」
+  // により600msへ復帰した(PACING_PUZZLE.md §16-8)。
+  it('★ゾンビの噛みつきは600msへ復帰した(社長裁定2026-09-16「4は戻して様子見」)', () => {
+    expect(biteSpecFor('zombie').recoverMs).toBe(600);
+    expect(biteSpecFor('zombie')).toEqual({ ...BITE_DEFAULT, recoverMs: 600 });
   });
 });
 
@@ -170,17 +172,17 @@ describe('★接近リズム(zpause/zrush)は技ではない=噛みつきの対�
   } as Parameters<typeof isBiteSubject>[0]);
 
   it('zpause / zrush は噛みつきの対象(=接触ダメージを持たない)', () => {
-    expect(isBiteSubject(zombie('zpause'), notBoss)).toBe(true);
-    expect(isBiteSubject(zombie('zrush'), notBoss)).toBe(true);
+    expect(isBiteSubject(zombie('zpause'), notBoss, 1000)).toBe(true);
+    expect(isBiteSubject(zombie('zrush'), notBoss, 1000)).toBe(true);
   });
 
   it('技(突進/飛びかかり)は従来どおり体当たりが本体=対象外', () => {
-    expect(isBiteSubject(zombie('charge'), notBoss)).toBe(false);
-    expect(isBiteSubject(zombie('jump'), notBoss)).toBe(false);
+    expect(isBiteSubject(zombie('charge'), notBoss, 1000)).toBe(false);
+    expect(isBiteSubject(zombie('jump'), notBoss, 1000)).toBe(false);
   });
 
   it('技を持たない個体は従来どおり対象', () => {
-    expect(isBiteSubject(zombie(undefined), notBoss)).toBe(true);
+    expect(isBiteSubject(zombie(undefined), notBoss, 1000)).toBe(true);
   });
 });
 
@@ -303,10 +305,10 @@ describe('★噛みつきの除外は死神と幻影だけ(v0.25.3921)', () => {
   it('ボス・賞金首の硬直(CD)は既定の雑魚より長い=技の合間のつなぎ', () => {
     expect(biteSpecFor('jormungand').recoverMs).toBe(BITE_BOSS_RECOVER_MS);
     expect(biteSpecFor('bounty-melee').recoverMs).toBe(BITE_BOSS_RECOVER_MS);
-    // ★比較相手は**既定値のままの雑魚**にする。ゾンビは社長指示2026-09-16で 10秒 という
-    // 明示の例外になったので、ここで代表に使うと「ボスの方が長い」という元の意図を検査できない。
+    // ★ゾンビは§16のバッチで600msへ復帰した(既定値と同じ=もう例外ではない。上のdescribe参照)ので、
+    // werewolfと同じ扱いで比較できる。
     expect(biteSpecFor('werewolf').recoverMs).toBeLessThan(BITE_BOSS_RECOVER_MS);
-    expect(biteSpecFor('zombie').recoverMs).toBeGreaterThan(BITE_BOSS_RECOVER_MS); // 例外(意図的)
+    expect(biteSpecFor('zombie').recoverMs).toBeLessThan(BITE_BOSS_RECOVER_MS);
     expect(isTrueBossType('jormungand')).toBe(true); // CDの切替はこの述語で決まる
   });
   // ★社長2026-08-25「技というのは**体をぶつけに行く技**ね」
@@ -316,14 +318,14 @@ describe('★噛みつきの除外は死神と幻影だけ(v0.25.3921)', () => {
     const j = (bossState?: string) => ({
       type: 'jormungand' as const, aiPhase: undefined, bossState, damage: 20,
     } as Parameters<typeof isBiteSubject>[0]);
-    expect(isBiteSubject(j('chase'), isBiteExemptType)).toBe(true);       // 追いかけているだけ
-    expect(isBiteSubject(j(undefined), isBiteExemptType)).toBe(true);     // 州なし
-    expect(isBiteSubject(j('dash'), isBiteExemptType)).toBe(false);       // 突進=体当たりが技本体
-    expect(isBiteSubject(j('jump-attack'), isBiteExemptType)).toBe(false); // 飛び掛かり=同上
+    expect(isBiteSubject(j('chase'), isBiteExemptType, 1000)).toBe(true);       // 追いかけているだけ
+    expect(isBiteSubject(j(undefined), isBiteExemptType, 1000)).toBe(true);     // 州なし
+    expect(isBiteSubject(j('dash'), isBiteExemptType, 1000)).toBe(false);       // 突進=体当たりが技本体
+    expect(isBiteSubject(j('jump-attack'), isBiteExemptType, 1000)).toBe(false); // 飛び掛かり=同上
     // ★体から切り離された技は「通常通り」=触れても痛くない
-    expect(isBiteSubject(j('laser-fire'), isBiteExemptType)).toBe(true);
-    expect(isBiteSubject(j('volley'), isBiteExemptType)).toBe(true);
-    expect(isBiteSubject(j('harai'), isBiteExemptType)).toBe(true);       // 剣で斬る
+    expect(isBiteSubject(j('laser-fire'), isBiteExemptType, 1000)).toBe(true);
+    expect(isBiteSubject(j('volley'), isBiteExemptType, 1000)).toBe(true);
+    expect(isBiteSubject(j('harai'), isBiteExemptType, 1000)).toBe(true);       // 剣で斬る
   });
 
   it('★ただし技を出している最中は噛みつきを構え始めない(噛みつきは技の合間のつなぎ)', () => {
@@ -364,23 +366,23 @@ describe('★技が始まったら噛みつきは中断する(v0.25.3924)', () =
 describe('★体当たり技の表の漏れ(v0.25.3925)', () => {
   it('トールの突進・ミゲルの踏み込み・賞金首の突進/飛び掛かりは体当たり技', () => {
     for (const bs of ['thor-dash-move', 'mdash-move', 'bm-charge', 'leap-air'] as const) {
-      expect(isBodySlamNow({ aiPhase: undefined, bossState: bs })).toBe(true);
+      expect(isBodySlamNow({ aiPhase: undefined, bossState: bs }, 1000)).toBe(true);
     }
   });
   it('貫通表にある体当たり技も従来どおり体当たり技', () => {
-    expect(isBodySlamNow({ aiPhase: 'charge', bossState: undefined })).toBe(true);
-    expect(isBodySlamNow({ aiPhase: 'jump', bossState: undefined })).toBe(true);
-    expect(isBodySlamNow({ aiPhase: undefined, bossState: 'issen-dash' })).toBe(true);
+    expect(isBodySlamNow({ aiPhase: 'charge', bossState: undefined }, 1000)).toBe(true);
+    expect(isBodySlamNow({ aiPhase: 'jump', bossState: undefined }, 1000)).toBe(true);
+    expect(isBodySlamNow({ aiPhase: undefined, bossState: 'issen-dash' }, 1000)).toBe(true);
   });
   it('体から切り離された技は体当たり技ではない(触れても痛くない)', () => {
     for (const bs of ['laser-fire', 'harai', 'volley', 'lance'] as const) {
-      expect(isBodySlamNow({ aiPhase: undefined, bossState: bs })).toBe(false);
+      expect(isBodySlamNow({ aiPhase: undefined, bossState: bs }, 1000)).toBe(false);
     }
   });
   // ★検収監査2巡目(A)(v0.25.3948): 逆向きの差分——貫通表に居るが「体をぶつけに行く技」ではないもの。
   // 偶像の離脱ローリングは逃げる移動。表の流用で「触れたら痛い+受け流し可」になっていた穴を塞ぐ。
   it('憲法: 偶像の離脱ローリング(idol-roll)は体当たり技ではない(貫通はするが武器ではない)', () => {
-    expect(isBodySlamNow({ aiPhase: undefined, bossState: 'idol-roll' })).toBe(false);
+    expect(isBodySlamNow({ aiPhase: undefined, bossState: 'idol-roll' }, 1000)).toBe(false);
   });
 });
 
@@ -446,15 +448,19 @@ describe('★立ち止まり明けのダッシュ噛みつき(社長指示2026-0
     expect(canZombieRushBite(z({ biteReadyAt: 10_500 }), 10_000)).toBe(false);
     expect(canZombieRushBite(z({ biteAt: 9_900 }), 10_000)).toBe(false);
   });
-  it('★「立ち止まったら必ず」は**硬直が明けている時だけ**(社長指示2026-09-16で10秒になった)', () => {
+  // ★この it は canZombieRushBite の**硬直ゲートの一般的な挙動**を、硬直が数サイクルぶん長い
+  // 仮の例(hypothetical)で確かめるもの。実際の recoverMs は §16 のバッチで600msへ復帰した
+  // (現在は毎回の停止明けで噛める=下の「600msに1回」のdescribeが実態を検査する)。
+  // ここは値そのものではなく「明けるまでは空振り・明けたら必ず構える」という一般規則の検証。
+  it('★「立ち止まったら必ず」は**硬直が明けている時だけ**(canZombieRushBiteの硬直ゲート・一般則)', () => {
     const resolveAt = 10_000;                        // 前の噛みが終わった
-    const readyAt = resolveAt + 10_000;              // 硬直明け(ゾンビは10秒)
+    const readyAt = resolveAt + 10_000;              // 硬直明け(仮に10秒だった場合の例)
     const cycleMs = 1000 + 2000;                     // 停止1秒 + 突進2秒
     // 次の停止明け(3秒後)では**まだ硬直中**=空振りになる
     expect(canZombieRushBite(z({ biteReadyAt: readyAt }), resolveAt + cycleMs)).toBe(false);
     // 硬直が明けた後の停止明けでは必ず構える
     expect(canZombieRushBite(z({ biteReadyAt: readyAt }), readyAt + 1)).toBe(true);
-    // 10秒 ÷ 3秒サイクル ⇒ 噛めるのは約3回に1回
+    // (仮に)10秒 ÷ 3秒サイクル ⇒ 噛めるのは約3回に1回、という比の例
     expect(Math.ceil(10_000 / cycleMs)).toBe(4);
   });
 });

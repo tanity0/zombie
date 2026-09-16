@@ -60,15 +60,30 @@ export const BITE_DEFAULT: BiteSpec = {
  */
 export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
   /**
-   * ★ゾンビの噛みつきは**10秒に1回**(社長指示2026-09-16「ゾンビ噛みつきのクールダウン10秒で」)。
+   * ★600msへ復帰(PACING_PUZZLE.md §16-8・社長裁定2026-09-16「4は戻して様子見」)。
    *
-   * 直前の v0.25.4346 で「立ち止まったら**かならず**噛む」にしたが、ゾンビのサイクルは
-   * 停止1秒+突進2秒=**3秒**なので、既定の硬直600msのままだと**3秒に1回**噛むことになる。
-   * 10秒にすると、**噛めるのは約3回の停止に1回**。残りの停止は空振り=止まりが毎回脅威ではなくなり、
-   * 「どの止まりが本物か」を読む余地が出る。
-   * ★つまり「立ち止まったら必ず」は**硬直が明けている時だけ**成立する(必発の条件が1つ増えた)。
+   * 一時 10_000ms(社長指示2026-09-16「ゾンビ噛みつきのクールダウン10秒で」)にしていたが、
+   * それは §16(雑魚の「詰めさせない技」)を足す前の暫定だった。10_000 は社長指示だったので
+   * 設計者の判断では覆せない(整合監査A-8)——今回は社長裁定で明示的に600msへ戻し、実機を見る。
+   * §16のゾンビ赤2連(z-bite1/z-bite2)は別枠(この既定値を経由しない・state machineが直接焼く)。
    */
-  zombie: { recoverMs: 10_000 },
+  zombie: { recoverMs: 600 },
+};
+
+/**
+ * ★§16(雑魚の「詰めさせない技」・PACING_PUZZLE.md §16-7 穴2)専用の上書き表。
+ * `biteSpecFor` は「型」ではなく「いま出している技」(`Enemy.chaffMove`)からこちらを優先して引く
+ * (型の表 `BITE_BY_TYPE` の上に**技の表**を重ねる=技単位で spec/色を分ける)。
+ * ★『zombie-double』は1エントリに収まらない(1発目/2発目で windup/bite/lunge が違う=§16-8)ので
+ * ここには置かない。状態機械が2発とも直接 `biteAt` を焼く(§16-3「2連は biteReadyAt を見ない」)。
+ */
+export const BITE_BY_MOVE: Partial<Record<NonNullable<Enemy['chaffMove']>, Partial<BiteSpec>>> = {
+  // bat の掴み(§16-1・§16-8「bat の BiteSpec への写し方」)。
+  // windupMs=500(溜め350+踏み込み150。最後の150msで lungePx を出し切る専用曲線)/
+  // biteMs=220(掴み=カウンターの受付幅)/ lungePx=85(必要68px+余白・監査A-3)。
+  'bat-grab': { windupMs: 500, biteMs: 220, lungePx: 85, recoverMs: 6000, counterable: true },
+  // skeleton の噛み(§16-2・§16-8)。windupMs=350(前隙)/ biteMs=200(噛み=受付幅)/ lungePx=85。
+  'skel-bite': { windupMs: 350, biteMs: 200, lungePx: 85, recoverMs: 5000, counterable: true },
 };
 
 /**
@@ -80,11 +95,18 @@ export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
  */
 export const BITE_BOSS_RECOVER_MS = 1500;
 
-export const biteSpecFor = (type: EnemyType): BiteSpec => ({
+/**
+ * ★「型」ではなく「いま出している技」で引く(PACING_PUZZLE.md §16-7 穴2)。
+ * `move` を渡すと `BITE_BY_MOVE` が最後に重なる=技単位で spec を分けられる
+ * (`counterable` を技だけ true にしても §12 の噛みつきはカウンター可にならない=受け入れ条件14)。
+ * `move` を渡さない(または表に無い)場合は従来どおり型基準(§12の噛みつき)。
+ */
+export const biteSpecFor = (type: EnemyType, move?: NonNullable<Enemy['chaffMove']>): BiteSpec => ({
   ...BITE_DEFAULT,
   // ★ボス・賞金首は「技の合間のつなぎ」なので硬直(CD)を長めに(社長裁定2026-08-25)。
   ...(isTrueBossType(type) ? { recoverMs: BITE_BOSS_RECOVER_MS } : {}),
   ...(BITE_BY_TYPE[type] ?? {}),
+  ...(move ? (BITE_BY_MOVE[move] ?? {}) : {}),
 });
 
 export type BitePhase = 'none' | 'windup' | 'bite';
@@ -93,9 +115,9 @@ export type BitePhase = 'none' | 'windup' | 'bite';
  * 今どの区間か。`biteAt` は gameTime 基準(敵側の他のタイマー=rootUntil/stunUntil と同じ系)。
  * 合計を過ぎていれば 'none'(解決済み or 未発火)。
  */
-export const bitePhaseOf = (enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number): BitePhase => {
+export const bitePhaseOf = (enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>, gameTime: number): BitePhase => {
   if (enemy.biteAt === undefined || enemy.biteAt <= 0) return 'none';
-  const spec = biteSpecFor(enemy.type);
+  const spec = biteSpecFor(enemy.type, enemy.chaffMove);
   const t = gameTime - enemy.biteAt;
   if (t < 0) return 'none';
   if (t < spec.windupMs) return 'windup';
@@ -104,9 +126,9 @@ export const bitePhaseOf = (enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: num
 };
 
 /** 溜め〜噛みの通し進捗 0..1(絵の2拍と赤い点滅の両方がこれを見る)。 */
-export const biteProgress = (enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number): number => {
+export const biteProgress = (enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>, gameTime: number): number => {
   if (enemy.biteAt === undefined || enemy.biteAt <= 0) return 0;
-  const spec = biteSpecFor(enemy.type);
+  const spec = biteSpecFor(enemy.type, enemy.chaffMove);
   const total = spec.windupMs + spec.biteMs;
   return Math.max(0, Math.min(1, (gameTime - enemy.biteAt) / total));
 };
@@ -117,8 +139,8 @@ export const biteProgress = (enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: nu
  * こちらは溜めなので**ゆっくり出て、噛む瞬間に伸び切る**(反り返り→解放)。
  * 慣性の掟(CLAUDE.md)=加減速のない動きは作らない。
  */
-export const biteLungeFrac = (enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number): number => {
-  const spec = biteSpecFor(enemy.type);
+export const biteLungeFrac = (enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>, gameTime: number): number => {
+  const spec = biteSpecFor(enemy.type, enemy.chaffMove);
   if (enemy.biteAt === undefined || enemy.biteAt <= 0) return 0;
   const t = gameTime - enemy.biteAt;
   if (t <= 0) return 0;
@@ -258,8 +280,33 @@ export const isInBiteRect = (
 /**
  * ★「技ではない」= 噛みつきの対象であり続ける aiPhase(移動のリズムでしかないもの)。
  * ここに入っていない技(`charge`/`jump` 等)は従来どおり**体当たりが技本体**=接触ダメージを持つ。
+ *
+ * ★PACING_PUZZLE.md §16-7 穴1: §16(雑魚の「詰めさせない技」)の新aiPhaseは**全部**ここに足す
+ * (足さないと、`biteAt` が生きている間に aiPhase だけ新フェーズへ進んだ瞬間、
+ * `isBiteInterruptedByMove` がそのフェーズを知らずに「技へ入った」と誤読して**赤の技が1フレームで
+ * 自滅する**)。この集合は「**既に構えている噛み/技を中断しないか**」だけに使う——
+ * 「**新しく§12の紫噛みを構え始めてよいか**」は別の集合(`CHAFF_MOVE_PHASES`・下)を見る
+ * (穴1と§16-3の両立には述語を2本に割る必要がある。1本のままだと、新フェーズを足した瞬間に
+ * 「構え中に§12の紫噛みが始まる」という別の壊れ方をする)。
  */
-const BITE_OK_PHASES = new Set<string>(['zpause', 'zrush']);
+const BITE_OK_PHASES = new Set<string>([
+  'zpause', 'zrush',
+  'b-approach', 'b-orbit', 'b-windup', 'b-lunge', 'b-grab', 'b-release',
+  's-crouch', 's-arc', 's-bite', 's-recover', 's-retreat',
+  'z-wait', 'z-red-pause', 'z-bite1', 'z-stagger', 'z-bite2',
+]);
+
+/**
+ * ★§16 の技が持つ aiPhase(=これに入っている間は**新しく**§12の紫噛みを構え始めない)。
+ * PACING_PUZZLE.md §16-3「構え中に§12の紫噛みを始めさせない」: bat の円 / skeleton のしゃがみ・
+ * 弧 / ゾンビ赤の停止・2連の最中にプレイヤーが30px圏へ入っても、「赤く光っている(かもしれない)敵
+ * から紫の噛みが出る」を防ぐ。`w-retreat` は含めない(§16の技ではない=chaffMove/枠を使わない・§16-7b)。
+ */
+const CHAFF_MOVE_PHASES = new Set<string>([
+  'b-approach', 'b-orbit', 'b-windup', 'b-lunge', 'b-grab', 'b-release',
+  's-crouch', 's-arc', 's-bite', 's-recover', 's-retreat',
+  'z-wait', 'z-red-pause', 'z-bite1', 'z-stagger', 'z-bite2',
+]);
 
 /** ★技ではない bossState(=追いかけているだけ)。 */
 const BITE_OK_BOSS_STATES = new Set<string>(['chase']);
@@ -289,8 +336,17 @@ const BODY_SLAM_BOSS_STATES = new Set<string>([
 // 攻撃ではないのに、表の流用で「触れたら痛い+受け流し可」になっていた。
 const PASS_THROUGH_NOT_BODY_SLAM = new Set<string>(['idol-roll']);
 
+/**
+ * ★`gameTime` を受け取るようにした(PACING_PUZZLE.md §16-7b・実装者視点監査A-3)。
+ * ★このバッチ(§16-8b 1〜4=土台)では中身を1つも変えていない(まだ誰も使わない=`_gameTime`)。
+ * ゾンビの「zrush開始から1600ms未満は体当たり判定」(§16-3「追尾の終わり際」)は**ここに
+ * 足す**予定の穴だが、その配線は §16-8b 5(ゾンビの実装バッチ)の仕事——ここでは呼び手
+ * (`isBiteSubject` 経由で combatTick・gameStore・angelBossTick)が gameTime を渡せる形に
+ * 揃えるところまでが土台の範囲。
+ */
 export const isBodySlamNow = (
   enemy: Pick<Enemy, 'aiPhase' | 'bossState'>,
+  _gameTime: number,
 ): boolean => {
   if (enemy.bossState !== undefined && PASS_THROUGH_NOT_BODY_SLAM.has(enemy.bossState)) return false;
   return isPassThroughPhase(enemy.aiPhase)
@@ -317,6 +373,7 @@ export const isBiteInterruptedByMove = (
 export const isBiteSubject = (
   enemy: Pick<Enemy, 'type' | 'aiPhase' | 'bossState' | 'damage'>,
   isBoss: (t: EnemyType) => boolean,
+  gameTime: number,
 ): boolean => {
   if (isBoss(enemy.type)) return false;
   if ((enemy.damage ?? 0) <= 0) return false;
@@ -325,7 +382,7 @@ export const isBiteSubject = (
   // 触れたら痛い側に戻す。レーザー・弾・設置・叫び等は体をぶつけていないので**触れても痛くない**。
   // ★表は発明しない: `enemyMotion` の「ダッシュ/滞空中はオブジェクトを貫通」の表をそのまま使う
   // (=このプロジェクトが既に「体を投げ出している状態」として定義している唯一の場所)。
-  if (isBodySlamNow(enemy)) return false;
+  if (isBodySlamNow(enemy, gameTime)) return false;
   return true;
 };
 
@@ -367,6 +424,12 @@ export const canStartBite = (
   // 一度も走らなくなる)。本指示で更新: 突進が噛みつきの運び手になるので、突進の走りが
   // 噛みで削れるのは仕様どおり。停止側で噛まなくなるぶん「止まった瞬間に噛む」も消える。
   if (enemy.type === 'zombie' && enemy.aiPhase !== 'zrush') return false;
+  // ★§16(雑魚の「詰めさせない技」)の構え中/技中は§12の紫噛みを新しく始めない
+  // (PACING_PUZZLE.md §16-3「構え中に§12の紫噛みを始めさせない」・§16-7 穴1)。
+  // ★`isBiteInterruptedByMove`(下)とは**別の集合**を見る——あちらは「既に構えている噛みを
+  // 中断しないか」で§16の新フェーズを**許す**必要があり、こちらは「新しく構え始められるか」で
+  // §16の新フェーズを**弾く**必要があるため、1つの集合を共有すると両立しない(穴1)。
+  if (enemy.aiPhase !== undefined && CHAFF_MOVE_PHASES.has(enemy.aiPhase)) return false;
   // ★技を出している最中は構え始めない(噛みつきは**技の合間のつなぎ**)。
   // 接触ダメージの有無(上の `isBiteSubject`)とは**別の話**なので、判定もここに分けて置く——
   // レーザー中の敵は「触れても痛くない(接触なし)」が「噛みつきも始めない」。
@@ -401,10 +464,10 @@ export const canZombieRushBite = (
 
 /** 噛みの解決フレームか(台本の合計を過ぎた最初のフレーム)。解決したら `biteAt` を0へ戻す。 */
 export const isBiteResolveDue = (
-  enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>, gameTime: number,
 ): boolean => {
   if (enemy.biteAt === undefined || enemy.biteAt <= 0) return false;
-  const spec = biteSpecFor(enemy.type);
+  const spec = biteSpecFor(enemy.type, enemy.chaffMove);
   return gameTime >= enemy.biteAt + spec.windupMs + spec.biteMs;
 };
 
@@ -434,7 +497,7 @@ export const biteBodyOverlapsPlayer = (
  * 開けるのは**台本の間ずっと**(溜め+噛み)。
  */
 export const isBiteWallOpen = (
-  enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>, gameTime: number,
 ): boolean => bitePhaseOf(enemy, gameTime) !== 'none';
 
 /**
@@ -446,10 +509,10 @@ export const isBiteWallOpen = (
  * **噛みの区間(後半200ms)では光らない**——そこは動きだけで読ませる。
  */
 export const biteBlinkOn = (
-  enemy: Pick<Enemy, 'type' | 'biteAt'>, gameTime: number,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>, gameTime: number,
 ): boolean => {
   if (bitePhaseOf(enemy, gameTime) !== 'windup') return false;
-  const spec = biteSpecFor(enemy.type);
+  const spec = biteSpecFor(enemy.type, enemy.chaffMove);
   const t = gameTime - (enemy.biteAt ?? 0);
   const cyc = Math.max(1, spec.windupMs / 2);
   return (t % cyc) < cyc * 0.55;
@@ -478,4 +541,10 @@ export const isInBiteCircle = (
  * 色を変える時はここだけを触り、**同時に `counterable` を見直す**。
  */
 export const BITE_BLINK_TINT = 0x9333ea;
-export const biteBlinkTintFor = (_type: EnemyType): number => BITE_BLINK_TINT;
+/**
+ * ★signature は「型」ではなく「いま出している技」でも引けるように広げてある(§16-7 穴2)。
+ * ただし§16の技そのものは**この紫tintの経路を通らない**(PACING_PUZZLE.md §16-5「技フィールドが
+ * §16の技なら、紫tintの枝を丸ごと飛ばす」=pixiScene側の仕事・別バッチ)。ここは値を変えていない
+ * (全敵とも紫のまま=§12は1bitも変えない)。
+ */
+export const biteBlinkTintFor = (_type: EnemyType, _move?: NonNullable<Enemy['chaffMove']>): number => BITE_BLINK_TINT;

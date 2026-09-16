@@ -513,7 +513,7 @@ const counterOpportunityOpen = (
 ): boolean => enemies.some(e => {
   const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
   if (Math.hypot(ecx - pcx, ecy - pcy) > OPPORTUNITY_RANGE) return false;
-  if (isBiteSubject(e, isBiteExemptType)) return bitePhaseOf(e, gameTime) !== 'none';
+  if (isBiteSubject(e, isBiteExemptType, gameTime)) return bitePhaseOf(e, gameTime) !== 'none';
   return isBossCounterableNowApprox(e.aiPhase, e.bossState);
 });
 

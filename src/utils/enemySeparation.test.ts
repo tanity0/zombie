@@ -104,3 +104,46 @@ describe('isSeparationExempt(押し合いの対象外)', () => {
     expect(sep.size).toBe(0); // 相方が対象外=押し合う相手がいない
   });
 });
+
+// ★PACING_PUZZLE.md §16-7 穴3(社長裁定2026-09-16「1」=技の実行中だけ免除する。構え(停止)中は
+// 押される)。`isSeparationExempt` には足さない(足すと丸ごと`parts`から抜け、押されないだけで
+// なく押しもしなくなる=着手前監査A-5)。`computeEnemySeparation`の内側で非対称に配る。
+describe('§16の技の実行中は押されない(非対称・穴3)', () => {
+  it('技の実行中(chaffMove定義)の個体は動かず、相手だけが満額で動く', () => {
+    // 浅い重なり(19px)にして上限速度(SEPARATION_MAX_SPEED)に当たらない領域で解消率そのものを見る
+    // (「1フレームでは重なりを解消しきらない」のテストと同じ作法)。
+    const start = 19;
+    const sep = computeEnemySeparation(
+      [mk('bat', 0, 0, { type: 'bat' as EnemyType, chaffMove: 'bat-grab' }), mk('mob', start, 0)],
+      1 / 60, NOW,
+    );
+    expect(sep.get('bat')).toBeUndefined(); // 技中は動かさない
+    const moved = sep.get('mob')!;
+    expect(moved.dx).toBeGreaterThan(0); // 相手側は右へ押される
+    // 満額(半分ではない)で解消する: overlap(minDist-dist) * RESOLVE_FRAC(0.5)
+    const minDist = 32 * SEPARATION_RADIUS_FRAC;
+    expect(moved.dx).toBeCloseTo((minDist - start) * SEPARATION_RESOLVE_FRAC, 6);
+    // 対称(半分ずつ)なら本来この半分(0.5倍)で済むはずの量より大きい=非対称=満額であることの確認。
+    expect(moved.dx).toBeGreaterThan((minDist - start) * SEPARATION_RESOLVE_FRAC / 2);
+  });
+
+  it('技を持たない通常の押し合いは従来どおり対称(半分ずつ)', () => {
+    const sep = computeEnemySeparation(
+      [mk('a', 0, 0, { type: 'bat' as EnemyType }), mk('b', 8, 0)], 1 / 60, NOW,
+    );
+    expect(sep.get('a')!.dx).toBeCloseTo(-sep.get('b')!.dx, 6);
+  });
+
+  it('両方が同時に技実行中でも、どちらか一方だけを完全固定にはしない(半分ずつに戻す)', () => {
+    const sep = computeEnemySeparation(
+      [
+        mk('a', 0, 0, { type: 'bat' as EnemyType, chaffMove: 'bat-grab' }),
+        mk('b', 8, 0, { type: 'skeleton' as EnemyType, chaffMove: 'skel-bite' }),
+      ],
+      1 / 60, NOW,
+    );
+    expect(sep.get('a')).toBeDefined();
+    expect(sep.get('b')).toBeDefined();
+    expect(sep.get('a')!.dx).toBeCloseTo(-sep.get('b')!.dx, 6);
+  });
+});

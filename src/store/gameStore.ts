@@ -302,6 +302,7 @@ import { pushShieldRect } from '../world/shieldPush'; // B6(盾押し・§6): �
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
 import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite } from '../utils/enemyBite';
+import { deferFrozenClocksBy } from '../utils/chaffMoves'; // PACING_PUZZLE.md §16-7 穴4(凍結dtの繰り下げ)
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
@@ -5110,6 +5111,9 @@ export const buildCorpseFromKill = (
     biteAt: 0,
     biteDirX: undefined,
     biteDirY: undefined,
+    // ★PACING_PUZZLE.md §16-7b「chaffMoveはbiteAtと同時に立ち、biteAtを消す全経路で同時に消す」の
+    // 1経路(死亡=biteAtを0へ戻す4つ目の場所)。残すと死体が§16の技の構え絵を引きずる。
+    chaffMove: undefined,
     knockbackVx: dirX * speed,
     knockbackVy: dirY * speed,
     knockbackUntil: now + KNOCKBACK_DURATION,
@@ -6887,7 +6891,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const blockers: Rect[] = [];
           for (const en of state.enemies) {
             if (isCorpse(en)) continue;
-            if (!isBiteSubject(en, isBiteExemptType)) continue;
+            if (!isBiteSubject(en, isBiteExemptType, state.gameTime)) continue;
             // ★噛みつきの踏み込み中は壁を開ける(社長裁定2026-08-25「この際、壁判定は通過可能になり、
             // 当たり判定の瞬間に被っていたらダメージ、壁判定に戻す」)。開けないと覆いかぶされない。
             if (isBiteWallOpen(en, state.gameTime)) continue;
@@ -12656,7 +12660,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 止める(AIの時計はgameTime基準なので技の予告は遅れない)。
         // committed(空中ジャンプ/突進)は軌道が壊れるので止めない。ボス級は hitStunUntil が書かれない。
         // (期限のずらしは書き手側=knockbackEnemy/近接3経路が「止めの残り」を足して書く。ここは止めるだけ。)
-        if (!committed && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) return enemy;
+        // ★PACING_PUZZLE.md §16-7 穴4(実装者視点監査A-3): この早期returnで飛ばした1フレームぶん
+        // (deltaTime)、§16の技(chaffMove定義)の時計を繰り下げる(§12は1bitも変えない=no-op)。
+        if (!committed && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) {
+          return deferFrozenClocksBy(enemy, deltaTime * 1000);
+        }
         // CRIT-UNIFY §9.2: 次行動CD専用のatkUntil。クリ窓中のボスは×2(bossCritCdMult)。
         // windup/active/recoverの各durationは従来のatkUntilのまま(予告のリード時間は変えない)。
         const atkCdUntil = (ms: number) => gameTime + (ms / ENEMY_ATTACK_SPEED_MULT) * bossCritCdMult(enemy, gameTime);
@@ -12729,7 +12737,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             clampedCenterX - enemy.width / 2, clampedCenterY - enemy.height / 2,
             enemy.width, enemy.height, kbCtx, enemy.x,
           );
-          return { ...enemy, x: kbPlaced.x, y: kbPlaced.y };
+          // ★PACING_PUZZLE.md §16-7 穴4: ノックバックのスライドも同じ早期return(AIが丸ごと
+          // 飛ばされる)なので、§16の技の時計を同じぶん繰り下げる(§12はno-op=1bitも変えない)。
+          return deferFrozenClocksBy({ ...enemy, x: kbPlaced.x, y: kbPlaced.y }, deltaTime * 1000);
         }
 
         // v0.25.2895: 裏ボス4体/天使6体/アイドル(=isHiddenBoss)はここで抜ける。上のノックバック
@@ -12789,6 +12799,12 @@ export const useGameStore = create<GameState>((set, get) => ({
               aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
               aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
               aiReadyAt: enemy.stunUntil + 300, // 気絶明け後しばらくは特殊行動を再発動しない
+              // ★PACING_PUZZLE.md §16-7 穴2(実装者視点監査A-1): 「biteAtを消す経路すべてで
+              // chaffMoveも同時に消す」の1経路(気絶による aiPhase リセット)。残すと、クリで
+              // 止まった bat の次の§12紫噛みが掴みのspec(counterable:true)で解決され、
+              // 色(紫)と判定(赤)が食い違う。押し合いの免除/knocked無視もこのフィールドを読むので、
+              // 残った個体は押されず・ノックバックで止まらないまま歩き回る。
+              ...(enemy.chaffMove !== undefined ? { chaffMove: undefined } : {}),
             };
           }
           return enemy;
@@ -14802,7 +14818,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 追尾しない=横へ避けられる。壁(すり抜け防止)はこの間だけ開いている(上の movePlayer 側)。
         // ★技を出している敵のAIは**絶対に乗っ取らない**(v0.25.3924)。乗っ取ると着地爆発や
         // 踏み鳴らしの円(pumpkinBlasts への push)がこのフレームで実行されず、円の判定が消える。
-        if (isBiteSubject(enemy, isBiteExemptType) && bitePhaseOf(enemy, gameTime) !== 'none'
+        if (isBiteSubject(enemy, isBiteExemptType, gameTime) && bitePhaseOf(enemy, gameTime) !== 'none'
           && !isBiteInterruptedByMove(enemy)) {
           // ★踏み込みは**相対移動**で書く(v0.25.3923・社長報告「一発で画面外に出ようとしている
           // みたいな警告が出る」「近接何回か振ってるとすごい吹っ飛ぶ」)。
@@ -14810,7 +14826,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 敵の位置は**他の系も書く**(ノックバック/リーシュ/ボスの状態機械/イベントの再配置)ので、
           // 絶対座標で上書きすると**それらと殴り合い、片方の書き込み量がそのまま飛距離になる**。
           // 相対(このフレームぶんの増分だけ足す)にすれば、他の系と自然に合成されて暴れない。
-          const lp = biteSpecFor(enemy.type).lungePx;
+          const lp = biteSpecFor(enemy.type, enemy.chaffMove).lungePx;
           const fNow = biteLungeFrac(enemy, gameTime);
           const fPrev = biteLungeFrac(enemy, gameTime - deltaTime * 1000);
           const step = lp * Math.max(0, fNow - fPrev);   // このフレームで進むぶんだけ

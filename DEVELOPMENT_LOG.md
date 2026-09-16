@@ -1,5 +1,61 @@
 # Development Log
 
+## v0.25.4399 — §16(雑魚の「詰めさせない技」)の土台=実装の順番1〜4【2026-09-16 17:27 JST】
+
+**Sonnetサブエージェント(実装チャット)による発注どおりの実装**。スコープは §16-8b の**1〜4だけ**
+(5以降=ゾンビ/bat/skeleton の状態機械・pixiScene・ボスの凍結化・werewolfは別発注)。
+
+**1. 名前と型**(`src/types/game.ts`): 新 `aiPhase` リテラル(bat=`b-approach/b-orbit/b-windup/
+b-lunge/b-grab/b-release` / skeleton=`s-crouch/s-arc/s-bite/s-recover/s-retreat` / ゾンビ赤=
+`z-wait/z-red-pause/z-bite1/z-stagger/z-bite2` / werewolf=`w-retreat`〈名前だけ〉)と、`Enemy` の
+新フィールド `chaffMove/chaffMoveAt/chaffMoveCdUntil/chaffOrbitCx/chaffOrbitCy/chaffArcSide` を追加。
+
+**2. `src/utils/enemyBite.ts` の土台**: `BITE_BY_MOVE`(bat-grab/skel-bite の spec)を新設し、
+`biteSpecFor`/`biteBlinkTintFor` を「型」ではなく「いま出している技(`chaffMove`)」でも引けるよう
+signature を拡張(呼び手=pixiScene/gameStore/combatTick/angelBossTick/playerTraits を全部直した)。
+`BITE_OK_PHASES` に新フェーズを追加。`isBiteInterruptedByMove`(継続を許す集合)と `canStartBite`
+(新しく構え始められるかを弾く集合=`CHAFF_MOVE_PHASES`)を2本に分離。`isBodySlamNow`/`isBiteSubject`
+に `gameTime` 引数を追加(中身はまだ変えていない=土台のみ)。`BITE_BY_TYPE.zombie.recoverMs` を
+10_000→600へ復帰(社長裁定「4は戻して様子見」)。
+
+**3. `src/utils/combatTick.ts`**: `knocked` を `chaffMove !== undefined` の時だけ無視(§12は無改変)。
+`dashParriedEnemyPatch` とバイト解決(`biteClears`)の両方で、技引きの spec から技後CDを書き、
+`chaffMove` を同時にクリア。
+
+**4. `src/store/gameStore.ts` の共通部+新設 `src/utils/chaffMoves.ts`**: 気絶による aiPhase リセット
+と `buildCorpseFromKill` で `chaffMove` も同時に消す。新ファイル `chaffMoves.ts` に
+`CHAFF_MOVE_TYPES`/`CHAFF_MOVE_SLOT_CAP`/`isChaffSlotHolding`/`deriveChaffMoveGrants`(枠の前段・
+毎フレーム導出・プレイヤーに近い順)/`deferFrozenClocksBy`(凍結dtの繰り下げ。`chaffMove` 未定義な
+ら no-op)を実装。`gameStore.ts` の hitStunUntil 早期return とノックバックスライド早期returnの
+2箇所に `deferFrozenClocksBy` を配線。`src/utils/enemySeparation.ts` に非対称の押し合い免除
+(`chaffMove` 実行中は動かず、相手だけが満額で解消)を追加。
+
+**★全て `chaffMove` を誰も立てない今回のバッチでは no-op**(items 5〜7が実装するまで本番挙動は
+1bitも変わらない)。§12(既存の噛みつき)の挙動は `BITE_BY_TYPE.zombie.recoverMs`(600への復帰)
+以外1つも変えていない。
+
+**検証**: `npm run typecheck`(緑)・`npm run lint`(エラー0・既存warning 9件のみ)。ユニットテストを
+同コミットで追加(`enemyBite.test.ts` 更新+新規 `chaffMoves.test.ts`・`chaffMoveFoundation.test.ts`、
+`enemySeparation.test.ts`/`combatTick.test.ts` に追記)。`npx vitest related` は環境側のHTML解析
+エラーで使えなかったため、変更ファイルに関連するテストファイルを個別に `npx vitest run` した
+(enemyBite/combatTick/enemySeparation/chaffMoves/playerTraits/angel系10本/gameStore系=全緑。
+combatTick.test.ts の「神付き A-1」は**発注書どおり手を付けていない既知の赤**)。
+
+**★未決**: なし(設計書に無い値・挙動には当たらなかった。実装は §16-7/§16-7b/§16-8/§16-8b の
+記述をそのまま形にしただけ)。
+
+**次のバッチ(5以降)への申し送り**は本エントリの最後に別記(実装チャットの最終報告と同内容)。
+
+**変更ファイル**: `src/types/game.ts`、`src/utils/enemyBite.ts`(+test)、`src/utils/combatTick.ts`
+(+test)、`src/utils/chaffMoves.ts`(新規・+test)、`src/store/gameStore.ts`、
+`src/store/chaffMoveFoundation.test.ts`(新規)、`src/utils/enemySeparation.ts`(+test)、
+`src/utils/angelBossTick.ts`、`src/utils/playerTraits.ts`、`src/pixi/pixiScene.ts`(呼び出し側の
+signature合わせのみ・描画ロジックは未着手)、`package.json`、`src/data/changelog.ts`。
+
+**自己点検**: 憲法第4条(初心者ゾーン不可侵)・第5条(緩を荒らさない)には抵触しない
+(`chaffMove` が誰にも立たない=雑魚の挙動・難度は現状のまま1bitも変わっていない。触れたのは
+§16-8に明記された `BITE_BY_TYPE.zombie.recoverMs` の1値のみ)。
+
 ## v0.25.4398 — §16 ゾンビの順番が確認済みに / 実装の順番に werewolf を追加【2026-09-16 16:56 JST】
 
 **社長確認**: ゾンビの赤の順番は「**停止2000ms(合図)→ 2倍速の踏み込み → 台本**」で確定

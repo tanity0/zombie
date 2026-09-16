@@ -290,7 +290,7 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
 // 各ハンドラ内の isCounterActive 直判定(判定時の置換カウンター)・爆風パリィ・弾反射はヘルパ不経由
 // =1bitも変わらない。過去の裁定(W7 v3128 / v3131 / v3591の着地円・事後窓 / §10-12#16)は本憲法が上書き。
 const bodyOverlapNow = (boss: Enemy): { overlap: boolean; counterActive: boolean } => {
-  if (!isBodySlamNow(boss)) return { overlap: false, counterActive: false };
+  if (!isBodySlamNow(boss, useGameStore.getState().gameTime)) return { overlap: false, counterActive: false };
   const cp = useGameStore.getState().player;
   return {
     overlap: rectsOverlap({ x: boss.x, y: boss.y, width: boss.width, height: boss.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height }),
@@ -306,7 +306,7 @@ const bodyOverlapNow = (boss: Enemy): { overlap: boolean; counterActive: boolean
  */
 const reachOverlapNow = (boss: Enemy, state: string): { overlap: boolean; counterActive: boolean } => {
   // ★カウンター憲法(v0.25.3947): bodyOverlapNow と同じゲート(上のコメント参照)。
-  if (!isBodySlamNow(boss)) return { overlap: false, counterActive: false };
+  if (!isBodySlamNow(boss, useGameStore.getState().gameTime)) return { overlap: false, counterActive: false };
   const cp = useGameStore.getState().player;
   const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
   return {
@@ -367,7 +367,7 @@ const takeGhostAngelCounter = (boss: Enemy): GhostCounterFire | null => {
   // 語尾を持たないため**両立する州が存在せず守護霊の天使カウンターが全滅**していた。憲法の基準
   // 「判定が生きている間だけ」に正しく揃える=**実行中の成立州(isCounterOpportunityNow)か
   // 体当たり中(isBodySlamNow)**なら請求を消費できる。面成立(溜め/硬直)は引き続き不成立。
-  if (!isCounterOpportunityNow(boss) && !isBodySlamNow(boss)) return null;
+  if (!isCounterOpportunityNow(boss) && !isBodySlamNow(boss, useGameStore.getState().gameTime)) return null;
   if (boss.type === 'jibril' && boss.bossState === 'warp-recover') return null;
   const { overlap, counterActive } = bodyOverlapNow(boss);
   if (overlap && counterActive) return null; // プレイヤー成立が同フレームに立つ→各州の分岐に譲る

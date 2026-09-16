@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useGameStore, KNOCKBACK_DURATION } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
-import { applyContactDamage, NOOP_COMBAT_EFFECTS } from './combatTick';
+import { applyContactDamage, NOOP_COMBAT_EFFECTS, dashParriedEnemyPatch } from './combatTick';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 import type { Enemy } from '../types/game';
@@ -513,5 +513,77 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
     // 起点(停止開始Nより後=停止中に立った)なので1msもシフトされない。
     expect(after?.knockbackUntil).toBe(midFreeze + KNOCKBACK_DURATION);
     spy.mockRestore();
+  });
+});
+
+// ★PACING_PUZZLE.md §16-4(社長裁定2026-09-16)「§16の技だけ knocked を無視し、§12の噛みつきは
+// 従来どおり中断する」(§16-7 穴・§16-8b 3)。受け入れ条件1(§12は1bitも変えない)を同時に固定する。
+describe('★§16の技はノックバックで中断されない(§12は従来どおり中断される・§16-4)', () => {
+  const place = (e: Enemy, over: Partial<Enemy>): Enemy => ({
+    ...e, ...over, x: ORIGIN + 5000, y: ORIGIN + 5000, // プレイヤーから離す=噛みは外れる(絵の検証はしない)
+  });
+
+  it('§16の技(chaffMove定義)は、ノックバック中でも構えが中断されない', () => {
+    const e = place(spawnEnemyAt('bat', 0, 0, START_GT), {
+      chaffMove: 'bat-grab', aiPhase: 'b-windup', biteAt: START_GT,
+      knockbackUntil: Date.now() + 5000,
+    });
+    useGameStore.setState(s => ({
+      enemies: [e], gameTime: START_GT,
+      player: { ...s.player, health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0 },
+    }));
+    applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
+    const after = useGameStore.getState().enemies.find(x => x.id === e.id);
+    expect(after?.biteAt).toBe(START_GT); // 中断されていない=構えたまま
+    expect(after?.chaffMove).toBe('bat-grab');
+  });
+
+  it('§12の噛みつき(chaffMove未定義)は、従来どおりノックバックで中断される', () => {
+    const e = place(spawnEnemyAt('zombie', 0, 0, START_GT), {
+      aiPhase: 'zrush', biteAt: START_GT, knockbackUntil: Date.now() + 5000,
+    });
+    useGameStore.setState(s => ({
+      enemies: [e], gameTime: START_GT,
+      player: { ...s.player, health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0 },
+    }));
+    applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
+    const after = useGameStore.getState().enemies.find(x => x.id === e.id);
+    expect(after?.biteAt).toBe(0); // 中断された(従来どおり)
+    expect(after?.chaffMoveCdUntil).toBeUndefined(); // §12にはchaffMoveCdUntilを書かない
+  });
+
+  it('§16の技が解決すると chaffMove が消え、技後CDが書かれる(bat-grab=6000ms)', () => {
+    const started = START_GT - 1000; // bat-grabの総尺(720ms)をとっくに過ぎている=解決フレーム
+    const e = place(spawnEnemyAt('bat', 0, 0, START_GT), {
+      chaffMove: 'bat-grab', aiPhase: 'b-grab', biteAt: started,
+    });
+    useGameStore.setState(s => ({
+      enemies: [e], gameTime: START_GT,
+      player: { ...s.player, health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0 },
+    }));
+    applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
+    const after = useGameStore.getState().enemies.find(x => x.id === e.id);
+    expect(after?.biteAt).toBe(0);
+    expect(after?.chaffMove).toBeUndefined();
+    expect(after?.chaffMoveCdUntil).toBe(START_GT + 6000);
+    expect(after?.biteReadyAt).toBe(START_GT + 6000);
+  });
+});
+
+describe('★dashParriedEnemyPatch: カウンター経路も技引きの spec で技後CDを書く(実装者視点監査A-2)', () => {
+  it('§16の技(chaffMove定義)は、返された瞬間にchaffMoveを消し、技のrecoverMsで技後CDを書く(skel-bite=5000ms)', () => {
+    const e = { ...spawnEnemyAt('skeleton', 0, 0, 1000), chaffMove: 'skel-bite', biteAt: 1000 } as Enemy;
+    const patched = dashParriedEnemyPatch(e, 100, 100, Date.now(), 2000);
+    expect(patched.chaffMove).toBeUndefined();
+    expect(patched.biteAt).toBe(0);
+    expect(patched.biteReadyAt).toBe(2000 + 5000);
+    expect(patched.chaffMoveCdUntil).toBe(2000 + 5000);
+  });
+
+  it('§12の噛みつき(chaffMove未定義)は、従来どおりchaffMoveCdUntilを書かない', () => {
+    const e = { ...spawnEnemyAt('zombie', 0, 0, 1000), biteAt: 1000 } as Enemy;
+    const patched = dashParriedEnemyPatch(e, 100, 100, Date.now(), 2000);
+    expect(patched.chaffMoveCdUntil).toBeUndefined();
+    expect(patched.biteReadyAt).toBe(2000 + 600); // BITE_DEFAULT/zombieのrecoverMs=600(§16-8で復帰)
   });
 });

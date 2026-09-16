@@ -980,12 +980,19 @@ export const dashParriedEnemyPatch = (
     else { ndx = 0; ndy = -1; d = 1; }
   }
   const ux = ndx / d, uy = ndy / d;
+  // ★PACING_PUZZLE.md §16-7 穴2(実装者視点監査A-2): カウンター経路も「いま出している技」の
+  // spec を使う(型基準の既定ではなく)。§16の技(chaffMove定義)は技後CD(bat 6000/skeleton 5000)を
+  // 書かないと、赤を返した0.6秒後に §12 の紫噛みが連鎖してしまう。
+  const techSpec = biteSpecFor(e.type, e.chaffMove);
   return {
     ...e,
     // ★噛みつきもここで中断する(v0.25.3922)。消さないと `biteAt` が生きたまま残り、
     // 踏み込みの絶対座標の上書きが**弾き飛ばしたノックバックを打ち消して起点へ引き戻す**。
     biteAt: 0,
-    biteReadyAt: gameTimeNow + biteSpecFor(e.type).recoverMs,
+    biteReadyAt: gameTimeNow + techSpec.recoverMs,
+    // ★§16-7b「chaffMoveはbiteAtと同時に立ち、biteAtを消す全経路で同時に消す」の1経路。
+    chaffMove: undefined,
+    ...(e.chaffMove !== undefined ? { chaffMoveCdUntil: gameTimeNow + techSpec.recoverMs } : {}),
     // 突進/ジャンプ中断。※ COUNTER_UNINTERRUPTIBLE_PHASES の技だけは技を消さない(社長指示v0.25.3145)。
     ...(keepPhase ? {} : {
       aiPhase: undefined,
@@ -1086,7 +1093,7 @@ export const tryGhostContactParry = (
   if (!(isHiddenBoss(fromEnemy.type) || isBountyType(fromEnemy.type))) return false;
   if (shouldSkipBossContactParry(fromEnemy.type, fromEnemy.bossState)) return false;
   if (fromEnemy.rootUntil !== undefined && gameTime < fromEnemy.rootUntil) return false; // 拘束中の再受け流し禁止(プレイヤーと同じ)
-  if (isBiteSubject(fromEnemy, isBiteExemptType)) return false;
+  if (isBiteSubject(fromEnemy, isBiteExemptType, gameTime)) return false;
   const nowMs = Date.now();
   const claim = consumeGhostCounterClaim(fromEnemy.id, nowMs);
   if (claim === null) return false;
@@ -1319,19 +1326,22 @@ export const applyContactDamage = (
     // (v0.25.3914の穴: 構えた直後に技へ入る=`aiPhase` が付いて対象外になると、`biteAt` が
     //  立ったまま二度と解決されず、**その個体は以後一度も噛めなくなる**。人狼の突進のように
     //  「普段は噛む→技に入る」敵で必ず起きる。)
-    if (!biting && !isBiteSubject(e, isBiteExemptType)) continue;
-    const spec = biteSpecFor(e.type);
+    if (!biting && !isBiteSubject(e, isBiteExemptType, gameTime)) continue;
+    const spec = biteSpecFor(e.type, e.chaffMove);
     // ★こちらの攻撃で**ノックバック中**の敵は噛まない(社長報告2026-08-25「いま攻撃当てても
     // お構いなしに噛みつきが来るから必ず食らう」)。構え中なら中断し、構えていないなら始めない。
     // 時計に注意: `knockbackUntil` は `Date.now()` 系(gameTime系ではない)。
     // ★ただし**逓減する**(社長報告2026-08-25「なんどでもノックバックさせれて攻撃あたらん」):
     // 1度中断したら `BITE_CANCEL_DR_MS` の間は振り切って噛む=撃ち続けるだけの無限ロックを防ぐ。
     const biteDrOn = e.biteNoCancelUntil !== undefined && gameTime < e.biteNoCancelUntil;
-    const knocked = !biteDrOn && e.knockbackUntil !== undefined && kbNow < e.knockbackUntil;
+    // ★PACING_PUZZLE.md §16-4「§16の技だけ knocked を無視し、§12の噛みつきは従来どおり中断する」。
+    // §12(chaffMove undefined)はここより下は1bitも変えていない(受け入れ条件1)。
+    const knocked = e.chaffMove === undefined
+      && !biteDrOn && e.knockbackUntil !== undefined && kbNow < e.knockbackUntil;
     if (biting) {
       // 構えている最中に**技へ入った**なら、その噛みは中断(技の当たり判定が本体になる)。
       // ★止まっている敵(気絶/拘束/持ち上げ/眠り)は噛み切らない=構え始めと同じ述語で中断する。
-      if (!isBiteSubject(e, isBiteExemptType) || knocked || isBiteInterruptedByMove(e)
+      if (!isBiteSubject(e, isBiteExemptType, gameTime) || knocked || isBiteInterruptedByMove(e)
         || isBiteFrozen(e, gameTime)) {
         biteClears.push(e.id);
         if (knocked) biteDrIds.push(e.id); // 中断した=次はしばらく振り切られる
@@ -1374,8 +1384,14 @@ export const applyContactDamage = (
           ...e, biteAt: gameTime, biteDirX: st0.dirX, biteDirY: st0.dirY,
         };
         if (biteClears.includes(e.id)) {
+          // ★PACING_PUZZLE.md §16-7 穴2(実装者視点監査A-1): 「いま出している技」の spec で
+          // recoverMs を引き、`chaffMove` を biteAt と同時に消す(§16-7b「biteAtを消す全経路で
+          // 同時に消す」の1経路)。技中だった個体には技後CD(chaffMoveCdUntil)も書く。
+          const techSpec = biteSpecFor(e.type, e.chaffMove);
           return {
-            ...e, biteAt: 0, biteReadyAt: gameTime + biteSpecFor(e.type).recoverMs,
+            ...e, biteAt: 0, biteReadyAt: gameTime + techSpec.recoverMs,
+            chaffMove: undefined,
+            ...(e.chaffMove !== undefined ? { chaffMoveCdUntil: gameTime + techSpec.recoverMs } : {}),
             ...(biteDrIds.includes(e.id) ? { biteNoCancelUntil: gameTime + BITE_CANCEL_DR_MS } : {}),
           };
         }
@@ -1395,7 +1411,9 @@ export const applyContactDamage = (
     // **噛みの区間(最後の200ms)に振った時だけ**——溜めの間の"置き"では通らない。
     // 時計をまたがないよう「窓が開いてから何ms経ったか」で見る
     // (biteAt は gameTime 系 / カウンター窓は Date.now 系なので直接引き算しない)。
-    const heSpec = biteSpecFor(he.type);
+    // ★PACING_PUZZLE.md §16-7 穴2: 「いま出している技」の spec で counterable を引く。
+    // §16の技(bat-grab/skel-bite)は counterable:true=赤カウンター可、§12は従来どおり false。
+    const heSpec = biteSpecFor(he.type, he.chaffMove);
     const windowOpenedAgo = Date.now() - collPlayer.counterWindowStart;
     if (heSpec.counterable && counterActiveNow && windowOpenedAgo <= heSpec.biteMs) {
       dashParried.push(h.id); continue;
@@ -1521,7 +1539,7 @@ export const applyContactDamage = (
     // (shouldSkipBossContactParry・トール突進v3785と同型)。
     if (BOSS_CONTACT_PARRY_ENABLED && counterActiveNow && !bossParryRooted && !thorDashRunNow
       && (isHiddenBoss(enemy.type) || isBountyType(enemy.type))
-      && !isBiteSubject(enemy, isBiteExemptType)) {
+      && !isBiteSubject(enemy, isBiteExemptType, gameTime)) {
       // v0.25.2954(社長指示「体当たりカウンターしたら少しノックバックしてから硬直にして」):
       // 押す向き=プレイヤー→ボス(離れる方向)。ゼロ距離の退避は上向き。
       const pdx = (enemy.x + enemy.width / 2) - (collPlayer.x + collPlayer.width / 2);
@@ -1535,7 +1553,7 @@ export const applyContactDamage = (
     // ★噛みつき(§12)の対象になった敵は、**触れてもダメージを与えない**。
     // 攻撃は上の噛みつき台本(30px圏で構える→500ms→予告した点で判定)へ一本化された。
     // ボス・技の最中(aiPhase)・接触ダメージ0の敵はここを通らない=従来どおり触れたら痛い。
-    if (isBiteSubject(enemy, isBiteExemptType)) return;
+    if (isBiteSubject(enemy, isBiteExemptType, gameTime)) return;
     // ★踏み込み中は接触ダメージを通さない(社長指示2026-08-25)。ここは**体当たり(接触)の唯一の
     // 合流点**なので、この1行で「接触だけ無敵」が成立する——技・弾・予告は別経路なので影響しない。
     if (lungeContactImmune) return;
