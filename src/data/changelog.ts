@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4407',
+    items: ['キルの斬撃に黒い四角が重なって見えていたのを直した。光だけが残る'],
+  },
+  {
     version: '0.25.4406',
     items: ['近接攻撃で敵を倒した瞬間、首元に鋭い斬撃が走る演出を追加した'],
   },
