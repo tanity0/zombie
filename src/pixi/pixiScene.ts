@@ -147,6 +147,7 @@ import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近
 import { skillBurstFrame, skillBurstTexture, skillBurstScale, skillBurstAlpha, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { setRenderStats } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347)
+import { addBakedTexture, type BakeKind } from '../utils/renderStats'; // 焼いたテクスチャの実測(v0.25.4375)
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import { MOLOTOV_FIRE_RADIUS } from '../utils/molotov';
@@ -302,6 +303,29 @@ import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
 import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt } from '../utils/circleSweep';
 import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, sweepTelegraphProg, twoPhaseTelegraphProg } from '../utils/bandSweep';
 import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
+
+/**
+ * ★焼いた RenderTexture を作る唯一の入口(v0.25.4375)。
+ *
+ * ここを通さない `RenderTexture.create` があると、その分は**実機の数字に映らない**
+ * (`textureMemoryMB()` は読み込んだ素材しか数えない)。新しく焼く物を足す時は必ずここを通すこと。
+ * 数えるのは実ピクセル(`pixelWidth`)=GPUに載る実量。
+ */
+const bakeRenderTexture = (
+  kind: BakeKind,
+  opts: { width: number; height: number; antialias?: boolean; resolution?: number },
+): RenderTexture => {
+  const rt = RenderTexture.create(opts);
+  addBakedTexture(kind, (rt.source.pixelWidth || 0) * (rt.source.pixelHeight || 0));
+  return rt;
+};
+
+/** 焼いた物を捨てる時の1点(数えた分を引き戻す)。 */
+const releaseBakedTexture = (kind: BakeKind, rt: RenderTexture | null | undefined): void => {
+  if (!rt) return;
+  addBakedTexture(kind, (rt.source.pixelWidth || 0) * (rt.source.pixelHeight || 0), -1);
+  rt.destroy(true);
+};
 
 // --- 深層域グレーディング(退色した暖色セピア) -----------------------------
 // 深層域に入っている間だけ、ゲーム画面全体を退色セピアにする描画のみの演出(当たり判定等には不干渉)。
@@ -10223,7 +10247,7 @@ export class PixiScene {
       wrap.addChild(s);
     }
     wrap.filters = [new BlurFilter({ strength: LAB_FAR_BLOOM_BLUR, quality: 3 })];
-    const rt = RenderTexture.create({ width: w, height: h });
+    const rt = bakeRenderTexture('other', { width: w, height: h });
     this.renderer.render({ container: wrap, target: rt, clear: true });
     wrap.destroy({ children: true });
     this.farBloomCache.set(src, rt);
@@ -10661,8 +10685,8 @@ export class PixiScene {
     const H = Math.max(1, Math.round(this.screenH));
     // 描画先 RenderTexture(画面サイズ。リサイズで作り直し)。
     if (!this.labRT || this.labRT.width !== W || this.labRT.height !== H) {
-      this.labRT?.destroy(true);
-      this.labRT = RenderTexture.create({ width: W, height: H, antialias: false });
+      releaseBakedTexture('other', this.labRT);
+      this.labRT = bakeRenderTexture('other', { width: W, height: H, antialias: false });
       if (this.labVeilSprite) this.labVeilSprite.texture = this.labRT;
     }
     // オフスクリーンの中身(暗幕 + erase 光ディスク)を用意。
@@ -11756,7 +11780,7 @@ export class PixiScene {
     g.rect(38 - sway, 95, 22, 60).fill({ color: 0x000000, alpha: 1 });  // 左脚
     g.rect(70 + sway, 95, 22, 60).fill({ color: 0x000000, alpha: 1 });  // 右脚
     g.filters = [new BlurFilter({ strength: 3 })];
-    const rt = RenderTexture.create({ width: 128, height: 168, resolution: 1 });
+    const rt = bakeRenderTexture('other', { width: 128, height: 168, resolution: 1 });
     this.renderer.render({ container: g, target: rt });
     g.destroy(true);
     this.probeTexes[variant] = rt;
@@ -12794,7 +12818,7 @@ export class PixiScene {
       grad.width = paddedW;
       grad.height = paddedH;
 
-      const rt = RenderTexture.create({ width: paddedW, height: paddedH, resolution: 1 });
+      const rt = bakeRenderTexture('shadow', { width: paddedW, height: paddedH, resolution: 1 });
       const penumbra = SHADOW_PENUMBRA ? this.penumbraFilterGet() : null;
 
       if (!penumbra) {
@@ -12808,8 +12832,8 @@ export class PixiScene {
         // 1) a_hard / 2) a_soft: **同じ黒シルエット**を強さ違いのぼかしで2枚焼く(縦グラデは掛けない)。
         const silo = new Container();
         silo.addChild(body);
-        const hardRT = RenderTexture.create({ width: paddedW, height: paddedH, resolution: 1 });
-        const softRT = RenderTexture.create({ width: paddedW, height: paddedH, resolution: 1 });
+        const hardRT = bakeRenderTexture('shadow', { width: paddedW, height: paddedH, resolution: 1 });
+        const softRT = bakeRenderTexture('shadow', { width: paddedW, height: paddedH, resolution: 1 });
         silo.filters = [new BlurFilter({ strength: Math.max(0.1, blurPx * SHADOW_PENUMBRA_HARD_MULT), quality: 3 })];
         this.renderer.render({ container: silo, target: hardRT, clear: true });
         silo.filters = [new BlurFilter({ strength: Math.max(0.1, blurPx * SHADOW_PENUMBRA_SOFT_MULT), quality: 3 })];
@@ -16585,7 +16609,7 @@ export class PixiScene {
     const f = new ColorMatrixFilter();
     f.desaturate(); // 彩度0=白黒
     wrap.filters = [f]; // コンテナにかけると render で確実に適用される
-    const rt = RenderTexture.create({ width: Math.max(1, src.width), height: Math.max(1, src.height) });
+    const rt = bakeRenderTexture('silhouette', { width: Math.max(1, src.width), height: Math.max(1, src.height) });
     this.renderer.render({ container: wrap, target: rt, clear: true });
     wrap.destroy({ children: true });
     this.grayTexCache.set(name, rt);
@@ -16605,7 +16629,7 @@ export class PixiScene {
     // RGB を一律 1(白)に、α は元のまま(行4=0,0,0,1,0)。→ 不透明部だけが真っ白なシルエット。
     f.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0];
     wrap.filters = [f];
-    const rt = RenderTexture.create({ width: Math.max(1, src.width), height: Math.max(1, src.height) });
+    const rt = bakeRenderTexture('silhouette', { width: Math.max(1, src.width), height: Math.max(1, src.height) });
     this.renderer.render({ container: wrap, target: rt, clear: true });
     wrap.destroy({ children: true });
     this.whiteTexCache.set(src, rt);
@@ -16653,7 +16677,7 @@ export class PixiScene {
       cut.filters = [black];
       cut.position.set(-d.dx * q, -d.dy * q); // 光と**反対**へずらす=光側の帯だけが白く残る
       wrap.addChild(lit, cut);
-      const rt = RenderTexture.create({ width: Math.max(1, src.width), height: Math.max(1, src.height) });
+      const rt = bakeRenderTexture('rim', { width: Math.max(1, src.width), height: Math.max(1, src.height) });
       this.renderer.render({ container: wrap, target: rt, clear: true });
       wrap.destroy({ children: true });
       m.set(key, rt);
@@ -29938,7 +29962,7 @@ export class PixiScene {
     const pad = CINE_PLATE_BLUR_PX * 3;
     const scale = Math.min(1, 512 / Math.max(1, src.height)); // 焼きの解像度は高さ512まで(ボケるので十分・メモリ節約)
     const w = Math.ceil(src.width * scale) + pad * 2, h = Math.ceil(src.height * scale) + pad * 2;
-    const rt = RenderTexture.create({ width: w, height: h, resolution: 1 });
+    const rt = bakeRenderTexture('other', { width: w, height: h, resolution: 1 });
     const sp = new Sprite(src); sp.position.set(pad, pad); sp.scale.set(scale);
     const wrap = new Container(); wrap.addChild(sp);
     wrap.filters = [new BlurFilter({ strength: CINE_PLATE_BLUR_PX, quality: 3 })];

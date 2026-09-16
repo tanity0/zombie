@@ -6,7 +6,7 @@ import { isPixiRenderer, getAppliedResolution } from '../config/renderer';
 import { getAssistLightDebug } from '../pixi/pixiScene';
 import { getTexture } from '../pixi/pixiTextures';
 import { lastSuppressedError } from '../utils/errorBeacon';
-import { renderStatsText } from '../utils/renderStats';
+import { renderStatsText, bakedTextureText } from '../utils/renderStats';
 import { prevBeatText, startCrashWatch } from '../utils/crashWatch';
 import { textureMemoryMB, textureTopGroups } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
@@ -377,13 +377,14 @@ const ErrBeacon: React.FC = () => {
     // ステータスなんて見れないよ」への回答。
     startCrashWatch(() => {
       const st = useGameStore.getState();
-      return `v${__APP_VERSION__} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) en${st.enemies.length}`;
+      // ★v0.25.4375: `tex` は**読み込んだ素材しか数えない**。実行中に焼く分(縁/影/白)は別口で出す。
+      return `v${__APP_VERSION__} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) ${bakedTextureText()} en${st.enemies.length}`;
     });
     const iv = setInterval(() => {
       const msg = lastSuppressedError();
       // ★増え続けていないかを常に出す(v0.25.4347)。例外が出たら赤字でその後ろへ。
       const pv = prevBeatText();
-      const line = `${renderStatsText()} tex${textureMemoryMB()}MB`
+      const line = `${renderStatsText()} tex${textureMemoryMB()}MB ${bakedTextureText()}`
         + (pv ? ` · 前回最後 ${pv}` : '')
         + (msg ? ` · ERR ${msg}` : '');
       if (ref.current && ref.current.textContent !== line) ref.current.textContent = line;

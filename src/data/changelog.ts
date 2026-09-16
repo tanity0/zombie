@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4375',
+    items: ['まれに動作が止まってしまう原因を調べるため、画面すみの記録に項目を増やしました。遊びの内容は変わりません'],
+  },
+  {
     version: '0.25.4374',
     items: ['燃えている敵が炎のダメージのたびに大きくのけぞっていたのが直りました。燃えていることは赤い明滅で従来どおり分かります'],
   },
