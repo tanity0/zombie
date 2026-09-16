@@ -33,6 +33,7 @@ import type {
 import type { EndingSoldier, EndingPhillState, EndingBomb } from '../utils/endingScene';
 import { endingBombFallY, isEndingSoldierTumbling, ENDING_BLOWN_MS } from '../utils/endingScene';
 import { SIGNAL_STRIKE_DELAY_MS, type SignalStrike } from '../utils/signalLauncher';
+import { playerHurtReactionOf } from '../utils/playerHurt';
 import { fallenSoldiersInRange } from '../utils/endingScene';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
@@ -1207,7 +1208,7 @@ const ENEMY_HIT_FLINCH_RISE = 0.18;   // この割合までが「出」(残り�
 // 一度スプライトを潰す/傾ける実装にしたが、**しゃがみは手で描かれた絵(`-ready`)が既にある**
 // (近接の構え・着地・バックジャンプ・KILL演出が同じ絵を使っている既存の作法)。
 // ドット絵を変形させるより**絵を差し替える**のが正しい=変形は全廃し、この窓の間だけ絵を替える。
-const PLAYER_HURT_MS = 300;
+// ★しゃがみの尺は**段ごと**(`utils/playerHurt.ts` の表)。ここに固定値は置かない。
 
 /**
  * 被弾の怯みポーズ(t=経過0..1)。**出は速く、戻りは緩い**(慣性MUST。旧実装は直線減衰だった)。
@@ -16100,7 +16101,9 @@ export class PixiScene {
     view.sprite.texture = tex ?? view.sprite.texture;
     // ★被弾リアクション(社長指示2026-09-16)。**変形はしない**——しゃがみは下の `-ready` 差し替えで出す。
     const sinceHurt = now - (p.lastHurtAt ?? -1e9);
-    const hurtPoseActive = sinceHurt >= 0 && sinceHurt < PLAYER_HURT_MS;
+    // 段(軽/中/重)でしゃがみの長さが変わる。**軽段の crouchMs を 0 にすれば案(b)**
+    // 「軽い被弾では怯まない」へ切り替わる(窓が開かない=しゃがみが出ない)。
+    const hurtPoseActive = sinceHurt >= 0 && sinceHurt < playerHurtReactionOf(p.lastHurtTier).crouchMs;
     // アバター頭頂追従(v0.25.3271)用: 「いま体に表示中のテクスチャ名」を追う(この後の近接ポーズ/
     // 死亡固定絵の差し替えで更新される)。取得失敗時のフォールバック('player'等)は追わない=
     // その場合は頭頂キャッシュに無い名前になり avatarHeadDeltaPx が自動的に差分0へ落ちる。

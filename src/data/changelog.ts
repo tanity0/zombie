@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4373',
+    items: ['被弾の反応が、受けたダメージの重さで変わるようになりました。かすった時は短く、大きく食らった時ほど深くしゃがみ、時間の止まりも長くなります'],
+  },
+  {
     version: '0.25.4372',
     items: ['攻撃を受けた時、その場でしゃがみ込むようになりました'],
   },

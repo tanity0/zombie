@@ -101,6 +101,7 @@ import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate, comboMilestoneCrossed, killBannerDurationMs } from '../utils/comboMilestone';
+import { playerHurtTier, playerHurtReactionOf } from '../utils/playerHurt';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 import { impactDamageOf, mergeImpactEntries, strongestImpact, IMPACT_MELEE_MIN, type ImpactEntry, type ImpactFlags } from '../utils/impactShake'; // 揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)
 import {
@@ -2110,10 +2111,9 @@ export const FIRST_AID_KIT_THROW_KNOCKBACK_MULT = 1.2; // TODO(救急鞄): 仮�
 // Hitstop: 全停止(timeScale=0)で衝撃を出す瞬間ストップ。全インパクト共通0.1秒(社長指示)。
 // この後は必ずスロー(triggerTimeSlow)で等速へ戻す。
 export const HITSTOP_MS = 100;
-// ★プレイヤー被弾のヒットストップ(社長指示2026-09-16「食らったらノック、怯み、しゃがみ、ストップ」)。
-// 社長の言葉「当たった瞬間に数十ms止まる」に合わせて短く。**被弾i-frame(INVULN_MS=1000)が
-// 連発を止める**ので、敵側の通常ヒットと違って画面が固まり続ける心配がない。
-export const PLAYER_HURT_HITSTOP_MS = 70;
+// ★プレイヤー被弾のヒットストップは**段ごと**(`utils/playerHurt.ts` の表)。社長の言葉
+// 「当たった瞬間に数十ms止まる」に合わせて短く。**被弾i-frame(INVULN_MS=1000)が連発を止める**ので、
+// 敵側の通常ヒットと違って画面が固まり続ける心配がない。
 // 近接フィニッシュ&カウンター: ストップ→スロー。社長指示で倍に(700→1400)。さらにもう少し長く
 // (1400→1650→1950)。社長指摘「長さの問題じゃないかも」で全体を約1秒へ戻しつつ、最も遅い区間を
 // 保持してから戻りは速くする形に変更(1950→1000)。一度は保持区間を延ばす代わりに全体も延長した
@@ -10424,6 +10424,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       ? Math.min(skilled, Math.max(0, player.health - 1))
       : skilled;
 
+    // ★被弾の重さの段(社長裁定2026-09-16「一旦aでやってみよう」)。しゃがみの尺とストップの長さを
+    // これで引く。**敵の体勢値とは別系統**(プレイヤーは無敵1秒が頻度を守るので間引かない)。
+    const hurtTier = playerHurtTier(amount, player.maxHealth);
+
     // G4a(BOT_AND_GHOST.md §2.9・記録専用): 技キー付きの実被弾を反応表へ通知する(ワクチン発動でも
     // 「その技を食らった」事実は同じなので、分岐より前のここで1回だけ)。挙動には一切影響しない。
     if (amount > 0 && damageSourceMove !== undefined) notifyMoveDamage(damageSourceMove);
@@ -10500,10 +10504,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §5.23 M22 C1: 被弾源→プレイヤーのノックバック向きへ揺れを寄せる(?dirfx=0で従来の等方揺れ)。
         shakeDirX: amount > 0 ? (DIRFX_ENABLED ? dirX : 0) : state.shakeDirX,
         shakeDirY: amount > 0 ? (DIRFX_ENABLED ? dirY : 0) : state.shakeDirY,
-        // ★被弾の「ストップ」(社長指示2026-09-16)。既に走っているストップ(カウンター成立等)の方が
-        // 長ければ**上書きしない**(短い方で切り詰めない)。
+        // ★被弾の「ストップ」(社長指示2026-09-16)。**段ごとに長さが変わる**(軽くかすっただけなら短い)。
+        // 既に走っているストップ(カウンター成立等)の方が長ければ**上書きしない**(短い方で切り詰めない)。
         hitstopUntil: amount > 0
-          ? Math.max(state.hitstopUntil, Date.now() + PLAYER_HURT_HITSTOP_MS)
+          ? Math.max(state.hitstopUntil, Date.now() + playerHurtReactionOf(hurtTier).stopMs)
           : state.hitstopUntil,
         player: {
           ...state.player,
@@ -10521,7 +10525,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // `?lastcounter=1` で旧挙動(被弾していてもカウンター可)へ完全復帰(A/B比較用)。
           counterWindowEnd: (amount > 0 && !LATE_COUNTER_ENABLED) ? 0 : state.player.counterWindowEnd,
           // ★被弾リアクションの打刻(描画専用・判定不変)。この間だけ本体の絵がしゃがみへ替わる。
+          // 段(軽/中/重)は**実際に減ったHP**(amount=軽減後)と最大HPの割合で決まる。
           lastHurtAt: amount > 0 ? kbNow : state.player.lastHurtAt,
+          lastHurtTier: amount > 0 ? hurtTier : state.player.lastHurtTier,
           knockbackVx: kbApply ? kbVx : state.player.knockbackVx,
           knockbackVy: kbApply ? kbVy : state.player.knockbackVy,
           knockbackUntil: kbApply ? kbNow + PLAYER_KNOCKBACK_MS : state.player.knockbackUntil,
