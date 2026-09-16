@@ -34,6 +34,13 @@ export interface EffectiveMoveSpeedInput {
   trapDebuffed: boolean;
   /** PvP体勢による移動倍率(pvpMoveMult)。通常時は1。 */
   pvpMult: number;
+  /**
+   * ★近接を振った**あと**の硬直による移動倍率(`utils/meleeRecover.ts`・社長指示2026-09-16)。通常時は1。
+   * **ダッシュ(一閃/ワイヤー)とスライドには掛けない**——あれらは別のロコモーションで、
+   * 硬直で潰すと「特殊移動が突然遅くなる」という別の事故になる。踏み込み(回避)は
+   * そもそもこの関数を通らない(movePlayer の `lungeVx` の枝)ので、掛かりようがない。
+   */
+  meleeRecoverMult: number;
 }
 
 /** ランプ済みボーナス倍率。speedRamp.rampedBonusMult と同一式(移設先を増やさないための再掲)。 */
@@ -46,8 +53,10 @@ const rampedBonus = (p: number, rampFrac: number): number => 1 + (p - 1) * rampF
 export const computeEffectiveMoveSpeed = (input: EffectiveMoveSpeedInput): number => {
   const {
     dashOverrideSpeed, slidingSpeed, reloading, reloadMoveSpeedMult, playerSpeed,
-    skaterActive, bonusMult, rampFrac, trapDebuffed, pvpMult,
+    skaterActive, bonusMult, rampFrac, trapDebuffed, pvpMult, meleeRecoverMult,
   } = input;
+  // 特殊ロコモーション(ダッシュ/スライド)中は近接の硬直を掛けない(上のコメント)。
+  const recoverMult = (dashOverrideSpeed !== null || slidingSpeed !== null) ? 1 : meleeRecoverMult;
   const rawMoveSpeed = dashOverrideSpeed !== null
     ? dashOverrideSpeed
     : slidingSpeed !== null
@@ -55,5 +64,5 @@ export const computeEffectiveMoveSpeed = (input: EffectiveMoveSpeedInput): numbe
     : reloading
     ? playerSpeed * reloadMoveSpeedMult * (skaterActive ? 3 : 1) * rampedBonus(bonusMult, rampFrac)
     : playerSpeed * (skaterActive ? 3 : 1) * rampedBonus(bonusMult, rampFrac);
-  return (trapDebuffed ? Math.min(rawMoveSpeed, playerSpeed) : rawMoveSpeed) * pvpMult;
+  return (trapDebuffed ? Math.min(rawMoveSpeed, playerSpeed) : rawMoveSpeed) * pvpMult * recoverMult;
 };

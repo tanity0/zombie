@@ -12,6 +12,7 @@ const base: EffectiveMoveSpeedInput = {
   rampFrac: 1,
   trapDebuffed: false,
   pvpMult: 1,
+  meleeRecoverMult: 1,
 };
 
 describe('computeEffectiveMoveSpeed — movePlayerの速度合成(移設のみ・挙動不変)', () => {
@@ -67,5 +68,19 @@ describe('computeEffectiveMoveSpeed — movePlayerの速度合成(移設のみ�
   it('PvP減速は最後に一律で掛かる(dashOverride/sliding含む全経路)', () => {
     expect(computeEffectiveMoveSpeed({ ...base, pvpMult: 0.5 })).toBe(43.5);
     expect(computeEffectiveMoveSpeed({ ...base, dashOverrideSpeed: 100, pvpMult: 0.5 })).toBe(50);
+  });
+});
+
+describe('近接を振ったあとの硬直(v0.25.4380)', () => {
+  it('硬直中は移動が遅くなる', () => {
+    expect(computeEffectiveMoveSpeed({ ...base, meleeRecoverMult: 0.45 })).toBeCloseTo(87 * 0.45, 6);
+  });
+
+  it('★ダッシュ(一閃/ワイヤー)には掛けない=特殊移動が突然遅くならない', () => {
+    expect(computeEffectiveMoveSpeed({ ...base, dashOverrideSpeed: 500, meleeRecoverMult: 0.45 })).toBe(500);
+  });
+
+  it('★スライドにも掛けない', () => {
+    expect(computeEffectiveMoveSpeed({ ...base, slidingSpeed: 300, meleeRecoverMult: 0.45 })).toBe(300);
   });
 });

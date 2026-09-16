@@ -97,6 +97,7 @@ import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規�
 import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
 import { stepSpeedRamp, effectiveRampFrac, RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
 import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_PUZZLE.md §14-4-2(新死神・重大4/5)
+import { meleeRecoverSpeedMult } from '../utils/meleeRecover'; // 近接を振ったあとの硬直(v0.25.4380)
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
@@ -6761,6 +6762,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         trapDebuffed,
         // ★SAME_ARENA §9(対人体勢): クリ被弾の2/3減速(幻影と対称・移動速度のみ=攻撃CDは触らない)。
         pvpMult: pvpMoveMult(player.pvpPosture, state.gameTime),
+        // ★近接を振った**あと**の硬直(社長指示2026-09-16「振った直後にディレイが入るのはいい」)。
+        // 振り**中**は掛からない=踏み込み斬りの「回避としての使い方」を殺さない、が社長の前提。
+        meleeRecoverMult: meleeRecoverSpeedMult(player.meleeSwingAt, nowMs, COUNTER_WINDOW),
       });
 
       // Target direction from swipe (touch) or keys.
