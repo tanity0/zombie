@@ -350,7 +350,7 @@ import { worldDist } from '../config/worldScale'; // 世界の距離スケール
 import { cineAccepts, cineCameraAt, cineSideOf, type CineEvent, type CineKind } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜)
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { GAME_SPEED } from '../config/gameSpeed';
-import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS } from '../utils/meleeExecute';
+import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS, isEliteFatalStun } from '../utils/meleeExecute';
 
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
 const initialRhythm = (): RhythmState => ({
@@ -7639,6 +7639,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     // the one finger-release does melee, knockback, and bullet-parry together.
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     let bossFinishHit = false; // finisher-grade damage landed on a stunned boss
+    // ★強個体の「致命の一撃」(紫中の即死)が起きたか(v0.25.4389・社長報告「紫怯み時にキルを決めても
+    // ズーム演出にならない。簡易の方になってる」)。**ボスの致命と同じく共有CD(10秒)を無視させる**ための旗。
+    // なぜ必要か: 強個体は紫中に `resolveStunnedMeleeHit` が **'execute'(即死)** を返すので
+    // `bossFatalHits` に入らず、`triggerFinishImpact` の `forceMaximumZoom` が false のまま
+    // **雑魚の処刑と同じ共有CD**に律速されていた。社長裁定 v0.25.4153「**強個体はボスと同じく
+    // 致命の一撃でキル演出は入る**」が、同日の別裁定「強個体は致命の一撃で即死」で
+    // **到達不能になっていた**(2つの裁定が噛み合っていなかった)。
+    let eliteFatalKill = false;
     const survivors: Enemy[] = [];
     const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number }[] = [];
     const bossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 近接クリで完全気絶が発動した位置(紫FX用)
@@ -7854,6 +7862,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (stunnedHit) {
         if (stunnedHit.kind === 'execute') {
           killed.push({ enemy, finisher: true }); // normal instant execute
+          // ★紫中の強個体の即死=「致命の一撃」。ボスと同じくCDを無視して必ずフル演出にする(v0.25.4389)。
+          if (isEliteFatalStun(enemy, gameTime)) eliteFatalKill = true;
           recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死
           continue;
         }
@@ -8198,7 +8208,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : finishZoomTargetOf(killed);
       // M21(§5.22): フル演出(CD明け)の時だけ武器固有の黄フラッシュを重ねる。CD内は
       // triggerFinishImpact自身が出す最低保証フラッシュ(軽い白)だけになる=二重フラッシュを避ける。
-      const fullCinematic = get().triggerFinishImpact(ztx, zty, bossFatalHits.length > 0);
+      const fullCinematic = get().triggerFinishImpact(ztx, zty, bossFatalHits.length > 0 || eliteFatalKill); // 致命(ボス/紫中の強個体)はCDを無視して必ず最大ズーム
       finishFull = true; // CD内(fullCinematic=false)でも処刑の揺れは出す。停止/スロー/ズーム/カメラはCD明けだけ(従来)
       if (fullCinematic && killed.some(k => k.finisher)) {
         get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
@@ -9033,6 +9043,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const katanaBossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 刀クリで完全気絶が発動した位置
     const mimirLaserBreakHits: { x: number; y: number }[] = []; // §6.33: レーザー中断位置(カウンター成立FX用)
     const katanaBossFatalHits: { x: number; y: number; labelY: number; w: number; h: number }[] = []; // w/h=killFx流用(v0.25.3703)
+    let katanaEliteFatalKill = false; // ★紫中の強個体の即死=致命(v0.25.4389・通常近接の eliteFatalKill と同義)
     const katanaHitEnemyIds: string[] = []; // スキル 救難信号: 一閃(allowFinisher時)でヒットした敵ID(発動判定/対象選定用)
     // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
     let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
@@ -9109,6 +9120,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         killed.push({ enemy, finisher: true }); // 通常ナイフと同じ即時フィニッシュ
+        // ★紫中の強個体の即死=「致命の一撃」。CDを無視して必ずフル演出(v0.25.4389・通常近接と同じ扱い)。
+        if (isEliteFatalStun(enemy, gameTime)) katanaEliteFatalKill = true;
         // §6.21 M46: 気絶中の敵への近接即死(刀)。除外4(運用系)= 守護霊起因はプレイヤーの計測に
         // 混ぜない(v0.25.2525で他の計測=recordDamageDealt/recordMeleeSwingと揃えた。プレイヤーは不変)。
         if (!isGhost) recordFinisherKill();
@@ -9305,7 +9318,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const [ztx, zty] = katanaBossFatalHits[0]
         ? [katanaBossFatalHits[0].x, katanaBossFatalHits[0].y]
         : finishZoomTargetOf(killed);
-      const fullCinematic = get().triggerFinishImpact(ztx, zty, katanaBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
+      const fullCinematic = get().triggerFinishImpact(ztx, zty, katanaBossFatalHits.length > 0 || katanaEliteFatalKill); // 致命(ボス/紫中の強個体)はCDを無視して必ず最大ズーム
       katanaFinishFull = true; // CD内でも処刑の揺れは出す(v0.25.4301)
       // v0.25.3703: 刀の致命にもKILL跳びつき(v3622の取りこぼし)。刀の**処刑(finisher)**は従来どおり
       // 「斬」演出が主役なので跳びつきは付けない=致命(katanaBossFatalHits)がある時だけ。プレイヤー起因のみ。
@@ -9375,6 +9388,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const whipBossFullStunHits: { x: number; y: number }[] = []; // §9.4(v0.25.2502): 鞭クリで完全気絶が発動した位置(紫FX用)
     const mimirLaserBreakHits: { x: number; y: number }[] = []; // §6.33: レーザー中断位置(カウンター成立FX用)
     const whipBossFatalHits: { x: number; y: number; labelY: number; w: number; h: number }[] = []; // w/h=killFx流用(v0.25.3703)
+    let whipEliteFatalKill = false; // ★紫中の強個体の即死=致命(v0.25.4389・通常近接の eliteFatalKill と同義)
     const whipHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): 鞭のヒット敵ID(発動判定/対象選定用)
     // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
     let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
@@ -9446,6 +9460,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         killed.push({ enemy, finisher: true });
+        // ★紫中の強個体の即死=「致命の一撃」。CDを無視して必ずフル演出(v0.25.4389・通常近接と同じ扱い)。
+        if (isEliteFatalStun(enemy, gameTime)) whipEliteFatalKill = true;
         recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死(鞭)
         continue;
       }
@@ -9581,7 +9597,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const [ztx, zty] = whipBossFatalHits[0]
         ? [whipBossFatalHits[0].x, whipBossFatalHits[0].y]
         : finishZoomTargetOf(killed);
-      const fullCinematic = get().triggerFinishImpact(ztx, zty, whipBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
+      const fullCinematic = get().triggerFinishImpact(ztx, zty, whipBossFatalHits.length > 0 || whipEliteFatalKill); // 致命(ボス/紫中の強個体)はCDを無視して必ず最大ズーム
       whipFinishFull = true; // CD内でも処刑の揺れは出す(v0.25.4301)
       // v0.25.3703: 鞭の致命にもKILL跳びつき(v3622の取りこぼし)。処刑(finisher)は従来どおり=致命のみ。
       const wFatal = whipBossFatalHits[0];

@@ -1,6 +1,6 @@
 // PACING_PUZZLE.md §6.22 M47仕様①→§6.38 B3(E-1確定=瀕死処刑の撤去)のユニットテスト。
 import { describe, it, expect } from 'vitest';
-import { stunnedMeleeOutcome, resolveStunnedMeleeHit, usesBossStunnedMelee, isEliteEnemy, ELITE_MELEE_STUN_MULT } from './meleeExecute';
+import { stunnedMeleeOutcome, resolveStunnedMeleeHit, usesBossStunnedMelee, isEliteEnemy, ELITE_MELEE_STUN_MULT, isEliteFatalStun} from './meleeExecute';
 import type { StunnedMeleeEnemy } from './meleeExecute';
 import type { EnemyType } from '../types/game';
 
@@ -243,5 +243,28 @@ describe('★赤い個体=強個体(社長裁定v0.25.3547「強個体です」)
       { ...mk({ colorTier: 'red' }), stunUntil: 1000 }, 10, 0, 5,
     );
     expect(r).toEqual({ kind: 'heavy', dmg: 10 * ELITE_MELEE_STUN_MULT });
+  });
+});
+
+// ★v0.25.4389(社長報告「紫怯み時にキルを決めてもズーム演出にならない。簡易の方になってる」)。
+// 強個体は紫中に 'execute'(即死)を返すので `bossFatalHits` に入らず、共有CD(10秒)に律速されていた。
+// 判定の出どころ(`isEliteFatalStun`)が「紫中の強個体だけ true」であることを機械で固定する
+// ——ここが雑魚まで true になると、**全ての処刑がCDを無視して毎回フル演出**になる(酔う)。
+describe('isEliteFatalStun — CD無視のフル演出を出してよい相手(v0.25.4389)', () => {
+  const T = 10_000;
+  const elite = { type: 'pumpkin' as const, colorTier: undefined };
+  it('紫(bossFullStunUntil)中の強個体だけ true', () => {
+    expect(isEliteFatalStun({ ...elite, bossFullStunUntil: T + 1 }, T)).toBe(true);
+  });
+  it('紫が切れた強個体は false(通常の気絶からの3×は対象外)', () => {
+    expect(isEliteFatalStun({ ...elite, bossFullStunUntil: T }, T)).toBe(false);
+    expect(isEliteFatalStun({ ...elite }, T)).toBe(false);
+  });
+  it('★雑魚は紫でも false(ここが true になると全処刑がCDを無視する)', () => {
+    expect(isEliteFatalStun({ type: 'zombie', colorTier: undefined, bossFullStunUntil: T + 1 }, T)).toBe(false);
+    expect(isEliteFatalStun({ type: 'bat', colorTier: undefined, bossFullStunUntil: T + 1 }, T)).toBe(false);
+  });
+  it('赤い個体(=強個体扱い)も紫中なら true', () => {
+    expect(isEliteFatalStun({ type: 'zombie', colorTier: 'red', bossFullStunUntil: T + 1 }, T)).toBe(true);
   });
 });

@@ -1,5 +1,41 @@
 # Development Log
 
+## v0.25.4389 — 強個体の「致命の一撃」で寄り演出が出ない不具合【2026-09-16 14:49 JST】
+
+**社長報告**: 「**強個体だけかもだけど、紫怯み時にキル決めてもズーム演出にならない。簡易の方になってる**」。
+
+**調査の入口**: CLAUDE.md 規律7どおり **ENGINEERING_NOTES §0 の索引を先に引いた**。
+「演出を入れたのに実機で何も変わっていない」の行に「**全演出が共有CD10秒で律速される**」とあり、
+そこから `triggerFinishImpact` の `forceMaximumZoom` へ辿れた。**推測でコードを読み始めずに済んだ。**
+
+**原因(2つの同日裁定が噛み合っていなかった)**:
+- `triggerFinishImpact` は `forceMaximumZoom || (now - lastKillZoomAt >= JUICE_CD_MS)` でフル演出を決める。
+  `JUICE_CD_MS = MELEE_FINISH_ZOOM_CD_MS = **10000**`。CD中は「薄い白フラッシュ+揺れ」だけ=**社長の言う「簡易」**。
+- 呼び出し側は `forceMaximumZoom = bossFatalHits.length > 0`。**ボスの致命だけがCDを無視**していた。
+- **強個体は紫中に `resolveStunnedMeleeHit` が `'execute'`(即死)を返す**ので、
+  `bossFatalHits` を積む枝(`fatal`)に**到達しない** ⇒ `forceMaximumZoom=false` ⇒ **雑魚の処刑と同じCD**に律速。
+- ところが **社長裁定 v0.25.4153「強個体はボスと同じく致命の一撃でキル演出は入る」** が既にあり、
+  gameStore のコメントにもそう書いてある。**同日の別裁定「強個体は致命の一撃で即死」(`isEliteFatalStun`)が
+  その枝を到達不能にしていた**ため、裁定が実装に反映されていない状態が残っていた。
+  (コード側も 9106/9443 で「紫中の強個体はここへ来ない」と**気づいて書いていた**のに、
+  演出側の取りこぼしには繋がっていなかった。)
+
+**直し方**: 紫中の強個体の即死に旗を立て、**ボスの致命と同じく共有CDを無視**させる。
+**3経路すべてに付けた**(同じ動作を持つ全員に付ける): 通常近接 `eliteFatalKill` / 刀 `katanaEliteFatalKill` /
+鞭 `whipEliteFatalKill`。判定は既存の純関数 `isEliteFatalStun` を使う(新しい述語を作らない)。
+
+**★雑魚まで巻き込まないことをテストで固定**(`meleeExecute.test.ts` +4件):
+`isEliteFatalStun` が **紫中の強個体(赤い個体を含む)だけ true / 雑魚は紫でも false**。
+ここが雑魚まで true になると**全ての処刑がCDを無視して毎回フル演出**になり、酔う。
+
+**変更ファイル**: `src/store/gameStore.ts` / `src/utils/meleeExecute.test.ts` / `package.json` / `src/data/changelog.ts`
+
+**検証**: `npm run typecheck` 緑 / `npm run lint` エラー0(warning 9・既存) / `meleeExecute.test.ts` 34件緑。
+※実機の見た目確認は社長側(紫の体勢崩しは意図して作る状態なのでヘッドレスでの再現コストが高い)。
+**自己点検**: 憲法第4条・第5条に抵触なし——演出の発火条件1つで、ダメージ・即死判定・体勢値には触れていない。
+
+**状態変化**: なし(不具合修正)。
+
 ## v0.25.4388 — §16 裁定完了(A〜F)/ G は技テスト後で確定(文書のみ)【2026-09-16 14:37 JST】
 
 **社長**: 「**これは実装してを試してからになります**」(#16-G「数」について)。
