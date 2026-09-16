@@ -14940,9 +14940,21 @@ export const useGameStore = create<GameState>((set, get) => ({
               phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS;
             }
             // else: 尺切れ済みだが枠なし・内縁未到達→素通り(phase='z-wait'のまま下の通常移動へ)。
-          } else if (phase === undefined && pdist <= ZOMBIE_BAND_OUTER_PX
+          } else if (phase === undefined && pdist <= ZOMBIE_BAND_INNER_PX) {
+            // ★A-2(検収指摘2026-09-16「紫の入口が消えている」): 範囲に入った瞬間=1秒停止(紫)。
+            // §16以前から在った経路(旧`else if (inMelee)`)で、今回のバッチの差し替えで誤って
+            // 落ちていた——z-wait経由の紫(枠なし・内縁到達)だけが残り、**枠が空いてさえいれば
+            // 距離に関係なく赤になる**(紫の通路が事実上死ぬ)事故になっていた。距離だけで即決める
+            // 旧仕様のまま復元する(§16-0「詰めようとしたら赤。近すぎたら紫」の紫側)。
+            phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS;
+          } else if (phase === undefined && pdist > ZOMBIE_BAND_INNER_PX && pdist <= ZOMBIE_BAND_OUTER_PX
             && (enemy.chaffMoveCdUntil === undefined || gameTime >= enemy.chaffMoveCdUntil)) {
-            // 帯へ新規進入。赤の技後CD中は入らない(§16-3「赤の技後CD(4000ms)中は紫の停止にも入らない」)。
+            // ★A-1(検収指摘2026-09-16「帯への進入に内縁の下限が無い」): 帯(200〜100px)へ新規に
+            // 進入するのは**内縁より外・外縁以内**の時だけ(「帯に入る」は外から内縁へ向かって入って
+            // くること=既に内縁より内側に居る個体は帯に居ない)。下限が無いと、密着状態(0px)の
+            // ゾンビもz-waitへ入り、次のフレームで**密着したままz-red-pauseの2秒棒立ち**になる
+            // (殴り放題を渡す=「殴り込みづらくする」ゴールの正反対)。
+            // 赤の技後CD中は入らない(§16-3「赤の技後CD(4000ms)中は紫の停止にも入らない」)。
             phase = 'z-wait'; phaseUntil = gameTime + zombieRedWaitMs(enemy.id);
           }
 

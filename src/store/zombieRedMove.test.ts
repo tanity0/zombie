@@ -73,6 +73,58 @@ describe('帯(200〜100px)への進入 → z-wait', () => {
   });
 });
 
+describe('★検収A-1/A-2(2026-09-16・14秒実走で発覚): 帯への進入は内縁より外だけ・紫の直接入口の復元', () => {
+  // 観測: プレイヤー静止・ゾンビ1体を210pxから14秒動かすと、1周目(t=0〜5050ms)は正しく
+  // 赤2連が出るが、その後 z-wait(t=8633ms・距離0.6px=密着)→z-red-pause(密着したまま2秒棒立ち)
+  // になっていた。原因は2つ: ①帯への新規進入が外縁(200px)しか見ておらず内縁の下限が無かった
+  // (密着=0pxでもz-waitに入れた) ②旧「範囲に入った瞬間=1秒停止(紫)」の直接入口が差し替えで
+  // 消えており、紫は「z-wait経由で枠が無い時だけ」になっていた(枠が空いていれば距離に関係なく
+  // 赤になっていた=紫の通路が事実上死んでいた)。
+  it('A-1: 密着(0.6px)している個体は、枠が空いていてもz-waitにもz-red-pauseにも入らない', () => {
+    place(0.6); // このゾンビ1体だけ=枠は空いている
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).not.toBe('z-wait');
+    expect(e.aiPhase).not.toBe('z-red-pause');
+  });
+
+  it('A-2: 密着(0.6px)している個体は紫(zpause・1秒停止)に入る(紫の直接入口の復元)', () => {
+    place(0.6);
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('zpause');
+    expect(e.aiPhaseUntil).toBe(START_GT + ZOMBIE_PAUSE_MS);
+  });
+
+  it('★2周目の再現: 技後CDが明けていても、密着したままでは赤(z-wait/z-red-pause)に入らない', () => {
+    place(0.6, { chaffMoveCdUntil: START_GT - 1 }); // CDは既に明けている
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).not.toBe('z-wait');
+    expect(e.aiPhase).not.toBe('z-red-pause');
+    expect(e.aiPhase).toBe('zpause'); // CD明け後でも近すぎれば紫
+  });
+
+  it('A-2: 枠が空いている状態で、内縁より内側(50px)から始まった個体もzpauseに入る', () => {
+    place(50);
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('zpause');
+  });
+
+  it('境界(内縁=100px)ちょうどはzpause側(z-waitは内縁より外側だけ)', () => {
+    place(100);
+    tick(START_GT);
+    expect(first().aiPhase).toBe('zpause');
+  });
+
+  it('内縁のすぐ外側(101px)はz-wait側(帯に入る)', () => {
+    place(101);
+    tick(START_GT);
+    expect(first().aiPhase).toBe('z-wait');
+  });
+});
+
 describe('「赤が先」(§16-3): 帯の内縁(100px)で枠の有無により赤/紫が確定する', () => {
   it('枠が空いていれば赤(z-red-pause・2000ms・その場)が確定する', () => {
     place(100, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 }); // 尺はまだ残っているが内縁到達
