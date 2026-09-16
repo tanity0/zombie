@@ -12071,12 +12071,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // damageChannel===null は「プレイヤー起因ではない」(護衛NPCの弾)=止めない(v0.25.4270・監査A-3)。
       const hitStunNext = (hateSource === 'player' && eff > 0 && damageChannel !== 'dot' && damageChannel !== null && newHealth > 0) ? nextHitStunUntil(enemy.type, enemy.hitStunUntil, Date.now()) : undefined;
       const hitStunPatch = hitStunNext !== undefined ? { hitStunUntil: hitStunNext } : {};
-      // ★DoTの打刻(社長報告2026-09-16「延焼のダメージでも敵が割とのけぞっちゃう」)。
-      // `lastHit` と**同じ値**を書くので、描画側は `lastDotAt === lastHit` で
-      // 「直近の被弾がDoTだったか」を厳密に判定できる(同一tickの取り違えが起きない)。
-      // **`lastHit` は従来どおり書く**=点滅・跳ね・光は変えない。止めるのは怯みの絵だけ。
+      // ★被弾量の打刻(社長裁定2026-09-16「0.15から」)。描画側が**のけぞりの強さ**をこれで決める
+      // (`utils/hitFlinch.ts`)。旧v0.25.4374はチャネル(`'dot'`)で丸ごと除外していたが、
+      // `'dot'` は「画面を揺らさない」の箱で**犬の噛みつき・タレット・味方の射撃まで入っていた**ため、
+      // 量で決める形へ置き換えた。**`lastHit` は従来どおり書く**=点滅・跳ね・光は変えない。
       const hitAt = Date.now();
-      const dotPatch = damageChannel === 'dot' ? { lastDotAt: hitAt } : {};
+      const dotPatch = { lastHitDmg: eff };
       const updatedEnemies = enemies.map(e =>
         e.id === id ? { ...e, health: newHealth, lastHit: hitAt, ...dotPatch, ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch, ...hitStunPatch } : e
       );

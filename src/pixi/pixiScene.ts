@@ -33,7 +33,8 @@ import type {
 import type { EndingSoldier, EndingPhillState, EndingBomb } from '../utils/endingScene';
 import { endingBombFallY, isEndingSoldierTumbling, ENDING_BLOWN_MS } from '../utils/endingScene';
 import { SIGNAL_STRIKE_DELAY_MS, type SignalStrike } from '../utils/signalLauncher';
-import { playerHurtReactionOf, lastHitWasDot } from '../utils/playerHurt';
+import { playerHurtReactionOf } from '../utils/playerHurt';
+import { enemyFlinchStrength } from '../utils/hitFlinch'; // のけぞりの強さ=ダメージ量で決まる(v0.25.4376)
 import { fallenSoldiersInRange } from '../utils/endingScene';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
@@ -1238,15 +1239,18 @@ const ENEMY_HIT_FLINCH_RISE = 0.18;   // この割合までが「出」(残り�
  * 被弾の怯みポーズ(t=経過0..1)。**出は速く、戻りは緩い**(慣性MUST。旧実装は直線減衰だった)。
  * 判定は1pxも動かさない=純粋な描画(CLAUDE.md「Visual vs hitbox」)。
  */
-const hitFlinchPose = (t: number): { skew: number; sqY: number; sqX: number } => {
+// ★`strength` はそのヒットのダメージで決まる倍率(`utils/hitFlinch.ts`・社長裁定2026-09-16「0.15から」)。
+// 1=満額。延焼の1tickのような小さいダメージほど 0 へ寄り、しなりが浅くなる。
+const hitFlinchPose = (t: number, strength = 1): { skew: number; sqY: number; sqX: number } => {
   // 出=0→1へ一気に(ease-out)。戻り=1→0へ緩やかに(ease-in-out)。
   const w = t < ENEMY_HIT_FLINCH_RISE
     ? 1 - (1 - t / ENEMY_HIT_FLINCH_RISE) ** 2
     : (() => { const u = (t - ENEMY_HIT_FLINCH_RISE) / (1 - ENEMY_HIT_FLINCH_RISE); return (1 + Math.cos(u * Math.PI)) / 2; })();
+  const k = w * Math.max(0, Math.min(1, strength));
   return {
-    skew: ENEMY_HIT_FLINCH_SKEW * w,
-    sqY: 1 - ENEMY_HIT_FLINCH_SQUASH * w,
-    sqX: 1 + ENEMY_HIT_FLINCH_WIDEN * w,
+    skew: ENEMY_HIT_FLINCH_SKEW * k,
+    sqY: 1 - ENEMY_HIT_FLINCH_SQUASH * k,
+    sqX: 1 + ENEMY_HIT_FLINCH_WIDEN * k,
   };
 };
 const SHIELD_BLOCK_FALL_MS = 180;   // 盾で弾かれたジャンプの空中→着地の落下補間時間(描画のみ)
@@ -17408,13 +17412,13 @@ export class PixiScene {
           phillDiveOff = -(this.screenH / zoomPh + scale * tex.height) * diveLift;
         }
       }
-      // ★直近の被弾がDoT(燃焼・血棘)なら怯みの絵を出さない(社長報告2026-09-16)。
-      // 判定側の怯み(hitStunUntil)は元々DoTを除外しており、絵だけが追随していなかった。
-      // 点滅・跳ね・光は `lastHit` のままなので従来どおり出る=「効いている」は伝わる。
-      const sinceHit = lastHitWasDot(e) ? Number.POSITIVE_INFINITY : now - e.lastHit;
+      // ★しなりの**強さはダメージ量で決まる**(`utils/hitFlinch.ts`・社長裁定2026-09-16「0.15から」)。
+      // 延焼の1tickのような小さいダメージほど浅くなり、強打は満額。ボス・強個体は満額のまま。
+      // 点滅・跳ね・光は `lastHit` を直接見ているので従来どおり出る=「効いている」は常に伝わる。
+      const sinceHit = now - e.lastHit;
       let flinchSqY = 1, flinchSqX = 1;
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
-        const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS);
+        const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS, enemyFlinchStrength(e));
         const dir = (e.knockbackVx ?? 0) > 0.01 ? 1 : (e.knockbackVx ?? 0) < -0.01 ? -1 : 1;
         view.sprite.skew.x = -dir * fp.skew;
         flinchSqY = fp.sqY; flinchSqX = fp.sqX;
@@ -17579,13 +17583,13 @@ export class PixiScene {
       const breath = this.enemyBreath(e, now);
       // 被弾しなり: 撃たれた直後だけ頭(上方)を後ろ(ノックバック方向)へ skew で反らせ、軽く縦縮み。
       // アンカーが足元寄りなので skew だけで頭が大きく振れる。短時間で戻る。新規描画なし=軽い。
-      // ★直近の被弾がDoT(燃焼・血棘)なら怯みの絵を出さない(社長報告2026-09-16)。
-      // 判定側の怯み(hitStunUntil)は元々DoTを除外しており、絵だけが追随していなかった。
-      // 点滅・跳ね・光は `lastHit` のままなので従来どおり出る=「効いている」は伝わる。
-      const sinceHit = lastHitWasDot(e) ? Number.POSITIVE_INFINITY : now - e.lastHit;
+      // ★しなりの**強さはダメージ量で決まる**(`utils/hitFlinch.ts`・社長裁定2026-09-16「0.15から」)。
+      // 延焼の1tickのような小さいダメージほど浅くなり、強打は満額。ボス・強個体は満額のまま。
+      // 点滅・跳ね・光は `lastHit` を直接見ているので従来どおり出る=「効いている」は常に伝わる。
+      const sinceHit = now - e.lastHit;
       let flinchSqY = 1, flinchSqX = 1;
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
-        const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS); // 出は速く戻りは緩い(慣性)
+        const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS, enemyFlinchStrength(e)); // 出は速く戻りは緩い(慣性)
         const dir = (e.knockbackVx ?? 0) > 0.01 ? 1 : (e.knockbackVx ?? 0) < -0.01 ? -1 : 1;
         view.sprite.skew.x = -dir * fp.skew; // 頭が殴られた向きの逆へ反る
         flinchSqY = fp.sqY; flinchSqX = fp.sqX; // 縦に潰れて横へ張る

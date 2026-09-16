@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS, lastHitWasDot } from './playerHurt';
+import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS } from './playerHurt';
 
 describe('playerHurtTier — 被弾の重さで段が変わる', () => {
   it('素の敵の攻撃力(最大HP120)が狙いどおりの段に落ちる', () => {
@@ -39,20 +39,5 @@ describe('playerHurtReactionOf — 段が上がるほど長く止まる', () => 
     expect(playerHurtReactionOf(undefined)).toBe(PLAYER_HURT_TIERS[0]);
     expect(playerHurtReactionOf(9)).toBe(PLAYER_HURT_TIERS[0]);
     expect(playerHurtReactionOf(2)).toBe(PLAYER_HURT_TIERS[2]);
-  });
-});
-
-describe('lastHitWasDot — 延焼では怯みの絵を出さない', () => {
-  it('DoTで入った被弾(同じ値が入る)は true', () => {
-    expect(lastHitWasDot({ lastHit: 1000, lastDotAt: 1000 })).toBe(true);
-  });
-  it('通常ヒットは false(打刻が無い)', () => {
-    expect(lastHitWasDot({ lastHit: 1000 })).toBe(false);
-  });
-  it('★燃えている敵を普通に殴ったら怯む(古いDoT打刻に引きずられない)', () => {
-    expect(lastHitWasDot({ lastHit: 2000, lastDotAt: 1000 })).toBe(false);
-  });
-  it('未被弾(0)でも落ちない', () => {
-    expect(lastHitWasDot({ lastHit: 0 })).toBe(false);
   });
 });

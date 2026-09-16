@@ -43,16 +43,3 @@ export const playerHurtTier = (damage: number, maxHealth: number): 0 | 1 | 2 => 
 /** 段の反応を引く。範囲外の段は軽へ丸める(セーブ跨ぎ等で壊れた値が来ても落ちない)。 */
 export const playerHurtReactionOf = (tier: number | undefined): PlayerHurtReaction =>
   PLAYER_HURT_TIERS[tier === 1 || tier === 2 ? tier : 0];
-
-// ---------------------------------------------------------------------------------------------
-// ★敵の怯みの絵を出してよいか(社長報告2026-09-16「延焼のダメージでも敵が割とのけぞっちゃう」)
-// ---------------------------------------------------------------------------------------------
-// 判定側の怯み(`hitStunUntil`)は元々 `damageChannel !== 'dot'` で**DoTを除外していた**のに、
-// **絵の怯みだけが `lastHit` を無条件に見ていた**ため、燃焼の毎tickでのけぞっていた。
-// `damageEnemy` は DoT の時だけ `lastDotAt` に **`lastHit` と同じ値**を書くので、
-// 「直近の被弾がDoTだったか」は**厳密な等値**で判定できる(同一tickの取り違えが起きない)。
-// ★点滅・跳ね・光は `lastHit` を直接見ているので**従来どおり出る**=「効いている」は伝わる。
-
-/** 直近の被弾がDoT(燃焼・血棘など)だったか。 */
-export const lastHitWasDot = (e: { lastHit: number; lastDotAt?: number }): boolean =>
-  e.lastDotAt !== undefined && e.lastDotAt === e.lastHit;
