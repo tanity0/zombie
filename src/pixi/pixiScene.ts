@@ -2395,8 +2395,16 @@ const RIM_TAU_MS = tsNum('rimtau', 110);               // 濃さの追従(慣性
 const RIM_BAKE_BUDGET_MB = tsNum('rimbudget', 64);
 /** この時間だけ使われていない焼きは捨ててよい(画面に出ている物を捨てないための安全域)。 */
 const RIM_BAKE_KEEP_MS = 2000;
-/** 焼いた縁1枚ぶんの記録(天井の管理に使う)。 */
-interface RimBake { src: Texture; key: number; tex: RenderTexture; bytes: number; usedAt: number }
+/**
+ * ★焼く大きさの段(1オクターブあたり何段・v0.25.4379)。2=√2刻み。
+ * 縁は**画面に出る大きさで焼く**ので、表示倍率(ズーム×擬似遠近×反転)が動くたびに焼き直さないよう
+ * 段に丸める。段を細かくすると枚数が増え、粗くすると帯の太さが最大 2^(1/段) 倍ぶれる。
+ */
+const RIM_BAKE_STEPS_PER_OCT = 2;
+/** 焼いた縁がこれより小さくなるなら帯が成立しない=縁を出さない(px)。 */
+const RIM_BAKE_MIN_PX = 4;
+/** 焼いた縁1枚ぶんの記録(天井の管理に使う)。`f`=元素材に対する焼き倍率(描く時に割り戻す)。 */
+interface RimBake { src: Texture; key: number; tex: RenderTexture; bytes: number; usedAt: number; f: number }
 const RIM_DIR_TAU_MS = tsNum('rimdirtau', 90);         // 向きの追従(支配光が入れ替わっても飛ばない)
 const RIM_DEFAULT_COLOR = tsNum('rimwarm', 0xffc07a);  // 光が色を持たない時の既定(琥珀)
 const RIM_GLOW_COLOR = tsNum('rimglowcol', 0xffe2b0);  // 強glow(爆発など)の色
@@ -16674,16 +16682,21 @@ export class PixiScene {
   // (zombie-common は 464x640 を約60px幅で出す=scale 0.13、thor は 1024x960)。
   // 2ソースpx = **0.26画面px** しか無く、帯が常にサブピクセル=滲んでチラつく。
   // ⇒ **欲しい画面pxから、そのテクスチャでのソースpxを逆算して焼く**。
-  private rimTexture(src: Texture | null, bucket: number, srcPx: number): Texture | null {
+  private rimTexture(src: Texture | null, bucket: number, shown: number): RimBake | null {
     if (!src || src.width <= 1 || !this.renderer) return null;
-    // 太さは段に丸めてキャッシュを共有する(表示倍率が少し動くたびに焼き直さない)
-    const q = Math.max(1, Math.round(srcPx));
-    const key = bucket * 4096 + Math.min(4095, q);
+    // ★焼くのは**画面に出る大きさ**(f=元素材に対する倍率)。原寸は超えない。
+    //   段(√2刻み)に丸めるのは、倍率が少し動くたびに焼き直さないため。
+    const e = Math.round(Math.log2(shown) * RIM_BAKE_STEPS_PER_OCT);
+    const f = Math.min(1, 2 ** (e / RIM_BAKE_STEPS_PER_OCT));
+    const bw = Math.max(1, Math.round(src.width * f));
+    const bh = Math.max(1, Math.round(src.height * f));
+    if (bw < RIM_BAKE_MIN_PX || bh < RIM_BAKE_MIN_PX) return null; // 小さすぎて帯が成立しない
+    const key = bucket * 4096 + Math.max(0, Math.min(4095, e + 2048));
     let m = this.rimTexCache.get(src);
     if (!m) { m = new Map<number, RimBake | null>(); this.rimTexCache.set(src, m); }
     if (m.has(key)) {
       const hit = m.get(key) ?? null;
-      if (hit) { hit.usedAt = Date.now(); return hit.tex; } // 使った時刻を更新=捨てる順番の材料
+      if (hit) { hit.usedAt = Date.now(); return hit; } // 使った時刻を更新=捨てる順番の材料
       return null;
     }
     try {
@@ -16706,20 +16719,24 @@ export class PixiScene {
       const black = new ColorMatrixFilter();
       black.matrix = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]; // RGB→0・α保持
       cut.filters = [black];
-      cut.position.set(-d.dx * q, -d.dy * q); // 光と**反対**へずらす=光側の帯だけが白く残る
+      // ★ずらし量は**焼いた絵のpx**で決める。焼く大きさが画面の大きさなので、そのまま「画面で何px」になる
+      //   (=太さがキーから消えた。旧実装はここが元素材のpxだったので、倍率ごとに別の焼きが要った)。
+      const qb = Math.max(1, Math.min(Math.max(RIM_PX, RIM_MIN_SCREEN_PX) * f / shown, Math.max(2, bw * 0.25)));
+      cut.position.set(-d.dx * (qb / f), -d.dy * (qb / f)); // 中身は元素材の座標系なので f で割り戻す
       wrap.addChild(lit, cut);
-      const rt = bakeRenderTexture('rim', { width: Math.max(1, src.width), height: Math.max(1, src.height) });
+      wrap.scale.set(f); // 元素材を焼き上がりの寸法へ縮めて描く
+      const rt = bakeRenderTexture('rim', { width: bw, height: bh });
       this.renderer.render({ container: wrap, target: rt, clear: true });
       wrap.destroy({ children: true });
       const entry: RimBake = {
-        src, key, tex: rt, usedAt: Date.now(),
+        src, key, tex: rt, usedAt: Date.now(), f,
         bytes: (rt.source.pixelWidth || 0) * (rt.source.pixelHeight || 0) * 4,
       };
       m.set(key, entry);
       this.rimBakes.push(entry);
       this.rimBakeBytes += entry.bytes;
       this.enforceRimBudget();
-      return rt;
+      return entry;
     } catch (err) {
       // 焼けない環境では**縁を出さないだけ**にする(立ち物が消えるより、向きが無い方がまし)。
       m.set(key, null);
@@ -16884,22 +16901,22 @@ export class PixiScene {
     // ★振り向きの途中は scale.x が 0 付近を通る(`faceMul` は 0.02 で下げ止め)。
     // ここで逆算すると太さが発散し、**振り向くたびに光る**。痩せている間は出さない。
     if (!(shown > 0.02)) { r.a.visible = false; r.b.visible = false; return; }
-    const wantScreenPx = Math.max(RIM_PX, RIM_MIN_SCREEN_PX);
-    const srcPx = Math.min(Math.max(1, wantScreenPx / shown), Math.max(2, sp.texture.width * 0.12));
-    const ta = this.rimTexture(sp.texture, ba, srcPx);
-    const tb = this.rimTexture(sp.texture, bb, srcPx);
+    const ta = this.rimTexture(sp.texture, ba, shown);
+    const tb = this.rimTexture(sp.texture, bb, shown);
     if (!ta && !tb) { r.a.visible = false; r.b.visible = false; return; }
     const boost = 1;
     const tint = hit ? hit.color : RIM_DEFAULT_COLOR;
     // ★本体の見え方を丸ごと写す(hitFlash と同じ作法)。α は本体のものを継承する——
     // これをやらないと、地平線フェードや裏回り透けで**本体が消えても光る縁だけが残る**(監査#4/A-3)。
-    const put = (s2: Sprite, tex: Texture | null, w: number) => {
-      if (!tex || w <= 0.002) { s2.visible = false; return; }
+    const put = (s2: Sprite, bake: RimBake | null, w: number) => {
+      if (!bake || w <= 0.002) { s2.visible = false; return; }
       s2.visible = true;
-      s2.texture = tex;
+      s2.texture = bake.tex;
       s2.anchor.set(sp.anchor.x, sp.anchor.y);
       s2.position.set(sp.position.x, sp.position.y);
-      s2.scale.set(sp.scale.x, sp.scale.y);
+      // ★焼きを縮めたぶん、貼る時に割り戻す(焼き寸法×(1/f) = 本体と同じ見た目の大きさ)。
+      // 反転(scale.x<0)も潰し(scale.y≠|scale.x|)もそのまま写る=本体の変形に完全追従する。
+      s2.scale.set(sp.scale.x / bake.f, sp.scale.y / bake.f);
       s2.skew.set(sp.skew.x, sp.skew.y);
       s2.rotation = sp.rotation;
       s2.tint = tint;
