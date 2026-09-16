@@ -1,5 +1,79 @@
 # Development Log
 
+## v0.25.4412 — ゾンビの赤=走り始め2回点滅への置き換え + クリエイティブ監査(甲)11件を実装(実装チャット・Sonnet)【2026-09-17 02:42 JST】
+
+PACING_PUZZLE.md §16-3z を実装。仕様の正本は同節。**ゾンビだけ**を触った(bat・skeleton・werewolf・
+ボス・§12の噛みつき自体の判定/ダメージ/被弾無敵は無改変)。
+
+**1. 赤=走り始めの2回点滅だけへ(社長指示・最優先)**: `chaffMoves.ts` の `zombieRedGlowStrength` を
+全面置き換え。**`z-lunge-in` に入った瞬間(`chaffMoveAt`)からの経過msだけ**で駆動し、
+点灯70ms→消灯70ms→点灯70ms→消灯(計280ms)を返す。**`z-lunge-in` 以外の相は常に0**
+(踏み込みの残り・噛み1・よろけ・噛み2・硬直、全部)。尺は名前付き定数
+`ZOMBIE_RED_BLINK_ON_MS`/`ZOMBIE_RED_BLINK_OFF_MS`/`ZOMBIE_RED_BLINK_COUNT`(1箇所)。
+
+**2. クリエイティブ監査(甲)11件**(全て `PACING_PUZZLE.md` §16-3z の指摘番号どおり):
+1. **z-recoverの姿勢**: `pixiScene.ts` に新規ブロックを追加。打ち終わりの姿勢(skew/off最大・sqY
+   10%沈み)を硬直の前半保持し、後半(`ZOMBIE_RECOVER_HOLD_FRAC`=0.5以降)でsmoothstepにより起こす。
+2. **硬直中に予備動作を再生させない**: `pixiScene.ts` の `contactLungePose` フォールバック
+   (`lastContactAttackAt` 駆動)を `type==='zombie' && aiPhase==='z-recover'` の間だけ抑止。
+   §12の噛みつき本体(`biteElapsed` 駆動側)は1bitも変えていない。
+3. **硬直→歩きの出足**: 新フィールド `Enemy.zombieWalkRampAt`(z-recover明けの瞬間を焼く)+
+   `chaffMoves.ts` の `zombieRecoverWalkRampMul`(250msのsmoothstep)。`gameStore.ts` の
+   通常移動zSpeed計算にこの倍率を掛けた。
+4. **歩行ゲートを開ける**: `pixiScene.ts` のゲート条件へ `z-bite1` と `zrush` を追加
+   (両方ともゾンビ専用のaiPhase文字列なので他型に影響しない)。
+5. **「行き過ぎて戻る」の戻り**: 位置クランプ(`Math.max(0, fNow-fPrev)`・v0.25.3923の暴れ対策)は
+   **外していない**。代わりに `z-bite2` の `biteLungeFrac` がオーバーシュート(1.0超)している間だけ、
+   超過ぶんを体の反動(skew)として `pixiScene.ts` に追加。
+6. **停止3段を傾きで描き直す**: z-red-pauseの3段(つんのめり/起こす/震え)を、旧`aiSqX/aiSqY`
+   (縦横伸縮)から `aiSkew`/`aiOffX`/`aiOffY`(傾き+前後オフセット)へ書き換え。
+7. **よろけ(z-stagger)の姿勢**: 新規ブロック。1発目の勢いの前のめりskewが指数減衰で抜ける。
+8. **走りのテンポ**: `pixiScene.ts` の歩調クロック(`view.motClock`)の進み方に、ゾンビ限定で
+   実速度比(`zombieTempoMul`・0.5〜1.25)を掛けた(氷鈍化=`iceTempoMul`と同じ「クロックの刻みを
+   速める/遅める」作法=位相が飛ばない)。他型は`zombieTempoMul`=1で従来どおり不変。
+9. **引き金の散らしにspawnedAtを混ぜる**: `zombieRedTriggerPx(id, spawnedAt)` へ第2引数を追加し
+   `idRespawnUnitHash` を使うよう変更(他3値と揃えた)。呼び手 `zombieWantsChaffRedSlot` の
+   Pick型にも `spawnedAt` を追加。
+10. **震えに個体位相**: z-red-pause③段の `aiShake` 計算に `stablePhase(e.id)` を混ぜた
+    (2体の震えが完全同期しなくなる)。
+11. **踏み込みの解放を鋭く**: `ZOMBIE_LUNGE_RAMP_MS` を360→200msへ短縮し、曲線を左右対称
+    smoothstepから出足側のease-out cubic(`1-(1-u)**3`)へ変更。**通常移動の立ち上がり(§16-6の
+    360ms・`chaffMotion.ts`側)は触っていない**——別の定数。
+
+**3. changelogの文言修正**: v0.25.4409の項目が実態(硬直の姿勢が描かれていない/戻っていない)と
+食い違っていたため訂正(今回の実装で真になった)。4文の説明過剰も短く言い切る形へ書き直した。
+今回(v0.25.4412)ぶんの新規エントリも先頭へ追加(プレイヤー向け文言・内部語/数値なし)。
+
+**消した定数**(使われなくなったので撤去): `ZOMBIE_RED_STAGGER_FLOOR`・`ZOMBIE_RED_BITE2_RISE_MS`・
+`ZOMBIE_RED_DECAY_MS`(全て `chaffMoves.ts`。旧「相ごとに強さを返す」実装専用の値で、
+2回点滅への置き換えにより不要になった)。
+
+**★未決事項に当たったか**: なし。指示された範囲は全て具体値まで確定していた
+(点滅70ms×2・監査11件の対処方針・叩き台の演出値は「実機で振る」前提で明記済み)。
+値そのもの(skew/offの大きさ等)は演出の微調整であり、社長裁定を要する仕様変更ではないため、
+その場で叩き台を選んで実装(コメントに「叩き台」と明記・実機で振れる形)。
+**硬直の長さ(`ZOMBIE_RECOVER_MS`=600)・停止/CD/角度の基準値には一切触れていない。**
+
+**テスト(同コミット)**: `src/utils/chaffMoves.test.ts` を更新。
+- `zombieRedGlowStrength`: 技無し/非ゾンビ/`z-lunge-in`以外の全相が常に0・`chaffMoveAt`未設定・
+  開始前は0・**点灯70ms→消灯70ms→点灯70ms→消灯**の値遷移・**立ち上がりエッジがちょうど2回**・
+  点滅終了後はどれだけ経っても0のまま、の8ケース。
+- `zombieRecoverWalkRampMul`: rampAt未定義=1・入口0・尺経過で1・単調増加、の4ケース。
+- `zombieLungeRampMul`: 新しい出足側曲線(半分の経過で0.5を超える)を追加。
+- `zombieRedTriggerPx`: spawnedAtのフォールバック+値の散らばりを追加。
+`npx vitest run src/utils/chaffMoves.test.ts` を**3回連続実行**し、いずれも67件全緑(揺れなし)。
+関連ファイル(`enemyBite.test.ts`・`enemyMotion.test.ts`・`constitution.test.ts`)も緑を確認。
+`npm run typecheck`・`npm run lint`(エラー0・warning9件は既存の無関係な警告)も緑。
+`npm test` フル・`npm run build` は社長指示制のため実行していない。
+
+**自己点検**: 憲法第4条(初心者ゾーン不可侵)・第5条(緩を荒らさない)には抵触しない
+(ゾンビの技演出・移動テンポの調整のみで、台本/演目/しきい値/countCap等のペーシング側の
+不変条件には触れていない)。
+
+**変更ファイル**: `PACING_PUZZLE.md`は不可触(設計書。今回は触っていない)。
+`src/types/game.ts`(`zombieWalkRampAt`追加)・`src/utils/chaffMoves.ts`・`src/utils/chaffMoves.test.ts`・
+`src/store/gameStore.ts`・`src/pixi/pixiScene.ts`・`src/data/changelog.ts`・`package.json`。
+
 ## v0.25.4411 — 赤は「合図の句読点」へ(社長指示)+ クリエイティブ監査の(甲)を設計書へ【2026-09-16 23:58 JST】
 
 **社長指示**: 「**ゾンビの攻撃、赤くなるのは走り始めのとき2回点滅するだけにして**」。

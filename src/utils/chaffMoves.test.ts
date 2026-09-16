@@ -5,8 +5,9 @@ import {
   endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot, zombieRedTriggerPx,
   ZOMBIE_RED_WAIT_MIN_MS, ZOMBIE_RED_WAIT_MAX_MS,
   ZOMBIE_RED_TRIGGER_MIN_PX, ZOMBIE_RED_TRIGGER_MAX_PX,
-  zombieLungeRampMul, ZOMBIE_LUNGE_RAMP_MS, zombieRedGlowStrength, ZOMBIE_RECOVER_MS,
-  ZOMBIE_STAGGER_MS, ZOMBIE_RED_DECAY_MS,
+  zombieLungeRampMul, ZOMBIE_LUNGE_RAMP_MS, zombieRedGlowStrength,
+  ZOMBIE_RED_BLINK_ON_MS, ZOMBIE_RED_BLINK_OFF_MS, ZOMBIE_RED_BLINK_COUNT,
+  zombieRecoverWalkRampMul, ZOMBIE_RECOVER_WALK_RAMP_MS,
   zombieRedPauseMs, ZOMBIE_RED_PAUSE_MS, ZOMBIE_RED_PAUSE_JITTER,
   ZOMBIE_RP_STUMBLE_FRAC, ZOMBIE_RP_RISE_FRAC, ZOMBIE_RP_TREMBLE_FRAC,
   zombieBite2AngleRad, ZOMBIE_BITE2_ANGLE_OFFSET_RAD, ZOMBIE_BITE2_ANGLE_JITTER,
@@ -209,7 +210,15 @@ describe('zombieRedTriggerPx(§16-3z「内縁の引き金に幅」・id由来の
     expect(zombieRedTriggerPx('same-id')).toBe(zombieRedTriggerPx('same-id'));
   });
   it('idが違えば(高確率で)値も散る=100pxちょうどの線への整列を壊す', () => {
-    const vals = new Set(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(zombieRedTriggerPx));
+    const vals = new Set(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(id => zombieRedTriggerPx(id)));
+    expect(vals.size).toBeGreaterThan(1);
+  });
+  it('★クリエイティブ監査#9是正: spawnedAt未設定でも落ちない・idだけと一致(フォールバック)', () => {
+    expect(() => zombieRedTriggerPx('id1')).not.toThrow();
+    expect(zombieRedTriggerPx('id1')).toBe(zombieRedTriggerPx('id1', undefined));
+  });
+  it('★クリエイティブ監査#9是正: 同idでもspawnedAtが違えば(高確率で)値が変わる(他3値と揃った)', () => {
+    const vals = new Set([0, 1, 2, 3, 4, 5, 6, 7].map(s => zombieRedTriggerPx('same-id', s * 6151)));
     expect(vals.size).toBeGreaterThan(1);
   });
 });
@@ -229,9 +238,13 @@ describe('endChaffMove(技の終わり・§16-8b手順5「ゾンビが初めて�
   });
 });
 
-describe('zombieLungeRampMul(§16-3z②「立ち上がり360msの加速」・0→満速の1フレーム段差を消す)', () => {
+describe('zombieLungeRampMul(§16-3z監査#8「踏み込みの解放を鋭く」・180〜220ms・出足側の曲線)', () => {
   it('入り口(0ms)は0(満速で始まらない)', () => {
     expect(zombieLungeRampMul(1000, 1000)).toBe(0);
+  });
+  it('★出足側の曲線(鋭い立ち上がり): 半分の経過で半分より先(0.5)を超えている', () => {
+    const half = zombieLungeRampMul(1000, 1000 + ZOMBIE_LUNGE_RAMP_MS / 2);
+    expect(half).toBeGreaterThan(0.5);
   });
   it(`${ZOMBIE_LUNGE_RAMP_MS}ms経過で満速(1)`, () => {
     expect(zombieLungeRampMul(1000, 1000 + ZOMBIE_LUNGE_RAMP_MS)).toBeCloseTo(1, 5);
@@ -252,52 +265,82 @@ describe('zombieLungeRampMul(§16-3z②「立ち上がり360msの加速」・0�
   });
 });
 
-describe('zombieRedGlowStrength(§16-3z①「赤の脈は状態で駆動する」・1発目で立ち/よろけで落ち/2発目で立つ)', () => {
-  const base = { type: 'zombie' as EnemyType, chaffMove: 'zombie-double' as const };
+describe('zombieRedGlowStrength(§16-3z「赤は状態ではなく合図の句読点」・社長指示2026-09-16「走り始めのとき2回点滅するだけ」)', () => {
+  const base = {
+    type: 'zombie' as EnemyType, chaffMove: 'zombie-double' as const,
+    aiPhase: 'z-lunge-in' as const, chaffMoveAt: 1000,
+  };
+  const CYCLE_MS = ZOMBIE_RED_BLINK_ON_MS + ZOMBIE_RED_BLINK_OFF_MS;
+  const TOTAL_MS = CYCLE_MS * ZOMBIE_RED_BLINK_COUNT;
 
   it('§16の技を持たない個体(chaffMove未定義)は常に0(§12の噛みつきに色は付かない)', () => {
-    expect(zombieRedGlowStrength({ type: 'zombie', chaffMove: undefined, aiPhase: 'z-bite1' }, 1000)).toBe(0);
+    expect(zombieRedGlowStrength({ ...base, chaffMove: undefined }, 1000)).toBe(0);
   });
   it('ゾンビ以外の型は常に0', () => {
-    expect(zombieRedGlowStrength({ ...base, type: 'bat', aiPhase: 'z-bite1' }, 1000)).toBe(0);
+    expect(zombieRedGlowStrength({ ...base, type: 'bat' }, 1000)).toBe(0);
   });
-  it('保持(構え)には色が無い(§16-5「構えている間は色を出さない」): z-wait/z-red-pauseは0', () => {
-    expect(zombieRedGlowStrength({ ...base, aiPhase: 'z-wait' }, 1000)).toBe(0);
-    expect(zombieRedGlowStrength({ ...base, aiPhase: 'z-red-pause' }, 1000)).toBe(0);
+  it('★z-lunge-in以外の相は必ず0(構え・踏み込みの残り・噛み1・よろけ・噛み2・硬直、全部)', () => {
+    for (const aiPhase of [undefined, 'z-wait', 'z-red-pause', 'z-bite1', 'z-stagger', 'z-bite2', 'z-recover'] as const) {
+      expect(zombieRedGlowStrength({ ...base, aiPhase }, 1000)).toBe(0);
+      expect(zombieRedGlowStrength({ ...base, aiPhase }, 1000 + 500)).toBe(0);
+    }
   });
-  it('技が動き出したら最大(z-lunge-in/z-bite1は1)', () => {
-    expect(zombieRedGlowStrength({ ...base, aiPhase: 'z-lunge-in' }, 1000)).toBe(1);
-    expect(zombieRedGlowStrength({ ...base, aiPhase: 'z-bite1' }, 1000)).toBe(1);
+  it('chaffMoveAt未設定なら0(安全側デフォルト)', () => {
+    expect(zombieRedGlowStrength({ ...base, chaffMoveAt: undefined }, 1000)).toBe(0);
   });
-  it('よろけ(z-stagger)で落ちる: 頭は高いまま、明けにかけて下がる(0未満にはならない)', () => {
-    const e = { ...base, aiPhase: 'z-stagger' as const, aiPhaseUntil: 1000 + ZOMBIE_STAGGER_MS };
-    const head = zombieRedGlowStrength(e, 1000);
-    const mid = zombieRedGlowStrength(e, 1000 + ZOMBIE_STAGGER_MS / 2);
-    const tail = zombieRedGlowStrength(e, 1000 + ZOMBIE_STAGGER_MS);
-    expect(head).toBeGreaterThan(mid);
-    expect(mid).toBeGreaterThan(tail);
-    expect(tail).toBeGreaterThan(0); // 床がある(0まで落とさない=消えたように見せない)
+  it('z-lunge-inに入る前(gameTime<chaffMoveAt)は0', () => {
+    expect(zombieRedGlowStrength(base, 999)).toBe(0);
   });
-  it('2発目(z-bite2)で立つ: 開始直後は床付近、進むにつれ最大へ戻る', () => {
-    const e = { ...base, aiPhase: 'z-bite2' as const, biteAt: 1000 };
-    const head = zombieRedGlowStrength(e, 1000);
-    const tail = zombieRedGlowStrength(e, 1500); // 十分に経過
-    expect(tail).toBeGreaterThan(head);
-    expect(tail).toBe(1);
+  it(`★点灯${ZOMBIE_RED_BLINK_ON_MS}ms→消灯${ZOMBIE_RED_BLINK_OFF_MS}ms→点灯→消灯の2回点滅ちょうど`, () => {
+    // 1回目の点灯
+    expect(zombieRedGlowStrength(base, 1000)).toBe(1);
+    expect(zombieRedGlowStrength(base, 1000 + ZOMBIE_RED_BLINK_ON_MS - 1)).toBe(1);
+    // 1回目の消灯
+    expect(zombieRedGlowStrength(base, 1000 + ZOMBIE_RED_BLINK_ON_MS)).toBe(0);
+    expect(zombieRedGlowStrength(base, 1000 + CYCLE_MS - 1)).toBe(0);
+    // 2回目の点灯
+    expect(zombieRedGlowStrength(base, 1000 + CYCLE_MS)).toBe(1);
+    expect(zombieRedGlowStrength(base, 1000 + CYCLE_MS + ZOMBIE_RED_BLINK_ON_MS - 1)).toBe(1);
+    // 2回目の消灯
+    expect(zombieRedGlowStrength(base, 1000 + CYCLE_MS + ZOMBIE_RED_BLINK_ON_MS)).toBe(0);
+    expect(zombieRedGlowStrength(base, 1000 + TOTAL_MS - 1)).toBe(0);
   });
-  it('★決着後は1フレーム消灯にしない: z-recoverの頭からZOMBIE_RED_DECAY_MSで0へ減衰する', () => {
-    const e = { ...base, aiPhase: 'z-recover' as const, aiPhaseUntil: 1000 + ZOMBIE_RECOVER_MS };
-    const head = zombieRedGlowStrength(e, 1000); // z-recoverに入った瞬間
-    expect(head).toBeCloseTo(1, 5); // 1フレームで消えない
-    const mid = zombieRedGlowStrength(e, 1000 + ZOMBIE_RED_DECAY_MS / 2);
-    expect(mid).toBeGreaterThan(0);
-    expect(mid).toBeLessThan(1);
-    const after = zombieRedGlowStrength(e, 1000 + ZOMBIE_RED_DECAY_MS);
-    expect(after).toBe(0);
+  it('★点滅の回数はちょうど2回(0→1の立ち上がりエッジを数える)', () => {
+    let prev = 0, risingEdges = 0;
+    for (let t = 0; t <= TOTAL_MS + 50; t++) {
+      const v = zombieRedGlowStrength(base, 1000 + t);
+      if (v > 0 && prev === 0) risingEdges++;
+      prev = v;
+    }
+    expect(risingEdges).toBe(ZOMBIE_RED_BLINK_COUNT);
   });
-  it('硬直の残りは0のまま(減衰後は色なし)', () => {
-    const e = { ...base, aiPhase: 'z-recover' as const, aiPhaseUntil: 1000 + ZOMBIE_RECOVER_MS };
-    expect(zombieRedGlowStrength(e, 1000 + ZOMBIE_RECOVER_MS)).toBe(0);
+  it('★点滅が終わった後はずっと0のまま(技の終わりまで赤は出ない)', () => {
+    expect(zombieRedGlowStrength(base, 1000 + TOTAL_MS)).toBe(0);
+    expect(zombieRedGlowStrength(base, 1000 + TOTAL_MS + 1)).toBe(0);
+    expect(zombieRedGlowStrength(base, 1000 + TOTAL_MS + 10000)).toBe(0); // 踏み込みの残りが続いても0のまま
+  });
+});
+
+describe('zombieRecoverWalkRampMul(§16-3zクリエイティブ監査#3「硬直→歩きの出足の1フレーム段差を消す」)', () => {
+  it('rampAt未定義なら1(呼び手を壊さない安全側デフォルト)', () => {
+    expect(zombieRecoverWalkRampMul(undefined, 1000)).toBe(1);
+  });
+  it('入り口(0ms)は0(満速で始まらない)', () => {
+    expect(zombieRecoverWalkRampMul(1000, 1000)).toBe(0);
+  });
+  it(`${ZOMBIE_RECOVER_WALK_RAMP_MS}ms経過で満速(1)`, () => {
+    expect(zombieRecoverWalkRampMul(1000, 1000 + ZOMBIE_RECOVER_WALK_RAMP_MS)).toBeCloseTo(1, 5);
+  });
+  it('それ以降は1のまま(1を超えない)', () => {
+    expect(zombieRecoverWalkRampMul(1000, 1000 + ZOMBIE_RECOVER_WALK_RAMP_MS + 5000)).toBe(1);
+  });
+  it('★単調増加(段差なし=慣性MUSTの検知器)', () => {
+    let prev = -1;
+    for (let t = 0; t <= ZOMBIE_RECOVER_WALK_RAMP_MS; t += 10) {
+      const v = zombieRecoverWalkRampMul(1000, 1000 + t);
+      expect(v).toBeGreaterThanOrEqual(prev);
+      prev = v;
+    }
   });
 });
 

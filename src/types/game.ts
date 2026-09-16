@@ -584,6 +584,10 @@ export interface Enemy {
   chaffOrbitCy?: number;
   // skeleton専用: どちら側(添字由来)へ回り込むか。具体の意味づけは実装側(§16-2)で定める。
   chaffArcSide?: boolean;
+  // ★ゾンビ専用(§16-3zクリエイティブ監査#3): z-recover(硬直)が明けた瞬間のgameTime。
+  // 硬直明けの一歩目に「0→満速の1フレーム段差」が出ないよう、歩行速度をこの時刻からの経過msで
+  // 滑らかに立ち上げる(`chaffMoves.ts` の `zombieRecoverWalkRampMul`)。
+  zombieWalkRampAt?: number;
   // Visual-only lift reaction for boss melee finisher-grade hits.
   liftUntil?: number;
   // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get

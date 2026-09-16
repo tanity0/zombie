@@ -310,6 +310,7 @@ import {
   ZOMBIE_STAGGER_MS,
   ZOMBIE_RECOVER_MS, zombieLungeRampMul, // §16-3z「歯応え」の仕上げ(③硬直・②踏み込みの加速)
   zombieRedPauseMs, zombieBite2AngleRad, // §16-3z 追補(①停止の長さ±30%・②2発目の角度にspawnedAtを混ぜる)
+  zombieRecoverWalkRampMul, // §16-3zクリエイティブ監査#3(硬直→歩きの出足の1フレーム段差を消す)
 } from '../utils/chaffMoves';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
@@ -14947,8 +14948,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // 硬直継続:その場で伸び切ったまま
             // 硬直明け=技の終わり(§16-7b・§16-8b手順5「技の終わりでendChaffMoveを呼ぶ」)。
             // CD(4000ms)はここから数える(endChaffMoveがrecoverMsをgameTime基準で焼く)。
+            // ★③硬直→歩きの出足(§16-3zクリエイティブ監査#3): この瞬間をzombieWalkRampAtへ焼く。
+            // 下の通常移動(zSpeed計算)がここからの経過msで速度を滑らかに立ち上げる
+            // (0→満速の1フレーム段差を消す)。
             return {
               ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: undefined, chaffMoveAt: undefined,
+              zombieWalkRampAt: gameTime,
               ...endChaffMove(enemy, gameTime),
             };
           }
@@ -15066,8 +15071,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ★z-wait中の「歩き続ける」もこの通常移動を使う(§16-3「その間はそのまま歩き続ける」=
           // 旧来の接近と同じ動き。まっすぐ来る印象は既存のwobble/個体差のままで保たれる)。
           const zTraits = chaffTraits(enemy.id);
+          // ★③硬直→歩きの出足(§16-3zクリエイティブ監査#3): z-recover明け直後だけ、この尺で
+          // 0→満速へ滑らかに立ち上げる(通常は1=無効)。
+          const walkRampMul = zombieRecoverWalkRampMul(enemy.zombieWalkRampAt, gameTime);
           const zSpeed = enemy.speed * ZOMBIE_SPEED_MULT * (phase === 'zrush' ? ZOMBIE_RUSH_SPEED_MULT : 1)
-            * rnSpeedMult * screamSpeedMult * chaffSpeedMult(zTraits, distance) * iceSlowMult(enemy, gameTime);
+            * walkRampMul * rnSpeedMult * screamSpeedMult * chaffSpeedMult(zTraits, distance) * iceSlowMult(enemy, gameTime);
           // フラフラ: 進行方向に直交する成分を時間で揺らす(個体ごとに位相をずらす)。
           let h = 0;
           for (let i = 0; i < enemy.id.length; i++) h = (h * 31 + enemy.id.charCodeAt(i)) | 0;
