@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4371',
+    items: ['食らった時の手応えが強くなりました。攻撃を受けると身体が沈み込んでのけぞり、一瞬だけ時間が止まります'],
+  },
+  {
     version: '0.25.4370',
     items: ['殴った手応えが強くなりました。敵は当たった瞬間に大きくのけぞり、以前より遠くへ吹き飛びます'],
   },

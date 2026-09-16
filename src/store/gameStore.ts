@@ -2110,6 +2110,10 @@ export const FIRST_AID_KIT_THROW_KNOCKBACK_MULT = 1.2; // TODO(救急鞄): 仮�
 // Hitstop: 全停止(timeScale=0)で衝撃を出す瞬間ストップ。全インパクト共通0.1秒(社長指示)。
 // この後は必ずスロー(triggerTimeSlow)で等速へ戻す。
 export const HITSTOP_MS = 100;
+// ★プレイヤー被弾のヒットストップ(社長指示2026-09-16「食らったらノック、怯み、しゃがみ、ストップ」)。
+// 社長の言葉「当たった瞬間に数十ms止まる」に合わせて短く。**被弾i-frame(INVULN_MS=1000)が
+// 連発を止める**ので、敵側の通常ヒットと違って画面が固まり続ける心配がない。
+export const PLAYER_HURT_HITSTOP_MS = 70;
 // 近接フィニッシュ&カウンター: ストップ→スロー。社長指示で倍に(700→1400)。さらにもう少し長く
 // (1400→1650→1950)。社長指摘「長さの問題じゃないかも」で全体を約1秒へ戻しつつ、最も遅い区間を
 // 保持してから戻りは速くする形に変更(1950→1000)。一度は保持区間を延ばす代わりに全体も延長した
@@ -10496,6 +10500,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §5.23 M22 C1: 被弾源→プレイヤーのノックバック向きへ揺れを寄せる(?dirfx=0で従来の等方揺れ)。
         shakeDirX: amount > 0 ? (DIRFX_ENABLED ? dirX : 0) : state.shakeDirX,
         shakeDirY: amount > 0 ? (DIRFX_ENABLED ? dirY : 0) : state.shakeDirY,
+        // ★被弾の「ストップ」(社長指示2026-09-16)。既に走っているストップ(カウンター成立等)の方が
+        // 長ければ**上書きしない**(短い方で切り詰めない)。
+        hitstopUntil: amount > 0
+          ? Math.max(state.hitstopUntil, Date.now() + PLAYER_HURT_HITSTOP_MS)
+          : state.hitstopUntil,
         player: {
           ...state.player,
           health: newHealth,
@@ -10511,6 +10520,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ——どの経路も counterWindowEnd を読むため、判定コードには一切触らない。
           // `?lastcounter=1` で旧挙動(被弾していてもカウンター可)へ完全復帰(A/B比較用)。
           counterWindowEnd: (amount > 0 && !LATE_COUNTER_ENABLED) ? 0 : state.player.counterWindowEnd,
+          // ★被弾リアクションの打刻(描画専用・判定不変)。向きは上で計算済みの dirX/dirY
+          // (被弾源→プレイヤー)をそのまま角度にする。源が不明な被弾(fromX未指定)は向き無し=
+          // しゃがみだけが出る(のけぞる方向が無いのに勝手な方向へ倒さない)。
+          lastHurtAt: amount > 0 ? kbNow : state.player.lastHurtAt,
+          lastHurtDir: amount > 0 ? (kbApply ? Math.atan2(dirY, dirX) : undefined) : state.player.lastHurtDir,
           knockbackVx: kbApply ? kbVx : state.player.knockbackVx,
           knockbackVy: kbApply ? kbVy : state.player.knockbackVy,
           knockbackUntil: kbApply ? kbNow + PLAYER_KNOCKBACK_MS : state.player.knockbackUntil,

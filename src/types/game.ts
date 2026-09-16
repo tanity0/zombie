@@ -252,6 +252,11 @@ export interface Player extends DashLocomotionState {
    * 打刻。判定・挙動には一切使わない(damagePlayerの実ダメージ適用箇所で打つだけ)。
    */
   lastDamagedAtGame: number;
+  // ★被弾リアクション(社長指示2026-09-16「プレイヤーにも似た反応が必要だね、食らったらノック、怯み、
+  // しゃがみ、ストップ」)の**描画専用**打刻。判定・挙動には一切使わない(Enemy の
+  // lastContactAttackAt/Dir と同じ作法)。時計は Date.now 基準。Dir=被弾源→プレイヤーの角度(rad)。
+  lastHurtAt?: number;
+  lastHurtDir?: number;
   // 救急鞄スキル発動演出用タイムスタンプ(Date.now)。描画のみ=払い出しの瞬間に「振り抜きポーズ+鞄を掲げる」
   // 一拍の起点(社長指示v0.25.1656)。0=未発動。判定・射程・払い出しロジックには不干渉(renderer が読むだけ)。
   firstAidPoseAt: number;

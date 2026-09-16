@@ -1202,6 +1202,28 @@ const ENEMY_HIT_FLINCH_SKEW = 0.58; // 0.42→0.58
 const ENEMY_HIT_FLINCH_SQUASH = 0.22; // 縦の潰し 0.10→0.22
 const ENEMY_HIT_FLINCH_WIDEN = 0.14;  // 横の張り(新規。潰れたぶん横へ逃げる)
 const ENEMY_HIT_FLINCH_RISE = 0.18;   // この割合までが「出」(残りが「戻り」)
+// ★プレイヤーの被弾リアクション(社長指示2026-09-16「食らったらノック、怯み、しゃがみ、ストップ」)。
+// 敵の hitFlinchPose と同じ包絡(出は速く戻りは緩い)だが、**しゃがみを主役**にする——プレイヤーは
+// 常に画面中央に居て一番よく見えるので、傾きを大きくすると読みづらくなる。沈み込みで「効いた」を出す。
+const PLAYER_HURT_MS = 300;
+const PLAYER_HURT_LEAN = 0.34;   // のけぞり(被弾源の逆へ)。敵(0.58)より控えめ
+const PLAYER_HURT_CROUCH = 0.20; // しゃがみ(縦の潰し)
+const PLAYER_HURT_WIDEN = 0.13;  // 潰れたぶん横へ張る
+const PLAYER_HURT_SINK_PX = 5;   // 腰が落ちる見た目(足元は動かさない)
+const PLAYER_HURT_RISE = 0.16;
+/** プレイヤーの被弾ポーズ(t=0..1)。判定は1pxも動かさない=純粋な描画。 */
+const playerHurtPose = (t: number): { lean: number; sqY: number; sqX: number; sink: number } => {
+  const w = t < PLAYER_HURT_RISE
+    ? 1 - (1 - t / PLAYER_HURT_RISE) ** 2
+    : (() => { const u = (t - PLAYER_HURT_RISE) / (1 - PLAYER_HURT_RISE); return (1 + Math.cos(u * Math.PI)) / 2; })();
+  return {
+    lean: PLAYER_HURT_LEAN * w,
+    sqY: 1 - PLAYER_HURT_CROUCH * w,
+    sqX: 1 + PLAYER_HURT_WIDEN * w,
+    sink: PLAYER_HURT_SINK_PX * w,
+  };
+};
+
 /**
  * 被弾の怯みポーズ(t=経過0..1)。**出は速く、戻りは緩い**(慣性MUST。旧実装は直線減衰だった)。
  * 判定は1pxも動かさない=純粋な描画(CLAUDE.md「Visual vs hitbox」)。
@@ -16091,6 +16113,19 @@ export class PixiScene {
     const textureName = playerTextureName(p, frame, walking, running);
     const tex = getTexture(textureName) ?? getTexture('player');
     view.sprite.texture = tex ?? view.sprite.texture;
+    // ★被弾リアクション(社長指示2026-09-16「食らったらノック、怯み、しゃがみ、ストップ」)。
+    // **スケール(下のif(tex)内)と位置(更に下のposition.set)の両方から読むので、ここで一度だけ計算する。**
+    // ※最初 if(tex) の中で計算して position.y に足したが、**位置の書き込みの方が後**なので
+    //   沈み込みが毎フレーム上書きされて一切出ていなかった(画を見る前にここで気づいた)。
+    // 描画のみ=判定・足元の当たり判定・影の接地は不変。
+    let hurtSqX = 1, hurtSqY = 1, hurtLean = 0, hurtSink = 0;
+    const sinceHurt = now - (p.lastHurtAt ?? -1e9);
+    if (sinceHurt >= 0 && sinceHurt < PLAYER_HURT_MS) {
+      const hp = playerHurtPose(sinceHurt / PLAYER_HURT_MS);
+      hurtSqX = hp.sqX; hurtSqY = hp.sqY; hurtSink = hp.sink;
+      // 被弾源が分かっている時だけ、その**逆**へ倒れる(源が無い被弾はしゃがみだけ)。
+      if (p.lastHurtDir !== undefined) hurtLean = Math.cos(p.lastHurtDir) * hp.lean;
+    }
     // アバター頭頂追従(v0.25.3271)用: 「いま体に表示中のテクスチャ名」を追う(この後の近接ポーズ/
     // 死亡固定絵の差し替えで更新される)。取得失敗時のフォールバック('player'等)は追わない=
     // その場合は頭頂キャッシュに無い名前になり avatarHeadDeltaPx が自動的に差分0へ落ちる。
@@ -16332,8 +16367,8 @@ export class PixiScene {
         : (p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0));
       const wantFace: -1 | 1 = flip ? -1 : 1;
       const faceMul: number = wantFace;
-      view.sprite.scale.set(sc * faceMul * introSqX * walkSqX * actSqX, sc * introSqY * walkSqY * actSqY);
-      view.sprite.rotation = walkLean + actLean;
+      view.sprite.scale.set(sc * faceMul * introSqX * walkSqX * actSqX * hurtSqX, sc * introSqY * walkSqY * actSqY * hurtSqY);
+      view.sprite.rotation = walkLean + actLean + hurtLean;
     }
     // ノックバック中の小さな跳ね(社長指示・敵と共通): knockbackUntil から進行度を逆算し sin の1山。
     const pKbHop = (p.knockbackUntil !== undefined && now < p.knockbackUntil)
@@ -16341,7 +16376,7 @@ export class PixiScene {
       : 0;
     view.sprite.position.set(
       this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
-      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY + hopOffY,
+      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY + hopOffY + hurtSink,
     );
     // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。
     const seekerActive = p.seekerUntil > gameTime;
