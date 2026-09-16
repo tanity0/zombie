@@ -137,10 +137,15 @@ export type BitePhase = 'none' | 'windup' | 'bite';
 /**
  * 今どの区間か。`biteAt` は gameTime 基準(敵側の他のタイマー=rootUntil/stunUntil と同じ系)。
  * 合計を過ぎていれば 'none'(解決済み or 未発火)。
+ * ★`aiPhase` を渡す(§16-7b「尺の引き方は2段」・§16-8b手順5申し送り): ゾンビ2連は
+ * z-bite1/z-bite2で尺が違う(220/160/40 と 300/200/60)ので、ここを2引数のままにすると
+ * z-bite1がデフォルト値(300/200)で解決してしまう(2発目しか正しく動かない)。
  */
-export const bitePhaseOf = (enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>, gameTime: number): BitePhase => {
+export const bitePhaseOf = (
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'>, gameTime: number,
+): BitePhase => {
   if (enemy.biteAt === undefined || enemy.biteAt <= 0) return 'none';
-  const spec = biteSpecFor(enemy.type, enemy.chaffMove);
+  const spec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
   const t = gameTime - enemy.biteAt;
   if (t < 0) return 'none';
   if (t < spec.windupMs) return 'windup';
@@ -148,10 +153,12 @@ export const bitePhaseOf = (enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>,
   return 'none';
 };
 
-/** 溜め〜噛みの通し進捗 0..1(絵の2拍と赤い点滅の両方がこれを見る)。 */
-export const biteProgress = (enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>, gameTime: number): number => {
+/** 溜め〜噛みの通し進捗 0..1(絵の2拍と赤い点滅の両方がこれを見る)。★aiPhaseの理由はbitePhaseOfと同じ。 */
+export const biteProgress = (
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'>, gameTime: number,
+): number => {
   if (enemy.biteAt === undefined || enemy.biteAt <= 0) return 0;
-  const spec = biteSpecFor(enemy.type, enemy.chaffMove);
+  const spec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
   const total = spec.windupMs + spec.biteMs;
   return Math.max(0, Math.min(1, (gameTime - enemy.biteAt) / total));
 };
@@ -161,9 +168,13 @@ export const biteProgress = (enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>
  * ★プレイヤーの踏み込み(初速最大→減衰=素早く避ける)とは**逆の形**にする:
  * こちらは溜めなので**ゆっくり出て、噛む瞬間に伸び切る**(反り返り→解放)。
  * 慣性の掟(CLAUDE.md)=加減速のない動きは作らない。
+ * ★aiPhaseの理由はbitePhaseOfと同じ(ゾンビ2連のlungePxが40/60で分かれる=この関数が呼び手側の
+ * 実移動量の元になる。§16-8b手順5申し送り「2箇所に aiPhase を渡すこと」の1つ)。
  */
-export const biteLungeFrac = (enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>, gameTime: number): number => {
-  const spec = biteSpecFor(enemy.type, enemy.chaffMove);
+export const biteLungeFrac = (
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'>, gameTime: number,
+): number => {
+  const spec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
   if (enemy.biteAt === undefined || enemy.biteAt <= 0) return 0;
   const t = gameTime - enemy.biteAt;
   if (t <= 0) return 0;
@@ -363,18 +374,52 @@ const BODY_SLAM_BOSS_STATES = new Set<string>([
 const PASS_THROUGH_NOT_BODY_SLAM = new Set<string>(['idol-roll']);
 
 /**
+ * gameStore.ts の `ZOMBIE_RUSH_MS`(2000ms=zrushの継続尺)の複製。循環import回避のため値を
+ * 複製する(`MELEE_RADIUS_MIRROR` 等と同じ確立済みの作法。enemyBite.tsはgameStore非依存)。
+ */
+const ZOMBIE_RUSH_MS_MIRROR = 2000;
+
+/**
+ * ★「追尾の終わり際」(PACING_PUZZLE.md §16-3・§16-8「ゾンビ『追尾の終わり際』」)。
+ * zrush開始からこの尺を過ぎたら体当たり判定を降ろし、§12の噛みを構えさせる(甲2)。
+ * gameStore.ts の状態機械(zrush開始から1600ms経過で必ず`biteAt`を焼く)も**この値を共有する**
+ * (唯一のexport元=ここ。2箇所が別々の定数を持つと閾値がズレる)。
+ */
+export const ZOMBIE_RUSH_BODY_SLAM_MS = 1600;
+
+/**
+ * ゾンビの zrush(2倍速追尾)は開始から `ZOMBIE_RUSH_BODY_SLAM_MS` 未満だけ体当たり判定を持つ
+ * (§16-3「追尾の終わり際」)。開始時刻は専用フィールドを増やさず `aiPhaseUntil`(=開始+2000ms)
+ * から逆算する(gameStore.ts側もzrush中は他の系がaiPhaseUntilを書き換えないので正確に一致する。
+ * ★理由と代替案は §16-3 落とし穴⑫に記載——専用フィールドを持つ案もあったが、既存の
+ * aiPhaseUntil から一意に求まるため増設を避けた)。
+ * ★`biteAt` が立っている間(噛みの構え〜実行中)は体当たりではなく噛みの判定に譲る(2つの判定が
+ * 同時に有効だと「噛みの窓なのに体当たりでも減る」という二重ダメージ源になるため)。
+ */
+const isZombieRushBodySlamNow = (
+  enemy: Pick<Enemy, 'type' | 'aiPhase' | 'aiPhaseUntil' | 'biteAt'>, gameTime: number,
+): boolean => {
+  if (enemy.type !== 'zombie' || enemy.aiPhase !== 'zrush') return false;
+  if (enemy.biteAt !== undefined && enemy.biteAt > 0) return false;
+  const startedAt = (enemy.aiPhaseUntil ?? 0) - ZOMBIE_RUSH_MS_MIRROR;
+  return (gameTime - startedAt) < ZOMBIE_RUSH_BODY_SLAM_MS;
+};
+
+/**
  * ★`gameTime` を受け取るようにした(PACING_PUZZLE.md §16-7b・実装者視点監査A-3)。
- * ★このバッチ(§16-8b 1〜4=土台)では中身を1つも変えていない(まだ誰も使わない=`_gameTime`)。
- * ゾンビの「zrush開始から1600ms未満は体当たり判定」(§16-3「追尾の終わり際」)は**ここに
- * 足す**予定の穴だが、その配線は §16-8b 5(ゾンビの実装バッチ)の仕事——ここでは呼び手
- * (`isBiteSubject` 経由で combatTick・gameStore・angelBossTick)が gameTime を渡せる形に
- * 揃えるところまでが土台の範囲。
+ * ゾンビの「zrush開始から1600ms未満は体当たり判定」(§16-3「追尾の終わり際」)をここに実装する
+ * (§16-8b手順5=ゾンビの実装バッチの仕事)。
+ * ★貫通は付けない(§16-3「isBodySlamNow(触れたら痛い)とisPassThroughPhase(壁を貫通する)は
+ * 別の概念として書く」): `isZombieRushBodySlamNow` は `isPassThroughPhase` の表に足さず、
+ * 独立した分岐として素通りで返す(zrushはPASS_THROUGH_PHASESに入っていないままなので、
+ * ゾンビは木・壁をこれまでどおりすり抜けない)。
  */
 export const isBodySlamNow = (
-  enemy: Pick<Enemy, 'aiPhase' | 'bossState'>,
-  _gameTime: number,
+  enemy: Pick<Enemy, 'type' | 'aiPhase' | 'aiPhaseUntil' | 'biteAt' | 'bossState'>,
+  gameTime: number,
 ): boolean => {
   if (enemy.bossState !== undefined && PASS_THROUGH_NOT_BODY_SLAM.has(enemy.bossState)) return false;
+  if (isZombieRushBodySlamNow(enemy, gameTime)) return true;
   return isPassThroughPhase(enemy.aiPhase)
     || isPassThroughBossState(enemy.bossState)
     || (enemy.bossState !== undefined && BODY_SLAM_BOSS_STATES.has(enemy.bossState));
@@ -397,7 +442,7 @@ export const isBiteInterruptedByMove = (
   || (enemy.bossState !== undefined && !BITE_OK_BOSS_STATES.has(enemy.bossState));
 
 export const isBiteSubject = (
-  enemy: Pick<Enemy, 'type' | 'aiPhase' | 'bossState' | 'damage'>,
+  enemy: Pick<Enemy, 'type' | 'aiPhase' | 'aiPhaseUntil' | 'biteAt' | 'bossState' | 'damage'>,
   isBoss: (t: EnemyType) => boolean,
   gameTime: number,
 ): boolean => {
@@ -488,12 +533,16 @@ export const canZombieRushBite = (
   return true;
 };
 
-/** 噛みの解決フレームか(台本の合計を過ぎた最初のフレーム)。解決したら `biteAt` を0へ戻す。 */
+/**
+ * 噛みの解決フレームか(台本の合計を過ぎた最初のフレーム)。解決したら `biteAt` を0へ戻す。
+ * ★aiPhaseの理由はbitePhaseOfと同じ(ゾンビ2連のz-bite1がこれを2引数で見ると尺500ms=
+ * 実際の380msより120ms遅く解決してしまう)。
+ */
 export const isBiteResolveDue = (
-  enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>, gameTime: number,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'>, gameTime: number,
 ): boolean => {
   if (enemy.biteAt === undefined || enemy.biteAt <= 0) return false;
-  const spec = biteSpecFor(enemy.type, enemy.chaffMove);
+  const spec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
   return gameTime >= enemy.biteAt + spec.windupMs + spec.biteMs;
 };
 
@@ -523,7 +572,7 @@ export const biteBodyOverlapsPlayer = (
  * 開けるのは**台本の間ずっと**(溜め+噛み)。
  */
 export const isBiteWallOpen = (
-  enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>, gameTime: number,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'>, gameTime: number,
 ): boolean => bitePhaseOf(enemy, gameTime) !== 'none';
 
 /**
@@ -535,10 +584,10 @@ export const isBiteWallOpen = (
  * **噛みの区間(後半200ms)では光らない**——そこは動きだけで読ませる。
  */
 export const biteBlinkOn = (
-  enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove'>, gameTime: number,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'>, gameTime: number,
 ): boolean => {
   if (bitePhaseOf(enemy, gameTime) !== 'windup') return false;
-  const spec = biteSpecFor(enemy.type, enemy.chaffMove);
+  const spec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
   const t = gameTime - (enemy.biteAt ?? 0);
   const cyc = Math.max(1, spec.windupMs / 2);
   return (t % cyc) < cyc * 0.55;

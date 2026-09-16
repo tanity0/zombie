@@ -3,9 +3,10 @@
 // うち、bat/skeleton/ゾンビの個別の状態機械(§16-8b 5〜7)に**依存しない**土台だけをここへ置く
 // (§16-8「新しい定数は1ファイル(例 src/utils/chaffMoves.ts)にまとめ」)。
 //
-// ★このファイルはまだ誰にも「使われていない」: `chaffMove` を実際に立てるのは §16-8b 5〜7
-// (ゾンビ/bat/skeletonの状態機械。別バッチ)。ここは**土台**で、今回のバッチでは本番挙動を
-// 1bitも変えない(chaffMove が undefined の間はすべて no-op)。
+// ★§16-8b手順5(ゾンビの状態機械=gameStore.ts)でこのファイルの `deriveChaffMoveGrants` /
+// `endChaffMove` を初めて呼ぶようになった。bat/skeleton(手順6〜7)はまだ未実装で、
+// `CHAFF_MOVE_TYPES` には残っているが `wantsSlot` 側(下・ゾンビ専用)が型で弾くので
+// 挙動には出ない。
 //
 // レンダラ非依存の純関数(src/utils)=ヘッドレスでユニットテスト可能。
 import type { Enemy, EnemyType } from '../types/game';
@@ -115,15 +116,97 @@ export const deferFrozenClocksBy = (enemy: Enemy, dtMs: number): Enemy => {
  * (計算式を個別に持たない=biteClears/dashParriedEnemyPatchと同じ「いま出している技」の
  * spec(`biteSpecFor`)から recoverMs を引く作法に揃える)。
  *
- * ★このバッチでは誰もこれを呼ばない(bat/skeleton/ゾンビの状態機械がまだ無いため)。
- * §16-8b 5〜7 を実装する時に、技の終わりの1箇所からこれを呼ぶこと
- * (例: skeletonのs-recover→s-retreatの遷移点ではなく、**s-retreatが終わった瞬間**。
- * §16-7b「後退の相も技の続きとして扱う。chaffMoveは後退が終わるまで立てたまま」)。
+ * ★§16-8b手順5(ゾンビ)で初めて呼ばれる(2発目=z-bite2の解決の瞬間・1箇所のみ)。
+ * skeleton/batを実装する時も同じ1本をs-retreat/b-releaseの終わりから呼ぶこと
+ * (§16-7b「後退の相も技の続きとして扱う。chaffMoveは後退が終わるまで立てたまま」)。
+ *
+ * ★技後CDに±12%の個体差を掛ける(PACING_PUZZLE.md §16-6「個体差の幅: 技後CD ±12%
+ * (`chaffTraits`と同幅)」・§16-7b「停止長・技後CD…用のハッシュ枝を新設する(id由来=決定的。
+ * 乱数を引かない)」)。群れの位相をずらすための個体差なので`chaffTraits`とは別の枝(idUnitHash)を
+ * 使う(見せたい差ではない=chaffTraitsを流用して結合させない)。
  */
 export const endChaffMove = (
-  enemy: Pick<Enemy, 'type' | 'chaffMove' | 'aiPhase'>,
+  enemy: Pick<Enemy, 'id' | 'type' | 'chaffMove' | 'aiPhase'>,
   gameTime: number,
 ): Pick<Enemy, 'chaffMove' | 'chaffMoveCdUntil'> => {
   const techSpec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
-  return { chaffMove: undefined, chaffMoveCdUntil: gameTime + techSpec.recoverMs };
+  const jitter = 1 + (idUnitHash(enemy.id, CHAFF_CD_JITTER_SALT) * 2 - 1) * CHAFF_CD_JITTER;
+  return { chaffMove: undefined, chaffMoveCdUntil: gameTime + techSpec.recoverMs * jitter };
+};
+
+// =================================================================================================
+// id由来の決定的ハッシュ(§16-7b「個体差の引き方はid由来の決定的なばらつき。乱数を引かない」)。
+// `chaffTraits`(chaffMotion.ts)と同じ mix を使うが、**別ファイル**(循環import回避: chaffMotion.ts
+// はこのファイルを知らない)なので複製する。salt を変えることで複数の独立した枝を1つのidから取れる
+// (chaffTraitsが1つのhからrRole/rSpeed/rTau/rSpinを取り出すのと同じ考え方)。
+// =================================================================================================
+const mixHash = (h: number): number => {
+  let x = h | 0;
+  x ^= x >>> 16; x = Math.imul(x, 2246822507);
+  x ^= x >>> 13; x = Math.imul(x, 3266489909);
+  x ^= x >>> 16;
+  return x >>> 0;
+};
+/** id+salt → 0..1 の決定的な値(毎フレーム呼んでも揺れない・ヘッドレスで再現する)。 */
+const idUnitHash = (id: string, salt: number): number => {
+  let h = salt | 0;
+  for (let i = 0; i < id.length; i++) h = (Math.imul(h, 31) + id.charCodeAt(i)) | 0;
+  return (mixHash(h) % 100000) / 100000;
+};
+
+/** 技後CDの個体差(§16-6「個体差の幅: 技後CD ±12%」)。saltはchaffTraitsの枝と衝突しない値。 */
+const CHAFF_CD_JITTER_SALT = 0x43_4451; // 'CDQ' の適当なビット列(単なる枝分け用の定数)
+const CHAFF_CD_JITTER = 0.12;
+
+// =================================================================================================
+// ゾンビ赤(PACING_PUZZLE.md §16-3・§16-8の台帳)。★§16-8b手順5=このバッチの本体。
+// =================================================================================================
+
+/** 帯(§16-3)。外縁に入ったら待ちの尺を引き、内縁に達したら赤/紫が確定する。 */
+export const ZOMBIE_BAND_OUTER_PX = 200;
+/**
+ * 帯の内縁=停止/追尾ループの境界(★§16-3「停止/追尾ループの境界を`MELEE_RADIUS`(74)→100pxへ
+ * 上げる。74と100の二重基準にしない」)。旧`MELEE_RADIUS`はプレイヤーの近接リーチという別概念の値で、
+ * たまたま同じ用途に流用されていただけなので、ここでは独立した定数として持つ。
+ */
+export const ZOMBIE_BAND_INNER_PX = 100;
+/** 帯に入った時に引く「待ちの尺」の範囲(§16-3「抽選ではなく尺を散らす」・id由来の決定的な値)。 */
+export const ZOMBIE_RED_WAIT_MIN_MS = 300;
+export const ZOMBIE_RED_WAIT_MAX_MS = 2800;
+/** 赤の停止(その場・色なし)。 */
+export const ZOMBIE_RED_PAUSE_MS = 2000;
+/** 踏み込みの終端=1発目が届く上限(§16-3「射程75pxの根拠」)。 */
+export const ZOMBIE_LUNGE_RANGE_PX = 75;
+/** 2連の一拍(よろけ)。 */
+export const ZOMBIE_STAGGER_MS = 160;
+/**
+ * 2発目の向きを1発目からわずかにずらす角度(rad)。★台帳に度数の指定は無い(§16-3「向きも
+ * 僅かにずらす」とだけ規定)ので、既存の`chaffTraits`と同じ「見せたい差だけ大きく振る」思想の
+ * 範囲で叩き台として選んだ実装値(社長裁定を要する数値ではなく演出の微調整=実機で振る)。
+ */
+export const ZOMBIE_BITE2_ANGLE_OFFSET_RAD = 0.22; // ≒12.6°
+
+/** 帯(200〜100px)に入った時に引く「待ちの尺」(id由来・決定的=乱数を引かない)。 */
+export const zombieRedWaitMs = (id: string): number =>
+  ZOMBIE_RED_WAIT_MIN_MS + idUnitHash(id, 0x2b1a) * (ZOMBIE_RED_WAIT_MAX_MS - ZOMBIE_RED_WAIT_MIN_MS);
+
+/**
+ * ★赤が先(§16-3)。帯の内縁(100px)に達した時、**枠が取れていれば赤**。この関数は
+ * `deriveChaffMoveGrants` の `wantsSlot` に渡す「この個体は今フレーム枠を欲しがっているか」の
+ * ゾンビ専用実装——「尺切れ **または** 距離が100pxに達した」のどちらか(先に来た方)を
+ * `aiPhase==='z-wait'` の間だけ判定する。
+ *
+ * ★CD中の個体を候補から外すのはここ(呼び手)の仕事(§16-7b「枠の導出はこれを読まない。
+ * CD中の個体を候補から外すのは呼び手のwantsSlotの仕事」)。
+ */
+export const zombieWantsChaffRedSlot = (
+  enemy: Pick<Enemy, 'type' | 'aiPhase' | 'aiPhaseUntil' | 'chaffMoveCdUntil' | 'x' | 'y' | 'width' | 'height'>,
+  gameTime: number, pcx: number, pcy: number,
+): boolean => {
+  if (enemy.type !== 'zombie' || enemy.aiPhase !== 'z-wait') return false;
+  if (enemy.chaffMoveCdUntil !== undefined && gameTime < enemy.chaffMoveCdUntil) return false;
+  const timeUp = enemy.aiPhaseUntil !== undefined && gameTime >= enemy.aiPhaseUntil;
+  if (timeUp) return true;
+  const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+  return Math.hypot(pcx - ecx, pcy - ecy) <= ZOMBIE_BAND_INNER_PX;
 };

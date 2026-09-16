@@ -8,6 +8,7 @@ import {
   BITE_BOSS_RECOVER_MS,
   canZombieRushBite,
   biteBlinkTintFor,
+  isBiteResolveDue,
 } from './enemyBite';
 import type { Enemy } from '../types/game';
 
@@ -364,25 +365,83 @@ describe('★技が始まったら噛みつきは中断する(v0.25.3924)', () =
 // **とは別物**。実際に4つ漏れていて、赤い帯/予告を出しているのに接触ダメージだけ消えていた
 // =CLAUDE.md の絶対禁止「赤いのに当たらない」。
 describe('★体当たり技の表の漏れ(v0.25.3925)', () => {
+  // ★§16-3(ゾンビzrushの体当たり)を足した時にPickへ `type`/`aiPhaseUntil`/`biteAt` が増えたので、
+  // 既存呼び出しに `type`(非zombieのボス型=zrush特例に触れない)を明示する(検収監査で発覚)。
   it('トールの突進・ミゲルの踏み込み・賞金首の突進/飛び掛かりは体当たり技', () => {
     for (const bs of ['thor-dash-move', 'mdash-move', 'bm-charge', 'leap-air'] as const) {
-      expect(isBodySlamNow({ aiPhase: undefined, bossState: bs }, 1000)).toBe(true);
+      expect(isBodySlamNow({ type: 'thor', aiPhase: undefined, bossState: bs }, 1000)).toBe(true);
     }
   });
   it('貫通表にある体当たり技も従来どおり体当たり技', () => {
-    expect(isBodySlamNow({ aiPhase: 'charge', bossState: undefined }, 1000)).toBe(true);
-    expect(isBodySlamNow({ aiPhase: 'jump', bossState: undefined }, 1000)).toBe(true);
-    expect(isBodySlamNow({ aiPhase: undefined, bossState: 'issen-dash' }, 1000)).toBe(true);
+    expect(isBodySlamNow({ type: 'thor', aiPhase: 'charge', bossState: undefined }, 1000)).toBe(true);
+    expect(isBodySlamNow({ type: 'thor', aiPhase: 'jump', bossState: undefined }, 1000)).toBe(true);
+    expect(isBodySlamNow({ type: 'thor', aiPhase: undefined, bossState: 'issen-dash' }, 1000)).toBe(true);
   });
   it('体から切り離された技は体当たり技ではない(触れても痛くない)', () => {
     for (const bs of ['laser-fire', 'harai', 'volley', 'lance'] as const) {
-      expect(isBodySlamNow({ aiPhase: undefined, bossState: bs }, 1000)).toBe(false);
+      expect(isBodySlamNow({ type: 'thor', aiPhase: undefined, bossState: bs }, 1000)).toBe(false);
     }
   });
   // ★検収監査2巡目(A)(v0.25.3948): 逆向きの差分——貫通表に居るが「体をぶつけに行く技」ではないもの。
   // 偶像の離脱ローリングは逃げる移動。表の流用で「触れたら痛い+受け流し可」になっていた穴を塞ぐ。
   it('憲法: 偶像の離脱ローリング(idol-roll)は体当たり技ではない(貫通はするが武器ではない)', () => {
-    expect(isBodySlamNow({ aiPhase: undefined, bossState: 'idol-roll' }, 1000)).toBe(false);
+    expect(isBodySlamNow({ type: 'idol', aiPhase: undefined, bossState: 'idol-roll' }, 1000)).toBe(false);
+  });
+});
+
+// PACING_PUZZLE.md §16-3「追尾の終わり際」(§16-8b手順5): ゾンビのzrush(2倍速追尾)はzrush開始
+// から1600ms未満だけ体当たり判定を持つ。1600ms以降・またbiteAtが立っている間は体当たりを持たない
+// (噛みの判定に譲る=二重ダメージ源を作らない)。
+describe('★ゾンビzrushの「追尾の終わり際」(§16-3・体当たり判定の窓)', () => {
+  const zrush = (aiPhaseUntil: number, biteAt?: number) =>
+    ({ type: 'zombie' as const, aiPhase: 'zrush' as const, aiPhaseUntil, biteAt, bossState: undefined });
+  it('zrush開始から1600ms未満は体当たり判定を持つ', () => {
+    // 開始=aiPhaseUntil-2000。gameTime=開始+1599。
+    const startedAt = 10_000;
+    expect(isBodySlamNow(zrush(startedAt + 2000), startedAt + 1599)).toBe(true);
+  });
+  it('1600ms以降は体当たり判定を持たない(§12の噛みに譲る)', () => {
+    const startedAt = 10_000;
+    expect(isBodySlamNow(zrush(startedAt + 2000), startedAt + 1600)).toBe(false);
+  });
+  it('biteAtが立っている間(噛みの構え〜実行中)は1600ms未満でも体当たり判定を持たない', () => {
+    const startedAt = 10_000;
+    expect(isBodySlamNow(zrush(startedAt + 2000, startedAt + 500), startedAt + 600)).toBe(false);
+  });
+  it('zpause中(zrushではない)は体当たり判定を持たない', () => {
+    expect(isBodySlamNow({ type: 'zombie', aiPhase: 'zpause', aiPhaseUntil: 5000, biteAt: undefined, bossState: undefined }, 4000)).toBe(false);
+  });
+  it('ゾンビ以外の型はこの分岐を通らない(既存のボス表がそのまま効く)', () => {
+    expect(isBodySlamNow({ type: 'werewolf', aiPhase: 'zrush', aiPhaseUntil: 2000, biteAt: undefined, bossState: undefined }, 100)).toBe(false);
+  });
+  it('★貫通は付けない: zrushはisPassThroughPhaseの表に入っていない(木・壁を貫通しない)', () => {
+    // isBodySlamNow=trueでも、貫通表(isPassThroughPhase)は別概念のまま(§16-3「2つの概念を分けて書く」)。
+    const startedAt = 10_000;
+    expect(isBodySlamNow(zrush(startedAt + 2000), startedAt + 1000)).toBe(true);
+    // enemyMotion.ts のisPassThroughPhase('zrush')がfalseであることは同ファイルのテストで別途担保。
+  });
+});
+
+// PACING_PUZZLE.md §16-8b手順5申し送り: bitePhaseOf/isBiteResolveDue/biteLungeFrac が aiPhase を
+// 受け取るようになった(検収監査で発覚した実装上の必須修正・enemyBite.tsの土台の完成)。
+// これが無いと、ゾンビ2連の1発目(z-bite1=220/160/40)が既定値(300/200/40のうち300/200)で
+// 解決してしまい、2発目のlungePxも40のまま(z-bite2本来の60が出ない)。
+describe('★ゾンビ2連の尺はaiPhaseで2段目に重なる(z-bite1≠z-bite2≠既定値)', () => {
+  const e1 = { type: 'zombie' as const, biteAt: 1000, chaffMove: 'zombie-double' as const, aiPhase: 'z-bite1' as const };
+  const e2 = { type: 'zombie' as const, biteAt: 1000, chaffMove: 'zombie-double' as const, aiPhase: 'z-bite2' as const };
+  it('z-bite1は220(溜め)+160(噛み)=380msで解決する(既定の500msではない)', () => {
+    expect(isBiteResolveDue(e1, 1000 + 379)).toBe(false);
+    expect(isBiteResolveDue(e1, 1000 + 380)).toBe(true);
+  });
+  it('z-bite2は300(溜め)+200(噛み)=500msで解決する', () => {
+    expect(isBiteResolveDue(e2, 1000 + 499)).toBe(false);
+    expect(isBiteResolveDue(e2, 1000 + 500)).toBe(true);
+  });
+  it('bitePhaseOfもaiPhaseで正しい区間を返す(z-bite1のwindupは220ms)', () => {
+    expect(bitePhaseOf(e1, 1000 + 219)).toBe('windup');
+    expect(bitePhaseOf(e1, 1000 + 220)).toBe('bite');
+    expect(bitePhaseOf(e1, 1000 + 379)).toBe('bite');
+    expect(bitePhaseOf(e1, 1000 + 380)).toBe('none');
   });
 });
 

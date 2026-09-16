@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4404',
+    items: ['ゾンビが、離れた間合いで一度立ち止まってから勢いよく踏み込み、連続で二度噛みついてくるようになった。距離を詰めたときの高速接近からの噛みつきも、これまでより確実に出るようになった'],
+  },
+  {
     version: '0.25.4403',
     items: ['倒された後の演出中に、画面が短く止まってしまうのが直った'],
   },

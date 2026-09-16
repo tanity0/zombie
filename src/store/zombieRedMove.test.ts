@@ -1,0 +1,226 @@
+// PACING_PUZZLE.md §16-3(ゾンビ — 2連続噛みつき(赤) / 高速追尾(紫))・§16-8b手順5の統合テスト。
+//
+// 純関数(zombieRedWaitMs / zombieWantsChaffRedSlot / endChaffMove の値そのもの)は
+// chaffMoves.test.ts、isBodySlamNow のzrush分岐とBiteSpecの2段引きは enemyBite.test.ts に置く。
+// ここは「実装精度の規律4」どおり、配線(gameStore.ts の状態機械)を updateEnemies を実際に
+// 回して確かめる統合テスト。
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  useGameStore, ZOMBIE_RUSH_MS, ZOMBIE_PAUSE_MS,
+} from './gameStore';
+import { spawnEnemyAt } from '../utils/enemyUtils';
+import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
+import { biteSpecFor } from '../utils/enemyBite';
+import {
+  ZOMBIE_RED_PAUSE_MS, ZOMBIE_LUNGE_RANGE_PX, ZOMBIE_STAGGER_MS,
+} from '../utils/chaffMoves';
+import { setTreesDisabled } from '../world/trees';
+import { setTorchesDisabled } from '../world/torches';
+import type { Enemy } from '../types/game';
+
+const ORIGIN = 50_000;
+const START_GT = 10_000_000;
+
+/** プレイヤーを(ORIGIN,ORIGIN)中心に置き、ゾンビをそこから中心間距離distだけ離して置く。 */
+const place = (dist: number, over: Partial<Enemy> = {}): Enemy => {
+  const e = { ...spawnEnemyAt('zombie', 0, 0, START_GT), ...over };
+  e.x = ORIGIN + dist - e.width / 2;
+  e.y = ORIGIN - e.height / 2;
+  useGameStore.setState(s => ({
+    enemies: [e],
+    gameTime: START_GT,
+    player: {
+      ...s.player,
+      x: ORIGIN - s.player.width / 2, y: ORIGIN - s.player.height / 2,
+      health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
+    },
+  }));
+  return e;
+};
+
+const tick = (gt: number, dt = 1 / 60) => {
+  useGameStore.getState().setGameTime(gt);
+  useGameStore.getState().updateEnemies(dt);
+};
+
+const first = (): Enemy => useGameStore.getState().enemies[0];
+
+beforeEach(() => {
+  setTreesDisabled(true); setTorchesDisabled(true);
+  useGameStore.getState().resetGame('assault');
+});
+
+describe('帯(200〜100px)への進入 → z-wait', () => {
+  it('帯(150px)に入った個体はz-waitへ入り、待ちの尺(300〜2800ms)を持つ', () => {
+    place(150);
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-wait');
+    expect(e.aiPhaseUntil).toBeGreaterThanOrEqual(START_GT + 300);
+    expect(e.aiPhaseUntil).toBeLessThanOrEqual(START_GT + 2800);
+  });
+
+  it('帯の外(250px)では何も起きない(aiPhase未設定のまま)', () => {
+    place(250);
+    tick(START_GT);
+    expect(first().aiPhase).toBeUndefined();
+  });
+
+  it('★赤の技後CD中は帯に入ってもz-waitへ入らない(§16-3「紫の停止にも入らない」の前段)', () => {
+    place(150, { chaffMoveCdUntil: START_GT + 2000 });
+    tick(START_GT);
+    expect(first().aiPhase).toBeUndefined();
+  });
+});
+
+describe('「赤が先」(§16-3): 帯の内縁(100px)で枠の有無により赤/紫が確定する', () => {
+  it('枠が空いていれば赤(z-red-pause・2000ms・その場)が確定する', () => {
+    place(100, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 }); // 尺はまだ残っているが内縁到達
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-red-pause');
+    expect(e.aiPhaseUntil).toBe(START_GT + ZOMBIE_RED_PAUSE_MS);
+    expect(e.vx).toBe(0); expect(e.vy).toBe(0); // その場(位置は動かさない)
+  });
+
+  it('尺切れ(タイマー満了)でも赤が確定する(距離は100px未満まで来ていなくてもよい)', () => {
+    place(140, { aiPhase: 'z-wait', aiPhaseUntil: START_GT - 1 }); // 尺切れ済み
+    tick(START_GT);
+    expect(first().aiPhase).toBe('z-red-pause');
+  });
+
+  it('枠が無ければ紫(旧zpause)へ落ちる。境界は100px(旧MELEE_RADIUS=74ではない)', () => {
+    // 枠を埋める2体(z-red-pauseで占有中)+ 内縁に達した3体目。
+    const holder1 = { ...spawnEnemyAt('zombie', 0, 0, START_GT), aiPhase: 'z-red-pause' as const, aiPhaseUntil: START_GT + 2000 };
+    const holder2 = { ...spawnEnemyAt('zombie', 100, 100, START_GT), aiPhase: 'z-red-pause' as const, aiPhaseUntil: START_GT + 2000 };
+    const third = { ...spawnEnemyAt('zombie', 0, 0, START_GT), aiPhase: 'z-wait' as const, aiPhaseUntil: START_GT + 5000 };
+    third.x = ORIGIN + 100 - third.width / 2; third.y = ORIGIN - third.height / 2; // 内縁ちょうど
+    useGameStore.setState(s => ({
+      enemies: [holder1, holder2, third],
+      gameTime: START_GT,
+      player: { ...s.player, x: ORIGIN - s.player.width / 2, y: ORIGIN - s.player.height / 2 },
+    }));
+    tick(START_GT);
+    const t = useGameStore.getState().enemies.find(e => e.id === third.id)!;
+    expect(t.aiPhase).toBe('zpause');
+    expect(t.aiPhaseUntil).toBe(START_GT + ZOMBIE_PAUSE_MS);
+  });
+
+  it('★境界が100pxへ統一されている: 90px(旧MELEE_RADIUS=74の外側)でも紫の停止に入る', () => {
+    place(90, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 });
+    // 枠の候補になれない状況を作る(既に2体が占有)ほうが確実だが、ここは単体でも
+    // 「枠が空いていれば赤になる」ので、素の距離境界だけを見るため枠2体を埋めて確認する。
+    const holder1 = { ...spawnEnemyAt('zombie', 0, 0, START_GT), aiPhase: 'z-red-pause' as const, aiPhaseUntil: START_GT + 2000 };
+    const holder2 = { ...spawnEnemyAt('zombie', 5, 5, START_GT), aiPhase: 'z-red-pause' as const, aiPhaseUntil: START_GT + 2000 };
+    const subject = first();
+    useGameStore.setState({ enemies: [holder1, holder2, subject] });
+    tick(START_GT);
+    const s = useGameStore.getState().enemies.find(e => e.id === subject.id)!;
+    expect(s.aiPhase).toBe('zpause'); // 74pxではなく100pxが境界=90pxで既にinMelee
+  });
+});
+
+describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger → z-bite2 → 技の終わり', () => {
+  it('停止2000ms明けでz-lunge-inへ。chaffMoveがここで立つ(§16-7b)', () => {
+    place(150, { aiPhase: 'z-red-pause', aiPhaseUntil: START_GT });
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-lunge-in');
+    expect(e.chaffMove).toBe('zombie-double');
+    expect(e.chaffMoveAt).toBe(START_GT);
+  });
+
+  it('射程75pxに達したらz-bite1(biteAt/向きを焼く)', () => {
+    place(ZOMBIE_LUNGE_RANGE_PX, { aiPhase: 'z-lunge-in', chaffMove: 'zombie-double', chaffMoveAt: START_GT - 500 });
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-bite1');
+    expect(e.biteAt).toBe(START_GT);
+    // 敵はプレイヤーより+x側に置いた(place)ので、敵→プレイヤー方向は-x。
+    expect(e.biteDirX).toBeCloseTo(-1, 5);
+  });
+
+  it('射程に届いていない間は2倍速で近づき続ける(z-lunge-inのまま)', () => {
+    const e0 = place(ZOMBIE_LUNGE_RANGE_PX + 20, { aiPhase: 'z-lunge-in', chaffMove: 'zombie-double', chaffMoveAt: START_GT - 200 });
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-lunge-in');
+    // 近づいている(敵は+x側に居るので、xが減る=プレイヤーへ寄っている)。
+    expect(e.x).toBeLessThan(e0.x);
+  });
+
+  it('1発目が解決(biteAt=0)したらz-stagger(160ms・その場)へ', () => {
+    place(60, { aiPhase: 'z-bite1', chaffMove: 'zombie-double', biteAt: 0 });
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-stagger');
+    expect(e.aiPhaseUntil).toBe(START_GT + ZOMBIE_STAGGER_MS);
+    expect(e.vx).toBe(0); expect(e.vy).toBe(0);
+  });
+
+  it('よろけ明けでz-bite2へ(biteAt再発火・lungePxは60・向きは1発目から僅かにずれる)', () => {
+    place(60, { aiPhase: 'z-stagger', aiPhaseUntil: START_GT, chaffMove: 'zombie-double' });
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-bite2');
+    expect(e.biteAt).toBe(START_GT);
+    // lungePxはaiPhase込みでbiteSpecForから引く(§16-8「2発目=300/200/60」)。
+    const spec = biteSpecFor('zombie', 'zombie-double', 'z-bite2');
+    expect(spec.lungePx).toBe(60);
+    expect(spec.windupMs).toBe(300); expect(spec.biteMs).toBe(200);
+    // 向きは単位ベクトル。
+    const len = Math.hypot(e.biteDirX ?? 0, e.biteDirY ?? 0);
+    expect(len).toBeCloseTo(1, 5);
+    // まっすぐプレイヤー方向(1,0)からは僅かにずれている(offset角が乗っている)。
+    expect(e.biteDirY ?? 0).not.toBe(0);
+  });
+
+  it('z-bite1のlungePxは40(z-bite2の60とは異なる)', () => {
+    const spec1 = biteSpecFor('zombie', 'zombie-double', 'z-bite1');
+    expect(spec1.lungePx).toBe(40);
+    expect(spec1.windupMs).toBe(220); expect(spec1.biteMs).toBe(160);
+  });
+
+  it('2発目が解決(biteAt=0)したら技の終わり: chaffMove消滅+技後CD(約4000ms・±12%)+aiPhaseリセット', () => {
+    place(60, { aiPhase: 'z-bite2', chaffMove: 'zombie-double', biteAt: 0 });
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBeUndefined();
+    expect(e.aiPhaseUntil).toBeUndefined();
+    expect(e.chaffMove).toBeUndefined();
+    expect(e.chaffMoveCdUntil).toBeGreaterThanOrEqual(START_GT + 4000 * 0.88);
+    expect(e.chaffMoveCdUntil).toBeLessThanOrEqual(START_GT + 4000 * 1.12);
+  });
+});
+
+describe('★受け入れ条件40: 静止しているプレイヤーに対して空振りが0回', () => {
+  it('z-bite1が解決する瞬間、体の重なりがあれば必ず当たる', () => {
+    // 敵の当たり判定と完全に重ねて置く(体の重なり=判定。掟2)。
+    const e = place(0, { aiPhase: 'z-bite1', chaffMove: 'zombie-double' });
+    // 220+160=380ms前に発火していた=このフレームで解決(isBiteResolveDue)。
+    useGameStore.setState({ enemies: [{ ...e, biteAt: START_GT - 400 }] });
+    const hpBefore = useGameStore.getState().player.health;
+    useGameStore.getState().setGameTime(START_GT);
+    applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
+    const hpAfter = useGameStore.getState().player.health;
+    expect(hpAfter).toBeLessThan(hpBefore); // 当たった
+    expect(useGameStore.getState().enemies[0].biteAt).toBe(0); // 台本は解決済み
+  });
+});
+
+describe('★甲2(主経路の訂正): zrush開始から1600msを越えた最初のフレームで必ず構える', () => {
+  it('1600ms経過時点で biteAt が焼かれる(距離を見ない)', () => {
+    // aiPhaseUntil = 開始+ZOMBIE_RUSH_MS。1600ms経過=開始+400msがphaseUntil。
+    place(500, { aiPhase: 'zrush', aiPhaseUntil: START_GT + (ZOMBIE_RUSH_MS - 1600) });
+    tick(START_GT);
+    const e = first();
+    expect(e.biteAt).toBe(START_GT);
+    expect(e.aiPhase).toBe('zrush'); // aiPhaseそのものはまだzrush(phaseUntil未到達)
+  });
+
+  it('1600ms未満ではまだ構えない', () => {
+    place(500, { aiPhase: 'zrush', aiPhaseUntil: START_GT + (ZOMBIE_RUSH_MS - 1599) });
+    tick(START_GT);
+    expect(first().biteAt ?? 0).toBe(0);
+  });
+});

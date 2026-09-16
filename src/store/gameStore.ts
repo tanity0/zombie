@@ -301,8 +301,14 @@ import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '
 import { pushShieldRect } from '../world/shieldPush'; // B6(盾押し・§6): 純関数(src/world/shieldPush.test.ts)
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
-import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite } from '../utils/enemyBite';
+import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite, ZOMBIE_RUSH_BODY_SLAM_MS } from '../utils/enemyBite';
 import { deferFrozenClocksBy } from '../utils/chaffMoves'; // PACING_PUZZLE.md §16-7 穴4(凍結dtの繰り下げ)
+// ★ゾンビ赤(PACING_PUZZLE.md §16-3・§16-8b手順5)。枠の導出/技の終わり/待ちの尺/帯の定数の正本。
+import {
+  deriveChaffMoveGrants, endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot,
+  ZOMBIE_BAND_OUTER_PX, ZOMBIE_BAND_INNER_PX, ZOMBIE_RED_PAUSE_MS, ZOMBIE_LUNGE_RANGE_PX,
+  ZOMBIE_STAGGER_MS, ZOMBIE_BITE2_ANGLE_OFFSET_RAD,
+} from '../utils/chaffMoves';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
@@ -12556,6 +12562,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         const patch = tickBossPosture(enemy, gameTime, deltaTime);
         return patch ? { ...enemy, ...patch } : enemy;
       });
+      // ★§16-1「同時に構えられるのは2体」の枠(PACING_PUZZLE.md §16-8b手順4・手順5)。
+      // 写像(.map)の外=このフレームの enemies 全体を見て1回だけ導出する(個体ごとの写像の中では
+      // 「近い順で2体」が決められないため)。`wantsSlot` は narrow な Pick しか受け取れないので、
+      // id→フルの Enemy を引けるMapを経由してゾンビ専用の判定(zombieWantsChaffRedSlot)へ渡す。
+      const chaffLookup = new Map(postureUpdatedEnemies.map(e => [e.id, e] as const));
+      const chaffGrants = deriveChaffMoveGrants(postureUpdatedEnemies, pcx, pcy, cand => {
+        const full = chaffLookup.get(cand.id);
+        return full !== undefined && zombieWantsChaffRedSlot(full, gameTime, pcx, pcy);
+      });
       const updatedEnemies = postureUpdatedEnemies.map((enemy): Enemy => {
         // 裏ボス4体/天使6体/アイドル(=isHiddenBoss)は updateEnemies の追跡AIから除外。移動/攻撃/
         // 帰巣/再生は専用コントローラ(useGameLoop/angelBossTick/idolTick)が座標を直接書き込む
@@ -14829,7 +14844,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 敵の位置は**他の系も書く**(ノックバック/リーシュ/ボスの状態機械/イベントの再配置)ので、
           // 絶対座標で上書きすると**それらと殴り合い、片方の書き込み量がそのまま飛距離になる**。
           // 相対(このフレームぶんの増分だけ足す)にすれば、他の系と自然に合成されて暴れない。
-          const lp = biteSpecFor(enemy.type, enemy.chaffMove).lungePx;
+          // ★aiPhaseを渡す(§16-8b手順5申し送り): ゾンビ2連はz-bite1/z-bite2でlungePxが
+          // 40/60と異なる。2引数のままだとBITE_BY_PHASEの上書きが効かず、両発とも既定値(30)になる。
+          const lp = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase).lungePx;
           const fNow = biteLungeFrac(enemy, gameTime);
           const fPrev = biteLungeFrac(enemy, gameTime - deltaTime * 1000);
           const step = lp * Math.max(0, fNow - fPrev);   // このフレームで進むぶんだけ
@@ -14840,16 +14857,97 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, vx: 0, vy: 0, x: bmoved.x, y: bmoved.y };
         }
 
-        // ゾンビ専用AI: ×1.2 でフラフラ接近。プレイヤーの近接範囲に入ると 1秒停止→2秒間2倍速 を繰り返す。
+        // ゾンビ専用AI(PACING_PUZZLE.md §16-3)。§12噛みつきの踏み込み中は上のisBiteSubject分岐が
+        // 動きを担当するのでここへは来ない(biteAtが立っている間は常にそちら側)。
         if (enemy.type === 'zombie') {
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
-          const pdist = Math.hypot(pcx - ecx, pcy - ecy); // プレイヤー中心までの距離(近接範囲判定はプレイヤー基準)
-          const inMelee = pdist <= MELEE_RADIUS;
+          const pdist = Math.hypot(pcx - ecx, pcy - ecy); // 実プレイヤーとの距離(§16の帯/紫ループはこれで判定)
           let phase = enemy.aiPhase;
           let phaseUntil = enemy.aiPhaseUntil ?? 0;
-          // ★立ち止まりが明けて突進へ移る瞬間か(社長指示2026-09-16
-          // 「ゾンビ、立ち止まったらかならずダッシュ噛みつき発動で」)。ここで**距離を見ずに**構える。
-          let rushJustStarted = false;
+
+          // ── §16-3 赤2連: biteAt解決の検知(内部遷移) ──────────────────────────────────
+          // z-bite1/z-bite2の構え〜実行中(biteAt>0)は上のisBiteSubject分岐が動きを担当する。
+          // biteAtが0へ戻った最初のフレーム(=combatTick.tsのbiteClearsが解決した翌フレーム)だけ
+          // ここを通る。z-lunge-in→z-bite1遷移のフレームはbiteAtをこの場で新規に立てるので、
+          // 「0で入ってきて0のまま」は起きない(常に非0で入るため誤検知しない)。
+          if (phase === 'z-bite1' && !(enemy.biteAt !== undefined && enemy.biteAt > 0)) {
+            // 1発目解決→一拍のよろけ(160ms・その場)。
+            return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-stagger', aiPhaseUntil: gameTime + ZOMBIE_STAGGER_MS };
+          }
+          if (phase === 'z-stagger') {
+            if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // よろけ継続:その場
+            // よろけ明け→2発目。向きは§12と同じく踏み込みの瞬間(ここ)に焼く。僅かにずらす
+            // (ZOMBIE_BITE2_ANGLE_OFFSET_RAD・個体ごとの向きはchaffTraitsのflankSignで固定=決定的)。
+            const bl = Math.max(0.001, pdist);
+            const bdx = (pcx - ecx) / bl, bdy = (pcy - ecy) / bl;
+            const spin = chaffTraits(enemy.id).flankSign;
+            const ca = Math.cos(ZOMBIE_BITE2_ANGLE_OFFSET_RAD * spin), sa = Math.sin(ZOMBIE_BITE2_ANGLE_OFFSET_RAD * spin);
+            return {
+              ...enemy, vx: 0, vy: 0, aiPhase: 'z-bite2', biteAt: gameTime,
+              biteDirX: bdx * ca - bdy * sa, biteDirY: bdx * sa + bdy * ca,
+            };
+          }
+          if (phase === 'z-bite2' && !(enemy.biteAt !== undefined && enemy.biteAt > 0)) {
+            // 2発目解決=技の終わり(§16-7b・§16-8b手順5「技の終わりでendChaffMoveを呼ぶ」)。
+            return {
+              ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: undefined, chaffMoveAt: undefined,
+              ...endChaffMove(enemy, gameTime),
+            };
+          }
+          if (phase === 'z-red-pause') {
+            if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // 停止2000ms・その場(色なし)
+            // 停止明け→2倍速で射程75pxまで踏み込む。ここでchaffMoveが立つ(§16-7b「立つ位置はz-lunge-in」)。
+            return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-lunge-in', chaffMove: 'zombie-double', chaffMoveAt: gameTime };
+          }
+          if (phase === 'z-lunge-in') {
+            if (pdist <= ZOMBIE_LUNGE_RANGE_PX) {
+              // 射程到達→1発目。向きは§12と同じく踏み込みの瞬間(ここ)に焼く(追尾しない)。
+              const bl = Math.max(0.001, pdist);
+              return {
+                ...enemy, vx: 0, vy: 0, aiPhase: 'z-bite1', biteAt: gameTime,
+                biteDirX: (pcx - ecx) / bl, biteDirY: (pcy - ecy) / bl,
+              };
+            }
+            // 2倍速で実プレイヤーへ直進(zrushと同じ書き味=フラフラ込み)。紫の追尾(旧zrush)は
+            // 汎用の接近ターゲット(dx/dy=tgt基準)を追うが、こちらは「赤が来る」と確定した後の
+            // 踏み込みなので実プレイヤー座標(pcx/pcy)を直接使う(decoy/summonに逸れない)。
+            const zTraits = chaffTraits(enemy.id);
+            const lungeSpeed = enemy.speed * ZOMBIE_SPEED_MULT * ZOMBIE_RUSH_SPEED_MULT
+              * rnSpeedMult * screamSpeedMult * chaffSpeedMult(zTraits, pdist) * iceSlowMult(enemy, gameTime);
+            let lh = 0;
+            for (let i = 0; i < enemy.id.length; i++) lh = (lh * 31 + enemy.id.charCodeAt(i)) | 0;
+            const bl2 = Math.max(0.001, pdist);
+            const lHead = chaffHeading((pcx - ecx) / bl2, (pcy - ecy) / bl2, zTraits, pdist);
+            const lwob = Math.sin(gameTime / 200 + (lh % 628) / 100) * ZOMBIE_WOBBLE;
+            const lhx = lHead.x + (-lHead.y) * lwob, lhy = lHead.y + lHead.x * lwob;
+            const lhl = Math.max(0.001, Math.hypot(lhx, lhy));
+            const lvx = (lhx / lhl) * lungeSpeed, lvy = (lhy / lhl) * lungeSpeed;
+            const lmoved = resolveMove(enemy.x + lvx * deltaTime, enemy.y + lvy * deltaTime);
+            return { ...enemy, vx: lvx, vy: lvy, x: lmoved.x, y: lmoved.y };
+          }
+
+          // ── §16-3 帯(200〜100px): 待ちの尺 ────────────────────────────────────────
+          // 「赤が先」: 枠が取れていれば赤(z-red-pause)、内縁(100px)に達していて枠が無ければ紫
+          // (旧zpauseへフォールスルー)、どちらでもなければ素通り(z-waitのまま歩き続け、次フレーム
+          // 再判定=§16-1「枠を取れなかった個体は旧挙動のまま歩いて詰める」)。
+          if (phase === 'z-wait') {
+            if (pdist > ZOMBIE_BAND_OUTER_PX) {
+              phase = undefined; phaseUntil = 0; // 帯の外へ戻った=待ちを解除→通常接近へ
+            } else if (chaffGrants.has(enemy.id)) {
+              return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_RED_PAUSE_MS };
+            } else if (pdist <= ZOMBIE_BAND_INNER_PX) {
+              // 枠なし・内縁到達=紫(旧仕様のまま)。下の「旧仕様」ブロックへフォールスルーする。
+              phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS;
+            }
+            // else: 尺切れ済みだが枠なし・内縁未到達→素通り(phase='z-wait'のまま下の通常移動へ)。
+          } else if (phase === undefined && pdist <= ZOMBIE_BAND_OUTER_PX
+            && (enemy.chaffMoveCdUntil === undefined || gameTime >= enemy.chaffMoveCdUntil)) {
+            // 帯へ新規進入。赤の技後CD中は入らない(§16-3「赤の技後CD(4000ms)中は紫の停止にも入らない」)。
+            phase = 'z-wait'; phaseUntil = gameTime + zombieRedWaitMs(enemy.id);
+          }
+
+          // ── 旧仕様: 紫の停止/追尾ループ(境界をMELEE_RADIUS(74)→100pxへ統一・§16-3) ─────────
+          const inMelee = pdist <= ZOMBIE_BAND_INNER_PX;
           let biteKickoff: { biteAt: number; biteDirX: number; biteDirY: number } | null = null;
           const inCycle = phase === 'zpause' || phase === 'zrush';
           if (inCycle && gameTime < phaseUntil) {
@@ -14857,25 +14955,31 @@ export const useGameStore = create<GameState>((set, get) => ({
           } else if (inCycle) {
             // フェーズ完了: まだ範囲内なら次フェーズへ、範囲外なら通常接近へ戻す。
             if (inMelee) {
-              if (phase === 'zpause') { phase = 'zrush'; phaseUntil = gameTime + ZOMBIE_RUSH_MS; rushJustStarted = true; }
+              if (phase === 'zpause') { phase = 'zrush'; phaseUntil = gameTime + ZOMBIE_RUSH_MS; }
               else { phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS; }
             } else { phase = undefined; phaseUntil = 0; }
-          } else if (inMelee) {
-            phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS;              // 範囲に入った瞬間=1秒停止
           }
           if (phase === 'zpause') {
             return { ...enemy, vx: 0, vy: 0, aiPhase: phase, aiPhaseUntil: phaseUntil }; // 停止
           }
-          // ★停止明けの突進は**必ず噛みつきを連れて出る**(社長指示2026-09-16)。
-          // 距離は見ない=「立ち止まったら来る」が読みの手がかりになる(止まりが予告)。
-          // 止める効果(気絶/拘束/持ち上げ/眠り)と硬直と二重構えだけは `canZombieRushBite` が弾く。
-          // 踏み込みの向きは**この瞬間に焼く**(追尾しない=横へ避けられる。§12の裁定どおり)。
-          if (rushJustStarted && canZombieRushBite(enemy, gameTime)) {
-            const bl = Math.max(0.001, Math.hypot(pcx - ecx, pcy - ecy));
-            biteKickoff = { biteAt: gameTime, biteDirX: (pcx - ecx) / bl, biteDirY: (pcy - ecy) / bl };
+          // ★甲2+主経路の訂正(§16-3・着手前監査A-3): zrush開始から
+          // ZOMBIE_RUSH_BODY_SLAM_MS(1600ms)を越えた最初のフレームで、距離を見ずに必ず構える
+          // (社長指示「立ち止まったらかならずダッシュ噛みつき発動で」)。開始時刻は専用フィールドを
+          // 増やさず aiPhaseUntil(=開始+ZOMBIE_RUSH_MS)から逆算する
+          // (isBodySlamNow側の同じ閾値=ZOMBIE_RUSH_BODY_SLAM_MSと共有=enemyBite.tsが唯一のexport元)。
+          // biteAtが立っている間は`bitePhaseOf!=='none'`となり上のisBiteSubject分岐がこのブロックへ
+          // 到達させないので、二重発火は起きない。
+          if (phase === 'zrush') {
+            const zrushStartedAt = phaseUntil - ZOMBIE_RUSH_MS;
+            if (gameTime - zrushStartedAt >= ZOMBIE_RUSH_BODY_SLAM_MS && canZombieRushBite(enemy, gameTime)) {
+              const bl = Math.max(0.001, pdist);
+              biteKickoff = { biteAt: gameTime, biteDirX: (pcx - ecx) / bl, biteDirY: (pcy - ecy) / bl };
+            }
           }
           // v0.25.3176(案4+案3): 個体差(±12%)と役割(直進/回り込み/遅れて来る)をゾンビにも掛ける。
           // フラフラ(既存)は**この上に**乗るので、蛇行の意図は変わらない。
+          // ★z-wait中の「歩き続ける」もこの通常移動を使う(§16-3「その間はそのまま歩き続ける」=
+          // 旧来の接近と同じ動き。まっすぐ来る印象は既存のwobble/個体差のままで保たれる)。
           const zTraits = chaffTraits(enemy.id);
           const zSpeed = enemy.speed * ZOMBIE_SPEED_MULT * (phase === 'zrush' ? ZOMBIE_RUSH_SPEED_MULT : 1)
             * rnSpeedMult * screamSpeedMult * chaffSpeedMult(zTraits, distance) * iceSlowMult(enemy, gameTime);

@@ -2,6 +2,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   CHAFF_MOVE_TYPES, CHAFF_MOVE_SLOT_CAP, isChaffSlotHolding, deriveChaffMoveGrants, deferFrozenClocksBy,
+  endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot,
+  ZOMBIE_BAND_INNER_PX, ZOMBIE_RED_WAIT_MIN_MS, ZOMBIE_RED_WAIT_MAX_MS,
 } from './chaffMoves';
 import type { Enemy, EnemyType } from '../types/game';
 
@@ -138,5 +140,64 @@ describe('deferFrozenClocksBy(凍結dtの繰り下げ・穴4)', () => {
     const idle = mkE('e3', 0, { type: 'bat', chaffMove: 'bat-grab', biteAt: 0, chaffMoveAt: undefined, aiPhaseUntil: undefined, chaffMoveCdUntil: undefined });
     const patched = deferFrozenClocksBy(idle, 200);
     expect(patched.biteAt).toBe(0);
+  });
+});
+
+describe('zombieRedWaitMs(§16-3「待ちの尺」・id由来の決定的な値)', () => {
+  it('300〜2800msの範囲に収まる', () => {
+    for (const id of ['a', 'b', 'c', 'zombie-1', 'zombie-2', 'xxxxxxxx']) {
+      const ms = zombieRedWaitMs(id);
+      expect(ms).toBeGreaterThanOrEqual(ZOMBIE_RED_WAIT_MIN_MS);
+      expect(ms).toBeLessThanOrEqual(ZOMBIE_RED_WAIT_MAX_MS);
+    }
+  });
+  it('同じidは常に同じ値(決定的=乱数を引かない)', () => {
+    expect(zombieRedWaitMs('same-id')).toBe(zombieRedWaitMs('same-id'));
+  });
+  it('idが違えば(高確率で)値も散る=抽選ではなく尺を散らす狙いが機能している', () => {
+    const vals = new Set(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(zombieRedWaitMs));
+    expect(vals.size).toBeGreaterThan(1);
+  });
+});
+
+describe('zombieWantsChaffRedSlot(§16-3「赤が先」の枠の申告・帯の内縁=ZOMBIE_BAND_INNER_PX)', () => {
+  const base = { type: 'zombie' as EnemyType, aiPhase: 'z-wait' as const, aiPhaseUntil: 2000, chaffMoveCdUntil: undefined, x: 0, y: 0, width: 36, height: 36 };
+  it('尺切れ(gameTime>=aiPhaseUntil)なら距離に関係なく申告する', () => {
+    expect(zombieWantsChaffRedSlot(base, 2000, 100000, 100000)).toBe(true); // 遠く離れていても尺切れなら true
+  });
+  it('尺は残っているが内縁(100px)に達していれば申告する', () => {
+    const ecx = 18, ecy = 18; // (0,0,36,36)の中心
+    expect(zombieWantsChaffRedSlot(base, 1000, ecx + ZOMBIE_BAND_INNER_PX, ecy)).toBe(true);
+  });
+  it('尺も残り内縁にも届いていなければ申告しない(素通り)', () => {
+    const ecx = 18, ecy = 18;
+    expect(zombieWantsChaffRedSlot(base, 1000, ecx + ZOMBIE_BAND_INNER_PX + 1, ecy)).toBe(false);
+  });
+  it('z-wait以外(z-red-pause等)は申告しない(枠は間合いに達した瞬間だけ取る)', () => {
+    expect(zombieWantsChaffRedSlot({ ...base, aiPhase: 'z-red-pause' }, 2000, 0, 0)).toBe(false);
+  });
+  it('ゾンビ以外の型は申告しない', () => {
+    expect(zombieWantsChaffRedSlot({ ...base, type: 'bat' }, 2000, 0, 0)).toBe(false);
+  });
+  it('★赤の技後CD中は申告しない(§16-3「CD中は紫の停止にも入らない」の土台)', () => {
+    expect(zombieWantsChaffRedSlot({ ...base, chaffMoveCdUntil: 3000 }, 2000, 0, 0)).toBe(false);
+  });
+  it('技後CDが過ぎていれば申告できる', () => {
+    expect(zombieWantsChaffRedSlot({ ...base, chaffMoveCdUntil: 1500 }, 2000, 0, 0)).toBe(true);
+  });
+});
+
+describe('endChaffMove(技の終わり・§16-8b手順5「ゾンビが初めて呼ぶ」)', () => {
+  const e = { id: 'z1', type: 'zombie' as EnemyType, chaffMove: 'zombie-double' as const, aiPhase: 'z-bite2' as const };
+  it('chaffMoveを消し、技後CD(recoverMs=4000・±12%)を書く', () => {
+    const patch = endChaffMove(e, 10000);
+    expect(patch.chaffMove).toBeUndefined();
+    expect(patch.chaffMoveCdUntil).toBeGreaterThanOrEqual(10000 + 4000 * 0.88);
+    expect(patch.chaffMoveCdUntil).toBeLessThanOrEqual(10000 + 4000 * 1.12);
+  });
+  it('同じidは常に同じCD(決定的)', () => {
+    const p1 = endChaffMove(e, 10000);
+    const p2 = endChaffMove(e, 10000);
+    expect(p1.chaffMoveCdUntil).toBe(p2.chaffMoveCdUntil);
   });
 });

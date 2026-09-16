@@ -1,5 +1,67 @@
 # Development Log
 
+## v0.25.4404 — §16-8b 実装順5(ゾンビ赤2連・実装バッチ)【2026-09-16 21:46 JST】
+
+**状態変化: PACING_PUZZLE §16(雑魚の「詰めさせない技」) → 実装バッチ2(ゾンビ)完了(残り: bat/skeleton/
+描画(pixiScene)/ボスの凍結化/werewolf)**。commit `dcf07405e` 時点の土台(実装順1〜4)の上に、
+ゾンビの状態機械(§16-3・実装順5)を乗せた。**bat・skeleton・描画(色)・ボスの凍結化・werewolfには
+触れていない**(指示どおりスコープ外)。
+
+### やったこと
+- **帯(200〜100px)**: 入った瞬間に「待ちの尺」(0.3〜2.8秒・id由来の決定的ハッシュ=乱数を引かない)
+  を引き、そのまま歩き続ける(既存の接近movementをそのまま使う=通路そのものは変えない)。
+- **「赤が先」**: 尺切れ or 距離100px到達(先に来た方)で、`deriveChaffMoveGrants`(既存の土台)から
+  枠が取れていれば**赤**(停止2000ms→2倍速で射程75pxまで踏み込み→2連撃)、取れなければ**紫**(既存の
+  停止1000ms→追尾。境界を`MELEE_RADIUS`(74)→100pxへ統一)。枠を取れなかった個体は素通りして
+  歩き続け、内縁(100px)に着いた時点で改めて枠判定→紫へ落ちる(§16-1どおり)。
+- **2連撃**: `z-bite1`(220/160/40)→`z-stagger`(160ms・その場)→`z-bite2`(300/200/60・向きを僅かに
+  ずらす)。2発とも状態機械が直接`biteAt`を焼く(`biteReadyAt`を見ない)。2発目の解決で
+  `chaffMoves.ts`の`endChaffMove`を呼び、`chaffMove`を消して技後CD(4000ms・±12%個体差)を書く。
+- **甲2(§12噛みの主経路の訂正)**: `rushJustStarted`(zrush開始の瞬間)ではなく、**zrush開始から
+  1600msを越えた最初のフレーム**で`biteAt`を焼くよう変更。開始時刻は専用フィールドを増やさず
+  `aiPhaseUntil - ZOMBIE_RUSH_MS`から逆算(理由は下の②)。
+- **`isBodySlamNow`**: ゾンビのzrushは開始から1600ms未満だけ体当たり判定を持ち(`biteAt`が立って
+  いる間は体当たりに譲る)、1600ms以降は接触ダメージを持たない(§12の噛みに委ねる)。貫通表
+  (`isPassThroughPhase`)には入れていない=木・壁は従来どおりすり抜けない。
+- **`enemyBite.ts`の土台の仕上げ**: `bitePhaseOf`/`biteProgress`/`biteLungeFrac`/`isBiteResolveDue`/
+  `biteBlinkOn`が`aiPhase`を受け取り`biteSpecFor`の第3引数へ渡すよう修正(前回バッチの申し送り。
+  ここが欠けているとゾンビ2連の1発目が既定値500msで解決し、2発目のlungePxも常に40のままだった)。
+  `gameStore.ts`の踏み込み距離計算(`biteLungeFrac`の消費側)にも`aiPhase`を渡した。
+
+### ②(zrushの開始時刻)をどう解決したか
+専用フィールド(例: `zrushStartedAt`)を新設する案と、既存の`aiPhaseUntil`(=開始+`ZOMBIE_RUSH_MS`)
+から逆算する案の二択。**逆算を採用**した。理由: zrush中は`chaffMove`が未定義(赤の技とは別枠)なので
+`deferFrozenClocksBy`(凍結dtの繰り下げ)が効かず、`aiPhaseUntil`はzrushの間ずっと「開始時刻+2000ms」
+で固定される(他の系がこの値を書き換える経路が無いことを確認済み)。**逆算で一意に求まる**ので、
+フィールドを増やさずに済む。`isBodySlamNow`側(enemyBite.ts)とgameStore.ts側の状態機械が
+同じ`ZOMBIE_RUSH_BODY_SLAM_MS`(1600ms・enemyBite.tsが唯一のexport元)を共有するようにして、
+2箇所の閾値がズレないようにした。
+
+### テスト(同コミット)
+- `src/store/zombieRedMove.test.ts`(新規・17件): 帯進入→z-wait/赤紫の分岐(枠あり・枠なし・境界
+  100pxの統一)/赤の台本一式(z-red-pause→z-lunge-in→z-bite1→z-stagger→z-bite2→技の終わり)/
+  受け入れ条件40(静止プレイヤーに空振り0回)/甲2(1600ms発火)。`updateEnemies`を実際に回す統合テスト。
+- `src/utils/chaffMoves.test.ts`(既存に追記・+12件): `zombieRedWaitMs`(決定的・範囲内)/
+  `zombieWantsChaffRedSlot`(尺切れ/距離/CD/型/相の分岐)/`endChaffMove`(CD±12%・決定的)。
+- `src/utils/enemyBite.test.ts`(既存に追記・+10件): `isBodySlamNow`のzrush 1600ms窓 / z-bite1と
+  z-bite2で`isBiteResolveDue`/`bitePhaseOf`の尺が正しく分かれること。既存6箇所は`type`フィールド
+  追加で対応(Pick拡張の副作用・挙動は無変更)。
+
+**結果**: 関連5ファイル **142件緑**(chaffMoveFoundation/combatTick/chaffMoves/enemyBite/
+zombieRedMove)+周辺2ファイル(playerTraits/enemySeparation)**124件緑**。赤ゼロ。
+typecheck緑・lintエラー0。`npm test`フル・`npm run build`は指示が無いので回していない。
+
+**変更ファイル**: `src/store/gameStore.ts`(ゾンビ状態機械の全面差し替え+`biteSpecFor`呼び出し1箇所
+修正+枠の前段計算の挿入)、`src/utils/enemyBite.ts`(`isBodySlamNow`のzrush対応+5関数への`aiPhase`
+配線+`isBiteSubject`のPick拡張)、`src/utils/chaffMoves.ts`(ゾンビ台帳の定数・`zombieRedWaitMs`・
+`zombieWantsChaffRedSlot`・`endChaffMove`へのCD個体差追加)、テスト3ファイル、`package.json`、
+`src/data/changelog.ts`。**`PACING_PUZZLE.md`/`PROJECT_STATUS.md`は変更していない**(★未決なし)。
+
+**自己点検**: 憲法第4条(初心者ゾーン不可侵)・第5条(緩を荒らさない)に抵触しない——触れたのは
+ゾンビ(雑魚)の状態機械とその土台関数のみで、初心者ゾーンの湧き数・難度カーブ・他の敵種の挙動は
+1つも変えていない。§12の噛みつきは`recoverMs`(600・既に裁定済み)以外1bitも変えていない
+(`bitePhaseOf`等の`aiPhase`配線は既存呼び出し元がそのまま`undefined`を渡す形なので§12の挙動は不変)。
+
 ## v0.25.4403 — 死亡演出中の停止を直す(私の回帰)/ ★未決 #16-H を裁定【2026-09-16 21:04 JST】
 
 ### 1. 「神付き A-1」の赤を直した(社長指示「2、直す」)
