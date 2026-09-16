@@ -10520,11 +10520,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ——どの経路も counterWindowEnd を読むため、判定コードには一切触らない。
           // `?lastcounter=1` で旧挙動(被弾していてもカウンター可)へ完全復帰(A/B比較用)。
           counterWindowEnd: (amount > 0 && !LATE_COUNTER_ENABLED) ? 0 : state.player.counterWindowEnd,
-          // ★被弾リアクションの打刻(描画専用・判定不変)。向きは上で計算済みの dirX/dirY
-          // (被弾源→プレイヤー)をそのまま角度にする。源が不明な被弾(fromX未指定)は向き無し=
-          // しゃがみだけが出る(のけぞる方向が無いのに勝手な方向へ倒さない)。
+          // ★被弾リアクションの打刻(描画専用・判定不変)。この間だけ本体の絵がしゃがみへ替わる。
           lastHurtAt: amount > 0 ? kbNow : state.player.lastHurtAt,
-          lastHurtDir: amount > 0 ? (kbApply ? Math.atan2(dirY, dirX) : undefined) : state.player.lastHurtDir,
           knockbackVx: kbApply ? kbVx : state.player.knockbackVx,
           knockbackVy: kbApply ? kbVy : state.player.knockbackVy,
           knockbackUntil: kbApply ? kbNow + PLAYER_KNOCKBACK_MS : state.player.knockbackUntil,
