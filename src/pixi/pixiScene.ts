@@ -1478,8 +1478,12 @@ const PLAYER_WALK_BOB_PX = 0.8;
 // 当たり判定/位置(store)は不変。1回のノックバックで sin の1山ぶんポンと跳ねて着地する。
 const KNOCKBACK_HOP_PX = 12;   // 跳ねの高さ(px・社長指示でもっと分かりやすく: 6→12)
 const KNOCKBACK_HOP_MS = 260;
-// 延焼中の敵の薄い赤点滅(社長指示v0.25.3272・視覚のみ。判定=storeのburnUntil)
-const BURN_FLASH_TINT = 0xff5a3c;
+// 延焼中の敵の薄いオレンジ点滅(社長指示v0.25.3272・視覚のみ。判定=storeのburnUntil)。
+// ★v0.25.4383(社長裁定2026-09-16「1かつ、延焼はオレンジに」・PACING_PUZZLE.md §16-10-C):
+// 旧 `0xff5a3c` は**赤**で、§16 の「赤=カウンター可の予告」と同じ加算オーバーレイを共有している。
+// このままだと**燃えている敵が赤く光る=「赤いのに当たらない」**(色の文法①の違反)。
+// ⇒ 延焼を**オレンジへ寄せて、赤は予告の専用色にする**。優先順位は 白(被弾) > §16の赤 > 延焼 > 氷。
+const BURN_FLASH_TINT = 0xff8c00;
 const BURN_FLASH_ALPHA = 0.28; // 「薄く」=被弾白(0.85相当)よりずっと弱く
 const BURN_FLASH_PERIOD_MS = 520;
 const ICE_FLASH_TINT = 0x7fd4ff; // 氷鈍化中の薄い水色(v0.25.3276・α/周期は延焼と共通)
@@ -17846,7 +17850,9 @@ export class PixiScene {
         ? Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_FLASH_MS) : 0;
       // 延焼中の薄い赤点滅(社長指示v0.25.3272)/氷鈍化中の薄い水色点滅(社長指示v0.25.3276)。
       // 被弾フラッシュと同じシルエット機構を流用し、被弾(白)が出ていない間だけ弱い明滅を乗せる
-      // (読むだけ・判定はstoreのburnUntil/iceSlowUntil)。優先: 白(被弾)>赤(延焼)>水色(氷)。
+      // (読むだけ・判定はstoreのburnUntil/iceSlowUntil)。
+      // ★優先: 白(被弾) > **§16の赤(予告)** > オレンジ(延焼) > 水色(氷)。§16の赤はまだ未実装なので
+      //   現状は 白 > オレンジ > 水色。§16 実装時にここへ赤を割り込ませる(PACING_PUZZLE.md §16-10-C)。
       const texOk = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1;
       const burning = texOk && (e.burnUntil ?? 0) > gameTime;
       const iced = texOk && (e.iceSlowUntil ?? 0) > gameTime;
@@ -17862,7 +17868,7 @@ export class PixiScene {
           hf.tint = 0xffffff;
           hf.alpha = flashT * ENEMY_HIT_FLASH_STRENGTH * artFade;
         } else {
-          hf.tint = burning ? BURN_FLASH_TINT : ICE_FLASH_TINT; // 赤(延焼)>水色(氷)
+          hf.tint = burning ? BURN_FLASH_TINT : ICE_FLASH_TINT; // オレンジ(延焼)>水色(氷)
           const pulse = 0.5 + 0.5 * Math.sin(now / BURN_FLASH_PERIOD_MS * Math.PI * 2);
           hf.alpha = BURN_FLASH_ALPHA * pulse * artFade;
         }

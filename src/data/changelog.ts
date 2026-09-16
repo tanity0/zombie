@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4383',
+    items: ['燃えている敵の明滅をオレンジにしました。赤はこれから入る「返せる攻撃」の合図に取っておきます'],
+  },
+  {
     version: '0.25.4382',
     items: ['ゲーム内容の変更はありません'],
   },
