@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4411',
+    items: ['ゲーム内容の変更はありません'],
+  },
+  {
     version: '0.25.4410',
     items: ['ゾンビが立ち止まる長さや、二連続噛みつきの踏み込む角度に、より個体差が出るようにした。同じゾンビでも、倒された後に湧き直すと少し違う癖になる'],
   },
