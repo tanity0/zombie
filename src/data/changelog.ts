@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4390',
+    items: ['ゲーム内容の変更はありません'],
+  },
+  {
     version: '0.25.4389',
     items: ['体勢を崩した強個体にとどめを刺した時、寄りの演出が出ないことがあったのを直しました。ボスへの致命の一撃と同じ扱いになり、必ず寄ります'],
   },
