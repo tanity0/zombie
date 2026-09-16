@@ -565,8 +565,13 @@ export interface Enemy {
   biteNoCancelUntil?: number;
   biteReadyAt?: number;
   // PACING_PUZZLE.md §16-7b(雑魚の「詰めさせない技」): いま出している§16の技。undefined=§16の技を
-  // 出していない(通常の§12噛みつき・無属性の移動)。**biteAt と同時に立ち、biteAt を消す経路すべてで
-  // 同時に消す**(combatTick.ts の biteClears / dashParriedEnemyPatch・gameStore.ts の気絶リセット)。
+  // 出していない(通常の§12噛みつき・無属性の移動)。★訂正版(§16-7穴2・検収監査A-4): 立つのは
+  // 技の頭(bat=b-windup/skeleton=s-crouchの次の踏み込み/ゾンビ=z-lunge-in。biteAtより前)。
+  // **消えるのは「中断」(カウンター成立/クリ気絶/死亡/画面外リサイクル)の時だけ**
+  // (combatTick.ts の dashParriedEnemyPatch・gameStore.ts の気絶リセット)。
+  // ★「正常解決」(combatTick.ts の biteClears=噛みが当たった/外れた)では**消さない**——
+  // 技はまだ続いている(硬直・後退・ゾンビ2連の2発目)。技の終わり(後退の終わり)で消し技後CDを
+  // 書くのは状態機械の仕事(`chaffMoves.ts` の `endChaffMove`・§16-8b 5〜7)。
   // spec/tint はこのフィールドで「型」ではなく「いま出している技」から引く(enemyBite.ts 参照)。
   chaffMove?: 'bat-grab' | 'skel-bite' | 'zombie-double';
   // 技の開始 gameTime。赤い拍(進捗0..1)の出どころ=biteAt より前(溜めの前・構えの終わり)から要る場合がある。
@@ -717,8 +722,10 @@ export interface Enemy {
     | 'b-approach' | 'b-orbit' | 'b-windup' | 'b-lunge' | 'b-grab' | 'b-release'
     // skeleton: しゃがみ→弧で回り込む→噛み→(噛み後の硬直500ms)→(発火距離まで後退)。
     | 's-crouch' | 's-arc' | 's-bite' | 's-recover' | 's-retreat'
-    // ゾンビ赤(200〜100px帯の2連撃): 帯で待つ→停止2000ms→1発目→よろけ→2発目。
-    | 'z-wait' | 'z-red-pause' | 'z-bite1' | 'z-stagger' | 'z-bite2'
+    // ゾンビ赤(200〜100px帯の2連撃): 帯で待つ→停止2000ms→(2倍速で射程75pxまで踏み込む)→1発目→よろけ→2発目。
+    // ★z-lunge-in(検収監査A-2): §16-3に足した時に§16-7bへ反映し忘れていた相。技の頭(chaffMoveが
+    // 立つ位置)はここ(biteAtより前)。
+    | 'z-wait' | 'z-red-pause' | 'z-lunge-in' | 'z-bite1' | 'z-stagger' | 'z-bite2'
     // werewolf(自転車)★名前だけ先に足す(実装は別バッチ=§16-8b 10)。突進の硬直明けに向きを変えて
     // 発動距離まで走り去る相。§16の技ではない=chaffMove/枠は使わない(§16-7b)。
     | 'w-retreat';

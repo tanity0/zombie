@@ -74,8 +74,9 @@ export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
  * ★§16(雑魚の「詰めさせない技」・PACING_PUZZLE.md §16-7 穴2)専用の上書き表。
  * `biteSpecFor` は「型」ではなく「いま出している技」(`Enemy.chaffMove`)からこちらを優先して引く
  * (型の表 `BITE_BY_TYPE` の上に**技の表**を重ねる=技単位で spec/色を分ける)。
- * ★『zombie-double』は1エントリに収まらない(1発目/2発目で windup/bite/lunge が違う=§16-8)ので
- * ここには置かない。状態機械が2発とも直接 `biteAt` を焼く(§16-3「2連は biteReadyAt を見ない」)。
+ * ★『zombie-double』は windup/bite/lunge が1発目/2発目で違う(§16-8)ので、その3つはここに置かず
+ * `BITE_BY_PHASE`(下)を `aiPhase`(z-bite1/z-bite2)で重ねる(検収監査A-3・§16-7b「尺の引き方は2段」)。
+ * ここには**技として不変**な `recoverMs`/`counterable` だけを置く。
  */
 export const BITE_BY_MOVE: Partial<Record<NonNullable<Enemy['chaffMove']>, Partial<BiteSpec>>> = {
   // bat の掴み(§16-1・§16-8「bat の BiteSpec への写し方」)。
@@ -84,6 +85,19 @@ export const BITE_BY_MOVE: Partial<Record<NonNullable<Enemy['chaffMove']>, Parti
   'bat-grab': { windupMs: 500, biteMs: 220, lungePx: 85, recoverMs: 6000, counterable: true },
   // skeleton の噛み(§16-2・§16-8)。windupMs=350(前隙)/ biteMs=200(噛み=受付幅)/ lungePx=85。
   'skel-bite': { windupMs: 350, biteMs: 200, lungePx: 85, recoverMs: 5000, counterable: true },
+  // ゾンビ2連(§16-3・§16-8「ゾンビ 赤の技後CD」)。windup/bite/lungeは1発目/2発目で違うので
+  // ここには置かない(BITE_BY_PHASEが重なる)。counterable/recoverMsは2発とも共通=ここで決まる。
+  'zombie-double': { recoverMs: 4000, counterable: true },
+};
+
+/**
+ * ★ゾンビ2連の1発目/2発目の尺(PACING_PUZZLE.md §16-8・検収監査A-3)。`aiPhase`(z-bite1/z-bite2)で
+ * `BITE_BY_MOVE['zombie-double']` の上にさらに重ねる(`biteSpecFor` の第3引数)。
+ * 台帳の値をそのまま置く(発明しない): 1発目=220/160/40・2発目=300/200/60。
+ */
+export const BITE_BY_PHASE: Partial<Record<NonNullable<Enemy['aiPhase']>, Partial<BiteSpec>>> = {
+  'z-bite1': { windupMs: 220, biteMs: 160, lungePx: 40 },
+  'z-bite2': { windupMs: 300, biteMs: 200, lungePx: 60 },
 };
 
 /**
@@ -100,13 +114,22 @@ export const BITE_BOSS_RECOVER_MS = 1500;
  * `move` を渡すと `BITE_BY_MOVE` が最後に重なる=技単位で spec を分けられる
  * (`counterable` を技だけ true にしても §12 の噛みつきはカウンター可にならない=受け入れ条件14)。
  * `move` を渡さない(または表に無い)場合は従来どおり型基準(§12の噛みつき)。
+ *
+ * ★第3引数 `aiPhase`(検収監査A-3・§16-7b「尺の引き方は2段」): ゾンビ2連だけは1技2発で尺が違う
+ * ので、`move`(='zombie-double')の上にさらに `aiPhase`(='z-bite1'/'z-bite2')を重ねる。
+ * bat-grab/skel-bite は技だけで引けるので `aiPhase` は無視される(`BITE_BY_PHASE` に無い)。
  */
-export const biteSpecFor = (type: EnemyType, move?: NonNullable<Enemy['chaffMove']>): BiteSpec => ({
+export const biteSpecFor = (
+  type: EnemyType,
+  move?: NonNullable<Enemy['chaffMove']>,
+  aiPhase?: Enemy['aiPhase'],
+): BiteSpec => ({
   ...BITE_DEFAULT,
   // ★ボス・賞金首は「技の合間のつなぎ」なので硬直(CD)を長めに(社長裁定2026-08-25)。
   ...(isTrueBossType(type) ? { recoverMs: BITE_BOSS_RECOVER_MS } : {}),
   ...(BITE_BY_TYPE[type] ?? {}),
   ...(move ? (BITE_BY_MOVE[move] ?? {}) : {}),
+  ...(aiPhase ? (BITE_BY_PHASE[aiPhase] ?? {}) : {}),
 });
 
 export type BitePhase = 'none' | 'windup' | 'bite';
@@ -293,7 +316,8 @@ const BITE_OK_PHASES = new Set<string>([
   'zpause', 'zrush',
   'b-approach', 'b-orbit', 'b-windup', 'b-lunge', 'b-grab', 'b-release',
   's-crouch', 's-arc', 's-bite', 's-recover', 's-retreat',
-  'z-wait', 'z-red-pause', 'z-bite1', 'z-stagger', 'z-bite2',
+  // ★z-lunge-in(検収監査A-2): §16-3で足したゾンビ赤の踏み込み相。§16-7bの反映漏れだった。
+  'z-wait', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2',
 ]);
 
 /**
@@ -305,7 +329,9 @@ const BITE_OK_PHASES = new Set<string>([
 const CHAFF_MOVE_PHASES = new Set<string>([
   'b-approach', 'b-orbit', 'b-windup', 'b-lunge', 'b-grab', 'b-release',
   's-crouch', 's-arc', 's-bite', 's-recover', 's-retreat',
-  'z-wait', 'z-red-pause', 'z-bite1', 'z-stagger', 'z-bite2',
+  // ★z-lunge-in(検収監査A-2): 技の頭(chaffMoveが立つ相・§16-7b)なので、新しく§12の紫噛みを
+  // 構え始めさせない対象にも入る。
+  'z-wait', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2',
 ]);
 
 /** ★技ではない bossState(=追いかけているだけ)。 */

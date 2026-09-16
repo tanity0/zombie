@@ -9,6 +9,7 @@
 //
 // レンダラ非依存の純関数(src/utils)=ヘッドレスでユニットテスト可能。
 import type { Enemy, EnemyType } from '../types/game';
+import { biteSpecFor } from './enemyBite';
 
 /** §16の技(雑魚の「詰めさせない技」)を持つ型。lab-zombie/lich等は別バッチで足す(§16-0)。 */
 export const CHAFF_MOVE_TYPES: ReadonlySet<EnemyType> = new Set<EnemyType>(['bat', 'skeleton', 'zombie']);
@@ -30,7 +31,9 @@ export const CHAFF_MOVE_SLOT_CAP = 2;
 const CHAFF_HOLDING_PHASES: ReadonlySet<string> = new Set([
   'b-orbit', 'b-windup', 'b-lunge', 'b-grab',
   's-crouch', 's-arc', 's-bite',
-  'z-red-pause', 'z-bite1', 'z-stagger', 'z-bite2',
+  // ★z-lunge-in(検収監査A-2): ゾンビは§16-7b「chaffMoveの立つ位置」がz-lunge-inなので、
+  // 占有もここから始まる(bat/skeletonの構え開始相と同じ扱い)。
+  'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2',
 ]);
 
 /** この個体はいま枠(同時に構えられる2体)を占有しているか。 */
@@ -100,4 +103,27 @@ export const deferFrozenClocksBy = (enemy: Enemy, dtMs: number): Enemy => {
   if (enemy.aiPhaseUntil !== undefined) patch.aiPhaseUntil = enemy.aiPhaseUntil + dtMs;
   if (enemy.chaffMoveCdUntil !== undefined) patch.chaffMoveCdUntil = enemy.chaffMoveCdUntil + dtMs;
   return Object.keys(patch).length > 0 ? { ...enemy, ...patch } : enemy;
+};
+
+/**
+ * ★技の終わり(PACING_PUZZLE.md §16-7 穴2の訂正・検収監査A-4)。
+ *
+ * 「正常解決(`biteClears`)では `chaffMove` を消さない・技後CDも書かない」に規則が訂正された
+ * ことで、**技の終わり(後退の終わり=s-recover/s-retreatの終わり・ゾンビ2連なら2発目の解決)で
+ * `chaffMove` を消し技後CDを書く**役目は**状態機械(§16-8b 5〜7・bat/skeleton/ゾンビの実装。
+ * 別バッチ)**に移った。ここはその**公開された1本の関数**——状態機械はここを呼ぶだけでよい
+ * (計算式を個別に持たない=biteClears/dashParriedEnemyPatchと同じ「いま出している技」の
+ * spec(`biteSpecFor`)から recoverMs を引く作法に揃える)。
+ *
+ * ★このバッチでは誰もこれを呼ばない(bat/skeleton/ゾンビの状態機械がまだ無いため)。
+ * §16-8b 5〜7 を実装する時に、技の終わりの1箇所からこれを呼ぶこと
+ * (例: skeletonのs-recover→s-retreatの遷移点ではなく、**s-retreatが終わった瞬間**。
+ * §16-7b「後退の相も技の続きとして扱う。chaffMoveは後退が終わるまで立てたまま」)。
+ */
+export const endChaffMove = (
+  enemy: Pick<Enemy, 'type' | 'chaffMove' | 'aiPhase'>,
+  gameTime: number,
+): Pick<Enemy, 'chaffMove' | 'chaffMoveCdUntil'> => {
+  const techSpec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
+  return { chaffMove: undefined, chaffMoveCdUntil: gameTime + techSpec.recoverMs };
 };

@@ -22,6 +22,7 @@ import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 import type { Enemy } from '../types/game';
 import { REAPER2_CONFIG } from '../config/reaper';
+import { enemyContactBox } from './collisionUtils';
 
 const START_GT = 10_000_000;
 const ORIGIN = 50_000;
@@ -552,7 +553,7 @@ describe('★§16の技はノックバックで中断されない(§12は従来�
     expect(after?.chaffMoveCdUntil).toBeUndefined(); // §12にはchaffMoveCdUntilを書かない
   });
 
-  it('§16の技が解決すると chaffMove が消え、技後CDが書かれる(bat-grab=6000ms)', () => {
+  it('★§16の技が正常解決(当たった/外れた)しても chaffMove は消えない・技後CDも書かない(検収監査A-4の訂正)', () => {
     const started = START_GT - 1000; // bat-grabの総尺(720ms)をとっくに過ぎている=解決フレーム
     const e = place(spawnEnemyAt('bat', 0, 0, START_GT), {
       chaffMove: 'bat-grab', aiPhase: 'b-grab', biteAt: started,
@@ -564,8 +565,11 @@ describe('★§16の技はノックバックで中断されない(§12は従来�
     applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
     const after = useGameStore.getState().enemies.find(x => x.id === e.id);
     expect(after?.biteAt).toBe(0);
-    expect(after?.chaffMove).toBeUndefined();
-    expect(after?.chaffMoveCdUntil).toBe(START_GT + 6000);
+    // ★正常解決(biteClears)は「中断」ではない=技はまだ続いている(硬直・後退)ので消さない。
+    // 消し・技後CDを書くのは状態機械の仕事(chaffMoves.tsのendChaffMove・§16-8b 5〜7=別バッチ)。
+    expect(after?.chaffMove).toBe('bat-grab');
+    expect(after?.chaffMoveCdUntil).toBeUndefined();
+    // biteReadyAt(§12連鎖の封じ)は従来どおり技のrecoverMsで進む。
     expect(after?.biteReadyAt).toBe(START_GT + 6000);
   });
 });
@@ -585,5 +589,68 @@ describe('★dashParriedEnemyPatch: カウンター経路も技引きの spec �
     const patched = dashParriedEnemyPatch(e, 100, 100, Date.now(), 2000);
     expect(patched.chaffMoveCdUntil).toBeUndefined();
     expect(patched.biteReadyAt).toBe(2000 + 600); // BITE_DEFAULT/zombieのrecoverMs=600(§16-8で復帰)
+  });
+});
+
+// ★PACING_PUZZLE.md §16-9 受け入れ条件43(検収監査A-1・2026-09-16)。
+// 「単体テストではなく applyContactDamage を通した統合テストで確認する」という明示指示。
+// 前のバッチは dashParriedEnemyPatch を**単体**で呼ぶテスト(上のdescribe)だけを持っていて、
+// biteClears の setState が先に chaffMove を消してから getState() で読み直す実際の経路を
+// 一度も通していなかった=読む順番のバグがすり抜けた。ここは**その経路そのもの**を通す。
+describe('★受け入れ条件43: 赤い技が applyContactDamage を通してカウンターで返せる(検収監査A-1)', () => {
+  /** 敵の当たり判定帯の中心にプレイヤーを重ね、カウンター窓を開く(受付幅の内側)。 */
+  const placePlayerOnEnemyAndOpenCounterWindow = (e: Enemy) => {
+    useGameStore.setState(s => {
+      const box = enemyContactBox(e);
+      const bcx = box.x + box.width / 2, bcy = box.y + box.height / 2;
+      return {
+        player: {
+          ...s.player,
+          x: bcx - s.player.width / 2,
+          y: bcy - s.player.height / 2,
+          health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
+          // カウンター受付幅は heSpec.biteMs(bat-grab=220ms)。50ms前に開いたことにする=受付内。
+          counterWindowStart: Date.now() - 50,
+          counterWindowEnd: Date.now() + 5000,
+        },
+      };
+    });
+  };
+
+  it('chaffMove="bat-grab"(counterable:true)の噛みが解決するフレームにカウンター窓が開いていれば、dashParriedへ入り技後CDが書かれる', () => {
+    const e = {
+      ...spawnEnemyAt('bat', 50_000, 50_000, START_GT),
+      chaffMove: 'bat-grab' as const, aiPhase: 'b-grab' as const,
+      biteAt: START_GT - 1000, // bat-grabの総尺(720ms)をとっくに過ぎている=解決フレーム
+      health: 9999, maxHealth: 9999,
+    };
+    useGameStore.setState(() => ({ enemies: [e], gameTime: START_GT }));
+    placePlayerOnEnemyAndOpenCounterWindow(e);
+    applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
+    const after = useGameStore.getState().enemies.find(x => x.id === e.id)!;
+    const player = useGameStore.getState().player;
+    // カウンター成立の証拠: ①確定クリ反撃で敵の体力が減る ②技が中断され chaffMove が消え、
+    // 技後CD(bat-grabのrecoverMs=6000ms)が書かれる。
+    expect(after.health).toBeLessThan(9999);
+    expect(after.chaffMove).toBeUndefined();
+    expect(after.chaffMoveCdUntil).toBe(START_GT + 6000);
+    // プレイヤーは噛みで被弾していない(弾かれた=damagePlayerへ進まない)。
+    expect(player.health).toBe(9999);
+  });
+
+  it('対照: counterable:false(§12の噛み=chaffMove未定義)は同じ条件でもカウンターが成立しない', () => {
+    const e = {
+      ...spawnEnemyAt('zombie', 50_000, 50_000, START_GT),
+      biteAt: START_GT - 1000, // §12既定(windup300+bite200=500ms)をとっくに過ぎている=解決フレーム
+      health: 9999, maxHealth: 9999,
+    };
+    useGameStore.setState(() => ({ enemies: [e], gameTime: START_GT }));
+    placePlayerOnEnemyAndOpenCounterWindow(e);
+    applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
+    const after = useGameStore.getState().enemies.find(x => x.id === e.id)!;
+    const player = useGameStore.getState().player;
+    // カウンターは成立していない=敵は確定クリを受けていない(体力そのまま)。噛みは通常どおり入る。
+    expect(after.health).toBe(9999);
+    expect(player.health).toBeLessThan(9999);
   });
 });

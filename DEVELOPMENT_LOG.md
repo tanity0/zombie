@@ -1,5 +1,58 @@
 # Development Log
 
+## v0.25.4401 — §16 検収監査(A)4件の実装バッチ1b(A-1〜A-4を直す)【2026-09-16 17:54 JST】
+
+**Sonnetサブエージェント(実装チャット)による発注どおりの実装**。v0.25.4400の検収監査(A)4件だけを直す
+(bat/skeleton/ゾンビの状態機械=実装順5〜7と描画=8には手を付けていない)。
+
+**A-1(最重要)**: `applyContactDamage`(`combatTick.ts`)の `biteHits` に、setStateより前の
+`chaffMove`/`aiPhase` を捕まえて積むようにした。カウンター成立判定(`heSpec = biteSpecFor(...)`)は
+`getState()` で読み直した `he.chaffMove` ではなく、この持ち回った `h.chaffMove`/`h.aiPhase` を使う。
+`dashParriedEnemyPatch` にも呼び手が持ち回った技(`chaffMoveOverride`引数・省略時は従来どおり
+`e.chaffMove`)を渡せるようにし、`applyContactDamage` からの呼び出しでは `biteChaffMoveById`
+(噛みカウンターが成立した個体だけの持ち回りMap)を渡すよう変更。
+
+**A-4**: `biteClears`(正常解決=噛みが当たった/外れた)の分岐から `chaffMove: undefined` と
+`chaffMoveCdUntil` の書き込みを外した(`biteAt`/`biteReadyAt` は従来どおり)。技フィールドを消し
+技後CDを書くのは中断(カウンター成立/クリ気絶/死亡/画面外リサイクル)の時だけ、という設計書の
+訂正どおりに直した。技の終わり(後退の終わり)で `chaffMove` を消す役目は状態機械(実装順5〜7)の
+仕事になるので、そのための公開関数 `endChaffMove(enemy, gameTime)` を `src/utils/chaffMoves.ts` に
+新設(**今回は誰も呼ばない**=未配線)。
+
+**A-2**: `aiPhase` の union(`types/game.ts`)に `z-lunge-in` を追加。`BITE_OK_PHASES` /
+`CHAFF_MOVE_PHASES`(`enemyBite.ts`) / `CHAFF_HOLDING_PHASES`(`chaffMoves.ts`)の3集合すべてに、
+他のゾンビ赤の相(z-red-pause等)と同じ扱いで追加(§16-7b「chaffMoveの立つ位置=ゾンビはz-lunge-in」)。
+
+**A-3**: `biteSpecFor(type, move, aiPhase)` の3引数に拡張。ゾンビ2連(`zombie-double`)は
+`BITE_BY_MOVE` に `recoverMs:4000, counterable:true` だけを置き、1発目/2発目で違う
+windup/bite/lungeは新設の `BITE_BY_PHASE`(`aiPhase` = `z-bite1`/`z-bite2` をキーに重ねる)へ分離
+(1発目=220/160/40・2発目=300/200/60。値は §16-8 台帳のまま=発明なし)。
+
+**統合テスト(受け入れ条件43)**: `src/utils/combatTick.test.ts` に新描画
+「★受け入れ条件43: 赤い技が applyContactDamage を通してカウンターで返せる」を追加。
+`chaffMove:'bat-grab'` の噛みが解決するフレームにカウンター窓を開いた状態で `applyContactDamage` を
+通し、①敵が確定クリ反撃で被弾 ②`chaffMove` が消え `chaffMoveCdUntil` が `bat-grab` のrecoverMs
+(6000ms)で書かれる ③プレイヤーは被弾しない、を確認。対照として `chaffMove` 未定義(§12・
+counterable:false)では同条件でもカウンターが成立せず、プレイヤーが被弾することも同じ形で確認。
+既存の単体テスト「§16の技が解決すると chaffMove が消え…」は A-4 の訂正に合わせて書き直し
+(正常解決では chaffMove/chaffMoveCdUntil を消さない、へ反転)。
+
+**確認**: `npx vitest run src/utils/combatTick.test.ts src/utils/enemyBite.test.ts
+src/utils/chaffMoves.test.ts` — combatTick.test.ts は既知の未修正failure(神付きA-1・社長裁定待ち・
+このバッチの前から落ちている)を除き全通過。typecheck・lint(エラー0)確認済み。
+
+**自己点検(実装精度の規律5)**: §12(chaffMove未定義)は今回のどの変更経路でも1bitも変えていない
+(biteSpecFor/BITE_OK_PHASES/CHAFF_MOVE_PHASESへの追加は全てchaffMove定義済みまたは
+z-lunge-in等の未配線aiPhaseにのみ効く。biteClearsの書き込み削減はchaffMoveが元々undefinedの
+§12個体には無変化)。回帰テスト(既存の§12噛みつきテスト群含む)が全通過で裏付け。
+
+**状態変化**: §16(雑魚の「詰めさせない技」) → 検収監査(A)4件を実装で解消(bat-grab/skel-bite/
+zombie-doubleのカウンターが正しく通る土台が整った)。**次は実装順5〜7(bat/skeleton/ゾンビの状態
+機械)と8(pixiScene描画)**。設計チャットは検収監査で再検証すること。
+
+**次**: 実装順5〜7(ゾンビ→bat→skeleton)の状態機械バッチを発注。実装者は `endChaffMove` を
+「技の終わり(後退の終わり=s-recover/s-retreatの終わり・ゾンビ2連は2発目の解決)」の1箇所で呼ぶこと。
+
 ## v0.25.4400 — §16 土台の検収監査で(A)4件。設計書の穴を塞ぐ【2026-09-16 17:42 JST】
 
 **検収監査(Fable)の結論 = 不合格。** (A)4件・(B)5件・(C)5件。(A)を全て設計書へ反映した。

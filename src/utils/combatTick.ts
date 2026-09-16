@@ -965,6 +965,11 @@ const COUNTER_UNINTERRUPTIBLE_PHASES: readonly string[] = [
 
 export const dashParriedEnemyPatch = (
   e: Enemy, originX: number, originY: number, pnow: number, gameTimeNow: number,
+  // ★検収監査A-1: 呼び手がこのフレームの解決時点で持ち回った `chaffMove`(setStateより前に捕まえた
+  // 値)。渡された時はこちらを優先する——`e.chaffMove` は呼び手のsetState順序次第で既に別の
+  // 経路(biteClears等)に書き換えられている場合があるため、技後CD(bat 6000/skeleton 5000/
+  // ゾンビ2連 4000)を §12 の 600ms で上書きしないための持ち回し。省略時は従来どおり `e.chaffMove`。
+  chaffMoveOverride?: NonNullable<Enemy['chaffMove']>,
 ): Enemy => {
   const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
   // 中断しない技は、フェーズ関連のフィールドを**1つも触らない**で返す(下の一括クリアを免除)。
@@ -981,18 +986,20 @@ export const dashParriedEnemyPatch = (
   }
   const ux = ndx / d, uy = ndy / d;
   // ★PACING_PUZZLE.md §16-7 穴2(実装者視点監査A-2): カウンター経路も「いま出している技」の
-  // spec を使う(型基準の既定ではなく)。§16の技(chaffMove定義)は技後CD(bat 6000/skeleton 5000)を
-  // 書かないと、赤を返した0.6秒後に §12 の紫噛みが連鎖してしまう。
-  const techSpec = biteSpecFor(e.type, e.chaffMove);
+  // spec を使う(型基準の既定ではなく)。§16の技(chaffMove定義)は技後CD(bat 6000/skeleton 5000/
+  // ゾンビ2連 4000)を書かないと、赤を返した0.6秒後に §12 の紫噛みが連鎖してしまう。
+  // ★検収監査A-1: e.chaffMove ではなく effectiveMove(呼び手の持ち回り優先)で引く。
+  const effectiveMove = chaffMoveOverride ?? e.chaffMove;
+  const techSpec = biteSpecFor(e.type, effectiveMove, e.aiPhase);
   return {
     ...e,
     // ★噛みつきもここで中断する(v0.25.3922)。消さないと `biteAt` が生きたまま残り、
     // 踏み込みの絶対座標の上書きが**弾き飛ばしたノックバックを打ち消して起点へ引き戻す**。
     biteAt: 0,
     biteReadyAt: gameTimeNow + techSpec.recoverMs,
-    // ★§16-7b「chaffMoveはbiteAtと同時に立ち、biteAtを消す全経路で同時に消す」の1経路。
+    // ★§16-7b「中断(カウンター成立含む)は消す+技後CDを書く」(訂正版・§16-7穴2)。
     chaffMove: undefined,
-    ...(e.chaffMove !== undefined ? { chaffMoveCdUntil: gameTimeNow + techSpec.recoverMs } : {}),
+    ...(effectiveMove !== undefined ? { chaffMoveCdUntil: gameTimeNow + techSpec.recoverMs } : {}),
     // 突進/ジャンプ中断。※ COUNTER_UNINTERRUPTIBLE_PHASES の技だけは技を消さない(社長指示v0.25.3145)。
     ...(keepPhase ? {} : {
       aiPhase: undefined,
@@ -1296,6 +1303,10 @@ export const applyContactDamage = (
   // (無傷＋敵へのダメージ無し＋2倍ノックバックで突進中断)。ジャンプ着地と同じ「弾き」挙動。
   const counterActiveNow = isCounterActive(wpImmune, Date.now());
   const dashParried: string[] = [];
+  // ★検収監査A-1: 噛みカウンター(dashParried.push(h.id))で弾いた個体の「いま出している技」を
+  // 持ち回る。dashParriedEnemyPatch の呼び出し側(下の counterActiveNow ブロック)はこのフレームの
+  // 別の setState を経由するので、e.chaffMove を直接読まず、この持ち回った値を渡す(§16-7穴2)。
+  const biteChaffMoveById = new Map<string, NonNullable<Enemy['chaffMove']>>();
   // V1(3)(FX_GAP_LEDGER.md・社長指示「敵がプレイヤーに触れてダメージ与える時、強めに前屈みに歪む」):
   // 接触ダメージが実際に入った敵へ lastContactAttackAt(+向き)を打刻する(描画専用・判定不変)。
   // ここが接触ダメージの唯一の合流点(checkPlayerEnemyCollisionsの使用箇所はここだけ)なので、
@@ -1315,7 +1326,10 @@ export const applyContactDamage = (
   const bcx = collPlayer.x + collPlayer.width / 2;
   const bcy = collPlayer.y + collPlayer.height / 2;
   const biteStarts: { id: string; dirX: number; dirY: number }[] = [];
-  const biteHits: { id: string; dmg: number; x: number; y: number }[] = [];
+  // ★検収監査A-1: `chaffMove`(と `aiPhase`)は下の setState(biteClears)より前にここで捕まえて
+  // 持ち回る。setState後に getState() で読み直すと、biteClears が既に chaffMove を消した後の
+  // 値を読んでしまい `counterable:true` が一度も読まれない(=赤い技が全部返せなくなる)。
+  const biteHits: { id: string; dmg: number; x: number; y: number; chaffMove: Enemy['chaffMove']; aiPhase: Enemy['aiPhase'] }[] = [];
   const biteClears: string[] = [];
   const kbNow = Date.now(); // ノックバック判定用(knockbackUntil は Date.now 系)
   const biteDrIds: string[] = []; // ノックバックで中断した個体(中断の逓減を開始する)
@@ -1357,7 +1371,8 @@ export const applyContactDamage = (
         // 接触ダメージと同じ倍率の掛け方(紅き夜×2 / 叫喚の強化窓)。
         const rn = redNightActive ? 2 : 1;
         const sc = (screamerBuffUntil > gameTime && e.type !== 'screamer') ? SCREAMER_BUFF_MULT : 1;
-        biteHits.push({ id: e.id, dmg: e.damage * rn * sc, x: px, y: py });
+        // ★検収監査A-1: chaffMove/aiPhaseをこのフレームの値のまま持ち回る(setStateより前)。
+        biteHits.push({ id: e.id, dmg: e.damage * rn * sc, x: px, y: py, chaffMove: e.chaffMove, aiPhase: e.aiPhase });
       }
       biteClears.push(e.id);                                      // 当たっても外しても台本は終わる
     } else if (!knocked && canStartBite(e, gameTime)) {
@@ -1384,14 +1399,15 @@ export const applyContactDamage = (
           ...e, biteAt: gameTime, biteDirX: st0.dirX, biteDirY: st0.dirY,
         };
         if (biteClears.includes(e.id)) {
-          // ★PACING_PUZZLE.md §16-7 穴2(実装者視点監査A-1): 「いま出している技」の spec で
-          // recoverMs を引き、`chaffMove` を biteAt と同時に消す(§16-7b「biteAtを消す全経路で
-          // 同時に消す」の1経路)。技中だった個体には技後CD(chaffMoveCdUntil)も書く。
-          const techSpec = biteSpecFor(e.type, e.chaffMove);
+          // ★PACING_PUZZLE.md §16-7 穴2(訂正版・検収監査A-4): ここは**正常解決**(当たった/外れた)
+          // の経路。`chaffMove` は**消さない・技後CDも書かない**(技はまだ続いている=硬直・後退・
+          // ゾンビ2連の2発目)。消すのは**中断**(カウンター成立/クリ気絶/死亡/画面外リサイクル)の
+          // 時だけ。技の終わり(後退の終わり)で `chaffMove` を消し技後CDを書くのは**状態機械の仕事**
+          // (`chaffMoves.ts` の `endChaffMove`・§16-8b 5〜7=別バッチ)。
+          // biteReadyAt(§12連鎖の封じ)は従来どおり「いま出している技」の spec で引く。
+          const techSpec = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
           return {
             ...e, biteAt: 0, biteReadyAt: gameTime + techSpec.recoverMs,
-            chaffMove: undefined,
-            ...(e.chaffMove !== undefined ? { chaffMoveCdUntil: gameTime + techSpec.recoverMs } : {}),
             ...(biteDrIds.includes(e.id) ? { biteNoCancelUntil: gameTime + BITE_CANCEL_DR_MS } : {}),
           };
         }
@@ -1411,12 +1427,21 @@ export const applyContactDamage = (
     // **噛みの区間(最後の200ms)に振った時だけ**——溜めの間の"置き"では通らない。
     // 時計をまたがないよう「窓が開いてから何ms経ったか」で見る
     // (biteAt は gameTime 系 / カウンター窓は Date.now 系なので直接引き算しない)。
-    // ★PACING_PUZZLE.md §16-7 穴2: 「いま出している技」の spec で counterable を引く。
-    // §16の技(bat-grab/skel-bite)は counterable:true=赤カウンター可、§12は従来どおり false。
-    const heSpec = biteSpecFor(he.type, he.chaffMove);
+    // ★PACING_PUZZLE.md §16-7 穴2(検収監査A-1): 「いま出している技」の spec で counterable を引く。
+    // ★`he.chaffMove` ではなく `h.chaffMove`(setStateより前に捕まえた持ち回りの値)を使う——
+    // `he` は上の biteClears の setState 後に getState() で読み直した個体なので、正常解決した
+    // 個体は既に `chaffMove` が読める(A-4の訂正で消さなくなったので今は実は読めるが、中断経路
+    // (dashParriedEnemyPatch等)で既に別の個体が消している可能性もあり、判定の正本は常に
+    // 「噛みが解決した瞬間の値」であるべき=持ち回った `h.chaffMove` を使う)。
+    // §16の技(bat-grab/skel-bite/zombie-double)は counterable:true=赤カウンター可、§12は従来どおり false。
+    const heSpec = biteSpecFor(he.type, h.chaffMove, h.aiPhase);
     const windowOpenedAgo = Date.now() - collPlayer.counterWindowStart;
     if (heSpec.counterable && counterActiveNow && windowOpenedAgo <= heSpec.biteMs) {
-      dashParried.push(h.id); continue;
+      dashParried.push(h.id);
+      // ★検収監査A-1: counterable:true になるのは h.chaffMove が定義されている時だけなので、
+      // ここでは必ず値が入っている(§12の噛みはcounterable:falseでこの分岐に来ない)。
+      if (h.chaffMove !== undefined) biteChaffMoveById.set(h.id, h.chaffMove);
+      continue;
     }
     // 無敵中(INVULN_MS=1000)は damagePlayer が弾く=群れで同時に噛まれても食らう量は増えない。
     // 演出も「実際に入った時だけ」出す(弾かれた時に赤フラッシュが出ると嘘になる)。
@@ -1700,7 +1725,7 @@ export const applyContactDamage = (
         ...counterMasterAwakenBuffPatch(st.player, st.gameTime),
       },
       // v0.25.2480: 中断+ノックバック変換を dashParriedEnemyPatch へ切り出し(守護霊経路と共有・挙動同一)。
-      enemies: st.enemies.map(e => dashParried.includes(e.id) ? dashParriedEnemyPatch(e, ppx, ppy, pnow, st.gameTime) : e),
+      enemies: st.enemies.map(e => dashParried.includes(e.id) ? dashParriedEnemyPatch(e, ppx, ppy, pnow, st.gameTime, biteChaffMoveById.get(e.id)) : e),
     }));
     // クリティカル反撃(ヘッドショット): aiPhase を解除済みなのでダメージが通る(ジャンプ中無敵を回避)。
     // 威力は装備中の銃ダメージ基準 × クリ倍率(通常×1.5 / ボス×5)× スキル/装備補正。
