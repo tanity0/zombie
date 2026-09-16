@@ -2385,6 +2385,18 @@ const RIM_PX = tsNum('rimpx', 2);                      // 焼く時の縁の太�
 const RIM_GAIN = tsNum('rimgain', 1.15);               // 縁の濃さ
 const RIM_MIN_SCREEN_PX = tsNum('rimminpx', 1.15);     // ★画面上の最低太さ。引き(zoom 0.40)で縁が消えるのを防ぐ(監査#7)
 const RIM_TAU_MS = tsNum('rimtau', 110);               // 濃さの追従(慣性MUST・松明の脈で明滅させない)
+/**
+ * ★焼いた縁の総量の天井(MB・v0.25.4378)。`?rimbudget=` で変えられる。
+ * **超えた時に捨てるのは「しばらく使っていないもの」だけ**(下の RIM_BAKE_KEEP_MS)。
+ * いま画面に出ている物が天井を超える場合は**超えたまま**にする——ここで捨てると毎フレーム焼き直す
+ * (=スラッシング)ことになり、落ちる代わりにカクつくだけになるため。天井は
+ * 「歩き去った後の物が積み上がり続ける」のを止めるための物で、今描いている物を削る物ではない。
+ */
+const RIM_BAKE_BUDGET_MB = tsNum('rimbudget', 64);
+/** この時間だけ使われていない焼きは捨ててよい(画面に出ている物を捨てないための安全域)。 */
+const RIM_BAKE_KEEP_MS = 2000;
+/** 焼いた縁1枚ぶんの記録(天井の管理に使う)。 */
+interface RimBake { src: Texture; key: number; tex: RenderTexture; bytes: number; usedAt: number }
 const RIM_DIR_TAU_MS = tsNum('rimdirtau', 90);         // 向きの追従(支配光が入れ替わっても飛ばない)
 const RIM_DEFAULT_COLOR = tsNum('rimwarm', 0xffc07a);  // 光が色を持たない時の既定(琥珀)
 const RIM_GLOW_COLOR = tsNum('rimglowcol', 0xffe2b0);  // 強glow(爆発など)の色
@@ -3620,7 +3632,18 @@ export class PixiScene {
   // 暗い敵でも全面が白く光る(加算は元の色しか足せないので、白ベイクしないと暗部が光らない)。実行時はフィルタ不要=安い。
   private whiteTexCache = new Map<Texture, Texture>();
   // 向きの縁(§6)。焼いた縁テクスチャ: 元テクスチャ → 8方向ぶん。
-  private rimTexCache = new Map<Texture, Map<number, Texture | null>>();
+  /**
+   * ★焼いた縁のキャッシュ(v0.25.4378 で**天井つき**に変更)。
+   *
+   * 社長の実機(v0.25.4377)で **`bake616MB(縁552/影56/白7/他0)912枚`** が出た。
+   * `textureMemoryMB()`(=画面の `tex244MB`)は読み込んだ素材しか数えないので、この552MBは
+   * **ずっと見えていなかった**。実消費は 244+616≒860MB=iOSがタブを落とす帯(200〜400MB)の倍以上。
+   * 原因は**退避も上限も無いまま、テクスチャ×8方向×太さの段ぶん焼き続けていた**こと。
+   */
+  private rimTexCache = new Map<Texture, Map<number, RimBake | null>>();
+  /** 焼いた縁の全エントリ(天井を超えた時に、古い順へ捨てるために持つ)。 */
+  private rimBakes: RimBake[] = [];
+  private rimBakeBytes = 0;
   // アクターごとの縁スプライト2枚(隣り合う向きを混ぜて45°のカクつきを消す)+追従中の値。
   private rimViews = new Map<string, { a: Sprite; b: Sprite; dx: number; dy: number; k: number }>();
   private rimLights: RimLight[] = [];   // このフレームの縁用の光(色つき)
@@ -16657,8 +16680,12 @@ export class PixiScene {
     const q = Math.max(1, Math.round(srcPx));
     const key = bucket * 4096 + Math.min(4095, q);
     let m = this.rimTexCache.get(src);
-    if (!m) { m = new Map<number, Texture | null>(); this.rimTexCache.set(src, m); }
-    if (m.has(key)) return m.get(key) ?? null;
+    if (!m) { m = new Map<number, RimBake | null>(); this.rimTexCache.set(src, m); }
+    if (m.has(key)) {
+      const hit = m.get(key) ?? null;
+      if (hit) { hit.usedAt = Date.now(); return hit.tex; } // 使った時刻を更新=捨てる順番の材料
+      return null;
+    }
     try {
       const wrap = new Container();
       const white = new ColorMatrixFilter();
@@ -16684,7 +16711,14 @@ export class PixiScene {
       const rt = bakeRenderTexture('rim', { width: Math.max(1, src.width), height: Math.max(1, src.height) });
       this.renderer.render({ container: wrap, target: rt, clear: true });
       wrap.destroy({ children: true });
-      m.set(key, rt);
+      const entry: RimBake = {
+        src, key, tex: rt, usedAt: Date.now(),
+        bytes: (rt.source.pixelWidth || 0) * (rt.source.pixelHeight || 0) * 4,
+      };
+      m.set(key, entry);
+      this.rimBakes.push(entry);
+      this.rimBakeBytes += entry.bytes;
+      this.enforceRimBudget();
       return rt;
     } catch (err) {
       // 焼けない環境では**縁を出さないだけ**にする(立ち物が消えるより、向きが無い方がまし)。
@@ -16692,6 +16726,31 @@ export class PixiScene {
       reportSuppressedError('rim-bake', err);
       return null;
     }
+  }
+
+  /**
+   * ★焼いた縁の天井を守る(v0.25.4378)。超えている間、**RIM_BAKE_KEEP_MS 以上使われていない**
+   * 焼きを古い順に捨てる。捨てられる物が無ければ**何もしない**(いま画面に出ている物は削らない)。
+   * 捨てたテクスチャを貼っているスプライトは、`drawRim` が**出す直前に必ず貼り直す**ので安全
+   * (貼り直せない時は `visible=false` になる=消えたテクスチャが描かれる経路が無い)。
+   */
+  private enforceRimBudget(): void {
+    const limit = Math.max(1, RIM_BAKE_BUDGET_MB) * 1024 * 1024;
+    if (this.rimBakeBytes <= limit) return;
+    const now = Date.now();
+    // 古い順に走査(rimBakes は焼いた順。使い直された物は usedAt が新しいので下の条件で守られる)。
+    let write = 0;
+    for (let i = 0; i < this.rimBakes.length; i++) {
+      const e = this.rimBakes[i];
+      if (this.rimBakeBytes > limit && now - e.usedAt >= RIM_BAKE_KEEP_MS) {
+        this.rimTexCache.get(e.src)?.delete(e.key);
+        releaseBakedTexture('rim', e.tex);
+        this.rimBakeBytes -= e.bytes;
+        continue; // 配列から落とす
+      }
+      this.rimBakes[write++] = e;
+    }
+    this.rimBakes.length = write;
   }
 
   /**
