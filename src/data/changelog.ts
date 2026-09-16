@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4408',
+    items: ['ゲーム内容の変更はありません'],
+  },
+  {
     version: '0.25.4407',
     items: ['キルの斬撃に黒い四角が重なって見えていたのを直した。光だけが残る'],
   },
