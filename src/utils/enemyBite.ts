@@ -186,6 +186,15 @@ export const biteLungeFrac = (
   }
   // 噛み: 残り半分を ease-out で一気に伸ばす(伸び切る)。
   const u = (t - spec.windupMs) / spec.biteMs;
+  // ★②2発目は行き過ぎて戻る(PACING_PUZZLE.md §16-3z「`lungePx`の曲線にオーバーシュート
+  // (1.0を超えてから戻る)を入れる。★2発目だけ」)。他のaiPhase(z-bite1・§12の噛みつき全般)は
+  // 従来どおりのease-out(1.0を超えない)のまま=「§12の噛みつきが1つも変わっていない」を保つ。
+  // easeOutBack(標準的な行き過ぎ→戻る曲線): u=0で0・u=1で厳密に1・途中で1を超える。
+  if (enemy.aiPhase === 'z-bite2') {
+    const c1 = 1.70158, c3 = c1 + 1;
+    const back = 1 + c3 * (u - 1) ** 3 + c1 * (u - 1) ** 2;
+    return 0.5 + back * 0.5;
+  }
   return 0.5 + (1 - (1 - u) * (1 - u)) * 0.5;
 };
 
@@ -328,7 +337,8 @@ const BITE_OK_PHASES = new Set<string>([
   'b-approach', 'b-orbit', 'b-windup', 'b-lunge', 'b-grab', 'b-release',
   's-crouch', 's-arc', 's-bite', 's-recover', 's-retreat',
   // ★z-lunge-in(検収監査A-2): §16-3で足したゾンビ赤の踏み込み相。§16-7bの反映漏れだった。
-  'z-wait', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2',
+  // ★z-recover(§16-3z): 2連の後の硬直600ms。s-recoverと同じ「技の続き」扱い。
+  'z-wait', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2', 'z-recover',
 ]);
 
 /**
@@ -342,7 +352,9 @@ const CHAFF_MOVE_PHASES = new Set<string>([
   's-crouch', 's-arc', 's-bite', 's-recover', 's-retreat',
   // ★z-lunge-in(検収監査A-2): 技の頭(chaffMoveが立つ相・§16-7b)なので、新しく§12の紫噛みを
   // 構え始めさせない対象にも入る。
-  'z-wait', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2',
+  // ★z-recover(§16-3z): 硬直中も「構えて」いる続き扱い=新しく§12の噛みを始めさせない
+  // (硬直中は移動も次の技も入らない、の一部)。
+  'z-wait', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2', 'z-recover',
 ]);
 
 /** ★技ではない bossState(=追いかけているだけ)。 */

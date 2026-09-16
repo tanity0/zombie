@@ -186,9 +186,23 @@ export const ZOMBIE_STAGGER_MS = 160;
  */
 export const ZOMBIE_BITE2_ANGLE_OFFSET_RAD = 0.22; // ≒12.6°
 
+/**
+ * ★①均質を壊す(§16-3z「内縁の引き金に幅」)。実測(2026-09-16・設計者): ゾンビの実速度は
+ * 約63px/s・帯100pxの通過は約1.6秒なので、待ちの尺(0.3〜2.8秒)の約半分は「100px到達」が
+ * 先に勝ち、**同じ見えない線の上で止まる**。⇒ 「待ちの尺を終わらせる距離」自体をid由来で散らす
+ * (判定・射程=`ZOMBIE_BAND_INNER_PX`(帯の内縁・紫ループの境界)は変えない。散らすのは
+ * **z-waitの待ちが距離で切れる引き金だけ**)。
+ */
+export const ZOMBIE_RED_TRIGGER_MIN_PX = 88;
+export const ZOMBIE_RED_TRIGGER_MAX_PX = 118;
+
 /** 帯(200〜100px)に入った時に引く「待ちの尺」(id由来・決定的=乱数を引かない)。 */
 export const zombieRedWaitMs = (id: string): number =>
   ZOMBIE_RED_WAIT_MIN_MS + idUnitHash(id, 0x2b1a) * (ZOMBIE_RED_WAIT_MAX_MS - ZOMBIE_RED_WAIT_MIN_MS);
+
+/** z-waitの待ちを距離で終わらせる引き金(88〜118px・id由来・決定的=乱数を引かない)。 */
+export const zombieRedTriggerPx = (id: string): number =>
+  ZOMBIE_RED_TRIGGER_MIN_PX + idUnitHash(id, 0x71c3) * (ZOMBIE_RED_TRIGGER_MAX_PX - ZOMBIE_RED_TRIGGER_MIN_PX);
 
 /**
  * ★赤が先(§16-3)。帯の内縁(100px)に達した時、**枠が取れていれば赤**。この関数は
@@ -200,7 +214,7 @@ export const zombieRedWaitMs = (id: string): number =>
  * CD中の個体を候補から外すのは呼び手のwantsSlotの仕事」)。
  */
 export const zombieWantsChaffRedSlot = (
-  enemy: Pick<Enemy, 'type' | 'aiPhase' | 'aiPhaseUntil' | 'chaffMoveCdUntil' | 'x' | 'y' | 'width' | 'height'>,
+  enemy: Pick<Enemy, 'id' | 'type' | 'aiPhase' | 'aiPhaseUntil' | 'chaffMoveCdUntil' | 'x' | 'y' | 'width' | 'height'>,
   gameTime: number, pcx: number, pcy: number,
 ): boolean => {
   if (enemy.type !== 'zombie' || enemy.aiPhase !== 'z-wait') return false;
@@ -208,5 +222,78 @@ export const zombieWantsChaffRedSlot = (
   const timeUp = enemy.aiPhaseUntil !== undefined && gameTime >= enemy.aiPhaseUntil;
   if (timeUp) return true;
   const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
-  return Math.hypot(pcx - ecx, pcy - ecy) <= ZOMBIE_BAND_INNER_PX;
+  // ★①均質を壊す(§16-3z): 帯の内縁そのもの(判定・紫ループの境界=ZOMBIE_BAND_INNER_PX)は
+  // 変えず、「待ちを距離で終わらせる引き金」だけid由来で88〜118pxへ散らす。
+  return Math.hypot(pcx - ecx, pcy - ecy) <= zombieRedTriggerPx(enemy.id);
+};
+
+// =================================================================================================
+// §16-3z「★『歯応え』の仕上げ」(社長指示2026-09-16「エルデンリングみたいに動きに歯応えがある形に」)。
+// ★③技の後(一番効く): 2連の後の硬直。 / ②重さ: 踏み込みの加速・オーバーシュート。 / ①読める: 赤の脈。
+// =================================================================================================
+
+/**
+ * ★③2連の後の硬直(§16-3z「技の後は必ずプレイヤーの番」)。その場で伸び切ったまま
+ * **下がらない**(ゾンビ=詰め切って居座る敵。bat/skeletonの「出入りする敵」とは型が違う)。
+ * 硬直中は移動も次の技も入らない(gameStore.ts の状態機械が z-recover 中は vx:0,vy:0 を返す・
+ * `BITE_OK_PHASES`/`CHAFF_MOVE_PHASES` にも z-recover を足して新しい§12噛みも始めさせない)。
+ * ★s-recoverと同じ「技の続き」(chaffMoveは立てたまま=枠だけ解放・§16-7b)。
+ * 技後CD(4000ms)は**この硬直が明けてから**数える(endChaffMoveをz-recoverの終わりで呼ぶ)。
+ */
+export const ZOMBIE_RECOVER_MS = 600;
+
+/**
+ * ★②踏み込みの出足(§16-3z「立ち上がり360msの加速。0→満速の1フレーム段差を消す」)。
+ * z-lunge-inの速度に掛ける0..1の倍率。`chaffMoveAt`(z-lunge-inへ入った瞬間に焼かれる=§16-7b)
+ * からの経過msを360msで滑らかに立ち上げる(smoothstep=このプロジェクトの慣性の定番曲線。
+ * bandSweep.ts/circleSweep.ts/bountyTriple.ts 等と同じ `t*t*(3-2*t)`)。
+ */
+export const ZOMBIE_LUNGE_RAMP_MS = 360;
+
+export const zombieLungeRampMul = (chaffMoveAt: number | undefined, gameTime: number): number => {
+  if (chaffMoveAt === undefined) return 1;
+  const u = Math.max(0, Math.min(1, (gameTime - chaffMoveAt) / ZOMBIE_LUNGE_RAMP_MS));
+  return u * u * (3 - 2 * u);
+};
+
+/**
+ * ★①赤の脈(PACING_PUZZLE.md §16-5「拍は状態で駆動する」・「本番のテンポがそのまま脈になる——
+ * 1発目で立ち・よろけで落ち・2発目で立つ」)。返り値は0(色なし)〜1(最大)の加算overlayの強さ。
+ *
+ * ★色が出るのは「技が動き出してから決着まで」だけ(§16-5)。ゾンビの「動き出し」は
+ * z-lunge-in(停止2000msの構えには色を付けない=保持と技を分ける・§16-5)。
+ * ★決着(z-bite2解決)の後は**1フレーム消灯にしない**(§16-5「白→暗へ120msで減衰」)。
+ * z-recoverの頭からZOMBIE_RED_DECAY_MSかけて0へ落とす。
+ */
+export const ZOMBIE_RED_DECAY_MS = 120;
+/** よろけ(z-stagger)で脈が落ちる下限(0まで落とすと「消えた」に見えるため床を作る)。 */
+const ZOMBIE_RED_STAGGER_FLOOR = 0.35;
+/** 2発目(z-bite2)の立ち上がり(床→最大)にかける尺。 */
+const ZOMBIE_RED_BITE2_RISE_MS = 150;
+
+export const zombieRedGlowStrength = (
+  enemy: Pick<Enemy, 'type' | 'chaffMove' | 'aiPhase' | 'aiPhaseUntil' | 'biteAt'>,
+  gameTime: number,
+): number => {
+  if (enemy.type !== 'zombie' || enemy.chaffMove === undefined) return 0;
+  const phase = enemy.aiPhase;
+  if (phase === 'z-lunge-in' || phase === 'z-bite1') return 1;
+  if (phase === 'z-stagger') {
+    const until = enemy.aiPhaseUntil ?? gameTime;
+    const elapsed = Math.max(0, Math.min(ZOMBIE_STAGGER_MS, ZOMBIE_STAGGER_MS - (until - gameTime)));
+    const u = elapsed / ZOMBIE_STAGGER_MS; // 0=よろけ頭(まだ高い)→1=よろけ明け(床)
+    return 1 - u * (1 - ZOMBIE_RED_STAGGER_FLOOR);
+  }
+  if (phase === 'z-bite2') {
+    const startedAt = enemy.biteAt ?? gameTime;
+    const u = Math.max(0, Math.min(1, (gameTime - startedAt) / ZOMBIE_RED_BITE2_RISE_MS));
+    return ZOMBIE_RED_STAGGER_FLOOR + u * (1 - ZOMBIE_RED_STAGGER_FLOOR);
+  }
+  if (phase === 'z-recover') {
+    const until = enemy.aiPhaseUntil ?? gameTime;
+    const elapsedInRecover = Math.max(0, Math.min(ZOMBIE_RECOVER_MS, ZOMBIE_RECOVER_MS - (until - gameTime)));
+    const decayU = Math.max(0, Math.min(1, elapsedInRecover / ZOMBIE_RED_DECAY_MS));
+    return 1 - decayU;
+  }
+  return 0; // z-wait/z-red-pause(構え)は色なし(§16-5)
 };

@@ -308,6 +308,7 @@ import {
   deriveChaffMoveGrants, endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot,
   ZOMBIE_BAND_OUTER_PX, ZOMBIE_BAND_INNER_PX, ZOMBIE_RED_PAUSE_MS, ZOMBIE_LUNGE_RANGE_PX,
   ZOMBIE_STAGGER_MS, ZOMBIE_BITE2_ANGLE_OFFSET_RAD,
+  ZOMBIE_RECOVER_MS, zombieLungeRampMul, // §16-3z「歯応え」の仕上げ(③硬直・②踏み込みの加速)
 } from '../utils/chaffMoves';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
@@ -14934,7 +14935,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             };
           }
           if (phase === 'z-bite2' && !(enemy.biteAt !== undefined && enemy.biteAt > 0)) {
-            // 2発目解決=技の終わり(§16-7b・§16-8b手順5「技の終わりでendChaffMoveを呼ぶ」)。
+            // ★③2発目解決→硬直600ms(§16-3z「技の後は必ずプレイヤーの番」)。その場で伸び切った
+            // まま**下がらない**。chaffMoveは立てたまま(s-recoverと同じ「技の続き」・§16-7b)=
+            // 技の終わり(endChaffMove・CD起点)はz-recoverが明けてから(下のブロック)。
+            return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-recover', aiPhaseUntil: gameTime + ZOMBIE_RECOVER_MS };
+          }
+          if (phase === 'z-recover') {
+            if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // 硬直継続:その場で伸び切ったまま
+            // 硬直明け=技の終わり(§16-7b・§16-8b手順5「技の終わりでendChaffMoveを呼ぶ」)。
+            // CD(4000ms)はここから数える(endChaffMoveがrecoverMsをgameTime基準で焼く)。
             return {
               ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: undefined, chaffMoveAt: undefined,
               ...endChaffMove(enemy, gameTime),
@@ -14948,9 +14957,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (phase === 'z-lunge-in') {
             if (pdist <= ZOMBIE_LUNGE_RANGE_PX) {
               // 射程到達→1発目。向きは§12と同じく踏み込みの瞬間(ここ)に焼く(追尾しない)。
+              // ★②速度を持ち越す(§16-3z「踏み込み→噛み」): vx/vyを0で潰さず前フレームの値を
+              // そのまま残す(=spreadで継承)。満速→0の1フレーム段差(「走って来て一瞬カクッと
+              // 止まり、また出る」吃音)を消す。実際の踏み込み移動はbiteLungeFrac(ease-in)が
+              // 上のisBiteSubject分岐で引き継ぐので、位置(x/y)はここでは動かさない(従来どおり)。
               const bl = Math.max(0.001, pdist);
               return {
-                ...enemy, vx: 0, vy: 0, aiPhase: 'z-bite1', biteAt: gameTime,
+                ...enemy, aiPhase: 'z-bite1', biteAt: gameTime,
                 biteDirX: (pcx - ecx) / bl, biteDirY: (pcy - ecy) / bl,
               };
             }
@@ -14958,13 +14971,18 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 汎用の接近ターゲット(dx/dy=tgt基準)を追うが、こちらは「赤が来る」と確定した後の
             // 踏み込みなので実プレイヤー座標(pcx/pcy)を直接使う(decoy/summonに逸れない)。
             const zTraits = chaffTraits(enemy.id);
-            const lungeSpeed = enemy.speed * ZOMBIE_SPEED_MULT * ZOMBIE_RUSH_SPEED_MULT
+            // ★②踏み込みの出足(§16-3z「立ち上がり360msの加速」): z-lunge-inへ入った瞬間
+            // (`chaffMoveAt`)からsmoothstepで0→満速。0→満速の1フレーム段差を消す。
+            const lungeRamp = zombieLungeRampMul(enemy.chaffMoveAt, gameTime);
+            const lungeSpeed = enemy.speed * ZOMBIE_SPEED_MULT * ZOMBIE_RUSH_SPEED_MULT * lungeRamp
               * rnSpeedMult * screamSpeedMult * chaffSpeedMult(zTraits, pdist) * iceSlowMult(enemy, gameTime);
             let lh = 0;
             for (let i = 0; i < enemy.id.length; i++) lh = (lh * 31 + enemy.id.charCodeAt(i)) | 0;
             const bl2 = Math.max(0.001, pdist);
             const lHead = chaffHeading((pcx - ecx) / bl2, (pcy - ecy) / bl2, zTraits, pdist);
-            const lwob = Math.sin(gameTime / 200 + (lh % 628) / 100) * ZOMBIE_WOBBLE;
+            // ★②踏み込みは真っ直ぐ(§16-3z「歩きの千鳥足を踏み込み中は振幅1/4・周期2倍へ」):
+            // 飛びかかる体は真っ直ぐになる。歩きと同じ揺れ方のままにしない。
+            const lwob = Math.sin(gameTime / 400 + (lh % 628) / 100) * (ZOMBIE_WOBBLE / 4);
             const lhx = lHead.x + (-lHead.y) * lwob, lhy = lHead.y + lHead.x * lwob;
             const lhl = Math.max(0.001, Math.hypot(lhx, lhy));
             const lvx = (lhx / lhl) * lungeSpeed, lvy = (lhy / lhl) * lungeSpeed;
@@ -14986,12 +15004,16 @@ export const useGameStore = create<GameState>((set, get) => ({
               phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS;
             }
             // else: 尺切れ済みだが枠なし・内縁未到達→素通り(phase='z-wait'のまま下の通常移動へ)。
-          } else if (phase === undefined && pdist <= ZOMBIE_BAND_INNER_PX) {
+          } else if (phase === undefined && pdist <= ZOMBIE_BAND_INNER_PX
+            && (enemy.chaffMoveCdUntil === undefined || gameTime >= enemy.chaffMoveCdUntil)) {
             // ★A-2(検収指摘2026-09-16「紫の入口が消えている」): 範囲に入った瞬間=1秒停止(紫)。
             // §16以前から在った経路(旧`else if (inMelee)`)で、今回のバッチの差し替えで誤って
             // 落ちていた——z-wait経由の紫(枠なし・内縁到達)だけが残り、**枠が空いてさえいれば
             // 距離に関係なく赤になる**(紫の通路が事実上死ぬ)事故になっていた。距離だけで即決める
             // 旧仕様のまま復元する(§16-0「詰めようとしたら赤。近すぎたら紫」の紫側)。
+            // ★§16-3z③技後CD(実装者視点監査): 赤の技後CD(4000ms)中はこの紫の入口にも入らない
+            // (設計書が2回書いている条件。無いと赤→紫→30px噛みが毎回同じ順で出る)。CD中は
+            // phaseがundefinedのまま下の「旧仕様」ブロックへ落ち、通常接近(素通り)になる。
             phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS;
           } else if (phase === undefined && pdist > ZOMBIE_BAND_INNER_PX && pdist <= ZOMBIE_BAND_OUTER_PX
             && (enemy.chaffMoveCdUntil === undefined || gameTime >= enemy.chaffMoveCdUntil)) {

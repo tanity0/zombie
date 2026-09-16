@@ -233,8 +233,28 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(spec1.windupMs).toBe(220); expect(spec1.biteMs).toBe(160);
   });
 
-  it('2発目が解決(biteAt=0)したら技の終わり: chaffMove消滅+技後CD(約4000ms・±12%)+aiPhaseリセット', () => {
+  it('★③2発目が解決(biteAt=0)したらz-recover(硬直600ms)へ。その場で伸び切ったまま・chaffMoveは立てたまま(§16-3z)', () => {
     place(60, { aiPhase: 'z-bite2', chaffMove: 'zombie-double', biteAt: 0 });
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-recover');
+    expect(e.aiPhaseUntil).toBe(START_GT + 600);
+    expect(e.chaffMove).toBe('zombie-double'); // 技の続き(s-recoverと同型)。CDはまだ書かない。
+    expect(e.chaffMoveCdUntil).toBeUndefined();
+    expect(e.vx).toBe(0); expect(e.vy).toBe(0);
+  });
+
+  it('z-recover硬直中は動かない(移動も次の技も入らない=③の受け入れ条件)', () => {
+    const e0 = place(60, { aiPhase: 'z-recover', aiPhaseUntil: START_GT + 400, chaffMove: 'zombie-double' });
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-recover'); // 明けていないので継続
+    expect(e.x).toBe(e0.x); expect(e.y).toBe(e0.y); // 動かない(下がらない・詰め切って居座る)
+    expect(e.vx).toBe(0); expect(e.vy).toBe(0);
+  });
+
+  it('z-recover明けで技の終わり: chaffMove消滅+技後CD(約4000ms・±12%)+aiPhaseリセット(CDはここから数える)', () => {
+    place(60, { aiPhase: 'z-recover', aiPhaseUntil: START_GT, chaffMove: 'zombie-double' });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBeUndefined();
@@ -242,6 +262,40 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(e.chaffMove).toBeUndefined();
     expect(e.chaffMoveCdUntil).toBeGreaterThanOrEqual(START_GT + 4000 * 0.88);
     expect(e.chaffMoveCdUntil).toBeLessThanOrEqual(START_GT + 4000 * 1.12);
+  });
+
+  it('★受け入れ条件(③の全体): 2連の解決から600ms(硬直)+CD(4000ms±12%)の間、ずっと殴り返せる窓が続く', () => {
+    // 2発目解決の瞬間から時間を進め、硬直が明けるまで一度も動かず・次の技(chaffMove)にも入らないこと。
+    place(60, { aiPhase: 'z-bite2', chaffMove: 'zombie-double', biteAt: 0 });
+    tick(START_GT);
+    let e = first();
+    const x0 = e.x, y0 = e.y;
+    for (let t = START_GT + 1 / 60 * 1000; t < START_GT + 600; t += 100) {
+      tick(t);
+      e = first();
+      expect(e.aiPhase).toBe('z-recover'); // 硬直の間、次の技(z-red-pause等)へ進んでいない
+      expect(e.x).toBe(x0); expect(e.y).toBe(y0); // 下がらない・詰めない
+    }
+    tick(START_GT + 600); // 硬直明け
+    e = first();
+    expect(e.aiPhase).toBeUndefined();
+    expect(e.chaffMove).toBeUndefined();
+    expect(e.chaffMoveCdUntil).toBeGreaterThan(START_GT + 600); // CDは硬直明けから数える
+  });
+});
+
+describe('★③技後CD: CD中は紫の停止(zpause)にも入らない(§16-3z・実装者視点監査)', () => {
+  it('CD中は内縁(100px)に達しても紫の停止に入らない(通常接近のまま)', () => {
+    place(90, { chaffMoveCdUntil: START_GT + 2000 }); // 内縁(100px)より内側・CD中
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).not.toBe('zpause');
+  });
+  it('CDが明ければ同じ距離で紫の停止に入る', () => {
+    place(90, { chaffMoveCdUntil: START_GT - 1 });
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('zpause');
   });
 });
 

@@ -88,6 +88,47 @@ describe('踏み込みの見た目(★プレイヤーの踏み込みとは逆の
   });
 });
 
+describe('★§16-3z②「2発目は行き過ぎて戻る」: biteLungeFracのオーバーシュートはz-bite2だけ', () => {
+  const atZ2 = (biteAt: number | undefined): Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'> =>
+    ({ type: 'zombie', biteAt, chaffMove: 'zombie-double', aiPhase: 'z-bite2' } as Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'>);
+  const spec = biteSpecFor('zombie', 'zombie-double', 'z-bite2'); // windup300/bite200(§16-8)
+
+  it('噛み区間の途中で1.0を超える(行き過ぎる)', () => {
+    let maxF = 0;
+    for (let t = spec.windupMs; t <= spec.windupMs + spec.biteMs; t += 5) {
+      maxF = Math.max(maxF, biteLungeFrac(atZ2(1000), 1000 + t));
+    }
+    expect(maxF).toBeGreaterThan(1.0);
+  });
+
+  it('噛み終わり(windup+biteMs)ではちょうど1.0へ戻る(貫通・空振りの原因にしない)', () => {
+    expect(biteLungeFrac(atZ2(1000), 1000 + spec.windupMs + spec.biteMs)).toBeCloseTo(1, 5);
+  });
+
+  it('溜め終わり(windupMs)は非オーバーシュート版と同じ0.5から始まる(連続=段差なし)', () => {
+    expect(biteLungeFrac(atZ2(1000), 1000 + spec.windupMs)).toBeCloseTo(0.5, 5);
+  });
+
+  it('★z-bite1(1発目)は従来どおり1.0を超えない(オーバーシュートは2発目だけ)', () => {
+    const atZ1 = (biteAt: number) =>
+      ({ type: 'zombie', biteAt, chaffMove: 'zombie-double', aiPhase: 'z-bite1' } as Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'>);
+    const spec1 = biteSpecFor('zombie', 'zombie-double', 'z-bite1');
+    let maxF = 0;
+    for (let t = 0; t <= spec1.windupMs + spec1.biteMs; t += 5) {
+      maxF = Math.max(maxF, biteLungeFrac(atZ1(1000), 1000 + t));
+    }
+    expect(maxF).toBeLessThanOrEqual(1.0);
+  });
+
+  it('★受け入れ条件1: §12の噛みつき(chaffMove未定義)は1.0を超えない(§16の技だけの変更である証拠)', () => {
+    let maxF = 0;
+    for (let t = 0; t <= 500; t += 5) {
+      maxF = Math.max(maxF, biteLungeFrac(at(1000), 1000 + t));
+    }
+    expect(maxF).toBeLessThanOrEqual(1.0);
+  });
+});
+
 describe('★判定の四角(社長2026-08-25「プレイヤーが居る側にだけ30px伸ばす」)', () => {
   const box = { cx: 0, cy: 0, w: 100, h: 50 }; // 社長の例: 100×50 の敵
 

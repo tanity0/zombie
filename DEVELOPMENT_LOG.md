@@ -1,5 +1,72 @@
 # Development Log
 
+## v0.25.4409 — §16-3z「歯応え」の仕上げをゾンビへ実装(実装チャット・Sonnet)【2026-09-17 00:40 JST】
+
+**PACING_PUZZLE.md §16-3z の仕様どおり、ゾンビだけに実装。bat/skeleton/werewolf/ボスは無改変。**
+
+**③技の後(一番効く)**: 2発目解決→新フェーズ `z-recover`(硬直600ms)を追加。その場で
+伸び切ったまま**下がらない**(移動も次の技も入らない)。`chaffMove` は硬直中も立てたまま
+(s-recoverと同型=「技の続き」)で、枠(同時2体)は入った瞬間に解放。硬直明けに `endChaffMove`
+を呼び、**技後CD(4000ms±12%)はここから数える**。あわせて `phase === undefined && pdist <=
+ZOMBIE_BAND_INNER_PX`(紫の停止の入口)にCDガードを追加——設計書が指摘していたとおり、
+ここにCD判定が無かった(赤→紫→30px噛みが毎回同じ順で出る穴)。
+`z-recover` は `BITE_OK_PHASES`/`CHAFF_MOVE_PHASES` に追加(§12の新規噛みも始めさせない)。
+`CHAFF_HOLDING_PHASES` には**入れない**(硬直=構えていない=枠は即解放)。
+`src/types/game.ts` の `aiPhase` union に `z-recover` を追加。
+
+**②重さ(慣性)**: `chaffMoves.ts` に `zombieLungeRampMul`(smoothstep・360msで0→満速)を追加し
+z-lunge-inの速度へ乗算(立ち上がりの1フレーム段差を消す)。z-lunge-in→z-bite1の遷移で
+`vx/vy: 0` の代入をやめ前フレームの速度を持ち越す(満速→0の吃音を消す)。z-lunge-in中の千鳥足
+(ウォブル)を振幅1/4・周期2倍へ(踏み込みは真っ直ぐ)。`enemyBite.ts` の `biteLungeFrac` に
+`aiPhase==='z-bite2'` の時だけ easeOutBack(1.0を超えて戻る)曲線を追加(1発目・§12の噛みつきは
+無改変=従来のease-outのまま)。
+
+**①読める**: `pixiScene.ts` の歩行二次モーションのゲート(`e.aiPhase === undefined`)を
+`z-wait`/`z-lunge-in` でも開いた(実速度駆動なので停止相は自然に止まる)。z-red-pauseの2000ms停止に
+3段の姿勢(止まる500ms=つんのめり[行き過ぎて戻る]→起こす900ms=smoothstepで縦に伸び上がる威圧→
+詰めの溜め600ms=既存のaiShake機構で震え)を追加。赤の予告は `hitFlash`(加算の白シルエット)に
+`0xff2a2a` を乗せる形で新規実装——`chaffMoves.ts` に純関数 `zombieRedGlowStrength`(0..1・状態駆動:
+z-lunge-in/z-bite1で最大→z-staggerで床(0.35)まで落ち→z-bite2で最大へ戻る→z-recoverの頭から120msで
+0へ減衰)を追加し、優先順位「白(被弾)>赤(§16)>オレンジ(延焼)>水色(氷)」で被弾フラッシュのブロックに
+割り込ませた。既存の紫tint(`biteTint`)は `chaffMove !== undefined` の個体では丸ごと飛ばす
+(§16-5「§16の技の間は紫tint経路を通さない」)。`biteSpecFor(e.type, e.chaffMove)` の2引数呼びが
+pixiScene.ts に2箇所残っていた(コンタクトラウンジ用のspec取得)ので `e.aiPhase` を渡すよう修正
+(ゾンビ2連のlungePx上書きが正しく効くようにする申し送りの一部)。
+
+**①均質を壊す**: z-waitの「待ちを距離で終わらせる引き金」を `ZOMBIE_BAND_INNER_PX`(100px・
+紫ループの境界=不変)から切り離し、`zombieRedTriggerPx(id)` で88〜118pxへid由来で散らした
+(実測: 半数が100pxちょうどの線に整列していた症状の対策)。停止の長さ(±30%)・出直し回数を
+混ぜた個体差は★未決(下記)。
+
+**★未決事項(実装チャットの判断ではない・設計書へは書いていない=このエントリで報告のみ)**:
+- 停止の長さ `ZOMBIE_RED_PAUSE_MS` を**±30%へ散らす**指定(台帳)は今回**未実装**。
+  3段姿勢の尺(500/900/600)が停止尺と結合しているため、散らす場合は3段の配分方法(比例縮尺か
+  一部固定か)を先に決める必要があり、設計判断が要ると判断して見送った。
+- 個体差の種に「出直し回数」を混ぜる指定も未実装(出直し=帯を出入りした回数を数えるカウンタが
+  現状の `Enemy` に無く、新フィールドの追加要否の判断が要る)。
+- どちらも実装せず据え置いた(危険側へ倒していない=現状維持)。設計チャットの判断を仰ぐ。
+
+**テスト(同コミット・全て緑)**: `src/store/zombieRedMove.test.ts`(z-recoverの追加・受け入れ条件
+「2連の後に殴り返す窓がある」の統合テスト・CDガードのテスト)/ `src/utils/enemyBite.test.ts`
+(biteLungeFracのオーバーシュートがz-bite2限定である証拠・§12無改変の検知器)/
+`src/utils/chaffMoves.test.ts`(zombieLungeRampMul・zombieRedGlowStrength・zombieRedTriggerPxの
+純関数テスト)。`npx vitest run` で個別実行=190+テストすべて緑。`npm run typecheck`/`npm run lint`
+ともにエラー0(lint warningは既存分のみ・本バッチに起因するものなし)。
+
+**状態変化**: §16-3z「歯応えの仕上げ(ゾンビ)」→ 実装完了・検証待ち(実機でのクリエイティブ監査は
+設計チャットが回すこと。ヘッドレス確認手順は本エントリの直後の報告を参照)。
+
+**自己点検**: 憲法第4条(初心者ゾーン不可侵)= このバッチはゾンビの技後硬直・姿勢・赤の予告・
+踏み込みの慣性のみで、初心者ゾーンのゲート/敵配置/ダメージ量には触れていない=抵触なし。
+第5条(緩を荒らさない)= 判定・射程・ダメージ・被弾無敵・CD秒数(600/4000)は台帳の値のまま
+1つも変えていない(変えたのは曲線・姿勢・色などの見た目と、CDの「効かせる」配線の穴埋め)=抵触なし。
+
+**変更ファイル**: `src/types/game.ts`、`src/utils/chaffMoves.ts`、`src/utils/enemyBite.ts`、
+`src/store/gameStore.ts`、`src/pixi/pixiScene.ts`、`src/utils/chaffMoves.test.ts`、
+`src/utils/enemyBite.test.ts`、`src/store/zombieRedMove.test.ts`、`package.json`、
+`src/data/changelog.ts`。**`PACING_PUZZLE.md`/`PROJECT_STATUS.md` は触っていない**(実装チャットは
+状態を書かない規約どおり)。
+
 ## v0.25.4408 — 「歯応え」の仕様を §16-3z に確定(社長指示)【2026-09-16 22:41 JST】
 
 **社長指示**: 「**とにかくエルデンリングみたいに動きに歯応えがある形に仕上げて**」。

@@ -222,6 +222,8 @@ import {
   biteBlinkOn, bitePhaseOf, biteBlinkTintFor, // ★溜め中の点滅(尺と明滅と色の出どころはsim側の純関数)
   biteSpecFor,
 } from '../utils/enemyBite'; // ★噛みつきの台帳(PACING_PUZZLE §12)
+// §16-3z「歯応え」の仕上げ: ゾンビ赤2連の停止尺(姿勢の3段の合計に使う)と赤の脈(純関数)。
+import { ZOMBIE_RED_PAUSE_MS, zombieRedGlowStrength } from '../utils/chaffMoves';
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 表示名・立ち絵クラスの正本(台帳)と、技の寸法テーブル。
 // **判定(phantomTick)と同じ1箇所**を読むので「赤いのに当たらない」が起きない。
 import { GUARDIAN_PHANTOM_CLASS } from '../utils/bossPractice';
@@ -1320,6 +1322,15 @@ const BOSS_CORPSE_SHAKE_PX = 7;         // 揺れの最大振幅(横)。縦は�
 const BOSS_CORPSE_CRUMBLE_FROM = 0.35;  // 崩れ始め。まず揺れだけを見せてから崩す=「揺れて崩れる」の順
 const BOSS_CORPSE_SQUASH = 0.55;        // 崩れ切った時の縦の潰れ(足元は地面に残す)
 const BOSS_CORPSE_SPREAD = 0.18;        // 崩れる時の横の広がり(瓦礫が積もる感じ)
+// §16-3z「歯応え」の仕上げ(社長指示2026-09-16)★①姿勢: ゾンビ赤の停止(z-red-pause・2000ms)を
+// 3段に割る(2秒を1つの姿勢で通すと「固まったバグ」に見える。段で割ると「溜めている」に見える)。
+// 合計=ZOMBIE_RED_PAUSE_MS(chaffMoves.ts)と一致させること。
+const ZOMBIE_RP_STUMBLE_MS = 500;  // ①止まる(つんのめり=行き過ぎて戻る)
+const ZOMBIE_RP_RISE_MS = 900;     // ②上体を起こす(威圧)
+const ZOMBIE_RP_TREMBLE_MS = 600;  // ③詰めの溜め(震え)
+// ★①読める: 赤の脈(加算overlay)の色。既存の赤テレグラフ(0xff2a2a系)と揃える。
+const ZOMBIE_RED_GLOW_TINT = 0xff2a2a;
+const ZOMBIE_RED_GLOW_ALPHA_MAX = 0.85;
 const PLAYER_WALK_CYCLE_MS = 460;
 const PLAYER_CLASS_MENU_SPRITE_WIDTH = 86;
 // 背負い刀の大きさ倍率(中心固定で縮小)。
@@ -17400,6 +17411,29 @@ export class PixiScene {
       }
     }
 
+    // ★①姿勢(PACING_PUZZLE.md §16-3z/§16-6): ゾンビ赤の停止(z-red-pause・2000ms)を3段で見せる。
+    // 紫の停止(zpause・1000ms)とは色を付けず姿勢と長さだけで見分ける(§16-5)。
+    if (e.type === 'zombie' && e.aiPhase === 'z-red-pause') {
+      const startedAt = (e.aiPhaseUntil ?? gameTime) - ZOMBIE_RED_PAUSE_MS;
+      const t = Math.max(0, gameTime - startedAt);
+      if (t < ZOMBIE_RP_STUMBLE_MS) {
+        // ①止まる(つんのめり): 足は一気に止め、上体だけ行き過ぎて戻る(§16-6の慣性の掟)。
+        const p = t / ZOMBIE_RP_STUMBLE_MS;
+        const dip = Math.sin(Math.min(1, p * 2.2) * Math.PI) * Math.exp(-p * 2.5);
+        aiSqY = 1 - 0.22 * dip; aiSqX = 1 + 0.16 * dip;
+      } else if (t < ZOMBIE_RP_STUMBLE_MS + ZOMBIE_RP_RISE_MS) {
+        // ②上体を起こす: 縦に伸び上がる威圧(§16-6「上体を起こして後ろへ」・smoothstep=慣性)。
+        const q = (t - ZOMBIE_RP_STUMBLE_MS) / ZOMBIE_RP_RISE_MS;
+        const ease = q * q * (3 - 2 * q);
+        aiSqY = 1 + 0.12 * ease; aiSqX = 1 - 0.08 * ease;
+      } else {
+        // ③詰めの溜め(震え): 起こしきった姿勢を保ったまま、踏み込みへ向けて震えが強まる。
+        aiSqY = 1.12; aiSqX = 0.92;
+        const r = Math.min(1, (t - ZOMBIE_RP_STUMBLE_MS - ZOMBIE_RP_RISE_MS) / ZOMBIE_RP_TREMBLE_MS);
+        aiShake = (Math.sin(now / 23) * 0.6 + Math.sin(now / 11) * 0.4) * 1.6 * r;
+      }
+    }
+
     const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
     const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX;
     // v0.25.3069: 踏み鳴らしの震え(aiShake)もここへ合流させる。liftShake は下の位置決めと
@@ -17518,7 +17552,7 @@ export class PixiScene {
       // **噛んでいる最中**に再生する予告へ反転させる(=新しい絵を作らずに予告になる)。
       // 500ms(溜め300+噛み200)を既存の2拍の尺(CONTACT_LUNGE_MS)へ線形に写す。
       // 噛みつきを持たない敵(ボス/技中)は従来どおり lastContactAttackAt を見る。
-      const biteSpecNow = biteSpecFor(e.type, e.chaffMove);
+      const biteSpecNow = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
       const biteElapsed = (e.biteAt !== undefined && e.biteAt > 0) ? gameTime - e.biteAt : -1;
       const biteTotalMs = biteSpecNow.windupMs + biteSpecNow.biteMs;
       const sinceLunge = (biteElapsed >= 0 && biteElapsed <= biteTotalMs)
@@ -17632,7 +17666,11 @@ export class PixiScene {
         const walk = spec.kind === 'hover' ? 1 : Math.min(1.25, (view.motSpeed ?? 0) / Math.max(20, e.speed));
         // 技のモーション中(aiPhase=しゃがみ/ジャンプ/突進/g-*)は既存のaiSq系に譲って歩行は消す。
         // 式は enemyMotion.ts の共有関数。個体位相はIDハッシュ(stablePhase)=群れが同期行進しない。
-        if (e.aiPhase === undefined) {
+        // ★①読める(§16-3z「歩行ゲートを新フェーズへ開ける」): z-wait(帯で待ちながら歩き続ける)と
+        // z-lunge-in(2倍速の踏み込み)は**実際に動いている**ので歩行モーションを通す(閉じたままだと
+        // 「足が止まったまま滑る」絵になる)。実速度駆動(walk=motSpeed/e.speed)なので、停止相
+        // (z-red-pause/z-bite1/z-stagger/z-bite2/z-recover)は動かしても自然に止まる。
+        if (e.aiPhase === undefined || e.aiPhase === 'z-wait' || e.aiPhase === 'z-lunge-in') {
           const pose = enemyMotionPose(spec, stablePhase(e.id), view.motClock, walk);
           motRot = pose.rot; motBob = pose.bob; motSqX = pose.sqX; motSqY = pose.sqY;
         }
@@ -17690,7 +17728,7 @@ export class PixiScene {
       // **噛んでいる最中**に再生する予告へ反転させる(=新しい絵を作らずに予告になる)。
       // 500ms(溜め300+噛み200)を既存の2拍の尺(CONTACT_LUNGE_MS)へ線形に写す。
       // 噛みつきを持たない敵(ボス/技中)は従来どおり lastContactAttackAt を見る。
-      const biteSpecNow = biteSpecFor(e.type, e.chaffMove);
+      const biteSpecNow = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
       const biteElapsed = (e.biteAt !== undefined && e.biteAt > 0) ? gameTime - e.biteAt : -1;
       const biteTotalMs = biteSpecNow.windupMs + biteSpecNow.biteMs;
       const sinceLunge = (biteElapsed >= 0 && biteElapsed <= biteTotalMs)
@@ -17710,7 +17748,11 @@ export class PixiScene {
       // 明滅のON/OFFは sim 側の純関数(biteLeadBlinkOn)を読むだけ=尺の出どころを1箇所に保つ。
       // ★ゾンビだけ赤(v0.25.4349・社長指示「ダッシュ噛みつき発動のタイミングで赤点滅させてゾンビ」)。
       // 色の出どころは `biteBlinkTintFor` の1箇所(理由と、戻す時にどこを揃えるかもそこに書いてある)。
-      const biteTint: number | null = bitePhaseOf(e, gameTime) === 'windup'
+      // ★§16-5「§16の技の間は、現行の紫tint経路を通さない」(実装者視点監査A-4): `chaffMove` が
+      // 立っている個体(=§16の技を実行中)は、この紫点滅を丸ごと飛ばす。ゾンビ赤2連(z-bite1/z-bite2)は
+      // biteAtも立つので、ここを外さないと「赤く光りながら同時に紫へ沈む」(乗算tint)が二重に出る。
+      // 赤(加算overlay)はhitFlashブロック側(zombieRedGlowStrength)で別途扱う。
+      const biteTint: number | null = (e.chaffMove === undefined && bitePhaseOf(e, gameTime) === 'windup')
         ? (biteBlinkOn(e, gameTime) ? 0xffffff : biteBlinkTintFor(e.type, e.chaffMove))
         : null;
       if (sinceLunge >= 0 && sinceLunge < CONTACT_LUNGE_MS) {
@@ -17857,12 +17899,13 @@ export class PixiScene {
       // 延焼中の薄い赤点滅(社長指示v0.25.3272)/氷鈍化中の薄い水色点滅(社長指示v0.25.3276)。
       // 被弾フラッシュと同じシルエット機構を流用し、被弾(白)が出ていない間だけ弱い明滅を乗せる
       // (読むだけ・判定はstoreのburnUntil/iceSlowUntil)。
-      // ★優先: 白(被弾) > **§16の赤(予告)** > オレンジ(延焼) > 水色(氷)。§16の赤はまだ未実装なので
-      //   現状は 白 > オレンジ > 水色。§16 実装時にここへ赤を割り込ませる(PACING_PUZZLE.md §16-10-C)。
+      // ★優先: 白(被弾) > §16の赤(予告) > オレンジ(延焼) > 水色(氷)。
+      // ★§16-3z「歯応え」の仕上げ=ゾンビの赤を実装(PACING_PUZZLE.md §16-10-C)。
       const texOk = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1;
+      const zRedStrength = texOk ? zombieRedGlowStrength(e, gameTime) : 0;
       const burning = texOk && (e.burnUntil ?? 0) > gameTime;
       const iced = texOk && (e.iceSlowUntil ?? 0) > gameTime;
-      if (flashT > 0.01 || burning || iced) {
+      if (flashT > 0.01 || zRedStrength > 0.01 || burning || iced) {
         // 真っ白シルエットを加算で重ねる(暗い敵でも全面が白く光る)。未ベイク時は元テクスチャにフォールバック。
         hf.texture = this.whiteSilhouette(view.sprite.texture) ?? view.sprite.texture;
         hf.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
@@ -17873,6 +17916,12 @@ export class PixiScene {
         if (flashT > 0.01) {
           hf.tint = 0xffffff;
           hf.alpha = flashT * ENEMY_HIT_FLASH_STRENGTH * artFade;
+        } else if (zRedStrength > 0.01) {
+          // ★赤=カウンター可(CLAUDE.md 色と形の文法①・§16-5「赤は加算で光らせる」)。
+          // 脈(0..1)は状態駆動(zombieRedGlowStrength=1発目で立ち・よろけで落ち・2発目で立つ・
+          // 決着後は120msで0へ)なので、ここでは強さをそのままalphaへ写すだけでよい。
+          hf.tint = ZOMBIE_RED_GLOW_TINT;
+          hf.alpha = zRedStrength * ZOMBIE_RED_GLOW_ALPHA_MAX * artFade;
         } else {
           hf.tint = burning ? BURN_FLASH_TINT : ICE_FLASH_TINT; // オレンジ(延焼)>水色(氷)
           const pulse = 0.5 + 0.5 * Math.sin(now / BURN_FLASH_PERIOD_MS * Math.PI * 2);
