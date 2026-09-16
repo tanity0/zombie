@@ -10530,7 +10530,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         shakeDirY: amount > 0 ? (DIRFX_ENABLED ? dirY : 0) : state.shakeDirY,
         // ★被弾の「ストップ」(社長指示2026-09-16)。**段ごとに長さが変わる**(軽くかすっただけなら短い)。
         // 既に走っているストップ(カウンター成立等)の方が長ければ**上書きしない**(短い方で切り詰めない)。
-        hitstopUntil: amount > 0
+        // ★HP0(死亡演出中)には張らない(§14-4-8 A-1 の再発防止テストが守っている不変条件)。
+        // HP0でも damagePlayer は i-frame を張り直すので amount>0 が立ち続ける=ガードが無いと
+        // 死亡演出のあいだ1000msごとに停止が入る。**とどめの一撃には入る**(被弾前のHPで見るため)。
+        hitstopUntil: (amount > 0 && state.player.health > 0)
           ? Math.max(state.hitstopUntil, Date.now() + playerHurtReactionOf(hurtTier).stopMs)
           : state.hitstopUntil,
         player: {

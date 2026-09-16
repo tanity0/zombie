@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4403',
+    items: ['倒された後の演出中に、画面が短く止まってしまうのが直った'],
+  },
+  {
     version: '0.25.4402',
     items: ['ゲーム内容の変更はありません'],
   },
