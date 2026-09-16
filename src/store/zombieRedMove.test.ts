@@ -12,7 +12,8 @@ import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { biteSpecFor } from '../utils/enemyBite';
 import {
-  ZOMBIE_RED_PAUSE_MS, ZOMBIE_LUNGE_RANGE_PX, ZOMBIE_STAGGER_MS,
+  ZOMBIE_LUNGE_RANGE_PX, ZOMBIE_STAGGER_MS,
+  zombieRedPauseMs, ZOMBIE_RED_TRIGGER_MIN_PX, // §16-3z追補①: 停止の長さ±30%(id+spawnedAt由来)
 } from '../utils/chaffMoves';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
@@ -126,12 +127,15 @@ describe('★検収A-1/A-2(2026-09-16・14秒実走で発覚): 帯への進入�
 });
 
 describe('「赤が先」(§16-3): 帯の内縁(100px)で枠の有無により赤/紫が確定する', () => {
-  it('枠が空いていれば赤(z-red-pause・2000ms・その場)が確定する', () => {
-    place(100, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 }); // 尺はまだ残っているが内縁到達
+  it('枠が空いていれば赤(z-red-pause・その場)が確定する', () => {
+    // ★距離は引き金の最小値(88px)より内側に置く。§16-3z「内縁の引き金に幅(88〜118px・id由来)」
+    // により、境界ちょうど(100px)だとidによって赤にならないことがある(非決定的テストを避ける)。
+    const e0 = place(ZOMBIE_RED_TRIGGER_MIN_PX - 3, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBe('z-red-pause');
-    expect(e.aiPhaseUntil).toBe(START_GT + ZOMBIE_RED_PAUSE_MS);
+    // ★①停止の長さ±30%(§16-3z): 全長は固定値ではなくid+spawnedAt由来(zombieRedPauseMs)。
+    expect(e.aiPhaseUntil).toBe(START_GT + zombieRedPauseMs(e0.id, e0.spawnedAt));
     expect(e.vx).toBe(0); expect(e.vy).toBe(0); // その場(位置は動かさない)
   });
 

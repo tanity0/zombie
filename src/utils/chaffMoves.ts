@@ -124,13 +124,14 @@ export const deferFrozenClocksBy = (enemy: Enemy, dtMs: number): Enemy => {
  * (`chaffTraits`と同幅)」・§16-7b「停止長・技後CD…用のハッシュ枝を新設する(id由来=決定的。
  * 乱数を引かない)」)。群れの位相をずらすための個体差なので`chaffTraits`とは別の枝(idUnitHash)を
  * 使う(見せたい差ではない=chaffTraitsを流用して結合させない)。
+ * ★②種に`spawnedAt`を混ぜる(§16-3z)。未設定ならidだけにフォールバック(`idRespawnUnitHash`)。
  */
 export const endChaffMove = (
-  enemy: Pick<Enemy, 'id' | 'type' | 'chaffMove' | 'aiPhase'>,
+  enemy: Pick<Enemy, 'id' | 'type' | 'chaffMove' | 'aiPhase' | 'spawnedAt'>,
   gameTime: number,
 ): Pick<Enemy, 'chaffMove' | 'chaffMoveCdUntil'> => {
   const techSpec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
-  const jitter = 1 + (idUnitHash(enemy.id, CHAFF_CD_JITTER_SALT) * 2 - 1) * CHAFF_CD_JITTER;
+  const jitter = 1 + (idRespawnUnitHash(enemy.id, enemy.spawnedAt, CHAFF_CD_JITTER_SALT) * 2 - 1) * CHAFF_CD_JITTER;
   return { chaffMove: undefined, chaffMoveCdUntil: gameTime + techSpec.recoverMs * jitter };
 };
 
@@ -153,6 +154,15 @@ const idUnitHash = (id: string, salt: number): number => {
   for (let i = 0; i < id.length; i++) h = (Math.imul(h, 31) + id.charCodeAt(i)) | 0;
   return (mixHash(h) % 100000) / 100000;
 };
+
+/**
+ * ★②個体差の種に「出直し回数」を混ぜる(社長裁定2026-09-16「新しいフィールドは要らない。
+ * 既にある`spawnedAt`(湧いた時刻)をidに混ぜてください」)。同じ個体でも**湧き直せば別の癖**に
+ * なる(=「型で押した動き」に見えるのを崩す)。`spawnedAt`が未設定(既存の呼び手・古いセーブ等)
+ * なら**従来どおりidだけ**にフォールバックする(乱数は引かない・決定的のまま)。
+ */
+const idRespawnUnitHash = (id: string, spawnedAt: number | undefined, salt: number): number =>
+  idUnitHash(spawnedAt !== undefined ? `${id}#${spawnedAt}` : id, salt);
 
 /** 技後CDの個体差(§16-6「個体差の幅: 技後CD ±12%」)。saltはchaffTraitsの枝と衝突しない値。 */
 const CHAFF_CD_JITTER_SALT = 0x43_4451; // 'CDQ' の適当なビット列(単なる枝分け用の定数)
@@ -196,9 +206,12 @@ export const ZOMBIE_BITE2_ANGLE_OFFSET_RAD = 0.22; // ≒12.6°
 export const ZOMBIE_RED_TRIGGER_MIN_PX = 88;
 export const ZOMBIE_RED_TRIGGER_MAX_PX = 118;
 
-/** 帯(200〜100px)に入った時に引く「待ちの尺」(id由来・決定的=乱数を引かない)。 */
-export const zombieRedWaitMs = (id: string): number =>
-  ZOMBIE_RED_WAIT_MIN_MS + idUnitHash(id, 0x2b1a) * (ZOMBIE_RED_WAIT_MAX_MS - ZOMBIE_RED_WAIT_MIN_MS);
+/**
+ * 帯(200〜100px)に入った時に引く「待ちの尺」(id由来・決定的=乱数を引かない)。
+ * ★②種に`spawnedAt`を混ぜる(§16-3z・社長裁定): 未設定ならidだけにフォールバック。
+ */
+export const zombieRedWaitMs = (id: string, spawnedAt?: number): number =>
+  ZOMBIE_RED_WAIT_MIN_MS + idRespawnUnitHash(id, spawnedAt, 0x2b1a) * (ZOMBIE_RED_WAIT_MAX_MS - ZOMBIE_RED_WAIT_MIN_MS);
 
 /** z-waitの待ちを距離で終わらせる引き金(88〜118px・id由来・決定的=乱数を引かない)。 */
 export const zombieRedTriggerPx = (id: string): number =>
@@ -296,4 +309,38 @@ export const zombieRedGlowStrength = (
     return 1 - decayU;
   }
   return 0; // z-wait/z-red-pause(構え)は色なし(§16-5)
+};
+
+/**
+ * ★①停止の長さ±30%(社長裁定2026-09-16「3段を比例で伸縮させる」)。
+ *
+ * `ZOMBIE_RED_PAUSE_MS`(2000ms)は**基準値として残す**(1箇所で動かせること)。実際に個体が
+ * 使う全長は `ZOMBIE_RED_PAUSE_MS × (0.7〜1.3)`(id+spawnedAt由来・決定的)。
+ * ★3段の比(止まる:起こす:詰めの溜め = 25%:45%:30%、元の 500:900:600 と同じ比)は
+ * **全長によらず一定**(`ZOMBIE_RP_STUMBLE_FRAC`等)——一部だけ固定にすると、短い個体で
+ * 「溜め」だけが相対的に長くなり形が変わってしまうため、pixiScene側の姿勢はこの比率を
+ * 「全長に対する割合」で読む(絶対msで段の境目を書かない)。
+ */
+export const ZOMBIE_RED_PAUSE_JITTER = 0.3;
+export const zombieRedPauseMs = (id: string, spawnedAt?: number): number =>
+  ZOMBIE_RED_PAUSE_MS * (1 + (idRespawnUnitHash(id, spawnedAt, 0x5ed9) * 2 - 1) * ZOMBIE_RED_PAUSE_JITTER);
+
+/** 停止2000ms(基準)の3段の比率(§16-3z「止まる500→起こす900→詰めの溜め600」と同じ比)。 */
+export const ZOMBIE_RP_STUMBLE_FRAC = 500 / ZOMBIE_RED_PAUSE_MS;
+export const ZOMBIE_RP_RISE_FRAC = 900 / ZOMBIE_RED_PAUSE_MS;
+export const ZOMBIE_RP_TREMBLE_FRAC = 600 / ZOMBIE_RED_PAUSE_MS;
+
+/**
+ * ★②2発目の角度にも`spawnedAt`を混ぜる(社長裁定2026-09-16)。
+ *
+ * `ZOMBIE_BITE2_ANGLE_OFFSET_RAD`(0.22rad)自体は演出の叩き台(社長裁定を要する値ではない)
+ * なので変えない。**向き**(左右どちらへずらすか)は従来どおり`chaffTraits().flankSign`
+ * (既存の確立された左右振り分けの出どころ・呼び手が渡す)のまま——ここを差し替えると他の
+ * chaffTraits依存の絵(回り込み等)との左右一貫性が崩れる。**大きさ**だけ、停止の長さと同じ
+ * ±30%(「見せたい差」§16-6の幅)をid+spawnedAt由来で掛ける。
+ */
+export const ZOMBIE_BITE2_ANGLE_JITTER = 0.3;
+export const zombieBite2AngleRad = (id: string, spawnedAt: number | undefined, spin: number): number => {
+  const mul = 1 + (idRespawnUnitHash(id, spawnedAt, 0x8a41) * 2 - 1) * ZOMBIE_BITE2_ANGLE_JITTER;
+  return ZOMBIE_BITE2_ANGLE_OFFSET_RAD * mul * spin;
 };

@@ -1,5 +1,55 @@
 # Development Log
 
+## v0.25.4410 — §16-3z 追補: 停止±30%・個体差の種にspawnedAtを混ぜる(実装チャット・Sonnet)【2026-09-17 01:01 JST】
+
+**前回(v0.25.4409)で据え置いた2件を、設計チャットの確定裁定どおり実装。新しいフィールドは足していない
+(既存の `Enemy.spawnedAt` を種に混ぜるだけ)。スコープはこの2件のみ、他は触っていない。**
+
+**①停止の長さ±30%**: `chaffMoves.ts` に `zombieRedPauseMs(id, spawnedAt)` を追加
+(`ZOMBIE_RED_PAUSE_MS`=2000msは**基準値として残す**・実際の全長は基準値×(0.7〜1.3)・id+spawnedAt由来)。
+**3段の比(止まる:起こす:詰めの溜め = 25%:45%:30%)は全長によらず一定**——`ZOMBIE_RP_STUMBLE_FRAC`/
+`ZOMBIE_RP_RISE_FRAC`/`ZOMBIE_RP_TREMBLE_FRAC` を新規exportし、`pixiScene.ts` の3段姿勢ブロックは
+段の境目を**絶対msではなく全長に対する割合**で計算するよう書き換えた(短い個体で「溜め」だけ
+相対的に伸びる事故を防ぐ)。`gameStore.ts` のz-red-pause入口(z-wait→z-red-pause遷移)も
+`gameTime + zombieRedPauseMs(enemy.id, enemy.spawnedAt)` へ差し替え。
+
+**②個体差の種にspawnedAtを混ぜる**: `chaffMoves.ts` に `idRespawnUnitHash(id, spawnedAt, salt)`
+(`spawnedAt`未設定なら従来どおりidだけにフォールバック)を追加し、対象4値に適用:
+**待ちの尺**(`zombieRedWaitMs`に第2引数`spawnedAt`を追加)/ **停止の全長**(`zombieRedPauseMs`・上記)/
+**技後CD**(`endChaffMove`のPick型に`spawnedAt`を追加しジッターの種を差し替え)/
+**2発目の角度**(新規 `zombieBite2AngleRad(id, spawnedAt, spin)`——**向きは従来どおり
+`chaffTraits().flankSign`のまま**(他のchaffTraits依存の絵との左右一貫性を保つ)。**大きさだけ**
+基準値(0.22rad)×(0.7〜1.3・id+spawnedAt由来)へ散らした)。
+
+**テスト(同コミット・全て緑)**: `chaffMoves.test.ts` に新describeを追加——①3段の比が全長によらず
+一定であること(比率定数の合計=1・実際の全長2種+基準値の0.7倍/1.3倍で内訳msを検算)/
+②spawnedAtが違えば(高確率で)値が変わること(停止全長・待ちの尺・技後CD・2発目角度の4値それぞれ)/
+③spawnedAt未設定でも落ちない・id単独呼び出しと一致すること(フォールバックの検知器)。
+
+**副作用の修正(検収の過程で発見)**: `zombieRedMove.test.ts` の「枠が空いていれば赤が確定する」テストが
+**非決定的だった**(前回バッチで足した`zombieRedTriggerPx`(引き金88〜118px・id由来)により、
+distance=100固定のテストがid(`Date.now()+Math.random()`由来で毎回変わる)次第で偶発的に失敗しうる状態に
+なっていた。実際、この回のテスト実行で1回踏んだ)。**距離を引き金の最小値(88px)より内側へ固定**して
+id非依存にし、`aiPhaseUntil`の期待値も固定`ZOMBIE_RED_PAUSE_MS`ではなく`zombieRedPauseMs(実際のid,
+spawnedAt)`で検算する形へ修正。5回連続実行で安定を確認。`chaffMoves.test.ts`の
+`.map(zombieRedWaitMs)`(Array#mapのindexが新シグネチャの第2引数`spawnedAt`へ誤って渡っていた)も
+`.map(id => zombieRedWaitMs(id))`へ修正。
+
+**typecheck/lint**: ともにエラー0(warningは既存分のみ)。関連テスト(chaffMoves/enemyBite/
+zombieRedMove/chaffMoveFoundation/combatTick/enemySeparation/chaffMotion)を3回連続実行し
+計217テスト全緑(揺れ無し確認)。`npm test`フル・`npm run build`は指示外のため未実行。
+
+**状態変化**: §16-3z「歯応えの仕上げ(ゾンビ)」の★未決2件 → 両方実装完了。据え置きなし。
+
+**自己点検**: 憲法第4条(初心者ゾーン不可侵)= 触れたのはゾンビの停止尺・個体差の種のみ=抵触なし。
+第5条(緩を荒らさない)= 判定・射程・ダメージ・被弾無敵は無変更。停止の"基準値"(2000ms)・
+技後CDの基準式(4000ms±12%)・2発目角度の基準値(0.22rad)はどれも変えておらず、**基準値を中心に
+散らす幅を追加しただけ**=抵触なし。
+
+**変更ファイル**: `src/utils/chaffMoves.ts`、`src/store/gameStore.ts`、`src/pixi/pixiScene.ts`、
+`src/utils/chaffMoves.test.ts`、`src/store/zombieRedMove.test.ts`、`package.json`、
+`src/data/changelog.ts`。**`PACING_PUZZLE.md`/`PROJECT_STATUS.md` は触っていない。**
+
 ## v0.25.4409 — §16-3z「歯応え」の仕上げをゾンビへ実装(実装チャット・Sonnet)【2026-09-17 00:40 JST】
 
 **PACING_PUZZLE.md §16-3z の仕様どおり、ゾンビだけに実装。bat/skeleton/werewolf/ボスは無改変。**

@@ -223,7 +223,10 @@ import {
   biteSpecFor,
 } from '../utils/enemyBite'; // ★噛みつきの台帳(PACING_PUZZLE §12)
 // §16-3z「歯応え」の仕上げ: ゾンビ赤2連の停止尺(姿勢の3段の合計に使う)と赤の脈(純関数)。
-import { ZOMBIE_RED_PAUSE_MS, zombieRedGlowStrength } from '../utils/chaffMoves';
+import {
+  zombieRedGlowStrength, zombieRedPauseMs,
+  ZOMBIE_RP_STUMBLE_FRAC, ZOMBIE_RP_RISE_FRAC, ZOMBIE_RP_TREMBLE_FRAC, // §16-3z①停止の長さ±30%(比例3段)
+} from '../utils/chaffMoves';
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 表示名・立ち絵クラスの正本(台帳)と、技の寸法テーブル。
 // **判定(phantomTick)と同じ1箇所**を読むので「赤いのに当たらない」が起きない。
 import { GUARDIAN_PHANTOM_CLASS } from '../utils/bossPractice';
@@ -1322,12 +1325,11 @@ const BOSS_CORPSE_SHAKE_PX = 7;         // 揺れの最大振幅(横)。縦は�
 const BOSS_CORPSE_CRUMBLE_FROM = 0.35;  // 崩れ始め。まず揺れだけを見せてから崩す=「揺れて崩れる」の順
 const BOSS_CORPSE_SQUASH = 0.55;        // 崩れ切った時の縦の潰れ(足元は地面に残す)
 const BOSS_CORPSE_SPREAD = 0.18;        // 崩れる時の横の広がり(瓦礫が積もる感じ)
-// §16-3z「歯応え」の仕上げ(社長指示2026-09-16)★①姿勢: ゾンビ赤の停止(z-red-pause・2000ms)を
-// 3段に割る(2秒を1つの姿勢で通すと「固まったバグ」に見える。段で割ると「溜めている」に見える)。
-// 合計=ZOMBIE_RED_PAUSE_MS(chaffMoves.ts)と一致させること。
-const ZOMBIE_RP_STUMBLE_MS = 500;  // ①止まる(つんのめり=行き過ぎて戻る)
-const ZOMBIE_RP_RISE_MS = 900;     // ②上体を起こす(威圧)
-const ZOMBIE_RP_TREMBLE_MS = 600;  // ③詰めの溜め(震え)
+// §16-3z「歯応え」の仕上げ(社長指示2026-09-16)★①姿勢: ゾンビ赤の停止(z-red-pause)を
+// 3段に割る(1つの姿勢で通すと「固まったバグ」に見える。段で割ると「溜めている」に見える)。
+// ★①停止の長さ±30%(社長裁定2026-09-16「3段を比例で伸縮」): 段の境目msは個体の全長
+// (`zombieRedPauseMs`・chaffMoves.ts)× 比率(`ZOMBIE_RP_*_FRAC`・同ファイルからimport)で
+// 描画側(下の該当ブロック)が計算する。ここに絶対msの定数は置かない(段がズレるため)。
 // ★①読める: 赤の脈(加算overlay)の色。既存の赤テレグラフ(0xff2a2a系)と揃える。
 const ZOMBIE_RED_GLOW_TINT = 0xff2a2a;
 const ZOMBIE_RED_GLOW_ALPHA_MAX = 0.85;
@@ -17411,25 +17413,33 @@ export class PixiScene {
       }
     }
 
-    // ★①姿勢(PACING_PUZZLE.md §16-3z/§16-6): ゾンビ赤の停止(z-red-pause・2000ms)を3段で見せる。
+    // ★①姿勢(PACING_PUZZLE.md §16-3z/§16-6): ゾンビ赤の停止(z-red-pause)を3段で見せる。
     // 紫の停止(zpause・1000ms)とは色を付けず姿勢と長さだけで見分ける(§16-5)。
+    // ★①停止の長さ±30%(社長裁定2026-09-16「3段を比例で伸縮させる」): 全長は個体ごとに違う
+    // (`zombieRedPauseMs`・id+spawnedAt由来)ので、**段の境目は絶対msではなく全長に対する
+    // 割合**で置く(`ZOMBIE_RP_*_FRAC`=500:900:600と同じ比)。絶対msのままだと短い個体で
+    // 「溜め」だけ相対的に伸びて姿勢の形が崩れる。
     if (e.type === 'zombie' && e.aiPhase === 'z-red-pause') {
-      const startedAt = (e.aiPhaseUntil ?? gameTime) - ZOMBIE_RED_PAUSE_MS;
+      const totalMs = zombieRedPauseMs(e.id, e.spawnedAt);
+      const stumbleMs = totalMs * ZOMBIE_RP_STUMBLE_FRAC;
+      const riseMs = totalMs * ZOMBIE_RP_RISE_FRAC;
+      const trembleMs = totalMs * ZOMBIE_RP_TREMBLE_FRAC;
+      const startedAt = (e.aiPhaseUntil ?? gameTime) - totalMs;
       const t = Math.max(0, gameTime - startedAt);
-      if (t < ZOMBIE_RP_STUMBLE_MS) {
+      if (t < stumbleMs) {
         // ①止まる(つんのめり): 足は一気に止め、上体だけ行き過ぎて戻る(§16-6の慣性の掟)。
-        const p = t / ZOMBIE_RP_STUMBLE_MS;
+        const p = t / stumbleMs;
         const dip = Math.sin(Math.min(1, p * 2.2) * Math.PI) * Math.exp(-p * 2.5);
         aiSqY = 1 - 0.22 * dip; aiSqX = 1 + 0.16 * dip;
-      } else if (t < ZOMBIE_RP_STUMBLE_MS + ZOMBIE_RP_RISE_MS) {
+      } else if (t < stumbleMs + riseMs) {
         // ②上体を起こす: 縦に伸び上がる威圧(§16-6「上体を起こして後ろへ」・smoothstep=慣性)。
-        const q = (t - ZOMBIE_RP_STUMBLE_MS) / ZOMBIE_RP_RISE_MS;
+        const q = (t - stumbleMs) / riseMs;
         const ease = q * q * (3 - 2 * q);
         aiSqY = 1 + 0.12 * ease; aiSqX = 1 - 0.08 * ease;
       } else {
         // ③詰めの溜め(震え): 起こしきった姿勢を保ったまま、踏み込みへ向けて震えが強まる。
         aiSqY = 1.12; aiSqX = 0.92;
-        const r = Math.min(1, (t - ZOMBIE_RP_STUMBLE_MS - ZOMBIE_RP_RISE_MS) / ZOMBIE_RP_TREMBLE_MS);
+        const r = Math.min(1, (t - stumbleMs - riseMs) / trembleMs);
         aiShake = (Math.sin(now / 23) * 0.6 + Math.sin(now / 11) * 0.4) * 1.6 * r;
       }
     }

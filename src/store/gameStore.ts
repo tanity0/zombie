@@ -306,9 +306,10 @@ import { deferFrozenClocksBy } from '../utils/chaffMoves'; // PACING_PUZZLE.md �
 // ★ゾンビ赤(PACING_PUZZLE.md §16-3・§16-8b手順5)。枠の導出/技の終わり/待ちの尺/帯の定数の正本。
 import {
   deriveChaffMoveGrants, endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot,
-  ZOMBIE_BAND_OUTER_PX, ZOMBIE_BAND_INNER_PX, ZOMBIE_RED_PAUSE_MS, ZOMBIE_LUNGE_RANGE_PX,
-  ZOMBIE_STAGGER_MS, ZOMBIE_BITE2_ANGLE_OFFSET_RAD,
+  ZOMBIE_BAND_OUTER_PX, ZOMBIE_BAND_INNER_PX, ZOMBIE_LUNGE_RANGE_PX,
+  ZOMBIE_STAGGER_MS,
   ZOMBIE_RECOVER_MS, zombieLungeRampMul, // §16-3z「歯応え」の仕上げ(③硬直・②踏み込みの加速)
+  zombieRedPauseMs, zombieBite2AngleRad, // §16-3z 追補(①停止の長さ±30%・②2発目の角度にspawnedAtを混ぜる)
 } from '../utils/chaffMoves';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
@@ -14924,11 +14925,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (phase === 'z-stagger') {
             if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // よろけ継続:その場
             // よろけ明け→2発目。向きは§12と同じく踏み込みの瞬間(ここ)に焼く。僅かにずらす
-            // (ZOMBIE_BITE2_ANGLE_OFFSET_RAD・個体ごとの向きはchaffTraitsのflankSignで固定=決定的)。
+            // (向きはchaffTraitsのflankSignで固定=決定的。大きさは§16-3z②「2発目の角度にも
+            // spawnedAtを混ぜる」=zombieBite2AngleRadがid+spawnedAt由来で±30%散らす)。
             const bl = Math.max(0.001, pdist);
             const bdx = (pcx - ecx) / bl, bdy = (pcy - ecy) / bl;
             const spin = chaffTraits(enemy.id).flankSign;
-            const ca = Math.cos(ZOMBIE_BITE2_ANGLE_OFFSET_RAD * spin), sa = Math.sin(ZOMBIE_BITE2_ANGLE_OFFSET_RAD * spin);
+            const bite2Angle = zombieBite2AngleRad(enemy.id, enemy.spawnedAt, spin);
+            const ca = Math.cos(bite2Angle), sa = Math.sin(bite2Angle);
             return {
               ...enemy, vx: 0, vy: 0, aiPhase: 'z-bite2', biteAt: gameTime,
               biteDirX: bdx * ca - bdy * sa, biteDirY: bdx * sa + bdy * ca,
@@ -14998,7 +15001,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (pdist > ZOMBIE_BAND_OUTER_PX) {
               phase = undefined; phaseUntil = 0; // 帯の外へ戻った=待ちを解除→通常接近へ
             } else if (chaffGrants.has(enemy.id)) {
-              return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_RED_PAUSE_MS };
+              // ★①停止の長さ±30%(§16-3z・社長裁定「3段を比例で伸縮」): 全長はid+spawnedAt由来。
+              // pixiScene側の3段姿勢はこの全長に対する割合で描く(絶対msで段を割らない)。
+              return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + zombieRedPauseMs(enemy.id, enemy.spawnedAt) };
             } else if (pdist <= ZOMBIE_BAND_INNER_PX) {
               // 枠なし・内縁到達=紫(旧仕様のまま)。下の「旧仕様」ブロックへフォールスルーする。
               phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS;
@@ -15023,7 +15028,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // ゾンビもz-waitへ入り、次のフレームで**密着したままz-red-pauseの2秒棒立ち**になる
             // (殴り放題を渡す=「殴り込みづらくする」ゴールの正反対)。
             // 赤の技後CD中は入らない(§16-3「赤の技後CD(4000ms)中は紫の停止にも入らない」)。
-            phase = 'z-wait'; phaseUntil = gameTime + zombieRedWaitMs(enemy.id);
+            phase = 'z-wait'; phaseUntil = gameTime + zombieRedWaitMs(enemy.id, enemy.spawnedAt);
           }
 
           // ── 旧仕様: 紫の停止/追尾ループ(境界をMELEE_RADIUS(74)→100pxへ統一・§16-3) ─────────

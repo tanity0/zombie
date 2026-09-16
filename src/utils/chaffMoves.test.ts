@@ -7,6 +7,9 @@ import {
   ZOMBIE_RED_TRIGGER_MIN_PX, ZOMBIE_RED_TRIGGER_MAX_PX,
   zombieLungeRampMul, ZOMBIE_LUNGE_RAMP_MS, zombieRedGlowStrength, ZOMBIE_RECOVER_MS,
   ZOMBIE_STAGGER_MS, ZOMBIE_RED_DECAY_MS,
+  zombieRedPauseMs, ZOMBIE_RED_PAUSE_MS, ZOMBIE_RED_PAUSE_JITTER,
+  ZOMBIE_RP_STUMBLE_FRAC, ZOMBIE_RP_RISE_FRAC, ZOMBIE_RP_TREMBLE_FRAC,
+  zombieBite2AngleRad, ZOMBIE_BITE2_ANGLE_OFFSET_RAD, ZOMBIE_BITE2_ANGLE_JITTER,
 } from './chaffMoves';
 import type { Enemy, EnemyType } from '../types/game';
 
@@ -158,7 +161,9 @@ describe('zombieRedWaitMs(§16-3「待ちの尺」・id由来の決定的な値)
     expect(zombieRedWaitMs('same-id')).toBe(zombieRedWaitMs('same-id'));
   });
   it('idが違えば(高確率で)値も散る=抽選ではなく尺を散らす狙いが機能している', () => {
-    const vals = new Set(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(zombieRedWaitMs));
+    // ★zombieRedWaitMsは2引数(id, spawnedAt)になったため、Array#mapへ直接渡すとindexが
+    // spawnedAtとして誤って渡ってしまう。idだけを渡す形に包む。
+    const vals = new Set(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(id => zombieRedWaitMs(id)));
     expect(vals.size).toBeGreaterThan(1);
   });
 });
@@ -293,5 +298,99 @@ describe('zombieRedGlowStrength(§16-3z①「赤の脈は状態で駆動する�
   it('硬直の残りは0のまま(減衰後は色なし)', () => {
     const e = { ...base, aiPhase: 'z-recover' as const, aiPhaseUntil: 1000 + ZOMBIE_RECOVER_MS };
     expect(zombieRedGlowStrength(e, 1000 + ZOMBIE_RECOVER_MS)).toBe(0);
+  });
+});
+
+describe('★社長裁定2026-09-16「停止の長さ±30%」+「個体差の種にspawnedAtを混ぜる」(§16-3z追補)', () => {
+  describe('zombieRedPauseMs(停止の全長・基準値はZOMBIE_RED_PAUSE_MSのまま残す)', () => {
+    it(`基準値 × (1±${ZOMBIE_RED_PAUSE_JITTER}) の範囲に収まる`, () => {
+      for (const id of ['a', 'b', 'c', 'd', 'e', 'f']) {
+        for (const spawnedAt of [undefined, 0, 1000, 999999]) {
+          const v = zombieRedPauseMs(id, spawnedAt);
+          expect(v).toBeGreaterThanOrEqual(ZOMBIE_RED_PAUSE_MS * (1 - ZOMBIE_RED_PAUSE_JITTER));
+          expect(v).toBeLessThanOrEqual(ZOMBIE_RED_PAUSE_MS * (1 + ZOMBIE_RED_PAUSE_JITTER));
+        }
+      }
+    });
+    it('同じid+spawnedAtは常に同じ値(決定的)', () => {
+      expect(zombieRedPauseMs('z1', 12345)).toBe(zombieRedPauseMs('z1', 12345));
+    });
+    it('★②spawnedAtが未設定でも落ちない(既存個体のフォールバック=idだけで決定的)', () => {
+      expect(() => zombieRedPauseMs('z1')).not.toThrow();
+      expect(zombieRedPauseMs('z1')).toBe(zombieRedPauseMs('z1', undefined));
+    });
+    it('★②同じidでもspawnedAtが違えば(高確率で)値が変わる=出直せば別の癖になる', () => {
+      const vals = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(s => zombieRedPauseMs('same-id', s * 10007)));
+      expect(vals.size).toBeGreaterThan(1);
+    });
+  });
+
+  describe('★①3段の比は全長によらず一定(社長裁定「一部だけ固定にすると形が変わる」)', () => {
+    it('比率定数の合計は1(段が全長を過不足なく分割する)', () => {
+      expect(ZOMBIE_RP_STUMBLE_FRAC + ZOMBIE_RP_RISE_FRAC + ZOMBIE_RP_TREMBLE_FRAC).toBeCloseTo(1, 10);
+    });
+    it('比率は元の500:900:600と一致する(基準2000msでの内訳)', () => {
+      expect(ZOMBIE_RP_STUMBLE_FRAC).toBeCloseTo(500 / ZOMBIE_RED_PAUSE_MS, 10);
+      expect(ZOMBIE_RP_RISE_FRAC).toBeCloseTo(900 / ZOMBIE_RED_PAUSE_MS, 10);
+      expect(ZOMBIE_RP_TREMBLE_FRAC).toBeCloseTo(600 / ZOMBIE_RED_PAUSE_MS, 10);
+    });
+    it('★全長が違う2個体でも、各段msを全長で割った比は同じ(pixiScene側の計算を模擬)', () => {
+      const totalShort = zombieRedPauseMs('short-id', 1); // 個体Aの全長(短め寄り/長め寄りは問わない)
+      const totalLong = zombieRedPauseMs('long-id', 2);    // 個体Bの全長(Aとは別の値になりうる)
+      for (const total of [totalShort, totalLong, ZOMBIE_RED_PAUSE_MS * 0.7, ZOMBIE_RED_PAUSE_MS * 1.3]) {
+        const stumbleMs = total * ZOMBIE_RP_STUMBLE_FRAC;
+        const riseMs = total * ZOMBIE_RP_RISE_FRAC;
+        const trembleMs = total * ZOMBIE_RP_TREMBLE_FRAC;
+        expect(stumbleMs + riseMs + trembleMs).toBeCloseTo(total, 6);
+        expect(stumbleMs / total).toBeCloseTo(ZOMBIE_RP_STUMBLE_FRAC, 10);
+        expect(riseMs / total).toBeCloseTo(ZOMBIE_RP_RISE_FRAC, 10);
+        expect(trembleMs / total).toBeCloseTo(ZOMBIE_RP_TREMBLE_FRAC, 10);
+      }
+    });
+  });
+
+  describe('zombieRedWaitMs / endChaffMoveも spawnedAt を種に混ぜる(対象は台帳どおり4値)', () => {
+    it('zombieRedWaitMs: spawnedAt未設定でも落ちない・id単独と一致(フォールバック)', () => {
+      expect(() => zombieRedWaitMs('id1')).not.toThrow();
+      expect(zombieRedWaitMs('id1')).toBe(zombieRedWaitMs('id1', undefined));
+    });
+    it('zombieRedWaitMs: 同idでもspawnedAtが違えば(高確率で)値が変わる', () => {
+      const vals = new Set([0, 1, 2, 3, 4, 5, 6, 7].map(s => zombieRedWaitMs('same-id', s * 7919)));
+      expect(vals.size).toBeGreaterThan(1);
+    });
+
+    const e = { id: 'z1', type: 'zombie' as EnemyType, chaffMove: 'zombie-double' as const, aiPhase: 'z-bite2' as const };
+    it('endChaffMove: spawnedAt未設定でも落ちない・従来どおりidだけで決定的(フォールバック)', () => {
+      expect(() => endChaffMove(e, 10000)).not.toThrow();
+      expect(endChaffMove(e, 10000).chaffMoveCdUntil).toBe(endChaffMove({ ...e, spawnedAt: undefined }, 10000).chaffMoveCdUntil);
+    });
+    it('endChaffMove: 同idでもspawnedAtが違えば(高確率で)技後CDが変わる', () => {
+      const vals = new Set([0, 1, 2, 3, 4, 5, 6, 7].map(s => endChaffMove({ ...e, spawnedAt: s * 3571 }, 10000).chaffMoveCdUntil));
+      expect(vals.size).toBeGreaterThan(1);
+    });
+  });
+
+  describe('zombieBite2AngleRad(2発目の角度・向きはchaffTraitsのflankSignのまま、大きさにspawnedAtを混ぜる)', () => {
+    it(`大きさは基準値 × (1±${ZOMBIE_BITE2_ANGLE_JITTER}) の範囲に収まる(符号はspinのまま)`, () => {
+      for (const spin of [1, -1] as const) {
+        for (const id of ['a', 'b', 'c']) {
+          for (const spawnedAt of [undefined, 0, 5000]) {
+            const v = zombieBite2AngleRad(id, spawnedAt, spin);
+            const mag = Math.abs(v);
+            expect(mag).toBeGreaterThanOrEqual(ZOMBIE_BITE2_ANGLE_OFFSET_RAD * (1 - ZOMBIE_BITE2_ANGLE_JITTER));
+            expect(mag).toBeLessThanOrEqual(ZOMBIE_BITE2_ANGLE_OFFSET_RAD * (1 + ZOMBIE_BITE2_ANGLE_JITTER));
+            expect(Math.sign(v)).toBe(spin); // 向きはspinのまま(chaffTraits.flankSign由来)
+          }
+        }
+      }
+    });
+    it('★②spawnedAtが未設定でも落ちない(フォールバック=idだけで決定的)', () => {
+      expect(() => zombieBite2AngleRad('id1', undefined, 1)).not.toThrow();
+      expect(zombieBite2AngleRad('id1', undefined, 1)).toBe(zombieBite2AngleRad('id1', undefined, 1));
+    });
+    it('★②同じidでもspawnedAtが違えば(高確率で)角度の大きさが変わる', () => {
+      const vals = new Set([0, 1, 2, 3, 4, 5, 6, 7].map(s => zombieBite2AngleRad('same-id', s * 2003, 1)));
+      expect(vals.size).toBeGreaterThan(1);
+    });
   });
 });
