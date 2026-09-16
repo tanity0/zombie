@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4370',
+    items: ['殴った手応えが強くなりました。敵は当たった瞬間に大きくのけぞり、以前より遠くへ吹き飛びます'],
+  },
+  {
     version: '0.25.4369',
     items: ['ゲーム内容の変更はありません(雑魚の新しい攻撃の設計書を、書き直して1本にまとめた回です)'],
   },

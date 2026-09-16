@@ -1162,7 +1162,13 @@ const saveNamedFoe = (m: NamedFoeMeta | null): void => {
 // 社長指示v0.25.3443「打った時のノックバックも小さすぎて認識できない」: 43→86(旧64→43の2/3化を撤回して
 // 2倍へ。単発≈12px移動=見て分かる叩き台)。knockbackEnemyの全発生源(銃/爆発/デコイ等)が同じ物差しで太る
 // =「全体的に動きを大きく見せる」の一環。強すぎたら実機でこの1本を調整。
-export const BULLET_KNOCKBACK_SPEED = 86;
+// ★社長指示2026-09-16(一撃の気持ちよさ・優先1「敵の怯み・ノックバック・吹き飛び」):
+// 「**大量の敵相手でも、殴ったことで群れの形が変わる必要がある**」。86=実距離≈12pxで、
+// 敵の体幅(26〜36px)の半分も動いていなかった=群れの形は変わらない。**86→172(≈24px=体幅ぶん)**。
+// 前回と同じく倍にしただけなので、強すぎ/弱すぎはこの1本で戻せる。
+// ※px指定の発生源(SKILL_BLAST_KB_PX 等)は `knockbackSpeedFor(px,ms)/BULLET_KNOCKBACK_SPEED` で
+// 倍率を作っているため**この変更で実距離は動かない**(打ち消し合う)。太るのは素の被弾だけ。
+export const BULLET_KNOCKBACK_SPEED = 172;
 
 // Crit → stun duration (gameTime ms). A stunned enemy is a finisher target.
 export const STUN_DURATION_MS = 5000;

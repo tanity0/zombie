@@ -1190,8 +1190,33 @@ const heliAboveAt = (t: number): number => {
   return HELI_ABOVE + (HELI_LAND_ABOVE - HELI_ABOVE) * s;
 };
 // 敵の被弾しなり(頭が後ろにぐにゃっ): 撃たれた直後だけ skew + 軽い縦縮みで反らせる。
-const ENEMY_HIT_FLINCH_MS = 230;    // 少しだけゆっくり(0.13s→0.23s)
-const ENEMY_HIT_FLINCH_SKEW = 0.42; // 最大skew(ラジアン相当)
+// ★被弾の怯み(社長指示2026-09-16「一撃の気持ちよさを上げたい/1が最重要」)。
+// 旧: 230ms・skew 0.42・縦10%潰し・**直線減衰**。殴った側(contactLungePose=360ms・skew 0.6・縦30%潰し・
+// 横張り・沈み・2拍)に比べて明らかに薄く、しかも**直線=慣性MUST違反**だった(出て戻る山が無い)。
+// 新: 尺を伸ばし・振りを大きく・横に張らせ・**出は速く戻りは緩い**包絡へ。数値は叩き台(実機で調整)。
+const ENEMY_HIT_FLINCH_MS = 280;    // 230→280
+// ★0.78で一度作って画を見たら、直立の敵(ゾンビ)は**体が枠外まで剪断されて「溶けている」絵**になった。
+// のけぞりではなく歪みに見えるので 0.58 へ。旧0.42より明確に大きく、殴った側(0.6)とほぼ同格。
+// ノックバックが12→24pxへ増えた分、「飛ばされた量」は距離側が担うので傾きは体の形を保てる範囲に留める。
+const ENEMY_HIT_FLINCH_SKEW = 0.58; // 0.42→0.58
+const ENEMY_HIT_FLINCH_SQUASH = 0.22; // 縦の潰し 0.10→0.22
+const ENEMY_HIT_FLINCH_WIDEN = 0.14;  // 横の張り(新規。潰れたぶん横へ逃げる)
+const ENEMY_HIT_FLINCH_RISE = 0.18;   // この割合までが「出」(残りが「戻り」)
+/**
+ * 被弾の怯みポーズ(t=経過0..1)。**出は速く、戻りは緩い**(慣性MUST。旧実装は直線減衰だった)。
+ * 判定は1pxも動かさない=純粋な描画(CLAUDE.md「Visual vs hitbox」)。
+ */
+const hitFlinchPose = (t: number): { skew: number; sqY: number; sqX: number } => {
+  // 出=0→1へ一気に(ease-out)。戻り=1→0へ緩やかに(ease-in-out)。
+  const w = t < ENEMY_HIT_FLINCH_RISE
+    ? 1 - (1 - t / ENEMY_HIT_FLINCH_RISE) ** 2
+    : (() => { const u = (t - ENEMY_HIT_FLINCH_RISE) / (1 - ENEMY_HIT_FLINCH_RISE); return (1 + Math.cos(u * Math.PI)) / 2; })();
+  return {
+    skew: ENEMY_HIT_FLINCH_SKEW * w,
+    sqY: 1 - ENEMY_HIT_FLINCH_SQUASH * w,
+    sqX: 1 + ENEMY_HIT_FLINCH_WIDEN * w,
+  };
+};
 const SHIELD_BLOCK_FALL_MS = 180;   // 盾で弾かれたジャンプの空中→着地の落下補間時間(描画のみ)
 
 const SUNLIGHT_PRESET: StageLightingPreset = {
@@ -17342,12 +17367,12 @@ export class PixiScene {
         }
       }
       const sinceHit = now - e.lastHit;
-      let flinchSqY = 1;
+      let flinchSqY = 1, flinchSqX = 1;
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
-        const wob = 1 - sinceHit / ENEMY_HIT_FLINCH_MS;
+        const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS);
         const dir = (e.knockbackVx ?? 0) > 0.01 ? 1 : (e.knockbackVx ?? 0) < -0.01 ? -1 : 1;
-        view.sprite.skew.x = -dir * ENEMY_HIT_FLINCH_SKEW * wob;
-        flinchSqY = 1 - 0.1 * wob;
+        view.sprite.skew.x = -dir * fp.skew;
+        flinchSqY = fp.sqY; flinchSqX = fp.sqX;
       } else {
         view.sprite.skew.x = 0;
       }
@@ -17399,7 +17424,7 @@ export class PixiScene {
       const idolMirror = (e.type === 'idol' && e.idolFacingLeft) ? -1 : 1;
       // ★予兆一括バッチ(v0.25.3344): aiSqX/aiSqYを乗せる(トール/ラフィの飛び掛かりしゃがみ用)。
       // 既定1・1なので他の裏ボス系(mimir/jormungand/skadi/miguel/jibril/uri/suriel/acrasiel/idol)は無変化。
-      view.sprite.scale.set(idolMirror * scale * breath.x * lungeSqX * aiSqX, scale * breath.y * flinchSqY * aiSqY);
+      view.sprite.scale.set(idolMirror * scale * breath.x * lungeSqX * flinchSqX * aiSqX, scale * breath.y * flinchSqY * aiSqY);
       // プレイヤーが帯(当たり判定)より奥=裏に回り込んだら、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
       // 二値判定ではなく「遠ざかるほど急激」な二乗カーブで透明度を距離に応じて連続変化させる。
       const ply = useGameStore.getState().player;
@@ -17510,12 +17535,12 @@ export class PixiScene {
       // 被弾しなり: 撃たれた直後だけ頭(上方)を後ろ(ノックバック方向)へ skew で反らせ、軽く縦縮み。
       // アンカーが足元寄りなので skew だけで頭が大きく振れる。短時間で戻る。新規描画なし=軽い。
       const sinceHit = now - e.lastHit;
-      let flinchSqY = 1;
+      let flinchSqY = 1, flinchSqX = 1;
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
-        const wob = 1 - sinceHit / ENEMY_HIT_FLINCH_MS; // 1→0 減衰
+        const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS); // 出は速く戻りは緩い(慣性)
         const dir = (e.knockbackVx ?? 0) > 0.01 ? 1 : (e.knockbackVx ?? 0) < -0.01 ? -1 : 1;
-        view.sprite.skew.x = -dir * ENEMY_HIT_FLINCH_SKEW * wob; // 頭が後ろへ反る
-        flinchSqY = 1 - 0.1 * wob;
+        view.sprite.skew.x = -dir * fp.skew; // 頭が殴られた向きの逆へ反る
+        flinchSqY = fp.sqY; flinchSqX = fp.sqX; // 縦に潰れて横へ張る
       } else {
         view.sprite.skew.x = 0;
       }
@@ -17569,7 +17594,7 @@ export class PixiScene {
       // すこし吹っ飛んで潰れて消えるようにして」)。判定には一切関与しない純粋な描画。
       // 潰れの式は sim 側の純関数(corpseSquashNow)を読むだけ=尺と形の出どころを1箇所に保つ。
       const corpseSq = corpseSquashNow(e, now);
-      const scaleX = sc * breath.x * aiSqX * lungeSqX * motSqX * faceMul * corpseSq.sqX;
+      const scaleX = sc * breath.x * aiSqX * lungeSqX * flinchSqX * motSqX * faceMul * corpseSq.sqX;
       view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY * motSqY * corpseSq.sqY);
       if (corpseSq.alpha < 1) view.container.alpha *= corpseSq.alpha;
       // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
