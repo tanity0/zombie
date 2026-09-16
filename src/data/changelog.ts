@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4374',
+    items: ['燃えている敵が炎のダメージのたびに大きくのけぞっていたのが直りました。燃えていることは赤い明滅で従来どおり分かります'],
+  },
+  {
     version: '0.25.4373',
     items: ['被弾の反応が、受けたダメージの重さで変わるようになりました。かすった時は短く、大きく食らった時ほど深くしゃがみ、時間の止まりも長くなります'],
   },

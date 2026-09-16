@@ -33,7 +33,7 @@ import type {
 import type { EndingSoldier, EndingPhillState, EndingBomb } from '../utils/endingScene';
 import { endingBombFallY, isEndingSoldierTumbling, ENDING_BLOWN_MS } from '../utils/endingScene';
 import { SIGNAL_STRIKE_DELAY_MS, type SignalStrike } from '../utils/signalLauncher';
-import { playerHurtReactionOf } from '../utils/playerHurt';
+import { playerHurtReactionOf, lastHitWasDot } from '../utils/playerHurt';
 import { fallenSoldiersInRange } from '../utils/endingScene';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
@@ -17384,7 +17384,10 @@ export class PixiScene {
           phillDiveOff = -(this.screenH / zoomPh + scale * tex.height) * diveLift;
         }
       }
-      const sinceHit = now - e.lastHit;
+      // ★直近の被弾がDoT(燃焼・血棘)なら怯みの絵を出さない(社長報告2026-09-16)。
+      // 判定側の怯み(hitStunUntil)は元々DoTを除外しており、絵だけが追随していなかった。
+      // 点滅・跳ね・光は `lastHit` のままなので従来どおり出る=「効いている」は伝わる。
+      const sinceHit = lastHitWasDot(e) ? Number.POSITIVE_INFINITY : now - e.lastHit;
       let flinchSqY = 1, flinchSqX = 1;
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
         const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS);
@@ -17552,7 +17555,10 @@ export class PixiScene {
       const breath = this.enemyBreath(e, now);
       // 被弾しなり: 撃たれた直後だけ頭(上方)を後ろ(ノックバック方向)へ skew で反らせ、軽く縦縮み。
       // アンカーが足元寄りなので skew だけで頭が大きく振れる。短時間で戻る。新規描画なし=軽い。
-      const sinceHit = now - e.lastHit;
+      // ★直近の被弾がDoT(燃焼・血棘)なら怯みの絵を出さない(社長報告2026-09-16)。
+      // 判定側の怯み(hitStunUntil)は元々DoTを除外しており、絵だけが追随していなかった。
+      // 点滅・跳ね・光は `lastHit` のままなので従来どおり出る=「効いている」は伝わる。
+      const sinceHit = lastHitWasDot(e) ? Number.POSITIVE_INFINITY : now - e.lastHit;
       let flinchSqY = 1, flinchSqX = 1;
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
         const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS); // 出は速く戻りは緩い(慣性)

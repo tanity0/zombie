@@ -479,6 +479,11 @@ export interface Enemy {
   type: EnemyType;
   experienceValue: number;
   lastHit: number;
+  // ★DoT(燃焼・血棘など)で入った被弾の打刻(**描画専用**・`lastHit` と同じ値が入る)。
+  // 怯みの絵だけがこれを見て**のけぞりを抑止**する(社長報告2026-09-16「延焼のダメージでも敵が
+  // 割とのけぞっちゃう」)。判定側の怯み(`hitStunUntil`)は元々 DoT を除外していて、
+  // **絵だけが除外を持っていなかった**のが原因。点滅・跳ね・光は従来どおり出す(`lastHit` を消さない)。
+  lastDotAt?: number;
   lastShot: number;
   // V1(3)(FX_GAP_LEDGER.md・社長指示): 接触ダメージが**プレイヤーに実際に入った瞬間**の打刻。
   // 描画専用(レンダラが~180msの「前のめり」変形=被弾しなりの逆位相に使う)。判定・ダメージ・
