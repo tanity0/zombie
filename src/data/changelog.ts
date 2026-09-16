@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4381',
+    items: ['ゲーム内容の変更はありません'],
+  },
+  {
     version: '0.25.4380',
     items: ['近接を振り切った直後、立て直すまで足が重くなりました。踏み込みで飛び込む速さは変わらないので、避けに使う立ち回りはこれまでどおりです'],
   },
