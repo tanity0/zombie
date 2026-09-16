@@ -11,10 +11,14 @@
 // ★案(b)「軽い被弾では怯まない」へ倒したくなったら、**下の表の軽段 crouchMs を 0 にする**だけでよい
 // (0なら窓が開かない=しゃがみが出ない。ストップとノックは従来どおり残る)。
 
-/** 1段ぶんの反応。crouchMs=しゃがみ絵を出す長さ / stopMs=ヒットストップの長さ。 */
+/**
+ * 1段ぶんの反応。crouchMs=しゃがみ絵を出す長さ / stopMs=ヒットストップの長さ /
+ * gunLockMs=**銃が撃てない長さ**(社長裁定2026-09-16「はい」=被弾の復帰ディレイ)。
+ */
 export interface PlayerHurtReaction {
   crouchMs: number;
   stopMs: number;
+  gunLockMs: number;
 }
 
 /** 段の境目(被弾量 ÷ 最大HP)。この値**以上**で次の段へ上がる。 */
@@ -26,9 +30,9 @@ export const PLAYER_HURT_TIER_FRACS = [0.08, 0.20] as const;
  * **浅い所では軽〜中・深い所や色つきでは重**へ自然に寄る。
  */
 export const PLAYER_HURT_TIERS: readonly PlayerHurtReaction[] = [
-  { crouchMs: 180, stopMs: 40 },  // 軽: かすった
-  { crouchMs: 300, stopMs: 70 },  // 中: まともに食らった(従来の一律値がここ)
-  { crouchMs: 460, stopMs: 110 }, // 重: 保たない一撃
+  { crouchMs: 180, stopMs: 40,  gunLockMs: 180 },  // 軽: かすった
+  { crouchMs: 300, stopMs: 70,  gunLockMs: 300 },  // 中: まともに食らった(従来の一律値がここ)
+  { crouchMs: 460, stopMs: 110, gunLockMs: 460 },  // 重: 保たない一撃
 ];
 
 /** 被弾量と最大HPから段(0=軽 / 1=中 / 2=重)を返す。 */
@@ -43,3 +47,29 @@ export const playerHurtTier = (damage: number, maxHealth: number): 0 | 1 | 2 => 
 /** 段の反応を引く。範囲外の段は軽へ丸める(セーブ跨ぎ等で壊れた値が来ても落ちない)。 */
 export const playerHurtReactionOf = (tier: number | undefined): PlayerHurtReaction =>
   PLAYER_HURT_TIERS[tier === 1 || tier === 2 ? tier : 0];
+
+// ---------------------------------------------------------------------------------------------
+// ★被弾の復帰ディレイ(社長指示2026-09-16「食らった時に多少動けるようになるのにディレイが
+//   お互いに必要な気がする」→「はい」)
+// ---------------------------------------------------------------------------------------------
+// 食らっても**行動の選択肢が1つも減っていなかった**のが、重圧が出ない原因だった。被弾で止まるのは
+// ①全体ヒットストップ(40/70/110ms=世界ごと止まるのでお互い様)②ノックバックの滑り(260ms・移動だけ)
+// ③しゃがみの絵(180/300/460ms・絵だけ)の3つで、**撃ちながら食らって撃ち続けられた**。
+//
+// ★止めるのは「移動」ではなく「銃」。移動を止めると「操作を奪われた」に感じるが、攻撃を止めると
+// 「体勢を崩された」に感じる(前者は理不尽・後者は納得)。**長さはしゃがみの絵と同じ**にして、
+// 絵と実態を一致させる(いままで絵だけが大げさに嘘をついていた)。
+//
+// ★近接/カウンターは**止めない**。このゲームでは近接の一振りとカウンター窓は**同じ入力**
+// (`beginMeleeSwing` が窓とCDと絵を同時に開く)なので、近接を止めるとパリィまで止まる=
+// 食らった直後に弾けなくなり、死の連鎖になる。守りは常に即応のまま、が現状の設計。
+export const isHurtGunLocked = (
+  p: { lastHurtAt?: number; lastHurtTier?: 0 | 1 | 2 },
+  nowMs: number,
+): boolean => {
+  if (p.lastHurtAt === undefined) return false;
+  const ms = playerHurtReactionOf(p.lastHurtTier).gunLockMs;
+  if (ms <= 0) return false;
+  const since = nowMs - p.lastHurtAt;
+  return since >= 0 && since < ms;
+};

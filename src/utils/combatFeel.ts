@@ -13,11 +13,17 @@ import { isBossType, isPumpkinTier } from './enemyUtils';
 // ---- ① 当たった敵の局所ストップ(区分テンプレ: 雑魚/強個体/ボス級) ----
 // 雑魚=60ms(約4フレーム)・強個体(パンプキン/削岩型/伐採人)=40ms・ボス級/終端=0(=止めない。
 // ボスは体勢値・KB耐性(evaluateBossStopDr)が既にあり、殴るたびに止まると技の予告が崩れる)。
-export const HIT_STUN_MS_MOB = 60;
-export const HIT_STUN_MS_STRONG = 40;
+// ★v0.25.4377(社長指示2026-09-16「食らった時に多少動けるようになるのにディレイがお互いに必要」):
+// 60→120 / 40→70 へ。**のけぞりの絵は280msあるのに実際に止まっているのは60ms**で、絵と実態が
+// 4.7倍ズレていた(=大げさな絵のわりに手応えが無い、の正体)。倍にして絵の尺へ寄せる。
+export const HIT_STUN_MS_MOB = 120;
+export const HIT_STUN_MS_STRONG = 70;
 // 再発火の間(ms)。連射銃(最速100ms間隔)で毎発止めると「時間の6割止まる=実質の減速」になるので、
 // 前の止めの開始から REARM だけは新しい止めを書かない(最悪でも 60/260≒23%)。★社長判断待ちの暫定値。
-export const HIT_STUN_REARM_MS = 200;
+// ★v0.25.4377: 止めを倍にしたので、**ガードも倍**にして連射時の拘束率を据え置く
+// (止まっている割合 = 止めの長さ ÷ ガード = 120/400 = 30% で 60/200 と同じ)。
+// ここを据え置くと連射で6割止まる=実質のハメになるため、**必ずセットで動かす**。
+export const HIT_STUN_REARM_MS = 400;
 export const hitStunMsFor = (type: EnemyType): number => {
   if (isPumpkinTier(type)) return HIT_STUN_MS_STRONG;
   if (isBossType(type)) return 0;

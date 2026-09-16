@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS } from './playerHurt';
+import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS, isHurtGunLocked } from './playerHurt';
 
 describe('playerHurtTier — 被弾の重さで段が変わる', () => {
   it('素の敵の攻撃力(最大HP120)が狙いどおりの段に落ちる', () => {
@@ -39,5 +39,29 @@ describe('playerHurtReactionOf — 段が上がるほど長く止まる', () => 
     expect(playerHurtReactionOf(undefined)).toBe(PLAYER_HURT_TIERS[0]);
     expect(playerHurtReactionOf(9)).toBe(PLAYER_HURT_TIERS[0]);
     expect(playerHurtReactionOf(2)).toBe(PLAYER_HURT_TIERS[2]);
+  });
+});
+
+describe('isHurtGunLocked — 被弾の復帰ディレイ(銃だけ止まる)', () => {
+  it('段ごとの長さだけ true(軽180 / 中300 / 重460)', () => {
+    const t = 10000;
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 179)).toBe(true);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 180)).toBe(false);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 299)).toBe(true);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 300)).toBe(false);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 459)).toBe(true);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 460)).toBe(false);
+  });
+
+  it('★しゃがみの絵と同じ長さ(絵と実態を一致させるのが仕様)', () => {
+    for (const r of PLAYER_HURT_TIERS) expect(r.gunLockMs).toBe(r.crouchMs);
+  });
+
+  it('まだ一度も食らっていなければ止めない', () => {
+    expect(isHurtGunLocked({}, 10000)).toBe(false);
+  });
+
+  it('打刻が未来(時計のズレ)でも止めない', () => {
+    expect(isHurtGunLocked({ lastHurtAt: 10000, lastHurtTier: 1 }, 9000)).toBe(false);
   });
 });
