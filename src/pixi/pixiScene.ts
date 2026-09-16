@@ -140,6 +140,7 @@ import {
 // PACING_PUZZLE.md §10-12#17(フィル・羽根の檻/裁きの光/急降下の可視域クランプ=可視短辺の0.45倍上限)。
 import { phillCageInitialRadiusPx } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
+import { pickImageEffectFrame } from '../utils/killSlashFx'; // 'image'エフェクトの横並びシート・コマ送り(kill-slash用に追加)
 import { cineToggle, cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(URL+タイトル画面)
 
 import { applyCineKnobs, cineCameraAt, cineModeFor, cinePlateKinds, CINE_PLATE_W_FRAC, CINE_PLATE_TILT_RAD, CINE_PLATE_FOG_TILT_RAD, CINE_PLATE_ALPHA, CINE_PLATE_DRIFT_FRAC, CINE_PLATE_BLUR_PX, CINE_PLATE_PUSH_SCALE, type CineMode, type CineEvent, type CineCamera } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜4296)
@@ -3712,6 +3713,11 @@ export class PixiScene {
   private supportSniperSprite: Sprite | null = null;       // 援護射撃(support-sniper)のNPC(同時1人・護衛軍人スプライト流用のプールSprite)
   private flareGunViews = new Map<string, { container: Container; flameArt: Sprite; flame: Graphics; light: Sprite }>(); // フレアガン(flare-gun)の火(makeGroundFireView流用・同時1-2個)
   private effects = new Map<string, EffectView>();
+  // 'image'エフェクトの横並びシート(cols指定時)のコマキャッシュ。key=`${texture名}:${cols}`。
+  // ★毎フレーム Texture を作り直さない(社長指示・GCを毎フレーム殴らない)。setEndingSmokeAnim/
+  // setStage7CloudAnim と同じ「等分スライス」の作法だが、こちらは呼び出し側が任意のタイミングで
+  // 出す汎用エフェクト向けなので、初回描画時に遅延生成してキャッシュする形にしてある。
+  private imageEffectFrameCache = new Map<string, Texture[]>();
   // トール(一閃/突き/払い)専用: プレイヤーの斬撃と同じピクセル演出(streak+burst)を、実際の当たり判定
   // ライン(fx,fy→tx,ty・半幅)に合わせて出す。enemy.id keyed(裏ボスは1体のみだが将来の複数化にも耐える)。
   private thorSlashFx = new Map<string, Container>();
@@ -29773,8 +29779,31 @@ export class PixiScene {
     const targetH = 130 * (e.scale ?? 1);            // 表示高さ(world px)
     const pop = 1 + Math.max(0, 1 - t * 4) * 0.18;   // 出だしを少し大きく
     spr.visible = true;
-    spr.texture = tex;
-    spr.scale.set((targetH / tex.height) * pop);
+    // cols指定=横並びシート(例: fx/kill-slash・17コマ)。経過進捗からコマを選び、
+    // そのコマだけを切り出したTextureを使う(高さは全コマ共通=フル幅シートの高さと同じなので
+    // scale計算はそのまま下のtex.height基準で成立する)。★コマのTextureは初回だけ作ってキャッシュ
+    // (imageEffectFrameCache)し、毎フレーム作り直さない(GCを殴らない・社長指示)。
+    let frameTex = tex;
+    if (e.cols && e.cols > 1) {
+      const cacheKey = `${e.texture}:${e.cols}`;
+      let frames = this.imageEffectFrameCache.get(cacheKey);
+      if (!frames || frames.length !== e.cols) {
+        const fw = Math.floor(tex.width / e.cols);
+        const fh = tex.height;
+        frames = [];
+        for (let c = 0; c < e.cols; c++) {
+          frames.push(new Texture({ source: tex.source, frame: new Rectangle(c * fw, 0, fw, fh) }));
+        }
+        this.imageEffectFrameCache.set(cacheKey, frames);
+      }
+      const idx = pickImageEffectFrame(t, e.cols);
+      frameTex = frames[idx] ?? tex;
+    }
+    spr.texture = frameTex;
+    spr.scale.set((targetH / frameTex.height) * pop);
+    // アルファ無し(黒背景)の実写VFX素材向け: 加算合成で描くと黒が自然に透ける(乗算tintで沈めると
+    // 真っ黒な四角が出る=このプロジェクトの既知事故。fx/kill-slash用に追加)。未指定=従来の通常合成。
+    spr.blendMode = e.additive ? 'add' : 'normal';
     // v0.25.3078: 向き+外へ流れる動き(未指定なら従来どおり回転0・その場)。
     spr.rotation = e.rot ?? 0;
     const driftSec = (now - e.createdAt) / 1000;

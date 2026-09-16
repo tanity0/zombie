@@ -358,6 +358,7 @@ import { cineAccepts, cineCameraAt, cineSideOf, type CineEvent, type CineKind } 
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS, isEliteFatalStun } from '../utils/meleeExecute';
+import { killSlashNeckPosition } from '../utils/killSlashFx'; // KILL時の首元斬撃(fx/kill-slash・社長指示2026-09-16)
 
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
 const initialRhythm = (): RhythmState => ({
@@ -2312,6 +2313,20 @@ export const KILLFX_BLOOD_LAG_MS = 90;
 export const KILLFX_TOTAL_MS =
   KILLFX_BURST_AT_MS + KILLFX_SLASH_MS + KILLFX_RETURN_MS + KILLFX_LAND_MS; // =785
 export const KILLFX_RELEASE_SLOW_MS = 300; // 停止明け: 0.2→等速へ戻す尾(時間にも慣性を付ける)
+// ★KILL時の首元斬撃(社長指示2026-09-16「KILL時に敵の首元に流して斬撃を演出」)。
+// 対象は**近接(刀・鞭・素手などの近接攻撃)でのキルだけ**(銃・爆発・延焼・味方・罠のキルでは出さない=
+// 「斬撃」なので銃で出すと嘘になる)。呼び出しは grantMeleeKillRewards(近接5経路の合流点=
+// カウンター/刀/鞭/分身/投擲スケボー)と applyGhostMeleeFinisher(守護霊の近接フィニッシュ)の2箇所。
+export const KILL_SLASH_TEXTURE = 'fx/kill-slash';
+export const KILL_SLASH_COLS = 17;          // 素材は横並び17コマ(3264×151・1コマ192×151)
+export const KILL_SLASH_DURATION_MS = 500;  // 素材は17コマ0.7秒だが、KILLの瞬間なので少し速く流す
+// 素材1コマの実寸(px)。加算合成テクスチャの元データを直接見て決める(推測しない)。
+const KILL_SLASH_FRAME_W = 192;
+const KILL_SLASH_FRAME_H = 151;
+export const KILL_SLASH_TARGET_WIDTH_PX = 120; // 画面上の開始幅(設計チャット実測の出発点)。社長が実機で
+// 「もっと大きく」と言ったらここだけ動かせばいい。
+// drawImageEffect(pixiScene.ts)の targetH = 130 * scale という式から、上の目標幅になる scale を逆算する。
+export const KILL_SLASH_SCALE = KILL_SLASH_TARGET_WIDTH_PX / (130 * (KILL_SLASH_FRAME_W / KILL_SLASH_FRAME_H));
 export const COUNTER_ZOOM_MAG = 1.0;
 // ダイナミック・カメラワーク(v0.25.4294・CINEMATIC_CAMERA v2 台本): カウンター成立の寄りは短く硬く(スロー700とは別の時間構造)。
 export const COUNTER_ZOOM_MS = 320;
@@ -3998,6 +4013,27 @@ const applySubquestProgress = (get: () => GameState, ev: SubquestEvent): void =>
   }
 };
 
+// KILL時の首元斬撃(社長指示2026-09-16)。近接キルの共通合流点(grantMeleeKillRewards)と
+// 守護霊の近接フィニッシュ(applyGhostMeleeFinisher)の2箇所から呼ぶ。attacker=斬った側(プレイヤー
+// または守護霊の疑似Player)の中心座標。rotは attacker→敵 の向き(素材は「左から右へ弾ける」絵なので、
+// rot=0の基準向きは画面右。attacker→敵の角度をそのまま渡せば、斬った方向へ弾けて見える)。
+const spawnKillSlashFx = (
+  get: () => GameState,
+  attackerX: number,
+  attackerY: number,
+  enemy: { x: number; y: number; width: number; height: number },
+) => {
+  const neck = killSlashNeckPosition(enemy);
+  const rot = Math.atan2(neck.y - attackerY, neck.x - attackerX);
+  get().spawnImageMark(neck.x, neck.y, KILL_SLASH_TEXTURE, {
+    scale: KILL_SLASH_SCALE,
+    duration: KILL_SLASH_DURATION_MS,
+    cols: KILL_SLASH_COLS,
+    additive: true,
+    rot,
+  });
+};
+
 const grantMeleeKillRewards = (
   get: () => GameState,
   killed: { enemy: Enemy; finisher: boolean }[],
@@ -4129,6 +4165,9 @@ const grantMeleeKillRewards = (
     // §5.23 M22 C1: 血しぶきの方向=攻撃者(プレイヤー)→敵の延長線(spawnDeathPopと同じ考え方)。
     const bdx = ex - (player.x + player.width / 2);
     const bdy = ey - (player.y + player.height / 2);
+    // KILL時の首元斬撃(社長指示2026-09-16)。近接キル全経路(このヘルパーの合流点)なので、
+    // finisher(処刑扱い)かどうかに関わらず毎回出す(「KILL時に」=全ての近接キルが対象)。
+    spawnKillSlashFx(get, player.x + player.width / 2, player.y + player.height / 2, enemy);
     if (finisher) {
       // Finisher juice: white shockwave + gold ring + sparks + glow + callout.
       get().spawnBurst(ex, ey, '#dc2626', 30, bdx, bdy);
@@ -6097,7 +6136,8 @@ interface GameState {
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
   // rot(v0.25.4202): 絵の向き(rad)。VisualEffect側は元から rot を持っていたが、この入口が渡していなかった。
-  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number }) => void;
+  // cols/additive(社長指示2026-09-16・fx/kill-slash): 横並びシートのコマ送り/加算合成。未指定=従来どおり。
+  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean }) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
   // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
@@ -10350,12 +10390,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnCallout(enemy.x + enemy.width / 2, enemy.y - 6, 'Kill!', '#ffe4e6', {
           bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS,
         });
+        // KILL時の首元斬撃(社長指示2026-09-16)。守護霊(actor=疑似Player)の近接フィニッシュも対象
+        // (プレイヤー本体の近接キルはgrantMeleeKillRewards側で出す)。
+        spawnKillSlashFx(get, actor.x + actor.width / 2, actor.y + actor.height / 2, enemy);
       }
       return { kind: hit.kind, dmg: 0, killed };
     }
     const dmg = Math.max(1, Math.round(hit.dmg));
     const killed = get().damageEnemy(enemyId, dmg, false, false, true, null, 'ghost');
     get().spawnDamageNumber(enemy.x + enemy.width / 2, enemy.y, dmg, true); // 金の数字=プレイヤーのフィニッシュ打と同じ
+    if (killed) {
+      spawnKillSlashFx(get, actor.x + actor.width / 2, actor.y + actor.height / 2, enemy); // KILL時の首元斬撃(社長指示2026-09-16)
+    }
     if (!killed) {
       // 倒しきれなかった時のパッチもプレイヤーと同じ(気絶解除=完全気絶中は維持 / 浮き420ms)。
       set(s => ({
@@ -20496,6 +20542,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       scale: opts?.scale ?? 1,
       color: opts?.color,
       rot: opts?.rot,
+      cols: opts?.cols,
+      additive: opts?.additive,
       createdAt: now,
       duration: opts?.duration ?? 900,
     };

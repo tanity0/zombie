@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4406',
+    items: ['近接攻撃で敵を倒した瞬間、首元に鋭い斬撃が走る演出を追加した'],
+  },
+  {
     version: '0.25.4405',
     items: ['ゾンビがすぐ間近まで来ているのに、その場で長く立ち尽くしてしまう不具合を直した。近づきすぎた時は、これまでどおり素早く動き回ってくる'],
   },

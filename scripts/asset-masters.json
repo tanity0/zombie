@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "745 files / 復号後 約707MB",
+ "generatedFor": "746 files / 復号後 約709MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1297,6 +1297,12 @@
    "h": 128,
    "bytes": 17074,
    "sha": "755b27441f3806cc"
+  },
+  "sprites/fx/kill-slash.png": {
+   "w": 3264,
+   "h": 151,
+   "bytes": 147092,
+   "sha": "f068311287007031"
   },
   "sprites/fx/melee-hit-00.png": {
    "w": 176,

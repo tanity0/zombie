@@ -1,5 +1,64 @@
 # Development Log
 
+## v0.25.4406 — KILL時の首元斬撃(fx/kill-slash・社長指示2026-09-16)【2026-09-16 22:15 JST】
+
+**社長指示「KILL時に敵の首元に流して斬撃を演出」。承認範囲=近接(刀・鞭・素手などの近接攻撃)での
+キルだけ**(銃・爆発・延焼・味方・罠のキルでは出さない)。素材は設計チャットが用意した
+`public/sprites/fx/kill-slash.png`(3264×151・17コマ横並び・アルファ無しの実写VFX=加算合成前提)。
+
+### 実装
+- `src/types/game.ts`: `kind:'image'` に任意フィールド `cols?`(横並びシートのコマ数)・
+  `additive?`(加算合成)を追加。未指定=従来どおり1枚絵・通常合成(既存の呼び出し箇所は無改変)。
+- `src/pixi/pixiTextures.ts`: `fx/kill-slash` を起動マニフェスト(standalone)へ登録
+  (`DEFERRED_SPRITE_GROUPS` ではない=近接ならステージを問わず出るため)。`scaleMode`未指定=既定linear。
+- `src/pixi/pixiScene.ts` `drawImageEffect`: `cols`指定時は経過進捗からコマを選び、切り出した
+  `Texture`を使う(**初回だけ生成してキャッシュ**=毎フレーム作り直さない)。`additive`指定時は
+  `blendMode:'add'`(黒背景が自然に透ける。乗算tintで沈める描き方は過去の黒塗り四角事故と同型なので
+  使わない)。
+- `src/utils/killSlashFx.ts`(新規・純関数+テスト): `killSlashNeckPosition`(敵の当たり箱→首元
+  座標。上端から`height×0.34`=ホーミングロックの「頭のあたり」`height×0.28`と同じ作法をやや下げた
+  もの)と `pickImageEffectFrame`(進捗0..1→コマindex。0で0コマ目・1で最終コマ・範囲外はクランプ・
+  ループしない)。
+- `src/store/gameStore.ts`: `spawnImageMark` の opts に `cols`/`additive` を追加。KILL_SLASH_*定数
+  (テクスチャ名/コマ数17/尺500ms/開始幅120px→`drawImageEffect`の`targetH=130×scale`式から逆算した
+  scale)。共有ヘルパ `spawnKillSlashFx(get, attackerX, attackerY, enemy)` を新設し、
+  `grantMeleeKillRewards`(近接5経路=カウンター/刀/鞭/分身/投擲スケボーの合流点。finisherかどうかに
+  関わらず毎キル発火)と `applyGhostMeleeFinisher`(守護霊の近接フィニッシュ。既存の`grantMeleeKillRewards`
+  経路には乗らない別ルートなので個別に配線)の**2箇所・6経路**から呼ぶ。向き(`rot`)は
+  攻撃者→敵の角度(素材は「左から右へ弾ける」絵=rot=0の基準は画面右)。
+
+### 近接キル経路の洗い出し(grep実測)
+`grep -n "grantMeleeKillRewards(" src/store/gameStore.ts` → 呼び出し5件
+(`skaterBoardHit`/`triggerCounter`/`shadowCloneStrike`/`performKatanaStrike`/`performWhipStrike`)。
+コードのコメント自身が「近接5経路の合流点」と明記しており一致。加えて`grantMeleeKillRewards`を
+通らない守護霊フィニッシュ`applyGhostMeleeFinisher`(execute分岐・dmg分岐の2箇所)を別途発見。
+**合計6経路、6経路すべてに配線**(5経路は共有ヘルパー1箇所の変更で自動網羅、守護霊は個別に2箇所)。
+PvPで幻影がプレイヤーを殴る`phantomShadowCloneStrike`は対象(敵を倒す近接)ではないため除外。
+
+### テスト
+`src/utils/killSlashFx.test.ts` 新規8件(首元座標の水平/垂直・負座標・コマ送りの境界(進捗0/1)・
+範囲外クランプ・cols<=1やNaN/Infinityで例外を投げない)。全緑。関連ファイル
+(`killCorpse`/`ghostReflectMeleeSubs`/`ghostDriver`/`constitution`/`subquestProgress`/
+`bountyGoldChest`)も含め239件緑。typecheck緑・lintエラー0。`npm run assets:ledger`→`assets:check`緑
+(746枚・寸法の縮み/削除なし)。`npm test`フル・`npm run build`は指示が無いため未実施。
+
+### 手動発火の確認手順(ヘッドレス撮影用)
+1. `npm run dev` → Playwright起動 → タイトル「はじめる」
+2. `window.__gameStore.getState().spawnImageMark(400, 300, 'fx/kill-slash', { scale: 0.726,
+   duration: 20000, cols: 17, additive: true, rot: 0 })` を叩く(scaleは`KILL_SLASH_SCALE`と同じ式
+   =幅120px相当。`duration`を伸ばせば止め撮りできる。`cols`を外すと従来の1枚絵表示に戻ることの
+   確認にもなる)
+3. `window.__pixiScene` 側は何も呼ばなくてよい(storeのeffectsを毎フレーム読むだけ)
+
+**変更ファイル**: `src/types/game.ts`、`src/pixi/pixiTextures.ts`、`src/pixi/pixiScene.ts`、
+`src/store/gameStore.ts`、`src/utils/killSlashFx.ts`(新規)、`src/utils/killSlashFx.test.ts`(新規)、
+`public/sprites/fx/kill-slash.png`(新規・設計チャットが用意)、`scripts/asset-masters.json`、
+`package.json`、`src/data/changelog.ts`。`PACING_PUZZLE.md`/`PROJECT_STATUS.md`は変更していない。
+
+**自己点検**: 判定・ダメージ・射程は1つも変えていない(絵だけの変更)。スローモーション/
+ヒットストップは新規追加していない。強glowは増やしていない(加算スプライト1枚)。銃/爆発/延焼の
+キル経路(`damageEnemy`のgun/接触/爆発分岐)には配線していない。
+
 ## v0.25.4405 — §16-3 検収A-1/A-2 を直す(密着したままの2秒棒立ち・紫の入口消失)【2026-09-16 21:57 JST】
 
 **設計チャットが `updateEnemies` を14秒ぶん実走して見つけた(A)2件**。両方とも v0.25.4404 の

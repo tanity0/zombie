@@ -571,6 +571,12 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/slash-streak-2', scaleMode: 'nearest' },
       { name: 'fx/slash-streak-3', scaleMode: 'nearest' },
       { name: 'fx/slash-streak-4', scaleMode: 'nearest' },
+      // KILL時の首元斬撃(社長指示2026-09-16「KILL時に敵の首元に流して斬撃を演出」・近接キルのみ)。
+      // 17コマの横並びシート(3264×151・1コマ192×151)・アルファ無し(黒背景)=加算合成で描く。
+      // 元はProRes実写VFXで、ブラウザ再生不可のため中身のあるコマだけを切り出して焼いてある。
+      // 常にステージ限定ではない(近接なら全ステージで出る)ので DEFERRED_SPRITE_GROUPS ではなく
+      // ここ(起動マニフェスト)。scaleMode未指定=既定linear(ピクセルアートではないため)。
+      { name: 'fx/kill-slash' },
       { name: 'props/stage4-campfire' }, // ステージ4の焚き火(松明置き換え。詳細絵=linear既定)
       // 炎(8コマ)と松明の台座(社長支給v0.25.2641)。ドット絵=**nearest**。
       // 炎は松明だけでなく**火炎瓶・焚き火・フレアガン**でも同じものを使う(社長指示)。

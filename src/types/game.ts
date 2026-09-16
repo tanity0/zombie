@@ -2419,6 +2419,10 @@ export type VisualEffect =
       rot?: number;        // ラジアン(絵の向き)
       driftX?: number;     // world px/秒(生成位置からの流れ)
       driftY?: number;
+      // KILL時の首元斬撃(fx/kill-slash・社長指示2026-09-16)向けの拡張。未指定なら従来どおり
+      // 1枚絵のまま(既存の呼び出し箇所は1つも挙動が変わらない)。
+      cols?: number;       // 横並びシートのコマ数(未指定=1枚絵)。進捗(経過/duration)で自動送り、最終コマで停止(ループしない)
+      additive?: boolean;  // 加算合成で描くか(未指定=従来の通常合成)。アルファ無し実写VFX素材(黒背景)用
     }
   | {
       kind: 'ring';
