@@ -44,11 +44,14 @@ const stamp = new Date().toISOString().slice(0, 16).replace(/[-T:]/g, '').replac
 // ── サーバ: 開発サーバ(5173)が既に上がっていればそれを使う。無ければ落として報告する ────────
 // ★ここでビルドやサーバ起動をしない。理由: 裏で設計チャットが src/ を編集しているので、
 //   こちらが勝手に build すると書きかけを焼いてしまう(社長指示2026-09-17の分業)。
-const BASE = 'http://localhost:5173/zombie/';
+// ★接続先。既定は開発サーバ(5173)。Test Bridge(?testbridge=1)を preview で確かめる時は
+//   OBSERVE_BASE=http://localhost:4173/zombie/ を渡す。
+const BASE = process.env.OBSERVE_BASE || 'http://localhost:5173/zombie/';
 const alive = await fetch(BASE).then(r => r.ok).catch(() => false);
 if (!alive) {
-  console.error('[setup] 開発サーバ(5173)が見つからない。先に `npm run dev` を上げてから実行する。');
-  console.error('[setup] 理由: 状態の読み取りに window.__gameStore が要る(preview 4173 には生えない=P0-1で解決予定)。');
+  console.error(`[setup] サーバが見つからない: ${BASE}`);
+  console.error('[setup] 開発サーバなら `npm run dev`(5173)。preview なら `npx vite preview --port 4173` を先に上げる。');
+  console.error('[setup] 理由: 状態の読み取りに __TEST_BRIDGE__(?testbridge=1)か __gameStore(dev のみ)が要る。');
   process.exit(1);
 }
 console.log(`[setup] 開発サーバに接続: ${BASE}`);
