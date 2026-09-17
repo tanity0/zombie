@@ -79,19 +79,22 @@ export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
  * ここには**技として不変**な `recoverMs`/`counterable` だけを置く。
  */
 /**
- * ★踏み込みの「通り抜けない」上限(社長指摘2026-09-17「敵の攻撃が通り過ぎちゃうことがある
- * (突っ立ってても)もう少し攻撃縮めてもいいのかも」・PACING_PUZZLE.md §16-A「★踏み込みの終点」)。
+ * ★踏み込みの「接触距離」(社長指摘2026-09-17「敵の攻撃が通り過ぎちゃうことがある(突っ立ってても)」・
+ * PACING_PUZZLE.md §16-A「★踏み込みの終点」)。
  *
- * 「終点の中心間距離が、体の半幅の和(=接触する距離)を下回らないこと」を保証する
- * `lungePx` の上限を、**体の大きさから逆算**する(数字を発明しない)。
+ * ★設計者の訂正(2026-09-17): 旧規則「`lungePx` が接触距離を超えないこと」(=固定の踏み込み距離)は
+ * **誤り**だった。それは踏み込みが接触距離ちょうどから始まる場合しか正しくない——100px圏で発火する
+ * bat/skeletonは、旧`lungePx`(接触距離ぎりぎり)のままだと**遠くから出すと大きく手前で止まる**
+ * (bat: 100px発火・旧30px・接触距離32px→70pxの位置で止まり40px手前/skeleton: 同様に26px手前)。
  *
- * ★なぜ「発火距離−lungePx」ではなく単独の上限で決めるか: どの技も発火距離に**下限が無い**
- * (例: ゾンビのz-lunge-inは`pdist<=75`でしか上限を絞っておらず、停止中(z-red-pause)に
- * プレイヤーが密着しても構わず発火する)。**密着(中心間距離≈0)から踏み込む**ケースが
- * 常に起こりうるので、その最悪ケースで安全であること(=`lungePx` 単独が接触距離を
- * 超えないこと)を上限にすれば、発火距離に関わらず「通り抜けない」が保証できる
- * (踏み込みは発火時に焼いた直線方向へ`lungePx`だけ進む一方向の動きなので、終点の
- * 中心間距離の変化量は常に`lungePx`。始点が0の時、終点の中心間距離=`lungePx`そのもの)。
+ * ★訂正後の規則: 踏み込みは「固定距離」ではなく「**接触距離まで詰める距離**」。**発火の瞬間に
+ * `踏み込み距離 = (その時の中心間距離 − 接触距離)` を計算して焼く**(上限つき=`BITE_LUNGE_CAP_PX`)。
+ * ⇒終点は常に接触距離。届かないことも、通り抜けることも起きない。この定数はその**引く方**
+ * (詰める目標=接触距離)を持つ——旧名`BITE_SAFE_LUNGE_PX`は「踏み込み距離そのもの」という
+ * 誤った役割の名だったので、実態(接触距離)に合わせて改名した。
+ *
+ * ★「発火の瞬間に焼く」は追尾ではない(向きと同じく、距離も発火の1回だけ計算して固定する。
+ * 再生中は位置を見直さない=`Enemy.biteLungePx`に焼いて`biteLungeDistanceAtFire`は発火時にだけ呼ぶ)。
  *
  * 接触距離(=体の半幅の和)は `enemyContactBox`(collisionUtils.ts)とプレイヤーの当たり判定
  * (`PLAYER_HITBOX`=28)から求める。`enemyContactBox`は実描画スプライトのアスペクト比
@@ -109,10 +112,37 @@ export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
  * (実測の再現手順: `src/utils/enemyBite.test.ts`の「踏み込みの終点」テストが同じ計算を
  * ユニットテストとして機械化している=数値が古くなったら赤くなる。)
  */
-export const BITE_SAFE_LUNGE_PX: Record<'zombie' | 'bat' | 'skeleton', number> = {
+export const BITE_CONTACT_DIST_PX: Record<'zombie' | 'bat' | 'skeleton', number> = {
   zombie: 35,
   bat: 30,
   skeleton: 36,
+};
+
+/**
+ * ★踏み込み距離の上限(遠くから発火した時に飛びすぎないための帯・PACING_PUZZLE.md §16-A
+ * 「上限は要る(遠くから発火した時に飛びすぎないため)」)。値は現在の発火距離+余裕から
+ * 設計者が置いた叩き台(bat/skeletonの発火距離100px・ゾンビz-lunge-inの上限75pxに対して):
+ * bat 90px / skeleton 90px / zombie 45px。
+ */
+export const BITE_LUNGE_CAP_PX: Record<'zombie' | 'bat' | 'skeleton', number> = {
+  zombie: 45,
+  bat: 90,
+  skeleton: 90,
+};
+
+/**
+ * ★踏み込み距離を発火の瞬間に計算する(PACING_PUZZLE.md §16-A「★踏み込みの終点」)。
+ * `踏み込み距離 = (その時の中心間距離 − 接触距離)`、下限0(密着より近くからは進まない)・
+ * 上限`BITE_LUNGE_CAP_PX`(遠くから発火しても飛びすぎない)。
+ * ★追尾ではない: 呼び出し側は**発火した1フレームだけ**これを呼び、結果を`Enemy.biteLungePx`に
+ * 焼いて以後は読むだけにする(向き=`biteDirX/Y`と同じ作法)。
+ */
+export const biteLungeDistanceAtFire = (
+  type: 'zombie' | 'bat' | 'skeleton',
+  distAtFireCenterPx: number,
+): number => {
+  const target = distAtFireCenterPx - BITE_CONTACT_DIST_PX[type];
+  return Math.max(0, Math.min(BITE_LUNGE_CAP_PX[type], target));
 };
 
 /**
@@ -127,23 +157,25 @@ export const BITE_SAFE_LUNGE_PX: Record<'zombie' | 'bat' | 'skeleton', number> =
  * ★zombie-double はこのバッチの対象外(ゾンビの値は設計チャット側)。
  *
  * ★踏み込みの終点は「体が重なる位置」(社長指摘2026-09-17「攻撃が通り過ぎちゃうことがある
- * (突っ立ってても)」・PACING_PUZZLE.md §16-A「★踏み込みの終点」)。旧 lungePx=85 は
- * 「必要68px+余白」(監査A-3・**遠くから踏み込んでも届くように**)だけを見ており、
- * **近くから踏み込んだ場合に体を通り過ぎる**ケースを見ていなかった(発火距離に下限が無いので
- * 密着に近い距離からでも踏み込みが始まりうる)。**体の大きさから逆算**(`BITE_SAFE_LUNGE_PX`。
- * 下の定義参照)した値へ縮めた——これで「通り抜けない」を発火距離に関わらず保証する。
- * 旧85pxから縮んだぶん、遠くから踏み込んだ時に届かないことはあるが(社長「届かないより、
- * 通り抜ける方が悪い」)、判定・ダメージ・CD・拘束時間は1つも変えていない。
+ * (突っ立ってても)」)。★設計者の規則ミスを訂正(同日): 一度は旧85px→`BITE_CONTACT_DIST_PX`
+ * (体の大きさから逆算した固定値)へ縮めたが、これは「発火が常に接触距離から始まる」場合しか
+ * 正しくなく、**100px圏で発火するbat/skeletonは遠くから出すと大きく手前で止まった**
+ * (PACING_PUZZLE.md §16-A「★踏み込みの終点」参照)。
+ * ⇒ **`lungePx` を固定値のまま使うのをやめ、発火の瞬間に`biteLungeDistanceAtFire`で
+ * (その場の中心間距離 − 接触距離)を計算して`Enemy.biteLungePx`へ焼く**(gameStore.ts側の
+ * 各発火点=b-orbit→b-windup/s-arc→s-bite/z-lunge-in→z-bite1/z-stagger→z-bite2)。
+ * 下の`lungePx`は**その計算が届かない場合の保険の既定値**(`BITE_CONTACT_DIST_PX`=接触距離
+ * そのもの。密着から発火した最悪ケースでも通り抜けない値)として残す。
  */
 export const BITE_BY_MOVE: Partial<Record<NonNullable<Enemy['chaffMove']>, Partial<BiteSpec>>> = {
   // bat の掴み(§16-1・§16-8「bat の BiteSpec への写し方」)。
   // windupMs=400(溜め250+踏み込み150。最後の150msで lungePx を出し切る専用曲線=biteLungeFrac側の
   // BAT_WINDUP_STILL_MS分岐)/ biteMs=220(掴み=カウンターの受付幅)。
-  // lungePx=30(§16-A「踏み込みの終点」: 旧85→BITE_SAFE_LUNGE_PX.bat=32.1から1.1pxの余裕を取って30)。
-  'bat-grab': { windupMs: 400, biteMs: 220, lungePx: BITE_SAFE_LUNGE_PX.bat, recoverMs: 4000, counterable: true },
+  // lungePx=保険の既定値(実際は発火時にbiteLungeDistanceAtFireで計算しbiteLungePxへ焼く)。
+  'bat-grab': { windupMs: 400, biteMs: 220, lungePx: BITE_CONTACT_DIST_PX.bat, recoverMs: 4000, counterable: true },
   // skeleton の噛み(§16-2・§16-8)。windupMs=300(前隙)/ biteMs=200(噛み=受付幅)。
-  // lungePx=36(§16-A「踏み込みの終点」: 旧85→BITE_SAFE_LUNGE_PX.skeleton=38.3から2.3pxの余裕で36)。
-  'skel-bite': { windupMs: 300, biteMs: 200, lungePx: BITE_SAFE_LUNGE_PX.skeleton, recoverMs: 3500, counterable: true },
+  // lungePx=保険の既定値(同上)。
+  'skel-bite': { windupMs: 300, biteMs: 200, lungePx: BITE_CONTACT_DIST_PX.skeleton, recoverMs: 3500, counterable: true },
   // ゾンビ2連(§16-3・§16-8「ゾンビ 赤の技後CD」)。windup/bite/lungeは1発目/2発目で違うので
   // ここには置かない(BITE_BY_PHASEが重なる)。counterable/recoverMsは2発とも共通=ここで決まる。
   // ★2026-09-17「できるだけシビアに」で 4000→2500ms(§16-8台帳)。
@@ -163,16 +195,13 @@ export const BAT_WINDUP_STILL_MS = 250;
  * ★ゾンビ2連の1発目/2発目の尺(PACING_PUZZLE.md §16-8・検収監査A-3)。`aiPhase`(z-bite1/z-bite2)で
  * `BITE_BY_MOVE['zombie-double']` の上にさらに重ねる(`biteSpecFor` の第3引数)。
  * windup/biteは台帳の値をそのまま置く(発明しない): 1発目=220/160・2発目=300/200。
- * ★lungePxは§16-A「踏み込みの終点」(社長指摘2026-09-17「通り過ぎちゃう」)で40/60→
- * `BITE_SAFE_LUNGE_PX.zombie`(35。体の大きさからの逆算=定義と算出根拠はそちらを参照)へ統一。
- * 1発目/2発目で値を分けていたのは「2発目は深く踏み込む」という見せ方の意図だったが、
- * その深さの表現は撤回されたeaseOutBackオーバーシュート(`biteLungeFrac`側)が担っていたもので、
- * **通り抜けない**という制約は発火距離に下限が無い以上、どちらの発でも同じ上限(接触距離)に
- * 縛られる——2発とも同じ値にするのが「体の大きさから逆算」した結果として正しい。
+ * ★lungePxは実際には`biteLungeDistanceAtFire`が発火時に計算し`biteLungePx`へ焼く(上の
+ * `BITE_BY_MOVE`のコメント参照)。ここの`lungePx`は保険の既定値(`BITE_CONTACT_DIST_PX.zombie`)
+ * =1発目/2発目とも同じ(通り抜けない制約はどちらの発でも同じ接触距離に縛られるため)。
  */
 export const BITE_BY_PHASE: Partial<Record<NonNullable<Enemy['aiPhase']>, Partial<BiteSpec>>> = {
-  'z-bite1': { windupMs: 220, biteMs: 160, lungePx: BITE_SAFE_LUNGE_PX.zombie },
-  'z-bite2': { windupMs: 300, biteMs: 200, lungePx: BITE_SAFE_LUNGE_PX.zombie },
+  'z-bite1': { windupMs: 220, biteMs: 160, lungePx: BITE_CONTACT_DIST_PX.zombie },
+  'z-bite2': { windupMs: 300, biteMs: 200, lungePx: BITE_CONTACT_DIST_PX.zombie },
 };
 
 /**

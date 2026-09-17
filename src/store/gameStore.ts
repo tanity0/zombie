@@ -301,7 +301,7 @@ import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '
 import { pushShieldRect } from '../world/shieldPush'; // B6(盾押し・§6): 純関数(src/world/shieldPush.test.ts)
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
-import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite, ZOMBIE_RUSH_BODY_SLAM_MS, BAT_WINDUP_STILL_MS } from '../utils/enemyBite';
+import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite, ZOMBIE_RUSH_BODY_SLAM_MS, BAT_WINDUP_STILL_MS, biteLungeDistanceAtFire } from '../utils/enemyBite';
 import { deferFrozenClocksBy } from '../utils/chaffMoves'; // PACING_PUZZLE.md §16-7 穴4(凍結dtの繰り下げ)
 // ★ゾンビ赤(PACING_PUZZLE.md §16-3・§16-8b手順5)。枠の導出/技の終わり/待ちの尺/帯の定数の正本。
 import {
@@ -14914,9 +14914,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 敵の位置は**他の系も書く**(ノックバック/リーシュ/ボスの状態機械/イベントの再配置)ので、
           // 絶対座標で上書きすると**それらと殴り合い、片方の書き込み量がそのまま飛距離になる**。
           // 相対(このフレームぶんの増分だけ足す)にすれば、他の系と自然に合成されて暴れない。
-          // ★aiPhaseを渡す(§16-8b手順5申し送り): ゾンビ2連はz-bite1/z-bite2でlungePxが
-          // 40/60と異なる。2引数のままだとBITE_BY_PHASEの上書きが効かず、両発とも既定値(30)になる。
-          const lp = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase).lungePx;
+          // ★踏み込み距離は発火の瞬間に`biteLungeDistanceAtFire`で計算し`biteLungePx`へ焼いてある
+          // (§16-A「★踏み込みの終点」・PACING_PUZZLE.md参照)。§12の噛みつき(chaffMove未設定)は
+          // 発火点で焼かないので`biteLungePx`が無く、従来どおりBiteSpecの固定`lungePx`(30)へ落ちる
+          // (受け入れ条件1「§12は1つも変わっていない」を保つ)。
+          const lp = enemy.biteLungePx ?? biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase).lungePx;
           const fNow = biteLungeFrac(enemy, gameTime);
           const fPrev = biteLungeFrac(enemy, gameTime - deltaTime * 1000);
           const step = lp * Math.max(0, fNow - fPrev);   // このフレームで進むぶんだけ
@@ -14983,6 +14985,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             return {
               ...enemy, vx: 0, vy: 0, aiPhase: 'z-bite2', biteAt: gameTime,
               biteDirX: bdx * ca - bdy * sa, biteDirY: bdx * sa + bdy * ca,
+              // ★踏み込み距離を発火の瞬間に焼く(§16-A「★踏み込みの終点」)。
+              biteLungePx: biteLungeDistanceAtFire('zombie', bl),
             };
           }
           if (phase === 'z-bite2' && !(enemy.biteAt !== undefined && enemy.biteAt > 0)) {
@@ -15049,6 +15053,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               return {
                 ...enemy, aiPhase: 'z-bite1', biteAt: gameTime,
                 biteDirX: (pcx - ecx) / bl, biteDirY: (pcy - ecy) / bl,
+                // ★踏み込み距離を発火の瞬間に焼く(§16-A「★踏み込みの終点」)。
+                biteLungePx: biteLungeDistanceAtFire('zombie', bl),
               };
             }
             // 2倍速で実プレイヤーへ直進(zrushと同じ書き味=フラフラ込み)。紫の追尾(旧zrush)は
@@ -15237,6 +15243,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               return {
                 ...enemy, vx: 0, vy: 0, aiPhase: 'b-windup', chaffMove: 'bat-grab', chaffMoveAt: gameTime,
                 biteAt: gameTime, biteDirX: (pcx - ecx) / bl, biteDirY: (pcy - ecy) / bl,
+                // ★踏み込み距離を発火の瞬間に焼く(§16-A「★踏み込みの終点」)。
+                biteLungePx: biteLungeDistanceAtFire('bat', bl),
               };
             }
             // 円の中心をプレイヤー座標へ一次遅れで追従(生の座標だと「ロックオン軌道」になる・§16-1)。
@@ -15365,6 +15373,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               return {
                 ...enemy, vx: 0, vy: 0, x: smoved.x, y: smoved.y, aiPhase: 's-bite', biteAt: gameTime,
                 biteDirX: (pcx - necx) / bl, biteDirY: (pcy - necy) / bl,
+                // ★踏み込み距離を発火の瞬間に焼く(§16-A「★踏み込みの終点」)。
+                biteLungePx: biteLungeDistanceAtFire('skeleton', bl),
               };
             }
             // 絵の道具(歩行モーション)が速度の大きさを見るので、動いた分から速度を逆算しておく

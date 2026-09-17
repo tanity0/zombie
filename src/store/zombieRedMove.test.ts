@@ -10,7 +10,7 @@ import {
 } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
-import { biteSpecFor, BITE_SAFE_LUNGE_PX } from '../utils/enemyBite';
+import { biteSpecFor, BITE_CONTACT_DIST_PX, biteLungeDistanceAtFire } from '../utils/enemyBite';
 import {
   ZOMBIE_LUNGE_RANGE_PX, ZOMBIE_STAGGER_MS, ZOMBIE_RECOVER_MS,
   zombieRedPauseMs, ZOMBIE_RED_TRIGGER_MIN_PX, // §16-3z追補①: 停止の長さ±30%(id+spawnedAt由来)
@@ -187,7 +187,7 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(e.chaffMoveAt).toBe(START_GT);
   });
 
-  it('射程75pxに達したらz-bite1(biteAt/向きを焼く)', () => {
+  it('射程75pxに達したらz-bite1(biteAt/向き/踏み込み距離を焼く)', () => {
     place(ZOMBIE_LUNGE_RANGE_PX, { aiPhase: 'z-lunge-in', chaffMove: 'zombie-double', chaffMoveAt: START_GT - 500 });
     tick(START_GT);
     const e = first();
@@ -195,6 +195,9 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(e.biteAt).toBe(START_GT);
     // 敵はプレイヤーより+x側に置いた(place)ので、敵→プレイヤー方向は-x。
     expect(e.biteDirX).toBeCloseTo(-1, 5);
+    // ★§16-A「踏み込みの終点」: 踏み込み距離は発火時の中心間距離(75px)から接触距離を引いた値を
+    // 発火の瞬間に焼く(biteLungeDistanceAtFire・追尾しない=以後は読むだけ)。
+    expect(e.biteLungePx).toBeCloseTo(biteLungeDistanceAtFire('zombie', ZOMBIE_LUNGE_RANGE_PX), 5);
   });
 
   it('射程に届いていない間は2倍速で近づき続ける(z-lunge-inのまま)', () => {
@@ -215,17 +218,17 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(e.vx).toBe(0); expect(e.vy).toBe(0);
   });
 
-  it('よろけ明けでz-bite2へ(biteAt再発火・lungePxは体の大きさから逆算した安全値・向きは1発目から僅かにずれる)', () => {
+  it('よろけ明けでz-bite2へ(biteAt再発火・踏み込み距離はその場の距離から動的に焼く・向きは1発目から僅かにずれる)', () => {
     place(60, { aiPhase: 'z-stagger', aiPhaseUntil: START_GT, chaffMove: 'zombie-double' });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBe('z-bite2');
     expect(e.biteAt).toBe(START_GT);
-    // ★§16-A「踏み込みの終点」(社長指摘2026-09-17「通り過ぎちゃう」)で60→35(BITE_SAFE_LUNGE_PX.zombie)へ
-    // 縮んだ。逆算の根拠はenemyBite.tsのBITE_SAFE_LUNGE_PXコメントとenemyBite.test.tsの
-    // 「踏み込みの終点」テストを参照(数字を固定で持つとここが古くなるので定数を直接見る)。
+    // ★§16-A「踏み込みの終点」(社長指摘2026-09-17「通り過ぎちゃう」・設計者の規則ミスを訂正した後):
+    // 踏み込み距離は**固定値ではない**——発火時の中心間距離(60px)から接触距離を引いた値を
+    // `biteLungeDistanceAtFire`が発火の瞬間に計算し`biteLungePx`へ焼く(追尾しない=以後は読むだけ)。
+    expect(e.biteLungePx).toBeCloseTo(biteLungeDistanceAtFire('zombie', 60), 5);
     const spec = biteSpecFor('zombie', 'zombie-double', 'z-bite2');
-    expect(spec.lungePx).toBe(BITE_SAFE_LUNGE_PX.zombie);
     expect(spec.windupMs).toBe(300); expect(spec.biteMs).toBe(200);
     // 向きは単位ベクトル。
     const len = Math.hypot(e.biteDirX ?? 0, e.biteDirY ?? 0);
@@ -234,9 +237,11 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(e.biteDirY ?? 0).not.toBe(0);
   });
 
-  it('z-bite1とz-bite2は同じlungePx(§16-A「踏み込みの終点」=体の大きさから逆算した安全上限に統一)', () => {
+  it('z-bite1/z-bite2とも保険の既定値(BiteSpec.lungePx)は接触距離に統一されている(実際の踏み込み距離は動的計算=biteLungePxが優先)', () => {
     const spec1 = biteSpecFor('zombie', 'zombie-double', 'z-bite1');
-    expect(spec1.lungePx).toBe(BITE_SAFE_LUNGE_PX.zombie);
+    const spec2 = biteSpecFor('zombie', 'zombie-double', 'z-bite2');
+    expect(spec1.lungePx).toBe(BITE_CONTACT_DIST_PX.zombie);
+    expect(spec2.lungePx).toBe(BITE_CONTACT_DIST_PX.zombie);
     expect(spec1.windupMs).toBe(220); expect(spec1.biteMs).toBe(160);
   });
 

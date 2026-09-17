@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { useGameStore, INVULN_MS } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
-import { biteSpecFor, BITE_SAFE_LUNGE_PX } from '../utils/enemyBite';
+import { biteSpecFor, BITE_CONTACT_DIST_PX, biteLungeDistanceAtFire } from '../utils/enemyBite';
 import { SKELETON_TRIGGER_PX, SKELETON_CROUCH_MS, SKELETON_ARC_MS, SKELETON_RECOVER_MS } from '../utils/chaffMoves';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
@@ -108,6 +108,9 @@ describe('s-arc: 弧を描いて横へ(直線にしない=人狼と被らない)
     const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
     const distFromPlayer = Math.hypot(ecx - ORIGIN, ecy - ORIGIN);
     expect(distFromPlayer).toBeCloseTo(SKELETON_TRIGGER_PX, 0);
+    // ★§16-A「踏み込みの終点」: 踏み込み距離は発火時の中心間距離(≒100px)から接触距離を
+    // 引いた値を発火の瞬間に焼く(biteLungeDistanceAtFire・追尾しない=以後は読むだけ)。
+    expect(e.biteLungePx).toBeCloseTo(biteLungeDistanceAtFire('skeleton', distFromPlayer), 0);
   });
 
   it('★直線にしない: 途中経過(弧の半ば)が開始点-終点の直線から外れている', () => {
@@ -129,13 +132,15 @@ describe('s-arc: 弧を描いて横へ(直線にしない=人狼と被らない)
 
 describe('s-bite(標準2段: 前隙300ms+噛み200ms=シビア反映)', () => {
   const spec = biteSpecFor('skeleton', 'skel-bite');
-  // ★lungePxは「変えない値」ではなくなった: §16-A「踏み込みの終点」(社長指摘2026-09-17
-  // 「敵の攻撃が通り過ぎちゃうことがある」)で85→BITE_SAFE_LUNGE_PX.skeleton(36。体の大きさから
-  // 逆算した安全上限=enemyBite.tsのコメント参照)へ縮んだ。windupMs/biteMs/counterableは不変。
-  it('windupMs=300・biteMs=200・lungePx=体の大きさから逆算した安全上限', () => {
+  // ★lungePxは「固定値」ではなくなった: §16-A「踏み込みの終点」(社長指摘2026-09-17「敵の攻撃が
+  // 通り過ぎちゃうことがある」・設計者の規則ミスを訂正した後)で、実際の踏み込み距離は発火時に
+  // `biteLungeDistanceAtFire`が動的に計算し`biteLungePx`へ焼く(上の「s-crouch → s-arc」の
+  // テストで確認)。ここの`spec.lungePx`は保険の既定値(`BITE_CONTACT_DIST_PX.skeleton`=接触距離)。
+  // windupMs/biteMs/counterableは不変。
+  it('windupMs=300・biteMs=200・保険の既定lungePx=接触距離', () => {
     expect(spec.windupMs).toBe(300);
     expect(spec.biteMs).toBe(200);
-    expect(spec.lungePx).toBe(BITE_SAFE_LUNGE_PX.skeleton);
+    expect(spec.lungePx).toBe(BITE_CONTACT_DIST_PX.skeleton);
     expect(spec.counterable).toBe(true);
   });
 

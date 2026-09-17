@@ -9,6 +9,7 @@ import {
   canZombieRushBite,
   biteBlinkTintFor,
   isBiteResolveDue,
+  BITE_CONTACT_DIST_PX, BITE_LUNGE_CAP_PX, biteLungeDistanceAtFire,
 } from './enemyBite';
 import { enemyContactBox } from './collisionUtils';
 import { setEnemyArtAspect } from '../pixi/renderSpec';
@@ -134,14 +135,18 @@ describe('★§16-A「行き過ぎて戻る」の撤回: z-bite2もオーバー�
   });
 });
 
-// ★§16-A「踏み込みの終点」(社長指摘2026-09-17「敵の攻撃が通り過ぎちゃうことがある(突っ立ってても)」)。
-// 踏み込みは発火時に焼いた直線方向へ`lungePx`だけ進む一方向の動きなので、発火距離の下限が無い
-// (=密着に近い距離からでも発火しうる)以上、`lungePx`単独が接触距離(体の半幅の和)を超えないことが
-// 「絶対に通り抜けない」ための唯一の保証になる。ここが赤くなったら、体の大きさ
-// (ENEMY_STATS/ENEMY_VISUAL_SCALE/実PNGアスペクト)かlungePxのどちらかが変わって
-// 安全マージンを失ったということ。
-describe('★踏み込みの終点は体が重なる位置を超えない(通り抜けない)', () => {
-  // 実測アスペクト(texH/texW。PNGのIHDRから読んだ値=derivation源はBITE_SAFE_LUNGE_PXのコメント)。
+// ★§16-A「踏み込みの終点」(社長指摘2026-09-17「敵の攻撃が突っ立ってても届かなくなった」)。
+//
+// ★設計者の規則ミス(2026-09-17)を訂正: 旧規則「`lungePx`単独が接触距離を超えないこと」(=固定の
+// 踏み込み距離)は、踏み込みが接触距離ちょうどから始まる場合しか正しくなかった。実際には
+// bat/skeletonは100px圏で発火するので、旧`lungePx`(接触距離ぎりぎり)のままだと**遠くから出すと
+// 大きく手前で止まっていた**(bat: 100px発火で40px手前/skeleton: 26px手前)。
+//
+// 訂正後の規則: 踏み込みは「固定距離」ではなく「接触距離まで詰める距離」。発火の瞬間に
+// `踏み込み距離 = (その時の中心間距離 − 接触距離)` を計算して焼く(上限つき)。
+// ⇒終点は常に接触距離。届かないことも、通り抜けることも起きない。
+describe('★踏み込みの終点は常に接触距離(届かない・通り抜けるが起きない)', () => {
+  // 実測アスペクト(texH/texW。PNGのIHDRから読んだ値=derivation源はBITE_CONTACT_DIST_PXのコメント)。
   setEnemyArtAspect('default:zombie', 640 / 464);
   setEnemyArtAspect('default:bat', 512 / 368);
   setEnemyArtAspect('default:skeleton', 512 / 452);
@@ -157,16 +162,58 @@ describe('★踏み込みの終点は体が重なる位置を超えない(通り
     { type: 'skeleton', w: 31, h: 31, move: 'skel-bite' },
   ];
 
-  it.each(cases)('$type $aiPhase$move: lungePxが接触距離(体の半幅の和)の最小値を下回る', ({ type, w, h, move, aiPhase }) => {
+  // ★保険の既定値(BiteSpec.lungePxのフォールバック。`biteLungePx`が焼かれていない場合だけ使われる)
+  // は、従来どおり「密着(中心間距離≈0)から発火しても接触距離を下回る」安全側の固定値のままである
+  // ことを確認する(§12の噛みつき等、動的計算を経由しない経路の最終防波堤)。
+  it.each(cases)('$type $aiPhase$move: 保険の既定lungePxは接触距離(体の半幅の和)の最小値を下回る', ({ type, w, h, move, aiPhase }) => {
     const box = enemyContactBox(mkEnemy(type, w, h));
     const halfWxSum = box.width / 2 + PLAYER_W / 2;
     const halfHySum = box.height / 2 + PLAYER_H / 2;
     const contactDist = Math.min(halfWxSum, halfHySum); // どの向きから踏み込んでも安全な下限
     const spec = biteSpecFor(type, move, aiPhase);
-    // 密着(中心間距離≈0)から発火しても、終点の中心間距離=lungePxそのものが接触距離を
-    // 下回っていれば必ず重なる(=通り抜けない)。厳密な不等号(AABB重なり判定が"<"のため)。
     expect(spec.lungePx).toBeLessThan(contactDist);
   });
+
+  // ★本題: 発火時の中心間距離がどれだけでも、動的計算(`biteLungeDistanceAtFire`)の終点が
+  // 「届かない/通り抜ける」を起こさないこと。40/70/100/150/200pxの5種で確かめる
+  // (bat/skeletonの発火距離100px・旧lungePxが実際に破綻していた距離を含む)。
+  const FIRE_DISTS_PX = [40, 70, 100, 150, 200];
+  const TYPES: ('zombie' | 'bat' | 'skeleton')[] = ['zombie', 'bat', 'skeleton'];
+
+  for (const type of TYPES) {
+    describe(`${type}`, () => {
+      it.each(FIRE_DISTS_PX)('発火距離%ipx: 終点の中心間距離が接触距離を下回らない(通り抜けない)', (distAtFire) => {
+        const lunge = biteLungeDistanceAtFire(type, distAtFire);
+        const endpointDist = distAtFire - lunge;
+        // 厳密な不等号ではなく「接触距離未満に落ちない」= 通り抜けない(僅かな浮動小数誤差は許容)。
+        expect(endpointDist).toBeGreaterThanOrEqual(BITE_CONTACT_DIST_PX[type] - 1e-6);
+        // 踏み込みは前進のみ(後退しない)。
+        expect(lunge).toBeGreaterThanOrEqual(0);
+        // 上限を超えない(飛びすぎない)。
+        expect(lunge).toBeLessThanOrEqual(BITE_LUNGE_CAP_PX[type]);
+      });
+
+      it.each(FIRE_DISTS_PX.filter(d => d - BITE_CONTACT_DIST_PX[type] <= BITE_LUNGE_CAP_PX[type]))(
+        '発火距離%ipx(上限内=届く範囲): 終点がちょうど接触距離に一致する(届かない・通り抜けるが起きない)',
+        (distAtFire) => {
+          const lunge = biteLungeDistanceAtFire(type, distAtFire);
+          const endpointDist = distAtFire - lunge;
+          expect(endpointDist).toBeCloseTo(BITE_CONTACT_DIST_PX[type], 5);
+        },
+      );
+
+      it('発火距離が上限より遠い場合は上限で頭打ちになる(届かないが、通り抜けもしない)', () => {
+        const farDist = BITE_CONTACT_DIST_PX[type] + BITE_LUNGE_CAP_PX[type] + 50;
+        const lunge = biteLungeDistanceAtFire(type, farDist);
+        expect(lunge).toBeCloseTo(BITE_LUNGE_CAP_PX[type], 5);
+        expect(farDist - lunge).toBeGreaterThan(BITE_CONTACT_DIST_PX[type]); // 届いていない(通り抜けてもいない)
+      });
+
+      it('密着(距離0)から発火しても踏み込み距離は0(後ろへは進まない)', () => {
+        expect(biteLungeDistanceAtFire(type, 0)).toBe(0);
+      });
+    });
+  }
 });
 
 describe('★判定の四角(社長2026-08-25「プレイヤーが居る側にだけ30px伸ばす」)', () => {

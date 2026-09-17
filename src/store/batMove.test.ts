@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { useGameStore, INVULN_MS } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
-import { biteSpecFor } from '../utils/enemyBite';
+import { biteSpecFor, biteLungeDistanceAtFire } from '../utils/enemyBite';
 import {
   BAT_ORBIT_RADIUS_PX, BAT_GRAB_HOLD_MS, BAT_ORBIT_MIN_MS, BAT_ORBIT_MAX_MS,
 } from '../utils/chaffMoves';
@@ -117,7 +117,7 @@ describe('★受け入れ条件21: 円を描いているbatを、プレイヤー
 });
 
 describe('b-orbit → b-windup(引き金: 尺切れ or プレイヤーが半径の内側へ入った)', () => {
-  it('尺切れで踏み込みへ(chaffMove=bat-grab・biteAt発火・向きを焼く)', () => {
+  it('尺切れで踏み込みへ(chaffMove=bat-grab・biteAt発火・向き/踏み込み距離を焼く)', () => {
     place(BAT_ORBIT_RADIUS_PX, { aiPhase: 'b-orbit', aiPhaseUntil: START_GT, chaffOrbitCx: ORIGIN, chaffOrbitCy: ORIGIN });
     tick(START_GT);
     const e = first();
@@ -126,13 +126,19 @@ describe('b-orbit → b-windup(引き金: 尺切れ or プレイヤーが半径�
     expect(e.chaffMoveAt).toBe(START_GT);
     expect(e.biteAt).toBe(START_GT);
     expect(Math.hypot(e.biteDirX ?? 0, e.biteDirY ?? 0)).toBeCloseTo(1, 5);
+    // ★§16-A「踏み込みの終点」: 踏み込み距離は発火時の中心間距離(=円の半径100px)から
+    // 接触距離を引いた値を発火の瞬間に焼く(biteLungeDistanceAtFire・追尾しない=以後は読むだけ)。
+    expect(e.biteLungePx).toBeCloseTo(biteLungeDistanceAtFire('bat', BAT_ORBIT_RADIUS_PX), 0);
   });
 
   it('★引き金(b): プレイヤーが半径の内側へ踏み込んだら尺が残っていても即座に踏み込みへ', () => {
     // 円の中心をプレイヤーからずらし、敵は既に「詰められた」距離(半径-余白より内側)に置く。
     place(40, { aiPhase: 'b-orbit', aiPhaseUntil: START_GT + 5000, chaffOrbitCx: ORIGIN, chaffOrbitCy: ORIGIN });
     tick(START_GT);
-    expect(first().aiPhase).toBe('b-windup');
+    const e = first();
+    expect(e.aiPhase).toBe('b-windup');
+    // ★近距離(40px)から発火した場合も踏み込み距離は動的に(距離−接触距離)で焼かれる。
+    expect(e.biteLungePx).toBeCloseTo(biteLungeDistanceAtFire('bat', 40), 0);
   });
 });
 

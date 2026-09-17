@@ -569,6 +569,14 @@ export interface Enemy {
    */
   biteDirX?: number;
   biteDirY?: number;
+  /**
+   * ★§16の技(bat-grab/skel-bite/zombie-double)専用: 踏み込みの**距離**も向きと同じく
+   * 発火の瞬間に焼く(PACING_PUZZLE.md §16-A「★踏み込みの終点」・社長指摘2026-09-17
+   * 「敵の攻撃が突っ立ってても届かなくなった」)。その場の中心間距離から接触距離を引いた値
+   * (上限つき)=`enemyBite.biteLungeDistanceAtFire`。未設定(§12の噛みつき等)は
+   * `BiteSpec.lungePx`(固定値)にフォールバックする。
+   */
+  biteLungePx?: number;
   /** ★中断の逓減(`BITE_CANCEL_DR_MS`)。この gameTime まではノックバックで噛みつきが止まらない。 */
   biteNoCancelUntil?: number;
   biteReadyAt?: number;
