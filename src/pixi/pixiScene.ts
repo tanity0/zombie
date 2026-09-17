@@ -199,11 +199,12 @@ import {
   getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType, isPumpkinTier,
   isReaperFamily, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
 } from '../utils/enemyUtils';
-import { recoilKickOffset, killChainEdgeEnvelope } from '../utils/combatFeel';
+import { recoilKickOffset, killChainEdgeEnvelope, isEnemyAttacking } from '../utils/combatFeel';
 import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTintMix, milestoneAlpha } from '../utils/comboMilestone';
 // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 赤予告の「呼吸」を敵の区分で3種に。純関数1本
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } from '../utils/telegraphStyle';
+import { biteTelegraphLine } from '../utils/biteTelegraph';
 import {
   BOUNTY_DEPART_FADE_MS,
   // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15): 角度・タイミングは判定と同じ純関数から導く。
@@ -3386,6 +3387,11 @@ interface ActorView {
   shadowScale?: number;   // texture.width/height に掛ける「素の」スケール(depthScale/containScale/
                             // stageEnemyVisualMul等の構造的な倍率のみ。breath/flinch/aiSq/lungeSqは含まない)
   shadowLiftPx?: number;  // 持ち上げ系(liftHop/kbHop/aiHop/lungeOffY)の合計。影の heightPx に使う
+  // ★息を止める(社長指示2026-09-17「攻撃する時や、攻撃後の隙は呼吸を止める」)。
+  // 現在の呼吸の振れ幅(1=普通に呼吸 / 0=止めている)と、その最終更新時刻。**瞬間的に切り替えない**
+  // (CLAUDE.md「動きの絶対ルール: 慣性」)ので、時定数つきの指数緩和で寄せる=フレームレート非依存。
+  breathAmp?: number;
+  breathAmpAt?: number;
   shadowGroundY?: number; // 裏ボス専用: 論理の足元Y(spy±素のhalf-height、リフト無し)。非ボスは
                             // anchor(0.5,1)なので footY で足りるため未使用。
 }
@@ -11088,11 +11094,31 @@ export class PixiScene {
     g.moveTo(cx - sw, sole).lineTo(toe, sole).stroke({ width: 1.4, color: 0xeafff1, alpha: a });
   }
 
+  // ★カウンター不可の攻撃の紫(CLAUDE.md「色と形の文法」②)。ミーミルのレーザー/トール「無の境地」と
+  // 同じ紫を使う=紫の意味を1つに保つ(新しい紫を発明しない)。
+  private static readonly BITE_TG_PURPLE = [0x9333ea, 0xc084fc, 0xf3e8ff] as const;
+
   // 特殊行動の予告。ジャンプ着地点(赤い影)＋ダッシュの移動先(赤ライン=直線距離)。
   private syncPumpkinTelegraph(enemies: Enemy[], now: number, gameTime: number) {
     const g = this.pumpkinTelegraph;
     g.clear();
     for (const e of enemies) {
+      // ★雑魚の軽い攻撃の予告=流星ライン(社長指示2026-09-17・`utils/biteTelegraph.ts` が正本)。
+      // 赤=カウンター可の技 / 紫=カウンター不可の噛みつき。**線の形は共通**(色だけ替える)。
+      // 溜めで伸び切り、踏み込みの間に根元から消え、**消え切った瞬間が判定**=ボスの予告と同じ読み方。
+      // カウンター等で中断されたら `dashLineTick` の latch が残りを一気に消す(既存の作法)。
+      {
+        const bl = biteTelegraphLine(e, gameTime);
+        const tgs = telegraphStyleFor(e.type);
+        this.dashLineTick(
+          g, `${e.id}:bite`, bl !== null, bl?.remainMs ?? 0,
+          bl?.fx ?? 0, bl?.fy ?? 0, bl?.tx ?? 0, bl?.ty ?? 0, now, bl?.prog ?? 0,
+          // 描き切る位置だけは**その技の溜めの割合**に差し替える(「溜めが終わる=線が満ちる」を
+          // 技ごとに正しく合わせる)。脈・ease などの質感は区分の値のまま。
+          { ...tgs, drawFrac: bl?.drawFrac ?? tgs.drawFrac },
+          ...(bl?.counterable === false ? PixiScene.BITE_TG_PURPLE : []),
+        );
+      }
       // ジャンプ着地予告(パンプキン/lab-zombie-3/ジャイアントバット/ハンター)。
       // research/CREATIVE_AUDIT_2026-09-11.md #25(b): この関数は複数の区分(強個体/終端/ボス級)を
       // 同じループで扱うため、pulse/style は**敵ごと**に引く(以前は関数の先頭で1回だけ=全員同じ呼吸)。
@@ -17583,7 +17609,7 @@ export class PixiScene {
       // 絵の中心(アンカー)= 帯の中心から、帯が絵内のどこにあるか(fit.cx/cy)ぶん逆にずらす。
       const spx = stripCx + (0.5 - fit.cx) * spriteW;
       const spy = stripCy + (0.5 - fit.cy) * spriteH;
-      const breath = this.enemyBreath(e, now);
+      const breath = this.enemyBreath(e, now, view, gameTime);
       // PACING_PUZZLE.md §10-4(浮遊)+§10-19(登場シーン)。視覚のみ=e.y/当たり判定は不変
       // (CLAUDE.md Y方向5点チェック: 地平線フェード/擬似遠近は上で既に対象外化。可視域/移動可能帯は
       // e.x/e.yそのものを一切動かさないため無関係。this.phillIntroState()が登場時の羽根撒きも駆動する)。
@@ -17807,7 +17833,7 @@ export class PixiScene {
       // ステージ3のボス(giantbat)だけ1.2倍/ステージ4(雪原)の全敵絵を1.5倍。足元アンカー(0.5,1)なので
       // 上方向に拡大。視覚のみ=hitbox不変。倍率の本体は stageEnemyVisualMul(死体と共有・v0.25.2383)。
       const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * this.stageEnemyVisualMul(e.type);
-      const breath = this.enemyBreath(e, now);
+      const breath = this.enemyBreath(e, now, view, gameTime);
       // 被弾しなり: 撃たれた直後だけ頭(上方)を後ろ(ノックバック方向)へ skew で反らせ、軽く縦縮み。
       // アンカーが足元寄りなので skew だけで頭が大きく振れる。短時間で戻る。新規描画なし=軽い。
       // ★しなりの**強さはダメージ量で決まる**(`utils/hitFlinch.ts`・社長裁定2026-09-16「0.15から」)。
@@ -23012,15 +23038,40 @@ export class PixiScene {
     }
   }
 
-  private enemyBreath(e: Enemy, now: number) {
+  /**
+   * ★息を止める(社長指示2026-09-17「**攻撃する時や、攻撃後の隙は呼吸を止める**」)。
+   * 生き物は力む瞬間に息を止める——**止まった呼吸そのものが「今だ」の合図**になる。
+   * 判定は既存の述語1本(`combatFeel.isEnemyAttacking`)を読むだけ=新しい状態を増やさない。
+   * これは「技を出している間」と「技のあとの硬直(z-recover/s-recover/b-release など・どれも
+   * `aiPhase` が立っている)」の両方を覆う。気絶中は false を返すので、**クリティカルで止めた敵は
+   * 息を吹き返す**(= 力めていない、が絵で伝わる)。
+   * 止め方は**吸うより速く、戻すのはゆっくり**(息を詰めるのは一瞬・吐いて戻るのは緩い)。
+   */
+  private static readonly BREATH_HOLD_IN_TAU_MS = 70;
+  private static readonly BREATH_HOLD_OUT_TAU_MS = 220;
+  private breathHoldAmp(view: ActorView, e: Enemy, now: number, gameTime: number): number {
+    const target = isEnemyAttacking(e, gameTime) ? 0 : 1;
+    const prev = view.breathAmp ?? 1;
+    const dt = Math.max(0, Math.min(200, now - (view.breathAmpAt ?? now)));
+    const tau = target < prev ? PixiScene.BREATH_HOLD_IN_TAU_MS : PixiScene.BREATH_HOLD_OUT_TAU_MS;
+    const amp = prev + (target - prev) * (1 - Math.exp(-dt / tau));
+    view.breathAmp = amp;
+    view.breathAmpAt = now;
+    return amp;
+  }
+
+  private enemyBreath(e: Enemy, now: number, view: ActorView, gameTime: number) {
     if (!ENEMY_BREATH_ENABLED) return { x: 1, y: 1 };
+    // ★息を止める(上の breathHoldAmp のコメント参照)。amp=0 で呼吸が凪ぐ。**振れ幅にだけ掛ける**
+    // ので、止まる位置は「呼吸していない素の寸法」=絵が縮んだり伸びたりしたまま固まらない。
+    const bAmp = this.breathHoldAmp(view, e, now, gameTime);
     if (e.type === 'jormungand') {
       // ナメクジの蠕動(定数コメント参照)。位相はIDハッシュ=複数体でも同期しない(通常呼吸と同じ作法)。
       const t = (now / JORM_SLUG_MS + stablePhase(e.id) / (Math.PI * 2)) % 1;
       // 0→1をゆっくり(60%の時間)、1→0を速く(40%)戻る非対称波。-1..1へ写す。
       const w01 = t < 0.6 ? Math.sin((t / 0.6) * Math.PI / 2) : Math.cos(((t - 0.6) / 0.4) * Math.PI / 2);
       const w = w01 * 2 - 1;
-      return { x: 1 + JORM_SLUG_SQX * w, y: 1 - JORM_SLUG_SQY * w };
+      return { x: 1 + JORM_SLUG_SQX * w * bAmp, y: 1 - JORM_SLUG_SQY * w * bAmp };
     }
     // PACING_PUZZLE.md §9-7#1(pixiSceneの疑似呼吸): driller はpumpkinと同格。
     const heavy = isPumpkinTier(e.type) || e.type === 'giantbat' || isReaperFamily(e.type) || e.type === 'hunter' || isHiddenBoss(e.type);
@@ -23033,8 +23084,8 @@ export class PixiScene {
     const secondary = Math.sin(phase * 2 + 0.7) * 0.28;
     const wave = inhale * 0.72 + secondary;
     return {
-      x: 1 + ENEMY_BREATH_SCALE_X * amp * wave,
-      y: 1 - ENEMY_BREATH_SCALE_Y * amp * wave,
+      x: 1 + ENEMY_BREATH_SCALE_X * amp * wave * bAmp,
+      y: 1 - ENEMY_BREATH_SCALE_Y * amp * wave * bAmp,
     };
   }
 
