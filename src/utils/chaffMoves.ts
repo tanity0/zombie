@@ -167,7 +167,7 @@ const idUnitHash = (id: string, salt: number): number => {
  * なる(=「型で押した動き」に見えるのを崩す)。`spawnedAt`が未設定(既存の呼び手・古いセーブ等)
  * なら**従来どおりidだけ**にフォールバックする(乱数は引かない・決定的のまま)。
  */
-const idRespawnUnitHash = (id: string, spawnedAt: number | undefined, salt: number): number =>
+export const idRespawnUnitHash = (id: string, spawnedAt: number | undefined, salt: number): number =>
   idUnitHash(spawnedAt !== undefined ? `${id}#${spawnedAt}` : id, salt);
 
 /** 技後CDの個体差(§16-6「個体差の幅: 技後CD ±12%」)。saltはchaffTraitsの枝と衝突しない値。 */

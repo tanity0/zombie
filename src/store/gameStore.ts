@@ -330,6 +330,10 @@ import {
   isPlayerGrabbed, ZOMBIE_LUNGE_MAX_MS,} from '../utils/chaffMoves';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
+  hasKeepRange, keepBandFor, keepRangeVelocity, keepSpin, keepEscapeDir, KEEP_DEGENERATE_PX,
+  keepBlocksTechnique,
+} from '../utils/keepRange'; // §16-B 攻撃射程を保つ層(台本が動いていない時だけ効く)
+import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
   bossEngagedNow, facilitiesLocked, isEngageableBoss,
   BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT,
@@ -14864,7 +14868,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             const moved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
             return { ...enemy, x: moved.x, y: moved.y, vx: (bdx / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT, vy: (bdy / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT };
           }
-          if (enemy.type !== 'giantbat' && enemy.type !== 'hunter' && dist <= WEREWOLF_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
+          if (enemy.type !== 'giantbat' && enemy.type !== 'hunter' && dist <= WEREWOLF_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)
+            && !keepBlocksTechnique(enemy.type, enemy.id, enemy.spawnedAt, WEREWOLF_TRIGGER_RANGE, dist)) {
             // 溜め開始時に狙い点を確定(=赤ラインの終点)。
             // 突進距離 = プレイヤーまでの距離 + 80px(プレイヤーの少し先で止まる。社長指示)。
             const reach = dist + DASH_OVERSHOOT_PX;
@@ -14941,7 +14946,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             return { ...enemy, vx: 0, vy: 0 }; // 着地後1秒停止
           }
-          if (enemy.type !== 'giantbat' && enemy.type !== 'hunter' && dist <= PUMPKIN_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
+          if (enemy.type !== 'giantbat' && enemy.type !== 'hunter' && dist <= PUMPKIN_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)
+            && !keepBlocksTechnique(enemy.type, enemy.id, enemy.spawnedAt, PUMPKIN_TRIGGER_RANGE, dist)) {
             return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: atkUntil(PUMPKIN_CROUCH_MS), vx: 0, vy: 0 };
           }
           // それ以外は通常チェイス(下へフォールスルー)。
@@ -15404,7 +15410,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
 
           // ── 構え前(aiPhase未設定=b-approach): 枠が空いて間合いに達していれば円へ ───────────
-          if (phase === undefined && chaffGrants.has(enemy.id) && pdist <= BAT_ORBIT_RADIUS_PX) {
+          if (phase === undefined && chaffGrants.has(enemy.id) && pdist <= BAT_ORBIT_RADIUS_PX
+            && !keepBlocksTechnique(enemy.type, enemy.id, enemy.spawnedAt, BAT_ORBIT_RADIUS_PX, pdist)) {
             return {
               ...enemy, vx: 0, vy: 0, aiPhase: 'b-orbit',
               aiPhaseUntil: gameTime + batOrbitDurationMs(enemy.id, enemy.spawnedAt),
@@ -15515,7 +15522,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
 
           // ── 構え前(aiPhase未設定): 枠が空いて間合い(100px)に達していればしゃがみへ ─────────
-          if (phase === undefined && chaffGrants.has(enemy.id) && pdist <= SKELETON_TRIGGER_PX) {
+          if (phase === undefined && chaffGrants.has(enemy.id) && pdist <= SKELETON_TRIGGER_PX
+            && !keepBlocksTechnique(enemy.type, enemy.id, enemy.spawnedAt, SKELETON_TRIGGER_PX, pdist)) {
             return { ...enemy, vx: 0, vy: 0, aiPhase: 's-crouch', aiPhaseUntil: gameTime + SKELETON_CROUCH_MS };
           }
           // それ以外は旧挙動のまま歩いて詰める→下の共通のチャフ移動へフォールスルーする。
@@ -15535,6 +15543,37 @@ export const useGameStore = create<GameState>((set, get) => ({
           const chaffSpeed = speed * chaffSpeedMult(traits, distance);
           tvx = head.x * chaffSpeed;
           tvy = head.y * chaffSpeed;
+        }
+        // ★§16-B「攻撃射程を保つ」(社長指示2026-09-17)。**台本が動いていない平常時だけ**通る場所。
+        // ここに来ている時点で `aiPhase` は立っていない(各型の相ブロックは手前でreturnする)ので、
+        // **枠の申告条件(`aiPhase === undefined`)を壊さない**=技は今までどおり出る(B-9 Q-2)。
+        // ★**既に自分の間合いを持つ型には掛けない**(ゾンビ/ゴースト/叫喚/削岩型/伐採人は手前で
+        // 自分の移動を書いて return 済み、または下で上書きする)。対象は `KEEP_STYLE_BY_TYPE` の6型。
+        // ★距離は**その型の技の引き金と同じ基準点**=プレイヤー中心で測る(B-9 Q-1)。
+        if (hasKeepRange(enemy.type)) {
+          const keepOuter = (enemy.type === 'bat') ? BAT_ORBIT_RADIUS_PX
+            : (enemy.type === 'skeleton') ? SKELETON_TRIGGER_PX
+            : (enemy.type === 'werewolf' || enemy.type === 'lab-zombie-2') ? WEREWOLF_TRIGGER_RANGE
+            : PUMPKIN_TRIGGER_RANGE; // pumpkin / lab-zombie-3
+          const kBand = keepBandFor(enemy.type, enemy.id, enemy.spawnedAt, keepOuter);
+          if (kBand) {
+            const kpx = pcx - (enemy.x + enemy.width / 2);
+            const kpy = pcy - (enemy.y + enemy.height / 2);
+            const kd = Math.max(0.001, Math.hypot(kpx, kpy));
+            // ★真上に重なった時(パンプキンの跳躍はプレイヤー中心へ着地する=距離が厳密に0)は
+            // 「的へ向かう向き」が定義できず、その場に固まる(実測2026-09-17)。個体ごとに固定の
+            // 逃げ方向を割り当てて必ず抜ける。
+            let kux = kpx / kd, kuy = kpy / kd;
+            if (kd < KEEP_DEGENERATE_PX) {
+              const esc = keepEscapeDir(enemy.id, enemy.spawnedAt);
+              kux = -esc.x; kuy = -esc.y;
+            }
+            const kept = keepRangeVelocity(
+              tvx, tvy, kux, kuy, kd, speed,
+              kBand, keepSpin(enemy.id, enemy.spawnedAt), PLAYER_BASE_SPEED,
+            );
+            tvx = kept.tvx; tvy = kept.tvy;
+          }
         }
         // 新型(lich): プレイヤーの周囲を旋回しながら徐々に詰める。放射(内向き)+接線(旋回)を合成し、
         // 遠いほど接線寄り(円を描く)・近いほど放射寄り(詰める)。旋回向きは個体ごとに固定。視覚演出なし=軽量。
