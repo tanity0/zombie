@@ -160,6 +160,7 @@ import { softCapCritChance, orCombineChance } from '../utils/critSoftCap';
 import { critDecayOnHit } from '../utils/critDecay'; // ★§13-3e クリ減衰(社長裁定2026-08-26)
 import { handcannonDamageMultOnHit, pruneHandcannonDecay, peekHandcannonHits } from '../utils/handcannonDecay'; // UNIQUE_WEAPONS.md §13-1(peekHandcannonHits: research/WEAPON_AI_TEST.md S3-b 観測用に相乗り・既存のtest/debug覗き窓を流用=新規ロジックなし)
 import { isPvpIncapacitated, tickPvpPosture } from '../utils/pvpPosture'; // ★SAME_ARENA §9(対人体勢)
+import { isPlayerGrabbed } from '../utils/chaffMoves'; // ★PACING_PUZZLE.md §16-1(bat の掴み)
 import { isHurtGunLocked } from '../utils/playerHurt'; // ★被弾の復帰ディレイ(銃だけ止まる・v0.25.4377)
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
@@ -8544,6 +8545,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const seekerLocked = isSeekerActive(postReloadPlayer, gameTime) && skillLevel(postReloadPlayer, 'seeker') < 3;
         // ★SAME_ARENA §9(対人体勢): 紫(3秒)+致命後daze(2秒)中は銃の自動射撃も止まる。
         const pvpLocked = isPvpIncapacitated(postReloadPlayer.pvpPosture, gameTime);
+        // ★PACING_PUZZLE.md §16-1(bat の掴み・社長裁定2026-09-16「時間を止めて」): 掴まれている間は
+        // 銃の自動射撃も止まる(撃てるなら掴まれた意味がない)。
+        const grabbedLocked = isPlayerGrabbed(postReloadPlayer, gameTime);
         // ★被弾の復帰ディレイ(社長指示2026-09-16「食らった時に多少動けるようになるのにディレイが
         // お互いに必要」): 食らった段に応じて 180/300/460ms は**銃が撃てない**。長さはしゃがみの絵と同じ
         // =絵と実態が一致する。移動・近接・カウンターは止めない(近接とパリィは同じ入力なので・playerHurt.ts)。
@@ -8555,7 +8559,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // UNIQUE_WEAPONS.md §16-3b(手動専用銃の掟): シグナルランチャーはPHILLと同じ「自動で撃たない銃」
         // (category='glauncher'なのでcategory!=='phill'だけでは除外できない=isManualOnlyGunKeyで除外)。
         const isManualOnlyGun = isManualOnlyGunKey(activeGun?.key);
-        if (activeGun && !katanaActive && !skaterLocked && !attackLocked && !seekerLocked && !pvpLocked && !hurtGunLocked && activeGun.category !== 'phill' && !isNonProjectileGun && !isManualOnlyGun) {
+        if (activeGun && !katanaActive && !skaterLocked && !attackLocked && !seekerLocked && !pvpLocked && !grabbedLocked && !hurtGunLocked && activeGun.category !== 'phill' && !isNonProjectileGun && !isManualOnlyGun) {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
             // 銃種別の発射音。★写像は weaponUtils の gunFireSfxKey が唯一の出どころ

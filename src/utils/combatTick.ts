@@ -43,6 +43,7 @@ import {
   biteBodyOverlapsPlayer, BITE_CANCEL_DR_MS, isBiteInterruptedByMove, isBiteFrozen,
 } from './enemyBite';
 import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
+import { BAT_GRAB_HOLD_MS } from './chaffMoves'; // ★PACING_PUZZLE.md §16-1(bat の掴み)
 import { EGG_BLAST_RADIUS } from '../world/mines';
 import {
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
@@ -1451,6 +1452,15 @@ export const applyContactDamage = (
       fx.playSfx('player-damage');
       fx.spawnFlash('rgba(239,68,68,0.22)', 200);
       fx.spawnBurst(bcx, bcy, '#ef4444', 5);
+    }
+    // ★bat の掴み(PACING_PUZZLE.md §16-1・社長裁定2026-09-16「つかみは文字通り...プレイヤーの
+    // 時間を止めてダメージ」)。★拘束は「ダメージが実際に入った時だけ」掛ける(社長裁定2026-09-16
+    // 「つかまれた直後から1秒無敵時間あるからいいんじゃない?」)。素直に「掴んだ→拘束」を別々に
+    // 書くと、無敵で弾かれても拘束だけ掛かる=連続で掴まれる。`wasVulnerable`(=このダメージが
+    // 実際に通った)の枝の中に置くことで、既存の1000msの被弾無敵がそのまま連続掴みを防ぐ
+    // (爆風のノックバックが`!invulnerable`の枝の中にあるのと同じ作法)。
+    if (wasVulnerable && !died && h.chaffMove === 'bat-grab') {
+      useGameStore.setState(st => ({ player: { ...st.player, grabbedUntil: gameTime + BAT_GRAB_HOLD_MS } }));
     }
     if (died) fx.triggerPlayerDeath(bcx, bcy);
   }

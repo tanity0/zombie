@@ -227,6 +227,7 @@ import {
   zombieRedGlowStrength, zombieRedPauseMs,
   ZOMBIE_RP_STUMBLE_FRAC, ZOMBIE_RP_RISE_FRAC, ZOMBIE_RP_TREMBLE_FRAC, // §16-3z①停止の長さ±30%(比例3段)
   ZOMBIE_STAGGER_MS, ZOMBIE_RECOVER_MS, // よろけ/硬直の姿勢(クリエイティブ監査#1/#7)の尺
+  chaffRedGlowStrength, // §16-1/§16-2(bat/skeleton)の赤=zombieRedGlowStrengthの一般化版
 } from '../utils/chaffMoves';
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 表示名・立ち絵クラスの正本(台帳)と、技の寸法テーブル。
 // **判定(phantomTick)と同じ1箇所**を読むので「赤いのに当たらない」が起きない。
@@ -17766,8 +17767,17 @@ export class PixiScene {
         // 「足が止まったまま滑る」絵になる・クリエイティブ監査#4是正)。実速度駆動
         // (walk=motSpeed/e.speed)なので、それ以外の停止相(z-red-pause/z-stagger/z-bite2/z-recover)は
         // 動かしても自然に止まる。z-bite1/zrushはゾンビ専用のaiPhase値なので他型には影響しない。
+        // ★PACING_PUZZLE.md §16-1/§16-2(bat/skeleton)も同じ理由でここへ開ける
+        // (§16-6「技の最中も歩行モーションを通す。zrushも対象」の一般化=bat/skeleton版)。
+        // b-orbit(円)/b-lunge(踏み込み)/b-release(後ずさる)と、s-arc(弧)/s-retreat(後退)は
+        // 実際に動く。b-windup/b-grab(溜め・掴み=ほぼ静止)とs-crouch/s-bite/s-recover(しゃがみ・
+        // 噛み・硬直=静止)も、walkが実速度駆動なので開けたままで自然に止まる(誤って動いても害はない)。
         if (e.aiPhase === undefined || e.aiPhase === 'z-wait' || e.aiPhase === 'z-lunge-in'
-          || e.aiPhase === 'z-bite1' || e.aiPhase === 'zrush') {
+          || e.aiPhase === 'z-bite1' || e.aiPhase === 'zrush'
+          || e.aiPhase === 'b-approach' || e.aiPhase === 'b-orbit' || e.aiPhase === 'b-windup'
+          || e.aiPhase === 'b-lunge' || e.aiPhase === 'b-grab' || e.aiPhase === 'b-release'
+          || e.aiPhase === 's-crouch' || e.aiPhase === 's-arc' || e.aiPhase === 's-bite'
+          || e.aiPhase === 's-recover' || e.aiPhase === 's-retreat') {
           const pose = enemyMotionPose(spec, stablePhase(e.id), view.motClock, walk);
           motRot = pose.rot; motBob = pose.bob; motSqX = pose.sqX; motSqY = pose.sqY;
         }
@@ -18017,7 +18027,11 @@ export class PixiScene {
       // ★優先: 白(被弾) > §16の赤(予告) > オレンジ(延焼) > 水色(氷)。
       // ★§16-3z「歯応え」の仕上げ=ゾンビの赤を実装(PACING_PUZZLE.md §16-10-C)。
       const texOk = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1;
-      const zRedStrength = texOk ? zombieRedGlowStrength(e, gameTime) : 0;
+      // ★PACING_PUZZLE.md §16-1/§16-2: bat/skeletonの赤はchaffRedGlowStrength(一般化版)、
+      // ゾンビだけ専用のzombieRedGlowStrength(2回点滅)を使う——型が違う関数なので二重に足さない
+      // (bat/skeletonはzombie-double以外のchaffMoveなのでzombieRedGlowStrengthは常に0を返す=
+      // 足し算しても安全だが、意図を明確にするため||で片方だけ通す)。
+      const zRedStrength = texOk ? (zombieRedGlowStrength(e, gameTime) || chaffRedGlowStrength(e, gameTime)) : 0;
       const burning = texOk && (e.burnUntil ?? 0) > gameTime;
       const iced = texOk && (e.iceSlowUntil ?? 0) > gameTime;
       if (flashT > 0.01 || zRedStrength > 0.01 || burning || iced) {

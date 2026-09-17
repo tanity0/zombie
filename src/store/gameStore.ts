@@ -301,7 +301,7 @@ import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '
 import { pushShieldRect } from '../world/shieldPush'; // B6(盾押し・§6): 純関数(src/world/shieldPush.test.ts)
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
-import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite, ZOMBIE_RUSH_BODY_SLAM_MS } from '../utils/enemyBite';
+import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite, ZOMBIE_RUSH_BODY_SLAM_MS, BAT_WINDUP_STILL_MS } from '../utils/enemyBite';
 import { deferFrozenClocksBy } from '../utils/chaffMoves'; // PACING_PUZZLE.md §16-7 穴4(凍結dtの繰り下げ)
 // ★ゾンビ赤(PACING_PUZZLE.md §16-3・§16-8b手順5)。枠の導出/技の終わり/待ちの尺/帯の定数の正本。
 import {
@@ -311,6 +311,14 @@ import {
   ZOMBIE_RECOVER_MS, zombieLungeRampMul, // §16-3z「歯応え」の仕上げ(③硬直・②踏み込みの加速)
   zombieRedPauseMs, zombieBite2AngleRad, // §16-3z 追補(①停止の長さ±30%・②2発目の角度にspawnedAtを混ぜる)
   zombieRecoverWalkRampMul, // §16-3zクリエイティブ監査#3(硬直→歩きの出足の1フレーム段差を消す)
+  // ★bat(PACING_PUZZLE.md §16-1・§16-8b手順6)。
+  batWantsChaffSlot, batOrbitDurationMs, batStrafeMs, batHoldMs, batOrbitSpin, batStrafeAngularMul,
+  BAT_ORBIT_RADIUS_PX, BAT_ORBIT_SPEED_MULT, BAT_ORBIT_TAU_S, BAT_ORBIT_INTRUDE_MARGIN_PX, BAT_GRAB_HOLD_MS,
+  // ★skeleton(PACING_PUZZLE.md §16-2・§16-8b手順7)。
+  skeletonWantsChaffSlot, skeletonArcPoint,
+  SKELETON_TRIGGER_PX, SKELETON_CROUCH_MS, SKELETON_ARC_MS, SKELETON_RECOVER_MS, SKELETON_RETREAT_SPEED_MULT,
+  // ★プレイヤーの拘束(bat の掴み)。
+  isPlayerGrabbed,
 } from '../utils/chaffMoves';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
@@ -6877,6 +6885,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★SAME_ARENA §9(対人体勢): 紫(3秒)+致命後daze(2秒)中は入力を無視して残速度を減衰
       // (skaterStopUntilと同じ型=慣性MUSTに従い瞬間停止にしない)。被弾KBはそのまま食らう(上が優先)。
       const pvpFrozen = !kbActive && isPvpIncapacitated(player.pvpPosture, state.gameTime);
+      // ★bat の掴み(PACING_PUZZLE.md §16-1・社長裁定2026-09-16)。isPvpIncapacitatedと**同じ形**
+      // (=入力を無視して残速度を減衰。瞬間停止にしない=慣性MUST)。被弾KBはそのまま食らう(上が優先)。
+      const grabbedFrozen = !kbActive && isPlayerGrabbed(player, state.gameTime);
       let vx: number, vy: number;
       if (kbActive) {
         // 持続時間は**その吹き飛び自身の値**で割る(技ごとに変わるため。未指定=従来の共通値)。
@@ -6894,7 +6905,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           : 1;
         vx = (player.lungeVx ?? 0) * d * lungeCap;
         vy = (player.lungeVy ?? 0) * d * lungeCap;
-      } else if (skaterStopping || pvpFrozen) {
+      } else if (skaterStopping || pvpFrozen || grabbedFrozen) {
         const d = Math.exp(-deltaTime / 0.05); // 約50msの時定数で素早く0へ
         vx = player.vx * d;
         vy = player.vy * d;
@@ -7301,6 +7312,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const p = get().player;
     if (isPvpIncapacitated(p.pvpPosture, get().gameTime)) return false; // ★SAME_ARENA §9: 紫/daze中は振れない(窓も開かない)
+    if (isPlayerGrabbed(p, get().gameTime)) return false; // ★PACING_PUZZLE.md §16-1: bat に掴まれている間は振れない
     // ★v0.25.4003(社長報告2026-08-28「スラッシャーが連撃うまくできない」): チェーン受付は
     // triggerCounter側(PC直呼び)にしか無く、タッチのタップは下の通常CD門(820ms)が先に飲むため、
     // チェーンCD(300ms)のリズムのタップが**予約もされずに捨てられていた**=タッチだけ連撃が
@@ -10870,6 +10882,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== 'phill-revolver') return;
     if (isPvpIncapacitated(player.pvpPosture, get().gameTime)) return; // ★SAME_ARENA §9(検収監査 重大①): 紫/daze中は撃てない
+    if (isPlayerGrabbed(player, get().gameTime)) return; // ★PACING_PUZZLE.md §16-1: bat に掴まれている間は撃てない
     // 社長指示v0.25.3300 シーカー仕様変更: 半透明中は攻撃できない(覚醒Lv3は可)。
     if (isSeekerActive(player, get().gameTime) && skillLevel(player, 'seeker') < 3) return;
     // 吸い付き中の敵(movePlayer が算出した phillSnapEnemyId)を発砲時点で確認。
@@ -10964,6 +10977,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== RAILGUN_WEAPON_KEY) return;
     if (isPvpIncapacitated(player.pvpPosture, get().gameTime)) return; // ★SAME_ARENA §9: 紫/daze中は撃てない
+    if (isPlayerGrabbed(player, get().gameTime)) return; // ★PACING_PUZZLE.md §16-1: bat に掴まれている間は撃てない
     if (isSeekerActive(player, get().gameTime) && skillLevel(player, 'seeker') < 3) return;
     // 吸い付き中の敵(movePlayer が算出した phillSnapEnemyId。hasManualAimGunKeyでレールガンも対象)。
     const snapEnemy = player.phillSnapEnemyId != null
@@ -12616,9 +12630,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 「近い順で2体」が決められないため)。`wantsSlot` は narrow な Pick しか受け取れないので、
       // id→フルの Enemy を引けるMapを経由してゾンビ専用の判定(zombieWantsChaffRedSlot)へ渡す。
       const chaffLookup = new Map(postureUpdatedEnemies.map(e => [e.id, e] as const));
+      // ★型をまたいで数える(§16-8「bat/skeleton/ゾンビが1つの枠を共有する」)。型ごとの
+      // 「取ってよいか」の申告(wantsSlot)を1本の関数に束ねてderiveChaffMoveGrantsへ渡す。
       const chaffGrants = deriveChaffMoveGrants(postureUpdatedEnemies, pcx, pcy, cand => {
         const full = chaffLookup.get(cand.id);
-        return full !== undefined && zombieWantsChaffRedSlot(full, gameTime, pcx, pcy);
+        if (full === undefined) return false;
+        if (full.type === 'zombie') return zombieWantsChaffRedSlot(full, gameTime, pcx, pcy);
+        if (full.type === 'bat') return batWantsChaffSlot(full, gameTime, pcx, pcy);
+        if (full.type === 'skeleton') return skeletonWantsChaffSlot(full, gameTime, pcx, pcy);
+        return false;
       });
       const updatedEnemies = postureUpdatedEnemies.map((enemy): Enemy => {
         // 裏ボス4体/天使6体/アイドル(=isHiddenBoss)は updateEnemies の追跡AIから除外。移動/攻撃/
@@ -14903,6 +14923,19 @@ export const useGameStore = create<GameState>((set, get) => ({
             enemy.x + (enemy.biteDirX ?? 0) * step,
             enemy.y + (enemy.biteDirY ?? 0) * step,
           );
+          // ★bat専用: b-windup/b-lunge/b-grabの3段ラベル(§16-7b)は、この共有分岐が動かしている
+          // 720ms(→シビア反映で620ms=250溜め+150踏み込み+220掴み)の**1本の`biteAt`サイクル**の
+          // 内訳でしかない(bat-grabのBiteSpecはwindup/biteの2段しか持たないため)。位置は共有分岐が
+          // 担当するので、ここでは経過msからラベルだけを進める(型・技を絞っているので他型には
+          // 一切影響しない=受け入れ条件1「§12は1つも変わっていない」を保つ)。
+          if (enemy.type === 'bat' && enemy.chaffMove === 'bat-grab' && enemy.biteAt !== undefined && enemy.biteAt > 0) {
+            const bt = gameTime - enemy.biteAt;
+            const spec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
+            const nextBatPhase: Enemy['aiPhase'] = bt < BAT_WINDUP_STILL_MS ? 'b-windup' : (bt < spec.windupMs ? 'b-lunge' : 'b-grab');
+            if (nextBatPhase !== enemy.aiPhase) {
+              return { ...enemy, vx: 0, vy: 0, x: bmoved.x, y: bmoved.y, aiPhase: nextBatPhase };
+            }
+          }
           return { ...enemy, vx: 0, vy: 0, x: bmoved.x, y: bmoved.y };
         }
 
@@ -15087,6 +15120,215 @@ export const useGameStore = create<GameState>((set, get) => ({
           const zvx = (hx / hl) * zSpeed, zvy = (hy / hl) * zSpeed;
           const zmoved = resolveMove(enemy.x + zvx * deltaTime, enemy.y + zvy * deltaTime);
           return { ...enemy, vx: zvx, vy: zvy, x: zmoved.x, y: zmoved.y, aiPhase: phase, aiPhaseUntil: phaseUntil, ...(biteKickoff ?? {}) };
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════════════
+        // bat専用AI(PACING_PUZZLE.md §16-1・§16-8b手順6)。掴み(biteAt駆動のb-windup/b-lunge/
+        // b-grab=1本の連続サイクル)は上のisBiteSubject分岐が動きを担当するのでここへは来ない
+        // (ラベルの3段更新だけをあの分岐の中で行っている)。ここが扱うのは
+        // 「構え前(aiPhase未設定)→円(b-orbit)」と「掴み後の後始末(b-release)」の2つ。
+        // ══════════════════════════════════════════════════════════════════════════════════
+        if (enemy.type === 'bat') {
+          const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+          const pdist = Math.hypot(pcx - ecx, pcy - ecy);
+          const phase = enemy.aiPhase;
+          // ★Y方向副作用チェック(CLAUDE.md): 新しく動かすアクターはclampRectToPlayableAreaを通す
+          // (driller/loggerと同じ作法)。
+          const batClampMove = (mx: number, my: number): { x: number; y: number } => {
+            const moved = resolveMove(mx, my);
+            const ctx: PlayableAreaCtx = {
+              farBackdrop: state.farBackdrop, labTheme,
+              corridorMode: state.corridorMode,
+              m0AdvanceLimitX: state.m0AdvanceLimitX,
+              corridorRunInActive: state.corridorRunInActive,
+            };
+            return clampRectToPlayableArea(moved.x, moved.y, enemy.width, enemy.height, ctx, enemy.x);
+          };
+
+          // ── 掴み(b-grab)の解決検知(biteAtが0へ戻った最初のフレーム) → b-release ──────
+          if (phase === 'b-grab' && !(enemy.biteAt !== undefined && enemy.biteAt > 0)) {
+            // ★「一拍留まる」はBAT_GRAB_HOLD_MS(プレイヤーの拘束と同じ拍・§16-1)。
+            return { ...enemy, vx: 0, vy: 0, aiPhase: 'b-release', aiPhaseUntil: gameTime + BAT_GRAB_HOLD_MS };
+          }
+
+          // ── b-release: 一拍留まる → 円(BAT_ORBIT_RADIUS_PX)の外まで後ずさる ───────────
+          if (phase === 'b-release') {
+            if (gameTime < (enemy.aiPhaseUntil ?? 0)) return { ...enemy, vx: 0, vy: 0 }; // 留まる
+            if (pdist < BAT_ORBIT_RADIUS_PX) {
+              // 後ずさる(プレイヤーから離れる方向)。速度は台帳に無い値を新規発明せず、
+              // 「①走り寄る」と同じ「等倍」(=enemy.speedそのもの)を流用する。
+              // ★完全密着(pdist≈0)は向きが定まらないので、踏み込みで焼いた向き(biteDirX/Y=
+              // 敵→プレイヤー)の逆を使う(掴んだ直後は必ずこの向きが立っている)。
+              let awayX: number, awayY: number;
+              if (pdist > 0.5) {
+                awayX = -(pcx - ecx) / pdist; awayY = -(pcy - ecy) / pdist;
+              } else {
+                awayX = -(enemy.biteDirX ?? 1); awayY = -(enemy.biteDirY ?? 0);
+              }
+              const bvx = awayX * enemy.speed, bvy = awayY * enemy.speed;
+              const bmoved = batClampMove(enemy.x + bvx * deltaTime, enemy.y + bvy * deltaTime);
+              return { ...enemy, vx: bvx, vy: bvy, x: bmoved.x, y: bmoved.y };
+            }
+            // 円の外まで下がった=技の終わり(§16-7b「後退が終わった瞬間に1箇所から呼ぶ」)。
+            return {
+              ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: undefined, chaffMoveAt: undefined,
+              ...endChaffMove(enemy, gameTime),
+            };
+          }
+
+          // ── b-orbit: 円を保って刻む横歩き。尺切れ or プレイヤーが詰めたら踏み込みへ ────────
+          if (phase === 'b-orbit') {
+            const orbitStartedAt = (enemy.aiPhaseUntil ?? gameTime) - batOrbitDurationMs(enemy.id, enemy.spawnedAt);
+            const intruded = pdist <= BAT_ORBIT_RADIUS_PX - BAT_ORBIT_INTRUDE_MARGIN_PX;
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0) || intruded) {
+              // 踏み込みの引き金(§16-1裁定b「尺切れ または プレイヤーが半径の内側へ入った」)。
+              // 向きはここで焼く(追尾しない=避けられれば空を切る・§16-1)。
+              const bl = Math.max(0.001, pdist);
+              return {
+                ...enemy, vx: 0, vy: 0, aiPhase: 'b-windup', chaffMove: 'bat-grab', chaffMoveAt: gameTime,
+                biteAt: gameTime, biteDirX: (pcx - ecx) / bl, biteDirY: (pcy - ecy) / bl,
+              };
+            }
+            // 円の中心をプレイヤー座標へ一次遅れで追従(生の座標だと「ロックオン軌道」になる・§16-1)。
+            const a = 1 - Math.exp(-deltaTime / BAT_ORBIT_TAU_S);
+            const cx = (enemy.chaffOrbitCx ?? pcx) + (pcx - (enemy.chaffOrbitCx ?? pcx)) * a;
+            const cy = (enemy.chaffOrbitCy ?? pcy) + (pcy - (enemy.chaffOrbitCy ?? pcy)) * a;
+            const rdx = ecx - cx, rdy = ecy - cy;
+            const rdist = Math.max(0.001, Math.hypot(rdx, rdy));
+            const rx = rdx / rdist, ry = rdy / rdist; // 半径方向(中心→敵)
+            const spin = batOrbitSpin(enemy.id);       // §16-8「添字0=右回り/添字1=左回り」
+            const tx = -ry * spin, ty = rx * spin;      // 接線方向(刻む横歩きの向き)
+            const angMul = batStrafeAngularMul(
+              gameTime - orbitStartedAt,
+              batStrafeMs(enemy.id, enemy.spawnedAt), batHoldMs(enemy.id, enemy.spawnedAt),
+            );
+            // 半径維持の補正(遠ければ内向き・近ければ外向き)。刻みが止まっていても半径はゆっくり戻る。
+            const radialErr = (rdist - BAT_ORBIT_RADIUS_PX) / BAT_ORBIT_RADIUS_PX;
+            const bx = tx * angMul - rx * radialErr * 0.6;
+            const by = ty * angMul - ry * radialErr * 0.6;
+            const bl2 = Math.max(0.001, Math.hypot(bx, by));
+            // ★円の間だけ遅い(素の実速度×0.45)。真っ直ぐ詰め寄る時(b-approach)は等倍のまま
+            // (下のisChaffTypeフォールスルー)——★社長訂正2026-09-16。
+            const orbitSpeed = enemy.speed * BAT_ORBIT_SPEED_MULT;
+            const bvx = (bx / bl2) * orbitSpeed, bvy = (by / bl2) * orbitSpeed;
+            const bmoved = batClampMove(enemy.x + bvx * deltaTime, enemy.y + bvy * deltaTime);
+            return { ...enemy, vx: bvx, vy: bvy, x: bmoved.x, y: bmoved.y, chaffOrbitCx: cx, chaffOrbitCy: cy };
+          }
+
+          // ── 構え前(aiPhase未設定=b-approach): 枠が空いて間合いに達していれば円へ ───────────
+          if (phase === undefined && chaffGrants.has(enemy.id) && pdist <= BAT_ORBIT_RADIUS_PX) {
+            return {
+              ...enemy, vx: 0, vy: 0, aiPhase: 'b-orbit',
+              aiPhaseUntil: gameTime + batOrbitDurationMs(enemy.id, enemy.spawnedAt),
+              chaffOrbitCx: pcx, chaffOrbitCy: pcy,
+            };
+          }
+          // それ以外(枠が無い/間合い外)は§16-1「旧挙動のまま歩いて詰める」——ここでreturnせず、
+          // 下の共通のチャフ移動(isChaffType。①走り寄る=等倍)へフォールスルーする。
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════════════
+        // skeleton専用AI(PACING_PUZZLE.md §16-2・§16-8b手順7)。噛み(biteAt駆動のs-bite)は
+        // 上のisBiteSubject分岐が動きを担当する(skel-biteのBiteSpecは標準2段=専用曲線は不要)。
+        // ══════════════════════════════════════════════════════════════════════════════════
+        if (enemy.type === 'skeleton') {
+          const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+          const pdist = Math.hypot(pcx - ecx, pcy - ecy);
+          const phase = enemy.aiPhase;
+          const skelClampMove = (mx: number, my: number): { x: number; y: number } => {
+            const moved = resolveMove(mx, my);
+            const ctx: PlayableAreaCtx = {
+              farBackdrop: state.farBackdrop, labTheme,
+              corridorMode: state.corridorMode,
+              m0AdvanceLimitX: state.m0AdvanceLimitX,
+              corridorRunInActive: state.corridorRunInActive,
+            };
+            return clampRectToPlayableArea(moved.x, moved.y, enemy.width, enemy.height, ctx, enemy.x);
+          };
+
+          // ── 噛み(s-bite)の解決検知 → s-recover(硬直・★プレイヤーの取り分。変えない値) ─────
+          if (phase === 's-bite' && !(enemy.biteAt !== undefined && enemy.biteAt > 0)) {
+            return { ...enemy, vx: 0, vy: 0, aiPhase: 's-recover', aiPhaseUntil: gameTime + SKELETON_RECOVER_MS };
+          }
+
+          // ── s-recover: その場で硬直(下がらない。硬直が後退より前=社長裁定「その代わり」) ────
+          if (phase === 's-recover') {
+            if (gameTime < (enemy.aiPhaseUntil ?? 0)) return { ...enemy, vx: 0, vy: 0 };
+            return { ...enemy, vx: 0, vy: 0, aiPhase: 's-retreat' };
+          }
+
+          // ── s-retreat: 発火距離(100px)まで1.5倍速で後退(「間合いを取り直す」) ────────────
+          if (phase === 's-retreat') {
+            if (pdist < SKELETON_TRIGGER_PX) {
+              // ★完全密着(pdist≈0)は向きが定まらないので、噛みで焼いた向き(biteDirX/Y)の逆を使う
+              // (batのb-releaseと同じ作法)。
+              let awayX: number, awayY: number;
+              if (pdist > 0.5) {
+                awayX = -(pcx - ecx) / pdist; awayY = -(pcy - ecy) / pdist;
+              } else {
+                awayX = -(enemy.biteDirX ?? 1); awayY = -(enemy.biteDirY ?? 0);
+              }
+              const spd = enemy.speed * SKELETON_RETREAT_SPEED_MULT;
+              const svx = awayX * spd, svy = awayY * spd;
+              const smoved = skelClampMove(enemy.x + svx * deltaTime, enemy.y + svy * deltaTime);
+              return { ...enemy, vx: svx, vy: svy, x: smoved.x, y: smoved.y };
+            }
+            // 間合いを取り直した=技の終わり。
+            return {
+              ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: undefined, chaffMoveAt: undefined,
+              ...endChaffMove(enemy, gameTime),
+            };
+          }
+
+          // ── s-crouch: しゃがみ(合図・色なし)。明けたら弧(s-arc)で回り込む ────────────────
+          if (phase === 's-crouch') {
+            if (gameTime < (enemy.aiPhaseUntil ?? 0)) return { ...enemy, vx: 0, vy: 0 };
+            // ★向きの潰しは「回る側の選び方」で避ける(クリエイティブ監査#16)。「いま向いている側」=
+            // 直前まで接近していた向き(プレイヤーへのdx符号)で決める(添字ではない・§16-2)。
+            // ★立つ位置(§16-7b): chaffMoveはここ(s-crouchの次の踏み込み=s-arcの頭)で立てる。
+            const side = (pcx - ecx) >= 0;
+            return {
+              ...enemy, vx: 0, vy: 0, aiPhase: 's-arc', aiPhaseUntil: gameTime + SKELETON_ARC_MS,
+              chaffMove: 'skel-bite', chaffMoveAt: gameTime, chaffArcSide: side,
+              // ★中心座標で焼く(skeletonArcPointはプレイヤーの中心座標と同じ基準=中心で幾何を
+              // 組むため。top-left(enemy.x/y)のまま渡すと半幅/半高ぶんズレる)。
+              aiFromX: ecx, aiFromY: ecy, aiStartedAt: gameTime,
+            };
+          }
+
+          // ── s-arc: 弧を描いて横へ回り込む(直線にしない=人狼の突進と被らない・§16-2) ───────
+          if (phase === 's-arc') {
+            const uRaw = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / SKELETON_ARC_MS));
+            const uEased = uRaw * uRaw * (3 - 2 * uRaw); // smoothstep(慣性MUST=加減速つき)
+            // ★先に弧上の位置(u=uEased)へ実際に動かしてから、終点到達を判定する。
+            // (先に判定して位置更新をスキップすると、終点到達フレームだけ位置が1フレーム前の
+            // ままになり「弧の終点」に居ない状態でs-biteへ入ってしまう。)
+            // aiFromX/Yは中心座標(§16-7b「立つ位置」の注記どおり、上のs-crouch→s-arc遷移で焼く)。
+            const fromX = enemy.aiFromX ?? ecx, fromY = enemy.aiFromY ?? ecy;
+            const target = skeletonArcPoint(fromX, fromY, pcx, pcy, enemy.chaffArcSide ?? true, uEased); // 中心座標
+            const smoved = skelClampMove(target.x - enemy.width / 2, target.y - enemy.height / 2); // top-leftへ変換
+            if (uRaw >= 1) {
+              // 弧の終点(プレイヤー中心から100pxの横)に到達=噛みへ。向きは踏み込みの瞬間(ここ)に
+              // 焼く(追尾しない=§12と同じ作法)。位置は上で計算した終点(smoved)を採用する。
+              const necx = smoved.x + enemy.width / 2, necy = smoved.y + enemy.height / 2;
+              const bl = Math.max(0.001, Math.hypot(pcx - necx, pcy - necy));
+              return {
+                ...enemy, vx: 0, vy: 0, x: smoved.x, y: smoved.y, aiPhase: 's-bite', biteAt: gameTime,
+                biteDirX: (pcx - necx) / bl, biteDirY: (pcy - necy) / bl,
+              };
+            }
+            // 絵の道具(歩行モーション)が速度の大きさを見るので、動いた分から速度を逆算しておく
+            // (位置は弧の式が直接決めるので、ここは慣性の積分には使わない=座標書き込みのみが正)。
+            const dtSafe = Math.max(deltaTime, 1 / 240);
+            const svx = (smoved.x - enemy.x) / dtSafe, svy = (smoved.y - enemy.y) / dtSafe;
+            return { ...enemy, vx: svx, vy: svy, x: smoved.x, y: smoved.y };
+          }
+
+          // ── 構え前(aiPhase未設定): 枠が空いて間合い(100px)に達していればしゃがみへ ─────────
+          if (phase === undefined && chaffGrants.has(enemy.id) && pdist <= SKELETON_TRIGGER_PX) {
+            return { ...enemy, vx: 0, vy: 0, aiPhase: 's-crouch', aiPhaseUntil: gameTime + SKELETON_CROUCH_MS };
+          }
+          // それ以外は旧挙動のまま歩いて詰める→下の共通のチャフ移動へフォールスルーする。
         }
 
         // ボスのクリ半減(v0.25.2422)。ボス以外・非半減中は1なので通常敵の速度は完全に不変。

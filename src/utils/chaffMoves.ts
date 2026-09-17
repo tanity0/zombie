@@ -4,13 +4,19 @@
 // (§16-8「新しい定数は1ファイル(例 src/utils/chaffMoves.ts)にまとめ」)。
 //
 // ★§16-8b手順5(ゾンビの状態機械=gameStore.ts)でこのファイルの `deriveChaffMoveGrants` /
-// `endChaffMove` を初めて呼ぶようになった。bat/skeleton(手順6〜7)はまだ未実装で、
-// `CHAFF_MOVE_TYPES` には残っているが `wantsSlot` 側(下・ゾンビ専用)が型で弾くので
-// 挙動には出ない。
+// `endChaffMove` を初めて呼ぶようになった。★手順6〜7(bat/skeleton)も本ファイルへ実装済み
+// (下の「§16-1 bat」「§16-2 skeleton」節)。
+//
+// ★「できるだけシビアに」(社長指示2026-09-17)。シビアの定義(設計者確定):
+// 「手数が増え、読む時間が減る。ただし読めば必ず返せるし、返せば必ず殴れる」=削るのは
+// **予告の長さ**と**技後CD**だけ。**硬直(プレイヤーの取り分)・同時に構えられる数(2体)・
+// 判定/ダメージ量は削らない**(削ると理不尽になる)。bat/skeletonの値は§16-8台帳の叩き台から
+// この指示ぶん差し替えてある(各定数のコメント参照)。ゾンビは対象外(設計チャット側)。
 //
 // レンダラ非依存の純関数(src/utils)=ヘッドレスでユニットテスト可能。
-import type { Enemy, EnemyType } from '../types/game';
-import { biteSpecFor } from './enemyBite';
+import type { Enemy, EnemyType, Player } from '../types/game';
+import { biteSpecFor, BAT_WINDUP_STILL_MS } from './enemyBite';
+import { spriteVariantIndex } from './enemyVariant';
 
 /** §16の技(雑魚の「詰めさせない技」)を持つ型。lab-zombie/lich等は別バッチで足す(§16-0)。 */
 export const CHAFF_MOVE_TYPES: ReadonlySet<EnemyType> = new Set<EnemyType>(['bat', 'skeleton', 'zombie']);
@@ -353,4 +359,205 @@ export const ZOMBIE_BITE2_ANGLE_JITTER = 0.3;
 export const zombieBite2AngleRad = (id: string, spawnedAt: number | undefined, spin: number): number => {
   const mul = 1 + (idRespawnUnitHash(id, spawnedAt, 0x8a41) * 2 - 1) * ZOMBIE_BITE2_ANGLE_JITTER;
   return ZOMBIE_BITE2_ANGLE_OFFSET_RAD * mul * spin;
+};
+
+// =================================================================================================
+// §16-1 bat — 回りながら詰めて掴む(PACING_PUZZLE.md §16-1・§16-8の台帳)。★§16-8b手順6。
+// =================================================================================================
+
+/** 円の半径(§16-1「規則」= MELEE_RADIUS(74) + 帯の半幅(18.1) + 余白8px ≒ 100px。中心間で書く)。 */
+export const BAT_ORBIT_RADIUS_PX = 100;
+/**
+ * ★②円を回る尺(社長指示2026-09-17「できるだけシビアに」で 1500〜3000ms → **900〜1800ms**。
+ * 「仕掛けが早くなる」=予告そのものの長さを削る側)。
+ */
+export const BAT_ORBIT_MIN_MS = 900;
+export const BAT_ORBIT_MAX_MS = 1800;
+/** 円の速さ(§16-1「flankより明確に遅いこと。遅いのは円の間だけ」)。素の実速度×この倍率。 */
+export const BAT_ORBIT_SPEED_MULT = 0.45;
+/** 円の中心の追従時定数(一次遅れ・叩き台=§16-8「叩き台0.12」)。ロックオン軌道にしない。 */
+export const BAT_ORBIT_TAU_S = 0.12;
+/** 刻む横歩き(§16-1クリエイティブ監査#13): 動く尺0.4〜0.7秒・止まり0.2〜0.3秒。 */
+export const BAT_STRAFE_MIN_MS = 400;
+export const BAT_STRAFE_MAX_MS = 700;
+export const BAT_HOLD_MIN_MS = 200;
+export const BAT_HOLD_MAX_MS = 300;
+/** 円の内側へどれだけ踏み込まれたら「詰めた」引き金(b)とみなすか(円の自然な半径維持の揺れを
+ * 誤検知しないための余白。台帳に無い実装細部の叩き台=演出の微調整・社長裁定を要する値ではない)。 */
+export const BAT_ORBIT_INTRUDE_MARGIN_PX = 15;
+/**
+ * ★掴まれている尺(社長裁定2026-09-16「つかみは文字通り...プレイヤーの時間を止めてダメージ」・
+ * §16-8「叩き台500ms」)。「できるだけシビアに」の対象外(判定・ダメージ量とセットで変えない)。
+ * b-release の「一拍留まる」もこれと同じ尺(掴んでいる敵と掴まれているプレイヤーは同じ拍)。
+ */
+export const BAT_GRAB_HOLD_MS = 500;
+
+const BAT_SALT_ORBIT_MS = 0x6b1a;
+const BAT_SALT_STRAFE_MS = 0x6b1b;
+const BAT_SALT_HOLD_MS = 0x6b1c;
+
+/** 円を回る尺(id+spawnedAt由来・決定的)。 */
+export const batOrbitDurationMs = (id: string, spawnedAt: number | undefined): number =>
+  BAT_ORBIT_MIN_MS + idRespawnUnitHash(id, spawnedAt, BAT_SALT_ORBIT_MS) * (BAT_ORBIT_MAX_MS - BAT_ORBIT_MIN_MS);
+/** 刻む横歩きの「動く」尺(id+spawnedAt由来・決定的)。 */
+export const batStrafeMs = (id: string, spawnedAt: number | undefined): number =>
+  BAT_STRAFE_MIN_MS + idRespawnUnitHash(id, spawnedAt, BAT_SALT_STRAFE_MS) * (BAT_STRAFE_MAX_MS - BAT_STRAFE_MIN_MS);
+/** 刻む横歩きの「止まり」尺(id+spawnedAt由来・決定的)。 */
+export const batHoldMs = (id: string, spawnedAt: number | undefined): number =>
+  BAT_HOLD_MIN_MS + idRespawnUnitHash(id, spawnedAt, BAT_SALT_HOLD_MS) * (BAT_HOLD_MAX_MS - BAT_HOLD_MIN_MS);
+
+/**
+ * ★回転方向(§16-8「添字0=右回り/添字1=左回り。spriteVariantIndex(id,2)。batは添字0が男」)。
+ * +1=右回り(時計回り) / -1=左回り。
+ */
+export const batOrbitSpin = (id: string): 1 | -1 => (spriteVariantIndex(id, 2) === 0 ? 1 : -1);
+
+/**
+ * ★刻む横歩きの角速度の包絡線(0..1)。動く区間(strafeMs)は0→山→0(加速して最大→減速して止まる
+ * =慣性MUST)、止まり区間(holdMs)は0(完全静止)。`t`はこのセットが始まってからの経過ms(モジュロで
+ * 周期を扱うので、呼び手はセットの開始時刻さえ渡せばよい=専用の内部状態を持たない純関数)。
+ */
+export const batStrafeAngularMul = (t: number, strafeMs: number, holdMs: number): number => {
+  const cycle = Math.max(1, strafeMs + holdMs);
+  const tm = ((t % cycle) + cycle) % cycle;
+  if (tm >= strafeMs) return 0; // 止まり
+  const u = tm / Math.max(1, strafeMs);
+  return Math.sin(u * Math.PI); // 0→1→0(なだらかな山=段差のない加減速)
+};
+
+/**
+ * ★枠の申告(bat版・zombieWantsChaffRedSlotと同じ作法)。「取る=技の間合い(100px)に達した瞬間」
+ * (§16-1)。bat には「尺切れ」に相当する待ちが無い(合図そのものが円=zombieのz-waitに当たる
+ * 事前の待機フェーズを持たない)ので、距離条件だけで申告する。CD中の個体を候補から外すのは
+ * ここ(呼び手)の仕事(§16-7b「枠の導出はこれを読まない」)。
+ */
+export const batWantsChaffSlot = (
+  enemy: Pick<Enemy, 'id' | 'type' | 'aiPhase' | 'chaffMoveCdUntil' | 'x' | 'y' | 'width' | 'height'>,
+  gameTime: number, pcx: number, pcy: number,
+): boolean => {
+  if (enemy.type !== 'bat') return false;
+  if (enemy.aiPhase !== undefined) return false; // 「構え前(b-approach=aiPhase未設定)」だけが対象
+  if (enemy.chaffMoveCdUntil !== undefined && gameTime < enemy.chaffMoveCdUntil) return false;
+  const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+  return Math.hypot(pcx - ecx, pcy - ecy) <= BAT_ORBIT_RADIUS_PX;
+};
+
+// =================================================================================================
+// §16-2 skeleton — 回り込んで横から噛む(PACING_PUZZLE.md §16-2・§16-8の台帳)。★§16-8b手順7。
+// =================================================================================================
+
+/** 発火距離(社長裁定2026-09-16「3、出す」で70→100px。§16-8「変えない」対象)。 */
+export const SKELETON_TRIGGER_PX = 100;
+/**
+ * ★しゃがみ(合図)の尺(社長指示2026-09-17「できるだけシビアに」で 2000→**900ms**「大きく詰めます」)。
+ * ★元は社長指定の値(2000ms)だった——今回の指示で設計者が詰めた(DEVELOPMENT_LOGに明記)。
+ * ★予告の下限800ms(社長指示)を守っている(900>800)。
+ */
+export const SKELETON_CROUCH_MS = 900;
+/** 回り込み(弧)の尺(シビア反映: 900→700ms)。 */
+export const SKELETON_ARC_MS = 700;
+/** 弧の深さ(0=直線・1=大回り。直線に近づけられる下限=0.35)。§16-8「変えない」対象。 */
+export const SKELETON_ARC_DEPTH = 0.55;
+export const SKELETON_ARC_DEPTH_MIN = 0.35;
+/**
+ * ★噛み後の硬直(社長裁定「その代わりディレイ」・プレイヤーの取り分)。
+ * ★「できるだけシビアに」でも変えない(社長指示「噛み後の硬直500ms=★変えない」)。
+ */
+export const SKELETON_RECOVER_MS = 500;
+/** 距離の取り方(発火距離まで1.5倍速で後退・§16-8「変えない」対象)。 */
+export const SKELETON_RETREAT_SPEED_MULT = 1.5;
+
+/**
+ * ★枠の申告(skeleton版)。「取る=技の間合い(100px)に達した瞬間」(§16-2)。approach中
+ * (aiPhase未設定)だけが対象。CD中は外す(呼び手の仕事・§16-7b)。
+ */
+export const skeletonWantsChaffSlot = (
+  enemy: Pick<Enemy, 'id' | 'type' | 'aiPhase' | 'chaffMoveCdUntil' | 'x' | 'y' | 'width' | 'height'>,
+  gameTime: number, pcx: number, pcy: number,
+): boolean => {
+  if (enemy.type !== 'skeleton') return false;
+  if (enemy.aiPhase !== undefined) return false;
+  if (enemy.chaffMoveCdUntil !== undefined && gameTime < enemy.chaffMoveCdUntil) return false;
+  const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+  return Math.hypot(pcx - ecx, pcy - ecy) <= SKELETON_TRIGGER_PX;
+};
+
+/**
+ * ★弧の軌道(PACING_PUZZLE.md §16-2「弧を描いてプレイヤーの横へ」「直線にしない」)。
+ * 開始点(しゃがんでいた位置)→終点(プレイヤー中心から`SKELETON_TRIGGER_PX`の横。回り込んでも
+ * 間合いは変えない=整合監査A-7)を、2次ベジェで**外側へ膨らませて**結ぶ(直線だと人狼の突進の
+ * 画になる=§16-2)。`side`=true/falseでどちら側へ回り込むか(「いま向いている側」で決める・
+ * クリエイティブ監査#16。添字は使わない)。`u`は0..1の進捗(呼び手がease済みの値を渡す=
+ * ここは幾何だけを担う純関数)。
+ */
+export const skeletonArcPoint = (
+  startX: number, startY: number, pcx: number, pcy: number, side: boolean, u: number,
+): { x: number; y: number } => {
+  const toStartX = startX - pcx, toStartY = startY - pcy;
+  const distStart = Math.max(0.001, Math.hypot(toStartX, toStartY));
+  const rx = toStartX / distStart, ry = toStartY / distStart; // プレイヤー→開始点の単位ベクトル(放射)
+  const sign = side ? 1 : -1;
+  const tx = -ry * sign, ty = rx * sign; // 接線(横)方向
+  const endX = pcx + tx * SKELETON_TRIGGER_PX, endY = pcy + ty * SKELETON_TRIGGER_PX;
+  const midX = (startX + endX) / 2, midY = (startY + endY) / 2;
+  const outX = midX - pcx, outY = midY - pcy; // プレイヤー→中点=外向き
+  const outLen = Math.max(0.001, Math.hypot(outX, outY));
+  const bulge = SKELETON_TRIGGER_PX * SKELETON_ARC_DEPTH;
+  const ctrlX = midX + (outX / outLen) * bulge, ctrlY = midY + (outY / outLen) * bulge;
+  const uu = Math.max(0, Math.min(1, u));
+  const omu = 1 - uu;
+  return {
+    x: omu * omu * startX + 2 * omu * uu * ctrlX + uu * uu * endX,
+    y: omu * omu * startY + 2 * omu * uu * ctrlY + uu * uu * endY,
+  };
+};
+
+// =================================================================================================
+// プレイヤーの拘束(bat の掴み。§16-1・社長裁定2026-09-16)。
+// =================================================================================================
+
+/**
+ * ★対人体勢の`isPvpIncapacitated`と**同じ形**(CLAUDE.md「実装は対人体勢で動けないと同じ形で書く」)。
+ * 移動(movePlayer)・射撃(useGameLoopのpvpLocked相当)・近接(beginMeleeSwing)の3ゲートが
+ * これを見る。時間切れで自動失効=専用の解除経路を作らない。
+ */
+export const isPlayerGrabbed = (
+  player: Pick<Player, 'grabbedUntil'>, gameTime: number,
+): boolean => player.grabbedUntil !== undefined && gameTime < player.grabbedUntil;
+
+// =================================================================================================
+// 赤の合図(§16-5「赤は技が動き出してから決着まで」)。bat/skeleton共通の一般形。
+// ★ゾンビは社長指示2026-09-16「走り始めのとき2回点滅するだけ」で専用の形(zombieRedGlowStrength=
+// 2回点滅・chaffMoveAt基準)に確定済みなのでここでは対象外(呼び手が型で使い分ける)。
+// 「既存の関数をbat/skeletonにも効く形へ一般化する」(3体ぶんコピーしない)の実装として、
+// **1つの関数**にまとめ、型ごとの違いは「膨らみ切るまでの尺」1つのテーブルだけに閉じ込める。
+// =================================================================================================
+
+/**
+ * 技の頭(biteAtが立った瞬間)から「膨らみ切る」までの尺。
+ * - bat: 溜め(BAT_WINDUP_STILL_MS)で膨らみ切り、踏み込み〜掴みは最大のまま
+ *   (§16-5「獣が息を止めて飛ぶ」)。
+ * - skeleton: 前隙(windupMs全体)で一気に上がる(§16-5「低く燻る区間は色が無いので不要になった」)。
+ */
+const CHAFF_RED_RAMP_MS: Partial<Record<NonNullable<Enemy['chaffMove']>, number>> = {
+  'bat-grab': BAT_WINDUP_STILL_MS,
+};
+
+/**
+ * bat/skeletonの赤の強さ(0..1)。**構え(b-orbit/s-crouch/s-arc)には乗らない**——`biteAt`が
+ * 立ってから(bat=b-windup開始/skeleton=s-bite開始)だけ非0になる。決着(biteAtが0へ戻る=
+ * 硬直・後退には乗らない)と同時に0へ戻る。
+ */
+export const chaffRedGlowStrength = (
+  enemy: Pick<Enemy, 'type' | 'chaffMove' | 'biteAt' | 'aiPhase'>, gameTime: number,
+): number => {
+  if (enemy.chaffMove !== 'bat-grab' && enemy.chaffMove !== 'skel-bite') return 0; // zombie-doubleは専用関数
+  if (enemy.biteAt === undefined || enemy.biteAt <= 0) return 0; // 構え中(まだ踏み込み/噛みが立っていない)
+  const elapsed = gameTime - enemy.biteAt;
+  if (elapsed < 0) return 0;
+  const spec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
+  const total = spec.windupMs + spec.biteMs;
+  if (elapsed >= total) return 0; // 決着済み(硬直・後退には乗らない)
+  const rampMs = Math.max(1, CHAFF_RED_RAMP_MS[enemy.chaffMove] ?? spec.windupMs);
+  return elapsed >= rampMs ? 1 : elapsed / rampMs;
 };

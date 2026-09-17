@@ -78,17 +78,38 @@ export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
  * `BITE_BY_PHASE`(下)を `aiPhase`(z-bite1/z-bite2)で重ねる(検収監査A-3・§16-7b「尺の引き方は2段」)。
  * ここには**技として不変**な `recoverMs`/`counterable` だけを置く。
  */
+/**
+ * ★「できるだけシビアに」(社長指示2026-09-17)で bat/skeleton の値を差し替えた。
+ * シビアの定義(設計者確定): 「手数が増え、読む時間が減る。ただし読めば必ず返せるし、返せば必ず殴れる」
+ * =削るのは**予告の長さ**と**技後CD**だけ。**硬直(プレイヤーの取り分)・同時に構えられる数・
+ * 判定/ダメージ量は削らない**(削ると理不尽になる)。
+ * - bat: 踏み込みの溜め 350→**250ms**(=windupMs 500→**400ms**。踏み込み150msは不変)。
+ *   技後CD 6000→**4000ms**。掴みの拘束500ms・実行220msは不変。
+ * - skeleton: 前隙 350→**300ms**。技後CD 5000→**3500ms**。噛み後の硬直500msは**不変**
+ *   (社長裁定の値・プレイヤーの取り分)。
+ * ★zombie-double はこのバッチの対象外(ゾンビの値は設計チャット側)。
+ */
 export const BITE_BY_MOVE: Partial<Record<NonNullable<Enemy['chaffMove']>, Partial<BiteSpec>>> = {
   // bat の掴み(§16-1・§16-8「bat の BiteSpec への写し方」)。
-  // windupMs=500(溜め350+踏み込み150。最後の150msで lungePx を出し切る専用曲線)/
-  // biteMs=220(掴み=カウンターの受付幅)/ lungePx=85(必要68px+余白・監査A-3)。
-  'bat-grab': { windupMs: 500, biteMs: 220, lungePx: 85, recoverMs: 6000, counterable: true },
-  // skeleton の噛み(§16-2・§16-8)。windupMs=350(前隙)/ biteMs=200(噛み=受付幅)/ lungePx=85。
-  'skel-bite': { windupMs: 350, biteMs: 200, lungePx: 85, recoverMs: 5000, counterable: true },
+  // windupMs=400(溜め250+踏み込み150。最後の150msで lungePx を出し切る専用曲線=biteLungeFrac側の
+  // BAT_WINDUP_STILL_MS分岐)/ biteMs=220(掴み=カウンターの受付幅)/ lungePx=85(必要68px+余白・監査A-3)。
+  'bat-grab': { windupMs: 400, biteMs: 220, lungePx: 85, recoverMs: 4000, counterable: true },
+  // skeleton の噛み(§16-2・§16-8)。windupMs=300(前隙)/ biteMs=200(噛み=受付幅)/ lungePx=85。
+  'skel-bite': { windupMs: 300, biteMs: 200, lungePx: 85, recoverMs: 3500, counterable: true },
   // ゾンビ2連(§16-3・§16-8「ゾンビ 赤の技後CD」)。windup/bite/lungeは1発目/2発目で違うので
   // ここには置かない(BITE_BY_PHASEが重なる)。counterable/recoverMsは2発とも共通=ここで決まる。
+  // ★このバッチでは触らない(ゾンビの値は設計チャット側)。
   'zombie-double': { recoverMs: 4000, counterable: true },
 };
+
+/**
+ * ★bat専用の踏み込み曲線(PACING_PUZZLE.md §16-8「最後の150msでlungePxを出し切る専用曲線」)。
+ * windupMs(400ms)の**先頭250msは動かない**(溜め=身を低くするだけ)。**残り150ms(踏み込み)で
+ * 一気にlungePxを出し切る**(鋭い立ち上がり=ease-in)。biteMs(掴み220ms)の間は既に伸び切ったまま
+ * 留まる(「留まる→離す」の「留まる」)。biteLungeFrac側の分岐で使う(下)。
+ * ★シビア反映(2026-09-17)で溜めは350→250ms(踏み込み150msは不変=windupMs総量だけ400msへ縮む)。
+ */
+export const BAT_WINDUP_STILL_MS = 250;
 
 /**
  * ★ゾンビ2連の1発目/2発目の尺(PACING_PUZZLE.md §16-8・検収監査A-3)。`aiPhase`(z-bite1/z-bite2)で
@@ -179,6 +200,18 @@ export const biteLungeFrac = (
   const t = gameTime - enemy.biteAt;
   if (t <= 0) return 0;
   if (t >= spec.windupMs + spec.biteMs) return 1;
+  // ★bat専用(PACING_PUZZLE.md §16-8「最後の150msでlungePxを出し切る専用曲線」): 溜め
+  // (先頭 BAT_WINDUP_STILL_MS ぶん)は動かず、残りの踏み込み(windupMs-BAT_WINDUP_STILL_MS)で
+  // 一気に伸びる(ease-in=鋭い立ち上がり)。掴み区間(bite)は既に伸び切ったまま留まる。
+  if (enemy.type === 'bat' && enemy.chaffMove === 'bat-grab') {
+    if (t < BAT_WINDUP_STILL_MS) return 0;
+    if (t < spec.windupMs) {
+      const lungeMs = Math.max(1, spec.windupMs - BAT_WINDUP_STILL_MS);
+      const u = (t - BAT_WINDUP_STILL_MS) / lungeMs;
+      return u * u; // 鋭い立ち上がり(一気に)
+    }
+    return 1; // 掴み中(留まる)
+  }
   if (t < spec.windupMs) {
     // 溜め: ease-in(じわっと出る)。u^2 で立ち上がりを遅くする。
     const u = t / spec.windupMs;

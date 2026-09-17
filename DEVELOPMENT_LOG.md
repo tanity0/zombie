@@ -1,5 +1,99 @@
 # Development Log
 
+## v0.25.4414 — bat/skeletonに§16の技(円→掴み / 弧→噛み)を実装。値は「できるだけシビアに」で上書き(実装チャット・Sonnet)【2026-09-17 11:29 JST】
+
+PACING_PUZZLE.md §16-1(bat)・§16-2(skeleton)・§16-8b手順6/7を実装。**bat と skeleton だけ**を
+触った(ゾンビ・werewolf・強個体・ボス・§12の噛みつき自体の判定/ダメージ/被弾無敵は無改変)。
+土台(実装順1〜4)とゾンビ(5)は既に入っていたので、その上に積んだ。
+
+**1. 途中で値の差し替え指示が入った(社長「任せる、できるだけ、シビアにして」)**。
+「シビア」の定義(設計者確定): 「手数が増え、読む時間が減る。ただし読めば必ず返せるし、
+返せば必ず殴れる」=**削るのは予告の長さと技後CDだけ**。**硬直(プレイヤーの取り分)・
+同時に構えられる数(2体)・判定/ダメージ量は削らない**。反映した値(すべて `chaffMoves.ts`/
+`enemyBite.ts` の台帳1箇所):
+| | 旧(PACING_PUZZLE.md §16-8の叩き台) | 新(このバッチで反映) |
+|---|---|---|
+| bat 円を回る尺 | 1500〜3000ms | **900〜1800ms** |
+| bat 踏み込みの溜め | 350ms | **250ms**(windupMs計は500→400msへ縮む。踏み込み150msは不変) |
+| bat 技後CD | 6000ms | **4000ms** |
+| skeleton しゃがみ(予告) | 2000ms | **900ms**(★元は社長指定の値。今回の指示で詰めた) |
+| skeleton 噛みの前隙 | 350ms | **300ms** |
+| skeleton 回り込みの尺 | 900ms | **700ms** |
+| skeleton 技後CD | 5000ms | **3500ms** |
+**変えていない値**: bat 円の半径(100px)・`lungePx`(85px)・掴みの拘束(500ms)・掴みの実行(220ms)。
+skeleton 噛み後の硬直(**500ms・社長裁定の値=プレイヤーの取り分**)・発火距離(100px)・
+後退速度(1.5倍)。★予告の下限800msを守っている(900>800)。
+
+**2. bat(§16-1)**: `src/store/gameStore.ts` の `updateEnemies` に専用ブロックを追加。
+- `b-approach`(=aiPhase未設定。①走り寄るは等倍・遅くしない)→ 枠(`chaffGrants`)が取れて
+  円の半径(100px)に達したら `b-orbit`(接線+半径維持の放射補正で周回。速さは素の実速度×0.45=
+  `BAT_ORBIT_SPEED_MULT`。回転方向は`spriteVariantIndex(id,2)`。刻む横歩き=`batStrafeAngularMul`
+  で動く0.4〜0.7秒/止まり0.2〜0.3秒を山なりの包絡線で駆動=段差なし)。
+- 尺切れ または プレイヤーが円の内側(半径-余白15px)へ踏み込んだら`b-windup`へ。ここで
+  `chaffMove='bat-grab'`・`biteAt`を発火し、以後720ms級(シビア反映で620ms)の**1本の連続biteAtサイクル**
+  へ入る。溜め(250ms)→踏み込み(150ms・`enemyBite.ts`の`biteLungeFrac`にbat専用の「先頭は動かず
+  残りで一気に伸びる」曲線を追加)→掴み(220ms=カウンター受付幅)。位置は既存の共有分岐
+  (isBiteSubject)が担当するので、`b-windup`/`b-lunge`/`b-grab`の3段ラベル更新だけをその分岐の中に
+  型ガード付きで追加した(§12・ゾンビ・skeletonの挙動は1bitも変えていない)。
+- 掴み解決(biteAt=0)→ `b-release`(一拍=`BAT_GRAB_HOLD_MS`500ms留まる→円の外まで後ずさる→
+  `endChaffMove`で技の終わり)。
+- **掴みは文字通り掴む**(社長裁定): `combatTick.ts`の噛みヒット処理に、`chaffMove==='bat-grab'`
+  かつ`wasVulnerable`(=ダメージが実際に入った)の時だけ`player.grabbedUntil = gameTime+500`を
+  立てる分岐を追加。**拘束をダメージと同じ枝に置くことで、既存の被弾無敵1000msがそのまま
+  連続掴み防止になる**(専用の「掴まれ無敵」は作らない・社長裁定どおり)。
+  `Player.grabbedUntil`(新フィールド)+`chaffMoves.ts`の`isPlayerGrabbed`(`isPvpIncapacitated`と
+  **同じ形**)を、①`movePlayer`(残速度を減衰・瞬間停止しない)②`useGameLoop.ts`の銃自動射撃ゲート
+  (`grabbedLocked`)③`beginMeleeSwing`の3箇所に追加。ついでに手動銃(`firePhillShot`/
+  `fireRailgunShot`)にも同じ1行を足した。
+
+**3. skeleton(§16-2)**: 同じく`gameStore.ts`に専用ブロック。
+- `s-crouch`(しゃがみ・合図・色なし)→ 明けたら`s-arc`(chaffMoveはここで立つ)。回り込む側は
+  **「いま向いている側」**(添字ではなく、しゃがみ終わり時点のプレイヤーへのdx符号)で決める
+  (クリエイティブ監査#16是正)。
+- `s-arc`: `chaffMoves.ts`の`skeletonArcPoint`(2次ベジェで外側へ膨らませる=直線にしない・
+  人狼の突進と混同しない)で弧を描き、プレイヤー中心から100pxの横(円の半径と同じ)へ至る。
+  既存の`aiFromX/aiFromY/aiStartedAt`(ジャンプ用の汎用フィールド)を流用=新規フィールド無し。
+  終点到達で`s-bite`へ(向きをここで焼く)。
+- `s-bite`は標準の2段BiteSpec(windup300/bite200)なので専用曲線は不要=既存の共有分岐が
+  そのまま動かす。解決→`s-recover`(硬直500ms・その場・**硬直が後退より前**=社長裁定「その代わり」)
+  →明けたら`s-retreat`(発火距離100pxまで1.5倍速で後退)→`endChaffMove`。
+
+**4. 描画(pixiScene.ts)**: ①歩行ゲートに新aiPhase全部を追加(開けないと「足が止まったまま滑る」
+事故になる・ゾンビで実際に起きた前例どおり)。②赤の合図を一般化: `chaffMoves.ts`に
+`chaffRedGlowStrength`を新設(zombieRedGlowStrengthとは別関数=ゾンビは社長指示で専用の2回点滅に
+確定済みなので対象外)。bat/skeletonは**技の頭(biteAt発火)から溜め/前隙の間に膨らみ切り、
+決着まで最大のまま**(§16-5「獣が息を止めて飛ぶ」)。1つの関数に型ごとの「膨らみ切るまでの尺」
+テーブルだけを持たせた(3体ぶんコピーしない、の指示どおり)。
+**★未実施(申し送り)**: bat/skeletonの姿勢(skew/tilt。§16-6「縦の差ではなく傾きの向きで」)と
+skeletonの弧の向き上書きは**未着手**。理由: 視覚確認(CLAUDE.md「毎回、画を見て確認」)が要る作業で、
+このバッチはヘッドレスでの実装検証止まり=画を見ないまま姿勢の当てずっぽうを入れるリスクを避けた。
+次にやる人(または実機確認できるチャット)が最初に見るべき箇所。
+
+**5. 受け入れ条件(350ms)の機械化**: `src/store/batMove.test.ts`/`skeletonMove.test.ts`に、
+`Date.now`をgameTimeと同じ歩幅で進める統合テストを追加。ヒットが入った瞬間から、
+`chaffMove`が消える(=技が完全に終わる)までのgameTime差を実測し、`INVULN_MS`(1000)を
+引いた残りが350ms以上あることを確認する。
+- **bat 実測**: 掴み解決→(一拍500ms+後退約2000ms=約2500ms)− 無敵1000ms ≒ **1500ms**(余裕で合格)。
+- **skeleton 実測**: 噛み解決→(硬直500ms+後退約1500〜1700ms)− 無敵1000ms ≒ **1000〜1200ms**
+  (硬直は丸ごと無敵に飲まれる=取り分は後退、の設計どおり。合格)。
+- どちらも★未決には当たらなかった(条件は割れていない)。
+
+**6. テスト**: `chaffMoves.test.ts`(+104件=bat/skeletonの純関数)・`enemyBite.test.ts`
+(BAT_WINDUP_STILL_MS分岐)・`batMove.test.ts`(新規23件)・`skeletonMove.test.ts`(新規18件)・
+`combatTick.test.ts`(recoverMs変更に伴い3件のハードコード値を6000→4000/5000→3500へ追従修正=
+挙動変更ではなく値の追従)。関連ファイルを3回連続 `npx vitest run` して全緑・非決定性なしを確認
+(chaffMoves/enemyBite/chaffMoveFoundation/zombieRedMove/enemySeparation/batMove/skeletonMove/
+meleeSwingPressedAt/meleeWindup/shieldPush/slasherTouchChain/trapPvp/pvpPostureStore/combatTick/
+chaffMotion/botSkill/enemyUtils/enemyVariant=計305+194件、全緑)。`npx tsc --noEmit`/`npm run lint`
+ともにエラー0(lintは既存warning 9件のみ・無関係)。`npm test`フル・`npm run build`は指示が無いので
+実行していない。
+
+**状態変化**: PACING_PUZZLE §16(bat/skeleton) → 実装完了(姿勢/skinの視覚仕上げのみ残・上記4節)。
+`PROJECT_STATUS.md`は触っていない(実装チャットの義務どおり=状態の書き手は設計チャットのみ)。
+
+**自己点検**: 憲法第4条(初心者ゾーン不可侵)・第5条(緩を荒らさない)に抵触する変更なし
+(bat/skeletonは§16-0の対象敵・ダメージ量/判定は無改変・序盤の湧き数も触っていない)。
+
 ## v0.25.4413 — §16-A「エルデンリングの文法」を全雑魚共通の型として確定【2026-09-17 00:42 JST】
 
 **社長指示**: 「**エルデンリング真似て**」+「**他の雑魚も台本動いて無い**」。

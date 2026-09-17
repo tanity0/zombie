@@ -554,7 +554,7 @@ describe('★§16の技はノックバックで中断されない(§12は従来�
   });
 
   it('★§16の技が正常解決(当たった/外れた)しても chaffMove は消えない・技後CDも書かない(検収監査A-4の訂正)', () => {
-    const started = START_GT - 1000; // bat-grabの総尺(720ms)をとっくに過ぎている=解決フレーム
+    const started = START_GT - 1000; // bat-grabの総尺(620ms=windupMs400+biteMs220。シビア反映で500→400)をとっくに過ぎている=解決フレーム
     const e = place(spawnEnemyAt('bat', 0, 0, START_GT), {
       chaffMove: 'bat-grab', aiPhase: 'b-grab', biteAt: started,
     });
@@ -570,18 +570,20 @@ describe('★§16の技はノックバックで中断されない(§12は従来�
     expect(after?.chaffMove).toBe('bat-grab');
     expect(after?.chaffMoveCdUntil).toBeUndefined();
     // biteReadyAt(§12連鎖の封じ)は従来どおり技のrecoverMsで進む。
-    expect(after?.biteReadyAt).toBe(START_GT + 6000);
+    // ★社長指示2026-09-17「できるだけシビアに」で bat-grab の技後CD 6000→4000ms。
+    expect(after?.biteReadyAt).toBe(START_GT + 4000);
   });
 });
 
 describe('★dashParriedEnemyPatch: カウンター経路も技引きの spec で技後CDを書く(実装者視点監査A-2)', () => {
-  it('§16の技(chaffMove定義)は、返された瞬間にchaffMoveを消し、技のrecoverMsで技後CDを書く(skel-bite=5000ms)', () => {
+  it('§16の技(chaffMove定義)は、返された瞬間にchaffMoveを消し、技のrecoverMsで技後CDを書く'
+    + '(skel-bite=3500ms・社長指示2026-09-17「できるだけシビアに」で5000→3500へ)', () => {
     const e = { ...spawnEnemyAt('skeleton', 0, 0, 1000), chaffMove: 'skel-bite', biteAt: 1000 } as Enemy;
     const patched = dashParriedEnemyPatch(e, 100, 100, Date.now(), 2000);
     expect(patched.chaffMove).toBeUndefined();
     expect(patched.biteAt).toBe(0);
-    expect(patched.biteReadyAt).toBe(2000 + 5000);
-    expect(patched.chaffMoveCdUntil).toBe(2000 + 5000);
+    expect(patched.biteReadyAt).toBe(2000 + 3500);
+    expect(patched.chaffMoveCdUntil).toBe(2000 + 3500);
   });
 
   it('§12の噛みつき(chaffMove未定義)は、従来どおりchaffMoveCdUntilを書かない', () => {
@@ -621,7 +623,7 @@ describe('★受け入れ条件43: 赤い技が applyContactDamage を通して�
     const e = {
       ...spawnEnemyAt('bat', 50_000, 50_000, START_GT),
       chaffMove: 'bat-grab' as const, aiPhase: 'b-grab' as const,
-      biteAt: START_GT - 1000, // bat-grabの総尺(720ms)をとっくに過ぎている=解決フレーム
+      biteAt: START_GT - 1000, // bat-grabの総尺(620ms=windupMs400+biteMs220。シビア反映で500→400)をとっくに過ぎている=解決フレーム
       health: 9999, maxHealth: 9999,
     };
     useGameStore.setState(() => ({ enemies: [e], gameTime: START_GT }));
@@ -630,10 +632,11 @@ describe('★受け入れ条件43: 赤い技が applyContactDamage を通して�
     const after = useGameStore.getState().enemies.find(x => x.id === e.id)!;
     const player = useGameStore.getState().player;
     // カウンター成立の証拠: ①確定クリ反撃で敵の体力が減る ②技が中断され chaffMove が消え、
-    // 技後CD(bat-grabのrecoverMs=6000ms)が書かれる。
+    // 技後CD(bat-grabのrecoverMs=4000ms・社長指示2026-09-17「できるだけシビアに」で6000→4000)
+    // が書かれる。
     expect(after.health).toBeLessThan(9999);
     expect(after.chaffMove).toBeUndefined();
-    expect(after.chaffMoveCdUntil).toBe(START_GT + 6000);
+    expect(after.chaffMoveCdUntil).toBe(START_GT + 4000);
     // プレイヤーは噛みで被弾していない(弾かれた=damagePlayerへ進まない)。
     expect(player.health).toBe(9999);
   });

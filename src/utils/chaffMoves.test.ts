@@ -11,6 +11,18 @@ import {
   zombieRedPauseMs, ZOMBIE_RED_PAUSE_MS, ZOMBIE_RED_PAUSE_JITTER,
   ZOMBIE_RP_STUMBLE_FRAC, ZOMBIE_RP_RISE_FRAC, ZOMBIE_RP_TREMBLE_FRAC,
   zombieBite2AngleRad, ZOMBIE_BITE2_ANGLE_OFFSET_RAD, ZOMBIE_BITE2_ANGLE_JITTER,
+  // bat(§16-1)
+  batWantsChaffSlot, batOrbitDurationMs, batStrafeMs, batHoldMs, batOrbitSpin, batStrafeAngularMul,
+  BAT_ORBIT_MIN_MS, BAT_ORBIT_MAX_MS, BAT_STRAFE_MIN_MS, BAT_STRAFE_MAX_MS,
+  BAT_HOLD_MIN_MS, BAT_HOLD_MAX_MS, BAT_GRAB_HOLD_MS,
+  // skeleton(§16-2)
+  skeletonWantsChaffSlot, skeletonArcPoint,
+  SKELETON_TRIGGER_PX, SKELETON_CROUCH_MS, SKELETON_ARC_MS, SKELETON_RECOVER_MS, SKELETON_RETREAT_SPEED_MULT,
+  SKELETON_ARC_DEPTH,
+  // プレイヤーの拘束
+  isPlayerGrabbed,
+  // 赤の合図(一般化版)
+  chaffRedGlowStrength,
 } from './chaffMoves';
 import type { Enemy, EnemyType } from '../types/game';
 
@@ -435,5 +447,208 @@ describe('★社長裁定2026-09-16「停止の長さ±30%」+「個体差の種
       const vals = new Set([0, 1, 2, 3, 4, 5, 6, 7].map(s => zombieBite2AngleRad('same-id', s * 2003, 1)));
       expect(vals.size).toBeGreaterThan(1);
     });
+  });
+});
+
+// ===================================================================================================
+// §16-1 bat(社長指示2026-09-17「できるだけシビアに」で 円1500〜3000ms→900〜1800ms を反映)
+// ===================================================================================================
+describe('bat: 円を回る尺・刻む横歩き・回転方向(id由来の決定的な値)', () => {
+  it('batOrbitDurationMsは900〜1800msに収まる(シビア反映)', () => {
+    for (const id of ['a', 'b', 'c', 'd', 'e']) {
+      const ms = batOrbitDurationMs(id, undefined);
+      expect(ms).toBeGreaterThanOrEqual(BAT_ORBIT_MIN_MS);
+      expect(ms).toBeLessThanOrEqual(BAT_ORBIT_MAX_MS);
+    }
+    expect(BAT_ORBIT_MIN_MS).toBe(900);
+    expect(BAT_ORBIT_MAX_MS).toBe(1800);
+  });
+  it('同じid+spawnedAtは常に同じ値(決定的)', () => {
+    expect(batOrbitDurationMs('b1', 500)).toBe(batOrbitDurationMs('b1', 500));
+  });
+  it('batStrafeMs/batHoldMsは指定範囲内(0.4〜0.7秒/0.2〜0.3秒)', () => {
+    for (const id of ['a', 'b', 'c']) {
+      const s = batStrafeMs(id, undefined), h = batHoldMs(id, undefined);
+      expect(s).toBeGreaterThanOrEqual(BAT_STRAFE_MIN_MS);
+      expect(s).toBeLessThanOrEqual(BAT_STRAFE_MAX_MS);
+      expect(h).toBeGreaterThanOrEqual(BAT_HOLD_MIN_MS);
+      expect(h).toBeLessThanOrEqual(BAT_HOLD_MAX_MS);
+    }
+  });
+  it('batOrbitSpinは+1か-1のどちらか(spriteVariantIndex由来・添字0=右回り)', () => {
+    for (const id of ['bat-1', 'bat-2', 'bat-3', 'bat-4']) {
+      expect([1, -1]).toContain(batOrbitSpin(id));
+    }
+  });
+});
+
+describe('batStrafeAngularMul(刻む横歩きの角速度包絡線・慣性MUSTの検知器)', () => {
+  const strafeMs = 500, holdMs = 250;
+  it('止まり区間(strafeMs以降)は常に0', () => {
+    expect(batStrafeAngularMul(strafeMs, strafeMs, holdMs)).toBe(0);
+    expect(batStrafeAngularMul(strafeMs + holdMs - 1, strafeMs, holdMs)).toBeCloseTo(0, 5);
+  });
+  it('動く区間の始まり(0ms)と終わり(strafeMs直前)は0に近い(0→山→0=段差なし)', () => {
+    expect(batStrafeAngularMul(0, strafeMs, holdMs)).toBeCloseTo(0, 5);
+    expect(batStrafeAngularMul(strafeMs - 1, strafeMs, holdMs)).toBeLessThan(0.05);
+  });
+  it('動く区間の中央付近が最大(山なり)', () => {
+    const mid = batStrafeAngularMul(strafeMs / 2, strafeMs, holdMs);
+    expect(mid).toBeCloseTo(1, 2);
+  });
+  it('周期(strafeMs+holdMs)でモジュロして繰り返す', () => {
+    const cycle = strafeMs + holdMs;
+    expect(batStrafeAngularMul(strafeMs / 2, strafeMs, holdMs))
+      .toBeCloseTo(batStrafeAngularMul(strafeMs / 2 + cycle * 3, strafeMs, holdMs), 5);
+  });
+  it('常に0以上(負の速度にならない=向きはspinが別で決める)', () => {
+    for (let t = 0; t <= strafeMs + holdMs; t += 25) {
+      expect(batStrafeAngularMul(t, strafeMs, holdMs)).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+describe('batWantsChaffSlot(枠の申告・bat版)', () => {
+  const base = { id: 'bw1', type: 'bat' as EnemyType, aiPhase: undefined, chaffMoveCdUntil: undefined, x: 0, y: 0, width: 26, height: 26 };
+  it('aiPhase未設定(=b-approach)かつ円の半径(100px)以内なら申告する', () => {
+    expect(batWantsChaffSlot(base, 1000, 13, 13)).toBe(true); // 中心(13,13)と同座標=距離0
+    expect(batWantsChaffSlot(base, 1000, 13 + 100, 13)).toBe(true); // ちょうど100px
+  });
+  it('円の半径より外なら申告しない', () => {
+    expect(batWantsChaffSlot(base, 1000, 13 + 101, 13)).toBe(false);
+  });
+  it('bat以外の型は申告しない', () => {
+    expect(batWantsChaffSlot({ ...base, type: 'skeleton' as EnemyType }, 1000, 13, 13)).toBe(false);
+  });
+  it('aiPhaseが設定済み(orbit中など)は申告しない(取るのはb-approachの間だけ)', () => {
+    expect(batWantsChaffSlot({ ...base, aiPhase: 'b-orbit' as const }, 1000, 13, 13)).toBe(false);
+  });
+  it('技後CD中は申告しない', () => {
+    expect(batWantsChaffSlot({ ...base, chaffMoveCdUntil: 2000 }, 1000, 13, 13)).toBe(false);
+  });
+  it('技後CDが明けていれば申告できる', () => {
+    expect(batWantsChaffSlot({ ...base, chaffMoveCdUntil: 500 }, 1000, 13, 13)).toBe(true);
+  });
+});
+
+// ===================================================================================================
+// §16-2 skeleton(社長指示2026-09-17「できるだけシビアに」で しゃがみ2000→900ms・弧900→700ms 等)
+// ===================================================================================================
+describe('skeleton: 定数のシビア反映確認(変えた値/変えない値)', () => {
+  it('しゃがみは900ms(元は社長指定の2000msを今回の指示で詰めた・予告の下限800msは守る)', () => {
+    expect(SKELETON_CROUCH_MS).toBe(900);
+    expect(SKELETON_CROUCH_MS).toBeGreaterThanOrEqual(800);
+  });
+  it('弧の尺は700ms', () => {
+    expect(SKELETON_ARC_MS).toBe(700);
+  });
+  it('★噛み後の硬直(500ms)は変えない(社長裁定の値・プレイヤーの取り分)', () => {
+    expect(SKELETON_RECOVER_MS).toBe(500);
+  });
+  it('★発火距離(100px)・後退速度(1.5倍)は変えない', () => {
+    expect(SKELETON_TRIGGER_PX).toBe(100);
+    expect(SKELETON_RETREAT_SPEED_MULT).toBe(1.5);
+  });
+});
+
+describe('skeletonWantsChaffSlot(枠の申告・skeleton版)', () => {
+  const base = { id: 'sw1', type: 'skeleton' as EnemyType, aiPhase: undefined, chaffMoveCdUntil: undefined, x: 0, y: 0, width: 31, height: 31 };
+  it('aiPhase未設定かつ発火距離(100px)以内なら申告する', () => {
+    expect(skeletonWantsChaffSlot(base, 1000, 15.5, 15.5)).toBe(true);
+  });
+  it('発火距離より外なら申告しない', () => {
+    expect(skeletonWantsChaffSlot(base, 1000, 15.5 + 101, 15.5)).toBe(false);
+  });
+  it('skeleton以外の型は申告しない', () => {
+    expect(skeletonWantsChaffSlot({ ...base, type: 'bat' as EnemyType }, 1000, 15.5, 15.5)).toBe(false);
+  });
+  it('aiPhaseが設定済みは申告しない', () => {
+    expect(skeletonWantsChaffSlot({ ...base, aiPhase: 's-crouch' as const }, 1000, 15.5, 15.5)).toBe(false);
+  });
+  it('技後CD中は申告しない', () => {
+    expect(skeletonWantsChaffSlot({ ...base, chaffMoveCdUntil: 2000 }, 1000, 15.5, 15.5)).toBe(false);
+  });
+});
+
+describe('skeletonArcPoint(弧の軌道・直線にしない=§16-2)', () => {
+  it('u=0で開始点、u=1で終点(プレイヤー中心からSKELETON_TRIGGER_PXの横)', () => {
+    const start = skeletonArcPoint(200, 0, 0, 0, true, 0);
+    expect(start.x).toBeCloseTo(200, 5);
+    expect(start.y).toBeCloseTo(0, 5);
+    const end = skeletonArcPoint(200, 0, 0, 0, true, 1);
+    expect(Math.hypot(end.x, end.y)).toBeCloseTo(SKELETON_TRIGGER_PX, 3);
+  });
+  it('★直線にしない: 中間点(u=0.5)が開始点・終点を結ぶ直線から外側へずれている', () => {
+    const start = skeletonArcPoint(200, 0, 0, 0, true, 0);
+    const end = skeletonArcPoint(200, 0, 0, 0, true, 1);
+    const mid = skeletonArcPoint(200, 0, 0, 0, true, 0.5);
+    const straightMidX = (start.x + end.x) / 2, straightMidY = (start.y + end.y) / 2;
+    const dev = Math.hypot(mid.x - straightMidX, mid.y - straightMidY);
+    expect(dev).toBeGreaterThan(SKELETON_TRIGGER_PX * SKELETON_ARC_DEPTH * 0.3); // 明確に膨らんでいる
+  });
+  it('side(true/false)で終点が反対側になる', () => {
+    const endA = skeletonArcPoint(200, 0, 0, 0, true, 1);
+    const endB = skeletonArcPoint(200, 0, 0, 0, false, 1);
+    expect(endA.x).toBeCloseTo(-endB.x, 5);
+    expect(endA.y).toBeCloseTo(-endB.y, 5);
+  });
+});
+
+// ===================================================================================================
+// プレイヤーの拘束(bat の掴み)
+// ===================================================================================================
+describe('chaffRedGlowStrength(§16-5「赤は技が動き出してから決着まで」・zombieRedGlowStrengthの一般化版)', () => {
+  it('chaffMoveがbat-grab/skel-bite以外は常に0(zombie-doubleは専用関数のまま)', () => {
+    expect(chaffRedGlowStrength({ type: 'zombie', chaffMove: 'zombie-double', biteAt: 1000, aiPhase: 'z-bite1' }, 1000)).toBe(0);
+    expect(chaffRedGlowStrength({ type: 'bat', chaffMove: undefined, biteAt: 1000, aiPhase: undefined }, 1000)).toBe(0);
+  });
+  it('biteAtが立っていない(構え中=b-orbit/s-crouch/s-arc)間は0', () => {
+    expect(chaffRedGlowStrength({ type: 'bat', chaffMove: 'bat-grab', biteAt: undefined, aiPhase: 'b-orbit' }, 1000)).toBe(0);
+    expect(chaffRedGlowStrength({ type: 'bat', chaffMove: 'bat-grab', biteAt: 0, aiPhase: 'b-windup' }, 1000)).toBe(0);
+    expect(chaffRedGlowStrength({ type: 'skeleton', chaffMove: 'skel-bite', biteAt: undefined, aiPhase: 's-arc' }, 1000)).toBe(0);
+  });
+  it('bat: 溜め(250ms)の間に0→1へ膨らみ切り、以後は掴みの終わりまで1のまま', () => {
+    const e = { type: 'bat' as const, chaffMove: 'bat-grab' as const, biteAt: 1000, aiPhase: 'b-windup' as const };
+    expect(chaffRedGlowStrength(e, 1000)).toBeCloseTo(0, 5);
+    expect(chaffRedGlowStrength(e, 1125)).toBeCloseTo(0.5, 1); // 半分経過で概ね半分
+    expect(chaffRedGlowStrength({ ...e, aiPhase: 'b-lunge' }, 1250)).toBeCloseTo(1, 5); // 溜め終わりで膨らみ切り
+    expect(chaffRedGlowStrength({ ...e, aiPhase: 'b-lunge' }, 1300)).toBe(1); // 踏み込み中も最大のまま
+    expect(chaffRedGlowStrength({ ...e, aiPhase: 'b-grab' }, 1400)).toBe(1); // 掴み中も最大のまま
+  });
+  it('bat: 決着(windupMs+biteMs経過)後は0(硬直・後退=b-releaseには乗らない)', () => {
+    const e = { type: 'bat' as const, chaffMove: 'bat-grab' as const, biteAt: 1000, aiPhase: 'b-grab' as const };
+    expect(chaffRedGlowStrength(e, 1000 + 400 + 220)).toBe(0);
+  });
+  it('skeleton: 前隙(300ms)で一気に上がり、噛みの終わりまで最大のまま', () => {
+    const e = { type: 'skeleton' as const, chaffMove: 'skel-bite' as const, biteAt: 1000, aiPhase: 's-bite' as const };
+    expect(chaffRedGlowStrength(e, 1000)).toBeCloseTo(0, 5);
+    expect(chaffRedGlowStrength(e, 1299)).toBeLessThan(1);
+    expect(chaffRedGlowStrength(e, 1300)).toBe(1);
+    expect(chaffRedGlowStrength(e, 1450)).toBe(1);
+    expect(chaffRedGlowStrength(e, 1000 + 300 + 200)).toBe(0); // 決着後は0
+  });
+  it('★単調(段差なし=慣性MUSTに配慮した滑らかな立ち上がり)', () => {
+    const e = { type: 'bat' as const, chaffMove: 'bat-grab' as const, biteAt: 1000, aiPhase: 'b-windup' as const };
+    let prev = -1;
+    for (let t = 1000; t <= 1250; t += 10) {
+      const v = chaffRedGlowStrength(e, t);
+      expect(v).toBeGreaterThanOrEqual(prev);
+      prev = v;
+    }
+  });
+});
+
+describe('isPlayerGrabbed(§16-1・isPvpIncapacitatedと同じ形)', () => {
+  it('grabbedUntil未設定なら常にfalse', () => {
+    expect(isPlayerGrabbed({ grabbedUntil: undefined }, 1000)).toBe(false);
+  });
+  it('gameTime < grabbedUntil の間はtrue', () => {
+    expect(isPlayerGrabbed({ grabbedUntil: 2000 }, 1999)).toBe(true);
+  });
+  it('gameTime >= grabbedUntil ならfalse(時間切れで自動失効)', () => {
+    expect(isPlayerGrabbed({ grabbedUntil: 2000 }, 2000)).toBe(false);
+  });
+  it('拘束の尺は500ms(台帳・変えない)', () => {
+    expect(BAT_GRAB_HOLD_MS).toBe(500);
   });
 });
