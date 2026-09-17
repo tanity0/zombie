@@ -19,6 +19,8 @@ export interface PlayerHurtReaction {
   crouchMs: number;
   stopMs: number;
   gunLockMs: number;
+  /** ★移動そのものを止める尺(社長指示2026-09-17「食らった重さ」)。のけぞりより短い=前半だけ動けない。 */
+  moveLockMs: number;
 }
 
 /** 段の境目(被弾量 ÷ 最大HP)。この値**以上**で次の段へ上がる。 */
@@ -29,10 +31,17 @@ export const PLAYER_HURT_TIER_FRACS = [0.08, 0.20] as const;
  * 素の敵の攻撃力(コウモリ6・骸骨8・ゾンビ10・人狼12・パンプキン16)だと、
  * **浅い所では軽〜中・深い所や色つきでは重**へ自然に寄る。
  */
+// ★社長指示2026-09-17「**こっちが食らった感じが軽い。食らった重さがほしい。エルデンリングをまねてみて**」。
+// エルデンリングの被弾は**①のけぞりが長い(0.4〜0.8秒)②その間は本当に何もできない③画面が揺れる**。
+// 旧値は「絵は300ms崩れるが、銃だけ止まって移動はできる」=**体勢を崩された感じが出ていなかった**。
+// ⇒ **尺を約1.7倍に伸ばし、`moveLockMs`(移動そのものを止める)を新設**して「動けない」を作る。
+// ★移動を止める尺は**のけぞりより短くする**——全部止めると「操作を奪われた」になる(理不尽)。
+//   **前半は動けない・後半は動けるが撃てない**、という二段の抜け方にする。
+// ★近接/カウンターは**止めない**(下の理由=近接とパリィが同じ入力なので、止めると死の連鎖になる)。
 export const PLAYER_HURT_TIERS: readonly PlayerHurtReaction[] = [
-  { crouchMs: 180, stopMs: 40,  gunLockMs: 180 },  // 軽: かすった
-  { crouchMs: 300, stopMs: 70,  gunLockMs: 300 },  // 中: まともに食らった(従来の一律値がここ)
-  { crouchMs: 460, stopMs: 110, gunLockMs: 460 },  // 重: 保たない一撃
+  { crouchMs: 300, stopMs: 70,  gunLockMs: 300, moveLockMs: 120 },  // 軽: かすった
+  { crouchMs: 520, stopMs: 120, gunLockMs: 520, moveLockMs: 220 },  // 中: まともに食らった
+  { crouchMs: 800, stopMs: 190, gunLockMs: 800, moveLockMs: 380 },  // 重: 保たない一撃
 ];
 
 /** 被弾量と最大HPから段(0=軽 / 1=中 / 2=重)を返す。 */
@@ -63,6 +72,18 @@ export const playerHurtReactionOf = (tier: number | undefined): PlayerHurtReacti
 // ★近接/カウンターは**止めない**。このゲームでは近接の一振りとカウンター窓は**同じ入力**
 // (`beginMeleeSwing` が窓とCDと絵を同時に開く)なので、近接を止めるとパリィまで止まる=
 // 食らった直後に弾けなくなり、死の連鎖になる。守りは常に即応のまま、が現状の設計。
+/**
+ * ★被弾直後の「動けない」窓(社長指示2026-09-17「食らった重さがほしい。エルデンリングをまねて」)。
+ * のけぞり(`gunLockMs`)より**短い**=前半だけ本当に動けず、後半は動けるが撃てない。
+ */
+export const isHurtMoveLocked = (
+  p: { lastHurtAt?: number; lastHurtTier?: 0 | 1 | 2 },
+  nowMs: number,
+): boolean => {
+  if (p.lastHurtAt === undefined) return false;
+  return nowMs - p.lastHurtAt < playerHurtReactionOf(p.lastHurtTier).moveLockMs;
+};
+
 export const isHurtGunLocked = (
   p: { lastHurtAt?: number; lastHurtTier?: 0 | 1 | 2 },
   nowMs: number,

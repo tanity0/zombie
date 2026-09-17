@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS, isHurtGunLocked } from './playerHurt';
+import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS, isHurtGunLocked , isHurtMoveLocked } from './playerHurt';
 
 describe('playerHurtTier — 被弾の重さで段が変わる', () => {
   it('素の敵の攻撃力(最大HP120)が狙いどおりの段に落ちる', () => {
@@ -43,14 +43,31 @@ describe('playerHurtReactionOf — 段が上がるほど長く止まる', () => 
 });
 
 describe('isHurtGunLocked — 被弾の復帰ディレイ(銃だけ止まる)', () => {
-  it('段ごとの長さだけ true(軽180 / 中300 / 重460)', () => {
+  it('段ごとの長さだけ true(軽300 / 中520 / 重800・社長指示2026-09-17で重くした)', () => {
     const t = 10000;
-    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 179)).toBe(true);
-    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 180)).toBe(false);
-    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 299)).toBe(true);
-    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 300)).toBe(false);
-    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 459)).toBe(true);
-    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 460)).toBe(false);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 299)).toBe(true);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 300)).toBe(false);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 519)).toBe(true);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 520)).toBe(false);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 799)).toBe(true);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 800)).toBe(false);
+  });
+
+  // ★社長指示2026-09-17「食らった重さがほしい。エルデンリングをまねて」。
+  it('★移動ロックは「のけぞりより短い」(前半は動けない・後半は動けるが撃てない)', () => {
+    for (const r of PLAYER_HURT_TIERS) {
+      expect(r.moveLockMs).toBeGreaterThan(0);
+      expect(r.moveLockMs).toBeLessThan(r.gunLockMs); // 全部止めると「操作を奪われた」=理不尽になる
+    }
+  });
+
+  it('★移動ロックは段ごとの長さだけ true(軽120 / 中220 / 重380)', () => {
+    const t = 10000;
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 119)).toBe(true);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 120)).toBe(false);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 219)).toBe(true);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 379)).toBe(true);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 380)).toBe(false);
   });
 
   it('★しゃがみの絵と同じ長さ(絵と実態を一致させるのが仕様)', () => {

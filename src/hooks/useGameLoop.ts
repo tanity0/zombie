@@ -249,7 +249,7 @@ import {
   isReaperFamily, isTerminalReaper, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
   pickNearestTarget, // UNIQUE_WEAPONS.md §19-3: 金環の対象取得(各金環が独立に最寄りの敵を取る)
 } from '../utils/enemyUtils';
-import { killChainSfxRate, recoilSpecForWeapon, casingSpecFor , GUN_STOP_BASE_MS, GUN_STOP_MAX_MULT, GUN_STOP_AWAKEN_MULT } from '../utils/combatFeel';
+import { killChainSfxRate, recoilSpecForWeapon, casingSpecFor , GUN_STOP_BASE_MS, GUN_STOP_MAX_MULT, GUN_STOP_AWAKEN_MULT, GUN_STOP_DUTY } from '../utils/combatFeel';
 import { comboMilestoneCrossed, milestoneSfxRate } from '../utils/comboMilestone';
 // 戦闘の手触り②: 撃破SEのピッチはstoreの段(killChainTier)から。audioManagerはstoreをimportできないので登録式。
 registerKillChainSfxRate(() => killChainSfxRate(useGameStore.getState().killChainTier, Math.random()));
@@ -13967,7 +13967,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState(state => ({
               enemies: state.enemies.map(en =>
                 en.id === enemyId && en.corpseUntil === undefined
-                  && stopNow >= (en.hitStunUntil ?? 0)      // ★走っている止めには重ねない
+                  // ★占有率の上限(社長指摘「まだまだごり押しできる」): 止めが明けてから
+                  //   `止めの長さ×(1/duty − 1)` だけは効かない=**撃ち続けても30%しか止まらない**。
+                  //   旧ノックバックの `HIT_STUN_REARM_MS` と同じ役目。これが無いと
+                  //   「撃つだけで敵が近づけない」(bat は7倍・skeleton は8倍遅くなる=実測)。
+                  && stopNow >= (en.hitStunUntil ?? 0) + Math.round(stopMs * (1 / GUN_STOP_DUTY - 1))
                   ? { ...en, hitStunUntil: stopNow + stopMs }
                   : en),
             }));

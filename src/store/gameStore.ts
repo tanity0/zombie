@@ -102,7 +102,7 @@ import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate, comboMilestoneCrossed, killBannerDurationMs } from '../utils/comboMilestone';
-import { playerHurtTier, playerHurtReactionOf } from '../utils/playerHurt';
+import { playerHurtTier, playerHurtReactionOf, isHurtMoveLocked } from '../utils/playerHurt';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 import { impactDamageOf, mergeImpactEntries, strongestImpact, IMPACT_MELEE_MIN, type ImpactEntry, type ImpactFlags } from '../utils/impactShake'; // 揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)
 import {
@@ -6889,6 +6889,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★bat の掴み(PACING_PUZZLE.md §16-1・社長裁定2026-09-16)。isPvpIncapacitatedと**同じ形**
       // (=入力を無視して残速度を減衰。瞬間停止にしない=慣性MUST)。被弾KBはそのまま食らう(上が優先)。
       const grabbedFrozen = !kbActive && isPlayerGrabbed(player, state.gameTime);
+      // ★被弾直後の「動けない」窓(社長指示2026-09-17「食らった重さがほしい。エルデンリングをまねて」)。
+      // grabbedFrozen と**同じ形**(入力を無視して残速度を減衰=瞬間停止にしない・慣性MUST)。
+      // のけぞり(gunLockMs)より短い=**前半は動けない・後半は動けるが撃てない**の二段。
+      const hurtFrozen = !kbActive && isHurtMoveLocked(player, Date.now());
       let vx: number, vy: number;
       if (kbActive) {
         // 持続時間は**その吹き飛び自身の値**で割る(技ごとに変わるため。未指定=従来の共通値)。
@@ -6906,7 +6910,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           : 1;
         vx = (player.lungeVx ?? 0) * d * lungeCap;
         vy = (player.lungeVy ?? 0) * d * lungeCap;
-      } else if (skaterStopping || pvpFrozen || grabbedFrozen) {
+      } else if (skaterStopping || pvpFrozen || grabbedFrozen || hurtFrozen) {
         const d = Math.exp(-deltaTime / 0.05); // 約50msの時定数で素早く0へ
         vx = player.vx * d;
         vy = player.vy * d;

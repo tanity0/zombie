@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4424',
+    items: ['撃ち続けるだけで敵を足止めできてしまうのをやめた', '攻撃を食らった時の手応えが重くなった。崩された直後はしばらく踏ん張れず動けない'],
+  },
+  {
     version: '0.25.4423',
     items: ['銃で撃った敵が吹き飛ばなくなり、代わりにその場で動きが止まるようになった。散弾は重く止まる'],
   },
