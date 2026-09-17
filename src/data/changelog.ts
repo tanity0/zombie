@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4451',
+    items: ['ゲーム内容の変更はありません'],
+  },
+  {
     version: '0.25.4450',
     items: [
       '区域の名前が出る場所が、実際の区域の境目と合っていなかったのが直った',
