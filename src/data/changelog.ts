@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4413',
+    items: ['ゲーム内容の変更はありません'],
+  },
+  {
     version: '0.25.4412',
     items: ['ゾンビの攻撃で赤く光るのは、突進の始まりに二回点滅するだけになった。技を出している間ずっと光り続けることはなくなった。動けない間やよろめく間の姿勢も新たに見えるようになり、歩き出しや追いかける足の運びも滑らかになった'],
   },
