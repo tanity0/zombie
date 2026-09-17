@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4435',
+    items: ['ゲーム内容の変更はありません'],
+  },
+  {
     version: '0.25.4434',
     items: [
       '敵の被弾の反応が、与えたダメージの重さで決まるようになった。のけぞり、跳ね、光り方、吹き飛び、画面の止まりが、ひとつの重さから一緒に動く',

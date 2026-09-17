@@ -5,6 +5,7 @@ import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
 import NoBounceScroller from './NoBounceScroller';
 import { getLastHeartbeat } from '../utils/crashDiagnostics';
+import { reportTestScreen } from '../utils/testBridge';
 import { CINE_TOGGLES, cineToggleOn, cineToggleLockedByUrl, setCineToggle, resetCineToggles } from '../utils/cineToggles';
 import { CHANGELOG } from '../data/changelog';
 import { loadChronicle, getChronicleStartAt, type ChronicleEntry } from '../data/progress';
@@ -264,6 +265,11 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   // (バッジから何度でも開き直せるようにするため)。既読版と現在の版が一致する時だけ最初から閉じておく。
   const alreadySeenThisVersion = useMemo(() => readNoticeSeenVersion() === __APP_VERSION__, []);
   const [showNotice, setShowNotice] = useState<boolean>(!alreadySeenThisVersion);
+
+  // ★テストブリッジ(A)へ「更新情報モーダルが出ているか」を報告する。自動レビューはここで
+  // OKを押す必要があるので、タイトルと区別が付かないと初見導線を通れない。
+  // `?testbridge=1` が無ければ reportTestScreen は即returnする。
+  useEffect(() => { reportTestScreen(showNotice ? 'updateModal' : 'title'); }, [showNotice]);
   const [showCine, setShowCine] = useState(false); // 寄り演目の部品スイッチ(開発用)
   const [cineRev, setCineRev] = useState(0);       // 押したら描き直すためだけの版数
   const [phase, setPhase] = useState<'title' | 'blackout' | 'loading'>('title');

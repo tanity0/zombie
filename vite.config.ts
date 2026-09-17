@@ -5,6 +5,16 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
+// テストブリッジ用の commit 識別子。gitが無い/リポジトリでない環境では null にフォールバックする
+// (ビルドを落とさない=開発ツールのためにビルドを壊さない)。
+const gitCommit: string | null = (() => {
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf-8' }).trim() || null;
+  } catch {
+    return null;
+  }
+})();
+
 const pkg = JSON.parse(
   readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf-8')
 );
@@ -55,6 +65,9 @@ export default defineConfig({
   plugins: [react()],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    // テストブリッジ(TEST_HANDOFF/REQUEST-devbridge.md A)が返す版の識別子。
+    // 取れない環境(tarball配布・shallow cloneでない等)では null。
+    __GIT_COMMIT__: JSON.stringify(gitCommit),
     __ASSET_HASHES__: JSON.stringify(assetHashes),
     // G6守護霊API。未指定は空=完全OFF。Pagesではworkflowから公開Worker URLを両系統へ渡す。
     __GHOST_API_BASE__: JSON.stringify(process.env.GHOST_API_BASE ?? ''),

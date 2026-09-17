@@ -9,6 +9,13 @@ import type { AvatarId } from '../data/avatars'; // アバターシステム(試
 import type { SwordLungePlan } from '../utils/swordLunge'; // 剣ボスの踏み込み計画(依存ゼロの純関数モジュール=循環しない)。
 
 // Game state types
+/**
+ * ★なぜゲームが止まっているか(TEST_HANDOFF/REQUEST-devbridge.md A)。
+ * `isPaused: true` を立てる全経路が、対になる理由をここから選ぶ。
+ * **遊びの仕様には使わない**(テストブリッジ・診断表示が読むだけ)。
+ */
+export type PauseReason = 'shop' | 'upgrade' | 'tutorial' | 'eventQuest' | 'storyReturn' | 'result';
+
 export type GameState = 'title' | 'menu' | 'loading' | 'playing' | 'paused' | 'gameOver' | 'victory' | 'returned' | 'ending' | 'exEnding';
 
 // Character class types

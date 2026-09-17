@@ -108,6 +108,7 @@ import { PixelIcon, type PixelIconName } from './PixelIcon';
 import DsContourMap from './DsContourMap';
 import NoBounceScroller from './NoBounceScroller';
 import { nextOperationStage } from '../utils/dsHome';
+import { reportTestScreen } from '../utils/testBridge';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
 import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
@@ -468,6 +469,20 @@ const CharSelectParticles: React.FC = () => {
 
 const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark, initialScreen, onStartPractice }) => {
   const [screen, setScreen] = useState<Screen>(initialScreen === 'bossrush' ? { name: 'bossRush' } : { name: 'home' });
+
+  // ★テストブリッジ(TEST_HANDOFF/REQUEST-devbridge.md A)へ今の枝を報告する。
+  // `?testbridge=1` が無ければ reportTestScreen は即returnする=通常プレイでは何も起きない。
+  // 親(App)は 'menu' の時に何も書かないので、ここが唯一の書き手になる。
+  useEffect(() => {
+    switch (screen.name) {
+      case 'home': reportTestScreen('opsRoom'); break;
+      case 'stageSelect': reportTestScreen('stagePick'); break;
+      case 'missionDetail': reportTestScreen('briefing'); break;
+      case 'characterSelect': reportTestScreen('charSelect'); break;
+      case 'loadout': reportTestScreen('loadout'); break;
+      default: reportTestScreen('other'); break;
+    }
+  }, [screen.name]);
   // 出撃素材の先読み(社長報告v0.25.2230「ステージ開始時に10秒くらい固まる」)。ミッション詳細/キャラ選択に
   // 入った時点で、そのステージのテクスチャをバックグラウンドで取り始める。滞在中(ブリーフィングを読む・
   // キャラを選ぶ)に落とし終えれば出撃時の待ちがほぼ消える。キャッシュ済みなら即解決=無害。

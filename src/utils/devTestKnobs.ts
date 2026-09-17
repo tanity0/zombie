@@ -43,5 +43,20 @@ export const DEV_SUB_KEY: SubWeaponKey | null = (() => {
   return v && VALID_DEV_SUB_KEYS.has(v) ? (v as SubWeaponKey) : null;
 })();
 
+/**
+ * ★`?testbridge=1`: ローカルテスト用の読み取り口(`window.__TEST_BRIDGE__`)を生やす
+ * (TEST_HANDOFF/REQUEST-devbridge.md A・社長裁定2026-09-17「URLツマミ方式」)。
+ *
+ * **無指定では何も定義しない。** 本番ビルド(preview/Pages)でも同じバイナリのまま切り替わるので、
+ * テスト用ビルドを別に持つ必要がない(ビルド時defineだと preview を作るたびに `npm run build` が要り、
+ * 裏で編集中のコードを焼いてしまう危険がある)。
+ *
+ * ★配布形態との突き合わせ: このゲームは**Web公開しない。最終形はアプリ配布/Steam**
+ * (CLAUDE.md 配布方針)なので、**実機ではURLのクエリを叩く経路がプレイヤーに無い**。
+ * 残る露出は GitHub Pages だけだが、Bridge は**読み取り + `closeBlockingMenu()` のみ**で、
+ * クエリを付けて開かれてもメニューを閉じる以外に何もできない(チート価値なし)。
+ */
+export const TEST_BRIDGE_ACTIVE: boolean = readUrlParam('testbridge') === '1';
+
 /** どちらかのテスト用ツマミが立っているか(S2-bの観測窓の露出ゲート等に使う)。 */
 export const DEV_LOADOUT_ACTIVE: boolean = DEV_WEAPON_KEY !== null || DEV_SUB_KEY !== null;

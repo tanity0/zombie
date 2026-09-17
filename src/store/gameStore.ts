@@ -26,7 +26,8 @@ import {
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
   DashLocomotionState, EquipLoadout, EquipSlot, ConsumableKey,
-  BloodSpike, GravityWell // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯/グラビティショットの状態
+  BloodSpike, GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯/グラビティショットの状態
+  PauseReason, // ★なぜ止まっているか(テストブリッジ用・遊びの仕様には使わない)
 } from '../types/game';
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE, MOLOTOV_FIRE_RADIUS,
@@ -5326,6 +5327,15 @@ interface GameState {
   // 刻むために使う(社長承認のA案)。
   realGameTime: number;
   isPaused: boolean;
+  /**
+   * ★なぜ止まっているか(TEST_HANDOFF/REQUEST-devbridge.md A・2026-09-17)。
+   * `isPaused` を立てる箇所が7つあり、**外から「固まった」と「仕様どおり止まっている」を
+   * 区別できなかった**(自動レビューが停滞と誤判定する主因)。立てる時に理由を一緒に持たせる。
+   * ★**ゲームの挙動には一切使わない**=読むのはテストブリッジと診断表示だけ。
+   * ★解除側(`isPaused: false` は19箇所)は**触らない**——読み手が
+   * 「`isPaused` が true の時だけ意味を持つ」と決めているので、消し忘れが事故にならない。
+   */
+  pauseReason?: PauseReason;
   showUpgradeMenu: boolean;
   levelUpIntroUntil: number; // >0 の間は「LEVEL UP 演出(スロー)」中。この実時刻を過ぎたら選択肢メニューを出す。
   levelUpEmphasisUntil: number; // LEVEL_GROWTH.md §11 代替b: 攻撃が変わるカード取得後「最初の1発」を待つ窓(gameTime基準・描画のみ)
@@ -6535,6 +6545,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameTime: 0,
   realGameTime: 0,
   isPaused: false,
+  pauseReason: undefined,
   showUpgradeMenu: false,
   skillPickFx: null,
   levelUpIntroUntil: 0,
@@ -7553,6 +7564,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         set({
           showShopMenu: true,
           isPaused: true,
+          pauseReason: 'shop',
           touchActive: false,
           swipeDirection: null,
           swipeStrength: 1,
@@ -11905,6 +11917,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({
       showShopMenu: true,
       isPaused: true,
+      pauseReason: 'shop',
       touchActive: false,
       swipeDirection: null,
       swipeStrength: 1,
@@ -17284,6 +17297,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           upgradeOptions,
           showUpgradeMenu: true,
           isPaused: true,
+          pauseReason: 'upgrade',
           gameStats: state.gameStats
         }));
         break;
@@ -18100,7 +18114,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (get().deliveryLocked) return;
     // 挿絵の優先順: img(事前収録の手本アセット)> SVG図解。社長決定v0.25.1839「基本的に全部
     // 事前に手本を見せるカタチ」=表示直前のライブキャプチャは廃止(素材は一度収録して使い回す)。
-    set({ tutorialPopup: p, tutorialPopupShown: true, isPaused: true }); // 表示中はゲーム停止
+    set({ tutorialPopup: p, tutorialPopupShown: true, isPaused: true, pauseReason: 'tutorial' }); // 表示中はゲーム停止
   },
   closeTutorialPopup: () => {
     set({ tutorialPopup: null, isPaused: false });
@@ -18478,6 +18492,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({
       storyReturnPromptVisible: true,
       isPaused: true,
+      pauseReason: 'storyReturn',
       touchActive: false,
       swipeDirection: null,
       swipeStrength: 1,

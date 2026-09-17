@@ -655,7 +655,7 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     const introUntil = useGameStore.getState().levelUpIntroUntil;
     if (introUntil > 0 && Date.now() >= introUntil) {
       // useGameLoop.ts の intro→メニュー遷移(7878-7880)と同じ。
-      useGameStore.setState({ showUpgradeMenu: true, isPaused: true, levelUpIntroUntil: 0 });
+      useGameStore.setState({ showUpgradeMenu: true, isPaused: true, pauseReason: 'upgrade', levelUpIntroUntil: 0 });
     }
     const menu = useGameStore.getState();
     if (menu.showUpgradeMenu && menu.upgradeOptions.length > 0) {

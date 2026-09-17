@@ -1,5 +1,60 @@
 # Development Log
 
+## v0.25.4435 — テストブリッジ(`?testbridge=1`)を実装【2026-09-17 18:24 JST】
+
+発注: `TEST_HANDOFF/REQUEST-devbridge.md` **A. P0-1 Local Test Bridge**(テストチャット→設計チャット)。
+社長指示2026-09-17「**TEST_HANDOFF/REQUEST-devbridge.md を読んで A を実装して**」。
+
+### 何が問題だったか
+状態の読み取り口 `window.__gameStore` は `import.meta.env.DEV` ゲートで**開発サーバ(5173)にしか生えない**。
+**本番ビルド(`vite preview` 4173)では読めない**ので、自動レビューが「停滞」「死亡後の停止」「商人画面」
+「進行中」を区別できず、**preview のランが事実上スクショだけ**になっていた。
+(**実測で裏を取った**: preview では `typeof window.__gameStore === 'undefined'`。)
+
+### 入れたもの
+- **`src/utils/testBridge.ts`(新規)**: `window.__TEST_BRIDGE__ = { read(), closeBlockingMenu() }`。
+  **ゲートは `?testbridge=1`**(社長裁定=URLツマミ方式。ビルド時defineだと preview を作るたびに
+  `npm run build` が要り、**裏で編集中のコードを焼く危険がある**)。**無指定では何も定義しない。**
+- **書き込みは `closeBlockingMenu()` の1つだけ。** 移動・攻撃・数値変更の口は作っていない。
+- **`pauseReason`**(`types/game.ts` に型・store に1フィールド): `isPaused: true` を立てる**7箇所**へ
+  理由を添えた(shop×2 / upgrade×3 / tutorial / storyReturn)。
+  ★**解除側(`isPaused: false` は19箇所)は触っていない**——読み手が「`isPaused` が true の時だけ
+  意味を持つ」と決めているので、**消し忘れが事故にならない形**にした。
+- **`__GIT_COMMIT__`**(`vite.config.ts`): `git rev-parse --short HEAD` を define。gitが無い環境では
+  **null にフォールバック**(開発ツールのためにビルドを落とさない)。
+- **画面名の報告**: store に画面の状態が無いので React 側(App / MissionSelect / TitleScreen)が
+  `reportTestScreen` で置く。★**親(App)は 'title' と 'menu' で何も書かない**——Reactは子のeffectが
+  先に走るため、**親が上書きすると子の報告を毎回踏み潰す**(実測: 更新情報モーダルが出ていても
+  `title` に化けた。この順序の罠は1度踏んでから直した)。
+- **`lastSignificantEventAt` の定義**(テストチャットの提案を採用): **HPが減った / レベルが上がった /
+  ボスが出た・消えた**のいずれか。**「敵が1体湧いた」「弾が出た」は含めない**——停滞の判定に使うので、
+  **止まっていても動くもの**を入れると固まっていても「進んでいる」に見えてしまう。
+  追跡はブリッジ自身が store を subscribe して持つ=**ゲームのコードに1行も足していない**。
+
+### 未提供(嘘をつかずnullを返している)
+- **`deathCause`**: 死因の台帳が存在しない。**(B)として別案件へ**。
+- `resultState` は画面名から出している(勝敗の種別を持つ1箇所が store に無いため)。
+
+### 検証(★本番ビルド+preview で実走)
+| 受け入れ条件 | 結果 |
+|---|---|
+| `?testbridge=1` の preview(4173)で `read()` が返る | **object。`buildVersion` 0.25.4434 / `gitCommit` 96bf6382e / `screenId` / `pauseReason` まで揃って返った** |
+| 無指定では `window.__TEST_BRIDGE__` が undefined | **undefined**(同じ preview で `__gameStore` も undefined=これが直したかった状態) |
+| ゲーム挙動が変わらない | 読み取り+既存の閉じる操作のみ。typecheck green / lint エラー0 |
+
+画面の遷移も preview で追えることを確認: **updateModal → title → opening**。
+
+**変更ファイル**: `src/utils/testBridge.ts`(新規) / `src/utils/devTestKnobs.ts` / `src/types/game.ts` /
+`src/store/gameStore.ts` / `src/hooks/useGameLoop.ts` / `src/utils/playtestDriver.ts` / `src/App.tsx` /
+`src/components/MissionSelect.tsx` / `src/components/TitleScreen.tsx` / `vite.config.ts` /
+`src/vite-env.d.ts` / `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+
+**自己点検**: 憲法第4条・第5条に抵触しない(遊びの仕様に触れていない。`pauseReason` は読み取り専用の付加情報)。
+
+**残り(発注文 B/C/D)**: B(イベントタイムライン)・C(seed)・D(data-testid)は未着手。
+
+**状態変化**: なし。
+
 ## v0.25.4434 — 被弾リアクションを1つの数へ集約(のけぞり・跳ね・光・ノックバック・停止)【2026-09-17 17:48 JST】
 
 **社長**「**のけぞりとノックバックは連動。さらに停止時間もそれによって長く設けるなどしたい**」

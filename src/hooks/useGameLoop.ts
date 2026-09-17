@@ -15806,7 +15806,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         {
           const introUntil = useGameStore.getState().levelUpIntroUntil;
           if (introUntil > 0 && Date.now() >= introUntil && !useGameStore.getState().deliveryLocked) {
-            useGameStore.setState({ showUpgradeMenu: true, isPaused: true, levelUpIntroUntil: 0 });
+            useGameStore.setState({ showUpgradeMenu: true, isPaused: true, pauseReason: 'upgrade', levelUpIntroUntil: 0 });
           }
         }
 

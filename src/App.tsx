@@ -12,6 +12,7 @@ import OrientationGuard from './components/OrientationGuard';
 import OpeningScene from './components/OpeningScene';
 import MansionCorridorPreview from './components/MansionCorridorPreview';
 import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow, getLoadProgress, getLoadInFlight } from './utils/loadProgress';
+import { installTestBridge, reportTestScreen } from './utils/testBridge';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore, BOSS_TEST_RUN } from './store/gameStore';
@@ -114,6 +115,26 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   const [loadOverlayTimedOut, setLoadOverlayTimedOut] = useState(false);
   // 音声のジェスチャ復帰保険(v0.25.2160): どのタップ/キーでも「context resume+止まったBGMの拾い直し」。
   useEffect(() => { attachAudioGestureRecovery(); }, []);
+
+  // ★ローカルテスト用の読み取り口(TEST_HANDOFF/REQUEST-devbridge.md A・`utils/testBridge.ts`)。
+  // `?testbridge=1` の時だけ窓が生える。無指定では何も起きない(installTestBridge が即returnする)。
+  useEffect(() => { installTestBridge(); }, []);
+
+  // 今どの画面かをテストブリッジへ置く(store に画面の状態が無いため React 側から報告する)。
+  // ★'title' と 'menu' は**子に任せる**——Reactは子のeffectが先に走るので、ここで親が
+  // 上書きすると子の報告を毎回踏み潰す(実測: 更新情報モーダルが出ていても 'title' に化けた)。
+  //   'title' → TitleScreen が 'updateModal' / 'title' を出し分ける
+  //   'menu'  → MissionSelect が作戦室/ステージ一覧/ブリーフィング/ジョブ選択を出し分ける
+  useEffect(() => {
+    if (showOpening) { reportTestScreen('opening'); return; }
+    switch (gameState) {
+      case 'title': break;                                     // ★TitleScreen に任せる(更新情報モーダルと出し分ける)
+      case 'playing': case 'paused': reportTestScreen('gameplay'); break;
+      case 'gameOver': case 'victory': case 'returned': reportTestScreen('result'); break;
+      case 'menu': break;                                        // ★MissionSelect に任せる(上記)
+      default: reportTestScreen('other'); break;
+    }
+  }, [gameState, showOpening]);
   // ★社長指示2026-09-05「ストーリーモード以外は全て練習なので何も手に入ってはいけない。年表にも載らない」。
   // 「進行を1つも残さない出撃」の旗を **gameState の遷移1箇所で** 立て降ろしする。
   // ★**フリー(周回)出撃はストーリーモードに含まれる**(社長訂正2026-09-05「ストーリーモードは
