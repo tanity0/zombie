@@ -1250,10 +1250,12 @@ export const runJibrilTick = (
       const dx = jHomeX - pcx, dy = jHomeY - pcy;
       const dl = Math.hypot(dx, dy) || 1;
       const wx = jHomeX + (dx / dl) * maxR, wy = jHomeY + (dy / dl) * maxR;
-      useGameStore.getState().spawnRing(jcx, jcy, 8, 60, 'rgba(168,85,247,0.8)', 3, 300);
+      // ★v0.25.4441(クリエイティブ監査#8): 転移に**金の魔法陣**を入れたので、旧の**紫**リング/
+      // フラッシュをそのまま残すと「紫リング+紫フラッシュ+金の陣」が同時に出る。**金へ揃える。**
+      useGameStore.getState().spawnRing(jcx, jcy, 8, 60, 'rgba(255,207,92,0.8)', 3, 300);
       patch.x = wx - jibril.width / 2; patch.y = wy - jibril.height / 2;
-      useGameStore.getState().spawnRing(wx, wy, 8, 70, 'rgba(168,85,247,0.9)', 3, 340);
-      useGameStore.getState().spawnFlash('rgba(88,28,135,0.20)', 240);
+      useGameStore.getState().spawnRing(wx, wy, 8, 70, 'rgba(255,207,92,0.9)', 3, 340);
+      useGameStore.getState().spawnFlash('rgba(120,86,20,0.18)', 240);
       patch.bossState = 'warp-recover';
       patch.bossStateUntil = newGameTime + JB_T.warp.recover;
     }
@@ -1546,11 +1548,13 @@ export const runJibrilTickLegacy = (
     const dx = jHomeX - pcx, dy = jHomeY - pcy;
     const dl = Math.hypot(dx, dy) || 1;
     const wx = jHomeX + (dx / dl) * maxR, wy = jHomeY + (dy / dl) * maxR;
-    useGameStore.getState().spawnRing(jcx, jcy, 8, 60, 'rgba(168,85,247,0.8)', 3, 300);
+    // ★v0.25.4441(クリエイティブ監査#8): 転移に**金の魔法陣**を入れたので、旧の**紫**リング/
+      // フラッシュをそのまま残すと「紫リング+紫フラッシュ+金の陣」が同時に出る。**金へ揃える。**
+      useGameStore.getState().spawnRing(jcx, jcy, 8, 60, 'rgba(255,207,92,0.8)', 3, 300);
     patch.x = wx - jibril.width / 2;
     patch.y = wy - jibril.height / 2;
-    useGameStore.getState().spawnRing(wx, wy, 8, 70, 'rgba(168,85,247,0.9)', 3, 340);
-    useGameStore.getState().spawnFlash('rgba(88,28,135,0.20)', 240);
+    useGameStore.getState().spawnRing(wx, wy, 8, 70, 'rgba(255,207,92,0.9)', 3, 340);
+    useGameStore.getState().spawnFlash('rgba(120,86,20,0.18)', 240);
     patch.bossState = 'chase';
     patch.bossNextActionAt = newGameTime + AN_C.stunNextActionMs;
   } else if (jibrilFull) {

@@ -327,8 +327,7 @@ import {
   skeletonWantsChaffSlot, skeletonArcPoint,
   SKELETON_TRIGGER_PX, SKELETON_CROUCH_MS, SKELETON_ARC_MS, SKELETON_RECOVER_MS, SKELETON_RETREAT_SPEED_MULT,
   // ★プレイヤーの拘束(bat の掴み)。
-  isPlayerGrabbed,
-} from '../utils/chaffMoves';
+  isPlayerGrabbed, ZOMBIE_LUNGE_MAX_MS,} from '../utils/chaffMoves';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
@@ -15168,7 +15167,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-lunge-in', chaffMove: 'zombie-double', chaffMoveAt: gameTime };
           }
           if (phase === 'z-lunge-in') {
-            if (pdist <= ZOMBIE_LUNGE_RANGE_PX) {
+            // ★踏み込みの上限時間(社長指摘2026-09-17「台本の中で詰め寄ってくる時間に上限ある？」)。
+            // 上限に達したら**その場で噛む**(=空振りする)。引き返さないのは、技の3拍
+            // (技→硬直→離れる)を全型で守るため——空振りでも硬直はプレイヤーの取り分になる。
+            const lungeOver = enemy.chaffMoveAt !== undefined
+              && gameTime - enemy.chaffMoveAt >= ZOMBIE_LUNGE_MAX_MS;
+            if (pdist <= ZOMBIE_LUNGE_RANGE_PX || lungeOver) {
               // 射程到達→1発目。向きは§12と同じく踏み込みの瞬間(ここ)に焼く(追尾しない)。
               // ★②速度を持ち越す(§16-3z「踏み込み→噛み」): vx/vyを0で潰さず前フレームの値を
               // そのまま残す(=spreadで継承)。満速→0の1フレーム段差(「走って来て一瞬カクッと

@@ -20557,32 +20557,34 @@ export class PixiScene {
         if (eyeSp) eyeSp.visible = false;
       }
     }
-    // FX-V2b(発注仕様research/FX_GAP_LEDGER.md「FX-V2b」#3): アクラシエルの転移(warp)の繋ぎ。
-    // 消失(warp-out→warp-in切替の瞬間)と出現(warp-in開始の瞬間)に金色フラッシュ+短いリングを
-    // 一瞬だけ出す(判定なし=②。魔法陣素材が来たら差し替え前提の軽い実装)。
+    // アクラシエルの転移(warp)の繋ぎ。消失(warp-out→warp-in切替の瞬間)と
+    // 出現(warp-in開始の瞬間)に**魔法陣**を開閉する(判定なし=②「派手さの絵」)。
+    // ★v0.25.4441: 旧「金色フラッシュ+短いリング」の仮実装から差し替え済み(社長指示)。
     // 消失位置はwarp-out中の現在地(=元の立ち位置)。angelBossTick.tsのwarp-out終了処理はpatch.x/y
     // をteleport先へ即書き換えるため、bs==='warp-in'の時点では元位置がcx/cyから取れない。
     // よってwarp-out中に毎フレーム焼き直しておき、立ち下がりエッジで最後の値を読む
     // (gazeWindupWasOnと同じ「立ち上がり/立ち下がりの1フレーム記憶」の作法)。
     if (e.type === 'acrasiel') {
       const warpOutOn = e.bossState === 'warp-out';
-      if (warpOutOn) this.acrasielWarpOutPos.set(e.id, { x: cx, y: cy });
-      const vanishPos = this.acrasielWarpOutPos.get(e.id) ?? { x: cx, y: cy };
+      // ★陣は床に寝ているので**足元**へ置く(クリエイティブ監査#1)。体の中心(cx/cy)だと
+      // **ボスの腰の高さに陣が浮く**(監査用の手置きスクショでは見えていなかった)。
+      if (warpOutOn) this.acrasielWarpOutPos.set(e.id, { x: fb.footX, y: fb.footY });
+      const vanishPos = this.acrasielWarpOutPos.get(e.id) ?? { x: fb.footX, y: fb.footY };
       const vanishL = this.latchFx(
         `${e.id}:warp-vanish`, !warpOutOn && this.warpOutWasOn.has(e.id) && e.bossState === 'warp-in', ACRASIEL_WARP_FLASH_MS_VIS, now,
         () => [vanishPos.x, vanishPos.y],
       );
       // ★社長指示2026-09-17: 仮のフラッシュ→**魔法陣素材**へ差し替え(「天使も揃えて素材」)。
       // アクラシエルは紫の結晶の槍を持つ型なので陣も紫(色は型ごと・素材と文法だけ揃える)。
-      if (vanishL) this.drawWarpCircle(`${e.id}:warp-out`, vanishL.d[0], vanishL.d[1], ANGEL_WARP_CIRCLE_PX, vanishL.t, 0xc084fc);
+      if (vanishL) this.drawWarpCircle(`${e.id}:warp-out`, vanishL.d[0], vanishL.d[1], ANGEL_WARP_CIRCLE_PX, vanishL.t, 0xc084fc, 'vanish', now);
       if (warpOutOn) this.warpOutWasOn.add(e.id); else this.warpOutWasOn.delete(e.id);
 
       const warpInOn = e.bossState === 'warp-in';
       const appearL = this.latchFx(
         `${e.id}:warp-appear`, warpInOn && !this.warpInWasOn.has(e.id), ACRASIEL_WARP_FLASH_MS_VIS, now,
-        () => [cx, cy],
+        () => [fb.footX, fb.footY],
       );
-      if (appearL) this.drawWarpCircle(`${e.id}:warp-in`, appearL.d[0], appearL.d[1], ANGEL_WARP_CIRCLE_PX, appearL.t, 0xc084fc);
+      if (appearL) this.drawWarpCircle(`${e.id}:warp-in`, appearL.d[0], appearL.d[1], ANGEL_WARP_CIRCLE_PX, appearL.t, 0xc084fc, 'appear', now);
       if (warpInOn) this.warpInWasOn.add(e.id); else this.warpInWasOn.delete(e.id);
     }
     // ★ジブリルの転移も同じ魔法陣へ揃える(社長指示2026-09-17「**天使も揃えて素材**」)。
@@ -20592,20 +20594,20 @@ export class PixiScene {
     // 色は**ランタンの金**(アクラシエルは紫)=素材と文法を揃え、色は型ごとに変える。
     if (e.type === 'jibril') {
       const jWindupOn = e.bossState === 'warp-windup';
-      if (jWindupOn) this.acrasielWarpOutPos.set(e.id, { x: cx, y: cy });
-      const jVanishPos = this.acrasielWarpOutPos.get(e.id) ?? { x: cx, y: cy };
+      if (jWindupOn) this.acrasielWarpOutPos.set(e.id, { x: fb.footX, y: fb.footY });
+      const jVanishPos = this.acrasielWarpOutPos.get(e.id) ?? { x: fb.footX, y: fb.footY };
       const jVanishL = this.latchFx(
         `${e.id}:warp-vanish`, !jWindupOn && this.warpOutWasOn.has(e.id) && e.bossState === 'warp-recover',
         ACRASIEL_WARP_FLASH_MS_VIS, now, () => [jVanishPos.x, jVanishPos.y],
       );
-      if (jVanishL) this.drawWarpCircle(`${e.id}:warp-out`, jVanishL.d[0], jVanishL.d[1], ANGEL_WARP_CIRCLE_PX, jVanishL.t, 0xffcf5c);
+      if (jVanishL) this.drawWarpCircle(`${e.id}:warp-out`, jVanishL.d[0], jVanishL.d[1], ANGEL_WARP_CIRCLE_PX, jVanishL.t, 0xffcf5c, 'vanish', now);
       if (jWindupOn) this.warpOutWasOn.add(e.id); else this.warpOutWasOn.delete(e.id);
 
       const jInOn = e.bossState === 'warp-recover';
       const jAppearL = this.latchFx(
-        `${e.id}:warp-appear`, jInOn && !this.warpInWasOn.has(e.id), ACRASIEL_WARP_FLASH_MS_VIS, now, () => [cx, cy],
+        `${e.id}:warp-appear`, jInOn && !this.warpInWasOn.has(e.id), ACRASIEL_WARP_FLASH_MS_VIS, now, () => [fb.footX, fb.footY],
       );
-      if (jAppearL) this.drawWarpCircle(`${e.id}:warp-in`, jAppearL.d[0], jAppearL.d[1], ANGEL_WARP_CIRCLE_PX, jAppearL.t, 0xffcf5c);
+      if (jAppearL) this.drawWarpCircle(`${e.id}:warp-in`, jAppearL.d[0], jAppearL.d[1], ANGEL_WARP_CIRCLE_PX, jAppearL.t, 0xffcf5c, 'appear', now);
       if (jInOn) this.warpInWasOn.add(e.id); else this.warpInWasOn.delete(e.id);
     }
     // 突進の土煙(社長裁定v0.25.2427「全部入れたい」)。**蹴り出し**と**止まった瞬間**の2発。
@@ -23642,33 +23644,51 @@ export class PixiScene {
   // (魔法陣素材が来るまでの軽い繋ぎ)。判定を一切持たない②「派手さの絵」。mode='in'=収束(消える)/
   // 'out'=拡散(現れる)。既存の共有per-frame Graphics(o)に相乗り=新規オブジェクトを増やさない。
   /**
-   * ★転移の魔法陣(社長指示2026-09-17「**魔法陣の素材があったはず。ワープ用に渡したんだよね。
-   * 使ってないなら使ってほしい**」+「**天使も揃えて素材**」)。
+   * ★転移の魔法陣(社長指示2026-09-17「**魔法陣の素材があったはず…使ってないなら使ってほしい**」
+   * +「**天使も揃えて素材**」)。素材 `magic-circle.png` は**届いていたのに差し替えが漏れていた**
+   * (錬金の陣と城の召喚では使われていたが、ワープだけ「素材が来たら差し替え前提」の仮実装のままだった)。
    *
-   * ★経緯: `public/sprites/magic-circle.png` は**素材が届いていたのに差し替えが漏れていた**。
-   * 錬金の陣と城フィナーレボスの出現には使われていたが、**ワープだけ仮実装のまま**で、
-   * コードにも「魔法陣素材が来たら差し替え前提の軽い実装」と書かれていた(`drawWarpFlash`)。
+   * ★**地面レイヤー+加算**(クリエイティブ監査#3)。錬金の陣・城の召喚と**同じ合成**にする——
+   * 同じ素材の3用途で合成だけ違うと、**転移だけ「床に貼ったステッカー」**に見える
+   * (夜の湿った森で光らない魔法陣は、この世界の物に見えない)。
+   * ※`effectLayer` の加算はアルファを書いて黒箱になるが、**groundLayer は錬金の陣で実績がある**。
    *
-   * ★**地面レイヤーに描く**(錬金の陣と同じ)。理由は2つ:
-   *  ①**陣は床に描かれるもの**——現実の理屈に合う置き場(CLAUDE.md「現実はどんな動きをするか」)。
-   *  ②`effectLayer` は bloom/tilt-shift の中なので、**加算で出すとアルファを書いて黒い箱になる**
-   *    (v0.25.44xx の kill-slash で踏んだ事故と同型)。地面レイヤーは錬金の陣で実績がある。
+   * ★**消える側と現れる側で動きを変える**(クリエイティブ監査#4)。旧仮実装が持っていた区別
+   * (`mode 'in'`=収束 / `'out'`=拡散)を、差し替えた時に**失っていた**。
+   * 現実に「吸い込まれる」と「押し出される」が同じ動きということはない。
+   *   **vanish(消える)**: 開いて回りを上げ、**中心へ絞りながら**体を呑む。αは終盤まで保つ。
+   *   **appear(現れる)**: 小さく灯って**外へほどける**。寸法は縮めず、**αだけ**抜けていく。
+   *   **回転の向きも逆**にする(渦を巻き込む/解ける)。
    *
-   * ★動きは**開く→閉じる**(慣性MUST・「パッと出て止まる」を作らない):
-   *  頭の25%で ease-out に開き切り、尻の35%で ease-in に畳む。**回転も同じ包絡線で加減速する**
-   *  (等速で回り続ける陣は、物理の中にいる物の回り方ではない)。
-   * ★色は**ボスごとに変える**(揃えるのは素材と文法であって、見た目を同じにするのではない)。
+   * ★回転は**フレームレート非依存**(同#10)。`rotation += k` の毎フレーム加算だと
+   * 30fpsの端末では半分しか回らない。個体ごとに前フレームの時刻を持って角速度で積む
+   * (`breathHoldAmp` と同じ作法)。
    */
-  private warpCircleSprites = new Map<string, { c: Container; sp: Sprite }>();
-  private drawWarpCircle(key: string, x: number, y: number, sizePx: number, t: number, tint: number): void {
+  private warpCircleSprites = new Map<string, { c: Container; sp: Sprite; at: number; spin: number }>();
+  private drawWarpCircle(
+    key: string, x: number, y: number, sizePx: number, t: number, tint: number,
+    mode: 'vanish' | 'appear', now: number,
+  ): void {
     const tex = getTexture('magic-circle');
     if (!tex) return;
     const u = Math.max(0, Math.min(1, t));
-    // 開く(0→0.25): ease-out cubic / 保つ / 畳む(0.65→1): ease-in cubic
-    const open = u < 0.25 ? 1 - (1 - u / 0.25) ** 3 : 1;
-    const close = u > 0.65 ? 1 - ((u - 0.65) / 0.35) ** 3 : 1;
-    const env = open * close;
-    if (env <= 0.01) {
+    // 立ち上がりは共通(ease-out で開く)。そこから先が消失/出現で分かれる。
+    const open = u < 0.2 ? 1 - (1 - u / 0.2) ** 3 : 1;
+    let size: number, alpha: number, spinRate: number;
+    if (mode === 'vanish') {
+      // 吸い込む: 開き切ってから**中心へ絞る**。絞るほど速く回る(渦)。αは終盤まで残す。
+      const pull = u > 0.55 ? (u - 0.55) / 0.45 : 0;
+      size = open * (1 - 0.85 * pull * pull);             // ease-in で絞る
+      alpha = open * (u > 0.8 ? 1 - (u - 0.8) / 0.2 : 1);
+      spinRate = 1.6 + 5.0 * pull;                        // 巻き込みながら加速
+    } else {
+      // 押し出す: 小さく灯って**外へほどける**。寸法は縮めず、αだけ抜く。
+      const push = u * u * (3 - 2 * u);                   // smoothstep で広がる
+      size = open * (0.35 + 0.95 * push);
+      alpha = open * (1 - push * push);
+      spinRate = 2.6 * (1 - push);                        // ほどけながら減速
+    }
+    if (alpha <= 0.01 || size <= 0.01) {
       const old = this.warpCircleSprites.get(key);
       if (old) old.c.visible = false;
       return;
@@ -23682,9 +23702,10 @@ export class PixiScene {
       const c = new Container();
       const sp = new Sprite(tex);
       sp.anchor.set(0.5, 0.5);
+      sp.blendMode = 'add';                                // 錬金の陣・城の召喚と同じ(監査#3)
       c.addChild(sp);
       this.L.groundLayer.addChild(c);
-      v = { c, sp };
+      v = { c, sp, at: now, spin: 0 };
       this.warpCircleSprites.set(key, v);
     }
     if (v.sp.texture !== tex) v.sp.texture = tex;
@@ -23693,12 +23714,15 @@ export class PixiScene {
     v.c.position.set(x, y);
     // 親で見下ろし角ぶん縦を潰す(錬金の陣と同じ考え方)。子は正円のまま回る。
     v.c.scale.set(1, 0.62);
-    const w = sizePx * env;
+    const w = sizePx * size;
     v.sp.width = w;
     v.sp.height = w;
-    v.sp.alpha = env;
-    // ★回転も包絡線で加減速する(開き切る頃に一番速く回り、畳む時に緩む=等速で回し続けない)。
-    v.sp.rotation += 0.06 * env;
+    v.sp.alpha = alpha;
+    // ★フレームレート非依存の回転(監査#10)。向きは消失/出現で逆。
+    const dt = Math.max(0, Math.min(50, now - v.at));
+    v.at = now;
+    v.spin += (mode === 'vanish' ? 1 : -1) * spinRate * (dt / 1000);
+    v.sp.rotation = v.spin;
   }
 
   // ★旧 `drawWarpFlash`(金色フラッシュ+短いリングの仮実装)は削除した。
