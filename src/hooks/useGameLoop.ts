@@ -436,6 +436,7 @@ import {
   recordExplosion, recordBeamPulse, recordStonesAttached, recordGunKnockback,
 } from '../utils/botTelemetry';
 import { DEV_LOADOUT_ACTIVE, TEST_BRIDGE_ACTIVE, DEV_SEED_PARAM } from '../utils/devTestKnobs';
+import { resetSeededRngs } from '../utils/seededRng';
 import { recordTestEvent } from '../utils/testEvents'; // TEST_HANDOFF/REQUEST-devbridge.md B節(記録専用・挙動不変)
 import { cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(タイトル画面のパネル+URL)
 // SKILL_BUILD_REDESIGN.md §15(B0発注文): 計測台帳の最終記録(読むだけ)+ボット購買ポリシー(実機オートパイロット側)。
@@ -3079,6 +3080,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           botWarpRef.current = createWarpTrackState(); // M49-3: ワープ追従の前tick位置も新ランでリセット
           botEngagementRef.current = createEngagementTrackState(); // M49: 行動階層①⇄②の直近実績も新ランでリセット
           botRandRef.current = mulberry32(DEV_SEED_PARAM ?? 1); // 新ランでも同じseedへ揃える(`?seed=`未指定なら既定の1)
+          // ★湧きの乱数も頭へ戻す(1ページで2回出撃しても2回目が同じ並びになる)。
+          // `?seed=` 未指定なら何もしない=通常プレイは無影響。
+          resetSeededRngs();
           botReportedRef.current = false;
           botPausedSinceRef.current = 0;
           castleAttnRef.current = { at: 0, x: 0, y: 0 };

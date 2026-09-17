@@ -1,4 +1,5 @@
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
+import { makeSeededRng } from './seededRng';
 import { normalizeChaffMix, type ChaffMix } from './chaffMix';
 import { projectileMoveKeyForEnemy } from './moveReaction'; // GHOST-BULLET-TECH: 弾へ載せる技キー(記録専用)
 import { GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH, GUARDIAN_PHANTOM_PLACEHOLDER_HEALTH } from '../config/bossHealth';
@@ -518,7 +519,7 @@ const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: Ene
   }
   if (pool.length === 0) return 'zombie'; // 安全網(zombie は全エリアで出現可)
   const total = pool.reduce((s, p) => s + p.weight, 0);
-  let r = Math.random() * total;
+  let r = spawnRng() * total;
   for (const entry of pool) {
     r -= entry.weight;
     if (r <= 0) return entry.type;
@@ -536,7 +537,7 @@ export const selectLabEnemyType = (gameTime: number): EnemyType => {
   if (t >= 150000) pool[0].weight = 55; // 後半は Lv1 を減らして重い個体を増やす
   if (t >= 240000) pool[0].weight = 32;
   const total = pool.reduce((s, p) => s + p.weight, 0);
-  let r = Math.random() * total;
+  let r = spawnRng() * total;
   for (const entry of pool) {
     r -= entry.weight;
     if (r <= 0) return entry.type;
@@ -599,6 +600,14 @@ const difficultyRankForArea = (area: number): DifficultyRank => {
 
 // Global enemy toughness multiplier on top of the difficulty ramp. Bumped so
 // fights are chunkier and ammo/positioning matter more. Damage is unaffected.
+/**
+ * ★湧きの乱数(TEST_HANDOFF/REQUEST-devbridge.md C・`utils/seededRng.ts`)。
+ * **`?seed=` が無ければ `Math.random` そのもの**なので、通常プレイの分布は1ビットも変わらない。
+ * ★**このファイルの中だけで閉じている**——型の抽選・色個体の抽選・出現辺・初期ずらしを呼ぶ
+ * `generateEnemy` の**呼び出し元18箇所は1行も変えていない**(引数を引き回す必要が無い形にした)。
+ */
+const spawnRng = makeSeededRng('spawn');
+
 const ENEMY_HP_MULT = 5;
 // Global enemy speed multiplier — slows the whole bestiary for a more
 // deliberate, survival-horror pace (matches the slower player).
@@ -649,7 +658,7 @@ const rollColorTierForArea = (area: number, esc = 0, rareMult = 1, noRed = false
   let b = base[0] * boost, p = base[1] * boost, red = noRed ? 0 : base[2] * boost;
   const sum = b + p + red;
   if (sum > DDA_COLOR_SUM_CAP) { const s = DDA_COLOR_SUM_CAP / sum; b *= s; p *= s; red *= s; }
-  const r = Math.random();
+  const r = spawnRng();
   if (r < red) return 'red';
   if (r < red + p) return 'purple';
   if (r < red + p + b) return 'blue';
@@ -803,7 +812,7 @@ const buildEnemy = (
     type,
     experienceValue: stats.experienceValue,
     lastHit: 0,
-    lastShot: Date.now() - Math.random() * 1500,
+    lastShot: Date.now() - spawnRng() * 1500,
     spawnedAt: gameTime,
     isWave,
     distanceZone,
@@ -856,11 +865,11 @@ export const generateEnemy = (
   const dirMag = pressureDirection
     ? Math.hypot(pressureDirection.x, pressureDirection.y)
     : 0;
-  let spawnSide = Math.floor(Math.random() * 4);
+  let spawnSide = Math.floor(spawnRng() * 4);
   if (corridorSpawnEnabled) {
     // 洋館通路: 左右(壁)からは湧かせない。上(奥=side0)主体・一部下(手前=side2)。
     // pressureDirection(移動方向バイアス)は無視=通路の向きに固定。上下端の散布(x/y)は従来式を流用。
-    spawnSide = Math.random() < CORRIDOR_SPAWN_TOP_RATIO ? 0 : 2;
+    spawnSide = spawnRng() < CORRIDOR_SPAWN_TOP_RATIO ? 0 : 2;
   } else if (dirMag > 0.25 && Math.random() < 0.34) {
     const nx = pressureDirection!.x / dirMag;
     const ny = pressureDirection!.y / dirMag;
