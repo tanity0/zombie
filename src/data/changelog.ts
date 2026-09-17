@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4427',
+    items: ['攻撃を食らうと、しゃがんでいるあいだは本当に動けなくなった。近接とカウンターはこれまでどおりすぐ出せる'],
+  },
+  {
     version: '0.25.4426',
     items: ['攻撃を食らうと大きく吹き飛び、しばらく踏ん張れなくなった。重い一撃ほど長く飛ぶ', '攻撃を始めた敵は踏ん張るようになった。崩せるのは会心の一撃だけ'],
   },

@@ -47,10 +47,20 @@ export const PLAYER_HURT_TIER_FRACS = [0.08, 0.20] as const;
 // ③**吹き飛びを段ごとに重くする**(旧は全段一律 460px/s・260ms で、軽い一撃も重い一撃も同じ飛び方だった)。
 // ★順序の設計: **吹き飛ぶ(慣性) → 着地しても動けない → 動けるが撃てない → 復帰**。
 //   `moveLockMs` は `kbMs` より長くする(飛んでいる間+着地後の溜め)。`gunLockMs` は更に長い。
+// ★社長指示2026-09-17(3回目)「**まだ食らっても遅いけど動けちゃってる気がする。
+// ちゃんとしゃがんだまま動けなくして。痛さを感じずらい**」。
+// ★原因: **動けない時間を「被弾の瞬間」から数えていた**ため、吹き飛び(200〜420ms)の間は
+//   飛んでいる=動いているので、**実際に止まっているのは 60〜280ms しかなかった**
+//   (moveLockMs − kbMs)。「遅いけど動けちゃってる」はこれ。
+// ⇒ **`moveLockMs` を `crouchMs` と同じにする**=**しゃがんでいる間はずっと動けない**。
+//   社長の言葉どおり「しゃがんだまま動けない」。**絵と実態が完全に一致する。**
+// ★旧方針「移動ロックはのけぞりより短く(全部止めると理不尽)」は**社長指示で撤回**。
+//   ただし**近接/カウンターは従来どおり止めない**ので、**守りの即応性は残っている**
+//   =「何もできない」ではなく「動けないが弾ける」。ここが理不尽との分かれ目。
 export const PLAYER_HURT_TIERS: readonly PlayerHurtReaction[] = [
-  { crouchMs: 420,  stopMs: 70,  gunLockMs: 420,  moveLockMs: 260, kbSpeedMult: 0.7, kbMs: 200 },  // 軽: かすった
-  { crouchMs: 700,  stopMs: 120, gunLockMs: 700,  moveLockMs: 460, kbSpeedMult: 1.0, kbMs: 320 },  // 中: まともに食らった
-  { crouchMs: 1000, stopMs: 190, gunLockMs: 1000, moveLockMs: 700, kbSpeedMult: 1.5, kbMs: 420 },  // 重: 保たない一撃
+  { crouchMs: 420,  stopMs: 70,  gunLockMs: 420,  moveLockMs: 420,  kbSpeedMult: 0.7, kbMs: 200 },  // 軽: かすった
+  { crouchMs: 700,  stopMs: 120, gunLockMs: 700,  moveLockMs: 700,  kbSpeedMult: 1.0, kbMs: 320 },  // 中: まともに食らった
+  { crouchMs: 1000, stopMs: 190, gunLockMs: 1000, moveLockMs: 1000, kbSpeedMult: 1.5, kbMs: 420 },  // 重: 保たない一撃
 ];
 
 /** 被弾量と最大HPから段(0=軽 / 1=中 / 2=重)を返す。 */

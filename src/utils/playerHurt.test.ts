@@ -54,20 +54,20 @@ describe('isHurtGunLocked — 被弾の復帰ディレイ(銃だけ止まる)', 
   });
 
   // ★社長指示2026-09-17「食らった重さがほしい。エルデンリングをまねて」。
-  it('★移動ロックは「のけぞりより短い」(前半は動けない・後半は動けるが撃てない)', () => {
+  it('★移動ロックはしゃがみと同じ長さ(しゃがんだまま動けない・社長指示2026-09-17)', () => {
     for (const r of PLAYER_HURT_TIERS) {
       expect(r.moveLockMs).toBeGreaterThan(0);
-      expect(r.moveLockMs).toBeLessThan(r.gunLockMs); // 全部止めると「操作を奪われた」=理不尽になる
+      expect(r.moveLockMs).toBe(r.crouchMs); // しゃがんでいる間はずっと動けない
     }
   });
 
-  it('★移動ロックは段ごとの長さだけ true(軽260 / 中460 / 重700)', () => {
+  it('★移動ロックは段ごとの長さだけ true(軽420 / 中700 / 重1000)', () => {
     const t = 10000;
-    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 259)).toBe(true);
-    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 260)).toBe(false);
-    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 459)).toBe(true);
-    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 699)).toBe(true);
-    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 700)).toBe(false);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 419)).toBe(true);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 420)).toBe(false);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 699)).toBe(true);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 999)).toBe(true);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 1000)).toBe(false);
   });
 
   it('★しゃがみの絵と同じ長さ(絵と実態を一致させるのが仕様)', () => {
@@ -85,9 +85,11 @@ describe('isHurtGunLocked — 被弾の復帰ディレイ(銃だけ止まる)', 
 
   it('★「飛ぶ → 動けない → 撃てない」の順序が保たれている', () => {
     for (const r of PLAYER_HURT_TIERS) {
-      expect(r.kbMs).toBeLessThan(r.moveLockMs);     // 飛び終わってもまだ動けない
-      expect(r.moveLockMs).toBeLessThan(r.gunLockMs); // 動けるようになってもまだ撃てない
-      expect(r.gunLockMs).toBe(r.crouchMs);           // 絵と実態が一致
+      expect(r.kbMs).toBeLessThan(r.moveLockMs);  // 飛び終わってもまだ動けない
+      // ★社長指示2026-09-17(3回目)「ちゃんとしゃがんだまま動けなくして」。
+      // 動けない時間 = しゃがみの絵 = 銃ロック。**絵と実態が完全に一致する。**
+      expect(r.moveLockMs).toBe(r.crouchMs);
+      expect(r.gunLockMs).toBe(r.crouchMs);
     }
   });
 

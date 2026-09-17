@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useGameStore, isInputLocked, isGameTimeStopped, ENEMY_REMOVE_CAUSE } from '../store/gameStore';
 import { isHiddenBoss } from '../utils/enemyUtils';
+import { enemyIdleReason } from '../utils/enemyIdleReason';
+import { deriveChaffMoveGrants } from '../utils/chaffMoves';
 import { getSelectedStageId, getBaseGrowthForStage, getBaseGrowth, setBaseGrowth } from '../data/progress';
 
 // 囲い系イベント(arena)が「終わらない」原因調査用。activeEvent 中だけ、fromEvent 敵の
@@ -32,7 +34,45 @@ interface RemSnap { k: 'E' | 'esc' | 'rsc'; type: string; cx: number; cy: number
 // コンソールから window.__remLog() で全件確認、__clearRemLog() で消去。
 const REM_LOG: string[] = [];
 
+// ★近い敵のAI状態(社長の実機診断用・2026-09-17)。「何かの拍子に台本が動かなくなって、ただ寄って
+// くるだけになる」が設計チャットの手元で6条件とも再現しなかったため、**その場で理由が読める**形にする。
+// 1行の見本: `zombie d142 z-wait 止2.4s CD 0.9s`
+//  = 型 / 中心間距離 / いまの相 / 相が最後に変わってからの経過 / **なぜ技に入れないか** / その残り
+// ★`OK` が出ているのに技に入らない個体が居たら、それが探しているもの。
+const enemyAiLines = (s: ReturnType<typeof useGameStore.getState>, seen: Map<string, { ph: string; at: number }>): string[] => {
+  const p = s.player;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const nowMs = Date.now();
+  const near = s.enemies
+    .filter(e => e.corpseUntil === undefined)
+    .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy) }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, 4);
+  if (near.length === 0) return [];
+  const grants = deriveChaffMoveGrants(s.enemies, pcx, pcy, () => true);
+  const out: string[] = ['-- enemy ai --'];
+  for (const { e, d } of near) {
+    const ph = e.aiPhase ?? '-';
+    const prev = seen.get(e.id);
+    if (prev === undefined || prev.ph !== ph) seen.set(e.id, { ph, at: s.gameTime });
+    const stuckS = (s.gameTime - (seen.get(e.id)?.at ?? s.gameTime)) / 1000;
+    const why = enemyIdleReason(e, d, s.gameTime, nowMs, grants.has(e.id), 220);
+    // 残り時間(その理由の待ち)。読む側が「あと何秒待てばよいか」を推理しないで済むように。
+    const left = why === 'CD'
+      ? Math.max(e.chaffMoveCdUntil ?? 0, e.biteReadyAt ?? 0, e.aiReadyAt ?? 0) - s.gameTime
+      : why === 'STUN' ? (e.stunUntil ?? 0) - s.gameTime
+      : why === 'KB' ? (e.knockbackUntil ?? 0) - nowMs
+      : why === 'HITSTUN' ? (e.hitStunUntil ?? 0) - nowMs
+      : 0;
+    const leftTxt = left > 0 ? ` ${(left / 1000).toFixed(1)}s` : '';
+    const mark = why === 'OK' && stuckS > 3 ? ' ★' : '';   // ★=入れるのに入っていない=本物の疑い
+    out.push(` ${e.type} d${Math.round(d)} ${ph} 止${stuckS.toFixed(1)}s ${why}${leftTxt}${mark}`);
+  }
+  return out;
+};
+
 const DebugOverlay: React.FC = () => {
+  const aiSeen = useRef(new Map<string, { ph: string; at: number }>());
   const [, setTick] = useState(0);
   const raf = useRef<number | undefined>(undefined);
   const prevEnts = useRef<Map<string, RemSnap>>(new Map());
@@ -121,6 +161,8 @@ const DebugOverlay: React.FC = () => {
     ...(s.debugLoopError ? [`ERR ${s.debugLoopError}`] : []),
     // 囲い系イベント診断: 何故終わらないか(fromEvent敵の数/距離/状態/HP/画面内外)を毎フレーム表示。
     ...arenaDebugLines(s),
+    // ★近い敵のAI状態(2026-09-17): 何故技に入らないかを1語で。★=入れるのに入っていない疑い。
+    ...enemyAiLines(s, aiSeen.current),
     // 消失ログ(死亡/リセット跨ぎで残る・直近6件)。ALIVE!=生きたまま消えた=バグ。__remLog() で全件。
     ...(REM_LOG.length ? ['-- vanish log --', ...REM_LOG.slice(0, 6)] : []),
     // 拠点の永続Lv/EXP(出撃中のHP/captured等とは別。stage×base ごと・未登録=Lv1/EXP0)。
