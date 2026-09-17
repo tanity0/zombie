@@ -105,6 +105,11 @@ import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate, comboMiles
 import { playerHurtTier, playerHurtReactionOf, isHurtMoveLocked } from '../utils/playerHurt';
 import { isEnemyAttacking } from '../utils/combatFeel';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
+// ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
+import {
+  enemyHitReaction, hitReactionStrength, knockbackSpeedMul, knockbackDurationMul, hitStopMul,
+  FLINCH_FULL_DAMAGE_FRAC, FLINCH_FULL_DAMAGE_FRAC_BOSS,
+} from '../utils/hitFlinch';
 import { impactDamageOf, mergeImpactEntries, strongestImpact, IMPACT_MELEE_MIN, type ImpactEntry, type ImpactFlags } from '../utils/impactShake'; // 揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)
 import {
   normalizeDir, biasedBurstAngle,
@@ -12197,7 +12202,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (雑魚60/強個体40/ボス級0=combatFeel.hitStunMsFor)。DoT(燃焼・血棘・味方弾)は対象外。
       // 再発火ガード(HIT_STUN_REARM_MS)込み。ノックバックの期限ずらしは knockbackEnemy 側(呼び手が直後に呼ぶ)。
       // damageChannel===null は「プレイヤー起因ではない」(護衛NPCの弾)=止めない(v0.25.4270・監査A-3)。
-      const hitStunNext = (hateSource === 'player' && eff > 0 && damageChannel !== 'dot' && damageChannel !== null && newHealth > 0) ? nextHitStunUntil(enemy.type, enemy.hitStunUntil, Date.now()) : undefined;
+      // ★停止時間も被弾量と連動(社長指示2026-09-17)。`eff` はこのヒットの実ダメージ。
+      const hitStunNext = (hateSource === 'player' && eff > 0 && damageChannel !== 'dot' && damageChannel !== null && newHealth > 0)
+        ? nextHitStunUntil(enemy.type, enemy.hitStunUntil, Date.now(),
+            hitStopMul(hitReactionStrength(eff, enemy.maxHealth,
+              isBossType(enemy.type) ? FLINCH_FULL_DAMAGE_FRAC_BOSS : FLINCH_FULL_DAMAGE_FRAC)))
+        : undefined;
       const hitStunPatch = hitStunNext !== undefined ? { hitStunUntil: hitStunNext } : {};
       // ★被弾量の打刻(社長裁定2026-09-16「0.15から」)。描画側が**のけぞりの強さ**をこれで決める
       // (`utils/hitFlinch.ts`)。旧v0.25.4374はチャネル(`'dot'`)で丸ごと除外していたが、
@@ -16262,13 +16272,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 戦闘の手触り①(v0.25.4269): 局所ストップ中なら期限をその残りぶん後ろへ(止めが明けてから満額で飛ぶ)。
         // 呼び手は damageEnemy の直後にこれを呼ぶので、書かれたばかりの hitStunUntil がここで見える。
         const stunShift = (e.hitStunUntil !== undefined && e.hitStunUntil > now) ? e.hitStunUntil - now : 0;
+        // ★ノックバックものけぞりと連動(社長指示2026-09-17「のけぞりとノックバックは連動」)。
+        // `strength` は**武器の押しの強さ**、`rMul` は**そのヒットの重さ**——別の軸なので掛け合わせる。
+        // 基準は「ハンドガン1発で今と同じ距離」。小さいダメージだけが弱く押す。
+        const r = enemyHitReaction(e);
+        const rSpd = knockbackSpeedMul(r), rDur = knockbackDurationMul(r);
         if (!isBossType(e.type)) {
           // 通常敵はDR無し(手応えは意図的に強い仕様・不変)。
           return {
             ...e,
-            knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength,
-            knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength,
-            knockbackUntil: now + KNOCKBACK_DURATION + stunShift,
+            knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength * rSpd,
+            knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength * rSpd,
+            knockbackUntil: now + KNOCKBACK_DURATION * rDur + stunShift,
           };
         }
         const dr = evaluateBossStopDr(e, now);
@@ -16279,9 +16294,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         return {
           ...e,
-          knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength,
-          knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength,
-          knockbackUntil: now + KNOCKBACK_DURATION * dr.durationMult + stunShift,
+          knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength * rSpd,
+          knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength * rSpd,
+          knockbackUntil: now + KNOCKBACK_DURATION * dr.durationMult * rDur + stunShift,
           ...dr.patch,
         };
       })

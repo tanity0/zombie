@@ -90,11 +90,18 @@ export const hitStunMsFor = (type: EnemyType): number => {
  * 新しい hitStunUntil(書かないなら undefined)。prevUntil=その敵の今の値。
  * 再発火ガード: 前の止めの開始(prevUntil − その区分の長さ)から REARM 未満なら書かない。
  */
-export const nextHitStunUntil = (type: EnemyType, prevUntil: number | undefined, nowMs: number): number | undefined => {
+export const nextHitStunUntil = (
+  type: EnemyType, prevUntil: number | undefined, nowMs: number,
+  // ★被弾リアクションの強さ(`utils/hitFlinch.ts`)。社長指示2026-09-17「**停止時間もそれによって
+  // 長く設けるなどしたい**」。**重い一発ほど画面が長く止まる**=手応えの本体。
+  // 省略時は1(=従来どおり区分の固定値)。★再発火ガードは**区分の基準値**で測る(伸ばした側の
+  // 長さで測ると、重い一発の後だけガードが利かなくなる)。
+  reactionMul = 1,
+): number | undefined => {
   const ms = hitStunMsFor(type);
   if (ms <= 0) return undefined;
   if (prevUntil !== undefined && nowMs < prevUntil - ms + HIT_STUN_REARM_MS) return undefined;
-  return nowMs + ms;
+  return nowMs + Math.round(ms * reactionMul);
 };
 
 // ---- ② 連続撃破の段 ----

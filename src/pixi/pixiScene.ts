@@ -34,7 +34,8 @@ import type { EndingSoldier, EndingPhillState, EndingBomb } from '../utils/endin
 import { endingBombFallY, isEndingSoldierTumbling, ENDING_BLOWN_MS } from '../utils/endingScene';
 import { SIGNAL_STRIKE_DELAY_MS, type SignalStrike } from '../utils/signalLauncher';
 import { playerHurtReactionOf } from '../utils/playerHurt';
-import { enemyFlinchStrength } from '../utils/hitFlinch'; // のけぞりの強さ=ダメージ量で決まる(v0.25.4376)
+// ★被弾リアクションの強さ(しなり/跳ね/フラッシュ/光/ノックバック/停止時間が読む唯一の窓口・2026-09-17)
+import { enemyHitReaction, hopMul, flashMul } from '../utils/hitFlinch';
 import { fallenSoldiersInRange } from '../utils/endingScene';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
@@ -17557,7 +17558,8 @@ export class PixiScene {
     // 実際には押されていないのに跳ねてしまっていた。実速度が乗っている時だけ跳ねるようガード。
     const kbMoving = Math.abs(e.knockbackVx ?? 0) > 0.01 || Math.abs(e.knockbackVy ?? 0) > 0.01;
     const kbHop = (e.knockbackUntil !== undefined && now < e.knockbackUntil && kbMoving)
-      ? Math.sin(Math.max(0, Math.min(1, (now - e.lastHit) / KNOCKBACK_HOP_MS)) * Math.PI) * KNOCKBACK_HOP_PX
+      ? Math.sin(Math.max(0, Math.min(1, (now - e.lastHit) / KNOCKBACK_HOP_MS)) * Math.PI)
+        * KNOCKBACK_HOP_PX * hopMul(enemyHitReaction(e))   // ★量と連動(2026-09-17)
       : 0;
     // 裏ボスは「当たり判定=足元の帯(AABB)」と「絵(巨体)」を分離して描く(社長指示)。
     // 他敵は従来どおり足元アンカー＋遠近スケール。
@@ -17643,13 +17645,15 @@ export class PixiScene {
           phillDiveOff = -(this.screenH / zoomPh + scale * tex.height) * diveLift;
         }
       }
-      // ★しなりの**強さはダメージ量で決まる**(`utils/hitFlinch.ts`・社長裁定2026-09-16「0.15から」)。
-      // 延焼の1tickのような小さいダメージほど浅くなり、強打は満額。ボス・強個体は満額のまま。
-      // 点滅・跳ね・光は `lastHit` を直接見ているので従来どおり出る=「効いている」は常に伝わる。
+      // ★被弾リアクションの強さは**そのヒットのダメージで決まる**(`utils/hitFlinch.ts` が唯一の窓口)。
+      // ★社長指示2026-09-17「**のけぞりとノックバックは連動。停止時間もそれによって長く**」
+      // 「**体感あるくらいののけぞりを下限にして、そこから計算**」。
+      // **しなり・跳ね・白フラッシュ・被弾の光・ノックバック・停止時間が同じ1つの数を読む**
+      // (旧はしなりだけが量を見ていて、残りは満額で出ていた=「延焼でも常にのけぞって見える」の正体)。
       const sinceHit = now - e.lastHit;
       let flinchSqY = 1, flinchSqX = 1;
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
-        const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS, enemyFlinchStrength(e));
+        const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS, enemyHitReaction(e));
         const dir = (e.knockbackVx ?? 0) > 0.01 ? 1 : (e.knockbackVx ?? 0) < -0.01 ? -1 : 1;
         view.sprite.skew.x = -dir * fp.skew;
         flinchSqY = fp.sqY; flinchSqX = fp.sqX;
@@ -17843,13 +17847,15 @@ export class PixiScene {
       const breath = this.enemyBreath(e, now, view, gameTime);
       // 被弾しなり: 撃たれた直後だけ頭(上方)を後ろ(ノックバック方向)へ skew で反らせ、軽く縦縮み。
       // アンカーが足元寄りなので skew だけで頭が大きく振れる。短時間で戻る。新規描画なし=軽い。
-      // ★しなりの**強さはダメージ量で決まる**(`utils/hitFlinch.ts`・社長裁定2026-09-16「0.15から」)。
-      // 延焼の1tickのような小さいダメージほど浅くなり、強打は満額。ボス・強個体は満額のまま。
-      // 点滅・跳ね・光は `lastHit` を直接見ているので従来どおり出る=「効いている」は常に伝わる。
+      // ★被弾リアクションの強さは**そのヒットのダメージで決まる**(`utils/hitFlinch.ts` が唯一の窓口)。
+      // ★社長指示2026-09-17「**のけぞりとノックバックは連動。停止時間もそれによって長く**」
+      // 「**体感あるくらいののけぞりを下限にして、そこから計算**」。
+      // **しなり・跳ね・白フラッシュ・被弾の光・ノックバック・停止時間が同じ1つの数を読む**
+      // (旧はしなりだけが量を見ていて、残りは満額で出ていた=「延焼でも常にのけぞって見える」の正体)。
       const sinceHit = now - e.lastHit;
       let flinchSqY = 1, flinchSqX = 1;
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
-        const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS, enemyFlinchStrength(e)); // 出は速く戻りは緩い(慣性)
+        const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS, enemyHitReaction(e)); // 出は速く戻りは緩い(慣性)
         const dir = (e.knockbackVx ?? 0) > 0.01 ? 1 : (e.knockbackVx ?? 0) < -0.01 ? -1 : 1;
         view.sprite.skew.x = -dir * fp.skew; // 頭が殴られた向きの逆へ反る
         flinchSqY = fp.sqY; flinchSqX = fp.sqX; // 縦に潰れて横へ張る
@@ -18045,7 +18051,8 @@ export class PixiScene {
     {
       const hf = view.hitFlash;
       const flashT = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1
-        ? Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_FLASH_MS) : 0;
+        // ★量と連動(2026-09-17)。小さいダメージほど薄く光る(旧は量によらず満額だった)。
+        ? Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_FLASH_MS) * flashMul(enemyHitReaction(e)) : 0;
       // 延焼中の薄い赤点滅(社長指示v0.25.3272)/氷鈍化中の薄い水色点滅(社長指示v0.25.3276)。
       // 被弾フラッシュと同じシルエット機構を流用し、被弾(白)が出ていない間だけ弱い明滅を乗せる
       // (読むだけ・判定はstoreのburnUntil/iceSlowUntil)。
@@ -23107,7 +23114,8 @@ export class PixiScene {
       view.light.visible = false;
       return;
     }
-    const hitT = Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_LIGHT_MS);
+    // ★量と連動(2026-09-17・跳ね/フラッシュと同じ1つの数)。
+    const hitT = Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_LIGHT_MS) * flashMul(enemyHitReaction(e));
     // PACING_PUZZLE.md §9-7#1(pixiSceneのカリング保護対象の光): driller はpumpkinと同格。
     const boss = isPumpkinTier(e.type) || e.type === 'giantbat' || isReaperFamily(e.type) || e.type === 'hunter' || isHiddenBoss(e.type);
     if (this.enemyCount >= ENEMY_LIGHT_CULL_COUNT && !boss && hitT <= 0) {
