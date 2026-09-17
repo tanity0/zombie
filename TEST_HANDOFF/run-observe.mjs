@@ -365,6 +365,14 @@ if (!endedReason) { endedReason = 'timeLimit'; pushEvent('timeout', lastGameTime
 
 const finalState = await readState();
 
+// ★B(P0-2)の回収: src 側が溜めた短命イベント(dodge/counter/skillUsed/upgrade*/enemySpawn/
+//   bossDefeated/paused/resumed)を丸ごと取る。?testbridge=1 が無ければ undefined。
+const bridgeEvents = await page.evaluate(() => {
+  const f = window.__TEST_EVENTS__;
+  return typeof f === "function" ? f() : null;
+}).catch(() => null);
+const bridgeEventCounts = (bridgeEvents ?? []).reduce((m, e) => { m[e.eventType] = (m[e.eventType] ?? 0) + 1; return m; }, {});
+
 // ── P0-4の後段: 一時領域から results/ へ **最大5枚だけ** 移す ──────────────────────────
 shots.sort((a, b) => a.priority - b.priority || a.atRealSec - b.atRealSec);
 const kept = shots.slice(0, 5);
@@ -400,7 +408,11 @@ const manifest = {
   query: Object.fromEntries(new URL(url).searchParams.entries()),
   // ★seed: 現状 src/ 側に URL から乱数seedを受ける口が無い(mulberry32(1) 固定)。
   //   P0-3の seed固定は REQUEST-devbridge.md で設計チャットへ発注済み。着地したらここに実値が入る。
-  seed: { requested: null, effective: null, note: 'src/側に seed の口が無いため未固定(REQUEST-devbridge.md P0-3)' },
+  seed: {
+    requested: new URL(url).searchParams.get('seed'),
+    effective: finalState?.seed ?? null,   // Bridge が返す「実際に使われた値」(未指定は既定の1)
+    note: 'seed 配下は段階的に拡大中。Bridge の seed はレベルアップ選択と敵の湧きを代表する値',
+  },
   observed: {
     gateClicks, shopFixes, maxEnemies,
     consoleErrorCount: consoleErrors.length,
@@ -413,7 +425,9 @@ const manifest = {
     kept: s.kept, tempPath: s.kept ? null : s.file,
   })),
   tempDir: tmpDir,
-  events,
+  events,                 // ランナー側の差分観測
+  bridgeEvents,           // ★src側の台帳(__TEST_EVENTS__)。null なら ?testbridge=1 が無い
+  bridgeEventCounts,
   consoleErrors,
 };
 const outJson = path.join(outDir, `${stamp}-observe-${MODE}.json`);
@@ -422,6 +436,7 @@ fs.writeFileSync(outJson, JSON.stringify(manifest, null, 2));
 console.log(`\n[結果] 終了理由=${endedReason} 実${realSec()}s イベント${events.length}件 consoleエラー${consoleErrors.length}件`);
 console.log(`[状態源] ${via}${via === 'gameStore' ? '(dev 5173。P0-1着地後は bridge に切り替わる)' : ''}`);
 console.log(`[スクショ] 候補${shots.length}枚 → results/ へ${kept.length}枚(残り${dropped.length}枚は ${tmpDir} に保持)`);
+console.log(`[Bイベント] ${bridgeEvents ? `${bridgeEvents.length}件 ${JSON.stringify(bridgeEventCounts)}` : '取得できず(?testbridge=1 が無い)'}`);
 console.log(`[out] ${outJson}`);
 await ctx.close();
 await browser.close();
