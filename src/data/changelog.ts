@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4454',
+    items: [
+      'ステージ2のクリア書類が、本来あるべき奥の区域まで戻った。そのぶん道のりは長くなる',
+    ],
+  },
+  {
     version: '0.25.4453',
     items: [
       '帯の内側に居るコウモリと骸骨が、円や回り込みに入れなくなっていたのが直った',

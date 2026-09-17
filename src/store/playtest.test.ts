@@ -392,12 +392,24 @@ describe('M26 Step2: ゲート+凶悪ハンターのヘッドレス接続(§6.2)
     try {
       useGameStore.getState().resetGame('rogue');
       // ★v0.25.4453: ゲート1の発火点が 5000 → `AREA_THRESHOLDS[2]`(=7500)へ動いた(v0.25.4450の
-      // 区域一本化)。原点から歩かせると**実測で8分**かかり、このスイート最遅のテストがさらに倍以上に
-      // なる。**見たいのは「境界でゲートが発火して拘束され、必ず終わる」**ことなので、
-      // **デンジャーゾーンの入口から始める**(芯①「拠点0でデンジャー以深」も同時に満たす)。
+      // 区域一本化+社長指示2026-09-18「距離は伸ばす前と相関を変えない=伸びる分は伸びる」)。
+      //
+      // ★原点から歩かせる形は**捨てた**。実測でデンジャー入口→未確認入口に直進換算の約7倍
+      // (数分)かかり、しかも `playtestDriver` のボットは `Math.random()` が素のまま(7箇所)=
+      // **seed化されていない**ので、旅程が長いほど**結果が回ごとに変わる**(予算を3回変えて
+      // 通ったり落ちたりした)。**このテストが見たいのは「歩けるか」ではなく
+      // 「境界でゲートが発火して拘束され、必ず終わるか」**。
+      // ⇒ **境界の手前600pxから始める**。芯①(拠点0でデンジャー以深=凶悪ハンター)も満たす
+      // (開始地点は既にデンジャーゾーンの奥)。
+      // ★HPを厚くする(v0.25.4453・実測で必要になった)。区域一本化でゲート①の発火点が
+      // 5000 → 7500 へ動いた結果、**ゲート戦が一段深い区域(未確認汚染=難度1.75倍)で起きる**ように
+      // なり、rusher は**発火から約7秒で死ぬ**(実測 died=true・firedAt→死亡まで446tick)。
+      // このテストが見たいのは**ゲートの状態機械**(発火→拘束→必ず終わる)であって
+      // ボットの生存力ではないので、**死なせない条件を与えて状態機械だけを見る**。
+      // ★「rusherが生身で抜けられるか」は別の話で、**体感の問題として社長へ上げてある**。
       {
         const st = useGameStore.getState();
-        useGameStore.setState({ player: { ...st.player, x: AREA_THRESHOLDS[1] + 200, y: 0 } });
+        useGameStore.setState({ player: { ...st.player, x: AREA_THRESHOLDS[2] - 600, y: 0, health: 100000, maxHealth: 100000 } });
       }
       const refs = createPlaytestRefs();
       const rusherState = createRusherTrackState();
@@ -405,15 +417,14 @@ describe('M26 Step2: ゲート+凶悪ハンターのヘッドレス接続(§6.2)
       // ★v0.25.4453: ゲート1の発火点が**区域境界の正本**に揃った(v0.25.4450の一本化)。
       // 旧: 素の 5000 でベタ書き → 今: `AREA_THRESHOLDS[2]` = 7500(未確認汚染エリアの入口)。
       // ⇒ 到達までの距離が1.5倍になったので、**走行予算も境界から導出**する(数字を写さない)。
-      const GATE1_DIST = AREA_THRESHOLDS[2];
-      // 残りの距離(デンジャー入口→未確認入口)から予算を引く。数字は写さず境界から導出する。
-      const REACH_S = (GATE1_DIST - AREA_THRESHOLDS[1]) / PLAYER_BASE_SPEED;
-      // ★予算は多めに取り、**ゲートが終わった時点で抜ける**(下の break)。こうすると
-      // 「境界が遠くなっても落ちない」かつ「通常は早く終わる」の両立になる——
-      // 予算を当て推量で刻むと、境界が動くたびにこのテストが赤くなる(今回それで落ちた)。
-      // 実測(v0.25.4453): デンジャー入口から未確認入口まで、rusher は**直進換算の約7倍**かかる
-      // (蛇行+交戦)。予算はその実測から取り、**ゲートが終わった時点で抜ける**ので通常は早く終わる。
-      const MAX_TICKS = Math.ceil((REACH_S * 10 + 60) * 60);
+      // 残り600pxぶんの予算(直進なら約7秒。蛇行の余裕を大きく取る)。数字は写さず境界から導出する。
+      const REACH_S = 600 / PLAYER_BASE_SPEED;
+      // ★予算の当て推量はやめた(v0.25.4453・3回外した)。ボットが境界へ着くまでの時間は
+      // **seed化されていない**(`playtestDriver` の `Math.random()` 7箇所)ので**回ごとに変わる**。
+      // ⇒ **発火した時点から数える**: 着くまでは上限まで待ち、着いたら「ゲートの尺40秒+余白」で締める。
+
+      const HARD_CAP_TICKS = Math.ceil((REACH_S * 15 + 60) * 60);
+      const GATE_WINDOW_TICKS = Math.ceil((40 + 20) * 60); // ゲートの時間切れ40s + 余白
 
       let hunterSeen = false;
       let gate1Fired = false;
@@ -421,13 +432,17 @@ describe('M26 Step2: ゲート+凶悪ハンターのヘッドレス接続(§6.2)
       let maxExcess = 0; // 拘束中にアリーナ半径をどれだけはみ出したか(最大)
       let gate1Ended = false;
 
-      for (let i = 0; i < MAX_TICKS; i++) {
+      let firedAtTick = -1;
+      let diedAtTick = -1;
+      for (let i = 0; i < HARD_CAP_TICKS; i++) {
+        if (firedAtTick >= 0 && i > firedAtTick + GATE_WINDOW_TICKS) break; // 発火後はゲートの尺だけ回す
         const nextGameTime = useGameStore.getState().gameTime + dt * 1000;
         vi.setSystemTime(realEpoch + nextGameTime);
         runPlaytestTick(refs, { persona: 'rusher', tickIndex: i, wanderSeed: 0, dt, rusherState }); // events既定ON
         const s = useGameStore.getState();
         if (s.enemies.some(e => e.type === 'hunter')) hunterSeen = true;
         if (refs.gate.activeGate === 1) {
+          if (!gate1Fired) firedAtTick = i;
           gate1Fired = true;
           const ae = s.activeEvent;
           if (ae) {
@@ -439,12 +454,12 @@ describe('M26 Step2: ゲート+凶悪ハンターのヘッドレス接続(§6.2)
         } else if (gate1Fired && refs.gate.activeGate === null) {
           gate1Ended = true;
         }
-        if (s.player.health <= 0) break;
+        if (s.player.health <= 0) { diedAtTick = i; break; }
         if (gate1Ended) break; // 芯④まで見届けたら終了(残りの予算を空回ししない)
       }
 
       console.log(`\n=== M26-S2 ゲート+ハンター・シナリオ ===`);
-      console.log(`  hunterSeen=${hunterSeen} gate1Fired=${gate1Fired} confinedSamples=${confinedSamples} maxExcess=${maxExcess.toFixed(1)}px gate1Ended=${gate1Ended} gate1Cleared=${refs.gate.gate1Cleared}`);
+      console.log(`  died=${diedAtTick >= 0}(tick ${diedAtTick}) firedAt=${firedAtTick} hunterSeen=${hunterSeen} gate1Fired=${gate1Fired} confinedSamples=${confinedSamples} maxExcess=${maxExcess.toFixed(1)}px gate1Ended=${gate1Ended} gate1Cleared=${refs.gate.gate1Cleared}`);
 
       // 芯①: 拠点0でデンジャー以深へ入った=凶悪ハンターが発生する。
       expect(hunterSeen).toBe(true);
