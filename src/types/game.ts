@@ -156,6 +156,14 @@ export interface Player extends DashLocomotionState {
    */
   grabbedUntil?: number;
   /**
+   * ★被弾無敵を「敵ごと」に持つ(社長裁定2026-09-17)。キー=敵のid、値=その敵に最後に食らった Date.now。
+   * **同じ敵からの連打は防ぐ / 別の敵からは食らう**=エルデンリングと同じ。
+   * 旧は1本の `invulnerable` だけだったので、**敵が10体でも1体でも被弾は8回**(1秒に1発)になり、
+   * **敵の数が難度に効いていなかった**(実測2026-09-17)。
+   * ★`INVULN_MS` より古い項は書き込みのたびに掃除する(際限なく増やさない)。
+   */
+  iframeBySource?: Record<string, number>;
+  /**
    * ★近接の前隙(社長裁定2026-08-24・SAME_ARENA.md §7): 指を離した時刻(Date.now)。
    * `MELEE_WINDUP_MS` 経過後に **useGameLoop が判定を解決**する。0=前隙中の振りは無い。
    * **カウンターされたら 0 に戻す**(=振りが中断される)。窓・CDは指を離した瞬間に張るので

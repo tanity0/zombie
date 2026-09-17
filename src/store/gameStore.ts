@@ -5676,7 +5676,7 @@ interface GameState {
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string) => boolean; // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
+  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string) => boolean; // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
@@ -10466,7 +10466,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { boomerang, flare, junk, clone, mine, goldRing };
   },
 
-  damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove) => {
+  damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove, sourceId) => {
     const { player } = get();
 
     // 二人組クエストv2 §2-8(納品ロック): 納品成立後は被弾を入口で無条件に棄却する。
@@ -10479,7 +10479,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     // プレイヤー側だけが除外していなかった=幻影の近接が銃の i-frame に吸われる非対称があった。
     // 規則の正本は phantomGate の1本(playerIframeApplies / iframeAppliesToSource)。
     // **通常の敵・環境ダメージには1bitも影響しない**(damagerType が幻影の時だけ門が開く)。
-    if (player.invulnerable && playerIframeApplies(damagerType)) return false;
+    // ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17「はい」)。`sourceId` が渡された時だけ、
+    // **1本の `invulnerable` ではなく、その敵からの前回被弾**で弾く。
+    // ⇒ **同じ敵の連打は防ぐ(多段技の3発目対策=v0.25.3599の裁定は守られる)/ 別の敵からは食らう。**
+    // 旧は1本だったので **敵が10体でも1体でも被弾8回**(1秒に1発)=敵の数が難度に効いていなかった(実測)。
+    // `sourceId` を渡さない経路(ボスの技・罠・環境)は**従来どおり**=1bitも変えない。
+    if (sourceId !== undefined) {
+      const lastFromThis = player.iframeBySource?.[sourceId];
+      if (lastFromThis !== undefined && Date.now() - lastFromThis < INVULN_MS) return false;
+    } else if (player.invulnerable && playerIframeApplies(damagerType)) {
+      return false;
+    }
 
     // 社長指示v0.25.3300 ナイト覚醒(Lv3): 一定確率(KNIGHT_AWAKEN_NULLIFY_CHANCE=20%。
     // 社長「10%でもいいかも?バランス次第」)で被ダメージを完全無効化。盾色の小フラッシュだけ出す
@@ -10632,6 +10642,18 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 段(軽/中/重)は**実際に減ったHP**(amount=軽減後)と最大HPの割合で決まる。
           lastHurtAt: amount > 0 ? kbNow : state.player.lastHurtAt,
           lastHurtTier: amount > 0 ? hurtTier : state.player.lastHurtTier,
+          // ★敵ごとの被弾無敵の記録(社長裁定2026-09-17)。INVULN_MS より古い項は同時に掃除する。
+          iframeBySource: (amount > 0 && sourceId !== undefined)
+            ? (() => {
+                const next: Record<string, number> = {};
+                const cutoff = kbNow - INVULN_MS;
+                for (const [k, v] of Object.entries(state.player.iframeBySource ?? {})) {
+                  if (v > cutoff) next[k] = v;
+                }
+                next[sourceId] = kbNow;
+                return next;
+              })()
+            : state.player.iframeBySource,
           knockbackVx: kbApply ? kbVx : state.player.knockbackVx,
           knockbackVy: kbApply ? kbVy : state.player.knockbackVy,
           knockbackUntil: kbApply ? kbNow + playerHurtReactionOf(hurtTier).kbMs : state.player.knockbackUntil,

@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4429',
+    items: ['囲まれると本当に危なくなった。別々の敵からの攻撃は、続けて食らうようになる'],
+  },
+  {
     version: '0.25.4428',
     items: ['軽い一撃で吹き飛ばなくなっていたのを直した。重い一撃ほど大きく飛ぶ'],
   },

@@ -1447,7 +1447,8 @@ export const applyContactDamage = (
     // 無敵中(INVULN_MS=1000)は damagePlayer が弾く=群れで同時に噛まれても食らう量は増えない。
     // 演出も「実際に入った時だけ」出す(弾かれた時に赤フラッシュが出ると嘘になる)。
     const wasVulnerable = !useGameStore.getState().player.invulnerable;
-    const died = useGameStore.getState().damagePlayer(h.dmg, '噛みつき', h.x, h.y);
+    // ★被弾無敵は「敵ごと」(社長裁定2026-09-17): この敵のidを渡す=別の敵からは同じ秒でも食らう。
+    const died = useGameStore.getState().damagePlayer(h.dmg, '噛みつき', h.x, h.y, undefined, undefined, undefined, h.id);
     if (wasVulnerable) {
       fx.playSfx('player-damage');
       fx.spawnFlash('rgba(239,68,68,0.22)', 200);
@@ -1638,7 +1639,8 @@ export const applyContactDamage = (
     // damagePlayerは毎回died=trueを返すため、i-frame明け(約1秒)ごとにKILL!+最大ズームが再発火して
     // 死亡ズームを2回潰していた。演出は遷移の1回だけ撃つ(同フレーム複数接触の二重発火もこれで塞がる)。
     const wasAliveBeforeContact = useGameStore.getState().player.health > 0;
-    const playerDied = useGameStore.getState().damagePlayer(enemy.damage * rnMelee * scMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, undefined, undefined, contactDamageMoveKey(enemy));
+    // ★被弾無敵は「敵ごと」(社長裁定2026-09-17)。
+    const playerDied = useGameStore.getState().damagePlayer(enemy.damage * rnMelee * scMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, undefined, undefined, contactDamageMoveKey(enemy), enemy.id);
     if (damageWasApplied) {
       fx.playSfx('player-damage');
       fx.spawnFlash('rgba(239,68,68,0.22)', 200);
