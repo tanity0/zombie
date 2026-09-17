@@ -93,13 +93,15 @@ describe('★受け入れ条件11: b-orbit中は円が距離を詰めない・fl
     expect(d).toBeLessThan(BAT_ORBIT_RADIUS_PX * 1.2);
   });
 
-  it('円運動中の実速度は素の実速度より明確に遅い(0.45倍側)', () => {
+  // ★v0.25.4453: 旧テストは「円は0.45倍で遅い」を縛っていたが、v0.25.4436(「コウモリの円を等倍へ」)で
+  // **技としての円は等倍**になった。**半速で回るのは §16-B の間合い保持の層の役目**へ移っている
+  // (`KEEP_ORBIT_SPEED_MULT = 0.5`)。⇒ 縛るのは倍率ではなく「**技の円は素の速度を超えない**」の方。
+  it('円運動中の実速度は素の実速度を超えない(技の円は等倍・遅くする役は保持層が持つ)', () => {
     const e = place(BAT_ORBIT_RADIUS_PX, { aiPhase: 'b-orbit', aiPhaseUntil: START_GT + 5000, chaffOrbitCx: ORIGIN, chaffOrbitCy: ORIGIN });
     tick(START_GT + 1000 / 60);
     const after = first();
     const spd = Math.hypot(after.vx ?? 0, after.vy ?? 0);
-    // 刻みの「動く」区間もあるので0の瞬間もありうるが、動いている時は素の速度未満のはず。
-    if (spd > 0.01) expect(spd).toBeLessThan(e.speed);
+    if (spd > 0.01) expect(spd).toBeLessThanOrEqual(e.speed + 1e-6);
   });
 });
 

@@ -1,5 +1,6 @@
 // Headless simulation invariants. Drives the renderer-agnostic store
 // (no Pixi/React; the store imports no audio and its localStorage readers are
+import { knockbackDurationMul } from '../utils/hitFlinch';
 // try/catch-guarded, so it loads cleanly under the default node env) through
 // many ticks and asserts the sim never produces NaN/Infinity, never throws,
 // and keeps counts/health sane. The "auto-debug" net for the logic layer —
@@ -22,7 +23,7 @@ import type { Enemy } from '../types/game';
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { runClocks } from '../utils/runClocks';
-import { applyBossPostureDamage, BOSS_POSTURE_BREAK_MS } from '../utils/bossPosture';
+import { applyBossPostureDamage, BOSS_POSTURE_BREAK_MS, POSTURE_CHIP_CD_MS } from '../utils/bossPosture';
 import type { InputState, Projectile, EnemyType, SkillKey, UpgradeOption } from '../types/game';
 import { SKILLS } from '../data/campaign';
 
@@ -275,21 +276,29 @@ describe('headless simulation invariants', () => {
   });
 
   it('hidden boss enters posture break after five counters, then ignores further posture damage', () => {
+    // ★v0.25.4453: 削りに **CD(POSTURE_CHIP_CD_MS=300ms)** が入った(社長指示2026-09-17
+    // 「体勢値について、削りに若干のCDを設ける0.3秒くらい」)。旧テストは**同じ時刻で5連打**していたので、
+    // 2発目以降がCDで弾かれて落ちる。連打ではなくCDを跨いで入れる形へ直し、
+    // **CDが効いていること自体も1行で縛る**(直した理由がテストから読める)。
     const t = 10_000;
+    const step = POSTURE_CHIP_CD_MS;
     let e = spawnEnemyAt('mimir', 0, 0, 0);
     for (let i = 0; i < 4; i++) {
-      const r = applyBossPostureDamage(e, 'counter', t);
+      const r = applyBossPostureDamage(e, 'counter', t + i * step);
       expect(r).not.toBeNull();
       expect(r!.triggered).toBe(false);
       e = { ...e, ...r!.patch };
+      // ★CD中の追い打ちは通らない(削りの連打で一気に崩せない)
+      expect(applyBossPostureDamage(e, 'counter', t + i * step + step - 1)).toBeNull();
     }
-    const last = applyBossPostureDamage(e, 'counter', t);
+    const tLast = t + 4 * step;
+    const last = applyBossPostureDamage(e, 'counter', tLast);
     expect(last!.triggered).toBe(true);
-    expect(last!.patch.bossFullStunUntil).toBe(t + BOSS_POSTURE_BREAK_MS);
-    expect(last!.patch.stunUntil).toBe(t + BOSS_POSTURE_BREAK_MS);
+    expect(last!.patch.bossFullStunUntil).toBe(tLast + BOSS_POSTURE_BREAK_MS);
+    expect(last!.patch.stunUntil).toBe(tLast + BOSS_POSTURE_BREAK_MS);
     expect(last!.patch.bossPosture).toBe(0);
     e = { ...e, ...last!.patch };
-    expect(applyBossPostureDamage(e, 'counter', t + 100)).toBeNull();
+    expect(applyBossPostureDamage(e, 'counter', tLast + step + 100)).toBeNull();
     expect(applyBossPostureDamage(spawnEnemyAt('zombie', 0, 0, 0), 'counter', t)).toBeNull();
   });
 
@@ -838,18 +847,24 @@ describe('knockbackEnemy: 自動タレット/連射武器を模した高頻度�
     expect(sawGapWhereNotStopped).toBe(true);
   });
 
+  // ★v0.25.4453: ノックバックの**長さ自体がのけぞりと連動**するようになった
+  // (社長指示2026-09-17「のけぞりとノックバックは連動」)。これらの敵は `lastHitDmg` を持たない
+  // (`knockbackEnemy` を直に呼んでいる)ので、のけぞりは満額=`knockbackDurationMul(1)`。
+  // 縛りたいのは**DRの段(満額→半分→無効)**であって素の定数ではないので、基準を1箇所に置く。
+  const KB = KNOCKBACK_DURATION * knockbackDurationMul(1);
+
   it('★DRの段どおりに進む: 1発目=満額/2発目=半分/3発目は無効化されknockbackUntilが伸びない', () => {
     const boss = spawnEnemyAt('idol', 0, 0, 0);
     useGameStore.setState({ enemies: [boss] });
     useGameStore.getState().knockbackEnemy(boss.id, 1, 0, 3);
     const afterFirst = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
-    expect(afterFirst.knockbackUntil).toBe(realEpoch + KNOCKBACK_DURATION); // 1発目=満額
+    expect(afterFirst.knockbackUntil).toBeCloseTo(realEpoch + KB, 5); // 1発目=満額
     expect(afterFirst.bossStopDrStage).toBe(1);
 
     vi.setSystemTime(realEpoch + 50);
     useGameStore.getState().knockbackEnemy(boss.id, 1, 0, 3);
     const afterSecond = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
-    expect(afterSecond.knockbackUntil).toBe(realEpoch + 50 + KNOCKBACK_DURATION * 0.5); // 2発目=半分
+    expect(afterSecond.knockbackUntil).toBeCloseTo(realEpoch + 50 + KB * 0.5, 5); // 2発目=半分
     expect(afterSecond.bossStopDrStage).toBe(2);
 
     vi.setSystemTime(realEpoch + 100);
@@ -868,7 +883,7 @@ describe('knockbackEnemy: 自動タレット/連射武器を模した高頻度�
     vi.setSystemTime(realEpoch + 100 + BOSS_STOP_DR_IMMUNE_MS);
     useGameStore.getState().knockbackEnemy(boss.id, 1, 0, 3);
     const afterImmuneEnds = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
-    expect(afterImmuneEnds.knockbackUntil).toBe(realEpoch + 100 + BOSS_STOP_DR_IMMUNE_MS + KNOCKBACK_DURATION);
+    expect(afterImmuneEnds.knockbackUntil).toBeCloseTo(realEpoch + 100 + BOSS_STOP_DR_IMMUNE_MS + KB, 5);
     expect(afterImmuneEnds.bossStopDrStage).toBe(1);
   });
 
@@ -879,7 +894,7 @@ describe('knockbackEnemy: 自動タレット/連射武器を模した高頻度�
     vi.setSystemTime(realEpoch + 50);
     useGameStore.getState().knockbackEnemy(zomb.id, 1, 0, 3);
     const after = useGameStore.getState().enemies.find(x => x.id === zomb.id)!;
-    expect(after.knockbackUntil).toBe(realEpoch + 50 + KNOCKBACK_DURATION); // 通常敵はCD無しで毎回更新される
+    expect(after.knockbackUntil).toBeCloseTo(realEpoch + 50 + KB, 5); // 通常敵はCD無しで毎回更新される
   });
 });
 

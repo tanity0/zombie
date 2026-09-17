@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4453',
+    items: [
+      '帯の内側に居るコウモリと骸骨が、円や回り込みに入れなくなっていたのが直った',
+    ],
+  },
+  {
     version: '0.25.4452',
     items: ['ゲーム内容の変更はありません'],
   },

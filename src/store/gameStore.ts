@@ -15466,7 +15466,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             const bx = tx * angMul - rx * radialErr * 0.6;
             const by = ty * angMul - ry * radialErr * 0.6;
             const bl2 = Math.max(0.001, Math.hypot(bx, by));
-            // ★円の間だけ遅い(素の実速度×0.45)。真っ直ぐ詰め寄る時(b-approach)は等倍のまま
+            // ★v0.25.4436で**等倍**になった(`BAT_ORBIT_SPEED_MULT = 1`)。半速で回るのは
+            // §16-B の間合い保持の層の役目(`KEEP_ORBIT_SPEED_MULT`)。b-approach も等倍のまま
             // (下のisChaffTypeフォールスルー)——★社長訂正2026-09-16。
             const orbitSpeed = enemy.speed * BAT_ORBIT_SPEED_MULT;
             const bvx = (bx / bl2) * orbitSpeed, bvy = (by / bl2) * orbitSpeed;
@@ -15475,8 +15476,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
 
           // ── 構え前(aiPhase未設定=b-approach): 枠が空いて間合いに達していれば円へ ───────────
-          if (phase === undefined && chaffGrants.has(enemy.id) && pdist <= BAT_ORBIT_RADIUS_PX
-            && !keepBlocksTechnique(enemy.type, enemy.id, enemy.spawnedAt, BAT_ORBIT_RADIUS_PX, pdist)) {
+          // ★§16-B B-10 の「帯の内側では技を出さない」ゲートは**ここには掛けない**(v0.25.4453の是正)。
+          // あのゲートが要るのは、**技が自分で位置を直さない型**(犬の突進・パンプキンの跳躍は
+          // `dist > 12` で発火するので、下がり切る前に出し直して居座る)。
+          // **コウモリの円は技そのものが半径100へ膨らむ**ので、帯の内側から出しても位置が直る
+          // ——掛けると「帯の内側に居るコウモリが二度と円へ入れない」だけになる
+          // (§16-B B-9 Q-9「枠を取った bat は b-orbit で半径100へ膨らむ=仕様として許容」と矛盾していた)。
+          if (phase === undefined && chaffGrants.has(enemy.id) && pdist <= BAT_ORBIT_RADIUS_PX) {
             return {
               ...enemy, vx: 0, vy: 0, aiPhase: 'b-orbit',
               aiPhaseUntil: gameTime + batOrbitDurationMs(enemy.id, enemy.spawnedAt),
@@ -15587,8 +15593,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
 
           // ── 構え前(aiPhase未設定): 枠が空いて間合い(100px)に達していればしゃがみへ ─────────
-          if (phase === undefined && chaffGrants.has(enemy.id) && pdist <= SKELETON_TRIGGER_PX
-            && !keepBlocksTechnique(enemy.type, enemy.id, enemy.spawnedAt, SKELETON_TRIGGER_PX, pdist)) {
+          // ★同上(v0.25.4453の是正)。**骸骨の弧も技そのものが「プレイヤー中心から100pxの横」へ
+          // 運ぶ**ので、帯の内側から出しても位置が直る。ゲートは掛けない。
+          if (phase === undefined && chaffGrants.has(enemy.id) && pdist <= SKELETON_TRIGGER_PX) {
             return { ...enemy, vx: 0, vy: 0, aiPhase: 's-crouch', aiPhaseUntil: gameTime + SKELETON_CROUCH_MS };
           }
           // それ以外は旧挙動のまま歩いて詰める→下の共通のチャフ移動へフォールスルーする。

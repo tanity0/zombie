@@ -13,6 +13,7 @@ import {
   checkNoOnscreenCapRemoval, checkSpawnCadence, checkBoardInvariants, checkRankClamp, checkStateHealth,
 } from '../utils/playtestInvariants';
 import { OFFSCREEN_RECYCLE_MARGIN, AREA_THRESHOLDS } from '../utils/enemyUtils';
+import { PLAYER_BASE_SPEED } from './gameStore';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS, type KomaKind4 } from '../utils/scriptPuzzle';
 
@@ -390,10 +391,29 @@ describe('M26 Step2: ゲート+凶悪ハンターのヘッドレス接続(§6.2)
     vi.setSystemTime(realEpoch);
     try {
       useGameStore.getState().resetGame('rogue');
+      // ★v0.25.4453: ゲート1の発火点が 5000 → `AREA_THRESHOLDS[2]`(=7500)へ動いた(v0.25.4450の
+      // 区域一本化)。原点から歩かせると**実測で8分**かかり、このスイート最遅のテストがさらに倍以上に
+      // なる。**見たいのは「境界でゲートが発火して拘束され、必ず終わる」**ことなので、
+      // **デンジャーゾーンの入口から始める**(芯①「拠点0でデンジャー以深」も同時に満たす)。
+      {
+        const st = useGameStore.getState();
+        useGameStore.setState({ player: { ...st.player, x: AREA_THRESHOLDS[1] + 200, y: 0 } });
+      }
       const refs = createPlaytestRefs();
       const rusherState = createRusherTrackState();
       const dt = 1 / 60;
-      const MAX_TICKS = 150 * 60; // 150秒相当(r5000到達≈60s+ゲート40s+余裕)
+      // ★v0.25.4453: ゲート1の発火点が**区域境界の正本**に揃った(v0.25.4450の一本化)。
+      // 旧: 素の 5000 でベタ書き → 今: `AREA_THRESHOLDS[2]` = 7500(未確認汚染エリアの入口)。
+      // ⇒ 到達までの距離が1.5倍になったので、**走行予算も境界から導出**する(数字を写さない)。
+      const GATE1_DIST = AREA_THRESHOLDS[2];
+      // 残りの距離(デンジャー入口→未確認入口)から予算を引く。数字は写さず境界から導出する。
+      const REACH_S = (GATE1_DIST - AREA_THRESHOLDS[1]) / PLAYER_BASE_SPEED;
+      // ★予算は多めに取り、**ゲートが終わった時点で抜ける**(下の break)。こうすると
+      // 「境界が遠くなっても落ちない」かつ「通常は早く終わる」の両立になる——
+      // 予算を当て推量で刻むと、境界が動くたびにこのテストが赤くなる(今回それで落ちた)。
+      // 実測(v0.25.4453): デンジャー入口から未確認入口まで、rusher は**直進換算の約7倍**かかる
+      // (蛇行+交戦)。予算はその実測から取り、**ゲートが終わった時点で抜ける**ので通常は早く終わる。
+      const MAX_TICKS = Math.ceil((REACH_S * 10 + 60) * 60);
 
       let hunterSeen = false;
       let gate1Fired = false;
@@ -420,6 +440,7 @@ describe('M26 Step2: ゲート+凶悪ハンターのヘッドレス接続(§6.2)
           gate1Ended = true;
         }
         if (s.player.health <= 0) break;
+        if (gate1Ended) break; // 芯④まで見届けたら終了(残りの予算を空回ししない)
       }
 
       console.log(`\n=== M26-S2 ゲート+ハンター・シナリオ ===`);

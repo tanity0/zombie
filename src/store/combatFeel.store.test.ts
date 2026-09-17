@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { enemyHitReaction, knockbackDurationMul } from '../utils/hitFlinch';
 import { useGameStore, KNOCKBACK_DURATION } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { HIT_STUN_MS_MOB, HIT_STUN_MS_STRONG, KILL_CHAIN_WINDOW_MS } from '../utils/combatFeel';
@@ -78,14 +79,19 @@ describe('戦闘の手触り① 局所ストップ(damageEnemy→updateEnemies)'
     const t0 = Date.now();
     useGameStore.getState().knockbackEnemy(id, 1, 0, 1, 3);
     const kb = enemy(id).knockbackUntil ?? 0;
-    // 期限 = now + KNOCKBACK_DURATION + (stunUntil - now) = stunUntil + KNOCKBACK_DURATION
-    expect(kb).toBeGreaterThanOrEqual(stunUntil + KNOCKBACK_DURATION - 2);
-    expect(kb).toBeLessThanOrEqual(t0 + HIT_STUN_MS_MOB + KNOCKBACK_DURATION + 5);
-    // 止めていない敵は従来どおり now + KNOCKBACK_DURATION
+    // ★v0.25.4453: ノックバックの**長さ自体がのけぞりと連動**するようになった
+    // (社長指示2026-09-17「のけぞりとノックバックは連動」= `knockbackDurationMul`)。
+    // 旧テストは `KNOCKBACK_DURATION` 固定を縛っていたので、軽い一撃(rDur<1)で落ちる。
+    // 縛るのは「**止めの残りぶん後ろへずれる**」という手触りの方=ずらし幅そのものを見る。
+    const kbDur = KNOCKBACK_DURATION * knockbackDurationMul(enemyHitReaction(enemy(id)));
+    expect(kb).toBeGreaterThanOrEqual(stunUntil + kbDur - 2);
+    expect(kb).toBeLessThanOrEqual(t0 + HIT_STUN_MS_MOB + kbDur + 5);
+    // 止めていない敵は「今から」= ずらしが乗らない(同じのけぞりでも期限が止め残りぶん手前)
     const id2 = put({ ...spawnEnemyAt('zombie', px + 260, py, gt), health: 1000, maxHealth: 1000 });
     const t1 = Date.now();
     useGameStore.getState().knockbackEnemy(id2, 1, 0, 1, 3);
-    expect(enemy(id2).knockbackUntil ?? 0).toBeLessThanOrEqual(t1 + KNOCKBACK_DURATION + 5);
+    const kb2Dur = KNOCKBACK_DURATION * knockbackDurationMul(enemyHitReaction(enemy(id2)));
+    expect(enemy(id2).knockbackUntil ?? 0).toBeLessThanOrEqual(t1 + kb2Dur + 5);
   });
 });
 

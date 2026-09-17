@@ -13,7 +13,7 @@ import {
 } from './enemyBite';
 import { enemyContactBox } from './collisionUtils';
 import { setEnemyArtAspect } from '../pixi/renderSpec';
-import type { Enemy } from '../types/game';
+import type { Enemy, EnemyType } from '../types/game';
 
 // ★全敵共通の噛みつき(PACING_PUZZLE.md §12)の不変条件。
 // 守るのは3つ。どれか1つでも崩れると文法が壊れる:
@@ -38,9 +38,20 @@ describe('噛みつきの台帳', () => {
     expect(BITE_DEFAULT.counterable).toBe(false);
   });
 
-  it('上書きはゾンビの硬直だけ(他は既定値)=調整はこの表へ足していく', () => {
-    expect(Object.keys(BITE_BY_TYPE)).toEqual(['zombie']);
-    expect(biteSpecFor('werewolf')).toEqual(BITE_DEFAULT);
+  // ★v0.25.4453: 型の一覧を固定する形をやめた。この表は**「調整はここへ足していく」**前提の台帳なので、
+  // 一覧を縛ると**台帳を使うたびにテストが落ちる**(実際 v0.25.4447 のリッチ追加で落ちた)。
+  // 縛るべきは「**書いていない型は既定値のまま**」という不変条件の方。
+  it('表に書いていない型は既定値のまま(=上書きは明示した型だけに効く)', () => {
+    for (const t of ['werewolf', 'bat', 'skeleton', 'pumpkin'] as const) {
+      expect(BITE_BY_TYPE[t], t).toBeUndefined();
+      expect(biteSpecFor(t), t).toEqual(BITE_DEFAULT);
+    }
+  });
+
+  it('表に書いた型は、書いた項目だけが既定値から差し替わる', () => {
+    for (const [type, over] of Object.entries(BITE_BY_TYPE)) {
+      expect(biteSpecFor(type as EnemyType)).toEqual({ ...BITE_DEFAULT, ...over });
+    }
   });
 
   // ★過去の裁定は事実として: 社長指示2026-09-16で一時 10_000ms(10秒に1回)にしていたが、

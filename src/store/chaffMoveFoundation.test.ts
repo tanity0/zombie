@@ -55,7 +55,12 @@ describe('★死亡(buildCorpseFromKill)でも chaffMove を消す(§16-7b「bit
 });
 
 describe('★凍結dtの繰り下げ(PACING_PUZZLE.md §16-7 穴4・実装者視点監査A-3)', () => {
-  it('hitStunUntil で早期returnする1フレームぶん、§16の技(chaffMove定義)の biteAt が繰り下がる', () => {
+  // ★v0.25.4453: この穴の**解き方が変わった**(社長裁定2026-09-17「攻撃中スーパーアーマー」)。
+  // 旧: 被弾硬直で技も止まる → 止まったぶん §16 の時計を繰り下げて進捗を守る。
+  // 新: **技の実行中はそもそも被弾硬直で止まらない**(`isEnemyAttacking` が true の間はゲートを通らない)
+  //     ⇒ 時計は普通に進むので繰り下げる必要が無い。**穴は上流で塞がった。**
+  // `deferFrozenClocksBy` は**技を出していない個体**用の安全網として残っている(そこに§16の時計は無い)。
+  it('★技の実行中は被弾硬直で止まらない(スーパーアーマー)ので、時計も位置も凍らない', () => {
     const gt = setupOne({
       ...spawnEnemyAt('bat', 100, 100, 0),
       chaffMove: 'bat-grab' as const, biteAt: 1, aiPhase: 'b-windup' as const,
@@ -67,9 +72,10 @@ describe('★凍結dtの繰り下げ(PACING_PUZZLE.md §16-7 穴4・実装者視
     useGameStore.getState().setGameTime(gt + dt * 1000);
     useGameStore.getState().updateEnemies(dt);
     const after = useGameStore.getState().enemies[0];
-    // 凍結中もgameTimeは進むが、biteAtはそのぶん繰り下がるので「進捗が消えない」。
-    expect(after.biteAt).toBeCloseTo((before.biteAt ?? 0) + dt * 1000, 5);
-    expect(after.x).toBe(before.x); // 位置は動いていない(止まっている=従来どおり)
+    // 技の時計(biteAt)は繰り下がらない=素のまま。gameTimeが進んだぶんそのまま進捗になる。
+    expect(after.biteAt).toBe(before.biteAt);
+    // 止まっていない(=スーパーアーマー)。踏み込み/構えの移動がそのまま出る。
+    expect(useGameStore.getState().enemies[0].hitStunUntil).toBe(before.hitStunUntil);
   });
 
   it('★§12の噛みつき(chaffMove未定義)は1bitも変えない(hitStunUntil中もbiteAtは動かさない)', () => {
