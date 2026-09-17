@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4428',
+    items: ['軽い一撃で吹き飛ばなくなっていたのを直した。重い一撃ほど大きく飛ぶ'],
+  },
+  {
     version: '0.25.4427',
     items: ['攻撃を食らうと、しゃがんでいるあいだは本当に動けなくなった。近接とカウンターはこれまでどおりすぐ出せる'],
   },

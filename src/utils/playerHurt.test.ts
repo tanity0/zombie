@@ -75,6 +75,15 @@ describe('isHurtGunLocked — 被弾の復帰ディレイ(銃だけ止まる)', 
   });
 
   // ★社長指示2026-09-17(2回目)「慣性で吹き飛ぶ感じ」。
+  // ★社長指摘2026-09-17(4回目)「吹き飛ばなくなった?」= 軽段を0.7倍にして旧より弱くしていた。
+  it('★どの段も旧の飛距離(約60px)を下回らない', () => {
+    const OLD_PX = 460 * 0.260 / 2; // 旧: 全段一律 460px/s・260ms・線形減衰 = 約60px
+    for (const r of PLAYER_HURT_TIERS) {
+      const px = 460 * r.kbSpeedMult * (r.kbMs / 1000) / 2;
+      expect(px).toBeGreaterThanOrEqual(OLD_PX - 0.5);
+    }
+  });
+
   it('★吹き飛びは段が重いほど速く・長く(全段一律だったのを段ごとに)', () => {
     const [lo, mid, hi] = PLAYER_HURT_TIERS;
     expect(lo.kbSpeedMult).toBeLessThan(mid.kbSpeedMult);

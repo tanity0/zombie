@@ -57,10 +57,15 @@ export const PLAYER_HURT_TIER_FRACS = [0.08, 0.20] as const;
 // ★旧方針「移動ロックはのけぞりより短く(全部止めると理不尽)」は**社長指示で撤回**。
 //   ただし**近接/カウンターは従来どおり止めない**ので、**守りの即応性は残っている**
 //   =「何もできない」ではなく「動けないが弾ける」。ここが理不尽との分かれ目。
+// ★社長指摘2026-09-17(4回目)「**吹き飛ばなくなった?**」の是正。
+// ★原因: 段ごとの倍率を入れた時、**軽段を0.7倍にしたので旧より弱くなっていた**
+//   (旧 460px/s×260ms=約60px → 322×200=約32px で**半減**)。一番よく食らうのが軽段なので
+//   体感が「吹き飛ばなくなった」になる。**「重い一撃を重く」はできていたが、軽い一撃を軽くしすぎた。**
+// ⇒ **どの段も旧(約60px)を下回らない**ように引き直す。段差は保つ。
 export const PLAYER_HURT_TIERS: readonly PlayerHurtReaction[] = [
-  { crouchMs: 420,  stopMs: 70,  gunLockMs: 420,  moveLockMs: 420,  kbSpeedMult: 0.7, kbMs: 200 },  // 軽: かすった
-  { crouchMs: 700,  stopMs: 120, gunLockMs: 700,  moveLockMs: 700,  kbSpeedMult: 1.0, kbMs: 320 },  // 中: まともに食らった
-  { crouchMs: 1000, stopMs: 190, gunLockMs: 1000, moveLockMs: 1000, kbSpeedMult: 1.5, kbMs: 420 },  // 重: 保たない一撃
+  { crouchMs: 420,  stopMs: 70,  gunLockMs: 420,  moveLockMs: 420,  kbSpeedMult: 1.0, kbMs: 260 },  // 軽: 約60px(旧と同じ)
+  { crouchMs: 700,  stopMs: 120, gunLockMs: 700,  moveLockMs: 700,  kbSpeedMult: 1.4, kbMs: 340 },  // 中: 約109px
+  { crouchMs: 1000, stopMs: 190, gunLockMs: 1000, moveLockMs: 1000, kbSpeedMult: 2.0, kbMs: 440 },  // 重: 約202px
 ];
 
 /** 被弾量と最大HPから段(0=軽 / 1=中 / 2=重)を返す。 */
