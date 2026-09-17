@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4430',
+    items: ['敵は攻撃を溜めているあいだ、こちらを狙い続ける。振り始めてからは向きが変わらないので、見切るなら振り始めの瞬間'],
+  },
+  {
     version: '0.25.4429',
     items: ['囲まれると本当に危なくなった。別々の敵からの攻撃は、続けて食らうようになる'],
   },

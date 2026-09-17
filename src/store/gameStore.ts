@@ -14959,6 +14959,20 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 発火点で焼かないので`biteLungePx`が無く、従来どおりBiteSpecの固定`lungePx`(30)へ落ちる
           // (受け入れ条件1「§12は1つも変わっていない」を保つ)。
           const lp = enemy.biteLungePx ?? biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase).lungePx;
+          // ★溜めの間は狙いを追う(社長指摘2026-09-17「**敵の攻撃精度が気になる。エルデンリングは
+          // もっと正確にくらう気がする**」)。旧は**溜めの頭で向きを焼いていた**ので、
+          // **溜め中にプレイヤーが少し動くだけで外れて**いた——「予告を見てから一歩ずれるだけで当たらない」。
+          // エルデンリングの敵は**溜めの間はこちらを追い、振り始めた瞬間に向きが固まる**。
+          // ⇒ **`windup` の間だけ向きを更新し、`bite`(実行)に入ったら焼いたまま動かさない。**
+          // ★社長裁定「**再生したら位置調整はせずに最後まで再生**」は**実行の側の話**なので矛盾しない
+          //   (溜めは再生の前。踏み込みの距離 `biteLungePx` も発火時に焼いたまま=距離は追わない)。
+          const bitePh = bitePhaseOf(enemy, gameTime);
+          if (bitePh === 'windup') {
+            const tdx = pcx - (enemy.x + enemy.width / 2);
+            const tdy = pcy - (enemy.y + enemy.height / 2);
+            const td = Math.hypot(tdx, tdy);
+            if (td > 0.001) { enemy = { ...enemy, biteDirX: tdx / td, biteDirY: tdy / td }; }
+          }
           const fNow = biteLungeFrac(enemy, gameTime);
           const fPrev = biteLungeFrac(enemy, gameTime - deltaTime * 1000);
           const step = lp * Math.max(0, fNow - fPrev);   // このフレームで進むぶんだけ
