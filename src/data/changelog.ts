@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4433',
+    items: [
+      '敵が赤く光ったまま突っ込んでこなくなった。赤い点滅は技が始まる合図として二回だけ出る。コウモリもスケルトンもゾンビと同じ読み方になった',
+      'コウモリが間合いを回るときの速さが上がった',
+    ],
+  },
+  {
     version: '0.25.4432',
     items: [
       '予告の線が敵とプレイヤーの絵に隠れなくなった。狙われた点の輪が最後まで見える',

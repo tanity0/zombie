@@ -5,8 +5,8 @@ import {
   endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot, zombieRedTriggerPx,
   ZOMBIE_RED_WAIT_MIN_MS, ZOMBIE_RED_WAIT_MAX_MS,
   ZOMBIE_RED_TRIGGER_MIN_PX, ZOMBIE_RED_TRIGGER_MAX_PX,
-  zombieLungeRampMul, ZOMBIE_LUNGE_RAMP_MS, zombieRedGlowStrength,
-  ZOMBIE_RED_BLINK_ON_MS, ZOMBIE_RED_BLINK_OFF_MS, ZOMBIE_RED_BLINK_COUNT,
+  zombieLungeRampMul, ZOMBIE_LUNGE_RAMP_MS, chaffMoveBlinkStrength,
+  CHAFF_BLINK_ON_MS, CHAFF_BLINK_OFF_MS, CHAFF_BLINK_COUNT,
   zombieRecoverWalkRampMul, ZOMBIE_RECOVER_WALK_RAMP_MS,
   zombieRedPauseMs, ZOMBIE_RED_PAUSE_MS, ZOMBIE_RED_PAUSE_JITTER,
   ZOMBIE_RP_STUMBLE_FRAC, ZOMBIE_RP_RISE_FRAC, ZOMBIE_RP_TREMBLE_FRAC,
@@ -22,7 +22,6 @@ import {
   // プレイヤーの拘束
   isPlayerGrabbed,
   // 赤の合図(一般化版)
-  chaffRedGlowStrength,
 } from './chaffMoves';
 import type { Enemy, EnemyType } from '../types/game';
 
@@ -277,59 +276,50 @@ describe('zombieLungeRampMul(§16-3z監査#8「踏み込みの解放を鋭く」
   });
 });
 
-describe('zombieRedGlowStrength(§16-3z「赤は状態ではなく合図の句読点」・社長指示2026-09-16「走り始めのとき2回点滅するだけ」)', () => {
-  const base = {
-    type: 'zombie' as EnemyType, chaffMove: 'zombie-double' as const,
-    aiPhase: 'z-lunge-in' as const, chaffMoveAt: 1000,
-  };
-  const CYCLE_MS = ZOMBIE_RED_BLINK_ON_MS + ZOMBIE_RED_BLINK_OFF_MS;
-  const TOTAL_MS = CYCLE_MS * ZOMBIE_RED_BLINK_COUNT;
+describe('chaffMoveBlinkStrength(赤は状態ではなく合図の句読点・社長指示2026-09-17「雑魚の攻撃はすべてゾンビと同じ文脈=スーパーアーマーに入るタイミングで2回点滅」)', () => {
+  const base = { chaffMove: 'zombie-double' as const, chaffMoveAt: 1000 };
+  const CYCLE_MS = CHAFF_BLINK_ON_MS + CHAFF_BLINK_OFF_MS;
+  const TOTAL_MS = CYCLE_MS * CHAFF_BLINK_COUNT;
 
-  it('§16の技を持たない個体(chaffMove未定義)は常に0(§12の噛みつきに色は付かない)', () => {
-    expect(zombieRedGlowStrength({ ...base, chaffMove: undefined }, 1000)).toBe(0);
+  it('技を持たない個体(chaffMove未定義)は常に0(§12の噛みつきは紫の点滅が別に出る)', () => {
+    expect(chaffMoveBlinkStrength({ ...base, chaffMove: undefined }, 1000)).toBe(0);
   });
-  it('ゾンビ以外の型は常に0', () => {
-    expect(zombieRedGlowStrength({ ...base, type: 'bat' }, 1000)).toBe(0);
-  });
-  it('★z-lunge-in以外の相は必ず0(構え・踏み込みの残り・噛み1・よろけ・噛み2・硬直、全部)', () => {
-    for (const aiPhase of [undefined, 'z-wait', 'z-red-pause', 'z-bite1', 'z-stagger', 'z-bite2', 'z-recover'] as const) {
-      expect(zombieRedGlowStrength({ ...base, aiPhase }, 1000)).toBe(0);
-      expect(zombieRedGlowStrength({ ...base, aiPhase }, 1000 + 500)).toBe(0);
+  it('★3体とも同じ文脈(型で分岐しない)', () => {
+    for (const chaffMove of ['zombie-double', 'bat-grab', 'skel-bite'] as const) {
+      expect(chaffMoveBlinkStrength({ chaffMove, chaffMoveAt: 1000 }, 1000)).toBe(1);
+      expect(chaffMoveBlinkStrength({ chaffMove, chaffMoveAt: 1000 }, 1000 + TOTAL_MS)).toBe(0);
     }
   });
   it('chaffMoveAt未設定なら0(安全側デフォルト)', () => {
-    expect(zombieRedGlowStrength({ ...base, chaffMoveAt: undefined }, 1000)).toBe(0);
+    expect(chaffMoveBlinkStrength({ ...base, chaffMoveAt: undefined }, 1000)).toBe(0);
   });
-  it('z-lunge-inに入る前(gameTime<chaffMoveAt)は0', () => {
-    expect(zombieRedGlowStrength(base, 999)).toBe(0);
+  it('技が立つ前(gameTime<chaffMoveAt)は0', () => {
+    expect(chaffMoveBlinkStrength(base, 999)).toBe(0);
   });
-  it(`★点灯${ZOMBIE_RED_BLINK_ON_MS}ms→消灯${ZOMBIE_RED_BLINK_OFF_MS}ms→点灯→消灯の2回点滅ちょうど`, () => {
-    // 1回目の点灯
-    expect(zombieRedGlowStrength(base, 1000)).toBe(1);
-    expect(zombieRedGlowStrength(base, 1000 + ZOMBIE_RED_BLINK_ON_MS - 1)).toBe(1);
-    // 1回目の消灯
-    expect(zombieRedGlowStrength(base, 1000 + ZOMBIE_RED_BLINK_ON_MS)).toBe(0);
-    expect(zombieRedGlowStrength(base, 1000 + CYCLE_MS - 1)).toBe(0);
-    // 2回目の点灯
-    expect(zombieRedGlowStrength(base, 1000 + CYCLE_MS)).toBe(1);
-    expect(zombieRedGlowStrength(base, 1000 + CYCLE_MS + ZOMBIE_RED_BLINK_ON_MS - 1)).toBe(1);
-    // 2回目の消灯
-    expect(zombieRedGlowStrength(base, 1000 + CYCLE_MS + ZOMBIE_RED_BLINK_ON_MS)).toBe(0);
-    expect(zombieRedGlowStrength(base, 1000 + TOTAL_MS - 1)).toBe(0);
+  it(`★点灯${CHAFF_BLINK_ON_MS}ms→消灯${CHAFF_BLINK_OFF_MS}ms→点灯→消灯の2回点滅ちょうど`, () => {
+    expect(chaffMoveBlinkStrength(base, 1000)).toBe(1);
+    expect(chaffMoveBlinkStrength(base, 1000 + CHAFF_BLINK_ON_MS - 1)).toBe(1);
+    expect(chaffMoveBlinkStrength(base, 1000 + CHAFF_BLINK_ON_MS)).toBe(0);
+    expect(chaffMoveBlinkStrength(base, 1000 + CYCLE_MS - 1)).toBe(0);
+    expect(chaffMoveBlinkStrength(base, 1000 + CYCLE_MS)).toBe(1);
+    expect(chaffMoveBlinkStrength(base, 1000 + CYCLE_MS + CHAFF_BLINK_ON_MS - 1)).toBe(1);
+    expect(chaffMoveBlinkStrength(base, 1000 + CYCLE_MS + CHAFF_BLINK_ON_MS)).toBe(0);
+    expect(chaffMoveBlinkStrength(base, 1000 + TOTAL_MS - 1)).toBe(0);
   });
   it('★点滅の回数はちょうど2回(0→1の立ち上がりエッジを数える)', () => {
     let prev = 0, risingEdges = 0;
     for (let t = 0; t <= TOTAL_MS + 50; t++) {
-      const v = zombieRedGlowStrength(base, 1000 + t);
+      const v = chaffMoveBlinkStrength(base, 1000 + t);
       if (v > 0 && prev === 0) risingEdges++;
       prev = v;
     }
-    expect(risingEdges).toBe(ZOMBIE_RED_BLINK_COUNT);
+    expect(risingEdges).toBe(CHAFF_BLINK_COUNT);
   });
-  it('★点滅が終わった後はずっと0のまま(技の終わりまで赤は出ない)', () => {
-    expect(zombieRedGlowStrength(base, 1000 + TOTAL_MS)).toBe(0);
-    expect(zombieRedGlowStrength(base, 1000 + TOTAL_MS + 1)).toBe(0);
-    expect(zombieRedGlowStrength(base, 1000 + TOTAL_MS + 10000)).toBe(0); // 踏み込みの残りが続いても0のまま
+  it('★★点滅が終わった後はずっと0(「赤くなりながら突っ込んでくる」を作らない)', () => {
+    expect(chaffMoveBlinkStrength(base, 1000 + TOTAL_MS)).toBe(0);
+    for (const t of [TOTAL_MS + 1, 500, 1200, 3000, 10000]) {
+      expect(chaffMoveBlinkStrength(base, 1000 + t)).toBe(0);
+    }
   });
 });
 
@@ -599,47 +589,6 @@ describe('skeletonArcPoint(弧の軌道・直線にしない=§16-2)', () => {
 // ===================================================================================================
 // プレイヤーの拘束(bat の掴み)
 // ===================================================================================================
-describe('chaffRedGlowStrength(§16-5「赤は技が動き出してから決着まで」・zombieRedGlowStrengthの一般化版)', () => {
-  it('chaffMoveがbat-grab/skel-bite以外は常に0(zombie-doubleは専用関数のまま)', () => {
-    expect(chaffRedGlowStrength({ type: 'zombie', chaffMove: 'zombie-double', biteAt: 1000, aiPhase: 'z-bite1' }, 1000)).toBe(0);
-    expect(chaffRedGlowStrength({ type: 'bat', chaffMove: undefined, biteAt: 1000, aiPhase: undefined }, 1000)).toBe(0);
-  });
-  it('biteAtが立っていない(構え中=b-orbit/s-crouch/s-arc)間は0', () => {
-    expect(chaffRedGlowStrength({ type: 'bat', chaffMove: 'bat-grab', biteAt: undefined, aiPhase: 'b-orbit' }, 1000)).toBe(0);
-    expect(chaffRedGlowStrength({ type: 'bat', chaffMove: 'bat-grab', biteAt: 0, aiPhase: 'b-windup' }, 1000)).toBe(0);
-    expect(chaffRedGlowStrength({ type: 'skeleton', chaffMove: 'skel-bite', biteAt: undefined, aiPhase: 's-arc' }, 1000)).toBe(0);
-  });
-  it('bat: 溜め(250ms)の間に0→1へ膨らみ切り、以後は掴みの終わりまで1のまま', () => {
-    const e = { type: 'bat' as const, chaffMove: 'bat-grab' as const, biteAt: 1000, aiPhase: 'b-windup' as const };
-    expect(chaffRedGlowStrength(e, 1000)).toBeCloseTo(0, 5);
-    expect(chaffRedGlowStrength(e, 1125)).toBeCloseTo(0.5, 1); // 半分経過で概ね半分
-    expect(chaffRedGlowStrength({ ...e, aiPhase: 'b-lunge' }, 1250)).toBeCloseTo(1, 5); // 溜め終わりで膨らみ切り
-    expect(chaffRedGlowStrength({ ...e, aiPhase: 'b-lunge' }, 1300)).toBe(1); // 踏み込み中も最大のまま
-    expect(chaffRedGlowStrength({ ...e, aiPhase: 'b-grab' }, 1400)).toBe(1); // 掴み中も最大のまま
-  });
-  it('bat: 決着(windupMs+biteMs経過)後は0(硬直・後退=b-releaseには乗らない)', () => {
-    const e = { type: 'bat' as const, chaffMove: 'bat-grab' as const, biteAt: 1000, aiPhase: 'b-grab' as const };
-    expect(chaffRedGlowStrength(e, 1000 + 400 + 220)).toBe(0);
-  });
-  it('skeleton: 前隙(300ms)で一気に上がり、噛みの終わりまで最大のまま', () => {
-    const e = { type: 'skeleton' as const, chaffMove: 'skel-bite' as const, biteAt: 1000, aiPhase: 's-bite' as const };
-    expect(chaffRedGlowStrength(e, 1000)).toBeCloseTo(0, 5);
-    expect(chaffRedGlowStrength(e, 1299)).toBeLessThan(1);
-    expect(chaffRedGlowStrength(e, 1300)).toBe(1);
-    expect(chaffRedGlowStrength(e, 1450)).toBe(1);
-    expect(chaffRedGlowStrength(e, 1000 + 300 + 200)).toBe(0); // 決着後は0
-  });
-  it('★単調(段差なし=慣性MUSTに配慮した滑らかな立ち上がり)', () => {
-    const e = { type: 'bat' as const, chaffMove: 'bat-grab' as const, biteAt: 1000, aiPhase: 'b-windup' as const };
-    let prev = -1;
-    for (let t = 1000; t <= 1250; t += 10) {
-      const v = chaffRedGlowStrength(e, t);
-      expect(v).toBeGreaterThanOrEqual(prev);
-      prev = v;
-    }
-  });
-});
-
 describe('isPlayerGrabbed(§16-1・isPvpIncapacitatedと同じ形)', () => {
   it('grabbedUntil未設定なら常にfalse', () => {
     expect(isPlayerGrabbed({ grabbedUntil: undefined }, 1000)).toBe(false);

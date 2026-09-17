@@ -15,7 +15,7 @@
 //
 // レンダラ非依存の純関数(src/utils)=ヘッドレスでユニットテスト可能。
 import type { Enemy, EnemyType, Player } from '../types/game';
-import { biteSpecFor, BAT_WINDUP_STILL_MS } from './enemyBite';
+import { biteSpecFor } from './enemyBite';
 import { spriteVariantIndex } from './enemyVariant';
 
 /** §16の技(雑魚の「詰めさせない技」)を持つ型。lab-zombie/lich等は別バッチで足す(§16-0)。 */
@@ -327,6 +327,16 @@ export const zombieRecoverWalkRampMul = (rampAt: number | undefined, gameTime: n
  * ★赤は「状態」ではなく「合図の句読点」(PACING_PUZZLE.md §16-3z・社長指示2026-09-16
  * 「ゾンビの攻撃、赤くなるのは走り始めのとき2回点滅するだけにして」)。
  *
+ * ★2026-09-17 全雑魚へ統一(社長指示「**雑魚が赤くなりながら突っ込んでくるのをやめて、雑魚の攻撃は
+ * すべてゾンビと同じ文脈にしたい。つまりスーパーアーマーに入るタイミングで赤点滅。紫なら紫点滅**」)。
+ * bat/skeleton だけ別形(`chaffRedGlowStrength`=技の頭から決着まで**光り続ける**)だったのを**廃止**し、
+ * この関数を**全 `chaffMove` 共通**にした。型で分岐しない。
+ * ★合図の錨は `chaffMoveAt`=**技が立った瞬間**で、これは `isEnemyAttacking` が true になる瞬間
+ * (=スーパーアーマーに入る瞬間)と同じ。**社長の言う「タイミング」はこの1点**なので、
+ * 3体それぞれの相(z-lunge-in / b-windup / s-crouch)を数え上げる必要がない。
+ * ★紫(§12の噛みつき=カウンター不可)は `biteAt` 基準の既存の2回点滅(`biteBlinkOn`)がそのまま
+ * 同じ文脈——あちらも**スーパーアーマーに入る瞬間**(chaffMove を持たない攻撃では `biteAt`)が錨。
+ *
  * 旧実装(v0.25.4409)は相ごとに強さを返す=踏み込みから決着まで平坦に赤く光り続け、
  * 踏み込みは最長1.9秒あるため「1.5秒以上の赤い照明」になっていた(クリエイティブ監査#12)。
  * **社長指示はこれを根本から置き換える**——強さや尺の調整ではない。
@@ -335,23 +345,22 @@ export const zombieRecoverWalkRampMul = (rampAt: number | undefined, gameTime: n
  * (点灯→消灯→点灯→消灯)。 ★その後: 技の終わりまで(踏み込みの残り・噛み1・よろけ・噛み2・硬直)
  * 赤は一切出ない=このフェーズ以外は常に0を返す。
  */
-export const ZOMBIE_RED_BLINK_ON_MS = 70;
-export const ZOMBIE_RED_BLINK_OFF_MS = 70;
-export const ZOMBIE_RED_BLINK_COUNT = 2;
+export const CHAFF_BLINK_ON_MS = 70;
+export const CHAFF_BLINK_OFF_MS = 70;
+export const CHAFF_BLINK_COUNT = 2;
 
-export const zombieRedGlowStrength = (
-  enemy: Pick<Enemy, 'type' | 'chaffMove' | 'aiPhase' | 'chaffMoveAt'>,
+export const chaffMoveBlinkStrength = (
+  enemy: Pick<Enemy, 'chaffMove' | 'chaffMoveAt'>,
   gameTime: number,
 ): number => {
-  if (enemy.type !== 'zombie' || enemy.chaffMove === undefined) return 0;
-  if (enemy.aiPhase !== 'z-lunge-in') return 0; // 走り始め以外は色なし(合図の句読点はここだけ)
+  if (enemy.chaffMove === undefined) return 0;
   const startedAt = enemy.chaffMoveAt;
   if (startedAt === undefined) return 0;
   const elapsed = gameTime - startedAt;
-  const cycleMs = ZOMBIE_RED_BLINK_ON_MS + ZOMBIE_RED_BLINK_OFF_MS;
-  const totalMs = cycleMs * ZOMBIE_RED_BLINK_COUNT;
+  const cycleMs = CHAFF_BLINK_ON_MS + CHAFF_BLINK_OFF_MS;
+  const totalMs = cycleMs * CHAFF_BLINK_COUNT;
   if (elapsed < 0 || elapsed >= totalMs) return 0;
-  return (elapsed % cycleMs) < ZOMBIE_RED_BLINK_ON_MS ? 1 : 0;
+  return (elapsed % cycleMs) < CHAFF_BLINK_ON_MS ? 1 : 0;
 };
 
 /**
@@ -404,8 +413,15 @@ export const BAT_ORBIT_RADIUS_PX = 100;
  */
 export const BAT_ORBIT_MIN_MS = 900;
 export const BAT_ORBIT_MAX_MS = 1800;
-/** 円の速さ(§16-1「flankより明確に遅いこと。遅いのは円の間だけ」)。素の実速度×この倍率。 */
-export const BAT_ORBIT_SPEED_MULT = 0.45;
+/**
+ * 円の速さ。★2026-09-17 に **0.45→1(等倍)** へ(社長指示「**一定距離まできたら近づいてくるのを
+ * やめさせたい…保ち方はやはり半分の速度で円展開…するとバットの攻撃パターンと被るので、バットの
+ * 台本の円の方は半分の速度をやめて等倍に**」)。
+ * ⇒ **「半分の速度で回る」は、これからは全員が持つ"間合いを保つ動き"の側の言葉**になった。
+ * bat の台本の円は**技の一部**なので、そちらと区別がつくよう等倍で回す。
+ * (旧: §16-1「flankより明確に遅いこと。遅いのは円の間だけ」=0.45。**この意図は間合い保持側が引き継ぐ**。)
+ */
+export const BAT_ORBIT_SPEED_MULT = 1;
 /** 円の中心の追従時定数(一次遅れ・叩き台=§16-8「叩き台0.12」)。ロックオン軌道にしない。 */
 export const BAT_ORBIT_TAU_S = 0.12;
 /** 刻む横歩き(§16-1クリエイティブ監査#13): 動く尺0.4〜0.7秒・止まり0.2〜0.3秒。 */
@@ -556,39 +572,3 @@ export const isPlayerGrabbed = (
   player: Pick<Player, 'grabbedUntil'>, gameTime: number,
 ): boolean => player.grabbedUntil !== undefined && gameTime < player.grabbedUntil;
 
-// =================================================================================================
-// 赤の合図(§16-5「赤は技が動き出してから決着まで」)。bat/skeleton共通の一般形。
-// ★ゾンビは社長指示2026-09-16「走り始めのとき2回点滅するだけ」で専用の形(zombieRedGlowStrength=
-// 2回点滅・chaffMoveAt基準)に確定済みなのでここでは対象外(呼び手が型で使い分ける)。
-// 「既存の関数をbat/skeletonにも効く形へ一般化する」(3体ぶんコピーしない)の実装として、
-// **1つの関数**にまとめ、型ごとの違いは「膨らみ切るまでの尺」1つのテーブルだけに閉じ込める。
-// =================================================================================================
-
-/**
- * 技の頭(biteAtが立った瞬間)から「膨らみ切る」までの尺。
- * - bat: 溜め(BAT_WINDUP_STILL_MS)で膨らみ切り、踏み込み〜掴みは最大のまま
- *   (§16-5「獣が息を止めて飛ぶ」)。
- * - skeleton: 前隙(windupMs全体)で一気に上がる(§16-5「低く燻る区間は色が無いので不要になった」)。
- */
-const CHAFF_RED_RAMP_MS: Partial<Record<NonNullable<Enemy['chaffMove']>, number>> = {
-  'bat-grab': BAT_WINDUP_STILL_MS,
-};
-
-/**
- * bat/skeletonの赤の強さ(0..1)。**構え(b-orbit/s-crouch/s-arc)には乗らない**——`biteAt`が
- * 立ってから(bat=b-windup開始/skeleton=s-bite開始)だけ非0になる。決着(biteAtが0へ戻る=
- * 硬直・後退には乗らない)と同時に0へ戻る。
- */
-export const chaffRedGlowStrength = (
-  enemy: Pick<Enemy, 'type' | 'chaffMove' | 'biteAt' | 'aiPhase'>, gameTime: number,
-): number => {
-  if (enemy.chaffMove !== 'bat-grab' && enemy.chaffMove !== 'skel-bite') return 0; // zombie-doubleは専用関数
-  if (enemy.biteAt === undefined || enemy.biteAt <= 0) return 0; // 構え中(まだ踏み込み/噛みが立っていない)
-  const elapsed = gameTime - enemy.biteAt;
-  if (elapsed < 0) return 0;
-  const spec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
-  const total = spec.windupMs + spec.biteMs;
-  if (elapsed >= total) return 0; // 決着済み(硬直・後退には乗らない)
-  const rampMs = Math.max(1, CHAFF_RED_RAMP_MS[enemy.chaffMove] ?? spec.windupMs);
-  return elapsed >= rampMs ? 1 : elapsed / rampMs;
-};

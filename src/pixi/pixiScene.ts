@@ -226,10 +226,9 @@ import {
 } from '../utils/enemyBite'; // ★噛みつきの台帳(PACING_PUZZLE §12)
 // §16-3z「歯応え」の仕上げ: ゾンビ赤2連の停止尺(姿勢の3段の合計に使う)と赤の脈(純関数)。
 import {
-  zombieRedGlowStrength, zombieRedPauseMs,
+  chaffMoveBlinkStrength, zombieRedPauseMs,
   ZOMBIE_RP_STUMBLE_FRAC, ZOMBIE_RP_RISE_FRAC, ZOMBIE_RP_TREMBLE_FRAC, // §16-3z①停止の長さ±30%(比例3段)
   ZOMBIE_STAGGER_MS, ZOMBIE_RECOVER_MS, // よろけ/硬直の姿勢(クリエイティブ監査#1/#7)の尺
-  chaffRedGlowStrength, // §16-1/§16-2(bat/skeleton)の赤=zombieRedGlowStrengthの一般化版
 } from '../utils/chaffMoves';
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 表示名・立ち絵クラスの正本(台帳)と、技の寸法テーブル。
 // **判定(phantomTick)と同じ1箇所**を読むので「赤いのに当たらない」が起きない。
@@ -17897,7 +17896,7 @@ export class PixiScene {
       // ★§16-5「§16の技の間は、現行の紫tint経路を通さない」(実装者視点監査A-4): `chaffMove` が
       // 立っている個体(=§16の技を実行中)は、この紫点滅を丸ごと飛ばす。ゾンビ赤2連(z-bite1/z-bite2)は
       // biteAtも立つので、ここを外さないと「赤く光りながら同時に紫へ沈む」(乗算tint)が二重に出る。
-      // 赤(加算overlay)はhitFlashブロック側(zombieRedGlowStrength)で別途扱う。
+      // 赤(加算overlay)はhitFlashブロック側(chaffMoveBlinkStrength)で別途扱う。
       const biteTint: number | null = (e.chaffMove === undefined && bitePhaseOf(e, gameTime) === 'windup')
         ? (biteBlinkOn(e, gameTime) ? 0xffffff : biteBlinkTintFor(e.type, e.chaffMove))
         : null;
@@ -18053,11 +18052,12 @@ export class PixiScene {
       // ★優先: 白(被弾) > §16の赤(予告) > オレンジ(延焼) > 水色(氷)。
       // ★§16-3z「歯応え」の仕上げ=ゾンビの赤を実装(PACING_PUZZLE.md §16-10-C)。
       const texOk = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1;
-      // ★PACING_PUZZLE.md §16-1/§16-2: bat/skeletonの赤はchaffRedGlowStrength(一般化版)、
-      // ゾンビだけ専用のzombieRedGlowStrength(2回点滅)を使う——型が違う関数なので二重に足さない
-      // (bat/skeletonはzombie-double以外のchaffMoveなのでzombieRedGlowStrengthは常に0を返す=
+      // ★社長指示2026-09-17「雑魚の攻撃はすべてゾンビと同じ文脈に=スーパーアーマーに入るタイミングで
+      // 赤点滅」。型で分岐せず、**全 chaffMove 共通の2回点滅**(chaffMoveAt=技が立った瞬間=
+      // isEnemyAttacking が true になる瞬間)。旧 chaffRedGlowStrength(bat/skeletonが技の頭から
+      // 決着まで光り続ける形)は廃止した(=「赤くなりながら突っ込んでくる」の正体)。
       // 足し算しても安全だが、意図を明確にするため||で片方だけ通す)。
-      const zRedStrength = texOk ? (zombieRedGlowStrength(e, gameTime) || chaffRedGlowStrength(e, gameTime)) : 0;
+      const zRedStrength = texOk ? chaffMoveBlinkStrength(e, gameTime) : 0;
       const burning = texOk && (e.burnUntil ?? 0) > gameTime;
       const iced = texOk && (e.iceSlowUntil ?? 0) > gameTime;
       if (flashT > 0.01 || zRedStrength > 0.01 || burning || iced) {
@@ -18074,7 +18074,7 @@ export class PixiScene {
         } else if (zRedStrength > 0.01) {
           // ★赤=カウンター可(CLAUDE.md 色と形の文法①)。★§16-3z「赤は状態ではなく合図の句読点」
           // (社長指示2026-09-16「走り始めのとき2回点滅するだけ」): 脈(0..1)は
-          // zombieRedGlowStrength(z-lunge-inに入った瞬間から2回点滅・それ以外の相は常に0)の
+          // chaffMoveBlinkStrength(技が立った瞬間から2回点滅・それ以外は常に0)の
           // 二値(0/1)なので、ここでは強さをそのままalphaへ写すだけでよい。
           hf.tint = ZOMBIE_RED_GLOW_TINT;
           hf.alpha = zRedStrength * ZOMBIE_RED_GLOW_ALPHA_MAX * artFade;
