@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4449',
+    items: [
+      '出撃した直後は敵が一体か二体しか出てこない。そこから少しずつ増えていく',
+      '最初の関所に着く頃には今までと同じ数に戻る。それ以降の密度は変わらない',
+    ],
+  },
+  {
     version: '0.25.4448',
     items: [
       'リッチが消える時、先に足元の陣が灯る。逃げられる前に叩く合図になった',

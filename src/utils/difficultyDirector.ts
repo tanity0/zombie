@@ -114,11 +114,37 @@ export const phaseAt = (gameTime: number): Phase => {
   return PHASES[PHASES.length - 1];
 };
 
+/**
+ * ★**出だしの体数**(社長指示2026-09-17「**とりあえずマックスは10で据え置きだが、序盤は1-2体から
+ * 始まるようにしたい**」)。敵1体ずつの精度が上がったので、最初から数で押さない。
+ *
+ * ★フェーズ表(`PHASES`)は**触らない**。出だしだけを上から抑える薄い層にしてある——
+ * フェーズ表を割ると `index`(演目・台本・関所の識別)まで増えてしまい、シーンの選定や
+ * 憲法テストの前提に波及する。ここは**上限をさらに下げるだけ**なので、抑えが切れた後は
+ * 従来の表がそのまま効く(関所①=95秒 の手前で 8 に戻る=以降は1ビットも変わらない)。
+ *
+ * **叩き台(実機で社長が詰める)**: 0:00〜0:20=2体 / 〜0:45=4体 / 〜1:10=6体 / 以降は表どおり(8→…)。
+ */
+export const OPENING_COUNT_RAMP: readonly { untilMs: number; cap: number }[] = [
+  { untilMs: 20 * S, cap: 2 },
+  { untilMs: 45 * S, cap: 4 },
+  { untilMs: 70 * S, cap: 6 },
+];
+
+/** 出だしの抑え。抑えが終わったら `Infinity`(=フェーズ表に任せる)。 */
+export const openingCountCap = (gameTime: number): number => {
+  for (const r of OPENING_COUNT_RAMP) if (gameTime < r.untilMs) return r.cap;
+  return Infinity;
+};
+
 // 屋外の通常湧き上限(敵数)。フェーズの countCap を安全域にクランプ。
 // 「使い切るかは難易度次第」= これは上限(許可枠)であって強制湧き数ではない。
+// ★旧実装の `Math.max(6, …)` は外した。フェーズ表の countCap は全部8以上なので**今まで一度も
+// 効いていない死んだ床**だったが、出だしを2体にすると**これが効いて6体へ押し戻してしまう**。
+// 上限を下げたい時に下限が邪魔をするのは筋が通らないので、下限は「その時の上限そのもの」にする。
 export const enemyCountCap = (gameTime: number): number => {
-  const c = phaseAt(gameTime).countCap;
-  return Math.max(6, Math.min(ENEMY_COUNT_CEIL, c));
+  const c = Math.min(phaseAt(gameTime).countCap, openingCountCap(gameTime));
+  return Math.max(1, Math.min(ENEMY_COUNT_CEIL, c));
 };
 
 // 指定時刻の湧きシーン(構成/速度)。スポーナが読む。

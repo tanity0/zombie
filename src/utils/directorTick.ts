@@ -175,7 +175,11 @@ export function computeNormalSpawnCap(
   dirCountCap: number,
   relaxAdjCapMult: number,
 ): number {
-  return labTheme ? maxEnemies : Math.max(6, Math.round(dirCountCap * relaxAdjCapMult));
+  // ★床は「6体」ではなく「その時の上限そのもの」(社長指示2026-09-17の出だし1-2体)。
+  // 固定の6で受けると、出だしに上限を2へ下げても**ここで6へ押し戻される**。
+  // 上限が6以上の時は従来どおり6が床=既存の挙動は1ビットも変わらない。
+  return labTheme ? maxEnemies
+    : Math.max(Math.min(6, dirCountCap), Math.round(dirCountCap * relaxAdjCapMult));
 }
 
 // 社長指示v0.25.1845: 「変異体が興奮し始めた」通信の判定開始(コマ経過ms)。序盤の誤発火防止(叩き台)。
