@@ -12750,7 +12750,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         // (期限のずらしは書き手側=knockbackEnemy/近接3経路が「止めの残り」を足して書く。ここは止めるだけ。)
         // ★PACING_PUZZLE.md §16-7 穴4(実装者視点監査A-3): この早期returnで飛ばした1フレームぶん
         // (deltaTime)、§16の技(chaffMove定義)の時計を繰り下げる(§12は1bitも変えない=no-op)。
-        if (!committed && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) {
+        // ★社長指示2026-09-17「**銃撃では攻撃は何も止まらないようにして**」: **技を実行中の敵は止めない**。
+        // 旧実装はこの早期returnで**位置更新を丸ごと飛ばして**いたため、
+        // 「位置に着いたら次の相へ進む」技(skeletonの弧・ゾンビの踏み込み/後退・batの踏み込み)が
+        // **撃たれ続けると終点に着けず、技が終わらない**=「台本が動かなくなってただ寄ってくるだけ」に見えた。
+        // ⇒ 技中(`chaffMove` 定義 or 噛みつき構え中 or §16の相)は**被弾硬直で止めない**。
+        // 技を出していない時は従来どおり止める(戦闘の手触り①=殴った手応えはそのまま残す)。
+        const attacking = enemy.chaffMove !== undefined
+          || (enemy.biteAt !== undefined && enemy.biteAt > 0)
+          || (enemy.aiPhase !== undefined && enemy.aiPhase !== 'zpause');
+        if (!committed && !attacking && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) {
           return deferFrozenClocksBy(enemy, deltaTime * 1000);
         }
         // CRIT-UNIFY §9.2: 次行動CD専用のatkUntil。クリ窓中のボスは×2(bossCritCdMult)。

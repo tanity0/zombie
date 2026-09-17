@@ -40,7 +40,7 @@ import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkColli
 // ★全敵共通の噛みつき(PACING_PUZZLE.md §12・社長発案2026-08-25)。
 import {
   biteSpecFor, biteReachRect, isInBiteRect, isBiteSubject, canStartBite, isBiteResolveDue,
-  biteBodyOverlapsPlayer, BITE_CANCEL_DR_MS, isBiteInterruptedByMove, isBiteFrozen,
+  biteBodyOverlapsPlayer, isBiteInterruptedByMove, isBiteFrozen,
 } from './enemyBite';
 import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { BAT_GRAB_HOLD_MS } from './chaffMoves'; // ★PACING_PUZZLE.md §16-1(bat の掴み)
@@ -1332,8 +1332,8 @@ export const applyContactDamage = (
   // 値を読んでしまい `counterable:true` が一度も読まれない(=赤い技が全部返せなくなる)。
   const biteHits: { id: string; dmg: number; x: number; y: number; chaffMove: Enemy['chaffMove']; aiPhase: Enemy['aiPhase'] }[] = [];
   const biteClears: string[] = [];
-  const kbNow = Date.now(); // ノックバック判定用(knockbackUntil は Date.now 系)
-  const biteDrIds: string[] = []; // ノックバックで中断した個体(中断の逓減を開始する)
+  // ★ノックバックの中断とその逓減(kbNow / biteDrIds / BITE_CANCEL_DR_MS)は撤去した
+  //   (社長指示2026-09-17「銃撃では攻撃は何も止まらない」=中断しないので逓減も要らない)。
   for (const e of collEnemies) {
     if (isCorpse(e)) continue;
     const biting = e.biteAt !== undefined && e.biteAt > 0;
@@ -1347,19 +1347,20 @@ export const applyContactDamage = (
     // お構いなしに噛みつきが来るから必ず食らう」)。構え中なら中断し、構えていないなら始めない。
     // 時計に注意: `knockbackUntil` は `Date.now()` 系(gameTime系ではない)。
     // ★ただし**逓減する**(社長報告2026-08-25「なんどでもノックバックさせれて攻撃あたらん」):
-    // 1度中断したら `BITE_CANCEL_DR_MS` の間は振り切って噛む=撃ち続けるだけの無限ロックを防ぐ。
-    const biteDrOn = e.biteNoCancelUntil !== undefined && gameTime < e.biteNoCancelUntil;
     // ★PACING_PUZZLE.md §16-4「§16の技だけ knocked を無視し、§12の噛みつきは従来どおり中断する」。
     // §12(chaffMove undefined)はここより下は1bitも変えていない(受け入れ条件1)。
-    const knocked = e.chaffMove === undefined
-      && !biteDrOn && e.knockbackUntil !== undefined && kbNow < e.knockbackUntil;
+    // ★社長指示2026-09-17「**銃撃では攻撃は何も止まらないようにして。ノックバックはあっても止まらない**」。
+    // ⇒ **ノックバックで噛みつきを中断しない**(位置は動くが、台本は最後まで再生される)。
+    // 旧: §12の噛みつきだけノックバックで中断していた。§16の技は既に中断しない
+    // (社長裁定v0.25.3497「ノックバックもだけど、技だけキャンセルされなければええで」)ので、
+    // **§12を§16へ揃える**形=プレイヤーが覚えることが減る。
+    // ★残る中断は「クリティカルの気絶」だけ(社長裁定「雑魚はクリティカルで止まる」)。`isBiteFrozen` が担当。
     if (biting) {
       // 構えている最中に**技へ入った**なら、その噛みは中断(技の当たり判定が本体になる)。
       // ★止まっている敵(気絶/拘束/持ち上げ/眠り)は噛み切らない=構え始めと同じ述語で中断する。
-      if (!isBiteSubject(e, isBiteExemptType, gameTime) || knocked || isBiteInterruptedByMove(e)
+      if (!isBiteSubject(e, isBiteExemptType, gameTime) || isBiteInterruptedByMove(e)
         || isBiteFrozen(e, gameTime)) {
         biteClears.push(e.id);
-        if (knocked) biteDrIds.push(e.id); // 中断した=次はしばらく振り切られる
         continue;
       }
       if (!isBiteResolveDue(e, gameTime)) continue;              // まだ台本の途中
@@ -1376,7 +1377,7 @@ export const applyContactDamage = (
         biteHits.push({ id: e.id, dmg: e.damage * rn * sc, x: px, y: py, chaffMove: e.chaffMove, aiPhase: e.aiPhase });
       }
       biteClears.push(e.id);                                      // 当たっても外しても台本は終わる
-    } else if (!knocked && canStartBite(e, gameTime)) {
+    } else if (canStartBite(e, gameTime)) {   // ★ノックバック中でも構え始められる(社長指示2026-09-17)
       // ★発火も判定と**同じ四角**で見る(v0.25.3904)。中心間の距離で見ていた旧実装は
       // 体の大きい敵ほど発火しなかった(ゾンビは触れても中心間34px>30px=一生噛めない)。
       const eb = enemyContactBox(e);
@@ -1409,7 +1410,6 @@ export const applyContactDamage = (
           const techSpec = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
           return {
             ...e, biteAt: 0, biteReadyAt: gameTime + techSpec.recoverMs,
-            ...(biteDrIds.includes(e.id) ? { biteNoCancelUntil: gameTime + BITE_CANCEL_DR_MS } : {}),
           };
         }
         return e;

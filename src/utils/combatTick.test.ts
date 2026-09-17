@@ -539,7 +539,9 @@ describe('★§16の技はノックバックで中断されない(§12は従来�
     expect(after?.chaffMove).toBe('bat-grab');
   });
 
-  it('§12の噛みつき(chaffMove未定義)は、従来どおりノックバックで中断される', () => {
+  // ★社長指示2026-09-17「銃撃では攻撃は何も止まらないようにして。ノックバックはあっても止まらない」。
+  // 旧仕様(§12の噛みつきだけノックバックで中断)を**撤回**し、§16の技と同じ扱いへ揃えた。
+  it('★§12の噛みつきも、ノックバック中では中断されない(社長指示2026-09-17)', () => {
     const e = place(spawnEnemyAt('zombie', 0, 0, START_GT), {
       aiPhase: 'zrush', biteAt: START_GT, knockbackUntil: Date.now() + 5000,
     });
@@ -549,8 +551,21 @@ describe('★§16の技はノックバックで中断されない(§12は従来�
     }));
     applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
     const after = useGameStore.getState().enemies.find(x => x.id === e.id);
-    expect(after?.biteAt).toBe(0); // 中断された(従来どおり)
-    expect(after?.chaffMoveCdUntil).toBeUndefined(); // §12にはchaffMoveCdUntilを書かない
+    expect(after?.biteAt).toBe(START_GT); // ★中断されず、台本は続いている
+  });
+
+  // ★残る中断は「クリティカルの気絶」だけ(社長裁定「雑魚はクリティカルで止まる」)。
+  it('★クリティカルの気絶(stunUntil)では、従来どおり噛みつきが中断される', () => {
+    const e = place(spawnEnemyAt('zombie', 0, 0, START_GT), {
+      aiPhase: 'zrush', biteAt: START_GT, stunUntil: START_GT + 5000,
+    });
+    useGameStore.setState(s => ({
+      enemies: [e], gameTime: START_GT,
+      player: { ...s.player, health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0 },
+    }));
+    applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
+    const after = useGameStore.getState().enemies.find(x => x.id === e.id);
+    expect(after?.biteAt).toBe(0); // 気絶は止める
   });
 
   it('★§16の技が正常解決(当たった/外れた)しても chaffMove は消えない・技後CDも書かない(検収監査A-4の訂正)', () => {
