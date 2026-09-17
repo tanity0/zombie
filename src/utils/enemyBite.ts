@@ -71,6 +71,13 @@ export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
    * §16のゾンビ赤2連(z-bite1/z-bite2)は別枠(この既定値を経由しない・state machineが直接焼く)。
    */
   zombie: { recoverMs: 600 },
+  /**
+   * ★リッチ(§16-B B-5・v0.25.4447)。既定の600msでは、**硬直350ms+消滅260ms+出現**でCDがほぼ
+   * 使い切られ、着地した時にはもう次の噛みへ走り出す=社長の言う「**CD中は**帯で保つ」の
+   * 「CD中」が存在しない。転移して**離れている時間**が見えるだけの長さを置く。
+   * **叩き台(実機で社長が詰める)**: 3000ms。内訳の目安は 790ms(硬直+転移)+ 約2.2秒の待ち。
+   */
+  lich: { recoverMs: 3000 },
 };
 
 /**

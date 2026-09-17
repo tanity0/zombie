@@ -4,6 +4,8 @@ import {
   LICH_KEEP_RADIUS_PX, LICH_WARP_VANISH_MS, LICH_WARP_APPEAR_MS,
   lichWarpLanding, lichIsVanishing, lichWarpDue, lichWarpPose,
   lichVanishProgress, lichAppearProgress,
+  lichCircleVanishProgress, lichCircleAppearProgress,
+  LICH_WARP_TRACE_MS, LICH_CIRCLE_VANISH_MS, LICH_CIRCLE_APPEAR_MS,
 } from './lichWarp';
 
 const mk = (p: Partial<Enemy>): Enemy => ({ id: 'l1', type: 'lich', spawnedAt: 100, ...p } as Enemy);
@@ -41,21 +43,61 @@ describe('§16-B B-5 リッチの転移', () => {
     expect(lichWarpDue(e, 9999)).toBe(false);
   });
 
-  it('★消滅は加速しながら潰れる(等速で消えない=慣性MUST)', () => {
+  it('★消滅は「死の潰れ」と逆方向へ変形する(横に絞り、縦に伸びる)', () => {
+    // 同じ画面で `corpseSquashNow` が「縦に潰れて横に広がる」=倒した の絵なので、
+    // 転移がそれと同じ形だとプレイヤーは「倒れた?」と読む。
     const e = mk({ lichWarpAt: 0 });
-    const q1 = lichWarpPose(e, LICH_WARP_VANISH_MS * 0.25);
-    const q3 = lichWarpPose(e, LICH_WARP_VANISH_MS * 0.75);
-    // 前半より後半の方が速く進む=前四分の一ではほとんど変わっていない
-    expect(1 - q1.alpha).toBeLessThan(0.05);
-    expect(q3.sqY).toBeLessThan(q1.sqY);      // 縦に潰れる
-    expect(q3.sqX).toBeGreaterThan(q1.sqX);   // 横に広がる
+    const late = lichWarpPose(e, LICH_WARP_VANISH_MS * 0.9);
+    expect(late.sqX).toBeLessThan(1);      // 横は絞られる(広がらない)
+    expect(late.sqY).toBeGreaterThan(1);   // 縦は伸びる(潰れない)
   });
 
-  it('★出現は行き過ぎて収まる(途中で等身を超える)', () => {
+  it('★絞り切った姿が見える(透明度が形より遅れて落ちる)', () => {
+    const e = mk({ lichWarpAt: 0 });
+    const p = lichWarpPose(e, LICH_WARP_VANISH_MS * 0.85);
+    expect(1 - p.sqX).toBeGreaterThan(0.45);  // ほぼ絞り切っている時に
+    expect(p.alpha).toBeGreaterThan(0.3);     // まだ見えている
+  });
+
+  it('★変化が終盤の数コマに固まらない(中盤で既に半分は進んでいる)', () => {
+    const e = mk({ lichWarpAt: 0 });
+    const mid = lichWarpPose(e, LICH_WARP_VANISH_MS * 0.6);
+    expect(1 - mid.sqX).toBeGreaterThan(0.72 * 0.3);
+  });
+
+  it('★出現は大きく行き過ぎて収まる(小さい動きは存在しないのと同じ)', () => {
     const e = mk({ lichWarpDoneAt: 0 });
-    const peak = Math.max(...[0.5, 0.6, 0.7, 0.8].map(u => lichWarpPose(e, LICH_WARP_APPEAR_MS * u).sqY));
-    expect(peak).toBeGreaterThan(1);                                  // 行き過ぎる
-    expect(lichWarpPose(e, LICH_WARP_APPEAR_MS * 0.999).sqY).toBeCloseTo(1, 1); // 収まる
+    const peak = Math.max(...Array.from({ length: 40 }, (_, i) =>
+      lichWarpPose(e, LICH_WARP_APPEAR_MS * (i + 1) / 41).sqY));
+    expect(peak).toBeGreaterThan(1.15);                                // 25%近く行き過ぎる
+    expect(lichWarpPose(e, LICH_WARP_APPEAR_MS * 0.999).sqY).toBeCloseTo(1, 1);
+  });
+
+  it('★出現は消滅の逆再生ではない(逆向きに重ねても形が合わない)', () => {
+    // 消滅は**一方向**(横に絞り続ける)。出現は**行き過ぎて戻る**=途中で向きが変わる。
+    // 逆再生なら、どちらも同じ「一方向」か同じ「行って戻る」になるはず。
+    const vx = [0.2, 0.45, 0.7, 0.95].map(u => lichWarpPose(mk({ lichWarpAt: 0 }), LICH_WARP_VANISH_MS * u).sqX);
+    for (let i = 1; i < vx.length; i++) expect(vx[i]).toBeLessThan(vx[i - 1]);   // 単調
+    const xs = [0.2, 0.45, 0.7, 0.95].map(u => lichWarpPose(mk({ lichWarpDoneAt: 0 }), LICH_WARP_APPEAR_MS * u).sqX);
+    expect(Math.min(...xs)).toBeLessThan(1);
+    expect(Math.max(...xs)).toBeGreaterThan(1);
+  });
+
+  it('★陣が先に灯り、体は遅れて立つ(出た瞬間に既に居る、にしない)', () => {
+    const e = mk({ lichWarpDoneAt: 0 });
+    expect(lichWarpPose(e, LICH_WARP_APPEAR_MS * 0.1).alpha).toBe(0);   // 体はまだ出ていない
+    expect(lichCircleAppearProgress(e, LICH_WARP_APPEAR_MS * 0.1)).not.toBeNull(); // 陣は出ている
+  });
+
+  it('★飛んだ後も元居た場所に陣の跡が残る(「消えた場所が残る」を嘘にしない)', () => {
+    const e = mk({ lichWarpDoneAt: 0, lichWarpFromX: 10, lichWarpFromY: 20 });
+    expect(lichCircleVanishProgress(e, LICH_WARP_TRACE_MS * 0.5)).not.toBeNull();
+    expect(lichCircleVanishProgress(e, LICH_WARP_TRACE_MS + 1)).toBeNull();
+  });
+
+  it('★陣は体より長い時計で回す(短い尺に流用すると渦に見えない)', () => {
+    expect(LICH_CIRCLE_VANISH_MS).toBeGreaterThan(LICH_WARP_VANISH_MS);
+    expect(LICH_CIRCLE_APPEAR_MS).toBeGreaterThan(LICH_WARP_APPEAR_MS);
   });
 
   it('演出が終われば等身・不透明に戻る(残らない)', () => {

@@ -607,6 +607,9 @@ export interface Enemy {
    */
   lichWarpAt?: number;
   lichWarpDoneAt?: number;
+  /** 飛ぶ前の**足元**。飛んだ後もそこに陣の跡を描くために要る(描画専用)。 */
+  lichWarpFromX?: number;
+  lichWarpFromY?: number;
   // PACING_PUZZLE.md §16-7b(雑魚の「詰めさせない技」): いま出している§16の技。undefined=§16の技を
   // 出していない(通常の§12噛みつき・無属性の移動)。★訂正版(§16-7穴2・検収監査A-4): 立つのは
   // 技の頭(bat=b-windup/skeleton=s-crouchの次の踏み込み/ゾンビ=z-lunge-in。biteAtより前)。

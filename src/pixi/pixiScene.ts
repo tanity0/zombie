@@ -37,7 +37,7 @@ import { playerHurtReactionOf } from '../utils/playerHurt';
 // ★被弾リアクションの強さ(しなり/跳ね/フラッシュ/光/ノックバック/停止時間が読む唯一の窓口・2026-09-17)
 import { enemyHitReaction, hopMul, flashMul } from '../utils/hitFlinch';
 import { fallenSoldiersInRange } from '../utils/endingScene';
-import { lichWarpPose, lichVanishProgress, lichAppearProgress } from '../utils/lichWarp';
+import { lichWarpPose, lichCircleVanishProgress, lichCircleAppearProgress } from '../utils/lichWarp';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
   useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
@@ -2099,8 +2099,13 @@ const ACRASIEL_WARP_FLASH_MS_VIS = 380;
 const ANGEL_WARP_CIRCLE_PX = 170;
 /** リッチの陣。雑魚なのでボス(170)の半分。足元に収まり、かつ「消えた場所」が残る大きさ。 */
 const LICH_WARP_CIRCLE_PX = 86;
-/** 死人の冷たい緑。赤(カウンター可)でも紫(カウンター不可)でもない=攻撃の絵ではないと分かる色。 */
-const LICH_WARP_TINT = 0x6ee7a8;
+/**
+ * 死人の冷たい緑。赤(カウンター可)でも紫(カウンター不可)でもない=攻撃の絵ではないと分かる色。
+ * ★彩度と明度を落としてある(クリエイティブ監査 C-12): 旧 `0x6ee7a8` は**HPバーの青緑と同じ明度帯**で
+ * UI の色として読まれ、しかも3体の陣色が揃ってパステル(=パレット表から取った色の並びに見える)だった。
+ * ここは**HUDより一段沈む**濁った青緑にして、夜の青紫の中で「床の光」として読ませる。
+ */
+const LICH_WARP_TINT = 0x5f8f72;
 const THIN_BEAM_VIS_HALFWIDTH = 30; // T6細ビームの描画半太さ(=SR_T.beam.halfWidth。20→30=v0.25.3590貼り戻し。使用箇所はスリィエル環の2本のみ・同値はangelSwordSync.testが見張る)
 // FX-V2a(発注仕様v0.25.2974): gaze-windup終了エッジ(発射の瞬間)に一瞬走らせる金色の視線閃光。
 // 判定は既存のenemy_bolt(弾)がそのまま持つ=これは②「派手さの絵」(減衰のみ・軌跡長=環/本体→aiTarget)。
@@ -9075,6 +9080,8 @@ export class PixiScene {
     // syncActors の時点では松明しか入っていない。強glow(爆発/カウンター/レベルアップ)が積まれるのは
     // 直前のこのループなので、全光源が揃うのはこの1行の位置だけ(§6品質監査 A-1)。
     this.syncRimLights(s.player, s.enemies, s.effects, fxNow);
+    // ★敵(と死体)を描き終えた後に、このフレームで呼ばれなかった転移の陣を隠す。
+    this.pruneWarpCircles();
     const pfx = s.player.x + s.player.width / 2, pfy = s.player.y + s.player.height / 2;
     this.assistBrightnessNow = lightAt(pfx, pfy, this.worldLights);
     this.punchBrightnessNow = lightAt(pfx, pfy, this.punchLights);
@@ -16933,6 +16940,15 @@ export class PixiScene {
    */
   private rimPruneAt = 0;
   private static readonly RIM_PRUNE_INTERVAL_MS = 500;
+  /** このフレームで描かれなかった陣を隠す(上の `warpCircleDrawn` の説明が理由)。 */
+  private pruneWarpCircles() {
+    if (this.warpCircleSprites.size === 0) { this.warpCircleDrawn.clear(); return; }
+    for (const [key, v] of this.warpCircleSprites) {
+      if (!this.warpCircleDrawn.has(key)) v.c.visible = false;
+    }
+    this.warpCircleDrawn.clear();
+  }
+
   private pruneRims(live: { id: string }[], now: number) {
     if (now - this.rimPruneAt < PixiScene.RIM_PRUNE_INTERVAL_MS) return;
     this.rimPruneAt = now;
@@ -20632,9 +20648,16 @@ export class PixiScene {
     // ★陣は床に寝ているので**足元**(fb.footX/footY)に置く(アクラシエルで踏んだ「腰の高さに浮く」の教訓)。
     // ★進みは**store の gameTime** から引く(掛け合いのラッチが要らない=消える/現れるの取りこぼしが無い)。
     if (e.type === 'lich') {
-      const lv = lichVanishProgress(e, gameTime);
-      if (lv !== null) this.drawWarpCircle(`${e.id}:lich-out`, fb.footX, fb.footY, LICH_WARP_CIRCLE_PX, lv, LICH_WARP_TINT, 'vanish', now);
-      const la = lichAppearProgress(e, gameTime);
+      // 消える陣は**1本の時計**で「体が居る間 → 飛んだ後の跡」を跨ぐ。跨いだ先は座標が飛んでいるので、
+      // 描く場所を**飛ぶ前の足元**(lichWarpFromX/Y)へ切り替える(それ以外は式も尺も同じ1本)。
+      const lv = lichCircleVanishProgress(e, gameTime);
+      if (lv !== null) {
+        const gone = e.lichWarpAt === undefined;
+        const ox = gone ? (e.lichWarpFromX ?? fb.footX) : fb.footX;
+        const oy = gone ? (e.lichWarpFromY ?? fb.footY) : fb.footY;
+        this.drawWarpCircle(`${e.id}:lich-out`, ox, oy, LICH_WARP_CIRCLE_PX, lv, LICH_WARP_TINT, 'vanish', now);
+      }
+      const la = lichCircleAppearProgress(e, gameTime);
       if (la !== null) this.drawWarpCircle(`${e.id}:lich-in`, fb.footX, fb.footY, LICH_WARP_CIRCLE_PX, la, LICH_WARP_TINT, 'appear', now);
     }
     // ★ジブリルの転移も同じ魔法陣へ揃える(社長指示2026-09-17「**天使も揃えて素材**」)。
@@ -23715,6 +23738,17 @@ export class PixiScene {
    * (`breathHoldAmp` と同じ作法)。
    */
   private warpCircleSprites = new Map<string, { c: Container; sp: Sprite; at: number; spin: number }>();
+  /**
+   * ★このフレームで実際に描いた陣のキー。**描かれなかった陣は必ず隠す**(`pruneWarpCircles`)。
+   *
+   * 品質監査(2026-09-17)で判明した**出荷バグ**: 陣を隠す経路は「`drawWarpCircle` が alpha≦0.01 で
+   * 呼ばれた時」しか無かった。ところが呼び手はどれも**進みが1になると呼ぶのをやめる**
+   * (リッチは進みが null、アクラシエル/ジブリルは `latchFx` が null を返す)ので、
+   * **「隠す1フレーム」が永遠に来ない**——60fpsで最後に描かれるのは alpha≈0.45・寸法47%の輪で、
+   * それが**転移した地点ごとに床へ残り続ける**(敵が死んでも消えない)。
+   * ⇒ **呼ばれなかったら隠す**、という当たり前の掃除をここで1本持つ(`pruneRims` と同じ作法)。
+   */
+  private warpCircleDrawn = new Set<string>();
   private drawWarpCircle(
     key: string, x: number, y: number, sizePx: number, t: number, tint: number,
     mode: 'vanish' | 'appear', now: number,
@@ -23741,7 +23775,7 @@ export class PixiScene {
     if (alpha <= 0.01 || size <= 0.01) {
       const old = this.warpCircleSprites.get(key);
       if (old) old.c.visible = false;
-      return;
+      return;   // ★描いていないので warpCircleDrawn には入れない(下の掃除がそのまま隠したままにする)
     }
     let v = this.warpCircleSprites.get(key);
     if (!v) {
@@ -23759,6 +23793,7 @@ export class PixiScene {
       this.warpCircleSprites.set(key, v);
     }
     if (v.sp.texture !== tex) v.sp.texture = tex;
+    this.warpCircleDrawn.add(key);
     v.c.visible = true;
     v.sp.tint = tint;
     v.c.position.set(x, y);

@@ -1333,6 +1333,14 @@ export const applyContactDamage = (
   // 値を読んでしまい `counterable:true` が一度も読まれない(=赤い技が全部返せなくなる)。
   const biteHits: { id: string; dmg: number; x: number; y: number; chaffMove: Enemy['chaffMove']; aiPhase: Enemy['aiPhase'] }[] = [];
   const biteClears: string[] = [];
+  /**
+   * ★**「本当に噛み切った」個体だけ**(当たった/外した)。`biteClears` には**中断**
+   * (気絶/拘束/持ち上げ/技へ移行)も入るので、両者を混ぜると「噛んでいないのに噛んだ後の処理」が走る。
+   * 品質監査(2026-09-17)の A-4/A-5: リッチの転移を `biteClears` に掛けていたため、
+   * **構え中にクリで気絶させただけで転移が予約され**、罠で拘束しただけで**拘束明けに200px先へ飛んだ**。
+   * 社長の言葉は「噛みつきを**発動したら**」——溜め中に止められた噛みは発動していない。
+   */
+  const biteResolved: string[] = [];
   // ★ノックバックの中断とその逓減(kbNow / biteDrIds / BITE_CANCEL_DR_MS)は撤去した
   //   (社長指示2026-09-17「銃撃では攻撃は何も止まらない」=中断しないので逓減も要らない)。
   for (const e of collEnemies) {
@@ -1378,6 +1386,7 @@ export const applyContactDamage = (
         biteHits.push({ id: e.id, dmg: e.damage * rn * sc, x: px, y: py, chaffMove: e.chaffMove, aiPhase: e.aiPhase });
       }
       biteClears.push(e.id);                                      // 当たっても外しても台本は終わる
+      biteResolved.push(e.id);                                    // ★中断ではない=噛み切った
     } else if (canStartBite(e, gameTime)) {   // ★ノックバック中でも構え始められる(社長指示2026-09-17)
       // ★発火も判定と**同じ四角**で見る(v0.25.3904)。中心間の距離で見ていた旧実装は
       // 体の大きい敵ほど発火しなかった(ゾンビは触れても中心間34px>30px=一生噛めない)。
@@ -1422,7 +1431,8 @@ export const applyContactDamage = (
               ? { biteRecoverUntil: gameTime + BITE_RECOVER_STILL_MS } : {}),
             // ★リッチの転移(§16-B B-5): **硬直の後**に消え始める。噛んだ瞬間に飛ばさない
             // (飛ばすとリッチだけ一度も殴り返せない敵になる=硬直はプレイヤーの取り分)。
-            ...(e.type === 'lich' && e.chaffMove === undefined
+            // ★**噛み切った時だけ**(`biteResolved`)。中断(気絶/拘束/持ち上げ)では予約しない。
+            ...(e.type === 'lich' && e.chaffMove === undefined && biteResolved.includes(e.id)
               ? { lichWarpAt: gameTime + BITE_RECOVER_STILL_MS } : {}),
           };
         }

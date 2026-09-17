@@ -9,11 +9,13 @@ const PLAYER = 87;
 
 describe('§16-B 攻撃射程を保つ層', () => {
   it('★対象は「自分の間合いを持たない型」だけ(既に持つ型には掛けない)', () => {
-    for (const t of ['bat', 'skeleton', 'werewolf', 'lab-zombie-2', 'pumpkin', 'lab-zombie-3'] as const) {
+    // ★リッチも対象(§16-B B-5・v0.25.4447)。ただし掛かるのは**噛みのCD中だけ**で、
+    // その判定は呼び出し側(gameStore)が持つ——ここは「型として対象か」だけを見る。
+    for (const t of ['bat', 'skeleton', 'werewolf', 'lab-zombie-2', 'pumpkin', 'lab-zombie-3', 'lich'] as const) {
       expect(hasKeepRange(t)).toBe(true);
     }
     // 既に自分の間合いを持っている / 対象外の型
-    for (const t of ['zombie', 'ghost', 'screamer', 'driller', 'logger', 'plant', 'lich', 'giantbat', 'thor'] as const) {
+    for (const t of ['zombie', 'ghost', 'screamer', 'driller', 'logger', 'plant', 'giantbat', 'thor'] as const) {
       expect(hasKeepRange(t)).toBe(false);
     }
   });

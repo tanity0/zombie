@@ -5204,6 +5204,12 @@ export const buildCorpseFromKill = (
     // ★PACING_PUZZLE.md §16-7b「chaffMoveはbiteAtと同時に立ち、biteAtを消す全経路で同時に消す」の
     // 1経路(死亡=biteAtを0へ戻す4つ目の場所)。残すと死体が§16の技の構え絵を引きずる。
     chaffMove: undefined,
+    // ★リッチの転移も同じ(品質監査A-3)。残すと**死体が魔法陣に吸い込まれる**——
+    // 噛みの硬直中に倒すのは設計が招いている行動なので、これは狙って起きる:
+    // 死体が残っている間に予約の時刻が来て、死体が絞れて透明になり足元に陣が開き、
+    // 演出が明けると**元の不透明度へ瞬間復帰**する。
+    lichWarpAt: undefined, lichWarpDoneAt: undefined,
+    lichWarpFromX: undefined, lichWarpFromY: undefined,
     knockbackVx: dirX * speed,
     knockbackVy: dirY * speed,
     knockbackUntil: now + KNOCKBACK_DURATION,
@@ -12873,8 +12879,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★リッチの転移(§16-B B-5)の「消えている間」。硬直(上)が明けた直後の
         // LICH_WARP_VANISH_MS だけ、動かず技も出さない(床の陣に吸われている最中)。
         // ★判定は持たない——**消えている間も殴られる**(無敵を発明しない)。
-        if (lichIsVanishing(enemy, gameTime)) {
-          return { ...enemy, vx: 0, vy: 0 };
+        if (enemy.lichWarpAt !== undefined) {
+          // ★止められたら**この場で**取り消す(品質監査A-4)。取り消しを下の気絶ブロックに
+          // 置いていた時は、硬直350ms+消滅180msが過ぎるまで届かず、**棒立ちのまま消えて現れる**
+          // 絵だけが再生されていた(座標は動かないので「転移しない」は真だが、画面上は嘘)。
+          // 拘束・持ち上げも同じ(拘束が切れた瞬間に飛ぶ=A-5)。述語は噛みを止めるものと同じものを使う。
+          const stopped = (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil)
+            || (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil)
+            || (enemy.liftUntil !== undefined && gameTime < enemy.liftUntil);
+          if (stopped) {
+            return { ...enemy, vx: 0, vy: 0, lichWarpAt: undefined };
+          }
+          if (lichIsVanishing(enemy, gameTime)) {
+            return { ...enemy, vx: 0, vy: 0 };
+          }
         }
         // CRIT-UNIFY §9.2: 次行動CD専用のatkUntil。クリ窓中のボスは×2(bossCritCdMult)。
         // windup/active/recoverの各durationは従来のatkUntilのまま(予告のリード時間は変えない)。
@@ -15049,6 +15067,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           return {
             ...enemy, x: placed.x, y: placed.y, vx: 0, vy: 0,
             lichWarpAt: undefined, lichWarpDoneAt: gameTime,
+            // ★飛ぶ前の足元を焼く。ここに陣の跡が残る=「そこから居なくなって、ここに来た」が
+            // 出現と**同時に**見える(クリエイティブ監査 B-9「消えた場所が残る、が嘘になっている」)。
+            lichWarpFromX: enemy.x + enemy.width / 2, lichWarpFromY: enemy.y + enemy.height,
           };
         }
 
@@ -15586,7 +15607,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 自分の移動を書いて return 済み、または下で上書きする)。対象は `KEEP_STYLE_BY_TYPE` の6型。
         // ★距離は**その型の技の引き金と同じ基準点**=プレイヤー中心で測る(B-9 Q-1)。
         let keepZone: 'approach' | 'keep' | 'backoff' | null = null;
-        if (hasKeepRange(enemy.type)) {
+        // ★リッチだけは「**噛みのCD中**」に限る(社長「CD中は例のヒステリシスで」)。
+        // 品質監査A-1: 常時掛けていたため、**リッチは150〜200pxを回るだけで二度と噛まなくなった**
+        // ——リッチの攻撃射程は200pxではなく**接触**(30px)なので、帯に居る＝攻撃できない。
+        // 「張り付くバカ」が「近づかないバカ」に置き換わっただけで、転移も一度も起きなかった。
+        // CDが明けたらこの層は外れ、下の螺旋が詰めに行く=噛む→転移→帯で待つ、が回る。
+        const keepOff = enemy.type === 'lich' && gameTime >= (enemy.biteReadyAt ?? 0);
+        if (hasKeepRange(enemy.type) && !keepOff) {
           const keepOuter = (enemy.type === 'bat') ? BAT_ORBIT_RADIUS_PX
             : (enemy.type === 'skeleton') ? SKELETON_TRIGGER_PX
             : (enemy.type === 'lich') ? LICH_KEEP_RADIUS_PX
