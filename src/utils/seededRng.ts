@@ -55,6 +55,21 @@ export const makeSeededRng = (name: string): SeededStream => {
   return fn;
 };
 
+/**
+ * ★湧きの**意思決定**の系統(台本の抽選・チャフの型抽選・パンプキン枠の実体化)。
+ *
+ * ★なぜ `spawn`(enemyUtils)と別の流れなのか: enemyUtils の `spawn` は「選ばれた型を
+ * どこに・どんな色で置くか」を引く流れで、**引く回数が配置の都合で変わる**。
+ * 「**どの型を出すか**」を同じ流れに載せると、配置側の都合で型の並びが動いてしまう。
+ * 系統を割るのは `makeSeededRng` の設計思想(ファイル冒頭)そのまま。
+ *
+ * ★ここに載っている実際の呼び出し元(2026-09-17時点・数えたもの):
+ *  - `directorTick.ts` 台本ローテーション(`selectRotationPattern` の2値)
+ *  - `directorTick.ts` 盤面維持の抽選(`decideNextSpawn` の `tieBreakRandom` → `pickChaffType`)
+ *  - `drillerAi.ts` `resolvePumpkinTier` の既定 rand(pumpkin/driller/logger の実体化)
+ */
+export const directorRng = makeSeededRng('director');
+
 /** ★ランの開始時に全系統を頭へ戻す(`?seed=` 未指定なら何もしない)。 */
 export const resetSeededRngs = (): void => { for (const s of streams) s.reset(); };
 

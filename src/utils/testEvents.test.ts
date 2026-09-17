@@ -12,7 +12,6 @@ describe('testEvents(B節: 構造化イベント履歴)', () => {
   it('ゲートOFF(TEST_BRIDGE_ACTIVE=false)では1件も溜まらない', async () => {
     vi.doMock('./devTestKnobs', () => ({ TEST_BRIDGE_ACTIVE: false }));
     const { recordTestEvent, getTestEvents } = await import('./testEvents');
-    recordTestEvent('dodge');
     recordTestEvent('counter', { foo: 1 });
     recordTestEvent('enemySpawn', { type: 'bat' });
     expect(getTestEvents()).toEqual([]);
@@ -48,6 +47,17 @@ describe('testEvents(B節: 構造化イベント履歴)', () => {
     // 先頭10件(seq 0-9)が捨てられ、seq=10〜5009の5000件が残る。
     expect((events[0].data as { seq: number }).seq).toBe(10);
     expect((events[events.length - 1].data as { seq: number }).seq).toBe(5009);
+  });
+
+  // ★社長指示2026-09-17「回避は作らない」。発火箇所が1つも無い種別を型に残すと、観測側が
+  // 「0件=記録漏れかもしれない」と毎回疑うことになる(実際 results/20260917-1430-bc-verify.md §1)。
+  // 回避を作る決定が出るまでは、型に生えていないことを機械で固定する。
+  it('★TestEventType に dodge は無い(回避は作らない=未実装を型に残さない)', async () => {
+    vi.doMock('./devTestKnobs', () => ({ TEST_BRIDGE_ACTIVE: true }));
+    const { recordTestEvent, getTestEvents } = await import('./testEvents');
+    // @ts-expect-error 'dodge' は TestEventType に存在しない(存在するようになったらこの行が落ちる)
+    recordTestEvent('dodge');
+    expect(getTestEvents().length).toBe(1); // 実行時は素通り=型の話だけであることの確認
   });
 
   it('data省略時は data フィールドを持たない(空オブジェクトを毎回作らない)', async () => {

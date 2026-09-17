@@ -1341,9 +1341,11 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 50, pointerEvents: 'none', animation: `opblack ${BLACK_MS}ms linear ${BLACK_START}ms both` }} />
       )}
 
-      {/* スキップ(タイトルフェードイン中=実質OP終了後は出さない) */}
+      {/* スキップ(タイトルフェードイン中=実質OP終了後は出さない)。
+          data-testid=自動レビューの掴み手(TEST_HANDOFF/REQUEST-devbridge.md §D・属性のみ追加)。 */}
       {!titleReveal && <button
         type="button"
+        data-testid="opening-skip"
         onClick={(e) => { e.stopPropagation(); finish(); }}
         style={{
           position: 'absolute', bottom: 18, right: 18, zIndex: 60,

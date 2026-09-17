@@ -34,6 +34,9 @@ import {
   isHangedman,
 } from './enemyUtils';
 import { resolvePumpkinTier, allowDrillerForRun, allowLoggerForRun, isKiteMidAttackPhase } from './drillerAi'; // PACING_PUZZLE.md §9/§14
+// ★ランの再現性(TEST_HANDOFF/REQUEST-devbridge.md C): 湧きの意思決定の乱数。
+// `?seed=` が無ければ `Math.random` そのものなので、通常プレイの挙動は1ビットも変わらない。
+import { directorRng } from './seededRng';
 import { isBossMakerRun } from './bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdriller/loggerを出さない
 import { isGauntletRun } from './gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdriller/loggerを出さない
 import { selectCullCandidates } from './enemyCulling';
@@ -501,7 +504,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     // 40秒到達後はもう引かない=現台本の片付きがコマ切替の合図になる(下の切替判定)。
     const picked = selectRotationPattern(
       puzzleClockRef.current.rank, koma.seenIds, koma.lastPatternId,
-      msSinceLastHit < 10000, Math.random(), Math.random()
+      msSinceLastHit < 10000, directorRng(), directorRng()
     );
     koma.script = picked;
     koma.scriptSpawned = { ...ZERO_NUISANCE };
@@ -667,7 +670,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     aliveSpecial,
     msSinceLastHit,
     chaffWeights: chaffWeightsForKoma(spawnKoma),
-    tieBreakRandom: Math.random(),
+    tieBreakRandom: directorRng(),
   });
   if (decision) {
     // ★v0.25.3546(社長裁定「①の1は入れていい」): ピークのコマの**最初のチャフ**を赤にする。

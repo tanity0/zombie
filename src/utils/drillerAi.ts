@@ -11,6 +11,11 @@
 // (§9-3「実体化のみ差し替え」)。純関数はその実体化の瞬間だけに使う。
 
 import type { EnemyType } from '../types/game';
+// ★ランの再現性(TEST_HANDOFF/REQUEST-devbridge.md C): pumpkin枠の実体化も「どの型が出るか」の
+// 決定なので、台本/チャフ抽選と同じ系統(director)に載せる。**`?seed=` が無ければ
+// `Math.random` そのもの**なので通常プレイの挙動は1ビットも変わらない。
+// 引数で rand を渡す既存の呼び出し(テスト等)はそのまま優先される=既定値だけの差し替え。
+import { directorRng } from './seededRng';
 
 /** §9-3/§14-3裁定済み#2: pumpkin枠を実体化する瞬間、pumpkin/driller/logger のどれを実際に湧かせるか。
  * allowDriller/allowLogger=false(対象ステージ外 or 計測路)ならそれぞれの型は出さない。
@@ -23,7 +28,7 @@ import type { EnemyType } from '../types/game';
 export const resolvePumpkinTier = (
   allowDriller: boolean,
   allowLogger: boolean,
-  rand: () => number = Math.random,
+  rand: () => number = directorRng,
 ): 'pumpkin' | 'driller' | 'logger' => {
   if (allowDriller && allowLogger) {
     const r = rand();

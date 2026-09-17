@@ -333,6 +333,9 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   // パネルを開いている間は「どこをタップしても開始」を止める(スイッチを押し損ねてゲームが始まらないように)。
   const titleInteractive = phase === 'title' && !showNotice && !showCine;
 
+  // ★自動レビューの掴み手(TEST_HANDOFF/REQUEST-devbridge.md §D)。下の <div> に属性を足すだけ=見た目は不変。
+  // `data-screen` は reportTestScreen と同じ出し分け(A の screenId と同じ値)。
+  // `title-start` は「押す物」=このルート自身(タイトルは画面全体が開始ボタン=aria-labelしか名前が無かった)。
   return (
     <div
       onClick={titleInteractive ? tapStart : undefined}
@@ -340,6 +343,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       role={titleInteractive ? 'button' : undefined}
       tabIndex={titleInteractive ? 0 : -1}
       aria-label={titleInteractive ? 'タップして開始' : undefined}
+      data-screen={showNotice ? 'updateModal' : 'title'}
+      data-testid={titleInteractive ? 'title-start' : undefined}
       className="relative h-full w-full overflow-hidden bg-[#06070d] select-none outline-none"
       style={{ cursor: titleInteractive ? 'pointer' : 'default' }}
     >
@@ -426,6 +431,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
               <Ff7rButton
                 onClick={(e) => { e.stopPropagation(); agree(); }}
                 ariaLabel="OK"
+                testId="changelog-ok"
                 emphasis
                 fade="both"
                 paddingY="0.75rem"

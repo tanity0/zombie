@@ -12,7 +12,7 @@ import OrientationGuard from './components/OrientationGuard';
 import OpeningScene from './components/OpeningScene';
 import MansionCorridorPreview from './components/MansionCorridorPreview';
 import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow, getLoadProgress, getLoadInFlight } from './utils/loadProgress';
-import { installTestBridge, reportTestScreen } from './utils/testBridge';
+import { installTestBridge, reportTestScreen, type TestScreenId } from './utils/testBridge';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore, BOSS_TEST_RUN } from './store/gameStore';
@@ -125,16 +125,19 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   // 上書きすると子の報告を毎回踏み潰す(実測: 更新情報モーダルが出ていても 'title' に化けた)。
   //   'title' → TitleScreen が 'updateModal' / 'title' を出し分ける
   //   'menu'  → MissionSelect が作戦室/ステージ一覧/ブリーフィング/ジョブ選択を出し分ける
+  // ★DOM側の同じ値(TEST_HANDOFF/REQUEST-devbridge.md §D の `data-screen`)もここから出す。
+  // 子に任せる 'title' / 'menu' は null=ルートに属性を付けない(TitleScreen / MissionSelect が自分で置く)。
+  // ★読み方の約束: **文書順で最初の `[data-screen]` が正**(= `document.querySelector('[data-screen]')`)。
+  // オープニング中はタイトルが裏で生きたままなので子にも 'title' が付くが、外側のこのルートが
+  // 'opening' を持つので先に当たる。reportTestScreen 側の優先順(親が最後に書いて勝つ)と同じ結果になる。
+  const appScreenId: TestScreenId | null = showOpening ? 'opening'
+    : gameState === 'title' || gameState === 'menu' ? null
+      : gameState === 'playing' || gameState === 'paused' ? 'gameplay'
+        : gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned' ? 'result'
+          : 'other';
   useEffect(() => {
-    if (showOpening) { reportTestScreen('opening'); return; }
-    switch (gameState) {
-      case 'title': break;                                     // ★TitleScreen に任せる(更新情報モーダルと出し分ける)
-      case 'playing': case 'paused': reportTestScreen('gameplay'); break;
-      case 'gameOver': case 'victory': case 'returned': reportTestScreen('result'); break;
-      case 'menu': break;                                        // ★MissionSelect に任せる(上記)
-      default: reportTestScreen('other'); break;
-    }
-  }, [gameState, showOpening]);
+    if (appScreenId) reportTestScreen(appScreenId);
+  }, [appScreenId]);
   // ★社長指示2026-09-05「ストーリーモード以外は全て練習なので何も手に入ってはいけない。年表にも載らない」。
   // 「進行を1つも残さない出撃」の旗を **gameState の遷移1箇所で** 立て降ろしする。
   // ★**フリー(周回)出撃はストーリーモードに含まれる**(社長訂正2026-09-05「ストーリーモードは
@@ -580,7 +583,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   };
 
   return (
-    <div className={`w-full h-full bg-gray-900 text-white ${COMMAND_UI_ENABLED ? 'command-ui' : ''}`}>
+    <div data-screen={appScreenId ?? undefined} className={`w-full h-full bg-gray-900 text-white ${COMMAND_UI_ENABLED ? 'command-ui' : ''}`}>
       {!bare && gameState === 'title' && (
         <TitleScreen
           onStart={() => { unlockDanceAudio(); setBgmScene('menu'); }} // タップ瞬間にBGM解禁

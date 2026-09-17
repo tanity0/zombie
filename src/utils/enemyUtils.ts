@@ -878,11 +878,16 @@ export const generateEnemy = (
     ? Math.hypot(pressureDirection.x, pressureDirection.y)
     : 0;
   let spawnSide = Math.floor(spawnRng() * 4);
+  // ★引く回数を固定する(TEST_HANDOFF/REQUEST-devbridge.md C・ランの再現性)。
+  // 分岐の中で引くと「通路かどうか」「プレイヤーがどちらを向いているか」で流れの位置がズレ、
+  // 同じseedでも以降の並びが揃わなくなる。**確率も使い道も従来どおり**で、引く場所を前へ出しただけ。
+  const corridorSideRoll = spawnRng();
+  const dirBiasRoll = spawnRng();
   if (corridorSpawnEnabled) {
     // 洋館通路: 左右(壁)からは湧かせない。上(奥=side0)主体・一部下(手前=side2)。
     // pressureDirection(移動方向バイアス)は無視=通路の向きに固定。上下端の散布(x/y)は従来式を流用。
-    spawnSide = spawnRng() < CORRIDOR_SPAWN_TOP_RATIO ? 0 : 2;
-  } else if (dirMag > 0.25 && Math.random() < 0.34) {
+    spawnSide = corridorSideRoll < CORRIDOR_SPAWN_TOP_RATIO ? 0 : 2;
+  } else if (dirMag > 0.25 && dirBiasRoll < 0.34) {
     const nx = pressureDirection!.x / dirMag;
     const ny = pressureDirection!.y / dirMag;
     spawnSide = Math.abs(nx) > Math.abs(ny)
@@ -897,20 +902,20 @@ export const generateEnemy = (
   // 各辺の「外側」(半幅/半高+margin)へ。直交方向は画面幅/高いっぱいに散らす(歩いて入ってくる)。
   switch (spawnSide) {
     case 0: // 上辺の外
-      x = player.x - halfW + Math.random() * viewportWidth;
+      x = player.x - halfW + spawnRng() * viewportWidth;
       y = vy0 - halfH - margin;
       break;
     case 1: // 右辺の外
       x = player.x + halfW + margin;
-      y = vy0 - halfH + Math.random() * viewportHeight;
+      y = vy0 - halfH + spawnRng() * viewportHeight;
       break;
     case 2: // 下辺の外
-      x = player.x - halfW + Math.random() * viewportWidth;
+      x = player.x - halfW + spawnRng() * viewportWidth;
       y = vy0 + halfH + margin;
       break;
     case 3: // 左辺の外
       x = player.x - halfW - margin;
-      y = vy0 - halfH + Math.random() * viewportHeight;
+      y = vy0 - halfH + spawnRng() * viewportHeight;
       break;
   }
   return buildEnemy(type, x, y, gameTime, false, esc, rareMult, forcedColorTier, noRedTier);

@@ -108,7 +108,7 @@ import { PixelIcon, type PixelIconName } from './PixelIcon';
 import DsContourMap from './DsContourMap';
 import NoBounceScroller from './NoBounceScroller';
 import { nextOperationStage } from '../utils/dsHome';
-import { reportTestScreen } from '../utils/testBridge';
+import { reportTestScreen, type TestScreenId } from '../utils/testBridge';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
 import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
@@ -274,7 +274,9 @@ const LoadoutBody: React.FC<{ children: React.ReactNode }> = ({ children }) => D
 
 // NoBounceScroller(縁バウンス殺し+続き下矢印)は共有部品化した(UI監査2026-08-29で全画面へ展開)。
 
-const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: boolean; loadout?: boolean }> = ({ children, fill, dsHome, loadout }) => (
+// ★testScreen(TEST_HANDOFF/REQUEST-devbridge.md §D): いま出している画面の名前を DOM に置く
+// (値は reportTestScreen と同じ TestScreenId)。**属性を足すだけ**で、見た目・レイアウトは変わらない。
+const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: boolean; loadout?: boolean; testScreen?: string }> = ({ children, fill, dsHome, loadout, testScreen }) => (
   dsHome ? (
     // DS版ホームの地(UI_OVERHAUL.md §3-1-3): 背景=DS地(タイトル絵は使わない)+走査線+fill(全高)。
     // safe-areaは外周paddingのまま(帯・罫はパネル幅いっぱいでモックの計器感は成立)。
@@ -283,6 +285,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
     // 内容列は max-width 420px 中央寄せ(監査B-8: モック=340px電話判の構図保持)。
     // 縦に入らない端末(監査B-6)はパネル内スクロールを許容(overflow-y-auto)。
     <div
+      data-screen={testScreen}
       className={`screen-in ds-home relative h-full w-full flex flex-col items-center justify-start overflow-hidden ${COMMAND_PREVIEW && loadout ? 'command-shell' : ''}`}
       style={{
         maxHeight: '100svh',
@@ -299,7 +302,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
       <div className="relative h-full w-full overflow-hidden" style={{ maxWidth: COMMAND_PREVIEW && loadout ? 1180 : 420 }}>{children}</div>
     </div>
   ) : COMMAND_UI_ENABLED ? (
-    <div className="command-page-shell h-full w-full flex flex-col items-center overflow-hidden" style={{
+    <div data-screen={testScreen} className="command-page-shell h-full w-full flex flex-col items-center overflow-hidden" style={{
       maxHeight: '100svh', paddingTop: 'max(env(safe-area-inset-top), 12px)',
       paddingBottom: 'max(env(safe-area-inset-bottom), 16px)',
       paddingLeft: 'max(env(safe-area-inset-left), 12px)', paddingRight: 'max(env(safe-area-inset-right), 12px)',
@@ -308,6 +311,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
     </div>
   ) : (
   <div
+    data-screen={testScreen}
     className="screen-in h-full w-full flex flex-col items-center justify-start bg-[#0b0b12] overflow-hidden"
     style={{
       // 社長報告2026-08-20「ページが長いと下の方が少し切れる。スクロールしても届かない(守護霊メニュー)」:
@@ -467,22 +471,28 @@ const CharSelectParticles: React.FC = () => {
   );
 };
 
+/**
+ * 画面(Screen)→ テストブリッジの screenId。**唯一の対応表**にして、
+ * `reportTestScreen`(A の read().screenId)と DOM の `data-screen`(D)が食い違わないようにする。
+ */
+const testScreenIdFor = (name: Screen['name']): TestScreenId => {
+  switch (name) {
+    case 'home': return 'opsRoom';
+    case 'stageSelect': return 'stagePick';
+    case 'missionDetail': return 'briefing';
+    case 'characterSelect': return 'charSelect';
+    case 'loadout': return 'loadout';
+    default: return 'other';
+  }
+};
+
 const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark, initialScreen, onStartPractice }) => {
   const [screen, setScreen] = useState<Screen>(initialScreen === 'bossrush' ? { name: 'bossRush' } : { name: 'home' });
 
   // ★テストブリッジ(TEST_HANDOFF/REQUEST-devbridge.md A)へ今の枝を報告する。
   // `?testbridge=1` が無ければ reportTestScreen は即returnする=通常プレイでは何も起きない。
   // 親(App)は 'menu' の時に何も書かないので、ここが唯一の書き手になる。
-  useEffect(() => {
-    switch (screen.name) {
-      case 'home': reportTestScreen('opsRoom'); break;
-      case 'stageSelect': reportTestScreen('stagePick'); break;
-      case 'missionDetail': reportTestScreen('briefing'); break;
-      case 'characterSelect': reportTestScreen('charSelect'); break;
-      case 'loadout': reportTestScreen('loadout'); break;
-      default: reportTestScreen('other'); break;
-    }
-  }, [screen.name]);
+  useEffect(() => { reportTestScreen(testScreenIdFor(screen.name)); }, [screen.name]);
   // 出撃素材の先読み(社長報告v0.25.2230「ステージ開始時に10秒くらい固まる」)。ミッション詳細/キャラ選択に
   // 入った時点で、そのステージのテクスチャをバックグラウンドで取り始める。滞在中(ブリーフィングを読む・
   // キャラを選ぶ)に落とし終えれば出撃時の待ちがほぼ消える。キャッシュ済みなら即解決=無害。
@@ -774,7 +784,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。
               サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
               =マップのSECTORタグが同じ情報を持つため重複)。 */}
-          <button type="button" className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goStageSelect}>
+          <button type="button" data-testid="ops-sortie" className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goStageSelect}>
             <span className="ds-sortie-t1 block">出 撃</span>
             <PixelIcon name="chevron-right" size={18} />
           </button>
@@ -874,6 +884,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     return (
       <button
         type="button"
+        data-testid={`stage-card-${stage.id}`}
         onClick={() => {
           if (!unlocked) { playSfx('ui-deny'); return; }
           playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id });
@@ -1089,6 +1100,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {/* primaryの幅は文字幅+余白に揃える(監査A-2の琥珀ボタンと同型)。w-fullは付けない。 */}
           <Ff7rButton
             onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId, mission: missionKind }); }}
+            testId="briefing-jobselect"
             emphasis
             fade="both"
             paddingY="0.8rem"
@@ -1118,7 +1130,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // iOSのURLバー表示中に可視域より縦長になり、下部UI(START/チップ帯)が画面外へ落ちる。
     // Shellと同じく可視ビューポートでクランプ(未対応ブラウザでは無視=安全)。
     return (
-      <div className={`screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none ${COMMAND_UI_ENABLED ? 'command-character' : ''}`} style={{ maxHeight: '100svh' }}>
+      <div data-screen="charSelect" className={`screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none ${COMMAND_UI_ENABLED ? 'command-character' : ''}`} style={{ maxHeight: '100svh' }}>
         {/* 全画面=選択中キャラの立ち絵。クラス切替=key 再マウント。ロード完了後に下からスッと表示。 */}
         <CharPortrait key={effectiveClass} src={portraitSrcFor(effectiveClass)} alt={c.name} />
         {/* 視認性スクリム(上=戻る帯 / 下=情報・選択帯)。立ち絵の暗背景に馴染ませる。 */}
@@ -1172,6 +1184,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               onClick={() => startMission(stageId, effectiveClass, missionKind)}
               className="shrink-0 min-w-[150px] active:scale-95 transition-transform"
               ariaLabel="スタート"
+              testId="charselect-start"
               emphasis
               fade="both"
               paddingY="0.8rem"
@@ -1898,7 +1911,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // キャラ選択は全画面(立ち絵を画面いっぱい)なので Shell(中央パネル)を介さず単独描画。
   if (screen.name === 'characterSelect') return renderCharacterSelect(screen.stageId, screen.mission ?? 'main');
   return (
-    <Shell loadout={screen.name === 'loadout'} fill={screen.name === 'missionDetail'} dsHome={(!DS_HOME_DISABLED && screen.name === 'home') || (DS_LOADOUT_PREVIEW && screen.name === 'loadout')}>
+    <Shell loadout={screen.name === 'loadout'} fill={screen.name === 'missionDetail'} dsHome={(!DS_HOME_DISABLED && screen.name === 'home') || (DS_LOADOUT_PREVIEW && screen.name === 'loadout')} testScreen={testScreenIdFor(screen.name)}>
       {screen.name === 'home' && (DS_HOME_DISABLED ? renderHome() : renderDsHome())}
       {screen.name === 'stageSelect' && renderStageSelect()}
       {screen.name === 'missionDetail' && renderMissionDetail(screen.stageId, screen.mission ?? 'main')}
