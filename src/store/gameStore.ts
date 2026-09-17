@@ -1332,6 +1332,20 @@ export const enemyMeleeDist = (px: number, py: number, e: Enemy): number => {
 // 1秒停止→2秒間2倍速の突進、を範囲内に居る限り繰り返す。
 export const ZOMBIE_SPEED_MULT = 1.2;       // 通常接近の速度倍率
 export const ZOMBIE_RUSH_SPEED_MULT = 2;    // 突進中(zrush)はさらに2倍(=通常接近の2倍速)
+/**
+ * ★赤の台本の中の踏み込み(`z-lunge-in`)だけの速さ(社長指示2026-09-17
+ * 「**台本の中での詰め寄りを早くする**」)。
+ *
+ * ★**紫の追尾(`zrush`)とは別の定数にする。** 以前は両方 `ZOMBIE_RUSH_SPEED_MULT`(2)を共有して
+ * いたが、共有したまま上げると**社長が指示していない紫のループまで速くなる**。
+ * 赤の台本=「来ると分かってから来る」ので速くてよく、紫=「じわじわ追う」ので据え置き。
+ *
+ * ★なぜ速くするか: §16-B で **ゾンビは「間合いを保つ側」に入れない**と裁定された(★未決#B-3)。
+ * ゾンビは**詰め切って居座る敵**という型なので、bat/skeleton のように帯で回らない。その代わり
+ * **踏み込みの速さ**で「重い敵が本気で来た」を出す。値は叩き台(実機で社長が詰める)。
+ * ★立ち上がり(`ZOMBIE_LUNGE_RAMP_MS`=200ms の ease)は**そのまま残す**(慣性MUST)。
+ */
+export const ZOMBIE_LUNGE_SPEED_MULT = 2.8;
 export const ZOMBIE_PAUSE_MS = 1000;        // 1秒停止
 export const ZOMBIE_RUSH_MS = 2000;         // 2秒間突進
 export const ZOMBIE_WOBBLE = 0.38;          // フラフラ(横揺れ)の強さ
@@ -15175,7 +15189,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             // ★②踏み込みの出足(§16-3z「立ち上がり360msの加速」): z-lunge-inへ入った瞬間
             // (`chaffMoveAt`)からsmoothstepで0→満速。0→満速の1フレーム段差を消す。
             const lungeRamp = zombieLungeRampMul(enemy.chaffMoveAt, gameTime);
-            const lungeSpeed = enemy.speed * ZOMBIE_SPEED_MULT * ZOMBIE_RUSH_SPEED_MULT * lungeRamp
+            // ★踏み込みは紫の追尾より速い(社長指示2026-09-17「台本の中での詰め寄りを早くする」)。
+            const lungeSpeed = enemy.speed * ZOMBIE_SPEED_MULT * ZOMBIE_LUNGE_SPEED_MULT * lungeRamp
               * rnSpeedMult * screamSpeedMult * chaffSpeedMult(zTraits, pdist) * iceSlowMult(enemy, gameTime);
             let lh = 0;
             for (let i = 0; i < enemy.id.length; i++) lh = (lh * 31 + enemy.id.charCodeAt(i)) | 0;

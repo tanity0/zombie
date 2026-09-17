@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4439',
+    items: ['ゾンビの二連撃は、踏み込みが速くなった。赤い合図が出てからの距離の詰め方が鋭い'],
+  },
+  {
     version: '0.25.4438',
     items: ['ゲーム内容の変更はありません'],
   },
