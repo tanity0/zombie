@@ -98,6 +98,8 @@ import { GAME_SPEED } from '../config/gameSpeed';
 import { counterReachShapeFor, inCounterReach, type CounterReachShape } from './counterReach';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
+import { TEST_BRIDGE_ACTIVE } from './devTestKnobs';
+import { recordTestEvent } from './testEvents'; // TEST_HANDOFF/REQUEST-devbridge.md B節(記録専用・挙動不変)
 import { refundCounterCooldown } from './counterMaster';
 import { BOUNTY_NEUTRAL_RULED_MS } from './bossRebuild'; // ★社長裁定2026-08-27: 賞金首の技間=2秒
 import { consumeGhostCounterClaim, applyGhostCounterEffect } from './ghostCounter'; // ★v0.25.3962: 守護霊カウンターの消費(賞金首側の配線)
@@ -2070,6 +2072,8 @@ export const runBountyTick = (
       // フェード完了=消滅(描画側はbountyDepartAtからの経過でαを落とす)。取り巻きも一緒に片付ける。
       clearBountyEscorts(bounty.id);
       ENEMY_REMOVE_CAUSE.set(bounty.id, 'bountyGone'); // 消失ログ用: 滞在時間切れの正規退場(v0.25.3964・実機で cause=不明 と出ていた対策)
+      // B節(devbridge発注文): bossDefeated(退去・討伐扱いにしない=result='retreated')。
+      if (TEST_BRIDGE_ACTIVE) recordTestEvent('bossDefeated', { type: bounty.type, result: 'retreated' });
       useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.id !== bounty.id) }));
       return;
     }

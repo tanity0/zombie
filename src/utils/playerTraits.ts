@@ -26,6 +26,8 @@
 import type { Enemy, EnemyType, Player, PlayerBuildSnapshot } from '../types/game';
 import type { AvatarId } from '../data/avatars';
 import { getBotTelemetry, snapshotBotTelemetry, type BotTelemetry } from './botTelemetry';
+import { TEST_BRIDGE_ACTIVE } from './devTestKnobs';
+import { recordTestEvent } from './testEvents'; // TEST_HANDOFF/REQUEST-devbridge.md B節(記録専用・挙動不変)
 // §2.11 裁定1: 計測時ビルドの写し(純関数・store非依存)/ §2.16 A: 同行守護霊の写し(共通の1枚)
 import { snapshotPlayerBuild, type GhostAllySnapshot } from './playerBuild';
 import { isGhostEligibleBoss } from './bossEngagement';
@@ -1081,6 +1083,10 @@ export const notifyCounterHit = (): void => {
  * (増やすと既存counterChanceノブの計測が変わる)。
  */
 export const notifyMoveCounter = (): void => {
+  // B節(devbridge発注文): カウンター成立の記録。session(ボス交戦区間の計測)とは独立して
+  // 常に記録する(ゲート=TEST_BRIDGE_ACTIVE。ゴーストラン中もsession=nullで消えてしまう
+  // G4aの計測とは違い、外部ランナーはゴーストランでも「成立した」事実を拾えないと困るため)。
+  if (TEST_BRIDGE_ACTIVE) recordTestEvent('counter');
   if (session) markMoveReactionCounter(session.moveReactions);
 };
 

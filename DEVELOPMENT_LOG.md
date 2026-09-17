@@ -1,5 +1,58 @@
 # Development Log
 
+## v0.25.4438 — イベントタイムライン(発注文B)【2026-09-17 19:53 JST】
+
+発注: `TEST_HANDOFF/REQUEST-devbridge.md` **B. P0-2 Structured Event Timeline**。
+社長指示2026-09-17「**もし並行できるなら B を実装して**」。実装はサブエージェント(Sonnet)、検収は設計チャット。
+
+### 入ったもの
+新規 `src/utils/testEvents.ts`(リングバッファ5000件)。`window.__TEST_EVENTS__` で読める。
+各件に **`realTime` / `gameTime` / `eventType` / 主要値**。**ゲートはAと同じ `?testbridge=1`**。
+
+★**既存の「合流点」に相乗りした**のが良い(新しい判定・分岐を1つも作っていない):
+
+| イベント | 相乗り先 |
+|---|---|
+| `enemySpawn` | `addEnemy`(全スポーン経路の合流点・既存の `recordSpawn` の隣) |
+| `skillUsed` | `botTelemetry.recordSubUse`(既存のM35サブ発動計測) |
+| `counter` | `playerTraits.notifyMoveCounter`(既存のG4a計測。**呼び出し元7箇所を1点でカバー**) |
+| `upgradeOptions` | `testBridge` の store 購読(`showUpgradeMenu` の false→true。レベルアップ/宝箱の両経路を1点で) |
+| `upgradeSelected` | `selectUpgrade`(既存の `recordUpgradeSelected` の隣) |
+| `bossDefeated`(撃破) | `notifyBossClear` の2箇所(近接経路/その他経路) |
+| `bossDefeated`(退去) | 裏ボス帰巣完了・賞金首の滞在切れ(`result:'retreated'` で区別) |
+| `paused` / `resumed` | `isPaused` の遷移エッジ(store購読)。**`pauseReason` を載せる**(A で7箇所に付けた値) |
+
+### 検収(★実機で確かめた=「コードが正しいから出ているはず」を根拠にしない)
+| 見たこと | 結果 |
+|---|---|
+| ツマミ無しで `window.__TEST_EVENTS__` | **undefined**(通常プレイでは1バイトも溜めない) |
+| `?testbridge=1` で溜まるか | **溜まった**。`realTime`/`gameTime`/`eventType`/`data` が全件に入っている(欠け0) |
+| 直接の発火点(`skillUsed` / `enemySpawn`) | **両方出た** |
+| store購読の発火点(`paused`/`resumed`) | **出た。しかも `resumed` に「何から再開したか」が載っている** |
+
+★2つの配線機構(直接の呼び出し / store購読)を**それぞれ実機で1つずつ確認**した。
+typecheck green / lint エラー0 / `testEvents.test.ts` 5本green / 周辺の既存テスト345本green。
+
+### ★足せなかったもの: `dodge`(社長判断が要る)
+**汎用の「プレイヤーが攻撃を回避した」という単発の発火点が存在しない。** 唯一 dodge を分類しているのは
+`moveReaction.ts` の `foldEpisode`(技のエピソード単位で **counter > hit > dodge** の排他分類)だが:
+1. **ボスの技限定**(城ボス/トール/裏ボス/天使/idol/賞金首の登録技)=**雑魚の攻撃の回避は対象外**
+2. **ゴースト不在ラン限定**(ゴースト装備ランでは丸ごと記録されない)
+3. **エピソード確定時にセッション集計へ畳み込むだけ**で、「いつ回避したか」という単発の形を持たない
+⇒ これをそのまま `dodge` として出すと**欠測の多い数字**になる。**社長へ上げる**(★未決 #D-1)。
+
+**変更ファイル**: `src/utils/testEvents.ts`(新規)/ `src/utils/testEvents.test.ts`(新規)/
+`src/utils/testBridge.ts` / `src/store/gameStore.ts` / `src/hooks/useGameLoop.ts` /
+`src/utils/botTelemetry.ts` / `src/utils/playerTraits.ts` / `src/utils/bountyTick.ts` /
+`package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+
+**自己点検**: 憲法第4条・第5条に抵触しない(記録の呼び出しを足しただけ。既存の分岐・戻り値・`set()` の
+中身に触っていない。ゲートOFF時は payload を作る前に弾く=通常プレイのコストが実質ゼロ)。
+
+**残り(発注文)**: C(seed)・D(data-testid)は未着手。
+
+**状態変化**: なし。
+
 ## v0.25.4437 — 噛みつき直後の硬直を実装 / 整合監査(C)6件の訂正【2026-09-17 19:34 JST】
 
 ### ①噛みつき直後の硬直(社長指摘「噛みつき直後の硬直があるはずだけど？」)

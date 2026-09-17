@@ -22,6 +22,8 @@
 //    isBoss=対象がisBossType(ボスとして扱われる型)か(=対ボス/対雑魚の内訳)。
 //  - リセット: gameStore.resetGame(ラン開始)で全カウンタ0(実機/ヘッドレス両ハーネスをカバー)。
 import type { SubWeaponKey } from '../types/game';
+import { TEST_BRIDGE_ACTIVE } from './devTestKnobs';
+import { recordTestEvent } from './testEvents'; // TEST_HANDOFF/REQUEST-devbridge.md B節(記録専用・挙動不変)
 
 export interface BotDamageDealt {
   gun: number;
@@ -103,6 +105,9 @@ let telemetry: BotTelemetry = createTelemetry();
 
 export const recordSubUse = (key: SubWeaponKey): void => {
   telemetry.subUses[key] = (telemetry.subUses[key] ?? 0) + 1;
+  // B節(devbridge発注文): skillUsed(サブウェポン発動)。ここが合流点(CD式サブ+手動3箇所)なので
+  // 記録もここ1箇所で拾える。
+  if (TEST_BRIDGE_ACTIVE) recordTestEvent('skillUsed', { key });
 };
 
 export const recordOverclockProc = (): void => {

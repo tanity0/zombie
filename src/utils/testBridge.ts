@@ -19,6 +19,7 @@ import { TEST_BRIDGE_ACTIVE } from './devTestKnobs';
 import { getSelectedStageId } from '../data/progress';
 import { parseBotSkill } from './botSkill';
 import { parseBotObjective } from './botObjective';
+import { recordTestEvent, setTestEventClock, getTestEvents } from './testEvents';
 
 /** 自動レビューが押し分ける画面(発注文の `screenId` の値域)。 */
 export type TestScreenId =
@@ -60,14 +61,44 @@ const BOSS_LIKE: ReadonlySet<string> = new Set([
 
 const watchSignificant = (): void => {
   let prevHealth = -1, prevLevel = -1, prevBosses = -1, prevGameTime = -1;
+  // ★B節(TEST_HANDOFF/REQUEST-devbridge.md): paused/resumed と upgradeOptions は、フレーム内で
+  // 消えるイベント(発注文の言う「外からは取れない分」)なので、この既存の store 購読へ相乗りして
+  // 状態遷移のエッジで記録する(呼び出し側=gameStore.tsの19箇所の解除は一切触らない=挙動不変)。
+  let prevPaused = false;
+  let lastPauseReason: string | null = null; // resumed側に「何から再開したか」を載せるため直近のpauseReasonを保持
+  let prevUpgradeMenu = false;
   unsubscribe = useGameStore.subscribe(s => {
     const now = Date.now();
+    setTestEventClock(s.gameTime); // B節: 他の記録フック(gameTime省略呼び出し)の時計を最新に保つ
     if (s.gameTime !== prevGameTime) { prevGameTime = s.gameTime; lastProgressAt = now; }
     const h = s.player.health, lv = s.player.level, nb = bossLikeCount(s.enemies);
     // 初回は基準を取るだけ(「起動した瞬間に大事件が起きた」ことにしない)。
-    if (prevHealth < 0) { prevHealth = h; prevLevel = lv; prevBosses = nb; lastSignificantEventAt = now; return; }
+    if (prevHealth < 0) {
+      prevHealth = h; prevLevel = lv; prevBosses = nb; lastSignificantEventAt = now;
+      prevPaused = s.isPaused; prevUpgradeMenu = s.showUpgradeMenu;
+      return;
+    }
     if (h < prevHealth || lv > prevLevel || nb !== prevBosses) lastSignificantEventAt = now;
     prevHealth = h; prevLevel = lv; prevBosses = nb;
+
+    // B節: paused/resumed(pauseReason付き)。isPaused/pauseReasonは19+7箇所に散らばっており
+    // 個別のset()呼び出しは一切触らない(=挙動不変)。ここは購読側で遷移エッジを検知するだけ。
+    if (s.isPaused !== prevPaused) {
+      if (s.isPaused) {
+        lastPauseReason = s.pauseReason ?? null;
+        recordTestEvent('paused', { pauseReason: lastPauseReason });
+      } else {
+        recordTestEvent('resumed', { pauseReason: lastPauseReason });
+      }
+      prevPaused = s.isPaused;
+    }
+    // B節: upgradeOptions(強化選択肢の提示。ボットが即閉じるため外からは中身が見えない)。
+    if (s.showUpgradeMenu && !prevUpgradeMenu) {
+      recordTestEvent('upgradeOptions', {
+        options: s.upgradeOptions.map(o => ({ type: o.type, skillKey: o.skillKey ?? null, equipDefId: o.equipDefId ?? null })),
+      });
+    }
+    prevUpgradeMenu = s.showUpgradeMenu;
   });
 };
 
@@ -160,4 +191,6 @@ export const installTestBridge = (): void => {
   if (!TEST_BRIDGE_ACTIVE) return;
   if (unsubscribe === null) watchSignificant();
   (window as unknown as Record<string, unknown>).__TEST_BRIDGE__ = { read, closeBlockingMenu };
+  // B節(P0-2 Structured Event Timeline): 配列を返す関数として生やす(発注文どおり)。
+  (window as unknown as Record<string, unknown>).__TEST_EVENTS__ = getTestEvents;
 };

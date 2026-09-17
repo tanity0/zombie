@@ -68,7 +68,8 @@ import {
   recordProjectileSpawned, recordPostureBroken, recordStoneDetonation,
   recordCrateDropped, recordCurrencyDropped, recordReload, recordManualShot,
 } from '../utils/botTelemetry';
-import { DEV_WEAPON_KEY, DEV_SUB_KEY } from '../utils/devTestKnobs';
+import { DEV_WEAPON_KEY, DEV_SUB_KEY, TEST_BRIDGE_ACTIVE } from '../utils/devTestKnobs';
+import { recordTestEvent } from '../utils/testEvents'; // TEST_HANDOFF/REQUEST-devbridge.md B節(記録専用・挙動不変)
 import {
   resetPlayerTraits,
   // G4a(BOT_AND_GHOST.md §2.9・記録専用): 技への反応表の被弾タグ+サブ様式カウンタ。挙動は一切変えない。
@@ -4096,6 +4097,11 @@ const grantMeleeKillRewards = (
       const allySnap = ghostAllySnapshot(findGhostAlly(get().summons));
       notifyBossClear(enemy.type, getSelectedStageId(), allySnap);
       recordDuoBossClear(enemy.type, getSelectedStageId(), allySnap);
+      // B節(devbridge発注文): bossDefeated(撃破・近接経路)。isBossType対象のみ(通常敵の近接キル
+      // 全部には出さない)。「退去」はuseGameLoop/bountyTickの帰巣完了側で別途記録する。
+      if (TEST_BRIDGE_ACTIVE && isBossType(enemy.type)) {
+        recordTestEvent('bossDefeated', { type: enemy.type, result: 'defeated' });
+      }
     }
     // 二人組クエストのキル進捗(EVENT_QUEST_DESIGN.md)。近接全経路はここ1箇所で拾える。
     {
@@ -11214,6 +11220,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の2: 選択内訳counter。upgrade.typeは呼び出し引数から
     // 直接分かるのでset()の内部を読む必要がない(set()内は再入set禁止=telemetryは外側で呼ぶ)。
     recordUpgradeSelected(upgrade.type);
+    // B節(devbridge発注文): 選んだ中身(ボットが即閉じるため外からは観測できない)。
+    if (TEST_BRIDGE_ACTIVE) {
+      recordTestEvent('upgradeSelected', {
+        type: upgrade.type, skillKey: upgrade.skillKey ?? null, equipDefId: upgrade.equipDefId ?? null,
+      });
+    }
     if (upgrade.type === 'scrap') {
       // §15-1の4: レベルアップ③枠(常設スクラップ+50)の収入(下のset()内の'scrap'分岐と同じ式)。
       recordScrapIncome('levelup', upgrade.level > 0 ? upgrade.level : 50);
@@ -12023,6 +12035,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // v0.25.1342: 型別の出現数を記録(全スポーン経路の合流点)。バッチ4の苦戦判定を
     // 「出現したのにキルが少ない」にするための計測(挙動には影響しない)。
     recordSpawn(enemy.type);
+    // B節(devbridge発注文): 型と時刻だけを記録(全スポーン経路の合流点=ここ1箇所で拾える)。
+    // ゲートOFFはこの1行のbool判定だけで抜ける(オブジェクトは作らない)。
+    if (TEST_BRIDGE_ACTIVE) recordTestEvent('enemySpawn', { type: enemy.type });
     set(state => ({
       enemies: [...state.enemies, enemy]
     }));
@@ -12326,6 +12341,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const allySnap = ghostAllySnapshot(findGhostAlly(get().summons));
       notifyBossClear(bossClearedType, getSelectedStageId(), allySnap);
       recordDuoBossClear(bossClearedType, getSelectedStageId(), allySnap);
+      // B節(devbridge発注文): bossDefeated(撃破・銃/接触/爆発/DoT経路)。isBossType対象のみ。
+      if (TEST_BRIDGE_ACTIVE && isBossType(bossClearedType)) {
+        recordTestEvent('bossDefeated', { type: bossClearedType, result: 'defeated' });
+      }
     }
 
     // サブクエストのキル進捗(research/SUBQUESTS.md)。★キル確定点2本のうちの1本(銃/接触/爆発/DoT)。

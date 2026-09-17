@@ -435,7 +435,8 @@ import {
   recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel, recordCritHit,
   recordExplosion, recordBeamPulse, recordStonesAttached, recordGunKnockback,
 } from '../utils/botTelemetry';
-import { DEV_LOADOUT_ACTIVE } from '../utils/devTestKnobs';
+import { DEV_LOADOUT_ACTIVE, TEST_BRIDGE_ACTIVE } from '../utils/devTestKnobs';
+import { recordTestEvent } from '../utils/testEvents'; // TEST_HANDOFF/REQUEST-devbridge.md B節(記録専用・挙動不変)
 import { cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(タイトル画面のパネル+URL)
 // SKILL_BUILD_REDESIGN.md §15(B0発注文): 計測台帳の最終記録(読むだけ)+ボット購買ポリシー(実機オートパイロット側)。
 import { recordRunFinal, getRunTelemetrySnapshot } from '../utils/runTelemetry';
@@ -7716,6 +7717,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
             if (despawn) {
               ENEMY_REMOVE_CAUSE.set(boss.id, 'bossGone'); // 消失ログ用: 裏ボス退場(帰巣完了/深層離脱)
+              // B節(devbridge発注文): bossDefeated(退去・討伐扱いにしない=result='retreated')。
+              if (TEST_BRIDGE_ACTIVE) recordTestEvent('bossDefeated', { type: boss.type, result: 'retreated' });
               useGameStore.setState({ enemies: useGameStore.getState().enemies.filter(e => e.id !== boss.id), bossChasing: false });
               bs.bossId = null; bs.spawned = false; bs.retreating = false;
             } else {
