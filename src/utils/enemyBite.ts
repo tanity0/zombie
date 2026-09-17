@@ -98,8 +98,8 @@ export const BITE_BY_MOVE: Partial<Record<NonNullable<Enemy['chaffMove']>, Parti
   'skel-bite': { windupMs: 300, biteMs: 200, lungePx: 85, recoverMs: 3500, counterable: true },
   // ゾンビ2連(§16-3・§16-8「ゾンビ 赤の技後CD」)。windup/bite/lungeは1発目/2発目で違うので
   // ここには置かない(BITE_BY_PHASEが重なる)。counterable/recoverMsは2発とも共通=ここで決まる。
-  // ★このバッチでは触らない(ゾンビの値は設計チャット側)。
-  'zombie-double': { recoverMs: 4000, counterable: true },
+  // ★2026-09-17「できるだけシビアに」で 4000→2500ms(§16-8台帳)。
+  'zombie-double': { recoverMs: 2500, counterable: true },
 };
 
 /**
@@ -370,8 +370,9 @@ const BITE_OK_PHASES = new Set<string>([
   'b-approach', 'b-orbit', 'b-windup', 'b-lunge', 'b-grab', 'b-release',
   's-crouch', 's-arc', 's-bite', 's-recover', 's-retreat',
   // ★z-lunge-in(検収監査A-2): §16-3で足したゾンビ赤の踏み込み相。§16-7bの反映漏れだった。
-  // ★z-recover(§16-3z): 2連の後の硬直600ms。s-recoverと同じ「技の続き」扱い。
-  'z-wait', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2', 'z-recover',
+  // ★z-recover(§16-3z): 2連の後の硬直。s-recoverと同じ「技の続き」扱い。
+  // ★z-retreat(§16-A 7条目): 硬直明けの後退(150pxまで)。s-retreatと同じ扱い。
+  'z-wait', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2', 'z-recover', 'z-retreat',
 ]);
 
 /**
@@ -387,7 +388,8 @@ const CHAFF_MOVE_PHASES = new Set<string>([
   // 構え始めさせない対象にも入る。
   // ★z-recover(§16-3z): 硬直中も「構えて」いる続き扱い=新しく§12の噛みを始めさせない
   // (硬直中は移動も次の技も入らない、の一部)。
-  'z-wait', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2', 'z-recover',
+  // ★z-retreat(§16-A 7条目): 後退中も§12の紫噛みを新しく始めない(s-retreatと同じ扱い)。
+  'z-wait', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2', 'z-recover', 'z-retreat',
 ]);
 
 /** ★技ではない bossState(=追いかけているだけ)。 */

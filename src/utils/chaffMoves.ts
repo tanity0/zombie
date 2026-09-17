@@ -189,8 +189,8 @@ export const ZOMBIE_BAND_INNER_PX = 100;
 /** 帯に入った時に引く「待ちの尺」の範囲(§16-3「抽選ではなく尺を散らす」・id由来の決定的な値)。 */
 export const ZOMBIE_RED_WAIT_MIN_MS = 300;
 export const ZOMBIE_RED_WAIT_MAX_MS = 2800;
-/** 赤の停止(その場・色なし)。 */
-export const ZOMBIE_RED_PAUSE_MS = 2000;
+/** 赤の停止(その場・色なし)。★2026-09-17「できるだけシビアに」で 2000→1200ms(§16-8台帳)。 */
+export const ZOMBIE_RED_PAUSE_MS = 1200;
 /** 踏み込みの終端=1発目が届く上限(§16-3「射程75pxの根拠」)。 */
 export const ZOMBIE_LUNGE_RANGE_PX = 75;
 /** 2連の一拍(よろけ)。 */
@@ -262,9 +262,36 @@ export const zombieWantsChaffRedSlot = (
  * 硬直中は移動も次の技も入らない(gameStore.ts の状態機械が z-recover 中は vx:0,vy:0 を返す・
  * `BITE_OK_PHASES`/`CHAFF_MOVE_PHASES` にも z-recover を足して新しい§12噛みも始めさせない)。
  * ★s-recoverと同じ「技の続き」(chaffMoveは立てたまま=枠だけ解放・§16-7b)。
- * 技後CD(4000ms)は**この硬直が明けてから**数える(endChaffMoveをz-recoverの終わりで呼ぶ)。
+ * 技後CD(2500ms)は**この硬直が明けてから**数える(endChaffMoveをz-recoverの終わりで呼ぶ)。
+ * ★硬直明けは下がらず、その代わり§16-A7条目で**後退(z-retreat)へ続く**(硬直が先・後退が後)。
+ * ★600→900ms(社長裁定2026-09-17「推薦で」・PACING_PUZZLE.md §16-A受け入れ条件)。実測で
+ * 1発目の命中から数えると前半316msが被弾無敵(INVULN_MS=1000)と重なり正味284msしか無く、
+ * 近接1振り(COUNTER_WINDOW=368ms)が入らなかった。900msなら実効約584ms=条件(350ms)を満たす。
  */
-export const ZOMBIE_RECOVER_MS = 600;
+export const ZOMBIE_RECOVER_MS = 900;
+
+/**
+ * ★§16-A 7条目「技を出し切ったら得意な距離まで離れる」(社長指示2026-09-17)。
+ * ゾンビの得意な距離=帯(100〜200px)の真ん中=**150px**(§16-A表「ここへ戻るから、また出る」)。
+ * z-recover(硬直)明け→ここまで**後退が先ではなく硬直が先**(skeletonと同じ順)。
+ * ★紫のループ(zpause→zrush)の後も同じ150pxまで離れる(§16-A「ここが90回出ている本体」)。
+ * 離れきったら帯(200px)へ戻るので、赤の台本がまた出せる(=これが狙い)。
+ */
+export const ZOMBIE_RETREAT_TARGET_PX = 150;
+/** 後退の速さ(§16-A「skeletonと同じ作法で1.5倍速」)。skeletonのSKELETON_RETREAT_SPEED_MULTと同値。 */
+export const ZOMBIE_RETREAT_SPEED_MULT = 1.5;
+/**
+ * ★後退にも慣性を入れる(CLAUDE.md「動きの絶対ルール: 慣性」・0→満速の段差を作らない)。
+ * ZOMBIE_RECOVER_WALK_RAMP_MS(250ms・硬直明けの通常歩行の立ち上がり)と同じ考え方・同じ尺の
+ * ease-out cubic(zombieLungeRampMulと同型)。台帳に無い実装細部の叩き台(社長裁定を要する値ではない)。
+ */
+export const ZOMBIE_RETREAT_RAMP_MS = 250;
+
+export const zombieRetreatRampMul = (retreatAt: number | undefined, gameTime: number): number => {
+  if (retreatAt === undefined) return 1;
+  const u = Math.max(0, Math.min(1, (gameTime - retreatAt) / ZOMBIE_RETREAT_RAMP_MS));
+  return 1 - (1 - u) ** 3; // ease-out cubic(出足側=立ち上がりが速い。zombieLungeRampMulと同型)
+};
 
 /**
  * ★②踏み込みの解放を鋭くする(PACING_PUZZLE.md §16-3z 監査#8・設計者が受け入れた)。
@@ -330,21 +357,25 @@ export const zombieRedGlowStrength = (
 /**
  * ★①停止の長さ±30%(社長裁定2026-09-16「3段を比例で伸縮させる」)。
  *
- * `ZOMBIE_RED_PAUSE_MS`(2000ms)は**基準値として残す**(1箇所で動かせること)。実際に個体が
- * 使う全長は `ZOMBIE_RED_PAUSE_MS × (0.7〜1.3)`(id+spawnedAt由来・決定的)。
+ * `ZOMBIE_RED_PAUSE_MS`(★2026-09-17「できるだけシビアに」で2000→1200ms)は**基準値として残す**
+ * (1箇所で動かせること)。実際に個体が使う全長は `ZOMBIE_RED_PAUSE_MS × (0.7〜1.3)`
+ * (id+spawnedAt由来・決定的)。
  * ★3段の比(止まる:起こす:詰めの溜め = 25%:45%:30%、元の 500:900:600 と同じ比)は
  * **全長によらず一定**(`ZOMBIE_RP_STUMBLE_FRAC`等)——一部だけ固定にすると、短い個体で
  * 「溜め」だけが相対的に長くなり形が変わってしまうため、pixiScene側の姿勢はこの比率を
  * 「全長に対する割合」で読む(絶対msで段の境目を書かない)。
+ * ★2026-09-17の詰め(§16-8「比はそのまま。全長が1200msになるだけ」)で`ZOMBIE_RED_PAUSE_MS`
+ * 自体を動かしたため、比率は**元の基準(2000ms=500:900:600)から**計算する
+ * (`ZOMBIE_RED_PAUSE_MS`で割ると分母が変わって比が壊れるため、割合は下の独立した定数で持つ)。
  */
 export const ZOMBIE_RED_PAUSE_JITTER = 0.3;
 export const zombieRedPauseMs = (id: string, spawnedAt?: number): number =>
   ZOMBIE_RED_PAUSE_MS * (1 + (idRespawnUnitHash(id, spawnedAt, 0x5ed9) * 2 - 1) * ZOMBIE_RED_PAUSE_JITTER);
 
-/** 停止2000ms(基準)の3段の比率(§16-3z「止まる500→起こす900→詰めの溜め600」と同じ比)。 */
-export const ZOMBIE_RP_STUMBLE_FRAC = 500 / ZOMBIE_RED_PAUSE_MS;
-export const ZOMBIE_RP_RISE_FRAC = 900 / ZOMBIE_RED_PAUSE_MS;
-export const ZOMBIE_RP_TREMBLE_FRAC = 600 / ZOMBIE_RED_PAUSE_MS;
+/** 3段の比率(§16-3z「止まる500→起こす900→詰めの溜め600」=25%:45%:30%。全長によらず一定)。 */
+export const ZOMBIE_RP_STUMBLE_FRAC = 0.25;
+export const ZOMBIE_RP_RISE_FRAC = 0.45;
+export const ZOMBIE_RP_TREMBLE_FRAC = 0.30;
 
 /**
  * ★②2発目の角度にも`spawnedAt`を混ぜる(社長裁定2026-09-16)。

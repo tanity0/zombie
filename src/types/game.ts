@@ -737,9 +737,12 @@ export interface Enemy {
     // ゾンビ赤(200〜100px帯の2連撃): 帯で待つ→停止2000ms→(2倍速で射程75pxまで踏み込む)→1発目→よろけ→2発目。
     // ★z-lunge-in(検収監査A-2): §16-3に足した時に§16-7bへ反映し忘れていた相。技の頭(chaffMoveが
     // 立つ位置)はここ(biteAtより前)。
-    // ★z-recover(§16-3z「歯応え」の仕上げ): 2発目解決後の硬直600ms。その場で伸び切ったまま
+    // ★z-recover(§16-3z「歯応え」の仕上げ): 2発目解決後の硬直。その場で伸び切ったまま
     // 下がらない(=プレイヤーの取り分)。技の続きとして扱う(chaffMoveは立てたまま・s-recoverと同型)。
-    | 'z-wait' | 'z-red-pause' | 'z-lunge-in' | 'z-bite1' | 'z-stagger' | 'z-bite2' | 'z-recover'
+    // ★z-retreat(§16-A 7条目「技を出し切ったら得意な距離へ離れる」・社長指示2026-09-17):
+    // 硬直(z-recover)明け→帯の真ん中(150px)まで後退。s-retreatと同じ型(硬直が先・後退が後)。
+    // 紫の追尾(zrush)が終わった後もここへ入る(こちらは技の続きではないのでchaffMoveは使わない)。
+    | 'z-wait' | 'z-red-pause' | 'z-lunge-in' | 'z-bite1' | 'z-stagger' | 'z-bite2' | 'z-recover' | 'z-retreat'
     // werewolf(自転車)★名前だけ先に足す(実装は別バッチ=§16-8b 10)。突進の硬直明けに向きを変えて
     // 発動距離まで走り去る相。§16の技ではない=chaffMove/枠は使わない(§16-7b)。
     | 'w-retreat';

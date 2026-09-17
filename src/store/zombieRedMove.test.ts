@@ -12,8 +12,9 @@ import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { biteSpecFor } from '../utils/enemyBite';
 import {
-  ZOMBIE_LUNGE_RANGE_PX, ZOMBIE_STAGGER_MS,
+  ZOMBIE_LUNGE_RANGE_PX, ZOMBIE_STAGGER_MS, ZOMBIE_RECOVER_MS,
   zombieRedPauseMs, ZOMBIE_RED_TRIGGER_MIN_PX, // §16-3z追補①: 停止の長さ±30%(id+spawnedAt由来)
+  ZOMBIE_RETREAT_TARGET_PX, // §16-A7条目: 技を出し切ったら得意な距離(150px)へ離れる
 } from '../utils/chaffMoves';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
@@ -237,12 +238,13 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(spec1.windupMs).toBe(220); expect(spec1.biteMs).toBe(160);
   });
 
-  it('★③2発目が解決(biteAt=0)したらz-recover(硬直600ms)へ。その場で伸び切ったまま・chaffMoveは立てたまま(§16-3z)', () => {
+  it('★③2発目が解決(biteAt=0)したらz-recover(硬直900ms)へ。その場で伸び切ったまま・chaffMoveは立てたまま(§16-3z)', () => {
     place(60, { aiPhase: 'z-bite2', chaffMove: 'zombie-double', biteAt: 0 });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBe('z-recover');
-    expect(e.aiPhaseUntil).toBe(START_GT + 600);
+    expect(e.aiPhaseUntil).toBe(START_GT + ZOMBIE_RECOVER_MS);
+    expect(ZOMBIE_RECOVER_MS).toBe(900); // ★社長裁定2026-09-17「推薦で」600→900ms
     expect(e.chaffMove).toBe('zombie-double'); // 技の続き(s-recoverと同型)。CDはまだ書かない。
     expect(e.chaffMoveCdUntil).toBeUndefined();
     expect(e.vx).toBe(0); expect(e.vy).toBe(0);
@@ -257,34 +259,112 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(e.vx).toBe(0); expect(e.vy).toBe(0);
   });
 
-  it('z-recover明けで技の終わり: chaffMove消滅+技後CD(約4000ms・±12%)+aiPhaseリセット(CDはここから数える)', () => {
+  it('★§16-A7条目: z-recover明け→z-retreatへ(硬直が先・後退が後。まだ技の終わりではない)', () => {
     place(60, { aiPhase: 'z-recover', aiPhaseUntil: START_GT, chaffMove: 'zombie-double' });
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-retreat');
+    expect(e.chaffMove).toBe('zombie-double'); // 後退も技の続き(まだ終わっていない)
+    expect(e.chaffMoveCdUntil).toBeUndefined(); // CDはまだ書かない(後退が終わってから)
+    expect(e.vx).toBe(0); expect(e.vy).toBe(0); // 遷移フレームはその場
+  });
+
+  it('z-retreat: 150pxより内側では、プレイヤーから離れる向きへ後退する(1.5倍速・慣性つき)', () => {
+    // プレイヤーは(ORIGIN,ORIGIN)、敵はplace(dist)で+x側に置かれる→離れる向きは+x側(さらに遠ざかる)。
+    const e0 = place(60, { aiPhase: 'z-retreat', chaffMove: 'zombie-double', zombieWalkRampAt: START_GT - 1000 });
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-retreat'); // まだ150pxに届いていない
+    expect(e.x).toBeGreaterThan(e0.x); // プレイヤーから離れる向き(+x)へ動いた
+    expect(e.vx).toBeGreaterThan(0);
+  });
+
+  it('z-retreat: 後退の立ち上がりに慣性がある(遷移直後は遷移前より遅い=0→満速の段差が無い)', () => {
+    // 立ち上がり直後(rampAt=START_GTそのもの=経過0ms)と、立ち上がりが終わった後(経過十分)を比較する。
+    place(60, { aiPhase: 'z-retreat', chaffMove: 'zombie-double', zombieWalkRampAt: START_GT });
+    tick(START_GT);
+    const vFresh = Math.hypot(first().vx ?? 0, first().vy ?? 0);
+    const eWarm = place(60, { aiPhase: 'z-retreat', chaffMove: 'zombie-double', zombieWalkRampAt: START_GT - 1000 });
+    tick(START_GT);
+    const vWarm = Math.hypot(first().vx ?? 0, first().vy ?? 0);
+    expect(vFresh).toBeLessThan(vWarm); // 立ち上がり直後は遅い(段差なし=慣性が効いている)
+    // 立ち上がりが終わった後は満速(enemy.speed × 1.5倍・skeletonと同じ作法)に達している。
+    expect(vWarm).toBeCloseTo(eWarm.speed * 1.5, 1);
+  });
+
+  it('z-retreat: 150px(得意な距離)に達したら技の終わり=chaffMove消滅+技後CD(約2500ms・±12%)', () => {
+    place(ZOMBIE_RETREAT_TARGET_PX, { aiPhase: 'z-retreat', chaffMove: 'zombie-double', zombieWalkRampAt: START_GT - 1000 });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBeUndefined();
     expect(e.aiPhaseUntil).toBeUndefined();
     expect(e.chaffMove).toBeUndefined();
-    expect(e.chaffMoveCdUntil).toBeGreaterThanOrEqual(START_GT + 4000 * 0.88);
-    expect(e.chaffMoveCdUntil).toBeLessThanOrEqual(START_GT + 4000 * 1.12);
+    expect(e.chaffMoveCdUntil).toBeGreaterThanOrEqual(START_GT + 2500 * 0.88);
+    expect(e.chaffMoveCdUntil).toBeLessThanOrEqual(START_GT + 2500 * 1.12);
   });
 
-  it('★受け入れ条件(③の全体): 2連の解決から600ms(硬直)+CD(4000ms±12%)の間、ずっと殴り返せる窓が続く', () => {
+  it('★受け入れ条件(③の全体): 2連の解決から900ms(硬直)の間、ずっと殴り返せる窓が続く(離れるのはその後)', () => {
     // 2発目解決の瞬間から時間を進め、硬直が明けるまで一度も動かず・次の技(chaffMove)にも入らないこと。
     place(60, { aiPhase: 'z-bite2', chaffMove: 'zombie-double', biteAt: 0 });
     tick(START_GT);
     let e = first();
     const x0 = e.x, y0 = e.y;
-    for (let t = START_GT + 1 / 60 * 1000; t < START_GT + 600; t += 100) {
+    for (let t = START_GT + 1 / 60 * 1000; t < START_GT + ZOMBIE_RECOVER_MS; t += 100) {
       tick(t);
       e = first();
       expect(e.aiPhase).toBe('z-recover'); // 硬直の間、次の技(z-red-pause等)へ進んでいない
       expect(e.x).toBe(x0); expect(e.y).toBe(y0); // 下がらない・詰めない
     }
-    tick(START_GT + 600); // 硬直明け
+    tick(START_GT + ZOMBIE_RECOVER_MS); // 硬直明け→後退開始(まだ技の終わりではない)
     e = first();
+    expect(e.aiPhase).toBe('z-retreat');
+    expect(e.chaffMove).toBe('zombie-double');
+    expect(e.chaffMoveCdUntil).toBeUndefined(); // CDはまだ(後退が終わっていない)
+  });
+
+  it('★60(実距離)は硬直中も150pxより内側=z-retreatへ入った瞬間はまだ後退の途中(離れる方向へ動く)', () => {
+    // 硬直で殴り返した後、後退がちゃんと機能して帯へ戻ることを確認する(受け入れ条件7条目)。
+    let e = place(60, { aiPhase: 'z-recover', aiPhaseUntil: START_GT, chaffMove: 'zombie-double' });
+    tick(START_GT); // → z-retreat
+    e = first();
+    expect(e.aiPhase).toBe('z-retreat');
+    // 十分な時間を与えれば150pxまで離れ、技が終わる。
+    let t = START_GT;
+    for (let i = 0; i < 600 && first().aiPhase === 'z-retreat'; i++) {
+      t += 1000 / 60;
+      tick(t);
+    }
+    e = first();
+    expect(e.aiPhase).toBeUndefined(); // 離れきって通常状態へ戻った
+    const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+    const dist = Math.hypot(ecx - ORIGIN, ecy - ORIGIN);
+    expect(dist).toBeGreaterThanOrEqual(ZOMBIE_RETREAT_TARGET_PX - 1); // 得意な距離まで離れている
+  });
+});
+
+describe('★§16-A7条目: 紫のループ(zpause→zrush)の後も得意な距離(150px)へ離れる', () => {
+  it('zrushが完走(phaseUntil到達)したら、まだ間合いにいてもzpauseへは戻らずz-retreatへ', () => {
+    // 旧仕様はここでinMeleeならzpauseへ戻り、90回出ている無限ループの本体だった。
+    place(60, { aiPhase: 'zrush', aiPhaseUntil: START_GT }); // 完走した瞬間(密着=inMelee継続)
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-retreat');
+    expect(e.chaffMove).toBeUndefined(); // 紫はchaffMove/枠を使わない別系統のまま
+  });
+
+  it('紫経由のz-retreatが150pxまで離れきっても、技後CDは新設しない(紫は元々CD無しの仕様)', () => {
+    place(ZOMBIE_RETREAT_TARGET_PX, { aiPhase: 'z-retreat', zombieWalkRampAt: START_GT - 1000 });
+    tick(START_GT);
+    const e = first();
     expect(e.aiPhase).toBeUndefined();
     expect(e.chaffMove).toBeUndefined();
-    expect(e.chaffMoveCdUntil).toBeGreaterThan(START_GT + 600); // CDは硬直明けから数える
+    expect(e.chaffMoveCdUntil).toBeUndefined(); // 赤(zombie-double)経由と違い、CDを焼かない
+  });
+
+  it('zrush完走・帯の外(250px)でも、当否を問わずz-retreatへ(仕様統一)', () => {
+    place(250, { aiPhase: 'zrush', aiPhaseUntil: START_GT }); // 帯の外で完走した場合もretreatへ
+    tick(START_GT);
+    expect(first().aiPhase).toBe('z-retreat');
   });
 });
 

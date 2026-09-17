@@ -1,5 +1,72 @@
 # Development Log
 
+## v0.25.4416 — §16-A7条目「技を出し切ったら得意な距離へ離れる」をゾンビに実装 + 値を詰める(実装チャット・Sonnet)【2026-09-17 11:57 JST】
+
+PACING_PUZZLE.md §16-A7条目・§16-8台帳の未実装ぶん(コードはv0.25.4415では未着手)を実装。
+**触ったのはゾンビだけ**(bat/skeleton/werewolf/強個体/ボス/§12噛みつきの判定・射程・ダメージ・
+被弾無敵は無改変。姿勢(skew/tilt)は追加していない=別バッチ)。
+
+**1. 赤2連の後**: `z-bite2`解決→`z-recover`(硬直900ms・その場で伸び切ったまま。★既存どおり
+変更なし)→明けたら**新設の`z-retreat`**(150pxまで1.5倍速で後退。慣性つき=ease-out cubic
+250ms)へ。**硬直が先・後退が後**(skeletonの`s-recover`→`s-retreat`と同じ順)。150pxに
+届いたら技の終わり(`chaffMove`消滅+技後CD)。
+
+**2. 紫のループ(`zpause`→`zrush`)の後**: 旧仕様は`zrush`完走後、間合い内ならそのまま`zpause`へ
+戻り**無限ループしていた**(=実測で「90回出ている本体」)。**`zrush`が完走したら、当否を問わず
+必ず`z-retreat`へ**(`zpause`へは戻らない)。150pxまで離れれば帯(200px)へ戻るので、赤の台本が
+また出せるようになる——これが今回の本丸。紫経由の`z-retreat`は`chaffMove`を使わない別系統
+(既存どおり)なので、離れきっても新しいCDは焼かない(紫は元々CD無しの仕様のまま)。
+
+**3. 値の変更(§16-8台帳・社長裁定/指示どおり)**:
+| 項目 | 旧 | 新 |
+|---|---|---|
+| 赤の停止尺(予告) | 2000ms | **1200ms** |
+| 赤の技後CD(`zombie-double`のrecoverMs) | 4000ms | **2500ms** |
+| 硬直(`ZOMBIE_RECOVER_MS`) | 600ms | **900ms**(★社長裁定済み・コードは今回初めて反映) |
+| 得意な距離(新設) | — | **150px**(`ZOMBIE_RETREAT_TARGET_PX`)・1.5倍速(`ZOMBIE_RETREAT_SPEED_MULT`) |
+停止の3段比(止まる25%:起こす45%:溜め30%)は**元の基準2000msから固定した比率定数**として保持
+(`ZOMBIE_RP_*_FRAC`を`ZOMBIE_RED_PAUSE_MS`で割る旧実装のままだと、停止尺を詰めた瞬間に比が
+壊れる罠があった=先に直してから値を変えた)。射程75px・2連の尺・帯100/200px・引き金88〜118pxは
+**変えていない**(指示どおり)。
+
+**変更ファイル**: `src/types/game.ts`(`aiPhase`に`z-retreat`追加)、`src/utils/enemyBite.ts`
+(`BITE_OK_PHASES`/`CHAFF_MOVE_PHASES`に`z-retreat`追加、`zombie-double`のrecoverMs
+4000→2500)、`src/utils/chaffMoves.ts`(`ZOMBIE_RED_PAUSE_MS`1200・`ZOMBIE_RECOVER_MS`900・
+比率定数の分離・`ZOMBIE_RETREAT_TARGET_PX`/`ZOMBIE_RETREAT_SPEED_MULT`/
+`ZOMBIE_RETREAT_RAMP_MS`/`zombieRetreatRampMul`新設)、`src/store/gameStore.ts`
+(`z-recover`→`z-retreat`遷移・`z-retreat`の後退移動(playableArea clamp込み)・
+紫`zrush`完走時の分岐差し替え)。テスト: `src/store/zombieRedMove.test.ts`
+(旧アサーションを新値へ更新+`z-retreat`のテスト13件追加)、`src/utils/chaffMoves.test.ts`
+(`endChaffMove`のrecoverMsアサーション更新、比率テストの基準値を固定2000msへ分離)。
+`CHAFF_HOLDING_PHASES`(枠の占有表)は無変更=`z-retreat`は元々挙げていないので**後退中は
+自動的に枠を解放**する(skeletonの`s-retreat`と同型)。
+
+**★60秒・3体・プレイヤー静止で赤2連(`chaffMove`定義→undefined)が完走した回数**(使い捨て計測・
+未コミット。`updateEnemies`→`applyContactDamage`を実ゲームループと同じ順で毎フレーム回す土台):
+固定id(zm-0/1/2、180px三方配置)で**2→6回**。id違いの5バッチ平均では**8.8回**(5/5/10/10/14の幅)。
+bat32回・skeleton24回には及ばないが(赤の引き金88〜118pxが帯内縁100pxの手前に来る個体は紫へ
+食われる既存の構造上の癖が残っているため=このバッチのスコープ外)、**「張り付いて二度と出ない」
+という致命的な壊れ方(2回固定)は解消した**。
+
+**★受け入れ条件(350ms)の実測**(使い捨て計測・未コミット): z-bite2解決(被弾無敵1000msの起点)
+から、硬直900ms→z-retreatが150pxへ離れきるまでの全体窓は約2083ms。被弾無敵と重なる1000msを
+除いた**実際に殴り返せる時間は約1083ms**(要求350msの3倍以上・余裕を持って満たす)。
+
+**テスト**: `npx vitest run src/store/zombieRedMove.test.ts src/utils/chaffMoves.test.ts
+src/store/chaffMoveFoundation.test.ts src/utils/enemyBite.test.ts src/store/batMove.test.ts
+src/store/skeletonMove.test.ts` — 256件全緑。3回連続実行で揺れ無し。typecheck/lint(エラー0)も
+緑。今の赤(失敗テスト)はゼロのまま。
+
+**★未決**: なし(台帳の値はすべて§16-8台帳どおり。受け入れ条件も割れていない)。
+
+**申し送り(見た目バッチへ)**: `z-retreat`はpixiScene.tsの歩行モーション・ゲート表
+(`e.aiPhase===...`の一覧。`s-retreat`等と同じ並び)に**まだ入れていない**(姿勢の追加禁止の
+指示のため、本バッチでは見送った)。入れないと後退中に足が動いて見えず「滑って見える」ので、
+見た目バッチでbat/skeletonの姿勢と同じ回に追加することを推薦する。
+
+**自己点検**: 憲法第4条(初心者ゾーン不可侵)・第5条(緩を荒らさない)には抵触しない
+(触ったのはゾンビの技後の挙動のみで、緑ゾーン・他ランクの演目には影響しない)。
+
 ## v0.25.4415 — 「技を出し切ったら離れる」を §16-A の7条目に(社長指示)【2026-09-17 01:40 JST】
 
 **社長指示**: 「**当てたら自分たちの得意な距離に離れる**」「**張り付いてるバカみたいなのやめたい**」

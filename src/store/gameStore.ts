@@ -311,6 +311,7 @@ import {
   ZOMBIE_RECOVER_MS, zombieLungeRampMul, // §16-3z「歯応え」の仕上げ(③硬直・②踏み込みの加速)
   zombieRedPauseMs, zombieBite2AngleRad, // §16-3z 追補(①停止の長さ±30%・②2発目の角度にspawnedAtを混ぜる)
   zombieRecoverWalkRampMul, // §16-3zクリエイティブ監査#3(硬直→歩きの出足の1フレーム段差を消す)
+  ZOMBIE_RETREAT_TARGET_PX, ZOMBIE_RETREAT_SPEED_MULT, zombieRetreatRampMul, // §16-A7条目(技を出し切ったら150pxへ離れる)
   // ★bat(PACING_PUZZLE.md §16-1・§16-8b手順6)。
   batWantsChaffSlot, batOrbitDurationMs, batStrafeMs, batHoldMs, batOrbitSpin, batStrafeAngularMul,
   BAT_ORBIT_RADIUS_PX, BAT_ORBIT_SPEED_MULT, BAT_ORBIT_TAU_S, BAT_ORBIT_INTRUDE_MARGIN_PX, BAT_GRAB_HOLD_MS,
@@ -14946,6 +14947,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           const pdist = Math.hypot(pcx - ecx, pcy - ecy); // 実プレイヤーとの距離(§16の帯/紫ループはこれで判定)
           let phase = enemy.aiPhase;
           let phaseUntil = enemy.aiPhaseUntil ?? 0;
+          // ★Y方向副作用チェック(CLAUDE.md): z-retreat(§16-A7条目で新しく動かす方向=後退)は
+          // clampRectToPlayableAreaを通す(bat の b-release / skeleton の s-retreat と同じ作法)。
+          // ★z-lunge-in等の既存の動きは触らない(この関数はz-retreat専用)。
+          const zRetreatClampMove = (mx: number, my: number): { x: number; y: number } => {
+            const moved = resolveMove(mx, my);
+            const ctx: PlayableAreaCtx = {
+              farBackdrop: state.farBackdrop, labTheme,
+              corridorMode: state.corridorMode,
+              m0AdvanceLimitX: state.m0AdvanceLimitX,
+              corridorRunInActive: state.corridorRunInActive,
+            };
+            return clampRectToPlayableArea(moved.x, moved.y, enemy.width, enemy.height, ctx, enemy.x);
+          };
 
           // ── §16-3 赤2連: biteAt解決の検知(内部遷移) ──────────────────────────────────
           // z-bite1/z-bite2の構え〜実行中(biteAt>0)は上のisBiteSubject分岐が動きを担当する。
@@ -14972,26 +14986,55 @@ export const useGameStore = create<GameState>((set, get) => ({
             };
           }
           if (phase === 'z-bite2' && !(enemy.biteAt !== undefined && enemy.biteAt > 0)) {
-            // ★③2発目解決→硬直600ms(§16-3z「技の後は必ずプレイヤーの番」)。その場で伸び切った
-            // まま**下がらない**。chaffMoveは立てたまま(s-recoverと同じ「技の続き」・§16-7b)=
-            // 技の終わり(endChaffMove・CD起点)はz-recoverが明けてから(下のブロック)。
+            // ★③2発目解決→硬直900ms(§16-3z「技の後は必ずプレイヤーの番」・社長裁定2026-09-17
+            // 600→900msでINVULN_MSと重ならない正味時間を確保)。その場で伸び切ったまま**下がらない**。
+            // chaffMoveは立てたまま(s-recoverと同じ「技の続き」・§16-7b)=技の終わり(endChaffMove・
+            // CD起点)は硬直の後さらにz-retreatで得意な距離(150px)まで離れきってから(§16-A7条目)。
             return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-recover', aiPhaseUntil: gameTime + ZOMBIE_RECOVER_MS };
           }
           if (phase === 'z-recover') {
             if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // 硬直継続:その場で伸び切ったまま
-            // 硬直明け=技の終わり(§16-7b・§16-8b手順5「技の終わりでendChaffMoveを呼ぶ」)。
-            // CD(4000ms)はここから数える(endChaffMoveがrecoverMsをgameTime基準で焼く)。
-            // ★③硬直→歩きの出足(§16-3zクリエイティブ監査#3): この瞬間をzombieWalkRampAtへ焼く。
-            // 下の通常移動(zSpeed計算)がここからの経過msで速度を滑らかに立ち上げる
-            // (0→満速の1フレーム段差を消す)。
-            return {
-              ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: undefined, chaffMoveAt: undefined,
-              zombieWalkRampAt: gameTime,
-              ...endChaffMove(enemy, gameTime),
-            };
+            // ★§16-A7条目「技を出し切ったら得意な距離(150px)へ離れる」(社長指示2026-09-17)。
+            // 硬直が先・後退が後(skeletonのs-recover→s-retreatと同じ順)。chaffMoveは立てたまま
+            // (後退も技の続き・§16-7bと同型)=技の終わり(endChaffMove・CD起点)はz-retreatが
+            // 得意な距離まで離れきってから(下のz-retreatブロック)。
+            // zombieWalkRampAtは後退の立ち上がり(慣性)に流用する(zombieRetreatRampMul)。
+            return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-retreat', zombieWalkRampAt: gameTime };
+          }
+          if (phase === 'z-retreat') {
+            if (pdist < ZOMBIE_RETREAT_TARGET_PX) {
+              // ★完全密着(pdist≈0)は向きが定まらないので、2連撃で焼いた向き(biteDirX/Y=敵→
+              // プレイヤー)の逆を使う(bat の b-release / skeleton の s-retreat と同じ作法)。
+              let awayX: number, awayY: number;
+              if (pdist > 0.5) {
+                awayX = -(pcx - ecx) / pdist; awayY = -(pcy - ecy) / pdist;
+              } else {
+                awayX = -(enemy.biteDirX ?? 1); awayY = -(enemy.biteDirY ?? 0);
+              }
+              // ★慣性を入れる(CLAUDE.md「動きの絶対ルール: 慣性」)。0→満速の1フレーム段差を作らない。
+              const retreatRamp = zombieRetreatRampMul(enemy.zombieWalkRampAt, gameTime);
+              const spd = enemy.speed * ZOMBIE_RETREAT_SPEED_MULT * retreatRamp;
+              const zvx = awayX * spd, zvy = awayY * spd;
+              const zmoved = zRetreatClampMove(enemy.x + zvx * deltaTime, enemy.y + zvy * deltaTime);
+              return { ...enemy, vx: zvx, vy: zvy, x: zmoved.x, y: zmoved.y };
+            }
+            // 得意な距離(150px)まで離れきった=後退の終わり。離れれば帯(200px)へ戻るので、
+            // 赤の台本がまた出せる(§16-A「ここへ戻るから、また出る」)。
+            // ★z-retreatは2つの入口を持つ(赤2連の硬直明け/紫zrushの完走後)。chaffMoveが立って
+            // いる(='zombie-double'=赤経路)時だけ「技の終わり」としてendChaffMoveを呼び、
+            // 赤の技後CD(2500ms)を焼く。紫(zpause→zrush)はchaffMove/枠を使わない別系統
+            // (§16-7b「w-retreatは§16の技ではない」と同じ扱い)なので、CDを新設せず
+            // ただ間合いを空けるだけに留める——紫は元々CD無しで即再ループしていた仕様のまま。
+            return enemy.chaffMove !== undefined
+              ? {
+                ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: undefined, chaffMoveAt: undefined,
+                zombieWalkRampAt: gameTime,
+                ...endChaffMove(enemy, gameTime),
+              }
+              : { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: undefined, zombieWalkRampAt: gameTime };
           }
           if (phase === 'z-red-pause') {
-            if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // 停止2000ms・その場(色なし)
+            if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // 停止1200ms・その場(色なし)
             // 停止明け→2倍速で射程75pxまで踏み込む。ここでchaffMoveが立つ(§16-7b「立つ位置はz-lunge-in」)。
             return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-lunge-in', chaffMove: 'zombie-double', chaffMoveAt: gameTime };
           }
@@ -15054,7 +15097,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 落ちていた——z-wait経由の紫(枠なし・内縁到達)だけが残り、**枠が空いてさえいれば
             // 距離に関係なく赤になる**(紫の通路が事実上死ぬ)事故になっていた。距離だけで即決める
             // 旧仕様のまま復元する(§16-0「詰めようとしたら赤。近すぎたら紫」の紫側)。
-            // ★§16-3z③技後CD(実装者視点監査): 赤の技後CD(4000ms)中はこの紫の入口にも入らない
+            // ★§16-3z③技後CD(実装者視点監査): 赤の技後CD(2500ms)中はこの紫の入口にも入らない
             // (設計書が2回書いている条件。無いと赤→紫→30px噛みが毎回同じ順で出る)。CD中は
             // phaseがundefinedのまま下の「旧仕様」ブロックへ落ち、通常接近(素通り)になる。
             phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS;
@@ -15065,7 +15108,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // くること=既に内縁より内側に居る個体は帯に居ない)。下限が無いと、密着状態(0px)の
             // ゾンビもz-waitへ入り、次のフレームで**密着したままz-red-pauseの2秒棒立ち**になる
             // (殴り放題を渡す=「殴り込みづらくする」ゴールの正反対)。
-            // 赤の技後CD中は入らない(§16-3「赤の技後CD(4000ms)中は紫の停止にも入らない」)。
+            // 赤の技後CD中は入らない(§16-3「赤の技後CD(2500ms)中は紫の停止にも入らない」)。
             phase = 'z-wait'; phaseUntil = gameTime + zombieRedWaitMs(enemy.id, enemy.spawnedAt);
           }
 
@@ -15077,9 +15120,16 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 進行中の停止/突進はそのまま継続(突進2秒は範囲外へ出ても完遂する)。
           } else if (inCycle) {
             // フェーズ完了: まだ範囲内なら次フェーズへ、範囲外なら通常接近へ戻す。
+            if (phase === 'zrush') {
+              // ★§16-A7条目「技を出し切ったら得意な距離へ離れる」(社長指示2026-09-17
+              // 「張り付いてるバカみたいなのやめたい」)。旧仕様はここでinMeleeならzpauseへ戻り、
+              // 紫(zpause→zrush)を無限ループしていた——**これが「90回出ている本体」**(帯の外へ
+              // 出ないので二度と赤が出せない・実測2026-09-17)。当否を問わず(突進が当たっても
+              // 外れても)150pxまで離れる。zombieWalkRampAtは後退の立ち上がり(慣性)に流用する。
+              return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-retreat', aiPhaseUntil: undefined, zombieWalkRampAt: gameTime };
+            }
             if (inMelee) {
-              if (phase === 'zpause') { phase = 'zrush'; phaseUntil = gameTime + ZOMBIE_RUSH_MS; }
-              else { phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS; }
+              phase = 'zrush'; phaseUntil = gameTime + ZOMBIE_RUSH_MS;
             } else { phase = undefined; phaseUntil = 0; }
           }
           if (phase === 'zpause') {

@@ -237,11 +237,11 @@ describe('zombieRedTriggerPx(§16-3z「内縁の引き金に幅」・id由来の
 
 describe('endChaffMove(技の終わり・§16-8b手順5「ゾンビが初めて呼ぶ」)', () => {
   const e = { id: 'z1', type: 'zombie' as EnemyType, chaffMove: 'zombie-double' as const, aiPhase: 'z-bite2' as const };
-  it('chaffMoveを消し、技後CD(recoverMs=4000・±12%)を書く', () => {
+  it('chaffMoveを消し、技後CD(recoverMs=2500・★2026-09-17「できるだけシビアに」で4000→2500・±12%)を書く', () => {
     const patch = endChaffMove(e, 10000);
     expect(patch.chaffMove).toBeUndefined();
-    expect(patch.chaffMoveCdUntil).toBeGreaterThanOrEqual(10000 + 4000 * 0.88);
-    expect(patch.chaffMoveCdUntil).toBeLessThanOrEqual(10000 + 4000 * 1.12);
+    expect(patch.chaffMoveCdUntil).toBeGreaterThanOrEqual(10000 + 2500 * 0.88);
+    expect(patch.chaffMoveCdUntil).toBeLessThanOrEqual(10000 + 2500 * 1.12);
   });
   it('同じidは常に同じCD(決定的)', () => {
     const p1 = endChaffMove(e, 10000);
@@ -384,10 +384,12 @@ describe('★社長裁定2026-09-16「停止の長さ±30%」+「個体差の種
     it('比率定数の合計は1(段が全長を過不足なく分割する)', () => {
       expect(ZOMBIE_RP_STUMBLE_FRAC + ZOMBIE_RP_RISE_FRAC + ZOMBIE_RP_TREMBLE_FRAC).toBeCloseTo(1, 10);
     });
-    it('比率は元の500:900:600と一致する(基準2000msでの内訳)', () => {
-      expect(ZOMBIE_RP_STUMBLE_FRAC).toBeCloseTo(500 / ZOMBIE_RED_PAUSE_MS, 10);
-      expect(ZOMBIE_RP_RISE_FRAC).toBeCloseTo(900 / ZOMBIE_RED_PAUSE_MS, 10);
-      expect(ZOMBIE_RP_TREMBLE_FRAC).toBeCloseTo(600 / ZOMBIE_RED_PAUSE_MS, 10);
+    it('比率は元の500:900:600と一致する(基準2000msでの内訳。★2026-09-17でZOMBIE_RED_PAUSE_MS自体は' +
+      '1200msへ詰まったが、比は元の基準2000msから固定値として持つ=変わらない)', () => {
+      const ORIGINAL_BASE_MS = 2000;
+      expect(ZOMBIE_RP_STUMBLE_FRAC).toBeCloseTo(500 / ORIGINAL_BASE_MS, 10);
+      expect(ZOMBIE_RP_RISE_FRAC).toBeCloseTo(900 / ORIGINAL_BASE_MS, 10);
+      expect(ZOMBIE_RP_TREMBLE_FRAC).toBeCloseTo(600 / ORIGINAL_BASE_MS, 10);
     });
     it('★全長が違う2個体でも、各段msを全長で割った比は同じ(pixiScene側の計算を模擬)', () => {
       const totalShort = zombieRedPauseMs('short-id', 1); // 個体Aの全長(短め寄り/長め寄りは問わない)
