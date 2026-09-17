@@ -3,7 +3,8 @@
 //
 // ★このファイルは TEST_HANDOFF/ 配下=テストチャットの担当範囲。src/ は一切書き換えない。
 // ★P0-1(Test Bridge)と P0-2(Event Timeline)は src/ 側の実装が要るので**ここには入っていない**。
-//   発注文は TEST_HANDOFF/REQUEST-devbridge.md。Bridge が生えたら readState() が自動でそちらを使う。
+//   発注文は TEST_HANDOFF/REQUEST-devbridge.md。Bridge が生えたら readState() が自動でそちらを使い、
+//   Bridge の名前(screenId/botReportReady 等)をこのランナーの名前へ翻訳する(監査A-5の是正)。
 //
 // 使い方(プロジェクト直下で実行すること。/tmp から実行すると node_modules を解決できない):
 //   node TEST_HANDOFF/run-observe.mjs [mode] [分] [追加クエリ]
@@ -89,7 +90,23 @@ page.on('pageerror', e => {
 const readState = () => page.evaluate(() => {
   const w = window;
   if (w.__TEST_BRIDGE__ && typeof w.__TEST_BRIDGE__.read === 'function') {
-    try { return { via: 'bridge', ...w.__TEST_BRIDGE__.read() }; } catch { /* fall through */ }
+    try {
+      const b = w.__TEST_BRIDGE__.read();
+      // ★Bridge の名前をこのランナーが使う名前へ**必ず翻訳する**(監査A-5)。
+      //   翻訳せずに展開していた旧版は、preview で死亡/クリアを検知できず時間切れまで回り、
+      //   関門も押せなかった(read() には botReport も buttons も無いため)。
+      return {
+        via: 'bridge',
+        ...b,
+        screen: b.screenId ?? b.screen ?? 'unknown',
+        botReport: b.botReport
+          ?? (b.botReportReady ? { outcome: b.resultState ?? 'report', deathCause: b.deathCause ?? null } : null),
+        bossTypes: b.bossTypes ?? [],
+        buttons: b.buttons ?? Array.from(document.querySelectorAll('button,[role="button"],a'))
+          .map(x => ({ text: (x.textContent || '').trim().slice(0, 40), aria: x.getAttribute('aria-label') }))
+          .filter(o => o.text || o.aria).slice(0, 40),
+      };
+    } catch { /* fall through */ }
   }
   if (!w.__gameStore) return { via: 'none' };
   const s = w.__gameStore.getState();
@@ -111,13 +128,19 @@ const readState = () => page.evaluate(() => {
     bossTypes: bossLike.map(e => String(e.type)),
     gameWon: !!s.gameWon,
     botReport: w.__BOT_REPORT__ ?? null,
-    // 初見導線(P0-5)の画面判定は文字列で代用する。data-testid が付いたらそちらへ寄せる。
-    screen: /タップして開始/.test(txt) ? 'title'
+    // 初見導線(P0-5)の画面判定。★実物の文字列で判定する(監査A-4の是正)。
+    //  - 旧版は `/START/` でタイトルを loadout と誤判定していた(タイトルのinnerTextに START が入る)。
+    //  - `出撃準備` は src/components に存在しない(grep 0件)ので missionList は一度も出なかった。
+    //  - クリアの結果画面は `任務完了` ではなく **`任務達成`**(GameOverScreen.tsx)。
+    //  順番が意味を持つ: ゲーム中(gameTime>0)を最優先、次に結果画面、最後に各メニュー。
+    screen: s.gameTime > 0 ? 'gameplay'
+      : /任務失敗|任務達成/.test(txt) ? 'result'
       : /更新情報/.test(txt) ? 'updateModal'
-      : /出撃準備/.test(txt) ? 'missionList'
-      : /START/.test(txt) ? 'loadout'
-      : /任務失敗|任務完了/.test(txt) ? 'result'
-      : s.gameTime > 0 ? 'gameplay' : 'unknown',
+      : /OPERATIONS ROOM/.test(txt) ? 'opsRoom'
+      : /作戦地域/.test(txt) ? 'stagePick'
+      : /ジョブ選択/.test(txt) ? 'briefing'
+      : /タップして開始|CAMERA[\s\S]*NEWS/.test(txt) ? 'title'
+      : 'unknown',
     // ★押せる要素の「名前」を textContent / aria-label の両方で残す(P0-5 の空振り解析用。
     //   どの画面に何という名前のボタンが在ったかが results に残らないと、設計チャットが
     //   data-testid をどこに付ければよいか判断できない)。
@@ -135,7 +158,7 @@ const PRIORITY = {
 };
 const capture = async (trigger, st) => {
   if (shots.some(s => s.trigger === trigger)) return;      // 同じ契機は1枚だけ
-  const file = path.join(tmpDir, `${stamp}-${trigger}.png`);
+  const file = path.join(tmpDir, `${stamp}-${MODE}-${trigger}.png`);
   await page.screenshot({ path: file }).catch(() => {});
   if (!fs.existsSync(file)) return;
   shots.push({ file, trigger, atRealSec: realSec(), atGameSec: st?.gameTime != null ? Math.round(st.gameTime / 1000) : null, priority: PRIORITY[trigger] ?? 9 });
@@ -156,17 +179,22 @@ const clickGate = async () => page.evaluate(() => {
 // 「はじめる」を押したつもりで何も起きない、という空振りを起こした(実走で確認)。
 const clickByText = async (re, maxLen = 40) => page.evaluate(({ src, maxLen }) => {
   const rx = new RegExp(src);
-  // ★押せる要素の「名前」は textContent とは限らない。タイトルの「タップして開始」等は
-  //   aria-label でしか名前を持たない(2026-09-17 に実機のDOMを読んで判明。textContent だけを
-  //   見ていた版は、OK以降の全ステップが空振りした)。textContent → aria-label → title の順で拾う。
-  const nameOf = (x) => ((x.textContent || '').trim()
-    || (x.getAttribute('aria-label') || '').trim()
-    || (x.getAttribute('title') || '').trim());
+  // ★「名前」は aria-label を先に見る(アクセシブル名の優先順と同じ)。
+  //   タイトルの入口は**ルートdiv全体**が role="button" + aria-label="タップして開始" で、
+  //   その textContent は "v0.25.xxxxSTARTCAMERANEWS"。textContent を先に見て・長さで弾く版は、
+  //   この要素を自分で除外していた(監査A-2)。**長さの上限は textContent にだけ掛ける。**
   const cands = Array.from(document.querySelectorAll('button,[role="button"],a'))
     .filter(x => { const r = x.getBoundingClientRect(); return r.width > 0 && r.height > 0; })
-    .map(x => ({ el: x, t: nameOf(x) }))
-    .filter(o => o.t.length > 0 && o.t.length <= maxLen && rx.test(o.t))
-    .sort((a, b) => a.t.length - b.t.length);
+    .flatMap(x => {
+      const aria = (x.getAttribute('aria-label') || '').trim() || (x.getAttribute('title') || '').trim();
+      const text = (x.textContent || '').trim();
+      const names = [];
+      if (aria) names.push({ el: x, t: aria, rank: 0 });                       // aria は長さで弾かない
+      if (text && text.length <= maxLen) names.push({ el: x, t: text, rank: 1 });
+      return names;
+    })
+    .filter(o => rx.test(o.t))
+    .sort((a, b) => a.rank - b.rank || a.t.length - b.t.length);
   if (cands.length === 0) return null;
   cands[0].el.click();
   return cands[0].t.slice(0, 30);
@@ -180,7 +208,7 @@ await page.waitForFunction(() => window.__gameStore || window.__TEST_BRIDGE__, {
 // ── P0-5: First-run Observation Mode ───────────────────────────────────────────────
 // 実ユーザー相当のクリックだけでタイトル→ミッション一覧→出撃準備→STARTまで進み、各画面の滞在を測る。
 const screenEnteredAt = {};
-const screenDwellMs = {};
+const screenSearchMs = {};
 if (MODE === 'firstrun') {
   // ★ボタンの文言は 2026-09-17 に実機のDOMを読んで確定させた(v0.25.4427)。
   //   README の旧記載(はじめる → 狂い咲きの森 → ▶出撃準備 → ▶START)は**現在どれも存在しない**。
@@ -202,7 +230,9 @@ if (MODE === 'firstrun') {
       if (!clicked) await page.waitForTimeout(1500);
     }
     const dwell = Date.now() - enter;
-    screenDwellMs[st.name] = dwell;
+    // ★これは「その画面の滞在時間」ではなく**押せるものを探していた時間**(監査B-5)。
+    //   クリック後の待ち(2.5秒)は含まない。名前も searchMs にしてある。
+    screenSearchMs[st.name] = dwell;
     if (clicked) {
       pushEvent(`${st.name}Clicked`, null, { note: `「${clicked}」滞在${Math.round(dwell / 1000)}s` });
     } else {
@@ -210,8 +240,22 @@ if (MODE === 'firstrun') {
     }
     await page.waitForTimeout(2500);
   }
-  pushEvent('sortieStarted', null);
-  await capture('sortieStarted', await readState());
+  // ★出撃の成立は「ゲームが動き出したこと」で判定する(監査A-3の是正)。
+  //   旧版は7ステップが全部空振りでも sortieStarted を記録し、そのスクショまで残していた
+  //   =事実と違うイベントが Manifest に入っていた。最大60秒だけ gameTime>0 を待つ。
+  let sortieOk = false;
+  for (let i = 0; i < 30 && !sortieOk; i++) {
+    const s = await readState();
+    if (s && s.via !== 'none' && s.gameTime > 0) sortieOk = true;
+    else await page.waitForTimeout(2000);
+  }
+  if (sortieOk) {
+    pushEvent('sortieStarted', null);
+    await capture('sortieStarted', await readState());
+  } else {
+    pushEvent('sortieFailed', null, { note: '7ステップを押し終えてもゲームが始まらなかった' });
+    await capture('sortieFailed', await readState());
+  }
 }
 
 // ── 観測ループ ─────────────────────────────────────────────────────────────────────
@@ -235,15 +279,22 @@ while (Date.now() - t0 < LIMIT_MS) {
     continue;
   }
 
-  // 関門(更新情報OK / 導入スキップ)
-  if (st.screen === 'updateModal' || (st.gameTime === 0 && st.buttons?.some(b => b === 'OK' || /^スキップ/.test(b)))) {
+  // 関門(更新情報OK / 導入スキップ)。★buttons は {text, aria} の配列なので文字列比較しない
+  //   (旧版は `b === 'OK'` で常に false=死んだ条件だった。監査B-1)。
+  const hasGateBtn = (st.buttons ?? []).some(b => b.text === 'OK' || b.aria === 'OK' || /^スキップ/.test(b.text ?? ''));
+  if (st.screen === 'updateModal' || (st.gameTime === 0 && hasGateBtn)) {
     const label = await clickGate();
     if (label) { gateClicks++; pushEvent('gateClicked', null, { note: label }); lastProgressAt = Date.now(); }
   }
 
-  // 掟: 商人画面は false に戻して続行・回数を記録
+  // 掟: 商人画面は false に戻して続行・回数を記録。
+  // ★Bridge 経由(preview)では __gameStore が無いので closeBlockingMenu() を使う(監査A-5)。
   if (st.showShopMenu) {
-    await page.evaluate(() => window.__gameStore.setState({ showShopMenu: false })).catch(() => {});
+    await page.evaluate(() => {
+      const w = window;
+      if (w.__TEST_BRIDGE__ && typeof w.__TEST_BRIDGE__.closeBlockingMenu === 'function') { w.__TEST_BRIDGE__.closeBlockingMenu(); return; }
+      w.__gameStore?.setState({ showShopMenu: false });
+    }).catch(() => {});
     shopFixes++;
     pushEvent('shopOpened', st.gameTime, { note: `${shopFixes}回目・falseへ戻した` });
     await capture('shopOpened', st);
@@ -350,7 +401,7 @@ const manifest = {
   observed: {
     gateClicks, shopFixes, maxEnemies,
     consoleErrorCount: consoleErrors.length,
-    firstRunDwellMs: MODE === 'firstrun' ? screenDwellMs : null,
+    firstRunSearchMs: MODE === 'firstrun' ? screenSearchMs : null,
     finalState,
     botReport: finalState?.botReport ?? null,
   },

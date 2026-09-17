@@ -78,7 +78,7 @@ http://localhost:4173/zombie/?smoke=1&bot=standard&autotut=1&stage=stage-1
 |---|---|---|---|
 | 1 | 更新情報モーダル | タイトルの上に更新情報+下部に「**OK**」 | OKを押す |
 | 2 | ステージ導入シーン | 全画面のシーン+右下に「**スキップ ▶**」 | スキップを押す |
-| 3 | タイトルが残った時 | 「**はじめる**」 | 1回押す(以降は `?smoke=1` が自動出撃させる) |
+| 3 | タイトルが残った時 | **ルートdiv全体が押せる**(`aria-label="タップして開始"`。**textContent は `v0.25.xxxxSTARTCAMERANEWS`**) | aria-label で当てて1回押す。**「はじめる」は現在存在しない**(2026-09-17 実測) |
 | 4 | チュートリアルポップアップ | 中央のポップアップ(`isPaused` が立つ) | **`?autotut=1` を付ければ出ない**。出たらOKを押す |
 | 5 | 武器商人の購買画面 | `showShopMenu` | false に戻して続行・回数を記録 |
 
@@ -90,7 +90,8 @@ for (let i = 0; i < 12; i++) {
     const btns = Array.from(document.querySelectorAll('button,[role="button"]'));
     const hit = btns.find(x => /^スキップ/.test((x.textContent || '').trim()))
       ?? btns.find(x => (x.textContent || '').trim() === 'OK')
-      ?? btns.find(x => /はじめる/.test((x.textContent || '').trim()));
+      // ★aria-label でしか名前を持たない要素がある(タイトルの入口)。textContent だけ見ると空振りする。
+      ?? btns.find(x => /タップして開始/.test(x.getAttribute('aria-label') || ''));
     if (hit) { hit.click(); return (hit.textContent || '').trim(); }
     return null;
   });
@@ -243,7 +244,12 @@ TEST_HANDOFF/request.config.json .. ランナーが読む設定(configs 配列�
       │        └ headless の決まり方: cfg.headless === true(**キー省略時は実機**)
       │        └ 起動時に「[setup] 表示モード: 実機(headed)」を出す
       │
-      └─→ TEST_HANDOFF/run-weapon-sweep.mjs  全武器スイープ(同上)
+      ├─→ TEST_HANDOFF/run-weapon-sweep.mjs  全武器スイープ(同上)
+      │
+      └─→ TEST_HANDOFF/run-observe.mjs ..... 観測ラン(Run Manifest + イベント連動キャプチャ + 初見導線)
+               └ `node TEST_HANDOFF/run-observe.mjs [smoke|firstrun] [分] [追加クエリ]`
+               └ **開発サーバ(5173)が要る**(状態の読み取りに __gameStore を使うため)。実機固定
+               └ 候補フレームは一時領域へ撮り、優先度順に**最大5枚だけ** results/ へ移す
                │
                ▼
       TEST_HANDOFF/results/<stamp>-*.json ... ランナーが自動で書く生データ

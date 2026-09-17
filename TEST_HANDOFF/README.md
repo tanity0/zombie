@@ -104,6 +104,7 @@ Lv1初期装備・守護霊なしにするため新規プロファイルで開�
 | `scripts/botrun-local.mjs` | `cfg.headless !== false`(**キー省略時はヘッドレス**) |
 | `TEST_HANDOFF/run-e2e-sweep.mjs` | `cfg.headless === true`(**キー省略時は実機**) |
 | `TEST_HANDOFF/run-weapon-sweep.mjs` | `cfg.headless === true`(**キー省略時は実機**) |
+| `TEST_HANDOFF/run-observe.mjs` | **実機固定**(config を見ない)。観測専用=ヘッドレスでは用を成さないため |
 
 - 起動時に `[setup] 表示モード: 実機(headed)` の1行が出る。**回す前にこの行を必ず確認する**
   (黙ってヘッドレスで回っていた事故の再発防止)。
