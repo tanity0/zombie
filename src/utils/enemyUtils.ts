@@ -560,14 +560,26 @@ let areaScaleEnabled = true;
 /** 訓練ステージ(M0)では false=区域判定を素の境界(1500/3000/5000/7500)で行う。resetGame が出撃ごとに1回セット。 */
 export const setAreaDistanceScale = (enabled: boolean): void => { areaScaleEnabled = enabled; };
 export const activeAreaThresholds = (): readonly number[] => (areaScaleEnabled ? AREA_THRESHOLDS : AREA_THRESHOLDS_BASE);
+/**
+ * ★**原点からの距離 → 区域インデックス。これが唯一の正本。**
+ *
+ * 世界の距離スケール(×1.5・v0.25.4293)で境界が動くので、**境界の数字をどこかへ写してはいけない**。
+ * 実際 `useGameLoop.ts` に同じ判定が素の値(1500/3000/5000/7500)でベタ書きされており、スケール後に
+ * **世界へ区域の定義が2つある状態**になっていた(v0.25.4450で一本化)。そこから、区域バナー・
+ * 囲いゲート①②・凶悪ハンター・紅き夜・リザルトの最深到達が**全部ひとつ内側の区域で動いていた**。
+ * 距離から区域を引きたい時は、必ずこの関数(か `areaIndexForPos`)を呼ぶ。
+ */
+export const areaIndexForDist = (distPx: number): number => {
+  const t = activeAreaThresholds();
+  for (let i = t.length - 1; i >= 0; i--) if (distPx >= t[i]) return i + 1;
+  return 0;
+};
+
 export const areaIndexForPos = (x: number, y: number): number => {
   // 洋館通路(corridorMode・v0.25.2128・社長指示): 拠点/エリア構造なし。裏側のステータスは
   // 全域「未確認汚染エリア」(index3)扱い=難易度1.75倍・未確認の湧き構成・最大敵数10。
   if (corridorSpawnEnabled) return 3;
-  const d = Math.hypot(x, y);
-  const t = activeAreaThresholds();
-  for (let i = t.length - 1; i >= 0; i--) if (d >= t[i]) return i + 1;
-  return 0;
+  return areaIndexForDist(Math.hypot(x, y));
 };
 
 // エリア基礎難易度倍率(社長指定)。最終倍率 = エリア基礎 × 色付き倍率(時間スケールは廃止)。

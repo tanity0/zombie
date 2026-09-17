@@ -3,6 +3,7 @@
 // runBountyTick本体(store書き込みを伴う)は、idolTick.test.tsと同じ作法(resetGame→盤面を作り
 // tickを実際に回す)で状態機械を検証する(B1.5監査の指摘=「漏れの機械化」)。描画はテスト対象外。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { AREA_THRESHOLDS, areaIndexForDist } from './enemyUtils';
 import {
   bountyEngagedNow, bountyLingerExpired, bountySpawnBlocked, pickActiveBounty, bountyMaxHealth,
   runBountyTick, createBountyTickState, anyBountyEngaged, bountyNaturalSpawnReady,
@@ -1804,48 +1805,39 @@ describe('runBountyTick — 憲法: 溜め中は赤い図形の中でもカウ�
 // PACING_PUZZLE.md「★賞金首の活動限界と帰巣ヒステリシス」→「確定仕様(★v2)」(社長裁定2026-08-22
 // 「半径は敵を起点としたい」)。★v1の「原点から5000px」は撤回=巣からの半径1本になった。
 describe('賞金首の湧き位置(研究領域へ固定)', () => {
-  it('固定値: y=±2250(研究領域1500〜2999の真ん中)/ x上限=±1983', () => {
-    expect(BOUNTY_SPAWN_Y_ABS_PX).toBe(2250);
-    expect(BOUNTY_SPAWN_X_ABS_LIMIT_PX).toBe(1983);
+  // ★v0.25.4450: 値の直書き(2250 / 1983 / 2999)をやめ、**区域の帯から導出**する形に変えた。
+  // 旧テストは素の値を固定していたため、世界の距離スケール(×1.5)で研究領域が 2250〜4499 へ
+  // 広がっても**緑のまま**で、「帯の真ん中に置く」という意図が内縁(0%)に化けたのを見逃していた。
+  // ⇒ **数字ではなく意図を固定する。**
+  it('★y は研究領域の帯の真ん中(内縁でも外縁でもない)', () => {
+    const inner = AREA_THRESHOLDS[0], outer = AREA_THRESHOLDS[1];
+    expect(BOUNTY_SPAWN_Y_ABS_PX).toBeGreaterThan(inner + (outer - inner) * 0.4);
+    expect(BOUNTY_SPAWN_Y_ABS_PX).toBeLessThan(inner + (outer - inner) * 0.6);
   });
 
-  it('yの符号はプレイヤーの居る側(y>0なら+2250 / y<0なら-2250)', () => {
-    expect(bountySpawnCenter(0, 800).y).toBe(2250);
-    expect(bountySpawnCenter(0, 4000).y).toBe(2250);
-    expect(bountySpawnCenter(0, -800).y).toBe(-2250);
-    expect(bountySpawnCenter(0, -4000).y).toBe(-2250);
-    expect(bountySpawnCenter(0, 0).y).toBe(2250); // y=0ちょうどは正側(上下どちらでも同距離)
+  it('yの符号はプレイヤーの居る側(y=0ちょうどは正側)', () => {
+    const Y = BOUNTY_SPAWN_Y_ABS_PX;
+    expect(bountySpawnCenter(0, 800).y).toBe(Y);
+    expect(bountySpawnCenter(0, 4000).y).toBe(Y);
+    expect(bountySpawnCenter(0, -800).y).toBe(-Y);
+    expect(bountySpawnCenter(0, -4000).y).toBe(-Y);
+    expect(bountySpawnCenter(0, 0).y).toBe(Y);
   });
 
-  it('xはプレイヤーのxに合わせる(範囲内ならそのまま)', () => {
-    expect(bountySpawnCenter(0, 100).x).toBe(0);
-    expect(bountySpawnCenter(1200, 100).x).toBe(1200);
-    expect(bountySpawnCenter(-1983, 100).x).toBe(-1983);
-    expect(bountySpawnCenter(1983, 100).x).toBe(1983);
+  it('★xは上限へクランプされる(超えると研究領域の外へ出てしまう)', () => {
+    const X = BOUNTY_SPAWN_X_ABS_LIMIT_PX;
+    expect(bountySpawnCenter(-X, 100).x).toBe(-X);
+    expect(bountySpawnCenter(X, 100).x).toBe(X);
+    expect(bountySpawnCenter(5000, 100).x).toBe(X);
+    expect(bountySpawnCenter(-5000, 100).x).toBe(-X);
+    expect(bountySpawnCenter(X + 1, 100).x).toBe(X);
+    expect(bountySpawnCenter(-(X + 1), -100).x).toBe(-X);
   });
 
-  it('★xは|x|≤1983へクランプ(超えると原点2999pxの外=area 2に出てしまう)', () => {
-    expect(bountySpawnCenter(5000, 100).x).toBe(1983);
-    expect(bountySpawnCenter(-5000, 100).x).toBe(-1983);
-    expect(bountySpawnCenter(1984, 100).x).toBe(1983);
-    expect(bountySpawnCenter(-1984, -100).x).toBe(-1983);
-  });
-
-  it('★【未確認侵入を防ぐ根拠】どんなプレイヤー位置でも原点距離が2250〜2999pxに収まる(=area 1)', () => {
-    // 最小=x=0のとき2250ちょうど。最大=|x|=1983のとき hypot(1983,2250)≈2999.13(<3000=area 2の入口)。
-    expect(Math.hypot(0, 2250)).toBe(2250);
-    expect(Math.hypot(1983, 2250)).toBeCloseTo(2999.13, 2);
-    expect(Math.hypot(1983, 2250)).toBeLessThan(3000);
-    const xs = [-99999, -5000, -1984, -1983, -1200, -1, 0, 1, 1200, 1983, 1984, 5000, 99999];
-    const ys = [-9000, -2250, -1, 0, 1, 2250, 9000];
-    for (const px of xs) for (const py of ys) {
+  it('★【未確認侵入を防ぐ根拠】どんなプレイヤー位置でも研究領域(area 1)に収まる', () => {
+    for (const [px, py] of [[0, 1], [0, -1], [99999, 5], [-99999, -5], [1234, 77]]) {
       const c = bountySpawnCenter(px, py);
-      const d = Math.hypot(c.x, c.y);
-      expect(d).toBeGreaterThanOrEqual(2250);
-      expect(d).toBeLessThanOrEqual(2999.2);
-      expect(d).toBeLessThan(3000); // area 2(r≥3000)へ湧かない
-      expect(Math.abs(c.y)).toBe(2250);
-      expect(Math.abs(c.x)).toBeLessThanOrEqual(1983);
+      expect(areaIndexForDist(Math.hypot(c.x, c.y))).toBe(1);
     }
   });
 

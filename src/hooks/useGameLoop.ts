@@ -237,7 +237,7 @@ import {
   selectLabEnemyType,
   resolveEnemyTarget,
   AREA_ZONE_NAMES,
-  areaIndexForPos,
+  areaIndexForPos, areaIndexForDist,
   AREA_THRESHOLDS,
   OFFSCREEN_SPAWN_MARGIN,
   isCorpse,
@@ -829,14 +829,14 @@ const SCREAMER_RESPAWN_CD_MS = 60000;      // 消滅(撃破/退場)後の再出�
 const AREA_BANNER_MS = 2600;           // 区域遷移バナーの表示時間(2〜3秒)
 // AREA_ZONE_NAMES は enemyUtils.ts からの共有(PACING_REDESIGN.mdバッチ2の最深到達telemetryと表記を統一)。
 // 原点(スタート/商人)からの距離(px)→ 区域インデックス。
-// 0〜1500軍備 / 1500〜3000研究 / 3000〜5000デンジャー / 5000〜7500汚染 / 7500〜深層域。
-const areaZoneIndexFor = (distPx: number): number => {
-  if (distPx >= 7500) return 4;
-  if (distPx >= 5000) return 3;
-  if (distPx >= 3000) return 2;
-  if (distPx >= 1500) return 1;
-  return 0;
-};
+// ★**正本(`areaIndexForDist`)をそのまま使う**(v0.25.4450・社長裁定「はい」)。
+// 旧実装はここに境界を**素の値(1500/3000/5000/7500)でベタ書き**していた。世界の距離スケール
+// (×1.5・v0.25.4293)で正本の境界が 2250/4500/7500/11250 へ動いた時、**ここだけ取り残された**
+// ——世界に区域の定義が2つある状態になり、これ1つから
+// **区域バナー・年表・区域SE / 囲いゲート①② / 凶悪ハンター / 紅き夜 / リザルトの最深到達**が
+// 全部「ひとつ内側の区域」で動いていた(例: 紅き夜が研究対象区域で解禁されていた)。
+// **境界の数字をどこかへ写さない。距離から区域を引きたい時は必ず正本を呼ぶ。**
+const areaZoneIndexFor = areaIndexForDist;
 // ゾーン判定(エリアバナー/深層BGM)の間引き間隔。距離比較数回だけで負荷は無視できるため毎フレーム(=1)。
 // (3に間引いても体感差・負荷差が無かったため社長指示で1へ戻し。重くなったらここを上げれば間引ける。)
 const ZONE_CHECK_INTERVAL = 1;
@@ -883,9 +883,12 @@ const commitRunEndProgress = (kind: 'death' | 'clear'): void => {
     selfHighestRank: Math.max(persisted.selfHighestRank, wm.selfHighestRank),
   });
 };
-// 深層域BGM(逆再生)切替の距離しきい値。深層域(エリア=7500px)に合わせる。準備ゾーンは手前、
+// 深層域BGM(逆再生)切替の距離しきい値。**深層域の境界そのもの**に合わせる。準備ゾーンは手前、
 // 解除はヒステリシスで戻し過ぎ防止(enter=D / exit=D-200 / 準備開始=D-400 / 解放=D-600)。
-const DEEP_BGM_D = 7500;
+// ★v0.25.4450: 素の 7500 をベタ書きしていたため、世界の距離スケール(×1.5)で深層域が 11250 へ
+// 動いた後も 7500 のまま=**未確認汚染エリアで逆再生BGMが始まっていた**(3750px手前)。
+// **境界の数字を写さず、正本から引く。**
+const DEEP_BGM_D = AREA_THRESHOLDS[3];
 type DeepBgmPhase = 'shallow' | 'prep' | 'deep';
 const RESCUE_RESPAWN_MS = 3000;        // 救助イベント: 攻撃者を倒してから復活までの時間(社長指示)
 // テスト用URLパラメータ(実機/開発で強制発火)。?arenanow=1|horde|boss → 囲い系イベントを開始直後に発火

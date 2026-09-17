@@ -37,7 +37,7 @@ import { resolvePumpkinTier, allowDrillerForRun, allowLoggerForRun, isKiteMidAtt
 import { isBossMakerRun } from './bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdriller/loggerを出さない
 import { isGauntletRun } from './gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdriller/loggerを出さない
 import { selectCullCandidates } from './enemyCulling';
-import { enemyCountCap, ENEMY_COUNT_CEIL, type PhaseKind } from './difficultyDirector';
+import { enemyCountCap, openingCountCap, ENEMY_COUNT_CEIL, type PhaseKind } from './difficultyDirector';
 import { stepDirector, applyRelaxSpawnCadence, type DirectorState } from './aiDirector';
 import { setDirectorDebug, recordDirectorSample, DIRECTOR_EVENT_BIT, getDirectorPower } from './aiDirectorDebug';
 import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDirector';
@@ -150,9 +150,15 @@ export function computeDirCountCap(
   upswingBonus: number,
   pressureCapBonus: number,
 ): number {
-  return (labTheme || indoor)
-    ? maxEnemies
-    : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime) + rankAdj.countCapBonus + upswingBonus + pressureCapBonus);
+  if (labTheme || indoor) return maxEnemies;
+  const withBonus = enemyCountCap(gameTime) + rankAdj.countCapBonus + upswingBonus + pressureCapBonus;
+  // ★**出だしの抑えはディレクターが持ち上げられない天井**(社長質問2026-09-17「出てくる数を絞った話
+  // だけど、AIディレクターはどうする?」)。
+  // 実測では3つの加算(退屈の上振れ/ランク/関所プレッシャー)は出だし70秒の間すべて0だが、
+  // それは**3つの暖機がたまたま抑えより長いから**にすぎない(退屈=90秒グレース / ランクはフェーズ
+  // 切替=95秒 / プレッシャーは関所①=95秒)。どれか1つを後で詰めた瞬間に出だしが黙って壊れるので、
+  // 「偶然そうなっている」を「そうなると決まっている」に変える。
+  return Math.min(ENEMY_COUNT_CEIL, withBonus, openingCountCap(gameTime));
 }
 
 export function computeEnemyCap(

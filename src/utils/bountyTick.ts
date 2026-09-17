@@ -27,6 +27,8 @@ import {
 // ために named re-export する。gameStoreから直接importしない理由はbountyDims.ts冒頭を読むこと
 // (循環import起動全損 v0.25.3390 の再発防止)。
 import { BOUNTY_AGGRO_RANGE_DEFAULT, BOUNTY_BASE_HP } from './bountyDims';
+// 区域境界の正本(湧き位置の数字を写さず、帯から導出する)。
+import { AREA_THRESHOLDS } from './enemyUtils';
 export { BOUNTY_BASE_HP };
 // ★v0.25.3558(ボスメーカー横展開・第1弾): 賞金首4種の**数値はbountyScript.tsの可変テーブルが正**
 // (BOSS_MAKER.md §2-2「台本はコード / 数字はテーブル」)。ロジックはここ、数字は向こう。
@@ -155,19 +157,27 @@ export const bountyEngagedNow = (sig: BountyEngagedSignals, leashRadiusPx: numbe
  *         │      x=-1983    0      x=+1983  │
  *         └────────────────┼────────────────┘  研究領域の内縁 1500px
  *
- * - **y = 原点から 2250px 固定**(1500〜2999 の真ん中)。**符号はプレイヤーの居る側**
- *   (プレイヤーの y が負なら y = -2250。y=0 ちょうどは正側=上下どちらでも同じ距離なので任意)。
- * - **x はプレイヤーの x に合わせ、|x| ≤ 1983px へクランプ**
- *   (`√(1983² + 2250²) ≈ 2999.1` = 研究領域の外縁。これを超えると area 2 に出てしまう)。
+ * - **y = 研究領域の帯の真ん中に固定**。**符号はプレイヤーの居る側**
+ *   (プレイヤーの y が負なら y も負。y=0 ちょうどは正側=上下どちらでも同じ距離なので任意)。
+ * - **x はプレイヤーの x に合わせ、帯の外縁を超えない値へクランプ**(超えると area 2 に出てしまう)。
+ * ★数字は**区域の帯から導出**する(v0.25.4450)。図中の 1500/2250/2999 はスケール前の値で、
+ *   現在は 2250/3375/4499。**意図(真ん中・外縁)は不変で、値だけが世界に追従する。**
  * - 旧「プレイヤーから 700〜1000px・方角ランダム」は**廃止**(社長裁定v2)。
  *
  * これが**活動限界(巣から1200px)が未確認汚染エリア(r≥5000)へ届かない根拠**でもある——
  * 最遠に湧いても 2999 + 1200 = 4199px で 801px 余る。
  */
-/** 湧きの y(絶対値)。研究領域 1500〜2999 の真ん中。 */
-export const BOUNTY_SPAWN_Y_ABS_PX = 2250;
-/** 湧きの x の上限(絶対値)。hypot(1983, 2250) ≈ 2999.1 < 3000 = area 2 の入口。 */
-export const BOUNTY_SPAWN_X_ABS_LIMIT_PX = 1983;
+// ★v0.25.4450: 素の 2250 / 1983 をベタ書きしていたため、世界の距離スケール(×1.5)で研究領域が
+// 1500〜2999 → 2250〜4499 へ広がった後も動かず、**帯の真ん中(50%)に置く意図が内縁(0%)**に
+// なっていた(区域は変わらないので誰も気づかなかった)。**帯そのものから引き直す**=二度とずれない。
+const RESEARCH_INNER_PX = AREA_THRESHOLDS[0];          // 研究領域の内縁
+const RESEARCH_OUTER_PX = AREA_THRESHOLDS[1] - 1;      // 外縁(ここを超えると area 2 に出る)
+/** 湧きの y(絶対値)。**研究領域の帯の真ん中**(意図はこの1行で、数字は帯から導く)。 */
+export const BOUNTY_SPAWN_Y_ABS_PX = Math.round((RESEARCH_INNER_PX + RESEARCH_OUTER_PX) / 2);
+/** 湧きの x の上限(絶対値)。`hypot(これ, y)` が**研究領域の外縁を超えない**最大値。 */
+export const BOUNTY_SPAWN_X_ABS_LIMIT_PX = Math.floor(
+  Math.sqrt(Math.max(0, RESEARCH_OUTER_PX ** 2 - BOUNTY_SPAWN_Y_ABS_PX ** 2)),
+);
 
 /** 賞金首の湧き位置(中心)。プレイヤーの中心座標を渡す。 */
 export const bountySpawnCenter = (
