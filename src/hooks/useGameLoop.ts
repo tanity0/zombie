@@ -46,7 +46,7 @@ import {
   BOSS_MELEE_STUN_MULT,
   bossSlowMult,
   bossCritCdMult,
-  KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS, KNOCKBACK_SPEED,
+  KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
   knockbackSpeedFor, BULLET_KNOCKBACK_SPEED, SKILL_BLAST_KB_PX, // 社長指示v0.25.3270: 反射神経/ボムカウンターの実距離50pxノックバック
   // v0.25.3300 覚醒(Lv3): ボムカウンターKB100px+1段パニッシュ / エクスプローダー爆発KB×1.5 /
   // オーバークロックproc時クイックリロード / シーカー半透明中の攻撃封印(覚醒で解除)。
@@ -249,7 +249,7 @@ import {
   isReaperFamily, isTerminalReaper, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
   pickNearestTarget, // UNIQUE_WEAPONS.md §19-3: 金環の対象取得(各金環が独立に最寄りの敵を取る)
 } from '../utils/enemyUtils';
-import { killChainSfxRate, recoilSpecForWeapon, casingSpecFor } from '../utils/combatFeel';
+import { killChainSfxRate, recoilSpecForWeapon, casingSpecFor , GUN_STOP_BASE_MS, GUN_STOP_MAX_MULT, GUN_STOP_AWAKEN_MULT } from '../utils/combatFeel';
 import { comboMilestoneCrossed, milestoneSfxRate } from '../utils/comboMilestone';
 // 戦闘の手触り②: 撃破SEのピッチはstoreの段(killChainTier)から。audioManagerはstoreをimportできないので登録式。
 registerKillChainSfxRate(() => killChainSfxRate(useGameStore.getState().killChainTier, Math.random()));
@@ -13948,29 +13948,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 小突きノックバックに落とす(近接同様「CD中はKB無し」だと弾の手応えが消えるため)。
             const asAwakenKb = !isAllyOwnedShot && skillLevel(shotOwner, 'attack-shooter') >= 3
               && knockbackCdReady(enemyForFx, Date.now());
-            if (asAwakenKb) {
-              const asNow = Date.now();
-              const asDirX = projectile.direction.x, asDirY = projectile.direction.y;
-              useGameStore.setState(state => ({
-                enemies: state.enemies.map(en =>
-                  en.id === enemyId && en.corpseUntil === undefined && knockbackCdReady(en, asNow)
-                    ? {
-                        ...en,
-                        knockbackVx: asDirX * KNOCKBACK_SPEED,
-                        knockbackVy: asDirY * KNOCKBACK_SPEED,
-                        knockbackUntil: asNow + KNOCKBACK_DURATION,
-                        knockbackImmuneUntil: asNow + KNOCKBACK_IMMUNE_MS,
-                      }
-                    : en),
-              }));
-            } else {
-              useGameStore.getState().knockbackEnemy(
-                enemyId,
-                projectile.direction.x,
-                projectile.direction.y,
-                phillBody ? baseKb * 2 : baseKb
-              );
-            }
+            // ★社長指示2026-09-17「**銃のノックバックやめてみよう、同等のストップのみにしてみよう**」。
+            // 旧実装は**当たった弾すべて**が敵を押していた(ショットガン×1.35 / PHILL胴体×2 /
+            // アタックシューター覚醒は近接と同じ満額)。⇒ **押すのをやめ、同じ重みを「止め」に振り替える。**
+            // 押しの強さ(`baseKb`)をそのまま**止めの長さの倍率**にするので、
+            // 「ショットガンは重い」「PHILLの胴体は重い」「覚醒は重い」という**手応えの差はそのまま残る**。
+            // ★ただし「攻撃は何も止まらない」(同日・別指示)が優先なので、
+            //   **技を出している敵は止めない**——`gunStopUntil` は `hitStunUntil` と同じ枠に書き、
+            //   `updateEnemies` 側の「技中は止めない」ガードがそのまま効く。
+            // ★止めは**重ねない**: 走っている止めが明けるまで新しい止めを書かない。
+            //   重ねると連射で**永久に止まったまま**になり、「台本が動かない」を自分で作ってしまう
+            //   (実際そこを直したばかり)。⇒ 1発ぶんの止めが明けてから次が効く=**上限50%前後の占有**。
+            const stopNow = Date.now();
+            const stopMult = asAwakenKb
+              ? GUN_STOP_AWAKEN_MULT                       // 覚醒=近接と同じ重み
+              : Math.min(GUN_STOP_MAX_MULT, phillBody ? baseKb * 2 : baseKb);
+            const stopMs = Math.round(GUN_STOP_BASE_MS * stopMult);
+            useGameStore.setState(state => ({
+              enemies: state.enemies.map(en =>
+                en.id === enemyId && en.corpseUntil === undefined
+                  && stopNow >= (en.hitStunUntil ?? 0)      // ★走っている止めには重ねない
+                  ? { ...en, hitStunUntil: stopNow + stopMs }
+                  : en),
+            }));
           }
 
           // Crit that didn't outright kill → stun the target so it can be
