@@ -12816,6 +12816,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (!committed && !attacking && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) {
           return deferFrozenClocksBy(enemy, deltaTime * 1000);
         }
+        // ★噛みつき直後の硬直(社長指摘2026-09-17「**噛みつき直後の硬直があるはずだけど？**」)。
+        // 台帳(`BiteSpec.recoverMs`)には「硬直600ms」と書いてあったのに、実装は
+        // **「次の噛みつきを構え始められない」ゲートだけ**で、**移動は1msも止まっていなかった**。
+        // ⇒ 噛みつきも他の技と同じ3拍にする: **噛む → ここで止まる(プレイヤーの取り分) → 戻る**。
+        // ★`chaffMove` が立っていたら**掛けない**——§16の技は専用の硬直相を既に持っており、
+        // ここで二重に止めると踏み込み・後退が終点に着けず**技が終わらない**
+        // (v0.25.4300台で踏んだ「台本が動かなくなってただ寄ってくるだけ」と同型の事故)。
+        // ★時計は繰り下げない(`deferFrozenClocksBy` を通さない)——§12の噛みつきは§16の時計を
+        // 持たないし、繰り下げると硬直そのものが終わらなくなる。
+        // ★止まっているだけなので、被弾硬直もノックバックもカウンターも**そのまま効く**
+        // (`isEnemyAttacking` は biteAt=0 になった時点で false=スーパーアーマーは切れている)。
+        if (!committed && enemy.chaffMove === undefined
+          && enemy.biteRecoverUntil !== undefined && gameTime < enemy.biteRecoverUntil) {
+          return { ...enemy, vx: 0, vy: 0 };
+        }
         // CRIT-UNIFY §9.2: 次行動CD専用のatkUntil。クリ窓中のボスは×2(bossCritCdMult)。
         // windup/active/recoverの各durationは従来のatkUntilのまま(予告のリード時間は変えない)。
         const atkCdUntil = (ms: number) => gameTime + (ms / ENEMY_ATTACK_SPEED_MULT) * bossCritCdMult(enemy, gameTime);

@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4437',
+    items: ['敵は噛みついた直後、その場で動けなくなる。噛まれた後は反撃の番'],
+  },
+  {
     version: '0.25.4436',
     items: ['ゲーム内容の変更はありません'],
   },

@@ -595,6 +595,11 @@ export interface Enemy {
   /** ★中断の逓減(`BITE_CANCEL_DR_MS`)。この gameTime まではノックバックで噛みつきが止まらない。 */
   biteNoCancelUntil?: number;
   biteReadyAt?: number;
+  /**
+   * ★噛みつき直後の「本当に動けない」硬直の期限(gameTime基準・`BITE_RECOVER_STILL_MS`)。
+   * §12の噛みつき(`chaffMove` なし)が正常に決着した時だけ書かれる。プレイヤーの取り分。
+   */
+  biteRecoverUntil?: number;
   // PACING_PUZZLE.md §16-7b(雑魚の「詰めさせない技」): いま出している§16の技。undefined=§16の技を
   // 出していない(通常の§12噛みつき・無属性の移動)。★訂正版(§16-7穴2・検収監査A-4): 立つのは
   // 技の頭(bat=b-windup/skeleton=s-crouchの次の踏み込み/ゾンビ=z-lunge-in。biteAtより前)。

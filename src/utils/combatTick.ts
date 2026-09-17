@@ -29,7 +29,8 @@ import { GLOW_R_L, GLOW_R_S } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
   isBossType, isHiddenBoss, isBountyType, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile, isCorpse,
-  isGuardianPhantom, isBiteExemptType, isHangedman, isTerminalReaper } from './enemyUtils';
+  isGuardianPhantom, isBiteExemptType, isHangedman, isTerminalReaper, isTrueBossType,
+} from './enemyUtils';
 // PACING_PUZZLE.md §14-4-8/8b(神付き): ?rp2kami=/?rp2kamims=(判定側=生URLSearchParams・中12の作法)。
 import { KAMITSUKI_ENABLED, REAPER2_CONFIG } from '../config/reaper';
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
@@ -40,7 +41,7 @@ import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkColli
 // ★全敵共通の噛みつき(PACING_PUZZLE.md §12・社長発案2026-08-25)。
 import {
   biteSpecFor, biteReachRect, isInBiteRect, isBiteSubject, canStartBite, isBiteResolveDue,
-  biteBodyOverlapsPlayer, isBiteInterruptedByMove, isBiteFrozen,
+  biteBodyOverlapsPlayer, isBiteInterruptedByMove, isBiteFrozen, BITE_RECOVER_STILL_MS,
 } from './enemyBite';
 import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { BAT_GRAB_HOLD_MS } from './chaffMoves'; // ★PACING_PUZZLE.md §16-1(bat の掴み)
@@ -1410,6 +1411,15 @@ export const applyContactDamage = (
           const techSpec = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
           return {
             ...e, biteAt: 0, biteReadyAt: gameTime + techSpec.recoverMs,
+            // ★噛みつき直後の本当の硬直(社長指摘2026-09-17)。**§12の噛みつきだけ**——
+            // §16の技(chaffMove)は専用の硬直相(z-recover/s-recover/b-release)を既に持っており、
+            // 二重に止めると技が終わらない(踏み込み・後退が終点に着けなくなる)。
+            // ★整合監査(C-7): `recoverMs` は**技ごとに違う**(bat-grab 4000 / skel-bite 3500 /
+            // zombie-double 2500 / 真ボス 1500)。600ms を 350+250 に割る式が成り立つのは
+            // **§12の噛み(chaffMove なし)かつ非ボス**だけ。真ボスは `updateEnemies` の汎用移動を
+            // 通らない(専用コントローラが座標を書く)ので、書いても読まれない=書かない。
+            ...(e.chaffMove === undefined && !isTrueBossType(e.type)
+              ? { biteRecoverUntil: gameTime + BITE_RECOVER_STILL_MS } : {}),
           };
         }
         return e;
