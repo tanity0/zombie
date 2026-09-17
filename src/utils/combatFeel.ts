@@ -44,6 +44,35 @@ export const GUN_STOP_AWAKEN_MULT = 3;
  */
 export const GUN_STOP_DUTY = 0.30;
 
+/**
+ * ★攻撃中スーパーアーマー(社長裁定2026-09-17「**攻撃中スーパーアーマーで採用してみよう**」)。
+ *
+ * **技を実行中の敵は、クリティカル以外では中断もノックバックもされない。**
+ * ここまでの裁定(銃撃は何も止めない / 中断できるのはクリティカルだけ)を**近接・爆発・押し道具にも広げ**、
+ * **武器ごとに分かれていた規則を1本にする**——プレイヤーが覚えることが減る。
+ * エルデンリングの敵の攻撃モーションが体勢崩し以外では止まらないのと同じ。
+ *
+ * ★**述語は1つだけ**にする。同じ意味の式を2箇所に書くと必ずズレる(このプロジェクトの実績)。
+ * `updateEnemies` の被弾硬直ガードと `knockbackEnemy` の両方がこれを読む。
+ *
+ * ★**気絶(クリティカル)中は false**=スーパーアーマーは切れる。クリで止めた敵は押せる。
+ * ★`zpause`(ゾンビの紫の停止)は**含める**——あれは技の予告であって「何もしていない」ではない。
+ */
+export const isEnemyAttacking = (
+  e: {
+    aiPhase?: string; chaffMove?: string; biteAt?: number;
+    stunUntil?: number; bossFullStunUntil?: number;
+  },
+  gameTime: number,
+): boolean => {
+  // クリティカルの気絶中はアーマー無し(=押せる・止められる)。
+  if (e.stunUntil !== undefined && gameTime < e.stunUntil) return false;
+  if (e.bossFullStunUntil !== undefined && gameTime < e.bossFullStunUntil) return false;
+  if (e.chaffMove !== undefined) return true;              // §16の技を実行中
+  if (e.biteAt !== undefined && e.biteAt > 0) return true;  // 噛みつきを構えている/振っている
+  return e.aiPhase !== undefined;                           // 技の相にいる(予告を含む)
+};
+
 export const HIT_STUN_MS_MOB = 120;
 export const HIT_STUN_MS_STRONG = 70;
 // 再発火の間(ms)。連射銃(最速100ms間隔)で毎発止めると「時間の6割止まる=実質の減速」になるので、

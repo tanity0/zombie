@@ -43,14 +43,14 @@ describe('playerHurtReactionOf — 段が上がるほど長く止まる', () => 
 });
 
 describe('isHurtGunLocked — 被弾の復帰ディレイ(銃だけ止まる)', () => {
-  it('段ごとの長さだけ true(軽300 / 中520 / 重800・社長指示2026-09-17で重くした)', () => {
+  it('段ごとの長さだけ true(軽420 / 中700 / 重1000・社長指示2026-09-17で二度重くした)', () => {
     const t = 10000;
-    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 299)).toBe(true);
-    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 300)).toBe(false);
-    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 519)).toBe(true);
-    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 520)).toBe(false);
-    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 799)).toBe(true);
-    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 800)).toBe(false);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 419)).toBe(true);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 420)).toBe(false);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 699)).toBe(true);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 700)).toBe(false);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 999)).toBe(true);
+    expect(isHurtGunLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 1000)).toBe(false);
   });
 
   // ★社長指示2026-09-17「食らった重さがほしい。エルデンリングをまねて」。
@@ -61,17 +61,34 @@ describe('isHurtGunLocked — 被弾の復帰ディレイ(銃だけ止まる)', 
     }
   });
 
-  it('★移動ロックは段ごとの長さだけ true(軽120 / 中220 / 重380)', () => {
+  it('★移動ロックは段ごとの長さだけ true(軽260 / 中460 / 重700)', () => {
     const t = 10000;
-    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 119)).toBe(true);
-    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 120)).toBe(false);
-    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 219)).toBe(true);
-    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 379)).toBe(true);
-    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 380)).toBe(false);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 259)).toBe(true);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 0 }, t + 260)).toBe(false);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 1 }, t + 459)).toBe(true);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 699)).toBe(true);
+    expect(isHurtMoveLocked({ lastHurtAt: t, lastHurtTier: 2 }, t + 700)).toBe(false);
   });
 
   it('★しゃがみの絵と同じ長さ(絵と実態を一致させるのが仕様)', () => {
     for (const r of PLAYER_HURT_TIERS) expect(r.gunLockMs).toBe(r.crouchMs);
+  });
+
+  // ★社長指示2026-09-17(2回目)「慣性で吹き飛ぶ感じ」。
+  it('★吹き飛びは段が重いほど速く・長く(全段一律だったのを段ごとに)', () => {
+    const [lo, mid, hi] = PLAYER_HURT_TIERS;
+    expect(lo.kbSpeedMult).toBeLessThan(mid.kbSpeedMult);
+    expect(mid.kbSpeedMult).toBeLessThan(hi.kbSpeedMult);
+    expect(lo.kbMs).toBeLessThan(mid.kbMs);
+    expect(mid.kbMs).toBeLessThan(hi.kbMs);
+  });
+
+  it('★「飛ぶ → 動けない → 撃てない」の順序が保たれている', () => {
+    for (const r of PLAYER_HURT_TIERS) {
+      expect(r.kbMs).toBeLessThan(r.moveLockMs);     // 飛び終わってもまだ動けない
+      expect(r.moveLockMs).toBeLessThan(r.gunLockMs); // 動けるようになってもまだ撃てない
+      expect(r.gunLockMs).toBe(r.crouchMs);           // 絵と実態が一致
+    }
   });
 
   it('まだ一度も食らっていなければ止めない', () => {

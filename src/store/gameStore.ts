@@ -103,6 +103,7 @@ import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate, comboMilestoneCrossed, killBannerDurationMs } from '../utils/comboMilestone';
 import { playerHurtTier, playerHurtReactionOf, isHurtMoveLocked } from '../utils/playerHurt';
+import { isEnemyAttacking } from '../utils/combatFeel';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 import { impactDamageOf, mergeImpactEntries, strongestImpact, IMPACT_MELEE_MIN, type ImpactEntry, type ImpactFlags } from '../utils/impactShake'; // 揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)
 import {
@@ -10566,7 +10567,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       let dx = pcx - fromX, dy = pcy - fromY;
       const d = Math.hypot(dx, dy);
       if (d < 0.001) { dx = 0; dy = -1; } else { dx /= d; dy /= d; }
-      kbVx = dx * PLAYER_KNOCKBACK_SPEED; kbVy = dy * PLAYER_KNOCKBACK_SPEED; kbApply = true;
+      // ★段ごとに重さを変える(社長指示2026-09-17「慣性で吹き飛ぶ感じ」)。
+      // 旧は全段一律(460px/s・260ms)で、かすっても保たない一撃でも同じ飛び方だった。
+      const hurtKb = playerHurtReactionOf(hurtTier);
+      const kbSpd = PLAYER_KNOCKBACK_SPEED * hurtKb.kbSpeedMult;
+      kbVx = dx * kbSpd; kbVy = dy * kbSpd; kbApply = true;
       dirX = dx; dirY = dy;
     }
 
@@ -10629,10 +10634,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           lastHurtTier: amount > 0 ? hurtTier : state.player.lastHurtTier,
           knockbackVx: kbApply ? kbVx : state.player.knockbackVx,
           knockbackVy: kbApply ? kbVy : state.player.knockbackVy,
-          knockbackUntil: kbApply ? kbNow + PLAYER_KNOCKBACK_MS : state.player.knockbackUntil,
+          knockbackUntil: kbApply ? kbNow + playerHurtReactionOf(hurtTier).kbMs : state.player.knockbackUntil,
           // ★持続時間も**必ず一緒に書く**(v0.25.2653)。技ごとの長い押し出しの直後に通常の被弾が
           // 来た時、ここを書かないと**前の技の持続時間で減衰が計算され**、初速が合わなくなる。
-          knockbackMs: kbApply ? PLAYER_KNOCKBACK_MS : state.player.knockbackMs,
+          knockbackMs: kbApply ? playerHurtReactionOf(hurtTier).kbMs : state.player.knockbackMs,
         }
       };
     });
@@ -12760,9 +12765,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // **撃たれ続けると終点に着けず、技が終わらない**=「台本が動かなくなってただ寄ってくるだけ」に見えた。
         // ⇒ 技中(`chaffMove` 定義 or 噛みつき構え中 or §16の相)は**被弾硬直で止めない**。
         // 技を出していない時は従来どおり止める(戦闘の手触り①=殴った手応えはそのまま残す)。
-        const attacking = enemy.chaffMove !== undefined
-          || (enemy.biteAt !== undefined && enemy.biteAt > 0)
-          || (enemy.aiPhase !== undefined && enemy.aiPhase !== 'zpause');
+        // ★攻撃中スーパーアーマー(社長裁定2026-09-17)。述語は `combatFeel.isEnemyAttacking` の1本だけ
+        // (`knockbackEnemy` も同じものを読む=2箇所で式がズレない)。
+        const attacking = isEnemyAttacking(enemy, gameTime);
         if (!committed && !attacking && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) {
           return deferFrozenClocksBy(enemy, deltaTime * 1000);
         }
@@ -16213,6 +16218,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 死体を除外し、死体自身の吹き飛びを上書きさせない。
       enemies: state.enemies.map(e => {
         if (e.id !== id || isCorpse(e)) return e;
+        // ★攻撃中スーパーアーマー(社長裁定2026-09-17「攻撃中スーパーアーマーで採用してみよう」):
+        // **技を実行中の敵は、クリティカル以外では押されない**。近接・爆発・押し道具の**全部**に効く
+        // (銃撃だけ止まらない、という武器ごとの規則を1本に揃える)。
+        // クリティカルで気絶させた敵はアーマーが切れる=押せる(`isEnemyAttacking` が false を返す)。
+        if (isEnemyAttacking(e, get().gameTime)) return e;
         // 戦闘の手触り①(v0.25.4269): 局所ストップ中なら期限をその残りぶん後ろへ(止めが明けてから満額で飛ぶ)。
         // 呼び手は damageEnemy の直後にこれを呼ぶので、書かれたばかりの hitStunUntil がここで見える。
         const stunShift = (e.hitStunUntil !== undefined && e.hitStunUntil > now) ? e.hitStunUntil - now : 0;

@@ -21,6 +21,10 @@ export interface PlayerHurtReaction {
   gunLockMs: number;
   /** ★移動そのものを止める尺(社長指示2026-09-17「食らった重さ」)。のけぞりより短い=前半だけ動けない。 */
   moveLockMs: number;
+  /** ★吹き飛びの速さの倍率(社長指示2026-09-17「慣性で吹き飛ぶ感じ」)。基準=`PLAYER_KNOCKBACK_SPEED`。 */
+  kbSpeedMult: number;
+  /** ★吹き飛びの尺。重い一撃ほど長く飛ぶ(減衰は既存の線形=初速最大→0で慣性になる)。 */
+  kbMs: number;
 }
 
 /** 段の境目(被弾量 ÷ 最大HP)。この値**以上**で次の段へ上がる。 */
@@ -38,10 +42,15 @@ export const PLAYER_HURT_TIER_FRACS = [0.08, 0.20] as const;
 // ★移動を止める尺は**のけぞりより短くする**——全部止めると「操作を奪われた」になる(理不尽)。
 //   **前半は動けない・後半は動けるが撃てない**、という二段の抜け方にする。
 // ★近接/カウンターは**止めない**(下の理由=近接とパリィが同じ入力なので、止めると死の連鎖になる)。
+// ★社長指示2026-09-17(2回目)「**食らった時、まだ軽い。もう少し長くしゃがんで動けないストップ入れて、
+// 慣性で吹き飛ぶ感じ**」。⇒ ①しゃがみを更に伸ばす ②動けない時間を大きく伸ばす
+// ③**吹き飛びを段ごとに重くする**(旧は全段一律 460px/s・260ms で、軽い一撃も重い一撃も同じ飛び方だった)。
+// ★順序の設計: **吹き飛ぶ(慣性) → 着地しても動けない → 動けるが撃てない → 復帰**。
+//   `moveLockMs` は `kbMs` より長くする(飛んでいる間+着地後の溜め)。`gunLockMs` は更に長い。
 export const PLAYER_HURT_TIERS: readonly PlayerHurtReaction[] = [
-  { crouchMs: 300, stopMs: 70,  gunLockMs: 300, moveLockMs: 120 },  // 軽: かすった
-  { crouchMs: 520, stopMs: 120, gunLockMs: 520, moveLockMs: 220 },  // 中: まともに食らった
-  { crouchMs: 800, stopMs: 190, gunLockMs: 800, moveLockMs: 380 },  // 重: 保たない一撃
+  { crouchMs: 420,  stopMs: 70,  gunLockMs: 420,  moveLockMs: 260, kbSpeedMult: 0.7, kbMs: 200 },  // 軽: かすった
+  { crouchMs: 700,  stopMs: 120, gunLockMs: 700,  moveLockMs: 460, kbSpeedMult: 1.0, kbMs: 320 },  // 中: まともに食らった
+  { crouchMs: 1000, stopMs: 190, gunLockMs: 1000, moveLockMs: 700, kbSpeedMult: 1.5, kbMs: 420 },  // 重: 保たない一撃
 ];
 
 /** 被弾量と最大HPから段(0=軽 / 1=中 / 2=重)を返す。 */

@@ -3,7 +3,7 @@ import {
   hitStunMsFor, HIT_STUN_MS_MOB, HIT_STUN_MS_STRONG, HIT_STUN_REARM_MS, nextHitStunUntil,
   stepKillChain, killChainTier, killChainSfxRate, killChainEdgePulseMs, killChainEdgeEnvelope, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SFX_JITTER,
   recoilSpecForWeapon, recoilKickOffset, recoilKickDir, RECOIL_KICK_MAX_PX, RECOIL_HEAVY_PX,
-  casingSpecFor, casingVelocity, stepFloorParticle,
+  casingSpecFor, casingVelocity, stepFloorParticle, isEnemyAttacking,
 } from './combatFeel';
 
 describe('戦闘の手触り(utils/combatFeel・社長指示2026-09-13)', () => {
@@ -143,5 +143,31 @@ describe('戦闘の手触り(utils/combatFeel・社長指示2026-09-13)', () => 
       const r = stepFloorParticle(15, 20, 60, 14);
       expect(r).toEqual({ y: 14, vx: 0, vy: 0, rested: true });
     });
+  });
+});
+
+// ★社長裁定2026-09-17「攻撃中スーパーアーマーで採用してみよう」。
+describe('★攻撃中スーパーアーマー(isEnemyAttacking)', () => {
+  const T = 10_000;
+  it('技を実行中(chaffMove)ならアーマーが立つ', () => {
+    expect(isEnemyAttacking({ chaffMove: 'bat-grab' }, T)).toBe(true);
+  });
+  it('噛みつきを構えていればアーマーが立つ', () => {
+    expect(isEnemyAttacking({ biteAt: T - 100 }, T)).toBe(true);
+  });
+  it('技の相にいればアーマーが立つ(zpause=ゾンビの紫の停止も予告なので含む)', () => {
+    expect(isEnemyAttacking({ aiPhase: 'zpause' }, T)).toBe(true);
+    expect(isEnemyAttacking({ aiPhase: 'crouch' }, T)).toBe(true);
+  });
+  it('何もしていなければアーマーは無い', () => {
+    expect(isEnemyAttacking({}, T)).toBe(false);
+    expect(isEnemyAttacking({ biteAt: 0 }, T)).toBe(false);
+  });
+  it('★クリティカルの気絶中はアーマーが切れる(クリで止めた敵は押せる)', () => {
+    expect(isEnemyAttacking({ chaffMove: 'bat-grab', stunUntil: T + 5000 }, T)).toBe(false);
+    expect(isEnemyAttacking({ aiPhase: 'jump', bossFullStunUntil: T + 1000 }, T)).toBe(false);
+  });
+  it('気絶が明ければアーマーは戻る', () => {
+    expect(isEnemyAttacking({ chaffMove: 'bat-grab', stunUntil: T }, T)).toBe(true);
   });
 });
