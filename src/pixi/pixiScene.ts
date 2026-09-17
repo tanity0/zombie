@@ -16874,7 +16874,7 @@ export class PixiScene {
     // ※松明は自分が光源なので、距離ゼロの除外(RIM_MIN_DIST)で自分自身では光らない。
     for (const [k, v] of this.breakableProps) views.push({ id: 'bprop:' + k, sprite: v.sprite });
 
-    if (!RIM_ON) { for (const { id } of views) this.hideRim(id); this.pruneRims(views); return; }
+    if (!RIM_ON) { for (const { id } of views) this.hideRim(id); this.pruneRims(views, now); return; }
 
     // このフレームの光(色つき)。worldLights は色を持たないので、ここで色を足す。
     this.rimLights.length = 0;
@@ -16907,7 +16907,7 @@ export class PixiScene {
     const dt = this.rimLastNow > 0 ? Math.min(100, now - this.rimLastNow) : 16;
     this.rimLastNow = now;
     for (const { id, sprite } of views) this.drawRim(id, sprite, dt);
-    this.pruneRims(views);
+    this.pruneRims(views, now);
   }
 
   private hideRim(id: string) {
@@ -16915,12 +16915,29 @@ export class PixiScene {
     if (r) { r.a.visible = false; r.b.visible = false; }
   }
 
-  private pruneRims(live: { id: string }[]) {
-    if (this.rimViews.size <= live.length) return;
+  /**
+   * ★早期returnが**壊れていた**(v0.25.4442・実バグ修正)。
+   * 旧: `if (this.rimViews.size <= live.length) return;`
+   * これは「キャッシュの数 ≦ 画面上の物の数なら消す物は無い」という**誤った前提**。
+   * 縁が付くのは**光が当たっている物だけ**なので、木・壁・敵が並ぶ通常の画面では
+   * この条件はほぼ常に真=**死んだidが残っていても掃除が丸ごと飛ぶ**。
+   * これが「消えた直後の1フレームで自然に治る」のを妨げていた実質的な原因。
+   *
+   * ★ただし毎フレーム全件を走らせるのは高い(木・壁込みで数百件)。**間隔を置いて掃除する**
+   * (取りこぼしの間は `drawRim` 側の destroyed ガードが受ける=二段構え)。
+   */
+  private rimPruneAt = 0;
+  private static readonly RIM_PRUNE_INTERVAL_MS = 500;
+  private pruneRims(live: { id: string }[], now: number) {
+    if (now - this.rimPruneAt < PixiScene.RIM_PRUNE_INTERVAL_MS) return;
+    this.rimPruneAt = now;
+    if (this.rimViews.size === 0) return;
     const keep = new Set(live.map(v => v.id));
     for (const [id, r] of this.rimViews) {
       if (keep.has(id)) continue;
-      r.a.destroy(); r.b.destroy();
+      // 親 container ごと destroy 済みのことがある(二重destroyを避ける)。
+      if (!r.a.destroyed) r.a.destroy();
+      if (!r.b.destroyed) r.b.destroy();
       this.rimViews.delete(id);
     }
   }
@@ -16939,6 +16956,19 @@ export class PixiScene {
     // 生成してから隠すと、光の無い森でも木の本数×2枚ぶん無駄に確保することになる。
     // 一度作った物は消えかけ(k>0)の間だけ残り、離れれば pruneRims が破棄する。
     if (!r && !hit) return;
+
+    // ★**destroy済みを掴んでいたら「無かった」ことにして作り直す**(v0.25.4442・実バグ修正)。
+    // 症状: 本番ビルドで `[PixiStage] sync error: TypeError: Cannot read properties of null
+    // (reading 'set')` が `put` → `drawRim` → `syncRimLights` の経路で出ていた。
+    // 原因: 個体が消える時 `view.container.destroy({children:true})` が縁の2枚(この辞書の中身)も
+    // 一緒に壊すのに、**`rimViews` からは消されていなかった**。Pixi v8 の destroy は
+    // `anchor/position/scale/skew` を **null** にするので、`put` の `s2.anchor.set(...)` で落ちる。
+    // ★**同じ id が再来すると再現する**。松明のidは `torch-<格子座標>` で**場所だけで決まる固定id**
+    // (`world/torches.ts`)なので、離れて戻るだけで確実に同じidが戻ってくる。
+    // ★「初回だけログ」なので1回に見えていたが、**例外自体は条件が揃えば毎フレーム再発する**
+    // (`PixiStage` の try/catch は毎ティック握り潰している)。落ちたフレームは
+    // `syncRimLights` 以降の描画更新が丸ごと飛ぶ。
+    if (r && r.a.destroyed) { this.rimViews.delete(id); r = undefined; }
 
     if (!r) {
       const mk = () => {

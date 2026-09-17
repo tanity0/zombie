@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4442',
+    items: ['画面の描画が一瞬止まる不具合を直した。松明のある場所を離れて戻ると、光の演出が更新されないフレームが出ていた'],
+  },
+  {
     version: '0.25.4441',
     items: [
       '転移の魔法陣が光るようになった。消えるときは渦を巻いて吸い込み、現れるときは外へほどける',
