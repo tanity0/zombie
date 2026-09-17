@@ -113,6 +113,21 @@ export const isBossPostureBroken = (enemy: Enemy, gameTime: number): boolean =>
   && enemy.bossFullStunUntil !== undefined
   && gameTime < enemy.bossFullStunUntil;
 
+/**
+ * ★体勢値の削りのクールダウン(社長指示2026-09-17「**体勢値について、削りに若干のCDを設ける0.3秒くらい。
+ * 意図は、ボスの複数弾系へカウンターすると一気に体勢値が削れるのを防ぐ**」)。
+ *
+ * ボスの弾幕(複数弾)をカウンターで返すと、**1回の入力で弾の数だけ削りが入って**いた
+ * ——同じ1アクションなのに、弾が5発なら5回ぶん削れる。**技の性質(弾数)が体勢削りの量を決めてしまう**のは
+ * 意図ではないので、**同じ敵への削りは0.3秒に1回まで**にする。
+ *
+ * ★全ての `impact` に掛ける(counter/melee/heavy/gun-crit/reflect)。弾数由来の多重ヒットは
+ * `reflect`/`counter` で起きるが、**近接の多段や爆発の多重ヒットでも同じことが起きうる**ので、
+ * 発生源で分けずに「削りそのもの」へ掛ける=規則が1本で済む。
+ * ★CDで弾かれた削りは `bossPostureLastDamageAt` を更新しない(=回復の起点を後ろへずらさない)。
+ */
+export const POSTURE_CHIP_CD_MS = 300;
+
 export const applyBossPostureDamage = (
   enemy: Enemy,
   impact: BossPostureImpact,
@@ -123,6 +138,10 @@ export const applyBossPostureDamage = (
 ): { patch: Partial<Enemy>; triggered: boolean } | null => {
   if (!usesPostureSystem(enemy) || isBossPostureBroken(enemy, gameTime)) return null;
   if (gameTime < (enemy.bossPostureLockUntil ?? 0)) return null;
+  // ★削りのCD(社長指示2026-09-17): 同じ敵への削りは POSTURE_CHIP_CD_MS に1回まで。
+  // 複数弾をカウンターで返した時に、弾の数だけ削りが入るのを防ぐ。
+  const lastAt = enemy.bossPostureLastDamageAt;
+  if (lastAt !== undefined && gameTime < lastAt + POSTURE_CHIP_CD_MS) return null;
   const max = bossPostureMax(enemy);
   const before = bossPostureNow(enemy);
   const after = Math.max(0, before - max * IMPACT_RATIO[impact] * impactMult * POSTURE_CHIP_MULT);

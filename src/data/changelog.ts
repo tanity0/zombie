@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4425',
+    items: ['ボスの弾を一度にまとめて返しても、体勢はその一撃ぶんしか崩れないようになった'],
+  },
+  {
     version: '0.25.4424',
     items: ['撃ち続けるだけで敵を足止めできてしまうのをやめた', '攻撃を食らった時の手応えが重くなった。崩された直後はしばらく踏ん張れず動けない'],
   },

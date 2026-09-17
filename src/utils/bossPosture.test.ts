@@ -4,7 +4,9 @@ import {
   applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal,
   bossPostureMax, tickBossPosture, usesPostureSystem, POSTURE_ELITE_TYPES, BOSS_POSTURE_BREAK_MS, BOSS_POSTURE_REBREAK_LOCK_MS,
   BOSS_FATAL_DAZE_MS, parsePostureChipMult, DEFAULT_POSTURE_CHIP_MULT, keepBurstDelayedHits,
+  POSTURE_CHIP_CD_MS,
 } from './bossPosture';
+import { spawnEnemyAt } from './enemyUtils';
 
 // PACING_PUZZLE.md §7-11c-1: `?posturechip=<倍率>`のパース(純関数)。実際の乗算はモジュール読み込み
 // 時に一度だけ確定するURL値を使うため(テスト環境はwindow未定義=常に既定1)、ここでは
@@ -38,7 +40,8 @@ describe('boss posture', () => {
     for (const type of ['giantbat', 'miguel', 'mimir'] as EnemyType[]) {
       let e = boss(type);
       for (let i = 0; i < 5; i++) {
-        const result = applyBossPostureDamage(e, 'counter', 1000 + i)!;
+        // ★削りのCD(社長指示2026-09-17)を跨ぐよう時間を進める(同一時刻の連打は1回しか入らない)。
+        const result = applyBossPostureDamage(e, 'counter', 1000 + i * POSTURE_CHIP_CD_MS)!;
         e = { ...e, ...result.patch };
         expect(result.triggered).toBe(i === 4);
       }
@@ -59,12 +62,15 @@ describe('boss posture', () => {
 
   it('locks recovery to crossed checkpoints and starts after eight seconds', () => {
     let e = boss('miguel');
-    for (let i = 0; i < 3; i++) e = { ...e, ...applyBossPostureDamage(e, 'heavy', i)!.patch };
+    // ★削りのCDを跨ぐ(同上)。
+    for (let i = 0; i < 3; i++) e = { ...e, ...applyBossPostureDamage(e, 'heavy', i * POSTURE_CHIP_CD_MS)!.patch };
     expect(e.bossPosture).toBe(70);
     expect(e.bossPostureRecoveryCap).toBe(75);
-    expect(tickBossPosture(e, 8003, 1)?.bossPosture).toBe(73);
+    // ★回復の起点は「最後に削れた時刻」なので、CDを跨いだぶん後ろへずれる=そこから数える。
+    const lastAt = e.bossPostureLastDamageAt!;
+    expect(tickBossPosture(e, lastAt + 8001, 1)?.bossPosture).toBe(73);
     e = { ...e, bossPosture: 75 };
-    expect(tickBossPosture(e, 9000, 1)).toBeNull();
+    expect(tickBossPosture(e, lastAt + 8998, 1)).toBeNull();
   });
 
   it('caps gun reward and consumes all remaining reward with a melee fatal', () => {
@@ -175,11 +181,50 @@ describe('★強個体区分の体勢整合(driller/logger・区分仕様の補�
     for (const type of ['driller', 'logger'] as EnemyType[]) {
       let e = boss(type);
       for (let i = 0; i < 5; i++) {
-        const result = applyBossPostureDamage(e, 'counter', 1000 + i)!;
+        // ★削りのCD(社長指示2026-09-17)を跨ぐよう時間を進める(同一時刻の連打は1回しか入らない)。
+        const result = applyBossPostureDamage(e, 'counter', 1000 + i * POSTURE_CHIP_CD_MS)!;
         e = { ...e, ...result.patch };
         expect(result.triggered).toBe(i === 4);
       }
       expect(e.bossPosture).toBe(0);
     }
+  });
+});
+
+// ★社長指示2026-09-17「体勢値について、削りに若干のCDを設ける0.3秒くらい。
+// 意図は、ボスの複数弾系へカウンターすると一気に体勢値が削れるのを防ぐ」。
+describe('★体勢削りのCD(POSTURE_CHIP_CD_MS)', () => {
+  const boss = (over: Partial<Enemy> = {}): Enemy => ({
+    ...spawnEnemyAt('mimir', 0, 0, 0), bossPosture: 120, maxHealth: 1000, ...over,
+  } as Enemy);
+
+  it('複数弾を一度に返しても、削りは1回ぶんしか入らない', () => {
+    let e = boss();
+    const t = 10_000;
+    let applied = 0;
+    for (let i = 0; i < 5; i++) {                       // ★同じフレームで5発ぶん返す
+      const r = applyBossPostureDamage(e, 'counter', t);
+      if (r) { e = { ...e, ...r.patch }; applied++; }
+    }
+    expect(applied).toBe(1);                            // 5回ではなく1回
+  });
+
+  it('CDが明ければまた削れる', () => {
+    let e = boss();
+    const t = 10_000;
+    const a = applyBossPostureDamage(e, 'counter', t);
+    expect(a).not.toBeNull();
+    e = { ...e, ...a!.patch };
+    expect(applyBossPostureDamage(e, 'counter', t + POSTURE_CHIP_CD_MS - 1)).toBeNull();
+    expect(applyBossPostureDamage(e, 'counter', t + POSTURE_CHIP_CD_MS)).not.toBeNull();
+  });
+
+  it('CDで弾かれた削りは回復の起点(bossPostureLastDamageAt)を動かさない', () => {
+    let e = boss();
+    const t = 10_000;
+    e = { ...e, ...applyBossPostureDamage(e, 'counter', t)!.patch };
+    const at = e.bossPostureLastDamageAt;
+    expect(applyBossPostureDamage(e, 'counter', t + 100)).toBeNull();
+    expect(e.bossPostureLastDamageAt).toBe(at);         // 変わっていない
   });
 });
