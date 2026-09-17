@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4443',
+    items: ['ゲーム内容の変更はありません'],
+  },
+  {
     version: '0.25.4442',
     items: ['画面の描画が一瞬止まる不具合を直した。松明のある場所を離れて戻ると、光の演出が更新されないフレームが出ていた'],
   },

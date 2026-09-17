@@ -435,7 +435,7 @@ import {
   recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel, recordCritHit,
   recordExplosion, recordBeamPulse, recordStonesAttached, recordGunKnockback,
 } from '../utils/botTelemetry';
-import { DEV_LOADOUT_ACTIVE, TEST_BRIDGE_ACTIVE } from '../utils/devTestKnobs';
+import { DEV_LOADOUT_ACTIVE, TEST_BRIDGE_ACTIVE, DEV_SEED_PARAM } from '../utils/devTestKnobs';
 import { recordTestEvent } from '../utils/testEvents'; // TEST_HANDOFF/REQUEST-devbridge.md B節(記録専用・挙動不変)
 import { cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(タイトル画面のパネル+URL)
 // SKILL_BUILD_REDESIGN.md §15(B0発注文): 計測台帳の最終記録(読むだけ)+ボット購買ポリシー(実機オートパイロット側)。
@@ -1821,7 +1821,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const botCounterThreatRef = useRef(createCounterThreatState()); // M37(§6.14): 人間反応カウンターの検知状態
   const botWarpRef = useRef(createWarpTrackState());       // M49-3(§6.25): ワープ(瞬間移動)追従の前tick位置
   const botEngagementRef = useRef(createEngagementTrackState()); // M49(§6.25改訂): 行動階層①⇄②の直近実績
-  const botRandRef = useRef(mulberry32(1));                // レベルアップ自動選択の決定的乱数(シード固定=再現性)
+  const botRandRef = useRef(mulberry32(DEV_SEED_PARAM ?? 1)); // レベルアップ自動選択の決定的乱数(既定seed=1・`?seed=`で上書き可=TEST_HANDOFF/REQUEST-devbridge.md C節)
   const botPausedSinceRef = useRef(0);                     // isPaused継続の詰み検知(Date.now基準)
   const botReportedRef = useRef(false);                    // [BOT_REPORT]を出したか(1ラン1回)
   // juice(flashy unified boss death): 直近に鳴らした bossCorpse.diedAt(0=未鳴動)。store の
@@ -3078,7 +3078,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           botCounterThreatRef.current = createCounterThreatState(); // M37: 人間反応カウンターの検知状態も新ランでリセット
           botWarpRef.current = createWarpTrackState(); // M49-3: ワープ追従の前tick位置も新ランでリセット
           botEngagementRef.current = createEngagementTrackState(); // M49: 行動階層①⇄②の直近実績も新ランでリセット
-          botRandRef.current = mulberry32(1);
+          botRandRef.current = mulberry32(DEV_SEED_PARAM ?? 1); // 新ランでも同じseedへ揃える(`?seed=`未指定なら既定の1)
           botReportedRef.current = false;
           botPausedSinceRef.current = 0;
           castleAttnRef.current = { at: 0, x: 0, y: 0 };

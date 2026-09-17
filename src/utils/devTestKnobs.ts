@@ -60,3 +60,27 @@ export const TEST_BRIDGE_ACTIVE: boolean = readUrlParam('testbridge') === '1';
 
 /** どちらかのテスト用ツマミが立っているか(S2-bの観測窓の露出ゲート等に使う)。 */
 export const DEV_LOADOUT_ACTIVE: boolean = DEV_WEAPON_KEY !== null || DEV_SUB_KEY !== null;
+
+/**
+ * ★`?seed=<整数>`: ランの乱数系のうち **seed配下に入っているもの**(現状はレベルアップ自動選択=
+ * `useGameLoop.ts` の `botRandRef`)を、この値で初期化する(TEST_HANDOFF/REQUEST-devbridge.md
+ * **C. P0-3 の seed**)。他のURLツマミ(`?weapon=`/`?sub=`)と同じ作法=モジュール評価時に1回だけ読む。
+ *
+ * ★`?testbridge=1` には**依存させていない**(`TEST_BRIDGE_ACTIVE` を条件にしない)。理由:
+ * `botRandRef` はボット自動プレイ(`?bot=`)のレベルアップ選択にのみ使われ、人間プレイでは
+ * 触られない経路。Test Bridge(状態の読み取り)とは独立した機能なので、`?weapon=`/`?sub=` と同じ
+ * 「単独で効くURLツマミ」にする(Bridgeが無くても `?seed=` 単体でボットランの再現性が取れる)。
+ *
+ * ★**無指定では通常プレイの挙動を1ミリも変えない**: `botRandRef` は元々 `mulberry32(1)` の
+ * ベタ書き固定(=無指定の現状の挙動は「常にseed=1」で、`Math.random()`ではない)だったため、
+ * 無指定時のフォールバックは**その既存デフォルト値である1を維持する**(呼び出し側で
+ * `DEV_SEED_PARAM ?? 1` として使う)。「指定が無い時は生成した値を使う」ようにすると、
+ * 現状は常にseed=1で固定されているランが無指定でも毎回変わることになり、通常プレイの挙動が
+ * 変わってしまうため採らない(発注文Cの提案より、この発注の掟「無指定では挙動を変えない」を優先)。
+ */
+export const DEV_SEED_PARAM: number | null = (() => {
+  const v = readUrlParam('seed');
+  if (v === null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && Number.isInteger(n) ? n : null;
+})();

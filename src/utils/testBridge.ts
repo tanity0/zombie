@@ -15,7 +15,7 @@
  * (store には画面の状態が無いため。ツマミが立っていない時は何も記録しない=通常プレイのコストゼロ)。
  */
 import { useGameStore } from '../store/gameStore';
-import { TEST_BRIDGE_ACTIVE } from './devTestKnobs';
+import { TEST_BRIDGE_ACTIVE, DEV_SEED_PARAM } from './devTestKnobs';
 import { getSelectedStageId } from '../data/progress';
 import { parseBotSkill } from './botSkill';
 import { parseBotObjective } from './botObjective';
@@ -135,6 +135,15 @@ export interface TestBridgeSnapshot {
   botReportReady: boolean;
   lastProgressAt: number;
   lastSignificantEventAt: number;
+  /**
+   * ★TEST_HANDOFF/REQUEST-devbridge.md **C. P0-3 の seed**: `?seed=` で実際に使われた値
+   * (未指定時は既存デフォルトの1)。**現状これは「seed配下に入っている乱数系」全部を代表する
+   * 値ではなく、`useGameLoop.ts` の `botRandRef`(レベルアップ自動選択)だけの値**。
+   * 他の乱数系(敵の湧き・AI・ドロップ等)はまだ `Math.random()` 直呼びのままで、この seed の
+   * 影響を受けない(一覧は最終報告を参照。全部入れるかは社長判断=このBridgeは「今入っている
+   * 範囲」を嘘なく返すだけ)。
+   */
+  seed: number;
 }
 
 const read = (): TestBridgeSnapshot => {
@@ -172,6 +181,7 @@ const read = (): TestBridgeSnapshot => {
       || typeof (window as unknown as Record<string, unknown>).__BOT_REPORT__ === 'function',
     lastProgressAt,
     lastSignificantEventAt,
+    seed: DEV_SEED_PARAM ?? 1,
   };
 };
 
