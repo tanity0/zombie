@@ -220,7 +220,7 @@ import {
 import { telegraphProgress01 } from '../utils/bossTelegraph';
 import {
   biteBlinkOn, bitePhaseOf, biteBlinkTintFor, // ★溜め中の点滅(尺と明滅と色の出どころはsim側の純関数)
-  biteSpecFor, biteLungeFrac, // biteLungeFrac: §16-3zクリエイティブ監査#5(2発目オーバーシュートの戻り演出)
+  biteSpecFor,
 } from '../utils/enemyBite'; // ★噛みつきの台帳(PACING_PUZZLE §12)
 // §16-3z「歯応え」の仕上げ: ゾンビ赤2連の停止尺(姿勢の3段の合計に使う)と赤の脈(純関数)。
 import {
@@ -1344,10 +1344,6 @@ const ZOMBIE_RP_RISE_SKEW = 0.35;      // ②③上体を起こして後ろへ�
 // ★クリエイティブ監査#7是正: よろけ(z-stagger)160msに姿勢が無かった。1発目の勢いの余韻が
 // 抜けるまでの前のめりskew(指数減衰)。
 const ZOMBIE_STAGGER_SKEW = 0.4;
-// ★クリエイティブ監査#5是正: 2発目(z-bite2)のbiteLungeFracはオーバーシュート(1.0超)してから
-// 1.0へ戻るが、位置の増分クランプ(v0.25.3923の暴れ対策=外さない)が「戻り」ぶんを捨てる。
-// frac超過ぶん(最大約0.05)を体の反動(skew)へ写す倍率。
-const ZOMBIE_BITE2_OVERSHOOT_SKEW_MUL = 6;
 // ★クリエイティブ監査#1是正: z-recover(硬直)の姿勢が無かった(pixiScene.tsにz-recoverを読む
 // 描画が1行も無い)。打ち終わりで最も前へ倒れ込んだ姿勢(skew/off最大・sqY沈み)で固め、
 // 硬直の後半(ZOMBIE_RECOVER_HOLD_FRAC以降)でゆっくり起こす。値は叩き台(実機で振る)。
@@ -17880,13 +17876,9 @@ export class PixiScene {
         lungeSqX = pose.sqX;
         lungeOffX = Math.cos(lang) * pose.off;
         lungeOffY = Math.sin(lang) * pose.off + pose.sink;
-        // ★§16-3zクリエイティブ監査#5是正: 2発目(z-bite2)のbiteLungeFracはオーバーシュート
-        // (1.0超)してから1.0へ戻るが、位置の増分クランプ(v0.25.3923の暴れ対策=外さない)が
-        // 「戻り」ぶんの移動を捨てる。位置は変えず、frac超過ぶんを体の反動(skew)で描く。
-        if (e.aiPhase === 'z-bite2') {
-          const overFrac = Math.max(0, biteLungeFrac(e, gameTime) - 1);
-          if (overFrac > 0) view.sprite.skew.x += ldir * overFrac * ZOMBIE_BITE2_OVERSHOOT_SKEW_MUL;
-        }
+        // ★§16-A「『行き過ぎて戻る』は撤回」(社長指摘2026-09-17「ビヨンビヨンして気持ち悪い」):
+        // z-bite2のbiteLungeFracがオーバーシュートしなくなった(enemyBite.ts)ので、その「戻り」ぶんを
+        // 体の反動(skew)で描いていたこのブロックは不要になった=丸ごと削除(ZOMBIE_BITE2_OVERSHOOT_SKEW_MULも削除)。
       }
       // ★検収差し戻し(中11)対応: 影の寸法は呼吸/被弾スカッシュ/crouch・jump(aiSqX/Y)を含まない
       // 「素のscale」(sc)を使う。持ち上げ系(liftHop/aiHop/kbHop/lungeOffY)は heightPx 相当として渡す。

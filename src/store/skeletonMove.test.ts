@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { useGameStore, INVULN_MS } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
-import { biteSpecFor } from '../utils/enemyBite';
+import { biteSpecFor, BITE_SAFE_LUNGE_PX } from '../utils/enemyBite';
 import { SKELETON_TRIGGER_PX, SKELETON_CROUCH_MS, SKELETON_ARC_MS, SKELETON_RECOVER_MS } from '../utils/chaffMoves';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
@@ -129,10 +129,13 @@ describe('s-arc: 弧を描いて横へ(直線にしない=人狼と被らない)
 
 describe('s-bite(標準2段: 前隙300ms+噛み200ms=シビア反映)', () => {
   const spec = biteSpecFor('skeleton', 'skel-bite');
-  it('windupMs=300・biteMs=200・lungePx=85(変えない値)', () => {
+  // ★lungePxは「変えない値」ではなくなった: §16-A「踏み込みの終点」(社長指摘2026-09-17
+  // 「敵の攻撃が通り過ぎちゃうことがある」)で85→BITE_SAFE_LUNGE_PX.skeleton(36。体の大きさから
+  // 逆算した安全上限=enemyBite.tsのコメント参照)へ縮んだ。windupMs/biteMs/counterableは不変。
+  it('windupMs=300・biteMs=200・lungePx=体の大きさから逆算した安全上限', () => {
     expect(spec.windupMs).toBe(300);
     expect(spec.biteMs).toBe(200);
-    expect(spec.lungePx).toBe(85);
+    expect(spec.lungePx).toBe(BITE_SAFE_LUNGE_PX.skeleton);
     expect(spec.counterable).toBe(true);
   });
 

@@ -10,7 +10,7 @@ import {
 } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
-import { biteSpecFor } from '../utils/enemyBite';
+import { biteSpecFor, BITE_SAFE_LUNGE_PX } from '../utils/enemyBite';
 import {
   ZOMBIE_LUNGE_RANGE_PX, ZOMBIE_STAGGER_MS, ZOMBIE_RECOVER_MS,
   zombieRedPauseMs, ZOMBIE_RED_TRIGGER_MIN_PX, // §16-3z追補①: 停止の長さ±30%(id+spawnedAt由来)
@@ -215,15 +215,17 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(e.vx).toBe(0); expect(e.vy).toBe(0);
   });
 
-  it('よろけ明けでz-bite2へ(biteAt再発火・lungePxは60・向きは1発目から僅かにずれる)', () => {
+  it('よろけ明けでz-bite2へ(biteAt再発火・lungePxは体の大きさから逆算した安全値・向きは1発目から僅かにずれる)', () => {
     place(60, { aiPhase: 'z-stagger', aiPhaseUntil: START_GT, chaffMove: 'zombie-double' });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBe('z-bite2');
     expect(e.biteAt).toBe(START_GT);
-    // lungePxはaiPhase込みでbiteSpecForから引く(§16-8「2発目=300/200/60」)。
+    // ★§16-A「踏み込みの終点」(社長指摘2026-09-17「通り過ぎちゃう」)で60→35(BITE_SAFE_LUNGE_PX.zombie)へ
+    // 縮んだ。逆算の根拠はenemyBite.tsのBITE_SAFE_LUNGE_PXコメントとenemyBite.test.tsの
+    // 「踏み込みの終点」テストを参照(数字を固定で持つとここが古くなるので定数を直接見る)。
     const spec = biteSpecFor('zombie', 'zombie-double', 'z-bite2');
-    expect(spec.lungePx).toBe(60);
+    expect(spec.lungePx).toBe(BITE_SAFE_LUNGE_PX.zombie);
     expect(spec.windupMs).toBe(300); expect(spec.biteMs).toBe(200);
     // 向きは単位ベクトル。
     const len = Math.hypot(e.biteDirX ?? 0, e.biteDirY ?? 0);
@@ -232,9 +234,9 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(e.biteDirY ?? 0).not.toBe(0);
   });
 
-  it('z-bite1のlungePxは40(z-bite2の60とは異なる)', () => {
+  it('z-bite1とz-bite2は同じlungePx(§16-A「踏み込みの終点」=体の大きさから逆算した安全上限に統一)', () => {
     const spec1 = biteSpecFor('zombie', 'zombie-double', 'z-bite1');
-    expect(spec1.lungePx).toBe(40);
+    expect(spec1.lungePx).toBe(BITE_SAFE_LUNGE_PX.zombie);
     expect(spec1.windupMs).toBe(220); expect(spec1.biteMs).toBe(160);
   });
 

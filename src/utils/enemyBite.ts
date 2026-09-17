@@ -79,6 +79,43 @@ export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
  * ここには**技として不変**な `recoverMs`/`counterable` だけを置く。
  */
 /**
+ * ★踏み込みの「通り抜けない」上限(社長指摘2026-09-17「敵の攻撃が通り過ぎちゃうことがある
+ * (突っ立ってても)もう少し攻撃縮めてもいいのかも」・PACING_PUZZLE.md §16-A「★踏み込みの終点」)。
+ *
+ * 「終点の中心間距離が、体の半幅の和(=接触する距離)を下回らないこと」を保証する
+ * `lungePx` の上限を、**体の大きさから逆算**する(数字を発明しない)。
+ *
+ * ★なぜ「発火距離−lungePx」ではなく単独の上限で決めるか: どの技も発火距離に**下限が無い**
+ * (例: ゾンビのz-lunge-inは`pdist<=75`でしか上限を絞っておらず、停止中(z-red-pause)に
+ * プレイヤーが密着しても構わず発火する)。**密着(中心間距離≈0)から踏み込む**ケースが
+ * 常に起こりうるので、その最悪ケースで安全であること(=`lungePx` 単独が接触距離を
+ * 超えないこと)を上限にすれば、発火距離に関わらず「通り抜けない」が保証できる
+ * (踏み込みは発火時に焼いた直線方向へ`lungePx`だけ進む一方向の動きなので、終点の
+ * 中心間距離の変化量は常に`lungePx`。始点が0の時、終点の中心間距離=`lungePx`そのもの)。
+ *
+ * 接触距離(=体の半幅の和)は `enemyContactBox`(collisionUtils.ts)とプレイヤーの当たり判定
+ * (`PLAYER_HITBOX`=28)から求める。`enemyContactBox`は実描画スプライトのアスペクト比
+ * (`texH/texW`)がcontain fitで幅を縮める(このプロジェクトの敵絵は3体とも横長ではなく
+ * 縦長=幅が縮む側)。実測値(`file`コマンドでPNGのIHDRを読んだ):
+ *   zombie: public/sprites/zombie-common.png 464×640 → aspect=640/464=1.3793
+ *   bat:    public/sprites/bat-male.png      368×512 → aspect=512/368=1.3913(ENEMY_VARIANT_SETS.bat[0])
+ *   skeleton: public/sprites/skeleton-female.png 452×512 → aspect=512/452=1.1327(ENEMY_VARIANT_SETS.skeleton[0])
+ * これらを`setEnemyArtAspect`で登録した状態で`enemyContactBox`を実行し、
+ * 幅の半分+プレイヤー半幅(14px)・高さの半分+プレイヤー半幅(14px)のうち**小さい方**
+ * (=どの向きから踏み込んでも安全な下限)を接触距離とした:
+ *   zombie:   halfWxSum=36.61 / halfHySum=42.35 → 36.61 → 余裕1.6pxで **35**
+ *   bat:      halfWxSum=32.12 / halfHySum=36.91 → 32.12 → 余裕2.1pxで **30**
+ *   skeleton: halfWxSum=38.27 / halfHySum=38.99 → 38.27 → 余裕2.3pxで **36**
+ * (実測の再現手順: `src/utils/enemyBite.test.ts`の「踏み込みの終点」テストが同じ計算を
+ * ユニットテストとして機械化している=数値が古くなったら赤くなる。)
+ */
+export const BITE_SAFE_LUNGE_PX: Record<'zombie' | 'bat' | 'skeleton', number> = {
+  zombie: 35,
+  bat: 30,
+  skeleton: 36,
+};
+
+/**
  * ★「できるだけシビアに」(社長指示2026-09-17)で bat/skeleton の値を差し替えた。
  * シビアの定義(設計者確定): 「手数が増え、読む時間が減る。ただし読めば必ず返せるし、返せば必ず殴れる」
  * =削るのは**予告の長さ**と**技後CD**だけ。**硬直(プレイヤーの取り分)・同時に構えられる数・
@@ -88,14 +125,25 @@ export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
  * - skeleton: 前隙 350→**300ms**。技後CD 5000→**3500ms**。噛み後の硬直500msは**不変**
  *   (社長裁定の値・プレイヤーの取り分)。
  * ★zombie-double はこのバッチの対象外(ゾンビの値は設計チャット側)。
+ *
+ * ★踏み込みの終点は「体が重なる位置」(社長指摘2026-09-17「攻撃が通り過ぎちゃうことがある
+ * (突っ立ってても)」・PACING_PUZZLE.md §16-A「★踏み込みの終点」)。旧 lungePx=85 は
+ * 「必要68px+余白」(監査A-3・**遠くから踏み込んでも届くように**)だけを見ており、
+ * **近くから踏み込んだ場合に体を通り過ぎる**ケースを見ていなかった(発火距離に下限が無いので
+ * 密着に近い距離からでも踏み込みが始まりうる)。**体の大きさから逆算**(`BITE_SAFE_LUNGE_PX`。
+ * 下の定義参照)した値へ縮めた——これで「通り抜けない」を発火距離に関わらず保証する。
+ * 旧85pxから縮んだぶん、遠くから踏み込んだ時に届かないことはあるが(社長「届かないより、
+ * 通り抜ける方が悪い」)、判定・ダメージ・CD・拘束時間は1つも変えていない。
  */
 export const BITE_BY_MOVE: Partial<Record<NonNullable<Enemy['chaffMove']>, Partial<BiteSpec>>> = {
   // bat の掴み(§16-1・§16-8「bat の BiteSpec への写し方」)。
   // windupMs=400(溜め250+踏み込み150。最後の150msで lungePx を出し切る専用曲線=biteLungeFrac側の
-  // BAT_WINDUP_STILL_MS分岐)/ biteMs=220(掴み=カウンターの受付幅)/ lungePx=85(必要68px+余白・監査A-3)。
-  'bat-grab': { windupMs: 400, biteMs: 220, lungePx: 85, recoverMs: 4000, counterable: true },
-  // skeleton の噛み(§16-2・§16-8)。windupMs=300(前隙)/ biteMs=200(噛み=受付幅)/ lungePx=85。
-  'skel-bite': { windupMs: 300, biteMs: 200, lungePx: 85, recoverMs: 3500, counterable: true },
+  // BAT_WINDUP_STILL_MS分岐)/ biteMs=220(掴み=カウンターの受付幅)。
+  // lungePx=30(§16-A「踏み込みの終点」: 旧85→BITE_SAFE_LUNGE_PX.bat=32.1から1.1pxの余裕を取って30)。
+  'bat-grab': { windupMs: 400, biteMs: 220, lungePx: BITE_SAFE_LUNGE_PX.bat, recoverMs: 4000, counterable: true },
+  // skeleton の噛み(§16-2・§16-8)。windupMs=300(前隙)/ biteMs=200(噛み=受付幅)。
+  // lungePx=36(§16-A「踏み込みの終点」: 旧85→BITE_SAFE_LUNGE_PX.skeleton=38.3から2.3pxの余裕で36)。
+  'skel-bite': { windupMs: 300, biteMs: 200, lungePx: BITE_SAFE_LUNGE_PX.skeleton, recoverMs: 3500, counterable: true },
   // ゾンビ2連(§16-3・§16-8「ゾンビ 赤の技後CD」)。windup/bite/lungeは1発目/2発目で違うので
   // ここには置かない(BITE_BY_PHASEが重なる)。counterable/recoverMsは2発とも共通=ここで決まる。
   // ★2026-09-17「できるだけシビアに」で 4000→2500ms(§16-8台帳)。
@@ -114,11 +162,17 @@ export const BAT_WINDUP_STILL_MS = 250;
 /**
  * ★ゾンビ2連の1発目/2発目の尺(PACING_PUZZLE.md §16-8・検収監査A-3)。`aiPhase`(z-bite1/z-bite2)で
  * `BITE_BY_MOVE['zombie-double']` の上にさらに重ねる(`biteSpecFor` の第3引数)。
- * 台帳の値をそのまま置く(発明しない): 1発目=220/160/40・2発目=300/200/60。
+ * windup/biteは台帳の値をそのまま置く(発明しない): 1発目=220/160・2発目=300/200。
+ * ★lungePxは§16-A「踏み込みの終点」(社長指摘2026-09-17「通り過ぎちゃう」)で40/60→
+ * `BITE_SAFE_LUNGE_PX.zombie`(35。体の大きさからの逆算=定義と算出根拠はそちらを参照)へ統一。
+ * 1発目/2発目で値を分けていたのは「2発目は深く踏み込む」という見せ方の意図だったが、
+ * その深さの表現は撤回されたeaseOutBackオーバーシュート(`biteLungeFrac`側)が担っていたもので、
+ * **通り抜けない**という制約は発火距離に下限が無い以上、どちらの発でも同じ上限(接触距離)に
+ * 縛られる——2発とも同じ値にするのが「体の大きさから逆算」した結果として正しい。
  */
 export const BITE_BY_PHASE: Partial<Record<NonNullable<Enemy['aiPhase']>, Partial<BiteSpec>>> = {
-  'z-bite1': { windupMs: 220, biteMs: 160, lungePx: 40 },
-  'z-bite2': { windupMs: 300, biteMs: 200, lungePx: 60 },
+  'z-bite1': { windupMs: 220, biteMs: 160, lungePx: BITE_SAFE_LUNGE_PX.zombie },
+  'z-bite2': { windupMs: 300, biteMs: 200, lungePx: BITE_SAFE_LUNGE_PX.zombie },
 };
 
 /**
@@ -219,15 +273,13 @@ export const biteLungeFrac = (
   }
   // 噛み: 残り半分を ease-out で一気に伸ばす(伸び切る)。
   const u = (t - spec.windupMs) / spec.biteMs;
-  // ★②2発目は行き過ぎて戻る(PACING_PUZZLE.md §16-3z「`lungePx`の曲線にオーバーシュート
-  // (1.0を超えてから戻る)を入れる。★2発目だけ」)。他のaiPhase(z-bite1・§12の噛みつき全般)は
-  // 従来どおりのease-out(1.0を超えない)のまま=「§12の噛みつきが1つも変わっていない」を保つ。
-  // easeOutBack(標準的な行き過ぎ→戻る曲線): u=0で0・u=1で厳密に1・途中で1を超える。
-  if (enemy.aiPhase === 'z-bite2') {
-    const c1 = 1.70158, c3 = c1 + 1;
-    const back = 1 + c3 * (u - 1) ** 3 + c1 * (u - 1) ** 2;
-    return 0.5 + back * 0.5;
-  }
+  // ★「行き過ぎて戻る」は撤回(社長指摘2026-09-17「攻撃モーションがビヨンビヨンしてて気持ち悪い」・
+  // PACING_PUZZLE.md §16-A「★『行き過ぎて戻る』は撤回」)。旧実装はz-bite2だけeaseOutBack
+  // (1.0を超えてから戻る)を使っていたが、**「戻る」ぶんは位置の増分クランプ(`Math.max(0, fNow-fPrev)`。
+  // v0.25.3923の暴れ対策=外さない)に捨てられ、実際には「行き過ぎたまま戻らず止まる」だけの
+  // 挙動になっていた**(ゴムの跳ねに見える正体)。慣性MUST(CLAUDE.md)は「加速して出て減速して
+  // 止まる」であって「行き過ぎて戻る」ではないので、z-bite2も他のaiPhase(z-bite1・§12の噛みつき
+  // 全般)と同じ、1.0を超えない素直なease-outに揃える。
   return 0.5 + (1 - (1 - u) * (1 - u)) * 0.5;
 };
 

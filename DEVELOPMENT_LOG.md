@@ -1,5 +1,60 @@
 # Development Log
 
+## v0.25.4418 — §16-A「踏み込みの終点」「行き過ぎて戻る」の撤回を実装(実装チャット・Sonnet)【2026-09-17 12:24 JST】
+
+v0.25.4417(設計チャット)の2節を実装。対象は**ゾンビ・bat・skeletonの3体だけ**(強個体・ボス・
+§12の噛みつきは無改変)。判定の形・ダメージ量・被弾無敵・射程(発火距離)・硬直・技後CDは
+1つも変えていない。触ったのは`lungePx`と`biteLungeFrac`のease曲線だけ。
+
+**1. 通り抜けを止める(`src/utils/enemyBite.ts`)**: 実測すると、どの技も発火距離に**下限が無い**
+(密着に近い距離からでも踏み込みが発火しうる)ため、「発火距離−lungePx」ではなく**`lungePx`単独が
+接触距離(体の半幅の和)を超えないこと**を安全条件にした(密着=中心間距離0から踏み込んでも、
+終点の中心間距離=`lungePx`そのものになるため)。接触距離は`enemyContactBox`(実描画アスペクト込み・
+実測PNG寸法から算出)とプレイヤー当たり判定(28px)から逆算:
+| 型 | 接触距離(下限) | 旧lungePx | 新lungePx(`BITE_SAFE_LUNGE_PX`) |
+|---|---|---|---|
+| zombie(z-bite1/z-bite2) | 36.61px | 40 / 60 | **35(2発とも統一)** |
+| bat(bat-grab) | 32.12px | 85 | **30** |
+| skeleton(skel-bite) | 38.27px | 85 | **36** |
+z-bite1/z-bite2を同値に統一したのは、「2発目は深く踏み込む」という旧演出意図が撤回された
+オーバーシュートで担われていたため(下記2)——「通り抜けない」制約は発火距離の下限が無い以上、
+どちらの発でも同じ上限に縛られる。
+
+**2. 「行き過ぎて戻る」の撤回**: `enemyBite.ts`の`biteLungeFrac`から、z-bite2専用のeaseOutBack
+(1.0を超えてから戻る曲線)を削除し、他のaiPhase・§12の噛みつき全般と同じ、1.0を超えない
+素直なease-outに統一。実装時に判明した真因: 「戻る」ぶんは`gameStore.ts`の位置増分クランプ
+(`Math.max(0, fNow-fPrev)`。v0.25.3923の暴れ対策=変更していない)に捨てられており、実際には
+「行き過ぎたまま戻らず止まる」だけになっていた(これがビヨンビヨンの正体)。併せて
+`pixiScene.ts`の`ZOMBIE_BITE2_OVERSHOOT_SKEW_MUL`(オーバーシュート分を体の反動skewで描いていた
+補正)と、それを使う描画ブロックを削除。ゾンビの停止3段/よろけ/硬直の姿勢は確認したが、
+既にskew(傾き)ベースで実装済み(1.0を跨ぐ伸縮ではない)だったため変更不要だった。
+
+**テスト(機械化)**: `enemyBite.test.ts`に「★踏み込みの終点は体が重なる位置を超えない(通り抜けない)」
+describeを新設。実PNGアスペクトを`setEnemyArtAspect`で登録した上で`enemyContactBox`を計算し、
+4技すべてで`lungePx < 接触距離`を検証(将来lungePxを緩めたり体の大きさが変わったら赤くなる)。
+z-bite2のオーバーシュート撤回も既存テストを書き換えて検証。`zombieRedMove.test.ts`/
+`skeletonMove.test.ts`の古いlungePx固定値アサーション(40/60/85)も新値へ更新。
+関連テスト8ファイル301件・3回連続green。typecheck/lint(0 error)green。
+
+**実測(60秒・zombie/bat/skeleton各1体・プレイヤー静止・ヘッドレス簡易harness=Date.nowをフェイク
+タイマーでgameTimeと同期させ被弾無敵(INVULN_MS)の自動解除を再現。使い捨てなのでコミットせず)**:
+命中回数(3体合算) 旧31/36回 → 新38/39回(2回平均: 旧約33.5回→新約38.5回。約15%増)。
+完走回数(chaffMoveが定義→undefinedになった回数)は旧新でほぼ同数(bat9〜11/skeleton8〜9/zombie4)
+=lungePxを縮めても技の発火・解決サイクル自体は変わらず、**命中率だけが上がった**(通り抜けが減った
+分、狙いどおり)。個体ごとのid依存ランダム要素があるため2回ずつの参考値。
+
+**自己点検**: 憲法第4条(初心者ゾーン不可侵)・第5条(緩を荒らさない)に抵触しない
+(触ったのはlungePxとease曲線のみで、判定・ダメージ・CD・硬直・射程は無改変)。
+
+**変更ファイル**: `src/utils/enemyBite.ts`、`src/pixi/pixiScene.ts`、`src/utils/enemyBite.test.ts`、
+`src/store/zombieRedMove.test.ts`、`src/store/skeletonMove.test.ts`、`package.json`、
+`src/data/changelog.ts`。`PACING_PUZZLE.md`/`PROJECT_STATUS.md`は触っていない(実装チャットの規約どおり)。
+
+**検証**: `npm run typecheck`(green)・`npm run lint`(0 error)・関連ユニットテスト
+(`enemyBite.test.ts`/`zombieRedMove.test.ts`/`skeletonMove.test.ts`/`batMove.test.ts`/
+`chaffMoveFoundation.test.ts`/`chaffMoves.test.ts`/`combatTick.test.ts`/`enemySeparation.test.ts`
+=301件)を3回連続実行してgreen固定を確認。`npm test`フル・`npm run build`は社長指示が無いため未実施。
+
 ## v0.25.4417 — 通り抜けを止める / 「行き過ぎて戻る」を撤回(社長の実機指摘)【2026-09-17 12:02 JST】
 
 **社長の実機指摘2件。どちらも設計者の案が原因。**

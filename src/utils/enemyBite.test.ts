@@ -10,6 +10,8 @@ import {
   biteBlinkTintFor,
   isBiteResolveDue,
 } from './enemyBite';
+import { enemyContactBox } from './collisionUtils';
+import { setEnemyArtAspect } from '../pixi/renderSpec';
 import type { Enemy } from '../types/game';
 
 // ★全敵共通の噛みつき(PACING_PUZZLE.md §12)の不変条件。
@@ -88,28 +90,31 @@ describe('踏み込みの見た目(★プレイヤーの踏み込みとは逆の
   });
 });
 
-describe('★§16-3z②「2発目は行き過ぎて戻る」: biteLungeFracのオーバーシュートはz-bite2だけ', () => {
+// ★§16-A「『行き過ぎて戻る』は撤回」(社長指摘2026-09-17「攻撃モーションがビヨンビヨンしてて
+// 気持ち悪い」)。旧「2発目はeaseOutBackでオーバーシュート」は撤回され、z-bite2もz-bite1・§12の
+// 噛みつき全般と同じ、1.0を超えない素直なease-outになった。
+describe('★§16-A「行き過ぎて戻る」の撤回: z-bite2もオーバーシュートしない', () => {
   const atZ2 = (biteAt: number | undefined): Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'> =>
     ({ type: 'zombie', biteAt, chaffMove: 'zombie-double', aiPhase: 'z-bite2' } as Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'>);
   const spec = biteSpecFor('zombie', 'zombie-double', 'z-bite2'); // windup300/bite200(§16-8)
 
-  it('噛み区間の途中で1.0を超える(行き過ぎる)', () => {
+  it('z-bite2は噛み区間を通して1.0を超えない(オーバーシュートしない)', () => {
     let maxF = 0;
-    for (let t = spec.windupMs; t <= spec.windupMs + spec.biteMs; t += 5) {
+    for (let t = 0; t <= spec.windupMs + spec.biteMs; t += 5) {
       maxF = Math.max(maxF, biteLungeFrac(atZ2(1000), 1000 + t));
     }
-    expect(maxF).toBeGreaterThan(1.0);
+    expect(maxF).toBeLessThanOrEqual(1.0);
   });
 
-  it('噛み終わり(windup+biteMs)ではちょうど1.0へ戻る(貫通・空振りの原因にしない)', () => {
+  it('噛み終わり(windup+biteMs)でちょうど1.0(伸び切って止まる)', () => {
     expect(biteLungeFrac(atZ2(1000), 1000 + spec.windupMs + spec.biteMs)).toBeCloseTo(1, 5);
   });
 
-  it('溜め終わり(windupMs)は非オーバーシュート版と同じ0.5から始まる(連続=段差なし)', () => {
+  it('溜め終わり(windupMs)は0.5から始まる(z-bite1・§12と同じ形。連続=段差なし)', () => {
     expect(biteLungeFrac(atZ2(1000), 1000 + spec.windupMs)).toBeCloseTo(0.5, 5);
   });
 
-  it('★z-bite1(1発目)は従来どおり1.0を超えない(オーバーシュートは2発目だけ)', () => {
+  it('z-bite2とz-bite1は同じease-out曲線を使う(専用の分岐が無いことの検知器)', () => {
     const atZ1 = (biteAt: number) =>
       ({ type: 'zombie', biteAt, chaffMove: 'zombie-double', aiPhase: 'z-bite1' } as Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'>);
     const spec1 = biteSpecFor('zombie', 'zombie-double', 'z-bite1');
@@ -126,6 +131,41 @@ describe('★§16-3z②「2発目は行き過ぎて戻る」: biteLungeFracの�
       maxF = Math.max(maxF, biteLungeFrac(at(1000), 1000 + t));
     }
     expect(maxF).toBeLessThanOrEqual(1.0);
+  });
+});
+
+// ★§16-A「踏み込みの終点」(社長指摘2026-09-17「敵の攻撃が通り過ぎちゃうことがある(突っ立ってても)」)。
+// 踏み込みは発火時に焼いた直線方向へ`lungePx`だけ進む一方向の動きなので、発火距離の下限が無い
+// (=密着に近い距離からでも発火しうる)以上、`lungePx`単独が接触距離(体の半幅の和)を超えないことが
+// 「絶対に通り抜けない」ための唯一の保証になる。ここが赤くなったら、体の大きさ
+// (ENEMY_STATS/ENEMY_VISUAL_SCALE/実PNGアスペクト)かlungePxのどちらかが変わって
+// 安全マージンを失ったということ。
+describe('★踏み込みの終点は体が重なる位置を超えない(通り抜けない)', () => {
+  // 実測アスペクト(texH/texW。PNGのIHDRから読んだ値=derivation源はBITE_SAFE_LUNGE_PXのコメント)。
+  setEnemyArtAspect('default:zombie', 640 / 464);
+  setEnemyArtAspect('default:bat', 512 / 368);
+  setEnemyArtAspect('default:skeleton', 512 / 452);
+
+  const mkEnemy = (type: 'zombie' | 'bat' | 'skeleton', w: number, h: number): Enemy =>
+    ({ id: 'x', type, x: 0, y: 0, width: w, height: h } as unknown as Enemy);
+  const PLAYER_W = 28, PLAYER_H = 28; // PLAYER_HITBOX(gameStore.ts)
+
+  const cases: { type: 'zombie' | 'bat' | 'skeleton'; w: number; h: number; move?: NonNullable<Enemy['chaffMove']>; aiPhase?: Enemy['aiPhase'] }[] = [
+    { type: 'zombie', w: 36, h: 36, move: 'zombie-double', aiPhase: 'z-bite1' },
+    { type: 'zombie', w: 36, h: 36, move: 'zombie-double', aiPhase: 'z-bite2' },
+    { type: 'bat', w: 26, h: 26, move: 'bat-grab' },
+    { type: 'skeleton', w: 31, h: 31, move: 'skel-bite' },
+  ];
+
+  it.each(cases)('$type $aiPhase$move: lungePxが接触距離(体の半幅の和)の最小値を下回る', ({ type, w, h, move, aiPhase }) => {
+    const box = enemyContactBox(mkEnemy(type, w, h));
+    const halfWxSum = box.width / 2 + PLAYER_W / 2;
+    const halfHySum = box.height / 2 + PLAYER_H / 2;
+    const contactDist = Math.min(halfWxSum, halfHySum); // どの向きから踏み込んでも安全な下限
+    const spec = biteSpecFor(type, move, aiPhase);
+    // 密着(中心間距離≈0)から発火しても、終点の中心間距離=lungePxそのものが接触距離を
+    // 下回っていれば必ず重なる(=通り抜けない)。厳密な不等号(AABB重なり判定が"<"のため)。
+    expect(spec.lungePx).toBeLessThan(contactDist);
   });
 });
 
