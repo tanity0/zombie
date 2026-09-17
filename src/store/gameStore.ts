@@ -334,6 +334,9 @@ import {
   keepBlocksTechnique,
 } from '../utils/keepRange'; // §16-B 攻撃射程を保つ層(台本が動いていない時だけ効く)
 import {
+  lichIsVanishing, lichWarpDue, lichWarpLanding, LICH_KEEP_RADIUS_PX,
+} from '../utils/lichWarp'; // §16-B B-5 リッチの転移(噛む→硬直→消えて現れる)
+import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
   bossEngagedNow, facilitiesLocked, isEngageableBoss,
   BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT,
@@ -12867,6 +12870,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           && enemy.biteRecoverUntil !== undefined && gameTime < enemy.biteRecoverUntil) {
           return { ...enemy, vx: 0, vy: 0 };
         }
+        // ★リッチの転移(§16-B B-5)の「消えている間」。硬直(上)が明けた直後の
+        // LICH_WARP_VANISH_MS だけ、動かず技も出さない(床の陣に吸われている最中)。
+        // ★判定は持たない——**消えている間も殴られる**(無敵を発明しない)。
+        if (lichIsVanishing(enemy, gameTime)) {
+          return { ...enemy, vx: 0, vy: 0 };
+        }
         // CRIT-UNIFY §9.2: 次行動CD専用のatkUntil。クリ窓中のボスは×2(bossCritCdMult)。
         // windup/active/recoverの各durationは従来のatkUntilのまま(予告のリード時間は変えない)。
         const atkCdUntil = (ms: number) => gameTime + (ms / ENEMY_ATTACK_SPEED_MULT) * bossCritCdMult(enemy, gameTime);
@@ -13007,9 +13016,13 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 色(紫)と判定(赤)が食い違う。押し合いの免除/knocked無視もこのフィールドを読むので、
               // 残った個体は押されず・ノックバックで止まらないまま歩き回る。
               ...(enemy.chaffMove !== undefined ? { chaffMove: undefined } : {}),
+              // ★リッチの転移は気絶で**取り消す**(§16-B B-5「気絶中はワープしない」)。
+              // 繰り越すと「クリで止めたのに気絶明けに逃げる」=クリで止めた見返りが消える。
+              ...(enemy.lichWarpAt !== undefined ? { lichWarpAt: undefined } : {}),
             };
           }
-          return enemy;
+          // aiPhase を持たない個体(リッチはここ)も、転移の予約だけは取り消す。
+          return enemy.lichWarpAt !== undefined ? { ...enemy, lichWarpAt: undefined } : enemy;
         }
 
         // Trap root freezes movement only. It deliberately does not share the
@@ -15017,6 +15030,28 @@ export const useGameStore = create<GameState>((set, get) => ({
         const dy = tgt.y - (enemy.y + enemy.height / 2);
         const distance = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
 
+        // ★リッチの転移(§16-B B-5・Q-4): 消える尺が明けた最初のフレームで座標が飛ぶ。
+        // 着地は**的から LICH_KEEP_RADIUS_PX**、角度は**今いる方角 ± 個体ごとの固定オフセット**。
+        // 順は **clampRectToPlayableArea → resolveMove**(廊下帯・可視域の外へ出さない。壁に
+        // 押し出されて距離が多少崩れるのは許容=Q-4)。
+        if (enemy.type === 'lich' && lichWarpDue(enemy, gameTime)) {
+          const land = lichWarpLanding(tgt.x, tgt.y, enemy.x + enemy.width / 2, enemy.y + enemy.height / 2,
+            enemy.id, enemy.spawnedAt);
+          const warpCtx: PlayableAreaCtx = {
+            farBackdrop: state.farBackdrop, labTheme,
+            corridorMode: state.corridorMode,
+            m0AdvanceLimitX: state.m0AdvanceLimitX,
+            corridorRunInActive: state.corridorRunInActive,
+          };
+          const inArea = clampRectToPlayableArea(
+            land.x - enemy.width / 2, land.y - enemy.height / 2, enemy.width, enemy.height, warpCtx, enemy.x);
+          const placed = resolveMove(inArea.x, inArea.y);
+          return {
+            ...enemy, x: placed.x, y: placed.y, vx: 0, vy: 0,
+            lichWarpAt: undefined, lichWarpDoneAt: gameTime,
+          };
+        }
+
         // ★噛みつきの踏み込み(社長裁定2026-08-25「30PX移動してくる」)。台本の間は通常の接近を止め、
         // **発火時に焼いた起点+向き**へ `biteLungeFrac`(溜めでじわり→噛みで伸び切る=慣性)で進む。
         // 追尾しない=横へ避けられる。壁(すり抜け防止)はこの間だけ開いている(上の movePlayer 側)。
@@ -15550,9 +15585,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★**既に自分の間合いを持つ型には掛けない**(ゾンビ/ゴースト/叫喚/削岩型/伐採人は手前で
         // 自分の移動を書いて return 済み、または下で上書きする)。対象は `KEEP_STYLE_BY_TYPE` の6型。
         // ★距離は**その型の技の引き金と同じ基準点**=プレイヤー中心で測る(B-9 Q-1)。
+        let keepZone: 'approach' | 'keep' | 'backoff' | null = null;
         if (hasKeepRange(enemy.type)) {
           const keepOuter = (enemy.type === 'bat') ? BAT_ORBIT_RADIUS_PX
             : (enemy.type === 'skeleton') ? SKELETON_TRIGGER_PX
+            : (enemy.type === 'lich') ? LICH_KEEP_RADIUS_PX
             : (enemy.type === 'werewolf' || enemy.type === 'lab-zombie-2') ? WEREWOLF_TRIGGER_RANGE
             : PUMPKIN_TRIGGER_RANGE; // pumpkin / lab-zombie-3
           const kBand = keepBandFor(enemy.type, enemy.id, enemy.spawnedAt, keepOuter);
@@ -15572,12 +15609,15 @@ export const useGameStore = create<GameState>((set, get) => ({
               tvx, tvy, kux, kuy, kd, speed,
               kBand, keepSpin(enemy.id, enemy.spawnedAt), PLAYER_BASE_SPEED,
             );
-            tvx = kept.tvx; tvy = kept.tvy;
+            tvx = kept.tvx; tvy = kept.tvy; keepZone = kept.zone;
           }
         }
         // 新型(lich): プレイヤーの周囲を旋回しながら徐々に詰める。放射(内向き)+接線(旋回)を合成し、
         // 遠いほど接線寄り(円を描く)・近いほど放射寄り(詰める)。旋回向きは個体ごとに固定。視覚演出なし=軽量。
-        if (enemy.type === 'lich') {
+        // ★§16-B: 帯の中/内側に居る時は**上の保つ層が速度を決めている**ので、この「必ず詰める」
+        // 螺旋は回さない(回すと保つ層を毎フレーム上書きして、結局張り付く)。帯の外(approach)は
+        // 従来どおりこの螺旋のまま=遠い時の動きは1ビットも変わらない。
+        if (enemy.type === 'lich' && (keepZone === null || keepZone === 'approach')) {
           const rx = dx / distance, ry = dy / distance;       // プレイヤーへ向かう単位(放射)
           let h = 0;
           for (let i = 0; i < enemy.id.length; i++) h = (h * 31 + enemy.id.charCodeAt(i)) | 0;

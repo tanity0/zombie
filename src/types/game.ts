@@ -600,6 +600,13 @@ export interface Enemy {
    * §12の噛みつき(`chaffMove` なし)が正常に決着した時だけ書かれる。プレイヤーの取り分。
    */
   biteRecoverUntil?: number;
+  /**
+   * ★リッチの転移(§16-B B-5)。`lichWarpAt` = **消え始めた時刻**(gameTime基準)。
+   * `lichWarpAt + LICH_WARP_VANISH_MS` で座標が飛び、`lichWarpDoneAt` に**現れた時刻**が入る。
+   * どちらも演出の時計であって判定は持たない(消えている間も殴られる)。
+   */
+  lichWarpAt?: number;
+  lichWarpDoneAt?: number;
   // PACING_PUZZLE.md §16-7b(雑魚の「詰めさせない技」): いま出している§16の技。undefined=§16の技を
   // 出していない(通常の§12噛みつき・無属性の移動)。★訂正版(§16-7穴2・検収監査A-4): 立つのは
   // 技の頭(bat=b-windup/skeleton=s-crouchの次の踏み込み/ゾンビ=z-lunge-in。biteAtより前)。

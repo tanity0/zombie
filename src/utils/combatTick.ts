@@ -1420,6 +1420,10 @@ export const applyContactDamage = (
             // 通らない(専用コントローラが座標を書く)ので、書いても読まれない=書かない。
             ...(e.chaffMove === undefined && !isTrueBossType(e.type)
               ? { biteRecoverUntil: gameTime + BITE_RECOVER_STILL_MS } : {}),
+            // ★リッチの転移(§16-B B-5): **硬直の後**に消え始める。噛んだ瞬間に飛ばさない
+            // (飛ばすとリッチだけ一度も殴り返せない敵になる=硬直はプレイヤーの取り分)。
+            ...(e.type === 'lich' && e.chaffMove === undefined
+              ? { lichWarpAt: gameTime + BITE_RECOVER_STILL_MS } : {}),
           };
         }
         return e;

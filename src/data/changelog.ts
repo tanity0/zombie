@@ -8,6 +8,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4446',
+    items: [
+      'リッチは噛みついた後、足元に魔法陣を残して姿を消し、離れた場所に現れる',
+      '消えるまでのわずかな隙は残る。噛まれた直後に踏み込めば、逃がす前に叩ける',
+      '気絶させたリッチは転移しない',
+    ],
+  },
+  {
     version: '0.25.4445',
     items: [
       'コウモリ・骸骨・犬・パンプキンが、自分の攻撃が届く距離で足を止めるようになった',

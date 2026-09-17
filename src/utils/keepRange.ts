@@ -63,6 +63,9 @@ export const KEEP_STYLE_BY_TYPE: Partial<Record<EnemyType, KeepStyle>> = {
   'lab-zombie-2': 'orbit',
   pumpkin: 'creep',
   'lab-zombie-3': 'creep',
+  // ★リッチは「離れ方」がワープ(§16-B B-5)だが、**離れた後に保つ**のはこの層の仕事
+  // (社長「CD中は例のヒステリシスで」)。外側は `LICH_KEEP_RADIUS_PX`(=着地距離)を渡す。
+  lich: 'orbit',
 };
 
 /**

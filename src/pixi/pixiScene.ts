@@ -37,6 +37,7 @@ import { playerHurtReactionOf } from '../utils/playerHurt';
 // ★被弾リアクションの強さ(しなり/跳ね/フラッシュ/光/ノックバック/停止時間が読む唯一の窓口・2026-09-17)
 import { enemyHitReaction, hopMul, flashMul } from '../utils/hitFlinch';
 import { fallenSoldiersInRange } from '../utils/endingScene';
+import { lichWarpPose, lichVanishProgress, lichAppearProgress } from '../utils/lichWarp';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
   useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
@@ -2096,6 +2097,10 @@ const ACRASIEL_WARP_FLASH_MS_VIS = 380;
 // ★転移の魔法陣の大きさ(社長指示2026-09-17「それを小さくして使えばよいかと」)。
 // 素材は512pxの原盤なので、**そのまま出すと画面を覆う**。天使の体(60〜80px)の2倍強に収める。
 const ANGEL_WARP_CIRCLE_PX = 170;
+/** リッチの陣。雑魚なのでボス(170)の半分。足元に収まり、かつ「消えた場所」が残る大きさ。 */
+const LICH_WARP_CIRCLE_PX = 86;
+/** 死人の冷たい緑。赤(カウンター可)でも紫(カウンター不可)でもない=攻撃の絵ではないと分かる色。 */
+const LICH_WARP_TINT = 0x6ee7a8;
 const THIN_BEAM_VIS_HALFWIDTH = 30; // T6細ビームの描画半太さ(=SR_T.beam.halfWidth。20→30=v0.25.3590貼り戻し。使用箇所はスリィエル環の2本のみ・同値はangelSwordSync.testが見張る)
 // FX-V2a(発注仕様v0.25.2974): gaze-windup終了エッジ(発射の瞬間)に一瞬走らせる金色の視線閃光。
 // 判定は既存のenemy_bolt(弾)がそのまま持つ=これは②「派手さの絵」(減衰のみ・軌跡長=環/本体→aiTarget)。
@@ -17605,6 +17610,10 @@ export class PixiScene {
     const horizonAlpha = (e.type === 'phillboss' || isHangedman(e.type)) ? 1 : this.horizonActorAlpha(fb.footY);
     // 死神の回り込みワープ: 消える(0)→テレポート→出る(1) のフェード(useGameLoop が reaperWarpAlpha を駆動)。
     const reaperWarpFade = e.reaperWarpAlpha ?? 1;
+    // ★リッチの転移(§16-B B-5)。消滅は**加速しながら潰れ**、出現は**行き過ぎて収まる**
+    // (慣性MUSTは瞬間移動そのものではなく演出に掛かる)。式は sim 側の純関数を読むだけ
+    // =`corpseSquashNow` と同じ作法で、尺と形の出どころを1箇所に保つ。
+    const lichWarp = lichWarpPose(e, gameTime);
     // 非ボス敵は「手前(画面最下端)で消える」near-plane フェードを掛ける。裏ボスは自前の裏回りフェード
     // (bossBehindAlpha)で別管理なので掛けない。
     const foreFade = bossFixed ? 1 : this.foregroundActorAlpha(fb.footY);
@@ -17624,9 +17633,9 @@ export class PixiScene {
     //  ・**存在の法則** (reaperWarpFade / hunterLeaveFade) = 「そこに居ない」。
     //    居ない相手の判定は無いので、予告も含めて container ごと消して正しい。
     const posFade = horizonAlpha * foreFade;
-    view.container.alpha = TELEGRAPH_OWN_FADE
+    view.container.alpha = (TELEGRAPH_OWN_FADE
       ? reaperWarpFade * hunterLeaveFade * bountyDepartFade
-      : posFade * reaperWarpFade * hunterLeaveFade * bountyDepartFade;
+      : posFade * reaperWarpFade * hunterLeaveFade * bountyDepartFade) * lichWarp.alpha;
     // ?telefade=0 のときは従来どおり container 側で位置フェード済み=子には掛けない(旧挙動を完全維持)。
     const artFade = TELEGRAPH_OWN_FADE ? posFade : 1;
     view.reticle.alpha = artFade;
@@ -17634,7 +17643,7 @@ export class PixiScene {
     // §3-9-B v9裁定Q: 「存在の法則」(reaperWarpFade=死神ワープ/hunterLeaveFade=索敵タイムアウト立ち去り/
     // bountyDepartFade=賞金首の退場フェード)だけを影へ渡す。posFade(=horizonAlpha×foreFade、位置の法則)は
     // 影側が別途持つため含めない(地平線フェードの二重掛け防止。裏回り透け(bossBehindAlpha)も含めない)。
-    view.shadowFade = reaperWarpFade * hunterLeaveFade * bountyDepartFade;
+    view.shadowFade = reaperWarpFade * hunterLeaveFade * bountyDepartFade * lichWarp.alpha;
 
     if (bossFixed && tex) {
       // 裏ボス: 当たり判定=帯(AABB=e.width×e.height)。絵はそれより大きく、帯の上に伸ばす(見た目と判定を分離)。
@@ -17961,8 +17970,8 @@ export class PixiScene {
       // すこし吹っ飛んで潰れて消えるようにして」)。判定には一切関与しない純粋な描画。
       // 潰れの式は sim 側の純関数(corpseSquashNow)を読むだけ=尺と形の出どころを1箇所に保つ。
       const corpseSq = corpseSquashNow(e, now);
-      const scaleX = sc * breath.x * aiSqX * lungeSqX * flinchSqX * motSqX * faceMul * corpseSq.sqX;
-      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY * motSqY * corpseSq.sqY);
+      const scaleX = sc * breath.x * aiSqX * lungeSqX * flinchSqX * motSqX * faceMul * corpseSq.sqX * lichWarp.sqX;
+      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY * motSqY * corpseSq.sqY * lichWarp.sqY);
       if (corpseSq.alpha < 1) view.container.alpha *= corpseSq.alpha;
       // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
       // 中心からずれた個体は横に流れて見える。重心が footX に乗るよう x を寄せる(視覚のみ)。
@@ -20616,6 +20625,17 @@ export class PixiScene {
       );
       if (appearL) this.drawWarpCircle(`${e.id}:warp-in`, appearL.d[0], appearL.d[1], ANGEL_WARP_CIRCLE_PX, appearL.t, 0xc084fc, 'appear', now);
       if (warpInOn) this.warpInWasOn.add(e.id); else this.warpInWasOn.delete(e.id);
+    }
+    // ★リッチの転移(§16-B B-5)。**同じ魔法陣素材**で、大きさは雑魚の身の丈に合わせて小さく、
+    // 色は**死人の冷たい緑**——赤(カウンター可)・紫(カウンター不可)のどちらでもない
+    // =これは**攻撃の絵ではなく居場所の絵**だと一目で分かる。
+    // ★陣は床に寝ているので**足元**(fb.footX/footY)に置く(アクラシエルで踏んだ「腰の高さに浮く」の教訓)。
+    // ★進みは**store の gameTime** から引く(掛け合いのラッチが要らない=消える/現れるの取りこぼしが無い)。
+    if (e.type === 'lich') {
+      const lv = lichVanishProgress(e, gameTime);
+      if (lv !== null) this.drawWarpCircle(`${e.id}:lich-out`, fb.footX, fb.footY, LICH_WARP_CIRCLE_PX, lv, LICH_WARP_TINT, 'vanish', now);
+      const la = lichAppearProgress(e, gameTime);
+      if (la !== null) this.drawWarpCircle(`${e.id}:lich-in`, fb.footX, fb.footY, LICH_WARP_CIRCLE_PX, la, LICH_WARP_TINT, 'appear', now);
     }
     // ★ジブリルの転移も同じ魔法陣へ揃える(社長指示2026-09-17「**天使も揃えて素材**」)。
     // ★ジブリルは州の作りがアクラシエルと違う: `warp-windup` の**終わり**で飛び、`warp-recover` へ入る。
