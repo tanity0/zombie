@@ -37,7 +37,9 @@ import { playerHurtReactionOf } from '../utils/playerHurt';
 // ★被弾リアクションの強さ(しなり/跳ね/フラッシュ/光/ノックバック/停止時間が読む唯一の窓口・2026-09-17)
 import { enemyHitReaction, hopMul, flashMul } from '../utils/hitFlinch';
 import { fallenSoldiersInRange } from '../utils/endingScene';
-import { lichWarpPose, lichCircleVanishProgress, lichCircleAppearProgress } from '../utils/lichWarp';
+import {
+  lichWarpPose, lichCircleVanishProgress, lichCircleAppearProgress, lichWarpTintStrength,
+} from '../utils/lichWarp';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
   useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
@@ -2100,12 +2102,16 @@ const ANGEL_WARP_CIRCLE_PX = 170;
 /** リッチの陣。雑魚なのでボス(170)の半分。足元に収まり、かつ「消えた場所」が残る大きさ。 */
 const LICH_WARP_CIRCLE_PX = 86;
 /**
- * 死人の冷たい緑。赤(カウンター可)でも紫(カウンター不可)でもない=攻撃の絵ではないと分かる色。
- * ★彩度と明度を落としてある(クリエイティブ監査 C-12): 旧 `0x6ee7a8` は**HPバーの青緑と同じ明度帯**で
- * UI の色として読まれ、しかも3体の陣色が揃ってパステル(=パレット表から取った色の並びに見える)だった。
- * ここは**HUDより一段沈む**濁った青緑にして、夜の青紫の中で「床の光」として読ませる。
+ * 転移の陣の色。赤(カウンター可)でも紫(カウンター不可)でもない=**攻撃の絵ではない**と分かる色。
+ *
+ * ★2回動かしている。1回目は `0x6ee7a8`(体力バーの青緑と同じ明度帯=UIの色に見えた)。
+ * 2回目に明度を落として `0x5f8f72` にしたが、**加算合成で暗い tint は「光が弱くなる」だけ**で、
+ * 陣が薄い染みになり「ここに出る」の告知にならなくなった。**問題は明度ではなく色相だった**
+ * ——HUDの緑と同じ族だったのが原因。⇒ **明るさは戻し、色相を骨寄りの黄緑へ振る。**
  */
-const LICH_WARP_TINT = 0x5f8f72;
+const LICH_WARP_TINT = 0xcfe08a;
+/** 体に乗せる陣の色の濃さ(加算)。消えるほど濃くなり、居なくなる頃には魔法の色になっている。 */
+const LICH_WARP_TINT_ALPHA = 0.72;
 const THIN_BEAM_VIS_HALFWIDTH = 30; // T6細ビームの描画半太さ(=SR_T.beam.halfWidth。20→30=v0.25.3590貼り戻し。使用箇所はスリィエル環の2本のみ・同値はangelSwordSync.testが見張る)
 // FX-V2a(発注仕様v0.25.2974): gaze-windup終了エッジ(発射の瞬間)に一瞬走らせる金色の視線閃光。
 // 判定は既存のenemy_bolt(弾)がそのまま持つ=これは②「派手さの絵」(減衰のみ・軌跡長=環/本体→aiTarget)。
@@ -18125,7 +18131,11 @@ export class PixiScene {
       const zRedStrength = texOk ? chaffMoveBlinkStrength(e, gameTime) : 0;
       const burning = texOk && (e.burnUntil ?? 0) > gameTime;
       const iced = texOk && (e.iceSlowUntil ?? 0) > gameTime;
-      if (flashT > 0.01 || zRedStrength > 0.01 || burning || iced) {
+      // ★転移に取られる体は**陣の色を受ける**(クリエイティブ監査2巡目 C-9: 体だけ元の茶黒のまま
+      // 薄れ、陣だけ緑=同じ魔法で消えているように見えない)。既にある白シルエットの加算overlayを
+      // 陣の色で焼くだけ=新しい仕組みを足さない。
+      const lichTintT = texOk ? lichWarpTintStrength(e, gameTime) : 0;
+      if (flashT > 0.01 || zRedStrength > 0.01 || burning || iced || lichTintT > 0.01) {
         // 真っ白シルエットを加算で重ねる(暗い敵でも全面が白く光る)。未ベイク時は元テクスチャにフォールバック。
         hf.texture = this.whiteSilhouette(view.sprite.texture) ?? view.sprite.texture;
         hf.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
@@ -18133,7 +18143,10 @@ export class PixiScene {
         hf.scale.set(view.sprite.scale.x, view.sprite.scale.y);
         hf.skew.set(view.sprite.skew.x, view.sprite.skew.y);
         hf.rotation = view.sprite.rotation;
-        if (flashT > 0.01) {
+        if (lichTintT > 0.01) {
+          hf.tint = LICH_WARP_TINT;
+          hf.alpha = lichTintT * LICH_WARP_TINT_ALPHA * artFade;
+        } else if (flashT > 0.01) {
           hf.tint = 0xffffff;
           hf.alpha = flashT * ENEMY_HIT_FLASH_STRENGTH * artFade;
         } else if (zRedStrength > 0.01) {
@@ -20650,15 +20663,19 @@ export class PixiScene {
     if (e.type === 'lich') {
       // 消える陣は**1本の時計**で「体が居る間 → 飛んだ後の跡」を跨ぐ。跨いだ先は座標が飛んでいるので、
       // 描く場所を**飛ぶ前の足元**(lichWarpFromX/Y)へ切り替える(それ以外は式も尺も同じ1本)。
+      // ★陣は**床に寝ている**ので、体と一緒に動かさない。座標は sim 側で焼いてある
+      // (消える側=予約した時点の足元 / 出る側=着地した足元)。毎フレーム今の足元に描くと、
+      // 硬直中のノックバックや着地直後の歩き出しで**陣が床を滑る**(品質監査A-7/A-9)。
       const lv = lichCircleVanishProgress(e, gameTime);
       if (lv !== null) {
-        const gone = e.lichWarpAt === undefined;
-        const ox = gone ? (e.lichWarpFromX ?? fb.footX) : fb.footX;
-        const oy = gone ? (e.lichWarpFromY ?? fb.footY) : fb.footY;
-        this.drawWarpCircle(`${e.id}:lich-out`, ox, oy, LICH_WARP_CIRCLE_PX, lv, LICH_WARP_TINT, 'vanish', now);
+        this.drawWarpCircle(`${e.id}:lich-out`, e.lichWarpFromX ?? fb.footX, e.lichWarpFromY ?? fb.footY,
+          LICH_WARP_CIRCLE_PX, lv, LICH_WARP_TINT, 'vanish', now);
       }
       const la = lichCircleAppearProgress(e, gameTime);
-      if (la !== null) this.drawWarpCircle(`${e.id}:lich-in`, fb.footX, fb.footY, LICH_WARP_CIRCLE_PX, la, LICH_WARP_TINT, 'appear', now);
+      if (la !== null) {
+        this.drawWarpCircle(`${e.id}:lich-in`, e.lichWarpToX ?? fb.footX, e.lichWarpToY ?? fb.footY,
+          LICH_WARP_CIRCLE_PX, la, LICH_WARP_TINT, 'appear', now);
+      }
     }
     // ★ジブリルの転移も同じ魔法陣へ揃える(社長指示2026-09-17「**天使も揃えて素材**」)。
     // ★ジブリルは州の作りがアクラシエルと違う: `warp-windup` の**終わり**で飛び、`warp-recover` へ入る。

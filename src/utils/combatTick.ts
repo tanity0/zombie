@@ -1433,7 +1433,13 @@ export const applyContactDamage = (
             // (飛ばすとリッチだけ一度も殴り返せない敵になる=硬直はプレイヤーの取り分)。
             // ★**噛み切った時だけ**(`biteResolved`)。中断(気絶/拘束/持ち上げ)では予約しない。
             ...(e.type === 'lich' && e.chaffMove === undefined && biteResolved.includes(e.id)
-              ? { lichWarpAt: gameTime + BITE_RECOVER_STILL_MS } : {}),
+              ? {
+                  lichWarpAt: gameTime + BITE_RECOVER_STILL_MS,
+                  // ★陣の置き場は**ここで焼く**。床に寝ている陣は、硬直中に殴られて体が滑っても
+                  // 一緒に滑らない(品質監査A-7/A-9)。
+                  lichWarpFromX: e.x + e.width / 2, lichWarpFromY: e.y + e.height,
+                  lichWarpCancelAt: undefined, lichWarpCancelFrom: undefined,
+                } : {}),
           };
         }
         return e;

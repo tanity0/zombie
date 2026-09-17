@@ -7,34 +7,32 @@
  * (飛ばすとリッチだけ一度も殴り返せない敵になり、読む動機が消える=B-5)。
  *
  * ★**転移そのものに慣性は無い**(瞬間移動に加減速は無い)。慣性MUSTが掛かるのは**演出**の方で、
- * **消滅は加速しながら潰れ、出現は行き過ぎて収まる**。ここはその式だけを持つ(描画はpixiが読む)。
+ * **消滅は陣へ吸い込まれ、出現は行き過ぎて収まる**。ここはその式だけを持つ(描画はpixiが読む)。
  */
 import type { Enemy } from '../types/game';
 import { idRespawnUnitHash } from './chaffMoves';
 
 /** 着地距離(§16-B B-3・叩き台)。リッチは自前の間合いを持たないので、ここで新しく置く。 */
 export const LICH_KEEP_RADIUS_PX = 200;
-/**
- * 消える尺。★クリエイティブ監査(v0.25.4447)で 180ms は**短すぎ**と判明——変形の式が u³ だったため
- * 目に届く変化が**実質3コマ**(30fps端末では1〜2コマ)に圧縮され、「加速しながら潰れる」ではなく
- * 「パッと消える」になっていた。尺を伸ばし、カーブも緩めた。
- */
+/** 消える尺(体)。 */
 export const LICH_WARP_VANISH_MS = 260;
-/** 現れる尺(消えるより長い=**行き過ぎて収まる**ぶんの時間が要る)。 */
+/** 現れる尺(体)。消えるより長い=**行き過ぎて収まる**ぶんの時間が要る。 */
 export const LICH_WARP_APPEAR_MS = 300;
-/**
- * ★**飛んだ後、元居た場所に陣の跡が残る時間**。これが無いと「消えた場所が残る」は嘘になる
- * (同監査の指摘: 体と同じ時刻で陣も消えていた)。跡と出現が**同時に見える**ので、
- * 「そこから居なくなって、ここに来た」が1目で繋がる。
- */
+/** 飛んだ後、**元居た場所に陣の跡が残る**時間。跡と出現が同時に見える=移動が1目で繋がる。 */
 export const LICH_WARP_TRACE_MS = 200;
 /**
- * 陣は**体より長い時計**で回す。`drawWarpCircle` の区切り(開き20%/絞り55%〜/薄れ80%〜)は
- * ボスの転移(約380ms)向けに作られており、短い尺に流用すると**渦に見えない**(開きが2コマで終わる)。
- * 消える側は「体260ms + 跡200ms = 460ms」を1本の時計として渡す。
+ * ★**陣は体より先に灯る**(クリエイティブ監査2巡目 B-6)。旧実装は陣の「絞り(吸い込み)」が
+ * t=0.55=253ms から始まる一方、体は260msで消え終わっていた——**吸う側の動きが、吸われる物が
+ * 消えた後に始まっていた**(原因と結果が逆)。噛みの硬直の後半から陣を灯し、体が縮む間に陣が絞る。
+ * ついでに**プレイヤーへの予告**にもなる(陣が出たら、逃げられる前に叩く合図)。
  */
-export const LICH_CIRCLE_VANISH_MS = LICH_WARP_VANISH_MS + LICH_WARP_TRACE_MS;
+export const LICH_CIRCLE_LEAD_MS = 160;
+/** 陣(消える側)の通し時計。ボスの転移(約380ms)向けに作られたカーブが読める長さを確保する。 */
+export const LICH_CIRCLE_VANISH_MS = LICH_CIRCLE_LEAD_MS + LICH_WARP_VANISH_MS + LICH_WARP_TRACE_MS;
+/** 陣(出る側)の時計。体(300ms)より長い=体が収まった後も一拍残る。 */
 export const LICH_CIRCLE_APPEAR_MS = 380;
+/** ★取り消された時、体が等身へ**戻る**のに掛ける時間(瞬間復帰は慣性MUST違反)。 */
+export const LICH_WARP_CANCEL_MS = 220;
 /** 体が現れ始めるまでの間(出現の何割を待つか)。**陣が先に灯り、そこから体が立つ。** */
 const APPEAR_BODY_DELAY = 0.22;
 
@@ -78,29 +76,33 @@ export const lichAppearProgress = (e: Enemy, gameTime: number): number | null =>
 };
 
 /**
- * 陣の進み(0..1)。**体より長い1本の時計**で、消える側は「体 → 跡」を跨いで連続する。
- * 跡の側は座標が飛んだ後なので、描く場所は `lichWarpFromX/Y`(飛ぶ前の足元)。
+ * 陣(消える側)の進み。**体より先に灯り、体が消えた後も跡として残る**1本の時計。
+ * ★跳びが遅れている間(被弾硬直・ノックバックの滑りが座標の跳びより手前にあるため起きる)は、
+ * **体が消えた時点の進みで止める**(品質監査A-9: 止めないと、陣が先に終わって消え、
+ * 跳んだ瞬間に絞りの途中から**パッと再点灯**する)。
  */
 export const lichCircleVanishProgress = (e: Enemy, gameTime: number): number | null => {
+  const holdAt = (LICH_CIRCLE_LEAD_MS + LICH_WARP_VANISH_MS) / LICH_CIRCLE_VANISH_MS;
   if (e.lichWarpAt !== undefined) {
-    const t = (gameTime - e.lichWarpAt) / LICH_CIRCLE_VANISH_MS;
-    return t >= 0 && t < 1 ? t : null;
+    const t = (gameTime - (e.lichWarpAt - LICH_CIRCLE_LEAD_MS)) / LICH_CIRCLE_VANISH_MS;
+    if (t < 0) return null;
+    return Math.min(t, holdAt);     // 跳ぶまでは「体が消えた時点」で止める
   }
   if (e.lichWarpDoneAt === undefined) return null;
-  const t = (LICH_WARP_VANISH_MS + (gameTime - e.lichWarpDoneAt)) / LICH_CIRCLE_VANISH_MS;
-  return t >= 0 && t < 1 ? t : null;
+  const t = holdAt + (gameTime - e.lichWarpDoneAt) / LICH_CIRCLE_VANISH_MS;
+  return t < 1 ? t : null;
 };
 
-/** 陣(出現側)の進み。体(300ms)より長い380msで回す=**体が収まった後も一拍残る**。 */
+/** 陣(出る側)の進み。体(300ms)より長い380msで回す=**体が収まった後も一拍残る**。 */
 export const lichCircleAppearProgress = (e: Enemy, gameTime: number): number | null => {
   if (e.lichWarpDoneAt === undefined) return null;
   const t = (gameTime - e.lichWarpDoneAt) / LICH_CIRCLE_APPEAR_MS;
   return t >= 0 && t < 1 ? t : null;
 };
 
-/** 行き過ぎて収まる(back-out)。u=1で必ず1、途中で**約25%**行き過ぎる。 */
+/** 行き過ぎて収まる(back-out)。u=1で必ず1、途中で**約26%**行き過ぎる(極値 ≒1.406)。 */
 const backOut = (u: number): number => {
-  const c1 = 4.2, c3 = c1 + 1;  // ★監査B-5: 約10%(既定の1.70158)では体高80pxで8px=見えない
+  const c1 = 4.2, c3 = c1 + 1;  // ★監査B-5: 既定(1.70158)の約10%では体高80pxで8px=見えない
   const p = u - 1;
   return 1 + c3 * p * p * p + c1 * p * p;
 };
@@ -111,41 +113,62 @@ const smooth01 = (u: number): number => {
 };
 
 /**
+ * 消える姿(進み 0..1)。★**等方に縮んで、足元の陣へ吸い込まれる。**
+ *
+ * ★ここは2回作り直している。理由を両方残す(次に触る人が同じ穴を掘らないため):
+ * 1巡目は「縦に潰れて横に広がる」だったが、それは `corpseSquashNow`(死体の潰れ)と**同じ言語**で、
+ * このゲームでは**「倒した」の絵**——陣を見ていない限り「倒れた?」と読まれる。
+ * 2巡目は逆に「横に絞って縦に伸ばす」にしたが、今度は**足元アンカーなので体が天へ伸び**、
+ * **床の陣に吸われる絵の逆**になった(行き先が床なのに体は空へ昇る)。加えて、ドット絵を
+ * 横0.28×縦1.62に**非等方で歪める**のは、この画作りでは人がやらない(画素が縦縞に溶ける)。
+ * ⇒ **等方**に、**足元へ**縮める。アンカーが足元(0.5,1)なので、縮むほど体は陣の中心へ寄る。
+ * ★透明度は形より**遅れて**落とす(同じ進みで0に届くと、一番縮んだ姿が一度も見えない)。
+ */
+const vanishPoseAt = (v: number): { sqX: number; sqY: number; alpha: number } => {
+  const shape = Math.pow(v, 1.8);   // 加速はする。ただし u³ ほど終盤に寄せない
+  const fade = Math.pow(v, 3.2);    // ★形より遅れて消える
+  const s = 1 - 0.88 * shape;
+  return { sqX: s, sqY: s, alpha: 1 - fade };
+};
+
+/** ★陣の色をどれだけ体へ乗せるか(0..1)。消えるほど**魔法の色に染まってから**居なくなる。 */
+export const lichWarpTintStrength = (e: Enemy, gameTime: number): number => {
+  if (e.lichWarpCancelAt !== undefined) return 0;
+  const v = lichVanishProgress(e, gameTime);
+  if (v !== null) return smooth01(v * 1.25);
+  return 0;
+};
+
+/**
  * 体の変形と透明度(`corpseSquashNow` と同じ作法=純関数を描画が読むだけ)。
  *
- * ★**消滅は「潰れ」ではなく「絞られて吸い上げられる」**(クリエイティブ監査 B-6 の是正)。
- * 旧実装は**縦に潰れて横に広がって薄れる**で、これは `corpseSquashNow`(死体の潰れ)と
- * **同じ言語**だった——このゲームで「倒した」を意味する形なので、足元の陣を見ていない限り
- * プレイヤーは「倒れた?」と読む。**死と逆方向へ変形させる**=横に絞り、縦に伸ばす。
- * ★透明度は変形より**遅れて**落とす。同じ進みで0に届くと、一番絞れた形が**一度も見えない**。
- *
- * ★**出現は消滅の逆再生にしない**(同 B-7)。吸われるのと押し出されるのは同じ動きではない。
- * 出現は**しゃがんだ形から立ち上がって行き過ぎ、収まる**(縦の軸で、消滅の横絞りとは別の動き)。
+ * ★**出現は消滅の逆再生にしない**。消滅は**一方向に縮むだけ**(行き過ぎない)、
+ * 出現は**小さい所から行き過ぎて収まる**。吸われるのと押し出されるのは同じ動きではない。
  */
 export const lichWarpPose = (e: Enemy, gameTime: number): { sqX: number; sqY: number; alpha: number } => {
-  // ★消え切った後、**まだ飛んでいない**間は消えたまま(品質監査A-6)。
-  // 消滅の窓を過ぎても `lichWarpAt` が残るのは、被弾硬直・ノックバックの早期returnが
-  // 座標の跳びより手前にあるため——その間に等身へ戻すと、**透明だった体が元の場所に全身で現れ、
-  // 滑ってから、消滅の絵なしで200px先へ出る**。消えている体は消えたままにする。
+  // ★取り消された時の**戻り**(品質監査A-8)。硬直中に殴られてクリ気絶——設計がまさに招いている
+  // 場面——で取り消すと、旧実装は縮んで半透明の体が**1フレームで全身に戻っていた**
+  // (CLAUDE.md「パッと出て止まる/瞬間停止は禁止」に正面から当たる)。止まった所から戻す。
+  if (e.lichWarpCancelAt !== undefined) {
+    const u = (gameTime - e.lichWarpCancelAt) / LICH_WARP_CANCEL_MS;
+    if (u >= 0 && u < 1) return vanishPoseAt((e.lichWarpCancelFrom ?? 0) * (1 - smooth01(u)));
+    return { sqX: 1, sqY: 1, alpha: 1 };
+  }
+  // ★消え切った後、**まだ飛んでいない**間は消えたまま(品質監査A-6)。消滅の窓を過ぎても
+  // `lichWarpAt` が残るのは、被弾硬直・ノックバックの早期returnが座標の跳びより手前にあるため。
   if (e.lichWarpAt !== undefined && gameTime >= e.lichWarpAt + LICH_WARP_VANISH_MS) {
-    return { sqX: 1 - 0.72, sqY: 1 + 0.62, alpha: 0 };
+    return vanishPoseAt(1);
   }
   const v = lichVanishProgress(e, gameTime);
-  if (v !== null) {
-    const shape = Math.pow(v, 1.8);   // 加速はする。ただし u³ ほど終盤に寄せない
-    const fade = Math.pow(v, 3.2);    // ★形より遅れて消える=絞り切った姿が見える
-    return { sqX: 1 - 0.72 * shape, sqY: 1 + 0.62 * shape, alpha: 1 - fade };
-  }
+  if (v !== null) return vanishPoseAt(v);
+
   const a = lichAppearProgress(e, gameTime);
   if (a !== null) {
-    // ★陣が先に灯り、少し遅れて体が立つ(B-8「居ない時間がゼロ」の是正)。
-    // ★形の時計も**体が見え始めた所から**始める。出現の頭から回すと、一番大きい変形
-    // (しゃがんだ姿・行き過ぎの伸び)が**透明な間に終わってしまい一度も見えない**
-    // ——消滅側で透明度を遅らせたのと同じ穴が、出現側では時計のズレとして出る。
+    // ★陣が先に灯り、少し遅れて体が立つ。形の時計も**体が見え始めた所から**始める
+    // (頭から回すと、一番大きい変形が透明な間に終わって一度も見えない)。
     const bu = Math.max(0, Math.min(1, (a - APPEAR_BODY_DELAY) / (1 - APPEAR_BODY_DELAY)));
-    const b = backOut(bu);
-    const alpha = smooth01((a - APPEAR_BODY_DELAY) / 0.33);
-    return { sqX: 1.28 - 0.28 * b, sqY: 0.52 + 0.48 * b, alpha };
+    const s = 0.35 + 0.65 * backOut(bu);
+    return { sqX: s, sqY: s, alpha: smooth01((a - APPEAR_BODY_DELAY) / 0.33) };
   }
   return { sqX: 1, sqY: 1, alpha: 1 };
 };

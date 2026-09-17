@@ -334,7 +334,7 @@ import {
   keepBlocksTechnique,
 } from '../utils/keepRange'; // §16-B 攻撃射程を保つ層(台本が動いていない時だけ効く)
 import {
-  lichIsVanishing, lichWarpDue, lichWarpLanding, LICH_KEEP_RADIUS_PX,
+  lichIsVanishing, lichWarpDue, lichWarpLanding, LICH_KEEP_RADIUS_PX, LICH_WARP_VANISH_MS,
 } from '../utils/lichWarp'; // §16-B B-5 リッチの転移(噛む→硬直→消えて現れる)
 import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
@@ -5210,6 +5210,8 @@ export const buildCorpseFromKill = (
     // 演出が明けると**元の不透明度へ瞬間復帰**する。
     lichWarpAt: undefined, lichWarpDoneAt: undefined,
     lichWarpFromX: undefined, lichWarpFromY: undefined,
+    lichWarpToX: undefined, lichWarpToY: undefined,
+    lichWarpCancelAt: undefined, lichWarpCancelFrom: undefined,
     knockbackVx: dirX * speed,
     knockbackVy: dirY * speed,
     knockbackUntil: now + KNOCKBACK_DURATION,
@@ -12888,7 +12890,13 @@ export const useGameStore = create<GameState>((set, get) => ({
             || (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil)
             || (enemy.liftUntil !== undefined && gameTime < enemy.liftUntil);
           if (stopped) {
-            return { ...enemy, vx: 0, vy: 0, lichWarpAt: undefined };
+            // ★**等身へ戻す時計を渡す**(品質監査A-8)。ただ `lichWarpAt` を消すだけだと、
+            // 縮んで半透明の体が**1フレームで全身に戻る**(CLAUDE.md「瞬間停止は禁止」)。
+            const vp = Math.max(0, Math.min(1, (gameTime - enemy.lichWarpAt) / LICH_WARP_VANISH_MS));
+            return {
+              ...enemy, vx: 0, vy: 0, lichWarpAt: undefined,
+              lichWarpCancelAt: gameTime, lichWarpCancelFrom: vp,
+            };
           }
           if (lichIsVanishing(enemy, gameTime)) {
             return { ...enemy, vx: 0, vy: 0 };
@@ -15067,9 +15075,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           return {
             ...enemy, x: placed.x, y: placed.y, vx: 0, vy: 0,
             lichWarpAt: undefined, lichWarpDoneAt: gameTime,
-            // ★飛ぶ前の足元を焼く。ここに陣の跡が残る=「そこから居なくなって、ここに来た」が
-            // 出現と**同時に**見える(クリエイティブ監査 B-9「消えた場所が残る、が嘘になっている」)。
-            lichWarpFromX: enemy.x + enemy.width / 2, lichWarpFromY: enemy.y + enemy.height,
+            // ★着地の足元を焼く。出現の陣は**ここに固定**する——毎フレーム今の足元に描くと、
+            // 体が動き出した瞬間に**床に寝ている陣が一緒に滑る**(品質監査A-7)。
+            // 飛ぶ前の足元(`lichWarpFromX/Y`)は**予約時に焼いてある**ので上書きしない。
+            lichWarpToX: placed.x + enemy.width / 2, lichWarpToY: placed.y + enemy.height,
           };
         }
 

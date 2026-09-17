@@ -607,9 +607,18 @@ export interface Enemy {
    */
   lichWarpAt?: number;
   lichWarpDoneAt?: number;
-  /** 飛ぶ前の**足元**。飛んだ後もそこに陣の跡を描くために要る(描画専用)。 */
+  /**
+   * 飛ぶ前の**足元**。★**予約した時点で焼く**(飛んだ時ではない)——陣は床に寝ているので、
+   * 硬直中のノックバックで体が滑っても**陣は動かない**のが正しい(描画専用)。
+   */
   lichWarpFromX?: number;
   lichWarpFromY?: number;
+  /** 着地した**足元**。出現の陣をここに固定する(体が歩き出しても陣は床に残る・描画専用)。 */
+  lichWarpToX?: number;
+  lichWarpToY?: number;
+  /** 転移が取り消された時刻と、その時点の消える進み(0..1)。等身へ**戻す**のに使う。 */
+  lichWarpCancelAt?: number;
+  lichWarpCancelFrom?: number;
   // PACING_PUZZLE.md §16-7b(雑魚の「詰めさせない技」): いま出している§16の技。undefined=§16の技を
   // 出していない(通常の§12噛みつき・無属性の移動)。★訂正版(§16-7穴2・検収監査A-4): 立つのは
   // 技の頭(bat=b-windup/skeleton=s-crouchの次の踏み込み/ゾンビ=z-lunge-in。biteAtより前)。
