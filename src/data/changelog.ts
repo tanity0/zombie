@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4440',
+    items: ['天使の瞬間移動に魔法陣が出るようになった。消えた床と現れた床の両方で、陣が開いて閉じる。アクラシエルは紫、ジブリルは金'],
+  },
+  {
     version: '0.25.4439',
     items: ['ゾンビの二連撃は、踏み込みが速くなった。赤い合図が出てからの距離の詰め方が鋭い'],
   },
