@@ -199,7 +199,8 @@ import {
   getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType, isPumpkinTier,
   isReaperFamily, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
 } from '../utils/enemyUtils';
-import { recoilKickOffset, killChainEdgeEnvelope, isEnemyAttacking } from '../utils/combatFeel';
+import { recoilKickOffset, killChainEdgeEnvelope } from '../utils/combatFeel';
+import { isEnemyBreathHeld, BREATH_HELD_WAVE } from '../utils/enemyBreathHold';
 import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTintMix, milestoneAlpha } from '../utils/comboMilestone';
 // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 赤予告の「呼吸」を敵の区分で3種に。純関数1本
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
@@ -11096,7 +11097,11 @@ export class PixiScene {
 
   // ★カウンター不可の攻撃の紫(CLAUDE.md「色と形の文法」②)。ミーミルのレーザー/トール「無の境地」と
   // 同じ紫を使う=紫の意味を1つに保つ(新しい紫を発明しない)。
-  private static readonly BITE_TG_PURPLE = [0x9333ea, 0xc084fc, 0xf3e8ff] as const;
+  private static readonly BITE_TG_PURPLE = [0x9333ea, 0xc084fc, 0xd8b4fe] as const;
+  // ★赤も既定より頭を色寄りにする(クリエイティブ監査2026-09-17 #4)。既定の頭(0xffe3e3)は
+  // ほぼ白で、**一番目を引く輝点で赤と紫の区別が消えていた**——「赤=返せる/紫=返せない」を
+  // 300msで読ませる線なのに、判断材料が一番暗い下地にしか乗っていない状態だった。
+  private static readonly BITE_TG_RED = [0xff2a2a, 0xff5a5a, 0xff8a8a] as const;
 
   // 特殊行動の予告。ジャンプ着地点(赤い影)＋ダッシュの移動先(赤ライン=直線距離)。
   private syncPumpkinTelegraph(enemies: Enemy[], now: number, gameTime: number) {
@@ -11112,11 +11117,14 @@ export class PixiScene {
         const tgs = telegraphStyleFor(e.type);
         this.dashLineTick(
           g, `${e.id}:bite`, bl !== null, bl?.remainMs ?? 0,
-          bl?.fx ?? 0, bl?.fy ?? 0, bl?.tx ?? 0, bl?.ty ?? 0, now, bl?.prog ?? 0,
+          // ★描くのは切り詰めた区間(監査#1/#2)。敵の絵の下・プレイヤーの絵の下に潜らせない。
+          bl?.dfx ?? 0, bl?.dfy ?? 0, bl?.dtx ?? 0, bl?.dty ?? 0, now, bl?.prog ?? 0,
           // 描き切る位置だけは**その技の溜めの割合**に差し替える(「溜めが終わる=線が満ちる」を
-          // 技ごとに正しく合わせる)。脈・ease などの質感は区分の値のまま。
-          { ...tgs, drawFrac: bl?.drawFrac ?? tgs.drawFrac },
-          ...(bl?.counterable === false ? PixiScene.BITE_TG_PURPLE : []),
+          // 技ごとに正しく合わせる)。脈の時計は**その攻撃自身の経過**(監査#3)。
+          { ...tgs, drawFrac: bl?.drawFrac ?? tgs.drawFrac, pulseAt: bl?.pulseAt },
+          ...(bl?.counterable === false ? PixiScene.BITE_TG_PURPLE : PixiScene.BITE_TG_RED),
+          // 中断された時の残光は**噛みの長さなり**(監査#10)。足切り0=必ず消し切る。
+          Math.max(90, Math.round((bl?.biteMs ?? 200) * 0.6)), 0,
         );
       }
       // ジャンプ着地予告(パンプキン/lab-zombie-3/ジャイアントバット/ハンター)。
@@ -23050,7 +23058,7 @@ export class PixiScene {
   private static readonly BREATH_HOLD_IN_TAU_MS = 70;
   private static readonly BREATH_HOLD_OUT_TAU_MS = 220;
   private breathHoldAmp(view: ActorView, e: Enemy, now: number, gameTime: number): number {
-    const target = isEnemyAttacking(e, gameTime) ? 0 : 1;
+    const target = isEnemyBreathHeld(e, gameTime) ? 0 : 1;
     const prev = view.breathAmp ?? 1;
     const dt = Math.max(0, Math.min(200, now - (view.breathAmpAt ?? now)));
     const tau = target < prev ? PixiScene.BREATH_HOLD_IN_TAU_MS : PixiScene.BREATH_HOLD_OUT_TAU_MS;
@@ -23071,7 +23079,8 @@ export class PixiScene {
       // 0→1をゆっくり(60%の時間)、1→0を速く(40%)戻る非対称波。-1..1へ写す。
       const w01 = t < 0.6 ? Math.sin((t / 0.6) * Math.PI / 2) : Math.cos(((t - 0.6) / 0.4) * Math.PI / 2);
       const w = w01 * 2 - 1;
-      return { x: 1 + JORM_SLUG_SQX * w * bAmp, y: 1 - JORM_SLUG_SQY * w * bAmp };
+      const wh = w * bAmp + BREATH_HELD_WAVE * (1 - bAmp);
+      return { x: 1 + JORM_SLUG_SQX * wh, y: 1 - JORM_SLUG_SQY * wh };
     }
     // PACING_PUZZLE.md §9-7#1(pixiSceneの疑似呼吸): driller はpumpkinと同格。
     const heavy = isPumpkinTier(e.type) || e.type === 'giantbat' || isReaperFamily(e.type) || e.type === 'hunter' || isHiddenBoss(e.type);
@@ -23083,9 +23092,11 @@ export class PixiScene {
     const inhale = Math.sin(phase);
     const secondary = Math.sin(phase * 2 + 0.7) * 0.28;
     const wave = inhale * 0.72 + secondary;
+    // ★止めている間は「吸い込んだまま」で固定する(監査#7。平らに戻さない)。
+    const held = wave * bAmp + BREATH_HELD_WAVE * (1 - bAmp);
     return {
-      x: 1 + ENEMY_BREATH_SCALE_X * amp * wave * bAmp,
-      y: 1 - ENEMY_BREATH_SCALE_Y * amp * wave * bAmp,
+      x: 1 + ENEMY_BREATH_SCALE_X * amp * held,
+      y: 1 - ENEMY_BREATH_SCALE_Y * amp * held,
     };
   }
 
@@ -23403,7 +23414,8 @@ export class PixiScene {
     // ★薄い下地(経路の全形)。メーター(濃い線)が減っても「どこを通るか」は読めるままにする。
     if (ghost) o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 3, color: base, alpha: 0.18, cap: 'round' });
     if (p - er <= 0.001) return; // 消し切った(or まだ何も無い)
-    const pulse = 0.5 + 0.5 * Math.sin(now / (style?.pulseMs ?? 110));
+    // ★脈の時計は style.pulseAt があればそちら(技自身の経過時間)。無ければ従来どおり壁時計。
+    const pulse = 0.5 + 0.5 * Math.sin((style?.pulseAt ?? now) / (style?.pulseMs ?? 110));
     const dx = tx - fx, dy = ty - fy;
     const TAIL = 0.28; // 流星の尾の長さ(線に対する割合)
     // 通過済み=描かれた線(尾より後ろ・可視区間にクリップ)。prog=1で線全体=技の出始めに表示しきる。
@@ -23491,6 +23503,11 @@ export class PixiScene {
     // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 省略時=既定(今の値)。
     style?: TelegraphStyle,
     base = 0xff2a2a, core = 0xff5a5a, head = 0xffe3e3,
+    // ★中断された時の残光の尺と、その足切り(クリエイティブ監査2026-09-17 #10)。
+    // 既定はボス用(320ms / 残り60ms未満は組まない)。**雑魚の噛みは実行が160〜220msしかなく、
+    // 320msの残光は技そのものより長い**一方、終盤で中断されると足切りに掛かって**パッと消える**
+    // (慣性MUSTの禁じ手)。雑魚側は短い尺+足切り0を渡して、必ず消し切る。
+    eraseMs = PixiScene.DASHLINE_ERASE_MS, minCutMs = 60,
   ): void {
     if (windupOn) {
       const ph = PixiScene.meteorPhase(prog, style?.drawFrac);
@@ -23501,8 +23518,8 @@ export class PixiScene {
     }
     const armed = this.dashLineArm.get(key);
     // 完走なら消しは溜めの中で終わっている=何も描かない。中断された時だけ残りを消し切る。
-    const cut = armed !== undefined && (armed[4] ?? 1e9) >= 60 && (armed[6] ?? 1) < 1;
-    const el = this.latchFx(key, cut, PixiScene.DASHLINE_ERASE_MS, now, () => armed!);
+    const cut = armed !== undefined && (armed[4] ?? 1e9) >= minCutMs && (armed[6] ?? 1) < 1;
+    const el = this.latchFx(key, cut, eraseMs, now, () => armed!);
     if (armed) this.dashLineArm.delete(key);
     if (el) {
       const er0 = el.d[6] ?? 0;

@@ -41,6 +41,13 @@ export interface TelegraphStyle {
   pulseMs: number;
   /** 流れの ease の強さ(circleSweepBand/bandSweepCenter の t の指数。大きいほど終盤へ加速が寄り「重く」見える)。 */
   easePow: number;
+  /**
+   * ★脈(明滅)に使う時計(ms)。省略すると従来どおり壁時計 `now`。
+   * **その技自身の経過時間**を渡すと、①技より周期が長くても毎回同じ明るさの曲線になり
+   * ②同時に出た複数の個体が勝手にバラける(クリエイティブ監査2026-09-17 #3)。
+   * 雑魚の噛みつき予告(`utils/biteTelegraph.ts`)が使う。
+   */
+  pulseAt?: number;
 }
 
 /** 雑魚(既定)=今の値。1pxも変えない。 */
