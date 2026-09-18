@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4471',
+    items: [
+      'ドローンブーメランの回転が速くなった',
+    ],
+  },
+  {
     version: '0.25.4470',
     items: [
       '変異体(狩猟型)の突進が、棺桶を頭上でぶん回しながら走る形になった。走り出しで回り始め、止まる手前で回転が緩む',
