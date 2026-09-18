@@ -1,5 +1,35 @@
 # Development Log
 
+## v0.25.4492 — ウェルカム台本のサークル化 実装 + 検収で(A)1件是正【2026-09-19 01:40 JST】
+
+### 実装(サブエージェント・commit fa6ed5c33)
+- `ActiveEventKind` に **`'welcome'`** を新設し、`confining` から除外
+  (`confining = !!ae && ae.kind !== 'rescue' && ae.kind !== 'welcome'`)。
+  `'horde'` を借りていない=**報酬経路にも上限(`arenaEventCap`)にも繋がらない**。
+- 湧きは **円の中**(`placeInWelcomeRing(0.5)`=既存 `placeInRing` と同じ作法)へ
+  `spawnEnemyAtWithTier(..., unit.tier ?? 'none')`。`fromEvent:true` + `isWelcome:true`(数える用)+ **`dormant:false`**。
+- 演出は**輪だけ**(`spawnRing` 2本・青 `rgba(56,189,248,0.9)`=`syncArena` の既定色と同じ)。
+  **フラッシュ・シェイク・スローは呼んでいない。**
+- **撤去**: 自前の `welcomeSpawnAt`(画面外の輪)/ `isWelcome` の時間無制限保護
+  (`isEnemyCapProtected` と `runOffscreenRecycleAndCull` の両方)。`fromEvent` の既存保護に一本化。
+- 実装者の判断3件: ①`endArenaEvent()` を使わない(残存 `fromEvent` 敵を撤去する仕様なので
+  §17-3「残った敵は消さない」と衝突する)⇒ `activeEvent:null` を直接 set し印だけ外す
+  ②輪の色は `syncArena` の既定色に合わせた ③`botObjective` の `activeEvent.kind` 型を拡張。
+
+### ★設計チャットの検収で見つけた(A)1件(是正済み)
+- **`gameStore.ts` の「イベント敵を円に閉じ込める」clamp が `ae.kind` を見ていなかった**
+  (`if (ae && enemy.fromEvent)`)。ウェルカムの敵も240pxの輪に縛られるので、
+  **プレイヤーが離れた瞬間に台本の敵が輪に取り残されて追って来られない**
+  ——段が片付かず**60秒の強制終了まで止まる**=社長報告「出てくるまでの間が長い」が**形を変えて再発**する。
+  ⇒ **`ae.kind !== 'welcome'` を足して除外**。輪は「湧かせる場所の合図」であって檻ではない
+  (`confinesPlayer:false` と意味を揃えた)。
+- 検収で確認した他の点: `confining` の除外 / `syncArena` が `'welcome'` を既定色(青)で描く
+  (=**輪は実際に画面へ出る**)/ 輪の開閉が段ごと / 報酬経路に繋がっていない。
+- 変更ファイル(是正分): `src/store/gameStore.ts` / `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+- 検証: typecheck 緑 / lint エラー0 / welcomeScript・directorTick・ghostTelegraph・enemyUtils の **126件緑**。
+  ★**絵は未確認**(輪が実機でどう見えるかは社長の目が最終の真実)。
+- 状態変化: §17 → **サークル化 実装済み**(残り: 実機確認)。
+
 ## v0.25.4491 — ウェルカム台本を「サークルイベント」へ(§17-12 設計確定)【2026-09-19 01:16 JST】
 
 - **社長決定**: 「台本はサークルイベントにしちゃうか?」→「はい」。**円の中に湧かせて移動時間を消す。**

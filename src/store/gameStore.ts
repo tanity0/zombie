@@ -12803,7 +12803,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           // パンプキン等は射程外へ距離を取るため円の外=地平線の上(透明化ゾーン)へ出て見えなくなり、
           // fromEvent が 0 にならず「誰もいないのに終わらない(時間切れ待ち)」状態になっていた。プレイヤー同様アリーナに閉じ込める。
           const ae = state.activeEvent;
-          if (ae && enemy.fromEvent) {
+          // ★§17-12(ウェルカム台本のサークル化・2026-09-19の検収で発見): **'welcome' は除外する。**
+          // ウェルカムの輪は「湧かせる場所の合図」であって**檻ではない**(`confinesPlayer:false`=
+          // プレイヤーは出られる)。ここで閉じ込めると、**プレイヤーが離れた瞬間に台本の敵が輪に
+          // 取り残されて追って来られない**——段が片付かないので60秒の強制終了まで止まり、
+          // 社長報告「出てくるまでの間が長い」が形を変えて再発する。
+          if (ae && ae.kind !== 'welcome' && enemy.fromEvent) {
             const ecx2 = pos.x + enemy.width / 2, ecy2 = pos.y + enemy.height / 2;
             const dx2 = ecx2 - ae.x, dy2 = ecy2 - ae.y;
             const d2 = Math.hypot(dx2, dy2);
