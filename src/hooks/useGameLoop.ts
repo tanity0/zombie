@@ -15205,7 +15205,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           id: gateProgramRef.current.program.id,
           maxRung: gateProgramRef.current.program.maxRung,
         } : null);
-        const dirCountCap = computeDirCountCap(gameTime, labTheme, indoor, MAX_ENEMIES, rankAdj, upswingBonus, pressureCapBonus);
+        // PACING_PUZZLE.md §17-11 B3: enemyCountCap(内部でphaseAtを読む)もディレクターの時計で読む。
+        const dirCountCap = computeDirCountCap(directorTime, labTheme, indoor, MAX_ENEMIES, rankAdj, upswingBonus, pressureCapBonus);
         // PACING_PUZZLE.md §2/§3-C: 本方式ON時は間引き上限(culling)も本方式の上限(R1-R6=10/
         // R7=10..20成長)に揃える。旧来のdirCountCap(基本10近辺で頭打ち)のままだと、R7の20体成長を
         // 旧カリングが即座に間引き潰してしまう(1フレーム遅延で前フレームの値を読む・他の遅延
