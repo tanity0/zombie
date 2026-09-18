@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4485',
+    items: [
+      'ゲーム内容の変更はありません',
+    ],
+  },
+  {
     version: '0.25.4484',
     items: [
       'リッチが新しい技を使う。近づくと足を止めて詠唱し、赤い円が消え切った瞬間に目の前へ転移して噛みついてくる',
