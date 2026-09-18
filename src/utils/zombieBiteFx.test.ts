@@ -6,10 +6,21 @@ import {
 } from './zombieBiteFx';
 
 describe('ゾンビの噛みつきVFX: 対象と色', () => {
-  it('出すのはゾンビだけ(区分外の型へ増設しない)', () => {
+  it('★ゾンビとラボゾンビ1・2が出す(社長指示2026-09-18「ラボゾンビは今回の噛みつきで」)', () => {
     expect(usesZombieBiteFx({ type: 'zombie' })).toBe(true);
+    expect(usesZombieBiteFx({ type: 'lab-zombie-1' })).toBe(true);
+    expect(usesZombieBiteFx({ type: 'lab-zombie-2' })).toBe(true);
+  });
+
+  it('★lab-zombie-3 は外す(社長指示「3はジャンプなのでいらない。パンプキンと同等」)', () => {
+    expect(usesZombieBiteFx({ type: 'lab-zombie-3' })).toBe(false);
+    expect(usesZombieBiteFx({ type: 'pumpkin' })).toBe(false);
+  });
+
+  it('他の系統には付けない', () => {
     expect(usesZombieBiteFx({ type: 'bat' })).toBe(false);
     expect(usesZombieBiteFx({ type: 'skeleton' })).toBe(false);
+    expect(usesZombieBiteFx({ type: 'lich' })).toBe(false);
   });
 
   it('★色はカウンター可否で決まる(2連噛み=赤 / 既定の噛みつき=紫)', () => {

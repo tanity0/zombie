@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4468',
+    items: [
+      'リッチも骸骨と同じ爪で引っ掻いてくる',
+      '研究所のゾンビにも噛みつきの絵が付いた。巨体の個体は跳んでくるので付かない',
+    ],
+  },
+  {
     version: '0.25.4467',
     items: [
       'ゾンビの噛みつきに絵が付いた。歯形の輪が閉じて、噛んだ瞬間に飛沫が散る',

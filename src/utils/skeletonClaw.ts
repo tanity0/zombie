@@ -14,8 +14,14 @@ import type { Enemy } from '../types/game';
 import { biteSpecFor } from './enemyBite';
 import { frameByHold, holdTotalMs, holdLeadMs } from './fxFrameClock';
 
-/** この敵が爪を振るか(型で決める。区分外の型へ増設しない)。 */
-export const usesSkeletonClaw = (e: Pick<Enemy, 'type'>): boolean => e.type === 'skeleton';
+/**
+ * この敵が爪を振るか。
+ * ★**リッチも同じ爪**(社長指示2026-09-18「リッチはskeletonと同じ爪で」)。
+ * リッチは骨の系統なので絵を共有する=型ごとに素材を増やさない。
+ */
+export const SKEL_CLAW_TYPES: readonly string[] = ['skeleton', 'lich'];
+export const usesSkeletonClaw = (e: Pick<Enemy, 'type'>): boolean =>
+  SKEL_CLAW_TYPES.includes(e.type);
 
 /** 噛みつきの尺(型と技から引く)。描画側が手写ししないための薄い窓口。 */
 export const skeletonBiteTiming = (e: Enemy): { windupMs: number; biteMs: number } => {

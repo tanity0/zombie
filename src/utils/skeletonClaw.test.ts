@@ -9,8 +9,9 @@ import {
 } from './skeletonClaw';
 
 describe('スケルトンの爪: 対象と色', () => {
-  it('爪を振るのはスケルトンだけ(区分外の型へ増設しない)', () => {
+  it('★爪を振るのはスケルトンとリッチ(社長指示2026-09-18「リッチはskeletonと同じ爪で」)', () => {
     expect(usesSkeletonClaw({ type: 'skeleton' })).toBe(true);
+    expect(usesSkeletonClaw({ type: 'lich' })).toBe(true);
     expect(usesSkeletonClaw({ type: 'bat' })).toBe(false);
     expect(usesSkeletonClaw({ type: 'zombie' })).toBe(false);
   });

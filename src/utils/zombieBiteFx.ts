@@ -18,8 +18,15 @@ import type { Enemy } from '../types/game';
 import { biteSpecFor } from './enemyBite';
 import { frameByHold, holdTotalMs, holdLeadMs } from './fxFrameClock';
 
-/** この敵が噛みつきVFXを出すか(型で決める。区分外の型へ増設しない)。 */
-export const usesZombieBiteFx = (e: Pick<Enemy, 'type'>): boolean => e.type === 'zombie';
+/**
+ * この敵が噛みつきVFXを出すか。
+ * ★**ラボゾンビも同じ噛みつき**(社長指示2026-09-18「ラボゾンビは今回の噛みつきで」)。
+ * ★**`lab-zombie-3` だけ外す**(社長指示「3はジャンプなのでいらない。(パンプキンと同等)」)——
+ * 巨体でパンプキン相当=技が**跳んで着地**なので、噛みつきの絵は付かない。
+ */
+export const ZOMBIE_BITE_TYPES: readonly string[] = ['zombie', 'lab-zombie-1', 'lab-zombie-2'];
+export const usesZombieBiteFx = (e: Pick<Enemy, 'type'>): boolean =>
+  ZOMBIE_BITE_TYPES.includes(e.type);
 
 /** 噛みつきの尺(型と技から引く)。描画側が手写ししないための薄い窓口。 */
 export const zombieBiteTiming = (e: Enemy): { windupMs: number; biteMs: number } => {
