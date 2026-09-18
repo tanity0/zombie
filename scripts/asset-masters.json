@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "753 files / 復号後 約711MB",
+ "generatedFor": "763 files / 復号後 約714MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -608,6 +608,12 @@
    "bytes": 21580,
    "sha": "431bc23a32c107b0"
   },
+  "sprites/bat-lantern.png": {
+   "w": 49,
+   "h": 256,
+   "bytes": 1950,
+   "sha": "05c6b09cd5334261"
+  },
   "sprites/bat-male.png": {
    "w": 368,
    "h": 512,
@@ -955,6 +961,60 @@
    "h": 112,
    "bytes": 4129,
    "sha": "028f8056a643b80c"
+  },
+  "sprites/fx/bat-slam-0.png": {
+   "w": 85,
+   "h": 559,
+   "bytes": 36473,
+   "sha": "46e08425867c428d"
+  },
+  "sprites/fx/bat-slam-1.png": {
+   "w": 96,
+   "h": 525,
+   "bytes": 49131,
+   "sha": "4c8b7be7c2aae001"
+  },
+  "sprites/fx/bat-slam-2.png": {
+   "w": 116,
+   "h": 521,
+   "bytes": 65750,
+   "sha": "8e95d405650b4a0b"
+  },
+  "sprites/fx/bat-slam-3.png": {
+   "w": 167,
+   "h": 454,
+   "bytes": 86646,
+   "sha": "2e8313d64495378c"
+  },
+  "sprites/fx/bat-slam-4.png": {
+   "w": 214,
+   "h": 419,
+   "bytes": 102552,
+   "sha": "430794ad68147fdf"
+  },
+  "sprites/fx/bat-slam-5.png": {
+   "w": 337,
+   "h": 389,
+   "bytes": 138938,
+   "sha": "6f8e4893fc4bca0b"
+  },
+  "sprites/fx/bat-slam-6.png": {
+   "w": 312,
+   "h": 290,
+   "bytes": 107144,
+   "sha": "7664acc1d632b0c5"
+  },
+  "sprites/fx/bat-slam-7.png": {
+   "w": 247,
+   "h": 273,
+   "bytes": 74459,
+   "sha": "b4abaf3e93ada691"
+  },
+  "sprites/fx/bat-slam-8.png": {
+   "w": 202,
+   "h": 245,
+   "bytes": 48013,
+   "sha": "2c6c99248832523d"
   },
   "sprites/fx/bite-jaw-lower.png": {
    "w": 912,

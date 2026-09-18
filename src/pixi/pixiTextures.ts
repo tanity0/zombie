@@ -566,6 +566,17 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/slash-burst-2', scaleMode: 'nearest' },
       { name: 'fx/slash-burst-3', scaleMode: 'nearest' },
       { name: 'fx/slash-burst-4', scaleMode: 'nearest' },
+      // バットのランタンと、その振り下ろしの炸裂(9コマ・社長支給2026-09-18)。
+      { name: 'bat-lantern', scaleMode: 'nearest' },
+      { name: 'fx/bat-slam-0', scaleMode: 'nearest' },
+      { name: 'fx/bat-slam-1', scaleMode: 'nearest' },
+      { name: 'fx/bat-slam-2', scaleMode: 'nearest' },
+      { name: 'fx/bat-slam-3', scaleMode: 'nearest' },
+      { name: 'fx/bat-slam-4', scaleMode: 'nearest' },
+      { name: 'fx/bat-slam-5', scaleMode: 'nearest' },
+      { name: 'fx/bat-slam-6', scaleMode: 'nearest' },
+      { name: 'fx/bat-slam-7', scaleMode: 'nearest' },
+      { name: 'fx/bat-slam-8', scaleMode: 'nearest' },
       // 近接スイングの弧(7コマ・社長提供)。柄側の下端を揃えて左から右へ送る。
       { name: 'fx/melee-arc-0', scaleMode: 'nearest' },
       { name: 'fx/melee-arc-1', scaleMode: 'nearest' },

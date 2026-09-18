@@ -212,6 +212,12 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } from '../utils/telegraphStyle';
 import { biteTelegraphLine } from '../utils/biteTelegraph';
+// ★バットのランタン(社長支給2026-09-18)。振りの角度も炸裂のコマ送りも噛みつきの経過から引く葉。
+import {
+  batLanternPose, batSlamFrame, batBiteTiming, usesBatLantern,
+  BAT_LANTERN_LEN_PX, BAT_LANTERN_INTRINSIC_ANGLE, BAT_LANTERN_GRIP_X, BAT_LANTERN_GRIP_Y,
+  BAT_SLAM_ANCHOR_X, BAT_SLAM_REF_W, BAT_SLAM_W_PX, BAT_SLAM_TAIL_MS, BAT_LANTERN_SETTLE_MS,
+} from '../utils/batLanternSwing';
 import {
   BOUNTY_DEPART_FADE_MS,
   // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15): 角度・タイミングは判定と同じ純関数から導く。
@@ -1423,6 +1429,11 @@ const meleeArcAlpha = (kt: number): number => {
 // コマごとの大きさの差が消えない。アンカーは (0,1)=柄側の下端。
 // 武器の実絵は**弧の刃先(上端の先端)**に置く=振り抜いた先に刃が居る。
 const MELEE_ARC_WPN_LIFT = 0.04; // 先端のすぐ内側へ寄せるぶん
+// ★刃の向き(社長指摘2026-09-18「ナイフが振り抜いた後の上にいる時、向きが逆」)。
+// 旧弧の振り抜きポーズ(`MELEE_WPN_F2.rot`=刃先が**左上**=肩越しに戻る向き)を弧の先端でも
+// 使い回していたため、**振り上げた先で刃が後ろを向いて**いた。武器アイコンは素の状態で
+// 刃先が右上(≈-46°)なので、**進行方向の斜め上(≈-30°)**へ向けるための回転は約16°。
+const MELEE_ARC_WPN_ROT = 16 * Math.PI / 180;
 const meleeArcWpnPos = (cfg: MeleeArcCfg): { ox: number; oy: number } => {
   const tip = MELEE_ARC_TIP[cfg.idx];
   return {
@@ -4404,6 +4415,7 @@ export class PixiScene {
   private playerKnifeSlash = new Sprite();                 // 近接スイング2枚目(弧のみ knife-swing-2)
   private playerKnifeTrail = new Sprite();                 // 近接スイング3枚目(弧の残光 knife-swing-3)
   private playerMeleeWpn = new Sprite();                   // 装備中の近接武器の実絵(f1/f2に重ねる)
+  private batSlamSprites = new Map<string, Sprite>();      // バットの振り下ろしの炸裂(9コマ・敵ごと)
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
   private playerFirstAidBag = new Sprite();                // 救急鞄スキル発動時に掲げる鞄(first-aid-kit・描画のみ)
   private playerFirstAidBagSetup = false;                  // 鞄スプライトのテクスチャ/親子付け済みか
@@ -13914,6 +13926,9 @@ export class PixiScene {
         if (bountySummonSp) { bountySummonSp.destroy(); this.bountySummonSprites.delete(id); }
         const bountyWeaponSp = this.bountyWeaponSprites.get(id);
         if (bountyWeaponSp) { bountyWeaponSp.destroy(); this.bountyWeaponSprites.delete(id); }
+        // バットの炸裂も同じ mark-and-sweep に乗せる(討伐後に最後のコマが残らない)。
+        const batSlamSp = this.batSlamSprites.get(id);
+        if (batSlamSp) { batSlamSp.destroy(); this.batSlamSprites.delete(id); }
         const bountyThrustWindSp = this.bountyThrustWindSprites.get(id);
         if (bountyThrustWindSp) { bountyThrustWindSp.destroy(); this.bountyThrustWindSprites.delete(id); }
         const drillerThrustWindSp = this.drillerThrustWindSprites.get(id);
@@ -15726,7 +15741,7 @@ export class PixiScene {
         const arcCfg = meleeArcCfg(slash, arcKt);
         if (!arcCfg) { placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, fallbackAl); return; }
         const wp = meleeArcWpnPos(arcCfg);
-        placeWpn(wp.ox, wp.oy, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, meleeArcWpnAlpha(arcKt));
+        placeWpn(wp.ox, wp.oy, MELEE_ARC_WPN_ROT, MELEE_WPN_F2.len, meleeArcWpnAlpha(arcKt));
       };
       const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定。弧が7コマになっても武器絵の位置は動かさない
       const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
@@ -16810,7 +16825,7 @@ export class PixiScene {
           const arcCfg = meleeArcCfg(slash, arcKt);
           if (!arcCfg) { placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, fallbackAl); return; }
           const wp = meleeArcWpnPos(arcCfg);
-          placeWpn(wp.ox, wp.oy, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, meleeArcWpnAlpha(arcKt));
+          placeWpn(wp.ox, wp.oy, MELEE_ARC_WPN_ROT, MELEE_WPN_F2.len, meleeArcWpnAlpha(arcKt));
         };
         // f2の武器位置: 弧テクスチャ内の割合(fx,fy)を弧の配置(KNIFE_F2)へ写像。
         const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定。弧が7コマになっても武器絵の位置は動かさない
@@ -17332,7 +17347,7 @@ export class PixiScene {
         const arcCfg = meleeArcCfg(slash, arcKt);
         if (!arcCfg) { placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, fallbackAl); return; }
         const wp = meleeArcWpnPos(arcCfg);
-        placeWpn(wp.ox, wp.oy, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, meleeArcWpnAlpha(arcKt));
+        placeWpn(wp.ox, wp.oy, MELEE_ARC_WPN_ROT, MELEE_WPN_F2.len, meleeArcWpnAlpha(arcKt));
       };
       const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定。弧が7コマになっても武器絵の位置は動かさない
       const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
@@ -17485,6 +17500,13 @@ export class PixiScene {
     if (e.type === 'logger') {
       const chainsawSp = this.bountyWeaponSprites.get(e.id);
       if (chainsawSp) chainsawSp.visible = false;
+    }
+    // バットのランタンと炸裂も既定OFF(点けるのは噛みつきの分岐だけ=残留焼き付きを作らない)。
+    if (usesBatLantern(e)) {
+      const lanternSp = this.bountyWeaponSprites.get(e.id);
+      if (lanternSp) lanternSp.visible = false;
+      const slamSp = this.batSlamSprites.get(e.id);
+      if (slamSp) slamSp.visible = false;
     }
     if (isBountyType(e.type)) {
       const bountySummonSp = this.bountySummonSprites.get(e.id);
@@ -18547,6 +18569,44 @@ export class PixiScene {
         const endAngle = Math.atan2(sty - gripY, stx - gripX);
         this.drawBountyWeapon(e.id, 'reaper-chainsaw', gripX, gripY + ease.dy, endAngle, CHAINSAW_LENGTH_PX,
           0.9 * artFade * ease.alphaMul, 1, false, CHAINSAW_GRIP_X, CHAINSAW_GRIP_Y, CHAINSAW_INTRINSIC);
+      }
+    }
+    // ★バットの武器=ランタン(社長支給2026-09-18「鞭のようにランタンを背中上から下に振り下ろす
+    // イメージ」「振り下ろすエフェクトは左から右へアニメーション」)。
+    // **噛みつき台本(§12)の尺の上に乗る絵だけ**——判定・ダメージ・射程・尺は1msも触っていない。
+    // 角度もコマ番号も `utils/batLanternSwing.ts` の純関数が出す(描画側に時刻を複製しない)。
+    // 炸裂は**噛みつきが狙った点**(予告の線と同じ `biteTelegraphLine` の終点)へ落とす=
+    // 線と炸裂で終点を二重定義しない。
+    if (usesBatLantern(e)) {
+      const { windupMs: bwMs, biteMs: bbMs } = batBiteTiming(e);
+      // ★**ラッチで焼く**(既存の作法 `latchFx`)。理由は実測: 判定側(`combatTick`)は噛みが終わった
+      // 瞬間に `biteAt: 0` を書くので、敵の生データだけを見ていると**振り抜きの戻りと炸裂の散り(後半3コマ)が
+      // 1フレームも出ない**——振りが最高速のままパッと消える(慣性MUST違反)。
+      // 焼くのは①狙い方向 ②落とす点(=予告の線と同じ終点。線と炸裂で終点を二重定義しない)
+      // ③噛みつきの開始時刻(gameTime)。**時計は gameTime のまま**なので、ヒットストップや
+      // スローで判定が伸びても絵が置いていかれない。
+      const running = e.biteAt !== undefined && e.biteAt > 0;
+      const bDirX = e.biteDirX ?? 1, bDirY = e.biteDirY ?? 0;
+      const L = this.latchFx(
+        `${e.id}:bat-lantern`, running, bwMs + bbMs + BAT_LANTERN_SETTLE_MS + BAT_SLAM_TAIL_MS + 200, now,
+        () => {
+          const bl = biteTelegraphLine(e, gameTime);
+          return [bDirX, bDirY, bl?.tx ?? (cx + bDirX * 30), bl?.ty ?? (cy + bDirY * 30), e.biteAt ?? gameTime];
+        },
+      );
+      if (L) {
+        const [dx, dy, ax, ay, at0] = L.d;
+        const since = gameTime - at0;
+        const pose = batLanternPose(since, Math.atan2(dy, dx), dx >= 0 ? 1 : -1, bwMs, bbMs);
+        if (pose) {
+          this.drawBountyWeapon(
+            e.id, 'bat-lantern', cx, cy - e.height * 0.22, pose.angle,
+            BAT_LANTERN_LEN_PX, pose.alpha,
+            1, false, BAT_LANTERN_GRIP_X, BAT_LANTERN_GRIP_Y, BAT_LANTERN_INTRINSIC_ANGLE,
+          );
+        }
+        const frame = batSlamFrame(since - bwMs, bbMs);
+        if (frame !== null) this.drawBatSlam(e.id, ax, ay, frame);
       }
     }
     if (isBountyType(e.type)) {
@@ -29384,6 +29444,31 @@ export class PixiScene {
   private static readonly WHIP_SMEAR_MS = 140;
   /** ★v0.25.3573(社長指示「先端寄りに」): スミアの起点=判定の帯のこの割合の地点(残りを先端まで覆う)。 */
   private static readonly WHIP_SMEAR_TIP_BIAS = 0.4;
+
+  /**
+   * バットの振り下ろしの炸裂(9コマ)。**接地点で重ねる**(切り出し時に下端=接地線を共通化し、
+   * 横は各コマの接地帯のアルファ重心=`BAT_SLAM_ANCHOR_X`)。全コマを炸裂コマの幅で正規化するので、
+   * コマごとの大きさの差(細い線→大きな炸裂→散り)が消えない。
+   * 分類は②派手さの絵(判定ゼロ)=判定より大きく出す(CLAUDE.md 攻撃ヴィジュアルの2分類)。
+   * 負荷 1/10: 敵1体につき pooled Sprite 1枚・per-frame Graphics なし・投影影を落とす光源も増やさない。
+   */
+  private drawBatSlam(id: string, x: number, y: number, frame: number): void {
+    const tex = getTexture(`fx/bat-slam-${frame}`);
+    if (!tex || tex.width === 0) return;
+    let sp = this.batSlamSprites.get(id);
+    if (!sp) {
+      sp = new Sprite(tex);
+      this.L.effectLayer.addChild(sp);
+      this.batSlamSprites.set(id, sp);
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    sp.anchor.set(BAT_SLAM_ANCHOR_X[frame] ?? 0.5, 1);
+    const sc = BAT_SLAM_W_PX / BAT_SLAM_REF_W;
+    sp.scale.set(sc, sc);
+    sp.position.set(x, y);
+    sp.alpha = 1;
+    sp.visible = true;
+  }
 
   private drawBountyWeapon(
     id: string, texName: string, px: number, py: number, angleRad: number,
