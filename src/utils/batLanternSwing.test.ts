@@ -1,90 +1,141 @@
 import { describe, it, expect } from 'vitest';
 import {
-  batLanternPose, batSlamFrame, BAT_SLAM_FRAMES, BAT_SLAM_IMPACT_FRAME,
-  BAT_SLAM_TAIL_MS, BAT_SLAM_ANCHOR_X, BAT_LANTERN_SETTLE_MS,
-  BAT_LANTERN_BACK_DEG, BAT_LANTERN_DOWN_DEG, usesBatLantern,
+  batLanternPose, batLanternBack, batLanternDownDefault, batLanternDownAngle,
+  batSlamFrame, batSlamTotalMs, BAT_SLAM_FRAMES, BAT_SLAM_IMPACT_FRAME,
+  BAT_SLAM_HOLD_MS, BAT_SLAM_ANCHOR_X, BAT_LANTERN_SETTLE_MS, BAT_LANTERN_REST,
+  usesBatLantern,
 } from './batLanternSwing';
 
 const W = 300, B = 200;
+const norm = (x: number) => Math.atan2(Math.sin(x), Math.cos(x));
+const poseR = (t: number) => batLanternPose(t, 1, batLanternDownDefault(1), W, B)!;
 
-describe('バットのランタン: 振りの姿勢', () => {
-  it('噛みつきが走っていない(負の経過)なら出さない', () => {
-    expect(batLanternPose(-1, 0, 1, W, B)).toBeNull();
+describe('バットのランタン: 上下は画面で固定(重力)', () => {
+  it('★静止は真下に垂れる(振り上げの出だし=真下)', () => {
+    expect(poseR(0).angle).toBeCloseTo(BAT_LANTERN_REST, 5);
   });
 
-  it('★余韻が切れたら消える(出しっぱなしにしない)', () => {
-    expect(batLanternPose(W + B + BAT_LANTERN_SETTLE_MS + 1, 0, 1, W, B)).toBeNull();
+  it('★上下は狙い方向に連動しない。左右だけ鏡になる', () => {
+    // 右向き=背中の上は左上 / 左向き=背中の上は右上。どちらも「上」である(sinが負)。
+    expect(Math.sin(batLanternBack(1))).toBeLessThan(0);
+    expect(Math.sin(batLanternBack(-1))).toBeLessThan(0);
+    expect(Math.cos(batLanternBack(1))).toBeLessThan(0);   // 右向きの背中=左
+    expect(Math.cos(batLanternBack(-1))).toBeGreaterThan(0); // 左向きの背中=右
   });
 
-  it('★溜めの終わり=背中の上まで振り上がっている(振り下ろしの始点)', () => {
-    const p = batLanternPose(W, 0, 1, W, B)!;
-    expect(p.angle).toBeCloseTo(BAT_LANTERN_BACK_DEG * Math.PI / 180, 5);
+  it('★振り下ろし切った所は「下」である(振り上がらない)', () => {
+    expect(Math.sin(norm(batLanternDownDefault(1)))).toBeGreaterThan(0);
+    expect(Math.sin(norm(batLanternDownDefault(-1)))).toBeGreaterThan(0);
   });
 
-  it('★噛みの終わり(=当たる瞬間)=振り下ろし切っている', () => {
-    const p = batLanternPose(W + B, 0, 1, W, B)!;
-    expect(p.angle).toBeCloseTo(BAT_LANTERN_DOWN_DEG * Math.PI / 180, 5);
+  it('★溜めの終わり=背中の上まで振り上がっている', () => {
+    expect(poseR(W).angle).toBeCloseTo(batLanternBack(1), 5);
   });
 
-  it('★出はパッと出さない(頭のフレームは薄い)', () => {
-    expect(batLanternPose(0, 0, 1, W, B)!.alpha).toBeLessThan(0.2);
-    expect(batLanternPose(W, 0, 1, W, B)!.alpha).toBe(1);
+  it('★当たる瞬間=振り下ろし切っている', () => {
+    expect(poseR(W + B).angle).toBeCloseTo(batLanternDownDefault(1), 5);
   });
 
-  it('★振り下ろしは落ちるほど速い(等速でない=慣性MUST)', () => {
-    const a = (t: number) => batLanternPose(W + t * B, 0, 1, W, B)!.angle;
-    const first = a(0.5) - a(0);      // 前半で進む量
-    const second = a(1) - a(0.5);     // 後半で進む量
-    expect(Math.abs(second)).toBeGreaterThan(Math.abs(first) * 1.5);
+  it('★振り上げは135°ぶん動く(小さくて見えない動きにしない)', () => {
+    const d = Math.abs(poseR(W).angle - poseR(0).angle);
+    expect(d).toBeGreaterThan(130 * Math.PI / 180);
   });
 
-  it('★振り上げは上ほど遅い(等速でない)', () => {
-    const a = (t: number) => batLanternPose(t * W, 0, 1, W, B)!.angle;
-    const first = Math.abs(a(0.5) - a(0));
-    const second = Math.abs(a(1) - a(0.5));
-    expect(first).toBeGreaterThan(second * 1.5);
+  it('★振り上げは上ほど遅い / 振り下ろしは落ちるほど速い(等速でない)', () => {
+    const up1 = Math.abs(poseR(W * 0.5).angle - poseR(0).angle);
+    const up2 = Math.abs(poseR(W).angle - poseR(W * 0.5).angle);
+    expect(up1).toBeGreaterThan(up2 * 1.5);
+    const dn1 = Math.abs(poseR(W + B * 0.5).angle - poseR(W).angle);
+    const dn2 = Math.abs(poseR(W + B).angle - poseR(W + B * 0.5).angle);
+    expect(dn2).toBeGreaterThan(dn1 * 1.5);
   });
 
-  it('★左向きは鏡(背中の上→斜め下の関係が保たれる)', () => {
-    const r = batLanternPose(W, 0, 1, W, B)!.angle;
-    const l = batLanternPose(W, Math.PI, -1, W, B)!.angle;
-    // 右向きの角度を縦軸で反転すると左向きの角度になる
-    const mirrored = Math.PI - r;
-    const norm = (x: number) => Math.atan2(Math.sin(x), Math.cos(x));
-    expect(norm(l - mirrored)).toBeCloseTo(0, 5);
+  it('★叩いた後は減衰する揺れ(対称なS字で戻すだけにしない=符号が2回変わる)', () => {
+    const d0 = batLanternDownDefault(1);
+    const sgn: number[] = [];
+    for (let t = 1; t < BAT_LANTERN_SETTLE_MS; t += 4) {
+      const a = batLanternPose(W + B + t, 1, d0, W, B)!.angle - d0;
+      sgn.push(Math.sign(a));
+    }
+    let flips = 0;
+    for (let i = 1; i < sgn.length; i++) if (sgn[i] !== 0 && sgn[i] !== sgn[i - 1]) flips++;
+    expect(flips).toBeGreaterThanOrEqual(2);
+  });
+
+  it('★揺れは収まる(終わりは着弾角へ戻っている)', () => {
+    const d0 = batLanternDownDefault(1);
+    const end = batLanternPose(W + B + BAT_LANTERN_SETTLE_MS - 1, 1, d0, W, B)!;
+    expect(Math.abs(end.angle - d0)).toBeLessThan(2 * Math.PI / 180);
+  });
+
+  it('★余韻が切れたら消える', () => {
+    expect(batLanternPose(W + B + BAT_LANTERN_SETTLE_MS + 1, 1, 0, W, B)).toBeNull();
   });
 });
 
-describe('バットのランタン: 叩き落としのコマ送り', () => {
-  it('★当たる瞬間にちょうど炸裂のコマが出る(絵と判定の時刻が合う)', () => {
-    expect(batSlamFrame(B, B)).toBe(BAT_SLAM_IMPACT_FRAME);
+describe('バットのランタン: 落とす点へ向けて振り切る', () => {
+  it('★落とす点が無ければ既定の角度', () => {
+    expect(batLanternDownAngle(1, null)).toBeCloseTo(batLanternDownDefault(1), 5);
   });
 
-  it('★噛みの頭は先頭のコマ、進むほど番号が上がる(戻らない)', () => {
+  it('★atan2 の折り返しで振りが逆回りしない(既定の近傍へ展開される)', () => {
+    const nominal = batLanternDownDefault(1);
+    const raw = norm(nominal);                       // -π..π に折り返した同じ向き
+    expect(batLanternDownAngle(1, raw)).toBeCloseTo(nominal, 5);
+  });
+
+  it('★極端な狙い(真後ろ)でも既定から±70°に留まる', () => {
+    const nominal = batLanternDownDefault(1);
+    const far = batLanternDownAngle(1, nominal + Math.PI);
+    expect(Math.abs(far - nominal)).toBeLessThanOrEqual(70 * Math.PI / 180 + 1e-9);
+  });
+});
+
+describe('バットのランタン: 炸裂のコマ送り', () => {
+  it('★当たる瞬間にちょうど炸裂のコマが出る', () => {
+    expect(batSlamFrame(0)).toBe(BAT_SLAM_IMPACT_FRAME);
+  });
+
+  it('★当たる前に赤が出ている時間は短い(判定の点に立つ柱にしない)', () => {
+    const lead = BAT_SLAM_HOLD_MS.slice(0, BAT_SLAM_IMPACT_FRAME).reduce((a, b) => a + b, 0);
+    expect(lead).toBeLessThanOrEqual(90);
+    expect(batSlamFrame(-lead)).toBe(0);
+    expect(batSlamFrame(-lead - 1)).toBeNull();
+  });
+
+  it('★一番大きいコマが一番長く出る(山が本番にある)', () => {
+    const peak = BAT_SLAM_HOLD_MS[BAT_SLAM_IMPACT_FRAME];
+    for (let i = 0; i < BAT_SLAM_IMPACT_FRAME; i++) expect(peak).toBeGreaterThan(BAT_SLAM_HOLD_MS[i]);
+  });
+
+  it('★余韻は減速する(等間隔にしない)', () => {
+    for (let i = BAT_SLAM_IMPACT_FRAME + 1; i < BAT_SLAM_FRAMES - 1; i++) {
+      expect(BAT_SLAM_HOLD_MS[i + 1]).toBeGreaterThan(BAT_SLAM_HOLD_MS[i]);
+    }
+  });
+
+  it('★コマは戻らない。最後まで流し切ってから消える', () => {
+    const lead = BAT_SLAM_HOLD_MS.slice(0, BAT_SLAM_IMPACT_FRAME).reduce((a, b) => a + b, 0);
     let prev = -1;
-    for (let t = 0; t <= B + BAT_SLAM_TAIL_MS; t += 5) {
-      const f = batSlamFrame(t, B);
+    for (let t = -lead; t < batSlamTotalMs(); t += 2) {
+      const f = batSlamFrame(t);
       if (f === null) continue;
       expect(f).toBeGreaterThanOrEqual(prev);
       prev = f;
     }
-    expect(batSlamFrame(0, B)).toBe(0);
-  });
-
-  it('★余韻が切れたら消える。最後のコマまで流し切る', () => {
-    expect(batSlamFrame(B + BAT_SLAM_TAIL_MS, B)).toBeNull();
-    expect(batSlamFrame(B + BAT_SLAM_TAIL_MS - 1, B)).toBe(BAT_SLAM_FRAMES - 1);
+    expect(prev).toBe(BAT_SLAM_FRAMES - 1);
+    expect(batSlamFrame(batSlamTotalMs() - lead)).toBeNull();
   });
 
   it('接地点の表はコマ数ぶんある(素材を足したら必ずここも足す)', () => {
     expect(BAT_SLAM_ANCHOR_X).toHaveLength(BAT_SLAM_FRAMES);
+    expect(BAT_SLAM_HOLD_MS).toHaveLength(BAT_SLAM_FRAMES);
   });
 });
 
 describe('対象の型', () => {
-  it('ランタンを振るのはバットだけ(区分外の型に増設しない)', () => {
+  it('ランタンを振るのはバットだけ', () => {
     expect(usesBatLantern({ type: 'bat' })).toBe(true);
     expect(usesBatLantern({ type: 'skeleton' })).toBe(false);
-    expect(usesBatLantern({ type: 'zombie' })).toBe(false);
   });
 });

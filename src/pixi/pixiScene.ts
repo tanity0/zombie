@@ -216,7 +216,8 @@ import { biteTelegraphLine } from '../utils/biteTelegraph';
 import {
   batLanternPose, batSlamFrame, batBiteTiming, usesBatLantern,
   BAT_LANTERN_LEN_PX, BAT_LANTERN_INTRINSIC_ANGLE, BAT_LANTERN_GRIP_X, BAT_LANTERN_GRIP_Y,
-  BAT_SLAM_ANCHOR_X, BAT_SLAM_REF_W, BAT_SLAM_W_PX, BAT_SLAM_TAIL_MS, BAT_LANTERN_SETTLE_MS,
+  BAT_SLAM_ANCHOR_X, BAT_SLAM_REF_W, BAT_SLAM_W_PX, batSlamTotalMs, BAT_LANTERN_SETTLE_MS,
+  batLanternDownAngle, BAT_LANTERN_LEN_MIN_PX, BAT_LANTERN_LEN_MAX_PX,
 } from '../utils/batLanternSwing';
 import {
   BOUNTY_DEPART_FADE_MS,
@@ -18588,25 +18589,39 @@ export class PixiScene {
       const running = e.biteAt !== undefined && e.biteAt > 0;
       const bDirX = e.biteDirX ?? 1, bDirY = e.biteDirY ?? 0;
       const L = this.latchFx(
-        `${e.id}:bat-lantern`, running, bwMs + bbMs + BAT_LANTERN_SETTLE_MS + BAT_SLAM_TAIL_MS + 200, now,
+        `${e.id}:bat-lantern`, running,
+        bwMs + bbMs + BAT_LANTERN_SETTLE_MS + batSlamTotalMs() + 200, now,
         () => {
           const bl = biteTelegraphLine(e, gameTime);
           return [bDirX, bDirY, bl?.tx ?? (cx + bDirX * 30), bl?.ty ?? (cy + bDirY * 30), e.biteAt ?? gameTime];
         },
       );
       if (L) {
-        const [dx, dy, ax, ay, at0] = L.d;
+        const [dx, , ax, ay, at0] = L.d;   // 縦成分は使わない(上下は画面で固定=重力)
         const since = gameTime - at0;
-        const pose = batLanternPose(since, Math.atan2(dy, dx), dx >= 0 ? 1 : -1, bwMs, bbMs);
+        const sgn = dx >= 0 ? 1 : -1;
+        // 握りは**手の高さ**(見た目の身長の約半分。当たり判定の箱ではなく描画の箱 `fb.boxH` を使う)。
+        // 少し狙い側へ寄せる=体の中心から棒が生えているように見せない。
+        const gripX = fb.footX + sgn * fb.boxW * 0.16;
+        const gripY = fb.footY - fb.boxH * 0.52;
+        // ★振り切りは**落とす点へ解く**(クリエイティブ監査 #2: 定数の角度だと先端が炸裂に届かない)。
+        // 長さも握り→落とす点の距離に合わせる(帯で clamp=遠すぎ/近すぎで絵が破綻しない)。
+        const reachX = ax - gripX, reachY = ay - gripY;
+        const reach = Math.hypot(reachX, reachY);
+        const down = batLanternDownAngle(sgn, reach > 4 ? Math.atan2(reachY, reachX) : null);
+        const lanternLen = Math.max(BAT_LANTERN_LEN_MIN_PX,
+          Math.min(BAT_LANTERN_LEN_MAX_PX, reach > 4 ? reach : BAT_LANTERN_LEN_PX));
+        const pose = batLanternPose(since, sgn, down, bwMs, bbMs);
         if (pose) {
           this.drawBountyWeapon(
-            e.id, 'bat-lantern', cx, cy - e.height * 0.22, pose.angle,
-            BAT_LANTERN_LEN_PX, pose.alpha,
+            e.id, 'bat-lantern', gripX, gripY, pose.angle,
+            lanternLen, pose.alpha * artFade,
             1, false, BAT_LANTERN_GRIP_X, BAT_LANTERN_GRIP_Y, BAT_LANTERN_INTRINSIC_ANGLE,
           );
         }
-        const frame = batSlamFrame(since - bwMs, bbMs);
-        if (frame !== null) this.drawBatSlam(e.id, ax, ay, frame);
+        // 炸裂は**当たる瞬間を0**にした時計で送る(掟③=消え切る/最大になるのが当たる瞬間)。
+        const frame = batSlamFrame(since - (bwMs + bbMs));
+        if (frame !== null) this.drawBatSlam(e.id, ax, ay, frame, sgn, artFade);
       }
     }
     if (isBountyType(e.type)) {
@@ -29452,7 +29467,7 @@ export class PixiScene {
    * 分類は②派手さの絵(判定ゼロ)=判定より大きく出す(CLAUDE.md 攻撃ヴィジュアルの2分類)。
    * 負荷 1/10: 敵1体につき pooled Sprite 1枚・per-frame Graphics なし・投影影を落とす光源も増やさない。
    */
-  private drawBatSlam(id: string, x: number, y: number, frame: number): void {
+  private drawBatSlam(id: string, x: number, y: number, frame: number, facing: number, fade: number): void {
     const tex = getTexture(`fx/bat-slam-${frame}`);
     if (!tex || tex.width === 0) return;
     let sp = this.batSlamSprites.get(id);
@@ -29462,12 +29477,15 @@ export class PixiScene {
       this.batSlamSprites.set(id, sp);
     }
     if (sp.texture !== tex) sp.texture = tex;
-    sp.anchor.set(BAT_SLAM_ANCHOR_X[frame] ?? 0.5, 1);
+    // ★素材は左右非対称(接地点が 0.40〜0.59 に偏っている)。左向きは鏡にする=右へ傾いた炸裂が
+    // 左へ振った鎖の先に出る、を作らない(クリエイティブ監査 #11)。
+    const ax = BAT_SLAM_ANCHOR_X[frame] ?? 0.5;
+    sp.anchor.set(facing < 0 ? 1 - ax : ax, 1);
     const sc = BAT_SLAM_W_PX / BAT_SLAM_REF_W;
-    sp.scale.set(sc, sc);
+    sp.scale.set(facing < 0 ? -sc : sc, sc);
     sp.position.set(x, y);
-    sp.alpha = 1;
-    sp.visible = true;
+    sp.alpha = fade;              // 本体と同じ地平線フェードを継承(体だけ消えて炸裂が浮く、を防ぐ)
+    sp.visible = sp.alpha > 0.01;
   }
 
   private drawBountyWeapon(
