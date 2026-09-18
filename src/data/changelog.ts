@@ -8,6 +8,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4455',
+    items: ['ゲーム内容の変更はありません'],
+  },
+  {
     version: '0.25.4454',
     items: [
       'ステージ2のクリア書類が、本来あるべき奥の区域まで戻った。そのぶん道のりは長くなる',
