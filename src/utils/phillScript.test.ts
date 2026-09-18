@@ -4,6 +4,7 @@ import {
   phillSummonSpawnCount, pickPhillMove, PHILL_SUMMON_CAP, PHILL_REQUIRED_GAP_MS,
   type PhillMoveGates,
   phillWingcomboRed, phillRingtossRed, phillGoldringProg,
+  phillLightrainDrawAt, phillLightrainHitTimes, phillLightrainProg,
 } from './phillScript';
 
 const READY_ALL: PhillMoveGates = {
@@ -188,5 +189,42 @@ describe('★フィルの金環(C-1)は流星になる(濃くなるだけでは�
     expect(phillGoldringProg('phill-goldring-windup', 0, 1600)).toBe(1);
     expect(phillGoldringProg('phill-goldring-active', 260, 1600)).toBeNull();
     expect(phillGoldringProg('phill-goldring-recover', 900, 1600)).toBeNull();
+  });
+});
+
+describe('§18-1 A-5「祝福 1発目」= 抽選の前倒し(社長裁定2026-09-18「フィルは推薦で」)', () => {
+  const END = 10_000, N = 6, GAP = 220;
+
+  it('★命中時刻は1msも変わらない(前倒しは抽選だけ)', () => {
+    const hits = phillLightrainHitTimes(END, N, GAP);
+    expect(hits).toEqual([10000, 10220, 10440, 10660, 10880, 11100]);
+    expect(hits[0]).toBe(END);                       // 1発目は溜めの満了ちょうど=旧実装と同じ
+    expect(hits[N - 1] - hits[0]).toBe((N - 1) * GAP); // 技の尺も不変
+  });
+
+  it('★抽選はちょうど shotGapMs だけ前倒しされる', () => {
+    expect(phillLightrainDrawAt(END, GAP)).toBe(END - GAP);
+  });
+
+  it('★1発目にも他の発と同じ長さの予告が付く(旧実装の嘘の検知器: 旧は尺0=1フレームも出ない)', () => {
+    const born = phillLightrainDrawAt(END, GAP);
+    const hits = phillLightrainHitTimes(END, N, GAP);
+    // 旧実装は born = END だったので 1発目の尺は 0 だった
+    expect(hits[0] - END).toBe(0);
+    expect(hits[0] - born).toBe(GAP);
+  });
+
+  it('★どの発も「消え切る瞬間=当たる瞬間」(掟③)', () => {
+    const born = phillLightrainDrawAt(END, GAP);
+    for (const at of phillLightrainHitTimes(END, N, GAP)) {
+      expect(phillLightrainProg(at, born, at)).toBe(1);          // 命中の瞬間=満ちている
+      expect(phillLightrainProg(at, born, at - 1)).toBeLessThan(1);
+    }
+  });
+
+  it('★出る時刻より前は0(まだ来ていないのに赤くならない)', () => {
+    const born = phillLightrainDrawAt(END, GAP);
+    expect(phillLightrainProg(END, born, born)).toBe(0);
+    expect(phillLightrainProg(END, born, born - 50)).toBe(0);
   });
 });

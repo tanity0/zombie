@@ -103,6 +103,13 @@ describe('バットのランタン: 炸裂のコマ送り', () => {
     expect(batSlamFrame(-lead - 1)).toBeNull();
   });
 
+  it('★社長の指定: 9コマ・7コマ目が叩きつけのピーク・8-9は残像(0始まりで6)', () => {
+    expect(BAT_SLAM_FRAMES).toBe(9);
+    expect(BAT_SLAM_IMPACT_FRAME).toBe(6);
+    expect(batSlamFrame(0)).toBe(6);                 // 当たる瞬間=7コマ目
+    expect(BAT_SLAM_FRAMES - 1 - BAT_SLAM_IMPACT_FRAME).toBe(2); // 残像は2コマ
+  });
+
   it('★一番大きいコマが一番長く出る(山が本番にある)', () => {
     const peak = BAT_SLAM_HOLD_MS[BAT_SLAM_IMPACT_FRAME];
     for (let i = 0; i < BAT_SLAM_IMPACT_FRAME; i++) expect(peak).toBeGreaterThan(BAT_SLAM_HOLD_MS[i]);

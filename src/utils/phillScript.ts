@@ -185,3 +185,35 @@ export const phillGoldringProg = (
   state: string, remainMs: number, windupMs: number,
 ): number | null =>
   state === 'phill-goldring-windup' ? multiPhaseTelegraphProg([windupMs], 0, remainMs) : null;
+
+// =============================================================================================
+// ★§18-1 A-5「祝福 1発目」(社長裁定2026-09-18「フィルは推薦で」= 案①を採用)
+// =============================================================================================
+/**
+ * 祝福(光の雨)の着弾点は、旧実装では**溜めの満了と同時**に抽選され、1発目の `at` が抽選と同時刻だった。
+ * つまり1発目の予告に使える時間が**構造的に0**で、**1フレームも赤が出ない**(赤い予告の掟②違反)。
+ *
+ * ★採った案(①): **抽選だけを `shotGapMs` ぶん前倒しする。**
+ * - **命中時刻は6発とも1msも変わらない**(`at` は溜めの満了を基準に置くので不変)。
+ * - 変わるのは**着弾点をサンプルする時刻が 220ms 早まる**ことだけ(散らばり±90pxに対し歩行220ms≒25px)。
+ * - 却下した案: ②1発目を +220ms(技の尺が伸びる) ③着弾点を溜め開始でロック(1.8秒前の位置基準=難度が下がる)。
+ */
+export const phillLightrainDrawAt = (windupEndMs: number, shotGapMs: number): number =>
+  windupEndMs - shotGapMs;
+
+/** 各発の命中時刻(溜めの満了を基準に等間隔)。**前倒ししてもここは変わらない**。 */
+export const phillLightrainHitTimes = (
+  windupEndMs: number, shotCount: number, shotGapMs: number,
+): number[] => Array.from({ length: shotCount }, (_, i) => windupEndMs + i * shotGapMs);
+
+/**
+ * 着弾円の予告の進み(0..1)。**1=命中の瞬間**(そこで消え切る=掟③)。
+ * 全発が「抽選した時刻」から自分の命中までを自分の尺として持つので、1発目にも 220ms の予告が付く。
+ */
+export const phillLightrainProg = (
+  hitAtMs: number, drawAtMs: number, gameTimeMs: number,
+): number => {
+  const total = hitAtMs - drawAtMs;
+  if (total <= 0) return 1;
+  return Math.max(0, Math.min(1, 1 - (hitAtMs - gameTimeMs) / total));
+};

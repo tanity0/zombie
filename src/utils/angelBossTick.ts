@@ -58,6 +58,7 @@ import {
 import {
   pickPhillMove, phillPhaseForHealth, phillRequiredMoveReady, phillRequiredMoveDamage,
   phillSummonSpawnCount, PHILL_REQUIRED_GAP_MS, PHILL_SUMMON_CAP,
+  phillLightrainDrawAt, phillLightrainHitTimes,
   type PhillMoveGates, type PhillMove,
 } from './phillScript';
 import { resolveBossHateAim, resolveBossLockedHateAim, type ResolvedHateAim } from './bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
@@ -3184,6 +3185,9 @@ export const runPhillTick = (
 
   // --- 技の開始(begin*)。実戦の抽選(chase分岐)とボスメーカーの▸個別再生が**同じ1本**を通る ---
   const beginLightrain = (): void => {
+    // ★前回の取り残しを消す(カウンターで中断されるとキューが残る=次の回が古い点を使う)。
+    ph.lightrainQueue = [];
+    patch.phillLightrainQueue = [];
     patch.bossState = 'phill-lightrain-windup';
     patch.bossStateUntil = newGameTime + PH_T.lightrain.windup;
     ph.lightrainReadyAt = newGameTime + PH_T.lightrain.cdMs;
@@ -3322,17 +3326,27 @@ export const runPhillTick = (
     const { overlap, counterActive } = bodyOverlapNow(phill);
     if (overlap && counterActive) {
       phillCounterHit(phcx, phcy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, phill);
-    } else if (newGameTime >= (phill.bossStateUntil ?? 0)) {
-      const queue: { x: number; y: number; at: number }[] = [];
-      for (let i = 0; i < PH_T.lightrain.shotCount; i++) {
-        const ang = Math.random() * Math.PI * 2;
-        const dist = Math.random() * 90;
-        queue.push({ x: pcx + Math.cos(ang) * dist, y: pcy + Math.sin(ang) * dist, at: newGameTime + i * PH_T.lightrain.shotGapMs });
+    } else {
+      // ★§18-1 A-5(社長裁定2026-09-18「フィルは推薦で」= 案①)。着弾点の抽選を `shotGapMs` ぶん
+      // **前倒し**する。`at` は溜めの満了を基準に置くので**命中時刻は6発とも1msも変わらない**——
+      // 変わるのは着弾点をサンプルする時刻だけ。これで1発目にも 220ms の予告が付く
+      // (旧実装は抽選と1発目の命中が同時刻で、赤が**1フレームも描かれなかった**=掟②違反)。
+      const lrEnd = phill.bossStateUntil ?? newGameTime;
+      if (ph.lightrainQueue.length === 0
+        && newGameTime >= phillLightrainDrawAt(lrEnd, PH_T.lightrain.shotGapMs)) {
+        const hits = phillLightrainHitTimes(lrEnd, PH_T.lightrain.shotCount, PH_T.lightrain.shotGapMs);
+        const queue = hits.map(at => {
+          const ang = Math.random() * Math.PI * 2;
+          const dist = Math.random() * 90;
+          return { x: pcx + Math.cos(ang) * dist, y: pcy + Math.sin(ang) * dist, at };
+        });
+        ph.lightrainQueue = queue;
+        patch.phillLightrainQueue = queue; // pixi描画用ミラー(§10バッチ3)
       }
-      ph.lightrainQueue = queue;
-      patch.phillLightrainQueue = queue; // pixi描画用ミラー(§10バッチ3)。挙動は不変=読み出し口を足すだけ。
-      patch.bossState = 'phill-lightrain-active';
-      patch.bossStateUntil = newGameTime + (PH_T.lightrain.shotCount - 1) * PH_T.lightrain.shotGapMs + 400;
+      if (newGameTime >= lrEnd) {
+        patch.bossState = 'phill-lightrain-active';
+        patch.bossStateUntil = lrEnd + (PH_T.lightrain.shotCount - 1) * PH_T.lightrain.shotGapMs + 400;
+      }
     }
   } else if (st === 'phill-lightrain-active') {
     if (ph.lightrainQueue.length > 0) {

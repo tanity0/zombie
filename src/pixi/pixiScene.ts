@@ -144,7 +144,7 @@ import {
   ANGEL_PHILL_TUNING as PH_T,
 } from '../utils/angelScript';
 // PACING_PUZZLE.md §10-12#17(フィル・羽根の檻/裁きの光/急降下の可視域クランプ=可視短辺の0.45倍上限)。
-import { phillCageInitialRadiusPx, phillWingcomboRed, phillRingtossRed, phillGoldringProg } from '../utils/phillScript';
+import { phillCageInitialRadiusPx, phillWingcomboRed, phillRingtossRed, phillGoldringProg, phillLightrainDrawAt, phillLightrainProg } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { pickImageEffectFrame } from '../utils/killSlashFx'; // 'image'エフェクトの横並びシート・コマ送り(kill-slash用に追加)
 import { cineToggle, cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(URL+タイトル画面)
@@ -20396,25 +20396,16 @@ export class PixiScene {
       // 判定ゼロ=分類②(派手枠)。フェードアウトが完全に終わってから発動(=着弾予告の小円)が来る。
       else if (e.type === 'phillboss' && bs === 'phill-lightrain-windup') {
         this.drawPhillBlessingSpotlights(e, gameTime);
+        // ★§18-1 A-5(社長裁定2026-09-18「フィルは推薦で」): 着弾点の抽選が shotGapMs ぶん前倒しに
+        // なったので、**溜めの最後 220ms から着弾円が出る**。旧実装は1発目の予告が1フレームも
+        // 描かれなかった(抽選と命中が同時刻)。溜め中の `bossStateUntil` がそのまま溜めの満了。
+        this.drawPhillLightrainCircles(e, view, o, gameTime, now, e.bossStateUntil ?? gameTime);
       }
       // ---- フィル: 祝福(技1)=時間差の小円5〜6個→光柱(§10-3の1) ----
       else if (e.type === 'phillboss' && bs === 'phill-lightrain-active') {
-        // 位置/時刻はe.phillLightrainQueue(バッチ3で新設したangelBossTickからのミラー・§10バッチ3)。
-        const pulse = 0.5 + 0.5 * Math.sin(now / PixiScene.PHILL_TG_STYLE.pulseMs);
-        // ★v0.25.4099(§11-2c横展開): 各着弾円は「キュー生成時刻」から「自分のat」までが自分の予告尺
-        // (時間差で降る・キュー生成時刻はbossStateUntilから逆算=進行の値を二重に持たない)。
-        const lrQueueBorn = (e.bossStateUntil ?? gameTime) - ((PH_T.lightrain.shotCount - 1) * PH_T.lightrain.shotGapMs + 400);
-        for (const q of e.phillLightrainQueue ?? []) {
-          if (gameTime >= q.at) continue; // 発火済み(保険=既にキューから外れている想定)
-          const lrTotal = q.at - lrQueueBorn;
-          const lrProg = lrTotal > 0 ? Math.max(0, Math.min(1, 1 - (q.at - gameTime) / lrTotal)) : 1;
-          const lrFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
-          const lrMask = CIRCLE_SWEEP_ON
-            ? this.drawSweepCircleFill(o, q.x, q.y, PH_T.lightrain.radius, lrProg, 0xff2a2a, lrFillA, PixiScene.PHILL_TG_STYLE)
-            : (o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius).fill({ color: 0xff2a2a, alpha: lrFillA }), 1);
-          if (FX_RING_ENABLED) this.drawTelegraphRing(view, q.x, q.y, PH_T.lightrain.radius, 0xff3b3b, (0.4 + 0.3 * pulse) * lrMask);
-          else o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * lrMask });
-        }
+        // 溜めの満了(=1発目の命中)は active の `bossStateUntil` から逆算する(進行の値を二重に持たない)。
+        this.drawPhillLightrainCircles(e, view, o, gameTime, now,
+          (e.bossStateUntil ?? gameTime) - ((PH_T.lightrain.shotCount - 1) * PH_T.lightrain.shotGapMs + 400));
       }
       // ---- フィル: 羽斬り(技3・物理①)=T3帯+羽攻撃の武器スプライト(掟W9=構え+実行の両方に出す) ----
       else if (e.type === 'phillboss' && (bs === 'phill-wingslash-windup' || bs === 'phill-wingslash-active' || bs === 'phill-wingslash-recover')) {
@@ -29468,6 +29459,28 @@ export class PixiScene {
    * 分類は②派手さの絵(判定ゼロ)=判定より大きく出す(CLAUDE.md 攻撃ヴィジュアルの2分類)。
    * 負荷 1/10: 敵1体につき pooled Sprite 1枚・per-frame Graphics なし・投影影を落とす光源も増やさない。
    */
+  /**
+   * フィルの祝福(光の雨)の着弾円。**各発は「抽選した時刻」から「自分の命中」までが自分の予告尺**で、
+   * 命中の瞬間に消え切る(赤い予告の掟③)。抽選は `shotGapMs` ぶん前倒しされているので、
+   * **1発目にも同じ長さの予告が付く**(§18-1 A-5)。`windupEndMs` = 溜めの満了=1発目の命中時刻。
+   */
+  private drawPhillLightrainCircles(
+    e: Enemy, view: ActorView, o: Graphics, gameTime: number, now: number, windupEndMs: number,
+  ): void {
+    const pulse = 0.5 + 0.5 * Math.sin(now / PixiScene.PHILL_TG_STYLE.pulseMs);
+    const born = phillLightrainDrawAt(windupEndMs, PH_T.lightrain.shotGapMs);
+    for (const q of e.phillLightrainQueue ?? []) {
+      if (gameTime >= q.at) continue; // 発火済み(保険=既にキューから外れている想定)
+      const lrProg = phillLightrainProg(q.at, born, gameTime);
+      const lrFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
+      const lrMask = CIRCLE_SWEEP_ON
+        ? this.drawSweepCircleFill(o, q.x, q.y, PH_T.lightrain.radius, lrProg, 0xff2a2a, lrFillA, PixiScene.PHILL_TG_STYLE)
+        : (o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius).fill({ color: 0xff2a2a, alpha: lrFillA }), 1);
+      if (FX_RING_ENABLED) this.drawTelegraphRing(view, q.x, q.y, PH_T.lightrain.radius, 0xff3b3b, (0.4 + 0.3 * pulse) * lrMask);
+      else o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * lrMask });
+    }
+  }
+
   private drawBatSlam(
     id: string, x: number, y: number, frame: number, facing: number, fade: number, counterable: boolean,
   ): void {
