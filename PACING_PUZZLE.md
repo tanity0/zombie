@@ -11531,6 +11531,47 @@ plant に距離条件は無い(interval だけ)。ghost は既に外向き成分
 
 **S2(ラボ)・S7・EX は台本を持たない**(§17-5)。
 
+### §17-11. ★発注文(実装バッチ・2026-09-18確定。★未決ゼロ)
+
+**前提の訂正は §17-1 を読むこと**——旧版は `WAVE_EVENTS`(演目表)へ挿す想定だったが、あれは
+`SETPIECE_ENABLED` 既定OFFで**通常プレイでは1度も発火していない**。**生きているのは
+`PUZZLE_ENABLED`(既定ON)側の `runKomaBoardMaintenance`**(`src/utils/directorTick.ts`)。
+
+#### B1. 台本の台帳(純関数・新規 `src/utils/welcomeScript.ts`)
+- §17-10 の表をそのまま `WELCOME_SCRIPT: Partial<Record<StageId, EnemyType[][]>>` として持つ。
+  **S2(ラボ)・S7・EX は持たない**(=台本なし)。
+- `welcomeStageScript(stageId)` / `welcomeStepCount(stageId)` / `welcomeTypesAt(stageId, step)`。
+- **本文の数値をここ以外に書かない**(段の間 `WELCOME_STEP_GAP_MS = 1200` もここ)。
+- 型名は下の「実装が読む型名」の表に従う(**名前を発明しない**)。
+
+#### B2. 進行の状態機械(純関数・同ファイル)
+`welcomeAdvance({ step, aliveOfWelcome, gameTime, stepClearedAt, stageId })` が
+`{ step, spawnNow: EnemyType[] | null, endedAt: number | null }` を返す。
+- **段の敵を全部倒したら次の段**。倒し切った時刻 +`WELCOME_STEP_GAP_MS` で次を湧かす。
+- **最後の段を倒し切った瞬間がウェルカム終了**。
+- ★**終了は3条件のどれか**(§17-3): ①台本を倒し切った ②出撃から**60秒** ③**研究対象区域以上へ入った**。
+  区域の判定は `areaIndexForDist`(`enemyUtils.ts`)を使う=**新しい閾値を作らない**。
+
+#### B3. 配線(`useGameLoop.ts`)
+- **通常湧きを止める**(社長裁定2): ウェルカム中は `puzzleActiveNow` を **false** にする
+  (`runKomaBoardMaintenance` が丸ごと止まる=既存の停止経路に相乗り。**新しい停止分岐を作らない**)。
+- **ディレクターの時計**: `directorTime = gameTime - min(welcomeEndedAt ?? gameTime, 60_000)`。
+  **`phaseAt` / `sceneAt` / `enemyCountCap` / `consumeDueWaves` の4つだけ**がこれを読む。
+  **生存時間・リザルト・死神(距離)・実績は `gameTime` のまま**(§17-3の表)。
+- **ランの時計連動イベントは一律 +60秒**(城ボス 5:00 → **6:00**)。★**固定量**(§17-1 で決着)。
+
+#### B4. 出さないもの(社長裁定2026-09-18「3はいらない」)
+**バナー・SE・カメラなど「関門が始まった」と分かる見える合図は作らない。** 湧きの骨格だけ。
+
+#### ★受け入れ条件(ユニットテストで固定する)
+1. **S1は3段・S3/S4/S5/S6も3段**、S2/S7/EXは**台本なし**(`welcomeStageScript` が undefined)。
+2. 段の敵が**1体でも生きている間は次の段が湧かない**。全滅で `WELCOME_STEP_GAP_MS` 後に次。
+3. **最後の段を倒し切った時刻**が `endedAt`。倒し切る前でも**60秒**で `endedAt` が立つ。
+4. **研究対象区域以上へ入ったら**即 `endedAt`(倒し切っていなくても)。
+5. `directorTime` は**ウェルカム中ずっと0**。終了後は `gameTime - min(endedAt, 60_000)`。
+6. **ウェルカムに何秒かけても城ボスは 6:00**(ランの時計・固定+60秒)。
+7. ウェルカム中は `runKomaBoardMaintenance` が**1体も湧かせない**。
+
 #### 実装が読む型名(実在確認済み・2026-09-17)
 バット=`bat` / スケルトン=`skeleton` / ゾンビ=`zombie` / プラント=`plant` /
 パンプキン=`pumpkin` / 削岩型=`driller` / 伐採人=`logger`。**7種とも `EnemyType` に実在する。**
