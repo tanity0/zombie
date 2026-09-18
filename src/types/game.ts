@@ -664,8 +664,8 @@ export interface Enemy {
   spawnedAt?: number; // gameTime ms when spawned
   isWave?: boolean;
   // PACING_PUZZLE.md §17(ウェルカム台本): この敵はステージ入りの関門(ウェルカム)台本の個体。
-  // isWaveと違い時間無制限の保護(WAVE_GRACE_MS=10秒では60秒の関門に足りない)。上限カリングと
-  // 画面外回収(areaInvalid経路も含む)の両方から除外する(§17-11 B1c)。
+  // §17-12-e(サークル化)以降は保護の実体を持たない(fromEventが上限カリング/画面外回収を担う)。
+  // 「段を倒し切ったか」を数えるためだけの印として残す(§17-12-e「isWelcomeのフィールド自体は残す」)。
   isWelcome?: boolean;
   // 囲い系イベント(アリーナ/ミニボス)で湧いた敵。終了判定(全滅)とカリング保護に使う。
   fromEvent?: boolean;
@@ -2310,9 +2310,12 @@ export interface CastleEvent {
 
 // 囲い系イベント(小イベント=短時間の強制アリーナ戦/ミニボス戦)。
 // activeEvent が非nullの間は: プレイヤーを円内に閉じ込め、敵capを上げ、通常スポーナを止める。
-export type ActiveEventKind = 'horde' | 'boss' | 'rescue';
+// PACING_PUZZLE.md §17-12-c(ウェルカム台本のサークル化): 'welcome' は 'horde' を借りない新設の種別。
+// confining の式(useGameLoop.ts)から明示的に除外する(=閉じ込めない・arenaEventCapを使わない)。
+// 報酬経路(policeArena等)にも繋がない。
+export type ActiveEventKind = 'horde' | 'boss' | 'rescue' | 'welcome';
 export interface ActiveEvent {
-  kind: ActiveEventKind; // horde=ゾンビ大量 / boss=ミニボス(giantbat) / rescue=救助ホールド
+  kind: ActiveEventKind; // horde=ゾンビ大量 / boss=ミニボス(giantbat) / rescue=救助ホールド / welcome=ウェルカム台本の段
   x: number;             // 囲い中心(world)
   y: number;
   radius: number;        // 囲い半径(閉じ込め円=円コリジョン)

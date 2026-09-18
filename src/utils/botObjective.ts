@@ -60,10 +60,13 @@ export interface ObjectiveWorld {
   enemiesKilled: number;
   gameWon: boolean;
   /**
-   * 進行中の囲いイベント(関所ゲート1/2・囲い・救助)。**これが出ている間は前へ進めない**ので、
-   * 目的より先にこれを片付ける(v0.25.2340)。null = 進行中のイベント無し。
+   * 進行中の囲いイベント(関所ゲート1/2・囲い・救助・ウェルカム台本)。**これが出ている間は
+   * 前へ進めない**ので、目的より先にこれを片付ける(v0.25.2340)。null = 進行中のイベント無し。
+   * PACING_PUZZLE.md §17-12-c: 'welcome'(ウェルカム台本の段)も ActiveEventKind に加わった。
+   * `arenaPlan` の rescue以外の既定分岐(台本敵=fromEventを狙う)がそのまま正しく効く
+   * (新しい分岐は要らない)。
    */
-  activeEvent: { kind: 'horde' | 'boss' | 'rescue'; x: number; y: number; radius: number } | null;
+  activeEvent: { kind: 'horde' | 'boss' | 'rescue' | 'welcome'; x: number; y: number; radius: number } | null;
   /**
    * 寄り道POI(武器庫/病院/警察署)。**campaign 目的だけが読む**。
    * 省略(undefined)= 従来どおり=POIを考慮しない(既存の目的の挙動は1ビットも変わらない)。

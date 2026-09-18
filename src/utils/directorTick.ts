@@ -118,13 +118,15 @@ export const EVENT_BANNER_MS = 3500;      // イベント発生告知バナー�
  * クロージャ・実装精度の規律4)。判定・値は移設前と同一(挙動不変)。
  */
 export const isEnemyCapProtected = (
-  e: Pick<Enemy, 'type' | 'fixed' | 'fromEvent' | 'isNamed' | 'questTarget' | 'isWave' | 'isWelcome' | 'spawnedAt' | 'stunUntil'>,
+  e: Pick<Enemy, 'type' | 'fixed' | 'fromEvent' | 'isNamed' | 'questTarget' | 'isWave' | 'spawnedAt' | 'stunUntil'>,
   gameTime: number,
 ): boolean =>
   // ★v0.25.3956(社長報告「クリティカルになって…消えちゃう敵がいる」): 気絶中(=クリのフィニッシュ
   // 受付中)は消さない。ご褒美の窓の最中に上限カリングで消えるのは理不尽(プラント消失の疑い筋①)。
   (e.stunUntil !== undefined && gameTime < e.stunUntil) ||
   !!e.fixed ||
+  // PACING_PUZZLE.md §17-12-e(ウェルカム台本のサークル化): ウェルカムの個体も fromEvent=true で
+  // 湧かせるので、この保護がそのまま時間無制限で効く(旧 isWelcome 専用の保護は撤去=fromEventに一本化)。
   !!e.fromEvent ||
   !!e.isNamed ||
   !!e.questTarget ||
@@ -132,9 +134,6 @@ export const isEnemyCapProtected = (
   e.type === 'lab-zombie-3' ||
   isHiddenBoss(e.type) ||
   isBountyType(e.type) ||
-  // PACING_PUZZLE.md §17-11 B1c(ウェルカム台本): isWaveの保護はWAVE_GRACE_MS(10秒)で切れるが、
-  // ウェルカムは最長60秒続くので足りない。時間無制限で保護する(印を持つ間ずっと)。
-  !!e.isWelcome ||
   // PACING_PUZZLE.md §14-4-3(使者・hangedman): 湧き帳簿/ノルマ(通常湧き上限カリング)の対象外。
   // 死神本体の技として管理される耐久武器なので、上限カリングで消えると囲み召喚の意味が壊れる。
   isHangedman(e.type) ||
@@ -1149,15 +1148,14 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // §14-4-3(使者・hangedman): 同じ理由でリサイクル対象外(専用の追尾コントローラが座標を管理)。
     if (isHangedman(enemy.type)) return enemy;
     // 囲い系イベントの敵は円内に留めるため距離リサイクル対象外(画面外送りしない)。
+    // PACING_PUZZLE.md §17-12-e(ウェルカム台本のサークル化): ウェルカムの個体もfromEvent=trueで
+    // 湧くのでここで一括して除外される(areaInvalid経路も含む)。旧isWelcome専用の除外は撤去。
     if (enemy.fromEvent) return enemy;
     // §5.14 M13: 宿敵(ネームド)は距離リサイクル対象外(倒すかラン終了まで持ち越すかの2択に
     // 保ち、勝手に湧き直して型が変わったように見えるのを防ぐ)。
     if (enemy.isNamed) return enemy;
     // 二人組クエストの強制目標個体も同様に対象外(討伐が条件=消えたり湧き直したりしてはいけない)。
     if (enemy.questTarget) return enemy;
-    // §17-11 B1c(ウェルカム台本): 時間無制限で画面外回収の対象外(isWaveと違いWAVE_GRACE_MSで
-    // 切れない=最長60秒の関門に足りないため)。areaInvalid経路(下)もこれで一括して除外される。
-    if (enemy.isWelcome) return enemy;
     // 休眠中(未起動)の敵は「近づくまで向かってこない」設計。距離リサイクルで先回り(ワープ)させない
     // =城ボス等は起動するまで定位置で待機。一度起動(dormant解除)すれば以降は通常どおりリサイクルされる(社長指示)。
     // ただしラボ(研究所スキン)の通常湧き休眠個体は対象にする: 届かない休眠個体がその場に残り続けて
@@ -1227,8 +1225,9 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     const aliveMs = gameTime - (enemy.spawnedAt ?? 0);
     // DISTRIBUTION_REDESIGN.md①: sceneSpawn(台本のfeatured床/保証出現などでエリア不問に選ばれた)
     // も強制回収の対象外(画面外に離れた時の通常回収 OFFSCREEN_RECYCLE_MARGIN は従来どおり効く)。
-    // (isWelcomeは上の早期returnで既にareaInvalid経路も含めて除外済み。パンプキン系は全区域で
-    // 重み0・プラントは区域0で重み0なので、外すと出撃直後(区域0〜1)に確実に化ける=§17-11 B1c)
+    // (ウェルカムの個体はfromEvent=trueなので上の早期returnで既にareaInvalid経路も含めて除外済み。
+    // パンプキン系は全区域で重み0・プラントは区域0で重み0なので、外すと出撃直後(区域0〜1)に
+    // 確実に化ける=§17-12-e)
     const areaInvalid = !preserveEnemyState && !enemy.isWave && !enemy.fromEvent && !enemy.sceneSpawn
       && aliveMs > 5000
       && !isValidForArea(enemy.type, playerAreaIdx);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit, aimEnemyDist2, isBountyType, corpseEligible, isArenaSweepProtected, resistsChipKnockback, isPumpkinTier } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, spawnEnemyAtWithTier, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit, aimEnemyDist2, isBountyType, corpseEligible, isArenaSweepProtected, resistsChipKnockback, isPumpkinTier } from './enemyUtils';
 import { isEngageableBoss } from './bossEngagement';
 import type { Enemy, Player, Summon, GameBounds, EnemyType } from '../types/game';
 import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
@@ -642,5 +642,23 @@ describe('★守護霊が狙う敵は敵からも狙う(社長指示2026-08-23�
     const mob = { ...spawnEnemyAt('zombie', 0, 0, 0), id: 'z1', x: 0, y: 0, hateTarget: 'ghost' } as Enemy;
     const t = resolveEnemyTarget(mob, player, ghostAt(3000, 0, undefined), 200, false, 0);
     expect(t.isSummon).toBe(false);
+  });
+});
+
+// PACING_PUZZLE.md §17-12-d/e(ウェルカム台本のサークル化): spawnEnemyAtWithTierの`tier`を
+// ForcedColorTier(EnemyColorTier | 'none')へ広げた。既存呼び手(EnemyColorTierの実値のみ)の
+// 挙動は不変(下の1件目)で、'none'は抽選を経ず色なし固定になる(§17-8 受け入れ条件10)。
+describe('spawnEnemyAtWithTier (§17-12・forcedColorTierをForcedColorTierへ拡張)', () => {
+  it('既存の呼び手どおりEnemyColorTierの実値を渡すと、抽選を経ずそのまま固定される(挙動不変)', () => {
+    const e = spawnEnemyAtWithTier('bat', 0, 0, 0, 'purple');
+    expect(e.colorTier).toBe('purple');
+  });
+  it("tier:'none' は抽選を経ず色ティアなしで固定される(受け入れ条件10)", () => {
+    const e = spawnEnemyAtWithTier('bat', 0, 0, 0, 'none');
+    expect(e.colorTier).toBeUndefined();
+  });
+  it("tier:'red' は抽選を経ず赤で固定される", () => {
+    const e = spawnEnemyAtWithTier('bat', 0, 0, 0, 'red');
+    expect(e.colorTier).toBe('red');
   });
 });

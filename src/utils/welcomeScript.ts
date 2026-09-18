@@ -8,8 +8,7 @@
 // spawn/ended を実行するだけで、進行の判定ロジック自体はここに1本化する(§17-11 B2「配線ロジックは
 // 純関数に切り出してテスト」)。
 
-import type { Enemy, EnemyType, EnemyColorTier, GameBounds, Player } from '../types/game';
-import { generateEnemy, type ForcedColorTier } from './enemyUtils';
+import type { EnemyType, EnemyColorTier } from '../types/game';
 
 // ============================================================================
 // B1. 台本の台帳
@@ -80,40 +79,15 @@ export const welcomeUnitsAt = (stageId: string, step: number): WelcomeUnit[] | u
   welcomeStageScript(stageId)?.[step];
 
 // ============================================================================
-// B1b. 湧きヘルパー
-// ============================================================================
-
-/**
- * ウェルカム台本の1体を湧かせる。`ringAroundPlayer`(stageDirector.ts・非export/画面内半径/
- * Math.random/tier不可)は使えないので、既存の通常湧き `generateEnemy` の配置ロジック
- * (固定ビュー矩形の外側=既存の spawnBounds の外側・spawnRng 使用)をそのまま使う
- * (§17-11 B1b「画面外の輪から湧かす」)。`forcedType` を渡すので型抽選は通らず、
- * `forcedColorTier` に `unit.tier ?? 'none'` を渡すので色抽選も通らない(§17-11 B1)。
- * 乱数は `generateEnemy` 内部の `spawnRng`(seeded)がそのまま使われる=再現性を壊さない。
- *
- * 湧かせた個体には `isWelcome: true` の印を付ける(§17-11 B1c。上限カリング/画面外回収から
- * 時間無制限で除外するための印。実際の除外処理は directorTick.ts 側)。
- */
-export const welcomeSpawnAt = (
-  unit: WelcomeUnit,
-  player: Player,
-  bounds: GameBounds,
-  gameTime: number,
-  viewOffsetY = 0,
-  snowTheme = false,
-): Enemy => {
-  const forcedColorTier: ForcedColorTier = unit.tier ?? 'none';
-  const enemy = generateEnemy(
-    gameTime, player, bounds, unit.type, player.lastDirection, viewOffsetY, snowTheme,
-    0, [], [], 1, false, [], undefined, forcedColorTier, false,
-  );
-  enemy.isWelcome = true;
-  return enemy;
-};
-
-// ============================================================================
 // B2. 進行の状態機械
 // ============================================================================
+//
+// PACING_PUZZLE.md §17-12-e(ウェルカム台本のサークル化・社長決定2026-09-18): 旧B1bの
+// `welcomeSpawnAt`(画面外の輪から湧かす自前ヘルパー)は削除した。段の敵はプレイヤー中心
+// 半径240pxの円内(既存の囲い系イベントと同じ `placeInRing(0.5)` の作法)に湧かせるので、
+// 画面外配置ロジックは要らない。実際の湧き(`spawnEnemyAtWithTier` + `beginArenaEvent`)は
+// 配線側(useGameLoop.ts)で行う——他の囲いイベント(horde/boss)の配置コードと同じ場所・同じ
+// 作法に揃えるため(§17-12-d「新しい配置式を発明しない」)。
 
 export interface WelcomeAdvanceParams {
   // 直前まで「湧かせ済み」だった段(0始まり)。まだ何も湧かせていない最初の呼び出しは -1。
@@ -136,7 +110,7 @@ export interface WelcomeAdvanceResult {
 
 /**
  * ウェルカム台本の進行を1フレームぶん進める(純関数)。呼び出し側(useGameLoop.ts)は
- * 戻り値の `spawnNow` を見て実際に `welcomeSpawnAt` で湧かせ、`endedAt` が立ったら
+ * 戻り値の `spawnNow` を見て実際に円内へ湧かせ(§17-12-d)、`endedAt` が立ったら
  * ディレクターの時計(directorTime)を動かし始める。
  *
  * 終了は3条件のどれか(§17-3・§17-11 B2): ①台本を倒し切った ②出撃から60秒

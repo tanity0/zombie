@@ -948,12 +948,15 @@ export const spawnEnemyAt = (
 // PACING_PUZZLE.md §5.21 M20 stage③(囲いゲート1): 抽選(rollColorTierForArea)を経ずtierを強制指定して
 // スポーンする。rareMultを上げても抽選の上限(DDA_COLOR_SUM_CAP)で無色が残りうるため、「全個体を
 // 確実にレア化」したい一回限りのイベント湧きにはこちらを使う(spawnEnemyAtの兄弟版)。
+// PACING_PUZZLE.md §17-12-d(ウェルカム台本のサークル化): tier を ForcedColorTier へ広げ、
+// 'none'(=抽選を通さず色なし固定)も渡せるようにする。既存の呼び手(EnemyColorTierの実値のみを渡す)
+// は1つも変えない(挙動不変)。
 export const spawnEnemyAtWithTier = (
   type: EnemyType,
   x: number,
   y: number,
   gameTime: number,
-  tier: EnemyColorTier
+  tier: ForcedColorTier
 ): Enemy => buildEnemy(type, x, y, gameTime, true, 0, 1, tier);
 
 // Hostile projectile profiles. In the Mad Forest port only `plant` shoots —

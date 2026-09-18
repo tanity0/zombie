@@ -1,13 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   WELCOME_SCRIPT, WELCOME_STEP_GAP_MS, WELCOME_FORCE_END_MS, WELCOME_FORCE_END_AREA,
-  welcomeStageScript, welcomeStepCount, welcomeUnitsAt, welcomeAdvance, welcomeSpawnAt,
+  welcomeStageScript, welcomeStepCount, welcomeUnitsAt, welcomeAdvance,
 } from './welcomeScript';
-import type { Player, GameBounds, Enemy } from '../types/game';
-
-const mkPlayer = (x = 0, y = 0): Player =>
-  ({ x, y, width: 32, height: 32, lastDirection: null } as unknown as Player);
-const BOUNDS: GameBounds = { width: 800, height: 600 };
 
 describe('welcomeStageScript / welcomeStepCount (§17-11 受け入れ条件1)', () => {
   it('S1/S3/S4/S5/S6は3段', () => {
@@ -131,25 +126,8 @@ describe('welcomeAdvance(§17-11 B2・受け入れ条件2/3/4)', () => {
   });
 });
 
-describe('welcomeSpawnAt(§17-11 B1b・受け入れ条件10)', () => {
-  it('isWelcome=trueが付く', () => {
-    const e = welcomeSpawnAt({ type: 'bat', count: 1 }, mkPlayer(), BOUNDS, 0);
-    expect(e.isWelcome).toBe(true);
-    expect(e.type).toBe('bat');
-  });
-  it('tier未指定はforcedColorTier=noneが渡り、色ティアが付かない(受け入れ条件10)', () => {
-    const e = welcomeSpawnAt({ type: 'bat', count: 1 }, mkPlayer(), BOUNDS, 0);
-    expect(e.colorTier).toBeUndefined();
-  });
-  it('tier: redを指定すると赤で固定される(抽選を経ない)', () => {
-    const e = welcomeSpawnAt({ type: 'bat', count: 1, tier: 'red' }, mkPlayer(), BOUNDS, 0);
-    expect(e.colorTier).toBe('red');
-  });
-  it('画面(spawnBounds)の外側に湧く', () => {
-    const player = mkPlayer(1000, 1000);
-    const e: Enemy = welcomeSpawnAt({ type: 'zombie', count: 1 }, player, BOUNDS, 0);
-    const dx = Math.abs(e.x - player.x);
-    const dy = Math.abs(e.y - player.y);
-    expect(dx > BOUNDS.width / 2 || dy > BOUNDS.height / 2).toBe(true);
-  });
-});
+// PACING_PUZZLE.md §17-12-e(ウェルカム台本のサークル化): 旧`welcomeSpawnAt`(画面外の輪から湧かす
+// 自前ヘルパー)は削除した。湧き(spawnEnemyAtWithTier + forcedColorTier)は配線側(useGameLoop.ts)が
+// 既存の囲いイベントと同じ作法で直接行うため、このファイルには湧きヘルパーが無い(=テストも無い)。
+// `forcedColorTier: 'none'`(受け入れ条件10)は湧きの実体である `spawnEnemyAtWithTier`/`buildEnemy`
+// 側(enemyUtils.test.ts)でカバーする。

@@ -328,7 +328,7 @@ import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { phaseAt, sceneAt } from '../utils/difficultyDirector';
-import { welcomeStageScript, welcomeAdvance, welcomeSpawnAt, WELCOME_FORCE_END_MS } from '../utils/welcomeScript';
+import { welcomeStageScript, welcomeAdvance, WELCOME_FORCE_END_MS } from '../utils/welcomeScript';
 import { spawnEscalation, gateLiveCorrection, playerPower, expectedPower, powerMargin } from '../utils/difficultyScaler';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
@@ -4253,6 +4253,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 useGameStore.getState().enqueueNpcDialogue(eventQuestSubAcceptLines(getSelectedStageId()));
               }
             }
+          } else if (ae.kind === 'welcome') {
+            // PACING_PUZZLE.md §17-12(ウェルカム台本のサークル化): 進行(段クリア判定/次の段への
+            // 遷移/強制終了/ラウンドを閉じる)は下の `welcomeActive` 専用ブロックが1本で持つ
+            // (welcomeAdvance・純関数)。ここ(horde/gate/police共用の汎用終了判定)を通すと
+            // 「駆除成功!」バナー+SEが出てしまう(B4「バナー・SEなどの合図は作らない」に違反)ので、
+            // 意図的に何もしない no-op 分岐にする。
           } else {
             // 変異者大量発生(horde)の段階スポーン: 1秒に1体ずつ計N体(社長指示で3→1)。N体目中の通し番号で
             // 種類を出し分け(総数の1/3=パンプキン / 2/3・最終=ウルフ / それ以外=zombie/skeleton/bat ランダム)。
@@ -14967,8 +14973,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // 囲い系(閉じ込め)イベント中だけ通常スポーナ/演出波を止める。閉じ込めない救助(rescue)は通常通り湧かせる(社長指示)。
+        // PACING_PUZZLE.md §17-12-c(ウェルカム台本のサークル化): 'welcome' も rescue と同じく除外する
+        // (kind==='welcome'をconfiningへ含めると computeEnemyCap が arenaEventCap=20 を返し、
+        // 台本の体数と無関係な上限が入ってしまう。既存の'horde'は借りない=報酬経路にも繋がない)。
         const ae = useGameStore.getState().activeEvent;
-        const confining = !!ae && ae.kind !== 'rescue';
+        const confining = !!ae && ae.kind !== 'rescue' && ae.kind !== 'welcome';
         // ステップ②(難易度ディレクター): 屋外の「敵数の上限」をフェーズ駆動(フロア≈10〜天井20)にする。
         // カリング上限(enemyCap)と湧き上限(normalSpawnCap)の両方を同じ値で動かす(片方だけだと即カリングされる/枠が余る)。
         // 屋内/ラボは従来どおり固定上限。囲い/救助イベントの特別枠は維持。
@@ -15710,9 +15719,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 保証出現(plant1分/犬3分・エリア不問)はPACING_REDESIGN.mdバッチ1.5で撤廃(社長決定)。
         // 「勉強させる回」の役割はバッチ4の講習演目(relief-pumpkin/relief-wolf、featuredFloor有効)が継承する。
 
-        // PACING_PUZZLE.md §17-11 B3(ウェルカム台本の進行)。判定(段の片付き/強制終了3条件)は
-        // 純関数 welcomeAdvance(welcomeScript.ts)に1本化してある。ここは①今の在席数を数えて渡す
-        // ②戻ってきた spawnNow を実際に welcomeSpawnAt + addEnemy する ③refを進める、だけ。
+        // PACING_PUZZLE.md §17-12(ウェルカム台本をサークルイベントにする・社長決定2026-09-18)。
+        // 判定(段の片付き/強制終了3条件)は純関数 welcomeAdvance(welcomeScript.ts)に1本化してある。
+        // ここは①今の在席数を数えて渡す ②戻ってきた spawnNow を実際に囲い円内へ spawn する
+        // ③輪の開閉(beginArenaEvent/activeEvent:null)④refを進める、だけ。
         if (welcomeActive && !noSpawn) {
           const welcomeStageIdNow = getSelectedStageId() ?? '';
           const aliveWelcomeNow = useGameStore.getState().enemies.filter(e => e.isWelcome).length;
@@ -15721,6 +15731,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 「いつ0になったか」を見張るのはこちら側の役目)。
           if (aliveWelcomeNow === 0 && welcomeStepClearedAtRef.current === null && welcomeStepRef.current >= 0) {
             welcomeStepClearedAtRef.current = gameTime;
+          }
+          // §17-12-d「段ごと: 1段=1つの輪。倒し切ったら閉じ、gap後に次の輪を新しく開く」。
+          // 段が全滅した瞬間、まだ輪(kind:'welcome')が開いていれば閉じる(次の輪はspawnNowが
+          // 立った時に新しく開く=空の輪を出しっぱなしにしない)。
+          if (aliveWelcomeNow === 0 && useGameStore.getState().activeEvent?.kind === 'welcome') {
+            useGameStore.setState({ activeEvent: null });
           }
           const welcomeResult = welcomeAdvance({
             step: welcomeStepRef.current,
@@ -15731,9 +15747,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             areaIndex: playerAreaIdx,
           });
           if (welcomeResult.spawnNow) {
+            // §17-12-c/d: 'horde'を借りず新設の'welcome'を使う(confiningから除外済み=
+            // arenaEventCapを使わない・報酬経路にも繋がない)。confinesPlayer:false(プレイヤーは
+            // 円から出られる)・permeable:false(既存の囲いと同じ=非イベント敵は境界を越えて流入しない)。
+            const wpcx = player.x + player.width / 2, wpcy = player.y + player.height / 2;
+            useGameStore.getState().beginArenaEvent({
+              kind: 'welcome', x: wpcx, y: wpcy, radius: ARENA_EVENT_RADIUS,
+              startedAt: gameTime, endsAt: gameTime + WELCOME_FORCE_END_MS,
+              confinesPlayer: false, permeable: false,
+            });
+            // 配置: 既存 placeInRing(0.5) と同じ作法(中心=プレイヤーを避け、半径50〜92%に置く)。
+            // 新しい配置式は発明しない(§17-12-d)。
+            const placeInWelcomeRing = (minFrac: number) => {
+              const ang = Math.random() * Math.PI * 2;
+              const dist = ARENA_EVENT_RADIUS * (minFrac + Math.random() * (0.92 - minFrac));
+              return { x: wpcx + Math.cos(ang) * dist, y: wpcy + Math.sin(ang) * dist };
+            };
             for (const unit of welcomeResult.spawnNow) {
               for (let i = 0; i < unit.count; i++) {
-                const welcomeEnemy = welcomeSpawnAt(unit, player, spawnBounds, gameTime, spawnViewOffsetY, snowTheme);
+                const pos = placeInWelcomeRing(0.5);
+                const welcomeEnemy = spawnEnemyAtWithTier(unit.type, pos.x, pos.y, gameTime, unit.tier ?? 'none');
+                welcomeEnemy.x -= welcomeEnemy.width / 2; welcomeEnemy.y -= welcomeEnemy.height / 2; // 配置点を中心に
+                // 印: fromEvent(上限カリング/画面外回収から保護+円内へ閉じ込め=§17-12-e)+
+                // isWelcome(段の「倒し切ったか」を数えるためだけの印として残す)。
+                welcomeEnemy.fromEvent = true;
+                welcomeEnemy.isWelcome = true;
+                // ★dormant: false(既存の囲いはdormant:true+aggroRangeで「近づくまで待つ」が、
+                // ここは目の前に湧くので即動く=§17-12-d)。
+                welcomeEnemy.dormant = false;
                 // ★★§17-11 B3(2026-09-18判明): 叫喚型(S4-2)は特別枠(scriptPuzzle.tsのSPECIAL_SLOTS。
                 // 叫喚型=区域3以上でしか解禁されない)を通さず、ここから直接湧かす(通さないと
                 // ウェルカムは区域0〜1なので1体も出ない)。既存2経路と同じくfixed:trueを付ける
@@ -15744,20 +15785,33 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 addEnemy(welcomeEnemy);
               }
             }
+            // 演出: ★輪だけ(spawnRing 2本)。暗転フラッシュ・シェイク・スローは出さない
+            // (§17-12-b「覆したのは『合図を出さない』であって『派手にする』ではない」)。
+            // 色は syncArena(pixiScene.ts)の既定色(kindがboss/rescue以外=青)に揃える。
+            spawnRing(wpcx, wpcy, ARENA_EVENT_RADIUS * 0.2, ARENA_EVENT_RADIUS, 'rgba(56,189,248,0.9)', 6, 700);
+            spawnRing(wpcx, wpcy, ARENA_EVENT_RADIUS, ARENA_EVENT_RADIUS + 30, 'rgba(56,189,248,0.9)', 3, 760);
             welcomeStepClearedAtRef.current = null; // 新しい段が湧いた=まだ片付いていない
           }
           welcomeStepRef.current = welcomeResult.step;
           if (welcomeResult.endedAt !== null) {
             welcomeEndedAtRef.current = welcomeResult.endedAt;
-            // §17-3「強制始動で打ち切った時…残った敵は消さない」: 生きている個体は消さないが、
-            // isWelcomeの時間無制限保護(§17-11 B1c)はウェルカムの間だけの意図なので、終了と同時に
-            // 印を外す=以降は通常の上限カリング/画面外回収ルールへ合流する(設計書に無い箇所だが、
-            // 外さないと台本外の雑魚が上限カリング対象外のままラン終了まで居座ってしまうための実装補完)。
-            useGameStore.setState(s => (
-              s.enemies.some(e => e.isWelcome)
-                ? { enemies: s.enemies.map(e => (e.isWelcome ? { ...e, isWelcome: false } : e)) }
-                : {}
-            ));
+            // §17-3「強制始動で打ち切った時…残った敵は消さない」(不変・§17-12はこれを覆していない)。
+            // 終了時は輪を閉じる(§17-12-d「終わったら輪も閉じる」)が、endArenaEvent()は残存
+            // fromEvent敵を撤去してしまう(既存の共有関数の仕様)ので、ここでは使わない。
+            // 生きている個体は消さず、fromEvent/isWelcomeの印だけを外して以降は通常の
+            // 上限カリング/画面外回収ルールへ合流させる(印を外さないと台本外の雑魚が
+            // 上限カリング対象外のままラン終了まで居座ってしまうための実装補完)。
+            useGameStore.setState(s => {
+              const ringOpen = s.activeEvent?.kind === 'welcome';
+              const hasSurvivors = s.enemies.some(e => e.isWelcome);
+              if (!ringOpen && !hasSurvivors) return {};
+              return {
+                activeEvent: ringOpen ? null : s.activeEvent,
+                enemies: hasSurvivors
+                  ? s.enemies.map(e => (e.isWelcome ? { ...e, isWelcome: false, fromEvent: false } : e))
+                  : s.enemies,
+              };
+            });
           }
         }
 
