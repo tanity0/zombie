@@ -3,7 +3,7 @@ import {
   batLanternPose, batLanternBack, batLanternDownDefault, batLanternDownAngle,
   batSlamFrame, batSlamTotalMs, BAT_SLAM_FRAMES, BAT_SLAM_IMPACT_FRAME,
   BAT_SLAM_HOLD_MS, BAT_SLAM_ANCHOR_X, BAT_LANTERN_SETTLE_MS, BAT_LANTERN_REST,
-  usesBatLantern,
+  usesBatLantern, batSlamTexName, batSlamCounterable,
 } from './batLanternSwing';
 
 const W = 300, B = 200;
@@ -137,5 +137,18 @@ describe('対象の型', () => {
   it('ランタンを振るのはバットだけ', () => {
     expect(usesBatLantern({ type: 'bat' })).toBe(true);
     expect(usesBatLantern({ type: 'skeleton' })).toBe(false);
+  });
+});
+
+describe('炸裂の色は「カウンターできるか」で決まる(色と形の文法)', () => {
+  it('★掴み(bat-grab)は赤・既定の噛みつきは紫。台帳は enemyBite.ts の1箇所', () => {
+    expect(batSlamCounterable({ type: 'bat', chaffMove: 'bat-grab' } as never)).toBe(true);
+    expect(batSlamCounterable({ type: 'bat' } as never)).toBe(false);
+  });
+
+  it('★赤と紫で別のテクスチャを引く(同じ絵を赤で使い回さない)', () => {
+    expect(batSlamTexName(5, true)).toBe('fx/bat-slam-5');
+    expect(batSlamTexName(5, false)).toBe('fx/bat-slam-p-5');
+    expect(batSlamTexName(5, true)).not.toBe(batSlamTexName(5, false));
   });
 });

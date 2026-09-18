@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4463',
+    items: [
+      'コウモリの炸裂が、返せる掴みでは赤、返せない噛みつきでは紫になった。色を見れば打ち返せるかが分かる',
+    ],
+  },
+  {
     version: '0.25.4462',
     items: [
       'コウモリのランタンが、垂らした所から背中の上まで大きく振り上がるようになった。振り下ろす先は狙った点で、鎖の長さもそこまで伸びる',

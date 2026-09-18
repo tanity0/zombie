@@ -125,6 +125,22 @@ export const batSlamFrame = (sinceImpactMs: number): number | null => {
   return null;
 };
 
+/**
+ * ★炸裂の色は**その技がカウンターできるかで決まる**(CLAUDE.md「色と形の文法」
+ * ①赤=カウンター/回避の対象 ②紫=カウンターできない攻撃)。
+ *
+ * バットは**2つの攻撃を持つ**: §16の技「掴み」(`bat-grab`)は `counterable: true` =**赤**、
+ * §12の既定の噛みつきは社長裁定2026-08-25で `counterable: false` =**紫**。
+ * 同じ絵を両方に赤で出すと、この敵だけ「赤=返せる」が壊れる。色を `counterable` から引けば、
+ * **台帳(`enemyBite.ts`)を1行変えるだけで絵の色も追従する**=2箇所で色を持たない。
+ */
+export const batSlamTexName = (frame: number, counterable: boolean): string =>
+  counterable ? `fx/bat-slam-${frame}` : `fx/bat-slam-p-${frame}`;
+
+/** その敵が「いま出している攻撃」がカウンターできるか(技の表→型の表の順で引く)。 */
+export const batSlamCounterable = (e: Enemy): boolean =>
+  biteSpecFor(e.type, e.chaffMove, e.aiPhase).counterable;
+
 /** この敵がランタンを振るか(型で決める)。 */
 export const usesBatLantern = (e: Pick<Enemy, 'type'>): boolean => e.type === 'bat';
 

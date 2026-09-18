@@ -217,7 +217,7 @@ import {
   batLanternPose, batSlamFrame, batBiteTiming, usesBatLantern,
   BAT_LANTERN_LEN_PX, BAT_LANTERN_INTRINSIC_ANGLE, BAT_LANTERN_GRIP_X, BAT_LANTERN_GRIP_Y,
   BAT_SLAM_ANCHOR_X, BAT_SLAM_REF_W, BAT_SLAM_W_PX, batSlamTotalMs, BAT_LANTERN_SETTLE_MS,
-  batLanternDownAngle, BAT_LANTERN_LEN_MIN_PX, BAT_LANTERN_LEN_MAX_PX,
+  batLanternDownAngle, BAT_LANTERN_LEN_MIN_PX, BAT_LANTERN_LEN_MAX_PX, batSlamTexName, batSlamCounterable,
 } from '../utils/batLanternSwing';
 import {
   BOUNTY_DEPART_FADE_MS,
@@ -18593,11 +18593,12 @@ export class PixiScene {
         bwMs + bbMs + BAT_LANTERN_SETTLE_MS + batSlamTotalMs() + 200, now,
         () => {
           const bl = biteTelegraphLine(e, gameTime);
-          return [bDirX, bDirY, bl?.tx ?? (cx + bDirX * 30), bl?.ty ?? (cy + bDirY * 30), e.biteAt ?? gameTime];
+          return [bDirX, bDirY, bl?.tx ?? (cx + bDirX * 30), bl?.ty ?? (cy + bDirY * 30),
+            e.biteAt ?? gameTime, batSlamCounterable(e) ? 1 : 0];
         },
       );
       if (L) {
-        const [dx, , ax, ay, at0] = L.d;   // 縦成分は使わない(上下は画面で固定=重力)
+        const [dx, , ax, ay, at0, ctr] = L.d;   // 縦成分は使わない(上下は画面で固定=重力)
         const since = gameTime - at0;
         const sgn = dx >= 0 ? 1 : -1;
         // 握りは**手の高さ**(見た目の身長の約半分。当たり判定の箱ではなく描画の箱 `fb.boxH` を使う)。
@@ -18621,7 +18622,7 @@ export class PixiScene {
         }
         // 炸裂は**当たる瞬間を0**にした時計で送る(掟③=消え切る/最大になるのが当たる瞬間)。
         const frame = batSlamFrame(since - (bwMs + bbMs));
-        if (frame !== null) this.drawBatSlam(e.id, ax, ay, frame, sgn, artFade);
+        if (frame !== null) this.drawBatSlam(e.id, ax, ay, frame, sgn, artFade, ctr === 1);
       }
     }
     if (isBountyType(e.type)) {
@@ -29467,8 +29468,11 @@ export class PixiScene {
    * 分類は②派手さの絵(判定ゼロ)=判定より大きく出す(CLAUDE.md 攻撃ヴィジュアルの2分類)。
    * 負荷 1/10: 敵1体につき pooled Sprite 1枚・per-frame Graphics なし・投影影を落とす光源も増やさない。
    */
-  private drawBatSlam(id: string, x: number, y: number, frame: number, facing: number, fade: number): void {
-    const tex = getTexture(`fx/bat-slam-${frame}`);
+  private drawBatSlam(
+    id: string, x: number, y: number, frame: number, facing: number, fade: number, counterable: boolean,
+  ): void {
+    // 色は技の `counterable` から引く(赤=返せる/紫=返せない)。台帳は `enemyBite.ts` の1箇所。
+    const tex = getTexture(batSlamTexName(frame, counterable));
     if (!tex || tex.width === 0) return;
     let sp = this.batSlamSprites.get(id);
     if (!sp) {

@@ -577,6 +577,16 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/bat-slam-6', scaleMode: 'linear' },
       { name: 'fx/bat-slam-7', scaleMode: 'linear' },
       { name: 'fx/bat-slam-8', scaleMode: 'linear' },
+      // 紫版(カウンターできない噛みつき用)。色相だけ回した同じ絵。
+      { name: 'fx/bat-slam-p-0', scaleMode: 'linear' },
+      { name: 'fx/bat-slam-p-1', scaleMode: 'linear' },
+      { name: 'fx/bat-slam-p-2', scaleMode: 'linear' },
+      { name: 'fx/bat-slam-p-3', scaleMode: 'linear' },
+      { name: 'fx/bat-slam-p-4', scaleMode: 'linear' },
+      { name: 'fx/bat-slam-p-5', scaleMode: 'linear' },
+      { name: 'fx/bat-slam-p-6', scaleMode: 'linear' },
+      { name: 'fx/bat-slam-p-7', scaleMode: 'linear' },
+      { name: 'fx/bat-slam-p-8', scaleMode: 'linear' },
       // 近接スイングの弧(7コマ・社長提供)。柄側の下端を揃えて左から右へ送る。
       { name: 'fx/melee-arc-0', scaleMode: 'nearest' },
       { name: 'fx/melee-arc-1', scaleMode: 'nearest' },
