@@ -15,7 +15,7 @@
 
 import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point, Matrix } from 'pixi.js';
 import type { ColorMatrix } from 'pixi.js';
-import { acrasielSectorPolygon, acrasielEase, ACRASIEL_SPEAR_FLIGHT_MS, acrasielGazeAngles } from '../utils/acrasielScript';
+import { acrasielSectorPolygon, acrasielEase, ACRASIEL_SPEAR_FLIGHT_MS, acrasielGazeAngles, acrasielWarpRed, acrasielBurstRed } from '../utils/acrasielScript';
 import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import { shadowProbeCount, shadowProbeMode, shadowProbeStretch, noteShadowProbeFrame, noteShadowProbeSigma } from './shadowProbe'; // 影ベンチのプローブ(計測専用)
@@ -44,7 +44,7 @@ import {
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
-  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, WEREWOLF_CHARGE_MAX_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS, GIANT_JUMP_AIR_MS, PUMPKIN_JUMP_MS,
@@ -144,7 +144,7 @@ import {
   ANGEL_PHILL_TUNING as PH_T,
 } from '../utils/angelScript';
 // PACING_PUZZLE.md §10-12#17(フィル・羽根の檻/裁きの光/急降下の可視域クランプ=可視短辺の0.45倍上限)。
-import { phillCageInitialRadiusPx } from '../utils/phillScript';
+import { phillCageInitialRadiusPx, phillWingcomboRed, phillRingtossRed, phillGoldringProg } from '../utils/phillScript';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { pickImageEffectFrame } from '../utils/killSlashFx'; // 'image'エフェクトの横並びシート・コマ送り(kill-slash用に追加)
 import { cineToggle, cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(URL+タイトル画面)
@@ -187,7 +187,7 @@ import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
-import { airHopHeight01, airHopEase01 } from '../utils/airHop';
+import { airHopHeight01 } from '../utils/airHop';
 // ★v0.25.3818(§9-6「突進の走行中の体当たり」裁定(B)): 突進の走行中の赤い帯は「AABB の掃過領域」=判定と厳密に同じ形で描く。
 import { sweptRectHull, dashLineStrikeEnd, dashLineEraseRescale } from '../utils/geometry';
 import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE, PHILL_FEATHER_NATIVE_ANGLE } from '../utils/bladeArt';
@@ -317,8 +317,10 @@ import type { Rect } from '../world/obstacles';
 import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/rescue';
 import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
 import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
-import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt } from '../utils/circleSweep';
-import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, sweepTelegraphProg, twoPhaseTelegraphProg } from '../utils/bandSweep';
+import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt, loopSweepProg as csLoopSweepProg } from '../utils/circleSweep';
+import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, bandSweepSliceAlpha, sweepTelegraphProg, twoPhaseTelegraphProg } from '../utils/bandSweep';
+import { dashBodyBandSpec, dashBandAlpha01 } from '../utils/dashBodyBand';
+import { giantSweepWindowProg, giantNovaWindupProg } from '../utils/giantRedTelegraph';
 import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
 
 /**
@@ -1378,6 +1380,42 @@ const KNIFE_F1 = { scale: 0.95, ox: -0.30, oy: 0.12 };  // 1枚目: キャラ左
 const KNIFE_F2 = { scale: 1.80, ox: 0.22, oy: -0.12 };  // 2枚目: 被せ+スラッシュ右へ(少し上げた・少し大きく)
 // 3枚目: 弧の残光(ダガー無し)。2枚目と共通クロップで焼いてあるため同じ配置=弧がズレずに残ってフェード。
 const KNIFE_F3 = { scale: 1.80, ox: 0.22, oy: -0.12 };
+// 斬撃の弧を7コマのアニメで見せる(社長提供の絵・v0.25.4458)。小さな火花から三日月へ育つ絵で、
+// 全コマの下端(=柄側の起点)が揃っている。そこを支点に伸び上がらせ、コマが進むほど前へ押し出す。
+const MELEE_ARC_FRAMES = 7;
+const MELEE_ARC_REF_W = 476;   // 最終コマの幅。全コマをこの幅で正規化する=コマごとの成長を消さない
+const MELEE_ARC_SCALE = 1.65;  // 最終コマの横幅 = unit × この値
+const MELEE_ARC_OX = -0.68;    // 起点(柄側)の横位置。右向き・胸基準(旧弧の左端に合わせてある)
+const MELEE_ARC_OY = 0.40;     // 起点の縦位置(胸から下へ。旧弧の下端と同じ)
+const MELEE_ARC_PUSH = 0.30;   // 進行方向への押し出し量(コマが進むほど前へ出る)
+const MELEE_ARC_RUN_END = 0.74; // ここでコマ送りが終わる(kt)。以降は最終コマを保持して引く
+// 弧の進行 t: 振りかぶり(KNIFE_SWING_SWITCH)〜MELEE_ARC_RUN_END を 0..1 に伸ばす。
+const meleeArcT = (kt: number): number =>
+  Math.max(0, Math.min(1, (kt - KNIFE_SWING_SWITCH) / (MELEE_ARC_RUN_END - KNIFE_SWING_SWITCH)));
+// 弧の濃さ。★一番大きい最後のコマを薄いところで出さない(それでは絵が存在しないのと同じ)。
+// コマが出揃うまでは濃いまま、出揃ってから残光として抜く。出は速く・引きはゆっくり(慣性)。
+const meleeArcAlpha = (kt: number): number => {
+  const rise = Math.max(0, Math.min(1, (kt - KNIFE_SWING_SWITCH) / 0.05));
+  if (kt <= MELEE_ARC_RUN_END) return rise;
+  const f = (kt - MELEE_ARC_RUN_END) / (1 - MELEE_ARC_RUN_END);
+  return rise * (1 - f * f);
+};
+// spr のテクスチャを当該コマへ差し替え、place() 用の cfg を返す(絵が無ければ null=旧弧へフォールバック)。
+// cfg.scale をコマ幅で補正してあるので、place() 側の「テクスチャ幅で割る」正規化を通しても
+// コマごとの大きさの差が消えない。アンカーは (0,1)=柄側の下端。
+const meleeArcCfg = (spr: Sprite, kt: number): { scale: number; ox: number; oy: number } | null => {
+  const t = meleeArcT(kt);
+  const idx = Math.max(0, Math.min(MELEE_ARC_FRAMES - 1, Math.floor(t * MELEE_ARC_FRAMES)));
+  const tex = getTexture(`fx/melee-arc-${idx}`);
+  if (!tex || tex.width === 0) return null;
+  if (spr.texture !== tex) spr.texture = tex;
+  spr.anchor.set(0, 1);
+  return {
+    scale: MELEE_ARC_SCALE * (tex.width / MELEE_ARC_REF_W),
+    ox: MELEE_ARC_OX + MELEE_ARC_PUSH * t,
+    oy: MELEE_ARC_OY,
+  };
+};
 // 装備中の近接武器の実絵をスイングに重ねる(v0.25.1456 社長指示)。武器アイコン5種は同スタイル
 // (刃先が右上≈-46°)なので共通の回転定数で合う。値は焼き込みダガーのPCA計測から:
 // f1: ダガーはknife-swing-1キャンバス中心・軸-25.3°(刃先左下) → アイコン回転200.7°・長さ=unit×0.95
@@ -14641,11 +14679,13 @@ export class PixiScene {
     const tgStyle = telegraphStyleFor(e.type);
     const pulse = 0.5 + 0.5 * Math.sin(time / tgStyle.pulseMs);
     let ringIdx = 0;
-    const circle = (x: number, y: number, radius: number, alpha: number): void => {
-      const mask = CIRCLE_SWEEP_ON
-        ? this.drawSweepCircleFill(g, x, y, radius, t, 0xff2a2a, alpha, tgStyle)
+    // `prog` を渡すと流星の位相をそれで引く(既定=溜めの t。槍の円は従来どおり)。
+    // `uniform=true` は「**判定が生きている間の赤**」(§18-1 B-1/B-2)=窓を使わず全形で残す。
+    const circle = (x: number, y: number, radius: number, alpha: number, prog: number = t, uniform = false): void => {
+      const mask = (CIRCLE_SWEEP_ON && !uniform)
+        ? this.drawSweepCircleFill(g, x, y, radius, prog, 0xff2a2a, alpha, tgStyle)
         : (g.circle(x, y, radius).fill({ color: 0xff3030, alpha }), 1);
-      this.drawTelegraphRing(view, x, y, radius, 0xff3b3b, (0.5 + 0.3 * t + 0.15 * pulse) * mask, ringIdx++);
+      this.drawTelegraphRing(view, x, y, radius, 0xff3b3b, (0.5 + 0.3 * prog + 0.15 * pulse) * mask, ringIdx++);
       g.circle(x, y, radius).stroke({ color: 0xff6b6b, alpha: 0.9 * mask, width: 2.5 });
     };
     if (spike && !recover) {
@@ -14671,8 +14711,23 @@ export class PixiScene {
       }
     }
     if (spear && wind) for (const target of p.targets) circle(target.x, target.y, AC_T.spear.radius, fill);
-    if (burst && !recover) circle(p.x, p.y, AC_T.burst.radius, fill);
-    if (warp && !recover) circle(e.aiTargetX ?? p.x, e.aiTargetY ?? p.y, AC_T.warp.impactRadius, fill);
+    // ★★赤い予告の4つの掟②③(CLAUDE.md・社長指示2026-09-18)/ PACING_PUZZLE.md §18-1 A-4・B-1・B-2。
+    // 爆発と転移の赤は**判定側の州遷移と同じ純関数**(acrasielScript)から引く。
+    //  - 転移: warp-out→warp-in を**通しの1本の流星**にし、衝撃(warp-active入り)で消え切る。
+    //    旧実装は warp-out の満了で消え、warp-in の1000msは画面に何も出ていなかった(A-4)。
+    //  - 判定が毎フレーム生きている実行相(burst=300ms / warp-active=200ms)は**赤を残す**(B-1/B-2)。
+    //    旧実装は赤が無いまま当たっていた=「赤くないのに当たる」(色の文法違反)。
+    {
+      const burstRed = acrasielBurstRed(state, remain, AC_T.burst.windup);
+      if (burstRed) circle(p.x, p.y, AC_T.burst.radius,
+        burstRed.kind === 'meteor' ? 0.14 + 0.20 * burstRed.prog : 0.40,
+        burstRed.kind === 'meteor' ? burstRed.prog : 1, burstRed.kind === 'live');
+      const warpRed = acrasielWarpRed(state, remain,
+        { windupMs: AC_T.warp.windup, telegraphMs: AC_T.warp.telegraphMs });
+      if (warpRed) circle(e.aiTargetX ?? p.x, e.aiTargetY ?? p.y, AC_T.warp.impactRadius,
+        warpRed.kind === 'meteor' ? 0.14 + 0.20 * warpRed.prog : 0.40,
+        warpRed.kind === 'meteor' ? warpRed.prog : 1, warpRed.kind === 'live');
+    }
     if (state === 'gaze-windup') {
       // ★v0.25.4203: 射線は1本ではなく扇状の多射線(Phase1=5/P2=7/P3=9)。
       // **本数と角度は判定側(angelBossTick)と同じ純関数**を読む=予告と判定が構造的にズレない。
@@ -15177,6 +15232,11 @@ export class PixiScene {
           s.alpha = al * alpha;
           s.visible = s.alpha > 0.01;
         };
+        // 弧の7コマ送り(振り抜き〜残光を一本で流す)。絵が無ければ旧弧の配置へフォールバック。
+        const placeMeleeArc = (arcSpr: Sprite, arcKt: number, arcAl: number) => {
+          const arcCfg = meleeArcCfg(arcSpr, arcKt);
+          place(arcSpr, arcCfg ?? KNIFE_F2, true, arcCfg ? meleeArcAlpha(arcKt) : arcAl);
+        };
         if (kt < KNIFE_SWING_SWITCH) {
           const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
           place(knife, KNIFE_F1, true, a1); // 振りかぶり(ダガー)
@@ -15186,13 +15246,13 @@ export class PixiScene {
           const t2 = (kt - KNIFE_SWING_SWITCH) / (KNIFE_SWING_SWITCH2 - KNIFE_SWING_SWITCH);
           const a2 = Math.min(1, t2 / 0.25);
           place(knife, KNIFE_F1, false, 0);
-          place(slash, KNIFE_F2, true, a2); // 振り抜き(弧)
+          placeMeleeArc(slash, kt, a2); // 振り抜き(弧)
           place(trail, KNIFE_F3, false, 0);
         } else {
           const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2);
           place(knife, KNIFE_F1, false, 0);
           place(slash, KNIFE_F2, false, 0);
-          place(trail, KNIFE_F3, true, 1 - t3); // 弧の残光フェード
+          placeMeleeArc(trail, kt, 1 - t3); // 弧の残光フェード
         }
       } else {
         knife.visible = false; slash.visible = false; trail.visible = false;
@@ -15612,6 +15672,11 @@ export class PixiScene {
         sp.alpha = alpha * GHOST_ALLY_ALPHA; // 霊体の半透明を継承
         sp.visible = sp.alpha > 0.01;
       };
+      // 弧の7コマ送り(振り抜き〜残光を一本で流す)。絵が無ければ旧弧の配置へフォールバック。
+      const placeMeleeArc = (arcSpr: Sprite, arcKt: number, arcAl: number) => {
+        const arcCfg = meleeArcCfg(arcSpr, arcKt);
+        place(arcSpr, arcCfg ?? KNIFE_F2, true, arcCfg ? meleeArcAlpha(arcKt) : arcAl);
+      };
       // 装備近接の実絵(本体/分身と同じ計測定数・霊体の透過/zIndexを継承)。
       const placeWpn = (ox: number, oy: number, rot: number, lenFrac: number, alpha: number) => {
         if (!wtex) { wpn.visible = false; return; }
@@ -15624,7 +15689,7 @@ export class PixiScene {
         wpn.alpha = alpha * GHOST_ALLY_ALPHA;
         wpn.visible = wpn.alpha > 0.01;
       };
-      const arcAspect = slash.texture && slash.texture.width > 0 ? slash.texture.height / slash.texture.width : 0.577;
+      const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定。弧が7コマになっても武器絵の位置は動かさない
       const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
       const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
       if (kt < KNIFE_SWING_SWITCH) {
@@ -15637,7 +15702,7 @@ export class PixiScene {
         const t2 = (kt - KNIFE_SWING_SWITCH) / (KNIFE_SWING_SWITCH2 - KNIFE_SWING_SWITCH); // 0..1
         const a2 = Math.min(1, t2 / 0.25);                              // 本体と同じくsnapで出す
         place(knife, KNIFE_F1, false, 0);
-        place(slash, KNIFE_F2, true, a2);
+        placeMeleeArc(slash, kt, a2);
         placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, a2);
         place(trail, KNIFE_F3, false, 0);
       } else {
@@ -15645,7 +15710,7 @@ export class PixiScene {
         place(knife, KNIFE_F1, false, 0);
         place(slash, KNIFE_F2, false, 0);
         wpn.visible = false;
-        place(trail, KNIFE_F3, true, 1 - t3);                           // 弧の残光フェード(本体と同じ)
+        placeMeleeArc(trail, kt, 1 - t3);                           // 弧の残光フェード(本体と同じ)
       }
     } else {
       knife.visible = false; slash.visible = false; trail.visible = false; wpn.visible = false;
@@ -16685,6 +16750,11 @@ export class PixiScene {
           spr.alpha = alpha * view.sprite.alpha;
           spr.visible = spr.alpha > 0.01;
         };
+        // 弧の7コマ送り(振り抜き〜残光を一本で流す)。絵が無ければ旧弧の配置へフォールバック。
+        const placeMeleeArc = (arcSpr: Sprite, arcKt: number, arcAl: number) => {
+          const arcCfg = meleeArcCfg(arcSpr, arcKt);
+          place(arcSpr, arcCfg ?? KNIFE_F2, true, arcCfg ? meleeArcAlpha(arcKt) : arcAl);
+        };
         // 装備近接の実絵を置く: 対角線長=unit×lenFrac、回転は左向きミラー時に反転(ミラー合成)。
         const placeWpn = (ox: number, oy: number, rot: number, lenFrac: number, alpha: number) => {
           if (!wtex) { wpn.visible = false; return; }
@@ -16697,7 +16767,7 @@ export class PixiScene {
           wpn.visible = wpn.alpha > 0.01;
         };
         // f2の武器位置: 弧テクスチャ内の割合(fx,fy)を弧の配置(KNIFE_F2)へ写像。
-        const arcAspect = slash.texture && slash.texture.width > 0 ? slash.texture.height / slash.texture.width : 0.577;
+        const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定。弧が7コマになっても武器絵の位置は動かさない
         const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
         const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
         if (kt < KNIFE_SWING_SWITCH) {
@@ -16712,7 +16782,7 @@ export class PixiScene {
           const t2 = (kt - KNIFE_SWING_SWITCH) / (KNIFE_SWING_SWITCH2 - KNIFE_SWING_SWITCH); // 0..1
           const a2 = Math.min(1, t2 / 0.25);
           place(knife, KNIFE_F1, false, 0);
-          place(slash, KNIFE_F2, true, a2);
+          placeMeleeArc(slash, kt, a2);
           placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, a2);
           place(trail, KNIFE_F3, false, 0);
         } else {
@@ -16722,7 +16792,7 @@ export class PixiScene {
           place(knife, KNIFE_F1, false, 0);
           place(slash, KNIFE_F2, false, 0);
           wpn.visible = false;
-          place(trail, KNIFE_F3, true, a3);
+          placeMeleeArc(trail, kt, a3);
         }
       } else {
         knife.visible = false;
@@ -17194,6 +17264,11 @@ export class PixiScene {
         s.alpha = alpha * spr.alpha;                              // 分身の透過(0.8)に合わせる
         s.visible = s.alpha > 0.01;
       };
+      // 弧の7コマ送り(振り抜き〜残光を一本で流す)。絵が無ければ旧弧の配置へフォールバック。
+      const placeMeleeArc = (arcSpr: Sprite, arcKt: number, arcAl: number) => {
+        const arcCfg = meleeArcCfg(arcSpr, arcKt);
+        place(arcSpr, arcCfg ?? KNIFE_F2, true, arcCfg ? meleeArcAlpha(arcKt) : arcAl);
+      };
       // 装備近接の実絵(本体と同じ計測定数・分身の透過/zIndexを継承)。
       const placeWpn = (ox: number, oy: number, rot: number, lenFrac: number, alpha: number) => {
         if (!wtex) { wpn.visible = false; return; }
@@ -17206,7 +17281,7 @@ export class PixiScene {
         wpn.alpha = alpha * spr.alpha;
         wpn.visible = wpn.alpha > 0.01;
       };
-      const arcAspect = slash.texture && slash.texture.width > 0 ? slash.texture.height / slash.texture.width : 0.577;
+      const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定。弧が7コマになっても武器絵の位置は動かさない
       const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
       const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
       if (kt < KNIFE_SWING_SWITCH) {
@@ -17219,7 +17294,7 @@ export class PixiScene {
         const t2 = (kt - KNIFE_SWING_SWITCH) / (KNIFE_SWING_SWITCH2 - KNIFE_SWING_SWITCH); // 0..1
         const a2 = Math.min(1, t2 / 0.25);                              // 本体と同じくsnapで出す
         place(knife, KNIFE_F1, false, 0);
-        place(slash, KNIFE_F2, true, a2);
+        placeMeleeArc(slash, kt, a2);
         placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, a2);
         place(trail, KNIFE_F3, false, 0);
       } else {
@@ -17227,7 +17302,7 @@ export class PixiScene {
         place(knife, KNIFE_F1, false, 0);
         place(slash, KNIFE_F2, false, 0);
         wpn.visible = false;
-        place(trail, KNIFE_F3, true, 1 - t3);                           // 弧の残光フェード(本体と同じ)
+        placeMeleeArc(trail, kt, 1 - t3);                           // 弧の残光フェード(本体と同じ)
       }
     } else {
       knife.visible = false;
@@ -19344,14 +19419,8 @@ export class PixiScene {
           1 - dRemain / HB_TH.dash.windup, telegraphStyleFor(e.type));
       }
       // ★v0.25.3818(§9-6「突進の走行中の体当たり」裁定(B)「当てる」の条件①): 走行中は**体幅ぶんの赤い帯**を描く。
-      // 形は判定(AABB の掃過)と厳密に一致する(`sweptRectHull`)。②bot への通知は botSkill 側。
-      if (e.bossState === 'thor-dash-move') {
-        this.drawThorDashBodyBand(
-          o, e.x, e.y, e.width, e.height,
-          e.aiTargetX ?? cx, e.aiTargetY ?? cy,
-          gameTime - (e.aiStartedAt ?? gameTime), HB_TH.dash.moveMs, now,
-        );
-      }
+      // ★v0.25.4457(§18-1(d)・掟④): この絵は**突進を持つ全員**の共通処理(下の「突進の土煙」ブロック)
+      // へ移した。トールだけが持っていた絵を台帳1本(`utils/dashBodyBand.ts`)で全突進へ配る。
       // トールの斬撃演出(刀+ストリーク)を出し切らせる(社長指示v0.25.2408)。トールは**実行中
       // (issen-dash/tsuki/harai)にもカウンターが成立する**(useGameLoop のライン判定が
       // counterWindowEnd を見て thorCounterHit する)ため、状態を見て描いていると**振り切る前に
@@ -19621,7 +19690,7 @@ export class PixiScene {
         const pl = useGameStore.getState().player;
         const px = e.aiTargetX ?? (pl.x + pl.width / 2), py = e.aiTargetY ?? (pl.y + pl.height / 2);
         const mz = gunMz(px);
-        this.drawAngelBeamLine(o, mz.x, mz.y, px, py, idolBulletHalfWidthVis('aim'), prog, now);
+        this.drawAngelBeamLine(o, mz.x, mz.y, px, py, idolBulletHalfWidthVis('aim'), prog, now, telegraphStyleFor(e.type));
       }
       // T6が扇状に3本(Phase2で5本): 連射。
       if (bs === 'idol-fan-windup') {
@@ -19638,7 +19707,7 @@ export class PixiScene {
         const half = (count - 1) / 2;
         for (let k = 0; k < count; k++) {
           const a = ang + (k - half) * spreadStep;
-          this.drawAngelBeamLine(o, mz.x, mz.y, mz.x + Math.cos(a) * IDOL_FAN_VIS_RANGE, mz.y + Math.sin(a) * IDOL_FAN_VIS_RANGE, idolBulletHalfWidthVis('fan'), prog, now);
+          this.drawAngelBeamLine(o, mz.x, mz.y, mz.x + Math.cos(a) * IDOL_FAN_VIS_RANGE, mz.y + Math.sin(a) * IDOL_FAN_VIS_RANGE, idolBulletHalfWidthVis('fan'), prog, now, telegraphStyleFor(e.type));
         }
       }
       // T2帯(長): 狙撃線。**溜め開始でロックした2点(aiFrom→aiTarget)をそのまま描く**ので、
@@ -19659,7 +19728,7 @@ export class PixiScene {
         const n = idolOrbCount(e.bossPhase === 2 ? 2 : 1);
         for (let k = 0; k < n; k++) {
           const a = base + (k - (n - 1) / 2) * IDOL_ORB_SPREAD_RAD;
-          this.drawAngelBeamLine(o, mz.x, mz.y, mz.x + Math.cos(a) * IDOL_FAN_VIS_RANGE, mz.y + Math.sin(a) * IDOL_FAN_VIS_RANGE, idolBulletHalfWidthVis('fan'), prog, now);
+          this.drawAngelBeamLine(o, mz.x, mz.y, mz.x + Math.cos(a) * IDOL_FAN_VIS_RANGE, mz.y + Math.sin(a) * IDOL_FAN_VIS_RANGE, idolBulletHalfWidthVis('fan'), prog, now, telegraphStyleFor(e.type));
         }
       }
       // 射撃部品(v0.25.2638): **数字から予告を引く**ので、社長が弾数/広がり/狙い方を変えると
@@ -19684,7 +19753,7 @@ export class PixiScene {
           const half = (n - 1) / 2;
           for (let k = 0; k < n; k++) {
             const a = base + (k - half) * spread;
-            this.drawAngelBeamLine(o, mz.x, mz.y, mz.x + Math.cos(a) * IDOL_FAN_VIS_RANGE, mz.y + Math.sin(a) * IDOL_FAN_VIS_RANGE, sp.size / 2, prog, now);
+            this.drawAngelBeamLine(o, mz.x, mz.y, mz.x + Math.cos(a) * IDOL_FAN_VIS_RANGE, mz.y + Math.sin(a) * IDOL_FAN_VIS_RANGE, sp.size / 2, prog, now, telegraphStyleFor(e.type));
           }
         }
       }
@@ -20137,13 +20206,13 @@ export class PixiScene {
         const beamProg = bs === 'ring-beam-windup'
           ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SR_T.ringshot.beamWindup))
           : 1;
-        this.drawAngelBeamLine(o, fx, fy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, beamProg, now);
+        this.drawAngelBeamLine(o, fx, fy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, beamProg, now, telegraphStyleFor(e.type), bs === 'ring-active');
         // v0.25.3200(社長指示): Phase2は2本目の環からも同じ対象へもう1本(判定と同幅・同尺=分類①)。
         if (e.ring2X !== undefined && e.ring2Y !== undefined) {
           let d2x = tx - e.ring2X, d2y = ty - e.ring2Y; const dl2 = Math.hypot(d2x, d2y) || 1; d2x /= dl2; d2y /= dl2;
           this.drawAngelBeamLine(o, e.ring2X, e.ring2Y,
             e.ring2X + d2x * MIMIR_LASER_VIS_RANGE, e.ring2Y + d2y * MIMIR_LASER_VIS_RANGE,
-            THIN_BEAM_VIS_HALFWIDTH, beamProg, now);
+            THIN_BEAM_VIS_HALFWIDTH, beamProg, now, telegraphStyleFor(e.type), bs === 'ring-active');
         }
       }
       // ---- スリィエル: 環の回転斬(近接拒否)=T2円(即時)。環自体はsyncSurielRingが本体周りへ描く ----
@@ -20273,6 +20342,18 @@ export class PixiScene {
         const wcl = Math.hypot(tx - fx, ty - fy) || 1;
         const wcux = (tx - fx) / wcl, wcuy = (ty - fy) / wcl;
         const wcpx = fb.footX + wcux * PHILL_WING_FWD_PX, wcpy = fb.footY - fb.boxH * 0.5 + wcuy * PHILL_WING_FWD_PX;
+        // ★★赤い予告の4つの掟②③(CLAUDE.md・社長指示2026-09-18)/ PACING_PUZZLE.md §18-1 A-2。
+        // **2撃目の予告が1本も無かった**(旧実装)。2撃目は 1撃目+active1+gapMs に当たるので、
+        // 溜めの頭から出して(掟②)その瞬間に消え切る(掟③)帯をもう1本足す。時刻の出どころは
+        // 判定側と同じ純関数(`phillWingcomboRed`)。判定・尺・halfWidthは1つも変えていない。
+        {
+          const wcRed = phillWingcomboRed(bs ?? '', (e.bossStateUntil ?? gameTime) - gameTime, {
+            windupMs: PH_T.wingcombo.windup, active1Ms: PH_T.wingcombo.active1, gapMs: PH_T.wingcombo.gapMs,
+          });
+          if (wcRed.secondProg !== null) {
+            this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, PH_T.wingcombo.halfWidth, wcRed.secondProg, now, 1, undefined, PixiScene.PHILL_TG_STYLE);
+          }
+        }
         if (bs === 'phill-wingcombo-windup') {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.wingcombo.windup));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, PH_T.wingcombo.halfWidth, prog, now, undefined, undefined, PixiScene.PHILL_TG_STYLE);
@@ -20296,10 +20377,15 @@ export class PixiScene {
       // ---- フィル: 金環(技7)=頭上の金環→本体中心の大円AoE(外へ逃げるが正解・§10-3の7) ----
       else if (e.type === 'phillboss' && bs === 'phill-goldring-windup') {
         const pulse = 0.5 + 0.5 * Math.sin(now / PixiScene.PHILL_TG_STYLE.pulseMs);
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.goldring.windup));
-        o.ellipse(cx, cy, PH_T.goldring.radius, PH_T.goldring.radius)
-          .fill({ color: 0xff2a2a, alpha: telFillA(prog, pulse) * TELEGRAPH_FILL_MULT });
-        const ringA = (0.2 + 0.3 * prog) + 0.25 * pulse;
+        // ★★赤い予告の4つの掟① / PACING_PUZZLE.md §18-1 C-1(社長が名指しした件)。
+        // 旧は「濃くなる+脈打つ」だけ=流星ではない。**塗りだけ**を外→内の流星へ(消え切り=当たる)。
+        // **輪の金色(0xffd166)は社長裁定で維持**(§18-3)。判定半径は1pxも動かない。
+        const prog = phillGoldringProg(bs, (e.bossStateUntil ?? gameTime) - gameTime, PH_T.goldring.windup) ?? 1;
+        const grFillA = telFillA(prog, pulse) * TELEGRAPH_FILL_MULT;
+        const grMask = CIRCLE_SWEEP_ON
+          ? this.drawSweepCircleFill(o, cx, cy, PH_T.goldring.radius, prog, 0xff2a2a, grFillA, PixiScene.PHILL_TG_STYLE)
+          : (o.ellipse(cx, cy, PH_T.goldring.radius, PH_T.goldring.radius).fill({ color: 0xff2a2a, alpha: grFillA }), 1);
+        const ringA = ((0.2 + 0.3 * prog) + 0.25 * pulse) * grMask;
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, PH_T.goldring.radius, 0xffd166, ringA);
         else o.ellipse(cx, cy, PH_T.goldring.radius, PH_T.goldring.radius).stroke({ width: 2, color: 0xffd166, alpha: ringA });
       }
@@ -20344,11 +20430,20 @@ export class PixiScene {
       else if (e.type === 'phillboss' && (bs === 'phill-ringtoss-windup' || bs === 'phill-ringtoss-out' || bs === 'phill-ringtoss-back' || bs === 'phill-ringtoss-recover')) {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        if (bs === 'phill-ringtoss-windup') {
-          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / PH_T.ringtoss.windup));
-          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, PH_T.ringtoss.halfWidth, prog, now, undefined, undefined, PixiScene.PHILL_TG_STYLE);
-        } else if (bs === 'phill-ringtoss-out' || bs === 'phill-ringtoss-back') {
-          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, PH_T.ringtoss.halfWidth, 1, now, 0, 0, PixiScene.PHILL_TG_STYLE); // 往復とも全形=判定と一致
+        // ★★赤い予告の4つの掟②③ / PACING_PUZZLE.md §18-1 A-3。
+        // 旧: 往路も**復路も静的な全形**が出っぱなし。実際に当たるのは「投げた瞬間(溜め明け)」と
+        // 「往路の終わり(戻り始め)」の**2点だけ**で、**復路の380msは赤いのに当たらない**嘘だった。
+        // ⇒ 1撃目=溜めで消え切る / 2撃目=溜めの頭から往路の終わりまでを通しの流星 / 復路は赤なし。
+        {
+          const rtRed = phillRingtossRed(bs ?? '', (e.bossStateUntil ?? gameTime) - gameTime, {
+            windupMs: PH_T.ringtoss.windup, outMs: PH_T.ringtoss.outMs,
+          });
+          if (rtRed.firstProg !== null) {
+            this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, PH_T.ringtoss.halfWidth, rtRed.firstProg, now, undefined, undefined, PixiScene.PHILL_TG_STYLE);
+          }
+          if (rtRed.secondProg !== null) {
+            this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, PH_T.ringtoss.halfWidth, rtRed.secondProg, now, 1, undefined, PixiScene.PHILL_TG_STYLE);
+          }
         }
         // ★v0.25.3740(社長指示): 輪の実絵=スリィエルの環(suriel-ring)を金色に輝かせて流用。
         this.drawPhillRingtoss(e, bs, fx, fy, tx, ty, gameTime, now);
@@ -20549,9 +20644,9 @@ export class PixiScene {
             // 溜め中のカウンターは予告ごとキャンセル。まだ発生していない攻撃を見た目だけ撃たせない。
             this.fxLatches.delete(`${e.id}:suriel-beam-complete`);
           } else if (elapsed < impactAt + activeMs) {
-            this.drawAngelBeamLine(o, beamL.d[2], beamL.d[3], beamL.d[4], beamL.d[5], THIN_BEAM_VIS_HALFWIDTH, 1, now);
+            this.drawAngelBeamLine(o, beamL.d[2], beamL.d[3], beamL.d[4], beamL.d[5], THIN_BEAM_VIS_HALFWIDTH, 1, now, undefined, true);
             if (Number.isFinite(beamL.d[6])) {
-              this.drawAngelBeamLine(o, beamL.d[6], beamL.d[7], beamL.d[8], beamL.d[9], THIN_BEAM_VIS_HALFWIDTH, 1, now);
+              this.drawAngelBeamLine(o, beamL.d[6], beamL.d[7], beamL.d[8], beamL.d[9], THIN_BEAM_VIS_HALFWIDTH, 1, now, undefined, true);
             }
           }
         }
@@ -20728,6 +20823,26 @@ export class PixiScene {
     // ハンター/旧経路の城ボス)/ 城ボス `g-dash-charge`・`g-quad-charge` / トール `issen-dash`・`tsuki`。
     // 判定はゼロの②「派手さの絵」なので、判定より大きく出してよい(社長方針v0.25.2410)。
     {
+      // ★★赤い予告の4つの掟④(CLAUDE.md・社長指示2026-09-18「**通るものもそれに合わせて**」)/
+      // PACING_PUZZLE.md §18-1(d)。**走行中も体幅ぶんの赤帯を出す**=「赤が消えている間は当たらない」を
+      // 全型で成り立たせる。先例=トールの突進(v0.25.3818)。ここが**全突進の唯一の呼び出し口**で、
+      // 州の台帳と時刻は純関数(`utils/dashBodyBand.ts`)1本から引く(4箇所へコピペしない)。
+      // 尺(ms)は判定側の実体をそのまま渡す=描画側に時刻の複製を書かない。
+      {
+        const bandSpec = dashBodyBandSpec(e, gameTime, {
+          chargeMaxMs: WEREWOLF_CHARGE_MAX_MS / ENEMY_ATTACK_SPEED_MULT,
+          hiddenDashMs: HB_C.dash.ms,
+          bmChargeMaxMs: BM_T.charge.maxMs,
+          thorDashMoveMs: HB_TH.dash.moveMs,
+        });
+        if (bandSpec) {
+          this.drawDashBodyBand(
+            o, e.x, e.y, e.width, e.height, bandSpec.endCx, bandSpec.endCy,
+            dashBandAlpha01(bandSpec.sinceStartMs, bandSpec.remainMs, bandSpec.distRemainPx), now,
+            ...(bandSpec.purple ? [0xa855f7, 0xc084fc] as const : []),
+          );
+        }
+      }
       const dashPhase = e.aiPhase === 'charge' || e.aiPhase === 'g-dash-charge' || e.aiPhase === 'g-quad-charge';
       // V1(2)(FX_GAP_LEDGER.md): 「突進という動作を持つ全員」へ横展開(掟「同じ動作を持つ全員に」)。
       // 追加: 裏ボス3体(mimir/jormungand/skadi)の 'dash' / ミゲル 'mdash-move' / ウリ 'thrust'(踏み込み突き)/
@@ -22237,14 +22352,27 @@ export class PixiScene {
           const qbt = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / qDurEff));
           const qCurAngle = qBaseAngle - GIANT_QUAD_BREATH_SWEEP_RAD / 2 + GIANT_QUAD_BREATH_SWEEP_RAD * qbt;
           const qFarX = qbfx + Math.cos(qCurAngle) * GIANT_QUAD_BREATH_LENGTH, qFarY = qbfy + Math.sin(qCurAngle) * GIANT_QUAD_BREATH_LENGTH;
-          drawGiantCapsuleZone(qbfx, qbfy, qFarX, qFarY, GIANT_QUAD_BREATH_HALF_WIDTH, 0.34, 0.6);
+          // ★★赤い予告の4つの掟① / PACING_PUZZLE.md §18-1 C-8(横展開漏れ)。
+          // 氷の横薙ぎの実行相は**双子の技(掃射 g-sweepbeam-active)とまったく同じ持続判定**
+          // (§11-4「持続判定=流れ続ける」)なのに、こちらだけ周回窓が付いていなかった。
+          // **同じ純関数(loopSweepProg)・同じ引数の形**をそのまま使う=新しい仕組みを作らない。
+          drawGiantCapsuleZone(qbfx, qbfy, qFarX, qFarY, GIANT_QUAD_BREATH_HALF_WIDTH, 0.34, 0.6,
+            giantSweepWindowProg(false, (e.aiPhaseUntil ?? gameTime) - gameTime,
+              GIANT_QUAD_BREATH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT, qDurEff));
         }
       } else if (gph === 'g-nova-windup') {
         // M66 stage-4「氷結波」(大技): windupは最終到達半径(400)/開始半径(60)の輪郭だけを薄く先出し
         // (塗り潰さない=「今爆ぜる」ではない)。
-        const nprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_NOVA_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+        const nprog = giantNovaWindupProg(gph, (e.aiPhaseUntil ?? gameTime) - gameTime, GIANT_NOVA_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT) ?? 1;
         o.ellipse(cx, cy, GIANT_NOVA_RADIUS_END, GIANT_NOVA_RADIUS_END).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(nprog, gPulse) });
-        o.ellipse(cx, cy, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_START).stroke({ width: 2, color: 0xff5a5a, alpha: (0.16 + 0.22 * nprog) + 0.08 * gPulse });
+        // ★★赤い予告の4つの掟① / PACING_PUZZLE.md §18-1 C-2。旧は**輪郭2本を描くだけ**=塗りも流れも無い。
+        // 氷結波が**最初に当たる場所は開始半径の輪**(active でそこから外へ広がる)。だから流星の塗りは
+        // 開始半径に掛ける——到達半径まで塗ると「赤いのに当たらない」(内側は通過後=当たらない)になる。
+        // 到達半径の輪郭(=どこまで届くか)は従来どおり。判定半径は1pxも動かない。
+        const nMask = CIRCLE_SWEEP_ON
+          ? this.drawSweepCircleFill(o, cx, cy, GIANT_NOVA_RADIUS_START, nprog, 0xff2a2a, telFillA(nprog, gPulse) * TELEGRAPH_FILL_MULT, gTgStyle)
+          : 1;
+        o.ellipse(cx, cy, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_START).stroke({ width: 2, color: 0xff5a5a, alpha: ((0.16 + 0.22 * nprog) + 0.08 * gPulse) * nMask });
       } else if (gph === 'g-nova-active') {
         // 判定はその瞬間の輪のみ(内側=既に通過した場所は当たらない・全ボス共通「離れれば安全」の
         // 逆張り)。輪の帯(半幅GIANT_NOVA_BAND_THICKNESS)だけをstrokeで塗る=内側を赤く塗らない。
@@ -22314,7 +22442,8 @@ export class PixiScene {
           //   予告の後も赤を消さない。§11-4「持続判定=流れ続ける」に従い、窓を周期でループさせる
           //   (消すと『赤くないのに当たる』=CLAUDE.md の色の文法に反する)。
           drawGiantCapsuleZone(sbNearX, sbNearY, sbFarX, sbFarY, GIANT_SWEEPBEAM_HALF_WIDTH, 0.34, 0.6,
-            PixiScene.loopSweepProg(GIANT_SWEEPBEAM_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT, (e.aiPhaseUntil ?? gameTime) - gameTime));
+            giantSweepWindowProg(false, (e.aiPhaseUntil ?? gameTime) - gameTime,
+              GIANT_SWEEPBEAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT, sbDurEff));
         }
       } else if (gph === 'g-reach-windup') {
         // M67 stage-7「伸びる触手」(reach): bite/slamと同じ意匠の細長い帯(長さ900/半幅28)。
@@ -23450,19 +23579,21 @@ export class PixiScene {
   //
   // 出現/消滅は**加減速つき**(CLAUDE.md「★動きの絶対ルール: 慣性」)。パッと出てパッと消えない。
   // 負荷1/10: 走行中(230ms)だけ・共有の per-frame Graphics に poly 1枚+stroke 1本。
-  private static readonly THOR_DASH_BAND_FADE_MS = 60;
-  private drawThorDashBodyBand(
+  // ★v0.25.4457(PACING_PUZZLE.md §18-1(d)・掟④): **トールだけの絵をやめ、突進を持つ全員で共有する。**
+  // トールの見た目(形=sweptRectHull / 色 / 濃さ / 60msの加減速)は1つも変えていない——
+  // 変えたのは「どこから呼ぶか」だけ(濃さ `k` の算出は `utils/dashBodyBand.ts` の純関数へ移した)。
+  private drawDashBodyBand(
     o: Graphics, ex: number, ey: number, w: number, h: number,
-    endCx: number, endCy: number, elapsedMs: number, moveMs: number, now: number,
+    endCx: number, endCy: number, k: number, now: number,
+    // 色の文法(CLAUDE.md): 既定=赤(カウンター可)。**紫はカウンター不能の突進だけ**
+    // (城ボスの三連突進 g-quad-charge=その技の予告ラインが既に紫)。
+    fillColor = 0xff2a2a, strokeColor = 0xff3b3b,
   ): void {
-    if (elapsedMs < 0 || elapsedMs >= moveMs) return;
-    const F = PixiScene.THOR_DASH_BAND_FADE_MS;
-    const k = airHopEase01(Math.min(1, elapsedMs / F)) * airHopEase01(Math.min(1, (moveMs - elapsedMs) / F));
     if (k <= 0.002) return;
     const poly = sweptRectHull(ex, ey, w, h, endCx - w / 2, endCy - h / 2);
     const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-    o.poly(poly).fill({ color: 0xff2a2a, alpha: telFillA(1, pulse) * k * TELEGRAPH_FILL_MULT });
-    o.poly(poly).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * k });
+    o.poly(poly).fill({ color: fillColor, alpha: telFillA(1, pulse) * k * TELEGRAPH_FILL_MULT });
+    o.poly(poly).stroke({ width: 2, color: strokeColor, alpha: telStrokeA(1, pulse) * k });
   }
 
   // §6.38実機FB7(社長指示2026-08-15): drawAngelZoneCapsuleのdashLineTick相当ラッチ。
@@ -23683,10 +23814,39 @@ export class PixiScene {
 
   // §6.28共通(T6): 溜めで太くなる赤ライン(ミーミルのレーザーと同じ意匠)。スリィエル環の射出/
   // アクラシエル単眼レーザーで再利用。prog=0→1で太さ/明るさが増す。
-  private drawAngelBeamLine(o: Graphics, fx: number, fy: number, ex: number, ey: number, halfWidth: number, prog: number, now: number) {
+  // ★★赤い予告の4つの掟①(CLAUDE.md・社長指示2026-09-18)/ PACING_PUZZLE.md §18-1 C-3〜C-6。
+  // 旧実装は「**線の太さ・濃さが増えるだけ**」=流星ではなかった(偶像の狙い撃ち/扇射/オーブ、
+  // スリィエルの環のビーム)。**線の絵は変えず**(色・太さ・濃さの式はそのまま)、帯・円と
+  // **同じ窓マスク**(`bandSweepCenter`/`bandSweepAlphaAt`=自前の位相を作らない)をアルファへ掛ける。
+  // **窓が終点を抜け切った瞬間 = 発射**(= 判定発生)。線の長さ・起点・射線は1pxも動かさない。
+  //
+  // `uniform=true` は「**実行中は全形**」を明示する呼び出し(発射済みの残光)専用=窓を使わない。
+  private drawAngelBeamLine(
+    o: Graphics, fx: number, fy: number, ex: number, ey: number, halfWidth: number, prog: number, now: number,
+    style?: TelegraphStyle, uniform = false,
+  ) {
     const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-    o.moveTo(fx, fy).lineTo(ex, ey).stroke({ width: 2 + (halfWidth - 2) * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse) });
-    o.moveTo(fx, fy).lineTo(ex, ey).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+    const baseA = (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse);
+    const coreA = 0.45 + 0.45 * prog;
+    const baseW = 2 + (halfWidth - 2) * prog;
+    const coreW = 1 + 2 * prog;
+    if (uniform || !BAND_SWEEP_ON) {
+      o.moveTo(fx, fy).lineTo(ex, ey).stroke({ width: baseW, color: 0xff3030, alpha: baseA });
+      o.moveTo(fx, fy).lineTo(ex, ey).stroke({ width: coreW, color: 0xffe0e0, alpha: coreA, cap: 'round' });
+      return;
+    }
+    const halfWin = Math.max(0.02, style?.bandHalfW ?? BAND_SWEEP_W);
+    const st = 1 / BAND_SWEEP_SLICES;
+    const dx = ex - fx, dy = ey - fy;
+    for (let i = 0; i < BAND_SWEEP_SLICES; i++) {
+      const s0 = i * st, s1 = s0 + st;
+      const w = bandSweepSliceAlpha((s0 + s1) / 2, prog, halfWin, style?.easePow, CIRCLE_SWEEP_EASE);
+      if (w <= 0.004) continue;
+      const ax = fx + dx * s0, ay = fy + dy * s0;
+      const bx = fx + dx * s1, by = fy + dy * s1;
+      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: baseW, color: 0xff3030, alpha: Math.min(1, baseA * BAND_SWEEP_A) * w });
+      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: coreW, color: 0xffe0e0, alpha: Math.min(1, coreA * BAND_SWEEP_A) * w, cap: 'round' });
+    }
   }
 
   // FX-V2a(発注仕様v0.25.2974): gaze-windup終了エッジ(発射の瞬間)に一瞬走る金色の視線閃光。
@@ -25469,9 +25629,8 @@ export class PixiScene {
    * `remainMs` はその周期内の残り時間(0未満・activeMs超過は clamp)。
    */
   private static loopSweepProg(activeMs: number, remainMs: number): number {
-    const period = Math.max(1, activeMs);
-    const elapsed = Math.max(0, period - Math.max(0, remainMs));
-    return (elapsed % period) / period;
+    // ★v0.25.4457: 実体は `utils/circleSweep.ts` の純関数(`meteorPhase` と同じく薄い委譲に寄せた)。
+    return csLoopSweepProg(activeMs, remainMs);
   }
 
   /**

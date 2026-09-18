@@ -3,6 +3,7 @@ import {
   phillPhaseForHealth, phillRequiredMoveReady, phillRequiredMoveDamage, phillCageInitialRadiusPx,
   phillSummonSpawnCount, pickPhillMove, PHILL_SUMMON_CAP, PHILL_REQUIRED_GAP_MS,
   type PhillMoveGates,
+  phillWingcomboRed, phillRingtossRed, phillGoldringProg,
 } from './phillScript';
 
 const READY_ALL: PhillMoveGates = {
@@ -110,5 +111,82 @@ describe('pickPhillMove(距離帯×重み+ゲート)', () => {
   it('密着距離ではwingslash/wingthrust/wingcombo以外に振れやすい重み設定(遠距離技の重みは0)', () => {
     // 密着ではlightrain(far寄り)は重み5と小さいが0ではない=完全排除ではなく比重の話であることを確認。
     expect(pickPhillMove(50, READY_ALL, () => 0)).not.toBeNull();
+  });
+});
+
+// ★★赤い予告の4つの掟②③(CLAUDE.md・社長指示2026-09-18)。PACING_PUZZLE.md §18-1 A-2 / A-3 / C-1。
+// **旧実装の嘘の検知器**(=v0.25.4456以前の壊れ方をそのまま書くと落ちるテスト)。
+describe('★フィルの羽連撃(A-2)の2撃目にも予告があり、当たる瞬間に消え切る', () => {
+  // 判定側(angelBossTick.runPhillTick)の実測値。
+  const WC = { windupMs: 650, active1Ms: 130, gapMs: 260 };
+  const TOTAL = WC.windupMs + WC.active1Ms + WC.gapMs; // 1040 = 2撃目が当たるまで
+
+  it('★2撃目の予告は「溜めの頭」から出ている(旧実装の嘘の検知器: 旧は2撃目の帯が存在しなかった)', () => {
+    const atWindupStart = phillWingcomboRed('phill-wingcombo-windup', WC.windupMs, WC);
+    expect(atWindupStart.secondProg).toBe(0);      // 出ている(=null ではない)
+    expect(atWindupStart.firstProg).toBe(0);
+  });
+
+  it('★1撃目は溜め明けで消え切るが、2撃目はまだ消えない', () => {
+    const atHit1 = phillWingcomboRed('phill-wingcombo-windup', 0, WC);
+    expect(atHit1.firstProg).toBe(1);                                    // 1撃目=当たる瞬間に消え切る
+    expect(atHit1.secondProg).toBeCloseTo(WC.windupMs / TOTAL, 6);
+    expect(atHit1.secondProg!).toBeLessThan(1);                          // 2撃目はまだ在る
+  });
+
+  it('★2撃目が消え切るのは gap の満了(= +active1 + gapMs)=2撃目が当たる瞬間', () => {
+    expect(phillWingcomboRed('phill-wingcombo-active1', 0, WC).secondProg)
+      .toBeCloseTo((WC.windupMs + WC.active1Ms) / TOTAL, 6);
+    expect(phillWingcomboRed('phill-wingcombo-gap', 1, WC).secondProg!).toBeLessThan(1);
+    expect(phillWingcomboRed('phill-wingcombo-gap', 0, WC).secondProg).toBe(1);
+  });
+
+  it('2撃目が済んだ後(active2/recover)は赤を出さない', () => {
+    expect(phillWingcomboRed('phill-wingcombo-active2', 100, WC)).toEqual({ firstProg: null, secondProg: null });
+    expect(phillWingcomboRed('phill-wingcombo-recover', 400, WC)).toEqual({ firstProg: null, secondProg: null });
+  });
+
+  it('★進行は州をまたいで単調(巻き戻らない)', () => {
+    const seq: number[] = [];
+    for (let r = WC.windupMs; r >= 0; r -= 25) seq.push(phillWingcomboRed('phill-wingcombo-windup', r, WC).secondProg!);
+    for (let r = WC.active1Ms; r >= 0; r -= 10) seq.push(phillWingcomboRed('phill-wingcombo-active1', r, WC).secondProg!);
+    for (let r = WC.gapMs; r >= 0; r -= 10) seq.push(phillWingcomboRed('phill-wingcombo-gap', r, WC).secondProg!);
+    for (let i = 1; i < seq.length; i++) expect(seq[i]).toBeGreaterThanOrEqual(seq[i - 1]);
+    expect(seq[seq.length - 1]).toBe(1);
+  });
+});
+
+describe('★フィルの光輪投げ(A-3)は往路の2点で消え切り、判定の無い復路には赤を出さない', () => {
+  const RT = { windupMs: 700, outMs: 380 };
+
+  it('★復路(back)は赤なし(旧実装の嘘の検知器: 旧は往復とも静的な全形が出っぱなし=380msの嘘)', () => {
+    expect(phillRingtossRed('phill-ringtoss-back', 380, RT)).toEqual({ firstProg: null, secondProg: null });
+    expect(phillRingtossRed('phill-ringtoss-back', 0, RT)).toEqual({ firstProg: null, secondProg: null });
+    expect(phillRingtossRed('phill-ringtoss-recover', 400, RT)).toEqual({ firstProg: null, secondProg: null });
+  });
+
+  it('★往路(out)の赤は静的な全形ではなく、往路の終わり(2撃目の命中)で消え切る', () => {
+    expect(phillRingtossRed('phill-ringtoss-out', RT.outMs, RT).secondProg)
+      .toBeCloseTo(RT.windupMs / (RT.windupMs + RT.outMs), 6);
+    expect(phillRingtossRed('phill-ringtoss-out', 1, RT).secondProg!).toBeLessThan(1);
+    expect(phillRingtossRed('phill-ringtoss-out', 0, RT).secondProg).toBe(1);
+    expect(phillRingtossRed('phill-ringtoss-out', 100, RT).firstProg).toBeNull(); // 1撃目はもう済んでいる
+  });
+
+  it('★2撃目の予告も「出る=溜め開始」。1撃目は溜め明けで消え切る', () => {
+    expect(phillRingtossRed('phill-ringtoss-windup', RT.windupMs, RT)).toEqual({ firstProg: 0, secondProg: 0 });
+    const atHit1 = phillRingtossRed('phill-ringtoss-windup', 0, RT);
+    expect(atHit1.firstProg).toBe(1);
+    expect(atHit1.secondProg!).toBeLessThan(1);
+  });
+});
+
+describe('★フィルの金環(C-1)は流星になる(濃くなるだけではない)', () => {
+  it('★溜め開始で0・溜め明け(=当たる瞬間)で1。それ以外の州では赤を出さない', () => {
+    expect(phillGoldringProg('phill-goldring-windup', 1600, 1600)).toBe(0);
+    expect(phillGoldringProg('phill-goldring-windup', 800, 1600)).toBeCloseTo(0.5, 6);
+    expect(phillGoldringProg('phill-goldring-windup', 0, 1600)).toBe(1);
+    expect(phillGoldringProg('phill-goldring-active', 260, 1600)).toBeNull();
+    expect(phillGoldringProg('phill-goldring-recover', 900, 1600)).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "746 files / 復号後 約709MB",
+ "generatedFor": "753 files / 復号後 約711MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1301,8 +1301,50 @@
   "sprites/fx/kill-slash.png": {
    "w": 3264,
    "h": 151,
-   "bytes": 147092,
-   "sha": "f068311287007031"
+   "bytes": 186489,
+   "sha": "cf2149072334ff2b"
+  },
+  "sprites/fx/melee-arc-0.png": {
+   "w": 155,
+   "h": 219,
+   "bytes": 45159,
+   "sha": "99024c389fd691c3"
+  },
+  "sprites/fx/melee-arc-1.png": {
+   "w": 178,
+   "h": 266,
+   "bytes": 56826,
+   "sha": "deededa2bfbdb9d6"
+  },
+  "sprites/fx/melee-arc-2.png": {
+   "w": 222,
+   "h": 315,
+   "bytes": 79864,
+   "sha": "c016324ae18dfb10"
+  },
+  "sprites/fx/melee-arc-3.png": {
+   "w": 253,
+   "h": 331,
+   "bytes": 88260,
+   "sha": "bb74926152eff735"
+  },
+  "sprites/fx/melee-arc-4.png": {
+   "w": 266,
+   "h": 359,
+   "bytes": 110349,
+   "sha": "59ae31fa0db7a79e"
+  },
+  "sprites/fx/melee-arc-5.png": {
+   "w": 295,
+   "h": 373,
+   "bytes": 128498,
+   "sha": "af221cc4e87b836c"
+  },
+  "sprites/fx/melee-arc-6.png": {
+   "w": 476,
+   "h": 388,
+   "bytes": 184298,
+   "sha": "13d3be1af0207e0a"
   },
   "sprites/fx/melee-hit-00.png": {
    "w": 176,

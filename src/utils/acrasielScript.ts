@@ -5,6 +5,7 @@
 // 5技は候補から消さず、密着=爆発 / 中距離=放射棘 / 遠距離=槍・転移・凝視の比重を上げる。
 import { bossZoneForDistance, phaseForHealth, pickComboFollowup, pickWeightedMove, type BossMoveWeights } from './bossScript';
 import { distToSegment } from './geometry';
+import { multiPhaseTelegraphProg } from './bandSweep';
 
 export interface AcrasielPlan {
   x: number; y: number; rotation: number; gapMask: number;
@@ -205,4 +206,55 @@ export const pickAcrasielCombo = (
 ): AcrasielMove | null => {
   if (phase !== 3) return null;
   return pickComboFollowup(justFinished, ACRASIEL_COMBO_FOLLOWUP, ACRASIEL_PHASE3_COMBO_CHANCE, () => true, rand);
+};
+
+// ============================================================================================
+// ★★赤い予告の4つの掟(CLAUDE.md・社長指示2026-09-18)への是正。PACING_PUZZLE.md §18-1 A-4/B-1/B-2。
+// ============================================================================================
+//
+// **判定は1つも変えていない。** 変えたのは「いつ赤を出し、いつ消すか」だけ。
+// 出どころは判定側(`angelBossTick.runAcrasielTick`)の州遷移と同じ式=描画側に時刻の複製を書かない。
+//
+// 直した嘘(v0.25.4456以前):
+//  - A-4 転移: `warp-out`(800ms)の満了で予告が消え、**`warp-in` の1000msは画面に何も出ない**。
+//    衝撃が来るのはその**後**=「赤が消えた=終わった」と読んだプレイヤーが必ず食らう。
+//  - B-2 転移の衝撃: `warp-active`(200ms)は**毎フレーム判定が生きている**のに赤が無い。
+//  - B-1 爆発: `burst`(300ms)も**毎フレーム判定が生きている**のに赤が無い。
+
+/** 赤を今どう描くか。`meteor`=溜め(消え切り=当たる)/ `live`=判定が生きている(全形で残す)/ null=赤なし。 */
+export type AcrasielRedPhase = { kind: 'meteor'; prog: number } | { kind: 'live' } | null;
+
+export interface AcrasielWarpTiming {
+  /** `warp-out` の長さ(AC_T.warp.windup)。 */
+  windupMs: number;
+  /** `warp-in` の長さ(AC_T.warp.telegraphMs)。 */
+  telegraphMs: number;
+}
+
+/**
+ * ★A-4/B-2: 転移の**通し**(out→in→衝撃)を1本の流星にする。
+ *
+ * 衝撃(`damage(...)`)は `warp-in` の満了=`warp-active` へ入る瞬間に成立し、以後
+ * `warp-active` の間ずっと毎フレーム成立する(`runAcrasielTick` の `st === 'warp-active'` 枝)。
+ * ⇒ **消え切る時刻 = `warp-in` の満了**、**`warp-active` の間は赤を残す**。
+ */
+export const acrasielWarpRed = (
+  state: string, remainMs: number, t: AcrasielWarpTiming,
+): AcrasielRedPhase => {
+  if (state === 'warp-out') return { kind: 'meteor', prog: multiPhaseTelegraphProg([t.windupMs, t.telegraphMs], 0, remainMs) };
+  if (state === 'warp-in') return { kind: 'meteor', prog: multiPhaseTelegraphProg([t.windupMs, t.telegraphMs], 1, remainMs) };
+  if (state === 'warp-active') return { kind: 'live' };
+  return null; // warp-recover 等は赤なし(判定も無い)
+};
+
+/**
+ * ★B-1: 爆発。溜め(`burst-windup`)で消え切り、**`burst` の間(判定が毎フレーム生きている)は赤を残す**。
+ * `windupMs` = AC_T.burst.windup。
+ */
+export const acrasielBurstRed = (
+  state: string, remainMs: number, windupMs: number,
+): AcrasielRedPhase => {
+  if (state === 'burst-windup') return { kind: 'meteor', prog: multiPhaseTelegraphProg([windupMs], 0, remainMs) };
+  if (state === 'burst') return { kind: 'live' };
+  return null;
 };

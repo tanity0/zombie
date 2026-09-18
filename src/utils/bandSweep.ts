@@ -137,3 +137,46 @@ export const twoPhaseTelegraphProg = (t: TwoPhaseTelegraphTiming): number => {
   const elapsed = t.inFirst ? done : first + done;
   return Math.max(0, Math.min(1, elapsed / (first + second)));
 };
+
+/**
+ * ★**N拍の通し**(`twoPhaseTelegraphProg` の一般形・PACING_PUZZLE.md §18)。
+ *
+ * ★★赤い予告の4つの掟②③(CLAUDE.md・社長指示2026-09-18):
+ * **出る時刻 = 溜めが始まる時刻 / 消え切る時刻 = 当たる時刻。**
+ * 1つの命中までに**3拍以上**を挟む技(アクラシエルの転移 `warp-out→warp-in→衝撃`、
+ * フィルの羽連撃の2撃目 `windup→active1→gap→2撃目`、光輪投げの2撃目 `windup→out→2撃目`)は、
+ * 2拍では足りない。**溜めの頭から、その命中の瞬間まで**を1本の流星として通すための進行を返す。
+ *
+ * - `phaseMs` = 溜めの頭からその命中までに通る**全部の拍の長さ**(ms・順番どおり)。
+ * - `index` = 今どの拍に居るか(0始まり)。`phaseMs` の範囲外は端へクランプ。
+ * - `remainMs` = **今の拍**の残り ms。
+ *
+ * 返り値は 0→1。**1 になる瞬間 = その段が当たる瞬間**(= 予告が消え切る)。
+ * 拍の境目で値は連続する(段差なし)。
+ */
+export const multiPhaseTelegraphProg = (
+  phaseMs: readonly number[], index: number, remainMs: number,
+): number => {
+  if (phaseMs.length === 0) return 1;
+  const i = Math.max(0, Math.min(phaseMs.length - 1, Math.round(index)));
+  const total = Math.max(1e-6, phaseMs.reduce((a, b) => a + Math.max(0, b), 0));
+  let elapsed = 0;
+  for (let k = 0; k < i; k++) elapsed += Math.max(0, phaseMs[k]);
+  const cur = Math.max(0, phaseMs[i]);
+  elapsed += Math.max(0, Math.min(cur, cur - remainMs));
+  return Math.max(0, Math.min(1, elapsed / total));
+};
+
+/**
+ * ★**線(T6=射線)1スライスの窓の濃さ**(0〜1)。`pixiScene.drawAngelBeamLine` が使う。
+ * PACING_PUZZLE.md §18-1 C-3〜C-6(偶像の狙い撃ち/扇射/オーブ、スリィエルの環のビーム)。
+ *
+ * 旧実装は「**線の太さ・濃さが prog で増えるだけ**」で、**発射の瞬間(prog=1)がいちばん濃い**=
+ * 流星の読み方(消え切った瞬間に来る)と真逆だった。ここは帯と**同じ窓**(`bandSweepCenter`/
+ * `bandSweepAlphaAt`)を線の軸へ当てるだけ——**自前の位相を作らない**(掟①)。
+ *
+ * `s` = 軸上の位置(0=起点 / 1=終点)。`prog=1` では**全スライスが0**=線が消え切る。
+ */
+export const bandSweepSliceAlpha = (
+  s: number, prog: number, halfW: number = BAND_SWEEP_HALF_W, easePow = 2, ease = true,
+): number => bandSweepAlphaAt(s, bandSweepCenter(prog, halfW, ease, easePow), halfW);

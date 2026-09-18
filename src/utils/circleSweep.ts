@@ -66,3 +66,17 @@ export const circleSweepAlphaAt = (r: number, band: number, halfW: number): numb
   const t = 1 - d;
   return t * t * (3 - 2 * t); // smoothstep=縁が硬く切れない
 };
+
+/**
+ * ★**持続判定技(§11-4「持続ループ」)の周回進行。**
+ * `prog` に渡すと、1周期(`activeMs`)ぶんの帯を描き→消しでループさせ続けられる
+ * (=「流れている = 判定が生きている」)。`remainMs` はその周期内の残り時間。
+ *
+ * 実体はここ(純関数・ユニットテスト対象)。`pixiScene.ts` の `PixiScene.loopSweepProg` は
+ * 既存の呼び出しを書き換えずに済む薄い委譲ラッパー(`meteorPhase` と同じ作法・v0.25.4457)。
+ */
+export const loopSweepProg = (activeMs: number, remainMs: number): number => {
+  const period = Math.max(1, activeMs);
+  const elapsed = Math.max(0, period - Math.max(0, remainMs));
+  return (elapsed % period) / period;
+};

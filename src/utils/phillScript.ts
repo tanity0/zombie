@@ -7,6 +7,7 @@
 // summon(6召喚) goldring(7金環) judgment(8裁きの光★必須) cage(9羽根の檻★必須) meteor(10エルデの流星)
 // ringtoss(11光輪投げ) dive(12急降下) feathershot(14羽根散弾)。
 import { bossZoneForDistance, phaseForHealth, pickWeightedMove, type BossMoveWeights } from './bossScript';
+import { multiPhaseTelegraphProg } from './bandSweep';
 
 export type PhillMove =
   | 'lightrain' | 'lancefan' | 'wingslash' | 'wingthrust' | 'wingcombo' | 'summon' | 'goldring'
@@ -114,3 +115,73 @@ export const pickPhillMove = (
   },
   rand,
 );
+
+// ============================================================================================
+// ★★赤い予告の4つの掟(CLAUDE.md・社長指示2026-09-18)への是正。PACING_PUZZLE.md §18-1 A-2/A-3/C-1。
+// ============================================================================================
+//
+// **判定・ダメージ・射程・尺は1つも変えていない。** 変えたのは「いつ赤を出し、いつ消すか」だけで、
+// 時刻は判定側(`angelBossTick.runPhillTick`)の州遷移と同じ順番・同じ尺から導く。
+//
+// 直した嘘(v0.25.4456以前):
+//  - A-2 羽連撃の2撃目: **予告が存在しない**(1撃目の帯だけ)。2撃目は1撃目の +active1+gap に当たる。
+//  - A-3 光輪投げ: 往路(`out`)も復路(`back`)も**静的な全形の帯が出っぱなし**。実際に当たるのは
+//    溜め明け(1撃目)と往路の終わり(2撃目)の2点だけで、**復路の380msは赤いのに当たらない**。
+
+/** 2撃ある技の赤帯。`null`=その帯は出さない / 数値=流星の進行(1で消え切る=当たる)。 */
+export interface PhillTwoBeatRed { firstProg: number | null; secondProg: number | null }
+
+const NO_RED: PhillTwoBeatRed = { firstProg: null, secondProg: null };
+
+export interface PhillWingcomboTiming { windupMs: number; active1Ms: number; gapMs: number }
+
+/**
+ * ★A-2: 羽連撃(技5)の赤帯。
+ * 1撃目は溜め明け(`windup`満了)、**2撃目は `gap` の満了**(= `active1` + `gapMs` だけ後)に成立する
+ * (`runPhillTick` の `phill-wingcombo-gap` 枝が `pushBlast` する)。
+ * ⇒ 2撃目の帯は**溜めの頭から出て**(掟②)、**2撃目が当たる瞬間に消え切る**(掟③)。
+ */
+export const phillWingcomboRed = (
+  state: string, remainMs: number, t: PhillWingcomboTiming,
+): PhillTwoBeatRed => {
+  const chain = [t.windupMs, t.active1Ms, t.gapMs];
+  if (state === 'phill-wingcombo-windup') {
+    return {
+      firstProg: multiPhaseTelegraphProg([t.windupMs], 0, remainMs),
+      secondProg: multiPhaseTelegraphProg(chain, 0, remainMs),
+    };
+  }
+  if (state === 'phill-wingcombo-active1') return { firstProg: null, secondProg: multiPhaseTelegraphProg(chain, 1, remainMs) };
+  if (state === 'phill-wingcombo-gap') return { firstProg: null, secondProg: multiPhaseTelegraphProg(chain, 2, remainMs) };
+  return NO_RED; // active2(2撃目は既に成立済み)/ recover は赤なし
+};
+
+export interface PhillRingtossTiming { windupMs: number; outMs: number }
+
+/**
+ * ★A-3: 光輪投げ(技11)の赤帯。
+ * 当たるのは**2点だけ**——溜め明け(投げた瞬間)と、往路 `out` の満了(戻り始め)。
+ * **復路 `back` には判定が無い**ので赤も出さない(旧実装は全形の帯を出しっぱなしだった)。
+ */
+export const phillRingtossRed = (
+  state: string, remainMs: number, t: PhillRingtossTiming,
+): PhillTwoBeatRed => {
+  const chain = [t.windupMs, t.outMs];
+  if (state === 'phill-ringtoss-windup') {
+    return {
+      firstProg: multiPhaseTelegraphProg([t.windupMs], 0, remainMs),
+      secondProg: multiPhaseTelegraphProg(chain, 0, remainMs),
+    };
+  }
+  if (state === 'phill-ringtoss-out') return { firstProg: null, secondProg: multiPhaseTelegraphProg(chain, 1, remainMs) };
+  return NO_RED; // back(判定なし)/ recover は赤なし
+};
+
+/**
+ * ★C-1: 金環(技7)の赤い大円。**濃くなる+脈打つだけ**で流星になっていなかった(掟①違反)。
+ * 塗りだけを流星(外→内へ流れ、消え切った瞬間=当たる)にする。**輪の金色は社長裁定で維持**。
+ */
+export const phillGoldringProg = (
+  state: string, remainMs: number, windupMs: number,
+): number | null =>
+  state === 'phill-goldring-windup' ? multiPhaseTelegraphProg([windupMs], 0, remainMs) : null;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bandSweepCenter, bandSweepAlphaAt, sweepTelegraphProg, twoPhaseTelegraphProg, BAND_SWEEP_HALF_W } from './bandSweep';
+import { bandSweepCenter, bandSweepAlphaAt, sweepTelegraphProg, twoPhaseTelegraphProg, multiPhaseTelegraphProg, bandSweepSliceAlpha, BAND_SWEEP_SLICES, BAND_SWEEP_HALF_W } from './bandSweep';
 
 const HW = BAND_SWEEP_HALF_W;
 
@@ -155,5 +155,66 @@ describe('twoPhaseTelegraphProg(2拍で1つの予告=噛みつきの「溜め+�
       prev = v;
     }
     expect(prev).toBe(1);
+  });
+});
+
+// ★★赤い予告の4つの掟①②③(CLAUDE.md・社長指示2026-09-18)。PACING_PUZZLE.md §18。
+describe('multiPhaseTelegraphProg(N拍の通し=多段の技の「その段が当たる瞬間まで」)', () => {
+  it('2拍なら twoPhaseTelegraphProg と一致する(一般形であって別物ではない)', () => {
+    for (const [first, second, inFirst, remain] of [
+      [800, 1000, true, 300], [800, 1000, false, 250], [650, 260, true, 0], [0, 500, false, 100],
+    ] as const) {
+      expect(multiPhaseTelegraphProg([first, second], inFirst ? 0 : 1, remain))
+        .toBeCloseTo(twoPhaseTelegraphProg({ firstMs: first, secondMs: second, inFirst, remainMs: remain }), 6);
+    }
+  });
+  it('拍の境目で値が連続する(段差なし)', () => {
+    const ph = [650, 130, 260];
+    expect(multiPhaseTelegraphProg(ph, 0, 0)).toBeCloseTo(multiPhaseTelegraphProg(ph, 1, ph[1]), 6);
+    expect(multiPhaseTelegraphProg(ph, 1, 0)).toBeCloseTo(multiPhaseTelegraphProg(ph, 2, ph[2]), 6);
+  });
+  it('最後の拍が尽きた瞬間にちょうど1(=その段が当たる瞬間に消え切る)', () => {
+    expect(multiPhaseTelegraphProg([650, 130, 260], 2, 0)).toBe(1);
+    expect(multiPhaseTelegraphProg([650, 130, 260], 0, 650)).toBe(0);
+  });
+  it('index/remain が範囲外でも 0〜1 に収まる(境界安全)', () => {
+    expect(multiPhaseTelegraphProg([100, 100], -5, 50)).toBeGreaterThanOrEqual(0);
+    expect(multiPhaseTelegraphProg([100, 100], 99, -50)).toBe(1);
+    expect(multiPhaseTelegraphProg([], 0, 0)).toBe(1);
+  });
+});
+
+// PACING_PUZZLE.md §18-1 C-3〜C-6(偶像の狙い撃ち/扇射/オーブ、スリィエルの環のビーム)。
+// **旧実装の嘘の検知器**: 旧 `drawAngelBeamLine` は「太さ・濃さが prog で増えるだけ」で、
+// **発射の瞬間(prog=1)がいちばん濃かった**=流星(消え切った瞬間に来る)と真逆だった。
+describe('★bandSweepSliceAlpha — 射線(T6)も流星の文法へ', () => {
+  const at = (prog: number) => Array.from({ length: BAND_SWEEP_SLICES },
+    (_, i) => bandSweepSliceAlpha((i + 0.5) / BAND_SWEEP_SLICES, prog));
+
+  it('★発射の瞬間(prog=1)は線が消え切っている(旧実装はここが最大だった)', () => {
+    expect(Math.max(...at(1))).toBe(0);
+  });
+  it('★溜めの頭(prog=0)も線は出ていない=窓は帯の外から入ってくる', () => {
+    expect(Math.max(...at(0))).toBe(0);
+  });
+  it('★途中では必ずどこかが光っている(予告が消えたまま溜めが進まない)', () => {
+    for (const p of [0.2, 0.4, 0.6, 0.8, 0.95]) expect(Math.max(...at(p))).toBeGreaterThan(0);
+  });
+  it('★窓は起点→終点へ進む(逆流しない)', () => {
+    const peakAt = (prog: number) => {
+      const a = at(prog);
+      return a.indexOf(Math.max(...a));
+    };
+    let prev = -1;
+    for (const p of [0.25, 0.4, 0.55, 0.7, 0.85, 0.95]) {
+      const i = peakAt(p);
+      expect(i).toBeGreaterThanOrEqual(prev);
+      prev = i;
+    }
+  });
+  it('窓の中心では最大・縁では0(bandSweepAlphaAt と同じ窓を使っている=自前の位相を作らない)', () => {
+    const c = bandSweepCenter(0.5, HW);
+    expect(bandSweepSliceAlpha(c, 0.5)).toBeCloseTo(bandSweepAlphaAt(c, c, HW), 10);
+    expect(bandSweepSliceAlpha(c + HW, 0.5)).toBe(0);
   });
 });

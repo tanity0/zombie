@@ -4,6 +4,7 @@ import {
   pickAcrasielMove, pickAcrasielCombo, ACRASIEL_SECTOR_COUNT, planAcrasielPattern,
   acrasielCounterAccepted, acrasielGazeAngles, acrasielGazeBeamCount, ACRASIEL_GAZE_SPREAD_RAD,
   acrasielBurstShardAngles, ACRASIEL_BURST_SHARD_COUNT, acrasielSpikeWaveCount, acrasielNextWaveGapMask,
+  acrasielWarpRed, acrasielBurstRed,
 } from './acrasielScript';
 
 describe('acrasielPhaseForHealth (§6.28-19: 60%/30%の3段)', () => {
@@ -176,5 +177,57 @@ describe('acrasielSpikeWaveCount / acrasielNextWaveGapMask — 放射棘の2波'
       for (let s2 = 0; s2 < ACRASIEL_SECTOR_COUNT; s2++) if (isSpikeGapSector(mask, s2)) n++;
       expect(n).toBe(2);
     }
+  });
+});
+
+// ★★赤い予告の4つの掟②③(CLAUDE.md・社長指示2026-09-18)。PACING_PUZZLE.md §18-1 A-4 / B-1 / B-2。
+// **旧実装の嘘の検知器**(=v0.25.4456以前の壊れ方をそのまま書くと落ちるテスト)。
+describe('★アクラシエルの転移/爆発の赤は、判定の在る間だけ・当たる瞬間に消え切る', () => {
+  // 判定側(angelBossTick.runAcrasielTick)の実測値。ここを変えたら判定側も変わっている。
+  const WARP = { windupMs: 800, telegraphMs: 1000 };
+  const BURST_WINDUP = 1200;
+
+  it('★A-4: warp-out の満了で消えない(旧実装の嘘の検知器)', () => {
+    // 旧: `warp-out`(800ms)の満了で予告が消え、続く `warp-in` の1000msは画面に何も出なかった。
+    const atOutEnd = acrasielWarpRed('warp-out', 0, WARP);
+    expect(atOutEnd).toEqual({ kind: 'meteor', prog: expect.closeTo(800 / 1800, 6) });
+    expect((atOutEnd as { prog: number }).prog).toBeLessThan(1); // まだ消え切らない
+    // warp-in の頭でも続きが出ている(段差なし)。
+    expect(acrasielWarpRed('warp-in', WARP.telegraphMs, WARP)).toEqual(atOutEnd);
+  });
+
+  it('★A-4: 消え切る瞬間 = 衝撃(warp-active へ入る瞬間)', () => {
+    expect(acrasielWarpRed('warp-in', 1, WARP)).toEqual({ kind: 'meteor', prog: expect.closeTo(1799 / 1800, 6) });
+    expect(acrasielWarpRed('warp-in', 0, WARP)).toEqual({ kind: 'meteor', prog: 1 });
+  });
+
+  it('★通しの進行は単調に増える(out→in の境目で巻き戻らない)', () => {
+    const seq: number[] = [];
+    for (let r = WARP.windupMs; r >= 0; r -= 50) seq.push((acrasielWarpRed('warp-out', r, WARP) as { prog: number }).prog);
+    for (let r = WARP.telegraphMs; r >= 0; r -= 50) seq.push((acrasielWarpRed('warp-in', r, WARP) as { prog: number }).prog);
+    for (let i = 1; i < seq.length; i++) expect(seq[i]).toBeGreaterThanOrEqual(seq[i - 1]);
+    expect(seq[seq.length - 1]).toBe(1);
+  });
+
+  it('★B-2: warp-active(200ms)は判定が毎フレーム生きている=赤を残す(旧実装の嘘の検知器)', () => {
+    expect(acrasielWarpRed('warp-active', 200, WARP)).toEqual({ kind: 'live' });
+    expect(acrasielWarpRed('warp-active', 0, WARP)).toEqual({ kind: 'live' });
+  });
+
+  it('判定の無い州(warp-recover/chase)では赤を出さない', () => {
+    expect(acrasielWarpRed('warp-recover', 300, WARP)).toBeNull();
+    expect(acrasielWarpRed('chase', 300, WARP)).toBeNull();
+  });
+
+  it('★B-1: burst(300ms)も判定が毎フレーム生きている=赤を残す(旧実装の嘘の検知器)', () => {
+    // 旧: `burst-windup` の満了で赤が消え、実際に当たる300msの間は赤が1pxも無かった。
+    expect(acrasielBurstRed('burst', 300, BURST_WINDUP)).toEqual({ kind: 'live' });
+    expect(acrasielBurstRed('burst', 1, BURST_WINDUP)).toEqual({ kind: 'live' });
+  });
+
+  it('★B-1: 溜めは「出る=溜め開始」「消え切る=当たる」', () => {
+    expect(acrasielBurstRed('burst-windup', BURST_WINDUP, BURST_WINDUP)).toEqual({ kind: 'meteor', prog: 0 });
+    expect(acrasielBurstRed('burst-windup', 0, BURST_WINDUP)).toEqual({ kind: 'meteor', prog: 1 });
+    expect(acrasielBurstRed('burst-recover', 500, BURST_WINDUP)).toBeNull();
   });
 });
