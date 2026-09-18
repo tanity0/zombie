@@ -44,7 +44,7 @@ import {
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
-  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, WEREWOLF_CHARGE_MAX_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, MELEE_RADIUS, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, WEREWOLF_CHARGE_MAX_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS, GIANT_JUMP_AIR_MS, PUMPKIN_JUMP_MS,
@@ -1385,9 +1385,27 @@ const KNIFE_F3 = { scale: 1.80, ox: 0.22, oy: -0.12 };
 const MELEE_ARC_FRAMES = 7;
 const MELEE_ARC_REF_W = 476;   // 最終コマの幅。全コマをこの幅で正規化する=コマごとの成長を消さない
 const MELEE_ARC_SCALE = 1.65;  // 最終コマの横幅 = unit × この値
-const MELEE_ARC_OX = -0.68;    // 起点(柄側)の横位置。右向き・胸基準(旧弧の左端に合わせてある)
-const MELEE_ARC_OY = 0.40;     // 起点の縦位置(胸から下へ。旧弧の下端と同じ)
-const MELEE_ARC_PUSH = 0.30;   // 進行方向への押し出し量(コマが進むほど前へ出る)
+const MELEE_ARC_OY = 0.60;     // 描き始め(柄側の先端)の縦位置。胸から下へ=足元寄り
+const MELEE_ARC_PUSH = 0.12;   // 進行方向への押し出し量。**後ろから入って最後に揃う**ので
+                               // (t-1 を掛ける)、最後のコマの右端はちょうど判定弧に乗る。
+// 各コマの先端位置(コマの幅・高さに対する割合・実測: alpha>60 の最大連結成分の上下端)。
+// bx = 柄側(下端)の先端。**全コマでここを重ねる**=描き始めが動かない=「下から描いていく」に見える。
+// tx/ty = 刃先(上端)の先端。武器の実絵はここに乗せる=振り抜きの先に刃が居る。
+const MELEE_ARC_TIP: readonly { bx: number; tx: number; ty: number }[] = [
+  { bx: 0.297, tx: 0.713, ty: 0.114 },
+  { bx: 0.270, tx: 0.809, ty: 0.098 },
+  { bx: 0.321, tx: 0.714, ty: 0.051 },
+  { bx: 0.425, tx: 0.462, ty: 0.048 },
+  { bx: 0.285, tx: 0.416, ty: 0.058 },
+  { bx: 0.260, tx: 0.301, ty: 0.021 },
+  { bx: 0.594, tx: 0.319, ty: 0.018 },
+];
+// ★最後のコマの右端を**判定弧**(近接の届き=MELEE_RADIUS)に揃える(社長指示)。
+// unit は箱の高さなので、世界pxを箱高で割れば unit 換算になる。そこから逆算して
+// 「全コマで重ねる描き始め(柄側の先端)」の横位置を出す=最後のコマが自動で右揃えになる。
+const MELEE_ARC_RIGHT_U = MELEE_RADIUS / (PLAYER_HITBOX * PLAYER_VISUAL_SCALE);
+const MELEE_ARC_TIP_OX =
+  MELEE_ARC_RIGHT_U - (1 - MELEE_ARC_TIP[MELEE_ARC_FRAMES - 1].bx) * MELEE_ARC_SCALE;
 const MELEE_ARC_RUN_END = 0.74; // ここでコマ送りが終わる(kt)。以降は最終コマを保持して引く
 // 弧の進行 t: 振りかぶり(KNIFE_SWING_SWITCH)〜MELEE_ARC_RUN_END を 0..1 に伸ばす。
 const meleeArcT = (kt: number): number =>
@@ -1403,25 +1421,31 @@ const meleeArcAlpha = (kt: number): number => {
 // spr のテクスチャを当該コマへ差し替え、place() 用の cfg を返す(絵が無ければ null=旧弧へフォールバック)。
 // cfg.scale をコマ幅で補正してあるので、place() 側の「テクスチャ幅で割る」正規化を通しても
 // コマごとの大きさの差が消えない。アンカーは (0,1)=柄側の下端。
-// 武器の実絵は**弧の柄側の端**に置き、コマと一緒に前へ出る(弧だけ飛んで刃が取り残されない)。
-// 0.33 = 全コマの「下端にある三日月の端」の実測位置(コマ幅に対する割合)。
-const MELEE_ARC_TAIL_FX = 0.33;
-const MELEE_ARC_WPN_LIFT = 0.10; // 足元へめり込まないぶんの持ち上げ
-const meleeArcWpnPos = (cfg: { scale: number; ox: number; oy: number }): { ox: number; oy: number } =>
-  ({ ox: cfg.ox + MELEE_ARC_TAIL_FX * cfg.scale, oy: cfg.oy - MELEE_ARC_WPN_LIFT });
-// 武器は弧より一足先に引く(残光は弧だけ)。ハードカットにはしない=慣性MUST。
-const meleeArcWpnAlpha = (kt: number): number => { const a = meleeArcAlpha(kt); return a * a; };
-const meleeArcCfg = (spr: Sprite, kt: number): { scale: number; ox: number; oy: number } | null => {
+// 武器の実絵は**弧の刃先(上端の先端)**に置く=振り抜いた先に刃が居る。
+const MELEE_ARC_WPN_LIFT = 0.04; // 先端のすぐ内側へ寄せるぶん
+const meleeArcWpnPos = (cfg: MeleeArcCfg): { ox: number; oy: number } => {
+  const tip = MELEE_ARC_TIP[cfg.idx];
+  return {
+    ox: cfg.ox + (tip.tx - tip.bx) * cfg.scale,
+    oy: cfg.oy - (1 - tip.ty) * cfg.scale * cfg.aspect - MELEE_ARC_WPN_LIFT,
+  };
+};
+// 武器は弧と同じ濃さで居る(振り抜きの間ずっと刃が見える)。
+const meleeArcWpnAlpha = (kt: number): number => meleeArcAlpha(kt);
+interface MeleeArcCfg { scale: number; ox: number; oy: number; idx: number; aspect: number }
+const meleeArcCfg = (spr: Sprite, kt: number): MeleeArcCfg | null => {
   const t = meleeArcT(kt);
   const idx = Math.max(0, Math.min(MELEE_ARC_FRAMES - 1, Math.floor(t * MELEE_ARC_FRAMES)));
   const tex = getTexture(`fx/melee-arc-${idx}`);
   if (!tex || tex.width === 0) return null;
   if (spr.texture !== tex) spr.texture = tex;
-  spr.anchor.set(0, 1);
+  spr.anchor.set(MELEE_ARC_TIP[idx].bx, 1);   // 柄側の先端で重ねる(描き始めが動かない)
   return {
     scale: MELEE_ARC_SCALE * (tex.width / MELEE_ARC_REF_W),
-    ox: MELEE_ARC_OX + MELEE_ARC_PUSH * t,
+    ox: MELEE_ARC_TIP_OX + MELEE_ARC_PUSH * (t - 1),
     oy: MELEE_ARC_OY,
+    idx,
+    aspect: tex.height / tex.width,
   };
 };
 // 装備中の近接武器の実絵をスイングに重ねる(v0.25.1456 社長指示)。武器アイコン5種は同スタイル
