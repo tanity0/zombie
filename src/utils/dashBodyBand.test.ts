@@ -23,17 +23,19 @@ const actor = (o: Partial<Parameters<typeof dashBodyBandSpec>[0]> = {}) => ({
 });
 
 describe('★走行中は赤帯を出す州の台帳(掟④)', () => {
-  it('★§18-1(d)の4件(D-1〜D-4)が全部載っている(旧実装の嘘の検知器: 旧はトールだけ)', () => {
-    // D-1 汎用突進(犬/lab-zombie-2/giantbat/ハンター)
-    expect(dashBodyBandOn('charge', undefined)).toBe(true);
+  it('★§18で広げた5州は撤去された(社長指示2026-09-18「全部取っ払って」)', () => {
+    // D-1 汎用突進(犬=自転車/lab-zombie-2/giantbat/ハンター)
+    expect(dashBodyBandOn('charge', undefined)).toBe(false);
     // D-2 裏ボス共通(ミーミル/ヨルムンガルド/スカディ)
-    expect(dashBodyBandOn(undefined, 'dash')).toBe(true);
+    expect(dashBodyBandOn(undefined, 'dash')).toBe(false);
     // D-3 城ボス
-    expect(dashBodyBandOn('g-dash-charge', undefined)).toBe(true);
-    expect(dashBodyBandOn('g-quad-charge', undefined)).toBe(true);
+    expect(dashBodyBandOn('g-dash-charge', undefined)).toBe(false);
+    expect(dashBodyBandOn('g-quad-charge', undefined)).toBe(false);
     // D-4 馬乗り
-    expect(dashBodyBandOn(undefined, 'bm-charge')).toBe(true);
-    // 先例(既に揃っていた側)も同じ台帳から配る
+    expect(dashBodyBandOn(undefined, 'bm-charge')).toBe(false);
+  });
+
+  it('★トールの突進だけ残る(§18より前からある既存の絵=今回の指示の対象外)', () => {
     expect(dashBodyBandOn(undefined, 'thor-dash-move')).toBe(true);
   });
 
@@ -62,7 +64,7 @@ describe('★走行中は赤帯を出す州の台帳(掟④)', () => {
 describe('★走行中は「ずっと」赤が在る(赤が消えている間は当たらない)', () => {
   // 掟④の本体: 走り始めから走り終わりまで、**濃さが0になる瞬間が無い**こと
   // (両端の加減速ぶんの数フレームを除く=CLAUDE.md「動きの絶対ルール: 慣性」)。
-  it('汎用突進(D-1): 走行の間ずっと濃さ>0(旧実装は走り出しで赤が消えていた)', () => {
+  it.skip('汎用突進(D-1): 走行の間ずっと濃さ>0 ★撤去したのでスキップ(社長指示2026-09-18)', () => {
     const start = 10_000, until = start + D.chargeMaxMs;
     let minA = 1;
     for (let t = start + DASH_BAND_FADE_MS; t <= until - DASH_BAND_FADE_MS; t += 25) {
@@ -74,7 +76,7 @@ describe('★走行中は「ずっと」赤が在る(赤が消えている間は
     expect(minA).toBeGreaterThan(0.9); // 途切れない(ほぼ全開のまま)
   });
 
-  it('裏ボス(D-2)/馬乗り(D-4)も同じ(尺だけが違う)', () => {
+  it.skip('裏ボス(D-2)/馬乗り(D-4)も同じ ★撤去したのでスキップ(社長指示2026-09-18)', () => {
     for (const [bs, total] of [['dash', D.hiddenDashMs], ['bm-charge', D.bmChargeMaxMs]] as const) {
       const start = 5_000, until = start + total;
       const mid = dashBodyBandSpec(actor({
@@ -117,14 +119,14 @@ describe('dashBandAlpha01 — 出現/消滅の慣性(パッと出てパッと消
 });
 
 describe('dashBodyBandSpec — 帯の終点は「その突進の赤いライン」と同じ aiTarget', () => {
-  it('線と帯で終点を二重定義しない(=赤いのに当たらない、を作らない)', () => {
+  it.skip('線と帯で終点を二重定義しない ★撤去したのでスキップ(社長指示2026-09-18)', () => {
     const spec = dashBodyBandSpec(actor({
       aiPhase: 'g-quad-charge', aiPhaseUntil: 2000, aiTargetX: 640, aiTargetY: 480,
     }), 1000, D)!;
     expect(spec.endCx).toBe(640);
     expect(spec.endCy).toBe(480);
   });
-  it('aiTarget が無い1フレームは自分の中心へ落とす(NaN を描かない)', () => {
+  it.skip('aiTarget が無い1フレームは自分の中心へ落とす ★撤去したのでスキップ(社長指示2026-09-18)', () => {
     const spec = dashBodyBandSpec(actor({ aiPhase: 'charge', aiPhaseUntil: 2000 }), 1000, D)!;
     expect(spec.endCx).toBe(20);
     expect(spec.endCy).toBe(30);
@@ -140,7 +142,7 @@ describe('★色の文法: 赤=カウンター可 / 紫=カウンター不能(CL
     expect(dashBodyBandPurple('charge')).toBe(false);
     expect(dashBodyBandPurple(undefined)).toBe(false);
   });
-  it('spec が色まで運ぶ(描画側で色を決め直さない)', () => {
+  it.skip('spec が色まで運ぶ ★撤去したのでスキップ(社長指示2026-09-18)', () => {
     expect(dashBodyBandSpec(actor({ aiPhase: 'g-quad-charge', aiPhaseUntil: 2000, aiTargetX: 100, aiTargetY: 0 }), 1000, D)!.purple).toBe(true);
     expect(dashBodyBandSpec(actor({ bossState: 'bm-charge', bossStateUntil: 2000, aiTargetX: 100, aiTargetY: 0 }), 1000, D)!.purple).toBe(false);
   });

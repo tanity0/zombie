@@ -56,10 +56,18 @@ export const dashBandAlpha01 = (
  * ※ミゲル `mdash-move` とウリ `thrust` は「線を走者が食う」方式で既に揃っているので載せない
  *   (PACING_PUZZLE.md §18-1(d) 脚注)。
  */
-/** `aiPhase` 側(汎用突進・城ボス)。 */
-export const DASH_BAND_AI_PHASES: readonly string[] = ['charge', 'g-dash-charge', 'g-quad-charge'];
-/** `bossState` 側(裏ボス共通 / 馬乗り / トール)。 */
-export const DASH_BAND_BOSS_STATES: readonly string[] = ['dash', 'bm-charge', 'thor-dash-move'];
+// ★★**社長指示2026-09-18で撤去した**(「自転車に流星のあと紅いライン引いたね？これやめてほしいん
+// だけど、ほかの敵や技にも引いた？全部取っ払って」)。
+// v0.25.4458 で §18-1(d) として**犬(自転車)/裏ボス共通/城ボス/馬乗り**の5州へ広げたが、実機で見た
+// 社長の判断で**広げた分を全部外す**。残すのは**トールの突進だけ**——あれは §18 より前(v0.25.3818)に
+// 別件で入っていた既存の絵で、今回の指示が指しているのは「流星のあとに新しく引かれた線」。
+// ★**掟④(通る技は当たり得る間ずっと赤)との関係**: 掟④は残っているが、**この見せ方は採らない**という
+// 社長の判断。再び「通る技の赤」を検討する時は、体帯とは**別の見せ方**から始めること
+// (体帯は実機で「流星のあとに紅いラインが残る」と読まれた)。
+/** `aiPhase` 側。**社長指示で空**(以前は charge / g-dash-charge / g-quad-charge)。 */
+export const DASH_BAND_AI_PHASES: readonly string[] = [];
+/** `bossState` 側。**トールの突進だけ**(§18より前からある既存の絵)。 */
+export const DASH_BAND_BOSS_STATES: readonly string[] = ['thor-dash-move'];
 
 export const dashBodyBandOn = (aiPhase?: string, bossState?: string): boolean =>
   (aiPhase !== undefined && DASH_BAND_AI_PHASES.includes(aiPhase))

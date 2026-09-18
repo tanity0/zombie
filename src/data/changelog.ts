@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4474',
+    items: [
+      '突進してくる敵の通り道に出ていた赤い帯をやめた。自転車の敵、裏のボス、城のボス、馬乗りの四つとも出ない',
+    ],
+  },
+  {
     version: '0.25.4473',
     items: [
       'ドローンブーメランの回転の速さを落ち着かせた',
