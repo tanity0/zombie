@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4489',
+    items: [
+      'ステージごとに決まった顔ぶれの敵が順番に現れる入りの関門を追加。倒し切るまで次の組は来ない',
+      '関門の間は通常の湧きが止まる。関門を抜けてから戦いの流れが動き出す',
+    ],
+  },
+  {
     version: '0.25.4488',
     items: [
       'ゲーム内容の変更はありません',

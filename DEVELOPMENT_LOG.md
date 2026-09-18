@@ -1,5 +1,43 @@
 # Development Log
 
+## v0.25.4489 — §17 ウェルカム台本 実装 + 設計者の回帰1件を是正【2026-09-18 22:25 JST】
+
+### §17 ウェルカム台本(実装サブエージェント・4コミット段階push)
+- 新規 `src/utils/welcomeScript.ts`(183行)+ `welcomeScript.test.ts`(21件)。
+  配線= `useGameLoop.ts` / `directorTick.ts` / `enemyUtils.ts` / `difficultyDirector.ts` / `types/game.ts`。
+- **検収で実コードと突き合わせた(主張どおりだった)**:
+  ①`welcomeActive` が**旧スポナー(`useGameLoop.ts:15559`)と koma 呼び出し(:15773)の両方**にある
+  (片方だけでは通常湧きが止まらない=監査A-1の穴)
+  ②`isWelcome` が `isEnemyCapProtected`(:137・**時間無制限**)と `runOffscreenRecycleAndCull` の
+  早期return(:1160・offRect と areaInvalid の**両経路より前**)にある(監査A-2)
+  ③`ForcedColorTier = EnemyColorTier | 'none'` で無色固定(監査A-4)
+  ④ランの時計5つが `WELCOME_FORCE_END_MS` 加算(アリーナ3:00 / ハンター4:00 / 救助5:00 /
+  通信・城ボス6:00 / 紅き夜8:00)。`CASTLE_BOSS_MIN_TIME_MS` 自体は不変(既存テストの前提を崩さない)。
+- **実装者が決めた3件(設計書に無かった箇所)**:
+  ①**終了と同時に `isWelcome` を外す**(外さないと台本外の雑魚が上限カリング対象外のまま居座る)
+  ②**`welcomeApplicable` と `welcomeActive` の分離**——台本を持たないラン(S2/S7/EX/練習)で
+  `welcomeEndedAtRef` が永遠に更新されず**最初の60秒 `directorTime` が0に固定される**バグを実装中に自己発見し是正
+  ③`RESCUE_QUEST_SPAWN_AT_MS` は実在確認の結果 `DUO_RESCUE_PHASE_ENABLED=false` の**死経路**と判明
+  (§17-1 の `WAVE_EVENTS` と同型)。生きているのは `DUO_COMM_AT_MS` 側。
+- ★未決の追加: 無し。
+
+### ★設計者(このチャット)の回帰を1件是正
+- **`ghostTelegraph.test.ts` が赤だった。原因は v0.25.4484(§16-C)の私の push。**
+  あのテストは「**新しい技を足したらここで落ちる**」ための番人(v0.25.4453 で§16の15個が
+  1個も登録されず通った事故の再発防止に作られたもの)で、**`lich-blink` を台帳へ登録しなかったため
+  設計どおり落ちていた**。私が `npm test` を回さず部分実行で済ませたので素通りした。
+- **実装サブエージェントは「着手前から存在する無関係の既存失敗」と報告したが、"既存"は正しく
+  "無関係"は誤り**——1つ前の自分の push が原因。**そのまま受け取らずに確認して正解だった。**
+- 是正: `GHOST_TELEGRAPH_LEDGER` に `lich-blink` を **独立した項**で登録(coverage='none')。
+  ★**他の噛みつき4件とは理由が違うので分けて書いた**——この技だけは**避ける図形が定義できる**
+  (判定が体の重なりではなく**焼いた点の円**なので `circleThreat` へそのまま渡せる)。
+  それでも none なのは「**雑魚を避け対象に入れるか**」が未裁定で、1件だけ拾うと
+  「リッチからだけ逃げる守護霊」になり挙動が揃わないため。**裁定が出たらこの行が最初に circle へ変わる。**
+- 変更ファイル: `src/utils/ghostTelegraph.ts` / `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+- 検証: typecheck 緑 / lint エラー0 / `ghostTelegraph.test.ts` 14件緑 /
+  `welcomeScript` 21件・`directorTick` 14件・`difficultyDirector` 13件・`castleBoss` 1件 緑。
+- 状態変化: §17 → **実装済み**(残り: 実機確認)。
+
 ## v0.25.4488 — 特別枠の上限と解禁区域を実物で確認し、記述の誤りを訂正【2026-09-18 21:51 JST】
 
 - **社長指摘**: 「**あれ? 叫喚と卵型って上限決まってるよね**」 ⇒ ★**そのとおりだった。**
