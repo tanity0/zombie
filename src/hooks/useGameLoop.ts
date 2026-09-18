@@ -1085,6 +1085,11 @@ const M1_ENABLED = evParam('m1') !== '0';
 // PACING_PUZZLE.md バッチM4(社長決定v0.25.1365・ランク7段階×台本パズル方式・既定ON):
 // `?puzzle=0`でこの方式を丸ごと無効化し、M1状態(v0.25.1363の挙動)へ完全復帰する。
 const PUZZLE_ENABLED = evParam('puzzle') !== '0';
+// PACING_PUZZLE.md §17(ウェルカム台本): **切り分け用のキルスイッチ**。`?welcome=0` で台本を丸ごと
+// 止める(=通常湧きが最初から従来どおり動く)。社長報告2026-09-18「始まってしばらく一体も出てこない
+// 時間が長い」の原因を1ランで確定させるために追加した(CLAUDE.md 実装精度の規律7「自作の切り分け
+// スイッチで消去法をやらない」の例外ではなく、**この機能そのものを丸ごと外す網羅的なスイッチ**)。
+const WELCOME_ENABLED = evParam('welcome') !== '0';
 // PACING_PUZZLE.md §5.5 バッチM5(RE4式弾ドロップ・既定ON): キル時弾薬ドロップを「残弾割合が
 // 最小の弾種」にする。`?ammosmart=0`で従来(構え銃の弾種)へ復帰。gameStore側の近接キル経路も
 // 同名パラメータを各自読む(既存のcamNum等と同じ流儀)。
@@ -3176,7 +3181,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 一度も起動せず welcomeEndedAtRef は永遠にnullのまま=分けないと下のdirectorTimeが
         // 「該当しないランなのに最初の60秒ずっと0」という別バグを生む。
         const welcomeScriptForRun = welcomeStageScript(getSelectedStageId() ?? '');
-        const welcomeApplicable = !!welcomeScriptForRun && !labTheme && !indoor && !danceTest && !storyBoss
+        const welcomeApplicable = WELCOME_ENABLED && !!welcomeScriptForRun && !labTheme && !indoor && !danceTest && !storyBoss
           && !tutorialStage && !endingStage && !isPracticeRun();
         const welcomeActive = welcomeApplicable && welcomeEndedAtRef.current === null;
         // ★ディレクターの時計(§17-3): ウェルカム中はずっと0。終了後は gameTime − min(終了時刻,60秒)
