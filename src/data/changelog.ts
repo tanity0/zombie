@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4493',
+    items: [
+      '入りの関門の輪からは出られなくなった。倒し切ると輪が開く',
+    ],
+  },
+  {
     version: '0.25.4492',
     items: [
       '入りの関門で敵が現れる形を変えた。青い輪がその場に開いて、敵は輪の中に現れる',

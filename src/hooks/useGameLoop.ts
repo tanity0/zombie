@@ -15754,7 +15754,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().beginArenaEvent({
               kind: 'welcome', x: wpcx, y: wpcy, radius: ARENA_EVENT_RADIUS,
               startedAt: gameTime, endsAt: gameTime + WELCOME_FORCE_END_MS,
-              confinesPlayer: false, permeable: false,
+              // ★社長指示2026-09-19「**ウェルカムは出れないようにして**」: 既存の囲いと同じく
+              // プレイヤーを円内に拘束する(confinesPlayer 省略=既定true)。敵側の閉じ込め
+              // (gameStore.ts の fromEvent クランプ)と**必ずセット**にすること。
+              permeable: false,
             });
             // 配置: 既存 placeInRing(0.5) と同じ作法(中心=プレイヤーを避け、半径50〜92%に置く)。
             // 新しい配置式は発明しない(§17-12-d)。

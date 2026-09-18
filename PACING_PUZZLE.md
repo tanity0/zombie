@@ -11963,7 +11963,7 @@ welcomeAdvance({ step, aliveOfWelcome, gameTime, stepClearedAt, stageId, areaInd
 #### 17-12-d. 形(1段=1つの輪)
 | 項目 | 決め |
 |---|---|
-| 円の出し方 | `beginArenaEvent({ kind:'welcome', x/y=プレイヤー中心, radius=`ARENA_EVENT_RADIUS`(240), startedAt, endsAt, confinesPlayer:false, permeable:false })` |
+| 円の出し方 | `beginArenaEvent({ kind:'welcome', x/y=プレイヤー中心, radius=`ARENA_EVENT_RADIUS`(240), startedAt, endsAt, permeable:false })`。★**`confinesPlayer` は省略=既定true=プレイヤーを閉じ込める**(社長指示2026-09-19「**ウェルカムは出れないようにして**」。当初は `false` で設計していた) |
 | 段ごと | **1段=1つの輪。** 倒し切ったら閉じ、`WELCOME_STEP_GAP_MS`(1200ms)後に**次の輪を新しく開く** |
 | 配置 | 既存の `placeInRing(0.5)` と同じ作法(**中心のプレイヤーを避ける**)。**新しい配置式を発明しない** |
 | 湧かせ方 | **`spawnEnemyAtWithTier`**(座標指定+色ティア固定の既存関数)。`forcedColorTier` に `unit.tier ?? 'none'` |
@@ -11981,7 +11981,13 @@ welcomeAdvance({ step, aliveOfWelcome, gameTime, stepClearedAt, stageId, areaInd
 #### 17-12-f. 受け入れ条件(§17-8 に足す)
 11. ★**段が湧いた瞬間、敵はプレイヤーから半径240px の円内に居る**(画面外から歩いてこない)。
 12. ★**円は段ごとに開き、倒し切ると閉じる。**最後の段を倒し切ったら円は残らない。
-13. ★**プレイヤーは円から出られる**(`confinesPlayer:false`)。出て区域を跨げば §17-3 の③で終了する。
+13. ★**プレイヤーは円から出られない**(社長指示2026-09-19で反転。`confinesPlayer` は既定true)。
+    ★**敵の閉じ込め(`gameStore.ts` の `fromEvent` クランプ)と必ずセットで決める**——片方だけ閉じ込めると
+    「プレイヤーは出られないのに敵は輪の外へ出る=届かない」か「敵は輪に残るのにプレイヤーは離れられる=
+    追って来ない」のどちらかが起き、**段が片付かず60秒の強制終了まで止まる**
+    (2026-09-19の検収で後者を一度踏んでいる)。
+    ★**帰結**: §17-3 の強制終了③「研究対象区域以上へ入った」は、**段が生きている間は到達できない**
+    (輪から出られないため)。実質の終了条件は**①倒し切り**と**②60秒**の2つになる。
 14. ★**`confining` が立たない**(=`computeEnemyCap` が `arenaEventCap` へ切り替わらない)。
 15. ★**報酬が出ない**(全滅クリアでスキル付与等が走らない)。
 
