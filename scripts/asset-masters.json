@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "772 files / 復号後 約716MB",
+ "generatedFor": "790 files / 復号後 約721MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1621,6 +1621,114 @@
    "h": 256,
    "bytes": 14182,
    "sha": "b30d0fd139a3a86d"
+  },
+  "sprites/fx/skel-claw-0.png": {
+   "w": 282,
+   "h": 259,
+   "bytes": 2327,
+   "sha": "f04f6b420b7837f0"
+  },
+  "sprites/fx/skel-claw-1.png": {
+   "w": 282,
+   "h": 259,
+   "bytes": 3233,
+   "sha": "fd90fe940e3cb097"
+  },
+  "sprites/fx/skel-claw-2.png": {
+   "w": 282,
+   "h": 259,
+   "bytes": 4550,
+   "sha": "d3e5354d21dd7c4a"
+  },
+  "sprites/fx/skel-claw-3.png": {
+   "w": 282,
+   "h": 259,
+   "bytes": 6528,
+   "sha": "bbdc2daf8c7732dd"
+  },
+  "sprites/fx/skel-claw-fx-0.png": {
+   "w": 273,
+   "h": 278,
+   "bytes": 99180,
+   "sha": "fa797d833bd42fe2"
+  },
+  "sprites/fx/skel-claw-fx-1.png": {
+   "w": 273,
+   "h": 278,
+   "bytes": 67606,
+   "sha": "b131525290a9907b"
+  },
+  "sprites/fx/skel-claw-fx-2.png": {
+   "w": 273,
+   "h": 278,
+   "bytes": 59631,
+   "sha": "4e5374e93e4bd7c5"
+  },
+  "sprites/fx/skel-claw-fx-3.png": {
+   "w": 273,
+   "h": 278,
+   "bytes": 41887,
+   "sha": "126436404c7e2fbe"
+  },
+  "sprites/fx/skel-claw-fx-4.png": {
+   "w": 273,
+   "h": 278,
+   "bytes": 32298,
+   "sha": "5f02c8e5c4eca7db"
+  },
+  "sprites/fx/skel-claw-fx-p-0.png": {
+   "w": 273,
+   "h": 278,
+   "bytes": 96328,
+   "sha": "8dfdb927fcc789da"
+  },
+  "sprites/fx/skel-claw-fx-p-1.png": {
+   "w": 273,
+   "h": 278,
+   "bytes": 65511,
+   "sha": "6eb60ad2ffa7dccf"
+  },
+  "sprites/fx/skel-claw-fx-p-2.png": {
+   "w": 273,
+   "h": 278,
+   "bytes": 57915,
+   "sha": "897f0a6ea7105fcb"
+  },
+  "sprites/fx/skel-claw-fx-p-3.png": {
+   "w": 273,
+   "h": 278,
+   "bytes": 40724,
+   "sha": "4d708b6a9f2d7c6c"
+  },
+  "sprites/fx/skel-claw-fx-p-4.png": {
+   "w": 273,
+   "h": 278,
+   "bytes": 31213,
+   "sha": "0ec36f14dbec092d"
+  },
+  "sprites/fx/skel-claw-p-0.png": {
+   "w": 282,
+   "h": 259,
+   "bytes": 2337,
+   "sha": "51531bed30305bc1"
+  },
+  "sprites/fx/skel-claw-p-1.png": {
+   "w": 282,
+   "h": 259,
+   "bytes": 3238,
+   "sha": "472d5f3c74dfa026"
+  },
+  "sprites/fx/skel-claw-p-2.png": {
+   "w": 282,
+   "h": 259,
+   "bytes": 4593,
+   "sha": "1f0233e9f9c88e95"
+  },
+  "sprites/fx/skel-claw-p-3.png": {
+   "w": 282,
+   "h": 259,
+   "bytes": 6601,
+   "sha": "30c2f669cd15670b"
   },
   "sprites/fx/skill-burst-00.png": {
    "w": 256,

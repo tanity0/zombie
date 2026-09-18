@@ -219,6 +219,12 @@ import {
   BAT_SLAM_ANCHOR_X, BAT_SLAM_REF_W, BAT_SLAM_W_PX, batSlamTotalMs, BAT_LANTERN_SETTLE_MS,
   batLanternDownAngle, BAT_LANTERN_LEN_MIN_PX, BAT_LANTERN_LEN_MAX_PX, batSlamTexName, batSlamCounterable,
 } from '../utils/batLanternSwing';
+// ★スケルトンの爪(社長支給2026-09-18)。痕もVFXも噛みつきの経過から引く葉。
+import {
+  usesSkeletonClaw, skeletonBiteTiming, skeletonClawCounterable, skeletonClawTotalMs,
+  skelClawFrame, skelClawAlpha, skelClawFxFrame, skelClawTexName, skelClawFxTexName,
+  SKEL_CLAW_REF_W, SKEL_CLAW_W_PX, SKEL_CLAW_FX_REF_W, SKEL_CLAW_FX_W_PX,
+} from '../utils/skeletonClaw';
 import {
   BOUNTY_DEPART_FADE_MS,
   // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15): 角度・タイミングは判定と同じ純関数から導く。
@@ -4417,6 +4423,8 @@ export class PixiScene {
   private playerKnifeTrail = new Sprite();                 // 近接スイング3枚目(弧の残光 knife-swing-3)
   private playerMeleeWpn = new Sprite();                   // 装備中の近接武器の実絵(f1/f2に重ねる)
   private batSlamSprites = new Map<string, Sprite>();      // バットの振り下ろしの炸裂(9コマ・敵ごと)
+  private skelClawSprites = new Map<string, Sprite>();     // スケルトンの引っ掻き痕(4コマ・敵ごと)
+  private skelClawFxSprites = new Map<string, Sprite>();   // 同・VFX(5コマ)
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
   private playerFirstAidBag = new Sprite();                // 救急鞄スキル発動時に掲げる鞄(first-aid-kit・描画のみ)
   private playerFirstAidBagSetup = false;                  // 鞄スプライトのテクスチャ/親子付け済みか
@@ -13930,6 +13938,10 @@ export class PixiScene {
         // バットの炸裂も同じ mark-and-sweep に乗せる(討伐後に最後のコマが残らない)。
         const batSlamSp = this.batSlamSprites.get(id);
         if (batSlamSp) { batSlamSp.destroy(); this.batSlamSprites.delete(id); }
+        const skelClawSp = this.skelClawSprites.get(id);
+        if (skelClawSp) { skelClawSp.destroy(); this.skelClawSprites.delete(id); }
+        const skelClawFxSp = this.skelClawFxSprites.get(id);
+        if (skelClawFxSp) { skelClawFxSp.destroy(); this.skelClawFxSprites.delete(id); }
         const bountyThrustWindSp = this.bountyThrustWindSprites.get(id);
         if (bountyThrustWindSp) { bountyThrustWindSp.destroy(); this.bountyThrustWindSprites.delete(id); }
         const drillerThrustWindSp = this.drillerThrustWindSprites.get(id);
@@ -17502,6 +17514,11 @@ export class PixiScene {
       const chainsawSp = this.bountyWeaponSprites.get(e.id);
       if (chainsawSp) chainsawSp.visible = false;
     }
+    // スケルトンの爪も既定OFF(点けるのは噛みつきの分岐だけ=残留焼き付きを作らない)。
+    if (usesSkeletonClaw(e)) {
+      const cw = this.skelClawSprites.get(e.id); if (cw) cw.visible = false;
+      const cf = this.skelClawFxSprites.get(e.id); if (cf) cf.visible = false;
+    }
     // バットのランタンと炸裂も既定OFF(点けるのは噛みつきの分岐だけ=残留焼き付きを作らない)。
     if (usesBatLantern(e)) {
       const lanternSp = this.bountyWeaponSprites.get(e.id);
@@ -18623,6 +18640,45 @@ export class PixiScene {
         // 炸裂は**当たる瞬間を0**にした時計で送る(掟③=消え切る/最大になるのが当たる瞬間)。
         const frame = batSlamFrame(since - (bwMs + bbMs));
         if (frame !== null) this.drawBatSlam(e.id, ax, ay, frame, sgn, artFade, ctr === 1);
+      }
+    }
+    // ★スケルトンの武器=爪の引っ掻き(社長支給2026-09-18「skeletonの爪の斬撃、左向き、上から下に
+    // 引っ掻くイメージで配置。2枚目がVFX」)。
+    // バットのランタンと**同じ作法**: 噛みつき台本の尺の上に乗せ、狙った点(=予告の線と同じ終点)へ落とし、
+    // ラッチで焼く(判定側が噛み終了時に `biteAt` を0にするため、生データだけでは余韻が1コマも出ない)。
+    // 素材は**左向きで描かれている**ので、右向きの個体は左右反転する。
+    if (usesSkeletonClaw(e)) {
+      const { windupMs: swMs, biteMs: sbMs } = skeletonBiteTiming(e);
+      const sRunning = e.biteAt !== undefined && e.biteAt > 0;
+      const sDirX = e.biteDirX ?? 1, sDirY = e.biteDirY ?? 0;
+      const SL = this.latchFx(
+        `${e.id}:skel-claw`, sRunning, swMs + sbMs + skeletonClawTotalMs() + 200, now,
+        () => {
+          const bl = biteTelegraphLine(e, gameTime);
+          return [sDirX, bl?.tx ?? (cx + sDirX * 36), bl?.ty ?? (cy + sDirY * 36),
+            e.biteAt ?? gameTime, skeletonClawCounterable(e) ? 1 : 0];
+        },
+      );
+      if (SL) {
+        const [sdx, sax, say, sat0, sctr] = SL.d;
+        const sinceImpact = gameTime - sat0 - (swMs + sbMs);
+        const ctr = sctr === 1;
+        // 素材は左向き。右向き(sdx>=0)の時に反転する。
+        const flip = sdx >= 0;
+        const cf = skelClawFrame(sinceImpact);
+        if (cf !== null) {
+          this.drawSkelClawSprite(
+            this.skelClawSprites, skelClawTexName(cf, ctr), e.id, sax, say,
+            SKEL_CLAW_W_PX / SKEL_CLAW_REF_W, flip, skelClawAlpha(sinceImpact) * artFade,
+          );
+        }
+        const ff = skelClawFxFrame(sinceImpact);
+        if (ff !== null) {
+          this.drawSkelClawSprite(
+            this.skelClawFxSprites, skelClawFxTexName(ff, ctr), e.id, sax, say,
+            SKEL_CLAW_FX_W_PX / SKEL_CLAW_FX_REF_W, flip, artFade,
+          );
+        }
       }
     }
     if (isBountyType(e.type)) {
@@ -29479,6 +29535,28 @@ export class PixiScene {
       if (FX_RING_ENABLED) this.drawTelegraphRing(view, q.x, q.y, PH_T.lightrain.radius, 0xff3b3b, (0.4 + 0.3 * pulse) * lrMask);
       else o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * lrMask });
     }
+  }
+
+  /**
+   * スケルトンの爪の絵(引っ掻き痕/VFX 共通)。**コマは共通の外接箱で切り出してある**ので、
+   * アンカーは中心のままでコマ間がズレない。素材は左向きなので右向きは `scale.x` を反転する。
+   * 分類は②派手さの絵(判定ゼロ)=判定より大きく出す。
+   * 負荷 1/10: 敵1体につき pooled Sprite 2枚・per-frame Graphics なし・投影影を落とす光源も増やさない。
+   */
+  private drawSkelClawSprite(
+    pool: Map<string, Sprite>, texName: string, id: string,
+    x: number, y: number, scale: number, flip: boolean, alpha: number,
+  ): void {
+    const tex = getTexture(texName);
+    if (!tex || tex.width === 0) return;
+    let sp = pool.get(id);
+    if (!sp) { sp = new Sprite(tex); this.L.effectLayer.addChild(sp); pool.set(id, sp); }
+    if (sp.texture !== tex) sp.texture = tex;
+    sp.anchor.set(0.5, 0.5);
+    sp.scale.set(flip ? -scale : scale, scale);
+    sp.position.set(x, y);
+    sp.alpha = alpha;
+    sp.visible = sp.alpha > 0.01;
   }
 
   private drawBatSlam(
