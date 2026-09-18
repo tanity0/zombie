@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4476',
+    items: [
+      'ゲーム内容の変更はありません',
+    ],
+  },
+  {
     version: '0.25.4475',
     items: [
       'トールの突進でも、走っている間の赤い帯が出なくなった。これで突進の赤は溜めの予告だけになる',
