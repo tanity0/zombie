@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4459',
+    items: [
+      '斬撃の弧に武器が戻った。振り抜く刃の先から三日月が伸び、刃も一緒に前へ出ていく',
+      '弧が一番大きくなる手前で武器だけ先に消えていたのを直した',
+    ],
+  },
+  {
     version: '0.25.4458',
     items: [
       '近接の斬撃が、手元の小さな光から大きな三日月へ育つ絵になった。振り抜きに合わせて前へ流れていく',

@@ -1403,6 +1403,14 @@ const meleeArcAlpha = (kt: number): number => {
 // spr のテクスチャを当該コマへ差し替え、place() 用の cfg を返す(絵が無ければ null=旧弧へフォールバック)。
 // cfg.scale をコマ幅で補正してあるので、place() 側の「テクスチャ幅で割る」正規化を通しても
 // コマごとの大きさの差が消えない。アンカーは (0,1)=柄側の下端。
+// 武器の実絵は**弧の柄側の端**に置き、コマと一緒に前へ出る(弧だけ飛んで刃が取り残されない)。
+// 0.33 = 全コマの「下端にある三日月の端」の実測位置(コマ幅に対する割合)。
+const MELEE_ARC_TAIL_FX = 0.33;
+const MELEE_ARC_WPN_LIFT = 0.10; // 足元へめり込まないぶんの持ち上げ
+const meleeArcWpnPos = (cfg: { scale: number; ox: number; oy: number }): { ox: number; oy: number } =>
+  ({ ox: cfg.ox + MELEE_ARC_TAIL_FX * cfg.scale, oy: cfg.oy - MELEE_ARC_WPN_LIFT });
+// 武器は弧より一足先に引く(残光は弧だけ)。ハードカットにはしない=慣性MUST。
+const meleeArcWpnAlpha = (kt: number): number => { const a = meleeArcAlpha(kt); return a * a; };
 const meleeArcCfg = (spr: Sprite, kt: number): { scale: number; ox: number; oy: number } | null => {
   const t = meleeArcT(kt);
   const idx = Math.max(0, Math.min(MELEE_ARC_FRAMES - 1, Math.floor(t * MELEE_ARC_FRAMES)));
@@ -15689,6 +15697,13 @@ export class PixiScene {
         wpn.alpha = alpha * GHOST_ALLY_ALPHA;
         wpn.visible = wpn.alpha > 0.01;
       };
+      // 弧に追従する武器の実絵(柄側の端へ置き、コマと一緒に前へ出る)。絵が無ければ従来の位置へ。
+      const placeMeleeArcWpn = (arcKt: number, fallbackAl: number) => {
+        const arcCfg = meleeArcCfg(slash, arcKt);
+        if (!arcCfg) { placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, fallbackAl); return; }
+        const wp = meleeArcWpnPos(arcCfg);
+        placeWpn(wp.ox, wp.oy, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, meleeArcWpnAlpha(arcKt));
+      };
       const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定。弧が7コマになっても武器絵の位置は動かさない
       const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
       const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
@@ -15703,13 +15718,13 @@ export class PixiScene {
         const a2 = Math.min(1, t2 / 0.25);                              // 本体と同じくsnapで出す
         place(knife, KNIFE_F1, false, 0);
         placeMeleeArc(slash, kt, a2);
-        placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, a2);
+        placeMeleeArcWpn(kt, a2);
         place(trail, KNIFE_F3, false, 0);
       } else {
         const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2); // 0..1
         place(knife, KNIFE_F1, false, 0);
         place(slash, KNIFE_F2, false, 0);
-        wpn.visible = false;
+        placeMeleeArcWpn(kt, 0);
         placeMeleeArc(trail, kt, 1 - t3);                           // 弧の残光フェード(本体と同じ)
       }
     } else {
@@ -16766,6 +16781,13 @@ export class PixiScene {
           wpn.alpha = alpha * view.sprite.alpha;
           wpn.visible = wpn.alpha > 0.01;
         };
+        // 弧に追従する武器の実絵(柄側の端へ置き、コマと一緒に前へ出る)。絵が無ければ従来の位置へ。
+        const placeMeleeArcWpn = (arcKt: number, fallbackAl: number) => {
+          const arcCfg = meleeArcCfg(slash, arcKt);
+          if (!arcCfg) { placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, fallbackAl); return; }
+          const wp = meleeArcWpnPos(arcCfg);
+          placeWpn(wp.ox, wp.oy, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, meleeArcWpnAlpha(arcKt));
+        };
         // f2の武器位置: 弧テクスチャ内の割合(fx,fy)を弧の配置(KNIFE_F2)へ写像。
         const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定。弧が7コマになっても武器絵の位置は動かさない
         const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
@@ -16783,15 +16805,15 @@ export class PixiScene {
           const a2 = Math.min(1, t2 / 0.25);
           place(knife, KNIFE_F1, false, 0);
           placeMeleeArc(slash, kt, a2);
-          placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, a2);
+          placeMeleeArcWpn(kt, a2);
           place(trail, KNIFE_F3, false, 0);
         } else {
-          // 3枚目(弧の残光): 2枚目と同配置で弧だけ残り、フェードアウト(武器絵は消す)。
+          // 残光: 弧はコマ送りの最後の絵を保って抜け、武器の実絵はそれより一足先に引く。
           const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2); // 0..1
           const a3 = 1 - t3;
           place(knife, KNIFE_F1, false, 0);
           place(slash, KNIFE_F2, false, 0);
-          wpn.visible = false;
+          placeMeleeArcWpn(kt, 0);
           placeMeleeArc(trail, kt, a3);
         }
       } else {
@@ -17281,6 +17303,13 @@ export class PixiScene {
         wpn.alpha = alpha * spr.alpha;
         wpn.visible = wpn.alpha > 0.01;
       };
+      // 弧に追従する武器の実絵(柄側の端へ置き、コマと一緒に前へ出る)。絵が無ければ従来の位置へ。
+      const placeMeleeArcWpn = (arcKt: number, fallbackAl: number) => {
+        const arcCfg = meleeArcCfg(slash, arcKt);
+        if (!arcCfg) { placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, fallbackAl); return; }
+        const wp = meleeArcWpnPos(arcCfg);
+        placeWpn(wp.ox, wp.oy, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, meleeArcWpnAlpha(arcKt));
+      };
       const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定。弧が7コマになっても武器絵の位置は動かさない
       const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
       const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
@@ -17295,13 +17324,13 @@ export class PixiScene {
         const a2 = Math.min(1, t2 / 0.25);                              // 本体と同じくsnapで出す
         place(knife, KNIFE_F1, false, 0);
         placeMeleeArc(slash, kt, a2);
-        placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, a2);
+        placeMeleeArcWpn(kt, a2);
         place(trail, KNIFE_F3, false, 0);
       } else {
         const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2); // 0..1
         place(knife, KNIFE_F1, false, 0);
         place(slash, KNIFE_F2, false, 0);
-        wpn.visible = false;
+        placeMeleeArcWpn(kt, 0);
         placeMeleeArc(trail, kt, 1 - t3);                           // 弧の残光フェード(本体と同じ)
       }
     } else {
