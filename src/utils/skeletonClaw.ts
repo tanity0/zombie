@@ -42,8 +42,12 @@ export const SKEL_CLAW_HOLD_MS: readonly number[] = [22, 22, 22, 150];
 export const SKEL_CLAW_FADE_MS = 110;
 /** 正規化の基準幅(素材の幅)。 */
 export const SKEL_CLAW_REF_W = 282;
-/** 引っ掻き痕の見かけの横幅(px)。判定(接触36px)より大きく出す=②派手さの絵。 */
-export const SKEL_CLAW_W_PX = 104;
+/**
+ * 引っ掻き痕の見かけの横幅(px)。判定(接触36px)より大きく出す=②派手さの絵。
+ * ★社長指示2026-09-18「もう少し両方大きく出してもいいかも」で 104→**150**
+ * (CLAUDE.md「迷ったら派手側に倒す/足りないより出し過ぎの方が直しやすい」)。
+ */
+export const SKEL_CLAW_W_PX = 150;
 
 export const skelClawFrame = (sinceImpactMs: number): number | null =>
   frameByHold(sinceImpactMs, SKEL_CLAW_HOLD_MS, SKEL_CLAW_IMPACT_FRAME);
@@ -67,8 +71,20 @@ export const SKEL_CLAW_FX_IMPACT_FRAME = 0;
 /** 各コマの尺(ms)。散るほど遅くする(等間隔にしない)。 */
 export const SKEL_CLAW_FX_HOLD_MS: readonly number[] = [70, 60, 70, 85, 105];
 export const SKEL_CLAW_FX_REF_W = 273;
-/** VFXの見かけの横幅(px)。痕より大きく出す。 */
-export const SKEL_CLAW_FX_W_PX = 126;
+/**
+ * VFXの見かけの横幅(px)。痕より大きく出す=②派手さの絵。
+ * ★社長報告2026-09-18「爪は出てる。エフェクトが出てるかはわからない」を受けて 126→**168**。
+ * 素材が**暗い赤の飛沫**で、夜の森の上では通常合成だと沈む。下の加算合成と合わせて見えるようにする。
+ */
+export const SKEL_CLAW_FX_W_PX = 210;   // 126→168(見えない対策)→**210**(社長「もう少し両方大きく」)
+
+/**
+ * ★VFXは**加算合成**で出す(社長報告2026-09-18「エフェクトが出てるかはわからない」の是正)。
+ * 支給素材は**黒地のシート**=元から加算前提の絵で、通常合成で置くと暗部が背景を汚すだけで
+ * 明るい芯も夜景に沈む。加算にすると芯が光り、黒地は何も足さない(=透明と同じ)。
+ * 引っ掻き痕の方は**アルファ付きPNGの実体のある絵**なので通常合成のまま(加算にすると痕が白飛びする)。
+ */
+export const SKEL_CLAW_FX_ADDITIVE = true;
 
 export const skelClawFxFrame = (sinceImpactMs: number): number | null =>
   frameByHold(sinceImpactMs, SKEL_CLAW_FX_HOLD_MS, SKEL_CLAW_FX_IMPACT_FRAME);

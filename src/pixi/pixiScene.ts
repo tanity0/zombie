@@ -223,7 +223,7 @@ import {
 import {
   usesSkeletonClaw, skeletonBiteTiming, skeletonClawCounterable, skeletonClawTotalMs,
   skelClawFrame, skelClawAlpha, skelClawFxFrame, skelClawTexName, skelClawFxTexName,
-  SKEL_CLAW_REF_W, SKEL_CLAW_W_PX, SKEL_CLAW_FX_REF_W, SKEL_CLAW_FX_W_PX,
+  SKEL_CLAW_REF_W, SKEL_CLAW_W_PX, SKEL_CLAW_FX_REF_W, SKEL_CLAW_FX_W_PX, SKEL_CLAW_FX_ADDITIVE,
 } from '../utils/skeletonClaw';
 import {
   BOUNTY_DEPART_FADE_MS,
@@ -18676,7 +18676,7 @@ export class PixiScene {
         if (ff !== null) {
           this.drawSkelClawSprite(
             this.skelClawFxSprites, skelClawFxTexName(ff, ctr), e.id, sax, say,
-            SKEL_CLAW_FX_W_PX / SKEL_CLAW_FX_REF_W, flip, artFade,
+            SKEL_CLAW_FX_W_PX / SKEL_CLAW_FX_REF_W, flip, artFade, SKEL_CLAW_FX_ADDITIVE,
           );
         }
       }
@@ -29545,13 +29545,16 @@ export class PixiScene {
    */
   private drawSkelClawSprite(
     pool: Map<string, Sprite>, texName: string, id: string,
-    x: number, y: number, scale: number, flip: boolean, alpha: number,
+    x: number, y: number, scale: number, flip: boolean, alpha: number, additive = false,
   ): void {
     const tex = getTexture(texName);
     if (!tex || tex.width === 0) return;
     let sp = pool.get(id);
     if (!sp) { sp = new Sprite(tex); this.L.effectLayer.addChild(sp); pool.set(id, sp); }
     if (sp.texture !== tex) sp.texture = tex;
+    // ★黒地のシートは**加算**で置く(通常合成だと暗部が背景を汚し、明るい芯も夜景に沈む)。
+    const want = additive ? 'add' : 'normal';
+    if (sp.blendMode !== want) sp.blendMode = want;
     sp.anchor.set(0.5, 0.5);
     sp.scale.set(flip ? -scale : scale, scale);
     sp.position.set(x, y);

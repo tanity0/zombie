@@ -5,6 +5,7 @@ import {
   skelClawTexName, skelClawFxTexName,
   SKEL_CLAW_FRAMES, SKEL_CLAW_IMPACT_FRAME, SKEL_CLAW_HOLD_MS,
   SKEL_CLAW_FX_FRAMES, SKEL_CLAW_FX_IMPACT_FRAME, SKEL_CLAW_FX_HOLD_MS,
+  SKEL_CLAW_W_PX, SKEL_CLAW_FX_W_PX, SKEL_CLAW_FX_ADDITIVE,
 } from './skeletonClaw';
 
 describe('スケルトンの爪: 対象と色', () => {
@@ -88,5 +89,20 @@ describe('スケルトンの爪: VFX', () => {
   it('ラッチの寿命は痕とVFXの長い方を覆う', () => {
     const fxTotal = SKEL_CLAW_FX_HOLD_MS.reduce((a, b) => a + b, 0);
     expect(skeletonClawTotalMs()).toBeGreaterThanOrEqual(fxTotal);
+  });
+});
+
+describe('大きさ(社長指示2026-09-18「もう少し両方大きく出してもいいかも」)', () => {
+  it('★痕もVFXも判定(接触36px)より大きい=②派手さの絵', () => {
+    expect(SKEL_CLAW_W_PX).toBeGreaterThan(36 * 2);
+    expect(SKEL_CLAW_FX_W_PX).toBeGreaterThan(36 * 2);
+  });
+
+  it('★VFXは痕より大きく出す(飛沫が痕に埋もれない)', () => {
+    expect(SKEL_CLAW_FX_W_PX).toBeGreaterThan(SKEL_CLAW_W_PX);
+  });
+
+  it('★VFXは加算合成(黒地のシートを通常合成で置かない=夜景に沈ませない)', () => {
+    expect(SKEL_CLAW_FX_ADDITIVE).toBe(true);
   });
 });

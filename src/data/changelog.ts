@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4466',
+    items: [
+      '骸骨の爪の飛沫が光るようになった。夜の暗がりに沈んで見えなくなっていたのを直した',
+      '引っ掻き痕も飛沫も、ひと回り大きく出る',
+    ],
+  },
+  {
     version: '0.25.4465',
     items: [
       '骸骨が爪で引っ掻いてくるようになった。三本の痕が上から下へ走り、届いた瞬間に飛沫が上がる',
