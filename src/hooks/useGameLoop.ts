@@ -3170,14 +3170,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (falseにすると旧スポナー(!puzzleActiveNow && fieldCount < normalSpawnCap の枝)が復活して
         // 湧く)。welcomeActiveは別の専用フラグとして持ち、runKomaBoardMaintenance呼び出し側と
         // 旧スポナーの枝の【両方】に別途ゲートを足す(下の該当箇所)。
+        // welcomeApplicable=「このランにウェルカムの仕組みが関係あるか」(台本を持つステージ+対象の
+        // 実行モード)。welcomeActive=「その中で今まだ終わっていないか」。両者を分けるのが肝:
+        // welcomeScriptForRunがtrueでも、練習ラン/ボスメーカー等(isPracticeRun等)ではウェルカムは
+        // 一度も起動せず welcomeEndedAtRef は永遠にnullのまま=分けないと下のdirectorTimeが
+        // 「該当しないランなのに最初の60秒ずっと0」という別バグを生む。
         const welcomeScriptForRun = welcomeStageScript(getSelectedStageId() ?? '');
-        const welcomeActive = !!welcomeScriptForRun && !labTheme && !indoor && !danceTest && !storyBoss
-          && !tutorialStage && !endingStage && !isPracticeRun() && welcomeEndedAtRef.current === null;
+        const welcomeApplicable = !!welcomeScriptForRun && !labTheme && !indoor && !danceTest && !storyBoss
+          && !tutorialStage && !endingStage && !isPracticeRun();
+        const welcomeActive = welcomeApplicable && welcomeEndedAtRef.current === null;
         // ★ディレクターの時計(§17-3): ウェルカム中はずっと0。終了後は gameTime − min(終了時刻,60秒)
         // (固定量。ウェルカムに何秒掛けても以降のずれ幅は変わらない)。phaseAt/sceneAt/enemyCountCap/
         // consumeDueWaves/rankFloorForElapsed/退屈グレース(BORED_RUN_GRACE_MS)が読む
         // (§17-11 B3の表。関数自体は変えず、呼び出し側がdirectorTimeを渡す=変更点を数えられる形)。
-        const directorTime = newGameTime - Math.min(welcomeEndedAtRef.current ?? newGameTime, WELCOME_FORCE_END_MS);
+        // ウェルカムが関係ないラン(welcomeApplicable=false)はgameTimeそのまま=1ビットも変わらない。
+        const directorTime = welcomeApplicable
+          ? newGameTime - Math.min(welcomeEndedAtRef.current ?? newGameTime, WELCOME_FORCE_END_MS)
+          : newGameTime;
         const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && !endingStage && !isPracticeRun() && phaseAt(directorTime).kind !== 'boss';
         // §5.21追補(社長報告v0.25.1848「ゲート1、クリアしなくても奥に行けちゃう」の修正):
         // ゲート(境界囲い1/2)の発火は地理トリガー(境界踏破)なので、コマ/フェーズ表とは無関係に働く。
