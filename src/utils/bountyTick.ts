@@ -52,6 +52,7 @@ import {
   BR_TRIPLE_APPROACH_SPEED_MULT, BR_TRIPLE_APPROACH_STOP_DIST,
   BR_TRIPLE_APPROACH_RAMP_MS, BR_TRIPLE_APPROACH_SLOW_RADIUS,
   brTripleAngles, brTripleStepDurationMs, brTripleLungeEase01,
+  brTripleTelegraph, brTripleElapsedFromWindup, brTripleHitAtMs,
   brTripleApproachAccelMult, brTripleApproachDecelMult,
 } from './bountyTriple';
 export {
@@ -62,6 +63,7 @@ export {
   BR_TRIPLE_APPROACH_SPEED_MULT, BR_TRIPLE_APPROACH_STOP_DIST,
   BR_TRIPLE_APPROACH_RAMP_MS, BR_TRIPLE_APPROACH_SLOW_RADIUS,
   brTripleAngles, brTripleStepDurationMs, brTripleLungeEase01,
+  brTripleTelegraph, brTripleElapsedFromWindup, brTripleHitAtMs,
   brTripleApproachAccelMult, brTripleApproachDecelMult,
 };
 // §6.38 v10「バス停の中立射撃に緩急」: 型3種(burst/fan/charge)のサイクル抽選・間隔・弾数の計算は

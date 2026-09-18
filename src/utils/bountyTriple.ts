@@ -60,6 +60,49 @@ export const BR_TRIPLE_LAST_STEP_MS = BR_TRIPLE_THRUST_MS + BR_TRIPLE_RETURN_MS;
 /** 3段合計の実行尺(監査A-6是正どおり590ms)。踏み込みイーズの分母(3段を1つの弧として消化する)。 */
 export const BR_TRIPLE_ACTIVE_MS = BR_TRIPLE_STEP_MS * 2 + BR_TRIPLE_LAST_STEP_MS; // 590
 
+/**
+ * ★**各段が当たる時刻**(三段突きの実行開始=`br-triple-1` の頭からの経過ms)。
+ * 判定は「その段の突き出し(90ms)の末尾」で積まれるので、1段目=90 / 2段目=310 / 3段目=530。
+ *
+ * ★**予告(赤帯)はこの時刻に消え切らなければならない**(CLAUDE.md「★★赤い予告の2つの掟」②)。
+ * v0.25.4455以前は**3本とも溜め明けに同時に消えて**いたため、**最大530msの嘘**になっていた
+ * (「赤が消えた=終わった」と読んだプレイヤーが3発目を食らう)。
+ */
+export const brTripleHitAtMs = (stepIdx: 0 | 1 | 2): number =>
+  stepIdx === 0 ? BR_TRIPLE_THRUST_MS
+    : stepIdx === 1 ? BR_TRIPLE_STEP_MS + BR_TRIPLE_THRUST_MS
+      : BR_TRIPLE_STEP_MS * 2 + BR_TRIPLE_THRUST_MS;
+
+/**
+ * ★**予告の進行度**(段ごと)。**溜めの頭から、その段が当たる瞬間まで**を1本の流星として通す。
+ * `elapsedFromWindupMs` = 溜め開始からの累計経過ms(実行フェーズに入っても増え続ける)。
+ *
+ * 戻り値 `on=false` は「その段はもう当たった=帯を消す」。3本が**順番に消えていく**絵になり、
+ * 「左が消えた→左が来た」「次は中」と読めるようになる。
+ */
+export const brTripleTelegraph = (
+  stepIdx: 0 | 1 | 2, elapsedFromWindupMs: number,
+): { prog: number; on: boolean } => {
+  const total = BR_TRIPLE_WINDUP_MS + brTripleHitAtMs(stepIdx);
+  const t = total > 0 ? elapsedFromWindupMs / total : 1;
+  return { prog: Math.max(0, Math.min(1, t)), on: t < 1 };
+};
+
+/**
+ * 溜め開始からの累計経過ms を、**状態と残り時間だけから**導く(描画側は tick 側の内部状態を
+ * 持たないので、`bossState` と `bossStateUntil` から復元する=単一の出どころを保つ)。
+ * `remainMs` はその状態の残り(= `bossStateUntil - gameTime`)。
+ */
+export const brTripleElapsedFromWindup = (
+  state: 'br-triple-windup' | 'br-triple-1' | 'br-triple-2' | 'br-triple-3', remainMs: number,
+): number => {
+  if (state === 'br-triple-windup') return BR_TRIPLE_WINDUP_MS - remainMs;
+  const base = BR_TRIPLE_WINDUP_MS;
+  if (state === 'br-triple-1') return base + (BR_TRIPLE_STEP_MS - remainMs);
+  if (state === 'br-triple-2') return base + BR_TRIPLE_STEP_MS + (BR_TRIPLE_STEP_MS - remainMs);
+  return base + BR_TRIPLE_STEP_MS * 2 + (BR_TRIPLE_LAST_STEP_MS - remainMs);
+};
+
 /** 段indexから状態の周期(ms)を導く(0=左/1段目, 1=中/2段目, 2=右/3段目)。 */
 export const brTripleStepDurationMs = (stepIdx: 0 | 1 | 2): number =>
   stepIdx === 2 ? BR_TRIPLE_LAST_STEP_MS : BR_TRIPLE_STEP_MS;

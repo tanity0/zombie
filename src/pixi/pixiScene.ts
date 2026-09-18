@@ -217,6 +217,7 @@ import {
   // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15): 角度・タイミングは判定と同じ純関数から導く。
   BR_TRIPLE_REACH, BR_TRIPLE_HALF_WIDTH, BR_TRIPLE_WINDUP_MS, BR_TRIPLE_THRUST_MS, BR_TRIPLE_RETURN_MS,
   brTripleAngles, brTripleStepDurationMs,
+  brTripleTelegraph, brTripleElapsedFromWindup, brTripleHitAtMs,
 } from '../utils/bountyTick';
 // ★v0.25.3558(ボスメーカー横展開・第1弾): 賞金首4種の技の寸法・タイミングは**可変テーブル**が正。
 // 判定(bountyTick/levelUpGate)とここが**同じ場所を読む**ので、画面で数字を動かしても赤い予告と
@@ -18505,16 +18506,32 @@ export class PixiScene {
         // フォールバック(未設定の1フレームだけ)はライブ角。
         // ここは常時無条件で呼ぶ(windupOn=falseへ落ちた1フレームを渡し損ねると、中断時の消し継続が
         // 起動しない=dashLineArm/zoneCapsuleArmと同型の掟)。
-        const tripleWindupOn = bs2 === 'br-triple-windup';
+        // ★★赤い予告の2つの掟②(CLAUDE.md・社長指示2026-09-18「始まりと終わりのタイミング」):
+        // **消え切る時刻 = 当たる時刻**。三段突きは**段ごとに当たる時刻が違う**(+90/+310/+530ms)のに、
+        // v0.25.4455以前は**3本とも溜め明けに同時に消えて**いた=**最大530msの嘘**。
+        // ⇒ 段ごとに**自分が当たる瞬間まで**流星を延ばす。3本が順番に消えていく絵になり、
+        //   「左が消えた→左が来た」「次は中」と読めるようになる。時刻の出どころは判定と同じ純関数。
+        const tripleActive = bs2 === 'br-triple-windup' || bs2 === 'br-triple-1'
+          || bs2 === 'br-triple-2' || bs2 === 'br-triple-3';
         const plT = useGameStore.getState().player;
         tripleTrackAng = e.bountyTripleAng
           ?? Math.atan2((plT.y + plT.height / 2) - cy, (plT.x + plT.width / 2) - cx);
         const tripleAngs = brTripleAngles(tripleTrackAng);
         const tripleRemain = (e.bossStateUntil ?? gameTime) - gameTime;
+        // 溜めの頭からの累計経過(実行フェーズに入っても増え続ける)。
+        const tripleElapsed = tripleActive
+          ? brTripleElapsedFromWindup(bs2 as 'br-triple-windup' | 'br-triple-1' | 'br-triple-2' | 'br-triple-3', tripleRemain)
+          : 0;
         tripleProg = Math.max(0, Math.min(1, 1 - tripleRemain / BR_TRIPLE_WINDUP_MS));
         for (let ti = 0; ti < 3; ti++) {
+          const tg = brTripleTelegraph(ti as 0 | 1 | 2, tripleElapsed);
+          // ★帯の起点は**毎フレーム現在のボス中心**(実行中は120px踏み込むので、判定が使う
+          // 「動いた後の中心」に絵を揃える=赤は判定と厳密一致の掟)。
           const ttx = cx + Math.cos(tripleAngs[ti]) * BR_TRIPLE_REACH, tty = cy + Math.sin(tripleAngs[ti]) * BR_TRIPLE_REACH;
-          this.zoneCapsuleTick(view, o, `${e.id}:br-triple:${ti}`, tripleWindupOn, tripleRemain, cx, cy, ttx, tty, BR_TRIPLE_HALF_WIDTH, now, tripleProg, ti, bTgStyle);
+          // remain は「その段が当たるまでの残り」を渡す(中断時の消し継続が同じ物差しで動く)。
+          const tiTotal = BR_TRIPLE_WINDUP_MS + brTripleHitAtMs(ti as 0 | 1 | 2);
+          this.zoneCapsuleTick(view, o, `${e.id}:br-triple:${ti}`, tripleActive && tg.on,
+            Math.max(0, tiTotal - tripleElapsed), cx, cy, ttx, tty, BR_TRIPLE_HALF_WIDTH, now, tg.prog, ti, bTgStyle);
         }
       }
       // §7-15: 出現=windup開始からの経過(elapsed=総windup時間-remain)/消滅=recoverの残りmsを

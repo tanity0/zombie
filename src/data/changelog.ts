@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4456',
+    items: [
+      'バス停の三段突きは、赤い帯が左から順に一本ずつ消えるようになった。消えた帯がその瞬間に突いてくる',
+      '以前は三本が同時に消えてから、最後の一本が半秒近く遅れて届いていた',
+    ],
+  },
+  {
     version: '0.25.4455',
     items: ['ゲーム内容の変更はありません'],
   },

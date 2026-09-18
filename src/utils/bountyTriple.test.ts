@@ -12,6 +12,7 @@ import {
   BR_TRIPLE_APPROACH_RAMP_MS, BR_TRIPLE_APPROACH_SLOW_RADIUS,
   brTripleAngles, brTripleStepDurationMs, brTripleLungeEase01, brTripleEffectiveReachPx,
   brTripleApproachAccelMult, brTripleApproachDecelMult,
+  brTripleHitAtMs, brTripleTelegraph, brTripleElapsedFromWindup,
 } from './bountyTriple';
 import { PLAYER_WALK_PX_PER_SEC } from './bossTelegraph';
 
@@ -188,5 +189,62 @@ describe('接近(社長指示2026-08-15「高速で近づいてから突く」)'
         prev = v;
       }
     });
+  });
+});
+
+// ★★赤い予告の2つの掟②(CLAUDE.md・社長指示2026-09-18「始まりと終わりのタイミング」)。
+// **消え切る時刻 = 当たる時刻。多段は段ごとに別々の時刻を持つ。**
+// v0.25.4455以前は3本の帯が溜め明けに同時に消え、実際の命中は +90/+310/+530ms=最大530msの嘘だった。
+describe('★三段突きの予告は、段ごとに「当たる瞬間」で消え切る', () => {
+  it('各段が当たる時刻は判定側の式と一致する(突き出し90msの末尾)', () => {
+    expect(brTripleHitAtMs(0)).toBe(BR_TRIPLE_THRUST_MS);                          // 90
+    expect(brTripleHitAtMs(1)).toBe(BR_TRIPLE_STEP_MS + BR_TRIPLE_THRUST_MS);      // 310
+    expect(brTripleHitAtMs(2)).toBe(BR_TRIPLE_STEP_MS * 2 + BR_TRIPLE_THRUST_MS);  // 530
+  });
+
+  it('★3段の時刻はすべて違う(1本の予告でまとめてはいけない根拠)', () => {
+    const ats = [0, 1, 2].map(i => brTripleHitAtMs(i as 0 | 1 | 2));
+    expect(new Set(ats).size).toBe(3);
+  });
+
+  it('★各段の予告は「自分が当たる瞬間」でちょうど prog=1 になり、そこで消える', () => {
+    for (const i of [0, 1, 2] as const) {
+      const hitAt = BR_TRIPLE_WINDUP_MS + brTripleHitAtMs(i);
+      expect(brTripleTelegraph(i, hitAt - 1).prog).toBeLessThan(1);
+      expect(brTripleTelegraph(i, hitAt - 1).on).toBe(true);   // 当たる直前はまだ出ている
+      expect(brTripleTelegraph(i, hitAt).prog).toBe(1);
+      expect(brTripleTelegraph(i, hitAt).on).toBe(false);      // 当たった瞬間に消える
+    }
+  });
+
+  it('★溜めが明けても消えない(旧実装の嘘の検知器)', () => {
+    // 溜め明け=実行の頭。ここで消えていたのが v0.25.4455 以前。
+    for (const i of [0, 1, 2] as const) {
+      expect(brTripleTelegraph(i, BR_TRIPLE_WINDUP_MS).on).toBe(true);
+    }
+  });
+
+  it('★3本は順番に消えていく(左→中→右)', () => {
+    const t = BR_TRIPLE_WINDUP_MS + brTripleHitAtMs(1); // 2段目が当たった瞬間
+    expect(brTripleTelegraph(0, t).on).toBe(false); // 左は済んでいる
+    expect(brTripleTelegraph(1, t).on).toBe(false); // 中はいま当たった
+    expect(brTripleTelegraph(2, t).on).toBe(true);  // 右はまだ出ている
+  });
+
+  it('経過msは状態と残り時間だけから復元できる(描画側がtickの内部状態を持たない)', () => {
+    expect(brTripleElapsedFromWindup('br-triple-windup', BR_TRIPLE_WINDUP_MS)).toBe(0);
+    expect(brTripleElapsedFromWindup('br-triple-windup', 0)).toBe(BR_TRIPLE_WINDUP_MS);
+    expect(brTripleElapsedFromWindup('br-triple-1', BR_TRIPLE_STEP_MS)).toBe(BR_TRIPLE_WINDUP_MS);
+    expect(brTripleElapsedFromWindup('br-triple-2', BR_TRIPLE_STEP_MS)).toBe(BR_TRIPLE_WINDUP_MS + BR_TRIPLE_STEP_MS);
+    expect(brTripleElapsedFromWindup('br-triple-3', 0)).toBe(BR_TRIPLE_WINDUP_MS + BR_TRIPLE_ACTIVE_MS);
+  });
+
+  it('★経過は単調に増える(段をまたいで巻き戻らない)', () => {
+    const seq: number[] = [];
+    for (let r = BR_TRIPLE_WINDUP_MS; r >= 0; r -= 50) seq.push(brTripleElapsedFromWindup('br-triple-windup', r));
+    for (let r = BR_TRIPLE_STEP_MS; r >= 0; r -= 20) seq.push(brTripleElapsedFromWindup('br-triple-1', r));
+    for (let r = BR_TRIPLE_STEP_MS; r >= 0; r -= 20) seq.push(brTripleElapsedFromWindup('br-triple-2', r));
+    for (let r = BR_TRIPLE_LAST_STEP_MS; r >= 0; r -= 20) seq.push(brTripleElapsedFromWindup('br-triple-3', r));
+    for (let i = 1; i < seq.length; i++) expect(seq[i]).toBeGreaterThanOrEqual(seq[i - 1]);
   });
 });
