@@ -44,6 +44,12 @@ describe('isEnemyCapProtected — 上限カリングの保護表(§6.38 B1)', ()
     expect(isEnemyCapProtected(mk('zombie', { isWave: true, spawnedAt: 0 }), 5000)).toBe(true);
     expect(isEnemyCapProtected(mk('zombie', { isWave: true, spawnedAt: 0 }), 10001)).toBe(false);
   });
+  // PACING_PUZZLE.md §17-11 B1c(ウェルカム台本): isWaveと違いWAVE_GRACE_MS(10秒)で切れない
+  // (ウェルカムは最長60秒続くため)。受け入れ条件9。
+  it('isWelcomeは時間無制限で保護される(waveの10秒猶予を超えても保護されたまま)', () => {
+    expect(isEnemyCapProtected(mk('zombie', { isWelcome: true, spawnedAt: 0 }), 10001)).toBe(true);
+    expect(isEnemyCapProtected(mk('zombie', { isWelcome: true, spawnedAt: 0 }), 999999)).toBe(true);
+  });
 });
 
 // PACING_PUZZLE.md §6.38 B1.5-6(賞金首): 距離リサイクル免除を「isEngageableBoss経由の暗黙相乗り」
@@ -123,5 +129,30 @@ describe('runOffscreenRecycleAndCull — 賞金首は距離リサイクル対象
       expect(after).toBeDefined(); // idは使い回し(消えるのではなく湧き直し)
       expect(after?.x).not.toBe(1100 - 22); // 元の位置には居ない=回収された
     });
+
+    // PACING_PUZZLE.md §17-11 B1c(ウェルカム台本): isWelcomeはareaInvalid経路でも除外される
+    // (プラント(speed 8)はプレイヤーが走れば必ず画面外へ出る=これを外すと台本外の敵に化ける)。
+    it('isWelcomeはareaInvalid回収の対象外(画面外に出ても化けない)', () => {
+      useGameStore.setState({ enemies: [mkPlant(1100, { isWelcome: true })] });
+      runOffscreenRecycleAndCull(ctx);
+      const after = useGameStore.getState().enemies.find(e => e.id === 'plant-1');
+      expect(after?.type).toBe('plant');
+      expect(after?.x).toBe(1100 - 22); // ワープしない=元の位置のまま
+    });
+  });
+
+  // PACING_PUZZLE.md §17-11 B1c・受け入れ条件9: isWelcomeは通常の距離リサイクル(offRect境界越え)
+  // からも時間無制限で除外される(isWaveのWAVE_GRACE_MS=10秒では最長60秒の関門に足りない)。
+  it('isWelcomeは10秒を超えて画面外はるか遠くに居てもリサイクル(湧き直し)されない', () => {
+    const far: Enemy = {
+      id: 'welcome-1', type: 'bat', x: 999999, y: 999999, width: 32, height: 32,
+      health: 20, maxHealth: 20, damage: 5, speed: 100, lastHit: 0, lastShot: 0,
+      dormant: false, spawnedAt: 0, isWelcome: true,
+    } as Enemy;
+    useGameStore.setState({ enemies: [far] });
+    runOffscreenRecycleAndCull({ ...baseCtx, gameTime: 999999 });
+    const after = useGameStore.getState().enemies.find(e => e.id === 'welcome-1');
+    expect(after?.x).toBe(999999);
+    expect(after?.y).toBe(999999);
   });
 });

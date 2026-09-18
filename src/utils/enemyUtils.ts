@@ -14,6 +14,12 @@ import { worldDist } from '../config/worldScale'; // 世界の距離スケール
 export const OFFSCREEN_SPAWN_MARGIN = 140;    // ビュー矩形の外側この距離で湧く(全辺一律)
 export const OFFSCREEN_RECYCLE_MARGIN = 240;  // ビュー矩形の外側この距離を超えたら画面外送り(湧き直し)。社長指示で 420→240=すぐ回収
 
+// PACING_PUZZLE.md §17-11 B1(監査A-4): 「無色で固定」を表す値が従来は存在しなかった
+// (forcedColorTier省略=undefinedは常に「抽選する」の意味だったため)。'none' は「抽選を通さず
+// 色なしで固定」を表す新しい明示値。既存の呼び手(forcedColorTierへ EnemyColorTier か undefined
+// のどちらかしか渡していない箇所)は1つも変えない=undefinedの意味は据え置き。
+export type ForcedColorTier = EnemyColorTier | 'none';
+
 // ステージ6(洋館・奥行き通路)の湧き方向ゲート(社長指示・とりあえず統合v0.25.2105)。
 // trueの間、通常湧き(generateEnemy=新規湧き+距離リサイクルの両方)は「上(奥)主体・一部下(手前)」から
 // のみ湧かせ、左右(=壁)からは湧かせない。setTreesDisabled 等と同じく resetGame が毎ラン設定する。
@@ -617,8 +623,11 @@ const difficultyRankForArea = (area: number): DifficultyRank => {
  * **`?seed=` が無ければ `Math.random` そのもの**なので、通常プレイの分布は1ビットも変わらない。
  * ★**このファイルの中だけで閉じている**——型の抽選・色個体の抽選・出現辺・初期ずらしを呼ぶ
  * `generateEnemy` の**呼び出し元18箇所は1行も変えていない**(引数を引き回す必要が無い形にした)。
+ * ★例外(PACING_PUZZLE.md §17-11 B1b): `welcomeScript.ts` の `welcomeSpawnAt` だけ、湧き位置の
+ * 乱数を「既存の通常湧きと同じ流れ」に揃えるためexport経由で読む(再現性を壊さないため専用の
+ * 別ストリームを新設しない・設計書の指名どおり)。
  */
-const spawnRng = makeSeededRng('spawn');
+export const spawnRng = makeSeededRng('spawn');
 
 const ENEMY_HP_MULT = 5;
 // Global enemy speed multiplier — slows the whole bestiary for a more
@@ -766,7 +775,7 @@ const buildEnemy = (
   isWave = false,
   esc = 0, // 難易度③: 強さ(色ティア)escalation。0=現状据え置き。
   rareMult = 1, // DISTRIBUTION_REDESIGN.md③: シーン/Rank連動のレア演出倍率。1=現状据え置き。
-  forcedColorTier?: EnemyColorTier, // PACING_PUZZLE.md §5.21 M20 stage③: 抽選を経ずtierを強制指定(囲いゲート1の全個体レア化)。
+  forcedColorTier?: ForcedColorTier, // PACING_PUZZLE.md §5.21 M20 stage③: 抽選を経ずtierを強制指定(囲いゲート1の全個体レア化)。'none'=抽選を通さず色なし固定(§17-11 B1)。
   noRedTier = false, // 社長指示2026-08-23: ハーベストのコマは赤を出さない(forcedColorTier指定時はそちらが優先)。
 ): Enemy => {
   const stats = ENEMY_STATS[type];
@@ -782,7 +791,11 @@ const buildEnemy = (
   );
   // 色付き(固定難易度タイプには付かない)。色ごとの倍率を強さに乗せる。
   // §5.21-追補7: 攻撃/HPを別倍率で分離(colorDmgMult/colorHpMult → diffDmg/diffHp)。
-  const colorTier = fixed ? undefined : (forcedColorTier ?? rollColorTierForArea(area, esc, rareMult, noRedTier));
+  const colorTier = fixed
+    ? undefined
+    : forcedColorTier === 'none'
+      ? undefined // §17-11 B1: 'none'=抽選を通さず色なしで固定(undefinedは従来どおり「抽選する」)
+      : (forcedColorTier ?? rollColorTierForArea(area, esc, rareMult, noRedTier));
   const colorDmgMult = colorTier ? COLOR_TIER_DMG_MULT[colorTier] : 1;
   const colorHpMult = colorTier ? COLOR_TIER_HP_MULT[colorTier] : 1;
   // 最終倍率 = エリア基礎難易度 × 色付き倍率。固定難易度タイプ = 1。
@@ -857,7 +870,8 @@ export const generateEnemy = (
   mix?: ChaffMix, // PACING_REDESIGN.mdバッチ3.5-A: チャフ(bat/skeleton/zombie)の役割配合。省略=従来どおり。
   // ★v0.25.3546(ピークの赤い個体1体): 色抽選(rollColorTierForArea)を経ずtierを強制指定する。
   // 省略=従来どおり抽選。`spawnEnemyAtWithTier` の generateEnemy 版(あちらは座標指定の兄弟)。
-  forcedColorTier?: EnemyColorTier,
+  // 'none'=§17-11 B1(ウェルカム台本): 抽選を通さず色なしで固定。
+  forcedColorTier?: ForcedColorTier,
   // ★社長指示2026-08-23(ハーベストは赤を出さない): 抽選から赤の帯だけを外す。省略=従来どおり。
   // forcedColorTier を渡した場合はそちらが優先(強制指定は抽選を経ないため)。
   noRedTier = false,

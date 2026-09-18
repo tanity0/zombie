@@ -40,7 +40,7 @@ import { directorRng } from './seededRng';
 import { isBossMakerRun } from './bossTest'; // §9-7#7: 計測路(ボスメーカー)ではdriller/loggerを出さない
 import { isGauntletRun } from './gauntletMode'; // §9-7#7: 計測路(ガントレット)ではdriller/loggerを出さない
 import { selectCullCandidates } from './enemyCulling';
-import { enemyCountCap, openingCountCap, ENEMY_COUNT_CEIL, type PhaseKind } from './difficultyDirector';
+import { enemyCountCap, ENEMY_COUNT_CEIL, type PhaseKind } from './difficultyDirector';
 import { stepDirector, applyRelaxSpawnCadence, type DirectorState } from './aiDirector';
 import { setDirectorDebug, recordDirectorSample, DIRECTOR_EVENT_BIT, getDirectorPower } from './aiDirectorDebug';
 import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDirector';
@@ -118,7 +118,7 @@ export const EVENT_BANNER_MS = 3500;      // イベント発生告知バナー�
  * クロージャ・実装精度の規律4)。判定・値は移設前と同一(挙動不変)。
  */
 export const isEnemyCapProtected = (
-  e: Pick<Enemy, 'type' | 'fixed' | 'fromEvent' | 'isNamed' | 'questTarget' | 'isWave' | 'spawnedAt' | 'stunUntil'>,
+  e: Pick<Enemy, 'type' | 'fixed' | 'fromEvent' | 'isNamed' | 'questTarget' | 'isWave' | 'isWelcome' | 'spawnedAt' | 'stunUntil'>,
   gameTime: number,
 ): boolean =>
   // ★v0.25.3956(社長報告「クリティカルになって…消えちゃう敵がいる」): 気絶中(=クリのフィニッシュ
@@ -132,6 +132,9 @@ export const isEnemyCapProtected = (
   e.type === 'lab-zombie-3' ||
   isHiddenBoss(e.type) ||
   isBountyType(e.type) ||
+  // PACING_PUZZLE.md §17-11 B1c(ウェルカム台本): isWaveの保護はWAVE_GRACE_MS(10秒)で切れるが、
+  // ウェルカムは最長60秒続くので足りない。時間無制限で保護する(印を持つ間ずっと)。
+  !!e.isWelcome ||
   // PACING_PUZZLE.md §14-4-3(使者・hangedman): 湧き帳簿/ノルマ(通常湧き上限カリング)の対象外。
   // 死神本体の技として管理される耐久武器なので、上限カリングで消えると囲み召喚の意味が壊れる。
   isHangedman(e.type) ||
@@ -155,13 +158,9 @@ export function computeDirCountCap(
 ): number {
   if (labTheme || indoor) return maxEnemies;
   const withBonus = enemyCountCap(gameTime) + rankAdj.countCapBonus + upswingBonus + pressureCapBonus;
-  // ★**出だしの抑えはディレクターが持ち上げられない天井**(社長質問2026-09-17「出てくる数を絞った話
-  // だけど、AIディレクターはどうする?」)。
-  // 実測では3つの加算(退屈の上振れ/ランク/関所プレッシャー)は出だし70秒の間すべて0だが、
-  // それは**3つの暖機がたまたま抑えより長いから**にすぎない(退屈=90秒グレース / ランクはフェーズ
-  // 切替=95秒 / プレッシャーは関所①=95秒)。どれか1つを後で詰めた瞬間に出だしが黙って壊れるので、
-  // 「偶然そうなっている」を「そうなると決まっている」に変える。
-  return Math.min(ENEMY_COUNT_CEIL, withBonus, openingCountCap(gameTime));
+  // ★旧「出だしの抑え」(OPENING_COUNT_RAMP)はPACING_PUZZLE.md §17-11(監査A-7)で廃止。
+  // ウェルカム台本(§17)がステージごとの出だしを持つようになったため=二重リミッター防止。
+  return Math.min(ENEMY_COUNT_CEIL, withBonus);
 }
 
 export function computeEnemyCap(
@@ -1150,6 +1149,9 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     if (enemy.isNamed) return enemy;
     // 二人組クエストの強制目標個体も同様に対象外(討伐が条件=消えたり湧き直したりしてはいけない)。
     if (enemy.questTarget) return enemy;
+    // §17-11 B1c(ウェルカム台本): 時間無制限で画面外回収の対象外(isWaveと違いWAVE_GRACE_MSで
+    // 切れない=最長60秒の関門に足りないため)。areaInvalid経路(下)もこれで一括して除外される。
+    if (enemy.isWelcome) return enemy;
     // 休眠中(未起動)の敵は「近づくまで向かってこない」設計。距離リサイクルで先回り(ワープ)させない
     // =城ボス等は起動するまで定位置で待機。一度起動(dormant解除)すれば以降は通常どおりリサイクルされる(社長指示)。
     // ただしラボ(研究所スキン)の通常湧き休眠個体は対象にする: 届かない休眠個体がその場に残り続けて
@@ -1219,6 +1221,8 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     const aliveMs = gameTime - (enemy.spawnedAt ?? 0);
     // DISTRIBUTION_REDESIGN.md①: sceneSpawn(台本のfeatured床/保証出現などでエリア不問に選ばれた)
     // も強制回収の対象外(画面外に離れた時の通常回収 OFFSCREEN_RECYCLE_MARGIN は従来どおり効く)。
+    // (isWelcomeは上の早期returnで既にareaInvalid経路も含めて除外済み。パンプキン系は全区域で
+    // 重み0・プラントは区域0で重み0なので、外すと出撃直後(区域0〜1)に確実に化ける=§17-11 B1c)
     const areaInvalid = !preserveEnemyState && !enemy.isWave && !enemy.fromEvent && !enemy.sceneSpawn
       && aliveMs > 5000
       && !isValidForArea(enemy.type, playerAreaIdx);

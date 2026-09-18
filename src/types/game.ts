@@ -663,6 +663,10 @@ export interface Enemy {
   // set-piece hordes aren't deleted the instant they appear.
   spawnedAt?: number; // gameTime ms when spawned
   isWave?: boolean;
+  // PACING_PUZZLE.md §17(ウェルカム台本): この敵はステージ入りの関門(ウェルカム)台本の個体。
+  // isWaveと違い時間無制限の保護(WAVE_GRACE_MS=10秒では60秒の関門に足りない)。上限カリングと
+  // 画面外回収(areaInvalid経路も含む)の両方から除外する(§17-11 B1c)。
+  isWelcome?: boolean;
   // 囲い系イベント(アリーナ/ミニボス)で湧いた敵。終了判定(全滅)とカリング保護に使う。
   fromEvent?: boolean;
   // 救助イベントの攻撃者: この survivor の id を狙う(updateEnemies の retarget 分岐で参照)。

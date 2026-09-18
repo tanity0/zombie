@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  enemyCountCap, phaseAt, sceneAt, PHASES, ENEMY_COUNT_CEIL, ENEMY_COUNT_FLOOR, OPENING_COUNT_RAMP,
+  enemyCountCap, phaseAt, sceneAt, PHASES, ENEMY_COUNT_FLOOR,
 } from './difficultyDirector';
 
 describe('difficultyDirector — count axis (PACING_REDESIGN.md 憲法第1条: 基本10体)', () => {
@@ -13,35 +13,13 @@ describe('difficultyDirector — count axis (PACING_REDESIGN.md 憲法第1条: �
     expect(maxSeen).toBeLessThanOrEqual(ENEMY_COUNT_FLOOR);
   });
 
-  // ★v0.25.4449(社長指示2026-09-17「マックスは10で据え置き。**序盤は1-2体から始まる**ようにしたい」):
-  // 旧「常に6体以上」は**出だしだけ**外れる。出だしの抑えが切れた後は従来どおり。
-  it('出だしの抑えが切れた後は、従来どおり [6, ceil] に収まる', () => {
-    for (let t = OPENING_COUNT_RAMP[OPENING_COUNT_RAMP.length - 1].untilMs; t <= 900_000; t += 1000) {
-      const c = enemyCountCap(t);
-      expect(c).toBeGreaterThanOrEqual(6);
-      expect(c).toBeLessThanOrEqual(ENEMY_COUNT_CEIL);
+  // ★PACING_PUZZLE.md §17-11(監査A-7): 旧「出だしの体数抑え」(OPENING_COUNT_RAMP・v0.25.4449)は
+  // ウェルカム台本(§17)に置き換えて廃止した(二重リミッター防止)。enemyCountCapは常にフェーズ表
+  // そのまま=[ENEMY_COUNT_FLOOR以下の各段のcountCap, ceil]に収まる(出だしも例外なく)。
+  it('常にフェーズ表の countCap をそのまま返す(出だしの抑えは無い=二重リミッターにしない)', () => {
+    for (let t = 0; t <= 900_000; t += 1000) {
+      expect(enemyCountCap(t)).toBe(phaseAt(t).countCap);
     }
-  });
-
-  it('★出だしは1-2体から始まる(社長指示)', () => {
-    expect(enemyCountCap(0)).toBeLessThanOrEqual(2);
-    expect(enemyCountCap(10_000)).toBeLessThanOrEqual(2);
-  });
-
-  it('★出だしの抑えは単調に緩む(増えてから減る、が起きない)', () => {
-    let prev = 0;
-    for (let t = 0; t <= OPENING_COUNT_RAMP[OPENING_COUNT_RAMP.length - 1].untilMs; t += 500) {
-      const c = enemyCountCap(t);
-      expect(c).toBeGreaterThanOrEqual(prev);
-      prev = c;
-    }
-  });
-
-  it('★抑えはフェーズ表を上書きしない(切れた瞬間に表の値へ戻る=関所①より手前で8に戻る)', () => {
-    const end = OPENING_COUNT_RAMP[OPENING_COUNT_RAMP.length - 1].untilMs;
-    expect(enemyCountCap(end)).toBe(phaseAt(end).countCap);
-    // 関所①(95秒)より手前で抑えが終わっている=関所以降は1ビットも変わらない
-    expect(end).toBeLessThan(95_000);
   });
 
   it('typical cap sits close to 10 across the arc (avg in a tight band — no more MAX-from-the-start spike)', () => {
