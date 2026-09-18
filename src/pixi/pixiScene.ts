@@ -44,7 +44,7 @@ import {
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
-  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, MELEE_RADIUS, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, WEREWOLF_CHARGE_MAX_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, MELEE_RADIUS, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS, GIANT_JUMP_AIR_MS, PUMPKIN_JUMP_MS,
@@ -189,7 +189,7 @@ import {
 } from '../utils/cameraZoom';
 import { airHopHeight01 } from '../utils/airHop';
 // ★v0.25.3818(§9-6「突進の走行中の体当たり」裁定(B)): 突進の走行中の赤い帯は「AABB の掃過領域」=判定と厳密に同じ形で描く。
-import { sweptRectHull, dashLineStrikeEnd, dashLineEraseRescale } from '../utils/geometry';
+import { dashLineStrikeEnd, dashLineEraseRescale } from '../utils/geometry';
 import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE, PHILL_FEATHER_NATIVE_ANGLE } from '../utils/bladeArt';
 import { bossWideShotZoom } from '../utils/cameraZoom';
 import {
@@ -346,7 +346,6 @@ import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
 import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
 import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt, loopSweepProg as csLoopSweepProg } from '../utils/circleSweep';
 import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, bandSweepSliceAlpha, sweepTelegraphProg, twoPhaseTelegraphProg } from '../utils/bandSweep';
-import { dashBodyBandSpec, dashBandAlpha01 } from '../utils/dashBodyBand';
 import { giantSweepWindowProg, giantNovaWindupProg } from '../utils/giantRedTelegraph';
 import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
 
@@ -21118,26 +21117,12 @@ export class PixiScene {
     // ハンター/旧経路の城ボス)/ 城ボス `g-dash-charge`・`g-quad-charge` / トール `issen-dash`・`tsuki`。
     // 判定はゼロの②「派手さの絵」なので、判定より大きく出してよい(社長方針v0.25.2410)。
     {
-      // ★★赤い予告の4つの掟④(CLAUDE.md・社長指示2026-09-18「**通るものもそれに合わせて**」)/
-      // PACING_PUZZLE.md §18-1(d)。**走行中も体幅ぶんの赤帯を出す**=「赤が消えている間は当たらない」を
-      // 全型で成り立たせる。先例=トールの突進(v0.25.3818)。ここが**全突進の唯一の呼び出し口**で、
-      // 州の台帳と時刻は純関数(`utils/dashBodyBand.ts`)1本から引く(4箇所へコピペしない)。
-      // 尺(ms)は判定側の実体をそのまま渡す=描画側に時刻の複製を書かない。
-      {
-        const bandSpec = dashBodyBandSpec(e, gameTime, {
-          chargeMaxMs: WEREWOLF_CHARGE_MAX_MS / ENEMY_ATTACK_SPEED_MULT,
-          hiddenDashMs: HB_C.dash.ms,
-          bmChargeMaxMs: BM_T.charge.maxMs,
-          thorDashMoveMs: HB_TH.dash.moveMs,
-        });
-        if (bandSpec) {
-          this.drawDashBodyBand(
-            o, e.x, e.y, e.width, e.height, bandSpec.endCx, bandSpec.endCy,
-            dashBandAlpha01(bandSpec.sinceStartMs, bandSpec.remainMs, bandSpec.distRemainPx), now,
-            ...(bandSpec.purple ? [0xa855f7, 0xc084fc] as const : []),
-          );
-        }
-      }
+      // ★★**走行中の体帯は撤去した**(社長指示2026-09-18「自転車に流星のあと紅いライン引いたね？
+      // これやめてほしいんだけど、ほかの敵や技にも引いた？全部取っ払って」→「トールも予告の流星
+      // 入ってるよね？であれば消して」)。v0.25.4458 で §18-1(d) として5州へ広げ、v0.25.4474 で
+      // その5州を、v0.25.4475 で**先例だったトールの分も**外した——**突進には既に溜めの流星ライン
+      // (`dashLineTick`)が出ているので、走行中の帯は「流星のあとに残る紅いライン」に見える**。
+      // **掟④は残るが、体帯という見せ方は採らない**(CLAUDE.md / PACING_PUZZLE.md §18-1(d) に記載)。
       const dashPhase = e.aiPhase === 'charge' || e.aiPhase === 'g-dash-charge' || e.aiPhase === 'g-quad-charge';
       // V1(2)(FX_GAP_LEDGER.md): 「突進という動作を持つ全員」へ横展開(掟「同じ動作を持つ全員に」)。
       // 追加: 裏ボス3体(mimir/jormungand/skadi)の 'dash' / ミゲル 'mdash-move' / ウリ 'thrust'(踏み込み突き)/
@@ -23867,29 +23852,6 @@ export class PixiScene {
   // 帯で描くと斜め移動の半幅と両端のキャップぶんだけ絵と判定がズレる(理由は `sweptRectHull` の
   // コメント)。色・塗り/縁の濃さは既存の赤い帯と同じ語彙(0xff2a2a / 0xff3b3b)を使う=見た目を発明しない。
   //
-  // 「これから体が通る所」だけを描く(始点=**今のボスの矩形** / 終点=**走りの到達点の矩形**)ので、
-  // ボスが進むにつれて帯は自然に短くなり、走り終わり(moveMs)には体そのものへ縮む。
-  // 走り終わり以降(斬り抜けの110ms)は描かない——止まった体が接触ダメージを持つのは chase と同じで、
-  // そこに赤を置くと「常時赤い」になり①の意味が消えるため。
-  //
-  // 出現/消滅は**加減速つき**(CLAUDE.md「★動きの絶対ルール: 慣性」)。パッと出てパッと消えない。
-  // 負荷1/10: 走行中(230ms)だけ・共有の per-frame Graphics に poly 1枚+stroke 1本。
-  // ★v0.25.4457(PACING_PUZZLE.md §18-1(d)・掟④): **トールだけの絵をやめ、突進を持つ全員で共有する。**
-  // トールの見た目(形=sweptRectHull / 色 / 濃さ / 60msの加減速)は1つも変えていない——
-  // 変えたのは「どこから呼ぶか」だけ(濃さ `k` の算出は `utils/dashBodyBand.ts` の純関数へ移した)。
-  private drawDashBodyBand(
-    o: Graphics, ex: number, ey: number, w: number, h: number,
-    endCx: number, endCy: number, k: number, now: number,
-    // 色の文法(CLAUDE.md): 既定=赤(カウンター可)。**紫はカウンター不能の突進だけ**
-    // (城ボスの三連突進 g-quad-charge=その技の予告ラインが既に紫)。
-    fillColor = 0xff2a2a, strokeColor = 0xff3b3b,
-  ): void {
-    if (k <= 0.002) return;
-    const poly = sweptRectHull(ex, ey, w, h, endCx - w / 2, endCy - h / 2);
-    const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-    o.poly(poly).fill({ color: fillColor, alpha: telFillA(1, pulse) * k * TELEGRAPH_FILL_MULT });
-    o.poly(poly).stroke({ width: 2, color: strokeColor, alpha: telStrokeA(1, pulse) * k });
-  }
 
   // §6.38実機FB7(社長指示2026-08-15): drawAngelZoneCapsuleのdashLineTick相当ラッチ。
   // ①windupOn中は毎フレーム焼き直し(fx/fy/tx/ty/halfWidth/idx+残りms)、erase=0でそのまま描く

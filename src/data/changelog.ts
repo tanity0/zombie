@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4475',
+    items: [
+      'トールの突進でも、走っている間の赤い帯が出なくなった。これで突進の赤は溜めの予告だけになる',
+    ],
+  },
+  {
     version: '0.25.4474',
     items: [
       '突進してくる敵の通り道に出ていた赤い帯をやめた。自転車の敵、裏のボス、城のボス、馬乗りの四つとも出ない',
