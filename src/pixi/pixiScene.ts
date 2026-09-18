@@ -233,10 +233,11 @@ import {
 } from '../utils/zombieBiteFx';
 // ★ハンターの棺桶(社長支給2026-09-18)。ジャンプと突進の両方で振る。
 import {
-  usesHunterCoffin, coffinPhaseNow, coffinPose, coffinSwingFrame, coffinSwingAlpha,
+  usesHunterCoffin, coffinPose, coffinSwingFrame, coffinSwingAlpha,
   coffinSlamFrame, coffinTotalMs, coffinLeadMs,
   COFFIN_LEN_PX, COFFIN_GRIP_X, COFFIN_GRIP_Y, COFFIN_INTRINSIC_ANGLE,
   COFFIN_SWING_REF_W, COFFIN_SWING_W_PX, COFFIN_SLAM_REF_W, COFFIN_SLAM_W_PX,
+  coffinSpinPose, COFFIN_SPIN_LEN_PX, COFFIN_SPIN_TAIL_MS,
 } from '../utils/hunterCoffin';
 import {
   BOUNTY_DEPART_FADE_MS,
@@ -18744,7 +18745,33 @@ export class PixiScene {
     // どちらの技も **`aiPhaseUntil` が「決まる時刻」**(着地 / 突進の終わり)なので、そこを0にした
     // 時計で武器の振り・斬撃10コマ・地面の余韻5コマを送る。判定・尺は1msも触っていない。
     if (usesHunterCoffin(e)) {
-      const cRun = coffinPhaseNow(e) && e.aiPhaseUntil !== undefined;
+      // ★技で絵が違う(社長指示2026-09-18「突進は振りをやめて、棺桶を頭上で振り回しながら突進に変更」):
+      //  - `jump` = **叩きつけ**(振り上げ→振り下ろし + 斬撃10コマ + 地面の余韻5コマ)
+      //  - `charge` = **頭上で振り回しながら走る**(棺桶そのものが回るだけ。斬撃も地面も出さない)
+      // どちらも判定・ダメージ・射程・尺は1msも触っていない。
+      const spinning = e.aiPhase === 'charge';
+      const SP = this.latchFx(
+        `${e.id}:coffin-spin`, spinning, 60_000, now,
+        () => [e.aiStartedAt ?? gameTime, (e.aiTargetX ?? cx) >= cx ? 1 : -1],
+      );
+      // 走っている間は残り時間で減速させ、切れた後は**尻すぼみに回してから消す**(瞬間停止させない)。
+      const spTail = spinning ? 0 : this.fxSpinTailMs(`${e.id}:coffin-spin`, now);
+      if (SP && spTail !== null) {
+        const [spStart, spSgn] = SP.d;
+        const spin = coffinSpinPose(
+          gameTime - spStart, spinning ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0,
+          spTail, spSgn,
+        );
+        if (spin) {
+          this.drawBountyWeapon(
+            e.id, 'hunter-coffin', fb.footX, fb.footY - fb.boxH * spin.upFrac, spin.angle,
+            COFFIN_SPIN_LEN_PX, spin.alpha * artFade,
+            1, false, COFFIN_GRIP_X, COFFIN_GRIP_Y, COFFIN_INTRINSIC_ANGLE,
+          );
+        }
+      }
+      // 叩きつけ(ジャンプ)側。突進では**一切出さない**。
+      const cRun = e.aiPhase === 'jump' && e.aiPhaseUntil !== undefined;
       const CL = this.latchFx(
         `${e.id}:coffin`, cRun, coffinLeadMs() + coffinTotalMs() + 200, now,
         () => [e.aiPhaseUntil ?? gameTime, (e.aiTargetX ?? cx) >= cx ? 1 : -1,
@@ -18761,7 +18788,6 @@ export class PixiScene {
             1, false, COFFIN_GRIP_X, COFFIN_GRIP_Y, COFFIN_INTRINSIC_ANGLE,
           );
         }
-        // 斬撃は**振り抜く手元**(敵の胸)に、地面の余韻は**決まる点**(着地点/突進の終点)に置く。
         const sw = coffinSwingFrame(cSince);
         if (sw !== null) {
           this.drawSkelClawSprite(
@@ -18771,9 +18797,7 @@ export class PixiScene {
           );
         }
         const sl = coffinSlamFrame(cSince);
-        if (sl !== null) {
-          this.drawCoffinSlam(e.id, ctx2, cty2, sl, cSgn < 0, artFade);
-        }
+        if (sl !== null) this.drawCoffinSlam(e.id, ctx2, cty2, sl, cSgn < 0, artFade);
       }
     }
     if (isBountyType(e.type)) {
@@ -29661,6 +29685,20 @@ export class PixiScene {
    * 棺桶の地面の余韻(5コマ)。**接地点で重ねる**ので、アンカーは下端中央。
    * 素材は右向き前提(弧が右へ開く)なので左向きは `scale.x` を反転する。
    */
+  /**
+   * 回している最中のラッチ(`:coffin-spin`)が**明けてからの経過(ms)**を返す(まだ回っている=0 /
+   * 尻尾が切れた=null)。走りが切れた瞬間に回転を止めないための窓口(慣性MUST)。
+   * ラッチは `armed` が落ちても寿命が尽きるまで残るので、**その残り時間から経過を逆算**する。
+   */
+  private fxSpinTailMs(key: string, now: number): number | null {
+    const L = this.fxLatches.get(key);
+    if (!L) return null;
+    if (L.armed) return 0;
+    const tail = now - L.t0 - (L.dur - COFFIN_SPIN_TAIL_MS);
+    if (tail >= COFFIN_SPIN_TAIL_MS) { this.fxLatches.delete(key); return null; }
+    return Math.max(0, tail);
+  }
+
   private drawCoffinSlam(id: string, x: number, y: number, frame: number, flip: boolean, fade: number): void {
     const tex = getTexture(`fx/coffin-slam-${frame}`);
     if (!tex || tex.width === 0) return;

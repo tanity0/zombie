@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4470',
+    items: [
+      '変異体(狩猟型)の突進が、棺桶を頭上でぶん回しながら走る形になった。走り出しで回り始め、止まる手前で回転が緩む',
+      '叩きつけは跳びかかりの時だけ。突進では振らない',
+    ],
+  },
+  {
     version: '0.25.4469',
     items: [
       '変異体(狩猟型)が棺桶を担いで振り回すようになった。跳びかかりも突進も、決まる瞬間に叩きつける',

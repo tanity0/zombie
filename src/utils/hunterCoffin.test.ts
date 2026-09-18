@@ -5,6 +5,7 @@ import {
   COFFIN_SWING_FRAMES, COFFIN_SWING_IMPACT_FRAME, COFFIN_SWING_HOLD_MS,
   COFFIN_SLAM_FRAMES, COFFIN_SLAM_IMPACT_FRAME, COFFIN_SLAM_HOLD_MS,
   COFFIN_RAISE_MS, COFFIN_SLAM_MS, COFFIN_SETTLE_MS, COFFIN_DOWN_DEG, COFFIN_BACK_DEG,
+  coffinSpinRevs, coffinSpinPose, COFFIN_SPIN_UP_MS, COFFIN_SPIN_DOWN_MS, COFFIN_SPIN_TAIL_MS,
 } from './hunterCoffin';
 
 const D2R = Math.PI / 180;
@@ -115,5 +116,55 @@ describe('棺桶: 斬撃10コマ + 地面5コマ', () => {
   it('ラッチの寿命は一番長い絵を覆う', () => {
     expect(coffinTotalMs()).toBeGreaterThanOrEqual(COFFIN_SETTLE_MS);
     expect(coffinTotalMs()).toBeGreaterThanOrEqual(COFFIN_SLAM_HOLD_MS.reduce((a, b) => a + b, 0));
+  });
+});
+
+describe('突進は頭上で振り回す(社長指示2026-09-18「突進は振りをやめて、棺桶を頭上で振り回しながら」)', () => {
+  const D = COFFIN_SPIN_DOWN_MS, T = COFFIN_SPIN_TAIL_MS;
+
+  it('★回転は戻らない(累積が単調増加)', () => {
+    let prev = -1;
+    for (let t = 0; t <= 3000; t += 10) {
+      const r = coffinSpinRevs(t, Math.max(0, 3000 - t));
+      expect(r).toBeGreaterThanOrEqual(prev - 1e-9);
+      prev = r;
+    }
+  });
+
+  it('★回し始めは加速する(等速で始まらない=慣性MUST)', () => {
+    const step = (t: number) => coffinSpinRevs(t + 20, 9999) - coffinSpinRevs(t, 9999);
+    expect(step(COFFIN_SPIN_UP_MS)).toBeGreaterThan(step(0) * 2);
+  });
+
+  it('★終いは減速して止まる(瞬間停止しない)', () => {
+    const step = (rm: number) => coffinSpinRevs(2000, rm) - coffinSpinRevs(1980, rm + 20);
+    expect(step(D)).toBeGreaterThan(step(10) * 2);
+    expect(step(0)).toBeCloseTo(0, 3);
+  });
+
+  it('★走りが切れた後も尻すぼみに回ってから消える', () => {
+    const a = coffinSpinRevs(2000, 0, 0), b = coffinSpinRevs(2000, 0, T / 2), c = coffinSpinRevs(2000, 0, T);
+    expect(b).toBeGreaterThan(a);
+    expect(c).toBeGreaterThan(b);
+    expect(coffinSpinPose(2000, 0, T, 1)).toBeNull();     // 尻尾が切れたら消える
+  });
+
+  it('★左右で回る向きが鏡になる', () => {
+    const r = coffinSpinPose(800, 9999, 0, 1)!.angle;
+    const l = coffinSpinPose(800, 9999, 0, -1)!.angle;
+    expect(Math.sign(r)).toBe(-Math.sign(l));
+  });
+
+  it('★頭上に掲げる(足元より上)', () => {
+    expect(coffinSpinPose(800, 9999, 0, 1)!.upFrac).toBeGreaterThan(1);
+  });
+
+  it('★パッと出さない(頭のフレームは薄い)', () => {
+    expect(coffinSpinPose(0, 9999, 0, 1)!.alpha).toBeLessThan(0.2);
+    expect(coffinSpinPose(300, 9999, 0, 1)!.alpha).toBe(1);
+  });
+
+  it('★大きく回す(1秒で1回転以上)', () => {
+    expect(coffinSpinRevs(1260, 9999)).toBeGreaterThan(1);
   });
 });

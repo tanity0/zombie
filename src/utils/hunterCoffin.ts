@@ -129,3 +129,71 @@ export const coffinTotalMs = (): number => Math.max(
 export const coffinLeadMs = (): number => Math.max(
   holdLeadMs(COFFIN_SWING_HOLD_MS, COFFIN_SWING_IMPACT_FRAME), COFFIN_RAISE_MS + COFFIN_SLAM_MS,
 );
+
+// =============================================================================================
+// ★突進は「振り」ではなく **頭上で振り回しながら走る**(社長指示2026-09-18
+// 「突進は振りをやめて、棺桶を頭上で振り回しながら突進に変更」)
+// =============================================================================================
+//
+// ★慣性(MUST・CLAUDE.md「常時回転する装飾等も、物理の中にいるなら動き始め・動き終わりに加減速が
+// あるはず」): **回し始めは加速・終いは減速**。等速で始まって瞬間停止する回転は作らない。
+//
+// ★`jump`(叩きつけ)とは**別の絵**になる: 突進中は斬撃10コマも地面5コマも出さない
+// (社長「振りをやめて」)。出るのは**棺桶そのものが頭上を回る**ことだけ。
+
+/** 全速時の回転(回/秒)。**大きく見せる**(小さくて認識できない動きは演出が存在しないのと同じ)。 */
+export const COFFIN_SPIN_REV_PER_SEC = 1.4;
+/** 回し始めの加速(ms)。 */
+export const COFFIN_SPIN_UP_MS = 260;
+/** 走り終わりの減速(ms)。残りがこれを切ったら緩めていく。 */
+export const COFFIN_SPIN_DOWN_MS = 320;
+/** 走りが切れた後、回りながら消えるまで(ms)。 */
+export const COFFIN_SPIN_TAIL_MS = 260;
+/** 頭上に掲げる高さ(箱の高さに対する割合・足元から上へ)。 */
+export const COFFIN_SPIN_UP_FRAC = 1.12;
+/** 突進中の棺桶の長さ(px)。振り回すので少し短く持つ。 */
+export const COFFIN_SPIN_LEN_PX = 180;
+
+/**
+ * 突進中の**累積回転数**(回)。`sinceMs`=走り始めからの経過 / `remainMs`=走り終わりまでの残り
+ * (走りが切れた後は 0) / `tailMs`=切れてからの経過。
+ *
+ * ★**単調増加**であること(戻ると絵が巻き戻る)。立ち上がりは二乗で加速、終いは残りの二乗で減速、
+ * 切れた後は尻すぼみに足す——どの区間でも瞬間速度は 0 以上に保たれる。
+ */
+export const coffinSpinRevs = (sinceMs: number, remainMs: number, tailMs = 0): number => {
+  const R = COFFIN_SPIN_REV_PER_SEC / 1000;      // 回/ms
+  const U = COFFIN_SPIN_UP_MS, D = COFFIN_SPIN_DOWN_MS, T = COFFIN_SPIN_TAIL_MS;
+  const s = Math.max(0, sinceMs);
+  const up = Math.min(s, U);
+  let revs = R * up * up * up / (3 * U * U);     // 立ち上がりの積分(rate = R*(t/U)^2)
+  revs += R * Math.max(0, s - U);                // 定速ぶん
+  if (remainMs < D) {                            // 終いの減速ぶんを差し引く(rate = R*(remain/D)^2)
+    const rm = Math.max(0, remainMs);
+    revs -= R * ((D - rm) - (D * D * D - rm * rm * rm) / (3 * D * D));
+  }
+  if (tailMs > 0) {                              // 切れた後も尻すぼみに回ってから止まる
+    const t = Math.min(1, tailMs / T);
+    revs += R * T / 3 * (1 - (1 - t) ** 3);
+  }
+  return revs;
+};
+
+export interface CoffinSpinPose { angle: number; alpha: number; upFrac: number }
+
+/**
+ * 突進中の棺桶の姿勢。回転の軸は**柄**(頭上の手)なので、棺桶は手を中心に大きな円を描く。
+ * 左向きは回転の向きも鏡にする(`s`)。
+ */
+export const coffinSpinPose = (
+  sinceMs: number, remainMs: number, tailMs: number, s: number,
+): CoffinSpinPose | null => {
+  if (sinceMs < 0) return null;
+  if (tailMs >= COFFIN_SPIN_TAIL_MS) return null;
+  const sg = s >= 0 ? 1 : -1;
+  const revs = coffinSpinRevs(sinceMs, remainMs, tailMs);
+  // 出は下から持ち上げる代わりに、**回し始めのフェード**で置く(パッと出さない)。
+  const rise = Math.min(1, sinceMs / 140);
+  const fall = tailMs > 0 ? 1 - (tailMs / COFFIN_SPIN_TAIL_MS) ** 2 : 1;
+  return { angle: sg * revs * 2 * Math.PI, alpha: Math.max(0, rise * fall), upFrac: COFFIN_SPIN_UP_FRAC };
+};
