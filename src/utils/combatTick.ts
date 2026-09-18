@@ -42,7 +42,9 @@ import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkColli
 import {
   biteSpecFor, biteReachRect, isInBiteRect, isBiteSubject, canStartBite, isBiteResolveDue,
   biteBodyOverlapsPlayer, isBiteInterruptedByMove, isBiteFrozen, BITE_RECOVER_STILL_MS,
+  isInBiteCircle, // ★§16-C(転移噛み・C-3-a1): この技だけ判定を円で取る
 } from './enemyBite';
+import { LICH_BLINK_RADIUS_PX } from './lichBlink'; // §16-C: 予告円の半径=判定円の半径(C-4)
 import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { BAT_GRAB_HOLD_MS } from './chaffMoves'; // ★PACING_PUZZLE.md §16-1(bat の掴み)
 import { EGG_BLAST_RADIUS } from '../world/mines';
@@ -1378,7 +1380,12 @@ export const applyContactDamage = (
       // 専用の四角を持たない=絵と判定が同一(「赤いのに当たらない」が原理的に起きない)。
       const eb = enemyContactBox(e);
       const px = eb.x + eb.width / 2, py = eb.y + eb.height / 2;
-      if (biteBodyOverlapsPlayer(eb, collPlayer)) {
+      // ★§16-C「転移噛み」(C-3-a1): この技だけ判定は**円**(発火時に焼いた点=`lichBlinkAtX/Y`)。
+      // §12の噛みの箱判定(`biteBodyOverlapsPlayer`)は1文字も変えない=この分岐だけ差し替える。
+      const lichBlinkHit = e.chaffMove === 'lich-blink'
+        && e.lichBlinkAtX !== undefined && e.lichBlinkAtY !== undefined
+        && isInBiteCircle(e.lichBlinkAtX, e.lichBlinkAtY, bcx, bcy, LICH_BLINK_RADIUS_PX);
+      if (e.chaffMove === 'lich-blink' ? lichBlinkHit : biteBodyOverlapsPlayer(eb, collPlayer)) {
         // 接触ダメージと同じ倍率の掛け方(紅き夜×2 / 叫喚の強化窓)。
         const rn = redNightActive ? 2 : 1;
         const sc = (screamerBuffUntil > gameTime && e.type !== 'screamer') ? SCREAMER_BUFF_MULT : 1;
@@ -1420,19 +1427,24 @@ export const applyContactDamage = (
           const techSpec = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
           return {
             ...e, biteAt: 0, biteReadyAt: gameTime + techSpec.recoverMs,
-            // ★噛みつき直後の本当の硬直(社長指摘2026-09-17)。**§12の噛みつきだけ**——
-            // §16の技(chaffMove)は専用の硬直相(z-recover/s-recover/b-release)を既に持っており、
-            // 二重に止めると技が終わらない(踏み込み・後退が終点に着けなくなる)。
+            // ★噛みつき直後の本当の硬直(社長指摘2026-09-17)。**§12の噛みつき**と
+            // **§16-C「転移噛み」(lich-blink)**だけ——§16-C以外の§16の技(chaffMove)は
+            // 専用の硬直相(z-recover/s-recover/b-release)を既に持っており、二重に止めると
+            // 技が終わらない(踏み込み・後退が終点に着けなくなる)。lich-blinkはB-5に丸ごと
+            // 後隙を託す設計(専用の硬直相を持たない)なので、§12と同じ経路に乗せる(C-3-b10)。
             // ★整合監査(C-7): `recoverMs` は**技ごとに違う**(bat-grab 4000 / skel-bite 3500 /
-            // zombie-double 2500 / 真ボス 1500)。600ms を 350+250 に割る式が成り立つのは
-            // **§12の噛み(chaffMove なし)かつ非ボス**だけ。真ボスは `updateEnemies` の汎用移動を
-            // 通らない(専用コントローラが座標を書く)ので、書いても読まれない=書かない。
-            ...(e.chaffMove === undefined && !isTrueBossType(e.type)
+            // zombie-double 2500 / 真ボス 1500 / lich-blinkはBITE_BY_TYPE.lichの3000を継承)。
+            // 600ms を 350+250 に割る式が成り立つのは**§12の噛み・lich-blink・かつ非ボス**だけ。
+            // 真ボスは `updateEnemies` の汎用移動を通らない(専用コントローラが座標を書く)ので、
+            // 書いても読まれない=書かない。
+            ...((e.chaffMove === undefined || e.chaffMove === 'lich-blink') && !isTrueBossType(e.type)
               ? { biteRecoverUntil: gameTime + BITE_RECOVER_STILL_MS } : {}),
             // ★リッチの転移(§16-B B-5): **硬直の後**に消え始める。噛んだ瞬間に飛ばさない
             // (飛ばすとリッチだけ一度も殴り返せない敵になる=硬直はプレイヤーの取り分)。
             // ★**噛み切った時だけ**(`biteResolved`)。中断(気絶/拘束/持ち上げ)では予約しない。
-            ...(e.type === 'lich' && e.chaffMove === undefined && biteResolved.includes(e.id)
+            // ★§16-C(C-3-b10): lich-blinkで噛み切った時も同じ後隙(B-5)を通す=条件を広げる。
+            ...(e.type === 'lich' && (e.chaffMove === undefined || e.chaffMove === 'lich-blink')
+              && biteResolved.includes(e.id)
               ? {
                   lichWarpAt: gameTime + BITE_RECOVER_STILL_MS,
                   // ★陣の置き場は**ここで焼く**。床に寝ている陣は、硬直中に殴られて体が滑っても
@@ -1440,6 +1452,18 @@ export const applyContactDamage = (
                   lichWarpFromX: e.x + e.width / 2, lichWarpFromY: e.y + e.height,
                   lichWarpCancelAt: undefined, lichWarpCancelFrom: undefined,
                 } : {}),
+            // ★§16-C「転移噛み」(C-3-b11): 技を終える。CDは`biteReadyAt`(上で既に書いた)と
+            // `chaffMoveCdUntil`の**両方**へ書く(`keepOff`(gameStore.ts)は`biteReadyAt`だけを
+            // 見るため、片方だけだと転移後にリッチが帯で待たず即座に詰めてくる)。
+            // `lichBlinkAtX/Y`/`lichBlinkFromX/Y`(予告円・見た目の基準点)は役目を終えたので消す。
+            ...(e.chaffMove === 'lich-blink'
+              ? {
+                  chaffMove: undefined, chaffMoveAt: undefined, aiPhase: undefined, aiPhaseUntil: undefined,
+                  chaffMoveCdUntil: gameTime + techSpec.recoverMs,
+                  lichBlinkAtX: undefined, lichBlinkAtY: undefined,
+                  lichBlinkFromX: undefined, lichBlinkFromY: undefined,
+                }
+              : {}),
           };
         }
         return e;

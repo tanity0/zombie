@@ -1,5 +1,40 @@
 # Development Log
 
+## v0.25.4484 — §16-C リッチの技「転移噛み」実装【2026-09-18 21:22 JST】
+
+- 新規 `src/utils/lichBlink.ts`(176行・純関数)+ `lichBlink.test.ts`(21テスト)。
+  配線= `types/game.ts`(`chaffMove:'lich-blink'` / `aiPhase:'lich-blink'` / `lichBlinkFromX,Y` `lichBlinkAtX,Y`)
+  / `enemyBite.ts`(`BITE_BY_MOVE['lich-blink']` + `BITE_OK_PHASES`/`CHAFF_MOVE_PHASES`)
+  / `gameStore.ts`(発火・着地の焼き込み・中断で取り消し)/ `combatTick.ts`(円判定・後隙・CD)
+  / `pixiScene.ts`(赤い予告円・緑の陣2枚・体の消失/出現・陣色tint)。
+- **受け入れ条件8項の当て**: ①発火=中心間140px(`lichBlinkShouldFire`) ②出る=`biteAt` を立てた同フレームから
+  描画、消え切る=`biteProgress` が1になる `biteAt+1000` で `isBiteResolveDue` と一致 ③円の中心と半径は
+  `lichBlinkAtX/Y` + `LICH_BLINK_RADIUS_PX` の**1組を予告と判定が共有** ④`counterable:true`・`biteMs:200`
+  ⑤硬直中は無敵化していない ⑥B-5 の予約条件を `|| chaffMove==='lich-blink'` へ拡張 + CD は `biteReadyAt` と
+  `chaffMoveCdUntil` の両方 ⑦気絶/拘束/持ち上げで技ごと取り消し ⑧全状態を `biteAt` 基準にしたので
+  `deferFrozenClocksBy`(`biteAt` を繰り下げる)で**自動的に**予告と着地が一緒にずれる。
+- ★**掟の当て**: ①流星=`drawSweepCircleFill`(ジャンプ着地予告と同じ帯) ②出る=溜め開始(同フレーム)
+  ③消え切る=当たる(同じ `biteAt+1000`) ④対象外(通る技ではない)。**ワープ元には赤を1本も描かない**
+  (緑の陣だけ)。攻撃先は緑の陣が下・赤い円が上。
+- ★**設計者(このチャット)が検収で見つけて直した1件**: `drawSweepCircleFill` に渡していた
+  `drawFrac` の上書きは**無効**だった(`circleSweepBand` は prog/radius/halfW/ease/easePow しか取らず、
+  `drawFrac` を読むのは `meteorPhase` 系=線・帯の経路だけ)。**コメントだけが「効いている」と言っていた**
+  ので、死んだ上書きを外し記述を実態へ直した。C-3-c18「長く描いて短く消す」の狙い自体は
+  `easePow`(MOB既定=2)が既に担っている(帯が序盤ゆっくり外側に留まり終盤で一気に中心へ吸い込まれる)。
+- ★**実装者が決めた値が2つある(設計書に指定が無かった箇所・実機で社長が詰める)**:
+  `LICH_BLINK_RADIUS_PX = 40`(予告円=判定円の半径。「ジャンプの小さい版」=54より小さい、の叩き台)/
+  `LICH_BLINK_LAND_OFFSET_PX = 24`(着地点をプレイヤー中心からリッチ側へ寄せる距離=「目の前」の絵)。
+  SE も `boss-warning` を流用(設計は「既存流用」までしか決めていない)。
+- 運用の記録: 実装サブエージェントが完了報告前に停止したため、**設計チャットが残りを検収して着地させた**
+  (停止時点で typecheck は既に緑。私が最初に見た赤は編集途中を掴んだ誤読で、社長へその材料で報告した)。
+- 検証: typecheck 緑 / lint エラー0 / `lichBlink.test.ts` 21件緑 /
+  `chaffMoves`・`enemyBite`・`constitution` の215件も緑(回帰なし)。
+  ★**絵は未確認**——雑魚の攻撃VFXはヘッドレスで捉えられない(過去6回失敗・7-3で打ち切り済み)。**実機確認は社長**。
+- 変更ファイル: `src/utils/lichBlink.ts`(新) / `src/utils/lichBlink.test.ts`(新) / `src/types/game.ts` /
+  `src/utils/enemyBite.ts` / `src/utils/combatTick.ts` / `src/store/gameStore.ts` / `src/pixi/pixiScene.ts` /
+  `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+- 状態変化: §16-C → **実装済み**(残り: 実機確認 / クリエイティブ監査の検収巡)。
+
 ## v0.25.4483 — ウェルカム台本 S4 の2段目を差し替え(§17-10)【2026-09-18 20:53 JST】
 
 - **社長指示**: 「**ウェルカムの s4-2を変える ゾンビ1赤 バット2 プラント2 咆哮1 の布陣**」。

@@ -20,6 +20,7 @@
 import type { Enemy, EnemyType } from '../types/game';
 import { isTrueBossType } from './enemyUtils';
 import { isPassThroughPhase, isPassThroughBossState } from './enemyMotion';
+import { LICH_BLINK_WINDUP_MS, LICH_BLINK_BITE_MS } from './lichBlink';
 
 export interface BiteSpec {
   /** 発火と判定に共通で使う半径(px)。★2つに割らないこと。 */
@@ -190,6 +191,16 @@ export const BITE_BY_MOVE: Partial<Record<NonNullable<Enemy['chaffMove']>, Parti
   // ここには置かない(BITE_BY_PHASEが重なる)。counterable/recoverMsは2発とも共通=ここで決まる。
   // ★2026-09-17「できるだけシビアに」で 4000→2500ms(§16-8台帳)。
   'zombie-double': { recoverMs: 2500, counterable: true },
+  /**
+   * ★リッチ「転移噛み」(§16-C・C-7発注文3)。windup 800ms(=溜め1000ms−現れる幅200ms)/
+   * biteMs 200ms(=カウンター受付幅・社長裁定2026-09-18「b」)/ counterable:true(赤)。
+   * `lungePx: 0` = **踏み込みを出さない**(C-3-b5「その場で1秒硬直」)。lungePxが0なら
+   * `biteLungeFrac`が何を返しても移動量=0になる(既存の踏み込み機構を「動かさない」ために使う=
+   * 新しい仕組みを増やさない)。
+   * `recoverMs`はここでは上書きしない=`BITE_BY_TYPE.lich`(3000ms)がそのまま効く
+   * (§16-B B-5で既に間合い保持(`biteReadyAt`)と嚙み合うよう調整済みの値=そのまま再利用する)。
+   */
+  'lich-blink': { windupMs: LICH_BLINK_WINDUP_MS, biteMs: LICH_BLINK_BITE_MS, lungePx: 0, counterable: true },
 };
 
 /**
@@ -485,6 +496,9 @@ const BITE_OK_PHASES = new Set<string>([
   // ★z-recover(§16-3z): 2連の後の硬直。s-recoverと同じ「技の続き」扱い。
   // ★z-retreat(§16-A 7条目): 硬直明けの後退(150pxまで)。s-retreatと同じ扱い。
   'z-wait', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2', 'z-recover', 'z-retreat',
+  // ★lich-blink(§16-C「転移噛み」・C-3-b7): 足さないと、構えた直後に aiPhase が付いた瞬間
+  // `isBiteInterruptedByMove` が「技へ突入した」と誤読して構えた噛みが1フレームで自滅する。
+  'lich-blink',
 ]);
 
 /**
@@ -502,6 +516,8 @@ const CHAFF_MOVE_PHASES = new Set<string>([
   // (硬直中は移動も次の技も入らない、の一部)。
   // ★z-retreat(§16-A 7条目): 後退中も§12の紫噛みを新しく始めない(s-retreatと同じ扱い)。
   'z-wait', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2', 'z-recover', 'z-retreat',
+  // ★lich-blink(§16-C・C-3-b7): 構え中に新しく§12の紫噛みを始めさせない(bat円/skeletonしゃがみ等と同じ扱い)。
+  'lich-blink',
 ]);
 
 /** ★技ではない bossState(=追いかけているだけ)。 */

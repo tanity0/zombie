@@ -336,6 +336,7 @@ import {
 import {
   lichIsVanishing, lichWarpDue, lichWarpLanding, LICH_KEEP_RADIUS_PX, LICH_WARP_VANISH_MS,
 } from '../utils/lichWarp'; // §16-B B-5 リッチの転移(噛む→硬直→消えて現れる)
+import { lichBlinkShouldFire, lichBlinkTargetPoint } from '../utils/lichBlink'; // §16-C リッチの技「転移噛み」
 import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
   bossEngagedNow, facilitiesLocked, isEngageableBoss,
@@ -12902,6 +12903,24 @@ export const useGameStore = create<GameState>((set, get) => ({
             return { ...enemy, vx: 0, vy: 0 };
           }
         }
+        // ★リッチの技「転移噛み」(§16-C・C-3-b13): 気絶・拘束・持ち上げで中断したら**技ごと
+        // 取り消す**(赤も消え、着地もしない)。B-5(上のlichWarpAtブロック)と**同じ述語**を使う
+        // (止める効果は同じ扱いに揃える)。この技のaiPhase('lich-blink')は他の§16の技と違い
+        // 「トラップの拘束をすり抜けて状態機械を最後まで走らせる」の対象**外**——ここで先に
+        // 捕まえて明示的に取り消す(下の汎用rootガード`&& !enemy.aiPhase`には掛からないため)。
+        if (enemy.chaffMove === 'lich-blink' && enemy.biteAt !== undefined && enemy.biteAt > 0) {
+          const lbStopped = (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil)
+            || (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil)
+            || (enemy.liftUntil !== undefined && gameTime < enemy.liftUntil);
+          if (lbStopped) {
+            return {
+              ...enemy, vx: 0, vy: 0, biteAt: 0, biteDirX: undefined, biteDirY: undefined,
+              chaffMove: undefined, chaffMoveAt: undefined, aiPhase: undefined, aiPhaseUntil: undefined,
+              lichBlinkAtX: undefined, lichBlinkAtY: undefined,
+              lichBlinkFromX: undefined, lichBlinkFromY: undefined,
+            };
+          }
+        }
         // CRIT-UNIFY §9.2: 次行動CD専用のatkUntil。クリ窓中のボスは×2(bossCritCdMult)。
         // windup/active/recoverの各durationは従来のatkUntilのまま(予告のリード時間は変えない)。
         const atkCdUntil = (ms: number) => gameTime + (ms / ENEMY_ATTACK_SPEED_MULT) * bossCritCdMult(enemy, gameTime);
@@ -15082,6 +15101,32 @@ export const useGameStore = create<GameState>((set, get) => ({
           };
         }
 
+        // ★リッチの技「転移噛み」(§16-C・社長確定2026-09-18)。中心間140px以内・CD明け
+        // (`biteReadyAt`)・まだ何も構えていなければ発火する。**プレイヤーとの距離で見る**
+        // (`tgt`ではない=召喚/救助対象ではなくプレイヤー本人。C-1)。
+        if (lichBlinkShouldFire(enemy, gameTime, Math.hypot(pcx - (enemy.x + enemy.width / 2), pcy - (enemy.y + enemy.height / 2)))) {
+          const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+          const target = lichBlinkTargetPoint(pcx, pcy, ecx, ecy);
+          const lbCtx: PlayableAreaCtx = {
+            farBackdrop: state.farBackdrop, labTheme,
+            corridorMode: state.corridorMode,
+            m0AdvanceLimitX: state.m0AdvanceLimitX,
+            corridorRunInActive: state.corridorRunInActive,
+          };
+          // ★着地点(=攻撃先)は**発火時にクランプ済みの点を焼く**(C-3-a2/3)。以後取り直さない=
+          // 円の中心にも`isInBiteCircle`の判定にも同じ値を使う(combatTick.ts)。
+          const lbArea = clampRectToPlayableArea(
+            target.x - enemy.width / 2, target.y - enemy.height / 2, enemy.width, enemy.height, lbCtx, enemy.x);
+          const lbPlaced = resolveMove(lbArea.x, lbArea.y);
+          void import('../audio/audioManager').then(m => m.playSfx('boss-warning', 0.6));
+          return {
+            ...enemy, vx: 0, vy: 0,
+            biteAt: gameTime, chaffMove: 'lich-blink', chaffMoveAt: gameTime, aiPhase: 'lich-blink',
+            lichBlinkFromX: ecx, lichBlinkFromY: ecy,
+            lichBlinkAtX: lbPlaced.x + enemy.width / 2, lichBlinkAtY: lbPlaced.y + enemy.height / 2,
+          };
+        }
+
         // ★噛みつきの踏み込み(社長裁定2026-08-25「30PX移動してくる」)。台本の間は通常の接近を止め、
         // **発火時に焼いた起点+向き**へ `biteLungeFrac`(溜めでじわり→噛みで伸び切る=慣性)で進む。
         // 追尾しない=横へ避けられる。壁(すり抜け防止)はこの間だけ開いている(上の movePlayer 側)。
@@ -15108,7 +15153,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ★社長裁定「**再生したら位置調整はせずに最後まで再生**」は**実行の側の話**なので矛盾しない
           //   (溜めは再生の前。踏み込みの距離 `biteLungePx` も発火時に焼いたまま=距離は追わない)。
           const bitePh = bitePhaseOf(enemy, gameTime);
-          if (bitePh === 'windup') {
+          // ★§16-C「転移噛み」(C-3-b6「流星ラインを出さない」): この技だけ狙いの向き
+          // (biteDirX/Y)を焼かない。`biteTelegraphLine`(biteTelegraph.ts)はこの2つが
+          // 未定義なら線を描かない=ファイルを分けずにここ1箇所で線を封じる。
+          const isLichBlink = enemy.type === 'lich' && enemy.chaffMove === 'lich-blink';
+          if (bitePh === 'windup' && !isLichBlink) {
             const tdx = pcx - (enemy.x + enemy.width / 2);
             const tdy = pcy - (enemy.y + enemy.height / 2);
             const td = Math.hypot(tdx, tdy);
@@ -15133,6 +15182,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (nextBatPhase !== enemy.aiPhase) {
               return { ...enemy, vx: 0, vy: 0, x: bmoved.x, y: bmoved.y, aiPhase: nextBatPhase };
             }
+          }
+          // ★§16-C「転移噛み」: 溜め(windup)は`lungePx=0`で動かない(=その場で1秒硬直)。
+          // 溜め明け(bite区間・現れる瞬間)からは、判定と同じ着地点(`lichBlinkAtX/Y`)へ本体を
+          // 固定する(C-3-c16「陣から前かがみで飛び出し…」の"前かがみ"はここで絵として見せ、
+          // 判定の座標自体は動かさない=biteの間ずっと同じ値を返すので毎フレーム冪等)。
+          if (isLichBlink && bitePh === 'bite') {
+            const dcx = enemy.lichBlinkAtX ?? (enemy.x + enemy.width / 2);
+            const dcy = enemy.lichBlinkAtY ?? (enemy.y + enemy.height / 2);
+            return { ...enemy, vx: 0, vy: 0, x: dcx - enemy.width / 2, y: dcy - enemy.height / 2 };
           }
           return { ...enemy, vx: 0, vy: 0, x: bmoved.x, y: bmoved.y };
         }

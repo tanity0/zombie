@@ -256,8 +256,12 @@ import {
 import { telegraphProgress01 } from '../utils/bossTelegraph';
 import {
   biteBlinkOn, bitePhaseOf, biteBlinkTintFor, // ★溜め中の点滅(尺と明滅と色の出どころはsim側の純関数)
-  biteSpecFor,
+  biteSpecFor, biteProgress,
 } from '../utils/enemyBite'; // ★噛みつきの台帳(PACING_PUZZLE §12)
+import {
+  lichBlinkBodyPose, lichBlinkOriginCircleProgress, lichBlinkDestCircleProgress,
+  LICH_BLINK_RADIUS_PX,
+} from '../utils/lichBlink'; // §16-C リッチの技「転移噛み」
 // §16-3z「歯応え」の仕上げ: ゾンビ赤2連の停止尺(姿勢の3段の合計に使う)と赤の脈(純関数)。
 import {
   chaffMoveBlinkStrength, zombieRedPauseMs,
@@ -11262,6 +11266,36 @@ export class PixiScene {
           Math.max(90, Math.round((bl?.biteMs ?? 200) * 0.6)), 0,
         );
       }
+      // ★リッチの技「転移噛み」(§16-C)の赤い予告円。攻撃先(=着地点。`lichBlinkAtX/Y`。
+      // C-3-a2/3で発火時に焼いた・以後動かない点)だけに描く——ワープ元には赤を1本も描かない
+      // (C-3-c15b「陣は緑のまま。赤は攻撃先だけ」)。緑の陣は`drawEnemy`側(groundLayer)が
+      // 描き、赤(このpumpkinTelegraphレイヤー=予告は常にground小道具より上に乗る既存の重ね順)は
+      // ここで描く=「緑の陣が下、赤い円が上」(C-3-c15b)。
+      if (e.type === 'lich' && e.chaffMove === 'lich-blink' && e.biteAt !== undefined && e.biteAt > 0
+        && e.lichBlinkAtX !== undefined && e.lichBlinkAtY !== undefined) {
+        const tgStyle = telegraphStyleFor(e.type);
+        // ★脈は技自身の時計(C-3-c17)。壁時計`now`ではなく`gameTime - biteAt`を使う。
+        const elapsed = gameTime - e.biteAt;
+        const pulse = 0.5 + 0.5 * Math.sin(elapsed / tgStyle.pulseMs);
+        // ★通し進捗(溜め+現れ)。0→1で帯が外周から中心へ流れ、**prog=1(=当たる瞬間)で消え切る**(掟③)。
+        // ★C-3-c18「長く描いて短く消す」は `easePow`(MOB既定=2)が担う——帯は序盤ゆっくり外側に
+        //   留まり、終盤で一気に中心へ吸い込まれる。**円の掃引は `drawFrac` を読まない**
+        //   (`circleSweepBand` は prog/radius/halfW/ease/easePow しか取らない。`drawFrac` を使うのは
+        //   `meteorPhase` 系=線・帯の経路だけ)。ここで drawFrac を渡しても無効なので渡さない。
+        const prog = biteProgress(e, gameTime);
+        const R = LICH_BLINK_RADIUS_PX;
+        const cx = e.lichBlinkAtX, cy = e.lichBlinkAtY;
+        const lbFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
+        if (CIRCLE_SWEEP_ON) {
+          const lbMask = this.drawSweepCircleFill(
+            g, cx, cy, R, prog, 0xff2a2a, lbFillA, tgStyle,
+          );
+          g.circle(cx, cy, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * lbMask });
+        } else {
+          g.ellipse(cx, cy, R, R).fill({ color: 0xff2a2a, alpha: lbFillA });
+          g.ellipse(cx, cy, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
+        }
+      }
       // ジャンプ着地予告(パンプキン/lab-zombie-3/ジャイアントバット/ハンター)。
       // research/CREATIVE_AUDIT_2026-09-11.md #25(b): この関数は複数の区分(強個体/終端/ボス級)を
       // 同じループで扱うため、pulse/style は**敵ごと**に引く(以前は関数の先頭で1回だけ=全員同じ呼吸)。
@@ -17843,6 +17877,12 @@ export class PixiScene {
     // (慣性MUSTは瞬間移動そのものではなく演出に掛かる)。式は sim 側の純関数を読むだけ
     // =`corpseSquashNow` と同じ作法で、尺と形の出どころを1箇所に保つ。
     const lichWarp = lichWarpPose(e, gameTime);
+    // ★リッチの技「転移噛み」(§16-C・C-3-c14/16「元の場所で縮みながら消え、着地点で行き過ぎて
+    // 収まる」)。B-5(上のlichWarp)とは時間的に排他(B-5はこの技が完全に終わった後にしか
+    // 始まらない)なので、同じ合成点(alpha/scale)へそのまま重ねてよい(片方は必ず1=無効)。
+    const lichBlinkP = lichBlinkBodyPose(e, gameTime);
+    const lichBlinkSq = lichBlinkP.where !== 'none' ? lichBlinkP.scale : 1;
+    const lichBlinkAlpha = lichBlinkP.alpha;
     // 非ボス敵は「手前(画面最下端)で消える」near-plane フェードを掛ける。裏ボスは自前の裏回りフェード
     // (bossBehindAlpha)で別管理なので掛けない。
     const foreFade = bossFixed ? 1 : this.foregroundActorAlpha(fb.footY);
@@ -17864,7 +17904,7 @@ export class PixiScene {
     const posFade = horizonAlpha * foreFade;
     view.container.alpha = (TELEGRAPH_OWN_FADE
       ? reaperWarpFade * hunterLeaveFade * bountyDepartFade
-      : posFade * reaperWarpFade * hunterLeaveFade * bountyDepartFade) * lichWarp.alpha;
+      : posFade * reaperWarpFade * hunterLeaveFade * bountyDepartFade) * lichWarp.alpha * lichBlinkAlpha;
     // ?telefade=0 のときは従来どおり container 側で位置フェード済み=子には掛けない(旧挙動を完全維持)。
     const artFade = TELEGRAPH_OWN_FADE ? posFade : 1;
     view.reticle.alpha = artFade;
@@ -17872,7 +17912,7 @@ export class PixiScene {
     // §3-9-B v9裁定Q: 「存在の法則」(reaperWarpFade=死神ワープ/hunterLeaveFade=索敵タイムアウト立ち去り/
     // bountyDepartFade=賞金首の退場フェード)だけを影へ渡す。posFade(=horizonAlpha×foreFade、位置の法則)は
     // 影側が別途持つため含めない(地平線フェードの二重掛け防止。裏回り透け(bossBehindAlpha)も含めない)。
-    view.shadowFade = reaperWarpFade * hunterLeaveFade * bountyDepartFade * lichWarp.alpha;
+    view.shadowFade = reaperWarpFade * hunterLeaveFade * bountyDepartFade * lichWarp.alpha * lichBlinkAlpha;
 
     if (bossFixed && tex) {
       // 裏ボス: 当たり判定=帯(AABB=e.width×e.height)。絵はそれより大きく、帯の上に伸ばす(見た目と判定を分離)。
@@ -18199,8 +18239,8 @@ export class PixiScene {
       // すこし吹っ飛んで潰れて消えるようにして」)。判定には一切関与しない純粋な描画。
       // 潰れの式は sim 側の純関数(corpseSquashNow)を読むだけ=尺と形の出どころを1箇所に保つ。
       const corpseSq = corpseSquashNow(e, now);
-      const scaleX = sc * breath.x * aiSqX * lungeSqX * flinchSqX * motSqX * faceMul * corpseSq.sqX * lichWarp.sqX;
-      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY * motSqY * corpseSq.sqY * lichWarp.sqY);
+      const scaleX = sc * breath.x * aiSqX * lungeSqX * flinchSqX * motSqX * faceMul * corpseSq.sqX * lichWarp.sqX * lichBlinkSq;
+      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY * motSqY * corpseSq.sqY * lichWarp.sqY * lichBlinkSq);
       if (corpseSq.alpha < 1) view.container.alpha *= corpseSq.alpha;
       // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
       // 中心からずれた個体は横に流れて見える。重心が footX に乗るよう x を寄せる(視覚のみ)。
@@ -18341,7 +18381,9 @@ export class PixiScene {
       // ★転移に取られる体は**陣の色を受ける**(クリエイティブ監査2巡目 C-9: 体だけ元の茶黒のまま
       // 薄れ、陣だけ緑=同じ魔法で消えているように見えない)。既にある白シルエットの加算overlayを
       // 陣の色で焼くだけ=新しい仕組みを足さない。
-      const lichTintT = texOk ? lichWarpTintStrength(e, gameTime) : 0;
+      // ★§16-C「転移噛み」(C-3-c19「詠唱している体」)も同じ陣色tintへ乗せる。B-5と時間的に
+      // 排他なのでmaxで合成(どちらか一方だけが非0になる)。
+      const lichTintT = texOk ? Math.max(lichWarpTintStrength(e, gameTime), lichBlinkP.tintStrength) : 0;
       if (flashT > 0.01 || zRedStrength > 0.01 || burning || iced || lichTintT > 0.01) {
         // 真っ白シルエットを加算で重ねる(暗い敵でも全面が白く光る)。未ベイク時は元テクスチャにフォールバック。
         hf.texture = this.whiteSilhouette(view.sprite.texture) ?? view.sprite.texture;
@@ -21087,6 +21129,23 @@ export class PixiScene {
       if (la !== null) {
         this.drawWarpCircle(`${e.id}:lich-in`, e.lichWarpToX ?? fb.footX, e.lichWarpToY ?? fb.footY,
           LICH_WARP_CIRCLE_PX, la, LICH_WARP_TINT, 'appear', now);
+      }
+      // ★リッチの技「転移噛み」(§16-C・C-3-c15b「陣は緑のまま。赤は攻撃先に別で並ぶ」)。
+      // ワープ元(いま消える場所)には**緑の陣だけ**(赤は描かない=あそこは何も当たらない)。
+      // 攻撃先(着地点)には**緑の陣**(このブロック)+**赤い予告円**(syncPumpkinTelegraphが担当。
+      // 同じ場所へ描く順は「緑が下・赤が上」=このブロックを先に呼ぶことで自然に守られる)。
+      // 中心座標を焼いてあるので、足元(描く基準)はそこから`height/2`だけ下げて求める。
+      if (e.chaffMove === 'lich-blink') {
+        const lbo = lichBlinkOriginCircleProgress(e, gameTime);
+        if (lbo !== null && e.lichBlinkFromX !== undefined && e.lichBlinkFromY !== undefined) {
+          this.drawWarpCircle(`${e.id}:lich-blink-out`, e.lichBlinkFromX, e.lichBlinkFromY + e.height / 2,
+            LICH_WARP_CIRCLE_PX, lbo, LICH_WARP_TINT, 'vanish', now);
+        }
+        const lbd = lichBlinkDestCircleProgress(e, gameTime);
+        if (lbd !== null && e.lichBlinkAtX !== undefined && e.lichBlinkAtY !== undefined) {
+          this.drawWarpCircle(`${e.id}:lich-blink-in`, e.lichBlinkAtX, e.lichBlinkAtY + e.height / 2,
+            LICH_WARP_CIRCLE_PX, lbd, LICH_WARP_TINT, 'appear', now);
+        }
       }
     }
     // ★ジブリルの転移も同じ魔法陣へ揃える(社長指示2026-09-17「**天使も揃えて素材**」)。

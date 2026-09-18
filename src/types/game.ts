@@ -619,6 +619,17 @@ export interface Enemy {
   /** 転移が取り消された時刻と、その時点の消える進み(0..1)。等身へ**戻す**のに使う。 */
   lichWarpCancelAt?: number;
   lichWarpCancelFrom?: number;
+  /**
+   * ★リッチの技「転移噛み」(PACING_PUZZLE.md §16-C・社長確定2026-09-18)。
+   * `lichWarpAt/lichWarpTo*` は**流用しない**(B-5専用=退く転移。こちらは詰める転移で別状態・C-3-b9)。
+   * `lichBlinkFromX/Y` = 発火した瞬間の敵の**中心**(ワープ元・消える側の描画専用)。
+   * `lichBlinkAtX/Y` = 着地点(=攻撃先)の**中心**。発火時に `clampRectToPlayableArea` を通した
+   * クランプ済みの点(C-3-a2/3)——赤い予告円の中心にも `isInBiteCircle` の判定にも**同じ値**を使う。
+   */
+  lichBlinkFromX?: number;
+  lichBlinkFromY?: number;
+  lichBlinkAtX?: number;
+  lichBlinkAtY?: number;
   // PACING_PUZZLE.md §16-7b(雑魚の「詰めさせない技」): いま出している§16の技。undefined=§16の技を
   // 出していない(通常の§12噛みつき・無属性の移動)。★訂正版(§16-7穴2・検収監査A-4): 立つのは
   // 技の頭(bat=b-windup/skeleton=s-crouchの次の踏み込み/ゾンビ=z-lunge-in。biteAtより前)。
@@ -628,7 +639,9 @@ export interface Enemy {
   // 技はまだ続いている(硬直・後退・ゾンビ2連の2発目)。技の終わり(後退の終わり)で消し技後CDを
   // 書くのは状態機械の仕事(`chaffMoves.ts` の `endChaffMove`・§16-8b 5〜7)。
   // spec/tint はこのフィールドで「型」ではなく「いま出している技」から引く(enemyBite.ts 参照)。
-  chaffMove?: 'bat-grab' | 'skel-bite' | 'zombie-double';
+  // ★'lich-blink'(§16-C「転移噛み」): §16の技と同じ経路(spec/tint/中断)に乗せて実装したが、
+  // `CHAFF_MOVE_TYPES` には**入れない**(枠(同時2体)の対象にしない・抽選に混ぜない=lich専用経路)。
+  chaffMove?: 'bat-grab' | 'skel-bite' | 'zombie-double' | 'lich-blink';
   // 技の開始 gameTime。赤い拍(進捗0..1)の出どころ=biteAt より前(溜めの前・構えの終わり)から要る場合がある。
   chaffMoveAt?: number;
   // 技後CD(gameTime)。この時刻まで次の技へ入れない。「同時に構えられる2体」の枠の導出もこれを見る。
@@ -792,7 +805,12 @@ export interface Enemy {
     | 'z-wait' | 'z-red-pause' | 'z-lunge-in' | 'z-bite1' | 'z-stagger' | 'z-bite2' | 'z-recover' | 'z-retreat'
     // werewolf(自転車)★名前だけ先に足す(実装は別バッチ=§16-8b 10)。突進の硬直明けに向きを変えて
     // 発動距離まで走り去る相。§16の技ではない=chaffMove/枠は使わない(§16-7b)。
-    | 'w-retreat';
+    | 'w-retreat'
+    // リッチ「転移噛み」(§16-C・社長確定2026-09-18): その場で1秒硬直(赤い予告円)→予告が
+    // 消え切った瞬間に目の前へワープして噛む。windup(0〜800ms)からbite(800〜1000ms)まで
+    // 通しでこの1相(`biteAt`基準の経過msで内訳を出す=b-windup/b-lunge/b-grabのような細分けは
+    // 持たない・§16-Cは1つの技=1本の予告)。`BITE_OK_PHASES`/`CHAFF_MOVE_PHASES`の両方に入れる。
+    | 'lich-blink';
   aiPhaseUntil?: number; // 現フェーズの終了 gameTime
   aiReadyAt?: number;    // 次に特殊行動を開始できる gameTime(連発防止)
   aiTargetX?: number;    // 突進/着地の狙い座標(行動開始時のプレイヤー位置スナップ)
