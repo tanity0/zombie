@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4472',
+    items: [
+      'ドローンブーメランの回転を更に速くした',
+    ],
+  },
+  {
     version: '0.25.4471',
     items: [
       'ドローンブーメランの回転が速くなった',
