@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4469',
+    items: [
+      '変異体(狩猟型)が棺桶を担いで振り回すようになった。跳びかかりも突進も、決まる瞬間に叩きつける',
+      '振り抜きの弧に石と骨が巻き上がり、地面に落ちた所から土煙が上がる',
+    ],
+  },
+  {
     version: '0.25.4468',
     items: [
       'リッチも骸骨と同じ爪で引っ掻いてくる',

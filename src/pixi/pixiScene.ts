@@ -231,6 +231,13 @@ import {
   zombieBiteFrame, zombieBiteAlpha, zombieBiteTexName,
   ZOMBIE_BITE_REF_W, ZOMBIE_BITE_W_PX,
 } from '../utils/zombieBiteFx';
+// ★ハンターの棺桶(社長支給2026-09-18)。ジャンプと突進の両方で振る。
+import {
+  usesHunterCoffin, coffinPhaseNow, coffinPose, coffinSwingFrame, coffinSwingAlpha,
+  coffinSlamFrame, coffinTotalMs, coffinLeadMs,
+  COFFIN_LEN_PX, COFFIN_GRIP_X, COFFIN_GRIP_Y, COFFIN_INTRINSIC_ANGLE,
+  COFFIN_SWING_REF_W, COFFIN_SWING_W_PX, COFFIN_SLAM_REF_W, COFFIN_SLAM_W_PX,
+} from '../utils/hunterCoffin';
 import {
   BOUNTY_DEPART_FADE_MS,
   // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15): 角度・タイミングは判定と同じ純関数から導く。
@@ -4432,6 +4439,8 @@ export class PixiScene {
   private skelClawSprites = new Map<string, Sprite>();     // スケルトンの引っ掻き痕(4コマ・敵ごと)
   private skelClawFxSprites = new Map<string, Sprite>();   // 同・VFX(5コマ)
   private zombieBiteSprites = new Map<string, Sprite>(); // ゾンビの噛みつきVFX(4コマ・敵ごと)
+  private coffinSwingSprites = new Map<string, Sprite>(); // ハンターの棺桶の斬撃(10コマ)
+  private coffinSlamSprites = new Map<string, Sprite>();  // 同・地面の余韻(5コマ)
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
   private playerFirstAidBag = new Sprite();                // 救急鞄スキル発動時に掲げる鞄(first-aid-kit・描画のみ)
   private playerFirstAidBagSetup = false;                  // 鞄スプライトのテクスチャ/親子付け済みか
@@ -13951,6 +13960,10 @@ export class PixiScene {
         if (skelClawFxSp) { skelClawFxSp.destroy(); this.skelClawFxSprites.delete(id); }
         const zombieBiteSp = this.zombieBiteSprites.get(id);
         if (zombieBiteSp) { zombieBiteSp.destroy(); this.zombieBiteSprites.delete(id); }
+        const coffinSwingSp = this.coffinSwingSprites.get(id);
+        if (coffinSwingSp) { coffinSwingSp.destroy(); this.coffinSwingSprites.delete(id); }
+        const coffinSlamSp = this.coffinSlamSprites.get(id);
+        if (coffinSlamSp) { coffinSlamSp.destroy(); this.coffinSlamSprites.delete(id); }
         const bountyThrustWindSp = this.bountyThrustWindSprites.get(id);
         if (bountyThrustWindSp) { bountyThrustWindSp.destroy(); this.bountyThrustWindSprites.delete(id); }
         const drillerThrustWindSp = this.drillerThrustWindSprites.get(id);
@@ -17523,6 +17536,12 @@ export class PixiScene {
       const chainsawSp = this.bountyWeaponSprites.get(e.id);
       if (chainsawSp) chainsawSp.visible = false;
     }
+    // ハンターの棺桶も既定OFF(武器絵は bountyWeaponSprites を共用)。
+    if (usesHunterCoffin(e)) {
+      const cwp = this.bountyWeaponSprites.get(e.id); if (cwp) cwp.visible = false;
+      const csw = this.coffinSwingSprites.get(e.id); if (csw) csw.visible = false;
+      const csl = this.coffinSlamSprites.get(e.id); if (csl) csl.visible = false;
+    }
     // ゾンビの噛みつきVFXも既定OFF。
     if (usesZombieBiteFx(e)) {
       const zb = this.zombieBiteSprites.get(e.id); if (zb) zb.visible = false;
@@ -18718,6 +18737,42 @@ export class PixiScene {
             this.zombieBiteSprites, zombieBiteTexName(zf, zctr === 1), e.id, zax, zay,
             ZOMBIE_BITE_W_PX / ZOMBIE_BITE_REF_W, zdx >= 0, zombieBiteAlpha(zSince) * artFade,
           );
+        }
+      }
+    }
+    // ★ハンターの武器=棺桶(社長支給2026-09-18「ジャンプと、突進どちらもこれを振る」)。
+    // どちらの技も **`aiPhaseUntil` が「決まる時刻」**(着地 / 突進の終わり)なので、そこを0にした
+    // 時計で武器の振り・斬撃10コマ・地面の余韻5コマを送る。判定・尺は1msも触っていない。
+    if (usesHunterCoffin(e)) {
+      const cRun = coffinPhaseNow(e) && e.aiPhaseUntil !== undefined;
+      const CL = this.latchFx(
+        `${e.id}:coffin`, cRun, coffinLeadMs() + coffinTotalMs() + 200, now,
+        () => [e.aiPhaseUntil ?? gameTime, (e.aiTargetX ?? cx) >= cx ? 1 : -1,
+          e.aiTargetX ?? cx, e.aiTargetY ?? (e.y + e.height)],
+      );
+      if (CL) {
+        const [cAt, cSgn, ctx2, cty2] = CL.d;
+        const cSince = gameTime - cAt;
+        const pose = coffinPose(cSince, cSgn);
+        if (pose) {
+          this.drawBountyWeapon(
+            e.id, 'hunter-coffin', fb.footX, fb.footY - fb.boxH * 0.55, pose.angle,
+            COFFIN_LEN_PX, pose.alpha * artFade,
+            1, false, COFFIN_GRIP_X, COFFIN_GRIP_Y, COFFIN_INTRINSIC_ANGLE,
+          );
+        }
+        // 斬撃は**振り抜く手元**(敵の胸)に、地面の余韻は**決まる点**(着地点/突進の終点)に置く。
+        const sw = coffinSwingFrame(cSince);
+        if (sw !== null) {
+          this.drawSkelClawSprite(
+            this.coffinSwingSprites, `fx/coffin-swing-${sw}`, e.id,
+            fb.footX + cSgn * fb.boxW * 0.35, fb.footY - fb.boxH * 0.45,
+            COFFIN_SWING_W_PX / COFFIN_SWING_REF_W, cSgn < 0, coffinSwingAlpha(cSince) * artFade,
+          );
+        }
+        const sl = coffinSlamFrame(cSince);
+        if (sl !== null) {
+          this.drawCoffinSlam(e.id, ctx2, cty2, sl, cSgn < 0, artFade);
         }
       }
     }
@@ -29599,6 +29654,24 @@ export class PixiScene {
     sp.scale.set(flip ? -scale : scale, scale);
     sp.position.set(x, y);
     sp.alpha = alpha;
+    sp.visible = sp.alpha > 0.01;
+  }
+
+  /**
+   * 棺桶の地面の余韻(5コマ)。**接地点で重ねる**ので、アンカーは下端中央。
+   * 素材は右向き前提(弧が右へ開く)なので左向きは `scale.x` を反転する。
+   */
+  private drawCoffinSlam(id: string, x: number, y: number, frame: number, flip: boolean, fade: number): void {
+    const tex = getTexture(`fx/coffin-slam-${frame}`);
+    if (!tex || tex.width === 0) return;
+    let sp = this.coffinSlamSprites.get(id);
+    if (!sp) { sp = new Sprite(tex); this.L.effectLayer.addChild(sp); this.coffinSlamSprites.set(id, sp); }
+    if (sp.texture !== tex) sp.texture = tex;
+    sp.anchor.set(0.5, 1);
+    const sc = COFFIN_SLAM_W_PX / COFFIN_SLAM_REF_W;
+    sp.scale.set(flip ? -sc : sc, sc);
+    sp.position.set(x, y);
+    sp.alpha = fade;
     sp.visible = sp.alpha > 0.01;
   }
 

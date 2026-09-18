@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "798 files / 復号後 約723MB",
+ "generatedFor": "814 files / 復号後 約730MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1172,6 +1172,96 @@
    "bytes": 165041,
    "sha": "e75df6a68fb0f1ec"
   },
+  "sprites/fx/coffin-slam-0.png": {
+   "w": 307,
+   "h": 272,
+   "bytes": 167750,
+   "sha": "e13fd777c93ea395"
+  },
+  "sprites/fx/coffin-slam-1.png": {
+   "w": 307,
+   "h": 272,
+   "bytes": 157088,
+   "sha": "f8cfb9351bacb4c6"
+  },
+  "sprites/fx/coffin-slam-2.png": {
+   "w": 307,
+   "h": 272,
+   "bytes": 141352,
+   "sha": "ec3aedf13283b74b"
+  },
+  "sprites/fx/coffin-slam-3.png": {
+   "w": 307,
+   "h": 272,
+   "bytes": 122017,
+   "sha": "71d434204b224ebf"
+  },
+  "sprites/fx/coffin-slam-4.png": {
+   "w": 307,
+   "h": 272,
+   "bytes": 112060,
+   "sha": "9c9139dcb877ce91"
+  },
+  "sprites/fx/coffin-swing-0.png": {
+   "w": 307,
+   "h": 341,
+   "bytes": 107256,
+   "sha": "d4c479b772202ff4"
+  },
+  "sprites/fx/coffin-swing-1.png": {
+   "w": 307,
+   "h": 341,
+   "bytes": 121639,
+   "sha": "5ded0718496a6d79"
+  },
+  "sprites/fx/coffin-swing-2.png": {
+   "w": 307,
+   "h": 341,
+   "bytes": 145437,
+   "sha": "dc157e5614704fa8"
+  },
+  "sprites/fx/coffin-swing-3.png": {
+   "w": 307,
+   "h": 341,
+   "bytes": 163715,
+   "sha": "d4b3ab0a1b8072fe"
+  },
+  "sprites/fx/coffin-swing-4.png": {
+   "w": 307,
+   "h": 341,
+   "bytes": 184522,
+   "sha": "ca7abecfc0ccaf94"
+  },
+  "sprites/fx/coffin-swing-5.png": {
+   "w": 307,
+   "h": 341,
+   "bytes": 187132,
+   "sha": "2b4d69411b0b60e4"
+  },
+  "sprites/fx/coffin-swing-6.png": {
+   "w": 307,
+   "h": 341,
+   "bytes": 187214,
+   "sha": "f01df11cd0563a55"
+  },
+  "sprites/fx/coffin-swing-7.png": {
+   "w": 307,
+   "h": 341,
+   "bytes": 186805,
+   "sha": "522db4e1bb622bfa"
+  },
+  "sprites/fx/coffin-swing-8.png": {
+   "w": 307,
+   "h": 341,
+   "bytes": 184295,
+   "sha": "07227e8885b3ce37"
+  },
+  "sprites/fx/coffin-swing-9.png": {
+   "w": 307,
+   "h": 341,
+   "bytes": 175468,
+   "sha": "53b7a88dc7bd9373"
+  },
   "sprites/fx/dash-wind.png": {
    "w": 932,
    "h": 256,
@@ -2053,6 +2143,12 @@
    "h": 256,
    "bytes": 105538,
    "sha": "74faf39013b596a5"
+  },
+  "sprites/hunter-coffin.png": {
+   "w": 553,
+   "h": 256,
+   "bytes": 19899,
+   "sha": "e81e73272db60523"
   },
   "sprites/hunter.png": {
    "w": 964,
