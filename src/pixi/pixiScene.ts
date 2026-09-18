@@ -225,6 +225,12 @@ import {
   skelClawFrame, skelClawAlpha, skelClawFxFrame, skelClawTexName, skelClawFxTexName,
   SKEL_CLAW_REF_W, SKEL_CLAW_W_PX, SKEL_CLAW_FX_REF_W, SKEL_CLAW_FX_W_PX, SKEL_CLAW_FX_ADDITIVE,
 } from '../utils/skeletonClaw';
+// ★ゾンビの噛みつきVFX(社長支給2026-09-18・左向き)。爪と同じ作法。
+import {
+  usesZombieBiteFx, zombieBiteTiming, zombieBiteCounterable, zombieBiteTotalMs,
+  zombieBiteFrame, zombieBiteAlpha, zombieBiteTexName,
+  ZOMBIE_BITE_REF_W, ZOMBIE_BITE_W_PX,
+} from '../utils/zombieBiteFx';
 import {
   BOUNTY_DEPART_FADE_MS,
   // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15): 角度・タイミングは判定と同じ純関数から導く。
@@ -4425,6 +4431,7 @@ export class PixiScene {
   private batSlamSprites = new Map<string, Sprite>();      // バットの振り下ろしの炸裂(9コマ・敵ごと)
   private skelClawSprites = new Map<string, Sprite>();     // スケルトンの引っ掻き痕(4コマ・敵ごと)
   private skelClawFxSprites = new Map<string, Sprite>();   // 同・VFX(5コマ)
+  private zombieBiteSprites = new Map<string, Sprite>(); // ゾンビの噛みつきVFX(4コマ・敵ごと)
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
   private playerFirstAidBag = new Sprite();                // 救急鞄スキル発動時に掲げる鞄(first-aid-kit・描画のみ)
   private playerFirstAidBagSetup = false;                  // 鞄スプライトのテクスチャ/親子付け済みか
@@ -13942,6 +13949,8 @@ export class PixiScene {
         if (skelClawSp) { skelClawSp.destroy(); this.skelClawSprites.delete(id); }
         const skelClawFxSp = this.skelClawFxSprites.get(id);
         if (skelClawFxSp) { skelClawFxSp.destroy(); this.skelClawFxSprites.delete(id); }
+        const zombieBiteSp = this.zombieBiteSprites.get(id);
+        if (zombieBiteSp) { zombieBiteSp.destroy(); this.zombieBiteSprites.delete(id); }
         const bountyThrustWindSp = this.bountyThrustWindSprites.get(id);
         if (bountyThrustWindSp) { bountyThrustWindSp.destroy(); this.bountyThrustWindSprites.delete(id); }
         const drillerThrustWindSp = this.drillerThrustWindSprites.get(id);
@@ -17514,6 +17523,10 @@ export class PixiScene {
       const chainsawSp = this.bountyWeaponSprites.get(e.id);
       if (chainsawSp) chainsawSp.visible = false;
     }
+    // ゾンビの噛みつきVFXも既定OFF。
+    if (usesZombieBiteFx(e)) {
+      const zb = this.zombieBiteSprites.get(e.id); if (zb) zb.visible = false;
+    }
     // スケルトンの爪も既定OFF(点けるのは噛みつきの分岐だけ=残留焼き付きを作らない)。
     if (usesSkeletonClaw(e)) {
       const cw = this.skelClawSprites.get(e.id); if (cw) cw.visible = false;
@@ -18677,6 +18690,33 @@ export class PixiScene {
           this.drawSkelClawSprite(
             this.skelClawFxSprites, skelClawFxTexName(ff, ctr), e.id, sax, say,
             SKEL_CLAW_FX_W_PX / SKEL_CLAW_FX_REF_W, flip, artFade, SKEL_CLAW_FX_ADDITIVE,
+          );
+        }
+      }
+    }
+    // ★ゾンビの噛みつきVFX(社長支給2026-09-18「ゾンビ用の噛みつきVFX / 左向きですこれは」)。
+    // バット/スケルトンと**同じ作法**: 噛みつき台本の尺の上に乗せ、狙った点(=予告の線と同じ終点)へ落とし、
+    // ラッチで焼く。素材は左向きなので右向きの個体は反転する。
+    if (usesZombieBiteFx(e)) {
+      const { windupMs: zwMs, biteMs: zbMs } = zombieBiteTiming(e);
+      const zRunning = e.biteAt !== undefined && e.biteAt > 0;
+      const zDirX = e.biteDirX ?? 1, zDirY = e.biteDirY ?? 0;
+      const ZL = this.latchFx(
+        `${e.id}:zombie-bite`, zRunning, zwMs + zbMs + zombieBiteTotalMs() + 200, now,
+        () => {
+          const bl = biteTelegraphLine(e, gameTime);
+          return [zDirX, bl?.tx ?? (cx + zDirX * 35), bl?.ty ?? (cy + zDirY * 35),
+            e.biteAt ?? gameTime, zombieBiteCounterable(e) ? 1 : 0];
+        },
+      );
+      if (ZL) {
+        const [zdx, zax, zay, zat0, zctr] = ZL.d;
+        const zSince = gameTime - zat0 - (zwMs + zbMs);
+        const zf = zombieBiteFrame(zSince);
+        if (zf !== null) {
+          this.drawSkelClawSprite(
+            this.zombieBiteSprites, zombieBiteTexName(zf, zctr === 1), e.id, zax, zay,
+            ZOMBIE_BITE_W_PX / ZOMBIE_BITE_REF_W, zdx >= 0, zombieBiteAlpha(zSince) * artFade,
           );
         }
       }

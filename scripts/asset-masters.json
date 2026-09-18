@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "790 files / 復号後 約721MB",
+ "generatedFor": "798 files / 復号後 約723MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1951,6 +1951,54 @@
    "h": 512,
    "bytes": 212710,
    "sha": "67ebadcfd6582c10"
+  },
+  "sprites/fx/zombie-bite-0.png": {
+   "w": 246,
+   "h": 262,
+   "bytes": 4362,
+   "sha": "b6a45df74612fd39"
+  },
+  "sprites/fx/zombie-bite-1.png": {
+   "w": 246,
+   "h": 262,
+   "bytes": 3891,
+   "sha": "fe4afa7443408bc7"
+  },
+  "sprites/fx/zombie-bite-2.png": {
+   "w": 246,
+   "h": 262,
+   "bytes": 6239,
+   "sha": "38f9727638495b0c"
+  },
+  "sprites/fx/zombie-bite-3.png": {
+   "w": 246,
+   "h": 262,
+   "bytes": 7556,
+   "sha": "f2b48a18187632d8"
+  },
+  "sprites/fx/zombie-bite-p-0.png": {
+   "w": 246,
+   "h": 262,
+   "bytes": 4423,
+   "sha": "8d0e9027315c4365"
+  },
+  "sprites/fx/zombie-bite-p-1.png": {
+   "w": 246,
+   "h": 262,
+   "bytes": 3959,
+   "sha": "550e00715128ae96"
+  },
+  "sprites/fx/zombie-bite-p-2.png": {
+   "w": 246,
+   "h": 262,
+   "bytes": 6470,
+   "sha": "b0a4e40fd82ab061"
+  },
+  "sprites/fx/zombie-bite-p-3.png": {
+   "w": 246,
+   "h": 262,
+   "bytes": 7811,
+   "sha": "e6d5035643e61cfb"
   },
   "sprites/ghost-common.png": {
    "w": 360,

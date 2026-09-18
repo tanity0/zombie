@@ -596,6 +596,15 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/skel-claw-fx-p-2', scaleMode: 'linear' },
       { name: 'fx/skel-claw-fx-p-3', scaleMode: 'linear' },
       { name: 'fx/skel-claw-fx-p-4', scaleMode: 'linear' },
+      // ゾンビの噛みつきVFX(4コマ・社長支給2026-09-18・左向き)。紫版は色相だけ回した同じ絵。
+      { name: 'fx/zombie-bite-0', scaleMode: 'linear' },
+      { name: 'fx/zombie-bite-1', scaleMode: 'linear' },
+      { name: 'fx/zombie-bite-2', scaleMode: 'linear' },
+      { name: 'fx/zombie-bite-3', scaleMode: 'linear' },
+      { name: 'fx/zombie-bite-p-0', scaleMode: 'linear' },
+      { name: 'fx/zombie-bite-p-1', scaleMode: 'linear' },
+      { name: 'fx/zombie-bite-p-2', scaleMode: 'linear' },
+      { name: 'fx/zombie-bite-p-3', scaleMode: 'linear' },
       // 紫版(カウンターできない噛みつき用)。色相だけ回した同じ絵。
       { name: 'fx/bat-slam-p-0', scaleMode: 'linear' },
       { name: 'fx/bat-slam-p-1', scaleMode: 'linear' },

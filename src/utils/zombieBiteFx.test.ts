@@ -1,0 +1,68 @@
+import { describe, it, expect } from 'vitest';
+import {
+  usesZombieBiteFx, zombieBiteCounterable, zombieBiteTotalMs, zombieBiteFrame,
+  zombieBiteAlpha, zombieBiteTexName,
+  ZOMBIE_BITE_FRAMES, ZOMBIE_BITE_IMPACT_FRAME, ZOMBIE_BITE_HOLD_MS, ZOMBIE_BITE_W_PX,
+} from './zombieBiteFx';
+
+describe('ゾンビの噛みつきVFX: 対象と色', () => {
+  it('出すのはゾンビだけ(区分外の型へ増設しない)', () => {
+    expect(usesZombieBiteFx({ type: 'zombie' })).toBe(true);
+    expect(usesZombieBiteFx({ type: 'bat' })).toBe(false);
+    expect(usesZombieBiteFx({ type: 'skeleton' })).toBe(false);
+  });
+
+  it('★色はカウンター可否で決まる(2連噛み=赤 / 既定の噛みつき=紫)', () => {
+    expect(zombieBiteCounterable({ type: 'zombie', chaffMove: 'zombie-double' } as never)).toBe(true);
+    expect(zombieBiteCounterable({ type: 'zombie' } as never)).toBe(false);
+  });
+
+  it('★赤と紫で別のテクスチャを引く', () => {
+    expect(zombieBiteTexName(2, true)).toBe('fx/zombie-bite-2');
+    expect(zombieBiteTexName(2, false)).toBe('fx/zombie-bite-p-2');
+  });
+});
+
+describe('ゾンビの噛みつきVFX: コマ送り', () => {
+  it('★当たる瞬間に飛沫のコマへ切り替わる(0始まりで2)', () => {
+    expect(ZOMBIE_BITE_IMPACT_FRAME).toBe(2);
+    expect(zombieBiteFrame(0)).toBe(2);
+    expect(zombieBiteFrame(-1)).toBe(1);   // 直前は輪が閉じているコマ
+  });
+
+  it('★当たる前に出ている時間は短い(判定の点に赤を長居させない)', () => {
+    const lead = ZOMBIE_BITE_HOLD_MS.slice(0, ZOMBIE_BITE_IMPACT_FRAME).reduce((a, b) => a + b, 0);
+    expect(lead).toBeLessThanOrEqual(90);
+    expect(zombieBiteFrame(-lead)).toBe(0);
+    expect(zombieBiteFrame(-lead - 1)).toBeNull();
+  });
+
+  it('★等間隔にしない。広がり切った最後のコマが一番長い', () => {
+    const last = ZOMBIE_BITE_HOLD_MS[ZOMBIE_BITE_FRAMES - 1];
+    for (let i = 0; i < ZOMBIE_BITE_FRAMES - 1; i++) expect(last).toBeGreaterThan(ZOMBIE_BITE_HOLD_MS[i]);
+  });
+
+  it('★コマは戻らず最後まで流し切る', () => {
+    let prev = -1;
+    for (let t = -80; t < zombieBiteTotalMs(); t += 2) {
+      const f = zombieBiteFrame(t);
+      if (f === null) continue;
+      expect(f).toBeGreaterThanOrEqual(prev);
+      prev = f;
+    }
+    expect(prev).toBe(ZOMBIE_BITE_FRAMES - 1);
+  });
+
+  it('★パッと消さない(引きが緩い)', () => {
+    expect(zombieBiteAlpha(0)).toBe(1);
+    const a1 = zombieBiteAlpha(150), a2 = zombieBiteAlpha(200), a3 = zombieBiteAlpha(239);
+    expect(a1).toBeGreaterThan(a2);
+    expect(a2).toBeGreaterThan(a3);
+    expect(a3).toBeGreaterThan(0);
+    expect(zombieBiteAlpha(zombieBiteTotalMs())).toBe(0);
+  });
+
+  it('★判定(接触35px)より大きく出す=②派手さの絵', () => {
+    expect(ZOMBIE_BITE_W_PX).toBeGreaterThan(35 * 3);
+  });
+});

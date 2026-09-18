@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4467',
+    items: [
+      'ゾンビの噛みつきに絵が付いた。歯形の輪が閉じて、噛んだ瞬間に飛沫が散る',
+      '返せる二連噛みでは赤、返せない噛みつきでは紫',
+    ],
+  },
+  {
     version: '0.25.4466',
     items: [
       '骸骨の爪の飛沫が光るようになった。夜の暗がりに沈んで見えなくなっていたのを直した',
