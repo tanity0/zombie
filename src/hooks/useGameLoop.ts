@@ -328,6 +328,7 @@ import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { phaseAt, sceneAt } from '../utils/difficultyDirector';
+import { welcomeStageScript, welcomeAdvance, welcomeSpawnAt, WELCOME_FORCE_END_MS } from '../utils/welcomeScript';
 import { spawnEscalation, gateLiveCorrection, playerPower, expectedPower, powerMargin } from '../utils/difficultyScaler';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
@@ -730,8 +731,11 @@ const GATE_FAIL_KNOCKBACK_MARGIN = 400; // §5.21-追補6: ゲート失敗時に
 const HORDE_SPAWN_PLAYER_CLEARANCE = 140; // この距離未満には湧かせない
 const HORDE_SPAWN_CLEAR_ATTEMPTS = 8;     // 角度を振り直して確保を試みる回数(それでもダメなら押し出す)
 const AREA_SECTOR_ENTER_DIST = worldDist(1200);   // 担当エリア進入セリフ(neglectFar)を出す最小距離(原点ハブ付近は除外。素1200→1800)
-const ARENA_FIRE_AFTER_MS = 120000;    // 初回発火時刻(=ゲーム開始2分)
-const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。社長指示)
+// PACING_PUZZLE.md §17-11(ランの時計イベント+60秒・社長裁定2026-09-18「時計ずらしはB 全部です」):
+// ウェルカム台本(§17)に掛けた実時間に関わらず**固定+60秒**(WELCOME_FORCE_END_MS=台本の予算と
+// 同じ1分)。素の値=2:00(初回発火)。
+const ARENA_FIRE_AFTER_MS = 120000 + WELCOME_FORCE_END_MS; // 初回発火時刻(=ゲーム開始2分+60秒=3:00)
+const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。社長指示。初回以降はランの時計に対して相対=+60秒はずらさない)
 // 紅き夜の発火判定時刻は「5分以上でランダム」(社長指示)。出撃ごとに 5〜9分の範囲で1回だけ抽選時刻を決める。
 // 社長指示v0.25.3317: 紅き月は**7:00固定発動・毎ラン確定**(旧: 5〜9分ランダム判定×発生率30%を廃止)。
 // 城ボス(5:00)後の延長帯に入った者への洗礼という位置づけ。条件(デンジャーゾーン以深/緩コマ/
@@ -739,7 +743,8 @@ const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。�
 // ★社長指示2026-08-23「紅き月を7にずらそう」: 7:00へ戻す。
 // 経緯: 元は7:00固定(v0.25.3317)→ 賞金首の2体目が7:00に来るため6:00へ避難(v8.3・2026-08-15)
 // → **その賞金首2体目を廃止した(BOUNTY_NATURAL_SPAWN_AT_MS=[3:00]・v0.25.3840)ので避ける理由が消えた**。
-const RED_NIGHT_FIRE_AT_MS = 420000; // 7:00
+// PACING_PUZZLE.md §17-11: ランの時計+60秒(素の値=7:00→8:00)。
+const RED_NIGHT_FIRE_AT_MS = 420000 + WELCOME_FORCE_END_MS; // 7:00+60秒=8:00
 // PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): 追補2の「円内10体burst配置(ambient)」は撤去。
 // ゲート1の基本沸きは通常沸き(koma maintenance)の無限流入方式へ置き換え(permeable=trueで境界を
 // 越えて流入)。§5.21-追補4(v0.25.1553): koma目標/CDをピーク・CD0に強制する分岐は撤回済み=
@@ -779,7 +784,8 @@ const EVENT_BANNER_MS = 3500;          // イベント発生告知バナーの�
 // 3分以降・優勢時に、プレイヤー近場の画面外へ「索敵状態」で出現。検知範囲に入ると
 // 「見られている」警告→5秒残ると発見→拠点(制圧済み)へ逃げ込むまで追跡。20s/40sで増援(最大3体)。
 // 出現回数は無制限(CD長めで何度でも・社長指示)・再出現CD150〜240s・ボス/リーパー/演出中は出現禁止(追跡中なら逃げる)。
-const HUNTER_START_MS = 180000;            // 出現開始(3分)
+// PACING_PUZZLE.md §17-11: ランの時計+60秒(素の値=3:00→4:00)。
+const HUNTER_START_MS = 180000 + WELCOME_FORCE_END_MS; // 出現開始(3分+60秒=4:00)
 // 訓練(M0)の教習ビート用の配置(TUTORIAL_STAGE.md「M0 チュートリアル進行案」)。
 const M0_HUNTER_AHEAD_PX = 360;            // ハンターをプレイヤーの何px先に出すか(画面内に入る距離)
 const M0_SHOOT_ROUNDS = 5;                 // 射撃教習で持たせる弾数(敵HPをこの弾数ちょうどに合わせる)
@@ -1133,12 +1139,20 @@ const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): レスキュー地点の出現時刻(4:00)。
 // S5だけの追加条件(拠点2か所ラッチとの遅い方・§2-11)はB4で下の判定式に合流させる
 // (getEventQuestConfig(stageId)?.basesRequired・S5のみ設定=stage-5のconfigの1項)。
-const RESCUE_QUEST_SPAWN_AT_MS = 4 * 60 * 1000;
+// PACING_PUZZLE.md §17-11: ランの時計+60秒(素の値=4:00→5:00)。
+// ★実在確認: この定数の唯一の読み手(下記)は `DUO_RESCUE_PHASE_ENABLED`(=false固定・v4で無効化済み)
+// でガードされており、現状どのモードでも発火しない死んだ経路(§17-1の WAVE_EVENTS と同型)。
+// 生きている「5:00の通信」は DUO_COMM_AT_MS(=CASTLE_BOSS_MIN_TIME_MS+60秒。下で定義)側。
+// 値だけ設計書の指名どおり+60秒しておく(将来DUO_RESCUE_PHASE_ENABLEDが復活しても時計がずれない)。
+const RESCUE_QUEST_SPAWN_AT_MS = 4 * 60 * 1000 + WELCOME_FORCE_END_MS;
 // ★v4(EVENT_QUEST_DESIGN.md §2-18・社長指示2026-09-14「5分経過で二人組から通信が入る(サークル無しで開始)」):
 // レスキュー地点(4:00)・囲い・受注の段は**出さない**。コードは可逆性のため残し、このフラグで塞ぐ。
 const DUO_RESCUE_PHASE_ENABLED = false;
 // 通信の開始時刻=城ボスの最短時刻と同じ5:00(S5は「5:00 と 拠点2か所ラッチ の遅い方」=§2-11の規則を流用)。
-const DUO_COMM_AT_MS = CASTLE_BOSS_MIN_TIME_MS;
+// PACING_PUZZLE.md §17-11: ランの時計+60秒(社長裁定2026-09-18「時計ずらしはB 全部です」)。
+// CASTLE_BOSS_MIN_TIME_MS自体(config/castleBoss.ts=5分)は変えない(城ボスの「設計上の5分」という
+// 値の意味はそのまま=castleBoss.test.tsが固定している)。実際の発火時刻だけここで+60秒する。
+const DUO_COMM_AT_MS = CASTLE_BOSS_MIN_TIME_MS + WELCOME_FORCE_END_MS; // 5:00+60秒=6:00
 // 社長指示2026-09-14「5分で通信だから読める。その10秒前くらいに入っちゃえば盤面は静まってる」: 通信の10秒前から終了まで**新規湧き停止**
 // (居る敵はそのまま)。noSpawn(?nospawn=1 と同じ止め方)に合流させる=通常湧き・パズル盤面・ゲート囲い等が全部止まる。
 const DUO_COMM_QUIET_LEAD_MS = 10_000;
@@ -1609,6 +1623,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const puzzleHitRef = useRef<{ prevHp: number; lastHitAt: number }>({ prevHp: -1, lastHitAt: -1e9 });
   // PACING_PUZZLE.md §6.27 バッチM50: 連続査定(窓/被弾ストリーク)+enemiesKilledのフレーム差分用の前回値。
   const rankPaceRef = useRef<{ state: RankPaceState; prevKills: number }>({ state: createRankPaceState(), prevKills: 0 });
+  // PACING_PUZZLE.md §17-11 B3(ウェルカム台本): 進行状態。step=-1は「まだ1段目も湧かせていない」。
+  // stepClearedAt=現在の段が全滅したgameTime(未全滅/未開始はnull)。endedAt=ウェルカム終了時刻
+  // (未終了はnull=directorTimeはgameTimeそのまま動かない=0スタート)。純関数側(welcomeScript.ts)
+  // の`welcomeAdvance`がこの3つを入力に取り、配線側(ここ)はrefの更新と実際のspawn/addEnemyだけを行う。
+  const welcomeStepRef = useRef(-1);
+  const welcomeStepClearedAtRef = useRef<number | null>(null);
+  const welcomeEndedAtRef = useRef<number | null>(null);
   // BOT_AND_GHOST.md G2: 召喚中ゴーストのプロファイル(6ノブ)。召喚時にdirectorTick側が1回だけ書き込む。
   const ghostProfileRef = useRef<GhostProfile | null>(null);
   // v0.25.2480(★未決2解消): ゴースト被弾音のエッジ検知(damageSummonのlastHit打刻を見る)+最短間隔保険。
@@ -3032,6 +3053,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           };
           puzzleSoftenRef.current = createSoftenState();
           puzzleCdRef.current = { lastBaseSpawnAt: 0, lastNuisanceSpawnAt: 0, lastSpecialSpawnAt: 0 };
+          // PACING_PUZZLE.md §17-11 B3(監査A-12): ウェルカム台本も新ランで最初の段からやり直す
+          // (resetGameではなくpuzzleKomaRef等と同じ「新ラン検知ブロック」で初期化する)。
+          welcomeStepRef.current = -1;
+          welcomeStepClearedAtRef.current = null;
+          welcomeEndedAtRef.current = null;
           // ★バグ修正2026-08-22: ボス強制リラックスの尾(10秒)はdirectorTickのモジュール変数に
           // 持っているので、出撃をまたぐと前ランの記録が残る(ラン2で同じ時刻に到達すると
           // 10秒だけ湧きが静かになる)。ここで消す。※gameStoreから呼ぶとdirectorTickとの
@@ -3138,7 +3164,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ★社長指示2026-08-26「(ボスモードに)ほかにもあれば撤去して」: 練習ラン(ボスモード)は
         // 台本パズル/イベント(囲い・紅き月・叫喚・イベント関所・退屈アリーナ)を丸ごと止める。
         // ボスモードは「1体と戦うだけ」の場(湧きはv2452のnoSpawnで既に停止済み=これはイベント側の親ゲート)。
-        const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && !endingStage && !isPracticeRun() && phaseAt(newGameTime).kind !== 'boss';
+        // PACING_PUZZLE.md §17(ウェルカム台本・社長指示2026-09-17): ステージ入りの関門。対象は
+        // §17-5と同じ(屋外・非ラボ・非EX・非ストーリーボス・非囲い=台本を持つステージのみ)。
+        // ★★通常湧きの止め方(§17-11 B3監査A-1・MUST): puzzleActiveNowをfalseにしてはいけない
+        // (falseにすると旧スポナー(!puzzleActiveNow && fieldCount < normalSpawnCap の枝)が復活して
+        // 湧く)。welcomeActiveは別の専用フラグとして持ち、runKomaBoardMaintenance呼び出し側と
+        // 旧スポナーの枝の【両方】に別途ゲートを足す(下の該当箇所)。
+        const welcomeScriptForRun = welcomeStageScript(getSelectedStageId() ?? '');
+        const welcomeActive = !!welcomeScriptForRun && !labTheme && !indoor && !danceTest && !storyBoss
+          && !tutorialStage && !endingStage && !isPracticeRun() && welcomeEndedAtRef.current === null;
+        // ★ディレクターの時計(§17-3): ウェルカム中はずっと0。終了後は gameTime − min(終了時刻,60秒)
+        // (固定量。ウェルカムに何秒掛けても以降のずれ幅は変わらない)。phaseAt/sceneAt/enemyCountCap/
+        // consumeDueWaves/rankFloorForElapsed/退屈グレース(BORED_RUN_GRACE_MS)が読む
+        // (§17-11 B3の表。関数自体は変えず、呼び出し側がdirectorTimeを渡す=変更点を数えられる形)。
+        const directorTime = newGameTime - Math.min(welcomeEndedAtRef.current ?? newGameTime, WELCOME_FORCE_END_MS);
+        const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && !endingStage && !isPracticeRun() && phaseAt(directorTime).kind !== 'boss';
         // §5.21追補(社長報告v0.25.1848「ゲート1、クリアしなくても奥に行けちゃう」の修正):
         // ゲート(境界囲い1/2)の発火は地理トリガー(境界踏破)なので、コマ/フェーズ表とは無関係に働く。
         // 旧実装は puzzleActiveNow(=フェーズ表がboss扱いの7:00-7:30はfalse)でゲートしていたため、
@@ -3166,7 +3206,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         })();
         // ANDは時間条件の項にだけ掛ける(★★3巡目 監査A2)。castleBossReady全体に掛けると開発用の
         // 強制出現(?castlenow=1/FORCE_CASTLE_BOSS)まで塞がり、実機確認ができなくなる。
-        const castleBossReady = FORCE_CASTLE_BOSS || practiceForces('castlenow') || (newGameTime >= CASTLE_BOSS_MIN_TIME_MS && questGateOk);
+        // PACING_PUZZLE.md §17-11: ランの時計+60秒(素の値=5:00→6:00。CASTLE_BOSS_MIN_TIME_MS自体は不変)。
+        const castleBossReady = FORCE_CASTLE_BOSS || practiceForces('castlenow') || (newGameTime >= CASTLE_BOSS_MIN_TIME_MS + WELCOME_FORCE_END_MS && questGateOk);
         // 洋館通路(corridorMode)は城なし(v0.25.2144・社長指示「城も出現しないで。時間で出るのは死神だけ」)
         // =5分の城ボス(giantbat)+バナーを出さない(城の実体もresetGameで遥か遠方に置いている)。
         // v0.25.3054: 別ボスと交戦中は城ボスの時間出現を先送り(出現アテンション/魔法陣がボス戦へ
@@ -4000,11 +4041,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const arenaProducerOk = !EVENTS_ENABLED || (eventGateOk({
               bigEventActive: redNightActiveNow, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current,
               boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0,
-            }) && redNightPhaseGateOk(phaseAt(newGameTime).kind));
+            }) && redNightPhaseGateOk(phaseAt(directorTime).kind));
             // バッチ5追補: 関所頭に選ばれたイベント関所(gate-assault/gate-boss-spike)の発火予約を消化する。
             // 予約はgateProgramRef選定側(下方)で立てる。関所を抜けても未消化なら黙って破棄(発火しない)。
             if (GATE_PROGRAM_ENABLED && gateEventPendingRef.current) {
-              const curPNow = phaseAt(newGameTime);
+              const curPNow = phaseAt(directorTime);
               if (gateEventPendingRef.current.phaseKey !== `${curPNow.kind}${curPNow.index}`) {
                 gateEventPendingRef.current = null;
               }
@@ -4396,7 +4437,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ボス中(puzzleActiveNow=false)と?puzzle=0は従来どおり旧phaseAt基準。
           const rnCalmOk = puzzleActiveNow
             ? (puzzleKomaRef.current.kind === 'relax' || puzzleKomaRef.current.kind === 'harvest')
-            : redNightPhaseGateOk(phaseAt(newGameTime).kind);
+            : redNightPhaseGateOk(phaseAt(directorTime).kind);
           const rnProducerOk = !EVENTS_ENABLED || (
             rnCalmOk &&
             eventGateOk({ bigEventActive: rnBigEventActive, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current, boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0 })
@@ -4891,7 +4932,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // バッチ7: 叫び(screamer)は関所中のみ発火(バッチ3のpressure≥0.80解禁と統合するまでの
           // 先行導入=フェーズ種別だけで判定)+ピンチ猶予。?events=0で従来(いつでも発火)に復帰。
           const screamerProducerOk = !EVENTS_ENABLED || (
-            screamerPhaseGateOk(phaseAt(newGameTime).kind) &&
+            screamerPhaseGateOk(phaseAt(directorTime).kind) &&
             eventGateOk({ bigEventActive: false, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current, boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0 })
           );
           if (aliveScreamer) {
@@ -14917,7 +14958,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ステップ②(難易度ディレクター): 屋外の「敵数の上限」をフェーズ駆動(フロア≈10〜天井20)にする。
         // カリング上限(enemyCap)と湧き上限(normalSpawnCap)の両方を同じ値で動かす(片方だけだと即カリングされる/枠が余る)。
         // 屋内/ラボは従来どおり固定上限。囲い/救助イベントの特別枠は維持。
-        const curPhase = phaseAt(gameTime);
+        const curPhase = phaseAt(directorTime);
         // 難易度⑤(DirectorRank・社長合意): フェーズが切り替わった瞬間に、直前フェーズぶんの成績
         // (gameStats.damageTaken/enemiesKilled/player.level の差分とフェーズ終了時HP)から rank を
         // 更新する。1フェーズ目は比較対象が無いので rank=0(台本通り)のまま。今このフレームには
@@ -15063,7 +15104,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             performance: directorRef.current.state.performance,
             intensity: directorRef.current.state.intensity,
             dtMs: deltaTime * 1000,
-            gameTimeMs: gameTime, // 実機フィードバック②: 開始90秒は退屈蓄積しない(BORED_RUN_GRACE_MS)
+            // 実機フィードバック②: 開始90秒は退屈蓄積しない(BORED_RUN_GRACE_MS)。
+            // §17-11 B3: このグレースもディレクターの時計で読む(ウェルカム中は0のまま=蓄積しない)。
+            gameTimeMs: directorTime,
           });
         }
         // PACING_REDESIGN.mdバッチ6: 退屈発動までの時間をstageAggroで可変化(0.5=既定25000msに一致)。
@@ -15313,7 +15356,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 屋内/ラボ/?scenes=0 は素の分布・等速(=従来挙動)。
         const scene = (SCENES_ENABLED && !labTheme && !indoor)
           ? (PROGRAM_ENABLED && curPhase.kind === 'buildup' && effectiveProgram ? effectiveProgram
-            : effectiveGateProgram ?? sceneAt(gameTime))
+            : effectiveGateProgram ?? sceneAt(directorTime))
           : null;
         const sceneFeatured = scene ? scene.featured : [];
         const sceneSuppressed = scene ? (scene.suppressed ?? []) : [];
@@ -15503,6 +15546,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           !confining &&
           !bossChasingNow && // 裏ボスが画面内で追跡中だけ通常湧きを止める(非追跡=画面外/帰巣中は湧く・社長指摘)
           !puzzleActiveNow &&
+          !welcomeActive && // §17-11 B3(監査A-1・MUST): ウェルカム台本中は旧スポナーのこの枝も止める(片方だけでは通常湧きが止まらない)
           fieldCount < normalSpawnCap &&
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (
             labTheme
@@ -15651,6 +15695,57 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 保証出現(plant1分/犬3分・エリア不問)はPACING_REDESIGN.mdバッチ1.5で撤廃(社長決定)。
         // 「勉強させる回」の役割はバッチ4の講習演目(relief-pumpkin/relief-wolf、featuredFloor有効)が継承する。
 
+        // PACING_PUZZLE.md §17-11 B3(ウェルカム台本の進行)。判定(段の片付き/強制終了3条件)は
+        // 純関数 welcomeAdvance(welcomeScript.ts)に1本化してある。ここは①今の在席数を数えて渡す
+        // ②戻ってきた spawnNow を実際に welcomeSpawnAt + addEnemy する ③refを進める、だけ。
+        if (welcomeActive && !noSpawn) {
+          const welcomeStageIdNow = getSelectedStageId() ?? '';
+          const aliveWelcomeNow = useGameStore.getState().enemies.filter(e => e.isWelcome).length;
+          // 段が全滅した瞬間(=0を初めて観測したフレーム)をstepClearedAtとして打刻する
+          // (welcomeAdvance側は「入力された時刻をそのまま使う」だけの純関数なので、
+          // 「いつ0になったか」を見張るのはこちら側の役目)。
+          if (aliveWelcomeNow === 0 && welcomeStepClearedAtRef.current === null && welcomeStepRef.current >= 0) {
+            welcomeStepClearedAtRef.current = gameTime;
+          }
+          const welcomeResult = welcomeAdvance({
+            step: welcomeStepRef.current,
+            aliveOfWelcome: aliveWelcomeNow,
+            gameTime,
+            stepClearedAt: welcomeStepClearedAtRef.current,
+            stageId: welcomeStageIdNow,
+            areaIndex: playerAreaIdx,
+          });
+          if (welcomeResult.spawnNow) {
+            for (const unit of welcomeResult.spawnNow) {
+              for (let i = 0; i < unit.count; i++) {
+                const welcomeEnemy = welcomeSpawnAt(unit, player, spawnBounds, gameTime, spawnViewOffsetY, snowTheme);
+                // ★★§17-11 B3(2026-09-18判明): 叫喚型(S4-2)は特別枠(scriptPuzzle.tsのSPECIAL_SLOTS。
+                // 叫喚型=区域3以上でしか解禁されない)を通さず、ここから直接湧かす(通さないと
+                // ウェルカムは区域0〜1なので1体も出ない)。既存2経路と同じくfixed:trueを付ける
+                // (距離を保つAIで画面外に居続けるため=付けないと回収→補充のチャーンが起きる)。
+                // B4(社長裁定2026-09-18「3はいらない」): 出現バナーは出さない(既存2経路は出すが
+                // 台本経路では出さない=「合図は作らない」を叫喚型にも徹底)。
+                if (welcomeEnemy.type === 'screamer') welcomeEnemy.fixed = true;
+                addEnemy(welcomeEnemy);
+              }
+            }
+            welcomeStepClearedAtRef.current = null; // 新しい段が湧いた=まだ片付いていない
+          }
+          welcomeStepRef.current = welcomeResult.step;
+          if (welcomeResult.endedAt !== null) {
+            welcomeEndedAtRef.current = welcomeResult.endedAt;
+            // §17-3「強制始動で打ち切った時…残った敵は消さない」: 生きている個体は消さないが、
+            // isWelcomeの時間無制限保護(§17-11 B1c)はウェルカムの間だけの意図なので、終了と同時に
+            // 印を外す=以降は通常の上限カリング/画面外回収ルールへ合流する(設計書に無い箇所だが、
+            // 外さないと台本外の雑魚が上限カリング対象外のままラン終了まで居座ってしまうための実装補完)。
+            useGameStore.setState(s => (
+              s.enemies.some(e => e.isWelcome)
+                ? { enemies: s.enemies.map(e => (e.isWelcome ? { ...e, isWelcome: false } : e)) }
+                : {}
+            ));
+          }
+        }
+
         // PACING_PUZZLE.md バッチM4: 盤面構成パズル方式の配線。§2の停止/継続リストどおり、
         // 通常湧きスポナー(上のif全体)の代わりにここが型選択と上限を供給する。
         // ボス中(puzzleActiveNow=false)は何もしない=リフを一切触らない(査定・コマ進行を一時停止し、
@@ -15662,13 +15757,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // falseになった結果puzzleActiveNow=trueとなり、**この本方式スポナーが唯一の実質的な通常湧き
         // 経路として動いていた**(通常湧き完全解放のバグ実体=isExStageRun()未ガード)。ここを塞ぐ
         // (addEnemyへの一律ガードではなく、この呼び出し1箇所=湧きの入口)。
-        if (!noSpawn && !isExStageRun()) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
+        // ★★§17-11 B3(監査A-1・MUST): ウェルカム台本中(welcomeActive)はここも止める
+        // (puzzleActiveNowはfalseにしない=旧スポナーの復活を防ぐための別ゲート。下の旧スポナーの
+        // 枝にも同じ !welcomeActive が要る=片方だけでは通常湧きが止まらない)。
+        if (!noSpawn && !isExStageRun() && !welcomeActive) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
           {
             puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef,
             rankPaceRef,
           },
           {
-            puzzleActiveNow, gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc,
+            puzzleActiveNow, gameTime, directorTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc,
             // v0.25.3495(社長指示「リラックスさせて」): RELAXの湧きレバー2本(間隔/上限)を
             // 本方式のスポーナーへも渡す。?directorApply が無ければ relaxAdj は全て1=挙動不変。
             relaxIntervalMult: relaxAdj.intervalMult, relaxCapMult: relaxAdj.capMult,
@@ -15790,7 +15888,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // PACING_PUZZLE.md §10-14#4(維持): 演出波(scripted wave)もEXでは出さない(側イベント抑止)。
         if (SETPIECE_ENABLED && !danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !confining) {
           const waveEnemies = consumeDueWaves(
-            gameTime,
+            directorTime,
             consumedWavesRef.current,
             player,
             gameBounds

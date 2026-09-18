@@ -331,6 +331,11 @@ export interface KomaMaintenanceRefs {
 export interface KomaMaintenanceCtx {
   puzzleActiveNow: boolean;
   gameTime: number;
+  // PACING_PUZZLE.md §17-11 B3(ウェルカム台本): ランク床(rankFloorForElapsed)だけはディレクターの
+  // 時計(directorTime)で読む(§17-3「ウェルカム中は1ミリも動いていない」に反しないため)。banner/CD
+  // 等このコンテキストの他フィールドは実時間のgameTimeのまま(HUDバナーの比較先=store.gameTimeと
+  // 揃える必要があるため)。省略時はgameTimeそのもの=従来どおり(既存呼び手は1つも変えない)。
+  directorTime?: number;
   deltaTime: number;
   player: Player;
   playerAreaIdx: number;
@@ -358,6 +363,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     return;
   }
   const { gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc } = ctx;
+  const rankFloorTime = ctx.directorTime ?? gameTime;
   // v0.25.3495: RELAXの湧きレバー(間隔/上限)。未指定=1=従来どおり(下の cap/cdMs でだけ使う)。
   const relaxCadenceAdj = {
     intervalMult: ctx.relaxIntervalMult ?? 1,
@@ -404,7 +410,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   // minRankへ焼く(査定側のapplyRankDeltaはstate.minRankを下限として読むので、降格もこれより下へは
   // 落ちない)。?rankfloor=0で無効化(常に1=床なし)。
   const rankFloorNow = RANK_FLOOR_ENABLED
-    ? rankFloorForElapsed(getSelectedStageId() ?? '', gameTime, RANK_FLOOR_PACE_MULT)
+    ? rankFloorForElapsed(getSelectedStageId() ?? '', rankFloorTime, RANK_FLOOR_PACE_MULT)
     : 1;
   puzzleClockRef.current = { ...puzzleClockRef.current, minRank: rankFloorNow };
   const rankPaceResult = tickRankPace(rankPaceRef.current.state, {
