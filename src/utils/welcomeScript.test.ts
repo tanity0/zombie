@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  WELCOME_SCRIPT, WELCOME_STEP_GAP_MS, WELCOME_FORCE_END_MS, WELCOME_FORCE_END_AREA,
+  WELCOME_SCRIPT, WELCOME_STEP_GAP_MS, WELCOME_FORCE_END_AREA,
   welcomeStageScript, welcomeStepCount, welcomeUnitsAt, welcomeAdvance,
   WELCOME_START_GATE, welcomeStartGateMet, welcomeAppliesToRun, type WelcomeApplicabilityInput,
 } from './welcomeScript';
@@ -104,14 +104,13 @@ describe('welcomeAdvance(§17-11 B2・受け入れ条件2/3/4)', () => {
     expect(r).toEqual({ step: 2, spawnNow: null, endedAt: endGameTime, startedAt: 0 });
   });
 
-  it('倒し切る前でも60秒でendedAtが立つ(受け入れ条件3後半)', () => {
-    const r = welcomeAdvance({ ...base, step: 0, aliveOfWelcome: 3, gameTime: WELCOME_FORCE_END_MS });
-    expect(r).toEqual({ step: 0, spawnNow: null, endedAt: WELCOME_FORCE_END_MS, startedAt: 0 });
-  });
-
-  it('60秒未満は強制終了しない', () => {
-    const r = welcomeAdvance({ ...base, step: 0, aliveOfWelcome: 3, gameTime: WELCOME_FORCE_END_MS - 1 });
-    expect(r.endedAt).toBeNull();
+  // ★社長指示2026-09-19「**このウェルカムイベント、1分で終わらないわ。倒し切るまで続けよう。**」
+  // 旧: 60秒の天井(§17-3 強制始動②)で打ち切っていた。**撤去済み**=時間では終わらない。
+  it('★倒し切るまで終わらない: 何分経ってもendedAtは立たない(60秒の天井は撤去)', () => {
+    for (const gameTime of [60_000, 120_000, 600_000, 3_600_000]) {
+      const r = welcomeAdvance({ ...base, step: 0, aliveOfWelcome: 3, gameTime });
+      expect(r.endedAt).toBeNull();
+    }
   });
 
   it('研究対象区域(area>=1)以上へ入ったら即endedAt(受け入れ条件4)', () => {
@@ -172,7 +171,7 @@ describe('welcomeAdvance: ステージ6の始動ゲート(§17-13受け入れ条
   it('ゲート未達成のままどれだけ時間が経っても(60秒超でも)強制終了しない(startedAtがnullなので②は数えない)', () => {
     const r = welcomeAdvance({
       ...base, step: -1, aliveOfWelcome: 0, startedAt: null,
-      gameTime: WELCOME_FORCE_END_MS * 10, playerCenterY: 200, merchantY: 100,
+      gameTime: 600_000, playerCenterY: 200, merchantY: 100,
     });
     expect(r.endedAt).toBeNull();
     expect(r.spawnNow).toBeNull();
@@ -187,27 +186,17 @@ describe('welcomeAdvance: ステージ6の始動ゲート(§17-13受け入れ条
     expect(r).toEqual({ step: 0, spawnNow: welcomeUnitsAt('stage-6', 0), endedAt: null, startedAt: gameTime });
   });
 
-  it('受け入れ条件18: 60秒の強制終了は「1段目が湧いた時刻(startedAt)」から数える(出撃時刻からではない)', () => {
-    const startedAt = 30_000; // ゲート達成にそれだけ実時間が掛かった想定
-    // startedAtから59999ms(1ms前)ではまだ終了しない
-    const r1 = welcomeAdvance({
-      ...base, step: 0, aliveOfWelcome: 3, startedAt, gameTime: startedAt + WELCOME_FORCE_END_MS - 1,
-      playerCenterY: 0, merchantY: 100,
-    });
-    expect(r1.endedAt).toBeNull();
-    // startedAtから60000msでendedAtが立つ
-    const r2 = welcomeAdvance({
-      ...base, step: 0, aliveOfWelcome: 3, startedAt, gameTime: startedAt + WELCOME_FORCE_END_MS,
-      playerCenterY: 0, merchantY: 100,
-    });
-    expect(r2).toEqual({ step: 0, spawnNow: null, endedAt: startedAt + WELCOME_FORCE_END_MS, startedAt });
-    // 出撃からの絶対時刻(startedAtを無視した60秒)ではまだ終了しないことの確認
-    // (gameTime単体がWELCOME_FORCE_END_MSを超えていても、startedAtからの経過が60秒未満なら終了しない)
-    const r3 = welcomeAdvance({
-      ...base, step: 0, aliveOfWelcome: 3, startedAt, gameTime: WELCOME_FORCE_END_MS + 1,
-      playerCenterY: 0, merchantY: 100,
-    });
-    expect(r3.endedAt).toBeNull();
+  it('★受け入れ条件18(反転): ゲート有りのステージでも、時間では終わらない', () => {
+    // 旧規則「60秒の強制終了は startedAt から数える」は、天井そのものの撤去で消滅した
+    // (社長指示2026-09-19)。startedAt から何分経っても倒し切るまで続く。
+    const startedAt = 30_000;
+    for (const dt of [60_000, 300_000, 900_000]) {
+      const r = welcomeAdvance({
+        ...base, step: 0, aliveOfWelcome: 3, startedAt, gameTime: startedAt + dt,
+        playerCenterY: 0, merchantY: 100,
+      });
+      expect(r.endedAt).toBeNull();
+    }
   });
 
   it('ゲート待ち中でも研究対象区域(area>=1)へ入れば即終了する(③はゲートと無関係に効く)', () => {

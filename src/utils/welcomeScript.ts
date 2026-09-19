@@ -23,8 +23,14 @@ export interface WelcomeUnit {
 // 段と段の間の叩き台(§17-2「短い間(叩き台1.2秒)」)。本文の数値はここ以外に書かない。
 export const WELCOME_STEP_GAP_MS = 1200;
 
-// §17-3 強制始動②「その場に留まって粘る人」用の天井。倒し切っていなくても60秒でウェルカムを打ち切る。
-export const WELCOME_FORCE_END_MS = 60000;
+/**
+ * ★**撤去**(社長指示2026-09-19「**このウェルカムイベント、1分で終わらないわ。倒し切るまで続けよう。**」)。
+ * 旧: 倒し切っていなくても60秒でウェルカムを打ち切る天井(§17-3 強制始動②)。
+ * 今: **①倒し切り**と**③区域を跨いだ**の2条件だけで終わる。時間では終わらない。
+ * ★数字は**輪の見た目の期限**としてだけ残す(`beginArenaEvent` の `endsAt` に渡す値。
+ *   進行そのものは `welcomeAdvance` が持つので、この値で台本が終わることはもう無い)。
+ */
+export const WELCOME_RING_ENDS_IN_MS = 10 * 60 * 1000;
 
 // §17-3③「研究対象区域(area 1)以上へ入ったら強制始動」。areaIndexForDist(enemyUtils.ts)の
 // 0=軍備配置/1=研究対象区域/2=デンジャー…と揃える(新しい閾値を作らない・W-7)。
@@ -199,11 +205,11 @@ export const welcomeAdvance = (params: WelcomeAdvanceParams): WelcomeAdvanceResu
     return { step, spawnNow: null, endedAt: gameTime, startedAt };
   }
 
-  // ②③強制終了(§17-3の3条件のうち2つ)。倒し切り判定より先に見る=粘っても区域を跨いでも即打ち切る。
-  // ★§17-13-c: ②(60秒)は`startedAt`(1段目が湧いた時刻)からだけ数える。まだ湧いていない
-  // (ゲート待ち中含む)間は`startedAt`がnullなので②は判定しない=永久に待てる(③は引き続き効く)。
-  const timeForceEnd = startedAt !== null && (gameTime - startedAt) >= WELCOME_FORCE_END_MS;
-  if (timeForceEnd || areaIndex >= WELCOME_FORCE_END_AREA) {
+  // ③強制終了(§17-3)。倒し切り判定より先に見る=区域を跨いだら即打ち切る。
+  // ★**②(60秒の天井)は撤去した**(社長指示2026-09-19「1分で終わらないわ。倒し切るまで続けよう」)。
+  //   残るのは**①倒し切り**と**③区域を跨いだ**の2つだけ。③は「プレイヤーが先へ行ってしまった時に
+  //   輪が開きっぱなしにならない」ための保険なので残す(時間では終わらない)。
+  if (areaIndex >= WELCOME_FORCE_END_AREA) {
     return { step, spawnNow: null, endedAt: gameTime, startedAt };
   }
 

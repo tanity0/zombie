@@ -328,7 +328,7 @@ import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { phaseAt, sceneAt } from '../utils/difficultyDirector';
-import { welcomeAdvance, welcomeAppliesToRun, WELCOME_FORCE_END_MS } from '../utils/welcomeScript';
+import { welcomeAdvance, welcomeAppliesToRun, WELCOME_RING_ENDS_IN_MS } from '../utils/welcomeScript';
 import { spawnEscalation, gateLiveCorrection, playerPower, expectedPower, powerMargin } from '../utils/difficultyScaler';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
@@ -734,7 +734,7 @@ const AREA_SECTOR_ENTER_DIST = worldDist(1200);   // 担当エリア進入セリ
 // PACING_PUZZLE.md §17-11(ランの時計イベント+60秒・社長裁定2026-09-18「時計ずらしはB 全部です」):
 // ウェルカム台本(§17)に掛けた実時間に関わらず**固定+60秒**(WELCOME_FORCE_END_MS=台本の予算と
 // 同じ1分)。素の値=2:00(初回発火)。
-const ARENA_FIRE_AFTER_MS = 120000 + WELCOME_FORCE_END_MS; // 初回発火時刻(=ゲーム開始2分+60秒=3:00)
+const ARENA_FIRE_AFTER_MS = 120000; // 初回発火(ウェルカム終了から2:00)
 const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。社長指示。初回以降はランの時計に対して相対=+60秒はずらさない)
 // 紅き夜の発火判定時刻は「5分以上でランダム」(社長指示)。出撃ごとに 5〜9分の範囲で1回だけ抽選時刻を決める。
 // 社長指示v0.25.3317: 紅き月は**7:00固定発動・毎ラン確定**(旧: 5〜9分ランダム判定×発生率30%を廃止)。
@@ -744,7 +744,7 @@ const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。�
 // 経緯: 元は7:00固定(v0.25.3317)→ 賞金首の2体目が7:00に来るため6:00へ避難(v8.3・2026-08-15)
 // → **その賞金首2体目を廃止した(BOUNTY_NATURAL_SPAWN_AT_MS=[3:00]・v0.25.3840)ので避ける理由が消えた**。
 // PACING_PUZZLE.md §17-11: ランの時計+60秒(素の値=7:00→8:00)。
-const RED_NIGHT_FIRE_AT_MS = 420000 + WELCOME_FORCE_END_MS; // 7:00+60秒=8:00
+const RED_NIGHT_FIRE_AT_MS = 420000; // ウェルカム終了から7:00
 // PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): 追補2の「円内10体burst配置(ambient)」は撤去。
 // ゲート1の基本沸きは通常沸き(koma maintenance)の無限流入方式へ置き換え(permeable=trueで境界を
 // 越えて流入)。§5.21-追補4(v0.25.1553): koma目標/CDをピーク・CD0に強制する分岐は撤回済み=
@@ -785,7 +785,7 @@ const EVENT_BANNER_MS = 3500;          // イベント発生告知バナーの�
 // 「見られている」警告→5秒残ると発見→拠点(制圧済み)へ逃げ込むまで追跡。20s/40sで増援(最大3体)。
 // 出現回数は無制限(CD長めで何度でも・社長指示)・再出現CD150〜240s・ボス/リーパー/演出中は出現禁止(追跡中なら逃げる)。
 // PACING_PUZZLE.md §17-11: ランの時計+60秒(素の値=3:00→4:00)。
-const HUNTER_START_MS = 180000 + WELCOME_FORCE_END_MS; // 出現開始(3分+60秒=4:00)
+const HUNTER_START_MS = 180000; // 出現開始(ウェルカム終了から3:00)
 // 訓練(M0)の教習ビート用の配置(TUTORIAL_STAGE.md「M0 チュートリアル進行案」)。
 const M0_HUNTER_AHEAD_PX = 360;            // ハンターをプレイヤーの何px先に出すか(画面内に入る距離)
 const M0_SHOOT_ROUNDS = 5;                 // 射撃教習で持たせる弾数(敵HPをこの弾数ちょうどに合わせる)
@@ -1155,7 +1155,7 @@ const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 // でガードされており、現状どのモードでも発火しない死んだ経路(§17-1の WAVE_EVENTS と同型)。
 // 生きている「5:00の通信」は DUO_COMM_AT_MS(=CASTLE_BOSS_MIN_TIME_MS+60秒。下で定義)側。
 // 値だけ設計書の指名どおり+60秒しておく(将来DUO_RESCUE_PHASE_ENABLEDが復活しても時計がずれない)。
-const RESCUE_QUEST_SPAWN_AT_MS = 4 * 60 * 1000 + WELCOME_FORCE_END_MS;
+const RESCUE_QUEST_SPAWN_AT_MS = 4 * 60 * 1000; // ウェルカム終了から4:00
 // ★v4(EVENT_QUEST_DESIGN.md §2-18・社長指示2026-09-14「5分経過で二人組から通信が入る(サークル無しで開始)」):
 // レスキュー地点(4:00)・囲い・受注の段は**出さない**。コードは可逆性のため残し、このフラグで塞ぐ。
 const DUO_RESCUE_PHASE_ENABLED = false;
@@ -1163,7 +1163,7 @@ const DUO_RESCUE_PHASE_ENABLED = false;
 // PACING_PUZZLE.md §17-11: ランの時計+60秒(社長裁定2026-09-18「時計ずらしはB 全部です」)。
 // CASTLE_BOSS_MIN_TIME_MS自体(config/castleBoss.ts=5分)は変えない(城ボスの「設計上の5分」という
 // 値の意味はそのまま=castleBoss.test.tsが固定している)。実際の発火時刻だけここで+60秒する。
-const DUO_COMM_AT_MS = CASTLE_BOSS_MIN_TIME_MS + WELCOME_FORCE_END_MS; // 5:00+60秒=6:00
+const DUO_COMM_AT_MS = CASTLE_BOSS_MIN_TIME_MS; // ウェルカム終了から5:00
 // 社長指示2026-09-14「5分で通信だから読める。その10秒前くらいに入っちゃえば盤面は静まってる」: 通信の10秒前から終了まで**新規湧き停止**
 // (居る敵はそのまま)。noSpawn(?nospawn=1 と同じ止め方)に合流させる=通常湧き・パズル盤面・ゲート囲い等が全部止まる。
 const DUO_COMM_QUIET_LEAD_MS = 10_000;
@@ -3211,7 +3211,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (§17-11 B3の表。関数自体は変えず、呼び出し側がdirectorTimeを渡す=変更点を数えられる形)。
         // ウェルカムが関係ないラン(welcomeApplicable=false)はgameTimeそのまま=1ビットも変わらない。
         const directorTime = welcomeApplicable
-          ? newGameTime - Math.min(welcomeEndedAtRef.current ?? newGameTime, WELCOME_FORCE_END_MS)
+          // ★社長指示2026-09-19「イベントタイマーはウェルカムイベントが終わった瞬間からカウント開始。
+          // 2分で終わったなら、2分から各イベントタイマーがゼロスタート」。旧実装は60秒で頭打ちしていた
+          // (=ウェルカムが60秒より長いと、終わる前にイベントの時計が動き出していた)。**頭打ちを外す。**
+          ? newGameTime - (welcomeEndedAtRef.current ?? newGameTime)
           : newGameTime;
         const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && !endingStage && !isPracticeRun() && phaseAt(directorTime).kind !== 'boss';
         // §5.21追補(社長報告v0.25.1848「ゲート1、クリアしなくても奥に行けちゃう」の修正):
@@ -3242,7 +3245,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ANDは時間条件の項にだけ掛ける(★★3巡目 監査A2)。castleBossReady全体に掛けると開発用の
         // 強制出現(?castlenow=1/FORCE_CASTLE_BOSS)まで塞がり、実機確認ができなくなる。
         // PACING_PUZZLE.md §17-11: ランの時計+60秒(素の値=5:00→6:00。CASTLE_BOSS_MIN_TIME_MS自体は不変)。
-        const castleBossReady = FORCE_CASTLE_BOSS || practiceForces('castlenow') || (newGameTime >= CASTLE_BOSS_MIN_TIME_MS + WELCOME_FORCE_END_MS && questGateOk);
+        const castleBossReady = FORCE_CASTLE_BOSS || practiceForces('castlenow') || (directorTime >= CASTLE_BOSS_MIN_TIME_MS && questGateOk);
         // 洋館通路(corridorMode)は城なし(v0.25.2144・社長指示「城も出現しないで。時間で出るのは死神だけ」)
         // =5分の城ボス(giantbat)+バナーを出さない(城の実体もresetGameで遥か遠方に置いている)。
         // v0.25.3054: 別ボスと交戦中は城ボスの時間出現を先送り(出現アテンション/魔法陣がボス戦へ
@@ -4023,7 +4026,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
             useGameStore.getState().triggerTimeSlow(0.4, 520);
             // ⑤通常囲いの次回発火時刻を押し戻す(足元に連続で開かないように・§2-4)。
-            nextArenaAtRef.current = newGameTime + ARENA_FIRE_INTERVAL_MS;
+            nextArenaAtRef.current = directorTime + ARENA_FIRE_INTERVAL_MS; // ★§17-15: イベントの時計はウェルカム終了から0(directorTime)
             boredomArenaNextEligibleAtRef.current = newGameTime + BOREDOM_ARENA_CD_MS;
            } else if (puzzleActiveNow) {
             // M20 軸1: 退屈補正の囲い(社長設計)。boredomDirector/upswingの退屈シグナルが完全に
@@ -4094,7 +4097,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 賞金首側は元からactiveEvent中に湧かない(bountySpawnBlocked)ので、これで両向きに排他が閉じる。
             const bountyBlocksArena = useGameStore.getState().enemies.some(e => isBountyType(e.type));
             const gateEventReady = pendingGE != null && !useGameStore.getState().bossChasing && !bossEngagedArena && hunterRef.current.phase === 'idle' && !redNightActiveNow && !bountyBlocksArena;
-            const arenaReady = gateEventReady || ((FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !bossEngagedArena && hunterRef.current.phase === 'idle' && arenaProducerOk && !bountyBlocksArena);
+            const arenaReady = gateEventReady || ((FORCE_ARENA != null || directorTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !bossEngagedArena && hunterRef.current.phase === 'idle' && arenaProducerOk && !bountyBlocksArena);
             if (arenaReady) {
               const pcx = player.x + player.width / 2;
               const pcy = player.y + player.height / 2;
@@ -4106,7 +4109,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 hordeSizeMult = pendingGE.sizeMult;
                 gateEventPendingRef.current = null;
               } else {
-                nextArenaAtRef.current = newGameTime + ARENA_FIRE_INTERVAL_MS; // 次回は2分後
+                nextArenaAtRef.current = directorTime + ARENA_FIRE_INTERVAL_MS; // ★§17-15: イベントの時計はウェルカム終了から0(directorTime) // 次回は2分後
                 kind =
                   FORCE_ARENA === 'horde' ? 'horde'
                   : FORCE_ARENA === 'boss' ? 'boss'
@@ -4490,7 +4493,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (!rn || rn.phase !== 'active') {
               useGameStore.setState({ redNight: { phase: 'active', activeAt: newGameTime, endAt: newGameTime + 3600000 } });
             }
-          } else if (!rn && !redNightFiredRef.current && newGameTime >= redNightFireAtRef.current && !rnGs.bossChasing
+          } else if (!rn && !redNightFiredRef.current && directorTime >= redNightFireAtRef.current && !rnGs.bossChasing
               && !rnGs.bossFightNow // ★イベント抑止の原則(2026-08-22): 裏ボス「存命中」→ボスと「交戦中」
               && areaZoneIndexFor(rnDepth) >= 2 && rnProducerOk) {
             // 社長指示v0.25.3317: 7:00固定・毎ラン確定(発生率の抽選は廃止)。条件が塞がっている間は
@@ -4733,7 +4736,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             H.phase = 'idle';
             // PACING_PUZZLE.md §5.21 M20 軸2: 凶悪モードは優勢ゲート無視で即再発生しうるため、撃破/
             // 立ち去り直後の一瞬だけ猶予を挟む(通常モードは既存の長いCDのまま)。
-            H.nextEligibleAt = newGameTime + HUNTER_RESPAWN_CD_MIN_MS + Math.random() * HUNTER_RESPAWN_CD_SPAN_MS;
+            H.nextEligibleAt = directorTime + HUNTER_RESPAWN_CD_MIN_MS + Math.random() * HUNTER_RESPAWN_CD_SPAN_MS; // ★§17-15: イベントの時計はウェルカム終了から0(directorTime)
             H.viciousRearmAt = H.vicious ? newGameTime + VICIOUS_REARM_MS : H.viciousRearmAt;
             H.vicious = false;
             H.detectStartAt = 0; H.chaseStartAt = 0; H.reinforced = 0; H.primaryId = '';
@@ -4793,7 +4796,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 予兆だけ出して発動しなかった出撃を「気づかせた」に数えない(立ち去りアナウンスの対象外)。
               if (H.viciousPendingAt !== 0) H.noticed = false;
               H.viciousPendingAt = 0;
-              if (newGameTime >= HUNTER_START_MS && H.eventsThisRun < HUNTER_MAX_PER_RUN && newGameTime >= H.nextEligibleAt && !spawnBlocked) {
+              if (directorTime >= HUNTER_START_MS && H.eventsThisRun < HUNTER_MAX_PER_RUN && directorTime >= H.nextEligibleAt && !spawnBlocked) { // ★§17-15: イベントの時計はウェルカム終了から0(directorTime)
               // 旧・優勢判定(6項目中4つ以上)。バッチ7で既定は退屈シグナルへ統合するが、?events=0の
               // 従来復帰用にロジック自体は残す。
               // 監査v0.25.3008: カメラ矩形→プレイヤー中心(ズーム連動カメラ下げで南側が漏れて過少カウントに)。
@@ -11525,7 +11528,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const duoCommAllowed = !danceTest && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage
             && (!noSpawnDebug || practiceWantsCastleBoss()) && !revisitRun; // ★静けさ自身(noSpawn)で通信を塞がないよう noSpawnDebug を見る
           if (duoCommAllowed && rqNpc.status === 'hidden' && rqGs.duoCommStartedAt === 0 && !rqGs.bossChasing
-            && rescueQuestSpawnReady(newGameTime, DUO_COMM_AT_MS, basesEverCapturedNow, rqBasesRequired)) {
+            && rescueQuestSpawnReady(directorTime, DUO_COMM_AT_MS, basesEverCapturedNow, rqBasesRequired)) {
             useGameStore.setState({ duoCommStartedAt: newGameTime });
             const commLines = eventQuestSubAcceptLines(getSelectedStageId());
             if (commLines.length > 0) {
@@ -11539,7 +11542,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const qGs = useGameStore.getState();
             const quietNow = duoQuietWindow({
               allowed: duoCommAllowed, status: qGs.eventQuestNpc.status, startedAtMs: qGs.duoCommStartedAt, endedAtMs: qGs.duoCommEndedAt,
-              readyWithinLead: rescueQuestSpawnReady(newGameTime + DUO_COMM_QUIET_LEAD_MS, DUO_COMM_AT_MS, basesEverCapturedNow, rqBasesRequired),
+              readyWithinLead: rescueQuestSpawnReady(directorTime + DUO_COMM_QUIET_LEAD_MS, DUO_COMM_AT_MS, basesEverCapturedNow, rqBasesRequired),
               bossChasing: qGs.bossChasing,
             });
             if (quietNow !== qGs.duoCommQuiet) useGameStore.setState({ duoCommQuiet: quietNow });
@@ -11579,7 +11582,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
 
           if (DUO_RESCUE_PHASE_ENABLED && rqNpc.status === 'hidden' && !rqGs.bossChasing
-            && rescueQuestSpawnReady(newGameTime, RESCUE_QUEST_SPAWN_AT_MS, basesEverCapturedNow, rqBasesRequired)) {
+            && rescueQuestSpawnReady(directorTime, RESCUE_QUEST_SPAWN_AT_MS, basesEverCapturedNow, rqBasesRequired)) {
             const firstSpawn = rqGs.rescueSpawnedAt === 0;
             let landX: number, landY: number;
             if (firstSpawn) {
@@ -15789,7 +15792,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const wpcx = WELCOME_RING_CENTER_X, wpcy = WELCOME_RING_CENTER_Y;
             useGameStore.getState().beginArenaEvent({
               kind: 'welcome', x: wpcx, y: wpcy, radius: ARENA_EVENT_RADIUS,
-              startedAt: gameTime, endsAt: gameTime + WELCOME_FORCE_END_MS,
+              // ★時間では終わらない(社長指示2026-09-19)。`endsAt` は輪の見た目のための遠い期限で、
+              // 台本の進行は `welcomeAdvance` が持つ=この値で打ち切られることはない。
+              startedAt: gameTime, endsAt: gameTime + WELCOME_RING_ENDS_IN_MS,
               // ★社長指示2026-09-19「**ウェルカムは出れないようにして**」: 既存の囲いと同じく
               // プレイヤーを円内に拘束する(confinesPlayer 省略=既定true)。敵側の閉じ込め
               // (gameStore.ts の fromEvent クランプ)と**必ずセット**にすること。
