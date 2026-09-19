@@ -21,6 +21,25 @@ const CHAFF_WEAKNESS: Partial<Record<EnemyType, WeaknessEntry>> = {
   zombie: { weaponKind: 'gun', bonus: 0.10 },
 };
 
+/**
+ * ★社長指示2026-09-19「雑魚のクリティカル補正一旦外して」: この弱点クリ
+ * (バット=銃 / スケルトン=近接 / ゾンビ=銃)を**既定で切る**。
+ * 「一旦」なので**表も経路も消していない**——ここを `true` に戻すか、実機で `?weakcrit=1` を
+ * 付ければ元どおり(3経路=近接・銃・ヘッドレスのボットが同時に戻る)。
+ */
+export const WEAKNESS_CRIT_DEFAULT_ON = false;
+
+/**
+ * `?weakcrit=` の生値 → 有効/無効。明示された `0`/`1` が既定より強い。
+ * ★**既定の出どころをここ1本にする**ため、URLを読む側(gameStore の近接経路 / useGameLoop の
+ * 銃経路)も、URLを持たないヘッドレス(playtestDriver)も、全部この関数を通す。
+ */
+export const parseWeakCritEnabled = (raw: string | null | undefined): boolean => {
+  if (raw === '0') return false;
+  if (raw === '1') return true;
+  return WEAKNESS_CRIT_DEFAULT_ON;
+};
+
 export const weaknessCritBonus = (enemyType: EnemyType, weaponKind: WeaponKind): number => {
   const entry = CHAFF_WEAKNESS[enemyType];
   return entry && entry.weaponKind === weaponKind ? entry.bonus : 0;

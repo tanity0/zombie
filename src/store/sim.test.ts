@@ -8,7 +8,7 @@ import { knockbackDurationMul } from '../utils/hitFlinch';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   useGameStore, PUMPKIN_JUMP_MAX_DIST,
-  bossCritCdMult, BOSS_CRIT_CD_MULT, STUN_DURATION_MS, MOB_CRIT_STUN_ENABLED, canShoveEnemy,
+  bossCritCdMult, BOSS_CRIT_CD_MULT, STUN_DURATION_MS, canShoveEnemy,
   KNOCKBACK_DURATION,
   migrateCompanionFromLegacy,
   // ★v0.25.3863: 慣性の定数と式を**写経せず import**する(調整しても勝手に揃う)。
@@ -344,16 +344,9 @@ describe('headless simulation invariants', () => {
 
     const after = useGameStore.getState().enemies.find(e => e.id === z.id);
     expect(after).toBeTruthy();
-    // ★社長指示2026-09-19「雑魚のクリティカル補正一旦外して」: 非ボスのクリ気絶は
-    // `MOB_CRIT_STUN_ENABLED` で一旦切ってある。**式は消さない**——スイッチを戻した瞬間に
-    // 「stunDurationMult が乗る」ことをそのまま検査し続ける(切っている間は「書かれない」を検査)。
-    if (MOB_CRIT_STUN_ENABLED) {
-      expect(after!.stunUntil).toBeDefined();
-      // 修正前は stunDurationMult を無視して常に +STUN_DURATION_MS(5秒)だった。
-      expect(after!.stunUntil!).toBeCloseTo(gt + STUN_DURATION_MS * 2, -1);
-    } else {
-      expect(after!.stunUntil).toBeUndefined();
-    }
+    expect(after!.stunUntil).toBeDefined();
+    // 修正前は stunDurationMult を無視して常に +STUN_DURATION_MS(5秒)だった。
+    expect(after!.stunUntil!).toBeCloseTo(gt + STUN_DURATION_MS * 2, -1);
 
     randomSpy.mockRestore();
   });
@@ -701,13 +694,8 @@ describe('headless simulation invariants', () => {
 
     const after = useGameStore.getState().enemies[0];
     expect(after).toBeTruthy();
-    // ★社長指示2026-09-19「雑魚のクリティカル補正一旦外して」(上の刀の項と同じ理由)。
-    if (MOB_CRIT_STUN_ENABLED) {
-      expect(after.stunUntil).toBeDefined();
-      expect(after.stunUntil!).toBeGreaterThan(gt); // クリでスタン=以後gameTime基準でフィニッシュ受付になる
-    } else {
-      expect(after.stunUntil).toBeUndefined();
-    }
+    expect(after.stunUntil).toBeDefined();
+    expect(after.stunUntil!).toBeGreaterThan(gt); // クリでスタン=以後gameTime基準でフィニッシュ受付になる
 
     randomSpy.mockRestore();
   });

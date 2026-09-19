@@ -15,7 +15,7 @@ import {
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore,
   INVULN_MS,
-  STUN_DURATION_MS, MOB_CRIT_STUN_ENABLED,
+  STUN_DURATION_MS,
   CRIT_DAMAGE_MULT,
   BOSS_CRIT_DAMAGE_MULT,
   isKatanaMode,
@@ -154,7 +154,7 @@ import { pickKatanaSlashTarget } from '../utils/katanaAuto';
 import { pickSafeKatanaDashDirection } from '../utils/katanaLanding';
 import { dashModeAt, dashOverride, dashStateOf, dashStep } from '../utils/dashLocomotion';
 import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定義から移設(式は無変更)
-import { weaknessCritBonus } from '../utils/weaknessCrit';
+import { weaknessCritBonus, parseWeakCritEnabled } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty, projectileHitCritChance } from '../utils/critPenalty';
 import { softCapCritChance, orCombineChance } from '../utils/critSoftCap';
 import { critDecayOnHit } from '../utils/critDecay'; // ★§13-3e クリ減衰(社長裁定2026-08-26)
@@ -1098,9 +1098,10 @@ const AMMO_SMART_ENABLED = evParam('ammosmart') !== '0';
 // 枯渇度×敵の多さ」で最大20%まで底上げする(src/utils/ammoDirector.ts)。`?ammodir=0`で無効化。
 // gameStore側の近接キル経路も同名パラメータを各自読む(既存のammosmart等と同じ流儀)。
 const AMMO_DIRECTOR_ENABLED = evParam('ammodir') !== '0';
-// PACING_PUZZLE.md §5.6 バッチM7(チャフの武器弱点クリティカル・既定ON): `?weakcrit=0`で無効化。
+// PACING_PUZZLE.md §5.6 バッチM7(チャフの武器弱点クリティカル)。★社長指示2026-09-19で**既定OFF**
+// (出どころは weaknessCrit.ts の WEAKNESS_CRIT_DEFAULT_ON)。`?weakcrit=1` で戻る。
 // gameStore側の近接キル経路も同名パラメータを各自読む(既存のammosmart等と同じ流儀)。
-const WEAKCRIT_ENABLED = evParam('weakcrit') !== '0';
+const WEAKCRIT_ENABLED = parseWeakCritEnabled(evParam('weakcrit'));
 // PACING_PUZZLE.md §5.23 バッチM22 Group A(A1マズルフラッシュ・既定ON): `?mzl=0`で無効化。
 const MUZZLE_FLASH_ENABLED = evParam('mzl') !== '0';
 // PACING_PUZZLE.md §5.23 バッチM22 Group C(C1方向性シェイク&スプレー・既定ON): 銃ヒット/
@@ -14067,10 +14068,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // PACING_PUZZLE.md §14-4-3(使者・hangedman): 近接フィニッシュ即死の対象外(除外リスト)=
             // stunEnemy(通常5秒スタン)を通さない(体勢なし=止まらない、と対の裁定)。isBoss自体は
             // クリダメ倍率等の別用途で共有されているため広げず、ここだけ個別に除外する。
-            // ★社長指示2026-09-19「雑魚のクリティカル補正一旦外して」: 非ボスのクリ5秒気絶は
-            // `MOB_CRIT_STUN_ENABLED`(gameStore)で一旦切ってある。黄色いリング(下)は**残す**
-            // ——クリが出たこと自体は伝え続ける(気絶だけを外す)。
-            if (MOB_CRIT_STUN_ENABLED && !isBoss && !isHangedman(enemyForFx.type)) {
+            if (!isBoss && !isHangedman(enemyForFx.type)) {
               // 気絶時間アップ(パッシブ): フィニッシュ受付時間を stunDurationMult 倍に。
               const stunMs = STUN_DURATION_MS * (useGameStore.getState().player.stunDurationMult ?? 1);
               useGameStore.getState().stunEnemy(enemyId, gameTime + stunMs);

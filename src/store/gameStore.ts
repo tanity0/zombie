@@ -146,7 +146,7 @@ import { evaluateLabLoseSight, LAB_VISION_RANGE } from '../utils/labStealth';
 // distToSegment: M66(§6.26-11)の掃射/三連突進の吐息(回転帯)が毎フレーム自己検出するために使う純関数。
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
-import { weaknessCritBonus } from '../utils/weaknessCrit';
+import { weaknessCritBonus, parseWeakCritEnabled } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
 import { BOSS_NEUTRAL_CASTLE_MS } from '../utils/bossRebuild'; // ★社長裁定2026-08-27: 城ボスの技間=2.5秒(v3952の+600/v3954の×2を上書き)
 import { softCapCritChance } from '../utils/critSoftCap';
@@ -406,9 +406,13 @@ const AMMO_SMART_ENABLED = typeof window === 'undefined' || new URLSearchParams(
 // 枯渇度×敵の多さ」で最大20%まで底上げする(src/utils/ammoDirector.ts)。?ammodir=0で無効化(常に基礎率のまま)。
 // useGameLoop側の銃キル経路も同名パラメータを各自読む(既存のammosmart等と同じ流儀)。
 const AMMO_DIRECTOR_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('ammodir') !== '0';
-// PACING_PUZZLE.md §5.6 M7(チャフの武器弱点クリティカル・既定ON): ?weakcrit=0で無効化。
+// PACING_PUZZLE.md §5.6 M7(チャフの武器弱点クリティカル)。★社長指示2026-09-19「雑魚の
+// クリティカル補正一旦外して」で**既定OFF**(出どころは weaknessCrit.ts の WEAKNESS_CRIT_DEFAULT_ON)。
+// `?weakcrit=1` で戻る / `?weakcrit=0` は従来どおり明示的に切る。
 // useGameLoop側の銃ヒット経路と同名パラメータ(各自読む=既存ammosmart等と同じ流儀)。
-const WEAKCRIT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('weakcrit') !== '0';
+const WEAKCRIT_ENABLED = parseWeakCritEnabled(
+  typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('weakcrit'),
+);
 // PACING_PUZZLE.md §5.16 M16(パンプキンのジャンプ距離上限・既定ON): ?pjcap=0で旧・無制限へ。
 // デバッグボット実測(v0.25.1487)で採用=350。ハンターの視界サークルクランプと同じ式を移植。
 const PUMPKIN_JUMP_CAP_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('pjcap') !== '0';
@@ -1214,26 +1218,6 @@ export const BULLET_KNOCKBACK_SPEED = 172;
 
 // Crit → stun duration (gameTime ms). A stunned enemy is a finisher target.
 export const STUN_DURATION_MS = 5000;
-/**
- * ★社長指示2026-09-19「雑魚のクリティカル補正一旦外して」: **クリティカルが非ボスに与える5秒気絶**
- * (`stunUntil`)を一旦止めるスイッチ。「一旦」なので**経路を消さずにここ1つで落とす**——
- * `true` へ戻せば全経路が元どおり(呼び出し側は無改修)。
- * ★対象は**クリで殴った/撃った時の気絶だけ**(本体近接・分身・刀・鞭・銃の5経路)。
- *   **カウンター反撃(パリィ)の確定クリが与える気絶は含めない**——あちらは
- *   「カウンター→近接フィニッシュ」へ繋ぐ**カウンターの報酬**であって、クリの補正ではない
- *   (`combatTick.ts` の2箇所)。
- * ★ボスは元から別系統(`bossCritStopPatch`=半減/DR)なので、このスイッチは1bitも触らない。
- */
-export const MOB_CRIT_STUN_ENABLED: boolean = false;
-/**
- * 非ボスのクリ気絶の新しい期限。切っている間は `prev`(=その敵の今の値)をそのまま返す
- * =**気絶を1bitも書かない**(既に別経路で入っている気絶は消さない)。
- */
-export const mobCritStunUntil = (
-  gameTime: number, stunDurationMult: number, prev: number | undefined,
-): number | undefined => (
-  MOB_CRIT_STUN_ENABLED ? gameTime + STUN_DURATION_MS * stunDurationMult : prev
-);
 export const CRIT_DAMAGE_MULT = 1.5;
 // Bosses use a beefier crit ruleset: gun crits hit 5×, and meleeing a stunned
 // boss deals 5× melee damage (and shakes off the stun) instead of an instakill.
@@ -8108,7 +8092,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // stunUntil/bossSlowUntilのどちらかを決める。通常敵だけこの場の直書き5秒スタンを使う(不変)。
       const bossSlow = crit ? bossCritStopPatch(enemy, gameTime, player.stunDurationMult ?? 1) : null;
       const stunUntil = (crit && !bossSlow && !isBossType(enemy.type) && !isHangedman(enemy.type))
-        ? mobCritStunUntil(gameTime, player.stunDurationMult ?? 1, enemy.stunUntil)
+        ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1)
         : enemy.stunUntil;
       // Knockback, unless this enemy was shoved recently (debounce to avoid
       // locking it in an infinite stagger). Damage still landed above.
@@ -8569,7 +8553,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // CRIT-UNIFY §9.4(現行漏れの解消): 分身のクリも銃/ナイフ/刀と同じく裏ボスの完全気絶カウントに乗せる。
       // v0.25.3491: bossCritSlowPatch→bossCritStopPatch(isBossType全体をDR込みで扱う。site1と同型)。
       const bossSlow = crit ? bossCritStopPatch(enemy, gameTime, player.stunDurationMult ?? 1) : null; // ボスは半減(v0.25.2422)
-      const stunUntil = (crit && !bossSlow && !isBossType(enemy.type) && !isHangedman(enemy.type)) ? mobCritStunUntil(gameTime, player.stunDurationMult ?? 1, enemy.stunUntil) : enemy.stunUntil;
+      const stunUntil = (crit && !bossSlow && !isBossType(enemy.type) && !isHangedman(enemy.type)) ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil;
       if (knockbackCdReady(enemy, now)) {
         // ★v0.25.3959: 本体の近接(site1)と同じ修正——方向の正規化は中心差分で(密着0割れKB対策)。
         const norm = Math.max(0.001, Math.hypot(dx, dy));
@@ -9329,7 +9313,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const bossSlow = critStun ? bossCritStopPatch(enemy, gameTime, player.stunDurationMult ?? 1) : null; // ボスは半減(v0.25.2422)
       // CRIT-UNIFY §9.2同梱修正: 刀のクリ気絶にだけstunDurationMult(気絶時間アップパッシブ)が
       // 乗っていなかった実装漏れを修正(ナイフ/鞭/分身は既に乗っている・銃も乗っている)。
-      const newStunUntil = (critStun && !bossSlow && !isBossType(enemy.type) && !isHangedman(enemy.type)) ? mobCritStunUntil(gameTime, player.stunDurationMult ?? 1, enemy.stunUntil) : enemy.stunUntil;
+      const newStunUntil = (critStun && !bossSlow && !isBossType(enemy.type) && !isHangedman(enemy.type)) ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil;
       const dx = ecx - pcx;
       const dy = ecy - pcy;
       const dist = Math.max(0.001, Math.hypot(dx, dy));
@@ -9661,7 +9645,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // (isBossType全体をDR込みで扱う。nullは真の非ボスだけなので??の素通し先は不変)。
         // PACING_PUZZLE.md §14-4-3(使者・hangedman): 近接フィニッシュ即死の対象外(除外リスト)=
         // クリでも通常の5秒スタンへ入れない(体勢なし裁定と対で「止まらない」を貫く)。
-        ...(crit && !isHangedman(enemy.type) ? (bossCritStopPatch(enemy, gameTime, player.stunDurationMult ?? 1) ?? { stunUntil: mobCritStunUntil(gameTime, player.stunDurationMult ?? 1, enemy.stunUntil) }) : { stunUntil: enemy.stunUntil }),
+        ...(crit && !isHangedman(enemy.type) ? (bossCritStopPatch(enemy, gameTime, player.stunDurationMult ?? 1) ?? { stunUntil: gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) }) : { stunUntil: enemy.stunUntil }),
         knockbackVx: side * nx * WHIP_KNOCKBACK_SPEED,
         knockbackVy: side * ny * WHIP_KNOCKBACK_SPEED,
         knockbackUntil: now + KNOCKBACK_DURATION,

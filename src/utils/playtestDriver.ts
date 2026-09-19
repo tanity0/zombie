@@ -42,7 +42,10 @@ import { GAME_SPEED } from '../config/gameSpeed';
 import type { AmmoType } from '../types/game';
 import { areaIndexForPos, isBossType, spawnEnemyAt, spawnEnemyAtWithTier, AREA_THRESHOLDS } from './enemyUtils';
 import { checkProjectileEnemyCollisions, checkPlayerPickupCollisions } from './collisionUtils';
-import { weaknessCritBonus } from './weaknessCrit';
+import { weaknessCritBonus, parseWeakCritEnabled } from './weaknessCrit';
+
+/** ヘッドレス(URL無し)の弱点クリ既定。実機と同じ1本から引く。 */
+const WEAKCRIT_ON = parseWeakCritEnabled(null);
 import { applyEnemyCritPenalty, projectileHitCritChance } from './critPenalty';
 import { phaseAt } from './difficultyDirector';
 import { createPuzzleClockState, createKomaAccumulator, createSoftenState, createRankPaceState, clampRank } from './rankAssessor';
@@ -199,7 +202,10 @@ const applyBotProjectileHits = (gameTime: number): void => {
     const isBoss = isBossType(enemy.type);
     // CRIT-UNIFY §9.4: 弱点クリのロールは「プレイヤー直接武器」限定(実機経路と同じ)。
     const isDirectWeaponHit = isDirectGunWeaponKey(projectile.weaponKey);
-    const weakCrit = isDirectWeaponHit && Math.random() < applyEnemyCritPenalty(weaknessCritBonus(enemy.type, 'gun'), enemy);
+    // ★社長指示2026-09-19で弱点クリは既定OFF。ボットはURLを持たないので既定をそのまま引く
+    // (ここを素通しにすると、ヘッドレスのボットだけ実機より強いままになる)。
+    const weakCrit = WEAKCRIT_ON && isDirectWeaponHit
+      && Math.random() < applyEnemyCritPenalty(weaknessCritBonus(enemy.type, 'gun'), enemy);
     // CRIT-UNIFY §9.1: 生成時crit(boolean)は廃止。critChanceを命中時に対象別でロールする(実機経路と同じ)。
     const baseCrit = Math.random() < projectileHitCritChance(projectile.critChance ?? 0, enemy);
     const hitCrit = baseCrit || weakCrit || headshot === true;
