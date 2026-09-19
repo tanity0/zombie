@@ -1,5 +1,31 @@
 # Development Log
 
+## v0.25.4497 — §16-E 雑魚3種の「構え」実装(commit e360dc80d)【2026-09-19 09:41 JST】
+
+- 共有の純関数 **`frameWithWindupHold(sinceWindupMs, windupMs, sinceImpactMs, frameFn)`**
+  (`fxFrameClock.ts`)を新設。溜め中は0コマ目で固定し、**溜め明けは渡された既存関数へそのまま委譲**
+  ——★**新しい送りの式を作らないことで「従来と1ミリも変わらない」を構造で保証**している(良い形)。
+  3モジュールに薄いラッパー(`skelClawFrameWithWindup` / `zombieBiteFrameWithWindup` / `batSlamFrameWithWindup`)。
+- 骸骨に **`BITE_BY_TYPE.skeleton = { lungeMs: 180 }`**(=溜め300msの最後120ms静止。`windupMs`/`lungePx`/`biteMs` は不変)。
+- 爪のVFX(`skel-claw-fx`)は**構えに出さない**(当たった瞬間の派手さの絵)=設計どおり。
+- 検証: typecheck 緑 / lint エラー0 / **301件緑**(enemyBite 120・chaffMoves 97・batLanternSwing 27・
+  skeletonClaw・zombieBiteFx・fxFrameClock・ghostTelegraph)。
+
+### ★実装者が報告した構造上の注意点 → 設計チャットが距離を数えて評価した
+- 報告: 3シートとも**敵の体ではなく `biteTelegraphLine` の終点**(発火時にプレイヤーが居た接触点)に描かれる。
+- ★**数えた**: 接触距離は **骸骨36px / ゾンビ35px / コウモリ30px**、一方**絵の幅は 爪150px / 牙190px**
+  ⇒ **絵の幅が距離の4〜5倍**なので、**敵の体に重なって前方へ食み出す**位置に出る。
+  「画面の向こうに浮く」ではない。**構えとして読める見込みは高い**が、
+  ★**実機で見るまでは断定しない**(実在確認の掟)。読めなければ、描画の基準点を
+  「敵の体」へ移す改修が要る(判定は1つも動かさない)。
+- 実装者の判断1件: **`skel-bite`(§16の技)にも `lungeMs:180` が継承される**。
+  `zombie-double` は `windupMs` が220/300で型の300と食い違うため打ち消しが要ったが、
+  **`skel-bite` は `windupMs` が同じ300なので壊れない**。⇒ **そのまま継承で可**と設計チャットも判断
+  (骸骨が §12 でも §16 でも「構えて止まってから来る」で揃う=1体1形に沿う)。
+- 変更ファイル: `src/pixi/pixiScene.ts` / `src/utils/fxFrameClock.ts` / `skeletonClaw.ts` / `zombieBiteFx.ts` /
+  `batLanternSwing.ts` / `enemyBite.ts` + 各テスト / `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+- 状態変化: §16-E → **実装済み**(残り: 実機確認)。
+
 ## v0.25.4496 — §16-E 雑魚3種に「武器を構えて一瞬止まる」(設計確定)【2026-09-19 09:27 JST】
 
 - **社長指示**: 「武器を構えて一瞬止まる、を雑魚モーションには差し込んでみよう。**牙なら牙の1コマ目で**」。

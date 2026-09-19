@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4497',
+    items: [
+      'コウモリ・骸骨・ゾンビが攻撃の前に武器を構えるようになった。牙や爪が出てから噛みついてくるので、来るのが読める',
+      '骸骨も詰め寄ったあとに一拍止まる',
+    ],
+  },
+  {
     version: '0.25.4496',
     items: [
       'ゲーム内容の変更はありません',
