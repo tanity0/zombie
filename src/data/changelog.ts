@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4496',
+    items: [
+      'ゲーム内容の変更はありません',
+    ],
+  },
+  {
     version: '0.25.4495',
     items: [
       'ゾンビの噛みつきが読めるようになった。詰め寄ったあとに一拍止まってから噛んでくる',
