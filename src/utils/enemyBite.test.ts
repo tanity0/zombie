@@ -20,8 +20,12 @@ import type { Enemy, EnemyType } from '../types/game';
 //  1. 発火の30pxと判定の30pxは**同じ1つの数**(社長「あくまで当たり判定は30px範囲ね」)。
 //  2. 判定は**予告した点**で取り、敵の実位置は見ない(壁際で赤と判定がズレない)。
 //  3. 踏み込みは**絵**であって判定を伸ばさない。
+// ★§16-D(社長指示2026-09-19)でzombie型のwindupMs/lungeMsが既定値から差し替わった(300→600・
+// lungeMs新設300)ので、この汎用曲線(§12の噛みつきアルゴリズムそのもの)を確かめるヘルパーは
+// **skeleton型**(BITE_BY_TYPEに上書きが無い=BITE_DEFAULTそのまま)を使う。zombie固有の
+// lungeMs挙動は専用の describe ブロック(下)で別に検査する。
 const at = (biteAt: number | undefined): Pick<Enemy, 'type' | 'biteAt'> =>
-  ({ type: 'zombie', biteAt } as Pick<Enemy, 'type' | 'biteAt'>);
+  ({ type: 'skeleton', biteAt } as Pick<Enemy, 'type' | 'biteAt'>);
 
 describe('噛みつきの台帳', () => {
   it('社長指定の叩き台がそのまま入っている(30px / 300ms / 200ms / 踏み込み30px)', () => {
@@ -59,7 +63,8 @@ describe('噛みつきの台帳', () => {
   // により600msへ復帰した(PACING_PUZZLE.md §16-8)。
   it('★ゾンビの噛みつきは600msへ復帰した(社長裁定2026-09-16「4は戻して様子見」)', () => {
     expect(biteSpecFor('zombie').recoverMs).toBe(600);
-    expect(biteSpecFor('zombie')).toEqual({ ...BITE_DEFAULT, recoverMs: 600 });
+    // ★§16-D(社長指示2026-09-19)でwindupMs 300→600・lungeMs新設300も上書きされている。
+    expect(biteSpecFor('zombie')).toEqual({ ...BITE_DEFAULT, recoverMs: 600, windupMs: 600, lungeMs: 300 });
   });
 });
 
@@ -99,6 +104,84 @@ describe('踏み込みの見た目(★プレイヤーの踏み込みとは逆の
       expect(f).toBeGreaterThanOrEqual(prev);
       prev = f;
     }
+  });
+});
+
+// ★PACING_PUZZLE.md §16-D(社長指示2026-09-19「距離詰めてから噛みつくまでに0.3秒の停止を入れて」)。
+// ゾンビだけ windupMs 300→600・lungeMs新設300。踏み込みはlungeMs(300ms)で走り切り、
+// 残りの300ms(=windupMs−lungeMs)は完全に静止してから噛む(biteMs/lungePx/recoverMsは不変)。
+describe('★§16-D ゾンビの噛みつき「詰めたあとの停止」', () => {
+  const z = (biteAt: number | undefined): Pick<Enemy, 'type' | 'biteAt'> =>
+    ({ type: 'zombie', biteAt } as Pick<Enemy, 'type' | 'biteAt'>);
+  const spec = biteSpecFor('zombie'); // move/aiPhase無し=§12の噛みつきそのもの
+
+  it('D-4受け入れ条件1: 台帳はwindupMs600/lungeMs300/biteMs200/lungePx30/recoverMs600(変えていない値の確認込み)', () => {
+    expect(spec.windupMs).toBe(600);
+    expect(spec.lungeMs).toBe(300);
+    expect(spec.biteMs).toBe(200);       // 変えない
+    expect(spec.lungePx).toBe(30);       // 変えない
+    expect(spec.recoverMs).toBe(600);    // 変えない
+  });
+
+  it('D-4受け入れ条件1: 踏み込みは300msで走り切る(溜め終わり=半分)', () => {
+    expect(biteLungeFrac(z(1000), 1000)).toBeCloseTo(0);
+    expect(biteLungeFrac(z(1000), 1150)).toBeLessThan(0.2);   // ease-in中盤=じわっと
+    expect(biteLungeFrac(z(1000), 1300)).toBeCloseTo(0.5);    // lungeMs=300で走り切る
+  });
+
+  it('D-4受け入れ条件1: 300ms〜600ms(windupMs)は完全に静止する(0.5のまま動かない)', () => {
+    expect(biteLungeFrac(z(1000), 1301)).toBeCloseTo(0.5);
+    expect(biteLungeFrac(z(1000), 1450)).toBeCloseTo(0.5);
+    expect(biteLungeFrac(z(1000), 1599)).toBeCloseTo(0.5);
+  });
+
+  it('D-4受け入れ条件1: windupMs(600ms)を過ぎたら噛みへ入り、800msで伸び切る', () => {
+    expect(biteLungeFrac(z(1000), 1600)).toBeCloseTo(0.5); // 噛みの入口=段差なし
+    expect(biteLungeFrac(z(1000), 1700)).toBeGreaterThan(0.5);
+    expect(biteLungeFrac(z(1000), 1800)).toBeCloseTo(1);   // windupMs+biteMs=噛み切る
+  });
+
+  it('★単調増加(静止区間を含めても後退しない)', () => {
+    let prev = -1;
+    for (let t = 0; t <= 800; t += 10) {
+      const f = biteLungeFrac(z(1000), 1000 + t);
+      expect(f).toBeGreaterThanOrEqual(prev);
+      prev = f;
+    }
+  });
+
+  it('D-4受け入れ条件2: 紫の予告が消え切る瞬間(windupMs+biteMs=800ms)=噛みが当たる瞬間(掟③)が一致する', () => {
+    expect(bitePhaseOf(z(1000), 1799)).toBe('bite');
+    expect(bitePhaseOf(z(1000), 1800)).toBe('none');   // 予告消え切り
+    expect(biteProgress(z(1000), 1800)).toBeCloseTo(1); // 進捗も同じ瞬間に1
+    expect(biteLungeFrac(z(1000), 1800)).toBeCloseTo(1); // 踏み込みも同じ瞬間に伸び切る=命中点
+    expect(isBiteResolveDue(z(1000), 1799)).toBe(false);
+    expect(isBiteResolveDue(z(1000), 1800)).toBe(true);
+  });
+
+  it('D-4受け入れ条件3: 他の型(ゴースト/リッチ/研究所Lv1等)は1ビットも変わらない(lungeMs未指定)', () => {
+    for (const t of ['ghost', 'lab-zombie-3', 'skeleton', 'bat', 'werewolf'] as const) {
+      const s = biteSpecFor(t);
+      expect(s.lungeMs, t).toBeUndefined();
+      expect(s.windupMs, t).toBe(BITE_DEFAULT.windupMs);
+      expect(s).toEqual({ ...BITE_DEFAULT, ...(BITE_BY_TYPE[t] ?? {}) });
+    }
+    // リッチはrecoverMsだけ上書き=windupMs/lungeMsは既定のまま。
+    expect(biteSpecFor('lich')).toEqual({ ...BITE_DEFAULT, recoverMs: 3000 });
+  });
+
+  it('D-4受け入れ条件4: zombie-double(z-bite1/z-bite2)は変わらない(lungeMs=自分のwindupMsで打ち消し済み)', () => {
+    const specD1 = biteSpecFor('zombie', 'zombie-double', 'z-bite1');
+    const specD2 = biteSpecFor('zombie', 'zombie-double', 'z-bite2');
+    expect(specD1.windupMs).toBe(220);
+    expect(specD1.lungeMs).toBe(220); // = windupMs(自分のぶんで型のlungeMs:300を打ち消す)
+    expect(specD2.windupMs).toBe(300);
+    expect(specD2.lungeMs).toBe(300); // = windupMs
+    const e1 = { type: 'zombie' as const, biteAt: 1000, chaffMove: 'zombie-double' as const, aiPhase: 'z-bite1' as const };
+    const e2 = { type: 'zombie' as const, biteAt: 1000, chaffMove: 'zombie-double' as const, aiPhase: 'z-bite2' as const };
+    // 静止区間が無い=溜め終わり(windupMs)でちょうど0.5(従来どおり段差なし・止まらず伸びる)。
+    expect(biteLungeFrac(e1, 1000 + specD1.windupMs)).toBeCloseTo(0.5, 5);
+    expect(biteLungeFrac(e2, 1000 + specD2.windupMs)).toBeCloseTo(0.5, 5);
   });
 });
 
@@ -379,7 +462,9 @@ describe('★壁の箱と攻撃の箱を分ける(v0.25.3913)', () => {
 //  被っていたらダメージ**、壁判定に戻す。で繰り返せば?」
 // 「すると、**赤く光った敵がプレイヤーにかぶさってくる形**になる。絵としてわかりやすくなる」
 describe('★噛みつきの台本(v0.25.3914)', () => {
-  const zom = (biteAt?: number) => ({ type: 'zombie' as const, biteAt });
+  // ★§16-Dでzombieのwindup/lungeMsが既定から差し替わったので、汎用アルゴリズムの確認は
+  // skeleton(既定のまま)で行う(zombie固有の停止挙動は別describeで検査)。
+  const zom = (biteAt?: number) => ({ type: 'skeleton' as const, biteAt });
 
   it('台本の間は壁が開く(=覆いかぶされる)。終われば壁は戻る', () => {
     const e = zom(1000);
@@ -611,7 +696,9 @@ describe('★止まっている敵は噛まない(構え始めと中断で同じ
 // ★社長裁定2026-08-26「やはり噛みつき、溜め300msの間に2回点滅にまとめで」。
 // 一度は「モーションの手前に予告(lead)を足す」形にしたが(v0.25.3931)、溜めの中に2回まとめる形で確定。
 describe('★点滅は溜めの中で2回(v0.25.3932)', () => {
-  const z = { type: 'zombie' as const, biteAt: 1000 };
+  // ★§16-Dでzombieのwindup既定が300→600になったので、BITE_DEFAULT.windupMsをそのまま比較に
+  // 使うこのテストはskeleton(既定のまま)で行う。
+  const z = { type: 'skeleton' as const, biteAt: 1000 };
   it('明→暗→明→暗 の2回(溜めを2等分し各回の前半が明側)', () => {
     const w = BITE_DEFAULT.windupMs;                          // 300ms
     expect(biteBlinkOn(z, 1000 + w * 0.10)).toBe(true);  // 1回目 明

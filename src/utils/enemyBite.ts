@@ -27,6 +27,15 @@ export interface BiteSpec {
   rangePx: number;
   /** 溜め(踏み込みながら反り返る)ms。 */
   windupMs: number;
+  /**
+   * ★踏み込みが走り切るまでの時間(ms)。PACING_PUZZLE.md §16-D(社長指示2026-09-19
+   * 「距離詰めてから噛みつくまでに0.3秒の停止を入れて」)。
+   * 省略時は `windupMs` と同じ扱い(=踏み込みが溜めをいっぱいまで使う・従来どおり)。
+   * `lungeMs < windupMs` の場合、`lungeMs` 地点で踏み込みが止まり、`windupMs` まで
+   * (`windupMs − lungeMs` ぶん)**完全に静止**してから噛み(`biteMs`)へ入る(`biteLungeFrac`)。
+   * ★既定はwindupMs=省略した型は1ビットも変わらない(D-2)。
+   */
+  lungeMs?: number;
   /** 噛み(前かがみに突っ込む)ms。合計 = windupMs + biteMs。 */
   biteMs: number;
   /** 踏み込みで詰める見た目の距離(px)。判定は伸びない(掟1)。 */
@@ -71,7 +80,14 @@ export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
    * 設計者の判断では覆せない(整合監査A-8)——今回は社長裁定で明示的に600msへ戻し、実機を見る。
    * §16のゾンビ赤2連(z-bite1/z-bite2)は別枠(この既定値を経由しない・state machineが直接焼く)。
    */
-  zombie: { recoverMs: 600 },
+  /**
+   * ★§16-D(社長指示2026-09-19「距離詰めてから噛みつくまでに0.3秒の停止を入れて」)。
+   * windupMsを300→600へ延ばし、踏み込みは先頭のlungeMs=300で走り切って、残り300ms
+   * (=windupMs−lungeMs)を完全に静止してから噛む(biteMs/lungePx/recoverMsは変えない)。
+   * ★対象は§12の噛みつき(この型オーバーライド)だけ——`zombie-double`(z-bite1/z-bite2)は
+   * BITE_BY_PHASE側で`lungeMs`を自分のwindupMsと同値に上書きして打ち消してある(§16-D D-3)。
+   */
+  zombie: { recoverMs: 600, windupMs: 600, lungeMs: 300 },
   /**
    * ★リッチ(§16-B B-5・v0.25.4447)。既定の600msでは、**硬直350ms+消滅260ms+出現**でCDがほぼ
    * 使い切られ、着地した時にはもう次の噛みへ走り出す=社長の言う「**CD中は**帯で保つ」の
@@ -221,8 +237,11 @@ export const BAT_WINDUP_STILL_MS = 250;
  * =1発目/2発目とも同じ(通り抜けない制約はどちらの発でも同じ接触距離に縛られるため)。
  */
 export const BITE_BY_PHASE: Partial<Record<NonNullable<Enemy['aiPhase']>, Partial<BiteSpec>>> = {
-  'z-bite1': { windupMs: 220, biteMs: 160, lungePx: BITE_CONTACT_DIST_PX.zombie },
-  'z-bite2': { windupMs: 300, biteMs: 200, lungePx: BITE_CONTACT_DIST_PX.zombie },
+  // ★§16-D D-3「zombie-doubleには掛けない」: BITE_BY_TYPE.zombieのlungeMs:300をそのまま継承すると
+  // (z-bite1のwindupMs=220 < lungeMs=300という壊れた値になる)、`lungeMs`をここで自分のwindupMsと
+  // 同値に上書きして打ち消す(=踏み込みが溜めをいっぱいまで使う従来どおりの形に戻す)。
+  'z-bite1': { windupMs: 220, biteMs: 160, lungePx: BITE_CONTACT_DIST_PX.zombie, lungeMs: 220 },
+  'z-bite2': { windupMs: 300, biteMs: 200, lungePx: BITE_CONTACT_DIST_PX.zombie, lungeMs: 300 },
 };
 
 /**
@@ -337,10 +356,16 @@ export const biteLungeFrac = (
     }
     return 1; // 掴み中(留まる)
   }
+  // ★§16-D(社長指示2026-09-19): 踏み込みは`lungeMs`で走り切り、溜めの残り(windupMs−lungeMs)は
+  // 完全に静止する。`lungeMs`省略時(既定=windupMs)は静止区間が0msになり、従来と1ビットも変わらない。
+  const lungeMs = Math.min(spec.lungeMs ?? spec.windupMs, spec.windupMs);
+  if (t < lungeMs) {
+    // 溜め(踏み込み): ease-in(じわっと出る)。u^2 で立ち上がりを遅くする。lungeMsで走り切る。
+    const u = t / lungeMs;
+    return u * u * 0.5;               // 踏み込み終わりで半分だけ出ている
+  }
   if (t < spec.windupMs) {
-    // 溜め: ease-in(じわっと出る)。u^2 で立ち上がりを遅くする。
-    const u = t / spec.windupMs;
-    return u * u * 0.5;               // 溜め終わりで半分だけ出ている
+    return 0.5;                       // ★静止(詰めたあとの停止・§16-D)
   }
   // 噛み: 残り半分を ease-out で一気に伸ばす(伸び切る)。
   const u = (t - spec.windupMs) / spec.biteMs;
