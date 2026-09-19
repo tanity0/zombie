@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "814 files / 復号後 約730MB",
+ "generatedFor": "815 files / 復号後 約737MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2119,6 +2119,12 @@
    "h": 256,
    "bytes": 15229,
    "sha": "f095f184239e847b"
+  },
+  "sprites/helicopter-rotor.png": {
+   "w": 8000,
+   "h": 234,
+   "bytes": 1081046,
+   "sha": "d6e75abb3a4edb3a"
   },
   "sprites/helicopter.png": {
    "w": 452,

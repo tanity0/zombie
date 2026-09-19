@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4520',
+    items: [
+      '降下のヘリコプターのローターが回るようになった',
+    ],
+  },
+  {
     version: '0.25.4519',
     items: [
       'ボスの段が上がった時に体力バーが白く光るようになった。これまで一度も光っていなかった',

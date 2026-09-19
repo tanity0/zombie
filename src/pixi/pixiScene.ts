@@ -15,6 +15,7 @@
 
 import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point, Matrix } from 'pixi.js';
 import type { ColorMatrix } from 'pixi.js';
+import { heliRotorFrame, HELI_ROTOR_FRAMES } from '../utils/heliRotor';
 import { acrasielSectorPolygon, acrasielEase, ACRASIEL_SPEAR_FLIGHT_MS, acrasielGazeAngles, acrasielWarpRed, acrasielBurstRed } from '../utils/acrasielScript';
 import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
@@ -4204,6 +4205,8 @@ export class PixiScene {
   private seeThroughLerp = 1;
   private playerRidingHeli = false; // フェーズA中=プレイヤーをヘリ前面(danceUiLayer)へ移しているか
   private helicopter = new Sprite(); // 登場演出のヘリ(画像 'helicopter' 登録時のみ表示)
+  private heliRotorFrames: Texture[] | null = null; // ローター回転の18コマ(遅延スライス)
+  private heliIntroStartedAt = 0;                   // この登場演出でヘリを初めて描いた実時刻
   // 錬金術の魔法陣: 足元に常設する地面スプライト。チャネル中だけ alpha=溜め進捗で
   // 連続フェード(透明→完成で不透明)。手続き的リングは廃止しこれに置き換え。
   private alchemyCircle = new Sprite();
@@ -12270,16 +12273,32 @@ export class PixiScene {
   //  フェーズB(ジャンプ着地): プレイヤーが飛び降りる→ヘリは上へ逃げて横ドリフト+フェードアウト。
   // 画像 'helicopter' が未登録なら何もしない(画像受領後に表示)。
   private syncIntroHelicopter(player: Player, now: number) {
-    const tex = getTexture('helicopter');
+    // ★ローター回転(社長素材2026-09-19)。18コマ横並びを等分スライスして回す
+    // (`setEndingSmokeAnim` と同じ作法=新しい切り方を作らない)。
+    // 回転素材が無い端末では従来どおり静止画の 'helicopter' へ落ちる。
+    const rotorSheet = getTexture('helicopter-rotor');
+    if (rotorSheet && this.heliRotorFrames === null) {
+      const fw = Math.floor(rotorSheet.width / HELI_ROTOR_FRAMES);
+      const fh = rotorSheet.height;
+      this.heliRotorFrames = Array.from({ length: HELI_ROTOR_FRAMES }, (_, c2) =>
+        new Texture({ source: rotorSheet.source, frame: new Rectangle(c2 * fw, 0, fw, fh) }));
+    }
+    const tex = this.heliRotorFrames?.[0] ?? getTexture('helicopter');
     if (!this.introActive || !tex) {
       this.helicopter.visible = false;
+      this.heliIntroStartedAt = 0;
       return;
     }
+    if (this.heliIntroStartedAt === 0) this.heliIntroStartedAt = now;
     const t = this.introUntil === -1
       ? 0
       : Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
-    if (this.helicopter.texture !== tex) this.helicopter.texture = tex;
-    const baseSc = tex.height > 0 ? HELI_DISPLAY_H / tex.height : 1;
+    // ★飛来〜離陸のあいだ、ローターは**高速回転のループ**(最後の7コマ)を回し続ける。
+    // 助走コマ(0〜10)は「止まっている状態から回り始める/止まる」ための絵で、この登場演出には
+    // ローターが止まっている瞬間が無い(飛んで来て、着地してすぐ飛び立つ)ので使っていない。
+    const rotorTex = this.heliRotorFrames?.[heliRotorFrame(now - this.heliIntroStartedAt, 'loop')] ?? tex;
+    if (this.helicopter.texture !== rotorTex) this.helicopter.texture = rotorTex;
+    const baseSc = rotorTex.height > 0 ? HELI_DISPLAY_H / rotorTex.height : 1;
     // フェーズA終端(landT=hf)でヘリが着地。着地後は着地位置で凍結(baseT=hf)し、HELI_SIT_MS だけ
     // その場ホバー → 残り時間で離陸(上昇+横ドリフト+フェード)。プレイヤーは乗せない(飛び降り廃止)。
     const hf = PLAYER_INTRO_HELI_FRAC;

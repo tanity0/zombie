@@ -668,6 +668,10 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'whip' },                // 既定のまま
       { name: 'mirror-ball', scaleMode: 'linear' },
       { name: 'helicopter', scaleMode: 'nearest' }, // ぼかさない(平滑化なし=くっきり)
+      // 登場演出のヘリのローター回転(社長素材2026-09-19・18コマ横並び 8000x234)。
+      // ★静止画の 'helicopter' は**残す**(素材は原盤として保全。回転素材が未登録の端末では
+      //   従来どおり静止画で出る=素材受領前の挙動へ自動で落ちる)。
+      { name: 'helicopter-rotor', scaleMode: 'nearest' },
       { name: 'fog-alpha', scaleMode: 'linear' },     // 森下の霧素材(アルファ透過版=通常合成で重ねる)
       // 寄り演目のVFX(research/CINEMATIC_CAMERA.md §8・Kenney Particle Pack/CC0・v0.25.4306)。
       // ★`spritePath` は `sprites/<name>.png` しか見ないので **public/sprites/vfx/** に置く(public/vfx/ では引けない)。
