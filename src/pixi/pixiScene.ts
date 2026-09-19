@@ -1248,6 +1248,12 @@ const ESCORT_SPRITE_BASE: (string | undefined)[] = [
 // 残像(足が二重にボケる)が気になると社長判断(v0.25.1430)で解除=空に戻した。全員素の3コマピンポン。
 // 滑らかにしたい軍人が出たら、クロスフェードではなく5コマ素材を用意して差し替える方針。
 const ESCORT_CROSSFADE_SOLDIERS = new Set<number>([]);
+// PACING_PUZZLE.md §17-14(社長指示「ウェルカム終わるまでは画面に存在させない」)。ウェルカムが
+// あるランでは護衛NPCがウェルカム終了の瞬間にescortsへ現れる(=出陣)。慣性MUST(パッと出て
+// 止まるは禁止)に従い短いフェードインを掛ける。他の登場フェード(SUPPORT_SNIPER_SLIDE_IN_MS等)と
+// 同じ作法=easeOutQuadで0→1。出撃直後から居る通常ケース(esc.appearedAtが未設定)は対象外
+// (従来どおり currentIntroFade に乗るだけ=1ビットも変わらない)。
+const ESCORT_APPEAR_FADE_MS = 400;
 
 const HELI_DISPLAY_H = 120;  // 画面上のヘリ高さ(px。横はテクスチャ比で従属)
 const HELI_ABOVE = 210;      // 序盤、飛来高度(キャラ上方への随伴オフセット px)
@@ -12303,6 +12309,15 @@ export class PixiScene {
     return Math.max(0, Math.min(1, (CORRIDOR_RUNIN_DIST - s.player.y) / (CORRIDOR_RUNIN_DIST * 0.6)));
   }
 
+  // §17-14: 護衛NPC個別の出現フェード(0→1・easeOutQuad)。appearedAt未設定(出撃直後から居る
+  // 通常ケース)は常に1=従来どおり。currentIntroFadeと同じ「共有して同じタイミングで出す」思想の
+  // 個体版(こちらは出撃時刻ではなく出陣時刻=pendingEscorts→escortsへ移った瞬間が起点)。
+  private escortAppearFade(esc: EscortSoldier, now: number): number {
+    if (esc.appearedAt === undefined) return 1;
+    const t = Math.max(0, Math.min(1, (now - esc.appearedAt) / ESCORT_APPEAR_FADE_MS));
+    return 1 - (1 - t) * (1 - t);
+  }
+
   private currentIntroFade(now: number): number {
     if (!this.introActive) return 1;
     const t = this.introUntil === -1
@@ -12466,7 +12481,8 @@ export class PixiScene {
     // 護衛軍人NPC(屋外のみ・他アクターと同じ足影)。
     const escIntroFade = this.currentIntroFade(now);
     for (const esc of escorts) {
-      const ha = this.horizonActorAlpha(esc.y) * escIntroFade;
+      // §17-14: 出陣直後のフェードインに影も追従(appearedAt未設定なら1=従来どおり)。
+      const ha = this.horizonActorAlpha(esc.y) * escIntroFade * this.escortAppearFade(esc, now);
       if (ha <= 0) continue;
       const escSp = this.escortSprites.get(esc.id);
       const escW = escSp && escSp.visible !== false ? Math.abs(escSp.width) : 0;
@@ -25443,7 +25459,10 @@ export class PixiScene {
       const bob = lift * PLAYER_WALK_BOB_PX * this.depthScale(esc.y); // 接地↔遊脚の上下動(遠近スケール連動)
       const px = Math.round(esc.x), py = Math.round(esc.y - bob);
       const faceSign = esc.face < 0 ? -1 : 1;
-      const baseAlpha = this.horizonActorAlpha(esc.y) * this.currentIntroFade(now) * this.corridorRunInFade();
+      // §17-14: ウェルカム終了で出陣した個体はappearedAtからeaseOutQuadで0→1フェードイン。
+      // 出撃直後から居る通常ケース(appearedAt未設定)はescortAppearFade=1=従来のbaseAlphaのまま。
+      const baseAlpha = this.horizonActorAlpha(esc.y) * this.currentIntroFade(now) * this.corridorRunInFade()
+        * this.escortAppearFade(esc, now);
       if (tex) {
         sp.texture = tex;
         // 衛生兵はドット規格(78x64=横長キャンバス)のため contain-fit だと幅律速で小さくなる。

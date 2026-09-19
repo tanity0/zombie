@@ -1887,6 +1887,11 @@ export interface EscortSoldier {
   strongNear?: boolean;       // 強敵接近の111px入/150px出ヒステリシス
   helpRequested?: boolean;    // 実際に救援要請した後だけ5秒の進軍ボーナスを得る
   rescuedUntil?: number;      // gameTime。救援成立後の通常速度ウィンドウ
+  // PACING_PUZZLE.md §17-14: このNPCが`escorts`へ現れた実時刻(Date.now())。出撃直後から
+  // 居る通常ケースでは未設定(=フェードインなし・従来どおり登場演出の currentIntroFade に乗る)。
+  // ウェルカム終了で`pendingEscorts`から出陣した個体だけに打刻し、短いフェードインを掛ける
+  // (pixiScene.ts drawEscorts が参照。慣性MUST=パッと出て止まるは禁止)。
+  appearedAt?: number;
 }
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   WELCOME_SCRIPT, WELCOME_STEP_GAP_MS, WELCOME_FORCE_END_MS, WELCOME_FORCE_END_AREA,
   welcomeStageScript, welcomeStepCount, welcomeUnitsAt, welcomeAdvance,
-  WELCOME_START_GATE, welcomeStartGateMet,
+  WELCOME_START_GATE, welcomeStartGateMet, welcomeAppliesToRun, type WelcomeApplicabilityInput,
 } from './welcomeScript';
 
 describe('welcomeStageScript / welcomeStepCount (§17-11 受け入れ条件1)', () => {
@@ -236,3 +236,41 @@ describe('welcomeAdvance: ゲート無しステージは1ビットも変わら�
 // 既存の囲いイベントと同じ作法で直接行うため、このファイルには湧きヘルパーが無い(=テストも無い)。
 // `forcedColorTier: 'none'`(受け入れ条件10)は湧きの実体である `spawnEnemyAtWithTier`/`buildEnemy`
 // 側(enemyUtils.test.ts)でカバーする。
+
+// PACING_PUZZLE.md §17-14(社長指示「ウェルカム終わるまでは画面に存在させない」)。
+// useGameLoop.ts の welcomeApplicable と gameStore.ts の resetGame(escorts/pendingEscorts振り分け)は
+// 両方ともこの1関数を呼ぶ(判定を2箇所に増やさない)。ここでは「全部trueの土台」から1つずつ
+// 条件を崩してfalseになることを確認する=各フラグが実際に効いていることの網。
+describe('welcomeAppliesToRun (§17-14)', () => {
+  const applicableBase: WelcomeApplicabilityInput = {
+    stageId: 'stage-1',
+    welcomeEnabled: true,
+    labTheme: false,
+    indoor: false,
+    danceTest: false,
+    storyBoss: false,
+    tutorialStage: false,
+    endingStage: false,
+    practiceRun: false,
+  };
+
+  it('台本を持つステージ(stage-1)+対象の実行モードなら真', () => {
+    expect(welcomeAppliesToRun(applicableBase)).toBe(true);
+  });
+
+  it.each([
+    ['台本を持たないステージ(stage-2)', { stageId: 'stage-2' }],
+    ['台本を持たないステージ(stage-7)', { stageId: 'stage-7' }],
+    ['台本を持たないステージ(stage-ex1)', { stageId: 'stage-ex1' }],
+    ['?welcome=0キルスイッチ', { welcomeEnabled: false }],
+    ['ラボ', { labTheme: true }],
+    ['屋内', { indoor: true }],
+    ['仮ダンスモード', { danceTest: true }],
+    ['ストーリーボス専用(M7/EX)', { storyBoss: true }],
+    ['チュートリアル', { tutorialStage: true }],
+    ['エンディング', { endingStage: true }],
+    ['練習ラン', { practiceRun: true }],
+  ] as const)('%sは偽になる', (_label, patch) => {
+    expect(welcomeAppliesToRun({ ...applicableBase, ...patch })).toBe(false);
+  });
+});

@@ -187,6 +187,7 @@ import { stageBossDiffMults } from '../utils/stageDiffMults';
 // 共有import。旧B3コメントの「bountyTick.tsを直接importすると循環」は解消していない=それは今も避け、
 // 代わりにbountyTick.tsもgameStore.tsも共通の葉から取る形にした)。
 import { escortAdvance, escortShouldHoldForWelcome } from '../utils/escortAdvance';
+import { welcomeAppliesToRun } from '../utils/welcomeScript';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
@@ -429,6 +430,10 @@ const SPEED_RAMP_ENABLED = typeof window === 'undefined' || new URLSearchParams(
 // 発砲/カウンター/サブウェポン発動が可能)へ復帰。triggerCounter(gameStore)とサブ発動/自動発砲の
 // 入口(useGameLoop)が共通で読む。
 export const SKATER_LOCK_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('skaterlock') !== '0';
+// PACING_PUZZLE.md §17(ウェルカム台本)の切り分け用キルスイッチ。useGameLoop.ts と同じ `?welcome=0`
+// を読む(既定ON)。resetGame が「このランにウェルカムが関係あるか」(welcomeAppliesToRun)を
+// 判定する時に使う=useGameLoop.ts側の判定と1ビットもズレさせない。
+const WELCOME_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('welcome') !== '0';
 // PACING_PUZZLE.md §5.23 M22 Group A(A3・既定ON): 全キル(近接/銃/接触/爆発共通)の死亡ポップ
 // (小リング+方向性スプレー・spawnSpray流用)。`?deathpop=0`で無効化。近接(grantMeleeKillRewards)・
 // 銃/接触/爆発(damageEnemy)の両キル経路が同名パラメータを各自読む(既存ammosmart等と同じ流儀)。
@@ -5388,6 +5393,11 @@ interface GameState {
   // 制圧イベント: 4拠点(東西南北)。suppressionActive 時のみ有効(ステージ1メインミッション等)。
   baseSites: BaseSite[];
   escorts: EscortSoldier[];      // 護衛軍人NPC(4人・東西南北担当)。HPなし・前進&射撃&10秒占拠で解放。
+  // PACING_PUZZLE.md §17-14: ウェルカムがあるランで、ウェルカムが終わるまで護衛NPCの名簿を
+  // 預けておく置き場(escortsは空のまま=描画もtickも走らない=画面に存在しない)。ウェルカムが
+  // 終わった瞬間にescortsへそのまま移す(名簿を作り直さない=配置の乱数を二度引かない)。
+  // ウェルカムを持たないランではresetGameの時点でescortsへ直接入れるので、このランでは常に空。
+  pendingEscorts: EscortSoldier[];
   // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2 §3): 専用配列。escortsに相乗りしない
   // (セリフ4関数はtutorialしか見ておらず、混ぜると名前付きNPCが喋る事故になるため)。
   endingSoldiers: EndingSoldier[];
@@ -6595,6 +6605,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   storyReturnPromptVisible: false,
   baseSites: createBaseSites(),
   escorts: [],
+  pendingEscorts: [],
   endingSoldiers: [],
   endingPhill: null,
   endingBombs: [],
@@ -20285,6 +20296,25 @@ export const useGameStore = create<GameState>((set, get) => ({
         : makeEscorts(spawnTL.x, spawnTL.y, corridorMode);
       const sortieEsc = (escortRoster.length && farBackdrop !== 'tutorial') ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
       const sortieSol = sortieEsc ? BASE_SOLDIERS[((sortieEsc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length] : null;
+      // PACING_PUZZLE.md §17-14(社長指示「ウェルカム終わるまでは画面に存在させない」):
+      // このランにウェルカムが関係あるか(useGameLoop.ts の welcomeApplicable と同じ1関数=
+      // welcomeAppliesToRun・判定を2箇所に増やさない)。関係あるランは名簿(escortRoster)を
+      // pendingEscortsへ預け、escortsは空で始める(=描画もtickも走らない=存在しない)。
+      // ウェルカムを持たないラン(S2/S7/EX/練習・ラボ・洋館・?welcome=0等)は、このifがfalseになり
+      // 従来どおりescortsへ直接入る=出撃の瞬間から1フレームも遅れず4人が居る。
+      const welcomeForThisRun = welcomeAppliesToRun({
+        stageId: getSelectedStageId() ?? '',
+        welcomeEnabled: WELCOME_ENABLED,
+        labTheme: stageTheme === 'lab',
+        indoor,
+        danceTest: state.danceTestMode,
+        storyBoss: state.pendingStoryBoss && !indoor && stageTheme !== 'lab',
+        tutorialStage: farBackdrop === 'tutorial',
+        endingStage: farBackdrop === 'ending',
+        practiceRun: isPracticeRun(),
+      });
+      const escortsNow = welcomeForThisRun ? [] : escortRoster;
+      const pendingEscortsNow = welcomeForThisRun ? escortRoster : [];
       return {
         unlockedShopSkillCards: runShopUnlocks,
         indoorMode: indoor,
@@ -20579,7 +20609,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // v0.25.1818で止めていたが、**サークルの実体(baseSites)は作られたままで描画されていた**。
         baseSites: (corridorMode || farBackdrop === 'tutorial' || farBackdrop === 'ending') ? [] : createBaseSites(),
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
-        escorts: escortRoster,
+        // §17-14: ウェルカムがあるランはescortsを空で始める(pendingEscortsへ預けてある。
+        // useGameLoop.tsがウェルカム終了の瞬間にescortsへ移す=出陣)。
+        escorts: escortsNow,
+        pendingEscorts: pendingEscortsNow,
         // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2 §3/§9): 専用配列を新ランごとに初期化
         // (2周目に前回の兵士が残らないように)。escortsとは別配列(相乗りしない)。
         endingSoldiers: farBackdrop === 'ending'

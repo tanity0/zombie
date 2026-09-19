@@ -328,7 +328,7 @@ import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { phaseAt, sceneAt } from '../utils/difficultyDirector';
-import { welcomeStageScript, welcomeAdvance, welcomeAppliesToRun, WELCOME_FORCE_END_MS } from '../utils/welcomeScript';
+import { welcomeAdvance, welcomeAppliesToRun, WELCOME_FORCE_END_MS } from '../utils/welcomeScript';
 import { spawnEscalation, gateLiveCorrection, playerPower, expectedPower, powerMargin } from '../utils/difficultyScaler';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
@@ -3182,10 +3182,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 旧スポナーの枝の【両方】に別途ゲートを足す(下の該当箇所)。
         // welcomeApplicable=「このランにウェルカムの仕組みが関係あるか」(台本を持つステージ+対象の
         // 実行モード)。welcomeActive=「その中で今まだ終わっていないか」。両者を分けるのが肝:
-        // welcomeScriptForRunがtrueでも、練習ラン/ボスメーカー等(isPracticeRun等)ではウェルカムは
+        // welcomeAppliesToRunがtrueでも、練習ラン/ボスメーカー等(isPracticeRun等)ではウェルカムは
         // 一度も起動せず welcomeEndedAtRef は永遠にnullのまま=分けないと下のdirectorTimeが
         // 「該当しないランなのに最初の60秒ずっと0」という別バグを生む。
-        const welcomeScriptForRun = welcomeStageScript(getSelectedStageId() ?? '');
         // §17-14: 判定は welcomeAppliesToRun(welcomeScript.ts)の1本に集約(gameStore.ts の
         // resetGame と同じ関数・同じ答え=「判定を2箇所に増やさない」)。
         const welcomeApplicable = welcomeAppliesToRun({
@@ -15833,6 +15832,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   : s.enemies,
               };
             });
+            // §17-14(社長「NPCはウェルカム終わるまでは画面に存在させない」): ウェルカムが
+            // 終わった瞬間(このifブロック=1回だけ通る)に、resetGameで預けておいた護衛NPCの
+            // 名簿(pendingEscorts)をそのままescortsへ移す(=出陣。名簿は作り直さない=配置の乱数を
+            // 二度引かない・出撃地点の座標も変わらない)。出方は慣性MUST(パッと出て止まるは禁止)に
+            // 従い、appearedAtを打刻して短いフェードインへ(pixiScene.ts drawEscortsが処理)。
+            // バナー・SE・カメラはここでは一切出さない(§17-11 B4「合図は作らない」)。
+            const pendingEscortsNow = useGameStore.getState().pendingEscorts;
+            if (pendingEscortsNow.length) {
+              const deployedAt = Date.now();
+              useGameStore.setState({
+                escorts: pendingEscortsNow.map(e => ({ ...e, appearedAt: deployedAt })),
+                pendingEscorts: [],
+              });
+            }
           }
         }
 
