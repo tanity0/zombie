@@ -2486,6 +2486,18 @@ export const PUMPKIN_RECOVER_MS = 1000;    // 着地後の停止(汎用: ハン�
 // 着地スカッシュ起点)も同じ関数を引く=判定と絵の出どころを1本に保つ。
 export const pumpkinRecoverMs = (type: Enemy['type']): number => (type === 'pumpkin' ? 2000 : PUMPKIN_RECOVER_MS);
 export const PUMPKIN_COOLDOWN_MS = 800;    // 復帰後、次の溜めまでの猶予
+/**
+ * ★硬直が明けた瞬間に**噛みつきへ与える間**(PACING_PUZZLE.md §16-H #H-4 / #H-6)。
+ * 社長裁定2026-09-19「**800ms(パンプキンと同じ)**」=**4型で共有**する
+ * (パンプキン系の `recover` / 人狼の `dash-recover` / 削岩型 / 伐採人)。
+ * ★**新しい数字を作らない**ために `PUMPKIN_COOLDOWN_MS` をそのまま指す。
+ * ★なぜ要るか: 凍結(§16-H)は「未来の期限を預かって戻す」仕組みなので、硬直が明けた時点で
+ *   `biteReadyAt` が過去/未設定なら**畳む残りが無い**=「硬直明けに間が1フレームも無い」が残る。
+ *   ⇒ 技の後の間は**書かないと生まれない**。
+ * ★却下(社長裁定): その型の技CD(人狼1200 / 削岩型3500 / 伐採人3500)をそのまま噛みにも使う案。
+ *   削岩型・伐採人が3.5秒噛んでこなくなり、体感が変わりすぎる。
+ */
+export const RECOVER_BITE_GAP_MS = PUMPKIN_COOLDOWN_MS;
 export const PUMPKIN_JUMP_HEIGHT = 90;     // ジャンプの見た目の高さ(px・描画のみ)
 export const PUMPKIN_LAND_SHAKE_MS = 220;  // 着地時の画面揺れ
 export const PUMPKIN_LAND_SHAKE_MAG = 9;
@@ -14910,7 +14922,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
           // ★社長指示2026-08-26「自転車、着地後1秒硬直」: 突進明けの硬直中はその場で停止(移動もチェイスもしない)。
           if (enemy.aiPhase === 'dash-recover') {
-            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) return { ...enemy, vx: 0, vy: 0, aiPhase: undefined };
+            // ★§16-H #H-6(社長裁定2026-09-19「800ms」): 突進の硬直が**明けた瞬間**に、噛みつきにも
+            // 間を与える(他3型=パンプキン/削岩型/伐採人と**同じ作法**。硬直の"開始"側で書くと
+            // §16-Hの凍結に預けっぱなしになり、書く位置が型ごとにバラバラになる)。
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, biteReadyAt: atkCdUntil(RECOVER_BITE_GAP_MS) };
+            }
             return { ...enemy, vx: 0, vy: 0 };
           }
           // 突進明けの遷移: werewolf本種のみ硬直(dash-recover)へ。他の犬型は従来どおり即チェイス復帰。
@@ -15937,7 +15954,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           if (enemy.aiPhase === 'driller-thrust-recover') {
             if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: 0, aiReadyAt: atkUntil(DRILLER_THRUST_CD_MS) };
+              // ★§16-H #H-6(社長裁定2026-09-19「800ms」): 突きの硬直明けは噛みつきにも間を与える。
+              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: 0, aiReadyAt: atkUntil(DRILLER_THRUST_CD_MS), biteReadyAt: atkUntil(RECOVER_BITE_GAP_MS) };
             }
             return { ...enemy, vx: 0, vy: 0 };
           }
@@ -16022,7 +16040,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           if (enemy.aiPhase === 'logger-sweep-recover') {
             if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: 0, aiReadyAt: atkUntil(LOGGER_SWEEP_CD_MS) };
+              // ★§16-H #H-6(同上)。薙ぎの硬直明け。
+              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: 0, aiReadyAt: atkUntil(LOGGER_SWEEP_CD_MS), biteReadyAt: atkUntil(RECOVER_BITE_GAP_MS) };
             }
             return { ...enemy, vx: 0, vy: 0 };
           }

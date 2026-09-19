@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4515',
+    items: [
+      '変異体(獣化型)の突進後、変異体(削岩型)の突き後、伐採人の薙ぎ後も、立て直すまで噛みついてこなくなった',
+    ],
+  },
+  {
     version: '0.25.4514',
     items: [
       '敵は硬直している間、次の攻撃までの間合いを数えなくなった。硬直が明けてから数え始める',
