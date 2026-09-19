@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4519',
+    items: [
+      'ボスの段が上がった時に体力バーが白く光るようになった。これまで一度も光っていなかった',
+    ],
+  },
+  {
     version: '0.25.4518',
     items: [
       '武器商人は入りの関門を抜けるまで店を開かない。護衛の兵士と同じく、関門が終わってから合流する',

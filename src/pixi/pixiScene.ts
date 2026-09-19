@@ -23795,8 +23795,12 @@ export class PixiScene {
       // 6.26-9 #4を継承)。Phase2以上=橙、0.3未満は常に赤(アクラシエルのPhase3閾値30%と一致するため
       // 専用の第3色は不要=段階が上がるほど赤に近づく自然な見た目になる)。
       barColor = pct < 0.3 ? STATUS_RED : (e.bossPhase >= 2 ? GIANT_PHASE2_BAR_COLOR : STATUS_GREEN);
-      if (e.bossPhaseFlashUntil !== undefined && now < e.bossPhaseFlashUntil) {
-        barColor = Math.sin(now / 60) > 0 ? 0xffffff : barColor;
+      // ★★時計違い(社長の問い2026-09-19「さっきのskeletonバグが他の敵にも無いか?」で発見)。
+      // `bossPhaseFlashUntil` は **gameTime** で書かれる(useGameLoop / bountyTick / idolTick の3箇所とも)。
+      // ここは描画の `now`(=Date.now)と比べていたので **`now < flashUntil` が常に偽**=
+      // **相が上がった時の白フラッシュは一度も出ていなかった。**(`liftUntil` と同型・向きが逆)
+      if (e.bossPhaseFlashUntil !== undefined && gameTime < e.bossPhaseFlashUntil) {
+        barColor = Math.sin(now / 60) > 0 ? 0xffffff : barColor; // 点滅の速さは実時間のまま(見た目は不変)
       }
     } else if (
       ((e.type === 'mimir' && MIMIR_SCRIPT_ENABLED) || (e.type === 'jormungand' && JORMUNGAND_SCRIPT_ENABLED)
@@ -23807,8 +23811,12 @@ export class PixiScene {
       // §6.28-5/7/9/10(バッチM54/M56/M58/M59): 裏ボス4体も同じ合図(社長裁定6.26-9 #4を継承)。
       // スカジの3相もPhase2以上=橙のまま(0.3未満で赤へ・アクラシエルの3相と同型の扱い)。
       barColor = pct < 0.3 ? STATUS_RED : (e.bossPhase >= 2 ? GIANT_PHASE2_BAR_COLOR : STATUS_GREEN);
-      if (e.bossPhaseFlashUntil !== undefined && now < e.bossPhaseFlashUntil) {
-        barColor = Math.sin(now / 60) > 0 ? 0xffffff : barColor;
+      // ★★時計違い(社長の問い2026-09-19「さっきのskeletonバグが他の敵にも無いか?」で発見)。
+      // `bossPhaseFlashUntil` は **gameTime** で書かれる(useGameLoop / bountyTick / idolTick の3箇所とも)。
+      // ここは描画の `now`(=Date.now)と比べていたので **`now < flashUntil` が常に偽**=
+      // **相が上がった時の白フラッシュは一度も出ていなかった。**(`liftUntil` と同型・向きが逆)
+      if (e.bossPhaseFlashUntil !== undefined && gameTime < e.bossPhaseFlashUntil) {
+        barColor = Math.sin(now / 60) > 0 ? 0xffffff : barColor; // 点滅の速さは実時間のまま(見た目は不変)
       }
     }
     g.rect(x, y, w * pct, h).fill({ color: barColor });

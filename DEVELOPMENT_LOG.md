@@ -1,5 +1,45 @@
 # Development Log
 
+## v0.25.4519 — 「時計の取り違え」を全ソースで洗い、もう1件見つけて機械化【2026-09-19 23:52 JST】
+
+### 社長の問い
+「**さっきのskeletonバグが他の敵にも無いか?**」
+
+### 洗い方(型検査は使えない=両方 `number` なので素通りする)
+時刻フィールド**250個**について「**書く時の時計**」と「**比べる時の時計**」を集め、**混ざっているものだけ**を
+出す走査を書いて回した。**11件が引っかかり、1件ずつ実物を読んで判定した。**
+
+### 結果: 本物は**1件**、残り10件は偽陽性
+- ★**本物: `bossPhaseFlashUntil`**(ボスの相が上がった時にHPバーが白く光る合図)。
+  **書きは `gameTime`**(useGameLoop / bountyTick / idolTick の3箇所とも)なのに、
+  **描画は `Date.now` と比べていた** ⇒ `now < flashUntil` が**常に偽** ⇒
+  **相が上がった白フラッシュは一度も出ていなかった。**`liftUntil` と**同型・向きが逆**
+  (あちらは常に真で「永久に止まる」、こちらは常に偽で「一度も出ない」)。
+- **偽陽性10件の理由**: ★**`now` という変数名が `gameTime` を持っている場所がある**
+  (`gameStore.ts:19215` の `const now = state.gameTime`)。`angelBossTick` の `now` も
+  **引数で `newGameTime` を受けている**。名前だけで判定すると全部誤診する。
+  `requiredReadyAt` / `bossNextActionAt` / `bossStateUntil` / `eventBannerUntil` /
+  `createdAt` / `endAt` / `endsAt` / `fireAt` / `firstBeatAt` は**すべて呼び出し側まで辿って白**と確認した。
+
+### ★機械化(`src/utils/clockLedger.test.ts`・17本)
+- **時計の台帳**を持つ: 実時間系5本(`liftUntil`/`knockbackUntil`/`knockbackImmuneUntil`/
+  `knockbackShoveUntil`/`hitStunUntil`)と gameTime 系11本(`stunUntil`/`rootUntil`/`bossFullStunUntil`/
+  `aiPhaseUntil`/`aiReadyAt`/`biteReadyAt`/`biteRecoverUntil`/`chaffMoveCdUntil`/`bossStateUntil`/
+  `bossNextActionAt`/`bossPhaseFlashUntil`)。**反対の時計と比べていたら落ちる。**
+- ★**素の `now` は、その行より上の直近の `const now = …` で時計を解決する**(名前で決めない)。
+  決められない行は**落とさない**(嘘の合格も嘘の不合格も作らない)。
+- ★**網に穴が無いことを、わざと壊して確かめた。**
+  **最初の版は素通りした**(素の `now` を数えていなかった)ので作り直し、**今の版は戻すと
+  `pixiScene.ts:23802 / 23818` を名指しで落とす**ことを確認した。**素通りする網は無い方がマシ。**
+- ENGINEERING_NOTES.md §0 の症状表に1行追加:
+  **「敵が『一度も』攻撃しない / 演出が『一度も』出ない(たまに、ではなく常に極端)→ 2つの時計を疑う」**。
+
+### 検証
+`npm run typecheck` 緑 / `npm run lint` エラー0 / `npm test` **6412 passed / 392ファイル**。
+
+### 状態変化
+なし。
+
 ## v0.25.4518 — 武器商人もウェルカムの後 + 段クリアごとに弾1つ【2026-09-19 23:40 JST】
 
 ### 社長指示
