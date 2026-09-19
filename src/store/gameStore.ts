@@ -186,7 +186,7 @@ import { stageBossDiffMults } from '../utils/stageDiffMults';
 // コメント参照)へ一本化した。bountyTick.tsもここから同じ関数をimportする(=もう複製ではなく本物の
 // 共有import。旧B3コメントの「bountyTick.tsを直接importすると循環」は解消していない=それは今も避け、
 // 代わりにbountyTick.tsもgameStore.tsも共通の葉から取る形にした)。
-import { escortAdvance } from '../utils/escortAdvance';
+import { escortAdvance, escortShouldHoldForWelcome } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
@@ -19100,6 +19100,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const detectRadius = huntingMeleeRadius(p) * ESCORT_DETECT_MULT;
     const escortCaptures = new Map<string, number>(); // baseId -> soldierIndex(このフレーム占拠完了)
     let escortsChanged = false;
+    // PACING_PUZZLE.md §17-14(社長指示「ウェルカムイベント終わってからNPCは出陣で」): 出撃地点は
+    // ウェルカムの輪が開く場所そのものなので、輪が出ている間は護衛の前進を止め出撃地点で待機させる。
+    // 射撃は止めない(輪の中の敵を撃つのは自然)。輪が閉じた瞬間から従来どおり前進=出陣。
+    const escortWelcomeHold = escortShouldHoldForWelcome(state.activeEvent?.kind);
     const nextEscorts: EscortSoldier[] = state.escorts.map(esc => {
       const base = state.baseSites.find(b => b.id === esc.baseId);
       if (!base) return esc;
@@ -19112,7 +19116,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!onScreen(esc.x, esc.y)) return esc; // 画面外=前進停止(座標保持)
       const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
       // 制圧後は進軍目標がないため全方位を前方扱い。巡回中に背後だけ無視して進み続けない。
-      const goal = base.status === 'captured' ? { x: esc.x, y: esc.y } : { x: base.x, y: base.y };
+      // §17-14: ウェルカムの輪が出ている間は出撃地点(esc.x/y=現在地)を目標にして前進させない。
+      const goal = (escortWelcomeHold || base.status === 'captured') ? { x: esc.x, y: esc.y } : { x: base.x, y: base.y };
       const advance = escortAdvance(esc, goal, state.enemies, {
         detectRadius,
         surroundRadius: SURROUND_RADIUS,
@@ -19140,7 +19145,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         companionMs = 0; // 離れたらリセット(連続並走のみ)
       }
       let { x, y, fireAt, dwellMs, face } = esc;
-      if (base.status === 'captured') {
+      if (escortWelcomeHold) {
+        // §17-14: 出撃地点で待機(前進しない)。射撃は下のブロックでそのまま続く。
+      } else if (base.status === 'captured') {
         // 制圧後: 円の縁を巡回(社長指示)。半径を patrolR へ寄せつつ角度を進める=滑らかに周回。
         const cx0 = x - base.x, cy0 = y - base.y;
         let ang = Math.atan2(cy0, cx0);
@@ -19184,13 +19191,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!capFrozen && inC && dwellMs >= BASE_CAPTURE_HOLD_MS && base.status === 'open' && !escortCaptures.has(base.id)) {
         escortCaptures.set(base.id, esc.soldierIndex);
       }
+      // §17-14受け入れ条件19: ウェルカム中は moving=false を保つ(止まっているのに歩行アニメが回らない)。
+      // 輪が閉じたら true に戻り、従来どおりのアニメ(esc.moving!==false=常時行進)に戻る。
+      const moving = !escortWelcomeHold;
       if (x !== esc.x || y !== esc.y || fireAt !== esc.fireAt || dwellMs !== esc.dwellMs || face !== esc.face || companionMs !== (esc.companionMs ?? 0) ||
+        moving !== (esc.moving ?? true) ||
         advance.zone !== (esc.advanceZone ?? 'none') || advance.speedMult !== esc.advanceSpeedMult || advance.speedTarget !== esc.advanceSpeedTarget ||
         advance.advanceDirX !== esc.advanceDirX || advance.advanceDirY !== esc.advanceDirY || advance.advanceRampFrom !== esc.advanceRampFrom || advance.advanceRampAt !== esc.advanceRampAt ||
         advance.strongNear !== (esc.strongNear ?? false) || advance.wasSurrounded !== (esc.wasSurrounded ?? false) ||
         advance.helpRequested !== (esc.helpRequested ?? false) || advance.rescuedUntil !== (esc.rescuedUntil ?? 0)) escortsChanged = true;
       return {
-        ...esc, x, y, fireAt, dwellMs, face, companionMs,
+        ...esc, x, y, fireAt, dwellMs, face, companionMs, moving,
         advanceZone: advance.zone,
         advanceDirX: advance.advanceDirX,
         advanceDirY: advance.advanceDirY,

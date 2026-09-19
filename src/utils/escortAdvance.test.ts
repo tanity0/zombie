@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Enemy, EnemyType, EscortSoldier } from '../types/game';
-import { escortAdvance, isEscortStrongEnemy, type EscortAdvanceResult } from './escortAdvance';
+import type { ActiveEventKind, Enemy, EnemyType, EscortSoldier } from '../types/game';
+import { escortAdvance, escortShouldHoldForWelcome, isEscortStrongEnemy, type EscortAdvanceResult } from './escortAdvance';
 
 const enemy = (id: string, x: number, y: number, type: EnemyType = 'zombie', aiPhase?: Enemy['aiPhase']): Enemy => ({
   id,
@@ -162,5 +162,23 @@ describe('isEscortStrongEnemy', () => {
     expect(isEscortStrongEnemy('reaper')).toBe(true);
     expect(isEscortStrongEnemy('lab-zombie-3')).toBe(true);
     expect(isEscortStrongEnemy('zombie')).toBe(false);
+  });
+});
+
+// PACING_PUZZLE.md §17-14(社長指示「ウェルカムイベント終わってからNPCは出陣で」): ウェルカムの輪が
+// 開いている間だけ護衛NPCは前進を止める。既存の activeEvent.kind だけで判定し、新しいフラグは作らない。
+describe('escortShouldHoldForWelcome', () => {
+  it('holds only while the welcome ring is open', () => {
+    expect(escortShouldHoldForWelcome('welcome')).toBe(true);
+  });
+
+  it.each([
+    ['horde', 'horde'],
+    ['boss', 'boss'],
+    ['rescue', 'rescue'],
+    ['no active event (undefined)', undefined],
+    ['no active event (null)', null],
+  ] as const)('does not hold for %s', (_label, kind) => {
+    expect(escortShouldHoldForWelcome(kind as ActiveEventKind | null | undefined)).toBe(false);
   });
 });

@@ -1,5 +1,11 @@
-import type { Enemy, EnemyType, EscortSoldier } from '../types/game';
+import type { ActiveEventKind, Enemy, EnemyType, EscortSoldier } from '../types/game';
 import { isHiddenBoss, isPumpkinTier, isReaperFamily } from './enemyUtils';
+
+// PACING_PUZZLE.md §17-14: ウェルカム(輪)が開いている間、護衛NPCは出撃地点から前進しない。
+// 輪が閉じた瞬間(kind !== 'welcome')から従来どおり前進を始める(=出陣)。新しいフラグは作らず
+// 既存の activeEvent.kind だけで判定する。射撃はこの関数の対象外(止めない)。
+export const escortShouldHoldForWelcome = (eventKind: ActiveEventKind | null | undefined): boolean =>
+  eventKind === 'welcome';
 
 export type EscortAdvanceZone = 'none' | 'front' | 'side' | 'rear';
 
