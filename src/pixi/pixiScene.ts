@@ -8910,7 +8910,10 @@ export class PixiScene {
       this.syncCastle(s.castleEvent, now);
       this.syncEventQuestNpc(s.eventQuestNpc, now);
     }
-    this.syncMerchant(s.weaponMerchant, s.player, now, s.merchantDwellMs); // 商人は屋内でも(最初の部屋に)出す
+    // ★ウェルカムが終わるまで商人は画面に出さない(社長指示2026-09-19。護衛NPCと同じ扱い)。
+    // 店の実体は store に残っている(§17-13 が商人のyを読む)ので、**絵だけ**を止める。
+    if (s.merchantHidden) { this.merchantView.visible = false; this.merchantShadow = null; }
+    else this.syncMerchant(s.weaponMerchant, s.player, now, s.merchantDwellMs); // 商人は屋内でも(最初の部屋に)出す
     // v0.25.3054: 施設フェードの適用(コンテナ/影リクエストに外から乗算=各syncの内部alphaと独立)。
     // ★v0.25.3425修正: 城は「代入」だと syncCastle が lerp した内部alpha(裏回り透過・地平フェード)を
     // 毎フレーム上書きして殺してしまう(社長報告「城の裏回っても透けない」の正体)。min合成にする=
@@ -9186,7 +9189,7 @@ export class PixiScene {
     // v0.25.3054: 施設フェード中は施設系の矢印/マーカーも出さない(城=castleVisible、商人=radius0で
     // 縁矢印を殺す、POI/拠点=空配列)。ボスマーク・アイテム・ハンター等の非施設マーカーは従来どおり。
     const facHidden = facFade < 0.5;
-    this.syncArrows(s.pickups, s.castleEvent, facHidden ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab') && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, rescuePoints, {
+    this.syncArrows(s.pickups, s.castleEvent, (facHidden || s.merchantHidden) ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab') && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, rescuePoints, {
       targets: markedBosses,
       // 距離は**ボスメーカーの部屋の中だけ常時**表示(社長指示v0.25.2657)。本編は数字を出さない=
       // マーク(方角)だけ。道具としての計測値をゲーム画面へ持ち込まない。

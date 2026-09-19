@@ -15755,6 +15755,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 「いつ0になったか」を見張るのはこちら側の役目)。
           if (aliveWelcomeNow === 0 && welcomeStepClearedAtRef.current === null && welcomeStepRef.current >= 0) {
             welcomeStepClearedAtRef.current = gameTime;
+            // ★社長指示2026-09-19「**弾を各ウェルカムターン終了毎に1つプレイヤーから遠い端っこに
+            // ドロップ(所持武器種のどれか)**」。段を1つ片付けるたびに1個。
+            // ★置き場=**輪の縁のうちプレイヤーから最も遠い点**(中心→プレイヤーの逆向き)。
+            //   縁ぴったりだと拾いに行けないことがあるので、半径の85%=輪の内側に落とす。
+            //   プレイヤーが中心に重なっている時は向きが定まらないので、真上を既定にする
+            //   (ゼロ除算で「その場に落ちる」を作らない=今日 `biteDir` で踏んだのと同じ罠)。
+            useGameStore.getState().dropWelcomeStepAmmo(
+              WELCOME_RING_CENTER_X, WELCOME_RING_CENTER_Y, ARENA_EVENT_RADIUS * 0.85, welcomeStepRef.current,
+            );
           }
           // §17-12-d「段ごと: 1段=1つの輪。倒し切ったら閉じ、gap後に次の輪を新しく開く」。
           // 段が全滅した瞬間、まだ輪(kind:'welcome')が開いていれば閉じる(次の輪はspawnNowが
@@ -15862,6 +15871,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 二度引かない・出撃地点の座標も変わらない)。出方は慣性MUST(パッと出て止まるは禁止)に
             // 従い、appearedAtを打刻して短いフェードインへ(pixiScene.ts drawEscortsが処理)。
             // バナー・SE・カメラはここでは一切出さない(§17-11 B4「合図は作らない」)。
+            // ★武器商人もここで出す(社長指示2026-09-19「武器商人もウェルカムイベント終わってから出現」)。
+            // 護衛と同じ1箇所で外す=「ウェルカムが終わった瞬間」の定義を2つに増やさない。
+            if (useGameStore.getState().merchantHidden) useGameStore.setState({ merchantHidden: false });
             const pendingEscortsNow = useGameStore.getState().pendingEscorts;
             if (pendingEscortsNow.length) {
               const deployedAt = Date.now();

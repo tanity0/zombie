@@ -5337,7 +5337,22 @@ interface GameState {
   // 商人サークル内の連続滞在時間(ms)。MERCHANT_TALK_DWELL_MSで満了=話しかける(ショップ/紅き夜やり過ごし)。
   // pixiSceneが進捗アーク描画に読む。円外/メニュー中/再開待ちで0リセット。
   merchantDwellMs: number;
+  /**
+   * ★武器商人はウェルカムが終わるまで**画面に存在しない**(社長指示2026-09-19
+   * 「武器商人もウェルカムイベント終わってから出現」)。護衛NPC(§17-14)と同じ扱い。
+   * 出撃時に `welcomeAppliesToRun` が真なら true で始まり、ウェルカムが終わった瞬間に false。
+   * ★店の実体(`weaponMerchant`)は消さない——§17-13(洋館の始動ゲート)が商人のyを読むため。
+   *   隠すのは**絵**(pixiScene)と**話しかけ**(updateMerchantDwell)の2つだけ。
+   */
+  merchantHidden: boolean;
   updateMerchantDwell: (deltaMs: number) => void;
+  /**
+   * ★ウェルカムの段を1つ片付けるたびに弾を1個落とす(社長指示2026-09-19
+   * 「弾を各ウェルカムターン終了毎に1つプレイヤーから遠い端っこにドロップ(所持武器種のどれか)」)。
+   * 弾種の選び方は**キル時ドロップと同じ1本**(`pickAmmoDropType`=残弾割合が最小の弾種)を使う
+   * =「所持武器種のどれか」を新しい式で決め直さない。
+   */
+  dropWelcomeStepAmmo: (cx: number, cy: number, distPx: number, step: number) => void;
   eventQuestNpc: EventQuestNpc;
   // 二人組クエストのrun内状態(EVENT_QUEST_DESIGN.md)。受領中のクエスト種別と討伐進捗。
   // HUD(右上スクラップ下の n/N 表示)はこのプリミティブ群だけを購読する(React再描画規律)。
@@ -6586,6 +6601,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   screamerBuffUntil: 0,
   weaponMerchant: createWeaponMerchant(),
   merchantDwellMs: 0,
+  merchantHidden: false,
   eventQuestNpc: createEventQuestNpc(),
   eventQuestActive: null,
   eventQuestKills: 0,
@@ -11947,10 +11963,37 @@ export const useGameStore = create<GameState>((set, get) => ({
     return sold;
   },
 
+  dropWelcomeStepAmmo: (cx, cy, distPx, step) => {
+    const { player } = get();
+    const owned = getGuns(player).map(w => w.ammoType).filter((t): t is AmmoType => !!t);
+    // 銃を1挺も持っていない(ナイフのみ)なら落とさない=拾えない物を置かない。
+    const type = pickAmmoDropType(owned.map(t => ({ type: t, reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })), undefined)
+      ?? owned.find(t => t !== 'phill');
+    if (!type) return;
+    // 中心→プレイヤーの**逆向き**=輪の中でプレイヤーから最も遠い側。
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const dx = pcx - cx, dy = pcy - cy;
+    const d = Math.hypot(dx, dy);
+    // ★重なっている時は向きが定まらない。既定を持って必ずどこかへ置く(その場に落とさない)。
+    const ux = d > 0.001 ? -dx / d : 0;
+    const uy = d > 0.001 ? -dy / d : -1;
+    get().addPickup({
+      id: `pickup-ammo-welcome-${step}-${Math.round(get().gameTime)}`,
+      x: cx + ux * distPx - 8, y: cy + uy * distPx - 8,
+      type: `ammo-${type}` as `ammo-${AmmoType}`,
+      value: 0,
+    });
+  },
+
   // 武器商人: サークルに3秒連続滞在で話しかける(社長指示v0.25.1842・旧スイング開店を置換)。
   // useGameLoopがsim毎フレーム呼ぶ。紅き夜中は「やり過ごした」(旧スイング時の挙動を移植)。
   updateMerchantDwell: (deltaMs) => {
     const s = get();
+    // ★ウェルカムが終わるまで商人は居ない(社長指示2026-09-19)=滞在も積まない。
+    if (s.merchantHidden) {
+      if (s.merchantDwellMs !== 0) set({ merchantDwellMs: 0 });
+      return;
+    }
     // v0.25.3054(社長指示): ボス戦中(+復帰猶予)は商人ロック=滞在が進まずショップが開かない。
     if (facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime)) {
       if (s.merchantDwellMs !== 0) set({ merchantDwellMs: 0 });
@@ -20709,6 +20752,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // useGameLoop.tsがウェルカム終了の瞬間にescortsへ移す=出陣)。
         escorts: escortsNow,
         pendingEscorts: pendingEscortsNow,
+        // ★商人も護衛と同じ(社長指示2026-09-19「武器商人もウェルカムイベント終わってから出現」)。
+        merchantHidden: welcomeForThisRun,
         // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2 §3/§9): 専用配列を新ランごとに初期化
         // (2周目に前回の兵士が残らないように)。escortsとは別配列(相乗りしない)。
         endingSoldiers: farBackdrop === 'ending'

@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4518',
+    items: [
+      '武器商人は入りの関門を抜けるまで店を開かない。護衛の兵士と同じく、関門が終わってから合流する',
+      '関門の一波を片付けるたび、輪のいちばん遠い縁に弾がひとつ落ちる。持っている銃のうち、いま一番心細い弾種',
+    ],
+  },
+  {
     version: '0.25.4517',
     items: [
       '入りの関門が時間で打ち切られなくなった。倒し切るまで続く',
