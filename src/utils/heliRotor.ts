@@ -1,40 +1,25 @@
-// 登場演出のヘリコプターのローター回転(社長素材2026-09-19・18コマ横並び)。
+// 登場演出のヘリコプターのローター回転(社長素材2026-09-19)。
 //
-// ★社長の言葉: 「**最後の7コマが高速回転のループだと思う。そこまでのコマは回し始めと、
-// 回し終わりの助走回転コマ**」。
-//   - コマ 0〜10(11枚) = **助走**(止まっている状態から速度に乗るまで / その逆)
-//   - コマ 11〜17(7枚) = **高速回転のループ**
+// ★経緯: 受領素材は18コマ(8000x234)で、社長の言葉は「**最後の7コマが高速回転のループだと思う。
+// そこまでのコマは回し始めと、回し終わりの助走回転コマ**」。実物を並べて確認したところ、
+// **コマ0〜10は羽根が1枚ずつ見える低速、コマ11〜17は流れて見える高速**で、読みは正しかった。
+//
+// ★ただし**登場演出にはローターが止まっている瞬間が1つも無い**(飛来→着陸→280msホバー→離陸)。
+// 助走コマの置き場が無いため、社長指示2026-09-19「**その他のコマは捨ててください。容量無駄なので**」
+// により **高速回転の7コマだけ**を出荷する。
+//   - 18コマの原盤は `art-masters/helicopter-rotor-18f-8000x234.png` に退避(配信されない)。
+//     助走が要る場面(将来の着陸シーン等)が出たら、そこから切り直す。
+//   - 出荷素材 `public/sprites/helicopter-rotor.png` は **2338x176 / 7コマ(コマ幅334)**。
+//     高さ176は**表示の最大162px**(HELI_DISPLAY_H=120 × 離陸時の1.35倍)より大きい=**拡大されない**。
+//     VRAM 7.14MB → **1.57MB**。
 //
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(src/utils)。描画は pixiScene が読むだけ。
 
-/** 素材のコマ数(`public/sprites/helicopter-rotor.png` は 8000x234 の横一列)。 */
-export const HELI_ROTOR_FRAMES = 18;
-/** 高速回転のループに入る最初のコマ(=ここから最後までの7枚がループ)。 */
-export const HELI_ROTOR_LOOP_FROM = 11;
-/** 高速回転の1コマあたりの表示時間(ms)。7枚で約1周=84ms/周。 */
+/** 出荷素材のコマ数(高速回転のループのみ)。 */
+export const HELI_ROTOR_FRAMES = 7;
+/** 1コマあたりの表示時間(ms)。7枚で1周=84ms/周。 */
 export const HELI_ROTOR_LOOP_MS = 12;
-/** 助走(止まり→高速 / 高速→止まり)にかける時間(ms)。 */
-export const HELI_ROTOR_SPINUP_MS = 900;
 
-export type HeliRotorPhase = 'spin-up' | 'loop' | 'spin-down';
-
-/**
- * 経過msから表示するコマ番号(0..17)を返す。
- *
- * - `loop`: 最後の7枚だけを回し続ける。
- * - `spin-up`: 助走の11枚を**加速しながら**通り、終わったらループの先頭へ。
- *   ★等間隔で送らない(CLAUDE.md「動きの絶対ルール: 慣性」。回り始めは遅く、だんだん速く)。
- * - `spin-down`: `spin-up` の逆順(高速→止まり)。
- */
-export const heliRotorFrame = (elapsedMs: number, phase: HeliRotorPhase = 'loop'): number => {
-  const t = Math.max(0, elapsedMs);
-  if (phase === 'loop') {
-    const span = HELI_ROTOR_FRAMES - HELI_ROTOR_LOOP_FROM;
-    return HELI_ROTOR_LOOP_FROM + (Math.floor(t / HELI_ROTOR_LOOP_MS) % span);
-  }
-  const u = Math.min(1, t / HELI_ROTOR_SPINUP_MS);
-  // 加速のカーブ(easeInQuad)。0→1 を助走コマの 0→10 に写す。
-  const eased = phase === 'spin-up' ? u * u : 1 - (1 - u) * (1 - u);
-  const idx = Math.round(eased * (HELI_ROTOR_LOOP_FROM - 1));
-  return phase === 'spin-up' ? idx : (HELI_ROTOR_LOOP_FROM - 1) - idx;
-};
+/** 経過msから表示するコマ番号(0..6)を返す。ローターは常に高速回転で回り続ける。 */
+export const heliRotorFrame = (elapsedMs: number): number =>
+  Math.floor(Math.max(0, elapsedMs) / HELI_ROTOR_LOOP_MS) % HELI_ROTOR_FRAMES;

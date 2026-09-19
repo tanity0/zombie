@@ -12293,10 +12293,10 @@ export class PixiScene {
     const t = this.introUntil === -1
       ? 0
       : Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
-    // ★飛来〜離陸のあいだ、ローターは**高速回転のループ**(最後の7コマ)を回し続ける。
-    // 助走コマ(0〜10)は「止まっている状態から回り始める/止まる」ための絵で、この登場演出には
-    // ローターが止まっている瞬間が無い(飛んで来て、着地してすぐ飛び立つ)ので使っていない。
-    const rotorTex = this.heliRotorFrames?.[heliRotorFrame(now - this.heliIntroStartedAt, 'loop')] ?? tex;
+    // ★飛来〜離陸のあいだ、ローターは**高速回転のループ**(7コマ)を回し続ける。
+    // 助走コマは社長指示2026-09-19「その他のコマは捨ててください。容量無駄なので」で出荷していない
+    // (原盤は art-masters/ に退避。この演出にはローターが止まっている瞬間が無いため置き場も無い)。
+    const rotorTex = this.heliRotorFrames?.[heliRotorFrame(now - this.heliIntroStartedAt)] ?? tex;
     if (this.helicopter.texture !== rotorTex) this.helicopter.texture = rotorTex;
     const baseSc = rotorTex.height > 0 ? HELI_DISPLAY_H / rotorTex.height : 1;
     // フェーズA終端(landT=hf)でヘリが着地。着地後は着地位置で凍結(baseT=hf)し、HELI_SIT_MS だけ

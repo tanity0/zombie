@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4521',
+    items: [
+      'ヘリコプターの素材を軽くした。見た目は変わらない',
+    ],
+  },
+  {
     version: '0.25.4520',
     items: [
       '降下のヘリコプターのローターが回るようになった',
