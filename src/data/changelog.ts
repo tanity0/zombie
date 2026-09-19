@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4508',
+    items: [
+      '変異体(痩躯型)が横へ回り込むばかりで噛んでこなくなる状態を直した。回り込んだら仕掛けてくる',
+      '吸血コウモリ、獣化型、肥大型も同じ理由で手が止まっていたので一緒に直った',
+    ],
+  },
+  {
     version: '0.25.4507',
     items: [
       'ゲーム内容の変更はありません',

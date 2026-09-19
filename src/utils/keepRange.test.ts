@@ -108,4 +108,27 @@ describe('§16-B 攻撃射程を保つ層', () => {
   it('層の対象外の型は技を1ビットも止めない', () => {
     expect(keepBlocksTechnique('zombie', 'z1', 100, 246, 0)).toBe(false);
   });
+
+  /**
+   * ★不変条件(社長報告2026-09-19「カウンターした後は、横に回り込んでくるけど、その後攻撃して
+   * こなくなる。ずっと回り込むだけ」の再発防止)。
+   *
+   * `outerPx` は**その型の技の発動距離**なので、帯は必ずその**内側**でなければならない。
+   * 外へはみ出すと「帯に居る＝技の射程外」になり、**回り続けて技を出さない**。
+   * 実測(骸骨・outerPx=100): はみ出していた頃の帯は 82.8〜107.8 で、技と技の間隔が
+   * **13〜16秒**(技後CDは3500msしかない)。頭打ちを入れて **6.2秒周期**に戻った。
+   * 同型の前例=リッチの「150〜200pxを回るだけで二度と噛まなくなった」。
+   */
+  it('★★帯の外側は技の発動距離を絶対に超えない(超えると「回るだけで攻撃しない」)', () => {
+    const TYPES = ['bat', 'skeleton', 'werewolf', 'lab-zombie-2', 'pumpkin', 'lab-zombie-3', 'lich'] as const;
+    for (const t of TYPES) {
+      for (const outerPx of [30, 100, 174, 246, 400]) {
+        for (let k = 0; k < 200; k++) {
+          const band = keepBandFor(t, `probe-${k}`, 1000 + k * 37, outerPx)!;
+          expect(band.outer).toBeLessThanOrEqual(outerPx);
+          expect(band.inner).toBeLessThan(band.outer); // 帯が潰れていない
+        }
+      }
+    }
+  });
 });

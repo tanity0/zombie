@@ -96,7 +96,18 @@ export const keepBandFor = (
   const half = (outerPx - inner0) / 2;
   const u = idRespawnUnitHash(id, spawnedAt, SALT_PREFER) * 2 - 1;   // -1..1
   const prefer = mid + u * half * KEEP_PREFER_JITTER;
-  return { outer: prefer + half, inner: prefer - half, style };
+  // ★**帯は技の発動距離(`outerPx`)より外へ出してはいけない**(社長報告2026-09-19「カウンターした
+  // 後は、横に回り込んでくるけど、その後攻撃してこなくなる。ずっと回り込むだけ」)。
+  // ★実測(骸骨・`outerPx`=100): 好みの散らし(`KEEP_PREFER_JITTER`)で `prefer` が中点より外へ寄ると
+  //   `prefer + half` が **107.8px** になり、**技の発火条件(d<=100)の外側で回り続ける**。
+  //   シミュ層で測ると、技を出し終えて `s-retreat` が 101px へ置いた後、**次に技へ入るまで13〜16秒**
+  //   (技後CDは3500msしかない=残りは全部ただの周回)。
+  // ★これは `keepRange` が**自分の契約を破っていた**ということ——この引数は
+  //   「その型の技の発動距離」と明記してあり(上のdoc)、帯はその**内側**を意味する。
+  //   だから `outer` を `outerPx` で頭打ちにする(`inner` と好み半径は触らない=散らしは残る)。
+  // ★同型の前例: リッチは「150〜200pxを回るだけで二度と噛まなくなった」(gameStore.ts の `keepOff` の
+  //   コメント)。あれは**帯に居る＝攻撃できない**という同じ構図で、リッチだけ層を外して凌いでいた。
+  return { outer: Math.min(outerPx, prefer + half), inner: prefer - half, style };
 };
 
 /** 回る向き(個体ごとに固定)。全員が同じ向きに回ると隊列が同期して不自然になる。 */
