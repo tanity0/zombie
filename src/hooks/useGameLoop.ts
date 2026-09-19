@@ -15,7 +15,7 @@ import {
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore,
   INVULN_MS,
-  STUN_DURATION_MS,
+  STUN_DURATION_MS, MOB_CRIT_STUN_ENABLED,
   CRIT_DAMAGE_MULT,
   BOSS_CRIT_DAMAGE_MULT,
   isKatanaMode,
@@ -14067,7 +14067,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // PACING_PUZZLE.md §14-4-3(使者・hangedman): 近接フィニッシュ即死の対象外(除外リスト)=
             // stunEnemy(通常5秒スタン)を通さない(体勢なし=止まらない、と対の裁定)。isBoss自体は
             // クリダメ倍率等の別用途で共有されているため広げず、ここだけ個別に除外する。
-            if (!isBoss && !isHangedman(enemyForFx.type)) {
+            // ★社長指示2026-09-19「雑魚のクリティカル補正一旦外して」: 非ボスのクリ5秒気絶は
+            // `MOB_CRIT_STUN_ENABLED`(gameStore)で一旦切ってある。黄色いリング(下)は**残す**
+            // ——クリが出たこと自体は伝え続ける(気絶だけを外す)。
+            if (MOB_CRIT_STUN_ENABLED && !isBoss && !isHangedman(enemyForFx.type)) {
               // 気絶時間アップ(パッシブ): フィニッシュ受付時間を stunDurationMult 倍に。
               const stunMs = STUN_DURATION_MS * (useGameStore.getState().player.stunDurationMult ?? 1);
               useGameStore.getState().stunEnemy(enemyId, gameTime + stunMs);

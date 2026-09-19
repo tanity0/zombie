@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4503',
+    items: [
+      'クリティカルが決まっても、小さな敵はもう痺れない。痺れさせて仕留めたいならカウンターを取る',
+    ],
+  },
+  {
     version: '0.25.4502',
     items: [
       '入りの関門のあいだ、護衛の兵士は姿を見せない。関門を抜けると出撃地点に現れて拠点へ向かう',
