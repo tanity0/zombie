@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4509',
+    items: [
+      'ゲーム内容の変更はありません',
+    ],
+  },
+  {
     version: '0.25.4508',
     items: [
       '変異体(痩躯型)が横へ回り込むばかりで噛んでこなくなる状態を直した。回り込んだら仕掛けてくる',
