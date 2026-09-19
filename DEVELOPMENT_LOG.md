@@ -1,5 +1,43 @@
 # Development Log
 
+## v0.25.4502 — §17-14 作り直し着地 + ★v0.25.4501 の記述を訂正【2026-09-19 10:59 JST】
+
+### ★★まず訂正: v0.25.4501 の DEVLOG は嘘だった(設計チャットのミス)
+- v0.25.4501 のエントリは変更ファイルを
+  「`PACING_PUZZLE.md` / `package.json` / `changelog.ts` / `DEVELOPMENT_LOG.md`」と書いたが、
+  **`git show --stat 2aa5bddd4` の実物は `src/hooks/useGameLoop.ts`(+12) と
+  `src/utils/welcomeScript.ts`(+26) も含んでいた**。件名は「docs: 硬直は振り切った形で固まる」。
+  **文書コミットの中にコードが入っていた。**
+- **原因は私が `git add -A` を使ったこと。** §17-14 の実装サブエージェントが**走っている最中**に、
+  そのエージェントが編集中のファイルを巻き込んだ。
+  ★**CLAUDE.md が名指しで禁じている事故(2026-08-22)と同型**——
+  「サブエージェントが走っている間は、そのエージェントが触りうるファイルを `git add` しない」
+  「`git add` の直後・commit の前に `git diff --cached` を必ず読む」
+  「push直前に `git show --stat` の実ファイル一覧と DEVLOG の記述を突き合わせる」。**3つとも飛ばしていた。**
+- ★**実害の有無を確認した**: 巻き込まれた内容はエージェントの編集そのもの(バイト単位で同一)で、
+  **コードの矛盾・重複・破損は無い**。最終状態で typecheck 緑 / lint エラー0 /
+  escortAdvance・welcomeScript・escortDeployment・directorTick の **78件緑**。
+  ⇒ **壊れてはいないが、コミットの件名と中身が食い違ったまま履歴に残る。**
+  巻き戻して切り直すより、**ここに事実を書いて残す**方を採る(履歴の書き換えはしない)。
+- ★**再発防止**: 以後、**実装エージェントが走っている間は `git add -A` を使わない**(ファイルを明示列挙する)。
+
+### §17-14 作り直し(commit 458f30200)
+- ウェルカム中は **`escorts` が空**、名簿は **`pendingEscorts`** に預け、**終了の瞬間に移す**。
+  `EscortSoldier` に `appearedAt` を足し、`pixiScene` の `escortAppearFade()`
+  (easeOutQuad・**`ESCORT_APPEAR_FADE_MS = 400`**)で**フェードイン**。**影にも同じフェードを適用**
+  (影だけ先に出る事故の予防=実装者の判断・良い追加)。**バナー・SE・カメラは無し。**
+- ★**「1フレームも遅れない」の保証を検収で確認**: 判定は純関数 **`welcomeAppliesToRun`** 1本で、
+  `gameStore.resetGame` と `useGameLoop` が**同じ関数を共有**している。ウェルカムが無いランは
+  **`resetGame` の時点で `escorts` へ入る**(`pendingEscorts` は常に空)=**0フレーム遅れ**。
+  `escortDeployment.test.ts` が stage-7 と未選択(空 stageId)で直接固定している。
+- ★**実装者の裁量値**: フェードの尺 **400ms**(既存のNPC出現演出250〜260ms帯を参考に選定)。
+  設計書に尺の指定が無かったため。**実機で社長が詰める**(1箇所を変えるだけ)。
+- v0.25.4499 の「前進を止める」ゲートは指示どおり**残してある**(保険)。
+- 変更ファイル: `src/store/gameStore.ts` / `src/hooks/useGameLoop.ts` / `src/pixi/pixiScene.ts` /
+  `src/types/game.ts` / `src/store/escortDeployment.test.ts`(新) / `src/utils/welcomeScript.test.ts` /
+  `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+- 状態変化: §17-14 → **作り直し済み**(残り: 実機確認)。
+
 ## v0.25.4501 — §16-F(硬直は振り切った形で固まる)/ §16-G(止まったら向きも固定)設計確定【2026-09-19 10:44 JST】
 
 ### §16-F ★社長の案が設計者の案より優った
