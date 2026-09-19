@@ -1635,6 +1635,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const welcomeStepRef = useRef(-1);
   const welcomeStepClearedAtRef = useRef<number | null>(null);
   const welcomeEndedAtRef = useRef<number | null>(null);
+  // PACING_PUZZLE.md §17-13-c(始動ゲート・社長指示2026-09-19): 1段目を湧かせたgameTime。
+  // ゲートを持つステージ(今はS6のみ)はゲート待ち中ずっとnull(60秒の強制終了はここから数える)。
+  // ゲートを持たないステージはwelcomeAdvanceが最初の呼び出しで0を返す(=出撃直後・従来どおり)。
+  const welcomeStartedAtRef = useRef<number | null>(null);
   // BOT_AND_GHOST.md G2: 召喚中ゴーストのプロファイル(6ノブ)。召喚時にdirectorTick側が1回だけ書き込む。
   const ghostProfileRef = useRef<GhostProfile | null>(null);
   // v0.25.2480(★未決2解消): ゴースト被弾音のエッジ検知(damageSummonのlastHit打刻を見る)+最短間隔保険。
@@ -3063,6 +3067,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           welcomeStepRef.current = -1;
           welcomeStepClearedAtRef.current = null;
           welcomeEndedAtRef.current = null;
+          welcomeStartedAtRef.current = null; // §17-13-c: 新ランでゲート待ち状態からやり直す
           // ★バグ修正2026-08-22: ボス強制リラックスの尾(10秒)はdirectorTickのモジュール変数に
           // 持っているので、出撃をまたぐと前ランの記録が残る(ラン2で同じ時刻に到達すると
           // 10秒だけ湧きが静かになる)。ここで消す。※gameStoreから呼ぶとdirectorTickとの
@@ -15738,6 +15743,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (aliveWelcomeNow === 0 && useGameStore.getState().activeEvent?.kind === 'welcome') {
             useGameStore.setState({ activeEvent: null });
           }
+          // §17-13-b: 始動ゲート判定用(ステージ6以外では無視される)。数値は実行時に読む(写さない)。
+          const welcomePlayerCenterY = player.y + player.height / 2;
+          const welcomeMerchantY = useGameStore.getState().weaponMerchant.y;
           const welcomeResult = welcomeAdvance({
             step: welcomeStepRef.current,
             aliveOfWelcome: aliveWelcomeNow,
@@ -15745,7 +15753,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             stepClearedAt: welcomeStepClearedAtRef.current,
             stageId: welcomeStageIdNow,
             areaIndex: playerAreaIdx,
+            startedAt: welcomeStartedAtRef.current,
+            playerCenterY: welcomePlayerCenterY,
+            merchantY: welcomeMerchantY,
           });
+          welcomeStartedAtRef.current = welcomeResult.startedAt;
           if (welcomeResult.spawnNow) {
             // §17-12-c/d: 'horde'を借りず新設の'welcome'を使う(confiningから除外済み=
             // arenaEventCapを使わない・報酬経路にも繋がない)。confinesPlayer:false(プレイヤーは

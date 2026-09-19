@@ -79,6 +79,43 @@ export const welcomeUnitsAt = (stageId: string, step: number): WelcomeUnit[] | u
   welcomeStageScript(stageId)?.[step];
 
 // ============================================================================
+// B1b. 始動ゲート(§17-13・社長指示2026-09-19)
+// ============================================================================
+//
+// 洋館(ステージ6)は CORRIDOR_BOTTOM_LIMIT=50 のためスタートから下へ50pxしか行けないのに、
+// ウェルカムの輪(ARENA_EVENT_RADIUS=240)はプレイヤー中心に置かれるので下側190pxが
+// 動けない帯へ食い込む=入れない場所を含む檻になる。ステージ6だけ「武器商人より上へ出るまで
+// 1段目を湧かせない」始動ゲートを持たせる。
+
+/** 始動ゲートの種類。今は「商人より上(y座標が小さい)へ出る」の1種のみ。 */
+export type WelcomeStartGate = 'above-merchant';
+
+/** ステージごとの始動ゲート。持たないステージ(=undefined)は従来どおり出撃直後に始動する。 */
+export const WELCOME_START_GATE: Partial<Record<string, WelcomeStartGate>> = {
+  'stage-6': 'above-merchant',
+};
+
+/**
+ * 始動ゲートを満たしたか(純関数)。`playerCenterY`/`merchantY` は呼び出し側(useGameLoop.ts)が
+ * `s.player`/`s.weaponMerchant.y` を実行時に読んで渡す(★数値を写さない=商人を動かしても追従する)。
+ * ゲートを持たないステージ(`gate` が undefined)は常に満たされている扱い(=即始動・従来どおり)。
+ */
+export const welcomeStartGateMet = (
+  gate: WelcomeStartGate | undefined,
+  playerCenterY: number,
+  merchantY: number,
+): boolean => {
+  if (!gate) return true;
+  switch (gate) {
+    case 'above-merchant':
+      // このゲームの y は下ほど大きい=「商人より上」は playerCenterY が小さい側。
+      return playerCenterY < merchantY;
+    default:
+      return true;
+  }
+};
+
+// ============================================================================
 // B2. 進行の状態機械
 // ============================================================================
 //
@@ -100,58 +137,79 @@ export interface WelcomeAdvanceParams {
   stepClearedAt: number | null;
   stageId: string;
   areaIndex: number;
+  // ★§17-13-c: 1段目を湧かせた gameTime。まだ湧かせていない(=ゲート待ち含む)間は null。
+  // 呼び出し側は毎フレーム、前回の戻り値 `startedAt` をそのまま持ち越して渡す。
+  startedAt: number | null;
+  // ★§17-13-b: 始動ゲート判定用(ゲートを持たないステージでは未使用)。
+  // 商人の座標は呼び出し側が `s.weaponMerchant.y` を実行時に読んで渡す(数値を写さない)。
+  playerCenterY: number;
+  merchantY: number;
 }
 
 export interface WelcomeAdvanceResult {
   step: number;
   spawnNow: WelcomeUnit[] | null; // このフレームで湧かせるべき段の顔ぶれ。無ければ null。
   endedAt: number | null; // ウェルカムが終了した gameTime。まだ終了していなければ null。
+  // ★§17-13-c: 更新後のstartedAt。呼び出し側は次フレームへそのまま持ち越す(refに保存)。
+  startedAt: number | null;
 }
 
 /**
  * ウェルカム台本の進行を1フレームぶん進める(純関数)。呼び出し側(useGameLoop.ts)は
  * 戻り値の `spawnNow` を見て実際に円内へ湧かせ(§17-12-d)、`endedAt` が立ったら
- * ディレクターの時計(directorTime)を動かし始める。
+ * ディレクターの時計(directorTime)を動かし始める。`startedAt` は次フレームへそのまま持ち越す。
  *
- * 終了は3条件のどれか(§17-3・§17-11 B2): ①台本を倒し切った ②出撃から60秒
- * ③研究対象区域(area 1)以上へ入った。②③はどちらも「残りの段は出さずに打ち切る」
- * (§17-3「残った敵は消さない」——このファイルは進行の判定だけを持ち、敵を消す処理はしない)。
+ * 終了は3条件のどれか(§17-3・§17-11 B2): ①台本を倒し切った ②1段目が湧いてから60秒
+ * (§17-13-c。1段目がまだ湧いていない=ゲート待ち中は数えない) ③研究対象区域(area 1)以上へ
+ * 入った。②③はどちらも「残りの段は出さずに打ち切る」(§17-3「残った敵は消さない」——
+ * このファイルは進行の判定だけを持ち、敵を消す処理はしない)。
  */
 export const welcomeAdvance = (params: WelcomeAdvanceParams): WelcomeAdvanceResult => {
-  const { step, aliveOfWelcome, gameTime, stepClearedAt, stageId, areaIndex } = params;
+  const { step, aliveOfWelcome, gameTime, stepClearedAt, stageId, areaIndex, startedAt, playerCenterY, merchantY } = params;
   const totalSteps = welcomeStepCount(stageId);
 
   // 台本を持たないステージ(S2/S7/EX等)は即終了扱い(呼び出し側は本来そもそも呼ばない=保険)。
   if (totalSteps === undefined || totalSteps === 0) {
-    return { step, spawnNow: null, endedAt: gameTime };
+    return { step, spawnNow: null, endedAt: gameTime, startedAt };
   }
 
   // ②③強制終了(§17-3の3条件のうち2つ)。倒し切り判定より先に見る=粘っても区域を跨いでも即打ち切る。
-  if (gameTime >= WELCOME_FORCE_END_MS || areaIndex >= WELCOME_FORCE_END_AREA) {
-    return { step, spawnNow: null, endedAt: gameTime };
+  // ★§17-13-c: ②(60秒)は`startedAt`(1段目が湧いた時刻)からだけ数える。まだ湧いていない
+  // (ゲート待ち中含む)間は`startedAt`がnullなので②は判定しない=永久に待てる(③は引き続き効く)。
+  const timeForceEnd = startedAt !== null && (gameTime - startedAt) >= WELCOME_FORCE_END_MS;
+  if (timeForceEnd || areaIndex >= WELCOME_FORCE_END_AREA) {
+    return { step, spawnNow: null, endedAt: gameTime, startedAt };
   }
 
-  // 最初の1回: まだ何も湧かせていないので、1段目を即座に湧かせる。
+  // 最初の1回: まだ何も湧かせていない。
   if (step < 0) {
-    return { step: 0, spawnNow: welcomeUnitsAt(stageId, 0) ?? null, endedAt: null };
+    // ★§17-13-b: 始動ゲートが有るステージは、満たすまで1段目を湧かせない(spawnNow: null)。
+    const gate = WELCOME_START_GATE[stageId];
+    if (gate && !welcomeStartGateMet(gate, playerCenterY, merchantY)) {
+      return { step: -1, spawnNow: null, endedAt: null, startedAt: null };
+    }
+    // ゲートを満たした(またはゲートが無い)ので1段目を湧かせ、startedAtを確定する。
+    // ★ゲートが無いステージは0固定(=出撃時刻そのもの・§17-13-c「1ビットも変わらない」)。
+    const newStartedAt = gate ? gameTime : 0;
+    return { step: 0, spawnNow: welcomeUnitsAt(stageId, 0) ?? null, endedAt: null, startedAt: newStartedAt };
   }
 
   // 現在の段がまだ片付いていない(生きている個体がいる)= 何もしない。
   if (aliveOfWelcome > 0 || stepClearedAt === null) {
-    return { step, spawnNow: null, endedAt: null };
+    return { step, spawnNow: null, endedAt: null, startedAt };
   }
 
   // 全滅済み。段間の間(WELCOME_STEP_GAP_MS)が明けるまで待つ。
   if (gameTime - stepClearedAt < WELCOME_STEP_GAP_MS) {
-    return { step, spawnNow: null, endedAt: null };
+    return { step, spawnNow: null, endedAt: null, startedAt };
   }
 
   // 間が明けた。最後の段だった → ①倒し切り終了。
   if (step >= totalSteps - 1) {
-    return { step, spawnNow: null, endedAt: gameTime };
+    return { step, spawnNow: null, endedAt: gameTime, startedAt };
   }
 
   // 次の段へ進む。
   const nextStep = step + 1;
-  return { step: nextStep, spawnNow: welcomeUnitsAt(stageId, nextStep) ?? null, endedAt: null };
+  return { step: nextStep, spawnNow: welcomeUnitsAt(stageId, nextStep) ?? null, endedAt: null, startedAt };
 };
