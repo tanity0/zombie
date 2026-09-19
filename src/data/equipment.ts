@@ -24,22 +24,6 @@ export const EQUIP_LINES_BY_SLOT: Record<EquipSlot, [EquipLine, EquipLine]> = {
   accessory: ['crit', 'ammo']
 };
 
-export const EQUIP_SLOT_LABEL: Record<EquipSlot, string> = {
-  body: '体',
-  arms: '腕',
-  accessory: 'アクセ'
-};
-
-export const EQUIP_LINE_LABEL: Record<EquipLine, string> = {
-  protection: '防護系',
-  mobility: '機動系',
-  firepower: '火力系',
-  handling: '取り回し系',
-  crit: 'クリ系',
-  ammo: '弾薬系',
-  special: '特殊'
-};
-
 const s = (key: EquipStat['key'], value: number): EquipStat => ({ key, value });
 
 // 通常装備テーブル(系統ごとに段階1..5)。値の単位は EquipStat 参照(reload は短縮量=正の割合)。
@@ -48,11 +32,11 @@ type LineTable = { name: string; stats: EquipStat[] }[]; // index0=段階1 ... i
 const NORMAL_TABLES: Record<EquipLine, LineTable> = {
   // 体: 防護系(最大体力 / KILL猶予)
   protection: [
-    { name: '防弾ベスト', stats: [s('maxHealth', 80)] },
-    { name: '強化防弾ベスト', stats: [s('maxHealth', 120)] },
-    { name: '軍用防弾ベスト', stats: [s('maxHealth', 160), s('killGrace', 0.10)] },
-    { name: 'サバイバルアーマー', stats: [s('maxHealth', 200), s('killGrace', 0.15)] },
-    { name: '対変異体アーマー', stats: [s('maxHealth', 240), s('killGrace', 0.20)] }
+    { name: '防弾ベスト', stats: [s('maxHealth', 50)] },
+    { name: '強化防弾ベスト', stats: [s('maxHealth', 90)] },
+    { name: '軍用防弾ベスト', stats: [s('maxHealth', 130), s('killGrace', 0.10)] },
+    { name: 'サバイバルアーマー', stats: [s('maxHealth', 170), s('killGrace', 0.15)] },
+    { name: '対変異体アーマー', stats: [s('maxHealth', 210), s('killGrace', 0.20)] }
   ],
   // 体: 機動系(移動速度 / KILL猶予)
   mobility: [
@@ -100,7 +84,7 @@ const NORMAL_TABLES: Record<EquipLine, LineTable> = {
 
 // 特殊装備(部位ごと1種。3ステ・レア度非依存・5%出現。名称は仕様書「特殊装備」シート準拠=武将セット)。
 const SPECIAL_DEFS: Record<EquipSlot, { name: string; stats: EquipStat[] }> = {
-  body: { name: '武将の鎧', stats: [s('maxHealth', 150), s('killGrace', 0.10), s('moveSpeed', 0.25)] },
+  body: { name: '武将の鎧', stats: [s('maxHealth', 120), s('killGrace', 0.10), s('moveSpeed', 0.25)] },
   arms: { name: '武将の小手', stats: [s('damage', 0.50), s('fireRate', 0.06), s('reload', 0.25)] },
   accessory: { name: '武将の兜', stats: [s('critChance', 0.08), s('scrap', 0.25), s('ammoDrop', 0.22)] }
 };
@@ -225,6 +209,51 @@ export const equipmentDescription = (def: EquipmentDef): string =>
 // 武将セット(特殊3点)をフル装備しているか。立ち絵差し替えの判定に使う。
 export const hasFullWarlordSet = (loadout: EquipLoadout): boolean =>
   EQUIP_SLOTS.every(slot => equipmentById(loadout[slot])?.special === true);
+
+// PACING_PUZZLE.md §6.24 M48(武器庫)E2: Tier3を入れる部位を決める純関数。
+// 「空きスロット優先→全部埋まっていればいちばんTierが低い部位を置換」。
+// 空きが複数ある時の優先順位は仕様に明記が無いため、既存の空き埋め(generateEquipmentChoices の
+// randPick(emptySlots))と同じくランダムに1つ選ぶ(rngは既定Math.random・テストで注入可能)。
+// SKILL_BUILD_REDESIGN.md §16-3/§18-1の4(★1裁定「毎ラン3種確定」を黙って壊さないための機械的修正):
+// 特殊装備が入ったスロットは置換候補から除外する。全スロットが特殊(空きなし)なら null=売り切れ。
+// 呼び出し側の注意: 本関数は現在 gameStore.ts のどこからも呼ばれていない(v0.25.2533で武器庫の
+// 報酬が装備→Tier3銃へ切り替わったため=SKILL_BUILD_REDESIGN.md §18実装中の★未決を参照)。
+export const armoryTargetSlot = (loadout: EquipLoadout, rng: () => number = Math.random): EquipSlot | null => {
+  const empty = EQUIP_SLOTS.filter(slot => !loadout[slot]);
+  if (empty.length > 0) return empty[Math.floor(rng() * empty.length)];
+  const candidates = EQUIP_SLOTS.filter(slot => !equipmentById(loadout[slot])?.special);
+  if (candidates.length === 0) return null; // 全スロット特殊=売り切れ
+  let worst: EquipSlot = candidates[0];
+  let worstTier = Infinity;
+  for (const slot of candidates) {
+    const def = equipmentById(loadout[slot]);
+    const tier = def ? def.tier : -1;
+    if (tier < worstTier) { worstTier = tier; worst = slot; }
+  }
+  return worst;
+};
+
+// SKILL_BUILD_REDESIGN.md §13-1+§16-7: 商人の装備区画=「指名買いカタログ」(ランダム性ゼロ)。
+// 未装備スロット=両系統のTier1を2枚並べる(初回だけ系統選択)。装備済みスロット=現在系統の
+// 「次の一段」1枚のみ(系統乗り換えは商人では不可)。特殊装備が入ったスロット/最上段到達スロットは
+// 売り切れ表示。
+export type MerchantEquipStep =
+  | { kind: 'choose'; slot: EquipSlot; options: [EquipmentDef, EquipmentDef] } // 未装備: 両系統Tier1
+  | { kind: 'next'; slot: EquipSlot; def: EquipmentDef }                       // 装備済み: 次の一段
+  | { kind: 'sold-out'; slot: EquipSlot };                                     // 特殊装備 or 最上段
+
+export const merchantEquipStepForSlot = (loadout: EquipLoadout, slot: EquipSlot): MerchantEquipStep => {
+  const cur = equipmentById(loadout[slot]);
+  if (!cur) {
+    const [lineA, lineB] = EQUIP_LINES_BY_SLOT[slot];
+    return { kind: 'choose', slot, options: [equipmentDef(slot, lineA, 1)!, equipmentDef(slot, lineB, 1)!] };
+  }
+  if (cur.special || cur.tier >= EQUIP_TIER_MAX) return { kind: 'sold-out', slot };
+  return { kind: 'next', slot, def: equipmentDef(slot, cur.line, cur.tier + 1)! };
+};
+
+export const merchantEquipShelf = (loadout: EquipLoadout): MerchantEquipStep[] =>
+  EQUIP_SLOTS.map(slot => merchantEquipStepForSlot(loadout, slot));
 
 // 専用アイコン画像(public/sprites/equip/<defId>.png)が用意済みの装備ID。
 // 社長から素材を受領するたびにここへ追加していく。未登録IDはUI側で絵文字フォールバック。

@@ -1,0 +1,79 @@
+{
+  "pois": {
+    "police": {
+      "x": 2250,
+      "y": 0
+    },
+    "armory": {
+      "x": 2.4492935982947065e-13,
+      "y": 4000
+    },
+    "hospital": {
+      "x": -1.1481063742006436e-12,
+      "y": -6250
+    }
+  },
+  "res": {
+    "police": {
+      "before": {
+        "weapons": [
+          "ショットガン",
+          "ダガー(近)"
+        ],
+        "skills": [],
+        "scrap": null
+      },
+      "after": {
+        "weapons": [
+          "ショットガン",
+          "ダガー(近)"
+        ],
+        "skills": []
+      },
+      "newWeapons": [],
+      "newSkills": [],
+      "toast": null
+    },
+    "armory": {
+      "before": {
+        "weapons": [
+          "ショットガン",
+          "ダガー(近)"
+        ],
+        "skills": [],
+        "scrap": null
+      },
+      "after": {
+        "weapons": [
+          "ショットガン",
+          "ダガー(近)"
+        ],
+        "skills": []
+      },
+      "newWeapons": [],
+      "newSkills": [],
+      "toast": null
+    },
+    "hospital": {
+      "before": {
+        "weapons": [
+          "ショットガン",
+          "ダガー(近)"
+        ],
+        "skills": [],
+        "scrap": null
+      },
+      "after": {
+        "weapons": [
+          "ショットガン",
+          "ダガー(近)"
+        ],
+        "skills": []
+      },
+      "newWeapons": [],
+      "newSkills": [],
+      "toast": "境界ゲート出現 COMBO 8 ムハンマド 廃病院だ。サークルで3秒待てばワクチンが手に入る——死んでも一度だけ立ち上がれる 00:23 🔩 0 9999 Lv 1 手榴弾 Lv1 0/12 pixi · v0.25.2544 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+    }
+  },
+  "errors": []
+}

@@ -1,0 +1,142 @@
+/* 作戦室と同じ基準色。意味色(レア度・不足・警告)は別管理。 */
+.command-ui {
+  /* クリエイティブ監査第2回・第2手A-1(research/CREATIVE_AUDIT_2026-09-11.md): 地の色を世界の紫黒へ。
+     ink/muted(dim相当)/accentは据え置き(意味色は変えない)。 */
+  --menu-bg:#07060d; --menu-panel:#0d0b14; --menu-line:#26212f;
+  --menu-accent:#ffb340; --menu-accent-hi:#ffd28a; --menu-ink:#e6e9e9;
+  --menu-danger:#ff6b5e;
+  --menu-dim:#3b3050; /* 消灯色=1色(監査A-5)。消えた枡・OFFの枡・消灯の点は全部これ。線色 --menu-line を紫へ半歩寄せた値 */
+  --menu-muted:#a2aaa7; --menu-selected:#2a2016; --menu-hover:#1a1524;
+}
+.command-ui .ds-home { --ds-bg:var(--menu-bg); --ds-panel:var(--menu-panel); --ds-line:var(--menu-line); --ds-amber:var(--menu-accent); --ds-amber-hi:var(--menu-accent-hi); --ds-ink:var(--menu-ink); }
+/* 作戦UIの共通文法。戦闘HUD・スプライトの意味色は対象にしない。 */
+/* 装備・開発の武器種は同じ列規則。親の余白によって折り返さない。 */
+.command-ui .command-weapon-tabs { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); gap:0; margin:16px 0 12px; border-bottom:1px solid var(--menu-line); }
+.command-ui .command-weapon-tabs button { min-width:0; min-height:44px; padding:10px 4px; border:0; border-bottom:2px solid transparent; font:clamp(10px,2.5vw,13px)/1.5 system-ui; color:var(--menu-muted); background:transparent; white-space:normal; overflow-wrap:anywhere; }
+.command-ui .command-weapon-tabs button[aria-pressed='true'] { color:var(--menu-accent-hi); background:var(--menu-selected); box-shadow:none; border-bottom-color:var(--menu-accent); }
+.command-ui .command-weapon-tabs button:focus-visible { outline:2px solid var(--menu-accent-hi); outline-offset:-2px; }
+.command-ui .development-toolbar { padding-top:16px; padding-bottom:16px; }
+.command-ui .development-balance { display:flex; justify-content:space-between; align-items:center; color:var(--menu-muted); font:13px system-ui; margin-bottom:16px; }
+.command-ui .development-balance strong { color:var(--menu-accent); font-size:22px; }
+.command-ui .development-tabs { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+.command-ui .development-tabs button { flex:1 1 100px; min-height:44px; border:1px solid var(--menu-line); padding:10px; font:13px system-ui; color:var(--menu-muted); background:var(--menu-panel); }
+.command-ui .development-tabs button[aria-pressed='true'] { background:var(--menu-selected); border-color:var(--menu-accent); color:var(--menu-accent-hi); box-shadow:inset 3px 0 var(--menu-accent); }
+.command-ui .development-guide { color:var(--menu-muted); font:13px/1.8 system-ui; margin-bottom:20px; }
+.command-ui .command-page .development-weapon-list, .command-ui .command-page .development-subs { grid-template-columns:minmax(0,1fr); }
+.command-ui .development-subs > .col-span-2 { grid-column:1; }
+.command-ui .command-page .development-weapon-list button { display:grid; grid-template-columns:84px minmax(0,1fr) 76px; gap:18px; align-items:center; opacity:1; }
+.command-ui .development-art { height:52px; display:flex; background:var(--menu-bg); border:1px solid var(--menu-line); }
+.command-ui .command-page .development-weapon-list button:disabled { opacity:1; }
+.command-ui .development-art img { width:100%; height:100%; object-fit:contain; image-rendering:auto; } /* 原寸の大きいドット絵を縮小=なめらかに(粗さ対策・commandHome.css の weapon-art と同じ) */
+.command-ui .development-price { text-align:right; font-size:16px; }
+.command-ui .development-price small { display:block; font:11px system-ui; margin-top:8px; }
+@media(max-width:600px) {
+  .command-ui .command-page .development-weapon-list button { grid-template-columns:60px minmax(0,1fr); gap:10px 12px; padding:12px; }
+  .command-ui .development-art { height:44px; grid-row:1 / 3; }
+  .command-ui .development-price { grid-column:2; text-align:left; display:flex; align-items:center; gap:12px; }
+  .command-ui .development-price small { margin-top:0; }
+}
+.command-ui {
+  --command-bg: var(--menu-bg);
+  --command-panel: var(--menu-panel);
+  --command-line: var(--menu-line);
+  --command-ink: var(--menu-ink);
+  --command-muted: var(--menu-muted);
+  --command-accent: var(--menu-accent);
+}
+.command-ui .command-page-shell { background: radial-gradient(ellipse at 80% 0, var(--menu-panel), var(--menu-panel) 45%, var(--menu-bg)); }
+.command-ui .command-page { max-width: 1040px; color: var(--command-ink); font-family: 'Rajdhani', system-ui, sans-serif; scrollbar-width: thin; scrollbar-color: var(--menu-muted) transparent; }
+.command-ui .command-page-header { display: flex; align-items: center; gap: 24px; padding: 18px 20px 22px; background: var(--menu-panel); border-bottom: 1px solid var(--command-line); }
+.command-ui .command-page-header > div { min-width: 0; }
+.command-ui .command-page-kicker { color: var(--menu-accent); font-size: 10px; letter-spacing: .22em; }
+.command-ui .command-page-header h1 { margin-top: 5px; font: 500 clamp(22px, 3vw, 32px)/1.35 system-ui; letter-spacing: .08em; overflow-wrap: anywhere; }
+.command-ui .command-page-header p { margin-top: 8px; font: 12px/1.7 system-ui; color: var(--command-muted); }
+.command-ui .command-page-back { min-width: 70px; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 5px; color: var(--command-accent); font: 13px system-ui; border-right: 1px solid var(--command-line); padding-right: 12px; flex-shrink: 0; }
+.command-ui .command-section { padding: 20px; background: var(--menu-panel); border: 1px solid var(--command-line); }
+.command-ui .command-section > div:first-child { color: var(--command-accent); font: 500 14px/1.5 system-ui; letter-spacing: .1em; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--menu-line); }
+.command-ui .command-page > .p-3, .command-ui .command-page > .px-3 { padding-left: 20px; padding-right: 20px; }
+.command-ui .command-page > .p-3 { padding-top: 20px; padding-bottom: 20px; }
+.command-ui .command-page .ff7r-fade-right { border: 1px solid var(--command-line); border-image: none; background: var(--menu-panel); padding: 16px; min-height: 52px; }
+.command-ui .command-page button.ff7r-fade-right:not(:disabled):hover { background: var(--menu-hover); border-color: var(--menu-muted); }
+.command-ui .command-page .ff7r-fade-right.is-on { background: var(--menu-selected); border-color: var(--command-accent); box-shadow: inset 3px 0 var(--command-accent); }
+.command-ui .command-page .ff7r-fade-right.is-off { opacity: .65; }
+.command-ui .command-page .ff7r-fade-right:disabled { opacity: .5; cursor: not-allowed; }
+.command-ui .command-page .truncate { white-space: normal; overflow-wrap: anywhere; }
+.command-ui .command-page input[type='range'] { accent-color: var(--command-accent); min-height: 32px; }
+.command-ui .command-page input[type='text'] { background: var(--menu-bg); border: 1px solid var(--menu-line); color: var(--command-ink); min-height: 44px; padding: 10px 12px; }
+.command-ui .command-page button:focus-visible, .command-ui .command-character button:focus-visible, .command-ui .command-panel button:focus-visible, .command-ui .command-panel input:focus-visible { outline: 2px solid var(--menu-accent-hi); outline-offset: -3px; }
+.command-ui .command-button { min-height: 48px; padding-left: 18px; padding-right: 18px; display: block; border: 1px solid var(--menu-line); background: var(--menu-panel); color: var(--menu-ink); font: 500 14px/1.5 'Rajdhani', system-ui, sans-serif; letter-spacing: .1em; text-align: center; transition: background 160ms ease-out, border-color 160ms ease-out, transform 160ms cubic-bezier(.2,.9,.3,1.2); }
+.command-ui .command-button:hover { background: var(--menu-hover); border-color: var(--menu-muted); }
+/* クリエイティブ監査第2回・第2手A-2+A-3(research/CREATIVE_AUDIT_2026-09-11.md):
+   琥珀ボタン=松明の光(上明・下焦げの縦グラデ)。幅は文字幅(中央/右寄せは呼び出し側)。
+   右端の斜め切り(4234で追加)は社長指示2026-09-12「ダサいので戻して」で撤去=矩形。
+   押下の手応え=僅かな沈み込み+縁の光が左→右へ走る(慣性=離した時に僅かに戻り過ぎるease)。 */
+.command-ui .command-button-primary {
+  position: relative; overflow: hidden;
+  display: inline-block; width: auto; padding: 0 1.6rem;
+  color: #171208; font-weight: 600;
+  background: linear-gradient(180deg,#ffc65a 0%,#f2a12b 55%,#c97a1c 100%);
+  border: 0;
+  box-shadow: inset 0 1px 0 rgba(255,238,200,.45), inset 0 -2px 0 rgba(80,45,8,.35);
+}
+.command-ui .command-button-primary:active { background: linear-gradient(180deg,#f0b544 0%,#dc9020 55%,#b46a16 100%); }
+@media (hover: hover) { .command-ui .command-button-primary:hover { background: linear-gradient(180deg,#ffd27a 0%,#f5ae3c 55%,#d1862a 100%); } }
+/* 縁の光は押した瞬間に一方向へ1回だけ走る(戻りの逆走なし=監査A-4)。離した時は transition 無しで即リセット */
+.command-ui .command-button-primary::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: -40%; width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255,245,220,.55), transparent);
+  transform: translateX(0); pointer-events: none; opacity: 0;
+}
+.command-ui .command-button-primary:active::after { animation: cmd-sweep 140ms ease-out 1 forwards; }
+@keyframes cmd-sweep { 0% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(260%); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .command-ui .command-button-primary:active::after { animation: none; } }
+.command-ui .command-button:active { transform: translateY(1.5px); }
+.command-ui .command-button-selected { border-color: var(--command-accent); box-shadow: inset 3px 0 var(--command-accent); }
+.command-ui .command-button:focus-visible { outline: 2px solid var(--menu-accent-hi); outline-offset: -4px; }
+.command-ui .command-button-primary:focus-visible { outline-color: #171208; }
+.command-ui .command-page .command-stage-card { position: relative; overflow: hidden; min-height: 172px; padding: 24px; isolation: isolate; background: var(--menu-panel); }
+.command-ui .command-stage-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
+.command-ui .command-stage-card::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #071116ed, #07111677 70%, #07111655); }
+.command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\] { font: 500 23px/1.4 system-ui; margin-top: 8px; }
+.command-ui .command-page .command-stage-card:hover { background: var(--menu-panel); border-color: var(--command-accent); }
+.command-ui .command-panel { background: linear-gradient(150deg, color-mix(in srgb, var(--menu-panel) 97%, transparent), color-mix(in srgb, var(--menu-bg) 97%, transparent)); border: 1px solid var(--menu-line); border-radius: 0; box-shadow: 0 24px 80px #0009; color: var(--command-ink); font-family: 'Rajdhani', system-ui, sans-serif; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.command-ui .command-panel h2 { font-size: 26px; letter-spacing: .08em; line-height: 1.4; }
+.command-ui .command-character button[aria-pressed] { background: color-mix(in srgb, var(--menu-panel) 91%, transparent) !important; border: 1px solid var(--menu-line) !important; border-image: none !important; }
+.command-ui .command-character button[aria-pressed='true'] { background: color-mix(in srgb, var(--menu-selected) 93%, transparent) !important; border-color: var(--command-accent) !important; }
+.command-ui .command-character > button[aria-label='戻る'] { min-height: 44px; color: var(--command-accent); border: 1px solid var(--menu-line); }
+@media (min-width: 900px) {
+  .command-ui .command-page .command-growth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .command-ui .command-page .command-growth-grid > * { margin-top: 0; }
+}
+@media (max-width: 480px) {
+  .command-ui .command-page-header { gap: 12px; padding: 12px 4px 18px; }
+  .command-ui .command-page-back { min-width: 57px; padding-right: 8px; }
+  .command-ui .command-page > .p-3, .command-ui .command-page > .px-3 { padding-left: 0; padding-right: 0; }
+  .command-ui .command-section { padding: 14px; }
+  .command-ui .command-page .grid-cols-2 { grid-template-columns: minmax(0, 1fr); }
+  .command-ui .command-page .grid-cols-2 > .col-span-2 { grid-column: span 1 / span 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .command-ui .command-button { transition: none; }
+  .command-ui .command-button:active { transform: none; }
+  .command-ui .command-button-primary::after { transition: none; }
+}
+
+/* メニューを一枚の操作盤として扱う。固定モーダルの含有ブロックは作らない。 */
+.command-ui .command-page-shell { background:radial-gradient(140% 70% at 50% -10%,#101315 0%,var(--menu-bg) 55%); }
+.command-ui .command-page { scrollbar-width:none; }
+.command-ui .command-page::-webkit-scrollbar { display:none; }
+.command-ui .command-page-header { gap:18px; padding:12px 16px; background:var(--menu-panel); border-bottom:1px solid var(--menu-line); }
+.command-ui .command-page-header h1 { margin:0; font-size:24px; }
+.command-ui .command-page-header p { margin-top:4px; }
+.command-ui .command-section { background:transparent; border:0; padding:16px; }
+.command-ui .command-page .ff7r-fade-right:not(.command-stage-card) { border-width:0 0 1px; background:var(--menu-panel); }
+.command-ui .command-page .ff7r-fade-right.is-on { box-shadow:inset 3px 0 var(--menu-accent); background:var(--menu-selected); }
+.command-ui .development-tabs { gap:0; border-bottom:1px solid var(--menu-line); }
+.command-ui .development-tabs button { border:0; border-bottom:2px solid transparent; background:transparent; }
+.command-ui .development-tabs button[aria-pressed='true'] { box-shadow:none; border-bottom-color:var(--menu-accent); background:var(--menu-selected); }
+.command-ui .development-art { background:transparent; border:0; }
+.command-ui .development-guide { margin-bottom:12px; }
+.command-ui .command-panel { background:color-mix(in srgb, var(--menu-panel) 98%, transparent); box-shadow:0 8px 24px #0008; border-color:var(--menu-line); }
+.command-ui .command-button:not(.command-button-primary) { border-width:0 0 1px; background:var(--menu-panel); }
+.command-ui .command-button:not(.command-button-primary):active { background:var(--menu-hover); }

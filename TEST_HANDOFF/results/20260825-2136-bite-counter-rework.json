@@ -1,0 +1,2409 @@
+{
+  "env": {
+    "version": "0.25.3928",
+    "versionOnScreen": "v0.25.3928",
+    "os": "Windows 11 Pro 10.0.26200",
+    "browser": "Chrome (channel:chrome) headed",
+    "viewport": "1280x800",
+    "A": {
+      "server": "vite preview 4173 (npm run build 済み)",
+      "note": "scripts/botrun-local.mjs は request.config.json に configs 配列が無く実行不可のため、同等手順のハーネスで実施"
+    },
+    "B": {
+      "server": "vite dev 5173 (pull後に再起動)",
+      "url": "http://localhost:5173/zombie/?gauntlet=1&bot=standard&botskill=master",
+      "realMinutes": 22,
+      "shopMenuResets": 0,
+      "gateClicks": 2
+    }
+  },
+  "A_runs": [
+    {
+      "name": "stage1-a",
+      "stage": "stage-1",
+      "url": "http://localhost:4173/zombie/?smoke=1&bot=standard&autotut=1&stage=stage-1",
+      "realSec": 391,
+      "gates": [],
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 344666,
+        "deathCause": "変異体(獣化型)",
+        "kills": 92,
+        "playerLevel": 4,
+        "maxDepthPx": 5008,
+        "maxAreaReached": 3,
+        "subUses": {
+          "heavy-grenade": 69
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 69,
+        "scrapSpent": 0,
+        "damageTaken": 176,
+        "goldEarned": 11,
+        "damageDealt": {
+          "gun": 1685,
+          "melee": 3871,
+          "other": 2276,
+          "total": 7832
+        },
+        "finisherKills": 12,
+        "meleeSwings": 238,
+        "meleeHits": 219,
+        "critStats": {
+          "total": {
+            "rngCrits": 64,
+            "guaranteedCrits": 7,
+            "hits": 507
+          },
+          "vsBoss": {
+            "rngCrits": 2,
+            "guaranteedCrits": 2,
+            "hits": 83
+          },
+          "vsTrash": {
+            "rngCrits": 62,
+            "guaranteedCrits": 5,
+            "hits": 424
+          },
+          "elapsedSec": 345
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 3,
+            "selectedByType": {
+              "skill": 2,
+              "consumable": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 1,
+            "maxTier": 3
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 31,
+              "poi": 0,
+              "levelup": 0,
+              "other": 41
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 4,
+            "maxAreaReached": 3,
+            "runTimeMs": 344666
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 43765.56100820672,
+                "level": 2
+              },
+              {
+                "gameTimeMs": 194297.35827495914,
+                "level": 4
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\n未確認汚染エリアのランク4 強欲 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n5008m\n怠\nR1\n暴\nR2\n色\nR3\n強\n⚑R4\n嫉\nR5\n憤\nR6\n傲\nR7\nR4 強欲\n\n次の深さ 深層域 まで あと 2492m\n\n死因：変異体(獣化型)\n\nRESULT\n生存時間\n05:44\n撃破\n93\nLv\n4\n最大コンボ\n4\nSCORE\nHIGH SCORE\n24175\nKILLスコア 10400\n詳細\n▾\nAIディレクター\n開く▾\n獲得 +12g\n所持 32g\nサブクエスト達成 1件\n+20g(獲得済み)\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "name": "stage1-b",
+      "stage": "stage-1",
+      "url": "http://localhost:4173/zombie/?smoke=1&bot=standard&autotut=1&stage=stage-1",
+      "realSec": 288,
+      "gates": [],
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 265752,
+        "deathCause": "変異体(肥大型)の落下攻撃",
+        "kills": 78,
+        "playerLevel": 4,
+        "maxDepthPx": 2373,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 54
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 117,
+        "scrapSpent": 0,
+        "damageTaken": 175,
+        "goldEarned": 8,
+        "damageDealt": {
+          "gun": 1773,
+          "melee": 1176,
+          "other": 5222,
+          "total": 8171
+        },
+        "finisherKills": 8,
+        "meleeSwings": 128,
+        "meleeHits": 83,
+        "critStats": {
+          "total": {
+            "rngCrits": 53,
+            "guaranteedCrits": 1,
+            "hits": 379
+          },
+          "vsBoss": {
+            "rngCrits": 0,
+            "guaranteedCrits": 1,
+            "hits": 4
+          },
+          "vsTrash": {
+            "rngCrits": 53,
+            "guaranteedCrits": 0,
+            "hits": 375
+          },
+          "elapsedSec": 266
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 3,
+            "selectedByType": {
+              "skill": 2,
+              "consumable": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 84,
+              "poi": 0,
+              "levelup": 0,
+              "other": 33
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 4,
+            "maxAreaReached": 1,
+            "runTimeMs": 265752
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 61096.59962112905,
+                "level": 2
+              },
+              {
+                "gameTimeMs": 170006.94858462538,
+                "level": 3
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "04:26\n117\n通常変異体 25/25\n青変異体 0/5\n0\nLv 4\n手榴弾\nLv1\n0/0\n2/4\npixi · v0.25.3928 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+    },
+    {
+      "name": "stage2",
+      "stage": "stage-2",
+      "url": "http://localhost:4173/zombie/?smoke=1&bot=standard&autotut=1&stage=stage-2",
+      "realSec": 276,
+      "gates": [],
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 256033,
+        "deathCause": "地雷",
+        "kills": 1,
+        "playerLevel": 1,
+        "maxDepthPx": 0,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 52
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 124,
+        "scrapSpent": 0,
+        "damageTaken": 130,
+        "goldEarned": 7,
+        "damageDealt": {
+          "gun": 824,
+          "melee": 143,
+          "other": 337,
+          "total": 1304
+        },
+        "finisherKills": 1,
+        "meleeSwings": 23,
+        "meleeHits": 7,
+        "critStats": {
+          "total": {
+            "rngCrits": 8,
+            "guaranteedCrits": 4,
+            "hits": 87
+          },
+          "vsBoss": {
+            "rngCrits": 3,
+            "guaranteedCrits": 4,
+            "hits": 51
+          },
+          "vsTrash": {
+            "rngCrits": 5,
+            "guaranteedCrits": 0,
+            "hits": 36
+          },
+          "elapsedSec": 256
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 0,
+            "selectedByType": {}
+          },
+          "knifeFromBox": {
+            "grants": 1,
+            "maxTier": 3
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 124,
+              "poi": 0,
+              "levelup": 0,
+              "other": 0
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 1,
+            "maxAreaReached": 0,
+            "runTimeMs": 256033
+          },
+          "slotFillTiming": {
+            "filledAt": [],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\n軍備配置区域のランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n今回\n0m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 研究対象区域 まで あと 1500m\n\n死因：地雷\n\nRESULT\n生存時間\n04:17\n撃破\n1\nLv\n1\n最大コンボ\n3\nSCORE\nHIGH SCORE\n14105\n被ダメージスコア 9600\n詳細\n▾\nAIディレクター\n開く▾\n獲得 +7g\n所持 7g\nもう一度プレイ\nメニューに戻る"
+    }
+  ],
+  "B_copied": "# BOSS GAUNTLET\r\nversion: 0.25.3928\r\nstartedAt: 2026-08-25T12:53:57.219Z\r\nconditions: bot=standard / botskill=master / class=warrior / lv=1 / companion=なし / renderer=pixi / timeout=180s\r\nslots: 21/21  skipped: giantbat@stage-2(城ボス不在=出ないためスキップ), guardian-phantom@practice(城ボス不在=出ないためスキップ)\r\nresult: win 2 / death 18 / timeout 1  findings 101\r\n\r\nslot\tresult\tsec\tfind\tcancel\tlock\terr\tanom\tmissing\r\nbounty-ranged@practice\tdeath\t58\t0\t0\t0\t0\t0\t0\r\nbounty-melee@practice\twin\t46\t0\t0\t0\t0\t0\t1\r\nbounty-balance@practice\twin\t64\t0\t0\t0\t0\t0\t0\r\nbounty-maiko@practice\tdeath\t79\t0\t0\t0\t0\t0\t0\r\ngiantbat@stage-1\tdeath\t83\t0\t0\t0\t0\t0\t13\r\ngiantbat@stage-3\tdeath\t76\t97\t0\t0\t0\t97\t13\r\ngiantbat@stage-4\tdeath\t85\t1\t1\t0\t0\t0\t14\r\ngiantbat@stage-5\tdeath\t52\t0\t0\t0\t0\t0\t14\r\ngiantbat@stage-7\tdeath\t35\t0\t0\t0\t0\t0\t14\r\nphillboss@stage-ex1\tdeath\t32\t0\t0\t0\t0\t0\t6\r\nmiguel\tdeath\t31\t0\t0\t0\t0\t0\t0\r\njibril\tdeath\t21\t0\t0\t0\t0\t0\t1\r\nrafi\tdeath\t28\t0\t0\t0\t0\t0\t2\r\nuri\tdeath\t16\t0\t0\t0\t0\t0\t1\r\nsuriel\tdeath\t40\t1\t1\t0\t0\t0\t0\r\nacrasiel\tdeath\t34\t0\t0\t0\t0\t0\t0\r\nmimir\tdeath\t27\t0\t0\t0\t0\t0\t0\r\njormungand\ttimeout\t167\t0\t0\t0\t0\t0\t0\r\nskadi\tdeath\t9\t0\t0\t0\t0\t0\t4\r\nthor\tdeath\t16\t0\t0\t0\t0\t0\t4\r\nidol\tdeath\t56\t2\t0\t1\t0\t1\t2\r\n\r\n## records (1行=1戦のJSON)\r\n{\"slotKey\":\"bounty-ranged@practice\",\"label\":\"バス停(変異)\",\"bossType\":\"bounty-ranged\",\"stageId\":\"stage-1\",\"outcome\":\"death\",\"durationMs\":58008,\"realMs\":86103,\"findings\":[],\"moveTally\":{\"br-laser\":{\"exposures\":2,\"counters\":0,\"hits\":2},\"br-triple\":{\"exposures\":4,\"counters\":1,\"hits\":0},\"br-push\":{\"exposures\":3,\"counters\":2,\"hits\":0}},\"movesMissing\":[],\"movesSeen\":[\"br-laser\",\"br-push\",\"br-triple\"],\"hpLost\":130}\r\n{\"slotKey\":\"bounty-melee@practice\",\"label\":\"馬乗り(変異)\",\"bossType\":\"bounty-melee\",\"stageId\":\"stage-3\",\"outcome\":\"win\",\"durationMs\":45930,\"realMs\":69770,\"findings\":[],\"moveTally\":{\"bm-charge\":{\"exposures\":3,\"counters\":0,\"hits\":0},\"bm-whip360\":{\"exposures\":4,\"counters\":1,\"hits\":0},\"bm-combo1\":{\"exposures\":22,\"counters\":17,\"hits\":0},\"bm-combo2\":{\"exposures\":4,\"counters\":1,\"hits\":0},\"bm-combo3\":{\"exposures\":3,\"counters\":0,\"hits\":0}},\"movesMissing\":[\"bm-snipe\"],\"movesSeen\":[\"bm-charge\",\"bm-combo1\",\"bm-combo2\",\"bm-combo3\",\"bm-whip360\"],\"hpLost\":18}\r\n{\"slotKey\":\"bounty-balance@practice\",\"label\":\"鋏(変異)\",\"bossType\":\"bounty-balance\",\"stageId\":\"stage-4\",\"outcome\":\"win\",\"durationMs\":64178,\"realMs\":86464,\"findings\":[],\"moveTally\":{\"bb-leap\":{\"exposures\":13,\"counters\":12,\"hits\":0},\"bb-sweep\":{\"exposures\":10,\"counters\":1,\"hits\":0}},\"movesMissing\":[],\"movesSeen\":[\"bb-leap\",\"bb-sweep\"],\"hpLost\":98}\r\n{\"slotKey\":\"bounty-maiko@practice\",\"label\":\"舞妓(変異)\",\"bossType\":\"bounty-maiko\",\"stageId\":\"stage-5\",\"outcome\":\"death\",\"durationMs\":79136,\"realMs\":93273,\"findings\":[],\"moveTally\":{\"mk-spin\":{\"exposures\":6,\"counters\":4,\"hits\":2},\"mk-naginata\":{\"exposures\":12,\"counters\":10,\"hits\":0},\"mk-boom\":{\"exposures\":8,\"counters\":0,\"hits\":3},\"mk-naginata1\":{\"exposures\":3,\"counters\":0,\"hits\":0},\"mk-naginata2\":{\"exposures\":3,\"counters\":0,\"hits\":0}},\"movesMissing\":[],\"movesSeen\":[\"mk-boom\",\"mk-naginata\",\"mk-naginata1\",\"mk-naginata2\",\"mk-spin\",\"mk-suiu\"],\"hpLost\":130}\r\n{\"slotKey\":\"giantbat@stage-1\",\"label\":\"搬送体(変異)\",\"bossType\":\"giantbat\",\"stageId\":\"stage-1\",\"outcome\":\"death\",\"durationMs\":82896,\"realMs\":92439,\"findings\":[],\"moveTally\":{\"g-bolt\":{\"exposures\":6,\"counters\":0,\"hits\":3},\"g-dash\":{\"exposures\":4,\"counters\":0,\"hits\":0},\"g-jump\":{\"exposures\":7,\"counters\":0,\"hits\":1},\"g-sweep\":{\"exposures\":6,\"counters\":0,\"hits\":1},\"g-stomp\":{\"exposures\":3,\"counters\":0,\"hits\":1},\"g-bite\":{\"exposures\":1,\"counters\":0,\"hits\":1},\"g-wing\":{\"exposures\":1,\"counters\":0,\"hits\":1}},\"movesMissing\":[\"g-boon\",\"g-dive\",\"g-glide\",\"g-nihil\",\"g-nova\",\"g-parts\",\"g-quad\",\"g-reach\",\"g-slam\",\"g-sweepbeam\",\"g-tailslam\",\"g-talon\",\"g-trijump\"],\"movesSeen\":[\"g-bite\",\"g-bolt\",\"g-dash\",\"g-jump\",\"g-stomp\",\"g-sweep\",\"g-wing\"],\"hpLost\":130}\r\n{\"slotKey\":\"giantbat@stage-3\",\"label\":\"樹木管理員(変異)\",\"bossType\":\"giantbat\",\"stageId\":\"stage-3\",\"outcome\":\"death\",\"durationMs\":76440,\"realMs\":88913,\"findings\":[{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29458px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1026,\"playerY\":632,\"gameTimeMs\":42685,\"at\":\"2026-08-25T13:02:00.078Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29459px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1027,\"playerY\":633,\"gameTimeMs\":42718,\"at\":\"2026-08-25T13:02:00.114Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29464px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1030,\"playerY\":636,\"gameTimeMs\":42768,\"at\":\"2026-08-25T13:02:00.148Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29467px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1032,\"playerY\":638,\"gameTimeMs\":42802,\"at\":\"2026-08-25T13:02:00.182Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29470px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1035,\"playerY\":640,\"gameTimeMs\":42835,\"at\":\"2026-08-25T13:02:00.217Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29474px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1037,\"playerY\":643,\"gameTimeMs\":42868,\"at\":\"2026-08-25T13:02:00.249Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29477px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1040,\"playerY\":645,\"gameTimeMs\":42902,\"at\":\"2026-08-25T13:02:00.283Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29480px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1042,\"playerY\":648,\"gameTimeMs\":42935,\"at\":\"2026-08-25T13:02:00.319Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29484px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1045,\"playerY\":650,\"gameTimeMs\":42968,\"at\":\"2026-08-25T13:02:00.357Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29487px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1047,\"playerY\":653,\"gameTimeMs\":43002,\"at\":\"2026-08-25T13:02:00.395Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29491px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1049,\"playerY\":655,\"gameTimeMs\":43035,\"at\":\"2026-08-25T13:02:00.432Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29496px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1053,\"playerY\":659,\"gameTimeMs\":43085,\"at\":\"2026-08-25T13:02:00.466Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29500px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1056,\"playerY\":661,\"gameTimeMs\":43118,\"at\":\"2026-08-25T13:02:00.500Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29503px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1058,\"playerY\":664,\"gameTimeMs\":43152,\"at\":\"2026-08-25T13:02:00.534Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29507px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1061,\"playerY\":666,\"gameTimeMs\":43185,\"at\":\"2026-08-25T13:02:00.567Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29510px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1063,\"playerY\":669,\"gameTimeMs\":43219,\"at\":\"2026-08-25T13:02:00.600Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29514px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1065,\"playerY\":671,\"gameTimeMs\":43252,\"at\":\"2026-08-25T13:02:00.633Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29517px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1068,\"playerY\":674,\"gameTimeMs\":43285,\"at\":\"2026-08-25T13:02:00.666Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29521px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1070,\"playerY\":676,\"gameTimeMs\":43319,\"at\":\"2026-08-25T13:02:00.699Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29524px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1073,\"playerY\":678,\"gameTimeMs\":43352,\"at\":\"2026-08-25T13:02:00.731Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29527px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1075,\"playerY\":681,\"gameTimeMs\":43386,\"at\":\"2026-08-25T13:02:00.765Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29531px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1078,\"playerY\":683,\"gameTimeMs\":43419,\"at\":\"2026-08-25T13:02:00.805Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29534px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1080,\"playerY\":686,\"gameTimeMs\":43452,\"at\":\"2026-08-25T13:02:00.855Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29540px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1084,\"playerY\":690,\"gameTimeMs\":43502,\"at\":\"2026-08-25T13:02:00.909Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29545px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1088,\"playerY\":693,\"gameTimeMs\":43552,\"at\":\"2026-08-25T13:02:00.959Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29550px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1091,\"playerY\":697,\"gameTimeMs\":43602,\"at\":\"2026-08-25T13:02:01.004Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29555px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1095,\"playerY\":701,\"gameTimeMs\":43652,\"at\":\"2026-08-25T13:02:01.043Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29559px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1097,\"playerY\":703,\"gameTimeMs\":43686,\"at\":\"2026-08-25T13:02:01.082Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29557px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1097,\"playerY\":702,\"gameTimeMs\":43736,\"at\":\"2026-08-25T13:02:01.116Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29552px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1093,\"playerY\":699,\"gameTimeMs\":43802,\"at\":\"2026-08-25T13:02:01.200Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29548px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1090,\"playerY\":695,\"gameTimeMs\":43852,\"at\":\"2026-08-25T13:02:01.245Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29544px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1087,\"playerY\":693,\"gameTimeMs\":43886,\"at\":\"2026-08-25T13:02:01.287Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29539px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1084,\"playerY\":689,\"gameTimeMs\":43936,\"at\":\"2026-08-25T13:02:01.328Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29536px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1081,\"playerY\":687,\"gameTimeMs\":43969,\"at\":\"2026-08-25T13:02:01.370Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(29530px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1077,\"playerY\":683,\"gameTimeMs\":44019,\"at\":\"2026-08-25T13:02:01.411Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30016px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1226,\"playerY\":1222,\"gameTimeMs\":64158,\"at\":\"2026-08-25T13:02:22.120Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30019px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1228,\"playerY\":1225,\"gameTimeMs\":64192,\"at\":\"2026-08-25T13:02:22.151Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30020px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1228,\"playerY\":1227,\"gameTimeMs\":64208,\"at\":\"2026-08-25T13:02:22.183Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30024px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1231,\"playerY\":1229,\"gameTimeMs\":64241,\"at\":\"2026-08-25T13:02:22.216Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30027px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1233,\"playerY\":1232,\"gameTimeMs\":64275,\"at\":\"2026-08-25T13:02:22.251Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30030px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1235,\"playerY\":1234,\"gameTimeMs\":64308,\"at\":\"2026-08-25T13:02:22.287Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30036px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1239,\"playerY\":1238,\"gameTimeMs\":64358,\"at\":\"2026-08-25T13:02:22.321Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30039px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1241,\"playerY\":1241,\"gameTimeMs\":64392,\"at\":\"2026-08-25T13:02:22.356Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30043px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1244,\"playerY\":1243,\"gameTimeMs\":64425,\"at\":\"2026-08-25T13:02:22.390Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30046px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1246,\"playerY\":1245,\"gameTimeMs\":64458,\"at\":\"2026-08-25T13:02:22.424Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30050px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1249,\"playerY\":1248,\"gameTimeMs\":64492,\"at\":\"2026-08-25T13:02:22.463Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30053px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1251,\"playerY\":1250,\"gameTimeMs\":64525,\"at\":\"2026-08-25T13:02:22.496Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30057px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1254,\"playerY\":1253,\"gameTimeMs\":64558,\"at\":\"2026-08-25T13:02:22.532Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30060px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1256,\"playerY\":1255,\"gameTimeMs\":64592,\"at\":\"2026-08-25T13:02:22.571Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30065px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1260,\"playerY\":1259,\"gameTimeMs\":64642,\"at\":\"2026-08-25T13:02:22.610Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30069px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1262,\"playerY\":1261,\"gameTimeMs\":64675,\"at\":\"2026-08-25T13:02:22.649Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30072px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1265,\"playerY\":1264,\"gameTimeMs\":64708,\"at\":\"2026-08-25T13:02:22.687Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30077px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1268,\"playerY\":1268,\"gameTimeMs\":64758,\"at\":\"2026-08-25T13:02:22.724Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30081px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1271,\"playerY\":1270,\"gameTimeMs\":64792,\"at\":\"2026-08-25T13:02:22.762Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30084px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1273,\"playerY\":1273,\"gameTimeMs\":64825,\"at\":\"2026-08-25T13:02:22.799Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30088px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1276,\"playerY\":1275,\"gameTimeMs\":64858,\"at\":\"2026-08-25T13:02:22.839Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30093px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1279,\"playerY\":1279,\"gameTimeMs\":64908,\"at\":\"2026-08-25T13:02:22.876Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30097px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1282,\"playerY\":1281,\"gameTimeMs\":64942,\"at\":\"2026-08-25T13:02:22.912Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30100px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1284,\"playerY\":1284,\"gameTimeMs\":64975,\"at\":\"2026-08-25T13:02:22.948Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30104px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1287,\"playerY\":1286,\"gameTimeMs\":65008,\"at\":\"2026-08-25T13:02:22.984Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30107px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1289,\"playerY\":1289,\"gameTimeMs\":65042,\"at\":\"2026-08-25T13:02:23.021Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30112px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1293,\"playerY\":1292,\"gameTimeMs\":65092,\"at\":\"2026-08-25T13:02:23.054Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30116px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1295,\"playerY\":1295,\"gameTimeMs\":65125,\"at\":\"2026-08-25T13:02:23.088Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30119px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1298,\"playerY\":1297,\"gameTimeMs\":65159,\"at\":\"2026-08-25T13:02:23.124Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30118px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1297,\"playerY\":1296,\"gameTimeMs\":65225,\"at\":\"2026-08-25T13:02:23.197Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30115px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1295,\"playerY\":1294,\"gameTimeMs\":65259,\"at\":\"2026-08-25T13:02:23.234Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30092px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1278,\"playerY\":1278,\"gameTimeMs\":65492,\"at\":\"2026-08-25T13:02:23.460Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30563px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1588,\"playerY\":1635,\"gameTimeMs\":75024,\"at\":\"2026-08-25T13:02:33.522Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30565px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1589,\"playerY\":1636,\"gameTimeMs\":75074,\"at\":\"2026-08-25T13:02:33.578Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30569px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1592,\"playerY\":1639,\"gameTimeMs\":75124,\"at\":\"2026-08-25T13:02:33.638Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30574px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1596,\"playerY\":1642,\"gameTimeMs\":75174,\"at\":\"2026-08-25T13:02:33.700Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30579px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1599,\"playerY\":1646,\"gameTimeMs\":75224,\"at\":\"2026-08-25T13:02:33.754Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30584px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1603,\"playerY\":1649,\"gameTimeMs\":75274,\"at\":\"2026-08-25T13:02:33.805Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30589px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1606,\"playerY\":1653,\"gameTimeMs\":75324,\"at\":\"2026-08-25T13:02:33.856Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30594px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1610,\"playerY\":1657,\"gameTimeMs\":75374,\"at\":\"2026-08-25T13:02:33.909Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30599px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1614,\"playerY\":1660,\"gameTimeMs\":75424,\"at\":\"2026-08-25T13:02:33.963Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30605px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1617,\"playerY\":1664,\"gameTimeMs\":75474,\"at\":\"2026-08-25T13:02:34.016Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30610px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1621,\"playerY\":1668,\"gameTimeMs\":75524,\"at\":\"2026-08-25T13:02:34.066Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30615px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1625,\"playerY\":1671,\"gameTimeMs\":75574,\"at\":\"2026-08-25T13:02:34.107Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30619px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1627,\"playerY\":1674,\"gameTimeMs\":75607,\"at\":\"2026-08-25T13:02:34.149Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30624px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1631,\"playerY\":1677,\"gameTimeMs\":75657,\"at\":\"2026-08-25T13:02:34.187Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30627px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1633,\"playerY\":1680,\"gameTimeMs\":75690,\"at\":\"2026-08-25T13:02:34.233Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30632px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1637,\"playerY\":1684,\"gameTimeMs\":75740,\"at\":\"2026-08-25T13:02:34.275Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30636px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1640,\"playerY\":1686,\"gameTimeMs\":75774,\"at\":\"2026-08-25T13:02:34.323Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30641px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1643,\"playerY\":1690,\"gameTimeMs\":75824,\"at\":\"2026-08-25T13:02:34.371Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30646px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1647,\"playerY\":1693,\"gameTimeMs\":75874,\"at\":\"2026-08-25T13:02:34.419Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30652px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1651,\"playerY\":1697,\"gameTimeMs\":75924,\"at\":\"2026-08-25T13:02:34.471Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30657px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1654,\"playerY\":1701,\"gameTimeMs\":75974,\"at\":\"2026-08-25T13:02:34.517Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30662px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1658,\"playerY\":1705,\"gameTimeMs\":76024,\"at\":\"2026-08-25T13:02:34.562Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30665px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1660,\"playerY\":1707,\"gameTimeMs\":76057,\"at\":\"2026-08-25T13:02:34.609Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30664px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1660,\"playerY\":1706,\"gameTimeMs\":76107,\"at\":\"2026-08-25T13:02:34.662Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30660px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1657,\"playerY\":1703,\"gameTimeMs\":76157,\"at\":\"2026-08-25T13:02:34.708Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30656px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1654,\"playerY\":1700,\"gameTimeMs\":76207,\"at\":\"2026-08-25T13:02:34.751Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30651px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1650,\"playerY\":1696,\"gameTimeMs\":76257,\"at\":\"2026-08-25T13:02:34.797Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30647px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1648,\"playerY\":1694,\"gameTimeMs\":76290,\"at\":\"2026-08-25T13:02:34.846Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30642px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1644,\"playerY\":1690,\"gameTimeMs\":76340,\"at\":\"2026-08-25T13:02:34.897Z\"},{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(30637px > 4000px)\",\"bossState\":\"g-dive-windup\",\"bossX\":-20000,\"bossY\":-20000,\"playerX\":1640,\"playerY\":1687,\"gameTimeMs\":76390,\"at\":\"2026-08-25T13:02:34.946Z\"}],\"moveTally\":{\"g-sweep\":{\"exposures\":1,\"counters\":0,\"hits\":0},\"g-bolt\":{\"exposures\":1,\"counters\":0,\"hits\":0},\"g-jump\":{\"exposures\":1,\"counters\":0,\"hits\":0}},\"movesMissing\":[\"g-bite\",\"g-boon\",\"g-nihil\",\"g-nova\",\"g-parts\",\"g-quad\",\"g-reach\",\"g-slam\",\"g-sweepbeam\",\"g-tailslam\",\"g-talon\",\"g-trijump\",\"g-wing\"],\"movesSeen\":[\"g-bolt\",\"g-dash\",\"g-dive\",\"g-glide\",\"g-jump\",\"g-stomp\",\"g-sweep\"],\"hpLost\":130}\r\n{\"slotKey\":\"giantbat@stage-4\",\"label\":\"衛生兵(変異)\",\"bossType\":\"giantbat\",\"stageId\":\"stage-4\",\"outcome\":\"death\",\"durationMs\":84834,\"realMs\":94916,\"findings\":[{\"kind\":\"cancel\",\"detail\":\"g-quad-charge(active) → g-quad(windup): 前の技を出し切る前に次の技が始まった\",\"bossState\":\"g-quad-windup\",\"bossX\":851,\"bossY\":-438,\"playerX\":707,\"playerY\":-427,\"gameTimeMs\":15146,\"at\":\"2026-08-25T13:02:57.699Z\"}],\"moveTally\":{\"g-jump\":{\"exposures\":6,\"counters\":0,\"hits\":1},\"g-sweep\":{\"exposures\":4,\"counters\":0,\"hits\":0},\"g-quad\":{\"exposures\":3,\"counters\":0,\"hits\":2},\"g-stomp\":{\"exposures\":3,\"counters\":0,\"hits\":2},\"g-bolt\":{\"exposures\":4,\"counters\":2,\"hits\":1},\"g-dash\":{\"exposures\":3,\"counters\":0,\"hits\":0}},\"movesMissing\":[\"g-bite\",\"g-boon\",\"g-dive\",\"g-glide\",\"g-nihil\",\"g-nova\",\"g-parts\",\"g-reach\",\"g-slam\",\"g-sweepbeam\",\"g-tailslam\",\"g-talon\",\"g-trijump\",\"g-wing\"],\"movesSeen\":[\"g-bolt\",\"g-dash\",\"g-jump\",\"g-quad\",\"g-stomp\",\"g-sweep\"],\"hpLost\":130}\r\n{\"slotKey\":\"giantbat@stage-5\",\"label\":\"軍隊(変異)\",\"bossType\":\"giantbat\",\"stageId\":\"stage-5\",\"outcome\":\"death\",\"durationMs\":52000,\"realMs\":63155,\"findings\":[],\"moveTally\":{\"g-bolt\":{\"exposures\":3,\"counters\":1,\"hits\":2},\"g-dash\":{\"exposures\":4,\"counters\":0,\"hits\":0},\"g-jump\":{\"exposures\":4,\"counters\":3,\"hits\":1},\"g-sweep\":{\"exposures\":3,\"counters\":0,\"hits\":0},\"g-stomp\":{\"exposures\":1,\"counters\":0,\"hits\":1},\"g-sweepbeam\":{\"exposures\":1,\"counters\":0,\"hits\":1}},\"movesMissing\":[\"g-bite\",\"g-boon\",\"g-dive\",\"g-glide\",\"g-nihil\",\"g-nova\",\"g-parts\",\"g-quad\",\"g-reach\",\"g-slam\",\"g-tailslam\",\"g-talon\",\"g-trijump\",\"g-wing\"],\"movesSeen\":[\"g-bolt\",\"g-dash\",\"g-jump\",\"g-stomp\",\"g-sweep\",\"g-sweepbeam\"],\"hpLost\":130}\r\n{\"slotKey\":\"giantbat@stage-7\",\"label\":\"グレン\",\"bossType\":\"giantbat\",\"stageId\":\"stage-7\",\"outcome\":\"death\",\"durationMs\":35265,\"realMs\":54323,\"findings\":[],\"moveTally\":{\"g-jump\":{\"exposures\":1,\"counters\":0,\"hits\":1},\"g-talon\":{\"exposures\":3,\"counters\":2,\"hits\":1},\"g-stomp\":{\"exposures\":1,\"counters\":1,\"hits\":0},\"g-bolt\":{\"exposures\":1,\"counters\":1,\"hits\":0},\"g-reach\":{\"exposures\":1,\"counters\":0,\"hits\":1},\"g-dash\":{\"exposures\":1,\"counters\":1,\"hits\":0}},\"movesMissing\":[\"g-bite\",\"g-boon\",\"g-dive\",\"g-glide\",\"g-nihil\",\"g-nova\",\"g-parts\",\"g-quad\",\"g-slam\",\"g-sweep\",\"g-sweepbeam\",\"g-tailslam\",\"g-trijump\",\"g-wing\"],\"movesSeen\":[\"g-bolt\",\"g-dash\",\"g-jump\",\"g-reach\",\"g-stomp\",\"g-talon\"],\"hpLost\":130}\r\n{\"slotKey\":\"phillboss@stage-ex1\",\"label\":\"phillboss@stage-ex1\",\"bossType\":\"phillboss\",\"stageId\":\"stage-ex1\",\"outcome\":\"death\",\"durationMs\":31694,\"realMs\":36723,\"findings\":[],\"moveTally\":{\"phill-wingcombo\":{\"exposures\":1,\"counters\":0,\"hits\":1},\"phill-wingslash\":{\"exposures\":1,\"counters\":0,\"hits\":0},\"phill-lancefan\":{\"exposures\":2,\"counters\":0,\"hits\":0},\"phill-meteor\":{\"exposures\":2,\"counters\":0,\"hits\":2},\"phill-summon\":{\"exposures\":1,\"counters\":0,\"hits\":0},\"phill-dive\":{\"exposures\":1,\"counters\":0,\"hits\":1}},\"movesMissing\":[\"phill-cage\",\"phill-feathershot\",\"phill-goldring\",\"phill-judgment\",\"phill-ringtoss\",\"phill-wingthrust\"],\"movesSeen\":[\"phill-dive\",\"phill-lancefan\",\"phill-lightrain\",\"phill-meteor\",\"phill-summon\",\"phill-wingcombo\",\"phill-wingslash\"],\"hpLost\":130}\r\n{\"slotKey\":\"miguel\",\"label\":\"miguel\",\"bossType\":\"miguel\",\"stageId\":\"stage-1\",\"outcome\":\"death\",\"durationMs\":30799,\"realMs\":39694,\"findings\":[],\"moveTally\":{\"miguel-volley\":{\"exposures\":3,\"counters\":0,\"hits\":0},\"miguel-mdash\":{\"exposures\":3,\"counters\":0,\"hits\":1},\"miguel-harai\":{\"exposures\":4,\"counters\":1,\"hits\":1},\"miguel-tate\":{\"exposures\":3,\"counters\":0,\"hits\":0}},\"movesMissing\":[],\"movesSeen\":[\"miguel-harai\",\"miguel-mdash\",\"miguel-tate\",\"miguel-volley\"],\"hpLost\":130}\r\n{\"slotKey\":\"jibril\",\"label\":\"jibril\",\"bossType\":\"jibril\",\"stageId\":\"stage-3\",\"outcome\":\"death\",\"durationMs\":20925,\"realMs\":29464,\"findings\":[],\"moveTally\":{\"jibril-volley\":{\"exposures\":2,\"counters\":0,\"hits\":0},\"jibril-lantern\":{\"exposures\":1,\"counters\":0,\"hits\":1}},\"movesMissing\":[\"jibril-consecrate\"],\"movesSeen\":[\"jibril-lantern\",\"jibril-volley\"],\"hpLost\":130}\r\n{\"slotKey\":\"rafi\",\"label\":\"rafi\",\"bossType\":\"rafi\",\"stageId\":\"stage-4\",\"outcome\":\"death\",\"durationMs\":27764,\"realMs\":37912,\"findings\":[],\"moveTally\":{\"rafi-jump\":{\"exposures\":5,\"counters\":4,\"hits\":0}},\"movesMissing\":[\"rafi-bone\",\"rafi-sweep\"],\"movesSeen\":[\"rafi-jump\"],\"hpLost\":130}\r\n{\"slotKey\":\"uri\",\"label\":\"uri\",\"bossType\":\"uri\",\"stageId\":\"stage-5\",\"outcome\":\"death\",\"durationMs\":15721,\"realMs\":23636,\"findings\":[],\"moveTally\":{\"uri-sweep\":{\"exposures\":3,\"counters\":0,\"hits\":1},\"uri-downslash\":{\"exposures\":1,\"counters\":0,\"hits\":1},\"uri-thrust\":{\"exposures\":1,\"counters\":0,\"hits\":1}},\"movesMissing\":[\"uri-bolt\"],\"movesSeen\":[\"uri-downslash\",\"uri-sweep\",\"uri-thrust\"],\"hpLost\":130}\r\n{\"slotKey\":\"suriel\",\"label\":\"suriel\",\"bossType\":\"suriel\",\"stageId\":\"stage-ex1\",\"outcome\":\"death\",\"durationMs\":40323,\"realMs\":45140,\"findings\":[{\"kind\":\"cancel\",\"detail\":\"ring-move(windup) → ring-beam(windup): 前の技を出し切る前に次の技が始まった\",\"bossState\":\"ring-beam-windup\",\"bossX\":-11,\"bossY\":-289,\"playerX\":76,\"playerY\":-49,\"gameTimeMs\":6487,\"at\":\"2026-08-25T13:09:05.943Z\"}],\"moveTally\":{\"suriel-ring\":{\"exposures\":4,\"counters\":0,\"hits\":2},\"suriel-sweep\":{\"exposures\":4,\"counters\":0,\"hits\":0},\"suriel-gaze\":{\"exposures\":2,\"counters\":0,\"hits\":1}},\"movesMissing\":[],\"movesSeen\":[\"suriel-gaze\",\"suriel-ring\",\"suriel-sweep\"],\"hpLost\":130}\r\n{\"slotKey\":\"acrasiel\",\"label\":\"acrasiel\",\"bossType\":\"acrasiel\",\"stageId\":\"stage-6\",\"outcome\":\"death\",\"durationMs\":33513,\"realMs\":37471,\"findings\":[],\"moveTally\":{\"acrasiel-spear\":{\"exposures\":1,\"counters\":0,\"hits\":1},\"acrasiel-warp\":{\"exposures\":4,\"counters\":0,\"hits\":0},\"acrasiel-burst\":{\"exposures\":2,\"counters\":0,\"hits\":0},\"acrasiel-gaze\":{\"exposures\":1,\"counters\":0,\"hits\":1},\"acrasiel-spike\":{\"exposures\":1,\"counters\":0,\"hits\":1}},\"movesMissing\":[],\"movesSeen\":[\"acrasiel-burst\",\"acrasiel-gaze\",\"acrasiel-spear\",\"acrasiel-spike\",\"acrasiel-warp\"],\"hpLost\":130}\r\n{\"slotKey\":\"mimir\",\"label\":\"mimir\",\"bossType\":\"mimir\",\"stageId\":\"stage-1\",\"outcome\":\"death\",\"durationMs\":26848,\"realMs\":34730,\"findings\":[],\"moveTally\":{\"mimir-bite\":{\"exposures\":1,\"counters\":0,\"hits\":0},\"mimir-burst\":{\"exposures\":2,\"counters\":0,\"hits\":1},\"mimir-radial\":{\"exposures\":1,\"counters\":0,\"hits\":0},\"mimir-laser\":{\"exposures\":1,\"counters\":0,\"hits\":1},\"mimir-dash\":{\"exposures\":1,\"counters\":0,\"hits\":0}},\"movesMissing\":[],\"movesSeen\":[\"mimir-bite\",\"mimir-burst\",\"mimir-dash\",\"mimir-laser\",\"mimir-radial\"],\"hpLost\":130}\r\n{\"slotKey\":\"jormungand\",\"label\":\"jormungand\",\"bossType\":\"jormungand\",\"stageId\":\"stage-3\",\"outcome\":\"timeout\",\"durationMs\":166960,\"realMs\":180019,\"findings\":[],\"moveTally\":{\"jormungand-coil\":{\"exposures\":5,\"counters\":0,\"hits\":0},\"jormungand-burst\":{\"exposures\":9,\"counters\":5,\"hits\":1},\"jormungand-radial\":{\"exposures\":14,\"counters\":0,\"hits\":1},\"jormungand-dash\":{\"exposures\":10,\"counters\":0,\"hits\":0}},\"movesMissing\":[],\"movesSeen\":[\"jormungand-burst\",\"jormungand-coil\",\"jormungand-dash\",\"jormungand-radial\"],\"hpLost\":94}\r\n{\"slotKey\":\"skadi\",\"label\":\"skadi\",\"bossType\":\"skadi\",\"stageId\":\"stage-4\",\"outcome\":\"death\",\"durationMs\":8656,\"realMs\":16497,\"findings\":[],\"moveTally\":{},\"movesMissing\":[\"skadi-blade\",\"skadi-burst\",\"skadi-cage\",\"skadi-radial\"],\"movesSeen\":[\"skadi-dash\",\"skadi-ice\"],\"hpLost\":130}\r\n{\"slotKey\":\"thor\",\"label\":\"thor\",\"bossType\":\"thor\",\"stageId\":\"stage-5\",\"outcome\":\"death\",\"durationMs\":16040,\"realMs\":23996,\"findings\":[],\"moveTally\":{\"thor-issen\":{\"exposures\":2,\"counters\":0,\"hits\":2},\"thor-harai\":{\"exposures\":1,\"counters\":0,\"hits\":0},\"thor-tsuki\":{\"exposures\":1,\"counters\":0,\"hits\":1}},\"movesMissing\":[\"thor-burst\",\"thor-dash\",\"thor-jump\",\"thor-radial\"],\"movesSeen\":[\"thor-harai\",\"thor-issen\",\"thor-tsuki\"],\"hpLost\":130}\r\n{\"slotKey\":\"idol\",\"label\":\"idol\",\"bossType\":\"idol\",\"stageId\":\"stage-2\",\"outcome\":\"death\",\"durationMs\":55924,\"realMs\":64443,\"findings\":[{\"kind\":\"anomaly\",\"detail\":\"ボスとの距離が異常(6080px > 4000px)\",\"bossState\":\"chase\",\"bossX\":6080,\"bossY\":16,\"playerX\":0,\"playerY\":0,\"gameTimeMs\":0,\"at\":\"2026-08-25T13:14:33.765Z\"},{\"kind\":\"softlock\",\"detail\":\"ボスが15秒動かない\",\"bossState\":\"idol-orb-recover\",\"bossX\":-414,\"bossY\":190,\"playerX\":-152,\"playerY\":103,\"gameTimeMs\":28592,\"at\":\"2026-08-25T13:15:09.840Z\"}],\"moveTally\":{\"idol-fan\":{\"exposures\":4,\"counters\":1,\"hits\":0},\"idol-roll\":{\"exposures\":2,\"counters\":0,\"hits\":0},\"idol-snipe\":{\"exposures\":5,\"counters\":0,\"hits\":1},\"idol-orb\":{\"exposures\":4,\"counters\":0,\"hits\":4},\"idol-punch\":{\"exposures\":4,\"counters\":0,\"hits\":0}},\"movesMissing\":[\"idol-aim\",\"idol-nade\"],\"movesSeen\":[\"idol-fan\",\"idol-orb\",\"idol-punch\",\"idol-roll\",\"idol-snipe\"],\"hpLost\":130}",
+  "B_localStorage": {
+    "v": 1,
+    "header": {
+      "version": "0.25.3928",
+      "startedAt": "2026-08-25T12:53:57.219Z",
+      "conditions": "bot=standard / botskill=master / class=warrior / lv=1 / companion=なし / renderer=pixi / timeout=180s",
+      "skipped": [
+        "giantbat@stage-2(城ボス不在=出ないためスキップ)",
+        "guardian-phantom@practice(城ボス不在=出ないためスキップ)"
+      ],
+      "slotCount": 21
+    },
+    "records": [
+      {
+        "slotKey": "bounty-ranged@practice",
+        "label": "バス停(変異)",
+        "bossType": "bounty-ranged",
+        "stageId": "stage-1",
+        "outcome": "death",
+        "durationMs": 58008,
+        "realMs": 86103,
+        "findings": [],
+        "moveTally": {
+          "br-laser": {
+            "exposures": 2,
+            "counters": 0,
+            "hits": 2
+          },
+          "br-triple": {
+            "exposures": 4,
+            "counters": 1,
+            "hits": 0
+          },
+          "br-push": {
+            "exposures": 3,
+            "counters": 2,
+            "hits": 0
+          }
+        },
+        "movesMissing": [],
+        "movesSeen": [
+          "br-laser",
+          "br-push",
+          "br-triple"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "bounty-melee@practice",
+        "label": "馬乗り(変異)",
+        "bossType": "bounty-melee",
+        "stageId": "stage-3",
+        "outcome": "win",
+        "durationMs": 45930,
+        "realMs": 69770,
+        "findings": [],
+        "moveTally": {
+          "bm-charge": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 0
+          },
+          "bm-whip360": {
+            "exposures": 4,
+            "counters": 1,
+            "hits": 0
+          },
+          "bm-combo1": {
+            "exposures": 22,
+            "counters": 17,
+            "hits": 0
+          },
+          "bm-combo2": {
+            "exposures": 4,
+            "counters": 1,
+            "hits": 0
+          },
+          "bm-combo3": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 0
+          }
+        },
+        "movesMissing": [
+          "bm-snipe"
+        ],
+        "movesSeen": [
+          "bm-charge",
+          "bm-combo1",
+          "bm-combo2",
+          "bm-combo3",
+          "bm-whip360"
+        ],
+        "hpLost": 18
+      },
+      {
+        "slotKey": "bounty-balance@practice",
+        "label": "鋏(変異)",
+        "bossType": "bounty-balance",
+        "stageId": "stage-4",
+        "outcome": "win",
+        "durationMs": 64178,
+        "realMs": 86464,
+        "findings": [],
+        "moveTally": {
+          "bb-leap": {
+            "exposures": 13,
+            "counters": 12,
+            "hits": 0
+          },
+          "bb-sweep": {
+            "exposures": 10,
+            "counters": 1,
+            "hits": 0
+          }
+        },
+        "movesMissing": [],
+        "movesSeen": [
+          "bb-leap",
+          "bb-sweep"
+        ],
+        "hpLost": 98
+      },
+      {
+        "slotKey": "bounty-maiko@practice",
+        "label": "舞妓(変異)",
+        "bossType": "bounty-maiko",
+        "stageId": "stage-5",
+        "outcome": "death",
+        "durationMs": 79136,
+        "realMs": 93273,
+        "findings": [],
+        "moveTally": {
+          "mk-spin": {
+            "exposures": 6,
+            "counters": 4,
+            "hits": 2
+          },
+          "mk-naginata": {
+            "exposures": 12,
+            "counters": 10,
+            "hits": 0
+          },
+          "mk-boom": {
+            "exposures": 8,
+            "counters": 0,
+            "hits": 3
+          },
+          "mk-naginata1": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 0
+          },
+          "mk-naginata2": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 0
+          }
+        },
+        "movesMissing": [],
+        "movesSeen": [
+          "mk-boom",
+          "mk-naginata",
+          "mk-naginata1",
+          "mk-naginata2",
+          "mk-spin",
+          "mk-suiu"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "giantbat@stage-1",
+        "label": "搬送体(変異)",
+        "bossType": "giantbat",
+        "stageId": "stage-1",
+        "outcome": "death",
+        "durationMs": 82896,
+        "realMs": 92439,
+        "findings": [],
+        "moveTally": {
+          "g-bolt": {
+            "exposures": 6,
+            "counters": 0,
+            "hits": 3
+          },
+          "g-dash": {
+            "exposures": 4,
+            "counters": 0,
+            "hits": 0
+          },
+          "g-jump": {
+            "exposures": 7,
+            "counters": 0,
+            "hits": 1
+          },
+          "g-sweep": {
+            "exposures": 6,
+            "counters": 0,
+            "hits": 1
+          },
+          "g-stomp": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 1
+          },
+          "g-bite": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          },
+          "g-wing": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          }
+        },
+        "movesMissing": [
+          "g-boon",
+          "g-dive",
+          "g-glide",
+          "g-nihil",
+          "g-nova",
+          "g-parts",
+          "g-quad",
+          "g-reach",
+          "g-slam",
+          "g-sweepbeam",
+          "g-tailslam",
+          "g-talon",
+          "g-trijump"
+        ],
+        "movesSeen": [
+          "g-bite",
+          "g-bolt",
+          "g-dash",
+          "g-jump",
+          "g-stomp",
+          "g-sweep",
+          "g-wing"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "giantbat@stage-3",
+        "label": "樹木管理員(変異)",
+        "bossType": "giantbat",
+        "stageId": "stage-3",
+        "outcome": "death",
+        "durationMs": 76440,
+        "realMs": 88913,
+        "findings": [
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29458px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1026,
+            "playerY": 632,
+            "gameTimeMs": 42685,
+            "at": "2026-08-25T13:02:00.078Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29459px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1027,
+            "playerY": 633,
+            "gameTimeMs": 42718,
+            "at": "2026-08-25T13:02:00.114Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29464px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1030,
+            "playerY": 636,
+            "gameTimeMs": 42768,
+            "at": "2026-08-25T13:02:00.148Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29467px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1032,
+            "playerY": 638,
+            "gameTimeMs": 42802,
+            "at": "2026-08-25T13:02:00.182Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29470px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1035,
+            "playerY": 640,
+            "gameTimeMs": 42835,
+            "at": "2026-08-25T13:02:00.217Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29474px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1037,
+            "playerY": 643,
+            "gameTimeMs": 42868,
+            "at": "2026-08-25T13:02:00.249Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29477px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1040,
+            "playerY": 645,
+            "gameTimeMs": 42902,
+            "at": "2026-08-25T13:02:00.283Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29480px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1042,
+            "playerY": 648,
+            "gameTimeMs": 42935,
+            "at": "2026-08-25T13:02:00.319Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29484px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1045,
+            "playerY": 650,
+            "gameTimeMs": 42968,
+            "at": "2026-08-25T13:02:00.357Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29487px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1047,
+            "playerY": 653,
+            "gameTimeMs": 43002,
+            "at": "2026-08-25T13:02:00.395Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29491px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1049,
+            "playerY": 655,
+            "gameTimeMs": 43035,
+            "at": "2026-08-25T13:02:00.432Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29496px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1053,
+            "playerY": 659,
+            "gameTimeMs": 43085,
+            "at": "2026-08-25T13:02:00.466Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29500px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1056,
+            "playerY": 661,
+            "gameTimeMs": 43118,
+            "at": "2026-08-25T13:02:00.500Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29503px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1058,
+            "playerY": 664,
+            "gameTimeMs": 43152,
+            "at": "2026-08-25T13:02:00.534Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29507px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1061,
+            "playerY": 666,
+            "gameTimeMs": 43185,
+            "at": "2026-08-25T13:02:00.567Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29510px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1063,
+            "playerY": 669,
+            "gameTimeMs": 43219,
+            "at": "2026-08-25T13:02:00.600Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29514px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1065,
+            "playerY": 671,
+            "gameTimeMs": 43252,
+            "at": "2026-08-25T13:02:00.633Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29517px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1068,
+            "playerY": 674,
+            "gameTimeMs": 43285,
+            "at": "2026-08-25T13:02:00.666Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29521px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1070,
+            "playerY": 676,
+            "gameTimeMs": 43319,
+            "at": "2026-08-25T13:02:00.699Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29524px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1073,
+            "playerY": 678,
+            "gameTimeMs": 43352,
+            "at": "2026-08-25T13:02:00.731Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29527px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1075,
+            "playerY": 681,
+            "gameTimeMs": 43386,
+            "at": "2026-08-25T13:02:00.765Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29531px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1078,
+            "playerY": 683,
+            "gameTimeMs": 43419,
+            "at": "2026-08-25T13:02:00.805Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29534px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1080,
+            "playerY": 686,
+            "gameTimeMs": 43452,
+            "at": "2026-08-25T13:02:00.855Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29540px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1084,
+            "playerY": 690,
+            "gameTimeMs": 43502,
+            "at": "2026-08-25T13:02:00.909Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29545px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1088,
+            "playerY": 693,
+            "gameTimeMs": 43552,
+            "at": "2026-08-25T13:02:00.959Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29550px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1091,
+            "playerY": 697,
+            "gameTimeMs": 43602,
+            "at": "2026-08-25T13:02:01.004Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29555px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1095,
+            "playerY": 701,
+            "gameTimeMs": 43652,
+            "at": "2026-08-25T13:02:01.043Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29559px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1097,
+            "playerY": 703,
+            "gameTimeMs": 43686,
+            "at": "2026-08-25T13:02:01.082Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29557px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1097,
+            "playerY": 702,
+            "gameTimeMs": 43736,
+            "at": "2026-08-25T13:02:01.116Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29552px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1093,
+            "playerY": 699,
+            "gameTimeMs": 43802,
+            "at": "2026-08-25T13:02:01.200Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29548px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1090,
+            "playerY": 695,
+            "gameTimeMs": 43852,
+            "at": "2026-08-25T13:02:01.245Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29544px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1087,
+            "playerY": 693,
+            "gameTimeMs": 43886,
+            "at": "2026-08-25T13:02:01.287Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29539px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1084,
+            "playerY": 689,
+            "gameTimeMs": 43936,
+            "at": "2026-08-25T13:02:01.328Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29536px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1081,
+            "playerY": 687,
+            "gameTimeMs": 43969,
+            "at": "2026-08-25T13:02:01.370Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(29530px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1077,
+            "playerY": 683,
+            "gameTimeMs": 44019,
+            "at": "2026-08-25T13:02:01.411Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30016px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1226,
+            "playerY": 1222,
+            "gameTimeMs": 64158,
+            "at": "2026-08-25T13:02:22.120Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30019px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1228,
+            "playerY": 1225,
+            "gameTimeMs": 64192,
+            "at": "2026-08-25T13:02:22.151Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30020px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1228,
+            "playerY": 1227,
+            "gameTimeMs": 64208,
+            "at": "2026-08-25T13:02:22.183Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30024px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1231,
+            "playerY": 1229,
+            "gameTimeMs": 64241,
+            "at": "2026-08-25T13:02:22.216Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30027px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1233,
+            "playerY": 1232,
+            "gameTimeMs": 64275,
+            "at": "2026-08-25T13:02:22.251Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30030px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1235,
+            "playerY": 1234,
+            "gameTimeMs": 64308,
+            "at": "2026-08-25T13:02:22.287Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30036px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1239,
+            "playerY": 1238,
+            "gameTimeMs": 64358,
+            "at": "2026-08-25T13:02:22.321Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30039px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1241,
+            "playerY": 1241,
+            "gameTimeMs": 64392,
+            "at": "2026-08-25T13:02:22.356Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30043px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1244,
+            "playerY": 1243,
+            "gameTimeMs": 64425,
+            "at": "2026-08-25T13:02:22.390Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30046px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1246,
+            "playerY": 1245,
+            "gameTimeMs": 64458,
+            "at": "2026-08-25T13:02:22.424Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30050px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1249,
+            "playerY": 1248,
+            "gameTimeMs": 64492,
+            "at": "2026-08-25T13:02:22.463Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30053px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1251,
+            "playerY": 1250,
+            "gameTimeMs": 64525,
+            "at": "2026-08-25T13:02:22.496Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30057px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1254,
+            "playerY": 1253,
+            "gameTimeMs": 64558,
+            "at": "2026-08-25T13:02:22.532Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30060px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1256,
+            "playerY": 1255,
+            "gameTimeMs": 64592,
+            "at": "2026-08-25T13:02:22.571Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30065px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1260,
+            "playerY": 1259,
+            "gameTimeMs": 64642,
+            "at": "2026-08-25T13:02:22.610Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30069px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1262,
+            "playerY": 1261,
+            "gameTimeMs": 64675,
+            "at": "2026-08-25T13:02:22.649Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30072px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1265,
+            "playerY": 1264,
+            "gameTimeMs": 64708,
+            "at": "2026-08-25T13:02:22.687Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30077px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1268,
+            "playerY": 1268,
+            "gameTimeMs": 64758,
+            "at": "2026-08-25T13:02:22.724Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30081px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1271,
+            "playerY": 1270,
+            "gameTimeMs": 64792,
+            "at": "2026-08-25T13:02:22.762Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30084px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1273,
+            "playerY": 1273,
+            "gameTimeMs": 64825,
+            "at": "2026-08-25T13:02:22.799Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30088px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1276,
+            "playerY": 1275,
+            "gameTimeMs": 64858,
+            "at": "2026-08-25T13:02:22.839Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30093px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1279,
+            "playerY": 1279,
+            "gameTimeMs": 64908,
+            "at": "2026-08-25T13:02:22.876Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30097px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1282,
+            "playerY": 1281,
+            "gameTimeMs": 64942,
+            "at": "2026-08-25T13:02:22.912Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30100px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1284,
+            "playerY": 1284,
+            "gameTimeMs": 64975,
+            "at": "2026-08-25T13:02:22.948Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30104px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1287,
+            "playerY": 1286,
+            "gameTimeMs": 65008,
+            "at": "2026-08-25T13:02:22.984Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30107px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1289,
+            "playerY": 1289,
+            "gameTimeMs": 65042,
+            "at": "2026-08-25T13:02:23.021Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30112px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1293,
+            "playerY": 1292,
+            "gameTimeMs": 65092,
+            "at": "2026-08-25T13:02:23.054Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30116px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1295,
+            "playerY": 1295,
+            "gameTimeMs": 65125,
+            "at": "2026-08-25T13:02:23.088Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30119px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1298,
+            "playerY": 1297,
+            "gameTimeMs": 65159,
+            "at": "2026-08-25T13:02:23.124Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30118px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1297,
+            "playerY": 1296,
+            "gameTimeMs": 65225,
+            "at": "2026-08-25T13:02:23.197Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30115px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1295,
+            "playerY": 1294,
+            "gameTimeMs": 65259,
+            "at": "2026-08-25T13:02:23.234Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30092px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1278,
+            "playerY": 1278,
+            "gameTimeMs": 65492,
+            "at": "2026-08-25T13:02:23.460Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30563px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1588,
+            "playerY": 1635,
+            "gameTimeMs": 75024,
+            "at": "2026-08-25T13:02:33.522Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30565px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1589,
+            "playerY": 1636,
+            "gameTimeMs": 75074,
+            "at": "2026-08-25T13:02:33.578Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30569px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1592,
+            "playerY": 1639,
+            "gameTimeMs": 75124,
+            "at": "2026-08-25T13:02:33.638Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30574px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1596,
+            "playerY": 1642,
+            "gameTimeMs": 75174,
+            "at": "2026-08-25T13:02:33.700Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30579px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1599,
+            "playerY": 1646,
+            "gameTimeMs": 75224,
+            "at": "2026-08-25T13:02:33.754Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30584px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1603,
+            "playerY": 1649,
+            "gameTimeMs": 75274,
+            "at": "2026-08-25T13:02:33.805Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30589px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1606,
+            "playerY": 1653,
+            "gameTimeMs": 75324,
+            "at": "2026-08-25T13:02:33.856Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30594px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1610,
+            "playerY": 1657,
+            "gameTimeMs": 75374,
+            "at": "2026-08-25T13:02:33.909Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30599px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1614,
+            "playerY": 1660,
+            "gameTimeMs": 75424,
+            "at": "2026-08-25T13:02:33.963Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30605px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1617,
+            "playerY": 1664,
+            "gameTimeMs": 75474,
+            "at": "2026-08-25T13:02:34.016Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30610px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1621,
+            "playerY": 1668,
+            "gameTimeMs": 75524,
+            "at": "2026-08-25T13:02:34.066Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30615px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1625,
+            "playerY": 1671,
+            "gameTimeMs": 75574,
+            "at": "2026-08-25T13:02:34.107Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30619px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1627,
+            "playerY": 1674,
+            "gameTimeMs": 75607,
+            "at": "2026-08-25T13:02:34.149Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30624px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1631,
+            "playerY": 1677,
+            "gameTimeMs": 75657,
+            "at": "2026-08-25T13:02:34.187Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30627px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1633,
+            "playerY": 1680,
+            "gameTimeMs": 75690,
+            "at": "2026-08-25T13:02:34.233Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30632px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1637,
+            "playerY": 1684,
+            "gameTimeMs": 75740,
+            "at": "2026-08-25T13:02:34.275Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30636px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1640,
+            "playerY": 1686,
+            "gameTimeMs": 75774,
+            "at": "2026-08-25T13:02:34.323Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30641px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1643,
+            "playerY": 1690,
+            "gameTimeMs": 75824,
+            "at": "2026-08-25T13:02:34.371Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30646px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1647,
+            "playerY": 1693,
+            "gameTimeMs": 75874,
+            "at": "2026-08-25T13:02:34.419Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30652px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1651,
+            "playerY": 1697,
+            "gameTimeMs": 75924,
+            "at": "2026-08-25T13:02:34.471Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30657px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1654,
+            "playerY": 1701,
+            "gameTimeMs": 75974,
+            "at": "2026-08-25T13:02:34.517Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30662px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1658,
+            "playerY": 1705,
+            "gameTimeMs": 76024,
+            "at": "2026-08-25T13:02:34.562Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30665px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1660,
+            "playerY": 1707,
+            "gameTimeMs": 76057,
+            "at": "2026-08-25T13:02:34.609Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30664px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1660,
+            "playerY": 1706,
+            "gameTimeMs": 76107,
+            "at": "2026-08-25T13:02:34.662Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30660px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1657,
+            "playerY": 1703,
+            "gameTimeMs": 76157,
+            "at": "2026-08-25T13:02:34.708Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30656px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1654,
+            "playerY": 1700,
+            "gameTimeMs": 76207,
+            "at": "2026-08-25T13:02:34.751Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30651px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1650,
+            "playerY": 1696,
+            "gameTimeMs": 76257,
+            "at": "2026-08-25T13:02:34.797Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30647px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1648,
+            "playerY": 1694,
+            "gameTimeMs": 76290,
+            "at": "2026-08-25T13:02:34.846Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30642px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1644,
+            "playerY": 1690,
+            "gameTimeMs": 76340,
+            "at": "2026-08-25T13:02:34.897Z"
+          },
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(30637px > 4000px)",
+            "bossState": "g-dive-windup",
+            "bossX": -20000,
+            "bossY": -20000,
+            "playerX": 1640,
+            "playerY": 1687,
+            "gameTimeMs": 76390,
+            "at": "2026-08-25T13:02:34.946Z"
+          }
+        ],
+        "moveTally": {
+          "g-sweep": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 0
+          },
+          "g-bolt": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 0
+          },
+          "g-jump": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 0
+          }
+        },
+        "movesMissing": [
+          "g-bite",
+          "g-boon",
+          "g-nihil",
+          "g-nova",
+          "g-parts",
+          "g-quad",
+          "g-reach",
+          "g-slam",
+          "g-sweepbeam",
+          "g-tailslam",
+          "g-talon",
+          "g-trijump",
+          "g-wing"
+        ],
+        "movesSeen": [
+          "g-bolt",
+          "g-dash",
+          "g-dive",
+          "g-glide",
+          "g-jump",
+          "g-stomp",
+          "g-sweep"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "giantbat@stage-4",
+        "label": "衛生兵(変異)",
+        "bossType": "giantbat",
+        "stageId": "stage-4",
+        "outcome": "death",
+        "durationMs": 84834,
+        "realMs": 94916,
+        "findings": [
+          {
+            "kind": "cancel",
+            "detail": "g-quad-charge(active) → g-quad(windup): 前の技を出し切る前に次の技が始まった",
+            "bossState": "g-quad-windup",
+            "bossX": 851,
+            "bossY": -438,
+            "playerX": 707,
+            "playerY": -427,
+            "gameTimeMs": 15146,
+            "at": "2026-08-25T13:02:57.699Z"
+          }
+        ],
+        "moveTally": {
+          "g-jump": {
+            "exposures": 6,
+            "counters": 0,
+            "hits": 1
+          },
+          "g-sweep": {
+            "exposures": 4,
+            "counters": 0,
+            "hits": 0
+          },
+          "g-quad": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 2
+          },
+          "g-stomp": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 2
+          },
+          "g-bolt": {
+            "exposures": 4,
+            "counters": 2,
+            "hits": 1
+          },
+          "g-dash": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 0
+          }
+        },
+        "movesMissing": [
+          "g-bite",
+          "g-boon",
+          "g-dive",
+          "g-glide",
+          "g-nihil",
+          "g-nova",
+          "g-parts",
+          "g-reach",
+          "g-slam",
+          "g-sweepbeam",
+          "g-tailslam",
+          "g-talon",
+          "g-trijump",
+          "g-wing"
+        ],
+        "movesSeen": [
+          "g-bolt",
+          "g-dash",
+          "g-jump",
+          "g-quad",
+          "g-stomp",
+          "g-sweep"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "giantbat@stage-5",
+        "label": "軍隊(変異)",
+        "bossType": "giantbat",
+        "stageId": "stage-5",
+        "outcome": "death",
+        "durationMs": 52000,
+        "realMs": 63155,
+        "findings": [],
+        "moveTally": {
+          "g-bolt": {
+            "exposures": 3,
+            "counters": 1,
+            "hits": 2
+          },
+          "g-dash": {
+            "exposures": 4,
+            "counters": 0,
+            "hits": 0
+          },
+          "g-jump": {
+            "exposures": 4,
+            "counters": 3,
+            "hits": 1
+          },
+          "g-sweep": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 0
+          },
+          "g-stomp": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          },
+          "g-sweepbeam": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          }
+        },
+        "movesMissing": [
+          "g-bite",
+          "g-boon",
+          "g-dive",
+          "g-glide",
+          "g-nihil",
+          "g-nova",
+          "g-parts",
+          "g-quad",
+          "g-reach",
+          "g-slam",
+          "g-tailslam",
+          "g-talon",
+          "g-trijump",
+          "g-wing"
+        ],
+        "movesSeen": [
+          "g-bolt",
+          "g-dash",
+          "g-jump",
+          "g-stomp",
+          "g-sweep",
+          "g-sweepbeam"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "giantbat@stage-7",
+        "label": "グレン",
+        "bossType": "giantbat",
+        "stageId": "stage-7",
+        "outcome": "death",
+        "durationMs": 35265,
+        "realMs": 54323,
+        "findings": [],
+        "moveTally": {
+          "g-jump": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          },
+          "g-talon": {
+            "exposures": 3,
+            "counters": 2,
+            "hits": 1
+          },
+          "g-stomp": {
+            "exposures": 1,
+            "counters": 1,
+            "hits": 0
+          },
+          "g-bolt": {
+            "exposures": 1,
+            "counters": 1,
+            "hits": 0
+          },
+          "g-reach": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          },
+          "g-dash": {
+            "exposures": 1,
+            "counters": 1,
+            "hits": 0
+          }
+        },
+        "movesMissing": [
+          "g-bite",
+          "g-boon",
+          "g-dive",
+          "g-glide",
+          "g-nihil",
+          "g-nova",
+          "g-parts",
+          "g-quad",
+          "g-slam",
+          "g-sweep",
+          "g-sweepbeam",
+          "g-tailslam",
+          "g-trijump",
+          "g-wing"
+        ],
+        "movesSeen": [
+          "g-bolt",
+          "g-dash",
+          "g-jump",
+          "g-reach",
+          "g-stomp",
+          "g-talon"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "phillboss@stage-ex1",
+        "label": "phillboss@stage-ex1",
+        "bossType": "phillboss",
+        "stageId": "stage-ex1",
+        "outcome": "death",
+        "durationMs": 31694,
+        "realMs": 36723,
+        "findings": [],
+        "moveTally": {
+          "phill-wingcombo": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          },
+          "phill-wingslash": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 0
+          },
+          "phill-lancefan": {
+            "exposures": 2,
+            "counters": 0,
+            "hits": 0
+          },
+          "phill-meteor": {
+            "exposures": 2,
+            "counters": 0,
+            "hits": 2
+          },
+          "phill-summon": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 0
+          },
+          "phill-dive": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          }
+        },
+        "movesMissing": [
+          "phill-cage",
+          "phill-feathershot",
+          "phill-goldring",
+          "phill-judgment",
+          "phill-ringtoss",
+          "phill-wingthrust"
+        ],
+        "movesSeen": [
+          "phill-dive",
+          "phill-lancefan",
+          "phill-lightrain",
+          "phill-meteor",
+          "phill-summon",
+          "phill-wingcombo",
+          "phill-wingslash"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "miguel",
+        "label": "miguel",
+        "bossType": "miguel",
+        "stageId": "stage-1",
+        "outcome": "death",
+        "durationMs": 30799,
+        "realMs": 39694,
+        "findings": [],
+        "moveTally": {
+          "miguel-volley": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 0
+          },
+          "miguel-mdash": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 1
+          },
+          "miguel-harai": {
+            "exposures": 4,
+            "counters": 1,
+            "hits": 1
+          },
+          "miguel-tate": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 0
+          }
+        },
+        "movesMissing": [],
+        "movesSeen": [
+          "miguel-harai",
+          "miguel-mdash",
+          "miguel-tate",
+          "miguel-volley"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "jibril",
+        "label": "jibril",
+        "bossType": "jibril",
+        "stageId": "stage-3",
+        "outcome": "death",
+        "durationMs": 20925,
+        "realMs": 29464,
+        "findings": [],
+        "moveTally": {
+          "jibril-volley": {
+            "exposures": 2,
+            "counters": 0,
+            "hits": 0
+          },
+          "jibril-lantern": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          }
+        },
+        "movesMissing": [
+          "jibril-consecrate"
+        ],
+        "movesSeen": [
+          "jibril-lantern",
+          "jibril-volley"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "rafi",
+        "label": "rafi",
+        "bossType": "rafi",
+        "stageId": "stage-4",
+        "outcome": "death",
+        "durationMs": 27764,
+        "realMs": 37912,
+        "findings": [],
+        "moveTally": {
+          "rafi-jump": {
+            "exposures": 5,
+            "counters": 4,
+            "hits": 0
+          }
+        },
+        "movesMissing": [
+          "rafi-bone",
+          "rafi-sweep"
+        ],
+        "movesSeen": [
+          "rafi-jump"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "uri",
+        "label": "uri",
+        "bossType": "uri",
+        "stageId": "stage-5",
+        "outcome": "death",
+        "durationMs": 15721,
+        "realMs": 23636,
+        "findings": [],
+        "moveTally": {
+          "uri-sweep": {
+            "exposures": 3,
+            "counters": 0,
+            "hits": 1
+          },
+          "uri-downslash": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          },
+          "uri-thrust": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          }
+        },
+        "movesMissing": [
+          "uri-bolt"
+        ],
+        "movesSeen": [
+          "uri-downslash",
+          "uri-sweep",
+          "uri-thrust"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "suriel",
+        "label": "suriel",
+        "bossType": "suriel",
+        "stageId": "stage-ex1",
+        "outcome": "death",
+        "durationMs": 40323,
+        "realMs": 45140,
+        "findings": [
+          {
+            "kind": "cancel",
+            "detail": "ring-move(windup) → ring-beam(windup): 前の技を出し切る前に次の技が始まった",
+            "bossState": "ring-beam-windup",
+            "bossX": -11,
+            "bossY": -289,
+            "playerX": 76,
+            "playerY": -49,
+            "gameTimeMs": 6487,
+            "at": "2026-08-25T13:09:05.943Z"
+          }
+        ],
+        "moveTally": {
+          "suriel-ring": {
+            "exposures": 4,
+            "counters": 0,
+            "hits": 2
+          },
+          "suriel-sweep": {
+            "exposures": 4,
+            "counters": 0,
+            "hits": 0
+          },
+          "suriel-gaze": {
+            "exposures": 2,
+            "counters": 0,
+            "hits": 1
+          }
+        },
+        "movesMissing": [],
+        "movesSeen": [
+          "suriel-gaze",
+          "suriel-ring",
+          "suriel-sweep"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "acrasiel",
+        "label": "acrasiel",
+        "bossType": "acrasiel",
+        "stageId": "stage-6",
+        "outcome": "death",
+        "durationMs": 33513,
+        "realMs": 37471,
+        "findings": [],
+        "moveTally": {
+          "acrasiel-spear": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          },
+          "acrasiel-warp": {
+            "exposures": 4,
+            "counters": 0,
+            "hits": 0
+          },
+          "acrasiel-burst": {
+            "exposures": 2,
+            "counters": 0,
+            "hits": 0
+          },
+          "acrasiel-gaze": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          },
+          "acrasiel-spike": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          }
+        },
+        "movesMissing": [],
+        "movesSeen": [
+          "acrasiel-burst",
+          "acrasiel-gaze",
+          "acrasiel-spear",
+          "acrasiel-spike",
+          "acrasiel-warp"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "mimir",
+        "label": "mimir",
+        "bossType": "mimir",
+        "stageId": "stage-1",
+        "outcome": "death",
+        "durationMs": 26848,
+        "realMs": 34730,
+        "findings": [],
+        "moveTally": {
+          "mimir-bite": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 0
+          },
+          "mimir-burst": {
+            "exposures": 2,
+            "counters": 0,
+            "hits": 1
+          },
+          "mimir-radial": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 0
+          },
+          "mimir-laser": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          },
+          "mimir-dash": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 0
+          }
+        },
+        "movesMissing": [],
+        "movesSeen": [
+          "mimir-bite",
+          "mimir-burst",
+          "mimir-dash",
+          "mimir-laser",
+          "mimir-radial"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "jormungand",
+        "label": "jormungand",
+        "bossType": "jormungand",
+        "stageId": "stage-3",
+        "outcome": "timeout",
+        "durationMs": 166960,
+        "realMs": 180019,
+        "findings": [],
+        "moveTally": {
+          "jormungand-coil": {
+            "exposures": 5,
+            "counters": 0,
+            "hits": 0
+          },
+          "jormungand-burst": {
+            "exposures": 9,
+            "counters": 5,
+            "hits": 1
+          },
+          "jormungand-radial": {
+            "exposures": 14,
+            "counters": 0,
+            "hits": 1
+          },
+          "jormungand-dash": {
+            "exposures": 10,
+            "counters": 0,
+            "hits": 0
+          }
+        },
+        "movesMissing": [],
+        "movesSeen": [
+          "jormungand-burst",
+          "jormungand-coil",
+          "jormungand-dash",
+          "jormungand-radial"
+        ],
+        "hpLost": 94
+      },
+      {
+        "slotKey": "skadi",
+        "label": "skadi",
+        "bossType": "skadi",
+        "stageId": "stage-4",
+        "outcome": "death",
+        "durationMs": 8656,
+        "realMs": 16497,
+        "findings": [],
+        "moveTally": {},
+        "movesMissing": [
+          "skadi-blade",
+          "skadi-burst",
+          "skadi-cage",
+          "skadi-radial"
+        ],
+        "movesSeen": [
+          "skadi-dash",
+          "skadi-ice"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "thor",
+        "label": "thor",
+        "bossType": "thor",
+        "stageId": "stage-5",
+        "outcome": "death",
+        "durationMs": 16040,
+        "realMs": 23996,
+        "findings": [],
+        "moveTally": {
+          "thor-issen": {
+            "exposures": 2,
+            "counters": 0,
+            "hits": 2
+          },
+          "thor-harai": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 0
+          },
+          "thor-tsuki": {
+            "exposures": 1,
+            "counters": 0,
+            "hits": 1
+          }
+        },
+        "movesMissing": [
+          "thor-burst",
+          "thor-dash",
+          "thor-jump",
+          "thor-radial"
+        ],
+        "movesSeen": [
+          "thor-harai",
+          "thor-issen",
+          "thor-tsuki"
+        ],
+        "hpLost": 130
+      },
+      {
+        "slotKey": "idol",
+        "label": "idol",
+        "bossType": "idol",
+        "stageId": "stage-2",
+        "outcome": "death",
+        "durationMs": 55924,
+        "realMs": 64443,
+        "findings": [
+          {
+            "kind": "anomaly",
+            "detail": "ボスとの距離が異常(6080px > 4000px)",
+            "bossState": "chase",
+            "bossX": 6080,
+            "bossY": 16,
+            "playerX": 0,
+            "playerY": 0,
+            "gameTimeMs": 0,
+            "at": "2026-08-25T13:14:33.765Z"
+          },
+          {
+            "kind": "softlock",
+            "detail": "ボスが15秒動かない",
+            "bossState": "idol-orb-recover",
+            "bossX": -414,
+            "bossY": 190,
+            "playerX": -152,
+            "playerY": 103,
+            "gameTimeMs": 28592,
+            "at": "2026-08-25T13:15:09.840Z"
+          }
+        ],
+        "moveTally": {
+          "idol-fan": {
+            "exposures": 4,
+            "counters": 1,
+            "hits": 0
+          },
+          "idol-roll": {
+            "exposures": 2,
+            "counters": 0,
+            "hits": 0
+          },
+          "idol-snipe": {
+            "exposures": 5,
+            "counters": 0,
+            "hits": 1
+          },
+          "idol-orb": {
+            "exposures": 4,
+            "counters": 0,
+            "hits": 4
+          },
+          "idol-punch": {
+            "exposures": 4,
+            "counters": 0,
+            "hits": 0
+          }
+        },
+        "movesMissing": [
+          "idol-aim",
+          "idol-nade"
+        ],
+        "movesSeen": [
+          "idol-fan",
+          "idol-orb",
+          "idol-punch",
+          "idol-roll",
+          "idol-snipe"
+        ],
+        "hpLost": 130
+      }
+    ]
+  },
+  "B_consoleErrors": []
+}
