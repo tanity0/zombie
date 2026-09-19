@@ -66,7 +66,27 @@ const enemyAiLines = (s: ReturnType<typeof useGameStore.getState>, seen: Map<str
       : 0;
     const leftTxt = left > 0 ? ` ${(left / 1000).toFixed(1)}s` : '';
     const mark = why === 'OK' && stuckS > 3 ? ' ★' : '';   // ★=入れるのに入っていない=本物の疑い
-    out.push(` ${e.type} d${Math.round(d)} ${ph} 止${stuckS.toFixed(1)}s ${why}${leftTxt}${mark}`);
+    // ★社長報告2026-09-20「まだ、噛みつきが硬直を無視して発動してる」用。
+    // 設計チャットの手元では**3通り測って1度も再現しなかった**(硬直の相に密着で置く/実戦で回す/
+    // 噛みの間隔を測る)。⇒ **どの硬直を無視しているのかを、その場で1語で読める**ようにする。
+    // 噛みを構えている(biteAt>0)瞬間に、**まだ残っている硬直**を名前と残りmsで並べる。
+    // ここに何か出ていたら、それが「無視された硬直」そのもの。
+    const biting = (e.biteAt ?? 0) > 0;
+    const holds: string[] = [];
+    if (biting) {
+      const add = (n: string, until: number | undefined, base: number) => {
+        const r = (until ?? 0) - base; if (r > 0) holds.push(`${n}${Math.round(r)}`);
+      };
+      add('噛後', e.biteRecoverUntil, s.gameTime);   // 噛みつき直後の硬直(350ms)
+      add('相', e.aiPhaseUntil, s.gameTime);          // 技の硬直相(recover系)の残り
+      add('CD', e.biteReadyAt, s.gameTime);           // 噛みの再発火CD
+      add('技CD', e.chaffMoveCdUntil, s.gameTime);
+      add('気絶', e.stunUntil, s.gameTime);
+      add('拘束', e.rootUntil, s.gameTime);
+      add('浮き', e.liftUntil, nowMs);                // ★Date.now系(v0.25.4516の教訓)
+    }
+    const holdTxt = holds.length > 0 ? ` ★噛みつつ[${holds.join(' ')}]` : '';
+    out.push(` ${e.type} d${Math.round(d)} ${ph} 止${stuckS.toFixed(1)}s ${why}${leftTxt}${mark}${holdTxt}`);
   }
   return out;
 };
