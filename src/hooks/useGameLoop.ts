@@ -1090,6 +1090,11 @@ const PUZZLE_ENABLED = evParam('puzzle') !== '0';
 // 時間が長い」の原因を1ランで確定させるために追加した(CLAUDE.md 実装精度の規律7「自作の切り分け
 // スイッチで消去法をやらない」の例外ではなく、**この機能そのものを丸ごと外す網羅的なスイッチ**)。
 const WELCOME_ENABLED = evParam('welcome') !== '0';
+// ★社長指示2026-09-19「ウェルカムサークル生成はステージ中心からずらさないで」: 輪の中心。
+// ステージ中心=出撃の到着点で、ウェルカム台本を持つ全ステージ(S1/S3/S4/S5/S6)で (0,0)。
+// プレイヤーの現在地から取らない(段ごとに舞台がずれるため)。
+const WELCOME_RING_CENTER_X = 0;
+const WELCOME_RING_CENTER_Y = 0;
 // PACING_PUZZLE.md §5.5 バッチM5(RE4式弾ドロップ・既定ON): キル時弾薬ドロップを「残弾割合が
 // 最小の弾種」にする。`?ammosmart=0`で従来(構え銃の弾種)へ復帰。gameStore側の近接キル経路も
 // 同名パラメータを各自読む(既存のcamNum等と同じ流儀)。
@@ -15773,7 +15778,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // §17-12-c/d: 'horde'を借りず新設の'welcome'を使う(confiningから除外済み=
             // arenaEventCapを使わない・報酬経路にも繋がない)。confinesPlayer:false(プレイヤーは
             // 円から出られる)・permeable:false(既存の囲いと同じ=非イベント敵は境界を越えて流入しない)。
-            const wpcx = player.x + player.width / 2, wpcy = player.y + player.height / 2;
+            // ★社長指示2026-09-19「**ウェルカムサークル生成はステージ中心からずらさないで**」:
+            // 輪の中心は**ステージ中心(=出撃の到着点 (0,0))に固定**する。プレイヤーの現在地で
+            // 取っていた旧実装は、**段が変わるたびに輪が湧き直す**ので、1段目を倒しながら動いた分
+            // だけ2段目・3段目の輪が横へずれていた(段ごとに舞台が動く)。
+            // ★(0,0)が全ウェルカム対象ステージの到着点であることの確認: 通常ステージ(S1/S3/S4/S5)は
+            //   `spawnTL = {x:0, y:0}`、洋館(S6)は `{x:0, y:CORRIDOR_RUNIN_DIST}` から走り込んで
+            //   **到着点が y=0**(gameStore.ts の spawnTL)。屋内(研究所)は台本を持たない。
+            // ★敵の配置(placeInWelcomeRing)もこの中心を使う=輪と中身が必ず同じ場所になる。
+            const wpcx = WELCOME_RING_CENTER_X, wpcy = WELCOME_RING_CENTER_Y;
             useGameStore.getState().beginArenaEvent({
               kind: 'welcome', x: wpcx, y: wpcy, radius: ARENA_EVENT_RADIUS,
               startedAt: gameTime, endsAt: gameTime + WELCOME_FORCE_END_MS,
