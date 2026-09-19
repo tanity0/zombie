@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.4499 — §17-14 護衛NPCはウェルカム後に出陣(実装・commit abbcd4238)【2026-09-19 10:22 JST】
+
+- 純関数 **`escortShouldHoldForWelcome(eventKind)`**(`escortAdvance.ts`・`kind === 'welcome'` の1行)を新設し、
+  `updateSuppression` の**屋外・本流の経路だけ**でゲート。**新しいフラグは作っていない**(輪の `activeEvent` を見るだけ)。
+- ★**実装者が前進の経路を3つ数えて報告した(依頼どおり)**: ①M0チュートリアル(同行者2人)
+  ②洋館通路(corridorMode)③屋外・本流(4人)——**ウェルカムは屋外の台本ステージでしか発火しない**ので
+  ①②は元々 `kind === 'welcome'` にならず、**塞ぎ漏れは無い**。
+- ★**実装者が見つけた既存の穴**: この経路は **`moving` を一度も設定していなかった**
+  (=`undefined` のまま)。待機を入れるなら解除後に戻す処理が要るので、**常に明示的に返す**形にした。
+  ★**検収で消費側を確認**: `pixiScene.ts` は `const animate = esc.moving !== false;` なので
+  **`undefined` と `true` は同じ扱い** ⇒ ウェルカムを持たないランでは**見た目が1ビットも変わらない**(主張どおり)。
+- **射撃は止めていない**(発砲ブロックはゲートの外)。**輪の中の敵を撃つ=一緒に戦っている絵**になる。
+- 変更ファイル: `src/store/gameStore.ts` / `src/utils/escortAdvance.ts` / `escortAdvance.test.ts` /
+  `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+- 検証: typecheck 緑 / lint エラー0 / escortAdvance・welcomeScript の **48件緑**
+  (新規6ケース: `welcome`→true、`horde`/`boss`/`rescue`/`undefined`/`null`→false)。
+- 状態変化: §17-14 → **実装済み**(残り: 実機確認)。
+
 ## v0.25.4498 — §17-14 護衛NPCはウェルカム後に出陣(設計確定)【2026-09-19 10:13 JST】
 
 - **社長指示**: 「**ウェルカムイベント終わってからNPCは出陣で**」。

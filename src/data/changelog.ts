@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4499',
+    items: [
+      '入りの関門のあいだ、護衛の兵士は出撃地点に留まって援護する。関門を抜けると拠点へ向けて出発する',
+    ],
+  },
+  {
     version: '0.25.4498',
     items: [
       'ゲーム内容の変更はありません',
