@@ -328,7 +328,7 @@ import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { phaseAt, sceneAt } from '../utils/difficultyDirector';
-import { welcomeStageScript, welcomeAdvance, WELCOME_FORCE_END_MS } from '../utils/welcomeScript';
+import { welcomeStageScript, welcomeAdvance, welcomeAppliesToRun, WELCOME_FORCE_END_MS } from '../utils/welcomeScript';
 import { spawnEscalation, gateLiveCorrection, playerPower, expectedPower, powerMargin } from '../utils/difficultyScaler';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
@@ -3186,8 +3186,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 一度も起動せず welcomeEndedAtRef は永遠にnullのまま=分けないと下のdirectorTimeが
         // 「該当しないランなのに最初の60秒ずっと0」という別バグを生む。
         const welcomeScriptForRun = welcomeStageScript(getSelectedStageId() ?? '');
-        const welcomeApplicable = WELCOME_ENABLED && !!welcomeScriptForRun && !labTheme && !indoor && !danceTest && !storyBoss
-          && !tutorialStage && !endingStage && !isPracticeRun();
+        // §17-14: 判定は welcomeAppliesToRun(welcomeScript.ts)の1本に集約(gameStore.ts の
+        // resetGame と同じ関数・同じ答え=「判定を2箇所に増やさない」)。
+        const welcomeApplicable = welcomeAppliesToRun({
+          stageId: getSelectedStageId() ?? '',
+          welcomeEnabled: WELCOME_ENABLED,
+          labTheme, indoor, danceTest, storyBoss, tutorialStage, endingStage,
+          practiceRun: isPracticeRun(),
+        });
         const welcomeActive = welcomeApplicable && welcomeEndedAtRef.current === null;
         // ★ディレクターの時計(§17-3): ウェルカム中はずっと0。終了後は gameTime − min(終了時刻,60秒)
         // (固定量。ウェルカムに何秒掛けても以降のずれ幅は変わらない)。phaseAt/sceneAt/enemyCountCap/

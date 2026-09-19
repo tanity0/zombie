@@ -79,6 +79,32 @@ export const welcomeUnitsAt = (stageId: string, step: number): WelcomeUnit[] | u
   welcomeStageScript(stageId)?.[step];
 
 // ============================================================================
+// B1a. 「このランにウェルカムが関係あるか」の判定(§17-14・単一の正本)
+// ============================================================================
+//
+// useGameLoop.ts の`welcomeApplicable`(台本進行・ディレクター時計の起点)と、gameStore.ts の
+// resetGame(護衛NPCを`escorts`へ即置くか`pendingEscorts`へ預けるか)は、**同じ問い**
+// 「このランにウェルカムの仕組みが関係あるか」を見ている。判定を2箇所に増やさないため、
+// この1関数へ集約し両方から呼ぶ(§17-14 実装精度の規律・社長指示「判定を2箇所に増やさない」)。
+
+export interface WelcomeApplicabilityInput {
+  stageId: string;
+  welcomeEnabled: boolean; // `?welcome=0`キルスイッチ(呼び出し側がURLを読んで渡す)。falseなら常に非該当。
+  labTheme: boolean;
+  indoor: boolean;
+  danceTest: boolean;
+  storyBoss: boolean;
+  tutorialStage: boolean;
+  endingStage: boolean;
+  practiceRun: boolean;
+}
+
+/** このランにウェルカム台本が関係あるか(=台本を持つステージ+対象の実行モード)。 */
+export const welcomeAppliesToRun = (input: WelcomeApplicabilityInput): boolean =>
+  input.welcomeEnabled && !!welcomeStageScript(input.stageId) && !input.labTheme && !input.indoor
+  && !input.danceTest && !input.storyBoss && !input.tutorialStage && !input.endingStage && !input.practiceRun;
+
+// ============================================================================
 // B1b. 始動ゲート(§17-13・社長指示2026-09-19)
 // ============================================================================
 //
