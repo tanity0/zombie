@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   usesSkeletonClaw, skeletonClawCounterable, skeletonClawTotalMs,
-  skelClawFrame, skelClawAlpha, skelClawFxFrame,
+  skelClawFrame, skelClawFrameWithWindup, skelClawAlpha, skelClawFxFrame,
   skelClawTexName, skelClawFxTexName,
   SKEL_CLAW_FRAMES, SKEL_CLAW_IMPACT_FRAME, SKEL_CLAW_HOLD_MS,
   SKEL_CLAW_FX_FRAMES, SKEL_CLAW_FX_IMPACT_FRAME, SKEL_CLAW_FX_HOLD_MS,
@@ -90,6 +90,34 @@ describe('スケルトンの爪: VFX', () => {
   it('ラッチの寿命は痕とVFXの長い方を覆う', () => {
     const fxTotal = SKEL_CLAW_FX_HOLD_MS.reduce((a, b) => a + b, 0);
     expect(skeletonClawTotalMs()).toBeGreaterThanOrEqual(fxTotal);
+  });
+});
+
+// ★PACING_PUZZLE.md §16-E(社長指示2026-09-19「武器を構えて一瞬止まる、を雑魚モーションには
+// 差し込んでみよう。牙なら牙の1コマ目で」)。
+describe('スケルトンの爪: 構え(溜めのあいだ0コマ目で静止)', () => {
+  const WINDUP_MS = 300; // 骸骨の噛みつき前隙(§12既定)
+
+  it('E-5受け入れ条件1: 溜めが始まった同じフレームに0コマ目が出る', () => {
+    expect(skelClawFrameWithWindup(0, WINDUP_MS, -9999)).toBe(0);
+  });
+
+  it('E-5受け入れ条件2: 溜めのあいだ(< windupMs)は0コマ目のまま静止する', () => {
+    expect(skelClawFrameWithWindup(1, WINDUP_MS, -9999)).toBe(0);
+    expect(skelClawFrameWithWindup(150, WINDUP_MS, -9999)).toBe(0);
+    expect(skelClawFrameWithWindup(WINDUP_MS - 1, WINDUP_MS, -9999)).toBe(0);
+  });
+
+  it('E-5受け入れ条件3: 溜め明け(>= windupMs)からは`skelClawFrame`と1ミリも変わらない', () => {
+    for (let sinceImpactMs = -100; sinceImpactMs <= 200; sinceImpactMs += 4) {
+      const sinceWindupMs = WINDUP_MS + 9999; // 十分に溜め明け
+      expect(skelClawFrameWithWindup(sinceWindupMs, WINDUP_MS, sinceImpactMs))
+        .toBe(skelClawFrame(sinceImpactMs));
+    }
+  });
+
+  it('まだ発火していない(sinceWindupMs<0)は出さない', () => {
+    expect(skelClawFrameWithWindup(-1, WINDUP_MS, -9999)).toBeNull();
   });
 });
 

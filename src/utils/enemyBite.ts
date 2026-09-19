@@ -95,6 +95,14 @@ export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
    * **叩き台(実機で社長が詰める)**: 3000ms。内訳の目安は 790ms(硬直+転移)+ 約2.2秒の待ち。
    */
   lich: { recoverMs: 3000 },
+  /**
+   * ★§16-E E-3(社長指示2026-09-19「武器を構えて一瞬止まる」)。骸骨だけが「止まる拍」を
+   * 持っていなかった(コウモリ=`BAT_WINDUP_STILL_MS`/ゾンビ=§16-D `lungeMs` で既にある)ので、
+   * 骸骨にも足す。**`windupMs`(300)は変えない**——同じ300msの内訳を割るだけ。
+   * `lungeMs: 180` = 踏み込みは180msで走り切り、残り120ms(= windupMs − lungeMs)を完全に静止。
+   * 「速く詰めて、止まってから来る」。`lungePx`/`biteMs` も変えない(総尺は不変)。
+   */
+  skeleton: { lungeMs: 180 },
 };
 
 /**

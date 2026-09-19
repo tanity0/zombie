@@ -214,7 +214,7 @@ import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } 
 import { biteTelegraphLine } from '../utils/biteTelegraph';
 // ★バットのランタン(社長支給2026-09-18)。振りの角度も炸裂のコマ送りも噛みつきの経過から引く葉。
 import {
-  batLanternPose, batSlamFrame, batBiteTiming, usesBatLantern,
+  batLanternPose, batSlamFrameWithWindup, batBiteTiming, usesBatLantern,
   BAT_LANTERN_LEN_PX, BAT_LANTERN_INTRINSIC_ANGLE, BAT_LANTERN_GRIP_X, BAT_LANTERN_GRIP_Y,
   BAT_SLAM_ANCHOR_X, BAT_SLAM_REF_W, BAT_SLAM_W_PX, batSlamTotalMs, BAT_LANTERN_SETTLE_MS,
   batLanternDownAngle, BAT_LANTERN_LEN_MIN_PX, BAT_LANTERN_LEN_MAX_PX, batSlamTexName, batSlamCounterable,
@@ -222,13 +222,13 @@ import {
 // ★スケルトンの爪(社長支給2026-09-18)。痕もVFXも噛みつきの経過から引く葉。
 import {
   usesSkeletonClaw, skeletonBiteTiming, skeletonClawCounterable, skeletonClawTotalMs,
-  skelClawFrame, skelClawAlpha, skelClawFxFrame, skelClawTexName, skelClawFxTexName,
+  skelClawFrameWithWindup, skelClawAlpha, skelClawFxFrame, skelClawTexName, skelClawFxTexName,
   SKEL_CLAW_REF_W, SKEL_CLAW_W_PX, SKEL_CLAW_FX_REF_W, SKEL_CLAW_FX_W_PX, SKEL_CLAW_FX_ADDITIVE,
 } from '../utils/skeletonClaw';
 // ★ゾンビの噛みつきVFX(社長支給2026-09-18・左向き)。爪と同じ作法。
 import {
   usesZombieBiteFx, zombieBiteTiming, zombieBiteCounterable, zombieBiteTotalMs,
-  zombieBiteFrame, zombieBiteAlpha, zombieBiteTexName,
+  zombieBiteFrameWithWindup, zombieBiteAlpha, zombieBiteTexName,
   ZOMBIE_BITE_REF_W, ZOMBIE_BITE_W_PX,
 } from '../utils/zombieBiteFx';
 // ★ハンターの棺桶(社長支給2026-09-18)。ジャンプと突進の両方で振る。
@@ -18712,7 +18712,9 @@ export class PixiScene {
           );
         }
         // 炸裂は**当たる瞬間を0**にした時計で送る(掟③=消え切る/最大になるのが当たる瞬間)。
-        const frame = batSlamFrame(since - (bwMs + bbMs));
+        // ★§16-E: 溜めのあいだ(since < bwMs)は0コマ目で静止=「構え」。溜め明けからの送りは
+        // 従来(`since - (bwMs+bbMs)` を渡すだけ)と1ミリも変えない。
+        const frame = batSlamFrameWithWindup(since, bwMs, since - (bwMs + bbMs));
         if (frame !== null) this.drawBatSlam(e.id, ax, ay, frame, sgn, artFade, ctr === 1);
       }
     }
@@ -18735,11 +18737,14 @@ export class PixiScene {
       );
       if (SL) {
         const [sdx, sax, say, sat0, sctr] = SL.d;
-        const sinceImpact = gameTime - sat0 - (swMs + sbMs);
+        const sSinceWindup = gameTime - sat0;
+        const sinceImpact = sSinceWindup - (swMs + sbMs);
         const ctr = sctr === 1;
         // 素材は左向き。右向き(sdx>=0)の時に反転する。
         const flip = sdx >= 0;
-        const cf = skelClawFrame(sinceImpact);
+        // ★§16-E: 溜めのあいだ(sSinceWindup < swMs)は0コマ目(爪を構えた形)で静止。
+        // 溜め明けからの送りは従来(skelClawFrame=frameByHold)と1ミリも変えない。
+        const cf = skelClawFrameWithWindup(sSinceWindup, swMs, sinceImpact);
         if (cf !== null) {
           this.drawSkelClawSprite(
             this.skelClawSprites, skelClawTexName(cf, ctr), e.id, sax, say,
@@ -18772,8 +18777,11 @@ export class PixiScene {
       );
       if (ZL) {
         const [zdx, zax, zay, zat0, zctr] = ZL.d;
-        const zSince = gameTime - zat0 - (zwMs + zbMs);
-        const zf = zombieBiteFrame(zSince);
+        const zSinceWindup = gameTime - zat0;
+        const zSince = zSinceWindup - (zwMs + zbMs);
+        // ★§16-E: 溜めのあいだ(zSinceWindup < zwMs)は0コマ目(牙を構えた形)で静止。
+        // 溜め明けからの送りは従来(zombieBiteFrame=frameByHold)と1ミリも変えない。
+        const zf = zombieBiteFrameWithWindup(zSinceWindup, zwMs, zSince);
         if (zf !== null) {
           this.drawSkelClawSprite(
             this.zombieBiteSprites, zombieBiteTexName(zf, zctr === 1), e.id, zax, zay,

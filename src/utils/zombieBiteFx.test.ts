@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   usesZombieBiteFx, zombieBiteCounterable, zombieBiteTotalMs, zombieBiteFrame,
-  zombieBiteAlpha, zombieBiteTexName,
+  zombieBiteFrameWithWindup, zombieBiteAlpha, zombieBiteTexName,
   ZOMBIE_BITE_FRAMES, ZOMBIE_BITE_IMPACT_FRAME, ZOMBIE_BITE_HOLD_MS, ZOMBIE_BITE_W_PX,
 } from './zombieBiteFx';
 
@@ -75,5 +75,33 @@ describe('ゾンビの噛みつきVFX: コマ送り', () => {
 
   it('★判定(接触35px)より大きく出す=②派手さの絵', () => {
     expect(ZOMBIE_BITE_W_PX).toBeGreaterThan(35 * 3);
+  });
+});
+
+// ★PACING_PUZZLE.md §16-E(社長指示2026-09-19「武器を構えて一瞬止まる、を雑魚モーションには
+// 差し込んでみよう。牙なら牙の1コマ目で」)。ゾンビのwindupMsは§16-Dで600ms(§12既定)。
+describe('ゾンビの噛みつきVFX: 構え(溜めのあいだ0コマ目で静止)', () => {
+  const WINDUP_MS = 600; // §16-D後のゾンビの§12噛みつきwindupMs
+
+  it('E-5受け入れ条件1: 溜めが始まった同じフレームに0コマ目が出る', () => {
+    expect(zombieBiteFrameWithWindup(0, WINDUP_MS, -9999)).toBe(0);
+  });
+
+  it('E-5受け入れ条件2: 溜めのあいだ(< windupMs)は0コマ目のまま静止する', () => {
+    expect(zombieBiteFrameWithWindup(1, WINDUP_MS, -9999)).toBe(0);
+    expect(zombieBiteFrameWithWindup(300, WINDUP_MS, -9999)).toBe(0);
+    expect(zombieBiteFrameWithWindup(WINDUP_MS - 1, WINDUP_MS, -9999)).toBe(0);
+  });
+
+  it('E-5受け入れ条件3: 溜め明け(>= windupMs)からは`zombieBiteFrame`と1ミリも変わらない', () => {
+    for (let sinceImpactMs = -100; sinceImpactMs <= 200; sinceImpactMs += 4) {
+      const sinceWindupMs = WINDUP_MS + 9999; // 十分に溜め明け
+      expect(zombieBiteFrameWithWindup(sinceWindupMs, WINDUP_MS, sinceImpactMs))
+        .toBe(zombieBiteFrame(sinceImpactMs));
+    }
+  });
+
+  it('まだ発火していない(sinceWindupMs<0)は出さない', () => {
+    expect(zombieBiteFrameWithWindup(-1, WINDUP_MS, -9999)).toBeNull();
   });
 });

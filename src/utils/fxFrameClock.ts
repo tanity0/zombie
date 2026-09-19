@@ -33,3 +33,21 @@ export const frameByHold = (
   }
   return null;
 };
+
+/**
+ * ★構え(PACING_PUZZLE.md §16-E・社長指示2026-09-19「武器を構えて一瞬止まる、を雑魚モーションには
+ * 差し込んでみよう。牙なら牙の1コマ目で」)。
+ *
+ * **溜めが始まった同じフレーム(`sinceWindupMs === 0`)から0コマ目を出し、溜めのあいだ(`< windupMs`)は
+ * 0コマ目で静止**する。**溜め明けからは渡された `frameFn`(=各シートの既存の `frameByHold` 呼び出し)を
+ * そのまま呼ぶ**——命中基準の送りは1ミリも変えない(掟③「消え切る=当たる」を壊さないため。
+ * 既存のテスト済み関数へ委譲することで、その保証を計算の重複なしに得る)。
+ */
+export const frameWithWindupHold = (
+  sinceWindupMs: number, windupMs: number,
+  sinceImpactMs: number, frameFn: (sinceImpactMs: number) => number | null,
+): number | null => {
+  if (sinceWindupMs < 0) return null;          // まだ発火していない
+  if (sinceWindupMs < windupMs) return 0;       // 構え=0コマ目で静止
+  return frameFn(sinceImpactMs);
+};

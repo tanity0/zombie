@@ -16,7 +16,7 @@
 // §12の既定の噛みつきが false =**紫**。バット/スケルトンと同じ作法で、台帳は `enemyBite.ts` の1箇所。
 import type { Enemy } from '../types/game';
 import { biteSpecFor } from './enemyBite';
-import { frameByHold, holdTotalMs, holdLeadMs } from './fxFrameClock';
+import { frameByHold, holdTotalMs, holdLeadMs, frameWithWindupHold } from './fxFrameClock';
 
 /**
  * この敵が噛みつきVFXを出すか。
@@ -55,6 +55,15 @@ export const ZOMBIE_BITE_W_PX = 190;
 
 export const zombieBiteFrame = (sinceImpactMs: number): number | null =>
   frameByHold(sinceImpactMs, ZOMBIE_BITE_HOLD_MS, ZOMBIE_BITE_IMPACT_FRAME);
+
+/**
+ * ★構え(§16-E)入りの送り。溜めのあいだ(`sinceWindupMs < windupMs`)は0コマ目(牙を構えた形)で
+ * 静止し、溜め明けからは `zombieBiteFrame`(=`frameByHold`)と1ミリも変わらない送りに戻る。
+ */
+export const zombieBiteFrameWithWindup = (
+  sinceWindupMs: number, windupMs: number, sinceImpactMs: number,
+): number | null =>
+  frameWithWindupHold(sinceWindupMs, windupMs, sinceImpactMs, zombieBiteFrame);
 
 /** 濃さ。出は即・引きは最後のコマの後ろ側で緩く抜く(パッと消さない=慣性)。 */
 export const zombieBiteAlpha = (sinceImpactMs: number): number => {

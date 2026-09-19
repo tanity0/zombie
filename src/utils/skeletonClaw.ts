@@ -12,7 +12,7 @@
 // §12の既定の噛みつきが false =**紫**。バットのランタンと同じ作法で、台帳は `enemyBite.ts` の1箇所。
 import type { Enemy } from '../types/game';
 import { biteSpecFor } from './enemyBite';
-import { frameByHold, holdTotalMs, holdLeadMs } from './fxFrameClock';
+import { frameByHold, holdTotalMs, holdLeadMs, frameWithWindupHold } from './fxFrameClock';
 
 /**
  * この敵が爪を振るか。
@@ -57,6 +57,16 @@ export const SKEL_CLAW_W_PX = 150;
 
 export const skelClawFrame = (sinceImpactMs: number): number | null =>
   frameByHold(sinceImpactMs, SKEL_CLAW_HOLD_MS, SKEL_CLAW_IMPACT_FRAME);
+
+/**
+ * ★構え(§16-E)入りの送り。溜めのあいだ(`sinceWindupMs < windupMs`)は0コマ目(爪を構えた形)で
+ * 静止し、溜め明けからは `skelClawFrame`(=`frameByHold`)と1ミリも変わらない送りに戻る。
+ * VFX(`skelClawFxFrame`)はここを経由しない=構えには出さない(当たった瞬間の派手さの絵のため)。
+ */
+export const skelClawFrameWithWindup = (
+  sinceWindupMs: number, windupMs: number, sinceImpactMs: number,
+): number | null =>
+  frameWithWindupHold(sinceWindupMs, windupMs, sinceImpactMs, skelClawFrame);
 
 /** 痕の濃さ。出は即・引きは最後のコマの後ろ側で緩く抜く(パッと消さない=慣性)。 */
 export const skelClawAlpha = (sinceImpactMs: number): number => {

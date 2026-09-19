@@ -21,11 +21,13 @@ import type { Enemy, EnemyType } from '../types/game';
 //  2. 判定は**予告した点**で取り、敵の実位置は見ない(壁際で赤と判定がズレない)。
 //  3. 踏み込みは**絵**であって判定を伸ばさない。
 // ★§16-D(社長指示2026-09-19)でzombie型のwindupMs/lungeMsが既定値から差し替わった(300→600・
-// lungeMs新設300)ので、この汎用曲線(§12の噛みつきアルゴリズムそのもの)を確かめるヘルパーは
-// **skeleton型**(BITE_BY_TYPEに上書きが無い=BITE_DEFAULTそのまま)を使う。zombie固有の
-// lungeMs挙動は専用の describe ブロック(下)で別に検査する。
+// lungeMs新設300)、続いて§16-E(社長指示2026-09-19「構えて一瞬止まる」)でskeleton型にも
+// lungeMs:180(=120msの静止)が足された。この汎用曲線(§12の噛みつきアルゴリズムそのもの)を
+// 確かめるヘルパーは**bat型**(BITE_BY_TYPEに上書きが無い=BITE_DEFAULTそのまま)を使う。
+// zombie固有のlungeMs挙動・skeleton固有のlungeMs挙動は、それぞれ専用の describe ブロック(下)で
+// 別に検査する。
 const at = (biteAt: number | undefined): Pick<Enemy, 'type' | 'biteAt'> =>
-  ({ type: 'skeleton', biteAt } as Pick<Enemy, 'type' | 'biteAt'>);
+  ({ type: 'bat', biteAt } as Pick<Enemy, 'type' | 'biteAt'>);
 
 describe('噛みつきの台帳', () => {
   it('社長指定の叩き台がそのまま入っている(30px / 300ms / 200ms / 踏み込み30px)', () => {
@@ -46,7 +48,8 @@ describe('噛みつきの台帳', () => {
   // 一覧を縛ると**台帳を使うたびにテストが落ちる**(実際 v0.25.4447 のリッチ追加で落ちた)。
   // 縛るべきは「**書いていない型は既定値のまま**」という不変条件の方。
   it('表に書いていない型は既定値のまま(=上書きは明示した型だけに効く)', () => {
-    for (const t of ['werewolf', 'bat', 'skeleton', 'pumpkin'] as const) {
+    // ★skeletonは§16-Eでlungemsが足されたのでこの一覧から外した(検証は専用describeブロックで行う)。
+    for (const t of ['werewolf', 'bat', 'pumpkin'] as const) {
       expect(BITE_BY_TYPE[t], t).toBeUndefined();
       expect(biteSpecFor(t), t).toEqual(BITE_DEFAULT);
     }
@@ -160,7 +163,8 @@ describe('★§16-D ゾンビの噛みつき「詰めたあとの停止」', () 
   });
 
   it('D-4受け入れ条件3: 他の型(ゴースト/リッチ/研究所Lv1等)は1ビットも変わらない(lungeMs未指定)', () => {
-    for (const t of ['ghost', 'lab-zombie-3', 'skeleton', 'bat', 'werewolf'] as const) {
+    // ★skeletonは§16-Eでlungemsが足されたのでこの一覧から外した(検証は専用describeブロックで行う)。
+    for (const t of ['ghost', 'lab-zombie-3', 'bat', 'werewolf'] as const) {
       const s = biteSpecFor(t);
       expect(s.lungeMs, t).toBeUndefined();
       expect(s.windupMs, t).toBe(BITE_DEFAULT.windupMs);
@@ -182,6 +186,67 @@ describe('★§16-D ゾンビの噛みつき「詰めたあとの停止」', () 
     // 静止区間が無い=溜め終わり(windupMs)でちょうど0.5(従来どおり段差なし・止まらず伸びる)。
     expect(biteLungeFrac(e1, 1000 + specD1.windupMs)).toBeCloseTo(0.5, 5);
     expect(biteLungeFrac(e2, 1000 + specD2.windupMs)).toBeCloseTo(0.5, 5);
+  });
+});
+
+// ★PACING_PUZZLE.md §16-E E-3(社長指示2026-09-19「武器を構えて一瞬止まる、を雑魚モーションには
+// 差し込んでみよう」)。骸骨だけ止まる拍が無かったので`lungeMs: 180`を足した(=120msの静止)。
+// windupMs(300)・lungePx・biteMs・recoverMsは変えていない(同じ300msの内訳を割るだけ)。
+describe('★§16-E 骸骨の噛みつき「構えて一瞬止まる」', () => {
+  const sk = (biteAt: number | undefined): Pick<Enemy, 'type' | 'biteAt'> =>
+    ({ type: 'skeleton', biteAt } as Pick<Enemy, 'type' | 'biteAt'>);
+  const spec = biteSpecFor('skeleton'); // move/aiPhase無し=§12の噛みつきそのもの
+
+  it('E-5受け入れ条件4: 台帳はwindupMs300/lungeMs180/biteMs200/lungePx30/recoverMs600(変えていない値の確認込み)', () => {
+    expect(spec.windupMs).toBe(300);       // 変えない
+    expect(spec.lungeMs).toBe(180);
+    expect(spec.biteMs).toBe(200);         // 変えない
+    expect(spec.lungePx).toBe(BITE_DEFAULT.lungePx); // 変えない
+    expect(spec.recoverMs).toBe(BITE_DEFAULT.recoverMs); // 変えない(§12既定のまま)
+    expect(spec.windupMs + spec.biteMs).toBe(500); // 総尺は不変(BITE_DEFAULTと同じ500ms)
+  });
+
+  it('踏み込みは180msで走り切る(溜め終わり=半分)', () => {
+    expect(biteLungeFrac(sk(1000), 1000)).toBeCloseTo(0);
+    expect(biteLungeFrac(sk(1000), 1090)).toBeLessThan(0.2);   // ease-in中盤=じわっと
+    expect(biteLungeFrac(sk(1000), 1180)).toBeCloseTo(0.5);    // lungeMs=180で走り切る
+  });
+
+  it('180ms〜300ms(windupMs)は完全に静止する(0.5のまま動かない=120msの静止)', () => {
+    expect(biteLungeFrac(sk(1000), 1181)).toBeCloseTo(0.5);
+    expect(biteLungeFrac(sk(1000), 1240)).toBeCloseTo(0.5);
+    expect(biteLungeFrac(sk(1000), 1299)).toBeCloseTo(0.5);
+  });
+
+  it('windupMs(300ms)を過ぎたら噛みへ入り、500msで伸び切る', () => {
+    expect(biteLungeFrac(sk(1000), 1300)).toBeCloseTo(0.5); // 噛みの入口=段差なし
+    expect(biteLungeFrac(sk(1000), 1400)).toBeGreaterThan(0.5);
+    expect(biteLungeFrac(sk(1000), 1500)).toBeCloseTo(1);   // windupMs+biteMs=噛み切る
+  });
+
+  it('★単調増加(静止区間を含めても後退しない)', () => {
+    let prev = -1;
+    for (let t = 0; t <= 500; t += 10) {
+      const f = biteLungeFrac(sk(1000), 1000 + t);
+      expect(f).toBeGreaterThanOrEqual(prev);
+      prev = f;
+    }
+  });
+
+  it('E-5受け入れ条件3: 紫の予告が消え切る瞬間(windupMs+biteMs=500ms)=噛みが当たる瞬間(掟③)が一致する', () => {
+    expect(bitePhaseOf(sk(1000), 1499)).toBe('bite');
+    expect(bitePhaseOf(sk(1000), 1500)).toBe('none');   // 予告消え切り
+    expect(biteProgress(sk(1000), 1500)).toBeCloseTo(1); // 進捗も同じ瞬間に1
+    expect(biteLungeFrac(sk(1000), 1500)).toBeCloseTo(1); // 踏み込みも同じ瞬間に伸び切る=命中点
+  });
+
+  it('★技(skel-bite)にも同じwindupMsのまま伝わる(windupMsが同じ300msなのでlungeMsの割り方も同じ)', () => {
+    // ★設計書に明記が無かったので設計者が決めた箇所: §16-Dのzombie-doubleは1発目のwindupMs(220)が
+    // 型のlungeMs(300)より短くなる壊れた値になるため、BITE_BY_PHASEで打ち消してあった。
+    // skel-biteはwindupMsが§12既定と同じ300msなので、その打ち消しは不要=そのままlungeMs:180が効く。
+    const specMove = biteSpecFor('skeleton', 'skel-bite');
+    expect(specMove.windupMs).toBe(300);
+    expect(specMove.lungeMs).toBe(180);
   });
 });
 
@@ -462,9 +527,9 @@ describe('★壁の箱と攻撃の箱を分ける(v0.25.3913)', () => {
 //  被っていたらダメージ**、壁判定に戻す。で繰り返せば?」
 // 「すると、**赤く光った敵がプレイヤーにかぶさってくる形**になる。絵としてわかりやすくなる」
 describe('★噛みつきの台本(v0.25.3914)', () => {
-  // ★§16-Dでzombieのwindup/lungeMsが既定から差し替わったので、汎用アルゴリズムの確認は
-  // skeleton(既定のまま)で行う(zombie固有の停止挙動は別describeで検査)。
-  const zom = (biteAt?: number) => ({ type: 'skeleton' as const, biteAt });
+  // ★§16-D/§16-Eでzombie/skeletonのwindup/lungeMsが既定から差し替わったので、汎用アルゴリズムの
+  // 確認はbat(既定のまま)で行う(zombie固有・skeleton固有の停止挙動はそれぞれ別describeで検査)。
+  const zom = (biteAt?: number) => ({ type: 'bat' as const, biteAt });
 
   it('台本の間は壁が開く(=覆いかぶされる)。終われば壁は戻る', () => {
     const e = zom(1000);
@@ -697,7 +762,9 @@ describe('★止まっている敵は噛まない(構え始めと中断で同じ
 // 一度は「モーションの手前に予告(lead)を足す」形にしたが(v0.25.3931)、溜めの中に2回まとめる形で確定。
 describe('★点滅は溜めの中で2回(v0.25.3932)', () => {
   // ★§16-Dでzombieのwindup既定が300→600になったので、BITE_DEFAULT.windupMsをそのまま比較に
-  // 使うこのテストはskeleton(既定のまま)で行う。
+  // 使うこのテストはskeletonで行う。★§16-Eでskeletonにlungemsが足されたが、biteBlinkOnは
+  // spec.windupMsだけを見る(lungeMsは踏み込みの見た目=biteLungeFracだけが読む)ので、
+  // skeletonのwindupMsが300のまま=このテストは影響を受けない。
   const z = { type: 'skeleton' as const, biteAt: 1000 };
   it('明→暗→明→暗 の2回(溜めを2等分し各回の前半が明側)', () => {
     const w = BITE_DEFAULT.windupMs;                          // 300ms

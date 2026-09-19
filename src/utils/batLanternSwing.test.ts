@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   batLanternPose, batLanternBack, batLanternDownDefault, batLanternDownAngle,
-  batSlamFrame, batSlamTotalMs, BAT_SLAM_FRAMES, BAT_SLAM_IMPACT_FRAME,
+  batSlamFrame, batSlamFrameWithWindup, batSlamTotalMs, BAT_SLAM_FRAMES, BAT_SLAM_IMPACT_FRAME,
   BAT_SLAM_HOLD_MS, BAT_SLAM_ANCHOR_X, BAT_LANTERN_SETTLE_MS, BAT_LANTERN_REST,
   usesBatLantern, batSlamTexName, batSlamCounterable,
 } from './batLanternSwing';
@@ -137,6 +137,34 @@ describe('バットのランタン: 炸裂のコマ送り', () => {
   it('接地点の表はコマ数ぶんある(素材を足したら必ずここも足す)', () => {
     expect(BAT_SLAM_ANCHOR_X).toHaveLength(BAT_SLAM_FRAMES);
     expect(BAT_SLAM_HOLD_MS).toHaveLength(BAT_SLAM_FRAMES);
+  });
+});
+
+// ★PACING_PUZZLE.md §16-E(社長指示2026-09-19「武器を構えて一瞬止まる、を雑魚モーションには
+// 差し込んでみよう。牙なら牙の1コマ目で」)。コウモリの掴み(bat-grab)はwindupMs 400ms。
+describe('バットの炸裂シート: 構え(溜めのあいだ0コマ目で静止)', () => {
+  const WINDUP_MS = 400; // bat-grabのwindupMs(§16の技)
+
+  it('E-5受け入れ条件1: 溜めが始まった同じフレームに0コマ目が出る', () => {
+    expect(batSlamFrameWithWindup(0, WINDUP_MS, -9999)).toBe(0);
+  });
+
+  it('E-5受け入れ条件2: 溜めのあいだ(< windupMs)は0コマ目のまま静止する', () => {
+    expect(batSlamFrameWithWindup(1, WINDUP_MS, -9999)).toBe(0);
+    expect(batSlamFrameWithWindup(200, WINDUP_MS, -9999)).toBe(0);
+    expect(batSlamFrameWithWindup(WINDUP_MS - 1, WINDUP_MS, -9999)).toBe(0);
+  });
+
+  it('E-5受け入れ条件3: 溜め明け(>= windupMs)からは`batSlamFrame`と1ミリも変わらない', () => {
+    for (let sinceImpactMs = -100; sinceImpactMs <= 200; sinceImpactMs += 4) {
+      const sinceWindupMs = WINDUP_MS + 9999; // 十分に溜め明け
+      expect(batSlamFrameWithWindup(sinceWindupMs, WINDUP_MS, sinceImpactMs))
+        .toBe(batSlamFrame(sinceImpactMs));
+    }
+  });
+
+  it('まだ発火していない(sinceWindupMs<0)は出さない', () => {
+    expect(batSlamFrameWithWindup(-1, WINDUP_MS, -9999)).toBeNull();
   });
 });
 

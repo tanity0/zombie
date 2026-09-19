@@ -12,6 +12,7 @@
 // 叩いた後は**減衰する揺れ**で止まる(対称なS字=何にも当たっていない動き、にしない)。
 import type { Enemy } from '../types/game';
 import { biteSpecFor, bitePhaseOf } from './enemyBite';
+import { frameWithWindupHold } from './fxFrameClock';
 
 /** 鎖の見かけの長さ(px)。実際は「握り→落とす点」の距離に合わせて伸縮する(下の clamp)。 */
 export const BAT_LANTERN_LEN_PX = 92;
@@ -129,6 +130,18 @@ export const batSlamFrame = (sinceImpactMs: number): number | null => {
   }
   return null;
 };
+
+/**
+ * ★構え(§16-E)入りの送り。溜めのあいだ(`sinceWindupMs < windupMs`)は0コマ目(ランタンを振りかぶる
+ * 前の形)で静止し、溜め明けからは `batSlamFrame` と1ミリも変わらない送りに戻る。
+ * ★ランタンそのもの(`batLanternPose`)は元々溜めの間も振り上げの動きを描いているが、この0コマ目の
+ * 「構え」は**炸裂シート(bat-slam)側**の絵で、別レイヤーとして重なる(社長指示「牙なら牙の1コマ目で」
+ * =各シートの1コマ目を構えに使う、の敵ごとの武器版)。
+ */
+export const batSlamFrameWithWindup = (
+  sinceWindupMs: number, windupMs: number, sinceImpactMs: number,
+): number | null =>
+  frameWithWindupHold(sinceWindupMs, windupMs, sinceImpactMs, batSlamFrame);
 
 /**
  * ★炸裂の色は**その技がカウンターできるかで決まる**(CLAUDE.md「色と形の文法」
