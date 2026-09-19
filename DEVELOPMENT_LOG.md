@@ -1,5 +1,51 @@
 # Development Log
 
+## v0.25.4516 — ★「skeletonが攻撃してこない」の**真因**: liftUntil の時計違い【2026-09-19 23:05 JST】
+
+### 突破口は社長の1枚(`?debug=1`)
+```
+-- enemy ai --
+skeleton d82 -  止1.2s STUN        ← 理由はSTUNなのに**残り時間が空**
+EV welcome r240 fe1 24/60s
+skeleton d85 chase hp106 on        ← dormantではない(`chase`表記)
+```
+表示の「残り」は **`stunUntil` の分しか計算していない**。空=**気絶ではない**。
+`isBiteFrozen` が真になる残りは `rootUntil` / `liftUntil` / `dormant`。`dormant` は否定されたので
+**拘束か浮き**——ここから1本で真因に着いた。
+
+### ★真因(実装で確認)
+- **`liftUntil`(近接フィニッシュの浮き・`MELEE_STUN_LIFT_MS`=420ms)は `Date.now()` で書かれる**
+  (`gameStore.ts` の書き込み3箇所とも `liftUntil: now + …`)。
+- ところが **`isBiteFrozen`(`enemyBite.ts`)は `gameTime` と比べていた**。
+  `gameTime` は出撃からの経過ms(35秒なら約35,000)、`Date.now()` は約**1.77e12**。
+- ⇒ **一度でも浮かされた個体は、以後 `gameTime < liftUntil` が永久に真**。
+  `canStartBite` が二度と通らず、**その個体は一生噛まない・技も出さない**。
+  移動の判定は別で(`now` と正しく比べている)**歩いて回り込むだけ**になる。
+  **= 社長の「ずっと回り込むだけ」そのもの。**
+- 同じ時計違いが `gameStore.ts` に**あと2箇所**(リッチの転移の中断判定)。こちらも直した——
+  放置すると「一度浮かされたリッチは転移が永久に取り消され続ける」。
+
+### なぜ設計チャットが3回外したか
+**私の再現は一度も「浮かせ」を通していなかった。** カウンター/クリ/距離/群れ/輪は全部試したが、
+**近接フィニッシュの浮き**だけ試していない。社長の「密着してなくても、サークル閉じてても再現する」は
+正しく、**距離にも輪にも関係ない永続フラグ**だった。
+
+### 直したもの
+- `isBiteFrozen` / `canStartBite` / `canZombieRushBite` に **`nowMs` を必須引数で足した**
+  (`gameTime` 系=`stunUntil`/`rootUntil`、`Date.now()` 系=`liftUntil`。**呼び手が両方渡す**=
+  片方だけにすると同じ事故が戻る)。呼び出しは型検査が全部あぶり出した。
+- リッチの2箇所を `now` 比較へ。
+- **`enemyIdleReason` の `STUN` を4つに割った**: `STUN` / `ROOT` / `LIFT` / `DORM`。
+  ★**この割りが無ければ次も同じ所で詰まる**(今回まさに「STUNだが残りが空」で1往復使った)。
+
+### 検証
+- 回帰テスト3本(`enemyBite.test.ts`): 浮きが明けていれば凍結しない / 浮いている間だけ凍結する /
+  **gameTime を渡すと常に凍結してしまうことの明示**。
+- `npm run typecheck` 緑 / `npm run lint` エラー0 / `npm test` **6396 passed / 391ファイル**。
+
+### 状態変化
+骸骨の件 → **真因を修正(実機確認待ち)**。
+
 ## v0.25.4515 — 硬直明けの「噛みつきの間」を4型へ揃えた(#H-6)【2026-09-19 22:17 JST】
 
 ### 社長裁定

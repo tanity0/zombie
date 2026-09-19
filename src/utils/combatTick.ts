@@ -1370,7 +1370,7 @@ export const applyContactDamage = (
       // 構えている最中に**技へ入った**なら、その噛みは中断(技の当たり判定が本体になる)。
       // ★止まっている敵(気絶/拘束/持ち上げ/眠り)は噛み切らない=構え始めと同じ述語で中断する。
       if (!isBiteSubject(e, isBiteExemptType, gameTime) || isBiteInterruptedByMove(e)
-        || isBiteFrozen(e, gameTime)) {
+        || isBiteFrozen(e, gameTime, Date.now())) {
         biteClears.push(e.id);
         continue;
       }
@@ -1394,7 +1394,7 @@ export const applyContactDamage = (
       }
       biteClears.push(e.id);                                      // 当たっても外しても台本は終わる
       biteResolved.push(e.id);                                    // ★中断ではない=噛み切った
-    } else if (canStartBite(e, gameTime)) {   // ★ノックバック中でも構え始められる(社長指示2026-09-17)
+    } else if (canStartBite(e, gameTime, Date.now())) {   // ★ノックバック中でも構え始められる(社長指示2026-09-17)
       // ★発火も判定と**同じ四角**で見る(v0.25.3904)。中心間の距離で見ていた旧実装は
       // 体の大きい敵ほど発火しなかった(ゾンビは触れても中心間34px>30px=一生噛めない)。
       const eb = enemyContactBox(e);

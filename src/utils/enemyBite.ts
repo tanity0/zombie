@@ -679,18 +679,35 @@ export const isBiteSubject = (
  * 止める効果の意味そのものを壊す挙動になっていた。**構え始めと中断で同じ述語を使う。**
  * `dormant`(眠っている敵)も追加——壁越しに眠ったまま噛んでくる経路があった。
  */
+/**
+ * ★★時計を間違えていた(社長報告2026-09-19「skeletonが攻撃してこない」の**真因**・実機の
+ * `?debug=1` が `STUN` を出したのに**残り時間が空だった**ことから判明)。
+ *
+ * `liftUntil`(近接フィニッシュの浮き・`MELEE_STUN_LIFT_MS`=420ms)は**`Date.now()` で書かれる**
+ * (`gameStore.ts` の3箇所とも `liftUntil: now + …`)。ところがここは **`gameTime`** と比べていた。
+ * `gameTime` は出撃からの経過ms(35秒なら約35,000)、`Date.now()` は約1.77e12。
+ * ⇒ **一度でも浮かされた個体は、以後 `gameTime < liftUntil` が永久に真**になり、
+ *   `canStartBite` が二度と通らない=**その個体は一生噛まない・技も出さない**。
+ *   移動は別の判定(`now` で正しく比べている)なので**歩いて回り込むだけ**になる。
+ *
+ * ⇒ **時計ごとに引数を分ける**。`gameTime` 系=`stunUntil`/`rootUntil`、
+ *   `Date.now()` 系=`liftUntil`。呼び手が両方渡す(片方だけにすると同じ事故が戻る)。
+ */
 export const isBiteFrozen = (
   enemy: Pick<Enemy, 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant'>,
   gameTime: number,
+  nowMs: number,
 ): boolean =>
   enemy.dormant === true
   || (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil)
   || (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil)
-  || (enemy.liftUntil !== undefined && gameTime < enemy.liftUntil);
+  || (enemy.liftUntil !== undefined && nowMs < enemy.liftUntil);
 
 export const canStartBite = (
   enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
   gameTime: number,
+  /** ★`liftUntil` は Date.now 系(§isBiteFrozen の注記)。時計を混ぜないため呼び手が両方渡す。 */
+  nowMs: number,
 ): boolean => {
   // ★ゾンビの噛みつきは**立ち止まりが引き金**(社長指示2026-09-16「ゾンビ、立ち止まったら
   // かならずダッシュ噛みつき発動で」)。停止(zpause)が明けて突進(zrush)へ移る**その瞬間に、
@@ -715,7 +732,7 @@ export const canStartBite = (
   if (isBiteInterruptedByMove(enemy)) return false;
   if (enemy.biteAt !== undefined && enemy.biteAt > 0) return false;      // もう構えている
   if (gameTime < (enemy.biteReadyAt ?? 0)) return false;                 // 硬直中
-  if (isBiteFrozen(enemy, gameTime)) return false;
+  if (isBiteFrozen(enemy, gameTime, nowMs)) return false;
   return true;
 };
 
@@ -732,12 +749,14 @@ export const canStartBite = (
 export const canZombieRushBite = (
   enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
   gameTime: number,
+  /** ★`liftUntil` は Date.now 系(§isBiteFrozen の注記)。時計を混ぜないため呼び手が両方渡す。 */
+  nowMs: number,
 ): boolean => {
   if (enemy.type !== 'zombie') return false;
   if (isBiteInterruptedByMove(enemy)) return false;
   if (enemy.biteAt !== undefined && enemy.biteAt > 0) return false;   // もう構えている
   if (gameTime < (enemy.biteReadyAt ?? 0)) return false;              // 硬直中
-  if (isBiteFrozen(enemy, gameTime)) return false;
+  if (isBiteFrozen(enemy, gameTime, nowMs)) return false;
   return true;
 };
 

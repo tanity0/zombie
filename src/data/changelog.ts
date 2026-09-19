@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4516',
+    items: [
+      '近接で仕留めそこねて浮かせた敵が、そのあと二度と攻撃してこなくなる不具合を直した。変異体(痩躯型)が横へ回り込むばかりだったのはこれが原因',
+    ],
+  },
+  {
     version: '0.25.4515',
     items: [
       '変異体(獣化型)の突進後、変異体(削岩型)の突き後、伐採人の薙ぎ後も、立て直すまで噛みついてこなくなった',

@@ -561,14 +561,14 @@ describe('★噛みつきの台本(v0.25.3914)', () => {
 describe('★ゾンビはダッシュ(zrush)中だけ噛みつきを構える(2026-08-29)', () => {
   const base = { type: 'zombie' as const, biteAt: undefined, biteReadyAt: 0, rootUntil: undefined, stunUntil: undefined };
   it('zrush(突進)中は構える', () => {
-    expect(canStartBite({ ...base, aiPhase: 'zrush' }, 1000)).toBe(true);
+    expect(canStartBite({ ...base, aiPhase: 'zrush' }, 1000, 1000)).toBe(true);
   });
   it('停止(zpause)中と歩き接近中は構えない', () => {
-    expect(canStartBite({ ...base, aiPhase: 'zpause' }, 1000)).toBe(false);
-    expect(canStartBite({ ...base, aiPhase: undefined }, 1000)).toBe(false);
+    expect(canStartBite({ ...base, aiPhase: 'zpause' }, 1000, 1000)).toBe(false);
+    expect(canStartBite({ ...base, aiPhase: undefined }, 1000, 1000)).toBe(false);
   });
   it('ゾンビ以外はフェーズ無しでも従来どおり構える', () => {
-    expect(canStartBite({ ...base, type: 'skeleton', aiPhase: undefined }, 1000)).toBe(true);
+    expect(canStartBite({ ...base, type: 'skeleton', aiPhase: undefined }, 1000, 1000)).toBe(true);
   });
 });
 
@@ -620,10 +620,10 @@ describe('★噛みつきの除外は死神と幻影だけ(v0.25.3921)', () => {
 
   it('★ただし技を出している最中は噛みつきを構え始めない(噛みつきは技の合間のつなぎ)', () => {
     const base = { type: 'skeleton' as const, biteAt: undefined, biteReadyAt: 0, rootUntil: undefined, stunUntil: undefined, aiPhase: undefined };
-    expect(canStartBite({ ...base, bossState: 'chase' }, 1000)).toBe(true);
-    expect(canStartBite({ ...base, bossState: undefined }, 1000)).toBe(true);
-    expect(canStartBite({ ...base, bossState: 'laser-fire' }, 1000)).toBe(false);
-    expect(canStartBite({ ...base, bossState: 'harai' }, 1000)).toBe(false);
+    expect(canStartBite({ ...base, bossState: 'chase' }, 1000, 1000)).toBe(true);
+    expect(canStartBite({ ...base, bossState: undefined }, 1000, 1000)).toBe(true);
+    expect(canStartBite({ ...base, bossState: 'laser-fire' }, 1000, 1000)).toBe(false);
+    expect(canStartBite({ ...base, bossState: 'harai' }, 1000, 1000)).toBe(false);
   });
   it('★HPバー等の「ボス扱い」(isBossType)は1bitも変えていない=エリート雑魚は今もボス扱い', () => {
     for (const t of ['pumpkin', 'driller', 'logger', 'giantbat', 'lab-zombie-3', 'hunter'] as const) {
@@ -741,20 +741,20 @@ describe('★止まっている敵は噛まない(構え始めと中断で同じ
     rootUntil: undefined, stunUntil: undefined, liftUntil: undefined, dormant: undefined, ...o,
   } as Parameters<typeof isBiteFrozen>[0]);
   it('気絶・拘束・持ち上げ・眠りは「止まっている」', () => {
-    expect(isBiteFrozen(at({ stunUntil: 2000 }), 1000)).toBe(true);
-    expect(isBiteFrozen(at({ rootUntil: 2000 }), 1000)).toBe(true);
-    expect(isBiteFrozen(at({ liftUntil: 2000 }), 1000)).toBe(true);
-    expect(isBiteFrozen(at({ dormant: true }), 1000)).toBe(true);
+    expect(isBiteFrozen(at({ stunUntil: 2000 }), 1000, 1000)).toBe(true);
+    expect(isBiteFrozen(at({ rootUntil: 2000 }), 1000, 1000)).toBe(true);
+    expect(isBiteFrozen(at({ liftUntil: 2000 }), 1000, 1000)).toBe(true);
+    expect(isBiteFrozen(at({ dormant: true }), 1000, 1000)).toBe(true);
   });
   it('期限が切れていれば止まっていない', () => {
-    expect(isBiteFrozen(at({ stunUntil: 500 }), 1000)).toBe(false);
-    expect(isBiteFrozen(at({}), 1000)).toBe(false);
+    expect(isBiteFrozen(at({ stunUntil: 500 }), 1000, 1000)).toBe(false);
+    expect(isBiteFrozen(at({}), 1000, 1000)).toBe(false);
   });
   it('★眠っている敵は構え始めない(壁越しに眠ったまま噛む経路を塞ぐ)', () => {
     const base = { type: 'skeleton' as const, biteAt: undefined, biteReadyAt: 0, rootUntil: undefined, stunUntil: undefined,
       liftUntil: undefined, aiPhase: undefined, bossState: undefined };
-    expect(canStartBite({ ...base, dormant: true }, 1000)).toBe(false);
-    expect(canStartBite({ ...base, dormant: false }, 1000)).toBe(true);
+    expect(canStartBite({ ...base, dormant: true }, 1000, 1000)).toBe(false);
+    expect(canStartBite({ ...base, dormant: false }, 1000, 1000)).toBe(true);
   });
 });
 
@@ -784,21 +784,21 @@ describe('★立ち止まり明けのダッシュ噛みつき(社長指示2026-0
     ({ type: 'zombie', biteAt: 0, biteReadyAt: 0, ...over }) as never;
 
   it('ゾンビは距離もaiPhaseも見ずに構えられる(停止そのものが引き金)', () => {
-    expect(canZombieRushBite(z(), 10_000)).toBe(true);
-    expect(canZombieRushBite(z({ aiPhase: 'zpause' }), 10_000)).toBe(true);
+    expect(canZombieRushBite(z(), 10_000, 10_000)).toBe(true);
+    expect(canZombieRushBite(z({ aiPhase: 'zpause' }), 10_000, 10_000)).toBe(true);
   });
   it('ゾンビ以外は対象外', () => {
-    expect(canZombieRushBite(z({ type: 'hunter' }), 10_000)).toBe(false);
+    expect(canZombieRushBite(z({ type: 'hunter' }), 10_000, 10_000)).toBe(false);
   });
   it('★止める効果は必ず効く(気絶/拘束/持ち上げ/眠り)——ここを緩めると棒立ちの敵が噛んでくる', () => {
-    expect(canZombieRushBite(z({ stunUntil: 11_000 }), 10_000)).toBe(false);
-    expect(canZombieRushBite(z({ rootUntil: 11_000 }), 10_000)).toBe(false);
-    expect(canZombieRushBite(z({ liftUntil: 11_000 }), 10_000)).toBe(false);
-    expect(canZombieRushBite(z({ dormant: true }), 10_000)).toBe(false);
+    expect(canZombieRushBite(z({ stunUntil: 11_000 }), 10_000, 10_000)).toBe(false);
+    expect(canZombieRushBite(z({ rootUntil: 11_000 }), 10_000, 10_000)).toBe(false);
+    expect(canZombieRushBite(z({ liftUntil: 11_000 }), 10_000, 10_000)).toBe(false);
+    expect(canZombieRushBite(z({ dormant: true }), 10_000, 10_000)).toBe(false);
   });
   it('硬直中と二重構えは弾く', () => {
-    expect(canZombieRushBite(z({ biteReadyAt: 10_500 }), 10_000)).toBe(false);
-    expect(canZombieRushBite(z({ biteAt: 9_900 }), 10_000)).toBe(false);
+    expect(canZombieRushBite(z({ biteReadyAt: 10_500 }), 10_000, 10_000)).toBe(false);
+    expect(canZombieRushBite(z({ biteAt: 9_900 }), 10_000, 10_000)).toBe(false);
   });
   // ★この it は canZombieRushBite の**硬直ゲートの一般的な挙動**を、硬直が数サイクルぶん長い
   // 仮の例(hypothetical)で確かめるもの。実際の recoverMs は §16 のバッチで600msへ復帰した
@@ -809,9 +809,9 @@ describe('★立ち止まり明けのダッシュ噛みつき(社長指示2026-0
     const readyAt = resolveAt + 10_000;              // 硬直明け(仮に10秒だった場合の例)
     const cycleMs = 1000 + 2000;                     // 停止1秒 + 突進2秒
     // 次の停止明け(3秒後)では**まだ硬直中**=空振りになる
-    expect(canZombieRushBite(z({ biteReadyAt: readyAt }), resolveAt + cycleMs)).toBe(false);
+    expect(canZombieRushBite(z({ biteReadyAt: readyAt }), resolveAt + cycleMs, resolveAt + cycleMs)).toBe(false);
     // 硬直が明けた後の停止明けでは必ず構える
-    expect(canZombieRushBite(z({ biteReadyAt: readyAt }), readyAt + 1)).toBe(true);
+    expect(canZombieRushBite(z({ biteReadyAt: readyAt }), readyAt + 1, readyAt + 1)).toBe(true);
     // (仮に)10秒 ÷ 3秒サイクル ⇒ 噛めるのは約3回に1回、という比の例
     expect(Math.ceil(10_000 / cycleMs)).toBe(4);
   });
@@ -828,5 +828,33 @@ describe('★溜め中の点滅の色(社長裁定2026-09-16「紫」)', () => {
     expect(BITE_DEFAULT.counterable).toBe(false);
     // 色を赤へ動かす時は counterable も一緒に見直す、という約束をここで機械化しておく。
     expect(biteBlinkTintFor('zombie') === 0x9333ea).toBe(!BITE_DEFAULT.counterable);
+  });
+});
+
+/**
+ * ★★社長報告2026-09-19「skeletonが攻撃してこない」の**真因**の回帰
+ * (実機の `?debug=1` が `STUN` を出したのに**残り時間が空だった**ことから判明)。
+ *
+ * `liftUntil`(近接フィニッシュの浮き)は **`Date.now()`** で書かれる(`gameStore.ts` の3箇所とも
+ * `liftUntil: now + MELEE_STUN_LIFT_MS`)。ところが `isBiteFrozen` は **`gameTime`** と比べていた。
+ * `gameTime` は出撃からの経過ms(35秒なら約35,000)、`Date.now()` は約1.77e12。
+ * ⇒ **一度でも浮かされた個体は以後ずっと「凍結」扱い**になり、**二度と噛まない・技も出さない**。
+ */
+describe('★liftUntil は Date.now 系。gameTime と比べない(v0.25.45xx・真因)', () => {
+  const NOW = 1_770_000_000_000;   // 実際の Date.now() の桁
+  const GT = 35_000;               // 出撃から35秒
+  const lifted = (until: number) => ({ liftUntil: until }) as unknown as Parameters<typeof isBiteFrozen>[0];
+
+  it('浮きが明けていれば凍結しない(★これが偽だと一生噛まなくなる)', () => {
+    expect(isBiteFrozen(lifted(NOW - 1), GT, NOW)).toBe(false);
+  });
+
+  it('浮いている間だけ凍結する', () => {
+    expect(isBiteFrozen(lifted(NOW + 420), GT, NOW)).toBe(true);
+  });
+
+  it('★gameTime を渡したら常に凍結してしまう=時計を混ぜてはいけないことの明示', () => {
+    // 旧実装と同じ比較(gameTime < liftUntil)。**明けているのに true** になるのが事故の正体。
+    expect(GT < NOW - 1).toBe(true);
   });
 });

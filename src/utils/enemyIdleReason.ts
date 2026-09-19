@@ -10,12 +10,15 @@
 //
 // ★判定は**本物の述語を呼ぶ**(自作の式を並べない)。式が本物とズレたら、この道具は嘘をつく。
 import type { Enemy } from '../types/game';
-import { canStartBite, isBiteInterruptedByMove, isBiteFrozen } from './enemyBite';
+import { canStartBite, isBiteInterruptedByMove } from './enemyBite';
 import { isEnemyAttacking } from './combatFeel';
 
 export type IdleReason =
   | 'ACT'      // いま技を出している(止まっていない)
   | 'STUN'     // 気絶中(クリティカル/崩れ)
+  | 'ROOT'     // 罠などの拘束中
+  | 'LIFT'     // 近接フィニッシュの浮き中
+  | 'DORM'     // まだ起きていない(dormant)
   | 'KB'       // ノックバック中
   | 'HITSTUN'  // 被弾硬直中
   | 'CD'       // 技後CD / 噛みつきの硬直
@@ -37,7 +40,13 @@ export const enemyIdleReason = (
   bandOuterPx: number,
 ): IdleReason => {
   if (isEnemyAttacking(e, gameTime)) return 'ACT';
-  if (isBiteFrozen(e, gameTime)) return 'STUN';
+  // ★2026-09-19: 実機の1枚が `STUN` を出したのに**残り時間が空**で、原因が
+  // 気絶/拘束/浮き/眠りのどれか分からなかった。**4つに割って1語で読めるようにする。**
+  // (この割りが無ければ `liftUntil` の時計違い=真因に辿り着けなかった。)
+  if (e.dormant === true) return 'DORM';
+  if (e.liftUntil !== undefined && nowMs < e.liftUntil) return 'LIFT';
+  if (e.rootUntil !== undefined && gameTime < e.rootUntil) return 'ROOT';
+  if (e.stunUntil !== undefined && gameTime < e.stunUntil) return 'STUN';
   if (e.knockbackUntil !== undefined && nowMs < e.knockbackUntil) return 'KB';
   if (e.hitStunUntil !== undefined && nowMs < e.hitStunUntil) return 'HITSTUN';
   if (e.chaffMoveCdUntil !== undefined && gameTime < e.chaffMoveCdUntil) return 'CD';
@@ -46,6 +55,6 @@ export const enemyIdleReason = (
   if (distToPlayerPx > bandOuterPx) return 'FAR';
   if (!slotGranted) return 'SLOT';
   if (isBiteInterruptedByMove(e)) return 'PHASE';
-  if (!canStartBite(e, gameTime)) return 'PHASE';
+  if (!canStartBite(e, gameTime, nowMs)) return 'PHASE';
   return 'OK';
 };

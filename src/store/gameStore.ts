@@ -12932,7 +12932,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 拘束・持ち上げも同じ(拘束が切れた瞬間に飛ぶ=A-5)。述語は噛みを止めるものと同じものを使う。
           const stopped = (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil)
             || (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil)
-            || (enemy.liftUntil !== undefined && gameTime < enemy.liftUntil);
+            // ★同じ時計違い(`liftUntil` は Date.now 系・`enemyBite.isBiteFrozen` の注記)。
+            // 直さないと「一度浮かされたリッチは以後ずっと"止まっている"扱い」で転移が永久に取り消され続ける。
+            || (enemy.liftUntil !== undefined && now < enemy.liftUntil);
           if (stopped) {
             // ★**等身へ戻す時計を渡す**(品質監査A-8)。ただ `lichWarpAt` を消すだけだと、
             // 縮んで半透明の体が**1フレームで全身に戻る**(CLAUDE.md「瞬間停止は禁止」)。
@@ -12954,7 +12956,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.chaffMove === 'lich-blink' && enemy.biteAt !== undefined && enemy.biteAt > 0) {
           const lbStopped = (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil)
             || (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil)
-            || (enemy.liftUntil !== undefined && gameTime < enemy.liftUntil);
+            // ★同じ時計違い(`liftUntil` は Date.now 系・`enemyBite.isBiteFrozen` の注記)。
+            // 直さないと「一度浮かされたリッチは以後ずっと"止まっている"扱い」で転移が永久に取り消され続ける。
+            || (enemy.liftUntil !== undefined && now < enemy.liftUntil);
           if (lbStopped) {
             return {
               ...enemy, vx: 0, vy: 0, biteAt: 0, biteDirX: undefined, biteDirY: undefined,
@@ -15480,7 +15484,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 到達させないので、二重発火は起きない。
           if (phase === 'zrush') {
             const zrushStartedAt = phaseUntil - ZOMBIE_RUSH_MS;
-            if (gameTime - zrushStartedAt >= ZOMBIE_RUSH_BODY_SLAM_MS && canZombieRushBite(enemy, gameTime)) {
+            if (gameTime - zrushStartedAt >= ZOMBIE_RUSH_BODY_SLAM_MS && canZombieRushBite(enemy, gameTime, now)) {
               const bl = Math.max(0.001, pdist);
               biteKickoff = { biteAt: gameTime, biteDirX: (pcx - ecx) / bl, biteDirY: (pcy - ecy) / bl };
             }
