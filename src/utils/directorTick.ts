@@ -1300,6 +1300,9 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
         // PACING_PUZZLE.md §9-7#6(削岩型)+§14-2④(伐採人もこの機構を共有): 距離リサイクル/
         // 個体使い回しで drillerRetreatUntil を必ずクリアする(driller/logger以外には無害)。
         drillerRetreatUntil: undefined,
+        // ★PACING_PUZZLE.md §16-H: 硬直中の「時計の預かり」も個体の使い回しで必ず捨てる
+        // (前の場面の残り時間を新しい場面へ持ち越さない)。
+        frozenClocks: undefined,
         spawnedAt: gameTime
       };
     }

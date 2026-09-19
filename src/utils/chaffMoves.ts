@@ -87,30 +87,15 @@ export const deriveChaffMoveGrants = (
 };
 
 /**
- * ★凍結dtの繰り下げ(PACING_PUZZLE.md §16-7 穴4・実装者視点監査A-3)。
+ * ★旧 `deferFrozenClocksBy`(凍結dtの繰り下げ)は **PACING_PUZZLE.md §16-H で破棄した**
+ * (社長指示2026-09-19「硬直中は全ての時計が止まる」)。
  *
- * `updateEnemies` には AI 本体を丸ごと飛ばす早期return が2本ある(ノックバック/`hitStunUntil`)。
- * その間も store の `gameTime` は進み続けるので、`biteAt` 基準で進捗を出す
- * `biteLungeFrac`(gameStore.ts)は「凍結中に本当は進んでいたはずの分」を**取り戻せないまま
- * 失う**(=距離が消える。bat の掴みは円100px−必要68pxの余白がわずか2pxしか無いので、
- * 殴られながら掴む bat は原理的にほぼ必ず空振る)。
- *
- * 直し方は社長裁定①と同じ作法(`kbOnlyStop` と同型)=**時計を止めて続きから**。この1フレーム
- * ぶん凍結していた(`dtMs`)なら、`biteAt`/`chaffMoveAt`/`aiPhaseUntil`/`chaffMoveCdUntil` を
- * まとめて `dtMs` だけ繰り下げる。
- *
- * ★§12の噛みつき(`chaffMove` が undefined)は1bitも変えない(§16の「ではない」条件=
- * 触るのは§16-8に明記した2値のみ)。§16の技(`chaffMove` が定義されている個体)だけに効く。
+ * 破棄の理由(H-1④/H-3): `updateEnemies` は `deltaTime * MOVE_SPEED_MULT`(=×1.2)で回るのに
+ * `gameTime` は `+deltaTime*1000`(未スケール)で進むので、**毎フレーム dtMs を足す方式は構造的に
+ * 1.2倍ズレる**。丸め/フレーム落ちの累積・硬直の重なりでの二重加算・コントローラとの順序依存も付いて回る。
+ * 置き換え先は `src/utils/enemyClocks.ts` の `tickEnemyClockFreeze`(残りを預かって、明けた瞬間に
+ * 絶対値で書き直す=足し算を1度もしない)。**加算方式を復活させないこと。**
  */
-export const deferFrozenClocksBy = (enemy: Enemy, dtMs: number): Enemy => {
-  if (dtMs <= 0 || enemy.chaffMove === undefined) return enemy;
-  const patch: Partial<Enemy> = {};
-  if (enemy.biteAt !== undefined && enemy.biteAt > 0) patch.biteAt = enemy.biteAt + dtMs;
-  if (enemy.chaffMoveAt !== undefined) patch.chaffMoveAt = enemy.chaffMoveAt + dtMs;
-  if (enemy.aiPhaseUntil !== undefined) patch.aiPhaseUntil = enemy.aiPhaseUntil + dtMs;
-  if (enemy.chaffMoveCdUntil !== undefined) patch.chaffMoveCdUntil = enemy.chaffMoveCdUntil + dtMs;
-  return Object.keys(patch).length > 0 ? { ...enemy, ...patch } : enemy;
-};
 
 /**
  * ★技の終わり(PACING_PUZZLE.md §16-7 穴2の訂正・検収監査A-4)。

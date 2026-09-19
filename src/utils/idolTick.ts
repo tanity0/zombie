@@ -6,7 +6,9 @@
 //
 // 状態文法(監査レポート§3-1): NEUTRAL(主戦帯を維持) → STRING(連段) → REST(休符) → NEUTRAL。
 // 懲罰(PUNISH)は中立中いつでも割り込む。**休符は必ず入る**(プレイヤーのターンを消さない)。
-import type { Enemy } from '../types/game';
+import type { Enemy, EnemyClockStash } from '../types/game';
+// ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
+import { isEnemyFrozenForClocks, tickModuleClockFreeze } from './enemyClocks';
 // ★カウンター憲法(v0.25.3947): 面成立の専用関数 counterHit の削除に伴い、それ専用だった import
 // (GLOW_R_L / counterReplyDamage / クリ・演出定数 / getActiveGun / recordCritHit / refundCounterCooldown)を整理。
 import {
@@ -65,6 +67,11 @@ export interface IdolTickState {
   shotWaveIdx: number;            // 何斉射目か(waveTurnDeg の回転に使う)
   // ---- 偏差撃ち(aimMode=2)のためのプレイヤー速度 ----
   lastPx: number; lastPy: number; playerVx: number; playerVy: number;
+  /**
+   * ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。**Enemy に無い時計**
+   * (ここの `shotNextAt`)を硬直の間だけ預かる袋。書き手は `tickModuleClockFreeze` だけ。
+   */
+  clockFreeze?: EnemyClockStash;
 }
 /**
  * ★**副作用を持たせてはいけない**(v0.25.2625の実バグ)。
@@ -235,6 +242,17 @@ export const runIdolTick = (
    * アイドルだけ抜けていた(fullStunと同じ経緯・v0.25.2895)。
    */
   const rooted = idol.rootUntil !== undefined && newGameTime < idol.rootUntil;
+  /**
+   * ★PACING_PUZZLE.md §16-H(社長指示2026-09-19「硬直中はタイマーがゼロのままストップ」)。
+   * `Enemy` のフィールドは `updateEnemies` の前処理(`tickEnemyClockFreeze`)が見るが、
+   * **このコントローラのモジュール状態(`shotNextAt`)には台帳が届かない**ので、ここで1本預ける。
+   * 述語は全敵共通の `isEnemyFrozenForClocks`(ノックバックは含めない=H-4 (f))。
+   */
+  tickModuleClockFreeze(
+    s,
+    [{ key: 'shotNextAt', kind: 'deadline', base: 'game', get: () => s.shotNextAt, set: v => { s.shotNextAt = v; } }],
+    isEnemyFrozenForClocks(idol, newGameTime, Date.now()), newGameTime, Date.now(),
+  );
   const fresh = (): Enemy => useGameStore.getState().enemies.find(e => e.id === idol.id) ?? idol;
   const hateAim = () => resolveBossHateAim(idol, { x: pcx, y: pcy }, useGameStore.getState().summons, newGameTime);
   const lockedHateAim = (side: HateSide = patch.hateTarget ?? idol.hateTarget ?? 'player') =>

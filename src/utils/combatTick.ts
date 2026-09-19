@@ -1425,8 +1425,16 @@ export const applyContactDamage = (
           // (`chaffMoves.ts` の `endChaffMove`・§16-8b 5〜7=別バッチ)。
           // biteReadyAt(§12連鎖の封じ)は従来どおり「いま出している技」の spec で引く。
           const techSpec = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
+          // ★§16-H #H-5(硬直中は時計が止まる・設計で決めた定義): `biteReadyAt` は
+          // 「**硬直のあとのCD**」とする。ここでは `biteRecoverUntil`(=本当に動けない硬直)と
+          // `biteReadyAt`(=次の噛みを構え始められる時刻)が**同時に**書かれるので、
+          // 硬直(b)を凍結に含めた以上、硬直ぶんを引いておかないと噛みの間隔が
+          // recoverMs → recoverMs + BITE_RECOVER_STILL_MS へ勝手に延びる。
+          // **合計(=recoverMs)を変えない**=意図の維持(社長裁定は要らない)。
+          const stillMs = (e.chaffMove === undefined || e.chaffMove === 'lich-blink') && !isTrueBossType(e.type)
+            ? BITE_RECOVER_STILL_MS : 0;
           return {
-            ...e, biteAt: 0, biteReadyAt: gameTime + techSpec.recoverMs,
+            ...e, biteAt: 0, biteReadyAt: gameTime + Math.max(0, techSpec.recoverMs - stillMs),
             // ★噛みつき直後の本当の硬直(社長指摘2026-09-17)。**§12の噛みつき**と
             // **§16-C「転移噛み」(lich-blink)**だけ——§16-C以外の§16の技(chaffMove)は
             // 専用の硬直相(z-recover/s-recover/b-release)を既に持っており、二重に止めると
@@ -1437,8 +1445,7 @@ export const applyContactDamage = (
             // 600ms を 350+250 に割る式が成り立つのは**§12の噛み・lich-blink・かつ非ボス**だけ。
             // 真ボスは `updateEnemies` の汎用移動を通らない(専用コントローラが座標を書く)ので、
             // 書いても読まれない=書かない。
-            ...((e.chaffMove === undefined || e.chaffMove === 'lich-blink') && !isTrueBossType(e.type)
-              ? { biteRecoverUntil: gameTime + BITE_RECOVER_STILL_MS } : {}),
+            ...(stillMs > 0 ? { biteRecoverUntil: gameTime + stillMs } : {}),
             // ★リッチの転移(§16-B B-5): **硬直の後**に消え始める。噛んだ瞬間に飛ばさない
             // (飛ばすとリッチだけ一度も殴り返せない敵になる=硬直はプレイヤーの取り分)。
             // ★**噛み切った時だけ**(`biteResolved`)。中断(気絶/拘束/持ち上げ)では予約しない。

@@ -1,7 +1,8 @@
 // PACING_PUZZLE.md §16(雑魚の「詰めさせない技」)の共通部(§16-8b 1〜4)のユニットテスト。
 import { describe, it, expect } from 'vitest';
+import * as chaffMovesModule from './chaffMoves';
 import {
-  CHAFF_MOVE_TYPES, CHAFF_MOVE_SLOT_CAP, isChaffSlotHolding, deriveChaffMoveGrants, deferFrozenClocksBy,
+  CHAFF_MOVE_TYPES, CHAFF_MOVE_SLOT_CAP, isChaffSlotHolding, deriveChaffMoveGrants,
   endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot, zombieRedTriggerPx,
   ZOMBIE_RED_WAIT_MIN_MS, ZOMBIE_RED_WAIT_MAX_MS,
   ZOMBIE_RED_TRIGGER_MIN_PX, ZOMBIE_RED_TRIGGER_MAX_PX,
@@ -130,34 +131,14 @@ describe('deriveChaffMoveGrants(枠の前段・毎フレーム導出)', () => {
   });
 });
 
-describe('deferFrozenClocksBy(凍結dtの繰り下げ・穴4)', () => {
-  const base: Enemy = mkE('e', 0, {
-    type: 'bat', biteAt: 1000, chaffMoveAt: 900, aiPhaseUntil: 1500, chaffMoveCdUntil: 7000,
-    chaffMove: 'bat-grab',
-  });
-
-  it('§16の技(chaffMove定義)は凍結ぶん絶対時刻フィールドを繰り下げる', () => {
-    const patched = deferFrozenClocksBy(base, 200);
-    expect(patched.biteAt).toBe(1200);
-    expect(patched.chaffMoveAt).toBe(1100);
-    expect(patched.aiPhaseUntil).toBe(1700);
-    expect(patched.chaffMoveCdUntil).toBe(7200);
-  });
-
-  it('dtMs<=0 なら何もしない(同じ参照を返す)', () => {
-    expect(deferFrozenClocksBy(base, 0)).toBe(base);
-    expect(deferFrozenClocksBy(base, -5)).toBe(base);
-  });
-
-  it('★§12の噛みつき(chaffMove未定義)は1bitも変えない(§16の「ではない」条件)', () => {
-    const bite12 = mkE('e2', 0, { type: 'zombie', biteAt: 1000, aiPhaseUntil: 1500, chaffMove: undefined });
-    expect(deferFrozenClocksBy(bite12, 200)).toBe(bite12); // 同じ参照=無変更
-  });
-
-  it('biteAtが0/未発火なら繰り下げない(構えていない)', () => {
-    const idle = mkE('e3', 0, { type: 'bat', chaffMove: 'bat-grab', biteAt: 0, chaffMoveAt: undefined, aiPhaseUntil: undefined, chaffMoveCdUntil: undefined });
-    const patched = deferFrozenClocksBy(idle, 200);
-    expect(patched.biteAt).toBe(0);
+// ★PACING_PUZZLE.md §16-H H-8: 旧「deferFrozenClocksBy(凍結dtの繰り下げ)」の節は**規則が反転した**
+// ので書き換えた。旧規則=「凍結ぶん時計を後ろへ足す」/ 新規則=「凍結中は時計が1msも進まず、
+// 明けた瞬間にその時点を0としてCDが始まる」。関数そのものを破棄したので、ここでは
+// **加算方式が復活していないこと**だけを見る(実ループでの受け入れ条件は
+// src/store/enemyClockFreeze.test.ts が持つ=§16-H H-7「storeの実ループを回して測る」)。
+describe('★凍結dtの繰り下げ(旧・穴4)は破棄された(§16-H H-8)', () => {
+  it('chaffMoves から加算方式の輸出が消えている(復活の検知器)', () => {
+    expect(Object.keys(chaffMovesModule)).not.toContain('deferFrozenClocksBy');
   });
 });
 

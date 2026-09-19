@@ -262,3 +262,30 @@ describe('★受け入れ条件(350ms・取り分は「後退」): 硬直500ms�
     expect(SKELETON_RECOVER_MS).toBe(500);
   });
 });
+
+/**
+ * ★社長報告2026-09-19(動画)「skeletonの攻撃しなくなるの直ってない」の**1本目の真因**の回帰。
+ *
+ * 噛みの発火時に焼く向きは `bl = Math.max(0.001, hypot(...))` で正規化するので、
+ * **中心が重なっていると 0 ÷ 0.001 ≒ 0** が両軸に入る=**単位ベクトルにならない**。
+ * 後退相の `-(enemy.biteDirX ?? 1)` は **undefined しか拾わない**のでゼロは素通りし、
+ * **後退速度が0のまま相から永久に出られない**(=「回り込むだけで攻撃してこない」)。
+ * 実測(プレイヤー静止30秒): 密着から始めると噛みは **1回**で2.6秒後に停止していた(修正後は5回)。
+ */
+describe('★密着で焼いた向きがゼロでも後退相から必ず抜ける(v0.25.45xx)', () => {
+  it('biteDirがゼロでも s-retreat は終わる(=技が終わってCDが始まる)', () => {
+    place(0, { aiPhase: 's-retreat', chaffMove: 'skel-bite', biteDirX: 0, biteDirY: 0 });
+    let t = START_GT, ended = false;
+    for (let i = 0; i < 600; i++) {   // 10秒ぶん
+      t += 1000 / 60; tick(t);
+      if (first().aiPhase !== 's-retreat') { ended = true; break; }
+    }
+    expect(ended).toBe(true);
+  });
+
+  it('向きがゼロでない時は従来どおり(焼いた向きの逆へ下がる)', () => {
+    const e0 = place(0, { aiPhase: 's-retreat', chaffMove: 'skel-bite', biteDirX: 1, biteDirY: 0 });
+    tick(START_GT + 1000 / 60);
+    expect(first().x).toBeLessThan(e0.x); // biteDirX=+1 の逆=左へ下がる
+  });
+});

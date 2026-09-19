@@ -54,17 +54,18 @@ describe('★死亡(buildCorpseFromKill)でも chaffMove を消す(§16-7b「bit
   });
 });
 
-describe('★凍結dtの繰り下げ(PACING_PUZZLE.md §16-7 穴4・実装者視点監査A-3)', () => {
-  // ★v0.25.4453: この穴の**解き方が変わった**(社長裁定2026-09-17「攻撃中スーパーアーマー」)。
-  // 旧: 被弾硬直で技も止まる → 止まったぶん §16 の時計を繰り下げて進捗を守る。
-  // 新: **技の実行中はそもそも被弾硬直で止まらない**(`isEnemyAttacking` が true の間はゲートを通らない)
-  //     ⇒ 時計は普通に進むので繰り下げる必要が無い。**穴は上流で塞がった。**
-  // `deferFrozenClocksBy` は**技を出していない個体**用の安全網として残っている(そこに§16の時計は無い)。
+// ★PACING_PUZZLE.md §16-H H-8: 旧「凍結dtの繰り下げ(穴4)」の節は**規則が反転した**ので書き換えた。
+//   旧規則 = 止まっている間だけ、その敵の時計を後ろへ「足す」。
+//   新規則 = **硬直の間は時計が1msも進まず、明けた瞬間にその時点を0としてCDが始まる**
+//            (残りを預かって書き直す=足し算を1度もしない)。
+// ここでは**スーパーアーマー(技の実行中は硬直しない)との境目**だけを見る。凍結そのものの
+// 受け入れ条件(H-7の1〜7)は src/store/enemyClockFreeze.test.ts が持つ。
+describe('★硬直中は時計が止まる(§16-H)/技の実行中は硬直しない(スーパーアーマー)', () => {
   it('★技の実行中は被弾硬直で止まらない(スーパーアーマー)ので、時計も位置も凍らない', () => {
     const gt = setupOne({
       ...spawnEnemyAt('bat', 100, 100, 0),
       chaffMove: 'bat-grab' as const, biteAt: 1, aiPhase: 'b-windup' as const,
-      hitStunUntil: Date.now() + 100000, // 止まっている間(updateEnemiesで動かない=戦闘の手触り①)
+      hitStunUntil: Date.now() + 100000,
     } as unknown as import('../types/game').Enemy);
     const before = useGameStore.getState().enemies[0];
     expect(before.biteAt).toBe(1);
@@ -72,13 +73,35 @@ describe('★凍結dtの繰り下げ(PACING_PUZZLE.md §16-7 穴4・実装者視
     useGameStore.getState().setGameTime(gt + dt * 1000);
     useGameStore.getState().updateEnemies(dt);
     const after = useGameStore.getState().enemies[0];
-    // 技の時計(biteAt)は繰り下がらない=素のまま。gameTimeが進んだぶんそのまま進捗になる。
+    // 技の時計(biteAt)は据え置かれない=素のまま。gameTimeが進んだぶんそのまま進捗になる。
     expect(after.biteAt).toBe(before.biteAt);
-    // 止まっていない(=スーパーアーマー)。踏み込み/構えの移動がそのまま出る。
+    expect(after.frozenClocks).toBeUndefined(); // 凍結扱いになっていない
     expect(useGameStore.getState().enemies[0].hitStunUntil).toBe(before.hitStunUntil);
   });
 
-  it('★§12の噛みつき(chaffMove未定義)は1bitも変えない(hitStunUntil中もbiteAtは動かさない)', () => {
+  it('★技を出していない個体は被弾硬直で凍る(=CDの残りが減らない)', () => {
+    const gt = setupOne({
+      ...spawnEnemyAt('zombie', 4000, 4000, 0),
+      biteAt: 0, biteReadyAt: 3000, aiReadyAt: 5000,
+      hitStunUntil: Date.now() + 100000,
+    } as unknown as import('../types/game').Enemy);
+    const dt = 1 / 60;
+    const run = (): void => {
+      const t = useGameStore.getState().gameTime;
+      useGameStore.getState().setGameTime(t + dt * 1000);
+      useGameStore.getState().updateEnemies(dt * 1.2);
+    };
+    run();
+    const t0 = useGameStore.getState().gameTime;
+    const rem0 = (useGameStore.getState().enemies[0].biteReadyAt ?? 0) - t0;
+    for (let i = 0; i < 30; i++) run();
+    const t1 = useGameStore.getState().gameTime;
+    expect((useGameStore.getState().enemies[0].biteReadyAt ?? 0) - t1).toBeCloseTo(rem0, 6);
+    expect(t1 - t0).toBeGreaterThan(400); // 時間自体は進んでいる
+    void gt;
+  });
+
+  it('★§12の噛みつきを構えている個体は凍らない(構え中もスーパーアーマー)', () => {
     const gt = setupOne({
       ...spawnEnemyAt('zombie', 100, 100, 0),
       biteAt: 500, aiPhase: 'zrush' as const,
@@ -89,6 +112,7 @@ describe('★凍結dtの繰り下げ(PACING_PUZZLE.md §16-7 穴4・実装者視
     useGameStore.getState().setGameTime(gt + dt * 1000);
     useGameStore.getState().updateEnemies(dt);
     const after = useGameStore.getState().enemies[0];
-    expect(after.biteAt).toBe(before.biteAt); // 従来どおり無変更(受け入れ条件1)
+    expect(after.biteAt).toBe(before.biteAt); // 台本の進捗は素のまま
+    expect(after.frozenClocks).toBeUndefined();
   });
 });

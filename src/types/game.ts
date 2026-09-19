@@ -1370,6 +1370,24 @@ export interface Enemy {
   // ずっと持ち越す)——resetGame/死亡/勝利は敵配列ごと消えるので自然に片付き、武器の持ち替えは
   // setActiveWeapon側で明示的にクリアする(§16-5受け入れ条件5「持ち替えで残らない」)。
   alchemyStoneStage?: number;
+  /**
+   * ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。硬直に入った瞬間に「行動の時計」の
+   * 残り(期限型)/経過(始点型)を畳んで預かる袋。書き手は `src/utils/enemyClocks.ts` の
+   * `tickEnemyClockFreeze` **1本だけ**(updateEnemies の前処理から毎フレーム呼ばれる)。
+   * 硬直が明けた瞬間に「明けた時刻 + 残り」で書き直して消える。
+   */
+  frozenClocks?: EnemyClockStash;
+}
+
+/**
+ * ★§16-H の預かり袋。`gAt`/`nAt` は**最後に書き直した時刻**(gameTime系 / Date.now系)。
+ * `rem` のキーはフィールド名(マップ型は `"gStageReadyAt.bite"` のようにドットで繋ぐ)。
+ * 値は期限型=残りms・始点型=経過ms。
+ */
+export interface EnemyClockStash {
+  gAt: number;
+  nAt: number;
+  rem: Record<string, number>;
 }
 
 // 'ghost-ally' = BOT_AND_GHOST.md G2(ゴースト助っ人・デバッグ召喚 `?ghost=1`)。**'ghost-ally'という

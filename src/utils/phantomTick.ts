@@ -24,7 +24,9 @@
 //    `knockbackShoveUntil` / `liftUntil` / decideGhost の内部CD・リロードは `Date.now()`。
 //    **混ぜて比較しない**。このファイルは両方を引数で受け取り、それぞれの世界の中だけで比較する。
 //  - 慣性: 振りの絵(踏み込み→戻り)は描画側(pixiScene)がイーズで出す。判定は即発の1回。
-import type { Enemy, EnemyType, Player, Projectile, SubWeaponKey, Weapon } from '../types/game';
+import type { Enemy, EnemyType, Player, Projectile, SubWeaponKey, Weapon, EnemyClockStash } from '../types/game';
+// ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
+import { isEnemyFrozenForClocks, tickModuleClockFreeze } from './enemyClocks';
 import {
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore, resolveBountyMove, CRIT_DAMAGE_MULT,
@@ -342,6 +344,12 @@ export interface PhantomTickState {
    * (敵tickはPlayer主語を持たないので、その時点の player.growthAtkMult=ランの焼き値を読む)。
    */
   growthAtkMult: number;
+  /**
+   * ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。**Enemy に無い時計**
+   * (`nextMeleeAt` / `reloadEndsAt` / `ghost.lastShotAt` / `ghost.lastMeleeAt`)を
+   * 硬直の間だけ預かる袋。書き手は `tickModuleClockFreeze` だけ。
+   */
+  clockFreeze?: EnemyClockStash;
 }
 
 export const createPhantomTickState = (): PhantomTickState => ({
@@ -865,6 +873,21 @@ export const runPhantomTick = (
       return;
     }
   }
+
+  /**
+   * ★PACING_PUZZLE.md §16-H(社長指示2026-09-19「硬直中はタイマーがゼロのままストップ」)。
+   * 幻影の内部CD(近接の周期・decideGhostのDate.now系CD・リロード)は `Enemy` ではなくこの state に
+   * あるので、台帳が届かない。ここで1本預ける——**早期returnの手前**に置くこと(下の `isFrozen` で
+   * 抜けた後だと、硬直が明けた最初のフレームに書き直しが走らない)。
+   * 述語は全敵共通の `isEnemyFrozenForClocks`(ノックバックは含めない=H-4 (f)。
+   * この型の `isFrozen` も元からノックバックを含んでいない=v6裁定1と同じ並び)。
+   */
+  tickModuleClockFreeze(s, [
+    { key: 'nextMeleeAt', kind: 'deadline', base: 'game', get: () => s.nextMeleeAt, set: v => { s.nextMeleeAt = v; } },
+    { key: 'reloadEndsAt', kind: 'deadline', base: 'now', get: () => (s.reloadEndsAt > 0 ? s.reloadEndsAt : undefined), set: v => { s.reloadEndsAt = v; } },
+    { key: 'ghost.lastShotAt', kind: 'start', base: 'now', get: () => (s.ghost.lastShotAt > 0 ? s.ghost.lastShotAt : undefined), set: v => { s.ghost.lastShotAt = v; } },
+    { key: 'ghost.lastMeleeAt', kind: 'start', base: 'now', get: () => (s.ghost.lastMeleeAt > 0 ? s.ghost.lastMeleeAt : undefined), set: v => { s.ghost.lastMeleeAt = v; } },
+  ], isEnemyFrozenForClocks(phantom, newGameTime, nowMs), newGameTime, nowMs);
 
   // ---- 気絶・拘束・浮き: 何もしない(★ノックバックは含めない=殴っても止まらない) ----------------
   if (isFrozen(phantom, newGameTime, nowMs)) { applyPatch(phantom.id, patch); return; }

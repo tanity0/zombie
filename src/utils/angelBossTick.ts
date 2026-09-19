@@ -15,7 +15,9 @@
 //
 // 時間の単位(重要・§6.28-1-0): このファイルの天使勢は「壁時計系」。定数はそのまま実効msで書く
 // (giantbatのようにENEMY_ATTACK_SPEED_MULTを掛けも割りもしない)。
-import type { Enemy } from '../types/game';
+import type { Enemy, EnemyClockStash } from '../types/game';
+// ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
+import { isEnemyFrozenForClocks, tickModuleClockFreeze } from './enemyClocks';
 import { GLOW_R_L } from './glowTiers';
 import {
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
@@ -213,6 +215,12 @@ export interface AngelBossState {
     lightrainQueue: { x: number; y: number; at: number }[];
     lancefanVolley: number; lancefanNextAt: number;
     meteorHomingIds: string[];
+    /**
+     * ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。**Enemy に無い時計**(上の5本の
+     * `*ReadyAt`)を硬直の間だけ預かる袋。書き手は `tickModuleClockFreeze` だけ。
+     * `lightrainQueue[].at` は**予告済みの命中予約**(除外3)なので預けない=1msも動かさない。
+     */
+    clockFreeze?: EnemyClockStash;
   };
 }
 export const createAngelBossState = (): AngelBossState => ({
@@ -3142,6 +3150,18 @@ export const runPhillTick = (
   const st = phill.bossState ?? 'chase';
   const patch: Partial<Enemy> = {};
   const ph = s.phill;
+  /**
+   * ★PACING_PUZZLE.md §16-H(社長指示2026-09-19「硬直中はタイマーがゼロのままストップ」)。
+   * フィルの4大技CD+共通ゲートは `Enemy` ではなくこの state にあるので、台帳が届かない。
+   * ここで1本預ける(述語は全敵共通=ノックバックは含めない・H-4 (f))。
+   */
+  tickModuleClockFreeze(ph, [
+    { key: 'lightrainReadyAt', kind: 'deadline', base: 'game', get: () => ph.lightrainReadyAt, set: v => { ph.lightrainReadyAt = v; } },
+    { key: 'goldringReadyAt', kind: 'deadline', base: 'game', get: () => ph.goldringReadyAt, set: v => { ph.goldringReadyAt = v; } },
+    { key: 'judgmentReadyAt', kind: 'deadline', base: 'game', get: () => ph.judgmentReadyAt, set: v => { ph.judgmentReadyAt = v; } },
+    { key: 'cageReadyAt', kind: 'deadline', base: 'game', get: () => ph.cageReadyAt, set: v => { ph.cageReadyAt = v; } },
+    { key: 'requiredReadyAt', kind: 'deadline', base: 'game', get: () => ph.requiredReadyAt, set: v => { ph.requiredReadyAt = v; } },
+  ], isEnemyFrozenForClocks(phill, newGameTime, Date.now()), newGameTime, Date.now());
 
   const healthFrac = phill.maxHealth > 0 ? phill.health / phill.maxHealth : 1;
   const phase = phillPhaseForHealth(healthFrac);

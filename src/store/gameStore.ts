@@ -311,7 +311,9 @@ import { pushShieldRect } from '../world/shieldPush'; // B6(盾押し・§6): �
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
 import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite, ZOMBIE_RUSH_BODY_SLAM_MS, BAT_WINDUP_STILL_MS, biteLungeDistanceAtFire } from '../utils/enemyBite';
-import { deferFrozenClocksBy } from '../utils/chaffMoves'; // PACING_PUZZLE.md §16-7 穴4(凍結dtの繰り下げ)
+// ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。旧 `deferFrozenClocksBy`(凍結dtの毎フレーム
+// 繰り下げ)は**破棄**して、この「残りを預かって明けた瞬間に書き直す」1本へ置き換えた(H-3)。
+import { tickEnemyClockFreeze } from '../utils/enemyClocks';
 // ★ゾンビ赤(PACING_PUZZLE.md §16-3・§16-8b手順5)。枠の導出/技の終わり/待ちの尺/帯の定数の正本。
 import {
   deriveChaffMoveGrants, endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot,
@@ -12741,7 +12743,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 体勢回復/紫窓終了は専用AIから除外される裏ボスも含め、全ボスへ毎フレーム適用する。
       const postureUpdatedEnemies = enemies.map(enemy => {
         const patch = tickBossPosture(enemy, gameTime, deltaTime);
-        return patch ? { ...enemy, ...patch } : enemy;
+        const base = patch ? { ...enemy, ...patch } : enemy;
+        // ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。**全ての敵**に毎フレーム1回。
+        // ここに置く理由: ①専用コントローラで動く型(裏ボス/天使/賞金首/幻影)は下の写像で
+        // 早期returnするので、あの中に置くと届かない ②体勢(tickBossPosture)が紫窓を閉じた
+        // 直後の値を読む必要がある(凍結の述語が `bossFullStunUntil` を見るため)。
+        // 死体は行動しない=対象外。
+        if (isCorpse(base)) return base;
+        const clocks = tickEnemyClockFreeze(base, gameTime, now);
+        return clocks ? { ...base, ...clocks } : base;
       });
       // ★§16-1「同時に構えられるのは2体」の枠(PACING_PUZZLE.md §16-8b手順4・手順5)。
       // 写像(.map)の外=このフレームの enemies 全体を見て1回だけ導出する(個体ごとの写像の中では
@@ -12870,8 +12880,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 止める(AIの時計はgameTime基準なので技の予告は遅れない)。
         // committed(空中ジャンプ/突進)は軌道が壊れるので止めない。ボス級は hitStunUntil が書かれない。
         // (期限のずらしは書き手側=knockbackEnemy/近接3経路が「止めの残り」を足して書く。ここは止めるだけ。)
-        // ★PACING_PUZZLE.md §16-7 穴4(実装者視点監査A-3): この早期returnで飛ばした1フレームぶん
-        // (deltaTime)、§16の技(chaffMove定義)の時計を繰り下げる(§12は1bitも変えない=no-op)。
+        // ★PACING_PUZZLE.md §16-H: 被弾硬直(c)の間、行動の時計は `tickEnemyClockFreeze`(この写像の
+        // 手前の前処理)が据え置く。旧 `deferFrozenClocksBy`(毎フレーム dtMs を足す)は破棄した——
+        // `updateEnemies` の dt は ×MOVE_SPEED_MULT なのに gameTime は未スケールで、構造的に1.2倍ズレる。
         // ★社長指示2026-09-17「**銃撃では攻撃は何も止まらないようにして**」: **技を実行中の敵は止めない**。
         // 旧実装はこの早期returnで**位置更新を丸ごと飛ばして**いたため、
         // 「位置に着いたら次の相へ進む」技(skeletonの弧・ゾンビの踏み込み/後退・batの踏み込み)が
@@ -12882,7 +12893,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // (`knockbackEnemy` も同じものを読む=2箇所で式がズレない)。
         const attacking = isEnemyAttacking(enemy, gameTime);
         if (!committed && !attacking && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) {
-          return deferFrozenClocksBy(enemy, deltaTime * 1000);
+          return enemy;
         }
         // ★噛みつき直後の硬直(社長指摘2026-09-17「**噛みつき直後の硬直があるはずだけど？**」)。
         // 台帳(`BiteSpec.recoverMs`)には「硬直600ms」と書いてあったのに、実装は
@@ -12891,8 +12902,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★`chaffMove` が立っていたら**掛けない**——§16の技は専用の硬直相を既に持っており、
         // ここで二重に止めると踏み込み・後退が終点に着けず**技が終わらない**
         // (v0.25.4300台で踏んだ「台本が動かなくなってただ寄ってくるだけ」と同型の事故)。
-        // ★時計は繰り下げない(`deferFrozenClocksBy` を通さない)——§12の噛みつきは§16の時計を
-        // 持たないし、繰り下げると硬直そのものが終わらなくなる。
+        // ★時計は `tickEnemyClockFreeze` が据え置く(§16-H H-4(b))。`biteRecoverUntil` 自身は
+        // **硬直そのものの期限**なので台帳の除外1に入れてある(据え置くと硬直が明けない)。
         // ★止まっているだけなので、被弾硬直もノックバックもカウンターも**そのまま効く**
         // (`isEnemyAttacking` は biteAt=0 になった時点で false=スーパーアーマーは切れている)。
         if (!committed && enemy.chaffMove === undefined
@@ -13013,9 +13024,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             clampedCenterX - enemy.width / 2, clampedCenterY - enemy.height / 2,
             enemy.width, enemy.height, kbCtx, enemy.x,
           );
-          // ★PACING_PUZZLE.md §16-7 穴4: ノックバックのスライドも同じ早期return(AIが丸ごと
-          // 飛ばされる)なので、§16の技の時計を同じぶん繰り下げる(§12はno-op=1bitも変えない)。
-          return deferFrozenClocksBy({ ...enemy, x: kbPlaced.x, y: kbPlaced.y }, deltaTime * 1000);
+          // ★PACING_PUZZLE.md §16-H H-4(f)(社長裁定2026-09-19): **ノックバックは凍結に含めない**
+          // (銃撃で毎回止まる=「銃撃では攻撃は何も止まらない」に反する)。旧 `deferFrozenClocksBy`
+          // の呼び出しはここで撤去した=ノックバック中も時計は普通に進む。
+          return { ...enemy, x: kbPlaced.x, y: kbPlaced.y };
         }
 
         // v0.25.2895: 裏ボス4体/天使6体/アイドル(=isHiddenBoss)はここで抜ける。上のノックバック
@@ -13074,7 +13086,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                 : {}),
               aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
               aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
-              aiReadyAt: enemy.stunUntil + 300, // 気絶明け後しばらくは特殊行動を再発動しない
+              // ★§16-H H-3(監査4点目): 旧 `enemy.stunUntil + 300` は「硬直の終わりを基準に書いて
+              // いる箇所」で、§16-Hの凍結(気絶中は据え置き→明けた瞬間に書き直し)と**二重に効いて**
+              // 気絶明け5.3秒後まで特殊行動が出なくなる。`gameTime + 300` へ直す=凍結が明けを基準に
+              // 揃えるので、結果は「気絶明け +300ms ちょうど」(受け入れ条件H-7-7)。
+              aiReadyAt: gameTime + 300, // 気絶明け後しばらくは特殊行動を再発動しない
               // ★PACING_PUZZLE.md §16-7 穴2(実装者視点監査A-1): 「biteAtを消す経路すべてで
               // chaffMoveも同時に消す」の1経路(気絶による aiPhase リセット)。残すと、クリで
               // 止まった bat の次の§12紫噛みが掴みのspec(counterable:true)で解決され、
@@ -15020,7 +15036,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           if (enemy.aiPhase === 'recover') {
             if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: atkCdUntil(PUMPKIN_COOLDOWN_MS) };
+              // ★§16-H #H-4(社長裁定2026-09-19・案A): 着地硬直が明けた瞬間に、噛みつきにも
+              // **同じ値**(`PUMPKIN_COOLDOWN_MS`=復帰後の猶予)を書く。凍結だけでは直らない——
+              // 着地時点で `biteReadyAt` は過去(または未設定)なので畳む残りが無く、
+              // 「明らかに着地直後から噛みついてくる」がそのまま残る。
+              const pumpkinCd = atkCdUntil(PUMPKIN_COOLDOWN_MS);
+              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: pumpkinCd, biteReadyAt: pumpkinCd };
             }
             return { ...enemy, vx: 0, vy: 0 }; // 着地後1秒停止
           }
@@ -15286,7 +15307,20 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (pdist > 0.5) {
                 awayX = -(pcx - ecx) / pdist; awayY = -(pcy - ecy) / pdist;
               } else {
-                awayX = -(enemy.biteDirX ?? 1); awayY = -(enemy.biteDirY ?? 0);
+                // ★社長報告2026-09-19(動画)「skeletonの攻撃しなくなるの直ってない」の**1本目の真因**。
+                // 焼いた向きは**定義されていてもゼロに潰れる**: 発火時の正規化は
+                // `bl = Math.max(0.001, hypot(...))` なので、中心が重なっていると
+                // **0 ÷ 0.001 ≒ 0** を両軸へ焼く=**単位ベクトルにならない**。
+                // ⇒ `?? 1` のフォールバックは **undefined しか拾わないので素通り**し、
+                //    後退速度が0のまま**この相から永久に出られない**(=「回り込むだけで攻撃してこない」)。
+                // ★実測(シミュ層・プレイヤー静止30秒): 密着(0px)から始めると **1回**しか噛まず
+                //   2.6秒で後退に入ったまま停止。この修正後は **5回**(20〜80pxから始めた時と同じ)。
+                // ★直し方は**既にある道具を使う**(新しい式を作らない): `keepEscapeDir` =
+                //   「真上に重なった時の逃げ方向」。keepRange層が**同じ罠**(パンプキンが着地点で
+                //   固まる・2026-09-17)で踏んで作った、個体ごとに固定の向き。
+                const bdx = enemy.biteDirX ?? 0, bdy = enemy.biteDirY ?? 0;
+                if (Math.hypot(bdx, bdy) > 0.001) { awayX = -bdx; awayY = -bdy; }
+                else { const esc = keepEscapeDir(enemy.id, enemy.spawnedAt); awayX = esc.x; awayY = esc.y; }
               }
               // ★慣性を入れる(CLAUDE.md「動きの絶対ルール: 慣性」)。0→満速の1フレーム段差を作らない。
               const retreatRamp = zombieRetreatRampMul(enemy.zombieWalkRampAt, gameTime);
@@ -15498,7 +15532,20 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (pdist > 0.5) {
                 awayX = -(pcx - ecx) / pdist; awayY = -(pcy - ecy) / pdist;
               } else {
-                awayX = -(enemy.biteDirX ?? 1); awayY = -(enemy.biteDirY ?? 0);
+                // ★社長報告2026-09-19(動画)「skeletonの攻撃しなくなるの直ってない」の**1本目の真因**。
+                // 焼いた向きは**定義されていてもゼロに潰れる**: 発火時の正規化は
+                // `bl = Math.max(0.001, hypot(...))` なので、中心が重なっていると
+                // **0 ÷ 0.001 ≒ 0** を両軸へ焼く=**単位ベクトルにならない**。
+                // ⇒ `?? 1` のフォールバックは **undefined しか拾わないので素通り**し、
+                //    後退速度が0のまま**この相から永久に出られない**(=「回り込むだけで攻撃してこない」)。
+                // ★実測(シミュ層・プレイヤー静止30秒): 密着(0px)から始めると **1回**しか噛まず
+                //   2.6秒で後退に入ったまま停止。この修正後は **5回**(20〜80pxから始めた時と同じ)。
+                // ★直し方は**既にある道具を使う**(新しい式を作らない): `keepEscapeDir` =
+                //   「真上に重なった時の逃げ方向」。keepRange層が**同じ罠**(パンプキンが着地点で
+                //   固まる・2026-09-17)で踏んで作った、個体ごとに固定の向き。
+                const bdx = enemy.biteDirX ?? 0, bdy = enemy.biteDirY ?? 0;
+                if (Math.hypot(bdx, bdy) > 0.001) { awayX = -bdx; awayY = -bdy; }
+                else { const esc = keepEscapeDir(enemy.id, enemy.spawnedAt); awayX = esc.x; awayY = esc.y; }
               }
               const bvx = awayX * enemy.speed, bvy = awayY * enemy.speed;
               const bmoved = batClampMove(enemy.x + bvx * deltaTime, enemy.y + bvy * deltaTime);
@@ -15610,7 +15657,20 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (pdist > 0.5) {
                 awayX = -(pcx - ecx) / pdist; awayY = -(pcy - ecy) / pdist;
               } else {
-                awayX = -(enemy.biteDirX ?? 1); awayY = -(enemy.biteDirY ?? 0);
+                // ★社長報告2026-09-19(動画)「skeletonの攻撃しなくなるの直ってない」の**1本目の真因**。
+                // 焼いた向きは**定義されていてもゼロに潰れる**: 発火時の正規化は
+                // `bl = Math.max(0.001, hypot(...))` なので、中心が重なっていると
+                // **0 ÷ 0.001 ≒ 0** を両軸へ焼く=**単位ベクトルにならない**。
+                // ⇒ `?? 1` のフォールバックは **undefined しか拾わないので素通り**し、
+                //    後退速度が0のまま**この相から永久に出られない**(=「回り込むだけで攻撃してこない」)。
+                // ★実測(シミュ層・プレイヤー静止30秒): 密着(0px)から始めると **1回**しか噛まず
+                //   2.6秒で後退に入ったまま停止。この修正後は **5回**(20〜80pxから始めた時と同じ)。
+                // ★直し方は**既にある道具を使う**(新しい式を作らない): `keepEscapeDir` =
+                //   「真上に重なった時の逃げ方向」。keepRange層が**同じ罠**(パンプキンが着地点で
+                //   固まる・2026-09-17)で踏んで作った、個体ごとに固定の向き。
+                const bdx = enemy.biteDirX ?? 0, bdy = enemy.biteDirY ?? 0;
+                if (Math.hypot(bdx, bdy) > 0.001) { awayX = -bdx; awayY = -bdy; }
+                else { const esc = keepEscapeDir(enemy.id, enemy.spawnedAt); awayX = esc.x; awayY = esc.y; }
               }
               const spd = enemy.speed * SKELETON_RETREAT_SPEED_MULT;
               const svx = awayX * spd, svy = awayY * spd;
@@ -16049,7 +16109,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // スキル: パニッシャー = ノックバック中の敵が他の敵に当たると巻き込む(同方向へ2倍ノックバック＋近接ダメージの半分)。
       // ただし「巻き込まれて」飛んだ敵(punisherHopped)は movers から除外=連鎖しない(1次まで・社長指示)。
-      let finalEnemies = updatedEnemies;
+      // ★PACING_PUZZLE.md §16-H の後処理(前処理と**同じ純関数をもう一度**通す=冪等)。
+      // 前処理は AI より手前で据え置きを掛けるが、この写像の中で書かれた**新しい時計**
+      // (例: 気絶リセットの `aiReadyAt = gameTime + 300`、パンプキンの着地明けの `biteReadyAt`)は
+      // その時点ではまだ存在しない。ここでもう一度通すと、その書き込みを**同じフレームのうちに**
+      // 預かり直す/預かりから外せるので、硬直明けが「+300ms ちょうど」になる(H-7-7)。
+      let finalEnemies = updatedEnemies.map(e => {
+        if (isCorpse(e)) return e;
+        const clocks = tickEnemyClockFreeze(e, gameTime, now);
+        return clocks ? { ...e, ...clocks } : e;
+      });
       const punisherLv = skillLevel(player, 'punisher');
       // 社長指示v0.25.3300 ボムカウンター覚醒: 爆発で飛ばされた敵(bombPunishUntil)はパニッシャー未所持
       // でも1段だけ巻き込み元になる。二拍目(pending)の消化があるのでフラグ失効後も発火待ちが残る間は回す。

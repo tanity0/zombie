@@ -15,7 +15,9 @@
 //    werewolf定数)を複製して使う(=誤学習防止。複製である旨は各定数のコメントに明記)。
 //  - ★v0.25.3558: 数値は bountyScript.ts の可変テーブル(BR_T/BM_T/BB_T/MK_T)へ移した。werewolf/
 //    pumpkin 由来の値は**テーブル側で複製**し、実体との一致を bountyScript.test.ts が機械検査する。
-import type { Enemy, EnemyType } from '../types/game';
+import type { Enemy, EnemyType, EnemyClockStash } from '../types/game';
+// ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
+import { isEnemyFrozenForClocks, tickModuleClockFreeze } from './enemyClocks';
 import {
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore, HUNTER_LEAVE_FADE_MS, resolveBountyMove,
@@ -436,6 +438,12 @@ export interface BountyTickState {
   // 狙う**固定目標**(windup開始フレームのプレイヤー位置のスナップショット)。キーはwindupの開始時刻。
   tripleApproachKey: number;
   tripleApproachTx: number; tripleApproachTy: number;
+  /**
+   * ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。**Enemy に無い時計**
+   * (`tripleReadyAt`/`pushReadyAt`/`brCycleEndAt`)を硬直の間だけ預かる袋。
+   * 書き手は `tickModuleClockFreeze` だけ。
+   */
+  clockFreeze?: EnemyClockStash;
 }
 export const createBountyTickState = (): BountyTickState => ({
   activeId: null, aimVX: 0, aimVY: 0, farMs: 0, comboStep: 0, escortsSummoned: false,
@@ -2028,6 +2036,19 @@ export const runBountyTick = (
   counterEnabled = true,
 ): void => {
   if (s.activeId !== bounty.id) { resetBountyRunState(s); s.activeId = bounty.id; }
+
+  /**
+   * ★PACING_PUZZLE.md §16-H(社長指示2026-09-19「硬直中はタイマーがゼロのままストップ」)。
+   * `Enemy` のフィールドは `updateEnemies` の前処理が見るが、**この state の3本には台帳が届かない**
+   * ので、ここで預ける(H-3「Enemy に無い時計」)。述語は全敵共通の `isEnemyFrozenForClocks`
+   * ——**ノックバックは含まない**(H-4 (f))ので、下の `kbOnly` 分岐(v0.25.3497の裁定=現状維持)
+   * とは衝突しない。
+   */
+  tickModuleClockFreeze(s, [
+    { key: 'tripleReadyAt', kind: 'deadline', base: 'game', get: () => s.tripleReadyAt, set: v => { s.tripleReadyAt = v; } },
+    { key: 'pushReadyAt', kind: 'deadline', base: 'game', get: () => s.pushReadyAt, set: v => { s.pushReadyAt = v; } },
+    { key: 'brCycleEndAt', kind: 'deadline', base: 'game', get: () => s.brCycleEndAt, set: v => { s.brCycleEndAt = v; } },
+  ], isEnemyFrozenForClocks(bounty, newGameTime, nowMs), newGameTime, nowMs);
 
   const player = useGameStore.getState().player;
   const bcx = bounty.x + bounty.width / 2, bcy = bounty.y + bounty.height / 2;
