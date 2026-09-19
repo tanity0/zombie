@@ -1,5 +1,38 @@
 # Development Log
 
+## v0.25.4495 — §16-D(ゾンビの噛みつきに停止)/ §17-13(洋館の始動ゲート)実装【2026-09-19 09:15 JST】
+
+### §16-D ゾンビの噛みつき(commit f91cbc9e6)
+- `BiteSpec` に **`lungeMs`** を追加。`BITE_BY_TYPE.zombie` = **`windupMs: 600 / lungeMs: 300`**
+  (`biteMs` 200・`lungePx` 30・`recoverMs` 600 は不変)。
+- ★**検収で確かめた一番の勘所**: 踏み込み曲線 `biteLungeFrac` の **「0.5で分ける」形は元からあった**
+  (溜めで `u²×0.5`=半分まで、噛みで残り半分を ease-out)。実装は**その形をそのまま保ったまま
+  0.5 の位置に静止区間を挟んだ**だけで、**新しい曲線を発明していない**。
+  ⇒ 実際の動きは **前半300msで15px詰める → 300ms完全静止 → 噛みながら残り15px伸びる**。
+  ★**「詰め切ってから止まる」ではなく「半分詰めて止まり、噛みと一緒に残りを詰める」**——
+  最後の15pxが噛みの合図になる形。**実機で社長が見る項目**として記録する。
+- ★**`z-bite1`/`z-bite2`(赤2連)への漏れを実装者が自分で塞いだ**: 型レベルの `lungeMs: 300` を
+  そのまま継承すると **`z-bite1` は `windupMs`(220) < `lungeMs`(300) という壊れた値**になる。
+  `BITE_BY_PHASE` で自分の `windupMs` と同値の `lungeMs` を明示して打ち消してある。
+- `lungeMs` 省略の型(ゴースト/リッチ/研究所Lv1/骸骨/コウモリ/犬…)は静止区間0ms=**数式的に無変化**。
+- 紫の予告は `biteProgress` が `windupMs + biteMs` で正規化しているので**自動追従**(掟③は保たれる)。
+
+### §17-13 洋館(S6)の始動ゲート(commit afbd30d7d)
+- `WELCOME_START_GATE` を新設し **ステージ6だけ `'above-merchant'`**。純関数
+  `welcomeStartGateMet(gate, playerCenterY, merchantY)` = **`playerCenterY < merchantY`**。
+  ★**商人の座標は `weaponMerchant.y` を毎フレーム実行時に読む**(数値を写していない)。
+- ★**60秒の強制終了を `startedAt`(1段目が湧いた時刻)基準へ変更**。
+  ゲートを持たないステージは初回呼び出しで `startedAt = 0` に固定=**旧式と数式的に同一**。
+  `welcomeStartedAtRef` を新設し、新ラン検知ブロックで `null` へ戻す。
+- ディレクターの時計の式は**変えていない**(設計どおり)。
+- 実装者が決めた4件はいずれも既存の語彙の流用で、新しい仕組みを足していない
+  (静止区間の式 / `BITE_BY_PHASE` での打ち消し / 汎用テストのヘルパー型を zombie→skeleton へ /
+  純関数のシグネチャは既存の「呼び出し側がrefで持ち越す」型を踏襲)。
+- 変更ファイル: `src/utils/enemyBite.ts` / `enemyBite.test.ts` / `src/utils/welcomeScript.ts` /
+  `welcomeScript.test.ts` / `src/hooks/useGameLoop.ts` / `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+- 検証: typecheck 緑 / lint エラー0 / welcomeScript・enemyBite・chaffMoves・ghostTelegraph・directorTick の **266件緑**。
+- 状態変化: §16-D / §17-13 → **実装済み**(残り: 実機確認)。
+
 ## v0.25.4494 — §17-13(洋館の始動ゲート)/ §16-D(ゾンビの噛みつきに停止)を設計確定【2026-09-19 09:01 JST】
 
 ### §17-13 洋館(ステージ6)の始動ゲート

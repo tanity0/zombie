@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4495',
+    items: [
+      'ゾンビの噛みつきが読めるようになった。詰め寄ったあとに一拍止まってから噛んでくる',
+      '洋館の入りの関門は、武器商人より奥へ進んでから始まる',
+    ],
+  },
+  {
     version: '0.25.4494',
     items: [
       'ゲーム内容の変更はありません',
