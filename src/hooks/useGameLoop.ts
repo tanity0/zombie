@@ -1640,6 +1640,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ゲートを持つステージ(今はS6のみ)はゲート待ち中ずっとnull(60秒の強制終了はここから数える)。
   // ゲートを持たないステージはwelcomeAdvanceが最初の呼び出しで0を返す(=出撃直後・従来どおり)。
   const welcomeStartedAtRef = useRef<number | null>(null);
+  // ★社長指示2026-09-19「ウェルカム終わったら、『軍備なんちゃらエリア踏破』のエリア踏破イベント出して」。
+  // ウェルカム終了で `0`(=出す予約・ポップアップ待ち)、一拍の起点が決まったらその時刻、
+  // 出し終わったら `null`。M0の銘打ちの `m0WallHoldRef` と同じ3状態の作法。
+  const welcomeClearBannerAtRef = useRef<number | null>(null);
   // BOT_AND_GHOST.md G2: 召喚中ゴーストのプロファイル(6ノブ)。召喚時にdirectorTick側が1回だけ書き込む。
   const ghostProfileRef = useRef<GhostProfile | null>(null);
   // v0.25.2480(★未決2解消): ゴースト被弾音のエッジ検知(damageSummonのlastHit打刻を見る)+最短間隔保険。
@@ -3069,6 +3073,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           welcomeStepClearedAtRef.current = null;
           welcomeEndedAtRef.current = null;
           welcomeStartedAtRef.current = null; // §17-13-c: 新ランでゲート待ち状態からやり直す
+          welcomeClearBannerAtRef.current = null; // エリア踏破の銘打ちの予約も新ランで下ろす
           // ★バグ修正2026-08-22: ボス強制リラックスの尾(10秒)はdirectorTickのモジュール変数に
           // 持っているので、出撃をまたぐと前ランの記録が残る(ラン2で同じ時刻に到達すると
           // 10秒だけ湧きが静かになる)。ここで消す。※gameStoreから呼ぶとdirectorTickとの
@@ -15847,6 +15852,35 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 pendingEscorts: [],
               });
             }
+            // ★社長指示2026-09-19「ウェルカム終わったら、『軍備なんちゃらエリア踏破』の
+            // エリア踏破イベント出して」: ここで**予約だけ**する(実際に出すのは下のブロック=
+            // チュートリアルの説明を閉じてから)。
+            welcomeClearBannerAtRef.current = 0;
+          }
+        }
+
+        // ★社長指示2026-09-19「ウェルカム終わったら、『軍備なんちゃらエリア踏破』のエリア踏破
+        // イベント出して」。**新しい演出は作らない**——既存の区域の銘打ち
+        // (`enqueueWallEvent('depth', '◯◯ — 踏破', 'TRESPASS', …)`)を、ウェルカムが終わった瞬間に
+        // 1回だけ出す。
+        // ★区域名は**その時プレイヤーが居る区域**から引く(出撃直後なので実際には
+        //   `AREA_ZONE_NAMES[0]` = 軍備配置区域)。定数で焼かないのは、ウェルカムが別の区域で終わる
+        //   場面が将来できた時に**名前が嘘にならない**ようにするため(赤い予告と同じ「絵と実態を
+        //   一致させる」考え方)。
+        // ★出すのは**説明(チュートリアルのポップアップ)を閉じてから一拍おいて**。銘打ちは
+        //   実時間のタイマーで進むので、ポップアップで止まっている間に終わってしまう
+        //   (社長指示v0.25.2305・M0の銘打ちが同じ理由で同じ作法を採っている。待ちの長さも
+        //   `M0_AREA_CEREMONY_DELAY_MS` を共有=新しい数字を増やさない)。
+        // ★本編の踏破儀式(`isFirstWallBreach`=端末で初回1回きり)とは**別口**。区域0は
+        //   「越えて入る」区域ではないので自然発火の経路が無く、二重に出ることはない。
+        if (welcomeClearBannerAtRef.current !== null && useGameStore.getState().tutorialPopup === null) {
+          if (welcomeClearBannerAtRef.current === 0) {
+            welcomeClearBannerAtRef.current = gameTime + M0_AREA_CEREMONY_DELAY_MS; // 説明を閉じた=一拍の起点
+          } else if (gameTime >= welcomeClearBannerAtRef.current) {
+            const wZone = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
+            const wZoneName = AREA_ZONE_NAMES[wZone] ?? AREA_ZONE_NAMES[0];
+            useGameStore.getState().enqueueWallEvent('depth', `${wZoneName} — 踏破`, 'TRESPASS', '#bfe3ff');
+            welcomeClearBannerAtRef.current = null;
           }
         }
 

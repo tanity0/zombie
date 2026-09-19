@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4505',
+    items: [
+      '入りの関門を抜けると、その区域の踏破が石に刻まれる',
+    ],
+  },
+  {
     version: '0.25.4504',
     items: [
       '吸血コウモリを銃で、変異体(痩躯型)を近接で、変異体(徘徊型)を銃で狙った時のクリティカルの出やすさを一旦なくした。どの武器で来ても同じ確率で入る',
