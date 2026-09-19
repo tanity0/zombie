@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4507',
+    items: [
+      'ゲーム内容の変更はありません',
+    ],
+  },
+  {
     version: '0.25.4506',
     items: [
       '入りの関門の輪が出撃地点から動かなくなった。波が変わっても同じ舞台で戦う',
