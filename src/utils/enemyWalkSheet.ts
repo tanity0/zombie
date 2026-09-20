@@ -31,10 +31,22 @@ export const walkSheetFrames = (idleTexName: string | null | undefined): number 
   (idleTexName && ENEMY_WALK_SHEETS[idleTexName]) || 0;
 
 /**
- * 歩きの1周期(ms)。プレイヤー(4コマ460ms / 5コマ900ms)の中間の密度に合わせた叩き台。
- * 8コマ × 90ms ≒ 11コマ/秒。`?enemywalkms=` で実機から詰める。
+ * ★★**位相は「時計」ではなく「進んだ距離」で刻む**(クリエイティブ監査2026-09-20 #3の是正)。
+ *
+ * 旧実装は `now % 720ms` の固定周期だった。実測すると**足が3〜5割滑っていた**——
+ * このシートの1周期の歩幅は**身長の0.46倍**(接地点が半周期で原盤520px中120px進む)なので、
+ * 画面上の身長60〜90pxなら1周期28〜41px。720ms固定だと絵が示す速度は38〜58px/s だが、
+ * バットの素の速度は**75px/s**。しかも:
+ *  - **氷鈍化**(`iceSlowUntil`)で体が這っても脚は全速のまま
+ *  - **2倍速の踏み込み**でも歩調が同じ
+ *  - 世界のスローでも脚だけ等速(実時計 `Date.now()` を割っていたため)
+ * ⇒ **距離で刻めば、速度も氷もスローも突進も全部が自動で正しくなる**(掛ける倍率が1つも要らない)。
+ * 隣の歩行二次モーションが `iceTempoMul`/`zombieTempoMul` で同じ問題を**個別に**潰しているのに対し、
+ * こちらは**そもそも倍率が要らない形**にする。
+ *
+ * 1周期で進む距離 ÷ 見た目の身長。★シートの実測値(接地点が半周期で身長の0.23倍=1周期0.46倍)。
  */
-export const ENEMY_WALK_CYCLE_MS_DEFAULT = 720;
+export const ENEMY_WALK_STRIDE_PER_HEIGHT = 0.46;
 
 /** 歩いていると見なす実効速度(px/s)。プレイヤーの幻影(GP_WALK_MIN_SPEED)と同じ考え方。 */
 export const ENEMY_WALK_MIN_SPEED = 6;
@@ -44,16 +56,37 @@ export const enemyWalkPhase = (id: string, frames: number): number =>
   frames > 1 ? spriteVariantIndex(`w:${id}`, frames) / frames : 0;
 
 /**
+ * ★**歩いてはいけない状態**(クリエイティブ監査2026-09-20 #1の是正)。
+ *
+ * 実測で確かめた出荷バグ: `vx/vy` は**死体になっても消えない**(撃破直後のバットで
+ * vx=-7.4 / vy=-99.7 =速さ100が残っていた)。速度だけを見ていると
+ * **KILLで吹き飛ぶ死体が、滑っている間ずっと歩く**。ノックバックも同じで、
+ * **後ろへ飛ばされながら脚は前へ歩く**。
+ * ⇒ **「自分の足で進んでいる」時だけ歩かせる。** 押されている/倒れている時は歩かない。
+ */
+export interface EnemyWalkGate {
+  corpse?: boolean;
+  dormant?: boolean;
+  /** gameTime 系の凍結(気絶・拘束)。 */
+  stunned?: boolean;
+  /** Date.now 系(ノックバック・持ち上げ)。★2つの時計を混ぜないため、呼び手が真偽で渡す。 */
+  pushedOrLifted?: boolean;
+}
+
+export const canWalkAnimate = (g: EnemyWalkGate): boolean =>
+  !g.corpse && !g.dormant && !g.stunned && !g.pushedOrLifted;
+
+/**
  * 出すコマ。**歩いていなければ null**(=呼び手は従来どおり立ち絵を出す)。
- * @param speed  平滑済みの実効速度(px/s)。`ActorView.motSpeed` と同じ値。
+ * @param distPx   その個体が**自分の足で進んだ通算距離**(px)。呼び手が積む。
+ * @param heightPx 見た目の身長(px)。歩幅はこれに比例する(絵の大きさが変わっても滑らない)。
  */
 export const enemyWalkFrame = (
-  id: string, frames: number, nowMs: number, speed: number,
-  cycleMs: number = ENEMY_WALK_CYCLE_MS_DEFAULT,
+  id: string, frames: number, distPx: number, heightPx: number, gate: EnemyWalkGate,
 ): number | null => {
-  if (frames <= 1 || !(speed > ENEMY_WALK_MIN_SPEED)) return null;
-  const cyc = Math.max(1, cycleMs);
-  const t = (nowMs / cyc + enemyWalkPhase(id, frames)) % 1;
+  if (frames <= 1 || !canWalkAnimate(gate)) return null;
+  const stride = Math.max(1, heightPx * ENEMY_WALK_STRIDE_PER_HEIGHT);
+  const t = (distPx / stride + enemyWalkPhase(id, frames)) % 1;
   const i = Math.floor(((t % 1) + 1) % 1 * frames);
   return Math.min(frames - 1, Math.max(0, i));
 };

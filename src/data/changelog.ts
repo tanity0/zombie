@@ -8,9 +8,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4535',
+    items: [
+      '倒れた敵や、弾き飛ばされている敵の脚が動いてしまうのを直した',
+      'コウモリの女の歩調が、速さや足止めに合うようになった',
+    ],
+  },
+  {
     version: '0.25.4534',
     items: [
-      'コウモリの女が歩くようになった。並んでいても足並みは揃わない',
+      'コウモリの女が歩くようになった',
     ],
   },
   {

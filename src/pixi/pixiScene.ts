@@ -100,7 +100,7 @@ import {
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
-import { enemyWalkFrame, walkSheetFrames, walkSheetName, ENEMY_WALK_CYCLE_MS_DEFAULT } from '../utils/enemyWalkSheet';
+import { enemyWalkFrame, walkSheetFrames, walkSheetName } from '../utils/enemyWalkSheet';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
 // (手写しミラーは撤去済み。入れ子オブジェクトを参照で持つので部屋で動かした値が絵にも即効く)。
@@ -1528,7 +1528,8 @@ const playerWalkSequence = (p: Player): readonly number[] =>
 // コマ送りが速すぎるため専用に長め(社長指示「周期を変えて」)。
 const PINGPONG_WALK_CYCLE_MS = 900;
 /** ★敵の歩きの1周期(ms)。`?enemywalkms=` で実機から詰める(社長支給2026-09-20)。 */
-const ENEMY_WALK_CYCLE_MS = tsNum('enemywalkms', ENEMY_WALK_CYCLE_MS_DEFAULT);
+/** ★1フレームで跳んだ距離は歩幅に積まない(転移・画面外リサイクル・弾き飛ばし)。 */
+const ENEMY_WALK_MAX_STEP_PX = tsNum('enemywalkstep', 24);
 const playerWalkCycleMs = (p: Player): number =>
   usesFiveFramePingPong(p) ? PINGPONG_WALK_CYCLE_MS : PLAYER_WALK_CYCLE_MS;
 // 走りモーション(社長提供・移動レバーを目一杯倒した時だけ): マークスマン(magnum-run)+
@@ -3480,6 +3481,8 @@ interface ActorView {
   // 気絶/拘束/紫/休眠で動きが止まれば揺れも勝手に静まる=状態を個別に見なくてよい)。
   motPrevX?: number; motPrevY?: number; motPrevAt?: number;
   motSpeed?: number; motVx?: number;
+  /** ★歩きシートの位相(進んだ距離で刻む)。`walkPrev*` は前フレームの論理位置。 */
+  walkDist?: number; walkPrevX?: number; walkPrevY?: number;
   // 氷鈍化中に歩行テンポを落とすための仮想時計(ms蓄積)。位相が飛ばないよう実時計の代わりに
   // これをenemyMotionPoseへ渡す(社長指示v0.25.3277「動きモーションもスローにならないとわからん」)。
   motClock?: number;
@@ -17727,7 +17730,8 @@ export class PixiScene {
     // 表を持つ立ち絵だけ、**動いている間**シートのコマへ差し替える(止まれば立ち絵へ戻る=
     // プレイヤーの `playerWalkFrame` と同じ作法)。**判定・速度・AIは1msも触らない。**
     const idleTexKey = this.enemyTexKey(e.type, e.id);
-    const walkTex = this.enemyWalkTexture(idleTexKey, e, view, now);
+    // 見た目の身長(=歩幅の基準)。判定の箱ではなく**描画の箱**(§drawEnemy が使うのと同じ fb)。
+    const walkTex = this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH);
     const tex = e.type === 'guardian-phantom'
       ? this.guardianPhantomTexture(view, now)
       : glenP2
@@ -29575,6 +29579,7 @@ export class PixiScene {
    */
   private enemyWalkTexture(
     idleTexKey: string, e: Enemy, view: ActorView, now: number,
+    gameTime: number, drawnHeightPx: number,
   ): ReturnType<typeof getTexture> {
     const frames = walkSheetFrames(idleTexKey);
     if (frames <= 1) return null;
@@ -29587,12 +29592,27 @@ export class PixiScene {
         new Texture({ source: sheet.source, frame: new Rectangle(sheet.frame.x + c * fw, sheet.frame.y, fw, fh) }));
       this.enemyWalkFrames.set(idleTexKey, slices);
     }
-    // ★速度は**シミュ側の実速度**(`vx/vy`・px/s)を第一に見る。`view.motSpeed`(描画側の平滑推定)は
-    // **フレーム間隔が400msを超えると更新されない**(上の歩行二次モーションの `dtMs < 400` ガード)。
-    // ヘッドレスのような低フレームレートでは一生 undefined のままになり、**歩きが一度も出ない**。
-    // 位置を直接書く経路(技の踏み込み等)では vx/vy が0になるので、そこは motSpeed を保険に使う。
-    const speed = Math.max(Math.hypot(e.vx ?? 0, e.vy ?? 0), view.motSpeed ?? 0);
-    const i = enemyWalkFrame(e.id, frames, now, speed, ENEMY_WALK_CYCLE_MS);
+    // ★★**位相は「進んだ距離」で刻む**(クリエイティブ監査#3の是正)。時計で刻むと
+    // 速度・氷鈍化・2倍速の踏み込み・世界のスローのどれでも足が滑る。距離なら倍率が1つも要らない。
+    // 距離はこの関数が自分で積む(隣の二次モーションの `motPrev*` は `dtMs < 400` ガードの中なので
+    // 低フレームレートで止まる。同じ穴を踏まない)。
+    const gate = {
+      corpse: isCorpse(e),
+      dormant: e.dormant === true,
+      stunned: (e.stunUntil !== undefined && gameTime < e.stunUntil)
+        || (e.rootUntil !== undefined && gameTime < e.rootUntil),
+      // ★押されている/浮かされている間は歩かない(Date.now 系)。
+      pushedOrLifted: (e.knockbackUntil !== undefined && now < e.knockbackUntil)
+        || (e.liftUntil !== undefined && now < e.liftUntil),
+    };
+    const px = view.walkPrevX, py = view.walkPrevY;
+    view.walkPrevX = e.x; view.walkPrevY = e.y;
+    if (px !== undefined && py !== undefined && !gate.corpse) {
+      const step = Math.hypot(e.x - px, e.y - py);
+      // 1フレームで跳ぶ距離(転移・リサイクル・弾き飛ばし)は歩幅に積まない=脚が空回りしない。
+      if (step <= ENEMY_WALK_MAX_STEP_PX && !gate.pushedOrLifted) view.walkDist = (view.walkDist ?? 0) + step;
+    }
+    const i = enemyWalkFrame(e.id, frames, view.walkDist ?? 0, drawnHeightPx, gate);
     return i === null ? null : (slices[i] ?? null);
   }
 
