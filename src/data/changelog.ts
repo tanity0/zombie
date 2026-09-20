@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4536',
+    items: [
+      'ゲーム内容の変更はありません',
+    ],
+  },
+  {
     version: '0.25.4535',
     items: [
       '倒れた敵や、弾き飛ばされている敵の脚が動いてしまうのを直した',
