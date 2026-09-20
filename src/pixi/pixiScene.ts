@@ -100,6 +100,7 @@ import {
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
+import { enemyWalkFrame, walkSheetFrames, walkSheetName, ENEMY_WALK_CYCLE_MS_DEFAULT } from '../utils/enemyWalkSheet';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
 // (手写しミラーは撤去済み。入れ子オブジェクトを参照で持つので部屋で動かした値が絵にも即効く)。
@@ -216,6 +217,7 @@ import { biteTelegraphLine } from '../utils/biteTelegraph';
 // ★バットのランタン(社長支給2026-09-18)。振りの角度も炸裂のコマ送りも噛みつきの経過から引く葉。
 import {
   batLanternPose, batSlamFrameWithWindup, batBiteTiming, usesBatLantern,
+
   BAT_LANTERN_LEN_PX, BAT_LANTERN_INTRINSIC_ANGLE, BAT_LANTERN_GRIP_X, BAT_LANTERN_GRIP_Y,
   BAT_SLAM_ANCHOR_X, BAT_SLAM_REF_W, BAT_SLAM_W_PX, batSlamTotalMs, BAT_LANTERN_SETTLE_MS,
   batLanternDownAngle, BAT_LANTERN_LEN_MIN_PX, BAT_LANTERN_LEN_MAX_PX, batSlamTexName, batSlamCounterable,
@@ -1525,6 +1527,8 @@ const playerWalkSequence = (p: Player): readonly number[] =>
 // 歩行アニメの1周期(ms)。5コマ×ピンポン勢はコマ数が多いぶん、他クラスと同じ460msだと
 // コマ送りが速すぎるため専用に長め(社長指示「周期を変えて」)。
 const PINGPONG_WALK_CYCLE_MS = 900;
+/** ★敵の歩きの1周期(ms)。`?enemywalkms=` で実機から詰める(社長支給2026-09-20)。 */
+const ENEMY_WALK_CYCLE_MS = tsNum('enemywalkms', ENEMY_WALK_CYCLE_MS_DEFAULT);
 const playerWalkCycleMs = (p: Player): number =>
   usesFiveFramePingPong(p) ? PINGPONG_WALK_CYCLE_MS : PLAYER_WALK_CYCLE_MS;
 // 走りモーション(社長提供・移動レバーを目一杯倒した時だけ): マークスマン(magnum-run)+
@@ -4455,6 +4459,8 @@ export class PixiScene {
   private playerKnifeTrail = new Sprite();                 // 近接スイング3枚目(弧の残光 knife-swing-3)
   private playerMeleeWpn = new Sprite();                   // 装備中の近接武器の実絵(f1/f2に重ねる)
   private batSlamSprites = new Map<string, Sprite>();      // バットの振り下ろしの炸裂(9コマ・敵ごと)
+  /** ★敵の歩きシートの切り出し(立ち絵名→コマ)。1度だけ作って使い回す。 */
+  private enemyWalkFrames = new Map<string, Texture[]>();
   private skelClawSprites = new Map<string, Sprite>();     // スケルトンの引っ掻き痕(4コマ・敵ごと)
   private skelClawFxSprites = new Map<string, Sprite>();   // 同・VFX(5コマ)
   private zombieBiteSprites = new Map<string, Sprite>(); // ゾンビの噛みつきVFX(4コマ・敵ごと)
@@ -17717,11 +17723,16 @@ export class PixiScene {
     const glenP2 = this.currentFarKey === 'stage7' && e.type === 'giantbat' && e.glenForm === 2;
     // research/GHOST_BOSS.md(守護霊ボス「幻影」): 専用素材は作らない=**プレイヤーのクラス立ち絵**
     // (台帳のクラス。最強データ=鴉は rogue)をそのまま使う。歩きコマもプレイヤーと同じ関数で選ぶ。
+    // ★歩きモーション(社長支給2026-09-20「バット女の歩きモーション」)。
+    // 表を持つ立ち絵だけ、**動いている間**シートのコマへ差し替える(止まれば立ち絵へ戻る=
+    // プレイヤーの `playerWalkFrame` と同じ作法)。**判定・速度・AIは1msも触らない。**
+    const idleTexKey = this.enemyTexKey(e.type, e.id);
+    const walkTex = this.enemyWalkTexture(idleTexKey, e, view, now);
     const tex = e.type === 'guardian-phantom'
       ? this.guardianPhantomTexture(view, now)
       : glenP2
-        ? (getTexture('glen-boss2') ?? getTexture(this.enemyTexKey(e.type, e.id)))
-        : getTexture(this.enemyTexKey(e.type, e.id));
+        ? (getTexture('glen-boss2') ?? getTexture(idleTexKey))
+        : (walkTex ?? getTexture(idleTexKey));
     const cx = e.x + e.width / 2;
     const cy = e.y + e.height / 2;
 
@@ -29553,6 +29564,38 @@ export class PixiScene {
    * 幻影の本体テクスチャ。**プレイヤーと同じ関数**(playerTextureName/playerWalkFrame)で選ぶので、
    * クラス絵の対応表を二重に持たない。装備は空(ALLY_PLAIN_EQUIP)=武将立ち絵の混入を防ぐ。
    */
+  /**
+   * ★敵の歩きコマ(社長支給2026-09-20)。歩いていない/シートが無い/未ロードなら null を返し、
+   * 呼び手は従来どおり立ち絵を出す(=表に載っていない敵は1ビットも変わらない)。
+   *
+   * ★速度は**前フレームの**平滑済み実速度(`view.motSpeed`)を見る。この値を更新するのは
+   * この下流の汎用経路なので1フレーム遅れるが、歩き/待機の切り替えの1フレームは知覚されない
+   * (`guardianPhantomTexture` と同じ割り切り)。
+   * ★シートの切り出しは**1度だけ**(`heliRotorFrames` と同じ作法)。毎フレーム `new Texture` は作らない。
+   */
+  private enemyWalkTexture(
+    idleTexKey: string, e: Enemy, view: ActorView, now: number,
+  ): ReturnType<typeof getTexture> {
+    const frames = walkSheetFrames(idleTexKey);
+    if (frames <= 1) return null;
+    let slices = this.enemyWalkFrames.get(idleTexKey);
+    if (slices === undefined) {
+      const sheet = getTexture(walkSheetName(idleTexKey));
+      if (!sheet) return null;                       // まだ読めていない=立ち絵で待つ(次フレーム再試行)
+      const fw = Math.floor(sheet.width / frames), fh = sheet.height;
+      slices = Array.from({ length: frames }, (_, c) =>
+        new Texture({ source: sheet.source, frame: new Rectangle(sheet.frame.x + c * fw, sheet.frame.y, fw, fh) }));
+      this.enemyWalkFrames.set(idleTexKey, slices);
+    }
+    // ★速度は**シミュ側の実速度**(`vx/vy`・px/s)を第一に見る。`view.motSpeed`(描画側の平滑推定)は
+    // **フレーム間隔が400msを超えると更新されない**(上の歩行二次モーションの `dtMs < 400` ガード)。
+    // ヘッドレスのような低フレームレートでは一生 undefined のままになり、**歩きが一度も出ない**。
+    // 位置を直接書く経路(技の踏み込み等)では vx/vy が0になるので、そこは motSpeed を保険に使う。
+    const speed = Math.max(Math.hypot(e.vx ?? 0, e.vy ?? 0), view.motSpeed ?? 0);
+    const i = enemyWalkFrame(e.id, frames, now, speed, ENEMY_WALK_CYCLE_MS);
+    return i === null ? null : (slices[i] ?? null);
+  }
+
   private guardianPhantomTexture(view: ActorView, now: number): ReturnType<typeof getTexture> {
     const player = useGameStore.getState().player;
     const fake = {

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4534',
+    items: [
+      'コウモリの女が歩くようになった。並んでいても足並みは揃わない',
+    ],
+  },
+  {
     version: '0.25.4533',
     items: [
       'パンプキンや人狼が、中くらいの距離で立ち止まったまま何もしてこないことがあったのを直した。近づかれれば技を仕掛けてくる',

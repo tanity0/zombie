@@ -11,6 +11,7 @@
 
 import { Assets, Rectangle, Texture } from 'pixi.js';
 import { ALL_VARIANT_TEXTURES, ENEMY_VARIANT_SETS } from '../utils/enemyVariant';
+import { ENEMY_WALK_SHEETS, walkSheetName } from '../utils/enemyWalkSheet';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
 import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
@@ -1011,6 +1012,10 @@ export const ensureTextures = (): Promise<void> => {
       // stage3/4/5 のステージ別 <type>.png より優先される(解決は pixiScene.enemyTexKey)。
       // 表は `utils/enemyVariant.ts` の1箇所。ここは取りこぼさないよう表から生成する。
       ...ALL_VARIANT_TEXTURES.map((name) => ({ name, scaleMode: 'nearest' as const })),
+      // ★敵の歩きシート(社長支給2026-09-20)。表は `utils/enemyWalkSheet.ts` の1箇所。
+      // ★**アスペクトは登録しない**(下の regAspect ループに入れない)——登録すると歩きシートの
+      // 縦横比で `enemyHitStrip`(当たり判定)が動く。判定は立ち絵のまま据え置く。
+      ...Object.keys(ENEMY_WALK_SHEETS).map((name) => ({ name: walkSheetName(name), scaleMode: 'nearest' as const })),
     ];
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)のドット絵上書き名。後段で使うが、
