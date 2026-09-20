@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { variantTextureName } from './enemyVariant';
 import {
   batLanternPose, batLanternBack, batLanternDownDefault, batLanternDownAngle,
   batSlamFrame, batSlamFrameWithWindup, batSlamTotalMs, BAT_SLAM_FRAMES, BAT_SLAM_IMPACT_FRAME,
@@ -169,9 +170,19 @@ describe('バットの炸裂シート: 構え(溜めのあいだ0コマ目で静
 });
 
 describe('対象の型', () => {
-  it('ランタンを振るのはバットだけ', () => {
-    expect(usesBatLantern({ type: 'bat' })).toBe(true);
-    expect(usesBatLantern({ type: 'skeleton' })).toBe(false);
+  // ★★2026-09-20: 規則が変わった。**攻撃シート(武器ごと描かれた絵)を持つ個体は false**
+  // ——別スプライトのランタンも出すと二本持ちになる。絵の中に武器がある個体は絵に任せる。
+  it('ランタンを振るのはバットだけ(かつ、攻撃シートを持たない個体だけ)', () => {
+    expect(usesBatLantern({ type: 'skeleton', id: 'x' })).toBe(false);
+    // 男(攻撃シート無し)=従来どおり別スプライトのランタンを振る / 女(シート有り)=振らない。
+    const male = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8']
+      .filter(id => variantTextureName('bat', id) === 'bat-male');
+    const female = ['e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8']
+      .filter(id => variantTextureName('bat', id) === 'bat-female');
+    expect(male.length, '男の個体が見つからない').toBeGreaterThan(0);
+    expect(female.length, '女の個体が見つからない').toBeGreaterThan(0);
+    for (const id of male) expect(usesBatLantern({ type: 'bat', id }), id).toBe(true);
+    for (const id of female) expect(usesBatLantern({ type: 'bat', id }), id).toBe(false);
   });
 });
 

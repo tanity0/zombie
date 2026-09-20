@@ -101,6 +101,7 @@ import {
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, walkSheetFrames, walkSheetName } from '../utils/enemyWalkSheet';
+import { enemyAttackFrameFor, attackSheetFrames, attackSheetName } from '../utils/enemyAttackSheet';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
 // (手写しミラーは撤去済み。入れ子オブジェクトを参照で持つので部屋で動かした値が絵にも即効く)。
@@ -4462,7 +4463,7 @@ export class PixiScene {
   private playerKnifeTrail = new Sprite();                 // 近接スイング3枚目(弧の残光 knife-swing-3)
   private playerMeleeWpn = new Sprite();                   // 装備中の近接武器の実絵(f1/f2に重ねる)
   private batSlamSprites = new Map<string, Sprite>();      // バットの振り下ろしの炸裂(9コマ・敵ごと)
-  /** ★敵の歩きシートの切り出し(立ち絵名→コマ)。1度だけ作って使い回す。 */
+  /** ★敵のシート(歩き/攻撃)の切り出し(シート名→コマ)。1度だけ作って使い回す。 */
   private enemyWalkFrames = new Map<string, Texture[]>();
   private skelClawSprites = new Map<string, Sprite>();     // スケルトンの引っ掻き痕(4コマ・敵ごと)
   private skelClawFxSprites = new Map<string, Sprite>();   // 同・VFX(5コマ)
@@ -17731,7 +17732,8 @@ export class PixiScene {
     // プレイヤーの `playerWalkFrame` と同じ作法)。**判定・速度・AIは1msも触らない。**
     const idleTexKey = this.enemyTexKey(e.type, e.id);
     // 見た目の身長(=歩幅の基準)。判定の箱ではなく**描画の箱**(§drawEnemy が使うのと同じ fb)。
-    const walkTex = this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH);
+    const atkTex = this.enemyAttackTexture(idleTexKey, e, gameTime);
+    const walkTex = atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH);
     const tex = e.type === 'guardian-phantom'
       ? this.guardianPhantomTexture(view, now)
       : glenP2
@@ -29577,21 +29579,42 @@ export class PixiScene {
    * (`guardianPhantomTexture` と同じ割り切り)。
    * ★シートの切り出しは**1度だけ**(`heliRotorFrames` と同じ作法)。毎フレーム `new Texture` は作らない。
    */
+  /** シートを等分して1度だけ切り出す(歩き/攻撃で共有・`heliRotorFrames` と同じ作法)。 */
+  private sheetSlices(sheetName: string, frames: number): Texture[] | null {
+    const hit = this.enemyWalkFrames.get(sheetName);
+    if (hit) return hit;
+    const sheet = getTexture(sheetName);
+    if (!sheet) return null;
+    const fw = Math.floor(sheet.width / frames), fh = sheet.height;
+    const out = Array.from({ length: frames }, (_, c) =>
+      new Texture({ source: sheet.source, frame: new Rectangle(sheet.frame.x + c * fw, sheet.frame.y, fw, fh) }));
+    this.enemyWalkFrames.set(sheetName, out);
+    return out;
+  }
+
+  /**
+   * ★攻撃モーション(社長支給2026-09-20「武器を振り下ろす絵」)。**歩きより優先**する。
+   * 尺は噛みつき台本(`biteSpecFor`)から引く=新しい時計を作らない。
+   * ★このシートは**武器を持った腕ごと描かれている**ので、出ている間は
+   * 別スプライトのランタン(`drawBatLantern` 経路)を**出さない**(二本持ちになる)。
+   */
+  private enemyAttackTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
+    const frames = attackSheetFrames(idleTexKey);
+    if (frames <= 1) return null;
+    const i = enemyAttackFrameFor(e, frames, gameTime);
+    if (i === null) return null;
+    const slices = this.sheetSlices(attackSheetName(idleTexKey), frames);
+    return slices ? (slices[i] ?? null) : null;
+  }
+
   private enemyWalkTexture(
     idleTexKey: string, e: Enemy, view: ActorView, now: number,
     gameTime: number, drawnHeightPx: number,
   ): ReturnType<typeof getTexture> {
     const frames = walkSheetFrames(idleTexKey);
     if (frames <= 1) return null;
-    let slices = this.enemyWalkFrames.get(idleTexKey);
-    if (slices === undefined) {
-      const sheet = getTexture(walkSheetName(idleTexKey));
-      if (!sheet) return null;                       // まだ読めていない=立ち絵で待つ(次フレーム再試行)
-      const fw = Math.floor(sheet.width / frames), fh = sheet.height;
-      slices = Array.from({ length: frames }, (_, c) =>
-        new Texture({ source: sheet.source, frame: new Rectangle(sheet.frame.x + c * fw, sheet.frame.y, fw, fh) }));
-      this.enemyWalkFrames.set(idleTexKey, slices);
-    }
+    const slices = this.sheetSlices(walkSheetName(idleTexKey), frames);
+    if (!slices) return null;                        // まだ読めていない=立ち絵で待つ(次フレーム再試行)
     // ★★**位相は「進んだ距離」で刻む**(クリエイティブ監査#3の是正)。時計で刻むと
     // 速度・氷鈍化・2倍速の踏み込み・世界のスローのどれでも足が滑る。距離なら倍率が1つも要らない。
     // 距離はこの関数が自分で積む(隣の二次モーションの `motPrev*` は `dtMs < 400` ガードの中なので

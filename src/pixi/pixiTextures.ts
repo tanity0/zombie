@@ -12,6 +12,7 @@
 import { Assets, Rectangle, Texture } from 'pixi.js';
 import { ALL_VARIANT_TEXTURES, ENEMY_VARIANT_SETS } from '../utils/enemyVariant';
 import { ENEMY_WALK_SHEETS, walkSheetName } from '../utils/enemyWalkSheet';
+import { ENEMY_ATTACK_SHEETS, attackSheetName } from '../utils/enemyAttackSheet';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
 import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
@@ -1016,6 +1017,7 @@ export const ensureTextures = (): Promise<void> => {
       // ★**アスペクトは登録しない**(下の regAspect ループに入れない)——登録すると歩きシートの
       // 縦横比で `enemyHitStrip`(当たり判定)が動く。判定は立ち絵のまま据え置く。
       ...Object.keys(ENEMY_WALK_SHEETS).map((name) => ({ name: walkSheetName(name), scaleMode: 'nearest' as const })),
+      ...Object.keys(ENEMY_ATTACK_SHEETS).map((name) => ({ name: attackSheetName(name), scaleMode: 'nearest' as const })),
     ];
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)のドット絵上書き名。後段で使うが、

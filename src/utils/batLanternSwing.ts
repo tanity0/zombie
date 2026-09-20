@@ -12,6 +12,8 @@
 // 叩いた後は**減衰する揺れ**で止まる(対称なS字=何にも当たっていない動き、にしない)。
 import type { Enemy } from '../types/game';
 import { biteSpecFor, bitePhaseOf } from './enemyBite';
+import { attackSheetFrames } from './enemyAttackSheet';
+import { variantTextureName } from './enemyVariant';
 import { frameWithWindupHold } from './fxFrameClock';
 
 /** 鎖の見かけの長さ(px)。実際は「握り→落とす点」の距離に合わせて伸縮する(下の clamp)。 */
@@ -159,8 +161,17 @@ export const batSlamTexName = (frame: number, counterable: boolean): string =>
 export const batSlamCounterable = (e: Enemy): boolean =>
   biteSpecFor(e.type, e.chaffMove, e.aiPhase).counterable;
 
-/** この敵がランタンを振るか(型で決める)。 */
-export const usesBatLantern = (e: Pick<Enemy, 'type'>): boolean => e.type === 'bat';
+/**
+ * この敵が**別スプライトの**ランタンを振るか。
+ *
+ * ★★**攻撃シートを持つ個体は false**(社長支給2026-09-20「武器を振り下ろす絵」)。
+ * あのシートは**武器を持った腕ごと描かれている**ので、別スプライトのランタンも出すと
+ * **二本持ち**になる。絵の中に武器がある個体は、絵に任せる。
+ * ★炸裂(`bat-slam`)は**武器ではなく当たった衝撃の絵**なので、こちらは従来どおり出す
+ * (CLAUDE.md 攻撃ヴィジュアルの2分類: ①武器=判定に揃える / ②派手さ=大きく出す)。
+ */
+export const usesBatLantern = (e: Pick<Enemy, 'type' | 'id'>): boolean =>
+  e.type === 'bat' && attackSheetFrames(variantTextureName('bat', e.id)) <= 1;
 
 /** 噛みつきの尺(型と技から引く)。描画側が手写ししないための薄い窓口。 */
 export const batBiteTiming = (e: Enemy): { windupMs: number; biteMs: number } => {
