@@ -318,6 +318,7 @@ import {
   glowFalloff, glowLenMult, glowScore, explosionSilAlpha, ambientSilAlpha,
   pickExplSlot, rankFade, shouldFreezeGeom,
   SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS,
+  canBakeSilhouette, planSilhouetteEviction,
 } from '../utils/shadowSlots';
 import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
@@ -2857,7 +2858,10 @@ const SHADOW_HORIZON_TRIM_SMOOTH_MS = 180;
 const SHADOW_FOOTX_SMOOTH_MS = 900;
 
 // ---- キャッシュ/ベイク予算(§3-9-B確定・実測前提の見積り) --------------------------------------
-const SHADOW_SIL_CACHE_BUDGET_BYTES = 32 * 1024 * 1024;
+// ★#S-1(社長指摘2026-09-20): 予算は**上限として機能させる**(超過したら新規ベイクを止めて
+// 接地だけの簡易影へ落とす)。`?silbudget=<MB>` で切り分け・詰めができる
+// (小さくすると「枠が尽きた時にどう見えるか」をその場で確認できる)。
+const SHADOW_SIL_CACHE_BUDGET_BYTES = Math.max(1, tsNum('silbudget', 32)) * 1024 * 1024;
 const SHADOW_BAKE_BUDGET_PER_FRAME = 4;
 
 // ---- 静止物(木/壁/プロップ/city props/建物)の距離クロスフェード(旧 OBJECT_SHADOW_MAX の代替) ------
@@ -4153,6 +4157,8 @@ export class PixiScene {
   // キー=元テクスチャ(コマごとに別Textureなのでコマごとに別鍵=歩行ポーズが1コマに固定されない)。
   private silhouetteCache = new Map<Texture, SilhouetteBake>();
   private silhouetteCacheBytes = 0;
+  /** ★#S-1: 退避で使う「使用中」集合の使い回し先(毎フレームの確保を避ける)。 */
+  private silhouetteInUseScratch = new Set<Texture>();
   private silhouetteQueue: Texture[] = [];
   private silhouetteQueued = new Set<Texture>();
   private silhouetteBakeLoggedOnce = false; // 常駐バイト数を1回だけログする(仕様書指示)
@@ -12973,6 +12979,12 @@ export class PixiScene {
 
   /** 毎フレーム、事前ベイク/オンデマンドを統合した1本のキューを予算ぶんだけ消化する(裁定D)。 */
   private drainSilhouetteQueue() {
+    // ★#S-1 歯止め①: 退避は**毎フレーム**回す(ベイクの有無と切り離す)。超過していない時は即returnする。
+    this.silhouetteEvictToBudget();
+    // ★#S-1 歯止め②: 退避しても超過しているなら**新規ベイクを止める**。
+    // その絵は接地2枚だけの簡易影で待ち(`silhouetteEnsure` が null を返した時と同じ道)、
+    // 枠が空いた次のフレーム以降で焼かれる。キューは `silhouetteQueued` が重複を弾くので溜まらない。
+    if (!canBakeSilhouette(this.silhouetteCacheBytes, SHADOW_SIL_CACHE_BUDGET_BYTES)) return;
     let budget = SHADOW_BAKE_BUDGET_PER_FRAME;
     // ★D-2: 絵の実体行の実測(`extract.pixels`=GPU読み戻し)は**同期待ちでフレームを止める**ので、
     // 1フレーム SHADOW_CONTENT_MEASURE_PER_FRAME 枚まで。未実測のものはキューの末尾へ回して
@@ -13190,8 +13202,12 @@ export class PixiScene {
         penumbra.resources.uSoftSampler = Texture.WHITE.source.style;
         wrap.destroy({ children: true });
         silo.destroy({ children: true });
-        hardRT.destroy(true);
-        softRT.destroy(true);
+        // ★#S-2(2026-09-20): ここは `bakeRenderTexture('shadow', …)` で**数えて**作った物なので、
+        // 捨てる時も必ず `releaseBakedTexture` を通す。生の `destroy` で捨てていたため、
+        // 画面の `bake…(影…)` が**増える一方**になっていた(半影は1枚焼くのに3枚作って2枚捨てる
+        // ので、実量の約3倍で伸びる)。**計器が嘘をついていた**=CLAUDE.md「計測器を疑う」の実例。
+        releaseBakedTexture('shadow', hardRT);
+        releaseBakedTexture('shadow', softRT);
       }
       gradTex.destroy(true);
 
@@ -13219,14 +13235,46 @@ export class PixiScene {
     }
   }
 
-  /** ★検収差し戻し(高7): この元テクスチャのベイク結果が、いま可視のメッシュから参照されているか。
-   * LRU追い出しの対象から外すためのガード(見えているシルエットのRTを追い出すと一瞬黒くなる/
-   * 消えるため)。shadowPoolV9は高々90前後なのでO(n)スキャンで十分安い。 */
-  private isSilhouetteTextureInUse(bakedTex: Texture): boolean {
+
+  /** ★#S-1: いま可視のメッシュが貼っている焼きテクスチャを**1回の走査で**集める。
+   * 旧 `isSilhouetteTextureInUse` は候補1件ごとに全プールを舐めていたので、退避を毎フレーム
+   * 回すと O(候補数 × プール) になる。集合を1回作れば候補側は O(1) の参照で済む。 */
+  private collectSilhouetteInUse(out: Set<Texture>): Set<Texture> {
+    out.clear();
     for (const [, entry] of this.shadowPoolV9) {
-      for (const sl of entry.slots) if (sl.mesh && sl.mesh.visible && sl.mesh.texture === bakedTex) return true;
+      for (const sl of entry.slots) if (sl.mesh && sl.mesh.visible) out.add(sl.mesh.texture);
     }
-    return false;
+    return out;
+  }
+
+  /** ★#S-1(社長指摘2026-09-20「予算が厳密な上限として機能していない」): 予算まで落とす。
+   * **ベイクの有無と切り離して毎フレーム回す**——旧実装は `silhouetteCacheAdd` の中だけで
+   * 回っていたので、新規ベイクが止まると退避も止まり、超過したまま固まる作りだった。 */
+  private silhouetteEvictToBudget(keep?: Texture) {
+    if (this.silhouetteCacheBytes <= SHADOW_SIL_CACHE_BUDGET_BYTES) return;
+    const inUse = this.collectSilhouetteInUse(this.silhouetteInUseScratch);
+    // Map は挿入順=LRU順。鍵は Texture なので、純関数へ渡す間だけ添字を鍵にする。
+    const keys: Texture[] = [];
+    const cands = [] as { key: string; bytes: number; inUse: boolean }[];
+    let i = 0;
+    for (const [k, v] of this.silhouetteCache) {
+      keys.push(k);
+      cands.push({ key: String(i++), bytes: v.bytes, inUse: inUse.has(v.texture) });
+    }
+    const keepIdx = keep === undefined ? -1 : keys.indexOf(keep);
+    const victims = planSilhouetteEviction(
+      cands, this.silhouetteCacheBytes, SHADOW_SIL_CACHE_BUDGET_BYTES,
+      keepIdx >= 0 ? String(keepIdx) : undefined,
+    );
+    for (const vk of victims) {
+      const key = keys[Number(vk)];
+      const val = this.silhouetteCache.get(key);
+      if (!val) continue;
+      this.silhouetteCache.delete(key);
+      this.silhouetteCacheBytes -= val.bytes;
+      // ★#S-2: 退避も `releaseBakedTexture` を通す(生の destroy だと計器が減らない)。
+      releaseBakedTexture('shadow', val.texture as RenderTexture);
+    }
   }
 
   private silhouetteCacheAdd(tex: Texture, baked: SilhouetteBake) {
@@ -13234,20 +13282,9 @@ export class PixiScene {
     this.silhouetteCacheBytes += baked.bytes;
     // LRU(裁定G): 予算超過分は最古(Map先頭)から rt.destroy(true) で実解放しつつ追い出す。
     // ★検収差し戻し(高7): ただし今まさに可視のメッシュが使っているRTは飛ばす(使用中を壊さない)。
-    while (this.silhouetteCacheBytes > SHADOW_SIL_CACHE_BUDGET_BYTES && this.silhouetteCache.size > 1) {
-      let victimKey: Texture | undefined;
-      let victimBake: SilhouetteBake | undefined;
-      for (const [key, val] of this.silhouetteCache) {
-        if (key === tex) continue; // 今追加したばかりのものは対象外(直後に使われる)
-        if (this.isSilhouetteTextureInUse(val.texture)) continue;
-        victimKey = key; victimBake = val;
-        break;
-      }
-      if (!victimKey || !victimBake) break; // 残り全部使用中=これ以上追い出せない(予算超過を一時許容)
-      this.silhouetteCache.delete(victimKey);
-      this.silhouetteCacheBytes -= victimBake.bytes;
-      victimBake.texture.destroy(true);
-    }
+    // ★#S-1: 本体は `silhouetteEvictToBudget`(毎フレームも回る)へ移した。ここは「焼いた直後にも
+    // 1回試す」だけ——今追加したものは `keep` で対象外にする(直後に使われるため)。
+    this.silhouetteEvictToBudget(tex);
     if (!this.silhouetteBakeLoggedOnce && this.silhouetteCache.size >= 6) {
       // 仕様書指示:「実装後、常駐バイト数をログで1回見る」。
       console.info(

@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4530',
+    items: [
+      '影に使うメモリに上限を設けた。上限に達した敵は足元の影だけになる',
+      '画面下の計測表示のうち、焼いたテクスチャの量が実際より多く出ていたのを直した',
+    ],
+  },
+  {
     version: '0.25.4529',
     items: [
       'ゲーム内容の変更はありません',

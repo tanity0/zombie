@@ -162,3 +162,52 @@ export const rankFade = (rank: number, budget: number, fadeFrac: number = SHADOW
  */
 export const shouldFreezeGeom = (dist: number, reach: number, alreadyFrozen: boolean): boolean =>
   alreadyFrozen || !(dist <= reach);
+
+// ---- シルエットのベイク予算(★#S-1・社長指摘2026-09-20) ----------------------------
+//
+// 社長の言葉: 「**32MBの予算なのに49MBまで増えるなら、その予算は現状では厳密な上限として
+// 機能していない**」「**常設の影を増やす前に、使用中の画像だけで予算を超えた時の処理を決めたい**」。
+//
+// ★実測で確かめた壊れ方(v0.25.4528):
+//  ・`drainSilhouetteQueue` は常駐バイト数を**見ずに**毎フレーム焼く=**増える側に歯止めが無い**。
+//  ・退避(LRU)は**ベイクした時にしか回らず**、しかも**使用中は飛ばす**ので、
+//    全部使用中だと「超過を一時許容」して終わる=**減る側にも歯止めが無い**。
+// ⇒ 歯止めを2つとも入れる: ①退避は毎フレーム回す(ベイクの有無と切り離す)
+//    ②退避しても超過しているなら**新規ベイクを止める**(その絵は簡易影=接地だけで待つ)。
+//
+// ★なぜ「予算の数字を下げる」ではないのか(設計者の前回推薦の訂正):
+// 49MBの中身は**いま画面で使われている別々のコマ**であって重複ではない(ベイクは元テクスチャを鍵に
+// 共有済み)。数字だけ下げると**追い出せない相手を追い出そうとして毎フレーム空回りする**だけで、
+// メモリは減らない。効くのは「増やさない」判断点(ここ)と、1枚あたりの寸法(`SHADOW_BAKE_MAX_LONG_EDGE`)。
+
+/** 予算を超えていたら、新規のベイクはしない(=その絵は接地だけの簡易影で待つ)。 */
+export const canBakeSilhouette = (currentBytes: number, budgetBytes: number): boolean =>
+  currentBytes < budgetBytes;
+
+/** 退避の候補1件。`inUse`=いま可視のメッシュが貼っている(=壊すと絵が消える)。 */
+export interface SilhouetteEvictCandidate { key: string; bytes: number; inUse: boolean }
+
+/**
+ * 予算まで落とすために捨てる鍵を、**古い順**(= `candidates` の並び順 = LRU順)で選ぶ。
+ * ★使用中は絶対に選ばない(可視のメッシュのテクスチャを壊すと、その影が1フレーム消える)。
+ * ★`keep` は「今まさに焼いたばかり」等、対象外にしたい鍵。
+ * ★最後の1枚は残す(全部捨てると次のフレームで必ず焼き直す=空回りになる)。
+ */
+export const planSilhouetteEviction = (
+  candidates: readonly SilhouetteEvictCandidate[],
+  currentBytes: number,
+  budgetBytes: number,
+  keep?: string,
+): string[] => {
+  const out: string[] = [];
+  let bytes = currentBytes;
+  let remaining = candidates.length;
+  for (const c of candidates) {
+    if (bytes <= budgetBytes || remaining <= 1) break;
+    if (c.key === keep || c.inUse) continue;
+    out.push(c.key);
+    bytes -= c.bytes;
+    remaining--;
+  }
+  return out;
+};
