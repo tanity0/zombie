@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4527',
+    items: [
+      'ゲーム内容の変更はありません',
+    ],
+  },
+  {
     version: '0.25.4526',
     items: [
       'カウンターで弾いた時の硬直を長くした。どの攻撃の空振りよりも大きく崩れる',
