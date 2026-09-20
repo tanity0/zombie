@@ -110,22 +110,47 @@ export const keepBandFor = (
   return { outer: Math.min(outerPx, prefer + half), inner: prefer - half, style };
 };
 
+/**
+ * ★技を出せない「密着」の線(px・中心間)。裁定 #K-1(社長2026-09-20「a」)。
+ *
+ * **2つの条件の間にしか置けない**:
+ *  ①**噛みつきが始まる距離より内側**であること——外に置くと「噛めないし技も出せない」帯が空く
+ *    (それが今回直した不具合そのもの)。実測の噛みつき発火距離は**約55〜70px**(型と絵で前後する)。
+ *  ②**着地直後の連射を止められる**だけ外であること——元の事故は**18px**からの跳び直し。
+ * ⇒ 50px。①の内側で②の外側。**この2つの数字の間から動かす時は、両方を測り直すこと。**
+ * (機械化: `src/utils/keepTechniqueFloor.test.ts` が①②を不変条件として持っている。)
+ */
+export const KEEP_TECHNIQUE_NEAR_FLOOR_PX = 50;
+
 /** 回る向き(個体ごとに固定)。全員が同じ向きに回ると隊列が同期して不自然になる。 */
 export const keepSpin = (id: string, spawnedAt: number | undefined): 1 | -1 =>
   idRespawnUnitHash(id, spawnedAt, SALT_SPIN) < 0.5 ? 1 : -1;
 
 /**
- * ★**帯の内側に居る間は技を出さない**(§16-B B-10・実測2026-09-17で判明した設計の穴)。
- * これが無いと、技の引き金が帯より手前でも成立する型は**下がり切る前に技を出し直して
- * その場に居座る**(パンプキンの引き金は `dist > 12` なので、着地直後の18pxから跳び続けた)。
- * 引き金の**上限(発動距離)は1ビットも変えない**——**下限を帯の内側に合わせるだけ**。
+ * ★**密着からは技を出さない**(§16-B B-10)。
+ *
+ * ★元の役目(2026-09-17): これが無いと、技の引き金が帯より手前でも成立する型は**下がり切る前に
+ * 技を出し直してその場に居座る**(パンプキンの引き金は `dist > 12` なので、着地直後の**18px**から
+ * 跳び続けた)。**この役目は今も要る。**
+ *
+ * ★★**裁定 #K-1(社長2026-09-20「a」)で下限を引き直した。**
+ * 社長報告「**パンプキンが、絶妙な距離を保ち続けると何もしてこない**」。
+ * 旧実装は下限を**帯の内側(`band.inner`)**に置いていたが、パンプキンのそれは **167〜207px**。
+ * 噛みつきが届くのは**60px級**なので、**その間に「噛めないし技も出せない」帯が約100〜140px幅**で
+ * 空いていた(実測: 90/120/160pxに固定して20秒回すと相が1つも立たない)。しかも保つ層は
+ * 内側を割ると**後退する**ので、プレイヤーが付いていくと**一生技が出ない**。
+ * ⇒ **「保つ」は移動の層であって、技を禁止する層ではない。** 禁止は**元の役目(密着からの連射)**
+ * だけに絞り、下限を `KEEP_TECHNIQUE_NEAR_FLOOR_PX` に置き換える。
+ *
+ * ★引き金の**上限(発動距離)は今も1ビットも変えない**(この関数は下限だけを見る)。
  */
 export const keepBlocksTechnique = (
-  type: EnemyType, id: string, spawnedAt: number | undefined, outerPx: number, distance: number,
+  // ★`id`/`spawnedAt`/`outerPx` は**呼び出し側の形を変えないために残してある**(下限が帯から
+  // 定数へ移ったので、もう個体差も発動距離も見ない)。消すと6箇所の引き金を触ることになる。
+  type: EnemyType, _id: string, _spawnedAt: number | undefined, _outerPx: number, distance: number,
 ): boolean => {
   if (!hasKeepRange(type)) return false;
-  const band = keepBandFor(type, id, spawnedAt, outerPx);
-  return band !== null && distance < band.inner;
+  return distance < KEEP_TECHNIQUE_NEAR_FLOOR_PX;
 };
 
 export interface KeepResult { tvx: number; tvy: number; zone: 'approach' | 'keep' | 'backoff' }

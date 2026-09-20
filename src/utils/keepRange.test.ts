@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   hasKeepRange, keepBandFor, keepRangeVelocity, keepSpin, keepEscapeDir, keepBlocksTechnique,
-  KEEP_INNER_RATIO, KEEP_ORBIT_SPEED_MULT, KEEP_CREEP_SPEED_MULT,
+  KEEP_INNER_RATIO, KEEP_ORBIT_SPEED_MULT, KEEP_CREEP_SPEED_MULT, KEEP_TECHNIQUE_NEAR_FLOOR_PX,
 } from './keepRange';
 
 const SPEED = 60;
@@ -93,10 +93,23 @@ describe('§16-B 攻撃射程を保つ層', () => {
     expect(new Set(angles).size).toBeGreaterThan(3);
   });
 
-  it('★帯の内側では技を出さない=下がり切る前に技を出し直して居座らない', () => {
-    const band = keepBandFor('pumpkin', 'pk1', 100, 246)!;
-    expect(keepBlocksTechnique('pumpkin', 'pk1', 100, 246, band.inner - 1)).toBe(true);
+  // ★★裁定 #K-1(社長2026-09-20「a」)で規則が変わった節。
+  // 旧: 「**帯の内側**では技を出さない」(パンプキンで167〜207px)
+  // 新: 「**密着(50px)**では技を出さない」——旧規則は、噛みが届く60px級と帯の内側との間に
+  //     **「噛めないし技も出せない帯」を約100〜140px幅**で空けていた(社長報告「絶妙な距離を
+  //     保ち続けると何もしてこない」)。**元の役目(着地直後の連射を止める)はそのまま残す。**
+  it('★密着では技を出さない=下がり切る前に技を出し直して居座らない(元の役目)', () => {
     expect(keepBlocksTechnique('pumpkin', 'pk1', 100, 246, 18)).toBe(true);   // 着地直後の実測値
+    expect(keepBlocksTechnique('pumpkin', 'pk1', 100, 246, KEEP_TECHNIQUE_NEAR_FLOOR_PX - 1)).toBe(true);
+  });
+
+  it('★★#K-1: 帯の内側でも、密着でなければ技は出せる(「何もしてこない帯」を作らない)', () => {
+    const band = keepBandFor('pumpkin', 'pk1', 100, 246)!;
+    expect(band.inner).toBeGreaterThan(KEEP_TECHNIQUE_NEAR_FLOOR_PX); // 前提: 帯の内側は密着より外
+    expect(keepBlocksTechnique('pumpkin', 'pk1', 100, 246, band.inner - 1)).toBe(false);
+    for (const d of [60, 90, 120, 160]) {
+      expect(keepBlocksTechnique('pumpkin', 'pk1', 100, 246, d), `${d}px`).toBe(false);
+    }
   });
 
   it('★引き金の上限(発動距離)は変えない=帯の中・外では技が出る', () => {
