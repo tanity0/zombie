@@ -131,8 +131,8 @@ export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
  * ★「発火の瞬間に焼く」は追尾ではない(向きと同じく、距離も発火の1回だけ計算して固定する。
  * 再生中は位置を見直さない=`Enemy.biteLungePx`に焼いて`biteLungeDistanceAtFire`は発火時にだけ呼ぶ)。
  *
- * 接触距離(=体の半幅の和)は `enemyContactBox`(collisionUtils.ts)とプレイヤーの当たり判定
- * (`PLAYER_HITBOX`=28)から求める。`enemyContactBox`は実描画スプライトのアスペクト比
+ * 接触距離(=体の半幅の和)は `enemyContactBox`(collisionUtils.ts)と**命中判定が実際に使う
+ * プレイヤーの矩形**(`playerHitbox`=箱の2/3)から求める。`enemyContactBox`は実描画スプライトのアスペクト比
  * (`texH/texW`)がcontain fitで幅を縮める(このプロジェクトの敵絵は3体とも横長ではなく
  * 縦長=幅が縮む側)。実測値(`file`コマンドでPNGのIHDRを読んだ):
  *   zombie: public/sprites/zombie-common.png 464×640 → aspect=640/464=1.3793
@@ -141,16 +141,30 @@ export const BITE_BY_TYPE: Partial<Record<EnemyType, Partial<BiteSpec>>> = {
  * これらを`setEnemyArtAspect`で登録した状態で`enemyContactBox`を実行し、
  * 幅の半分+プレイヤー半幅(14px)・高さの半分+プレイヤー半幅(14px)のうち**小さい方**
  * (=どの向きから踏み込んでも安全な下限)を接触距離とした:
- *   zombie:   halfWxSum=36.61 / halfHySum=42.35 → 36.61 → 余裕1.6pxで **35**
- *   bat:      halfWxSum=32.12 / halfHySum=36.91 → 32.12 → 余裕2.1pxで **30**
- *   skeleton: halfWxSum=38.27 / halfHySum=38.99 → 38.27 → 余裕2.3pxで **36**
- * (実測の再現手順: `src/utils/enemyBite.test.ts`の「踏み込みの終点」テストが同じ計算を
- * ユニットテストとして機械化している=数値が古くなったら赤くなる。)
+ *
+ * ★★**訂正(2026-09-20・社長報告「プレイヤーより上にいるバット…攻撃が届いてない」)**:
+ * 上の導出は**プレイヤーの箱を28px(半幅14)**として計算していた。だが命中判定
+ * (`biteBodyOverlapsPlayer` の相手)は **`playerHitbox`=箱の2/3(19px・半幅9.5)** である。
+ * ⇒ **半幅を4.5px大きく見積もっていた**ぶん、余裕(1.6〜2.3px)が丸ごと吹き飛び、**3型とも
+ * 終点が「重なる限界」の外**になっていた=**踏み込み切っても当たらない**。
+ *
+ * **正しい限界(半幅9.5で引き直した値)と、旧値の余裕**:
+ *   zombie:   **横32.1** / 縦37.9 → 旧35 は余裕 **−2.9**
+ *   bat:      **横27.6** / 縦32.4 → 旧30 は余裕 **−2.4**
+ *   skeleton: **横33.8** / 縦34.5 → 旧36 は余裕 **−2.2**
+ *
+ * 終点の実測ばらつきは±10px級(溜めの間は向きだけ追い直すため)なので、**限界から4px以上内側**を
+ * 要求する。⇒ zombie **27** / bat **23** / skeleton **29**。
+ * ★これは「見たまんまが当たり判定」(CLAUDE.md 攻撃ヴィジュアルの2分類①)の是正であって、
+ * 強さの調整ではない。**踏み込みが深くなるぶん、絵の上では敵がより覆いかぶさる**
+ * (§12の掟「踏み込み中は壁が開いてプレイヤーへ覆いかぶさる」と同じ向き)。
+ * (機械化: `src/utils/enemyBite.test.ts` の「踏み込みの終点」。**旧テストは `PLAYER_HITBOX`=28 を
+ *  手写ししていたため、この穴を一度も捕まえられなかった**=`playerHitbox` を通すよう直してある。)
  */
 export const BITE_CONTACT_DIST_PX: Record<'zombie' | 'bat' | 'skeleton', number> = {
-  zombie: 35,
-  bat: 30,
-  skeleton: 36,
+  zombie: 27,
+  bat: 23,
+  skeleton: 29,
 };
 
 /**

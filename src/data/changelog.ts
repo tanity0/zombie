@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4532',
+    items: [
+      'コウモリのランタン、骸骨の爪、ゾンビの噛みつきが、振り切っても当たらないことがあったのを直した。踏み込む距離が足りていなかった',
+    ],
+  },
+  {
     version: '0.25.4531',
     items: [
       'ゲーム内容の変更はありません',

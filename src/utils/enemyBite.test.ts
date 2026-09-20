@@ -11,7 +11,7 @@ import {
   isBiteResolveDue,
   BITE_CONTACT_DIST_PX, BITE_LUNGE_CAP_PX, biteLungeDistanceAtFire,
 } from './enemyBite';
-import { enemyContactBox } from './collisionUtils';
+import { enemyContactBox, playerHitbox } from './collisionUtils';
 import { setEnemyArtAspect } from '../pixi/renderSpec';
 import type { Enemy, EnemyType } from '../types/game';
 
@@ -312,7 +312,16 @@ describe('★踏み込みの終点は常に接触距離(届かない・通り抜
 
   const mkEnemy = (type: 'zombie' | 'bat' | 'skeleton', w: number, h: number): Enemy =>
     ({ id: 'x', type, x: 0, y: 0, width: w, height: h } as unknown as Enemy);
-  const PLAYER_W = 28, PLAYER_H = 28; // PLAYER_HITBOX(gameStore.ts)
+  // ★★2026-09-20の訂正: ここは長らく `PLAYER_HITBOX`(28) を手写ししていたが、
+  // **命中判定が実際に見るのは `playerHitbox`(箱の2/3=19px)** である。半幅を4.5px大きく
+  // 見積もっていたため、**骸骨は縦から来ると原理的に当たらない**(余裕−1.7px)のに
+  // このテストは緑のままだった=素通りする網。⇒ 実物の関数を通す。
+  const PLAYER_BOX = { x: 0, y: 0, width: 28, height: 28 }; // PLAYER_HITBOX(gameStore.ts)
+  const PH = playerHitbox(PLAYER_BOX);
+  const PLAYER_W = PH.width, PLAYER_H = PH.height;
+  /** 終点は「重なる限界」からこれだけ内側に居ること。終点の実測ばらつきは±10px級なので、
+   * 2px級の余裕は無いのと同じ(社長報告「攻撃が届いてない」の直接の原因)。 */
+  const CONTACT_MARGIN_PX = 4;
 
   const cases: { type: 'zombie' | 'bat' | 'skeleton'; w: number; h: number; move?: NonNullable<Enemy['chaffMove']>; aiPhase?: Enemy['aiPhase'] }[] = [
     { type: 'zombie', w: 36, h: 36, move: 'zombie-double', aiPhase: 'z-bite1' },
@@ -331,6 +340,17 @@ describe('★踏み込みの終点は常に接触距離(届かない・通り抜
     const contactDist = Math.min(halfWxSum, halfHySum); // どの向きから踏み込んでも安全な下限
     const spec = biteSpecFor(type, move, aiPhase);
     expect(spec.lungePx).toBeLessThan(contactDist);
+  });
+
+  // ★★本命の不変条件(2026-09-20 追加): **踏み込みの終点が、重なる限界より内側にあること**。
+  // 縦と横を**別々に**見る——帯は横より縦が短いので、min を取らずに片側だけ見ると穴が残る。
+  it.each(cases)('$type $aiPhase$move: 踏み込みの終点は縦にも横にも余裕をもって重なる', ({ type, w, h }) => {
+    const box = enemyContactBox(mkEnemy(type, w, h));
+    const limitX = box.width / 2 + PLAYER_W / 2;
+    const limitY = box.height / 2 + PLAYER_H / 2;
+    const contact = BITE_CONTACT_DIST_PX[type];
+    expect(limitX - contact, `${type}: 横の余裕`).toBeGreaterThanOrEqual(CONTACT_MARGIN_PX);
+    expect(limitY - contact, `${type}: 縦の余裕`).toBeGreaterThanOrEqual(CONTACT_MARGIN_PX);
   });
 
   // ★本題: 発火時の中心間距離がどれだけでも、動的計算(`biteLungeDistanceAtFire`)の終点が
