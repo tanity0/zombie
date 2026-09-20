@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4526',
+    items: [
+      'カウンターで弾いた時の硬直を長くした。どの攻撃の空振りよりも大きく崩れる',
+    ],
+  },
+  {
     version: '0.25.4525',
     items: [
       'カウンターで弾いた敵が一拍止まるようになった。これまで強い個体とボスだけは弾かれてもすぐ動き出していた',

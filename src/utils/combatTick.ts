@@ -42,6 +42,7 @@ import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkColli
 import {
   biteSpecFor, biteReachRect, isInBiteRect, isBiteSubject, canStartBite, isBiteResolveDue,
   biteBodyOverlapsPlayer, isBiteInterruptedByMove, isBiteFrozen, BITE_RECOVER_STILL_MS,
+  COUNTER_RECOVER_STILL_MS,
   isInBiteCircle, // ★§16-C(転移噛み・C-3-a1): この技だけ判定を円で取る
 } from './enemyBite';
 import { LICH_BLINK_RADIUS_PX } from './lichBlink'; // §16-C: 予告円の半径=判定円の半径(C-4)
@@ -405,9 +406,9 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           aiReadyAt: st.gameTime + 1200,
           // ★§16-H #H-6(社長裁定2026-09-20「A」): 突進パリィ(dashParriedEnemyPatch)と同じ硬直を
           // ジャンプ着地パリィにも書く。**カウンターの2経路で揃える**(片方だけだと、同じ
-          // 「弾いた」のに型によって硬直の有無が割れる)。★副作用は H-10 のとおり全型共通=
-          // カウンター直後の押し出しが 83px → 64px(即時の弾き飛ばしは不変・スライド19pxを硬直が飲む)。
-          biteRecoverUntil: st.gameTime + BITE_RECOVER_STILL_MS,
+          // 「弾いた」のに型によって硬直の有無が割れる)。長さは #H-7 で 350 → 2000ms
+          // (通常の技後硬直より短いとカウンターを取るほど損になるため)。
+          biteRecoverUntil: st.gameTime + COUNTER_RECOVER_STILL_MS,
           // 【ジャンプカウンターのノックバック不発の根治】
           // ① 速度ノックバックは updateEnemies が「翌フレーム以降」に適用する=ジャンプ着地で
           //    付与される stun/lift/recover に上書きされて「その場で痺れる」だけになっていた。
@@ -1012,12 +1013,15 @@ export const dashParriedEnemyPatch = (
     // 裏ボス)はそこで丸ごと外れる。そして**この patch はどの型にも `biteRecoverUntil` を書いていない**。
     // 通常の噛み解決(#H-5)も技の `-recover` 相も硬直を持つのに、**カウンターだけが「硬直の付かない
     // 攻撃の終わり方」**になっていた=設計の穴。
+    // ★長さは `COUNTER_RECOVER_STILL_MS`(2000ms)。#H-7(社長指摘2026-09-20「普通に着地した時より、
+    // カウンター後の方が硬直が短い」)で 350 → 2000 へ。**通常の技後硬直より短いとカウンターを
+    // 取るほど損**になるので、一番長い通常硬直(パンプキンの着地)に揃えてある。
     // ★副作用(実測・H-10): カウンター直後の押し出しが 83px → 64px になる(全型)。即時の弾き飛ばし
-    // (`COUNTER_KNOCKBACK_LAUNCH`)は不変で、そのあとの速度スライド19pxを硬直350msが飲む。
+    // (`COUNTER_KNOCKBACK_LAUNCH`)は不変で、そのあとの速度スライドを硬直が飲む。
     // これは既存の不変条件どおり(`biteRecover.test.ts`「★硬直中は1pxも動かない」)。
     // ★`keepPhase`(中断しない技=尻尾の叩きつけ)には掛けない——`chaffMove` を消すので
     // updateEnemies の硬直ブロック(`chaffMove === undefined` ゲート)に掛かり、**技が完走しなくなる**。
-    ...(keepPhase ? {} : { biteRecoverUntil: gameTimeNow + BITE_RECOVER_STILL_MS }),
+    ...(keepPhase ? {} : { biteRecoverUntil: gameTimeNow + COUNTER_RECOVER_STILL_MS }),
     // ★§16-7b「中断(カウンター成立含む)は消す+技後CDを書く」(訂正版・§16-7穴2)。
     chaffMove: undefined,
     ...(effectiveMove !== undefined ? { chaffMoveCdUntil: gameTimeNow + techSpec.recoverMs } : {}),

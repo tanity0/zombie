@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 import { dashParriedEnemyPatch } from './combatTick';
-import { BITE_RECOVER_STILL_MS } from './enemyBite';
+import { BITE_RECOVER_STILL_MS, COUNTER_RECOVER_STILL_MS } from './enemyBite';
 import type { Enemy, EnemyType } from '../types/game';
 
 const START_GT = 10_000_000;
@@ -28,7 +28,7 @@ describe('★#H-6 カウンター直後の硬直(突進パリィ/守護霊パリ
   it.each(TYPES)('%s: 弾かれたら噛みつき直後と同じ硬直が書かれる', t => {
     const e = spawnEnemyAt(t, 500, 500, START_GT);
     const patched = dashParriedEnemyPatch(e, 100, 100, REAL0, START_GT);
-    expect(patched.biteRecoverUntil).toBe(START_GT + BITE_RECOVER_STILL_MS);
+    expect(patched.biteRecoverUntil).toBe(START_GT + COUNTER_RECOVER_STILL_MS);
   });
 
   it('★中断しない技(尻尾の叩きつけ)には掛けない=技が完走できなくなるため', () => {
@@ -48,6 +48,24 @@ describe('★#H-6 カウンター直後の硬直(突進パリィ/守護霊パリ
   });
 });
 
+// ★#H-7(社長指摘2026-09-20「普通に着地した時より、カウンター後の方が硬直が短い」)。
+// カウンターを取るほど損、という逆立ちを機械で止める。
+describe('★#H-7 カウンターの硬直は、どの通常の技後硬直よりも短くない', () => {
+  // 実効値(atkUntil は ÷ENEMY_ATTACK_SPEED_MULT。s-recover だけ素の値を足している)。
+  const NORMAL_RECOVER_MS: Record<string, number> = {
+    'パンプキンの着地': 2000 / 1.2,
+    '汎用ジャンプ(ハンター/研究所Lv3)': 1000 / 1.2,
+    '伐採人の薙ぎ': 1000 / 1.2,
+    '人狼の突進': 1000 / 1.2,
+    '骸骨の弧': 500,
+    '削岩型の突き': 400 / 1.2,
+    '噛みつき直後': BITE_RECOVER_STILL_MS,
+  };
+  it.each(Object.entries(NORMAL_RECOVER_MS))('%s(%dms)より短くない', (_name, ms) => {
+    expect(COUNTER_RECOVER_STILL_MS).toBeGreaterThanOrEqual(ms);
+  });
+});
+
 describe('★#H-6 硬直中は1pxも動かない(既存の不変条件が強個体にも効く)', () => {
   beforeEach(() => {
     vi.useFakeTimers(); vi.setSystemTime(REAL0);
@@ -62,7 +80,7 @@ describe('★#H-6 硬直中は1pxも動かない(既存の不変条件が強個�
       enemies: st.enemies.map(en => ({ ...dashParriedEnemyPatch(en, p0.x, p0.y, Date.now(), st.gameTime), knockbackUntil: 0 })),
     }));
     const a0 = useGameStore.getState().enemies[0];
-    for (let i = 1; i * 16 < BITE_RECOVER_STILL_MS; i++) {
+    for (let i = 1; i * 16 < COUNTER_RECOVER_STILL_MS; i++) {
       vi.setSystemTime(REAL0 + i * 16);
       useGameStore.getState().setGameTime(START_GT + i * 16);
       useGameStore.getState().updateEnemies(1 / 60);
