@@ -403,6 +403,11 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           aiPhaseUntil: undefined, aiStartedAt: undefined,
           aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
           aiReadyAt: st.gameTime + 1200,
+          // ★§16-H #H-6(社長裁定2026-09-20「A」): 突進パリィ(dashParriedEnemyPatch)と同じ硬直を
+          // ジャンプ着地パリィにも書く。**カウンターの2経路で揃える**(片方だけだと、同じ
+          // 「弾いた」のに型によって硬直の有無が割れる)。★副作用は H-10 のとおり全型共通=
+          // カウンター直後の押し出しが 83px → 64px(即時の弾き飛ばしは不変・スライド19pxを硬直が飲む)。
+          biteRecoverUntil: st.gameTime + BITE_RECOVER_STILL_MS,
           // 【ジャンプカウンターのノックバック不発の根治】
           // ① 速度ノックバックは updateEnemies が「翌フレーム以降」に適用する=ジャンプ着地で
           //    付与される stun/lift/recover に上書きされて「その場で痺れる」だけになっていた。
@@ -1001,6 +1006,18 @@ export const dashParriedEnemyPatch = (
     // 踏み込みの絶対座標の上書きが**弾き飛ばしたノックバックを打ち消して起点へ引き戻す**。
     biteAt: 0,
     biteReadyAt: gameTimeNow + techSpec.recoverMs,
+    // ★PACING_PUZZLE.md §16-H #H-6(社長裁定2026-09-20「A」): **カウンターにも噛みつき直後と同じ
+    // 硬直を書く**。実測(H-9)で、カウンターは全型に成立するのに**硬直が付くのは雑魚だけ**だった——
+    // 気絶5秒は成立側が `if (!killed && !boss)` で書いており、`isBossType`(強個体3種+城ボス+研究所Lv3+
+    // 裏ボス)はそこで丸ごと外れる。そして**この patch はどの型にも `biteRecoverUntil` を書いていない**。
+    // 通常の噛み解決(#H-5)も技の `-recover` 相も硬直を持つのに、**カウンターだけが「硬直の付かない
+    // 攻撃の終わり方」**になっていた=設計の穴。
+    // ★副作用(実測・H-10): カウンター直後の押し出しが 83px → 64px になる(全型)。即時の弾き飛ばし
+    // (`COUNTER_KNOCKBACK_LAUNCH`)は不変で、そのあとの速度スライド19pxを硬直350msが飲む。
+    // これは既存の不変条件どおり(`biteRecover.test.ts`「★硬直中は1pxも動かない」)。
+    // ★`keepPhase`(中断しない技=尻尾の叩きつけ)には掛けない——`chaffMove` を消すので
+    // updateEnemies の硬直ブロック(`chaffMove === undefined` ゲート)に掛かり、**技が完走しなくなる**。
+    ...(keepPhase ? {} : { biteRecoverUntil: gameTimeNow + BITE_RECOVER_STILL_MS }),
     // ★§16-7b「中断(カウンター成立含む)は消す+技後CDを書く」(訂正版・§16-7穴2)。
     chaffMove: undefined,
     ...(effectiveMove !== undefined ? { chaffMoveCdUntil: gameTimeNow + techSpec.recoverMs } : {}),

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4525',
+    items: [
+      'カウンターで弾いた敵が一拍止まるようになった。これまで強い個体とボスだけは弾かれてもすぐ動き出していた',
+    ],
+  },
+  {
     version: '0.25.4524',
     items: [
       'ゲーム内容の変更はありません',
