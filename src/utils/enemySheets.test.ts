@@ -35,10 +35,15 @@ describe('★表', () => {
 });
 
 describe('★★ミラーの対象は「型」ではなく「個体」', () => {
-  it('シートを持つ立ち絵だけが対象', () => {
-    expect(hasAnimSheet('bat-female')).toBe(true);
-    expect(hasAnimSheet('bat-male')).toBe(true);     // v0.25.4539 で歩きが入った
-    expect(hasAnimSheet('zombie-common')).toBe(false);
+  // ★ここも**名前を手書きしない**(下の注意書きと同じ理由。ゾンビの歩きが届いた回=v0.25.4548 で
+  // `hasAnimSheet('zombie-common')` を false と書いていたテストが落ちた=4回目の同じ壊れ方)。
+  it('シートを持つ立ち絵だけが対象(表から導出する)', () => {
+    const withSheet = new Set([...Object.keys(ENEMY_WALK_SHEETS), ...Object.keys(ENEMY_ATTACK_SHEETS)]);
+    expect(withSheet.size).toBeGreaterThan(0);
+    for (const n of withSheet) expect(hasAnimSheet(n), n).toBe(true);
+    const noSheet = Object.values(ENEMY_VARIANT_SETS).flat().filter(n => !withSheet.has(n));
+    expect(noSheet.length, 'まだシートの無い絵が1枚も無いなら、この検査は何も言っていない').toBeGreaterThan(0);
+    for (const n of noSheet) expect(hasAnimSheet(n), n).toBe(false);
     expect(hasAnimSheet(null)).toBe(false);
   });
 
