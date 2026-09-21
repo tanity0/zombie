@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4547',
+    items: [
+      '骸骨の引っ掻きで、爪のエフェクトが再び出るようになった',
+    ],
+  },
+  {
     version: '0.25.4546',
     items: [
       '描き込まれた動きを持つ敵は、体が傾いたり伸び縮みしたりしなくなった',

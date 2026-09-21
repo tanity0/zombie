@@ -62,13 +62,17 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
     expect(attackSheetFrames('bat-female')).toBeGreaterThan(1);   // シートはある
     expect(sheetHasWeapon('bat-female')).toBe(false);             // が、武器は描かれていない
     expect(sheetHasWeapon('bat-male')).toBe(true);
-    expect(sheetHasWeapon('skeleton-male')).toBe(true);           // 爪の腕ごと描かれている
-    expect(sheetHasWeapon('skeleton-female')).toBe(true);         // 女も爪の腕ごと描かれている
   });
 
-  it('★爪を共有する相手(リッチ)は影響を受けない=従来どおり爪が出る', () => {
-    expect(attackSheetFrames('lich-common')).toBeLessThanOrEqual(1);  // シートを持たない
-    expect(sheetHasWeapon('lich-common')).toBe(false);
+  // ★社長指示2026-09-21「**別スプライトの爪は消さなくていい**」。v0.25.4543〜4545 は
+  // 「シートに爪が描かれている=二本になる」として止めていたが、裁定で**出したまま**になった。
+  // ⇒ 骸骨は表に載せない(描画側もシートの有無を見ない)。**戻したら二本になるので、表で止める。**
+  it('★★骸骨は表に載せない=別スプライトの爪を出し続ける(社長指示2026-09-21)', () => {
+    for (const n of ['skeleton-male', 'skeleton-female']) {
+      expect(attackSheetFrames(n), n).toBeGreaterThan(1);   // 攻撃シートは持っている
+      expect(sheetHasWeapon(n), n).toBe(false);             // が、爪のスプライトは止めない
+    }
+    expect(sheetHasWeapon('lich-common')).toBe(false);      // 爪を共有するリッチも従来どおり
   });
 
   it('★武器ありの印を付けられるのは、攻撃シートを持つ絵だけ(付け間違いを弾く)', () => {
