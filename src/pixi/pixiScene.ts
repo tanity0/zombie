@@ -103,8 +103,9 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
 import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, sheetFrontOn, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, sheetFrontOn, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, jumpSheetSplit, jumpSheetName, jumpLandMs } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
+import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
@@ -17736,7 +17737,8 @@ export class PixiScene {
     // プレイヤーの `playerWalkFrame` と同じ作法)。**判定・速度・AIは1msも触らない。**
     const idleTexKey = this.enemyTexKey(e.type, e.id);
     // 見た目の身長(=歩幅の基準)。判定の箱ではなく**描画の箱**(§drawEnemy が使うのと同じ fb)。
-    const atkTex = this.enemyShotTexture(idleTexKey, e, now)
+    const atkTex = this.enemyJumpTexture(idleTexKey, e, gameTime)
+      ?? this.enemyShotTexture(idleTexKey, e, now)
       ?? this.enemyAttackTexture(idleTexKey, e, gameTime);
     const walkTex = atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
       ?? this.enemyIdleTexture(idleTexKey, e, now);
@@ -18363,8 +18365,17 @@ export class PixiScene {
       // すこし吹っ飛んで潰れて消えるようにして」)。判定には一切関与しない純粋な描画。
       // 潰れの式は sim 側の純関数(corpseSquashNow)を読むだけ=尺と形の出どころを1箇所に保つ。
       const corpseSq = corpseSquashNow(e, now);
-      const scaleX = sc * breath.x * aiSqX * lungeSqX * flinchSqX * motSqX * faceMul * corpseSq.sqX * lichWarp.sqX * lichBlinkSq;
-      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY * motSqY * corpseSq.sqY * lichWarp.sqY * lichBlinkSq);
+      // ★★**手で描いたコマが出ているフレームは、技の伸び縮み(しゃがみ/滞空/着地のスカッシュ)も掛けない**
+      // (社長指示2026-09-21「絵が入った敵のパターンには歪み入れないで」。歩行の傾ぎ=v0.25.4546 /
+      //  疑似呼吸=v0.25.4551 と同じ理由の、技版)。絵の中に既にしゃがみも潰れも描かれているので、
+      //  上から掛けると**二重に潰れる**。
+      // ★**跳ぶ高さ(aiHop)と震え(aiShake)は残す**——あれは位置の移動であって歪みではないし、
+      //  絵は高さを持っていない。**砂埃などのエフェクトも一切触っていない**
+      //  (社長指示2026-09-21「元々のエフェクトは消さないで」)。
+      const aiSqXDraw = walkTex !== null ? 1 : aiSqX;
+      const aiSqYDraw = walkTex !== null ? 1 : aiSqY;
+      const scaleX = sc * breath.x * aiSqXDraw * lungeSqX * flinchSqX * motSqX * faceMul * corpseSq.sqX * lichWarp.sqX * lichBlinkSq;
+      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqYDraw * motSqY * corpseSq.sqY * lichWarp.sqY * lichBlinkSq);
       if (corpseSq.alpha < 1) view.container.alpha *= corpseSq.alpha;
       // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
       // 中心からずれた個体は横に流れて見える。重心が footX に乗るよう x を寄せる(視覚のみ)。
@@ -29649,6 +29660,39 @@ export class PixiScene {
    * **一番弱い優先度**——弾/噛み/歩きのどれも出ていない時だけ出す(=立ち絵の置き換え)。
    * 位相は個体ごとにずらす(`stablePhase`)ので、群れが同時に呼吸しない。
    */
+  /**
+   * ★跳ぶ技の絵(社長支給2026-09-21「パンプキン(蜘蛛)のジャンプ攻撃時」)。
+   * ★**尺は作らない**——しゃがみ・滞空・着地の進み具合は、**判定が使っているのと同じ時計**
+   * (`PUMPKIN_CROUCH_MS` / `AIR_MOVES` / `pumpkinRecoverMs`)から出す。
+   * こうしないと「絵は着地しているのに判定はまだ空中」が起きる。
+   * ★**砂埃などのエフェクトはここでは何も触らない**(社長指示2026-09-21「元々のエフェクトは消さないで」)。
+   */
+  private enemyJumpTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
+    const split = jumpSheetSplit(idleTexKey);
+    if (!split) return null;
+    let i: number | null = null;
+    if (e.aiPhase === 'crouch') {
+      const dur = PUMPKIN_CROUCH_MS / ENEMY_ATTACK_SPEED_MULT;
+      i = enemyJumpFrame(split, 'crouch', 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / dur);
+    } else if (e.aiPhase === 'jump') {
+      const spec = airMoveFor('jump');
+      const dur = (spec?.airMsRaw ?? 700) / ENEMY_ATTACK_SPEED_MULT
+        / (e.type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1);
+      i = enemyJumpFrame(split, 'air', (gameTime - (e.aiStartedAt ?? gameTime)) / dur);
+    } else if (e.aiPhase === 'recover') {
+      const recoverStart = (e.aiPhaseUntil ?? gameTime) - pumpkinRecoverMs(e.type);
+      // ★盾で弾かれた落下中は、着地の絵(砂埃つき)を先に出さない=まだ落ちている最中だから。
+      const blockedFall = (e.aiStartedAt ?? -Infinity) >= recoverStart - 1;
+      i = blockedFall
+        ? enemyJumpFallFrame(split)
+        : enemyJumpFrame(split, 'land', (gameTime - recoverStart) / jumpLandMs(idleTexKey));
+    }
+    if (i === null) return null;
+    const frames = jumpSplitFrames(split);
+    const slices = this.sheetSlices(jumpSheetName(idleTexKey), frames);
+    return slices ? (slices[i] ?? null) : null;
+  }
+
   private enemyIdleTexture(idleTexKey: string, e: Enemy, now: number): ReturnType<typeof getTexture> {
     const frames = idleSheetFrames(idleTexKey);
     if (frames <= 1) return null;

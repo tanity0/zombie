@@ -1,3 +1,4 @@
+import type { JumpSplit } from './enemyJumpSheet';
 // ★敵のアニメーションシートの台帳(**依存ゼロの葉モジュール**)。
 //
 // ★なぜ葉にするか(ENGINEERING_NOTES「循環importは…」): この表は
@@ -7,6 +8,7 @@
 // **表と名前だけをここへ置き、計算はそれぞれのモジュールが持つ。**
 //
 // ★素材を足す時はここへ1行。`pixiTextures` のロード登録も揃える。
+// ※`JumpSplit` は **型だけ** を借りる(値を持ち込まないので葉のままでいられる)。
 // ★**アスペクトは登録しない**(登録すると `enemyHitStrip`=当たり判定がシートの縦横比で動く)。
 
 /** 歩きシートを持つ立ち絵(立ち絵のテクスチャ名 → コマ数)。シート名は `<立ち絵名>-walk`。 */
@@ -235,6 +237,33 @@ export const idleSheetFrames = (idleTexName: string | null | undefined): number 
 
 export const idleSheetPeriodMs = (idleTexName: string | null | undefined): number =>
   (idleTexName && ENEMY_IDLE_PERIOD_MS[idleTexName]) || 3600;
+
+/**
+ * ★**跳ぶ技の絵**(社長支給2026-09-21「パンプキン(蜘蛛)のジャンプ攻撃時」)。
+ * シート名は `<立ち絵名>-jump`。**しゃがみ・滞空・着地の3区間**に割って使う
+ * (割り方は `utils/enemyJumpSheet.ts`。尺は判定側=store の時計をそのまま読む)。
+ */
+export const ENEMY_JUMP_SHEETS: Readonly<Record<string, JumpSplit>> = {
+  // 15コマ(支給 2415×130 → 余白を切って **157×128**)。常駐 1.15MB。
+  // 読み: **0〜3=しゃがむ**(3で沈み切る) / **4〜9=踏み切り〜頂点〜落下**(7,8が頂点) /
+  //       **10〜14=接地〜砂埃〜立ち直り**(11が一番潰れる=着地の瞬間)。
+  // ★砂埃は**絵の中にも描かれている**が、**ゲーム側の砂埃エフェクトは消していない**
+  //   (社長指示2026-09-21「元々のエフェクトは消さないで」)。
+  'pumpkin-common': { crouch: 4, air: 6, land: 5 },
+};
+
+/** 着地の絵を流す長さ(ms)。立ち直り(recover)全体はもっと長いので、その頭だけを使う。 */
+export const ENEMY_JUMP_LAND_MS: Readonly<Record<string, number>> = {
+  'pumpkin-common': 420,
+};
+
+export const jumpSheetName = (idleTexName: string): string => `${idleTexName}-jump`;
+
+export const jumpSheetSplit = (idleTexName: string | null | undefined): JumpSplit | null =>
+  (idleTexName && ENEMY_JUMP_SHEETS[idleTexName]) || null;
+
+export const jumpLandMs = (idleTexName: string | null | undefined): number =>
+  (idleTexName && ENEMY_JUMP_LAND_MS[idleTexName]) || 420;
 
 /**
  * ★その立ち絵が**動く絵(歩き or 攻撃)を持っているか**。

@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "828 files / 復号後 約741MB",
+ "generatedFor": "829 files / 復号後 約742MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3649,6 +3649,12 @@
    "h": 172,
    "bytes": 3367,
    "sha": "f29a6d800e79fd29"
+  },
+  "sprites/pumpkin-common-jump.png": {
+   "w": 2355,
+   "h": 128,
+   "bytes": 287491,
+   "sha": "49de6d7ef06dc346"
   },
   "sprites/pumpkin-common-walk.png": {
    "w": 1920,
