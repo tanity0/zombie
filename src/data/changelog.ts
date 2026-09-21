@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4539',
+    items: [
+      'コウモリの男も歩くようになった。これでコウモリは男女とも脚が動き、進む方へ向き直る',
+    ],
+  },
+  {
     version: '0.25.4538',
     items: [
       'コウモリの女が進む方へ向き直るようになった。歩く向きと武器を振る向きが逆にならない',

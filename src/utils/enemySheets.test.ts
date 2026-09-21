@@ -8,9 +8,9 @@ import { describe, it, expect } from 'vitest';
 import {
   ENEMY_WALK_SHEETS, ENEMY_ATTACK_SHEETS, ENEMY_SHEET_FACES_RIGHT,
   walkSheetName, attackSheetName, walkSheetFrames, attackSheetFrames,
-  hasAnimSheet, sheetFacesRight,
+  hasAnimSheet, sheetFacesRight, walkPlayback,
 } from './enemySheets';
-import { ENEMY_VARIANT_SETS, variantTextureName } from './enemyVariant';
+import { ENEMY_VARIANT_SETS } from './enemyVariant';
 
 describe('★表', () => {
   it('シート名の付け方', () => {
@@ -36,19 +36,21 @@ describe('★表', () => {
 describe('★★ミラーの対象は「型」ではなく「個体」', () => {
   it('シートを持つ立ち絵だけが対象', () => {
     expect(hasAnimSheet('bat-female')).toBe(true);
-    expect(hasAnimSheet('bat-male')).toBe(false);
+    expect(hasAnimSheet('bat-male')).toBe(true);     // v0.25.4539 で歩きが入った
     expect(hasAnimSheet('zombie-common')).toBe(false);
     expect(hasAnimSheet(null)).toBe(false);
   });
 
-  it('★同じ型でも個体で分かれる(素材が1体ずつ届くため)', () => {
-    const ids = Array.from({ length: 24 }, (_, k) => `e${k}`);
-    const male = ids.filter(id => variantTextureName('bat', id) === 'bat-male');
-    const female = ids.filter(id => variantTextureName('bat', id) === 'bat-female');
-    expect(male.length, '男の個体').toBeGreaterThan(0);
-    expect(female.length, '女の個体').toBeGreaterThan(0);
-    for (const id of female) expect(hasAnimSheet(variantTextureName('bat', id)), id).toBe(true);
-    for (const id of male) expect(hasAnimSheet(variantTextureName('bat', id)), id).toBe(false);
+  it('★シートを持たない立ち絵は従来どおり(型の設定のまま)', () => {
+    for (const n of ['zombie-common', 'skeleton-male', 'pumpkin-common', 'ghost-common']) {
+      expect(hasAnimSheet(n), n).toBe(false);
+    }
+  });
+
+  it('★送り方は表から引く(既定はループ)', () => {
+    expect(walkPlayback('bat-female')).toBe('loop');
+    expect(walkPlayback('bat-male')).toBe('pingpong');
+    expect(walkPlayback('zombie-common')).toBe('loop');
   });
 
   it('向きの既定は左(いまのシートは2枚とも左向き)', () => {

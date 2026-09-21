@@ -20,8 +20,9 @@ describe('★歩きシートの表', () => {
   });
 
   it('表に無い立ち絵は0コマ=従来どおり立ち絵1枚', () => {
-    expect(walkSheetFrames('bat-male')).toBe(0);
+    // ★bat-male は v0.25.4539 で歩きが入ったのでここからは外した(素材が届いた型は表に載る)。
     expect(walkSheetFrames('zombie-common')).toBe(0);
+    expect(walkSheetFrames('skeleton-male')).toBe(0);
     expect(walkSheetFrames(null)).toBe(0);
   });
 });
@@ -75,6 +76,35 @@ describe('★コマの選び方(進んだ距離で刻む)', () => {
     const d1 = H * ENEMY_WALK_STRIDE_PER_HEIGHT;
     const d2 = H * 2 * ENEMY_WALK_STRIDE_PER_HEIGHT;
     expect(enemyWalkFrame('e0', FR, d1, H, OK)).toBe(enemyWalkFrame('e0', FR, d2, H * 2, OK));
+  });
+
+  // ★位相ずらしが0の個体で測る(途中から始まると1周の中で同じコマを2度またぐので、
+  //   「遷移を数える」形の検算ができない)。`p5` は8コマ・9コマのどちらでも位相0。
+  const PHASE0 = 'p5';
+
+  it('★★ピンポン: 折り返して戻る(0→末→1の1往復)', () => {
+    const FRP = 9, H2 = 80, stride = H2 * ENEMY_WALK_STRIDE_PER_HEIGHT;
+    const seen: number[] = [];
+    for (let d = 0; d < stride; d += stride / 4000) {
+      const i = enemyWalkFrame(PHASE0, FRP, d, H2, OK, 'pingpong')!;
+      if (seen[seen.length - 1] !== i) seen.push(i);
+    }
+    // 1歩幅で 0,1,…,8,7,…,1 の16歩(折り返しの端は重複しない)。
+    expect(seen.length).toBe((FRP - 1) * 2);
+    expect(new Set(seen).size).toBe(FRP);
+    expect(seen[0]).toBe(0);
+    expect(Math.max(...seen)).toBe(FRP - 1);
+    // 単調増加のあと単調減少(山が1つ)=折り返している。
+    const peak = seen.indexOf(FRP - 1);
+    for (let k = 1; k <= peak; k++) expect(seen[k]).toBeGreaterThan(seen[k - 1]);
+    for (let k = peak + 1; k < seen.length; k++) expect(seen[k]).toBeLessThan(seen[k - 1]);
+  });
+
+  it('★★ピンポンでも「1歩幅=1周」(折り返す個体だけ足が倍速にならない)', () => {
+    const FRP = 9, H2 = 80, stride = H2 * ENEMY_WALK_STRIDE_PER_HEIGHT;
+    // 歩幅ちょうど進むと先頭コマへ戻る(ループと同じ約束)。
+    expect(enemyWalkFrame('e0', FRP, 0, H2, OK, 'pingpong'))
+      .toBe(enemyWalkFrame('e0', FRP, stride, H2, OK, 'pingpong'));
   });
 
   it('★★個体ごとに位相がずれる(全員が同じ足を出して行進しない)', () => {

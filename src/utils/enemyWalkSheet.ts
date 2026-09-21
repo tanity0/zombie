@@ -12,6 +12,7 @@
 //   同じく**IDから決まる固定値**なので、同じ個体は生涯ずっと同じ位相で歩く(ちらつかない)。
 import { spriteVariantIndex } from './enemyVariant';
 export { ENEMY_WALK_SHEETS, walkSheetName, walkSheetFrames } from './enemySheets';
+import { walkPlayback, type SheetPlayback } from './enemySheets';
 
 
 /**
@@ -67,10 +68,19 @@ export const canWalkAnimate = (g: EnemyWalkGate): boolean =>
  */
 export const enemyWalkFrame = (
   id: string, frames: number, distPx: number, heightPx: number, gate: EnemyWalkGate,
+  playback: SheetPlayback = 'loop',
 ): number | null => {
   if (frames <= 1 || !canWalkAnimate(gate)) return null;
   const stride = Math.max(1, heightPx * ENEMY_WALK_STRIDE_PER_HEIGHT);
+  // ★ピンポンは**1往復で1歩幅**(行き帰りで同じ絵を2度使うので、片道の歩幅は半分)。
+  // ここを揃えないと、折り返す個体だけ足が倍の速さで動く。
+  const steps = playback === 'pingpong' ? (frames - 1) * 2 : frames;
   const t = (distPx / stride + enemyWalkPhase(id, frames)) % 1;
-  const i = Math.floor(((t % 1) + 1) % 1 * frames);
+  const k = Math.floor(((t % 1) + 1) % 1 * steps);
+  const i = playback === 'pingpong' && k >= frames ? steps - k : k;
   return Math.min(frames - 1, Math.max(0, i));
 };
+
+/** その立ち絵の送り方を引く窓口(描画側が表を手写ししないため)。 */
+export const enemyWalkPlaybackFor = (idleTexName: string | null | undefined): SheetPlayback =>
+  walkPlayback(idleTexName);

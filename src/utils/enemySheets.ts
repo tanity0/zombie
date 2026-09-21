@@ -11,9 +11,30 @@
 
 /** 歩きシートを持つ立ち絵(立ち絵のテクスチャ名 → コマ数)。シート名は `<立ち絵名>-walk`。 */
 export const ENEMY_WALK_SHEETS: Readonly<Record<string, number>> = {
-  // 社長支給2026-09-20。8コマ・**前方ループ**(接地点が右へ流れ、7コマ目が0コマ目の直前へ戻る)。
+  // 社長支給2026-09-20。8コマ(1コマ 360×520→配信180×260)。
   'bat-female': 8,
+  // 社長支給2026-09-21。9コマ(1コマ 97×130)。★**縮小していない**——支給時点で既に小さく、
+  // 画面上の描画(高さ60〜90px)に対して1.4〜2.2倍しか余裕が無いため。常駐 0.43MB。
+  // ★**足元は支給時点で揃っていた**(全コマ下端y=129・絵の中心が47.5〜48.5=1px以内)。
+  'bat-male': 9,
 };
+
+/**
+ * ★コマの送り方。既定は**前方ループ**(0→末→0)。`pingpong` は 0→末→0 と折り返す
+ * (プレイヤーの5コマ歩きと同じ作法)。
+ *
+ * ★**測って決める**: 「末コマ→先頭コマ」の絵の差を、隣り合うコマの差の平均と比べる。
+ * 前方ループなら継ぎ目は隣と同じかそれ以下(女の実測 **0.68倍**)。**1を超えたら継ぎ目が跳ねる**
+ * =前方ループではない(男の実測 **1.34倍**——しかも継ぎ目が全コマ中で最大の差だった)。
+ * 男は襤褸で脚がほぼ隠れており、接地点から歩幅を読めないので、この指標で判断した。
+ */
+export type SheetPlayback = 'loop' | 'pingpong';
+export const ENEMY_WALK_PLAYBACK: Readonly<Record<string, SheetPlayback>> = {
+  'bat-male': 'pingpong',
+};
+
+export const walkPlayback = (idleTexName: string | null | undefined): SheetPlayback =>
+  (idleTexName && ENEMY_WALK_PLAYBACK[idleTexName]) || 'loop';
 
 /** 攻撃シートを持つ立ち絵(立ち絵のテクスチャ名 → コマ数)。シート名は `<立ち絵名>-attack`。 */
 export const ENEMY_ATTACK_SHEETS: Readonly<Record<string, number>> = {

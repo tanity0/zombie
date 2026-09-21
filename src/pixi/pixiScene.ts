@@ -100,7 +100,7 @@ import {
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
-import { enemyWalkFrame } from '../utils/enemyWalkSheet';
+import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
 import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
 import { attackSheetFrames, attackSheetName, hasAnimSheet, sheetFacesRight } from '../utils/enemySheets';
@@ -29648,7 +29648,8 @@ export class PixiScene {
       // 1フレームで跳ぶ距離(転移・リサイクル・弾き飛ばし)は歩幅に積まない=脚が空回りしない。
       if (step <= ENEMY_WALK_MAX_STEP_PX && !gate.pushedOrLifted) view.walkDist = (view.walkDist ?? 0) + step;
     }
-    const i = enemyWalkFrame(e.id, frames, view.walkDist ?? 0, drawnHeightPx, gate);
+    const i = enemyWalkFrame(e.id, frames, view.walkDist ?? 0, drawnHeightPx, gate,
+      enemyWalkPlaybackFor(idleTexKey));
     return i === null ? null : (slices[i] ?? null);
   }
 
