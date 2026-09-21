@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4544',
+    items: [
+      '骸骨の女も四つ足で歩くようになった',
+    ],
+  },
+  {
     version: '0.25.4543',
     items: [
       '骸骨の男が爪を掲げて引っ掻くようになった',
