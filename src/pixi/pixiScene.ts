@@ -103,7 +103,7 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
 import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, sheetHasWeapon } from '../utils/enemySheets';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
 // (手写しミラーは撤去済み。入れ子オブジェクトを参照で持つので部屋で動かした値が絵にも即効く)。
@@ -18849,8 +18849,14 @@ export class PixiScene {
         const flip = sdx >= 0;
         // ★§16-E: 溜めのあいだ(sSinceWindup < swMs)は0コマ目(爪を構えた形)で静止。
         // 溜め明けからの送りは従来(skelClawFrame=frameByHold)と1ミリも変えない。
+        // ★★攻撃シートに**爪の腕ごと**描かれている個体は、別スプライトの爪を出さない
+        // (社長支給2026-09-21「skeleton男の引っ掻き」)。出すと**爪が二本**になる。
+        // ★**VFX(下の `skelClawFxFrame`)はそのまま出す**——あれは武器ではなく
+        //   「当たった衝撃の絵」(2分類②)。消すと斬撃が読めなくなる。
+        // ★リッチ(爪の絵を共有)と骸骨(女)はシートを持たないので、従来どおり爪が出る。
+        const clawInSheet = sheetHasWeapon(this.enemyTexKey(e.type, e.id));
         const cf = skelClawFrameWithWindup(sSinceWindup, swMs, sinceImpact);
-        if (cf !== null) {
+        if (cf !== null && !clawInSheet) {
           this.drawSkelClawSprite(
             this.skelClawSprites, skelClawTexName(cf, ctr), e.id, sax, say,
             SKEL_CLAW_W_PX / SKEL_CLAW_REF_W, flip, skelClawAlpha(sinceImpact) * artFade,

@@ -62,6 +62,12 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
     expect(attackSheetFrames('bat-female')).toBeGreaterThan(1);   // シートはある
     expect(sheetHasWeapon('bat-female')).toBe(false);             // が、武器は描かれていない
     expect(sheetHasWeapon('bat-male')).toBe(true);
+    expect(sheetHasWeapon('skeleton-male')).toBe(true);           // 爪の腕ごと描かれている
+  });
+
+  it('★爪を共有する相手(リッチ・骸骨の女)は影響を受けない=従来どおり爪が出る', () => {
+    expect(sheetHasWeapon('lich-common')).toBe(false);
+    expect(sheetHasWeapon('skeleton-female')).toBe(false);
   });
 
   it('★武器ありの印を付けられるのは、攻撃シートを持つ絵だけ(付け間違いを弾く)', () => {
