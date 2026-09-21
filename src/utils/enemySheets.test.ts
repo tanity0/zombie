@@ -10,6 +10,7 @@ import {
   walkSheetName, attackSheetName, walkSheetFrames, attackSheetFrames,
   hasAnimSheet, sheetFacesRight, walkPlayback, attackImpactFrame,
   sheetHasWeapon, ENEMY_SHEET_HAS_WEAPON, ENEMY_ATTACK_IMPACT_FRAME,
+  sheetFrontOn, ENEMY_SHEET_FRONT_ON,
 } from './enemySheets';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
 
@@ -78,6 +79,23 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
       expect(sheetHasWeapon(n), n).toBe(false);             // が、爪のスプライトは止めない
     }
     expect(sheetHasWeapon('lich-common')).toBe(false);      // 爪を共有するリッチも従来どおり
+  });
+
+  // ★社長支給2026-09-21「雲歩き」(=蜘蛛の歩き)。正面向きの絵を左右反転すると、
+  // 振り向きの潰しが進む向きを変えるたびに走って**正面の絵が理由もなく捻れる**。
+  it('★★正面向きのシートはミラーしない / 横向きのシートは必ずミラーする', () => {
+    expect(sheetFrontOn('pumpkin-common')).toBe(true);
+    // 既定は「横向き」=ミラーする側。シートを持つ他の絵が黙って正面扱いになっていないこと。
+    const withSheet = [...new Set([...Object.keys(ENEMY_WALK_SHEETS), ...Object.keys(ENEMY_ATTACK_SHEETS)])];
+    const sideOn = withSheet.filter(n => !sheetFrontOn(n));
+    expect(sideOn.length, '横向きのシートが1枚も無いなら、この検査は何も言っていない').toBeGreaterThan(0);
+    for (const n of sideOn) expect(sheetFrontOn(n), n).toBe(false);
+  });
+
+  it('★正面向きの印を付けられるのは、シートを持つ絵だけ(付け間違いを弾く)', () => {
+    for (const n of Object.keys(ENEMY_SHEET_FRONT_ON)) {
+      expect(hasAnimSheet(n), n).toBe(true);
+    }
   });
 
   it('★武器ありの印を付けられるのは、攻撃シートを持つ絵だけ(付け間違いを弾く)', () => {

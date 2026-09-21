@@ -103,7 +103,7 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
 import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, sheetFrontOn, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
@@ -18241,7 +18241,10 @@ export class PixiScene {
       // ★判定は**型ではなく個体**——素材は1体ずつ届くので、同じバットでもシートのある女はミラーし、
       // まだ無い男は従来どおり(型の `faceMove` のまま)。素材が揃うたびに自動でミラー側へ移る。
       const sheetKey = this.enemyTexKey(e.type, e.id);
-      const sheetMirror = hasAnimSheet(sheetKey);
+      // ★**正面向きのシートはミラーしない**(社長支給2026-09-21「雲歩き」=蜘蛛の歩き)。
+      // 左右反転しても得るものが無く、振り向きの潰し(ENEMY_TURN_MS)が**進む向きを変えるたびに
+      // 走る**ので、正面の絵が理由もなく捻れる。横向きのシートは従来どおり必ずミラーする。
+      const sheetMirror = hasAnimSheet(sheetKey) && !sheetFrontOn(sheetKey);
       const wantFaceMove = spec.faceMove || sheetMirror;
       if (wantFaceMove) {
         const cur = view.motFace ?? 1;
