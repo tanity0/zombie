@@ -6,6 +6,7 @@ import {
   ENEMY_WALK_SHEETS, ENEMY_WALK_STRIDE_PER_HEIGHT,
 } from './enemyWalkSheet';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
+import { ENEMY_WALK_SHEETS as WALK_TABLE } from './enemySheets';
 
 const FR = ENEMY_WALK_SHEETS['bat-female'];
 
@@ -19,10 +20,12 @@ describe('★歩きシートの表', () => {
     for (const name of Object.keys(ENEMY_WALK_SHEETS)) expect(all.has(name), name).toBe(true);
   });
 
+  // ★★名前を手書きしない(2026-09-21)。素材が届くたびに落ちるため、表から導出する。
   it('表に無い立ち絵は0コマ=従来どおり立ち絵1枚', () => {
-    // ★bat-male は v0.25.4539 で歩きが入ったのでここからは外した(素材が届いた型は表に載る)。
-    expect(walkSheetFrames('zombie-common')).toBe(0);
-    expect(walkSheetFrames('skeleton-male')).toBe(0);
+    const without = [...new Set(Object.values(ENEMY_VARIANT_SETS).flat())]
+      .filter(n => !(n in WALK_TABLE));
+    expect(without.length, 'まだ歩きシートの無い絵が1つも無い').toBeGreaterThan(0);
+    for (const n of without) expect(walkSheetFrames(n), n).toBe(0);
     expect(walkSheetFrames(null)).toBe(0);
   });
 });

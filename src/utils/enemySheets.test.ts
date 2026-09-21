@@ -42,10 +42,14 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
     expect(hasAnimSheet(null)).toBe(false);
   });
 
+  // ★★名前を手書きしない(2026-09-21・3回続けて同じ壊れ方をしたため)。
+  // 素材は1体ずつ届くので、「まだシートが無い絵」を列挙すると**届くたびにテストが落ちる**
+  // (bat-male の歩き→攻撃→skeleton-male の歩き、で3回)。**表から導出する。**
   it('★シートを持たない立ち絵は従来どおり(型の設定のまま)', () => {
-    for (const n of ['zombie-common', 'skeleton-male', 'pumpkin-common', 'ghost-common']) {
-      expect(hasAnimSheet(n), n).toBe(false);
-    }
+    const withSheet = new Set([...Object.keys(ENEMY_WALK_SHEETS), ...Object.keys(ENEMY_ATTACK_SHEETS)]);
+    const without = [...new Set(Object.values(ENEMY_VARIANT_SETS).flat())].filter(n => !withSheet.has(n));
+    expect(without.length, 'まだシートの無い絵が1つも無い(この検算が空回りしている)').toBeGreaterThan(0);
+    for (const n of without) expect(hasAnimSheet(n), n).toBe(false);
   });
 
   it('男女とも攻撃シートを持つ', () => {
