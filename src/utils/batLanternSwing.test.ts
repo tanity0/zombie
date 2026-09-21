@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { variantTextureName } from './enemyVariant';
+import { variantTextureName, ENEMY_VARIANT_SETS } from './enemyVariant';
+import { attackSheetFrames } from './enemySheets';
 import {
   batLanternPose, batLanternBack, batLanternDownDefault, batLanternDownAngle,
   batSlamFrame, batSlamFrameWithWindup, batSlamTotalMs, BAT_SLAM_FRAMES, BAT_SLAM_IMPACT_FRAME,
@@ -172,17 +173,29 @@ describe('バットの炸裂シート: 構え(溜めのあいだ0コマ目で静
 describe('対象の型', () => {
   // ★★2026-09-20: 規則が変わった。**攻撃シート(武器ごと描かれた絵)を持つ個体は false**
   // ——別スプライトのランタンも出すと二本持ちになる。絵の中に武器がある個体は絵に任せる。
-  it('ランタンを振るのはバットだけ(かつ、攻撃シートを持たない個体だけ)', () => {
+  it('バット以外は振らない', () => {
     expect(usesBatLantern({ type: 'skeleton', id: 'x' })).toBe(false);
-    // 男(攻撃シート無し)=従来どおり別スプライトのランタンを振る / 女(シート有り)=振らない。
-    const male = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8']
-      .filter(id => variantTextureName('bat', id) === 'bat-male');
-    const female = ['e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8']
-      .filter(id => variantTextureName('bat', id) === 'bat-female');
-    expect(male.length, '男の個体が見つからない').toBeGreaterThan(0);
-    expect(female.length, '女の個体が見つからない').toBeGreaterThan(0);
-    for (const id of male) expect(usesBatLantern({ type: 'bat', id }), id).toBe(true);
-    for (const id of female) expect(usesBatLantern({ type: 'bat', id }), id).toBe(false);
+    expect(usesBatLantern({ type: 'zombie', id: 'x' })).toBe(false);
+  });
+
+  // ★★v0.25.4540: **男にも攻撃シートが入った**ので、いまはバットの**全個体**が
+  // 「絵の中に武器がある」側になり、別スプライトのランタンは1体も出ない。
+  // ⇒ テストは**規則**を固定する(「シートを持つ個体は出さない」)。個体名の当てはめは、
+  //   素材が揃うたびに変わるので当てにしない。
+  it('★★攻撃シートを持つ個体は、別スプライトのランタンを出さない(二本持ちを作らない)', () => {
+    const ids = Array.from({ length: 24 }, (_, k) => `e${k}`);
+    let checked = 0;
+    for (const id of ids) {
+      const tex = variantTextureName('bat', id);
+      const hasSheet = attackSheetFrames(tex) > 1;
+      expect(usesBatLantern({ type: 'bat', id }), `${id}(${tex})`).toBe(!hasSheet);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('★いまのバットは男女ともシート持ち=ランタンのスプライトは1体も出ない', () => {
+    for (const tex of ENEMY_VARIANT_SETS.bat) expect(attackSheetFrames(tex), tex).toBeGreaterThan(1);
   });
 });
 

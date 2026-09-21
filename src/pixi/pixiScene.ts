@@ -103,7 +103,7 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
 import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
-import { attackSheetFrames, attackSheetName, hasAnimSheet, sheetFacesRight } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight } from '../utils/enemySheets';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
 // (手写しミラーは撤去済み。入れ子オブジェクトを参照で持つので部屋で動かした値が絵にも即効く)。
@@ -29614,7 +29614,7 @@ export class PixiScene {
   private enemyAttackTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     const frames = attackSheetFrames(idleTexKey);
     if (frames <= 1) return null;
-    const i = enemyAttackFrameFor(e, frames, gameTime);
+    const i = enemyAttackFrameFor(e, frames, gameTime, attackImpactFrame(idleTexKey));
     if (i === null) return null;
     const slices = this.sheetSlices(attackSheetName(idleTexKey), frames);
     return slices ? (slices[i] ?? null) : null;

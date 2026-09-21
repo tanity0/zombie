@@ -38,8 +38,27 @@ export const walkPlayback = (idleTexName: string | null | undefined): SheetPlayb
 
 /** 攻撃シートを持つ立ち絵(立ち絵のテクスチャ名 → コマ数)。シート名は `<立ち絵名>-attack`。 */
 export const ENEMY_ATTACK_SHEETS: Readonly<Record<string, number>> = {
-  // 社長支給2026-09-20「武器を振り下ろす絵」。6コマ。足元を揃えてある(v0.25.4536)。
+  // 社長支給2026-09-20「武器を振り下ろす絵」。6コマ(1コマ 552×514→配信276×257)。
+  // 足元が最大134pxずれていたので相互相関で揃えた(v0.25.4536)。
   'bat-female': 6,
+  // 社長支給2026-09-21。7コマ(1コマ 123×130)。★**縮小していない**(歩きと同じ理由)。
+  // ★**足元は支給時点で揃っていた**(全コマ下端y=129・絵の中心が61.0〜61.5=0.5px以内)。
+  'bat-male': 7,
+};
+
+/**
+ * ★**当たる瞬間のコマ**(掟③「消え切る時刻 = 当たる時刻」)。
+ * 既定は **末尾から2コマ目**——支給された2枚ともこの形だった
+ * (最後の1コマは**振り抜き**=当たった後の余韻。無いと「当たって終わり」で慣性が切れる)。
+ * 違う切り方のシートが来たらここへ1行足す。
+ */
+export const ENEMY_ATTACK_IMPACT_FRAME: Readonly<Record<string, number>> = {};
+
+export const attackImpactFrame = (idleTexName: string | null | undefined): number => {
+  const n = attackSheetFrames(idleTexName);
+  if (n <= 1) return 0;
+  const over = idleTexName ? ENEMY_ATTACK_IMPACT_FRAME[idleTexName] : undefined;
+  return over !== undefined ? Math.max(1, Math.min(n - 1, over)) : n - 2;
 };
 
 /**

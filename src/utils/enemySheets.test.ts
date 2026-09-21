@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ENEMY_WALK_SHEETS, ENEMY_ATTACK_SHEETS, ENEMY_SHEET_FACES_RIGHT,
   walkSheetName, attackSheetName, walkSheetFrames, attackSheetFrames,
-  hasAnimSheet, sheetFacesRight, walkPlayback,
+  hasAnimSheet, sheetFacesRight, walkPlayback, attackImpactFrame,
 } from './enemySheets';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
 
@@ -44,6 +44,20 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
   it('★シートを持たない立ち絵は従来どおり(型の設定のまま)', () => {
     for (const n of ['zombie-common', 'skeleton-male', 'pumpkin-common', 'ghost-common']) {
       expect(hasAnimSheet(n), n).toBe(false);
+    }
+  });
+
+  it('★★男にも攻撃シートが入った=別スプライトのランタンは両方とも出さない', () => {
+    expect(attackSheetFrames('bat-female')).toBeGreaterThan(1);
+    expect(attackSheetFrames('bat-male')).toBeGreaterThan(1);
+  });
+
+  it('★当たるコマの既定は末尾から2コマ目(最後は振り抜き)', () => {
+    for (const n of Object.keys(ENEMY_ATTACK_SHEETS)) {
+      expect(attackImpactFrame(n), n).toBe(ENEMY_ATTACK_SHEETS[n] - 2);
+      // 当たるコマの後に必ず1コマ以上ある(=振り抜きが存在する)。
+      expect(attackImpactFrame(n), n).toBeLessThan(ENEMY_ATTACK_SHEETS[n] - 1 + 1);
+      expect(ENEMY_ATTACK_SHEETS[n] - 1 - attackImpactFrame(n)).toBeGreaterThanOrEqual(1);
     }
   });
 

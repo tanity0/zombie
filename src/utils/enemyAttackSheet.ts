@@ -24,20 +24,26 @@ import type { Enemy } from '../types/game';
  */
 export interface AttackFrameSpan { frame: number; untilMs: number }
 
-export const attackFrameSpans = (windupMs: number, biteMs: number, settleMs: number): AttackFrameSpan[] => {
+export const attackFrameSpans = (
+  frames: number, impact: number, windupMs: number, biteMs: number, settleMs: number,
+): AttackFrameSpan[] => {
   const still = Math.min(windupMs, BAT_WINDUP_STILL_MS);   // 0コマ目=構えの持ち
   const rise = Math.max(1, windupMs - still);              // 振り上げに使える残り
   const hit = windupMs + biteMs;                           // ★命中が解決する瞬間
-  // 振り下ろし(4コマ目)は**一番短い**=速い。振りの窓の 3/10 を当てる。
+  // 振り(`impact`コマ)は**一番短い**=速い。振りの窓の 3/10 を当てる。
   const slam = Math.max(1, Math.round(biteMs * 0.3));
-  return [
-    { frame: 0, untilMs: still },                 // 構え(止まる)
-    { frame: 1, untilMs: still + rise * 0.5 },    // 振り上げ前半
-    { frame: 2, untilMs: windupMs },              // 振り上げ後半
-    { frame: 3, untilMs: hit - slam },            // 頭上で溜め切り(一番長く持つ=読ませる)
-    { frame: 4, untilMs: hit },                   // ★振り下ろし: ここが終わる瞬間に当たる
-    { frame: 5, untilMs: hit + settleMs },        // 振り抜き(余韻)
-  ];
+  const out: AttackFrameSpan[] = [{ frame: 0, untilMs: still }];   // 構え(止まる)
+  // 1 .. impact-2 = 振り上げ。溜めの残りを等分する(ここだけは等分でよい=連続した振り上げ)。
+  const riseCount = Math.max(0, impact - 2);
+  for (let k = 1; k <= riseCount; k++) out.push({ frame: k, untilMs: still + rise * (k / riseCount) });
+  // impact-1 = 溜め切り(一番長く持つ=読ませる)。★riseCount=0 の時はこのコマが溜めを全部持つ。
+  out.push({ frame: impact - 1, untilMs: hit - slam });
+  // impact = 振り。★ここが終わる瞬間に当たる。
+  out.push({ frame: impact, untilMs: hit });
+  // impact+1 .. 末尾 = 振り抜き(余韻)。等分。
+  const tail = frames - 1 - impact;
+  for (let k = 1; k <= tail; k++) out.push({ frame: impact + k, untilMs: hit + settleMs * (k / tail) });
+  return out;
 };
 
 /** 余韻の長さ。★ランタンの振り抜き(`BAT_LANTERN_SETTLE_MS`)と**同じ値を引く**
@@ -50,10 +56,10 @@ export const ATTACK_SETTLE_MS = BAT_LANTERN_SETTLE_MS;
  */
 export const enemyAttackFrame = (
   frames: number, sinceMs: number, windupMs: number, biteMs: number,
-  settleMs: number = ATTACK_SETTLE_MS,
+  settleMs: number = ATTACK_SETTLE_MS, impact: number = frames - 2,
 ): number | null => {
   if (frames <= 1 || !(sinceMs >= 0)) return null;
-  const spans = attackFrameSpans(windupMs, biteMs, settleMs);
+  const spans = attackFrameSpans(frames, Math.max(1, Math.min(frames - 1, impact)), windupMs, biteMs, settleMs);
   for (const s of spans) if (sinceMs < s.untilMs) return Math.min(frames - 1, s.frame);
   return null;   // 余韻も過ぎた=技は終わっている
 };
@@ -61,8 +67,10 @@ export const enemyAttackFrame = (
 /** その個体が「いま攻撃シートを出すべきか」。尺は `biteSpecFor` から引く(手写ししない)。 */
 export const enemyAttackFrameFor = (
   e: Pick<Enemy, 'type' | 'biteAt' | 'chaffMove' | 'aiPhase'>, frames: number, gameTime: number,
+  impact: number = frames - 2,
 ): number | null => {
   if (e.biteAt === undefined || e.biteAt <= 0) return null;
   const spec = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
-  return enemyAttackFrame(frames, gameTime - e.biteAt, spec.windupMs, spec.biteMs);
+  return enemyAttackFrame(frames, gameTime - e.biteAt, spec.windupMs, spec.biteMs,
+    ATTACK_SETTLE_MS, impact);
 };
