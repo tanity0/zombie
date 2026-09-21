@@ -12,7 +12,7 @@
 // 叩いた後は**減衰する揺れ**で止まる(対称なS字=何にも当たっていない動き、にしない)。
 import type { Enemy } from '../types/game';
 import { biteSpecFor, bitePhaseOf } from './enemyBite';
-import { attackSheetFrames } from './enemyAttackSheet';
+import { attackSheetFrames } from './enemySheets';
 import { variantTextureName } from './enemyVariant';
 import { frameWithWindupHold } from './fxFrameClock';
 

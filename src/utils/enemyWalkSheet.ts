@@ -11,24 +11,8 @@
 //   行進に見える(CLAUDE.md「均質は"AIっぽさ"の筆頭」)。`keepSpin`/`spriteVariantIndex` と
 //   同じく**IDから決まる固定値**なので、同じ個体は生涯ずっと同じ位相で歩く(ちらつかない)。
 import { spriteVariantIndex } from './enemyVariant';
+export { ENEMY_WALK_SHEETS, walkSheetName, walkSheetFrames } from './enemySheets';
 
-/**
- * 歩きシートを持つ立ち絵の表(立ち絵のテクスチャ名 → コマ数)。
- * シートのテクスチャ名は `<立ち絵名>-walk`(`walkSheetName`)。
- * ★素材を足す時はここへ1行。`pixiTextures` のロード登録も揃える(アスペクトは登録しない)。
- */
-export const ENEMY_WALK_SHEETS: Readonly<Record<string, number>> = {
-  // 社長支給2026-09-20。8コマ。実測で**前方ループ**(ピンポンではない):
-  // 接地点が 72..147 → 104..175 → … → 192..243 と右へ流れ、5コマ目で反対の足が着き、
-  // 7コマ目が0コマ目の直前へ戻る=0→7→0で繋がる。
-  'bat-female': 8,
-};
-
-export const walkSheetName = (idleTexName: string): string => `${idleTexName}-walk`;
-
-/** その立ち絵に歩きシートがあるか(無ければ従来どおり立ち絵1枚)。 */
-export const walkSheetFrames = (idleTexName: string | null | undefined): number =>
-  (idleTexName && ENEMY_WALK_SHEETS[idleTexName]) || 0;
 
 /**
  * ★★**位相は「時計」ではなく「進んだ距離」で刻む**(クリエイティブ監査2026-09-20 #3の是正)。

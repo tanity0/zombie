@@ -100,8 +100,10 @@ import {
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
-import { enemyWalkFrame, walkSheetFrames, walkSheetName } from '../utils/enemyWalkSheet';
-import { enemyAttackFrameFor, attackSheetFrames, attackSheetName } from '../utils/enemyAttackSheet';
+import { enemyWalkFrame } from '../utils/enemyWalkSheet';
+import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
+import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
+import { attackSheetFrames, attackSheetName, hasAnimSheet, sheetFacesRight } from '../utils/enemySheets';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
 // (手写しミラーは撤去済み。入れ子オブジェクトを参照で持つので部屋で動かした値が絵にも即効く)。
@@ -18221,7 +18223,16 @@ export class PixiScene {
       // ③振り向き: 絵が明確に横向きの個体だけ、移動Xの向きへミラー。素材は左向き=+1が素。
       // 反転はENEMY_TURN_MSかけて 旧→0→新 とscale.xを潰す=「体を捻って向き直る」。
       // しきい値25px/sのヒステリシス(currを既定にする)で、その場の揺れではパタパタしない。
-      if (spec.faceMove) {
+      // ★★社長裁定2026-09-21「**全敵、アニメーション入れる予定なのでミラーさせます /
+      // 少しずつ揃えていくので個々実装**」: **動く絵(歩き/攻撃シート)を持つ個体は必ずミラーする。**
+      // シートは明確に横向きに描かれているので、ミラーしないと**脚も武器の振りも進行方向と逆**になる
+      // (クリエイティブ監査2026-09-20 #2「半分の時間ムーンウォーク」)。
+      // ★判定は**型ではなく個体**——素材は1体ずつ届くので、同じバットでもシートのある女はミラーし、
+      // まだ無い男は従来どおり(型の `faceMove` のまま)。素材が揃うたびに自動でミラー側へ移る。
+      const sheetKey = this.enemyTexKey(e.type, e.id);
+      const sheetMirror = hasAnimSheet(sheetKey);
+      const wantFaceMove = spec.faceMove || sheetMirror;
+      if (wantFaceMove) {
         const cur = view.motFace ?? 1;
         const vx = view.motVx ?? 0;
         // ★ノックバック中+直後180msは向きを変えない(社長指示v0.25.2900「ノックバックで振り向くのやめたい」)。
@@ -18229,7 +18240,9 @@ export class PixiScene {
         // 180msは平滑済みmotVxからノックバック成分が抜けるまでの猶予(平滑k=dt/130の減衰時間)。
         const kbFacingLock = e.knockbackUntil !== undefined && now < e.knockbackUntil + 180;
         // 素材の素の向き(既定=左向き)。右向き素材(faceRight)はミラーの向きが反転する。
-        const toRight = spec.faceRight ? 1 : -1;
+        // 素材の素の向き(既定=左向き)。シートを持つ個体はシート側の向きが正
+        // (立ち絵とシートで向きが違う場合があるため。今の bat-female はどちらも左向き)。
+        const toRight = (sheetMirror ? sheetFacesRight(sheetKey) : spec.faceRight) ? 1 : -1;
         const want = kbFacingLock ? cur : vx > 25 ? toRight : vx < -25 ? -toRight : cur;
         if (want !== cur) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
         const t = view.motFaceAt !== undefined ? Math.min(1, (now - view.motFaceAt) / ENEMY_TURN_MS) : 1;

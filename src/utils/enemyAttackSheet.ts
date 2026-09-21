@@ -11,17 +11,9 @@
 // 構えは長く持ち、振り上げは速く、**振り下ろしは一番短い**(=速い)。現実の振りの形。
 import { biteSpecFor, BAT_WINDUP_STILL_MS } from './enemyBite';
 import { BAT_LANTERN_SETTLE_MS } from './batLanternSwing';
+export { ENEMY_ATTACK_SHEETS, attackSheetName, attackSheetFrames } from './enemySheets';
 import type { Enemy } from '../types/game';
 
-/** 攻撃シートを持つ立ち絵の表(立ち絵のテクスチャ名 → コマ数)。シート名は `<立ち絵名>-attack`。 */
-export const ENEMY_ATTACK_SHEETS: Readonly<Record<string, number>> = {
-  'bat-female': 6,
-};
-
-export const attackSheetName = (idleTexName: string): string => `${idleTexName}-attack`;
-
-export const attackSheetFrames = (idleTexName: string | null | undefined): number =>
-  (idleTexName && ENEMY_ATTACK_SHEETS[idleTexName]) || 0;
 
 /**
  * ★コマの割り付け(6コマ)。**絵の読み**(社長支給の並び)に合わせてある:
