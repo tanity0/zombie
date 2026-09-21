@@ -16,6 +16,12 @@ const HIT = W + B;                       // ★命中が解決する瞬間
 const IMP = attackImpactFrame('bat-female');   // 当たるコマ(既定=末尾から2コマ目)
 const FR_M = ENEMY_ATTACK_SHEETS['bat-male'];
 const IMP_M = attackImpactFrame('bat-male');
+// 骸骨(女)= 9コマで**当たるコマだけ既定から外した**唯一の絵(振り下ろし6・戻り7,8)。
+const FR_SF = ENEMY_ATTACK_SHEETS['skeleton-female'];
+const IMP_SF = attackImpactFrame('skeleton-female');
+const SPEC_S = biteSpecFor('skeleton');
+const W_S = SPEC_S.windupMs, B_S = SPEC_S.biteMs;
+const HIT_S = W_S + B_S;
 
 describe('★表', () => {
   it('シート名は<立ち絵名>-attack', () => expect(attackSheetName('bat-female')).toBe('bat-female-attack'));
@@ -43,6 +49,30 @@ describe('★★掟③「消え切る時刻 = 当たる時刻」', () => {
     // 振り下ろしの窓は振りの一部でしかない=頭上の溜めが大半を持つ(読ませる時間)。
     expect(slam.untilMs - hold.untilMs).toBeLessThan(B * 0.5);
     expect(slam.untilMs - hold.untilMs).toBeGreaterThan(0);
+  });
+});
+
+describe('★★掟③: 当たるコマを既定から外しても成り立つ(骸骨の女=9コマ・振り下ろしは6)', () => {
+  it('表の指定がそのまま効いている(既定の7ではない)', () => {
+    expect(IMP_SF).toBe(6);
+    expect(IMP_SF).not.toBe(FR_SF - 2);
+  });
+  it('★振り下ろしのコマは、命中が解決する瞬間にちょうど終わる', () => {
+    expect(enemyAttackFrame(FR_SF, HIT_S - 1, W_S, B_S, ATTACK_SETTLE_MS, IMP_SF)).toBe(IMP_SF);
+    expect(enemyAttackFrame(FR_SF, HIT_S, W_S, B_S, ATTACK_SETTLE_MS, IMP_SF)).toBe(IMP_SF + 1);
+  });
+  it('★戻りが2コマとも出る(当たった後に振り抜きが2コマある切り方)', () => {
+    const seen = new Set<number>();
+    for (let t = HIT_S; t < HIT_S + ATTACK_SETTLE_MS; t += 2) {
+      const i = enemyAttackFrame(FR_SF, t, W_S, B_S, ATTACK_SETTLE_MS, IMP_SF);
+      if (i !== null) seen.add(i);
+    }
+    expect(seen.has(7)).toBe(true);
+    expect(seen.has(8)).toBe(true);
+  });
+  it('溜め明けには振り上げ切っている(5コマ目)', () => {
+    expect(enemyAttackFrame(FR_SF, 0, W_S, B_S, ATTACK_SETTLE_MS, IMP_SF)).toBe(0);
+    expect(enemyAttackFrame(FR_SF, W_S, W_S, B_S, ATTACK_SETTLE_MS, IMP_SF)).toBe(IMP_SF - 1);
   });
 });
 

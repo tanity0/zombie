@@ -60,6 +60,13 @@ export const ENEMY_ATTACK_SHEETS: Readonly<Record<string, number>> = {
   // 読み: 0,1=構え / 2,3=引き / **4,5=爪を高く掲げる(溜め切り)** / 6=振り下ろし途中 /
   //       **7=振り切り(当たる)** / 8=戻り。⇒ **当たるコマは既定(末尾から2コマ目=7)のままで合う。**
   'skeleton-male': 9,
+  // 社長支給2026-09-21「skeleton女の子引っ掻き」。9コマ(1コマ 142×130)。常駐 0.63MB。縮小していない。
+  // ★**揃っていた**(全コマ下端y=129・絵の中心が69.5〜70.5=1px以内)。
+  // 読み: 0,1=構え / 2=前へ踏み込む / 3,4=腕を上げる / **5=振り上げ切り** /
+  //       **6=振り下ろし(当たる)** / 7,8=戻り。
+  // ⇒ ★**当たるコマは 6**(既定の「末尾から2コマ目=7」ではない)。**戻りが2コマある**切り方なので、
+  //    既定のままだと**振り切った後の絵で当たる**=掟③(消え切る時刻=当たる時刻)が嘘になる。下の表で指定した。
+  'skeleton-female': 9,
 };
 
 /**
@@ -68,7 +75,10 @@ export const ENEMY_ATTACK_SHEETS: Readonly<Record<string, number>> = {
  * (最後の1コマは**振り抜き**=当たった後の余韻。無いと「当たって終わり」で慣性が切れる)。
  * 違う切り方のシートが来たらここへ1行足す。
  */
-export const ENEMY_ATTACK_IMPACT_FRAME: Readonly<Record<string, number>> = {};
+export const ENEMY_ATTACK_IMPACT_FRAME: Readonly<Record<string, number>> = {
+  // 骸骨(女)は**戻りが2コマ**(7,8)ある切り方。振り下ろしは6コマ目。
+  'skeleton-female': 6,
+};
 
 /**
  * ★★**そのシートが「武器ごと」描かれているか**(社長報告2026-09-21「コウモリ女の攻撃時に武器が消えてる」)。
@@ -90,6 +100,9 @@ export const ENEMY_SHEET_HAS_WEAPON: Readonly<Record<string, boolean>> = {
   // ⇒ 別スプライトの**爪**は出さない。★ただし**斬撃のVFXは出す**——あれは武器ではなく
   //   「当たった衝撃の絵」(CLAUDE.md 攻撃ヴィジュアルの2分類②)なので、消すと斬撃が読めなくなる。
   'skeleton-male': true,
+  // 骸骨(女)も同じく**爪の腕ごと**描かれている(4,5コマ目で開いた指を高く掲げ、6コマ目で振り下ろす)。
+  // 扱いは男と同じ——**爪のスプライトは出さない / 斬撃のVFXは出す**。
+  'skeleton-female': true,
 };
 
 export const sheetHasWeapon = (idleTexName: string | null | undefined): boolean =>

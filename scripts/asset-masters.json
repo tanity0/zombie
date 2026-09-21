@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "822 files / 復号後 約737MB",
+ "generatedFor": "823 files / 復号後 約737MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3781,6 +3781,12 @@
    "h": 1254,
    "bytes": 743127,
    "sha": "cd34928c0a7a1f57"
+  },
+  "sprites/skeleton-female-attack.png": {
+   "w": 1278,
+   "h": 130,
+   "bytes": 157568,
+   "sha": "5c640a739e426ba3"
   },
   "sprites/skeleton-female-walk.png": {
    "w": 1035,

@@ -9,7 +9,7 @@ import {
   ENEMY_WALK_SHEETS, ENEMY_ATTACK_SHEETS, ENEMY_SHEET_FACES_RIGHT,
   walkSheetName, attackSheetName, walkSheetFrames, attackSheetFrames,
   hasAnimSheet, sheetFacesRight, walkPlayback, attackImpactFrame,
-  sheetHasWeapon, ENEMY_SHEET_HAS_WEAPON,
+  sheetHasWeapon, ENEMY_SHEET_HAS_WEAPON, ENEMY_ATTACK_IMPACT_FRAME,
 } from './enemySheets';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
 
@@ -63,11 +63,12 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
     expect(sheetHasWeapon('bat-female')).toBe(false);             // が、武器は描かれていない
     expect(sheetHasWeapon('bat-male')).toBe(true);
     expect(sheetHasWeapon('skeleton-male')).toBe(true);           // 爪の腕ごと描かれている
+    expect(sheetHasWeapon('skeleton-female')).toBe(true);         // 女も爪の腕ごと描かれている
   });
 
-  it('★爪を共有する相手(リッチ・骸骨の女)は影響を受けない=従来どおり爪が出る', () => {
+  it('★爪を共有する相手(リッチ)は影響を受けない=従来どおり爪が出る', () => {
+    expect(attackSheetFrames('lich-common')).toBeLessThanOrEqual(1);  // シートを持たない
     expect(sheetHasWeapon('lich-common')).toBe(false);
-    expect(sheetHasWeapon('skeleton-female')).toBe(false);
   });
 
   it('★武器ありの印を付けられるのは、攻撃シートを持つ絵だけ(付け間違いを弾く)', () => {
@@ -76,12 +77,29 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
     }
   });
 
-  it('★当たるコマの既定は末尾から2コマ目(最後は振り抜き)', () => {
-    for (const n of Object.keys(ENEMY_ATTACK_SHEETS)) {
+  it('★当たるコマの既定は末尾から2コマ目(指定が無い絵だけ)', () => {
+    const defaulted = Object.keys(ENEMY_ATTACK_SHEETS).filter(n => !(n in ENEMY_ATTACK_IMPACT_FRAME));
+    expect(defaulted.length).toBeGreaterThan(0);   // 既定の絵が0枚になったらこのテストは意味を失う
+    for (const n of defaulted) {
       expect(attackImpactFrame(n), n).toBe(ENEMY_ATTACK_SHEETS[n] - 2);
-      // 当たるコマの後に必ず1コマ以上ある(=振り抜きが存在する)。
-      expect(attackImpactFrame(n), n).toBeLessThan(ENEMY_ATTACK_SHEETS[n] - 1 + 1);
-      expect(ENEMY_ATTACK_SHEETS[n] - 1 - attackImpactFrame(n)).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  // ★掟③(消え切る時刻=当たる時刻)を絵の側から支える不変条件。指定があってもなくても成り立つ。
+  it('★★当たるコマの後には必ず振り抜きが残る / 前には必ず溜めがある', () => {
+    for (const n of Object.keys(ENEMY_ATTACK_SHEETS)) {
+      const frames = ENEMY_ATTACK_SHEETS[n];
+      const impact = attackImpactFrame(n);
+      expect(frames - 1 - impact, `${n} の振り抜き`).toBeGreaterThanOrEqual(1);
+      expect(impact, `${n} の溜め`).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('★当たるコマの指定は、そのシートのコマ数の内側にある', () => {
+    for (const [n, i] of Object.entries(ENEMY_ATTACK_IMPACT_FRAME)) {
+      expect(ENEMY_ATTACK_SHEETS[n], `${n} は攻撃シートを持つ`).toBeGreaterThan(1);
+      expect(i, n).toBeGreaterThanOrEqual(0);
+      expect(i, n).toBeLessThan(ENEMY_ATTACK_SHEETS[n]);
     }
   });
 
