@@ -12,7 +12,7 @@
 // 叩いた後は**減衰する揺れ**で止まる(対称なS字=何にも当たっていない動き、にしない)。
 import type { Enemy } from '../types/game';
 import { biteSpecFor, bitePhaseOf } from './enemyBite';
-import { attackSheetFrames } from './enemySheets';
+import { sheetHasWeapon } from './enemySheets';
 import { variantTextureName } from './enemyVariant';
 import { frameWithWindupHold } from './fxFrameClock';
 
@@ -164,14 +164,16 @@ export const batSlamCounterable = (e: Enemy): boolean =>
 /**
  * この敵が**別スプライトの**ランタンを振るか。
  *
- * ★★**攻撃シートを持つ個体は false**(社長支給2026-09-20「武器を振り下ろす絵」)。
- * あのシートは**武器を持った腕ごと描かれている**ので、別スプライトのランタンも出すと
- * **二本持ち**になる。絵の中に武器がある個体は、絵に任せる。
+ * ★★**「武器ごと描かれたシート」を持つ個体だけ false**。
+ * そのシートは武器を持った腕ごと描かれているので、別スプライトも出すと**二本持ち**になる。
+ * ★**「シートがあるか」では判定しない**(社長報告2026-09-21「コウモリ女の攻撃時に武器が消えてる」)。
+ * 女のシートは**素手で掴む絵**で武器は描かれていない——そこを推測で決めつけて消した結果、
+ * **女の攻撃から武器が丸ごと消えた**。判定は `ENEMY_SHEET_HAS_WEAPON` の明示だけを見る。
  * ★炸裂(`bat-slam`)は**武器ではなく当たった衝撃の絵**なので、こちらは従来どおり出す
  * (CLAUDE.md 攻撃ヴィジュアルの2分類: ①武器=判定に揃える / ②派手さ=大きく出す)。
  */
 export const usesBatLantern = (e: Pick<Enemy, 'type' | 'id'>): boolean =>
-  e.type === 'bat' && attackSheetFrames(variantTextureName('bat', e.id)) <= 1;
+  e.type === 'bat' && !sheetHasWeapon(variantTextureName('bat', e.id));
 
 /** 噛みつきの尺(型と技から引く)。描画側が手写ししないための薄い窓口。 */
 export const batBiteTiming = (e: Enemy): { windupMs: number; biteMs: number } => {

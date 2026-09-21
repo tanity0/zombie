@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { variantTextureName, ENEMY_VARIANT_SETS } from './enemyVariant';
-import { attackSheetFrames } from './enemySheets';
+import { attackSheetFrames, sheetHasWeapon } from './enemySheets';
 import {
   batLanternPose, batLanternBack, batLanternDownDefault, batLanternDownAngle,
   batSlamFrame, batSlamFrameWithWindup, batSlamTotalMs, BAT_SLAM_FRAMES, BAT_SLAM_IMPACT_FRAME,
@@ -178,24 +178,42 @@ describe('対象の型', () => {
     expect(usesBatLantern({ type: 'zombie', id: 'x' })).toBe(false);
   });
 
-  // ★★v0.25.4540: **男にも攻撃シートが入った**ので、いまはバットの**全個体**が
-  // 「絵の中に武器がある」側になり、別スプライトのランタンは1体も出ない。
-  // ⇒ テストは**規則**を固定する(「シートを持つ個体は出さない」)。個体名の当てはめは、
-  //   素材が揃うたびに変わるので当てにしない。
-  it('★★攻撃シートを持つ個体は、別スプライトのランタンを出さない(二本持ちを作らない)', () => {
+  // ★★社長報告2026-09-21「コウモリ女の攻撃時に武器が消えてる」の再発防止。
+  // 旧実装は「**攻撃シートがある**=武器も描かれている」と決めつけて別スプライトを消していたが、
+  // **女のシートは素手で掴む絵**だった(ぶら下がる小さなランタンは体の装飾)。
+  // ⇒ 判定は `ENEMY_SHEET_HAS_WEAPON` の**明示**だけを見る。
+  it('★★「武器ごと描かれたシート」を持つ個体だけ、別スプライトを出さない', () => {
     const ids = Array.from({ length: 24 }, (_, k) => `e${k}`);
-    let checked = 0;
     for (const id of ids) {
       const tex = variantTextureName('bat', id);
-      const hasSheet = attackSheetFrames(tex) > 1;
-      expect(usesBatLantern({ type: 'bat', id }), `${id}(${tex})`).toBe(!hasSheet);
-      checked++;
+      expect(usesBatLantern({ type: 'bat', id }), `${id}(${tex})`).toBe(!sheetHasWeapon(tex));
     }
-    expect(checked).toBeGreaterThan(0);
   });
 
-  it('★いまのバットは男女ともシート持ち=ランタンのスプライトは1体も出ない', () => {
-    for (const tex of ENEMY_VARIANT_SETS.bat) expect(attackSheetFrames(tex), tex).toBeGreaterThan(1);
+  it('★★女は攻撃シートを持つが、武器は別スプライト=消えてはいけない', () => {
+    expect(attackSheetFrames('bat-female'), '女は攻撃シートを持つ').toBeGreaterThan(1);
+    expect(sheetHasWeapon('bat-female'), '女のシートに武器は描かれていない').toBe(false);
+    const female = Array.from({ length: 24 }, (_, k) => `e${k}`)
+      .filter(id => variantTextureName('bat', id) === 'bat-female');
+    expect(female.length, '女の個体が見つからない').toBeGreaterThan(0);
+    for (const id of female) expect(usesBatLantern({ type: 'bat', id }), id).toBe(true);
+  });
+
+  it('男はシートに武器が描かれている=別スプライトを出さない', () => {
+    expect(sheetHasWeapon('bat-male')).toBe(true);
+    const male = Array.from({ length: 24 }, (_, k) => `e${k}`)
+      .filter(id => variantTextureName('bat', id) === 'bat-male');
+    expect(male.length, '男の個体が見つからない').toBeGreaterThan(0);
+    for (const id of male) expect(usesBatLantern({ type: 'bat', id }), id).toBe(false);
+  });
+
+  it('★既定は「描かれていない」=新しいシートを足しても武器は消えない(安全な側)', () => {
+    for (const tex of ENEMY_VARIANT_SETS.bat) {
+      if (tex === 'bat-male') continue;
+      expect(sheetHasWeapon(tex), tex).toBe(false);
+    }
+    expect(sheetHasWeapon('zombie-common')).toBe(false);
+    expect(sheetHasWeapon(null)).toBe(false);
   });
 });
 

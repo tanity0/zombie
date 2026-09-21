@@ -9,6 +9,7 @@ import {
   ENEMY_WALK_SHEETS, ENEMY_ATTACK_SHEETS, ENEMY_SHEET_FACES_RIGHT,
   walkSheetName, attackSheetName, walkSheetFrames, attackSheetFrames,
   hasAnimSheet, sheetFacesRight, walkPlayback, attackImpactFrame,
+  sheetHasWeapon, ENEMY_SHEET_HAS_WEAPON,
 } from './enemySheets';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
 
@@ -47,9 +48,22 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
     }
   });
 
-  it('★★男にも攻撃シートが入った=別スプライトのランタンは両方とも出さない', () => {
+  it('男女とも攻撃シートを持つ', () => {
     expect(attackSheetFrames('bat-female')).toBeGreaterThan(1);
     expect(attackSheetFrames('bat-male')).toBeGreaterThan(1);
+  });
+
+  // ★★社長報告2026-09-21「コウモリ女の攻撃時に武器が消えてる」の再発防止。
+  it('★★「シートがある」と「シートに武器が描かれている」は別の表(混ぜない)', () => {
+    expect(attackSheetFrames('bat-female')).toBeGreaterThan(1);   // シートはある
+    expect(sheetHasWeapon('bat-female')).toBe(false);             // が、武器は描かれていない
+    expect(sheetHasWeapon('bat-male')).toBe(true);
+  });
+
+  it('★武器ありの印を付けられるのは、攻撃シートを持つ絵だけ(付け間違いを弾く)', () => {
+    for (const n of Object.keys(ENEMY_SHEET_HAS_WEAPON)) {
+      expect(attackSheetFrames(n), n).toBeGreaterThan(1);
+    }
   });
 
   it('★当たるコマの既定は末尾から2コマ目(最後は振り抜き)', () => {

@@ -54,6 +54,27 @@ export const ENEMY_ATTACK_SHEETS: Readonly<Record<string, number>> = {
  */
 export const ENEMY_ATTACK_IMPACT_FRAME: Readonly<Record<string, number>> = {};
 
+/**
+ * ★★**そのシートが「武器ごと」描かれているか**(社長報告2026-09-21「コウモリ女の攻撃時に武器が消えてる」)。
+ *
+ * ★**既定は false = 描かれていない**。true にした個体だけ、別スプライトの武器を出さない
+ * (絵とスプライトで**二本持ち**になるため)。
+ *
+ * ★**既定を false にした理由**: 設計者は v0.25.4537 で「シートがある=武器も描かれている」と
+ * **推測で決めつけ**、女の別スプライトのランタンを消した。**実際には女のシートは素手で掴む絵**で、
+ * ぶら下がっている小さなランタンは**体の装飾**だった。結果、**女の攻撃から武器が丸ごと消えた**。
+ * ⇒ 推測で消さない。**「武器が描かれている」とはっきり見えたシートだけ true にする。**
+ * 間違えた時、false なら「二本持ち」(気づける)、true なら「消える」(気づきにくい)。**安全な側は false。**
+ */
+export const ENEMY_SHEET_HAS_WEAPON: Readonly<Record<string, boolean>> = {
+  // 男のシートは**刃と振りの弧**がはっきり描かれている(血しぶきも絵に入っている)。
+  'bat-male': true,
+  // 女のシートは**素手の掴み**。武器は別スプライト(ランタン)が担当する。
+};
+
+export const sheetHasWeapon = (idleTexName: string | null | undefined): boolean =>
+  !!(idleTexName && ENEMY_SHEET_HAS_WEAPON[idleTexName]);
+
 export const attackImpactFrame = (idleTexName: string | null | undefined): number => {
   const n = attackSheetFrames(idleTexName);
   if (n <= 1) return 0;
