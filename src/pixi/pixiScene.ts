@@ -103,7 +103,8 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
 import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, shotSheetFrames, shotSheetName } from '../utils/enemySheets';
+import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
 // (手写しミラーは撤去済み。入れ子オブジェクトを参照で持つので部屋で動かした値が絵にも即効く)。
@@ -17734,7 +17735,8 @@ export class PixiScene {
     // プレイヤーの `playerWalkFrame` と同じ作法)。**判定・速度・AIは1msも触らない。**
     const idleTexKey = this.enemyTexKey(e.type, e.id);
     // 見た目の身長(=歩幅の基準)。判定の箱ではなく**描画の箱**(§drawEnemy が使うのと同じ fb)。
-    const atkTex = this.enemyAttackTexture(idleTexKey, e, gameTime);
+    const atkTex = this.enemyShotTexture(idleTexKey, e, now)
+      ?? this.enemyAttackTexture(idleTexKey, e, gameTime);
     const walkTex = atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH);
     const tex = e.type === 'guardian-phantom'
       ? this.guardianPhantomTexture(view, now)
@@ -29623,6 +29625,27 @@ export class PixiScene {
    * ★このシートは**武器を持った腕ごと描かれている**ので、出ている間は
    * 別スプライトのランタン(`drawBatLantern` 経路)を**出さない**(二本持ちになる)。
    */
+  /**
+   * ★弾を撃つ絵(社長支給2026-09-21「プラントの弾攻撃(**蕾になるのを早く流して、閉じたら弾が
+   * 発射するイメージ**)」)。**噛みつきの絵より優先**する。
+   *
+   * 尺は `utils/plantShot.ts` の1本=**ストア側(`combatTick`)の発射と同じ定数**を引く。
+   * だから「閉じ切ったコマが終わる瞬間」と「弾が出る瞬間」がズレない。
+   * ★この絵は**ミラーしない**(正面向きの花)。表を `ENEMY_SHOT_SHEETS` に分けてあるので
+   * `hasAnimSheet`(=ミラーの対象)には入らない。
+   */
+  private enemyShotTexture(idleTexKey: string, e: Enemy, now: number): ReturnType<typeof getTexture> {
+    const frames = shotSheetFrames(idleTexKey);
+    if (frames <= 1) return null;
+    const closeMs = tsNum('plantclose', PLANT_CLOSE_MS);
+    const openMs = tsNum('plantopen', PLANT_OPEN_MS);
+    const i = plantShotFrame(frames, e.shotWindupAt !== undefined ? now - e.shotWindupAt : null,
+      closeMs, openMs, tsNum('plantbud', PLANT_BUD_HOLD_MS));
+    if (i === null) return null;
+    const slices = this.sheetSlices(shotSheetName(idleTexKey), frames);
+    return slices ? (slices[i] ?? null) : null;
+  }
+
   private enemyAttackTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     const frames = attackSheetFrames(idleTexKey);
     if (frames <= 1) return null;
