@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "824 files / 復号後 約738MB",
+ "generatedFor": "825 files / 復号後 約739MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -4813,6 +4813,12 @@
    "h": 239,
    "bytes": 5897,
    "sha": "df9e5f08231c5a82"
+  },
+  "sprites/zombie-common-attack.png": {
+   "w": 1188,
+   "h": 126,
+   "bytes": 143828,
+   "sha": "5ccc18276122443c"
   },
   "sprites/zombie-common-walk.png": {
    "w": 1344,

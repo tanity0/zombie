@@ -20,6 +20,12 @@ const IMP_M = attackImpactFrame('bat-male');
 const FR_SF = ENEMY_ATTACK_SHEETS['skeleton-female'];
 const IMP_SF = attackImpactFrame('skeleton-female');
 const SPEC_S = biteSpecFor('skeleton');
+// ゾンビ = 11コマ・**戻りが3コマ**(8,9,10)。溜めが600msと長い型でも拍が壊れないことを見る。
+const FR_Z = ENEMY_ATTACK_SHEETS['zombie-common'];
+const IMP_Z = attackImpactFrame('zombie-common');
+const SPEC_Z = biteSpecFor('zombie');
+const W_Z = SPEC_Z.windupMs, B_Z = SPEC_Z.biteMs;
+const HIT_Z = W_Z + B_Z;
 const W_S = SPEC_S.windupMs, B_S = SPEC_S.biteMs;
 const HIT_S = W_S + B_S;
 
@@ -29,7 +35,13 @@ describe('★表', () => {
     const all = new Set(Object.values(ENEMY_VARIANT_SETS).flat());
     for (const n of Object.keys(ENEMY_ATTACK_SHEETS)) expect(all.has(n), n).toBe(true);
   });
-  it('表に無い絵は0コマ', () => expect(attackSheetFrames('zombie-common')).toBe(0));
+  // ★**名前を手書きしない**(素材が届くたびに落ちる。同じ壊れ方が5回目=ゾンビの噛みつき v0.25.4549)。
+  it('表に無い絵は0コマ(表から導出する)', () => {
+    const rest = Object.values(ENEMY_VARIANT_SETS).flat().filter(n => !(n in ENEMY_ATTACK_SHEETS));
+    expect(rest.length, 'まだ攻撃シートの無い絵が1枚も無いなら、この検査は何も言っていない').toBeGreaterThan(0);
+    for (const n of rest) expect(attackSheetFrames(n), n).toBe(0);
+    expect(attackSheetFrames('この名前は存在しない')).toBe(0);
+  });
   it('★当たるコマの既定は「末尾から2コマ目」(最後は振り抜き)', () => {
     expect(IMP).toBe(FR - 2);
     expect(IMP_M).toBe(FR_M - 2);
@@ -73,6 +85,32 @@ describe('★★掟③: 当たるコマを既定から外しても成り立つ(�
   it('溜め明けには振り上げ切っている(5コマ目)', () => {
     expect(enemyAttackFrame(FR_SF, 0, W_S, B_S, ATTACK_SETTLE_MS, IMP_SF)).toBe(0);
     expect(enemyAttackFrame(FR_SF, W_S, W_S, B_S, ATTACK_SETTLE_MS, IMP_SF)).toBe(IMP_SF - 1);
+  });
+});
+
+describe('★★掟③: 戻りが3コマでも成り立つ(ゾンビ=11コマ・噛むのは7)', () => {
+  it('表の指定がそのまま効いている(既定の9ではない)', () => {
+    expect(IMP_Z).toBe(7);
+    expect(IMP_Z).not.toBe(FR_Z - 2);
+  });
+  it('★噛みつくコマは、命中が解決する瞬間にちょうど終わる', () => {
+    expect(enemyAttackFrame(FR_Z, HIT_Z - 1, W_Z, B_Z, ATTACK_SETTLE_MS, IMP_Z)).toBe(IMP_Z);
+    expect(enemyAttackFrame(FR_Z, HIT_Z, W_Z, B_Z, ATTACK_SETTLE_MS, IMP_Z)).toBe(IMP_Z + 1);
+  });
+  it('溜め明け(600ms)には伸び切っている(6コマ目)', () => {
+    expect(enemyAttackFrame(FR_Z, 0, W_Z, B_Z, ATTACK_SETTLE_MS, IMP_Z)).toBe(0);
+    expect(enemyAttackFrame(FR_Z, W_Z, W_Z, B_Z, ATTACK_SETTLE_MS, IMP_Z)).toBe(IMP_Z - 1);
+  });
+  it('★戻りの3コマ(8,9,10)が全部出る', () => {
+    const seen = new Set<number>();
+    for (let t = HIT_Z; t < HIT_Z + ATTACK_SETTLE_MS; t += 2) {
+      const i = enemyAttackFrame(FR_Z, t, W_Z, B_Z, ATTACK_SETTLE_MS, IMP_Z);
+      if (i !== null) seen.add(i);
+    }
+    for (const k of [8, 9, 10]) expect(seen.has(k), `コマ${k}`).toBe(true);
+  });
+  it('余韻を過ぎたら null(=歩き/立ち絵へ戻る)', () => {
+    expect(enemyAttackFrame(FR_Z, HIT_Z + ATTACK_SETTLE_MS, W_Z, B_Z, ATTACK_SETTLE_MS, IMP_Z)).toBeNull();
   });
 });
 
