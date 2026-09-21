@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4551',
+    items: [
+      '花の玉座が待機中も花を開いたり閉じたりして呼吸する',
+    ],
+  },
+  {
     version: '0.25.4550',
     items: [
       '花の玉座が撃つ前に花を閉じるようになった。蕾になった瞬間に弾が飛ぶ',

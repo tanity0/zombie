@@ -179,6 +179,35 @@ export const hasShotSheet = (idleTexName: string | null | undefined): boolean =>
   shotSheetFrames(idleTexName) > 1;
 
 /**
+ * ★**待機中(呼吸)の絵**。シート名は `<立ち絵名>-idle`。
+ *
+ * ★これも**ミラーの表には入れない**(`hasAnimSheet` と別)。理由は上の弾の表と同じ。
+ * ★**立ち絵の代わりに常時出る**ので、`enemyBreath`(全敵共通の疑似呼吸)と**二重になる**。
+ *   ⇒ 描画側で「シートのコマが出ているフレームは呼吸を掛けない」にしてある
+ *   (社長指示2026-09-21「絵が入った敵のパターンには歪み入れないで」の適用)。
+ */
+export const ENEMY_IDLE_SHEETS: Readonly<Record<string, number>> = {
+  // 社長支給2026-09-21「プラントの待機中(呼吸)」。6コマ(支給 714×130 → 余白を切って 115×128)。
+  // 常駐 0.34MB。★**先頭コマは弾シートの先頭コマと1ビットも同じ**(実測 差0.0)=繋ぎ目が出ない。
+  'plant-common': 6,
+};
+
+/** 1周期(吸う→吐く→止まる)の長さ。★叩き台——`?idlebreath=` で実機から触れる。 */
+export const ENEMY_IDLE_PERIOD_MS: Readonly<Record<string, number>> = {
+  // 置き換える前の疑似呼吸は strideHz 0.25 × テンポ0.7 = **5.7秒**とかなり遅かった。
+  // 6コマだと1コマ1秒近くなって途切れて見えるので、**3.6秒**を叩き台にする(社長が実機で詰める)。
+  'plant-common': 3600,
+};
+
+export const idleSheetName = (idleTexName: string): string => `${idleTexName}-idle`;
+
+export const idleSheetFrames = (idleTexName: string | null | undefined): number =>
+  (idleTexName && ENEMY_IDLE_SHEETS[idleTexName]) || 0;
+
+export const idleSheetPeriodMs = (idleTexName: string | null | undefined): number =>
+  (idleTexName && ENEMY_IDLE_PERIOD_MS[idleTexName]) || 3600;
+
+/**
  * ★その立ち絵が**動く絵(歩き or 攻撃)を持っているか**。
  *
  * 社長裁定2026-09-21「**全敵、アニメーション入れる予定なのでミラーさせます / 少しずつ揃えていくので

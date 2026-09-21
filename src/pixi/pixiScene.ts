@@ -103,7 +103,8 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
 import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, shotSheetFrames, shotSheetName } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs } from '../utils/enemySheets';
+import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
@@ -17737,7 +17738,8 @@ export class PixiScene {
     // 見た目の身長(=歩幅の基準)。判定の箱ではなく**描画の箱**(§drawEnemy が使うのと同じ fb)。
     const atkTex = this.enemyShotTexture(idleTexKey, e, now)
       ?? this.enemyAttackTexture(idleTexKey, e, gameTime);
-    const walkTex = atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH);
+    const walkTex = atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
+      ?? this.enemyIdleTexture(idleTexKey, e, now);
     const tex = e.type === 'guardian-phantom'
       ? this.guardianPhantomTexture(view, now)
       : glenP2
@@ -18269,7 +18271,12 @@ export class PixiScene {
       // ステージ3のボス(giantbat)だけ1.2倍/ステージ4(雪原)の全敵絵を1.5倍。足元アンカー(0.5,1)なので
       // 上方向に拡大。視覚のみ=hitbox不変。倍率の本体は stageEnemyVisualMul(死体と共有・v0.25.2383)。
       const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * this.stageEnemyVisualMul(e.type);
-      const breath = this.enemyBreath(e, now, view, gameTime);
+      // ★★**手で描いたコマが出ているフレームは、疑似呼吸(伸び縮み)を掛けない**
+      // (社長指示2026-09-21「絵が入った敵のパターンには歪み入れないで」。歩行二次モーションの
+      //  傾ぎ・スカッシュを止めた v0.25.4546 と同じ理由の、呼吸版)。
+      // ★**待機シート(`-idle`)が来て必須になった**——あれは「呼吸そのもの」を描いた絵なので、
+      //  上から疑似呼吸を掛けると**二重に呼吸する**。立ち絵へ戻っている間は従来どおり呼吸する。
+      const breath = walkTex !== null ? { x: 1, y: 1 } : this.enemyBreath(e, now, view, gameTime);
       // 被弾しなり: 撃たれた直後だけ頭(上方)を後ろ(ノックバック方向)へ skew で反らせ、軽く縦縮み。
       // アンカーが足元寄りなので skew だけで頭が大きく振れる。短時間で戻る。新規描画なし=軽い。
       // ★被弾リアクションの強さは**そのヒットのダメージで決まる**(`utils/hitFlinch.ts` が唯一の窓口)。
@@ -29634,6 +29641,21 @@ export class PixiScene {
    * ★この絵は**ミラーしない**(正面向きの花)。表を `ENEMY_SHOT_SHEETS` に分けてあるので
    * `hasAnimSheet`(=ミラーの対象)には入らない。
    */
+  /**
+   * ★待機中(呼吸)の絵(社長支給2026-09-21「プラントの待機中(呼吸)」)。
+   * **一番弱い優先度**——弾/噛み/歩きのどれも出ていない時だけ出す(=立ち絵の置き換え)。
+   * 位相は個体ごとにずらす(`stablePhase`)ので、群れが同時に呼吸しない。
+   */
+  private enemyIdleTexture(idleTexKey: string, e: Enemy, now: number): ReturnType<typeof getTexture> {
+    const frames = idleSheetFrames(idleTexKey);
+    if (frames <= 1) return null;
+    const i = enemyIdleFrame(frames, now, stablePhase(e.id),
+      tsNum('idlebreath', idleSheetPeriodMs(idleTexKey)));
+    if (i === null) return null;
+    const slices = this.sheetSlices(idleSheetName(idleTexKey), frames);
+    return slices ? (slices[i] ?? null) : null;
+  }
+
   private enemyShotTexture(idleTexKey: string, e: Enemy, now: number): ReturnType<typeof getTexture> {
     const frames = shotSheetFrames(idleTexKey);
     if (frames <= 1) return null;

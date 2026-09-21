@@ -13,7 +13,7 @@ import { Assets, Rectangle, Texture } from 'pixi.js';
 import { ALL_VARIANT_TEXTURES, ENEMY_VARIANT_SETS } from '../utils/enemyVariant';
 import { ENEMY_WALK_SHEETS, walkSheetName } from '../utils/enemyWalkSheet';
 import { ENEMY_ATTACK_SHEETS, attackSheetName } from '../utils/enemyAttackSheet';
-import { ENEMY_SHOT_SHEETS, shotSheetName } from '../utils/enemySheets';
+import { ENEMY_SHOT_SHEETS, shotSheetName, ENEMY_IDLE_SHEETS, idleSheetName } from '../utils/enemySheets';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
 import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
@@ -1020,6 +1020,7 @@ export const ensureTextures = (): Promise<void> => {
       ...Object.keys(ENEMY_WALK_SHEETS).map((name) => ({ name: walkSheetName(name), scaleMode: 'nearest' as const })),
       ...Object.keys(ENEMY_ATTACK_SHEETS).map((name) => ({ name: attackSheetName(name), scaleMode: 'nearest' as const })),
       ...Object.keys(ENEMY_SHOT_SHEETS).map((name) => ({ name: shotSheetName(name), scaleMode: 'nearest' as const })),
+      ...Object.keys(ENEMY_IDLE_SHEETS).map((name) => ({ name: idleSheetName(name), scaleMode: 'nearest' as const })),
     ];
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)のドット絵上書き名。後段で使うが、
