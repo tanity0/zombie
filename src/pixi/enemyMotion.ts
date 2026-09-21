@@ -148,3 +148,18 @@ export const enemyMotionPose = (
     sqX: 1 + sq, sqY: 1 - sq * 0.7,
   };
 };
+
+/**
+ * ★★**描いた絵が出ているコマでは、絵を歪めない**(社長指示2026-09-21「絵が入った敵のパターンには
+ * 歪み入れないで」)。
+ *
+ * この二次モーションは**1枚の立ち絵を歩いているように見せるための代用**で、
+ * `rot`(足元支点の傾ぎ)と `sqX/sqY`(歩幅スカッシュ)は**絵そのものを変形させる**。
+ * 手で描いた歩き/攻撃のコマが出ている間は、その変形が**描き手の付けた形を壊す**
+ * (絵の中に既に傾ぎも伸び縮みも描かれているので、二重にかかる)。
+ *
+ * ★**`bob`(上下の位置)は残す。** これは絵を歪めず、位置を動かすだけ
+ * (=路面振動 rattle も同じ扱い)。歪みだけを抜く。
+ */
+export const undistortForSheet = (pose: EnemyMotionPose, sheetFrameShown: boolean): EnemyMotionPose =>
+  (sheetFrameShown ? { rot: 0, bob: pose.bob, sqX: 1, sqY: 1 } : pose);

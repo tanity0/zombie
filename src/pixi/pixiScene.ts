@@ -128,7 +128,7 @@ import {
   MIMIR_LASER_WINDUP_MS,
   MIMIR_LASER_FIRE_MS,
 } from '../utils/mimirLaserTrack';
-import { enemyMotionSpec, enemyMotionPose, ENEMY_TURN_MS, GIANTBAT_MOTION_BY_BACKDROP } from './enemyMotion';
+import { enemyMotionSpec, enemyMotionPose, undistortForSheet, ENEMY_TURN_MS, GIANTBAT_MOTION_BY_BACKDROP } from './enemyMotion';
 import {
   contentSpanFrac, needsContentTrim, contentTrimFrameY, contentTrimFrameX, contentCenterFrac,
 } from '../utils/shadowBake';
@@ -18216,7 +18216,14 @@ export class PixiScene {
           || e.aiPhase === 'b-lunge' || e.aiPhase === 'b-grab' || e.aiPhase === 'b-release'
           || e.aiPhase === 's-crouch' || e.aiPhase === 's-arc' || e.aiPhase === 's-bite'
           || e.aiPhase === 's-recover' || e.aiPhase === 's-retreat') {
-          const pose = enemyMotionPose(spec, stablePhase(e.id), view.motClock, walk);
+          // ★★社長指示2026-09-21「**絵が入った敵のパターンには歪み入れないで**」:
+          // 手で描いたコマ(歩き/攻撃シート)が出ているフレームは、**傾ぎとスカッシュを掛けない**
+          // (絵の中に既に描かれているので二重になり、描き手の付けた形が壊れる)。
+          // 上下の位置(bob)は絵を歪めないので残す。判定・座標は従来どおり一切不変。
+          const pose = undistortForSheet(
+            enemyMotionPose(spec, stablePhase(e.id), view.motClock, walk),
+            walkTex !== null,
+          );
           motRot = pose.rot; motBob = pose.bob; motSqX = pose.sqX; motSqY = pose.sqY;
         }
       }
