@@ -241,31 +241,6 @@ export const attackSheetFrames = (idleTexName: string | null | undefined): numbe
   (idleTexName && ENEMY_ATTACK_SHEETS[idleTexName]) || 0;
 
 /**
- * ★**弾を撃つ絵**(噛みつきとは別の表)。シート名は `<立ち絵名>-shot`。
- *
- * ★**なぜ攻撃シートと分けたか**: 攻撃シートの表は **`hasAnimSheet`=ミラーする個体**の定義も
- * 兼ねている。プラントは**正面向きの花**で `faceMove: false`(左右に向き直らない)なので、
- * 攻撃の表に入れると**撃つたびに左右反転する**。絵の持つ意味が違うので表ごと分ける。
- * ★尺の出どころも違う——噛みつきは `biteAt`+噛み台本、こちらは**次に撃つ時刻**
- * (`utils/plantShot.ts`)。
- */
-export const ENEMY_SHOT_SHEETS: Readonly<Record<string, number>> = {
-  // 社長支給2026-09-21「プラントの弾攻撃(蕾になるのを早く流して、閉じたら弾が発射するイメージ)」。
-  // 8コマ(支給 952×130 → 透明余白を切って **115×128**)。常駐 0.45MB。
-  // 並びは **0=開いた花 → 7=閉じた蕾**。0 が立ち絵とほぼ同じ姿(描画比 0.984 / 立ち絵 1.000)。
-  'plant-common': 8,
-};
-
-export const shotSheetName = (idleTexName: string): string => `${idleTexName}-shot`;
-
-export const shotSheetFrames = (idleTexName: string | null | undefined): number =>
-  (idleTexName && ENEMY_SHOT_SHEETS[idleTexName]) || 0;
-
-/** 弾を撃つ絵を持っているか。★**ミラーの判定には使わない**(上のコメント参照)。 */
-export const hasShotSheet = (idleTexName: string | null | undefined): boolean =>
-  shotSheetFrames(idleTexName) > 1;
-
-/**
  * ★**待機中(呼吸)の絵**。シート名は `<立ち絵名>-idle`。
  *
  * ★これも**ミラーの表には入れない**(`hasAnimSheet` と別)。理由は上の弾の表と同じ。

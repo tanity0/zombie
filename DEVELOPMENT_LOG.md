@@ -1,5 +1,52 @@
 # Development Log
 
+## v0.25.4561 — プラントの攻撃の絵を削除(溜めも一緒に撤去)【2026-09-22 13:58 JST】
+
+### 社長指示
+「**プラント の攻撃の絵は削除でいいや**」。
+
+### 消したもの
+- `public/sprites/plant-common-shot.png`(配信素材)
+- 弾を撃つ絵の表と引き手(`ENEMY_SHOT_SHEETS` / `shotSheetName` / `shotSheetFrames` / `hasShotSheet`)
+- 描画の経路(`pixiScene.enemyShotTexture`)とロード登録(`pixiTextures`)
+- 尺の module とテスト(`utils/plantShot.ts` / `plantShot.test.ts`)
+- Enemy の `shotWindupAt`(この絵のためだけの打刻だった)
+
+### ★溜め(閉じてから撃つ)も一緒に撤去した
+v0.25.4550 で入れた「**interval − 閉じる尺で閉じ始め、interval ちょうどで撃つ**」は、
+**閉じる絵を見せるためだけ**の仕掛けだった。絵が無くなると
+「**何も起きていないのに撃つのが遅れる**」だけが残るので外した。
+⇒ **v0.25.4550 以前の即撃ちに完全に戻る**(`combatTick.applyEnemyFire` は元の1行の判定へ)。
+- 撃つ間隔(2200ms)・弾の性能・射程・判定は**元から変えていない**ので、**戻ったのは
+  「射程内に入った瞬間に撃てるかどうか」だけ**(溜めがあった間は260ms遅れていた)。
+
+### ★残したもの
+- **待機(呼吸)の6コマは残している**(社長が消すと言ったのは**攻撃の絵**だけ)。
+  弾シートの先頭コマと待機シートの先頭コマは同一だったので、**繋ぎ目の問題は起きない**。
+- **原盤 `art-masters/plant-shot-8f-952x130.png` は残した**(`public/` は消したが、原盤は
+  「別のものとして出す前提で元素材は取っておく」方針に従う)。★**原盤も消す場合は一言ください。**
+
+### 変更したファイル
+`public/sprites/plant-common-shot.png`(削除) / `src/utils/plantShot.ts`(削除) /
+`src/utils/plantShot.test.ts`(削除) / `src/utils/enemySheets.ts` / `src/utils/combatTick.ts` /
+`src/types/game.ts` / `src/pixi/pixiScene.ts` / `src/pixi/pixiTextures.ts` /
+`scripts/asset-masters.json`(台帳から1枚減) / `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+
+### ついでに直したもの
+`pixiScene` の**説明コメント4つがメソッドから離れて積み上がっていた**(絵の種類を足すたびに
+前へ挿していたため)。それぞれのメソッドの直上へ戻した。
+
+### 検証
+`npm run typecheck` 緑 / `npm run lint` エラー0(warning 9) / `check-circular-imports` 緑 /
+`assets:ledger` **831枚**(832から1枚減)・`assets:check` 緑 /
+シート・攻撃・`combatTick`・**`sim.test.ts`(ヘッドレス実走)**= 127件 緑。
+削除した名前(`shotWindupAt` / `plantShot` / `shotSheet*` / `ENEMY_SHOT_SHEETS`)が
+**`src/` に1件も残っていない**ことを grep で確認した。
+
+### 申し送り
+**実機でプラントを見てほしい**——①花が閉じずに撃つ(待機の呼吸だけが流れる)
+②撃つ間隔が元どおり ③射程に入った瞬間に撃つ(0.26秒の遅れが無い)。
+
 ## v0.25.4560 — 「モーション追加で外すのは歪みだけ」を恒常ルール化【2026-09-22 13:46 JST】
 
 ### 社長指示

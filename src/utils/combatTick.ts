@@ -80,7 +80,6 @@ import { shouldSkipBossContactParry, skipThorDashRunContactDamage } from './coun
 import { counterLeapOrigin, counterLeapTarget } from './thorDashPushback';
 // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王(barrage-king)=反射弾のダメ・体勢削り倍率+貫通1。
 import { barrageKingMult, BARRAGE_KING_PIERCE } from './skillEffectsB7';
-import { PLANT_CLOSE_MS, PLANT_CLOSE_GRACE_MS, usesShotWindup } from './plantShot'; // 社長支給2026-09-21: 花が閉じ切った瞬間に撃つ
 
 // v0.25.2946(社長裁定「体勢値は削ってあげたら?」): 裏ボス系の**追跡中の体当たり**への受け流し。
 // `?bossparry=0` で無効(従来=カウンター窓中でも接触ダメージ素通し)へ完全復帰。
@@ -579,7 +578,6 @@ export const applyEnemyFire = (now: number): void => {
   const livePlayer = useGameStore.getState().player;
   const liveGameTime = useGameStore.getState().gameTime;
   const firedIds: string[] = [];
-  const closeIds: string[] = [];    // これから花を閉じ始める(まだ撃たない)
   // フレアガン(§6.6 M29): 着弾中のフレアを疑似召喚として発砲ターゲットにも合流(召喚と同じ効き方)。
   const liveFlareTargets = activeFlareTargets(useGameStore.getState().flareGunFlares, liveGameTime);
   const liveSummonsForFire = liveFlareTargets.length > 0
@@ -603,13 +601,10 @@ export const applyEnemyFire = (now: number): void => {
     // 発砲間隔も攻撃倍速で短縮(1/MULT)=より速く撃つ。1.0で従来等速。
     // CRIT-UNIFY §9.2: クリ窓中のボス(この経路は`?giantscript=0`のgiantbat旧経路のみ到達=
     // isBossType該当)は発砲間隔にも×2(bossCritCdMult。非ボスのplantは1のまま=無改変)。
-    const fireInterval = (profile.interval / ENEMY_ATTACK_SPEED_MULT) * bossCritCdMult(enemy, liveGameTime);
-    // ★★「閉じ切った瞬間に弾が出る」(社長支給2026-09-21・プラントの弾攻撃)。
-    // 従来は interval ちょうどで**即撃ち**だった。これを「**interval − 閉じる尺**で閉じ始め、
-    // **interval ちょうどで撃つ**」に置き換える ⇒ **弾が出る時刻は1msも変わらない**。
-    // 尺の正本は `utils/plantShot.ts`(描画側も同じ定数を引く=絵と発射がズレない)。
-    const closeMs = usesShotWindup(enemy.type) ? PLANT_CLOSE_MS : 0;
-    if (now - enemy.lastShot < Math.max(0, fireInterval - closeMs)) return;
+    // ★v0.25.4561: プラントの「閉じてから撃つ」溜め(v0.25.4550)は、**攻撃の絵を削除した**ので
+    // 一緒に撤去した(社長指示2026-09-22「プラントの攻撃の絵は削除でいいや」)。絵が無い溜めは
+    // 「何も起きていないのに撃つのが遅れる」だけなので残さない。⇒ **v0.25.4550 以前の即撃ちに戻る。**
+    if (now - enemy.lastShot < (profile.interval / ENEMY_ATTACK_SPEED_MULT) * bossCritCdMult(enemy, liveGameTime)) return;
     // 錬金術: aggro内の通常召喚を撃つ。いなければ従来どおりプレイヤー。
     // シーカー: 半透明中は通常敵(ボス/死神/イベントボス級を除く)はプレイヤーを撃たない。
     const playerHidden = isSeekerActive(livePlayer, liveGameTime) && !isBossType(enemy.type);
@@ -618,28 +613,14 @@ export const applyEnemyFire = (now: number): void => {
     const dx = tgt.x - (enemy.x + enemy.width / 2);
     const dy = tgt.y - (enemy.y + enemy.height / 2);
     if (Math.hypot(dx, dy) > profile.range) return;
-    if (closeMs > 0) {
-      const since = enemy.shotWindupAt === undefined ? null : now - enemy.shotWindupAt;
-      // ★**使い済み**(前回の発射で消費した溜め)/ **古すぎる**(射程外へ出ている間に流れた溜め)は
-      // 閉じ直す。これが無いと、射程外から戻ってきた瞬間に**閉じる絵を出さずに撃つ**。
-      const stale = enemy.shotWindupAt === undefined
-        || enemy.shotWindupAt <= enemy.lastShot
-        || (since ?? 0) > closeMs + PLANT_CLOSE_GRACE_MS;
-      if (stale) { closeIds.push(enemy.id); return; }   // ここから閉じ始める(まだ撃たない)
-      if ((since ?? 0) < closeMs) return;               // まだ閉じ切っていない
-    }
 
     useGameStore.getState().addProjectile(createEnemyProjectile(enemy, livePlayer, tgt.x, tgt.y));
     firedIds.push(enemy.id);
   });
-  if (firedIds.length > 0 || closeIds.length > 0) {
+  if (firedIds.length > 0) {
     useGameStore.setState(state => ({
       enemies: state.enemies.map(e =>
-        // ★発射しても `shotWindupAt` は消さない——**開き直る絵の時計**としてそのまま使う。
-        //   `lastShot` が後になるので、次のフレームからは「使い済み」と判定される。
-        firedIds.includes(e.id) ? { ...e, lastShot: now }
-          : closeIds.includes(e.id) ? { ...e, shotWindupAt: now }
-            : e
+        firedIds.includes(e.id) ? { ...e, lastShot: now } : e
       )
     }));
   }

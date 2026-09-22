@@ -508,11 +508,6 @@ export interface Enemy {
   // 判定には一切使わない。点滅・跳ね・光は従来どおり `lastHit` を見る。
   lastHitDmg?: number;
   lastShot: number;
-  // ★弾を撃つ前の「花が閉じる」溜めの開始時刻(Date.now基準・`lastShot` と同じ時計)。
-  // プラントだけが使う(`utils/plantShot.ts`)。**この間はまだ撃っていない**——閉じ切る
-  // (`PLANT_CLOSE_MS`)と同時に撃ち、そこで `undefined` へ戻る。射程から外れたら取り消す。
-  // 判定・移動には一切使わない(発射の時刻そのものは従来と同じ=閉じ始めを前倒ししてある)。
-  shotWindupAt?: number;
   // V1(3)(FX_GAP_LEDGER.md・社長指示): 接触ダメージが**プレイヤーに実際に入った瞬間**の打刻。
   // 描画専用(レンダラが~180msの「前のめり」変形=被弾しなりの逆位相に使う)。判定・ダメージ・
   // 移動には一切使わない。時計は lastHit と同じ Date.now() 基準。Dir は敵→プレイヤーの角度(rad)。

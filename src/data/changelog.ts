@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4561',
+    items: [
+      '花の玉座は花を閉じずに撃つようになった。撃つ間隔は元のまま',
+    ],
+  },
+  {
     version: '0.25.4560',
     items: [
       'ゲーム内容の変更はありません',
