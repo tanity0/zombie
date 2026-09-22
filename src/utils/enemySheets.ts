@@ -1,4 +1,5 @@
 import type { JumpSplit } from './enemyJumpSheet';
+import type { IdlePlayback } from './enemyIdleSheet';
 // ★敵のアニメーションシートの台帳(**依存ゼロの葉モジュール**)。
 //
 // ★なぜ葉にするか(ENGINEERING_NOTES「循環importは…」): この表は
@@ -263,10 +264,28 @@ export const ENEMY_IDLE_SHEETS: Readonly<Record<string, number>> = {
   // 社長支給2026-09-21「プラントの待機中(呼吸)」。6コマ(支給 714×130 → 余白を切って 115×128)。
   // 常駐 0.34MB。★**先頭コマは弾シートの先頭コマと1ビットも同じ**(実測 差0.0)=繋ぎ目が出ない。
   'plant-common': 6,
+  // 社長支給2026-09-22「卵体」(=`ghost`。卵を抱いた花嫁)。16コマ(支給 1856×130 → 余白を切って **112×128**)。
+  // 常駐 0.88MB。★**歩きではなく待機に置いた**——この敵は `kind: 'hover'`=**歩かず滑る**ので、
+  // 歩きシートにすると**止まった瞬間に髪が凍る**。待機シートは常時流れる。
+  // ★送りは**前方ループ**(髪と裾が一方向になびく絵。往復させると流れが逆走する)。
+  //   継ぎ目の比 1.08・継ぎ目(23.6)より大きい隣が在る(28.5)ので、指標とも矛盾しない。
+  'ghost-common': 16,
+};
+
+/**
+ * ★送り方の表。**登録は必須**(下のテストが、シートを足して書き忘れると落ちる)。
+ * 呼吸のように行って戻る絵は `pingpong`、一方向に流れ続ける絵は `loop`。
+ */
+export const ENEMY_IDLE_PLAYBACK: Readonly<Record<string, IdlePlayback>> = {
+  'plant-common': 'pingpong',   // 花が開いて閉じる=行って戻る
+  'ghost-common': 'loop',       // 髪と裾がなびく=流れ続ける
 };
 
 /** 1周期(吸う→吐く→止まる)の長さ。★叩き台——`?idlebreath=` で実機から触れる。 */
 export const ENEMY_IDLE_PERIOD_MS: Readonly<Record<string, number>> = {
+  // 卵体(ghost)。**叩き台 1800ms**(16コマ=約8.9コマ/秒)。置き換える前の浮遊ゆらぎは
+  // strideHz 0.55 × テンポ0.7 = 2.6秒周期だったが、1コマあたりの絵の変化が大きいので少し速めた。
+  'ghost-common': 1800,
   // 置き換える前の疑似呼吸は strideHz 0.25 × テンポ0.7 = **5.7秒**とかなり遅かった。
   // 6コマだと1コマ1秒近くなって途切れて見えるので、**3.6秒**を叩き台にする(社長が実機で詰める)。
   'plant-common': 3600,
@@ -279,6 +298,9 @@ export const idleSheetFrames = (idleTexName: string | null | undefined): number 
 
 export const idleSheetPeriodMs = (idleTexName: string | null | undefined): number =>
   (idleTexName && ENEMY_IDLE_PERIOD_MS[idleTexName]) || 3600;
+
+export const idleSheetPlayback = (idleTexName: string | null | undefined): IdlePlayback =>
+  (idleTexName && ENEMY_IDLE_PLAYBACK[idleTexName]) || 'pingpong';
 
 /**
  * ★**跳ぶ技の絵**(社長支給2026-09-21「パンプキン(蜘蛛)のジャンプ攻撃時」)。

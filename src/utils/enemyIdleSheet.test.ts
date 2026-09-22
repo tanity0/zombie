@@ -1,7 +1,10 @@
 // ★待機中(呼吸)の絵の拍。社長支給2026-09-21「プラントの待機中(呼吸)」。
 import { describe, it, expect } from 'vitest';
 import { enemyIdleFrame, IDLE_PAUSE_FRAC } from './enemyIdleSheet';
-import { ENEMY_IDLE_SHEETS, ENEMY_IDLE_PERIOD_MS, idleSheetFrames, idleSheetName } from './enemySheets';
+import {
+  ENEMY_IDLE_SHEETS, ENEMY_IDLE_PERIOD_MS, ENEMY_IDLE_PLAYBACK,
+  idleSheetFrames, idleSheetName, idleSheetPlayback,
+} from './enemySheets';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
 
 const FR = ENEMY_IDLE_SHEETS['plant-common'];
@@ -19,6 +22,14 @@ describe('★表', () => {
   it('★周期を登録し忘れた絵が無い(既定へ黙って落ちない)', () => {
     for (const n of Object.keys(ENEMY_IDLE_SHEETS)) {
       expect(ENEMY_IDLE_PERIOD_MS[n], n).toBeGreaterThan(0);
+    }
+  });
+
+  // ★送り方は絵の意味で決まる(往復/流れ続ける)ので、**書き忘れを既定で吸わせない**。
+  it('★★送り方を登録し忘れた絵が無い', () => {
+    for (const n of Object.keys(ENEMY_IDLE_SHEETS)) {
+      expect(ENEMY_IDLE_PLAYBACK[n], n).toBeDefined();
+      expect(idleSheetPlayback(n), n).toBe(ENEMY_IDLE_PLAYBACK[n]);
     }
   });
 
@@ -69,5 +80,55 @@ describe('★★呼吸は往復する(前方ループで跳ねない)', () => {
     }
     expect(enemyIdleFrame(1, 0, 0, P)).toBeNull();
     expect(enemyIdleFrame(FR, 0, 0, 0)).toBeNull();
+  });
+});
+
+// ★★卵体(ghost)= 髪と裾が一方向になびく絵。往復させると流れが逆走するので前方ループ。
+describe('★★前方ループの待機(卵体)', () => {
+  const GF = ENEMY_IDLE_SHEETS['ghost-common'];
+  const GP = ENEMY_IDLE_PERIOD_MS['ghost-common'];
+
+  it('送り方はループで登録されている', () => expect(idleSheetPlayback('ghost-common')).toBe('loop'));
+
+  it('★1周期でコマが0から末尾まで一方向に進む(戻らない)', () => {
+    let prev = -1, wraps = 0;
+    for (let t = 0; t < GP; t += 5) {
+      const i = enemyIdleFrame(GF, t, 0, GP, 'loop')!;
+      if (i < prev) wraps++;                  // 1周期の中では戻らない
+      prev = i;
+    }
+    expect(wraps).toBe(0);
+    expect(enemyIdleFrame(GF, 0, 0, GP, 'loop')).toBe(0);
+    expect(enemyIdleFrame(GF, GP - 1, 0, GP, 'loop')).toBe(GF - 1);
+  });
+
+  it('★全コマが1度は出る / 1コマずつしか進まない(飛ばさない)', () => {
+    const seen = new Set<number>();
+    let prev = enemyIdleFrame(GF, 0, 0, GP, 'loop')!;
+    for (let t = 0; t < GP * 2; t++) {
+      const cur = enemyIdleFrame(GF, t, 0, GP, 'loop')!;
+      seen.add(cur);
+      const step = cur - prev;
+      expect(step === 0 || step === 1 || step === -(GF - 1), `t=${t} ${prev}->${cur}`).toBe(true);
+      prev = cur;
+    }
+    expect(seen.size).toBe(GF);
+  });
+
+  it('個体ごとに位相がずれる / コマ番号は範囲内', () => {
+    expect(enemyIdleFrame(GF, 1000, 0, GP, 'loop')).not.toBe(enemyIdleFrame(GF, 1000, Math.PI, GP, 'loop'));
+    for (let t = 0; t < GP * 2; t += 7) {
+      const i = enemyIdleFrame(GF, t, 2.2, GP, 'loop')!;
+      expect(i).toBeGreaterThanOrEqual(0);
+      expect(i).toBeLessThan(GF);
+    }
+  });
+
+  it('★往復の絵(花)はこの変更で1ビットも変わっていない', () => {
+    const PF = ENEMY_IDLE_SHEETS['plant-common'];
+    const PP = ENEMY_IDLE_PERIOD_MS['plant-common'];
+    for (let t = 0; t < PP; t += 13) {
+      expect(enemyIdleFrame(PF, t, 0.7, PP), `t=${t}`).toBe(enemyIdleFrame(PF, t, 0.7, PP, 'pingpong'));
+    }
   });
 });

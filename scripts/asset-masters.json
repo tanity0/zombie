@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "830 files / 復号後 約743MB",
+ "generatedFor": "831 files / 復号後 約744MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2113,6 +2113,12 @@
    "h": 262,
    "bytes": 7811,
    "sha": "e6d5035643e61cfb"
+  },
+  "sprites/ghost-common-idle.png": {
+   "w": 1792,
+   "h": 128,
+   "bytes": 297126,
+   "sha": "b1e4690cb9e2a26b"
   },
   "sprites/ghost-common.png": {
    "w": 360,

@@ -103,7 +103,7 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
 import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, sheetFrontOn, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, jumpSheetSplit, jumpSheetName, jumpLandMs } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, sheetFrontOn, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
@@ -29697,7 +29697,7 @@ export class PixiScene {
     const frames = idleSheetFrames(idleTexKey);
     if (frames <= 1) return null;
     const i = enemyIdleFrame(frames, now, stablePhase(e.id),
-      tsNum('idlebreath', idleSheetPeriodMs(idleTexKey)));
+      tsNum('idlebreath', idleSheetPeriodMs(idleTexKey)), idleSheetPlayback(idleTexKey));
     if (i === null) return null;
     const slices = this.sheetSlices(idleSheetName(idleTexKey), frames);
     return slices ? (slices[i] ?? null) : null;

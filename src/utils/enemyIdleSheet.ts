@@ -11,7 +11,13 @@
 // ★代わりに**吐き切った所(先頭コマ)で一拍止める**。往復の折り返しは、止めないと
 // 「速度が瞬間反転する」=慣性MUST違反になる。絵に無い側の溜めだけをこちらで足す。
 
-/** 先頭コマ(吐き切り)で止まる割合。1周期のうちこれだけを「止まっている時間」に充てる。 */
+/**
+ * ★送り方。**呼吸のように行って戻るもの=`pingpong`** / **一方向に流れ続けるもの=`loop`**。
+ * 絵の意味で選ぶ(髪や裾がなびく絵を往復させると、流れが逆走して嘘になる)。
+ */
+export type IdlePlayback = 'pingpong' | 'loop';
+
+/** 先頭コマ(吐き切り)で止まる割合。1周期のうちこれだけを「止まっている時間」に充てる。`pingpong` 専用。 */
 export const IDLE_PAUSE_FRAC = 0.2;
 
 /**
@@ -24,12 +30,15 @@ export const IDLE_PAUSE_FRAC = 0.2;
  */
 export const enemyIdleFrame = (
   frames: number, nowMs: number, phaseSeed: number, periodMs: number,
-  pauseFrac: number = IDLE_PAUSE_FRAC,
+  playback: IdlePlayback = 'pingpong', pauseFrac: number = IDLE_PAUSE_FRAC,
 ): number | null => {
   if (frames <= 1 || !(periodMs > 0)) return null;
   const last = frames - 1;
-  const pause = Math.min(0.8, Math.max(0, pauseFrac));
   const t = (((nowMs / periodMs + phaseSeed / (Math.PI * 2)) % 1) + 1) % 1;
+  // ★前方ループ: 末コマの次が先頭コマ。**一方向に流れ続けるもの**(髪や裾がなびく、滑る)向き。
+  // 往復させると流れが逆走するので、絵の意味で選ぶ(下の `ENEMY_IDLE_PLAYBACK`)。
+  if (playback === 'loop') return Math.min(last, Math.max(0, Math.floor(t * frames)));
+  const pause = Math.min(0.8, Math.max(0, pauseFrac));
   if (t >= 1 - pause) return 0;                      // 吐き切ったまま止まっている
   const u = t / (1 - pause);                         // 0..1 = 吸って吐くまで
   const tri = u < 0.5 ? u * 2 : (1 - u) * 2;         // 往復(0→1→0)
