@@ -64,6 +64,15 @@ export const ENEMY_WALK_SHEETS: Readonly<Record<string, number>> = {
   //   ——**どのコマも先頭コマとの差が18〜23と横並び**(細かい質感で埋まっていて、脚の差が沈む)。
   //   ⇒ 指標ではなく**物理で決めた**: ペダルは一周する。折り返したら**逆回転**になる。
   'werewolf-common': 13,
+  // 社長支給2026-09-22「咆哮型の歩き」(=`screamer`。シルクハットに花束のスーツ姿)。16コマ
+  // (支給 1600×130 → 余白を切って **96×128**)。常駐 0.75MB。切る矩形は全コマ共通(x2-97 / y2-129)。
+  // ★**正面向き**として登録した(下の `ENEMY_SHEET_FRONT_ON`)——脚は歩いているが**胴と顔はこちらを向く**
+  //   3/4の絵で、立ち絵と同じ向き。ミラーすると手と花束が左右で入れ替わるだけで得がない。
+  //   型の設定も元から `faceMove: false`。
+  // ★送りは前方ループ(継ぎ目の比 1.19・継ぎ目18.7より大きい隣が在る 20.2。歩様なので折り返さない)。
+  // ★歩幅の倍率は**既定のまま**。実測 1.70回転/秒(コマ27/秒)で、型の設定 strideHz 2.0
+  //   (痙攣風の小刻み)とほぼ一致する=自転車のような破綻は起きていない。
+  'screamer-common': 16,
 };
 
 /**
@@ -111,6 +120,7 @@ export const walkStrideMul = (idleTexName: string | null | undefined, dashing: b
  */
 export const ENEMY_SHEET_FRONT_ON: Readonly<Record<string, boolean>> = {
   'pumpkin-common': true,
+  'screamer-common': true,
 };
 
 /** そのシートは正面向きか(=ミラーしない)。 */

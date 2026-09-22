@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "831 files / 復号後 約744MB",
+ "generatedFor": "832 files / 復号後 約744MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3757,6 +3757,12 @@
    "h": 256,
    "bytes": 10057,
    "sha": "e3948ce9a3657872"
+  },
+  "sprites/screamer-common-walk.png": {
+   "w": 1536,
+   "h": 128,
+   "bytes": 217022,
+   "sha": "642d3b285d242924"
   },
   "sprites/screamer-common.png": {
    "w": 360,
