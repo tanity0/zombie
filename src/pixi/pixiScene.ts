@@ -247,7 +247,7 @@ import {
   coffinSlamFrame, coffinTotalMs, coffinLeadMs,
   COFFIN_LEN_PX, COFFIN_GRIP_X, COFFIN_GRIP_Y, COFFIN_INTRINSIC_ANGLE,
   COFFIN_SWING_REF_W, COFFIN_SWING_W_PX, COFFIN_SLAM_REF_W, COFFIN_SLAM_W_PX,
-  coffinSpinPose, COFFIN_SPIN_LEN_PX, COFFIN_SPIN_TAIL_MS,
+  coffinSpinPose, coffinSpinTailAt, COFFIN_SPIN_LEN_PX,
 } from '../utils/hunterCoffin';
 import {
   BOUNTY_DEPART_FADE_MS,
@@ -6347,7 +6347,9 @@ export class PixiScene {
   // 焼き付け(latch)、以後は自前の時計だけで残りを再生する。以降ボスが何をしていようと出し切る。
   // **予告(ring/band/赤ゾーン)には使わない**: 攻撃がキャンセルされたら予告は消えるのが正しい。
   // 焼き付けるのは「もう当たった/もう振った」絵だけ(砂埃・斬撃の弧)。
-  private fxLatches = new Map<string, { t0: number; dur: number; armed: boolean; d: number[] }>();
+  // ★`offAt` = **active が落ちた瞬間**(v0.25.4571)。窓の長さ(`dur`)と「技が終わった時刻」は
+  //   別物なので、余韻を数える側はこちらを見る(`fxSpinTailMs`)。
+  private fxLatches = new Map<string, { t0: number; dur: number; armed: boolean; d: number[]; offAt?: number }>();
   // 「直前フレームに突進していた」敵のid(突進が明けた瞬間の土煙を出すための1フレーム記憶)。
   private dashWasOn = new Set<string>();
   // FX-V2a: 「直前フレームにgaze-windup中だった」敵のid(windup終了エッジ=発射の瞬間を捉える
@@ -6376,6 +6378,7 @@ export class PixiScene {
       // 立ち上がり(前フレームまで非active)でだけ撮り直す。active が続く間は撮り直さない。
       if (!L || !L.armed) { L = { t0: now, dur: Math.max(1, durMs), armed: true, d: data() }; this.fxLatches.set(key, L); }
     } else if (L) {
+      if (L.armed) L.offAt = now; // ★立ち下がりの時刻を1度だけ焼く(余韻の起点・v0.25.4571)
       L.armed = false; // active が明けた=次の立ち上がりで撮り直してよい
     }
     if (!L) return null;
@@ -29988,10 +29991,12 @@ export class PixiScene {
   private fxSpinTailMs(key: string, now: number): number | null {
     const L = this.fxLatches.get(key);
     if (!L) return null;
-    if (L.armed) return 0;
-    const tail = now - L.t0 - (L.dur - COFFIN_SPIN_TAIL_MS);
-    if (tail >= COFFIN_SPIN_TAIL_MS) { this.fxLatches.delete(key); return null; }
-    return Math.max(0, tail);
+    // ★判定は純関数(`coffinSpinTailAt`)に置いてある。ここは**ラッチの後片付けだけ**。
+    // 旧実装はここで尻尾を**ラッチの窓の終わり**から数えており、窓が60秒あるハンターの突進では
+    // **走り終わってから約1分、棺桶が回り続けていた**(社長報告2026-09-22)。
+    const tail = coffinSpinTailAt(now, L.offAt, L.armed);
+    if (tail === null) { this.fxLatches.delete(key); return null; }
+    return tail;
   }
 
   private drawCoffinSlam(id: string, x: number, y: number, frame: number, flip: boolean, fade: number): void {

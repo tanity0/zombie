@@ -179,6 +179,30 @@ export const coffinSpinRevs = (sinceMs: number, remainMs: number, tailMs = 0): n
   return revs;
 };
 
+/**
+ * ★**「回し終わってから何ms経ったか」**(社長報告2026-09-22「**ハンターがダッシュした後、
+ * 頭上を周る棺桶が消えない**」・v0.25.4571)。
+ *
+ * ★**実バグの形**: 描画側は「尻尾の経過」を**ラッチの窓の終わり**(`t0 + dur − TAIL`)から数えていた。
+ * 突進の長さは可変なのでラッチの窓は **60秒**の安全枠を取っており、結果 **尻尾が始まるのは
+ * 突進開始から59.7秒後**——つまり**突進が終わっても棺桶が約1分回り続けていた**。
+ * ⇒ 数える起点は窓の終わりではなく、**「走りが切れた瞬間」**(`offAtMs`)。
+ *
+ * @param nowMs   いまの実時計(ラッチと同じ時計)
+ * @param offAtMs 走りが切れた瞬間。走っている間は `undefined`
+ * @param armed   まだ走っているか
+ * @returns 尻尾の経過ms / **null = もう出さない**(呼び手はラッチを捨ててよい)
+ */
+export const coffinSpinTailAt = (
+  nowMs: number, offAtMs: number | undefined, armed: boolean,
+): number | null => {
+  if (armed) return 0;                       // 走っている間は尻尾ゼロ(減速は remainMs 側が持つ)
+  if (offAtMs === undefined) return null;    // 切れた時刻が焼けていない=描く根拠が無い
+  const tail = nowMs - offAtMs;
+  if (tail >= COFFIN_SPIN_TAIL_MS) return null;
+  return Math.max(0, tail);
+};
+
 export interface CoffinSpinPose { angle: number; alpha: number; upFrac: number }
 
 /**

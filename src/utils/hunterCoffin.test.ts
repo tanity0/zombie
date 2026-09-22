@@ -5,7 +5,8 @@ import {
   COFFIN_SWING_FRAMES, COFFIN_SWING_IMPACT_FRAME, COFFIN_SWING_HOLD_MS,
   COFFIN_SLAM_FRAMES, COFFIN_SLAM_IMPACT_FRAME, COFFIN_SLAM_HOLD_MS,
   COFFIN_RAISE_MS, COFFIN_SLAM_MS, COFFIN_SETTLE_MS, COFFIN_DOWN_DEG, COFFIN_BACK_DEG,
-  coffinSpinRevs, coffinSpinPose, COFFIN_SPIN_UP_MS, COFFIN_SPIN_DOWN_MS, COFFIN_SPIN_TAIL_MS,
+  coffinSpinRevs, coffinSpinPose, coffinSpinTailAt,
+  COFFIN_SPIN_UP_MS, COFFIN_SPIN_DOWN_MS, COFFIN_SPIN_TAIL_MS,
 } from './hunterCoffin';
 
 const D2R = Math.PI / 180;
@@ -147,6 +148,40 @@ describe('突進は頭上で振り回す(社長指示2026-09-18「突進は振�
     expect(b).toBeGreaterThan(a);
     expect(c).toBeGreaterThan(b);
     expect(coffinSpinPose(2000, 0, T, 1)).toBeNull();     // 尻尾が切れたら消える
+  });
+
+  // ★★社長報告2026-09-22「**ハンターがダッシュした後、頭上を周る棺桶が消えない**」(v0.25.4571)。
+  // 旧実装は尻尾を**ラッチの窓の終わり**(t0 + dur − TAIL)から数えていた。突進の長さは可変なので
+  // 窓は**60秒**の安全枠を取っており、結果**尻尾が始まるのは突進開始から59.7秒後**=
+  // **走り終わっても棺桶が約1分回り続けた**。起点は窓ではなく「走りが切れた瞬間」。
+  describe('★★走り終わったら消える(尻尾の起点は「切れた瞬間」)', () => {
+    it('走っている間は尻尾ゼロ', () => {
+      expect(coffinSpinTailAt(10_000, undefined, true)).toBe(0);
+      expect(coffinSpinTailAt(10_000, 9_000, true)).toBe(0);   // armed が勝つ(再突進)
+    });
+
+    it('★切れた瞬間から数え、T で消える(窓の長さに引きずられない)', () => {
+      const off = 5_000;
+      expect(coffinSpinTailAt(off, off, false)).toBe(0);
+      expect(coffinSpinTailAt(off + T / 2, off, false)).toBe(T / 2);
+      expect(coffinSpinTailAt(off + T - 1, off, false)).toBe(T - 1);
+      expect(coffinSpinTailAt(off + T, off, false)).toBeNull();        // ここで捨てる
+      expect(coffinSpinTailAt(off + 60_000, off, false)).toBeNull();   // ★1分後に残らない
+    });
+
+    it('★★突進が終わって T を過ぎたら、絵は1フレームも出ない(実バグの形)', () => {
+      const start = 1_000, off = 2_400;   // 1.4秒走って終わった
+      for (let now = off + T; now <= off + 60_000; now += 250) {
+        const tail = coffinSpinTailAt(now, off, false);
+        expect(tail, `now=${now}`).toBeNull();
+        // 呼び手はラッチを捨てるので描画にも入らないが、仮に入っても姿は無い
+        expect(coffinSpinPose(now - start, 0, T, 1)).toBeNull();
+      }
+    });
+
+    it('切れた時刻が焼けていなければ出さない(描く根拠が無い)', () => {
+      expect(coffinSpinTailAt(10_000, undefined, false)).toBeNull();
+    });
   });
 
   it('★左右で回る向きが鏡になる', () => {
