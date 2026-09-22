@@ -10,6 +10,8 @@
 // 沈み切る所で詰まる / 着地は 103→92→**86**→90→101→108 と、潰れてから戻る)。
 // ここへ ease を重ねると二重になる。
 
+import { sectionFrame, sectionLastFrame, sectionsTotal, type SectionCounts } from './sheetSections';
+
 /** 1枚のシートを3区間へ割る。合計がコマ数と一致すること。 */
 export interface JumpSplit {
   /** しゃがみ(溜め)に使うコマ数。先頭から。 */
@@ -20,7 +22,9 @@ export interface JumpSplit {
   land: number;
 }
 
-export const jumpSplitFrames = (s: JumpSplit): number => s.crouch + s.air + s.land;
+const counts = (s: JumpSplit): SectionCounts => [s.crouch, s.air, s.land];
+
+export const jumpSplitFrames = (s: JumpSplit): number => sectionsTotal(counts(s));
 
 export type JumpPhase = 'crouch' | 'air' | 'land';
 
@@ -33,23 +37,14 @@ export type JumpPhase = 'crouch' | 'air' | 'land';
  */
 export const enemyJumpFrame = (
   split: JumpSplit, phase: JumpPhase, prog: number,
-): number | null => {
-  const n = jumpSplitFrames(split);
-  if (n <= 1) return null;
-  const pick = (base: number, count: number, p: number): number | null => {
-    if (count <= 0) return null;
-    const i = Math.floor(Math.max(0, Math.min(0.999999, p)) * count);
-    return base + Math.min(count - 1, Math.max(0, i));
-  };
-  if (phase === 'crouch') return pick(0, split.crouch, prog);
-  if (phase === 'air') return pick(split.crouch, split.air, prog);
-  if (prog >= 1) return null;                       // 着地の絵が終わった=歩き/立ち絵へ返す
-  return pick(split.crouch + split.air, split.land, prog);
-};
+): number | null =>
+  // ★★選び方の本体は `sheetSections.sectionFrame` の1本(v0.25.4574)。薙ぎ払いと**同じ核**を使う
+  //   ——「境目でコマが飛ばない/全コマを1度は通る」の不変条件を2箇所に持たないため。
+  sectionFrame(counts(split), phase === 'crouch' ? 0 : phase === 'air' ? 1 : 2, prog);
 
 /**
  * ★盾で弾かれて空中から落ちる間に出すコマ(=滞空の最後のコマ)。
  * 着地の絵を先に出すと「まだ落ちている最中に砂埃が上がる」嘘になるので、落ち切るまでは落下の姿で持たせる。
  */
 export const enemyJumpFallFrame = (split: JumpSplit): number =>
-  Math.max(0, split.crouch + split.air - 1);
+  sectionLastFrame(counts(split), 1);

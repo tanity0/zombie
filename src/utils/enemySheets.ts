@@ -1,4 +1,5 @@
 import type { JumpSplit } from './enemyJumpSheet';
+import type { SweepSplit } from './enemySweepSheet';
 import type { IdlePlayback } from './enemyIdleSheet';
 // ★敵のアニメーションシートの台帳(**依存ゼロの葉モジュール**)。
 //
@@ -403,6 +404,32 @@ export const ENEMY_JUMP_LAND_MS: Readonly<Record<string, number>> = {
 };
 
 export const jumpSheetName = (idleTexName: string): string => `${idleTexName}-jump`;
+
+/**
+ * ★**薙ぎ払いの絵**(社長支給2026-09-22「伐採人の薙払いの時のモーション」)。
+ * シート名は `<立ち絵名>-sweep`。**溜め/薙ぎ/戻りの3区間**に割って使う
+ * (割り方は `utils/enemySweepSheet.ts`。尺は判定側=store の時計をそのまま読む)。
+ *
+ * ★**なぜ攻撃シートの表と分けたか**: 攻撃シート(`ENEMY_ATTACK_SHEETS`)は**噛みつき台本(`biteAt`)**の
+ * 上でコマを送る。伐採人の薙ぎ払いは噛みではなく `aiPhase`(`logger-sweep-*`)の別の時計なので、
+ * 攻撃の表へ入れても **`biteAt` が無く1コマも描かれない**(★実在確認の掟)。
+ */
+export const ENEMY_SWEEP_SHEETS: Readonly<Record<string, SweepSplit>> = {
+  // ★伐採人(`logger`)。立ち絵名は **`reaper-common`**——旧・死神の絵が v0.25.4004 で伐採人へ降格した
+  //   ため(`ENEMY_VARIANT_SETS.logger = ['reaper-common']`)。**死神本体は `reaper2-common` で別人。**
+  // 9コマ(支給 1296×130 → 余白を切って **134×128**)。常駐 0.59MB。切る矩形は全コマ共通(x4-137 / y2-129)。
+  // 読み(高さの実測つき): **0=チェーンソーを頭上へ構えて唸らせる(122)** /
+  //       **1,2,3=振り下ろして地を噛み、薙ぎ抜ける(110→99→91。2で地面の火花が最大)** /
+  //       **4〜8=引き戻して担ぎ直し、構えへ戻る(97→127→128→105→106)**。
+  // ★★**0を溜めに、1を薙ぎの先頭に置いた**=**当たる瞬間に刃が走り出す**(掟③)。
+  //   溜めは実効1083msを0コマ目で持つ(「武器を構えて一瞬止まる」の型。赤い帯もこの間に出ている)。
+  'reaper-common': { windup: 1, active: 3, recover: 5 },
+};
+
+export const sweepSheetName = (idleTexName: string): string => `${idleTexName}-sweep`;
+
+export const sweepSheetSplit = (idleTexName: string | null | undefined): SweepSplit | null =>
+  (idleTexName && ENEMY_SWEEP_SHEETS[idleTexName]) || null;
 
 export const jumpSheetSplit = (idleTexName: string | null | undefined): JumpSplit | null =>
   (idleTexName && ENEMY_JUMP_SHEETS[idleTexName]) || null;

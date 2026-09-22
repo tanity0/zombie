@@ -8,7 +8,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   ENEMY_WALK_SHEETS, ENEMY_ATTACK_SHEETS, ENEMY_IDLE_SHEETS, ENEMY_JUMP_SHEETS, ENEMY_SHOT_SHEETS,
-  walkSheetName, attackSheetName, idleSheetName, jumpSheetName, shotSheetName,
+  ENEMY_SWEEP_SHEETS,
+  walkSheetName, attackSheetName, idleSheetName, jumpSheetName, shotSheetName, sweepSheetName,
 } from './enemySheets';
 import { isAtlasPxOverride, ATLAS_PX2_OVERRIDES } from './atlasPxOverrides';
 
@@ -25,6 +26,7 @@ const TABLES: [string, Readonly<Record<string, unknown>>, (n: string) => string]
   ['待機', ENEMY_IDLE_SHEETS, idleSheetName],
   ['跳ぶ', ENEMY_JUMP_SHEETS, jumpSheetName],
   ['弾', ENEMY_SHOT_SHEETS, shotSheetName],
+  ['薙ぎ', ENEMY_SWEEP_SHEETS, sweepSheetName],
 ];
 
 describe('★★表の名前 ⇔ 実在する素材', () => {
