@@ -18903,7 +18903,8 @@ export class PixiScene {
         // 「**別スプライトの爪は消さなくていい**」)。
         // v0.25.4543〜4545 では「シートに爪の腕ごと描かれている=二本になる」と考えて止めていたが、
         // 社長裁定で**止めない**ことになった。⇒ ここは**全個体で無条件**(シートの有無を見ない)。
-        // ※`sheetHasWeapon` の表はコウモリ(男)のランタン用に残っている。**骸骨は表から外した。**
+        // ※`sheetHasWeapon` の表は**v0.25.4558 で空になった**(社長報告「バットの男の武器も消えてるよ」)。
+        //   ⇒ **別スプライトの武器を止めている個体は1体も無い。**
         const cf = skelClawFrameWithWindup(sSinceWindup, swMs, sinceImpact);
         if (cf !== null) {
           this.drawSkelClawSprite(
