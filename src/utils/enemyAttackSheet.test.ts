@@ -188,26 +188,53 @@ describe('★コマの並びと尺', () => {
 // 5コマが1コマ10ms(60fpsで0.6フレーム)になって**3コマ飛んでいた**。
 // 止まりを「溜め − 踏み込み」にして直した。**噛みの時刻は1msも動かしていない。**
 describe('★★★どのシートも、画面で全コマが出る(コマ飛びを作らない)', () => {
-  const TYPE: Record<string, Enemy['type']> = {
-    'bat-female': 'bat', 'bat-male': 'bat',
-    'skeleton-male': 'skeleton', 'skeleton-female': 'skeleton', 'zombie-common': 'zombie',
+  // ★★**型を手書きしない**(v0.25.4570)。旧実装はシート名→型の対応表を手で持っており、
+  // **リッチの攻撃シートが届いた回にそれだけで落ちた**——`enemySheetFiles.test.ts` を作り直した
+  // v0.25.4563 と**同じ壊れ方**(素材は1体ずつ届くので、手書きの表は届くたびに落ちる)。
+  // ⇒ **`ENEMY_VARIANT_SETS` を逆に引く**(立ち絵名→型)。変種を持たない敵(ハンター等)は
+  //    `enemyTexKey` と同じく**名前そのものが型**なので、そのまま落とす。
+  const TYPE: Record<string, Enemy['type']> = Object.fromEntries(
+    Object.entries(ENEMY_VARIANT_SETS).flatMap(([t, names]) => names.map(n => [n, t])),
+  ) as Record<string, Enemy['type']>;
+  const typeOf = (key: string): Enemy['type'] => TYPE[key] ?? (key as Enemy['type']);
+  /** その立ち絵で「攻撃シートが出る技」。既定の噛みに加え、専用の技を持つ型はそれも見る。 */
+  type Move = Parameters<typeof biteSpecFor>[1];
+  const MOVES: Record<string, Move[]> = {
+    bat: ['bat-grab'],
+    lich: [undefined, 'lich-blink'],   // ★ワープ直後の鞭(§16-C)は溜め800msの別台本
   };
 
   it('60fpsで1周ぶん見て、出ないコマが1枚も無い', () => {
-    for (const key of Object.keys(ENEMY_ATTACK_SHEETS)) {
+    const keys = Object.keys(ENEMY_ATTACK_SHEETS);
+    expect(keys.length, '攻撃シートが1枚も無いなら、この検査は何も言っていない').toBeGreaterThan(0);
+    for (const key of keys) {
       const frames = ENEMY_ATTACK_SHEETS[key];
       const impact = attackImpactFrame(key);
-      const type = TYPE[key];
-      expect(type, `${key} の型が表に無い`).toBeDefined();
-      const spec = biteSpecFor(type, type === 'bat' ? 'bat-grab' : undefined);
-      const still = attackStillMs(spec.windupMs, spec.lungeMs);
-      const seen = new Set<number>();
-      for (let t = 0; t <= spec.windupMs + spec.biteMs + ATTACK_SETTLE_MS; t += 1000 / 60) {
-        const f = enemyAttackFrame(frames, t, spec.windupMs, spec.biteMs, ATTACK_SETTLE_MS, impact, still);
-        if (f !== null) seen.add(f);
+      const type = typeOf(key);
+      for (const move of MOVES[type] ?? [undefined]) {
+        const spec = biteSpecFor(type, move);
+        const still = attackStillMs(spec.windupMs, spec.lungeMs);
+        const seen = new Set<number>();
+        for (let t = 0; t <= spec.windupMs + spec.biteMs + ATTACK_SETTLE_MS; t += 1000 / 60) {
+          const f = enemyAttackFrame(frames, t, spec.windupMs, spec.biteMs, ATTACK_SETTLE_MS, impact, still);
+          if (f !== null) seen.add(f);
+        }
+        expect(seen.size, `${key}/${move ?? '既定の噛み'}: 出たコマ ${[...seen].sort((a, b) => a - b).join(',')} / ${frames}`).toBe(frames);
       }
-      expect(seen.size, `${key}: 出たコマ ${[...seen].sort((a, b) => a - b).join(',')} / ${frames}`).toBe(frames);
     }
+  });
+
+  // ★★リッチの鞭は「火花のコマが当たった"後"」に来る切り方(掟③)。
+  it('★リッチ: ダメージが解決する瞬間に、火花のコマ(5)が始まる', () => {
+    const frames = attackSheetFrames('lich-common');
+    const impact = attackImpactFrame('lich-common');
+    const spec = biteSpecFor('lich', 'lich-blink');
+    const still = attackStillMs(spec.windupMs, spec.lungeMs);
+    const hit = spec.windupMs + spec.biteMs;                       // = LICH_BLINK_HOLD_MS(1000ms)
+    const at = (t: number) => enemyAttackFrame(frames, t, spec.windupMs, spec.biteMs, ATTACK_SETTLE_MS, impact, still);
+    expect(at(hit - 1)).toBe(impact);      // 当たる直前=振り抜きのコマ(火花はまだ)
+    expect(at(hit)).toBe(impact + 1);      // ★当たった瞬間に火花のコマへ移る
+    expect(impact + 1).toBe(5);            // その火花のコマ=5(実測で火花が最大)
   });
 
   it('★構えの止まりは「溜め − 踏み込み」。踏み込みが溜めを使い切る型だけコウモリの値', () => {
