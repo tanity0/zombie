@@ -103,10 +103,11 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
 import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, sheetFrontOn, walkStrideMul, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, sheetFrontOn, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames } from '../utils/enemyJumpSheet';
+import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
 // (手写しミラーは撤去済み。入れ子オブジェクトを参照で持つので部屋で動かした値が絵にも即効く)。
@@ -17738,6 +17739,7 @@ export class PixiScene {
     const idleTexKey = this.enemyTexKey(e.type, e.id);
     // 見た目の身長(=歩幅の基準)。判定の箱ではなく**描画の箱**(§drawEnemy が使うのと同じ fb)。
     const atkTex = this.enemyJumpTexture(idleTexKey, e, gameTime)
+      ?? this.enemyShotTexture(idleTexKey, e, now)
       ?? this.enemyAttackTexture(idleTexKey, e, gameTime);
     const walkTex = atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
       ?? this.enemyIdleTexture(idleTexKey, e, now);
@@ -29704,6 +29706,27 @@ export class PixiScene {
       tsNum('idlebreath', idleSheetPeriodMs(idleTexKey)), idleSheetPlayback(idleTexKey));
     if (i === null) return null;
     const slices = this.sheetSlices(idleSheetName(idleTexKey), frames);
+    return slices ? (slices[i] ?? null) : null;
+  }
+
+  /**
+   * ★弾を撃つ絵(社長支給2026-09-21「プラントの弾攻撃(**蕾になるのを早く流して、閉じたら弾が
+   * 発射するイメージ**)」)。**噛みつきの絵より優先**する。
+   *
+   * 尺は `utils/plantShot.ts` の1本=**ストア側(`combatTick`)の発射と同じ定数**を引く。
+   * だから「閉じ切ったコマが終わる瞬間」と「弾が出る瞬間」がズレない。
+   * ★この絵は**ミラーしない**(正面向きの花)。表を `ENEMY_SHOT_SHEETS` に分けてあるので
+   * `hasAnimSheet`(=ミラーの対象)には入らない。
+   */
+  private enemyShotTexture(idleTexKey: string, e: Enemy, now: number): ReturnType<typeof getTexture> {
+    const frames = shotSheetFrames(idleTexKey);
+    if (frames <= 1) return null;
+    const closeMs = tsNum('plantclose', PLANT_CLOSE_MS);
+    const openMs = tsNum('plantopen', PLANT_OPEN_MS);
+    const i = plantShotFrame(frames, e.shotWindupAt !== undefined ? now - e.shotWindupAt : null,
+      closeMs, openMs, tsNum('plantbud', PLANT_BUD_HOLD_MS));
+    if (i === null) return null;
+    const slices = this.sheetSlices(shotSheetName(idleTexKey), frames);
     return slices ? (slices[i] ?? null) : null;
   }
 

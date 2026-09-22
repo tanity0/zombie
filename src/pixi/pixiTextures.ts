@@ -13,7 +13,7 @@ import { Assets, Rectangle, Texture } from 'pixi.js';
 import { ALL_VARIANT_TEXTURES, ENEMY_VARIANT_SETS } from '../utils/enemyVariant';
 import { ENEMY_WALK_SHEETS, walkSheetName } from '../utils/enemyWalkSheet';
 import { ENEMY_ATTACK_SHEETS, attackSheetName } from '../utils/enemyAttackSheet';
-import { ENEMY_IDLE_SHEETS, idleSheetName, ENEMY_JUMP_SHEETS, jumpSheetName } from '../utils/enemySheets';
+import { ENEMY_SHOT_SHEETS, shotSheetName, ENEMY_IDLE_SHEETS, idleSheetName, ENEMY_JUMP_SHEETS, jumpSheetName } from '../utils/enemySheets';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
 import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
@@ -1019,6 +1019,7 @@ export const ensureTextures = (): Promise<void> => {
       // 縦横比で `enemyHitStrip`(当たり判定)が動く。判定は立ち絵のまま据え置く。
       ...Object.keys(ENEMY_WALK_SHEETS).map((name) => ({ name: walkSheetName(name), scaleMode: 'nearest' as const })),
       ...Object.keys(ENEMY_ATTACK_SHEETS).map((name) => ({ name: attackSheetName(name), scaleMode: 'nearest' as const })),
+      ...Object.keys(ENEMY_SHOT_SHEETS).map((name) => ({ name: shotSheetName(name), scaleMode: 'nearest' as const })),
       ...Object.keys(ENEMY_IDLE_SHEETS).map((name) => ({ name: idleSheetName(name), scaleMode: 'nearest' as const })),
       ...Object.keys(ENEMY_JUMP_SHEETS).map((name) => ({ name: jumpSheetName(name), scaleMode: 'nearest' as const })),
     ];
