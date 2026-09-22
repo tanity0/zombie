@@ -29638,6 +29638,26 @@ export class PixiScene {
       i = blockedFall
         ? enemyJumpFallFrame(split)
         : enemyJumpFrame(split, 'land', (gameTime - recoverStart) / jumpLandMs(idleTexKey));
+    } else if (e.aiPhase === 'g-jump-windup' || e.aiPhase === 'g-jump-air' || e.aiPhase === 'g-jump-recover') {
+      // ★★城ボスの飛び掛かり(社長支給2026-09-23「城1ボス 搬送体のジャンプ攻撃」・v0.25.4575)。
+      // 同じ3区間だが**州の名前も時計も別**(`g-jump-*` / `GIANT_JUMP_*`)。汎用ジャンプ
+      // (`crouch`/`jump`/`recover`)の枝では1コマも出ないので、ここで別に写す。
+      const airDur = GIANT_JUMP_AIR_MS / ENEMY_ATTACK_SPEED_MULT;
+      if (e.aiPhase === 'g-jump-windup') {
+        const dur = GIANT_JUMP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+        i = enemyJumpFrame(split, 'crouch', 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / dur);
+      } else if (e.aiPhase === 'g-jump-air') {
+        i = enemyJumpFrame(split, 'air', (gameTime - (e.aiStartedAt ?? gameTime)) / airDur);
+      } else {
+        // ★立ち直りの長さは**相と台本で変わる**(`scriptRestMs`)ので読まない。代わりに
+        // **滞空の始まり(`aiStartedAt`)から滞空ぶんを引いた値**=着地からの経過を使う。
+        // ★盾で弾かれた時は store が `aiStartedAt` を**弾かれた瞬間**に書き直すので、この値は
+        // 負から始まる=**まだ落ちている**。その間は着地の絵を出さず滞空の最後のコマで持たせる。
+        const sinceLand = (gameTime - (e.aiStartedAt ?? gameTime)) - airDur;
+        i = sinceLand < 0
+          ? enemyJumpFallFrame(split)
+          : enemyJumpFrame(split, 'land', sinceLand / jumpLandMs(idleTexKey));
+      }
     }
     if (i === null) return null;
     const frames = jumpSplitFrames(split);
@@ -29652,7 +29672,8 @@ export class PixiScene {
    * ★**`aiPhaseUntil` は `atkUntil()`=ゲームスピードで割った後の時刻**なので、生の定数を引かず
    * **同じ割り方で引く**(v0.25.4565 でハンターの着地が手前へズレていたのと同じ罠)。
    * ★**当たるのは溜めの末尾**(store が `-windup` → `-active` の遷移でカプセルを1回積む)。
-   * 区間の境目がそのまま掟③になる=**薙ぎ区間の先頭コマ(刃が地を噛む絵)が、当たる瞬間に出る。**
+   * 区間の境目がそのまま掟③になる=**薙ぎ区間の先頭コマ(刃が走り出す絵)が、当たる瞬間に出る。**
+   * ※地面の火花はその**後**のコマ(実測: 当たりの61ms後から、122ms後が最大)。
    * ★**別スプライトのチェーンソー(`reaper-chainsaw`)は止めない**(CLAUDE.md「別スプライトの武器は消さない」)。
    */
   private enemySweepTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {

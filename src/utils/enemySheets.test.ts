@@ -12,7 +12,7 @@ import {
   hasAnimSheet, sheetFacesRight, walkPlayback, attackImpactFrame,
   sheetHasWeapon, ENEMY_SHEET_HAS_WEAPON, ENEMY_ATTACK_IMPACT_FRAME,
   sheetFrontOn, ENEMY_SHEET_FRONT_ON,
-  ENEMY_IDLE_SHEETS, ENEMY_SHOT_SHEETS, ENEMY_JUMP_SHEETS,
+  ENEMY_IDLE_SHEETS, ENEMY_SHOT_SHEETS, ENEMY_JUMP_SHEETS, ENEMY_SWEEP_SHEETS,
   ENEMY_WALK_STRIDE_MUL, ENEMY_WALK_DASH_GEAR, walkStrideMul,
 } from './enemySheets';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
@@ -25,6 +25,7 @@ import { ENEMY_VARIANT_SETS } from './enemyVariant';
 const ALL_SHEETED = new Set([
   ...Object.keys(ENEMY_WALK_SHEETS), ...Object.keys(ENEMY_ATTACK_SHEETS),
   ...Object.keys(ENEMY_IDLE_SHEETS), ...Object.keys(ENEMY_SHOT_SHEETS), ...Object.keys(ENEMY_JUMP_SHEETS),
+  ...Object.keys(ENEMY_SWEEP_SHEETS),
 ]);
 
 describe('★表', () => {
@@ -109,6 +110,21 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
     expect(withSheet.length, 'シートが1枚も無いなら、この検査は何も言っていない').toBeGreaterThan(0);
     for (const n of withSheet) expect(sheetFrontOn(n), n).toBe(false);
     expect(sheetFrontOn(null)).toBe(false);
+  });
+
+  // ★★品質監査2026-09-23 の指摘(v0.25.4575): 薙ぎ払いの表を足した時、`hasAnimSheet` に入れ忘れて
+  // **伐採人だけ手描きシートを持ちながらミラーされない**状態になっていた。表を足すたびに同じ穴が開くので、
+  // 「**どの表に載っていても対象**」を機械で押さえる。
+  it('★★表を1つ足してミラーの判定に入れ忘れると落ちる(表ごとに最低1件は対象)', () => {
+    const tables: [string, Readonly<Record<string, unknown>>][] = [
+      ['歩き', ENEMY_WALK_SHEETS], ['攻撃', ENEMY_ATTACK_SHEETS], ['待機', ENEMY_IDLE_SHEETS],
+      ['弾', ENEMY_SHOT_SHEETS], ['跳ぶ', ENEMY_JUMP_SHEETS], ['薙ぎ', ENEMY_SWEEP_SHEETS],
+    ];
+    for (const [label, t] of tables) {
+      const keys = Object.keys(t);
+      expect(keys.length, `${label}: 表が空だと検査が空回りする`).toBeGreaterThan(0);
+      for (const n of keys) expect(hasAnimSheet(n), `${label}: ${n}`).toBe(true);
+    }
   });
 
   it('★待機だけ/弾だけ/跳びだけの絵を持つ個体も、ミラーの対象に入る', () => {

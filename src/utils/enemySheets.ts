@@ -391,6 +391,15 @@ export const ENEMY_JUMP_SHEETS: Readonly<Record<string, JumpSplit>> = {
   //   「地上で一番背が高く、跳んだ途端に縮む」という逆さまの絵になっていた。
   //   5を滞空の**先頭**にすると、伸び上がり=踏み切り → 以降ずっと縮みながら落ちる、と筋が通る。
   'hunter': { crouch: 5, air: 5, land: 6 },
+  // ★城ボス1(搬送体・型は `giantbat`)16コマ(支給 3952×258 → 余白を切って **243×256**)。常駐 3.80MB。
+  // 読み(高さの実測つき): **0〜3=立ちから沈み込む**(256→227→212→**210**=沈み切り)/
+  //       **4〜10=踏み切り〜滞空〜落下**(221→210→**237**=一番伸びる→211→167→177→191)/
+  //       **11〜15=接地〜立ち直り**(**165**=一番潰れる=着地の瞬間→185→183→197→212)。
+  // ★11コマ目(区間の先頭)が**接地**=判定の着地(爆風)と同じ瞬間に出る。
+  // ★★**州の名前が汎用ジャンプと違う**(`g-jump-windup`/`-air`/`-recover`)。時計も城ボス専用
+  //   (`GIANT_JUMP_WINDUP_MS` 実効1000ms / `GIANT_JUMP_AIR_MS` 実効320ms / 立ち直りは相と台本で可変)。
+  //   描画側(`pixiScene.enemyJumpTexture`)がこの3州を別に写している。
+  'giantbat': { crouch: 4, air: 7, land: 5 },
 };
 
 /** 着地の絵を流す長さ(ms)。立ち直り(recover)全体はもっと長いので、その頭だけを使う。 */
@@ -401,6 +410,9 @@ export const ENEMY_JUMP_LAND_MS: Readonly<Record<string, number>> = {
   // 絵を先に終わらせると棺桶が肩へ瞬間移動する。立ち直りが明ける=歩き出す瞬間まで持たせる。
   // ※`?speed=` で既定から変えた時だけ追従しない(蜘蛛の420も同じ性質)。値は `enemyJumpSheet.test.ts` が見張る。
   'hunter': 833,
+  // ★城ボス1。立ち直りは**相と台本で変わる**(相3で実効700ms・それ以外は1100ms前後)ので、
+  //   **一番短い側(700ms)に合わせて必ず出し切れる長さ**にした。残りは立ち絵で待つ(蜘蛛の420msと同じ扱い)。
+  'giantbat': 700,
 };
 
 export const jumpSheetName = (idleTexName: string): string => `${idleTexName}-jump`;
@@ -445,14 +457,14 @@ export const jumpLandMs = (idleTexName: string | null | undefined): number =>
  * ミラーしないと脚も振りも進行方向と逆を向く。だが素材は1体ずつ届くので、**型ではなく個体で**
  * 判定する(同じバットでも、シートのある女はミラーし、まだ無い男は従来どおり型の設定のまま)。
  *
- * ★**5つの表のどれか1つでも載っていれば対象**(v0.25.4566)。旧実装は歩き/攻撃だけを見ており、
+ * ★**6つの表のどれか1つでも載っていれば対象**(v0.25.4566 / 薙ぎを追加 v0.25.4575)。旧実装は歩き/攻撃だけを見ており、
  * **待機だけ・弾だけ・跳びだけの絵を持つ個体(プラント/抱卵型)が漏れていた**。
  * 「全ての敵」に例外を作らないため、手で描かれた絵を持つ個体は全部ミラーする。
  */
 export const hasAnimSheet = (idleTexName: string | null | undefined): boolean =>
   walkSheetFrames(idleTexName) > 1 || attackSheetFrames(idleTexName) > 1
   || idleSheetFrames(idleTexName) > 1 || shotSheetFrames(idleTexName) > 1
-  || jumpSheetSplit(idleTexName) !== null;
+  || jumpSheetSplit(idleTexName) !== null || sweepSheetSplit(idleTexName) !== null;
 
 /** その立ち絵のシートが右向きか(シートが無ければ false=既定の左向き)。 */
 export const sheetFacesRight = (idleTexName: string | null | undefined): boolean =>
