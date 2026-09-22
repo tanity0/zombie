@@ -2,7 +2,7 @@
 // 描画側はテストしない(CLAUDE.md)——**いつどのコマを出すか**の純関数だけを固定する。
 import { describe, it, expect } from 'vitest';
 import {
-  enemyAttackFrame, enemyAttackFrameFor, attackFrameSpans, ATTACK_SETTLE_MS,
+  enemyAttackFrame, enemyAttackFrameFor, attackFrameSpans, ATTACK_SETTLE_MS, attackStillMs,
 } from './enemyAttackSheet';
 import { attackSheetFrames, attackSheetName, ENEMY_ATTACK_SHEETS, attackImpactFrame } from './enemySheets';
 import { biteSpecFor, BAT_WINDUP_STILL_MS } from './enemyBite';
@@ -179,5 +179,49 @@ describe('★コマの並びと尺', () => {
     const b = attackFrameSpans(FR, IMP, W * 2, B * 2, ATTACK_SETTLE_MS);
     expect(b.find(s => s.frame === 4)!.untilMs).toBe((W + B) * 2);
     expect(a.find(s => s.frame === 4)!.untilMs).not.toBe(b.find(s => s.frame === 4)!.untilMs);
+  });
+});
+
+// ★★社長報告2026-09-22「skeleton、攻撃の時、引っ掻きのモーション流れてる?」。
+// 構えで止まる長さを**一律250ms**にしていたため、溜め300msの骸骨では**振り上げに50msしか残らず**、
+// 5コマが1コマ10ms(60fpsで0.6フレーム)になって**3コマ飛んでいた**。
+// 止まりを「溜め − 踏み込み」にして直した。**噛みの時刻は1msも動かしていない。**
+describe('★★★どのシートも、画面で全コマが出る(コマ飛びを作らない)', () => {
+  const TYPE: Record<string, Enemy['type']> = {
+    'bat-female': 'bat', 'bat-male': 'bat',
+    'skeleton-male': 'skeleton', 'skeleton-female': 'skeleton', 'zombie-common': 'zombie',
+  };
+
+  it('60fpsで1周ぶん見て、出ないコマが1枚も無い', () => {
+    for (const key of Object.keys(ENEMY_ATTACK_SHEETS)) {
+      const frames = ENEMY_ATTACK_SHEETS[key];
+      const impact = attackImpactFrame(key);
+      const type = TYPE[key];
+      expect(type, `${key} の型が表に無い`).toBeDefined();
+      const spec = biteSpecFor(type, type === 'bat' ? 'bat-grab' : undefined);
+      const still = attackStillMs(spec.windupMs, spec.lungeMs);
+      const seen = new Set<number>();
+      for (let t = 0; t <= spec.windupMs + spec.biteMs + ATTACK_SETTLE_MS; t += 1000 / 60) {
+        const f = enemyAttackFrame(frames, t, spec.windupMs, spec.biteMs, ATTACK_SETTLE_MS, impact, still);
+        if (f !== null) seen.add(f);
+      }
+      expect(seen.size, `${key}: 出たコマ ${[...seen].sort((a, b) => a - b).join(',')} / ${frames}`).toBe(frames);
+    }
+  });
+
+  it('★構えの止まりは「溜め − 踏み込み」。踏み込みが溜めを使い切る型だけコウモリの値', () => {
+    expect(attackStillMs(300, 180)).toBe(120);            // 骸骨
+    expect(attackStillMs(600, 300)).toBe(300);            // ゾンビ
+    expect(attackStillMs(400, undefined)).toBe(BAT_WINDUP_STILL_MS);  // コウモリ(踏み込み=溜め)
+    expect(attackStillMs(400, 400)).toBe(BAT_WINDUP_STILL_MS);
+    expect(attackStillMs(100, undefined)).toBe(100);      // 溜めより長い止まりは作らない
+  });
+
+  it('★★噛みの時刻は止まりの長さに影響されない(掟③)', () => {
+    for (const still of [60, 120, 250, 400]) {
+      const frames = 9, impact = 7, W = 300, B = 200;
+      expect(enemyAttackFrame(frames, W + B - 1, W, B, ATTACK_SETTLE_MS, impact, still)).toBe(impact);
+      expect(enemyAttackFrame(frames, W + B, W, B, ATTACK_SETTLE_MS, impact, still)).toBe(impact + 1);
+    }
   });
 });

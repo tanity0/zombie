@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4559',
+    items: [
+      '骸骨の引っ掻きで、爪を振り上げる途中の絵が飛んでいたのを直した',
+    ],
+  },
+  {
     version: '0.25.4558',
     items: [
       '徘徊者の男が攻撃する時、武器が消えていたのを直した',

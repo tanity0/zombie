@@ -24,10 +24,27 @@ import type { Enemy } from '../types/game';
  */
 export interface AttackFrameSpan { frame: number; untilMs: number }
 
+/**
+ * ★**構えで止まる長さ**。**型ごとに違う**ので、噛み台本の `lungeMs`(踏み込みに使う時間)から出す:
+ * **止まる = 溜め − 踏み込み**。踏み込みが溜めをいっぱいまで使う型(`lungeMs` 省略=溜めと同値)だけ
+ * コウモリの値(`BAT_WINDUP_STILL_MS`)を使う。
+ *
+ * ★**なぜ要るか(社長報告2026-09-22「skeleton、攻撃の時、引っ掻きのモーション流れてる?」)**:
+ * 骸骨の溜めは **300ms**、コウモリの止まりは **250ms**。一律に250を引くと**振り上げに50msしか残らず**、
+ * 5コマが**1コマ10ms=60fpsで0.6フレーム**になって**ほとんど表示されない**(実測: 0→4→6 と飛んでいた)。
+ * 骸骨は `lungeMs: 180` なので **止まり120ms + 振り上げ180ms**(1コマ36ms)になり、ちゃんと見える。
+ * ★**噛みの時刻(溜め+噛み)は1msも動かない。** 溜めの**内訳の割り方**だけを直している。
+ */
+export const attackStillMs = (windupMs: number, lungeMs?: number): number =>
+  (lungeMs !== undefined && lungeMs < windupMs)
+    ? Math.max(1, windupMs - lungeMs)
+    : Math.min(windupMs, BAT_WINDUP_STILL_MS);
+
 export const attackFrameSpans = (
   frames: number, impact: number, windupMs: number, biteMs: number, settleMs: number,
+  stillMs?: number,
 ): AttackFrameSpan[] => {
-  const still = Math.min(windupMs, BAT_WINDUP_STILL_MS);   // 0コマ目=構えの持ち
+  const still = Math.min(windupMs, stillMs ?? BAT_WINDUP_STILL_MS);   // 0コマ目=構えの持ち
   const rise = Math.max(1, windupMs - still);              // 振り上げに使える残り
   const hit = windupMs + biteMs;                           // ★命中が解決する瞬間
   // 振り(`impact`コマ)は**一番短い**=速い。振りの窓の 3/10 を当てる。
@@ -56,10 +73,10 @@ export const ATTACK_SETTLE_MS = BAT_LANTERN_SETTLE_MS;
  */
 export const enemyAttackFrame = (
   frames: number, sinceMs: number, windupMs: number, biteMs: number,
-  settleMs: number = ATTACK_SETTLE_MS, impact: number = frames - 2,
+  settleMs: number = ATTACK_SETTLE_MS, impact: number = frames - 2, stillMs?: number,
 ): number | null => {
   if (frames <= 1 || !(sinceMs >= 0)) return null;
-  const spans = attackFrameSpans(frames, Math.max(1, Math.min(frames - 1, impact)), windupMs, biteMs, settleMs);
+  const spans = attackFrameSpans(frames, Math.max(1, Math.min(frames - 1, impact)), windupMs, biteMs, settleMs, stillMs);
   for (const s of spans) if (sinceMs < s.untilMs) return Math.min(frames - 1, s.frame);
   return null;   // 余韻も過ぎた=技は終わっている
 };
@@ -71,6 +88,7 @@ export const enemyAttackFrameFor = (
 ): number | null => {
   if (e.biteAt === undefined || e.biteAt <= 0) return null;
   const spec = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
+  // ★構えで止まる長さは**型ごと**(溜め − 踏み込み)。一律だと溜めの短い型で振り上げが潰れる。
   return enemyAttackFrame(frames, gameTime - e.biteAt, spec.windupMs, spec.biteMs,
-    ATTACK_SETTLE_MS, impact);
+    ATTACK_SETTLE_MS, impact, attackStillMs(spec.windupMs, spec.lungeMs));
 };
