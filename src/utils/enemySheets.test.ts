@@ -13,6 +13,7 @@ import {
   sheetHasWeapon, ENEMY_SHEET_HAS_WEAPON, ENEMY_ATTACK_IMPACT_FRAME,
   sheetFrontOn, ENEMY_SHEET_FRONT_ON,
   ENEMY_IDLE_SHEETS, ENEMY_SHOT_SHEETS, ENEMY_JUMP_SHEETS,
+  ENEMY_WALK_STRIDE_MUL, ENEMY_WALK_DASH_GEAR, walkStrideMul,
 } from './enemySheets';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
 
@@ -120,6 +121,19 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
     for (const n of [...Object.keys(ENEMY_SHEET_FRONT_ON), ...Object.keys(ENEMY_SHEET_FACES_RIGHT)]) {
       expect(hasAnimSheet(n), n).toBe(true);
     }
+  });
+
+  // ★歩幅/ギアの倍率は**名前が1文字違うと黙って無視される**(既定1へ落ちる)。
+  // シート名を見ていなかった検査の穴(v0.25.4563)と同じ壊れ方なので、ここで弾く。
+  it('★歩幅・ギアの倍率を付けられるのは、歩きシートを持つ絵だけ(名前の打ち間違いを弾く)', () => {
+    const keys = [...Object.keys(ENEMY_WALK_STRIDE_MUL), ...Object.keys(ENEMY_WALK_DASH_GEAR)];
+    expect(keys.length, '倍率が1つも無いなら、この検査は何も言っていない').toBeGreaterThan(0);
+    for (const n of keys) {
+      expect(walkSheetFrames(n), n).toBeGreaterThan(1);
+      expect(walkStrideMul(n, false), n).toBeGreaterThan(0);
+      expect(walkStrideMul(n, true), n).toBeGreaterThanOrEqual(walkStrideMul(n, false)); // 突進は落とさない
+    }
+    expect(walkStrideMul('zzz-not-a-sheet', false)).toBe(1);   // 載っていない絵は既定1
   });
 
   it('★武器ありの印を付けられるのは、攻撃シートを持つ絵だけ(付け間違いを弾く)', () => {

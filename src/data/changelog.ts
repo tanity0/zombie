@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4568',
+    items: [
+      '鞭使いの亡者は歩かず、蹴って滑るように進むようになった',
+    ],
+  },
+  {
     version: '0.25.4567',
     items: [
       '雪原と戦場に出る鞭使いの亡者が、触腕を巻きつけながら歩くようになった',
