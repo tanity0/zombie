@@ -15899,6 +15899,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 0.5秒おきに1個ずつ、最大 EGGCARRIER_BURST_COUNT 個ばらまく。初回は spawn からすぐ開始。
           let nextLay = enemy.eggLayAt ?? (gameTime + EGGCARRIER_BURST_INTERVAL_MS);
           let burst = enemy.eggBurstCount ?? 0;
+          let laid = false;   // このフレームで卵が出たか(震えの余韻の起点に使うだけ)
           // 洋館通路(corridorMode)は産卵しない(v0.25.2145・社長指示「緑卵も出現しないで」の保険。
           // 湧きプールからghost自体を外しているが、featured/forced経路で万一出ても卵は撒かせない)。
           if (!MINES_DISABLED && !state.corridorMode && gameTime >= nextLay) { // ?mine=0 診断: 抱卵型は卵を撒かない(通常敵として動くだけ)
@@ -15914,10 +15915,15 @@ export const useGameStore = create<GameState>((set, get) => ({
               health: 1, maxHealth: 1, type: 'mine', lastHit: 0,
             });
             burst += 1;
+            laid = true;
             if (burst >= EGGCARRIER_BURST_COUNT) { burst = 0; nextLay = gameTime + EGGCARRIER_BURST_CD_MS; } // バースト完了→3秒CD
             else { nextLay = gameTime + EGGCARRIER_BURST_INTERVAL_MS; }                                     // 次の卵は0.5秒後
           }
-          return { ...enemy, vx: gvx, vy: gvy, x: gmoved.x, y: gmoved.y, eggLayAt: nextLay, eggBurstCount: burst, aiPhase: undefined, aiPhaseUntil: 0 };
+          return { ...enemy, vx: gvx, vy: gvy, x: gmoved.x, y: gmoved.y, eggLayAt: nextLay, eggBurstCount: burst,
+            // ★産卵の震え(社長指示2026-09-22)の「出た後の余韻」用の打刻。**描画専用**で、
+            // 卵の出方・数・間隔・判定には一切関与しない(この行を消しても挙動は変わらない)。
+            eggLaidAt: laid ? gameTime : enemy.eggLaidAt,
+            aiPhase: undefined, aiPhaseUntil: 0 };
         }
 
         // 変異体(叫喚型・screamer): プレイヤーに直進せず一定距離を保って移動。出現3秒後に初回、以降10秒間隔で

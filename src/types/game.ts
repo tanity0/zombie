@@ -1039,6 +1039,9 @@ export interface Enemy {
   punisherHopped?: boolean;
   // 抱卵型(旧ghost): 次に緑卵を撒く gameTime(ms)。バースト中は0.5秒間隔、完了後は3秒CD。
   eggLayAt?: number;
+  // ★**直前に卵を産んだ時刻**(gameTime・`eggLayAt` と同じ時計)。産卵の震え(`utils/eggTremble.ts`)が
+  // 「出た後の余韻」を描くためだけに使う**描画専用の打刻**。判定・卵の出方・数・間隔には一切関与しない。
+  eggLaidAt?: number;
   // 抱卵型: 現在のバーストで撒いた個数(0..EGGCARRIER_BURST_COUNT)。3個で0へ戻し3秒CD。
   eggBurstCount?: number;
   // 叫喚型(screamer): 次に叫喚(溜め開始)する gameTime(ms)。初回=出現3秒後、以降10秒間隔。

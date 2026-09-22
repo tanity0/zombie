@@ -105,6 +105,7 @@ import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
 import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
 import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, sheetFrontOn, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
+import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
@@ -17949,6 +17950,24 @@ export class PixiScene {
 
     const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
     const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX;
+    // ★★産卵の震え(社長指示2026-09-22「この人は攻撃が無いので、卵を産むときに震える感じにします」)。
+    // 抱卵型(卵体)は攻撃を持たない代わりに、**卵が出る瞬間へ向けて体が痙攣する**。
+    // 形と尺は `utils/eggTremble.ts` の1本(縦が主・横が従 / 独立した痙攣 / 放出の一発 / 連射の起伏)。
+    // ★**位置の揺れだけ**で、絵は伸び縮みも回転もしない。卵の出方・数・間隔・判定には一切関与しない。
+    // ★**影は動かさない**(`shadowLiftPx` には足さない)——足が地面に刺さったまま体が震える形にする。
+    let eggSinkPx = 0;
+    if (e.type === 'ghost'
+      && gameTime - (e.spawnedAt ?? -Infinity) >= tsNum('eggtremblespawn', EGG_TREMBLE_SPAWN_GUARD_MS)) {
+      const burst = e.eggBurstCount ?? 0;
+      const tr = eggTrembleAt(
+        e.eggLayAt !== undefined ? e.eggLayAt - gameTime : null,
+        e.eggLaidAt !== undefined ? gameTime - e.eggLaidAt : null,
+        burst, burst === 0, stablePhase(e.id),
+        tsNum('eggtremblepx', EGG_TREMBLE_PX), tsNum('eggtremblelead', EGG_TREMBLE_LEAD_MS),
+      );
+      aiShake += tr.x;
+      eggSinkPx = tr.y;   // +が下。下の位置決めで引く(=沈む)。
+    }
     // v0.25.3069: 踏み鳴らしの震え(aiShake)もここへ合流させる。liftShake は下の位置決めと
     // ステージ4/5の足元ズレ補正の**両方**で使われる唯一の横オフセットなので、別変数を足すと
     // 雪原/戦場だけ震えが消える(同じ値を2箇所で管理しない)。
@@ -18267,7 +18286,8 @@ export class PixiScene {
         if (faceMul === 0) faceMul = 0.02; // scale.x=0の完全消失フレームを作らない
       }
     }
-    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop - kbHop - motBob));
+    view.sprite.position.set(Math.round(fb.footX + liftShake),
+      Math.round(fb.footY - liftHop - aiHop - kbHop - motBob + eggSinkPx));
     view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
     view.sprite.alpha = artFade; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
 
