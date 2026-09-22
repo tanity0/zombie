@@ -3080,9 +3080,6 @@ const TAILSLAM_DUST_ALONG = 0.65; // 砂埃/地割れを置く位置(帯の何�
 const CORPSE_SHAKE_MAG = 6;
 // 拳が当たってから消えるまでは `IDOL_TUNING.fx.punchFistHoldMs`(メーカーで触れる・v0.25.2651)。
 // ここに定数を置くと**メーカーで変えても効かない**ので置かない(v0.25.2631の教訓と同じ形)。
-const PLANT_SPIT_MS = 300;     // 種を吐く反動(口の絵)の尺
-const PLANT_SPIT_SCALE = 1.7;  // 口の絵の大きさ(敵の描画枠に対する倍率・②寄りの見せ)
-const PLANT_SPIT_MAX = 12;     // 同時に生きている口の絵の安全弁(1発=300msの一瞬なので実質届かない)
 // v0.25.2586(社長報告「中央にターゲット捉えれてなさそう」): 寄りズームで対象を画面中央へ寄せる割合。
 // 1=完全に中央へ(社長要望どおり)/0=旧挙動(対象を軸に拡大するだけで中央へは寄らない)。叩き台=1。
 const ZOOM_TARGET_CENTER_FRAC = 1;
@@ -24582,10 +24579,6 @@ export class PixiScene {
         const bx = p.x + p.width / 2, by = p.y + p.height / 2;
         if (!this.boltLast.has(p.id)) {
           this.pushBoltFx(bx, by, false, now);
-          // FX-V3V4(V3-6): 植物の「種を吐く反動」。発射コードは useGameLoop の汎用射撃だが、
-          // **弾がここに現れた瞬間=撃った瞬間**なので、この合流点1箇所で全ステージ・全個体の
-          // 植物を漏れなく拾える(V1(1)の弾FXと同じ考え方)。
-          if (p.ownerType === 'plant') this.pushSpitFx(p, now);
         }
         this.boltLast.set(p.id, { x: bx, y: by });
       } else if (this.boltLast.has(p.id)) {
@@ -24612,64 +24605,13 @@ export class PixiScene {
       }
     }
     this.drawBoltFx(now);
-    this.drawSpitFx(now);
   }
 
-  // ── FX-V3V4(V3-6): 植物の種吐き ─────────────────────────────────────────────
-  // 「口の絵」= 判定ゼロの**分類②**(反動の見せ)なので敵の描画枠より大きく出す。
+  // ── FX-V3V4(V3-6): 植物の種弾 ────────────────────────────────────────────
   // 「種弾」= 判定を持つ**分類①**なので判定の一辺そのままで置く(drawPlantSeed)。
-  private spitFx: { x: number; y: number; ang: number; size: number; t0: number }[] = [];
-  private spitPool: Sprite[] = [];
-  private spitUsed = 0;
-  private pushSpitFx(p: Projectile, now: number) {
-    if (!FX_RING_ENABLED) return;
-    if (this.spitFx.length >= PLANT_SPIT_MAX) this.spitFx.shift(); // 安全弁
-    // 撃った本人の描画枠から中心と大きさを引く(弾1発につき1回だけの探索=毎フレームではない)。
-    const shooter = useGameStore.getState().enemies.find(en => en.id === p.ownerId);
-    let x = p.x + p.width / 2, y = p.y + p.height / 2, size = 56;
-    if (shooter) {
-      const sfb = enemyFootBox(shooter);
-      x = sfb.footX;
-      y = sfb.footY - sfb.boxH * 0.5;
-      size = Math.max(sfb.boxW, sfb.boxH) * PLANT_SPIT_SCALE;
-    }
-    this.spitFx.push({ x, y, ang: Math.atan2(p.direction.y, p.direction.x), size, t0: now });
-  }
-  private drawSpitFx(now: number) {
-    this.spitUsed = 0;
-    const tex = getTexture('fx/plant-spit');
-    let w = 0;
-    for (const fx of this.spitFx) {
-      const t = (now - fx.t0) / PLANT_SPIT_MS;
-      if (t >= 1 || t < 0) continue; // 期限切れは間引く(in-place圧縮)
-      this.spitFx[w++] = fx;
-      if (!tex) continue;
-      const hFade = this.horizonActorAlpha(fx.y);
-      if (hFade <= 0.01) continue;
-      let sp = this.spitPool[this.spitUsed];
-      if (!sp) {
-        sp = new Sprite();
-        sp.anchor.set(0.5, 0.5);
-        this.L.effectLayer.addChild(sp);
-        this.spitPool[this.spitUsed] = sp;
-      }
-      this.spitUsed++;
-      if (sp.texture !== tex) sp.texture = tex;
-      const pop = 1 + 0.18 * Math.sin(Math.min(1, t * 1.6) * Math.PI); // 口を開けて戻る反動
-      const size = fx.size * pop;
-      sp.width = size;
-      sp.height = size * (tex.height / tex.width);
-      // 素材は口が +x 向き。射線の左右で上下が逆さまに見えないよう、左向きの時だけ縦ミラー
-      // (ミラーしても口の向きは射線のまま=見た目だけの整え)。
-      sp.rotation = fx.ang;
-      if (Math.cos(fx.ang) < 0) sp.scale.y = -sp.scale.y;
-      sp.position.set(fx.x, fx.y);
-      sp.alpha = (t < 0.45 ? 1 : Math.max(0, 1 - (t - 0.45) / 0.55)) * hFade;
-      sp.visible = true;
-    }
-    this.spitFx.length = w;
-    for (let i = this.spitUsed; i < this.spitPool.length; i++) this.spitPool[i].visible = false;
-  }
+  // ★吐く瞬間に出していた「口の絵」(fx/plant-spit)は社長指示2026-09-22で撤去した
+  //   (打つ時のモーションシートが入ったので、緑の植物の絵は出さない)。素材は原盤として
+  //   `public/sprites/fx/plant-spit.png` に残してある(読み込みは外した)。
   private plantSeedPool: Sprite[] = [];
   private plantSeedUsed = 0;
   private drawPlantSeed(g: Graphics, p: Projectile): void {

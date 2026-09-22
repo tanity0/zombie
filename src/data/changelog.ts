@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4564',
+    items: [
+      '食人植物が種を吐く時に重なっていた緑の植物の絵を取り払った',
+    ],
+  },
+  {
     version: '0.25.4563',
     items: [
       '棺桶を担ぐ巨人が重たく歩くようになった',

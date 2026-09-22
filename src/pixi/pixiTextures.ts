@@ -985,7 +985,6 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/glide-branch', scaleMode: 'nearest' as const },     // v0.25.3099: 滑空の溜め(枝+舞う葉・社長支給)
       { name: 'fx/tentacle-reach', scaleMode: 'linear' as const }, // 伸びる触手(根元が左端・先端が右端)
       { name: 'fx/idol-fist', scaleMode: 'linear' as const },      // 偶像の拳(ナックルが下端=突く向き)。v0.25.2935ドット版・回転するのでlinear維持
-      { name: 'fx/plant-spit', scaleMode: 'linear' as const },     // 食人植物の種吐き(口が右向き)
       { name: 'fx/plant-seed', scaleMode: 'linear' as const },     // 種そのもの(植物の敵弾スプライト)
       // 近接ヒットの炸裂(社長支給の実写VFX・15コマ・176×176)。実写の縮小なので linear。
       // ★`?mhit=0` の時は**読み込みごと省く**(v0.25.4349)。切り分けで「絵を出さない」だけでは
