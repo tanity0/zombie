@@ -64,19 +64,29 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
   });
 
   // ★★社長報告2026-09-21「コウモリ女の攻撃時に武器が消えてる」の再発防止。
-  it('★★「シートがある」と「シートに武器が描かれている」は別の表(混ぜない)', () => {
+  // ★★★**この表は空のままにする**(社長裁定3回。v0.25.4541 女のランタン / 4547 骸骨の爪 /
+  // **4558 コウモリ男の武器**)。「シートに武器が描かれているから二本になる」と設計者が判断して
+  // 登録するたびに差し戻されている。**別スプライトの武器は全個体で出る**が正。
+  it('★★★別スプライトの武器を止めている個体が1体も無い', () => {
+    expect(Object.keys(ENEMY_SHEET_HAS_WEAPON)).toHaveLength(0);
+    const all = Object.values(ENEMY_VARIANT_SETS).flat();
+    for (const n of all) expect(sheetHasWeapon(n), n).toBe(false);
+    expect(sheetHasWeapon(null)).toBe(false);
+  });
+
+  it('シートを持っていても、武器を止めることとは別(表を混ぜない)', () => {
     expect(attackSheetFrames('bat-female')).toBeGreaterThan(1);   // シートはある
-    expect(sheetHasWeapon('bat-female')).toBe(false);             // が、武器は描かれていない
-    expect(sheetHasWeapon('bat-male')).toBe(true);
+    expect(sheetHasWeapon('bat-female')).toBe(false);             // が、武器は止めない
+    expect(attackSheetFrames('bat-male')).toBeGreaterThan(1);
+    expect(sheetHasWeapon('bat-male')).toBe(false);
   });
 
   // ★社長指示2026-09-21「**別スプライトの爪は消さなくていい**」。v0.25.4543〜4545 は
   // 「シートに爪が描かれている=二本になる」として止めていたが、裁定で**出したまま**になった。
   // ⇒ 骸骨は表に載せない(描画側もシートの有無を見ない)。**戻したら二本になるので、表で止める。**
-  it('★★骸骨は表に載せない=別スプライトの爪を出し続ける(社長指示2026-09-21)', () => {
-    for (const n of ['skeleton-male', 'skeleton-female']) {
-      expect(attackSheetFrames(n), n).toBeGreaterThan(1);   // 攻撃シートは持っている
-      expect(sheetHasWeapon(n), n).toBe(false);             // が、爪のスプライトは止めない
+  it('★攻撃シートを持つ絵でも、武器のスプライトは止めない', () => {
+    for (const n of Object.keys(ENEMY_ATTACK_SHEETS)) {
+      expect(sheetHasWeapon(n), n).toBe(false);
     }
     expect(sheetHasWeapon('lich-common')).toBe(false);      // 爪を共有するリッチも従来どおり
   });

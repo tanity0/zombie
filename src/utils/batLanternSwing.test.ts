@@ -199,12 +199,17 @@ describe('対象の型', () => {
     for (const id of female) expect(usesBatLantern({ type: 'bat', id }), id).toBe(true);
   });
 
-  it('男はシートに武器が描かれている=別スプライトを出さない', () => {
-    expect(sheetHasWeapon('bat-male')).toBe(true);
-    const male = Array.from({ length: 24 }, (_, k) => `e${k}`)
-      .filter(id => variantTextureName('bat', id) === 'bat-male');
+  // ★社長報告2026-09-22「**バットの男の武器も消えてるよ**」。v0.25.4539 で「シートに武器が
+  // 描かれている」と判断して止めていたのを撤回した(同種の差し戻しは3回目)。
+  it('★★男女とも別スプライトの武器を出す(止めている個体は1体も無い)', () => {
+    expect(sheetHasWeapon('bat-male')).toBe(false);
+    expect(sheetHasWeapon('bat-female')).toBe(false);
+    const ids = Array.from({ length: 24 }, (_, k) => `e${k}`);
+    const male = ids.filter(id => variantTextureName('bat', id) === 'bat-male');
+    const female = ids.filter(id => variantTextureName('bat', id) === 'bat-female');
     expect(male.length, '男の個体が見つからない').toBeGreaterThan(0);
-    for (const id of male) expect(usesBatLantern({ type: 'bat', id }), id).toBe(false);
+    expect(female.length, '女の個体が見つからない').toBeGreaterThan(0);
+    for (const id of ids) expect(usesBatLantern({ type: 'bat', id }), id).toBe(true);
   });
 
   it('★既定は「描かれていない」=新しいシートを足しても武器は消えない(安全な側)', () => {
