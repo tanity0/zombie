@@ -103,7 +103,7 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
 import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, sheetFrontOn, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, jumpSheetSplit, jumpSheetName, jumpLandMs } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, sheetFrontOn, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, jumpSheetSplit, jumpSheetName, jumpLandMs } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
@@ -29752,8 +29752,10 @@ export class PixiScene {
       // 1フレームで跳ぶ距離(転移・リサイクル・弾き飛ばし)は歩幅に積まない=脚が空回りしない。
       if (step <= ENEMY_WALK_MAX_STEP_PX && !gate.pushedOrLifted) view.walkDist = (view.walkDist ?? 0) + step;
     }
+    // ★★突進中はギアを上げる(社長指示2026-09-21「突時は倍速で」)。歩幅を長くするので、
+    // **速度3倍 ÷ ギア1.5 = コマ送り2倍**になる。掛かるのは自転車の突進(`charge`)の間だけ。
     const i = enemyWalkFrame(e.id, frames, view.walkDist ?? 0, drawnHeightPx, gate,
-      enemyWalkPlaybackFor(idleTexKey));
+      enemyWalkPlaybackFor(idleTexKey), walkStrideMul(idleTexKey, e.aiPhase === 'charge'));
     return i === null ? null : (slices[i] ?? null);
   }
 

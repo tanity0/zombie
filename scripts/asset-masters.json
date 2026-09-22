@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "829 files / 復号後 約742MB",
+ "generatedFor": "830 files / 復号後 約743MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -4807,6 +4807,12 @@
    "h": 220,
    "bytes": 3868,
    "sha": "636058abbe526e35"
+  },
+  "sprites/werewolf-common-walk.png": {
+   "w": 1716,
+   "h": 128,
+   "bytes": 341236,
+   "sha": "d1718422bbfc6ee0"
   },
   "sprites/werewolf-common.png": {
    "w": 508,

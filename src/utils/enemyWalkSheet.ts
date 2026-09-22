@@ -68,10 +68,12 @@ export const canWalkAnimate = (g: EnemyWalkGate): boolean =>
  */
 export const enemyWalkFrame = (
   id: string, frames: number, distPx: number, heightPx: number, gate: EnemyWalkGate,
-  playback: SheetPlayback = 'loop',
+  playback: SheetPlayback = 'loop', strideMul = 1,
 ): number | null => {
   if (frames <= 1 || !canWalkAnimate(gate)) return null;
-  const stride = Math.max(1, heightPx * ENEMY_WALK_STRIDE_PER_HEIGHT);
+  // ★歩幅は「絵の高さ × 0.46 × 個体の倍率」。倍率の既定は1で、**自転車だけ**が別の値を持つ
+  //   (`ENEMY_WALK_STRIDE_MUL` / 突進中は `ENEMY_WALK_DASH_GEAR`=ギアを上げる)。理由は表のコメント。
+  const stride = Math.max(1, heightPx * ENEMY_WALK_STRIDE_PER_HEIGHT * (strideMul > 0 ? strideMul : 1));
   // ★ピンポンは**1往復で1歩幅**(行き帰りで同じ絵を2度使うので、片道の歩幅は半分)。
   // ここを揃えないと、折り返す個体だけ足が倍の速さで動く。
   const steps = playback === 'pingpong' ? (frames - 1) * 2 : frames;

@@ -7,6 +7,7 @@ import {
 } from './enemyWalkSheet';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
 import { ENEMY_WALK_SHEETS as WALK_TABLE } from './enemySheets';
+import { walkStrideMul } from './enemySheets';
 
 const FR = ENEMY_WALK_SHEETS['bat-female'];
 
@@ -124,4 +125,47 @@ describe('★コマの選び方(進んだ距離で刻む)', () => {
     expect(enemyWalkFrame('e1', 1, 100, H, OK)).toBeNull();
     expect(enemyWalkFrame('e1', 0, 100, H, OK)).toBeNull();
   });
+});
+
+// ★★自転車のギア(社長指示2026-09-21「突時は倍速で」)。
+// 歩幅は「絵の高さ×0.46×倍率」。突進はギア(歩幅)を上げることで、速度3倍に対しコマ送りを2倍にする。
+describe('★★歩幅の倍率と、突進中のギア', () => {
+  const BOX = 30 * 2.05;                       // 自転車の描画枠(判定30×倍率2.05)
+  const SPEED = 105, DASH = SPEED * 3;         // 巡航と突進(WEREWOLF_CHARGE_SPEED_MULT=3)
+  const FR = ENEMY_WALK_SHEETS['werewolf-common'];
+  const cadence = (speedPxS: number, mul: number): number =>
+    speedPxS / (BOX * ENEMY_WALK_STRIDE_PER_HEIGHT * mul);   // 1秒あたりの回転数
+
+  it('倍率を上げると、同じ距離で進むコマが減る(ゆっくり回る)', () => {
+    const slow = enemyWalkFrame('a', 8, 40, 100, {}, 'loop', 2.5);
+    const fast = enemyWalkFrame('a', 8, 40, 100, {}, 'loop', 1);
+    expect(slow).not.toBe(fast);
+    expect(cadence(SPEED, 2.5)).toBeLessThan(cadence(SPEED, 1));
+  });
+
+  it('★既定の歩幅では自転車が速すぎる(1秒3回転超=画面で読めない)', () => {
+    expect(cadence(SPEED, 1)).toBeGreaterThan(3);
+  });
+
+  it('★巡航は実車の90rpm付近(1秒1.2〜1.8回転)に収まる', () => {
+    const c = cadence(SPEED, walkStrideMul('werewolf-common', false));
+    expect(c).toBeGreaterThan(1.2);
+    expect(c).toBeLessThan(1.8);
+  });
+
+  it('★★突進は巡航のちょうど倍速(速度3倍 ÷ ギア1.5)', () => {
+    const cruise = cadence(SPEED, walkStrideMul('werewolf-common', false));
+    const dash = cadence(DASH, walkStrideMul('werewolf-common', true));
+    expect(dash / cruise).toBeCloseTo(2, 5);
+  });
+
+  it('★倍率もギアも既定は1=登録していない敵は1ビットも変わらない', () => {
+    for (const n of ['zombie-common', 'bat-female', 'skeleton-male', 'pumpkin-common']) {
+      expect(walkStrideMul(n, false), n).toBe(1);
+      expect(walkStrideMul(n, true), n).toBe(1);
+    }
+    expect(walkStrideMul(null, true)).toBe(1);
+  });
+
+  it('コマ数は表から引く(自転車は13コマ)', () => expect(FR).toBe(13));
 });

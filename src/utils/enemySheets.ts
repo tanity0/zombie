@@ -56,6 +56,45 @@ export const ENEMY_WALK_SHEETS: Readonly<Record<string, number>> = {
   // ★送りは既定の前方ループ(継ぎ目は隣の平均の 1.05倍で、継ぎ目より大きい隣が在る。
   //   隣どうしの差も 11.1〜13.7 と**ほぼ一定**=途切れない歩様)。
   'pumpkin-common': 12,
+  // 社長支給2026-09-21「自転車の歩き」(=`werewolf`。自転車に跨がる死体)。13コマ
+  // (支給 1768×130 → 余白を切って **132×128**)。常駐 0.84MB。切る矩形は全コマ共通(x2-133 / y2-129)。
+  // ★**絵は右向き**(ハンドルが右)。型の設定 `faceRight: true` と一致するので、下の表にも登録する。
+  // ★送りは**前方ループ**。※継ぎ目の比は 1.44 と高く出たが、**この絵ではこの指標が効かない**
+  //   ——**どのコマも先頭コマとの差が18〜23と横並び**(細かい質感で埋まっていて、脚の差が沈む)。
+  //   ⇒ 指標ではなく**物理で決めた**: ペダルは一周する。折り返したら**逆回転**になる。
+  'werewolf-common': 13,
+};
+
+/**
+ * ★★**歩幅の倍率**(既定 1 = `ENEMY_WALK_STRIDE_PER_HEIGHT` そのまま)。
+ *
+ * ★なぜ要るか: 歩幅は「絵の高さ × 0.46」の1本で決めているが、**自転車はこれが合わない**。
+ * 実測——自転車の巡航速度 105px/s・枠の高さ 61.5px だと、既定の歩幅では
+ * **1秒に3.7回転(コマ48枚/秒)**になり、**60fpsの画面で読めない**(1コマが1.2画面フレーム)。
+ * 自転車は**ギアで進む**ので、脚の回転は距離に対して**ずっとゆっくり**でよい。
+ * 倍率2.5 = 歩幅 70.7px で **1秒に1.5回転(コマ19枚/秒)**=実車の90rpm相当。
+ */
+export const ENEMY_WALK_STRIDE_MUL: Readonly<Record<string, number>> = {
+  'werewolf-common': 2.5,
+};
+
+/**
+ * ★★**突進中のギア**(社長指示2026-09-21「**突時は倍速で**」)。
+ *
+ * ★**歩幅を長くする=ギアを上げる**。突進は速度が3倍になるので、歩幅をそのままにすると
+ * **1秒に4.5回転**まで跳ね上がって目で追えない。歩幅を1.5倍にすると
+ * **3倍 ÷ 1.5 = 2倍** ⇒ **巡航1.5回転/秒 → 突進3.0回転/秒 = ちょうど倍速**になる。
+ * 実車のスプリントも「ギアを上げて、ケイデンスは倍まで」で、物理と一致する。
+ * ★掛かるのは `aiPhase === 'charge'`(自転車の突進そのもの)の間だけ。溜め(windup)は巡航のまま。
+ */
+export const ENEMY_WALK_DASH_GEAR: Readonly<Record<string, number>> = {
+  'werewolf-common': 1.5,
+};
+
+export const walkStrideMul = (idleTexName: string | null | undefined, dashing: boolean): number => {
+  const base = (idleTexName && ENEMY_WALK_STRIDE_MUL[idleTexName]) || 1;
+  const gear = dashing ? (idleTexName && ENEMY_WALK_DASH_GEAR[idleTexName]) || 1 : 1;
+  return base * gear;
 };
 
 /**
@@ -173,7 +212,10 @@ export const attackImpactFrame = (idleTexName: string | null | undefined): numbe
  * ミラーの向きが反転する(`enemyMotion.EnemyMotionSpec.faceRight` と同じ意味)。
  * bat-female の2枚はどちらも**左向き**なので、ここには載せない。
  */
-export const ENEMY_SHEET_FACES_RIGHT: Readonly<Record<string, boolean>> = {};
+export const ENEMY_SHEET_FACES_RIGHT: Readonly<Record<string, boolean>> = {
+  // 自転車(werewolf)はハンドルが右=**右向き**。型の `faceRight: true` と同じ。
+  'werewolf-common': true,
+};
 
 export const walkSheetName = (idleTexName: string): string => `${idleTexName}-walk`;
 export const attackSheetName = (idleTexName: string): string => `${idleTexName}-attack`;
