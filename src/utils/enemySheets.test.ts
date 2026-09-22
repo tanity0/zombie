@@ -3,7 +3,8 @@
 // ★なぜ葉に分けたか: v0.25.4537 で `enemyAttackSheet ⇄ batLanternSwing` の**循環import**を作った
 // (表を片方に置き、もう片方が引き返した)。表は4方向から引かれるので、依存ゼロの葉に置く。
 // ★社長裁定2026-09-21「全敵アニメーション入れる予定なのでミラーさせます / 少しずつ揃えていくので個々実装」
-// = **シートを持つ個体だけミラーする**(型ではなく個体)。素材が揃うたび自動でミラー側へ移る。
+// + 社長指示2026-09-22「**ミラーは全ての敵で適用します**」
+// = **手で描かれた絵を持つ個体は全部ミラーする**(型ではなく個体・例外なし)。素材が揃うたび自動で移る。
 import { describe, it, expect } from 'vitest';
 import {
   ENEMY_WALK_SHEETS, ENEMY_ATTACK_SHEETS, ENEMY_SHEET_FACES_RIGHT,
@@ -11,8 +12,19 @@ import {
   hasAnimSheet, sheetFacesRight, walkPlayback, attackImpactFrame,
   sheetHasWeapon, ENEMY_SHEET_HAS_WEAPON, ENEMY_ATTACK_IMPACT_FRAME,
   sheetFrontOn, ENEMY_SHEET_FRONT_ON,
+  ENEMY_IDLE_SHEETS, ENEMY_SHOT_SHEETS, ENEMY_JUMP_SHEETS,
 } from './enemySheets';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
+
+/**
+ * ★**5つの表のどれかに載っている立ち絵**=ミラーの対象(v0.25.4566)。
+ * 歩き/攻撃だけを見ていると、**待機だけ・弾だけ・跳びだけ**の絵を持つ個体を取りこぼす。
+ * ★名前は手書きしない(表から導出する。素材が1体ずつ届くので、書くと届くたびに落ちる)。
+ */
+const ALL_SHEETED = new Set([
+  ...Object.keys(ENEMY_WALK_SHEETS), ...Object.keys(ENEMY_ATTACK_SHEETS),
+  ...Object.keys(ENEMY_IDLE_SHEETS), ...Object.keys(ENEMY_SHOT_SHEETS), ...Object.keys(ENEMY_JUMP_SHEETS),
+]);
 
 describe('★表', () => {
   it('シート名の付け方', () => {
@@ -36,7 +48,7 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
   // ★ここも**名前を手書きしない**(下の注意書きと同じ理由。ゾンビの歩きが届いた回=v0.25.4548 で
   // `hasAnimSheet('zombie-common')` を false と書いていたテストが落ちた=4回目の同じ壊れ方)。
   it('シートを持つ立ち絵だけが対象(表から導出する)', () => {
-    const withSheet = new Set([...Object.keys(ENEMY_WALK_SHEETS), ...Object.keys(ENEMY_ATTACK_SHEETS)]);
+    const withSheet = ALL_SHEETED;
     expect(withSheet.size).toBeGreaterThan(0);
     for (const n of withSheet) expect(hasAnimSheet(n), n).toBe(true);
     const noSheet = Object.values(ENEMY_VARIANT_SETS).flat().filter(n => !withSheet.has(n));
@@ -49,8 +61,7 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
   // 素材は1体ずつ届くので、「まだシートが無い絵」を列挙すると**届くたびにテストが落ちる**
   // (bat-male の歩き→攻撃→skeleton-male の歩き、で3回)。**表から導出する。**
   it('★シートを持たない立ち絵は従来どおり(型の設定のまま)', () => {
-    const withSheet = new Set([...Object.keys(ENEMY_WALK_SHEETS), ...Object.keys(ENEMY_ATTACK_SHEETS)]);
-    const without = [...new Set(Object.values(ENEMY_VARIANT_SETS).flat())].filter(n => !withSheet.has(n));
+    const without = [...new Set(Object.values(ENEMY_VARIANT_SETS).flat())].filter(n => !ALL_SHEETED.has(n));
     expect(without.length, 'まだシートの無い絵が1つも無い(この検算が空回りしている)').toBeGreaterThan(0);
     for (const n of without) expect(hasAnimSheet(n), n).toBe(false);
   });
@@ -88,15 +99,21 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
     expect(sheetHasWeapon('lich-common')).toBe(false);      // 爪を共有するリッチも従来どおり
   });
 
-  // ★社長支給2026-09-21「雲歩き」(=蜘蛛の歩き)。正面向きの絵を左右反転すると、
-  // 振り向きの潰しが進む向きを変えるたびに走って**正面の絵が理由もなく捻れる**。
-  it('★★正面向きのシートはミラーしない / 横向きのシートは必ずミラーする', () => {
-    expect(sheetFrontOn('pumpkin-common')).toBe(true);
-    // 既定は「横向き」=ミラーする側。シートを持つ他の絵が黙って正面扱いになっていないこと。
-    const withSheet = [...new Set([...Object.keys(ENEMY_WALK_SHEETS), ...Object.keys(ENEMY_ATTACK_SHEETS)])];
-    const sideOn = withSheet.filter(n => !sheetFrontOn(n));
-    expect(sideOn.length, '横向きのシートが1枚も無いなら、この検査は何も言っていない').toBeGreaterThan(0);
-    for (const n of sideOn) expect(sheetFrontOn(n), n).toBe(false);
+  // ★★社長指示2026-09-22「**ミラーは全ての敵で適用します**」。例外表は**空が正**。
+  // 設計者は「正面向きの絵は反転しても得が無い」と考えて3件登録し、3件とも撤回された
+  // (蜘蛛 v0.25.4552 / 咆哮型 v0.25.4560 / ハンター v0.25.4563 → v0.25.4566 で全撤回)。
+  it('★★ミラーの例外表は空(=全ての敵がミラーする)', () => {
+    expect(Object.keys(ENEMY_SHEET_FRONT_ON)).toHaveLength(0);
+    const withSheet = [...ALL_SHEETED];
+    expect(withSheet.length, 'シートが1枚も無いなら、この検査は何も言っていない').toBeGreaterThan(0);
+    for (const n of withSheet) expect(sheetFrontOn(n), n).toBe(false);
+    expect(sheetFrontOn(null)).toBe(false);
+  });
+
+  it('★待機だけ/弾だけ/跳びだけの絵を持つ個体も、ミラーの対象に入る', () => {
+    const motionOnly = [...ALL_SHEETED].filter(n => walkSheetFrames(n) <= 1 && attackSheetFrames(n) <= 1);
+    expect(motionOnly.length, '歩き・攻撃以外の絵しか持たない個体が居ないなら、この検査は空回り').toBeGreaterThan(0);
+    for (const n of motionOnly) expect(hasAnimSheet(n), n).toBe(true);
   });
 
   it('★向きの印(正面/右向き)を付けられるのは、シートを持つ絵だけ(付け間違いを弾く)', () => {

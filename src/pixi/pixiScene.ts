@@ -103,7 +103,7 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
 import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, sheetFrontOn, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames } from '../utils/enemyJumpSheet';
@@ -18262,10 +18262,10 @@ export class PixiScene {
       // ★判定は**型ではなく個体**——素材は1体ずつ届くので、同じバットでもシートのある女はミラーし、
       // まだ無い男は従来どおり(型の `faceMove` のまま)。素材が揃うたびに自動でミラー側へ移る。
       const sheetKey = this.enemyTexKey(e.type, e.id);
-      // ★**正面向きのシートはミラーしない**(社長支給2026-09-21「雲歩き」=蜘蛛の歩き)。
-      // 左右反転しても得るものが無く、振り向きの潰し(ENEMY_TURN_MS)が**進む向きを変えるたびに
-      // 走る**ので、正面の絵が理由もなく捻れる。横向きのシートは従来どおり必ずミラーする。
-      const sheetMirror = hasAnimSheet(sheetKey) && !sheetFrontOn(sheetKey);
+      // ★★**例外は作らない**(社長指示2026-09-22「**ミラーは全ての敵で適用します**」)。
+      // 以前は「正面向きに描かれたシートはミラーしない」という例外を置いていたが(蜘蛛/咆哮型/
+      // ハンターの3件)、社長指示で撤回した=**手で描かれた絵を持つ個体は全部ミラーする**。
+      const sheetMirror = hasAnimSheet(sheetKey);
       const wantFaceMove = spec.faceMove || sheetMirror;
       if (wantFaceMove) {
         const cur = view.motFace ?? 1;
@@ -29661,8 +29661,9 @@ export class PixiScene {
    *
    * 尺は `utils/plantShot.ts` の1本=**ストア側(`combatTick`)の発射と同じ定数**を引く。
    * だから「閉じ切ったコマが終わる瞬間」と「弾が出る瞬間」がズレない。
-   * ★この絵は**ミラーしない**(正面向きの花)。表を `ENEMY_SHOT_SHEETS` に分けてあるので
-   * `hasAnimSheet`(=ミラーの対象)には入らない。
+   * ★**ミラーの対象**(社長指示2026-09-22「ミラーは全ての敵で適用します」・v0.25.4566)。
+   * 以前は「正面向きの花だから反転しない」として `hasAnimSheet` から外れていたが、例外は作らない。
+   * ※プラントはほぼ固定砲台(速度8)で、向きが切り替わる閾値(|vx|>25)にまず届かない=実際にはほぼ反転しない。
    */
   private enemyShotTexture(idleTexKey: string, e: Enemy, now: number): ReturnType<typeof getTexture> {
     const frames = shotSheetFrames(idleTexKey);

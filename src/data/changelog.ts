@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4566',
+    items: [
+      '絵が入った敵は全員、進む向きへ体が向くようになった',
+    ],
+  },
+  {
     version: '0.25.4565',
     items: [
       '棺桶を担ぐ巨人が、棺桶を頭上へ担ぎ上げて叩きつけるようになった',
