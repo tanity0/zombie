@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "834 files / 復号後 約749MB",
+ "generatedFor": "835 files / 復号後 約750MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2467,6 +2467,12 @@
    "h": 189,
    "bytes": 1869,
    "sha": "d5d74bfd8b2c7d85"
+  },
+  "sprites/lich-common-walk.png": {
+   "w": 1755,
+   "h": 128,
+   "bytes": 208217,
+   "sha": "459bacdb783180c7"
   },
   "sprites/lich-common.png": {
    "w": 600,
