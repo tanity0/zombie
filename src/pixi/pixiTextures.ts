@@ -14,6 +14,7 @@ import { ALL_VARIANT_TEXTURES, ENEMY_VARIANT_SETS } from '../utils/enemyVariant'
 import { ENEMY_WALK_SHEETS, walkSheetName } from '../utils/enemyWalkSheet';
 import { ENEMY_ATTACK_SHEETS, attackSheetName } from '../utils/enemyAttackSheet';
 import { ENEMY_SHOT_SHEETS, shotSheetName, ENEMY_IDLE_SHEETS, idleSheetName, ENEMY_JUMP_SHEETS, jumpSheetName } from '../utils/enemySheets';
+import { ATLAS_PX2_OVERRIDES } from '../utils/atlasPxOverrides';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
 import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
@@ -1027,8 +1028,10 @@ export const ensureTextures = (): Promise<void> => {
     // ローディング%の総数登録(下の loadProgressBegin)に個数が要るためここで定義。
     // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・stage3/4/5と同じ理由=
     // ENEMY_VARIANT_SETSがenemyTexKeyで先に引かれるため表示不能。旧atlas-px2素材は削除済み)。
-    const atlasPxNames = ['giantbat', 'tree',
-      'pickup-xp-blue', 'pickup-xp-green', 'pickup-xp-red', 'pickup-health', 'pickup-magnet', 'pickup-bomb', 'pickup-chest'];
+    // ★表は `utils/atlasPxOverrides.ts` の1箇所(v0.25.4572)。ローダと検査が同じ表を読む
+    //   ——この上書きは「素材は `atlas-px2/` なのにキーは `<名前>` だけ」という**別名**を作るので、
+    //   立ち絵の実在を見る検査が表を知らないと、正しい名前でも落ちる。
+    const atlasPxNames = ATLAS_PX2_OVERRIDES;
 
     // ローディング%(社長指示v0.25.1776): このローダが読むファイル総数を先に一括登録する
     // (atlas 1 + standalone + 色キー5 + atlas-px上書き + 単発3=tree-new2/tree-snow/castle-church)。

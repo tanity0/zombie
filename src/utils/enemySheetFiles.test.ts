@@ -10,6 +10,7 @@ import {
   ENEMY_WALK_SHEETS, ENEMY_ATTACK_SHEETS, ENEMY_IDLE_SHEETS, ENEMY_JUMP_SHEETS, ENEMY_SHOT_SHEETS,
   walkSheetName, attackSheetName, idleSheetName, jumpSheetName, shotSheetName,
 } from './enemySheets';
+import { isAtlasPxOverride, ATLAS_PX2_OVERRIDES } from './atlasPxOverrides';
 
 // ★`node:fs` ではなく Vite の glob で数える(このプロジェクトのテストは `bakeLedger.test.ts` と
 // 同じ作法で、ブラウザ向けの型設定のまま動く)。キーは `../../public/sprites/<名前>.png`。
@@ -41,11 +42,22 @@ describe('★★表の名前 ⇔ 実在する素材', () => {
     }
   });
 
+  // ★立ち絵は `public/sprites/<名前>.png` とは限らない——**ステージ1セットのドット絵**は
+  // `atlas-px2/<名前>.png` を読んで `<名前>` のキーへ差し替える(`utils/atlasPxOverrides.ts`)。
+  // 城ボス1(`giantbat`)がこれ。**別名の台帳をローダと共有**して、正しい名前で落とさない。
   it('★立ち絵の PNG も実在する(シートが出ていない時に戻る先)', () => {
     for (const [label, table] of TABLES) {
       for (const idle of Object.keys(table)) {
-        expect(hasSprite(idle), `${label}: public/sprites/${idle}.png が無い`).toBe(true);
+        const f = isAtlasPxOverride(idle) ? `atlas-px2/${idle}` : idle;
+        expect(hasSprite(f), `${label}: public/sprites/${f}.png が無い`).toBe(true);
       }
+    }
+  });
+
+  it('★上書きの表に書いた名前の素材も実在する(別名の台帳が腐らない)', () => {
+    expect(ATLAS_PX2_OVERRIDES.length).toBeGreaterThan(0);
+    for (const n of ATLAS_PX2_OVERRIDES) {
+      expect(hasSprite(`atlas-px2/${n}`), `public/sprites/atlas-px2/${n}.png が無い`).toBe(true);
     }
   });
 });

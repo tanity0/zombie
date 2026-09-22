@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4572',
+    items: [
+      'ステージ一のボスが、這うように身を低くして歩くようになった',
+    ],
+  },
+  {
     version: '0.25.4571',
     items: [
       '棺桶を担ぐ巨人が突進を終えた後も、棺桶が頭上で回り続けていたのが直った',
