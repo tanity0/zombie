@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4565',
+    items: [
+      '棺桶を担ぐ巨人が、棺桶を頭上へ担ぎ上げて叩きつけるようになった',
+      '跳びかかる敵の着地の絵が、判定の着地より早く始まっていたのが直った',
+    ],
+  },
+  {
     version: '0.25.4564',
     items: [
       '食人植物が種を吐く時に重なっていた緑の植物の絵を取り払った',

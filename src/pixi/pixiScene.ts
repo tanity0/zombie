@@ -17773,7 +17773,10 @@ export class PixiScene {
       } else if (e.aiPhase === 'recover') {
         // 盾で空中から弾かれた着地(store が block 時に aiStartedAt=recover開始へ揃える)は、
         // 通常着地と違い空中高から始まるので、ホップ高を 0 まで重力ふうに補間して「シームレスに落とす」。
-        const recoverStart = (e.aiPhaseUntil ?? gameTime) - pumpkinRecoverMs(e.type); // ★v0.25.3960: パンプキンのみ2秒(判定と同じ出どころ)
+        // ★v0.25.4565: `aiPhaseUntil` は `atkUntil()`=**ゲームスピードで割った後**の時刻なので、
+        // 生の `pumpkinRecoverMs` を引くと着地の瞬間が **R×(1-1/1.2)=R/6 だけ手前**にズレる
+        // (蜘蛛で333ms・ハンターで167ms 早く着地の絵が始まっていた)。同じ割り方で引く。
+        const recoverStart = (e.aiPhaseUntil ?? gameTime) - pumpkinRecoverMs(e.type) / ENEMY_ATTACK_SPEED_MULT; // ★v0.25.3960: パンプキンのみ2秒(判定と同じ出どころ)
         const blockedFall = (e.aiStartedAt ?? -Infinity) >= recoverStart - 1;
         if (blockedFall) {
           let fall = this.enemyBlockFall.get(e.id);
@@ -29623,7 +29626,8 @@ export class PixiScene {
         / (e.type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1);
       i = enemyJumpFrame(split, 'air', (gameTime - (e.aiStartedAt ?? gameTime)) / dur);
     } else if (e.aiPhase === 'recover') {
-      const recoverStart = (e.aiPhaseUntil ?? gameTime) - pumpkinRecoverMs(e.type);
+      // ★v0.25.4565: `aiPhaseUntil` は倍速で割った後の時刻。生の値を引くと着地の瞬間が手前へズレる(上と同じ)。
+      const recoverStart = (e.aiPhaseUntil ?? gameTime) - pumpkinRecoverMs(e.type) / ENEMY_ATTACK_SPEED_MULT;
       // ★盾で弾かれた落下中は、着地の絵(砂埃つき)を先に出さない=まだ落ちている最中だから。
       const blockedFall = (e.aiStartedAt ?? -Infinity) >= recoverStart - 1;
       i = blockedFall

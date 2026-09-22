@@ -3,9 +3,13 @@ import { describe, it, expect } from 'vitest';
 import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames } from './enemyJumpSheet';
 import { ENEMY_JUMP_SHEETS, ENEMY_JUMP_LAND_MS, jumpSheetName, jumpSheetSplit } from './enemySheets';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
+import { PUMPKIN_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
 
 const SP = ENEMY_JUMP_SHEETS['pumpkin-common'];
 const N = jumpSplitFrames(SP);
+// ★v0.25.4565: 境目の検査を**表の全部**へ広げる(蜘蛛だけ見ていると、後から足した絵の
+// 区間割りが合計と食い違っていても誰も落ちない)。
+const ALL = Object.entries(ENEMY_JUMP_SHEETS);
 
 describe('★表', () => {
   it('シート名は<立ち絵名>-jump', () => expect(jumpSheetName('pumpkin-common')).toBe('pumpkin-common-jump'));
@@ -20,12 +24,44 @@ describe('★表', () => {
     for (const n of Object.keys(ENEMY_JUMP_SHEETS)) expect(ENEMY_JUMP_LAND_MS[n], n).toBeGreaterThan(0);
   });
 
+  it('★区間の合計＝シートのコマ数が、絵ごとに辻褄が合う', () => {
+    expect(ALL.length).toBeGreaterThan(1);                              // 検査対象が空/1件だけにならない
+    for (const [n, sp] of ALL) expect(jumpSplitFrames(sp), n).toBe(sp.crouch + sp.air + sp.land);
+  });
+
+  it('★★どの絵でも区間の境目でコマが飛ばない(蜘蛛だけでなく表の全部)', () => {
+    for (const [n, sp] of ALL) {
+      const total = jumpSplitFrames(sp);
+      expect(enemyJumpFrame(sp, 'crouch', 0), n).toBe(0);
+      expect(enemyJumpFrame(sp, 'air', 0), n).toBe(enemyJumpFrame(sp, 'crouch', 1)! + 1);
+      expect(enemyJumpFrame(sp, 'land', 0), n).toBe(enemyJumpFrame(sp, 'air', 1)! + 1);
+      expect(enemyJumpFrame(sp, 'land', 0.999), n).toBe(total - 1);
+      expect(enemyJumpFrame(sp, 'land', 1), n).toBeNull();
+      const seen = new Set<number>();
+      for (let q = 0; q < 1; q += 0.002) {
+        for (const ph of ['crouch', 'air', 'land'] as const) {
+          const i = enemyJumpFrame(sp, ph, q);
+          if (i !== null) seen.add(i);
+        }
+      }
+      expect(seen.size, n).toBe(total);                                  // 全コマを1度は通る
+      expect(enemyJumpFallFrame(sp), n).toBe(sp.crouch + sp.air - 1);    // 弾かれた落下は滞空の最後
+    }
+  });
+
   it('★どの区間も1コマ以上ある(0だと区間ごと消える)', () => {
     for (const [n, sp] of Object.entries(ENEMY_JUMP_SHEETS)) {
       expect(sp.crouch, n).toBeGreaterThan(0);
       expect(sp.air, n).toBeGreaterThan(0);
       expect(sp.land, n).toBeGreaterThan(0);
     }
+  });
+
+  it('★ハンターの着地の絵は「立ち直りが明けるまで」持つ(最後のコマが立ち絵と繋がらないため)', () => {
+    // 生の `PUMPKIN_RECOVER_MS` をゲームスピードで割った実効値=立ち直りの長さ。
+    // ここがズレると、棺桶を地に置いたままの最後のコマの後に**担いだ立ち絵へ瞬間移動**する。
+    const recoverMs = PUMPKIN_RECOVER_MS / ENEMY_ATTACK_SPEED_MULT;
+    expect(Math.abs(ENEMY_JUMP_LAND_MS['hunter'] - recoverMs)).toBeLessThanOrEqual(1);
   });
 
   it('表に無い絵は割り当てなし', () => {
