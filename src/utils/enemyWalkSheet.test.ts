@@ -16,10 +16,11 @@ describe('★歩きシートの表', () => {
     expect(walkSheetName('bat-female')).toBe('bat-female-walk');
   });
 
-  it('★表に載る立ち絵は、必ず実在する変種の絵であること(名前を間違えると一生出ない)', () => {
-    const all = new Set(Object.values(ENEMY_VARIANT_SETS).flat());
-    for (const name of Object.keys(ENEMY_WALK_SHEETS)) expect(all.has(name), name).toBe(true);
-  });
+  // ★**この検査は `enemySheetFiles.test.ts`(PNGが実在するか)へ移した**(v0.25.4563)。
+  // 変種の表(`ENEMY_VARIANT_SETS`)は**男女2種などを持つ敵だけ**の表で、ハンターのように
+  // 変種を持たない敵は載っていない=**正しい名前でも落ちる**。しかも**シート側のファイル名を
+  // 1バイトも見ていなかった**ので、「名前を間違えると一生出ない」を捕まえられていなかった。
+
 
   // ★★名前を手書きしない(2026-09-21)。素材が届くたびに落ちるため、表から導出する。
   it('表に無い立ち絵は0コマ=従来どおり立ち絵1枚', () => {

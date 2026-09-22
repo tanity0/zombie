@@ -73,6 +73,16 @@ export const ENEMY_WALK_SHEETS: Readonly<Record<string, number>> = {
   // ★歩幅の倍率は**既定のまま**。実測 1.70回転/秒(コマ27/秒)で、型の設定 strideHz 2.0
   //   (痙攣風の小刻み)とほぼ一致する=自転車のような破綻は起きていない。
   'screamer-common': 16,
+  // 社長支給2026-09-22「ハンターの歩き」(=棺桶を担ぐ巨人)。7コマ
+  // (支給 1680×258 → 余白を切って **228×252**)。常駐 **1.53MB**(今までで一番大きい=ミニボス級の絵)。
+  // ★**縮小していない**。2×2の一致率 45%=**引き伸ばしではない**ので、半分にすると絵が濁る。
+  //   描画は 106×118 なので 2.1倍の余裕。切る矩形は全コマ共通(x6-233 / y6-257)。
+  // ★**立ち絵名が `hunter`**(`-common` が付かない)。変種を持たない敵なので `ENEMY_VARIANT_SETS` に
+  //   載っておらず、`enemyTexKey` の最後の `?? type` で解決される。**シート名は `hunter-walk`。**
+  // ★**正面向き**(下の表に登録)。立ち絵と並べて同じ向きであることを確認済み。型も `faceMove: false`。
+  // ★送りは前方ループ(継ぎ目の比 0.90)。歩調は **0.73回転/秒(コマ5.1枚/秒)**——
+  //   歩く速さが半分に落とされている型(41px/s・社長裁定v0.25.2429)なので、重い巨人の歩みとして遅い。
+  'hunter': 7,
 };
 
 /**
@@ -121,6 +131,7 @@ export const walkStrideMul = (idleTexName: string | null | undefined, dashing: b
 export const ENEMY_SHEET_FRONT_ON: Readonly<Record<string, boolean>> = {
   'pumpkin-common': true,
   'screamer-common': true,
+  'hunter': true,
 };
 
 /** そのシートは正面向きか(=ミラーしない)。 */

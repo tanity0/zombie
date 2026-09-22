@@ -14,10 +14,11 @@ const LAST = FR - 1;
 describe('★表', () => {
   it('シート名は<立ち絵名>-idle', () => expect(idleSheetName('plant-common')).toBe('plant-common-idle'));
 
-  it('表に載る立ち絵は実在する変種の絵であること(名前を間違えると一生出ない)', () => {
-    const all = new Set(Object.values(ENEMY_VARIANT_SETS).flat());
-    for (const n of Object.keys(ENEMY_IDLE_SHEETS)) expect(all.has(n), n).toBe(true);
-  });
+  // ★**この検査は `enemySheetFiles.test.ts`(PNGが実在するか)へ移した**(v0.25.4563)。
+  // 変種の表(`ENEMY_VARIANT_SETS`)は**男女2種などを持つ敵だけ**の表で、ハンターのように
+  // 変種を持たない敵は載っていない=**正しい名前でも落ちる**。しかも**シート側のファイル名を
+  // 1バイトも見ていなかった**ので、「名前を間違えると一生出ない」を捕まえられていなかった。
+
 
   it('★周期を登録し忘れた絵が無い(既定へ黙って落ちない)', () => {
     for (const n of Object.keys(ENEMY_IDLE_SHEETS)) {

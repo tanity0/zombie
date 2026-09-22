@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "832 files / 復号後 約744MB",
+ "generatedFor": "833 files / 復号後 約746MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2185,6 +2185,12 @@
    "h": 256,
    "bytes": 19899,
    "sha": "e81e73272db60523"
+  },
+  "sprites/hunter-walk.png": {
+   "w": 1596,
+   "h": 252,
+   "bytes": 524726,
+   "sha": "096d0198e48d7e46"
   },
   "sprites/hunter.png": {
    "w": 964,

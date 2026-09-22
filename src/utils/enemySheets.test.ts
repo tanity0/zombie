@@ -20,13 +20,10 @@ describe('★表', () => {
     expect(attackSheetName('bat-female')).toBe('bat-female-attack');
   });
 
-  it('★★表に載る立ち絵は、必ず実在する変種の絵であること(名前を間違えると一生出ない)', () => {
-    const all = new Set(Object.values(ENEMY_VARIANT_SETS).flat());
-    for (const n of [...Object.keys(ENEMY_WALK_SHEETS), ...Object.keys(ENEMY_ATTACK_SHEETS),
-                     ...Object.keys(ENEMY_SHEET_FACES_RIGHT)]) {
-      expect(all.has(n), n).toBe(true);
-    }
-  });
+  // ★**この検査は `enemySheetFiles.test.ts`(PNGが実在するか)へ移した**(v0.25.4563)。
+  // 変種の表(`ENEMY_VARIANT_SETS`)は**男女2種などを持つ敵だけ**の表で、ハンターのように
+  // 変種を持たない敵は載っていない=**正しい名前でも落ちる**。しかも**シート側のファイル名を
+  // 1バイトも見ていなかった**ので、「名前を間違えると一生出ない」を捕まえられていなかった。
 
   it('コマ数は2以上(1コマのシートは意味が無い)', () => {
     for (const n of Object.values({ ...ENEMY_WALK_SHEETS, ...ENEMY_ATTACK_SHEETS })) {
@@ -102,8 +99,8 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
     for (const n of sideOn) expect(sheetFrontOn(n), n).toBe(false);
   });
 
-  it('★正面向きの印を付けられるのは、シートを持つ絵だけ(付け間違いを弾く)', () => {
-    for (const n of Object.keys(ENEMY_SHEET_FRONT_ON)) {
+  it('★向きの印(正面/右向き)を付けられるのは、シートを持つ絵だけ(付け間違いを弾く)', () => {
+    for (const n of [...Object.keys(ENEMY_SHEET_FRONT_ON), ...Object.keys(ENEMY_SHEET_FACES_RIGHT)]) {
       expect(hasAnimSheet(n), n).toBe(true);
     }
   });
