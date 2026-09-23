@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "839 files / 復号後 約755MB",
+ "generatedFor": "839 files / 復号後 約753MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -531,10 +531,10 @@
    "sha": "48d3affdb0d591ab"
   },
   "sprites/atlas-px2/giantbat.png": {
-   "w": 752,
-   "h": 800,
-   "bytes": 76679,
-   "sha": "6bed556b7bcd5343"
+   "w": 121,
+   "h": 128,
+   "bytes": 13386,
+   "sha": "8bb1d5e451f61088"
   },
   "sprites/atlas-px2/pickup-bomb.png": {
    "w": 114,
