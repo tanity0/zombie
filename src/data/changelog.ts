@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4595',
+    items: [
+      'カウンターで技を止めると、武器の振りも戻るようになった。消えずに弾き返される',
+    ],
+  },
+  {
     version: '0.25.4594',
     items: [
       'カウンターの巻き戻しが、戻る絵の無い技で止まって見えるのを直した',

@@ -109,7 +109,13 @@ import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GU
 import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames } from '../utils/enemySweepSheet';
-import { counterRewindFrame } from '../utils/counterRewind';
+import { counterRewindFrame, counterRewindEase, counterRewindElapsed, COUNTER_REWIND_MS } from '../utils/counterRewind';
+// ★武器の振りの軌跡(カウンターの「振りを戻す」用)。60fpsで窓140ms=約9枚なので16枚で足りる。
+const WEAPON_TRAIL_MAX = 16;
+interface WeaponDrawArgs {
+  texName: string; px: number; py: number; angleRad: number; lengthPx: number; alpha: number;
+  widthMul: number; flipY: boolean; gripX: number; gripY: number; intrinsicAngle: number;
+}
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
 // (手写しミラーは撤去済み。入れ子オブジェクトを参照で持つので部屋で動かした値が絵にも即効く)。
@@ -6402,6 +6408,25 @@ export class PixiScene {
    * stillArmed=そのフレームも溜め/実行が生きている(=中断しないカウンター・トールissenGuaranteed等)
    * 間は消さない(消すと同キーが即再armされて絵が跳ぶ)。
    */
+  /**
+   * ★カウンターの「振りを戻す」の**剣/武器ラッチ版**(社長指示2026-09-23「振りを戻せばいいよ」)。
+   * 従来は着弾前のカウンターでラッチを**削除**していた(=武器が慣性ゼロで消える)。ここでは代わりに
+   * **絵の時計を巻き戻して返す**ので、呼び出し側は同じ描画関数へ「戻っていく経過ms」を渡すだけでよい。
+   * `swordCompletionFrame` は経過msから「構え→振り」を決めるので、**経過を戻せば振りも戻る**。
+   * 戻り: `null`=カウンター無し(通常再生) / 数値=巻き戻し中の経過ms / `'drop'`=もう出さない(ラッチも捨てる)。
+   */
+  private latchCounterRewind(
+    key: string, L: { t0: number; dur: number }, impactMs: number,
+    counteredAt: number | undefined, now: number,
+  ): number | null | 'drop' {
+    if (counteredAt === undefined || counteredAt < L.t0) return null;
+    // 着弾後のカウンターは従来どおり振り切る(v0.25.3115「出し切る約束」)。
+    if (counteredAt >= L.t0 + Math.max(0, impactMs) - FX_IMPACT_TOLERANCE_MS) return null;
+    const rewound = counterRewindElapsed(counteredAt - L.t0, now - counteredAt);
+    if (rewound === null) { this.fxLatches.delete(key); return 'drop'; }
+    return rewound;
+  }
+
   private latchCounterCancelled(
     key: string, L: { t0: number; dur: number }, impactMs: number,
     counteredAt: number | undefined, stillArmed: boolean,
@@ -6497,8 +6522,10 @@ export class PixiScene {
     if (!L || relatedState) return;
     // ★v0.25.3986: 構え中(着弾=焼き付けたtoImpactMsより前)にカウンターされた剣は振り抜かない
     // (「武器の絵だけ残って斬る」の正体。振りまで出た剣(着弾後の中断)は従来どおり振り切る)。
-    if (this.latchCounterCancelled(key, L, L.d[0], counteredAt, false)) return;
-    const frame = swordCompletionFrame(now - L.t0, L.d[0], L.d[1]);
+    // ★v0.25.4595(社長指示「振りを戻せばいいよ」): 着弾前のカウンターは**消さずに巻き戻す**。
+    const rewound = this.latchCounterRewind(key, L, L.d[0], counteredAt, now);
+    if (rewound === 'drop') return;
+    const frame = swordCompletionFrame(rewound ?? (now - L.t0), L.d[0], L.d[1]);
     if (frame.phase === 'done') return;
     const latchedStyle = SWORD_STYLE_CODES[L.d[9]] ?? 'wide';
     if (frame.phase === 'swing') {
@@ -17747,6 +17774,10 @@ export class PixiScene {
       // ★カウンターで技が消された直後だけ、出ていたコマを数コマぶん逆再生して「弾かれた」を見せる
       // (社長指示2026-09-23)。攻撃のコマが出ている間は当然こちらへ来ない=通常再生が優先。
       ?? this.enemyCounterRewindTexture(e, now);
+    // ★別スプライトの武器(チェーンソー/鞭/鋏/手毬)の「振りを戻す」(社長指示2026-09-23)。
+    // 本体のコマの巻き戻しと**同じ時計・同じイージング**で、覚えた振りの軌跡を逆順に描き直す。
+    // **敵の座標には一切触れない**(「位置はずらさない。その後の台本が空振りするから」)。
+    this.drawCounterSwingRewind(e, now);
     const walkTex = atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
       ?? this.enemyIdleTexture(idleTexKey, e, now);
     const tex = e.type === 'guardian-phantom'
@@ -30136,6 +30167,54 @@ export class PixiScene {
     sp.visible = sp.alpha > 0.01;
   }
 
+  /**
+   * ★カウンターの「振りを戻す」(社長指示2026-09-23「位置はずらさない。その後の台本が空振りするから。
+   * **振りを戻せばいいよ**」)の**記録側**。
+   * 別スプライトの武器(チェーンソー/鞭/鋏/手毬)は「技のフェーズが生きている間だけ描く」配線なので、
+   * カウンターで `aiPhase` が消えた瞬間に**慣性ゼロで消滅**していた。ここで**振りの軌跡を数サンプル**
+   * 覚えておき、カウンター後はそれを**逆順に再生**する=振りが戻って見える。
+   * **位置(px/py)も一緒に覚えるが、これは武器スプライトの手元の位置であって敵の座標ではない。**
+   * 敵の x/y は1pxも動かさない(社長指示「位置はずらさない」)。
+   */
+  private weaponTrail = new Map<string, { at: number; args: WeaponDrawArgs }[]>();
+  private weaponTrailRecording = true;
+
+  private recordWeaponTrail(id: string, args: WeaponDrawArgs): void {
+    if (!this.weaponTrailRecording) return;
+    const key = `${id}:${args.texName}`;
+    const arr = this.weaponTrail.get(key) ?? [];
+    arr.push({ at: Date.now(), args });
+    // 窓(140ms)を戻り切れるだけ持てばよい。60fpsで約9枚なので16枚で足りる。
+    if (arr.length > WEAPON_TRAIL_MAX) arr.splice(0, arr.length - WEAPON_TRAIL_MAX);
+    this.weaponTrail.set(key, arr);
+  }
+
+  /**
+   * ★同・**再生側**。カウンター成立からの経過が窓の中なら、覚えた軌跡を**逆順に**描き直す。
+   * - **等速では戻さない**(慣性MUST)。`counterRewindEase` を共有する。
+   * - 軌跡が1枚しか無い(=振り始める前に弾いた)なら何も出さない=固まらない。
+   * - 戻り切ったら軌跡を捨てる(次の技へ持ち越さない)。
+   */
+  private drawCounterSwingRewind(e: Enemy, now: number): void {
+    const at = e.lastCounteredAt;
+    for (const [key, arr] of this.weaponTrail) {
+      if (!key.startsWith(`${e.id}:`)) continue;
+      if (at === undefined || arr.length === 0 || arr[arr.length - 1].at > at + 1) {
+        if (at === undefined) this.weaponTrail.delete(key);
+        continue;
+      }
+      const k = (now - at) / COUNTER_REWIND_MS;
+      if (k >= 1 || arr.length < 2) { this.weaponTrail.delete(key); continue; }
+      const back = counterRewindEase(Math.max(0, k));
+      const idx = Math.max(0, Math.min(arr.length - 1, Math.round((arr.length - 1) * (1 - back))));
+      const a = arr[idx].args;
+      this.weaponTrailRecording = false;
+      this.drawBountyWeapon(e.id, a.texName, a.px, a.py, a.angleRad, a.lengthPx,
+        a.alpha * (1 - back * 0.35), a.widthMul, a.flipY, a.gripX, a.gripY, a.intrinsicAngle);
+      this.weaponTrailRecording = true;
+    }
+  }
+
   private drawBountyWeapon(
     id: string, texName: string, px: number, py: number, angleRad: number,
     lengthPx: number, alpha: number,
@@ -30150,6 +30229,9 @@ export class PixiScene {
     //   intrinsicAngle = 素材の中で「柄→先端」が向いている角度(これを引いて狙い方向へ合わせる)。
     gripX = 0.5, gripY = 0.5, intrinsicAngle = 0,
   ) {
+    this.recordWeaponTrail(id, {
+      texName, px, py, angleRad, lengthPx, alpha, widthMul, flipY, gripX, gripY, intrinsicAngle,
+    });
     // ★v0.25.3573: 鞭だけはSprite回転ではなくMeshRope(しなり)で描く。呼び出し側の互換は保つ
     // (gripX/gripY/intrinsicAngleは鞭定数が渡ってくるがロープ側は自前のWHIP_*定数を読む)。
     if (texName === 'bounty-melee-whip') {
