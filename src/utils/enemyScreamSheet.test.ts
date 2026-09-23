@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { enemyScreamFrame, enemyScreamLastFrame } from './enemyScreamSheet';
+import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame, SCREAM_RELEASE_MS } from './enemyScreamSheet';
 import { ENEMY_SCREAM_SHEETS, screamSheetName, screamSheetFrames } from './enemySheets';
 
 const N = ENEMY_SCREAM_SHEETS['screamer-common'];
@@ -49,5 +49,46 @@ describe('enemyScreamFrame（叫喚の叫び・v0.25.4611）', () => {
     expect(screamSheetFrames('screamer-common')).toBe(16);
     expect(screamSheetName('screamer-common')).toBe('screamer-common-scream');
     expect(enemyScreamLastFrame(N)).toBe(15);
+  });
+});
+
+describe('enemyScreamReleaseFrame（叫び終わりの戻り・社長裁定2026-09-23「a」）', () => {
+  it('発動の瞬間は最後のコマ（前かがみのまま）', () => {
+    expect(enemyScreamReleaseFrame(N, 0)).toBe(N - 1);
+  });
+
+  it('戻り切ったら null（立ち絵へ返す）', () => {
+    expect(enemyScreamReleaseFrame(N, SCREAM_RELEASE_MS)).toBeNull();
+    expect(enemyScreamReleaseFrame(N, SCREAM_RELEASE_MS + 100)).toBeNull();
+  });
+
+  it('0コマ目（真っ直ぐ）まで戻る＝背丈の跳ねが残らない', () => {
+    let last: number | null = N - 1;
+    for (let t = 0; t < SCREAM_RELEASE_MS; t += 1) {
+      const f = enemyScreamReleaseFrame(N, t);
+      if (f !== null) last = f;
+    }
+    expect(last).toBe(0);
+  });
+
+  it('戻る一方（進み直さない）', () => {
+    let prev = N;
+    for (let t = 0; t < SCREAM_RELEASE_MS; t += 1) {
+      const f = enemyScreamReleaseFrame(N, t);
+      if (f === null) break;
+      expect(f).toBeLessThanOrEqual(prev);
+      prev = f;
+    }
+  });
+
+  it('★等速ではない（慣性MUST・前半で半分以上戻る）', () => {
+    const half = enemyScreamReleaseFrame(N, SCREAM_RELEASE_MS / 2);
+    expect(half).not.toBeNull();
+    expect(half as number).toBeLessThan((N - 1) / 2);
+  });
+
+  it('シートが無い型は戻りも出さない', () => {
+    expect(enemyScreamReleaseFrame(0, 10)).toBeNull();
+    expect(enemyScreamReleaseFrame(1, 10)).toBeNull();
   });
 });

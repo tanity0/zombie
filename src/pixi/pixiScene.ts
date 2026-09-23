@@ -106,7 +106,7 @@ import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../ut
 import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs, sweepSheetSplit, sweepSheetName } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
-import { enemyScreamFrame, enemyScreamLastFrame } from '../utils/enemyScreamSheet';
+import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
 import { enemyJumpFrame, enemyJumpFallFrame, enemyJumpLandLastFrame, jumpSplitFrames, jumpLandDrawMs } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepBandDirX } from '../utils/enemySweepSheet';
@@ -29921,11 +29921,27 @@ export class PixiScene {
    *   ——片方だけ割ると絵と判定がズレる(v0.25.4608 で直した型)。
    * ★予兆のリング・SE・揺れには一切触っていない(「元々のエフェクトは消さない」)。
    */
+  private screamEndMemo = new Map<string, number>();
+
   private enemyScreamTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     const frames = screamSheetFrames(idleTexKey);
-    if (frames <= 1 || e.aiPhase !== 'scream') return null;
-    const prog = 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / SCREAMER_WINDUP_MS;
-    const i = enemyScreamFrame(frames, prog) ?? enemyScreamLastFrame(frames);
+    if (frames <= 1) return null;
+    let i: number | null;
+    if (e.aiPhase === 'scream') {
+      const prog = 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / SCREAMER_WINDUP_MS;
+      i = enemyScreamFrame(frames, prog) ?? enemyScreamLastFrame(frames);
+      // ★叫び終わりの時刻を覚えておく(相が明けると `aiPhaseUntil` は0に戻るため、生きている間に焼く)。
+      if (this.screamEndMemo.size > 64) this.screamEndMemo.clear();
+      this.screamEndMemo.set(e.id, e.aiPhaseUntil ?? gameTime);
+    } else {
+      // ★戻り(社長裁定2026-09-23「a」): 最後のコマ(前かがみ)から0コマ目へ**逆再生**で戻す。
+      // これが無いと、発動の瞬間に背丈が **90.5px → 105.3px(+16%)** 一段で跳ねる
+      // (支給のシートは前かがみで終わり、戻りのコマが無いため)。
+      const endAt = this.screamEndMemo.get(e.id);
+      if (endAt === undefined) return null;
+      i = enemyScreamReleaseFrame(frames, gameTime - endAt);
+      if (i === null) { this.screamEndMemo.delete(e.id); return null; }
+    }
     const slices = this.sheetSlices(screamSheetName(idleTexKey), frames);
     return this.rememberAtkFrame(e, screamSheetName(idleTexKey), frames, i, slices);
   }
