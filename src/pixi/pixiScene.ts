@@ -30377,8 +30377,12 @@ export class PixiScene {
   // 2枚の反りが向かい合う。従来の開閉擬似(1枚絵のwidthMul)からの写像なので技ごとの開閉の慣性は不変。
   /** 刃素材の台帳(実測値): アンカー=ピボットの画像内割合 / dist=ピボット→先端px / intrinsic=素材内の先端方向。 */
   private static readonly SCISSOR_BLADES = [
-    { tex: 'bounty-balance-blade-0', ax: 0.918, ay: 0.792, dist: 375, intrinsic: -2.8572, flip: false },
-    { tex: 'bounty-balance-blade-1', ax: 0.920, ay: 0.667, dist: 360, intrinsic: -2.9471, flip: true },
+    // ★v0.25.4603: `dist`(旧テクスチャの画素で測った「アンカー→切っ先」の距離)を
+    // **テクスチャ幅に対する割合 `distFrac`** へ持ち替えた。解凍で刃が 392×136 → 98×34(1/4)に
+    // なった結果、旧 `dist` のままだと**刃の長さだけが 1/4**になっていた(開き角とアンカーは割合なので無事)。
+    // 割合にしておけば、今後どう寸法が変わっても崩れない。旧値: 375 / 360(素材幅 392 / 384 基準)。
+    { tex: 'bounty-balance-blade-0', ax: 0.918, ay: 0.792, distFrac: 375 / 392, intrinsic: -2.8572, flip: false },
+    { tex: 'bounty-balance-blade-1', ax: 0.920, ay: 0.667, distFrac: 360 / 384, intrinsic: -2.9471, flip: true },
   ] as const;
   /** 全開(旧widthMul=1.7)時の片側の開き角(rad・叩き台)。
    *  v0.25.3578(社長指示「タメと勢いを分かりやすく」): 0.5→0.7=全開が約80°に開く。 */
@@ -30417,7 +30421,7 @@ export class PixiScene {
     for (let i = 0; i < blades.length; i++) {
       const b = PixiScene.SCISSOR_BLADES[i];
       const sp = blades[i];
-      const s = lengthPx / b.dist; // ピボット→先端=lengthPx(旧: 全長160と同じ届き)
+      const s = lengthPx / Math.max(1, b.distFrac * sp.texture.width); // ピボット→先端=lengthPx(旧: 全長160と同じ届き)
       sp.scale.set(s, b.flip ? -s : s);
       // 反転すると素材内の先端方向が上下鏡映(intrinsic→-intrinsic)になるぶん回転の式も変わる。
       const desired = angleRad + (b.flip ? openHalf : -openHalf);
@@ -30992,7 +30996,11 @@ export class PixiScene {
       p.vy += 46 * deltaSec; // 軽い重力(ゆっくり舞い落ちる)
       p.vx *= Math.exp(-1.6 * deltaSec); // 初速は空気抵抗で失われる
       p.sp.rotation += p.vr * deltaSec;
-      const s = (PixiScene.PETAL_SIZE_PX * (1 - t * 0.35)) / 128;
+      // ★v0.25.4603: 分母は**素材の実寸**から読む(旧: 128 の直書き=当時の `fx/petal-0` の高さ)。
+      // 解凍で 148×128 → 37×32 になり、花びらが **狙い32px の 1/4=8px** で出ていた
+      // (v0.25.3586 で社長指摘「花びら使ってなくない?」を受けて 14→32px へ大きくした経緯があるのに、
+      //  それより小さい 8px=実質見えない状態へ戻っていた)。`PETAL_SIZE_PX` は**表示px**なので据え置き。
+      const s = (PixiScene.PETAL_SIZE_PX * (1 - t * 0.35)) / Math.max(1, p.sp.texture.height);
       p.sp.scale.set(s);
       p.sp.alpha = t < 0.7 ? 1 : (1 - t) / 0.3;
     }
