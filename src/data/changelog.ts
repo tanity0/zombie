@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4604',
+    items: [
+      '武器の絵がぼやけていたのを、くっきりしたドットで出すようにした',
+    ],
+  },
+  {
     version: '0.25.4603',
     items: [
       '舞妓の桜の花びらが小さすぎて見えなくなっていたのを戻した',

@@ -105,10 +105,16 @@
 .command-shell .weapon-tier-title span { font-size:11px; color:var(--menu-muted); }
 .command-shell .ds-loadout-body .weapon-candidates { grid-template-columns:minmax(0,1fr); align-items:stretch; }
 .command-shell .weapon-candidates .ff7r-fade-right { display:grid; grid-template-columns:84px minmax(0,1fr) 64px; align-items:center; gap:18px; padding:14px 18px; min-height:100px; }
-/* 武器のドット絵は原寸が大きい(96〜250px)ので、縮めて見せる時は pixelated だと画素が不均一に潰れて粗く見える
-   (社長指摘2026-09-12「ドット絵が少し粗いので、あまり大きく見せたくない」)。小さく・なめらかに縮小する。 */
+/* ★v0.25.4604(社長裁定2026-09-23「推薦」): `auto` → `pixelated`。
+   旧の理由は「武器の原寸が大きい(96〜250px)ので**縮めて**見せる=pixelated だと画素が不均一に潰れる」
+   (社長指摘2026-09-12「ドット絵が少し粗いので、あまり大きく見せたくない」)。
+   **その前提が解凍で消えた**——素材が1/4になり、枠52px(スマホ44px)に対して
+   **40件中19件が拡大側(最大2.17倍)/残り21件も0.81〜0.96倍のごく浅い縮小**になった。
+   `auto` は拡大時に補間するので**ドットがぼやける**うえ、銃ごとにボケ方がバラつく。
+   いまの倍率帯(0.81〜2.17倍)なら pixelated が正しい。**大きく見せない**という指摘の本体
+   (枠52px)は変えていない。 */
 .command-shell .weapon-art { display:flex; align-items:center; justify-content:center; height:52px; }
-.command-shell .weapon-art img { width:100%; height:100%; object-fit:contain; image-rendering:auto; }
+.command-shell .weapon-art img { width:100%; height:100%; object-fit:contain; image-rendering:pixelated; }
 .command-shell .weapon-selection { display:flex; gap:4px; align-items:center; color:var(--menu-accent); font:11px system-ui; }
 .command-shell .weapon-candidates .truncate { white-space:normal; overflow-wrap:anywhere; }
 .command-shell .weapon-candidates .leading-snug { line-height:1.7; color:var(--menu-muted); margin-top:8px; }
