@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "839 files / 復号後 約669MB",
+ "generatedFor": "839 files / 復号後 約663MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -4455,10 +4455,10 @@
    "sha": "0f7bd4356718ae96"
   },
   "sprites/thor-katana.png": {
-   "w": 1254,
-   "h": 1254,
-   "bytes": 1135630,
-   "sha": "dafd85b919757206"
+   "w": 150,
+   "h": 150,
+   "bytes": 4554,
+   "sha": "10a80fc3d7c24bdb"
   },
   "sprites/thor.png": {
    "w": 256,
