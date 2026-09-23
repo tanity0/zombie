@@ -109,6 +109,7 @@ import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GU
 import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames } from '../utils/enemySweepSheet';
+import { counterRewindFrame } from '../utils/counterRewind';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // ★v0.25.3573(ボスメーカー第4弾): 裏ボス4体の寸法/秒数は判定と**同じテーブル**を読む
 // (手写しミラーは撤去済み。入れ子オブジェクトを参照で持つので部屋で動かした値が絵にも即効く)。
@@ -17742,7 +17743,10 @@ export class PixiScene {
     const atkTex = this.enemySweepTexture(idleTexKey, e, gameTime)
       ?? this.enemyJumpTexture(idleTexKey, e, gameTime)
       ?? this.enemyShotTexture(idleTexKey, e, now)
-      ?? this.enemyAttackTexture(idleTexKey, e, gameTime);
+      ?? this.enemyAttackTexture(idleTexKey, e, gameTime)
+      // ★カウンターで技が消された直後だけ、出ていたコマを数コマぶん逆再生して「弾かれた」を見せる
+      // (社長指示2026-09-23)。攻撃のコマが出ている間は当然こちらへ来ない=通常再生が優先。
+      ?? this.enemyCounterRewindTexture(e, now);
     const walkTex = atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
       ?? this.enemyIdleTexture(idleTexKey, e, now);
     const tex = e.type === 'guardian-phantom'
@@ -29662,7 +29666,7 @@ export class PixiScene {
     if (i === null) return null;
     const frames = jumpSplitFrames(split);
     const slices = this.sheetSlices(jumpSheetName(idleTexKey), frames);
-    return slices ? (slices[i] ?? null) : null;
+    return this.rememberAtkFrame(e, jumpSheetName(idleTexKey), frames, i, slices);
   }
 
   /**
@@ -29676,6 +29680,44 @@ export class PixiScene {
    * ※地面の火花はその**後**のコマ(実測: 当たりの61ms後から、122ms後が最大)。
    * ★**別スプライトのチェーンソー(`reaper-chainsaw`)は止めない**(CLAUDE.md「別スプライトの武器は消さない」)。
    */
+  /**
+   * ★カウンターの巻き戻し(社長指示2026-09-23「カウンターで跳ね返してる感じが欲しい。数コマだけ
+   * 逆再生するとかで対応するとそれっぽくならないかな?(武器絵も)」)の**記憶側**。
+   * 攻撃系のシート(薙ぎ/跳び/射撃/噛み)が出したコマを、敵ごとに1件だけ覚えておく。
+   * カウンターが刺さると store 側が `aiPhase` を消す=シートが**その場で消える**ので、
+   * ここに残った「最後に出ていたコマ」から逆再生して戻す(下の `enemyCounterRewindTexture`)。
+   * **描画専用**——判定・座標・状態機械には触れない。
+   */
+  private atkFrameMemo = new Map<string, { name: string; frames: number; i: number; at: number }>();
+
+  private rememberAtkFrame(
+    e: Enemy, name: string, frames: number, i: number, slices: readonly Texture[] | null,
+  ): ReturnType<typeof getTexture> {
+    if (!slices) return null;
+    const tex = slices[i] ?? null;
+    if (tex) this.atkFrameMemo.set(e.id, { name, frames, i, at: performance.now() });
+    return tex;
+  }
+
+  /**
+   * ★カウンターの巻き戻し(同上)の**再生側**。攻撃のコマが出ていない(=技が消された)フレームで、
+   * **カウンター成立からの経過が巻き戻し窓の中なら**、覚えていたコマから手前へ戻したコマを返す。
+   * - **等速では戻さない**(慣性MUST)。`counterRewindFrame` が ease-out を持っている。
+   * - **赤い予告は対象外**。ここはシートの絵だけを扱う(赤は掟③のまま消える)。
+   * - 戻り切ったら記憶を捨てる=次のカウンターに持ち越さない。
+   */
+  private enemyCounterRewindTexture(e: Enemy, now: number): ReturnType<typeof getTexture> {
+    const memo = this.atkFrameMemo.get(e.id);
+    if (!memo) return null;
+    const at = e.lastCounteredAt;
+    // カウンターより前に出ていたコマだけが対象(打刻より後に出たコマは「次の技」)。
+    if (at === undefined || memo.at > at + 1) return null;
+    const i = counterRewindFrame(memo.i, now - at);
+    if (i === null) { this.atkFrameMemo.delete(e.id); return null; }
+    const slices = this.sheetSlices(memo.name, memo.frames);
+    return slices ? (slices[i] ?? null) : null;
+  }
+
   private enemySweepTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     const split = sweepSheetSplit(idleTexKey);
     if (!split) return null;
@@ -29687,8 +29729,9 @@ export class PixiScene {
     const dur = durRaw / ENEMY_ATTACK_SPEED_MULT;
     const i = enemySweepFrame(split, phase, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / dur);
     if (i === null) return null;
-    const slices = this.sheetSlices(sweepSheetName(idleTexKey), sweepSplitFrames(split));
-    return slices ? (slices[i] ?? null) : null;
+    const frames = sweepSplitFrames(split);
+    const slices = this.sheetSlices(sweepSheetName(idleTexKey), frames);
+    return this.rememberAtkFrame(e, sweepSheetName(idleTexKey), frames, i, slices);
   }
 
   /**
@@ -29725,7 +29768,7 @@ export class PixiScene {
       closeMs, openMs, tsNum('plantbud', PLANT_BUD_HOLD_MS));
     if (i === null) return null;
     const slices = this.sheetSlices(shotSheetName(idleTexKey), frames);
-    return slices ? (slices[i] ?? null) : null;
+    return this.rememberAtkFrame(e, shotSheetName(idleTexKey), frames, i, slices);
   }
 
   /**
@@ -29740,7 +29783,7 @@ export class PixiScene {
     const i = enemyAttackFrameFor(e, frames, gameTime, attackImpactFrame(idleTexKey));
     if (i === null) return null;
     const slices = this.sheetSlices(attackSheetName(idleTexKey), frames);
-    return slices ? (slices[i] ?? null) : null;
+    return this.rememberAtkFrame(e, attackSheetName(idleTexKey), frames, i, slices);
   }
 
   private enemyWalkTexture(
