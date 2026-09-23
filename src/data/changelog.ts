@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4581',
+    items: [
+      '伐採人の立ち姿を、粗さの揃ったドットへ描き直した',
+    ],
+  },
+  {
     version: '0.25.4580',
     items: [
       'ステージ一のボスが、立ち姿も歩きも跳びかかりも同じ粗さで揃った',
