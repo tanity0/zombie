@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "839 files / 復号後 約663MB",
+ "generatedFor": "839 files / 復号後 約660MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3843,10 +3843,10 @@
    "sha": "425188849beda705"
   },
   "sprites/skadi-ice-block.png": {
-   "w": 836,
-   "h": 1139,
-   "bytes": 823733,
-   "sha": "8ad7018993393c74"
+   "w": 48,
+   "h": 64,
+   "bytes": 4719,
+   "sha": "561203d78a9fbe41"
   },
   "sprites/skadi.png": {
    "w": 206,
