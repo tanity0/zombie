@@ -48,3 +48,19 @@ export const enemyJumpFrame = (
  */
 export const enemyJumpFallFrame = (split: JumpSplit): number =>
   sectionLastFrame(counts(split), 1);
+
+/**
+ * ★着地の**最後のコマ**(社長報告2026-09-23「パンプキン、ジャンプの後コマが変になってる
+ * (小ジャンプしてるみたいなのが最後に混ざってる)」)。
+ *
+ * なぜ要るか: 着地の絵の長さ(`ENEMY_JUMP_LAND_MS`)は**硬直の長さとは別物**。
+ * 蜘蛛は着地420msに対して**硬直が2000ms(実効1667ms)**あるので、
+ * 着地の絵が終わった時点で**残り約1.25秒ぶん、立ち絵へ戻って**いた。
+ * 実測: 着地の最終コマの絵の高さ **80.5px** → 立ち絵 **87.8px** =**+7.3px(+9%)跳ね上がる**。
+ * 足元が固定なので**body が急に伸びる**=「小ジャンプ」に見える。
+ *
+ * ⇒ 着地の絵が尽きたら**最後のコマで持たせる**(硬直中はその姿勢のまま)。
+ * 技の絵が技の長さを最後まで持つ=「技が終わっていないのに立ち絵へ戻る」を無くす。
+ */
+export const enemyJumpLandLastFrame = (split: JumpSplit): number =>
+  sectionLastFrame(counts(split), 2);

@@ -1,6 +1,6 @@
 // ★跳ぶ技の絵の区間割り。社長支給2026-09-21「パンプキン(蜘蛛)のジャンプ攻撃時」。
 import { describe, it, expect } from 'vitest';
-import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames } from './enemyJumpSheet';
+import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames , enemyJumpLandLastFrame } from './enemyJumpSheet';
 import { ENEMY_JUMP_SHEETS, ENEMY_JUMP_LAND_MS, jumpSheetName, jumpSheetSplit } from './enemySheets';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
 import { PUMPKIN_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
@@ -115,5 +115,29 @@ describe('★★区間の境目でコマが飛ばない', () => {
   it('★弾かれて落ちている間は「滞空の最後のコマ」(着地の砂埃を先に出さない)', () => {
     expect(enemyJumpFallFrame(SP)).toBe(SP.crouch + SP.air - 1);
     expect(enemyJumpFallFrame(SP)).toBeLessThan(SP.crouch + SP.air);   // 着地区間には入らない
+  });
+});
+
+describe('★着地の最後のコマで持たせる(社長報告2026-09-23「小ジャンプしてるみたいなのが最後に混ざってる」)', () => {
+  // 着地の絵の長さ(ENEMY_JUMP_LAND_MS)は**硬直の長さとは別物**。蜘蛛は着地420msに対し硬直が実効1667ms
+  // あるため、絵が尽きた後の約1.25秒が立ち絵へ戻り、体の高さが 80.5px → 87.8px(+9%)跳ね上がっていた。
+  const SPLIT = { crouch: 4, air: 6, land: 5 } as const; // = pumpkin-common
+  it('着地の最後のコマ番号は「全コマ数-1」', () => {
+    expect(enemyJumpLandLastFrame(SPLIT)).toBe(4 + 6 + 5 - 1);
+  });
+  it('★進行度が1を超えたら enemyJumpFrame は null を返す(=呼び出し側が最後のコマで持たせる前提)', () => {
+    expect(enemyJumpFrame(SPLIT, 'land', 0.999)).toBe(enemyJumpLandLastFrame(SPLIT));
+    expect(enemyJumpFrame(SPLIT, 'land', 1)).toBeNull();
+    expect(enemyJumpFrame(SPLIT, 'land', 4)).toBeNull();
+  });
+  it('持たせるコマは、着地区間の中で一番最後=絵が戻らない', () => {
+    const last = enemyJumpLandLastFrame(SPLIT);
+    for (let p = 0; p < 1; p += 0.05) {
+      expect(enemyJumpFrame(SPLIT, 'land', p)!).toBeLessThanOrEqual(last);
+    }
+  });
+  it('区間の割り方が違うシートでも同じ(城ボス=5/5/6 / ハンター=5/5/6)', () => {
+    expect(enemyJumpLandLastFrame({ crouch: 4, air: 7, land: 5 })).toBe(15);
+    expect(enemyJumpLandLastFrame({ crouch: 5, air: 5, land: 6 })).toBe(15);
   });
 });

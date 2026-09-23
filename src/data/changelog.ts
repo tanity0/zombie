@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4605',
+    items: [
+      '蜘蛛が跳びかかった後、着地の姿勢のまま隙が終わるようになった。小さく跳ね直して見えるのが直った',
+    ],
+  },
+  {
     version: '0.25.4604',
     items: [
       '武器の絵がぼやけていたのを、くっきりしたドットで出すようにした',

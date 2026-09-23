@@ -106,7 +106,7 @@ import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
 import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs, sweepSheetSplit, sweepSheetName } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
-import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames } from '../utils/enemyJumpSheet';
+import { enemyJumpFrame, enemyJumpFallFrame, enemyJumpLandLastFrame, jumpSplitFrames } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepBandDirX } from '../utils/enemySweepSheet';
 import { counterRewindFrame, counterRewindEase, counterRewindElapsed, COUNTER_REWIND_MS } from '../utils/counterRewind';
@@ -29717,9 +29717,14 @@ export class PixiScene {
       const recoverStart = (e.aiPhaseUntil ?? gameTime) - pumpkinRecoverMs(e.type) / ENEMY_ATTACK_SPEED_MULT;
       // ★盾で弾かれた落下中は、着地の絵(砂埃つき)を先に出さない=まだ落ちている最中だから。
       const blockedFall = (e.aiStartedAt ?? -Infinity) >= recoverStart - 1;
+      // ★v0.25.4605(社長報告「パンプキン、ジャンプの後コマが変。小ジャンプしてるみたいなのが最後に混ざってる」):
+      // 着地の絵が尽きたら**最後のコマで持たせる**。着地の絵(420ms)は**硬直(蜘蛛は実効1667ms)より短い**ので、
+      // 従来は残り約1.25秒ぶん**立ち絵へ戻って**いた——実測で絵の高さが **80.5px → 87.8px(+9%)跳ね上がる**
+      // (足元が固定なので体が急に伸びる=「小ジャンプ」に見える)。技の絵は技が終わるまで持たせる。
       i = blockedFall
         ? enemyJumpFallFrame(split)
-        : enemyJumpFrame(split, 'land', (gameTime - recoverStart) / jumpLandMs(idleTexKey));
+        : (enemyJumpFrame(split, 'land', (gameTime - recoverStart) / jumpLandMs(idleTexKey))
+          ?? enemyJumpLandLastFrame(split));
     } else if (e.aiPhase === 'g-jump-windup' || e.aiPhase === 'g-jump-air' || e.aiPhase === 'g-jump-recover') {
       // ★★城ボスの飛び掛かり(社長支給2026-09-23「城1ボス 搬送体のジャンプ攻撃」・v0.25.4575)。
       // 同じ3区間だが**州の名前も時計も別**(`g-jump-*` / `GIANT_JUMP_*`)。汎用ジャンプ
@@ -29736,9 +29741,11 @@ export class PixiScene {
         // ★盾で弾かれた時は store が `aiStartedAt` を**弾かれた瞬間**に書き直すので、この値は
         // 負から始まる=**まだ落ちている**。その間は着地の絵を出さず滞空の最後のコマで持たせる。
         const sinceLand = (gameTime - (e.aiStartedAt ?? gameTime)) - airDur;
+        // ★v0.25.4605: 同じ理由で城ボスも最後のコマで持たせる(立ち直りは台本で伸びるため)。
         i = sinceLand < 0
           ? enemyJumpFallFrame(split)
-          : enemyJumpFrame(split, 'land', sinceLand / jumpLandMs(idleTexKey));
+          : (enemyJumpFrame(split, 'land', sinceLand / jumpLandMs(idleTexKey))
+            ?? enemyJumpLandLastFrame(split));
       }
     }
     if (i === null) return null;
