@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "839 files / 復号後 約746MB",
+ "generatedFor": "839 files / 復号後 約669MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -513,16 +513,16 @@
    "sha": "88e6af736eb38295"
   },
   "sprites/acrasiel-spear.png": {
-   "w": 152,
-   "h": 512,
-   "bytes": 7481,
-   "sha": "5e5526f19c2aaef7"
+   "w": 38,
+   "h": 128,
+   "bytes": 4758,
+   "sha": "e7e543ebb0059536"
   },
   "sprites/acrasiel.png": {
-   "w": 340,
-   "h": 772,
-   "bytes": 42709,
-   "sha": "d6edac912c52d1a8"
+   "w": 85,
+   "h": 193,
+   "bytes": 23859,
+   "sha": "ef8c1279d2348e41"
   },
   "sprites/armory.png": {
    "w": 520,
@@ -615,10 +615,10 @@
    "sha": "88f3d7c4ff42ae82"
   },
   "sprites/bat-female.png": {
-   "w": 356,
-   "h": 512,
-   "bytes": 21580,
-   "sha": "431bc23a32c107b0"
+   "w": 89,
+   "h": 128,
+   "bytes": 14912,
+   "sha": "5a641c2b57567702"
   },
   "sprites/bat-lantern.png": {
    "w": 49,
@@ -639,64 +639,64 @@
    "sha": "116f75d2a0a7e6f8"
   },
   "sprites/bat-male.png": {
-   "w": 368,
-   "h": 512,
-   "bytes": 23838,
-   "sha": "ad3c4bd2ab9358bc"
+   "w": 92,
+   "h": 128,
+   "bytes": 16889,
+   "sha": "d8d945b25452ef0d"
   },
   "sprites/bounty-balance-blade-0.png": {
-   "w": 392,
-   "h": 136,
-   "bytes": 4078,
-   "sha": "79bbbaea10fe5a1b"
+   "w": 98,
+   "h": 34,
+   "bytes": 2693,
+   "sha": "58dd0bbfa893329e"
   },
   "sprites/bounty-balance-blade-1.png": {
-   "w": 384,
-   "h": 108,
-   "bytes": 3410,
-   "sha": "6e53690c2aab06e7"
+   "w": 96,
+   "h": 27,
+   "bytes": 2318,
+   "sha": "0749473f3eeb8799"
   },
   "sprites/bounty-balance.png": {
-   "w": 412,
-   "h": 512,
-   "bytes": 25105,
-   "sha": "c65da09306a079b1"
+   "w": 103,
+   "h": 128,
+   "bytes": 18247,
+   "sha": "cbd55e4b3abd43db"
   },
   "sprites/bounty-maiko-temari.png": {
-   "w": 248,
-   "h": 256,
-   "bytes": 10914,
-   "sha": "e4a170a9634f21ff"
+   "w": 62,
+   "h": 64,
+   "bytes": 7371,
+   "sha": "26b49e57c04f5df7"
   },
   "sprites/bounty-maiko.png": {
-   "w": 660,
-   "h": 800,
-   "bytes": 67013,
-   "sha": "71dee92683ce7df3"
+   "w": 165,
+   "h": 200,
+   "bytes": 45625,
+   "sha": "efee675789313f6e"
   },
   "sprites/bounty-melee-whip.png": {
-   "w": 996,
-   "h": 366,
-   "bytes": 11998,
-   "sha": "bed7c0d38e399f17"
+   "w": 498,
+   "h": 183,
+   "bytes": 9146,
+   "sha": "c13472ed09f6eebf"
   },
   "sprites/bounty-melee.png": {
-   "w": 520,
-   "h": 512,
-   "bytes": 33845,
-   "sha": "9506c1087bd11acc"
+   "w": 130,
+   "h": 128,
+   "bytes": 25599,
+   "sha": "4a227950d14cb909"
   },
   "sprites/bounty-ranged-sign.png": {
-   "w": 160,
-   "h": 256,
-   "bytes": 4147,
-   "sha": "20c25ee74cffb580"
+   "w": 40,
+   "h": 64,
+   "bytes": 2392,
+   "sha": "ac80937cdabfe65f"
   },
   "sprites/bounty-ranged.png": {
-   "w": 592,
-   "h": 800,
-   "bytes": 51930,
-   "sha": "9a456fdcb91cb06c"
+   "w": 148,
+   "h": 200,
+   "bytes": 36073,
+   "sha": "e5d9e30fa908c839"
   },
   "sprites/castle-church.png": {
    "w": 962,
@@ -753,10 +753,10 @@
    "sha": "4cbeb25472447d96"
   },
   "sprites/driller-common.png": {
-   "w": 572,
-   "h": 512,
-   "bytes": 42912,
-   "sha": "3d0b2d9e1c8ca814"
+   "w": 143,
+   "h": 128,
+   "bytes": 25074,
+   "sha": "3a6b203253486ef6"
   },
   "sprites/drone-boomerang.png": {
    "w": 128,
@@ -1353,10 +1353,10 @@
    "sha": "114f2e50374ab9b6"
   },
   "sprites/fx/glen-crystal.png": {
-   "w": 336,
-   "h": 256,
-   "bytes": 9992,
-   "sha": "e6b8629ce95cf39b"
+   "w": 84,
+   "h": 64,
+   "bytes": 7239,
+   "sha": "e65276613df5c964"
   },
   "sprites/fx/glide-branch.png": {
    "w": 276,
@@ -1515,16 +1515,16 @@
    "sha": "4db03871c627d36a"
   },
   "sprites/fx/idol-fist.png": {
-   "w": 400,
-   "h": 512,
-   "bytes": 32597,
-   "sha": "6e8de92f77939ed0"
+   "w": 100,
+   "h": 128,
+   "bytes": 20205,
+   "sha": "86225ce40f9babf0"
   },
   "sprites/fx/jorm-coil-body.png": {
-   "w": 1024,
-   "h": 128,
-   "bytes": 17074,
-   "sha": "755b27441f3806cc"
+   "w": 256,
+   "h": 32,
+   "bytes": 10467,
+   "sha": "223b032ae83eac3f"
   },
   "sprites/fx/kill-slash.png": {
    "w": 3264,
@@ -1695,10 +1695,10 @@
    "sha": "4ba00369f4a55a8e"
   },
   "sprites/fx/phill-feather.png": {
-   "w": 264,
-   "h": 256,
-   "bytes": 7496,
-   "sha": "85069ee303691d4d"
+   "w": 66,
+   "h": 64,
+   "bytes": 3527,
+   "sha": "7d2ea55b43f837fb"
   },
   "sprites/fx/plant-seed.png": {
    "w": 83,
@@ -2121,10 +2121,10 @@
    "sha": "b1e4690cb9e2a26b"
   },
   "sprites/ghost-common.png": {
-   "w": 360,
-   "h": 500,
-   "bytes": 34181,
-   "sha": "a5bb47d81cb3fa14"
+   "w": 90,
+   "h": 125,
+   "bytes": 21386,
+   "sha": "0e41f4fb4bfd2469"
   },
   "sprites/giantbat-jump.png": {
    "w": 1936,
@@ -2139,22 +2139,22 @@
    "sha": "5ffac1ce3b332d7e"
   },
   "sprites/glen-boss.png": {
-   "w": 1024,
-   "h": 776,
-   "bytes": 115723,
-   "sha": "0140b797cb5705ab"
+   "w": 256,
+   "h": 194,
+   "bytes": 65869,
+   "sha": "5950745caa3e3c2e"
   },
   "sprites/glen-boss2-parts.png": {
-   "w": 792,
-   "h": 264,
-   "bytes": 25369,
-   "sha": "1bc479b6eec87a09"
+   "w": 198,
+   "h": 66,
+   "bytes": 14378,
+   "sha": "3c6d69fd18f52229"
   },
   "sprites/glen-boss2.png": {
-   "w": 1024,
-   "h": 840,
-   "bytes": 126163,
-   "sha": "b1a5d9fc3331d7ef"
+   "w": 256,
+   "h": 210,
+   "bytes": 73720,
+   "sha": "cd5f853b5ec29bd1"
   },
   "sprites/gold-chest.png": {
    "w": 424,
@@ -2211,34 +2211,34 @@
    "sha": "096d0198e48d7e46"
   },
   "sprites/hunter.png": {
-   "w": 964,
-   "h": 1024,
-   "bytes": 143054,
-   "sha": "b7971c6ac22b2b2a"
+   "w": 241,
+   "h": 256,
+   "bytes": 83021,
+   "sha": "72bc5bb2417782c3"
   },
   "sprites/idol.png": {
-   "w": 760,
-   "h": 1024,
-   "bytes": 85916,
-   "sha": "5a1a64b2977237b3"
+   "w": 190,
+   "h": 256,
+   "bytes": 45125,
+   "sha": "5873f0e451932767"
   },
   "sprites/jibril-lantern.png": {
-   "w": 132,
-   "h": 512,
-   "bytes": 8427,
-   "sha": "2882e98420a89501"
+   "w": 33,
+   "h": 128,
+   "bytes": 5014,
+   "sha": "ca6058bcb8c0de41"
   },
   "sprites/jibril.png": {
-   "w": 436,
-   "h": 744,
-   "bytes": 53740,
-   "sha": "a65c5ea9a79155ef"
+   "w": 109,
+   "h": 186,
+   "bytes": 29101,
+   "sha": "08f4f8fb919299bc"
   },
   "sprites/jormungand.png": {
-   "w": 1024,
-   "h": 508,
-   "bytes": 71579,
-   "sha": "8a0c1a64d0b6166e"
+   "w": 256,
+   "h": 127,
+   "bytes": 41454,
+   "sha": "27ca16c10b628012"
   },
   "sprites/katana-item.png": {
    "w": 220,
@@ -2409,28 +2409,28 @@
    "sha": "52ff4e714ab92cd9"
   },
   "sprites/lab-zombie/lab-zombie-lv1-female.png": {
-   "w": 440,
-   "h": 512,
-   "bytes": 35135,
-   "sha": "8f3cd1388a57a4af"
+   "w": 110,
+   "h": 128,
+   "bytes": 19349,
+   "sha": "795b0678f8d023dc"
   },
   "sprites/lab-zombie/lab-zombie-lv1-male.png": {
-   "w": 488,
-   "h": 512,
-   "bytes": 38049,
-   "sha": "8da81b6e017eec19"
+   "w": 122,
+   "h": 128,
+   "bytes": 20124,
+   "sha": "9a4e0ecdd0f505a0"
   },
   "sprites/lab-zombie/lab-zombie-lv2.png": {
-   "w": 416,
-   "h": 524,
-   "bytes": 36127,
-   "sha": "a8876c8ab3590e0f"
+   "w": 104,
+   "h": 131,
+   "bytes": 21862,
+   "sha": "52e6a59062891f59"
   },
   "sprites/lab-zombie/lab-zombie-lv3.png": {
-   "w": 704,
-   "h": 800,
-   "bytes": 80871,
-   "sha": "72825a03165f79ba"
+   "w": 176,
+   "h": 200,
+   "bytes": 47653,
+   "sha": "0008ac5c51fc1060"
   },
   "sprites/lab/lab-bg-void.png": {
    "w": 240,
@@ -2607,22 +2607,22 @@
    "sha": "2a2e5f0f422da52a"
   },
   "sprites/miguel-sword.png": {
-   "w": 120,
-   "h": 512,
-   "bytes": 9119,
-   "sha": "37dffa6b0a121a5f"
+   "w": 30,
+   "h": 128,
+   "bytes": 4105,
+   "sha": "c81355c046c6a714"
   },
   "sprites/miguel.png": {
-   "w": 536,
-   "h": 800,
-   "bytes": 64175,
-   "sha": "fe48bc4e26830982"
+   "w": 134,
+   "h": 200,
+   "bytes": 34882,
+   "sha": "ed3ef9ccd48541cf"
   },
   "sprites/mimir.png": {
-   "w": 804,
-   "h": 1024,
-   "bytes": 98399,
-   "sha": "8a5d9c84ecc59ad4"
+   "w": 201,
+   "h": 256,
+   "bytes": 49368,
+   "sha": "cf8fdf4217566109"
   },
   "sprites/mirror-ball.png": {
    "w": 256,
@@ -2883,22 +2883,22 @@
    "sha": "741941c354eafe99"
   },
   "sprites/phill-wing-attack.png": {
-   "w": 436,
-   "h": 512,
-   "bytes": 31595,
-   "sha": "96d81f102d86ab2f"
+   "w": 109,
+   "h": 128,
+   "bytes": 17625,
+   "sha": "51f48ac9d7c5c09e"
   },
   "sprites/phill-wings.png": {
-   "w": 804,
-   "h": 1024,
-   "bytes": 103877,
-   "sha": "3c4c758a15454be3"
+   "w": 201,
+   "h": 256,
+   "bytes": 57991,
+   "sha": "74cee185e946b9d4"
   },
   "sprites/phill.png": {
-   "w": 768,
-   "h": 1024,
-   "bytes": 98783,
-   "sha": "693415d9ecf39f9d"
+   "w": 192,
+   "h": 256,
+   "bytes": 53548,
+   "sha": "bfa79abab649fb51"
   },
   "sprites/plant-common-idle.png": {
    "w": 690,
@@ -2913,10 +2913,10 @@
    "sha": "eaa982514c38ee8b"
   },
   "sprites/plant-common.png": {
-   "w": 460,
-   "h": 512,
-   "bytes": 35100,
-   "sha": "0c8e9204cf0533ef"
+   "w": 115,
+   "h": 128,
+   "bytes": 20835,
+   "sha": "162398ac585f5289"
   },
   "sprites/player-magnum-game-0.png": {
    "w": 96,
@@ -3705,10 +3705,10 @@
    "sha": "7c8b8336e362e25b"
   },
   "sprites/pumpkin-common.png": {
-   "w": 1024,
-   "h": 768,
-   "bytes": 119617,
-   "sha": "f96efb787f5d4ad5"
+   "w": 256,
+   "h": 192,
+   "bytes": 69831,
+   "sha": "ce7c92e8152bf556"
   },
   "sprites/quest-futari.png": {
    "w": 376,
@@ -3717,22 +3717,22 @@
    "sha": "2088ab51aac6d59c"
   },
   "sprites/rafi-blade.png": {
-   "w": 172,
-   "h": 512,
-   "bytes": 10929,
-   "sha": "e6b4cd7f31839966"
+   "w": 43,
+   "h": 128,
+   "bytes": 6970,
+   "sha": "0a30ecdf6ccbb80f"
   },
   "sprites/rafi.png": {
-   "w": 664,
-   "h": 800,
-   "bytes": 72246,
-   "sha": "bf8165b85294898e"
+   "w": 166,
+   "h": 200,
+   "bytes": 39583,
+   "sha": "db2dfe22338c90da"
   },
   "sprites/reaper-chainsaw.png": {
-   "w": 532,
-   "h": 256,
-   "bytes": 15515,
-   "sha": "654546be3a08987a"
+   "w": 133,
+   "h": 64,
+   "bytes": 8311,
+   "sha": "b992f8ff3e68c519"
   },
   "sprites/reaper-common-sweep.png": {
    "w": 1206,
@@ -3747,16 +3747,16 @@
    "sha": "73f8061d2f819c50"
   },
   "sprites/reaper2-common.png": {
-   "w": 1388,
-   "h": 2048,
-   "bytes": 375785,
-   "sha": "698a3bc6aa059289"
+   "w": 347,
+   "h": 512,
+   "bytes": 204848,
+   "sha": "0a0e10df3db48cbb"
   },
   "sprites/reaper2-hanged.png": {
-   "w": 124,
-   "h": 512,
-   "bytes": 9959,
-   "sha": "6e9e42e248c094e1"
+   "w": 31,
+   "h": 128,
+   "bytes": 4952,
+   "sha": "050d9ce9e49387f2"
   },
   "sprites/rescue/civ-f-0.png": {
    "w": 73,
@@ -3807,10 +3807,10 @@
    "sha": "642d3b285d242924"
   },
   "sprites/screamer-common.png": {
-   "w": 360,
-   "h": 512,
-   "bytes": 30591,
-   "sha": "d2c2d2ff1273762f"
+   "w": 90,
+   "h": 128,
+   "bytes": 18354,
+   "sha": "2cd59aee3a9d4564"
   },
   "sprites/shield-down.png": {
    "w": 202,
@@ -3849,10 +3849,10 @@
    "sha": "8ad7018993393c74"
   },
   "sprites/skadi.png": {
-   "w": 824,
-   "h": 888,
-   "bytes": 119573,
-   "sha": "cfcc662e8ffc7ea7"
+   "w": 206,
+   "h": 222,
+   "bytes": 71911,
+   "sha": "90e97586b0d52f22"
   },
   "sprites/skateboard.png": {
    "w": 1254,
@@ -3873,10 +3873,10 @@
    "sha": "51fdf8dcce237dee"
   },
   "sprites/skeleton-female.png": {
-   "w": 452,
-   "h": 512,
-   "bytes": 27142,
-   "sha": "fb22e99e63203fbd"
+   "w": 113,
+   "h": 128,
+   "bytes": 19839,
+   "sha": "b35c964b8a6c3adb"
   },
   "sprites/skeleton-male-attack.png": {
    "w": 963,
@@ -3891,10 +3891,10 @@
    "sha": "1d53e2d3962a4912"
   },
   "sprites/skeleton-male.png": {
-   "w": 456,
-   "h": 512,
-   "bytes": 26738,
-   "sha": "7b43d386b514761a"
+   "w": 114,
+   "h": 128,
+   "bytes": 19162,
+   "sha": "035611c019b42830"
   },
   "sprites/skill/big-bullet.png": {
    "w": 140,
@@ -4443,16 +4443,16 @@
    "sha": "50509354a905b190"
   },
   "sprites/suriel-ring.png": {
-   "w": 304,
-   "h": 512,
-   "bytes": 15720,
-   "sha": "b569e72ab2b6b550"
+   "w": 76,
+   "h": 128,
+   "bytes": 9934,
+   "sha": "7696981d1ea816d7"
   },
   "sprites/suriel.png": {
-   "w": 400,
-   "h": 836,
-   "bytes": 58171,
-   "sha": "02838184b6e22f3c"
+   "w": 100,
+   "h": 209,
+   "bytes": 31562,
+   "sha": "0f7bd4356718ae96"
   },
   "sprites/thor-katana.png": {
    "w": 1254,
@@ -4461,10 +4461,10 @@
    "sha": "dafd85b919757206"
   },
   "sprites/thor.png": {
-   "w": 1024,
-   "h": 960,
-   "bytes": 153916,
-   "sha": "abcf2c8637b59fc5"
+   "w": 256,
+   "h": 240,
+   "bytes": 90207,
+   "sha": "e7d00839c78146af"
   },
   "sprites/torch.png": {
    "w": 296,
@@ -4551,16 +4551,16 @@
    "sha": "4b731d87a3703226"
   },
   "sprites/uri-sword.png": {
-   "w": 184,
-   "h": 512,
-   "bytes": 11260,
-   "sha": "6180f65dec8f5265"
+   "w": 46,
+   "h": 128,
+   "bytes": 7578,
+   "sha": "ae11147138e99c51"
   },
   "sprites/uri.png": {
-   "w": 500,
-   "h": 804,
-   "bytes": 60540,
-   "sha": "c88c5e235138a232"
+   "w": 125,
+   "h": 201,
+   "bytes": 32723,
+   "sha": "e203405969d1bea5"
   },
   "sprites/vfx/flare_01.png": {
    "w": 256,
@@ -4869,10 +4869,10 @@
    "sha": "d1718422bbfc6ee0"
   },
   "sprites/werewolf-common.png": {
-   "w": 508,
-   "h": 500,
-   "bytes": 44575,
-   "sha": "91af326c5112779c"
+   "w": 127,
+   "h": 125,
+   "bytes": 27814,
+   "sha": "89add706e2c27e59"
   },
   "sprites/whip-hurricane.png": {
    "w": 512,
@@ -4905,16 +4905,16 @@
    "sha": "5ccc18276122443c"
   },
   "sprites/zombie-common-walk.png": {
-   "w": 1344,
-   "h": 256,
-   "bytes": 140353,
-   "sha": "bfc2c092c2b61d69"
+   "w": 672,
+   "h": 128,
+   "bytes": 126709,
+   "sha": "353f88d5fdf48fed"
   },
   "sprites/zombie-common.png": {
-   "w": 464,
-   "h": 640,
-   "bytes": 43607,
-   "sha": "13604cf4af28fbc0"
+   "w": 116,
+   "h": 160,
+   "bytes": 31750,
+   "sha": "741bed0391098ac5"
   },
   "sprites/zoom-cloud.png": {
    "w": 1024,

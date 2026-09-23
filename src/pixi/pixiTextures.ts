@@ -1268,9 +1268,11 @@ export const ensureTextures = (): Promise<void> => {
     if (glenParts) {
       glenParts.source.scaleMode = 'linear';
       const frames: [number, number, number, number][] = [
-        [8, 8, 244, 256],     // part0: 砲身(いちばん大きい)
-        [292, 44, 208, 220],  // part1: 中間の箱(=「真ん中」・最初に欠ける)
-        [568, 116, 184, 148], // part2: 尾の鉤爪(末端)
+        // ★v0.25.4584: シートを 792×264 → 198×66 へ解凍(1ドット=4×4pxで保存されていたのを1×1へ)。
+        // 絵は1ドットも変わらないが**枠の座標は1/4になる**ので、ここも4で割ってある(旧値は右のコメント)。
+        [2, 2, 61, 64],    // part0: 砲身(いちばん大きい)        旧 8,8,244,256
+        [73, 11, 52, 55],  // part1: 中間の箱(=「真ん中」・最初に欠ける) 旧 292,44,208,220
+        [142, 29, 46, 37], // part2: 尾の鉤爪(末端)              旧 568,116,184,148
       ];
       frames.forEach(([x, y, w2, h2], i) => {
         textures.set(`glen-boss2-part-${i}`, new Texture({ source: glenParts.source, frame: new Rectangle(x, y, w2, h2) }));
