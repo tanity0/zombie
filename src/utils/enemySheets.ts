@@ -478,6 +478,25 @@ export const ENEMY_SWEEP_SHEETS: Readonly<Record<string, SweepSplit>> = {
 
 export const sweepSheetName = (idleTexName: string): string => `${idleTexName}-sweep`;
 
+/**
+ * ★**薙ぎシートの「絵の中での振り抜き方向」**(社長報告2026-09-23「伐採人の攻撃モーションが、
+ * 武器の進行方向と逆に振ってる」)。ミラーしていない素の状態で、**画面のどちら向きに振るか**。
+ * `1` = 左から右 / `-1` = 右から左。
+ *
+ * ★**薙ぎ中のミラーはこの向きで決める。「体がどちらを向くか」ではない。**
+ *   武器スプライトは帯(`aiFrom`→`aiTarget`)の上を進むので、**絵の振りが帯と逆になると
+ *   「逆に振っている」**に見える(判定は帯のまま=「見たまんまが当たり判定」が崩れる)。
+ * ★実測の仕方: 上半身(腕と得物が在る帯)の重心が、コマを追ってどちらへ動くか。
+ */
+export const ENEMY_SWEEP_SWING_DIR: Readonly<Record<string, 1 | -1>> = {
+  // 伐採人。実測: 上半身の重心が **40.6 → 90.1**(左上に構え→下を通って→右上へ抜ける)=左から右。
+  'reaper-common': 1,
+};
+
+/** 既定は「左から右」(表に無いシートもそう扱う)。 */
+export const sweepSwingDir = (idleTexName: string | null | undefined): 1 | -1 =>
+  (idleTexName && ENEMY_SWEEP_SWING_DIR[idleTexName]) || 1;
+
 export const sweepSheetSplit = (idleTexName: string | null | undefined): SweepSplit | null =>
   (idleTexName && ENEMY_SWEEP_SHEETS[idleTexName]) || null;
 

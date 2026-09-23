@@ -101,7 +101,7 @@ import {
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
-import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames } from '../utils/enemySheets';
+import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir } from '../utils/enemySheets';
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs, sweepSheetSplit, sweepSheetName } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
@@ -109,7 +109,7 @@ import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GU
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
 import { enemyJumpFrame, enemyJumpFallFrame, enemyJumpLandLastFrame, jumpSplitFrames, jumpLandDrawMs } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
-import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepBandDirX } from '../utils/enemySweepSheet';
+import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepBandDirX, sweepFaceMulFor } from '../utils/enemySweepSheet';
 import { counterRewindFrame, counterRewindEase, counterRewindElapsed, COUNTER_REWIND_MS } from '../utils/counterRewind';
 // ★武器の振りの軌跡(カウンターの「振りを戻す」用)。60fpsで窓140ms=約9枚なので16枚で足りる。
 const WEAPON_TRAIL_MAX = 16;
@@ -18352,8 +18352,14 @@ export class PixiScene {
         // 焼き付けた座標(判定の正本と同じ出どころ)から読むので、絵と判定がズレない。
         const bandDir = sweepPhaseOf(e.aiPhase) !== null
           ? sweepBandDirX(e.aiFromX, e.aiTargetX) : 0;
+        // ★★社長報告2026-09-23「伐採人の攻撃モーションが、**武器の進行方向と逆に振ってる**」:
+        // 薙ぎ中のミラーは**絵の振り抜き方向**で決める(体の向きではない)。
+        // 武器スプライトは帯(aiFrom→aiTarget)の上を進むので、**絵の振りを帯へ揃える**。
+        // 伐採人の絵は素の状態で「左→右」に振る(実測)ので、帯が右向きなら**ミラーしない**。
+        // (旧: `bandDir > 0 ? toRight` = 体を帯の方へ向けていた=絵の振りが毎回帯と逆になっていた。)
+        const sweepSwing = sweepSwingDir(sheetKey);
         const want = kbFacingLock ? cur
-          : bandDir !== 0 ? (bandDir > 0 ? toRight : -toRight)
+          : bandDir !== 0 ? sweepFaceMulFor(bandDir, sweepSwing, cur)
             : vx > 25 ? toRight : vx < -25 ? -toRight : cur;
         if (want !== cur) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
         const t = view.motFaceAt !== undefined ? Math.min(1, (now - view.motFaceAt) / ENEMY_TURN_MS) : 1;

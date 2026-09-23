@@ -1,8 +1,6 @@
 // ★薙ぎ払いの絵の区間割り。社長支給2026-09-22「伐採人の薙払いの時のモーション」。
 import { describe, it, expect } from 'vitest';
-import {
-  enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame,
-  LOGGER_SWEEP_PHASES, sweepBandDirX } from './enemySweepSheet';
+import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame, LOGGER_SWEEP_PHASES, sweepBandDirX, sweepFaceMulFor } from './enemySweepSheet';
 import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit } from './enemySheets';
 import { LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
 
@@ -134,5 +132,26 @@ describe('★薙ぎの帯の向き(社長裁定2026-09-23・絵と帯が逆を�
     expect(sweepBandDirX(0, 8)).toBe(0);
     expect(sweepBandDirX(0, 9)).toBe(1);
     expect(sweepBandDirX(0, -9)).toBe(-1);
+  });
+});
+
+describe('sweepFaceMulFor（薙ぎのミラーは「絵の振り」を「帯」へ揃える・社長報告2026-09-23）', () => {
+  it('★不変条件: 画面上で絵が振る向き == 帯の向き', () => {
+    for (const swingDir of [1, -1] as const) {
+      for (const bandDir of [1, -1] as const) {
+        const m = sweepFaceMulFor(bandDir, swingDir, 1);
+        expect(swingDir * m).toBe(bandDir);
+      }
+    }
+  });
+
+  it('伐採人（絵は左→右）は、帯が右向きならミラーしない', () => {
+    expect(sweepFaceMulFor(1, 1, 1)).toBe(1);
+    expect(sweepFaceMulFor(-1, 1, 1)).toBe(-1);
+  });
+
+  it('帯の向きが読めない時は今の向きを保つ（振り向かない）', () => {
+    expect(sweepFaceMulFor(0, 1, -1)).toBe(-1);
+    expect(sweepFaceMulFor(0, -1, 1)).toBe(1);
   });
 });

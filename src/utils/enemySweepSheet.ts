@@ -78,3 +78,20 @@ export const sweepBandDirX = (
   if (!Number.isFinite(d) || Math.abs(d) <= deadzonePx) return 0;
   return d > 0 ? 1 : -1;
 };
+
+/**
+ * ★薙ぎ中のミラー(社長報告2026-09-23「武器の進行方向と逆に振ってる」)。
+ *
+ * **「絵の振り抜き方向」を「帯の向き」へ揃える**ための倍率を返す(体の向きでは決めない)。
+ * 武器スプライトは帯(`aiFrom`→`aiTarget`)の上を進むので、絵の振りが帯と逆だと
+ * **逆に振っているように見える**(判定は帯のまま=「見たまんまが当たり判定」が崩れる)。
+ *
+ * 不変条件: 戻り値を `m` とすると **`swingDir * m === bandDir`**
+ * (=画面上で絵が振る向き == 帯の向き)。`enemySweepSheet.test.ts` が見張る。
+ *
+ * @param bandDir  帯の向き(`sweepBandDirX` の戻り。0=判定できない)
+ * @param swingDir 絵の素の振り抜き方向(`sweepSwingDir`)
+ * @param fallback 帯の向きが読めない時に保つ今の向き
+ */
+export const sweepFaceMulFor = (bandDir: -1 | 0 | 1, swingDir: 1 | -1, fallback: number): number =>
+  bandDir === 0 ? fallback : (bandDir > 0 ? swingDir : -swingDir as 1 | -1);
