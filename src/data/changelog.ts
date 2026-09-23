@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4591',
+    items: [
+      'カウンターを取っても画面の時間が止まらなくなった。赤い予告が固まって見えるのが直った',
+      'トールの刀の描き方を、ほかのドット絵の武器と同じにした',
+    ],
+  },
+  {
     version: '0.25.4590',
     items: [
       'コウモリの雌の攻撃を描き直した。振りかぶっても背が縮まなくなった',

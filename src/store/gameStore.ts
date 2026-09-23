@@ -2245,7 +2245,13 @@ export const REAPER_SUMMON_SHAKE_MAG = 16;   // 死神召喚=強め。社長指�
 export const INTRO_LAND_SHAKE_MS = 240;
 export const INTRO_LAND_SHAKE_MAG = 15;      // 社長指示で倍化(7.5→15)
 // カウンター成立: スローを廃止しヒットストップ+短い揺れに(社長指示)。
-export const COUNTER_HITSTOP_MS = HITSTOP_MS;  // 50〜80ms の瞬間ストップ(スロー無し)
+// ★v0.25.4591(社長指示2026-09-23「**技のカウンターでヴィジュアルの時間止まってるのやめたい。
+// 予告線も止まっちゃっててバグってるみたい**」): **カウンターでは時間を止めない**=0。
+// ヒットストップは `hitstopUntil` を立てて **useGameLoop の早期return でシム全体を凍結**し、
+// pixiScene 側も `hitstopFreezeNow` でアニメ時計ごと止める(=**他の敵の赤い予告まで凍る**)。
+// カウンターは連打で成立しうるので、100msの全停止が数珠つなぎになり「絵が固まった」に見えていた。
+// 揺れ(COUNTER_SHAKE_MS)と寄り(COUNTER_ZOOM_MAG)は残す=手触りは維持する。
+export const COUNTER_HITSTOP_MS = 0;  // 旧 HITSTOP_MS(100ms)
 export const COUNTER_SHAKE_MS = 100;           // 80〜120ms
 export const COUNTER_SHAKE_MAG = 8;            // 社長指示で倍化(4→8)
 // 四神技(ダンス)発動の揺れ。リズムを乱さぬよう描画のみ(stop/slow は入れない)。
