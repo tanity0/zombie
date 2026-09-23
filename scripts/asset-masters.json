@@ -2127,10 +2127,10 @@
    "sha": "a5bb47d81cb3fa14"
   },
   "sprites/giantbat-jump.png": {
-   "w": 1331,
+   "w": 1936,
    "h": 128,
-   "bytes": 149990,
-   "sha": "e0c29bbdb613b88c"
+   "bytes": 161612,
+   "sha": "e79281dbf74cc7f4"
   },
   "sprites/giantbat-walk.png": {
    "w": 2794,
