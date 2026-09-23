@@ -273,6 +273,7 @@ import {
   BOUNTY_BALANCE_TUNING as BB_T, BOUNTY_MAIKO_TUNING as MK_T,
 } from '../utils/bountyScript';
 import { telegraphProgress01 } from '../utils/bossTelegraph';
+import { weaponCutEaseMs, weaponVisibleAtCut } from '../utils/weaponCutReveal';
 import {
   biteBlinkOn, bitePhaseOf, biteBlinkTintFor, // ★溜め中の点滅(尺と明滅と色の出どころはsim側の純関数)
   biteSpecFor, biteProgress,
@@ -2033,10 +2034,13 @@ const WEAPON_SPAWN_EASE_MS = 220; // 仕様レンジ180〜260msの中央値
 const WEAPON_SPAWN_DROP_PX = 15;  // 仕様レンジ12〜18pxの中央値
 const weaponSpawnEase = (
   elapsedSinceAppearMs: number, remainBeforeVanishMs: number,
+  // ★出の長さ。既定は§7-15の統一値。**振りの短い技だけ**呼び手が詰める
+  // (社長指示2026-09-23「切るタイミングで表示」=振り切るまで薄いままにしない)。
+  easeMs: number = WEAPON_SPAWN_EASE_MS,
 ): { dy: number; alphaMul: number } => {
-  const inT = Math.max(0, Math.min(1, elapsedSinceAppearMs / WEAPON_SPAWN_EASE_MS));
+  const inT = Math.max(0, Math.min(1, elapsedSinceAppearMs / Math.max(1, easeMs)));
   const inEased = 1 - Math.pow(1 - inT, 3); // ease-out: 減速しながら上がる
-  const outT = Math.max(0, Math.min(1, 1 - remainBeforeVanishMs / WEAPON_SPAWN_EASE_MS));
+  const outT = Math.max(0, Math.min(1, 1 - remainBeforeVanishMs / Math.max(1, easeMs)));
   const outEased = outT * outT * outT; // ease-in: 加速しながら沈んで消える(出現の逆再生)
   return {
     dy: WEAPON_SPAWN_DROP_PX * ((1 - inEased) + outEased),
@@ -18867,7 +18871,13 @@ export class PixiScene {
         // ★項目9: 角度=手元(グリップ)→薙ぎの現在点(wx,wy)。wxが帯上を滑るほど角度も連続的に
         // 回る(旧実装は角度固定=「回転しない」の直接原因だった)。
         const swingAngle = Math.atan2(wy - gripY, wx - gripX);
-        this.drawBountyWeapon(e.id, 'reaper-chainsaw', gripX, gripY, swingAngle, CHAINSAW_LENGTH_PX, 0.95 * artFade, 1, false,
+        // ★社長指示2026-09-23「ための時は武器は出さない。切るタイミングで表示」:
+        // 武器は**ここ(薙ぎ)から**出る。溜めでは出さない(下の windup 枝を参照)。
+        // 出は§7-15の型(下からのズレ+フェード)だが、**振りが実効183msしかない**ので
+        // 既定220msのままだと振り切るまで薄い=出の長さを振りに合わせて詰める。
+        const cutEase = weaponSpawnEase(aT * aDur, Infinity, weaponCutEaseMs(aDur));
+        this.drawBountyWeapon(e.id, 'reaper-chainsaw', gripX, gripY + cutEase.dy, swingAngle, CHAINSAW_LENGTH_PX,
+          0.95 * artFade * cutEase.alphaMul, 1, false,
           CHAINSAW_GRIP_X, CHAINSAW_GRIP_Y, CHAINSAW_INTRINSIC);
       } else if (e.aiPhase === 'logger-sweep-windup') {
         const sTgStyle = telegraphStyleFor(e.type);
@@ -18892,15 +18902,10 @@ export class PixiScene {
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, sfx, sfy, stx, sty, shw, 0xff3b3b, telStrokeA(sprog, spulse), 0, sprog, undefined, sTgStyle);
         else if (sVisible) o.poly(spts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(sprog, spulse) });
         }
-        // ★項目5/6: 角度=手元→帯の始点(sfx側=これから薙ぐ方向への構え)。
-        // §7-15(weaponSpawnEase)でwindup開始からの経過msぶん、下から慣性つきズレ+フェードインする
-        // (旧実装はaiPhaseがwindupに入った瞬間に alpha=0.9 で即出現=パッと出る違反だった)。
-        const cockAngle = Math.atan2(sfy - gripY, sfx - gripX);
-        const windupDur = LOGGER_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
-        const windupElapsed = windupDur - Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
-        const ease = weaponSpawnEase(windupElapsed, Infinity);
-        this.drawBountyWeapon(e.id, 'reaper-chainsaw', gripX, gripY + ease.dy, cockAngle, CHAINSAW_LENGTH_PX,
-          0.9 * artFade * ease.alphaMul, 1, false, CHAINSAW_GRIP_X, CHAINSAW_GRIP_Y, CHAINSAW_INTRINSIC);
+        // ★★社長指示2026-09-23「伐採人、**ための時は武器は出さない**。切るタイミングで表示」:
+        // 溜めのあいだは**チェーンソーを描かない**(赤い予告の帯は従来どおり出す=読み方は変えない)。
+        // 攻撃モーションのシートに溜めの姿がもう描かれているので、別スプライトの武器を重ねると
+        // 絵の腕と武器が別々の事を言う。武器は上の `logger-sweep-active` から出る。
       } else {
         // logger-sweep-recover(項目6): 判定はactiveで終わっているので赤帯は出さない。武器は
         // 振り切った姿勢(手元→帯の終点=stx側)のまま保持し、§7-15の消滅イージング
@@ -18954,10 +18959,15 @@ export class PixiScene {
         const lanternLen = Math.max(BAT_LANTERN_LEN_MIN_PX,
           Math.min(BAT_LANTERN_LEN_MAX_PX, reach > 4 ? reach : BAT_LANTERN_LEN_PX));
         const pose = batLanternPose(since, sgn, down, bwMs, bbMs);
-        if (pose) {
+        // ★★社長指示2026-09-23「ための時は武器は出さない。切るタイミングで表示。
+        // 他の武器系も攻撃モーションあるやつは同じく」: **溜めの間はランタンを描かない**。
+        // 振り下ろし(噛みの窓)に入った瞬間から、§7-15の型(下からのズレ+フェード)で出す。
+        // 角度・尺・判定は1msも変えていない——**出る時刻だけ**が溜めの後ろへ動く。
+        if (pose && weaponVisibleAtCut(since, bwMs)) {
+          const cutEase = weaponSpawnEase(since - bwMs, Infinity, weaponCutEaseMs(bbMs));
           this.drawBountyWeapon(
-            e.id, 'bat-lantern', gripX, gripY, pose.angle,
-            lanternLen, pose.alpha * artFade,
+            e.id, 'bat-lantern', gripX, gripY + cutEase.dy, pose.angle,
+            lanternLen, pose.alpha * artFade * cutEase.alphaMul,
             1, false, BAT_LANTERN_GRIP_X, BAT_LANTERN_GRIP_Y, BAT_LANTERN_INTRINSIC_ANGLE,
           );
         }
@@ -19000,7 +19010,11 @@ export class PixiScene {
         // 社長裁定で**止めない**ことになった。⇒ ここは**全個体で無条件**(シートの有無を見ない)。
         // ※`sheetHasWeapon` の表は**v0.25.4558 で空になった**(社長報告「バットの男の武器も消えてるよ」)。
         //   ⇒ **別スプライトの武器を止めている個体は1体も無い。**
-        const cf = skelClawFrameWithWindup(sSinceWindup, swMs, sinceImpact);
+        // ★★社長指示2026-09-23(同上): **溜めの間は爪を出さない**。引っ掻きに入った瞬間から出す。
+        // 爪は CLAUDE.md が「別スプライトの**武器**(爪・ランタン)」と呼んでいるもの=この指示の対象。
+        // **消しているのではない**(`ENEMY_SHEET_HAS_WEAPON` は空のまま)。出る時刻だけを動かす。
+        const cf = weaponVisibleAtCut(sSinceWindup, swMs)
+          ? skelClawFrameWithWindup(sSinceWindup, swMs, sinceImpact) : null;
         if (cf !== null) {
           this.drawSkelClawSprite(
             this.skelClawSprites, skelClawTexName(cf, ctr), e.id, sax, say,
