@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "839 files / 復号後 約595MB",
+ "generatedFor": "839 files / 復号後 約589MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -279,10 +279,10 @@
    "sha": "61879a76068af957"
   },
   "gacha/target.png": {
-   "w": 1254,
-   "h": 1254,
-   "bytes": 951211,
-   "sha": "0f8a656d0f094965"
+   "w": 74,
+   "h": 74,
+   "bytes": 3067,
+   "sha": "8ff1da8e5eb7bb72"
   },
   "opening/arena-blur.jpg": {
    "w": 1536,

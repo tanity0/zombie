@@ -2396,7 +2396,7 @@ const SkillGacha: React.FC = () => {
             {/* v0.25.3184: 的の1発ごとの反動。1周期=SHOT_STAGGER・発数ぶん反復=各ショットのフラッシュ/
                 破片/SE(同じ delay 式)と厳密に同期する。既存の微振動(hitshake)は親に残す=反動の上に乗る。 */}
             <img src={targetSrc} alt="" draggable={false} className="gacha-target-recoil absolute inset-0 h-full w-full object-contain"
-              style={{ animationDuration: `${SHOT_STAGGER}ms`, animationDelay: `${intro}ms`, animationIterationCount: shotCount }} />
+              style={{ imageRendering: 'pixelated', animationDuration: `${SHOT_STAGGER}ms`, animationDelay: `${intro}ms`, animationIterationCount: shotCount }} />
             {/* 連打: 各ショットで素早いフラッシュ＋破片を的中心に重ねる(superは導入後=intro遅延)。 */}
             {Array.from({ length: shotCount }).map((_, s) => {
               const delay = intro + s * SHOT_STAGGER;
@@ -2614,7 +2614,11 @@ const SkillGacha: React.FC = () => {
           <img
             src={targetSrc}
             alt="的"
-            className="max-h-[46svh] w-auto max-w-[72%] object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.75)]"
+            // ★v0.25.4599: `max-h` は**上限**なので、的の素材を軽くした(1254→74)瞬間に
+            // **素の74pxで出る**(BossCutin と同型の事故)。高さを固定して枠いっぱいに出す。
+            // ドット絵になったので `pixelated`——無いと4.7倍拡大でぼやける。
+            className="h-[46svh] w-auto max-w-[72%] object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.75)]"
+            style={{ imageRendering: 'pixelated' }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
           />
           {/* 「撃つ」: ボタンではなく的の下の画像内テキスト(画面どこでもタップで発射)。 */}
