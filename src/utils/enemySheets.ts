@@ -426,6 +426,24 @@ export const ENEMY_JUMP_LAND_MS: Readonly<Record<string, number>> = {
 export const jumpSheetName = (idleTexName: string): string => `${idleTexName}-jump`;
 
 /**
+ * ★**叫喚の叫びの絵**(社長支給2026-09-23「叫喚の叫びモーション」)。
+ * シート名は `<立ち絵名>-scream`。**1つの相(`aiPhase==='scream'`=溜め2秒)に全コマを割る**
+ * ——跳びや薙ぎのような区間分けは無い(相が1つしかない技なので)。
+ * ★**尺はここに持たない。** 進み具合は判定側の時計(`SCREAMER_WINDUP_MS` と `aiPhaseUntil`)から読む
+ *   =「絵は終わっているのに判定はまだ続いている」が起きない。
+ * ★支給は 1680×130。**上の空き2行だけ落として 128 に揃えた**(内容は1画素も削っていない)。
+ *   立ち絵(90×128)・歩き(96×128)と高さが揃う=叫び始めに背丈が跳ねない。
+ */
+export const ENEMY_SCREAM_SHEETS: Readonly<Record<string, number>> = {
+  'screamer-common': 16,   // 105×128/コマ。常駐 0.82MB。立ち上がり→前かがみへ(絵の高さ 128→110)
+};
+
+export const screamSheetName = (idleTexName: string): string => `${idleTexName}-scream`;
+
+export const screamSheetFrames = (idleTexName: string | null | undefined): number =>
+  (idleTexName && ENEMY_SCREAM_SHEETS[idleTexName]) || 0;
+
+/**
  * ★**薙ぎ払いの絵**(社長支給2026-09-22「伐採人の薙払いの時のモーション」)。
  * シート名は `<立ち絵名>-sweep`。**溜め/薙ぎ/戻りの3区間**に割って使う
  * (割り方は `utils/enemySweepSheet.ts`。尺は判定側=store の時計をそのまま読む)。

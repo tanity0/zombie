@@ -45,7 +45,7 @@ import {
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
-  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, katanaRange, MELEE_RADIUS, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, SCREAMER_WINDUP_MS, katanaRange, MELEE_RADIUS, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS, GIANT_JUMP_AIR_MS, PUMPKIN_JUMP_MS,
@@ -101,11 +101,12 @@ import {
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
-import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
+import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames } from '../utils/enemySheets';
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs, sweepSheetSplit, sweepSheetName } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
+import { enemyScreamFrame, enemyScreamLastFrame } from '../utils/enemyScreamSheet';
 import { enemyJumpFrame, enemyJumpFallFrame, enemyJumpLandLastFrame, jumpSplitFrames, jumpLandDrawMs } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepBandDirX } from '../utils/enemySweepSheet';
@@ -17774,7 +17775,8 @@ export class PixiScene {
     // プレイヤーの `playerWalkFrame` と同じ作法)。**判定・速度・AIは1msも触らない。**
     const idleTexKey = this.enemyTexKey(e.type, e.id);
     // 見た目の身長(=歩幅の基準)。判定の箱ではなく**描画の箱**(§drawEnemy が使うのと同じ fb)。
-    const atkTex = this.enemySweepTexture(idleTexKey, e, gameTime)
+    const atkTex = this.enemyScreamTexture(idleTexKey, e, gameTime)
+      ?? this.enemySweepTexture(idleTexKey, e, gameTime)
       ?? this.enemyJumpTexture(idleTexKey, e, gameTime)
       ?? this.enemyShotTexture(idleTexKey, e, now)
       ?? this.enemyAttackTexture(idleTexKey, e, gameTime)
@@ -29909,6 +29911,24 @@ export class PixiScene {
    * ★時計は**ゲーム内時刻**(`biteAt` と同じ)。`Date.now()` と混ぜない(v0.25.4594の事故と同型)。
    */
   private biteTailMemo = new Map<string, AttackTailMemo>();
+
+  /**
+   * ★叫喚の叫びの絵(社長支給2026-09-23「叫喚の叫びモーション」)。
+   * ★**尺は作らない**——溜め(`aiPhase==='scream'`)の進み具合は、**判定が使っているのと同じ時計**
+   * (`SCREAMER_WINDUP_MS` と `aiPhaseUntil`)から出す。
+   * ★**この技はゲームスピードで割られていない**(store が `atkUntil()` を通さず
+   *   `gameTime + SCREAMER_WINDUP_MS` を直接置いている)。**ここでも割らない**
+   *   ——片方だけ割ると絵と判定がズレる(v0.25.4608 で直した型)。
+   * ★予兆のリング・SE・揺れには一切触っていない(「元々のエフェクトは消さない」)。
+   */
+  private enemyScreamTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
+    const frames = screamSheetFrames(idleTexKey);
+    if (frames <= 1 || e.aiPhase !== 'scream') return null;
+    const prog = 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / SCREAMER_WINDUP_MS;
+    const i = enemyScreamFrame(frames, prog) ?? enemyScreamLastFrame(frames);
+    const slices = this.sheetSlices(screamSheetName(idleTexKey), frames);
+    return this.rememberAtkFrame(e, screamSheetName(idleTexKey), frames, i, slices);
+  }
 
   private enemyAttackTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     const frames = attackSheetFrames(idleTexKey);
