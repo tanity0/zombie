@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4598',
+    items: [
+      'ハンターの頭上を回る棺桶を、粗さの揃ったドットへ描き直した',
+    ],
+  },
+  {
     version: '0.25.4597',
     items: [
       'ボスの紹介画面で絵が小さくなっていたのを、元の大きさに戻した',
