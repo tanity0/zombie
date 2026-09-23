@@ -23,7 +23,10 @@ bootstrapRuntime();
 
 const params = new URLSearchParams(window.location.search);
 const isMaker = params.get('bossmaker') === '1';
-const isRun = FORCE_PARAMS.some(k => params.get(k) === '1');
+// BOSS_MAKER.md §21(1対1の間合い): `?vs=<相手>` もこのページからの出撃=メニューではなくゲームを出す。
+// **強制出現フラグの一覧(FORCE_PARAMS)に足すのではなく、ここで別に見る**——あちらは
+// 「いまどのモードか」の表示にも使われる台帳で、1対1は出現フラグではないため。
+const isRun = FORCE_PARAMS.some(k => params.get(k) === '1') || params.get('vs') !== null;
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

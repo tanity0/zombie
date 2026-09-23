@@ -107,6 +107,7 @@ import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
 import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2, practiceBossType } from '../utils/bossPractice';
+import { vsEntryOfRun, isNoAmmoRun, idForVariant, VS_RESPAWN_MS, VS_SPAWN_DIST_MIN, VS_SPAWN_DIST_MAX } from '../utils/vsTest';
 import { pickPhantomIdentity, setPhantomIdentity, getPhantomIdentity, phantomDisplayLabel, clearPhantomIdentity } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の人格(癖・ビルド・HP・名前を1人から)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { bossCutinPayload, glenForm2CutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
@@ -1331,6 +1332,12 @@ const FORCE_BOUNTY = evParam('bountynow') === '1';
 // (=既存のURL経路はそのまま。賞金首と同じ4点セット: ①この定数 ②`||practiceForces` ③forceRef
 //  ④gameTime巻き戻しでの再アーム)。
 const FORCE_PHANTOM = evParam('phantomnow') === '1';
+// BOSS_MAKER.md §21(1対1の間合い): `?vs=<相手>` で、選んだ相手だけを1体出す開発用の枠。
+// 他の強制出現フラグと同じくモジュールロード時に1回だけ読む(切替は再読込)。
+const VS_ENTRY = vsEntryOfRun();
+// §21-4: 弾ゼロの回。**出撃時に0にするだけでは足りない**——キルのドロップ・エアドロップ・
+// レベルアップ特典の3経路から弾が戻るので、それぞれを止める(監査A-1)。
+const NO_AMMO_RUN = isNoAmmoRun();
 const FORCE_BOUNTY_TYPE = evParam('bountytype'); // 'ranged'|'melee'|'balance'|'maiko'|null(=ranged既定)
 // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋。`?nospawn=1` と併用して湧きを止める。
 // **数値の受け渡しにURLは使わない**(社長明示「?パラメータは回りくどい」)。この1個は部屋への入口だけ。
@@ -1836,6 +1843,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const bountyForceRef = useRef(false);
   // research/GHOST_BOSS.md: ?phantomnow=1 / 「決闘」枠のforce-spawnを1回だけにするフラグ。
   const phantomForceRef = useRef(false);
+  // §21-5: 次の1体を出す時刻(0=まだ予約していない/相手が生きている)。
+  const vsNextSpawnRef = useRef(0);
   // 幻影のラン内状態(頭脳の持ち越し/休み/踏み込みの焼き付け)。同時1体なので単一refでよい。
   const phantomStateRef = useRef(createPhantomTickState());
   // §6.38 B2a: 賞金首のラン内状態(照準速度/懲罰タイマ/コンボ進行/取り巻き召喚済みか)。
@@ -2812,7 +2821,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const runningIn = loopState.corridorRunInActive;
         // 以降の湧きゲートは NOSPAWN ではなく noSpawn を見る(?nospawn=1 と同じ止め方に相乗り)。
         // 練習ラン(ボスラッシュ)も湧きを全部止める=狙った1体だけ(社長「ラッシュは1体」)。
-        const noSpawnDebug = NOSPAWN || runningIn || isPracticeRun();
+        const noSpawnDebug = NOSPAWN || runningIn || isPracticeRun() || VS_ENTRY !== null;
         // ★v4追補: 二人組の通信の静けさ(10秒前〜終了)も同じ止め方に合流(店側の duoCommQuiet=前tickの二人組ブロックが変化時に書く)。
         const noSpawn = noSpawnDebug || useGameStore.getState().duoCommQuiet;
 
@@ -6011,7 +6020,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ここのローカル変数だけで補う(通常プレイでは BOSS_MAKER=false なので1バイトも変わらない)。
         const hiddenBoss = useGameStore.getState().hiddenBoss
           ?? (BOSS_MAKER && isHiddenControllerBoss(BOSS_MAKER_BOSS) ? BOSS_MAKER_BOSS : null);
-        if (hiddenBoss && !danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
+        // §21(1対1): この枠は `?nospawn=1` では止まらない(巣へ近づく/深く潜ると出る)ので別に塞ぐ。
+        if (hiddenBoss && !VS_ENTRY && !danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
          try { // 裏ボス制御の例外でゲームループ全体(=移動/攻撃)が固まらないよう保護(描画ループとは別系統)。
           const bs = bossRef.current;
           const pcx = player.x + player.width / 2;
@@ -7987,6 +7997,35 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // アテンションは出現演出が落ち着いてから(城ボス/賞金首と同じ並び)。カットイン台帳には
             // 載せない(専用素材を作らない=設計書の「ではない」条件)ので payload は渡さない。
             bountyAttnRef.current = { at: newGameTime + 950, x: gpX0, y: gpY0, cutin: undefined };
+          }
+          // BOSS_MAKER.md §21(1対1の間合い): 選んだ相手を**1体だけ**出す。倒したら少し置いてもう1体。
+          // 湧きは `?nospawn=1` と同じ止め方(noSpawnDebug)で止めてあるので、居るのはこの1体だけ。
+          if (VS_ENTRY) {
+            const vsAlive = useGameStore.getState().enemies.some(e => e.type === VS_ENTRY.type && e.health > 0);
+            if (vsAlive) vsNextSpawnRef.current = 0;
+            else if (vsNextSpawnRef.current === 0) vsNextSpawnRef.current = newGameTime + VS_RESPAWN_MS;
+            else if (newGameTime >= vsNextSpawnRef.current) {
+              vsNextSpawnRef.current = 0;
+              const vsCx = player.x + player.width / 2, vsCy = player.y + player.height / 2;
+              const vsAng = Math.random() * Math.PI * 2;
+              const vsDist = VS_SPAWN_DIST_MIN + Math.random() * (VS_SPAWN_DIST_MAX - VS_SPAWN_DIST_MIN);
+              const vsX0 = vsCx + Math.cos(vsAng) * vsDist, vsY0 = vsCy + Math.sin(vsAng) * vsDist;
+              const vsE = spawnEnemyAt(VS_ENTRY.type, vsX0 - 20, vsY0 - 28, newGameTime);
+              // §21-3: 変種(絵)は敵IDのハッシュで決まる。**選んだ絵になるIDへ寄せる**
+              // (雄を選んで雌が出ると、攻撃シートのコマ数が違うので確認にならない)。
+              vsE.id = idForVariant(vsE.id, VS_ENTRY.type, VS_ENTRY.variantIndex);
+              vsE.dormant = false;
+              // CLAUDE.md MUST: 湧き位置も「行ける帯」へクランプ(プレイヤーが追えない場所に置かない)。
+              const vsClamped = clampRectToPlayableArea(vsE.x, vsE.y, vsE.width, vsE.height, {
+                farBackdrop: useGameStore.getState().farBackdrop,
+                labTheme,
+                corridorMode: useGameStore.getState().corridorMode,
+                m0AdvanceLimitX: useGameStore.getState().m0AdvanceLimitX,
+                corridorRunInActive: useGameStore.getState().corridorRunInActive,
+              });
+              vsE.x = vsClamped.x; vsE.y = vsClamped.y;
+              addEnemy(vsE);
+            }
           }
           // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋を立てて相手を1体だけ出す。休眠は使わない(即戦闘)。
           if (BOSS_MAKER && !bossMakerReadyRef.current) {
@@ -14207,6 +14246,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // M0(訓練)は弾を拾う教習まで抽選ドロップを封印(社長指示v0.25.2319・m0Unlocked.ammo)。
               if (
                 !indoor && !hasSkill(player, 'knife-master')
+                // §21-4(弾ゼロ): ★弾薬ディレクタは**備蓄0を枯渇と見て率を上げる**ので、
+                // 何もしないと「弾ゼロにするほど落ちる」。ここで完全に塞ぐ。
+                && !NO_AMMO_RUN
                 && useGameStore.getState().m0Unlocked.ammo
                 && Math.random() < gunKillDropRate
               ) {
@@ -15974,7 +16016,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           rng: Math.random,
         });
         nextAmmoDropDelayRef.current = airdropTick.nextAmmoDropDelayMs;
-        if (airdropTick.spawn) {
+        if (airdropTick.spawn && !NO_AMMO_RUN) {   // §21-4(弾ゼロ): 空からの補給も止める
+
           const { x: px, y: py, ammoType: dropType } = airdropTick.spawn;
           addPickup({
             id: `pickup-airdrop-${Math.floor(gameTime)}-${Math.floor(Math.random() * 1e6)}`,

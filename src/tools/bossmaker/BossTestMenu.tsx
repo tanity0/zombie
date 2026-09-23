@@ -7,6 +7,7 @@ import {
   BOSS_TEST_ENTRIES, bossTestQuery, bossMakerQuery, BOSS_MAKER_BOSSES,
   type BossTestEntry, type BossTestGhostMode,
 } from '../../utils/bossTest';
+import { VS_ENTRIES, vsQuery } from '../../utils/vsTest';
 import { enemyDeathLabel } from '../../store/gameStore';
 import { bossCutinName } from '../../data/bossCutin';
 import { getStage } from '../../data/campaign';
@@ -45,9 +46,11 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
   const [cls, setCls] = useState<string>('warrior');
   const [ghostMode, setGhostMode] = useState<BossTestGhostMode | null>('own');
   const [ghostlog, setGhostlog] = useState(false);
+  // BOSS_MAKER.md §21-4: 弾ゼロ(撃てない=近接とカウンターだけ)。1対1は常にこれで出す。
+  const [noAmmo, setNoAmmo] = useState(false);
 
   const sortie = (e: BossTestEntry): void => {
-    window.location.search = bossTestQuery(e, { characterClass: cls, ghostMode, ghostlog });
+    window.location.search = bossTestQuery(e, { characterClass: cls, ghostMode, ghostlog, noAmmo });
   };
 
   return (
@@ -87,6 +90,29 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
             ))}
           </div>
         </div>
+        {/* BOSS_MAKER.md §21(1対1の間合い): 弾ゼロで相手1体だけと向き合う枠。挙動とカウンターの確認用。
+            専用の部屋は作らず、実ステージへ出て湧きだけを止める(§21-1)。 */}
+        <div className="px-4 pb-3">
+          <div className="mb-1 text-[10px] text-white/45">
+            1対1 — 弾ゼロ・湧きなし・進行を書かない。倒すと同じ相手がまた出る。
+            ※死神とハンターは制御機(発見/撤退/増援/使者の召喚)が湧きと一緒に止まる=その分だけ本物ではない。
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {VS_ENTRIES.map(v => (
+              <button
+                key={v.key}
+                className="border border-amber-400/50 bg-amber-500/10 px-2 py-2 text-left text-[11px] font-bold text-amber-200"
+                onClick={() => { window.location.search = vsQuery(v, cls, true); }}
+              >
+                {/* ★名前は台帳(enemyDeathLabel)から引く=ここで名前を作らない。
+                    ただし台帳に行が無い型は「変異体」に落ちて見分けが付かないので、
+                    内部の型名も小さく添える(開発用の一覧なのでこれで足りる)。 */}
+                <span className="block">{enemyDeathLabel(v.type)}{v.note ? `（${v.note}）` : ''}</span>
+                <span className="block text-[8px] font-normal text-amber-200/45">{v.type}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         {/* クラスとトグル */}
         <div className="flex flex-wrap items-center gap-1 px-4 pb-2">
           {CLASSES.map(c => (
@@ -117,6 +143,10 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
           <label className="flex items-center gap-1">
             <input type="checkbox" checked={ghostlog} onChange={ev => setGhostlog(ev.target.checked)} />
             被弾ログ(console)
+          </label>
+          <label className="flex items-center gap-1">
+            <input type="checkbox" checked={noAmmo} onChange={ev => setNoAmmo(ev.target.checked)} />
+            弾ゼロ
           </label>
         </div>
         {/* ボス一覧 */}

@@ -34,3 +34,9 @@ describe('bossmaker.html', () => {
     expect(toolMain).toContain('BossMakerPanel');
   });
 });
+
+describe('bossmaker.html — 1対1の間合い(BOSS_MAKER.md §21)', () => {
+  it('?vs= が付いていたらメニューではなくゲームを出す', () => {
+    expect(toolMain).toContain("params.get('vs') !== null");
+  });
+});

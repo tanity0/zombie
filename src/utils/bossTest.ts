@@ -60,6 +60,8 @@ export interface BossTestOptions {
   characterClass: string; // 'warrior' | 'mage' | 'rogue' | 'necromancer'
   ghostMode: BossTestGhostMode | null; // null=召喚なし / 3種は本番スキルと同じ取得経路
   ghostlog: boolean;      // ?ghostlog=1 守護霊の被弾源タグをconsoleへ([GHOSTDMG])
+  /** BOSS_MAKER.md §21-4: 弾ゼロで出撃する(?noammo=1)。1対1の枠に限らずボス戦テストからも使える。 */
+  noAmmo?: boolean;
 }
 
 export type BossTestGhostMode = 'own' | 'random' | 'top';
@@ -97,6 +99,7 @@ export const bossTestQuery = (e: BossTestEntry, opts: BossTestOptions): string =
     p.set('ghostmode', opts.ghostMode);
   }
   if (opts.ghostlog) p.set('ghostlog', '1');
+  if (opts.noAmmo) p.set('noammo', '1');
   return `?${p.toString()}`;
 };
 

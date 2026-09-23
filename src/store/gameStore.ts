@@ -253,6 +253,7 @@ import {
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { setFlowersDisabled } from '../world/forestDecor';
 import { bossTestGhostSkill, isBossMakerRun, getBossTestSkillInjection } from '../utils/bossTest';
+import { isNoAmmoRun, vsStartAmmo } from '../utils/vsTest';
 // research/GROWTH.md v4(永続育成「強化」)。**効果値の純関数と保存は utils 側**(AMMO_MAX は
 // 引数で渡す=utils→store の逆流を作らない)。計測路(ガントレット)の述語は依存ゼロの葉から読む。
 import {
@@ -3182,8 +3183,12 @@ export const setGhostDeathPose = (p: GhostDeathPose): void => { ghostDeathPoseRe
 export const BOSS_TEST_RUN =
   typeof window !== 'undefined'
   // v0.25.2858: ボスラッシュの練習ラン(`?practice=1`)も同じ扱い=チュートリアルも護衛NPCも出さない。
-  && ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker', 'practice']
-    .some(k => new URLSearchParams(window.location.search).get(k) === '1');
+  && (['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker', 'practice']
+    .some(k => new URLSearchParams(window.location.search).get(k) === '1')
+    // BOSS_MAKER.md §21(1対1の間合い): 開発用の枠なので**進行を書かない**
+    // (死神を倒すとスキル解放と年表記録が走る=テストのつもりが本編の保存へ入る)。
+    // 値は '1' ではなく相手の名前なので、他と違い「付いているか」で見る。
+    || new URLSearchParams(window.location.search).get('vs') !== null);
 export const LATE_COUNTER_ENABLED =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('lastcounter') === '1';
 export const GHOST_ZOOM_TRIAL_ENABLED =
@@ -11434,7 +11439,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             const inc = Math.max(1, Math.round(repBase * 0.2));
             updatedPlayer.magBonus += inc;
             const bonus = updatedPlayer.magBonus;
-            updatedPlayer.weapons = updatedPlayer.weapons.map(w =>
+            // BOSS_MAKER.md §21-4(弾ゼロ): この特典は**装填に弾を直接足す**ので、弾ゼロの回だけ
+            // 容量(magBonus)の加算に留める。足すと撃てるようになり「銃弾ゼロ」が崩れる。
+            updatedPlayer.weapons = isNoAmmoRun() ? updatedPlayer.weapons : updatedPlayer.weapons.map(w =>
               w.magSize != null
                 ? { ...w, magazine: Math.min((w.magazine ?? 0) + inc, w.magSize + bonus) }
                 : w
@@ -20140,6 +20147,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       const melee = startingWeapons.find(w => w.isMelee);
       startingWeapons = [createWeapon('phill-revolver'), ...(melee ? [melee] : [])];
     }
+    // BOSS_MAKER.md §21-4(1対1の間合い・弾ゼロ): **撃てない状態**で出す。武器は取り上げない
+    // (持ち替えの挙動もHUDの枯渇表示も、そのまま見たいため)。残弾は下の startAmmo で0にする。
+    const noAmmoRun = isNoAmmoRun();
+    if (noAmmoRun) startingWeapons = startingWeapons.map(w => (w.ammoType ? { ...w, magazine: 0 } : w));
+    const startAmmo = vsStartAmmo(AMMO_INITIAL, noAmmoRun);
     const profile = PLAYER_PROFILES[validClass] ?? PLAYER_PROFILES.warrior;
     // 装備の持ち帰り: localStorage の1件を該当部位へ装備して run 開始(死亡で破棄=ロード時に空なら無装備)。
     const runLoadout = emptyEquipLoadout();
@@ -20553,11 +20565,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     trapDebuffUntil: 0,
           counterCooldownEnd: 0,
           lastCounterSuccessTime: 0,
-          ammoHandgun: AMMO_INITIAL.handgun,
-          ammoShotgun: AMMO_INITIAL.shotgun,
-          ammoRifle: AMMO_INITIAL.rifle,
-          ammoPhill: AMMO_INITIAL.phill,
-          ammoGlauncher: AMMO_INITIAL.glauncher, // ★v0.25.4000: 独立プール(社長指示「グレランは弾を分けて」)
+          ammoHandgun: startAmmo.handgun,
+          ammoShotgun: startAmmo.shotgun,
+          ammoRifle: startAmmo.rifle,
+          ammoPhill: startAmmo.phill,
+          ammoGlauncher: startAmmo.glauncher, // ★v0.25.4000: 独立プール(社長指示「グレランは弾を分けて」)
           // 育成の焼き値(上の「★焼き込みの原則」)。ラン中の参照先はここ。
           growthAtkMult: bakedGrowthAtkMult,
           levelAtkMult: 1, // ラン内の攻撃力カード(stat)の累積は出撃ごとに1へ
