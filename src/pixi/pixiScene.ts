@@ -18164,9 +18164,19 @@ export class PixiScene {
         const pose = contactLungePose(sinceLunge / CONTACT_LUNGE_MS);
         const lang = e.lastContactAttackDir ?? 0;
         const ldir = Math.cos(lang) >= 0 ? 1 : -1;
-        view.sprite.skew.x += -ldir * pose.skew; // 頭がプレイヤー側へ倒れ込む
-        flinchSqY *= pose.sqY;
-        lungeSqX = pose.sqX;
+        // ★★社長指摘2026-09-23「コウモリ漢、攻撃の時まだ歪んでる。モーションが入った行動からは
+        // 取る約束だよ」: **攻撃のコマ(手で描いた絵)が出ている間は、この代用モーションの
+        // 「歪み」を掛けない**——しゃがみ込みも食いつきも絵の中に既に描かれているので二重になる。
+        // 外すのは**歪みだけ**(傾ぎ=skew / 縦の潰し=sqY / 横の潰し=sqX)。
+        // **位置の移動(lungeOffX/lungeOffY=踏み込みと沈み)は残す**——CLAUDE.md
+        // 「モーションを足して外してよいのは歪みだけ。位置の移動は残す」。
+        // ★`atkTex`(技のシート)で見る。`walkTex` だと歩き/待機の絵が出ているだけの個体まで
+        //  巻き込み、**攻撃シートを持たない敵から唯一の攻撃モーションを奪う**。
+        if (atkTex === null) {
+          view.sprite.skew.x += -ldir * pose.skew; // 頭がプレイヤー側へ倒れ込む
+          flinchSqY *= pose.sqY;
+          lungeSqX = pose.sqX;
+        }
         lungeOffX = Math.cos(lang) * pose.off;
         lungeOffY = Math.sin(lang) * pose.off + pose.sink;
       }
@@ -18438,9 +18448,15 @@ export class PixiScene {
         const pose = contactLungePose(sinceLunge / CONTACT_LUNGE_MS);
         const lang = e.lastContactAttackDir ?? 0;
         const ldir = Math.cos(lang) >= 0 ? 1 : -1;
-        view.sprite.skew.x += -ldir * pose.skew; // 頭がプレイヤー側へ倒れ込む
-        flinchSqY *= pose.sqY;
-        lungeSqX = pose.sqX;
+        // ★★社長指摘2026-09-23「コウモリ漢、攻撃の時まだ歪んでる」(上のボス経路と同じ是正)。
+        // 攻撃のコマが出ている間は**歪みだけ**外し、**位置の移動(踏み込み・沈み)は残す**。
+        // ★**同じ"動作"を持つ全員に付ける**(CLAUDE.md v0.25.2426の教訓): この「しゃがみ込み→
+        //  食いつき」は汎用経路とボス経路の2本に分かれて書かれているので、片方だけでは取りこぼす。
+        if (atkTex === null) {
+          view.sprite.skew.x += -ldir * pose.skew; // 頭がプレイヤー側へ倒れ込む
+          flinchSqY *= pose.sqY;
+          lungeSqX = pose.sqX;
+        }
         lungeOffX = Math.cos(lang) * pose.off;
         lungeOffY = Math.sin(lang) * pose.off + pose.sink;
         // ★§16-A「『行き過ぎて戻る』は撤回」(社長指摘2026-09-17「ビヨンビヨンして気持ち悪い」):
