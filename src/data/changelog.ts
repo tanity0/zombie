@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4592',
+    items: [
+      'ボスの技をカウンターで止めても、ボスはすぐ次の行動へ移る。固まらなくなった',
+    ],
+  },
+  {
     version: '0.25.4591',
     items: [
       'カウンターを取っても画面の時間が止まらなくなった。赤い予告が固まって見えるのが直った',

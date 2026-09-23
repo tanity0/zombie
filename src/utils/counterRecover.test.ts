@@ -31,6 +31,20 @@ describe('★#H-6 カウンター直後の硬直(突進パリィ/守護霊パリ
     expect(patched.biteRecoverUntil).toBe(START_GT + COUNTER_RECOVER_STILL_MS);
   });
 
+  // ★v0.25.4592(社長裁定2026-09-23「でも台本は続ける」)の機械化。
+  // `aiReadyAt` は城ボス(giantbat/グレン)の**技抽選ゲートそのもの**なので、カウンターで +1200ms
+  // 書くと「技を消す」だけでなく**台本ごと止まる**。ボスには書かない/雑魚には従来どおり書く。
+  it.each<[EnemyType, boolean]>([
+    ['zombie', false], ['skeleton', false], ['bat', false],      // 雑魚=従来どおりゲートを書く
+    ['giantbat', true], ['pumpkin', true], ['logger', true],     // ボス級/強個体=書かない
+    ['lab-zombie-3', true], ['hunter', true],
+  ])('%s: カウンター後の技抽選ゲート(aiReadyAt)を書くのはボス以外だけ', (t, isBoss) => {
+    const e = spawnEnemyAt(t, 500, 500, START_GT);
+    const patched = dashParriedEnemyPatch(e, 100, 100, REAL0, START_GT);
+    if (isBoss) expect(patched.aiReadyAt).toBe(e.aiReadyAt);            // 触らない(据え置き)
+    else expect(patched.aiReadyAt).toBe(START_GT + 1200);
+  });
+
   it('★中断しない技(尻尾の叩きつけ)には掛けない=技が完走できなくなるため', () => {
     // COUNTER_UNINTERRUPTIBLE_PHASES の相。硬直を書くと updateEnemies の硬直ブロック
     // (`chaffMove === undefined` ゲート・patchがchaffMoveを消すので必ず通る)に掛かって止まる。

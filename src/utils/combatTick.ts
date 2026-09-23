@@ -1052,7 +1052,13 @@ export const dashParriedEnemyPatch = (
       aiPhase: undefined,
       aiPhaseUntil: undefined, aiStartedAt: undefined,
       aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
-      aiReadyAt: gameTimeNow + 1200, // 少し間を空ける(giantbat は gbDashReadyAt 側で管理)
+      // ★v0.25.4592(社長裁定2026-09-23「**でも台本は続ける**」): **ボスには抽選ゲートを書かない。**
+      // `aiReadyAt` は城ボス(giantbat/グレン)の**技抽選ゲートそのもの**
+      // (useGameLoop:3512「技抽選ゲートは aiReadyAt。bossNextActionAt は城ボスでは読まれない」)。
+      // ここで +1200ms 書くと、**カウンターは技を消すだけでなく台本ごと1.2秒止めていた**。
+      // 出していた技を消す(=三連ツキは全部キャンセル)のは従来どおりで、**次の技へ進む足だけ外す**。
+      // 雑魚は従来どおり(§16-7bの技後CD・気絶5秒と組みで設計されているため触らない)。
+      ...(isBossType(e.type) ? {} : { aiReadyAt: gameTimeNow + 1200 }),
     }),
     // 即時に弾き飛ばし+凍結系/ノックバック無敵を全解除(ジャンプカウンターと同根の対策)。
     // ★中断しない技でも位置は動く(弾き返しの手応えは残す)。帯は溜め開始で焼いた aiFrom→aiTarget を
