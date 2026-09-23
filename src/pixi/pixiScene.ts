@@ -2174,6 +2174,8 @@ const PHILL_FEATHER_DEATH_COUNT = 60;   // 死亡
 const PHILL_FEATHER_SPAWN_COUNT = 70;   // §10-19 登場のブワッ(最大量=先に大量吹き出す)
 // ---- 足元影(専用レイヤー内・§10-12#11「同期ズレを構造的に回避」) ----
 const PHILL_SHADOW_BASE_RX = 46, PHILL_SHADOW_BASE_RY = 16;
+// ★46/16 を決めた時の phill.png の高さ。素材の寸法が変わっても影の大きさが動かないための基準(v0.25.4602)。
+const PHILL_SHADOW_REF_TEX_H = 1024;
 // ---- 羽根散弾(技14・§10-13/§10-14#8/#11): skadiIceBlades共有配列にvisual:'feather'枝を追加 ----
 // §10-14#11の受け入れ条件「当たる羽根=大きめ+赤い軌跡+直進/撒き羽根=小さめ・ひらひら」を満たすため、
 // 判定ありの羽根散弾はice/bone(80px)より一回り大きく表示する(判定半径自体はSKADI_BLADE_HIT=共通・不変)。
@@ -3141,6 +3143,9 @@ const SWEEP_ICE_BREAK_FRAC = 0.3;
 // それ使って」)。冷気ブレス(v3042)・氷の三連突進(v3049)・スカジの氷技(v3071)と**同じ絵**で世界を揃える。
 // 自前のGraphics(丸い粒/三角の破片)は描かない。
 const SWEEP_ICE_SPARK_TEX = 'fx/breath-sparkle';
+// ★着弾の火の2コマ目(細い噴射)の長さ。1コマ目(大きい爆発)に対する比で、**設計時の素材幅 120/132**。
+// 素材の画素数ではなく**見せたい長さの比**なので、素材の寸法が変わってもここは動かない(v0.25.4602)。
+const HITFIRE_JET_LEN_FRAC = 120 / 132;
 // 氷槍ライフル(rifle-t2-icelance)の絵(社長指示2026-09-12「攻撃ヴィジュアルしょぼすぎる。地面に残る氷はステージ4城ボスの
 // 氷エフェクトと、弾はスカジの氷の刃を小さく表示して」): 床=城ボスの氷の衝撃波と同じ作法(スカジの氷塊を根元→先端で
 // 小→大に並べ、出た順に生え、最後に砕けてキラキラが弾ける)。武器なので寸法は城ボスの約1/3。判定(halfWidth/寿命)は不変=分類②。
@@ -16107,7 +16112,9 @@ export class PixiScene {
       this.ghostMuzzle = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;
-    const scl = len / 172; // 素材の可視長(ドット版_70=全幅172px)を狙いの長さへ(本体drawMuzzleFlashと同じ)
+    // ★v0.25.4602: 分母は**素材の実寸**から読む(旧: 172 の直書き)。解凍で `fx/muzzle-flash` が
+    // 172×128 → 43×32 になったため、直書きのままだと閃光が**1/4の大きさ**で出ていた。
+    const scl = len / Math.max(1, tex.width); // 素材の可視長を狙いの長さ len へ(本体drawMuzzleFlashと同じ)
     sp.scale.set(scl, scl);
     sp.rotation = angle;
     sp.position.set(x, y);
@@ -23693,8 +23700,14 @@ export class PixiScene {
       shadow.clear();
       const floatT = Math.sin((rnow / PHILL_FLOAT_PERIOD_MS) * Math.PI * 2 + stablePhase(id)); // -1..1(本体ボブと同時計=実時間)
       const liftFrac = Math.max(0, floatT); // 上がっている時だけ絞る(下がっている時=通常影)
-      const shW = PHILL_SHADOW_BASE_RX * bodyScale * (1 - 0.35 * liftFrac);
-      const shH = PHILL_SHADOW_BASE_RY * bodyScale * (1 - 0.45 * liftFrac);
+      // ★v0.25.4602: 影の半径は**絵の実寸(=描画されている高さ)**から引く。
+      // `bodyScale` は `(判定幅 ÷ fit.w) ÷ tex.width` で決まるので、**素材が小さくなると scale 自体が
+      // 大きくなる**(表示寸法は不変)。46/16 は旧 phill.png(高さ1024)の scale を前提に置かれた定数
+      // だったため、解凍(768×1024 → 192×256)で**影だけが4倍**になっていた。
+      // 描画高 = tex.height × bodyScale なので、それを旧基準1024で割れば素材寸法に依らない。
+      const shadowUnit = bodyScale * ((view.sprite.texture?.height ?? PHILL_SHADOW_REF_TEX_H) / PHILL_SHADOW_REF_TEX_H);
+      const shW = PHILL_SHADOW_BASE_RX * shadowUnit * (1 - 0.35 * liftFrac);
+      const shH = PHILL_SHADOW_BASE_RY * shadowUnit * (1 - 0.45 * liftFrac);
       // ★v0.25.3741: 急降下で天に昇っている間は足元影も消す(本体が画面外なのに影だけ残ると変)。
       const diveHide = this.phillDiveLift01(e, gameTime);
       const shAlpha = 0.42 * (1 - 0.5 * liftFrac) * bodyAlpha * (1 - diveHide);
@@ -26476,7 +26489,8 @@ export class PixiScene {
       this.muzzleSprite = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;
-    const s = len / 172; // 素材の可視長(ドット版_70=全幅172px・v0.25.2931)を狙いの長さへ合わせる
+    // ★v0.25.4602: 分母は**素材の実寸**から読む(旧: 172 の直書き)。解凍で 1/4 になっていた。
+    const s = len / Math.max(1, tex.width); // 素材の可視長を狙いの長さ len へ合わせる
     sp.scale.set(s, s);
     sp.rotation = angle;
     sp.position.set(x, y);
@@ -26503,7 +26517,9 @@ export class PixiScene {
     }
     if (sp.texture !== tex) sp.texture = tex;
     // 発火直後が最大でease-inで縮む。
-    const s = (sizePx / 172) * (0.6 + 0.4 * life01);
+    // ★v0.25.4602: 分母は**素材の実寸**から読む(旧: 172 の直書き)。解凍で 1/4 になっていた。
+    // `sizePx` は**画面に出す長さ(px)**なので据え置き=素材の寸法とは無関係。
+    const s = (sizePx / Math.max(1, tex.width)) * (0.6 + 0.4 * life01);
     sp.scale.set(s, s);
     sp.rotation = angle;
     sp.position.set(x, y);
@@ -29002,8 +29018,15 @@ export class PixiScene {
     const tex = t < 0.5 ? tex0 : tex1; // 左→右(大きい爆発→細い噴射)
     if (!tex || !tex0) { sp.visible = false; return; }
     if (sp.texture !== tex) sp.texture = tex;
-    // 両コマとも frame0 の幅を基準にスケール=コマ1(細い)は自然に短く見える(歪ませない)。
-    sp.scale.set(e.len / Math.max(1, tex0.width));
+    // ★v0.25.4602(社長報告「射撃時の被弾エフェクト(白と黄色の破裂)も大きくなっちゃってる」の正体):
+    // 旧実装は**両コマとも frame0 の幅で割って**いた。設計時は 0=132px / 1=120px と幅が近かったので
+    // 「コマ1は自然に短く見える(120/132=0.91倍)」が成立していたが、**解凍で frame0 だけが
+    // 132×128 → 33×32(1/4)になり、frame1 は 120×52 のまま**(塊を持っていなかったので対象外)。
+    // ⇒ コマ1の表示幅が `120 × len/33 = 3.64×len` = **狙いの約4倍**に膨らんでいた。
+    // 直し: **それぞれのコマを自分の幅で割る**。コマ1を短く見せる比は**設計の意図**なので定数で持つ
+    //       (素材の寸法が今後どう変わっても崩れない)。
+    const wantLen = tex === tex0 ? e.len : e.len * HITFIRE_JET_LEN_FRAC;
+    sp.scale.set(wantLen / Math.max(1, tex.width));
     sp.position.set(e.x, e.y);
     sp.rotation = e.angle;
     sp.alpha = t < 0.6 ? 1 : Math.max(0, 1 - (t - 0.6) / 0.4); // 終盤フェード
