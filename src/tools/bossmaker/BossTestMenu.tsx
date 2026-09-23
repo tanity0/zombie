@@ -66,6 +66,12 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
           {/* ツールページの根として出す時は閉じ先が無い(v0.25.2862)。 */}
           {onClose && <button className="px-2 py-1 text-[12px] text-white/60" onClick={onClose}>閉じる</button>}
         </div>
+        {/* ★社長報告2026-09-23「敵テスターがスクロールできない」: **本文まるごと**を1つのスクロール域にする。
+            旧実装は「ボス一覧だけ」がスクロールし、その上(ボスメーカー/1対1/クラス/守護霊/トグル)は
+            固定だった。1対1の節(15行)が増えて**固定部だけで画面を越え**、下が見えないまま掴めなくなった。
+            `min-h-0` が要る: flex の子は既定で縮まないので、これが無いと `overflow-y-auto` が効かない。
+            見出しは外に置いたまま=**何の画面かは常に見えている**。 */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
         <div className="px-4 pb-2 text-[10px] leading-relaxed text-white/45">
           実ステージへ直行してボスが即出現します(環境・サークル・雑魚は本物)。選ぶと再読込して出撃。
         </div>
@@ -150,7 +156,7 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
           </label>
         </div>
         {/* ボス一覧 */}
-        <div className="overflow-y-auto overscroll-contain touch-pan-y px-4 pb-4">
+        <div className="px-4 pb-4">
           {BOSS_TEST_ENTRIES.map(e => {
             const stage = getStage(e.stageId);
             return (
@@ -168,6 +174,7 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
               </button>
             );
           })}
+        </div>
         </div>
       </div>
     </div>
