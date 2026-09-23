@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4589',
+    items: [
+      'コウモリの雌の歩きを、雄と同じ粗さのドットへ描き直した',
+    ],
+  },
+  {
     version: '0.25.4588',
     items: [
       '武器やエフェクト、城の絵も軽くした。見た目は変わらず、端末の負担だけが減る',

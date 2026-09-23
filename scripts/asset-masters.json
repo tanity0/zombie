@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "839 files / 復号後 約598MB",
+ "generatedFor": "839 files / 復号後 約597MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -609,10 +609,10 @@
    "sha": "6a8d589f317c8c24"
   },
   "sprites/bat-female-walk.png": {
-   "w": 1440,
-   "h": 260,
-   "bytes": 362653,
-   "sha": "88f3d7c4ff42ae82"
+   "w": 720,
+   "h": 130,
+   "bytes": 76403,
+   "sha": "815c48ba6be091a2"
   },
   "sprites/bat-female.png": {
    "w": 89,
