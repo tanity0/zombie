@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4587',
+    items: [
+      'スカディの氷刃を、粗さの揃ったドットへ描き直した',
+    ],
+  },
+  {
     version: '0.25.4586',
     items: [
       'スカディの氷塊を、粗さの揃ったドットへ描き直した',
