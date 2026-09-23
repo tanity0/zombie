@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4600',
+    items: [
+      'ハンターの跳びかかりを、粗さの揃ったドットへ描き直した',
+    ],
+  },
+  {
     version: '0.25.4599',
     items: [
       '射撃の的をドットで描き直した。ガチャ画面の読み込みが軽くなる',
