@@ -8,6 +8,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4602',
+    items: [
+      '撃った時の被弾の火が大きすぎたのを元の大きさに戻した',
+      '銃口の閃光が小さくなっていたのを戻した',
+      'フィルの足元の影が大きすぎたのを戻した',
+    ],
+  },
+  {
     version: '0.25.4601',
     items: [
       'ハンターの歩きを、粗さの揃ったドットへ描き直した',
