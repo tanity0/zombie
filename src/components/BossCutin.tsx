@@ -85,7 +85,13 @@ const BossCutin: React.FC = () => {
             src={cutin.art}
             alt=""
             draggable={false}
-            className="max-h-[78vh] max-w-[86vw] object-contain"
+            // ★v0.25.4597(社長報告2026-09-23「解凍したことで紹介シーンのボス絵が縮小されちゃった」):
+            // `max-h/max-w` は**上限**なので、絵が枠より小さいと**素の寸法のまま**出る。
+            // v0.25.4584/4588 の解凍でボス絵の寸法が1/4になった結果、ここだけ4分の1に縮んでいた
+            // (絵そのものは1ドットも変わっていないので、**枠の指定が上限だったのが原因**)。
+            // ⇒ `h/w` で枠を固定し、`object-contain` で**枠いっぱいまで拡大**する=解凍前と同じ見え方。
+            // ドット絵なので拡大は `imageRendering: pixelated`(下)でくっきり出る。
+            className="h-[78vh] w-[86vw] object-contain"
             style={{ imageRendering: 'pixelated', animation: 'bossCutinArt 240ms cubic-bezier(0.16,1,0.3,1) both' }}
           />
         </div>

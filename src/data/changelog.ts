@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4597',
+    items: [
+      'ボスの紹介画面で絵が小さくなっていたのを、元の大きさに戻した',
+    ],
+  },
+  {
     version: '0.25.4596',
     items: [
       '伐採人が薙ぎ払う向きが、当たる帯の向きと合うようになった',
