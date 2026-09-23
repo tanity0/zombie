@@ -64,3 +64,14 @@ export const enemyJumpFallFrame = (split: JumpSplit): number =>
  */
 export const enemyJumpLandLastFrame = (split: JumpSplit): number =>
   sectionLastFrame(counts(split), 2);
+
+/**
+ * ★着地の絵を流す長さ(v0.25.4608・走査で判明)。**相より長くしない。**
+ *
+ * `ENEMY_JUMP_LAND_MS` は「着地の絵そのものの尺」だが、**立ち直りの相は台本で伸び縮みする**。
+ * 城ボス1は絵が700msなのに、台本が次の技へ続く時の立ち直りは**実効250ms**しかない
+ * ⇒ 着地5コマのうち**2コマで打ち切られ**、一番潰れる瞬間も立ち直りの姿も出ないまま次の構えへ飛んでいた。
+ * 相の方が短い時は**詰めて全部出し切る**(相より長い時は従来どおり=余りは最後のコマで持たせる)。
+ */
+export const jumpLandDrawMs = (artMs: number, phaseMs: number): number =>
+  Math.max(1, phaseMs > 0 ? Math.min(artMs, phaseMs) : artMs);

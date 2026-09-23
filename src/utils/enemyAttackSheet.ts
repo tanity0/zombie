@@ -92,3 +92,40 @@ export const enemyAttackFrameFor = (
   return enemyAttackFrame(frames, gameTime - e.biteAt, spec.windupMs, spec.biteMs,
     ATTACK_SETTLE_MS, impact, attackStillMs(spec.windupMs, spec.lungeMs));
 };
+
+// ---------------------------------------------------------------------------------------------
+// ★振り抜き(余韻)のコマを出す(v0.25.4608・走査で判明)
+// ---------------------------------------------------------------------------------------------
+/**
+ * 支給された攻撃シートには**当たった後の「振り抜き」コマ**がある(リッチは11コマ中6コマ=
+ * 「鞭が地を打つ・火花が最大」を含む / ゾンビ3コマ / 骸骨(女)2コマ / 他1コマ)。
+ * ところが判定側は**当たったその瞬間に `biteAt` を0へ戻す**ので、`enemyAttackFrameFor` が
+ * そこで null を返し、**振り抜きのコマは1度も画面に出ていなかった**。
+ *
+ * ここは**描く側だけの記憶**で余韻を出し切る(判定には一切触らない=噛みの時刻も硬直も不変)。
+ *
+ * ★**出すのは「当たった後」だけ**。カウンター・気絶・死亡での中断は**当たる前に**消えるので、
+ *   「経過が命中の時刻を過ぎている」ことを条件にすれば中断と混ざらない
+ *   (中断の見せ方はカウンターの巻き戻し=`counterRewind.ts` の担当)。
+ * ★尺・コマの割り方は**live と同じ関数**(`enemyAttackFrame`)を通す=二重の台帳を作らない。
+ */
+export interface AttackTailMemo {
+  /** 技が始まった時刻(`Enemy.biteAt`・ゲーム内時刻)。 */
+  at: number;
+  windupMs: number;
+  biteMs: number;
+  lungeMs?: number;
+}
+
+export const attackTailFrame = (
+  memo: AttackTailMemo | undefined, frames: number, gameTime: number,
+  impact: number, settleMs: number = ATTACK_SETTLE_MS,
+): number | null => {
+  if (!memo || !(memo.at > 0) || frames <= 1) return null;
+  const since = gameTime - memo.at;
+  const hit = memo.windupMs + memo.biteMs;
+  if (!(since >= hit)) return null;              // ★当たる前に消えた=中断。余韻は出さない
+  if (since > hit + settleMs) return null;       // 余韻も過ぎた=技は終わっている
+  return enemyAttackFrame(frames, since, memo.windupMs, memo.biteMs, settleMs, impact,
+    attackStillMs(memo.windupMs, memo.lungeMs));
+};

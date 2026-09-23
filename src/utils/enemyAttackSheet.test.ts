@@ -1,9 +1,7 @@
 // ★攻撃モーション(社長支給2026-09-20「武器を振り下ろす絵」)の機械化。
 // 描画側はテストしない(CLAUDE.md)——**いつどのコマを出すか**の純関数だけを固定する。
 import { describe, it, expect } from 'vitest';
-import {
-  enemyAttackFrame, enemyAttackFrameFor, attackFrameSpans, ATTACK_SETTLE_MS, attackStillMs,
-} from './enemyAttackSheet';
+import { enemyAttackFrame, enemyAttackFrameFor, attackFrameSpans, ATTACK_SETTLE_MS, attackStillMs, attackTailFrame } from './enemyAttackSheet';
 import { attackSheetFrames, attackSheetName, ENEMY_ATTACK_SHEETS, attackImpactFrame } from './enemySheets';
 import { biteSpecFor, BAT_WINDUP_STILL_MS } from './enemyBite';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
@@ -251,5 +249,40 @@ describe('★★★どのシートも、画面で全コマが出る(コマ飛び
       expect(enemyAttackFrame(frames, W + B - 1, W, B, ATTACK_SETTLE_MS, impact, still)).toBe(impact);
       expect(enemyAttackFrame(frames, W + B, W, B, ATTACK_SETTLE_MS, impact, still)).toBe(impact + 1);
     }
+  });
+});
+
+describe('attackTailFrame（振り抜きのコマ・v0.25.4608）', () => {
+  // リッチ: 11コマ / 当たるコマ=4 / 溜め800ms + 噛み200ms（enemyBite.ts の実値と同じ形）
+  const lich = { at: 1000, windupMs: 800, biteMs: 200 };
+  const FRAMES = 11, IMPACT = 4;
+
+  it('当たる前は出さない（中断＝カウンター/気絶と混ざらない）', () => {
+    expect(attackTailFrame(lich, FRAMES, 1000 + 500, IMPACT)).toBeNull();
+    expect(attackTailFrame(lich, FRAMES, 1000 + 999, IMPACT)).toBeNull();
+  });
+
+  it('当たった直後から余韻のコマが出る（火花のコマ=5が必ず出る）', () => {
+    const at0 = attackTailFrame(lich, FRAMES, 1000 + 1000, IMPACT);
+    expect(at0).toBe(IMPACT + 1);   // 5 = 鞭が地を打つ・火花が最大
+  });
+
+  it('余韻の間に、当たるコマの次から末尾まで全部出る', () => {
+    const seen = new Set<number>();
+    for (let t = 1000; t <= 1000 + 1000 + ATTACK_SETTLE_MS; t += 5) {
+      const f = attackTailFrame(lich, FRAMES, t, IMPACT);
+      if (f !== null) seen.add(f);
+    }
+    for (let f = IMPACT + 1; f <= FRAMES - 1; f++) expect(seen.has(f)).toBe(true);
+  });
+
+  it('余韻を過ぎたら出さない（技は終わっている）', () => {
+    expect(attackTailFrame(lich, FRAMES, 1000 + 1000 + ATTACK_SETTLE_MS + 1, IMPACT)).toBeNull();
+  });
+
+  it('記憶が無い・壊れている時は落ちない', () => {
+    expect(attackTailFrame(undefined, FRAMES, 2000, IMPACT)).toBeNull();
+    expect(attackTailFrame({ at: 0, windupMs: 800, biteMs: 200 }, FRAMES, 2000, IMPACT)).toBeNull();
+    expect(attackTailFrame(lich, 1, 2000, IMPACT)).toBeNull();
   });
 });

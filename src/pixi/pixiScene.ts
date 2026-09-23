@@ -102,11 +102,11 @@ import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../u
 import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName } from '../utils/enemySheets';
-import { enemyAttackFrameFor } from '../utils/enemyAttackSheet';
+import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs, sweepSheetSplit, sweepSheetName } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
-import { enemyJumpFrame, enemyJumpFallFrame, enemyJumpLandLastFrame, jumpSplitFrames } from '../utils/enemyJumpSheet';
+import { enemyJumpFrame, enemyJumpFallFrame, enemyJumpLandLastFrame, jumpSplitFrames, jumpLandDrawMs } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepBandDirX } from '../utils/enemySweepSheet';
 import { counterRewindFrame, counterRewindEase, counterRewindElapsed, COUNTER_REWIND_MS } from '../utils/counterRewind';
@@ -21708,7 +21708,10 @@ export class PixiScene {
           if (livePhase === ci) {
             const chantRemain = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
             chantIdx = ci;
-            chantT = Math.max(0, Math.min(1, 1 - chantRemain / GLEN_NIHIL_CHANT_MS));
+            // ★v0.25.4608(走査で判明): 割る先は**実効の尺**(`chantEff`)。生の値で割ると、
+            // 唱の**始まりが進捗0ではなく約0.17から**になる=張り出しの出だしが飛んでいた
+            // (2行上で `chantEff` を出しているのに、ここだけ生の `GLEN_NIHIL_CHANT_MS` を見ていた)。
+            chantT = Math.max(0, Math.min(1, 1 - chantRemain / chantEff));
             chantFade = 1;
             if (L) { nfx = L.d[0]; nfy = L.d[1]; }
           } else if (L && livePhase === 0
@@ -29721,9 +29724,11 @@ export class PixiScene {
       // 着地の絵が尽きたら**最後のコマで持たせる**。着地の絵(420ms)は**硬直(蜘蛛は実効1667ms)より短い**ので、
       // 従来は残り約1.25秒ぶん**立ち絵へ戻って**いた——実測で絵の高さが **80.5px → 87.8px(+9%)跳ね上がる**
       // (足元が固定なので体が急に伸びる=「小ジャンプ」に見える)。技の絵は技が終わるまで持たせる。
+      // ★v0.25.4608: 着地の絵は**相より長くしない**(相が短い時は詰めて全コマ出し切る)。
+      const landDur = jumpLandDrawMs(jumpLandMs(idleTexKey), (e.aiPhaseUntil ?? gameTime) - recoverStart);
       i = blockedFall
         ? enemyJumpFallFrame(split)
-        : (enemyJumpFrame(split, 'land', (gameTime - recoverStart) / jumpLandMs(idleTexKey))
+        : (enemyJumpFrame(split, 'land', (gameTime - recoverStart) / landDur)
           ?? enemyJumpLandLastFrame(split));
     } else if (e.aiPhase === 'g-jump-windup' || e.aiPhase === 'g-jump-air' || e.aiPhase === 'g-jump-recover') {
       // ★★城ボスの飛び掛かり(社長支給2026-09-23「城1ボス 搬送体のジャンプ攻撃」・v0.25.4575)。
@@ -29742,9 +29747,14 @@ export class PixiScene {
         // 負から始まる=**まだ落ちている**。その間は着地の絵を出さず滞空の最後のコマで持たせる。
         const sinceLand = (gameTime - (e.aiStartedAt ?? gameTime)) - airDur;
         // ★v0.25.4605: 同じ理由で城ボスも最後のコマで持たせる(立ち直りは台本で伸びるため)。
+        // ★v0.25.4608(走査で判明): 逆に**相の方が短い**時があった——台本が次の技へ続く回は
+        // 立ち直りが**実効250ms**しかなく、着地5コマのうち**2コマで打ち切られて**いた
+        // (一番潰れる瞬間も立ち直りの姿も出ないまま次の構えへ飛ぶ)。相が短ければ詰める。
+        const landDur = jumpLandDrawMs(
+          jumpLandMs(idleTexKey), (e.aiPhaseUntil ?? gameTime) - ((e.aiStartedAt ?? gameTime) + airDur));
         i = sinceLand < 0
           ? enemyJumpFallFrame(split)
-          : (enemyJumpFrame(split, 'land', sinceLand / jumpLandMs(idleTexKey))
+          : (enemyJumpFrame(split, 'land', sinceLand / landDur)
             ?? enemyJumpLandLastFrame(split));
       }
     }
@@ -29870,10 +29880,35 @@ export class PixiScene {
    * ★このシートは**武器を持った腕ごと描かれている**ので、出ている間は
    * 別スプライトのランタン(`drawBatLantern` 経路)を**出さない**(二本持ちになる)。
    */
+  /**
+   * ★振り抜き(余韻)の記憶(v0.25.4608)。判定は**当たった瞬間に `biteAt` を0へ戻す**ので、
+   * それだけを見ていると**当たった後のコマが1枚も出ない**(リッチは11コマ中6コマが死んでいた)。
+   * 技が生きている間に尺を覚えておき、消えた後の余韻ぶんだけ**描く側だけで**出し切る。
+   * ★時計は**ゲーム内時刻**(`biteAt` と同じ)。`Date.now()` と混ぜない(v0.25.4594の事故と同型)。
+   */
+  private biteTailMemo = new Map<string, AttackTailMemo>();
+
   private enemyAttackTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     const frames = attackSheetFrames(idleTexKey);
     if (frames <= 1) return null;
-    const i = enemyAttackFrameFor(e, frames, gameTime, attackImpactFrame(idleTexKey));
+    const impact = attackImpactFrame(idleTexKey);
+    let i: number | null;
+    if (e.biteAt !== undefined && e.biteAt > 0) {
+      // 技が生きている間: 従来どおり。尺は**この瞬間の台本**から覚えておく
+      // (中断で `chaffMove` が消えると spec が変わるので、後から引き直さない)。
+      const spec = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
+      // 記憶は**その場限り**(余韻220ms)。画面外へ消えた個体のぶんが積もらないよう上限で捨てる。
+      if (this.biteTailMemo.size > 128) this.biteTailMemo.clear();
+      this.biteTailMemo.set(e.id, {
+        at: e.biteAt, windupMs: spec.windupMs, biteMs: spec.biteMs, lungeMs: spec.lungeMs,
+      });
+      i = enemyAttackFrameFor(e, frames, gameTime, impact);
+    } else {
+      // 技が消えた後: **当たった後**なら余韻のコマを出す(中断は当たる前に消えるので混ざらない)。
+      const memo = this.biteTailMemo.get(e.id);
+      i = attackTailFrame(memo, frames, gameTime, impact);
+      if (i === null && memo) this.biteTailMemo.delete(e.id);
+    }
     if (i === null) return null;
     const slices = this.sheetSlices(attackSheetName(idleTexKey), frames);
     return this.rememberAtkFrame(e, attackSheetName(idleTexKey), frames, i, slices);

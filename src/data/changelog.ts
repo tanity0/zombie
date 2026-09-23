@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4608', items: ['敵の攻撃に、振り抜きの絵が出る。鞭が地を打つ火花まで見えるようになった', '城のボスの着地が途中で切れていたのが直った', '三度の詠唱で広がる輪の、出だしの飛びを修正'] },
   { version: '0.25.4607', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4606', items: ['ゲーム内容の変更はありません'] },
   {

@@ -1,6 +1,6 @@
 // ★跳ぶ技の絵の区間割り。社長支給2026-09-21「パンプキン(蜘蛛)のジャンプ攻撃時」。
 import { describe, it, expect } from 'vitest';
-import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames , enemyJumpLandLastFrame } from './enemyJumpSheet';
+import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames, enemyJumpLandLastFrame, jumpLandDrawMs } from './enemyJumpSheet';
 import { ENEMY_JUMP_SHEETS, ENEMY_JUMP_LAND_MS, jumpSheetName, jumpSheetSplit } from './enemySheets';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
 import { PUMPKIN_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
@@ -139,5 +139,36 @@ describe('★着地の最後のコマで持たせる(社長報告2026-09-23「�
   it('区間の割り方が違うシートでも同じ(城ボス=5/5/6 / ハンター=5/5/6)', () => {
     expect(enemyJumpLandLastFrame({ crouch: 4, air: 7, land: 5 })).toBe(15);
     expect(enemyJumpLandLastFrame({ crouch: 5, air: 5, land: 6 })).toBe(15);
+  });
+});
+
+describe('jumpLandDrawMs（着地の絵は相より長くしない・v0.25.4608）', () => {
+  it('相の方が短い時は詰める（城ボス1: 絵700ms / 相250ms）', () => {
+    expect(jumpLandDrawMs(700, 250)).toBe(250);
+  });
+
+  it('相の方が長い時は絵の尺のまま（蜘蛛: 絵420ms / 相1667ms。余りは最後のコマで持たせる）', () => {
+    expect(jumpLandDrawMs(420, 1667)).toBe(420);
+  });
+
+  it('ぴったり同じ時は変わらない（ハンター: 833ms）', () => {
+    expect(jumpLandDrawMs(833, 833)).toBe(833);
+  });
+
+  it('相が分からない/0以下なら絵の尺へ落ちる（0除算で落とさない）', () => {
+    expect(jumpLandDrawMs(700, 0)).toBe(700);
+    expect(jumpLandDrawMs(700, -10)).toBe(700);
+  });
+
+  it('詰めた尺でも着地の全コマが出る（打ち切られない）', () => {
+    const split = { crouch: 4, air: 7, land: 5 };
+    const dur = jumpLandDrawMs(700, 250);
+    const seen = new Set<number>();
+    for (let t = 0; t <= dur; t += 1) {
+      const f = enemyJumpFrame(split, 'land', t / dur);
+      if (f !== null) seen.add(f);
+    }
+    // land 区間は通し番号 11..15（crouch4 + air7 の後）
+    expect(seen.size).toBe(5);
   });
 });
