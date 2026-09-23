@@ -108,7 +108,7 @@ import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
-import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames } from '../utils/enemySweepSheet';
+import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepBandDirX } from '../utils/enemySweepSheet';
 import { counterRewindFrame, counterRewindEase, counterRewindElapsed, COUNTER_REWIND_MS } from '../utils/counterRewind';
 // ★武器の振りの軌跡(カウンターの「振りを戻す」用)。60fpsで窓140ms=約9枚なので16枚で足りる。
 const WEAPON_TRAIL_MAX = 16;
@@ -18318,7 +18318,16 @@ export class PixiScene {
         // 素材の素の向き(既定=左向き)。シートを持つ個体はシート側の向きが正
         // (立ち絵とシートで向きが違う場合があるため。今の bat-female はどちらも左向き)。
         const toRight = (sheetMirror ? sheetFacesRight(sheetKey) : spec.faceRight) ? 1 : -1;
-        const want = kbFacingLock ? cur : vx > 25 ? toRight : vx < -25 ? -toRight : cur;
+        // ★薙ぎの最中は「帯の向き」で決める(社長裁定2026-09-23「薙の向きは推薦で」)。
+        // 薙ぎのシートは常に同じ向きに描かれているのに、当たる帯の始点→終点は**プレイヤーの位置で
+        // 入れ替わる**。しかも薙ぎ中は本体が動かない(vx≈0)ので、移動方向から決める下の式では
+        // **帯と絵が逆を向く**ことが起きる=「見たまんまが当たり判定」が崩れる。
+        // 焼き付けた座標(判定の正本と同じ出どころ)から読むので、絵と判定がズレない。
+        const bandDir = sweepPhaseOf(e.aiPhase) !== null
+          ? sweepBandDirX(e.aiFromX, e.aiTargetX) : 0;
+        const want = kbFacingLock ? cur
+          : bandDir !== 0 ? (bandDir > 0 ? toRight : -toRight)
+            : vx > 25 ? toRight : vx < -25 ? -toRight : cur;
         if (want !== cur) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
         const t = view.motFaceAt !== undefined ? Math.min(1, (now - view.motFaceAt) / ENEMY_TURN_MS) : 1;
         const from = view.motFaceFrom ?? (view.motFace ?? 1);
@@ -18326,7 +18335,22 @@ export class PixiScene {
         if (faceMul === 0) faceMul = 0.02; // scale.x=0の完全消失フレームを作らない
       }
     }
-    view.sprite.position.set(Math.round(fb.footX + liftShake),
+    // ★溜めの震え(社長裁定2026-09-23「溜めは推薦で」)。伐採人の薙ぎの溜めは**1コマ×1083ms**=
+    // 絵も呼吸も止まった完全な静止画になっていた(慣性MUST違反)。
+    // ★**新しい型は作らない**——このプロジェクトには既に「溜め終盤の震え」の共通型
+    // (`windupTremorPx`・v0.25.3344 `research/TELL_MOTION_LEDGER.md`)があり、トールissen/tsuki・
+    // ミーミルのレーザー・紫段が使っている。**薙ぎだけ付いていなかった**ので、区分仕様へ揃える。
+    // ※当初の推薦は「1コマ区間では呼吸を許す」だったが、呼吸を止めること自体が
+    //   「攻撃する時は息を止める」(社長指示2026-09-17)=**今だ、の合図**なので崩さない。
+    //   既存の型で静止を解く方が、掟を1つも曲げずに済む。**描画オフセットのみ・判定は不変。**
+    const sweepWindupTremor = e.aiPhase !== undefined && sweepPhaseOf(e.aiPhase) === 'windup'
+      && e.aiPhaseUntil !== undefined && e.aiStartedAt !== undefined
+      ? windupTremorPx(
+        Math.max(0, Math.min(1, (gameTime - e.aiStartedAt) / Math.max(1, e.aiPhaseUntil - e.aiStartedAt))),
+        now,
+      )
+      : 0;
+    view.sprite.position.set(Math.round(fb.footX + liftShake + sweepWindupTremor),
       Math.round(fb.footY - liftHop - aiHop - kbHop - motBob + eggSinkPx));
     view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
     view.sprite.alpha = artFade; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)

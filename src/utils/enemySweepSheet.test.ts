@@ -2,8 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame,
-  LOGGER_SWEEP_PHASES,
-} from './enemySweepSheet';
+  LOGGER_SWEEP_PHASES, sweepBandDirX } from './enemySweepSheet';
 import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit } from './enemySheets';
 import { LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
 
@@ -114,5 +113,26 @@ describe('★★画面で全コマが出る(実効の尺で数える)', () => {
   it('★薙ぎの3コマは一番速いが、1コマが1画面フレームを下回らない', () => {
     const perFrame = (LOGGER_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT) / SP.active;
     expect(perFrame).toBeGreaterThan(1000 / 60);
+  });
+});
+
+describe('★薙ぎの帯の向き(社長裁定2026-09-23・絵と帯が逆を向かないように)', () => {
+  it('右へ抜ける帯は +1 / 左は -1', () => {
+    expect(sweepBandDirX(100, 300)).toBe(1);
+    expect(sweepBandDirX(300, 100)).toBe(-1);
+  });
+  it('横成分が小さい(=ほぼ真上/真下へ薙ぐ)なら 0=判断しない', () => {
+    expect(sweepBandDirX(100, 104)).toBe(0);
+    expect(sweepBandDirX(100, 100)).toBe(0);
+  });
+  it('座標が焼かれていないなら 0(=従来どおり移動方向に任せる)', () => {
+    expect(sweepBandDirX(undefined, 300)).toBe(0);
+    expect(sweepBandDirX(100, undefined)).toBe(0);
+    expect(sweepBandDirX(NaN, 300)).toBe(0);
+  });
+  it('★不感帯の境目: ちょうど deadzone は 0、1px でも超えたら向きが出る', () => {
+    expect(sweepBandDirX(0, 8)).toBe(0);
+    expect(sweepBandDirX(0, 9)).toBe(1);
+    expect(sweepBandDirX(0, -9)).toBe(-1);
   });
 });

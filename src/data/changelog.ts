@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4596',
+    items: [
+      '伐採人が薙ぎ払う向きが、当たる帯の向きと合うようになった',
+      '薙ぎ払いの溜めで、構えた体が震える',
+    ],
+  },
+  {
     version: '0.25.4595',
     items: [
       'カウンターで技を止めると、武器の振りも戻るようになった。消えずに弾き返される',

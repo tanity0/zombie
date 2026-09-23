@@ -57,3 +57,24 @@ export const sweepImpactFrame = (split: SweepSplit): number => split.windup;
 
 /** ★溜めの最後のコマ(=当たる直前に見えている姿)。 */
 export const sweepWindupLastFrame = (split: SweepSplit): number => sectionLastFrame(counts(split), 0);
+
+/**
+ * ★薙ぎの帯が横向きにどちらへ抜けるか(社長裁定2026-09-23「薙の向きは推薦で」)。
+ * `+1`=右へ抜ける / `-1`=左へ / `0`=横成分が小さく判断しない(=従来どおり移動方向に任せる)。
+ *
+ * なぜ要るか: 薙ぎのシートは**常に同じ向き**(伐採人なら左→右)に描かれているのに、
+ * 当たる帯の始点→終点は**プレイヤーの位置で入れ替わる**。薙ぎの最中は本体が動かない(vx≈0)ので、
+ * 向きを移動方向から決めている今の配線では**帯と絵が逆を向く**ことが起きる
+ * ——「見たまんまが当たり判定」(攻撃ヴィジュアルの2分類①)が崩れる。
+ *
+ * ★焼き付けた座標(`aiFromX`/`aiTargetX`)から読む。判定の正本と同じ出どころなので、絵と判定がズレない。
+ */
+export const sweepBandDirX = (
+  fromX: number | undefined, toX: number | undefined, deadzonePx = 8,
+): -1 | 0 | 1 => {
+  if (fromX === undefined || toX === undefined) return 0;
+  const d = toX - fromX;
+  // 不感帯は**含めて**判断しない(=8pxちょうどは0)。真上/真下へ薙ぐ技で向きが揺れないように。
+  if (!Number.isFinite(d) || Math.abs(d) <= deadzonePx) return 0;
+  return d > 0 ? 1 : -1;
+};
