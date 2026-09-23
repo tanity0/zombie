@@ -531,10 +531,10 @@
    "sha": "48d3affdb0d591ab"
   },
   "sprites/atlas-px2/giantbat.png": {
-   "w": 121,
-   "h": 128,
-   "bytes": 13386,
-   "sha": "8bb1d5e451f61088"
+   "w": 335,
+   "h": 356,
+   "bytes": 61754,
+   "sha": "875702eea17ba619"
   },
   "sprites/atlas-px2/pickup-bomb.png": {
    "w": 114,

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.4579',
+    items: [
+      'ステージ一のボスの立ち姿を、彫りの深い方へ差し替えた',
+    ],
+  },
+  {
     version: '0.25.4578',
     items: [
       'ステージ一のボスの立ち姿が、動いている時と同じ粗さで揃った',
