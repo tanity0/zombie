@@ -51,7 +51,11 @@ export const counterRewindElapsed = (
 export const counterRewindFrame = (
   fromFrame: number, sinceCounterMs: number, durMs: number = COUNTER_REWIND_MS,
 ): number | null => {
-  if (!(durMs > 0) || fromFrame < 0) return null;
+  // ★戻る先が無いなら何も出さない(v0.25.4594・クリエイティブ監査 指摘1)。
+  // 0コマ目でカウンターされた技(例: 伐採人の薙ぎは溜めが**1コマだけ**=`{windup:1,...}`ので、
+  // 着弾前に成立するカウンターの瞬間は必ずコマ0)は、戻すコマが1枚も無い。ここで null を返さないと
+  // **構えの絵のまま窓のぶん止まる**=社長が最初に「バグってるみたい」と言った「絵が固まる」に戻る。
+  if (!(durMs > 0) || fromFrame <= 0) return null;
   if (sinceCounterMs <= 0) return fromFrame;
   if (sinceCounterMs >= durMs) return null;
   const back = counterRewindEase(sinceCounterMs / durMs);

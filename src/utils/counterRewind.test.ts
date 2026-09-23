@@ -59,8 +59,11 @@ describe('★カウンターの巻き戻し(社長指示2026-09-23「跳ね返�
     expect(Math.abs(a - b)).toBeLessThanOrEqual(0.5 / 6 + 1e-9);
   });
 
-  it('0コマ目でカウンターされた/長さ0なら何も出さない(絵が残らない)', () => {
-    expect(counterRewindFrame(0, 0)).toBe(0);
+  it('★0コマ目でカウンターされたら何も出さない=構えの絵で固まらない(監査 指摘1)', () => {
+    // 伐採人の薙ぎは溜めが1コマだけ(`{windup:1,...}`)なので、着弾前のカウンターでは必ずコマ0。
+    // ここで戻り値を返すと「構えの絵のまま窓のぶん止まる」=元の「絵が固まる」に戻る。
+    expect(counterRewindFrame(0, 0)).toBeNull();
+    expect(counterRewindFrame(0, 50)).toBeNull();
     expect(counterRewindElapsed(0, 0)).toBeNull();
     expect(counterRewindElapsed(200, 10, 0)).toBeNull();
   });

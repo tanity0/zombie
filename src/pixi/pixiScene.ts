@@ -29695,7 +29695,11 @@ export class PixiScene {
   ): ReturnType<typeof getTexture> {
     if (!slices) return null;
     const tex = slices[i] ?? null;
-    if (tex) this.atkFrameMemo.set(e.id, { name, frames, i, at: performance.now() });
+    // ★時計を `Date.now()` に揃える(v0.25.4594・クリエイティブ監査 指摘5)。
+    // 初出は `performance.now()`(起動からのms)で焼いていたが、比較相手の `Enemy.lastCounteredAt` は
+    // **`Date.now()`(エポックms)**。桁が違うので下の「打刻より後のコマは次の技」という門が
+    // **一度も閉まっていなかった**。ENGINEERING_NOTES §0「異なる時計の値を直接比較しない」の再発。
+    if (tex) this.atkFrameMemo.set(e.id, { name, frames, i, at: Date.now() });
     return tex;
   }
 
@@ -29710,8 +29714,12 @@ export class PixiScene {
     const memo = this.atkFrameMemo.get(e.id);
     if (!memo) return null;
     const at = e.lastCounteredAt;
+    // ★普通に振り切って終わった技は忘れる(v0.25.4594・クリエイティブ監査 指摘5の後半)。
+    // 捨てないと**最終コマ(火花が焼き込まれたコマ)が残り続け**、次にシートを持たない技で
+    // カウンターが刺さった時に、その古いコマから火花ごと逆再生される。
+    if (at === undefined) { this.atkFrameMemo.delete(e.id); return null; }
     // カウンターより前に出ていたコマだけが対象(打刻より後に出たコマは「次の技」)。
-    if (at === undefined || memo.at > at + 1) return null;
+    if (memo.at > at + 1) return null;
     const i = counterRewindFrame(memo.i, now - at);
     if (i === null) { this.atkFrameMemo.delete(e.id); return null; }
     const slices = this.sheetSlices(memo.name, memo.frames);
